@@ -979,6 +979,7 @@ def wait_boot(name, port, apps=True):
         try: hide_window(name)
         except Exception: pass
         tune(name, port); grant_perms(name, port)
+        _root_keep({"name": name}, port)
         if apps: preinstall(name, port)
     return ok
 
@@ -1591,7 +1592,172 @@ def cmd_rootfix(a):
         start_phone(p); wait_boot(p["name"], p["port"], apps=False)
         if _has_su(p): print(f"ROOT_OK {p['name']}: đã root xong — tool gọi su là chạy bằng quyền root", flush=True); ok += 1
         else: print(f"ROOT_NO {p['name']}: đã bật root + khởi động lại nhưng chưa thấy lệnh su", flush=True); bad += 1
+    if a.all and not a.force:                                       # vòng 5 phút: máy bật root theo app mà daemon không chạy → cài lại
+        for p in load()["phones"]:
+            if p.get("root_on") and is_running(p["name"], p): _root_keep(p)
     print(f"Root: {ok} máy có root · {setn} máy tắt đã bật sẵn · {wait} máy chờ bật lại · {bad} máy lỗi")
+
+# ---------- ROOT THEO TỪNG APP (cpsu: lệnh su riêng + daemon, chỉ app trong danh sách mới lấy được root) ----------
+# Máy chủ giữ 2 file: cpsu-x86_64 (daemon + install/uninstall/status — chạy root trong máy ảo, ngoài sandbox app) và
+# cpsu-su-x86_64 (lệnh "su" KHÔNG libc — chạy bên trong app như Termux). Thiếu / sai md5 → tự tải từ GitHub (windows/…).
+# Trong máy: /data/adb/cpsu/{cpsu, su, allow, log}; "cpsu install" chép su vào /debug_ramdisk/su (Termux tìm ở đó trước),
+# adb là root thì gắn đè thêm lên /system/xbin/su, /system/bin/su. Tắt root = "cpsu uninstall". KHÔNG giấu root với app khác.
+CPSU_DIR = os.path.join(HOME, "cpsu")
+CPSU_FILES = {"cpsu": ("cpsu-x86_64", "e22c12e19f45f11ffeedc8d2d9bbefa8"), "su": ("cpsu-su-x86_64", "510c22af304ad95f6e733da4d60ce250")}
+CPSU_RAW = (CONF.get("REPO_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main").rstrip("/") + "/windows/"
+CPSU_API = (CONF.get("REPO_API") or "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents").rstrip("/") + "/windows/"
+CPSU_DEV = "/data/adb/cpsu"
+CPSU_BINDS = "/system/xbin/su,/system/bin/su"
+_PKG_RE = re.compile(r"^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)+$")
+
+def _fmd5(fp):
+    try:
+        with open(fp, "rb") as f: return hashlib.md5(f.read()).hexdigest()
+    except OSError: return ""
+def _cpsu_local():
+    """Đường dẫn 2 file cpsu trên máy chủ (tải từ GitHub nếu thiếu / sai md5 — md5 ghim trong phonectl, file lạ không dùng)."""
+    import urllib.request
+    os.makedirs(CPSU_DIR, exist_ok=True); out = {}
+    for key, (fn, want) in CPSU_FILES.items():
+        fp = os.path.join(CPSU_DIR, fn)
+        if _fmd5(fp) != want:
+            data = None
+            for url, hdr in ((CPSU_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                             (CPSU_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=90) as r: d = r.read()
+                    if hashlib.md5(d).hexdigest() == want: data = d; break
+                except Exception: pass
+            if data is None: raise RuntimeError(f"máy chủ chưa có file {fn} đúng bản — tải windows/{fn} lên GitHub rồi thử lại")
+            with open(fp + ".tmp", "wb") as f: f.write(data)
+            os.replace(fp + ".tmp", fp)
+        out[key] = fp
+    return out
+
+def _root_sh(p, script, timeout=120, files=()):
+    """Chạy script bằng quyền ROOT trong máy. Script + file kèm (files = [(file trên máy chủ, tên)]) đẩy vào thư mục tạm RIÊNG
+       của lần chạy này ($T, tránh 2 việc cùng lúc ghi đè nhau) → adb là root thì chạy thẳng, không thì qua su -c. Trả (kết quả, adb_root?)."""
+    import secrets, tempfile
+    s_ = serial(p)
+    if (adb("-s", s_, "get-state", timeout=15).stdout or "").strip() != "device": adb_connect(p["port"])
+    is_root = (adb("-s", s_, "shell", "id -u", timeout=15).stdout or "").strip() == "0"
+    T = f"/data/local/tmp/cpsu_{secrets.token_hex(4)}"
+    adb("-s", s_, "shell", f"mkdir -p {T}", timeout=15)
+    fd, fp = tempfile.mkstemp(suffix=".sh")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f: f.write(f"T={T}\n" + script.replace("\r", "") + "\n")
+    try:
+        adb("-s", s_, "push", fp, f"{T}/run.sh", timeout=60)
+        for local, name in files: adb("-s", s_, "push", local, f"{T}/{name}", timeout=180)
+    finally:
+        try: os.remove(fp)
+        except OSError: pass
+    cmd = f"sh {T}/run.sh" if is_root else f"su -c 'sh {T}/run.sh'"
+    r = adb("-s", s_, "shell", f"{cmd}; rm -rf {T}", timeout=timeout)
+    return r, is_root
+
+def _root_state(p):
+    """Đọc trong máy: daemon chạy chưa, SELinux, app vừa xin root (bị từ chối), danh sách app khách cài."""
+    r, _ = _root_sh(p, f"D={CPSU_DEV}\n"
+                       "if [ -x $D/cpsu ]; then $D/cpsu status --dir $D; else echo NOCPSU; fi\n"
+                       "echo SELINUX=$(getenforce 2>/dev/null)\n"
+                       "echo ---ASKED\n[ -f $D/log ] && tail -n 300 $D/log | grep ' DENY'\n"
+                       "echo ---APPS\npm list packages -3 2>/dev/null\n", timeout=60)
+    o = (r.stdout or "") + (r.stderr or ""); sec = ""; st = {"running": False, "selinux": "?", "asked": [], "installed": []}
+    seen = set()
+    for ln in o.splitlines():
+        ln = ln.strip()
+        if ln.startswith("---"): sec = ln[3:]; continue
+        if not sec:
+            if ln.startswith("RUNNING"): st["running"] = True
+            elif ln.startswith("SELINUX="): st["selinux"] = ln.split("=", 1)[1] or "?"
+        elif sec == "ASKED":
+            m = re.match(r"^(\S+) uid=(\d+) pkgs=(\S+) DENY$", ln)
+            if m: st["asked"].append((m.group(1), [x for x in m.group(3).split(",") if _PKG_RE.match(x)]))
+        elif sec == "APPS" and ln.startswith("package:"):
+            pk = ln.split(":", 1)[1].strip()
+            if _PKG_RE.match(pk) and pk != "shop.blueroblox.app": st["installed"].append(pk)
+    asked = []
+    for t, pks in reversed(st["asked"]):                       # mới nhất trước, mỗi app 1 lần
+        try: t = datetime.datetime.strptime(t, "%Y-%m-%dT%H:%M:%S%z").astimezone().isoformat(timespec="seconds")   # daemon ghi giờ UTC → giờ máy chủ
+        except ValueError: pass
+        for pk in pks:
+            if pk not in seen: seen.add(pk); asked.append({"pkg": pk, "t": t})
+    st["asked"] = asked[:30]; st["installed"] = sorted(set(st["installed"]))
+    return st
+
+def _root_apply(p, quiet=False):
+    """Đưa máy về đúng cấu hình root đã lưu (p["root_on"], p["root_apps"]). Trả (ok, câu báo)."""
+    on, apps = bool(p.get("root_on")), [x for x in (p.get("root_apps") or []) if _PKG_RE.match(str(x))]
+    if not on:
+        r, _ = _root_sh(p, f"D={CPSU_DEV}\n[ -x $D/cpsu ] && $D/cpsu uninstall --dir $D\nrm -f $D/allow\necho ROOT_OFF_DONE\n", timeout=90)
+        ok = "ROOT_OFF_DONE" in (r.stdout or "")
+        return ok, ("Đã TẮT root — không app nào dùng được lệnh su." if ok else "Chưa tắt được root: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:])
+    import tempfile
+    files = _cpsu_local()
+    r, is_root = _root_sh(p, f"md5sum {CPSU_DEV}/cpsu {CPSU_DEV}/su 2>/dev/null", timeout=30)
+    have = r.stdout or ""
+    push = [(fp, f"up_{key}") for key, fp in files.items() if CPSU_FILES[key][1] not in have]      # chỉ đẩy file khác bản
+    fd, af = tempfile.mkstemp(suffix=".txt")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f: f.write("".join(x + "\n" for x in apps))
+    # adb chưa phải root (đi qua su của giả lập) → KHÔNG gắn đè su hệ thống (daemon tắt thì vẫn còn su gốc để quản lý máy)
+    binds = f" --bind {CPSU_BINDS}" if is_root else ""
+    sc = (f"D={CPSU_DEV}\nmkdir -p $D; chmod 700 $D\nNEW=0\n"
+          "for f in cpsu su; do if [ -f $T/up_$f ]; then cp $T/up_$f $D/$f.new && chmod 755 $D/$f.new && mv -f $D/$f.new $D/$f && NEW=1; fi; done\n"
+          "cp $T/allow $D/allow.new && chmod 600 $D/allow.new && mv -f $D/allow.new $D/allow\n"
+          "[ \"$NEW\" = 1 ] && $D/cpsu uninstall --dir $D >/dev/null 2>&1\n"
+          f"$D/cpsu install --dir $D{binds} --notify\n$D/cpsu status --dir $D\n")
+    try: r, _ = _root_sh(p, sc, timeout=180, files=push + [(af, "allow")])
+    finally:
+        try: os.remove(af)
+        except OSError: pass
+    o = ((r.stdout or "") + (r.stderr or "")).strip()
+    if "INSTALL_OK" not in o or "RUNNING" not in o:
+        return False, "Chưa bật được root: " + (o.splitlines()[-1] if o else "máy không trả lời")[-200:]
+    se = (re.search(r"selinux=(\w+)", o) or [None, "?"])[1]
+    msg = f"Đã BẬT root cho {len(apps)} app" + (f": {', '.join(apps[:5])}{'…' if len(apps) > 5 else ''}" if apps else " (chưa chọn app nào — app xin root sẽ bị từ chối)")
+    if se == "Enforcing": msg += " · ⚠ máy đang bật SELinux Enforcing — app có thể vẫn chưa dùng được su"
+    if not quiet: print(f"   🔓 {p['name']}: {msg}", flush=True)
+    return True, msg
+
+def cmd_rootcfg(a):
+    """rootcfg TÊN --get | --set --on/--off [--apps a,b,c] — công tắc root + danh sách app được dùng su (giao diện 🔓 Root)."""
+    st, p = _need(a.name)
+    if a.set:
+        if a.on == a.off: print("ROOTCFG_FAIL chọn --on hoặc --off"); sys.exit(2)
+        apps = []
+        for x in (a.apps or "").split(","):
+            x = x.strip()
+            if not x: continue
+            if not _PKG_RE.match(x): print(f"ROOTCFG_FAIL tên app không hợp lệ: {x[:60]}"); sys.exit(2)
+            if x not in apps: apps.append(x)
+        if len(apps) > 300: print("ROOTCFG_FAIL quá 300 app"); sys.exit(2)
+        p["root_on"] = bool(a.on); p["root_apps"] = apps; save(st)        # lưu TRƯỚC: máy tắt / khởi động lại vẫn áp dụng đúng
+        if not is_running(p["name"], p):
+            print("ROOTCFG_OK Đã lưu — máy đang tắt, cấu hình root áp dụng khi máy bật."); return
+        try: ok, msg = _root_apply(p, quiet=True)
+        except Exception as e: ok, msg = False, f"Chưa áp dụng được: {e}"
+        print(("ROOTCFG_OK " if ok else "ROOTCFG_FAIL ") + msg)
+        if not ok: sys.exit(1)
+        return
+    info = {"on": bool(p.get("root_on")), "apps": list(p.get("root_apps") or []), "running": False, "selinux": "?",
+            "asked": [], "installed": [], "online": False}
+    if is_running(p["name"], p):
+        try: info.update(_root_state(p)); info["online"] = True
+        except Exception as e: info["error"] = str(e)[:200]
+    info["asked"] = [x for x in info["asked"] if x["pkg"] not in info["apps"]]
+    print("ROOTCFG " + json.dumps(info, ensure_ascii=False))
+
+def _root_keep(p, port=None):
+    """Sau khi máy bật lại (tmpfs + gắn đè mất hết) / daemon chết: máy đang bật root theo app → cài lại. Không bật → bỏ qua."""
+    p = rec(p["name"]) or p
+    if not p.get("root_on"): return
+    if port: p = dict(p, port=port)
+    try:
+        r, _ = _root_sh(p, f"[ -x {CPSU_DEV}/cpsu ] && {CPSU_DEV}/cpsu status --dir {CPSU_DEV}", timeout=30)
+        if "RUNNING" in (r.stdout or ""): return
+        ok, msg = _root_apply(p, quiet=True)
+        print(f"   🔓 {p['name']}: {'bật lại root theo app' if ok else msg}", flush=True)
+    except Exception as e: print(f"   ⚠ {p['name']}: root theo app lỗi: {e}", flush=True)
 
 def cmd_capacity(a):
     st = load(); tot, av = mem()
@@ -1701,7 +1867,7 @@ def cmd_bootall(a):
             if booted(p["port"]): ok = True; break
             time.sleep(3)
         if ok:
-            tune(p["name"], p["port"]); grant_perms(p["name"])
+            tune(p["name"], p["port"]); grant_perms(p["name"]); _root_keep(p)
             try: hide_window(p["name"])
             except Exception: pass
         print(f"✅ {p['name']}: sẵn sàng" if ok else f"✗ {p['name']}: Android chưa lên sau {BOOT_WAIT // 60} phút"); bad += 0 if ok else 1
@@ -2147,6 +2313,9 @@ def main():
     lr = s.add_parser("liveres"); lr.add_argument("name"); lr.add_argument("--res", required=True); lr.set_defaults(f=cmd_liveres)
     pi = s.add_parser("preinstall"); pi.add_argument("name", nargs="?", default=""); pi.add_argument("--all", action="store_true"); pi.add_argument("--force", action="store_true"); pi.set_defaults(f=cmd_preinstall)
     rf = s.add_parser("rootfix"); rf.add_argument("name", nargs="?", default=""); rf.add_argument("--all", action="store_true"); rf.add_argument("--force", action="store_true"); rf.set_defaults(f=cmd_rootfix)
+    rc = s.add_parser("rootcfg"); rc.add_argument("name"); g_ = rc.add_mutually_exclusive_group(required=True)
+    g_.add_argument("--get", action="store_true"); g_.add_argument("--set", action="store_true")
+    rc.add_argument("--on", action="store_true"); rc.add_argument("--off", action="store_true"); rc.add_argument("--apps", default=""); rc.set_defaults(f=cmd_rootcfg)
     gg = s.add_parser("gfxget"); gg.add_argument("name"); gg.set_defaults(f=cmd_gfxget)
     rd = s.add_parser("render"); rd.add_argument("name"); rd.add_argument("mode", choices=["opengl", "directx"]); rd.set_defaults(f=cmd_render)
     wp = s.add_parser("wallpaper"); wp.add_argument("name", nargs="?", default=""); wp.add_argument("--all", action="store_true"); wp.add_argument("--force", action="store_true"); wp.set_defaults(f=cmd_wallpaper)
