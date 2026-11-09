@@ -307,6 +307,14 @@ def parse_dt(s):
 def cname(row):
     return "cp_" + row["id"].replace("-", "")[:10]
 
+_until = {"v": None}
+def phonectl_until():
+    """phonectl.py trên máy này có hiểu --until chưa (máy đổi Android giữ đúng hạn cũ)?"""
+    if _until["v"] is None:
+        try: _until["v"] = '"--until"' in open(PHONECTL, encoding="utf-8").read()
+        except Exception: _until["v"] = False
+    return _until["v"]
+
 BOOTING = set()
 def do_create(row):
     """Tạo container ngay (vài giây), rồi chờ Android khởi động ở luồng riêng → nhiều máy khởi động song song."""
@@ -316,7 +324,8 @@ def do_create(row):
         print(f"[tạo] đơn {row['id'][:8]} → {name} ({row['ram']}GB/{row['cpu']} {row['days']}n {row.get('fps') or 30}fps)")
         r = phonectl(["create", name, "--ram", str(row["ram"]), "--cpu", str(row["cpu"]),
                       "--days", str(row["days"]), "--res", row.get("res") or "720x1280",
-                      "--fps", str(row.get("fps") or 30), "--android", str(row.get("android") or "11"), "--nowait"])
+                      "--fps", str(row.get("fps") or 30), "--android", str(row.get("android") or "11"), "--nowait"]
+                     + (["--until", str(row["until_at"])] if row.get("until_at") and phonectl_until() else []))
         if r.returncode == 2:   # HẾT HÀNG (quá ngưỡng)
             refund(row, "Máy chủ đã đầy, chưa tạo được máy"); notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b> vì {NODE_ID} đã đầy {LIMIT_PCT}%."); return
         if r.returncode != 0:
