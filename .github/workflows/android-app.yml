@@ -18,7 +18,7 @@ env:
   VER_OFFSET: "100"
   # Dòng hướng dẫn hiện trong hộp "Có bản cập nhật mới" của app CŨ (cài trước 13:20 09/11/2026, ký bằng khoá cũ → Android không
   # cho cập nhật đè, báo INSTALL_FAILED_UPDATE_INCOMPATIBLE). App cũ chỉ đọc "version" của app.json; web + app từ 1.103 đọc "ver".
-  # Khi khách đã cài lại hết: để trống ("") rồi build lại.
+  # Khi khách đã cài lại hết: để trống ("") rồi build lại. Đã có secret khoá cũ (xoay khoá thành công) thì tự bỏ dòng này.
   OLD_KEY_HINT: "⚠️ Cập nhật báo lỗi INSTALL_FAILED? Gỡ app này rồi cài bản mới tải tại cloudblue.vn/download/blueroblox-cloud.apk"
 
 concurrency:
@@ -55,6 +55,7 @@ jobs:
       - name: Signing key
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          OLD_B64: ${{ secrets.ANDROID_OLD_KEYSTORE_B64 }}
         run: |
           # KHÔNG phát hành APK ký bằng khoá tạm: khách đang dùng app sẽ không cập nhật đè được
           if [ -z "$KS_B64" ]; then
@@ -63,19 +64,70 @@ jobs:
           fi
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ks.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/ks.jks" >> "$GITHUB_ENV"
+          # Khoá CŨ (đã ký app 1.4x, trước 13:20 09/11/2026) — có thì ký thêm bằng khoá cũ + "xoay khoá" để app cũ cập nhật thẳng được
+          if [ -n "$OLD_B64" ]; then echo "$OLD_B64" | base64 -d > "$RUNNER_TEMP/old.jks" && echo "OLD_KEYSTORE_FILE=$RUNNER_TEMP/old.jks" >> "$GITHUB_ENV"; fi
 
       - name: Build APK + AAB
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: gradle -p android-app assembleRelease bundleRelease --no-daemon --stacktrace
 
+      # XOAY KHOÁ (APK Signature Scheme v3, Android 9+): v1/v2 ký bằng khoá CŨ, v3 ký bằng khoá MỚI + "lịch sử khoá" (cũ → mới).
+      #   • App cũ ký khoá cũ (1.4x) → cập nhật được trên MỌI Android (không phải gỡ cài lại)
+      #   • App 1.101 / 1.102 ký khoá mới → cập nhật được trên Android 9 trở lên
+      # Lỗi bất kỳ bước nào / kiểm chữ ký không đúng → GIỮ bản ký khoá mới như cũ (build vẫn xong, app.json có dòng hướng dẫn gỡ / cài lại).
+      - name: Rotate signing key (old -> new)
+        if: env.OLD_KEYSTORE_FILE != ''
+        continue-on-error: true
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          OLD_PASSWORD: ${{ secrets.ANDROID_OLD_KEYSTORE_PASSWORD }}
+        run: |
+          set -e
+          AS="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          APK=android-app/app/build/outputs/apk/release/app-release.apk
+          "$AS" rotate --out "$RUNNER_TEMP/lineage" \
+            --old-signer --ks "$OLD_KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:OLD_PASSWORD --key-pass env:OLD_PASSWORD \
+            --new-signer --ks "$KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD
+          "$AS" sign --ks "$OLD_KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:OLD_PASSWORD --key-pass env:OLD_PASSWORD \
+            --next-signer --ks "$KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD \
+            --lineage "$RUNNER_TEMP/lineage" --rotation-min-sdk-version 28 --out "$RUNNER_TEMP/rot.apk" "$APK"
+          "$AS" verify --min-sdk-version 24 -v "$RUNNER_TEMP/rot.apk"
+          python3 - "$RUNNER_TEMP/rot.apk" <<'PY'
+          import hashlib, struct, sys
+          OLD = "1a48230206ea270211c562613489cd788daef26aff6115ecf15c6b0451cc804a"   # chứng chỉ khoá cũ (app 1.4x)
+          NEW = "c1c3f3bf64d4672091d43da7edbecfbf260b6d886d8438e7d247284ee816fc24"   # chứng chỉ khoá mới (app 1.101+)
+          d = open(sys.argv[1], "rb").read()
+          u32 = lambda o: struct.unpack_from("<I", d, o)[0]
+          u64 = lambda o: struct.unpack_from("<Q", d, o)[0]
+          def lp(b, o):
+              n = struct.unpack_from("<I", b, o)[0]
+              return b[o + 4:o + 4 + n], o + 4 + n
+          eocd = d.rfind(b"PK\x05\x06"); cd = u32(eocd + 16)
+          assert d[cd - 16:cd] == b"APK Sig Block 42", "APK chua co khoi chu ky"
+          o = cd - u64(cd - 24); got = {}
+          while o < cd - 24:
+              ln = u64(o); pid = u32(o + 8); val = d[o + 12:o + 8 + ln]; o += 8 + ln
+              if pid in (0x7109871A, 0xF05368C0, 0x1B93AD61):
+                  signers, _ = lp(val, 0); signer, q = lp(signers, 0); sd, _ = lp(signer, 0)
+                  _, p = lp(sd, 0); certs, p = lp(sd, p); c0, _ = lp(certs, 0)
+                  got[hex(pid)] = hashlib.sha256(c0).hexdigest(); got[hex(pid) + "_n"] = 1
+                  while q < len(signers): _, q = lp(signers, q); got[hex(pid) + "_n"] += 1
+          print("chung chi:", got)
+          assert got.get("0x7109871a") == OLD and got.get("0x7109871a_n") == 1, "v2 phai la DUY NHAT khoa CU"
+          assert got.get("0xf05368c0") == NEW, "v3 phai la khoa MOI"
+          print("XOAY KHOA OK: app cu (khoa cu) + app 1.101+ (khoa moi) deu cap nhat duoc")
+          PY
+          cp "$RUNNER_TEMP/rot.apk" "$APK"
+          echo "ROTATED=1" >> "$GITHUB_ENV"
+
       - name: Copy APK to website
         run: |
           mkdir -p blueroblox-site/download
           cp android-app/app/build/outputs/apk/release/app-release.apk blueroblox-site/download/blueroblox-cloud.apk
           SIZE=$(stat -c %s blueroblox-site/download/blueroblox-cloud.apk)
-          # "ver" = số bản gọn · "version" = số bản + OLD_KEY_HINT (cho app cũ) — ghi bằng python để chữ có dấu / ký tự đặc biệt luôn đúng JSON
-          python3 -c 'import json, os, sys, time; v = "1." + os.environ["APP_VERSION_CODE"]; h = os.environ.get("OLD_KEY_HINT", "").strip(); json.dump({"version": v + (". " + h if h else ""), "ver": v, "code": int(os.environ["APP_VERSION_CODE"]), "size": int(sys.argv[1]), "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, open("blueroblox-site/download/app.json", "w", encoding="utf-8"), ensure_ascii=False)' "$SIZE"
+          # "ver" = số bản gọn · "version" = số bản + OLD_KEY_HINT (cho app cũ; đã xoay khoá thì không cần) — ghi bằng python cho đúng JSON
+          python3 -c 'import json, os, sys, time; v = "1." + os.environ["APP_VERSION_CODE"]; h = "" if os.environ.get("ROTATED") == "1" else os.environ.get("OLD_KEY_HINT", "").strip(); json.dump({"version": v + (". " + h if h else ""), "ver": v, "code": int(os.environ["APP_VERSION_CODE"]), "size": int(sys.argv[1]), "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, open("blueroblox-site/download/app.json", "w", encoding="utf-8"), ensure_ascii=False)' "$SIZE"
           cat blueroblox-site/download/app.json
 
       - uses: actions/upload-artifact@v4
