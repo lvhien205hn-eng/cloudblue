@@ -2077,6 +2077,7 @@ window.BR_CONFIG = {
         <input class="search" id="pl-q" placeholder="Tìm mã hoặc ghi chú…" autocomplete="off" aria-label="Tìm mã">
         <select class="in" id="pl-kind" aria-label="Lọc loại mã"><option value="">Tất cả mã</option><option value="gift">🎁 Mã tặng máy</option><option value="discount">💸 Mã giảm giá</option></select>
         <button class="btn ghost sm" type="button" id="pl-reload">↻ Làm mới</button>
+        <button class="btn danger sm" type="button" id="pl-delall" hidden>🗑️ Xoá tất cả</button>
       </div>
       <div class="tbl"><table class="prtbl"><thead><tr><th>Mã</th><th>Loại</th><th>Ưu đãi</th><th>Đã dùng</th><th>Áp dụng cho</th><th>Trạng thái</th><th>Hạn</th><th>Tổng giảm</th><th></th></tr></thead><tbody id="pr-tbl"></tbody></table></div>
     </div>
@@ -6736,6 +6737,7 @@ async function prList() {
 function prRender() {
   const tb = $("pr-tbl"), rows = PR_ROWS; if (!tb) return;
   $("pl-count").textContent = rows.length ? rows.length + " mã" + (rows.length >= 500 ? " (500 mã mới nhất — gõ tìm để lọc)" : "") : "";
+  { const b = $("pl-delall"); if (b) { b.hidden = !rows.length; b.textContent = ($("pl-q").value.trim() || $("pl-kind").value) ? `🗑️ Xoá ${rows.length} mã đang lọc` : `🗑️ Xoá tất cả (${rows.length})`; } }
   if (!rows.length) { tb.innerHTML = `<tr><td colspan="9" class="hint" style="text-align:center;white-space:normal">Chưa có mã nào${$("pl-q").value.trim() || $("pl-kind").value ? " khớp bộ lọc" : ""}.</td></tr>`; return; }
   tb.innerHTML = rows.map(c => {
     const s = prState(c), gift = c.kind === "gift", uses = +c.uses || 0;
@@ -6754,6 +6756,47 @@ function prRender() {
 $("pl-q") && ($("pl-q").oninput = () => { clearTimeout(prQT); prQT = setTimeout(prList, 350); });
 $("pl-kind") && ($("pl-kind").onchange = () => prList());
 $("pl-reload") && ($("pl-reload").onclick = () => busy($("pl-reload"), prList));
+/* XOÁ HÀNG LOẠT: mọi mã ĐANG HIỆN trong danh sách (theo ô tìm + loại). Mã chưa ai dùng → xoá hẳn (admin_promo_delete);
+   mã đã có người dùng → máy chủ không cho xoá (PROMO_IN_USE, giữ lịch sử + doanh thu) → TẮT thay vì xoá. Gõ XOA để xác nhận. */
+function prDelAll() {
+  const rows = PR_ROWS.slice(); if (!rows.length) return;
+  const filt = !!($("pl-q").value.trim() || $("pl-kind").value);
+  const usedN = rows.filter(c => (+c.used || 0) > 0 || (+c.uses || 0) > 0).length;
+  const m = prDlg(`<h3>🗑️ Xoá ${filt ? rows.length + " mã đang lọc" : "tất cả " + rows.length + " mã"}</h3>
+    <div class="note">Mã chưa ai dùng sẽ bị <b>xoá hẳn</b>, không khôi phục được.${usedN ? ` <b>${usedN} mã đã có người dùng</b> sẽ được <b>Tắt</b> thay vì xoá, để giữ lịch sử và doanh thu.` : ""}${filt ? "" : " Muốn xoá riêng mã giảm giá hoặc mã tặng máy thì chọn loại ở ô lọc trước."}${rows.length >= 500 ? " Danh sách chỉ hiện 500 mã mới nhất: xoá xong bấm lại để xoá tiếp phần còn lại." : ""}</div>
+    <label style="display:grid;gap:6px;margin-top:10px"><span>Gõ <b>XOA</b> để xác nhận</span><input class="in" id="pda-ok" autocomplete="off" spellcheck="false" placeholder="XOA"></label>
+    <div class="hint" id="pda-st" style="margin-top:8px"></div>
+    <div class="acts" style="margin-top:12px"><button class="btn ghost" type="button" data-prx id="pda-x">Huỷ</button><button class="btn danger" type="button" id="pda-go" disabled>🗑️ Xoá ${rows.length} mã</button></div>`);
+  const inp = $("pda-ok"), go = $("pda-go"), st = $("pda-st"), x = $("pda-x");
+  inp.oninput = () => { go.disabled = !/^xo[aáà]$/i.test(inp.value.trim()); };
+  inp.onkeydown = e => { if (e.key === "Enter" && !go.disabled) go.click(); };
+  setTimeout(() => { try { inp.focus(); } catch (e) {} }, 50);
+  go.onclick = async () => {
+    go.disabled = inp.disabled = x.disabled = true;
+    let i = 0, done = 0, del = 0, kept = 0, bad = 0, firstErr = "";
+    const work = async () => {
+      while (i < rows.length) {
+        const c = rows[i++];
+        try {
+          const { error } = await sb.rpc("admin_promo_delete", { p_id: c.id });
+          if (!error) del++;
+          else if (/PROMO_IN_USE/.test(error.message || "")) {
+            if (c.active) { const r2 = await sb.rpc("admin_promo_set", { p_id: c.id, p_active: false }); if (r2.error) { bad++; firstErr = firstErr || prErr(r2.error); } else kept++; }
+            else kept++;
+          } else { bad++; firstErr = firstErr || prErr(error); }
+        } catch (e) { bad++; firstErr = firstErr || String(e && e.message || e); }
+        done++; st.textContent = `Đang xử lý ${done}/${rows.length}…`;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(6, rows.length) }, work));
+    const msg = `Đã xoá ${del} mã${kept ? ` · ${kept} mã đã có người dùng được giữ lại ở trạng thái Tắt` : ""}${bad ? ` · ${bad} mã lỗi: ${firstErr}` : ""}.`;
+    st.innerHTML = `<b style="color:${bad ? "var(--bad)" : "var(--ok)"}">${esc(msg)}</b>`;
+    x.disabled = false; x.textContent = "Đóng";
+    toast(msg, bad ? 1 : 0);
+    await prList();
+  };
+}
+$("pl-delall") && ($("pl-delall").onclick = prDelAll);
 function prDlg(html) {        // hộp thoại admin (trên bảng quản trị — z-index 70)
   let m = $("pr-dlg");
   if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "pr-dlg"; m.hidden = true; document.body.appendChild(m);
