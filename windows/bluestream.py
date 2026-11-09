@@ -1356,6 +1356,53 @@ class DirectLink(Link):
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
+# ---- Đẩy app cũ từ Cloudflare về đường thẳng ----
+# App (Android ≤ 1.48, PC ≤ 1.102) nhớ đường nối được lần trước và thử nó ĐẦU TIÊN: đã từng đi Cloudflare (lúc modem chưa mở cổng)
+# thì mở cổng rồi vẫn đi Cloudflare mãi (trễ ~100 ms, giật). Khi đã có máy ở NGOÀI mạng nhà nối thẳng được vào cổng phát hình
+# (= modem đã mở cổng), lần đầu mỗi IP vào bằng WebSocket sẽ nhận 503 trong 20 giây → app tự thử đường thẳng và nhớ nó.
+# Sau đó IP đó đi WebSocket bình thường 6 giờ (máy không nối thẳng được chỉ chậm ~20 giây, 6 giờ 1 lần).
+# Chỉ đẩy app CloudBlue (User-Agent BlueRobloxApp/ · BlueRobloxPC/) — trình duyệt (play.html) không có đường thẳng, không đụng.
+# Tắt: WS_NUDGE=0 trong cloudphone.conf.
+WS_NUDGE = str(C.get("WS_NUDGE", "1")).strip() != "0"
+NUDGE_WIN, NUDGE_COOL, NUDGE_PROOF = 20, 6 * 3600, 24 * 3600
+_direct_ok_t = 0.0                  # lúc gần nhất có máy ở ngoài mạng nhà nối được vào cổng phát hình
+_nudge = {}                         # IP khách → (hết trả 503 lúc, hết miễn lúc)
+
+
+def _global_ip(host):
+    try:
+        import ipaddress
+        ip = ipaddress.ip_address(str(host).split("%")[0])
+        if getattr(ip, "ipv4_mapped", None): ip = ip.ipv4_mapped
+        return ip.is_global
+    except ValueError:
+        return False
+
+
+def note_direct_peer(writer):
+    """Có kết nối vào cổng phát hình từ IP công khai → cổng modem chắc chắn đã mở."""
+    global _direct_ok_t
+    try: host = (writer.get_extra_info("peername") or ("",))[0]
+    except Exception: host = ""
+    if _global_ip(host): _direct_ok_t = time.time()
+
+
+def ws_should_nudge(hdr, now=None):
+    if not WS_NUDGE: return False
+    ua = hdr.get("user-agent", "")
+    if not (ua.startswith("BlueRobloxApp/") or ua.startswith("BlueRobloxPC/")): return False
+    now = time.time() if now is None else now
+    if now - _direct_ok_t > NUDGE_PROOF: return False                 # chưa thấy ai ở ngoài nối thẳng được → cổng có thể chưa mở
+    ip = (hdr.get("cf-connecting-ip") or "").strip()
+    if not ip: return False
+    if len(_nudge) > 50000:
+        for k in [k for k, v in _nudge.items() if v[1] < now]: _nudge.pop(k, None)
+    until, cool = _nudge.get(ip, (0.0, 0.0))
+    if now < until: return True
+    if now < cool: return False
+    _nudge[ip] = (now + NUDGE_WIN, now + NUDGE_COOL)
+    return True
+
 
 class WSLink(Link):
     kind = "ws"
@@ -1373,6 +1420,9 @@ class WSLink(Link):
         if hdr.get("upgrade", "").lower() != "websocket" or "sec-websocket-key" not in hdr:
             body = b"BlueRoblox stream v2"
             writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" % (len(body), body))
+            await writer.drain(); writer.close(); return None
+        if ws_should_nudge(hdr):                                     # app cũ đang dính Cloudflare → bảo nó thử đường thẳng
+            writer.write(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             await writer.drain(); writer.close(); return None
         acc = base64.b64encode(hashlib.sha1((hdr["sec-websocket-key"] + WS_GUID).encode()).digest()).decode()
         writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
@@ -1958,6 +2008,7 @@ async def http_to_cpapi(head, reader, writer):
 
 
 async def on_direct(reader, writer):
+    note_direct_peer(writer)
     try: head = await asyncio.wait_for(reader.readexactly(4), 20)
     except Exception:
         try: writer.close()
