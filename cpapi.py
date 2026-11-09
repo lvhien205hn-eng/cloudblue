@@ -126,6 +126,7 @@ def maint_text():
 
 _ucache, _pcache = {}, {}
 _busy = set()          # máy đang khởi động lại / đổi cấu hình
+_rootbusy = set()      # máy đang lưu cấu hình root theo app (1 việc / máy)
 _REBOOT = {"t": 0}     # lúc admin bấm khởi động lại CẢ máy chủ (chặn bấm 2 lần)
 IS_WIN = os.name == "nt"
 
@@ -1328,6 +1329,40 @@ class H(BaseHTTPRequestHandler):
                 if line.startswith("ROOT_OK"): return "✅ Máy đã ROOT. Tool cần root (gọi lệnh su) dùng được ngay, không cần khởi động lại."
                 if line.startswith("ROOT_WAIT"): return "⏳ Máy đang bật root, chờ 1 phút rồi bấm lại."
                 raise RuntimeError("Chưa root được: " + msg)
+            run_job(jid, work)
+            return self.send_json(200, {"job": jid})
+
+        if act == "rootcfg":                                 # ROOT THEO TỪNG APP (🔓 Root trong bảng Công cụ): công tắc + danh sách app được dùng su
+            if not cont: return self.send_json(409, {"error": "Không xác định được máy."})
+            pc_ = os.path.join(HOME, "phonectl.py")
+            if self.command == "GET":
+                r = subprocess.run(["python3", pc_, "rootcfg", cont, "--get"], capture_output=True, text=True, timeout=90)
+                m = re.search(r"^ROOTCFG (\{.*\})\s*$", r.stdout or "", re.M)
+                if not m:
+                    if r.returncode == 2 and "rootcfg" in (r.stderr or ""):
+                        return self.send_json(409, {"error": "Máy chủ chưa cập nhật bản có Root theo app — báo admin cập nhật.", "old": True})
+                    return self.send_json(500, {"error": "Không đọc được cấu hình root: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:]})
+                try: return self.send_json(200, json.loads(m.group(1)))
+                except ValueError: return self.send_json(500, {"error": "Cấu hình root đọc được bị lỗi."})
+            if self.command != "POST": return self.send_json(405, {"error": "Chỉ GET hoặc POST."})
+            b = self.jbody(); on = b.get("on"); apps = b.get("apps") if b.get("apps") is not None else []
+            if not isinstance(on, bool): return self.send_json(400, {"error": "Thiếu bật / tắt root."})
+            if not isinstance(apps, list) or len(apps) > 300 or any(not isinstance(x, str) or not PKG.match(x) for x in apps):
+                return self.send_json(400, {"error": "Danh sách app không hợp lệ."})
+            if pid in _rootbusy: return self.send_json(409, {"error": "Đang lưu cấu hình root của máy này, đợi vài giây."})
+            _rootbusy.add(pid)
+            jid = new_job(me["uid"], "Root theo app")
+            def work(j):
+                try:
+                    JOBS[j]["msg"] = "Đang bật root cho app đã chọn…" if on else "Đang tắt root…"
+                    r = subprocess.run(["python3", pc_, "rootcfg", cont, "--set", "--on" if on else "--off", "--apps", ",".join(dict.fromkeys(apps))],
+                                       capture_output=True, text=True, timeout=300)
+                    line = next((l for l in reversed((r.stdout or "").splitlines()) if l.startswith("ROOTCFG_")), "")
+                    if line.startswith("ROOTCFG_OK"): return line.split(" ", 1)[1].strip() if " " in line else "Đã lưu."
+                    if not line and r.returncode == 2 and "rootcfg" in (r.stderr or ""):
+                        raise RuntimeError("Máy chủ chưa cập nhật bản có Root theo app — báo admin cập nhật.")
+                    raise RuntimeError(line.split(" ", 1)[1].strip() if " " in line else "Không lưu được cấu hình root, thử lại sau.")
+                finally: _rootbusy.discard(pid)
             run_job(jid, work)
             return self.send_json(200, {"job": jid})
 
