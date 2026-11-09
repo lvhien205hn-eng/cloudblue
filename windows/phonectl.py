@@ -1060,7 +1060,8 @@ def _need(name):
     st = load(); p = rec(name, st)
     if not p: print("Không có máy tên này."); sys.exit(1)
     if IDX(p) is None: print(f"LỖI: không thấy máy '{name}' trong MEmu (đã bị xoá tay?)."); sys.exit(4)
-    return load(), rec(name)
+    st = load(); return st, rec(name, st)      # đọc lại 1 lần (IDX có thể vừa ghi cổng mới) — p PHẢI nằm trong st: sửa p rồi save(st) mới ghi được
+                                               # (bản cũ trả load(), rec(name) = 2 lần đọc khác nhau → gia hạn / đổi độ phân giải không bao giờ được ghi)
 
 def cmd_delete(a):
     st = load(); p = rec(a.name, st)
@@ -1294,11 +1295,62 @@ def cmd_start(a):
     st, p = _need(a.name); r = start_phone(p)
     if _start_failed(r): print("❌ MEmu không bật được máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-200:]); sys.exit(5)
     print("✅ Đã bật")
+def _proc_image(pid):
+    """Tên file chạy của tiến trình (VD MuMuVMMHeadless.exe); '' nếu tiến trình không còn / không đọc được."""
+    if os.name != "nt": return ""
+    try:
+        k = ctypes.windll.kernel32; hp = k.OpenProcess(0x1000, False, int(pid))       # PROCESS_QUERY_LIMITED_INFORMATION
+        if not hp: return ""
+        try:
+            buf = ctypes.create_unicode_buffer(520); sz = ctypes.c_ulong(520)
+            return os.path.basename(buf.value) if k.QueryFullProcessImageNameW(hp, 0, buf, ctypes.byref(sz)) else ""
+        finally: k.CloseHandle(hp)
+    except Exception: return ""
+_VM_IMAGES = {"mumu": ("mumu",), "ld": ("dnplayer", "ldbox", "ld9box"), "memu": ("memu",)}   # chỉ tắt tiến trình CỦA giả lập (số PID có thể bị chương trình khác dùng lại)
+def _vm_pids(idx):
+    """PID máy ảo chạy ngầm + cửa sổ của ĐÚNG 1 máy (MuMu: info · LDPlayer: list2). MEmu không có → []."""
+    out = []
+    try:
+        if EMU == "mumu":
+            v = _mumu_info().get(int(idx)) or {}; out = [v.get("headless_pid"), v.get("pid")]
+        elif EMU == "ld":
+            for ln in (_ldrun(["list2"], 60).stdout or "").splitlines():
+                q = ln.strip().split(",")
+                if len(q) >= 7 and q[0].strip() == str(idx): out = [q[6], q[5]]       # pid máy ảo (Ld9BoxHeadless), pid cửa sổ (dnplayer)
+    except Exception: pass
+    return [int(x) for x in out if str(x).strip().isdigit() and int(x) > 0]
+def force_stop(p):
+    """TẮT HẲN 1 máy: tắt bình thường trước; ~40 giây vẫn chạy (máy treo, giả lập không tắt được) → tắt cưỡng bức đúng tiến trình
+       của máy đó (kiểm tên file chạy là của giả lập). Không đụng máy khác. Trả về (đã tắt?, cách tắt)."""
+    i = IDX(p)
+    if i is None: return False, f"không thấy máy trong {EMU_NAME}"
+    memuc("stop", "-i", i, timeout=90)
+    if not is_running(p["name"], p): return True, "tắt bình thường"
+    killed = []
+    pids = _vm_pids(i) + (sorted(_memu_front_pids(p["name"])) if EMU == "memu" else [])
+    for pid in pids:
+        im = _proc_image(pid)
+        if im and any(k in im.lower() for k in _VM_IMAGES.get(EMU, ())):
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, creationflags=NOWIN); killed.append(f"{im} #{pid}")
+    how = "máy treo → tắt cưỡng bức " + (", ".join(killed) if killed else "(không thấy tiến trình của máy)")
+    for k in range(20):
+        if k == 10: memuc("stop", "-i", i, timeout=60)        # giả lập vẫn ghi "đang chạy" → nhắc tắt lần nữa
+        if not is_running(p["name"], p): return True, how
+        time.sleep(2)
+    return False, how
 def cmd_restart(a):
     st, p = _need(a.name); adb("disconnect", serial(p), timeout=15)
-    memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3); r = start_phone(p)
-    if _start_failed(r): print("❌ MEmu không bật được máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-200:]); sys.exit(5)
-    print("✅ Đã khởi động lại")
+    force = bool(getattr(a, "force", False))
+    if force:                                                 # admin ÉP khởi động lại (máy treo): tắt hẳn rồi mới bật
+        ok, how = force_stop(p); print(("   ✓ " if ok else "   ⚠ ") + how, flush=True)
+        if not ok: print(f"❌ Chưa tắt được máy ({EMU_NAME} không trả lời) — đợi 1 phút rồi thử lại, hoặc ■ Tắt tất cả → ▶ Bật tất cả."); sys.exit(6)
+    else:
+        memuc("stop", "-i", IDX(p), timeout=120)
+    time.sleep(3); r = start_phone(p)
+    if _start_failed(r) and force:
+        time.sleep(10); r = start_phone(p)                    # vừa tắt cưỡng bức: giả lập có thể cần vài giây mới bật lại được
+    if _start_failed(r): print(f"❌ {EMU_NAME} không bật được máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-200:]); sys.exit(5)
+    print("✅ Đã ép khởi động lại" if force else "✅ Đã khởi động lại")
 
 def cmd_waitboot(a):
     st, p = _need(a.name)
@@ -1308,10 +1360,18 @@ def cmd_waitboot(a):
 
 def cmd_renew(a):
     st, p = _need(a.name)
-    base = parse_dt(p["expires"]); base = max(base, now()) + datetime.timedelta(days=a.days)
-    p["expires"] = base.isoformat(); save(st)
+    base = max(parse_dt(p["expires"]), now())
+    if getattr(a, "base", ""):                               # hạn trên web muộn hơn hạn ghi trong máy chủ → cộng từ hạn trên web (khách không thiệt)
+        try: base = max(base, parse_dt(a.base))
+        except Exception: pass
+    base = base + datetime.timedelta(days=a.days)
+    st = load(); q = rec(a.name, st)                          # ghi vào đúng bản trạng thái vừa đọc (không ghi đè thay đổi khác)
+    if not q: print("Không có máy tên này."); sys.exit(1)
+    q["expires"] = base.isoformat(); save(st); p["expires"] = q["expires"]
+    if parse_dt(rec(a.name)["expires"]) != base: print("❌ Chưa ghi được hạn mới vào phones.json."); sys.exit(3)
     if not is_running(a.name, p): start_phone(p); wait_boot(a.name, p["port"], apps=False)
     print(f"🔄 '{a.name}' gia hạn +{a.days} ngày → hết hạn {fmt(base)}")
+    print("RENEW_OK " + base.isoformat())
 
 def cmd_resize(a):
     st, p = _need(a.name)
@@ -1545,8 +1605,82 @@ def cmd_list(a):
     for p in st["phones"]:
         i = IDX(p, v); print(f"{p['name']:<16} #{'?' if i is None else i:<3} cổng {p['port']:<6} {p['ram']}G/{p['cpu']}  hết hạn {fmt(parse_dt(p['expires']))}  {'chạy' if is_running(p['name'], p, v) else 'tắt'}")
 
+# ---------- KHỞI ĐỘNG LẠI CẢ MÁY CHỦ (admin bấm trên web → cpapi → rebootserver) ----------
+RB_F = os.path.join(HOME, "redroid", "reboot_hold.json")      # máy khách đang GIỮ (hold) để khởi động lại máy chủ
+def _uptime():
+    """Số giây từ lúc Windows bật (GetTickCount64 — phải đặt kiểu trả về 64 bit, mặc định ctypes cắt còn 32 bit → sai sau 24 ngày)."""
+    try:
+        f = ctypes.windll.kernel32.GetTickCount64; f.restype = ctypes.c_uint64; return f() / 1000.0
+    except Exception:
+        try: return float(open("/proc/uptime").read().split()[0])
+        except Exception: return 0.0
+def _boot_time(): return time.time() - _uptime()
+def _autologon():
+    """Windows tự đăng nhập (bảng CloudBlue → 🔑) — không có thì khởi động lại sẽ dừng ở màn hình mật khẩu."""
+    if os.name != "nt": return False
+    try:
+        import winreg
+        k = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon")
+        try: v, _ = winreg.QueryValueEx(k, "AutoAdminLogon")
+        finally: winreg.CloseKey(k)
+        return str(v).strip() == "1"
+    except Exception: return False
+def _autostart():
+    """Bảng CloudBlue tự mở khi đăng nhập: tác vụ BlueRoblox (nút 🔑) hoặc lối tắt Startup (setup.ps1)."""
+    if os.name != "nt": return False
+    lnk = os.path.join(os.environ.get("ProgramData", r"C:\ProgramData"), r"Microsoft\Windows\Start Menu\Programs\StartUp\BlueRoblox.lnk")
+    return os.path.isfile(lnk) or run(["schtasks", "/query", "/tn", "BlueRoblox"], 30).returncode == 0
+def _reboot_release(force=False):
+    """Trả các máy khách đã giữ để khởi động lại máy chủ: khi Windows ĐÃ khởi động lại, hoặc quá 15 phút vẫn chưa khởi động lại
+       (lệnh bị huỷ), hoặc force. Gọi đầu bootall (bảng chạy mỗi phút + lúc Windows vừa lên) → máy bật lại."""
+    try: d = json.load(open(RB_F, encoding="utf-8"))
+    except Exception: return []
+    up = _uptime()
+    rebooted = (up > 0 and up + 30 < float(d.get("up") or 0)) or _boot_time() > float(d.get("boot") or 0) + 120
+    if not (force or rebooted or time.time() - float(d.get("t") or 0) > 900): return []
+    names = [n for n in (d.get("names") or []) if isinstance(n, str)]
+    for nm in names: set_hold(nm, False)
+    try: os.remove(RB_F)
+    except OSError: pass
+    if names: print(f"↺ Trả {len(names)} máy khách đã giữ lúc khởi động lại máy chủ → bật lại", flush=True)
+    return names
+def cmd_serverinfo(a):
+    st = load(); v = vms()
+    print("SERVERINFO " + json.dumps({"node": CONF.get("NODE_ID", ""), "emu": EMU_NAME, "autologon": _autologon(), "autostart": _autostart(),
+          "uptime_h": round(_uptime() / 3600, 1), "running": sum(1 for x in v.values() if x["running"]), "phones": len(st["phones"]),
+          "pending": os.path.isfile(RB_F)}, ensure_ascii=False))
+def cmd_rebootserver(a):
+    """Admin ép KHỞI ĐỘNG LẠI CẢ MÁY CHỦ: giữ các máy khách đang chạy (bảng không tự bật lại giữa chừng) → tắt êm hết → shutdown /r /f.
+       Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên)."""
+    if os.name != "nt": print("❌ Chỉ dùng cho máy chủ Windows."); sys.exit(2)
+    if not _autologon() and not a.anyway:
+        print("NO_AUTOLOGON Windows chưa bật tự đăng nhập (bảng CloudBlue → 🔑 Tự đăng nhập + tự chạy) — khởi động lại sẽ dừng ở màn hình mật khẩu, máy khách tắt tới khi có người đăng nhập.")
+        sys.exit(7)
+    st = load(); v = vms()
+    names = [p["name"] for p in st["phones"] if not p.get("hold")]       # giữ MỌI máy chưa bị giữ → bảng (bootall mỗi phút) không bật lại giữa chừng
+    nrun = sum(1 for p in st["phones"] if not p.get("hold") and is_running(p["name"], p, v))
+    os.makedirs(os.path.dirname(RB_F), exist_ok=True)
+    json.dump({"names": names, "boot": _boot_time(), "up": _uptime(), "t": time.time()}, open(RB_F, "w", encoding="utf-8"))
+    for nm in names: set_hold(nm, True)
+    print(f"1/3 Tắt êm {nrun} máy khách đang chạy (bảng không tự bật lại trong lúc này)…", flush=True)
+    if any(x["running"] for x in v.values()):
+        memuc("stopall", timeout=150); t0 = time.time()
+        while time.time() - t0 < a.wait:
+            if not any(x["running"] for x in vms().values()): break
+            time.sleep(3)
+    left = sum(1 for x in vms().values() if x["running"])
+    print("   ✓ đã tắt hết" if not left else f"   ⚠ còn {left} máy chưa tắt hẳn — Windows sẽ tắt nốt", flush=True)
+    print(f"2/3 Khởi động lại Windows sau {a.delay} giây…", flush=True)
+    r = run(["shutdown", "/r", "/f", "/t", str(a.delay), "/c", "CloudBlue: admin khoi dong lai may chu"], 60)
+    if r.returncode not in (0, None):
+        _reboot_release(force=True)
+        print("❌ Windows không cho khởi động lại: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:] + " — đã trả lại máy khách (bảng tự bật lại trong ~1 phút).")
+        sys.exit(8)
+    print(f"REBOOT_OK Windows khởi động lại sau {a.delay} giây · {nrun} máy khách tự bật lại khi Windows lên (khoảng 3–8 phút).")
+
 def cmd_bootall(a):
     """Sau khi Windows khởi động lại: bật lần lượt mọi máy khách CÒN HẠN đang tắt → chờ Android lên → nối điều khiển."""
+    _reboot_release()                                        # máy giữ lúc admin khởi động lại máy chủ → trả lại (khi Windows đã lên lại)
     st = load(); v = vms(); todo = []
     for p in st["phones"]:
         if parse_dt(p["expires"]) < now() or p.get("hold"): continue
@@ -2004,7 +2138,9 @@ def main():
     c.add_argument("--nogpu", action="store_true"); c.add_argument("--until", default=""); c.set_defaults(f=cmd_create)
     for nm, fn in (("delete", cmd_delete), ("forget", cmd_forget), ("stop", cmd_stop), ("start", cmd_start), ("restart", cmd_restart), ("show", cmd_show)):
         x = s.add_parser(nm); x.add_argument("name"); x.set_defaults(f=fn)
-    r = s.add_parser("renew"); r.add_argument("name"); r.add_argument("--days", type=int, default=7); r.set_defaults(f=cmd_renew)
+        if nm == "restart": x.add_argument("--force", action="store_true")      # tắt hẳn (treo thì tắt cưỡng bức) rồi bật lại
+    r = s.add_parser("renew"); r.add_argument("name"); r.add_argument("--days", type=int, default=7)
+    r.add_argument("--base", default=""); r.set_defaults(f=cmd_renew)      # --base: hạn hiện tại trên web (ISO) → cộng từ hạn muộn hơn
     z = s.add_parser("resize"); z.add_argument("name"); z.add_argument("--ram", type=float, default=0); z.add_argument("--cpu", type=float, default=0); z.set_defaults(f=cmd_resize)
     w = s.add_parser("waitboot"); w.add_argument("name"); w.add_argument("--noapps", action="store_true"); w.set_defaults(f=cmd_waitboot)
     g = s.add_parser("reconfig"); g.add_argument("name"); g.add_argument("--fps", type=int, default=0); g.add_argument("--res", default=""); g.set_defaults(f=cmd_reconfig)
@@ -2030,6 +2166,9 @@ def main():
     s.add_parser("tuneall").set_defaults(f=cmd_tuneall)
     s.add_parser("vmlist").set_defaults(f=cmd_vmlist)
     ba = s.add_parser("bootall"); ba.add_argument("--quiet", action="store_true"); ba.set_defaults(f=cmd_bootall)
+    si = s.add_parser("serverinfo"); si.set_defaults(f=cmd_serverinfo)
+    rs = s.add_parser("rebootserver"); rs.add_argument("--anyway", action="store_true"); rs.add_argument("--wait", type=int, default=120)
+    rs.add_argument("--delay", type=int, default=15); rs.set_defaults(f=cmd_rebootserver)
     for nm, fn in (("connect-all", cmd_connect_all), ("reap", cmd_reap), ("perms", cmd_perms), ("capacity", cmd_capacity), ("list", cmd_list),
                    ("memfix", cmd_noop), ("boost", cmd_noop), ("gpuinfo", cmd_noop)):
         s.add_parser(nm).set_defaults(f=fn)
