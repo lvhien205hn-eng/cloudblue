@@ -80,6 +80,11 @@ ERRORS = {
     "Invalid login credentials": "Sai email hoặc mật khẩu.", "Email not confirmed": "Email chưa xác nhận — mở hộp thư để xác nhận.",
     "SESSION_EXPIRED": "Phiên đăng nhập hết hạn, hãy đăng nhập lại.", "NOT_LOGGED_IN": "Hãy đăng nhập.",
     "NOT_ALLOWED": "Bạn không có quyền mở máy này.", "NOT_FOUND": "Không tìm thấy máy.", "MAINTENANCE": "Hệ thống đang bảo trì.",
+    "SWITCH_EXPIRING": "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.", "SWITCH_BUSY": "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.",
+    "SWITCHING": "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).", "SWITCH_SAME": "Máy đang chạy bản Android này rồi.",
+    "SWITCH_LIMIT": "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", "NO_PHONE": "Không tìm thấy máy (hoặc máy không phải của bạn).",
+    "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "PHONE_LOCKED": "Máy đang bị khoá.", "BAD_ANDROID": "Bản Android này chưa bán.",
+    "SERVER_OFFLINE": "Máy chủ bản Android này đang bảo trì — thử lại sau.", "OUT_OF_CAPACITY": "Máy chủ bản Android này đang hết chỗ — chọn bản khác hoặc thử lại sau.",
 }
 
 
@@ -1044,10 +1049,12 @@ def vietqr(bin_, acc, amount, memo):
     return p + _crc16(p)
 
 
-def notify_admin(text):
-    """Báo Telegram cho shop (giống web) — không chờ, lỗi thì thôi."""
+def notify_admin(text, auth=None):
+    """Báo Telegram cho shop (giống web) — không chờ, lỗi thì thôi. Web chỉ nhận khi kèm mã đăng nhập của khách."""
     def job():
-        try: http("POST", WEB + "/api/notify-admin", {"text": text}, timeout=8)
+        try:
+            h = {"Authorization": "Bearer " + auth.token()} if auth else None
+            http("POST", WEB + "/api/notify-admin", {"text": text}, h, timeout=8)
         except Exception: pass
     threading.Thread(target=job, daemon=True).start()
 
@@ -1289,6 +1296,9 @@ class OrderDlg(Dlg):
                                why=lambda v: and_why(self.st, v, *self.fit(v)) if self.prof.get("role") != "admin" else ""))
         self.rows[-1].frame.pack(fill="x")
         self.and_note = self.label(f, "", self.app.f_s, DIM); self.and_note.pack(fill="x")
+        if "15" in avs:
+            self.label(f, "Android 15 không vào được Google / Play Store? Chọn Android 12 — máy đang thuê thì dùng Khác ▾ → Đổi Android (giữ nguyên hạn).",
+                       self.app.f_s, DIM, wraplength=520).pack(fill="x")
         ar, ac = and_lim(p, s["android"])                                   # trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 15: 16GB · 32 nhân)
         mr = min(ar, lo("free_max_ram") or 999) if s["free"] else ar
         mc = min(ac, lo("free_max_cpu") or 999) if s["free"] else ac
@@ -1296,6 +1306,8 @@ class OrderDlg(Dlg):
         self.rows.append(Chips(self.app, f, [(v, f"{v}GB") for v in cp_opts(CP_RAM, lo("min_ram"), mr)], get("ram"), ch("ram"), self.upd, wrap=8)); self.rows[-1].frame.pack(fill="x")
         f = self.section("CPU (nhân)", f"{lo('min_cpu')}–{mc} nhân")
         self.rows.append(Chips(self.app, f, [(v, str(v)) for v in cp_opts(CP_CPU, lo("min_cpu"), mc)], get("cpu"), ch("cpu"), self.upd, wrap=9)); self.rows[-1].frame.pack(fill="x")
+        self.label(f, "💡 Treo 1 tab Roblox: nên chọn từ 4GB RAM · 4 nhân (vào game Roblox đã dùng khoảng 2GB RAM) — 3GB · 2 nhân thường không treo nổi. "
+                      "Treo 2–4 tab: 8GB · 8 nhân.", self.app.f_s, DIM, wraplength=520).pack(fill="x", pady=(4, 0))
         if not s["free"]:
             f = self.section("Số ngày", f"{lo('min_days')}–{lo('max_days')} ngày")
             line = tk.Frame(f, bg=BG); line.pack(fill="x")
@@ -1422,7 +1434,7 @@ class OrderDlg(Dlg):
         if s["free"]: args["p_free"] = True
         def done(_r):
             notify_admin(f"📱 <b>Đơn ĐT đám mây mới{' (MIỄN PHÍ)' if s['free'] else ''}</b> — app PC\n{s['qty']} máy × Android {s['android']} · "
-                         f"{s['ram']}GB / {s['cpu']} nhân / {s['days']} ngày / {s['res']} / {s['fps']} FPS\nGiá: {vnd(price)}\n{self.app.auth.email}")
+                         f"{s['ram']}GB / {s['cpu']} nhân / {s['days']} ngày / {s['res']} / {s['fps']} FPS\nGiá: {vnd(price)}\n{self.app.auth.email}", self.app.auth)
             self.close(); self.app.refresh()
             mb.showinfo("CloudBlue", ("Đã tạo đơn " + str(s["qty"]) + " máy!" if s["qty"] > 1 else "Đã tạo đơn!") +
                         " Máy đang khởi tạo (khoảng 2–3 phút) — danh sách tự cập nhật khi máy chạy.", parent=self.app.root)
@@ -1687,6 +1699,72 @@ class UpgradeDlg(Dlg):
         def fail(m):
             self.err.config(text=m); self.go.config(state="normal"); self._draw()
         self.bg(lambda: self.app.auth.rpc("cloudphone_upgrade", {"p_id": self.p["id"], "p_ram": nr, "p_cpu": nc}), done, fail)
+
+
+class SwitchDlg(Dlg):
+    """Đổi Android 9 / 12 / 15 (SQL v24): máy MỚI miễn phí, giữ nguyên hạn — máy cũ + TOÀN BỘ dữ liệu tự xoá khi máy mới chạy.
+       Bản mới có trần thấp hơn (Android 9: 8GB · 8 nhân) → máy mới tự hạ, không hoàn tiền phần chênh."""
+    def __init__(self, app, phone):
+        super().__init__(app, "Đổi Android — " + (phone.get("name") or "máy"), 560, 600)
+        self.p = phone; self.v = None; self.vers = []
+        self.loading("Đang tải…")
+        self.bg(lambda: app.shop.pricing(), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, pr):
+        tk = self.app.tk; self.pr = pr; p = self.p; self.clear()
+        cur = str(p.get("android") or "9")
+        self.vers = [v for v in dict.fromkeys(x.strip() for x in str(pr.get("android_versions") or "9").split(",")) if v and v != cur]
+        self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
+        self.label(self.body, f"Đang dùng Android {cur} · {p.get('ram')}GB · {p.get('cpu')} nhân · {fmt_left(p.get('expires_at'))}",
+                   self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
+        bb = tk.Frame(self.foot, bg=CARD)
+        if not self.vers:
+            self.label(self.body, "Chưa có bản Android nào khác để đổi.", self.app.f_t, DIM).pack(fill="x", padx=18, pady=14)
+            bb.pack(fill="x", padx=16, pady=12); self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right"); return
+        self.v = "12" if "12" in self.vers else self.vers[0]
+        f = self.section("Đổi sang")
+        self.cv = Chips(self.app, f, [(v, f"Android {v}") for v in self.vers], lambda: self.v, lambda x: setattr(self, "v", x), self.upd, wrap=4)
+        self.cv.frame.pack(fill="x")
+        self.note = self.label(self.body, "", self.app.f_s, DIM, wraplength=510); self.note.pack(fill="x", padx=18, pady=(8, 0))
+        w = tk.Frame(self.body, bg=CARD, highlightbackground=BAD, highlightthickness=1); w.pack(fill="x", padx=18, pady=(12, 4))
+        self.label(w, "⚠ Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.",
+                   ("Segoe UI", 10, "bold"), BAD, wraplength=500).pack(fill="x", padx=10, pady=(8, 2))
+        self.label(w, "Máy mới miễn phí, giữ nguyên hạn dùng. Tạo máy mới mất khoảng 2–5 phút; máy cũ vẫn dùng được tới lúc đó rồi tự xoá.",
+                   self.app.f_s, TXT, wraplength=500).pack(fill="x", padx=10, pady=(0, 8))
+        self.okv = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.body, text="Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", variable=self.okv, command=self.upd, font=self.app.f_t,
+                       fg=TXT, bg=BG, selectcolor=CARD, activebackground=BG, activeforeground=TXT, anchor="w", cursor="hand2").pack(fill="x", padx=14, pady=(8, 12))
+        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(8, 0))
+        bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Huỷ", self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, "Đổi", self.switch); self.go.pack(side="right")
+        self.upd()
+
+    def new_cfg(self, v):
+        mr, mc = and_lim(self.pr, v); r0, c0 = int(num(self.p.get("ram"))), int(num(self.p.get("cpu")))
+        return min(r0, mr), min(c0, mc), mr, mc
+
+    def upd(self):
+        if not self.v: return
+        self.cv.paint()
+        r, c, mr, mc = self.new_cfg(self.v); red = r < int(num(self.p.get("ram"))) or c < int(num(self.p.get("cpu")))
+        t = (f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới sẽ hạ còn {r}GB · {c} nhân, không hoàn tiền phần chênh." if red
+             else f"Máy mới: Android {self.v} · {r}GB · {c} nhân · {self.p.get('res') or ''} · {self.p.get('fps') or 30} FPS")
+        if self.v == "15": t += "\nLưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì chọn Android 12."
+        self.note.config(text=t, fg=WARN if red else DIM)
+        on = bool(self.okv.get())
+        self.go.config(text=f"Đổi sang Android {self.v}", state="normal" if on else "disabled", bg=BAD if on else LINE)
+
+    def switch(self):
+        import tkinter.messagebox as mb
+        if not self.v or not self.okv.get(): return
+        v = self.v; self.go.config(state="disabled", text="Đang gửi…"); self.err.config(text="")
+        def done(_r):
+            self.close(); self.app.refresh()
+            mb.showinfo("CloudBlue", f"Đang tạo máy Android {v}… máy cũ tự xoá khi máy mới sẵn sàng (2–5 phút).", parent=self.app.root)
+        def fail(m):
+            self.err.config(text=m); self.upd()
+        self.bg(lambda: self.app.auth.rpc("cloudphone_switch_android", {"p_id": self.p["id"], "p_android": v}), done, fail)
 
 
 APP_NAMES = {"com.roblox.client": "Roblox", "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram",
@@ -2527,6 +2605,12 @@ class Launcher:
     def open_topup(self, need=0): TopupDlg(self, need)
     def open_renew(self, p): RenewDlg(self, p)
     def open_upgrade(self, p): UpgradeDlg(self, p)
+    def open_switch(self, p): SwitchDlg(self, p)
+
+    def switching(self, p):
+        """Máy đang đổi Android dở (máy mới còn đang tạo)?"""
+        t = p.get("switch_to")
+        return bool(t) and any(str(r.get("id")) == str(t) and r.get("status") in ("pending", "creating") for r in getattr(self, "rows_last", []) or [])
 
     def cancel(self, p):
         import tkinter.messagebox as mb
@@ -2550,6 +2634,9 @@ class Launcher:
             m.add_command(label=lab, command=lambda t=tab: ToolsDlg(self, p, t), state="normal" if on else "disabled")
         m.add_separator()
         m.add_command(label="Nâng cấp RAM / CPU", command=lambda: self.open_upgrade(p), state="normal" if can_up else "disabled")
+        sw = self.switching(p); can_sw = p.get("status") == "active" and not p.get("locked") and not sw
+        m.add_command(label="Đang đổi Android… (chờ máy mới)" if sw else "Đổi Android (9 / 12 / 15)…", command=lambda: self.open_switch(p),
+                      state="normal" if can_sw else "disabled")
         m.add_separator()
         m.add_command(label="Huỷ máy (xoá vĩnh viễn)", command=lambda: self.cancel(p))
         try: m.tk_popup(widget.winfo_rootx(), widget.winfo_rooty() + widget.winfo_height())
@@ -2692,7 +2779,7 @@ class Launcher:
         for w in (b, t1, t2): w.bind("<Button-1>", lambda *_: UpdateDlg(self, u))
 
     def render(self, rows):
-        tk = self.tk
+        tk = self.tk; self.rows_last = rows
         if not self.list.winfo_exists(): return
         for w in self.list.winfo_children(): w.destroy()
         if must_update():                                  # app quá cũ: không cho mở / thuê máy tới khi cập nhật
@@ -2725,6 +2812,14 @@ class Launcher:
         tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14)
         if p.get("expires_at"): tk.Label(c, text="⏱ " + fmt_left(p["expires_at"]), font=self.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
         if p.get("status") == "error" and p.get("error"): tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+        if p.get("replaces") and p.get("status") in ("pending", "creating"):
+            tk.Label(c, text=f"🔄 Máy mới đổi sang Android {p.get('android')} — đang tạo (2–5 phút), xong thì máy cũ tự xoá.", font=self.f_s, fg=WARN, bg=CARD,
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+        elif self.switching(p):
+            tk.Label(c, text="🔄 Đang đổi Android: máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", font=self.f_s, fg=WARN, bg=CARD,
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+        elif p.get("status") == "active" and str(p.get("error") or "").startswith("Đổi Android"):
+            tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
         if p.get("pending_ram") is not None:
             tk.Label(c, text=f"⏳ Đang nâng cấp lên {p.get('pending_ram')}GB · {p.get('pending_cpu')} nhân…", font=self.f_s, fg=WARN, bg=CARD, anchor="w").pack(fill="x", padx=14)
         bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=14, pady=(10, 12))
