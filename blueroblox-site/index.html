@@ -2010,7 +2010,7 @@ window.BR_CONFIG = {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">📋 Máy khách đang thuê <span class="hint">(chỉ admin thấy)</span></h3><span class="hint" id="cpa-count" style="margin-left:auto"></span></div>
       <div class="cpabar">
         <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
-        <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option></select>
+        <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option><option value="cancelling">Đang huỷ (chờ máy chủ xoá)</option></select>
         <span class="cpasel" id="cpa-selbar" hidden><b id="cpa-seln">0</b> máy đã chọn
           <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button></span>
         <button class="btn sm" type="button" id="cpa-apk" style="margin-left:auto">📦 Cài APK cho máy khách</button>
@@ -2930,7 +2930,7 @@ const ERR = {
   PROMO_USER_LIMIT: "Bạn đã dùng hết số lượt của mã này.", PROMO_SCOPE: "Mã này không áp dụng cho loại đơn này.", PROMO_MIN_ORDER: "Đơn chưa đạt giá trị tối thiểu để dùng mã này.",
   PROMO_TOO_MANY: "Bạn nhập sai mã quá nhiều lần — thử lại sau 10 phút.", PROMO_IS_GIFT: "Đây là mã tặng máy — nhập ở ô \"Nhập mã\" trong mục ĐT đám mây (không dùng khi thanh toán).",
   PROMO_IS_DISCOUNT: "Đây là mã giảm giá — nhập ở ô \"Mã giảm giá\" khi thanh toán (thuê / gia hạn / nâng cấp máy, mua hàng).", PROMO_NOT_FOR_FREE: "Máy miễn phí không dùng mã giảm giá được.",
-  PROMO_IN_USE: "Mã đã có người dùng nên không xoá được — hãy bấm Tắt để ngừng mã.", PROMO_EMPTY: "Hãy nhập mã.", PROMO_CTX: "Chưa đủ thông tin đơn để kiểm tra mã — chọn cấu hình / số ngày trước.",
+  PROMO_IN_USE: "Mã đã có người dùng — chạy file SQL cloud-phones-v25.sql trên Supabase để xoá (ẩn) được mã này.", PROMO_EMPTY: "Hãy nhập mã.", PROMO_CTX: "Chưa đủ thông tin đơn để kiểm tra mã — chọn cấu hình / số ngày trước.",
   GIFT_CODE_SHORT: "Mã tặng máy tự đặt phải từ 10 ký tự trở lên (để khó đoán).", CODE_EXISTS: "Mã này đã tồn tại — chọn mã khác.", BAD_PERCENT: "Phần trăm giảm phải từ 1 đến 90%.",
   BAD_SCOPE: "Hãy chọn ít nhất 1 loại đơn được áp dụng.", BAD_USES: "Số lượt không hợp lệ (tổng lượt ≥ 1 và không nhỏ hơn số lượt đã dùng; mỗi khách ≥ 1 lượt).",
   BAD_EXPIRY: "Ngày hết hạn phải ở tương lai và sau ngày bắt đầu.", BAD_COUNT: "Số mã phải từ 1 đến 200 (mã tự đặt chỉ tạo được 1 mã).", NO_CODE: "Không tìm thấy mã.",
@@ -5846,15 +5846,19 @@ function cpaCustCell(p) {
 function renderCpaTbl() {
   if (!$("cpa-tbl")) return;
   const q = ($("cpa-q").value || "").trim().toLowerCase(), st = $("cpa-st").value;
+  // "Đang huỷ" = đã bấm Xoá, chờ máy chủ giữ máy xoá thật (máy chủ đang tắt thì chờ tới lúc bật lại) → không lẫn vào danh sách chính
   const rows = CPA_ROWS.filter(p => {
-    if (st === "locked" ? !cpLocked(p) : (st && p.status !== st)) return false;
+    if (st === "locked" ? !cpLocked(p) : st ? p.status !== st : p.status === "cancelling") return false;
     const u = cpaUser(p.user_id) || {};
     return !q || [p.name, u.username, u.email, p.container, p.port, p.res, p.node].join(" ").toLowerCase().includes(q);
   });
   CPA_VIEW = rows;
-  const nLk = CPA_ROWS.filter(cpLocked).length;
-  $("cpa-count").textContent = `${CPA_ROWS.length} máy · đang chạy ${CPA_ROWS.filter(r => r.status === "active" && !cpLocked(r)).length}${nLk ? " · bị khoá " + nLk : ""}${rows.length !== CPA_ROWS.length ? " · đang lọc " + rows.length : ""}`;
-  $("cpa-tbl").innerHTML = rows.length ? rows.map(p => {
+  const live = CPA_ROWS.filter(r => r.status !== "cancelling"), can = CPA_ROWS.filter(r => r.status === "cancelling");
+  const nLk = live.filter(cpLocked).length, canNodes = [...new Set(can.map(r => r.node || "?"))].join(", ");
+  $("cpa-count").innerHTML = esc(`${live.length} máy · đang chạy ${live.filter(r => r.status === "active" && !cpLocked(r)).length}${nLk ? " · bị khoá " + nLk : ""}${(q || st) && rows.length !== live.length ? " · đang lọc " + rows.length : ""}`)
+    + (can.length && st !== "cancelling" ? ` · <a href="#" data-cpcan="1" title="Đã bấm Xoá, chờ máy chủ ${esc(canNodes)} xoá thật">⏳ ${can.length} máy chờ xoá (${esc(canNodes)})</a>` : "");
+  const canNote = st === "cancelling" && rows.length ? `<tr><td colspan="7" class="hint" style="white-space:normal;text-align:left">⏳ Các máy này đã bấm Xoá và đang chờ máy chủ giữ máy (${esc(canNodes)}) xoá thật. Máy chủ nào đang tắt thì bật lại là tự xoá, máy biến khỏi danh sách. Khi máy chủ bật lại, máy và dữ liệu khách sẽ bị xoá vĩnh viễn.</td></tr>` : "";
+  $("cpa-tbl").innerHTML = rows.length ? canNote + rows.map(p => {
     const exp = p.expires_at ? new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "—", lk = cpLocked(p);
     return `<tr${lk ? ' style="opacity:.85"' : ""}><td><input type="checkbox" data-cpsel="${p.id}"${cpaSel.has(p.id) ? " checked" : ""} aria-label="Chọn máy ${esc(p.name)}"></td>
       <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node) : ""}</div></td>
@@ -5918,6 +5922,7 @@ $("cpl-ok") && ($("cpl-ok").onclick = () => busy($("cpl-ok"), async () => {
 }));
 $("cpa-q") && ($("cpa-q").oninput = renderCpaTbl);
 $("cpa-st") && ($("cpa-st").onchange = renderCpaTbl);
+$("cpa-count") && $("cpa-count").addEventListener("click", e => { const a = e.target.closest("[data-cpcan]"); if (!a) return; e.preventDefault(); $("cpa-st").value = "cancelling"; renderCpaTbl(); });
 $("cpa-all") && ($("cpa-all").onchange = e => { CPA_VIEW.forEach(p => e.target.checked ? cpaSel.add(p.id) : cpaSel.delete(p.id)); renderCpaTbl(); });
 $("cpa-tbl") && ($("cpa-tbl").onchange = e => { const c = e.target.closest("[data-cpsel]"); if (!c) return; c.checked ? cpaSel.add(c.dataset.cpsel) : cpaSel.delete(c.dataset.cpsel); syncCpaSel(); });
 $("cpa-tbl") && ($("cpa-tbl").onclick = e => {
@@ -6750,20 +6755,21 @@ function prRender() {
       <td><span class="pill ${s[0]}">${s[1]}</span></td>
       <td>${c.expires_at ? prWhen(c.expires_at) : '<span class="hint">Không hết hạn</span>'}${c.starts_at ? `<small>Từ ${prWhen(c.starts_at)}</small>` : ""}</td>
       <td class="num">${+c.total_discount ? vnd(c.total_discount) : "—"}<small>${c.last_used ? "Dùng " + ago(c.last_used) : "Chưa dùng"}</small></td>
-      <td><div class="practs"><button class="btn ghost sm" type="button" data-pract="tog">${c.active ? "⏸ Tắt" : "▶ Bật"}</button><button class="btn ghost sm" type="button" data-pract="edit">✏️ Sửa</button><button class="btn ghost sm" type="button" data-pract="uses">📊 Lượt dùng${uses ? " (" + uses + ")" : ""}</button><button class="btn danger sm" type="button" data-pract="del"${uses ? ' disabled title="Đã có người dùng — chỉ Tắt được, không xoá"' : ""}>🗑️ Xoá</button></div></td></tr>`;
+      <td><div class="practs"><button class="btn ghost sm" type="button" data-pract="tog">${c.active ? "⏸ Tắt" : "▶ Bật"}</button><button class="btn ghost sm" type="button" data-pract="edit">✏️ Sửa</button><button class="btn ghost sm" type="button" data-pract="uses">📊 Lượt dùng${uses ? " (" + uses + ")" : ""}</button><button class="btn danger sm" type="button" data-pract="del"${uses ? ' title="Đã có người dùng: xoá = ẩn khỏi danh sách, giữ lịch sử đơn"' : ""}>🗑️ Xoá</button></div></td></tr>`;
   }).join("");
 }
 $("pl-q") && ($("pl-q").oninput = () => { clearTimeout(prQT); prQT = setTimeout(prList, 350); });
 $("pl-kind") && ($("pl-kind").onchange = () => prList());
 $("pl-reload") && ($("pl-reload").onclick = () => busy($("pl-reload"), prList));
 /* XOÁ HÀNG LOẠT: mọi mã ĐANG HIỆN trong danh sách (theo ô tìm + loại). Mã chưa ai dùng → xoá hẳn (admin_promo_delete);
-   mã đã có người dùng → máy chủ không cho xoá (PROMO_IN_USE, giữ lịch sử + doanh thu) → TẮT thay vì xoá. Gõ XOA để xác nhận. */
+   mã đã có người dùng → SQL v25: máy chủ tắt + ẨN khỏi danh sách (giữ lịch sử + doanh thu). Supabase chưa chạy v25 (PROMO_IN_USE)
+   → TẮT như trước + nhắc chạy v25. Gõ XOA để xác nhận. */
 function prDelAll() {
   const rows = PR_ROWS.slice(); if (!rows.length) return;
   const filt = !!($("pl-q").value.trim() || $("pl-kind").value);
   const usedN = rows.filter(c => (+c.used || 0) > 0 || (+c.uses || 0) > 0).length;
   const m = prDlg(`<h3>🗑️ Xoá ${filt ? rows.length + " mã đang lọc" : "tất cả " + rows.length + " mã"}</h3>
-    <div class="note">Mã chưa ai dùng sẽ bị <b>xoá hẳn</b>, không khôi phục được.${usedN ? ` <b>${usedN} mã đã có người dùng</b> sẽ được <b>Tắt</b> thay vì xoá, để giữ lịch sử và doanh thu.` : ""}${filt ? "" : " Muốn xoá riêng mã giảm giá hoặc mã tặng máy thì chọn loại ở ô lọc trước."}${rows.length >= 500 ? " Danh sách chỉ hiện 500 mã mới nhất: xoá xong bấm lại để xoá tiếp phần còn lại." : ""}</div>
+    <div class="note">Mã chưa ai dùng sẽ bị <b>xoá hẳn</b>, không khôi phục được.${usedN ? ` <b>${usedN} mã đã có người dùng</b> sẽ bị tắt và <b>ẩn khỏi danh sách</b> — lịch sử đơn và tiền đã giảm vẫn giữ.` : ""}${filt ? "" : " Muốn xoá riêng mã giảm giá hoặc mã tặng máy thì chọn loại ở ô lọc trước."}${rows.length >= 500 ? " Danh sách chỉ hiện 500 mã mới nhất: xoá xong bấm lại để xoá tiếp phần còn lại." : ""}</div>
     <label style="display:grid;gap:6px;margin-top:10px"><span>Gõ <b>XOA</b> để xác nhận</span><input class="in" id="pda-ok" autocomplete="off" spellcheck="false" placeholder="XOA"></label>
     <div class="hint" id="pda-st" style="margin-top:8px"></div>
     <div class="acts" style="margin-top:12px"><button class="btn ghost" type="button" data-prx id="pda-x">Huỷ</button><button class="btn danger" type="button" id="pda-go" disabled>🗑️ Xoá ${rows.length} mã</button></div>`);
@@ -6789,7 +6795,7 @@ function prDelAll() {
       }
     };
     await Promise.all(Array.from({ length: Math.min(6, rows.length) }, work));
-    const msg = `Đã xoá ${del} mã${kept ? ` · ${kept} mã đã có người dùng được giữ lại ở trạng thái Tắt` : ""}${bad ? ` · ${bad} mã lỗi: ${firstErr}` : ""}.`;
+    const msg = `Đã xoá ${del} mã${kept ? ` · ${kept} mã đã có người dùng chỉ TẮT được (Supabase chưa chạy file SQL cloud-phones-v25.sql — chạy xong bấm Xoá tất cả lần nữa để ẩn)` : ""}${bad ? ` · ${bad} mã lỗi: ${firstErr}` : ""}.`;
     st.innerHTML = `<b style="color:${bad ? "var(--bad)" : "var(--ok)"}">${esc(msg)}</b>`;
     x.disabled = false; x.textContent = "Đóng";
     toast(msg, bad ? 1 : 0);
@@ -6854,9 +6860,11 @@ $("pr-tbl") && ($("pr-tbl").onclick = e => {
     toast(c.active ? `Đã tắt mã ${c.code} — khách không dùng được nữa (bật lại được).` : `Đã bật lại mã ${c.code}.`); await prList();
   });
   else if (a === "del") busy(b, async () => {
-    if (!confirm(`Xoá hẳn mã ${c.code}? Không khôi phục được.`)) return;
+    const used = (+c.uses || 0) > 0 || (+c.used || 0) > 0;
+    if (!confirm(used ? `Xoá mã ${c.code}? Mã đã có người dùng nên sẽ bị tắt + ẩn khỏi danh sách (lịch sử đơn và tiền đã giảm vẫn giữ). Không khôi phục được.`
+                      : `Xoá hẳn mã ${c.code}? Không khôi phục được.`)) return;
     const { error } = await sb.rpc("admin_promo_delete", { p_id: c.id });
-    if (error) { toast(/PROMO_IN_USE/.test(error.message || "") ? errMsg("PROMO_IN_USE") : prErr(error), 1); if (/PROMO_IN_USE/.test(error.message || "")) prList(); return; }
+    if (error) { toast(/PROMO_IN_USE/.test(error.message || "") ? "Mã đã có người dùng — chạy file SQL cloud-phones-v25.sql trên Supabase để xoá (ẩn) được mã này." : prErr(error), 1); return; }
     toast(`Đã xoá mã ${c.code}.`); await prList();
   });
   else if (a === "edit") prEdit(c);
