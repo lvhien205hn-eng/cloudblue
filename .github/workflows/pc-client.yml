@@ -1,0 +1,140 @@
+# Build app PC cho khách (Python → exe) → GitHub Release "pc-latest" → web tải ở /download/CloudBluePC.zip
+name: Build PC client
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pc-client/**"
+      - ".github/workflows/pc-client.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Repo mới (chuyển tài khoản GitHub 09/11/2026) đếm lại số lần build từ 1 → cộng VER_OFFSET để số bản app
+# luôn LỚN hơn bản cũ (Android 1.46, PC 1.15) — nếu không app cũ sẽ không thấy bản mới và Android không cài đè được.
+env:
+  VER_OFFSET: "100"
+
+concurrency:
+  group: pc-client
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # số bản thật của app (1.<số lần build>) → app so với download/pc.json trên web để báo khách tải bản mới
+      - name: Stamp version
+        shell: python
+        working-directory: pc-client
+        run: |
+          import os, re
+          n = int(os.environ["GITHUB_RUN_NUMBER"]) + int(os.environ.get("VER_OFFSET") or 0)
+          v = "1." + str(n)
+          open(os.environ["GITHUB_ENV"], "a", encoding="utf-8").write(f"PC_CODE={n}\n")
+          s = open("bluepc.py", encoding="utf-8").read()
+          s, n = re.subn(r'^APP_VER = "[^"]*"', f'APP_VER = "{v}"', s, count=1, flags=re.M)
+          if n != 1: raise SystemExit("APP_VER not found in bluepc.py")
+          open("bluepc.py", "w", encoding="utf-8", newline="\n").write(s)
+          print("APP_VER =", v)
+
+      - name: Build exe
+        shell: pwsh
+        working-directory: pc-client
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller av pygame-ce numpy pillow
+          python -m py_compile bluepc.py brstream.py
+          $icon = @()
+          if (Test-Path icon.png) { $icon = @("--icon", "icon.png", "--add-data", "icon.png;.") }
+          python -m PyInstaller --noconfirm --clean --windowed --name CloudBluePC --collect-submodules av @icon bluepc.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # thử bản exe: đủ thư viện giải mã + cửa sổ chưa (thiếu → báo lỗi, KHÔNG đưa bản hỏng cho khách)
+          $st = Join-Path $PWD "selftest.txt"
+          Start-Process -FilePath dist/CloudBluePC/CloudBluePC.exe -ArgumentList "--selftest", "`"$st`"" -Wait -NoNewWindow
+          if (-not (Test-Path $st)) { Write-Error "exe không chạy được"; exit 1 }
+          Get-Content $st
+          if ((Get-Content $st -TotalCount 1) -ne "OK") { exit 1 }
+          Compress-Archive -Force -Path dist/CloudBluePC -DestinationPath dist/CloudBluePC.zip
+          Get-Item dist/CloudBluePC.zip | Select-Object Name, Length
+
+      # thử TỰ CẬP NHẬT trên Windows thật trước khi đưa khách: bản "cũ" đang mở 1 cửa sổ máy → trình cập nhật của bản mới
+      # phải đóng cửa sổ đó, đổi tên thư mục cũ, chép bản mới vào đúng chỗ. Hỏng → build đỏ, KHÔNG phát hành.
+      - name: Self-update test
+        shell: pwsh
+        working-directory: pc-client
+        run: |
+          $t = Join-Path $env:RUNNER_TEMP "updtest"
+          if (Test-Path $t) { Remove-Item -Recurse -Force $t }
+          New-Item -ItemType Directory -Path $t | Out-Null
+          $inst = Join-Path $t "CloudBluePC"
+          Copy-Item -Recurse dist/CloudBluePC $inst
+          $oldExe = Join-Path $inst "CloudBluePC.exe"
+          (Get-Item $oldExe).LastWriteTime = Get-Date "2000-01-01"
+          # giải nén bằng ĐÚNG mã của app (extract_update) như máy khách sẽ làm
+          $src = python -c "import sys; sys.path.insert(0, '.'); import bluepc; print(bluepc.extract_update(sys.argv[1], sys.argv[2]))" dist/CloudBluePC.zip $inst
+          if ($LASTEXITCODE -ne 0) { Write-Error "app không giải nén được gói cập nhật"; exit 1 }
+          $upd = Join-Path "$src".Trim() "CloudBluePC.exe"
+          Write-Host "staged: $upd"
+          if (-not (Test-Path $upd)) { Write-Error "gói cập nhật thiếu CloudBluePC.exe"; exit 1 }
+          $win = Start-Process -FilePath $oldExe -ArgumentList "--view", "00000000-0000-0000-0000-000000000000" -PassThru
+          Start-Sleep -Seconds 5
+          $alive = -not $win.HasExited
+          $res = Join-Path $t "result.txt"
+          Start-Process -FilePath $upd -ArgumentList "--finish-update", "`"$inst`"", "0", "--test", "`"$res`"" -Wait
+          if (-not (Test-Path $res)) { Write-Error "trình cập nhật không chạy được"; exit 1 }
+          Get-Content $res
+          Write-Host "old window was running: $alive"
+          if ((Get-Content $res -TotalCount 1) -ne "OK") { exit 1 }
+          if ($alive -and -not $win.HasExited) { Write-Error "cửa sổ máy của bản cũ chưa bị đóng"; exit 1 }
+          if ((Get-Item (Join-Path $inst "CloudBluePC.exe")).LastWriteTime.Year -eq 2000) { Write-Error "chưa thay bản mới"; exit 1 }
+          if (-not (Get-ChildItem $t -Directory | Where-Object { $_.Name -like "CloudBluePC.old-*" })) { Write-Error "không thấy thư mục bản cũ"; exit 1 }
+          if (-not (Test-Path (Join-Path $inst "_internal"))) { Write-Error "bản mới thiếu _internal"; exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CloudBluePC
+          path: pc-client/dist/CloudBluePC.zip
+
+      - name: Publish (GitHub Release pc-latest)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="App máy tính cho khách. Tải CloudBluePC.zip, giải nén, chạy CloudBluePC.exe."
+          gh release view pc-latest >/dev/null 2>&1 || gh release create pc-latest --title "CloudBlue PC (bản mới nhất)" --notes "$NOTES" --latest=false
+          gh release upload pc-latest pc-client/dist/CloudBluePC.zip --clobber
+          gh release edit pc-latest --title "CloudBlue PC (bản mới nhất)" --notes "$NOTES" || true
+          # bản tên cũ không còn được cập nhật → xoá cho khỏi tải nhầm (link cũ trên web đã chuyển sang tên mới)
+          gh release delete-asset pc-latest BlueRobloxPC.zip --yes 2>/dev/null || true
+
+      # web ghi số bản mới nhất (cloudblue.vn/download/pc.json) → app máy tính bản cũ hiện dải "Có bản app mới — bấm để tải"
+      - name: Publish version file for the app's update notice
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        run: |
+          git checkout -- pc-client                     # bỏ dòng số bản vừa ghi vào bluepc.py (chỉ dùng lúc đóng gói)
+          mkdir -p blueroblox-site/download
+          SIZE=$(stat -c %s pc-client/dist/CloudBluePC.zip)
+          SHA=$(sha256sum pc-client/dist/CloudBluePC.zip | cut -d' ' -f1)          # app tự cập nhật kiểm file tải về đúng từng byte
+          printf '{"version":"1.%s","code":%s,"size":%s,"sha256":"%s","date":"%s"}\n' "$PC_CODE" "$PC_CODE" "$SIZE" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > blueroblox-site/download/pc.json
+          cat blueroblox-site/download/pc.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add blueroblox-site/download/pc.json
+          git commit -m "App PC v1.$PC_CODE" || exit 0
+          for i in 1 2 3; do
+            if git pull --rebase origin main && git push origin HEAD:main; then echo "pc.json published"; exit 0; fi
+            git rebase --abort 2>/dev/null || true
+            sleep 5
+          done
+          # bản app đã lên Release; chỉ thiếu dải báo bản mới → cảnh báo vàng trên trang chạy, không làm đỏ cả lần build
+          echo "::warning::Could not push blueroblox-site/download/pc.json — app update notice not published for v1.$PC_CODE"
