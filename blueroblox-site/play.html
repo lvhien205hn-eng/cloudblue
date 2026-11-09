@@ -129,6 +129,28 @@ body[data-view="v-play"]{position:fixed;inset:0;overflow:hidden;overscroll-behav
 .dlg textarea,.dlg input{width:100%;font:inherit;font-size:16px;color:var(--fg);background:#0a1230;border:1px solid var(--line2);border-radius:12px;padding:10px 12px}
 .dlg textarea{min-height:110px;resize:vertical}
 .dlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+/* 🔓 Root theo app: công tắc + danh sách app (gạt từng app) */
+.rsw{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0e1842;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.rsw b{display:block;font-size:15px}
+.rsw small{display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:2px}
+input.tg{appearance:none;-webkit-appearance:none;width:46px;height:26px;border-radius:13px;background:#28325e;position:relative;flex:none;margin:0;cursor:pointer;transition:background .15s}
+input.tg::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#c9d4ff;transition:transform .15s}
+input.tg:checked{background:var(--blue)}
+input.tg:checked::after{transform:translateX(20px);background:#fff}
+input.tg:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+input.tg:disabled{opacity:.45;cursor:default}
+@media (prefers-reduced-motion:reduce){input.tg,input.tg::after{transition:none}}
+.rnote{color:var(--muted);font-size:12.5px;line-height:1.45;margin:10px 4px 0}
+.rnote.warn{color:var(--warn)}
+.rlist{display:flex;flex-direction:column;gap:6px}
+.rapp{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:#0b1438;border-radius:10px;padding:9px 12px;cursor:pointer}
+.rapp .nm{min-width:0}
+.rapp .nm b{display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rapp .nm small{display:block;color:var(--muted);font-size:11.5px;word-break:break-all}
+.rapp.ask{border-color:rgba(255,196,107,.45)}
+#r-body.off .rapp{opacity:.5}
+.rempty{color:var(--muted);font-size:13px;padding:6px 4px}
+#rootdlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .prog{height:6px;border-radius:6px;background:rgba(143,208,255,.15);overflow:hidden;margin-top:10px}
 .prog i{display:block;height:100%;width:0;background:var(--sky);transition:width .2s}
 </style>
@@ -234,9 +256,27 @@ body[data-view="v-play"]{position:fixed;inset:0;overflow:hidden;overscroll-behav
     <div class="grid">
       <button type="button" data-a="apkfile"><i>📦</i>Cài file APK</button>
       <button type="button" data-a="apklink"><i>🔗</i>Cài APK từ link</button>
+      <button type="button" data-a="root"><i>🔓</i>Root</button>
       <button type="button" data-a="reboot"><i>↻</i>Khởi động lại</button>
       <button type="button" data-a="list"><i>☰</i>Danh sách máy</button>
     </div>
+  </div>
+</div>
+
+<!-- 🔓 ROOT THEO APP: công tắc root của máy + chọn app được dùng lệnh su -->
+<div class="sheet" id="rootdlg" hidden>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="r-t">
+    <div class="hd"><div><b id="r-t">🔓 Root</b><br><small>Chỉ app được bật mới dùng được lệnh su</small></div><button class="lnk" type="button" data-a="rclose">Đóng</button></div>
+    <label class="rsw" for="r-on"><span><b>Bật root cho máy này</b><small id="r-st">Đang đọc…</small></span><input type="checkbox" class="tg" id="r-on" role="switch" disabled></label>
+    <p class="rnote warn" id="r-warn" hidden></p>
+    <div id="r-body">
+      <div class="sec" id="r-ask-h" hidden>Vừa xin root (chưa được bật)</div>
+      <div class="rlist" id="r-ask"></div>
+      <div class="sec">Ứng dụng trong máy</div>
+      <div class="rlist" id="r-apps"><div class="rempty">Đang tải danh sách app…</div></div>
+    </div>
+    <p class="rnote">Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.</p>
+    <div class="acts"><button class="btn ghost" type="button" data-a="rclose">Đóng</button><button class="btn" type="button" data-a="rsave" id="r-save" disabled>Lưu</button></div>
   </div>
 </div>
 
@@ -442,6 +482,7 @@ async function connect() {
     ep = r.data || {};
   }
   P.ep = ep; setName(ep.name, ep.android);
+  if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
   $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
   if (ep.status && ep.status !== "active") { P.fatal = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
   const url = ep.stream && ep.stream.ws;
@@ -754,11 +795,14 @@ document.addEventListener("click", e => {
     case "stats": $("stats").hidden = !$("stats").hidden; tick(); return;
     case "full": return toggleFull();
     case "reboot": return reboot();
+    case "root": return openRoot();
+    case "rclose": $("rootdlg").hidden = true; return;
+    case "rsave": return saveRoot();
     case "dno": $("dlg").hidden = true; return;
     case "dok": return dlgOk();
   }
 });
-for (const id of ["menu", "dlg"]) $(id).addEventListener("click", e => { if (e.target === $(id) && !(id === "dlg" && DLG.busy)) $(id).hidden = true; });
+for (const id of ["menu", "dlg", "rootdlg"]) $(id).addEventListener("click", e => { if (e.target === $(id) && !(id === "dlg" && DLG.busy)) $(id).hidden = true; });
 const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 if (!FS_OK) $("m-full").hidden = true;
 function toggleFull() {
@@ -846,6 +890,74 @@ $("apkf").addEventListener("change", async () => {
   } catch (e) { DLG.busy = false; $("dlg").hidden = true; toast("Gửi file lỗi: " + e.message); }
 });
 
+/* ---------- 🔓 ROOT THEO APP (cpapi GET/POST <máy>/rootcfg → phonectl rootcfg) ---------- */
+const APP_NAMES = { "com.termux": "Termux", "com.roblox.client": "Roblox", "com.android.chrome": "Chrome", "org.mozilla.firefox": "Firefox",
+  "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram", "com.discord": "Discord",
+  "com.google.android.youtube": "YouTube", "com.whatsapp": "WhatsApp", "com.ss.android.ugc.trill": "TikTok", "com.zhiliaoapp.musically": "TikTok",
+  "bin.mt.plus": "MT Manager", "com.speedsoftware.rootexplorer": "Root Explorer", "com.catchingnow.icebox": "Ice Box",
+  "com.github.uiautomator": "ATX Agent", "com.termux.api": "Termux:API", "com.termux.boot": "Termux:Boot", "com.termux.widget": "Termux:Widget" };
+const appName = pkg => APP_NAMES[pkg] || pkg.split(".").slice(-1)[0].replace(/^./, c => c.toUpperCase());
+const R = { cfg: null, busy: false };
+function rootRow(pkg, on, ask) {
+  const l = document.createElement("label"); l.className = "rapp" + (ask ? " ask" : "");
+  const nm = document.createElement("span"); nm.className = "nm";
+  const b = document.createElement("b"); b.textContent = appName(pkg);
+  const sm = document.createElement("small"); sm.textContent = pkg + (ask && ask.t ? " · xin lúc " + String(ask.t).slice(11, 16) : "");
+  nm.append(b, sm);
+  const c = document.createElement("input"); c.type = "checkbox"; c.className = "tg"; c.dataset.pkg = pkg; c.checked = on;
+  c.setAttribute("aria-label", "Cho " + appName(pkg) + " dùng root");
+  l.append(nm, c); return l;
+}
+function rootPaint() {
+  const j = R.cfg || {}, on = $("r-on").checked, allow = new Set(j.apps || []);
+  $("r-st").textContent = !j.online ? "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng."
+    : on !== !!j.on ? (on ? "Bấm Lưu để bật root." : "Bấm Lưu để tắt root.")
+    : on ? (j.running ? "Đang bật · " + allow.size + " app được dùng su" : "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.")
+         : "Đang tắt — không app nào dùng được lệnh su.";
+  const w = $("r-warn"); w.hidden = j.selinux !== "Enforcing";
+  w.textContent = "⚠ Máy này đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.";
+  $("r-body").classList.toggle("off", !on);
+}
+function rootFill(j) {
+  R.cfg = j; const allow = new Set(j.apps || []);
+  $("r-on").checked = !!j.on; $("r-on").disabled = false; $("r-save").disabled = false;
+  const asked = (j.asked || []).filter(a => !allow.has(a.pkg));
+  const ak = $("r-ask"); ak.innerHTML = ""; $("r-ask-h").hidden = !asked.length;
+  for (const a of asked) ak.appendChild(rootRow(a.pkg, false, a));
+  const list = $("r-apps"); list.innerHTML = "";
+  const shown = new Set(asked.map(a => a.pkg));
+  const pk = [...new Set([...(j.apps || []), ...(j.installed || [])])].filter(x => !shown.has(x))
+    .sort((a, b) => (allow.has(b) - allow.has(a)) || appName(a).localeCompare(appName(b)));
+  if (!pk.length) list.innerHTML = '<div class="rempty">Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.</div>';
+  for (const x of pk) list.appendChild(rootRow(x, allow.has(x), null));
+  rootPaint();
+}
+async function openRoot() {
+  $("rootdlg").hidden = false; $("r-on").disabled = true; $("r-save").disabled = true;
+  $("r-st").textContent = "Đang đọc…"; $("r-warn").hidden = true;
+  $("r-ask").innerHTML = ""; $("r-ask-h").hidden = true; $("r-apps").innerHTML = '<div class="rempty">Đang tải danh sách app…</div>';
+  try { rootFill(await api(P.id + "/rootcfg", { method: "GET" })); }
+  catch (e) {
+    $("r-st").textContent = e.status === 409 && e.j && e.j.old ? "Máy chủ chưa có tính năng này — báo admin cập nhật." : "Không đọc được: " + e.message;
+    $("r-apps").innerHTML = "";
+  }
+}
+async function saveRoot() {
+  if (R.busy || !R.cfg) return;
+  const on = $("r-on").checked;
+  const apps = [...document.querySelectorAll("#rootdlg input.tg[data-pkg]")].filter(c => c.checked).map(c => c.dataset.pkg);
+  if (on && !apps.length && !confirm("Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?")) return;
+  R.busy = true; $("r-save").disabled = true; $("r-save").textContent = "Đang lưu…";
+  try {
+    const j = await api(P.id + "/rootcfg", { json: { on, apps: [...new Set(apps)] } });
+    const r = await watchJob(j.job, "Root");
+    if (r && r.state === "done") { $("rootdlg").hidden = true; }
+    else if (!$("rootdlg").hidden) openRoot();
+  } catch (e) { toast("Không lưu được: " + e.message); }
+  finally { R.busy = false; $("r-save").disabled = false; $("r-save").textContent = "Lưu"; }
+}
+$("r-on").addEventListener("change", rootPaint);
+
 /* ---------- thông số (bấm 📊 trong menu) ---------- */
 function tick() {
   const now = performance.now(), dt = (now - (P.f0t || now)) / 1000;
@@ -878,6 +990,7 @@ async function boot() {
   const s = await session();
   if (!s) return showLogin();
   const id = Q.get("id");
+  P.wantRoot = Q.get("root") === "1";
   if (id && UUID.test(id)) openPhone(id); else showList();
 }
 boot();
