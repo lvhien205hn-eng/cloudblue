@@ -1,0 +1,75 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "geolocation=(), microphone=(), camera=()"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        }
+      ]
+    },
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/vps-expiry-cron",
+      "schedule": "0 1 * * *"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/download/CloudBluePC.zip",
+      "destination": "https://github.com/lvhien205hn-eng/cloudblue/releases/download/pc-latest/CloudBluePC.zip",
+      "permanent": false
+    },
+    {
+      "source": "/download/BlueRobloxPC.zip",
+      "destination": "https://github.com/lvhien205hn-eng/cloudblue/releases/download/pc-latest/CloudBluePC.zip",
+      "permanent": false
+    },
+    {
+      "source": "/:path((?!api/).*)",
+      "has": [{ "type": "host", "value": "blueroblox.shop" }],
+      "destination": "https://cloudblue.vn/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/:path((?!api/).*)",
+      "has": [{ "type": "host", "value": "www.blueroblox.shop" }],
+      "destination": "https://cloudblue.vn/:path*",
+      "permanent": true
+    }
+  ]
+}

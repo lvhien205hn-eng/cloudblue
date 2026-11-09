@@ -1,0 +1,17 @@
+{
+  "name": "CloudBlue – Điều khiển máy",
+  "short_name": "CloudBlue",
+  "description": "Mở và điều khiển điện thoại đám mây CloudBlue ngay trên trình duyệt.",
+  "lang": "vi",
+  "start_url": "/play.html",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#060a1c",
+  "theme_color": "#060a1c",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

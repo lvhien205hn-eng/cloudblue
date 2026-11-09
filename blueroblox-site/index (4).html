@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>BLUEROBLOX – Clone Roblox & VPS GPU</title>
+<meta name="description" content="Shop Clone Roblox và VPS GPU giá rẻ, giao tự động 24/7, nạp tiền tự động qua ngân hàng.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Be+Vietnam+Pro:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="styles.css">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="wrap">
+    <a class="logo" href="/"><div class="mark"><span></span></div><b>BLUE<i>ROBLOX</i></b></a>
+    <nav>
+      <a class="on" href="/">Trang chủ</a><a href="#shop">Sản phẩm</a><a id="nav-topup">Nạp tiền</a><a id="nav-orders">Đơn hàng</a><a href="#policy">Chính sách</a>
+    </nav>
+    <div class="acct">
+      <div class="seg" role="group" aria-label="Đơn vị tiền"><button id="cur-vnd" class="on">VND</button><button id="cur-usd">USD</button></div>
+      <span id="guest-acts"><button class="btn ghost" id="btn-login">Đăng nhập</button> <button class="btn" id="btn-reg">Đăng ký</button></span>
+      <span id="user-acts" hidden style="display:flex;gap:8px;align-items:center">
+        <span class="bal">Số dư: <b id="bal">0đ</b></span>
+        <button class="btn okb sm" id="btn-topup">+ Nạp</button>
+        <span class="who"><span class="av" id="who-av">?</span><span id="who-name"></span><button class="btn ghost sm" id="btn-logout">Thoát</button></span>
+      </span>
+      <button class="btn gold" id="admin-open" hidden>Quản trị <span class="badge" id="adm-badge" hidden></span></button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap hero">
+  <div>
+    <div class="eyebrow" id="h-eyebrow"></div>
+    <h1 id="h-title"></h1>
+    <p id="h-desc"></p>
+    <div class="stats">
+      <div><b id="st-a"></b><span>Clone đã bán</span></div>
+      <div><b id="st-b"></b><span>VPS đang chạy</span></div>
+      <div><b>24/7</b><span>Hỗ trợ</span></div>
+    </div>
+  </div>
+  <div class="notice" id="notices"></div>
+</section>
+
+<section class="wrap" id="join-wrap" hidden style="padding-block:0 28px">
+  <a id="join-band" href="#" target="_blank" rel="noopener">
+    <span class="jd-ico">🎮</span>
+    <span class="jd-txt"><b>Tham gia Discord BLUEROBLOX</b><small>Nhận thông báo hàng mới, giveaway, cập nhật kho và hỗ trợ nhanh</small></span>
+    <span class="jd-btn">Tham gia ngay</span>
+  </a>
+</section>
+
+<section class="wrap shop" id="shop">
+  <aside class="side"><h3>Chuyên mục</h3><div class="cats" id="cats"></div></aside>
+  <div class="main">
+    <div class="bar">
+      <h2 id="cat-title">Tất cả sản phẩm</h2>
+      <input class="search" id="q" type="search" placeholder="Tìm sản phẩm…" aria-label="Tìm sản phẩm">
+      <select id="sort" aria-label="Sắp xếp"><option value="hot">Bán chạy</option><option value="asc">Giá thấp → cao</option><option value="desc">Giá cao → thấp</option></select>
+    </div>
+    <div class="grid" id="grid"><div class="empty">Đang tải sản phẩm…</div></div>
+  </div>
+</section>
+
+<section class="wrap pay" id="pay">
+  <div class="click" id="pay-bank"><span class="ico" style="background:#1d4ed8;color:#fff">BANK</span><span><b>Chuyển khoản</b><small>Quét QR, tự cộng tiền</small></span></div>
+  <div><span class="ico" style="background:#f59e0b;color:#1a1200">CARD</span><span><b>Thẻ cào</b><small>Sắp có</small></span></div>
+  <div><span class="ico" style="background:#10b981;color:#02261a">USDT</span><span><b>Crypto</b><small>Sắp có</small></span></div>
+  <div><span class="ico" style="background:#6b7fa8;color:#fff">LTC</span><span><b>Litecoin</b><small>Sắp có</small></span></div>
+</section>
+
+<section class="wrap" id="policy" style="padding-block:0 40px">
+  <div class="panel"><h3>Chính sách</h3><div id="policy-text" style="color:var(--muted);font-size:14px;white-space:pre-line"></div></div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div><a class="logo" href="/"><div class="mark"><span></span></div><b>BLUE<i>ROBLOX</i></b></a><p id="ft-about"></p></div>
+    <div><h5>Liên kết</h5><ul><li><a href="#policy">Chính sách</a></li><li><a href="#shop">Sản phẩm</a></li></ul></div>
+    <div><h5>Liên hệ</h5><ul><li id="ct-zalo"></li><li id="ct-email"></li><li id="ct-discord"></li></ul></div>
+  </div>
+  <div class="copy">© <span id="year"></span> BLUEROBLOX. Không liên kết với Roblox Corporation.</div>
+</footer>
+
+<!-- MUA -->
+<div class="modal" id="modal" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="m-title">
+    <h3 id="m-title">Mua sản phẩm</h3>
+    <div id="m-name" style="color:var(--muted);font-size:14px"></div>
+    <div id="m-plans-box" hidden style="display:grid;gap:8px"><span style="font-size:13px;color:var(--muted)">Chọn thời gian thuê</span><div class="amts plans" id="m-plans"></div></div>
+    <div class="qty"><span style="margin-right:auto">Số lượng</span><button id="m-minus" aria-label="Giảm">−</button><input id="m-qty" type="number" min="1" value="1" aria-label="Số lượng"><button id="m-plus" aria-label="Tăng">+</button></div>
+    <div class="sum"><span>Tổng thanh toán</span><b id="m-total"></b></div>
+    <div class="sum"><span>Số dư hiện tại</span><span id="m-bal" style="font-family:var(--mono)"></span></div>
+    <div class="err" id="m-err"></div>
+    <div class="acts"><button class="btn ghost" id="m-cancel">Huỷ</button><button class="btn" id="m-ok">Thanh toán</button></div>
+  </div>
+</div>
+
+<!-- TÀI KHOẢN -->
+<div class="modal" id="auth" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-label="Tài khoản">
+    <div class="atabs" id="atabs"><button id="at-login" class="on">Đăng nhập</button><button id="at-reg">Đăng ký</button></div>
+    <form id="f-login" style="display:grid;gap:12px">
+      <label>Email<input class="in" id="li-e" type="email" autocomplete="email" required></label>
+      <label>Mật khẩu<input class="in" id="li-p" type="password" autocomplete="current-password" required></label>
+      <div class="err" id="li-err"></div>
+      <button class="btn" type="submit" id="li-btn">Đăng nhập</button>
+      <button class="btn ghost sm" type="button" id="go-forgot">Quên mật khẩu?</button>
+    </form>
+    <form id="f-reg" style="display:grid;gap:12px" hidden>
+      <label>Tên đăng nhập<input class="in" id="rg-u" autocomplete="username" required minlength="3" maxlength="24" pattern="[A-Za-z0-9_]+" title="3–24 ký tự: chữ, số và dấu _"></label>
+      <label>Email<input class="in" id="rg-e" type="email" autocomplete="email" required></label>
+      <label>Mật khẩu (ít nhất 8 ký tự)<input class="in" id="rg-p" type="password" autocomplete="new-password" required minlength="8"></label>
+      <label>Nhập lại mật khẩu<input class="in" id="rg-p2" type="password" autocomplete="new-password" required minlength="8"></label>
+      <div class="err" id="rg-err"></div>
+      <button class="btn" type="submit" id="rg-btn">Tạo tài khoản</button>
+    </form>
+    <form id="f-forgot" style="display:grid;gap:12px" hidden>
+      <h3>Khôi phục mật khẩu</h3>
+      <div id="fg-step1" style="display:grid;gap:12px">
+        <label>Email đã đăng ký<input class="in" id="fg-e" type="email" required></label>
+        <button class="btn" type="button" id="fg-send">Gửi mã về email</button>
+      </div>
+      <div id="fg-step2" style="display:grid;gap:12px" hidden>
+        <div class="note">Đã gửi mã 6 số tới <b id="fg-to"></b>. Kiểm tra cả thư mục Spam. Mã có hiệu lực 1 giờ.</div>
+        <label>Mã xác nhận<input class="in" id="fg-c" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+        <label>Mật khẩu mới (ít nhất 8 ký tự)<input class="in" id="fg-p" type="password" minlength="8" autocomplete="new-password"></label>
+        <button class="btn" type="button" id="fg-ok">Đặt lại mật khẩu</button>
+      </div>
+      <div class="err" id="fg-err"></div>
+      <button class="btn ghost sm" type="button" id="fg-back">Quay lại đăng nhập</button>
+    </form>
+    <form id="f-newpw" style="display:grid;gap:12px" hidden>
+      <h3>Đặt mật khẩu mới</h3>
+      <label>Mật khẩu mới (ít nhất 8 ký tự)<input class="in" id="np-p" type="password" minlength="8" required autocomplete="new-password"></label>
+      <div class="err" id="np-err"></div>
+      <button class="btn" type="submit">Lưu mật khẩu</button>
+    </form>
+    <button class="btn ghost sm" id="auth-close">Đóng</button>
+  </div>
+</div>
+
+<!-- NẠP TIỀN -->
+<div class="modal" id="topup" hidden>
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="tp-title">
+    <h3 id="tp-title">Nạp tiền qua chuyển khoản</h3>
+    <div id="tp-step1" style="display:grid;gap:12px">
+      <div class="amts" id="tp-amts"></div>
+      <label>Hoặc nhập số tiền<input class="in" id="tp-amt" type="number" step="1000" value="50000"></label>
+      <div class="err" id="tp-err"></div>
+      <button class="btn" id="tp-make">Tạo mã QR</button>
+    </div>
+    <div id="tp-step2" hidden style="display:grid;gap:14px">
+      <div class="qrwrap">
+        <div class="qr" id="tp-qr"></div>
+        <div class="kv">
+          <div><span>Ngân hàng</span><b id="tp-bank"></b></div>
+          <div><span>Số tài khoản</span><b id="tp-acc"></b><button data-copy="tp-acc">Chép</button></div>
+          <div><span>Chủ tài khoản</span><b id="tp-name"></b></div>
+          <div><span>Số tiền</span><b id="tp-money" class="hl"></b><button data-copy="tp-money-raw">Chép</button></div>
+          <div><span>Nội dung (bắt buộc)</span><b id="tp-memo" class="hl"></b><button data-copy="tp-memo">Chép</button></div>
+          <span id="tp-money-raw" hidden></span>
+        </div>
+      </div>
+      <div class="wait" id="tp-wait"><span class="sp"></span><span id="tp-wait-t">Đang chờ ngân hàng báo có…</span></div>
+      <div class="note">Chuyển <b>đúng số tiền</b> và <b>đúng nội dung</b> để được cộng tự động trong 1–2 phút. Sai nội dung thì liên hệ hỗ trợ kèm ảnh chụp giao dịch.</div>
+      <div class="acts"><button class="btn ghost" id="tp-back">Đổi số tiền</button></div>
+    </div>
+    <button class="btn ghost sm" id="tp-close">Đóng</button>
+  </div>
+</div>
+
+<!-- CẢM ƠN SAU KHI MUA -->
+<div class="modal" id="thanks" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="th-title">
+    <div style="text-align:center;font-size:40px">🎉</div>
+    <h3 id="th-title" style="text-align:center">Mua thành công!</h3>
+    <div id="th-sum" style="text-align:center;color:var(--muted);font-size:14px"></div>
+    <div class="note" style="text-align:center">Nhắn cho shop qua kênh bên dưới để được tư vấn và nhận hàng nhanh nhất.</div>
+    <div class="contacts" id="th-contacts"></div>
+    <div class="acts"><button class="btn ghost" id="th-orders">Xem đơn hàng</button><button class="btn" id="th-close">Đóng</button></div>
+  </div>
+</div>
+
+<!-- ĐƠN HÀNG -->
+<div class="modal" id="orders" hidden>
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="or-title">
+    <h3 id="or-title">Đơn hàng & giao dịch của bạn</h3>
+    <div class="olist" id="or-list"></div>
+    <button class="btn ghost sm" id="or-close">Đóng</button>
+  </div>
+</div>
+
+<!-- NHẬP KHO (admin) -->
+<div class="modal" id="stockdlg" hidden>
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="sk-title">
+    <h3 id="sk-title">Nhập kho</h3>
+    <div class="hint" id="sk-name"></div>
+    <label>Mỗi dòng là 1 sản phẩm giao cho khách (VD: <code>user|pass</code> hoặc <code>IP|user|pass|hạn</code>)
+      <textarea class="in" id="sk-lines" rows="10" style="font-family:var(--mono);font-size:13px"></textarea></label>
+    <div class="hint" id="sk-count">0 dòng</div>
+    <div class="err" id="sk-err"></div>
+    <div class="acts"><button class="btn danger" id="sk-clear">Xoá hàng chưa bán</button><button class="btn ghost" id="sk-cancel">Huỷ</button><button class="btn" id="sk-save">Thêm vào kho</button></div>
+  </div>
+</div>
+
+<!-- GIAO ĐƠN (admin) -->
+<div class="modal" id="deldlg" hidden>
+  <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="dl-title">
+    <h3 id="dl-title">Giao đơn hàng</h3>
+    <div class="hint" id="dl-info"></div>
+    <label>Thông tin giao cho khách, mỗi dòng 1 sản phẩm (VD: <code>IP:port|user|pass</code>). Đơn có gói ngày sẽ tự thêm ngày hết hạn.
+      <textarea class="in" id="dl-items" rows="8" style="font-family:var(--mono);font-size:13px"></textarea></label>
+    <div class="err" id="dl-err"></div>
+    <div class="acts"><button class="btn danger" id="dl-refund">Huỷ đơn &amp; hoàn tiền</button><button class="btn ghost" id="dl-cancel">Đóng</button><button class="btn" id="dl-save">Giao cho khách</button></div>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="drawer" id="drawer" hidden>
+  <div class="dpanel" role="dialog" aria-modal="true" aria-labelledby="d-title">
+    <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
+    <div class="tabs" id="adm-tabs">
+      <button class="on" data-tab="prod">Sản phẩm</button><button data-tab="cust">Khách hàng</button><button data-tab="tx">Nạp tiền</button><button data-tab="ord">Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="bank">Ngân hàng</button><button data-tab="site">Nội dung trang</button>
+    </div>
+    <div class="dbody" id="pane-prod">
+      <form class="f" id="pf">
+        <h3 id="pf-title">Thêm sản phẩm</h3>
+        <label class="full">Tên sản phẩm<input id="pf-n" required maxlength="120" placeholder="VD: Clone aged 90 ngày"></label>
+        <label>Chuyên mục<select id="pf-c" style="width:100%"><option value="clone">Clone Roblox</option><option value="vps">VPS GPU</option></select></label>
+        <label><span id="pf-vnd-l">Giá (VND)</span><input id="pf-vnd" type="number" min="0" step="100" required></label>
+        <label>Thứ tự hiển thị<input id="pf-o" type="number" step="1" value="100"></label>
+        <label class="chk"><input id="pf-h" type="checkbox"> Gắn nhãn HOT</label>
+        <label>Số lượng còn bán<input id="pf-ms" type="number" min="0" step="1" value="10"></label>
+        <label class="full">Tính năng (cách nhau bằng dấu phẩy)<input id="pf-f" placeholder="8 vCPU, 16GB RAM, Windows"></label>
+        <div class="full plan-ed" id="pf-plans-box">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-family:var(--display)">Gói thời gian thuê</b><span class="hint" style="margin-right:auto">Khách sẽ chọn 1 gói khi mua. Để trống thì bán theo giá ở trên.</span>
+            <button class="btn ghost sm" type="button" id="pf-plan-quick">Mẫu 7 · 15 · 30 ngày</button><button class="btn ghost sm" type="button" id="pf-plan-add">+ Thêm gói</button></div>
+          <div id="pf-plans" style="display:grid;gap:8px"></div>
+        </div>
+        <div class="acts full"><button class="btn" type="submit" id="pf-save">Thêm sản phẩm</button><button class="btn ghost" type="button" id="pf-reset">Làm mới form</button></div>
+        <div class="hint full">Khách mua xong: tiền bị trừ, số lượng tự giảm, và khách được dẫn tới kênh Discord/Telegram/Zalo để bạn tư vấn và giao hàng. Đơn hiện ở tab "Đơn hàng" để bạn theo dõi.</div>
+      </form>
+      <div class="tbl"><table><thead><tr><th>Sản phẩm</th><th>Mục</th><th>Giá</th><th>Còn</th><th></th></tr></thead><tbody id="ptbl"></tbody></table></div>
+    </div>
+    <div class="dbody" id="pane-cust" hidden>
+      <div class="tiles"><div><b id="k-users">0</b><span>Khách đã đăng ký</span></div><div><b id="k-bal">0đ</b><span>Tổng số dư khách</span></div><div><b id="k-rev">0đ</b><span>Đã nạp (100 lệnh gần nhất)</span></div></div>
+      <input class="search" id="cq" placeholder="Tìm theo tên hoặc email…" style="width:100%">
+      <div class="tbl"><table><thead><tr><th>Khách</th><th>Email</th><th>Số dư</th><th>Trạng thái</th><th></th></tr></thead><tbody id="ctbl"></tbody></table></div>
+    </div>
+    <div class="dbody" id="pane-tx" hidden>
+      <div class="note">Lệnh nạp được cộng tự động khi ngân hàng báo có. Lệnh "Chờ" mà bạn đã thấy tiền vào (khách ghi sai nội dung) thì bấm Duyệt tay.</div>
+      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Nội dung</th><th>Số tiền</th><th>Trạng thái</th><th></th></tr></thead><tbody id="ttbl"></tbody></table></div>
+    </div>
+    <div class="dbody" id="pane-ord" hidden>
+      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Sản phẩm</th><th>SL</th><th>Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody id="otbl"></tbody></table></div>
+    </div>
+    <div class="dbody" id="pane-bank" hidden>
+      <form class="f" id="bf">
+        <h3>Tài khoản nhận tiền</h3>
+        <label>Ngân hàng<select id="bf-bin" style="width:100%"></select></label>
+        <label>Số tài khoản<input id="bf-acc" maxlength="20" inputmode="numeric"></label>
+        <label class="full">Tên chủ tài khoản (viết hoa, không dấu)<input id="bf-name" maxlength="50"></label>
+        <label>Tiền tố nội dung<input id="bf-prefix" maxlength="6" placeholder="BR"></label>
+        <label>Nạp tối thiểu (VND)<input id="bf-min" type="number" min="1000" step="1000"></label>
+        <div class="acts full"><button class="btn" type="submit" id="bf-save">Lưu ngân hàng</button></div>
+      </form>
+      <div class="note">Tài khoản này phải trùng với tài khoản bạn đã thêm vào SePay, thì tiền vào mới được cộng tự động.</div>
+    </div>
+    <div class="dbody" id="pane-site" hidden>
+      <form class="f" id="sf">
+        <h3>Phần đầu trang</h3>
+        <label class="full">Dòng nhỏ phía trên<input id="sf-eyebrow" maxlength="80"></label>
+        <label>Tiêu đề (chữ đặc)<input id="sf-h1a" maxlength="80"></label>
+        <label>Tiêu đề (chữ viền)<input id="sf-h1b" maxlength="40"></label>
+        <label class="full">Mô tả<textarea id="sf-desc" maxlength="400"></textarea></label>
+        <label>Số clone đã bán<input id="sf-sta" maxlength="20"></label>
+        <label>Số VPS đang chạy<input id="sf-stb" maxlength="20"></label>
+        <h3>Thông báo</h3>
+        <label class="full">Thông báo 1<input id="sf-n1" maxlength="160"></label>
+        <label class="full">Thông báo 2<input id="sf-n2" maxlength="160"></label>
+        <label class="full">Thông báo 3<input id="sf-n3" maxlength="160"></label>
+        <h3>Liên hệ & tỷ giá</h3>
+        <label>Zalo<input id="sf-zalo" maxlength="40"></label>
+        <label>Email<input id="sf-email" maxlength="80"></label>
+        <label>Discord<input id="sf-discord" maxlength="60"></label>
+        <label>Tỷ giá 1 USD = ? VND<input id="sf-rate" type="number" min="1000" step="100"></label>
+        <h3>Liên hệ sau khi mua</h3>
+        <label class="chk full"><input id="sf-afterBuy" type="checkbox"> Mua xong hiện nút liên hệ để khách bấm vào nhắn cho shop nhận hàng</label>
+        <label class="full">Link Discord (vd https://discord.gg/abcxyz)<input id="sf-linkDc" maxlength="200" placeholder="https://discord.gg/..."></label>
+        <label class="full">Link Telegram (vd https://t.me/tenshop)<input id="sf-linkTg" maxlength="200" placeholder="https://t.me/..."></label>
+        <label class="full">Link Zalo (vd https://zalo.me/0912345678)<input id="sf-linkZl" maxlength="200" placeholder="https://zalo.me/..."></label>
+        <h3>Discord ở trang chính</h3>
+        <label class="full">Link server Discord hiện ở trang chủ<input id="sf-joinDc" maxlength="200" placeholder="https://discord.gg/..."></label>
+        <label class="full">Giới thiệu ở chân trang<textarea id="sf-about" maxlength="300"></textarea></label>
+        <label class="full">Chính sách (bảo hành, hoàn tiền)<textarea id="sf-policy" maxlength="3000" rows="6"></textarea></label>
+        <div class="acts full"><button class="btn" type="submit" id="sf-save">Lưu nội dung</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
