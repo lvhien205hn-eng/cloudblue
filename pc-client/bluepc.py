@@ -1768,7 +1768,9 @@ class SwitchDlg(Dlg):
 
 
 APP_NAMES = {"com.roblox.client": "Roblox", "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram",
-             "com.zhiliaoapp.musically": "TikTok", "com.ss.android.ugc.trill": "TikTok", "com.android.chrome": "Chrome"}
+             "com.zhiliaoapp.musically": "TikTok", "com.ss.android.ugc.trill": "TikTok", "com.android.chrome": "Chrome",
+             "com.termux": "Termux", "com.termux.api": "Termux:API", "com.termux.boot": "Termux:Boot", "bin.mt.plus": "MT Manager",
+             "org.mozilla.firefox": "Firefox", "com.discord": "Discord", "com.whatsapp": "WhatsApp", "com.google.android.youtube": "YouTube"}
 
 
 def app_label(pkg): return APP_NAMES.get(pkg, pkg)
@@ -1784,7 +1786,7 @@ class ToolsDlg(Dlg):
        Màn hình: xoay ngang / dọc, độ rộng nhỏ nhất · Cài app: file APK / file khác / link · Ứng dụng: mở, dừng, xoá dữ liệu, gỡ
        · Clone tab: chạy thêm bản 2, 3… của 1 app (VD Roblox chính thức), mỗi bản 1 hồ sơ riêng để đăng nhập acc khác
        · Khác: mở link, vị trí GPS, chụp màn, nút nguồn, root, khởi động lại. Gọi cpapi qua đường thẳng tới máy chủ (CpClient)."""
-    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("more", "Khác")]
+    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("more", "Khác")]
     SW = [320, 360, 411, 480, 540, 600, 720, 800]
 
     def __init__(self, app, phone, tab=None):
@@ -1799,7 +1801,7 @@ class ToolsDlg(Dlg):
         self.c_tab = Chips(app, hdr, self.TABS, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab)
         self.c_tab.frame.pack(fill="x")
         self.pages = {k: tk.Frame(self.body, bg=BG) for k in names}
-        self._page_screen(); self._page_install(); self._page_apps(); self._page_clone(); self._page_more()
+        self._page_screen(); self._page_install(); self._page_apps(); self._page_clone(); self._page_root(); self._page_more()
         bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
         self.app.btn(bb, "Làm mới", self.refresh, "soft").pack(side="left")
         self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right")
@@ -1836,6 +1838,7 @@ class ToolsDlg(Dlg):
         self.loaded.add(self.tab)
         if self.tab == "screen": self.load_density()
         elif self.tab in ("apps", "clone"): self.loaded.update(("apps", "clone")); self.load()
+        elif self.tab == "root": self.load_root()
 
     def _bgjob(self, lbl, start, first):
         """Việc chạy lâu trên máy chủ (root, khởi động lại…): gửi → theo dõi mã việc → báo kết quả vào lbl."""
@@ -2120,7 +2123,7 @@ class ToolsDlg(Dlg):
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(6, 0))
         self.app.btn(r, "Chụp màn hình", self.shot, "soft").pack(side="left")
         self.app.btn(r, "Nút nguồn (tắt / mở màn)", self.power, "soft").pack(side="left", padx=(8, 0))
-        self.app.btn(r, "Root máy", self.root_phone, "soft").pack(side="left", padx=(8, 0))
+        self.app.btn(r, "Root theo app…", self.go_root, "soft").pack(side="left", padx=(8, 0))
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
         self.app.btn(r, "⟳  Khởi động lại máy", self.reboot, "danger").pack(side="left")
         self.more_msg = self.msg(f)
@@ -2167,8 +2170,91 @@ class ToolsDlg(Dlg):
         self.bg(lambda: self.cp.json("POST", "key", {"code": 26}, timeout=20),
                 lambda j: self.say(self.more_msg, "✓ Đã bấm nút nguồn — màn đang tắt thì bật lên, đang bật thì tắt.", OK), lambda m: self.say(self.more_msg, "✗ " + m, BAD))
 
-    def root_phone(self):
-        self._bgjob(self.more_msg, lambda: self.cp.json("POST", "root", {}, timeout=60), "Đang kiểm tra / bật root (máy có thể khởi động lại ~1 phút)…")
+    def go_root(self):
+        self.tab = "root"; self.c_tab.paint(); self._show_tab()
+
+    # ================= thẻ ROOT: công tắc root của máy + chọn app được dùng lệnh su (cpapi <máy>/rootcfg) =================
+    def _page_root(self):
+        tk = self.app.tk; pg = self.pages["root"]
+        f = self.section("Root theo app", parent=pg)
+        self.muted(f, "Chỉ app được bật bên dưới mới dùng được lệnh su (vd Termux). App khác xin root sẽ bị từ chối và hiện ở mục \"Vừa xin root\".")
+        sw = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); sw.pack(fill="x", pady=(8, 0))
+        self.rt_on = tk.BooleanVar(value=False)
+        self.rt_cb = tk.Checkbutton(sw, text="  Bật root cho máy này", variable=self.rt_on, command=self.paint_root, font=("Segoe UI", 11, "bold"),
+                                    fg=TXT, bg=CARD, selectcolor=BG, activebackground=CARD, activeforeground=TXT, anchor="w", cursor="hand2", state="disabled")
+        self.rt_cb.pack(fill="x", padx=10, pady=(8, 0))
+        self.rt_st = self.label(sw, "Đang đọc…", self.app.f_s, DIM, wraplength=560); self.rt_st.pack(fill="x", padx=36, pady=(0, 8))
+        self.rt_warn = self.label(f, "", self.app.f_s, WARN, wraplength=580)
+        self.rt_box = tk.Frame(f, bg=BG); self.rt_box.pack(fill="x", pady=(8, 0))
+        self.muted(f, "Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần.")
+        r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
+        self.rt_save = self.app.btn(r, "Lưu", self.save_root); self.rt_save.pack(side="left")
+        self.app.btn(r, "Đọc lại", self.load_root, "soft").pack(side="left", padx=(8, 0))
+        self.rt_msg = self.msg(f)
+        self.rt_cfg = None; self.rt_vars = []
+
+    def load_root(self):
+        self.loaded.add("root")
+        self.say(self.rt_st, "Đang đọc…", DIM)
+        def fail(m):
+            if "chưa cập nhật" in m: self.say(self.rt_st, "Máy chủ chưa có tính năng này — báo admin cập nhật.", BAD)
+            else: self.say(self.rt_st, "✗ Không đọc được: " + m, BAD)
+        self.bg(lambda: self.cp.json("GET", "rootcfg", timeout=90), self.draw_root, fail)
+
+    def draw_root(self, j):
+        tk = self.app.tk; self.rt_cfg = j
+        allow = list(j.get("apps") or []); aset = set(allow)
+        self.rt_on.set(bool(j.get("on"))); self.rt_cb.config(state="normal")
+        for w in self.rt_box.winfo_children(): w.destroy()
+        self.rt_vars = []
+        asked = [a for a in (j.get("asked") or []) if a.get("pkg") not in aset]
+        shown = {a.get("pkg") for a in asked}
+        apps = [x for x in dict.fromkeys(allow + list(j.get("installed") or [])) if x not in shown]
+        apps.sort(key=lambda x: (x not in aset, app_label(x).lower()))
+        def row(pkg, on, extra="", ask=False):
+            fr = tk.Frame(self.rt_box, bg=CARD, highlightbackground=WARN if ask else LINE, highlightthickness=1); fr.pack(fill="x", pady=(0, 6))
+            v = tk.BooleanVar(value=on); self.rt_vars.append((pkg, v))
+            tk.Checkbutton(fr, text="  " + app_label(pkg), variable=v, font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD, selectcolor=BG,
+                           activebackground=CARD, activeforeground=TXT, anchor="w", cursor="hand2").pack(fill="x", padx=8, pady=(5, 0))
+            if app_label(pkg) != pkg or extra: self.label(fr, pkg + extra, self.app.f_s, DIM).pack(fill="x", padx=34, pady=(0, 5))
+            else: tk.Frame(fr, bg=CARD, height=5).pack(fill="x")
+        if asked:
+            self.label(self.rt_box, "Vừa xin root (chưa được bật)", self.app.f_s, WARN).pack(fill="x", pady=(0, 4))
+            for a in asked: row(a["pkg"], False, ("  ·  xin lúc " + str(a.get("t", ""))[11:16]) if len(str(a.get("t", ""))) >= 16 else "", True)
+        self.label(self.rt_box, "Ứng dụng trong máy", self.app.f_s, DIM).pack(fill="x", pady=(4, 4))
+        if not apps and not asked:
+            self.label(self.rt_box, "Chưa có app nào do bạn cài. Cài app (vd Termux) rồi bấm Đọc lại.", self.app.f_t, DIM, wraplength=580).pack(fill="x")
+        for x in apps: row(x, x in aset)
+        if j.get("selinux") == "Enforcing":
+            self.rt_warn.config(text="⚠ Máy đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.")
+            self.rt_warn.pack(fill="x", pady=(6, 0), before=self.rt_box)
+        else: self.rt_warn.pack_forget()
+        self.paint_root()
+
+    def paint_root(self):
+        j = self.rt_cfg or {}; on = self.rt_on.get()
+        if not j.get("online"): t = "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng."
+        elif on != bool(j.get("on")): t = "Bấm Lưu để bật root." if on else "Bấm Lưu để tắt root."
+        elif on: t = (f"Đang bật · {len(j.get('apps') or [])} app được dùng su" if j.get("running") else "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.")
+        else: t = "Đang tắt — không app nào dùng được lệnh su."
+        self.say(self.rt_st, t, DIM)
+
+    def save_root(self):
+        import tkinter.messagebox as mb
+        if self.rt_cfg is None or self.rt_msg in self.jobs_on: return
+        on = bool(self.rt_on.get()); apps = [p for p, v in self.rt_vars if v.get()]
+        if on and not apps and not mb.askyesno("Root", "Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?", parent=self.win): return
+        lbl = self.rt_msg; self.jobs_on.add(lbl); self.say(lbl, "Đang lưu cấu hình root…", WARN)
+        def job():
+            try:
+                j = self.cp.json("POST", "rootcfg", {"on": on, "apps": list(dict.fromkeys(apps))}, timeout=60)
+                msg = self.cp.wait_job(j["job"], lambda m: self.app.ui(lambda: self.say(lbl, m, WARN))) if j.get("job") else (j.get("msg") or "Đã lưu.")
+                self.app.ui(lambda: (self.say(lbl, "✓ " + msg, OK), self.load_root()))
+            except Exception as e:
+                m = str(e) or "Có lỗi."; log("root:", m); self.app.ui(lambda: self.say(lbl, "✗ " + missing(m), BAD))
+            finally:
+                self.app.ui(lambda: self.jobs_on.discard(lbl))
+        threading.Thread(target=job, daemon=True).start()
 
     def reboot(self):
         import tkinter.messagebox as mb
@@ -2630,7 +2716,7 @@ class Launcher:
         can_up = p.get("status") == "active" and not p.get("locked") and not p.get("is_free") and p.get("pending_ram") is None
         on = p.get("status") == "active" and (not p.get("locked") or (getattr(self, "prof", None) or {}).get("role") == "admin")
         for lab, tab in (("Xoay màn · Độ rộng nhỏ nhất…", "screen"), ("Cài app (APK / link)…", "install"), ("Ứng dụng trong máy…", "apps"),
-                         ("Clone tab…", "clone"), ("Khác: mở link, GPS, chụp màn, root…", "more")):
+                         ("Clone tab…", "clone"), ("Root theo app…", "root"), ("Khác: mở link, GPS, chụp màn…", "more")):
             m.add_command(label=lab, command=lambda t=tab: ToolsDlg(self, p, t), state="normal" if on else "disabled")
         m.add_separator()
         m.add_command(label="Nâng cấp RAM / CPU", command=lambda: self.open_upgrade(p), state="normal" if can_up else "disabled")
