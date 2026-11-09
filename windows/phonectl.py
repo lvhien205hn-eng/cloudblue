@@ -1088,6 +1088,49 @@ def cmd_delete(a):
         _vmdata_rm_if_gone(a.name)
         print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
 
+def _sb_get(path):
+    """Đọc Supabase (khoá máy chủ trong cloudphone.conf) → list/dict. Lỗi → ném lỗi (KHÔNG coi là "không có")."""
+    import urllib.request
+    url = CONF["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path; k = CONF["SUPABASE_SERVICE_KEY"]
+    req = urllib.request.Request(url, headers={"apikey": k, "Authorization": "Bearer " + k, "Accept": "application/json"})
+    return json.loads(urllib.request.urlopen(req, timeout=25).read().decode("utf-8") or "[]")
+
+def cmd_dondep(a):
+    """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): đơn huỷ lúc máy chủ tắt / lỗi xoá cũ
+       → web vẫn thấy "8 máy · đã cấp 48GB" dù không ai thuê (09/11 win3 + win4). Không --xoa: chỉ liệt kê. --xoa: xoá hẳn đúng
+       các máy web ghi cancelled (máy ảo + dữ liệu). Máy KHÔNG có trên web hoặc web ghi đang dùng: chỉ báo, không bao giờ tự xoá."""
+    import urllib.parse
+    st = load(); names = [p["name"] for p in st["phones"] if str(p.get("name", "")).startswith("cp_")]
+    me = CONF.get("NODE_ID", "") or "máy chủ này"
+    if not names: print(f"{me}: không có máy khách nào trong danh sách — không có gì để dọn."); return
+    db = {}
+    try:
+        for i in range(0, len(names), 40):
+            part = names[i:i + 40]
+            for r in _sb_get("cloud_phones?select=container,status,node&container=in.(" + ",".join(urllib.parse.quote(n) for n in part) + ")") or []:
+                db[r.get("container")] = r
+    except Exception as e:
+        print(f"LỖI: không đọc được web (Supabase): {e} — KHÔNG xoá gì."); sys.exit(4)
+    v = vms(); gone = []
+    for n in names:
+        r = db.get(n); p = rec(n, st); i = IDX(p, v); run = i is not None and bool(v[i]["running"])
+        stt = (r or {}).get("status") or "KHÔNG CÓ TRÊN WEB"; nd = (r or {}).get("node") or ""
+        dead = bool(r) and stt == "cancelled"
+        if dead: gone.append(n)
+        print(f"{'✗' if dead else '·'} {n:<16} RAM {p.get('ram')}GB · {p.get('cpu')} nhân · {'đang chạy' if run else 'tắt'}"
+              f" · web: {stt}{(' (máy chủ ' + nd + ')') if nd and nd != CONF.get('NODE_ID', '') else ''}", flush=True)
+    keep = len(names) - len(gone)
+    print(f"\n{me}: {len(names)} máy trong danh sách · {len(gone)} máy web đã HUỶ nhưng còn sót trên máy chủ · {keep} máy giữ nguyên")
+    if not gone: return
+    if not a.xoa:
+        print("→ Xoá hẳn các máy ✗ (máy ảo + dữ liệu, KHÔNG khôi phục được):  python phonectl.py dondep --xoa"); return
+    ok = 0
+    for n in gone:
+        a.name = n
+        try: cmd_delete(a); ok += 1
+        except SystemExit: print(f"⚠ {n}: chưa xoá được — chạy lại sau", flush=True)
+    print(f"Xong: đã xoá {ok}/{len(gone)} máy đã huỷ. Web cập nhật số máy / RAM đã cấp sau ~30 giây.")
+
 def cmd_forget(a):
     """forget TÊN: bỏ máy khỏi danh sách CHỈ KHI giả lập chắc chắn không còn máy đó (máy "ma") — không bao giờ xoá máy thật."""
     st = load(); p = rec(a.name, st)
@@ -1981,6 +2024,7 @@ def main():
     s.add_parser("engine").set_defaults(f=cmd_engine)
     s.add_parser("perfset").set_defaults(f=cmd_perfset)
     s.add_parser("ramcheck").set_defaults(f=cmd_ramcheck)
+    dd = s.add_parser("dondep"); dd.add_argument("--xoa", action="store_true"); dd.set_defaults(f=cmd_dondep)
     rf = s.add_parser("ramfix"); rf.add_argument("names", nargs="*"); rf.add_argument("--all", action="store_true"); rf.set_defaults(f=cmd_ramfix)
     mt = s.add_parser("mktpl"); mt.add_argument("android"); mt.set_defaults(f=cmd_mktpl)
     s.add_parser("tuneall").set_defaults(f=cmd_tuneall)
