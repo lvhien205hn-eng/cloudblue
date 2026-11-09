@@ -729,9 +729,10 @@ TUNE = (# CLONE TAB cần Android cho phép nhiều người dùng (máy ảo m�
         "com.google.android.carriersetup com.google.android.feedback com.google.android.partnersetup com.google.android.tts "
         "com.google.android.syncadapters.calendar com.google.android.syncadapters.contacts com.google.android.onetimeinitializer; do "
         "pm disable-user --user 0 $p >/dev/null 2>&1; done; touch /data/local/tmp/.br_lite; }; "
-        # tắt hẳn hiệu ứng chuyển cảnh → CPU không phải vẽ thêm
-        "settings put global window_animation_scale 0; settings put global transition_animation_scale 0; "
-        "settings put global animator_duration_scale 0; settings put global package_verifier_enable 0; "
+        # hiệu ứng chuyển cảnh NHANH 0,5× (KHÔNG tắt hẳn = 0: launcher Android 12/15 của MuMu (Lawnchair) văng khi bấm nút đa nhiệm
+        # và app bấm vào chỉ phóng to icon rồi KHÔNG MỞ — lỗi khách báo 09/11)
+        "settings put global window_animation_scale 0.5; settings put global transition_animation_scale 0.5; "
+        "settings put global animator_duration_scale 0.5; settings put global package_verifier_enable 0; "
         # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp)
         "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
         "settings put global enable_sizecompat_freeform 1; "
@@ -773,9 +774,10 @@ def tune(name, port=None):
         android_ready(port)
         try: adb("-s", f"127.0.0.1:{port}", "shell", TUNE, timeout=120)
         except Exception: pass
-        o = (adb("-s", f"127.0.0.1:{port}", "shell", "settings get global window_animation_scale; [ -f /data/local/tmp/.br_lite ] && echo LITE", timeout=15).stdout or "")
-        if o.split()[:1] == ["0"] or o.startswith("0.0"):
-            if "LITE" in o: return True
+        o = (adb("-s", f"127.0.0.1:{port}", "shell", "settings get global animator_duration_scale; [ -f /data/local/tmp/.br_lite ] && echo LITE", timeout=15).stdout or "")
+        try: anim_ok = abs(float((o.split() or ["x"])[0]) - 0.5) < 0.01
+        except ValueError: anim_ok = False
+        if anim_ok and "LITE" in o: return True
         time.sleep(10)
     print(f"   ⚠ {name}: chưa tối ưu được hết (sẽ làm lại lần khởi động sau)", flush=True)
     return False
@@ -856,7 +858,9 @@ LD_MEM = (256, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384)
 #   app_keptlive = giữ app chạy nền · dynamic_adjust_frame_rate = tự hạ FPS (tắt) · force_discrete_graphics = bắt dùng card rời (RTX)
 #   vertical_sync = chờ màn hình (tắt) · prevent_sleep = không cho Windows ngủ. Tắt cả bộ: MUMU_PERF=0 trong cloudphone.conf
 MUMU_PERF = {} if CONF.get("MUMU_PERF", "1") == "0" else {
-    "app_keptlive": "true", "dynamic_adjust_frame_rate": "false", "force_discrete_graphics": "true", "vertical_sync": "false", "prevent_sleep": "true"}
+    # app_keptlive = "giữ app chạy nền" của MuMu: TẮT — MuMu Android 15 mở MỖI APP thành 1 tab = 1 màn hình riêng, luồng hình chỉ thấy
+    # màn chính → khách bấm app không thấy mở (lỗi khách báo 09/11, bật từ 08/11). Android tự giữ app chạy nền như bình thường.
+    "app_keptlive": "false", "dynamic_adjust_frame_rate": "false", "force_discrete_graphics": "true", "vertical_sync": "false", "prevent_sleep": "true"}
 def configure(idx, ram, cpu, res, dpi):
     w, h = res.lower().split("x")
     if EMU == "ld":
