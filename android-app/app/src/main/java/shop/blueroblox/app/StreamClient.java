@@ -359,11 +359,17 @@ public final class StreamClient {
             throw new Retry("OFFLINE", Ui.L("Máy chủ đang bảo trì / offline", "Server under maintenance / offline"), true, 10000);
         if (preview && !truthy(stream.opt("preview")))                // máy chủ cũ: phiên xem trước sẽ đá phiên điều khiển → không mở
             throw new Stop("NO_PREVIEW", Ui.L("Máy chủ chưa hỗ trợ xem trước.", "This server has no live preview yet."));
-        Exception last = null;
+        Exception last = null; boolean dfail = false;
         for (Path p : paths) {
             if (closed) throw new IOException("closed");
-            try { return p.ws ? dialWs(p) : dialDirect(p, cert); }
-            catch (Exception e) { last = e; }
+            try {
+                Session s = p.ws ? dialWs(p) : dialDirect(p, cert);
+                if (p.ws && dfail) {                    // đường trực tiếp vừa hỏng → 6 giờ tới đi Cloudflare trước (đỡ chờ ~2 giây mỗi lần nối)
+                    try { prefs.edit().putLong(failKey(), System.currentTimeMillis()).apply(); } catch (Exception ignored) { }
+                }
+                return s;
+            }
+            catch (Exception e) { last = e; if (!p.ws) dfail = true; }
         }
         if (last instanceof IOException) throw (IOException) last;
         throw new IOException(last == null ? "no path" : String.valueOf(last.getMessage()), last);
@@ -390,14 +396,23 @@ public final class StreamClient {
         String ws = str(st, "ws").trim();
         if (ws.startsWith("wss://") || ws.startsWith("ws://")) out.add(new Path(true, ws, 0, 8000, "ws"));
         String last = prefs.getString(pathKey(), "");
-        for (int i = 1; i < out.size(); i++) {
-            if (out.get(i).key.equals(last)) { out.add(0, out.remove(i)); break; }
+        // Cloudflare (ws) chỉ được đưa lên đầu khi đường trực tiếp đã hỏng trong 6 giờ qua (cùng máy chủ + loại mạng).
+        // Trước đây app nhớ Cloudflare mãi mãi → modem mở cổng rồi vẫn đi đường vòng (trễ ~100 ms, giật).
+        long age = System.currentTimeMillis() - prefs.getLong(failKey(), 0L);
+        boolean wsFirst = age >= 0 && age < 6L * 3600_000L;
+        if (last.startsWith("d:") || ("ws".equals(last) && wsFirst)) {
+            for (int i = 1; i < out.size(); i++) {
+                if (out.get(i).key.equals(last)) { out.add(0, out.remove(i)); break; }
+            }
         }
         return out;
     }
 
     /** Nhớ đường nối được theo máy chủ + loại mạng (wifi / di động): ở nhà dùng LAN, ra ngoài dùng đường đã chạy được. */
     private String pathKey() { return "path_" + node + "_" + netTag(); }
+
+    /** Lúc đường trực tiếp hỏng gần nhất (theo máy chủ + loại mạng). */
+    private String failKey() { return "dfail_" + node + "_" + netTag(); }
 
     private String netTag() { return netTag(app); }
 
