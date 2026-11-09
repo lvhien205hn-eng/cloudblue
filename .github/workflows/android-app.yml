@@ -64,8 +64,15 @@ jobs:
           fi
           echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ks.jks"
           echo "KEYSTORE_FILE=$RUNNER_TEMP/ks.jks" >> "$GITHUB_ENV"
-          # Khoá CŨ (đã ký app 1.4x, trước 13:20 09/11/2026) — có thì ký thêm bằng khoá cũ + "xoay khoá" để app cũ cập nhật thẳng được
-          if [ -n "$OLD_B64" ]; then echo "$OLD_B64" | base64 -d > "$RUNNER_TEMP/old.jks" && echo "OLD_KEYSTORE_FILE=$RUNNER_TEMP/old.jks" >> "$GITHUB_ENV"; fi
+          # Khoá CŨ (đã ký app 1.4x, trước 13:20 09/11/2026) — có thì ký thêm bằng khoá cũ + "xoay khoá" để app cũ cập nhật thẳng được.
+          # Bỏ mọi khoảng trắng / xuống dòng (dán từ Notepad / điện thoại hay thừa \r\n). Hỏng → chỉ bỏ qua xoay khoá, KHÔNG làm hỏng bản build.
+          if [ -z "$OLD_B64" ]; then
+            echo "::warning::Chua co secret ANDROID_OLD_KEYSTORE_B64 - APK chi ky khoa moi, app cu (khoa cu) phai go roi cai lai"
+          elif printf '%s' "$OLD_B64" | tr -d ' \r\n\t' | base64 -d > "$RUNNER_TEMP/old.jks" 2>/dev/null && [ -s "$RUNNER_TEMP/old.jks" ]; then
+            echo "OLD_KEYSTORE_FILE=$RUNNER_TEMP/old.jks" >> "$GITHUB_ENV"; echo "Khoa cu: da doc tu secret ANDROID_OLD_KEYSTORE_B64"
+          else
+            echo "::warning::Secret ANDROID_OLD_KEYSTORE_B64 khong giai ma duoc (dan thieu / sai noi dung) - bo qua xoay khoa"
+          fi
 
       - name: Build APK + AAB
         env:
@@ -84,6 +91,15 @@ jobs:
           OLD_PASSWORD: ${{ secrets.ANDROID_OLD_KEYSTORE_PASSWORD }}
         run: |
           set -e
+          # mật khẩu dán vào secret hay thừa xuống dòng (\r\n) → bỏ, không thì apksigner báo sai mật khẩu
+          OLD_PASSWORD="$(printf '%s' "$OLD_PASSWORD" | tr -d '\r\n')"; export OLD_PASSWORD
+          KEYSTORE_PASSWORD="$(printf '%s' "$KEYSTORE_PASSWORD" | tr -d '\r\n')"; export KEYSTORE_PASSWORD
+          if [ -z "$OLD_PASSWORD" ]; then echo "::warning::Chua co secret ANDROID_OLD_KEYSTORE_PASSWORD - bo qua xoay khoa"; exit 1; fi
+          # kiểm khoá cũ ĐÚNG là khoá đã ký app 1.4x (chứng chỉ 1A:48:23:02…) trước khi ký
+          FP=$(keytool -list -v -keystore "$OLD_KEYSTORE_FILE" -storepass "$OLD_PASSWORD" 2>&1 | grep -m1 'SHA256:' | sed 's/.*SHA256: *//' | tr -d ': ' | tr 'A-F' 'a-f' || true)
+          if [ -z "$FP" ]; then echo "::warning::Khong mo duoc khoa cu - kiem lai secret ANDROID_OLD_KEYSTORE_PASSWORD (dung mat khau trong file ANDROID_OLD_KEYSTORE_PASSWORD.txt)"; exit 1; fi
+          if [ "$FP" != "1a48230206ea270211c562613489cd788daef26aff6115ecf15c6b0451cc804a" ]; then echo "::warning::File khoa cu KHONG dung khoa da ky app 1.4x (chung chi $FP)"; exit 1; fi
+          echo "Khoa cu dung: chung chi 1A:48:23:02... (app 1.4x)"
           AS="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           APK=android-app/app/build/outputs/apk/release/app-release.apk
           "$AS" rotate --out "$RUNNER_TEMP/lineage" \
@@ -117,6 +133,7 @@ jobs:
           assert got.get("0x7109871a") == OLD and got.get("0x7109871a_n") == 1, "v2 phai la DUY NHAT khoa CU"
           assert got.get("0xf05368c0") == NEW, "v3 phai la khoa MOI"
           print("XOAY KHOA OK: app cu (khoa cu) + app 1.101+ (khoa moi) deu cap nhat duoc")
+          print("::notice::XOAY KHOA OK - app cu (khoa cu) va app 1.101+ (khoa moi) deu cap nhat thang duoc")
           PY
           cp "$RUNNER_TEMP/rot.apk" "$APK"
           echo "ROTATED=1" >> "$GITHUB_ENV"
@@ -129,6 +146,11 @@ jobs:
           # "ver" = số bản gọn · "version" = số bản + OLD_KEY_HINT (cho app cũ; đã xoay khoá thì không cần) — ghi bằng python cho đúng JSON
           python3 -c 'import json, os, sys, time; v = "1." + os.environ["APP_VERSION_CODE"]; h = "" if os.environ.get("ROTATED") == "1" else os.environ.get("OLD_KEY_HINT", "").strip(); json.dump({"version": v + (". " + h if h else ""), "ver": v, "code": int(os.environ["APP_VERSION_CODE"]), "size": int(sys.argv[1]), "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, open("blueroblox-site/download/app.json", "w", encoding="utf-8"), ensure_ascii=False)' "$SIZE"
           cat blueroblox-site/download/app.json
+
+      - name: Key rotation result
+        run: |
+          if [ "$ROTATED" = "1" ]; then echo "::notice::APK 1.$APP_VERSION_CODE da XOAY KHOA (v2 khoa cu + v3 khoa moi)"
+          else echo "::warning::APK 1.$APP_VERSION_CODE CHUA xoay khoa - chi ky khoa moi. Xem buoc 'Signing key' / 'Rotate signing key' de biet ly do."; fi
 
       - uses: actions/upload-artifact@v4
         with:
