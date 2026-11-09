@@ -151,6 +151,7 @@ class StreamClient:
         self.ep, self.token_fn, self.phone, self.on_event = endpoint or {}, token_fn, phone_id, on_event
         self.q, self.client, self.fps, self.maxh = q, client, fps, maxh
         self.prefer = prefer                       # (kind, desc) lần trước nối được
+        self.direct_fail_t = 0.0                   # lúc đường trực tiếp vừa hỏng trong phiên này (nối lại trong 5 phút thì đi Cloudflare luôn)
         self.conn = None; self.stop_flag = False; self.thread = None
         self.last_rx = 0.0; self.path = ""; self.fails = 0; self.auth_retry = False
         self.moves = {}; self.mlock = threading.Lock(); self.last_pts = 0; self.acked = 0
@@ -171,22 +172,28 @@ class StreamClient:
                 if not d.get("lan"): out.append(("direct", d["host"], int(d["port"]), 2.0))
         if st.get("ws"): out.append(("ws", st["ws"], 0, 8.0))
         if self.prefer:
-            out.sort(key=lambda p: 0 if (p[0], f"{p[1]}:{p[2]}" if p[0] == "direct" else p[1]) == tuple(self.prefer) else 1)
+            pk = tuple(self.prefer)
+            # Cloudflare chỉ được đưa lên đầu khi đường trực tiếp VỪA hỏng trong phiên này (5 phút). Còn lại luôn thử trực tiếp
+            # trước (tối đa ~2,4 giây) → modem mở cổng xong là app tự về đường nhanh (trước đây nhớ Cloudflare mãi mãi).
+            if pk[0] == "direct" or time.time() - self.direct_fail_t < 300:
+                out.sort(key=lambda p: 0 if (p[0], f"{p[1]}:{p[2]}" if p[0] == "direct" else p[1]) == pk else 1)
         return out, cert
 
     def _connect(self):
         paths, cert = self._paths()
         if not paths: raise Fatal("OFFLINE", "Máy chủ chưa mở đường phát hình (chưa cập nhật?).")
-        errs = []
+        errs = []; dfail = False
         for kind, a, port, to in paths:
             if self.stop_flag: break
             try:
                 c = DirectConn(a, port, cert, to) if kind == "direct" else WSConn(a, to)
                 self.path = ("trực tiếp" if kind == "direct" else "Cloudflare")
                 self.prefer = (kind, c.desc if kind == "direct" else a)
+                if kind == "ws" and dfail: self.direct_fail_t = time.time()
                 return c
             except Exception as e:
                 errs.append(f"{kind} {a}: {e}")
+                if kind == "direct": dfail = True
         raise ConnectionError("; ".join(errs)[-300:] or "không nối được")
 
     def _run(self):
