@@ -430,7 +430,8 @@ public class MainActivity extends Activity {
         StringBuilder b = new StringBuilder(256);
         b.append(status.optBoolean("maint", false)).append('|').append(status.optString("maint_msg", "")).append('|')
                 .append(isAdmin()).append('|').append(maintBlocks());
-        String[] keys = {"id", "name", "status", "ram", "cpu", "res", "fps", "expires_at", "lock_reason", "shared", "share_expires", "owner_name", "share_id"};
+        String[] keys = {"id", "name", "status", "ram", "cpu", "res", "fps", "expires_at", "lock_reason", "shared", "share_expires", "owner_name", "share_id",
+                "android", "switch_to", "replaces", "error"};
         for (int i = 0; i < phones.length(); i++) {
             JSONObject p = phones.optJSONObject(i);
             if (p == null) continue;
@@ -717,14 +718,24 @@ public class MainActivity extends Activity {
         r1.addView(Ui.pill(this, label, col), Ui.wrap());
         c.addView(r1, Ui.fill());
 
-        c.addView(Ui.muted(this, p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
+        String av = p.optString("android", "").trim();
+        c.addView(Ui.muted(this, (av.isEmpty() || "null".equals(av) ? "" : "Android " + av + " · ") + p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
 
         if (exp > 0) c.addView(expiryText(p, true, ticks), Ui.fill());
         if (lk) {
             String why = p.optString("lock_reason", "");
             c.addView(Ui.text(this, Ui.L("Máy đang bị khoá", "This phone is locked") + (why.isEmpty() || why.equals("null") ? "" : ": " + why), 13, Ui.BAD, false), Ui.fill());
         }
-        if ("pending".equals(st)) c.addView(Ui.muted(this, Ui.L("Máy đang khởi động và cài app sẵn, khoảng 2–3 phút. Trang tự cập nhật.", "Booting and installing apps, about 2–3 minutes.")), Ui.fill());
+        if (SwitchAndroid.isNewFromSwitch(p))             // máy MỚI của lệnh đổi Android
+            c.addView(Ui.text(this, "🤖 " + Ui.L("Máy mới đổi sang Android " + SwitchAndroid.cur(p) + " — đang tạo (2–5 phút). Xong thì máy cũ và dữ liệu cũ tự xoá.",
+                    "New phone from an Android switch (Android " + SwitchAndroid.cur(p) + ") — being created (2–5 min). The old phone and its data are then removed."), 13, Ui.WAIT, false), Ui.fill());
+        else if ("pending".equals(st)) c.addView(Ui.muted(this, Ui.L("Máy đang khởi động và cài app sẵn, khoảng 2–3 phút. Trang tự cập nhật.", "Booting and installing apps, about 2–3 minutes.")), Ui.fill());
+        JSONObject swTo = SwitchAndroid.switching(p, phones);
+        if (swTo != null)                                // máy CŨ đang chờ máy mới
+            c.addView(Ui.text(this, "🤖 " + Ui.L("Đang đổi sang Android " + SwitchAndroid.cur(swTo) + ": máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.",
+                    "Switching to Android " + SwitchAndroid.cur(swTo) + ": the new phone is being created; this one keeps working until then."), 13, Ui.WAIT, false), Ui.fill());
+        String swFail = SwitchAndroid.failNote(p);
+        if (swFail != null && swTo == null) c.addView(Ui.text(this, swFail, 13, Ui.BAD, false), Ui.fill());
         boolean shared = p.optBoolean("shared", false);
         if (shared) {
             long se = parseTime(p.optString("share_expires", ""));
@@ -924,9 +935,15 @@ public class MainActivity extends Activity {
         up.setEnabled(canUp); up.setAlpha(canUp ? 1f : .45f);
         boolean canShare = ("active".equals(p.optString("status")) || "pending".equals(p.optString("status"))) && !locked(p);
         sh.setEnabled(canShare); sh.setAlpha(canShare ? 1f : .45f);
+        boolean swing = SwitchAndroid.switching(p, phones) != null;
+        Button sw = Ui.button(this, "🤖 " + (swing ? Ui.L("Đang đổi Android… (chờ máy mới)", "Switching Android… (wait for the new phone)")
+                : Ui.L("Đổi Android (", "Switch Android (") + android.text.TextUtils.join(" / ", andList()) + ")"), Ui.GHOST);
+        boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && andList().size() > 1;
+        sw.setEnabled(canSw); sw.setAlpha(canSw ? 1f : .45f);
         Button del = Ui.button(this, "🗑 " + Ui.L("Huỷ máy (xoá vĩnh viễn)", "Delete phone"), Ui.DANGER);
-        c.addView(up, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
+        c.addView(up, Ui.fill()); c.addView(sw, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
         Dialog d = Ui.sheet(this, p.optString("name"), c);
+        sw.setOnClickListener(v -> { d.dismiss(); SwitchAndroid.open(this, p, price, status, isAdmin(), () -> { phonesSig = null; refresh(); h.postDelayed(this::refresh, 5000); }); });
         del.setOnClickListener(v -> { d.dismiss(); cancelPhone(p); });
         up.setOnClickListener(v -> { d.dismiss(); upgrade(p); });
         sh.setOnClickListener(v -> { d.dismiss(); share(p); });
@@ -1132,6 +1149,7 @@ public class MainActivity extends Activity {
         final int maxR = lim[0], maxC = lim[1];                  // trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 7: 16GB · 16 nhân)
         sRam = clamp(sRam, minR, maxR); sCpu = clamp(sCpu, minC, maxC); sDays = clamp(sDays, minD, maxD); sFps = clamp(sFps, minF, maxF);
         final Ui.Wrap aw = new Ui.Wrap(this, 8);
+        final TextView andTip = Ui.text(this, "", 12.5f, Ui.WAIT, false);
 
         TextView total = Ui.text(this, "", 22, Ui.SKY, true);
         TextView calc = Ui.text(this, "", 11.5f, Ui.MUTED, false);
@@ -1141,6 +1159,7 @@ public class MainActivity extends Activity {
 
         Runnable upd = () -> {
             paintAnd(aw);
+            andTip.setVisibility("15".equals(sAnd) ? View.VISIBLE : View.GONE);
             double t = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty, bal = prof.optDouble("balance", 0);
             total.setText(Ui.vnd(t));
             calc.setText("(" + sRam + "GB × " + Ui.vnd(price.optDouble("price_ram_gb_day", 2500)) + " + " + sCpu + Ui.L(" nhân × ", " cores × ")
@@ -1172,7 +1191,7 @@ public class MainActivity extends Activity {
             pc.addView(Ui.text(this, Ui.L("💡 Gợi ý cấu hình — bấm để chọn nhanh", "💡 Presets — tap to fill"), 14, Ui.MUTED, true));
             Ui.Wrap pw = new Ui.Wrap(this, 8);
             String[][] PRE = {{"💬", Ui.L("Treo app", "Idle apps"), "2", "2"}, {"🎮", Ui.L("Game nhẹ", "Light games"), "4", "2"},
-                    {"🕹️", Ui.L("Game 3D", "3D games"), "4", "4"}, {"🔥", Ui.L("Game nặng", "Heavy games"), "8", "8"}};
+                    {"🕹️", Ui.L("Roblox 1 tab · Game 3D", "Roblox 1 tab · 3D games"), "4", "4"}, {"🔥", Ui.L("Roblox 2–4 tab · Game nặng", "Roblox 2–4 tabs · Heavy"), "8", "8"}};
             for (String[] pr : PRE) {
                 final int pr0 = clamp(Integer.parseInt(pr[2]), minR, maxR), pc0 = clamp(Integer.parseInt(pr[3]), minC, maxC);
                 TextView ch = Ui.chip(this, pr[0] + " " + pr[1] + "\n" + pr0 + "GB · " + pc0 + Ui.L(" nhân", " cores"), sRam == pr0 && sCpu == pc0);
@@ -1181,6 +1200,8 @@ public class MainActivity extends Activity {
                 pw.addView(ch);
             }
             pc.addView(pw, Ui.fill());
+            pc.addView(Ui.muted(this, Ui.L("🕹️ Treo Roblox: 1 tab nên 4GB · 4 nhân (vào game Roblox đã dùng khoảng 2GB RAM — 3GB · 2 nhân không treo nổi); 2–4 tab chọn 8GB · 8 nhân. Đồ hoạ trong game để thấp.",
+                    "🕹️ Roblox: 1 tab needs 4GB · 4 cores (Roblox alone uses ~2GB RAM in game — 3GB · 2 cores can't keep up); 2–4 tabs: 8GB · 8 cores. Keep in-game graphics low.")), Ui.fill());
             body.addView(pc, Ui.fill());
         }
         // Phiên bản Android
@@ -1201,6 +1222,11 @@ public class MainActivity extends Activity {
             aw.addView(ch);
         }
         ac.addView(aw, Ui.fill());
+        if (avs.contains("15")) {                        // khách báo Android 15 có máy không vào được Google → chỉ cách chọn / đổi sang 12
+            andTip.setText(Ui.L("💡 Android 15 không vào được Google / Play Store? Chọn Android 12. Máy đang thuê thì vào ⋯ → 🤖 Đổi Android (giữ nguyên hạn, miễn phí).",
+                    "💡 Google / Play Store not working on Android 15? Pick Android 12. For a phone you already rent: ⋯ → 🤖 Switch Android (same expiry, free)."));
+            ac.addView(andTip, Ui.fill());
+        }
         body.addView(boxed(ac), Ui.fill());
 
         body.addView(boxed(group(Ui.L("RAM", "RAM"), RAM, minR, maxR, "GB", v -> { sRam = v; upd.run(); }, () -> sRam)), Ui.fill());
@@ -1349,6 +1375,105 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- TAB 3: Tài khoản ----------------
+    /** Thẻ "Giới thiệu bạn bè": link mời + số liệu hoa hồng; tài khoản mới (≤ 7 ngày, chưa nạp) nhập được mã mời của bạn.
+     *  Trang tài khoản vẽ lại mỗi lần tự tải (30 giây) → giữ kết quả 2 phút, khỏi gọi máy chủ liên tục. */
+    private Object[] refCache;
+    private long refAt = 0;
+
+    void loadRef(TextView info, LinearLayout box) {
+        if (refCache != null && SystemClock.elapsedRealtime() - refAt < 120_000L) { drawRef(info, box, refCache); return; }
+        Api.<Object[]>bg(() -> {
+            Object r = Api.rpc("ref_info", new JSONObject());
+            JSONObject me = null;
+            try {
+                JSONArray a = (JSONArray) Api.get("profiles?id=eq." + Api.uid + "&select=ref_by,created_at");
+                if (a.length() > 0) me = a.getJSONObject(0);
+            } catch (Exception ignored) { }
+            return new Object[]{r, me};
+        }, res -> {
+            refCache = res; refAt = SystemClock.elapsedRealtime();
+            if (destroyed || tab != 2 || !info.isAttachedToWindow()) return;
+            drawRef(info, box, res);
+        }, m -> { if (!destroyed && tab == 2) info.setText(m.contains("ref_info") || m.contains("schema cache") ? Ui.L("Tính năng này chưa bật.", "Not available yet.") : m); });
+    }
+
+    private void drawRef(TextView info, LinearLayout box, Object[] res) {
+        JSONObject d = res[0] instanceof JSONObject ? (JSONObject) res[0] : null;
+        if (d == null || d.optString("code", "").isEmpty()) { info.setText(Ui.L("Tính năng này chưa bật.", "Not available yet.")); return; }
+        double pct = d.optDouble("pct", 0);
+        String pc = pct == Math.floor(pct) ? String.valueOf((long) pct) : String.valueOf(pct);
+        final String link = Api.WEB + "/?ref=" + d.optString("code");
+        info.setText(pct > 0 ? Ui.L("Gửi link cho bạn bè. Bạn bè đăng ký qua link rồi nạp tiền → bạn được cộng " + pc + "% số tiền họ nạp vào số dư, mỗi lần nạp.",
+                "Share your link. When friends sign up through it and top up, you get " + pc + "% of every top-up added to your balance.")
+                : Ui.L("Chương trình hoa hồng đang tạm dừng.", "The referral programme is paused."));
+        box.removeAllViews();
+        TextView lk = Ui.text(this, link, 14, Ui.SKY, true);
+        lk.setTextIsSelectable(true);
+        box.addView(lk, Ui.fill());
+        LinearLayout br = Ui.row(this, 8);
+        Button cp = Ui.button(this, "📋 " + Ui.L("Copy link", "Copy link"), Ui.GHOST);
+        cp.setOnClickListener(v -> {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            if (cm != null) cm.setPrimaryClip(android.content.ClipData.newPlainText("ref", link));
+            Ui.toast(this, Ui.L("Đã copy link mời.", "Invite link copied."));
+        });
+        Button sh = Ui.button(this, "📤 " + Ui.L("Gửi link", "Share"), Ui.PRIMARY);
+        sh.setOnClickListener(v -> {
+            try {
+                startActivity(Intent.createChooser(new Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT,
+                        Ui.L("Thuê điện thoại Android đám mây treo game 24/7 — đăng ký qua link này: ", "Rent a 24/7 cloud Android phone — sign up here: ") + link), Ui.L("Gửi link mời", "Share invite link")));
+            } catch (Exception e) { Ui.toast(this, e.getMessage() == null ? "?" : e.getMessage()); }
+        });
+        br.addView(cp, Ui.weight(1)); br.addView(sh, Ui.weight(1));
+        box.addView(br, Ui.fill());
+        box.addView(Ui.text(this, Ui.L("Đã mời: ", "Invited: ") + d.optInt("invited") + "  ·  " + Ui.L("Đã nạp: ", "Topped up: ") + d.optInt("paid_users")
+                + "  ·  " + Ui.L("Đã nhận: ", "Earned: ") + Ui.vnd(d.optDouble("earned", 0)), 14, Ui.FG, true), Ui.fill());
+        JSONArray it = d.optJSONArray("items");
+        if (it != null) for (int i = 0; i < Math.min(5, it.length()); i++) {
+            JSONObject x = it.optJSONObject(i);
+            if (x == null) continue;
+            long at = parseTime(x.optString("at"));
+            box.addView(Ui.muted(this, (at > 0 ? fdate(at) + " · " : "") + x.optString("who") + Ui.L(" nạp ", " topped up ") + Ui.vnd(x.optDouble("topup", 0))
+                    + "  →  +" + Ui.vnd(x.optDouble("amount", 0))), Ui.fill());
+        }
+        box.addView(Ui.muted(this, Ui.L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong 7 ngày đầu, trước lần nạp đầu tiên). Không tính tự mời chính mình.",
+                "Only new accounts that sign up through your link count (within their first 7 days, before their first top-up). Self-invites don't count.")), Ui.fill());
+        JSONObject me = res[1] instanceof JSONObject ? (JSONObject) res[1] : null;
+        boolean fresh = me != null && me.isNull("ref_by") && parseTime(me.optString("created_at")) > System.currentTimeMillis() - 7L * 86400000L;
+        if (fresh) {                                     // tài khoản mới, chưa nhận lời mời → nhập mã của người mời (trong hộp thoại: trang vẽ lại không xoá chữ đang gõ)
+            Button inv = Ui.button(this, "🎟 " + Ui.L("Được bạn mời? Nhập mã mời", "Invited? Enter the invite code"), Ui.GHOST);
+            inv.setOnClickListener(v -> refClaimDlg());
+            box.addView(inv, Ui.fill());
+        }
+    }
+
+    void refClaimDlg() {
+        LinearLayout c = Ui.col(this, 12);
+        c.addView(Ui.muted(this, Ui.L("Mã mời là 8 ký tự cuối trong link bạn bè gửi (…/?ref=ABCD1234). Chỉ tài khoản mới (tạo trong 7 ngày, chưa nạp tiền) nhận được.",
+                "The invite code is the last 8 characters of your friend's link (…/?ref=ABCD1234). Only new accounts (under 7 days, no top-ups) can use it.")));
+        EditText code = Ui.input(this, Ui.L("Mã mời", "Invite code"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
+        c.addView(code, Ui.fill());
+        Button go = Ui.button(this, Ui.L("Nhận lời mời", "Accept invite"), Ui.PRIMARY);
+        c.addView(go, Ui.fill());
+        Dialog d = Ui.sheet(this, "🎟 " + Ui.L("Nhập mã mời", "Invite code"), c);
+        go.setOnClickListener(v -> {
+            String s = code.getText().toString().replaceFirst("(?i)^.*[?&]ref=", "").toUpperCase(Locale.US).replaceAll("[^A-Z0-9]", "");
+            if (s.isEmpty()) return;
+            go.setEnabled(false);
+            Api.bg(() -> Api.rpc("ref_claim", new JSONObject().put("p_code", s)), r -> {
+                go.setEnabled(true);
+                JSONObject o = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
+                if (o.optBoolean("ok")) {
+                    d.dismiss();
+                    refCache = null;
+                    Ui.toast(this, Ui.L("✓ Đã nhận lời mời.", "✓ Invite accepted."));
+                    if (tab == 2) renderAccount();
+                } else Ui.toast(this, Api.friendly(new Exception(o.optString("err", "REF_INVALID"))));
+            }, m -> { go.setEnabled(true); Ui.toast(this, m); });
+        });
+        d.show();
+    }
+
     void renderAccount() {
         LinearLayout body = Ui.col(this, 14);
         LinearLayout c = Ui.card(this);
@@ -1361,6 +1486,15 @@ public class MainActivity extends Activity {
         top.setOnClickListener(v -> openTopup());
         c.addView(top, Ui.fill());
         body.addView(c, Ui.fill());
+
+        LinearLayout rf = Ui.card(this);                // 🎁 Giới thiệu bạn bè (SQL v24: ref_info / ref_claim)
+        rf.addView(Ui.h2(this, "🎁 " + Ui.L("Giới thiệu bạn bè", "Invite friends")));
+        TextView rfInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
+        rf.addView(rfInfo, Ui.fill());
+        LinearLayout rfBox = Ui.col(this, 10);
+        rf.addView(rfBox, Ui.fill());
+        body.addView(rf, Ui.fill());
+        loadRef(rfInfo, rfBox);
 
         LinearLayout s = Ui.card(this);
         s.addView(Ui.h2(this, Ui.L("Cài đặt", "Settings")));

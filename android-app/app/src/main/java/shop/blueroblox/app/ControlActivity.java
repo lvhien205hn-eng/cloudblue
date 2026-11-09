@@ -692,6 +692,7 @@ public class ControlActivity extends Activity {
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
                 {"📱", Ui.L("Đổi máy", "Switch"), (Runnable) this::switchPhone},
+                {"🤖", Ui.L("Đổi Android", "Android ver."), (Runnable) this::switchAndroid},
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };
@@ -843,6 +844,27 @@ public class ControlActivity extends Activity {
     private void updQ() {
         View v = topBar.findViewWithTag("q");
         for (String[] q : QUAL) if (q[0].equals(quality) && v instanceof TextView) ((TextView) v).setText("✨ " + Ui.L(q[1], q[2]));
+    }
+
+    /** 🤖 Đổi Android 9 / 12 / 15 (chỉ chủ máy, SQL v24): máy mới giữ hạn còn lại; máy mới chạy xong thì máy cũ + dữ liệu cũ tự xoá. */
+    private void switchAndroid() {
+        final String pid = id;
+        Api.<Object[]>bg(() -> {
+            JSONArray a = (JSONArray) Api.get("cloud_phones?id=eq." + pid + "&select=*");
+            if (a.length() == 0) throw new Exception(Ui.L("Không tìm thấy máy.", "Phone not found."));
+            return new Object[]{a.getJSONObject(0), MainActivity.clampHard(Api.pricing()), Api.status(), Api.phones(), Api.profile()};
+        }, r -> {
+            if (!pid.equals(id) || isFinishing()) return;
+            JSONObject p = (JSONObject) r[0];
+            if (!Api.uid.equals(p.optString("user_id"))) { Ui.toast(this, Ui.L("Chỉ chủ máy mới đổi Android được.", "Only the owner can switch Android.")); return; }
+            if (SwitchAndroid.switching(p, (JSONArray) r[3]) != null) { Ui.toast(this, Api.friendly(new Exception("SWITCHING"))); return; }
+            if (!"active".equals(p.optString("status")) || MainActivity.locked(p)) { Ui.toast(this, Api.friendly(new Exception(MainActivity.locked(p) ? "PHONE_LOCKED" : "PHONE_NOT_ACTIVE"))); return; }
+            boolean admin = "admin".equals(((JSONObject) r[4]).optString("role"));
+            SwitchAndroid.open(this, p, (JSONObject) r[1], (JSONObject) r[2], admin, () -> {
+                if (isTaskRoot()) startActivity(new Intent(this, MainActivity.class));     // mở từ link → về danh sách máy xem máy mới đang tạo
+                finish();
+            });
+        }, m -> Ui.toast(this, m));
     }
 
     private void switchPhone() {
