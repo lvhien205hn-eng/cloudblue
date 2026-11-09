@@ -1,0 +1,1658 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#060a1c">
+<title>Điều khiển máy – BLUEROBLOX</title>
+<link rel="icon" href="logo.webp">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="BlueRoblox">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#060a1c; --panel:#0e1638; --panel2:#16224f; --line:rgba(143,208,255,.14); --line2:rgba(143,208,255,.28);
+  --fg:#eef3ff; --muted:#97a5cf; --blue:#3d7bff; --sky:#8fd0ff; --ok:#3ce0b0; --wait:#ffc861; --bad:#ff6b81;
+  --font:"Be Vietnam Pro",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace;
+  --ring:var(--wait); --top:56px;
+}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg);color:var(--fg);font:14px/1.45 var(--font);-webkit-tap-highlight-color:transparent}
+body{display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(120% 80% at 50% 0%,#0d1a4a 0%,var(--bg) 60%)}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+a{color:var(--sky)}
+svg.ic{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+svg.sm{width:18px;height:18px}
+
+/* ---------- thanh trên ---------- */
+.top{position:relative;z-index:20;height:var(--top);flex:none;display:flex;align-items:center;gap:10px;padding:0 14px;border-bottom:1px solid var(--line);background:rgba(6,10,28,.72);backdrop-filter:blur(8px)}
+.home{display:flex;align-items:center;gap:4px;color:var(--muted);text-decoration:none;font-weight:600;white-space:nowrap}
+.home:hover{color:var(--fg)}
+.devwrap{position:relative;min-width:0}
+.dev{min-width:0;max-width:240px;display:inline-flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line2);color:var(--fg);border-radius:10px;padding:7px 10px;font:inherit;font-weight:600}
+.dev span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev i{width:8px;height:8px;border-radius:50%;background:var(--wait);flex:none}
+.dev i.ok{background:var(--ok)} .dev i.bad{background:var(--bad)}
+.dev svg{flex:none;opacity:.7}
+.devmenu{position:absolute;left:0;top:calc(100% + 8px);z-index:55;width:min(500px,calc(100vw - 16px));max-height:min(70dvh,560px);display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line2);border-radius:16px;box-shadow:0 24px 50px -20px #000}
+.devmenu[hidden]{display:none}
+.dm-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dm-h b{flex:1}
+.dm-l{overflow:auto;padding:6px}
+.dm-r{display:grid;grid-template-columns:auto 1fr auto;gap:3px 10px;align-items:center;padding:10px 10px;border-radius:12px}
+.dm-r:hover{background:rgba(143,208,255,.06)}
+.dm-r.cur{background:rgba(61,123,255,.14)}
+.dm-r input{width:16px;height:16px;accent-color:var(--blue)}
+.dm-r .nm{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:7px}
+.dm-r .nm i{width:7px;height:7px;border-radius:50%;background:var(--wait);flex:none}
+.dm-r .nm i.ok{background:var(--ok)} .dm-r .nm i.bad{background:var(--bad)}
+.dm-r small{grid-column:2;color:var(--muted);font-size:12px}
+.dm-r .btn{grid-row:1/3;grid-column:3}
+.dm-r .nm b{font-weight:600}
+.dm-r .acts2{grid-row:1/4;grid-column:3;display:flex;flex-direction:column;gap:5px}
+.dm-r .info2{grid-column:2;font-size:12px;color:var(--muted)}
+.dm-r .exp2{grid-column:2;font-size:12.5px;font-weight:600}
+.lv-ok{color:var(--ok)} .lv-warn{color:#ffc861} .lv-bad{color:var(--bad)}
+.dm-r.warn{box-shadow:inset 3px 0 0 #ffc861} .dm-r.bad{box-shadow:inset 3px 0 0 var(--bad)}
+.expbar{flex:none;display:flex;align-items:center;gap:10px;padding:8px 16px;background:rgba(255,200,97,.1);border-bottom:1px solid rgba(255,200,97,.35);color:#ffe7b8;font-size:13px}
+.expbar.bad{background:rgba(255,107,129,.12);border-color:rgba(255,107,129,.45);color:#ffd4db}
+.expbar[hidden]{display:none}
+.fitbar{background:rgba(61,123,255,.1);border-color:rgba(143,208,255,.35);color:#d7e6ff}
+.expbar span{flex:1;min-width:0}
+.rnsum{display:grid;gap:6px;margin-top:10px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.rnsum div{display:flex;justify-content:space-between;gap:10px}
+.rnsum b{font-size:16px}
+.dm-f{display:flex;gap:8px;align-items:center;padding:10px 14px;border-top:1px solid var(--line)}
+.dm-f span{flex:1;color:var(--muted);font-size:12.5px}
+.meta{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px;min-width:0;white-space:nowrap;overflow:hidden}
+.meta b{color:var(--fg);font-weight:600}
+.seg{display:inline-flex;align-items:center;border:1px solid var(--line2);border-radius:10px;overflow:hidden;flex:none}
+.seg button{padding:6px 9px;color:#d7e1ff;font-size:12.5px;font-weight:600;display:inline-flex;align-items:center;gap:5px}
+.seg button:hover{background:var(--panel2)}
+.seg button.on{background:rgba(61,123,255,.2);color:#fff}
+.seg span{padding:0 4px;font:12px var(--mono);color:var(--muted);min-width:64px;text-align:center}
+.right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.state{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--muted);white-space:nowrap}
+.state i{width:8px;height:8px;border-radius:50%;background:var(--ring);box-shadow:0 0 0 4px color-mix(in srgb,var(--ring) 22%,transparent)}
+.adminlink{font-size:12.5px;white-space:nowrap}
+
+/* ---------- 1 máy ---------- */
+.stage{flex:1;min-height:0;display:flex;justify-content:center;align-items:center;padding:12px 16px;gap:14px}
+.viewport{flex:0 1 auto;min-width:0;min-height:0;max-width:100%;max-height:100%;overflow:auto;display:grid;place-items:center;scrollbar-width:thin}
+.frame{position:relative;border-radius:24px;padding:7px;background:#02040d;border:1px solid var(--line2);flex:none;
+  box-shadow:0 0 0 1px rgba(0,0,0,.6),0 0 36px -8px color-mix(in srgb,var(--ring) 55%,transparent),0 30px 60px -30px #000;transition:box-shadow .5s}
+.frame iframe{display:block;border:0;border-radius:18px;background:#000;width:100%;height:100%}
+.veil{position:absolute;inset:7px;border-radius:18px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;padding:22px;background:#040816;color:var(--muted)}
+.veil[hidden]{display:none}
+.veil b{color:var(--fg);font-size:16px}
+.veil .btn{margin-top:4px}
+.spin{width:34px;height:34px;border-radius:50%;border:3px solid var(--line2);border-top-color:var(--sky);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.info{font:11.5px var(--mono);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:360px}
+.side{flex:none;display:flex;flex-direction:column;gap:10px;min-height:0;max-height:100%}
+.tools{width:164px;flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:1fr 1fr;align-content:start;gap:2px;padding:10px 8px;border-radius:18px;background:rgba(14,22,56,.78);border:1px solid var(--line)}
+.tools h6{grid-column:1/-1;font-size:11px;font-weight:600;color:var(--muted);padding:8px 6px 3px}
+.tools h6:first-child{padding-top:2px}
+.tb{display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 2px;border-radius:12px;color:#d7e1ff;font-size:11.5px;line-height:1.2;text-align:center;transition:background .15s,color .15s}
+.tb:hover{background:var(--panel2);color:#fff}
+.tb:active{transform:scale(.96)}
+.tb.on{color:var(--sky);background:rgba(61,123,255,.16)}
+.tb.danger:hover{color:var(--bad)}
+.tb[disabled]{opacity:.35;pointer-events:none}
+
+/* ---------- nhiều máy ---------- */
+.grid{flex:1;min-height:0;overflow:auto;padding:14px 16px 18px;display:none;align-content:start;justify-content:center;gap:14px}
+body.multi .stage{display:none}
+body.multi .grid{display:grid}
+.tile{display:flex;flex-direction:column;gap:6px;min-width:0}
+.th{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;min-width:0}
+.th i{width:7px;height:7px;border-radius:50%;background:var(--wait);flex:none}
+.th i.ok{background:var(--ok)} .th i.bad{background:var(--bad)}
+.th span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.th small{color:var(--muted);font-weight:500;font:11px var(--mono)}
+.tf{position:relative;border-radius:16px;padding:4px;background:#02040d;border:1px solid var(--line2)}
+.tf iframe{display:block;border:0;border-radius:12px;background:#000;width:100%;height:100%}
+.tf .veil{inset:4px;border-radius:12px;padding:10px;font-size:12px}
+.tf .veil b{font-size:13px}
+.tbar{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.tbar button{padding:6px 2px;border-radius:9px;border:1px solid var(--line);color:#d7e1ff;font-size:11.5px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.tbar button:hover{background:var(--panel2)}
+.gempty{grid-column:1/-1;text-align:center;color:var(--muted);padding:40px}
+
+/* ---------- thanh dưới (điện thoại) ---------- */
+.mbar,.sheetbg{display:none}
+
+/* kéo thả */
+.drop{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(3,6,18,.78);backdrop-filter:blur(3px)}
+.drop.on{display:flex}
+.drop div{border:2px dashed var(--sky);border-radius:22px;padding:42px 56px;text-align:center;background:rgba(61,123,255,.08)}
+.drop b{display:block;font-size:20px;margin-bottom:6px}
+.drop span{color:var(--muted)}
+body.dragging iframe{pointer-events:none}
+
+/* khay tải lên */
+.tray{position:fixed;right:16px;bottom:16px;z-index:30;width:min(360px,calc(100vw - 32px));display:flex;flex-direction:column;gap:8px}
+.ti{background:var(--panel);border:1px solid var(--line2);border-radius:14px;padding:11px 13px;box-shadow:0 14px 30px -14px #000}
+.ti .r{display:flex;gap:8px;align-items:baseline}
+.ti .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.ti .s{font:12px var(--mono);color:var(--muted);white-space:nowrap}
+.ti .m{font-size:12.5px;color:var(--muted);margin-top:4px}
+.ti.ok .m{color:var(--ok)} .ti.err .m{color:var(--bad)}
+.ti .bar{height:4px;border-radius:4px;background:var(--line);margin-top:8px;overflow:hidden}
+.ti .bar i{display:block;height:100%;width:0;background:var(--blue);transition:width .25s}
+.ti.ok .bar i{background:var(--ok)} .ti.err .bar i{background:var(--bad)}
+.ti .x{color:var(--muted);font-size:18px;line-height:1;padding:0 2px}
+
+/* hộp thoại */
+.dlg{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(3,6,18,.7)}
+.dlg[hidden]{display:none}
+.box{width:min(460px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:var(--panel);border:1px solid var(--line2);border-radius:18px;padding:20px}
+.box h3{font-size:17px;margin-bottom:6px}
+.box p{color:var(--muted);font-size:13px;margin-bottom:12px}
+.in{width:100%;background:#070c22;border:1px solid var(--line2);color:var(--fg);border-radius:11px;padding:11px 12px;font:inherit}
+textarea.in{min-height:110px;resize:vertical}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+.btn{padding:10px 16px;border-radius:11px;background:var(--blue);color:#fff;font-weight:600}
+.btn.gh{background:transparent;border:1px solid var(--line2);color:var(--fg)}
+.btn[disabled]{opacity:.4;cursor:not-allowed}
+.btn.sm{padding:6px 10px;font-size:12.5px;border-radius:9px}
+.btn.red{background:transparent;border:1px solid rgba(255,107,129,.45);color:var(--bad)}
+.apps{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.app{display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid var(--line);border-radius:12px}
+.app span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:12.5px var(--mono)}
+.chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:6px 0 8px}
+.chips.c3{grid-template-columns:repeat(3,1fr)}
+.chips.c2{grid-template-columns:repeat(2,1fr)}
+.chips button{padding:9px 4px;border-radius:10px;border:1px solid var(--line2);background:#070c22;font-weight:600;font-size:13px;line-height:1.25}
+.chips button small{display:block;font:10.5px var(--mono);color:var(--muted);font-weight:500}
+.chips.c3 button small,.chips.c2 button small{font-family:var(--font);font-size:11px}
+.chips button.on{border-color:var(--sky);background:rgba(61,123,255,.16);color:#fff}
+.lbl{display:block;font-size:12.5px;color:var(--muted);margin-top:10px}
+.shot{display:block;max-width:100%;max-height:60dvh;margin:0 auto;border-radius:12px;border:1px solid var(--line)}
+.toast{position:fixed;left:50%;top:calc(var(--top) + 12px);transform:translateX(-50%);z-index:60;background:var(--panel2);border:1px solid var(--line2);padding:10px 16px;border-radius:12px;box-shadow:0 14px 30px -14px #000;max-width:calc(100vw - 32px)}
+.toast.bad{border-color:rgba(255,107,129,.5);color:#ffd4db}
+.toast[hidden]{display:none}
+.clipbar{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:58;display:flex;align-items:center;gap:10px;
+  width:min(520px,calc(100vw - 24px));padding:10px 12px;border-radius:14px;background:var(--panel2);border:1px solid var(--line2);box-shadow:0 14px 30px -14px #000}
+.clipbar[hidden]{display:none}
+html.embed .top,html.embed .side,html.embed .mbar,html.embed .expbar,html.embed .fitbar,html.embed .clipbar,html.embed .tray{display:none!important}
+html.embed{--top:0px}
+html.embed .stage{padding:0!important}
+html.embed .frame{border-radius:0!important;padding:0!important;box-shadow:none!important;border:0!important;background:#000}
+html.embed .frame iframe,html.embed .veil{border-radius:0!important}
+html.embed .veil{inset:0}
+html.embed body{background:#000}
+.getapp{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;padding:7px 12px;border-radius:999px;font-size:13px;font-weight:700;color:#fff;text-decoration:none;
+  background:linear-gradient(135deg,#3d7bff,#22b8a7);box-shadow:0 0 0 0 rgba(61,123,255,.6);animation:getapp 2.4s ease-out 3}
+.getapp:hover{filter:brightness(1.1)}.getapp:focus-visible{outline:2px solid #fff;outline-offset:2px}.getapp[hidden]{display:none}
+.getapp .ic{stroke:#fff}.getapp .gs{display:none}
+@keyframes getapp{0%{box-shadow:0 0 0 0 rgba(61,123,255,.6)}100%{box-shadow:0 0 0 12px rgba(61,123,255,0)}}
+@media (prefers-reduced-motion:reduce){.getapp{animation:none}}
+.appcta{display:flex;flex-direction:column;gap:3px;margin-bottom:8px;width:164px;padding:11px 12px;border-radius:16px;text-decoration:none;color:var(--fg);
+  background:linear-gradient(160deg,rgba(61,123,255,.28),rgba(34,184,167,.18));border:1px solid rgba(110,170,255,.5)}
+.appcta[hidden]{display:none}.appcta b{font-size:13.5px}.appcta span{font-size:11.5px;color:var(--muted);line-height:1.35}
+.appcta i{font-style:normal;margin-top:5px;align-self:flex-start;padding:5px 10px;border-radius:999px;background:#3d7bff;color:#fff;font-size:12px;font-weight:700}
+.appcta:hover{border-color:#8fd0ff}.appcta:focus-visible{outline:2px solid var(--sky)}
+.dm-app{display:block;margin:8px 10px 10px;padding:9px 12px;border-radius:10px;border:1px solid var(--line2);color:var(--sky);text-decoration:none;font-size:13px;text-align:center}
+.dm-app:hover{background:rgba(61,123,255,.12)}.dm-app[hidden]{display:none}
+.clipbar .ct{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.clipbar .ct small{color:var(--muted);font-size:12px}
+.clipbar .ct span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.clipbar .x{all:unset;cursor:pointer;color:var(--muted);padding:4px 6px;border-radius:6px}
+.clipbar .x:focus-visible{outline:2px solid var(--sky)}
+.cliptxt{width:100%;min-height:110px;resize:vertical}
+
+/* ---------- màn nhỏ ---------- */
+@media (max-width:860px){
+  :root{--top:50px}
+  .top{gap:6px;padding:0 8px}
+  .home span,.meta .spec,.adminlink,.state span,#zoomseg,.info{display:none}
+  .getapp{padding:6px 10px;font-size:12px;gap:4px}.getapp .gl{display:none}.getapp .gs{display:inline}
+  #viewseg span{display:none!important}
+  #viewseg button{padding:6px 8px}
+  .dev{max-width:46vw;padding:6px 8px;font-size:13px}
+  .devmenu{position:fixed;left:8px;right:8px;top:calc(var(--top) + 6px);width:auto}
+  .meta{font-size:12px}
+  .stage{padding:6px 6px calc(64px + env(safe-area-inset-bottom))}
+  .frame{border-radius:16px;padding:3px}
+  .frame iframe,.veil{border-radius:13px}
+  .veil{inset:3px}
+  .info{display:none}
+  .side{position:fixed;left:0;right:0;bottom:0;z-index:45;transform:translateY(105%);transition:transform .25s}
+  .side.open{transform:none}
+  .tools{width:auto;max-height:70dvh;border-radius:20px 20px 0 0;padding:14px 12px calc(14px + env(safe-area-inset-bottom));grid-template-columns:repeat(4,1fr);gap:4px;background:var(--panel);border-color:var(--line2)}
+  .tools h6{text-align:left;padding:8px 4px 2px}
+  .tb{padding:10px 2px;font-size:12px}
+  .sheetbg.open{display:block;position:fixed;inset:0;z-index:44;background:rgba(3,6,18,.55)}
+  .mbar{display:grid;grid-template-columns:repeat(4,1fr);position:fixed;left:0;right:0;bottom:0;z-index:35;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:rgba(8,13,36,.94);border-top:1px solid var(--line);backdrop-filter:blur(8px)}
+  .mbar .tb{font-size:11px;padding:6px 2px}
+  body.multi .mbar{display:none}
+  .th small,.th .btn{display:none}
+  .tbar span{display:none}
+  .tbar button{padding:8px 2px;font-size:15px}
+  .grid{padding:10px 8px 18px;gap:10px}
+  .tray{bottom:calc(72px + env(safe-area-inset-bottom));right:8px;width:calc(100vw - 16px)}
+}
+body.focus .top,body.focus .side,body.focus .mbar{display:none}
+body.focus .stage{padding:0}
+body.focus .frame{border-radius:0;padding:0;border:0}
+body.focus .frame iframe,body.focus .frame .veil{border-radius:0;inset:0}
+body.focus .info{display:none}
+.exitfocus{position:fixed;top:10px;right:10px;z-index:36;display:none;padding:8px 12px;border-radius:10px;background:rgba(14,22,56,.85);border:1px solid var(--line2);font-size:13px}
+body.focus .exitfocus{display:block}
+.langsw{display:inline-flex;flex:none;padding:3px;border-radius:999px;background:linear-gradient(135deg,#ffc861,#ff8a3d);box-shadow:0 0 0 3px rgba(255,200,97,.18),0 6px 18px -6px rgba(255,160,60,.7)}
+.langsw button{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:999px;font-weight:700;font-size:14px;color:#3a2200;white-space:nowrap}
+.langsw button.on{background:#0e1638;color:#fff}
+.langsw button:not(.on):hover{background:rgba(255,255,255,.35)}
+.langsw .fl{display:inline-flex;line-height:0}.langsw .fl svg{width:22px;height:15px;border-radius:3px;box-shadow:0 0 0 1px rgba(0,0,0,.25)}.langsw .ls{display:none}
+@media (max-width:1500px){.info{display:none!important}}
+#left{flex:none}.meta .spec{min-width:0;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:1250px){.meta .spec{display:none}}
+@media (max-width:860px){.appcta{display:none!important}}
+@media (max-width:860px){.langsw{padding:2px}.langsw button{padding:4px 7px;font-size:12px;gap:3px}.langsw .ln{display:none}.langsw .ls{display:inline}.langsw .fl svg{width:24px;height:16px}}
+@media (max-width:420px){.langsw .ls{display:none!important}.top .meta{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+<style id="cloudblue">
+/* ===== CLOUD BLUE (mệnh Thuỷ) — theo chế độ Sáng/Tối chọn ở trang chủ (br_theme) ===== */
+html[data-theme=dark]{--bg:#071226;--panel:#0d1d3d;--panel2:#10244a;--line:rgba(90,175,255,.20);--line2:rgba(90,175,255,.34);--fg:#e8f1ff;--muted:#9fb4d8;--blue:#3d86ff;--sky:#8cc4ff;
+  --sunk:#06112a;--soft:rgba(140,196,255,.08);--hdr:rgba(7,18,38,.97);--txt2:#d7e6ff;--warnc:#ffd666;color-scheme:dark}
+html[data-theme=light]{--bg:#f3f7fc;--panel:#ffffff;--panel2:#eef5ff;--line:rgba(43,110,240,.16);--line2:rgba(43,110,240,.30);--fg:#0a1a3a;--muted:#4a5d82;--blue:#2b6ef0;--sky:#2b6ef0;--ok:#0e9f74;--wait:#c27a00;--bad:#e0354f;
+  --sunk:#eef4fc;--soft:rgba(43,110,240,.07);--hdr:rgba(243,247,252,.97);--txt2:#1f3360;--warnc:#9a5b00;color-scheme:light}
+html[data-theme]:not(.embed) body{background:var(--bg) radial-gradient(circle at 50% 50%,rgba(120,180,255,.06) 0 32%,transparent 42%) 0 0/36px 36px}
+html[data-theme=light]:not(.embed) body{background:var(--bg) radial-gradient(circle at 50% 50%,#fff 0 32%,rgba(12,40,100,.05) 34%,transparent 42%) 0 0/36px 36px}
+html[data-theme] .top{background:var(--hdr);backdrop-filter:none;-webkit-backdrop-filter:none;border-bottom:2px solid var(--line2)}
+html[data-theme] .dm-r:hover,html[data-theme] .dm-app:hover{background:var(--soft)}
+html[data-theme] .seg button,html[data-theme] .tb,html[data-theme] .tbar button{color:var(--txt2)}
+html[data-theme] .tb:hover{color:var(--fg)}
+html[data-theme] .seg button.on,html[data-theme] .chips button.on{background:linear-gradient(180deg,#5c9dff,#2b6ef0);color:#fff}
+html[data-theme] .tb.on{background:var(--soft);color:var(--blue)}
+html[data-theme] .tools,html[data-theme] .mbar,html[data-theme] .exitfocus{background:var(--panel);backdrop-filter:none;-webkit-backdrop-filter:none}
+html[data-theme] .in,html[data-theme] .chips button{background:var(--sunk);color:var(--fg)}
+html[data-theme] .btn{background:linear-gradient(180deg,#5c9dff,#2b6ef0);color:#fff;border-color:transparent}
+html[data-theme] .btn.gh{background:var(--panel);color:var(--fg);box-shadow:0 0 0 2px var(--line2)}
+html[data-theme] .btn.red{background:rgba(255,107,129,.12);color:var(--bad)}
+html[data-theme] .fitbar{background:var(--soft);color:var(--txt2)}
+html[data-theme=light] .expbar{color:var(--warnc)}
+html[data-theme=light] .expbar.bad,html[data-theme=light] .toast.bad{color:#b0213a}
+html[data-theme] .lv-warn{color:var(--warnc)}
+html[data-theme] .langsw{background:var(--panel);box-shadow:0 0 0 2px var(--line2)}
+html[data-theme] .langsw button{color:var(--muted)}
+html[data-theme] .langsw button.on{background:linear-gradient(180deg,#5c9dff,#2b6ef0);color:#fff}
+html[data-theme] .langsw button:not(.on):hover{background:var(--soft)}
+html[data-theme] .getapp,html[data-theme] .appcta i{background:linear-gradient(180deg,#5c9dff,#2b6ef0)}
+html[data-theme] .appcta{background:linear-gradient(160deg,rgba(43,110,240,.18),rgba(43,110,240,.06));border-color:var(--line2)}
+html[data-theme=light] .dlg,html[data-theme=light] .sheetbg.open,html[data-theme=light] .drop{background:rgba(10,26,58,.4)}
+html[data-theme=light] .drop div{background:rgba(255,255,255,.9)}
+html[data-theme=light] .veil{background:#0b1a36;color:#e8f1ff}
+html[data-theme=light] .veil b,html[data-theme=light] .veil span{color:#e8f1ff}html[data-theme=light] .veil a{color:#8cc4ff}
+
+/* ===== Thanh trên gọn gàng (Cloud Blue): trái = máy · giữa = thông tin · phải = công cụ ===== */
+html[data-theme] .top{gap:10px;padding:0 12px}
+.top>.home{order:0}.top>.devwrap{order:1}.top>.meta{order:2;flex:1 1 auto}.top>#viewseg{order:3}.top>.langsw{order:4}.top>.right{order:5;margin-left:0}
+html[data-theme] .home{width:34px;height:34px;justify-content:center;border-radius:10px;background:var(--panel);box-shadow:0 0 0 1.5px var(--line2);flex:none}
+html[data-theme] .home span{display:none}
+html[data-theme] .home:hover{background:var(--panel2)}
+html[data-theme] .dev{border-radius:12px;background:var(--panel);border:0;box-shadow:0 0 0 1.5px var(--line2);padding:7px 12px}
+html[data-theme] .seg{border:0;border-radius:12px;background:var(--panel);box-shadow:0 0 0 1.5px var(--line2);padding:2px;gap:2px}
+html[data-theme] .seg button{border-radius:9px;padding:6px 10px}
+html[data-theme] .seg span{font-size:12px}
+/* thông tin máy: 1 dòng, chữ gọn, hạn dùng thành chip màu */
+.meta{gap:8px}
+.meta .spec{font-size:13px}
+#left:not(:empty){display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:999px;font-size:12.5px;font-weight:700;color:var(--warnc,#ffd666);background:color-mix(in srgb,var(--warnc,#ffd666) 12%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warnc,#ffd666) 40%,transparent)}
+#left:not(:empty)::before{content:"⏳"}
+/* số liệu kỹ thuật (độ phân giải, mạng…) → chỉ hiện khi rê chuột vào trạng thái */
+.info{display:none!important}
+.state{max-width:170px;padding:6px 10px;border-radius:999px;background:var(--panel);box-shadow:0 0 0 1.5px var(--line2);cursor:help}
+#statetxt{overflow:hidden;text-overflow:ellipsis}
+/* ngôn ngữ: chỉ cờ + VI/EN */
+html[data-theme] .langsw button{padding:5px 9px;font-size:12.5px;gap:5px}
+.langsw .ln{display:none}.langsw .ls{display:inline!important}
+.adminlink{font-size:12px;opacity:.85}
+/* máy tính: đã có ô "App Android" ở cột công cụ → bỏ nút tải app trên thanh cho đỡ chật */
+@media (min-width:861px){ .top .getapp{display:none!important} }
+@media (max-width:1500px){ .meta .spec{display:none} }
+@media (max-width:1250px){ .adminlink{display:none} }
+@media (max-width:860px){
+  html[data-theme] .top{gap:6px;padding:0 8px}
+  .langsw .ls{display:none!important}
+  html[data-theme] .langsw button{padding:4px 6px}
+  .top>.devwrap{flex:1 1 0;min-width:0}.dev{max-width:100%;width:100%}
+  .top>#viewseg,.top>.langsw,.top>.right{flex:none}
+  .top>.meta{flex:0 1 auto}
+  #left:not(:empty){padding:3px 8px;font-size:11.5px}
+  #left:not(:empty)::before{content:""}
+  .state{padding:6px;max-width:none}.state span{display:none}
+  .getapp .gs{display:none!important}.getapp{padding:7px 9px}
+  html[data-theme] .home{width:32px;height:32px}
+}
+@media (max-width:480px){ .top>.langsw{display:none} #v-sync{display:none!important} }
+@media (max-width:1050px){ #viewseg button span{display:none!important} }
+/* cột công cụ: ô tải app gọn hơn */
+.appcta{padding:10px 12px}
+.appcta span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+</style>
+<script>(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;var m=document.querySelector('meta[name=theme-color]');if(m)m.content=t==="light"?"#f3f7fc":"#071226";})();</script>
+</head>
+<body>
+<header class="top">
+  <a class="home" href="/" title="Về cửa hàng"><svg class="ic sm" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg><span>Cửa hàng</span></a>
+  <div class="devwrap">
+    <button class="dev" id="devbtn" type="button" aria-haspopup="true" aria-expanded="false" title="Chọn máy"><i id="devdot"></i><span id="devname">Máy của tôi</span><svg class="ic sm" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></button>
+    <div class="devmenu" id="devmenu" hidden role="menu">
+      <div class="dm-h"><b id="dm-title">Máy của bạn</b><button class="btn sm" type="button" id="dm-all">⊞ Mở tất cả</button></div>
+      <div class="dm-l" id="dm-list"></div>
+      <div class="dm-f"><span id="dm-hint">Tích chọn để mở nhiều máy cùng lúc</span><button class="btn sm gh" type="button" id="dm-sel" disabled>Mở máy đã chọn</button></div>
+      <a class="dm-app" id="dm-app" href="/download/blueroblox-cloud.apk" download hidden>📱 Tải app Android — điều khiển máy ngay trên điện thoại</a>
+    </div>
+  </div>
+  <div class="seg" id="viewseg" role="group" aria-label="Kiểu xem">
+    <button id="v-one" class="on" title="Xem 1 máy"><svg class="ic sm" viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/></svg><span style="min-width:0;padding:0;color:inherit;font:inherit">1 máy</span></button>
+    <button id="v-multi" title="Xem nhiều máy cùng lúc"><svg class="ic sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="8" rx="1.5"/><rect x="14" y="3" width="7" height="8" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/><rect x="14" y="13" width="7" height="8" rx="1.5"/></svg><span style="min-width:0;padding:0;color:inherit;font:inherit" id="multin">Nhiều máy</span></button>
+    <button id="v-sync" hidden title="Đồng bộ thao tác: bấm 1 máy, mọi máy làm theo"><svg class="ic sm" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg><span style="min-width:0;padding:0;color:inherit;font:inherit" id="syncl">Đồng bộ: Tắt</span></button>
+  </div>
+  <div class="langsw" id="langsw" role="group" aria-label="Language / Ngôn ngữ"><button type="button" id="lang-vi" title="Tiếng Việt"><span class="fl"><svg viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#da251d"/><path fill="#ff0" d="M15 4l1.76 5.42h5.7l-4.61 3.35 1.76 5.42L15 14.84l-4.61 3.35 1.76-5.42-4.61-3.35h5.7z"/></svg></span><span class="ln">Tiếng Việt</span><span class="ls">VI</span></button><button type="button" id="lang-en" title="English"><span class="fl"><svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="ukc"><path d="M0 0v30h60V0z"/></clipPath><clipPath id="ukt"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><g clip-path="url(#ukc)"><path d="M0 0v30h60V0z" fill="#012169"/><path d="M0 0l60 30m0-30L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30m0-30L0 30" clip-path="url(#ukt)" stroke="#C8102E" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#C8102E" stroke-width="6"/></g></svg></span><span class="ln">English</span><span class="ls">EN</span></button></div>
+  <div class="meta"><span class="spec" id="spec"></span><span id="left"></span></div>
+  <div class="right">
+    <span class="info" id="info" title="Độ phân giải máy · độ nét hình đang gửi · kích thước hiển thị · tốc độ mạng"></span>
+    <div class="seg" id="zoomseg" role="group" aria-label="Phóng to">
+      <button id="z-out" title="Thu nhỏ (Ctrl −)" aria-label="Thu nhỏ">−</button><span id="z-val">100%</span><button id="z-in" title="Phóng to (Ctrl +)" aria-label="Phóng to">+</button><button id="z-fit" title="Vừa khung (Ctrl 0)">Vừa</button>
+    </div>
+    <a class="getapp" id="getapp" href="/download/blueroblox-cloud.apk" download hidden title="Tải app Android BlueRoblox Cloud"><svg class="ic sm" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M12 8v6M9.5 11.5L12 14l2.5-2.5"/></svg><span class="gl">Tải app Android</span><span class="gs">Tải app</span></a>
+    <a class="adminlink" id="adminlink" href="https://phone.cloudblue.vn/" target="_blank" rel="noopener" hidden>Tất cả máy (admin)</a>
+    <span class="state" id="state"><i></i><span id="statetxt">Đang kết nối…</span></span>
+  </div>
+</header>
+
+<div class="expbar fitbar" id="fitbar" hidden><span id="fittxt"></span><button class="btn sm" type="button" id="fitgo">📐 Khớp ngay</button><button class="btn sm gh" type="button" id="fitno">Để sau</button></div>
+<div class="expbar" id="expbar" hidden><span id="exptxt"></span><button class="btn sm" type="button" id="expgo">Xem &amp; gia hạn</button></div>
+<main class="stage" id="stage">
+  <div class="viewport" id="viewport">
+    <div class="frame" id="frame">
+      <iframe id="scr" title="Màn hình điện thoại" allow="fullscreen; autoplay; clipboard-read; clipboard-write"></iframe>
+      <div class="veil" id="veil"><div class="spin"></div><b id="veilt">Đang mở máy…</b><span id="veild"></span></div>
+    </div>
+  </div>
+  <div class="side" id="side">
+    <a class="appcta" id="appcta" href="/download/blueroblox-cloud.apk" download hidden>
+      <b>📱 App Android</b><span>Điều khiển máy ngay trên điện thoại, báo trước khi hết hạn</span><i>Tải app miễn phí</i>
+    </a>
+    <aside class="tools" id="tools" aria-label="Công cụ">
+      <h6>Điều hướng</h6>
+      <button class="tb" data-key="4"><svg class="ic" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>Quay lại</button>
+      <button class="tb" data-key="3"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>Màn chính</button>
+      <button class="tb" data-key="187"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>Đa nhiệm</button>
+      <button class="tb" data-key="26"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1011.4 0"/></svg>Tắt/mở màn</button>
+      <h6>Âm thanh</h6>
+      <button class="tb" data-key="24"><svg class="ic" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M17 9v6M14 12h6"/></svg>Tăng âm</button>
+      <button class="tb" data-key="25"><svg class="ic" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10z"/><path d="M15 12h6"/></svg>Giảm âm</button>
+      <h6>Màn hình</h6>
+      <button class="tb" data-act="quality"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 15V9l3 3 3-3v6M16 9v6"/></svg><span id="qtxt">Chất lượng</span></button>
+      <button class="tb" data-act="gfx"><svg class="ic" viewBox="0 0 24 24"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9z"/><path d="M12 12l8-4.5M12 12v9M12 12L4 7.5"/></svg>Chế độ hình</button>
+      <button class="tb" data-act="display"><svg class="ic" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M10 7.5h4M10 11h4M10 14.5h2"/></svg>FPS &amp; độ nét</button>
+      <button class="tb" data-act="rotate"><svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 11-3-6.2"/><path d="M20 4v4h-4"/></svg>Xoay</button>
+      <button class="tb" data-act="shot"><svg class="ic" viewBox="0 0 24 24"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Chụp màn</button>
+      <button class="tb" data-act="focus"><svg class="ic" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>Toàn màn</button>
+      <button class="tb" data-act="reload"><svg class="ic" viewBox="0 0 24 24"><path d="M4 4v6h6"/><path d="M5.5 15a7 7 0 101.4-7.4L4 10"/></svg>Tải lại hình</button>
+      <h6>Tệp &amp; ứng dụng</h6>
+      <button class="tb" data-act="upload"><svg class="ic" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>Tải file / APK</button>
+      <button class="tb" data-act="fromurl"><svg class="ic" viewBox="0 0 24 24"><path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/></svg>Cài từ link</button>
+      <button class="tb" data-act="store"><svg class="ic" viewBox="0 0 24 24"><path d="M4 7h16l-1.5 12a2 2 0 01-2 1.8h-9a2 2 0 01-2-1.8L4 7z"/><path d="M9 10V6a3 3 0 016 0v4"/></svg>Kho ứng dụng</button>
+      <button class="tb" data-act="macro"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>Macro</button>
+      <button class="tb" data-act="keymap"><svg class="ic" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>Gán phím</button>
+      <button class="tb" data-act="gps"><svg class="ic" viewBox="0 0 24 24"><path d="M12 21s-7-6.1-7-11.5A7 7 0 0119 9.5C19 14.9 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>Vị trí GPS</button>
+      <button class="tb" data-act="clone"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V6a2 2 0 012-2h10"/><path d="M14 11v6M11 14h6"/></svg>Clone tab</button>
+      <button class="tb" data-act="apps"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1.5"/><rect x="14" y="4" width="6" height="6" rx="1.5"/><rect x="4" y="14" width="6" height="6" rx="1.5"/><rect x="14" y="14" width="6" height="6" rx="1.5"/></svg>Ứng dụng</button>
+      <button class="tb" data-act="text"><svg class="ic" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M7 14h10"/></svg>Dán chữ</button>
+      <button class="tb" data-act="copyout"><svg class="ic" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3"/></svg>Copy từ máy</button>
+      <button class="tb" data-act="gfix"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M16.5 12H12M16.5 12a4.5 4.5 0 11-1.3-3.2"/></svg>Lỗi Google</button>
+      <button class="tb" data-act="openurl"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg>Mở web</button>
+      <h6>Máy</h6>
+      <button class="tb" data-act="root"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 017.5-2"/><circle cx="12" cy="16" r="1.4"/></svg>Root máy</button>
+      <button class="tb danger" data-act="reboot"><svg class="ic" viewBox="0 0 24 24"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>Khởi động lại</button>
+      <button class="tb mzoom" data-act="zoomin" hidden><svg class="ic" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M11 8v6M8 11h6M16 16l5 5"/></svg>Phóng to</button>
+    </aside>
+  </div>
+</main>
+<section class="grid" id="grid" aria-label="Nhiều máy"></section>
+
+<div class="sheetbg" id="sheetbg"></div>
+<nav class="mbar" aria-label="Điều hướng nhanh">
+  <button class="tb" data-key="4"><svg class="ic" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h11a5 5 0 010 10h-3"/></svg>Quay lại</button>
+  <button class="tb" data-key="3"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>Màn chính</button>
+  <button class="tb" data-key="187"><svg class="ic" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>Đa nhiệm</button>
+  <button class="tb" id="morebtn"><svg class="ic" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg>Công cụ</button>
+</nav>
+<button class="exitfocus" id="exitfocus">Thoát toàn màn</button>
+
+<div class="drop" id="drop"><div><b>Thả file vào đây</b><span>File APK sẽ tự cài · file khác lưu vào thư mục Download</span></div></div>
+<div class="tray" id="tray" aria-live="polite"></div>
+<input type="file" id="file" multiple hidden>
+
+<div class="dlg" id="dlg" hidden><div class="box" role="dialog" aria-modal="true" aria-labelledby="dlgt">
+  <h3 id="dlgt"></h3><p id="dlgd"></p><div id="dlgb"></div>
+  <div class="acts"><button class="btn gh" id="dlgno">Đóng</button><button class="btn" id="dlgok">Gửi</button></div>
+</div></div>
+<div class="toast" id="toast" hidden></div>
+<div class="clipbar" id="clipbar" hidden role="status" aria-live="polite">
+  <div class="ct"><small id="clipsm">📋 Máy ảo vừa copy</small><span id="cliptx"></span></div>
+  <button class="btn sm" id="clipcp" type="button">Copy về máy tôi</button><button class="x" id="clipx" type="button" aria-label="Ẩn">✕</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+"use strict";
+/* ---------- Ngôn ngữ (dùng chung lựa chọn với trang chủ: br_lang) ---------- */
+let LANG = (() => { const q = new URLSearchParams(location.search).get("lang"); if (q === "en" || q === "vi") return q;
+  try { const v = localStorage.getItem("br_lang"); if (v === "en" || v === "vi") return v; } catch (e) {}
+  return /^vi/i.test(navigator.language || "") ? "vi" : "en"; })();
+const L = (vi, en) => LANG === "en" ? en : vi;
+// Chữ cố định trên trang (nút, tiêu đề…) → tiếng Anh
+const EN = {
+  "Cửa hàng": "Store", "Về cửa hàng": "Back to store", "Chọn máy": "Choose phone", "Máy của tôi": "My phone", "Máy của bạn": "Your phones",
+  "⊞ Mở tất cả": "⊞ Open all", "Tích chọn để mở nhiều máy cùng lúc": "Tick to open several phones at once", "Mở máy đã chọn": "Open selected",
+  "📱 Tải app Android — điều khiển máy ngay trên điện thoại": "📱 Get the Android app — control your phone from your mobile",
+  "Kiểu xem": "View mode", "Xem 1 máy": "View one phone", "1 máy": "1 phone", "Xem nhiều máy cùng lúc": "View several phones at once", "Nhiều máy": "Multi view",
+  "Độ phân giải máy · độ nét hình đang gửi · kích thước hiển thị · tốc độ mạng": "Phone resolution · stream resolution · display size · network speed",
+  "Phóng to": "Zoom in", "Thu nhỏ": "Zoom out", "Thu nhỏ (Ctrl −)": "Zoom out (Ctrl −)", "Phóng to (Ctrl +)": "Zoom in (Ctrl +)", "Vừa khung (Ctrl 0)": "Fit to window (Ctrl 0)", "Vừa": "Fit",
+  "Tải app Android BlueRoblox Cloud": "Download the BlueRoblox Cloud Android app", "Tải app Android": "Get Android app", "Tải app": "Get app",
+  "Tất cả máy (admin)": "All phones (admin)", "Đang kết nối…": "Connecting…", "📐 Khớp ngay": "📐 Fit now", "Để sau": "Later", "Xem & gia hạn": "View & renew",
+  "Màn hình điện thoại": "Phone screen", "Đang mở máy…": "Opening phone…", "Công cụ": "Tools",
+  "Điều khiển máy ngay trên điện thoại, báo trước khi hết hạn": "Control your phone from your mobile, with expiry reminders", "Tải app miễn phí": "Free download",
+  "Điều hướng": "Navigation", "Quay lại": "Back", "Màn chính": "Home", "Đa nhiệm": "Recents", "Tắt/mở màn": "Screen on/off",
+  "Âm thanh": "Sound", "Tăng âm": "Volume up", "Giảm âm": "Volume down", "Màn hình": "Display", "Chất lượng": "Quality", "FPS & độ nét": "FPS & resolution",
+  "Xoay": "Rotate", "Chụp màn": "Screenshot", "Toàn màn": "Full screen", "Tải lại hình": "Reload video", "Tệp & ứng dụng": "Files & apps",
+  "Tải file / APK": "Upload file / APK", "Cài từ link": "Install from link", "Ứng dụng": "Apps", "Dán chữ": "Paste text", "Copy từ máy": "Copy from phone",
+  "Mở web": "Open website", "Lỗi Google": "Google sign-in", "Máy": "Phone", "Khởi động lại": "Restart", "Root máy": "Root phone", "Kho ứng dụng": "App store", "Clone tab": "Clone tab", "Gán phím": "Key mapping", "Vị trí GPS": "GPS location", "Đồng bộ: Tắt": "Sync: Off", "Điều hướng nhanh": "Quick navigation", "Thoát toàn màn": "Exit full screen",
+  "Thả file vào đây": "Drop files here", "File APK sẽ tự cài · file khác lưu vào thư mục Download": "APK files install automatically · other files go to the Download folder",
+  "Đóng": "Close", "Gửi": "Send", "📋 Máy ảo vừa copy": "📋 The cloud phone just copied", "Copy về máy tôi": "Copy to my device", "Ẩn": "Hide",
+};
+const ORIG = new WeakMap();
+function trNode(n) {          // đổi 1 đoạn chữ cố định; nhớ bản tiếng Việt để đổi ngược lại
+  const vi = ORIG.has(n) ? ORIG.get(n) : n.nodeValue, k = vi.trim();
+  if (!EN[k]) return;
+  if (!ORIG.has(n)) ORIG.set(n, vi);
+  n.nodeValue = LANG === "en" ? vi.replace(k, EN[k]) : vi;
+}
+function applyStatic() {
+  document.documentElement.lang = LANG;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, { acceptNode: n => n.parentNode.closest("script,style,#dm-list,#grid,#tray,#dlgb,#dlgd") ? 2 : 1 });
+  for (let n; (n = w.nextNode());) trNode(n);
+  document.querySelectorAll("[title],[aria-label],[placeholder]").forEach(el => {
+    for (const a of ["title", "aria-label", "placeholder"]) {
+      if (!el.hasAttribute(a)) continue;
+      const key = "_o_" + a; if (el[key] == null) el[key] = el.getAttribute(a);
+      const vi = el[key]; if (EN[vi]) el.setAttribute(a, LANG === "en" ? EN[vi] : vi);
+    }
+  });
+  const sw = document.getElementById("langsw");
+  if (sw) { document.getElementById("lang-vi").classList.toggle("on", LANG === "vi"); document.getElementById("lang-en").classList.toggle("on", LANG === "en"); }
+}
+// Tin nhắn từ máy chủ (lỗi, tiến trình cài…) → tiếng Anh
+const SRV = [
+  [/^Hệ thống đang bảo trì/, "The system is under maintenance. Please come back later."],
+  [/^Máy đang bị khoá/, "This phone is locked. Contact support if needed."],
+  [/^Đang xử lý…/, "Processing…"], [/^Đang chép vào máy…/, "Copying to the phone…"], [/^Đang cài ứng dụng…/, "Installing app…"],
+  [/^Không chép được file vào máy: (.*)/, "Could not copy the file to the phone: $1"], [/^Không chép được file: (.*)/, "Could not copy the file: $1"],
+  [/^Cài APK lỗi: (.*)/, "APK install failed: $1"], [/^Đã cài xong (.*)/, "Installed $1"], [/^Đã lưu vào thư mục Download: (.*)/, "Saved to the Download folder: $1"],
+  [/^Gói không có file \.apk bên trong\./, "The package has no .apk inside."], [/^File gói hỏng hoặc bị mã hoá\./, "The package file is damaged or encrypted."],
+  [/^File đã hết hạn, tải lên lại\./, "The file expired, please upload it again."],
+  [/^Link chuyển hướng tới địa chỉ không hợp lệ/, "The link redirects to an invalid address"],
+  [/^Link không hợp lệ.*/, "Invalid link (only public http/https links)."], [/^File quá lớn.*/, "File too large (max 4GB)."],
+  [/^Đang tải về server… (\d+)MB/, "Downloading to server… $1MB"], [/^Dữ liệu quá lớn/, "Data too large"],
+  [/^Máy phản hồi quá lâu, thử lại\./, "The phone took too long to respond, try again."], [/^Lỗi máy chủ: (.*)/, "Server error: $1"],
+  [/^Nguồn không được phép\./, "Origin not allowed."], [/^Phiên đăng nhập hết hạn.*/, "Your session expired — reload the page and sign in again."],
+  [/^Không có việc này\./, "Job not found."], [/^Chỉ admin\./, "Admins only."], [/^Mã tải lên không hợp lệ\./, "Invalid upload id."],
+  [/^Chỉ nhận file \.apk.*/, "Only .apk / .apks / .apkm / .xapk files are accepted"], [/^File rỗng hoặc lớn hơn 4GB\./, "The file is empty or larger than 4GB."],
+  [/^Lệch vị trí/, "Upload offset mismatch"], [/^Dữ liệu vượt kích thước file\./, "Data exceeds the file size."],
+  [/^Link phải bắt đầu bằng http.*/, "The link must start with http:// or https://"], [/^Link không phải file APK\./, "The link is not an APK file."],
+  [/^Đã tải (.*)/, "Downloaded $1"], [/^Không có file này\./, "File not found."], [/^Không có chức năng này\./, "Unknown action."],
+  [/^Không tìm thấy máy của bạn\./, "Your phone was not found."], [/^Máy chưa chạy.*/, "The phone is not running (being created, paused or cancelled)."],
+  [/^Phím không hợp lệ\./, "Invalid key."], [/^Chưa nhập chữ\./, "No text entered."],
+  [/^Chỉ dán được chữ KHÔNG DẤU.*/, "Only plain text (no accents) can be pasted this way. Type accented text directly on the phone."],
+  [/^Không chụp được màn hình\./, "Could not take a screenshot."], [/^Tên ứng dụng không hợp lệ\./, "Invalid app name."],
+  [/^Server tạm hết dung lượng.*/, "The server is out of space, try again later."], [/^FPS không hợp lệ\./, "Invalid FPS."],
+  [/^FPS phải từ (\d+) đến (\d+)\./, "FPS must be between $1 and $2."], [/^Độ phân giải phải dạng.*/, "Resolution must be width x height, e.g. 1080x1920."],
+  [/^Máy đang được đổi cấu hình, đợi chút\./, "The phone is being reconfigured, please wait."], [/^Đang đổi kích thước màn hình…/, "Changing screen size…"],
+  [/^Đã đổi sang (\S+) — app đang chạy vẫn giữ nguyên\./, "Switched to $1 — running apps were kept."],
+  [/^Đang áp dụng và khởi động lại máy.*/, "Applying and restarting the phone (1–3 min)…"], [/^Đổi cấu hình lỗi: (.*)/, "Reconfiguration failed: $1"],
+  [/^Đã đổi sang (.*)\. Dữ liệu vẫn giữ nguyên\./, "Switched to $1. Your data was kept."], [/^Không xác định được máy\./, "Unknown phone."],
+  [/^Không khởi động lại được: (.*)/, "Could not restart: $1"], [/^Đang khởi động Android.*/, "Starting Android (1–3 min)…"],
+  [/^Máy đã khởi động lại xong\./, "The phone has restarted."], [/^Máy đã khởi động, đang kết nối lại…/, "The phone is up, reconnecting…"],
+  [/^Trình điều khiển tạm thời không phản hồi\./, "The controller is not responding right now."], [/^Hãy mở máy từ (trang blueroblox\.shop|app hoặc trang web)\./, "Please open the phone from the app or the website."],
+  [/^Đang bảo trì\./, "Under maintenance."], [/^Không được phép\./, "Not allowed."], [/^Đây không phải máy của bạn\./, "This is not your phone."],
+];
+const srv = m => { m = String(m ?? ""); if (LANG !== "en") return m; for (const [re, en] of SRV) if (re.test(m)) return m.replace(re, en); return m; };
+const CFG = { supabaseUrl: "https://nprftgodswlpzomcttal.supabase.co", supabaseAnonKey: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
+/* Đường truyền: ưu tiên "đường thẳng" về máy chủ (fast, ít trễ); không tới được thì tự dùng Cloudflare (phone). */
+const CF_PHONE = "https://phone.cloudblue.vn", FAST_PHONE = "https://fast.cloudblue.vn:8443";
+let PHONE = CF_PHONE, API = PHONE + "/cpapi", ROUTE = "cf";
+function setRoute(r) { ROUTE = r; PHONE = r === "fast" ? FAST_PHONE : CF_PHONE; API = PHONE + "/cpapi"; }
+/* NHIỀU SERVER: mỗi máy nằm ở 1 server (phone.…, phone2.…) — lấy từ link của máy. Server chính vẫn dùng được đường thẳng ⚡ */
+function hostOf(p) { try { const u = new URL(p && p.stream_url || ""); if (/^https:$/.test(u.protocol) && /(^|\.)(cloudblue\.vn|blueroblox\.shop)$/.test(u.hostname)) return u.origin; } catch (e) {} return CF_PHONE; }
+function baseOf(p) { const h = hostOf(p); return h === CF_PHONE ? PHONE : h; }
+const HOSTS = new Set([CF_PHONE, FAST_PHONE]), SESS = new Set(), JOBB = {};
+async function ensureSession(p) {           // mở phiên (cookie) ở server của máy này trước khi xem hình
+  const b = baseOf(p); HOSTS.add(b); if (b === PHONE || SESS.has(b)) return;
+  try { await api("session", { method: "POST", json: {} }, true, b + "/cpapi"); SESS.add(b); } catch (e) {}
+}
+async function pickRoute() {
+  const want = new URLSearchParams(location.search).get("route") || store.get("cp_route") || "auto";
+  if (want === "cf") return setRoute("cf");
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 1800);
+  try { await fetch(FAST_PHONE + "/__cp/inject.js?v=probe", { mode: "no-cors", cache: "no-store", signal: ac.signal }); setRoute("fast"); }
+  catch (e) { setRoute("cf"); }
+  clearTimeout(t);
+}
+async function fallbackCF() {     // đường thẳng rớt → chuyển sang Cloudflare (mở phiên ở đó rồi nối lại)
+  if (ROUTE !== "fast") return;
+  setRoute("cf"); try { await openSession(); } catch (e) {}
+}
+const CHUNK = 8 * 1024 * 1024;
+const KEYNAME = { 4: "back", 3: "home", 187: "recents", 24: "volup", 25: "voldown", 26: "power" };
+const ZOOMS = [0.5, 0.67, 0.8, 1, 1.25, 1.5, 1.75, 2, 2.5];
+const mkQual = () => ({ eco: [L("Tiết kiệm", "Data saver"), L("Nhẹ nhất, 24 FPS — mạng 4G/wifi yếu", "Lightest, 24 FPS — weak 4G / Wi-Fi")], bal: [L("Ít trễ", "Low latency"), L("Mượt, phản hồi nhanh, 30 FPS — khuyên dùng", "Smooth & responsive, 30 FPS — recommended")], hd: [L("Siêu nét", "Ultra sharp"), L("Nét nhất, 60 FPS — cần máy ≥4 nhân + mạng khoẻ", "Sharpest, 60 FPS — needs 4+ cores & strong network")] });
+let QUAL = mkQual();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const mb = n => n >= 1073741824 ? (n / 1073741824).toFixed(2) + " GB" : (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+const small = () => innerWidth <= 860;
+
+function safeLock(name, t, fn) {
+  const L = globalThis.navigator && navigator.locks;
+  if (!L) return fn();
+  if (t === 0) return L.request(name, { mode: "exclusive", ifAvailable: true }, async lk => {
+    if (!lk) { const e = new Error("lock busy"); e.isAcquireTimeout = true; throw e; } return await fn(); });
+  let ok = false; const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), t > 0 ? Math.min(t, 4000) : 4000);
+  return L.request(name, { mode: "exclusive", signal: ac.signal }, async () => { ok = true; clearTimeout(tm); return await fn(); })
+    .catch(e => { if (!ok && e && e.name === "AbortError") return fn(); throw e; });
+}
+const EMBED = new URLSearchParams(location.search).get("embed") === "app";   // mở bên trong app Android
+// Trong app: phiên đăng nhập do app quản lý (không tự làm mới ở đây, tránh làm app bị đăng xuất)
+const sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, { auth: EMBED ? { lock: safeLock, autoRefreshToken: false, persistSession: false } : { lock: safeLock } });
+let APP_RT = "";
+let token = "", me = null, phones = [], cur = null, underMaint = false;
+const PAGE_ID = Math.random().toString(36).slice(2, 12);      // mã của trang này (mỗi máy chỉ 1 nơi xem cùng lúc)
+if (EMBED) document.documentElement.classList.add("embed");
+let player = store.get("cp_player") === "broadway" ? "broadway" : "webcodecs";
+const Q_URL = new URLSearchParams(location.search).get("q");          // app Android gửi kèm mức chất lượng (mặc định Siêu nét)
+let quality = ["eco", "bal", "hd"].includes(Q_URL) ? Q_URL : ["eco", "bal", "hd"].includes(store.get("cp_q")) ? store.get("cp_q") : "bal";
+let zoom = 1;
+
+/* ---------- giao diện chung ---------- */
+let toastT;
+function toast(msg, bad) { const t = $("toast"); t.textContent = msg; t.className = "toast" + (bad ? " bad" : ""); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, bad ? 5200 : 2800); }
+let lastState = null;
+function setState(kind, txt) {
+  lastState = [kind, txt];
+  document.documentElement.style.setProperty("--ring", kind === "ok" ? "var(--ok)" : kind === "bad" ? "var(--bad)" : "var(--wait)");
+  $("statetxt").textContent = txt;
+}
+function veilOn(el, on, title, desc, spin = true) {
+  el.hidden = !on; if (!on) return;
+  el.querySelector("b").textContent = title || ""; el.querySelector("span").innerHTML = desc || "";
+  el.querySelector(".spin").style.display = spin ? "" : "none";
+}
+const veil = (...a) => veilOn($("veil"), ...a);
+function ask({ title, desc, body = "", ok = L("Gửi", "Send"), onOk, noOk }) {
+  $("dlgt").textContent = title; $("dlgd").innerHTML = desc || ""; $("dlgd").hidden = !desc; $("dlgb").innerHTML = body;
+  $("dlgok").textContent = ok; $("dlgok").hidden = !!noOk; $("dlg").hidden = false;
+  const first = $("dlgb").querySelector("input,textarea"); if (first) setTimeout(() => first.focus(), 30);
+  $("dlgok").onclick = async () => { const b = $("dlgok"); b.disabled = true; try { if (await onOk() !== false) $("dlg").hidden = true; } finally { b.disabled = false; } };
+}
+$("dlgno").onclick = () => $("dlg").hidden = true;
+$("dlg").onclick = e => { if (e.target.id === "dlg") $("dlg").hidden = true; };
+
+/* ---------- gọi API server ---------- */
+async function api(path, { method = "GET", json, body, blob, headers = {} } = {}, retry = true, base) {
+  if (!base) { const jm = /^job\?id=([^&]+)/.exec(path), pid = path.split("/")[0], ph = (typeof phones !== "undefined" && phones || []).find(x => x.id === pid);
+    base = jm && JOBB[decodeURIComponent(jm[1])] || (ph ? baseOf(ph) + "/cpapi" : API); }
+  const h = { Authorization: "Bearer " + token, ...headers };
+  if (json) h["Content-Type"] = "application/json";
+  const r = await fetch(base + "/" + path, { method, headers: h, body: json ? JSON.stringify(json) : body, credentials: "include" });
+  if (r.status === 401 && retry) { await refreshToken(); return api(path, { method, json, body, blob, headers }, false, base); }
+  if (blob && r.ok) return r.blob();
+  let j = {}; try { j = await r.json(); } catch (e) {}
+  if ((r.status === 503 && j.maint || r.status === 423) && !underMaint) setTimeout(checkInfo, 0);
+  if (!r.ok) { const err = new Error(srv(j.error) || (L("Lỗi ", "Error ") + r.status)); err.status = r.status; err.data = j; throw err; }
+  if (j && j.job) JOBB[j.job] = base;           // theo dõi việc ở đúng server đã nhận việc
+  return j;
+}
+async function refreshToken() {
+  if (EMBED && window.BRApp && BRApp.token) {          // app đưa mã mới
+    try { const t = BRApp.token(); if (t) { token = t; await sb.auth.setSession({ access_token: t, refresh_token: APP_RT || "x" }); } } catch (e) {}
+    return;
+  }
+  const { data } = await sb.auth.refreshSession(); if (data && data.session) token = data.session.access_token;
+}
+if (EMBED) setInterval(refreshToken, 25 * 60000);
+async function openSession() { await api("session", { method: "POST", json: {} }); }
+
+/* ---------- kết nối màn hình (1 máy hoặc từng ô) — tự nối lại khi rớt ---------- */
+function resOf(p) { const m = /^(\d+)x(\d+)$/.exec(p && p.res || ""); return m ? [+m[1], +m[2]] : [720, 1280]; }
+function streamUrl(p, q, sid, raw) {
+  const udid = "127.0.0.1:" + p.port, [w, h] = resOf(p);
+  const B = baseOf(p), ws = "wss://" + new URL(B).host + "/?action=proxy-adb&remote=" + encodeURIComponent("tcp:8886") + "&udid=" + encodeURIComponent(udid) + "&cpv=" + PAGE_ID;
+  // máy GPU (cổng 5600–5699): "Nhanh" dùng tinyh264 — webcodecs của Chrome có thể từ chối hình máy GPU (màn đen)
+  const pl = /^56\d\d$/.test(String(p.port)) && player === "webcodecs" ? "tinyh264" : player;
+  return B + "/?v=" + sid + "#!action=stream&udid=" + encodeURIComponent(udid) + "&player=" + pl + "&ws=" + encodeURIComponent(ws)
+    + "&captureKeyboard=1&cpq=" + q + "&cpfps=" + (p.fps || 30) + "&cpw=" + w + "&cph=" + h + "&cpn=" + sid + (raw ? "&cpraw=1" : "");
+}
+const CONNS = new Set();
+class Conn {
+  constructor(iframe, veilEl, hooks) {
+    this.f = iframe; this.v = veilEl; this.h = hooks || {}; this.tries = 0; this.fails = 0; this.raw = false;
+    this.ok = false; this.size = null; this.kbps = 0; CONNS.add(this);
+    iframe.addEventListener("load", () => {
+      if (!this.p || !/^https:/.test(this.f.src)) return;
+      const sid = this.sid;
+      setTimeout(() => {   // trang hình tải xong mà không có tin "boot" → đó là trang lỗi (máy chủ phát hình chưa chạy) → tự thử lại
+        if (this.sid !== sid || this.boot || !this.p) return;
+        this.retry(L("Máy chủ phát hình chưa sẵn sàng", "The video server isn't ready yet"));
+      }, 4000);
+      setTimeout(() => {   // có tối ưu nhưng chưa xác nhận hình → vẫn bỏ màn che sau 7 giây, không bắt khách chờ
+        if (this.sid !== sid || !this.p || this.ok || !this.boot) return;
+        this.soft = true; this.h.ok && this.h.ok();
+      }, 7000);
+    });
+  }
+  open(p, q) {
+    this.p = p; this.q = q; this.ok = false; this.boot = false; this.legacy = false; this.soft = false;
+    this.sid = Math.random().toString(36).slice(2, 10);
+    clearTimeout(this.t);
+    const b = baseOf(p), sid = this.sid, go = () => { if (this.p === p && this.sid === sid) this.f.src = streamUrl(p, q, sid, this.raw); };
+    if (b !== PHONE && !SESS.has(b)) ensureSession(p).finally(go); else go();
+    this.arm(30000);   // máy mới khởi động trình phát hình có thể chậm
+    this.h.connecting && this.h.connecting(this.tries, this.raw);
+  }
+  arm(ms) { clearTimeout(this.t); this.t = setTimeout(() => this.retry(L("Không nhận được hình", "No video received")), ms); }
+  retry(why) {
+    clearTimeout(this.t); this.ok = false; this.fails++;
+    if (ROUTE === "fast" && this.fails >= 2) { this.fails = 0; fallbackCF().finally(() => this.p && this.open(this.p, this.q)); return; }
+    if (!this.raw && this.fails >= 2) this.raw = true;       // tối ưu không chạy được → dùng chế độ gốc (như bản đầu)
+    if (this.tries >= 5) {          // hết lượt → báo lỗi, rồi cứ 15 giây tự thử lại (máy chủ vừa khởi động lại thì tự lên hình)
+      this.h.fail && this.h.fail(why);
+      clearTimeout(this.auto); this.auto = setTimeout(() => { if (this.p && !this.ok) { this.tries = 0; this.fails = 0; this.raw = false; this.open(this.p, this.q); } }, 15000);
+      return;
+    }
+    this.tries++; this.h.connecting && this.h.connecting(this.tries, this.raw);
+    setTimeout(() => this.p && this.open(this.p, this.q), Math.min(800 * this.tries, 4000));
+  }
+  stop() { clearTimeout(this.t); clearTimeout(this.auto); this.p = null; this.ok = false; this.f.src = "about:blank"; }
+  msg(d) {
+    if (d.n !== this.sid) return;                         // tin cũ của lần mở trước → bỏ qua
+    if (d.t === "boot") { this.boot = true; if (d.raw && !this.ok) { clearTimeout(this.t); this.legacy = true; this.ok = true; this.tries = 0; this.h.ok && this.h.ok(); } return; }
+    if (d.t === "open") { if (!this.ok) { this.arm(30000); this.h.progress && this.h.progress(L("Đã kết nối, đang chờ hình đầu tiên…", "Connected, waiting for the first frame…")); } return; }
+    if (d.t === "ok") { clearTimeout(this.t); const first = !this.ok || this.soft; this.ok = true; this.soft = false; this.tries = 0; this.fails = 0; if (first) this.h.ok && this.h.ok(); }
+    else if (d.t === "closed") { if (this.p) { if (this.h.closed) this.h.closed(() => this.retry(L("Mất kết nối hình", "Video connection lost"))); else this.retry(L("Mất kết nối hình", "Video connection lost")); } }
+    else if (d.t === "size") { this.size = [d.w, d.h]; this.h.size && this.h.size(); }
+    else if (d.t === "stat") { this.kbps = d.kbps; if ((!this.ok || this.soft) && d.kbps > 0) this.arm(20000); this.h.stat && this.h.stat(); }
+    else if (d.t === "keyok" || d.t === "nokey") { const cb = this.cb && this.cb[d.id]; if (cb) { delete this.cb[d.id]; cb(d.t === "keyok"); } }
+    else if (d.t === "clipset" || d.t === "clipget") { const cb = this.cb && this.cb[d.id]; if (cb) { delete this.cb[d.id]; cb(!!d.ok); } }
+    else if (d.t === "clipcap") { this.clip = true; }
+    else if (d.t === "clip") { this.h.clip && this.h.clip(d.text || ""); }
+    else if (d.t === "pasteKey") { this.h.pasteKey && this.h.pasteKey(); }
+    else if (d.t === "in") { onTileInput(this, d); }
+    else if (d.t === "kmpick") { onKmPick(d); }
+    if (d.t === "ok") setTimeout(() => applyTools(this), 300);     // máy vừa lên hình → bật lại đồng bộ / gán phím
+  }
+  send(cpcmd, extra) {  // gửi lệnh không chờ trả lời (đồng bộ / macro / gán phím)
+    try { if (this.f.contentWindow && !this.legacy) this.f.contentWindow.postMessage({ cpcmd, ...(extra || {}) }, baseOf(this.p)); } catch (e) {}
+  }
+  cmd(cpcmd, extra) {   // gửi lệnh vào trình phát hình, chờ trả lời (tối đa 1,5 giây)
+    return new Promise(res => {
+      if (!this.ok || this.legacy || !this.f.contentWindow) return res(false);
+      const id = Math.random().toString(36).slice(2); this.cb = this.cb || {}; this.cb[id] = res;
+      this.f.contentWindow.postMessage({ cpcmd, id, ...(extra || {}) }, baseOf(this.p));
+      setTimeout(() => { if (this.cb[id]) { delete this.cb[id]; res(false); } }, 1500);
+    });
+  }
+  key(name) {   // bấm phím qua đường hình (tức thì); không được thì nhờ server
+    return new Promise(res => {
+      if (!this.ok || this.legacy || this.soft || !this.f.contentWindow) return res(false);
+      const id = Math.random().toString(36).slice(2); this.cb = this.cb || {}; this.cb[id] = res;
+      this.f.contentWindow.postMessage({ cpcmd: "key", key: name, id }, baseOf(this.p));
+      setTimeout(() => { if (this.cb[id]) { delete this.cb[id]; res(false); } }, 700);
+    });
+  }
+}
+addEventListener("message", e => {
+  if (!HOSTS.has(e.origin) || !e.data || !e.data.cp) return;
+  for (const c of CONNS) if (c.f.contentWindow === e.source) { c.msg(e.data); break; }
+});
+async function pressKey(conn, p, code) {
+  if (await conn.key(KEYNAME[code])) return;
+  try { await api(p.id + "/key", { method: "POST", json: { code } }); } catch (e) { toast(e.message, 1); }
+}
+
+/* ---------- Copy / dán giữa máy ảo và máy bạn ---------- */
+let clipWant = false, clipLast = "";
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; } catch (e) {}
+  try { const a = document.createElement("textarea"); a.value = t; a.style.position = "fixed"; a.style.opacity = "0"; document.body.appendChild(a); a.select(); const ok = document.execCommand("copy"); a.remove(); return ok; } catch (e) { return false; }
+}
+async function showClip(text) {
+  if (!text) return;
+  const asked = clipWant; clipWant = false; clipLast = text;
+  $("cliptx").textContent = text.length > 140 ? text.slice(0, 140) + "…" : text;
+  $("clipsm").textContent = L("📋 Máy ảo vừa copy", "📋 The cloud phone just copied");
+  $("clipbar").hidden = false; clearTimeout(showClip.t);
+  if (await copyText(text)) { $("clipsm").textContent = L("✓ Đã copy về máy bạn — dán ở đâu cũng được", "✓ Copied to your device — paste it anywhere"); }
+  showClip.t = setTimeout(() => { $("clipbar").hidden = true; }, asked ? 12000 : 8000);
+}
+$("clipcp").onclick = async () => { if (await copyText(clipLast)) { $("clipsm").textContent = L("✓ Đã copy về máy bạn", "✓ Copied to your device"); } else ask({ title: L("Chữ từ máy ảo", "Text from the cloud phone"), desc: L("Nhấn giữ để chọn rồi Copy.", "Press and hold to select, then Copy."), body: `<textarea class="in cliptxt" readonly>${esc(clipLast)}</textarea>`, noOk: true, onOk: () => true }); };
+$("clipx").onclick = () => { $("clipbar").hidden = true; };
+async function pasteToPhone(t) {
+  if (!cur) return false;
+  if (await main.cmd("clipset", { text: t })) {           // đặt chữ vào bộ nhớ copy của máy ảo (có dấu được) rồi bấm Dán
+    await sleep(250);
+    try { await api(cur.id + "/key", { method: "POST", json: { code: 279 } }); toast(L("Đã dán vào máy.", "Pasted into the phone.")); }
+    catch (e) { toast(L("Đã chép vào bộ nhớ của máy — nhấn giữ ô nhập trên máy rồi chọn Dán.", "Copied to the phone's clipboard — press and hold the text field on the phone, then tap Paste."), 0); }
+    return true;
+  }
+  try { await api(cur.id + "/text", { method: "POST", json: { text: t } }); toast(L("Đã dán vào máy (chữ không dấu).", "Pasted into the phone.")); return true; }
+  catch (e) { toast(e.message, 1); return false; }
+}
+
+/* ---------- cầu nối cho app Android (app gọi qua evaluateJavascript) ---------- */
+window.cpApp = {
+  key(code) { if (cur) pressKey(main, cur, code); },
+  reload() { if (cur) { main.tries = 0; main.open(cur, quality); } },
+  quality(q) { if (QUAL[q]) { quality = q; store.set("cp_q", q); if (cur) { main.tries = 0; main.open(cur, q); } } },
+  paste(t) { return pasteToPhone(String(t || "")); },
+  copyOut() { return main.cmd("clipget"); },
+  open(id) { const p = phones.find(x => x.id === id); if (p) openPhone(p); },
+  act(n) { try { if (cur && ACT[n]) ACT[n](); } catch (e) { toast(e.message, 1); } },   // app Android mở các bảng chức năng của web (Kho, Macro, FPS…)
+};
+
+/* ---------- 1 máy ---------- */
+const main = new Conn($("scr"), $("veil"), {
+  connecting(n, raw) { setState("wait", n ? L("Đang kết nối lại…", "Reconnecting…") : L("Đang kết nối…", "Connecting…")); veil(true, n ? L(`Đang kết nối lại (lần ${n})…`, `Reconnecting (attempt ${n})…`) : L("Đang mở màn hình máy…", "Opening the phone screen…"), n ? (raw ? L("Chuyển sang chế độ hình gốc cho chắc chắn…", "Switching to basic video mode to be safe…") : L("Hình bị gián đoạn, đang tự nối lại.", "The video was interrupted, reconnecting automatically.")) : ""); },
+  ok() { veil(false); try { if (!document.activeElement || document.activeElement === document.body) main.f.focus(); } catch (e) {} setState("ok", L("Đang chạy", "Running") + (ROUTE === "fast" ? L(" · đường thẳng ⚡", " · direct ⚡") : "")); },
+  progress(txt) { if (!$("veil").hidden) $("veild").textContent = txt; },
+  fail(why) { setState("bad", L("Không kết nối được", "Can't connect")); veil(true, why || L("Không kết nối được màn hình", "Can't connect to the screen"), L("Trang tự thử lại sau 15 giây. Nếu vẫn không lên hình, hãy khởi động lại máy.", "Retrying automatically in 15 seconds. If it still won't show, restart the phone.") + '<br><button class="btn sm" id="vretry">' + L("Thử lại ngay", "Retry now") + '</button> <button class="btn sm gh" id="vreboot">' + L("Khởi động lại máy", "Restart phone") + '</button>', false); const b = $("vretry"); if (b) b.onclick = () => { main.tries = 0; main.fails = 0; main.raw = false; main.open(cur, quality); }; const rb = $("vreboot"); if (rb) rb.onclick = () => ACT.reboot(); },
+  size() { try { if (cur && main.size) localStorage.setItem("cp_sz_" + cur.id + "_" + cur.res, main.size[0] + "x" + main.size[1]); } catch (e) {} fit(); info(); }, stat: () => info(),
+  clip(text) { showClip(text); },
+  async closed(go) {           // rớt hình: nếu máy vừa được mở ở nơi khác (tab / máy / app khác) thì dừng, không giành nhau
+    try {
+      const i = await api(cur.id + "/info");
+      if (i.viewer && i.viewer !== PAGE_ID) {
+        main.stop(); setState("wait", L("Đang mở ở nơi khác", "Open elsewhere"));
+        veil(true, L("Máy đang được mở ở nơi khác", "This phone is open somewhere else"), L("Máy này vừa được mở trên tab, máy tính hoặc app khác. Mỗi máy chỉ xem được ở 1 nơi để hình luôn mượt.", "It was just opened in another tab, computer or the app. Each phone can be viewed in one place at a time to keep the video smooth.") + "<br><button class=\"btn sm\" id=\"vhere\">" + L("Mở ở đây", "Open here") + "</button>", false);
+        const b = $("vhere"); if (b) b.onclick = () => { main.tries = 0; main.open(cur, quality); };
+        return;
+      }
+    } catch (e) {}
+    go();
+  },
+  pasteKey() { if (cur) api(cur.id + "/key", { method: "POST", json: { code: 279 } }).catch(() => {}); },
+});
+function aspect() {      // dùng kích thước hình thật lần trước (VD game đang để màn ngang) → mở lại không bị dựng sai khung
+  const s = main.size; if (s) return s;
+  try { const v = cur && localStorage.getItem("cp_sz_" + cur.id + "_" + cur.res); if (v) { const [w, h] = v.split("x").map(Number); if (w > 0 && h > 0) return [w, h]; } } catch (e) {}
+  return resOf(cur);
+}
+function fit() {
+  const fr = $("frame"), vp = $("viewport");
+  if (document.body.classList.contains("focus") || EMBED) { fr.style.width = innerWidth + "px"; fr.style.height = innerHeight + "px"; if (EMBED) { vp.style.width = innerWidth + "px"; vp.style.height = innerHeight + "px"; } return; }
+  const st = $("stage"), cs = getComputedStyle(st), sm = small();
+  const W = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - (sm ? 0 : $("side").offsetWidth + 14) - 4;
+  const H = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - 4;
+  const [w, h] = aspect(), pad = sm ? 6 : 14;
+  let vh = H - pad, vw = vh * w / h;
+  if (vw + pad > W) { vw = W - pad; vh = vw * h / w; }
+  vw *= zoom; vh *= zoom;
+  const FW = Math.max(160, Math.round(vw + pad)), FH = Math.max(240, Math.round(vh + pad));
+  fr.style.width = FW + "px"; fr.style.height = FH + "px";
+  vp.style.width = Math.min(FW + 4, W + 4) + "px"; vp.style.height = Math.min(FH + 4, H + 4) + "px";
+  vp.style.overflow = zoom > 1 ? "auto" : "visible";   // không cắt quầng sáng khi vừa khung
+  $("z-val").textContent = Math.round(zoom * 100) + "%";
+  $("z-fit").classList.toggle("on", zoom === 1);
+  info();
+}
+/* đo độ trễ mạng tới máy chủ (hiện ở dòng thông tin) — để biết lag do mạng hay do máy */
+let PING = 0;
+setInterval(async () => {
+  if (!main.ok || document.hidden) return;
+  const t0 = performance.now();
+  try { await fetch(baseOf(cur) + "/__cp/inject.js?ping=" + Date.now(), { mode: "no-cors", cache: "no-store" }); PING = Math.round(performance.now() - t0); info(); } catch (e) {}
+}, 5000);
+function info() {
+  if (!cur) { $("info").textContent = ""; return; }
+  const [rw, rh] = resOf(cur), s = main.size, fr = $("frame");
+  const dw = Math.round(fr.clientWidth - 14), dh = Math.round(fr.clientHeight - 14);
+  const parts = [`${L("Máy", "Phone")} ${rw}×${rh}`];
+  if (s) parts.push(`${L("hình", "video")} ${s[0]}×${s[1]}`);
+  const land = s ? s[0] > s[1] : rw > rh, base = land ? Math.max(rw, rh) : Math.min(rw, rh);
+  parts.push(`${L("hiển thị", "display")} ${dw}×${dh} (${Math.round(dw / base * 100)}%)`);
+  if (main.ok && main.kbps) parts.push((main.kbps / 1000).toFixed(1) + " Mbps");
+  if (main.ok && PING) parts.push((ROUTE === "fast" ? "⚡ " : "☁ ") + L("trễ mạng ", "ping ") + PING + " ms");
+  if (main.ok && main.legacy && !$("adminlink").hidden) parts.push(L("⚠ chế độ gốc — server chưa chạy cpapi mới", "⚠ basic mode — server is not running the new cpapi"));
+  $("info").textContent = parts.join(" · ");
+}
+addEventListener("resize", () => { fit(); if (document.body.classList.contains("multi")) layoutGrid(); });
+function setZoom(z) { zoom = Math.min(2.5, Math.max(0.5, z)); fit(); }
+$("z-in").onclick = () => setZoom(ZOOMS.find(z => z > zoom + .001) || 2.5);
+$("z-out").onclick = () => setZoom([...ZOOMS].reverse().find(z => z < zoom - .001) || 0.5);
+$("z-fit").onclick = () => setZoom(1);
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { $("dlg").hidden = true; closeSheet(); document.body.classList.remove("focus"); fit(); }
+  if ((e.ctrlKey || e.metaKey) && !document.body.classList.contains("multi")) {
+    if (e.key === "=" || e.key === "+") { e.preventDefault(); $("z-in").click(); }
+    if (e.key === "-") { e.preventDefault(); $("z-out").click(); }
+    if (e.key === "0") { e.preventDefault(); setZoom(1); }
+  }
+});
+
+function leftText(p) {
+  if (!p || !p.expires_at) return "";
+  const ms = new Date(p.expires_at) - Date.now();
+  if (ms <= 0) return L("Đã hết hạn", "Expired");
+  const d = Math.floor(ms / 86400000), h = Math.floor(ms % 86400000 / 3600000), m = Math.floor(ms % 3600000 / 60000);
+  if (LANG === "en") return (d ? d + "d " + h + "h" : h ? h + "h " + m + "m" : m + " min") + " left";
+  return "Còn " + (d ? d + " ngày " + h + " giờ" : h ? h + " giờ " + m + " phút" : m + " phút");
+}
+const fdate = s => s ? new Date(s).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }) : "—";
+function graceLeft(p) { return p.expires_at ? Math.ceil((new Date(p.expires_at).getTime() + 30 * 60000 - Date.now()) / 60000) : 0; }
+function expLevel(p) {
+  if (p.status === "expired") return "bad";
+  if (p.status !== "active" || !p.expires_at) return "ok";
+  const ms = new Date(p.expires_at) - Date.now();
+  return ms < 86400000 ? "bad" : ms < 3 * 86400000 ? "warn" : "ok";
+}
+function expText(p) {
+  if (p.status === "expired") { const g = graceLeft(p); return g > 0 ? L(`⛔ Đã hết hạn — gia hạn trong ${g} phút nữa kẻo bị xoá`, `⛔ Expired — renew within ${g} min or it will be deleted`) : L("⛔ Đã quá 30 phút, máy đang bị xoá", "⛔ Over 30 minutes, the phone is being deleted"); }
+  if (p.status === "pending") return L("⏳ Đang tạo máy…", "⏳ Creating phone…");
+  if (!p.expires_at) return "";
+  const lv = expLevel(p);
+  return `${lv === "bad" ? "⚠️ " : lv === "warn" ? "⏰ " : ""}${L("Hết hạn", "Expires")} ${fdate(p.expires_at)} · ${leftText(p).toLowerCase()}`;
+}
+function canRenew(p) {
+  if (p.shared) return false;          // máy được chia sẻ: chỉ chủ máy gia hạn
+  const locked = p.locked && (!p.locked_until || new Date(p.locked_until) > new Date());
+  return !locked && (p.status === "active" || (p.status === "expired" && graceLeft(p) > 0));
+}
+function renderExpBar() {
+  const soon = phones.filter(p => canRenew(p) && expLevel(p) !== "ok");
+  const bad = soon.some(p => p.status === "expired");
+  $("expbar").hidden = !soon.length; $("expbar").classList.toggle("bad", bad);
+  if (!soon.length) return;
+  const first = soon.sort((a, b) => new Date(a.expires_at) - new Date(b.expires_at))[0];
+  $("exptxt").textContent = soon.length === 1
+    ? (first.status === "expired" ? L(`⛔ ${first.name} đã hết hạn — gia hạn trong ${graceLeft(first)} phút nữa để giữ dữ liệu.`, `⛔ ${first.name} has expired — renew within ${graceLeft(first)} min to keep your data.`) : L(`⏰ ${first.name} sắp hết hạn (${leftText(first).toLowerCase()}).`, `⏰ ${first.name} expires soon (${leftText(first).toLowerCase()}).`))
+    : L(`${bad ? "⛔" : "⏰"} ${soon.length} máy sắp hết hạn hoặc đã hết hạn — gần nhất: ${first.name} (${first.status === "expired" ? "đã hết hạn" : leftText(first).toLowerCase()}).`, `${bad ? "⛔" : "⏰"} ${soon.length} phones are expiring or expired — next: ${first.name} (${first.status === "expired" ? "expired" : leftText(first).toLowerCase()}).`);
+  $("expgo").textContent = soon.length === 1 ? L("Gia hạn ngay", "Renew now") : L("Xem & gia hạn", "View & renew");
+  $("expgo").onclick = () => soon.length === 1 ? openRenew(first) : devMenu(true);
+}
+/* ---- tự khớp kích thước máy với màn hình của khách ---- */
+function myScreenRes() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 3), sw = screen.width * dpr, sh = screen.height * dpr;
+  const mobile = small() || matchMedia("(pointer: coarse)").matches;
+  let W, H;
+  if (mobile) { W = Math.min(sw, sh); H = Math.max(sw, sh); }          // điện thoại: máy dọc giống máy khách
+  else { W = Math.max(sw, sh); H = Math.min(sw, sh); }                 // PC: máy nằm ngang theo màn hình
+  const short = Math.min(W, H), k = Math.min(1, 1080 / short) * (short < 540 ? 540 / short : 1);
+  W = Math.round(W * k / 8) * 8; H = Math.round(H * k / 8) * 8;
+  W = Math.min(Math.max(W, 320), 4096); H = Math.min(Math.max(H, 320), 4096);
+  return W + "x" + H;
+}
+const ratioOf = r => { const m = /^(\d+)x(\d+)$/.exec(r || ""); return m ? +m[1] / +m[2] : 0; };
+function checkFit() {
+  if (!cur || cur.status !== "active" || document.body.classList.contains("multi")) { $("fitbar").hidden = true; return; }
+  const mine = myScreenRes(), a = ratioOf(cur.res), b = ratioOf(mine);
+  const key = "cp_fitno_" + cur.id + "_" + cur.res;
+  let skip = false; try { skip = !!localStorage.getItem(key); } catch (e) {}
+  const mobile = small() || matchMedia("(pointer: coarse)").matches;
+  // chỉ gợi ý trên điện thoại (PC đã tự co khung); lệch tỉ lệ > 8% mới nhắc
+  const off = mobile && a && b && Math.abs(a - b) / b > 0.08;
+  $("fitbar").hidden = !off || skip;
+  if (!off || skip) return;
+  $("fittxt").textContent = L(`Máy ${cur.res} lệch tỉ lệ màn hình bạn. Đổi sang ${mine} cho kín màn? (đổi ngay, app vẫn chạy)`, `The phone (${cur.res}) doesn't match your screen shape. Switch to ${mine} to fill the screen? (instant, apps keep running)`);
+  $("fitgo").onclick = () => ACT.display(mine);
+  $("fitno").onclick = () => { try { localStorage.setItem(key, "1"); } catch (e) {} $("fitbar").hidden = true; };
+}
+addEventListener("resize", () => setTimeout(checkFit, 200));
+let PRICE = null, PROF = null;
+async function loadBilling() {
+  const [{ data: pr }, { data: pf }] = await Promise.all([
+    sb.from("cloudphone_pricing").select("*").eq("id", 1).maybeSingle(),
+    sb.from("profiles").select("balance,ctv_status,ctv_discount").eq("id", me.id).maybeSingle()]);
+  PRICE = pr || PRICE; PROF = pf || PROF;
+}
+function perDay(p) {
+  const pr = PRICE || { price_ram_gb_day: 2500, price_cpu_day: 2000 };
+  return p.ram * (+pr.price_ram_gb_day) + p.cpu * (+pr.price_cpu_day);
+}
+function ctvCut(v) { return PROF && PROF.ctv_status === "approved" && +PROF.ctv_discount > 0 ? Math.round(v * (100 - +PROF.ctv_discount) / 100) : v; }
+const vnd = v => Math.round(+v || 0).toLocaleString("vi-VN") + "đ";
+async function openRenew(p) {
+  if (!p) return;
+  if (!canRenew(p)) { toast(L("Máy này không gia hạn được (đã xoá hoặc đang bị khoá).", "This phone can't be renewed (deleted or locked)."), 1); return; }
+  await loadBilling();
+  const max = (PRICE && PRICE.max_days) || 365, opts = [1, 3, 7, 15, 30, 60, 90].filter(d => d <= max);
+  let days = opts.includes(30) ? 30 : opts[opts.length - 1];
+  const draw = () => {
+    const price = ctvCut(perDay(p) * days), bal = PROF ? +PROF.balance : 0;
+    const base = Math.max(Date.now(), new Date(p.expires_at || Date.now()).getTime());
+    $("rn-chips").querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.v === days));
+    $("rn-sum").innerHTML = `<div><span>${L("Đơn giá", "Price")}</span><span>${vnd(ctvCut(perDay(p)))} / ${L("ngày", "day")}${PROF && PROF.ctv_status === "approved" && +PROF.ctv_discount ? ` <small class="lv-ok">(CTV −${PROF.ctv_discount}%)</small>` : ""}</span></div>
+      <div><span>${L("Hạn mới", "New expiry")}</span><span>${fdate(new Date(base + days * 86400000))}</span></div>
+      <div><span>${L("Số dư", "Balance")}</span><span>${vnd(bal)}</span></div>
+      <div><span>${L("Thanh toán", "Total")}</span><b>${vnd(price)}</b></div>
+      ${bal < price ? (LANG === "en" ? `<div class="lv-bad">You need ${vnd(price - bal)} more. <a href="/" target="_blank" rel="noopener">Top up</a>, then try again.</div>` : `<div class="lv-bad">Số dư thiếu ${vnd(price - bal)}. <a href="/" target="_blank" rel="noopener">Nạp tiền</a> rồi bấm lại.</div>`) : ""}`;
+    $("dlgok").disabled = bal < price;
+  };
+  ask({ title: L("Gia hạn ", "Renew ") + p.name, desc: `${p.ram}GB · ${p.cpu} ${L("nhân", "cores")} · ${esc(p.res || "")} · ${expText(p)}`,
+    body: `<span class="lbl">${L("Thêm bao nhiêu ngày?", "How many days to add?")}</span><div class="chips" id="rn-chips">${opts.map(d => `<button type="button" data-v="${d}">${d}<small>${L("ngày", d > 1 ? "days" : "day")}</small></button>`).join("")}</div>
+           <input class="in" id="rn-x" type="number" min="1" max="${max}" inputmode="numeric" placeholder="${L("Hoặc tự nhập số ngày", "Or enter a number of days")}">
+           <div class="rnsum" id="rn-sum"></div>`,
+    ok: L("Gia hạn", "Renew"),
+    onOk: async () => {
+      const { error } = await sb.rpc("cloudphone_renew", { p_id: p.id, p_days: days });
+      if (error) { const m = String(error.message || ""); toast(/INSUFFICIENT/.test(m) ? L("Số dư không đủ.", "Not enough balance.") : /PHONE_GONE/.test(m) ? L("Máy đã bị xoá vì hết hạn quá 30 phút.", "The phone was deleted (expired over 30 min ago).") : /PHONE_LOCKED/.test(m) ? L("Máy đang bị khoá.", "This phone is locked.") : /MAINTENANCE/.test(m) ? L("Hệ thống đang bảo trì.", "The system is under maintenance.") : L("Gia hạn lỗi: ", "Renewal failed: ") + m, 1); return false; }
+      toast(L(`Đã gia hạn +${days} ngày cho ${p.name}. Hạn mới cập nhật trong ít giây.`, `Renewed ${p.name} for +${days} days. The new expiry shows in a few seconds.`));
+      setTimeout(refreshPhones, 4000); setTimeout(refreshPhones, 20000);
+    } });
+  draw();
+  $("rn-chips").onclick = e => { const b = e.target.closest("[data-v]"); if (b) { days = +b.dataset.v; $("rn-x").value = ""; draw(); } };
+  $("rn-x").oninput = e => { const v = parseInt(e.target.value, 10); if (v > 0 && v <= max) { days = v; draw(); } };
+}
+async function myPhones() {       // máy của tôi + máy người khác chia sẻ cho tôi
+  const [{ data }, sh] = await Promise.all([
+    sb.from("cloud_phones").select("*").eq("user_id", me.id).in("status", ["active", "pending", "expired"]).order("created_at", { ascending: true }),
+    sb.rpc("cp_shared_with_me").then(r => r, () => ({}))]);
+  if (!data) return null;
+  return data.concat(Array.isArray(sh && sh.data) ? sh.data.filter(p => !data.some(x => x.id === p.id)) : []);
+}
+async function refreshPhones() {
+  const data = await myPhones();
+  if (!data) return;
+  for (const n of data) { const o = phones.find(x => x.id === n.id); if (o) Object.assign(o, n); else phones.push(n); }
+  phones = phones.filter(x => data.some(n => n.id === x.id) || (cur && x.id === cur.id && x.user_id !== me.id));
+  renderHead();
+}
+setInterval(() => { if (document.visibilityState === "visible") refreshPhones(); }, 60000);
+function renderHead() {
+  renderDevMenu();
+  const act = phones.filter(p => p.status === "active").length;
+  $("multin").textContent = L("Nhiều máy", "Multi view") + (act > 1 ? " (" + act + ")" : "");
+  if (!cur) return;
+  $("spec").innerHTML = `Android <b>${esc(cur.android || "11")}</b> · <b>${cur.ram}GB</b> RAM · <b>${cur.cpu}</b> ${L("nhân", "cores")} · ${esc(cur.res || "")} · <b>${cur.fps || 30}</b> FPS`;
+  $("left").textContent = leftText(cur); $("left").className = "lv-" + expLevel(cur);
+  $("qtxt").textContent = QUAL[quality][0];
+  document.title = cur.name + L(" – Điều khiển máy", " – Phone control");
+}
+function setTools(on) { document.querySelectorAll(".tools .tb, .mbar .tb[data-key]").forEach(b => { b.disabled = !on; }); }
+
+async function loadPhones() {
+  const want = new URLSearchParams(location.search).get("id");
+  phones = (await myPhones()) || [];
+  if (want && !phones.some(p => p.id === want)) {
+    const { data: one } = await sb.from("cloud_phones").select("*").eq("id", want).maybeSingle();   // admin mở máy của khách
+    if (one) phones.unshift(one);
+  }
+  return phones.find(p => p.id === want) || phones.find(p => p.status === "active") || phones[0] || null;
+}
+function openPhone(p) {
+  cur = p; main.size = null; zoom = 1; renderHead(); fit();
+  if (!p) { main.stop(); setTools(false); setState("bad", L("Không có máy", "No phone")); veil(true, L("Bạn chưa có máy nào đang thuê", "You don't have a rented phone yet"), '<a href="/">' + L("Về cửa hàng để thuê máy", "Go to the store to rent one") + '</a>', false); return; }
+  const u = new URL(location.href); u.searchParams.set("id", p.id); history.replaceState(null, "", u);
+  if (p.status !== "active" || !p.port) {
+    main.stop(); setTools(false);
+    if (p.status === "pending") { setState("wait", L("Đang tạo máy", "Creating phone")); veil(true, L("Máy đang được tạo", "Your phone is being created"), L("Khoảng 2–3 phút, trang tự mở khi xong.", "About 2–3 minutes. This page opens it automatically when ready.")); }
+    else { setState("bad", L("Máy tạm dừng", "Phone paused")); veil(true, L("Máy đã hết hạn và đang tạm dừng", "This phone has expired and is paused"), L('Gia hạn trong 30 phút để giữ dữ liệu. <a href="/">Về cửa hàng để gia hạn</a>', 'Renew within 30 minutes to keep your data. <a href="/">Go to the store to renew</a>'), false); }
+    return;
+  }
+  setTools(true); main.tries = 0; main.open(p, quality);
+  api(p.id + "/key", { method: "POST", json: { code: 224 } }).catch(() => {});   // bật sáng màn hình máy ảo (tránh màn đen do máy tự tắt màn)
+  checkInfo(); setTimeout(checkFit, 600);
+}
+/* ---- menu chọn máy: mở từng máy / mở tất cả / mở vài máy đã chọn ---- */
+const pickSet = new Set();
+const pState = p => p.locked && (!p.locked_until || new Date(p.locked_until) > new Date()) ? ["bad", L("🔒 Bị khoá", "🔒 Locked")]
+  : p.status === "active" ? ["ok", L("Đang chạy", "Running")] : p.status === "pending" ? ["", L("Đang tạo", "Creating")] : p.status === "expired" ? ["bad", L("Tạm dừng", "Paused")] : ["bad", p.status];
+function renderDevMenu() {
+  const multi = document.body.classList.contains("multi");
+  const s = cur ? pState(cur) : ["", ""];
+  $("devname").textContent = multi ? L(`Đang xem ${tiles.size} máy`, `Viewing ${tiles.size} phones`) : cur ? cur.name : L("Máy của tôi", "My phone");
+  $("devdot").className = multi ? "ok" : s[0];
+  const act = phones.filter(p => p.status === "active");
+  $("dm-title").textContent = L(`Máy của bạn (${phones.length})`, `Your phones (${phones.length})`);
+  $("dm-all").disabled = act.length < 1;
+  $("dm-list").innerHTML = phones.length ? phones.map(p => {
+    const st = pState(p), on = p.status === "active" && st[0] === "ok", isCur = !multi && cur && p.id === cur.id;
+    const lv = expLevel(p), canRn = canRenew(p);
+    return `<div class="dm-r${isCur ? " cur" : ""}${lv === "bad" ? " bad" : lv === "warn" ? " warn" : ""}"><input type="checkbox" data-pick="${p.id}"${pickSet.has(p.id) ? " checked" : ""}${on ? "" : " disabled"} aria-label="${L("Chọn", "Select")} ${esc(p.name)}">
+      <span class="nm"><i class="${st[0]}"></i><b>${esc(p.name)}</b>${p.shared ? ` <small title="${esc(L("Được chia sẻ bởi ", "Shared by ") + (p.owner_name || ""))}">👥</small>` : ""}</span>
+      <span class="acts2"><button class="btn sm${isCur ? " gh" : ""}" type="button" data-openone="${p.id}"${isCur || p.status !== "active" ? " disabled" : ""}>${isCur ? L("Đang mở", "Open now") : L("Mở", "Open")}</button>
+        ${canRn ? `<button class="btn sm ${lv === "ok" ? "gh" : ""}" type="button" data-renew="${p.id}">${L("Gia hạn", "Renew")}</button>` : ""}</span>
+      <span class="info2">Android ${esc(p.android || "11")} · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")} · ${esc(p.res || "")} · ${p.fps || 30} FPS · ${st[1]}</span>
+      <span class="info2">${L("Mua", "Bought")} ${fdate(p.created_at)}${p.days ? L(" · gói " + p.days + " ngày", " · " + p.days + "-day plan") : ""}</span>
+      <span class="exp2 lv-${lv}">${expText(p)}</span></div>`;
+  }).join("") : L('<div style="padding:16px;color:var(--muted)">Bạn chưa thuê máy nào. <a href="/">Thuê máy</a></div>', '<div style="padding:16px;color:var(--muted)">You haven\'t rented a phone yet. <a href="/">Rent one</a></div>');
+  $("dm-sel").disabled = pickSet.size < 1;
+  renderExpBar();
+  $("dm-sel").textContent = pickSet.size ? L(`Mở ${pickSet.size} máy đã chọn`, `Open ${pickSet.size} selected`) : L("Mở máy đã chọn", "Open selected");
+}
+function devMenu(open) { $("devmenu").hidden = !open; $("devbtn").setAttribute("aria-expanded", open ? "true" : "false"); if (open) renderDevMenu(); }
+$("devbtn").onclick = e => { e.stopPropagation(); devMenu($("devmenu").hidden); };
+document.addEventListener("click", e => { if (!$("devmenu").hidden && !e.target.closest(".devwrap")) devMenu(false); });
+$("devmenu").addEventListener("change", e => { const c = e.target.closest("[data-pick]"); if (!c) return; c.checked ? pickSet.add(c.dataset.pick) : pickSet.delete(c.dataset.pick); renderDevMenu(); });
+$("devmenu").addEventListener("click", e => {
+  const o = e.target.closest("[data-openone]");
+  const rn = e.target.closest("[data-renew]");
+  if (rn) { devMenu(false); openRenew(phones.find(x => x.id === rn.dataset.renew)); return; }
+  if (o) { devMenu(false); const p = phones.find(x => x.id === o.dataset.openone); if (document.body.classList.contains("multi")) setView("one", null, p); else openPhone(p); }
+});
+$("dm-all").onclick = () => { devMenu(false); setView("multi"); };
+$("dm-sel").onclick = () => { devMenu(false); if (pickSet.size === 1) { const p = phones.find(x => pickSet.has(x.id)); if (document.body.classList.contains("multi")) setView("one", null, p); else openPhone(p); } else setView("multi", [...pickSet]); };
+
+async function checkInfo() {
+  if (!cur || cur.status !== "active") return;
+  try {
+    const i = await api(cur.id + "/info");
+    if (i.expires_at) cur.expires_at = i.expires_at;
+    if (i.fps) cur.fps = i.fps; if (i.fps_range) cur.fpsRange = i.fps_range;
+    if (i.maint) {
+      main.stop(); setTools(false); setState("bad", L("Đang bảo trì", "Maintenance"));
+      veil(true, L("Đang bảo trì", "Under maintenance"), esc(LANG === "en" ? "Please come back later." : (i.maint_msg || "Vui lòng quay lại sau.")) + L("<br>Máy và dữ liệu của bạn vẫn được giữ nguyên.", "<br>Your phone and data are kept safe."), false);
+      underMaint = true; renderHead(); return;
+    }
+    if (i.locked) {
+      main.stop(); setTools(false); setState("bad", L("Máy bị khoá", "Locked"));
+      veil(true, L("🔒 Máy đang bị khoá", "🔒 This phone is locked"), esc(srv(i.lock_msg) || L("Liên hệ hỗ trợ để biết thêm.", "Contact support for details.")), false);
+      underMaint = true; renderHead(); return;
+    }
+    if (underMaint) { underMaint = false; openPhone(cur); return; }
+    if ((!i.online || i.booting) && !main.ok) {
+      setState("wait", L("Máy đang khởi động…", "Starting up…"));
+      veil(true, L("Máy đang khởi động lại…", "The phone is restarting…"), L("Android trong máy đang bật lại (thường do app dùng hết RAM). Khoảng 1–2 phút, màn hình tự mở lại khi xong.", "Android is starting again (usually because an app used up the RAM). About 1–2 minutes; the screen reopens by itself."));
+      main.tries = 0;
+    }
+  } catch (e) { if (!main.ok) setState("bad", e.status === 409 ? L("Máy chưa chạy", "Not running") : e.status ? L("Lỗi server (", "Server error (") + e.status + ")" : L("Không tới được server", "Can't reach server")); }
+  renderHead();
+}
+setInterval(checkInfo, 20000);
+setInterval(async () => {          // máy đang tạo / tạm dừng → tự cập nhật
+  if (!cur || cur.status === "active") return;
+  const { data } = await sb.from("cloud_phones").select("*").eq("id", cur.id).maybeSingle();
+  if (data && data.status !== cur.status) { Object.assign(cur, data); openPhone(cur); }
+}, 6000);
+setInterval(() => cur && ($("left").textContent = leftText(cur)), 30000);
+setInterval(() => openSession().catch(() => {}), 2 * 3600 * 1000);
+
+/* ---------- nhiều máy ---------- */
+const tiles = new Map();
+let gridIds = null;
+function setView(v, ids, openP) {
+  const multi = v === "multi";
+  gridIds = multi && ids && ids.length ? ids : null;
+  if (openP) cur = openP;
+  if (multi && phones.filter(p => p.status === "active").length < 1) { toast(L("Bạn chưa có máy nào đang chạy.", "You have no running phones.")); return; }
+  document.body.classList.toggle("multi", multi);
+  $("v-one").classList.toggle("on", !multi); $("v-multi").classList.toggle("on", multi);
+  store.set("cp_view", v);
+  if (multi) { main.stop(); for (const t of tiles.values()) { t.conn.stop(); CONNS.delete(t.conn); } tiles.clear(); buildGrid(); }
+  else { for (const t of tiles.values()) { t.conn.stop(); CONNS.delete(t.conn); } tiles.clear(); $("grid").innerHTML = ""; if (cur) openPhone(cur); }
+  renderDevMenu();
+  $("v-sync").hidden = !multi; if (!multi && SYNC) setSync(false);
+}
+$("v-one").onclick = () => setView("one");
+$("v-multi").onclick = () => setView("multi");
+$("v-sync").onclick = () => setSync(!SYNC);
+function buildGrid() {
+  const list = phones.filter(p => p.status === "active" && p.port && (!gridIds || gridIds.includes(p.id)));
+  const g = $("grid"); g.innerHTML = list.length ? "" : L('<div class="gempty">Chưa có máy nào đang chạy.</div>', '<div class="gempty">No running phones.</div>');
+  for (const p of list) {
+    const el = document.createElement("div"); el.className = "tile";
+    el.innerHTML = `<div class="th"><i></i><span>${esc(p.name)}</span><small>${esc(p.res || "")}</small>
+        <button class="btn sm gh" data-big="${p.id}" title="${L("Mở lớn máy này", "Open this phone large")}">${L("Mở lớn", "Enlarge")}</button></div>
+      <div class="tf"><iframe title="${esc(p.name)}" allow="autoplay; clipboard-read; clipboard-write"></iframe>
+        <div class="veil"><div class="spin"></div><b>${L("Đang mở…", "Opening…")}</b><span></span></div></div>
+      <div class="tbar"><button data-tkey="4" data-id="${p.id}">↩<span>${L("Quay lại", "Back")}</span></button><button data-tkey="3" data-id="${p.id}">○<span>${L("Màn chính", "Home")}</span></button>
+        <button data-tkey="187" data-id="${p.id}">▢<span>${L("Đa nhiệm", "Recents")}</span></button><button data-big="${p.id}">⤢<span>${L("Mở lớn", "Enlarge")}</span></button></div>`;
+    g.appendChild(el);
+    const dot = el.querySelector(".th i"), v = el.querySelector(".veil");
+    const conn = new Conn(el.querySelector("iframe"), v, {
+      connecting(n) { dot.className = ""; veilOn(v, true, n ? L("Đang nối lại…", "Reconnecting…") : L("Đang mở…", "Opening…"), ""); },
+      ok() { dot.className = "ok"; veilOn(v, false); },
+      fail() { dot.className = "bad"; veilOn(v, true, L("Không kết nối được", "Can't connect"), '<button class="btn sm" data-tretry="' + p.id + '">' + L("Thử lại", "Try again") + '</button>', false); },
+      size() { layoutGrid(); },
+    });
+    tiles.set(p.id, { el, conn, p });
+  }
+  layoutGrid();
+  let i = 0; for (const t of tiles.values()) { setTimeout(() => t.conn.open(t.p, "eco"), i++ * 350); }   // mở lần lượt cho nhẹ
+}
+function layoutGrid() {
+  const n = tiles.size; if (!n) return;
+  const g = $("grid"), W = g.clientWidth - 32, H = g.clientHeight - 32, gap = 14, extra = 96;   // tiêu đề + nút
+  let best = { cols: 1, w: 120 };
+  for (let cols = 1; cols <= Math.min(n, 8); cols++) {
+    const rows = Math.ceil(n / cols), tw = (W - gap * (cols - 1)) / cols, th = (H - gap * (rows - 1)) / rows - extra;
+    const w = Math.min(tw, th * 9 / 19.5);
+    if (w > best.w) best = { cols, w };
+  }
+  const minW = small() ? (innerWidth - 36) / 2 : 160, w = Math.max(minW, Math.floor(best.w)), cols = small() ? 2 : best.cols;
+  g.style.gridTemplateColumns = `repeat(${cols}, ${w}px)`;
+  for (const t of tiles.values()) {
+    const s = t.conn.size || resOf(t.p);
+    t.el.querySelector(".tf").style.height = Math.round(w * s[1] / s[0]) + "px";
+  }
+}
+$("grid").addEventListener("click", e => {
+  const big = e.target.closest("[data-big]"), k = e.target.closest("[data-tkey]"), r = e.target.closest("[data-tretry]");
+  if (big) { const p = phones.find(x => x.id === big.dataset.big); setView("one", null, p); }
+  else if (k) { const t = tiles.get(k.dataset.id); if (t) pressKey(t.conn, t.p, +k.dataset.tkey); }
+  else if (r) { const t = tiles.get(r.dataset.tretry); if (t) { t.conn.tries = 0; t.conn.fails = 0; t.conn.raw = false; t.conn.open(t.p, "eco"); } }
+});
+
+/* ---------- phím & công cụ ---------- */
+document.addEventListener("click", e => {
+  const k = e.target.closest("[data-key]"); if (k && !k.disabled) { pressKey(main, cur, +k.dataset.key); return; }
+  const a = e.target.closest("[data-act]"); if (a && !a.disabled) { closeSheet(); ACT[a.dataset.act](); }
+});
+function pick(list, val, cls) {
+  return `<div class="chips ${cls || ""}">` + list.map(([v, t, s]) => `<button type="button" data-v="${v}" class="${v === val ? "on" : ""}">${t}${s ? `<small>${s}</small>` : ""}</button>`).join("") + "</div>";
+}
+function chipsBind(box, on) { box.onclick = e => { const b = e.target.closest("[data-v]"); if (!b) return; box.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); on(b.dataset.v); }; }
+const ACT = {
+  quality() {
+    let q = quality, pl = player;
+    ask({ title: L("Chất lượng hình", "Video quality"), desc: L("Chọn theo mạng của bạn. Đổi xong hình tự mở lại sau 1–2 giây.", "Pick what suits your connection. The video reopens 1–2 seconds after you change it."),
+      body: `<span class="lbl">${L("Độ nét &amp; băng thông", "Sharpness &amp; bandwidth")}</span><div id="q-box">${pick(Object.entries(QUAL).map(([k, v]) => [k, v[0], v[1]]), q, "c3")}</div>
+             <span class="lbl">${L("Cách giải mã hình", "Video decoder")}</span><div id="p-box">${pick([["webcodecs", L("Nhanh", "Fast"), L("Ít trễ, dùng card đồ hoạ", "Low latency, uses the GPU")], ["broadway", L("Tương thích", "Compatible"), L("Dùng khi bị đen / giật", "Use if the screen is black or stutters")]], pl, "c2")}</div>`,
+      ok: L("Áp dụng", "Apply"),
+      onOk: () => { quality = q; player = pl; store.set("cp_q", q); store.set("cp_player", pl); renderHead(); if (cur && cur.status === "active") { main.tries = 0; main.open(cur, quality); } toast(L("Đã đổi: ", "Changed: ") + QUAL[q][0] + " · " + (pl === "webcodecs" ? L("Nhanh", "Fast") : L("Tương thích", "Compatible"))); } });
+    chipsBind($("q-box"), v => q = v); chipsBind($("p-box"), v => pl = v);
+  },
+  async rotate() {
+    try { await api(cur.id + "/rotate", { method: "POST", json: { dir: main.size && main.size[0] > main.size[1] ? 0 : 1 } }); toast(L("Đã xoay — khung hình tự đổi theo.", "Rotated — the frame adjusts automatically.")); } catch (e) { toast(e.message, 1); }
+  },
+  async shot() {
+    toast(L("Đang chụp màn hình…", "Taking a screenshot…"));
+    try {
+      const b = await api(cur.id + "/shot", { blob: true }), url = URL.createObjectURL(b);
+      const name = "manhinh-" + new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-") + ".png";
+      ask({ title: L("Ảnh chụp màn hình", "Screenshot"), body: `<img class="shot" src="${url}" alt="${L("Ảnh chụp màn hình máy", "Phone screenshot")}">`, ok: L("Tải ảnh về", "Download image"), onOk: () => { const l = document.createElement("a"); l.href = url; l.download = name; l.click(); } });
+    } catch (e) { toast(e.message, 1); }
+  },
+  focus() { document.body.classList.add("focus"); fit(); const el = document.documentElement; if (el.requestFullscreen) el.requestFullscreen().catch(() => {}); },
+  reload() { if (cur && cur.status === "active") { main.tries = 0; main.open(cur, quality); } },
+  zoomin() { setZoom(zoom >= 1.5 ? 1 : 1.5); },
+  display(preset) {
+    const [lo, hi] = cur.fpsRange || [10, 120];
+    const fpsMax = (+cur.cpu || 0) < 4 ? Math.min(hi, 60) : hi;     // máy nhỏ chạy FPS cao → giật, xám màn hình
+    const FPS = [30, 60, 90, 120].filter(v => v >= lo && v <= fpsMax);
+    const RES = [["540x960", L("Nhẹ máy", "Light")], ["720x1280", "HD"], ["720x1600", L("HD+ dài", "HD+ tall")], ["1080x1920", "Full HD"], ["1080x2340", L("FHD+ dài", "FHD+ tall")], ["1080x2400", "FHD+ 20:9"], ["1280x720", L("HD ngang", "HD landscape")], ["1920x1080", L("FHD ngang", "FHD landscape")]];
+    const mine = myScreenRes();
+    if (!RES.some(r => r[0] === mine)) RES.unshift([mine, L("📐 Theo màn hình bạn", "📐 Match your screen")]); else RES.find(r => r[0] === mine)[1] = L("📐 Theo màn hình bạn", "📐 Match your screen");
+    let fps = cur.fps || 30, res = typeof preset === "string" ? preset : (cur.res || "720x1280");
+    const draw = () => {
+      $("d-fps").innerHTML = FPS.map(v => `<button type="button" data-fps="${v}" class="${v === fps ? "on" : ""}">${v}<small>FPS</small></button>`).join("");
+      $("d-res").innerHTML = RES.map(r => `<button type="button" data-res="${r[0]}" class="${r[0] === res ? "on" : ""}">${r[1]}<small>${r[0]}</small></button>`).join("");
+    };
+    ask({ title: L("FPS & độ phân giải", "FPS & resolution"), desc: L(`Đang dùng <b>${esc(cur.res)}</b> · <b>${cur.fps || 30} FPS</b>. <br>• Chỉ đổi <b>độ phân giải</b>: đổi ngay trong vài giây, <b>app đang chạy không bị tắt</b>.<br>• Đổi <b>FPS</b>: máy khởi động lại (1–3 phút), dữ liệu vẫn giữ nhưng app đang mở sẽ đóng.`,
+        `Current: <b>${esc(cur.res)}</b> · <b>${cur.fps || 30} FPS</b>. <br>• Changing only the <b>resolution</b> takes a few seconds and <b>running apps stay open</b>.<br>• Changing <b>FPS</b> restarts the phone (1–3 min). Your data is kept, but open apps will close.`),
+      body: `<button type="button" class="btn sm gh" id="d-light" style="width:100%;margin-bottom:6px">🪶 ${L("Chế độ treo nhiều tab: 540x960 · 30 FPS (nhẹ máy nhất)", "Multi-tab mode: 540x960 · 30 FPS (lightest)")}</button>
+             <span class="lbl">FPS (${lo}–${hi})</span><div class="chips" id="d-fps"></div><input class="in" id="d-fpsx" type="number" min="${lo}" max="${hi}" inputmode="numeric" placeholder="${L("Hoặc tự nhập FPS", "Or enter FPS")}">
+             <span class="lbl">${L("Độ phân giải", "Resolution")}</span><div class="chips" id="d-res"></div><input class="in" id="d-resx" type="text" autocomplete="off" placeholder="${L("Hoặc tự nhập, VD 1080x2400", "Or enter one, e.g. 1080x2400")}">`,
+      ok: L("Áp dụng", "Apply"),
+      onOk: async () => {
+        if (!(fps >= lo && fps <= hi)) { toast(L(`FPS phải từ ${lo} đến ${hi}.`, `FPS must be between ${lo} and ${hi}.`), 1); return false; }
+        if (fps > fpsMax) { toast(L("Máy dưới 4 nhân chỉ chọn tối đa 60 FPS (treo game nên để 30 FPS).", "Phones with under 4 cores are limited to 60 FPS (30 FPS is best for idle farming)."), 1); return false; }
+        if (!/^\d{3,4}x\d{3,4}$/.test(res)) { toast(L("Độ phân giải phải dạng rộng x cao, VD 1080x1920.", "Resolution must be width x height, e.g. 1080x1920."), 1); return false; }
+        if (fps === (cur.fps || 30) && res === cur.res) { toast(L("Bạn chưa thay đổi gì.", "Nothing changed.")); return false; }
+        try {
+          const j = await api(cur.id + "/display", { method: "POST", json: { fps, res } });
+          const quick = fps === (cur.fps || 30);
+          main.stop(); setTools(false); setState("wait", L("Đang đổi cấu hình…", "Applying settings…")); veil(true, L(`Đang chuyển sang ${res} · ${fps} FPS…`, `Switching to ${res} · ${fps} FPS…`), quick ? L("Vài giây, app đang chạy vẫn giữ nguyên.", "A few seconds — running apps stay open.") : L("Khoảng 1–3 phút, màn hình tự mở lại khi xong.", "About 1–3 minutes; the screen reopens by itself."));
+          const item = trayItem(`${res} · ${fps} FPS`, 0);
+          if (await pollJob(j.job, item)) { cur.fps = fps; cur.res = res; }
+          openPhone(cur);
+        } catch (e) { toast(e.message, 1); return false; }
+      } });
+    draw();
+    $("d-light").onclick = () => { res = "540x960"; fps = Math.min(Math.max(30, lo), hi); $("d-fpsx").value = ""; $("d-resx").value = ""; draw(); };
+    $("d-fps").onclick = e => { const b = e.target.closest("[data-fps]"); if (b) { fps = +b.dataset.fps; $("d-fpsx").value = ""; draw(); } };
+    $("d-res").onclick = e => { const b = e.target.closest("[data-res]"); if (b) { res = b.dataset.res; $("d-resx").value = ""; draw(); } };
+    $("d-fpsx").oninput = e => { const v = parseInt(e.target.value, 10); if (v > 0) { fps = v; draw(); } };
+    $("d-resx").oninput = e => { const v = e.target.value.toLowerCase().replace(/\s+/g, "").replace(/[*×]/g, "x"); if (v) { res = v; draw(); } };
+  },
+  upload() { $("file").click(); },
+  fromurl() {
+    ask({ title: L("Cài từ link", "Install from link"), desc: L("Dán link tải file / APK / XAPK (link tải thẳng, Google Drive để chế độ công khai, MediaFire, Dropbox). Server tự tải về rồi đưa vào máy, APK/XAPK thì tự cài.", "Paste a download link for a file / APK / XAPK (direct link, public Google Drive, MediaFire, Dropbox). The server downloads it and puts it on the phone; APKs/XAPKs install automatically."),
+      body: '<input class="in" id="f-url" type="url" inputmode="url" placeholder="https://…">', ok: L("Tải & cài", "Download & install"),
+      onOk: async () => { const u = $("f-url").value.trim(); if (!/^https?:\/\//.test(u)) { toast(L("Link phải bắt đầu bằng http:// hoặc https://", "The link must start with http:// or https://"), 1); return false; }
+        const item = trayItem(u.split("/").pop().slice(0, 60) || L("Tải từ link", "From link"), 0); item.msg(L("Đang gửi yêu cầu…", "Sending request…"));
+        try { const j = await api(cur.id + "/fromurl", { method: "POST", json: { url: u } }); pollJob(j.job, item); } catch (e) { item.fail(e.message); } } });
+  },
+  async store() {
+    const PLAY = [["com.android.chrome", "Google Chrome", "🌐"], ["org.mozilla.firefox", "Firefox", "🦊"], ["com.roblox.client", "Roblox", "🟥"], ["com.discord", "Discord", "💬"],
+      ["org.telegram.messenger", "Telegram", "✈️"], ["com.zing.zalo", "Zalo", "💙"], ["com.facebook.katana", "Facebook", "📘"], ["com.facebook.orca", "Messenger", "💭"],
+      ["com.zhiliaoapp.musically", "TikTok", "🎵"], ["com.google.android.youtube", "YouTube", "▶️"], ["com.whatsapp", "WhatsApp", "🟢"], ["com.termux", "Termux", "⌨️"]];
+    ask({ title: L("🛍️ Kho ứng dụng", "🛍️ App store"), desc: L("Cài nhanh app có sẵn trên server (không cần tải về), hoặc mở trang app trên Google Play trong máy.", "Install ready-made apps from the server in one tap, or open the app's Google Play page on the phone."),
+      body: '<div class="apps" id="storelist"><div class="spin" style="margin:16px auto"></div></div>', noOk: true });
+    const play = (inst) => `<h4 style="margin:14px 0 6px">${L("Từ Google Play (đăng nhập Google trong máy)", "From Google Play (sign in to Google on the phone)")}</h4>` + PLAY.map(([p, n, i]) =>
+      `<div class="app"><span>${i} ${esc(n)}${inst.has(p) ? ` <small style="color:var(--ok)">✓ ${L("đã cài", "installed")}</small>` : ""}</span>${inst.has(p) ? `<button class="btn sm gh" data-app="launch" data-pkg="${p}">${L("Mở", "Open")}</button>` : `<button class="btn sm" data-play="${p}">${L("Mở CH Play", "Open Play")}</button>`}</div>`).join("");
+    try {
+      const { files, installed } = await api(cur.id + "/store"); const inst = new Set(installed || []);
+      $("storelist").innerHTML = (files.length ? `<h4 style="margin:4px 0 6px">${L("Có sẵn — cài 1 chạm", "Ready to install — one tap")}</h4>` + files.map(f =>
+        `<div class="app"><span title="${esc(f.name)}">📦 ${esc(f.name.replace(/\.(apk|apks|apkm|xapk)$/i, ""))} <small>${(f.size / 1048576).toFixed(0)}MB</small></span><button class="btn sm" data-store="${esc(f.name)}">${L("Cài", "Install")}</button></div>`).join("") : "") + play(inst);
+    } catch (e) { $("storelist").innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>` + play(new Set()); }
+  },
+  sync() { if (!document.body.classList.contains("multi")) { toast(L("Bấm \"Nhiều máy\" ở trên cùng, rồi bật \"Đồng bộ\" — bấm 1 máy, mọi máy làm theo.", "Open \"Multi\" view at the top, then turn on \"Sync\".")); return; } setSync(!SYNC); },
+  macro() { macroDlg(); },
+  keymap() { kmDlg(); },
+  gps() {
+    const C = [["Hà Nội", "21.028511,105.854164"], ["TP.HCM", "10.776889,106.700806"], ["Đà Nẵng", "16.054407,108.202167"], ["Tokyo", "35.689487,139.691711"], ["Singapore", "1.352083,103.819836"], ["New York", "40.712776,-74.005974"], ["London", "51.507351,-0.127758"]];
+    ask({ title: L("📍 Đổi vị trí GPS", "📍 Set GPS location"), desc: L("Đặt vị trí giả cho máy (Android 12 trở lên). Lấy toạ độ: mở Google Maps → bấm chuột phải vào điểm → bấm dòng số đầu tiên để copy → dán vào đây.", "Set a fake location (Android 12+). Get coordinates: Google Maps → right-click a spot → click the numbers to copy → paste here."),
+      body: `<input class="in" id="f-gps" placeholder="21.028511, 105.854164" style="width:100%"><div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${C.map(([n, v]) => `<button type="button" class="btn sm gh" data-gpsc="${v}">${n}</button>`).join("")}</div>
+        <button type="button" class="btn sm red" id="f-gpsoff" style="margin-top:10px">${L("Tắt vị trí giả", "Turn off fake location")}</button>`, ok: L("Đặt vị trí", "Set location"),
+      onOk: async () => { const m = /(-?\d+(?:\.\d+)?)\s*[,; ]\s*(-?\d+(?:\.\d+)?)/.exec($("f-gps").value); if (!m) { toast(L("Nhập dạng: vĩ độ, kinh độ", "Format: lat, lng"), 1); return false; }
+        try { const r = await api(cur.id + "/gps", { method: "POST", json: { lat: +m[1], lng: +m[2] } }); toast(srv(r.msg)); store.set("cp_gps_" + cur.id, m[1] + "," + m[2]); } catch (e) { toast(e.message, 1); return false; } } });
+    $("f-gps").value = store.get("cp_gps_" + cur.id) || "";
+    document.querySelectorAll("[data-gpsc]").forEach(b => b.onclick = () => { $("f-gps").value = b.dataset.gpsc; });
+    $("f-gpsoff").onclick = async () => { try { const r = await api(cur.id + "/gps", { method: "POST", json: { off: true } }); toast(srv(r.msg)); } catch (e) { toast(e.message, 1); } };
+  },
+  async clone() {
+    ask({ title: L("🧬 Clone tab — chạy nhiều bản cùng lúc", "🧬 Clone tab — run several copies at once"),
+      desc: L("Tạo thêm bản của app (VD Roblox chính thức) để đăng nhập acc khác, chạy song song với bản chính. <b>Ô số</b>: muốn bao nhiêu bản clone thì nhập vào — chỉ cần 1 bản thì để trống, bấm Clone. Mỗi bản Roblox cần thêm ~2GB RAM · 2 nhân (2 bản: 8GB · 6 nhân).", "Make extra copies of an app (e.g. official Roblox) to sign in with other accounts side by side. <b>Number box</b>: type how many clones you want — leave it empty for just 1, then tap Clone. Each Roblox copy needs ~2GB RAM · 2 cores more (2 copies: 8GB · 6 cores)."),
+      body: '<div class="apps" id="clonelist"><div class="spin" style="margin:16px auto"></div></div>', noOk: true });
+    try {
+      const [{ apps }, c] = await Promise.all([api(cur.id + "/apps"), api(cur.id + "/clone")]);
+      const cnt = c.counts || Object.fromEntries((c.cloned || []).map(p => [p, 1])), mx = c.max || 4;
+      $("clonelist").innerHTML = apps.length ? apps.map(p => { const k = cnt[p] || 0;
+        return `<div class="app"><span title="${esc(p)}">${k ? "🧬 " : ""}${esc(p)}${k ? ` <small style="color:var(--ok)">✓ ${k} ${L("bản clone", k > 1 ? "clones" : "clone")}</small>` : ""}</span>
+          <input class="in clonen" type="number" min="1" max="${mx}" inputmode="numeric" placeholder="${k ? k + 1 : 1}" title="${L("Số bản clone (để trống = 1)", "Number of clones (empty = 1)")}" data-clonen="${esc(p)}" style="width:62px;padding:6px 8px;text-align:center">
+          ${Array.from({ length: k }, (_, i) => `<button class="btn sm" data-cloneopen="${esc(p)}" data-ci="${i + 1}" title="${L("Mở bản clone", "Open clone")} ${i + 1}">▶ ${k > 1 ? L("Mở ", "Open ") + (i + 1) : L("Mở clone", "Open clone")}</button>`).join("")}<button class="btn sm" data-clone="${esc(p)}">${k ? L("Thêm", "More") : "Clone"}</button>${k ? `<button class="btn sm red" data-unclone="${esc(p)}">${L("Bỏ clone", "Remove")}</button>` : ""}</div>`; }).join("")
+        : L("<p>Chưa có app nào. Cài app (VD Roblox từ CH Play) trước, rồi quay lại đây để clone.</p>", "<p>No apps yet. Install an app first (e.g. Roblox from Play Store), then come back to clone it.</p>");
+    } catch (e) { $("clonelist").innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; }
+  },
+  async apps() {
+    ask({ title: L("Ứng dụng đã cài", "Installed apps"), desc: L("Ứng dụng bạn tự cài thêm trên máy.", "Apps you installed on the phone."), body: '<div class="apps" id="applist"><div class="spin" style="margin:16px auto"></div></div>', noOk: true });
+    try {
+      const { apps } = await api(cur.id + "/apps");
+      $("applist").innerHTML = apps.length ? apps.map(p => `<div class="app"><span title="${esc(p)}">${esc(p)}</span>
+        <button class="btn sm" data-app="launch" data-pkg="${esc(p)}">${L("Mở", "Open")}</button><button class="btn sm gh" data-app="stop" data-pkg="${esc(p)}">${L("Dừng", "Stop")}</button>
+        <button class="btn sm gh" data-app="clear" data-pkg="${esc(p)}">${L("Xoá dữ liệu", "Clear data")}</button><button class="btn sm red" data-app="uninstall" data-pkg="${esc(p)}">${L("Gỡ", "Uninstall")}</button></div>`).join("")
+        : L('<p>Chưa cài thêm ứng dụng nào. Bấm “Tải file / APK” hoặc mở CH Play trên máy để cài.</p>', '<p>No apps installed yet. Tap “Upload file / APK” or open Play Store on the phone.</p>');
+    } catch (e) { $("applist").innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; }
+  },
+  text() {
+    ask({ title: L("Dán chữ vào máy", "Paste text into the phone"), desc: L("Bấm vào ô nhập trên máy trước, rồi dán chữ ở đây (tài khoản, mật khẩu, link…). Có dấu cũng được. Mẹo: bấm vào màn hình máy rồi nhấn <b>Ctrl+V</b> là dán luôn.", "Tap a text field on the phone first, then paste your text here (username, password, link…). Tip: click the phone screen and press <b>Ctrl+V</b> to paste directly."),
+      body: `<textarea class="in cliptxt" id="f-text" maxlength="20000" placeholder="${L("Nội dung cần dán…", "Text to paste…")}"></textarea><button type="button" class="btn sm gh" id="f-fromclip" style="margin-top:8px">${L("📋 Lấy chữ bạn đã copy", "📋 Use what you copied")}</button>`, ok: L("Dán vào máy", "Paste into phone"),
+      onOk: async () => { const t = $("f-text").value; if (!t) return false; return await pasteToPhone(t); } });
+    $("f-fromclip").onclick = async () => {
+      try { const t = await navigator.clipboard.readText(); if (t) $("f-text").value = t; else toast(L("Bộ nhớ copy đang trống.", "Your clipboard is empty."), 1); }
+      catch (e) { toast(L("Trình duyệt không cho đọc bộ nhớ copy — hãy nhấn giữ ô trên rồi chọn Dán.", "Your browser blocked clipboard access — press and hold the box above and choose Paste."), 1); }
+    };
+  },
+  async copyout() {
+    if (!main.ok) { toast(L("Máy chưa kết nối xong.", "The phone isn't connected yet."), 1); return; }
+    clipWant = true; setTimeout(() => { clipWant = false; }, 4000);
+    const ok = await main.cmd("clipget");
+    if (!ok) { clipWant = false; toast(L("Chưa lấy được — trên máy hãy bôi đen chữ và bấm Copy, chữ sẽ tự hiện ở đây.", "Couldn't read it — select text on the phone and tap Copy; it will show up here."), 1); return; }
+    setTimeout(() => { if (clipWant) { clipWant = false; toast(L("Bộ nhớ copy của máy đang trống. Bôi đen chữ trên máy rồi bấm Copy.", "The phone's clipboard is empty. Select text on the phone and tap Copy."), 1); } }, 3000);
+  },
+  async gfix() {
+    ask({ title: L("Không đăng nhập được Google / Cửa hàng Play?", "Can't sign in to Google / Play Store?"), noOk: true, onOk: () => true,
+      desc: L("Máy ảo cần được Google <b>chứng nhận</b> mới đăng nhập được. Làm 1 lần cho mỗi máy, khoảng 5 phút:", "Google must <b>certify</b> this virtual phone before you can sign in. Do this once per phone, about 5 minutes:"),
+      body: `<div id="gf-box"><div class="spin" style="margin:10px auto"></div></div>` });
+    let gsf = "";
+    try { gsf = (await api(cur.id + "/gsf")).gsf; } catch (e) { $("gf-box").innerHTML = `<p style="color:var(--bad)">${esc(e.message)}</p>`; return; }
+    $("gf-box").innerHTML = `<ol style="margin:0;padding-left:20px;line-height:1.75">
+      <li>${L("Copy mã thiết bị của máy này:", "Copy this phone's device ID:")}<div style="display:flex;gap:8px;align-items:center;margin:6px 0"><b style="font:700 17px var(--mono);letter-spacing:.04em;word-break:break-all">${esc(gsf)}</b><button class="btn sm" type="button" id="gf-copy">📋 Copy</button></div></li>
+      <li>${L("Trên điện thoại/máy tính <b>của bạn</b>, mở", "On <b>your own</b> phone/computer, open")} <a href="https://www.google.com/android/uncertified/" target="_blank" rel="noopener">google.com/android/uncertified</a>, ${L("đăng nhập Google, dán mã vào ô <b>Android ID</b>, bấm <b>Đăng ký</b>.", "sign in, paste the code into <b>Android ID</b>, press <b>Register</b>.")}</li>
+      <li>${L("Đợi khoảng <b>5–10 phút</b>, rồi bấm nút dưới đây (xoá dữ liệu cũ của Cửa hàng Play), máy sẽ tự khởi động lại.", "Wait about <b>5–10 minutes</b>, then press the button below (clears old Play Store data); the phone restarts.")}</li>
+      <li>${L("Mở Cửa hàng Play và đăng nhập lại.", "Open Play Store and sign in again.")}</li></ol>
+      <button class="btn" type="button" id="gf-fix" style="width:100%;margin-top:10px">${L("Tôi đã đăng ký xong → Làm mới Google Play", "I've registered → Refresh Google Play")}</button>`;
+    $("gf-copy").onclick = async () => { if (await copyText(gsf)) toast(L("Đã copy mã.", "Copied.")); };
+    $("gf-fix").onclick = async () => {
+      const b = $("gf-fix"); b.disabled = true;
+      try {
+        await api(cur.id + "/gfix", { method: "POST", json: {} });
+        const j = await api(cur.id + "/reboot", { method: "POST", json: {} });
+        $("dlg").hidden = true; main.stop(); setTools(false); setState("wait", L("Đang khởi động lại…", "Restarting…"));
+        veil(true, L("Đang khởi động lại máy…", "Restarting the phone…"), L("Khoảng 1–3 phút. Sau đó mở Cửa hàng Play và đăng nhập lại.", "About 1–3 minutes. Then open Play Store and sign in."));
+        const item = trayItem(L("Khởi động lại ", "Restart ") + cur.name, 0); await pollJob(j.job, item); openPhone(cur);
+      } catch (e) { toast(e.message, 1); b.disabled = false; }
+    };
+  },
+  openurl() {
+    ask({ title: L("Mở trang web trên máy", "Open a website on the phone"), desc: L("Máy sẽ mở link này bằng trình duyệt.", "The phone opens this link in its browser."), body: '<input class="in" id="f-open" type="url" inputmode="url" placeholder="https://…">', ok: L("Mở trên máy", "Open on phone"),
+      onOk: async () => { let u = $("f-open").value.trim(); if (u && !/^https?:\/\//.test(u)) u = "https://" + u; if (!u) return false;
+        try { await api(cur.id + "/url", { method: "POST", json: { url: u } }); toast(L("Đã mở trên máy.", "Opened on the phone.")); } catch (e) { toast(e.message, 1); return false; } } });
+  },
+  root() {
+    ask({ title: L("Root máy?", "Root this phone?"), desc: L("Bật quyền root (lệnh su) để chạy các tool cần root. Mất vài giây, KHÔNG khởi động lại máy — app và tài khoản giữ nguyên. Máy đã root thì chỉ kiểm tra lại.", "Enable root (the su command) so root tools work. Takes a few seconds, the phone does NOT restart — apps and accounts are kept. Already rooted phones are just re-checked."), ok: L("Root máy", "Root phone"),
+      onOk: async () => {
+        try {
+          const j = await api(cur.id + "/root", { method: "POST", json: {} });
+          setState("wait", L("Đang root máy…", "Rooting…"));
+          const item = trayItem(L("Root máy ", "Root ") + cur.name, 0); const ok = await pollJob(j.job, item);
+          try { const r = await api("job?id=" + j.job); toast(srv(r.msg), !ok); } catch (e) {}
+          openPhone(cur);
+        } catch (e) { toast(e.message, 1); }
+      } });
+  },
+  async gfx() {
+    let now = "unknown";
+    try { now = (await api(cur.id + "/gfx")).mode; } catch (e) {}
+    let m = now === "unknown" ? "opengl" : now;
+    ask({ title: L("Chế độ hình", "Graphics mode"),
+      desc: L(`Đang dùng: <b>${now === "directx" ? "⚡ Mượt" : now === "opengl" ? "🎮 Hiện 3D" : "?"}</b>. Đổi chế độ máy sẽ <b>khởi động lại khoảng 1–2 phút</b>, dữ liệu và app giữ nguyên.`,
+              `Current: <b>${now === "directx" ? "⚡ Smooth" : now === "opengl" ? "🎮 Show 3D" : "?"}</b>. Switching <b>restarts the phone (~1–2 min)</b>; data and apps are kept.`),
+      body: `<div id="g-box">${pick([["directx", "⚡ " + L("Mượt", "Smooth"), L("Điều khiển mượt, ít trễ. Game 3D (Roblox…) có thể chỉ thấy nút, cảnh 3D đen. Hợp treo app, game 2D.", "Smooth, low latency. 3D games (Roblox…) may show only buttons with a black scene. Best for apps & 2D games.")],
+                                         ["opengl", "🎮 " + L("Hiện 3D", "Show 3D"), L("Thấy đủ cảnh game 3D (Roblox…), hình hơi trễ hơn.", "Shows full 3D game scenes (Roblox…), slightly more latency.")]], m, "c2")}</div>`,
+      ok: L("Đổi chế độ", "Switch"),
+      onOk: async () => {
+        if (m === now) { toast(L("Máy đang dùng chế độ này rồi.", "Already using this mode.")); return false; }
+        try {
+          const j = await api(cur.id + "/gfx", { method: "POST", json: { mode: m } });
+          main.stop(); setTools(false); setState("wait", L("Đang đổi chế độ hình…", "Switching graphics mode…")); veil(true, L("Đang đổi chế độ hình…", "Switching graphics mode…"), L("Máy khởi động lại khoảng 1–2 phút, màn hình tự mở lại khi xong.", "The phone restarts (~1–2 min); the screen reopens by itself."));
+          const item = trayItem(L("Chế độ hình ", "Graphics ") + cur.name, 0); await pollJob(j.job, item); openPhone(cur);
+        } catch (e) { toast(e.message, 1); }
+      } });
+    chipsBind($("g-box"), v => m = v);
+  },
+  reboot() {
+    ask({ title: L("Khởi động lại máy?", "Restart the phone?"), desc: L("Máy sẽ tắt rồi bật lại trong khoảng 1–3 phút. Dữ liệu và ứng dụng vẫn giữ nguyên.", "The phone turns off and back on in about 1–3 minutes. Your data and apps are kept."), ok: L("Khởi động lại", "Restart"),
+      onOk: async () => {
+        try {
+          const j = await api(cur.id + "/reboot", { method: "POST", json: {} });
+          main.stop(); setTools(false); setState("wait", L("Đang khởi động lại…", "Restarting…")); veil(true, L("Đang khởi động lại máy…", "Restarting the phone…"), L("Khoảng 1–3 phút, màn hình tự mở lại khi xong.", "About 1–3 minutes; the screen reopens by itself."));
+          const item = trayItem(L("Khởi động lại ", "Restart ") + cur.name, 0); await pollJob(j.job, item); openPhone(cur);
+        } catch (e) { toast(e.message, 1); }
+      } });
+  },
+};
+document.addEventListener("click", async e => {
+  const co = e.target.closest("[data-cloneopen]");
+  if (co) { co.disabled = true; try { const r = await api(cur.id + "/clone", { method: "POST", json: { pkg: co.dataset.cloneopen, open: +co.dataset.ci } }); toast(srv(r.msg)); } catch (er) { toast(er.message, 1); } co.disabled = false; return; }
+  const cl = e.target.closest("[data-clone]"), ucl = e.target.closest("[data-unclone]");
+  if (cl) {
+    const inp = [...document.querySelectorAll("[data-clonen]")].find(x => x.dataset.clonen === cl.dataset.clone);
+    const has = parseInt(inp && inp.placeholder, 10) - 1 || 0, typed = parseInt(inp && inp.value, 10);
+    const n = Math.max(1, Math.min(+(inp && inp.max) || 4, typed > 0 ? typed : has + 1));    // để trống: máy chưa clone → 1 bản, đã có → thêm 1 bản
+    cl.disabled = true;
+    try { const j = await api(cur.id + "/clone", { method: "POST", json: { pkg: cl.dataset.clone, n } }); const item = trayItem("Clone " + cl.dataset.clone + " ×" + n, 0); const ok = await pollJob(j.job, item);
+      if (ok) { try { const r = await api("job?id=" + j.job); toast(srv(r.msg)); } catch (er) {} ACT.clone(); } else cl.disabled = false; }
+    catch (er) { toast(er.message, 1); cl.disabled = false; } return; }
+  if (ucl) { if (!confirm(L("Bỏ TẤT CẢ bản clone của app này? Dữ liệu trong các bản clone (acc đăng nhập trong đó) sẽ bị xoá.", "Remove ALL clones of this app? Their data (accounts signed in there) will be deleted."))) return; try { await api(cur.id + "/clone", { method: "POST", json: { pkg: ucl.dataset.unclone, remove: true } }); toast(L("Đã bỏ bản clone.", "Clone removed.")); ACT.clone(); } catch (er) { toast(er.message, 1); } return; }
+  const st = e.target.closest("[data-store]"), pl = e.target.closest("[data-play]");
+  if (pl) { try { await api(cur.id + "/play", { method: "POST", json: { pkg: pl.dataset.play } }); toast(L("Đã mở CH Play trong máy — bấm Cài đặt trên màn hình máy.", "Opened Play Store on the phone — tap Install there.")); } catch (er) { toast(er.message, 1); } return; }
+  if (st) { st.disabled = true; try { const j = await api(cur.id + "/store", { method: "POST", json: { name: st.dataset.store } }); const item = trayItem(L("Cài ", "Install ") + st.dataset.store, 0); if (await pollJob(j.job, item)) st.textContent = "✓"; else st.disabled = false; } catch (er) { toast(er.message, 1); st.disabled = false; } return; }
+}, true);
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-app]"); if (!b) return;
+  const act = b.dataset.app, pkg = b.dataset.pkg;
+  if (act === "uninstall" && !confirm(L("Gỡ ứng dụng " + pkg + "?", "Uninstall " + pkg + "?"))) return;
+  if (act === "clear" && !confirm(L("Xoá toàn bộ dữ liệu của " + pkg + "? (đăng xuất, mất tiến trình)", "Clear all data of " + pkg + "? (signs out, progress is lost)"))) return;
+  b.disabled = true;
+  try { await api(cur.id + "/" + act, { method: "POST", json: { pkg } }); toast((LANG === "en" ? { launch: "Opened ", stop: "Stopped ", clear: "Cleared data of ", uninstall: "Uninstalled " } : { launch: "Đã mở ", stop: "Đã dừng ", clear: "Đã xoá dữ liệu ", uninstall: "Đã gỡ " })[act] + pkg); if (act === "uninstall") b.closest(".app").remove(); else if (act === "launch") $("dlg").hidden = true; }
+  catch (err) { toast(err.message, 1); } finally { b.disabled = false; }
+});
+$("exitfocus").onclick = () => { document.body.classList.remove("focus"); if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); fit(); };
+document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement && document.body.classList.contains("focus")) { document.body.classList.remove("focus"); fit(); } else fit(); });
+
+/* ---------- bảng công cụ trên điện thoại ---------- */
+function closeSheet() { $("side").classList.remove("open"); $("sheetbg").classList.remove("open"); }
+$("morebtn").onclick = () => { $("side").classList.add("open"); $("sheetbg").classList.add("open"); };
+$("sheetbg").onclick = closeSheet;
+const syncMobile = () => document.querySelectorAll(".mzoom").forEach(b => b.hidden = !small());
+addEventListener("resize", syncMobile);
+
+/* ---------- tải file lên (chia nhỏ, tự thử lại) ---------- */
+function trayItem(name, size) {
+  const el = document.createElement("div"); el.className = "ti";
+  el.innerHTML = `<div class="r"><span class="n"></span><span class="s"></span><button class="x" aria-label="${L("Ẩn", "Hide")}">×</button></div><div class="m">${L("Đang chờ…", "Waiting…")}</div><div class="bar"><i></i></div>`;
+  el.querySelector(".n").textContent = name; el.querySelector(".s").textContent = size ? mb(size) : "";
+  el.querySelector(".x").onclick = () => el.remove();
+  $("tray").prepend(el);
+  return {
+    el, msg(t) { el.querySelector(".m").textContent = srv(t); },
+    pct(p) { el.querySelector(".bar i").style.width = Math.round(p * 100) + "%"; },
+    done(t) { el.classList.add("ok"); this.pct(1); this.msg(t); setTimeout(() => el.remove(), 9000); },
+    fail(t) { el.classList.add("err"); this.pct(1); this.msg(t); },
+  };
+}
+async function pollJob(jid, item) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 40 * 60 * 1000) {
+    await sleep(1500);
+    try {
+      const j = await api("job?id=" + jid);
+      if (j.state === "done") { item.done(j.msg); return true; }
+      if (j.state === "error") { item.fail(j.msg); return false; }
+      item.msg(j.msg); item.el.querySelector(".bar i").style.width = "100%"; item.el.querySelector(".bar i").style.opacity = ".45";
+    } catch (e) { if (e.status === 404) { item.fail(L("Không theo dõi được (server vừa khởi động lại).", "Lost track of this job (the server just restarted).")); return false; } }
+  }
+  item.fail(L("Quá lâu chưa xong — kiểm tra lại trên máy.", "This is taking too long — check on the phone.")); return false;
+}
+const queue = []; let busyUp = false;
+function addFiles(list) {
+  if (!cur || cur.status !== "active") { toast(L("Máy chưa chạy, chưa tải file được.", "The phone isn't running, can't upload yet."), 1); return; }
+  for (const f of list) {
+    if (!f.size) { toast(f.name + L(": file rỗng.", ": empty file."), 1); continue; }
+    if (f.size > 4 * 1073741824) { toast(f.name + L(": lớn hơn 4GB.", ": larger than 4GB."), 1); continue; }
+    const it = trayItem(f.name, f.size); it.msg(/\.(apk|apks|xapk|apkm)$/i.test(f.name) ? L("Chờ tải lên — sẽ tự cài", "Waiting to upload — will install automatically") : L("Chờ tải lên", "Waiting to upload"));
+    queue.push({ f, it, pid: cur.id });
+  }
+  runQueue();
+}
+async function runQueue() {
+  if (busyUp) return; busyUp = true;
+  while (queue.length) { const { f, it, pid } = queue.shift(); try { await upOne(f, it, pid); } catch (e) { it.fail(e.message || L("Tải lên lỗi.", "Upload failed.")); } }
+  busyUp = false;
+}
+async function upOne(f, it, pid) {
+  const id = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, "") : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24).toLowerCase();
+  let off = 0; const t0 = Date.now();
+  while (off < f.size) {
+    let j, tries = 0;
+    for (;;) {
+      try {
+        j = await api(`${pid}/upload?id=${id}&name=${encodeURIComponent(f.name)}&total=${f.size}&off=${off}`,
+          { method: "POST", body: f.slice(off, off + CHUNK), headers: { "Content-Type": "application/octet-stream" } });
+        break;
+      } catch (e) {
+        if (e.status === 409 && e.data && e.data.size != null) { j = { size: e.data.size }; break; }
+        if (e.status && e.status < 500 && e.status !== 408) throw e;
+        if (++tries > 5) throw new Error(L("Mạng chập chờn, tải lên thất bại. Thử lại sau.", "Unstable connection, upload failed. Try again later."));
+        it.msg(L("Mạng chập chờn, đang thử lại…", "Unstable connection, retrying…")); await sleep(1500 * tries);
+      }
+    }
+    off = j.size; it.pct(off / f.size * .96);
+    it.msg(`${L("Đang tải lên", "Uploading")} ${Math.round(off / f.size * 100)}% · ${mb(off / Math.max(1, (Date.now() - t0) / 1000))}/s`);
+    if (j.job) { it.msg(/\.(apk|apks|xapk|apkm)$/i.test(f.name) ? L("Đang cài ứng dụng…", "Installing app…") : L("Đang chép vào máy…", "Copying to the phone…")); await pollJob(j.job, it); return; }
+  }
+}
+$("file").onchange = () => { addFiles([...$("file").files]); $("file").value = ""; };
+let dragN = 0;
+const hasFiles = e => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+addEventListener("dragenter", e => { if (!hasFiles(e) || document.body.classList.contains("multi")) return; e.preventDefault(); dragN++; document.body.classList.add("dragging"); $("drop").classList.add("on"); });
+addEventListener("dragover", e => { if (hasFiles(e)) e.preventDefault(); });
+addEventListener("dragleave", e => { if (!hasFiles(e)) return; if (--dragN <= 0) { dragN = 0; document.body.classList.remove("dragging"); $("drop").classList.remove("on"); } });
+addEventListener("drop", e => { if (!hasFiles(e)) return; e.preventDefault(); dragN = 0; document.body.classList.remove("dragging"); $("drop").classList.remove("on"); addFiles([...e.dataTransfer.files]); });
+document.addEventListener("paste", e => {
+  const fs = [...(e.clipboardData && e.clipboardData.files || [])];
+  if (fs.length && $("dlg").hidden) { addFiles(fs); return; }
+  const el = document.activeElement, typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+  const t = e.clipboardData && e.clipboardData.getData("text/plain");
+  if (t && !typing && $("dlg").hidden && cur && main.ok) { e.preventDefault(); pasteToPhone(t); }
+});
+
+let IOS_TXT = false;
+function iosText() {        // chữ nút app trên iPhone (gọi lại khi đổi ngôn ngữ)
+  if (!IOS_TXT) return;
+  $("getapp").querySelector(".gl").textContent = L("Cài app iPhone", "Get iPhone app"); $("getapp").querySelector(".gs").textContent = L("Cài app", "Get app");
+  $("appcta").querySelector("b").textContent = L("📱 App cho iPhone", "📱 iPhone app"); $("appcta").querySelector("span").textContent = L("Thêm vào màn hình chính, mở toàn màn hình như app thật", "Add to your home screen and use it full screen like a real app"); $("appcta").querySelector("i").textContent = L("Xem cách cài", "How to install");
+  $("dm-app").textContent = L("📱 Cài app lên iPhone — dùng như app thật", "📱 Install on iPhone — works like a real app");
+}
+(function appLinks() {     // nút tải app: Android → file APK · iPhone → hướng dẫn thêm vào màn hình chính
+  const standalone = !!(navigator.standalone || (window.matchMedia && matchMedia("(display-mode: standalone)").matches));
+  if (/BlueRobloxApp\//.test(navigator.userAgent) || standalone) return;
+  const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  const ids = ["dm-app", "getapp", "appcta"];
+  if (ios) {
+    const guide = e => { e.preventDefault(); ask({ title: L("📱 Cài BlueRoblox lên iPhone", "📱 Install BlueRoblox on iPhone"), noOk: true, onOk: () => true,
+      desc: L("Dùng như app thật: mở toàn màn hình, điều khiển máy ngay trên iPhone. Miễn phí, không cần App Store.", "Works like a real app: full screen, control your phone right on your iPhone. Free, no App Store needed."),
+      body: L('<ol style="margin:0;padding-left:20px;line-height:1.7"><li>Mở trang này bằng <b>Safari</b> (hoặc Chrome).</li><li>Bấm nút <b>Chia sẻ</b> (ô vuông có mũi tên lên) ở thanh dưới — Chrome: góc trên bên phải.</li><li>Chọn <b>Thêm vào MH chính</b> → <b>Thêm</b>.</li><li>Mở biểu tượng <b>BlueRoblox</b> trên màn hình chính và đăng nhập.</li></ol>',
+        '<ol style="margin:0;padding-left:20px;line-height:1.7"><li>Open this page in <b>Safari</b> (or Chrome).</li><li>Tap <b>Share</b> (the square with an up arrow) in the bottom bar — in Chrome it is at the top right.</li><li>Choose <b>Add to Home Screen</b> → <b>Add</b>.</li><li>Open the <b>BlueRoblox</b> icon on your home screen and sign in.</li></ol>') }); };
+    ids.forEach(id => { const el = $(id); el.removeAttribute("download"); el.href = "#"; el.onclick = guide; el.hidden = false; });
+    IOS_TXT = true; iosText();
+    return;
+  }
+  fetch("/download/app.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).then(i => { if (i && i.version) ids.forEach(id => { $(id).hidden = false; }); }).catch(() => {});
+})();
+/* ---------- khởi động trang ---------- */
+/* đổi ngôn ngữ: không tải lại trang, hình đang chạy giữ nguyên */
+const STATE_EN = { "Đang chạy": "Running", "Đang kết nối…": "Connecting…", "Đang kết nối lại…": "Reconnecting…" };
+function setLang(l) {
+  const prev = LANG; LANG = l === "en" ? "en" : "vi"; store.set("br_lang", LANG);
+  QUAL = mkQual(); applyStatic(); iosText(); renderHead(); info();
+  if (cur && !document.body.classList.contains("multi")) checkFit();
+  if (lastState) { const [k, t] = lastState; const vi = Object.keys(STATE_EN).find(x => x === t || STATE_EN[x] === t); setState(k, vi ? L(vi, STATE_EN[vi]) : t); }
+  if (prev !== LANG && document.body.classList.contains("multi")) setView("multi", gridIds);
+  else if (cur && !$("veil").hidden) {          // màn che đang hiện → vẽ lại chữ theo ngôn ngữ mới
+    if (underMaint) checkInfo();
+    else if (cur.status !== "active" || !cur.port) openPhone(cur);
+    else if (main.p && !main.ok) main.h.connecting(main.tries, main.raw);
+  }
+}
+$("lang-vi").onclick = () => setLang("vi");
+$("lang-en").onclick = () => setLang("en");
+applyStatic();
+(async function init() {
+  setTools(false); syncMobile();
+  if (EMBED && location.hash.includes("at=")) {          // app Android truyền phiên đăng nhập qua #at=…&rt=…
+    const hp = new URLSearchParams(location.hash.slice(1));
+    APP_RT = hp.get("rt") || "";
+    try { await sb.auth.setSession({ access_token: hp.get("at"), refresh_token: APP_RT }); } catch (e) {}
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { setState("bad", L("Chưa đăng nhập", "Not signed in")); veil(true, L("Bạn chưa đăng nhập", "You're not signed in"), L('<a href="/">Về cửa hàng để đăng nhập</a>, rồi bấm “Điều khiển” trên máy của bạn.', '<a href="/">Go to the store to sign in</a>, then tap “Control” on your phone.'), false); return; }
+  token = session.access_token; me = session.user;
+  sb.auth.onAuthStateChange((_e, s) => { if (s) token = s.access_token; });
+  await pickRoute();
+  let s0 = null;
+  try { s0 = await api("session", { method: "POST", json: {} }); } catch (e) { if (ROUTE === "fast") setRoute("cf"); }
+  try { const s = s0 || await api("session", { method: "POST", json: {} }); if (s.admin) $("adminlink").hidden = false; }
+  catch (e) { setState("bad", L("Không kết nối được server", "Can't reach server")); veil(true, L("Không kết nối được máy chủ điện thoại", "Can't connect to the phone server"), esc(e.message) + '<br><a href="">' + L("Tải lại trang", "Reload page") + '</a>', false); return; }
+  const p = await loadPhones(); loadBilling().catch(() => {});
+  if (store.get("cp_view") === "multi" && phones.filter(x => x.status === "active").length > 1 && !new URLSearchParams(location.search).get("id")) { cur = p; renderHead(); setView("multi"); }
+  else openPhone(p);
+})();
+
+/* ===================== ĐỒNG BỘ · MACRO · GÁN PHÍM (giống LDPlayer / Multi) ===================== */
+let SYNC = false, MREC = null, MPLAY = null, KMPICK = null;
+function setSync(on) {
+  SYNC = on; for (const c of CONNS) c.send("sync", { on });
+  $("syncl").textContent = on ? L("Đồng bộ: BẬT", "Sync: ON") : L("Đồng bộ: Tắt", "Sync: Off"); $("v-sync").classList.toggle("on", on);
+  toast(on ? L("🔗 Đã bật đồng bộ — bấm / vuốt trên 1 máy, mọi máy đang mở làm theo.", "🔗 Sync on — tap / swipe one phone, all open phones follow.") : L("Đã tắt đồng bộ.", "Sync off."));
+}
+function kmKey() { return "cp_km_" + (cur && cur.id); }
+function kmLoad() { try { return JSON.parse(store.get(kmKey()) || "{}"); } catch (e) { return {}; } }
+function kmOn() { return store.get(kmKey() + "_on") !== "0"; }
+function applyTools(c) {
+  if (SYNC) c.send("sync", { on: true });
+  if (c === main) { const m = kmLoad(); c.send("km", { map: kmOn() ? m : {} }); if (MREC) c.send("rec", { on: true }); }
+}
+function onTileInput(src, d) {
+  if (SYNC) for (const c of CONNS) if (c !== src && c.ok) c.send("in", { k: d.k, x: d.x, y: d.y, id: d.id || 0 });
+  if (MREC && src === main) MREC.ev.push({ k: d.k, x: +(+d.x).toFixed(4), y: +(+d.y).toFixed(4), t: Date.now() - MREC.t0 });
+}
+function cpBar(html) {
+  let b = $("cpbar"); if (!b) { b = document.createElement("div"); b.id = "cpbar"; b.style.cssText = "position:fixed;left:50%;bottom:76px;transform:translateX(-50%);z-index:80;background:#151b3a;border:1px solid #ffb800;color:#fff;border-radius:14px;padding:10px 14px;display:flex;gap:10px;align-items:center;box-shadow:0 10px 30px rgba(0,0,0,.5);font-weight:600"; document.body.appendChild(b); }
+  if (!html) { b.remove(); return; } b.innerHTML = html;
+}
+// ----- MACRO -----
+function mcKey() { return "cp_macros_" + (cur && cur.id); }
+function mcList() { try { return JSON.parse(store.get(mcKey()) || "[]"); } catch (e) { return []; } }
+function macroDlg() {
+  const list = mcList();
+  ask({ title: L("⏺ Macro — ghi & tự lặp thao tác", "⏺ Macro — record & replay"), desc: L("Bấm <b>Ghi</b>, thao tác trên màn hình máy (bấm, vuốt), rồi bấm <b>Dừng</b>. Sau đó bấm <b>Chạy</b> để máy tự làm lại (có thể lặp mãi). Macro chạy khi trang này đang mở.", "Press <b>Record</b>, tap/swipe on the phone, then <b>Stop</b>. Press <b>Play</b> to replay (can loop forever). Runs while this page is open."),
+    body: `<button type="button" class="btn" id="mc-rec">⏺ ${L("Ghi macro mới", "Record new macro")}</button><div class="apps" style="margin-top:10px">${list.length ? list.map((m, i) => `<div class="app"><span>▶ ${esc(m.name)} <small>${m.ev.length} ${L("thao tác", "actions")} · ${(m.dur / 1000).toFixed(1)}s</small></span>
+      <button class="btn sm" data-mcplay="${i}" data-n="1">${L("Chạy 1 lần", "Play once")}</button><button class="btn sm gh" data-mcplay="${i}" data-n="0">${L("Lặp mãi", "Loop")}</button><button class="btn sm red" data-mcdel="${i}">✕</button></div>`).join("") : `<p>${L("Chưa có macro nào.", "No macros yet.")}</p>`}</div>`, noOk: true });
+  $("mc-rec").onclick = () => { $("dlg").hidden = true; macroRec(); };
+}
+function macroRec() {
+  if (!main.ok) { toast(L("Máy chưa lên hình.", "The phone isn't showing yet."), 1); return; }
+  MREC = { t0: Date.now(), ev: [] }; main.send("rec", { on: true });
+  cpBar(`<span style="color:#ff5d5d">● ${L("Đang ghi macro…", "Recording…")}</span><button class="btn sm" id="mc-stop">${L("Dừng & lưu", "Stop & save")}</button><button class="btn sm gh" id="mc-cancel">${L("Huỷ", "Cancel")}</button>`);
+  $("mc-stop").onclick = () => { const r = MREC; MREC = null; main.send("rec", { on: false }); cpBar(null);
+    if (!r || !r.ev.length) { toast(L("Chưa ghi được thao tác nào.", "Nothing recorded."), 1); return; }
+    const name = (prompt(L("Đặt tên macro:", "Macro name:"), "Macro " + (mcList().length + 1)) || "").trim() || ("Macro " + (mcList().length + 1));
+    const l = mcList(); l.push({ name, ev: r.ev, dur: Math.max(500, Date.now() - r.t0) }); store.set(mcKey(), JSON.stringify(l)); toast(L("Đã lưu macro ", "Saved macro ") + name); };
+  $("mc-cancel").onclick = () => { MREC = null; main.send("rec", { on: false }); cpBar(null); };
+}
+function macroPlay(m, times) {
+  macroStop(); let round = 0; const st = { stop: false, timers: [] }; MPLAY = st;
+  const run = () => {
+    if (st.stop) return; round++;
+    cpBar(`<span>▶ ${esc(m.name)} — ${L("lần", "round")} ${round}${times ? "/" + times : " (∞)"}</span><button class="btn sm red" id="mc-pstop">${L("Dừng", "Stop")}</button>`);
+    $("mc-pstop").onclick = macroStop;
+    for (const e of m.ev) st.timers.push(setTimeout(() => { if (!st.stop) main.send("in", { k: e.k, x: e.x, y: e.y, id: 7 }); }, e.t));
+    st.timers.push(setTimeout(() => { if (st.stop) return; if (!times || round < times) run(); else { macroStop(); toast(L("Macro chạy xong.", "Macro finished.")); } }, m.dur + 600));
+  };
+  run();
+}
+function macroStop() { if (MPLAY) { MPLAY.stop = true; MPLAY.timers.forEach(clearTimeout); main.send("in", { k: "up", x: 0.5, y: 0.5, id: 7 }); MPLAY = null; } cpBar(null); }
+document.addEventListener("click", e => {
+  const p = e.target.closest("[data-mcplay]"), d = e.target.closest("[data-mcdel]");
+  if (p) { const m = mcList()[+p.dataset.mcplay]; if (m) { $("dlg").hidden = true; macroPlay(m, +p.dataset.n); } }
+  if (d) { const l = mcList(); l.splice(+d.dataset.mcdel, 1); store.set(mcKey(), JSON.stringify(l)); macroDlg(); }
+});
+// ----- GÁN PHÍM -----
+function kmName(code) { return code.replace(/^Key/, "").replace(/^Digit/, "").replace(/^Arrow/, "↑→↓←".charAt(["Up", "Right", "Down", "Left"].indexOf(code.slice(5))) || code); }
+function kmCode(txt) {
+  const t = String(txt || "").trim(); if (!t) return null; const u = t.toUpperCase();
+  if (/^[A-Z]$/.test(u)) return "Key" + u; if (/^[0-9]$/.test(u)) return "Digit" + u;
+  const M = { SPACE: "Space", "DẤU CÁCH": "Space", ENTER: "Enter", SHIFT: "ShiftLeft", CTRL: "ControlLeft", ALT: "AltLeft", TAB: "Tab", Q: "KeyQ", UP: "ArrowUp", DOWN: "ArrowDown", LEFT: "ArrowLeft", RIGHT: "ArrowRight", F: "KeyF" };
+  return M[u] || null;
+}
+function kmDlg() {
+  const m = kmLoad(), keys = Object.keys(m).filter(k => k !== "__joy");
+  ask({ title: L("⌨️ Gán phím chơi game", "⌨️ Key mapping"), desc: L("Gán phím máy tính vào 1 điểm trên màn hình máy (VD phím J = nút bắn). Joystick WASD: W/A/S/D điều khiển cần di chuyển. Bấm vào màn hình máy 1 lần trước khi chơi để nhận phím.", "Map a PC key to a spot on the phone (e.g. J = fire). WASD joystick moves the analog stick. Click the phone screen once before playing."),
+    body: `<label class="fsw" style="display:flex;gap:8px;align-items:center;margin-bottom:10px"><input type="checkbox" id="km-on"${kmOn() ? " checked" : ""}> <b>${L("Bật gán phím", "Enable key mapping")}</b></label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap"><button type="button" class="btn sm" id="km-add">➕ ${L("Thêm phím bấm", "Add tap key")}</button><button type="button" class="btn sm gh" id="km-joy">🕹️ ${L("Đặt joystick WASD", "Set WASD joystick")}</button><button type="button" class="btn sm red" id="km-clear">${L("Xoá hết", "Clear all")}</button></div>
+      <div class="apps" style="margin-top:10px">${m.__joy ? `<div class="app"><span>🕹️ W A S D → ${L("joystick tại", "joystick at")} ${Math.round(m.__joy.x * 100)}%, ${Math.round(m.__joy.y * 100)}%</span><button class="btn sm red" data-kmdel="__joy">✕</button></div>` : ""}${keys.map(k => `<div class="app"><span>⌨️ ${esc(kmName(k))} → ${Math.round(m[k].x * 100)}%, ${Math.round(m[k].y * 100)}%</span><button class="btn sm red" data-kmdel="${esc(k)}">✕</button></div>`).join("") || (m.__joy ? "" : `<p>${L("Chưa gán phím nào.", "No keys mapped.")}</p>`)}</div>`, noOk: true });
+  $("km-on").onchange = () => { store.set(kmKey() + "_on", $("km-on").checked ? "1" : "0"); applyTools(main); };
+  $("km-add").onclick = () => kmStartPick("tap");
+  $("km-joy").onclick = () => kmStartPick("joy");
+  $("km-clear").onclick = () => { store.set(kmKey(), "{}"); applyTools(main); kmDlg(); };
+}
+function kmStartPick(kind) {
+  if (!main.ok) { toast(L("Máy chưa lên hình.", "The phone isn't showing yet."), 1); return; }
+  $("dlg").hidden = true; KMPICK = kind; main.send("kmedit", { on: true });
+  cpBar(`<span>👆 ${kind === "joy" ? L("Bấm vào GIỮA cần joystick trong game", "Click the CENTER of the in-game joystick") : L("Bấm vào vị trí nút trên màn hình máy", "Click the button's spot on the phone screen")}</span><button class="btn sm gh" id="km-cancel">${L("Huỷ", "Cancel")}</button>`);
+  $("km-cancel").onclick = () => { KMPICK = null; main.send("kmedit", { on: false }); cpBar(null); };
+}
+function onKmPick(d) {
+  if (!KMPICK) return; const kind = KMPICK; KMPICK = null; main.send("kmedit", { on: false }); cpBar(null);
+  const m = kmLoad();
+  if (kind === "joy") { m.__joy = { x: +d.x, y: +d.y, r: 0.09, keys: { KeyW: [0, -1], KeyA: [-1, 0], KeyS: [0, 1], KeyD: [1, 0] } }; }
+  else { const code = kmCode(prompt(L("Nhập phím muốn gán (VD: J, K, 1, Space, Shift):", "Key to map (e.g. J, K, 1, Space, Shift):"), "")); if (!code) { toast(L("Phím không hợp lệ.", "Invalid key."), 1); return; } m[code] = { x: +d.x, y: +d.y }; }
+  store.set(kmKey(), JSON.stringify(m)); store.set(kmKey() + "_on", "1"); applyTools(main); toast(L("Đã gán. Bấm vào màn hình máy 1 lần rồi dùng phím.", "Mapped. Click the phone screen once, then use the key.")); kmDlg();
+}
+document.addEventListener("click", e => { const d = e.target.closest("[data-kmdel]"); if (!d) return; const m = kmLoad(); delete m[d.dataset.kmdel]; store.set(kmKey(), JSON.stringify(m)); applyTools(main); kmDlg(); });
+</script>
+<script>
+/* số liệu kỹ thuật → hiện khi rê chuột/giữ vào ô trạng thái */
+(function(){var i=document.getElementById("info"),st=document.getElementById("state"),tx=document.getElementById("statetxt");if(!i||!st)return;
+ function u(){var a=(tx&&tx.textContent||"").trim(),b=(i.textContent||"").trim();st.title=a+(b?"\n"+b:"");}
+ new MutationObserver(u).observe(i,{childList:true,characterData:true,subtree:true});if(tx)new MutationObserver(u).observe(tx,{childList:true,characterData:true,subtree:true});u();})();
+</script>
+</body>
+</html>
