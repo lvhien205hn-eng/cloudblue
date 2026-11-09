@@ -248,8 +248,11 @@ def shell(port, cmd, timeout=60):
     return adb(port, ["shell", cmd], timeout)
 
 
-# Đầu lệnh shell: Android 10+ → biến $W = "--windowingMode 1" (mở app TOÀN MÀN, không thành cửa sổ nổi); Android cũ → $W rỗng
-FULLSCREEN_SH = "W=; [ \"$(getprop ro.build.version.sdk)\" -ge 29 ] 2>/dev/null && W='--windowingMode 1'; "
+# Đầu lệnh shell: Android 10+ → biến $W = "--windowingMode 1 --display 0" (mở app TOÀN MÀN, không thành cửa sổ nổi, và luôn ở MÀN CHÍNH:
+# Android 14/15 mỗi luồng hình scrcpy là 1 màn ảo — mở bằng lệnh có thể rơi lên màn ảo, khách không thấy); Android cũ → $W rỗng
+FULLSCREEN_SH = "W=; [ \"$(getprop ro.build.version.sdk)\" -ge 29 ] 2>/dev/null && W='--windowingMode 1 --display 0'; "
+# Mở link / trang Play: chỉ thêm "--display 0" (Android 10+), không ép toàn màn
+MAIN_SH = "D=; [ \"$(getprop ro.build.version.sdk)\" -ge 29 ] 2>/dev/null && D='--display 0'; "
 # Mở app y như bấm biểu tượng trên màn hình chính (MAIN + LAUNCHER + NEW_TASK|RESET_TASK_IF_NEEDED): app đang chạy → chỉ đưa lên trước,
 # KHÔNG mở thêm 1 màn khởi động nữa (am start -n trơn sẽ chồng thêm màn mở đầu lên app đang chạy)
 AS_ICON = "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000"
@@ -318,7 +321,7 @@ def clone_icons(port):
         cmds = "; ".join(f"pm {'enable' if i <= n else 'disable'} {BR_PKG}/.Clone{i} >/dev/null 2>&1 || su -c 'pm {'enable' if i <= n else 'disable'} {BR_PKG}/.Clone{i}' >/dev/null 2>&1" for i in range(1, 5))
         # màn hình chính MEmu chỉ quét app lúc mở → khởi động lại màn hình chính để hiện biểu tượng mới
         shell(port, cmds + "; L=$(cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -n 1 | cut -d/ -f1); "
-                    "[ -n \"$L\" ] && am force-stop $L; am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1", 40)
+                    "[ -n \"$L\" ] && am force-stop $L; " + MAIN_SH + "am start $D -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1", 40)
         return n
     except Exception as e:
         log("clone_icons lỗi:", repr(e)); return -1
@@ -960,7 +963,7 @@ class H(BaseHTTPRequestHandler):
         if act == "url" and self.command == "POST":
             link = str(self.jbody().get("url") or "").strip()
             if not re.match(r"^https?://\S+$", link) or len(link) > 2000: return self.send_json(400, {"error": "Link phải bắt đầu bằng http:// hoặc https://"})
-            r = shell(port, "am start -a android.intent.action.VIEW -d " + shlex.quote(link), 20)
+            r = shell(port, MAIN_SH + "am start $D -a android.intent.action.VIEW -d " + shlex.quote(link), 20)
             return self.send_json(200, {"ok": True, "out": out(r)[-200:]})
 
         if act == "rotate" and self.command == "POST":       # XOAY MÀN: khoá ngang / dọc (tắt tự xoay của Android + đặt hướng). Game cần màn ngang vẫn tự xoay.
@@ -1091,7 +1094,7 @@ class H(BaseHTTPRequestHandler):
         if act == "play" and self.command == "POST":           # mở trang app trên Google Play trong máy (Chrome, Firefox…)
             pkg = str(self.jbody().get("pkg") or "")
             if not re.match(r"^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$", pkg): return self.send_json(400, {"error": "Tên app không hợp lệ."})
-            r = shell(port, "am start -a android.intent.action.VIEW -d " + shlex.quote("market://details?id=" + pkg), 20)
+            r = shell(port, MAIN_SH + "am start $D -a android.intent.action.VIEW -d " + shlex.quote("market://details?id=" + pkg), 20)
             return self.send_json(200, {"ok": True})
 
         if act == "gps" and self.command == "POST":           # ĐỔI VỊ TRÍ GPS (vị trí giả) — Android 12+ (lệnh "cmd location providers" của Android)
