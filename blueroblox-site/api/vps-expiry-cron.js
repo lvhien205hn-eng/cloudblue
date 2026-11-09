@@ -1,18 +1,18 @@
 // Quét máy VPS sắp/đã hết hạn → nhắn về Telegram của shop. Chạy tự động mỗi ngày (Vercel Cron).
 // Biến môi trường: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, (CRON_SECRET)
 // Lịch đặt trong vercel.json. Vercel tự gửi header Authorization: Bearer <CRON_SECRET> khi chạy cron.
-const { sb, tg } = require("./_lib");
+const { sb, tg, whoAmI, same } = require("./_lib");
 
 const vnDate = iso => new Date(iso).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 const daysLeft = iso => Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
 
 module.exports = async (req, res) => {
-  // Bảo vệ: nếu đã đặt CRON_SECRET thì bắt buộc đúng (Vercel Cron tự gửi kèm; test tay thì ?key=)
+  // Bảo vệ LUÔN BẬT: đúng CRON_SECRET (Vercel Cron tự gửi kèm; chạy tay thì ?key=) hoặc tài khoản admin đã đăng nhập.
+  // Chưa đặt CRON_SECRET trên Vercel → lịch tự chạy hằng ngày bị chặn (đặt biến này là xong).
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const ok = req.headers.authorization === `Bearer ${secret}` || (req.query && req.query.key === secret);
-    if (!ok) return res.status(401).json({ error: "unauthorized" });
-  }
+  let ok = !!secret && (same(req.headers.authorization, `Bearer ${secret}`) || same(req.query && req.query.key, secret));
+  if (!ok) { const who = await whoAmI(req); ok = !!(who && who.admin); }
+  if (!ok) return res.status(401).json({ error: secret ? "unauthorized" : "Chưa đặt CRON_SECRET trên Vercel" });
   try {
     const nowIso = new Date().toISOString();
     const in2d = new Date(Date.now() + 2 * 86400000).toISOString();

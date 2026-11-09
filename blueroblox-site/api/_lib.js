@@ -27,6 +27,33 @@ async function rateLimit(req, action, limit, windowSec) {
   } catch (e) { return true; }
 }
 
+// Giới hạn tần suất theo 1 khoá tự đặt (VD theo tài khoản). Lỗi DB → không chặn.
+async function rateLimitKey(key, limit, windowSec) {
+  try { return (await rpc("rl_hit", { p_key: key, p_limit: limit, p_window: windowSec })) === true; }
+  catch (e) { return true; }
+}
+
+// So 2 chuỗi bí mật không lộ thời gian (chống dò từng ký tự). Rỗng → luôn sai.
+function same(a, b) {
+  const x = Buffer.from(String(a ?? "")), y = Buffer.from(String(b ?? ""));
+  return x.length > 0 && x.length === y.length && require("crypto").timingSafeEqual(x, y);
+}
+
+// Người gọi là ai? Đọc "Authorization: Bearer <mã đăng nhập Supabase>" → hỏi Supabase mã còn hạn không → đọc hồ sơ.
+// Trả { uid, email, username, admin, locked } hoặc null (không có / sai / hết hạn). admin = giống hàm SQL is_admin().
+async function whoAmI(req) {
+  const m = String((req.headers || {}).authorization || "").match(/^Bearer\s+(\S+)$/i);
+  if (!m || m[1].split(".").length !== 3) return null;          // chỉ nhận mã đăng nhập (JWT), không nhận khoá khác
+  try {
+    const r = await fetch(SB + "/auth/v1/user", { headers: { apikey: KEY, Authorization: "Bearer " + m[1] } });
+    if (!r.ok) return null;
+    const u = await r.json();
+    if (!u || !u.id) return null;
+    const p = (await sb(`/rest/v1/profiles?select=username,email,role,locked&id=eq.${encodeURIComponent(u.id)}`))[0] || {};
+    return { uid: u.id, email: p.email || u.email || "", username: p.username || "", locked: !!p.locked, admin: p.role === "admin" && !p.locked };
+  } catch (e) { return null; }
+}
+
 const esc = s => String(s ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const vnd = n => Math.round(+n || 0).toLocaleString("vi-VN") + "đ";
 const body = req => typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
@@ -51,4 +78,4 @@ async function mail(to, subject, html) {
   return r.json();
 }
 
-module.exports = { sb, rpc, userOf, esc, vnd, body, tg, tgTo, mail, clientIp, rateLimit };
+module.exports = { sb, rpc, userOf, esc, vnd, body, tg, tgTo, mail, clientIp, rateLimit, rateLimitKey, same, whoAmI };
