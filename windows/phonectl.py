@@ -983,6 +983,11 @@ def cmd_create(a):
             memuc("setconfigex", "-i", idx, "fps", clamp_fps(a.fps), timeout=60)
             apply_template(idx)
     port = port_of(idx); exp = now() + datetime.timedelta(days=a.days)
+    if getattr(a, "until", ""):                     # đổi Android: máy mới giữ ĐÚNG hạn của máy cũ (không làm tròn lên cả ngày)
+        try:
+            u = parse_dt(a.until)
+            if now() < u <= now() + datetime.timedelta(days=a.days + 1): exp = u
+        except Exception: pass
     row = {"name": a.name, "idx": idx, "port": port, "ram": a.ram, "cpu": a.cpu, "res": a.res, "fps": clamp_fps(a.fps), "dpi": dpi,
            "android": ver, "kind": EMU, "created": fmt(now()), "expires": exp.isoformat()}
     st = load(); st["phones"].append(row); save(st)
@@ -1766,7 +1771,7 @@ def main():
     c = s.add_parser("create"); c.add_argument("name"); c.add_argument("--ram", type=float, default=2); c.add_argument("--cpu", type=float, default=2)
     c.add_argument("--days", type=int, default=7); c.add_argument("--res", default="720x1280"); c.add_argument("--dpi", type=int, default=0)
     c.add_argument("--fps", type=int, default=30); c.add_argument("--nowait", action="store_true"); c.add_argument("--android", default="9")
-    c.add_argument("--nogpu", action="store_true"); c.set_defaults(f=cmd_create)
+    c.add_argument("--nogpu", action="store_true"); c.add_argument("--until", default=""); c.set_defaults(f=cmd_create)
     for nm, fn in (("delete", cmd_delete), ("forget", cmd_forget), ("stop", cmd_stop), ("start", cmd_start), ("restart", cmd_restart), ("show", cmd_show)):
         x = s.add_parser(nm); x.add_argument("name"); x.set_defaults(f=fn)
     r = s.add_parser("renew"); r.add_argument("name"); r.add_argument("--days", type=int, default=7); r.set_defaults(f=cmd_renew)
