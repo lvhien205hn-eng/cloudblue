@@ -1,0 +1,65 @@
+# Build app máy tính Windows (Tauri) -> blueroblox-site/download/BlueRoblox-PC-Setup.exe
+name: Build PC app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "pc-app/**"
+      - ".github/workflows/pc-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pc-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "pc-app/src-tauri -> target"
+
+      - name: Build installer
+        working-directory: pc-app
+        shell: bash
+        run: |
+          npm install --no-audit --no-fund
+          npx tauri icon icon.png
+          npx tauri build --bundles nsis --config "{\"version\":\"1.${{ github.run_number }}.0\"}"
+
+      - name: Copy installer to website
+        shell: bash
+        run: |
+          mkdir -p blueroblox-site/download
+          f=$(ls pc-app/src-tauri/target/release/bundle/nsis/*.exe | head -1)
+          echo "Installer: $f"
+          cp "$f" blueroblox-site/download/BlueRoblox-PC-Setup.exe
+          SIZE=$(stat -c %s blueroblox-site/download/BlueRoblox-PC-Setup.exe)
+          printf '{"version":"1.%s.0","size":%s,"date":"%s"}\n' "${{ github.run_number }}" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > blueroblox-site/download/pc.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlueRoblox-PC-Setup
+          path: blueroblox-site/download/BlueRoblox-PC-Setup.exe
+
+      - name: Save installer to repo (Vercel publishes it)
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add blueroblox-site/download
+          git commit -m "App PC v1.${{ github.run_number }}" || exit 0
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done
