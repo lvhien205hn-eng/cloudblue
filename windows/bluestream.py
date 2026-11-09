@@ -1089,13 +1089,14 @@ class ScrcpyVideo:
     def failed_early(self): return False
 
 
-# GIỮ CÚ BẤM: nhận "đặt ngón" → chờ tối đa TAP_HOLD giây xem có "nhấc ngón" không. Có → gửi đặt + nhấc LIỀN NHAU vào máy
-# = 1 cú bấm chắc chắn. Trước đây hai lệnh đi riêng: mạng khách giật / adb chậm làm lệnh "nhấc" tới máy trễ > 0,4 giây
-# → Android hiểu là BẤM GIỮ (icon phóng to, hiện menu "Pause app…", app không mở). Kéo / vuốt (nhích quá TAP_SLOP điểm)
-# thì gửi ngay như cũ; giữ yên quá TAP_HOLD thì gửi "đặt ngón" (bấm giữ vẫn dùng được, chỉ trễ thêm TAP_HOLD).
-# TAP_HOLD_MS=0 trong cloudphone.conf để tắt.
-try: TAP_HOLD = max(0.0, min(0.5, float(str(C.get("TAP_HOLD_MS", "250")).strip() or 250) / 1000.0))
-except Exception: TAP_HOLD = 0.25
+# GIỮ CÚ BẤM (MẶC ĐỊNH TẮT): nhận "đặt ngón" → chờ tối đa TAP_HOLD giây xem có "nhấc ngón" không. Có → gửi đặt + nhấc
+# LIỀN NHAU vào máy = 1 cú bấm chắc chắn (mạng khách giật làm lệnh "nhấc" tới trễ > 0,4 giây → Android hiểu là BẤM GIỮ).
+# Kéo / vuốt (nhích quá TAP_SLOP điểm) thì gửi ngay; giữ yên quá TAP_HOLD thì gửi "đặt ngón".
+# 09/11 17:45 TẮT mặc định: mọi "đặt ngón" đứng yên bị trễ tới lúc nhấc tay (tối đa TAP_HOLD) → chơi game trên điện thoại
+# (nút nhảy, cần điều khiển Roblox) thấy trễ. Lỗi "bấm app không mở" hôm 09/11 thật ra do MuMu "giữ app chạy nền"
+# (app_keptlive, xem phonectl.py), không phải do cú bấm. Muốn bật lại: TAP_HOLD_MS=250 trong cloudphone.conf.
+try: TAP_HOLD = max(0.0, min(0.5, float(str(C.get("TAP_HOLD_MS", "0")).strip() or 0) / 1000.0))
+except Exception: TAP_HOLD = 0.0
 TAP_SLOP = 16        # điểm ảnh của máy (≈ 1,5 mm trên màn 1080p): nhích ít hơn vẫn tính là bấm
 LATE_UP = 0.35       # nhả tay tới máy chủ trễ hơn mức này (không nhích) → đếm "chạm trễ" để báo trong nhật ký
 
@@ -1435,7 +1436,7 @@ class Control:
         if time.time() - self.stat_t >= 300:
             if self.n_late:
                 log(f"  [điều khiển {self.serial}] 5 phút qua: {self.n_tap} cú bấm, {self.n_late} lần lệnh nhả tay tới máy chủ trễ ≥ {LATE_UP:.2f} giây "
-                    f"(mạng khách giật) · giữ cú bấm {int(TAP_HOLD * 1000)} ms")
+                    f"(mạng khách giật) · {f'giữ cú bấm {int(TAP_HOLD * 1000)} ms' if TAP_HOLD else 'không giữ cú bấm'}")
             self.n_tap = self.n_late = 0; self.stat_t = time.time()
 
     def scroll(self, nx, ny, hv, vv):
@@ -2649,7 +2650,7 @@ async def main():
     srv1 = await asyncio.start_server(on_direct, "0.0.0.0", PORT, ssl=ctx, limit=1 << 20)
     srv2 = await asyncio.start_server(on_ws, "127.0.0.1", WS_PORT, limit=1 << 20)
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
-        f" · giữ cú bấm {int(TAP_HOLD * 1000)} ms · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
+        f" · {f'giữ cú bấm {int(TAP_HOLD * 1000)} ms' if TAP_HOLD else 'chạm gửi ngay'} · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
     if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
