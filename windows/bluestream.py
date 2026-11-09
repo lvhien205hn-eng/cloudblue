@@ -15,6 +15,7 @@
 #  Chạy:  python bluestream.py            (bảng BlueRoblox tự chạy — dịch vụ "phat-hinh")
 #         python bluestream.py --selftest (máy Linux/thử: nguồn hình giả, không cần đăng nhập)
 #         python bluestream.py --upnp     (thử mở cổng trên modem bằng UPnP 1 lần, in kết quả — không chạy máy chủ)
+#         python bluestream.py --netcheck [--fix]  (chẩn đoán đường nối thẳng: IP modem / CGNAT / cổng; --fix: tự đổi sang cổng mở được)
 #  cloudphone.conf:  STREAM_PORT=8189 · STREAM_WS_PORT=8020 · STREAM_WS=wss://stream.blueroblox.shop/v2/stream
 #                    STREAM_PUBLIC_IP= (trống = tự dò) · STREAM_CPU=1 (luôn nén CPU) · NVENC_MAX=5 · UPNP=0 (không tự mở cổng)
 # =====================================================================================================
@@ -89,6 +90,17 @@ PRESETS = {"eco": (960, 30, 1500), "bal": (1280, 60, 3000), "hd": (1600, 60, 600
 # (ít điểm ảnh = ít dữ liệu, máy ảo mã hoá + điện thoại giải mã kịp → hết giật, hết trễ dồn). Mạng khoẻ thì về đủ 1280 · 60 FPS.
 AUTO_TIERS = ((450, 640, 20), (800, 854, 24), (1300, 1024, 30), (2000, 1280, 30))      # (dưới kbps, cạnh dài tối đa, FPS tối đa)
 AUTO_CELL_KBPS = 1500                     # app báo đang dùng 4G/5G → bắt đầu nhẹ (1280 · 30 FPS), mạng ổn thì tự tăng sau ~20 giây
+# Đường VÒNG qua Cloudflare (WebSocket — web luôn đi đường này, app khi không nối thẳng được) chậm hơn đường thẳng nhiều
+# (09/11 đo ~300–600 kbps) → Tự động bắt đầu nhẹ, khỏi 5 giây đầu hình đứng / bỏ khung. Đổi: STREAM_WS_START_KBPS trong conf.
+def _int_conf(k, d):
+    try: return int(float(str(C.get(k, d)).strip() or d))
+    except (TypeError, ValueError): return d
+WS_START_KBPS = max(300, _int_conf("STREAM_WS_START_KBPS", 1200))
+# Nghẽn → hạ bitrate rồi GIỮ mức đó ≥ RATE_HOLD_MIN giây (nghẽn lại trong 3 phút → giữ gấp đôi, tối đa RATE_HOLD_MAX) mới thử tăng,
+# và tăng từng bước nhỏ (×1,15). Trước đây cứ yên 10 giây là tăng ×1,3 → vượt sức đường truyền → nghẽn → hạ → tăng… (log 09/11:
+# mỗi ~35 giây 1 vòng, phiên đứt rồi nối lại). Mức đã dò được nhớ 15 phút theo khách + máy + loại đường → nối lại bắt đầu đúng mức.
+RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
+_RATE_MEM = {}                            # (uid, mã máy, loại đường) → {"k": kbps, "until": giữ tới lúc, "hs": số giây giữ, "lc": lúc nghẽn, "t": lúc ghi}
 KEYCODE = {"back": 4, "home": 3, "recents": 187, "power": 26, "volup": 24, "voldown": 25, "menu": 82}
 
 # loại tin nhắn (docs/STREAM-PROTOCOL.md)
@@ -856,6 +868,14 @@ def device_size(serial):
     return size
 
 
+def device_size_cur(serial):
+    """Cỡ màn hình ĐANG HIỆN (logic, theo hướng hiện tại) — đúng số scrcpy dùng để nhận cú chạm. dumpsys window displays: "cur=720x1280"."""
+    code, out, _ = adb(serial, "shell", "dumpsys", "window", "displays", timeout=10)
+    m = re.search(r"\bcur=(\d+)x(\d+)", out or "")
+    if m and int(m.group(1)) > 0 and int(m.group(2)) > 0: return int(m.group(1)), int(m.group(2))
+    return None
+
+
 def adb_connect(serial):
     """Nối adb tới máy (giả lập mở adb TCP 127.0.0.1:cổng). Chưa nối thì adb báo "device … not found"."""
     if ":" not in serial: return
@@ -1139,6 +1159,7 @@ class Control:
         self.tlock = threading.Lock(); self.held = {}; self.active = set(); self.hgen = 0      # cú bấm đang giữ chờ "nhấc ngón"
         self.n_tap = 0; self.n_late = 0; self.stat_t = time.time(); self.dpos = {}
         self.dfix_at = 0.0; self.dfix_busy = False                                              # đưa app từ màn ảo về màn chính
+        self.miss_t = 0.0; self.miss_log = 0.0; self.n_miss = 0; self.miss_same = 0             # scrcpy bỏ cú chạm vì sai cỡ màn hình
 
     # ---------- khởi động (luồng nền) ----------
     def start(self):
@@ -1228,8 +1249,44 @@ class Control:
         try:
             for ln in iter(p.stdout.readline, b""):
                 s = ln.decode("utf-8", "replace").strip()
-                if s and not self.dead: log(f"  [scrcpy {self.serial}] {s[:200]}")
+                if not s or self.dead: continue
+                if "different device size" in s:             # "Ignore touch event, it was generated for a different device size"
+                    self._size_miss(); continue
+                log(f"  [scrcpy {self.serial}] {s[:200]}")
         except Exception: pass
+
+    # scrcpy BỎ cú chạm khi cỡ màn hình gửi kèm ≠ cỡ máy đang có (máy đổi độ phân giải, wm size cũ trong bộ nhớ 10 phút, máy vừa
+    # khởi động…) → khách bấm không ăn (log 09/11 win5 cổng 16864 lặp lại hàng loạt). Giờ: thấy cảnh báo đó → đo lại cỡ màn hình ngay.
+    def _size_miss(self):
+        self.n_miss += 1; now = time.time()
+        if now - self.miss_t < 1.5: return
+        self.miss_t = now
+        threading.Thread(target=self._size_refresh, daemon=True).start()
+
+    def _size_refresh(self):
+        same = lambda a, b: bool(a) and bool(b) and sorted(a) == sorted(b)
+        old = self.nat
+        _devsize.pop(self.serial, None)
+        try: n = device_size(self.serial)
+        except Exception: n = None
+        if not n or same(n, old):                                # wm size vẫn ra số cũ → hỏi cỡ màn hình đang hiện (dumpsys)
+            try: n2 = device_size_cur(self.serial)
+            except Exception: n2 = None
+            if n2: n = n2
+        if n: self.nat = n; self.nat_t = time.time()
+        if n and not same(n, old):
+            self.miss_same = 0
+        else:
+            self.miss_same += 1
+            if self.miss_same >= 2 and self.mode == "scrcpy" and not self.dead:
+                # cỡ đo lại vẫn thế mà scrcpy vẫn bỏ chạm → scrcpy trong máy còn nhớ cỡ CŨ (máy đổi độ phân giải lúc đang mở) → nối lại scrcpy
+                self.miss_same = 0
+                log(f"  [điều khiển {self.serial}] scrcpy vẫn bỏ cú chạm với cỡ {n} → nối lại scrcpy (tạm chạm bằng lệnh input)")
+                self._cleanup(keep_queue=True); self.mode = "input"; self._kick_retry()
+        if time.time() - self.miss_log > 60:
+            self.miss_log = time.time()
+            log(f"  [điều khiển {self.serial}] scrcpy bỏ {self.n_miss} cú chạm (sai cỡ màn hình) → đo lại: {old} → {self.nat}")
+            self.n_miss = 0
 
     def _reader(self, s):
         def rd(n):
@@ -1601,6 +1658,46 @@ def ws_should_nudge(hdr, now=None):
     return True
 
 
+# ---- Đo tốc độ đường vòng Cloudflare: GET /v2/speed?kb=N&t=MÃ → N KB dữ liệu ngẫu nhiên (ketnoi.py đo QUIC ↔ HTTP/2) ----
+# Chỉ trả khi đúng MÃ (băm từ khoá máy chủ — người ngoài không đoán được), tối đa 8 MB/lần, 1 lần đo một lúc.
+SPEED_TOKEN = hashlib.sha256(((KEY or "") + "|" + NODE_ID + "|cb-speed").encode()).hexdigest()[:24]
+_SPEED_CHUNK = os.urandom(65536)
+_speed_busy = [False]
+
+
+async def speed_reply(first_line, writer):
+    """Dòng đầu yêu cầu HTTP là GET /v2/speed… đúng mã → gửi dữ liệu đo rồi đóng, trả True. Không phải → False (xử lý như cũ)."""
+    try: path = first_line.split(" ")[1]
+    except IndexError: return False
+    if not path.startswith("/v2/speed"): return False
+    q = urllib.parse.parse_qs(urllib.parse.urlsplit(path).query)
+    if not hmac_eq((q.get("t") or [""])[0], SPEED_TOKEN) or _speed_busy[0]:
+        writer.write(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); await writer.drain(); writer.close(); return True
+    try: n = max(1, min(8192, int((q.get("kb") or ["64"])[0]))) * 1024
+    except ValueError: n = 65536
+    _speed_busy[0] = True
+    try:
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nCache-Control: no-store, no-transform\r\n"
+                     b"Content-Length: %d\r\nConnection: close\r\n\r\n" % n)
+        sent = 0
+        while sent < n:
+            part = _SPEED_CHUNK[:min(len(_SPEED_CHUNK), n - sent)]
+            writer.write(part); sent += len(part)
+            await asyncio.wait_for(writer.drain(), 30)
+    except Exception:
+        pass
+    finally:
+        _speed_busy[0] = False
+        try: writer.close()
+        except Exception: pass
+    return True
+
+
+def hmac_eq(a, b):
+    import hmac
+    return hmac.compare_digest(str(a).encode(), str(b).encode())
+
+
 class WSLink(Link):
     kind = "ws"
     def __init__(self, reader, writer):
@@ -1615,6 +1712,7 @@ class WSLink(Link):
         for ln in lines[1:]:
             if ":" in ln: k, v = ln.split(":", 1); hdr[k.strip().lower()] = v.strip()
         if hdr.get("upgrade", "").lower() != "websocket" or "sec-websocket-key" not in hdr:
+            if await speed_reply(lines[0], writer): return None
             body = b"BlueRoblox stream v2"
             writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" % (len(body), body))
             await writer.drain(); writer.close(); return None
@@ -1703,7 +1801,9 @@ class Session:
         self.ack_pts = None; self.ack_t = 0.0; self.lag_ms = 0; self.base_ms = 0.0
         self.kbps_cur = None; self.kbps_cap = PRESETS[self.cur_q][2]; self.rate_t = 0.0
         self.net = str(hello.get("net") or "")[:2]           # app điện thoại báo loại mạng: w = wifi · c = 4G/5G
+        self.hold_until = 0.0; self.hold_s = 0.0; self.last_cong = 0.0
         self.kbps_cur = self._kbps_start()
+        self._rate_load()
         self.inflight = collections.deque(); self.delivered = collections.deque(); self.lat = collections.deque()
         self.key_grace = 0.0
         self.from_android = False          # True: Windows không quay được cửa sổ máy này → cả phiên lấy hình thẳng từ Android (scrcpy)
@@ -1713,8 +1813,39 @@ class Session:
 
     # ---------- hình ----------
     def _kbps_start(self):
-        """Bitrate lúc bắt đầu (None = trần của mức chất lượng). Tự động + 4G/5G → bắt đầu nhẹ, mạng ổn tự tăng dần."""
-        return AUTO_CELL_KBPS if self.q == "auto" and self.net == "c" else None
+        """Bitrate lúc bắt đầu (None = trần của mức chất lượng). Tự động + 4G/5G → bắt đầu nhẹ, mạng ổn tự tăng dần.
+           Tự động + đường vòng Cloudflare → bắt đầu WS_START_KBPS."""
+        k = AUTO_CELL_KBPS if self.q == "auto" and self.net == "c" else None
+        if self.q == "auto" and getattr(self.link, "kind", "") == "ws": k = min(k or WS_START_KBPS, WS_START_KBPS)
+        return k
+
+    def _rate_key(self):
+        return (str((self.me or {}).get("uid") or ""), self.pid, getattr(self.link, "kind", "?"))
+
+    def _rate_load(self):
+        """Nối lại trong 15 phút (cùng khách + máy + loại đường) → bắt đầu ở mức đã dò được, giữ nguyên lịch giữ mức."""
+        if self.q != "auto": return
+        m = _RATE_MEM.get(self._rate_key())
+        if not m or time.time() - m["t"] > RATE_MEM_S: return
+        cur = self.kbps_cur or PRESETS[self.cur_q][2]
+        if m["k"] < cur: self.kbps_cur = m["k"]
+        self.hold_until, self.hold_s, self.last_cong = m["until"], m["hs"], m["lc"]
+
+    def _rate_save(self):
+        if self.q != "auto" or self.kbps_cur is None: return
+        if len(_RATE_MEM) > 5000:
+            for k in [k for k, v in _RATE_MEM.items() if time.time() - v["t"] > RATE_MEM_S]: _RATE_MEM.pop(k, None)
+        _RATE_MEM[self._rate_key()] = {"k": int(self.kbps_cur), "until": self.hold_until, "hs": self.hold_s, "lc": self.last_cong, "t": time.time()}
+
+    def _may_raise(self, now):
+        """Được thử tăng bitrate chưa: dưới trần, yên ≥ 10 giây, đổi mức gần nhất ≥ 10 giây, hết thời gian giữ mức sau nghẽn."""
+        cur = self.kbps_cur or self.kbps_cap
+        return cur < self.kbps_cap and now - self.calm_since > 10 and now - self.rate_t > 10 and now >= self.hold_until
+
+    def _raise_to(self, now):
+        cur = self.kbps_cur or self.kbps_cap
+        if now - self.last_cong < 600: return min(self.kbps_cap, int(cur * 1.15) + 50)      # vừa nghẽn trong 10 phút → bước nhỏ
+        return min(self.kbps_cap, int(cur * 1.3) + 100)
 
     def _dims(self):
         maxh, fps, kbps = PRESETS[self.cur_q]
@@ -1915,7 +2046,9 @@ class Session:
             new = int(max(250, min(cur * 0.7, gp * 0.8 if gp > 50 else cur * 0.5)))
             if new < cur * 0.92:
                 self.kbps_cur = new; self.rate_t = now; self.restart_req = "quality"
-                log(f"  {self.name}: mạng khách ~{gp:.0f} kbps → hạ còn {new} kbps")
+                self.hold_s = min(RATE_HOLD_MAX, self.hold_s * 2) if self.hold_s and now - self.last_cong < 180 else RATE_HOLD_MIN
+                self.hold_until = now + self.hold_s; self.last_cong = now; self._rate_save()
+                log(f"  {self.name}: mạng khách ~{gp:.0f} kbps → hạ còn {new} kbps (giữ ≥ {int(self.hold_s)} giây)")
 
     def _on_ack(self, ack):
         now = time.time(); self.ack_pts = ack; self.ack_t = now
@@ -2005,9 +2138,8 @@ class Session:
                     log(f"  {self.name}: bộ nén dừng → bật lại"); await self.restart_video(); continue
                 if self.restart_req and time.time() - self.last_restart > 1.0:
                     self.restart_req = None; await self.restart_video()
-                cur = self.kbps_cur or self.kbps_cap
-                if cur < self.kbps_cap and time.time() - self.calm_since > 10 and time.time() - self.rate_t > 10:
-                    self.kbps_cur = min(self.kbps_cap, int(cur * 1.3) + 100); self.rate_t = time.time()
+                if self._may_raise(time.time()):
+                    self.kbps_cur = self._raise_to(time.time()); self.rate_t = time.time(); self._rate_save()
                     log(f"  {self.name}: mạng ổn → tăng lên {self.kbps_cur} kbps"); await self.restart_video()
             except Closed:
                 return
@@ -2041,7 +2173,9 @@ class Session:
                 except Exception: pass
         threading.Thread(target=stop_all, daemon=True).start()    # tắt ffmpeg / quay / scrcpy ở luồng riêng (không chặn máy chủ)
         await self.link.close()
-        log(f"■ {self.name} đóng (gửi {self.sent} khung, bỏ {self.drop})")
+        try: self._rate_save()
+        except Exception: pass
+        log(f"■ {self.name} đóng (gửi {self.sent} khung, bỏ {self.drop}" + (f", {self.kbps_cur} kbps" if self.kbps_cur else "") + ")")
 
 
 # ================================================================ XEM TRƯỚC TRỰC TIẾP (ô máy trong danh sách / "Xem tất cả" của app)
@@ -2572,6 +2706,145 @@ def upnp_cli():
     return 0 if ok else 1
 
 
+# ================================================================ KIỂM ĐƯỜNG NỐI THẲNG:  python bluestream.py --netcheck [--fix]
+# In: IP LAN · IP công khai · IP WAN của modem (phát hiện CGNAT / 2 lớp NAT) · cổng modem đang chuyển · phiên gần đây đi thẳng hay
+# vòng Cloudflare. --fix: cổng hiện tại KHÔNG mở được bằng UPnP (VD 8193 "đã bị chiếm" bởi luật mở tay trỏ sai máy) → tìm cổng trống
+# khác, mở bằng UPnP, ghi STREAM_PORT mới vào cloudphone.conf (bản cũ .bak) và in dòng NEWPORT=… (ketnoi.py khởi động lại phát hình).
+NET_PORTS = (8195, 8196, 8197, 8198, 8199, 8291, 8293, 8295, 8297, 8299, 18195, 18197, 18199)
+
+
+def _port_free(port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("0.0.0.0", int(port))); return True
+    except OSError:
+        return False
+    finally:
+        s.close()
+
+
+def igd_info(lan, target=None, wait=2.5):
+    """Modem UPnP → (serviceType, controlURL, IP WAN của modem) · không dùng được → (None, None, lý do)."""
+    deadline = time.monotonic() + UPNP_BUDGET
+    locs = ssdp_find(lan, target or SSDP_ADDR, wait)
+    if not locs: return None, None, UPNP_NO_ANSWER
+    svcs = []
+    for loc in locs[:6]:
+        try:
+            code, xml = _upnp_http(loc, deadline)
+            if code == 200: svcs += [sv for sv in igd_services(xml, loc) if sv not in svcs]
+        except Exception:
+            pass
+    if not svcs: return None, None, "modem trả lời UPnP nhưng không có dịch vụ mở cổng"
+    best, rank, ext = svcs[0], -1, ""
+    for sv in svcs[:4]:
+        try: ip = upnp_soap(sv[1], sv[0], "GetExternalIPAddress", (), deadline).get("NewExternalIPAddress", "")
+        except UpnpFault: ip = ""
+        a = _ip4(ip); r = 0 if not a else 2 if a.is_global else 1
+        if r > rank: best, rank, ext = sv, r, (str(a) if a else "")
+        if r == 2: break
+    return best[0], best[1], ext
+
+
+def igd_mappings(st, ctl, limit=64):
+    """Các cổng modem CHO XEM (cổng mở tay trong trang modem thường bị giấu) → [dict]."""
+    out, deadline = [], time.monotonic() + 15
+    for i in range(limit):
+        try: out.append(upnp_soap(ctl, st, "GetGenericPortMappingEntry", (("NewPortMappingIndex", i),), deadline))
+        except UpnpFault: break
+    return out
+
+
+def set_conf(key, val, path=None):
+    """Sửa / thêm 1 dòng KHOÁ=GIÁ_TRỊ trong cloudphone.conf tại chỗ (giữ BOM, CRLF, các dòng khác; bỏ dòng trùng; bản cũ .bak)."""
+    f = path or os.path.join(B, "cloudphone.conf")
+    data = open(f, "rb").read() if os.path.isfile(f) else b""
+    bom = data[:3] == b"\xef\xbb\xbf"; raw = data[3 if bom else 0:].decode("utf-8", errors="replace")
+    nl = "\r\n" if "\r\n" in raw else "\n"; lines, done = [], False
+    for ln in raw.splitlines():
+        if "=" in ln and not ln.lstrip().startswith("#") and ln.split("=", 1)[0].strip() == key:
+            if done: continue
+            ln = f"{key}={val}"; done = True
+        lines.append(ln)
+    if not done: lines.append(f"{key}={val}")
+    if data: open(f + ".bak", "wb").write(data)
+    open(f + ".tmp", "wb").write((b"\xef\xbb\xbf" if bom else b"") + (nl.join(lines) + nl).encode("utf-8"))
+    os.replace(f + ".tmp", f)
+
+
+def log_tail(n=6000):
+    p = os.path.join(B, "logs", "phat-hinh.log")
+    try:
+        with open(p, "rb") as fh:
+            fh.seek(0, 2); size = fh.tell(); fh.seek(max(0, size - 900_000))
+            return fh.read().decode("utf-8", "replace").splitlines()[-n:]
+    except OSError:
+        return []
+
+
+def session_mix(lines):
+    """Đếm phiên trong nhật ký: {(đường, loại app): số} — đường = direct (thẳng) / ws (vòng Cloudflare)."""
+    mix = collections.Counter()
+    for ln in lines:
+        m = re.search(r"▶ \S+ ← \S+ \((direct|ws), ([^)]*)\)", ln)
+        if m: mix[(m.group(1), m.group(2).strip() or "?")] += 1
+    return mix
+
+
+def netcheck(fix=False, lan=None, pub=None, target=None):
+    """In chẩn đoán đường nối thẳng. Trả: 0 = cổng mở được · 1 = chưa · 3 = (--fix) đã đổi sang cổng mới (in NEWPORT=…)."""
+    print(f"== Đường nối THẲNG · máy chủ {NODE_ID} · cổng phát hình TCP {PORT}")
+    lip = lan or lan_ip(); pip_ = public_ip() if pub is None else pub
+    print(f"  IP LAN máy này:   {lip or '? (chưa nối mạng?)'}")
+    print(f"  IP công khai:     {pip_ or '? (không hỏi được)'}")
+    st = ctl = None; ext = ""; cg = ""
+    if lip:
+        st, ctl, ext = igd_info(lip, target)
+        if st:
+            print(f"  IP WAN của modem: {ext or '?'}")
+            cg = _upnp_nat_warn(ext, pip_ or "")
+            if cg: print("  " + cg)
+            maps = igd_mappings(st, ctl)
+            if maps:
+                print(f"  Modem cho xem {len(maps)} cổng đang mở:")
+                for m in maps[:20]:
+                    print(f"    · {m.get('NewProtocol', '?')} {m.get('NewExternalPort', '?')} → {m.get('NewInternalClient', '?')}:{m.get('NewInternalPort', '?')}"
+                          f"  ({(m.get('NewPortMappingDescription') or '')[:32]})")
+            else:
+                print("  Modem không cho xem danh sách cổng (cổng mở tay trong trang modem thường bị giấu)")
+        else:
+            print(f"  ✗ UPnP: {ext}"); ext = ""
+    ok, msg = upnp_open(lan=lip, pub=pip_ or "", ssdp=target) if lip else (False, "không biết IP LAN")
+    print(("  ✓ " if ok else "  ✗ ") + f"cổng TCP {PORT}: {msg}")
+    lines = log_tail(); mix = session_mix(lines)
+    if mix:
+        print("  Phiên trong nhật ký gần đây: " + " · ".join(f"{'thẳng' if k[0] == 'direct' else 'vòng Cloudflare'} ({k[1]}) {v}" for k, v in sorted(mix.items())))
+        apps = sum(v for k, v in mix.items() if k[1] in ("android", "pc"))
+        if apps and not sum(v for k, v in mix.items() if k[0] == "direct"):
+            print("  ⚠ App điện thoại / PC CHƯA phiên nào đi thẳng → đường thẳng hỏng (cổng modem / nhà mạng) → mọi khách đi vòng Cloudflare (chậm, giật)")
+    if ok and not cg: return 0
+    if cg:
+        print("  → Nhà mạng NAT thêm 1 lớp: đổi cổng hay mở cổng đều KHÔNG giúp. Gọi tổng đài nhà mạng (FPT 1900 6600) xin \"IP công khai / tắt CGNAT\".")
+        return 1
+    if not st:
+        print(f"  → Modem không dùng được UPnP: vào trang modem (thường http://192.168.1.1) → NAT / Port Forwarding: TCP {PORT} → {lip}:{PORT}")
+        return 1
+    if not fix:
+        print(f"  → Chạy lại với --fix để tự chuyển sang cổng trống khác (mở bằng UPnP), hoặc vào trang modem sửa: TCP {PORT} → {lip}:{PORT}")
+        return 1
+    for cand in NET_PORTS:
+        if cand in (PORT, WS_PORT) or not _port_free(cand): continue
+        ok2, msg2 = upnp_open(port=cand, lan=lip, pub=pip_ or "", ssdp=target)
+        print(("  ✓ " if ok2 else "  · ") + f"thử cổng {cand}: {msg2}")
+        if ok2:
+            set_conf("STREAM_PORT", str(cand))
+            print(f"  ✓ ĐÃ ĐỔI cổng phát hình {PORT} → {cand} (cloudphone.conf, bản cũ cloudphone.conf.bak) — khởi động lại phát hình để dùng.")
+            print(f"NEWPORT={cand}")
+            return 3
+    print(f"  ✗ Không mở được cổng nào bằng UPnP → vào trang modem: NAT / Port Forwarding: TCP {PORT} → {lip}:{PORT}")
+    return 1
+
+
 def _save_png(frame, name):
     if frame is None: return "(không có khung nào)"
     p = os.path.join(B, "logs", "captest_" + re.sub(r"[^A-Za-z0-9_.-]", "_", name) + ".png")
@@ -2670,6 +2943,8 @@ if __name__ == "__main__":
         sys.exit(captest(_a[0], _a[1] if len(_a) > 1 else None))
     if "--upnp" in sys.argv:                                     # thử mở cổng trên modem bằng UPnP (không chạy máy chủ)
         sys.exit(upnp_cli())
+    if "--netcheck" in sys.argv:                                 # chẩn đoán đường nối thẳng (+ --fix: tự đổi sang cổng mở được)
+        sys.exit(netcheck(fix="--fix" in sys.argv))
     if WIN:
         try: ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x00008000)   # ABOVE_NORMAL (ffmpeg con cũng vậy)
         except Exception: pass

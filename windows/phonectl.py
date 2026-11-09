@@ -338,6 +338,51 @@ def _mumu_major(v): return str((v or {}).get("android_version") or "").split("."
 def _mumu_running(v): return bool(v.get("is_process_started") or v.get("is_android_started") or str(v.get("player_state", "")).startswith("start"))
 def _mumu_list(): return {i: {"name": str(v.get("name", "")), "running": _mumu_running(v), "pid": v.get("pid", -1)} for i, v in _mumu_info().items()}
 _MUMU_KEYS = {}
+_MUMU_MODE_KEYS = ("performance_mode", "resolution_mode")
+def _mumu_all(idx):
+    """Mọi cài đặt HIỆN TẠI của 1 máy MuMu (đọc mới, không dùng bộ nhớ đệm) → dict ({} nếu không đọc được)."""
+    j = _mumu_json(_mumurun(["setting", "-v", str(idx), "-a"], 60).stdout)
+    if not isinstance(j, dict) or not j: j = _mumu_json(_mumurun(["setting", "--vmindex", str(idx), "--all"], 60).stdout)
+    return j if isinstance(j, dict) else {}
+def _fnum(x):
+    try: return float(str(x).strip())
+    except (TypeError, ValueError): return None
+def _mumu_hw_eff(allk):
+    """(nhân, RAM GB, chế độ) máy MuMu SẼ CHẠY: vm_cpu / vm_mem nếu MuMu có 2 khoá đó, không thì số của chế độ đang chọn."""
+    mode = str(allk.get("performance_mode", "")).strip()
+    c, m = _fnum(allk.get("vm_cpu")), _fnum(allk.get("vm_mem"))
+    if c is None and mode: c = _fnum(allk.get(f"performance_cpu.{mode}"))
+    if m is None and mode: m = _fnum(allk.get(f"performance_mem.{mode}"))
+    return c, m, mode
+def _mumu_hw_ok(allk, cpu, mem):
+    c, m, _ = _mumu_hw_eff(allk)
+    return c is not None and m is not None and int(round(c)) == int(cpu) and abs(m - float(mem)) < 0.01
+def _mumu_hw(idx, cpu, mem):
+    """Đặt nhân + RAM THẬT cho 1 máy MuMu (máy phải TẮT) rồi ĐỌC LẠI kiểm tra → (ok, chữ). Thử lần lượt tới khi đúng:
+       ① số custom trước, chế độ custom sau · ② đổi chế độ qua middle rồi về custom · ③ ghi thẳng vm_cpu / vm_mem."""
+    idx = str(idx); cpu = int(cpu); mem = float(mem)
+    _MUMU_KEYS.pop(idx, None)
+    allk = _mumu_all(idx)
+    if not allk: return False, "không đọc được cài đặt MuMu của máy này"
+    if _mumu_hw_ok(allk, cpu, mem): return True, f"đã đúng {cpu} nhân · {mem:g}GB"
+    cv, mv = str(cpu), f"{mem:.6f}"
+    tries = (("custom trước, chế độ sau", [("performance_cpu.custom", cv), ("performance_mem.custom", mv), ("performance_mode", "custom")]),
+             ("đổi chế độ qua lại", [("performance_mode", "middle"), ("performance_mode", "custom")]),
+             ("ghi thẳng vm_cpu/vm_mem", [("vm_cpu", cv), ("vm_mem", f"{mem:g}")]))
+    done = []
+    for name, kv in tries:
+        kv = [(k, v) for k, v in kv if k in allk]
+        if not kv: continue
+        for k, v in kv:
+            r = _mumurun(["setting", "-v", idx, "-k", k, "-val", v], 60)
+            o = ((r.stdout or "") + (r.stderr or "")).lower()
+            if r.returncode not in (0, None) or "error" in o or "invalid" in o:
+                _mumurun(["setting", "--vmindex", idx, "--key", k, "--value", v], 60)
+        done.append(name)
+        allk = _mumu_all(idx) or allk
+        if _mumu_hw_ok(allk, cpu, mem): return True, f"đã đặt {cpu} nhân · {mem:g}GB ({name})"
+    c, m, mode = _mumu_hw_eff(allk)
+    return False, f"MuMu vẫn ghi {c if c is None else int(c)} nhân · {m}GB (chế độ {mode or '?'}) sau khi thử: {', '.join(done) or 'không có khoá nào'}"
 def _mumu_set(idx, kv):
     """Ghi cài đặt máy MuMu (máy phải đang TẮT). Tự dò tên khoá (MuMu đổi tên khoá theo bản)."""
     if idx not in _MUMU_KEYS:
@@ -361,6 +406,9 @@ def _mumu_set(idx, kv):
         elif k == "root": want.append((pick("root_permission"), "true"))
         elif k == "fps": want.append((pick("max_frame_rate"), str(v)))
         else: want.append((k, str(v)))
+    # CHẾ ĐỘ ghi SAU CÙNG: MuMu chép số của chế độ (custom/middle…) sang cấu hình máy ảo (vm_cpu / vm_mem) lúc ĐẶT CHẾ ĐỘ.
+    # Ghi chế độ trước rồi mới ghi số "custom" → máy ảo giữ số custom CŨ (mặc định 4 nhân · 6GB) — lỗi "mua 16GB ra 6GB" 09/11.
+    want = [x for x in want if x[0] not in _MUMU_MODE_KEYS] + [x for x in want if x[0] in _MUMU_MODE_KEYS]
     seen = set()
     for k, v in want:
         if k in seen or (allk and k not in allk and k not in ("performance_mode", "resolution_mode")): continue
@@ -875,8 +923,9 @@ def configure(idx, ram, cpu, res, dpi):
         return
     if EMU == "mumu":
         if float(ram) > MAX_RAM: print(f"   (gói {float(ram):g}GB → MuMu chạy tối đa {MAX_RAM:g}GB/máy, đặt {MAX_RAM:g}GB)", flush=True)
-        _mumu_set(str(idx), {"cpu": max(1, int(round(min(float(cpu), MAX_CPU)))), "mem": min(float(ram), MAX_RAM),
-                             "res": (int(w), int(h), int(dpi or auto_dpi(res))), "root": 1, **MUMU_PERF})
+        _mumu_set(str(idx), {"res": (int(w), int(h), int(dpi or auto_dpi(res))), "root": 1, **MUMU_PERF})
+        ok, msg = _mumu_hw(str(idx), max(1, int(round(min(float(cpu), MAX_CPU)))), min(float(ram), MAX_RAM))
+        print(f"   {'✓' if ok else '⚠'} MuMu #{idx}: {msg}", flush=True)
         return
     if float(ram) > MAX_RAM: print(f"   (gói {float(ram):g}GB → MEmu chỉ chạy tối đa {MAX_RAM:g}GB/máy, đặt {MAX_RAM:g}GB)", flush=True)
     ram = min(float(ram), MAX_RAM); cpu = min(float(cpu), MAX_CPU)
@@ -1230,6 +1279,97 @@ def cmd_resize(a):
     start_phone(p); wait_boot(a.name, p["port"], apps=False)
     st = load(); q = rec(a.name, st); q["ram"], q["cpu"] = ram, cpu; save(st)
     print(f"⬆️ '{a.name}' → {ram:g}GB RAM · {cpu:g} nhân")
+
+# ---------- KIỂM / SỬA RAM + NHÂN THẬT của máy khách (lỗi 09/11: gói 16GB · 8 nhân mà Android chỉ thấy ~6GB) ----------
+def _live_hw(p):
+    """RAM (GB) + số nhân Android ĐANG THẤY (máy phải chạy) → (gb, nhân); không hỏi được → (None, None)."""
+    s = serial(p)
+    try:
+        if (adb("-s", s, "get-state", timeout=10).stdout or "").strip() != "device": adb_connect(p["port"])
+        out = adb("-s", s, "shell", "head -1 /proc/meminfo; nproc", timeout=15).stdout or ""
+    except Exception:
+        return None, None
+    m = re.search(r"MemTotal:\s*(\d+)\s*kB", out); n = re.search(r"^\s*(\d+)\s*$", out, re.M)
+    return (int(m.group(1)) / 1048576 if m else None), (int(n.group(1)) if n else None)
+
+def _hw_row(p, v):
+    """Kiểm 1 máy: gói đã bán · giả lập đang đặt · Android đang thấy → dict (bad = danh sách chỗ sai)."""
+    want_r, want_c = float(p["ram"]), int(round(float(p["cpu"])))
+    cap_r, cap_c = min(want_r, MAX_RAM), max(1, min(want_c, MAX_CPU))
+    i = IDX(p, v)
+    r = {"idx": i, "want": (want_r, want_c), "cap": (cap_r, cap_c), "set": (None, None), "live": (None, None), "run": False, "bad": [], "fix": False}
+    if i is None: r["bad"].append("không thấy máy trong giả lập"); return r
+    r["run"] = bool(v[i]["running"])
+    if EMU == "mumu":
+        allk = _mumu_all(i); c, m, _mode = _mumu_hw_eff(allk); r["set"] = (m, c)
+        if c is None or m is None: r["bad"].append("không đọc được cài đặt MuMu")
+        elif not _mumu_hw_ok(allk, cap_c, cap_r): r["bad"].append(f"MuMu đang đặt {m:g}GB · {int(c)} nhân"); r["fix"] = True
+    if r["run"]:
+        gb, n = _live_hw(p); r["live"] = (gb, n)
+        if gb is not None and gb < cap_r * 0.9: r["bad"].append(f"Android chỉ thấy {gb:.1f}GB"); r["fix"] = True
+        if n is not None and n < cap_c: r["bad"].append(f"Android chỉ thấy {n} nhân"); r["fix"] = True
+    if (cap_r, cap_c) != (want_r, want_c): r["bad"].append(f"trần máy chủ chỉ cho {cap_r:g}GB · {cap_c} nhân")
+    return r
+
+def _hw_cap_warn():
+    if EMU == "mumu" and (MAX_RAM < 16 or MAX_CPU < 32):
+        print(f"⚠ Trần 1 máy đang là {MAX_RAM:g}GB · {MAX_CPU} nhân — THẤP hơn mức web bán cho MuMu (Android 12/15: 16GB · 32 nhân)\n"
+              "  → máy gói lớn bị cắt bớt. Sửa trước:  python phonectl.py setconf MEMU_MAX_RAM=16 MEMU_MAX_CPU=32", flush=True)
+        return True
+    return False
+
+def cmd_ramcheck(a):
+    st = load(); v = vms()
+    print(f"{EMU_NAME} · trần 1 máy: {MAX_RAM:g}GB · {MAX_CPU} nhân (MEMU_MAX_RAM / MEMU_MAX_CPU trong cloudphone.conf)", flush=True)
+    _hw_cap_warn()
+    bad, capped = [], []
+    for p in sorted(st["phones"], key=lambda x: x["name"]):
+        r = _hw_row(p, v)
+        sm, sc = r["set"]; lg, ln = r["live"]
+        s_txt = f"{sm:g}GB/{int(sc)}" if sm is not None and sc is not None else "—"
+        l_txt = f"{lg:.1f}GB/{ln}" if lg is not None and ln is not None else ("(đang tắt)" if not r["run"] else "?")
+        print(f"{'✗' if r['bad'] else '✓'} {p['name']:<15} #{'?' if r['idx'] is None else r['idx']:<3} gói {r['want'][0]:g}GB/{r['want'][1]}"
+              f" · giả lập {s_txt} · Android {l_txt}" + (f"  ← {'; '.join(r['bad'])}" if r["bad"] else ""), flush=True)
+        if r["fix"]: bad.append(p["name"])
+        elif r["bad"] and r["cap"] != r["want"]: capped.append(p["name"])
+    print(f"\n{len(st['phones'])} máy · {len(bad)} máy cần sửa RAM/CPU" + (f": {' '.join(bad)}" if bad else "")
+          + (f" · {len(capped)} máy bị trần máy chủ cắt" if capped else ""))
+    if bad: print("→ Sửa (máy đang chạy tự tắt + bật lại ~1–2 phút):  python phonectl.py ramfix --all   ·   1 máy:  python phonectl.py ramfix TÊN")
+
+def cmd_ramfix(a):
+    if EMU != "mumu": print("ramfix chỉ dùng cho máy chủ MuMu (LDPlayer / MEmu: dùng resize)."); sys.exit(1)
+    st = load(); names = [p["name"] for p in st["phones"]] if a.all else list(a.names)
+    if not names: print("Cách dùng: python phonectl.py ramfix TÊN [TÊN…]   hoặc   python phonectl.py ramfix --all"); sys.exit(1)
+    capw = _hw_cap_warn(); ok_n = fail_n = skip_n = 0
+    for name in names:
+        p = rec(name)
+        if not p: print(f"✗ {name}: không có trong danh sách máy của máy chủ này", flush=True); fail_n += 1; continue
+        r = _hw_row(p, vms())
+        if r["idx"] is None: print(f"✗ {name}: không thấy trong MuMu", flush=True); fail_n += 1; continue
+        if not r["fix"]:
+            skip_n += 1
+            if not a.all: print(f"✓ {name}: đã đúng {r['cap'][0]:g}GB · {r['cap'][1]} nhân" + (" (trần máy chủ cắt bớt — xem cảnh báo trên)" if r["cap"] != r["want"] else ""), flush=True)
+            continue
+        i = r["idx"]; m, c = r["cap"]; was = r["run"]
+        print(f"→ {name} (#{i}): {'; '.join(r['bad'])} → đặt {m:g}GB · {c} nhân{' (tắt máy…)' if was else ''}", flush=True)
+        if was:
+            adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", i, timeout=120); time.sleep(3)
+        ok, msg = _mumu_hw(str(i), c, m)
+        if not ok and was:                                       # máy bị bật lại giữa chừng (vòng tự bật của cloudphoned) → tắt lại, thử lần nữa
+            memuc("stop", "-i", i, timeout=120); time.sleep(3); ok, msg = _mumu_hw(str(i), c, m)
+        print(f"   {'✓' if ok else '✗'} {msg}", flush=True)
+        if was:
+            start_phone(p); wait_boot(name, p["port"], apps=False)
+            gb, n = _live_hw(p)
+            good = gb is not None and gb >= m * 0.9 and (n is None or n >= c)
+            print(f"   {'✓' if good else '✗'} Android đang thấy: {'?' if gb is None else f'{gb:.1f}GB'} · {'?' if n is None else n} nhân", flush=True)
+            ok = ok and good
+        else:
+            print("   (máy đang tắt — lần bật sau chạy cấu hình mới)", flush=True)
+        if ok: ok_n += 1
+        else: fail_n += 1
+    print(f"\nXong: sửa được {ok_n} · lỗi {fail_n} · đã đúng sẵn {skip_n}" + (" · nhớ sửa trần máy chủ (cảnh báo ở trên)" if capw else ""))
+    if fail_n: sys.exit(2)
 
 def cmd_reconfig(a):
     st, p = _need(a.name)
@@ -1797,6 +1937,8 @@ def main():
     sy = s.add_parser("strays"); sy.add_argument("--remove", action="store_true"); sy.set_defaults(f=cmd_strays)
     s.add_parser("engine").set_defaults(f=cmd_engine)
     s.add_parser("perfset").set_defaults(f=cmd_perfset)
+    s.add_parser("ramcheck").set_defaults(f=cmd_ramcheck)
+    rf = s.add_parser("ramfix"); rf.add_argument("names", nargs="*"); rf.add_argument("--all", action="store_true"); rf.set_defaults(f=cmd_ramfix)
     mt = s.add_parser("mktpl"); mt.add_argument("android"); mt.set_defaults(f=cmd_mktpl)
     s.add_parser("tuneall").set_defaults(f=cmd_tuneall)
     s.add_parser("vmlist").set_defaults(f=cmd_vmlist)
