@@ -1099,6 +1099,32 @@ except Exception: TAP_HOLD = 0.25
 TAP_SLOP = 16        # điểm ảnh của máy (≈ 1,5 mm trên màn 1080p): nhích ít hơn vẫn tính là bấm
 LATE_UP = 0.35       # nhả tay tới máy chủ trễ hơn mức này (không nhích) → đếm "chạm trễ" để báo trong nhật ký
 
+# MÀN ẢO (Android 14/15, máy MuMu): mỗi luồng hình scrcpy là 1 màn hình ảo trong máy. Android có lúc mở app lên MÀN ẢO
+# thay vì màn chính → khách bấm app chỉ thấy icon phóng to rồi thôi (app chạy trên màn không ai thấy, lỗi khách báo 09/11).
+# Sau mỗi cú bấm (1,2 giây) + 15 giây/lần: app thường nào nằm ở màn khác #0 → đưa về màn chính. DISPLAY_FIX=0 để tắt.
+DISPLAY_FIX = str(C.get("DISPLAY_FIX", "1")).strip().lower() not in ("0", "off", "false", "no")
+_TASK_RE = re.compile(r"\s+\* Task\{\S+ #(\d+) type=standard A=\d+:(\S+)")
+
+
+def fix_displays(serial):
+    """App lỡ mở trên màn hình ảo → đưa về màn chính #0. Trả về [(gói, màn)] đã đưa về. Không bao giờ ném lỗi."""
+    try:
+        code, out, _ = adb(serial, "shell", "dumpsys activity activities | grep -e '^Display #' -e 'type=standard A=' -e '^ActivityTaskSupervisor'",
+                           timeout=12)
+        if code != 0 or not out: return []
+        moved, disp = [], 0
+        for ln in out.splitlines():
+            if ln.startswith("ActivityTaskSupervisor"): break
+            m = re.match(r"Display #(\d+)", ln)
+            if m: disp = int(m.group(1)); continue
+            m = _TASK_RE.match(ln)
+            if m and disp != 0:
+                adb(serial, "shell", f"am display move-stack {m.group(1)} 0", timeout=10)
+                moved.append((m.group(2), disp))
+        return moved
+    except Exception:
+        return []
+
 
 class Control:
     """Chạm / phím / chữ → máy Android qua scrcpy-server 2.4 (chỉ điều khiển). Mọi lệnh đi qua 1 hàng đợi + 1 luồng gửi
@@ -1111,12 +1137,14 @@ class Control:
         self.seq = 1; self.retrying = False; self.nat_t = 0.0
         self.tlock = threading.Lock(); self.held = {}; self.active = set(); self.hgen = 0      # cú bấm đang giữ chờ "nhấc ngón"
         self.n_tap = 0; self.n_late = 0; self.stat_t = time.time(); self.dpos = {}
+        self.dfix_at = 0.0; self.dfix_busy = False                                              # đưa app từ màn ảo về màn chính
 
     # ---------- khởi động (luồng nền) ----------
     def start(self):
         threading.Thread(target=self._writer, daemon=True).start()
         if SELFTEST:
             self.mode = "none"; self.ready.set(); return
+        if DISPLAY_FIX: threading.Thread(target=self._dfix_loop, daemon=True).start()
         try:
             adb_ready(self.serial, 12)                      # máy vừa "offline" (đang cài app sẵn / adb vừa nối lại) → chờ, đừng hỏng ngay
             self.nat = device_size(self.serial); self.nat_t = time.time()
@@ -1301,6 +1329,30 @@ class Control:
         if (vw > vh) != (w > h): w, h = h, w
         return w & ~7, h & ~7
 
+    # ---------- app mở nhầm lên màn ảo → đưa về màn chính ----------
+    def _dfix_run(self, delay=0.0):
+        try:
+            if delay: time.sleep(delay)
+            if self.dead: return
+            self.dfix_at = time.time()
+            for pkg, disp in fix_displays(self.serial):
+                log(f"  [điều khiển {self.serial}] app {pkg} mở nhầm trên màn ảo #{disp} → đã đưa về màn chính")
+        finally:
+            self.dfix_busy = False
+
+    def _dfix_soon(self):
+        """Sau cú bấm: 1,2 giây sau xem app vừa mở có nằm nhầm màn ảo không (tối đa 1 lần / 2 giây)."""
+        if not DISPLAY_FIX or SELFTEST or self.dead or self.dfix_busy or time.time() - self.dfix_at < 2: return
+        self.dfix_busy = True
+        threading.Thread(target=self._dfix_run, args=(1.2,), daemon=True).start()
+
+    def _dfix_loop(self):
+        time.sleep(3)
+        while not self.dead:
+            if not self.dfix_busy and time.time() - self.dfix_at >= 14:
+                self.dfix_busy = True; self._dfix_run()
+            time.sleep(15)
+
     def _nat_bg(self):
         """Hỏi cỡ màn hình máy ở luồng nền (adb chậm / chập chờn không làm đứng phiên xem)."""
         try:
@@ -1316,6 +1368,7 @@ class Control:
     def touch(self, action, pointer, nx, ny):
         x, y, w, h = self._xy(nx, ny)
         if action == 3: action = 1
+        if action == 1: self._dfix_soon()
         if self.mode == "input":
             if action == 0: self.down[pointer] = (x, y, time.time())
             elif action == 1 and pointer in self.down:
@@ -2596,7 +2649,7 @@ async def main():
     srv1 = await asyncio.start_server(on_direct, "0.0.0.0", PORT, ssl=ctx, limit=1 << 20)
     srv2 = await asyncio.start_server(on_ws, "127.0.0.1", WS_PORT, limit=1 << 20)
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
-        f" · giữ cú bấm {int(TAP_HOLD * 1000)} ms")
+        f" · giữ cú bấm {int(TAP_HOLD * 1000)} ms · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
     if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
