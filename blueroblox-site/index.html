@@ -1292,6 +1292,9 @@ img.cb-wh{object-fit:contain;padding:8px 6px;border-radius:16px;background:linea
 .upchips button[disabled]{opacity:.45;cursor:not-allowed}
 .reflink{display:flex;gap:8px;align-items:center}.reflink input{flex:1;min-width:0;font-family:var(--mono)}
 .refst{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.refst div{border:1px solid var(--line);border-radius:12px;padding:8px 10px;text-align:center}.refst b{display:block;font-size:17px}.refst span{font-size:12px;color:var(--muted)}
+#rff .sw input:checked+i{background:var(--ok);border-color:var(--ok)}
+.rfa-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.rfa-head b{color:var(--fg)}.rfa-head .btn{margin-left:auto}
+.rfa-tbl{max-height:280px;overflow:auto}
 .reflist{max-height:220px;overflow:auto;display:grid;gap:6px;font-size:13px}.reflist div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:4px 0}
 .cps-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.amt-neg{color:var(--bad)}
 .vmi .acts{display:flex!important;flex-wrap:wrap;gap:8px}.vmi .acts .btn{flex:1 1 auto;min-width:max-content}
@@ -1761,7 +1764,7 @@ window.BR_CONFIG = {
     <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="tabs" id="adm-tabs">
-      <button class="on" data-tab="stats">📊 Thống kê</button><button data-tab="prod">Sản phẩm</button><button data-tab="cust">Khách hàng</button><button data-tab="tx">Nạp tiền</button><button data-tab="ord">Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="vps">Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🖥️ Dàn máy nội bộ</button><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="promo">🎁 Mã khuyến mãi</button><button data-tab="bank">Ngân hàng</button><button data-tab="site">Nội dung trang</button>
+      <button class="on" data-tab="stats">📊 Thống kê</button><button data-tab="prod">Sản phẩm</button><button data-tab="cust">Khách hàng</button><button data-tab="tx">Nạp tiền</button><button data-tab="ord">Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="vps">Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🖥️ Dàn máy nội bộ</button><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="bank">Ngân hàng</button><button data-tab="site">Nội dung trang</button>
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
@@ -1772,8 +1775,6 @@ window.BR_CONFIG = {
       <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
       <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Loại</th><th>Máy</th><th>Số tiền</th></tr></thead><tbody id="cps-tb"></tbody></table></div>
       <button class="btn ghost sm" type="button" id="cps-more" hidden>Tải thêm</button>
-      <h3 style="margin:10px 0 0">🎁 Hoa hồng giới thiệu gần đây</h3>
-      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
     </div>
     <div class="dbody" id="pane-prod" hidden>
       <div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0;font-size:17px">📦 Danh sách sản phẩm</h3><span class="hint" id="pf-count" style="margin-left:auto"></span><button class="btn ghost sm" type="button" id="pf-trall" title="Dịch tên, tính năng, mô tả của các sản phẩm chưa có bản tiếng Anh">🇬🇧 Dịch tất cả sang tiếng Anh</button></div>
@@ -2017,6 +2018,17 @@ window.BR_CONFIG = {
       <div class="tbl"><table><thead><tr><th style="width:30px"><input type="checkbox" id="cpa-all" aria-label="Chọn tất cả máy đang lọc"></th><th>Máy</th><th>Khách</th><th>Cấu hình</th><th>Trạng thái</th><th>Hết hạn</th><th></th></tr></thead><tbody id="cpa-tbl"></tbody></table></div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
+      <form class="f mtbox prf" id="rff" autocomplete="off" style="margin-bottom:14px">
+        <h3>🤝 Giới thiệu bạn bè · hoa hồng nạp tiền</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="rf-on"><i></i></span><span><b>Bật hoa hồng giới thiệu</b><small>Tắt thì khách không thấy nút 🎁 Mời bạn trên web và các lần nạp mới không được cộng hoa hồng.</small></span></label>
+        <label>Phần trăm hoa hồng (0–50%)<input id="rf-pct" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
+        <div class="hint" id="rf-ex" style="align-self:end;padding-bottom:10px"></div>
+        <div class="note full" id="rf-prev"></div>
+        <div class="acts full"><button class="btn" type="submit" id="rf-save">Lưu hoa hồng</button></div>
+        <div class="refst full" id="rfa-sum"></div>
+        <div class="full rfa-head"><b>Hoa hồng đã trả gần đây</b><button class="btn ghost sm" type="button" id="rfa-reload">↻ Làm mới</button></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
+      </form>
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
         <form class="f mtbox prf" id="pg-form" autocomplete="off" novalidate>
@@ -2079,13 +2091,6 @@ window.BR_CONFIG = {
         <div class="acts full"><button class="btn" type="submit" id="bf-save">Lưu ngân hàng</button></div>
       </form>
       <div class="note">Tài khoản này phải trùng với tài khoản bạn đã thêm vào SePay, thì tiền vào mới được cộng tự động.</div>
-      <form class="f" id="rff" style="margin-top:14px">
-        <h3 class="full" style="margin:0">🎁 Hoa hồng giới thiệu</h3>
-        <label class="chk full"><input id="rf-on" type="checkbox"> Bật hoa hồng giới thiệu</label>
-        <label>Phần trăm hoa hồng (%)<input id="rf-pct" type="number" min="0" max="50" step="0.5"></label>
-        <div class="note full">Khách mời bạn bè bằng link riêng (nút 🎁 Mời bạn ở trên cùng). Người được mời nạp tiền thành công → người mời được cộng % này vào số dư, mỗi lần nạp. Chỉ tính tài khoản mới đăng ký qua link (trong 7 ngày đầu, trước lần nạp đầu tiên), không tự mời chính mình. Tối đa 50%.</div>
-        <div class="acts full"><button class="btn" type="submit" id="rf-save">Lưu hoa hồng</button></div>
-      </form>
     </div>
     <div class="dbody" id="pane-site" hidden>
       <form class="f" id="nf">
@@ -3995,7 +4000,7 @@ function fillSite() {
   for (const k of Object.keys(DEF_SITE)) { const el = $("sf-" + k); if (el) { if (el.type === "checkbox") el.checked = !!SITE[k]; else el.value = SITE[k] ?? ""; } }
   $("bf-bin").innerHTML = BANKS.map(b => `<option value="${b[0]}">${b[1]}</option>`).join(""); $("bf-bin").value = SITE.bankBin;
   $("bf-acc").value = SITE.bankAcc; $("bf-name").value = SITE.bankName; $("bf-prefix").value = SITE.prefix; $("bf-min").value = SITE.minTop;
-  if ($("rf-on")) { $("rf-on").checked = !(SITE.ref_on === false || String(SITE.ref_on).toLowerCase() === "false"); $("rf-pct").value = SITE.ref_pct ?? 5; }
+  rfFill();
 }
 async function saveSettings(patch, btn, msg) { await busy(btn, async () => {
   const body = { ...SITE, ...patch }; const { error } = await sb.from("settings").update({ data: body }).eq("id", 1);
@@ -4004,7 +4009,7 @@ async function saveSettings(patch, btn, msg) { await busy(btn, async () => {
 $("sf").onsubmit = e => { e.preventDefault(); const p = {}; for (const k of Object.keys(DEF_SITE)) { const el = $("sf-" + k); if (el) p[k] = el.type === "checkbox" ? el.checked : k === "rate" ? (+el.value || 25000) : el.value.trim(); } saveSettings(p, $("sf-save"), "Đã lưu nội dung trang."); };
 $("bf").onsubmit = e => { e.preventDefault(); const acc = $("bf-acc").value.replace(/\D/g, ""); if (acc.length < 6) return toast("Số tài khoản chưa đúng.", 1);
   saveSettings({ bankBin: $("bf-bin").value, bankAcc: acc, bankName: $("bf-name").value.trim().toUpperCase(), prefix: ($("bf-prefix").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "BR"), minTop: Math.max(1000, +$("bf-min").value || 10000) }, $("bf-save"), "Đã lưu tài khoản ngân hàng."); };
-function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") loadPromoAdm(); }
+function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") { loadPromoAdm(); rfFill(); loadRefAdm(); } }
 $("adm-tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.tab === "site" || b.dataset.tab === "bank") fillSite(); setTab(b.dataset.tab); };
 $("admin-open").onclick = () => ADMIN_PAGE ? openAdmin() : (location.href = "/admin");     // Quản trị → trang riêng /admin (to như trang chính)
 $("admin-close").onclick = () => ADMIN_PAGE ? (location.href = "/") : show("drawer", false);
@@ -4511,7 +4516,7 @@ async function loadStats() {
       tile(n(s.cp_upgrades) + " / " + n(s.cp_switches), "Nâng cấp / đổi Android"), tile(vnd(s.ref_paid_total), "Hoa hồng giới thiệu đã trả"),
     ].join("");
   } else box.innerHTML += `<div class="hint" style="grid-column:1/-1">Doanh thu ĐT đám mây: chạy file SQL v24 trong Supabase để bật.</div>`;
-  loadCpSales(); loadRefAdm();
+  loadCpSales();
   $("st-top").innerHTML = (s.top_products || []).length
     ? s.top_products.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${(+t.orders).toLocaleString("vi-VN")}</td><td class="num">${vnd(t.revenue)}</td></tr>`).join("")
     : `<tr><td colspan="3" style="text-align:center;color:var(--muted);padding:16px">Chưa có đơn nào.</td></tr>`;
@@ -5236,9 +5241,30 @@ async function openRef() {
   };
 }
 $("ref-btn") && ($("ref-btn").onclick = openRef);
-$("rff") && ($("rff").onsubmit = e => { e.preventDefault();
-  const pct = Math.max(0, Math.min(50, Math.round((+$("rf-pct").value || 0) * 10) / 10));
-  saveSettings({ ref_on: $("rf-on").checked, ref_pct: pct }, $("rf-save"), $("rf-on").checked ? `Đã lưu — hoa hồng giới thiệu ${pct}%.` : "Đã tắt hoa hồng giới thiệu."); });
+/* hoa hồng giới thiệu — admin chỉnh trong mục 🎁 Khuyến mãi */
+const rfClamp = v => Math.max(0, Math.min(50, Math.round((+v || 0) * 10) / 10));
+const rfSavedOn = () => !(SITE.ref_on === false || String(SITE.ref_on).toLowerCase() === "false");
+function rfFill() {
+  if (!$("rf-on") || !$("rf-pct")) return;
+  $("rf-on").checked = rfSavedOn(); $("rf-pct").value = rfClamp(SITE.ref_pct ?? 5);
+  rfPreview();
+}
+function rfPreview() {
+  const on = $("rf-on"), inp = $("rf-pct"); if (!on || !inp || !$("rf-prev")) return;
+  const pct = rfClamp(inp.value), dirty = on.checked !== rfSavedOn() || pct !== rfClamp(SITE.ref_pct ?? 5);
+  $("rf-ex").textContent = on.checked && pct > 0 ? `Ví dụ: bạn bè nạp 100.000đ → người mời nhận ${vnd(Math.floor(100000 * pct / 100))}.` : "";
+  $("rf-prev").innerHTML = (!on.checked ? "Đang tắt: khách không thấy nút 🎁 Mời bạn trên web, các lần nạp mới không được cộng hoa hồng."
+    : pct > 0 ? `Khách thấy: “Bạn bè <b>đăng ký qua link</b> rồi nạp tiền → bạn được cộng <b>${pct}%</b> số tiền họ nạp vào số dư, <b>mỗi lần nạp</b>.” Chỉ tính tài khoản mới đăng ký qua link (trong 7 ngày đầu, trước lần nạp đầu tiên), không tính tự mời chính mình.`
+    : "Khách thấy: “Chương trình hoa hồng đang tạm dừng.” 0% là không cộng gì.")
+    + (dirty ? ` <b style="color:var(--warn)">Chưa lưu: bấm Lưu hoa hồng.</b>` : "");
+}
+$("rf-pct") && ($("rf-pct").oninput = rfPreview);
+$("rf-on") && ($("rf-on").onchange = rfPreview);
+$("rff") && ($("rff").onsubmit = async e => { e.preventDefault();
+  const pct = rfClamp($("rf-pct").value); $("rf-pct").value = pct;
+  await saveSettings({ ref_on: $("rf-on").checked, ref_pct: pct }, $("rf-save"), $("rf-on").checked ? `Đã lưu — hoa hồng giới thiệu ${pct}%.` : "Đã tắt hoa hồng giới thiệu.");
+  rfPreview(); });
+$("rfa-reload") && ($("rfa-reload").onclick = () => busy($("rfa-reload"), loadRefAdm));
 
 /* ===== ADMIN: LỊCH SỬ MUA ĐT ĐÁM MÂY + HOA HỒNG (SQL v24) ===== */
 const CPS_KIND = { new: ["🆕", "Thuê mới"], renew: ["🔄", "Gia hạn"], upgrade: ["⬆️", "Nâng cấp"], switch: ["🤖", "Đổi Android"], free: ["🎁", "Miễn phí"], gift: ["🎟", "Mã tặng"], refund: ["↩️", "Hoàn tiền"] };
@@ -5275,14 +5301,28 @@ function cpsDraw(end) {
       + `<td class="num${+x.amount < 0 ? " amt-neg" : ""}">${vnd(+x.amount || 0)}</td></tr>`;
   }).join("") : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Chưa có lượt mua nào.</td></tr>`;
 }
+let rfaSeq = 0;
 async function loadRefAdm() {
   const tb = $("rfa-tb"); if (!tb || !isAdmin()) return;
-  const { data, error } = await sb.from("ref_commissions")
-    .select("created_at,topup_amount,pct,amount,referrer:profiles!ref_commissions_referrer_id_fkey(username),referee:profiles!ref_commissions_referee_id_fkey(username)")
-    .order("created_at", { ascending: false }).limit(30);
-  if (error) { tb.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:12px">${/ref_commissions|does not exist|schema cache/i.test(error.message || "") ? "Chưa bật — chạy file SQL v24 trong Supabase." : esc(errMsg(error))}</td></tr>`; return; }
+  const seq = ++rfaSeq, sum = $("rfa-sum"), msg = t => `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:12px">${t}</td></tr>`;
+  if (!tb.children.length) tb.innerHTML = msg("Đang tải…");
+  const [r, rs, ri] = await Promise.all([
+    sb.from("ref_commissions")
+      .select("created_at,topup_amount,pct,amount,referrer:profiles!ref_commissions_referrer_id_fkey(username),referee:profiles!ref_commissions_referee_id_fkey(username)")
+      .order("created_at", { ascending: false }).limit(30),
+    sb.from("ref_commissions").select("amount", { count: "exact" }).limit(1000),
+    sb.from("profiles").select("id", { count: "exact", head: true }).not("ref_by", "is", null)]);
+  if (seq !== rfaSeq) return;
+  const { data, error } = r;
+  if (error) { if (sum) sum.innerHTML = ""; tb.innerHTML = msg(/ref_commissions|does not exist|schema cache/i.test(error.message || "") ? "Chưa bật — chạy file SQL v24 trong Supabase." : esc(errMsg(error))); return; }
+  if (sum) {
+    const am = rs.data || [], paid = am.reduce((t, x) => t + (+x.amount || 0), 0), n = rs.count ?? am.length, nf = v => (+v || 0).toLocaleString("vi-VN");
+    sum.innerHTML = `<div><b>${ri.error ? "–" : nf(ri.count)}</b><span>Khách được mời</span></div>`
+      + `<div><b>${rs.error ? "–" : nf(n)}</b><span>Lượt được cộng</span></div>`
+      + `<div><b>${rs.error ? "–" : (n > am.length ? "≥ " : "") + vnd(paid)}</b><span>Tổng đã trả</span></div>`;
+  }
   tb.innerHTML = (data || []).length ? data.map(x => `<tr><td style="white-space:nowrap">${new Date(x.created_at).toLocaleString("vi-VN")}</td><td>${esc((x.referrer && x.referrer.username) || "?")}</td><td>${esc((x.referee && x.referee.username) || "?")} nạp ${vnd(+x.topup_amount)}</td><td class="num">+${vnd(+x.amount)} <small style="color:var(--muted)">(${+x.pct}%)</small></td></tr>`).join("")
-    : `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:14px">Chưa có hoa hồng nào.</td></tr>`;
+    : msg("Chưa có hoa hồng nào.");
 }
 $("cps-kind") && ($("cps-kind").onchange = () => loadCpSales());
 $("cps-q") && ($("cps-q").oninput = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => loadCpSales(), 400); }; })());
