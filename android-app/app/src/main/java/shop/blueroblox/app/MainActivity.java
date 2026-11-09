@@ -1403,9 +1403,15 @@ public class MainActivity extends Activity {
         double pct = d.optDouble("pct", 0);
         String pc = pct == Math.floor(pct) ? String.valueOf((long) pct) : String.valueOf(pct);
         final String link = Api.WEB + "/?ref=" + d.optString("code");
-        info.setText(pct > 0 ? Ui.L("Gửi link cho bạn bè. Bạn bè đăng ký qua link rồi nạp tiền → bạn được cộng " + pc + "% số tiền họ nạp vào số dư, mỗi lần nạp.",
-                "Share your link. When friends sign up through it and top up, you get " + pc + "% of every top-up added to your balance.")
-                : Ui.L("Chương trình hoa hồng đang tạm dừng.", "The referral programme is paused."));
+        final boolean buy = "buy".equals(d.optString("mode"));          // SQL v26: hoa hồng tính khi bạn bè MUA (bản cũ: khi nạp)
+        final int days = d.optInt("days", 7) > 0 ? d.optInt("days", 7) : 7;
+        info.setText(pct <= 0 ? Ui.L("Chương trình hoa hồng đang tạm dừng.", "The referral programme is paused.")
+                : buy ? Ui.L("Gửi link cho bạn bè. Bạn bè đăng ký qua link rồi MUA (thuê máy, gia hạn, nâng cấp, mua sản phẩm) → bạn được cộng " + pc
+                        + "% số tiền họ mua vào số dư, mỗi lần mua. Bạn bè chỉ nạp tiền mà chưa mua thì chưa được cộng.",
+                        "Share your link. When friends sign up through it and BUY (rent, renew, upgrade a phone or buy a product), you get " + pc
+                        + "% of every purchase added to your balance. Top-ups alone don't count.")
+                : Ui.L("Gửi link cho bạn bè. Bạn bè đăng ký qua link rồi nạp tiền → bạn được cộng " + pc + "% số tiền họ nạp vào số dư, mỗi lần nạp.",
+                        "Share your link. When friends sign up through it and top up, you get " + pc + "% of every top-up added to your balance."));
         box.removeAllViews();
         TextView lk = Ui.text(this, link, 14, Ui.SKY, true);
         lk.setTextIsSelectable(true);
@@ -1426,31 +1432,36 @@ public class MainActivity extends Activity {
         });
         br.addView(cp, Ui.weight(1)); br.addView(sh, Ui.weight(1));
         box.addView(br, Ui.fill());
-        box.addView(Ui.text(this, Ui.L("Đã mời: ", "Invited: ") + d.optInt("invited") + "  ·  " + Ui.L("Đã nạp: ", "Topped up: ") + d.optInt("paid_users")
+        box.addView(Ui.text(this, Ui.L("Đã mời: ", "Invited: ") + d.optInt("invited") + "  ·  "
+                + (buy ? Ui.L("Đã mua: ", "Bought: ") + d.optInt("buyers", d.optInt("paid_users")) : Ui.L("Đã nạp: ", "Topped up: ") + d.optInt("paid_users"))
                 + "  ·  " + Ui.L("Đã nhận: ", "Earned: ") + Ui.vnd(d.optDouble("earned", 0)), 14, Ui.FG, true), Ui.fill());
         JSONArray it = d.optJSONArray("items");
         if (it != null) for (int i = 0; i < Math.min(5, it.length()); i++) {
             JSONObject x = it.optJSONObject(i);
             if (x == null) continue;
             long at = parseTime(x.optString("at"));
-            box.addView(Ui.muted(this, (at > 0 ? fdate(at) + " · " : "") + x.optString("who") + Ui.L(" nạp ", " topped up ") + Ui.vnd(x.optDouble("topup", 0))
+            boolean xb = "buy".equals(x.optString("kind"));
+            box.addView(Ui.muted(this, (at > 0 ? fdate(at) + " · " : "") + x.optString("who") + (xb ? Ui.L(" mua ", " bought ") : Ui.L(" nạp ", " topped up ")) + Ui.vnd(x.optDouble("topup", 0))
                     + "  →  +" + Ui.vnd(x.optDouble("amount", 0))), Ui.fill());
         }
-        box.addView(Ui.muted(this, Ui.L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong 7 ngày đầu, trước lần nạp đầu tiên). Không tính tự mời chính mình.",
-                "Only new accounts that sign up through your link count (within their first 7 days, before their first top-up). Self-invites don't count.")), Ui.fill());
+        box.addView(Ui.muted(this, buy
+                ? Ui.L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong " + days + " ngày đầu, trước lần nạp đầu tiên). Chỉ tính phần tiền bạn bè nạp thật: tiền khuyến mãi, tiền được hoàn không tính; mỗi đồng tính 1 lần. Không tính tự mời chính mình.",
+                       "Only new accounts that sign up through your link count (within their first " + days + " days, before their first top-up). Only money they actually topped up counts — promo credit and refunds don't, and each amount counts once. Self-invites don't count.")
+                : Ui.L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong 7 ngày đầu, trước lần nạp đầu tiên). Không tính tự mời chính mình.",
+                       "Only new accounts that sign up through your link count (within their first 7 days, before their first top-up). Self-invites don't count.")), Ui.fill());
         JSONObject me = res[1] instanceof JSONObject ? (JSONObject) res[1] : null;
-        boolean fresh = me != null && me.isNull("ref_by") && parseTime(me.optString("created_at")) > System.currentTimeMillis() - 7L * 86400000L;
+        boolean fresh = me != null && me.isNull("ref_by") && parseTime(me.optString("created_at")) > System.currentTimeMillis() - days * 86400000L;
         if (fresh) {                                     // tài khoản mới, chưa nhận lời mời → nhập mã của người mời (trong hộp thoại: trang vẽ lại không xoá chữ đang gõ)
             Button inv = Ui.button(this, "🎟 " + Ui.L("Được bạn mời? Nhập mã mời", "Invited? Enter the invite code"), Ui.GHOST);
-            inv.setOnClickListener(v -> refClaimDlg());
+            inv.setOnClickListener(v -> refClaimDlg(days));
             box.addView(inv, Ui.fill());
         }
     }
 
-    void refClaimDlg() {
+    void refClaimDlg(int days) {
         LinearLayout c = Ui.col(this, 12);
-        c.addView(Ui.muted(this, Ui.L("Mã mời là 8 ký tự cuối trong link bạn bè gửi (…/?ref=ABCD1234). Chỉ tài khoản mới (tạo trong 7 ngày, chưa nạp tiền) nhận được.",
-                "The invite code is the last 8 characters of your friend's link (…/?ref=ABCD1234). Only new accounts (under 7 days, no top-ups) can use it.")));
+        c.addView(Ui.muted(this, Ui.L("Mã mời là 8 ký tự cuối trong link bạn bè gửi (…/?ref=ABCD1234). Chỉ tài khoản mới (tạo trong " + days + " ngày, chưa nạp tiền) nhận được.",
+                "The invite code is the last 8 characters of your friend's link (…/?ref=ABCD1234). Only new accounts (under " + days + " days, no top-ups) can use it.")));
         EditText code = Ui.input(this, Ui.L("Mã mời", "Invite code"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
         c.addView(code, Ui.fill());
         Button go = Ui.button(this, Ui.L("Nhận lời mời", "Accept invite"), Ui.PRIMARY);

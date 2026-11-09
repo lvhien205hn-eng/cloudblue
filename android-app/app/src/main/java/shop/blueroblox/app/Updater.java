@@ -47,6 +47,13 @@ public final class Updater {
 
     private static Dialog forcedDlg = null;
 
+    /** Số bản để hiện. app.json: "ver" = số bản gọn (từ 1.103); "version" có thêm dòng hướng dẫn cho app cũ ký bằng khoá cũ
+     *  (app cũ chỉ đọc "version" → thấy hướng dẫn gỡ / cài lại ngay trong hộp cập nhật). */
+    static String ver(JSONObject j) {
+        String v = j.optString("ver", "").trim();
+        return v.isEmpty() ? j.optString("version", "?") : v;
+    }
+
     /** Gọi khi mở app. manual = true: bấm "Kiểm tra cập nhật" (luôn báo kết quả).
      *  App đã cũ (máy chủ báo APP_OUTDATED / thấp hơn mức admin đặt) → hộp "Bắt buộc cập nhật" KHÔNG tắt được, không có "Để sau". */
     public static void check(Activity a, boolean manual) {
@@ -86,9 +93,9 @@ public final class Updater {
         double mb = j.optLong("size", 0) / 1048576.0;
         if (forced) c.addView(Ui.text(a, Ui.L("Bản app v" + Api.version + " đã cũ và không dùng được nữa (không mở / thuê / gia hạn máy được).",
                 "App version v" + Api.version + " is outdated and can no longer be used."), 14, 0xFFFF8A8A, true), Ui.fill());
-        c.addView(Ui.muted(a, Ui.L("Đã có bản mới v" + j.optString("version", "?") + " (" + String.format(java.util.Locale.ROOT, "%.1f", mb) + " MB). "
+        c.addView(Ui.muted(a, Ui.L("Đã có bản mới v" + ver(j) + " (" + String.format(java.util.Locale.ROOT, "%.1f", mb) + " MB). "
                         + "Bấm Cập nhật ngay — app tự tải và cài, tài khoản và máy của bạn giữ nguyên.",
-                "Version v" + j.optString("version", "?") + " is available (" + String.format(java.util.Locale.ROOT, "%.1f", mb) + " MB). "
+                "Version v" + ver(j) + " is available (" + String.format(java.util.Locale.ROOT, "%.1f", mb) + " MB). "
                         + "Tap Update now — the app downloads and installs it; your account and phones stay the same.")));
         ProgressBar bar = new ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal);
         bar.setMax(100); bar.setVisibility(android.view.View.GONE);
@@ -203,7 +210,12 @@ public final class Updater {
                 if (confirm != null) { confirm.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); try { c.startActivity(confirm); } catch (Exception ignored) { } }
             } else if (status != PackageInstaller.STATUS_SUCCESS) {
                 String m = i.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
-                android.widget.Toast.makeText(c, Ui.L("Chưa cập nhật được", "Update not installed") + (m != null ? ": " + m : ""), android.widget.Toast.LENGTH_LONG).show();
+                if (status == PackageInstaller.STATUS_FAILURE_INCOMPATIBLE || (m != null && m.contains("UPDATE_INCOMPATIBLE"))) {
+                    // Bản mới ký khác khoá với app đang cài → Android không cho cài đè. Chỉ có cách: tải file, gỡ app, cài lại.
+                    android.widget.Toast.makeText(c, Ui.L("Bản mới cần cài lại: trình duyệt đang tải file app. Tải xong → GỠ app CloudBlue này → mở file vừa tải để cài → đăng nhập lại (tài khoản, số dư, máy giữ nguyên).",
+                            "This update needs a reinstall: the browser is downloading the app. Then UNINSTALL this app → open the downloaded file → sign in again (account and phones are kept)."), android.widget.Toast.LENGTH_LONG).show();
+                    try { c.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Api.WEB + "/download/blueroblox-cloud.apk")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); } catch (Exception ignored) { }
+                } else android.widget.Toast.makeText(c, Ui.L("Chưa cập nhật được", "Update not installed") + (m != null ? ": " + m : ""), android.widget.Toast.LENGTH_LONG).show();
             }
         }
     }
