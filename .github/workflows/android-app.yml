@@ -16,6 +16,10 @@ permissions:
 # luôn LỚN hơn bản cũ (Android 1.46, PC 1.15) — nếu không app cũ sẽ không thấy bản mới và Android không cài đè được.
 env:
   VER_OFFSET: "100"
+  # Dòng hướng dẫn hiện trong hộp "Có bản cập nhật mới" của app CŨ (cài trước 13:20 09/11/2026, ký bằng khoá cũ → Android không
+  # cho cập nhật đè, báo INSTALL_FAILED_UPDATE_INCOMPATIBLE). App cũ chỉ đọc "version" của app.json; web + app từ 1.103 đọc "ver".
+  # Khi khách đã cài lại hết: để trống ("") rồi build lại.
+  OLD_KEY_HINT: "⚠️ Cập nhật báo lỗi INSTALL_FAILED? Gỡ app này rồi cài bản mới tải tại cloudblue.vn/download/blueroblox-cloud.apk"
 
 concurrency:
   group: android-app
@@ -70,7 +74,9 @@ jobs:
           mkdir -p blueroblox-site/download
           cp android-app/app/build/outputs/apk/release/app-release.apk blueroblox-site/download/blueroblox-cloud.apk
           SIZE=$(stat -c %s blueroblox-site/download/blueroblox-cloud.apk)
-          printf '{"version":"1.%s","code":%s,"size":%s,"date":"%s"}\n' "$APP_VERSION_CODE" "$APP_VERSION_CODE" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > blueroblox-site/download/app.json
+          # "ver" = số bản gọn · "version" = số bản + OLD_KEY_HINT (cho app cũ) — ghi bằng python để chữ có dấu / ký tự đặc biệt luôn đúng JSON
+          python3 -c 'import json, os, sys, time; v = "1." + os.environ["APP_VERSION_CODE"]; h = os.environ.get("OLD_KEY_HINT", "").strip(); json.dump({"version": v + (". " + h if h else ""), "ver": v, "code": int(os.environ["APP_VERSION_CODE"]), "size": int(sys.argv[1]), "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, open("blueroblox-site/download/app.json", "w", encoding="utf-8"), ensure_ascii=False)' "$SIZE"
+          cat blueroblox-site/download/app.json
 
       - uses: actions/upload-artifact@v4
         with:
