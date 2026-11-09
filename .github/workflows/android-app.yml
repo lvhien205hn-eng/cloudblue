@@ -1,0 +1,91 @@
+# Build Android app BlueRoblox Cloud -> blueroblox-site/download/blueroblox-cloud.apk
+name: Build Android app
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-app/**"
+      - ".github/workflows/android-app.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Repo mới (chuyển tài khoản GitHub 09/11/2026) đếm lại số lần build từ 1 → cộng VER_OFFSET để số bản app
+# luôn LỚN hơn bản cũ (Android 1.46, PC 1.15) — nếu không app cũ sẽ không thấy bản mới và Android không cài đè được.
+env:
+  VER_OFFSET: "100"
+
+concurrency:
+  group: android-app
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      # Máy GitHub đã có sẵn Android SDK → chỉ cần chấp nhận giấy phép + cài bản Android 16 (API 36)
+      - name: Android SDK
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin | sort -V | tail -1)/sdkmanager
+          echo "sdkmanager: $SDKM"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+          ls "$ANDROID_HOME/platforms"
+
+      - name: Version
+        run: echo "APP_VERSION_CODE=$(( ${{ github.run_number }} + VER_OFFSET ))" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Signing key
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          # KHÔNG phát hành APK ký bằng khoá tạm: khách đang dùng app sẽ không cập nhật đè được
+          if [ -z "$KS_B64" ]; then
+            echo "::error::Missing secret ANDROID_KEYSTORE_B64 (Settings > Secrets and variables > Actions) - build stopped"
+            exit 1
+          fi
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/ks.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/ks.jks" >> "$GITHUB_ENV"
+
+      - name: Build APK + AAB
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: gradle -p android-app assembleRelease bundleRelease --no-daemon --stacktrace
+
+      - name: Copy APK to website
+        run: |
+          mkdir -p blueroblox-site/download
+          cp android-app/app/build/outputs/apk/release/app-release.apk blueroblox-site/download/blueroblox-cloud.apk
+          SIZE=$(stat -c %s blueroblox-site/download/blueroblox-cloud.apk)
+          printf '{"version":"1.%s","code":%s,"size":%s,"date":"%s"}\n' "$APP_VERSION_CODE" "$APP_VERSION_CODE" "$SIZE" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > blueroblox-site/download/app.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blueroblox-cloud-apk
+          path: blueroblox-site/download/blueroblox-cloud.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: blueroblox-cloud-aab-chplay
+          path: android-app/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Save APK to repo (Vercel publishes it)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add blueroblox-site/download
+          git commit -m "App Android v1.$APP_VERSION_CODE" || exit 0
+          for i in 1 2 3; do git pull --rebase origin main && git push origin HEAD:main && break; sleep 5; done

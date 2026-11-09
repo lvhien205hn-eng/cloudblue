@@ -1,0 +1,49 @@
+# Build BlueRobloxServer.exe (bảng máy chủ, chạy các dịch vụ .py không cần cài Python)
+# CHỈ CHO ADMIN: tải ở Actions → lần chạy mới nhất → Artifacts → BlueRobloxServer (KHÔNG đưa lên web)
+name: Build server exe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/blueserver.py"
+      - ".github/workflows/server-exe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-exe
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build exe
+        shell: pwsh
+        working-directory: windows
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller numpy pillow windows-capture cryptography
+          $icon = @()
+          if (Test-Path ../pc-app/icon.png) { Copy-Item ../pc-app/icon.png icon-server.png; $icon = @("--icon", "icon-server.png") }
+          python -m PyInstaller --noconfirm --clean --onedir --console --name BlueRobloxServer `
+            --collect-all windows_capture --collect-submodules cryptography --hidden-import tkinter @icon blueserver.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          & dist/BlueRobloxServer/BlueRobloxServer.exe -c "import numpy, windows_capture, cryptography, tkinter; print('exe OK')"
+          if ($LASTEXITCODE -ne 0) { Write-Error "exe thiếu thư viện"; exit 1 }
+          Compress-Archive -Force -Path dist/BlueRobloxServer -DestinationPath dist/BlueRobloxServer.zip
+          Get-Item dist/BlueRobloxServer.zip | Select-Object Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BlueRobloxServer
+          path: windows/dist/BlueRobloxServer.zip
