@@ -687,7 +687,7 @@ public class ControlActivity extends Activity {
                 {"▦", Ui.L("Ứng dụng", "Apps"), (Runnable) this::apps},
                 {"🧬", "Clone tab", (Runnable) this::cloneTab},
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
-                {"🔓", Ui.L("Root máy", "Root"), (Runnable) this::root},
+                {"🔓", "Root", (Runnable) this::root},
                 {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
@@ -1035,14 +1035,146 @@ public class ControlActivity extends Activity {
         d.show();
     }
 
-    // ---------------- Root máy ----------------
+    // ---------------- 🔓 Root theo app: công tắc root của máy + chọn app được dùng lệnh su ----------------
+    private static final String[][] APP_NAMES = {
+            {"com.termux", "Termux"}, {"com.roblox.client", "Roblox"}, {"com.android.chrome", "Chrome"}, {"org.mozilla.firefox", "Firefox"},
+            {"com.facebook.katana", "Facebook"}, {"com.zing.zalo", "Zalo"}, {"org.telegram.messenger", "Telegram"}, {"com.discord", "Discord"},
+            {"com.google.android.youtube", "YouTube"}, {"com.whatsapp", "WhatsApp"}, {"com.ss.android.ugc.trill", "TikTok"},
+            {"bin.mt.plus", "MT Manager"}, {"com.termux.api", "Termux:API"}, {"com.termux.boot", "Termux:Boot"}};
+    private static String appName(String pkg) {
+        for (String[] a : APP_NAMES) if (a[0].equals(pkg)) return a[1];
+        String last = pkg.substring(pkg.lastIndexOf('.') + 1);
+        return last.isEmpty() ? pkg : Character.toUpperCase(last.charAt(0)) + last.substring(1);
+    }
+    private android.widget.Switch toggle(boolean on, String desc) {
+        android.widget.Switch s = new android.widget.Switch(this);
+        s.setChecked(on);
+        s.setContentDescription(desc);
+        int[][] st = {{android.R.attr.state_checked}, {}};
+        s.setThumbTintList(new android.content.res.ColorStateList(st, new int[]{Color.WHITE, Ui.MUTED}));
+        s.setTrackTintList(new android.content.res.ColorStateList(st, new int[]{Ui.BLUE, Ui.LINE2}));
+        return s;
+    }
+
     private void root() {
-        Dialog[] pd = progress(Ui.L("Đang kiểm tra / bật root…", "Checking root…"));
+        Dialog[] pd = progress(Ui.L("Đang đọc cấu hình root…", "Loading root settings…"));
         final String base = api, pid = id;
-        Api.bg(() -> {
-            JSONObject j = Api.cpAt(base, "POST", pid + "/root", new JSONObject());
-            return waitJob(base, j.optString("job"), pd);
-        }, msg -> { pd[0].dismiss(); Ui.toast(this, msg); }, m -> { pd[0].dismiss(); Ui.toast(this, m); });
+        Api.bg(() -> Api.cpAt(base, "GET", pid + "/rootcfg", null), j -> { pd[0].dismiss(); rootSheet(j); },
+                m -> { pd[0].dismiss(); Ui.toast(this, m); });
+    }
+
+    private void rootSheet(JSONObject j) {
+        final boolean wasOn = j.optBoolean("on"), online = j.optBoolean("online"), running = j.optBoolean("running");
+        final java.util.LinkedHashSet<String> allow = new java.util.LinkedHashSet<>();
+        JSONArray ja = j.optJSONArray("apps");
+        if (ja != null) for (int i = 0; i < ja.length(); i++) allow.add(ja.optString(i));
+        LinearLayout c = Ui.col(this, 10);
+        c.addView(Ui.muted(this, Ui.L("Chỉ app được bật mới dùng được lệnh su.", "Only the apps you switch on can use su.")));
+
+        LinearLayout sw = Ui.row(this, 12);
+        sw.setBackground(Ui.round(Ui.PANEL2, 14, Ui.LINE));
+        sw.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+        LinearLayout tx = Ui.col(this, 2);
+        tx.addView(Ui.text(this, Ui.L("Bật root cho máy này", "Root this phone"), 15, Ui.FG, true));
+        final TextView st = Ui.text(this, "", 12.5f, Ui.MUTED, false);
+        tx.addView(st);
+        sw.addView(tx, Ui.weight(1));
+        final android.widget.Switch main = toggle(wasOn, Ui.L("Bật root cho máy này", "Root this phone"));
+        sw.addView(main, Ui.wrap());
+        sw.setOnClickListener(v -> main.toggle());
+        c.addView(sw, Ui.fill());
+        if ("Enforcing".equals(j.optString("selinux")))
+            c.addView(Ui.text(this, Ui.L("⚠ Máy đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.",
+                    "⚠ SELinux is Enforcing on this phone — per-app root may not work yet."), 12.5f, Ui.WAIT, false), Ui.fill());
+
+        final LinearLayout list = Ui.col(this, 6);
+        final java.util.List<android.widget.Switch> rows = new java.util.ArrayList<>();
+        final java.util.List<String> pkgs = new java.util.ArrayList<>();
+        java.util.LinkedHashSet<String> shown = new java.util.LinkedHashSet<>();
+        JSONArray asked = j.optJSONArray("asked");
+        java.util.List<JSONObject> ask = new java.util.ArrayList<>();
+        if (asked != null) for (int i = 0; i < asked.length(); i++) {
+            JSONObject o = asked.optJSONObject(i);
+            if (o != null && !allow.contains(o.optString("pkg")) && shown.add(o.optString("pkg"))) ask.add(o);
+        }
+        java.util.List<String> apps = new java.util.ArrayList<>(allow);
+        JSONArray inst = j.optJSONArray("installed");
+        if (inst != null) for (int i = 0; i < inst.length(); i++) { String x = inst.optString(i); if (!apps.contains(x)) apps.add(x); }
+        apps.removeAll(shown);
+        java.util.Collections.sort(apps, (x, y) -> allow.contains(x) != allow.contains(y) ? (allow.contains(x) ? -1 : 1)
+                : appName(x).compareToIgnoreCase(appName(y)));
+        if (!ask.isEmpty()) list.addView(Ui.text(this, Ui.L("Vừa xin root (chưa được bật)", "Asked for root (not allowed yet)"), 12, Ui.MUTED, false));
+        for (JSONObject o : ask) {
+            String t = o.optString("t");
+            rootRow(list, rows, pkgs, o.optString("pkg"), false, t.length() >= 16 ? Ui.L(" · xin lúc ", " · asked at ") + t.substring(11, 16) : "", true);
+        }
+        list.addView(Ui.text(this, Ui.L("Ứng dụng trong máy", "Apps on the phone"), 12, Ui.MUTED, false));
+        if (apps.isEmpty() && ask.isEmpty())
+            list.addView(Ui.muted(this, Ui.L("Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.", "No apps installed yet. Install one (e.g. Termux) and reopen.")));
+        for (String x : apps) rootRow(list, rows, pkgs, x, allow.contains(x), "", false);
+        c.addView(list, Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.",
+                "Some games and apps (e.g. Roblox) may detect a rooted phone. Only enable apps that need it, like Termux."), 12.5f, Ui.MUTED, false), Ui.fill());
+
+        Runnable paint = () -> {
+            boolean on = main.isChecked();
+            st.setText(!online ? Ui.L("Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng.", "Phone is off — settings apply when it starts.")
+                    : on != wasOn ? (on ? Ui.L("Bấm Lưu để bật root.", "Tap Save to turn root on.") : Ui.L("Bấm Lưu để tắt root.", "Tap Save to turn root off."))
+                    : on ? (running ? Ui.L("Đang bật · " + allow.size() + " app được dùng su", "On · " + allow.size() + " app(s) can use su")
+                                    : Ui.L("Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.", "On but not running — tap Save."))
+                    : Ui.L("Đang tắt — không app nào dùng được lệnh su.", "Off — no app can use su."));
+            list.setAlpha(on ? 1f : 0.5f);
+        };
+        main.setOnCheckedChangeListener((b, on) -> paint.run());
+        paint.run();
+
+        LinearLayout acts = Ui.row(this, 10);
+        Button close = Ui.button(this, Ui.L("Đóng", "Close"), Ui.GHOST);
+        Button save = Ui.button(this, Ui.L("Lưu", "Save"), Ui.PRIMARY);
+        acts.addView(close, Ui.weight(1));
+        acts.addView(save, Ui.weight(1));
+        c.addView(acts, Ui.fill());
+        Dialog d = Ui.sheet(this, "🔓 Root", c);
+        close.setOnClickListener(v -> d.dismiss());
+        save.setOnClickListener(v -> {
+            final boolean on = main.isChecked();
+            final JSONArray sel = new JSONArray();
+            for (int i = 0; i < rows.size(); i++) if (rows.get(i).isChecked()) sel.put(pkgs.get(i));
+            Runnable go = () -> {
+                d.dismiss();
+                Dialog[] pd = progress(on ? Ui.L("Đang bật root cho app đã chọn…", "Turning root on…") : Ui.L("Đang tắt root…", "Turning root off…"));
+                final String base = api, pid = id;
+                Api.bg(() -> {
+                    JSONObject r = Api.cpAt(base, "POST", pid + "/rootcfg", new JSONObject().put("on", on).put("apps", sel));
+                    return waitJob(base, r.optString("job"), pd);
+                }, msg -> { pd[0].dismiss(); Ui.toast(this, msg); }, m -> { pd[0].dismiss(); Ui.toast(this, m); });
+            };
+            if (on && sel.length() == 0)
+                Ui.confirm(this, Ui.L("Chưa chọn app nào", "No app selected"), Ui.L("Bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?",
+                        "Root will be on but every app asking for it is refused. Save anyway?"), Ui.L("Lưu", "Save"), go::run);
+            else go.run();
+        });
+        d.show();
+    }
+
+    private void rootRow(LinearLayout list, java.util.List<android.widget.Switch> rows, java.util.List<String> pkgs,
+                         String pkg, boolean on, String extra, boolean asked) {
+        LinearLayout r = Ui.row(this, 10);
+        r.setBackground(Ui.round(Ui.PANEL, 12, asked ? Ui.WAIT : Ui.LINE));
+        r.setPadding(Ui.dp(12), Ui.dp(8), Ui.dp(12), Ui.dp(8));
+        LinearLayout nm = Ui.col(this, 0);
+        TextView n = Ui.text(this, appName(pkg), 14, Ui.FG, true);
+        n.setSingleLine(true);
+        n.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        nm.addView(n);
+        nm.addView(Ui.text(this, pkg + extra, 11.5f, Ui.MUTED, false));
+        r.addView(nm, Ui.weight(1));
+        android.widget.Switch s = toggle(on, Ui.L("Cho ", "Allow ") + appName(pkg) + Ui.L(" dùng root", " to use root"));
+        r.addView(s, Ui.wrap());
+        r.setOnClickListener(v -> s.toggle());
+        rows.add(s);
+        pkgs.add(pkg);
+        list.addView(r, Ui.fill());
     }
 
     // ---------------- Cài APK / gửi file từ điện thoại ----------------
