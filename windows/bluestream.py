@@ -1089,6 +1089,17 @@ class ScrcpyVideo:
     def failed_early(self): return False
 
 
+# GIỮ CÚ BẤM: nhận "đặt ngón" → chờ tối đa TAP_HOLD giây xem có "nhấc ngón" không. Có → gửi đặt + nhấc LIỀN NHAU vào máy
+# = 1 cú bấm chắc chắn. Trước đây hai lệnh đi riêng: mạng khách giật / adb chậm làm lệnh "nhấc" tới máy trễ > 0,4 giây
+# → Android hiểu là BẤM GIỮ (icon phóng to, hiện menu "Pause app…", app không mở). Kéo / vuốt (nhích quá TAP_SLOP điểm)
+# thì gửi ngay như cũ; giữ yên quá TAP_HOLD thì gửi "đặt ngón" (bấm giữ vẫn dùng được, chỉ trễ thêm TAP_HOLD).
+# TAP_HOLD_MS=0 trong cloudphone.conf để tắt.
+try: TAP_HOLD = max(0.0, min(0.5, float(str(C.get("TAP_HOLD_MS", "250")).strip() or 250) / 1000.0))
+except Exception: TAP_HOLD = 0.25
+TAP_SLOP = 16        # điểm ảnh của máy (≈ 1,5 mm trên màn 1080p): nhích ít hơn vẫn tính là bấm
+LATE_UP = 0.35       # nhả tay tới máy chủ trễ hơn mức này (không nhích) → đếm "chạm trễ" để báo trong nhật ký
+
+
 class Control:
     """Chạm / phím / chữ → máy Android qua scrcpy-server 2.4 (chỉ điều khiển). Mọi lệnh đi qua 1 hàng đợi + 1 luồng gửi
        (không bao giờ chặn vòng chính), giữ đúng thứ tự; chữ có dấu dán qua bộ nhớ copy và chờ máy dán xong rồi mới gửi tiếp."""
@@ -1098,6 +1109,8 @@ class Control:
         self.q = queue.Queue(maxsize=4000); self.lock = threading.Lock()
         self.nat = None; self.vw = self.vh = 0; self.mode = "scrcpy"; self.down = {}
         self.seq = 1; self.retrying = False; self.nat_t = 0.0
+        self.tlock = threading.Lock(); self.held = {}; self.active = set(); self.hgen = 0      # cú bấm đang giữ chờ "nhấc ngón"
+        self.n_tap = 0; self.n_late = 0; self.stat_t = time.time(); self.dpos = {}
 
     # ---------- khởi động (luồng nền) ----------
     def start(self):
@@ -1172,6 +1185,7 @@ class Control:
                     if not self.nat: self.nat = device_size(self.serial); self.nat_t = time.time()
                     self._open_scrcpy()
                     if self.dead: break
+                    with self.tlock: self.held.clear(); self.active.clear()
                     self.mode = "scrcpy"; self.down.clear()
                     log(f"  [điều khiển {self.serial}] đã nối lại scrcpy → chạm nhanh trở lại")
                     return
@@ -1282,10 +1296,17 @@ class Control:
         """Kích thước màn hình máy theo hướng HIỆN TẠI (đoán hướng theo tỉ lệ hình đang quay) — scrcpy đòi đúng số này."""
         vw, vh = self.vw or 720, self.vh or 1280
         if not self.nat and time.time() - self.nat_t > 3 and not SELFTEST:
-            self.nat_t = time.time(); self.nat = device_size(self.serial)
+            self.nat_t = time.time(); threading.Thread(target=self._nat_bg, daemon=True).start()
         w, h = self.nat if self.nat and min(self.nat) > 0 else (vw, vh)
         if (vw > vh) != (w > h): w, h = h, w
         return w & ~7, h & ~7
+
+    def _nat_bg(self):
+        """Hỏi cỡ màn hình máy ở luồng nền (adb chậm / chập chờn không làm đứng phiên xem)."""
+        try:
+            n = device_size(self.serial)
+            if n: self.nat = n
+        except Exception: pass
 
     def _xy(self, nx, ny):
         w, h = self.screen()
@@ -1300,14 +1321,74 @@ class Control:
             elif action == 1 and pointer in self.down:
                 x0, y0, t0 = self.down.pop(pointer)
                 dur = int((time.time() - t0) * 1000)
-                if abs(x - x0) + abs(y - y0) < 12 and dur < 400: self._shell(f"input tap {x} {y}")
+                still = abs(x - x0) + abs(y - y0) < TAP_SLOP
+                self._count(still, dur / 1000.0)
+                if still and dur < 400 + TAP_HOLD * 1000: self._shell(f"input tap {x} {y}")      # nhả tay tới trễ vì mạng → vẫn là bấm
                 else: self._shell(f"input swipe {x0} {y0} {x} {y} {max(80, min(dur, 1500))}")
             return
-        pressure = 0 if action == 1 else 0xFFFF
-        self._send(struct.pack(">BBqiiHHHii", 2, action, pointer, x, y, w, h, pressure, 0, 0))
+        if action == 0: self.dpos[pointer] = (x, y, time.monotonic())
+        elif action == 1:
+            d = self.dpos.pop(pointer, None)
+            if d: self._count(abs(x - d[0]) + abs(y - d[1]) <= TAP_SLOP, time.monotonic() - d[2])
+        pkt = self._pkt(action, pointer, x, y, w, h)
+        if not TAP_HOLD:
+            self._send(pkt); return
+        with self.tlock:
+            hd = self.held.get(pointer)
+            if action == 0:
+                if hd: self.held.pop(pointer, None); self.active.add(pointer); self._send(hd["pkt"])
+                if self.held or self.active:                 # đang có ngón khác (đa điểm, chơi game) → gửi ngay, không giữ
+                    self._flush_held()
+                    self.active.add(pointer); self._send(pkt); return
+                self.hgen += 1; g = self.hgen
+                self.held[pointer] = {"pkt": pkt, "x": x, "y": y, "g": g, "t": time.monotonic()}
+                t = threading.Timer(TAP_HOLD, self._hold_due, args=(pointer, g)); t.daemon = True; t.start()
+                return
+            if hd:
+                moved = abs(x - hd["x"]) + abs(y - hd["y"]) > TAP_SLOP
+                if action == 2:
+                    if not moved: return                     # nhích nhẹ lúc bấm → bỏ qua, vẫn là "bấm"
+                    self.held.pop(pointer, None); self.active.add(pointer)
+                    self._send(hd["pkt"] + pkt); return      # bắt đầu kéo → gửi "đặt ngón" + "kéo" ngay
+                self.held.pop(pointer, None)                 # NHẤC NGÓN khi "đặt ngón" còn đang giữ → gửi liền nhau = 1 cú bấm
+                if moved: self._send(hd["pkt"] + self._pkt(2, pointer, x, y, w, h) + pkt)      # vuốt nhanh không kịp có lệnh kéo
+                else: self._send(hd["pkt"] + self._pkt(1, pointer, hd["x"], hd["y"], w, h))   # nhả đúng chỗ bấm
+                return
+            if action == 1:
+                self.active.discard(pointer)
+            self._send(pkt)
+
+    @staticmethod
+    def _pkt(action, pointer, x, y, w, h):
+        return struct.pack(">BBqiiHHHii", 2, action, pointer, x, y, w, h, 0 if action == 1 else 0xFFFF, 0, 0)
+
+    def _flush_held(self):
+        """(đang giữ self.tlock) gửi ngay mọi "đặt ngón" còn giữ — đúng thứ tự trước lệnh mới."""
+        for p, hd in list(self.held.items()):
+            self.held.pop(p, None); self.active.add(p); self._send(hd["pkt"])
+
+    def _hold_due(self, pointer, g):
+        """Giữ yên quá TAP_HOLD mà chưa nhấc → khách đang BẤM GIỮ thật → gửi "đặt ngón"."""
+        with self.tlock:
+            hd = self.held.get(pointer)
+            if not hd or hd["g"] != g or self.dead: return
+            self.held.pop(pointer, None); self.active.add(pointer); self._send(hd["pkt"])
+
+    def _count(self, still, gap):
+        """Đếm cú bấm + số lần "nhả tay" tới máy chủ trễ (mạng khách giật) → 5 phút ghi nhật ký 1 lần nếu có."""
+        if not still: return
+        self.n_tap += 1
+        if gap >= LATE_UP: self.n_late += 1
+        if time.time() - self.stat_t >= 300:
+            if self.n_late:
+                log(f"  [điều khiển {self.serial}] 5 phút qua: {self.n_tap} cú bấm, {self.n_late} lần lệnh nhả tay tới máy chủ trễ ≥ {LATE_UP:.2f} giây "
+                    f"(mạng khách giật) · giữ cú bấm {int(TAP_HOLD * 1000)} ms")
+            self.n_tap = self.n_late = 0; self.stat_t = time.time()
 
     def scroll(self, nx, ny, hv, vv):
         x, y, w, h = self._xy(nx, ny)
+        if self.held:
+            with self.tlock: self._flush_held()
         f = lambda v: max(-0x8000, min(0x7FFF, int(max(-1.0, min(1.0, v / 120.0)) * 0x8000)))
         if self.mode == "input":
             if vv: self._shell(f"input swipe {x} {y} {x} {max(0, min(h - 1, y + (300 if vv > 0 else -300)))} 120")
@@ -2514,7 +2595,8 @@ async def main():
     ctx.load_cert_chain(CERT, CKEY)
     srv1 = await asyncio.start_server(on_direct, "0.0.0.0", PORT, ssl=ctx, limit=1 << 20)
     srv2 = await asyncio.start_server(on_ws, "127.0.0.1", WS_PORT, limit=1 << 20)
-    log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}")
+    log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
+        f" · giữ cú bấm {int(TAP_HOLD * 1000)} ms")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
     if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
