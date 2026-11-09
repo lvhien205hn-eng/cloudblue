@@ -10,7 +10,11 @@ baomat.py — BẢO MẬT + ĐỒ HOẠ cho máy chủ Windows CloudBlue (MuMu /
 MỖI MÁY KHÁCH RIÊNG HOÀN TOÀN. Giả lập mặc định DÙNG CHUNG vài thứ cho MỌI máy trên 1 máy chủ:
  1) Thư mục chia sẻ — MuMu: "MuMu共享文件夹" (hiện trong app Files của MỌI máy) · LDPlayer: Documents\XuanZhi9\Pictures / Misc /
     Applications (= /sdcard/Pictures… của mọi máy) → khách này thấy file của khách kia.
-    → file đang nằm đó dời vào kho cách ly C:\blue\cachly (KHÔNG xoá; khách không vào được), canh gác dời tiếp mỗi 2 giây.
+    → chỉ dời FILE cũ hơn BAOMAT_SHARE_AGE phút (mặc định 30) vào kho cách ly C:\blue\cachly (KHÔNG xoá; giữ 3 ngày),
+      canh gác quét mỗi 30 giây. KHÔNG BAO GIỜ dời THƯ MỤC: MuMu 6.x gắn Download / Pictures / Movies / Music /
+      Screenshots / DCIM/Camera của MỌI máy vào các thư mục con của MuMuSharedFolder — dời thư mục đi là máy khách
+      không tải được file (Chrome 0 KB, lỗi 09/11). Thiếu thư mục con nào → tự tạo lại. File mới để yên 30 phút →
+      khách tải xong vẫn cài / mở được; khách khác chỉ có thể thấy file mới trong tối đa 30 phút.
     → LDPlayer: mỗi máy 1 thư mục riêng C:\blue\vmdata\<tên máy> (phonectl.py; ăn từ lần bật máy kế tiếp; xoá máy là xoá luôn).
  2) Bộ nhớ copy (clipboard) của Windows — giả lập đồng bộ clipboard máy ảo ↔ Windows: khách A copy → khách B nhận.
     → canh gác cấm tiến trình giả lập đọc / ghi clipboard Windows (job object). Tiến trình nào không cấm được → khoá clipboard
@@ -24,12 +28,12 @@ MẠNG — máy khách KHÔNG được vào máy chủ / modem / máy khác tron
     (10.x · 172.16–31.x · 192.168.x · 169.254.x), chừa DNS (cổng 53). Internet của khách bình thường.
 ĐỒ HOẠ (khách báo load hình chậm): MuMu mặc định TẠM DỪNG app + tự HẠ FPS khi cửa sổ không ở trước (máy cloud luôn ẩn)
     → phonectl perfset: giữ app chạy nền, tắt tự hạ FPS, bắt dùng card rời, tắt VSync · Windows: ưu tiên card rời cho giả lập.
-cloudphone.conf: BAOMAT_CLIP=0 (tắt chặn clipboard) · CLIP_LOCK_IDLE=45 · BAOMAT_SHARE=0 (tắt dọn thư mục chia sẻ) · BAOMAT_NET=0 (tắt 3 + 4)
+cloudphone.conf: BAOMAT_CLIP=0 (tắt chặn clipboard) · CLIP_LOCK_IDLE=45 · BAOMAT_SHARE=0 (tắt dọn thư mục chia sẻ) · BAOMAT_SHARE_AGE=30 (phút) · BAOMAT_NET=0 (tắt 3 + 4)
 Không in tên file / nội dung của khách — báo cáo chỉ có số đếm.
 """
 import ctypes, glob, json, os, re, shutil, subprocess, sys, time
 
-VER = "2026-11-08b"
+VER = "2026-11-09a"
 BLUE = os.path.dirname(os.path.abspath(__file__))
 RED = os.path.join(BLUE, "redroid")
 LOGD = os.path.join(BLUE, "logs")
@@ -68,6 +72,9 @@ CLIP_ON = _on("BAOMAT_CLIP")
 SHARE_ON = _on("BAOMAT_SHARE")
 NET_ON = _on("BAOMAT_NET")
 LOCK_IDLE = max(10.0, _num("CLIP_LOCK_IDLE", 45))
+SHARE_AGE = max(5.0, _num("BAOMAT_SHARE_AGE", 30))      # phút: file mới hơn mức này để yên cho khách dùng
+SWEEP_EVERY = 30                                         # giây giữa 2 lần quét thư mục chia sẻ
+MUMU_SUBS = ("Download", "Camera", "Movies", "Music", "Pictures", "Screenshots")   # MuMu gắn vào Android của mọi máy
 
 
 def log(msg):
@@ -280,31 +287,51 @@ def _cach_root(p):
     if not dr or dr == os.path.splitdrive(os.path.abspath(CACH))[0].upper(): return CACH
     return os.path.join(dr + os.sep, "cloudblue-cachly")
 _skip_note = {}
-def sweep(dirs):
-    """Dời MỌI thứ trong thư mục chia sẻ vào kho cách ly <ổ>/…/cachly/<ngày>/<thư mục> (không xoá). CHỈ đổi tên —
-       file đang mở / không đổi tên được → để lần sau (không chép). Trả (số file, số byte)."""
+def ensure_skeleton(dirs):
+    """Thư mục chia sẻ MuMu: tạo lại thư mục con MuMu gắn vào Android (Download, Pictures…) nếu thiếu. Trả số thư mục vừa tạo."""
+    made = 0
+    for p, _kind in dirs:
+        if not _is_mumu_share(os.path.basename(p.rstrip("\\/"))): continue
+        for sub in MUMU_SUBS:
+            q = os.path.join(p, sub)
+            if os.path.isdir(q): continue
+            try: os.makedirs(q, exist_ok=True); made += 1
+            except OSError: pass
+    if made: log(f"tạo lại {made} thư mục con MuMu (Download / Pictures …) trong thư mục chia sẻ")
+    return made
+
+def sweep(dirs, age_min=None):
+    """Dời FILE cũ hơn age_min phút (mặc định SHARE_AGE) trong thư mục chia sẻ vào kho cách ly <ổ>/…/cachly/<ngày>/<thư mục>/<đường dẫn con>
+       (không xoá). KHÔNG BAO GIỜ dời THƯ MỤC (MuMu gắn các thư mục con vào Android). CHỈ đổi tên — file đang mở / không đổi tên được
+       → để lần sau (không chép). Trả (số file, số byte)."""
     nf = nb = 0
     day = time.strftime("%Y%m%d")
+    cut = time.time() - (SHARE_AGE if age_min is None else age_min) * 60
     for p, _kind in dirs:
-        try: items = list(os.scandir(p))
-        except OSError: continue
-        for e in items:
-            if e.name.lower() in ("desktop.ini", "thumbs.db", ".nomedia"): continue
-            dd = os.path.join(_cach_root(p), day, _tag(p))
-            try: os.makedirs(dd, exist_ok=True)
-            except OSError: continue
-            dst = os.path.join(dd, e.name); i = 1
-            while os.path.exists(dst):
-                dst = os.path.join(dd, f"{time.strftime('%H%M%S')}_{i}_{e.name}"); i += 1
-            n, b = _stat(e.path)
-            try: os.replace(e.path, dst)
-            except OSError as ex:
-                k = (e.path, day)
-                if k not in _skip_note:
-                    _skip_note[k] = 1; log(f"chưa dời được (đang mở / khoá): {e.path} — {ex.__class__.__name__}")
-                continue
-            nf += n; nb += b
-    if nf: log(f"dời {nf} file ({_gb(nb)}) từ thư mục chia sẻ vào kho cách ly")
+        for root, ds, fs in os.walk(p):
+            ds[:] = [d for d in ds if not os.path.islink(os.path.join(root, d))]
+            rel = os.path.relpath(root, p)
+            for name in fs:
+                if name.lower() in ("desktop.ini", "thumbs.db", ".nomedia"): continue
+                src = os.path.join(root, name)
+                try:
+                    stt = os.stat(src)
+                    if os.path.islink(src) or max(stt.st_mtime, stt.st_ctime) > cut: continue    # file mới → để khách dùng
+                except OSError: continue
+                dd = os.path.join(_cach_root(p), day, _tag(p)) if rel == "." else os.path.join(_cach_root(p), day, _tag(p), rel)
+                try: os.makedirs(dd, exist_ok=True)
+                except OSError: continue
+                dst = os.path.join(dd, name); i = 1
+                while os.path.exists(dst):
+                    dst = os.path.join(dd, f"{time.strftime('%H%M%S')}_{i}_{name}"); i += 1
+                try: os.replace(src, dst)
+                except OSError as ex:
+                    k = (src, day)
+                    if k not in _skip_note:
+                        _skip_note[k] = 1; log(f"chưa dời được (đang mở / khoá): {os.path.relpath(src, p)} — {ex.__class__.__name__}")
+                    continue
+                nf += 1; nb += stt.st_size
+    if nf: log(f"dời {nf} file cũ hơn {int(SHARE_AGE if age_min is None else age_min)} phút ({_gb(nb)}) từ thư mục chia sẻ vào kho cách ly")
     return nf, nb
 
 KEEP_DAYS = int(_num("BAOMAT_KEEP_DAYS", 3))           # kho cách ly giữ 3 ngày (0 = giữ mãi); ổ còn < 10GB → xoá ngày cũ nhất trước
@@ -487,7 +514,8 @@ def guard():
     if not mtx: log("canh gác cũ chưa tắt sau 60 giây — bản này thôi"); return
     try: os.remove(STOP_F)                                                  # lệnh tắt dành cho bản cũ (đã tắt) → bỏ
     except OSError: pass
-    log(f"canh gác {VER} bật (pid {os.getpid()}) · clipboard={'BẬT' if CLIP_ON else 'tắt'} · thư mục chia sẻ={'BẬT' if SHARE_ON else 'tắt'}")
+    log(f"canh gác {VER} bật (pid {os.getpid()}) · clipboard={'BẬT' if CLIP_ON else 'tắt'} · thư mục chia sẻ="
+        + (f"BẬT (dời file cũ hơn {int(SHARE_AGE)} phút, không đụng thư mục)" if SHARE_ON else "tắt"))
     job = make_job() if CLIP_ON else None
     known = {int(k): v for k, v in (_read_json(JOB_F) or {}).items() if str(k).isdigit()}   # pid → [thời điểm tạo, trạng thái] (job cũ vẫn còn hiệu lực)
     status = {}                                                             # pid → (tên, trạng thái, thời điểm tạo)
@@ -517,8 +545,9 @@ def guard():
                 _write_json(JOB_F, {str(p): v for p, v in known.items()})
             if SHARE_ON and now - t_dirs >= 600:
                 t_dirs = now; dirs = share_dirs(); st["dirs"] = [p for p, _ in dirs]
-            if SHARE_ON and dirs and now - t_sweep >= 2:
-                t_sweep = now; nf, nb = sweep(dirs); st["swept_files"] += nf; st["swept_bytes"] += nb
+            if SHARE_ON and dirs and now - t_sweep >= SWEEP_EVERY:
+                t_sweep = now; ensure_skeleton(dirs)
+                nf, nb = sweep(dirs); st["swept_files"] += nf; st["swept_bytes"] += nb
             if SHARE_ON and now - t_trim >= 3600:
                 t_trim = now; cach_trim(dirs)
             if NET_ON and now - t_net >= 600:                               # ws-scrcpy chỉ nghe 127.0.0.1 + tường lửa chặn máy ảo vào mạng nhà
@@ -922,8 +951,10 @@ def cmd_check():
     for p, k in dirs:
         n, b = _stat(p); print(f"   • {k}: {p} — đang có {n} file ({_gb(b)})")
     if SHARE_ON and not dirs: print("   ✓ không thấy thư mục chia sẻ nào có thể dọn")
+    mk = ensure_skeleton(dirs) if dirs else 0
+    if mk: print(f"   → tạo lại {mk} thư mục con MuMu (Download / Pictures …) — thiếu thì máy khách không tải được file")
     nf, nb = sweep(dirs) if dirs else (0, 0)
-    if nf: print(f"   → đã dời {nf} file ({_gb(nb)}) vào kho cách ly {CACH} (KHÔNG xoá — khách không còn thấy)")
+    if nf: print(f"   → đã dời {nf} file cũ hơn {int(SHARE_AGE)} phút ({_gb(nb)}) vào kho cách ly {CACH} (KHÔNG xoá — khách không còn thấy)")
     ls = ld_share_status()
     if ls:
         own, shr, keys = ls
@@ -931,7 +962,7 @@ def cmd_check():
         print(f"   khoá cấu hình thấy: {', '.join(keys) if keys else 'KHÔNG THẤY khoá thư mục chia sẻ nào (đã ghi khoá mặc định)'}")
 
     # ---- 2) canh gác clipboard + thư mục
-    print("\n[2] CANH GÁC (clipboard riêng từng máy + dọn thư mục chia sẻ mỗi 2 giây):", flush=True)
+    print(f"\n[2] CANH GÁC (clipboard riêng từng máy + dọn file cũ hơn {int(SHARE_AGE)} phút trong thư mục chia sẻ, mỗi 30 giây):", flush=True)
     r = start_guard(force=True); print(f"   canh gác: {r}", flush=True)
     st = {}
     for _ in range(150):
