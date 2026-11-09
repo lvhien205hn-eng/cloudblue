@@ -908,7 +908,10 @@ LD_MEM = (256, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192, 12288, 16384)
 MUMU_PERF = {} if CONF.get("MUMU_PERF", "1") == "0" else {
     # app_keptlive = "giữ app chạy nền" của MuMu: TẮT — MuMu Android 15 mở MỖI APP thành 1 tab = 1 màn hình riêng, luồng hình chỉ thấy
     # màn chính → khách bấm app không thấy mở (lỗi khách báo 09/11, bật từ 08/11). Android tự giữ app chạy nền như bình thường.
-    "app_keptlive": "false", "dynamic_adjust_frame_rate": "false", "force_discrete_graphics": "true", "vertical_sync": "false", "prevent_sleep": "true"}
+    "app_keptlive": "false", "dynamic_adjust_frame_rate": "false", "force_discrete_graphics": "true", "vertical_sync": "false", "prevent_sleep": "true",
+    # root_permission = "Enable root" (Developer options) của MuMu: BẬT cho mọi máy — máy nào bật lại (start / ramfix / khoidonglai /
+    # perfset lúc tắt) là có root (09/11: nhiều máy bấm "Root máy" không ăn vì MuMu chỉ cho ghi lúc máy TẮT).
+    "root_permission": "true"}
 def configure(idx, ram, cpu, res, dpi):
     w, h = res.lower().split("x")
     if EMU == "ld":
@@ -1436,16 +1439,56 @@ def cmd_tuneall(a):
         adb_connect(p["port"]); ok = tune(p["name"], p["port"]); grant_perms(p["name"], p["port"])
         print(("✅ " if ok else "⚠ ") + p["name"], flush=True)
 
+def _has_su(p):
+    """Máy (đang chạy) có lệnh su chưa — có su thì tool cần root chạy được."""
+    try: o = (ashell(p["name"], "command -v su 2>/dev/null; ls /system/xbin/su /system/bin/su /sbin/su 2>/dev/null", timeout=20).stdout or "")
+    except Exception: return False
+    return bool(re.search(r"(^|/)su\s*$", o, re.M))
+
+def _mumu_root_on(i):
+    """MuMu: "Enable root" (root_permission) của máy đã BẬT trong cài đặt chưa · None = không phải MuMu / không đọc được."""
+    if EMU != "mumu": return None
+    allk = _mumu_all(i)
+    if "root_permission" not in allk: return None
+    return str(allk.get("root_permission")).strip().lower() == "true"
+
 def cmd_rootfix(a):
-    v = vms()
+    """rootfix TÊN | --all [--force] — bật root cho máy khách.
+       MuMu chỉ cho ghi "Enable root" lúc máy TẮT và root có hiệu lực sau khi BẬT LẠI (trước 09/11 ghi lúc máy đang chạy → không ăn,
+       nút "Root máy" báo chờ mãi). Máy tắt → bật sẵn root (lần bật sau có). Máy chạy chưa có su: --force (khách / admin bấm Root)
+       → tắt → bật root → bật lại → kiểm su; không --force (vòng 5 phút của cloudphoned) → chỉ báo, KHÔNG tự khởi động lại máy khách
+       (máy nào bật lại lúc nào cũng tự có root nhờ MUMU_PERF)."""
+    v = vms(); ok = setn = wait = bad = 0
     for p in load()["phones"]:
         if not (a.all or p["name"] == a.name): continue
-        if not is_running(p["name"], p, v): print(f"ROOT_SKIP {p['name']}: máy đang tắt"); continue
-        o = (ashell(p["name"], "command -v su").stdout or "")
-        if "su" not in o:
-            memuc("setconfigex", "-i", IDX(p), "enable_su", 1, timeout=60)
-            print(f"ROOT_WAIT {p['name']}: vừa bật root, khởi động lại máy để có hiệu lực")
-        else: print(f"ROOT_OK {p['name']}: đã root — tool gọi su là chạy bằng quyền root")
+        i = IDX(p, v)
+        if i is None: print(f"ROOT_NO {p['name']}: không thấy máy trong {EMU_NAME}", flush=True); bad += 1; continue
+        on = _mumu_root_on(i)
+        if not v[i]["running"]:
+            if on is False:
+                _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
+                if _mumu_root_on(i): print(f"ROOT_SET {p['name']}: máy đang tắt — đã bật root, lần bật sau có root", flush=True); setn += 1
+                else: print(f"ROOT_NO {p['name']}: MuMu chưa nhận bật root (máy đang tắt)", flush=True); bad += 1
+            else: print(f"ROOT_SKIP {p['name']}: máy đang tắt", flush=True)
+            continue
+        if _has_su(p):
+            print(f"ROOT_OK {p['name']}: đã root — tool gọi su là chạy bằng quyền root", flush=True); ok += 1; continue
+        if not a.force:
+            if EMU != "mumu": memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)   # LDPlayer / MEmu: ghi sẵn, có hiệu lực khi bật lại
+            print(f"ROOT_WAIT {p['name']}: chưa có root — bấm Root máy (máy khởi động lại ~1 phút) hoặc chờ lần bật lại sau", flush=True); wait += 1
+            continue
+        print(f"   {p['name']} (#{i}): bật root → khởi động lại máy (~1 phút)…", flush=True)
+        adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", i, timeout=120); time.sleep(3)
+        if EMU == "mumu":
+            _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
+            if not _mumu_root_on(i):                               # máy bị bật lại giữa chừng (vòng tự bật của cloudphoned) → tắt lại, ghi lại
+                memuc("stop", "-i", i, timeout=120); time.sleep(3); _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
+        else:
+            memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)
+        start_phone(p); wait_boot(p["name"], p["port"], apps=False)
+        if _has_su(p): print(f"ROOT_OK {p['name']}: đã root xong — tool gọi su là chạy bằng quyền root", flush=True); ok += 1
+        else: print(f"ROOT_NO {p['name']}: đã bật root + khởi động lại nhưng chưa thấy lệnh su", flush=True); bad += 1
+    print(f"Root: {ok} máy có root · {setn} máy tắt đã bật sẵn · {wait} máy chờ bật lại · {bad} máy lỗi")
 
 def cmd_capacity(a):
     st = load(); tot, av = mem()
