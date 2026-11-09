@@ -391,7 +391,7 @@ a.btn{text-decoration:none}
 @media (max-width:1240px){ .who #who-name{display:none} }
 .notice div{display:block;position:relative;padding-left:28px}
 .notice div::before{position:absolute;left:13px;top:16px;transform:none}
-#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg{z-index:70}
+#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg{z-index:70}
 .dpanel{width:min(1060px,100%)}
 .tbl td:last-child{white-space:nowrap;text-align:right}
 @media (max-width:1520px){ nav a svg.ic{display:none} nav a{padding:8px 11px} .who #who-name{display:none} nav a[href="#policy"]{display:none} }
@@ -572,6 +572,17 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .nh b{font-size:16px}
 .nh .hint{font-family:var(--mono);font-size:11.5px}
 .nh .pill{margin-left:auto}
+.nrbdlg{max-width:620px;width:100%}
+.nrb-list{max-height:min(52vh,430px);overflow:auto;display:grid;gap:6px;margin-top:10px}
+.nrb-row{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.nrb-row .nm{flex:1;min-width:0}.nrb-row .nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nrb-row small{display:block;color:var(--muted);font-size:12px}.nrb-st{font-size:12.5px;margin-top:3px}
+.nrb-row .btn{flex:none}
+.srv-st{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;margin-top:10px}.srv-st>div{border:1px solid var(--line);border-radius:10px;padding:7px 10px;font-size:12.5px;color:var(--muted)}
+.srv-st b{display:block;font-size:14px;color:var(--fg);margin-top:2px}
+.srv-any{display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;color:var(--bad);cursor:pointer}.srv-any input{margin-top:3px;flex:none}
+.srv-go{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.srv-go .in{flex:1 1 160px;min-width:0}.srv-go .btn{flex:none}
+.nrb-one{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}.nrb-one summary{cursor:pointer;font-weight:600;font-size:14px}.nrb-one #nrb-q{margin-top:10px}
 .nr{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:12.5px}
 .nr span{color:var(--muted)}
 .nr em{font-style:normal;font-family:var(--mono);font-size:12px;color:var(--fg)}
@@ -1772,7 +1783,7 @@ window.BR_CONFIG = {
       <h3 style="margin:6px 0 0">Top sản phẩm bán chạy</h3>
       <div class="tbl"><table><thead><tr><th>Sản phẩm</th><th>Lượt bán</th><th>Doanh thu</th></tr></thead><tbody id="st-top"></tbody></table></div>
       <h3 style="margin:10px 0 0">🧾 Lịch sử mua ĐT đám mây</h3>
-      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
+      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option><option value="bonus">➕ Admin cộng ngày</option><option value="fix">🩹 Bù gia hạn</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
       <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Loại</th><th>Máy</th><th>Số tiền</th></tr></thead><tbody id="cps-tb"></tbody></table></div>
       <button class="btn ghost sm" type="button" id="cps-more" hidden>Tải thêm</button>
     </div>
@@ -2007,22 +2018,29 @@ window.BR_CONFIG = {
         </div>
         <div class="hint" id="gpu-msg"></div>
       </div>
+      <div class="gpubox" id="rnfbox">
+        <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
+        <div class="hint" id="rnf-msg">Máy chủ bản cũ không cộng ngày khi khách gia hạn. Bấm <b>Kiểm tra</b> để tìm máy khách đang bị thiếu ngày (so ngày thuê + mọi lần gia hạn với hạn hiện tại), rồi bấm <b>Bù</b>.</div>
+        <div class="tbl" id="rnf-tblbox" hidden><table><thead><tr><th>Máy</th><th>Khách</th><th>Hết hạn hiện tại</th><th>Lẽ ra hết hạn</th><th class="num">Thiếu</th><th></th></tr></thead><tbody id="rnf-tb"></tbody></table></div>
+        <div id="rnf-allbox" hidden><button class="btn sm" type="button" id="rnf-all">🩹 Bù tất cả</button></div>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">📋 Máy khách đang thuê <span class="hint">(chỉ admin thấy)</span></h3><span class="hint" id="cpa-count" style="margin-left:auto"></span></div>
       <div class="cpabar">
         <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
         <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option><option value="cancelling">Đang huỷ (chờ máy chủ xoá)</option></select>
         <span class="cpasel" id="cpa-selbar" hidden><b id="cpa-seln">0</b> máy đã chọn
-          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button></span>
+          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button><button class="btn ghost sm" type="button" id="cpa-bdays">➕ Cộng ngày</button></span>
         <button class="btn sm" type="button" id="cpa-apk" style="margin-left:auto">📦 Cài APK cho máy khách</button>
       </div>
       <div class="tbl"><table><thead><tr><th style="width:30px"><input type="checkbox" id="cpa-all" aria-label="Chọn tất cả máy đang lọc"></th><th>Máy</th><th>Khách</th><th>Cấu hình</th><th>Trạng thái</th><th>Hết hạn</th><th></th></tr></thead><tbody id="cpa-tbl"></tbody></table></div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
       <form class="f mtbox prf" id="rff" autocomplete="off" style="margin-bottom:14px">
-        <h3>🤝 Giới thiệu bạn bè · hoa hồng nạp tiền</h3>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="rf-on"><i></i></span><span><b>Bật hoa hồng giới thiệu</b><small>Tắt thì khách không thấy nút 🎁 Mời bạn trên web và các lần nạp mới không được cộng hoa hồng.</small></span></label>
+        <h3>🤝 Giới thiệu bạn bè · hoa hồng khi bạn bè mua</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="rf-on"><i></i></span><span><b>Bật hoa hồng giới thiệu</b><small>Tắt thì khách không thấy nút 🎁 Mời bạn trên web và các lần mua mới không được cộng hoa hồng (tắt lúc nào thì lượt mua lúc đó không bao giờ được tính bù).</small></span></label>
         <label>Phần trăm hoa hồng (0–50%)<input id="rf-pct" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
-        <div class="hint" id="rf-ex" style="align-self:end;padding-bottom:10px"></div>
+        <label>Số ngày được nhận lời mời (1–30)<input id="rf-days" type="number" min="1" max="30" step="1" inputmode="numeric"></label>
+        <div class="hint full" id="rf-ex"></div>
         <div class="note full" id="rf-prev"></div>
         <div class="acts full"><button class="btn" type="submit" id="rf-save">Lưu hoa hồng</button></div>
         <div class="refst full" id="rfa-sum"></div>
@@ -2246,6 +2264,24 @@ window.BR_CONFIG = {
     <div class="note" style="margin-top:10px">Máy bị khoá sẽ <b>tắt ngay</b>, khách không mở, điều khiển hay gia hạn được. Dữ liệu vẫn giữ. Hết thời hạn máy tự mở khoá và bật lại.</div>
     <div class="err" id="cpl-err"></div>
     <div class="acts"><button class="btn ghost" type="button" id="cpl-cancel">Huỷ</button><button class="btn danger" type="button" id="cpl-ok">Khoá máy</button></div>
+  </div>
+</div>
+<div class="modal" id="nrbdlg" hidden>
+  <div class="dlg nrbdlg" role="dialog" aria-modal="true" aria-labelledby="nrb-title">
+    <h3 id="nrb-title">⚡ Khởi động lại máy chủ</h3>
+    <div class="hint" id="nrb-who"></div>
+    <div class="srv-st" id="srv-st"></div>
+    <div class="note" style="margin-top:10px">Các máy khách đang chạy được <b>tắt êm</b> trước (tối đa ~2 phút), rồi Windows khởi động lại. Khoảng 3–8 phút sau máy chủ tự đăng nhập, tự mở bảng CloudBlue và <b>tự bật lại các máy khách</b> — app, tài khoản, dữ liệu giữ nguyên. Trong lúc đó khách không dùng được máy, thẻ máy chủ báo "Mất kết nối".</div>
+    <label class="srv-any" id="srv-anybox" hidden><input type="checkbox" id="srv-any"><span>Vẫn khởi động lại dù Windows <b>chưa bật tự đăng nhập</b> — phải có người tới máy chủ đăng nhập thì máy khách mới chạy lại.</span></label>
+    <div class="srv-go"><input class="in" id="srv-confirm" autocomplete="off" spellcheck="false" aria-label="Gõ mã máy chủ để xác nhận"><button class="btn danger" type="button" id="srv-go" disabled>⚡ Khởi động lại máy chủ</button></div>
+    <div class="nrb-st" id="srv-msg"></div>
+    <details class="nrb-one" id="nrb-one"><summary>Chỉ khởi động lại 1 máy khách trên server này</summary>
+      <input class="in" id="nrb-q" type="search" placeholder="Tìm theo tên máy, khách, cổng…" aria-label="Tìm máy" autocomplete="off">
+      <div class="hint" id="nrb-cnt" style="margin-top:6px"></div>
+      <div class="nrb-list" id="nrb-list"></div>
+      <div class="hint" style="margin-top:6px">Máy được tắt hẳn (treo thì tắt cưỡng bức) rồi bật lại, 1–3 phút, dữ liệu giữ nguyên. Máy đang khoá không ép được (mở khoá trước).</div>
+    </details>
+    <div class="acts"><button class="btn ghost" type="button" id="nrb-close">Đóng</button></div>
   </div>
 </div>
 <div class="modal" id="appnews" hidden>
@@ -4826,7 +4862,7 @@ async function openCloud() {
   myCloud = (data || []).filter(p => p.status !== "cancelled").concat(Array.isArray(sh && sh.data) ? sh.data : []);
   renderCloud();
   clearTimeout(cpPollT);
-  if (myCloud.some(p => ["pending", "cancelling", "expired"].includes(p.status))) cpPollT = setTimeout(() => { if (!$("cpdlg").hidden) openCloud(); }, 6000);
+  if (myCloud.some(p => ["pending", "cancelling", "expired"].includes(p.status) || +p.pending_renew_days > 0)) cpPollT = setTimeout(() => { if (!$("cpdlg").hidden) openCloud(); }, 6000);
 }
 function renderCloud() {
   if (!myCloud.length) { $("cp-list").innerHTML = `<div class="empty">${L('Bạn chưa thuê máy nào. Bấm "+ Thuê máy mới" để bắt đầu.', 'No cloud phones yet.')}</div>`; return; }
@@ -4840,6 +4876,7 @@ function renderCloud() {
     const canRenew = !p.shared && !p.is_free && !locked && (p.status === "active" || (p.status === "expired" && g > 0));
     return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + L("Miễn phí", "Free") + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
+      ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
       ${p.status === "pending" ? `<div class="exp">Máy đang khởi động (khoảng 2–3 phút), trang tự cập nhật.</div>` : ""}
       ${locked ? `<div class="exp" style="color:var(--bad)">🔒 Máy bị khoá${p.locked_until ? " đến " + new Date(p.locked_until).toLocaleString("vi-VN") : " vĩnh viễn"}${p.lock_reason ? ": " + esc(p.lock_reason) : ""}. Liên hệ hỗ trợ nếu cần.</div>` : ""}
@@ -5192,7 +5229,7 @@ async function cpSwitch(id) {
   draw(); m.hidden = false;
 }
 
-/* ===== GIỚI THIỆU BẠN BÈ (SQL v24): link mời riêng → bạn bè nạp tiền thì người mời được cộng % vào số dư ===== */
+/* ===== GIỚI THIỆU BẠN BÈ (SQL v24 + v26): link mời riêng → bạn bè MUA (thuê / gia hạn / nâng cấp máy, mua sản phẩm) thì người mời được cộng % vào số dư ===== */
 const REF_KEY = "cb_ref";
 try {
   const rp = new URLSearchParams(location.search).get("ref");
@@ -5229,12 +5266,20 @@ async function openRef() {
   const { data: d, error } = await sb.rpc("ref_info");
   if (error || !d) { m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rf-t">${head}<div class="err">${esc(/ref_info|does not exist|schema cache/i.test(String(error && error.message)) ? L("Tính năng chưa bật (admin cần chạy SQL v24).", "Not enabled yet.") : errMsg(error))}</div>${close}</div>`; return; }
   const link = location.origin + "/?ref=" + encodeURIComponent(d.code), pct = +d.pct || 0, items = Array.isArray(d.items) ? d.items : [];
+  const buyMode = d.mode === "buy", days = +d.days || 7;      // SQL v26: hoa hồng tính khi bạn bè MUA (bản cũ: khi nạp)
+  const rule = pct <= 0 ? L("Chương trình hoa hồng đang tạm dừng.", "The referral programme is paused.")
+    : buyMode ? L(`Gửi link dưới đây cho bạn bè. Bạn bè <b>đăng ký qua link</b> rồi <b>mua</b> (thuê máy, gia hạn, nâng cấp, mua sản phẩm) → bạn được cộng <b>${pct}%</b> số tiền họ mua vào số dư, <b>mỗi lần mua</b>. Bạn bè chỉ nạp tiền mà chưa mua thì chưa được cộng.`,
+                  `Share the link below. When friends <b>sign up through it</b> and <b>buy</b> (rent, renew, upgrade a phone or buy a product), you get <b>${pct}%</b> of every purchase added to your balance. Top-ups alone don't count.`)
+    : L(`Gửi link dưới đây cho bạn bè. Bạn bè <b>đăng ký qua link</b> rồi nạp tiền → bạn được cộng <b>${pct}%</b> số tiền họ nạp vào số dư, <b>mỗi lần nạp</b>.`, `Share the link below. When friends <b>sign up through it</b> and top up, you get <b>${pct}%</b> of every top-up added to your balance.`);
   m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rf-t">${head}
-    <div class="hint">${pct > 0 ? L(`Gửi link dưới đây cho bạn bè. Bạn bè <b>đăng ký qua link</b> rồi nạp tiền → bạn được cộng <b>${pct}%</b> số tiền họ nạp vào số dư, <b>mỗi lần nạp</b>.`, `Share the link below. When friends <b>sign up through it</b> and top up, you get <b>${pct}%</b> of every top-up added to your balance.`) : L("Chương trình hoa hồng đang tạm dừng.", "The referral programme is paused.")}</div>
+    <div class="hint">${rule}</div>
     <div class="reflink"><input class="in" id="rf-link" readonly value="${esc(link)}"><button class="btn sm" type="button" id="rf-copy">📋 Copy</button></div>
-    <div class="refst"><div><b>${+d.invited || 0}</b><span>${L("Đã mời", "Invited")}</span></div><div><b>${+d.paid_users || 0}</b><span>${L("Đã nạp tiền", "Topped up")}</span></div><div><b>${fmt(+d.earned || 0)}</b><span>${L("Đã nhận", "Earned")}</span></div></div>
-    ${items.length ? `<div class="reflist">${items.map(x => `<div><span>${new Date(x.at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")} · ${esc(x.who)} ${L("nạp", "topped up")} ${fmt(+x.topup)}</span><b style="color:var(--ok)">+${fmt(+x.amount)}</b></div>`).join("")}</div>` : ""}
-    <div class="note" style="font-size:12.5px">${L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong 7 ngày đầu, trước lần nạp đầu tiên). Không tính tự mời chính mình.", "Only new accounts that sign up through your link count (within their first 7 days, before their first top-up). Self-invites don't count.")}</div>
+    <div class="refst"><div><b>${+d.invited || 0}</b><span>${L("Đã mời", "Invited")}</span></div><div><b>${+(buyMode ? (d.buyers ?? d.paid_users) : d.paid_users) || 0}</b><span>${buyMode ? L("Đã mua", "Bought") : L("Đã nạp tiền", "Topped up")}</span></div><div><b>${fmt(+d.earned || 0)}</b><span>${L("Đã nhận", "Earned")}</span></div></div>
+    ${items.length ? `<div class="reflist">${items.map(x => `<div><span>${new Date(x.at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")} · ${esc(x.who)} ${x.kind === "buy" ? L("mua", "bought") : L("nạp", "topped up")} ${fmt(+x.topup)}</span><b style="color:var(--ok)">+${fmt(+x.amount)}</b></div>`).join("")}</div>` : ""}
+    <div class="note" style="font-size:12.5px">${buyMode
+      ? L(`Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong ${days} ngày đầu, trước lần nạp đầu tiên). Chỉ tính phần tiền bạn bè nạp thật: tiền khuyến mãi, tiền được hoàn không tính; mỗi đồng tính 1 lần. Không tính tự mời chính mình.`,
+          `Only new accounts that sign up through your link count (within their first ${days} days, before their first top-up). Only money they actually topped up counts — promo credit and refunds don't, and each amount counts once. Self-invites don't count.`)
+      : L("Chỉ tính tài khoản mới đăng ký qua link của bạn (nhận lời mời trong 7 ngày đầu, trước lần nạp đầu tiên). Không tính tự mời chính mình.", "Only new accounts that sign up through your link count (within their first 7 days, before their first top-up). Self-invites don't count.")}</div>
     ${close}</div>`;
   $("rf-copy").onclick = async () => {
     try { await navigator.clipboard.writeText(link); } catch (e) { try { $("rf-link").select(); document.execCommand("copy"); } catch (e2) {} }
@@ -5244,31 +5289,38 @@ async function openRef() {
 $("ref-btn") && ($("ref-btn").onclick = openRef);
 /* hoa hồng giới thiệu — admin chỉnh trong mục 🎁 Khuyến mãi */
 const rfClamp = v => Math.max(0, Math.min(50, Math.round((+v || 0) * 10) / 10));
+const rfDays = v => Math.max(1, Math.min(30, Math.round(+v || 7)));       // giống _ref_days() của SQL v26: mặc định 7, 1–30
 const rfSavedOn = () => !(SITE.ref_on === false || String(SITE.ref_on).toLowerCase() === "false");
 function rfFill() {
   if (!$("rf-on") || !$("rf-pct")) return;
   $("rf-on").checked = rfSavedOn(); $("rf-pct").value = rfClamp(SITE.ref_pct ?? 5);
+  if ($("rf-days")) $("rf-days").value = rfDays(SITE.ref_days);
   rfPreview();
 }
 function rfPreview() {
   const on = $("rf-on"), inp = $("rf-pct"); if (!on || !inp || !$("rf-prev")) return;
-  const pct = rfClamp(inp.value), dirty = on.checked !== rfSavedOn() || pct !== rfClamp(SITE.ref_pct ?? 5);
-  $("rf-ex").textContent = on.checked && pct > 0 ? `Ví dụ: bạn bè nạp 100.000đ → người mời nhận ${vnd(Math.floor(100000 * pct / 100))}.` : "";
-  $("rf-prev").innerHTML = (!on.checked ? "Đang tắt: khách không thấy nút 🎁 Mời bạn trên web, các lần nạp mới không được cộng hoa hồng."
-    : pct > 0 ? `Khách thấy: “Bạn bè <b>đăng ký qua link</b> rồi nạp tiền → bạn được cộng <b>${pct}%</b> số tiền họ nạp vào số dư, <b>mỗi lần nạp</b>.” Chỉ tính tài khoản mới đăng ký qua link (trong 7 ngày đầu, trước lần nạp đầu tiên), không tính tự mời chính mình.`
+  const pct = rfClamp(inp.value), days = rfDays($("rf-days") ? $("rf-days").value : 7);
+  const dirty = on.checked !== rfSavedOn() || pct !== rfClamp(SITE.ref_pct ?? 5) || days !== rfDays(SITE.ref_days);
+  $("rf-ex").textContent = on.checked && pct > 0 ? `Ví dụ: bạn bè nạp 100.000đ → chưa được gì · bạn bè thuê máy 100.000đ → người mời nhận ${vnd(Math.floor(100000 * pct / 100))}.` : "";
+  $("rf-prev").innerHTML = (!on.checked ? "Đang tắt: khách không thấy nút 🎁 Mời bạn trên web, các lần mua mới không được cộng hoa hồng."
+    : pct > 0 ? `Khách thấy: “Bạn bè <b>đăng ký qua link</b> rồi <b>mua</b> (thuê máy, gia hạn, nâng cấp, mua sản phẩm) → bạn được cộng <b>${pct}%</b> số tiền họ mua vào số dư, <b>mỗi lần mua</b>.”`
+      + ` Nạp tiền không được cộng. Chỉ tính phần tiền bạn bè nạp thật (tiền admin cộng tay, khuyến mãi, tiền hoàn không tính), mỗi đồng tính 1 lần.`
+      + ` Chỉ tính tài khoản mới đăng ký qua link (trong <b>${days} ngày</b> đầu, trước lần nạp đầu tiên), không tính tự mời chính mình.`
     : "Khách thấy: “Chương trình hoa hồng đang tạm dừng.” 0% là không cộng gì.")
     + (dirty ? ` <b style="color:var(--warn)">Chưa lưu: bấm Lưu hoa hồng.</b>` : "");
 }
 $("rf-pct") && ($("rf-pct").oninput = rfPreview);
+$("rf-days") && ($("rf-days").oninput = rfPreview);
 $("rf-on") && ($("rf-on").onchange = rfPreview);
 $("rff") && ($("rff").onsubmit = async e => { e.preventDefault();
-  const pct = rfClamp($("rf-pct").value); $("rf-pct").value = pct;
-  await saveSettings({ ref_on: $("rf-on").checked, ref_pct: pct }, $("rf-save"), $("rf-on").checked ? `Đã lưu — hoa hồng giới thiệu ${pct}%.` : "Đã tắt hoa hồng giới thiệu.");
+  const pct = rfClamp($("rf-pct").value), days = rfDays($("rf-days") ? $("rf-days").value : 7); $("rf-pct").value = pct; if ($("rf-days")) $("rf-days").value = days;
+  await saveSettings({ ref_on: $("rf-on").checked, ref_pct: pct, ref_days: days }, $("rf-save"), $("rf-on").checked ? `Đã lưu — hoa hồng giới thiệu ${pct}% · nhận lời mời trong ${days} ngày.` : "Đã tắt hoa hồng giới thiệu.");
   rfPreview(); });
 $("rfa-reload") && ($("rfa-reload").onclick = () => busy($("rfa-reload"), loadRefAdm));
 
 /* ===== ADMIN: LỊCH SỬ MUA ĐT ĐÁM MÂY + HOA HỒNG (SQL v24) ===== */
-const CPS_KIND = { new: ["🆕", "Thuê mới"], renew: ["🔄", "Gia hạn"], upgrade: ["⬆️", "Nâng cấp"], switch: ["🤖", "Đổi Android"], free: ["🎁", "Miễn phí"], gift: ["🎟", "Mã tặng"], refund: ["↩️", "Hoàn tiền"] };
+const CPS_KIND = { new: ["🆕", "Thuê mới"], renew: ["🔄", "Gia hạn"], upgrade: ["⬆️", "Nâng cấp"], switch: ["🤖", "Đổi Android"], free: ["🎁", "Miễn phí"], gift: ["🎟", "Mã tặng"], refund: ["↩️", "Hoàn tiền"],
+  bonus: ["➕", "Admin cộng ngày"], fix: ["🩹", "Bù gia hạn"] };
 let cpsRows = [], cpsPage = 0, cpsSeq = 0;
 async function loadCpSales(more) {
   const tb = $("cps-tb"); if (!tb || !isAdmin()) return;
@@ -5309,20 +5361,21 @@ async function loadRefAdm() {
   if (!tb.children.length) tb.innerHTML = msg("Đang tải…");
   const [r, rs, ri] = await Promise.all([
     sb.from("ref_commissions")
-      .select("created_at,topup_amount,pct,amount,referrer:profiles!ref_commissions_referrer_id_fkey(username),referee:profiles!ref_commissions_referee_id_fkey(username)")
+      .select("created_at,kind,topup_amount,buy_amount,pct,amount,referrer:profiles!ref_commissions_referrer_id_fkey(username),referee:profiles!ref_commissions_referee_id_fkey(username)")
       .order("created_at", { ascending: false }).limit(30),
     sb.from("ref_commissions").select("amount", { count: "exact" }).limit(1000),
     sb.from("profiles").select("id", { count: "exact", head: true }).not("ref_by", "is", null)]);
   if (seq !== rfaSeq) return;
   const { data, error } = r;
-  if (error) { if (sum) sum.innerHTML = ""; tb.innerHTML = msg(/ref_commissions|does not exist|schema cache/i.test(error.message || "") ? "Chưa bật — chạy file SQL v24 trong Supabase." : esc(errMsg(error))); return; }
+  if (error) { if (sum) sum.innerHTML = ""; tb.innerHTML = msg(/kind|buy_amount/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL v26 trong Supabase — hoa hồng VẪN đang cộng lúc bạn bè NẠP tiền. Chạy v26 để chỉ cộng khi bạn bè mua."
+    : /ref_commissions|does not exist|schema cache/i.test(error.message || "") ? "Chưa bật — chạy file SQL v24 trong Supabase." : esc(errMsg(error))); return; }
   if (sum) {
     const am = rs.data || [], paid = am.reduce((t, x) => t + (+x.amount || 0), 0), n = rs.count ?? am.length, nf = v => (+v || 0).toLocaleString("vi-VN");
     sum.innerHTML = `<div><b>${ri.error ? "–" : nf(ri.count)}</b><span>Khách được mời</span></div>`
       + `<div><b>${rs.error ? "–" : nf(n)}</b><span>Lượt được cộng</span></div>`
       + `<div><b>${rs.error ? "–" : (n > am.length ? "≥ " : "") + vnd(paid)}</b><span>Tổng đã trả</span></div>`;
   }
-  tb.innerHTML = (data || []).length ? data.map(x => `<tr><td style="white-space:nowrap">${new Date(x.created_at).toLocaleString("vi-VN")}</td><td>${esc((x.referrer && x.referrer.username) || "?")}</td><td>${esc((x.referee && x.referee.username) || "?")} nạp ${vnd(+x.topup_amount)}</td><td class="num">+${vnd(+x.amount)} <small style="color:var(--muted)">(${+x.pct}%)</small></td></tr>`).join("")
+  tb.innerHTML = (data || []).length ? data.map(x => `<tr><td style="white-space:nowrap">${new Date(x.created_at).toLocaleString("vi-VN")}</td><td>${esc((x.referrer && x.referrer.username) || "?")}</td><td>${esc((x.referee && x.referee.username) || "?")} ${x.kind === "buy" ? "mua" : "nạp"} ${vnd(+(x.kind === "buy" ? x.buy_amount : x.topup_amount) || 0)}</td><td class="num">+${vnd(+x.amount)} <small style="color:var(--muted)">(${+x.pct}%)</small></td></tr>`).join("")
     : msg("Chưa có hoa hồng nào.");
 }
 $("cps-kind") && ($("cps-kind").onchange = () => loadCpSales());
@@ -5698,6 +5751,7 @@ function renderNodes() {
         <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span>
         <span class="acts"><button class="btn ghost sm" data-nrename="${esc(n.id)}">✏️ Đổi tên</button>
           <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${esc(n.id)}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
+          ${!off ? `<button class="btn danger sm" data-nreboot="${esc(n.id)}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
           ${n.phones ? `<button class="btn danger sm" data-nwipe="${esc(n.id)}">🧹 Xoá sạch máy</button>` : ""}
           ${off ? `<button class="btn danger sm" data-ndel="${esc(n.id)}">Xoá</button>` : ""}</span></div>
     </div>`;
@@ -5863,10 +5917,11 @@ function renderCpaTbl() {
     return `<tr${lk ? ' style="opacity:.85"' : ""}><td><input type="checkbox" data-cpsel="${p.id}"${cpaSel.has(p.id) ? " checked" : ""} aria-label="Chọn máy ${esc(p.name)}"></td>
       <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node) : ""}</div></td>
       <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
-      <td>${cpaStatus(p)}${lk ? `<div style="margin-top:4px"><span class="pill bad">🔒 Khoá ${p.locked_until ? "tới " + new Date(p.locked_until).toLocaleString("vi-VN") : "vĩnh viễn"}</span></div>${p.lock_reason ? `<div class="hint">${esc(p.lock_reason)}</div>` : ""}` : ""}${p.error ? `<div class="hint" style="color:var(--bad)">${esc(p.error)}</div>` : ""}</td>
+      <td>${cpaStatus(p)}${+p.pending_renew_days > 0 ? `<div class="hint" style="color:var(--gold-hi)">⏳ chờ máy chủ cộng +${+p.pending_renew_days} ngày</div>` : ""}${lk ? `<div style="margin-top:4px"><span class="pill bad">🔒 Khoá ${p.locked_until ? "tới " + new Date(p.locked_until).toLocaleString("vi-VN") : "vĩnh viễn"}</span></div>${p.lock_reason ? `<div class="hint">${esc(p.lock_reason)}</div>` : ""}` : ""}${p.error ? `<div class="hint" style="color:var(--bad)">${esc(p.error)}</div>` : ""}</td>
       <td class="num">${exp}</td>
       <td style="text-align:right;white-space:nowrap">${p.status === "active" ? `<a class="btn ghost sm" href="/phone.html?id=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Điều khiển</a> ` : ""}${lk
         ? `<button class="btn ghost sm" data-cpunlock="${p.id}">🔓 Mở khoá</button>` : `<button class="btn ghost sm" data-cplock="${p.id}">🔒 Khoá</button>`}
+        ${["active", "expired"].includes(p.status) ? `<button class="btn ghost sm" data-cpdays="${p.id}" title="Cộng thêm ngày cho khách (không trừ tiền)">➕ Ngày</button>` : ""}
         <button class="btn danger sm" data-cparm="${p.id}">Xoá</button></td></tr>`;
   }).join("") : `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:20px">${q || st ? "Không có máy nào khớp bộ lọc." : "Chưa có máy nào."}</td></tr>`;
   syncCpaSel();
@@ -5926,12 +5981,70 @@ $("cpa-count") && $("cpa-count").addEventListener("click", e => { const a = e.ta
 $("cpa-all") && ($("cpa-all").onchange = e => { CPA_VIEW.forEach(p => e.target.checked ? cpaSel.add(p.id) : cpaSel.delete(p.id)); renderCpaTbl(); });
 $("cpa-tbl") && ($("cpa-tbl").onchange = e => { const c = e.target.closest("[data-cpsel]"); if (!c) return; c.checked ? cpaSel.add(c.dataset.cpsel) : cpaSel.delete(c.dataset.cpsel); syncCpaSel(); });
 $("cpa-tbl") && ($("cpa-tbl").onclick = e => {
-  const rm = e.target.closest("[data-cparm]"), lk = e.target.closest("[data-cplock]"), ul = e.target.closest("[data-cpunlock]");
-  if (rm) cpaDelete([rm.dataset.cparm]); else if (lk) cpaLock([lk.dataset.cplock]); else if (ul) cpaUnlock([ul.dataset.cpunlock]);
+  const rm = e.target.closest("[data-cparm]"), lk = e.target.closest("[data-cplock]"), ul = e.target.closest("[data-cpunlock]"), dy = e.target.closest("[data-cpdays]");
+  if (rm) cpaDelete([rm.dataset.cparm]); else if (lk) cpaLock([lk.dataset.cplock]); else if (ul) cpaUnlock([ul.dataset.cpunlock]); else if (dy) cpaAddDays([dy.dataset.cpdays]);
 });
 $("cpa-blk") && ($("cpa-blk").onclick = () => cpaLock([...cpaSel]));
 $("cpa-bun") && ($("cpa-bun").onclick = () => cpaUnlock([...cpaSel]));
 $("cpa-bdel") && ($("cpa-bdel").onclick = () => cpaDelete([...cpaSel]));
+$("cpa-bdays") && ($("cpa-bdays").onclick = () => cpaAddDays([...cpaSel]));
+/* ---- Admin CỘNG NGÀY TAY cho khách (SQL v26 admin_cloud_add_days): đi đúng đường gia hạn → máy chủ cộng vào máy rồi ghi hạn mới ---- */
+async function cpaAddDays(ids) {
+  const rows = CPA_ROWS.filter(p => ids.includes(p.id) && ["active", "expired"].includes(p.status));
+  if (!rows.length) return toast("Chỉ cộng được ngày cho máy đang chạy hoặc vừa hết hạn (trong 30 phút).", 1);
+  const who = rows.length === 1 ? `máy "${rows[0].name}" (khách ${cpaUname(rows[0].user_id) || "?"})` : `${rows.length} máy đã chọn`;
+  const v = prompt(`Cộng thêm bao nhiêu ngày cho ${who}?\n(1–365 ngày, khách KHÔNG bị trừ tiền)`, "1"); if (v === null) return;
+  const d = Math.floor(+String(v).trim());
+  if (!(d >= 1 && d <= 365)) return toast("Số ngày phải từ 1 đến 365.", 1);
+  const note = prompt("Ghi chú (không bắt buộc — VD: đền bù máy lỗi):", ""); if (note === null) return;
+  const { data, error } = await sb.rpc("admin_cloud_add_days", { p_ids: rows.map(p => p.id), p_days: d, p_note: note.trim() || null });
+  if (error) return toast(/admin_cloud_add_days|does not exist|schema cache/i.test(error.message || "") ? "Chưa chạy file SQL v26 trong Supabase." : errMsg(error), 1);
+  const sk = (data && data.skipped) || [], n = (data && data.added) || 0;
+  toast((n ? `➕ Đã cộng ${d} ngày cho ${n} máy — máy chủ ghi hạn mới trong khoảng 15 giây.` : "Chưa cộng được máy nào.")
+    + (sk.length ? ` Bỏ qua ${sk.length} máy: ${sk.map(x => x.name + " — " + x.why).join("; ")}` : ""), n ? 0 : 1);
+  reloadCpa();
+}
+/* ---- Admin: GIA HẠN BỊ THIẾU NGÀY (lỗi máy chủ cũ) — SQL v26 admin_cp_renew_check → bù bằng admin_cloud_add_days(…, 'fix') ---- */
+let RNF = [];
+const rnfDays = x => Math.max(1, Math.round(+x.missing_days || 0));
+function rnfNodeOk(node) { const n = NODES.find(x => x.id === node); return !!(n && n.metrics && +n.metrics.renew_v >= 2); }
+function rnfRender() {
+  const tb = $("rnf-tb"); if (!tb) return;
+  const left = RNF.filter(x => !x.done && rnfNodeOk(x.node));
+  show("rnf-tblbox", RNF.length > 0); show("rnf-allbox", left.length > 1);
+  const f = d => d ? new Date(d).toLocaleString("vi-VN") : "—";
+  tb.innerHTML = RNF.map(x => { const ok = rnfNodeOk(x.node), d = rnfDays(x);
+    return `<tr><td><b>${esc(x.name)}</b><div class="hint">${esc(x.node || "?")} · ${x.status === "expired" ? "⏸ đang tạm dừng" : "đang chạy"} · ${+x.renews || 0} lần gia hạn (${vnd(+x.renew_paid || 0)})</div></td>`
+      + `<td>${esc(x.user_name || "?")}</td><td class="num">${f(x.expires_at)}</td><td class="num">${f(x.expected_at)}</td><td class="num"><b>${d} ngày</b></td>`
+      + `<td style="text-align:right;white-space:nowrap">${x.done ? `<span class="pill ok">✓ Đã bù</span>`
+          : ok ? `<button class="btn sm" type="button" data-rnfgo="${esc(x.id)}">🩹 Bù ${d} ngày</button>`
+          : `<span class="hint" title="Máy chủ chưa chạy bản sửa gia hạn — bù lúc này máy chủ sẽ làm mất ngày lần nữa">⚠ ${esc(x.node || "?")} chưa cập nhật</span>`}</td></tr>`; }).join("");
+}
+async function rnfCheck() {
+  try { await loadNodes(); } catch (e) {}
+  const { data, error } = await sb.rpc("admin_cp_renew_check");
+  if (error) { RNF = []; rnfRender(); $("rnf-msg").textContent = /admin_cp_renew_check|does not exist|schema cache/i.test(error.message || "") ? "Chưa chạy file SQL v26 trong Supabase." : errMsg(error); return; }
+  RNF = Array.isArray(data) ? data : [];
+  const tot = RNF.reduce((t, x) => t + rnfDays(x), 0), stale = [...new Set(RNF.filter(x => !rnfNodeOk(x.node)).map(x => x.node || "?"))];
+  $("rnf-msg").innerHTML = RNF.length ? `Có <b>${RNF.length} máy</b> đang thiếu tổng <b>${tot} ngày</b>. Bấm Bù để cộng (máy chủ ghi trong khoảng 15 giây, khách thấy hạn mới).`
+      + (stale.length ? ` <b style="color:var(--bad)">Máy chủ ${esc(stale.join(", "))} chưa cập nhật bản sửa gia hạn — cập nhật máy chủ trước rồi bấm Kiểm tra lại.</b>` : "")
+    : "✅ Không có máy nào bị thiếu ngày.";
+  rnfRender();
+}
+async function rnfGo(ids) {
+  const list = RNF.filter(x => ids.includes(x.id) && !x.done && rnfNodeOk(x.node)); if (!list.length) return;
+  if (!confirm(list.length === 1 ? `Bù ${rnfDays(list[0])} ngày cho máy "${list[0].name}" (khách ${list[0].user_name})?` : `Bù ngày cho ${list.length} máy (tổng ${list.reduce((t, x) => t + rnfDays(x), 0)} ngày)?`)) return;
+  let n = 0;
+  for (const x of list) {                                  // mỗi máy thiếu số ngày khác nhau → bù từng máy
+    const { data, error } = await sb.rpc("admin_cloud_add_days", { p_ids: [x.id], p_days: rnfDays(x), p_note: "bù gia hạn bị thiếu", p_kind: "fix" });
+    if (error) { toast(errMsg(error), 1); break; }
+    if (data && data.added) { x.done = true; n++; } else if (data && data.skipped && data.skipped[0]) toast(`${x.name}: ${data.skipped[0].why}`, 1);
+  }
+  rnfRender(); if (n) { toast(`🩹 Đã bù ngày cho ${n} máy — máy chủ ghi hạn mới trong khoảng 15 giây.`); reloadCpa(); }
+}
+$("rnf-check") && ($("rnf-check").onclick = () => busy($("rnf-check"), rnfCheck));
+$("rnf-all") && ($("rnf-all").onclick = () => busy($("rnf-all"), () => rnfGo(RNF.map(x => x.id))));
+$("rnf-tb") && ($("rnf-tb").onclick = e => { const b = e.target.closest("[data-rnfgo]"); if (b) busy(b, () => rnfGo([b.dataset.rnfgo])); });
 
 /* ---- Admin: xoá sạch máy trên 1 server ---- */
 $("cpa-nodes") && $("cpa-nodes").addEventListener("click", async e => {
@@ -5942,6 +6055,103 @@ $("cpa-nodes") && $("cpa-nodes").addEventListener("click", async e => {
   const { data, error } = await sb.rpc("admin_cloud_delete", { p_node: n.id }); if (error) return v6Err(error);
   toast(`Đang xoá ${data || 0} máy trên ${n.name}…`); reloadCpa();
 });
+
+/* ---- Admin: ⚡ KHỞI ĐỘNG LẠI MÁY CHỦ (nút trên thẻ máy chủ). Gọi cpapi của ĐÚNG máy chủ đó (metrics.base):
+        GET admin/server (tự đăng nhập Windows?, số máy đang chạy) · POST admin/reboot-server {confirm: mã máy chủ} → tắt êm máy khách → Windows khởi động lại
+        → tự đăng nhập → bảng --auto → bật lại máy khách. Phần phụ: ép khởi động lại 1 máy khách (POST <máy>/reboot {force:true}). ---- */
+let nrbNode = null, SRV = null, SRV_BUSY = false; const NRB = new Map();          // NRB: id máy → { st: "run" | "ok" | "err", msg }
+function nrbNodeBase(n) {               // máy chủ: chỉ dùng địa chỉ máy chủ tự báo — KHÔNG đoán (đoán sai = khởi động lại nhầm máy chủ khác)
+  const b = n && n.metrics && n.metrics.base;
+  return /^https:\/\/[\w.-]+\.(cloudblue\.vn|blueroblox\.shop)$/.test(b || "") ? b : null;
+}
+function nrbBase(n, p) { return nrbNodeBase(n) || cpHost(p); }
+function srvRender() {
+  const n = NODES.find(x => x.id === nrbNode), box = $("srv-st"); if (!n || !box) return;
+  const s = SRV, h = s && +s.uptime_h || 0;
+  box.innerHTML = !s ? `<div style="grid-column:1/-1">Đang đọc tình trạng máy chủ…</div>`
+    : s.error ? `<div style="grid-column:1/-1;color:var(--bad)">❌ ${esc(s.error)}</div>`
+    : `<div>Windows tự đăng nhập<b style="color:${s.autologon ? "var(--ok)" : "var(--bad)"}">${s.autologon ? "✅ Đã bật" : "❌ Chưa bật (bảng → 🔑)"}</b></div>`
+      + `<div>Tự mở bảng CloudBlue<b style="color:${s.autostart ? "var(--ok)" : "var(--bad)"}">${s.autostart ? "✅ Có" : "❌ Chưa"}</b></div>`
+      + `<div>Máy khách đang chạy<b>${+s.running || 0} / ${+s.phones || 0}</b></div>`
+      + `<div>Windows đã bật<b>${h >= 48 ? Math.round(h / 24) + " ngày" : h + " giờ"}</b></div>`
+      + (s.rebooting || s.pending ? `<div style="grid-column:1/-1;color:var(--warn, #ffd666)">⏳ Máy chủ này đang khởi động lại.</div>` : "");
+  const needAny = !!(s && !s.error && !s.autologon), typed = ($("srv-confirm").value || "").trim().toLowerCase() === String(n.id).toLowerCase();
+  show("srv-anybox", needAny);
+  $("srv-go").disabled = SRV_BUSY || !s || !!s.error || !!s.rebooting || !typed || (needAny && !$("srv-any").checked);
+}
+async function srvLoad() {
+  const n = NODES.find(x => x.id === nrbNode); if (!n) return;
+  SRV = null; srvRender();
+  const base = nrbNodeBase(n);
+  if (!base) { SRV = { error: "Chưa biết địa chỉ của máy chủ này — đợi máy chủ gửi báo cáo (thẻ 'Cập nhật vừa xong') rồi mở lại." }; return srvRender(); }
+  let r;
+  try { r = await cpapiCall("admin/server", { base }); }
+  catch (e) { r = { error: e.status === 404 ? "Máy chủ chưa có cpapi.py mới — tải bản mới về máy chủ rồi thử lại." : (e.message || String(e)) }; }
+  if (nrbNode === n.id) { SRV = r; srvRender(); }
+}
+async function srvGo() {
+  const n = NODES.find(x => x.id === nrbNode), base = nrbNodeBase(n); if (!n || !base || !SRV || SRV.error || $("srv-go").disabled) return;
+  if (!confirm(`KHỞI ĐỘNG LẠI CẢ MÁY CHỦ ${n.name} (${n.id})?\n\n${+SRV.running || 0} máy khách đang chạy sẽ tắt, khoảng 3–8 phút sau tự bật lại. Trong lúc đó khách không dùng được máy.`)) return;
+  const msg = $("srv-msg"); SRV_BUSY = true; msg.style.color = "var(--warn, #ffd666)"; msg.textContent = "⏳ Đang tắt êm các máy khách rồi khởi động lại Windows (1–3 phút)…"; srvRender();
+  try {
+    const m = await cpRunJob("admin/reboot-server", "Đang khởi động lại máy chủ " + n.name, base, { confirm: $("srv-confirm").value.trim(), anyway: !!$("srv-any").checked });
+    msg.style.color = "var(--ok)"; msg.textContent = "✅ " + (m || "Máy chủ đang khởi động lại.") + " Thẻ máy chủ sẽ báo Mất kết nối rồi xanh lại.";
+    SRV.rebooting = true; toast(`✅ ${n.name}: máy chủ đang khởi động lại`);
+  } catch (e) {
+    const m = String((e && e.message) || e).replace(/^NO_AUTOLOGON:\s*/, "");
+    msg.style.color = "var(--bad)"; msg.textContent = "❌ " + m; toast(`❌ ${n.name}: ${m}`, 1);
+  }
+  SRV_BUSY = false; srvRender();
+}
+function nrbRender() {
+  const n = NODES.find(x => x.id === nrbNode), box = $("nrb-list"); if (!n || !box) return;
+  const q = ($("nrb-q").value || "").trim().toLowerCase();
+  const all = CPA_ROWS.filter(p => p.node === n.id && p.status === "active");
+  const rows = all.filter(p => { const u = cpaUser(p.user_id) || {}; return !q || [p.name, u.username, u.email, p.container, p.port].join(" ").toLowerCase().includes(q); })
+    .sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), "vi", { numeric: true }));
+  $("nrb-cnt").textContent = `${all.length} máy đang chạy${q ? " · khớp tìm: " + rows.length : ""}`;
+  box.innerHTML = rows.length ? rows.map(p => {
+    const u = cpaUser(p.user_id), lk = cpLocked(p), s = NRB.get(p.id), run = s && s.st === "run";
+    const st = s ? `<div class="nrb-st" style="color:${s.st === "err" ? "var(--bad)" : s.st === "ok" ? "var(--ok)" : "var(--warn, #ffd666)"}">${esc(s.msg)}</div>` : "";
+    return `<div class="nrb-row"><div class="nm"><b>${esc(p.name)}</b><small>${esc((u && (u.username || u.email)) || "—")} · ${+p.ram}GB · ${+p.cpu} nhân · Android ${esc(p.android || "?")}${p.port ? " · cổng " + esc(p.port) : ""}${p.container ? " · " + esc(p.container) : ""}</small>${st}</div>`
+      + (lk ? `<span class="pill bad">🔒 Đang khoá</span>`
+            : `<button class="btn ${run ? "ghost" : "danger"} sm" type="button" data-nrbgo="${esc(p.id)}"${run ? " disabled" : ""}>${run ? "⏳ Đang làm…" : "🔁 Khởi động lại"}</button>`) + `</div>`;
+  }).join("") : `<div class="hint" style="padding:12px;text-align:center">${q ? "Không có máy nào khớp." : "Server này không có máy nào đang chạy."}</div>`;
+}
+async function nrbOpen(id) {
+  const n = NODES.find(x => x.id === id); if (!n) return;
+  nrbNode = id; SRV = null; SRV_BUSY = false;
+  $("nrb-who").textContent = `${n.name} (${n.id})`;
+  $("srv-confirm").value = ""; $("srv-confirm").placeholder = `Gõ ${n.id} để xác nhận`; $("srv-any").checked = false; $("srv-msg").textContent = "";
+  $("nrb-q").value = ""; $("nrb-one").open = false;
+  show("nrbdlg"); srvLoad();
+  if (!CPA_ROWS.length) { $("nrb-list").innerHTML = `<div class="hint" style="padding:12px">Đang tải danh sách máy…</div>`; try { await reloadCpa(); } catch (e) {} }
+  nrbRender();
+  if (CPA_ROWS.some(p => p.user_id && !cpaUser(p.user_id))) cpaFetchUsers().then(nrbRender, () => {});
+  setTimeout(() => { try { $("srv-confirm").focus(); } catch (e) {} }, 60);
+}
+async function nrbGo(pid) {
+  const p = CPA_ROWS.find(x => x.id === pid), n = NODES.find(x => x.id === nrbNode); if (!p || !n) return;
+  const u = cpaUser(p.user_id), who = u ? " của " + (u.username || u.email) : "";
+  if (!confirm(`Ép khởi động lại máy "${p.name}"${who} trên ${n.name}?\n\nMáy tắt hẳn rồi bật lại (1–3 phút). App và dữ liệu của khách giữ nguyên, khách mất hình trong lúc đó.`)) return;
+  NRB.set(pid, { st: "run", msg: "⏳ Đang tắt hẳn rồi bật lại (1–3 phút)…" }); nrbRender();
+  try {
+    const msg = await cpRunJob(pid + "/reboot", "Đang ép khởi động lại " + p.name, nrbBase(n, p), { force: true });
+    NRB.set(pid, { st: "ok", msg: "✅ " + (msg || "Đã khởi động lại xong.") }); toast(`✅ ${p.name}: ${msg || "đã khởi động lại xong."}`);
+  } catch (e) {
+    const m = (e && e.message) || String(e);
+    NRB.set(pid, { st: "err", msg: "❌ " + m }); toast(`❌ ${p.name}: ${m}`, 1);
+  }
+  nrbRender();
+}
+$("srv-confirm") && ($("srv-confirm").oninput = srvRender);
+$("srv-confirm") && $("srv-confirm").addEventListener("keydown", e => { if (e.key === "Enter" && !$("srv-go").disabled) srvGo(); });
+$("srv-any") && ($("srv-any").onchange = srvRender);
+$("srv-go") && ($("srv-go").onclick = srvGo);
+$("nrb-q") && ($("nrb-q").oninput = nrbRender);
+$("nrb-close") && ($("nrb-close").onclick = () => show("nrbdlg", false));
+$("nrb-list") && ($("nrb-list").onclick = e => { const b = e.target.closest("[data-nrbgo]"); if (b && !b.disabled) nrbGo(b.dataset.nrbgo); });
+$("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => { const b = e.target.closest("[data-nreboot]"); if (b) nrbOpen(b.dataset.nreboot); });
 
 
 /* ===================== THÔNG BÁO + NỘI QUY KHI MỞ WEB ===================== */
@@ -6193,6 +6403,7 @@ function openIosGuide() { show("iosguide"); }
   }
   let info = null;
   try { const r = await fetch("/download/app.json", { cache: "no-store" }); if (r.ok) info = await r.json(); } catch (e) {}
+  if (info && info.ver) info.version = info.ver;    // "version" có thêm dòng hướng dẫn cho app cũ (khoá ký cũ) → web dùng số bản gọn ở "ver"
   if (!info || !info.version) return;
   APP_INFO = info; try { renderAppHelp(); } catch (e) {}
   const mb = info.size ? " · " + (info.size / 1048576).toFixed(1) + "MB" : "";
@@ -6505,8 +6716,8 @@ $("tk-off") && ($("tk-off").onclick = async () => {
 { const _lcTk = loadCloudAdm; loadCloudAdm = async function () { const r = await _lcTk.apply(this, arguments); try { tkFill(); } catch (e) {} return r; }; }
 
 /* ========= ROOT MÁY (Magisk) — khách bấm ở danh sách máy, admin root tất cả ========= */
-async function cpRunJob(path, label, base) {
-  const j = await cpapiCall(path, { method: "POST", json: {}, base });
+async function cpRunJob(path, label, base, body) {
+  const j = await cpapiCall(path, { method: "POST", json: body || {}, base });
   toast(label + "… " + L("(có thể mất 1–2 phút)", "(may take 1–2 minutes)"));
   const t0 = Date.now();
   while (Date.now() - t0 < 2 * 3600 * 1000) {
@@ -6882,7 +7093,7 @@ function amCmp(a, b) {        // so phiên bản giống máy chủ (_ver_lt): s
 async function amLatest(kind) {   // bản mới nhất đang phát hành: /download/pc.json · /download/app.json (field "version")
   const r = await fetch(`/download/${kind}.json?t=${Date.now()}`, { cache: "no-store" });
   if (!r.ok) throw new Error("HTTP " + r.status);
-  const v = String(((await r.json()) || {}).version || "").trim();
+  const j = (await r.json()) || {}, v = String(j.ver || j.version || "").trim();      // app.json: "ver" = số bản gọn
   if (!amVer(v)) throw new Error("file không có số phiên bản hợp lệ");
   return v;
 }
