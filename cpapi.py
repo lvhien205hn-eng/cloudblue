@@ -126,6 +126,8 @@ def maint_text():
 
 _ucache, _pcache = {}, {}
 _busy = set()          # máy đang khởi động lại / đổi cấu hình
+_REBOOT = {"t": 0}     # lúc admin bấm khởi động lại CẢ máy chủ (chặn bấm 2 lần)
+IS_WIN = os.name == "nt"
 
 
 def whoami(token):
@@ -877,6 +879,38 @@ class H(BaseHTTPRequestHandler):
                     return f"Đã root {ok} máy." + (" Chưa được: " + "; ".join(bad[:8]) if bad else "")
                 run_job(jid, work)
                 return self.send_json(200, {"job": jid})
+            if act == "server" and self.command == "GET":           # admin: tình trạng máy chủ trước khi khởi động lại cả máy chủ
+                if not IS_WIN: return self.send_json(400, {"error": "Chỉ khởi động lại được máy chủ Windows."})
+                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "serverinfo"], capture_output=True, timeout=120)
+                m = re.search(r"SERVERINFO (\{.*\})", out(r))
+                if not m:
+                    return self.send_json(409, {"error": "Máy chủ chưa có phonectl.py mới — tải bản mới về máy chủ rồi thử lại."} if r.returncode == 2
+                                          else {"error": "Không đọc được tình trạng máy chủ: " + out(r)[-200:]})
+                j = json.loads(m.group(1)); j["node"] = NODE_ID; j["rebooting"] = bool(_REBOOT.get("t") and time.time() - _REBOOT["t"] < 600)
+                return self.send_json(200, j)
+            if act == "reboot-server" and self.command == "POST":   # admin: ÉP KHỞI ĐỘNG LẠI CẢ MÁY CHỦ — tắt êm máy khách → Windows khởi động lại
+                if not IS_WIN: return self.send_json(400, {"error": "Chỉ khởi động lại được máy chủ Windows."})
+                b = self.jbody()
+                if str(b.get("confirm") or "").strip().lower() != str(NODE_ID).strip().lower():
+                    return self.send_json(400, {"error": f"Gõ đúng mã máy chủ ({NODE_ID}) để xác nhận."})
+                if _REBOOT.get("t") and time.time() - _REBOOT["t"] < 600: return self.send_json(409, {"error": "Máy chủ này đang khởi động lại rồi."})
+                _REBOOT["t"] = time.time()
+                jid = new_job(me["uid"], "Khởi động lại máy chủ " + NODE_ID)
+                log("admin khởi động lại máy chủ:", me["uid"])
+                def work(j):
+                    try:
+                        JOBS[j]["msg"] = "Đang tắt êm các máy khách (tối đa ~2 phút)…"
+                        r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "rebootserver"] + (["--anyway"] if b.get("anyway") else []),
+                                           capture_output=True, timeout=420)
+                        o = out(r)
+                        if r.returncode == 7: raise RuntimeError("NO_AUTOLOGON: Windows của máy chủ chưa bật tự đăng nhập (bảng CloudBlue → 🔑 Tự đăng nhập + tự chạy). Khởi động lại sẽ dừng ở màn hình mật khẩu.")
+                        if r.returncode: raise RuntimeError("Chưa khởi động lại được: " + o[-300:])
+                        m = re.search(r"REBOOT_OK (.*)", o)
+                        return m.group(1).strip() if m else "Máy chủ đang khởi động lại."
+                    except Exception:
+                        _REBOOT["t"] = 0; raise
+                run_job(jid, work)
+                return self.send_json(200, {"job": jid})
             if act == "gputest" and self.command == "GET":          # máy thử GPU: trạng thái
                 return self.send_json(200, gpu_status())
             if act == "gputest" and self.command == "POST":
@@ -1317,12 +1351,30 @@ class H(BaseHTTPRequestHandler):
 
         if act == "reboot" and self.command == "POST":
             if not cont: return self.send_json(409, {"error": "Không xác định được máy."})
-            jid = new_job(me["uid"], "Khởi động lại")
+            force = bool(self.jbody().get("force")) and me["admin"]    # admin ÉP khởi động lại: tắt hẳn (máy treo → tắt cưỡng bức) rồi bật
+            if force and is_locked(p): return self.send_json(409, {"error": "Máy đang bị khoá — mở khoá trước rồi hãy ép khởi động lại."})
+            if force and pid in _busy: return self.send_json(409, {"error": "Máy đang khởi động lại / đổi cấu hình — đợi xong rồi thử lại."})
+            jid = new_job(me["uid"], "Ép khởi động lại" if force else "Khởi động lại")
+            if force: _busy.add(pid)                                  # giữ chỗ ngay: bấm 2 lần liền không chạy chồng
             def work(j):
-                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "restart", cont], capture_output=True, timeout=120)
-                if r.returncode: raise RuntimeError("Không khởi động lại được: " + out(r)[-200:])
-                JOBS[j]["msg"] = "Đang khởi động Android (1–3 phút)…"
-                return "Máy đã khởi động lại xong." if wait_ready(cont, port) else "Máy đã khởi động, đang kết nối lại…"
+                if not force:
+                    r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "restart", cont], capture_output=True, timeout=120)
+                    if r.returncode: raise RuntimeError("Không khởi động lại được: " + out(r)[-200:])
+                    JOBS[j]["msg"] = "Đang khởi động Android (1–3 phút)…"
+                    return "Máy đã khởi động lại xong." if wait_ready(cont, port) else "Máy đã khởi động, đang kết nối lại…"
+                try:
+                    JOBS[j]["msg"] = "Đang tắt hẳn máy (máy treo thì tắt cưỡng bức)…"
+                    cmd = ["python3", os.path.join(HOME, "phonectl.py"), "restart", cont]
+                    r = subprocess.run(cmd + ["--force"], capture_output=True, timeout=420)
+                    if r.returncode == 2 and b"--force" in (r.stderr or b""):     # phonectl cũ chưa có --force → khởi động lại thường
+                        r = subprocess.run(cmd, capture_output=True, timeout=180)
+                    if r.returncode: raise RuntimeError("Không ép khởi động lại được: " + out(r)[-300:])
+                    hard = "cưỡng bức" in out(r)
+                    JOBS[j]["msg"] = "Đang khởi động Android (1–3 phút)…"
+                    if not wait_ready(cont, port): return "Máy đã bật lại, đang kết nối…" + (" (máy treo — đã tắt cưỡng bức)" if hard else "")
+                    return "Đã ép khởi động lại xong" + (" (máy treo — đã tắt cưỡng bức)." if hard else ".")
+                finally:
+                    _busy.discard(pid)
             run_job(jid, work)
             return self.send_json(200, {"job": jid})
 

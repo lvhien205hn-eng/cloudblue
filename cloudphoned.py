@@ -476,7 +476,7 @@ def heartbeat():
     if WIN: a_ram, a_cpu, c_ram, c_cpu = win_caps(st)   # Windows: sức chứa theo RAM trống thật, CPU dùng chung
     metrics = {"cpu_pct": cp_now, "cpu_avg5": avg5, "cpu_over": CPU_OVER, "cpu_busy_pct": CPU_BUSY, "cpu_busy": busy, "ram_over": RAM_OVER, "ram_pct": ram_pct, "ram_busy_pct": RAM_BUSY, "ram_busy": ram_busy, "disk_busy": disk_busy, "disk_busy_pct": DISK_BUSY, "load": [round(x, 2) for x in os.getloadavg()], "cpu_temp": cpu_temp(),
                "ram_used": round(ram_t - ram_avail, 1), "gpus": gpus(), "disk_data": disk(DATA_ROOT), "disk_root": disk("/"),
-               "running": running, "uptime_h": up_h, "base": BASE, "primary": PRIMARY}
+               "running": running, "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -531,24 +531,47 @@ def do_cancel(row):
     phonectl(["delete", name])
     patch(row["id"], {"status": "cancelled"})
 
+_renew_note = {}
 def do_renew(row):
+    """Khách đã trả tiền gia hạn (hoặc admin cộng ngày) → cộng vào máy rồi ghi hạn mới lên web.
+       CHỈ xoá số ngày chờ cộng khi máy chủ ĐÃ ghi được hạn mới (bản cũ xoá luôn dù phonectl không ghi được → khách mất ngày).
+       Chưa ghi được → giữ nguyên, 15 giây sau thử lại, báo admin (1 lần / giờ / máy)."""
     name = row.get("container") or cname(row)
     d = int(row["pending_renew_days"])
+    before = phone_state(name)
+    old = parse_dt(before["expires"]) if before and before.get("expires") else None
+    db_old = parse_dt(row["expires_at"]) if row.get("expires_at") else None
+    gap = datetime.timedelta(days=d) - datetime.timedelta(minutes=5)
+    if before and old and db_old and old >= db_old + gap:          # lần trước ĐÃ cộng vào máy chủ nhưng ghi lên web lỗi (mạng) → chỉ ghi lại, KHÔNG cộng lần 2
+        print(f"[gia hạn] {name} +{d}n đã cộng từ lần trước → chỉ ghi hạn lên web")
+        patch(row["id"], {"pending_renew_days": 0, "expires_at": old.isoformat(), "status": "active", "error": None, "stream_url": stream_url(before["port"])})
+        return
     print(f"[gia hạn] {name} +{d}n")
-    r = phonectl(["renew", name, "--days", str(d)])
+    args = ["renew", name, "--days", str(d)]
+    r = phonectl(args + (["--base", db_old.isoformat()] if db_old else []))      # cộng từ hạn muộn hơn (máy chủ / web)
+    if r.returncode == 2 and "--base" in (r.stderr or ""):                       # phonectl cũ chưa hiểu --base
+        r = phonectl(args)
     ps = phone_state(name)
-    fields = {"pending_renew_days": 0}
-    if ps:
-        fields["expires_at"] = parse_dt(ps["expires"]).isoformat()
-        fields["status"] = "active"; fields["error"] = None
-        fields["stream_url"] = stream_url(ps["port"])
-    patch(row["id"], fields)
+    new = parse_dt(ps["expires"]) if ps and ps.get("expires") else None
+    floor = max([x for x in (old, db_old) if x] or [now()])
+    if not new or new < floor + gap:                                             # máy chủ CHƯA ghi được hạn mới (thước đo: file, không phải mã thoát)
+        why = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-1:] or ["?"]
+        print(f"   ⚠ gia hạn {name} CHƯA ghi được (giữ +{d} ngày chờ, thử lại sau): {why[0][:200]}")
+        if time.time() - _renew_note.get(name, 0) > 3600:
+            _renew_note[name] = time.time()
+            try: notify(f"⚠️ <b>{NODE_ID}</b>: gia hạn máy <b>{row.get('name') or name}</b> +{d} ngày chưa ghi được — máy chủ tự thử lại mỗi 15 giây. Lý do: {why[0][:160]}")
+            except Exception: pass
+        return
+    patch(row["id"], {"pending_renew_days": 0, "expires_at": new.isoformat(), "status": "active", "error": None, "stream_url": stream_url(ps["port"])})
+    _renew_note.pop(name, None)
 
 def do_expiry(row):
     """Hết hạn → tạm dừng (giữ dữ liệu 30 phút). Quá 30 phút → xoá máy + toàn bộ dữ liệu."""
     name = row.get("container") or cname(row)
     ps = phone_state(name)
-    exp = parse_dt(ps["expires"]) if ps else (parse_dt(row["expires_at"]) if row.get("expires_at") else None)
+    if int(row.get("pending_renew_days") or 0) > 0: return      # khách vừa gia hạn, máy chủ đang cộng → không tạm dừng / xoá
+    ex = [parse_dt(x) for x in ((ps or {}).get("expires"), row.get("expires_at")) if x]
+    exp = max(ex) if ex else None                            # lấy hạn MUỘN hơn (máy chủ / web) — lệch nhau thì không tắt nhầm máy khách
     if not exp: return
     t = now()
     m = maint_state()
