@@ -11,13 +11,16 @@
 #               DỰ PHÒNG   WebSocket 127.0.0.1:STREAM_WS_PORT (8020) qua đường hầm Cloudflare (STREAM_WS=wss://…)
 #  Giao thức:   BRS2 — docs/STREAM-PROTOCOL.md
 #
+#  Mở cổng:     máy chủ TỰ mở cổng TCP STREAM_PORT trên modem bằng UPnP-IGD (lúc chạy + mỗi 30 phút) — modem tắt UPnP thì mở tay
 #  Chạy:  python bluestream.py            (bảng BlueRoblox tự chạy — dịch vụ "phat-hinh")
 #         python bluestream.py --selftest (máy Linux/thử: nguồn hình giả, không cần đăng nhập)
+#         python bluestream.py --upnp     (thử mở cổng trên modem bằng UPnP 1 lần, in kết quả — không chạy máy chủ)
 #  cloudphone.conf:  STREAM_PORT=8189 · STREAM_WS_PORT=8020 · STREAM_WS=wss://stream.blueroblox.shop/v2/stream
-#                    STREAM_PUBLIC_IP= (trống = tự dò) · STREAM_CPU=1 (luôn nén CPU) · NVENC_MAX=5
+#                    STREAM_PUBLIC_IP= (trống = tự dò) · STREAM_CPU=1 (luôn nén CPU) · NVENC_MAX=5 · UPNP=0 (không tự mở cổng)
 # =====================================================================================================
 import asyncio, base64, collections, ctypes, datetime, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
+import xml.etree.ElementTree as ET
 
 WIN = os.name == "nt"
 B = os.path.dirname(os.path.abspath(__file__))
@@ -860,12 +863,37 @@ def adb_connect(serial):
     except Exception: pass
 
 
+_ADB_GONE = ("offline", "not found", "no devices", "unauthorized", "connection reset", "closed", "protocol fault")
+
+
+def adb_ready(serial, wait=12.0):
+    """Chờ adb thấy máy ở trạng thái "device". Máy vừa khởi động lại giao diện (cài app sẵn, đổi ảnh nền…) hoặc adb vừa nối lại
+       → "offline" / "not found" vài giây: lệnh adb chạy lúc đó hỏng (push lỗi → chạm rơi xuống lệnh input chậm, hoặc mất hẳn).
+       Quá nửa thời gian vẫn chưa được → ngắt + nối lại 1 lần (adb TCP hay kẹt "offline"). True = sẵn sàng."""
+    if SELFTEST: return True
+    t0 = time.time(); kicked = False
+    while True:
+        adb_connect(serial)
+        code, out, _ = adb(serial, "get-state", timeout=5)
+        if code == 0 and out.strip() == "device": return True
+        if time.time() - t0 >= wait: return False
+        if not kicked and ":" in serial and time.time() - t0 > wait / 2:
+            kicked = True
+            try: subprocess.run([ADB, "disconnect", serial], capture_output=True, timeout=8, creationflags=NOWIN)
+            except Exception: pass
+        time.sleep(0.6)
+
+
 def push_jar(serial):
-    """Chép scrcpy-server vào máy (đã có đúng bản thì thôi)."""
-    code, out, _ = adb(serial, "shell", "ls", "-l", JAR_DEV, timeout=10)
-    if str(os.path.getsize(JAR)) not in out:
-        code, out, err = adb(serial, "push", JAR, JAR_DEV, timeout=60)
-        if code != 0: raise RuntimeError("push: " + (err or out)[-200:])
+    """Chép scrcpy-server vào máy (đã có đúng bản thì thôi). Máy đang "offline" → chờ adb sẵn sàng rồi thử lại 1 lần."""
+    for i in range(2):
+        code, out, err = adb(serial, "shell", "ls", "-l", JAR_DEV, timeout=10)
+        if code == 0 and str(os.path.getsize(JAR)) in out: return
+        if code == 0 or not any(w in (err or out).lower() for w in _ADB_GONE):
+            code, out, err = adb(serial, "push", JAR, JAR_DEV, timeout=60)
+            if code == 0: return
+        if i == 0 and any(w in (err or out).lower() for w in _ADB_GONE) and adb_ready(serial, 12): continue
+        raise RuntimeError("push: " + (err or out).strip()[-200:])
 
 
 def _recv_exact(s, n):
@@ -966,7 +994,7 @@ class ScrcpyVideo:
     def start(self):
         """Bật scrcpy-server + nối socket hình → (rộng, cao) THẬT của hình. Lỗi → RuntimeError."""
         self.started = time.time()
-        adb_connect(self.serial)
+        adb_ready(self.serial, 12)
         if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
         push_jar(self.serial)
         scid = random.randint(1, 0x7FFFFFFF)
@@ -1069,35 +1097,43 @@ class Control:
         self.sock = None; self.proc = None; self.fport = None; self.ready = threading.Event(); self.dead = False
         self.q = queue.Queue(maxsize=4000); self.lock = threading.Lock()
         self.nat = None; self.vw = self.vh = 0; self.mode = "scrcpy"; self.down = {}
-        self.seq = 1
+        self.seq = 1; self.retrying = False; self.nat_t = 0.0
 
     # ---------- khởi động (luồng nền) ----------
     def start(self):
         threading.Thread(target=self._writer, daemon=True).start()
+        if SELFTEST:
+            self.mode = "none"; self.ready.set(); return
         try:
-            if SELFTEST:
-                self.mode = "none"; self.ready.set(); return
-            adb_connect(self.serial)
-            self.nat = device_size(self.serial)
+            adb_ready(self.serial, 12)                      # máy vừa "offline" (đang cài app sẵn / adb vừa nối lại) → chờ, đừng hỏng ngay
+            self.nat = device_size(self.serial); self.nat_t = time.time()
             if self.dead: return self._cleanup()
-            if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
-            code, out, _ = adb(self.serial, "shell", "ls", "-l", JAR_DEV, timeout=10)
-            if str(os.path.getsize(JAR)) not in out:
-                code, out, err = adb(self.serial, "push", JAR, JAR_DEV, timeout=60)
-                if code != 0: raise RuntimeError("push: " + (err or out)[-200:])
+            self._open_scrcpy()
+            self.mode = "scrcpy"; self.ready.set()
+        except Exception as e:
             if self.dead: return self._cleanup()
+            log(f"  [điều khiển {self.serial}] scrcpy lỗi ({str(e).strip()[:160]}) → tạm dùng lệnh input, đang nối lại scrcpy…")
+            self._cleanup(keep_queue=True); self.mode = "input"; self.ready.set()
+            self._kick_retry()
+
+    def _open_scrcpy(self):
+        """Bật scrcpy-server 2.4 (chỉ điều khiển) trong máy + nối socket điều khiển. Lỗi → RuntimeError (phần dở dang: _cleanup)."""
+        if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
+        push_jar(self.serial)
+        if self.dead: raise RuntimeError("đã dừng")
+        if True:
             scid = random.randint(1, 0x7FFFFFFF)
             cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
                    "video=false audio=false control=true tunnel_forward=true send_device_meta=false cleanup=false "
                    "clipboard_autosync=true power_on=false")
             with self.lock:
-                if self.dead: return self._cleanup()
+                if self.dead: raise RuntimeError("đã dừng")
                 self.proc = subprocess.Popen([ADB, "-s", self.serial, "shell", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                              stdin=subprocess.DEVNULL, creationflags=NOWIN)
             threading.Thread(target=self._srvlog, args=(self.proc,), daemon=True).start()
             code, out, err = adb(self.serial, "forward", "tcp:0", f"localabstract:scrcpy_{scid:08x}", timeout=10)
             with self.lock: self.fport = int(out.strip()) if out.strip().isdigit() else None
-            if self.dead: return self._cleanup()
+            if self.dead: raise RuntimeError("đã dừng")
             if not self.fport: raise RuntimeError("forward: " + (err or out)[-200:])
             t0 = time.time(); sock = None
             while time.time() - t0 < 8 and not self.dead:
@@ -1113,15 +1149,37 @@ class Control:
                 time.sleep(0.15)
             if self.dead:
                 if sock: sock.close()
-                return self._cleanup()
+                raise RuntimeError("đã dừng")
             if not sock: raise RuntimeError("scrcpy không nối được")
-            self.sock = sock
+            with self.lock: self.sock = sock
             threading.Thread(target=self._reader, args=(sock,), daemon=True).start()
-            self.ready.set()
-        except Exception as e:
-            if self.dead: return self._cleanup()
-            log(f"  [điều khiển {self.serial}] scrcpy lỗi ({e}) → dùng lệnh input (chậm hơn)")
-            self._cleanup(keep_queue=True); self.mode = "input"; self.ready.set()
+
+    def _kick_retry(self):
+        """Đang chạm bằng lệnh input (chậm, adb hỏng là mất chạm) → luồng nền thử nối lại scrcpy cho tới khi được."""
+        with self.lock:
+            if self.retrying or self.dead: return
+            self.retrying = True
+        threading.Thread(target=self._retry_loop, daemon=True).start()
+
+    def _retry_loop(self):
+        delay = 2.0
+        try:
+            while not self.dead and self.mode == "input":
+                time.sleep(delay); delay = min(delay * 2, 20.0)
+                if self.dead: break
+                try:
+                    if not adb_ready(self.serial, 10): continue
+                    if not self.nat: self.nat = device_size(self.serial); self.nat_t = time.time()
+                    self._open_scrcpy()
+                    if self.dead: break
+                    self.mode = "scrcpy"; self.down.clear()
+                    log(f"  [điều khiển {self.serial}] đã nối lại scrcpy → chạm nhanh trở lại")
+                    return
+                except Exception:
+                    self._cleanup(keep_queue=True)
+        finally:
+            with self.lock: self.retrying = False
+            if self.dead: self._cleanup()
 
     def _srvlog(self, p):
         try:
@@ -1195,15 +1253,17 @@ class Control:
             elif kind == "raw":
                 self._raw(val)
             elif kind == "shell":
-                adb(self.serial, "shell", val, timeout=15)
+                cmd, t0 = val if isinstance(val, tuple) else (val, 0.0)
+                if t0 and cmd.startswith("input ") and time.time() - t0 > 4: continue      # chạm đã cũ (adb kẹt) → bỏ, khỏi bấm nhầm muộn
+                adb(self.serial, "shell", cmd, timeout=8 if cmd.startswith("input ") else 15)
 
     def _raw(self, b):
         s = self.sock
         if not s or self.mode != "scrcpy": return
         try: s.sendall(b)
         except OSError:
-            log(f"  [điều khiển {self.serial}] mất kết nối scrcpy → dùng lệnh input")
-            self._cleanup(keep_queue=True); self.mode = "input"
+            log(f"  [điều khiển {self.serial}] mất kết nối scrcpy → tạm dùng lệnh input, đang nối lại scrcpy…")
+            self._cleanup(keep_queue=True); self.mode = "input"; self._kick_retry()
 
     def _put(self, kind, val):
         try: self.q.put_nowait((kind, val))
@@ -1212,7 +1272,7 @@ class Control:
     def _send(self, b):
         if self.mode in ("scrcpy",) or not self.ready.is_set(): self._put("raw", b)
 
-    def _shell(self, c): self._put("shell", c)
+    def _shell(self, c): self._put("shell", (c, time.time()))
 
     # ---------- toạ độ ----------
     def set_view(self, vw, vh):
@@ -1221,6 +1281,8 @@ class Control:
     def screen(self):
         """Kích thước màn hình máy theo hướng HIỆN TẠI (đoán hướng theo tỉ lệ hình đang quay) — scrcpy đòi đúng số này."""
         vw, vh = self.vw or 720, self.vh or 1280
+        if not self.nat and time.time() - self.nat_t > 3 and not SELFTEST:
+            self.nat_t = time.time(); self.nat = device_size(self.serial)
         w, h = self.nat if self.nat and min(self.nat) > 0 else (vw, vh)
         if (vw > vh) != (w > h): w, h = h, w
         return w & ~7, h & ~7
@@ -2104,6 +2166,277 @@ def firewall():
                     f"localport={PORT}"], capture_output=True, creationflags=NOWIN)
 
 
+# ================================================================ UPnP-IGD: máy chủ TỰ MỞ CỔNG TCP PORT trên modem
+# Trước đây admin mỗi máy chủ phải vào trang modem (FPT…) mở cổng bằng tay — máy nào chưa mở thì khách phải đi đường hầm
+# Cloudflare (chậm). Giờ máy chủ tự xin modem: SSDP tìm modem → đọc mô tả thiết bị → AddPortMapping TCP PORT → IP LAN:PORT.
+# Làm lúc chạy + mỗi 30 phút (gia hạn, modem khởi động lại, máy đổi IP LAN: cổng cũ mang tên "CloudBlue <NODE_ID>" tự xoá rồi mở lại).
+# Nhật ký chỉ ghi khi kết quả đổi ("UPnP: ✓ …" / "UPnP: ✗ …"). Tắt: UPNP=0 trong cloudphone.conf.
+# Thử tay (không chạy máy chủ):  python bluestream.py --upnp
+UPNP = str(C.get("UPNP", "1")).strip().lower() not in ("0", "off", "false", "no")
+UPNP_EVERY = 30 * 60                 # mở được → làm lại sau 30 phút
+UPNP_RETRY = 120                     # chưa được → thử lại sau 2, 4, 8, 16 phút… (tối đa 30) — mới bật máy, modem đang khởi động lại
+UPNP_BUDGET = 18.0                   # 1 lần thử tối đa ~18 giây (mỗi lần gọi modem ≤ 4 giây)
+SSDP_ADDR = ("239.255.255.250", 1900)
+SSDP_ST = ("urn:schemas-upnp-org:device:InternetGatewayDevice:1", "urn:schemas-upnp-org:device:InternetGatewayDevice:2",
+           "urn:schemas-upnp-org:service:WANIPConnection:1", "urn:schemas-upnp-org:service:WANPPPConnection:1")
+UPNP_NO_ANSWER = "modem không trả lời UPnP (UPnP đang tắt trên modem hoặc modem không hỗ trợ) — mở cổng bằng tay trong trang modem"
+_UPNP_NAT = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10")
+_UPNP_HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))     # nói thẳng với modem: proxy hệ thống không xen vào
+
+
+class UpnpFault(Exception):
+    """Modem báo lỗi / không trả lời. code = mã lỗi UPnP (718 = cổng đã có người giữ, 725…) hoặc None (mạng, HTTP)."""
+    def __init__(self, code, desc):
+        super().__init__(f"lỗi {code} {desc}" if code else desc); self.code, self.desc = code, desc
+
+
+def _upnp_why(e):
+    r = getattr(e, "reason", None) if isinstance(e, urllib.error.URLError) else None
+    if isinstance(e, (socket.timeout, TimeoutError)) or isinstance(r, (socket.timeout, TimeoutError)): return "hết giờ chờ modem"
+    if isinstance(e, ConnectionRefusedError) or isinstance(r, ConnectionRefusedError): return "modem từ chối kết nối"
+    return str(r or e) or e.__class__.__name__
+
+
+def _ip4(s):
+    """'1.2.3.4' → IPv4Address · rỗng / 0.0.0.0 / sai → None."""
+    import ipaddress
+    try: a = ipaddress.IPv4Address(str(s or "").strip())
+    except ValueError: return None
+    return None if a.is_unspecified else a
+
+
+def _upnp_http(url, deadline, data=None, headers=None):
+    """GET (data=None) / POST tới modem → (mã HTTP, nội dung ≤ 256 KB). Mỗi lần chờ ≤ 4 giây và không quá `deadline`.
+       HTTP 500 (lỗi SOAP) vẫn trả nội dung để đọc errorCode."""
+    left = deadline - time.monotonic()
+    if left < 0.1: raise TimeoutError("hết giờ")
+    h = {"User-Agent": "CloudBlue UPnP/1.1"}; h.update(headers or {})
+    req = urllib.request.Request(url, data=data, headers=h, method="GET" if data is None else "POST")
+    try:
+        with _UPNP_HTTP.open(req, timeout=min(4.0, left)) as r: return r.status, r.read(262144)
+    except urllib.error.HTTPError as e:
+        try: return e.code, e.read(262144)
+        except Exception: return e.code, b""
+        finally: e.close()
+
+
+def _xml_vals(b):
+    """Mọi phần tử lá của 1 trả lời XML → {tên bỏ namespace: chữ}. XML hỏng (modem rẻ tiền) → dò bằng regex."""
+    b = (b or b"").strip(b" \t\r\n\x00"); out = {}
+    if b"<!DOCTYPE" not in b and b"<!ENTITY" not in b:
+        try:
+            for el in ET.fromstring(b).iter():
+                if len(el) == 0 and isinstance(el.tag, str): out.setdefault(el.tag.rsplit("}", 1)[-1], (el.text or "").strip())
+            return out
+        except ET.ParseError: pass
+    for k, v in re.findall(r"<(?:[\w.-]+:)?([\w.-]+)(?:\s[^<>]*)?>([^<]*)</", b.decode("utf-8", "replace")):
+        out.setdefault(k, v.strip().replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"').replace("&apos;", "'").replace("&amp;", "&"))
+    return out
+
+
+def ssdp_find(lan=None, target=SSDP_ADDR, wait=2.5):
+    """Tìm modem UPnP: M-SEARCH (4 loại ST) tới `target` (mặc định nhóm multicast SSDP; thử nghiệm: modem giả unicast), gửi qua
+       ĐÚNG card mạng LAN `lan` (máy giả lập có nhiều card ảo), gom các LOCATION (URL mô tả thiết bị) trong `wait` giây."""
+    locs = []
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    try:
+        if lan:
+            try: s.bind((lan, 0))
+            except OSError: pass                                  # IP vừa đổi… → để hệ điều hành tự chọn card
+            try: s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(lan))
+            except OSError: pass
+        try: s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        except OSError: pass
+        for st in SSDP_ST:
+            try: s.sendto(f'M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: "ssdp:discover"\r\nMX: 2\r\nST: {st}\r\n\r\n'.encode(), target)
+            except OSError: pass
+        end = time.monotonic() + wait
+        while len(locs) < 16:
+            left = end - time.monotonic()
+            if left <= 0: break
+            s.settimeout(left)
+            try: data, _ = s.recvfrom(8192)
+            except socket.timeout: break
+            except ConnectionResetError: continue                 # Windows: ICMP "cổng đóng" của lần gửi trước — bỏ qua
+            except OSError: break
+            m = re.search(rb"(?im)^location[ \t]*:[ \t]*(\S+)", data)
+            loc = m.group(1).decode("latin-1") if m else ""
+            if loc.lower().startswith("http://") and loc not in locs: locs.append(loc)
+    finally:
+        s.close()
+    return locs
+
+
+def igd_services(xml, location):
+    """Mô tả thiết bị UPnP → [(serviceType, controlURL tuyệt đối)] các dịch vụ WANIPConnection / WANPPPConnection theo thứ tự trong file
+       (không phụ thuộc namespace, thiết bị lồng nhau bao nhiêu tầng cũng được; controlURL tương đối → ghép với URLBase hoặc `location`)."""
+    xml = (xml or b"").strip(b" \t\r\n\x00"); base, found = "", []
+    try:
+        if b"<!DOCTYPE" in xml or b"<!ENTITY" in xml: raise ET.ParseError("DTD")
+        root = ET.fromstring(xml)
+        ln = lambda e: e.tag.rsplit("}", 1)[-1] if isinstance(e.tag, str) else ""
+        for e in root:
+            if ln(e) == "URLBase": base = (e.text or "").strip()
+        for e in root.iter():
+            if ln(e) == "service":
+                f = {ln(c): (c.text or "").strip() for c in e}
+                found.append((f.get("serviceType", ""), f.get("controlURL", "")))
+    except ET.ParseError:                                         # XML hỏng (VD dấu "&" trần trong tên modem) → dò bằng regex
+        t = xml.decode("utf-8", "replace")
+        tag = lambda n: r"<(?:[\w.-]+:)?" + n + r"\b[^>]*>\s*([^<]*?)\s*</"
+        m = re.search(tag("URLBase"), t); base = m.group(1) if m else ""
+        for blk in re.findall(r"<(?:[\w.-]+:)?service\b[^>]*>(.*?)</(?:[\w.-]+:)?service\s*>", t, re.S):
+            a, c = re.search(tag("serviceType"), blk), re.search(tag("controlURL"), blk)
+            found.append((a.group(1) if a else "", c.group(1) if c else ""))
+    return [(st, urllib.parse.urljoin(base or location, ctl)) for st, ctl in found
+            if ctl and ("WANIPConnection" in st or "WANPPPConnection" in st)]
+
+
+def upnp_soap(ctl, st, action, args=(), deadline=None):
+    """Gọi lệnh SOAP `action` của dịch vụ `st` tại `ctl` → {tên: giá trị} modem trả về. Lỗi (HTTP 500 + errorCode / mạng) → UpnpFault."""
+    deadline = deadline or time.monotonic() + 4
+    x = lambda v: str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+    body = ('<?xml version="1.0"?>\r\n<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+            's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body>'
+            f'<u:{action} xmlns:u="{x(st)}">' + "".join(f"<{k}>{x(v)}</{k}>" for k, v in args)
+            + f"</u:{action}></s:Body></s:Envelope>\r\n").encode("utf-8")
+    try: code, resp = _upnp_http(ctl, deadline, body, {"Content-Type": 'text/xml; charset="utf-8"', "SOAPAction": f'"{st}#{action}"'})
+    except Exception as e: raise UpnpFault(None, _upnp_why(e))
+    v = _xml_vals(resp)
+    if code == 200 and "errorCode" not in v: return v
+    ec = v.get("errorCode", "")
+    raise UpnpFault(int(ec) if ec.isdigit() else None, v.get("errorDescription") or f"HTTP {code}")
+
+
+def _upnp_nat_warn(ext, pub):
+    """IP ngoài của modem là IP nội bộ / CGNAT, hoặc khác IP ra Internet → phía trên còn 1 lớp NAT: mở cổng trên modem không đủ."""
+    import ipaddress
+    a = _ip4(ext)
+    if not a: return ""
+    if a in ipaddress.IPv4Network("100.64.0.0/10"):
+        return (f"⚠ IP modem {a} là IP dùng chung của nhà mạng (CGNAT) — nhà mạng NAT thêm 1 lớp nên mở cổng trên modem KHÔNG giúp "
+                "khách nối thẳng được: cần xin nhà mạng IP công khai (IP public / IP tĩnh)")
+    if any(a in ipaddress.IPv4Network(n) for n in _UPNP_NAT):
+        return (f"⚠ IP modem {a} là IP nội bộ — phía trên còn 1 lớp NAT nữa (nhà mạng, hoặc modem/router khác) nên mở cổng ở đây KHÔNG "
+                "giúp khách nối thẳng được: cần IP công khai từ nhà mạng (hoặc chuyển thiết bị phía trên sang bridge)")
+    p = _ip4(pub)
+    if p and p != a:
+        return (f"⚠ IP modem {a} khác IP ra Internet {p} — mạng còn đi qua 1 lớp NAT nữa của nhà mạng nên mở cổng KHÔNG giúp khách "
+                "nối thẳng được: cần xin nhà mạng IP công khai")
+    return ""
+
+
+def upnp_open(port=None, lan=None, ssdp=None, wait=2.5, pub=None):
+    """Mở cổng TCP `port` (mặc định PORT) trên modem → `lan` (mặc định lan_ip()):port bằng UPnP-IGD → (ok, thông báo tiếng Việt).
+       ssdp: nơi gửi M-SEARCH (mặc định 239.255.255.250:1900; thử nghiệm: modem giả) · pub: IP công khai để so với IP modem
+       (None = tự hỏi public_ip() song song, "" = không so). KHÔNG BAO GIỜ ném lỗi; cả lần thử ≤ ~18 giây."""
+    try:
+        return _upnp_open(int(port or PORT), lan or lan_ip(), ssdp or SSDP_ADDR, wait, pub)
+    except Exception as e:
+        return False, f"lỗi UPnP: {e!r}"
+
+
+def _upnp_open(port, lan, target, wait, pub):
+    if not lan: return False, "không biết IP mạng LAN của máy này (chưa nối mạng?) — chưa mở được cổng bằng UPnP"
+    deadline = time.monotonic() + UPNP_BUDGET
+    got, th = {"pub": pub}, None
+    if pub is None:                                               # hỏi IP công khai song song lúc chờ modem trả lời
+        def ask():
+            try: got["pub"] = public_ip()
+            except Exception: pass
+        th = threading.Thread(target=ask, daemon=True); th.start()
+    locs = ssdp_find(lan, target, wait)
+    if not locs: return False, UPNP_NO_ANSWER
+    svcs, errs = [], []
+    for loc in locs[:6]:
+        if svcs and time.monotonic() > deadline - 8: break         # để dành thời gian cho lệnh mở cổng
+        try:
+            code, xml = _upnp_http(loc, deadline)
+            if code != 200: raise ValueError(f"HTTP {code}")
+            svcs += [sv for sv in igd_services(xml, loc) if sv not in svcs]
+        except Exception as e:
+            errs.append(f"{urllib.parse.urlsplit(loc).netloc}: {_upnp_why(e)}")
+    if not svcs:
+        why = errs[0] if errs else "không có dịch vụ mở cổng WANIPConnection / WANPPPConnection"
+        return False, f"modem trả lời UPnP nhưng không dùng được ({why}) — mở cổng bằng tay trong trang modem"
+    # modem nhà mạng hay có nhiều đường WAN (Internet, quản lý TR-069, IPTV…) → chọn đường có IP Internet thật
+    best, rank, ext = svcs[0], -1, ""
+    for i, sv in enumerate(svcs[:4]):
+        if i and time.monotonic() > deadline - 8: break
+        try: ip = upnp_soap(sv[1], sv[0], "GetExternalIPAddress", (), deadline).get("NewExternalIPAddress", "")
+        except UpnpFault: ip = ""
+        a = _ip4(ip); r = 0 if not a else 2 if a.is_global else 1
+        if r > rank: best, rank, ext = sv, r, (str(a) if a else "")
+        if r == 2: break
+    st, ctl = best
+    me = f"CloudBlue {NODE_ID}"
+    key = (("NewRemoteHost", ""), ("NewExternalPort", port), ("NewProtocol", "TCP"))
+
+    def add():
+        """Hạn 0 (vĩnh viễn); modem không nhận (lỗi khác 718) → thử lại 1 lần hạn 7200 giây (vẫn được gia hạn mỗi 30 phút)."""
+        f = None
+        for lease in (0, 7200):
+            try:
+                upnp_soap(ctl, st, "AddPortMapping", key + (("NewInternalPort", port), ("NewInternalClient", lan), ("NewEnabled", 1),
+                                                           ("NewPortMappingDescription", me), ("NewLeaseDuration", lease)), deadline)
+                return None
+            except UpnpFault as e:
+                f = e
+                if e.code == 718: break
+        return f
+
+    f = add()
+    if f:                                                         # cổng đã có người giữ? → hỏi modem cổng đang chuyển tới đâu
+        try: cur = upnp_soap(ctl, st, "GetSpecificPortMappingEntry", key, deadline)
+        except UpnpFault: cur = {}
+        who, desc = cur.get("NewInternalClient", "").strip(), cur.get("NewPortMappingDescription", "").strip()
+        iport, lease = cur.get("NewInternalPort", "").strip(), cur.get("NewLeaseDuration", "").strip()
+        on = cur.get("NewEnabled", "1").strip().lower() not in ("0", "false")
+        here = bool(who) and (who == lan or _ip4(who) is not None and _ip4(who) == _ip4(lan))
+        if here and on and iport in ("", str(port)) and not (desc == me and lease.isdigit() and 0 < int(lease) < UPNP_EVERY + 300):
+            f = None                                              # đã chuyển đúng về máy này (mở tay / lần trước) → xong
+        elif who and desc == me:                                  # cổng của chính máy chủ này nhưng IP LAN cũ / sắp hết hạn → xoá, mở lại
+            try: upnp_soap(ctl, st, "DeletePortMapping", key, deadline)
+            except UpnpFault: pass
+            f = add()
+        elif here:
+            return False, (f"cổng TCP {port} trên modem chuyển về máy này nhưng sai ({who}:{iport or '?'}{'' if on else ', đang tắt'}) "
+                           f"— sửa trong trang modem: TCP {port} → {lan}:{port}")
+        elif who:
+            return False, f"cổng TCP {port} trên modem đang chuyển tới máy khác ({who}{' · ' + desc[:40] if desc else ''}) — sửa trong trang modem"
+        elif f.code == 718:
+            return False, (f"cổng TCP {port} trên modem đã bị chiếm (modem không cho biết chuyển tới máy nào — có thể đã mở tay) "
+                           f"— kiểm tra trang modem: TCP {port} phải chuyển tới {lan}:{port}")
+    if f: return False, f"không mở được cổng TCP {port} qua UPnP ({f}) — mở cổng bằng tay trong trang modem"
+    a = _ip4(ext)
+    if th and a and a.is_global: th.join(max(0.0, min(6.0, deadline - time.monotonic())))
+    w = _upnp_nat_warn(ext, got.get("pub"))
+    return True, f"đã mở cổng TCP {port} → {lan}:{port}" + (f" · IP modem {ext}" if ext else "") + (f" · {w}" if w else "")
+
+
+def upnp_loop():
+    """Luồng nền (main): mở cổng lúc chạy + mỗi 30 phút; chưa được thì thử lại sớm hơn. Nhật ký chỉ ghi khi kết quả đổi. Không bao giờ ném lỗi."""
+    last, fails = None, 0
+    while True:
+        try: ok, msg = upnp_open()
+        except Exception as e: ok, msg = False, f"lỗi UPnP: {e!r}"
+        if (ok, msg) != last:
+            log(("UPnP: ✓ " if ok else "UPnP: ✗ ") + str(msg)); last = (ok, msg)
+        fails = 0 if ok else fails + 1
+        time.sleep(UPNP_EVERY if ok else min(UPNP_EVERY, UPNP_RETRY * 2 ** min(fails - 1, 10)))
+
+
+def upnp_cli():
+    """python bluestream.py --upnp → thử mở cổng PORT trên modem 1 lần (KHÔNG chạy máy chủ), in kết quả. Trả 0 = mở được."""
+    print(f"== UPnP: mở cổng TCP {PORT} trên modem về máy chủ {NODE_ID}" + ("" if UPNP else "   (UPNP=0: máy chủ sẽ KHÔNG tự mở cổng)"))
+    lip = lan_ip(); print("  IP LAN máy này:", lip or "? (chưa nối mạng)")
+    pip_ = public_ip(); print("  IP công khai:  ", pip_ or "? (không hỏi được)")
+    ok, msg = upnp_open(lan=lip, pub=pip_ or "")
+    print(("  ✓ " if ok else "  ✗ ") + msg)
+    if not ok and lip: print(f"  → mở tay: trang modem (thường http://192.168.1.1) → NAT / Port Forwarding: TCP {PORT} → {lip}:{PORT}")
+    return 0 if ok else 1
+
+
 def _save_png(frame, name):
     if frame is None: return "(không có khung nào)"
     p = os.path.join(B, "logs", "captest_" + re.sub(r"[^A-Za-z0-9_.-]", "_", name) + ".png")
@@ -2184,6 +2517,8 @@ async def main():
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
+    if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
+    elif not SELFTEST: log(f"UPnP: tắt (UPNP=0) — nhớ mở cổng TCP {PORT} về máy này bằng tay trong trang modem")
     async with srv1, srv2:
         await asyncio.gather(srv1.serve_forever(), srv2.serve_forever())
 
@@ -2197,6 +2532,8 @@ if __name__ == "__main__":
         _a = sys.argv[sys.argv.index("--captest") + 1:]
         if not _a: print("Cách dùng: python bluestream.py --captest TÊN_MÁY [CỔNG_ADB]"); sys.exit(2)
         sys.exit(captest(_a[0], _a[1] if len(_a) > 1 else None))
+    if "--upnp" in sys.argv:                                     # thử mở cổng trên modem bằng UPnP (không chạy máy chủ)
+        sys.exit(upnp_cli())
     if WIN:
         try: ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x00008000)   # ABOVE_NORMAL (ffmpeg con cũng vậy)
         except Exception: pass
