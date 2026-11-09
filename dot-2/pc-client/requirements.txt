@@ -1,0 +1,3 @@
+av
+pygame-ce
+numpy
