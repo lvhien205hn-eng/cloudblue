@@ -1033,7 +1033,7 @@ BANKS = {"970422": "MB Bank", "970436": "Vietcombank", "970407": "Techcombank", 
          "970448": "OCB", "970426": "MSB"}
 ERRORS.update({                                                  # mã lỗi của SQL → câu dễ hiểu (PHONE_LOCKED phải đứng trước LOCKED)
     "INSUFFICIENT_BALANCE": "Số dư không đủ.", "PHONE_LOCKED": "Máy đang bị khoá, không gia hạn được. Liên hệ hỗ trợ.",
-    "LOCKED": "Tài khoản đã bị khoá. Liên hệ hỗ trợ.", "MIN_AMOUNT": "Số tiền thấp hơn mức nạp tối thiểu.",
+    "LOCKED": "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng. Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.", "MIN_AMOUNT": "Số tiền thấp hơn mức nạp tối thiểu.",
     "TOO_MANY": "Bạn có quá nhiều lệnh nạp đang chờ. Thử lại sau ít phút.",
     "BAD_RAM": "RAM nằm ngoài giới hạn cho phép.", "BAD_CPU": "Số nhân CPU nằm ngoài giới hạn cho phép.", "BAD_DAYS": "Số ngày nằm ngoài giới hạn cho phép.",
     "BAD_RES": "Độ phân giải không hợp lệ.", "BAD_FPS": "FPS nằm ngoài giới hạn cho phép.", "BAD_QTY": "Số lượng không hợp lệ.",
@@ -1215,6 +1215,93 @@ class Chips:
             off = bool(self.why and self.why(v)); on = (v == cur) and not off
             lb.config(bg=ACC if on else CARD, fg="#55607a" if off else TXT, cursor="arrow" if off else "hand2",
                       highlightbackground=ACC if on else LINE)
+
+
+TIER_COLORS = {"blue": "#6f8cff", "teal": "#2fd3c5", "amber": "#ffb547", "violet": "#a77bff", "rose": "#ff6b8a", "green": "#46d989", "sky": "#38bdf8", "gold": "#f5c451"}
+TIERS_DEF = [   # 🎴 5 gói mặc định — giống web (admin chỉnh trên web thì app đọc settings.cp_tiers)
+    {"id": "lite", "icon": "💬", "name": "Blue Lite", "vi": "Treo app · nuôi acc", "ram": 2, "cpu": 2, "fps": 30, "res": "", "badge": "", "color": "blue",
+     "fvi": ["Zalo, Facebook, TikTok, Telegram", "Chạy 24/7 kể cả khi tắt máy tính"]},
+    {"id": "game", "icon": "🎮", "name": "Blue Game", "vi": "Game nhẹ · treo cả ngày", "ram": 4, "cpu": 2, "fps": 30, "res": "", "badge": "", "color": "teal",
+     "fvi": ["Game 2D, nhàn rỗi, cờ, bài", "Treo game nhẹ ổn định"]},
+    {"id": "roblox", "icon": "🕹️", "name": "Blue Roblox", "vi": "Treo Roblox 1 tab mượt", "ram": 4, "cpu": 4, "fps": 30, "res": "", "badge": "🔥 Bán chạy", "color": "amber",
+     "fvi": ["Roblox 1 tab, đồ hoạ thấp", "Roblox dùng ~2GB RAM — vẫn còn dư"]},
+    {"id": "pro", "icon": "🚀", "name": "Blue Pro", "vi": "Treo Roblox 2–4 tab", "ram": 8, "cpu": 8, "fps": 30, "res": "", "badge": "⭐ Đề xuất", "color": "violet",
+     "fvi": ["2–4 tab Roblox cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"]},
+    {"id": "max", "icon": "🔥", "name": "Blue Max", "vi": "Game nặng 3D · 60 FPS", "ram": 12, "cpu": 8, "fps": 60, "res": "", "badge": "", "color": "rose",
+     "fvi": ["Free Fire, Liên Quân, PUBG Mobile…", "Không có card đồ hoạ — game nặng có thể giật"]},
+]
+
+
+def tiers_list(site):
+    """Gói đang bật (tối đa 8): settings.cp_tiers do admin chỉnh trên web, trống thì 5 gói mặc định."""
+    a = (site or {}).get("cp_tiers") if isinstance(site, dict) else None
+    out = []
+    for t in (a if isinstance(a, list) and a else TIERS_DEF):
+        if not isinstance(t, dict) or t.get("on") is False: continue
+        ram, cpu, name = int(num(t.get("ram"))), int(num(t.get("cpu"))), str(t.get("name") or "").strip()
+        if ram > 0 and cpu > 0 and name:
+            fit = [str(x).strip() for x in (t.get("fvi") or []) if str(x).strip()][:3]
+            out.append({"id": str(t.get("id") or name), "icon": str(t.get("icon") or "📱")[:4], "name": name[:24], "vi": str(t.get("vi") or "")[:60],
+                        "ram": ram, "cpu": cpu, "fps": int(num(t.get("fps"))) or 30, "res": str(t.get("res") or ""), "badge": str(t.get("badge") or "")[:20],
+                        "color": TIER_COLORS.get(t.get("color"), t.get("color") if re.match(r"^#[0-9a-fA-F]{6}$", str(t.get("color") or "")) else TIER_COLORS["blue"]),
+                        "fit": fit})
+    return out[:8]
+
+
+def _mix(a, b, k):
+    """Trộn 2 màu #rrggbb: a·k + b·(1−k)."""
+    pa, pb = [int(a[i:i + 2], 16) for i in (1, 3, 5)], [int(b[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(round(x * k + y * (1 - k)) for x, y in zip(pa, pb))
+
+
+class TierStrip:
+    """Dải thẻ gói cuộn ngang (‹ ›): bấm 1 thẻ → dlg.pick_tier(gói). paint() tô lại thẻ đang khớp cấu hình."""
+    W = 182
+
+    def __init__(self, dlg, parent, tiers):
+        tk = dlg.app.tk; self.dlg = dlg; self.cards = []
+        self.frame = tk.Frame(parent, bg=BG)
+        nav = tk.Frame(self.frame, bg=BG); nav.pack(fill="x")
+        self.cv = cv = tk.Canvas(self.frame, bg=BG, highlightthickness=0, height=10)
+        inner = tk.Frame(cv, bg=BG); cv.create_window((0, 0), window=inner, anchor="nw")
+        sb = tk.Scrollbar(self.frame, orient="horizontal", command=cv.xview); cv.configure(xscrollcommand=sb.set)
+        def fit(_e=None):
+            cv.configure(scrollregion=cv.bbox("all"), height=inner.winfo_reqheight())
+        inner.bind("<Configure>", fit)
+        for i, t in enumerate(tiers): self.cards.append(self._card(inner, t, i))
+        cv.pack(fill="x"); sb.pack(fill="x", pady=(2, 0))
+        step = lambda d: cv.xview_moveto(max(0.0, min(1.0, cv.xview()[0] + d * (self.W + 10) / max(1, inner.winfo_reqwidth()))))
+        for txt, d in (("›", 1), ("‹", -1)):
+            b = tk.Label(nav, text=txt, font=("Segoe UI", 12, "bold"), bg=CARD, fg=TXT, padx=10, cursor="hand2", highlightthickness=1, highlightbackground=LINE)
+            b.pack(side="right", padx=(6, 0)); b.bind("<Button-1>", lambda _e, d=d: step(d))
+        tk.Label(nav, text="Kéo thanh dưới hoặc bấm ‹ › để xem thêm gói", font=dlg.app.f_s, bg=BG, fg=DIM).pack(side="left")
+
+    def _card(self, parent, t, i):
+        tk = self.dlg.app.tk; acc = t["color"]; bg = _mix(acc, CARD, .18)
+        c = tk.Frame(parent, bg=bg, highlightthickness=1, highlightbackground=_mix(acc, BG, .45), cursor="hand2", width=self.W)
+        c.grid(row=0, column=i, padx=(0, 10), pady=4, sticky="ns")
+        L = lambda text, font, fg=TXT, **kw: tk.Label(c, text=text, font=font, bg=bg, fg=fg, anchor="w", justify="left", wraplength=self.W - 22, **kw)
+        if t["badge"]: tk.Label(c, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ff5f6d", fg="white", padx=8).pack(anchor="e", padx=8, pady=(6, 0))
+        L(f"{t['icon']}  {t['name']}", ("Segoe UI", 12, "bold"), _mix(acc, "#ffffff", .55)).pack(fill="x", padx=10, pady=(8 if not t["badge"] else 2, 0))
+        if t["vi"]: L(t["vi"], ("Segoe UI", 9), DIM).pack(fill="x", padx=10)
+        L(f"⚙ {t['cpu']} nhân   🧠 {t['ram']}GB   🎞 {t['fps']} FPS", ("Segoe UI", 9, "bold")).pack(fill="x", padx=10, pady=(6, 0))
+        ands = self.dlg.tier_ands(t)
+        L("Android " + (" · ".join(ands) if ands else "— vượt trần cấu hình"), ("Segoe UI", 9), DIM).pack(fill="x", padx=10, pady=(4, 0))
+        for f in t["fit"]: L("✓ " + f, ("Segoe UI", 9)).pack(fill="x", padx=10)
+        per = per_day(self.dlg.pr, t["ram"], t["cpu"])
+        L(f"{vnd(per)} / ngày", ("Segoe UI", 12, "bold")).pack(fill="x", padx=10, pady=(6, 0))
+        L(f"≈ {vnd(per * 30)} / 30 ngày", ("Segoe UI", 8), DIM).pack(fill="x", padx=10)
+        btn = tk.Label(c, text="Chọn gói này", font=("Segoe UI", 10, "bold"), bg=_mix(acc, CARD, .30), fg=TXT, pady=6, cursor="hand2")
+        btn.pack(fill="x", padx=10, pady=(8, 10))
+        def click(_e, t=t): self.dlg.pick_tier(t)
+        for w in [c] + list(c.winfo_children()): w.bind("<Button-1>", click)
+        return t, c, btn
+
+    def paint(self):
+        for t, c, btn in self.cards:
+            on = self.dlg.tier_on(t)
+            c.config(highlightthickness=2 if on else 1, highlightbackground=t["color"] if on else _mix(t["color"], BG, .45))
+            btn.config(text="✓ Đã chọn" if on else "Chọn gói này", bg=t["color"] if on else _mix(t["color"], CARD, .30), fg="#06112b" if on else TXT)
 
 
 class Dlg:
@@ -1609,11 +1696,14 @@ class OrderDlg(Dlg):
         self.loading("Đang tải bảng giá…")
         def load():
             sh = app.shop
-            return sh.pricing(), sh.status(), sh.profile(), sh.live_count()
+            try: site = sh.site()
+            except Exception: site = {}
+            return sh.pricing(), sh.status(), sh.profile(), sh.live_count(), site
         self.bg(load, self._loaded, lambda m: self.loading(m))
 
     def _loaded(self, r):
-        self.pr, self.st, self.prof, have = r
+        self.pr, self.st, self.prof, have, self.site = r
+        self.custom = False                                                 # ⚙️ Tự chỉnh cấu hình đang mở
         p = self.pr; cl = lambda v, lo, hi: max(int(num(lo)), min(int(num(hi)), v))
         mpu = int(num(p.get("max_per_user")))
         self.left = 20 if mpu <= 0 or self.prof.get("role") == "admin" else mpu - have
@@ -1654,15 +1744,13 @@ class OrderDlg(Dlg):
         if "15" in avs:
             self.label(f, "Android 15 không vào được Google / Play Store? Chọn Android 12 — máy đang thuê thì dùng Khác ▾ → Đổi Android (giữ nguyên hạn).",
                        self.app.f_s, DIM, wraplength=520).pack(fill="x")
-        ar, ac = and_lim(p, s["android"])                                   # trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 15: 16GB · 32 nhân)
-        mr = min(ar, lo("free_max_ram") or 999) if s["free"] else ar
-        mc = min(ac, lo("free_max_cpu") or 999) if s["free"] else ac
-        f = self.section("RAM", f"{lo('min_ram')}–{mr} GB")
-        self.rows.append(Chips(self.app, f, [(v, f"{v}GB") for v in cp_opts(CP_RAM, lo("min_ram"), mr)], get("ram"), ch("ram"), self.upd, wrap=8)); self.rows[-1].frame.pack(fill="x")
-        f = self.section("CPU (nhân)", f"{lo('min_cpu')}–{mc} nhân")
-        self.rows.append(Chips(self.app, f, [(v, str(v)) for v in cp_opts(CP_CPU, lo("min_cpu"), mc)], get("cpu"), ch("cpu"), self.upd, wrap=9)); self.rows[-1].frame.pack(fill="x")
-        self.label(f, "💡 Treo 1 tab Roblox: nên chọn từ 4GB RAM · 4 nhân (vào game Roblox đã dùng khoảng 2GB RAM) — 3GB · 2 nhân thường không treo nổi. "
-                      "Treo 2–4 tab: 8GB · 8 nhân.", self.app.f_s, DIM, wraplength=520).pack(fill="x", pady=(4, 0))
+        # 🎴 Chọn gói cấu hình (cùng danh sách với web — admin chỉnh ở 📱 ĐT đám mây › 💰 Giá & thẻ bán) · máy miễn phí không dùng gói
+        self.tl = [] if s["free"] else tiers_list(getattr(self, "site", {}))
+        if self.tl:
+            f = self.section("🎴 Chọn gói cấu hình", "bấm 1 gói là điền sẵn RAM · CPU · FPS")
+            self.rows.append(TierStrip(self, f, self.tl)); self.rows[-1].frame.pack(fill="x")
+            self.tier_note = self.label(f, getattr(self, "_tier_msg", ""), self.app.f_s, WARN, wraplength=540); self.tier_note.pack(fill="x")
+            self._tier_msg = ""
         if not s["free"]:
             f = self.section("Số ngày", f"{lo('min_days')}–{lo('max_days')} ngày")
             line = tk.Frame(f, bg=BG); line.pack(fill="x")
@@ -1676,13 +1764,31 @@ class OrderDlg(Dlg):
             self.rows[-1].frame.pack(side="left")
             self.label(line, "  khác:", self.app.f_s, DIM).pack(side="left"); self.days_x.pack(side="left", ipady=4)
             self.days_x.bind("<KeyRelease>", typed)
-        f = self.section("Độ phân giải")
-        self.rows.append(Chips(self.app, f, [(r, f"{n}\n{r}") for r, n in CP_RES], get("res"), ch("res"), self.upd)); self.rows[-1].frame.pack(fill="x")
-        f = self.section("FPS (khung hình / giây)")
-        self.rows.append(Chips(self.app, f, [(v, f"{v} FPS") for v in CP_FPS if lo("min_fps") <= v <= lo("max_fps")], get("fps"), ch("fps"), self.upd)); self.rows[-1].frame.pack(fill="x")
         if not s["free"] and self.left > 1:
             f = self.section("Số lượng máy")
             self.rows.append(Chips(self.app, f, [(v, f"{v} máy") for v in CP_QTY if v <= min(20, self.left)], get("qty"), ch("qty"), self.upd)); self.rows[-1].frame.pack(fill="x")
+        # ⚙️ Tự chỉnh cấu hình — thu gọn khi cấu hình đang khớp 1 gói (máy miễn phí / không có gói: luôn mở)
+        self.cust_lbl = None
+        if self.tl:
+            if not any(self.tier_on(t) for t in self.tl): self.custom = True
+            tg = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, cursor="hand2"); tg.pack(fill="x", padx=18, pady=(14, 2))
+            self.cust_lbl = self.label(tg, "", ("Segoe UI", 10, "bold"), TXT, cursor="hand2"); self.cust_lbl.pack(side="left", padx=10, pady=8)
+            arw = self.label(tg, "▴" if self.custom else "▾", ("Segoe UI", 11, "bold"), DIM, cursor="hand2"); arw.pack(side="right", padx=10)
+            for w in (tg, self.cust_lbl, arw): w.bind("<Button-1>", lambda _e: self.toggle_custom())
+        if not self.tl or self.custom:
+            ar, ac = and_lim(p, s["android"])                                   # trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 15: 16GB · 32 nhân)
+            mr = min(ar, lo("free_max_ram") or 999) if s["free"] else ar
+            mc = min(ac, lo("free_max_cpu") or 999) if s["free"] else ac
+            f = self.section("RAM", f"{lo('min_ram')}–{mr} GB")
+            self.rows.append(Chips(self.app, f, [(v, f"{v}GB") for v in cp_opts(CP_RAM, lo("min_ram"), mr)], get("ram"), ch("ram"), self.upd, wrap=8)); self.rows[-1].frame.pack(fill="x")
+            f = self.section("CPU (nhân)", f"{lo('min_cpu')}–{mc} nhân")
+            self.rows.append(Chips(self.app, f, [(v, str(v)) for v in cp_opts(CP_CPU, lo("min_cpu"), mc)], get("cpu"), ch("cpu"), self.upd, wrap=9)); self.rows[-1].frame.pack(fill="x")
+            self.label(f, "💡 Treo 1 tab Roblox: nên chọn từ 4GB RAM · 4 nhân (vào game Roblox đã dùng khoảng 2GB RAM) — 3GB · 2 nhân thường không treo nổi. "
+                          "Treo 2–4 tab: 8GB · 8 nhân.", self.app.f_s, DIM, wraplength=520).pack(fill="x", pady=(4, 0))
+            f = self.section("Độ phân giải")
+            self.rows.append(Chips(self.app, f, [(r, f"{n}\n{r}") for r, n in CP_RES], get("res"), ch("res"), self.upd)); self.rows[-1].frame.pack(fill="x")
+            f = self.section("FPS (khung hình / giây)")
+            self.rows.append(Chips(self.app, f, [(v, f"{v} FPS") for v in CP_FPS if lo("min_fps") <= v <= lo("max_fps")], get("fps"), ch("fps"), self.upd)); self.rows[-1].frame.pack(fill="x")
         self.promo = self.bpay = None
         if not s["free"]:                                    # 🏷️ mã giảm giá + 💎 trả bằng Blue (máy miễn phí không dùng)
             f = self.section("Mã giảm giá · Blue")
@@ -1705,6 +1811,35 @@ class OrderDlg(Dlg):
         self.app.btn(bb, "Huỷ", self.close, "soft").pack(side="left")
         self.go = self.app.btn(bb, "Thuê ngay", self.buy); self.go.pack(side="right")
         self.upd()
+
+    def tier_on(self, t):
+        """Cấu hình đang chọn khớp gói t (kẹp theo trần của bản Android đang chọn)."""
+        p, s = self.pr, self.s; lo = lambda k: int(num(p.get(k))); ar, ac = and_lim(p, s["android"])
+        cl = lambda v, a, b: max(a, min(b, v))
+        return (s["ram"] == cl(t["ram"], lo("min_ram"), ar) and s["cpu"] == cl(t["cpu"], lo("min_cpu"), ac)
+                and s["fps"] == cl(t["fps"], lo("min_fps"), lo("max_fps")) and (not t.get("res") or s["res"] == t["res"]))
+
+    def tier_ands(self, t):
+        """Bản Android chạy được gói t (đủ trần RAM / nhân)."""
+        return [v for v in and_list(self.pr) if t["ram"] <= and_lim(self.pr, v)[0] and t["cpu"] <= and_lim(self.pr, v)[1]]
+
+    def pick_tier(self, t):
+        """Bấm 1 thẻ gói → điền RAM · CPU · FPS (· độ phân giải); bản Android đang chọn không đủ trần → chuyển bản."""
+        p, s = self.pr, self.s; lo = lambda k: int(num(p.get(k)))
+        ands = self.tier_ands(t)
+        if ands and s["android"] not in ands:
+            free = [v for v in ands if not and_why(self.st, v, t["ram"], t["cpu"])]
+            s["android"] = (free or ands)[0]
+            self._tier_msg = f"Gói {t['name']} chạy trên Android {' / '.join(ands)} — đã chuyển sang Android {s['android']}."
+        ar, ac = and_lim(p, s["android"]); cl = lambda v, a, b: max(a, min(b, v))
+        s["ram"], s["cpu"] = cl(t["ram"], lo("min_ram"), ar), cl(t["cpu"], lo("min_cpu"), ac)
+        s["fps"] = cl(t["fps"], lo("min_fps"), lo("max_fps"))
+        if t.get("res") and any(r == t["res"] for r, _n in CP_RES): s["res"] = t["res"]
+        self.app.root.after_idle(lambda: self.alive and self.build())
+
+    def toggle_custom(self):
+        self.custom = not self.custom
+        self.app.root.after_idle(lambda: self.alive and self.build())
 
     def fit(self, v):
         """RAM / CPU đang chọn sau khi kẹp theo trần của bản Android v (đổi bản thì cấu hình tự kẹp lại)."""
@@ -1766,6 +1901,9 @@ class OrderDlg(Dlg):
                 nv = "9" if "9" in ok else ok[0]
                 if nv != s["android"]: s["android"] = nv; self.app.root.after_idle(lambda: self.alive and self.build())
         for r in self.rows: r.paint()
+        if getattr(self, "cust_lbl", None):
+            try: self.cust_lbl.config(text=f"⚙️ Tự chỉnh cấu hình    {s['ram']}GB · {s['cpu']} nhân · {s['res']} · {s['fps']} FPS")
+            except Exception: pass
         bad, price, bal = self.check(), self.price(), num(self.prof.get("balance"))
         why = {v: and_why(self.st, v, *self.fit(v)) for v in and_list(p)}                  # giải thích vì sao bản Android bị mờ
         self.and_note.config(text="   ".join(f"Android {v}: " + ("máy chủ đang bảo trì" if w == "off" else "hết chỗ cho cấu hình này")
@@ -2756,7 +2894,7 @@ ERRORS.update({                                                  # 🏷️ mã g
     # 🛡️ bảo mật (SQL v29)
     "BLUE_DAY_CAP": "Hôm nay bạn đã nhận đủ Blue tối đa — mai quay lại nhé.", "BLUE_HOLD": "Blue của bạn đang được tạm giữ để kiểm tra — liên hệ hỗ trợ.",
     "BLUE_NEW_ACCOUNT": "Tài khoản mới — sau 24 giờ mới tích Blue được.", "MONEY_GUARD": "Bị chặn: không được tự cộng tiền.", "BLUE_GUARD": "Bị chặn.",
-    "MAX_AMOUNT": "Số tiền quá lớn.", "banned": "Tài khoản đã bị khoá. Liên hệ hỗ trợ.",
+    "MAX_AMOUNT": "Số tiền quá lớn.", "banned": "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng (gian lận / cày clone / lợi dụng lỗi). Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.",
 })
 ERRORS.update({"UPGRADE_PENDING": "Máy đang được nâng cấp, đợi khoảng 1 phút rồi thử lại.", "FREE_NO_UPGRADE": "Máy miễn phí không nâng cấp được — thuê máy trả phí để nâng.",
                "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "BAD_UPGRADE": "Cấu hình nâng cấp không hợp lệ."})
