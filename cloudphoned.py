@@ -263,17 +263,85 @@ def do_upgrade(row):
 def get_live():
     return sb("GET", "cloud_phones?status=in.(active,expired)&select=*") or []
 
-_dup_note = {}
+_dup_note = {}; _dup_said = {}; _ghost_said = {}
+LIVE_ST = "pending,creating,active,expired,cancelling"          # trạng thái "còn sống" — giống chỉ mục chặn trùng của SQL v23
+
+def _phones_reg():
+    """Danh sách máy khách phonectl đang giữ trên máy chủ này {tên: máy} · đọc lỗi → None (khi đó KHÔNG tự sửa gì)."""
+    try:
+        with open(PHONES_JSON, encoding="utf-8") as f: st = json.load(f)
+        return {p["name"]: p for p in st.get("phones", []) if p.get("name")}
+    except Exception:
+        return None
+
+def _ghost_fix(pid, fields):
+    """Giao máy bị cơ sở dữ liệu từ chối (409: dòng KHÁC trên máy chủ này đang giữ cùng cổng / tên máy ảo — SQL v23 chặn 2 khách 1 máy).
+       Xem từng dòng đang giữ:
+         • máy ảo của dòng đó CÒN trên máy chủ này nhưng ở cổng khác → web ghi cổng cũ → ghi lại đúng cổng;
+         • máy ảo của dòng đó KHÔNG còn trên máy chủ này ("máy ma": đã bị xoá trước đây mà web không biết, MuMu cấp lại số cổng
+           cho máy mới) → bỏ số cổng của dòng đó (KHÔNG xoá, KHÔNG đụng tiền, khách đó vẫn thấy máy như cũ) + báo admin xử lý;
+         • máy ảo còn và đúng cổng đó (2 đơn cùng 1 máy thật) → không tự sửa, để admin xem.
+       Trả True nếu đã gỡ được ít nhất 1 dòng → giao lại ngay."""
+    port, cont = fields.get("port"), fields.get("container")
+    reg = _phones_reg()
+    if reg is None or not cont or cont not in reg: return False        # chưa chắc danh sách máy trên máy chủ → không đoán
+    conds = []
+    try:
+        if port: conds.append(f"port.eq.{int(port)}")
+    except (TypeError, ValueError): pass
+    conds.append("container.eq." + urllib.parse.quote(str(cont), safe=""))
+    try:
+        rows = sb("GET", f"cloud_phones?node=eq.{urllib.parse.quote(NODE_ID, safe='')}&status=in.({LIVE_ST})&id=neq.{pid}"
+                         f"&or=({','.join(conds)})&select=id,name,status,container,port") or []
+    except Exception as e:
+        print("   lỗi đọc dòng đang giữ máy:", e); return False
+    fixed = False
+    for r in rows:
+        c = r.get("container") or ""; ps = reg.get(c) if c else None; tag = f"{r.get('name') or c or '?'} (đơn {str(r['id'])[:8]}, {r.get('status')})"
+        try:
+            if c == cont:
+                continue                                                # 2 dòng cùng tên máy ảo → admin xem
+            if ps:
+                real = int(ps.get("port") or 0)
+                if port and real and real != int(port) and int(r.get("port") or 0) == int(port):
+                    sb("PATCH", f"cloud_phones?id=eq.{r['id']}&node=eq.{urllib.parse.quote(NODE_ID, safe='')}",
+                       {"port": real, "stream_url": stream_url(real), "updated_at": datetime.datetime.now().isoformat()}, {"Prefer": "return=minimal"})
+                    print(f"   🩹 {tag}: web ghi cổng cũ {port} → sửa đúng cổng {real}"); fixed = True
+                continue                                                # máy thật đúng cổng → không tự sửa
+            sb("PATCH", f"cloud_phones?id=eq.{r['id']}&node=eq.{urllib.parse.quote(NODE_ID, safe='')}",
+               {"port": None, "updated_at": datetime.datetime.now().isoformat()}, {"Prefer": "return=minimal"})
+            print(f"   🧹 máy ma {tag}: máy ảo {c or '?'} không còn trên {NODE_ID} → bỏ số cổng {r.get('port')} để giao máy mới")
+            fixed = True
+            if not _ghost_said.get(r["id"]):
+                _ghost_said[r["id"]] = time.time()
+                try: notify(f"🧹 <b>{NODE_ID}</b>: máy <b>{r.get('name') or c}</b> (đơn {str(r['id'])[:8]}, {r.get('status')}) KHÔNG còn máy ảo trên máy chủ"
+                            f" nhưng web vẫn giữ cổng {r.get('port')} → đã bỏ số cổng để giao máy mới. Khách máy đó cần <b>làm lại máy hoặc hoàn tiền</b>.")
+                except Exception: pass
+        except Exception as e:
+            print(f"   lỗi gỡ {tag}:", e)
+    return fixed
+
 def patch(pid, fields):
     fields["updated_at"] = datetime.datetime.now().isoformat()
     try:
         sb("PATCH", f"cloud_phones?id=eq.{pid}", fields, {"Prefer": "return=minimal"})
     except urllib.error.HTTPError as e:
         if e.code == 409 and ("port" in fields or "container" in fields):
-            # SQL v23: 2 máy khách còn sống KHÔNG được chung 1 máy ảo / 1 cổng → cơ sở dữ liệu từ chối. Không giao máy, không xoá gì,
-            # tự thử lại mỗi vòng (thường do máy cũ vừa xoá chưa kịp đổi trạng thái); kéo dài → báo admin (1 lần / giờ / đơn).
+            # SQL v23: 2 máy khách còn sống KHÔNG được chung 1 máy ảo / 1 cổng → cơ sở dữ liệu từ chối. Thường là "máy ma" (máy cũ đã bị xoá
+            # trên máy chủ mà web vẫn ghi đang sống, MuMu cấp lại đúng số cổng đó cho máy mới) → tự gỡ rồi giao lại ngay.
+            try:
+                if _ghost_fix(pid, fields):
+                    sb("PATCH", f"cloud_phones?id=eq.{pid}", fields, {"Prefer": "return=minimal"})
+                    print(f"   ✓ đã gỡ dòng đang giữ máy — giao lại đơn {str(pid)[:8]} được")
+                    _dup_note.pop(pid, None); _dup_said.pop(pid, None)
+                    return
+            except urllib.error.HTTPError as e2:
+                if e2.code != 409: raise
+            except Exception as e2:
+                print("   lỗi tự gỡ máy ma:", e2)
             msg = f"TRÙNG MÁY: đơn {str(pid)[:8]} → {fields.get('container')} cổng {fields.get('port')} đang ghi cho máy khách KHÁC — chưa giao"
-            print("   ⚠", msg)
+            if time.time() - _dup_said.get(pid, 0) > 60:              # in 1 lần / phút / đơn (trước: 3 giây / lần → đầy nhật ký)
+                _dup_said[pid] = time.time(); print("   ⚠", msg)
             if time.time() - _dup_note.get(pid, 0) > 3600:
                 _dup_note[pid] = time.time()
                 try: notify(f"⚠️ <b>{NODE_ID}</b>: {msg}. Kiểm tra trang admin (2 đơn cùng 1 máy ảo).")
@@ -353,7 +421,7 @@ def finish_boot(pid, name):
         for ln in (r.stdout or "").splitlines():
             if ln.strip().startswith(("+", "!")): print("  ", ln.strip())
     except Exception as e:
-        print("lỗi chờ khởi động:", e)
+        if getattr(e, "code", 0) != 409: print("lỗi chờ khởi động:", e)     # 409 trùng máy: patch() đã ghi nhật ký (1 lần / phút)
     finally:
         BOOTING.discard(name)
 
@@ -525,11 +593,53 @@ def do_locks():
             print(f"[bật lại] {name}")
             phonectl(["start", name])
 
+_cancel_try = {}          # máy xoá chưa được: {id đơn: (số lần lỗi, lúc được thử lại)}
 def do_cancel(row):
+    """Khách / admin / ĐỔI ANDROID bấm xoá → xoá máy ảo + toàn bộ dữ liệu. CHỈ ghi "đã huỷ" khi giả lập CHẮC CHẮN không còn máy:
+       đổi Android đợi đúng lúc này mới tạo máy mới → khách không bao giờ dùng được 2 máy. Xoá chưa được (giả lập bận / lỗi)
+       → giữ "đang huỷ" (khách vẫn không mở được), thử lại giãn dần 1 → 15 phút, báo admin."""
+    pid = row["id"]; n, nxt = _cancel_try.get(pid, (0, 0))
+    if time.time() < nxt: return
     name = row.get("container") or cname(row)
     print(f"[huỷ] {name}")
-    phonectl(["delete", name])
-    patch(row["id"], {"status": "cancelled"})
+    r = phonectl(["delete", name])
+    o = (r.stdout or "") + (r.stderr or "")
+    gone = (r.returncode == 0 and "Chưa xoá được" not in o) or (r.returncode == 1 and "Không có máy tên này" in o)
+    if not gone:
+        n += 1; wait = min(60 * n, 900); _cancel_try[pid] = (n, time.time() + wait)
+        why = (o.strip().splitlines() or ["?"])[-1]
+        print(f"   ⚠ chưa xoá được {name} (lần {n}, {wait}s sau thử lại): {why[:200]}")
+        if n in (1, 5) or n % 20 == 0:
+            notify(f"⚠️ <b>{NODE_ID}</b>: chưa xoá được máy <b>{row.get('name') or name}</b> ({name}) — máy chủ tự thử lại. Lý do: {why[:160]}")
+        return
+    _cancel_try.pop(pid, None)
+    patch(pid, {"status": "cancelled"})
+
+def release_switch_waits():
+    """ĐỔI ANDROID: máy mới chờ máy cũ bị xoá (node 'wait-old'). Máy cũ xoá mãi chưa xong — máy chủ giữ nó mất kết nối > 3 phút,
+       hoặc giả lập lỗi > 10 phút — thì web ghi máy cũ đã xoá (khách đằng nào cũng không mở được máy cũ) để máy mới được tạo.
+       Máy ảo cũ còn sót trên máy chủ: admin bấm 🧹 Xoá sạch (phonectl dondep --xoa)."""
+    rows = sb("GET", "cloud_phones?node=eq.wait-old&status=eq.pending&select=id,replaces") or []
+    if not rows: return
+    alive = {r.get("id") for r in live_nodes()}
+    for w in rows:
+        if not w.get("replaces"): continue
+        o = (sb("GET", f"cloud_phones?id=eq.{w['replaces']}&select=id,status,node,updated_at,name,container") or [None])[0]
+        if not o or o.get("status") == "cancelled":
+            sb("PATCH", f"cloud_phones?id=eq.{w['id']}&node=eq.wait-old", {"node": None}, {"Prefer": "return=minimal"})
+            print(f"[đổi Android] máy mới {w['id'][:8]} hết chờ (máy cũ đã xoá)"); continue
+        if o.get("status") != "cancelling": continue
+        try: age = (now() - parse_dt(o["updated_at"])).total_seconds()
+        except Exception: age = 0
+        off = bool(o.get("node")) and o["node"] not in alive
+        if (off and age > 180) or age > 600:
+            sb("PATCH", f"cloud_phones?id=eq.{o['id']}&status=eq.cancelling",
+               {"status": "cancelled", "error": "Đổi Android: máy chủ chưa xoá kịp máy cũ — web ghi đã xoá để tạo máy mới ngay."},
+               {"Prefer": "return=minimal"})
+            why = f"máy chủ {o.get('node')} mất kết nối" if off else "giả lập chưa xoá được sau 10 phút"
+            print(f"[đổi Android] {o.get('container') or o['id'][:8]}: {why} → web ghi máy cũ đã xoá, máy mới được tạo")
+            notify(f"🧹 <b>Đổi Android</b>: máy cũ <b>{o.get('name') or ''}</b> ({o.get('container') or '?'}, {o.get('node') or '?'}) chưa xoá được ({why}) "
+                   f"→ web ghi đã xoá để khách có máy mới. Máy ảo cũ còn sót: admin → ĐT đám mây → 🧹 Xoá sạch.")
 
 _renew_note = {}
 def do_renew(row):
@@ -592,7 +702,8 @@ def tick_orders():
         try:
             if not claim(row): continue
             do_create(row)
-        except Exception as e: print("lỗi tạo:", e)
+        except Exception as e:
+            if getattr(e, "code", 0) != 409: print("lỗi tạo:", e)
     for row in get_pending("cancelling"):
         if not mine(row): continue
         try: do_cancel(row)
@@ -612,6 +723,8 @@ def tick():
         if not mine(row): continue
         try: do_expiry(row)
         except Exception as e: print("lỗi hết hạn:", e)
+    try: release_switch_waits()
+    except Exception as e: print("lỗi đổi Android chờ máy cũ:", e)
 
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl

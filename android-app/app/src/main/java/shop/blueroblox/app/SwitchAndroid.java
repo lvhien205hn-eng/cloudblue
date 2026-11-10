@@ -13,7 +13,7 @@ import android.widget.TextView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/** 🤖 Đổi Android 9 / 12 / 15 cho máy đang thuê (SQL v24: cloudphone_switch_android).
+/** 🤖 Đổi Android 9 / 12 / 15 cho máy đang thuê (SQL v24 + v28: cloudphone_switch_android — v28 xoá máy cũ TRƯỚC rồi mới tạo máy mới).
  *  Máy chủ tạo 1 máy MỚI bản Android khác, giữ nguyên hạn còn lại + RAM/CPU (vượt trần bản mới thì tự hạ), miễn phí, tối đa 3 lần / 24 giờ.
  *  Máy mới chạy xong → máy cũ và TOÀN BỘ dữ liệu cũ tự xoá. Dùng chung ở danh sách máy (MainActivity) và màn điều khiển (ControlActivity). */
 final class SwitchAndroid {
@@ -70,6 +70,23 @@ final class SwitchAndroid {
         return !r.isEmpty() && !"null".equals(r) && ("pending".equals(p.optString("status")) || "creating".equals(p.optString("status")));
     }
 
+    /** Dòng chữ cho máy MỚI của lệnh đổi Android (SQL v28: máy cũ bị xoá TRƯỚC, xoá xong mới tạo máy mới). */
+    static String newNote(JSONObject p, JSONArray phones) {
+        String v = cur(p), old = p.optString("replaces", "");
+        if (phones != null) for (int i = 0; i < phones.length(); i++) {        // đổi kiểu cũ (trước v28): máy cũ còn chạy song song
+            JSONObject x = phones.optJSONObject(i);
+            if (x != null && old.equals(x.optString("id")) && ("active".equals(x.optString("status")) || "expired".equals(x.optString("status"))))
+                return Ui.L("Máy mới đổi sang Android " + v + " — đang tạo (2–5 phút). Xong thì máy cũ và dữ liệu cũ tự xoá.",
+                        "New Android " + v + " phone — being created (2–5 min). The old phone and its data are then removed.");
+        }
+        if ("wait-old".equals(p.optString("node")))
+            return Ui.L("Đang xoá máy cũ… xoá xong tự tạo máy Android " + v + " (2–5 phút).",
+                    "Deleting the old phone… the Android " + v + " phone is created right after (2–5 min).");
+        String e = p.optString("error", "");
+        return Ui.L("Máy cũ đã xoá — đang tạo máy Android " + v + " (2–5 phút).", "Old phone deleted — creating the Android " + v + " phone (2–5 min).")
+                + (e.startsWith("Đổi Android:") ? "\n" + e : "");
+    }
+
     /** Ghi chú lỗi đổi Android còn lưu trên máy cũ (máy vẫn chạy) — null nếu không có. */
     static String failNote(JSONObject p) {
         String e = p.optString("error", "");
@@ -106,8 +123,8 @@ final class SwitchAndroid {
         warn.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
         warn.setBackground(Ui.round(Color.argb(28, 255, 107, 129), 14, Color.argb(170, 255, 107, 129)));
         warn.addView(Ui.text(a, "⚠️ " + Ui.L("Đổi Android = máy MỚI, mất sạch dữ liệu", "Switching Android = a NEW phone, all data is lost"), 15, Ui.BAD, true));
-        warn.addView(Ui.text(a, Ui.L("Khi máy mới chạy xong, máy cũ và TOÀN BỘ dữ liệu trong máy (app đã cài, tài khoản, game đã đăng nhập, ảnh, tệp) bị XOÁ VĨNH VIỄN, không khôi phục được. Hãy sao lưu / ghi lại tài khoản trước khi đổi.",
-                "When the new phone is ready, the old phone and ALL its data (installed apps, accounts, logged-in games, photos, files) are DELETED PERMANENTLY and cannot be recovered. Back up / note your accounts first."), 13.5f, Ui.BAD, false));
+        warn.addView(Ui.text(a, Ui.L("Bấm Đổi là máy cũ bị XOÁ NGAY cùng TOÀN BỘ dữ liệu trong máy (app đã cài, tài khoản, game đã đăng nhập, ảnh, tệp) — không mở được nữa, không khôi phục được. Xoá xong mới tạo máy mới. Hãy sao lưu / ghi lại tài khoản trước khi đổi.",
+                "The old phone and ALL its data (installed apps, accounts, logged-in games, photos, files) are DELETED RIGHT AWAY — it can't be opened any more and can't be recovered. The new phone is created after that. Back up / note your accounts first."), 13.5f, Ui.BAD, false));
         c.addView(warn, Ui.fill());
         CheckBox ok = new CheckBox(a);
         ok.setText(Ui.L("Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", "I understand all data on this phone will be erased"));
@@ -115,8 +132,8 @@ final class SwitchAndroid {
         ok.setTextSize(14);
         ok.setButtonTintList(ColorStateList.valueOf(Ui.BAD));
         c.addView(ok, Ui.fill());
-        c.addView(Ui.muted(a, Ui.L("Miễn phí · giữ nguyên hạn còn lại · tối đa 3 lần / 24 giờ. Máy mới tạo khoảng 2–5 phút, trong lúc đó máy cũ vẫn dùng được.",
-                "Free · keeps the remaining time · up to 3 times / 24 hours. The new phone takes about 2–5 minutes; the old one keeps working meanwhile.")));
+        c.addView(Ui.muted(a, Ui.L("Miễn phí · giữ nguyên hạn còn lại · tối đa 3 lần / 24 giờ. Máy mới có sau khoảng 2–5 phút.",
+                "Free · keeps the remaining time · up to 3 times / 24 hours. The new phone is ready in about 2–5 minutes.")));
         TextView err = Ui.text(a, "", 13, Ui.BAD, false);
         err.setVisibility(View.GONE);
         c.addView(err, Ui.fill());
@@ -173,8 +190,8 @@ final class SwitchAndroid {
                 d.dismiss();
                 JSONObject o = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
                 String cfg = o.optInt("ram", Math.min(R0, lim(price, to)[0])) + "GB · " + o.optInt("cpu", Math.min(C0, lim(price, to)[1]));
-                Ui.toast(a, Ui.L("🤖 Đang tạo máy Android " + to + " (" + cfg + " nhân), khoảng 2–5 phút. Xong thì máy cũ và dữ liệu cũ tự xoá.",
-                        "🤖 Creating the Android " + to + " phone (" + cfg + " cores), about 2–5 minutes. The old phone and its data are then removed."));
+                Ui.toast(a, Ui.L("🤖 Đang xoá máy cũ… xoá xong tự tạo máy Android " + to + " (" + cfg + " nhân), khoảng 2–5 phút.",
+                        "🤖 Deleting the old phone… then creating the Android " + to + " phone (" + cfg + " cores), about 2–5 minutes."));
                 if (done != null) done.run();
             }, m -> {
                 err.setText(m);

@@ -113,9 +113,13 @@ def err_text(code, raw):
     except Exception:
         m = ""
     if "APP_OUTDATED" in (m or ""): OUTDATED["v"] = True
-    for k, v in ERRORS.items():
-        if k in (m or ""): return v
-    return m or f"Lỗi {code}"
+    best = max((k for k in ERRORS if k in (m or "")), key=len, default=None)       # mã DÀI NHẤT khớp (PROMO_TOO_MANY thắng TOO_MANY)
+    return ERRORS[best] if best else (m or f"Lỗi {code}")
+
+
+def code_text(c):
+    """Mã lỗi trong kết quả JSON (VD {"ok": false, "err": "PROMO_EXPIRED"}) → câu dễ hiểu."""
+    return err_text(0, json.dumps({"message": str(c or "")}).encode())
 
 
 class FileLock:
@@ -547,6 +551,9 @@ class Viewer:
             if d[0] == "connected":
                 self.path = d[1]
                 if self.cli and self.cli.prefer: prefs({"path_" + str(self.node): list(self.cli.prefer)})
+                if not getattr(self, "_blue_tried", False):            # 💎 nhiệm vụ "mở máy đám mây" (SQL v27) — mỗi ngày 1 lần
+                    self._blue_tried = True
+                    threading.Thread(target=blue_play_task, args=(self.auth, lambda t: self._say(t, 5.0)), daemon=True).start()
             if d[0] in ("reconnecting", "connecting"): self.need_key = True
             if d[0] == "kicked": self.kicked = True
             self._post()
@@ -1247,6 +1254,306 @@ class Dlg:
         threading.Thread(target=run, daemon=True).start()
 
 
+# ================= 🏷️ MÃ GIẢM GIÁ khi thanh toán (SQL v23 promo_check · gửi kèm p_promo) — giống web / app điện thoại =================
+class PromoBox:
+    """Ô mã + nút Áp dụng + dòng kết quả. ctx() = tham số promo_check của ĐƠN ĐANG CHỌN (None = chưa đủ thông tin).
+       Đổi đơn → mã đã áp dụng tự kiểm lại sau 0,6 giây; mã sai hẳn không kiểm lại (khỏi bị tính nhập sai); ô có chữ mà mã sai → không cho thanh toán."""
+    RECHECK = ("PROMO_MIN_ORDER", "PROMO_CTX", "BAD_PLAN", "NO_PHONE", "NO_MACHINE", "NO_PRODUCT")
+
+    def __init__(self, dlg, parent, scope, ctx, changed):
+        tk = dlg.app.tk; self.dlg, self.scope, self.ctx, self.changed = dlg, scope, ctx, changed
+        self.code, self.key, self.r, self.busy, self.seq = "", "", None, False, 0
+        self.frame = tk.Frame(parent, bg=parent["bg"])
+        row = tk.Frame(self.frame, bg=parent["bg"]); row.pack(fill="x")
+        tk.Label(row, text="🏷️", font=("Segoe UI Emoji", 12), bg=parent["bg"], fg=TXT).pack(side="left")
+        self.ent = tk.Entry(row, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
+        self.ent.pack(side="left", fill="x", expand=True, ipady=5, padx=(6, 6))
+        dlg.app.btn(row, "Áp dụng", lambda: self.check(), "soft").pack(side="left")
+        self.res = dlg.label(self.frame, "Mã giảm giá (nếu có) — nhập rồi bấm Áp dụng.", dlg.app.f_s, DIM, wraplength=520); self.res.pack(fill="x", pady=(3, 0))
+        self.ent.bind("<KeyRelease>", self._typed); self.ent.bind("<Return>", lambda *_: self.check())
+
+    @staticmethod
+    def norm(v): return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
+    def _keynow(self):
+        c = self.ctx()
+        return "" if c is None else json.dumps([self.code, self.scope, c], sort_keys=True)
+    def live(self):
+        return self.r if self.r is not None and not self.busy and self.key and self.key == self._keynow() else None
+    @staticmethod
+    def use(x): return bool(x and x.get("ok") and x.get("kind") == "discount" and x.get("use_promo"))
+    def price(self, normal):
+        x = self.live(); return max(0, num(x.get("price"))) if self.use(x) else normal
+    def send(self): return self.code if self.use(self.live()) else None
+
+    def _typed(self, _e=None):
+        c = self.norm(self.ent.get())
+        if c == self.code: return
+        self.code, self.r, self.key, self.busy = c, None, "", False; self.seq += 1
+        self.paint(); self.changed()
+
+    def order_changed(self):
+        if not self.code or self.r is None or self.busy: return
+        r = self.r
+        if not (r.get("ok") and r.get("kind") == "discount") and not r.get("net") and r.get("err") not in self.RECHECK: return
+        if self._keynow() == self.key: return
+        self.seq += 1; s = self.seq; self.busy = True; self.paint()
+        self.dlg.app.root.after(600, lambda: self.dlg.alive and s == self.seq and (setattr(self, "busy", False), self.check()))
+
+    def check(self, then=None):
+        self.code = self.norm(self.ent.get())
+        if not self.code: self.r, self.key = None, ""; self.paint(); self.changed(); return then and then()
+        c = self.ctx()
+        if c is None:
+            self.r, self.key = {"ok": False, "err": "PROMO_CTX"}, ""; self.paint(); self.changed(); return then and then()
+        k = json.dumps([self.code, self.scope, c], sort_keys=True); self.seq += 1; s = self.seq; self.busy = True; self.paint()
+        code, scope = self.code, self.scope
+        def job():
+            try: return self.dlg.app.auth.rpc("promo_check", {"p_code": code, "p_scope": scope, **c}) or {"ok": False, "err": "PROMO_INVALID"}
+            except ApiError as e:
+                m = str(e); off = "promo_check" in m or "schema cache" in m or "Could not find" in m
+                return {"ok": False, "err": "PROMO_OFF" if off else m, "net": not off}
+        def done(r):
+            if s != self.seq: return
+            self.busy, self.r, self.key = False, (r if isinstance(r, dict) else {"ok": False, "err": "PROMO_INVALID"}), k
+            self.paint(); self.changed()
+            if then: then()
+        self.dlg.bg(job, done)
+
+    def err_of(self, x):
+        e = str(x.get("err") or "")
+        if x.get("ok") and x.get("kind") == "gift": return code_text("PROMO_IS_GIFT")
+        if e == "PROMO_MIN_ORDER" and x.get("min_order") is not None: return f"Mã chỉ dùng cho đơn từ {vnd(x.get('min_order'))} (đơn này {vnd(x.get('base'))})."
+        return code_text(e or "PROMO_INVALID")
+
+    def paint(self):
+        if not self.dlg.alive or not self.res.winfo_exists(): return
+        if self.busy: self.res.config(text="⏳ Đang kiểm tra mã…", fg=DIM); return
+        r = self.r
+        if not self.code or r is None: self.res.config(text="Mã giảm giá (nếu có) — nhập rồi bấm Áp dụng.", fg=DIM); return
+        if self.use(r): self.res.config(text=f"✓ Giảm {vnd(r.get('discount'))} → còn {vnd(r.get('price'))}", fg=OK)
+        elif r.get("ok") and r.get("kind") == "discount": self.res.config(text="ℹ Giá CTV của bạn đã rẻ hơn — mã sẽ không được dùng (không mất lượt).", fg=DIM)
+        else: self.res.config(text="⚠ " + self.err_of(r), fg=BAD)
+
+    def ensure(self, ok, err_lbl):
+        """Trước khi trả tiền: ô trống → mua bình thường; có chữ → phải là mã dùng được cho chính đơn này."""
+        if not self.norm(self.ent.get()): self.code = ""; return ok()
+        def decide():
+            y = self.live()
+            if y and y.get("ok") and y.get("kind") == "discount": ok()
+            else: err_lbl.config(text=(self.err_of(y) if y else "Chưa kiểm tra được mã, thử lại.") + " Sửa hoặc xoá mã giảm giá để thanh toán.", fg=BAD)
+        decide() if self.live() is not None else self.check(decide)
+
+    def fail(self, m):
+        """Đơn bị từ chối vì mã → hiện lỗi dưới ô mã."""
+        for k in ERRORS:
+            if k.startswith("PROMO_") and ERRORS[k] == m:
+                self.r, self.key = {"ok": False, "err": k}, self._keynow(); self.paint(); return True
+        return False
+
+
+# ================= 💎 TÍCH BLUE (SQL v27): điểm danh, nhiệm vụ hằng ngày, trả bằng Blue (1 Blue = 1đ) =================
+BLUE = {"info": None, "t": 0.0}
+def blue_n(v): return f"{int(num(v)):,}".replace(",", ".")
+def blue_on(): i = BLUE["info"]; return bool(i and i.get("on"))
+def blue_load(auth):
+    """Đọc blue_info (gọi ở luồng nền) — chưa chạy SQL v27 / lỗi → None (ẩn mọi thứ, app chạy như cũ)."""
+    try: i = auth.rpc("blue_info")
+    except ApiError as e:
+        if e.code == 401: raise
+        i = None
+    BLUE["info"] = i if isinstance(i, dict) and "on" in i else None; BLUE["t"] = time.time()
+    return BLUE["info"]
+def blue_use(pay):
+    i = BLUE["info"]
+    if not (i and i.get("on") and i.get("can_use")): return 0
+    pct = max(0, min(100, int(num((i.get("cfg") or {}).get("max_pct") if (i.get("cfg") or {}).get("max_pct") is not None else 100))))
+    return max(0, min(int(num(i.get("blue"))), int(max(0, pay) * pct // 100)))
+def blue_todo():
+    i = BLUE["info"]
+    return sum(1 for t in ((i or {}).get("tasks") or []) if not t.get("done") and t.get("ready")) if blue_on() else 0
+def vn_today():
+    return (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)).strftime("%Y-%m-%d")
+def blue_play_task(auth, say=None):
+    """Nhiệm vụ "mở máy đám mây": cửa sổ máy nối được → nhận (mỗi ngày thử 1 lần / tài khoản; đã nhận / chưa bật thì im lặng)."""
+    k, d = "blue_play_" + str(auth.uid or ""), vn_today()
+    if not auth.uid or prefs().get(k) == d: return
+    try: r = auth.rpc("blue_task", {"p_task": "play"}) or {}
+    except ApiError as e:
+        if e.code != 0: prefs({k: d})                    # đã nhận / chưa bật / chưa chạy SQL v27 → thôi hôm nay · mất mạng → lần mở sau thử lại
+        return
+    except Exception: return
+    prefs({k: d})
+    if say and int(num(r.get("got"))) > 0: say(f"💎 +{blue_n(r.get('got'))} Blue — nhiệm vụ mở máy hôm nay")
+
+
+class BluePay:
+    """Dòng "💎 Trả bằng Blue" trong bảng thuê / gia hạn. use(pay) = số Blue sẽ trừ cho đơn."""
+    def __init__(self, dlg, parent, changed, on=False):
+        tk = dlg.app.tk; self.dlg = dlg
+        self.var = tk.BooleanVar(value=on)
+        self.frame = tk.Frame(parent, bg=CARD, highlightbackground=LINE, highlightthickness=1)
+        self.cb = tk.Checkbutton(self.frame, text="  💎 Trả bằng Blue", variable=self.var, command=changed, font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD,
+                                 selectcolor=BG, activebackground=CARD, activeforeground=TXT, anchor="w", cursor="hand2")
+        self.cb.pack(fill="x", padx=8, pady=(6, 0))
+        self.sub = dlg.label(self.frame, "", dlg.app.f_s, DIM, wraplength=500); self.sub.pack(fill="x", padx=34, pady=(0, 6))
+    def use(self, pay): return blue_use(pay) if self.var.get() else 0
+    def paint(self, pay, hide=False):
+        if not self.frame.winfo_exists(): return
+        if hide or not blue_on(): self.frame.pack_forget(); return
+        if not self.frame.winfo_manager(): self.frame.pack(fill="x", pady=(8, 0))
+        i = BLUE["info"]; can = bool(i.get("can_use")); have = int(num(i.get("blue"))); u = self.use(pay)
+        ok = can and have > 0
+        if not ok and self.var.get(): self.var.set(False)
+        self.cb.config(state="normal" if ok else "disabled")
+        self.sub.config(text="🔒 Nạp tiền lần đầu để dùng Blue (Blue vẫn được tích)." if not can else
+                        "Chưa có Blue — điểm danh, làm nhiệm vụ để tích (bấm 💎 Tích Blue trên danh sách máy)." if have <= 0 else
+                        f"Trừ {blue_n(u)} Blue (= {vnd(u)}) · còn {blue_n(have - u)} Blue" if u > 0 else f"Bạn có {blue_n(have)} Blue · 1 Blue = 1đ")
+
+
+class BlueDlg(Dlg):
+    """💎 Tích Blue: số Blue, chuỗi điểm danh, nhiệm vụ hôm nay (điểm danh · mở máy · chia sẻ link mời · mời bạn), cách nhận thêm, lịch sử."""
+    TASK = {"checkin": ("📅", "Điểm danh hôm nay", "Ngày nào cũng ghé là có Blue"),
+            "play": ("📱", "Mở máy đám mây", "Mở 1 máy bất kỳ (app PC, app Android hoặc web) là tự nhận"),
+            "share": ("📣", "Chia sẻ link mời", "Copy link CloudBlue của bạn gửi bạn bè / nhóm"),
+            "invite": ("🤝", "Mời 1 bạn đăng ký", "Có bạn đăng ký qua link của bạn trong hôm nay")}
+    KIND = {"checkin": "Điểm danh", "streak": "Thưởng chuỗi", "task": "Nhiệm vụ", "ref": "Mời bạn", "cashback": "Hoàn đơn",
+            "spend": "Đã dùng", "refund": "Hoàn lại", "admin": "Admin", "clawback": "Thu lại"}
+
+    def __init__(self, app):
+        super().__init__(app, "💎 Tích Blue", 560, 720)
+        self.loading("Đang tải…")
+        self.bg(lambda: blue_load(app.auth), self.draw, lambda m: self.loading(m))
+
+    def draw(self, i):
+        tk = self.app.tk; self.clear()
+        if not i or not i.get("on"):
+            self.loading("Tích Blue đang tạm tắt." if i else "Chưa mở được Tích Blue — máy chủ chưa bật tính năng này."); return
+        cfg = i.get("cfg") or {}
+        hero = tk.Frame(self.body, bg=CARD, highlightbackground=ACC, highlightthickness=1); hero.pack(fill="x", padx=18, pady=(16, 0))
+        tk.Label(hero, text=f"💎 {blue_n(i.get('blue'))} Blue", font=("Segoe UI", 20, "bold"), fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(10, 0))
+        mp = int(num(cfg.get("max_pct") if cfg.get("max_pct") is not None else 100))
+        self.label(hero, "1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây" + (f" (tối đa {mp}% mỗi đơn)" if mp < 100 else "")
+                   + " — bật 💎 Trả bằng Blue lúc thanh toán.", self.app.f_s, DIM, wraplength=490).pack(fill="x", padx=14, pady=(0, 10))
+        if not i.get("can_use") and i.get("need_topup"):
+            self.label(self.body, "🔒 Nạp tiền lần đầu để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.", self.app.f_s, WARN, wraplength=520).pack(fill="x", padx=18, pady=(8, 0))
+        sd, st, today = int(num(cfg.get("streak_days"))), int(num(i.get("streak"))), bool(i.get("today"))
+        if 0 < sd <= 14 and num(cfg.get("checkin")) > 0:
+            f = self.section("Chuỗi điểm danh", f"{st} ngày liền" if st else "bắt đầu hôm nay")
+            row = tk.Frame(f, bg=BG); row.pack(fill="x")
+            filled = ((st - 1) % sd) + 1 if today else st % sd; now = filled if today else filled + 1
+            for k in range(1, sd + 1):
+                got, big = k <= filled, k == sd
+                c = tk.Frame(row, bg=CARD, highlightbackground=ACC if k == now else (OK if got else LINE), highlightthickness=1)
+                c.pack(side="left", fill="x", expand=True, padx=2)
+                tk.Label(c, text="Hôm nay" if k == now else f"Ngày {k}", font=self.app.f_s, fg=DIM, bg=CARD).pack()
+                tk.Label(c, text="✓" if got else "+" + blue_n(num(cfg.get("checkin")) + (num(cfg.get("streak_bonus")) if big else 0)),
+                         font=("Segoe UI", 10, "bold"), fg=OK if got else (ACC if big else TXT), bg=CARD).pack(pady=(0, 4))
+        ts = i.get("tasks") or []
+        f = self.section("Nhiệm vụ hôm nay", f"{sum(1 for t in ts if t.get('done'))}/{len(ts)} xong")
+        self.msg = self.label(f, "", self.app.f_s, OK, wraplength=520)
+        for t in ts:
+            tid = t.get("id"); ic, name, sub = self.TASK.get(tid, ("⭐", tid, ""))
+            if tid == "invite" and t.get("ready"): sub = "Đã có bạn đăng ký qua link của bạn hôm nay 🎉"
+            if tid == "play" and not t.get("ready") and not t.get("done"): sub = "Cần có 1 máy đang chạy — thuê máy rồi mở là nhận"
+            fr = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); fr.pack(fill="x", pady=(0, 6))
+            tk.Label(fr, text=ic, font=("Segoe UI Emoji", 15), bg=CARD, fg=TXT, width=2).pack(side="left", padx=(10, 6), pady=8)
+            if t.get("done"): self.label(fr, "✓ Đã nhận", ("Segoe UI", 10, "bold"), OK).pack(side="right", padx=12)
+            else:
+                act = {"checkin": ("Điểm danh", self.checkin), "share": ("Chia sẻ", self.share),
+                       "invite": ("Nhận", lambda: self.task("invite")) if t.get("ready") else ("Copy link mời", self.share),
+                       "play": ("Mở máy", self.close) if t.get("ready") else ("Thuê máy", lambda: (self.close(), self.app.open_order()))}.get(tid)
+                if act: self.app.btn(fr, act[0], act[1], "primary" if tid in ("checkin", "share") or t.get("ready") else "soft").pack(side="right", padx=10)
+            tx = tk.Frame(fr, bg=CARD); tx.pack(side="left", fill="x", expand=True, pady=6)
+            self.label(tx, f"{name}   +{blue_n(t.get('got'))}", ("Segoe UI", 10, "bold"), TXT).pack(fill="x")
+            self.label(tx, sub, self.app.f_s, DIM, wraplength=330).pack(fill="x")
+        self.msg.pack(fill="x")
+        more = []
+        if num(cfg.get("ref")) > 0: more.append(f"• Bạn bè bạn mời nạp tiền / mua lần đầu: +{blue_n(cfg.get('ref'))} Blue mỗi bạn")
+        if num(cfg.get("cashback")) > 0: more.append(f"• Mỗi đơn trả bằng tiền (thuê, gia hạn, nâng cấp, mua hàng): hoàn {num(cfg.get('cashback')):g}% bằng Blue")
+        more.append("• Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)")
+        f = self.section("Nhận thêm Blue"); self.label(f, "\n".join(more), self.app.f_s, DIM, wraplength=520).pack(fill="x")
+        items = i.get("items") or []
+        if items:
+            f = self.section("Lịch sử Blue")
+            for x in items[:20]:
+                r = tk.Frame(f, bg=BG); r.pack(fill="x")
+                d = parse_iso(x.get("t")); dv = int(num(x.get("delta")))
+                self.label(r, (d.astimezone().strftime("%d/%m %H:%M") + " · " if d else "") + str(x.get("note") or self.KIND.get(x.get("kind"), x.get("kind"))),
+                           self.app.f_s, DIM).pack(side="left")
+                self.label(r, ("+" if dv >= 0 else "−") + blue_n(abs(dv)), ("Segoe UI", 9, "bold"), OK if dv >= 0 else BAD).pack(side="right")
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right")
+        self.app.refresh(quiet=True)
+
+    def _after(self, r, okmsg):
+        self.bg(lambda: blue_load(self.app.auth), lambda i: (self.draw(i), self.alive and self.msg.config(text=okmsg)))
+
+    def checkin(self):
+        def done(r):
+            r = r or {}
+            self._after(r, f"🎉 +{blue_n(num(r.get('got')) + num(r.get('bonus')))} Blue — đủ chuỗi {r.get('streak')} ngày!" if num(r.get("bonus")) > 0
+                        else f"💎 +{blue_n(r.get('got'))} Blue — điểm danh ngày {r.get('streak')}")
+        self.bg(lambda: self.app.auth.rpc("blue_checkin"), done, lambda m: (self.msg.config(text=m, fg=BAD) if self.alive else None))
+
+    def task(self, tid):
+        name = self.TASK.get(tid, ("", tid))[1]
+        self.bg(lambda: self.app.auth.rpc("blue_task", {"p_task": tid}), lambda r: self._after(r, f"💎 +{blue_n((r or {}).get('got'))} Blue · {name}"),
+                lambda m: (self.msg.config(text=m, fg=BAD) if self.alive else None))
+
+    def share(self):
+        def job():
+            try:
+                r = self.app.auth.rpc("ref_info") or {}
+                return WEB + "/?ref=" + r["code"] if r.get("code") else WEB + "/"
+            except Exception: return WEB + "/"
+        def done(link):
+            text = "Thuê điện thoại Android đám mây chạy 24/7 ở CloudBlue — đăng ký qua link của mình nhé: " + link
+            try: self.win.clipboard_clear(); self.win.clipboard_append(text)
+            except Exception: pass
+            self.task("share")
+            self.app.ui(lambda: self.alive and self.msg.config(text="📋 Đã copy link mời — dán gửi bạn bè / nhóm (Zalo, Facebook, Discord…).", fg=OK))
+        self.bg(job, done)
+
+
+class CodeDlg(Dlg):
+    """🎟 Nhập mã: mã TẶNG MÁY (12 ký tự — nhận 1 máy miễn phí) hoặc mã CHIA SẺ / CHUYỂN NHƯỢNG máy (8 ký tự) — giống app điện thoại."""
+    def __init__(self, app):
+        super().__init__(app, "🎟 Nhập mã", 480, 300)
+        tk = app.tk
+        self.label(self.body, "Mã tặng máy (12 ký tự) → nhận 1 máy miễn phí.\nMã chia sẻ / chuyển nhượng máy (8 ký tự) → máy hiện trong danh sách của bạn.\n"
+                              "Mã GIẢM GIÁ thì nhập ở ô 🏷️ khi thuê / gia hạn / nâng cấp.", self.app.f_s, DIM, wraplength=440).pack(fill="x", padx=18, pady=(16, 8))
+        self.ent = tk.Entry(self.body, font=("Consolas", 16, "bold"), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat", justify="center")
+        self.ent.pack(fill="x", padx=18, ipady=8); self.ent.focus_set(); self.ent.bind("<Return>", lambda *_: self.go())
+        self.err = self.label(self.body, "", self.app.f_s, BAD, wraplength=440); self.err.pack(fill="x", padx=18, pady=(6, 0))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.b = self.app.btn(bb, "Nhận", self.go); self.b.pack(side="right")
+
+    def go(self):
+        import tkinter.messagebox as mb
+        c = re.sub(r"[^A-Z0-9]", "", self.ent.get().upper())
+        if len(c) < 4: self.err.config(text="Nhập mã tặng máy (12 ký tự) hoặc mã chia sẻ / chuyển nhượng (8 ký tự)."); return
+        self.b.config(state="disabled", text="Đang kiểm tra…")
+        if len(c) != 8:
+            def done(r):
+                r = r if isinstance(r, dict) else {}
+                if not r.get("ok"):
+                    e = str(r.get("err") or "PROMO_INVALID")
+                    keep = e in ("SERVER_OFFLINE", "MAINTENANCE", "OUT_OF_CAPACITY", "OUT_OF_STOCK", "MAX_PER_USER", "BAD_ANDROID")
+                    self.err.config(text=code_text(e) + (" Mã của bạn vẫn còn nguyên — thử lại sau." if keep else "")); self.b.config(state="normal", text="Nhận"); return
+                self.close(); self.app.refresh()
+                mb.showinfo("CloudBlue", f"🎁 Nhận máy tặng thành công — máy đang được tạo (Android {r.get('android')} · {r.get('ram')}GB · "
+                                         f"{r.get('cpu')} nhân · {r.get('days')} ngày).", parent=self.app.root)
+            self.bg(lambda: self.app.auth.rpc("promo_redeem_gift", {"p_code": c}), done, lambda m: (self.err.config(text=m), self.b.config(state="normal", text="Nhận")))
+            return
+        def done2(r):
+            r = r if isinstance(r, dict) else {}
+            self.close(); self.app.refresh()
+            mb.showinfo("CloudBlue", f"🎉 Máy “{r.get('name')}” giờ là của bạn!" if r.get("kind") == "transfer"
+                        else f"✓ Đã thêm máy “{r.get('name')}” được chia sẻ cho bạn.", parent=self.app.root)
+        self.bg(lambda: self.app.auth.rpc("cp_share_claim", {"p_code": c}), done2, lambda m: (self.err.config(text=m), self.b.config(state="normal", text="Nhận")))
+
+
 class OrderDlg(Dlg):
     """Thuê máy mới — y như bảng thuê trên web (giá, giới hạn, chỗ trống từng bản Android, máy miễn phí, CTV)."""
     def __init__(self, app):
@@ -1328,6 +1635,14 @@ class OrderDlg(Dlg):
         if not s["free"] and self.left > 1:
             f = self.section("Số lượng máy")
             self.rows.append(Chips(self.app, f, [(v, f"{v} máy") for v in CP_QTY if v <= min(20, self.left)], get("qty"), ch("qty"), self.upd)); self.rows[-1].frame.pack(fill="x")
+        self.promo = self.bpay = None
+        if not s["free"]:                                    # 🏷️ mã giảm giá + 💎 trả bằng Blue (máy miễn phí không dùng)
+            f = self.section("Mã giảm giá · Blue")
+            self.promo = PromoBox(self, f, "cp_new", lambda: None if self.s["free"] else {"p_ram": self.s["ram"], "p_cpu": self.s["cpu"],
+                                                                                      "p_days": self.s["days"], "p_qty": self.s["qty"]}, self.upd)
+            self.promo.frame.pack(fill="x")
+            if getattr(self, "_promo_code", ""): self.promo.ent.insert(0, self._promo_code); self.promo.check()
+            self.bpay = BluePay(self, f, self.upd, getattr(self, "_blue_on", False))
         note = (p.get("order_note") or "").strip() or ("Máy mới tinh, không dính dữ liệu hay tài khoản Gmail của ai. Hết hạn máy tạm dừng — "
                                                        "gia hạn trong 30 phút, quá thời gian máy và dữ liệu bị xoá.")
         self.label(self.body, note, self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=18, pady=(14, 18))
@@ -1412,33 +1727,55 @@ class OrderDlg(Dlg):
         else:
             self.calc.config(text=f"({s['ram']}GB × {vnd(p.get('price_ram_gb_day'))} + {s['cpu']} nhân × {vnd(p.get('price_cpu_day'))}) × {s['days']} ngày"
                                   + (f" − {int(num(self.prof.get('ctv_discount')))}% CTV" if is_ctv(self.prof) else "") + (f" × {s['qty']} máy" if s["qty"] > 1 else ""))
+        pz, bp = getattr(self, "promo", None), getattr(self, "bpay", None)
+        if pz: pz.order_changed(); self._promo_code = pz.code
+        price0 = price; price = pz.price(price0) if pz and not s["free"] else price0
+        bu = bp.use(price) if bp and not s["free"] else 0
+        if bp: bp.paint(price, s["free"]); self._blue_on = bool(bp.var.get())
+        disc = price0 - price; price = price - bu
+        if not s["free"] and (disc > 0 or bu > 0):
+            self.calc.config(text=self.calc.cget("text") + (f"  ·  🏷️ −{vnd(disc)}" if disc > 0 else "") + (f"  ·  💎 −{blue_n(bu)} Blue" if bu > 0 else ""))
         self.total.config(text="—" if bad else vnd(price)); self.bal.config(text="Số dư: " + vnd(bal))
         warn = "" if bad else ("Số dư không đủ — cần nạp thêm " + vnd(price - bal) + "." if price > bal
                                else "⚠ Cấu hình này chưa đủ chơi game 3D (cần tối thiểu 4GB · 4 nhân) — hợp treo app, game nhẹ." if s["ram"] < 4 or s["cpu"] < 4 else "")
         self.err.config(text=bad or warn, fg=BAD if bad or price > bal else WARN)
-        self.go.config(text="Nhận máy miễn phí" if s["free"] else ("Nạp tiền" if not bad and price > bal else "Thuê ngay" + (f" {s['qty']} máy" if s["qty"] > 1 else "")),
+        self.go.config(text="Nhận máy miễn phí" if s["free"] else ("Nạp tiền" if not bad and price > bal else "💎 Thuê bằng Blue" if price <= 0 and bu > 0
+                                                                   else "Thuê ngay" + (f" {s['qty']} máy" if s["qty"] > 1 else "")),
                        state="disabled" if bad else "normal", bg=LINE if bad else ACC)
 
     def buy(self):
-        import tkinter.messagebox as mb
         bad = self.check()
         if bad: self.err.config(text=bad, fg=BAD); return
-        s, price, bal = self.s, self.price(), num(self.prof.get("balance"))
+        if self.promo and not self.s["free"]: self.promo.ensure(self._buy, self.err)
+        else: self._buy()
+
+    def _buy(self):
+        import tkinter.messagebox as mb
+        s, price0, bal = self.s, self.price(), num(self.prof.get("balance"))
+        pz, bp = (self.promo, self.bpay) if not s["free"] else (None, None)
+        pay = pz.price(price0) if pz else price0; bu = bp.use(pay) if bp else 0; price = pay - bu; code = pz.send() if pz else None
         if not s["free"] and price > bal:
             need = price - bal; self.close(); self.app.open_topup(need); return
         what = f"Android {s['android']} · {s['qty']} máy · {s['ram']}GB · {s['cpu']} nhân · " + (f"{s['days']} ngày · " if not s["free"] else "") + f"{s['res']} · {s['fps']} FPS"
-        if not mb.askyesno("Xác nhận thuê máy", what + ("\n\nMáy miễn phí — không trừ tiền." if s["free"] else f"\n\nTrừ {vnd(price)} từ số dư?"), parent=self.win): return
+        extra = (f"\n🏷️ Mã {code}: −{vnd(price0 - pay)}" if code else "") + (f"\n💎 Trả {blue_n(bu)} Blue" if bu > 0 else "")
+        if not mb.askyesno("Xác nhận thuê máy", what + extra + ("\n\nMáy miễn phí — không trừ tiền." if s["free"] else f"\n\nTrừ {vnd(price)} từ số dư?"), parent=self.win): return
         self.go.config(state="disabled", text="Đang tạo đơn…")
         args = {"p_ram": s["ram"], "p_cpu": s["cpu"], "p_days": s["days"], "p_res": s["res"], "p_name": None, "p_fps": s["fps"],
                 "p_qty": 1 if s["free"] else s["qty"], "p_android": s["android"]}
         if s["free"]: args["p_free"] = True
+        if code: args["p_promo"] = code
+        if bu > 0: args["p_blue"] = True
         def done(_r):
             notify_admin(f"📱 <b>Đơn ĐT đám mây mới{' (MIỄN PHÍ)' if s['free'] else ''}</b> — app PC\n{s['qty']} máy × Android {s['android']} · "
-                         f"{s['ram']}GB / {s['cpu']} nhân / {s['days']} ngày / {s['res']} / {s['fps']} FPS\nGiá: {vnd(price)}\n{self.app.auth.email}", self.app.auth)
+                         f"{s['ram']}GB / {s['cpu']} nhân / {s['days']} ngày / {s['res']} / {s['fps']} FPS\nGiá: {vnd(price)}"
+                         + (f" (mã {code})" if code else "") + (f" · 💎 {blue_n(bu)} Blue" if bu > 0 else "") + f"\n{self.app.auth.email}", self.app.auth)
+            self._promo_code = ""; self._blue_on = False; BLUE["t"] = 0
             self.close(); self.app.refresh()
             mb.showinfo("CloudBlue", ("Đã tạo đơn " + str(s["qty"]) + " máy!" if s["qty"] > 1 else "Đã tạo đơn!") +
                         " Máy đang khởi tạo (khoảng 2–3 phút) — danh sách tự cập nhật khi máy chạy.", parent=self.app.root)
         def fail(m):
+            if self.promo: self.promo.fail(m)
+            if "Blue" in m: threading.Thread(target=lambda: (blue_load(self.app.auth), self.app.ui(lambda: self.alive and self.upd())), daemon=True).start()
             self.err.config(text=m, fg=BAD); self.upd()
         self.bg(lambda: self.app.auth.rpc("cloudphone_order_custom", args), done, fail)
 
@@ -1468,6 +1805,9 @@ class RenewDlg(Dlg):
             except ValueError: return
             if 1 <= v <= mx: self._set(v, False); self.upd()
         self.x.bind("<KeyRelease>", typed)
+        f = self.section("Mã giảm giá · Blue")                # 🏷️ mã giảm giá (SQL v23) + 💎 trả bằng Blue (SQL v27)
+        self.promo = PromoBox(self, f, "cp_renew", lambda: {"p_phone": self.p["id"], "p_days": self.days}, self.upd); self.promo.frame.pack(fill="x")
+        self.bpay = BluePay(self, f, self.upd)
         ft = self.foot
         self.sum = self.label(ft, "", self.app.f_t, TXT); self.sum.pack(fill="x", padx=16, pady=(10, 0))
         self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16)
@@ -1482,28 +1822,45 @@ class RenewDlg(Dlg):
 
     def total(self): return ctv(self.prof, per_day(self.pr, int(num(self.p.get("ram"))), int(num(self.p.get("cpu"))))) * self.days
 
+    def pay(self):
+        """(giá thường, giá sau mã, số Blue trừ, tiền trừ số dư)."""
+        t0 = self.total(); pz, bp = getattr(self, "promo", None), getattr(self, "bpay", None)
+        p1 = pz.price(t0) if pz else t0; bu = bp.use(p1) if bp else 0
+        return t0, p1, bu, p1 - bu
+
     def upd(self):
+        if not self.alive: return
         self.ch.paint()
-        per = ctv(self.prof, per_day(self.pr, int(num(self.p.get("ram"))), int(num(self.p.get("cpu"))))); tot = per * self.days; bal = num(self.prof.get("balance"))
+        if getattr(self, "promo", None): self.promo.order_changed()
+        per = ctv(self.prof, per_day(self.pr, int(num(self.p.get("ram"))), int(num(self.p.get("cpu"))))); bal = num(self.prof.get("balance"))
+        t0, p1, bu, tot = self.pay()
+        if getattr(self, "bpay", None): self.bpay.paint(p1)
         exp = parse_iso(self.p.get("expires_at")); base = max(now_utc(), exp) if exp else now_utc()
         new = (base + datetime.timedelta(days=self.days)).astimezone().strftime("%H:%M %d/%m/%Y")
         self.sum.config(text=f"Đơn giá {vnd(per)} / ngày" + (f" (CTV −{int(num(self.prof.get('ctv_discount')))}%)" if is_ctv(self.prof) else "")
-                        + f"  ·  Hạn mới: {new}\nThanh toán: {vnd(tot)}   ·   Số dư: {vnd(bal)}")
+                        + f"  ·  Hạn mới: {new}\nThanh toán: {vnd(tot)}" + (f" (🏷️ −{vnd(t0 - p1)})" if p1 < t0 else "")
+                        + (f" (💎 −{blue_n(bu)} Blue)" if bu > 0 else "") + f"   ·   Số dư: {vnd(bal)}")
         self.err.config(text="" if tot <= bal else "Số dư không đủ — cần nạp thêm " + vnd(tot - bal) + ".")
-        self.go.config(text=f"Gia hạn {self.days} ngày" if tot <= bal else "Nạp tiền")
+        self.go.config(text=("💎 " if tot <= 0 and bu > 0 else "") + f"Gia hạn {self.days} ngày" if tot <= bal else "Nạp tiền")
 
-    def renew(self):
+    def renew(self): self.promo.ensure(self._renew, self.err)
+
+    def _renew(self):
         import tkinter.messagebox as mb
-        tot, bal = self.total(), num(self.prof.get("balance"))
+        t0, p1, bu, tot = self.pay(); bal = num(self.prof.get("balance")); code = self.promo.send()
         if tot > bal: self.close(); self.app.open_topup(tot - bal); return
-        if not mb.askyesno("Gia hạn", f"Gia hạn “{self.p.get('name')}” thêm {self.days} ngày, trừ {vnd(tot)} từ số dư?", parent=self.win): return
+        extra = (f"\n🏷️ Mã {code}: −{vnd(t0 - p1)}" if code else "") + (f"\n💎 Trả {blue_n(bu)} Blue" if bu > 0 else "")
+        if not mb.askyesno("Gia hạn", f"Gia hạn “{self.p.get('name')}” thêm {self.days} ngày, trừ {vnd(tot)} từ số dư?" + extra, parent=self.win): return
         self.go.config(state="disabled", text="Đang gia hạn…"); d = self.days
+        args = {"p_id": self.p["id"], "p_days": d}
+        if code: args["p_promo"] = code
+        if bu > 0: args["p_blue"] = True
         def done(_r):
-            self.close(); self.app.refresh()
+            BLUE["t"] = 0; self.close(); self.app.refresh()
             mb.showinfo("CloudBlue", f"Đã gia hạn +{d} ngày.", parent=self.app.root)
         def fail(m):
-            self.err.config(text=m); self.go.config(state="normal"); self.upd()
-        self.bg(lambda: self.app.auth.rpc("cloudphone_renew", {"p_id": self.p["id"], "p_days": d}), done, fail)
+            self.promo.fail(m); self.err.config(text=m); self.go.config(state="normal"); self.upd()
+        self.bg(lambda: self.app.auth.rpc("cloudphone_renew", args), done, fail)
 
 
 class TopupDlg(Dlg):
@@ -1648,6 +2005,9 @@ class UpgradeDlg(Dlg):
         self.cc = Chips(self.app, f, [(self.c0, f"Giữ {self.c0} nhân")] + [(v, f"{v} nhân") for v in cpus], lambda: self.nc, lambda v: setattr(self, "nc", v), self.upd, wrap=7)
         self.cc.frame.pack(fill="x")
         if not cpus: self.label(f, "CPU đã tối đa.", self.app.f_s, DIM).pack(fill="x")
+        f = self.section("Mã giảm giá")                       # 🏷️ mã giảm giá cho nâng cấp (SQL v23)
+        self.promo = PromoBox(self, f, "cp_upgrade", lambda: None if (self.nr, self.nc) == (self.r0, self.c0)
+                              else {"p_phone": self.p["id"], "p_ram": self.nr, "p_cpu": self.nc}, self._draw); self.promo.frame.pack(fill="x")
         self.label(self.body, "Máy tự khởi động lại khoảng 1 phút để nhận cấu hình mới — app và dữ liệu giữ nguyên. "
                               "Các lần gia hạn sau tính theo cấu hình mới.", self.app.f_s, DIM, wraplength=510).pack(fill="x", padx=18, pady=(14, 10))
         ft = self.foot
@@ -1678,31 +2038,44 @@ class UpgradeDlg(Dlg):
             self._draw()
         self.bg(lambda: self.app.auth.rpc("cloudphone_upgrade_quote", {"p_id": self.p["id"], "p_ram": nr, "p_cpu": nc}), got, lambda m: None)
 
+    def _pay(self):
+        pz = getattr(self, "promo", None)
+        return pz.price(self.cost) if pz and (self.nr, self.nc) != (self.r0, self.c0) else self.cost
+
     def _draw(self):
+        if not self.alive: return
         same = self.nr == self.r0 and self.nc == self.c0; bal = num(self.prof.get("balance"))
+        if getattr(self, "promo", None) and not same: self.promo.order_changed()
+        pay = self._pay()
         self.sum.config(text="Chọn RAM hoặc CPU muốn nâng." if same else
-                        f"Cấu hình mới: {self.nr}GB RAM · {self.nc} nhân\nTrả thêm cho thời gian còn lại: {vnd(self.cost)}   ·   Số dư: {vnd(bal)}")
-        self.err.config(text="" if same or self.cost <= bal else "Số dư không đủ — cần nạp thêm " + vnd(self.cost - bal) + ".")
-        self.go.config(state="disabled" if same else "normal", bg=LINE if same else ACC, text="Nạp tiền" if not same and self.cost > bal else "Nâng cấp ngay")
+                        f"Cấu hình mới: {self.nr}GB RAM · {self.nc} nhân\nTrả thêm cho thời gian còn lại: {vnd(pay)}"
+                        + (f" (🏷️ −{vnd(self.cost - pay)})" if pay < self.cost else "") + f"   ·   Số dư: {vnd(bal)}")
+        self.err.config(text="" if same or pay <= bal else "Số dư không đủ — cần nạp thêm " + vnd(pay - bal) + ".")
+        self.go.config(state="disabled" if same else "normal", bg=LINE if same else ACC, text="Nạp tiền" if not same and pay > bal else "Nâng cấp ngay")
 
     def upgrade(self):
-        import tkinter.messagebox as mb
         if self.nr == self.r0 and self.nc == self.c0: return
-        bal = num(self.prof.get("balance"))
-        if self.cost > bal: need = self.cost - bal; self.close(); self.app.open_topup(need); return
-        if not mb.askyesno("Nâng cấp", f"Nâng “{self.p.get('name')}” lên {self.nr}GB RAM · {self.nc} nhân, trừ khoảng {vnd(self.cost)} từ số dư?\n"
-                                       "Máy sẽ tự khởi động lại khoảng 1 phút.", parent=self.win): return
+        self.promo.ensure(self._upgrade, self.err)
+
+    def _upgrade(self):
+        import tkinter.messagebox as mb
+        bal = num(self.prof.get("balance")); pay = self._pay(); code = self.promo.send()
+        if pay > bal: need = pay - bal; self.close(); self.app.open_topup(need); return
+        if not mb.askyesno("Nâng cấp", f"Nâng “{self.p.get('name')}” lên {self.nr}GB RAM · {self.nc} nhân, trừ khoảng {vnd(pay)} từ số dư?"
+                                       + (f" (mã {code})" if code else "") + "\nMáy sẽ tự khởi động lại khoảng 1 phút.", parent=self.win): return
         self.go.config(state="disabled", text="Đang nâng cấp…"); nr, nc = self.nr, self.nc
         def done(_r):
             self.close(); self.app.refresh()
             mb.showinfo("CloudBlue", f"Đã nâng lên {nr}GB · {nc} nhân — máy nhận cấu hình mới trong khoảng 1 phút.", parent=self.app.root)
         def fail(m):
-            self.err.config(text=m); self.go.config(state="normal"); self._draw()
-        self.bg(lambda: self.app.auth.rpc("cloudphone_upgrade", {"p_id": self.p["id"], "p_ram": nr, "p_cpu": nc}), done, fail)
+            self.promo.fail(m); self.err.config(text=m); self.go.config(state="normal"); self._draw()
+        args = {"p_id": self.p["id"], "p_ram": nr, "p_cpu": nc}
+        if code: args["p_promo"] = code
+        self.bg(lambda: self.app.auth.rpc("cloudphone_upgrade", args), done, fail)
 
 
 class SwitchDlg(Dlg):
-    """Đổi Android 9 / 12 / 15 (SQL v24): máy MỚI miễn phí, giữ nguyên hạn — máy cũ + TOÀN BỘ dữ liệu tự xoá khi máy mới chạy.
+    """Đổi Android 9 / 12 / 15 (SQL v24 + v28): máy MỚI miễn phí, giữ nguyên hạn — v28: máy cũ + TOÀN BỘ dữ liệu bị xoá NGAY, xoá xong mới tạo máy mới.
        Bản mới có trần thấp hơn (Android 9: 8GB · 8 nhân) → máy mới tự hạ, không hoàn tiền phần chênh."""
     def __init__(self, app, phone):
         super().__init__(app, "Đổi Android — " + (phone.get("name") or "máy"), 560, 600)
@@ -1729,7 +2102,7 @@ class SwitchDlg(Dlg):
         w = tk.Frame(self.body, bg=CARD, highlightbackground=BAD, highlightthickness=1); w.pack(fill="x", padx=18, pady=(12, 4))
         self.label(w, "⚠ Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.",
                    ("Segoe UI", 10, "bold"), BAD, wraplength=500).pack(fill="x", padx=10, pady=(8, 2))
-        self.label(w, "Máy mới miễn phí, giữ nguyên hạn dùng. Tạo máy mới mất khoảng 2–5 phút; máy cũ vẫn dùng được tới lúc đó rồi tự xoá.",
+        self.label(w, "Bấm Đổi là máy cũ bị XOÁ NGAY (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới miễn phí, giữ nguyên hạn dùng.",
                    self.app.f_s, TXT, wraplength=500).pack(fill="x", padx=10, pady=(0, 8))
         self.okv = tk.BooleanVar(value=False)
         tk.Checkbutton(self.body, text="Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", variable=self.okv, command=self.upd, font=self.app.f_t,
@@ -1761,7 +2134,7 @@ class SwitchDlg(Dlg):
         v = self.v; self.go.config(state="disabled", text="Đang gửi…"); self.err.config(text="")
         def done(_r):
             self.close(); self.app.refresh()
-            mb.showinfo("CloudBlue", f"Đang tạo máy Android {v}… máy cũ tự xoá khi máy mới sẵn sàng (2–5 phút).", parent=self.app.root)
+            mb.showinfo("CloudBlue", f"Đang xoá máy cũ… xoá xong tự tạo máy Android {v} (2–5 phút).", parent=self.app.root)
         def fail(m):
             self.err.config(text=m); self.upd()
         self.bg(lambda: self.app.auth.rpc("cloudphone_switch_android", {"p_id": self.p["id"], "p_android": v}), done, fail)
@@ -1786,7 +2159,7 @@ class ToolsDlg(Dlg):
        Màn hình: xoay ngang / dọc, độ rộng nhỏ nhất · Cài app: file APK / file khác / link · Ứng dụng: mở, dừng, xoá dữ liệu, gỡ
        · Clone tab: chạy thêm bản 2, 3… của 1 app (VD Roblox chính thức), mỗi bản 1 hồ sơ riêng để đăng nhập acc khác
        · Khác: mở link, vị trí GPS, chụp màn, nút nguồn, root, khởi động lại. Gọi cpapi qua đường thẳng tới máy chủ (CpClient)."""
-    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("more", "Khác")]
+    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("store", "Kho app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("more", "Khác")]
     SW = [320, 360, 411, 480, 540, 600, 720, 800]
 
     def __init__(self, app, phone, tab=None):
@@ -1801,7 +2174,7 @@ class ToolsDlg(Dlg):
         self.c_tab = Chips(app, hdr, self.TABS, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab)
         self.c_tab.frame.pack(fill="x")
         self.pages = {k: tk.Frame(self.body, bg=BG) for k in names}
-        self._page_screen(); self._page_install(); self._page_apps(); self._page_clone(); self._page_root(); self._page_more()
+        self._page_screen(); self._page_install(); self._page_store(); self._page_apps(); self._page_clone(); self._page_root(); self._page_more()
         bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
         self.app.btn(bb, "Làm mới", self.refresh, "soft").pack(side="left")
         self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right")
@@ -1839,6 +2212,7 @@ class ToolsDlg(Dlg):
         if self.tab == "screen": self.load_density()
         elif self.tab in ("apps", "clone"): self.loaded.update(("apps", "clone")); self.load()
         elif self.tab == "root": self.load_root()
+        elif self.tab == "store": self.load_store()
 
     def _bgjob(self, lbl, start, first):
         """Việc chạy lâu trên máy chủ (root, khởi động lại…): gửi → theo dõi mã việc → báo kết quả vào lbl."""
@@ -2173,6 +2547,58 @@ class ToolsDlg(Dlg):
     def go_root(self):
         self.tab = "root"; self.c_tab.paint(); self._show_tab()
 
+    # ================= thẻ KHO APP: Termux, MT Manager, ZArchiver… — máy chủ tải từ trang CHÍNH CHỦ rồi cài 1 chạm (cpapi <máy>/store) =================
+    def _page_store(self):
+        tk = self.app.tk; pg = self.pages["store"]
+        f = self.section("Kho app", parent=pg)
+        self.muted(f, "Máy chủ tải từ trang chính chủ (Termux: GitHub · MT Manager: mt.cc · ZArchiver: zdevs.ru) rồi cài vào máy. "
+                      "Lần đầu mất vài chục giây, máy sau cài ngay.")
+        self.st_box = tk.Frame(f, bg=BG); self.st_box.pack(fill="x", pady=(8, 0))
+        self.st_msg = self.msg(f)
+        self.muted(f, "Cần root cho Termux / MT Manager → thẻ Root, bật cho app đó.")
+
+    def load_store(self):
+        self.loaded.add("store")
+        for w in self.st_box.winfo_children(): w.destroy()
+        self.label(self.st_box, "Đang tải…", self.app.f_s, DIM).pack(fill="x")
+        def fail(m):
+            for w in self.st_box.winfo_children(): w.destroy()
+            self.say(self.st_msg, "✗ Không mở được kho: " + missing(m), BAD)
+        self.bg(lambda: self.cp.json("GET", "store", timeout=60), self.draw_store, fail)
+
+    def draw_store(self, j):
+        tk = self.app.tk
+        for w in self.st_box.winfo_children(): w.destroy()
+        rows = [(a.get("icon") or "📦", a.get("name") or "?", a.get("desc") or "", bool(a.get("installed")), {"id": a["id"]})
+                for a in (j.get("apps") or []) if a.get("id")]
+        rows += [("📦", re.sub(r"(?i)\.(apk|apks|xapk|apkm)$", "", f["name"]), f"App shop thêm sẵn · {(f.get('size') or 0) / 1048576:.1f} MB", False, {"name": f["name"]})
+                 for f in (j.get("files") or []) if f.get("name")]
+        if not rows:
+            self.label(self.st_box, "Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.", self.app.f_t, DIM, wraplength=580).pack(fill="x"); return
+        for icon, name, desc, inst, body in rows:
+            fr = tk.Frame(self.st_box, bg=CARD, highlightbackground=LINE, highlightthickness=1); fr.pack(fill="x", pady=(0, 6))
+            tk.Label(fr, text=icon, font=("Segoe UI Emoji", 16), bg=CARD, fg=TXT, width=2).pack(side="left", padx=(10, 6), pady=8)
+            b = self.app.btn(fr, "Cài lại" if inst else "Cài", lambda body=body, name=name: self.store_install(body, name), "soft" if inst else "primary")
+            b.pack(side="right", padx=10)
+            tx = tk.Frame(fr, bg=CARD); tx.pack(side="left", fill="x", expand=True, pady=6)
+            self.label(tx, name, ("Segoe UI", 10, "bold"), TXT).pack(fill="x")
+            self.label(tx, desc + ("   ✓ Đã cài" if inst else ""), self.app.f_s, OK if inst else DIM, wraplength=420).pack(fill="x")
+
+    def store_install(self, body, name):
+        lbl = self.st_msg
+        if lbl in self.jobs_on: self.say(lbl, "Đang cài app khác — đợi xong rồi bấm tiếp.", WARN); return
+        self.jobs_on.add(lbl); self.say(lbl, f"Đang chuẩn bị {name}…", WARN)
+        def job():
+            try:
+                j = self.cp.json("POST", "store", body, timeout=60)
+                msg = self.cp.wait_job(j["job"], lambda m: self.app.ui(lambda: self.say(lbl, m, WARN))) if j.get("job") else (j.get("msg") or "Xong.")
+                self.app.ui(lambda: (self.say(lbl, ("" if msg[:1] == "✅" else "✓ ") + msg, OK), self.load_store()))
+            except Exception as e:
+                m = str(e) or "Có lỗi."; log("store:", m); self.app.ui(lambda: self.say(lbl, "✗ " + missing(m), BAD))
+            finally:
+                self.app.ui(lambda: self.jobs_on.discard(lbl))
+        threading.Thread(target=job, daemon=True).start()
+
     # ================= thẻ ROOT: công tắc root của máy + chọn app được dùng lệnh su (cpapi <máy>/rootcfg) =================
     def _page_root(self):
         tk = self.app.tk; pg = self.pages["root"]
@@ -2234,6 +2660,7 @@ class ToolsDlg(Dlg):
     def paint_root(self):
         j = self.rt_cfg or {}; on = self.rt_on.get()
         if not j.get("online"): t = "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng."
+        elif on and j.get("su") is False: t = "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi cài cho app đã chọn."
         elif on != bool(j.get("on")): t = "Bấm Lưu để bật root." if on else "Bấm Lưu để tắt root."
         elif on: t = (f"Đang bật · {len(j.get('apps') or [])} app được dùng su" if j.get("running") else "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.")
         else: t = "Đang tắt — không app nào dùng được lệnh su."
@@ -2247,6 +2674,8 @@ class ToolsDlg(Dlg):
         lbl = self.rt_msg; self.jobs_on.add(lbl); self.say(lbl, "Đang lưu cấu hình root…", WARN)
         def job():
             try:
+                if on and (self.rt_cfg or {}).get("su") is False:
+                    self.app.ui(lambda: self.say(lbl, "Đang bật root — máy khởi động lại khoảng 1 phút…", WARN))
                 j = self.cp.json("POST", "rootcfg", {"on": on, "apps": list(dict.fromkeys(apps))}, timeout=60)
                 msg = self.cp.wait_job(j["job"], lambda m: self.app.ui(lambda: self.say(lbl, m, WARN))) if j.get("job") else (j.get("msg") or "Đã lưu.")
                 self.app.ui(lambda: (self.say(lbl, "✓ " + msg, OK), self.load_root()))
@@ -2262,6 +2691,21 @@ class ToolsDlg(Dlg):
         self._bgjob(self.more_msg, lambda: self.cp.json("POST", "reboot", {}, timeout=60), "Đang khởi động lại máy (1–3 phút)…")
 
 
+ERRORS.update({                                                  # 🏷️ mã giảm giá / mã tặng máy (SQL v23) · 💎 Tích Blue (SQL v27)
+    "PROMO_INVALID": "Mã không đúng hoặc đã bị tắt.", "PROMO_EXPIRED": "Mã đã hết hạn.", "PROMO_NOT_STARTED": "Mã chưa đến ngày sử dụng.",
+    "PROMO_USED_UP": "Mã đã hết lượt sử dụng.", "PROMO_USER_LIMIT": "Bạn đã dùng hết số lượt của mã này.", "PROMO_SCOPE": "Mã này không áp dụng cho loại đơn này.",
+    "PROMO_MIN_ORDER": "Đơn chưa đạt giá trị tối thiểu để dùng mã này.", "PROMO_TOO_MANY": "Bạn nhập sai mã quá nhiều lần — thử lại sau 10 phút.",
+    "PROMO_IS_GIFT": "Đây là mã TẶNG MÁY — nhập ở nút 🎟 Nhập mã trên danh sách máy (không dùng khi thanh toán).",
+    "PROMO_IS_DISCOUNT": "Đây là mã giảm giá — nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn / nâng cấp máy.", "PROMO_NOT_FOR_FREE": "Máy miễn phí không dùng mã giảm giá được.",
+    "PROMO_EMPTY": "Hãy nhập mã.", "PROMO_CTX": "Chọn cấu hình / số ngày trước rồi bấm Áp dụng.", "PROMO_OFF": "Tính năng mã giảm giá chưa bật.",
+    "BAD_CODE": "Mã không đúng, đã bị huỷ hoặc đã hết hạn.", "CODE_USED": "Mã này đã có người dùng rồi.", "OWN_PHONE": "Đây là máy của chính bạn.",
+    "ALREADY_SHARED": "Bạn đã được chia sẻ máy này rồi.",
+    "BLUE_DONE": "Hôm nay bạn đã điểm danh rồi — quay lại ngày mai nhé.", "BLUE_IP_LIMIT": "Mạng (wifi / 4G) này đã đủ số tài khoản nhận Blue hôm nay — mai thử lại nhé.",
+    "BLUE_NEED_TOPUP": "Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (Blue vẫn được tích bình thường).", "BLUE_EMPTY": "Bạn chưa có Blue để trả.",
+    "BLUE_NOT_FOR_FREE": "Máy miễn phí không trả bằng Blue được.", "BLUE_OFF": "Tích Blue đang tạm tắt.",
+    "TASK_DONE": "Hôm nay bạn đã nhận nhiệm vụ này rồi.", "TASK_NOT_YET": "Chưa xong nhiệm vụ — làm xong rồi bấm nhận nhé.",
+    "TASK_OFF": "Nhiệm vụ này đang tạm tắt.", "BAD_TASK": "Nhiệm vụ không hợp lệ.",
+})
 ERRORS.update({"UPGRADE_PENDING": "Máy đang được nâng cấp, đợi khoảng 1 phút rồi thử lại.", "FREE_NO_UPGRADE": "Máy miễn phí không nâng cấp được — thuê máy trả phí để nâng.",
                "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "BAD_UPGRADE": "Cấu hình nâng cấp không hợp lệ."})
 
@@ -2693,6 +3137,15 @@ class Launcher:
     def open_upgrade(self, p): UpgradeDlg(self, p)
     def open_switch(self, p): SwitchDlg(self, p)
 
+    def switch_note(self, p):
+        """Chữ cho máy MỚI của lệnh đổi Android (SQL v28: máy cũ bị xoá TRƯỚC, xoá xong mới tạo máy mới)."""
+        v = p.get("android") or "?"
+        if any(str(r.get("id")) == str(p.get("replaces")) and r.get("status") in ("active", "expired") for r in getattr(self, "rows_last", []) or []):
+            return f"🔄 Máy mới đổi sang Android {v} — đang tạo (2–5 phút), xong thì máy cũ tự xoá."
+        if p.get("node") == "wait-old": return f"🔄 Đang xoá máy cũ… xoá xong tự tạo máy Android {v} (2–5 phút)."
+        e = str(p.get("error") or "")
+        return f"🔄 Máy cũ đã xoá — đang tạo máy Android {v} (2–5 phút)." + ("\n" + e if e.startswith("Đổi Android:") else "")
+
     def switching(self, p):
         """Máy đang đổi Android dở (máy mới còn đang tạo)?"""
         t = p.get("switch_to")
@@ -2780,6 +3233,8 @@ class Launcher:
         self.bal = tk.Label(bl, text="…", font=("Segoe UI", 15, "bold"), fg=TXT, bg=CARD, anchor="w"); self.bal.pack(fill="x")
         self.btn(shop, "+ Thuê máy", self.open_order).pack(side="right", padx=(6, 12), pady=10)
         self.btn(shop, "Nạp tiền", self.open_topup, "soft").pack(side="right", pady=10)
+        self.btn(shop, "🎟 Nhập mã", lambda: CodeDlg(self), "soft").pack(side="right", padx=(0, 6), pady=10)
+        self.blue_btn = self.btn(shop, "💎 Tích Blue", lambda: BlueDlg(self), "soft")      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=10, pady=10)
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
         self.list = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.list, anchor="nw")
@@ -2816,8 +3271,9 @@ class Launcher:
                 except ApiError as e:
                     if e.code == 401: raise
                     prof = None
+                if time.time() - BLUE["t"] > 60: blue_load(self.auth)          # 💎 Tích Blue (tối đa 1 lần / phút)
                 def show():
-                    self._paint_update()
+                    self._paint_update(); self._paint_blue()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
@@ -2830,6 +3286,22 @@ class Launcher:
             except Exception as e:
                 log("refresh:", traceback.format_exc())
         threading.Thread(target=job, daemon=True).start()
+
+    def _paint_blue(self):
+        b = getattr(self, "blue_btn", None)
+        if b is None or not b.winfo_exists(): return
+        if not blue_on(): b.pack_forget(); return
+        n = blue_todo()
+        b.config(text=f"💎 {blue_n(BLUE['info'].get('blue'))} Blue" + (f"  •{n}" if n else ""))
+        if not b.winfo_manager(): b.pack(side="right", padx=(0, 6), pady=10)
+        i = BLUE["info"]; k, d = "blue_nudge_" + str(self.auth.uid or ""), vn_today()
+        if i and not i.get("today") and prefs().get(k) != d:
+            prefs({k: d})
+            try:
+                import tkinter.messagebox as mb
+                self.root.after(800, lambda: mb.askyesno("💎 Tích Blue", f"Hôm nay bạn chưa điểm danh — nhận +{blue_n(i.get('next_got'))} Blue ngay?",
+                                                         parent=self.root) and BlueDlg(self))
+            except Exception: pass
 
     def _paint_update(self):
         """Dải báo trên danh sách máy: "Có bản app mới — Cập nhật" (bấm 1 lần: tự tải, thay bản, mở lại) / "Đã cập nhật lên bản …".
@@ -2899,7 +3371,7 @@ class Launcher:
         if p.get("expires_at"): tk.Label(c, text="⏱ " + fmt_left(p["expires_at"]), font=self.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
         if p.get("status") == "error" and p.get("error"): tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
         if p.get("replaces") and p.get("status") in ("pending", "creating"):
-            tk.Label(c, text=f"🔄 Máy mới đổi sang Android {p.get('android')} — đang tạo (2–5 phút), xong thì máy cũ tự xoá.", font=self.f_s, fg=WARN, bg=CARD,
+            tk.Label(c, text=self.switch_note(p), font=self.f_s, fg=WARN, bg=CARD,
                      anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
         elif self.switching(p):
             tk.Label(c, text="🔄 Đang đổi Android: máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", font=self.f_s, fg=WARN, bg=CARD,

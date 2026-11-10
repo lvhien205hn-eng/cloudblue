@@ -42,7 +42,11 @@ public class MainActivity extends Activity {
     static final String[][] RES = {{"540x960", "Nhẹ máy"}, {"720x1280", "HD"}, {"720x1600", "HD+ dài"}, {"1080x1920", "Full HD"}, {"1080x2400", "FHD+ 20:9"}, {"1280x720", "HD ngang"}};
 
     private FrameLayout content;
-    private TextView balTop;
+    private TextView balTop, blueTop;
+    private TextView blueAcc;                         // dòng 💎 trong thẻ Tài khoản (cập nhật tại chỗ, không vẽ lại cả trang)
+    boolean bluePayRent = false;                      // khách đã bật "Trả bằng Blue" ở bảng thuê (giữ khi bảng vẽ lại)
+    String rentPromo = "";                            // mã giảm giá đang gõ ở bảng thuê (giữ khi bảng vẽ lại)
+    private Runnable rentUpd;                         // tính lại tổng tiền bảng thuê (Blue tải xong → cập nhật)
     private final TextView[] nav = new TextView[3];
     private int tab = 0;
     private boolean loaded = false;
@@ -183,6 +187,11 @@ public class MainActivity extends Activity {
         balTop.setOnClickListener(v -> openTopup());
         if (Api.PLAY) balTop.setVisibility(View.GONE);   // bản CH Play: không hiện số dư / nạp tiền trong app
         top.addView(balTop, Ui.wrap());
+        blueTop = Ui.pill(this, "💎", Ui.SKY);              // 💎 Tích Blue (SQL v27) — hiện khi máy chủ đã bật
+        blueTop.setVisibility(View.GONE);
+        blueTop.setContentDescription(Ui.L("Tích Blue", "Blue rewards"));
+        blueTop.setOnClickListener(v -> Blue.sheet(this));
+        top.addView(blueTop, Ui.wrap());
         TextView th = Ui.text(this, Ui.LIGHT ? "🌙" : "☀️", 17, Ui.FG, false);
         th.setGravity(Gravity.CENTER);
         th.setContentDescription(Ui.L("Đổi chế độ Sáng / Tối", "Switch light / dark mode"));
@@ -274,6 +283,7 @@ public class MainActivity extends Activity {
             JSONObject[] o = (JSONObject[]) r[0];
             prof = o[0]; price = clampHard(o[1]); status = o[2]; phones = (JSONArray) r[1];
             balTop.setText("💰 " + Ui.vnd(prof.optDouble("balance", 0)));
+            if (System.currentTimeMillis() - Blue.at > 60_000L) Blue.load(this::blueChanged);
             ExpiryAlarm.schedule(this, phones);
             if (tab == 0) {
                 if (phonesSig().equals(phonesSig)) tick();      // không có gì đổi → chỉ cập nhật chữ thời hạn (ô xem trước chạy liền, không nháy)
@@ -292,6 +302,27 @@ public class MainActivity extends Activity {
             Ui.toast(this, m);
             h.postDelayed(poll, 30000);
         });
+    }
+
+    /** Blue vừa tải lại / đổi → chip 💎 trên đầu + dòng trong thẻ Tài khoản + bảng thuê (nếu đang mở) · nhắc điểm danh 1 lần / ngày. */
+    void blueChanged() {
+        if (destroyed) return;
+        boolean on = Blue.on(); int todo = Blue.todo();
+        blueTop.setVisibility(on ? View.VISIBLE : View.GONE);
+        if (on) blueTop.setText("💎 " + Blue.n(Blue.bal()) + (todo > 0 ? " •" : ""));
+        if (blueAcc != null && blueAcc.isAttachedToWindow())
+            blueAcc.setText(on ? "💎 " + Blue.n(Blue.bal()) + " Blue" + (todo > 0 ? Ui.L("  ·  " + todo + " nhiệm vụ nhận được", "  ·  " + todo + " mission(s) ready") : "") : "");
+        if (tab == 1 && loaded && !Api.PLAY && rentUpd != null) rentUpd.run();
+        JSONObject i = Blue.info;
+        if (on && i != null && !i.optBoolean("today") && resumed) {
+            android.content.SharedPreferences sp = getSharedPreferences("blue", MODE_PRIVATE);
+            String k = "nudge_" + Api.uid, d = Blue.vnDay();
+            if (!d.equals(sp.getString(k, ""))) {
+                sp.edit().putString(k, d).apply();
+                Ui.toast(this, Ui.L("💎 Hôm nay chưa điểm danh — bấm 💎 ở trên để nhận +" + Blue.n(i.optLong("next_got")) + " Blue",
+                        "💎 Check in today — tap 💎 at the top for +" + Blue.n(i.optLong("next_got")) + " Blue"));
+            }
+        }
     }
 
     void show(int t) {
@@ -733,14 +764,17 @@ public class MainActivity extends Activity {
             String why = p.optString("lock_reason", "");
             c.addView(Ui.text(this, Ui.L("Máy đang bị khoá", "This phone is locked") + (why.isEmpty() || why.equals("null") ? "" : ": " + why), 13, Ui.BAD, false), Ui.fill());
         }
-        if (SwitchAndroid.isNewFromSwitch(p))             // máy MỚI của lệnh đổi Android
-            c.addView(Ui.text(this, "🤖 " + Ui.L("Máy mới đổi sang Android " + SwitchAndroid.cur(p) + " — đang tạo (2–5 phút). Xong thì máy cũ và dữ liệu cũ tự xoá.",
-                    "New phone from an Android switch (Android " + SwitchAndroid.cur(p) + ") — being created (2–5 min). The old phone and its data are then removed."), 13, Ui.WAIT, false), Ui.fill());
+        if (SwitchAndroid.isNewFromSwitch(p))             // máy MỚI của lệnh đổi Android (v28: máy cũ bị xoá trước)
+            c.addView(Ui.text(this, "🤖 " + SwitchAndroid.newNote(p, phones), 13, Ui.WAIT, false), Ui.fill());
         else if ("pending".equals(st)) c.addView(Ui.muted(this, Ui.L("Máy đang khởi động và cài app sẵn, khoảng 2–3 phút. Trang tự cập nhật.", "Booting and installing apps, about 2–3 minutes.")), Ui.fill());
         JSONObject swTo = SwitchAndroid.switching(p, phones);
         if (swTo != null)                                // máy CŨ đang chờ máy mới
             c.addView(Ui.text(this, "🤖 " + Ui.L("Đang đổi sang Android " + SwitchAndroid.cur(swTo) + ": máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.",
                     "Switching to Android " + SwitchAndroid.cur(swTo) + ": the new phone is being created; this one keeps working until then."), 13, Ui.WAIT, false), Ui.fill());
+        if ("error".equals(st)) {                        // lỗi tạo máy / đổi Android lỗi hẳn → nói rõ lý do (đã hoàn tiền / admin sẽ tạo lại)
+            String er = p.optString("error", "");
+            if (!er.isEmpty() && !"null".equals(er)) c.addView(Ui.text(this, er, 13, Ui.BAD, false), Ui.fill());
+        }
         String swFail = SwitchAndroid.failNote(p);
         if (swFail != null && swTo == null) c.addView(Ui.text(this, swFail, 13, Ui.BAD, false), Ui.fill());
         boolean shared = p.optBoolean("shared", false);
@@ -806,16 +840,25 @@ public class MainActivity extends Activity {
         TextView sum = Ui.text(this, "", 14, Ui.FG, false);
         EditText x = Ui.input(this, Ui.L("Hoặc tự nhập số ngày", "Or type days"), InputType.TYPE_CLASS_NUMBER);
         Button ok = Ui.button(this, Ui.L("Gia hạn", "Renew"), Ui.PRIMARY);
+        final Promo[] pr = new Promo[1];                // 🏷️ mã giảm giá · 💎 trả bằng Blue (bản web)
+        final Blue.Pay[] bp = new Blue.Pay[1];
         Runnable draw = () -> {
             for (int i = 0; i < w.getChildCount(); i++) Ui.setChip((TextView) w.getChildAt(i), (int) w.getChildAt(i).getTag() == days[0]);
-            double per = ctv(perDay(p.optInt("ram"), p.optInt("cpu"))), total = per * days[0], bal = prof.optDouble("balance", 0);
+            double per = ctv(perDay(p.optInt("ram"), p.optInt("cpu"))), total0 = per * days[0], bal = prof.optDouble("balance", 0);
+            if (pr[0] != null) pr[0].onOrderChanged();
+            double pay = pr[0] == null ? total0 : pr[0].price(total0);
+            long bu = bp[0] == null ? 0 : bp[0].use(pay);
+            if (bp[0] != null) bp[0].paint(pay, false);
+            double total = pay - bu;
             long base = Math.max(System.currentTimeMillis(), parseTime(p.optString("expires_at")));
             sum.setText(Ui.L("Đơn giá: ", "Price: ") + Ui.vnd(per) + Ui.L(" / ngày", " / day") + (isCtv() ? " (CTV −" + prof.optInt("ctv_discount") + "%)" : "")
                     + "\n" + Ui.L("Hạn mới: ", "New expiry: ") + fdate(base + days[0] * 86400000L)
                     + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal)
-                    + "\n" + Ui.L("Thanh toán: ", "Total: ") + Ui.vnd(total));
+                    + "\n" + Ui.L("Thanh toán: ", "Total: ") + Ui.vnd(total)
+                    + (pay < total0 ? "  (🏷️ −" + Ui.vnd(total0 - pay) + ")" : "") + (bu > 0 ? "  (💎 −" + Blue.n(bu) + " Blue)" : ""));
             boolean enough = bal >= total;
-            ok.setText(enough ? Ui.L("Gia hạn " + days[0] + " ngày", "Renew " + days[0] + " days") : Ui.L("Nạp thêm tiền", "Top up"));
+            ok.setText(!enough ? Ui.L("Nạp thêm tiền", "Top up") : total <= 0 && bu > 0 ? Ui.L("💎 Gia hạn " + days[0] + " ngày bằng Blue", "💎 Renew " + days[0] + " days with Blue")
+                    : Ui.L("Gia hạn " + days[0] + " ngày", "Renew " + days[0] + " days"));
         };
         for (int d : opts) {
             if (d > max) continue;
@@ -829,21 +872,42 @@ public class MainActivity extends Activity {
         x.addTextChangedListener(new Simple(() -> {
             try { int v = Integer.parseInt(x.getText().toString()); if (v >= 1 && v <= max) { days[0] = v; draw.run(); } } catch (Exception ignored) { }
         }));
+        if (!Api.PLAY) {
+            pr[0] = new Promo(this, "cp_renew", () -> new JSONObject().put("p_phone", p.optString("id")).put("p_days", days[0]), draw);
+            bp[0] = new Blue.Pay(this, false, draw);
+            c.addView(pr[0].view, Ui.fill());
+            c.addView(bp[0].view, Ui.fill());
+        }
         LinearLayout sb = Ui.card(this);
         sb.addView(sum);
         c.addView(sb, Ui.fill());
         c.addView(ok, Ui.fill());
         Dialog d = Ui.sheet(this, Ui.L("Gia hạn ", "Renew ") + p.optString("name"), c);
         ok.setOnClickListener(v -> {
-            double total = ctv(perDay(p.optInt("ram"), p.optInt("cpu"))) * days[0];
-            if (prof.optDouble("balance", 0) < total) { d.dismiss(); openTopup(total - prof.optDouble("balance", 0)); return; }
-            ok.setEnabled(false);
-            Api.bg(() -> Api.rpc("cloudphone_renew", new JSONObject().put("p_id", p.optString("id")).put("p_days", days[0])), r -> {
-                d.dismiss();
-                Ui.toast(this, Ui.L("Đã gia hạn +" + days[0] + " ngày cho ", "Renewed +" + days[0] + " days: ") + p.optString("name"));
-                refresh();
-                h.postDelayed(this::refresh, 5000);
-            }, m -> { ok.setEnabled(true); Ui.toast(this, m); });
+            Runnable go = () -> {
+                double total0 = ctv(perDay(p.optInt("ram"), p.optInt("cpu"))) * days[0];
+                double pay = pr[0] == null ? total0 : pr[0].price(total0);
+                long bu = bp[0] == null ? 0 : bp[0].use(pay);
+                double total = pay - bu;
+                if (prof.optDouble("balance", 0) < total) { d.dismiss(); openTopup(total - prof.optDouble("balance", 0)); return; }
+                final String code = pr[0] == null ? null : pr[0].send();
+                final boolean blue = bu > 0;
+                ok.setEnabled(false);
+                Api.bg(() -> {
+                    JSONObject a = new JSONObject().put("p_id", p.optString("id")).put("p_days", days[0]);
+                    if (code != null) a.put("p_promo", code);
+                    if (blue) a.put("p_blue", true);
+                    try { return Api.rpc("cloudphone_renew", a); }
+                    catch (Exception e) { String m = String.valueOf(e.getMessage()); if (pr[0] != null && m.contains("PROMO_")) Api.ui(() -> pr[0].fail(m)); throw e; }
+                }, r -> {
+                    d.dismiss();
+                    Ui.toast(this, Ui.L("Đã gia hạn +" + days[0] + " ngày cho ", "Renewed +" + days[0] + " days: ") + p.optString("name"));
+                    Blue.at = 0;
+                    refresh();
+                    h.postDelayed(this::refresh, 5000);
+                }, m -> { ok.setEnabled(true); Ui.toast(this, m); });
+            };
+            if (pr[0] == null) go.run(); else pr[0].ensure(go);
         });
         draw.run();
         d.show();
@@ -864,6 +928,9 @@ public class MainActivity extends Activity {
         TextView lc = Ui.text(this, "CPU", 14, Ui.FG, true); c.addView(lc);
         Ui.Wrap wc = new Ui.Wrap(this, 8); c.addView(wc, Ui.fill());
         TextView sum = Ui.text(this, "", 14, Ui.FG, false);
+        final Promo[] pr = new Promo[1];                // 🏷️ mã giảm giá cho nâng cấp (bản web)
+        LinearLayout pzu = Ui.col(this, 0);
+        c.addView(pzu, Ui.fill());
         LinearLayout sb = Ui.card(this); sb.addView(sum); c.addView(sb, Ui.fill());
         c.addView(Ui.muted(this, gpu
                 ? Ui.L("Máy sẽ tự khởi động lại khoảng 1 phút để nhận cấu hình mới — app và dữ liệu giữ nguyên.", "The phone restarts (~1 min) to apply — apps and data stay.")
@@ -884,12 +951,15 @@ public class MainActivity extends Activity {
             for (int i = 0; i < wc.getChildCount(); i++) Ui.setChip((TextView) wc.getChildAt(i), (int) wc.getChildAt(i).getTag() == nc[0]);
             boolean same = nr[0] == R0 && nc[0] == C0;
             double bal = prof.optDouble("balance", 0);
+            if (pr[0] != null) { pr[0].view.setVisibility(same ? View.GONE : View.VISIBLE); if (!same) pr[0].onOrderChanged(); }
+            double pay = same || pr[0] == null ? cost[0] : pr[0].price(cost[0]);
             sum.setText(same ? Ui.L("Chọn RAM hoặc CPU muốn nâng.", "Pick more RAM or CPU.")
                     : Ui.L("Cấu hình mới: ", "New: ") + nr[0] + "GB · " + nc[0] + Ui.L(" nhân", " cores")
-                    + "\n" + Ui.L("Trả thêm cho thời gian còn lại: ", "Pay for the remaining time: ") + Ui.vnd(cost[0])
+                    + "\n" + Ui.L("Trả thêm cho thời gian còn lại: ", "Pay for the remaining time: ") + Ui.vnd(pay)
+                    + (pay < cost[0] ? "  (🏷️ −" + Ui.vnd(cost[0] - pay) + ")" : "")
                     + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
             ok.setEnabled(!same);
-            ok.setText(!same && bal < cost[0] ? Ui.L("Nạp thêm tiền", "Top up") : Ui.L("Nâng cấp ngay", "Upgrade now"));
+            ok.setText(!same && bal < pay ? Ui.L("Nạp thêm tiền", "Top up") : Ui.L("Nâng cấp ngay", "Upgrade now"));
         };
         int[] rams = {2, 3, 4, 6, 8, 10, 12, 16}, cpus = {2, 3, 4, 6, 8, 10, 12, 16};
         java.util.TreeSet<Integer> rs = new java.util.TreeSet<>(), cs = new java.util.TreeSet<>();
@@ -899,11 +969,29 @@ public class MainActivity extends Activity {
             ch.setOnClickListener(x -> { nr[0] = (int) x.getTag(); draw[0].run(); quote.run(); }); wr.addView(ch); }
         for (int v : cs) { TextView ch = Ui.chip(this, (v == C0 ? Ui.L("Giữ ", "Keep ") : "") + v + Ui.L(" nhân", " cores"), false); ch.setTag(v);
             ch.setOnClickListener(x -> { nc[0] = (int) x.getTag(); draw[0].run(); quote.run(); }); wc.addView(ch); }
+        if (!Api.PLAY) {
+            pr[0] = new Promo(this, "cp_upgrade", () -> nr[0] == R0 && nc[0] == C0 ? null
+                    : new JSONObject().put("p_phone", p.optString("id")).put("p_ram", nr[0]).put("p_cpu", nc[0]), () -> draw[0].run());
+            pzu.addView(pr[0].view, Ui.fill());
+        }
         Dialog d = Ui.sheet(this, "⬆️ " + Ui.L("Nâng cấp ", "Upgrade ") + p.optString("name"), c);
-        ok.setOnClickListener(v -> {
-            if (prof.optDouble("balance", 0) < cost[0]) { d.dismiss(); openTopup(cost[0] - prof.optDouble("balance", 0)); return; }
+        ok.setOnClickListener(v -> { if (pr[0] == null) upgradeGo(d, ok, p, nr, nc, cost, null); else pr[0].ensure(() -> upgradeGo(d, ok, p, nr, nc, cost, pr[0])); });
+        draw[0].run();
+        d.show();
+    }
+
+    private void upgradeGo(Dialog d, Button ok, JSONObject p, int[] nr, int[] nc, long[] cost, Promo pr) {
+        {
+            double pay = pr == null ? cost[0] : pr.price(cost[0]);
+            if (prof.optDouble("balance", 0) < pay) { d.dismiss(); openTopup(pay - prof.optDouble("balance", 0)); return; }
+            final String code = pr == null ? null : pr.send();
             ok.setEnabled(false);
-            Api.bg(() -> Api.rpc("cloudphone_upgrade", new JSONObject().put("p_id", p.optString("id")).put("p_ram", nr[0]).put("p_cpu", nc[0])), r -> {
+            Api.bg(() -> {
+                JSONObject a = new JSONObject().put("p_id", p.optString("id")).put("p_ram", nr[0]).put("p_cpu", nc[0]);
+                if (code != null) a.put("p_promo", code);
+                try { return Api.rpc("cloudphone_upgrade", a); }
+                catch (Exception e) { String m = String.valueOf(e.getMessage()); if (pr != null && m.contains("PROMO_")) Api.ui(() -> pr.fail(m)); throw e; }
+            }, r -> {
                 d.dismiss();
                 Ui.toast(this, Ui.L("Đã nâng lên " + nr[0] + "GB · " + nc[0] + " nhân — máy nhận cấu hình mới trong giây lát.", "Upgraded to " + nr[0] + "GB · " + nc[0] + " cores."));
                 refresh(); h.postDelayed(this::refresh, 5000);
@@ -913,9 +1001,7 @@ public class MainActivity extends Activity {
                         : m.contains("FREE_NO_UPGRADE") ? Ui.L("Máy miễn phí không nâng cấp được.", "Free phones can't be upgraded.")
                         : m.contains("PHONE_NOT_ACTIVE") ? Ui.L("Máy phải đang chạy mới nâng cấp được.", "The phone must be running.") : m);
             });
-        });
-        draw[0].run();
-        d.show();
+        }
     }
 
     /** Giá nâng cấp dự tính giống web (máy chủ tính lại chính xác lúc trừ tiền). */
@@ -1163,23 +1249,32 @@ public class MainActivity extends Activity {
 
         TextView total = Ui.text(this, "", 22, Ui.SKY, true);
         TextView calc = Ui.text(this, "", 11.5f, Ui.MUTED, false);
-        calc.setMaxLines(2);
+        calc.setMaxLines(3);
+        final Promo[] prm = new Promo[1];                // 🏷️ mã giảm giá (SQL v23) · 💎 trả bằng Blue (SQL v27) — bản web
+        final Blue.Pay[] bp = new Blue.Pay[1];
         TextView err = Ui.text(this, "", 12.5f, Ui.BAD, false);
         Button buy = Ui.button(this, "", Ui.PRIMARY);
 
         Runnable upd = () -> {
             paintAnd(aw);
             andTip.setVisibility("15".equals(sAnd) ? View.VISIBLE : View.GONE);
-            double t = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty, bal = prof.optDouble("balance", 0);
+            double t0 = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty, bal = prof.optDouble("balance", 0);
+            if (prm[0] != null) { prm[0].view.setVisibility(sFree ? View.GONE : View.VISIBLE); rentPromo = prm[0].code; if (!sFree) prm[0].onOrderChanged(); }
+            double pay = sFree || prm[0] == null ? t0 : prm[0].price(t0);
+            long bu = sFree || bp[0] == null ? 0 : bp[0].use(pay);
+            if (bp[0] != null) bp[0].paint(pay, sFree);
+            double t = pay - bu;
             total.setText(Ui.vnd(t));
             calc.setText("(" + sRam + "GB × " + Ui.vnd(price.optDouble("price_ram_gb_day", 2500)) + " + " + sCpu + Ui.L(" nhân × ", " cores × ")
                     + Ui.vnd(price.optDouble("price_cpu_day", 2000)) + ") × " + sDays + Ui.L(" ngày", " days")
                     + (isCtv() ? " − " + prof.optInt("ctv_discount") + "% CTV" : "") + (sQty > 1 ? " × " + sQty + Ui.L(" máy", " phones") : "")
-                    + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
+                    + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal)
+                    + (pay < t0 ? "  ·  🏷️ −" + Ui.vnd(t0 - pay) : "") + (bu > 0 ? "  ·  💎 −" + Blue.n(bu) + " Blue" : ""));
             String bad = check();
             err.setText(bad.isEmpty() && bal < t ? Ui.L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + Ui.vnd(t - bal) : bad);
             if (sFree) calc.setText(Ui.L("🎁 Miễn phí " + price.optInt("free_days", 1) + " ngày", "🎁 Free for " + price.optInt("free_days", 1) + " day(s)") + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
-            buy.setText(sFree ? Ui.L("🎁 Nhận máy miễn phí", "🎁 Get free phone") : bad.isEmpty() && bal < t ? Ui.L("Nạp tiền", "Top up") : Ui.L("Thuê ngay", "Rent now") + (sQty > 1 ? " " + sQty + Ui.L(" máy", " phones") : ""));
+            buy.setText(sFree ? Ui.L("🎁 Nhận máy miễn phí", "🎁 Get free phone") : bad.isEmpty() && bal < t ? Ui.L("Nạp tiền", "Top up")
+                    : t <= 0 && bu > 0 ? Ui.L("💎 Thuê bằng Blue", "💎 Rent with Blue") : Ui.L("Thuê ngay", "Rent now") + (sQty > 1 ? " " + sQty + Ui.L(" máy", " phones") : ""));
             buy.setEnabled(bad.isEmpty());
             buy.setAlpha(bad.isEmpty() ? 1f : .5f);
             err.setVisibility(err.getText().length() == 0 ? View.GONE : View.VISIBLE);
@@ -1263,6 +1358,17 @@ public class MainActivity extends Activity {
         rc.addView(rw, Ui.fill());
         body.addView(boxed(rc), Ui.fill());
 
+        // 🏷️ Mã giảm giá + 💎 Trả bằng Blue (bản web; máy miễn phí không dùng mã / Blue)
+        if (!Api.PLAY) {
+            prm[0] = new Promo(this, "cp_new", () -> sFree ? null : new JSONObject().put("p_ram", sRam).put("p_cpu", sCpu).put("p_days", sDays).put("p_qty", sQty), upd);
+            bp[0] = new Blue.Pay(this, bluePayRent, () -> { bluePayRent = bp[0].on; upd.run(); });
+            LinearLayout pz = Ui.col(this, 10);
+            pz.addView(prm[0].view, Ui.fill());
+            pz.addView(bp[0].view, Ui.fill());
+            body.addView(boxed(pz), Ui.fill());
+            if (!rentPromo.isEmpty()) { prm[0].in.setText(rentPromo); prm[0].check(null); }
+        }
+
         // Thanh thanh toán ghim dưới màn hình: luôn thấy tổng tiền + nút Thuê ngay
         LinearLayout sum = Ui.col(this, 6);
         sum.setPadding(Ui.dp(14), Ui.dp(10), Ui.dp(10), Ui.dp(10));
@@ -1280,13 +1386,23 @@ public class MainActivity extends Activity {
         sum.addView(sr, Ui.fill());
 
         buy.setOnClickListener(v -> {
-            double t = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty;
-            if (prof.optDouble("balance", 0) < t) { openTopup(t - prof.optDouble("balance", 0)); return; }
-            Ui.confirm(this, Ui.L("Xác nhận thuê máy", "Confirm"),
-                    "Android " + sAnd + " · " + sQty + Ui.L(" máy · ", " phone(s) · ") + sRam + "GB · " + sCpu + Ui.L(" nhân · ", " cores · ") + sDays + Ui.L(" ngày · ", " days · ") + sRes + " · " + sFps + " FPS\n"
-                            + Ui.L("Trừ ", "Charge ") + Ui.vnd(t) + Ui.L(" từ số dư.", " from balance."),
-                    Ui.L("Thanh toán", "Pay"), () -> order(buy));
+            Runnable go = () -> {
+                double t0 = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty;
+                double pay = sFree || prm[0] == null ? t0 : prm[0].price(t0);
+                long bu = sFree || bp[0] == null ? 0 : bp[0].use(pay);
+                double t = pay - bu;
+                if (prof.optDouble("balance", 0) < t) { openTopup(t - prof.optDouble("balance", 0)); return; }
+                final String code = sFree || prm[0] == null ? null : prm[0].send();
+                Ui.confirm(this, Ui.L("Xác nhận thuê máy", "Confirm"),
+                        "Android " + sAnd + " · " + sQty + Ui.L(" máy · ", " phone(s) · ") + sRam + "GB · " + sCpu + Ui.L(" nhân · ", " cores · ") + sDays + Ui.L(" ngày · ", " days · ") + sRes + " · " + sFps + " FPS\n"
+                                + (code != null ? "🏷️ " + code + "  −" + Ui.vnd(t0 - pay) + "\n" : "")
+                                + (bu > 0 ? "💎 " + Ui.L("Trả ", "Pay ") + Blue.n(bu) + " Blue\n" : "")
+                                + Ui.L("Trừ ", "Charge ") + Ui.vnd(t) + Ui.L(" từ số dư.", " from balance."),
+                        Ui.L("Thanh toán", "Pay"), () -> order(buy, code, bu > 0, prm[0]));
+            };
+            if (sFree || prm[0] == null) go.run(); else prm[0].ensure(go);
         });
+        rentUpd = upd;
         upd.run();
         body.setTag("rent");
         page(body);
@@ -1304,15 +1420,23 @@ public class MainActivity extends Activity {
         return c;
     }
 
-    private void order(Button buy) {
+    private void order(Button buy, String code, boolean blue, Promo pr) {
         buy.setEnabled(false);
-        Api.bg(() -> Api.rpc("cloudphone_order_custom", new JSONObject().put("p_ram", sRam).put("p_cpu", sCpu).put("p_days", sDays)
-                .put("p_res", sRes).put("p_name", JSONObject.NULL).put("p_fps", sFps).put("p_qty", sFree ? 1 : sQty)
-                .put("p_android", sAnd.isEmpty() ? "9" : sAnd).put("p_free", sFree)), r -> {
+        Api.bg(() -> {
+            JSONObject a = new JSONObject().put("p_ram", sRam).put("p_cpu", sCpu).put("p_days", sDays)
+                    .put("p_res", sRes).put("p_name", JSONObject.NULL).put("p_fps", sFps).put("p_qty", sFree ? 1 : sQty)
+                    .put("p_android", sAnd.isEmpty() ? "9" : sAnd).put("p_free", sFree);
+            if (code != null) a.put("p_promo", code);
+            if (blue) a.put("p_blue", true);
+            try { return Api.rpc("cloudphone_order_custom", a); }
+            catch (Exception e) { String m = String.valueOf(e.getMessage()); if (pr != null && m.contains("PROMO_")) Api.ui(() -> pr.fail(m)); throw e; }
+        }, r -> {
             Ui.toast(this, Ui.L("Đã đặt máy! Máy đang khởi tạo, khoảng 2–3 phút.", "Ordered! Your phone is being created (2–3 min)."));
+            bluePayRent = false; rentPromo = "";
+            Blue.at = 0;
             show(0);
             refresh();
-        }, m -> { buy.setEnabled(true); Ui.toast(this, m); });
+        }, m -> { buy.setEnabled(true); Ui.toast(this, m); if (m.contains("Blue")) Blue.load(this::blueChanged); });
     }
 
     String check() {
@@ -1509,6 +1633,21 @@ public class MainActivity extends Activity {
             c.addView(top, Ui.fill());
         }
         body.addView(c, Ui.fill());
+
+        if (Blue.on()) {                                // 💎 Tích Blue (SQL v27)
+            LinearLayout bc = Ui.card(this);
+            bc.addView(Ui.h2(this, "💎 " + Ui.L("Tích Blue", "Blue rewards")));
+            blueAcc = Ui.text(this, "", 16, Ui.SKY, true);
+            bc.addView(blueAcc, Ui.fill());
+            bc.addView(Ui.muted(this, Api.PLAY ? Ui.L("Điểm danh mỗi ngày, mở máy đám mây để tích Blue.", "Check in daily and open your cloud phone to earn Blue.")
+                    : Ui.L("Điểm danh, làm nhiệm vụ hằng ngày, mời bạn để tích Blue — 1 Blue = 1đ khi thuê / gia hạn máy.",
+                           "Check in, do daily missions and invite friends to earn Blue — 1 Blue = 1đ on rentals and renewals.")));
+            Button ob = Ui.button(this, "💎 " + Ui.L("Mở Tích Blue · điểm danh", "Open Blue rewards · check in"), Ui.PRIMARY);
+            ob.setOnClickListener(v -> Blue.sheet(this));
+            bc.addView(ob, Ui.fill());
+            body.addView(bc, Ui.fill());
+            blueChanged();
+        }
 
         if (!Api.PLAY) {
             LinearLayout rf = Ui.card(this);            // 🎁 Giới thiệu bạn bè (SQL v24: ref_info / ref_claim)

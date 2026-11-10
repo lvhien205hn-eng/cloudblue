@@ -1307,6 +1307,46 @@ img.cb-wh{object-fit:contain;padding:8px 6px;border-radius:16px;background:linea
 .rfa-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.rfa-head b{color:var(--fg)}.rfa-head .btn{margin-left:auto}
 .rfa-tbl{max-height:280px;overflow:auto}
 .reflist{max-height:220px;overflow:auto;display:grid;gap:6px;font-size:13px}.reflist div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px dashed var(--line);padding:4px 0}
+/* 💎 Tích Blue (SQL v27) — chip trên đầu trang · hộp Blue · dòng "Trả bằng Blue" · thẻ admin */
+.bluechip{gap:6px!important;border-color:rgba(143,208,255,.45)!important;color:var(--sky)!important;position:relative;font-variant-numeric:tabular-nums}
+.bluechip b{color:var(--fg);font-weight:700}
+.bluechip .bdot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 2px var(--bg)}
+.dlg.bluedlg{width:min(560px,100%);gap:12px}
+.bl-top{display:flex;align-items:center;gap:10px}.bl-top h3{margin:0}.bl-top .btn{margin-left:auto}
+.bl-hero{display:grid;grid-template-columns:auto 1fr auto;gap:2px 14px;align-items:center;padding:14px 16px;border:1px solid rgba(143,208,255,.32);border-radius:16px;background:radial-gradient(120% 140% at 0% 0%,rgba(143,208,255,.16),transparent 60%),rgba(61,123,255,.07)}
+.bl-gem{grid-row:span 2;width:46px;height:46px}
+.bl-amt{font-size:30px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.bl-amt small{font-size:14px;font-weight:600;color:var(--sky);margin-left:6px;letter-spacing:0}
+.bl-sub{font-size:12.5px;color:var(--muted)}
+.bl-hero .btn{grid-row:span 2}
+.bl-lock{font-size:12.5px;padding:8px 12px;border-radius:12px;border:1px dashed rgba(255,200,97,.5);color:var(--warn,#ffc861);background:rgba(255,200,97,.06)}
+.bl-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:2px 0 -4px}
+.bl-h b{font-size:14.5px}.bl-h span{font-size:12.5px;color:var(--muted)}
+.bl-week{display:grid;grid-template-columns:repeat(var(--n,7),minmax(0,1fr));gap:6px}
+.bl-week div{border:1px solid var(--line);border-radius:10px;padding:6px 2px;text-align:center;font-size:11.5px;color:var(--muted);display:grid;gap:1px}
+.bl-week div b{font-size:13px;color:var(--fg);font-variant-numeric:tabular-nums}
+.bl-week .got{border-color:rgba(60,224,176,.5);background:rgba(60,224,176,.08);color:var(--ok)}
+.bl-week .now{border-color:var(--sky);box-shadow:inset 0 0 0 1px var(--sky)}
+.bl-week .big b{color:var(--sky)}
+.bl-tasks{display:grid;gap:8px}
+.bl-task{display:grid;grid-template-columns:36px minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:9px 10px;border:1px solid var(--line);border-radius:14px}
+.bl-task .ti{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;background:rgba(143,208,255,.1);font-size:18px}
+.bl-task b{display:block;font-size:13.5px}.bl-task small{display:block;font-size:12px;color:var(--muted)}
+.bl-task .rw{font-weight:800;color:var(--sky);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bl-task.done .ti{background:rgba(60,224,176,.12)}.bl-task.done .rw{color:var(--ok)}
+.bl-task .okt{font-size:12.5px;color:var(--ok);white-space:nowrap}
+.bl-more{display:grid;gap:3px;font-size:12.5px;color:var(--muted);margin:0;padding-left:18px}
+.bl-hist{max-height:210px;overflow:auto;display:grid;font-size:12.5px}
+.bl-hist div{display:flex;justify-content:space-between;gap:10px;border-bottom:1px dashed var(--line);padding:5px 0}
+.bl-hist span{color:var(--muted)}.bl-hist span em{font-style:normal;color:var(--fg)}
+.bl-hist .p{color:var(--ok);font-weight:700;white-space:nowrap}.bl-hist .m{color:var(--bad);font-weight:700;white-space:nowrap}
+.bluepay .mtrow{align-items:center;margin:0}
+.bluepay .mtrow>span:nth-child(2){flex:1;min-width:0}
+.sw.bl input:checked+i{background:var(--blue);border-color:var(--blue)}
+.refst.r4{grid-template-columns:repeat(4,1fr)}
+.bl-add{display:grid;grid-template-columns:1.3fr .8fr 1.4fr auto;gap:8px;align-items:end}
+@media (max-width:560px){ .bl-task{grid-template-columns:32px minmax(0,1fr) auto} .bl-task .rw{display:none} .bl-week{gap:4px} .bl-week div{font-size:10.5px;padding:5px 1px}
+  .bl-hero{grid-template-columns:auto 1fr} .bl-hero .btn{grid-row:auto;grid-column:1/-1} .refst.r4{grid-template-columns:repeat(2,1fr)} .bl-add{grid-template-columns:1fr 1fr} }
 .cps-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:6px 0}.amt-neg{color:var(--bad)}
 .vmi .acts{display:flex!important;flex-wrap:wrap;gap:8px}.vmi .acts .btn{flex:1 1 auto;min-width:max-content}
 /* ===== Web chỉ để thuê / cấu hình máy — điều khiển bằng app (máy tính Windows + Android) ===== */
@@ -1422,6 +1462,7 @@ window.BR_CONFIG = {
       <span id="guest-acts"><button class="btn ghost" id="btn-login" data-i18n="login">Đăng nhập</button> <button class="btn" id="btn-reg" data-i18n="signup">Đăng ký</button></span>
       <span id="user-acts" hidden style="display:flex;gap:8px;align-items:center">
         <span class="bal"><span data-i18n="balance">Số dư</span>: <b id="bal">0đ</b></span>
+        <button class="btn ghost sm bluechip" id="blue-btn" type="button" hidden title="Tích Blue">💎 <b id="blue-n">0</b><i class="bdot" id="blue-dot" hidden></i></button>
         <button class="btn sm" id="btn-topup" data-i18n="btn_topup">+ Nạp</button>
         <button class="btn ghost sm ctvchip" id="ctv-btn" type="button" hidden></button>
         <button class="btn ghost sm ctvchip" id="ref-btn" type="button" hidden>🎁 Mời bạn</button>
@@ -2024,6 +2065,11 @@ window.BR_CONFIG = {
         <div class="tbl" id="rnf-tblbox" hidden><table><thead><tr><th>Máy</th><th>Khách</th><th>Hết hạn hiện tại</th><th>Lẽ ra hết hạn</th><th class="num">Thiếu</th><th></th></tr></thead><tbody id="rnf-tb"></tbody></table></div>
         <div id="rnf-allbox" hidden><button class="btn sm" type="button" id="rnf-all">🩹 Bù tất cả</button></div>
       </div>
+      <div class="gpubox" id="swcbox">
+        <div class="gph"><h3 style="margin:0">🧹 Máy đổi Android</h3><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="swc-check">🔎 Kiểm tra</button><button class="btn danger sm" type="button" id="swc-go">🧹 Xoá sạch máy cũ</button></span></div>
+        <div class="hint" id="swc-msg">Bấm Kiểm tra để xem.</div>
+        <div class="tbl" id="swc-tblbox" hidden><table><thead><tr><th>Máy mới</th><th>Khách</th><th>Tình trạng</th><th></th></tr></thead><tbody id="swc-tb"></tbody></table></div>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">📋 Máy khách đang thuê <span class="hint">(chỉ admin thấy)</span></h3><span class="hint" id="cpa-count" style="margin-left:auto"></span></div>
       <div class="cpabar">
         <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
@@ -2046,6 +2092,34 @@ window.BR_CONFIG = {
         <div class="refst full" id="rfa-sum"></div>
         <div class="full rfa-head"><b>Hoa hồng đã trả gần đây</b><button class="btn ghost sm" type="button" id="rfa-reload">↻ Làm mới</button></div>
         <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
+      </form>
+      <form class="f mtbox prf" id="blf" autocomplete="off" novalidate style="margin-bottom:14px">
+        <h3>💎 Tích Blue · điểm danh · nhiệm vụ hằng ngày</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-on"><i></i></span><span><b>Bật Tích Blue</b><small>Khách tích Blue khi điểm danh, làm nhiệm vụ, mời bạn, mua hàng — rồi dùng Blue trả tiền thuê / gia hạn ĐT đám mây (1 Blue = 1đ). Tắt thì ẩn hết; Blue khách đang có vẫn giữ nguyên.</small></span></label>
+        <label>📅 Điểm danh mỗi ngày (Blue)<input id="bl-checkin" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>Chuỗi điểm danh liền (ngày · 0 = không thưởng chuỗi)<input id="bl-sdays" type="number" min="0" max="365" step="1" inputmode="numeric"></label>
+        <label>🎉 Thưởng thêm khi đủ chuỗi (Blue)<input id="bl-sbonus" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
+        <label>📱 Nhiệm vụ mở máy đám mây (Blue · 0 = tắt)<input id="bl-tplay" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>📣 Nhiệm vụ chia sẻ link mời (Blue · 0 = tắt)<input id="bl-tshare" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>🤝 Nhiệm vụ mời 1 bạn đăng ký (Blue · 0 = tắt)<input id="bl-tinvite" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>🎁 Người mời nhận khi bạn bè nạp / mua lần đầu (Blue)<input id="bl-ref" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
+        <label>↩️ Hoàn Blue mỗi đơn trả tiền (% · 0–50)<input id="bl-cash" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
+        <label>💳 Trả bằng Blue tối đa (% giá đơn · 0–100)<input id="bl-max" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
+        <label>🛡️ Tối đa tài khoản nhận / 1 mạng (IP) / ngày (0 = không chặn)<input id="bl-ip" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-need"><i></i></span><span><b>Chỉ khách đã nạp tiền mới DÙNG được Blue</b><small>Chống tạo nhiều tài khoản ảo để gom Blue. Khách chưa nạp vẫn tích được, chỉ chưa trả bằng Blue được.</small></span></label>
+        <div class="note full" id="bl-prev"></div>
+        <div class="acts full"><button class="btn" type="submit" id="bl-save">Lưu Tích Blue</button><span class="hint" id="bl-msg"></span></div>
+        <div class="refst r4 full" id="bl-sum"></div>
+        <div class="hint full" id="bl-30"></div>
+        <div class="full rfa-head"><b>Cộng / trừ Blue cho 1 khách</b></div>
+        <div class="full bl-add">
+          <label>Tên đăng nhập hoặc email<input id="bl-who" maxlength="120" autocomplete="off" spellcheck="false"></label>
+          <label>Số Blue (âm = trừ)<input id="bl-amt" type="number" step="1" inputmode="numeric" placeholder="VD 500 hoặc -200"></label>
+          <label>Lý do (khách thấy trong lịch sử)<input id="bl-note" maxlength="120" placeholder="VD Bù lỗi máy ngày 10/11"></label>
+          <button class="btn ghost" type="button" id="bl-add">Cộng / trừ</button>
+        </div>
+        <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th></tr></thead><tbody id="bl-top"></tbody></table></div>
       </form>
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
@@ -2228,6 +2302,7 @@ window.BR_CONFIG = {
         <div class="hint" id="cp-lim"></div>
         <div class="sum"><span>Cách tính</span><span id="cp-calc" style="font-family:var(--mono);font-size:12px;text-align:right"></span></div>
         <div class="promo" id="cp-promo-box"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="cp-promo" data-promo="cpn" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Mã giảm giá" placeholder="Mã giảm giá (nếu có)" data-ph="promo_ph"><button class="btn ghost sm" type="button" data-papply="cpn" data-i18n="promo_apply">Áp dụng</button></div><div class="pres" id="cp-pres"></div></div>
+        <div class="bluepay" id="cp-bluebox" hidden></div>
         <div class="sum"><span>Tổng thanh toán</span><b id="cp-total"></b></div>
         <div class="sum"><span>Số dư hiện tại</span><span id="cp-bal" style="font-family:var(--mono)"></span></div>
       </div>
@@ -2994,6 +3069,17 @@ const ERR_EN = {
   "duplicate key": "This username or email is already taken."
 };
 ERR.NO_MACHINE = "Không tìm thấy máy VPS."; ERR.ALREADY = "Đơn này đã tạo máy VPS rồi."; ERR_EN && (ERR_EN.NO_MACHINE = "VPS machine not found.");
+// 💎 Tích Blue (SQL v27)
+Object.assign(ERR, { BLUE_OFF: "Tích Blue đang tạm tắt.", BLUE_DONE: "Hôm nay bạn đã điểm danh rồi — quay lại ngày mai nhé.",
+  BLUE_IP_LIMIT: "Mạng (wifi / 4G) này đã đủ số tài khoản nhận Blue hôm nay — mai thử lại nhé.", BLUE_NEED_TOPUP: "Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (Blue vẫn được tích bình thường).",
+  BLUE_EMPTY: "Bạn chưa có Blue để trả.", BLUE_NOT_FOR_FREE: "Máy miễn phí không trả bằng Blue được.", TASK_DONE: "Hôm nay bạn đã nhận nhiệm vụ này rồi.",
+  TASK_NOT_YET: "Chưa xong nhiệm vụ — làm xong rồi bấm nhận nhé.", TASK_OFF: "Nhiệm vụ này đang tạm tắt.", BAD_TASK: "Nhiệm vụ không hợp lệ.",
+  BAD_AMOUNT: "Số Blue không hợp lệ (phải khác 0).", NO_USER: "Không tìm thấy khách — gõ đúng tên đăng nhập hoặc email." });
+Object.assign(ERR_EN, { BLUE_OFF: "Blue rewards are paused.", BLUE_DONE: "You've already checked in today — come back tomorrow.",
+  BLUE_IP_LIMIT: "Enough accounts on this network (wifi / mobile data) have claimed Blue today — try tomorrow.", BLUE_NEED_TOPUP: "Top up once to unlock paying with Blue (you still earn Blue).",
+  BLUE_EMPTY: "You don't have any Blue to pay with yet.", BLUE_NOT_FOR_FREE: "Free phones can't be paid with Blue.", TASK_DONE: "You've already claimed this mission today.",
+  TASK_NOT_YET: "Mission not done yet — finish it, then claim.", TASK_OFF: "This mission is paused.", BAD_TASK: "Unknown mission.",
+  BAD_AMOUNT: "Invalid amount (must not be 0).", NO_USER: "Customer not found — check the username or email." });
 // chọn mã lỗi DÀI NHẤT có trong thông báo (PROMO_TOO_MANY thắng TOO_MANY, PHONE_LOCKED thắng LOCKED…) — không phụ thuộc thứ tự thêm vào ERR
 const errMsg = e => { const m = String(e && (e.message || e.error_description || e)); const D = LANG === "en" ? { ...ERR, ...ERR_EN } : ERR; let b = ""; for (const k in D) if (k.length > b.length && m.includes(k)) b = k; return b ? D[b] : (m || L("Có lỗi, thử lại sau.", "Something went wrong, try again.")); };
 
@@ -4046,7 +4132,7 @@ async function saveSettings(patch, btn, msg) { await busy(btn, async () => {
 $("sf").onsubmit = e => { e.preventDefault(); const p = {}; for (const k of Object.keys(DEF_SITE)) { const el = $("sf-" + k); if (el) p[k] = el.type === "checkbox" ? el.checked : k === "rate" ? (+el.value || 25000) : el.value.trim(); } saveSettings(p, $("sf-save"), "Đã lưu nội dung trang."); };
 $("bf").onsubmit = e => { e.preventDefault(); const acc = $("bf-acc").value.replace(/\D/g, ""); if (acc.length < 6) return toast("Số tài khoản chưa đúng.", 1);
   saveSettings({ bankBin: $("bf-bin").value, bankAcc: acc, bankName: $("bf-name").value.trim().toUpperCase(), prefix: ($("bf-prefix").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "BR"), minTop: Math.max(1000, +$("bf-min").value || 10000) }, $("bf-save"), "Đã lưu tài khoản ngân hàng."); };
-function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") { loadPromoAdm(); rfFill(); loadRefAdm(); } }
+function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") { loadPromoAdm(); rfFill(); loadRefAdm(); try { loadBlueAdm(); } catch (e) {} } }
 $("adm-tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.tab === "site" || b.dataset.tab === "bank") fillSite(); setTab(b.dataset.tab); };
 $("admin-open").onclick = () => ADMIN_PAGE ? openAdmin() : (location.href = "/admin");     // Quản trị → trang riêng /admin (to như trang chính)
 $("admin-close").onclick = () => ADMIN_PAGE ? (location.href = "/") : show("drawer", false);
@@ -4859,7 +4945,7 @@ async function openCloud() {
   $("cp-list").innerHTML = `<div class="empty">${L("Đang tải…", "Loading…")}</div>`; show("cpdlg");
   const [{ data }, , sh] = await Promise.all([sb.from("cloud_phones").select("*").eq("user_id", profile.id).order("created_at", { ascending: false }), cpLoadPricing(),
     sb.rpc("cp_shared_with_me").then(r => r, () => ({}))]);
-  myCloud = (data || []).filter(p => p.status !== "cancelled").concat(Array.isArray(sh && sh.data) ? sh.data : []);
+  myCloud = (data || []).filter(p => p.status !== "cancelled" && !(p.status === "cancelling" && p.switch_to)).concat(Array.isArray(sh && sh.data) ? sh.data : []);
   renderCloud();
   clearTimeout(cpPollT);
   if (myCloud.some(p => ["pending", "cancelling", "expired"].includes(p.status) || +p.pending_renew_days > 0)) cpPollT = setTimeout(() => { if (!$("cpdlg").hidden) openCloud(); }, 6000);
@@ -4878,10 +4964,10 @@ function renderCloud() {
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
-      ${p.status === "pending" ? `<div class="exp">Máy đang khởi động (khoảng 2–3 phút), trang tự cập nhật.</div>` : ""}
+      ${p.status === "pending" && !p.replaces ? `<div class="exp">Máy đang khởi động (khoảng 2–3 phút), trang tự cập nhật.</div>` : ""}
       ${locked ? `<div class="exp" style="color:var(--bad)">🔒 Máy bị khoá${p.locked_until ? " đến " + new Date(p.locked_until).toLocaleString("vi-VN") : " vĩnh viễn"}${p.lock_reason ? ": " + esc(p.lock_reason) : ""}. Liên hệ hỗ trợ nếu cần.</div>` : ""}
       ${p.status === "error" && p.error ? `<div class="exp" style="color:var(--bad)">${esc(p.error)}</div>` : ""}
-      ${p.replaces && ["pending", "creating"].includes(p.status) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${L("Máy mới đổi sang Android " + esc(p.android || "") + " — đang tạo (2–5 phút). Xong thì máy cũ tự xoá.", "New phone from an Android switch — being created (2–5 min). The old phone is removed when it is ready.")}</div>` : ""}
+      ${p.replaces && ["pending", "creating"].includes(p.status) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${cpSwNote(p)}</div>` : ""}
       ${cpSwitchingTo(p) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${L("Đang đổi sang Android " + esc(cpSwitchingTo(p).android || "") + ": máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", "Switching to Android " + esc(cpSwitchingTo(p).android || "") + ": the new phone is being created; this one keeps working until then.")}</div>` : ""}
       ${["active", "cancelling"].includes(p.status) && p.error && /^(Đổi Android|Đã đổi sang Android)/.test(p.error) ? `<div class="exp" style="color:${p.status === "active" ? "var(--bad)" : "var(--muted)"}">${esc(p.error)}</div>` : ""}
       ${p.shared ? `<div class="shby">👥 ${L("Được chia sẻ bởi", "Shared by")} <b>${esc(p.owner_name || "?")}</b> · ${p.share_expires ? L("đến ", "until ") + new Date(p.share_expires).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : L("theo hạn máy", "until the phone expires")}</div>` : ""}
@@ -5051,19 +5137,20 @@ function cpOrderUpd() {
   cpAndChips();                                      // chỗ trống từng bản Android phụ thuộc RAM/CPU đang chọn
   const price = cpPrice(), p = cpP(), bad = cpCheck();
   const pb = $("cp-promo-box"); if (pb) pb.hidden = !!cpSel.free;
-  if (cpSel.free) {
+  if (cpSel.free) { blueRow("cp-bluebox", "cpn", 0, true);
     $("cp-calc").textContent = L(`🎁 Miễn phí ${p.free_days} ngày`, `🎁 Free for ${p.free_days} day(s)`) + (cpSel.qty > 1 ? ` × ${cpSel.qty} máy` : "");
     $("cp-total").textContent = bad ? "—" : "0đ"; $("cp-bal").textContent = profile ? fmt(profile.balance) : "—";
     $("cp-err").textContent = bad || ""; $("cp-obuy").textContent = L("🎁 Nhận máy miễn phí", "🎁 Get free phone");
     $("cp-lim").innerHTML = L(`Máy miễn phí: tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · ${p.free_days} ngày. Hết hạn máy tự tắt, không gia hạn được.`, `Free phone: max ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · ${p.free_days} day(s). Stops when it expires; can't be renewed.`);
     return;
   }
-  prmChanged("cpn"); const pay = prmPrice("cpn", price);           // có mã giảm giá đúng cho cấu hình này → tổng sau giảm
+  prmChanged("cpn"); const pay0 = prmPrice("cpn", price);          // có mã giảm giá đúng cho cấu hình này → tổng sau giảm
+  const bu = blueRow("cp-bluebox", "cpn", bad ? 0 : pay0, !!bad), pay = pay0 - bu;     // 💎 trả bằng Blue → phần còn lại trừ số dư
   $("cp-calc").textContent = `(${cpSel.ram}GB×${vnd(p.price_ram_gb_day)} + ${cpSel.cpu} nhân×${vnd(p.price_cpu_day)}) × ${cpSel.days} ngày` + (isCtv() ? ` − ${ctvPct()}% CTV` : "") + (cpSel.qty > 1 ? ` × ${cpSel.qty} máy` : "");
   $("cp-total").innerHTML = bad ? "—" : prmTot(pay, price);
   $("cp-bal").textContent = profile ? fmt(profile.balance) : "—";
   $("cp-err").textContent = bad || (profile && profile.balance < pay ? L("Số dư không đủ. Cần nạp thêm ", "Need ") + fmt(pay - profile.balance) + "." : "");
-  $("cp-obuy").textContent = !bad && profile && profile.balance < pay ? "Nạp tiền" : "Thanh toán & tạo máy";
+  $("cp-obuy").textContent = !bad && profile && profile.balance < pay ? L("Nạp tiền", "Top up") : pay <= 0 && bu > 0 ? L("💎 Thuê bằng Blue", "💎 Rent with Blue") : L("Thanh toán & tạo máy", "Pay & create phone");
   const low = cpSel.ram < 4 || cpSel.cpu < 4;
   $("cp-lim").innerHTML = (low ? `<span class="cpwarn">⚠️ ${L("Cấu hình này <b>chưa đủ chơi game 3D</b> (cần tối thiểu 4GB · 4 nhân). Phù hợp treo app, game nhẹ.", "This setup is <b>not enough for 3D games</b> (min 4GB · 4 cores). Fine for apps and light games.")}</span><br>` : "")
     + `${L("Cho phép", "Allowed")}: RAM ${p.min_ram}–${p.max_ram} GB · CPU ${p.min_cpu}–${p.max_cpu} ${L("nhân", "cores")} · ${p.min_days}–${p.max_days} ${L("ngày", "days")} · ${p.min_fps}–${p.max_fps} FPS`;
@@ -5073,13 +5160,14 @@ async function cpBuy() {
   const free = !!cpSel.free;
   if (!free && !(await prmEnsure("cpn", "cp-err"))) return;         // ô mã có chữ → phải là mã hợp lệ (ô trống = mua bình thường)
   const price = free ? cpPrice() : prmPrice("cpn", cpPrice()), code = free ? null : prmCode("cpn");     // KHÔNG gửi mã cho máy miễn phí
-  if (!free && profile.balance < price) { show("cporderdlg", false); openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((price - profile.balance) / 1000) * 1000)); return; }
-  const { error } = await sb.rpc("cloudphone_order_custom", { p_ram: cpSel.ram, p_cpu: cpSel.cpu, p_days: cpSel.days, p_res: cpSel.res, p_name: null, p_fps: cpSel.fps, p_qty: cpSel.qty, p_android: cpSel.android || "9", ...(free ? { p_free: true } : {}), ...(code ? { p_promo: code } : {}) });
-  if (error) { if (!free) prmFail("cpn", error); $("cp-err").textContent = errMsg(error); return; }
-  show("cporderdlg", false); await loadProfile(); renderUser();
+  const bu = free ? 0 : blueUse("cpn", price), cash = price - bu;                                     // 💎 Blue trừ trước, còn lại trừ số dư
+  if (!free && profile.balance < cash) { show("cporderdlg", false); openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((cash - profile.balance) / 1000) * 1000)); return; }
+  const { error } = await sb.rpc("cloudphone_order_custom", { p_ram: cpSel.ram, p_cpu: cpSel.cpu, p_days: cpSel.days, p_res: cpSel.res, p_name: null, p_fps: cpSel.fps, p_qty: cpSel.qty, p_android: cpSel.android || "9", ...(free ? { p_free: true } : {}), ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) });
+  if (error) { if (!free) prmFail("cpn", error); $("cp-err").textContent = errMsg(error); if (/BLUE_/.test(error.message || "")) blueLoad().then(() => cpOrderUpd()); return; }
+  show("cporderdlg", false); BPAY.cpn = false; await loadProfile(); renderUser();
   CPpricing = null; cpLoadPricing().then(() => { try { renderGrid(); } catch (e) {} });
   toast(cpSel.qty > 1 ? `Đã tạo đơn ${cpSel.qty} máy! Các máy đang khởi tạo (khoảng 2–3 phút mỗi máy).` : L("Đã tạo đơn! Máy đang khởi tạo (khoảng 2–3 phút).", "Order placed! Creating…"));
-  notifyTg && notifyTg(`📱 <b>Đơn ĐT đám mây mới${cpSel.free ? " (🎁 MIỄN PHÍ)" : ""}</b>\n${cpSel.qty} máy × Android ${cpSel.android || 9} · ${cpSel.ram}GB / ${cpSel.cpu} nhân / ${cpSel.days} ngày / ${cpSel.res} / ${cpSel.fps} FPS\nGiá: ${vnd(price)}${code ? ` (mã ${code})` : ""}`);
+  notifyTg && notifyTg(`📱 <b>Đơn ĐT đám mây mới${cpSel.free ? " (🎁 MIỄN PHÍ)" : ""}</b>\n${cpSel.qty} máy × Android ${cpSel.android || 9} · ${cpSel.ram}GB / ${cpSel.cpu} nhân / ${cpSel.days} ngày / ${cpSel.res} / ${cpSel.fps} FPS\nGiá: ${vnd(price)}${code ? ` (mã ${code})` : ""}${bu > 0 ? ` · 💎 ${bnum(bu)} Blue` : ""}`);
   openCloud();
 }
 
@@ -5137,7 +5225,8 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
   const sum = () => {
     if (!$("crn-go")) return;
     const cost = okD() ? per * days : 0, bal = +(profile && profile.balance) || 0;
-    prmChanged("cren"); const pay = okD() ? prmPrice("cren", cost) : 0;
+    prmChanged("cren"); const pay0 = okD() ? prmPrice("cren", cost) : 0;
+    const bu = blueRow("crn-bluebox", "cren", pay0, !okD()), pay = pay0 - bu;          // 💎 trả bằng Blue
     $("crn-total").innerHTML = okD() ? prmTot(pay, cost) : "—";
     $("crn-bal").textContent = fmt(bal);
     $("crn-err").textContent = !okD() ? L(`Số ngày phải từ 1 đến ${maxD}.`, `Days must be 1–${maxD}.`) : bal < pay ? L("Số dư không đủ. Cần nạp thêm ", "Not enough balance. Top up ") + fmt(pay - bal) + "." : "";
@@ -5148,11 +5237,12 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
     try {
       if (!okD()) { $("crn-err").textContent = L(`Số ngày phải từ 1 đến ${maxD}.`, `Days must be 1–${maxD}.`); return; }
       if (!(await prmEnsure("cren", "crn-err"))) return;
-      const pay = prmPrice("cren", per * days), code = prmCode("cren"), bal = +(profile && profile.balance) || 0;
+      const pay0 = prmPrice("cren", per * days), code = prmCode("cren"), bal = +(profile && profile.balance) || 0;
+      const bu = blueUse("cren", pay0), pay = pay0 - bu;
       if (bal < pay) { m.hidden = true; openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((pay - bal) / 1000) * 1000)); return; }
-      const { error } = await sb.rpc("cloudphone_renew", { p_id: p.id, p_days: days, ...(code ? { p_promo: code } : {}) });
-      if (error) { prmFail("cren", error); $("crn-err").textContent = errMsg(error); return; }
-      m.hidden = true; await loadProfile(); renderUser(); toast(L("Đã gia hạn +" + days + " ngày.", "Renewed +" + days + " days.")); openCloud();
+      const { error } = await sb.rpc("cloudphone_renew", { p_id: p.id, p_days: days, ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) });
+      if (error) { prmFail("cren", error); $("crn-err").textContent = errMsg(error); if (/BLUE_/.test(error.message || "")) blueLoad().then(sum); return; }
+      m.hidden = true; BPAY.cren = false; await loadProfile(); renderUser(); toast(L("Đã gia hạn +" + days + " ngày.", "Renewed +" + days + " days.")); openCloud();
     } finally { going = false; }
   };
   prmDef("cren", { inp: "crn-promo", out: "crn-pres", scope: () => "cp_renew", upd: () => sum(),
@@ -5164,6 +5254,7 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
     <input class="in" id="crn-x" type="number" min="1" max="${maxD}" step="1" inputmode="numeric" placeholder="${esc(L(`Hoặc tự nhập số ngày (1–${maxD})`, `Or type the number of days (1–${maxD})`))}">
     <div class="sum"><span>${L("Đơn giá", "Price")}</span><span>${fmt(per)} / ${L("ngày", "day")}</span></div>
     ${prmRowHtml("cren")}
+    <div class="bluepay" id="crn-bluebox" hidden></div>
     <div class="sum"><span>${L("Tổng thanh toán", "Total")}</span><b id="crn-total"></b></div>
     <div class="sum"><span>${L("Số dư hiện tại", "Current balance")}</span><span id="crn-bal" style="font-family:var(--mono)"></span></div>
     <div class="err" id="crn-err"></div>
@@ -5171,19 +5262,27 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
   m.querySelectorAll("[data-crd]").forEach(b => b.onclick = () => { days = +b.dataset.crd; $("crn-x").value = ""; m.querySelectorAll("[data-crd]").forEach(x => x.classList.toggle("on", x === b)); sum(); });
   $("crn-x").oninput = () => { const v = parseInt($("crn-x").value, 10); if (v > 0) { days = v; m.querySelectorAll("[data-crd]").forEach(x => x.classList.toggle("on", +x.dataset.crd === v)); } sum(); };
   $("crn-go").onclick = () => busy($("crn-go"), go);
+  BPAY_UPD.cren = sum;
   prmShow("cren"); sum(); m.hidden = false;
 }
 /* ===== ĐỔI ANDROID (SQL v24): máy mới bản Android khác, miễn phí, giữ hạn — máy cũ + dữ liệu tự xoá khi máy mới chạy ===== */
 Object.assign(ERR, { NO_PHONE: "Không tìm thấy máy (hoặc máy không phải của bạn).", SWITCH_EXPIRING: "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.",
   SWITCH_BUSY: "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.", SWITCHING: "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).",
-  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.",
+  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", SWITCH_NOT_STUCK: "Máy này không bị kẹt / lỗi.",
   REF_INVALID: "Mã mời không đúng.", REF_SELF: "Không thể tự mời chính mình.", REF_TOO_LATE: "Chỉ tài khoản mới (tạo trong 7 ngày, chưa nạp tiền) mới nhận lời mời.",
   REF_ALREADY: "Tài khoản đã nhận lời mời trước đó." });
 Object.assign(ERR_EN, { NO_PHONE: "Phone not found.", SWITCH_EXPIRING: "Less than 30 minutes left — renew first, then switch Android.",
   SWITCH_BUSY: "The phone is being upgraded / renewed — try again in 1–2 minutes.", SWITCHING: "An Android switch is already in progress — wait for the new phone (2–5 min).",
-  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "Each account can switch Android at most 3 times per 24 hours.",
+  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "Each account can switch Android at most 3 times per 24 hours.", SWITCH_NOT_STUCK: "This phone isn't stuck.",
   REF_INVALID: "Invalid invite code.", REF_SELF: "You can't invite yourself.", REF_TOO_LATE: "Only new accounts (under 7 days old, no top-ups yet) can accept an invite.",
   REF_ALREADY: "This account has already accepted an invite." });
+function cpSwNote(p) {                      // máy MỚI của lệnh đổi Android (SQL v28: xoá máy cũ TRƯỚC rồi mới tạo)
+  const v = esc(p.android || ""), old = myCloud.find(x => x.id === p.replaces && ["active", "expired"].includes(x.status));
+  if (old) return L(`Máy mới đổi sang Android ${v} — đang tạo (2–5 phút). Xong thì máy cũ tự xoá.`, `New Android ${v} phone — being created (2–5 min). The old phone is removed when it is ready.`);
+  if (p.node === "wait-old") return L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`);
+  return L(`Máy cũ đã xoá — đang tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Old phone deleted — creating the Android ${v} phone (2–5 min).`)
+    + (p.error && /^Đổi Android:/.test(p.error) ? `<br>${esc(p.error)}` : "");
+}
 function cpSwitchingTo(p) { return p && p.switch_to ? myCloud.find(x => x.id === p.switch_to && ["pending", "creating"].includes(x.status)) || null : null; }
 async function cpSwitch(id) {
   const p = myCloud.find(x => x.id === id); if (!p || p.shared) return;
@@ -5204,7 +5303,7 @@ async function cpSwitch(id) {
       const { error } = await sb.rpc("cloudphone_switch_android", { p_id: p.id, p_android: v });
       if (error) { const el = $("csw-err"); if (el) el.textContent = /cloudphone_switch_android|does not exist|schema cache/i.test(error.message || "") ? L("Tính năng chưa bật (admin cần chạy SQL v24).", "Not enabled yet.") : errMsg(error); return; }
       m.hidden = true;
-      toast(L(`Đang tạo máy Android ${v}… máy cũ tự xoá khi máy mới sẵn sàng (2–5 phút).`, `Creating the Android ${v} phone… the old one is removed when it is ready (2–5 min).`));
+      toast(L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút).`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`));
       openCloud();
     } finally { going = false; }
   };
@@ -5217,8 +5316,8 @@ async function cpSwitch(id) {
       ${red ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới sẽ hạ còn <b>${c.ram}GB · ${c.cpu} nhân</b>, không hoàn tiền phần chênh.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone will be reduced to <b>${c.ram}GB · ${c.cpu} cores</b>, no refund for the difference.`)}</div>`
             : `<div class="hint">${L(`Máy mới: Android ${v} · ${c.ram}GB · ${c.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS`, `New phone: Android ${v} · ${c.ram}GB · ${c.cpu} cores · ${esc(p.res || "")} · ${p.fps || 30} FPS`)}</div>`}
       ${v === "15" ? `<div class="hint">${L("Lưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì nên chọn Android 12.", "Note: some users report Google / Play Store not working on Android 15 — pick Android 12 if you need Google.")}</div>` : ""}
-      <div class="swwarn">${L(`⚠️ <b>Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy</b>: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.<br>Máy mới <b>miễn phí</b>, giữ nguyên hạn dùng${expTxt ? ` (${expTxt})` : ""}. Tạo máy mới mất khoảng 2–5 phút; máy cũ vẫn dùng được tới lúc đó rồi tự xoá.`,
-        `⚠️ <b>Switching Android ERASES ALL data on this phone</b>: apps, games, logged-in accounts, photos, files — it cannot be undone.<br>The new phone is <b>free</b> and keeps your expiry${expTxt ? ` (${expTxt})` : ""}. It takes about 2–5 minutes; the old phone keeps working until then and is then removed.`)}</div>
+      <div class="swwarn">${L(`⚠️ <b>Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy</b>: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.<br>Bấm Đổi là <b>máy cũ bị xoá ngay</b> (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới <b>miễn phí</b>, giữ nguyên hạn dùng${expTxt ? ` (${expTxt})` : ""}.`,
+        `⚠️ <b>Switching Android ERASES ALL data on this phone</b>: apps, games, logged-in accounts, photos, files — it cannot be undone.<br>The old phone is <b>deleted right away</b> (it can't be opened any more); the new phone is created once that's done — about 2–5 minutes. It is <b>free</b> and keeps your expiry${expTxt ? ` (${expTxt})` : ""}.`)}</div>
       <label class="swok"><input type="checkbox" id="csw-ok"${ok ? " checked" : ""}> ${L("Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", "I understand all data on this phone will be erased")}</label>
       <div class="err" id="csw-err">${blocked ? esc(w === "off" ? L("Máy chủ bản Android này đang bảo trì — chọn bản khác.", "That Android server is under maintenance.") : L("Máy chủ bản Android này đang hết chỗ — chọn bản khác hoặc thử lại sau.", "No free capacity for that Android version.")) : ""}</div>
       <div class="row2"><button class="btn ghost" type="button" data-swx>${L("Đóng", "Close")}</button><button class="btn danger" type="button" id="csw-go"${ok && !blocked ? "" : " disabled"}>${L("Đổi sang Android ", "Switch to Android ")}${v}</button></div></div>`;
@@ -5271,8 +5370,10 @@ async function openRef() {
     : buyMode ? L(`Gửi link dưới đây cho bạn bè. Bạn bè <b>đăng ký qua link</b> rồi <b>mua</b> (thuê máy, gia hạn, nâng cấp, mua sản phẩm) → bạn được cộng <b>${pct}%</b> số tiền họ mua vào số dư, <b>mỗi lần mua</b>. Bạn bè chỉ nạp tiền mà chưa mua thì chưa được cộng.`,
                   `Share the link below. When friends <b>sign up through it</b> and <b>buy</b> (rent, renew, upgrade a phone or buy a product), you get <b>${pct}%</b> of every purchase added to your balance. Top-ups alone don't count.`)
     : L(`Gửi link dưới đây cho bạn bè. Bạn bè <b>đăng ký qua link</b> rồi nạp tiền → bạn được cộng <b>${pct}%</b> số tiền họ nạp vào số dư, <b>mỗi lần nạp</b>.`, `Share the link below. When friends <b>sign up through it</b> and top up, you get <b>${pct}%</b> of every top-up added to your balance.`);
+  const bref = blueOn() && +((BLUE.cfg || {}).ref) > 0 ? +BLUE.cfg.ref : 0;
   m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rf-t">${head}
     <div class="hint">${rule}</div>
+    ${bref ? `<div class="hint">💎 ${L(`Thêm nữa: mỗi bạn được mời <b>nạp tiền hoặc mua lần đầu</b> → bạn nhận <b>+${bnum(bref)} Blue</b> (1 Blue = 1đ khi thuê / gia hạn máy).`, `Bonus: each invited friend's <b>first top-up or purchase</b> gives you <b>+${bnum(bref)} Blue</b> (1 Blue = 1đ on rentals and renewals).`)}</div>` : ""}
     <div class="reflink"><input class="in" id="rf-link" readonly value="${esc(link)}"><button class="btn sm" type="button" id="rf-copy">📋 Copy</button></div>
     <div class="refst"><div><b>${+d.invited || 0}</b><span>${L("Đã mời", "Invited")}</span></div><div><b>${+(buyMode ? (d.buyers ?? d.paid_users) : d.paid_users) || 0}</b><span>${buyMode ? L("Đã mua", "Bought") : L("Đã nạp tiền", "Topped up")}</span></div><div><b>${fmt(+d.earned || 0)}</b><span>${L("Đã nhận", "Earned")}</span></div></div>
     ${items.length ? `<div class="reflist">${items.map(x => `<div><span>${new Date(x.at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")} · ${esc(x.who)} ${x.kind === "buy" ? L("mua", "bought") : L("nạp", "topped up")} ${fmt(+x.topup)}</span><b style="color:var(--ok)">+${fmt(+x.amount)}</b></div>`).join("")}</div>` : ""}
@@ -5284,6 +5385,7 @@ async function openRef() {
   $("rf-copy").onclick = async () => {
     try { await navigator.clipboard.writeText(link); } catch (e) { try { $("rf-link").select(); document.execCommand("copy"); } catch (e2) {} }
     toast(L("Đã copy link mời.", "Invite link copied."));
+    blueTaskIf("share");                                                // 💎 copy link mời = làm nhiệm vụ "chia sẻ link mời" hôm nay
   };
 }
 $("ref-btn") && ($("ref-btn").onclick = openRef);
@@ -5317,6 +5419,233 @@ $("rff") && ($("rff").onsubmit = async e => { e.preventDefault();
   await saveSettings({ ref_on: $("rf-on").checked, ref_pct: pct, ref_days: days }, $("rf-save"), $("rf-on").checked ? `Đã lưu — hoa hồng giới thiệu ${pct}% · nhận lời mời trong ${days} ngày.` : "Đã tắt hoa hồng giới thiệu.");
   rfPreview(); });
 $("rfa-reload") && ($("rfa-reload").onclick = () => busy($("rfa-reload"), loadRefAdm));
+
+/* ===== 💎 TÍCH BLUE (SQL v27): điểm danh · nhiệm vụ hằng ngày · trả bằng Blue khi thuê / gia hạn máy =====
+   blue_info() → BLUE {on, blue, can_use, need_topup, today, streak, next_got, tasks[{id, got, done, ready}], cfg, items}
+   Chưa chạy SQL v27 / chưa đăng nhập / admin tắt → BLUE = null hoặc on = false → ẩn mọi thứ, web chạy như cũ. */
+let BLUE = null, blueSeq = 0, blueAt = 0;
+const BPAY = { cpn: false, cren: false }, BPAY_UPD = { cpn: () => cpOrderUpd() };
+const bnum = v => Math.round(+v || 0).toLocaleString("vi-VN");
+const bwhen = t => { const d = new Date(t), p = n => String(n).padStart(2, "0"); return isNaN(d) ? "" : `${p(d.getDate())}/${p(d.getMonth() + 1)} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const blueOn = () => !!(profile && BLUE && BLUE.on);
+const blueMissing = e => /blue_info|blue_checkin|blue_task|does not exist|schema cache|Could not find the function/i.test(String((e && e.message) || e || ""));
+async function blueLoad() {
+  if (!profile) { BLUE = null; blueChip(); return null; }
+  const seq = ++blueSeq;
+  try { const { data, error } = await sb.rpc("blue_info"); if (seq !== blueSeq) return BLUE; BLUE = error ? null : data; } catch (e) { if (seq === blueSeq) BLUE = null; }
+  blueAt = Date.now(); blueChip(); blueNudge(); return BLUE;
+}
+const blueTodo = () => blueOn() ? (BLUE.tasks || []).filter(t => !t.done && t.ready).length : 0;
+function blueChip() {
+  const b = $("blue-btn"); if (!b) return;
+  b.hidden = !blueOn(); if (b.hidden) return;
+  $("blue-n").textContent = bnum(BLUE.blue);
+  const n = blueTodo(); $("blue-dot").hidden = !n;
+  b.title = L("Tích Blue", "Blue rewards") + (n ? " · " + L(`${n} nhiệm vụ nhận được ngay`, `${n} mission(s) ready`) : "");
+}
+function blueNudge() {          // nhắc điểm danh 1 lần / ngày / tài khoản (không bật hộp, chỉ báo nhỏ)
+  if (!blueOn() || BLUE.today) return;
+  try { const k = "cb_bnudge_" + profile.id, d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
+    if (localStorage.getItem(k) === d) return; localStorage.setItem(k, d); } catch (e) { return; }
+  setTimeout(() => toast(L(`💎 Hôm nay chưa điểm danh — bấm 💎 ở góc trên để nhận +${bnum(BLUE.next_got)} Blue`, `💎 Check in today — tap 💎 at the top for +${bnum(BLUE.next_got)} Blue`)), 1200);
+}
+{ const _lp2 = loadProfile; loadProfile = async function () { const r = await _lp2.apply(this, arguments); blueLoad().then(() => { blueRender(); }); return r; }; }
+{ const _ru3 = renderUser; renderUser = function () { const r = _ru3.apply(this, arguments); try { if (!profile) BLUE = null; blueChip(); } catch (e) {} return r; }; }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && profile && Date.now() - blueAt > 10 * 60 * 1000) blueLoad().then(blueRender); });
+$("blue-btn") && ($("blue-btn").onclick = openBlue);
+
+const BLUE_T = () => ({
+  checkin: ["📅", L("Điểm danh hôm nay", "Daily check-in"), L("Ngày nào cũng ghé là có Blue", "Drop by every day to earn")],
+  play: ["📱", L("Mở máy đám mây", "Open a cloud phone"), L("Mở 1 máy bất kỳ trên web, app Android hoặc app PC là tự nhận", "Open any phone (web, Android or PC app) — it's claimed automatically")],
+  share: ["📣", L("Chia sẻ link mời", "Share your invite link"), L("Gửi link CloudBlue cho bạn bè hoặc nhóm", "Send your CloudBlue link to friends or a group")],
+  invite: ["🤝", L("Mời 1 bạn đăng ký", "Invite a friend to sign up"), L("Có bạn đăng ký qua link của bạn trong hôm nay", "A friend signs up with your link today")] });
+const BLUE_K = () => ({ checkin: L("Điểm danh", "Check-in"), streak: L("Thưởng chuỗi", "Streak bonus"), task: L("Nhiệm vụ", "Mission"), ref: L("Mời bạn", "Invite"),
+  cashback: L("Hoàn đơn", "Cashback"), spend: L("Đã dùng", "Spent"), refund: L("Hoàn lại", "Refund"), admin: L("Admin", "Admin"), clawback: L("Thu lại", "Reversed") });
+const GEM = `<svg class="bl-gem" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="blgm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8f0ff"/><stop offset=".45" stop-color="#6fb0ff"/><stop offset="1" stop-color="#1b53d6"/></linearGradient></defs><path d="M14 7h20l10 13-20 22L4 20z" fill="url(#blgm)"/><path d="M4 20h40M14 7l10 13L34 7M24 42 14 20M24 42l10-22" stroke="#fff" stroke-opacity=".6" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>`;
+
+async function openBlue() {
+  if (!profile) { openAuth("login"); return; }
+  let m = $("bluedlg");
+  if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "bluedlg"; m.hidden = true; document.body.appendChild(m);
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-blx]")) { m.hidden = true; return; } const b = e.target.closest("[data-bla]"); if (b) { e.preventDefault(); if (!b.disabled) busy(b, () => blueAct(b.dataset.bla)); } });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) m.hidden = true; }); }
+  if (!BLUE) m.innerHTML = `<div class="dlg bluedlg" role="dialog" aria-modal="true" aria-labelledby="bl-t"><div class="bl-top"><h3 id="bl-t">💎 ${L("Tích Blue", "Blue rewards")}</h3></div><div class="hint">${L("Đang tải…", "Loading…")}</div></div>`;
+  m.hidden = false; blueRender();
+  await blueLoad(); blueRender();
+}
+function blueRender() {
+  const m = $("bluedlg"); if (!m || m.hidden) return;
+  const close = `<button class="btn ghost sm" type="button" data-blx>${L("Đóng", "Close")}</button>`;
+  if (!blueOn()) { m.innerHTML = `<div class="dlg bluedlg" role="dialog" aria-modal="true" aria-labelledby="bl-t"><div class="bl-top"><h3 id="bl-t">💎 ${L("Tích Blue", "Blue rewards")}</h3>${close}</div><div class="hint">${BLUE && BLUE.on === false ? L("Tích Blue đang tạm tắt.", "Blue rewards are paused.") : L("Chưa mở được Tích Blue — thử tải lại trang.", "Couldn't load Blue rewards — reload the page.")}</div></div>`; return; }
+  const B = BLUE, c = B.cfg || {}, T = BLUE_T(), tasks = B.tasks || [], sd = +c.streak_days || 0;
+  const done = tasks.filter(t => t.done).length;
+  // chuỗi điểm danh: ô đã điểm danh trong vòng hiện tại + ô hôm nay
+  let week = "";
+  if (sd > 0 && sd <= 14 && +c.checkin > 0) {
+    const st = +B.streak || 0, filled = B.today ? ((st - 1) % sd) + 1 : st % sd, now = B.today ? filled : filled + 1;
+    week = `<div class="bl-h"><b>${L("Chuỗi điểm danh", "Check-in streak")}</b><span>${st ? L(`${st} ngày liền`, `${st} day(s) in a row`) : L("Bắt đầu chuỗi hôm nay", "Start your streak today")}</span></div>
+      <div class="bl-week" style="--n:${sd}">${Array.from({ length: sd }, (_, i) => { const k = i + 1, big = k === sd, got = k <= filled;
+        return `<div class="${got ? "got" : ""}${k === now ? " now" : ""}${big ? " big" : ""}"><span>${k === now ? L("Hôm nay", "Today") : L("Ngày ", "Day ") + k}</span><b>${got ? "✓" : "+" + bnum(+c.checkin + (big ? +c.streak_bonus || 0 : 0))}</b></div>`; }).join("")}</div>`;
+  }
+  const row = t => {
+    const [ic, name, sub0] = T[t.id] || ["⭐", t.id, ""]; let act = "", sub = sub0;
+    if (t.done) act = `<span class="okt">✓ ${L("Đã nhận", "Claimed")}</span>`;
+    else if (t.id === "checkin") act = `<button class="btn sm" type="button" data-bla="checkin">${L("Điểm danh", "Check in")}</button>`;
+    else if (t.id === "play") act = t.ready ? `<button class="btn ghost sm" type="button" data-bla="play">${L("Mở máy", "Open")}</button>` : `<button class="btn ghost sm" type="button" data-bla="rent">${L("Thuê máy", "Rent one")}</button>`;
+    else if (t.id === "share") act = `<button class="btn sm" type="button" data-bla="share">${L("Chia sẻ", "Share")}</button>`;
+    else if (t.id === "invite") { act = t.ready ? `<button class="btn sm" type="button" data-bla="invite">${L("Nhận", "Claim")}</button>` : `<button class="btn ghost sm" type="button" data-bla="ref">${L("Mời bạn", "Invite")}</button>`;
+      if (t.ready) sub = L("Đã có bạn đăng ký qua link của bạn hôm nay 🎉", "A friend signed up with your link today 🎉"); }
+    if (t.id === "play" && !t.ready && !t.done) sub = L("Cần có 1 máy đang chạy — thuê máy rồi mở là nhận", "You need a running phone — rent one, open it, claim");
+    return `<div class="bl-task${t.done ? " done" : ""}"><span class="ti" aria-hidden="true">${ic}</span><span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="rw">+${bnum(t.got)}</span>${act}</div>`;
+  };
+  const more = [];
+  if (+c.ref > 0) more.push(L(`Bạn bè bạn mời <b>nạp tiền hoặc mua lần đầu</b>: <b>+${bnum(c.ref)} Blue</b> mỗi bạn`, `Each invited friend's <b>first top-up or purchase</b>: <b>+${bnum(c.ref)} Blue</b>`));
+  if (+c.cashback > 0) more.push(L(`Mỗi đơn trả bằng tiền (thuê, gia hạn, nâng cấp máy, mua hàng): hoàn <b>${+c.cashback}%</b> bằng Blue`, `Every paid order (rent, renew, upgrade, shop): <b>${+c.cashback}%</b> back in Blue`));
+  more.push(L("Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)", "Missions reset at midnight (Vietnam time)"));
+  const items = Array.isArray(B.items) ? B.items : [], K = BLUE_K();
+  const use = !B.can_use && B.need_topup ? `<div class="bl-lock">🔒 ${L("Nạp tiền lần đầu để mở khoá <b>trả bằng Blue</b>. Blue vẫn được tích bình thường.", "Top up once to unlock <b>paying with Blue</b>. You keep earning Blue meanwhile.")} <a href="#" data-bla="topup">${L("Nạp tiền", "Top up")}</a></div>` : "";
+  m.innerHTML = `<div class="dlg bluedlg" role="dialog" aria-modal="true" aria-labelledby="bl-t">
+    <div class="bl-top"><h3 id="bl-t">💎 ${L("Tích Blue", "Blue rewards")}</h3>${close}</div>
+    <div class="bl-hero">${GEM}<div class="bl-amt">${bnum(B.blue)}<small>Blue</small></div>
+      <button class="btn" type="button" data-bla="spend"${B.can_use && +B.blue > 0 ? "" : " disabled"}>${L("Dùng Blue thuê máy", "Use Blue to rent")}</button>
+      <div class="bl-sub">${L(`1 Blue = 1đ khi thuê / gia hạn ĐT đám mây${+c.max_pct < 100 ? ` (tối đa ${+c.max_pct}% mỗi đơn)` : ""}`, `1 Blue = 1đ on cloud phone rentals / renewals${+c.max_pct < 100 ? ` (max ${+c.max_pct}% per order)` : ""}`)}</div></div>
+    ${use}${week}
+    <div class="bl-h"><b>${L("Nhiệm vụ hôm nay", "Today's missions")}</b><span>${done}/${tasks.length} ${L("xong", "done")}</span></div>
+    <div class="bl-tasks">${tasks.map(row).join("") || `<div class="hint">${L("Chưa có nhiệm vụ nào.", "No missions right now.")}</div>`}</div>
+    <div class="bl-h"><b>${L("Nhận thêm Blue", "More ways to earn")}</b><span></span></div>
+    <ul class="bl-more">${more.map(x => `<li>${x}</li>`).join("")}</ul>
+    ${items.length ? `<div class="bl-h"><b>${L("Lịch sử Blue", "Blue history")}</b><span></span></div>
+    <div class="bl-hist">${items.map(x => `<div><span>${bwhen(x.t)} · <em>${esc(x.note || K[x.kind] || x.kind)}</em></span><b class="${+x.delta >= 0 ? "p" : "m"}">${+x.delta >= 0 ? "+" : "−"}${bnum(Math.abs(+x.delta))}</b></div>`).join("")}</div>` : ""}
+  </div>`;
+}
+async function blueAct(a) {
+  const m = $("bluedlg"), hide = () => { if (m) m.hidden = true; };
+  if (a === "checkin") {
+    const { data, error } = await sb.rpc("blue_checkin");
+    if (error) { toast(blueMissing(error) ? L("Tích Blue chưa bật.", "Blue rewards aren't enabled.") : errMsg(error), true); }
+    else if (data) toast(+data.bonus > 0 ? L(`🎉 +${bnum(+data.got + +data.bonus)} Blue — đủ chuỗi ${data.streak} ngày!`, `🎉 +${bnum(+data.got + +data.bonus)} Blue — ${data.streak}-day streak!`)
+                                       : L(`💎 +${bnum(data.got)} Blue — điểm danh ngày ${data.streak}`, `💎 +${bnum(data.got)} Blue — check-in day ${data.streak}`));
+    await blueLoad(); blueRender(); return;
+  }
+  if (a === "share") { await blueShare(); return; }
+  if (a === "invite") { await blueTask("invite"); return; }
+  if (a === "play") { hide(); openCloud(); toast(L("Bấm ▶ mở 1 máy bất kỳ để nhận Blue nhiệm vụ.", "Open any phone with ▶ to claim the mission.")); return; }
+  if (a === "rent") { hide(); openCpOrder(false); return; }
+  if (a === "ref") { hide(); openRef(); return; }
+  if (a === "topup") { hide(); openTopup(); return; }
+  if (a === "spend") { hide(); BPAY.cpn = true; openCpOrder(false); return; }
+}
+async function blueTask(task, quiet) {
+  try {
+    const { data, error } = await sb.rpc("blue_task", { p_task: task });
+    if (error) { if (!quiet) toast(errMsg(error), true); if (/TASK_DONE/.test(error.message || "")) { await blueLoad(); blueRender(); } return null; }
+    if (data && +data.got > 0) toast(`💎 +${bnum(data.got)} Blue · ${(BLUE_T()[task] || [, task])[1]}`);
+    await blueLoad(); blueRender(); return data;
+  } catch (e) { if (!quiet) toast(errMsg(e), true); return null; }
+}
+function blueTaskIf(task) {      // nhận nhiệm vụ nếu hôm nay còn chưa nhận (không báo lỗi)
+  const t = blueOn() && (BLUE.tasks || []).find(x => x.id === task);
+  if (t && !t.done && (task === "share" || t.ready)) return blueTask(task, true);
+}
+async function blueShare() {
+  let link = location.origin + "/";
+  try { const { data } = await sb.rpc("ref_info"); if (data && data.code) link = location.origin + "/?ref=" + encodeURIComponent(data.code); } catch (e) {}
+  const text = L("Thuê điện thoại Android đám mây chạy 24/7 ở CloudBlue — đăng ký qua link của mình nhé:", "Rent a 24/7 cloud Android phone at CloudBlue — sign up with my link:");
+  let ok = false;
+  if (navigator.share) { try { await navigator.share({ title: "CloudBlue", text, url: link }); ok = true; } catch (e) { if (e && e.name === "AbortError") return; } }
+  if (!ok) { try { await navigator.clipboard.writeText(text + " " + link); ok = true; toast(L("Đã copy link mời — dán gửi bạn bè / nhóm nhé.", "Invite link copied — paste it to friends.")); }
+             catch (e) { prompt(L("Copy link mời rồi gửi bạn bè:", "Copy your invite link:"), link); ok = true; } }
+  if (ok) await blueTask("share");
+}
+// mở máy (link ▶ sang play.html / app PC / app Android) → nhận nhiệm vụ "mở máy đám mây" (play.html và app cũng tự nhận)
+document.addEventListener("click", e => {
+  const a = e.target.closest && e.target.closest('a[href^="/play.html"], a[href^="blueroblox://phone/"], a[href^="intent://phone/"]');
+  if (a && !a.hasAttribute("download")) blueTaskIf("play");
+}, true);
+// dòng "💎 Trả bằng Blue" trong bảng thuê máy / gia hạn — trả về số Blue sẽ trừ cho đơn
+function blueUse(key, pay) {
+  if (!BPAY[key] || !blueOn() || !BLUE.can_use) return 0;
+  const pct = Math.max(0, Math.min(100, +((BLUE.cfg || {}).max_pct ?? 100)));
+  return Math.max(0, Math.min(+BLUE.blue || 0, Math.floor(Math.max(0, +pay || 0) * pct / 100)));
+}
+function blueRow(boxId, key, pay, off) {
+  const box = $(boxId); if (!box) return 0;
+  if (off || !blueOn()) { box.hidden = true; box.innerHTML = ""; return 0; }
+  const have = +BLUE.blue || 0, can = !!BLUE.can_use, use = blueUse(key, pay);
+  const sub = !can ? L("🔒 Nạp tiền lần đầu để dùng Blue", "🔒 Top up once to unlock Blue")
+    : have <= 0 ? L("Chưa có Blue — điểm danh, làm nhiệm vụ để tích", "No Blue yet — check in and do missions")
+    : use > 0 ? L(`Trừ <b>${bnum(use)} Blue</b> (= ${vnd(use)}) · còn ${bnum(have - use)} Blue`, `Uses <b>${bnum(use)} Blue</b> (= ${vnd(use)}) · ${bnum(have - use)} left`)
+    : L(`Bạn có ${bnum(have)} Blue · 1 Blue = 1đ`, `You have ${bnum(have)} Blue · 1 Blue = 1đ`);
+  const dis = !can || have <= 0;
+  box.hidden = false;
+  box.innerHTML = `<label class="mtrow"><span class="sw bl"><input type="checkbox" data-bluepay="${key}"${BPAY[key] && !dis ? " checked" : ""}${dis ? " disabled" : ""} aria-label="${esc(L("Trả bằng Blue", "Pay with Blue"))}"><i></i></span><span><b>💎 ${L("Trả bằng Blue", "Pay with Blue")}</b><small>${sub}</small></span>${dis ? `<button class="btn ghost sm" type="button" data-blueopen="1">${L("Tích Blue", "Earn Blue")}</button>` : ""}</label>`;
+  return use;
+}
+document.addEventListener("change", e => {
+  const k = e.target && e.target.dataset ? e.target.dataset.bluepay : null; if (!k) return;
+  BPAY[k] = !!e.target.checked; try { (BPAY_UPD[k] || (() => {}))(); } catch (er) {}
+});
+document.addEventListener("click", e => { if (e.target.closest && e.target.closest("[data-blueopen]")) { e.preventDefault(); openBlue(); } });
+{ const _oc = openCpOrder; openCpOrder = async function () { const keep = BPAY.cpn; const r = await _oc.apply(this, arguments); BPAY.cpn = keep; try { if (!$("cporderdlg").hidden) cpOrderUpd(); } catch (e) {} if (profile && !BLUE) blueLoad().then(() => { try { if (!$("cporderdlg").hidden) cpOrderUpd(); } catch (e) {} }); return r; }; }
+
+/* ===== ADMIN: 💎 TÍCH BLUE ===== */
+const BL_F = [["bl-checkin", "checkin", 100000], ["bl-sdays", "streak_days", 365], ["bl-sbonus", "streak_bonus", 1000000], ["bl-tplay", "task_play", 100000],
+  ["bl-tshare", "task_share", 100000], ["bl-tinvite", "task_invite", 100000], ["bl-ref", "ref", 1000000], ["bl-cash", "cashback", 50], ["bl-max", "max_pct", 100], ["bl-ip", "ip_max", 1000]];
+let blSaved = null, blSeq = 0;
+const blVal = (id, hi) => { let n = +($(id) ? $(id).value : 0); if (!isFinite(n)) n = 0; n = id === "bl-cash" ? Math.round(n * 2) / 2 : Math.round(n); return Math.max(0, Math.min(hi, n)); };
+function blForm() { const o = { on: $("bl-on").checked, need_topup: $("bl-need").checked }; BL_F.forEach(([id, k, hi]) => { o[k] = blVal(id, hi); }); return o; }
+function blPreview() {
+  if (!$("bl-prev")) return;
+  const o = blForm(), day = o.checkin + o.task_play + o.task_share + o.task_invite, month = day * 30 + (o.streak_days > 0 ? Math.floor(30 / o.streak_days) * o.streak_bonus : 0);
+  const dirty = blSaved && JSON.stringify(o) !== JSON.stringify(Object.fromEntries(Object.keys(o).map(k => [k, k === "on" || k === "need_topup" ? blSaved[k] !== false : +blSaved[k]])));
+  $("bl-prev").innerHTML = !o.on ? "Đang tắt: khách không thấy 💎 Tích Blue, không tích thêm, không trả bằng Blue được (Blue đang có vẫn giữ)."
+    : `Khách thấy: điểm danh <b>+${bnum(o.checkin)}</b>/ngày${o.streak_days > 0 && o.streak_bonus > 0 ? `, ngày thứ ${o.streak_days} liền thêm <b>+${bnum(o.streak_bonus)}</b>` : ""}`
+      + ` · nhiệm vụ: mở máy <b>+${bnum(o.task_play)}</b>, chia sẻ <b>+${bnum(o.task_share)}</b>, mời bạn <b>+${bnum(o.task_invite)}</b>`
+      + ` · bạn bè nạp / mua lần đầu <b>+${bnum(o.ref)}</b> · hoàn <b>${o.cashback}%</b> mỗi đơn.`
+      + `<br>1 khách làm đủ mỗi ngày tích tối đa ~<b>${bnum(month)} Blue/tháng</b> (= ${vnd(month)} giảm giá) chưa kể mời bạn & hoàn đơn. Trả bằng Blue tối đa <b>${o.max_pct}%</b> mỗi đơn.`
+      + (o.ip_max ? ` Mỗi mạng (IP) tối đa <b>${o.ip_max}</b> tài khoản điểm danh / chia sẻ / mời mỗi ngày.` : " <b style=\"color:var(--warn)\">Không chặn theo mạng (IP) — dễ bị gom bằng tài khoản ảo.</b>")
+      + (o.need_topup ? "" : " <b style=\"color:var(--warn)\">Khách chưa nạp tiền cũng dùng được Blue — dễ bị tạo tài khoản ảo lấy máy.</b>")
+    + (dirty ? ` <b style="color:var(--warn)">Chưa lưu: bấm Lưu Tích Blue.</b>` : "");
+}
+async function loadBlueAdm() {
+  const f = $("blf"); if (!f || !isAdmin()) return;
+  const seq = ++blSeq, msg = $("bl-msg"); msg.textContent = "Đang tải…";
+  const { data, error } = await sb.rpc("admin_blue_stats");
+  if (seq !== blSeq) return;
+  if (error) { msg.innerHTML = blueMissing(error) || /admin_blue/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v27.sql</b> trong Supabase — chạy xong bấm ↻ Làm mới." : esc(errMsg(error)); return; }
+  msg.textContent = "";
+  const c = blSaved = data.cfg || {};
+  $("bl-on").checked = c.on !== false; $("bl-need").checked = c.need_topup !== false;
+  BL_F.forEach(([id, k]) => { $(id).value = c[k] ?? ""; });
+  const tt = data.tasks_today || {}, d30 = data.d30 || {}, nTask = Object.values(tt).reduce((s, v) => s + (+v || 0), 0);
+  $("bl-sum").innerHTML = `<div><b>${bnum(data.outstanding)}</b><span>Blue khách đang giữ (= ${vnd(data.outstanding)})</span></div><div><b>${bnum(data.holders)}</b><span>Khách có Blue</span></div>`
+    + `<div><b>${bnum(data.checkins_today)}</b><span>Điểm danh hôm nay</span></div><div><b>${bnum(nTask)}</b><span>Lượt nhiệm vụ hôm nay</span></div>`;
+  const pos = k => Math.max(0, +d30[k] || 0), given = ["checkin", "streak", "task", "ref", "cashback"].reduce((s, k) => s + pos(k), 0), used = Math.max(0, -(+d30.spend || 0) - pos("refund"));
+  $("bl-30").innerHTML = `30 ngày qua: phát ra <b>${bnum(given)} Blue</b> (điểm danh ${bnum(pos("checkin") + pos("streak"))} · nhiệm vụ ${bnum(pos("task"))} · mời bạn ${bnum(pos("ref"))} · hoàn đơn ${bnum(pos("cashback"))})`
+    + ` · khách đã dùng <b>${bnum(used)} Blue</b> (= ${vnd(used)} trả thay tiền).`;
+  const top = Array.isArray(data.top) ? data.top : [];
+  $("bl-top").innerHTML = top.length ? top.map(x => `<tr><td>${esc(x.user || "?")}</td><td class="num">${bnum(x.blue)}</td></tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:12px">Chưa có khách nào có Blue.</td></tr>`;
+  blPreview();
+}
+$("blf") && ($("blf").oninput = blPreview, $("blf").onchange = blPreview);
+$("blf") && ($("blf").onsubmit = async e => { e.preventDefault();
+  await busy($("bl-save"), async () => {
+    const o = blForm(); BL_F.forEach(([id, k]) => { $(id).value = o[k]; });
+    const { data, error } = await sb.rpc("admin_blue_set", { p: o });
+    if (error) { $("bl-msg").innerHTML = blueMissing(error) || /admin_blue/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v27.sql</b>." : esc(errMsg(error)); return; }
+    blSaved = data || o; toast(o.on ? "Đã lưu Tích Blue." : "Đã tắt Tích Blue."); blPreview(); loadBlueAdm(); blueLoad();
+  }); });
+$("bl-reload") && ($("bl-reload").onclick = () => busy($("bl-reload"), loadBlueAdm));
+$("bl-add") && ($("bl-add").onclick = () => busy($("bl-add"), async () => {
+  const who = $("bl-who").value.trim(), amt = Math.round(+$("bl-amt").value || 0), note = $("bl-note").value.trim();
+  if (!who) { toast("Nhập tên đăng nhập hoặc email của khách.", true); return; }
+  if (!amt) { toast(errMsg("BAD_AMOUNT"), true); return; }
+  if (!confirm(`${amt > 0 ? "Cộng" : "Trừ"} ${bnum(Math.abs(amt))} Blue cho "${who}"?`)) return;
+  const { data, error } = await sb.rpc("admin_blue_add", { p_who: who, p_delta: amt, p_note: note || null });
+  if (error) { toast(errMsg(error), true); return; }
+  toast(`${data.user}: ${+data.delta >= 0 ? "+" : "−"}${bnum(Math.abs(+data.delta))} Blue → còn ${bnum(data.blue)} Blue`);
+  $("bl-amt").value = ""; $("bl-note").value = ""; loadBlueAdm();
+}));
 
 /* ===== ADMIN: LỊCH SỬ MUA ĐT ĐÁM MÂY + HOA HỒNG (SQL v24) ===== */
 const CPS_KIND = { new: ["🆕", "Thuê mới"], renew: ["🔄", "Gia hạn"], upgrade: ["⬆️", "Nâng cấp"], switch: ["🤖", "Đổi Android"], free: ["🎁", "Miễn phí"], gift: ["🎟", "Mã tặng"], refund: ["↩️", "Hoàn tiền"],
@@ -5583,7 +5912,7 @@ function cpaAnalyze() {
 }
 async function loadCloudAdm() {
   if (!isAdmin()) return;
-  gpuLoad();
+  gpuLoad(); try { swcLoad(); } catch (e) {}
   CPpricing = null; const pr = await cpLoadPricing(), c = cpCard();
   $("cpa-cname").value = c.name; $("cpa-cfeats").value = c.feats.join(", "); $("cpa-cdesc").value = c.desc; $("cpa-cname-en").value = pr.card_name_en || ""; $("cpa-cfeats-en").value = pr.card_feats_en || ""; $("cpa-cdesc-en").value = pr.card_desc_en || "";
   $("cpa-ram").value = pr.price_ram_gb_day; $("cpa-cpu").value = pr.price_cpu_day;
@@ -5915,7 +6244,7 @@ function renderCpaTbl() {
   $("cpa-tbl").innerHTML = rows.length ? canNote + rows.map(p => {
     const exp = p.expires_at ? new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "—", lk = cpLocked(p);
     return `<tr${lk ? ' style="opacity:.85"' : ""}><td><input type="checkbox" data-cpsel="${p.id}"${cpaSel.has(p.id) ? " checked" : ""} aria-label="Chọn máy ${esc(p.name)}"></td>
-      <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node) : ""}</div></td>
+      <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node === "wait-old" ? "⏳ chờ xoá máy cũ" : p.node) : ""}</div></td>
       <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
       <td>${cpaStatus(p)}${+p.pending_renew_days > 0 ? `<div class="hint" style="color:var(--gold-hi)">⏳ chờ máy chủ cộng +${+p.pending_renew_days} ngày</div>` : ""}${lk ? `<div style="margin-top:4px"><span class="pill bad">🔒 Khoá ${p.locked_until ? "tới " + new Date(p.locked_until).toLocaleString("vi-VN") : "vĩnh viễn"}</span></div>${p.lock_reason ? `<div class="hint">${esc(p.lock_reason)}</div>` : ""}` : ""}${p.error ? `<div class="hint" style="color:var(--bad)">${esc(p.error)}</div>` : ""}</td>
       <td class="num">${exp}</td>
@@ -6004,6 +6333,57 @@ async function cpaAddDays(ids) {
     + (sk.length ? ` Bỏ qua ${sk.length} máy: ${sk.map(x => x.name + " — " + x.why).join("; ")}` : ""), n ? 0 : 1);
   reloadCpa();
 }
+/* ---- Admin: 🧹 MÁY ĐỔI ANDROID (SQL v28) — máy cũ còn sót / đang xoá · máy mới kẹt / lỗi → Xoá sạch (web + từng máy chủ) · 🔁 Tạo lại ---- */
+let SWC = null, SWC_LAST = "";
+const swcSql = e => /admin_switch_|does not exist|schema cache/i.test((e && e.message) || "") ? "Chưa chạy file SQL v28 trong Supabase." : errMsg(e);
+function swcRender() {
+  if (!$("swc-msg") || !SWC) return;
+  const d = SWC, rows = Array.isArray(d.rows) ? d.rows : [], fail = rows.filter(r => r.kind === "failed").length, stuck = rows.length - fail;
+  $("swc-msg").innerHTML = `Máy cũ còn chạy song song: <b>${+d.old_live || 0}</b> · máy cũ đang xoá: <b>${+d.old_deleting || 0}</b> · máy mới chờ xoá máy cũ: <b>${+d.waiting || 0}</b>`
+    + (fail ? ` · <b style="color:var(--bad)">${fail} máy mới bị lỗi (khách đang không có máy)</b>` : "")
+    + (stuck ? ` · <b style="color:var(--gold-hi)">${stuck} máy mới kẹt</b>` : "")
+    + (SWC_LAST ? `<div style="margin-top:6px">${SWC_LAST}</div>` : "");
+  show("swc-tblbox", rows.length > 0);
+  $("swc-tb").innerHTML = rows.map(r => {
+    const t = r.kind === "failed" ? `<span class="pill bad">Lỗi</span> ${esc(r.error || "")}`
+      : r.kind === "waiting" ? `<span class="pill wt">Chờ xoá máy cũ</span> máy cũ: ${esc(r.old_status || "?")} · ${esc(r.old_node || "?")}`
+      : `<span class="pill wt">Kẹt đang tạo</span> ${esc(r.node || "chưa máy chủ nào nhận")}${r.error ? " · " + esc(r.error) : ""}`;
+    return `<tr><td><b>${esc(r.name || "")}</b><div class="hint">Android ${esc(r.android || "?")} · ${new Date(r.created_at).toLocaleString("vi-VN")}</div></td><td>${esc(r.username || "?")}</td>`
+      + `<td style="white-space:normal">${t}</td><td style="text-align:right"><button class="btn sm" type="button" data-swcre="${esc(r.id)}">🔁 Tạo lại</button></td></tr>`;
+  }).join("");
+}
+async function swcLoad() {
+  if (!$("swc-msg") || !isAdmin()) return;
+  const { data, error } = await sb.rpc("admin_switch_info");
+  if (error) { SWC = null; $("swc-msg").textContent = swcSql(error); show("swc-tblbox", false); return; }
+  SWC = data || {}; swcRender();
+}
+async function swcGo() {
+  if (!confirm("Xoá sạch máy cũ đã đổi Android? Xoá cả trên máy chủ và web, không khôi phục được.")) return;
+  const { data, error } = await sb.rpc("admin_switch_cleanup");
+  if (error) return toast(swcSql(error), 1);
+  const d = data || {}, out = [`Web: ${+d.old || 0} máy cũ cho xoá · ${+d.forced || 0} máy ghi đã xoá · ${+d.released || 0} máy mới được tạo`];
+  SWC_LAST = esc(out[0]) + " · đang dọn máy chủ…"; swcRender();
+  let hosts = {}; try { hosts = await cpNodeHosts(); } catch (e) {}
+  out.push(...await Promise.all(Object.entries(hosts).map(async ([id, h]) => {
+    try { return `${id}: ${await cpRunJob("admin/donsach", "Đang dọn máy cũ trên " + id, h)}`; }
+    catch (e) { return `${id}: ⚠ ${e.status === 404 ? "máy chủ chưa cập nhật bản mới (cpapi.py + phonectl.py)" : e.message}`; }
+  })));
+  SWC_LAST = out.map(esc).join("<br>"); toast("🧹 " + out.join(" · "), 0);
+  await swcLoad(); try { await reloadCpa(); } catch (e) {}
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-swcre]"); if (!b) return;
+  const r = ((SWC && SWC.rows) || []).find(x => x.id === b.dataset.swcre); if (!r) return;
+  if (!confirm(`Tạo lại máy "${r.name}" (Android ${r.android}) cho khách ${r.username || "?"}? Hạn dùng của khách giữ nguyên.`)) return;
+  busy(b, async () => {
+    const { error } = await sb.rpc("admin_switch_retry", { p_id: r.id });
+    if (error) return toast(swcSql(error), 1);
+    toast("🔁 Đã cho tạo lại — máy chủ còn chỗ tạo trong khoảng 2–5 phút."); await swcLoad(); try { await reloadCpa(); } catch (e) {}
+  });
+});
+$("swc-check") && ($("swc-check").onclick = () => busy($("swc-check"), swcLoad));
+$("swc-go") && ($("swc-go").onclick = () => busy($("swc-go"), swcGo));
 /* ---- Admin: GIA HẠN BỊ THIẾU NGÀY (lỗi máy chủ cũ) — SQL v26 admin_cp_renew_check → bù bằng admin_cloud_add_days(…, 'fix') ---- */
 let RNF = [];
 const rnfDays = x => Math.max(1, Math.round(+x.missing_days || 0));

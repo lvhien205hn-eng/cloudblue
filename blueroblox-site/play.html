@@ -148,6 +148,11 @@ input.tg:disabled{opacity:.45;cursor:default}
 .rapp .nm b{display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rapp .nm small{display:block;color:var(--muted);font-size:11.5px;word-break:break-all}
 .rapp.ask{border-color:rgba(255,196,107,.45)}
+/* 🛍 Kho app */
+.kapp{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);background:#0b1438;border-radius:12px;padding:10px 12px}
+.kapp .ki{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:rgba(143,208,255,.12);font-size:20px}
+.kapp b{display:block;font-size:14px}.kapp small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+.kapp .btn{padding:8px 14px;font-size:13px}.kapp .okc{color:var(--ok,#3ce0b0);font-size:12.5px;white-space:nowrap}
 #r-body.off .rapp{opacity:.5}
 .rempty{color:var(--muted);font-size:13px;padding:6px 4px}
 #rootdlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
@@ -256,6 +261,7 @@ input.tg:disabled{opacity:.45;cursor:default}
     <div class="grid">
       <button type="button" data-a="apkfile"><i>📦</i>Cài file APK</button>
       <button type="button" data-a="apklink"><i>🔗</i>Cài APK từ link</button>
+      <button type="button" data-a="store"><i>🛍</i>Kho app</button>
       <button type="button" data-a="root"><i>🔓</i>Root</button>
       <button type="button" data-a="reboot"><i>↻</i>Khởi động lại</button>
       <button type="button" data-a="list"><i>☰</i>Danh sách máy</button>
@@ -277,6 +283,15 @@ input.tg:disabled{opacity:.45;cursor:default}
     </div>
     <p class="rnote">Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.</p>
     <div class="acts"><button class="btn ghost" type="button" data-a="rclose">Đóng</button><button class="btn" type="button" data-a="rsave" id="r-save" disabled>Lưu</button></div>
+  </div>
+</div>
+
+<!-- 🛍 KHO APP: app hay dùng, máy chủ tải từ trang chính chủ rồi cài 1 chạm -->
+<div class="sheet" id="storedlg" hidden>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="s-t">
+    <div class="hd"><div><b id="s-t">🛍 Kho app</b><br><small>Tải từ trang chính chủ · cài 1 chạm</small></div><button class="lnk" type="button" data-a="sclose">Đóng</button></div>
+    <div class="rlist" id="s-list"><div class="rempty">Đang tải…</div></div>
+    <p class="rnote">Termux lấy từ GitHub chính thức, MT Manager từ mt.cc, ZArchiver từ zdevs.ru. Lần đầu máy chủ tải mất vài chục giây, máy sau cài ngay. Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.</p>
   </div>
 </div>
 
@@ -460,6 +475,20 @@ const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; connect
 const statusMsg = s => ({ pending: "Máy đang được tạo, chờ thêm chút…", creating: "Máy đang được tạo, chờ thêm chút…", expired: "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.",
                           error: "Máy đang lỗi — liên hệ hỗ trợ.", cancelling: "Máy đang bị huỷ." }[s] || "");
 
+/* 💎 nhiệm vụ "mở máy đám mây" (SQL v27): mở được máy → tự nhận Blue · mỗi ngày 1 lần, mỗi lần mở trang thử 1 lần
+   (đã nhận / chưa chạy SQL v27 / admin tắt → im lặng bỏ qua) */
+let blueUid = "", blueTried = false;
+function bluePlay() {
+  if (TEST || !sb || blueTried) return; blueTried = true;
+  const d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }), k = "cb_bplay_" + blueUid;
+  try { if (localStorage.getItem(k) === d) return; } catch (e) {}
+  const mark = () => { try { localStorage.setItem(k, d); } catch (e) {} };
+  sb.rpc("blue_task", { p_task: "play" }).then(r => {
+    if (r.error) { if (/TASK_DONE|TASK_OFF|BLUE_OFF/.test(r.error.message || "")) mark(); return; }
+    mark(); const g = r.data && +r.data.got; if (g > 0) toast("💎 +" + g.toLocaleString("vi-VN") + " Blue — nhiệm vụ mở máy hôm nay");
+  }, () => {});
+}
+
 /* ---------- kết nối ---------- */
 async function connect() {
   clearTimeout(P.timer); detach();
@@ -469,7 +498,7 @@ async function connect() {
   if (TEST) ep = { online: true, status: "active", name: Q.get("name") || "Máy thử", android: "?", stream: { ws: Q.get("ws") || "ws://127.0.0.1:8020/v2/stream", api: Q.get("api") || "" } };
   else {
     const s = await session(); if (P.stopped) return; if (!s) return showLogin();
-    token = s.access_token;
+    token = s.access_token; blueUid = (s.user && s.user.id) || "";
     let r;
     try { r = await sb.rpc("cloudphone_endpoint", { p_id: P.id }); } catch (e) { r = { error: e }; }
     if (P.stopped) return;
@@ -485,6 +514,7 @@ async function connect() {
   if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
   $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
   if (ep.status && ep.status !== "active") { P.fatal = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
+  bluePlay();
   const url = ep.stream && ep.stream.ws;
   if (!url) return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000);
   // "online" chỉ là nhịp báo của phần nhận đơn; phần phát hình có thể vẫn chạy → cứ thử nối (máy chủ tự báo OFFLINE nếu không giữ máy này)
@@ -796,13 +826,15 @@ document.addEventListener("click", e => {
     case "full": return toggleFull();
     case "reboot": return reboot();
     case "root": return openRoot();
+    case "store": return openStore();
+    case "sclose": $("storedlg").hidden = true; return;
     case "rclose": $("rootdlg").hidden = true; return;
     case "rsave": return saveRoot();
     case "dno": $("dlg").hidden = true; return;
     case "dok": return dlgOk();
   }
 });
-for (const id of ["menu", "dlg", "rootdlg"]) $(id).addEventListener("click", e => { if (e.target === $(id) && !(id === "dlg" && DLG.busy)) $(id).hidden = true; });
+for (const id of ["menu", "dlg", "rootdlg", "storedlg"]) $(id).addEventListener("click", e => { if (e.target === $(id) && !(id === "dlg" && DLG.busy)) $(id).hidden = true; });
 const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
 if (!FS_OK) $("m-full").hidden = true;
 function toggleFull() {
@@ -890,11 +922,45 @@ $("apkf").addEventListener("change", async () => {
   } catch (e) { DLG.busy = false; $("dlg").hidden = true; toast("Gửi file lỗi: " + e.message); }
 });
 
+/* ---------- 🛍 KHO APP (cpapi GET/POST <máy>/store): app chính chủ (id) + app admin bỏ thêm (name) ---------- */
+const ST_ = { busy: new Set() };
+function storeRow(icon, name, desc, inst, key, isFile) {
+  const d = document.createElement("div"); d.className = "kapp";
+  const i = document.createElement("span"); i.className = "ki"; i.textContent = icon; i.setAttribute("aria-hidden", "true");
+  const t = document.createElement("span"); const b = document.createElement("b"); b.textContent = name; const sm = document.createElement("small"); sm.textContent = desc; t.append(b, sm);
+  const bt = document.createElement("button"); bt.type = "button"; bt.className = "btn" + (inst ? " ghost" : "");
+  bt.textContent = ST_.busy.has(key) ? "Đang cài…" : inst ? "Cài lại" : "Cài"; bt.disabled = ST_.busy.has(key);
+  bt.onclick = () => storeInstall(key, isFile, name, bt);
+  d.append(i, t, bt);
+  if (inst) { const ok = document.createElement("span"); ok.className = "okc"; ok.textContent = "✓ Đã cài"; sm.append(document.createTextNode(" · ")); sm.append(ok); }
+  return d;
+}
+async function openStore() {
+  $("storedlg").hidden = false; const L_ = $("s-list"); L_.innerHTML = '<div class="rempty">Đang tải…</div>';
+  let j; try { j = await api(P.id + "/store", { method: "GET" }); }
+  catch (e) { L_.innerHTML = ""; const m = document.createElement("div"); m.className = "rempty"; m.textContent = "Không mở được kho: " + e.message; L_.append(m); return; }
+  L_.innerHTML = "";
+  const inst = new Set(j.installed || []), apps = j.apps || [], files = j.files || [];
+  if (!apps.length && !files.length) { L_.innerHTML = '<div class="rempty">Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.</div>'; return; }
+  for (const a of apps) L_.append(storeRow(a.icon || "📦", a.name, a.desc || "", !!a.installed, a.id, false));
+  for (const f of files) L_.append(storeRow("📦", f.name.replace(/\.(apk|apks|xapk|apkm)$/i, ""), "App shop thêm sẵn · " + (f.size / 1048576).toFixed(1) + " MB", false, f.name, true));
+}
+async function storeInstall(key, isFile, name, bt) {
+  if (ST_.busy.has(key)) return;
+  ST_.busy.add(key); bt.disabled = true; bt.textContent = "Đang cài…";
+  try {
+    const j = await api(P.id + "/store", { json: isFile ? { name: key } : { id: key } });
+    toast("Đang chuẩn bị " + name + "…"); const r = await watchJob(j.job, name);
+    if (r && r.state === "done" && !$("storedlg").hidden) openStore();
+  } catch (e) { toast("Không cài được " + name + ": " + e.message); }
+  finally { ST_.busy.delete(key); if (bt.isConnected) { bt.disabled = false; bt.textContent = "Cài"; } }
+}
+
 /* ---------- 🔓 ROOT THEO APP (cpapi GET/POST <máy>/rootcfg → phonectl rootcfg) ---------- */
 const APP_NAMES = { "com.termux": "Termux", "com.roblox.client": "Roblox", "com.android.chrome": "Chrome", "org.mozilla.firefox": "Firefox",
   "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram", "com.discord": "Discord",
   "com.google.android.youtube": "YouTube", "com.whatsapp": "WhatsApp", "com.ss.android.ugc.trill": "TikTok", "com.zhiliaoapp.musically": "TikTok",
-  "bin.mt.plus": "MT Manager", "com.speedsoftware.rootexplorer": "Root Explorer", "com.catchingnow.icebox": "Ice Box",
+  "bin.mt.plus": "MT Manager", "bin.mt.plus.canary": "MT Manager (bản 2)", "ru.zdevs.zarchiver": "ZArchiver", "com.speedsoftware.rootexplorer": "Root Explorer", "com.catchingnow.icebox": "Ice Box",
   "com.github.uiautomator": "ATX Agent", "com.termux.api": "Termux:API", "com.termux.boot": "Termux:Boot", "com.termux.widget": "Termux:Widget" };
 const appName = pkg => APP_NAMES[pkg] || pkg.split(".").slice(-1)[0].replace(/^./, c => c.toUpperCase());
 const R = { cfg: null, busy: false };
@@ -912,6 +978,7 @@ function rootPaint() {
   const j = R.cfg || {}, on = $("r-on").checked, allow = new Set(j.apps || []);
   $("r-st").textContent = !j.online ? "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng."
     : on !== !!j.on ? (on ? "Bấm Lưu để bật root." : "Bấm Lưu để tắt root.")
+    : on && j.su === false ? "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi mới cài cho app đã chọn."
     : on ? (j.running ? "Đang bật · " + allow.size + " app được dùng su" : "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.")
          : "Đang tắt — không app nào dùng được lệnh su.";
   const w = $("r-warn"); w.hidden = j.selinux !== "Enforcing";

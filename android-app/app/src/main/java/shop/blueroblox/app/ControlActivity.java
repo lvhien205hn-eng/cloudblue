@@ -437,6 +437,7 @@ public class ControlActivity extends Activity {
     private void frameShown() {
         if (kicked || stopped || rebooting() || client == null) return;
         veil.setVisibility(View.GONE);
+        Blue.playTask(this);                     // 💎 nhiệm vụ "mở máy đám mây" (SQL v27) — mỗi ngày 1 lần, im lặng nếu đã nhận / chưa bật
     }
 
     private boolean rebooting() { return rebootUntil > SystemClock.uptimeMillis(); }
@@ -684,6 +685,7 @@ public class ControlActivity extends Activity {
                 {"🌐", Ui.L("Mở web", "Open link"), (Runnable) this::openUrl},
                 {"📦", Ui.L("Cài APK", "Install APK"), (Runnable) this::pickApk},
                 {"🔗", Ui.L("Cài từ link", "From link"), (Runnable) this::fromLink},
+                {"🛍", Ui.L("Kho app", "App store"), (Runnable) this::store},
                 {"▦", Ui.L("Ứng dụng", "Apps"), (Runnable) this::apps},
                 {"🧬", "Clone tab", (Runnable) this::cloneTab},
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
@@ -930,6 +932,74 @@ public class ControlActivity extends Activity {
     }
 
 
+    // ---------------- 🛍 Kho app: Termux, MT Manager, ZArchiver… — máy chủ tải từ trang CHÍNH CHỦ rồi cài 1 chạm ----------------
+    private void store() {
+        Dialog[] pd = progress(Ui.L("Đang mở kho app…", "Opening the app store…"));
+        final String base = api, pid = id;
+        Api.bg(() -> Api.cpAt(base, "GET", pid + "/store", null), j -> { pd[0].dismiss(); storeSheet(j); },
+                m -> { pd[0].dismiss(); Ui.toast(this, m); });
+    }
+
+    private void storeSheet(JSONObject j) {
+        LinearLayout c = Ui.col(this, 8);
+        c.addView(Ui.muted(this, Ui.L("Máy chủ tải từ trang chính chủ rồi cài vào máy. Lần đầu mất vài chục giây, máy sau cài ngay.",
+                "The server downloads from the official site and installs it. The first time takes a few seconds.")));
+        final Dialog[] d = new Dialog[1];
+        JSONArray apps = j.optJSONArray("apps"), files = j.optJSONArray("files");
+        int n = 0;
+        if (apps != null) for (int i = 0; i < apps.length(); i++) {
+            JSONObject a = apps.optJSONObject(i);
+            if (a == null || a.optString("id").isEmpty()) continue;
+            n++;
+            final String aid = a.optString("id"), nm = a.optString("name");
+            c.addView(storeRow(a.optString("icon", "📦"), nm, a.optString("desc"), a.optBoolean("installed"), v -> {
+                if (d[0] != null) d[0].dismiss();
+                storeInstall("id", aid, nm);
+            }), Ui.fill());
+        }
+        if (files != null) for (int i = 0; i < files.length(); i++) {
+            JSONObject f = files.optJSONObject(i);
+            if (f == null || f.optString("name").isEmpty()) continue;
+            n++;
+            final String fn = f.optString("name");
+            final String nm = fn.replaceAll("(?i)\\.(apk|apks|xapk|apkm)$", "");
+            c.addView(storeRow("📦", nm, Ui.L("App shop thêm sẵn", "Added by the shop") + String.format(java.util.Locale.US, " · %.1f MB", f.optLong("size") / 1048576.0),
+                    false, v -> { if (d[0] != null) d[0].dismiss(); storeInstall("name", fn, nm); }), Ui.fill());
+        }
+        if (n == 0) c.addView(Ui.muted(this, Ui.L("Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.", "The server doesn't have the app store yet.")));
+        c.addView(Ui.text(this, Ui.L("Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.", "Need root for Termux / MT Manager? Open 🔓 Root and switch it on for that app."),
+                12.5f, Ui.MUTED, false), Ui.fill());
+        d[0] = Ui.sheet(this, "🛍 " + Ui.L("Kho app", "App store"), c);
+        d[0].show();
+    }
+
+    private LinearLayout storeRow(String icon, String name, String desc, boolean installed, View.OnClickListener on) {
+        LinearLayout r = Ui.row(this, 10);
+        r.setBackground(Ui.round(Ui.PANEL2, 14, Ui.LINE));
+        r.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+        TextView ic = Ui.text(this, icon, 20, Ui.FG, false);
+        ic.setGravity(android.view.Gravity.CENTER);
+        ic.setBackground(Ui.round(0x1F8FD0FF, 12, 0));
+        r.addView(ic, new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
+        LinearLayout tx = Ui.col(this, 2);
+        tx.addView(Ui.text(this, name, 15, Ui.FG, true));
+        tx.addView(Ui.text(this, installed ? desc + " · ✓ " + Ui.L("Đã cài", "Installed") : desc, 12.5f, Ui.MUTED, false));
+        r.addView(tx, Ui.weight(1));
+        Button b = Ui.button(this, installed ? Ui.L("Cài lại", "Reinstall") : Ui.L("Cài", "Install"), installed ? Ui.GHOST : Ui.PRIMARY);
+        b.setOnClickListener(on);
+        r.addView(b, Ui.wrap());
+        return r;
+    }
+
+    private void storeInstall(String key, String val, String name) {
+        Dialog[] pd = progress(Ui.L("Đang chuẩn bị ", "Preparing ") + name + "…");
+        final String base = api, pid = id;
+        Api.bg(() -> {
+            JSONObject r = Api.cpAt(base, "POST", pid + "/store", new JSONObject().put(key, val));
+            return waitJob(base, r.optString("job"), pd);
+        }, msg -> { pd[0].dismiss(); Ui.toast(this, msg); }, m -> { pd[0].dismiss(); Ui.toast(this, m); });
+    }
+
     // ---------------- Clone tab: chạy thêm bản của 1 app (game…) để đăng nhập acc khác ----------------
     private void cloneTab() {
         Dialog[] pd = progress(Ui.L("Đang tải danh sách app…", "Loading apps…"));
@@ -1066,6 +1136,7 @@ public class ControlActivity extends Activity {
 
     private void rootSheet(JSONObject j) {
         final boolean wasOn = j.optBoolean("on"), online = j.optBoolean("online"), running = j.optBoolean("running");
+        final boolean noSu = j.has("su") && !j.isNull("su") && !j.optBoolean("su", true);     // máy chưa bật root gốc (MuMu "Enable root")
         final java.util.LinkedHashSet<String> allow = new java.util.LinkedHashSet<>();
         JSONArray ja = j.optJSONArray("apps");
         if (ja != null) for (int i = 0; i < ja.length(); i++) allow.add(ja.optString(i));
@@ -1120,6 +1191,8 @@ public class ControlActivity extends Activity {
         Runnable paint = () -> {
             boolean on = main.isChecked();
             st.setText(!online ? Ui.L("Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng.", "Phone is off — settings apply when it starts.")
+                    : on && noSu ? Ui.L("Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi cài cho app đã chọn.",
+                                        "Root isn't enabled on this phone yet — tap Save: it restarts (~1 min) to enable root.")
                     : on != wasOn ? (on ? Ui.L("Bấm Lưu để bật root.", "Tap Save to turn root on.") : Ui.L("Bấm Lưu để tắt root.", "Tap Save to turn root off."))
                     : on ? (running ? Ui.L("Đang bật · " + allow.size() + " app được dùng su", "On · " + allow.size() + " app(s) can use su")
                                     : Ui.L("Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.", "On but not running — tap Save."))
@@ -1143,7 +1216,8 @@ public class ControlActivity extends Activity {
             for (int i = 0; i < rows.size(); i++) if (rows.get(i).isChecked()) sel.put(pkgs.get(i));
             Runnable go = () -> {
                 d.dismiss();
-                Dialog[] pd = progress(on ? Ui.L("Đang bật root cho app đã chọn…", "Turning root on…") : Ui.L("Đang tắt root…", "Turning root off…"));
+                Dialog[] pd = progress(on ? (noSu ? Ui.L("Đang bật root — máy khởi động lại khoảng 1 phút…", "Enabling root — the phone restarts (~1 min)…")
+                                                  : Ui.L("Đang bật root cho app đã chọn…", "Turning root on…")) : Ui.L("Đang tắt root…", "Turning root off…"));
                 final String base = api, pid = id;
                 Api.bg(() -> {
                     JSONObject r = Api.cpAt(base, "POST", pid + "/rootcfg", new JSONObject().put("on", on).put("apps", sel));

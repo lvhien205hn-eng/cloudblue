@@ -128,6 +128,7 @@ _ucache, _pcache = {}, {}
 _busy = set()          # máy đang khởi động lại / đổi cấu hình
 _rootbusy = set()      # máy đang lưu cấu hình root theo app (1 việc / máy)
 _REBOOT = {"t": 0}     # lúc admin bấm khởi động lại CẢ máy chủ (chặn bấm 2 lần)
+_DONSACH = {"t": 0}   # admin đang bấm 🧹 dọn máy cũ trên máy chủ này (chặn bấm chồng)
 IS_WIN = os.name == "nt"
 
 
@@ -561,6 +562,157 @@ def for_sdk(fname, path, sdk):
     if m: return int(m.group(1)) == sdk
     return min_sdk(path) <= sdk
 
+# ---------- 🛍 KHO APP: app hay dùng (Termux, MT Manager, ZArchiver…) — máy chủ tự tải TỪ TRANG CHÍNH CHỦ, lưu ở ~/kho-app, khách cài 1 chạm ----------
+# KHÔNG lấy ở trang mirror. Mỗi app: nguồn chính chủ + tên gói phải khớp (file tải về mà tên gói khác → bỏ, không cài).
+# Tải lần đầu (vài giây – 1 phút), máy sau cài ngay từ bản đã lưu; 12 giờ xem lại nguồn 1 lần để lấy bản mới. Admin vẫn bỏ thêm app riêng vào ~/apk-cai-san.
+KHO_APPS = [
+    {"id": "termux", "name": "Termux", "pkg": "com.termux", "icon": "⌨️",
+     "desc": "Dòng lệnh Linux: pkg, python, git, ssh… (dùng chung với Root)", "desc_en": "Linux terminal: pkg, python, git, ssh…",
+     "src": "github", "repo": "termux/termux-app", "asset": r"^termux-app_v[\w.\-]+\+(?:apt-android-7-)?github-debug_({abi})\.apk$", "sums": r"sha256sums$",
+     "home": "https://github.com/termux/termux-app"},
+    {"id": "mt", "name": "MT Manager", "pkg": "bin.mt.plus", "icon": "🗂️",
+     "desc": "Quản lý file 2 cửa sổ, sửa file, giải nén, xem APK", "desc_en": "Dual-pane file manager, editor, archives",
+     "src": "page", "page": "https://mt.cc/download/", "link": r"https://pan\.mt2\.cn/apk/(\d+)(?![\w/])", "home": "https://mt.cc"},
+    {"id": "zarchiver", "name": "ZArchiver", "pkg": "ru.zdevs.zarchiver", "icon": "🗜️",
+     "desc": "Giải nén / nén zip, rar, 7z, cài file .xapk / .apks", "desc_en": "Extract / create zip, rar, 7z; install .xapk / .apks",
+     "src": "page", "page": "https://zdevs.ru/en/za/apk.html", "link": r"https://zdevs\.ru/files/za/ZArchiver_(\d+(?:_\d+)*)_({abi})_release\.apk",
+     "home": "https://zdevs.ru"},
+]
+KHO_ABI_ALIAS = {"x86_64": ["x86_64"], "x86": ["x86"], "arm64-v8a": ["arm64-v8a", "arm64"], "armeabi-v7a": ["armeabi-v7a", "armeabi"]}
+KHO_MAX = 300 * 1024 * 1024
+KHO_RECHECK = 12 * 3600
+_KHO_LOCK = {a["id"]: threading.Lock() for a in KHO_APPS}
+
+def kho_dir():
+    d = os.path.join(HOME, "kho-app"); os.makedirs(d, exist_ok=True); return d
+
+def _kho_get(url, accept=None, limit=4 * 1024 * 1024):
+    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CloudBlue-Kho", **({"Accept": accept} if accept else {})})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        if not r.geturl().lower().startswith("https://"): raise RuntimeError("nguồn chuyển sang http không an toàn")
+        return r.read(limit + 1)[:limit]
+
+def _kho_abis(port):
+    """Loại chip máy hỗ trợ, theo thứ tự ưu tiên (x86_64 trước — chạy thẳng, không qua dịch ARM)."""
+    l = out(shell(port, "getprop ro.product.cpu.abilist", 15)).strip() or out(shell(port, "getprop ro.product.cpu.abi", 15)).strip()
+    abis = [x.strip() for x in l.split(",") if x.strip()] or ["x86_64", "x86", "arm64-v8a"]
+    return abis + ["universal"]
+
+def _kho_resolve(app, abis):
+    """Tìm bản mới nhất ở nguồn chính chủ cho đúng loại chip → (phiên bản, link tải, sha256 hoặc '', loại chip)."""
+    if app["src"] == "github":
+        j = json.loads(_kho_get(f"https://api.github.com/repos/{app['repo']}/releases/latest", "application/vnd.github+json").decode())
+        assets = j.get("assets") or []
+        for abi in abis:
+            for a in assets:
+                if re.match(app["asset"].replace("{abi}", re.escape(abi)), a.get("name") or ""):
+                    sha = (a.get("digest") or "").split("sha256:", 1)[-1] if str(a.get("digest") or "").startswith("sha256:") else ""
+                    for sm in ([] if sha else [x for x in assets if re.search(app.get("sums") or "^$", x.get("name") or "")]):
+                        for ln in _kho_get(sm["browser_download_url"]).decode(errors="ignore").splitlines():   # file tổng sha256 đi kèm bản phát hành
+                            if ln.strip().endswith(a["name"]): sha = ln.split()[0].lower(); break
+                        if sha: break
+                    return str(j.get("tag_name") or "?"), a["browser_download_url"], sha, abi
+        raise RuntimeError("bản phát hành mới nhất không có file hợp loại chip máy")
+    html = _kho_get(app["page"]).decode(errors="ignore")
+    if app["id"] == "mt":
+        m = re.search(app["link"], html)
+        if not m: raise RuntimeError("trang tải không còn link như cũ")
+        return m.group(1), m.group(0), "", "universal"
+    found = {}
+    for m in re.finditer(app["link"].replace("{abi}", r"[\w\-]+"), html):
+        ver = tuple(int(x) for x in m.group(1).split("_")); abi = m.group(2)
+        if ver > found.get(abi, ((), ""))[0]: found[abi] = (ver, m.group(0))
+    for abi in abis:
+        for a2, alias in KHO_ABI_ALIAS.items():
+            if abi in alias and a2 in found: return ".".join(map(str, found[a2][0])), found[a2][1], "", a2
+    raise RuntimeError("trang tải không có bản hợp loại chip máy")
+
+def apk_package(path):
+    """Tên gói (package) trong AndroidManifest.xml của file .apk · không đọc được → ''."""
+    import zipfile, struct
+    try:
+        with zipfile.ZipFile(path) as z: data = z.read("AndroidManifest.xml")
+        strs, off = [], 8
+        while off + 8 <= len(data):
+            typ, hsz, sz = struct.unpack_from("<HHI", data, off)
+            if sz < 8: break
+            if typ == 0x0001:
+                cnt, _, flags, sstart = struct.unpack_from("<IIII", data, off + 8)
+                utf8 = flags & 0x100
+                for i in range(cnt):
+                    p_ = off + struct.unpack_from("<I", data, off + hsz + i * 4)[0] + sstart
+                    if utf8:
+                        n = data[p_]; p_ += 2 if n & 0x80 else 1
+                        n = data[p_]; q = p_ + (2 if n & 0x80 else 1)
+                        if n & 0x80: n = ((n & 0x7f) << 8) | data[p_ + 1]
+                        strs.append(data[q:q + n].decode("utf-8", "replace"))
+                    else:
+                        n = struct.unpack_from("<H", data, p_)[0]
+                        strs.append(data[p_ + 2:p_ + 2 + n * 2].decode("utf-16le", "replace"))
+            elif typ == 0x0102:
+                name = struct.unpack_from("<I", data, off + 20)[0]
+                if 0 <= name < len(strs) and strs[name] == "manifest":
+                    astart, asize, acnt = struct.unpack_from("<HHH", data, off + 24)
+                    for i in range(acnt):
+                        a = off + 16 + astart + i * asize
+                        an, raw = struct.unpack_from("<II", data, a + 4)
+                        if an < len(strs) and strs[an] == "package":
+                            if raw < len(strs): return strs[raw]
+                            dtype, val = data[a + 15], struct.unpack_from("<I", data, a + 16)[0]
+                            return strs[val] if dtype == 0x03 and val < len(strs) else ""
+                    return ""
+            off += sz
+    except Exception:
+        return ""
+    return ""
+
+def kho_meta(app_id):
+    try: return json.load(open(os.path.join(kho_dir(), app_id + ".json"), encoding="utf-8"))
+    except Exception: return {}
+
+def kho_fetch(app, abis, say=None):
+    """Bản đã lưu còn mới (≤ 12 giờ, đúng loại chip) → dùng luôn; không thì hỏi nguồn chính chủ, có bản mới thì tải về + kiểm tra.
+       Nguồn lỗi mà đã có bản lưu → dùng bản lưu. Trả đường dẫn file .apk."""
+    d = kho_dir()
+    with _KHO_LOCK[app["id"]]:
+        m = kho_meta(app["id"]); fp = os.path.join(d, m.get("file") or "_")
+        have = bool(m.get("file")) and os.path.isfile(fp) and (m.get("abi") in abis)
+        if have and time.time() - float(m.get("checked") or 0) < KHO_RECHECK: return fp
+        try:
+            ver, url, sha, abi = _kho_resolve(app, abis)
+        except Exception as e:
+            if have: return fp
+            raise RuntimeError(f"Không lấy được {app['name']} từ trang chính chủ ({e}). Thử lại sau ít phút.")
+        if have and m.get("ver") == ver and m.get("abi") == abi:
+            m["checked"] = time.time(); json.dump(m, open(os.path.join(d, app["id"] + ".json"), "w", encoding="utf-8")); return fp
+        if say: say(f"Đang tải {app['name']} {ver} từ trang chính chủ (lần đầu ~vài chục giây)…")
+        fn = f"{app['id']}-{re.sub(r'[^0-9A-Za-z.]+', '_', ver)}-{abi}.apk"; tmp = os.path.join(d, fn + ".part")
+        h = hashlib.sha256(); n = 0
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CloudBlue-Kho"})
+        with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
+            if not r.geturl().lower().startswith("https://"): raise RuntimeError("nguồn chuyển sang http không an toàn — không tải")
+            while True:
+                b = r.read(1 << 20)
+                if not b: break
+                n += len(b)
+                if n > KHO_MAX: raise RuntimeError("file quá lớn, không giống app")
+                h.update(b); f.write(b)
+        try:
+            if sha and h.hexdigest() != sha.lower(): raise RuntimeError("file tải về sai mã kiểm tra sha256 — không cài")
+            pk = apk_package(tmp)
+            if pk != app["pkg"]: raise RuntimeError(f"file tải về không phải {app['name']} (gói {pk or '?'}) — không cài")
+            os.replace(tmp, os.path.join(d, fn))
+        finally:
+            if os.path.exists(tmp): os.remove(tmp)
+        old = m.get("file")
+        json.dump({"file": fn, "ver": ver, "abi": abi, "sha256": h.hexdigest(), "size": n, "url": url, "checked": time.time()},
+                  open(os.path.join(d, app["id"] + ".json"), "w", encoding="utf-8"))
+        if old and old != fn:
+            try: os.remove(os.path.join(d, old))
+            except OSError: pass
+        log(f"kho: tải {app['name']} {ver} ({abi}, {n // 1024} KB, sha256 {h.hexdigest()[:16]}…) từ {url}")
+        return os.path.join(d, fn)
+
 def pre_dir():
     import glob
     for d in [os.path.join(os.path.dirname(os.path.abspath(__file__)), "apk-cai-san"), os.path.join(HOME, "apk-cai-san")] + sorted(glob.glob("/home/*/apk-cai-san")):
@@ -880,6 +1032,28 @@ class H(BaseHTTPRequestHandler):
                     return f"Đã root {ok} máy." + (" Chưa được: " + "; ".join(bad[:8]) if bad else "")
                 run_job(jid, work)
                 return self.send_json(200, {"job": jid})
+            if act == "donsach" and self.command == "POST":        # admin 🧹: xoá máy khách web đã HUỶ nhưng còn sót trên máy chủ này (máy cũ đổi Android…)
+                if _DONSACH.get("t") and time.time() - _DONSACH["t"] < 120: return self.send_json(409, {"error": "Máy chủ này đang dọn — chờ 1–2 phút."})
+                _DONSACH["t"] = time.time()
+                jid = new_job(me["uid"], "Dọn máy cũ trên " + NODE_ID)
+                log("admin dọn máy đã huỷ còn sót:", me["uid"])
+                def work(j):
+                    try:
+                        JOBS[j]["msg"] = "Đang xoá máy cũ còn sót (mỗi máy khoảng 30 giây)…"
+                        r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "dondep", "--xoa"], capture_output=True, timeout=3600)
+                        o = out(r); m = re.search(r"DONDEP (\{.*\})", o)
+                        if not m:
+                            raise RuntimeError("Máy chủ chưa có phonectl.py bản mới — chạy lệnh cập nhật máy chủ rồi bấm lại." if r.returncode in (0, 2)
+                                               else "Chưa dọn được: " + o[-300:])
+                        d = json.loads(m.group(1))
+                        t = f"xoá {d.get('deleted', 0)}/{d.get('dead', 0)} máy cũ"
+                        if d.get("fail"): t += f" ({d['fail']} máy chưa xoá được — bấm lại sau ít phút)"
+                        if d.get("unknown"): t += f" · {d['unknown']} máy không có trên web: giữ nguyên"
+                        return t
+                    finally:
+                        _DONSACH["t"] = 0
+                run_job(jid, work)
+                return self.send_json(200, {"job": jid})
             if act == "server" and self.command == "GET":           # admin: tình trạng máy chủ trước khi khởi động lại cả máy chủ
                 if not IS_WIN: return self.send_json(400, {"error": "Chỉ khởi động lại được máy chủ Windows."})
                 r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "serverinfo"], capture_output=True, timeout=120)
@@ -1109,9 +1283,32 @@ class H(BaseHTTPRequestHandler):
             try: sdk = int(out(shell(port, "getprop ro.build.version.sdk", 15)).strip() or 0)
             except ValueError: sdk = 0
             fs = [f for f in fs if for_sdk(f, os.path.join(d, f), sdk)]   # ẩn app không chạy được trên bản Android của máy này
-            return self.send_json(200, {"files": [{"name": f, "size": os.path.getsize(os.path.join(d, f))} for f in fs], "installed": sorted(inst)})
-        if act == "store" and self.command == "POST":          # cài 1 app trong kho vào máy này
-            n = safe_name(str(self.jbody().get("name") or "")); fp = os.path.join(pre_dir(), n)
+            en = (self.headers.get("Accept-Language") or "").lower().startswith("en")
+            apps = []
+            for a in KHO_APPS:
+                m = kho_meta(a["id"])
+                apps.append({"id": a["id"], "name": a["name"], "icon": a["icon"], "pkg": a["pkg"], "desc": a["desc_en"] if en else a["desc"],
+                             "installed": a["pkg"] in inst, "ver": m.get("ver") or "", "size": m.get("size") or 0, "home": a["home"]})
+            return self.send_json(200, {"apps": apps, "files": [{"name": f, "size": os.path.getsize(os.path.join(d, f))} for f in fs], "installed": sorted(inst)})
+        sbody = self.jbody() if act == "store" and self.command == "POST" else {}          # đọc thân yêu cầu 1 lần (đọc lần 2 sẽ rỗng)
+        if act == "store" and self.command == "POST" and isinstance(sbody.get("id"), str):   # 🛍 KHO APP: tải chính chủ (lần đầu) + cài
+            app = next((a for a in KHO_APPS if a["id"] == sbody.get("id")), None)
+            if not app: return self.send_json(404, {"error": "Không có app này trong kho."})
+            jid = new_job(me["uid"], "Cài " + app["name"])
+            def work(j):
+                def say(m): JOBS[j]["msg"] = m
+                say(f"Đang chuẩn bị {app['name']}…")
+                fp = kho_fetch(app, _kho_abis(port), say)
+                say(f"Đang cài {app['name']} vào máy…")
+                files, dst = stage_pkg(fp, os.path.basename(fp))
+                try: o = out(adb(port, ["install", "-r", "-g", files[0]], timeout=900))
+                finally: subprocess.run(["docker", "exec", WSNAME, "rm", "-rf", dst], capture_output=True, timeout=60)
+                if "Success" not in o: raise RuntimeError(install_err(o))
+                return f"✅ Đã cài {app['name']} — mở trên màn hình chính của máy."
+            run_job(jid, work)
+            return self.send_json(200, {"job": jid})
+        if act == "store" and self.command == "POST":          # cài 1 app trong kho vào máy này (file admin bỏ vào ~/apk-cai-san)
+            n = safe_name(str(sbody.get("name") or "")); fp = os.path.join(pre_dir(), n)
             if not n.lower().endswith(APK_EXT) or not os.path.isfile(fp): return self.send_json(404, {"error": "Không có app này trong kho."})
             jid = new_job(me["uid"], "Cài " + n)
             def work(j):
@@ -1354,9 +1551,9 @@ class H(BaseHTTPRequestHandler):
             jid = new_job(me["uid"], "Root theo app")
             def work(j):
                 try:
-                    JOBS[j]["msg"] = "Đang bật root cho app đã chọn…" if on else "Đang tắt root…"
+                    JOBS[j]["msg"] = ("Đang bật root cho app đã chọn… (máy chưa có root gốc sẽ tự khởi động lại ~1 phút)" if on else "Đang tắt root…")
                     r = subprocess.run(["python3", pc_, "rootcfg", cont, "--set", "--on" if on else "--off", "--apps", ",".join(dict.fromkeys(apps))],
-                                       capture_output=True, text=True, timeout=300)
+                                       capture_output=True, text=True, timeout=600)
                     line = next((l for l in reversed((r.stdout or "").splitlines()) if l.startswith("ROOTCFG_")), "")
                     if line.startswith("ROOTCFG_OK"): return line.split(" ", 1)[1].strip() if " " in line else "Đã lưu."
                     if not line and r.returncode == 2 and "rootcfg" in (r.stderr or ""):

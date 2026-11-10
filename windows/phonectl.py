@@ -1064,31 +1064,64 @@ def _need(name):
     st = load(); return st, rec(name, st)      # đọc lại 1 lần (IDX có thể vừa ghi cổng mới) — p PHẢI nằm trong st: sửa p rồi save(st) mới ghi được
                                                # (bản cũ trả load(), rec(name) = 2 lần đọc khác nhau → gia hạn / đổi độ phân giải không bao giờ được ghi)
 
+def _kill_named(nm):
+    """Tắt + xoá ĐÚNG máy tên nm trong giả lập: đọc lại số máy trước MỖI lệnh, không bao giờ đụng máy khác tên.
+       True = chắc chắn đã mất · False = chưa xoá được / không đọc được danh sách máy (KHÔNG kết luận bừa là đã xoá)."""
+    def at():
+        v = vms_sure()
+        if not v: return False, None, None
+        k = next((k for k, x in v.items() if x["name"] == nm), None)
+        return True, k, (v[k] if k is not None else None)
+    for _t in range(3):
+        seen, k, x = at()
+        if not seen: time.sleep(3); continue
+        if k is None: _vmdata_rm_if_gone(nm); return True
+        if x["running"]:
+            memuc("stop", "-i", k, timeout=120)
+            for _w in range(20):
+                seen, k, x = at()
+                if seen and (k is None or not x["running"]): break
+                time.sleep(3)
+        seen, k, x = at()
+        if not seen: time.sleep(3); continue
+        if k is None: _vmdata_rm_if_gone(nm); return True
+        r = memuc("remove", "-i", k, timeout=180)
+        seen, k2, _x = at()
+        if seen and k2 is None: _vmdata_rm_if_gone(nm); return True
+        print(f"   (chưa xoá được {nm}, thử lại: {((r.stdout or '') + (r.stderr or '')).strip()[-120:]})", flush=True); time.sleep(5)
+    return False
+
+def _kill_locked(nm):
+    """_kill_named trong khoá giả lập. Giả lập bận quá lâu (đang tạo máy khác) → False (chưa xoá, lần sau thử lại) — không văng lỗi."""
+    try:
+        with _Lock("memu", wait=300): return _kill_named(nm)
+    except RuntimeError:
+        print(f"   ({EMU_NAME} đang bận quá lâu — chưa xoá {nm}, thử lại sau)", flush=True); return False
+
 def cmd_delete(a):
+    """delete TÊN — xoá máy + toàn bộ dữ liệu. Chỉ bỏ khỏi danh sách khi giả lập CHẮC CHẮN không còn máy đó.
+       Xoá chưa được → GIỮ trong danh sách, thoát mã 5 (cloudphoned giữ "đang huỷ" và thử lại, máy khách không bị hiểu là đã xoá).
+       Máy cp_… không còn trong danh sách nhưng vẫn nằm trong giả lập (lần xoá trước lỗi) → xoá đúng máy tên đó."""
     st = load(); p = rec(a.name, st)
-    if not p: print("Không có máy tên này."); sys.exit(1)
     v = vms_sure()
     if not v: print(f"LỖI: không đọc được danh sách máy của {EMU_NAME} — thử lại sau."); sys.exit(4)
+    if not p:
+        if str(a.name).startswith("cp_") and any(x["name"] == a.name for x in v.values()):
+            gone = _kill_locked(a.name)
+            if gone: print(f"🗑️  Đã xoá máy thừa '{a.name}' (không còn trong danh sách) và toàn bộ dữ liệu."); return
+            print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} — sẽ thử lại sau."); sys.exit(5)
+        print("Không có máy tên này."); sys.exit(1)
     i = IDX(p, v)
-    if i is None:                          # máy đã không còn trong MEmu → chỉ xoá khỏi danh sách
+    if i is None:                          # máy đã không còn trong giả lập → chỉ xoá khỏi danh sách
         st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
-        print(f"🗑️  '{a.name}' không còn trong MEmu — đã bỏ khỏi danh sách."); return
-    adb("disconnect", serial(p), timeout=15)
-    with _Lock("memu"):
-        if EMU == "memu": i = IDX(p, vms_sure())        # số máy đọc lại NGAY trước khi xoá, dùng 1 số cho cả tắt + xoá
-        r = None
-        if i is not None:
-            memuc("stop", "-i", i, timeout=120); time.sleep(3)
-            r = memuc("remove", "-i", i, timeout=180)
-    v2 = vms_sure()
-    left = i is None or bool(v2 and any(x["name"] == a.name for x in v2.values()))
-    st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
-    if left:                                         # không xoá được → báo, KHÔNG thử số máy khác
-        why = "chưa đọc được số máy" if i is None else ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
-        print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} ({why}) — máy còn lại sẽ hiện THỪA, xoá bằng: phonectl strays --remove")
-    else:
         _vmdata_rm_if_gone(a.name)
-        print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
+        print(f"🗑️  '{a.name}' không còn trong {EMU_NAME} — đã bỏ khỏi danh sách."); return
+    adb("disconnect", serial(p), timeout=15)
+    gone = _kill_locked(a.name)
+    if not gone:                                     # không xoá được → GIỮ trong danh sách (vẫn tính RAM, lần sau thử lại), KHÔNG thử số máy khác
+        print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} — máy vẫn giữ trong danh sách, sẽ thử lại sau."); sys.exit(5)
+    st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
+    print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
 
 def _sb_get(path):
     """Đọc Supabase (khoá máy chủ trong cloudphone.conf) → list/dict. Lỗi → ném lỗi (KHÔNG coi là "không có")."""
@@ -1098,40 +1131,52 @@ def _sb_get(path):
     return json.loads(urllib.request.urlopen(req, timeout=25).read().decode("utf-8") or "[]")
 
 def cmd_dondep(a):
-    """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): đơn huỷ lúc máy chủ tắt / lỗi xoá cũ
-       → web vẫn thấy "8 máy · đã cấp 48GB" dù không ai thuê (09/11 win3 + win4). Không --xoa: chỉ liệt kê. --xoa: xoá hẳn đúng
-       các máy web ghi cancelled (máy ảo + dữ liệu). Máy KHÔNG có trên web hoặc web ghi đang dùng: chỉ báo, không bao giờ tự xoá."""
+    """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): máy cũ đổi Android, đơn huỷ lúc máy chủ
+       tắt, lần xoá trước lỗi… → web vẫn thấy "8 máy · đã cấp 48GB" dù không ai thuê. Gồm cả máy cp_… KHÔNG còn trong danh sách
+       nhưng vẫn nằm trong giả lập. Không --xoa: chỉ liệt kê. --xoa: xoá hẳn đúng các máy web ghi cancelled (máy ảo + dữ liệu).
+       Máy KHÔNG có trên web hoặc web ghi đang dùng: chỉ báo, không bao giờ tự xoá. Dòng cuối: DONDEP {json} (web đọc)."""
     import urllib.parse
-    st = load(); names = [p["name"] for p in st["phones"] if str(p.get("name", "")).startswith("cp_")]
+    st = load(); listed = [p["name"] for p in st["phones"] if str(p.get("name", "")).startswith("cp_")]
     me = CONF.get("NODE_ID", "") or "máy chủ này"
-    if not names: print(f"{me}: không có máy khách nào trong danh sách — không có gì để dọn."); return
+    v = vms_sure()
+    if not v: print(f"LỖI: không đọc được danh sách máy của {EMU_NAME} — KHÔNG xoá gì."); sys.exit(4)
+    strays = sorted({x["name"] for x in v.values() if str(x["name"]).startswith("cp_")} - set(listed))
+    names = listed + strays
+    if not names:
+        print(f"{me}: không có máy khách nào — không có gì để dọn.")
+        print("DONDEP " + json.dumps({"node": me, "total": 0, "dead": 0, "deleted": 0, "fail": 0, "unknown": 0})); return
     db = {}
     try:
         for i in range(0, len(names), 40):
             part = names[i:i + 40]
             for r in _sb_get("cloud_phones?select=container,status,node&container=in.(" + ",".join(urllib.parse.quote(n) for n in part) + ")") or []:
-                db[r.get("container")] = r
+                if r.get("status") != "cancelled" or r.get("container") not in db: db[r.get("container")] = r    # trùng tên: ưu tiên dòng còn sống
     except Exception as e:
         print(f"LỖI: không đọc được web (Supabase): {e} — KHÔNG xoá gì."); sys.exit(4)
-    v = vms(); gone = []
+    gone = []; unknown = 0
     for n in names:
-        r = db.get(n); p = rec(n, st); i = IDX(p, v); run = i is not None and bool(v[i]["running"])
+        r = db.get(n); p = rec(n, st); stray = n in strays
+        i = next((k for k, x in v.items() if x["name"] == n), None); run_ = i is not None and bool(v[i]["running"])
         stt = (r or {}).get("status") or "KHÔNG CÓ TRÊN WEB"; nd = (r or {}).get("node") or ""
         dead = bool(r) and stt == "cancelled"
         if dead: gone.append(n)
-        print(f"{'✗' if dead else '·'} {n:<16} RAM {p.get('ram')}GB · {p.get('cpu')} nhân · {'đang chạy' if run else 'tắt'}"
+        elif not r: unknown += 1
+        cfg = f"RAM {p.get('ram')}GB · {p.get('cpu')} nhân" if p else "máy THỪA (không còn trong danh sách)"
+        print(f"{'✗' if dead else '·'} {n:<16} {cfg} · {'đang chạy' if run_ else 'tắt'}"
               f" · web: {stt}{(' (máy chủ ' + nd + ')') if nd and nd != CONF.get('NODE_ID', '') else ''}", flush=True)
     keep = len(names) - len(gone)
-    print(f"\n{me}: {len(names)} máy trong danh sách · {len(gone)} máy web đã HUỶ nhưng còn sót trên máy chủ · {keep} máy giữ nguyên")
-    if not gone: return
-    if not a.xoa:
-        print("→ Xoá hẳn các máy ✗ (máy ảo + dữ liệu, KHÔNG khôi phục được):  python phonectl.py dondep --xoa"); return
+    print(f"\n{me}: {len(names)} máy khách ({len(strays)} máy thừa) · {len(gone)} máy web đã HUỶ nhưng còn sót trên máy chủ · {keep} máy giữ nguyên")
     ok = 0
-    for n in gone:
-        a.name = n
-        try: cmd_delete(a); ok += 1
-        except SystemExit: print(f"⚠ {n}: chưa xoá được — chạy lại sau", flush=True)
-    print(f"Xong: đã xoá {ok}/{len(gone)} máy đã huỷ. Web cập nhật số máy / RAM đã cấp sau ~30 giây.")
+    if gone and not a.xoa:
+        print("→ Xoá hẳn các máy ✗ (máy ảo + dữ liệu, KHÔNG khôi phục được):  python phonectl.py dondep --xoa")
+    elif gone:
+        for n in gone:
+            a.name = n
+            try: cmd_delete(a); ok += 1
+            except SystemExit: print(f"⚠ {n}: chưa xoá được — chạy lại sau", flush=True)
+        print(f"Xong: đã xoá {ok}/{len(gone)} máy đã huỷ. Web cập nhật số máy / RAM đã cấp sau ~30 giây.")
+    print("DONDEP " + json.dumps({"node": me, "total": len(names), "dead": len(gone), "deleted": ok, "fail": len(gone) - ok if a.xoa else 0,
+                                  "unknown": unknown}))
 
 def cmd_forget(a):
     """forget TÊN: bỏ máy khỏi danh sách CHỈ KHI giả lập chắc chắn không còn máy đó (máy "ma") — không bao giờ xoá máy thật."""
@@ -1549,6 +1594,32 @@ def _has_su(p):
     except Exception: return False
     return bool(re.search(r"(^|/)su\s*$", o, re.M))
 
+def _su_ready(p):
+    """Máy (đang chạy) đã dùng được quyền root chưa: adb là root, hoặc có lệnh su (MuMu "Enable root" / LDPlayer root đã bật)."""
+    try:
+        s_ = serial(p)
+        if (adb("-s", s_, "get-state", timeout=15).stdout or "").strip() != "device": adb_connect(p["port"])
+        if (adb("-s", s_, "shell", "id -u", timeout=15).stdout or "").strip() == "0": return True
+    except Exception:
+        pass
+    return _has_su(p)
+
+def _root_enable_restart(p):
+    """Bật root GỐC của giả lập cho máy đang chạy mà chưa có su: tắt máy → bật root (MuMu chỉ cho ghi lúc máy TẮT) → bật lại → chờ khởi động.
+       Dùng chung cho "Root máy" (rootfix --force) và "Root theo app" (rootcfg --set --on). Trả True nếu xong đã có su."""
+    v = vms(); i = IDX(p, v)
+    if i is None: return False
+    print(f"   {p['name']} (#{i}): bật root → khởi động lại máy (~1 phút)…", flush=True)
+    adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", i, timeout=120); time.sleep(3)
+    if EMU == "mumu":
+        _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
+        if not _mumu_root_on(i):                               # máy bị bật lại giữa chừng (vòng tự bật của cloudphoned) → tắt lại, ghi lại
+            memuc("stop", "-i", i, timeout=120); time.sleep(3); _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
+    else:
+        memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)
+    start_phone(p); wait_boot(p["name"], p["port"], apps=False)
+    return _su_ready(p)
+
 def _mumu_root_on(i):
     """MuMu: "Enable root" (root_permission) của máy đã BẬT trong cài đặt chưa · None = không phải MuMu / không đọc được."""
     if EMU != "mumu": return None
@@ -1581,16 +1652,7 @@ def cmd_rootfix(a):
             if EMU != "mumu": memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)   # LDPlayer / MEmu: ghi sẵn, có hiệu lực khi bật lại
             print(f"ROOT_WAIT {p['name']}: chưa có root — bấm Root máy (máy khởi động lại ~1 phút) hoặc chờ lần bật lại sau", flush=True); wait += 1
             continue
-        print(f"   {p['name']} (#{i}): bật root → khởi động lại máy (~1 phút)…", flush=True)
-        adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", i, timeout=120); time.sleep(3)
-        if EMU == "mumu":
-            _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
-            if not _mumu_root_on(i):                               # máy bị bật lại giữa chừng (vòng tự bật của cloudphoned) → tắt lại, ghi lại
-                memuc("stop", "-i", i, timeout=120); time.sleep(3); _MUMU_KEYS.pop(str(i), None); _mumu_set(str(i), {"root": 1})
-        else:
-            memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)
-        start_phone(p); wait_boot(p["name"], p["port"], apps=False)
-        if _has_su(p): print(f"ROOT_OK {p['name']}: đã root xong — tool gọi su là chạy bằng quyền root", flush=True); ok += 1
+        if _root_enable_restart(p): print(f"ROOT_OK {p['name']}: đã root xong — tool gọi su là chạy bằng quyền root", flush=True); ok += 1
         else: print(f"ROOT_NO {p['name']}: đã bật root + khởi động lại nhưng chưa thấy lệnh su", flush=True); bad += 1
     if a.all and not a.force:                                       # vòng 5 phút: máy bật root theo app mà daemon không chạy → cài lại
         for p in load()["phones"]:
@@ -1656,7 +1718,19 @@ def _root_sh(p, script, timeout=120, files=()):
     return r, is_root
 
 def _root_state(p):
-    """Đọc trong máy: daemon chạy chưa, SELinux, app vừa xin root (bị từ chối), danh sách app khách cài."""
+    """Đọc trong máy: daemon chạy chưa, SELinux, app vừa xin root (bị từ chối), danh sách app khách cài.
+       Máy chưa có root gốc (chưa có su) → vẫn đọc danh sách app bằng adb thường + su=False (bấm Lưu sẽ tự khởi động lại để bật root)."""
+    if not _su_ready(p):
+        o = (ashell(p["name"], "echo SELINUX=$(getenforce 2>/dev/null); pm list packages -3 2>/dev/null", port=p.get("port"), timeout=60).stdout or "")
+        st = {"running": False, "selinux": "?", "asked": [], "installed": [], "su": False}
+        for ln in o.splitlines():
+            ln = ln.strip()
+            if ln.startswith("SELINUX="): st["selinux"] = ln.split("=", 1)[1] or "?"
+            elif ln.startswith("package:"):
+                pk = ln.split(":", 1)[1].strip()
+                if _PKG_RE.match(pk) and pk != "shop.blueroblox.app": st["installed"].append(pk)
+        st["installed"] = sorted(set(st["installed"]))
+        return st
     r, _ = _root_sh(p, f"D={CPSU_DEV}\n"
                        "if [ -x $D/cpsu ]; then $D/cpsu status --dir $D; else echo NOCPSU; fi\n"
                        "echo SELINUX=$(getenforce 2>/dev/null)\n"
@@ -1682,11 +1756,13 @@ def _root_state(p):
         except ValueError: pass
         for pk in pks:
             if pk not in seen: seen.add(pk); asked.append({"pkg": pk, "t": t})
-    st["asked"] = asked[:30]; st["installed"] = sorted(set(st["installed"]))
+    st["asked"] = asked[:30]; st["installed"] = sorted(set(st["installed"])); st["su"] = True
     return st
 
-def _root_apply(p, quiet=False):
-    """Đưa máy về đúng cấu hình root đã lưu (p["root_on"], p["root_apps"]). Trả (ok, câu báo)."""
+def _root_apply(p, quiet=False, restart=False):
+    """Đưa máy về đúng cấu hình root đã lưu (p["root_on"], p["root_apps"]). Trả (ok, câu báo).
+       restart=True (khách bấm Lưu trong 🔓 Root): máy chưa có root gốc → tự tắt → bật root → bật lại (~1 phút) rồi mới cài.
+       restart=False (tự giữ root lúc máy vừa bật): chưa có root gốc thì chỉ báo — KHÔNG tự khởi động lại máy khách."""
     on, apps = bool(p.get("root_on")), [x for x in (p.get("root_apps") or []) if _PKG_RE.match(str(x))]
     if not on:
         r, _ = _root_sh(p, f"D={CPSU_DEV}\n[ -x $D/cpsu ] && $D/cpsu uninstall --dir $D\nrm -f $D/allow\necho ROOT_OFF_DONE\n", timeout=90)
@@ -1694,6 +1770,11 @@ def _root_apply(p, quiet=False):
         return ok, ("Đã TẮT root — không app nào dùng được lệnh su." if ok else "Chưa tắt được root: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:])
     import tempfile
     files = _cpsu_local()
+    if not _su_ready(p):
+        if not restart:
+            return False, "Máy chưa bật root gốc — mở 🔓 Root rồi bấm Lưu (máy tự khởi động lại ~1 phút để bật root)."
+        if not _root_enable_restart(p):
+            return False, "Đã khởi động lại máy để bật root nhưng máy vẫn chưa có lệnh su — báo admin kiểm tra máy này."
     r, is_root = _root_sh(p, f"md5sum {CPSU_DEV}/cpsu {CPSU_DEV}/su 2>/dev/null", timeout=30)
     have = r.stdout or ""
     push = [(fp, f"up_{key}") for key, fp in files.items() if CPSU_FILES[key][1] not in have]      # chỉ đẩy file khác bản
@@ -1734,13 +1815,13 @@ def cmd_rootcfg(a):
         p["root_on"] = bool(a.on); p["root_apps"] = apps; save(st)        # lưu TRƯỚC: máy tắt / khởi động lại vẫn áp dụng đúng
         if not is_running(p["name"], p):
             print("ROOTCFG_OK Đã lưu — máy đang tắt, cấu hình root áp dụng khi máy bật."); return
-        try: ok, msg = _root_apply(p, quiet=True)
+        try: ok, msg = _root_apply(p, quiet=True, restart=True)
         except Exception as e: ok, msg = False, f"Chưa áp dụng được: {e}"
         print(("ROOTCFG_OK " if ok else "ROOTCFG_FAIL ") + msg)
         if not ok: sys.exit(1)
         return
     info = {"on": bool(p.get("root_on")), "apps": list(p.get("root_apps") or []), "running": False, "selinux": "?",
-            "asked": [], "installed": [], "online": False}
+            "asked": [], "installed": [], "online": False, "su": None}
     if is_running(p["name"], p):
         try: info.update(_root_state(p)); info["online"] = True
         except Exception as e: info["error"] = str(e)[:200]
