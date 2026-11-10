@@ -11,7 +11,7 @@
 #  (bảng CloudBlue chạy bộ cài không kèm tham số); -Node khác NODE_ID trong conf → dừng, không đụng gì.
 # =====================================================================
 param([string]$Node = "win1", [string]$PubHost = "phone.cloudblue.vn")
-$SETUP_VER = "2026-11-08e"
+$SETUP_VER = "2026-11-10a"
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # Windows PowerShell 5.1: thanh tiến độ làm Invoke-WebRequest / Expand-Archive chậm gấp nhiều lần
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # Windows cũ mặc định TLS 1.0 → GitHub/Google từ chối
@@ -219,7 +219,13 @@ Step "3/8 adb (Google platform-tools)"
 if (-not (Test-Path "$B\platform-tools\adb.exe")) {
   Get "https://dl.google.com/android/repository/platform-tools-latest-windows.zip" "$B\pt.zip"
   Expand-Archive -Force "$B\pt.zip" $B; Remove-Item "$B\pt.zip" }
-[Environment]::SetEnvironmentVariable("ADB_LOCAL_TRANSPORT_MAX_PORT", "5553", "Machine"); $env:ADB_LOCAL_TRANSPORT_MAX_PORT = "5553"   # adb không tự dò emulator-55xx (LDPlayer hiện mỗi máy 2 lần)
+# adb không tự dò emulator-55xx (LDPlayer hiện mỗi máy 2 lần). Ghi THẲNG registry, KHÔNG dùng [Environment]::SetEnvironmentVariable(…, "Machine"):
+# lệnh đó báo WM_SETTINGCHANGE cho TỪNG cửa sổ (mỗi cửa sổ chờ tới 1 giây) → máy chủ nhiều cửa sổ giả lập đứng 10–15 phút (win1 10/11).
+# panel.py / phonectl.py / baomat.py vẫn tự đặt biến này khi chạy.
+$ENVK = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+if ("$((Get-ItemProperty -Path $ENVK -Name ADB_LOCAL_TRANSPORT_MAX_PORT -ErrorAction SilentlyContinue).ADB_LOCAL_TRANSPORT_MAX_PORT)" -ne "5553") {
+  try { Set-ItemProperty -Path $ENVK -Name ADB_LOCAL_TRANSPORT_MAX_PORT -Value "5553" -ErrorAction Stop } catch { Warn "Chua ghi duoc bien ADB_LOCAL_TRANSPORT_MAX_PORT (khong sao - chuong trinh tu dat)" } }
+$env:ADB_LOCAL_TRANSPORT_MAX_PORT = "5553"
 Ok "$B\platform-tools\adb.exe"
 
 Step ("4/8 cloudflared" + $(if ($KNOWN) { " (duong ham $PubHost)" } else { "" }))
