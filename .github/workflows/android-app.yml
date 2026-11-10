@@ -1,4 +1,5 @@
-# Build Android app BlueRoblox Cloud -> blueroblox-site/download/blueroblox-cloud.apk
+# Build Android app BlueRoblox Cloud -> blueroblox-site/download/blueroblox-cloud.apk (ban web)
+#   + ban CH Play vn.cloudblue.app -> file .aab o GitHub Release "chplay-latest" (va tu day len CH Play neu co secret PLAY_SERVICE_ACCOUNT_JSON)
 name: Build Android app
 
 on:
@@ -74,10 +75,19 @@ jobs:
             echo "::warning::Secret ANDROID_OLD_KEYSTORE_B64 khong giai ma duoc (dan thieu / sai noi dung) - bo qua xoay khoa"
           fi
 
-      - name: Build APK + AAB
+      # Bản web (shop.blueroblox.app, file .apk cho cloudblue.vn) — bản chính, lỗi là dừng
+      - name: Build APK (web)
         env:
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-        run: gradle -p android-app assembleRelease bundleRelease --no-daemon --stacktrace
+        run: gradle -p android-app assembleWebRelease --no-daemon --stacktrace
+
+      # Bản CH Play (vn.cloudblue.app, file .aab) — lỗi KHÔNG làm hỏng bản web (continue-on-error)
+      - name: Build CH Play bundle (.aab)
+        id: play
+        continue-on-error: true
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: gradle -p android-app bundlePlayRelease --no-daemon --stacktrace
 
       # XOAY KHOÁ (APK Signature Scheme v3, Android 9+): v1/v2 ký bằng khoá CŨ, v3 ký bằng khoá MỚI + "lịch sử khoá" (cũ → mới).
       #   • App cũ ký khoá cũ (1.4x) → cập nhật được trên MỌI Android (không phải gỡ cài lại)
@@ -101,7 +111,7 @@ jobs:
           if [ "$FP" != "1a48230206ea270211c562613489cd788daef26aff6115ecf15c6b0451cc804a" ]; then echo "::warning::File khoa cu KHONG dung khoa da ky app 1.4x (chung chi $FP)"; exit 1; fi
           echo "Khoa cu dung: chung chi 1A:48:23:02... (app 1.4x)"
           AS="$ANDROID_HOME/build-tools/36.0.0/apksigner"
-          APK=android-app/app/build/outputs/apk/release/app-release.apk
+          APK=android-app/app/build/outputs/apk/web/release/app-web-release.apk
           "$AS" rotate --out "$RUNNER_TEMP/lineage" \
             --old-signer --ks "$OLD_KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:OLD_PASSWORD --key-pass env:OLD_PASSWORD \
             --new-signer --ks "$KEYSTORE_FILE" --ks-key-alias blueroblox --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEYSTORE_PASSWORD
@@ -141,7 +151,7 @@ jobs:
       - name: Copy APK to website
         run: |
           mkdir -p blueroblox-site/download
-          cp android-app/app/build/outputs/apk/release/app-release.apk blueroblox-site/download/blueroblox-cloud.apk
+          cp android-app/app/build/outputs/apk/web/release/app-web-release.apk blueroblox-site/download/blueroblox-cloud.apk
           SIZE=$(stat -c %s blueroblox-site/download/blueroblox-cloud.apk)
           # "ver" = số bản gọn · "version" = số bản + OLD_KEY_HINT (cho app cũ; đã xoay khoá thì không cần) — ghi bằng python cho đúng JSON
           python3 -c 'import json, os, sys, time; v = "1." + os.environ["APP_VERSION_CODE"]; h = "" if os.environ.get("ROTATED") == "1" else os.environ.get("OLD_KEY_HINT", "").strip(); json.dump({"version": v + (". " + h if h else ""), "ver": v, "code": int(os.environ["APP_VERSION_CODE"]), "size": int(sys.argv[1]), "date": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}, open("blueroblox-site/download/app.json", "w", encoding="utf-8"), ensure_ascii=False)' "$SIZE"
@@ -158,9 +168,77 @@ jobs:
           path: blueroblox-site/download/blueroblox-cloud.apk
 
       - uses: actions/upload-artifact@v4
+        if: steps.play.outcome == 'success'
         with:
-          name: blueroblox-cloud-aab-chplay
-          path: android-app/app/build/outputs/bundle/release/app-release.aab
+          name: cloudblue-chplay-aab
+          path: android-app/app/build/outputs/bundle/playRelease/app-play-release.aab
+          if-no-files-found: warn
+
+      # File .aab cho CH Play → GitHub Release "chplay-latest" (link cố định để tải về rồi upload vào Play Console):
+      #   https://github.com/<repo>/releases/download/chplay-latest/cloudblue-chplay.aab
+      - name: CH Play bundle -> GitHub Release
+        if: steps.play.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          OUT="$RUNNER_TEMP/cloudblue-chplay.aab"
+          cp android-app/app/build/outputs/bundle/playRelease/app-play-release.aab "$OUT"
+          NOTE="CloudBlue cho CH Play (vn.cloudblue.app) - ban 1.$APP_VERSION_CODE. Tai file cloudblue-chplay.aab roi upload vao Play Console (khong dua len web)."
+          gh release view chplay-latest >/dev/null 2>&1 || gh release create chplay-latest --title "CloudBlue CH Play (.aab)" --notes "$NOTE"
+          gh release upload chplay-latest "$OUT" --clobber
+          gh release edit chplay-latest --notes "$NOTE"
+          echo "::notice::CH Play 1.$APP_VERSION_CODE: https://github.com/${{ github.repository }}/releases/download/chplay-latest/cloudblue-chplay.aab"
+
+      # TỰ ĐẨY LÊN CH PLAY (tuỳ chọn) — chỉ chạy khi có secret PLAY_SERVICE_ACCOUNT_JSON (tài khoản dịch vụ Google Cloud
+      # được cấp quyền "Release" trong Play Console → API access). Lần đầu tiên vẫn phải upload tay trong Play Console.
+      # Track mặc định "alpha" (Thử nghiệm kín); đổi bằng biến kho PLAY_TRACK (internal / alpha / beta / production).
+      - name: Upload to Google Play (auto)
+        if: steps.play.outcome == 'success'
+        continue-on-error: true
+        env:
+          PLAY_SA: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_TRACK: ${{ vars.PLAY_TRACK }}
+          PLAY_STATUS: ${{ vars.PLAY_STATUS }}
+          AAB: android-app/app/build/outputs/bundle/playRelease/app-play-release.aab
+        run: |
+          if [ -z "$PLAY_SA" ]; then
+            echo "::notice::Chua bat tu day len CH Play (chua co secret PLAY_SERVICE_ACCOUNT_JSON) - tai file .aab o Release chplay-latest roi upload tay vao Play Console"
+            exit 0
+          fi
+          pip install --quiet google-auth requests
+          python3 - <<'PY'
+          import json, os, sys
+          from google.oauth2 import service_account
+          from google.auth.transport.requests import AuthorizedSession
+          PKG = "vn.cloudblue.app"
+          track = (os.environ.get("PLAY_TRACK") or "alpha").strip()
+          status = (os.environ.get("PLAY_STATUS") or "completed").strip()
+          try:
+              info = json.loads(os.environ["PLAY_SA"])
+          except Exception:
+              print("::warning::Secret PLAY_SERVICE_ACCOUNT_JSON khong phai JSON hop le (dan thieu?) - bo qua"); sys.exit(0)
+          s = AuthorizedSession(service_account.Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/androidpublisher"]))
+          API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications/" + PKG + "/edits"
+          UP = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/applications/" + PKG + "/edits"
+          def ok(r, what):
+              if r.status_code >= 300:
+                  msg = r.text[:600].replace("\n", " ")
+                  hint = ""
+                  if "draft app" in msg: hint = " (app chua phat hanh lan nao: dat bien PLAY_STATUS=draft, roi vao Play Console bam phat hanh)"
+                  elif r.status_code in (401, 403): hint = " (tai khoan dich vu chua duoc moi / chua co quyen Release trong Play Console)"
+                  elif "versionCode" in msg: hint = " (so ban da co tren CH Play - bo qua)"
+                  print("::warning::CH Play loi o buoc " + what + ": HTTP " + str(r.status_code) + " " + msg + hint); sys.exit(0)
+              return r.json() if r.text else {}
+          edit = ok(s.post(API, timeout=60), "tao edit")["id"]
+          with open(os.environ["AAB"], "rb") as f:
+              b = ok(s.post(UP + "/" + edit + "/bundles?uploadType=media", data=f, headers={"Content-Type": "application/octet-stream"}, timeout=900), "tai .aab")
+          vc = b["versionCode"]
+          ok(s.put(API + "/" + edit + "/tracks/" + track, json={"track": track, "releases": [{"versionCodes": [str(vc)], "status": status}]}, timeout=60), "track " + track)
+          ok(s.post(API + "/" + edit + ":commit", timeout=60), "commit")
+          print("::notice::Da day ban 1." + str(vc) + " len CH Play (track " + track + ", " + status + ") - Google duyet xong la khach nhan cap nhat")
+          PY
 
       - name: Save APK to repo (Vercel publishes it)
         run: |
