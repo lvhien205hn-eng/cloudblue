@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Bản CH Play (vn.cloudblue.app): gộp với src/main/AndroidManifest.xml, BỎ những thứ Google Play không cho:
+     • 2 quyền cài app (app trên CH Play chỉ được cập nhật qua CH Play, không tự tải / cài APK)
+     • bộ nhận kết quả cài APK của trình tự cập nhật bản web
+     • biểu tượng "Clone 1–4" (chỉ dùng khi app được cài bên TRONG máy đám mây để mở bản clone) -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" tools:node="remove" />
+
+    <application>
+        <receiver android:name=".Updater$Result" tools:node="remove" />
+        <activity android:name=".CloneLaunch" tools:node="remove" />
+        <activity-alias android:name=".Clone1" tools:node="remove" />
+        <activity-alias android:name=".Clone2" tools:node="remove" />
+        <activity-alias android:name=".Clone3" tools:node="remove" />
+        <activity-alias android:name=".Clone4" tools:node="remove" />
+    </application>
+</manifest>

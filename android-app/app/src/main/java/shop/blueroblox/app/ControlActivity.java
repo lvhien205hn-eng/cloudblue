@@ -697,6 +697,7 @@ public class ControlActivity extends Activity {
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };
         for (Object[] it : items) {
+            if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root
             Runnable r = (Runnable) it[2];
             LinearLayout t = Ui.tool(this, (String) it[0], (String) it[1], v -> { if (d[0] != null) d[0].dismiss(); r.run(); });
             t.setLayoutParams(new FrameLayout.LayoutParams(w, -2));

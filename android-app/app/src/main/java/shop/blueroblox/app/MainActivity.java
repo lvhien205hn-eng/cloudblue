@@ -181,6 +181,7 @@ public class MainActivity extends Activity {
         top.addView(brand, Ui.weight(1));
         balTop = Ui.pill(this, "…", Ui.SKY);
         balTop.setOnClickListener(v -> openTopup());
+        if (Api.PLAY) balTop.setVisibility(View.GONE);   // bản CH Play: không hiện số dư / nạp tiền trong app
         top.addView(balTop, Ui.wrap());
         TextView th = Ui.text(this, Ui.LIGHT ? "🌙" : "☀️", 17, Ui.FG, false);
         th.setGravity(Gravity.CENTER);
@@ -206,6 +207,7 @@ public class MainActivity extends Activity {
             n.setOnClickListener(v -> show(t));
             Ui.ripple(n, Color.TRANSPARENT, 14, 0);
             nav[i] = n;
+            if (Api.PLAY && i == 1) n.setVisibility(View.GONE);   // bản CH Play: không có tab Thuê máy (thuê trên web)
             bar.addView(n, Ui.weight(1));
         }
         root.addView(bar, Ui.fill());
@@ -293,6 +295,7 @@ public class MainActivity extends Activity {
     }
 
     void show(int t) {
+        if (Api.PLAY && t == 1) t = 0;                  // bản CH Play: không có màn Thuê máy
         tab = t;
         for (int i = 0; i < 3; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
@@ -392,15 +395,19 @@ public class MainActivity extends Activity {
             TextView ic = Ui.text(this, "📱", 44, Ui.FG, false);
             ic.setGravity(Gravity.CENTER);
             e.addView(ic, Ui.fill());
-            TextView t = Ui.h2(this, Ui.L("Bạn chưa thuê máy nào", "You have no phones yet"));
+            TextView t = Ui.h2(this, Api.PLAY ? Ui.L("Bạn chưa có máy nào", "You have no phones yet") : Ui.L("Bạn chưa thuê máy nào", "You have no phones yet"));
             t.setGravity(Gravity.CENTER);
             e.addView(t, Ui.fill());
-            TextView d = Ui.muted(this, Ui.L("Chọn RAM, CPU, số ngày — máy Android sẵn sàng sau khoảng 2–3 phút.", "Pick RAM, CPU and days — your Android phone is ready in 2–3 minutes."));
+            TextView d = Ui.muted(this, Api.PLAY
+                    ? Ui.L("Máy Android đám mây của bạn và máy được chia sẻ cho bạn sẽ hiện ở đây.", "Your cloud Android phones and phones shared with you appear here.")
+                    : Ui.L("Chọn RAM, CPU, số ngày — máy Android sẵn sàng sau khoảng 2–3 phút.", "Pick RAM, CPU and days — your Android phone is ready in 2–3 minutes."));
             d.setGravity(Gravity.CENTER);
             e.addView(d, Ui.fill());
-            Button go = Ui.button(this, Ui.L("Thuê máy ngay", "Rent a phone"), Ui.PRIMARY);
-            go.setOnClickListener(v -> show(1));
-            e.addView(go, Ui.fill());
+            if (!Api.PLAY) {                            // bản CH Play: không có nút thuê máy
+                Button go = Ui.button(this, Ui.L("Thuê máy ngay", "Rent a phone"), Ui.PRIMARY);
+                go.setOnClickListener(v -> show(1));
+                e.addView(go, Ui.fill());
+            }
             body.addView(e, Ui.fill());
         }
         java.util.HashSet<String> live = new java.util.HashSet<>();
@@ -776,10 +783,12 @@ public class MainActivity extends Activity {
             c.addView(acts, Ui.fill());
             return c;
         }
-        Button rn = Ui.button(this, Ui.L("Gia hạn", "Renew"), Ui.GHOST);
-        rn.setOnClickListener(v -> renew(p));
-        rn.setEnabled(!lk && ("active".equals(st) || "expired".equals(st)));
-        acts.addView(rn, Ui.weight(1));
+        if (!Api.PLAY) {                                // bản CH Play: gia hạn trên web, không có nút trong app
+            Button rn = Ui.button(this, Ui.L("Gia hạn", "Renew"), Ui.GHOST);
+            rn.setOnClickListener(v -> renew(p));
+            rn.setEnabled(!lk && ("active".equals(st) || "expired".equals(st)));
+            acts.addView(rn, Ui.weight(1));
+        }
         Button more = Ui.button(this, "⋯", Ui.GHOST);
         more.setOnClickListener(v -> moreMenu(p));
         acts.addView(more, Ui.wrap());
@@ -941,7 +950,8 @@ public class MainActivity extends Activity {
         boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && andList().size() > 1;
         sw.setEnabled(canSw); sw.setAlpha(canSw ? 1f : .45f);
         Button del = Ui.button(this, "🗑 " + Ui.L("Huỷ máy (xoá vĩnh viễn)", "Delete phone"), Ui.DANGER);
-        c.addView(up, Ui.fill()); c.addView(sw, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
+        if (!Api.PLAY) c.addView(up, Ui.fill());       // bản CH Play: nâng cấp (trả tiền) làm trên web
+        c.addView(sw, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
         Dialog d = Ui.sheet(this, p.optString("name"), c);
         sw.setOnClickListener(v -> { d.dismiss(); SwitchAndroid.open(this, p, price, status, isAdmin(), () -> { phonesSig = null; refresh(); h.postDelayed(this::refresh, 5000); }); });
         del.setOnClickListener(v -> { d.dismiss(); cancelPhone(p); });
@@ -1491,21 +1501,25 @@ public class MainActivity extends Activity {
         String name = prof.optString("username", "");
         c.addView(Ui.h1(this, "👤 " + (name.isEmpty() || name.equals("null") ? Ui.L("Tài khoản", "Account") : name)));
         c.addView(Ui.muted(this, Api.email));
-        c.addView(Ui.text(this, Ui.L("Số dư: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0)), 18, Ui.SKY, true));
-        if (isCtv()) c.addView(Ui.pill(this, "🤝 CTV −" + prof.optInt("ctv_discount") + "%", Ui.OK), Ui.wrap());
-        Button top = Ui.button(this, "💳 " + Ui.L("Nạp tiền", "Top up"), Ui.PRIMARY);
-        top.setOnClickListener(v -> openTopup());
-        c.addView(top, Ui.fill());
+        if (!Api.PLAY) {                                // bản CH Play: không số dư / nạp tiền / hoa hồng trong app (luật thanh toán Google Play)
+            c.addView(Ui.text(this, Ui.L("Số dư: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0)), 18, Ui.SKY, true));
+            if (isCtv()) c.addView(Ui.pill(this, "🤝 CTV −" + prof.optInt("ctv_discount") + "%", Ui.OK), Ui.wrap());
+            Button top = Ui.button(this, "💳 " + Ui.L("Nạp tiền", "Top up"), Ui.PRIMARY);
+            top.setOnClickListener(v -> openTopup());
+            c.addView(top, Ui.fill());
+        }
         body.addView(c, Ui.fill());
 
-        LinearLayout rf = Ui.card(this);                // 🎁 Giới thiệu bạn bè (SQL v24: ref_info / ref_claim)
-        rf.addView(Ui.h2(this, "🎁 " + Ui.L("Giới thiệu bạn bè", "Invite friends")));
-        TextView rfInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
-        rf.addView(rfInfo, Ui.fill());
-        LinearLayout rfBox = Ui.col(this, 10);
-        rf.addView(rfBox, Ui.fill());
-        body.addView(rf, Ui.fill());
-        loadRef(rfInfo, rfBox);
+        if (!Api.PLAY) {
+            LinearLayout rf = Ui.card(this);            // 🎁 Giới thiệu bạn bè (SQL v24: ref_info / ref_claim)
+            rf.addView(Ui.h2(this, "🎁 " + Ui.L("Giới thiệu bạn bè", "Invite friends")));
+            TextView rfInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
+            rf.addView(rfInfo, Ui.fill());
+            LinearLayout rfBox = Ui.col(this, 10);
+            rf.addView(rfBox, Ui.fill());
+            body.addView(rf, Ui.fill());
+            loadRef(rfInfo, rfBox);
+        }
 
         LinearLayout s = Ui.card(this);
         s.addView(Ui.h2(this, Ui.L("Cài đặt", "Settings")));
@@ -1521,12 +1535,18 @@ public class MainActivity extends Activity {
 
         LinearLayout l = Ui.card(this);
         l.addView(Ui.h2(this, Ui.L("Hỗ trợ", "Support")));
-        Button web = Ui.button(this, "🌐 " + Ui.L("Mở website ", "Open ") + Api.webHost(), Ui.GHOST);
-        web.setOnClickListener(v -> openWeb(Api.WEB));
-        l.addView(web, Ui.fill());
+        if (!Api.PLAY) {                                // bản CH Play: không link ra trang mua hàng
+            Button web = Ui.button(this, "🌐 " + Ui.L("Mở website ", "Open ") + Api.webHost(), Ui.GHOST);
+            web.setOnClickListener(v -> openWeb(Api.WEB));
+            l.addView(web, Ui.fill());
+        }
         Button pol = Ui.button(this, "📄 " + Ui.L("Chính sách & điều khoản", "Policy & terms"), Ui.GHOST);
-        pol.setOnClickListener(v -> openWeb(Api.WEB + "/#policy"));
+        pol.setOnClickListener(v -> openWeb(Api.policyUrl()));
         l.addView(pol, Ui.fill());
+        // Xoá tài khoản (Google Play bắt buộc với app cho tạo tài khoản): trang hướng dẫn gửi yêu cầu xoá
+        Button del = Ui.button(this, "🗑 " + Ui.L("Xoá tài khoản", "Delete account"), Ui.GHOST);
+        del.setOnClickListener(v -> openWeb(Api.WEB + "/xoa-tai-khoan.html"));
+        l.addView(del, Ui.fill());
         body.addView(l, Ui.fill());
 
         Button out = Ui.button(this, Ui.L("Đăng xuất", "Log out"), Ui.DANGER);

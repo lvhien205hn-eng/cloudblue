@@ -95,7 +95,15 @@ public final class Api {
         public ApiError(int status, String msg) { super(msg); this.status = status; }
     }
 
+    /** Bản CH Play (tên gói vn.cloudblue.app): không nạp / thuê / gia hạn / hoa hồng trong app, không link ra trang mua trên web,
+     *  ẩn Clone + Root, cập nhật qua Google Play. Bản web (shop.blueroblox.app) giữ nguyên đủ tính năng. */
+    public static boolean PLAY = false;
+
+    /** Trang chính sách: bản CH Play mở trang riêng (quyền riêng tư + điều khoản, không có chỗ mua hàng). */
+    public static String policyUrl() { return PLAY ? WEB + "/privacy.html" : WEB + "/#policy"; }
+
     public static void init(Context c) {
+        PLAY = "vn.cloudblue.app".equals(c.getPackageName());
         if (prefs != null) return;
         prefs = c.getApplicationContext().getSharedPreferences("auth", Context.MODE_PRIVATE);
         access = prefs.getString("access", "");
@@ -463,7 +471,7 @@ public final class Api {
                 {"PROMO_EXPIRED", "Mã đã hết hạn.", "This code has expired."},
                 {"PROMO_NOT_STARTED", "Mã chưa đến ngày sử dụng.", "This code isn't active yet."},
                 {"PROMO_USED_UP", "Mã này đã được dùng rồi.", "This code has already been used."},
-                {"PROMO_IS_DISCOUNT", "Đây là mã giảm giá — nhập ở ô \"Mã giảm giá\" khi thanh toán trên web " + webHost() + ".", "This is a discount code — enter it at checkout on " + webHost() + "."},
+                {"PROMO_IS_DISCOUNT", PLAY ? "Đây là mã giảm giá, không dùng để nhận máy được." : "Đây là mã giảm giá — nhập ở ô \"Mã giảm giá\" khi thanh toán trên web " + webHost() + ".", PLAY ? "This is a discount code — it can't be used to get a phone." : "This is a discount code — enter it at checkout on " + webHost() + "."},
                 {"PROMO_EMPTY", "Hãy nhập mã.", "Enter a code."},
                 // đổi Android (SQL v24)
                 {"SWITCHING", "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).", "This phone is switching Android — wait for the new phone (2–5 min)."},

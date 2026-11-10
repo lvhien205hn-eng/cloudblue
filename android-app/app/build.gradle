@@ -40,6 +40,22 @@ android {
         }
     }
 
+    // 2 bản app, GitHub build cả 2 mỗi lần (cùng số bản):
+    //  • web  = shop.blueroblox.app — tải từ cloudblue.vn (file .apk): đủ tính năng, tự cập nhật ngay trong app như cũ.
+    //  • play = vn.cloudblue.app    — bản CH Play (file .aab): không nạp / thuê / gia hạn trong app (luật thanh toán Google Play),
+    //    không tự tải / cài APK, cập nhật QUA Google Play (CH Play tự cập nhật + hộp "Có bản cập nhật mới" trong app).
+    //    Ký bằng cùng khoá (dùng làm "khoá tải lên" của Play Console). Mã nguồn riêng: src/play (Updater, manifest), src/web (Updater cũ).
+    flavorDimensions "store"
+    productFlavors {
+        web {
+            dimension = "store"
+        }
+        play {
+            dimension = "store"
+            applicationId = "vn.cloudblue.app"
+        }
+    }
+
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -49,4 +65,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+}
+
+dependencies {
+    // Bản CH Play: hộp "Có bản cập nhật mới" + cập nhật ngay trong app QUA Google Play (In-App Updates). Bản web không dùng.
+    playImplementation 'com.google.android.play:app-update:2.1.0'
 }

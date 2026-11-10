@@ -87,7 +87,7 @@ public class LoginActivity extends Activity {
         TextView policy = Ui.text(this, Ui.L("Dùng app là bạn đồng ý Điều khoản & Chính sách của CloudBlue.",
                 "By using the app you agree to CloudBlue Terms & Policy."), 12, Ui.MUTED, false);
         policy.setGravity(Gravity.CENTER);
-        policy.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Api.WEB + "/#policy"))));
+        policy.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(Api.policyUrl()))));
         root.addView(policy, Ui.fill());
 
         ScrollView sv = Ui.scroll(this, root);
