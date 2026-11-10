@@ -340,6 +340,10 @@ code{font-family:var(--mono);font-size:.92em;color:var(--sky)}
 .hero>div:first-child>*:nth-child(2){animation-delay:.08s}.hero>div:first-child>*:nth-child(3){animation-delay:.16s}.hero>div:first-child>*:nth-child(4){animation-delay:.24s}.hero>div:first-child>*:nth-child(5){animation-delay:.32s}
 .stage{animation:fade 1.2s .1s backwards}
 .modal:not([hidden]){animation:fade .2s both}
+.txbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}.txbar .search{flex:1 1 280px;min-width:0}.txbar select{width:auto;flex:0 0 auto}
+.cpa-m{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}.cpa-pay{margin-top:2px}.sec-why{font-size:12.5px;line-height:1.35;margin:2px 0}
+.sec-bad td{background:rgba(255,80,80,.09)}.tx-man td{background:rgba(255,190,70,.06)}.secwide{width:min(1000px,100%)!important;max-height:calc(100vh - 32px);overflow:auto}
+.sec-top{display:flex;justify-content:space-between;align-items:center;gap:8px}.sec-top h3{margin:0}.sec-tiles{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}.secwide h4{margin:12px 0 4px}
 .modal:not([hidden]) .dlg{animation:pop .32s cubic-bezier(.2,.8,.2,1) both}
 .drawer:not([hidden]) .dpanel{animation:slidein .35s cubic-bezier(.2,.8,.2,1) both}
 .toast:not([hidden]){animation:fade .3s both}
@@ -398,7 +402,7 @@ a.btn{text-decoration:none}
 @media (max-width:1240px){ .who #who-name{display:none} }
 .notice div{display:block;position:relative;padding-left:28px}
 .notice div::before{position:absolute;left:13px;top:16px;transform:none}
-#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg{z-index:70}
+#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg,#secdlg{z-index:70}
 .dpanel{width:min(1060px,100%)}
 .tbl td:last-child{white-space:nowrap;text-align:right}
 @media (max-width:1520px){ nav a svg.ic{display:none} nav a{padding:8px 11px} .who #who-name{display:none} nav a[href="#policy"]{display:none} }
@@ -1824,7 +1828,7 @@ window.BR_CONFIG = {
     <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="tabs" id="adm-tabs">
-      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền</button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🏭 Dàn máy nội bộ</button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
+      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🏭 Dàn máy nội bộ</button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
@@ -1876,8 +1880,38 @@ window.BR_CONFIG = {
       <div class="tbl"><table><thead><tr><th>Khách</th><th>Email</th><th>Số dư</th><th>Trạng thái</th><th>CTV</th><th></th></tr></thead><tbody id="ctbl"></tbody></table></div>
     </div>
     <div class="dbody" id="pane-tx" hidden>
-      <div class="note">Lệnh nạp được cộng tự động khi ngân hàng báo có. Lệnh "Chờ" mà bạn đã thấy tiền vào (khách ghi sai nội dung) thì bấm Duyệt tay.</div>
-      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Hình thức</th><th>Nội dung</th><th>Số tiền</th><th>Trạng thái</th><th></th></tr></thead><tbody id="ttbl"></tbody></table></div>
+      <div class="note">Tiền <b>tự cộng</b> khi ngân hàng báo có — chuyển <b>thiếu</b> thì cộng đúng số tiền thật đã chuyển. Tiền về <b>không khớp mã</b> nằm ở mục "🏦 Tiền về chưa khớp" bên dưới để bạn gán đúng người. <b>✋ Duyệt tay</b> chỉ dùng khi đã mở app ngân hàng thấy tiền về — phải nhập số tiền THẬT (không theo số khách gõ).</div>
+      <div class="txbar"><input class="search" id="tq" placeholder="🔍 Tìm: tên khách, email, mã nạp, mã ngân hàng, số tiền (VD 50k)…" autocomplete="off" spellcheck="false" aria-label="Tìm lệnh nạp">
+        <select class="in" id="tst" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="pending">Chờ</option><option value="done">Đã cộng</option></select>
+        <select class="in" id="tvia" aria-label="Lọc cách nạp"><option value="">Mọi cách nạp</option><option value="sepay">🏦 Ngân hàng tự động</option><option value="crypto">🪙 Crypto</option><option value="manual">✋ Duyệt tay</option><option value="assign">🔗 Gán tiền về</option></select>
+        <span class="hint" id="tx-sum"></span></div>
+      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Cách nạp</th><th>Mã nạp</th><th class="num">Khách gõ</th><th class="num">Thực nhận</th><th>Trạng thái</th><th></th></tr></thead><tbody id="ttbl"></tbody></table></div>
+      <h4 style="margin:18px 0 4px">🏦 Tiền về chưa khớp mã nạp</h4>
+      <div class="hint" style="margin-bottom:6px">Khách ghi sai / thiếu nội dung, chuyển lại mã cũ… — tiền THẬT đã về tài khoản nhưng chưa biết của ai. Bấm "Cộng cho khách" để cộng đúng số tiền này (chỉ 1 lần).</div>
+      <div class="tbl"><table><thead><tr><th>Lúc</th><th class="num">Số tiền</th><th>Nội dung chuyển khoản</th><th>Đoán là khách</th><th></th></tr></thead><tbody id="bank-tb"></tbody></table></div>
+    </div>
+    <div class="dbody" id="pane-sec" hidden>
+      <div class="subtabs" role="tablist" aria-label="Mục bảo mật"><button type="button" role="tab" data-sub="alerts" class="on" aria-selected="true">🤖 Bot gác</button><button type="button" role="tab" data-sub="scan" aria-selected="false">🔎 Quét gian lận</button><button type="button" role="tab" data-sub="log" aria-selected="false">📜 Nhật ký tiền</button><button type="button" role="tab" data-sub="bans" aria-selected="false">🚫 Đã khoá</button></div>
+      <div class="subpane" data-sub="alerts">
+        <div class="note">🤖 <b>Bot gác</b> tự quét 5 phút / lần, kể cả khi bạn không mở web: tiền tăng sai đường → <b>tự khoá</b> tài khoản · nhiều tài khoản cùng 1 thiết bị cày Blue → <b>tự giữ Blue</b> · Blue phát ra quá ngưỡng trong 1 giờ → <b>tự tắt Tích Blue</b> · tiền về không khớp mã → nhắc bạn gán. Cảnh báo ĐỎ / VÀNG được nhắn Telegram.</div>
+        <div class="acts"><button class="btn" type="button" id="sec-run">🤖 Quét ngay</button><button class="btn ghost" type="button" id="sec-seen">✓ Đã xem hết</button><span class="hint" id="sec-msg"></span></div>
+        <div class="tbl"><table><thead><tr><th>Lúc</th><th>Mức</th><th>Cảnh báo</th><th></th></tr></thead><tbody id="sec-al"></tbody></table></div>
+      </div>
+      <div class="subpane" data-sub="scan" hidden>
+        <div class="note">Quét mọi khách theo dấu hiệu gian lận: số dư + tiền đã tiêu vượt tiền nạp thật, lệnh duyệt tay, Blue lệch sổ, mời tài khoản cùng mạng / thiết bị, dùng chung mạng, Blue nhận vượt trần… Điểm càng cao càng đáng soát. Khách bạn từng <b>cộng tay</b> (trước khi có nhật ký) cũng hiện cờ 💸 — bạn tự đối chiếu.</div>
+        <div class="acts"><button class="btn" type="button" id="scan-run">🔎 Quét gian lận</button><input class="search" id="scan-q" placeholder="Lọc theo tên / email…" style="max-width:260px" aria-label="Lọc kết quả quét"><span class="hint" id="scan-msg"></span></div>
+        <div class="tbl"><table><thead><tr><th>Khách</th><th class="num">Điểm</th><th>Dấu hiệu</th><th class="num">Nạp thật</th><th class="num">Số dư</th><th class="num">💎 Blue</th><th></th></tr></thead><tbody id="scan-tb"></tbody></table></div>
+      </div>
+      <div class="subpane" data-sub="log" hidden>
+        <div class="note">📜 Mọi lần <b>số dư</b> hoặc <b>Blue</b> của khách thay đổi (từ bản v29): tăng / giảm bao nhiêu, do việc gì, ai làm, từ mạng / thiết bị nào. Dòng đỏ <span class="pill bad">LẠ</span> = tiền tăng bằng đường không phải nạp / hoàn / admin.</div>
+        <div class="acts"><label class="mtrow" style="margin:0"><input type="checkbox" id="mlog-odd"> Chỉ dòng bất thường</label><input class="search" id="mlog-q" placeholder="Lọc theo tên khách / việc…" style="max-width:260px" aria-label="Lọc nhật ký"><button class="btn ghost sm" type="button" id="mlog-reload">↻ Làm mới</button></div>
+        <div class="tbl"><table><thead><tr><th>Lúc</th><th>Khách</th><th>Loại</th><th class="num">Thay đổi</th><th class="num">Còn</th><th>Do việc</th><th>Ai làm · mạng</th></tr></thead><tbody id="mlog-tb"></tbody></table></div>
+      </div>
+      <div class="subpane" data-sub="bans" hidden>
+        <div class="tbl"><table><thead><tr><th>Khách đang bị khoá</th><th>Lý do</th><th class="num">Số dư</th><th></th></tr></thead><tbody id="ban-tb"></tbody></table></div>
+        <h4 style="margin:16px 0 6px">Nhật ký ban / mở ban / xoá / giữ Blue</h4>
+        <div class="tbl"><table><thead><tr><th>Lúc</th><th>Khách</th><th>Việc</th><th>Lý do</th><th>Ai làm</th></tr></thead><tbody id="banlog-tb"></tbody></table></div>
+      </div>
     </div>
     <div class="dbody" id="pane-ord" hidden>
       <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Sản phẩm</th><th>SL</th><th>Tổng</th><th>Trạng thái</th><th></th></tr></thead><tbody id="otbl"></tbody></table></div>
@@ -2134,17 +2168,23 @@ window.BR_CONFIG = {
       <form class="f mtbox prf" id="blf" autocomplete="off" novalidate style="margin-bottom:14px">
         <h3>💎 Tích Blue · điểm danh · nhiệm vụ hằng ngày</h3>
         <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-on"><i></i></span><span><b>Bật Tích Blue</b><small>Khách tích Blue khi điểm danh, làm nhiệm vụ, mời bạn, mua hàng — rồi dùng Blue trả tiền thuê / gia hạn ĐT đám mây (1 Blue = 1đ). Tắt thì ẩn hết; Blue khách đang có vẫn giữ nguyên.</small></span></label>
-        <label>📅 Điểm danh mỗi ngày (Blue)<input id="bl-checkin" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>📅 Điểm danh mỗi ngày (Blue · 0–500)<input id="bl-checkin" type="number" min="0" max="500" step="1" inputmode="numeric"></label>
         <label>Chuỗi điểm danh liền (ngày · 0 = không thưởng chuỗi)<input id="bl-sdays" type="number" min="0" max="365" step="1" inputmode="numeric"></label>
-        <label>🎉 Thưởng thêm khi đủ chuỗi (Blue)<input id="bl-sbonus" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
-        <label>📱 Nhiệm vụ mở máy đám mây (Blue · 0 = tắt)<input id="bl-tplay" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>📣 Nhiệm vụ chia sẻ link mời (Blue · 0 = tắt)<input id="bl-tshare" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>🤝 Nhiệm vụ mời 1 bạn đăng ký (Blue · 0 = tắt)<input id="bl-tinvite" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>🎁 Người mời nhận khi bạn bè nạp / mua lần đầu (Blue)<input id="bl-ref" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
-        <label>↩️ Hoàn Blue mỗi đơn trả tiền (% · 0–50)<input id="bl-cash" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
+        <label>🎉 Thưởng thêm khi đủ chuỗi (Blue · 0–5000)<input id="bl-sbonus" type="number" min="0" max="5000" step="1" inputmode="numeric"></label>
+        <label>📱 Nhiệm vụ mở máy đám mây (Blue · 0–200 · 0 = tắt)<input id="bl-tplay" type="number" min="0" max="200" step="1" inputmode="numeric"></label>
+        <label>📣 Nhiệm vụ chia sẻ link mời (Blue · 0–100 · không kiểm được thật nên giữ thấp)<input id="bl-tshare" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
+        <label>🤝 Nhiệm vụ "bạn được mời đã NẠP THẬT" hôm nay (Blue · 0–1000)<input id="bl-tinvite" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
+        <label>🎁 Người mời nhận khi bạn bè NẠP THẬT đủ mức (Blue · 0–5000)<input id="bl-ref" type="number" min="0" max="5000" step="1" inputmode="numeric"></label>
+        <label>↩️ Hoàn Blue mỗi đơn trả tiền (% · 0–10)<input id="bl-cash" type="number" min="0" max="10" step="0.5" inputmode="decimal"></label>
         <label>💳 Trả bằng Blue tối đa (% giá đơn · 0–100)<input id="bl-max" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
-        <label>🛡️ Tối đa tài khoản nhận / 1 mạng (IP) / ngày (0 = không chặn)<input id="bl-ip" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-need"><i></i></span><span><b>Chỉ khách đã nạp tiền mới DÙNG được Blue</b><small>Chống tạo nhiều tài khoản ảo để gom Blue. Khách chưa nạp vẫn tích được, chỉ chưa trả bằng Blue được.</small></span></label>
+        <label>🛡️ Tối đa tài khoản nhận / 1 mạng (IP) / ngày (1–20)<input id="bl-ip" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
+        <label>💳 Phải NẠP THẬT tối thiểu mới DÙNG được Blue (đ · ≥ 10.000)<input id="bl-usemin" type="number" min="10000" step="1000" inputmode="numeric"></label>
+        <label>📈 Trần Blue / ngày / khách từ điểm danh + nhiệm vụ (50–5000)<input id="bl-cap" type="number" min="50" max="5000" step="10" inputmode="numeric"></label>
+        <label>🎁 Bạn được mời phải NẠP THẬT tối thiểu (đ · ≥ 10.000)<input id="bl-refmin" type="number" min="10000" step="1000" inputmode="numeric"></label>
+        <label>🔁 Tối đa lượt thưởng mời / người mời / ngày (1–20)<input id="bl-refday" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
+        <label>🆕 Tài khoản mới đủ bao nhiêu giờ mới tích Blue (0–168)<input id="bl-age" type="number" min="0" max="168" step="1" inputmode="numeric"></label>
+        <label>⛔ Cầu dao: Blue phát ra trong 1 giờ vượt mức này → bot TỰ TẮT Tích Blue (≥ 5.000)<input id="bl-brk" type="number" min="5000" step="1000" inputmode="numeric"></label>
+        <div class="hint full">🔒 Luôn bật: chỉ khách đã nạp thật mới dùng được Blue · mời bạn chỉ tính khi bạn đó nạp thật và KHÁC mạng / thiết bị · nhiều tài khoản cùng 1 thiết bị cày Blue → bot tự giữ Blue cả cụm.</div>
         <div class="note full" id="bl-prev"></div>
         <div class="acts full"><button class="btn" type="submit" id="bl-save">Lưu Tích Blue</button><span class="hint" id="bl-msg"></span></div>
         <div class="refst r4 full" id="bl-sum"></div>
@@ -2157,7 +2197,7 @@ window.BR_CONFIG = {
           <button class="btn ghost" type="button" id="bl-add">Cộng / trừ</button>
         </div>
         <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></div>
-        <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th></tr></thead><tbody id="bl-top"></tbody></table></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th><th>Blue từ đâu</th><th class="num">Nạp thật</th><th>Dấu hiệu</th><th></th></tr></thead><tbody id="bl-top"></tbody></table></div>
       </form>
       </div>
       <div class="subpane" data-sub="ref" hidden>
@@ -3049,7 +3089,8 @@ function safeLock(name, t, fn) {
   return L.request(name, { mode: "exclusive", signal: ac.signal }, async () => { ok = true; clearTimeout(tm); return await fn(); })
     .catch(e => { if (!ok && e && e.name === "AbortError") return fn(); throw e; });
 }
-const sb = window.supabase.createClient(CFG.supabaseUrl || "https://invalid.supabase.co", CFG.supabaseAnonKey || "x", { auth: { lock: safeLock } });
+const CB_DEV = (() => { try { let d = localStorage.getItem("cb_dev"); if (!d || !/^[A-Za-z0-9_-]{8,64}$/.test(d)) { d = ((window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)).replace(/[^A-Za-z0-9_-]/g, ""); localStorage.setItem("cb_dev", d); } return d; } catch (e) { return ""; } })();
+const sb = window.supabase.createClient(CFG.supabaseUrl || "https://invalid.supabase.co", CFG.supabaseAnonKey || "x", { auth: { lock: safeLock }, global: { headers: CB_DEV ? { "x-cb-dev": CB_DEV } : {} } });
 
 const CATS = [{ id: "all", name: "Tất cả" }, { id: "clone", name: "Clone" }, { id: "vps", name: "VPS GPU" }, { id: "cloud", name: "📱 ĐT đám mây" }];
 const HUES = { clone: 210, vps: 265 };
@@ -3117,6 +3158,13 @@ Object.assign(ERR_EN, { BLUE_OFF: "Blue rewards are paused.", BLUE_DONE: "You've
   BLUE_EMPTY: "You don't have any Blue to pay with yet.", BLUE_NOT_FOR_FREE: "Free phones can't be paid with Blue.", TASK_DONE: "You've already claimed this mission today.",
   TASK_NOT_YET: "Mission not done yet — finish it, then claim.", TASK_OFF: "This mission is paused.", BAD_TASK: "Unknown mission.",
   BAD_AMOUNT: "Invalid amount (must not be 0).", NO_USER: "Customer not found — check the username or email." });
+// 🛡️ v29
+Object.assign(ERR, { MONEY_GUARD: "Bị chặn: không được tự cộng tiền.", BLUE_GUARD: "Bị chặn: Blue chỉ đổi qua sổ Blue.", NEED_REAL_AMOUNT: "Duyệt tay phải nhập số tiền THẬT — tải lại trang (Ctrl + F5) rồi bấm ✋ Duyệt tay.",
+  BANK_REF_USED: "Mã giao dịch ngân hàng này đã được cộng tiền rồi.", BANK_DONE: "Khoản tiền này đã được cộng rồi.", TOPUP_DONE_KEEP: "Lệnh đã cộng tiền không xoá được (giữ làm bằng chứng).",
+  BLUE_DAY_CAP: "Hôm nay bạn đã nhận đủ Blue tối đa — mai quay lại nhé.", BLUE_HOLD: "Blue của bạn đang được tạm giữ để kiểm tra — liên hệ hỗ trợ.", BLUE_NEW_ACCOUNT: "Tài khoản mới — sau 24 giờ mới tích Blue được.",
+  CONFIRM_MISMATCH: "Tên xác nhận chưa đúng.", MAX_AMOUNT: "Số tiền quá lớn.", NO_ROW: "Không tìm thấy.", banned: "Tài khoản đã bị khoá. Liên hệ hỗ trợ." });
+Object.assign(ERR_EN, { MONEY_GUARD: "Blocked: you can't add money to yourself.", BLUE_DAY_CAP: "You've reached today's Blue limit — come back tomorrow.", BLUE_HOLD: "Your Blue is on hold for review — contact support.",
+  BLUE_NEW_ACCOUNT: "New account — you can earn Blue after 24 hours.", MAX_AMOUNT: "Amount too large.", banned: "This account is locked. Contact support." });
 // chọn mã lỗi DÀI NHẤT có trong thông báo (PROMO_TOO_MANY thắng TOO_MANY, PHONE_LOCKED thắng LOCKED…) — không phụ thuộc thứ tự thêm vào ERR
 const errMsg = e => { const m = String(e && (e.message || e.error_description || e)); const D = LANG === "en" ? { ...ERR, ...ERR_EN } : ERR; let b = ""; for (const k in D) if (k.length > b.length && m.includes(k)) b = k; return b ? D[b] : (m || L("Có lỗi, thử lại sau.", "Something went wrong, try again.")); };
 
@@ -3821,7 +3869,7 @@ function renderCust() {
   $("ctbl").innerHTML = us.length ? us.map(u => `<tr><td><b>${esc(u.username)}</b>${u.role === "admin" ? ' <span class="pill wt">ADMIN</span>' : ""}<div class="hint">${ago(u.created_at)}</div></td><td>${esc(u.email)}</td>
     <td class="num">${vnd(u.balance)}</td><td>${u.locked ? '<span class="pill bad">Đã khoá</span>' : '<span class="pill ok">Hoạt động</span>'}</td><td>${ctvCell(u)}</td>
     <td style="white-space:nowrap;text-align:right"><input class="in" style="width:110px;display:inline-block;padding:5px 8px" type="number" step="1000" placeholder="± số tiền" id="adj-${u.id}" aria-label="Điều chỉnh số dư">
-    <button class="btn ghost sm" data-adj="${u.id}">Cộng/trừ</button> <button class="btn okb sm" data-cust="${u.id}">Chi tiết</button>${u.id === profile.id ? "" : ` <button class="btn ${u.locked ? "ghost" : "danger"} sm" data-lock="${u.id}" data-to="${u.locked ? 0 : 1}">${u.locked ? "Mở khoá" : "Khoá"}</button>`}</td></tr>`).join("")
+    <button class="btn ghost sm" data-adj="${u.id}">Cộng/trừ</button> <button class="btn ghost sm" data-sa="audit" data-id="${u.id}" data-n="${esc(u.username)}" title="Soát gian lận">🔍</button> <button class="btn okb sm" data-cust="${u.id}">Chi tiết</button>${u.id === profile.id ? "" : ` <button class="btn ${u.locked ? "ghost" : "danger"} sm" data-lock="${u.id}" data-to="${u.locked ? 0 : 1}">${u.locked ? "Mở khoá" : "Khoá"}</button>`}</td></tr>`).join("")
     : `<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px">Chưa có khách nào.</td></tr>`;
 }
 function txMethod(t) {
@@ -5509,17 +5557,17 @@ function blueChip() {
 }
 function blueIntroHtml() {       // cách nhận / dùng Blue theo cấu hình admin đang bật (con số đổi theo admin)
   const c = (BLUE && BLUE.cfg) || {}, ln = [];
-  const tk = { play: ["📱", L("Mở máy đám mây", "Open a cloud phone")], share: ["🔗", L("Chia sẻ link mời", "Share your invite link")], invite: ["👥", L("Mời 1 bạn đăng ký", "Invite a friend to sign up")] };
+  const tk = { play: ["📱", L("Mở máy đám mây", "Open a cloud phone")], share: ["🔗", L("Chia sẻ link mời", "Share your invite link")], invite: ["👥", L("Bạn được mời nạp tiền", "An invited friend tops up")] };
   if (+c.checkin > 0) ln.push(`📅 ${L("Điểm danh mỗi ngày", "Daily check-in")}: <b>+${bnum(c.checkin)}</b> Blue`
     + (+c.streak_bonus > 0 && +c.streak_days > 0 ? L(` (đủ ${+c.streak_days} ngày liền thưởng thêm +${bnum(c.streak_bonus)})`, ` (+${bnum(c.streak_bonus)} bonus every ${+c.streak_days} days in a row)`) : ""));
   for (const t of (BLUE && BLUE.tasks) || []) if (tk[t.id] && +t.got > 0) ln.push(`${tk[t.id][0]} ${tk[t.id][1]}: <b>+${bnum(t.got)}</b> Blue ${L("mỗi ngày", "a day")}`);
-  if (+c.ref > 0) ln.push(`🎁 ${L("Bạn được mời nạp tiền / mua lần đầu", "An invited friend's first top-up / purchase")}: <b>+${bnum(c.ref)}</b> Blue`);
+  if (+c.ref > 0) ln.push(`🎁 ${L(`Bạn được mời nạp tiền lần đầu${+c.ref_min_topup ? " (từ " + vnd(c.ref_min_topup) + ")" : ""}`, "An invited friend's first top-up")}: <b>+${bnum(c.ref)}</b> Blue`);
   if (+c.cashback > 0) ln.push(`💸 ${L("Mỗi đơn trả bằng tiền: hoàn", "Every paid order:")} <b>${+c.cashback}%</b> ${L("thành Blue", "back in Blue")}`);
   const mp = c.max_pct == null ? 100 : +c.max_pct;
   return `<ul>${ln.map(x => `<li>${x}</li>`).join("")}</ul>`
     + `<p>${L(`<b>Dùng Blue:</b> bật "💎 Trả bằng Blue" khi thuê / gia hạn máy — 1 Blue = 1đ${mp < 100 ? `, tối đa ${mp}% mỗi đơn` : ", trả được cả đơn"}.`,
               `<b>Spend:</b> turn on "💎 Pay with Blue" when renting / renewing — 1 Blue = 1đ${mp < 100 ? `, up to ${mp}% per order` : ", up to the whole order"}.`)}</p>`
-    + (BLUE && !BLUE.can_use && BLUE.need_topup !== false ? `<p class="hint">🔒 ${L("Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường).", "Top up once to unlock paying with Blue (you still earn as usual).")}</p>` : "")
+    + (BLUE && !BLUE.can_use && BLUE.need_topup !== false ? `<p class="hint">🔒 ${L(`Nạp tiền${+BLUE.use_min_topup ? " từ " + vnd(BLUE.use_min_topup) : " ít nhất 1 lần"} để mở khoá trả bằng Blue (vẫn tích bình thường).`, "Top up to unlock paying with Blue (you still earn as usual).")}</p>` : "")
     + `<p class="hint">${L("Xem lại bất cứ lúc nào: bấm 💎 ở góc trên.", "Tap 💎 at the top any time to see this again.")}</p>`;
 }
 function blueIntro() {          // hộp giới thiệu "Tích Blue" — 1 lần / tài khoản / trình duyệt; thông báo web đang mở → chờ đóng xong mới hiện
@@ -5556,7 +5604,7 @@ const BLUE_T = () => ({
   checkin: ["📅", L("Điểm danh hôm nay", "Daily check-in"), L("Ngày nào cũng ghé là có Blue", "Drop by every day to earn")],
   play: ["📱", L("Mở máy đám mây", "Open a cloud phone"), L("Mở 1 máy bất kỳ trên web, app Android hoặc app PC là tự nhận", "Open any phone (web, Android or PC app) — it's claimed automatically")],
   share: ["📣", L("Chia sẻ link mời", "Share your invite link"), L("Gửi link CloudBlue cho bạn bè hoặc nhóm", "Send your CloudBlue link to friends or a group")],
-  invite: ["🤝", L("Mời 1 bạn đăng ký", "Invite a friend to sign up"), L("Có bạn đăng ký qua link của bạn trong hôm nay", "A friend signs up with your link today")] });
+  invite: ["🤝", L("Bạn được mời nạp tiền", "An invited friend tops up"), L("Có bạn đăng ký qua link của bạn và NẠP TIỀN trong hôm nay", "A friend who joined with your link tops up today")] });
 const BLUE_K = () => ({ checkin: L("Điểm danh", "Check-in"), streak: L("Thưởng chuỗi", "Streak bonus"), task: L("Nhiệm vụ", "Mission"), ref: L("Mời bạn", "Invite"),
   cashback: L("Hoàn đơn", "Cashback"), spend: L("Đã dùng", "Spent"), refund: L("Hoàn lại", "Refund"), admin: L("Admin", "Admin"), clawback: L("Thu lại", "Reversed") });
 const GEM = `<svg class="bl-gem" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="blgm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8f0ff"/><stop offset=".45" stop-color="#6fb0ff"/><stop offset="1" stop-color="#1b53d6"/></linearGradient></defs><path d="M14 7h20l10 13-20 22L4 20z" fill="url(#blgm)"/><path d="M4 20h40M14 7l10 13L34 7M24 42 14 20M24 42l10-22" stroke="#fff" stroke-opacity=".6" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>`;
@@ -5592,24 +5640,27 @@ function blueRender() {
     else if (t.id === "play") act = t.ready ? `<button class="btn ghost sm" type="button" data-bla="play">${L("Mở máy", "Open")}</button>` : `<button class="btn ghost sm" type="button" data-bla="rent">${L("Thuê máy", "Rent one")}</button>`;
     else if (t.id === "share") act = `<button class="btn sm" type="button" data-bla="share">${L("Chia sẻ", "Share")}</button>`;
     else if (t.id === "invite") { act = t.ready ? `<button class="btn sm" type="button" data-bla="invite">${L("Nhận", "Claim")}</button>` : `<button class="btn ghost sm" type="button" data-bla="ref">${L("Mời bạn", "Invite")}</button>`;
-      if (t.ready) sub = L("Đã có bạn đăng ký qua link của bạn hôm nay 🎉", "A friend signed up with your link today 🎉"); }
+      if (t.ready) sub = L("Bạn bạn mời đã nạp tiền hôm nay 🎉", "Your invited friend topped up today 🎉"); }
     if (t.id === "play" && !t.ready && !t.done) sub = L("Cần có 1 máy đang chạy — thuê máy rồi mở là nhận", "You need a running phone — rent one, open it, claim");
     return `<div class="bl-task${t.done ? " done" : ""}"><span class="ti" aria-hidden="true">${ic}</span><span><b>${esc(name)}</b><small>${esc(sub)}</small></span><span class="rw">+${bnum(t.got)}</span>${act}</div>`;
   };
   const more = [];
-  if (+c.ref > 0) more.push(L(`Bạn bè bạn mời <b>nạp tiền hoặc mua lần đầu</b>: <b>+${bnum(c.ref)} Blue</b> mỗi bạn`, `Each invited friend's <b>first top-up or purchase</b>: <b>+${bnum(c.ref)} Blue</b>`));
+  if (+c.ref > 0) more.push(L(`Bạn bè bạn mời <b>nạp tiền lần đầu${+c.ref_min_topup ? " từ " + vnd(c.ref_min_topup) : ""}</b>: <b>+${bnum(c.ref)} Blue</b> mỗi bạn (bạn ở khác mạng / thiết bị)`, `Each invited friend's <b>first top-up</b>: <b>+${bnum(c.ref)} Blue</b>`));
   if (+c.cashback > 0) more.push(L(`Mỗi đơn trả bằng tiền (thuê, gia hạn, nâng cấp máy, mua hàng): hoàn <b>${+c.cashback}%</b> bằng Blue`, `Every paid order (rent, renew, upgrade, shop): <b>${+c.cashback}%</b> back in Blue`));
   more.push(L("Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)", "Missions reset at midnight (Vietnam time)"));
   const items = Array.isArray(B.items) ? B.items : [], K = BLUE_K();
-  const use = !B.can_use && B.need_topup ? `<div class="bl-lock">🔒 ${L("Nạp tiền lần đầu để mở khoá <b>trả bằng Blue</b>. Blue vẫn được tích bình thường.", "Top up once to unlock <b>paying with Blue</b>. You keep earning Blue meanwhile.")} <a href="#" data-bla="topup">${L("Nạp tiền", "Top up")}</a></div>` : "";
+  const capLine = +B.day_cap ? `<div class="hint" style="margin:-4px 0 6px">${L(`Hôm nay đã nhận ${bnum(B.today_earned)} / ${bnum(B.day_cap)} Blue (điểm danh + nhiệm vụ)`, `Today: ${bnum(B.today_earned)} / ${bnum(B.day_cap)} Blue from check-in + missions`)}</div>` : "";
+  const holdNote = B.hold ? `<div class="bl-lock">🧊 ${L("Blue của bạn đang được tạm giữ để kiểm tra (không nhận / không dùng được). Liên hệ hỗ trợ nếu cần.", "Your Blue is on hold for review. Contact support if needed.")}</div>`
+    : B.new_account ? `<div class="bl-lock">🆕 ${L(`Tài khoản mới — sau ${+B.min_age_h || 24} giờ mới bắt đầu tích Blue được.`, `New account — you can start earning Blue after ${+B.min_age_h || 24} hours.`)}</div>` : "";
+  const use = B.hold ? holdNote : !B.can_use && B.need_topup ? `<div class="bl-lock">🔒 ${L("Nạp tiền lần đầu để mở khoá <b>trả bằng Blue</b>. Blue vẫn được tích bình thường.", "Top up once to unlock <b>paying with Blue</b>. You keep earning Blue meanwhile.")} <a href="#" data-bla="topup">${L("Nạp tiền", "Top up")}</a></div>` : "";
   m.innerHTML = `<div class="dlg bluedlg" role="dialog" aria-modal="true" aria-labelledby="bl-t">
     <div class="bl-top"><h3 id="bl-t">💎 ${L("Tích Blue", "Blue rewards")}</h3>${close}</div>
     <div class="bl-hero">${GEM}<div class="bl-amt">${bnum(B.blue)}<small>Blue</small></div>
       <button class="btn" type="button" data-bla="spend"${B.can_use && +B.blue > 0 ? "" : " disabled"}>${L("Dùng Blue thuê máy", "Use Blue to rent")}</button>
       <div class="bl-sub">${L(`1 Blue = 1đ khi thuê / gia hạn ĐT đám mây${+c.max_pct < 100 ? ` (tối đa ${+c.max_pct}% mỗi đơn)` : ""}`, `1 Blue = 1đ on cloud phone rentals / renewals${+c.max_pct < 100 ? ` (max ${+c.max_pct}% per order)` : ""}`)}</div></div>
-    ${use}${week}
+    ${use}${B.hold ? "" : holdNote}${week}
     <div class="bl-h"><b>${L("Nhiệm vụ hôm nay", "Today's missions")}</b><span>${done}/${tasks.length} ${L("xong", "done")}</span></div>
-    <div class="bl-tasks">${tasks.map(row).join("") || `<div class="hint">${L("Chưa có nhiệm vụ nào.", "No missions right now.")}</div>`}</div>
+    ${capLine}<div class="bl-tasks">${tasks.map(row).join("") || `<div class="hint">${L("Chưa có nhiệm vụ nào.", "No missions right now.")}</div>`}</div>
     <div class="bl-h"><b>${L("Nhận thêm Blue", "More ways to earn")}</b><span></span></div>
     <ul class="bl-more">${more.map(x => `<li>${x}</li>`).join("")}</ul>
     ${items.length ? `<div class="bl-h"><b>${L("Lịch sử Blue", "Blue history")}</b><span></span></div>
@@ -5687,22 +5738,24 @@ document.addEventListener("click", e => { if (e.target.closest && e.target.close
 { const _oc = openCpOrder; openCpOrder = async function () { const keep = BPAY.cpn; const r = await _oc.apply(this, arguments); BPAY.cpn = keep; try { if (!$("cporderdlg").hidden) cpOrderUpd(); } catch (e) {} if (profile && !BLUE) blueLoad().then(() => { try { if (!$("cporderdlg").hidden) cpOrderUpd(); } catch (e) {} }); return r; }; }
 
 /* ===== ADMIN: 💎 TÍCH BLUE ===== */
-const BL_F = [["bl-checkin", "checkin", 100000], ["bl-sdays", "streak_days", 365], ["bl-sbonus", "streak_bonus", 1000000], ["bl-tplay", "task_play", 100000],
-  ["bl-tshare", "task_share", 100000], ["bl-tinvite", "task_invite", 100000], ["bl-ref", "ref", 1000000], ["bl-cash", "cashback", 50], ["bl-max", "max_pct", 100], ["bl-ip", "ip_max", 1000]];
+const BL_F = [["bl-checkin", "checkin", 500], ["bl-sdays", "streak_days", 365], ["bl-sbonus", "streak_bonus", 5000], ["bl-tplay", "task_play", 200],
+  ["bl-tshare", "task_share", 100], ["bl-tinvite", "task_invite", 1000], ["bl-ref", "ref", 5000], ["bl-cash", "cashback", 10], ["bl-max", "max_pct", 100], ["bl-ip", "ip_max", 20],
+  ["bl-usemin", "use_min_topup", 10000000], ["bl-cap", "day_cap", 5000], ["bl-refmin", "ref_min_topup", 10000000], ["bl-refday", "ref_day_max", 20], ["bl-age", "min_age_h", 168], ["bl-brk", "breaker_hour", 10000000]];
 let blSaved = null, blSeq = 0;
 const blVal = (id, hi) => { let n = +($(id) ? $(id).value : 0); if (!isFinite(n)) n = 0; n = id === "bl-cash" ? Math.round(n * 2) / 2 : Math.round(n); return Math.max(0, Math.min(hi, n)); };
-function blForm() { const o = { on: $("bl-on").checked, need_topup: $("bl-need").checked }; BL_F.forEach(([id, k, hi]) => { o[k] = blVal(id, hi); }); return o; }
+function blForm() { const o = { on: $("bl-on").checked, need_topup: true }; BL_F.forEach(([id, k, hi]) => { o[k] = blVal(id, hi); }); return o; }
 function blPreview() {
   if (!$("bl-prev")) return;
-  const o = blForm(), day = o.checkin + o.task_play + o.task_share + o.task_invite, month = day * 30 + (o.streak_days > 0 ? Math.floor(30 / o.streak_days) * o.streak_bonus : 0);
-  const dirty = blSaved && JSON.stringify(o) !== JSON.stringify(Object.fromEntries(Object.keys(o).map(k => [k, k === "on" || k === "need_topup" ? blSaved[k] !== false : +blSaved[k]])));
+  const o = blForm(), day = Math.min(o.checkin + o.task_play + o.task_share + o.task_invite, o.day_cap || 300), month = day * 30 + (o.streak_days > 0 ? Math.floor(30 / o.streak_days) * Math.min(o.streak_bonus, o.day_cap || 300) : 0);
+  const dirty = blSaved && Object.keys(o).some(k => k === "on" ? o.on !== (blSaved.on !== false) : k === "need_topup" ? false : +o[k] !== +blSaved[k]);
   $("bl-prev").innerHTML = !o.on ? "Đang tắt: khách không thấy 💎 Tích Blue, không tích thêm, không trả bằng Blue được (Blue đang có vẫn giữ)."
     : `Khách thấy: điểm danh <b>+${bnum(o.checkin)}</b>/ngày${o.streak_days > 0 && o.streak_bonus > 0 ? `, ngày thứ ${o.streak_days} liền thêm <b>+${bnum(o.streak_bonus)}</b>` : ""}`
       + ` · nhiệm vụ: mở máy <b>+${bnum(o.task_play)}</b>, chia sẻ <b>+${bnum(o.task_share)}</b>, mời bạn <b>+${bnum(o.task_invite)}</b>`
-      + ` · bạn bè nạp / mua lần đầu <b>+${bnum(o.ref)}</b> · hoàn <b>${o.cashback}%</b> mỗi đơn.`
+      + ` · bạn bè NẠP THẬT từ ${vnd(o.ref_min_topup)} <b>+${bnum(o.ref)}</b> (tối đa ${o.ref_day_max} bạn / ngày) · hoàn <b>${o.cashback}%</b> mỗi đơn.`
+      + ` Trần <b>${bnum(o.day_cap)}</b> Blue / ngày / khách · tài khoản mới sau <b>${o.min_age_h} giờ</b> mới tích · nạp thật từ <b>${vnd(o.use_min_topup)}</b> mới dùng được · cầu dao tự tắt khi phát quá <b>${bnum(o.breaker_hour)}</b> Blue / giờ.`
       + `<br>1 khách làm đủ mỗi ngày tích tối đa ~<b>${bnum(month)} Blue/tháng</b> (= ${vnd(month)} giảm giá) chưa kể mời bạn & hoàn đơn. Trả bằng Blue tối đa <b>${o.max_pct}%</b> mỗi đơn.`
       + (o.ip_max ? ` Mỗi mạng (IP) tối đa <b>${o.ip_max}</b> tài khoản điểm danh / chia sẻ / mời mỗi ngày.` : " <b style=\"color:var(--warn)\">Không chặn theo mạng (IP) — dễ bị gom bằng tài khoản ảo.</b>")
-      + (o.need_topup ? "" : " <b style=\"color:var(--warn)\">Khách chưa nạp tiền cũng dùng được Blue — dễ bị tạo tài khoản ảo lấy máy.</b>")
+
     + (dirty ? ` <b style="color:var(--warn)">Chưa lưu: bấm Lưu Tích Blue.</b>` : "");
 }
 async function loadBlueAdm() {
@@ -5710,10 +5763,10 @@ async function loadBlueAdm() {
   const seq = ++blSeq, msg = $("bl-msg"); msg.textContent = "Đang tải…";
   const { data, error } = await sb.rpc("admin_blue_stats");
   if (seq !== blSeq) return;
-  if (error) { msg.innerHTML = blueMissing(error) || /admin_blue/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v27.sql</b> trong Supabase — chạy xong bấm ↻ Làm mới." : esc(errMsg(error)); return; }
-  msg.textContent = "";
+  if (error) { msg.innerHTML = blueMissing(error) || /admin_blue/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v29.sql</b> trong Supabase — chạy xong bấm ↻ Làm mới." : esc(errMsg(error)); return; }
+  msg.innerHTML = data.cfg && data.cfg.day_cap == null ? "⚠️ Supabase chưa chạy <b>cloud-phones-v29.sql</b> — chưa có chặn trần / chống clone." : "";
   const c = blSaved = data.cfg || {};
-  $("bl-on").checked = c.on !== false; $("bl-need").checked = c.need_topup !== false;
+  $("bl-on").checked = c.on !== false;
   BL_F.forEach(([id, k]) => { $(id).value = c[k] ?? ""; });
   const tt = data.tasks_today || {}, d30 = data.d30 || {}, nTask = Object.values(tt).reduce((s, v) => s + (+v || 0), 0);
   $("bl-sum").innerHTML = `<div><b>${bnum(data.outstanding)}</b><span>Blue khách đang giữ (= ${vnd(data.outstanding)})</span></div><div><b>${bnum(data.holders)}</b><span>Khách có Blue</span></div>`
@@ -5722,7 +5775,14 @@ async function loadBlueAdm() {
   $("bl-30").innerHTML = `30 ngày qua: phát ra <b>${bnum(given)} Blue</b> (điểm danh ${bnum(pos("checkin") + pos("streak"))} · nhiệm vụ ${bnum(pos("task"))} · mời bạn ${bnum(pos("ref"))} · hoàn đơn ${bnum(pos("cashback"))})`
     + ` · khách đã dùng <b>${bnum(used)} Blue</b> (= ${vnd(used)} trả thay tiền).`;
   const top = Array.isArray(data.top) ? data.top : [];
-  $("bl-top").innerHTML = top.length ? top.map(x => `<tr><td>${esc(x.user || "?")}</td><td class="num">${bnum(x.blue)}</td></tr>`).join("") : `<tr><td colspan="2" style="text-align:center;color:var(--muted);padding:12px">Chưa có khách nào có Blue.</td></tr>`;
+  const KB = BLUE_K();
+  $("bl-top").innerHTML = top.length ? top.map(x => { const k = x.kinds || {}, earn = ["checkin", "streak", "task", "ref", "cashback"].reduce((s, q) => s + Math.max(0, +k[q] || 0), 0);
+      const flags = [x.locked ? "🔒 đang khoá" : "", +x.shared > 0 ? `👥 chung mạng/thiết bị với ${x.shared} TK` : "", +x.dep === 0 && +x.blue >= 300 ? "⚠️ chưa nạp đồng nào" : "", Date.now() - new Date(x.since).getTime() < 2 * 86400000 ? "🆕 TK mới" : ""].filter(Boolean);
+      return `<tr><td>${x.id ? `<a href="#" data-sa="audit" data-id="${esc(x.id)}" data-n="${esc(x.user)}"><b>${esc(x.user || "?")}</b></a>` : esc(x.user || "?")}${+x.refs ? `<div class="hint">mời ${x.refs} người</div>` : ""}</td><td class="num"><b>${bnum(x.blue)}</b></td>
+        <td style="white-space:normal;min-width:180px" class="hint">${Object.entries(k).filter(([q, v]) => +v).map(([q, v]) => `${esc(KB[q] || q)} ${+v > 0 ? "+" : "−"}${bnum(Math.abs(+v))}`).join(" · ") || "—"}</td>
+        <td class="num">${x.dep != null ? vnd(x.dep) : "—"}</td><td style="white-space:normal">${flags.map(f => `<div class="sec-why">${f}</div>`).join("") || '<span class="hint">—</span>'}</td>
+        <td style="text-align:right;white-space:nowrap">${x.id ? secActs(x.id, x.user, { locked: x.locked, blue: x.blue }) : ""}</td></tr>`; }).join("")
+    : `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:12px">Chưa có khách nào có Blue.</td></tr>`;
   blPreview();
 }
 $("blf") && ($("blf").oninput = blPreview, $("blf").onchange = blPreview);
@@ -7596,6 +7656,316 @@ $("am-save") && ($("am-save").onclick = () => busy($("am-save"), async () => {
   if (SITE !== before) { AM_F.forEach(([id]) => { delete $(id).dataset.dirty; }); amFill(true); $("am-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
 }));
 { const _lc23 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc23.apply(this, arguments); try { amFill(); } catch (e) {} return r; }; }
+
+/* ===== 🛡️ BẢO MẬT (SQL v29): bot gác · quét gian lận · nhật ký tiền · ban / xoá · nạp tiền tìm kiếm + tiền về chưa khớp · tiền khách ở bảng máy ===== */
+const V29_MISS = e => /admin_(topup|bank|user|fraud|money|ban|sec|blue_hold)|sec_watch|sec_alerts|function .* does not exist|Could not find the function/i.test((e && e.message) || "");
+const V29_TXT = "⚠️ Chưa chạy file SQL <b>cloud-phones-v29.sql</b> trong Supabase — chạy xong bấm làm mới.";
+const VIA_TXT = { sepay: "🏦 Ngân hàng (tự động)", crypto: "🪙 Crypto", manual: "✋ Duyệt tay", assign: "🔗 Gán tiền về" };
+const VIA_DO = { credit_topup: "Nạp ngân hàng (tự động)", credit_crypto: "Nạp crypto", admin_topup_approve: "Admin duyệt tay", admin_bank_in_assign: "Admin gán tiền về",
+  admin_adjust_balance: "Admin cộng / trừ", admin_set_balance: "Admin đặt số dư", cloudphone_refund: "Hoàn tiền máy tạo lỗi", _refund: "Hoàn đơn hàng", admin_refund_order: "Admin hoàn đơn",
+  cloudphone_order_custom: "Thuê máy", cloudphone_renew: "Gia hạn máy", cloudphone_upgrade: "Nâng cấp máy", buy_product: "Mua hàng", renew_vps: "Gia hạn VPS",
+  blue_checkin: "Điểm danh", blue_task: "Nhiệm vụ Blue", admin_blue_add: "Admin cộng / trừ Blue", admin_user_ban: "Ban (thu hồi)", sec_watch: "Bot gác" };
+const viaTxt = v => VIA_DO[v] || (String(v || "").startsWith("sql:") ? "✍️ Sửa tay bằng SQL" : (v || "?"));
+const secLv = l => l === "crit" ? '<span class="pill bad">ĐỎ</span>' : l === "warn" ? '<span class="pill wt">VÀNG</span>' : '<span class="pill">Tin</span>';
+const ipTxt = ip => !ip ? "" : String(ip).startsWith("dev:") ? "📱 thiết bị …" + esc(String(ip).slice(-6)) : "🌐 " + esc(ip);
+
+/* ---------- hộp thoại dùng chung ---------- */
+function secDlg(html, wide) {
+  let m = $("secdlg");
+  if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "secdlg"; m.hidden = true; document.body.appendChild(m);
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-sdx]")) m.hidden = true; });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) m.hidden = true; }); }
+  m.innerHTML = `<div class="dlg${wide ? " wide secwide" : ""}" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; return m;
+}
+const secClose = () => { const m = $("secdlg"); if (m) m.hidden = true; };
+
+/* ---------- 💳 NẠP TIỀN: tìm kiếm mọi lịch sử + duyệt tay có số tiền thật + tiền về chưa khớp ---------- */
+let TX_ROWS = null, TX_SEQ = 0, TX_T = null, TX_OLD = false;
+async function txLoad() {
+  if (!isAdmin() || !$("ttbl")) return;
+  const seq = ++TX_SEQ, q = ($("tq") && $("tq").value || "").trim(), st = $("tst") ? $("tst").value : "", via = $("tvia") ? $("tvia").value : "";
+  const { data, error } = await sb.rpc("admin_topup_search", { p_q: q || null, p_status: st || null, p_via: via || null, p_limit: 300 });
+  if (seq !== TX_SEQ) return;
+  if (error || !data) { TX_OLD = true; TX_ROWS = null; renderTx(); if ($("tx-sum")) $("tx-sum").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+  TX_OLD = false; TX_ROWS = data.rows || [];
+  if ($("tx-sum")) $("tx-sum").textContent = `${bnum(data.n)} lệnh${q || st || via ? " khớp" : ""} · đã cộng ${vnd(data.sum_done)}${TX_ROWS.length < data.n ? ` · hiện ${TX_ROWS.length} lệnh mới nhất` : ""}`;
+  renderTx();
+}
+renderTx = function () {
+  const tb = $("ttbl"); if (!tb) return;
+  let rows = TX_ROWS;
+  if (!rows) {                                   // chưa chạy v29: lọc tạm trên 100 lệnh gần nhất
+    const q = ($("tq") && $("tq").value || "").trim().toLowerCase(), st = $("tst") ? $("tst").value : "";
+    rows = (ADM.topups || []).map(t => ({ ...t, username: uname(t.user_id), via: t.status === "done" ? (String(t.bank_ref || "").startsWith("MANUAL-") ? "manual" : t.coin ? "crypto" : "sepay") : null }))
+      .filter(t => (!st || t.status === st) && (!q || [t.username, t.memo, t.bank_ref, t.amount].join(" ").toLowerCase().includes(q)));
+  }
+  tb.innerHTML = rows.length ? rows.map(t => {
+    const usd = t.usd != null ? `<div class="hint">≈ $${(+t.usd).toLocaleString("en-US")} ${esc(String(t.coin || "").toUpperCase().replace("TRC20", ""))}</div>` : "";
+    const diff = t.asked != null && +t.asked !== +t.amount && t.status === "done";
+    return `<tr${t.via === "manual" ? ' class="tx-man"' : ""}><td>${ago(t.created_at)}${t.ip ? `<div class="hint">${ipTxt(t.ip)}</div>` : ""}</td>
+      <td><b>${esc(t.username || uname(t.user_id))}</b>${t.u_locked ? ' <span class="pill bad">khoá</span>' : ""}${t.email ? `<div class="hint">${esc(t.email)}</div>` : ""}</td>
+      <td>${t.status === "done" ? esc(VIA_TXT[t.via] || t.via || "") : '<span class="hint">—</span>'}${t.approver ? `<div class="hint">bởi ${esc(t.approver)}</div>` : ""}</td>
+      <td class="num">${esc(t.memo)}${t.bank_ref && !String(t.bank_ref).startsWith("MANUAL-") ? `<div class="hint">NH: ${esc(t.bank_ref)}</div>` : ""}</td>
+      <td class="num">${t.asked != null ? vnd(t.asked) : "—"}</td>
+      <td class="num">${t.status === "done" ? `<b${diff ? ' style="color:var(--warn)"' : ""}>${vnd(t.amount)}</b>` : '<span class="hint">chưa nhận</span>'}${usd}${t.note ? `<div class="hint">${esc(t.note)}</div>` : ""}</td>
+      <td>${t.status === "done" ? '<span class="pill ok">Đã cộng</span>' : '<span class="pill wt">Chờ</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">${t.status === "pending" ? `<button class="btn ghost sm" data-approve="${t.id}">✋ Duyệt tay</button> <button class="btn danger sm" data-deltop="${t.id}">Xoá</button>` : ""}
+        ${t.user_id ? `<button class="btn ghost sm" data-audit="${esc(t.user_id)}" title="Soát khách này">🔍</button>` : ""}</td></tr>`;
+  }).join("") : `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">${($("tq") && $("tq").value) || ($("tst") && $("tst").value) ? "Không có lệnh nào khớp." : "Chưa có lệnh nạp nào."}</td></tr>`;
+};
+$("tq") && ($("tq").oninput = () => { clearTimeout(TX_T); TX_T = setTimeout(() => TX_OLD ? renderTx() : txLoad(), 300); });
+$("tst") && ($("tst").onchange = () => TX_OLD ? renderTx() : txLoad());
+$("tvia") && ($("tvia").onchange = () => txLoad());
+$("ttbl").onclick = async e => {
+  const a = e.target.closest("[data-approve]"), d = e.target.closest("[data-deltop]"), u = e.target.closest("[data-audit]");
+  if (u) return secAudit(u.dataset.audit);
+  if (a) return txApprove(+a.dataset.approve);
+  if (d) { if (!confirm("Xoá lệnh nạp ĐANG CHỜ này? (lệnh đã cộng tiền không xoá được)")) return;
+    await busy(d, async () => { const { error } = await sb.rpc("admin_delete_topup", { p_id: +d.dataset.deltop }); if (error) return toast(errMsg(error), 1); toast("Đã xoá lệnh chờ."); await loadAdmin(); txLoad(); }); }
+};
+function txApprove(id) {
+  const t = (TX_ROWS || ADM.topups || []).find(x => +x.id === +id); if (!t) return;
+  const m = secDlg(`<h3>✋ Duyệt tay lệnh nạp</h3>
+    <div class="note">Chỉ duyệt khi bạn <b>đã mở app ngân hàng</b> và thấy tiền về. Nhập <b>số tiền THẬT</b> đã về — KHÔNG phải số khách gõ. Khách gửi ảnh bill có thể là ảnh giả / ảnh cũ.</div>
+    <div class="hint">Khách <b>${esc(t.username || uname(t.user_id))}</b> · mã <b>${esc(t.memo)}</b> · khách gõ <b>${vnd(t.asked ?? t.amount)}</b> · tạo ${ago(t.created_at)}</div>
+    <label>Số tiền THẬT đã về ngân hàng (đ)<input class="in" id="ap-amt" type="number" min="1000" step="1000" inputmode="numeric" placeholder="VD 20000"></label>
+    <label>Mã giao dịch ngân hàng <span class="hint">(nên ghi — chống cộng 2 lần)</span><input class="in" id="ap-ref" maxlength="60" autocomplete="off"></label>
+    <label>Ghi chú<input class="in" id="ap-note" maxlength="120" placeholder="VD khách ghi sai nội dung"></label>
+    <label class="mtrow"><input type="checkbox" id="ap-ok"> Tôi đã xem app ngân hàng, tiền này đã về và CHƯA được cộng</label>
+    <div class="err" id="ap-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn" type="button" id="ap-go" disabled>Cộng tiền</button></div>`);
+  const upd = () => { const v = Math.round(+$("ap-amt").value || 0); $("ap-go").disabled = !(v > 0 && $("ap-ok").checked); $("ap-go").textContent = v > 0 ? "✋ Cộng " + vnd(v) : "Cộng tiền";
+    $("ap-err").textContent = v > 0 && t.asked && v !== +t.asked ? `Khác số khách gõ (${vnd(t.asked)}) — khách sẽ nhận đúng ${vnd(v)}.` : ""; };
+  $("ap-amt").oninput = upd; $("ap-ok").onchange = upd; $("ap-amt").focus();
+  $("ap-go").onclick = () => busy($("ap-go"), async () => {
+    const v = Math.round(+$("ap-amt").value || 0);
+    const { data, error } = await sb.rpc("admin_topup_approve", { p_id: +t.id, p_amount: v, p_bankref: $("ap-ref").value.trim() || null, p_note: $("ap-note").value.trim() || null });
+    if (error) { $("ap-err").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+    m.hidden = true; toast(data ? `Đã cộng ${vnd(v)} cho ${t.username || uname(t.user_id)}.` : "Lệnh này đã được xử lý."); await loadAdmin(); txLoad();
+  });
+}
+async function bankLoad() {
+  const tb = $("bank-tb"); if (!tb || !isAdmin()) return;
+  const [a, b] = await Promise.all([sb.rpc("admin_bank_in_list", { p_state: "unmatched", p_limit: 100 }), sb.rpc("admin_bank_in_list", { p_state: "manual_dup", p_limit: 50 })]);
+  if (a.error || !a.data) { tb.innerHTML = `<tr><td colspan="5" class="hint" style="padding:14px">${V29_MISS(a.error) ? V29_TXT : esc(errMsg(a.error))}</td></tr>`; return; }
+  const rows = [...(a.data || []), ...((b.data) || [])];
+  const n = (a.data || []).length; if ($("tx-badge")) { $("tx-badge").textContent = n; $("tx-badge").hidden = !n; }
+  tb.innerHTML = rows.length ? rows.map(r => `<tr${r.state === "manual_dup" ? ' style="opacity:.8"' : ""}><td>${ago(r.at)}</td><td class="num"><b>${vnd(r.amount)}</b></td>
+      <td style="white-space:normal;max-width:360px">${esc(r.content || "")}${r.note ? `<div class="hint">${esc(r.note)}</div>` : ""}<div class="hint">NH: ${esc(r.ref)}</div></td>
+      <td>${r.guess ? `<b>${esc(r.guess)}</b>` : '<span class="hint">không rõ</span>'}</td>
+      <td style="text-align:right;white-space:nowrap">${r.state === "manual_dup" ? '<span class="pill wt">Đã duyệt tay trước đó</span> ' : ""}<button class="btn sm" data-bkas="${r.id}" data-guess="${esc(r.guess || "")}" data-amt="${+r.amount}">Cộng cho khách</button>
+        <button class="btn ghost sm" data-bkig="${r.id}">Bỏ qua</button></td></tr>`).join("")
+    : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">✓ Không có khoản tiền nào chưa khớp.</td></tr>`;
+}
+$("bank-tb") && ($("bank-tb").onclick = async e => {
+  const a = e.target.closest("[data-bkas]"), g = e.target.closest("[data-bkig]");
+  if (a) { const who = prompt(`Cộng ${vnd(a.dataset.amt)} (tiền THẬT đã về) cho khách nào?\nGõ tên đăng nhập hoặc email:`, a.dataset.guess || ""); if (!who) return;
+    await busy(a, async () => { const { data, error } = await sb.rpc("admin_bank_in_assign", { p_id: +a.dataset.bkas, p_who: who.trim() }); if (error) return toast(errMsg(error), 1);
+      toast(`Đã cộng ${vnd(data.amount)} cho ${data.user}.`); bankLoad(); await loadAdmin(); txLoad(); }); }
+  if (g) { const why = prompt("Bỏ qua khoản này (không phải tiền nạp)? Ghi lý do:", "Tiền cá nhân"); if (why === null) return;
+    await busy(g, async () => { const { error } = await sb.rpc("admin_bank_in_ignore", { p_id: +g.dataset.bkig, p_note: why || null }); if (error) return toast(errMsg(error), 1); bankLoad(); }); }
+});
+
+/* ---------- 🔒 BAN · 🗑️ XOÁ · 🧊 GIỮ BLUE · 🔍 SOÁT ---------- */
+function secBan(id, name) {
+  const m = secDlg(`<h3>🔒 Ban tài khoản <b>${esc(name || "")}</b></h3>
+    <label>Lý do (lưu hồ sơ)<input class="in" id="bn-why" maxlength="160" value="Gian lận / cày clone" autocomplete="off"></label>
+    <label class="mtrow"><input type="checkbox" id="bn-lock" checked> Khoá tài khoản + chặn đăng nhập (đăng xuất mọi thiết bị)</label>
+    <label class="mtrow"><input type="checkbox" id="bn-blue" checked> Thu hồi toàn bộ 💎 Blue</label>
+    <label class="mtrow"><input type="checkbox" id="bn-ph" checked> Khoá (tắt) mọi máy đang chạy của khách</label>
+    <label class="mtrow"><input type="checkbox" id="bn-cb"> Huỷ luôn các máy trả bằng Blue (máy chủ xoá máy ảo)</label>
+    <label class="mtrow"><input type="checkbox" id="bn-zero"> Đưa số dư tiền về 0 <span class="hint">(chỉ khi chắc chắn tiền đó là tiền gian lận)</span></label>
+    <div class="hint">Mở lại được ở 🛡️ Bảo mật › 🚫 Đã khoá. Máy bị khoá được mở lại cùng lúc.</div><div class="err" id="bn-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn danger" type="button" id="bn-go">🔒 Ban</button></div>`);
+  $("bn-go").onclick = () => busy($("bn-go"), async () => {
+    const o = { lock: $("bn-lock").checked, revoke_blue: $("bn-blue").checked, lock_phones: $("bn-ph").checked, cancel_blue_phones: $("bn-cb").checked, zero_balance: $("bn-zero").checked };
+    if (o.zero_balance && !confirm("Đưa số dư tiền của khách về 0? Không hoàn tác tự động được.")) return;
+    const { data, error } = await sb.rpc("admin_user_ban", { p_user: id, p_reason: $("bn-why").value.trim() || null, p_opts: o });
+    if (error) { $("bn-err").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+    m.hidden = true; toast(`Đã ban ${data.user}: thu hồi ${bnum(data.blue_revoked)} Blue · khoá ${data.phones_locked} máy${data.phones_cancelled ? " · huỷ " + data.phones_cancelled + " máy" : ""}${data.balance_zeroed ? " · số dư về 0" : ""}.`);
+    secRefreshAll();
+  });
+}
+function secDel(id, name) {
+  const m = secDlg(`<h3>🗑️ Xoá vĩnh viễn tài khoản <b>${esc(name || "")}</b></h3>
+    <div class="note" style="border-color:var(--bad)">Xoá hẳn tài khoản: khách không đăng nhập được nữa, lịch sử nạp / Blue của khách bị xoá, <b>máy đang chạy bị máy chủ xoá sạch</b>. Hồ sơ (số dư, tiền đã nạp, Blue) được lưu ở 🛡️ Bảo mật › 🚫 Đã khoá. <b>Thường nên BAN thay vì xoá</b> để giữ bằng chứng.</div>
+    <label>Gõ đúng tên đăng nhập <b>${esc(name || "")}</b> để xác nhận<input class="in" id="dl-name" autocomplete="off" spellcheck="false"></label><div class="err" id="dl-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn danger" type="button" id="dl-go" disabled>🗑️ Xoá vĩnh viễn</button></div>`);
+  $("dl-name").oninput = () => { $("dl-go").disabled = $("dl-name").value.trim().toLowerCase() !== String(name || "").toLowerCase(); }; $("dl-name").focus();
+  $("dl-go").onclick = () => busy($("dl-go"), async () => {
+    const { data, error } = await sb.rpc("admin_user_delete", { p_user: id, p_confirm: $("dl-name").value.trim() });
+    if (error) { $("dl-err").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+    m.hidden = true; toast(`Đã xoá tài khoản ${data.user}${data.phones ? ` · ${data.phones} máy đang được máy chủ xoá` : ""}.`);
+    ADM.users = ADM.users.filter(u => u.id !== id); secRefreshAll(); try { await loadAdmin(); } catch (e) {}
+  });
+}
+async function secHold(id, hold) {
+  const { data, error } = await sb.rpc("admin_blue_hold", { p_user: id, p_hold: hold });
+  if (error) return toast(V29_MISS(error) ? "Chưa chạy SQL v29." : errMsg(error), 1);
+  toast(hold ? `🧊 Đã giữ Blue của ${data.user} (không nhận, không dùng).` : `Đã thả Blue cho ${data.user}.`); secRefreshAll();
+}
+async function secUnban(id, name) {
+  if (!confirm(`Mở khoá tài khoản ${name || ""}? (mở đăng nhập + mở các máy bị khoá do ban)`)) return;
+  const { data, error } = await sb.rpc("admin_user_unban", { p_user: id, p_unlock_phones: true });
+  if (error) return toast(V29_MISS(error) ? "Chưa chạy SQL v29." : errMsg(error), 1);
+  toast(`Đã mở khoá ${data.user}${data.phones_unlocked ? " · mở " + data.phones_unlocked + " máy" : ""}.`); secRefreshAll(); try { await loadAdmin(); } catch (e) {}
+}
+async function secRevoke(id, name, n) {
+  if (!confirm(`Thu hồi toàn bộ ${bnum(n)} Blue của ${name}?`)) return;
+  const { data, error } = await sb.rpc("admin_blue_add", { p_who: name, p_delta: -Math.abs(+n || 0), p_note: "Thu hồi Blue (gian lận)" });
+  if (error) return toast(errMsg(error), 1); toast(`${data.user}: −${bnum(Math.abs(+data.delta))} Blue.`); secRefreshAll();
+}
+function secRefreshAll() { try { loadBlueAdm(); } catch (e) {} try { if (!$("pane-sec").hidden) secPaneLoad(); } catch (e) {} try { if (SCAN) scanRender(); } catch (e) {} }
+const secActs = (id, name, o = {}) => `<button class="btn ghost sm" data-sa="audit" data-id="${esc(id)}" data-n="${esc(name)}" title="Soát chi tiết">🔍 Soát</button>`
+  + (o.hold != null ? ` <button class="btn ghost sm" data-sa="${o.hold ? "unhold" : "hold"}" data-id="${esc(id)}" data-n="${esc(name)}" title="${o.hold ? "Thả Blue" : "Giữ Blue: không nhận, không dùng"}">${o.hold ? "♨️ Thả Blue" : "🧊 Giữ Blue"}</button>` : "")
+  + (+o.blue > 0 ? ` <button class="btn ghost sm" data-sa="revoke" data-id="${esc(id)}" data-n="${esc(name)}" data-b="${+o.blue}">💎 Thu hồi</button>` : "")
+  + (o.locked ? ` <button class="btn ghost sm" data-sa="unban" data-id="${esc(id)}" data-n="${esc(name)}">🔓 Mở ban</button>` : ` <button class="btn danger sm" data-sa="ban" data-id="${esc(id)}" data-n="${esc(name)}">🔒 Ban</button>`)
+  + ` <button class="btn danger sm" data-sa="del" data-id="${esc(id)}" data-n="${esc(name)}" title="Xoá vĩnh viễn tài khoản">🗑️ Xoá</button>`;
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-sa]"); if (!b || !isAdmin()) return;
+  e.preventDefault(); const id = b.dataset.id, n = b.dataset.n;
+  ({ audit: () => secAudit(id), ban: () => secBan(id, n), del: () => secDel(id, n), unban: () => secUnban(id, n), hold: () => secHold(id, true), unhold: () => secHold(id, false),
+     revoke: () => secRevoke(id, n, b.dataset.b) })[b.dataset.sa]?.();
+});
+async function secAudit(id) {
+  secDlg(`<h3>🔍 Soát khách</h3><div class="hint">Đang tải…</div>`, true);
+  const { data: a, error } = await sb.rpc("admin_user_audit", { p_user: id });
+  if (error || !a) { secDlg(`<h3>🔍 Soát khách</h3><div class="err">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</div><div class="row2"><button class="btn ghost" type="button" data-sdx>Đóng</button></div>`); return; }
+  const u = a.user, m = a.money || {}, bv = m.by_via || {}, spent = (+m.phones_paid || 0) + (+m.renew || 0) + (+m.orders || 0), gap = (+u.balance || 0) + spent - (+m.dep || 0) - (+u.ref_earned || 0);
+  const K = typeof BLUE_K === "function" ? BLUE_K() : {};
+  const tbl = (h, rows, empty) => `<div class="tbl"><table><thead><tr>${h.map(x => `<th>${x}</th>`).join("")}</tr></thead><tbody>${rows.length ? rows.join("") : `<tr><td colspan="${h.length}" class="hint" style="text-align:center;padding:10px">${empty}</td></tr>`}</tbody></table></div>`;
+  const others = (a.ips || []).flatMap(i => (i.others || []).map(o => ({ ...o, ip: i.ip })));
+  secDlg(`<div class="sec-top"><h3>🔍 ${esc(u.username)} ${u.locked ? '<span class="pill bad">ĐANG KHOÁ</span>' : ""}</h3><button class="btn ghost sm" type="button" data-sdx>Đóng</button></div>
+    <div class="hint">${esc(u.email || "")} · tạo ${ago(u.created_at)}${u.ref_by ? ` · được mời bởi <b>${esc(u.ref_by)}</b>` : ""}${u.ctv && u.ctv !== "none" ? " · CTV " + esc(u.ctv) : ""}</div>
+    <div class="tiles sec-tiles"><div><b>${vnd(m.dep)}</b><span>Nạp thật (${Object.entries(bv).map(([k, v]) => esc((VIA_TXT[k] || k).replace(/^\S+ /, "")) + " " + vnd(v)).join(" · ") || "chưa nạp"})</span></div>
+      <div><b>${vnd(spent)}</b><span>Đã tiêu (máy ${vnd(+m.phones_paid + +m.renew)} · hàng ${vnd(m.orders)})</span></div>
+      <div><b>${vnd(u.balance)}</b><span>Số dư</span></div><div><b>${bnum(u.blue)}</b><span>💎 Blue (${Object.entries(a.blue_kinds || {}).map(([k, v]) => esc(K[k] || k) + " " + bnum(v)).join(" · ") || "—"})</span></div></div>
+    ${gap >= 10000 ? `<div class="note" style="border-color:var(--warn)">💸 Số dư + đã tiêu <b>vượt tiền nạp thật ${vnd(gap)}</b>${+u.ref_earned ? ` (đã trừ hoa hồng ${vnd(u.ref_earned)})` : ""} — có thể do admin cộng tay trước đây; nếu không thì là tiền gian lận.</div>` : ""}
+    ${others.length ? `<div class="note" style="border-color:var(--bad)">👥 Dùng chung mạng / thiết bị với: ${others.map(o => `<a href="#" data-sa="audit" data-id="${esc(o.id)}" data-n="${esc(o.user)}">${esc(o.user)}</a>${o.locked ? " (khoá)" : ""} <span class="hint">${ipTxt(o.ip)}</span>`).join(", ")}</div>` : ""}
+    <div class="acts">${secActs(u.id, u.username, { locked: u.locked, blue: u.blue }).replace(/<button class="btn ghost sm" data-sa="audit"[^>]*>🔍 Soát<\/button>/, "")}</div>
+    <h4>📜 Nhật ký tiền (từ v29)</h4>${tbl(["Lúc", "Loại", "Thay đổi", "Còn", "Do việc", "Mạng"], (a.money_log || []).map(x => `<tr${!x.ok && x.field === "balance" && x.delta > 0 ? ' class="sec-bad"' : ""}><td>${bwhen(x.at)}</td><td>${x.field === "blue" ? "💎 Blue" : "💰 Tiền"}</td><td class="num">${x.delta > 0 ? "+" : "−"}${x.field === "blue" ? bnum(Math.abs(x.delta)) : vnd(Math.abs(x.delta))}</td><td class="num">${x.field === "blue" ? bnum(x.after) : vnd(x.after)}</td><td>${esc(viaTxt(x.via))}</td><td class="hint">${ipTxt(x.ip)}</td></tr>`), "Chưa có thay đổi nào từ khi chạy v29.")}
+    <h4>💳 Lệnh nạp</h4>${tbl(["Lúc", "Mã", "Khách gõ", "Thực nhận", "Cách"], (a.topups || []).map(t => `<tr><td>${bwhen(t.created_at)}</td><td>${esc(t.memo)}${t.note ? `<div class="hint">${esc(t.note)}</div>` : ""}</td><td class="num">${t.asked != null ? vnd(t.asked) : "—"}</td><td class="num">${t.status === "done" ? vnd(t.amount) : '<span class="hint">chờ</span>'}</td><td>${t.status === "done" ? esc(VIA_TXT[t.via] || t.via || "") : ""}</td></tr>`), "Chưa nạp lần nào.")}
+    <h4>📱 Máy</h4>${tbl(["Tạo", "Máy", "Trả", "Trạng thái"], (a.phones || []).map(p => `<tr><td>${bwhen(p.created_at)}</td><td>${esc(p.name)} <span class="hint">${p.ram}GB · Android ${esc(p.android || "")}</span></td><td>${cpaPayTxt(p)}</td><td>${esc(p.status)}${p.locked ? " 🔒" : ""}</td></tr>`), "Chưa có máy.")}
+    <h4>🤝 Bạn được mời (${(a.refs || []).length})</h4>${tbl(["Khách", "Nạp thật", "Cùng mạng/thiết bị"], (a.refs || []).map(r => `<tr><td><a href="#" data-sa="audit" data-id="${esc(r.id)}" data-n="${esc(r.user)}">${esc(r.user)}</a>${r.locked ? " (khoá)" : ""}</td><td class="num">${vnd(r.dep)}</td><td>${r.same_ip ? '<span class="pill bad">CLONE?</span>' : "—"}</td></tr>`), "Chưa mời ai.")}
+    <h4>💎 Lịch sử Blue</h4>${tbl(["Lúc", "Thay đổi", "Nội dung"], (a.blue_log || []).map(x => `<tr><td>${bwhen(x.created_at)}</td><td class="num">${x.delta > 0 ? "+" : "−"}${bnum(Math.abs(x.delta))}</td><td>${esc(x.note || K[x.kind] || x.kind)}</td></tr>`), "Chưa có.")}
+    ${(a.bans || []).length ? `<h4>🚫 Ban / mở ban</h4><div class="hint">${a.bans.map(b => `${bwhen(b.at)} · ${esc(b.action)}${b.reason ? " · " + esc(b.reason) : ""}`).join("<br>")}</div>` : ""}`, true);
+}
+
+/* ---------- 🛡️ THẺ BẢO MẬT ---------- */
+let SCAN = null, MLOG = null;
+function secPaneLoad() {
+  let sub = "alerts"; try { sub = localStorage.getItem("adm_sub_sec") || "alerts"; } catch (e) {}
+  const on = [...document.querySelectorAll('#pane-sec > .subpane')].find(p => !p.hidden); if (on) sub = on.dataset.sub;
+  ({ alerts: secAlertsLoad, scan: () => SCAN ? scanRender() : scanRun(), log: mlogLoad, bans: bansLoad })[sub]?.();
+}
+async function secAlertsLoad() {
+  const tb = $("sec-al"); if (!tb) return;
+  const { data, error } = await sb.rpc("admin_sec_alerts", { p_limit: 150, p_unseen: false });
+  if (error || !data) { tb.innerHTML = `<tr><td colspan="4" class="hint" style="padding:14px">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</td></tr>`; return; }
+  secBadge(data.unseen);
+  const rows = data.rows || [];
+  tb.innerHTML = rows.length ? rows.map(r => `<tr${r.seen ? ' style="opacity:.62"' : ""}><td>${bwhen(r.at)}</td><td>${secLv(r.level)}</td><td style="white-space:normal">${esc(r.msg)}${r.user ? `<div class="hint">Khách: <a href="#" data-sa="audit" data-id="${esc(r.user_id)}" data-n="${esc(r.user)}">${esc(r.user)}</a></div>` : ""}</td>
+      <td style="text-align:right">${r.user_id ? secActs(r.user_id, r.user || "") : (r.data && Array.isArray(r.data.users) ? `<span class="hint">${r.data.users.length} tài khoản</span>` : "")}</td></tr>`).join("")
+    : `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:18px">✓ Chưa có cảnh báo nào. Bot vẫn đang gác.</td></tr>`;
+}
+function secBadge(n) { const b = $("sec-badge"); if (b) { b.textContent = +n || ""; b.hidden = !(+n > 0); } }
+async function secPoll() { if (!isAdmin()) return; try { const { data } = await sb.rpc("admin_sec_alerts", { p_limit: 1, p_unseen: true }); if (data) secBadge(data.unseen); } catch (e) {} try { bankLoad(); } catch (e) {} }
+$("sec-run") && ($("sec-run").onclick = () => busy($("sec-run"), async () => {
+  const { data, error } = await sb.rpc("sec_watch");
+  if (error || !data) { $("sec-msg").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+  $("sec-msg").textContent = `Đã quét: ${data.new_alerts} cảnh báo mới${data.held_groups ? ` · giữ Blue ${data.held_groups} cụm clone` : ""}${data.breaker ? " · ĐÃ TẮT Tích Blue (cầu dao)" : ""} · Blue phát ra 1 giờ qua: ${bnum(data.blue_issued_1h)}.`;
+  secAlertsLoad();
+}));
+$("sec-seen") && ($("sec-seen").onclick = () => busy($("sec-seen"), async () => { const { error } = await sb.rpc("admin_sec_seen", { p_ids: null }); if (error) return toast(errMsg(error), 1); secAlertsLoad(); }));
+async function scanRun() {
+  const tb = $("scan-tb"); if (!tb) return; $("scan-msg").textContent = "Đang quét…";
+  const { data, error } = await sb.rpc("admin_fraud_scan", { p_limit: 200 });
+  if (error) { $("scan-msg").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+  SCAN = data || []; $("scan-msg").textContent = `${SCAN.length} tài khoản có dấu hiệu · quét lúc ${new Date().toLocaleTimeString("vi-VN")}`; scanRender();
+}
+function scanRender() {
+  const tb = $("scan-tb"); if (!tb || !SCAN) return;
+  const q = ($("scan-q").value || "").trim().toLowerCase(), rows = SCAN.filter(x => !q || (x.user + " " + (x.email || "")).toLowerCase().includes(q));
+  tb.innerHTML = rows.length ? rows.map(x => `<tr><td><a href="#" data-sa="audit" data-id="${esc(x.id)}" data-n="${esc(x.user)}"><b>${esc(x.user)}</b></a>${x.locked ? ' <span class="pill bad">khoá</span>' : ""}<div class="hint">${esc(x.email || "")} · tạo ${ago(x.since)}</div></td>
+      <td class="num"><b style="color:${x.score >= 60 ? "var(--bad)" : x.score >= 30 ? "var(--warn)" : "inherit"}">${x.score}</b></td>
+      <td style="white-space:normal;min-width:240px">${(x.why || []).map(w => `<div class="sec-why">${esc(w)}</div>`).join("")}</td>
+      <td class="num">${vnd(x.dep)}${+x.dep_manual ? `<div class="hint">✋ ${vnd(x.dep_manual)}</div>` : ""}</td><td class="num">${vnd(x.balance)}<div class="hint">tiêu ${vnd(x.spent)}</div></td><td class="num">${bnum(x.blue)}</td>
+      <td style="text-align:right;white-space:nowrap">${secActs(x.id, x.user, { locked: x.locked, blue: x.blue })}</td></tr>`).join("")
+    : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:18px">${SCAN.length ? "Không ai khớp ô lọc." : "✓ Không thấy dấu hiệu gian lận nào."}</td></tr>`;
+}
+$("scan-run") && ($("scan-run").onclick = () => busy($("scan-run"), scanRun));
+$("scan-q") && ($("scan-q").oninput = scanRender);
+async function mlogLoad() {
+  const tb = $("mlog-tb"); if (!tb) return;
+  const { data, error } = await sb.rpc("admin_money_log", { p_user: null, p_only_odd: !!($("mlog-odd") && $("mlog-odd").checked), p_limit: 400 });
+  if (error) { tb.innerHTML = `<tr><td colspan="7" class="hint" style="padding:14px">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</td></tr>`; return; }
+  MLOG = data || []; mlogRender();
+}
+function mlogRender() {
+  const tb = $("mlog-tb"); if (!tb || !MLOG) return;
+  const q = ($("mlog-q").value || "").trim().toLowerCase(), rows = MLOG.filter(x => !q || [x.user, viaTxt(x.via), x.via, x.ip, x.actor].join(" ").toLowerCase().includes(q));
+  tb.innerHTML = rows.length ? rows.map(x => `<tr${!x.ok ? ' class="sec-bad"' : ""}><td>${bwhen(x.at)}</td><td>${x.user ? `<a href="#" data-sa="audit" data-id="${esc(x.user_id)}" data-n="${esc(x.user)}">${esc(x.user)}</a>` : '<span class="hint">đã xoá</span>'}</td>
+      <td>${x.field === "blue" ? "💎 Blue" : "💰 Tiền"}</td><td class="num"><b style="color:${x.delta > 0 ? "var(--ok,#3ccf91)" : "inherit"}">${x.delta > 0 ? "+" : "−"}${x.field === "blue" ? bnum(Math.abs(x.delta)) : vnd(Math.abs(x.delta))}</b></td>
+      <td class="num">${x.field === "blue" ? bnum(x.after) : vnd(x.after)}</td><td>${esc(viaTxt(x.via))}${!x.ok ? ' <span class="pill bad">LẠ</span>' : ""}</td>
+      <td class="hint">${x.actor ? esc(x.actor) : x.role === "service_role" ? "máy chủ" : x.role ? esc(x.role) : "SQL editor"}${x.ip ? " · " + ipTxt(x.ip) : ""}</td></tr>`).join("")
+    : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:18px">Chưa có dòng nào.</td></tr>`;
+}
+$("mlog-odd") && ($("mlog-odd").onchange = mlogLoad);
+$("mlog-q") && ($("mlog-q").oninput = mlogRender);
+$("mlog-reload") && ($("mlog-reload").onclick = () => busy($("mlog-reload"), mlogLoad));
+async function bansLoad() {
+  const tb = $("ban-tb"); if (!tb) return;
+  const { data, error } = await sb.rpc("admin_ban_list", { p_limit: 200 });
+  if (error || !data) { tb.innerHTML = `<tr><td colspan="4" class="hint" style="padding:14px">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</td></tr>`; return; }
+  const L1 = data.locked || [], L2 = data.log || [];
+  tb.innerHTML = L1.length ? L1.map(x => `<tr><td><a href="#" data-sa="audit" data-id="${esc(x.id)}" data-n="${esc(x.user)}"><b>${esc(x.user)}</b></a><div class="hint">${esc(x.email || "")}${x.at ? " · " + ago(x.at) : ""}</div></td>
+      <td>${esc(x.reason || "—")}</td><td class="num">${vnd(x.balance)}</td><td style="text-align:right;white-space:nowrap"><button class="btn ghost sm" data-sa="unban" data-id="${esc(x.id)}" data-n="${esc(x.user)}">🔓 Mở ban</button> <button class="btn danger sm" data-sa="del" data-id="${esc(x.id)}" data-n="${esc(x.user)}">🗑️ Xoá</button></td></tr>`).join("")
+    : `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px">Không có tài khoản nào đang bị khoá.</td></tr>`;
+  const ACT = { ban: "🔒 Ban", unban: "🔓 Mở ban", delete: "🗑️ Xoá TK", "auto-ban": "🤖 Bot tự khoá", "blue-hold": "🧊 Giữ Blue", "blue-unhold": "♨️ Thả Blue" };
+  $("banlog-tb").innerHTML = L2.length ? L2.map(x => `<tr><td>${bwhen(x.at)}</td><td>${esc(x.user || "")}</td><td>${esc(ACT[x.action] || x.action)}</td><td style="white-space:normal">${esc(x.reason || "")}</td><td>${esc(x.by || (x.action === "auto-ban" ? "bot" : ""))}</td></tr>`).join("")
+    : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">Chưa có.</td></tr>`;
+}
+Object.assign(SUB_HOOK, { "sec:alerts": secAlertsLoad, "sec:scan": () => SCAN ? scanRender() : scanRun(), "sec:log": mlogLoad, "sec:bans": bansLoad });
+{ const _st29 = setTab;
+  setTab = function (t) {
+    _st29(t); show("pane-sec", t === "sec");
+    if (t === "sec") { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === "sec")); let s = null; try { s = localStorage.getItem("adm_sub_sec"); } catch (e) {} subShow("sec", s); }
+    if (t === "tx") { txLoad(); bankLoad(); }
+  }; }
+let SEC_T = null;
+{ const _oa29 = openAdmin; openAdmin = async function () { const r = await _oa29.apply(this, arguments); secPoll(); clearInterval(SEC_T); SEC_T = setInterval(() => { if (!document.hidden) secPoll(); }, 60000); return r; }; }
+if (typeof ADMIN_PAGE !== "undefined" && ADMIN_PAGE) setTimeout(() => { if (isAdmin()) { secPoll(); clearInterval(SEC_T); SEC_T = setInterval(() => { if (!document.hidden) secPoll(); }, 60000); } }, 2500);
+
+/* ---------- 📋 BẢNG MÁY KHÁCH: khách đã nạp bao nhiêu · máy trả bằng gì ---------- */
+const CPA_M = new Map(); let cpaMBusy = false;
+function cpaPayTxt(p) {
+  if (p.replaces || p.switched) return "🤖 Đổi Android";
+  if (p.is_free) return "🆓 Miễn phí";
+  const pd = +p.paid || 0, bp = +p.blue_paid || 0;
+  if (pd > 0 && bp > 0) return `💵 ${vnd(pd)} + 💎 ${bnum(bp)}`;
+  if (pd > 0) return `💵 ${vnd(pd)}`;
+  if (bp > 0) return `💎 ${bnum(bp)} Blue`;
+  if (p.promo_red || p.promo) return "🎁 Mã tặng";
+  return '<span style="color:var(--warn)">⚠️ 0đ</span>';
+}
+async function cpaMoneyLoad() {
+  const ids = [...new Set(CPA_ROWS.map(p => p.user_id).filter(id => id && !CPA_M.has(id)))];
+  if (!ids.length || cpaMBusy) return; cpaMBusy = true;
+  try { for (let i = 0; i < ids.length; i += 150) { const { data, error } = await sb.rpc("admin_user_money", { p_ids: ids.slice(i, i + 150) }); if (error) break; (data || []).forEach(x => CPA_M.set(x.id, x)); } } catch (e) {}
+  ids.forEach(id => { if (!CPA_M.has(id)) CPA_M.set(id, null); });     // không có / lỗi (chưa chạy v29) → đánh dấu đã thử, KHÔNG tải lại liên tục
+  cpaMBusy = false; renderCpaTbl();
+}
+{ const _cc29 = cpaCustCell; cpaCustCell = function (p) {
+    const h = _cc29(p), m = p.user_id && CPA_M.get(p.user_id); if (!m || !h.includes("data-cpcust")) return h;
+    return h.replace(/<\/button>$/, `<span class="cpa-m">💰 Nạp ${vnd(m.dep)}${+m.dep_manual ? ` (✋ ${vnd(m.dep_manual)})` : ""} · dư ${vnd(m.bal)} · 💎 ${bnum(m.blue)}${m.locked ? " · 🔒 khoá" : ""}</span></button>`);
+  }; }
+{ const _rc29 = renderCpaTbl; renderCpaTbl = function () {
+    _rc29.apply(this, arguments);
+    document.querySelectorAll("#cpa-tbl tr").forEach(tr => { const cb = tr.querySelector("[data-cpsel]"); if (!cb || tr.dataset.pay) return; const p = CPA_ROWS.find(x => x.id === cb.dataset.cpsel); if (!p) return;
+      tr.dataset.pay = 1; const td = tr.children[1]; if (td) td.insertAdjacentHTML("beforeend", `<div class="hint cpa-pay">Trả: ${cpaPayTxt(p)}</div>`); });
+    if (CPA_ROWS.some(p => p.user_id && !CPA_M.has(p.user_id))) cpaMoneyLoad();
+  }; }
+{ const _rl29 = reloadCpa; reloadCpa = async function () { CPA_M.clear(); return _rl29.apply(this, arguments); }; }
 
 </script>
 </body>
