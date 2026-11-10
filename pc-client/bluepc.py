@@ -92,9 +92,37 @@ class ApiError(Exception):
     def __init__(self, code, msg): super().__init__(msg); self.code = code
 
 
+def _dev_id():
+    """Mã thiết bị (bản BĂM, không gửi mã gốc) gửi kèm yêu cầu lên Supabase (header x-cb-dev, SQL v29): nhiều tài khoản trên CÙNG 1 máy
+       là bot gác nhận ra (chống cày Blue bằng clone). Ghép mã cài Windows + card mạng → máy quán net dùng chung ảnh Windows vẫn khác nhau."""
+    parts = []
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Cryptography", 0, winreg.KEY_READ | getattr(winreg, "KEY_WOW64_64KEY", 0)) as k:
+            parts.append(str(winreg.QueryValueEx(k, "MachineGuid")[0]))
+    except Exception: pass
+    try:
+        import uuid
+        n = uuid.getnode()
+        if not (n >> 40) & 1: parts.append("%012x" % n)          # bỏ MAC ngẫu nhiên (bit multicast) — Python tự bịa khi không đọc được
+    except Exception: pass
+    if not parts:
+        try:
+            f = os.path.join(DATA, "dev.id")
+            if not os.path.exists(f):
+                os.makedirs(DATA, exist_ok=True); open(f, "w").write(secrets.token_hex(16))
+            parts.append(open(f).read().strip())
+        except Exception: return ""
+    return "p-" + hashlib.sha256(("cloudblue-dev:" + "|".join(parts)).encode()).hexdigest()[:32]
+
+
+DEV_ID = _dev_id()
+
+
 def http(method, url, body=None, headers=None, timeout=25):
     data = json.dumps(body).encode() if isinstance(body, (dict, list)) else body
     h = {"Accept": "application/json", "User-Agent": f"BlueRobloxPC/{APP_VER}"}
+    if DEV_ID and url.startswith(SB): h["x-cb-dev"] = DEV_ID                   # chỉ gửi cho Supabase
     if isinstance(body, (dict, list)): h["Content-Type"] = "application/json"
     h.update(headers or {})
     req = urllib.request.Request(url, data=data, method=method, headers=h)
@@ -1378,14 +1406,14 @@ def blue_intro_text(i):
     i = i or {}; c = i.get("cfg") or {}; ln = []
     ck, sb, sd = int(num(c.get("checkin"))), int(num(c.get("streak_bonus"))), int(num(c.get("streak_days")))
     if ck > 0: ln.append(f"📅 Điểm danh mỗi ngày: +{blue_n(ck)} Blue" + (f" (đủ {sd} ngày liền thưởng thêm +{blue_n(sb)})" if sb > 0 and sd > 0 else ""))
-    names = {"play": "📱 Mở máy đám mây", "share": "🔗 Chia sẻ link mời", "invite": "👥 Mời 1 bạn đăng ký"}
+    names = {"play": "📱 Mở máy đám mây", "share": "🔗 Chia sẻ link mời", "invite": "👥 Bạn được mời nạp tiền"}
     for t in i.get("tasks") or []:
         if t.get("id") in names and num(t.get("got")) > 0: ln.append(f"{names[t['id']]}: +{blue_n(t.get('got'))} Blue mỗi ngày")
-    if num(c.get("ref")) > 0: ln.append(f"🎁 Bạn được mời nạp tiền / mua lần đầu: +{blue_n(c.get('ref'))} Blue")
+    if num(c.get("ref")) > 0: ln.append(f"🎁 Bạn được mời nạp tiền lần đầu" + (f" (từ {vnd(c.get('ref_min_topup'))})" if num(c.get("ref_min_topup")) > 0 else "") + f": +{blue_n(c.get('ref'))} Blue")
     if num(c.get("cashback")) > 0: ln.append(f"💸 Mỗi đơn trả bằng tiền: hoàn {'%g' % num(c.get('cashback'))}% thành Blue")
     mp = 100 if c.get("max_pct") is None else max(0, min(100, int(num(c.get("max_pct")))))
     out = "\n".join(ln) + "\n\nDùng Blue: bật \"💎 Trả bằng Blue\" khi thuê / gia hạn máy — 1 Blue = 1đ" + (f", tối đa {mp}% mỗi đơn." if mp < 100 else ", trả được cả đơn.")
-    if not i.get("can_use") and i.get("need_topup", True): out += "\n🔒 Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường)."
+    if not i.get("can_use") and i.get("need_topup", True): out += "\n🔒 Nạp tiền" + (f" từ {vnd(i.get('use_min_topup'))}" if num(i.get("use_min_topup")) > 0 else " ít nhất 1 lần") + " để mở khoá trả bằng Blue (vẫn tích bình thường)."
     return out + "\n\nXem lại bất cứ lúc nào: bấm nút 💎 trên app."
 def blue_play_task(auth, say=None):
     """Nhiệm vụ "mở máy đám mây": cửa sổ máy nối được → nhận (mỗi ngày thử 1 lần / tài khoản; đã nhận / chưa bật thì im lặng)."""
@@ -1429,7 +1457,7 @@ class BlueDlg(Dlg):
     TASK = {"checkin": ("📅", "Điểm danh hôm nay", "Ngày nào cũng ghé là có Blue"),
             "play": ("📱", "Mở máy đám mây", "Mở 1 máy bất kỳ (app PC, app Android hoặc web) là tự nhận"),
             "share": ("📣", "Chia sẻ link mời", "Copy link CloudBlue của bạn gửi bạn bè / nhóm"),
-            "invite": ("🤝", "Mời 1 bạn đăng ký", "Có bạn đăng ký qua link của bạn trong hôm nay")}
+            "invite": ("🤝", "Bạn được mời nạp tiền", "Có bạn đăng ký qua link của bạn và NẠP TIỀN trong hôm nay")}
     KIND = {"checkin": "Điểm danh", "streak": "Thưởng chuỗi", "task": "Nhiệm vụ", "ref": "Mời bạn", "cashback": "Hoàn đơn",
             "spend": "Đã dùng", "refund": "Hoàn lại", "admin": "Admin", "clawback": "Thu lại"}
 
@@ -1448,8 +1476,14 @@ class BlueDlg(Dlg):
         mp = int(num(cfg.get("max_pct") if cfg.get("max_pct") is not None else 100))
         self.label(hero, "1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây" + (f" (tối đa {mp}% mỗi đơn)" if mp < 100 else "")
                    + " — bật 💎 Trả bằng Blue lúc thanh toán.", self.app.f_s, DIM, wraplength=490).pack(fill="x", padx=14, pady=(0, 10))
-        if not i.get("can_use") and i.get("need_topup"):
-            self.label(self.body, "🔒 Nạp tiền lần đầu để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.", self.app.f_s, WARN, wraplength=520).pack(fill="x", padx=18, pady=(8, 0))
+        if i.get("hold"):
+            self.label(self.body, "🧊 Blue của bạn đang được tạm giữ để kiểm tra (không nhận / không dùng được). Liên hệ hỗ trợ nếu cần.", self.app.f_s, WARN, wraplength=520).pack(fill="x", padx=18, pady=(8, 0))
+        elif i.get("new_account"):
+            self.label(self.body, f"🆕 Tài khoản mới — sau {int(num(i.get('min_age_h')) or 24)} giờ mới bắt đầu tích Blue được.", self.app.f_s, WARN, wraplength=520).pack(fill="x", padx=18, pady=(8, 0))
+        elif not i.get("can_use") and i.get("need_topup"):
+            self.label(self.body, "🔒 Nạp tiền" + (f" từ {vnd(i.get('use_min_topup'))}" if num(i.get("use_min_topup")) > 0 else " lần đầu") + " để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.", self.app.f_s, WARN, wraplength=520).pack(fill="x", padx=18, pady=(8, 0))
+        if num(i.get("day_cap")) > 0:
+            self.label(self.body, f"Hôm nay đã nhận {blue_n(i.get('today_earned'))} / {blue_n(i.get('day_cap'))} Blue (điểm danh + nhiệm vụ)", self.app.f_s, DIM, wraplength=520).pack(fill="x", padx=18, pady=(6, 0))
         sd, st, today = int(num(cfg.get("streak_days"))), int(num(i.get("streak"))), bool(i.get("today"))
         if 0 < sd <= 14 and num(cfg.get("checkin")) > 0:
             f = self.section("Chuỗi điểm danh", f"{st} ngày liền" if st else "bắt đầu hôm nay")
@@ -1467,7 +1501,7 @@ class BlueDlg(Dlg):
         self.msg = self.label(f, "", self.app.f_s, OK, wraplength=520)
         for t in ts:
             tid = t.get("id"); ic, name, sub = self.TASK.get(tid, ("⭐", tid, ""))
-            if tid == "invite" and t.get("ready"): sub = "Đã có bạn đăng ký qua link của bạn hôm nay 🎉"
+            if tid == "invite" and t.get("ready"): sub = "Bạn bạn mời đã nạp tiền hôm nay 🎉"
             if tid == "play" and not t.get("ready") and not t.get("done"): sub = "Cần có 1 máy đang chạy — thuê máy rồi mở là nhận"
             fr = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); fr.pack(fill="x", pady=(0, 6))
             tk.Label(fr, text=ic, font=("Segoe UI Emoji", 15), bg=CARD, fg=TXT, width=2).pack(side="left", padx=(10, 6), pady=8)
@@ -1482,7 +1516,7 @@ class BlueDlg(Dlg):
             self.label(tx, sub, self.app.f_s, DIM, wraplength=330).pack(fill="x")
         self.msg.pack(fill="x")
         more = []
-        if num(cfg.get("ref")) > 0: more.append(f"• Bạn bè bạn mời nạp tiền / mua lần đầu: +{blue_n(cfg.get('ref'))} Blue mỗi bạn")
+        if num(cfg.get("ref")) > 0: more.append(f"• Bạn bè bạn mời nạp tiền lần đầu" + (f" từ {vnd(cfg.get('ref_min_topup'))}" if num(cfg.get("ref_min_topup")) > 0 else "") + f" (khác mạng / thiết bị): +{blue_n(cfg.get('ref'))} Blue mỗi bạn")
         if num(cfg.get("cashback")) > 0: more.append(f"• Mỗi đơn trả bằng tiền (thuê, gia hạn, nâng cấp, mua hàng): hoàn {num(cfg.get('cashback')):g}% bằng Blue")
         more.append("• Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)")
         f = self.section("Nhận thêm Blue"); self.label(f, "\n".join(more), self.app.f_s, DIM, wraplength=520).pack(fill="x")
@@ -2719,6 +2753,10 @@ ERRORS.update({                                                  # 🏷️ mã g
     "BLUE_NOT_FOR_FREE": "Máy miễn phí không trả bằng Blue được.", "BLUE_OFF": "Tích Blue đang tạm tắt.",
     "TASK_DONE": "Hôm nay bạn đã nhận nhiệm vụ này rồi.", "TASK_NOT_YET": "Chưa xong nhiệm vụ — làm xong rồi bấm nhận nhé.",
     "TASK_OFF": "Nhiệm vụ này đang tạm tắt.", "BAD_TASK": "Nhiệm vụ không hợp lệ.",
+    # 🛡️ bảo mật (SQL v29)
+    "BLUE_DAY_CAP": "Hôm nay bạn đã nhận đủ Blue tối đa — mai quay lại nhé.", "BLUE_HOLD": "Blue của bạn đang được tạm giữ để kiểm tra — liên hệ hỗ trợ.",
+    "BLUE_NEW_ACCOUNT": "Tài khoản mới — sau 24 giờ mới tích Blue được.", "MONEY_GUARD": "Bị chặn: không được tự cộng tiền.", "BLUE_GUARD": "Bị chặn.",
+    "MAX_AMOUNT": "Số tiền quá lớn.", "banned": "Tài khoản đã bị khoá. Liên hệ hỗ trợ.",
 })
 ERRORS.update({"UPGRADE_PENDING": "Máy đang được nâng cấp, đợi khoảng 1 phút rồi thử lại.", "FREE_NO_UPGRADE": "Máy miễn phí không nâng cấp được — thuê máy trả phí để nâng.",
                "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "BAD_UPGRADE": "Cấu hình nâng cấp không hợp lệ."})
