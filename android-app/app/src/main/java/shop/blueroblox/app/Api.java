@@ -50,6 +50,7 @@ public final class Api {
         if (d == null) d = new JSONObject();
         setWeb(d.optString("web", null));
         minAndroid = d.optString("min_app_android", "").trim();
+        tiers = d.optJSONArray("cp_tiers");                 // 🎴 thẻ gói cấu hình (admin chỉnh trên web)
         siteOk = true;
         return d;
     }
@@ -65,6 +66,8 @@ public final class Api {
     /** Máy chủ báo app đã cũ (lỗi APP_OUTDATED) → bắt buộc cập nhật. minAndroid = bản tối thiểu admin đặt (settings.data.min_app_android). */
     public static volatile boolean outdated = false;
     public static volatile String minAndroid = "";
+    /** 🎴 Thẻ gói cấu hình (settings.data.cp_tiers) — null = dùng 5 gói mặc định. */
+    public static volatile JSONArray tiers = null;
     /** Màn đang mở đăng ký: có APP_OUTDATED → hiện ngay hộp "Bắt buộc cập nhật". */
     public static volatile Runnable onOutdated = null;
 
@@ -507,7 +510,7 @@ public final class Api {
                 {"MONEY_GUARD", "Bị chặn: không được tự cộng tiền.", "Blocked: you can't add money to yourself."},
                 {"BLUE_GUARD", "Bị chặn: Blue chỉ đổi qua sổ Blue.", "Blocked."},
                 {"MAX_AMOUNT", "Số tiền quá lớn.", "Amount too large."},
-                {"banned", "Tài khoản đã bị khoá. Liên hệ hỗ trợ.", "This account is locked. Contact support."},
+                {"banned", "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng (gian lận / cày clone / lợi dụng lỗi). Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.", "⛔ This account is banned for breaking the terms of use. If this is a mistake, contact support with your username."},
                 // 💎 Tích Blue (SQL v27)
                 {"BLUE_DONE", "Hôm nay bạn đã điểm danh rồi — quay lại ngày mai nhé.", "You've already checked in today — come back tomorrow."},
                 {"BLUE_IP_LIMIT", "Mạng (wifi / 4G) này đã đủ số tài khoản nhận Blue hôm nay — mai thử lại nhé.", "Enough accounts on this network have claimed Blue today — try tomorrow."},
@@ -560,7 +563,7 @@ public final class Api {
                 {"SERVER_OFFLINE", "Máy chủ điện thoại đang tạm ngưng.", "Phone server is offline."},
                 {"PHONE_GONE", "Máy đã bị xoá vì hết hạn quá 30 phút.", "This phone was deleted after expiring."},
                 {"PHONE_LOCKED", "Máy đang bị khoá.", "This phone is locked."},
-                {"LOCKED", "Tài khoản bị khoá.", "Account locked."},
+                {"LOCKED", "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng. Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.", "⛔ This account is banned for breaking the terms of use. If this is a mistake, contact support with your username."},
                 {"BAD_RAM", "RAM ngoài giới hạn.", "RAM out of range."},
                 {"BAD_CPU", "CPU ngoài giới hạn.", "CPU out of range."},
                 {"BAD_DAYS", "Số ngày ngoài giới hạn.", "Days out of range."},
