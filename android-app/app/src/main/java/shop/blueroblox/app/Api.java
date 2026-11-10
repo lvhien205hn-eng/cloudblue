@@ -126,6 +126,7 @@ public final class Api {
 
     public static void init(Context c) {
         PLAY = "vn.cloudblue.app".equals(c.getPackageName());
+        Guard.check(c);                                  // 🔒 1.115: app bị sửa / ký lại → chặn mọi kết nối (Guard.java)
         if (prefs != null) return;
         prefs = c.getApplicationContext().getSharedPreferences("auth", Context.MODE_PRIVATE);
         DEV = devId(c.getApplicationContext());
@@ -160,8 +161,87 @@ public final class Api {
         public String text() { return new String(body, StandardCharsets.UTF_8); }
     }
 
+    // ---------------- 🔒 1.115: GHIM CHỨNG CHỈ máy chủ tiền (Supabase) ----------------
+    /** Công cụ bắt / sửa gói tin (HttpCanary, Reqable, mitmproxy chạy trong Termux…) phải cài một "chứng chỉ giả" vào máy (máy root cài
+     *  thẳng vào kho hệ thống) để đọc / sửa dữ liệu máy chủ gửi về. Với Supabase, app CHỈ nhận chuỗi chứng chỉ đi lên các tổ chức cấp
+     *  chứng chỉ công khai lớn bên dưới (Cloudflare / Supabase / AWS đang dùng) → chứng chỉ giả bị từ chối, app báo "Kết nối không an toàn".
+     *  Mã pin = SHA-256 (base64) khoá công khai (SPKI) của chứng chỉ GỐC — công khai, không bí mật.
+     *  An toàn: máy vẫn kiểm chứng chỉ như thường trước; tới PIN_UNTIL thì tự bỏ ghim (không bao giờ khoá chết app — nhớ ra bản mới gia hạn);
+     *  dựng bộ ghim lỗi trên máy lạ → dùng kết nối thường (không chặn nhầm khách thật). Không ghim cloudblue.vn / máy chủ điện thoại. */
+    private static final String SB_HOST = SB.replaceFirst("^https://", "");
+    private static final long PIN_UNTIL = 1817078400000L;                  // 01/08/2027 00:00 UTC
+    private static final java.util.Set<String> PINS = new java.util.HashSet<>(java.util.Arrays.asList(
+            "C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=", "diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=",     // Let's Encrypt ISRG X1, X2
+            "hxqRlPTu1bMS/0DITB1SSu0vd4u/8l8TjPgfaAp63Gc=", "QXnt2YHvdHR3tJYmQIr0Paosp6t/nggsEGD4QJZ3Q0g=",     // Google Trust Services R1, R3
+            "mEflZT5enoR1FuXLgYYGqnVEoZvmf9c2bVBpiOjYQ0c=",                                                     // GTS R4 (Cloudflare WE1)
+            "cGuxAXyFXFkWm61cF4HPWX8S0srS9j0aSqN0k4AP+4A=", "aCdH+LpiG4fN07wpXtXKvOciocDANj0daLOJKNJ4fx4=",     // GlobalSign R3, R6
+            "rn+WLLnmp9v3uDP7GPqbcaiRdd+UnCMrap73yz3yu/w=", "4EoCLOMvTM8sf2BGKHuCijKpCfXnUUR/g/0scfb9gXM=",     // GlobalSign R46, E46
+            "CLOmM1/OXvSPjw5UOYbAf9GKOxImEp9hhku9W90fHMk=", "fg6tdrtoGdwvVFEahDVPboswe53YIFjqbABPAdndpd8=",     // GlobalSign ECC R4, R5
+            "0cRTd+vc1hjNFlHcLgLCHXUeWqn80bNDH/bs9qMTSPo=", "oyD01TTXvpfBro3QSZc1vIlcMjrdLTiL/M9mLCPX+Zo=",     // SSL.com RSA, ECC
+            "K89VOmb1cJAN3TK6bf4ezAbJGC1mLcG2Dh97dnwr3VQ=", "G/ANXI8TwJTdF+AFBM8IiIUPEv0Gf6H5LA/b9guG4yE=",     // SSL.com TLS RSA / ECC 2022
+            "x4QzPSC810K5/cMjb05Qm4k3Bw5zBn4lTdO/nEW/Td4=", "ICGRfpgmOUXIWcQ/HXPLQTkFPEFPoDyjvH7ohhQpjzs=",     // Sectigo USERTrust RSA, ECC
+            "grX4Ta9HpZx6tSHkmCrvpApTQGo67CYDnvprLg5yRME=", "58qRu/uxh4gFezqAcERupSkRYBlBAvfcw7mEjGPLnNU=",     // COMODO RSA, ECC
+            "Douxi77vs4G+Ib/BogbTFymEYq0QSFXwSgVCaZcI09Q=", "sLVjNUaFYfW7n6EtgBeEpjOlcnBdNPMrZDRF36iwBdE=",     // Sectigo Public Server R46, E46
+            "i7WTqTvh0OioIruIfFR4kMPnBqrS2rdiVPl/s2uC/CY=", "uUwZgwDOxcBXrQcntwu+kYFpkiVkOaezL0WYEZ3anJc=",     // DigiCert Global G2, G3
+            "ape1HIIZ6T5d7GS61YBs3rD4NVvkfnVwELcCRW4Bqv0=", "oC+voZLIy4HLE0FVT5wFtxzKKokLDRKY1oNkfJYe+98=",     // DigiCert TLS RSA4096 / ECC P384 G5
+            "++MBgDH5WGvL9Bcn5Be30cRcL0f5O+NyoXuWtQdX1aI=", "f0KW/FtqTjs108NpYj42SrGvOB2PpxIVM8nWxjPqJGE=",     // Amazon Root CA 1, 2
+            "NqvDJlas/GRcYbcWE8S/IceH9cq77kg0jVhZeAPXq8k=", "9+ze1cZgR9KO1kZrVDxA4HQ6voHRCSVNz4RdTCx4U8U=",     // Amazon Root CA 3, 4
+            "KwccWaCgrnaw6tsrrSO61FgLacNgG2MMLq8GE6+oP5I="));                                                   // Starfield Services G2 (AWS)
+    private static volatile javax.net.ssl.SSLSocketFactory sbSsl = null;
+    private static volatile boolean sbSslTried = false;
+
+    /** Bộ kết nối có ghim cho Supabase (dựng 1 lần). Dựng lỗi → null → dùng kết nối thường. */
+    private static javax.net.ssl.SSLSocketFactory sbSsl() {
+        if (sbSslTried) return sbSsl;
+        synchronized (Api.class) {
+            if (!sbSslTried) {
+                try {
+                    javax.net.ssl.TrustManagerFactory f = javax.net.ssl.TrustManagerFactory.getInstance(javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm());
+                    f.init((java.security.KeyStore) null);
+                    javax.net.ssl.X509TrustManager sys = null;
+                    for (javax.net.ssl.TrustManager t : f.getTrustManagers()) if (t instanceof javax.net.ssl.X509TrustManager) { sys = (javax.net.ssl.X509TrustManager) t; break; }
+                    if (sys != null) {
+                        javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
+                        ctx.init(null, new javax.net.ssl.TrustManager[]{new SbPin(sys)}, null);
+                        sbSsl = ctx.getSocketFactory();
+                    }
+                } catch (Exception e) { sbSsl = null; }
+                sbSslTried = true;
+            }
+            return sbSsl;
+        }
+    }
+
+    /** Máy kiểm chứng chỉ như bình thường (kho chứng chỉ hệ thống, không nhận chứng chỉ người dùng tự cài) + dựng chuỗi tới gốc tin cậy,
+     *  rồi đòi chuỗi đó có ít nhất 1 chứng chỉ thuộc bộ ghim. */
+    private static final class SbPin implements javax.net.ssl.X509TrustManager {
+        private final javax.net.ssl.X509TrustManager sys;
+        private final android.net.http.X509TrustManagerExtensions ext;
+        SbPin(javax.net.ssl.X509TrustManager sys) { this.sys = sys; this.ext = new android.net.http.X509TrustManagerExtensions(sys); }
+        @Override public void checkClientTrusted(java.security.cert.X509Certificate[] c, String a) throws java.security.cert.CertificateException { sys.checkClientTrusted(c, a); }
+        @Override public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) throws java.security.cert.CertificateException {
+            java.util.List<java.security.cert.X509Certificate> path = ext.checkServerTrusted(chain, authType, SB_HOST);
+            if (System.currentTimeMillis() > PIN_UNTIL) return;
+            if (path != null) for (java.security.cert.X509Certificate x : path) if (PINS.contains(spki(x))) return;
+            throw new java.security.cert.CertificateException("Pin verification failed: " + SB_HOST);
+        }
+        @Override public java.security.cert.X509Certificate[] getAcceptedIssuers() { return sys.getAcceptedIssuers(); }
+    }
+
+    static String spki(java.security.cert.X509Certificate x) {
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(x.getPublicKey().getEncoded());
+            return android.util.Base64.encodeToString(h, android.util.Base64.NO_WRAP);
+        } catch (Exception e) { return ""; }
+    }
+
     public static Res http(String method, String url, String ctype, byte[] body, String[][] headers) throws Exception {
+        if (Guard.bad) throw new ApiError(0, "APP_TAMPERED");     // 🔒 app không chính thức → không gửi gì lên máy chủ
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+        if (url.startsWith(SB + "/") && c instanceof javax.net.ssl.HttpsURLConnection) {     // 🔒 máy chủ tiền → kết nối có ghim
+            javax.net.ssl.SSLSocketFactory f = sbSsl();
+            if (f != null) ((javax.net.ssl.HttpsURLConnection) c).setSSLSocketFactory(f);
+        }
         c.setConnectTimeout(15000);
         c.setReadTimeout(120000);
         c.setRequestMethod(method);
@@ -385,6 +465,7 @@ public final class Api {
     }
 
     private static Res pinned(String url, String cert, int connectMs, String method, String ctype, byte[] body, String[][] headers) throws Exception {
+        if (Guard.bad) throw new ApiError(0, "APP_TAMPERED");
         javax.net.ssl.HttpsURLConnection c = (javax.net.ssl.HttpsURLConnection) new URL(url).openConnection();
         javax.net.ssl.SSLContext ctx = javax.net.ssl.SSLContext.getInstance("TLS");
         ctx.init(null, new javax.net.ssl.TrustManager[]{new Pin(cert)}, null);
@@ -476,6 +557,18 @@ public final class Api {
         return r.cookie;
     }
 
+    /** Lỗi do CHỨNG CHỈ (bị chặn / sửa giữa đường, chứng chỉ lạ, sai giờ máy) — không tính lỗi mạng chập chờn thông thường. */
+    private static boolean certProblem(Throwable e) {
+        int n = 0;
+        for (Throwable t = e; t != null && n < 8; t = t.getCause(), n++) {
+            if (t instanceof java.security.cert.CertificateException || t instanceof java.security.cert.CertPathValidatorException
+                    || t instanceof javax.net.ssl.SSLPeerUnverifiedException) return true;
+            String s = t.getMessage();
+            if (s != null && (s.contains("Pin verification failed") || s.contains("Trust anchor") || s.contains("CertPathValidator"))) return true;
+        }
+        return false;
+    }
+
     // ---------------- Lỗi dễ hiểu ----------------
     public static String friendly(Exception e) {
         String m = e.getMessage() == null ? "" : e.getMessage();
@@ -485,6 +578,13 @@ public final class Api {
             if (r != null) MAIN.post(r);
             return Ui.L("Bản app này đã cũ — phải cập nhật bản mới nhất mới dùng tiếp được.", "This app version is outdated — update to the latest version to continue.");
         }
+        if (m.contains("APP_TAMPERED"))
+            return Ui.L("⛔ App này đã bị sửa, không phải bản chính thức. Gỡ ra rồi tải bản chính thức tại " + webHost() + ".",
+                        "⛔ This app has been modified. Uninstall it and get the official app from " + webHost() + ".");
+        // 🔒 1.115 ghim chứng chỉ (res/xml/network_security_config.xml): có app chặn / sửa dữ liệu mạng → kết nối bị từ chối
+        if (certProblem(e))
+            return Ui.L("🔒 Kết nối không an toàn nên app đã chặn: có app đang chặn / sửa dữ liệu mạng (VPN lọc HTTPS, app bắt gói tin, chứng chỉ lạ) hoặc giờ trên máy bị sai. Tắt app đó / chỉnh lại giờ rồi thử lại.",
+                        "🔒 Insecure connection blocked: an app is intercepting your traffic (HTTPS-filtering VPN, packet capture, unknown certificate) or your clock is wrong. Turn it off / fix the time and try again.");
         if (e instanceof java.net.UnknownHostException || e instanceof java.net.ConnectException)
             return Ui.L("Không có kết nối mạng.", "No internet connection.");
         if (e instanceof java.net.SocketTimeoutException) return Ui.L("Mạng chậm, thử lại.", "Network timeout, try again.");

@@ -1699,6 +1699,17 @@ public class MainActivity extends Activity {
         }
         body.addView(c, Ui.fill());
 
+        if (!Api.PLAY) {                                // 🧾 1.115: lịch sử nạp tiền — đọc THẲNG từ máy chủ, cùng nguồn với web
+            LinearLayout hc = Ui.card(this);
+            hc.addView(Ui.h2(this, "🧾 " + Ui.L("Lịch sử nạp tiền", "Top-up history")));
+            TextView hInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
+            hc.addView(hInfo, Ui.fill());
+            LinearLayout hBox = Ui.col(this, 8);
+            hc.addView(hBox, Ui.fill());
+            body.addView(hc, Ui.fill());
+            loadTopups(hInfo, hBox);
+        }
+
         if (Blue.on()) {                                // 💎 Tích Blue (SQL v27)
             LinearLayout bc = Ui.card(this);
             bc.addView(Ui.h2(this, "💎 " + Ui.L("Tích Blue", "Blue rewards")));
@@ -1772,6 +1783,47 @@ public class MainActivity extends Activity {
             {"970418", "BIDV"}, {"970415", "VietinBank"}, {"970423", "TPBank"}, {"970403", "Sacombank"}, {"970405", "Agribank"}, {"970441", "VIB"},
             {"970443", "SHB"}, {"970448", "OCB"}, {"970426", "MSB"}};
 
+    /** 🧾 Lịch sử nạp tiền (1.115): đọc THẲNG bảng topups trên máy chủ (chỉ lệnh của chính mình) — cùng nguồn với web,
+     *  KHÔNG lưu gì trên máy. Số tiền "đã cộng" là số ngân hàng / crypto thật sự báo về, không phải số khách gõ.
+     *  Nhớ tạm 60 giây (màn Tài khoản tự vẽ lại mỗi 30 giây) — tạo mã nạp / nạp xong thì xoá nhớ tạm để hiện ngay. */
+    private JSONArray topCache = null;
+    private long topAt = 0;
+
+    void loadTopups(TextView info, LinearLayout box) {
+        final String me = Api.uid;
+        if (me == null || me.isEmpty()) { info.setText(Ui.L("Đăng nhập lại để xem lịch sử nạp.", "Log in again to see your top-ups.")); return; }
+        if (topCache != null && SystemClock.elapsedRealtime() - topAt < 60_000L) { drawTopups(info, box, topCache); return; }
+        Api.bg(() -> Api.get("topups?user_id=eq." + me + "&select=memo,amount,asked,status,created_at,done_at&order=created_at.desc&limit=20"), r -> {
+            JSONArray a = r instanceof JSONArray ? (JSONArray) r : new JSONArray();
+            topCache = a; topAt = SystemClock.elapsedRealtime();
+            if (destroyed || tab != 2 || !info.isAttachedToWindow()) return;
+            drawTopups(info, box, a);
+        }, m -> { if (!destroyed && info.isAttachedToWindow()) info.setText(m); });
+    }
+
+    private void drawTopups(TextView info, LinearLayout box, JSONArray a) {
+        box.removeAllViews();
+        long sum = 0;
+        for (int i = 0; i < a.length(); i++) {
+            JSONObject t = a.optJSONObject(i);
+            if (t == null) continue;
+            boolean ok = "done".equals(t.optString("status"));
+            double amt = ok ? t.optDouble("amount", 0) : t.optDouble("asked", t.optDouble("amount", 0));
+            if (ok) sum += Math.round(amt);
+            long at = parseTime(t.optString(ok && !t.isNull("done_at") ? "done_at" : "created_at"));
+            LinearLayout row = Ui.row(this, 8);
+            LinearLayout col = Ui.col(this, 2);
+            col.addView(Ui.text(this, Ui.L("Nạp tiền · ", "Top-up · ") + t.optString("memo"), 14, Ui.FG, true));
+            col.addView(Ui.muted(this, (at > 0 ? fdate(at) + " · " : "") + (ok ? Ui.L("✓ Đã cộng vào số dư", "✓ Credited")
+                    : Ui.L("⏳ Chưa thấy tiền về (chỉ là lệnh tạo mã, chưa cộng)", "⏳ No payment yet (code only, not credited)"))));
+            row.addView(col, Ui.weight(1));
+            row.addView(Ui.text(this, (ok ? "+" : "") + Ui.vnd(amt), 15, ok ? Ui.OK : Ui.MUTED, ok), Ui.wrap());
+            box.addView(row, Ui.fill());
+        }
+        info.setText(a.length() == 0 ? Ui.L("Chưa có lệnh nạp nào.", "No top-ups yet.")
+                : Ui.L("Lấy trực tiếp từ máy chủ, giống hệt trên web. 20 lệnh gần nhất · đã cộng: ", "Straight from the server, same as the website. Latest 20 · credited: ") + Ui.vnd(sum));
+    }
+
     void openTopup() { openTopup(0); }
 
     /** need > 0: số tiền còn thiếu (điền sẵn, làm tròn lên 1.000đ). */
@@ -1831,6 +1883,7 @@ public class MainActivity extends Activity {
             make.setEnabled(false);
             final long a = amt[0];
             Api.bg(() -> Api.rpc("create_topup", new JSONObject().put("p_amount", a)), r -> {
+                topCache = null;                                  // 🧾 lịch sử nạp: hiện ngay lệnh vừa tạo
                 d.dismiss();
                 if (r instanceof JSONObject) paySheet(site, (JSONObject) r);
             }, m -> { make.setEnabled(true); err.setText(m); err.setVisibility(View.VISIBLE); });
@@ -1892,6 +1945,7 @@ public class MainActivity extends Activity {
                     st.setTextColor(Ui.OK);
                     close.setText(Ui.L("Xong", "Done"));
                     Ui.toast(this, Ui.L("Nạp thành công +", "Top-up received +") + Ui.vnd(got));
+                    topCache = null;                              // 🧾 lịch sử nạp: hiện ngay "đã cộng"
                     refresh();
                     return;
                 }

@@ -75,6 +75,7 @@ public final class Ui {
     private static float density = 3f;
     public static void init(Context c) {
         density = c.getResources().getDisplayMetrics().density; Api.init(c);
+        if (c instanceof Activity) Guard.gate((Activity) c);         // 🔒 app bị sửa → hộp chặn (Guard.java)
         String t = c.getSharedPreferences("ui", Context.MODE_PRIVATE).getString("theme", null);
         boolean light = t != null ? "light".equals(t)
                 : (c.getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) != Configuration.UI_MODE_NIGHT_YES;
