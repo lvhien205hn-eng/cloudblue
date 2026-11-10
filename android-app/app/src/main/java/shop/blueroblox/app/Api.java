@@ -102,10 +102,30 @@ public final class Api {
     /** Trang chính sách: bản CH Play mở trang riêng (quyền riêng tư + điều khoản, không có chỗ mua hàng). */
     public static String policyUrl() { return PLAY ? WEB + "/privacy.html" : WEB + "/#policy"; }
 
+    /** Mã thiết bị gửi kèm mọi yêu cầu lên Supabase (header x-cb-dev, SQL v29): nhiều tài khoản trên CÙNG 1 máy là bot gác nhận ra
+     *  (chống cày Blue bằng tài khoản clone). Là bản BĂM của Android ID (không gửi mã gốc), chỉ dùng để chống gian lận. */
+    public static String DEV = null;
+
+    private static String devId(Context c) {
+        String aid = null;
+        try { aid = android.provider.Settings.Secure.getString(c.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID); } catch (Exception ignored) { }
+        if (aid == null || aid.isEmpty() || "9774d56d682e549c".equals(aid)) {
+            aid = prefs.getString("dev_rand", null);
+            if (aid == null) { aid = java.util.UUID.randomUUID().toString(); prefs.edit().putString("dev_rand", aid).apply(); }
+        }
+        try {
+            byte[] h = java.security.MessageDigest.getInstance("SHA-256").digest(("cloudblue-dev:" + aid).getBytes(StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder("a-");
+            for (int k = 0; k < 16; k++) sb.append(String.format("%02x", h[k] & 0xff));
+            return sb.toString();
+        } catch (Exception e) { return null; }
+    }
+
     public static void init(Context c) {
         PLAY = "vn.cloudblue.app".equals(c.getPackageName());
         if (prefs != null) return;
         prefs = c.getApplicationContext().getSharedPreferences("auth", Context.MODE_PRIVATE);
+        DEV = devId(c.getApplicationContext());
         access = prefs.getString("access", "");
         refresh = prefs.getString("refresh", "");
         uid = prefs.getString("uid", "");
@@ -144,6 +164,7 @@ public final class Api {
         c.setRequestMethod(method);
         c.setRequestProperty("Accept", "application/json");
         c.setRequestProperty("User-Agent", "BlueRobloxApp/" + version);
+        if (DEV != null && url.startsWith(SB)) c.setRequestProperty("x-cb-dev", DEV);       // chỉ gửi cho Supabase
         if (headers != null) for (String[] h : headers) if (h[1] != null) c.setRequestProperty(h[0], h[1]);
         if (body != null) {
             c.setDoOutput(true);
@@ -479,10 +500,18 @@ public final class Api {
                 {"PROMO_IS_GIFT", "Đây là mã TẶNG MÁY — nhập ở nút \"🎟 Nhập mã\" trong Máy của tôi.", "This is a gift-phone code — use \"🎟 Enter code\" in My phones."},
                 {"PROMO_NOT_FOR_FREE", "Máy miễn phí không dùng mã giảm giá được.", "Discount codes can't be used on free phones."},
                 {"PROMO_CTX", "Chọn cấu hình / số ngày trước rồi bấm Áp dụng.", "Choose the setup / days first, then Apply."},
+                // 🛡️ bảo mật (SQL v29) — đặt TRƯỚC các mã ngắn để khớp đúng
+                {"BLUE_DAY_CAP", "Hôm nay bạn đã nhận đủ Blue tối đa — mai quay lại nhé.", "You've reached today's Blue limit — come back tomorrow."},
+                {"BLUE_HOLD", "Blue của bạn đang được tạm giữ để kiểm tra — liên hệ hỗ trợ.", "Your Blue is on hold for review — contact support."},
+                {"BLUE_NEW_ACCOUNT", "Tài khoản mới — sau 24 giờ mới tích Blue được.", "New account — you can earn Blue after 24 hours."},
+                {"MONEY_GUARD", "Bị chặn: không được tự cộng tiền.", "Blocked: you can't add money to yourself."},
+                {"BLUE_GUARD", "Bị chặn: Blue chỉ đổi qua sổ Blue.", "Blocked."},
+                {"MAX_AMOUNT", "Số tiền quá lớn.", "Amount too large."},
+                {"banned", "Tài khoản đã bị khoá. Liên hệ hỗ trợ.", "This account is locked. Contact support."},
                 // 💎 Tích Blue (SQL v27)
                 {"BLUE_DONE", "Hôm nay bạn đã điểm danh rồi — quay lại ngày mai nhé.", "You've already checked in today — come back tomorrow."},
                 {"BLUE_IP_LIMIT", "Mạng (wifi / 4G) này đã đủ số tài khoản nhận Blue hôm nay — mai thử lại nhé.", "Enough accounts on this network have claimed Blue today — try tomorrow."},
-                {"BLUE_NEED_TOPUP", "Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (Blue vẫn được tích bình thường).", "Top up once to unlock paying with Blue."},
+                {"BLUE_NEED_TOPUP", "Nạp tiền từ 10.000đ để mở khoá trả bằng Blue (Blue vẫn được tích bình thường).", "Top up to unlock paying with Blue."},
                 {"BLUE_EMPTY", "Bạn chưa có Blue để trả.", "You don't have any Blue yet."},
                 {"BLUE_NOT_FOR_FREE", "Máy miễn phí không trả bằng Blue được.", "Free phones can't be paid with Blue."},
                 {"BLUE_OFF", "Tích Blue đang tạm tắt.", "Blue rewards are paused."},

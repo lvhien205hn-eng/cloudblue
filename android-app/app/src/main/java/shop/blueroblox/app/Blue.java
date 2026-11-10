@@ -101,7 +101,7 @@ final class Blue {
             case "checkin": return Ui.L("Điểm danh hôm nay", "Daily check-in");
             case "play": return Ui.L("Mở máy đám mây", "Open a cloud phone");
             case "share": return Ui.L("Chia sẻ link mời", "Share your invite link");
-            case "invite": return Ui.L("Mời 1 bạn đăng ký", "Invite a friend to sign up");
+            case "invite": return Ui.L("Bạn được mời nạp tiền", "An invited friend tops up");
             default: return id;
         }
     }
@@ -114,7 +114,7 @@ final class Blue {
         if ("play".equals(id)) return t.optBoolean("ready") || t.optBoolean("done") ? Ui.L("Mở 1 máy bất kỳ là tự nhận", "Open any phone — claimed automatically")
                 : Ui.L("Cần có 1 máy đang chạy", "You need a running phone");
         if ("share".equals(id)) return Ui.L("Gửi link CloudBlue cho bạn bè hoặc nhóm", "Send your CloudBlue link to friends");
-        if ("invite".equals(id)) return t.optBoolean("ready") ? Ui.L("Đã có bạn đăng ký qua link của bạn hôm nay 🎉", "A friend signed up with your link today 🎉")
+        if ("invite".equals(id)) return t.optBoolean("ready") ? Ui.L("Bạn bạn mời đã nạp tiền hôm nay 🎉", "Your invited friend topped up today 🎉")
                 : Ui.L("Có bạn đăng ký qua link của bạn trong hôm nay", "A friend signs up with your link today");
         return "";
     }
@@ -145,12 +145,12 @@ final class Blue {
                     .append(Ui.L(" Blue mỗi ngày", " Blue a day")).append("\n");
         }
         if (!Api.PLAY) {
-            if (c.optLong("ref") > 0) s.append("🎁 ").append(Ui.L("Bạn được mời nạp tiền / mua lần đầu: +", "An invited friend's first top-up / purchase: +")).append(n(c.optLong("ref"))).append(" Blue\n");
+            if (c.optLong("ref") > 0) s.append("🎁 ").append(Ui.L("Bạn được mời nạp tiền lần đầu" + (c.optLong("ref_min_topup") > 0 ? " (từ " + n(c.optLong("ref_min_topup")) + "đ)" : "") + ": +", "An invited friend's first top-up: +")).append(n(c.optLong("ref"))).append(" Blue\n");
             if (c.optDouble("cashback") > 0) s.append("💸 ").append(Ui.L("Mỗi đơn trả bằng tiền: hoàn ", "Every paid order: ")).append(fmtPct(c.optDouble("cashback"))).append(Ui.L("% thành Blue\n", "% back in Blue\n"));
             s.append("\n").append(Ui.L("Dùng Blue: bật \"💎 Trả bằng Blue\" khi thuê / gia hạn máy — 1 Blue = 1đ", "Spend: turn on \"💎 Pay with Blue\" when renting / renewing — 1 Blue = 1đ"))
                     .append(maxPct() < 100 ? Ui.L(", tối đa " + maxPct() + "% mỗi đơn.", ", up to " + maxPct() + "% per order.") : Ui.L(", trả được cả đơn.", ", up to the whole order."));
             if (i != null && !i.optBoolean("can_use") && i.optBoolean("need_topup", true))
-                s.append("\n🔒 ").append(Ui.L("Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường).", "Top up once to unlock paying with Blue (you still earn as usual)."));
+                s.append("\n🔒 ").append(Ui.L("Nạp tiền" + (i.optLong("use_min_topup") > 0 ? " từ " + n(i.optLong("use_min_topup")) + "đ" : " ít nhất 1 lần") + " để mở khoá trả bằng Blue (vẫn tích bình thường).", "Top up to unlock paying with Blue (you still earn as usual)."));
         }
         s.append("\n\n").append(Ui.L("Xem lại bất cứ lúc nào: bấm 💎 ở trên cùng.", "Tap 💎 at the top any time to see this again."));
         return s.toString().trim();
@@ -193,9 +193,18 @@ final class Blue {
             hero.addView(Ui.muted(a, Api.PLAY ? Ui.L("Blue tích từ điểm danh và nhiệm vụ hằng ngày.", "Earn Blue from daily check-ins and missions.")
                     : Ui.L("1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây", "1 Blue = 1đ on cloud phone rentals / renewals")
                       + (maxPct() < 100 ? Ui.L(" (tối đa " + maxPct() + "% mỗi đơn)", " (max " + maxPct() + "% per order)") : "")));
-            if (!Api.PLAY && !i.optBoolean("can_use") && i.optBoolean("need_topup"))
-                hero.addView(Ui.text(a, "🔒 " + Ui.L("Nạp tiền lần đầu để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.",
-                        "Top up once to unlock paying with Blue. You keep earning meanwhile."), 12.5f, Ui.WAIT, false), Ui.fill());
+            if (i.optBoolean("hold"))
+                hero.addView(Ui.text(a, "🧊 " + Ui.L("Blue của bạn đang được tạm giữ để kiểm tra (không nhận / không dùng được). Liên hệ hỗ trợ nếu cần.",
+                        "Your Blue is on hold for review. Contact support if needed."), 12.5f, Ui.WAIT, false), Ui.fill());
+            else if (i.optBoolean("new_account"))
+                hero.addView(Ui.text(a, "🆕 " + Ui.L("Tài khoản mới — sau " + Math.max(1, i.optInt("min_age_h", 24)) + " giờ mới bắt đầu tích Blue được.",
+                        "New account — you can start earning Blue after " + Math.max(1, i.optInt("min_age_h", 24)) + " hours."), 12.5f, Ui.WAIT, false), Ui.fill());
+            else if (!Api.PLAY && !i.optBoolean("can_use") && i.optBoolean("need_topup"))
+                hero.addView(Ui.text(a, "🔒 " + Ui.L("Nạp tiền" + (i.optLong("use_min_topup") > 0 ? " từ " + n(i.optLong("use_min_topup")) + "đ" : " lần đầu") + " để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.",
+                        "Top up to unlock paying with Blue. You keep earning meanwhile."), 12.5f, Ui.WAIT, false), Ui.fill());
+            if (i.optLong("day_cap") > 0)
+                hero.addView(Ui.muted(a, Ui.L("Hôm nay đã nhận " + n(i.optLong("today_earned")) + " / " + n(i.optLong("day_cap")) + " Blue (điểm danh + nhiệm vụ)",
+                        "Today: " + n(i.optLong("today_earned")) + " / " + n(i.optLong("day_cap")) + " Blue from check-in + missions")), Ui.fill());
             c.addView(hero, Ui.fill());
             // chuỗi điểm danh
             int sd = cfg.optInt("streak_days"), st = i.optInt("streak"); boolean today = i.optBoolean("today");
@@ -251,7 +260,7 @@ final class Blue {
             // nhận thêm
             if (!Api.PLAY) {
                 StringBuilder more = new StringBuilder();
-                if (cfg.optLong("ref") > 0) more.append("• ").append(Ui.L("Bạn bè bạn mời nạp tiền / mua lần đầu: +", "Each invited friend's first top-up or purchase: +")).append(n(cfg.optLong("ref"))).append(" Blue\n");
+                if (cfg.optLong("ref") > 0) more.append("• ").append(Ui.L("Bạn bè bạn mời nạp tiền lần đầu" + (cfg.optLong("ref_min_topup") > 0 ? " từ " + n(cfg.optLong("ref_min_topup")) + "đ" : "") + " (khác mạng / thiết bị): +", "Each invited friend's first top-up: +")).append(n(cfg.optLong("ref"))).append(" Blue\n");
                 if (cfg.optDouble("cashback") > 0) more.append("• ").append(Ui.L("Mỗi đơn trả bằng tiền: hoàn ", "Every paid order: ")).append(fmtPct(cfg.optDouble("cashback"))).append(Ui.L("% bằng Blue\n", "% back in Blue\n"));
                 more.append("• ").append(Ui.L("Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)", "Missions reset at midnight (Vietnam time)"));
                 c.addView(Ui.muted(a, more.toString()), Ui.fill());
