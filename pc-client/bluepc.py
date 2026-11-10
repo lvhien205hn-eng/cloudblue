@@ -1373,6 +1373,20 @@ def blue_todo():
     return sum(1 for t in ((i or {}).get("tasks") or []) if not t.get("done") and t.get("ready")) if blue_on() else 0
 def vn_today():
     return (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=7)).strftime("%Y-%m-%d")
+def blue_intro_text(i):
+    """Cách nhận / dùng Blue theo cấu hình admin đang bật (con số đổi theo admin) — hộp giới thiệu lần đầu của app PC."""
+    i = i or {}; c = i.get("cfg") or {}; ln = []
+    ck, sb, sd = int(num(c.get("checkin"))), int(num(c.get("streak_bonus"))), int(num(c.get("streak_days")))
+    if ck > 0: ln.append(f"📅 Điểm danh mỗi ngày: +{blue_n(ck)} Blue" + (f" (đủ {sd} ngày liền thưởng thêm +{blue_n(sb)})" if sb > 0 and sd > 0 else ""))
+    names = {"play": "📱 Mở máy đám mây", "share": "🔗 Chia sẻ link mời", "invite": "👥 Mời 1 bạn đăng ký"}
+    for t in i.get("tasks") or []:
+        if t.get("id") in names and num(t.get("got")) > 0: ln.append(f"{names[t['id']]}: +{blue_n(t.get('got'))} Blue mỗi ngày")
+    if num(c.get("ref")) > 0: ln.append(f"🎁 Bạn được mời nạp tiền / mua lần đầu: +{blue_n(c.get('ref'))} Blue")
+    if num(c.get("cashback")) > 0: ln.append(f"💸 Mỗi đơn trả bằng tiền: hoàn {'%g' % num(c.get('cashback'))}% thành Blue")
+    mp = 100 if c.get("max_pct") is None else max(0, min(100, int(num(c.get("max_pct")))))
+    out = "\n".join(ln) + "\n\nDùng Blue: bật \"💎 Trả bằng Blue\" khi thuê / gia hạn máy — 1 Blue = 1đ" + (f", tối đa {mp}% mỗi đơn." if mp < 100 else ", trả được cả đơn.")
+    if not i.get("can_use") and i.get("need_topup", True): out += "\n🔒 Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường)."
+    return out + "\n\nXem lại bất cứ lúc nào: bấm nút 💎 trên app."
 def blue_play_task(auth, say=None):
     """Nhiệm vụ "mở máy đám mây": cửa sổ máy nối được → nhận (mỗi ngày thử 1 lần / tài khoản; đã nhận / chưa bật thì im lặng)."""
     k, d = "blue_play_" + str(auth.uid or ""), vn_today()
@@ -3294,8 +3308,15 @@ class Launcher:
         n = blue_todo()
         b.config(text=f"💎 {blue_n(BLUE['info'].get('blue'))} Blue" + (f"  •{n}" if n else ""))
         if not b.winfo_manager(): b.pack(side="right", padx=(0, 6), pady=10)
-        i = BLUE["info"]; k, d = "blue_nudge_" + str(self.auth.uid or ""), vn_today()
-        if i and not i.get("today") and prefs().get(k) != d:
+        i = BLUE["info"]; k, d = "blue_nudge_" + str(self.auth.uid or ""), vn_today(); ki = "blue_intro_" + str(self.auth.uid or "")
+        if i and not prefs().get(ki):                    # lần đầu thấy Tích Blue → hộp hướng dẫn cách nhận (1 lần / tài khoản / máy)
+            prefs({ki: 1, k: d})
+            try:
+                import tkinter.messagebox as mb
+                self.root.after(800, lambda: mb.askyesno("🎉 Mới: Tích Blue", "Tích Blue để thuê / gia hạn máy rẻ hơn — 1 Blue = 1đ. Cách nhận:\n\n"
+                                                         + blue_intro_text(i) + "\n\nMở Tích Blue để điểm danh ngay?", parent=self.root) and BlueDlg(self))
+            except Exception: pass
+        elif i and not i.get("today") and prefs().get(k) != d:
             prefs({k: d})
             try:
                 import tkinter.messagebox as mb

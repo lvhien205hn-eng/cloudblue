@@ -314,10 +314,13 @@ public class MainActivity extends Activity {
             blueAcc.setText(on ? "💎 " + Blue.n(Blue.bal()) + " Blue" + (todo > 0 ? Ui.L("  ·  " + todo + " nhiệm vụ nhận được", "  ·  " + todo + " mission(s) ready") : "") : "");
         if (tab == 1 && loaded && !Api.PLAY && rentUpd != null) rentUpd.run();
         JSONObject i = Blue.info;
-        if (on && i != null && !i.optBoolean("today") && resumed) {
+        if (on && i != null && resumed) {
             android.content.SharedPreferences sp = getSharedPreferences("blue", MODE_PRIVATE);
-            String k = "nudge_" + Api.uid, d = Blue.vnDay();
-            if (!d.equals(sp.getString(k, ""))) {
+            String k = "nudge_" + Api.uid, d = Blue.vnDay(), ki = "intro_" + Api.uid;
+            if (!sp.getBoolean(ki, false)) {             // lần đầu thấy Tích Blue → hộp hướng dẫn cách nhận (1 lần / tài khoản / máy)
+                sp.edit().putBoolean(ki, true).putString(k, d).apply();
+                getWindow().getDecorView().postDelayed(() -> { if (!destroyed && !isFinishing()) Blue.intro(this); }, 700);
+            } else if (!i.optBoolean("today") && !d.equals(sp.getString(k, ""))) {
                 sp.edit().putString(k, d).apply();
                 Ui.toast(this, Ui.L("💎 Hôm nay chưa điểm danh — bấm 💎 ở trên để nhận +" + Blue.n(i.optLong("next_got")) + " Blue",
                         "💎 Check in today — tap 💎 at the top for +" + Blue.n(i.optLong("next_got")) + " Blue"));

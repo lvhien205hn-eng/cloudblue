@@ -1312,6 +1312,7 @@ img.cb-wh{object-fit:contain;padding:8px 6px;border-radius:16px;background:linea
 .bluechip b{color:var(--fg);font-weight:700}
 .bluechip .bdot{position:absolute;top:-3px;right:-3px;width:10px;height:10px;border-radius:50%;background:var(--bad);box-shadow:0 0 0 2px var(--bg)}
 .dlg.bluedlg{width:min(560px,100%);gap:12px}
+.dlg.bintro{width:min(520px,100%);gap:10px}.bintro ul{margin:2px 0;padding-left:4px;list-style:none;display:grid;gap:7px}.bintro li{line-height:1.45}.bintro p{margin:0;line-height:1.5}
 .bl-top{display:flex;align-items:center;gap:10px}.bl-top h3{margin:0}.bl-top .btn{margin-left:auto}
 .bl-hero{display:grid;grid-template-columns:auto 1fr auto;gap:2px 14px;align-items:center;padding:14px 16px;border:1px solid rgba(143,208,255,.32);border-radius:16px;background:radial-gradient(120% 140% at 0% 0%,rgba(143,208,255,.16),transparent 60%),rgba(61,123,255,.07)}
 .bl-gem{grid-row:span 2;width:46px;height:46px}
@@ -5443,8 +5444,42 @@ function blueChip() {
   const n = blueTodo(); $("blue-dot").hidden = !n;
   b.title = L("Tích Blue", "Blue rewards") + (n ? " · " + L(`${n} nhiệm vụ nhận được ngay`, `${n} mission(s) ready`) : "");
 }
-function blueNudge() {          // nhắc điểm danh 1 lần / ngày / tài khoản (không bật hộp, chỉ báo nhỏ)
-  if (!blueOn() || BLUE.today) return;
+function blueIntroHtml() {       // cách nhận / dùng Blue theo cấu hình admin đang bật (con số đổi theo admin)
+  const c = (BLUE && BLUE.cfg) || {}, ln = [];
+  const tk = { play: ["📱", L("Mở máy đám mây", "Open a cloud phone")], share: ["🔗", L("Chia sẻ link mời", "Share your invite link")], invite: ["👥", L("Mời 1 bạn đăng ký", "Invite a friend to sign up")] };
+  if (+c.checkin > 0) ln.push(`📅 ${L("Điểm danh mỗi ngày", "Daily check-in")}: <b>+${bnum(c.checkin)}</b> Blue`
+    + (+c.streak_bonus > 0 && +c.streak_days > 0 ? L(` (đủ ${+c.streak_days} ngày liền thưởng thêm +${bnum(c.streak_bonus)})`, ` (+${bnum(c.streak_bonus)} bonus every ${+c.streak_days} days in a row)`) : ""));
+  for (const t of (BLUE && BLUE.tasks) || []) if (tk[t.id] && +t.got > 0) ln.push(`${tk[t.id][0]} ${tk[t.id][1]}: <b>+${bnum(t.got)}</b> Blue ${L("mỗi ngày", "a day")}`);
+  if (+c.ref > 0) ln.push(`🎁 ${L("Bạn được mời nạp tiền / mua lần đầu", "An invited friend's first top-up / purchase")}: <b>+${bnum(c.ref)}</b> Blue`);
+  if (+c.cashback > 0) ln.push(`💸 ${L("Mỗi đơn trả bằng tiền: hoàn", "Every paid order:")} <b>${+c.cashback}%</b> ${L("thành Blue", "back in Blue")}`);
+  const mp = c.max_pct == null ? 100 : +c.max_pct;
+  return `<ul>${ln.map(x => `<li>${x}</li>`).join("")}</ul>`
+    + `<p>${L(`<b>Dùng Blue:</b> bật "💎 Trả bằng Blue" khi thuê / gia hạn máy — 1 Blue = 1đ${mp < 100 ? `, tối đa ${mp}% mỗi đơn` : ", trả được cả đơn"}.`,
+              `<b>Spend:</b> turn on "💎 Pay with Blue" when renting / renewing — 1 Blue = 1đ${mp < 100 ? `, up to ${mp}% per order` : ", up to the whole order"}.`)}</p>`
+    + (BLUE && !BLUE.can_use && BLUE.need_topup !== false ? `<p class="hint">🔒 ${L("Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường).", "Top up once to unlock paying with Blue (you still earn as usual).")}</p>` : "")
+    + `<p class="hint">${L("Xem lại bất cứ lúc nào: bấm 💎 ở góc trên.", "Tap 💎 at the top any time to see this again.")}</p>`;
+}
+function blueIntro() {          // hộp giới thiệu "Tích Blue" — 1 lần / tài khoản / trình duyệt; thông báo web đang mở → chờ đóng xong mới hiện
+  if (!blueOn() || !profile) return false;
+  const k = "cb_bintro_" + profile.id, seen = () => { try { return !!localStorage.getItem(k); } catch (e) { return true; } };
+  if (seen()) return false;
+  const go = n => {
+    if (seen() || !blueOn()) return;
+    if (!$("noticedlg").hidden || !$("maintov").hidden) { if (n < 180) setTimeout(() => go(n + 1), 1000); return; }
+    try { localStorage.setItem(k, "1"); localStorage.setItem("cb_bnudge_" + profile.id, new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" })); } catch (e) {}
+    let m = $("bintrodlg");
+    if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "bintrodlg"; m.hidden = true; document.body.appendChild(m);
+      m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-bix]")) m.hidden = true; else if (e.target.closest("#bi-go")) { m.hidden = true; openBlue(); } }); }
+    m.innerHTML = `<div class="dlg bintro" role="dialog" aria-modal="true" aria-labelledby="bi-t"><h3 id="bi-t">🎉 ${L("Mới: Tích Blue", "New: Blue rewards")}</h3>
+      <p>${L("Tích Blue để thuê / gia hạn máy rẻ hơn — <b>1 Blue = 1đ</b>. Cách nhận:", "Earn Blue to pay less for phones — <b>1 Blue = 1đ</b>. How to earn:")}</p>${blueIntroHtml()}
+      <div class="row2"><button class="btn ghost" type="button" data-bix>${L("Để sau", "Later")}</button><button class="btn" type="button" id="bi-go">💎 ${L("Nhận Blue ngay", "Get Blue now")}</button></div></div>`;
+    m.hidden = false;
+  };
+  setTimeout(() => go(0), 900); return true;
+}
+function blueNudge() {          // nhắc điểm danh 1 lần / ngày / tài khoản (không bật hộp, chỉ báo nhỏ) · lần đầu: hộp giới thiệu cách nhận Blue
+  if (!blueOn()) return;
+  if (blueIntro() || BLUE.today) return;
   try { const k = "cb_bnudge_" + profile.id, d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
     if (localStorage.getItem(k) === d) return; localStorage.setItem(k, d); } catch (e) { return; }
   setTimeout(() => toast(L(`💎 Hôm nay chưa điểm danh — bấm 💎 ở góc trên để nhận +${bnum(BLUE.next_got)} Blue`, `💎 Check in today — tap 💎 at the top for +${bnum(BLUE.next_got)} Blue`)), 1200);

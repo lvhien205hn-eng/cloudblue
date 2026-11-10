@@ -129,6 +129,51 @@ final class Blue {
     }
 
     /** Hộp 💎 Tích Blue: số Blue, chuỗi điểm danh, nhiệm vụ hôm nay, cách nhận thêm, lịch sử. */
+    /** Cách nhận / dùng Blue theo cấu hình admin đang bật (con số đổi theo admin) — cho hộp giới thiệu lần đầu. */
+    static String introText() {
+        JSONObject i = info, c = i == null ? null : i.optJSONObject("cfg");
+        if (c == null) c = new JSONObject();
+        StringBuilder s = new StringBuilder();
+        long ck = c.optLong("checkin"), sb = c.optLong("streak_bonus"); int sd = c.optInt("streak_days");
+        if (ck > 0) s.append("📅 ").append(Ui.L("Điểm danh mỗi ngày: +", "Daily check-in: +")).append(n(ck)).append(" Blue")
+                .append(sb > 0 && sd > 0 ? Ui.L(" (đủ " + sd + " ngày liền thưởng thêm +" + n(sb) + ")", " (+" + n(sb) + " bonus every " + sd + " days in a row)") : "").append("\n");
+        JSONArray t = tasks();
+        for (int k = 0; k < t.length(); k++) {
+            JSONObject x = t.optJSONObject(k);
+            if (x == null || "checkin".equals(x.optString("id")) || x.optLong("got") <= 0) continue;
+            s.append(taskIcon(x.optString("id"))).append(" ").append(taskName(x.optString("id"))).append(": +").append(n(x.optLong("got")))
+                    .append(Ui.L(" Blue mỗi ngày", " Blue a day")).append("\n");
+        }
+        if (!Api.PLAY) {
+            if (c.optLong("ref") > 0) s.append("🎁 ").append(Ui.L("Bạn được mời nạp tiền / mua lần đầu: +", "An invited friend's first top-up / purchase: +")).append(n(c.optLong("ref"))).append(" Blue\n");
+            if (c.optDouble("cashback") > 0) s.append("💸 ").append(Ui.L("Mỗi đơn trả bằng tiền: hoàn ", "Every paid order: ")).append(fmtPct(c.optDouble("cashback"))).append(Ui.L("% thành Blue\n", "% back in Blue\n"));
+            s.append("\n").append(Ui.L("Dùng Blue: bật \"💎 Trả bằng Blue\" khi thuê / gia hạn máy — 1 Blue = 1đ", "Spend: turn on \"💎 Pay with Blue\" when renting / renewing — 1 Blue = 1đ"))
+                    .append(maxPct() < 100 ? Ui.L(", tối đa " + maxPct() + "% mỗi đơn.", ", up to " + maxPct() + "% per order.") : Ui.L(", trả được cả đơn.", ", up to the whole order."));
+            if (i != null && !i.optBoolean("can_use") && i.optBoolean("need_topup", true))
+                s.append("\n🔒 ").append(Ui.L("Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường).", "Top up once to unlock paying with Blue (you still earn as usual)."));
+        }
+        s.append("\n\n").append(Ui.L("Xem lại bất cứ lúc nào: bấm 💎 ở trên cùng.", "Tap 💎 at the top any time to see this again."));
+        return s.toString().trim();
+    }
+
+    /** 🎉 Hộp giới thiệu "Tích Blue" — hiện 1 lần / tài khoản / máy (MainActivity.blueChanged gọi). */
+    static void intro(MainActivity a) {
+        LinearLayout c = Ui.col(a, 12);
+        c.addView(Ui.text(a, Api.PLAY ? Ui.L("Ghé app mỗi ngày để tích Blue. Cách nhận:", "Drop by every day to earn Blue. How:")
+                : Ui.L("Tích Blue để thuê / gia hạn máy rẻ hơn — 1 Blue = 1đ. Cách nhận:", "Earn Blue to pay less for phones — 1 Blue = 1đ. How to earn:"), 14.5f, Ui.FG, true), Ui.fill());
+        c.addView(Ui.text(a, introText(), 14, Ui.FG, false), Ui.fill());
+        Button later = Ui.button(a, Ui.L("Để sau", "Later"), Ui.GHOST);
+        Button go = Ui.button(a, "💎 " + Ui.L("Nhận Blue ngay", "Get Blue now"), Ui.PRIMARY);
+        LinearLayout r = Ui.row(a, 10);
+        r.addView(later, Ui.weight(1));
+        r.addView(go, Ui.weight(1));
+        c.addView(r, Ui.fill());
+        Dialog d = Ui.sheet(a, "🎉 " + Ui.L("Mới: Tích Blue", "New: Blue rewards"), c);
+        later.setOnClickListener(v -> d.dismiss());
+        go.setOnClickListener(v -> { d.dismiss(); sheet(a); });
+        d.show();
+    }
+
     static void sheet(MainActivity a) {
         final Dialog[] d = new Dialog[1];
         LinearLayout c = Ui.col(a, 12);
