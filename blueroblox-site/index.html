@@ -635,6 +635,19 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .cpabar select{width:auto}
 .cpasel{display:inline-flex;gap:6px;align-items:center;font-size:13px;padding:4px 8px;border-radius:10px;background:rgba(61,123,255,.12);border:1px solid var(--line2)}
 .cpasel[hidden]{display:none}
+.fg-again{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fg-again .btn{flex:none}
+.pwdlg{max-width:440px}.pwdlg p{line-height:1.5;margin:6px 0 10px}
+.bandlg{text-align:center;max-width:470px}.bandlg .ban-ic{font-size:44px;line-height:1;margin:2px 0 6px}.bandlg h3{margin:0 0 8px;color:var(--bad)}
+.bandlg p{margin:6px 0;line-height:1.5}.bandlg .ban-list{text-align:left;margin:10px 0;padding-left:20px;line-height:1.5}.bandlg .ban-list li{margin:3px 0}
+.bandlg .contacts{display:grid;gap:8px;margin:12px 0 4px;text-align:left}.bandlg .ban-ok{display:flex;justify-content:center;margin-top:12px}.bandlg .ban-ok .btn{min-width:140px}
+.tbl th.bk-c,.tbl td.bk-c{width:34px;padding:11px 2px 11px 12px;text-align:center}
+.bk-c input{width:17px;height:17px;margin:0;vertical-align:middle;accent-color:var(--blue);cursor:pointer}
+.tbl tbody tr.bk-on td{background:rgba(61,123,255,.12)}
+.bk-bar{position:sticky;top:0;z-index:6;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:8px 10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line2);border-left:3px solid var(--blue);box-shadow:0 12px 26px -18px rgba(0,0,0,.65)}
+.bk-bar[hidden]{display:none}.bk-bar .bk-n{font-size:13px;margin-right:4px;color:var(--fg)}.bk-bar .bk-x{margin-left:auto}
+.bk-names{display:flex;flex-wrap:wrap;gap:4px;margin:2px 0 8px;max-height:120px;overflow:auto}
+.bk-pv{font-size:13px;color:var(--muted);margin:6px 0}.bk-pv b{color:var(--fg)}
+.rfa-head .bk-hd{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}.rfa-head .bk-hd .btn{margin-left:0}
 #cpa-tbl input[type=checkbox],#cpa-all{width:16px;height:16px;accent-color:var(--blue)}
 #cpl-dur{grid-template-columns:repeat(4,1fr)}
 .dbody{grid-auto-rows:max-content}
@@ -1604,11 +1617,12 @@ window.BR_CONFIG = {
       <h3 data-i18n="fg_title">Khôi phục mật khẩu</h3>
       <div id="fg-step1" style="display:grid;gap:12px">
         <label><span data-i18n="fg_email">Email đã đăng ký</span><input class="in" id="fg-e" type="email" required></label>
-        <button class="btn" type="button" id="fg-send" data-i18n="fg_send">Gửi mã về email</button>
+        <button class="btn" type="button" id="fg-send" data-i18n="fg_send">Gửi email đặt lại mật khẩu</button>
       </div>
       <div id="fg-step2" style="display:grid;gap:12px" hidden>
-        <div class="note"><span data-i18n="fg_sent">Đã gửi mã 6 số tới</span> <b id="fg-to"></b>. <span data-i18n="fg_spam">Kiểm tra cả thư mục Spam. Mã có hiệu lực 1 giờ.</span></div>
-        <label><span data-i18n="fg_code">Mã xác nhận</span><input class="in" id="fg-c" inputmode="numeric" maxlength="6" autocomplete="one-time-code"></label>
+        <div class="note"><span data-i18n="fg_sent">Đã gửi email đặt lại mật khẩu tới</span> <b id="fg-to"></b>. <span data-i18n="fg_spam">Mở email, bấm nút “Reset password” (Đặt mật khẩu mới) → trang CloudBlue mở ra để bạn đặt mật khẩu mới. Không thấy thư thì xem thư mục Spam (Thư rác). Email có mã số thì nhập mã ở dưới cũng được. Link / mã dùng được 1 giờ.</span></div>
+        <div class="fg-again"><span class="hint" id="fg-again-t">Chưa nhận được email?</span><button class="btn ghost sm" type="button" id="fg-resend">🔁 Gửi lại email</button></div>
+        <label><span data-i18n="fg_code">Mã trong email (nếu có)</span><input class="in" id="fg-c" inputmode="numeric" maxlength="10" autocomplete="one-time-code"></label>
         <label><span data-i18n="pw_new8">Mật khẩu mới (ít nhất 8 ký tự)</span><input class="in" id="fg-p" type="password" minlength="8" autocomplete="new-password"></label>
         <button class="btn" type="button" id="fg-ok" data-i18n="fg_ok">Đặt lại mật khẩu</button>
       </div>
@@ -1801,7 +1815,7 @@ window.BR_CONFIG = {
       <label>Tên đăng nhập<input class="in" id="cd-username" autocomplete="off"></label>
       <label>Email<input class="in" id="cd-email" type="email" autocomplete="off"></label>
       <label>Đặt số dư chính xác (VND)<input class="in" id="cd-balance" type="number" step="1000"></label>
-      <label>Đặt lại mật khẩu mới <span class="hint">(để trống nếu không đổi)</span><input class="in" id="cd-pass" type="text" placeholder="Mật khẩu mới ≥ 6 ký tự" autocomplete="new-password"></label>
+      <label>🔑 Mật khẩu tạm cho khách <span class="hint">(khách quên mật khẩu mà không nhận được email · để trống nếu không đổi · khách đăng nhập xong phải đổi mật khẩu mới)</span><input class="in" id="cd-pass" type="text" placeholder="Mật khẩu mới ≥ 6 ký tự" autocomplete="new-password"></label>
     </div>
     <div class="ctvbox">
       <div><b style="font-size:14px">🤝 Cộng tác viên (CTV)</b> <span class="hint" id="cd-ctvnote"></span></div>
@@ -2012,7 +2026,7 @@ window.BR_CONFIG = {
         <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
         <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option><option value="cancelling">Đang huỷ (chờ máy chủ xoá)</option></select>
         <span class="cpasel" id="cpa-selbar" hidden><b id="cpa-seln">0</b> máy đã chọn
-          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button><button class="btn ghost sm" type="button" id="cpa-bdays">➕ Cộng ngày</button></span>
+          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn danger sm" type="button" id="cpa-bban" title="Ban chủ của các máy đã chọn (mặc định xoá hết máy của họ)">🔒 Ban chủ máy</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button><button class="btn ghost sm" type="button" id="cpa-bdays">➕ Cộng ngày</button></span>
         <button class="btn sm" type="button" id="cpa-apk" style="margin-left:auto">📦 Cài APK cho máy khách</button>
       </div>
       <div class="tbl"><table><thead><tr><th style="width:30px"><input type="checkbox" id="cpa-all" aria-label="Chọn tất cả máy đang lọc"></th><th>Máy</th><th>Khách</th><th>Cấu hình</th><th>Trạng thái</th><th>Hết hạn</th><th></th></tr></thead><tbody id="cpa-tbl"></tbody></table></div>
@@ -2196,7 +2210,7 @@ window.BR_CONFIG = {
           <label>Lý do (khách thấy trong lịch sử)<input id="bl-note" maxlength="120" placeholder="VD Bù lỗi máy ngày 10/11"></label>
           <button class="btn ghost" type="button" id="bl-add">Cộng / trừ</button>
         </div>
-        <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></div>
+        <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><span class="bk-hd"><button class="btn danger sm" type="button" id="bl-wipe">🧹 Xoá sạch Blue</button><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></span></div>
         <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th><th>Blue từ đâu</th><th class="num">Nạp thật</th><th>Dấu hiệu</th><th></th></tr></thead><tbody id="bl-top"></tbody></table></div>
       </form>
       </div>
@@ -3125,7 +3139,7 @@ const ERR = {
   BAD_EXPIRY: "Ngày hết hạn phải ở tương lai và sau ngày bắt đầu.", BAD_COUNT: "Số mã phải từ 1 đến 200 (mã tự đặt chỉ tạo được 1 mã).", NO_CODE: "Không tìm thấy mã.",
   APP_OUTDATED: "Ứng dụng đã cũ — hãy cập nhật bản mới nhất để tiếp tục.",
   PHONE_NOT_ACTIVE: "Máy phải đang chạy mới nâng cấp được.", FREE_NO_UPGRADE: "Máy miễn phí không nâng cấp được — thuê máy trả phí để nâng.", UPGRADE_PENDING: "Máy đang được nâng cấp, đợi khoảng 30 giây.", BAD_UPGRADE: "Cấu hình nâng cấp không hợp lệ.",
-  INSUFFICIENT_BALANCE: "Số dư không đủ.", OUT_OF_STOCK: "Kho không còn đủ số lượng bạn chọn.", LOCKED: "Tài khoản đã bị khoá. Liên hệ hỗ trợ.",
+  INSUFFICIENT_BALANCE: "Số dư không đủ.", OUT_OF_STOCK: "Kho không còn đủ số lượng bạn chọn.", LOCKED: "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng. Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.",
   NOT_LOGGED_IN: "Hãy đăng nhập trước.", MIN_AMOUNT: "Số tiền thấp hơn mức nạp tối thiểu.", TOO_MANY: "Bạn có quá nhiều lệnh nạp đang chờ. Thử lại sau ít phút.",
   BAD_QTY: "Số lượng không hợp lệ.", EMPTY: "Hãy dán thông tin cần giao.", BAD_PLAN: "Gói thời gian này không còn bán. Chọn gói khác.", NO_PRODUCT: "Sản phẩm không còn tồn tại.", NOT_ADMIN: "Bạn không có quyền admin.", SELF: "Không thể tự khoá/xoá tài khoản của mình.",
   WEAK_PASS: "Mật khẩu mới phải ≥ 6 ký tự.", IS_ADMIN: "Không thể xoá tài khoản admin.", "duplicate key": "Tên đăng nhập hoặc email này đã có người dùng."
@@ -3141,7 +3155,7 @@ const ERR_EN = {
   BAD_EXPIRY: "Expiry must be in the future and after the start.", BAD_COUNT: "Number of codes must be 1–200 (a custom code creates 1 only).", NO_CODE: "Code not found.",
   APP_OUTDATED: "This app is outdated — please update to the latest version.",
   PHONE_NOT_ACTIVE: "The phone must be running to upgrade.", FREE_NO_UPGRADE: "Free phones can't be upgraded.", UPGRADE_PENDING: "Upgrade in progress, wait ~30 seconds.", BAD_UPGRADE: "Invalid upgrade.",
-  INSUFFICIENT_BALANCE: "Not enough balance.", OUT_OF_STOCK: "Not enough stock for the quantity you chose.", LOCKED: "This account is locked. Contact support.",
+  INSUFFICIENT_BALANCE: "Not enough balance.", OUT_OF_STOCK: "Not enough stock for the quantity you chose.", LOCKED: "⛔ This account is banned for breaking the terms of use. If this is a mistake, contact support with your username.",
   NOT_LOGGED_IN: "Please log in first.", MIN_AMOUNT: "Amount is below the minimum top-up.", TOO_MANY: "You have too many pending top-ups. Try again in a few minutes.",
   BAD_QTY: "Invalid quantity.", BAD_PLAN: "This rental plan is no longer available. Choose another.", NO_PRODUCT: "This product no longer exists.",
   "duplicate key": "This username or email is already taken."
@@ -3162,9 +3176,9 @@ Object.assign(ERR_EN, { BLUE_OFF: "Blue rewards are paused.", BLUE_DONE: "You've
 Object.assign(ERR, { MONEY_GUARD: "Bị chặn: không được tự cộng tiền.", BLUE_GUARD: "Bị chặn: Blue chỉ đổi qua sổ Blue.", NEED_REAL_AMOUNT: "Duyệt tay phải nhập số tiền THẬT — tải lại trang (Ctrl + F5) rồi bấm ✋ Duyệt tay.",
   BANK_REF_USED: "Mã giao dịch ngân hàng này đã được cộng tiền rồi.", BANK_DONE: "Khoản tiền này đã được cộng rồi.", TOPUP_DONE_KEEP: "Lệnh đã cộng tiền không xoá được (giữ làm bằng chứng).",
   BLUE_DAY_CAP: "Hôm nay bạn đã nhận đủ Blue tối đa — mai quay lại nhé.", BLUE_HOLD: "Blue của bạn đang được tạm giữ để kiểm tra — liên hệ hỗ trợ.", BLUE_NEW_ACCOUNT: "Tài khoản mới — sau 24 giờ mới tích Blue được.",
-  CONFIRM_MISMATCH: "Tên xác nhận chưa đúng.", MAX_AMOUNT: "Số tiền quá lớn.", NO_ROW: "Không tìm thấy.", banned: "Tài khoản đã bị khoá. Liên hệ hỗ trợ." });
+  CONFIRM_MISMATCH: "Tên xác nhận chưa đúng.", MAX_AMOUNT: "Số tiền quá lớn.", NO_ROW: "Không tìm thấy.", banned: "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng. Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập." });
 Object.assign(ERR_EN, { MONEY_GUARD: "Blocked: you can't add money to yourself.", BLUE_DAY_CAP: "You've reached today's Blue limit — come back tomorrow.", BLUE_HOLD: "Your Blue is on hold for review — contact support.",
-  BLUE_NEW_ACCOUNT: "New account — you can earn Blue after 24 hours.", MAX_AMOUNT: "Amount too large.", banned: "This account is locked. Contact support." });
+  BLUE_NEW_ACCOUNT: "New account — you can earn Blue after 24 hours.", MAX_AMOUNT: "Amount too large.", banned: "⛔ This account is banned for breaking the terms of use. If this is a mistake, contact support with your username." });
 // chọn mã lỗi DÀI NHẤT có trong thông báo (PROMO_TOO_MANY thắng TOO_MANY, PHONE_LOCKED thắng LOCKED…) — không phụ thuộc thứ tự thêm vào ERR
 const errMsg = e => { const m = String(e && (e.message || e.error_description || e)); const D = LANG === "en" ? { ...ERR, ...ERR_EN } : ERR; let b = ""; for (const k in D) if (k.length > b.length && m.includes(k)) b = k; return b ? D[b] : (m || L("Có lỗi, thử lại sau.", "Something went wrong, try again.")); };
 
@@ -3196,7 +3210,7 @@ const EN = {
   view_orders:"View orders", orders_title:"Your orders & transactions",
   buy_now:"Buy now", sold_out:"Sold out", left:"Left", from:"from", plan:"Plan", days:"days",
   login_to_buy:"Log in to buy", topup:"Top up", pay:"Pay", not_logged:"Not logged in",
-  pw:"Password", pw8:"Password (at least 8 characters)", pw2:"Repeat password", fg_title:"Reset password", fg_email:"Registered email", fg_send:"Send code to email", fg_sent:"A 6-digit code was sent to", fg_spam:"Check your Spam folder too. The code is valid for 1 hour.", fg_code:"Verification code", pw_new8:"New password (at least 8 characters)", fg_ok:"Reset password", fg_back:"Back to log in", np_title:"Set a new password", np_save:"Save password", kv_bank:"Bank", kv_acc:"Account number", kv_name:"Account holder", kv_amt:"Amount", kv_memo:"Transfer note (required)", copy_btn:"Copy", bank_note:"Transfer the <b>exact amount</b> with the <b>exact note</b> to be credited automatically in 1–2 minutes. Wrong note? Contact support with a screenshot.", vps_how:"How to receive your VPS", vps_v5_s:"Enter a PIN so the shop can connect", vps_sync_s:"Message the shop · send UltraViewer", vps_pin:"FarmV5 PIN (required)", vps_pin_ph:"Enter your FarmV5 PIN", ltc_s:"From $1 · automatic", dc_t:"Join the CloudBlue Discord", dc_s:"New stock alerts, giveaways, restocks and fast support", dc_b:"Join now",
+  pw:"Password", pw8:"Password (at least 8 characters)", pw2:"Repeat password", fg_title:"Reset password", fg_email:"Registered email", fg_send:"Send reset email", fg_sent:"A password reset email was sent to", fg_spam:"Open the email and tap “Reset password” — CloudBlue opens so you can set a new password. No email? Check Spam. If the email has a code, you can enter it below. The link / code works for 1 hour.", fg_code:"Verification code", pw_new8:"New password (at least 8 characters)", fg_ok:"Reset password", fg_back:"Back to log in", np_title:"Set a new password", np_save:"Save password", kv_bank:"Bank", kv_acc:"Account number", kv_name:"Account holder", kv_amt:"Amount", kv_memo:"Transfer note (required)", copy_btn:"Copy", bank_note:"Transfer the <b>exact amount</b> with the <b>exact note</b> to be credited automatically in 1–2 minutes. Wrong note? Contact support with a screenshot.", vps_how:"How to receive your VPS", vps_v5_s:"Enter a PIN so the shop can connect", vps_sync_s:"Message the shop · send UltraViewer", vps_pin:"FarmV5 PIN (required)", vps_pin_ph:"Enter your FarmV5 PIN", ltc_s:"From $1 · automatic", dc_t:"Join the CloudBlue Discord", dc_s:"New stock alerts, giveaways, restocks and fast support", dc_b:"Join now",
   nav_vps:"My VPS", nav_cloud:"Cloud phones", vps_mine:"My VPS machines", vps_note:"The VPS machines you are renting. Near expiry, tap Renew to add time; tap Cancel if you no longer need it.", renew_title:"Renew VPS", new_expiry:"New expiry", renew:"Renew", vps_cancel:"Cancel", vps_expired:"Expired", vps_left:"left", vps_day:"d",
   promo_ph:"Discount code (optional)", promo_apply:"Apply",
   cat_all:"All", thanks_ok:"Success!", order_ok:"Order placed!", m_bank:"🏦 Bank", m_usdt:"🪙 Crypto", cr_type:"Type", cr_coin:"Coin type", cr_network:"Network", will_credit:"will be credited", cr_send:"USDT to send", cr_addr:"Wallet address", pay_crypto_s:"Auto TRC20", make_usdt:"Create USDT payment", min_amt:"Minimum is ", cr_wait:"Waiting for blockchain confirmation…", received:"Received ", credited:"Balance credited.", topup_ok:"Top-up success +", cr_note:"Send the <b>exact USDT amount</b> on the <b>TRC20 network</b> to the address above. Credited automatically after network confirmation (a few minutes). Wrong network may lose funds."
@@ -3521,9 +3535,10 @@ $("f-reg").onsubmit = e => { e.preventDefault(); busy($("rg-btn"), async () => {
 $("f-login").onsubmit = e => { e.preventDefault(); busy($("li-btn"), async () => {
   const { error } = await Promise.race([sb.auth.signInWithPassword({ email: $("li-e").value.trim(), password: $("li-p").value }),
     new Promise(r => setTimeout(() => r({ error: { message: L("Mạng chậm hoặc trang bị kẹt. Đóng các tab CloudBlue khác rồi tải lại trang (Ctrl+F5).", "Slow network or stuck page. Close other CloudBlue tabs and reload (Ctrl+F5).") } }), 20000))]);
-  if (error) { $("li-err").textContent = /confirm/i.test(error.message) ? L("Email chưa được xác nhận. Kiểm tra hộp thư của bạn.", "Email not confirmed yet. Check your inbox.") : L("Sai email hoặc mật khẩu.", "Wrong email or password."); return; }
+  if (error) { if (isBanErr(error)) { $("li-p").value = ""; $("li-err").textContent = ""; show("auth", false); banNotice($("li-e").value.trim()); return; }
+    $("li-err").textContent = /confirm/i.test(error.message) ? L("Email chưa được xác nhận. Kiểm tra hộp thư của bạn.", "Email not confirmed yet. Check your inbox.") : L("Sai email hoặc mật khẩu.", "Wrong email or password."); return; }
   await loadProfile();
-  if (profile && profile.locked) { await sb.auth.signOut(); $("li-err").textContent = errMsg("LOCKED"); return; }
+  if (profile && profile.locked) { const who = profile.username || $("li-e").value.trim(); await sb.auth.signOut(); $("li-p").value = ""; $("li-err").textContent = ""; show("auth", false); banNotice(who); return; }
   $("f-login").reset(); show("auth", false); renderUser();
   if (isAdmin() && ADMIN_PAGE) openAdmin(); else toast(L("Đăng nhập thành công.", "Logged in."));
 }); };
@@ -3531,23 +3546,25 @@ let fgEmail = "";
 $("fg-send").onclick = () => busy($("fg-send"), async () => {
   fgEmail = $("fg-e").value.trim(); $("fg-err").textContent = "";
   if (!fgEmail.includes("@")) { $("fg-err").textContent = L("Nhập email đã đăng ký.", "Enter your registered email."); return; }
+  pwForgotNote(fgEmail);                                                     // báo admin (không chặn khách)
   const { error } = await sb.auth.resetPasswordForEmail(fgEmail, { redirectTo: location.origin });
-  if (error) { $("fg-err").textContent = /rate|seconds/i.test(error.message) ? L("Bạn vừa yêu cầu mã. Chờ 1 phút rồi thử lại.", "Code just sent. Wait 1 minute and try again.") : errMsg(error); return; }
-  $("fg-to").textContent = fgEmail; show("fg-step1", false); show("fg-step2"); $("fg-c").focus();
+  if (error) { $("fg-err").textContent = fgSendErr(error); return; }
+  $("fg-to").textContent = fgEmail; show("fg-step1", false); show("fg-step2"); fgCool(60); $("fg-c").focus();
 });
 $("fg-ok").onclick = () => busy($("fg-ok"), async () => {
   const token = $("fg-c").value.trim(), pw = $("fg-p").value;
   if (pw.length < 8) { $("fg-err").textContent = L("Mật khẩu mới cần ít nhất 8 ký tự.", "New password needs at least 8 characters."); return; }
   const { error } = await sb.auth.verifyOtp({ email: fgEmail, token, type: "recovery" });
-  if (error) { $("fg-err").textContent = L("Mã không đúng hoặc đã hết hạn.", "Wrong or expired code."); return; }
+  if (error) { if (isBanErr(error)) { show("auth", false); banNotice(fgEmail); return; } $("fg-err").textContent = L("Mã không đúng hoặc đã hết hạn.", "Wrong or expired code."); return; }
   const { error: e2 } = await sb.auth.updateUser({ password: pw });
   if (e2) { $("fg-err").textContent = errMsg(e2); return; }
+  pwChangedQuiet();
   show("fg-step1"); show("fg-step2", false); $("f-forgot").reset(); show("auth", false); toast(L("Đã đặt lại mật khẩu. Bạn đã được đăng nhập.", "Password reset. You are now logged in."));
 });
 $("f-newpw").onsubmit = async e => { e.preventDefault();
   const { error } = await sb.auth.updateUser({ password: $("np-p").value });
   if (error) { $("np-err").textContent = errMsg(error); return; }
-  show("auth", false); toast(L("Đã lưu mật khẩu mới.", "New password saved."));
+  pwChangedQuiet(); show("auth", false); toast(L("Đã lưu mật khẩu mới.", "New password saved."));
 };
 $("go-forgot").onclick = () => { authTab("forgot"); show("fg-step1"); show("fg-step2", false); };
 $("fg-back").onclick = () => authTab("login");
@@ -4047,7 +4064,7 @@ $("cd-save").onclick = () => busy($("cd-save"), async () => {
     if (un !== u.username || em !== u.email) { const { error } = await sb.rpc("admin_update_user", { p_user: custId, p_username: un, p_email: em }); if (error) throw error; }
     if (bal !== (+u.balance || 0)) { const { error } = await sb.rpc("admin_set_balance", { p_user: custId, p_amount: bal }); if (error) throw error; }
     if (pw) { if (pw.length < 6) { $("cd-err").textContent = "Mật khẩu mới phải ≥ 6 ký tự."; return; } const { error } = await sb.rpc("admin_set_password", { p_user: custId, p_pass: pw }); if (error) throw error; }
-    toast("Đã lưu thay đổi khách."); show("custdlg", false); await loadAdmin();
+    toast(pw && custId !== profile.id ? "Đã lưu. Gửi mật khẩu tạm cho khách — khách đăng nhập xong sẽ phải đổi mật khẩu mới." : "Đã lưu thay đổi khách."); show("custdlg", false); await loadAdmin();
     if (custId === profile.id) { await loadProfile(); renderUser(); }
   } catch (err) { $("cd-err").textContent = errMsg(err); }
 });
@@ -4269,7 +4286,9 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") { show("draw
 try { $("lang-vi").classList.toggle("on", LANG === "vi"); $("lang-en").classList.toggle("on", LANG === "en"); $("cur-vnd").classList.toggle("on", cur === "VND"); $("cur-usd").classList.toggle("on", cur === "USD"); } catch(e){} applyStatic(); renderSite(); renderCats();
 sb.auth.onAuthStateChange((ev, s) => {
   session = s;
-  setTimeout(async () => { await loadProfile(); renderUser(); if (ev === "PASSWORD_RECOVERY") openAuth("newpw"); if (profile) { minePending = null; watchMine(); pollPending(); } }, 0);
+  setTimeout(async () => { await loadProfile();
+    if (profile && profile.locked) { const who = profile.username; profile = null; renderUser(); try { await sb.auth.signOut(); } catch (e) {} banNotice(who); return; }   // đang đăng nhập mà bị ban → đăng xuất + báo
+    renderUser(); if (ev === "PASSWORD_RECOVERY") openAuth("newpw"); else pwForce(); if (profile) { minePending = null; watchMine(); pollPending(); } }, 0);
 });
 loadSettings(); loadProducts();
 setInterval(() => { if (!document.hidden) loadProducts(); }, 60000);
@@ -5593,7 +5612,7 @@ function blueNudge() {          // nhắc điểm danh 1 lần / ngày / tài kh
   if (blueIntro() || BLUE.today) return;
   try { const k = "cb_bnudge_" + profile.id, d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" });
     if (localStorage.getItem(k) === d) return; localStorage.setItem(k, d); } catch (e) { return; }
-  setTimeout(() => toast(L(`💎 Hôm nay chưa điểm danh — bấm 💎 ở góc trên để nhận +${bnum(BLUE.next_got)} Blue`, `💎 Check in today — tap 💎 at the top for +${bnum(BLUE.next_got)} Blue`)), 1200);
+  setTimeout(() => BLUE && profile && toast(L(`💎 Hôm nay chưa điểm danh — bấm 💎 ở góc trên để nhận +${bnum(BLUE.next_got)} Blue`, `💎 Check in today — tap 💎 at the top for +${bnum(BLUE.next_got)} Blue`)), 1200);
 }
 { const _lp2 = loadProfile; loadProfile = async function () { const r = await _lp2.apply(this, arguments); blueLoad().then(() => { blueRender(); }); return r; }; }
 { const _ru3 = renderUser; renderUser = function () { const r = _ru3.apply(this, arguments); try { if (!profile) BLUE = null; blueChip(); } catch (e) {} return r; }; }
@@ -7702,7 +7721,7 @@ renderTx = function () {
   tb.innerHTML = rows.length ? rows.map(t => {
     const usd = t.usd != null ? `<div class="hint">≈ $${(+t.usd).toLocaleString("en-US")} ${esc(String(t.coin || "").toUpperCase().replace("TRC20", ""))}</div>` : "";
     const diff = t.asked != null && +t.asked !== +t.amount && t.status === "done";
-    return `<tr${t.via === "manual" ? ' class="tx-man"' : ""}><td>${ago(t.created_at)}${t.ip ? `<div class="hint">${ipTxt(t.ip)}</div>` : ""}</td>
+    return `<tr data-bkid="${esc(String(t.id))}" data-bkst="${esc(t.status || "")}" data-bku="${esc(t.user_id || "")}" data-bkn="${esc(t.username || uname(t.user_id) || "")}"${t.via === "manual" ? ' class="tx-man"' : ""}><td>${ago(t.created_at)}${t.ip ? `<div class="hint">${ipTxt(t.ip)}</div>` : ""}</td>
       <td><b>${esc(t.username || uname(t.user_id))}</b>${t.u_locked ? ' <span class="pill bad">khoá</span>' : ""}${t.email ? `<div class="hint">${esc(t.email)}</div>` : ""}</td>
       <td>${t.status === "done" ? esc(VIA_TXT[t.via] || t.via || "") : '<span class="hint">—</span>'}${t.approver ? `<div class="hint">bởi ${esc(t.approver)}</div>` : ""}</td>
       <td class="num">${esc(t.memo)}${t.bank_ref && !String(t.bank_ref).startsWith("MANUAL-") ? `<div class="hint">NH: ${esc(t.bank_ref)}</div>` : ""}</td>
@@ -7767,7 +7786,8 @@ $("bank-tb") && ($("bank-tb").onclick = async e => {
 });
 
 /* ---------- 🔒 BAN · 🗑️ XOÁ · 🧊 GIỮ BLUE · 🔍 SOÁT ---------- */
-function secBan(id, name) {
+function secBan(id, name) { return bkBan([{ id, name }]); }
+function secBanV29(id, name) {
   const m = secDlg(`<h3>🔒 Ban tài khoản <b>${esc(name || "")}</b></h3>
     <label>Lý do (lưu hồ sơ)<input class="in" id="bn-why" maxlength="160" value="Gian lận / cày clone" autocomplete="off"></label>
     <label class="mtrow"><input type="checkbox" id="bn-lock" checked> Khoá tài khoản + chặn đăng nhập (đăng xuất mọi thiết bị)</label>
@@ -7864,8 +7884,8 @@ async function secAlertsLoad() {
   if (error || !data) { tb.innerHTML = `<tr><td colspan="4" class="hint" style="padding:14px">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</td></tr>`; return; }
   secBadge(data.unseen);
   const rows = data.rows || [];
-  tb.innerHTML = rows.length ? rows.map(r => `<tr${r.seen ? ' style="opacity:.62"' : ""}><td>${bwhen(r.at)}</td><td>${secLv(r.level)}</td><td style="white-space:normal">${esc(r.msg)}${r.user ? `<div class="hint">Khách: <a href="#" data-sa="audit" data-id="${esc(r.user_id)}" data-n="${esc(r.user)}">${esc(r.user)}</a></div>` : ""}</td>
-      <td style="text-align:right">${r.user_id ? secActs(r.user_id, r.user || "") : (r.data && Array.isArray(r.data.users) ? `<span class="hint">${r.data.users.length} tài khoản</span>` : "")}</td></tr>`).join("")
+  tb.innerHTML = rows.length ? rows.map(r => `<tr data-bkid="${+r.id}" data-bku="${esc([r.user_id].concat(r.data && Array.isArray(r.data.users) ? r.data.users : []).filter(Boolean).join(","))}"${r.seen ? ' style="opacity:.62"' : ""}><td>${bwhen(r.at)}</td><td>${secLv(r.level)}</td><td style="white-space:normal">${esc(r.msg)}${r.user ? `<div class="hint">Khách: <a href="#" data-sa="audit" data-id="${esc(r.user_id)}" data-n="${esc(r.user)}">${esc(r.user)}</a></div>` : ""}</td>
+      <td style="text-align:right">${r.kind === "pw_forgot" && r.user_id ? `<button class="btn sm" data-pwset="${esc(r.user_id)}" data-n="${esc(r.user || "")}">🔑 Mật khẩu tạm</button> ` : ""}${r.user_id ? secActs(r.user_id, r.user || "") : (r.data && Array.isArray(r.data.users) ? `<span class="hint">${r.data.users.length} tài khoản</span>` : "")}</td></tr>`).join("")
     : `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:18px">✓ Chưa có cảnh báo nào. Bot vẫn đang gác.</td></tr>`;
 }
 function secBadge(n) { const b = $("sec-badge"); if (b) { b.textContent = +n || ""; b.hidden = !(+n > 0); } }
@@ -7921,7 +7941,7 @@ async function bansLoad() {
   tb.innerHTML = L1.length ? L1.map(x => `<tr><td><a href="#" data-sa="audit" data-id="${esc(x.id)}" data-n="${esc(x.user)}"><b>${esc(x.user)}</b></a><div class="hint">${esc(x.email || "")}${x.at ? " · " + ago(x.at) : ""}</div></td>
       <td>${esc(x.reason || "—")}</td><td class="num">${vnd(x.balance)}</td><td style="text-align:right;white-space:nowrap"><button class="btn ghost sm" data-sa="unban" data-id="${esc(x.id)}" data-n="${esc(x.user)}">🔓 Mở ban</button> <button class="btn danger sm" data-sa="del" data-id="${esc(x.id)}" data-n="${esc(x.user)}">🗑️ Xoá</button></td></tr>`).join("")
     : `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:16px">Không có tài khoản nào đang bị khoá.</td></tr>`;
-  const ACT = { ban: "🔒 Ban", unban: "🔓 Mở ban", delete: "🗑️ Xoá TK", "auto-ban": "🤖 Bot tự khoá", "blue-hold": "🧊 Giữ Blue", "blue-unhold": "♨️ Thả Blue" };
+  const ACT = { ban: "🔒 Ban", unban: "🔓 Mở ban", delete: "🗑️ Xoá TK", "auto-ban": "🤖 Bot tự khoá", "blue-hold": "🧊 Giữ Blue", "blue-unhold": "♨️ Thả Blue", wipe: "🗑️ Xoá máy", "blue-wipe": "🧹 Xoá sạch Blue", "pw-reset": "🔑 Mật khẩu tạm" };
   $("banlog-tb").innerHTML = L2.length ? L2.map(x => `<tr><td>${bwhen(x.at)}</td><td>${esc(x.user || "")}</td><td>${esc(ACT[x.action] || x.action)}</td><td style="white-space:normal">${esc(x.reason || "")}</td><td>${esc(x.by || (x.action === "auto-ban" ? "bot" : ""))}</td></tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:16px">Chưa có.</td></tr>`;
 }
@@ -7966,6 +7986,510 @@ async function cpaMoneyLoad() {
     if (CPA_ROWS.some(p => p.user_id && !CPA_M.has(p.user_id))) cpaMoneyLoad();
   }; }
 { const _rl29 = reloadCpa; reloadCpa = async function () { CPA_M.clear(); return _rl29.apply(this, arguments); }; }
+
+/* ===================== ⛔ THÔNG BÁO TÀI KHOẢN BỊ CẤM — khách bị ban (khoá đăng nhập) hoặc bị khoá tài khoản đăng nhập vào
+   → hiện hộp thông báo rõ ràng thay vì "Sai email hoặc mật khẩu". Gỡ ban xong khách đăng nhập lại bình thường (không lưu gì trên máy). ===================== */
+function isBanErr(e) {
+  const m = String((e && e.code) || "") + " " + String((e && (e.message || e.msg || e.error_description)) || "");
+  return /user_banned|\bbanned\b/i.test(m);
+}
+function banNotice(who) {
+  let m = document.getElementById("bandlg");
+  if (!m) {
+    m = document.createElement("div"); m.className = "modal"; m.id = "bandlg"; m.hidden = true; document.body.appendChild(m);
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-banx]")) m.hidden = true; });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) m.hidden = true; });
+  }
+  let c = ""; try { c = contactsHTML(); } catch (e) { c = ""; }
+  const name = who ? `<b>${esc(who)}</b> ` : "";
+  m.innerHTML = `<div class="dlg bandlg" role="alertdialog" aria-modal="true" aria-labelledby="ban-t" aria-describedby="ban-d">
+    <div class="ban-ic" aria-hidden="true">⛔</div>
+    <h3 id="ban-t">${L("Tài khoản đã bị cấm", "This account is banned")}</h3>
+    <p id="ban-d">${L(`Tài khoản ${name}đã bị khoá do vi phạm điều khoản sử dụng CloudBlue: gian lận nạp tiền, tạo nhiều tài khoản / cày clone để nhận Blue, lợi dụng lỗi hệ thống hoặc dùng app đã bị chỉnh sửa.`,
+                      `The account ${name}has been banned for breaking the CloudBlue terms of use: top-up fraud, creating multiple accounts to farm Blue, exploiting bugs or using a modified app.`)}</p>
+    <ul class="ban-list">
+      <li>${L("Không đăng nhập, thuê máy, nạp tiền hay nhận Blue bằng tài khoản này được nữa.", "You can no longer log in, rent phones, top up or earn Blue with this account.")}</li>
+      <li>${L("Máy đang thuê và 💎 Blue của tài khoản đã bị thu hồi.", "The account's rented phones and 💎 Blue have been revoked.")}</li>
+      <li>${L("Tạo tài khoản khác để lách lệnh cấm cũng sẽ bị khoá.", "New accounts made to get around the ban will be banned too.")}</li>
+    </ul>
+    <p class="hint">${L("Nếu bạn cho rằng đây là nhầm lẫn, hãy liên hệ hỗ trợ và gửi kèm tên đăng nhập để được xem xét lại.", "If you think this is a mistake, contact support with your username so we can review it.")}</p>
+    ${c ? `<div class="contacts">${c}</div>` : ""}
+    <div class="ban-ok"><button class="btn ghost" type="button" data-banx>${L("Đã hiểu", "OK")}</button></div></div>`;
+  m.hidden = false;
+  const b = m.querySelector("[data-banx]"); if (b) b.focus();
+}
+
+/* ===================== 🔑 MẬT KHẨU: quên mật khẩu (khách tự đặt lại qua email + báo admin) · mật khẩu tạm do admin đặt → BẮT đổi ===================== */
+Object.assign(ERR, { PW_NOT_CHANGED: "Mật khẩu chưa được đổi — thử lại.", WEAK_PASS: "Mật khẩu phải từ 6 ký tự.", same_password: "Mật khẩu mới phải khác mật khẩu cũ." });
+Object.assign(ERR_EN, { PW_NOT_CHANGED: "The password was not changed — try again.", WEAK_PASS: "Password must be at least 6 characters.", same_password: "The new password must differ from the old one." });
+// báo admin khách bấm Quên mật khẩu (Telegram ngay qua /api/pw-forgot; trang chưa có /api → ghi cảnh báo để bot máy chủ nhắn). Không bao giờ chặn khách.
+function pwForgotNote(email) {
+  const rpc = () => { try { sb.rpc("pw_forgot_note", { p_email: email }).then(() => {}, () => {}); } catch (e) {} };
+  try {
+    fetch("/api/pw-forgot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email }) })
+      .then(r => { if (!r.ok) rpc(); }, rpc);
+  } catch (e) { rpc(); }
+}
+// khách vừa đặt mật khẩu mới (qua email / mật khẩu tạm) → gỡ yêu cầu đổi mật khẩu
+function pwChangedQuiet() { try { sb.rpc("pw_changed").then(({ data }) => { if (data && data.ok && profile) profile.pw_must_change = false; }, () => {}); } catch (e) {} }
+// admin đã đặt mật khẩu tạm → đăng nhập xong BẮT đổi mật khẩu mới (không tắt được hộp, chỉ Lưu hoặc Đăng xuất)
+function pwForce() {
+  if (!profile || !profile.pw_must_change) return;
+  let m = document.getElementById("pwdlg");
+  if (!m) {
+    m = document.createElement("div"); m.className = "modal"; m.id = "pwdlg"; m.hidden = true; document.body.appendChild(m);
+    // hộp bắt buộc: Esc / lệnh "đóng mọi hộp" của trang không tắt được — chỉ Lưu mật khẩu mới hoặc Đăng xuất
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) { e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+    new MutationObserver(() => { if (m.hidden && !m._done && profile && profile.pw_must_change) m.hidden = false; }).observe(m, { attributes: true, attributeFilter: ["hidden"] });
+  }
+  if (!m.hidden) return;
+  m._done = false;
+  const at = profile.pw_reset_at ? new Date(profile.pw_reset_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "";
+  m.innerHTML = `<div class="dlg pwdlg" role="dialog" aria-modal="true" aria-labelledby="pw-t">
+    <h3 id="pw-t">🔑 ${L("Đặt mật khẩu mới", "Set a new password")}</h3>
+    <p>${L(`Admin đã đặt <b>mật khẩu tạm</b> cho tài khoản <b>${esc(profile.username || "")}</b>${at ? " lúc " + esc(at) : ""} theo yêu cầu hỗ trợ. Để an toàn, hãy đặt mật khẩu mới chỉ mình bạn biết rồi dùng mật khẩu đó cho lần sau (web, app điện thoại và app máy tính).`,
+                 `Support set a <b>temporary password</b> for <b>${esc(profile.username || "")}</b>${at ? " at " + esc(at) : ""}. For your safety, choose a new password only you know and use it from now on (web, phone app and PC app).`)}</p>
+    <label><span>${L("Mật khẩu mới (ít nhất 8 ký tự)", "New password (at least 8 characters)")}</span><input class="in" id="pw-n1" type="password" minlength="8" autocomplete="new-password"></label>
+    <label><span>${L("Nhập lại mật khẩu mới", "Repeat the new password")}</span><input class="in" id="pw-n2" type="password" minlength="8" autocomplete="new-password"></label>
+    <div class="err" id="pw-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" id="pw-out">${L("Đăng xuất", "Log out")}</button><button class="btn" type="button" id="pw-go">${L("Lưu mật khẩu mới", "Save new password")}</button></div></div>`;
+  m.hidden = false;
+  setTimeout(() => { const i = document.getElementById("pw-n1"); if (i) i.focus(); }, 30);
+  document.getElementById("pw-go").onclick = () => busy(document.getElementById("pw-go"), async () => {
+    const a = document.getElementById("pw-n1").value, b = document.getElementById("pw-n2").value, er = document.getElementById("pw-err");
+    if (a.length < 8) { er.textContent = L("Mật khẩu mới cần ít nhất 8 ký tự.", "The new password needs at least 8 characters."); return; }
+    if (a !== b) { er.textContent = L("Hai mật khẩu không khớp.", "Passwords do not match."); return; }
+    const { error } = await sb.auth.updateUser({ password: a });
+    if (error) { er.textContent = /same|different/i.test(error.message || "") || error.code === "same_password" ? L("Mật khẩu mới phải khác mật khẩu tạm.", "The new password must differ from the temporary one.") : errMsg(error); return; }
+    const { data, error: e2 } = await sb.rpc("pw_changed");
+    if (e2 || !data || !data.ok) { er.textContent = e2 ? errMsg(e2) : L("Mật khẩu chưa được đổi — thử lại.", "The password was not changed — try again."); return; }
+    profile.pw_must_change = false; m._done = true; m.hidden = true; toast(L("Đã đổi mật khẩu. Lần sau đăng nhập bằng mật khẩu mới.", "Password changed. Use the new password next time."));
+  });
+  document.getElementById("pw-out").onclick = async () => { m._done = true; m.hidden = true; try { await sb.auth.signOut(); } catch (e) {} };
+}
+// mở link trong email lỗi (bị ban / link hết hạn / đã dùng) → báo rõ thay vì im lặng
+(function pwLinkErr() {
+  try {
+    const q = new URLSearchParams((location.hash || "").replace(/^#/, "") + "&" + (location.search || "").replace(/^\?/, ""));
+    const code = q.get("error_code") || "", desc = q.get("error_description") || "";
+    if (!code && !q.get("error")) return;
+    try { history.replaceState(null, "", location.pathname); } catch (e) {}
+    setTimeout(() => {
+      if (/banned/i.test(code + " " + desc)) return banNotice("");
+      if (/otp_expired|expired|invalid|access_denied/i.test(code + " " + desc)) {
+        openAuth("forgot");
+        const er = document.getElementById("fg-err");
+        if (er) er.textContent = L("Link đặt lại mật khẩu đã hết hạn hoặc đã được dùng. Nhập email để gửi link mới.", "This reset link has expired or was already used. Enter your email to get a new one.");
+      }
+    }, 600);
+  } catch (e) {}
+})();
+
+/* ---------- 🔁 Gửi lại email đặt lại mật khẩu (đếm ngược 60 giây như Supabase) ---------- */
+let fgCd = 0, fgT = null;
+function fgPaint() {
+  const b = document.getElementById("fg-resend"), t = document.getElementById("fg-again-t"); if (!b) return;
+  if (t) t.textContent = L("Chưa nhận được email?", "Didn't get the email?");
+  b.disabled = fgCd > 0;
+  b.textContent = fgCd > 0 ? L(`🔁 Gửi lại sau ${fgCd} giây`, `🔁 Resend in ${fgCd}s`) : L("🔁 Gửi lại email", "🔁 Resend email");
+}
+function fgCool(sec) { fgCd = Math.max(0, Math.round(+sec || 0)); clearInterval(fgT); fgPaint(); if (fgCd) fgT = setInterval(() => { fgCd = Math.max(0, fgCd - 1); fgPaint(); if (!fgCd) clearInterval(fgT); }, 1000); }
+// lỗi gửi email dễ hiểu: chờ N giây / hệ thống email hết lượt trong giờ / khác
+function fgSendErr(error) {
+  const m = String((error && error.message) || ""), s = /(\d+)\s*sec/i.exec(m);
+  if (/email rate limit|rate.?limit.*email|over_email_send_rate_limit/i.test(m + " " + ((error && error.code) || "")))
+    return L("Hệ thống gửi email đang hết lượt trong giờ này — thử lại sau ít phút. Gấp thì nhắn admin để được cấp mật khẩu tạm.", "The email service hit its hourly limit — try again in a few minutes, or message support for a temporary password.");
+  if (s || /seconds|security purposes|rate/i.test(m)) { const n = s ? +s[1] : 60; fgCool(n); return L(`Vừa gửi xong — chờ ${n} giây rồi gửi lại.`, `Just sent — wait ${n} seconds before resending.`); }
+  return errMsg(error);
+}
+(function () {
+  const b = document.getElementById("fg-resend"); if (!b) return;
+  fgPaint();
+  b.onclick = async () => {
+    if (!fgEmail || fgCd > 0 || b.disabled) return;
+    b.disabled = true; const er = document.getElementById("fg-err"); if (er) er.textContent = "";
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(fgEmail, { redirectTo: location.origin });
+      if (error) { if (er) er.textContent = fgSendErr(error); if (!fgCd) fgPaint(); return; }
+      toast(L("Đã gửi lại email đặt lại mật khẩu tới ", "Reset email sent again to ") + fgEmail); fgCool(60);
+    } catch (e) { if (er) er.textContent = errMsg(e); fgPaint(); }
+  };
+})();
+
+/* ===================== ADMIN: Ô TICK HÀNG LOẠT (SQL v29b) — mọi bảng: ô đầu bảng = chọn tất cả dòng đang hiện, tick từng dòng
+   (giữ Shift để chọn cả đoạn) → thanh "Đã chọn N" hiện nút làm 1 lần: Ban / Xoá TK / Thu hồi Blue / Xoá đơn / Xoá mã… ===================== */
+const V29B_MISS = e => !!e && (e.code === "PGRST202" || (/admin_users_bulk|admin_blue_wipe/i.test(e.message || "") && /find|exist|schema/i.test(e.message || "")));
+const V29B_TXT = "⚠️ Chưa chạy file SQL <b>cloud-phones-v29b.sql</b> trong Supabase.";
+const bkErr = e => V29B_MISS(e) ? "Chưa chạy file SQL cloud-phones-v29b.sql trong Supabase." : errMsg(e);
+const bkNorm = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "d").toUpperCase().replace(/\s+/g, " ").trim();
+const bkUniq = a => { const m = new Map(); for (const u of a || []) if (u && u.id && !m.has(u.id)) m.set(u.id, u); return [...m.values()]; };
+const bkWho = id => { const u = (ADM.users || []).find(x => x.id === id); return u && u.username ? u.username : uname(id); };
+const bkNames = (us, max = 14) => us.slice(0, max).map(u => `<span class="pill">${esc(u.name || bkWho(u.id) || "?")}</span>`).join(" ")
+  + (us.length > max ? ` <span class="hint">… và ${us.length - max} nữa</span>` : "");
+const BK_FAIL = { SELF: "chính bạn", IS_ADMIN: "tài khoản admin", NO_USER: "không còn tài khoản", NOT_ADMIN: "không có quyền" };
+const bkFailTxt = f => { if (!f || !f.length) return ""; const c = {}; f.forEach(x => { const k = Object.keys(BK_FAIL).find(q => String(x.err || "").includes(q)); c[k ? BK_FAIL[k] : "lỗi khác"] = (c[k ? BK_FAIL[k] : "lỗi khác"] || 0) + 1; });
+  return " · bỏ qua " + Object.entries(c).map(([k, n]) => `${n} ${k}`).join(", "); };
+
+const BK = {};
+function bkRows(st) { return [...st.tb.rows].filter(tr => tr.bkKey); }
+function bkSync(st) {
+  const rows = bkRows(st);
+  for (const tr of rows) { const on = st.sel.has(tr.bkKey), c = tr.querySelector("input.bk-one"); if (c) c.checked = on; tr.classList.toggle("bk-on", on); }
+  const n = st.sel.size, items = [...st.sel.values()];
+  st.bar.hidden = n === 0;
+  st.bar.querySelector(".bk-n").textContent = `☑ Đã chọn ${n} ${st.cfg.noun}`;
+  st.cfg.acts.forEach((a, i) => { const b = st.bar.querySelector(`[data-bka="${i}"]`); if (b && a.show) b.hidden = !a.show(items); });
+  if (st.all) {
+    const keys = [...new Set(rows.map(tr => tr.bkKey))];
+    st.all.disabled = !keys.length;
+    st.all.checked = keys.length > 0 && keys.every(k => st.sel.has(k));
+    st.all.indeterminate = !st.all.checked && keys.some(k => st.sel.has(k));
+  }
+}
+function bkClear(st) { if (!st) return; st.sel.clear(); st.last = null; bkSync(st); }
+function bkDeco(st) {
+  const seen = new Set();
+  for (const tr of st.tb.rows) {
+    if (tr.bkDone) { if (tr.bkKey) seen.add(tr.bkKey); continue; }
+    tr.bkDone = true;
+    let info = null; try { info = st.cfg.key(tr); } catch (e) { info = null; }
+    if (info && info.id) {
+      tr.bkKey = String(info.id); tr.bkInfo = info; seen.add(tr.bkKey);
+      tr.insertAdjacentHTML("afterbegin", `<td class="bk-c"><input type="checkbox" class="bk-one" aria-label="Chọn ${esc(info.name || st.cfg.noun)}"></td>`);
+    } else if (tr.cells.length === 1 && tr.cells[0].colSpan > 1) tr.cells[0].colSpan += 1;
+    else tr.insertAdjacentHTML("afterbegin", `<td class="bk-c"></td>`);
+  }
+  for (const k of [...st.sel.keys()]) if (!seen.has(k)) st.sel.delete(k);           // dòng không còn hiện (đã lọc / đã xoá) → bỏ chọn
+  for (const tr of bkRows(st)) if (st.sel.has(tr.bkKey)) st.sel.set(tr.bkKey, tr.bkInfo);
+  st.last = null; bkSync(st);
+}
+function bkInit(tbId, cfg) {
+  const tb = $(tbId); if (!tb || BK[tbId]) return;
+  const table = tb.closest("table"), box = table && (table.closest(".tbl") || table); if (!box) return;
+  const hr = table.tHead && table.tHead.rows[0];
+  if (hr) hr.insertAdjacentHTML("afterbegin", `<th class="bk-c"><input type="checkbox" class="bk-all" title="Chọn tất cả" aria-label="Chọn tất cả ${esc(cfg.noun)} đang hiện"></th>`);
+  const bar = document.createElement("div");
+  bar.className = "bk-bar" + (box.classList.contains("full") ? " full" : ""); bar.hidden = true; bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Làm cho các dòng đã chọn");
+  bar.innerHTML = `<b class="bk-n"></b>${cfg.acts.map((a, i) => `<button class="btn sm ${a.cls || "ghost"}" type="button" data-bka="${i}">${a.label}</button>`).join("")}`
+    + `<button class="btn ghost sm bk-x" type="button" data-bkx>✕ Bỏ chọn</button>`;
+  box.parentNode.insertBefore(bar, box);
+  const st = BK[tbId] = { tb, bar, cfg, sel: new Map(), last: null, all: hr ? hr.querySelector(".bk-all") : null };
+  new MutationObserver(() => bkDeco(st)).observe(tb, { childList: true });
+  if (st.all) st.all.addEventListener("change", () => { const on = st.all.checked; for (const tr of bkRows(st)) on ? st.sel.set(tr.bkKey, tr.bkInfo) : st.sel.delete(tr.bkKey); st.last = null; bkSync(st); });
+  tb.addEventListener("click", e => {
+    const c = e.target.closest("input.bk-one"); if (!c) return;
+    const rows = bkRows(st), tr = c.closest("tr"), i = rows.indexOf(tr), on = c.checked;
+    const pick = r => on ? st.sel.set(r.bkKey, r.bkInfo) : st.sel.delete(r.bkKey);
+    if (e.shiftKey && st.last != null && rows[st.last] && st.last !== i) { const [a, b] = st.last < i ? [st.last, i] : [i, st.last]; for (let k = a; k <= b; k++) pick(rows[k]); }
+    else pick(tr);
+    st.last = i; bkSync(st);
+  });
+  bar.addEventListener("click", e => {
+    if (e.target.closest("[data-bkx]")) return bkClear(st);
+    const b = e.target.closest("[data-bka]"); if (!b || b.disabled) return;
+    const a = cfg.acts[+b.dataset.bka], items = [...st.sel.values()]; if (!items.length || !a) return;
+    busy(b, async () => { try { await a.run(items, () => bkClear(st)); } catch (er) { toast(bkErr(er), 1); } });
+  });
+  bkDeco(st);
+}
+
+/* ---------- việc cho KHÁCH (gọi admin_users_bulk theo từng đợt 50 khách) ---------- */
+async function bkUsers(action, ids, x = {}) {
+  const out = { ok: 0, fail: [], phones: 0, blue: 0 };
+  for (let i = 0; i < ids.length; i += 50) {
+    const part = ids.slice(i, i + 50);
+    const { data, error } = await sb.rpc("admin_users_bulk", { p_ids: part, p_action: action, p_reason: x.reason || null, p_opts: x.opts || {}, p_confirm: x.confirm || null, p_dry: false });
+    if (error || !data) throw error || new Error("Máy chủ không trả kết quả — thử lại.");
+    out.ok += +data.ok || 0; out.fail.push(...(data.fail || [])); out.phones += +data.phones || 0; out.blue += +data.blue || 0;
+    if (x.prog) x.prog(Math.min(i + part.length, ids.length), ids.length);
+  }
+  return out;
+}
+async function bkDry(action, ids) {
+  const { data, error } = await sb.rpc("admin_users_bulk", { p_ids: ids.slice(0, 500), p_action: action, p_dry: true });
+  if (error || !data) throw error || new Error("Máy chủ không trả kết quả — thử lại."); return data;
+}
+function bkRefresh(withAdmin) {
+  try { secRefreshAll(); } catch (e) {}
+  try { if (typeof SCAN !== "undefined" && SCAN && $("pane-sec") && !$("pane-sec").hidden) scanRun(); } catch (e) {}
+  if (withAdmin) { try { loadAdmin(); } catch (e) {} }
+}
+const bkProg = id => (d, n) => { const el = $(id); if (el && n > 50) el.textContent = `Đang làm ${d}/${n}…`; };
+
+// 🔒 BAN 1 hoặc nhiều khách — mặc định XOÁ HẾT MÁY (SQL v29b); bỏ tick thì chỉ khoá máy như cũ
+function bkBan(users, done) {
+  users = bkUniq(users).filter(u => u.id !== (profile && profile.id));
+  if (!users.length) return toast("Không có khách nào để ban (admin / chính bạn được bỏ qua).", 1);
+  const n = users.length, one = n === 1, ids = users.map(u => u.id);
+  const m = secDlg(`<h3>🔒 Ban ${one ? `tài khoản <b>${esc(users[0].name || bkWho(users[0].id))}</b>` : `<b>${n}</b> khách`}</h3>
+    ${one ? "" : `<div class="bk-names">${bkNames(users)}</div>`}
+    <label>Lý do (lưu hồ sơ)<input class="in" id="bn-why" maxlength="160" value="Gian lận / cày clone" autocomplete="off"></label>
+    <label class="mtrow"><input type="checkbox" id="bn-lock" checked> Khoá tài khoản + chặn đăng nhập (đăng xuất mọi thiết bị)</label>
+    <label class="mtrow"><input type="checkbox" id="bn-blue" checked> Thu hồi toàn bộ 💎 Blue</label>
+    <label class="mtrow"><input type="checkbox" id="bn-wipe" checked> <span>🗑️ <b>Xoá hết máy</b> của khách — máy chủ xoá sạch máy ảo, không khôi phục được <span class="hint">(bỏ tick: chỉ khoá máy, gỡ ban là mở lại)</span></span></label>
+    <label class="mtrow"><input type="checkbox" id="bn-zero"> <span>Đưa số dư tiền về 0 <span class="hint">(chỉ khi chắc chắn tiền đó là tiền gian lận)</span></span></label>
+    <div class="bk-pv" id="bn-pv">Đang đếm máy của ${one ? "khách" : n + " khách"}…</div><div class="err" id="bn-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn danger" type="button" id="bn-go">🔒 Ban${one ? "" : " " + n + " khách"}</button></div>`);
+  let pv = null, v29b = true;
+  const label = () => { const w = $("bn-wipe") && $("bn-wipe").checked; if ($("bn-go")) $("bn-go").textContent = `🔒 Ban${one ? "" : " " + n + " khách"}${w && pv && pv.phones ? ` + xoá ${pv.phones} máy` : ""}`; };
+  $("bn-wipe").onchange = label;
+  bkDry("ban", ids).then(d => {
+    if (!$("bn-pv")) return; pv = d;
+    $("bn-pv").innerHTML = `Ảnh hưởng: <b>${d.users}</b> khách · <b>${d.phones}</b> máy còn sống · ${bnum(d.blue)} Blue · số dư ${vnd(d.balance)}${d.skip ? ` · bỏ qua ${d.skip} (admin / chính bạn)` : ""}`; label();
+  }).catch(er => {
+    if (!$("bn-pv")) return;
+    if (V29B_MISS(er)) { v29b = false; $("bn-pv").innerHTML = V29B_TXT + (one ? " Ban vẫn chạy nhưng chỉ <b>khoá</b> máy (chưa xoá được)." : " Chưa ban nhiều khách 1 lần được."); }
+    else $("bn-pv").textContent = "";
+  });
+  $("bn-go").onclick = () => busy($("bn-go"), async () => {
+    const o = { lock: $("bn-lock").checked, revoke_blue: $("bn-blue").checked, wipe_phones: $("bn-wipe").checked, lock_phones: true, zero_balance: $("bn-zero").checked };
+    const why = $("bn-why").value.trim() || null;
+    if (o.zero_balance && !confirm(`Đưa số dư tiền của ${one ? "khách" : n + " khách"} về 0? Không hoàn tác tự động được.`)) return;
+    if (!v29b) {
+      if (!one) { $("bn-err").innerHTML = V29B_TXT; return; }
+      const { data, error } = await sb.rpc("admin_user_ban", { p_user: ids[0], p_reason: why, p_opts: o });
+      if (error) { $("bn-err").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
+      m.hidden = true; toast(`Đã ban ${data.user}: thu hồi ${bnum(data.blue_revoked)} Blue · khoá ${data.phones_locked} máy.`); bkRefresh(true); if (done) done(); return;
+    }
+    try {
+      const r = await bkUsers("ban", ids, { reason: why, opts: o, prog: bkProg("bn-pv") });
+      m.hidden = true;
+      toast(`Đã ban ${r.ok} khách${o.wipe_phones ? ` · ${r.phones} máy đang được máy chủ xoá` : ` · khoá ${r.phones} máy`}${r.blue ? ` · thu hồi ${bnum(r.blue)} Blue` : ""}${bkFailTxt(r.fail)}.`);
+      bkRefresh(true); if (done) done();
+    } catch (er) { $("bn-err").innerHTML = V29B_MISS(er) ? V29B_TXT : esc(errMsg(er)); }
+  });
+}
+// 🗑️ XOÁ VĨNH VIỄN nhiều tài khoản — gõ XOA HET (1 khách: hộp cũ, gõ đúng tên đăng nhập)
+function bkDel(users, done) {
+  users = bkUniq(users).filter(u => u.id !== (profile && profile.id));
+  if (!users.length) return toast("Không có tài khoản nào để xoá.", 1);
+  if (users.length === 1) { secDel(users[0].id, users[0].name || bkWho(users[0].id)); if (done) done(); return; }
+  const n = users.length, ids = users.map(u => u.id);
+  const m = secDlg(`<h3>🗑️ Xoá vĩnh viễn <b>${n}</b> tài khoản</h3><div class="bk-names">${bkNames(users)}</div>
+    <div class="note" style="border-color:var(--bad)">Khách không đăng nhập được nữa, lịch sử nạp / Blue bị xoá, <b>máy đang chạy bị máy chủ xoá sạch</b>. Hồ sơ từng khách (số dư, tiền đã nạp, Blue) vẫn lưu ở 🛡️ Bảo mật › 🚫 Đã khoá. <b>Thường nên BAN</b> để giữ bằng chứng.</div>
+    <label><span>Gõ <b>XOA HET</b> để xác nhận</span><input class="in" id="bd-ok" autocomplete="off" spellcheck="false"></label><div class="bk-pv" id="bd-pv"></div><div class="err" id="bd-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn danger" type="button" id="bd-go" disabled>🗑️ Xoá ${n} tài khoản</button></div>`);
+  $("bd-ok").oninput = () => { $("bd-go").disabled = bkNorm($("bd-ok").value) !== "XOA HET"; }; $("bd-ok").focus();
+  $("bd-go").onclick = () => busy($("bd-go"), async () => {
+    try {
+      const r = await bkUsers("delete", ids, { confirm: "XOA HET", prog: bkProg("bd-pv") });
+      m.hidden = true; toast(`Đã xoá ${r.ok} tài khoản${r.phones ? ` · ${r.phones} máy đang được máy chủ xoá` : ""}${bkFailTxt(r.fail)}.`);
+      const gone = new Set(ids.filter(id => !r.fail.some(f => f.id === id))); ADM.users = (ADM.users || []).filter(u => !gone.has(u.id));
+      bkRefresh(true); if (done) done();
+    } catch (er) { $("bd-err").innerHTML = V29B_MISS(er) ? V29B_TXT : esc(errMsg(er)); }
+  });
+}
+async function bkRevoke(users, done) {
+  users = bkUniq(users); if (!users.length) return;
+  const ids = users.map(u => u.id), d = await bkDry("revoke_blue", ids);
+  if (!(+d.blue > 0)) return toast(`${users.length === 1 ? "Khách này" : "Các khách đã chọn"} không còn Blue để thu hồi.`);
+  if (!confirm(`Thu hồi toàn bộ ${bnum(d.blue)} Blue của ${d.users} khách?\nKhách thấy dòng "Thu hồi Blue" trong lịch sử Blue.`)) return;
+  const r = await bkUsers("revoke_blue", ids, { reason: "Thu hồi Blue (gian lận)" });
+  toast(`Đã thu hồi ${bnum(r.blue)} Blue của ${r.ok} khách${bkFailTxt(r.fail)}.`); bkRefresh(false); if (done) done();
+}
+async function bkHold(users, hold, done) {
+  users = bkUniq(users); if (!users.length) return;
+  const r = await bkUsers(hold ? "hold" : "unhold", users.map(u => u.id));
+  toast(hold ? `🧊 Đã giữ Blue của ${r.ok} khách (không nhận, không dùng)${bkFailTxt(r.fail)}.` : `Đã thả Blue cho ${r.ok} khách${bkFailTxt(r.fail)}.`); bkRefresh(false); if (done) done();
+}
+async function bkUnban(users, done) {
+  users = bkUniq(users); if (!users.length) return;
+  if (!confirm(`Mở khoá ${users.length} tài khoản? (mở đăng nhập + mở các máy bị KHOÁ do ban — máy đã bị xoá thì không quay lại)`)) return;
+  const r = await bkUsers("unban", users.map(u => u.id));
+  toast(`Đã mở khoá ${r.ok} tài khoản · mở ${r.phones} máy${bkFailTxt(r.fail)}.`); bkRefresh(true); if (done) done();
+}
+async function bkWipe(users, done) {
+  users = bkUniq(users); if (!users.length) return;
+  const ids = users.map(u => u.id), d = await bkDry("wipe", ids);
+  if (!(+d.phones > 0)) return toast("Các khách đã chọn không còn máy nào.");
+  if (!confirm(`Xoá ${d.phones} máy của ${d.users} khách? Máy chủ xoá sạch máy ảo, không khôi phục được.`)) return;
+  const r = await bkUsers("wipe", ids, { reason: "Admin xoá máy khách đã khoá" });
+  toast(`${r.phones} máy đang được máy chủ xoá${bkFailTxt(r.fail)}.`); bkRefresh(false); try { reloadCpa(); } catch (e) {} if (done) done();
+}
+const usersOf = items => bkUniq(items.map(x => x.user || (x.uid ? { id: x.uid, name: x.name } : null)).concat(items.flatMap(x => (x.users || []).map(id => ({ id, name: bkWho(id) })))));
+const UA = {
+  ban: { label: "🔒 Ban", cls: "danger", run: (it, done) => bkBan(usersOf(it), done) },
+  del: { label: "🗑️ Xoá TK", cls: "danger", run: (it, done) => bkDel(usersOf(it), done) },
+  revoke: { label: "💎 Thu hồi Blue", run: (it, done) => bkRevoke(usersOf(it), done) },
+  hold: { label: "🧊 Giữ Blue", run: (it, done) => bkHold(usersOf(it), true, done) },
+  unhold: { label: "♨️ Thả Blue", run: (it, done) => bkHold(usersOf(it), false, done) },
+  unban: { label: "🔓 Gỡ ban", run: (it, done) => bkUnban(usersOf(it), done) },
+  wipe: { label: "🗑️ Xoá máy", cls: "danger", run: (it, done) => bkWipe(usersOf(it), done) },
+  banOwner: { label: "🔒 Ban khách", cls: "danger", run: (it, done) => bkBan(usersOf(it), done) },
+};
+// dòng có nút 🔍 / tên khách (data-sa … data-id) → khách
+const kUser = tr => { const a = tr.querySelector("[data-sa][data-id]"); if (!a || !a.dataset.id) return null; const id = a.dataset.id;
+  if (profile && id === profile.id) return null; const u = (ADM.users || []).find(x => x.id === id); if (u && u.role === "admin") return null;
+  return { id, uid: id, name: a.dataset.n || bkWho(id) }; };
+
+/* ---------- việc cho các bảng KHÔNG phải khách (lặp từng dòng) ---------- */
+async function bkLoop(items, fn, prog) {
+  let ok = 0, bad = 0, first = "";
+  for (let i = 0; i < items.length; i++) {
+    try { const e = await fn(items[i]); if (e) { bad++; first = first || e; } else ok++; } catch (er) { bad++; first = first || errMsg(er); }
+    if (prog && items.length > 5) prog(i + 1, items.length);
+  }
+  return { ok, bad, first };
+}
+const bkDoneTxt = (r, what) => `${what} ${r.ok}${r.bad ? ` · lỗi ${r.bad}${r.first ? " (" + r.first + ")" : ""}` : ""}.`;
+const bkToastProg = (d, n) => toast(`Đang làm ${d}/${n}…`);
+function bkBizDel(key) {
+  return { label: "🗑️ Xoá", cls: "danger", run: async (it, done) => {
+    if (!confirm(`Xoá ${it.length} dòng đã chọn? Không khôi phục được.`)) return;
+    const del = new Set(it.map(x => +x.idx)), arr = (BIZ[key] || []).filter((_, i) => !del.has(i));
+    if (await bizPutBlob(key === "hien" ? "hien_machines" : key, arr)) { toast(`Đã xoá ${del.size} dòng.`); if (done) done(); await loadBiz(); }
+  } };
+}
+const kIdx = attr => tr => { const b = tr.querySelector(`[${attr}]`); return b ? { id: "i" + b.getAttribute(attr), idx: +b.getAttribute(attr) } : null; };
+
+function bkSetupAll() {
+  if (bkSetupAll.done) return; bkSetupAll.done = true;
+  // 👥 Khách hàng
+  bkInit("ctbl", { noun: "khách", key: kUser, acts: [UA.ban, UA.del, UA.revoke, UA.unban] });
+  // 🛡️ Bảo mật
+  bkInit("scan-tb", { noun: "khách", key: kUser, acts: [UA.ban, UA.del, UA.revoke, UA.hold] });
+  bkInit("ban-tb", { noun: "khách", key: kUser, acts: [UA.unban, UA.wipe, UA.del] });
+  bkInit("mlog-tb", { noun: "khách", key: kUser, acts: [UA.banOwner] });
+  bkInit("sec-al", { noun: "cảnh báo", key: tr => tr.dataset.bkid ? { id: tr.dataset.bkid, users: (tr.dataset.bku || "").split(",").filter(Boolean) } : null,
+    acts: [{ label: "✓ Đã xem", run: async (it, done) => {
+        const { data, error } = await sb.rpc("admin_sec_seen", { p_ids: it.map(x => +x.id) }); if (error) throw error;
+        toast(`Đã đánh dấu đã xem ${data || 0} cảnh báo.`); if (done) done(); try { secAlertsLoad(); } catch (e) {} } },
+      { ...UA.banOwner, label: "🔒 Ban khách trong cảnh báo", show: it => it.some(x => (x.users || []).length) }] });
+  // 💎 Blue: khách giữ nhiều Blue
+  bkInit("bl-top", { noun: "khách", key: kUser, acts: [UA.ban, UA.del, UA.revoke, UA.hold] });
+  // 💳 Nạp tiền
+  bkInit("ttbl", { noun: "lệnh nạp", key: tr => tr.dataset.bkid ? { id: tr.dataset.bkid, pending: tr.dataset.bkst === "pending", user: tr.dataset.bku ? { id: tr.dataset.bku, name: tr.dataset.bkn } : null } : null,
+    acts: [{ label: "🗑️ Xoá lệnh chờ", cls: "danger", show: it => it.some(x => x.pending), run: async (it, done) => {
+        const p = it.filter(x => x.pending); if (!p.length) return toast("Chỉ xoá được lệnh đang CHỜ — lệnh đã cộng tiền luôn được giữ.", 1);
+        if (!confirm(`Xoá ${p.length} lệnh nạp đang chờ?${p.length < it.length ? `\n(${it.length - p.length} lệnh đã cộng tiền được giữ lại.)` : ""}`)) return;
+        const r = await bkLoop(p, async x => { const { error } = await sb.rpc("admin_delete_topup", { p_id: +x.id }); return error ? errMsg(error) : ""; }, bkToastProg);
+        toast(bkDoneTxt(r, "Đã xoá lệnh chờ:")); if (done) done(); try { txLoad(); } catch (e) {} } },
+      UA.banOwner] });
+  bkInit("bank-tb", { noun: "khoản tiền về", key: tr => { const b = tr.querySelector("[data-bkig]"); return b ? { id: b.dataset.bkig } : null; },
+    acts: [{ label: "Bỏ qua", run: async (it, done) => {
+      if (!confirm(`Bỏ qua ${it.length} khoản tiền về? (không cộng cho ai — chỉ dùng khi chắc chắn không phải tiền của khách)`)) return;
+      const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_bank_in_ignore", { p_id: +x.id, p_note: "Bỏ qua hàng loạt" }); return error ? errMsg(error) : ""; });
+      toast(bkDoneTxt(r, "Đã bỏ qua:")); if (done) done(); try { bankLoad(); } catch (e) {} } }] });
+  // 🛒 Đơn hàng
+  bkInit("otbl", { noun: "đơn", key: tr => { const b = tr.querySelector("[data-delord]"); if (!b) return null; const o = (ADM.orders || []).find(x => x.id === b.dataset.delord);
+      return { id: b.dataset.delord, user: o && o.user_id ? { id: o.user_id, name: uname(o.user_id) } : null }; },
+    acts: [{ label: "🗑️ Xoá đơn", cls: "danger", run: async (it, done) => {
+        if (!confirm(`Xoá ${it.length} đơn hàng? Không hoàn tác được. (Muốn trả tiền cho khách thì dùng Huỷ đơn & hoàn tiền từng đơn.)`)) return;
+        const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_delete_order", { p_order: x.id }); return error ? errMsg(error) : ""; }, bkToastProg);
+        toast(bkDoneTxt(r, "Đã xoá đơn:")); if (done) done(); await loadAdmin(); } },
+      UA.banOwner] });
+  // 📦 Sản phẩm
+  bkInit("ptbl", { noun: "sản phẩm", key: tr => { const b = tr.querySelector("[data-del]"); return b ? { id: b.dataset.del, name: (tr.cells[0] && tr.cells[0].textContent || "").trim() } : null; },
+    acts: [{ label: "🗑️ Xoá", cls: "danger", run: async (it, done) => {
+      if (!confirm(`Xoá ${it.length} sản phẩm?\n${it.slice(0, 8).map(x => "• " + x.name).join("\n")}${it.length > 8 ? "\n…" : ""}\nKhông khôi phục được.`)) return;
+      const { error } = await sb.from("products").delete().in("id", it.map(x => x.id)); if (error) throw error;
+      toast(`Đã xoá ${it.length} sản phẩm.`); if (done) done(); await loadProducts(); } }] });
+  // 🖥️ Máy VPS
+  bkInit("vtbl", { noun: "máy VPS", key: tr => { const b = tr.querySelector("[data-vext]"); if (!b) return null; const v = (ADM.vps || []).find(x => x.id === b.dataset.vext);
+      return { id: b.dataset.vext, name: v ? v.machine_name : "", user: v && v.user_id ? { id: v.user_id, name: uname(v.user_id) } : null }; },
+    acts: [{ label: "➕ 30 ngày", run: async (it, done) => {
+        if (!confirm(`Cộng 30 ngày cho ${it.length} máy VPS (không trừ tiền khách)?`)) return;
+        const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_vps_extend", { p_machine: x.id, p_days: 30 }); return error ? errMsg(error) : ""; });
+        toast(bkDoneTxt(r, "Đã cộng 30 ngày:")); if (done) done(); await loadAdmin(); } },
+      { label: "🗑️ Xoá", cls: "danger", run: async (it, done) => {
+        if (!confirm(`Xoá ${it.length} máy VPS khỏi danh sách? Không khôi phục được.`)) return;
+        const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_vps_delete", { p_machine: x.id }); return error ? errMsg(error) : ""; });
+        toast(bkDoneTxt(r, "Đã xoá máy VPS:")); if (done) done(); await loadAdmin(); } },
+      UA.banOwner] });
+  // 🎁 Mã khuyến mãi
+  bkInit("pr-tbl", { noun: "mã", key: tr => { const c = tr.dataset.prid && (typeof PR_ROWS !== "undefined" ? PR_ROWS : []).find(x => x.id === tr.dataset.prid); return c ? { id: c.id, name: c.code, c } : null; },
+    acts: [{ label: "⏸ Tắt", show: it => it.some(x => x.c.active), run: async (it, done) => {
+        const r = await bkLoop(it.filter(x => x.c.active), async x => { const { error } = await sb.rpc("admin_promo_set", { p_id: x.id, p_active: false }); return error ? prErr(error) : ""; });
+        toast(bkDoneTxt(r, "Đã tắt mã:")); if (done) done(); await prList(); } },
+      { label: "▶️ Bật", show: it => it.some(x => !x.c.active), run: async (it, done) => {
+        const r = await bkLoop(it.filter(x => !x.c.active), async x => { const { error } = await sb.rpc("admin_promo_set", { p_id: x.id, p_active: true }); return error ? prErr(error) : ""; });
+        toast(bkDoneTxt(r, "Đã bật mã:")); if (done) done(); await prList(); } },
+      { label: "🗑️ Xoá", cls: "danger", run: async (it, done) => {
+        const used = it.filter(x => (+x.c.uses || 0) > 0 || (+x.c.used || 0) > 0).length;
+        if (!confirm(`Xoá ${it.length} mã?${used ? `\n${used} mã đã có người dùng sẽ bị tắt + ẩn (lịch sử đơn và tiền đã giảm vẫn giữ).` : ""}\nKhông khôi phục được.`)) return;
+        const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_promo_delete", { p_id: x.id });
+          if (error && /PROMO_IN_USE/.test(error.message || "")) { const r2 = await sb.rpc("admin_promo_set", { p_id: x.id, p_active: false }); return r2.error ? prErr(r2.error) : ""; }
+          return error ? prErr(error) : ""; }, bkToastProg);
+        toast(bkDoneTxt(r, "Đã xoá mã:")); if (done) done(); await prList(); } }] });
+  // 🏭 Dàn máy nội bộ
+  bkInit("bzn-tbl", { noun: "dòng", key: kIdx("data-bzn-del"), acts: [bkBizDel("servers")] });
+  bkInit("bzs-tbl", { noun: "dòng", key: kIdx("data-bzs-del"), acts: [bkBizDel("sub_rents")] });
+  bkInit("bzh-tbl", { noun: "dòng", key: kIdx("data-bzh-del"), acts: [bkBizDel("hien")] });
+  bkInit("bze-tbl", { noun: "dòng", key: kIdx("data-bze-del"), acts: [bkBizDel("expenses")] });
+  // 📱 Máy đổi Android kẹt / gia hạn thiếu ngày
+  bkInit("swc-tb", { noun: "máy", key: tr => { const b = tr.querySelector("[data-swcre]"); return b ? { id: b.dataset.swcre } : null; },
+    acts: [{ label: "🔁 Tạo lại", run: async (it, done) => {
+      if (!confirm(`Tạo lại ${it.length} máy đổi Android? Hạn dùng của khách giữ nguyên.`)) return;
+      const r = await bkLoop(it, async x => { const { error } = await sb.rpc("admin_switch_retry", { p_id: x.id }); return error ? swcSql(error) : ""; });
+      toast(bkDoneTxt(r, "🔁 Đã cho tạo lại:")); if (done) done(); await swcLoad(); try { await reloadCpa(); } catch (e) {} } }] });
+  bkInit("rnf-tb", { noun: "máy", key: tr => { const b = tr.querySelector("[data-rnfgo]"); return b ? { id: b.dataset.rnfgo } : null; },
+    acts: [{ label: "🩹 Bù ngày", run: async (it, done) => { await rnfGo(it.map(x => x.id)); if (done) done(); } }] });
+}
+
+/* ---------- 📱 bảng máy khách (đã có ô tick riêng): thêm nút 🔒 Ban chủ máy ---------- */
+$("cpa-bban") && ($("cpa-bban").onclick = () => {
+  const owners = bkUniq([...cpaSel].map(id => (CPA_ROWS || []).find(p => p.id === id)).filter(p => p && p.user_id).map(p => ({ id: p.user_id, name: bkWho(p.user_id) })))
+    .filter(u => !(profile && u.id === profile.id) && !((ADM.users || []).find(x => x.id === u.id && x.role === "admin")));
+  if (!owners.length) return toast("Máy đã chọn không có chủ nào để ban (máy của admin được bỏ qua).", 1);
+  bkBan(owners, () => { cpaSel.clear(); try { reloadCpa(); } catch (e) {} });
+});
+
+/* ---------- 🧹 XOÁ SẠCH BLUE (💎 Tích Blue › Khách đang giữ nhiều Blue nhất) ---------- */
+function bkBlueWipe() {
+  const m = secDlg(`<h3>🧹 Xoá sạch Blue</h3>
+    <div class="hint" style="margin-bottom:6px">Thu hồi Blue hàng loạt. Khách thấy dòng "Admin thu hồi Blue" trong lịch sử Blue. Không hoàn tác tự động.</div>
+    <label class="mtrow"><input type="radio" name="bw-m" value="farm" checked> <span><b>Blue cày được</b> (điểm danh · chuỗi · nhiệm vụ · mời bạn) <span class="hint">— giữ Blue hoàn đơn của khách mua máy và Blue admin tự cộng</span></span></label>
+    <label class="mtrow"><input type="radio" name="bw-m" value="all"> <span><b>Toàn bộ Blue</b> — mọi khách về 0</span></label>
+    <label class="mtrow"><input type="checkbox" id="bw-nodep"> <span>Chỉ khách <b>chưa nạp đồng nào</b></span></label>
+    <label>Lý do (khách thấy trong lịch sử Blue)<input class="in" id="bw-note" maxlength="160" placeholder="VD: Thu hồi Blue cày clone" autocomplete="off"></label>
+    <div class="bk-pv" id="bw-pv">Đang đếm…</div>
+    <label><span>Gõ <b>XOA HET</b> để xác nhận</span><input class="in" id="bw-ok" autocomplete="off" spellcheck="false"></label><div class="err" id="bw-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn danger" type="button" id="bw-go" disabled>🧹 Xoá sạch</button></div>`);
+  let pv = null, seq = 0;
+  const args = () => ({ p_mode: (m.querySelector('input[name="bw-m"]:checked') || {}).value || "farm", p_only_nodep: $("bw-nodep").checked, p_note: $("bw-note").value.trim() || null });
+  const can = () => { if ($("bw-go")) $("bw-go").disabled = !(pv && pv.users > 0) || bkNorm($("bw-ok").value) !== "XOA HET"; };
+  const prev = async () => {
+    const k = ++seq; pv = null; can(); $("bw-pv").textContent = "Đang đếm…";
+    const { data, error } = await sb.rpc("admin_blue_wipe", { ...args(), p_dry: true });
+    if (k !== seq || !$("bw-pv")) return;
+    if (error || !data) { $("bw-pv").innerHTML = V29B_MISS(error) ? V29B_TXT : esc(errMsg(error)); return; }
+    pv = data; $("bw-pv").innerHTML = data.users ? `Sẽ thu hồi <b>${bnum(data.blue)} Blue</b> của <b>${data.users}</b> khách.` : "Không có Blue nào khớp để thu hồi."; can();
+    if ($("bw-go")) $("bw-go").textContent = data.users ? `🧹 Thu hồi ${bnum(data.blue)} Blue` : "🧹 Xoá sạch";
+  };
+  m.querySelectorAll('input[name="bw-m"]').forEach(r => { r.onchange = prev; }); $("bw-nodep").onchange = prev; $("bw-ok").oninput = can;
+  prev();
+  $("bw-go").onclick = () => busy($("bw-go"), async () => {
+    const { data, error } = await sb.rpc("admin_blue_wipe", { ...args(), p_confirm: "XOA HET", p_dry: false });
+    if (error || !data) { $("bw-err").innerHTML = V29B_MISS(error) ? V29B_TXT : esc(errMsg(error)); return; }
+    m.hidden = true; toast(`🧹 Đã thu hồi ${bnum(data.blue)} Blue của ${data.users} khách.`); bkRefresh(false);
+  });
+}
+$("bl-wipe") && ($("bl-wipe").onclick = () => isAdmin() && bkBlueWipe());
+
+bkSetupAll();
+
+/* ---------- 🔑 MẬT KHẨU TẠM cho khách (khách quên mật khẩu mà không nhận được email) ---------- */
+function pwTempDlg(id, name) {
+  const gen = () => { const A = "abcdefghjkmnpqrstuvwxyz23456789", r = new Uint32Array(8); crypto.getRandomValues(r); return "cb" + [...r].map(x => A[x % A.length]).join(""); };
+  const m = secDlg(`<h3>🔑 Mật khẩu tạm cho <b>${esc(name || bkWho(id))}</b></h3>
+    <div class="hint" style="margin-bottom:6px">Khách thường tự đặt lại được qua email (Quên mật khẩu). Chỉ dùng khi khách nhắn không nhận được email. Gửi mật khẩu tạm cho khách qua Discord / Zalo — khách đăng nhập xong sẽ bị <b>bắt đổi mật khẩu mới</b>. Mọi thiết bị đang đăng nhập của khách bị đăng xuất.</div>
+    <label><span>Mật khẩu tạm</span><input class="in" id="pt-p" autocomplete="off" spellcheck="false" maxlength="40"></label>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="pt-gen">🎲 Tạo mới</button><button class="btn ghost sm" type="button" id="pt-copy">📋 Copy</button></div>
+    <div class="err" id="pt-err"></div>
+    <div class="row2"><button class="btn ghost" type="button" data-sdx>Huỷ</button><button class="btn" type="button" id="pt-go">🔑 Đặt mật khẩu tạm</button></div>`);
+  $("pt-p").value = gen();
+  $("pt-gen").onclick = () => { $("pt-p").value = gen(); };
+  $("pt-copy").onclick = async () => { try { await navigator.clipboard.writeText($("pt-p").value); toast("Đã copy mật khẩu tạm."); } catch (e) { $("pt-p").select(); } };
+  $("pt-go").onclick = () => busy($("pt-go"), async () => {
+    const pw = $("pt-p").value.trim(); if (pw.length < 8) { $("pt-err").textContent = "Mật khẩu tạm cần ít nhất 8 ký tự."; return; }
+    const { error } = await sb.rpc("admin_set_password", { p_user: id, p_pass: pw });
+    if (error) { $("pt-err").textContent = errMsg(error); return; }
+    try { await navigator.clipboard.writeText(pw); } catch (e) {}
+    m.hidden = true; toast(`Đã đặt mật khẩu tạm cho ${name || "khách"} (đã copy) — gửi cho khách, khách đăng nhập xong sẽ phải đổi mật khẩu mới.`);
+    try { secAlertsLoad(); } catch (e) {}
+  });
+}
+document.addEventListener("click", e => { const b = e.target.closest("[data-pwset]"); if (!b || !isAdmin()) return; e.preventDefault(); pwTempDlg(b.dataset.pwset, b.dataset.n); });
 
 </script>
 </body>
