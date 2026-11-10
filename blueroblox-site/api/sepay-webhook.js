@@ -1,6 +1,7 @@
 // Vercel Serverless Function: SePay gọi vào đây mỗi khi tài khoản ngân hàng có tiền vào.
 // URL đặt trong SePay: https://blueroblox.shop/api/sepay-webhook
 // Biến môi trường cần đặt trên Vercel: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SEPAY_API_KEY
+// v29: chuyển THIẾU vẫn cộng đúng số tiền thật (credit_topup) · tiền về không khớp mã → lưu "Tiền về chưa khớp" (bank_in_note)
 
 const SB = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -29,7 +30,17 @@ module.exports = async (req, res) => {
     if (!r.ok) throw new Error("load " + r.status);
     const pending = await r.json();
     const hit = pending.find(t => content.includes(String(t.memo).toUpperCase()));
-    if (!hit) return res.status(200).json({ success: true, matched: false });
+    if (!hit) {
+      // Tiền THẬT đã về nhưng không khớp lệnh nạp nào đang chờ (ghi sai nội dung / chuyển lại mã cũ…) → lưu vào
+      // "🏦 Tiền về chưa khớp" (SQL v29) để admin gán đúng khách. Chưa chạy v29 / lỗi → bỏ qua, không làm SePay gửi lại.
+      try {
+        await fetch(`${SB}/rest/v1/rpc/bank_in_note`, {
+          method: "POST", headers,
+          body: JSON.stringify({ p_ref: ref, p_amount: amount, p_content: String(tx.content || tx.description || "").slice(0, 300) })
+        });
+      } catch (e) { console.error("bank_in_note", e); }
+      return res.status(200).json({ success: true, matched: false });
+    }
 
     const c = await fetch(`${SB}/rest/v1/rpc/credit_topup`, {
       method: "POST", headers,
