@@ -287,6 +287,13 @@ footer ul a{text-decoration:none}footer ul a:hover{color:var(--fg)}
 .tabs button:hover{color:var(--fg)}
 .tabs button.on{color:#0b1433;background:linear-gradient(180deg,var(--gold-hi),var(--gold))}
 .dbody{flex:1;overflow:auto;padding:20px;display:grid;gap:14px;align-content:start}
+.tabs .tsep{flex:none;width:1px;margin:6px 4px;background:var(--line2)}
+@media (min-width:900px){#adm-tabs{flex-wrap:wrap;row-gap:6px}}
+.subtabs{display:flex;flex-wrap:wrap;gap:6px;padding:5px;border-radius:14px;background:var(--panel);border:1px solid var(--line)}
+.subtabs button{background:transparent;border:1px solid transparent;color:var(--muted);padding:7px 13px;font-weight:600;font-size:13.5px;border-radius:10px;white-space:nowrap}
+.subtabs button:hover{color:var(--fg)}
+.subtabs button.on{color:var(--fg);background:var(--soft,rgba(143,208,255,.1));border-color:var(--line2)}
+.subpane{display:grid;gap:14px;align-content:start;min-width:0}
 .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .tiles div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
 .tiles b{display:block;font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
@@ -1817,17 +1824,13 @@ window.BR_CONFIG = {
     <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="tabs" id="adm-tabs">
-      <button class="on" data-tab="stats">📊 Thống kê</button><button data-tab="prod">Sản phẩm</button><button data-tab="cust">Khách hàng</button><button data-tab="tx">Nạp tiền</button><button data-tab="ord">Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="vps">Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🖥️ Dàn máy nội bộ</button><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="bank">Ngân hàng</button><button data-tab="site">Nội dung trang</button>
+      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền</button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="biz">🏭 Dàn máy nội bộ</button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
       <div class="tiles" style="grid-template-columns:repeat(4,1fr)" id="st-tiles"></div>
       <h3 style="margin:6px 0 0">Top sản phẩm bán chạy</h3>
       <div class="tbl"><table><thead><tr><th>Sản phẩm</th><th>Lượt bán</th><th>Doanh thu</th></tr></thead><tbody id="st-top"></tbody></table></div>
-      <h3 style="margin:10px 0 0">🧾 Lịch sử mua ĐT đám mây</h3>
-      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option><option value="bonus">➕ Admin cộng ngày</option><option value="fix">🩹 Bù gia hạn</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
-      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Loại</th><th>Máy</th><th>Số tiền</th></tr></thead><tbody id="cps-tb"></tbody></table></div>
-      <button class="btn ghost sm" type="button" id="cps-more" hidden>Tải thêm</button>
     </div>
     <div class="dbody" id="pane-prod" hidden>
       <div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0;font-size:17px">📦 Danh sách sản phẩm</h3><span class="hint" id="pf-count" style="margin-left:auto"></span><button class="btn ghost sm" type="button" id="pf-trall" title="Dịch tên, tính năng, mô tả của các sản phẩm chưa có bản tiếng Anh">🇬🇧 Dịch tất cả sang tiếng Anh</button></div>
@@ -1968,52 +1971,23 @@ window.BR_CONFIG = {
       </div>
     </div>
     <div class="dbody" id="pane-cloud" hidden>
-      <div class="note">Quản lý <b>điện thoại đám mây</b>: bảo trì, máy chủ, thẻ sản phẩm, đơn giá, giới hạn cấu hình và máy khách đang thuê. Lưu xong, khách mở form thuê là thấy ngay.</div>
-      <div class="f mtbox">
-        <h3>🛠️ Bảo trì</h3>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-site"><i></i></span><span><b>Bảo trì toàn web</b><small>Khách không mua hàng, nạp tiền, thuê hay điều khiển máy được. Admin vẫn dùng bình thường.</small></span></label>
-        <label class="full">Lời nhắn cho khách (toàn web)<input id="mt-sitemsg" maxlength="200" placeholder="VD: Nâng cấp hệ thống, mở lại lúc 20:00"></label>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-cloud"><i></i></span><span><b>Bảo trì riêng ĐT đám mây</b><small>Chỉ khoá thuê, gia hạn và điều khiển điện thoại đám mây. Các sản phẩm khác vẫn bán.</small></span></label>
-        <label class="full">Lời nhắn cho khách (ĐT đám mây)<input id="mt-cloudmsg" maxlength="200" placeholder="VD: Đang nâng cấp máy chủ"></label>
-        <div class="hint full">Trong lúc bảo trì, máy của khách <b>không bị tạm dừng hay xoá</b> khi hết hạn; tắt bảo trì xong khách có 30 phút để gia hạn.</div>
-        <div class="acts full"><button class="btn" type="button" id="mt-save">Lưu bảo trì</button><span class="hint" id="mt-msg"></span></div>
+      <div class="subtabs" role="tablist" aria-label="Mục ĐT đám mây"><button type="button" role="tab" data-sub="phones" class="on" aria-selected="true">📋 Máy khách</button><button type="button" role="tab" data-sub="servers" aria-selected="false">🖥️ Máy chủ</button><button type="button" role="tab" data-sub="price" aria-selected="false">💰 Giá &amp; thẻ bán</button><button type="button" role="tab" data-sub="tools" aria-selected="false">🧰 Công cụ</button><button type="button" role="tab" data-sub="sales" aria-selected="false">🧾 Lịch sử bán</button></div>
+      <div class="subpane" data-sub="phones">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">📋 Máy khách đang thuê <span class="hint">(chỉ admin thấy)</span></h3><span class="hint" id="cpa-count" style="margin-left:auto"></span></div>
+      <div class="cpabar">
+        <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
+        <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option><option value="cancelling">Đang huỷ (chờ máy chủ xoá)</option></select>
+        <span class="cpasel" id="cpa-selbar" hidden><b id="cpa-seln">0</b> máy đã chọn
+          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button><button class="btn ghost sm" type="button" id="cpa-bdays">➕ Cộng ngày</button></span>
+        <button class="btn sm" type="button" id="cpa-apk" style="margin-left:auto">📦 Cài APK cho máy khách</button>
       </div>
-      <div class="f mtbox">
-        <h3>🔓 Root máy (Magisk)</h3>
-        <div class="hint full">Máy mới tạo <b>tự có root</b>. Server cũng tự kiểm tra mỗi 5 phút: máy nào chưa root sẽ tự root (máy khởi động lại ~1 phút, app/tài khoản giữ nguyên) và tự cấp sẵn quyền root cho app khách cài. Khách cũng tự bấm <b>🔓 Root máy</b> được trong danh sách máy / trang điều khiển.</div>
-        <div class="acts full"><button class="btn" type="button" id="cpa-rootall">🔓 Root tất cả máy ngay</button></div>
+      <div class="tbl"><table><thead><tr><th style="width:30px"><input type="checkbox" id="cpa-all" aria-label="Chọn tất cả máy đang lọc"></th><th>Máy</th><th>Khách</th><th>Cấu hình</th><th>Trạng thái</th><th>Hết hạn</th><th></th></tr></thead><tbody id="cpa-tbl"></tbody></table></div>
       </div>
-      <div class="f mtbox" id="tk-box">
-        <h3>📢 Dòng chữ chạy — thông báo</h3>
-        <div class="hint full">Hiện dòng chữ chạy trên đầu web cho <b>mọi khách</b> — <b>không cần bật ưu đãi miễn phí</b> (không mở lại nhận máy 0đ). Khi đang hiện, dòng này thay cho dòng ưu đãi miễn phí. <span id="tk-state"></span></div>
-        <label class="full">Tiếng Việt<input id="tk-vi" maxlength="300" placeholder="VD: 📢 Bảo trì máy chủ lúc 23h tối nay — máy của bạn vẫn giữ nguyên"></label>
-        <label class="full">Tiếng Anh — khách chọn English sẽ thấy (để trống = dùng bản tiếng Việt)<input id="tk-en" maxlength="300" placeholder="VD: 📢 Server maintenance at 11 PM tonight (GMT+7)"></label>
-        <label class="full">⏳ Tự ẩn lúc (giờ trên máy bạn · để trống = hiện tới khi bấm Ẩn) — có giờ thì web hiện đồng hồ đếm ngược tới giờ này<input id="tk-until" type="datetime-local"></label>
-        <div class="acts full"><button class="btn" type="button" id="tk-save">Lưu &amp; hiện</button><button class="btn ghost" type="button" id="tk-off">Ẩn dòng chữ</button><span class="hint" id="tk-msg"></span></div>
-      </div>
-      <div class="f mtbox freebox">
-        <h3>🎁 Miễn phí ưu đãi</h3>
-        <div class="hint full" id="fr-state"></div>
-        <label>Số ngày miễn phí<input id="fr-days" type="number" min="1" inputmode="numeric" value="1"></label>
-        <div class="hint" style="align-self:end">👤 Mỗi tài khoản chỉ được dùng thử <b>1 máy</b> mỗi đợt (đã nhận rồi thì không nhận lại được, kể cả khi máy đã hết hạn).</div>
-        <label class="full">⏳ Ưu đãi kéo dài (số ngày — web hiện đồng hồ đếm ngược, hết giờ khách không nhận máy miễn phí được nữa)<input id="fr-until" type="number" min="0" step="0.25" placeholder="VD 3 = 3 ngày · 0.5 = 12 giờ · để trống = giữ nguyên"><small id="fr-until-now" class="hint" style="display:block;margin-top:4px"></small></label>
-        <label>RAM tối đa (GB)<input id="fr-ram" type="number" min="1" inputmode="numeric" value="4"></label>
-        <label>CPU tối đa (nhân)<input id="fr-cpu" type="number" min="1" inputmode="numeric" value="4"></label>
-        <label class="full">Dòng chữ chạy — tiếng Việt (để trống = tự viết)<input id="fr-msg" maxlength="200" placeholder="VD: 🎁 Miễn phí thuê điện thoại đám mây 3 ngày — nhận ngay!"></label>
-        <label class="full">Dòng chữ chạy — tiếng Anh, khách chọn English sẽ thấy (để trống = tự viết)<input id="fr-msg-en" maxlength="200" placeholder="VD: 🎁 FREE Cloud Phone for 1 day — claim yours now!"></label>
-        <div class="hint full">Bật: khách nhận máy <b>0đ</b> (đúng số ngày trên), web hiện dòng chữ chạy. Hết số ngày → máy tự tắt, 30 phút sau tự xoá. Máy miễn phí không gia hạn được.<br><b>Tắt: quay lại tính phí và XOÁ SẠCH mọi máy miễn phí đã phát.</b></div>
-        <div class="acts full"><button class="btn" type="button" id="fr-on">Bật / Lưu ưu đãi</button><button class="btn ghost" type="button" id="fr-reset" style="border-color:#ffb800;color:#ffcf4a">🔄 Làm mới lượt miễn phí (mọi tài khoản)</button><button class="btn ghost" type="button" id="fr-off" style="border-color:var(--bad);color:var(--bad)">Tắt ưu đãi & xoá máy miễn phí</button><span class="hint" id="fr-msgout"></span></div>
-      </div>
-      <div class="f mtbox" id="am-box">
-        <h3>📲 Bắt buộc cập nhật app</h3>
-        <div class="hint full">App máy tính (Windows) và app Android có phiên bản <b>thấp hơn</b> bản tối thiểu dưới đây sẽ <b>không mở máy, không thuê / gia hạn / mua được</b> cho tới khi khách cập nhật bản mới. <b>Để trống = tắt</b> (không ép). Web trên trình duyệt không bị ảnh hưởng.</div>
-        <label>💻 App PC (Windows) tối thiểu — VD 1.14<span class="amrow"><input id="am-pc" maxlength="16" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Để trống = không ép"><button class="btn ghost sm" type="button" id="am-pc-get">Lấy bản mới nhất</button></span></label>
-        <label>📱 App Android tối thiểu — VD 1.45<span class="amrow"><input id="am-and" maxlength="16" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Để trống = không ép"><button class="btn ghost sm" type="button" id="am-and-get">Lấy bản mới nhất</button></span></label>
-        <div class="hint full">"Lấy bản mới nhất" đọc số phiên bản đang phát hành (/download/pc.json, /download/app.json) — chỉ đặt bản tối thiểu khi bản đó <b>đã có trên trang tải</b>, nếu không khách không có bản nào để cập nhật.</div>
-        <div class="acts full"><button class="btn" type="button" id="am-save">Lưu bản tối thiểu</button><span class="hint" id="am-msg"></span></div>
-      </div>
+      <div class="subpane" data-sub="servers" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">🖥️ Máy chủ</h3><span class="hint" id="cpa-nodesum"></span><button class="btn ghost sm" type="button" id="cpa-nodes-reload" style="margin-left:auto">Làm mới</button></div>
       <div class="nodes" id="cpa-nodes"><div class="empty">Đang tải…</div></div>
+      </div>
+      <div class="subpane" data-sub="price" hidden>
       <div class="f" style="grid-template-columns:1fr 1fr">
         <h3>🏷️ Thẻ sản phẩm hiển thị ở cửa hàng</h3>
         <label class="full">📦 Số lượng còn bán (mỗi máy khách thuê trừ 1 · về 0 = hiện "Hết hàng" · để trống = không giới hạn)
@@ -2048,6 +2022,24 @@ window.BR_CONFIG = {
       <div class="hint">Công thức: <b>(RAM × giá RAM + CPU × giá CPU) × số ngày</b>. Bảng tự cập nhật khi bạn sửa ô giá phía trên.</div>
       <div class="tbl"><table><thead><tr><th>Cấu hình</th><th class="num">1 ngày</th><th class="num">7 ngày</th><th class="num">30 ngày</th><th class="num">90 ngày</th></tr></thead><tbody id="cpa-ana"></tbody></table></div>
       <div class="hint" id="cpa-sum"></div>
+      </div>
+      <div class="subpane" data-sub="tools" hidden>
+      <div class="gpubox" id="swcbox">
+        <div class="gph"><h3 style="margin:0">🧹 Máy đổi Android</h3><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="swc-check">🔎 Kiểm tra</button><button class="btn danger sm" type="button" id="swc-go">🧹 Xoá sạch máy cũ</button></span></div>
+        <div class="hint" id="swc-msg">Bấm Kiểm tra để xem.</div>
+        <div class="tbl" id="swc-tblbox" hidden><table><thead><tr><th>Máy mới</th><th>Khách</th><th>Tình trạng</th><th></th></tr></thead><tbody id="swc-tb"></tbody></table></div>
+      </div>
+      <div class="gpubox" id="rnfbox">
+        <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
+        <div class="hint" id="rnf-msg">Máy chủ bản cũ không cộng ngày khi khách gia hạn. Bấm <b>Kiểm tra</b> để tìm máy khách đang bị thiếu ngày (so ngày thuê + mọi lần gia hạn với hạn hiện tại), rồi bấm <b>Bù</b>.</div>
+        <div class="tbl" id="rnf-tblbox" hidden><table><thead><tr><th>Máy</th><th>Khách</th><th>Hết hạn hiện tại</th><th>Lẽ ra hết hạn</th><th class="num">Thiếu</th><th></th></tr></thead><tbody id="rnf-tb"></tbody></table></div>
+        <div id="rnf-allbox" hidden><button class="btn sm" type="button" id="rnf-all">🩹 Bù tất cả</button></div>
+      </div>
+      <div class="f mtbox">
+        <h3>🔓 Root máy (Magisk)</h3>
+        <div class="hint full">Máy mới tạo <b>tự có root</b>. Server cũng tự kiểm tra mỗi 5 phút: máy nào chưa root sẽ tự root (máy khởi động lại ~1 phút, app/tài khoản giữ nguyên) và tự cấp sẵn quyền root cho app khách cài. Khách cũng tự bấm <b>🔓 Root máy</b> được trong danh sách máy / trang điều khiển.</div>
+        <div class="acts full"><button class="btn" type="button" id="cpa-rootall">🔓 Root tất cả máy ngay</button></div>
+      </div>
       <div class="gpubox" id="gpubox">
         <div class="gph"><h3 style="margin:0">🧪 Máy thử GPU <span class="hint">(GTX 1080 · chỉ admin)</span></h3><button class="btn ghost sm" type="button" id="gpu-reload">↻ Tải lại</button></div>
         <div class="gpst" id="gpu-st"><div class="hint">Đang kiểm tra…</div></div>
@@ -2060,68 +2052,17 @@ window.BR_CONFIG = {
         </div>
         <div class="hint" id="gpu-msg"></div>
       </div>
-      <div class="gpubox" id="rnfbox">
-        <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
-        <div class="hint" id="rnf-msg">Máy chủ bản cũ không cộng ngày khi khách gia hạn. Bấm <b>Kiểm tra</b> để tìm máy khách đang bị thiếu ngày (so ngày thuê + mọi lần gia hạn với hạn hiện tại), rồi bấm <b>Bù</b>.</div>
-        <div class="tbl" id="rnf-tblbox" hidden><table><thead><tr><th>Máy</th><th>Khách</th><th>Hết hạn hiện tại</th><th>Lẽ ra hết hạn</th><th class="num">Thiếu</th><th></th></tr></thead><tbody id="rnf-tb"></tbody></table></div>
-        <div id="rnf-allbox" hidden><button class="btn sm" type="button" id="rnf-all">🩹 Bù tất cả</button></div>
       </div>
-      <div class="gpubox" id="swcbox">
-        <div class="gph"><h3 style="margin:0">🧹 Máy đổi Android</h3><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="swc-check">🔎 Kiểm tra</button><button class="btn danger sm" type="button" id="swc-go">🧹 Xoá sạch máy cũ</button></span></div>
-        <div class="hint" id="swc-msg">Bấm Kiểm tra để xem.</div>
-        <div class="tbl" id="swc-tblbox" hidden><table><thead><tr><th>Máy mới</th><th>Khách</th><th>Tình trạng</th><th></th></tr></thead><tbody id="swc-tb"></tbody></table></div>
+      <div class="subpane" data-sub="sales" hidden>
+      <h3 style="margin:10px 0 0">🧾 Lịch sử mua ĐT đám mây</h3>
+      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option><option value="bonus">➕ Admin cộng ngày</option><option value="fix">🩹 Bù gia hạn</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
+      <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Loại</th><th>Máy</th><th>Số tiền</th></tr></thead><tbody id="cps-tb"></tbody></table></div>
+      <button class="btn ghost sm" type="button" id="cps-more" hidden>Tải thêm</button>
       </div>
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">📋 Máy khách đang thuê <span class="hint">(chỉ admin thấy)</span></h3><span class="hint" id="cpa-count" style="margin-left:auto"></span></div>
-      <div class="cpabar">
-        <input class="search" id="cpa-q" placeholder="Tìm tên máy, tên khách, cổng…">
-        <select class="in" id="cpa-st" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="active">Đang chạy</option><option value="locked">Đang bị khoá</option><option value="expired">Hết hạn (chờ 30p)</option><option value="pending">Đang tạo</option><option value="error">Lỗi</option><option value="cancelling">Đang huỷ (chờ máy chủ xoá)</option></select>
-        <span class="cpasel" id="cpa-selbar" hidden><b id="cpa-seln">0</b> máy đã chọn
-          <button class="btn ghost sm" type="button" id="cpa-blk">🔒 Khoá</button><button class="btn ghost sm" type="button" id="cpa-bun">🔓 Mở khoá</button><button class="btn danger sm" type="button" id="cpa-bdel">🗑️ Xoá</button><button class="btn ghost sm" type="button" id="cpa-bapk">📦 Cài APK</button><button class="btn ghost sm" type="button" id="cpa-bdays">➕ Cộng ngày</button></span>
-        <button class="btn sm" type="button" id="cpa-apk" style="margin-left:auto">📦 Cài APK cho máy khách</button>
-      </div>
-      <div class="tbl"><table><thead><tr><th style="width:30px"><input type="checkbox" id="cpa-all" aria-label="Chọn tất cả máy đang lọc"></th><th>Máy</th><th>Khách</th><th>Cấu hình</th><th>Trạng thái</th><th>Hết hạn</th><th></th></tr></thead><tbody id="cpa-tbl"></tbody></table></div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
-      <form class="f mtbox prf" id="rff" autocomplete="off" style="margin-bottom:14px">
-        <h3>🤝 Giới thiệu bạn bè · hoa hồng khi bạn bè mua</h3>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="rf-on"><i></i></span><span><b>Bật hoa hồng giới thiệu</b><small>Tắt thì khách không thấy nút 🎁 Mời bạn trên web và các lần mua mới không được cộng hoa hồng (tắt lúc nào thì lượt mua lúc đó không bao giờ được tính bù).</small></span></label>
-        <label>Phần trăm hoa hồng (0–50%)<input id="rf-pct" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
-        <label>Số ngày được nhận lời mời (1–30)<input id="rf-days" type="number" min="1" max="30" step="1" inputmode="numeric"></label>
-        <div class="hint full" id="rf-ex"></div>
-        <div class="note full" id="rf-prev"></div>
-        <div class="acts full"><button class="btn" type="submit" id="rf-save">Lưu hoa hồng</button></div>
-        <div class="refst full" id="rfa-sum"></div>
-        <div class="full rfa-head"><b>Hoa hồng đã trả gần đây</b><button class="btn ghost sm" type="button" id="rfa-reload">↻ Làm mới</button></div>
-        <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
-      </form>
-      <form class="f mtbox prf" id="blf" autocomplete="off" novalidate style="margin-bottom:14px">
-        <h3>💎 Tích Blue · điểm danh · nhiệm vụ hằng ngày</h3>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-on"><i></i></span><span><b>Bật Tích Blue</b><small>Khách tích Blue khi điểm danh, làm nhiệm vụ, mời bạn, mua hàng — rồi dùng Blue trả tiền thuê / gia hạn ĐT đám mây (1 Blue = 1đ). Tắt thì ẩn hết; Blue khách đang có vẫn giữ nguyên.</small></span></label>
-        <label>📅 Điểm danh mỗi ngày (Blue)<input id="bl-checkin" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>Chuỗi điểm danh liền (ngày · 0 = không thưởng chuỗi)<input id="bl-sdays" type="number" min="0" max="365" step="1" inputmode="numeric"></label>
-        <label>🎉 Thưởng thêm khi đủ chuỗi (Blue)<input id="bl-sbonus" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
-        <label>📱 Nhiệm vụ mở máy đám mây (Blue · 0 = tắt)<input id="bl-tplay" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>📣 Nhiệm vụ chia sẻ link mời (Blue · 0 = tắt)<input id="bl-tshare" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>🤝 Nhiệm vụ mời 1 bạn đăng ký (Blue · 0 = tắt)<input id="bl-tinvite" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
-        <label>🎁 Người mời nhận khi bạn bè nạp / mua lần đầu (Blue)<input id="bl-ref" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
-        <label>↩️ Hoàn Blue mỗi đơn trả tiền (% · 0–50)<input id="bl-cash" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
-        <label>💳 Trả bằng Blue tối đa (% giá đơn · 0–100)<input id="bl-max" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
-        <label>🛡️ Tối đa tài khoản nhận / 1 mạng (IP) / ngày (0 = không chặn)<input id="bl-ip" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-need"><i></i></span><span><b>Chỉ khách đã nạp tiền mới DÙNG được Blue</b><small>Chống tạo nhiều tài khoản ảo để gom Blue. Khách chưa nạp vẫn tích được, chỉ chưa trả bằng Blue được.</small></span></label>
-        <div class="note full" id="bl-prev"></div>
-        <div class="acts full"><button class="btn" type="submit" id="bl-save">Lưu Tích Blue</button><span class="hint" id="bl-msg"></span></div>
-        <div class="refst r4 full" id="bl-sum"></div>
-        <div class="hint full" id="bl-30"></div>
-        <div class="full rfa-head"><b>Cộng / trừ Blue cho 1 khách</b></div>
-        <div class="full bl-add">
-          <label>Tên đăng nhập hoặc email<input id="bl-who" maxlength="120" autocomplete="off" spellcheck="false"></label>
-          <label>Số Blue (âm = trừ)<input id="bl-amt" type="number" step="1" inputmode="numeric" placeholder="VD 500 hoặc -200"></label>
-          <label>Lý do (khách thấy trong lịch sử)<input id="bl-note" maxlength="120" placeholder="VD Bù lỗi máy ngày 10/11"></label>
-          <button class="btn ghost" type="button" id="bl-add">Cộng / trừ</button>
-        </div>
-        <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></div>
-        <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th></tr></thead><tbody id="bl-top"></tbody></table></div>
-      </form>
+      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button></div>
+      <div class="subpane" data-sub="codes">
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
         <form class="f mtbox prf" id="pg-form" autocomplete="off" novalidate>
@@ -2173,30 +2114,71 @@ window.BR_CONFIG = {
         <button class="btn danger sm" type="button" id="pl-delall" hidden>🗑️ Xoá tất cả</button>
       </div>
       <div class="tbl"><table class="prtbl"><thead><tr><th>Mã</th><th>Loại</th><th>Ưu đãi</th><th>Đã dùng</th><th>Áp dụng cho</th><th>Trạng thái</th><th>Hạn</th><th>Tổng giảm</th><th></th></tr></thead><tbody id="pr-tbl"></tbody></table></div>
-    </div>
-    <div class="dbody" id="pane-bank" hidden>
-      <form class="f" id="bf">
-        <h3>Tài khoản nhận tiền</h3>
-        <label>Ngân hàng<select id="bf-bin" style="width:100%"></select></label>
-        <label>Số tài khoản<input id="bf-acc" maxlength="20" inputmode="numeric"></label>
-        <label class="full">Tên chủ tài khoản (viết hoa, không dấu)<input id="bf-name" maxlength="50"></label>
-        <label>Tiền tố nội dung<input id="bf-prefix" maxlength="6" placeholder="BR"></label>
-        <label>Nạp tối thiểu (VND)<input id="bf-min" type="number" min="1000" step="1000"></label>
-        <div class="acts full"><button class="btn" type="submit" id="bf-save">Lưu ngân hàng</button></div>
+      </div>
+      <div class="subpane" data-sub="free" hidden>
+      <div class="f mtbox freebox">
+        <h3>🎁 Miễn phí ưu đãi</h3>
+        <div class="hint full" id="fr-state"></div>
+        <label>Số ngày miễn phí<input id="fr-days" type="number" min="1" inputmode="numeric" value="1"></label>
+        <div class="hint" style="align-self:end">👤 Mỗi tài khoản chỉ được dùng thử <b>1 máy</b> mỗi đợt (đã nhận rồi thì không nhận lại được, kể cả khi máy đã hết hạn).</div>
+        <label class="full">⏳ Ưu đãi kéo dài (số ngày — web hiện đồng hồ đếm ngược, hết giờ khách không nhận máy miễn phí được nữa)<input id="fr-until" type="number" min="0" step="0.25" placeholder="VD 3 = 3 ngày · 0.5 = 12 giờ · để trống = giữ nguyên"><small id="fr-until-now" class="hint" style="display:block;margin-top:4px"></small></label>
+        <label>RAM tối đa (GB)<input id="fr-ram" type="number" min="1" inputmode="numeric" value="4"></label>
+        <label>CPU tối đa (nhân)<input id="fr-cpu" type="number" min="1" inputmode="numeric" value="4"></label>
+        <label class="full">Dòng chữ chạy — tiếng Việt (để trống = tự viết)<input id="fr-msg" maxlength="200" placeholder="VD: 🎁 Miễn phí thuê điện thoại đám mây 3 ngày — nhận ngay!"></label>
+        <label class="full">Dòng chữ chạy — tiếng Anh, khách chọn English sẽ thấy (để trống = tự viết)<input id="fr-msg-en" maxlength="200" placeholder="VD: 🎁 FREE Cloud Phone for 1 day — claim yours now!"></label>
+        <div class="hint full">Bật: khách nhận máy <b>0đ</b> (đúng số ngày trên), web hiện dòng chữ chạy. Hết số ngày → máy tự tắt, 30 phút sau tự xoá. Máy miễn phí không gia hạn được.<br><b>Tắt: quay lại tính phí và XOÁ SẠCH mọi máy miễn phí đã phát.</b></div>
+        <div class="acts full"><button class="btn" type="button" id="fr-on">Bật / Lưu ưu đãi</button><button class="btn ghost" type="button" id="fr-reset" style="border-color:#ffb800;color:#ffcf4a">🔄 Làm mới lượt miễn phí (mọi tài khoản)</button><button class="btn ghost" type="button" id="fr-off" style="border-color:var(--bad);color:var(--bad)">Tắt ưu đãi & xoá máy miễn phí</button><span class="hint" id="fr-msgout"></span></div>
+      </div>
+      </div>
+      <div class="subpane" data-sub="blue" hidden>
+      <form class="f mtbox prf" id="blf" autocomplete="off" novalidate style="margin-bottom:14px">
+        <h3>💎 Tích Blue · điểm danh · nhiệm vụ hằng ngày</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-on"><i></i></span><span><b>Bật Tích Blue</b><small>Khách tích Blue khi điểm danh, làm nhiệm vụ, mời bạn, mua hàng — rồi dùng Blue trả tiền thuê / gia hạn ĐT đám mây (1 Blue = 1đ). Tắt thì ẩn hết; Blue khách đang có vẫn giữ nguyên.</small></span></label>
+        <label>📅 Điểm danh mỗi ngày (Blue)<input id="bl-checkin" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>Chuỗi điểm danh liền (ngày · 0 = không thưởng chuỗi)<input id="bl-sdays" type="number" min="0" max="365" step="1" inputmode="numeric"></label>
+        <label>🎉 Thưởng thêm khi đủ chuỗi (Blue)<input id="bl-sbonus" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
+        <label>📱 Nhiệm vụ mở máy đám mây (Blue · 0 = tắt)<input id="bl-tplay" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>📣 Nhiệm vụ chia sẻ link mời (Blue · 0 = tắt)<input id="bl-tshare" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>🤝 Nhiệm vụ mời 1 bạn đăng ký (Blue · 0 = tắt)<input id="bl-tinvite" type="number" min="0" max="100000" step="1" inputmode="numeric"></label>
+        <label>🎁 Người mời nhận khi bạn bè nạp / mua lần đầu (Blue)<input id="bl-ref" type="number" min="0" max="1000000" step="1" inputmode="numeric"></label>
+        <label>↩️ Hoàn Blue mỗi đơn trả tiền (% · 0–50)<input id="bl-cash" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
+        <label>💳 Trả bằng Blue tối đa (% giá đơn · 0–100)<input id="bl-max" type="number" min="0" max="100" step="1" inputmode="numeric"></label>
+        <label>🛡️ Tối đa tài khoản nhận / 1 mạng (IP) / ngày (0 = không chặn)<input id="bl-ip" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="bl-need"><i></i></span><span><b>Chỉ khách đã nạp tiền mới DÙNG được Blue</b><small>Chống tạo nhiều tài khoản ảo để gom Blue. Khách chưa nạp vẫn tích được, chỉ chưa trả bằng Blue được.</small></span></label>
+        <div class="note full" id="bl-prev"></div>
+        <div class="acts full"><button class="btn" type="submit" id="bl-save">Lưu Tích Blue</button><span class="hint" id="bl-msg"></span></div>
+        <div class="refst r4 full" id="bl-sum"></div>
+        <div class="hint full" id="bl-30"></div>
+        <div class="full rfa-head"><b>Cộng / trừ Blue cho 1 khách</b></div>
+        <div class="full bl-add">
+          <label>Tên đăng nhập hoặc email<input id="bl-who" maxlength="120" autocomplete="off" spellcheck="false"></label>
+          <label>Số Blue (âm = trừ)<input id="bl-amt" type="number" step="1" inputmode="numeric" placeholder="VD 500 hoặc -200"></label>
+          <label>Lý do (khách thấy trong lịch sử)<input id="bl-note" maxlength="120" placeholder="VD Bù lỗi máy ngày 10/11"></label>
+          <button class="btn ghost" type="button" id="bl-add">Cộng / trừ</button>
+        </div>
+        <div class="full rfa-head"><b>Khách đang giữ nhiều Blue nhất</b><button class="btn ghost sm" type="button" id="bl-reload">↻ Làm mới</button></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Khách</th><th class="num">Blue</th></tr></thead><tbody id="bl-top"></tbody></table></div>
       </form>
-      <div class="note">Tài khoản này phải trùng với tài khoản bạn đã thêm vào SePay, thì tiền vào mới được cộng tự động.</div>
+      </div>
+      <div class="subpane" data-sub="ref" hidden>
+      <form class="f mtbox prf" id="rff" autocomplete="off" style="margin-bottom:14px">
+        <h3>🤝 Giới thiệu bạn bè · hoa hồng khi bạn bè mua</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="rf-on"><i></i></span><span><b>Bật hoa hồng giới thiệu</b><small>Tắt thì khách không thấy nút 🎁 Mời bạn trên web và các lần mua mới không được cộng hoa hồng (tắt lúc nào thì lượt mua lúc đó không bao giờ được tính bù).</small></span></label>
+        <label>Phần trăm hoa hồng (0–50%)<input id="rf-pct" type="number" min="0" max="50" step="0.5" inputmode="decimal"></label>
+        <label>Số ngày được nhận lời mời (1–30)<input id="rf-days" type="number" min="1" max="30" step="1" inputmode="numeric"></label>
+        <div class="hint full" id="rf-ex"></div>
+        <div class="note full" id="rf-prev"></div>
+        <div class="acts full"><button class="btn" type="submit" id="rf-save">Lưu hoa hồng</button></div>
+        <div class="refst full" id="rfa-sum"></div>
+        <div class="full rfa-head"><b>Hoa hồng đã trả gần đây</b><button class="btn ghost sm" type="button" id="rfa-reload">↻ Làm mới</button></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
+      </form>
+      </div>
     </div>
+    <div class="dbody" id="pane-bank" hidden></div>
     <div class="dbody" id="pane-site" hidden>
-      <form class="f" id="nf">
-        <h3>📢 Thông báo &amp; nội quy khi khách mở web</h3>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="nf-on"><i></i></span><span><b>Bật bảng thông báo</b><small>Khách mở web sẽ thấy bảng thông báo này.</small></span></label>
-        <label class="full">Tiêu đề<input id="nf-title" maxlength="100" placeholder="VD: 🎉 Thông báo mới từ CloudBlue"></label>
-        <label class="full">Nội dung thông báo<textarea id="nf-body" rows="6" maxlength="3000" placeholder="Viết thông báo… Xuống dòng thoải mái. Dòng bắt đầu bằng - sẽ thành gạch đầu dòng, **chữ** để in đậm."></textarea></label>
-        <label class="mtrow full"><span class="sw"><input type="checkbox" id="nf-rules-on"><i></i></span><span><b>Nội quy bắt buộc</b><small>Khách phải tích “Tôi đã đọc và đồng ý” mới dùng được web.</small></span></label>
-        <label class="full">Nội dung nội quy<textarea id="nf-rules" rows="8" maxlength="6000" placeholder="- Không dùng máy để lừa đảo, spam, hack…&#10;- Không hoàn tiền khi đã giao hàng…"></textarea></label>
-        <label class="full">Khi nào hiện lại cho khách<select class="in" id="nf-mode"><option value="new">Chỉ khi có nội dung mới (khuyên dùng)</option><option value="daily">Mỗi ngày 1 lần</option><option value="always">Mỗi lần khách mở web</option></select></label>
-        <div class="acts full"><button class="btn ghost" type="button" id="nf-preview">👁 Xem thử</button><button class="btn" type="submit">Lưu thông báo</button><span class="hint" id="nf-msg"></span></div>
-      </form>
+      <div class="subtabs" role="tablist" aria-label="Mục cài đặt"><button type="button" role="tab" data-sub="web" class="on" aria-selected="true">🌐 Trang web</button><button type="button" role="tab" data-sub="notice" aria-selected="false">📢 Thông báo</button><button type="button" role="tab" data-sub="maint" aria-selected="false">🛠️ Bảo trì</button><button type="button" role="tab" data-sub="bank" aria-selected="false">🏦 Ngân hàng</button><button type="button" role="tab" data-sub="app" aria-selected="false">📲 Ứng dụng</button></div>
+      <div class="subpane" data-sub="web">
       <form class="f" id="sf">
         <h3>Phần đầu trang</h3>
         <label class="full">Dòng nhỏ phía trên<input id="sf-eyebrow" maxlength="80"></label>
@@ -2235,6 +2217,60 @@ window.BR_CONFIG = {
         <label class="full">Chính sách (bảo hành, hoàn tiền)<textarea id="sf-policy" maxlength="3000" rows="6"></textarea></label>
         <div class="acts full"><button class="btn" type="submit" id="sf-save">Lưu nội dung</button></div>
       </form>
+      </div>
+      <div class="subpane" data-sub="notice" hidden>
+      <form class="f" id="nf">
+        <h3>📢 Thông báo &amp; nội quy khi khách mở web</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="nf-on"><i></i></span><span><b>Bật bảng thông báo</b><small>Khách mở web sẽ thấy bảng thông báo này.</small></span></label>
+        <label class="full">Tiêu đề<input id="nf-title" maxlength="100" placeholder="VD: 🎉 Thông báo mới từ CloudBlue"></label>
+        <label class="full">Nội dung thông báo<textarea id="nf-body" rows="6" maxlength="3000" placeholder="Viết thông báo… Xuống dòng thoải mái. Dòng bắt đầu bằng - sẽ thành gạch đầu dòng, **chữ** để in đậm."></textarea></label>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="nf-rules-on"><i></i></span><span><b>Nội quy bắt buộc</b><small>Khách phải tích “Tôi đã đọc và đồng ý” mới dùng được web.</small></span></label>
+        <label class="full">Nội dung nội quy<textarea id="nf-rules" rows="8" maxlength="6000" placeholder="- Không dùng máy để lừa đảo, spam, hack…&#10;- Không hoàn tiền khi đã giao hàng…"></textarea></label>
+        <label class="full">Khi nào hiện lại cho khách<select class="in" id="nf-mode"><option value="new">Chỉ khi có nội dung mới (khuyên dùng)</option><option value="daily">Mỗi ngày 1 lần</option><option value="always">Mỗi lần khách mở web</option></select></label>
+        <div class="acts full"><button class="btn ghost" type="button" id="nf-preview">👁 Xem thử</button><button class="btn" type="submit">Lưu thông báo</button><span class="hint" id="nf-msg"></span></div>
+      </form>
+      <div class="f mtbox" id="tk-box">
+        <h3>📢 Dòng chữ chạy — thông báo</h3>
+        <div class="hint full">Hiện dòng chữ chạy trên đầu web cho <b>mọi khách</b> — <b>không cần bật ưu đãi miễn phí</b> (không mở lại nhận máy 0đ). Khi đang hiện, dòng này thay cho dòng ưu đãi miễn phí. <span id="tk-state"></span></div>
+        <label class="full">Tiếng Việt<input id="tk-vi" maxlength="300" placeholder="VD: 📢 Bảo trì máy chủ lúc 23h tối nay — máy của bạn vẫn giữ nguyên"></label>
+        <label class="full">Tiếng Anh — khách chọn English sẽ thấy (để trống = dùng bản tiếng Việt)<input id="tk-en" maxlength="300" placeholder="VD: 📢 Server maintenance at 11 PM tonight (GMT+7)"></label>
+        <label class="full">⏳ Tự ẩn lúc (giờ trên máy bạn · để trống = hiện tới khi bấm Ẩn) — có giờ thì web hiện đồng hồ đếm ngược tới giờ này<input id="tk-until" type="datetime-local"></label>
+        <div class="acts full"><button class="btn" type="button" id="tk-save">Lưu &amp; hiện</button><button class="btn ghost" type="button" id="tk-off">Ẩn dòng chữ</button><span class="hint" id="tk-msg"></span></div>
+      </div>
+      </div>
+      <div class="subpane" data-sub="maint" hidden>
+      <div class="f mtbox">
+        <h3>🛠️ Bảo trì</h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-site"><i></i></span><span><b>Bảo trì toàn web</b><small>Khách không mua hàng, nạp tiền, thuê hay điều khiển máy được. Admin vẫn dùng bình thường.</small></span></label>
+        <label class="full">Lời nhắn cho khách (toàn web)<input id="mt-sitemsg" maxlength="200" placeholder="VD: Nâng cấp hệ thống, mở lại lúc 20:00"></label>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-cloud"><i></i></span><span><b>Bảo trì riêng ĐT đám mây</b><small>Chỉ khoá thuê, gia hạn và điều khiển điện thoại đám mây. Các sản phẩm khác vẫn bán.</small></span></label>
+        <label class="full">Lời nhắn cho khách (ĐT đám mây)<input id="mt-cloudmsg" maxlength="200" placeholder="VD: Đang nâng cấp máy chủ"></label>
+        <div class="hint full">Trong lúc bảo trì, máy của khách <b>không bị tạm dừng hay xoá</b> khi hết hạn; tắt bảo trì xong khách có 30 phút để gia hạn.</div>
+        <div class="acts full"><button class="btn" type="button" id="mt-save">Lưu bảo trì</button><span class="hint" id="mt-msg"></span></div>
+      </div>
+      </div>
+      <div class="subpane" data-sub="bank" hidden>
+      <form class="f" id="bf">
+        <h3>Tài khoản nhận tiền</h3>
+        <label>Ngân hàng<select id="bf-bin" style="width:100%"></select></label>
+        <label>Số tài khoản<input id="bf-acc" maxlength="20" inputmode="numeric"></label>
+        <label class="full">Tên chủ tài khoản (viết hoa, không dấu)<input id="bf-name" maxlength="50"></label>
+        <label>Tiền tố nội dung<input id="bf-prefix" maxlength="6" placeholder="BR"></label>
+        <label>Nạp tối thiểu (VND)<input id="bf-min" type="number" min="1000" step="1000"></label>
+        <div class="acts full"><button class="btn" type="submit" id="bf-save">Lưu ngân hàng</button></div>
+      </form>
+      <div class="note">Tài khoản này phải trùng với tài khoản bạn đã thêm vào SePay, thì tiền vào mới được cộng tự động.</div>
+      </div>
+      <div class="subpane" data-sub="app" hidden>
+      <div class="f mtbox" id="am-box">
+        <h3>📲 Bắt buộc cập nhật app</h3>
+        <div class="hint full">App máy tính (Windows) và app Android có phiên bản <b>thấp hơn</b> bản tối thiểu dưới đây sẽ <b>không mở máy, không thuê / gia hạn / mua được</b> cho tới khi khách cập nhật bản mới. <b>Để trống = tắt</b> (không ép). Web trên trình duyệt không bị ảnh hưởng.</div>
+        <label>💻 App PC (Windows) tối thiểu — VD 1.14<span class="amrow"><input id="am-pc" maxlength="16" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Để trống = không ép"><button class="btn ghost sm" type="button" id="am-pc-get">Lấy bản mới nhất</button></span></label>
+        <label>📱 App Android tối thiểu — VD 1.45<span class="amrow"><input id="am-and" maxlength="16" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Để trống = không ép"><button class="btn ghost sm" type="button" id="am-and-get">Lấy bản mới nhất</button></span></label>
+        <div class="hint full">"Lấy bản mới nhất" đọc số phiên bản đang phát hành (/download/pc.json, /download/app.json) — chỉ đặt bản tối thiểu khi bản đó <b>đã có trên trang tải</b>, nếu không khách không có bản nào để cập nhật.</div>
+        <div class="acts full"><button class="btn" type="button" id="am-save">Lưu bản tối thiểu</button><span class="hint" id="am-msg"></span></div>
+      </div>
+      </div>
     </div>
   </div>
 </div>
@@ -4134,6 +4170,33 @@ $("sf").onsubmit = e => { e.preventDefault(); const p = {}; for (const k of Obje
 $("bf").onsubmit = e => { e.preventDefault(); const acc = $("bf-acc").value.replace(/\D/g, ""); if (acc.length < 6) return toast("Số tài khoản chưa đúng.", 1);
   saveSettings({ bankBin: $("bf-bin").value, bankAcc: acc, bankName: $("bf-name").value.trim().toUpperCase(), prefix: ($("bf-prefix").value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") || "BR"), minTop: Math.max(1000, +$("bf-min").value || 10000) }, $("bf-save"), "Đã lưu tài khoản ngân hàng."); };
 function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") { loadPromoAdm(); rfFill(); loadRefAdm(); try { loadBlueAdm(); } catch (e) {} } }
+/* ===== Admin: mục con trong thẻ 📱 ĐT đám mây · 🎁 Khuyến mãi · ⚙️ Cài đặt (nhớ mục đang mở) — khối HTML giữ nguyên id, chỉ đổi chỗ ===== */
+const SUB_HOOK = { "cloud:sales": () => loadCpSales(), "cloud:tools": () => swcLoad() };
+function subShow(pane, sub) {
+  const box = $("pane-" + pane), bar = box && box.querySelector(":scope > .subtabs"); if (!bar) return;
+  const btns = [...bar.querySelectorAll("button[data-sub]")];
+  if (!btns.some(b => b.dataset.sub === sub)) sub = btns[0].dataset.sub;
+  btns.forEach(b => { const on = b.dataset.sub === sub; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
+  box.querySelectorAll(":scope > .subpane").forEach(p => { p.hidden = p.dataset.sub !== sub; });
+  try { localStorage.setItem("adm_sub_" + pane, sub); } catch (e) {}
+  const f = SUB_HOOK[pane + ":" + sub]; if (f) try { f(); } catch (e) {}
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".subtabs button[data-sub]"); if (!b) return;
+  const p = b.closest(".dbody"); if (p) subShow(p.id.replace(/^pane-/, ""), b.dataset.sub);
+});
+{ const _stSub = setTab;
+  setTab = function (t) {
+    let sub = null; if (t === "bank") { t = "site"; sub = "bank"; }      // thẻ Ngân hàng cũ → ⚙️ Cài đặt › Ngân hàng
+    _stSub(t);
+    let saved = null; try { saved = localStorage.getItem("adm_sub_" + t); } catch (e) {}
+    try { subShow(t, sub || saved); } catch (e) {}
+    if (t === "site") (async () => {                                       // bảo trì · dòng chữ chạy · bản app tối thiểu (trước nằm ở ĐT đám mây)
+      try { CPpricing = null; await cpLoadPricing(); } catch (e) {}
+      try { fillMaint(); } catch (e) {} try { tkFill(); } catch (e) {} try { amFill(); } catch (e) {}
+    })();
+    if (t === "promo") (async () => { try { CPpricing = null; frFill(await cpLoadPricing()); } catch (e) {} })();    // 🎁 máy miễn phí (trước ở ĐT đám mây)
+  }; }
 $("adm-tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.tab === "site" || b.dataset.tab === "bank") fillSite(); setTab(b.dataset.tab); };
 $("admin-open").onclick = () => ADMIN_PAGE ? openAdmin() : (location.href = "/admin");     // Quản trị → trang riêng /admin (to như trang chính)
 $("admin-close").onclick = () => ADMIN_PAGE ? (location.href = "/") : show("drawer", false);
