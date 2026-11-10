@@ -5,7 +5,7 @@
 #   python phonectl.py probe        ← in thông tin giả lập (gửi hỗ trợ khi cài máy chủ MuMu/MEmu mới)
 #   python phonectl.py create TÊN --ram 4 --cpu 4 --days 7 [--res 720x1280] [--nowait]
 #   python phonectl.py list | capacity | delete TÊN | stop TÊN | start TÊN | restart TÊN | renew TÊN --days N
-#   python phonectl.py resize TÊN --ram 6 --cpu 6 | waitboot TÊN | connect-all | reap | rootfix --all
+#   python phonectl.py resize TÊN --ram 6 --cpu 6 | waitboot TÊN | connect-all | reap | rootfix --all | ksuprobe TÊN
 #  Máy số N của MEmu ⇄ adb 127.0.0.1:(21503 + 10·N)
 # =====================================================================
 import argparse, ctypes, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, time
@@ -1648,11 +1648,16 @@ def cmd_rootfix(a):
             continue
         if _has_su(p):
             print(f"ROOT_OK {p['name']}: đã root — tool gọi su là chạy bằng quyền root", flush=True); ok += 1; continue
+        if on is not False and _ksu_pkg(p):
+            print(f"ROOT_OK {p['name']}: đã root kiểu KernelSU — app cần root phải được bật Superuser (🔓 Root trong Công cụ, hoặc {KSU_HOWTO})", flush=True)
+            ok += 1; continue
         if not a.force:
             if EMU != "mumu": memuc("setconfigex", "-i", i, "enable_su", 1, timeout=60)   # LDPlayer / MEmu: ghi sẵn, có hiệu lực khi bật lại
             print(f"ROOT_WAIT {p['name']}: chưa có root — bấm Root máy (máy khởi động lại ~1 phút) hoặc chờ lần bật lại sau", flush=True); wait += 1
             continue
         if _root_enable_restart(p): print(f"ROOT_OK {p['name']}: đã root xong — tool gọi su là chạy bằng quyền root", flush=True); ok += 1
+        elif _ksu_pkg(p):
+            print(f"ROOT_OK {p['name']}: đã root kiểu KernelSU — app cần root phải được bật Superuser (🔓 Root trong Công cụ, hoặc {KSU_HOWTO})", flush=True); ok += 1
         else: print(f"ROOT_NO {p['name']}: đã bật root + khởi động lại nhưng chưa thấy lệnh su", flush=True); bad += 1
     if a.all and not a.force:                                       # vòng 5 phút: máy bật root theo app mà daemon không chạy → cài lại
         for p in load()["phones"]:
@@ -1717,6 +1722,205 @@ def _root_sh(p, script, timeout=120, files=()):
     r = adb("-s", s_, "shell", f"{cmd}; rm -rf {T}", timeout=timeout)
     return r, is_root
 
+# ---------- ROOT KIỂU KernelSU (MuMu: máy Android 15 bật "Enable root" = KernelSU) ----------
+# KernelSU GIẤU lệnh su với mọi app — kể cả adb shell của máy chủ — cho tới khi app được bật "Superuser" trong app KernelSU.
+# → máy chủ không có su để cài cpsu, nút 🔓 Root cũ khởi động lại máy mà vẫn báo "chưa có lệnh su".
+# Cách làm: công tắc 🔓 Root → máy chủ tự mở app KernelSU trong máy, bật / tắt "Superuser" cho ĐÚNG các app khách chọn (y như khách tự bấm),
+# rồi đóng app KernelSU. KernelSU tự giữ quyền sau khi máy khởi động lại. KHÔNG cấp root cho adb shell, KHÔNG giấu root với app khác.
+KSU_PKGS = ("me.weishu.kernelsu", "com.rifsxd.ksunext")
+KSU_SU_WORDS = ("superuser", "siêu người dùng", "超级用户", "超級使用者", "суперпользователь", "superusuario", "pengguna super")
+KSU_SKIP = set(KSU_PKGS) | {"shop.blueroblox.app"}
+KSU_HOWTO = "mở app KernelSU › thẻ Superuser › bấm app cần root › bật công tắc Superuser, rồi tắt hẳn app đó và mở lại"
+
+def _pkgs(p, third=False):
+    """Gói app cài trong máy (third=True: chỉ app khách cài)."""
+    try: o = ashell(p["name"], "pm list packages" + (" -3" if third else "") + " 2>/dev/null", port=p.get("port"), timeout=60).stdout or ""
+    except Exception: return set()
+    return {l.split(":", 1)[1].strip() for l in o.splitlines() if l.startswith("package:")}
+
+def _ksu_pkg(p, have=None):
+    """Gói app KernelSU của máy ('' = máy không dùng KernelSU)."""
+    have = _pkgs(p) if have is None else have
+    return next((k for k in KSU_PKGS if k in have), "")
+
+def _root_flag(p):
+    """MuMu "Enable root" của máy đang bật? None = không đọc được / không phải MuMu."""
+    try:
+        i = IDX(p, vms())
+        return None if i is None else _mumu_root_on(i)
+    except Exception: return None
+
+def _ui_nodes(p):
+    """Màn hình hiện tại của máy (uiautomator dump) → danh sách nút {i, par, text, desc, pkg, rid, click, check, checked, sel, b}."""
+    import xml.etree.ElementTree as ET
+    f = "/data/local/tmp/cb_ui.xml"
+    for _ in range(3):
+        try: o = ashell(p["name"], f"rm -f {f}; uiautomator dump {f} >/dev/null 2>&1; cat {f} 2>/dev/null; rm -f {f}", port=p.get("port"), timeout=45).stdout or ""
+        except Exception: o = ""
+        a, z = o.find("<hierarchy"), o.rfind("</hierarchy>")
+        if a >= 0 and z > a:
+            try: root = ET.fromstring(o[a:z + len("</hierarchy>")]); break
+            except ET.ParseError: pass
+        time.sleep(1)
+    else: return []
+    out = []
+    def walk(el, par):
+        for c in el:
+            if c.tag != "node": continue
+            m = re.match(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]", c.get("bounds") or "")
+            b = tuple(int(x) for x in m.groups()) if m else (0, 0, 0, 0)
+            n = {"i": len(out), "par": par, "text": (c.get("text") or "").strip(), "desc": (c.get("content-desc") or "").strip(),
+                 "pkg": c.get("package") or "", "rid": c.get("resource-id") or "", "click": c.get("clickable") == "true",
+                 "check": c.get("checkable") == "true", "checked": c.get("checked") == "true", "sel": c.get("selected") == "true", "b": b}
+            out.append(n); walk(c, n["i"])
+    walk(root, None)
+    return out
+
+def _ui_tap(p, n):
+    x1, y1, x2, y2 = n["b"]
+    ashell(p["name"], f"input tap {(x1 + x2) // 2} {(y1 + y2) // 2}", port=p.get("port"), timeout=30)
+
+def _ui_clickable(ns, n):
+    """Nút bấm được chứa n (n hoặc cha gần nhất bấm được)."""
+    k = n
+    while k is not None:
+        if k["click"]: return k
+        k = ns[k["par"]] if k["par"] is not None else None
+    return n
+
+def _ui_words(ns, n):
+    """Chữ của n + mọi nút con (công tắc Compose: chữ nằm ở nút con)."""
+    kids = {n["i"]}; out = [n["text"], n["desc"]]
+    for k in ns[n["i"] + 1:]:
+        if k["par"] in kids: kids.add(k["i"]); out += [k["text"], k["desc"]]
+    return " ".join(x for x in out if x).lower()
+
+def _is_su_word(s): return (s or "").strip().lower() in KSU_SU_WORDS
+def _has_tok(n, word):
+    """Nút có chữ đúng bằng word, kể cả khi Compose gộp chữ các nút con (vd "Termux, com.termux, ROOT")."""
+    return any(word in re.split(r"[\s,;|·]+", x.strip()) for x in (n["text"], n["desc"]) if x)
+
+def _ksu_switch(ns):
+    """Công tắc "Superuser" trên trang 1 app của KernelSU (None = không phải trang đó)."""
+    for n in ns:
+        if n["check"] and any(w in _ui_words(ns, n) for w in KSU_SU_WORDS): return n
+    for l in ns:                                   # công tắc không mang chữ: lấy công tắc nằm CÙNG HÀNG với chữ "Superuser"
+        if l["check"] or not (_is_su_word(l["text"]) or _is_su_word(l["desc"])): continue
+        cy = (l["b"][1] + l["b"][3]) // 2
+        for n in ns:
+            if n["check"] and n["b"][1] <= cy <= n["b"][3]: return n
+    return None
+
+def _ksu_dump_save(p, ns, why):
+    """Lưu màn hình lúc KernelSU bấm không được (để admin gửi cho người sửa) — chỉ chữ trên màn hình, không có mật khẩu."""
+    try:
+        fp = os.path.join(HOME, f"ksu-{p['name']}.txt")
+        with open(fp, "w", encoding="utf-8") as f:
+            f.write(f"{now().isoformat(timespec='seconds')} {why}\n")
+            for n in ns:
+                if n["text"] or n["desc"] or n["check"] or n["click"]:
+                    f.write(f"{n['i']}<{n['par']} {n['pkg']} {n['rid']} t={n['text']!r} d={n['desc']!r} click={int(n['click'])} "
+                            f"check={int(n['check'])}/{int(n['checked'])} sel={int(n['sel'])} {n['b']}\n")
+        return fp
+    except Exception: return ""
+
+def _ksu_toggle(p, ksu, app, want):
+    """Trong máy: mở app KernelSU → thẻ Superuser → app → bật (want=True) / tắt công tắc Superuser. Trả (ok, câu báo)."""
+    sh = lambda c, t=40: ashell(p["name"], c, port=p.get("port"), timeout=t)
+    launch = f"am force-stop {ksu}; monkey -p {ksu} -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1"
+    sh(launch); time.sleep(3)
+    ns, scrolls, taps, last = [], 0, 0, ""
+    for step in range(30):
+        ns = _ui_nodes(p)
+        if not ns: time.sleep(1); continue
+        W = max(n["b"][2] for n in ns) or 720; H = max(n["b"][3] for n in ns) or 1280
+        perm = [n for n in ns if "permissioncontroller" in n["pkg"] and re.search(r"(deny|allow)(_foreground_only)?_button$", n["rid"])]
+        if perm:                                                    # hộp xin quyền của Android (vd. thông báo) → "Không cho phép"
+            _ui_tap(p, next((n for n in perm if "deny" in n["rid"]), perm[0])); time.sleep(1.5); continue
+        mine = sum(1 for n in ns if n["pkg"] == ksu)
+        if mine * 2 < len(ns):                                      # app KernelSU chưa hiện / bị đóng → mở lại (lần 2: mở thẳng màn hình chính của app)
+            if step in (6, 18): sh(launch)
+            elif step == 12: sh(f"am start -n {ksu}/.ui.MainActivity >/dev/null 2>&1")
+            time.sleep(1.5); continue
+        sw = _ksu_switch(ns)
+        if sw is not None:
+            if not any(_has_tok(n, app) for n in ns):              # trang của app khác → quay lại danh sách
+                sh("input keyevent 4"); time.sleep(1.5); continue
+            if sw["checked"] == want:
+                return True, ("đã bật" if want else "đã tắt")
+            if taps >= 3: break
+            _ui_tap(p, _ui_clickable(ns, sw)); taps += 1; time.sleep(1.5); continue
+        row = next((n for n in ns if _has_tok(n, app) and n["b"][1] < H * 0.9), None)
+        if row is not None:                                         # danh sách Superuser: dòng có tên gói của app
+            _ui_tap(p, _ui_clickable(ns, row)); time.sleep(2); continue
+        navs = [n for n in ns if _is_su_word(n["text"]) or _is_su_word(n["desc"])]
+        bottom = [n for n in navs if n["b"][1] > H * 0.75]
+        title = [n for n in navs if n["b"][3] < H * 0.15]
+        in_list = any(_ui_clickable(ns, n)["sel"] or n["sel"] for n in bottom) or bool(title and bottom)
+        if not in_list and bottom:                                  # thanh dưới: thẻ "Superuser"
+            _ui_tap(p, _ui_clickable(ns, bottom[0])); time.sleep(2); continue
+        if not navs: last = "không thấy thẻ Superuser (KernelSU chưa chạy?)"; break
+        sig = "|".join(n["text"] for n in ns if n["text"])[:4000]
+        if scrolls >= 12 or (scrolls and sig == last): last = f"không thấy app {app} trong danh sách Superuser"; break
+        last = sig; scrolls += 1                                    # chưa thấy app → cuộn xuống
+        sh(f"input swipe {W // 2} {int(H * 0.72)} {W // 2} {int(H * 0.38)} 300"); time.sleep(1.2)
+    fp = _ksu_dump_save(p, ns, f"{app} want={want}: {last}")
+    return False, (last if last and "|" not in last else "không bấm được trong app KernelSU") + (f" (đã lưu màn hình: {os.path.basename(fp)})" if fp else "")
+
+def _ksu_note(p, apps):
+    """Nhớ các app máy chủ đã bật trong KernelSU (để lần sau tắt đúng app) — đọc lại phones.json mới nhất rồi chỉ sửa máy này."""
+    p["ksu_apps"] = sorted(set(apps))
+    try:
+        st = load(); r = rec(p["name"], st)
+        if r is not None: r["ksu_apps"] = p["ksu_apps"]; save(st)
+    except Exception: pass
+
+def _ksu_sync(p, ksu, apps, quiet=False):
+    """Đưa quyền Superuser trong KernelSU về đúng danh sách app (apps=[] → tắt hết app máy chủ từng bật). Trả (ok, câu báo)."""
+    want = [a for a in dict.fromkeys(apps) if _PKG_RE.match(str(a)) and a not in KSU_SKIP]
+    had = [a for a in (p.get("ksu_apps") or []) if _PKG_RE.match(str(a))]
+    inst = _pkgs(p, third=True)
+    todo = [(a, True) for a in want if a in inst] + [(a, False) for a in had if a not in want and a in inst]
+    gone = [a for a in want if a not in inst]
+    on_ok, off_ok, fail = set(), set(), []
+    try:
+        for a, w in todo:
+            ok_, why = _ksu_toggle(p, ksu, a, w)
+            if ok_: (on_ok if w else off_ok).add(a)
+            else: fail.append(f"{a} ({why})")
+    finally:
+        try: ashell(p["name"], f"am force-stop {ksu}", port=p.get("port"), timeout=30)
+        except Exception: pass
+    _ksu_note(p, ((set(had) | on_ok) - off_ok) & inst)
+    if fail:
+        msg = "Chưa bật / tắt được root trong KernelSU cho: " + "; ".join(fail[:3]) + f". Làm tay: {KSU_HOWTO}."
+        if not quiet: print(f"   🔓 {p['name']}: {msg}", flush=True)
+        return False, msg
+    if want:
+        msg = (f"Đã BẬT root (KernelSU) cho {len(on_ok)} app: {', '.join(sorted(on_ok)[:5])}{'…' if len(on_ok) > 5 else ''}"
+               " — tắt hẳn app đó rồi mở lại là dùng được lệnh su")
+    else: msg = "Đã TẮT root — đã tắt quyền Superuser trong KernelSU của các app đã bật"
+    if gone: msg += f" · app chưa cài trong máy: {', '.join(gone[:5])}"
+    if not quiet: print(f"   🔓 {p['name']}: {msg}", flush=True)
+    return True, msg
+
+def cmd_ksuprobe(a):
+    """ksuprobe TÊN — xem màn hình app KernelSU (mở app + thẻ Superuser, KHÔNG bật / tắt gì) để kiểm tra khi tự bấm không được."""
+    st, p = _need(a.name)
+    ksu = _ksu_pkg(p)
+    print(f"KernelSU: {ksu or 'KHÔNG CÓ'} · MuMu Enable root: {_root_flag(p)} · su cho máy chủ: {_su_ready(p)}")
+    if not ksu: return
+    ashell(p["name"], f"am force-stop {ksu}; monkey -p {ksu} -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1", port=p.get("port")); time.sleep(3)
+    for lap in range(2):
+        ns = _ui_nodes(p)
+        print(f"--- màn hình {lap + 1}: {len(ns)} nút")
+        for n in ns:
+            if n["text"] or n["desc"] or n["check"]:
+                print(f"  {n['pkg']} t={n['text']!r} d={n['desc']!r} click={int(n['click'])} check={int(n['check'])}/{int(n['checked'])} sel={int(n['sel'])} {n['b']}")
+        nav = [n for n in ns if _is_su_word(n["text"]) or _is_su_word(n["desc"])]
+        if lap == 0 and nav: _ui_tap(p, _ui_clickable(ns, nav[-1])); time.sleep(2)
+    ashell(p["name"], f"am force-stop {ksu}", port=p.get("port"))
+
 def _root_state(p):
     """Đọc trong máy: daemon chạy chưa, SELinux, app vừa xin root (bị từ chối), danh sách app khách cài.
        Máy chưa có root gốc (chưa có su) → vẫn đọc danh sách app bằng adb thường + su=False (bấm Lưu sẽ tự khởi động lại để bật root)."""
@@ -1729,7 +1933,12 @@ def _root_state(p):
             elif ln.startswith("package:"):
                 pk = ln.split(":", 1)[1].strip()
                 if _PKG_RE.match(pk) and pk != "shop.blueroblox.app": st["installed"].append(pk)
-        st["installed"] = sorted(set(st["installed"]))
+        ksu = _ksu_pkg(p)
+        st["installed"] = sorted(set(st["installed"]) - (KSU_SKIP if ksu else set()))
+        if ksu and _root_flag(p) is not False:    # root KernelSU: quyền theo app do KernelSU giữ — máy chủ bật hộ trong app KernelSU khi bấm Lưu
+            want = sorted({a for a in (p.get("root_apps") or []) if a not in KSU_SKIP})
+            st.update(su=True, ksu=ksu, selinux="KernelSU",
+                      running=bool(p.get("root_on")) and want == sorted(p.get("ksu_apps") or []))
         return st
     r, _ = _root_sh(p, f"D={CPSU_DEV}\n"
                        "if [ -x $D/cpsu ]; then $D/cpsu status --dir $D; else echo NOCPSU; fi\n"
@@ -1764,16 +1973,24 @@ def _root_apply(p, quiet=False, restart=False):
        restart=True (khách bấm Lưu trong 🔓 Root): máy chưa có root gốc → tự tắt → bật root → bật lại (~1 phút) rồi mới cài.
        restart=False (tự giữ root lúc máy vừa bật): chưa có root gốc thì chỉ báo — KHÔNG tự khởi động lại máy khách."""
     on, apps = bool(p.get("root_on")), [x for x in (p.get("root_apps") or []) if _PKG_RE.match(str(x))]
+    ready = _su_ready(p)
+    if not ready:                                 # máy chủ chưa có su: máy dùng KernelSU → bật / tắt quyền ngay trong app KernelSU, không khởi động lại
+        ksu = _ksu_pkg(p)
+        if ksu and (not on or _root_flag(p) is not False):
+            if not restart: return True, "Máy dùng KernelSU — quyền root theo app do KernelSU giữ sau khi khởi động lại."
+            return _ksu_sync(p, ksu, apps if on else [], quiet)
     if not on:
         r, _ = _root_sh(p, f"D={CPSU_DEV}\n[ -x $D/cpsu ] && $D/cpsu uninstall --dir $D\nrm -f $D/allow\necho ROOT_OFF_DONE\n", timeout=90)
         ok = "ROOT_OFF_DONE" in (r.stdout or "")
         return ok, ("Đã TẮT root — không app nào dùng được lệnh su." if ok else "Chưa tắt được root: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:])
     import tempfile
     files = _cpsu_local()
-    if not _su_ready(p):
+    if not ready:
         if not restart:
             return False, "Máy chưa bật root gốc — mở 🔓 Root rồi bấm Lưu (máy tự khởi động lại ~1 phút để bật root)."
         if not _root_enable_restart(p):
+            ksu = _ksu_pkg(p)                     # bật root xong máy dùng KernelSU (MuMu Android 15) → bật quyền cho app ngay trong KernelSU
+            if ksu: return _ksu_sync(p, ksu, apps, quiet)
             return False, "Đã khởi động lại máy để bật root nhưng máy vẫn chưa có lệnh su — báo admin kiểm tra máy này."
     r, is_root = _root_sh(p, f"md5sum {CPSU_DEV}/cpsu {CPSU_DEV}/su 2>/dev/null", timeout=30)
     have = r.stdout or ""
@@ -1825,6 +2042,7 @@ def cmd_rootcfg(a):
     if is_running(p["name"], p):
         try: info.update(_root_state(p)); info["online"] = True
         except Exception as e: info["error"] = str(e)[:200]
+    if info.get("ksu"): info["apps"] = [x for x in info["apps"] if x not in KSU_SKIP]      # máy KernelSU: không hiện app KernelSU trong danh sách
     info["asked"] = [x for x in info["asked"] if x["pkg"] not in info["apps"]]
     print("ROOTCFG " + json.dumps(info, ensure_ascii=False))
 
@@ -1834,6 +2052,7 @@ def _root_keep(p, port=None):
     if not p.get("root_on"): return
     if port: p = dict(p, port=port)
     try:
+        if not _su_ready(p) and _ksu_pkg(p): return           # KernelSU tự giữ quyền theo app sau khi máy khởi động lại
         r, _ = _root_sh(p, f"[ -x {CPSU_DEV}/cpsu ] && {CPSU_DEV}/cpsu status --dir {CPSU_DEV}", timeout=30)
         if "RUNNING" in (r.stdout or ""): return
         ok, msg = _root_apply(p, quiet=True)
@@ -2394,6 +2613,7 @@ def main():
     lr = s.add_parser("liveres"); lr.add_argument("name"); lr.add_argument("--res", required=True); lr.set_defaults(f=cmd_liveres)
     pi = s.add_parser("preinstall"); pi.add_argument("name", nargs="?", default=""); pi.add_argument("--all", action="store_true"); pi.add_argument("--force", action="store_true"); pi.set_defaults(f=cmd_preinstall)
     rf = s.add_parser("rootfix"); rf.add_argument("name", nargs="?", default=""); rf.add_argument("--all", action="store_true"); rf.add_argument("--force", action="store_true"); rf.set_defaults(f=cmd_rootfix)
+    kp = s.add_parser("ksuprobe"); kp.add_argument("name"); kp.set_defaults(f=cmd_ksuprobe)
     rc = s.add_parser("rootcfg"); rc.add_argument("name"); g_ = rc.add_mutually_exclusive_group(required=True)
     g_.add_argument("--get", action="store_true"); g_.add_argument("--set", action="store_true")
     rc.add_argument("--on", action="store_true"); rc.add_argument("--off", action="store_true"); rc.add_argument("--apps", default=""); rc.set_defaults(f=cmd_rootcfg)
