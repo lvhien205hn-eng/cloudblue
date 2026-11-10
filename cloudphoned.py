@@ -575,6 +575,27 @@ def running(name):
     r = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", name], capture_output=True, text=True)
     return r.stdout.strip() == "true"
 
+_sec_t = {"pull": 0.0, "watch": 0.0, "miss": 0}
+def sec_tick():
+    """🛡️ Bot gác bảo mật (SQL v29): máy chủ chính nhắn Telegram cảnh báo ĐỎ / VÀNG (mỗi cảnh báo chỉ 1 máy chủ gửi);
+       Supabase chưa bật pg_cron thì máy chủ chạy luôn lượt quét 5 phút / lần. Chưa chạy v29 → im lặng, thử lại sau 30 phút."""
+    if not PRIMARY: return
+    t = time.time()
+    if _sec_t["miss"] and t - _sec_t["miss"] < 1800: return
+    if t - _sec_t["watch"] >= 300:
+        _sec_t["watch"] = t
+        try: sb("POST", "rpc/sec_watch", {})
+        except Exception as e:
+            if "sec_watch" in str(e) or "404" in str(e): _sec_t["miss"] = t; return
+    if t - _sec_t["pull"] >= 60:
+        _sec_t["pull"] = t
+        try: rows = sb("POST", "rpc/sec_alerts_pull", {"p_limit": 20}) or []
+        except Exception: rows = []
+        for r in (rows if isinstance(rows, list) else [])[:20]:
+            msg = str(r.get("msg") or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            try: notify(("🚨" if r.get("level") == "crit" else "⚠️") + " <b>BẢO MẬT CLOUDBLUE</b>\n" + msg + "\n👉 Admin › 🛡️ Bảo mật")
+            except Exception: pass
+
 def do_locks():
     """Máy admin khoá → tắt; hết hạn khoá → tự mở khoá; máy đang chạy mà bị tắt ngoài ý muốn → bật lại."""
     rows = sb("GET", "cloud_phones?status=eq.active&select=id,container,locked,locked_until") or []
@@ -752,6 +773,9 @@ if __name__ == "__main__":
         if n % 2 == 0:                      # ~30 giây: khoá / mở khoá / bật lại máy (báo cáo tài nguyên chạy ở luồng riêng _hb_loop)
             try: do_locks()
             except Exception as e: print("lỗi khoá máy:", e)
+        if n % 4 == 1:                      # ~1 phút: 🛡️ bot gác bảo mật — nhắn Telegram cảnh báo, quét 5 phút / lần
+            try: sec_tick()
+            except Exception as e: print("lỗi bot gác:", e)
         if n % 20 == 5:                     # ~5 phút: cài app còn thiếu (máy nào lỡ) + mở quyền cài APK cho app khách mới cài
             try:
                 r = phonectl(["preinstall", "--all"])
