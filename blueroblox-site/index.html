@@ -635,6 +635,59 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .cpabar select{width:auto}
 .cpasel{display:inline-flex;gap:6px;align-items:center;font-size:13px;padding:4px 8px;border-radius:10px;background:rgba(61,123,255,.12);border:1px solid var(--line2)}
 .cpasel[hidden]{display:none}
+#cporderdlg .cpguide,.cpguide{display:block;min-width:0}
+#cporderdlg .cpmain{grid-template-columns:minmax(0,1fr)}.cpt-wrap{min-width:0}
+@media (max-width:1060px){ #cporderdlg .cpbody{grid-template-columns:minmax(0,1fr)} }
+.cpt-head{display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;margin:0 0 2px}.cpt-head b{font-size:14.5px}.cpt-head .hint{margin:0;font-size:12.5px}
+.cpt-wrap{position:relative}
+.cpt-track{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(206px,1fr);gap:12px;max-width:100%;min-width:0;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x proximity;padding:14px 2px 8px;scrollbar-width:thin}
+.cpt{--t:#6f8cff;position:relative;scroll-snap-align:start;display:flex;flex-direction:column;gap:8px;padding:14px 13px 12px;border-radius:18px;cursor:pointer;
+  background:linear-gradient(162deg,color-mix(in srgb,var(--t) 24%,#0b1433) 0%,#0b1330 52%,#091027 100%);border:1px solid color-mix(in srgb,var(--t) 36%,transparent);
+  transition:transform .18s,border-color .18s,box-shadow .18s}
+.cpt:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--t) 70%,transparent)}
+.cpt.on{border-color:var(--t);box-shadow:0 0 0 2px var(--t),0 18px 34px -22px color-mix(in srgb,var(--t) 85%,#000)}
+.cpt-badge{position:absolute;top:-11px;right:12px;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:800;color:#fff;background:linear-gradient(90deg,#ff4f6d,#ff9a44);box-shadow:0 6px 14px -6px rgba(255,79,109,.9);white-space:nowrap}
+.cpt-h{display:flex;align-items:center;gap:9px}
+.cpt-ic{flex:none;width:34px;height:34px;border-radius:11px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--t) 22%,transparent);border:1px solid color-mix(in srgb,var(--t) 45%,transparent)}
+.cpt-n{font-size:19px;font-weight:800;letter-spacing:.2px;color:color-mix(in srgb,var(--t) 52%,#fff);line-height:1.15}
+.cpt-tag{margin:-2px 0 0;font-size:12.5px;line-height:1.35;color:var(--muted)}
+.cpt-spec{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;text-align:center}
+.cpt-spec span{display:grid;justify-items:center;gap:2px;font-size:11.5px;color:var(--muted)}
+.cpt-spec i{font-style:normal;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.07);font-size:14px;margin-bottom:2px}
+.cpt-spec b{font-size:14.5px;color:var(--fg);line-height:1.1}
+.cpt-sec{border-top:1px solid color-mix(in srgb,var(--t) 24%,transparent);padding-top:8px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}.cpt-sec small{font-size:11.5px;color:var(--muted)}
+.cpt-and{display:flex;gap:5px;flex-wrap:wrap}.cpt-and em{font-style:normal;font-size:11.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:rgba(255,255,255,.07);color:var(--fg)}
+.cpt-and em.off{opacity:.45;text-decoration:line-through}
+.cpt-fit{list-style:none;margin:0;padding:0;display:grid;gap:3px;font-size:12px;color:var(--fg)}
+.cpt-fit li{position:relative;padding-left:17px;line-height:1.35}.cpt-fit li::before{content:"✓";position:absolute;left:0;top:0;color:var(--t);font-weight:900}
+.cpt-foot{margin-top:auto;display:grid;gap:8px;padding-top:2px}
+.cpt-price b{font-size:20px;color:var(--fg);letter-spacing:-.2px}.cpt-price span{font-size:12px;color:var(--muted)}.cpt-price small{display:block;font-size:11.5px;color:var(--muted)}
+.cpt-btn{width:100%;padding:9px 10px;border-radius:12px;border:1px solid color-mix(in srgb,var(--t) 45%,transparent);background:rgba(255,255,255,.06);color:var(--fg);font:inherit;font-size:13.5px;font-weight:800;cursor:pointer}
+.cpt-btn:focus-visible{outline:2px solid var(--t);outline-offset:2px}
+.cpt.on .cpt-btn{background:var(--t);color:#06112b;border-color:transparent}
+.cpt-nav{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;border-radius:50%;border:1px solid var(--line2);background:var(--panel-solid);color:var(--fg);font-size:20px;line-height:1;cursor:pointer;z-index:2;display:grid;place-items:center;box-shadow:0 6px 16px -6px rgba(0,0,0,.7)}
+.cpt-nav.prev{left:-10px}.cpt-nav.next{right:-10px}.cpt-nav[hidden]{display:none}
+.cpgrid.cp2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.cpmore{border:1px solid var(--line);border-radius:14px;background:rgba(6,10,28,.35)}
+.cpmore>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:6px 12px;flex-wrap:wrap;padding:11px 14px;font-size:13.5px;font-weight:700}
+.cpmore>summary::-webkit-details-marker{display:none}.cpmore>summary::after{content:"▾";margin-left:auto;color:var(--muted);transition:transform .2s}
+.cpmore[open]>summary::after{transform:rotate(180deg)}.cpmore>summary b{font:700 12.5px var(--mono);color:#8fd0ff}.cpmore .cpm-h{font-weight:400;font-size:12px;color:var(--muted)}
+.cpmore>.cpgrid{padding:0 10px 10px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.tier-ed{display:grid;gap:10px;margin-top:8px}
+.ted{display:grid;gap:8px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--t) 40%,transparent);border-left:4px solid var(--t);background:rgba(6,10,28,.35)}
+.ted-r{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.ted-r .in{width:auto}.ted-ic{width:56px!important;text-align:center;font-size:18px}.ted-nm{flex:1 1 140px}.ted-bd{flex:1 1 150px}
+.ted-on{display:flex;gap:6px;align-items:center;font-size:13px;white-space:nowrap}.ted-on input{width:18px;height:18px;accent-color:var(--blue)}
+.ted-mv{display:flex;gap:4px;margin-left:auto}
+.ted-num label{display:grid;gap:4px;font-size:12.5px;color:var(--muted);flex:1 1 110px}.ted-num .in{width:100%}
+.ted-w{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.tier-pv{padding-top:16px}
+html[data-theme=light] .cpt{background:linear-gradient(162deg,color-mix(in srgb,var(--t) 15%,#fff) 0%,#fff 62%)}
+html[data-theme=light] .cpt-n{color:color-mix(in srgb,var(--t) 62%,#0a1a3a)}
+html[data-theme=light] .cpt-spec i,html[data-theme=light] .cpt-and em,html[data-theme=light] .cpt-btn{background:rgba(10,26,58,.05)}
+html[data-theme=light] .cpt.on .cpt-btn{color:#fff;background:color-mix(in srgb,var(--t) 82%,#0a1a3a)}
+html[data-theme=light] .cpmore,html[data-theme=light] .ted{background:#fff}
+html[data-theme=light] .cpmore>summary b{color:#1f5fe0}
+@media (max-width:640px){ .cpt-track{grid-auto-columns:76%} .cpt-nav{display:none} .cpmore>.cpgrid,.cpgrid.cp2{grid-template-columns:1fr} }
 .fg-again{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.fg-again .btn{flex:none}
 .pwdlg{max-width:440px}.pwdlg p{line-height:1.5;margin:6px 0 10px}
 .bandlg{text-align:center;max-width:470px}.bandlg .ban-ic{font-size:44px;line-height:1;margin:2px 0 6px}.bandlg h3{margin:0 0 8px;color:var(--bad)}
@@ -2070,6 +2123,12 @@ window.BR_CONFIG = {
       <div class="hint">Công thức: <b>(RAM × giá RAM + CPU × giá CPU) × số ngày</b>. Bảng tự cập nhật khi bạn sửa ô giá phía trên.</div>
       <div class="tbl"><table><thead><tr><th>Cấu hình</th><th class="num">1 ngày</th><th class="num">7 ngày</th><th class="num">30 ngày</th><th class="num">90 ngày</th></tr></thead><tbody id="cpa-ana"></tbody></table></div>
       <div class="hint" id="cpa-sum"></div>
+      <h3 style="margin:16px 0 0">🎴 Thẻ gói cấu hình <span class="hint">(khách bấm 1 gói là điền sẵn — web, app Android, app PC)</span></h3>
+      <div class="hint">Giá trên thẻ tự tính theo đơn giá ở trên. Gói cần RAM / nhân vượt trần của bản Android nào thì bản đó không hiện trên thẻ (VD Android 9 tối đa 8GB · 8 nhân); khách bấm gói đó sẽ tự chuyển bản Android.</div>
+      <div class="tier-ed" id="tier-ed"></div>
+      <div class="acts" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="tier-add">➕ Thêm gói</button><button class="btn ghost sm" type="button" id="tier-def">↺ Về 5 gói mặc định</button><button class="btn" type="button" id="tier-save">💾 Lưu thẻ gói</button></div>
+      <div class="hint" style="margin-top:4px">Xem trước (khách thấy như này):</div>
+      <div class="cpt-track tier-pv" id="tier-pv" role="list"></div>
       </div>
       <div class="subpane" data-sub="tools" hidden>
       <div class="gpubox" id="swcbox">
@@ -2373,20 +2432,24 @@ window.BR_CONFIG = {
     <div class="cpbody"><div class="cpmain">
     <div class="cpf cpandf"><span class="cpl" id="cp-and-l">Hệ điều hành</span><div class="cpand" id="cp-and" role="group" aria-labelledby="cp-and-l"></div></div>
     <div class="cpguide" id="cp-guide"></div>
-    <div class="cpgrid">
-      <div class="cpf"><label class="cpl" for="cp-ram-x">RAM (GB)</label><div class="amts" id="cp-ram"></div>
-        <input hidden class="in cpx" id="cp-ram-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số GB, VD 32"></div>
-      <div class="cpf"><label class="cpl" for="cp-cpu-x">CPU (số nhân)</label><div class="amts" id="cp-cpu"></div>
-        <input hidden class="in cpx" id="cp-cpu-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số nhân, VD 12"></div>
+    <div class="cpgrid cp2">
       <div class="cpf"><label class="cpl" for="cp-days-x">Số ngày thuê</label><div class="amts" id="cp-days"></div>
         <input class="in cpx" id="cp-days-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số ngày, VD 45"></div>
       <div class="cpf"><label class="cpl" for="cp-qty-x">Số lượng máy (cùng cấu hình)</label><div class="amts" id="cp-qty"></div>
         <input class="in cpx" id="cp-qty-x" type="number" min="1" max="20" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số máy, tối đa 20"></div>
+    </div>
+    <details class="cpmore" id="cp-more"><summary><span class="cpm-t">⚙️ <span id="cp-more-l">Tự chỉnh cấu hình</span></span><b id="cp-more-s"></b><span class="cpm-h" id="cp-more-h">RAM · CPU · độ phân giải · FPS</span></summary>
+    <div class="cpgrid cp4">
+      <div class="cpf"><label class="cpl" for="cp-ram-x">RAM (GB)</label><div class="amts" id="cp-ram"></div>
+        <input hidden class="in cpx" id="cp-ram-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số GB, VD 32"></div>
+      <div class="cpf"><label class="cpl" for="cp-cpu-x">CPU (số nhân)</label><div class="amts" id="cp-cpu"></div>
+        <input hidden class="in cpx" id="cp-cpu-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số nhân, VD 12"></div>
       <div class="cpf"><label class="cpl" for="cp-res">Độ phân giải (rộng x cao)</label><div class="amts" id="cp-resq"></div>
         <input hidden class="in cpx" id="cp-res" type="text" autocomplete="off" placeholder="Hoặc tự nhập, VD 1080x2400"></div>
       <div class="cpf"><label class="cpl" for="cp-fps-x">FPS (khung hình/giây)</label><div class="amts" id="cp-fps"></div>
         <input hidden class="in cpx" id="cp-fps-x" type="number" min="10" max="120" step="1" inputmode="numeric" placeholder="Hoặc tự nhập FPS, VD 45"></div>
     </div>
+    </details>
     </div>
     <div class="cpfoot">
       <div class="cpsum">
@@ -4228,7 +4291,8 @@ function fillSite() {
   rfFill();
 }
 async function saveSettings(patch, btn, msg) { await busy(btn, async () => {
-  const body = { ...SITE, ...patch }; const { error } = await sb.from("settings").update({ data: body }).eq("id", 1);
+  let cur = null; try { const r = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); cur = r && r.data && r.data.data; } catch (e) {}
+  const body = { ...SITE, ...(cur && typeof cur === "object" ? cur : {}), ...patch }; const { error } = await sb.from("settings").update({ data: body }).eq("id", 1);
   if (error) return toast(errMsg(error), 1); SITE = body; renderSite(); toast(msg);
 }); }
 $("sf").onsubmit = e => { e.preventDefault(); const p = {}; for (const k of Object.keys(DEF_SITE)) { const el = $("sf-" + k); if (el) p[k] = el.type === "checkbox" ? el.checked : k === "rate" ? (+el.value || 25000) : el.value.trim(); } saveSettings(p, $("sf-save"), "Đã lưu nội dung trang."); };
@@ -8490,6 +8554,179 @@ function pwTempDlg(id, name) {
   });
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-pwset]"); if (!b || !isAdmin()) return; e.preventDefault(); pwTempDlg(b.dataset.pwset, b.dataset.n); });
+
+/* ===================== 🎴 THẺ GÓI CẤU HÌNH (hộp "Thuê điện thoại đám mây") — khách bấm 1 gói là điền sẵn RAM · CPU · FPS.
+   Admin tự chỉnh ở 📱 ĐT đám mây › 💰 Giá & thẻ bán (settings.cp_tiers) · app Android + app PC đọc cùng danh sách. ===================== */
+const CPT_COLORS = { blue: "#6f8cff", teal: "#2fd3c5", amber: "#ffb547", violet: "#a77bff", rose: "#ff6b8a", green: "#46d989", sky: "#38bdf8", gold: "#f5c451" };
+const CPT_CNAME = { blue: "Xanh dương", teal: "Xanh ngọc", amber: "Cam vàng", violet: "Tím", rose: "Hồng đỏ", green: "Xanh lá", sky: "Xanh trời", gold: "Vàng kim" };
+const CPT_DEF = [
+  { id: "lite", on: true, icon: "💬", name: "Blue Lite", vi: "Treo app · nuôi acc", en: "Apps · account farming", ram: 2, cpu: 2, fps: 30, res: "", badge: "", color: "blue",
+    fvi: ["Zalo, Facebook, TikTok, Telegram", "Chạy 24/7 kể cả khi tắt máy tính"], fen: ["Zalo, Facebook, TikTok, Telegram", "Runs 24/7 even when your PC is off"] },
+  { id: "game", on: true, icon: "🎮", name: "Blue Game", vi: "Game nhẹ · treo cả ngày", en: "Light games · all-day idle", ram: 4, cpu: 2, fps: 30, res: "", badge: "", color: "teal",
+    fvi: ["Game 2D, nhàn rỗi, cờ, bài", "Treo game nhẹ ổn định"], fen: ["2D, idle, card & board games", "Stable for light games"] },
+  { id: "roblox", on: true, icon: "🕹️", name: "Blue Roblox", vi: "Treo Roblox 1 tab mượt", en: "Smooth Roblox · 1 tab", ram: 4, cpu: 4, fps: 30, res: "", badge: "🔥 Bán chạy", color: "amber",
+    fvi: ["Roblox 1 tab, đồ hoạ thấp", "Roblox dùng ~2GB RAM — vẫn còn dư"], fen: ["Roblox · 1 tab, low graphics", "Roblox uses ~2GB RAM — room to spare"] },
+  { id: "pro", on: true, icon: "🚀", name: "Blue Pro", vi: "Treo Roblox 2–4 tab", en: "Roblox · 2–4 tabs", ram: 8, cpu: 8, fps: 30, res: "", badge: "⭐ Đề xuất", color: "violet",
+    fvi: ["2–4 tab Roblox cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"], fen: ["2–4 Roblox tabs at once", "Each extra tab needs ~1.5–2GB RAM"] },
+  { id: "max", on: true, icon: "🔥", name: "Blue Max", vi: "Game nặng 3D · 60 FPS", en: "Heavy 3D games · 60 FPS", ram: 12, cpu: 8, fps: 60, res: "", badge: "", color: "rose",
+    fvi: ["Free Fire, Liên Quân, PUBG Mobile…", "Không có card đồ hoạ — game nặng có thể giật"], fen: ["Free Fire, PUBG Mobile, Genshin…", "No GPU — heavy games may stutter"] },
+];
+function cpTiers(src) {
+  const a = Array.isArray(src) ? src : Array.isArray(SITE.cp_tiers) && SITE.cp_tiers.length ? SITE.cp_tiers : CPT_DEF;
+  return a.filter(t => t && t.on !== false && +t.ram > 0 && +t.cpu > 0 && String(t.name || "").trim()).slice(0, 8);
+}
+const cptColor = t => CPT_COLORS[t.color] || (/^#[0-9a-f]{6}$/i.test(t.color || "") ? t.color : CPT_COLORS.blue);
+const cptQty = () => (typeof cpSel === "object" && cpSel && cpSel.qty) || 1;
+function cpTierAnds(t) {            // bản Android chạy được gói này (đủ trần RAM / nhân) + còn chỗ không
+  const m = cpAndMap(), q = cptQty();
+  return cpAndList().filter(v => { const l = cpAndLim(v); return +t.ram <= l.ram && +t.cpu <= l.cpu; }).map(v => {
+    const a = m && m[v];
+    return { v, why: !m ? "" : !a || a.online === false ? "off" : +a.free_ram < +t.ram * q || +a.free_cpu < +t.cpu * q ? "full" : "" };
+  });
+}
+function cpTierIs(t) {
+  if (typeof cpSel !== "object" || !cpSel) return false;
+  const p = cpP(), cl = (v, lo, hi) => Math.min(Math.max(+v, lo), hi);
+  return cpSel.ram === cl(t.ram, p.min_ram, p.max_ram) && cpSel.cpu === cl(t.cpu, p.min_cpu, p.max_cpu) && cpSel.fps === cl(t.fps || 30, p.min_fps, p.max_fps) && (!t.res || cpSel.res === t.res);
+}
+const cptAndHtml = t => { const a = cpTierAnds(t);
+  return a.length ? a.map(x => `<em class="${x.why ? "off" : ""}" title="Android ${esc(x.v)}${x.why === "off" ? " — " + L("máy chủ đang bảo trì", "under maintenance") : x.why === "full" ? " — " + L("tạm hết chỗ cho gói này", "full for this plan") : ""}">${esc(x.v)}</em>`).join("")
+    : `<em class="off">${L("Vượt trần cấu hình", "Over the limit")}</em>`; };
+function cpTierCard(t) {
+  const P = CPpricing || CP_DEF, per = (+t.ram) * (+P.price_ram_gb_day || 0) + (+t.cpu) * (+P.price_cpu_day || 0), on = cpTierIs(t);
+  const fit = (LANG === "en" && Array.isArray(t.fen) && t.fen.length ? t.fen : t.fvi) || [];
+  return `<div class="cpt${on ? " on" : ""}" style="--t:${cptColor(t)}" data-tier="${esc(String(t.id))}" role="listitem">
+    ${t.badge ? `<span class="cpt-badge">${esc(t.badge)}</span>` : ""}
+    <div class="cpt-h"><span class="cpt-ic" aria-hidden="true">${esc(t.icon || "📱")}</span><b class="cpt-n">${esc(t.name)}</b></div>
+    <p class="cpt-tag">${esc(LANG === "en" && t.en ? t.en : t.vi || "")}</p>
+    <div class="cpt-spec"><span><i aria-hidden="true">⚙️</i><b>${+t.cpu}</b>${L("nhân", "cores")}</span><span><i aria-hidden="true">🧠</i><b>${+t.ram}GB</b>RAM</span><span><i aria-hidden="true">🎞️</i><b>${+t.fps || 30}</b>FPS</span></div>
+    <div class="cpt-sec"><small>Android</small><div class="cpt-and">${cptAndHtml(t)}</div></div>
+    ${fit.length ? `<ul class="cpt-fit">${fit.slice(0, 3).map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+    <div class="cpt-foot"><div class="cpt-price"><b>${vnd(per)}</b><span> / ${L("ngày", "day")}</span><small>≈ ${vnd(per * 30)} / 30 ${L("ngày", "days")}</small></div>
+      <button type="button" class="cpt-btn" aria-pressed="${on}">${on ? "✓ " + L("Đã chọn", "Selected") : L("Chọn gói này", "Choose")}</button></div>
+  </div>`;
+}
+function cptNav(wrap) {
+  const tr = wrap && wrap.querySelector(".cpt-track"); if (!tr) return;
+  const pv = wrap.querySelector(".prev"), nx = wrap.querySelector(".next");
+  const paint = () => { if (pv) pv.hidden = tr.scrollLeft < 8; if (nx) nx.hidden = tr.scrollLeft + tr.clientWidth >= tr.scrollWidth - 8; };
+  const step = () => { const c = tr.querySelector(".cpt"); return c ? c.getBoundingClientRect().width + 12 : 240; };
+  if (pv) pv.onclick = () => tr.scrollBy({ left: -step(), behavior: "smooth" });
+  if (nx) nx.onclick = () => tr.scrollBy({ left: step(), behavior: "smooth" });
+  tr.onscroll = paint; setTimeout(paint, 30); paint();
+}
+cpGuide = function () {                                       // thay "Gợi ý cấu hình" cũ bằng thẻ gói
+  const g = $("cp-guide"); if (!g) return;
+  const T = cpTiers();
+  if (!T.length) { g.innerHTML = ""; g.hidden = true; return; }
+  g.innerHTML = `<div class="cpt-head"><b>🎴 ${L("Chọn gói cấu hình", "Pick a plan")}</b><span class="hint">${L("Bấm 1 gói là điền sẵn RAM · CPU · FPS — muốn khác thì mở ⚙️ Tự chỉnh ở dưới.", "Tap a plan to fill RAM · CPU · FPS — or open ⚙️ Customize below.")}</span></div>
+    <div class="cpt-wrap"><button type="button" class="cpt-nav prev" aria-label="${L("Xem gói trước", "Previous plans")}" hidden>‹</button>
+    <div class="cpt-track" id="cp-tiers" role="list">${T.map(cpTierCard).join("")}</div>
+    <button type="button" class="cpt-nav next" aria-label="${L("Xem gói sau", "More plans")}">›</button></div>`;
+  cptNav(g.querySelector(".cpt-wrap"));
+  const ml = $("cp-more-l"), mh = $("cp-more-h");
+  if (ml) ml.textContent = L("Tự chỉnh cấu hình", "Customize"); if (mh) mh.textContent = L("RAM · CPU · độ phân giải · FPS", "RAM · CPU · resolution · FPS");
+  cpTierSync();
+};
+function cpTierSync() {
+  const g = $("cp-guide"); if (!g || typeof cpSel !== "object" || !cpSel) return;
+  const T = cpTiers();
+  g.hidden = !!cpSel.free || !T.length;
+  g.querySelectorAll(".cpt").forEach(el => {
+    const t = T.find(x => String(x.id) === el.dataset.tier); if (!t) return;
+    const on = cpTierIs(t), b = el.querySelector(".cpt-btn"), a = el.querySelector(".cpt-and");
+    el.classList.toggle("on", on);
+    if (b) { b.textContent = on ? "✓ " + L("Đã chọn", "Selected") : L("Chọn gói này", "Choose"); b.setAttribute("aria-pressed", on); }
+    if (a) a.innerHTML = cptAndHtml(t);
+  });
+  const s = $("cp-more-s"); if (s) s.textContent = `${cpSel.ram}GB · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.res || "720x1280"} · ${cpSel.fps} FPS`;
+  const d = $("cp-more"); if (d && !cpSel.free && T.length && !T.some(cpTierIs) && !d.open && !d.dataset.auto) { d.open = true; d.dataset.auto = "1"; }
+  if (d && !T.length) d.open = true;
+}
+function cpTierPick(id) {
+  const t = cpTiers().find(x => String(x.id) === String(id)); if (!t || typeof cpSel !== "object" || !cpSel || cpSel.free) return;
+  const ands = cpTierAnds(t);
+  if (ands.length && !ands.some(a => a.v === cpSel.android)) {          // bản đang chọn không đủ trần (VD Android 9 tối đa 8GB) → chuyển bản
+    const ok = ands.find(a => !a.why) || ands[0];
+    cpSel.android = ok.v;
+    toast(L(`Gói ${t.name} chạy trên Android ${ands.map(a => a.v).join(" / ")} — đã chuyển sang Android ${ok.v}.`, `${t.name} runs on Android ${ands.map(a => a.v).join(" / ")} — switched to Android ${ok.v}.`));
+  }
+  const p = cpP(), cl = (v, lo, hi) => Math.min(Math.max(+v, lo), hi);
+  Object.assign(cpSel, { ram: cl(t.ram, p.min_ram, p.max_ram), cpu: cl(t.cpu, p.min_cpu, p.max_cpu), fps: cl(t.fps || 30, p.min_fps, p.max_fps) });
+  if (t.res && CP_RES.some(r => r[0] === t.res)) cpSel.res = t.res;
+  cpRamCpu(); cpResChips();
+  cpChips("cp-fps", CP_FPS.filter(v => v >= p.min_fps && v <= p.max_fps), "fps", " FPS");
+  ["cp-ram-x", "cp-cpu-x", "cp-fps-x", "cp-res"].forEach(i => { const e = $(i); if (e) e.value = ""; });
+  cpAndChips(); cpOrderUpd();
+}
+document.addEventListener("click", e => {
+  const c = e.target.closest("#cp-tiers .cpt"); if (!c) return;
+  cpTierPick(c.dataset.tier);
+});
+{ const _cpu = cpOrderUpd; cpOrderUpd = function () { const r = _cpu.apply(this, arguments); try { cpTierSync(); } catch (e) {} return r; }; }
+
+/* ---------- admin: sửa thẻ gói (📱 ĐT đám mây › 💰 Giá & thẻ bán) ---------- */
+let TIER_ED = null, tierEdT = null;
+const tierClone = a => JSON.parse(JSON.stringify(a));
+function tierEdLoad() { if (!$("tier-ed")) return; TIER_ED = tierClone(Array.isArray(SITE.cp_tiers) && SITE.cp_tiers.length ? SITE.cp_tiers : CPT_DEF); tierEdRender(); }
+function tierEdRender() {
+  const box = $("tier-ed"); if (!box || !TIER_ED) return;
+  box.innerHTML = TIER_ED.length ? TIER_ED.map((t, i) => `<div class="ted" data-i="${i}" style="--t:${cptColor(t)}">
+    <div class="ted-r"><label class="ted-on"><input type="checkbox" data-k="on"${t.on !== false ? " checked" : ""}> Hiện</label>
+      <input class="in ted-ic" data-k="icon" maxlength="4" value="${esc(t.icon || "")}" aria-label="Biểu tượng" title="Biểu tượng (emoji)">
+      <input class="in ted-nm" data-k="name" maxlength="24" value="${esc(t.name || "")}" placeholder="Tên gói" aria-label="Tên gói">
+      <input class="in ted-bd" data-k="badge" maxlength="20" value="${esc(t.badge || "")}" placeholder="Nhãn, VD 🔥 Bán chạy" aria-label="Nhãn góc thẻ">
+      <select class="in ted-cl" data-k="color" aria-label="Màu thẻ">${Object.keys(CPT_COLORS).map(c => `<option value="${c}"${t.color === c ? " selected" : ""}>${CPT_CNAME[c]}</option>`).join("")}</select>
+      <span class="ted-mv"><button class="btn ghost sm" type="button" data-tm="-1" title="Lên trước" aria-label="Lên trước">↑</button><button class="btn ghost sm" type="button" data-tm="1" title="Xuống sau" aria-label="Xuống sau">↓</button><button class="btn danger sm" type="button" data-tx title="Xoá gói" aria-label="Xoá gói">🗑️</button></span></div>
+    <div class="ted-r ted-num"><label>RAM (GB)<input class="in" data-k="ram" type="number" min="1" max="64" value="${+t.ram || 2}"></label><label>Nhân CPU<input class="in" data-k="cpu" type="number" min="1" max="64" value="${+t.cpu || 2}"></label>
+      <label>FPS<input class="in" data-k="fps" type="number" min="10" max="120" value="${+t.fps || 30}"></label>
+      <label>Độ phân giải<select class="in" data-k="res"><option value="">Khách tự chọn</option>${CP_RES.map(r => `<option value="${r[0]}"${t.res === r[0] ? " selected" : ""}>${esc(r[1])} · ${r[0]}</option>`).join("")}</select></label></div>
+    <label class="ted-w">Mô tả ngắn<input class="in" data-k="vi" maxlength="60" value="${esc(t.vi || "")}" placeholder="VD Treo Roblox 1 tab mượt"></label>
+    <label class="ted-w">Phù hợp — mỗi dòng 1 ý (tối đa 3)<textarea class="in" data-k="fvi" rows="2" maxlength="200">${esc((t.fvi || []).join("\n"))}</textarea></label>
+  </div>`).join("") : `<div class="hint">Chưa có gói nào — bấm ➕ Thêm gói. (Không có gói nào bật thì hộp thuê máy chỉ hiện phần tự chỉnh.)</div>`;
+  tierEdPreview();
+}
+function tierEdPreview() {
+  const pv = $("tier-pv"); if (!pv || !TIER_ED) return;
+  const T = cpTiers(TIER_ED);
+  pv.innerHTML = T.length ? T.map(cpTierCard).join("") : `<div class="hint">Không có gói nào đang bật.</div>`;
+}
+function tierEdNorm(a) {
+  return (a || []).map((t, i) => ({
+    id: String(t.id || "t" + Date.now().toString(36) + i).replace(/[^\w-]/g, "").slice(0, 24) || "t" + i,
+    on: t.on !== false, icon: String(t.icon || "📱").slice(0, 4), name: String(t.name || "").trim().slice(0, 24),
+    vi: String(t.vi || "").trim().slice(0, 60), ...(t.en ? { en: String(t.en).slice(0, 60) } : {}),
+    ram: Math.min(64, Math.max(1, Math.round(+t.ram || 2))), cpu: Math.min(64, Math.max(1, Math.round(+t.cpu || 2))), fps: Math.min(120, Math.max(10, Math.round(+t.fps || 30))),
+    res: CP_RES.some(r => r[0] === t.res) ? t.res : "", badge: String(t.badge || "").trim().slice(0, 20), color: CPT_COLORS[t.color] ? t.color : "blue",
+    fvi: (Array.isArray(t.fvi) ? t.fvi : []).map(s => String(s).trim().slice(0, 60)).filter(Boolean).slice(0, 3),
+    ...(Array.isArray(t.fen) && t.fen.length ? { fen: t.fen.map(s => String(s).slice(0, 60)).slice(0, 3) } : {}),
+  })).filter(t => t.name).slice(0, 8);
+}
+$("tier-ed") && $("tier-ed").addEventListener("input", e => {
+  const row = e.target.closest(".ted"), k = e.target.dataset.k; if (!row || !k || !TIER_ED) return;
+  const t = TIER_ED[+row.dataset.i]; if (!t) return;
+  if (k === "on") t.on = e.target.checked;
+  else if (["ram", "cpu", "fps"].includes(k)) t[k] = +e.target.value || 0;
+  else if (k === "fvi") { t.fvi = e.target.value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 3); delete t.fen; }
+  else { t[k] = e.target.value; if (k === "vi") delete t.en; }
+  if (k === "color") row.style.setProperty("--t", cptColor(t));
+  clearTimeout(tierEdT); tierEdT = setTimeout(tierEdPreview, 150);
+});
+$("tier-ed") && ($("tier-ed").onclick = e => {
+  const row = e.target.closest(".ted"); if (!row || !TIER_ED) return; const i = +row.dataset.i;
+  const mv = e.target.closest("[data-tm]"), x = e.target.closest("[data-tx]");
+  if (mv) { const j = i + (+mv.dataset.tm); if (j < 0 || j >= TIER_ED.length) return; [TIER_ED[i], TIER_ED[j]] = [TIER_ED[j], TIER_ED[i]]; tierEdRender(); }
+  if (x) { if (!confirm(`Xoá gói "${TIER_ED[i].name || "?"}"?`)) return; TIER_ED.splice(i, 1); tierEdRender(); }
+});
+$("tier-add") && ($("tier-add").onclick = () => { if (!TIER_ED) tierEdLoad(); if (TIER_ED.length >= 8) return toast("Tối đa 8 gói.", 1);
+  TIER_ED.push({ id: "t" + Date.now().toString(36), on: true, icon: "📱", name: "Gói mới", vi: "", ram: 4, cpu: 4, fps: 30, res: "", badge: "", color: "sky", fvi: [] }); tierEdRender(); });
+$("tier-def") && ($("tier-def").onclick = () => { if (!confirm("Đưa thẻ gói về 5 gói mặc định (Lite · Game · Roblox · Pro · Max)? Chưa lưu thì chưa áp dụng.")) return; TIER_ED = tierClone(CPT_DEF); tierEdRender(); });
+$("tier-save") && ($("tier-save").onclick = () => {
+  const arr = tierEdNorm(TIER_ED);
+  if (TIER_ED && TIER_ED.some(t => !String(t.name || "").trim())) return toast("Gói nào cũng cần tên.", 1);
+  saveSettings({ cp_tiers: arr }, $("tier-save"), "Đã lưu thẻ gói — khách thấy ngay khi mở hộp thuê máy (web + app).").then(() => { TIER_ED = tierClone(arr); tierEdRender(); });
+});
+Object.assign(SUB_HOOK, { "cloud:price": (f => () => { try { f && f(); } catch (e) {} tierEdLoad(); })(SUB_HOOK["cloud:price"]) });
 
 </script>
 </body>
