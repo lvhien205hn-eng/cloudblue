@@ -102,7 +102,7 @@ body[data-view="v-play"]{position:fixed;inset:0;overflow:hidden;overscroll-behav
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}}
 .stats{position:absolute;left:calc(8px + var(--sal));top:calc(8px + var(--sat));pointer-events:none;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
-  color:#e7f0ff;background:rgba(0,0,0,.55);border-radius:8px;padding:6px 8px;white-space:pre}
+  color:#e7f0ff;background:rgba(0,0,0,.55);border-radius:8px;padding:6px 8px;white-space:pre-wrap;max-width:calc(100vw - 40px);overflow-wrap:anywhere}
 
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + var(--sab));max-width:min(92vw,460px);z-index:30;
   display:flex;gap:10px;align-items:center;background:#111a3f;border:1px solid var(--line2);border-radius:14px;padding:10px 12px;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.45)}
@@ -325,6 +325,8 @@ const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const TEST = LOCAL && Q.get("test") === "1";                    // chỉ chạy thử ở máy lập trình (localhost) — không có ở web thật
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const STANDALONE = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+// WebKit = MỌI trình duyệt trên iPhone/iPad (kể cả Chrome iOS) + Safari trên Mac
+const IS_WEBKIT = IS_IOS || (/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium|CriOS|FxiOS|EdgiOS|Edg\//.test(navigator.userAgent));
 const HAS_WC = typeof VideoDecoder === "function" && typeof EncodedVideoChunk === "function" && window.isSecureContext !== false;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -430,14 +432,18 @@ const P = {
   id: "", ep: null, ws: null, stopped: true, kicked: false, fatal: false, authRetry: false, tries: 0, timer: 0, t: {},
   lastRx: 0, lastAsk: 0, dec: null, cfg: "", sps: null, pps: null, needKey: true, pend: null, raf: 0, ts: 0, vw: 540, vh: 960,
   pts: 0n, newVid: false, first: false, frames: 0, bytes: 0, f0: 0, b0: 0, fps: 0, kbps: 0, rtt: null, srv: null,
-  q: lsGet("cb_q") || "auto", name: "", android: "", drawBmp: false,
+  q: lsGet("cb_q") || "auto", name: "", android: "",
+  rmode: 0, held: null, heldBmp: null,                 // cách vẽ: 0 = vẽ thẳng khung · 1 = đổi qua ảnh (createImageBitmap)
+  bcT: 0, bcN: 0, bcOk: 0, bcSw: 0, bcDone: false,      // kiểm "màn hình đen" (chỉ Safari / iPhone)
+  decErr: 0, decErrT: 0, lastErr: "", codec: "",
 };
 
 function openPhone(id) {
   if (!UUID.test(id)) return showList();
   if (!TEST) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
   view("v-play");
-  Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "" });
+  Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
+                     bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "" });
   setQ(P.q, false); layout(); wake();
   if (!HAS_WC) return overlay("err", IS_IOS ? "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm."
                                             : "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.", [["Về danh sách", toList]]);
@@ -446,7 +452,7 @@ function openPhone(id) {
 function stopPlay() {
   if (P.stopped) return;
   P.stopped = true; clearTimeout(P.timer);
-  send(T.BYE); detach(); resetDecoder(); unwake(); kbHide();
+  send(T.BYE); detach(); resetDecoder(); dropHeld(); unwake(); kbHide();
 }
 const toList = () => { stopPlay(); showList(); };
 
@@ -471,7 +477,7 @@ function retryLater(msg, ms) {
   overlay("wait", msg);
   P.timer = setTimeout(connect, ms || 5000);
 }
-const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; connect(); };
+const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; connect(); };
 const statusMsg = s => ({ pending: "Máy đang được tạo, chờ thêm chút…", creating: "Máy đang được tạo, chờ thêm chút…", expired: "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.",
                           error: "Máy đang lỗi — liên hệ hỗ trợ.", cancelling: "Máy đang bị huỷ." }[s] || "");
 
@@ -643,7 +649,8 @@ function configure(sps, pps) {
   if (P.dec && P.dec.state === "configured" && P.cfg === k) return true;
   const codec = "avc1." + [sps[1], sps[2], sps[3]].map(v => v.toString(16).padStart(2, "0")).join("");
   try {
-    if (!P.dec || P.dec.state === "closed") P.dec = new VideoDecoder({ output: onFrame, error: e => { console.warn("decoder:", e && e.message); resetDecoder(); askKey(); } });
+    P.codec = codec;
+    if (!P.dec || P.dec.state === "closed") P.dec = new VideoDecoder({ output: onFrame, error: e => decErr("giải mã", e) });
     P.dec.configure({ codec, description: avcC(sps, pps), optimizeForLatency: true });
     P.cfg = k; P.needKey = true; return true;
   } catch (e) {
@@ -678,7 +685,7 @@ function onVideo(p) {
   const data = new Uint8Array(n); let o = 0;
   for (const x of parts) { const L = x.length; data[o] = L >>> 24; data[o + 1] = (L >>> 16) & 255; data[o + 2] = (L >>> 8) & 255; data[o + 3] = L & 255; data.set(x, o + 4); o += 4 + L; }
   try { P.dec.decode(new EncodedVideoChunk({ type: isKey ? "key" : "delta", timestamp: (P.ts += 16667), data })); if (isKey) P.needKey = false; }
-  catch (e) { console.warn("decode:", e && e.message); resetDecoder(); askKey(); }
+  catch (e) { decErr("gửi khung", e); }
   if (isKey) sendAck();
 }
 function onFrame(f) {
@@ -690,17 +697,64 @@ function draw() {
   P.raf = 0;
   const f = P.pend; if (!f) return; P.pend = null;
   const w = f.displayWidth, h = f.displayHeight;
+  if (!w || !h) { try { f.close(); } catch {} return; }
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; P.vw = w; P.vh = h; layout(); }
-  if (!P.drawBmp) {
-    try { ctx.drawImage(f, 0, 0, w, h); f.close(); shown(); return; }
-    catch { P.drawBmp = true; }                                        // trình duyệt cũ không vẽ thẳng VideoFrame → đổi qua ảnh
+  if (P.rmode === 0) {
+    try {
+      ctx.drawImage(f, 0, 0, w, h);
+      // Safari (iPhone/iPad/Mac) vẽ canvas TRỄ ở tiến trình GPU: đóng khung ngay sau drawImage → khung bị huỷ trước khi
+      // kịp vẽ → màn hình ĐEN. Nên Safari giữ khung vừa vẽ, tới khung sau mới đóng. Chrome / Edge vẫn đóng ngay như cũ.
+      if (IS_WEBKIT) holdFrame(f); else f.close();
+      shown(); blackCheck(); return;
+    } catch (e) { P.lastErr = "vẽ khung · " + errText(e); P.rmode = 1; }      // trình duyệt cũ không vẽ thẳng VideoFrame → đổi qua ảnh
   }
-  createImageBitmap(f).then(b => { ctx.drawImage(b, 0, 0, w, h); b.close && b.close(); shown(); }).catch(() => {}).finally(() => { try { f.close(); } catch {} });
+  createImageBitmap(f).then(b => {
+    if (P.stopped) { try { b.close && b.close(); } catch {} return; }
+    ctx.drawImage(b, 0, 0, w, h); holdBmp(b); shown(); blackCheck();
+  }).catch(e => { P.lastErr = "tạo ảnh · " + errText(e); }).finally(() => { try { f.close(); } catch {} });
+}
+function holdFrame(f) { const o = P.held; P.held = f; if (o && o !== f) { try { o.close(); } catch {} } }
+function holdBmp(b) { const o = P.heldBmp; P.heldBmp = b; if (o && o !== b) { try { o.close && o.close(); } catch {} } }
+function dropHeld() { holdFrame(null); holdBmp(null); }
+const errText = e => String((e && ((e.name && e.name !== "Error" ? e.name + ": " : "") + (e.message || ""))) || e || "?").slice(0, 140);
+/* Lỗi giải mã: thử lại từ khung khoá kế; chưa hiện được khung nào mà hỏng liên tục → báo rõ lý do (trước đây: đen mãi, không chữ) */
+function decErr(where, e) {
+  P.lastErr = where + (P.codec ? " " + P.codec : "") + " · " + errText(e);
+  console.warn(P.lastErr);
+  const now = Date.now();
+  if (now - P.decErrT > 15000) P.decErr = 0;
+  P.decErr++; P.decErrT = now;
+  resetDecoder();
+  if (P.decErr >= 6 && !P.first && !P.stopped) {
+    P.fatal = true; detach();
+    return overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
+                   [["Thử lại", retryNow], ["Về danh sách", toList]]);
+  }
+  askKey();
+}
+/* Safari: đã "vẽ" mà màn hình vẫn đen toàn bộ ~3 giây trong khi vẫn nhận khung → đổi cách vẽ (thẳng khung ↔ qua ảnh), tối đa 2 lần.
+   Chỉ kiểm lúc mới mở (tới khi thấy hình 5 lần); đọc 16×16 điểm ảnh mỗi 0,8 giây — rất nhẹ. */
+let bcv = null, bctx = null;
+function blackCheck() {
+  if (!IS_WEBKIT || P.bcDone) return;
+  const now = Date.now(); if (now - P.bcT < 800) return; P.bcT = now;
+  try {
+    if (!bcv) { bcv = document.createElement("canvas"); bcv.width = bcv.height = 16; bctx = bcv.getContext("2d", { willReadFrequently: true }); }
+    bctx.drawImage(cv, 0, 0, 16, 16);
+    const d = bctx.getImageData(0, 0, 16, 16).data; let mx = 0;
+    for (let i = 0; i < d.length; i += 4) { const v = d[i] + d[i + 1] + d[i + 2]; if (v > mx) mx = v; }
+    if (mx > 24) { P.bcN = 0; if (++P.bcOk >= 5) P.bcDone = true; return; }
+    if (++P.bcN < 4) return;
+    P.bcN = 0;
+    if (P.bcSw >= 2) { P.bcDone = true; return; }
+    P.bcSw++; P.rmode = P.rmode ? 0 : 1; P.lastErr = "màn hình đen → đổi cách vẽ (" + (P.rmode ? "qua ảnh" : "thẳng khung") + ")";
+    console.warn(P.lastErr); askKey();
+  } catch (e) { P.bcDone = true; }
 }
 function shown() {
   if (!$("ovl").hidden) overlay(null);
   if (!P.first) { P.first = true; }
-  P.tries = 0; P.authRetry = false; setDot("ok");
+  P.tries = 0; P.authRetry = false; P.decErr = 0; setDot("ok");
 }
 
 /* ---------- bố cục: màn hình máy luôn vừa khung, đúng tỉ lệ ---------- */
@@ -1032,7 +1086,9 @@ function tick() {
   else if (!P.f0t) P.f0t = now;
   if ($("stats").hidden) return;
   const s = P.srv || {};
-  $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: Cloudflare · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}`;
+  $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: Cloudflare · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
+    `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · đã giải mã ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
+    (P.lastErr ? `\n${P.lastErr}` : "");
 }
 
 /* ---------- giữ màn hình sáng khi đang điều khiển ---------- */
