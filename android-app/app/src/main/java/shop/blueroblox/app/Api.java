@@ -101,6 +101,10 @@ public final class Api {
     /** Bản CH Play (tên gói vn.cloudblue.app): không nạp / thuê / gia hạn / hoa hồng trong app, không link ra trang mua trên web,
      *  ẩn Clone + Root, cập nhật qua Google Play. Bản web (shop.blueroblox.app) giữ nguyên đủ tính năng. */
     public static boolean PLAY = false;
+    /** Mua trong app được không (số dư · Nạp tiền · Thuê · Gia hạn · Nâng cấp · mã giảm giá · trả bằng Blue).
+     *  Bản web: luôn có. Bản CH Play: có khi bản build có PlayPay (nạp qua Google Play Billing, src/play) — mọi khoản mua trong app đều
+     *  trả bằng số dư, số dư nạp qua Google Play. Bản CH Play vẫn KHÔNG có: QR ngân hàng / crypto, link ra web, giới thiệu bạn bè. */
+    public static boolean SHOP = true;
 
     /** Trang chính sách: bản CH Play mở trang riêng (quyền riêng tư + điều khoản, không có chỗ mua hàng). */
     public static String policyUrl() { return PLAY ? WEB + "/privacy.html" : WEB + "/#policy"; }
@@ -126,7 +130,8 @@ public final class Api {
 
     public static void init(Context c) {
         PLAY = "vn.cloudblue.app".equals(c.getPackageName());
-        Guard.check(c);                                  // 🔒 1.115: app bị sửa / ký lại → chặn mọi kết nối (Guard.java)
+        SHOP = !PLAY || PlayPay.ON;                      // ▶️ bản CH Play: mở lại mua hàng khi có nạp qua Google Play
+        Guard.check(c);                                 // 🔒 1.115: app bị sửa / ký lại → chặn mọi kết nối (Guard.java)
         if (prefs != null) return;
         prefs = c.getApplicationContext().getSharedPreferences("auth", Context.MODE_PRIVATE);
         DEV = devId(c.getApplicationContext());
@@ -354,6 +359,17 @@ public final class Api {
                 new String[][]{{"apikey", KEY}, {"Authorization", "Bearer " + token()}});
         if (r.code >= 300) throw new ApiError(r.code, errorText(r));
         return parse(r.text());
+    }
+
+    /** Gọi API trên web (Vercel, VD /api/play-topup) kèm mã đăng nhập. Máy chủ trả lỗi → ApiError chứa mã lỗi (VD PLAY_NOT_READY). */
+    public static JSONObject webPost(String path, JSONObject body) throws Exception {
+        Res r = http("POST", WEB + path, "application/json", js(body), new String[][]{{"Authorization", "Bearer " + token()}});
+        if (r.code == 401) { expiresAt = 0; r = http("POST", WEB + path, "application/json", js(body), new String[][]{{"Authorization", "Bearer " + token()}}); }
+        String t = r.text().trim();
+        JSONObject o;
+        try { o = new JSONObject(t.isEmpty() ? "{}" : t); } catch (Exception e) { o = new JSONObject(); }
+        if (r.code >= 300) throw new ApiError(r.code, o.optString("error", "Lỗi " + r.code));
+        return o;
     }
 
     public static Object rpcAnon(String fn, JSONObject args) throws Exception {
@@ -589,13 +605,21 @@ public final class Api {
             return Ui.L("Không có kết nối mạng.", "No internet connection.");
         if (e instanceof java.net.SocketTimeoutException) return Ui.L("Mạng chậm, thử lại.", "Network timeout, try again.");
         String[][] map = {
+                // ▶️ nạp qua Google Play (bản CH Play, api/play-topup) — đặt TRƯỚC "TOO_MANY" / "LOCKED"
+                {"PLAY_OTHER_ACCOUNT", "Giao dịch này được mua khi đăng nhập tài khoản CloudBlue khác — đăng nhập lại đúng tài khoản đó để nhận tiền.", "This payment was made while signed in to another CloudBlue account — sign in to that account to receive it."},
+                {"PLAY_NOT_READY", "Nạp qua Google Play đang bảo trì. Tiền của bạn vẫn an toàn — app tự gửi lại sau, KHÔNG cần mua lại.", "Google Play top-up is under maintenance. Your money is safe — the app retries automatically, don't buy again."},
+                {"PLAY_TOKEN_INVALID", "Google không xác nhận giao dịch này.", "Google couldn't confirm this payment."},
+                {"PLAY_UNKNOWN_PRODUCT", "Gói nạp không hợp lệ.", "Unknown top-up pack."},
+                {"PLAY_TOO_MANY", "Gửi quá nhiều lần — đợi vài phút rồi mở lại app.", "Too many attempts — wait a few minutes and reopen the app."},
+                {"PLAY_API_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
+                {"PLAY_SERVER_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 // mã tặng máy (SQL v23) — đặt TRƯỚC "TOO_MANY" để PROMO_TOO_MANY không bị hiểu nhầm
                 {"PROMO_TOO_MANY", "Bạn nhập sai mã quá nhiều lần — thử lại sau 10 phút.", "Too many wrong codes — try again in 10 minutes."},
                 {"PROMO_INVALID", "Mã không đúng hoặc đã bị tắt.", "Wrong or disabled code."},
                 {"PROMO_EXPIRED", "Mã đã hết hạn.", "This code has expired."},
                 {"PROMO_NOT_STARTED", "Mã chưa đến ngày sử dụng.", "This code isn't active yet."},
                 {"PROMO_USED_UP", "Mã này đã được dùng rồi.", "This code has already been used."},
-                {"PROMO_IS_DISCOUNT", PLAY ? "Đây là mã giảm giá, không dùng để nhận máy được." : "Đây là mã giảm giá — nhập ở ô \"🏷️ Mã giảm giá\" khi thuê / gia hạn / nâng cấp máy.", PLAY ? "This is a discount code — it can't be used to get a phone." : "This is a discount code — enter it in the \"🏷️ Discount code\" box when you rent, renew or upgrade."},
+                {"PROMO_IS_DISCOUNT", !SHOP ? "Đây là mã giảm giá, không dùng để nhận máy được." : "Đây là mã giảm giá — nhập ở ô \"🏷️ Mã giảm giá\" khi thuê / gia hạn / nâng cấp máy.", !SHOP ? "This is a discount code — it can't be used to get a phone." : "This is a discount code — enter it in the \"🏷️ Discount code\" box when you rent, renew or upgrade."},
                 {"PROMO_EMPTY", "Hãy nhập mã.", "Enter a code."},
                 {"PROMO_USER_LIMIT", "Bạn đã dùng hết số lượt của mã này.", "You've used this code the maximum number of times."},
                 {"PROMO_SCOPE", "Mã này không áp dụng cho loại đơn này.", "This code doesn't apply to this kind of order."},

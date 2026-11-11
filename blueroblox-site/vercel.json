@@ -46,6 +46,10 @@
     {
       "path": "/api/vps-expiry-cron",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/play-voided",
+      "schedule": "30 2 * * *"
     }
   ],
   "redirects": [

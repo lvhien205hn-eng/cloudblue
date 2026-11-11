@@ -45,7 +45,7 @@
   <ul>
     <li><b>Thông tin tài khoản:</b> email, tên người dùng, mật khẩu. Mật khẩu được hệ thống đăng nhập mã hoá một chiều, chúng tôi không xem được.</li>
     <li><b>Dữ liệu dịch vụ:</b> danh sách máy đám mây của bạn, cấu hình, thời hạn, các thao tác cần để vận hành máy (tạo, khởi động lại, đổi Android, chia sẻ máy).</li>
-    <li><b>Lịch sử giao dịch trên website:</b> số tiền, thời gian, mã giao dịch khi bạn nạp tiền hoặc mua hàng trên cloudblue.vn. Thông tin thẻ và tài khoản ngân hàng do ngân hàng / cổng thanh toán xử lý, chúng tôi không lưu số thẻ.</li>
+    <li><b>Lịch sử giao dịch:</b> số tiền, thời gian, mã giao dịch khi bạn nạp tiền hoặc mua hàng trên cloudblue.vn, hoặc nạp tiền qua Google Play trong app CloudBlue trên CH Play. Thanh toán qua Google Play do Google xử lý — chúng tôi chỉ nhận mã đơn hàng, gói đã mua và trạng thái giao dịch (để cộng tiền và xử lý hoàn tiền), không nhận thông tin thẻ. Thông tin thẻ và tài khoản ngân hàng do ngân hàng / cổng thanh toán xử lý, chúng tôi không lưu số thẻ.</li>
     <li><b>Dữ liệu kỹ thuật:</b> địa chỉ IP, loại thiết bị, mã nhận dạng thiết bị (đã mã hoá một chiều, không gửi mã gốc), phiên bản app, thời gian kết nối. Dùng để giữ kết nối điều khiển máy, chống gian lận (ví dụ: nhiều tài khoản trên cùng một máy) và sửa lỗi.</li>
     <li><b>Hình ảnh màn hình máy đám mây</b> được truyền trực tiếp tới thiết bị của bạn để bạn điều khiển, chúng tôi không lưu lại.</li>
     <li><b>Nội dung trong máy đám mây</b> (ứng dụng, tệp, tài khoản bạn đăng nhập trong máy) nằm trên máy chủ của chúng tôi chỉ để chạy máy cho bạn. Chúng tôi không truy cập, trừ khi bạn yêu cầu hỗ trợ.</li>
@@ -60,7 +60,7 @@
   <p>Chúng tôi không bán dữ liệu cá nhân và không dùng dữ liệu của bạn để quảng cáo.</p>
 
   <h2>3. Chia sẻ dữ liệu</h2>
-  <p>Chúng tôi chỉ chia sẻ dữ liệu với các nhà cung cấp hạ tầng xử lý thay chúng tôi, và chỉ trong phạm vi cần thiết: Supabase (cơ sở dữ liệu, đăng nhập), Vercel (máy chủ website), Cloudflare (mạng), ngân hàng và cổng thanh toán khi bạn nạp tiền trên website. App trên CH Play dùng dịch vụ của Google Play để kiểm tra bản cập nhật. Chúng tôi cũng có thể cung cấp dữ liệu khi cơ quan có thẩm quyền yêu cầu theo pháp luật.</p>
+  <p>Chúng tôi chỉ chia sẻ dữ liệu với các nhà cung cấp hạ tầng xử lý thay chúng tôi, và chỉ trong phạm vi cần thiết: Supabase (cơ sở dữ liệu, đăng nhập), Vercel (máy chủ website), Cloudflare (mạng), ngân hàng và cổng thanh toán khi bạn nạp tiền trên website. App trên CH Play dùng dịch vụ của Google Play để thanh toán khi bạn nạp tiền và để kiểm tra bản cập nhật. Chúng tôi cũng có thể cung cấp dữ liệu khi cơ quan có thẩm quyền yêu cầu theo pháp luật.</p>
 
   <h2>4. Bảo mật</h2>
   <p>Mọi kết nối giữa app, website và máy chủ đều được mã hoá (HTTPS / TLS). Chỉ người được phân quyền mới truy cập được dữ liệu, và chỉ để vận hành dịch vụ.</p>
@@ -104,7 +104,7 @@
     <ul>
       <li><b>Account information:</b> email, username and password. Passwords are one-way hashed by our sign-in system; we cannot read them.</li>
       <li><b>Service data:</b> your cloud phones, their configuration and expiry, and the actions needed to run them (create, restart, switch Android, share).</li>
-      <li><b>Website transaction history:</b> amount, time and reference of top-ups and purchases made on cloudblue.vn. Card and bank details are handled by the bank or payment provider; we do not store card numbers.</li>
+      <li><b>Transaction history:</b> amount, time and reference of top-ups and purchases made on cloudblue.vn, or top-ups paid through Google Play in the CloudBlue app on Google Play. Google Play payments are processed by Google — we only receive the order ID, the pack purchased and the transaction status (to credit your balance and handle refunds), never your card details. Card and bank details are handled by the bank or payment provider; we do not store card numbers.</li>
       <li><b>Technical data:</b> IP address, device type, a device identifier (one-way hashed, the original ID is never sent), app version and connection times, used to keep the remote-control connection working, prevent fraud (for example, many accounts on one device) and fix bugs.</li>
       <li><b>The screen of your cloud phone</b> is streamed directly to your device so you can control it; we do not record it.</li>
       <li><b>Content inside your cloud phone</b> (apps, files, accounts you sign in to) stays on our servers only to run your phone. We do not access it unless you ask for support.</li>
@@ -117,7 +117,7 @@
     </ul>
     <p>We do not sell personal data and do not use it for advertising.</p>
     <h2>3. Sharing</h2>
-    <p>We share data only with infrastructure providers that process it on our behalf, and only as needed: Supabase (database, sign-in), Vercel (web hosting), Cloudflare (network), and banks / payment providers when you top up on the website. The Google Play app uses Google Play services to check for updates. We may disclose data when required by law.</p>
+    <p>We share data only with infrastructure providers that process it on our behalf, and only as needed: Supabase (database, sign-in), Vercel (web hosting), Cloudflare (network), and banks / payment providers when you top up on the website. The Google Play app uses Google Play services to process top-up payments and to check for updates. We may disclose data when required by law.</p>
     <h2>4. Security</h2>
     <p>All connections between the apps, the website and our servers are encrypted (HTTPS / TLS). Only authorised staff can access data, and only to operate the service.</p>
     <h2>5. Retention</h2>

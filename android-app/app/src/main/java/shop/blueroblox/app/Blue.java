@@ -24,14 +24,14 @@ import java.util.TimeZone;
 /** 💎 TÍCH BLUE (SQL v27): điểm danh mỗi ngày, nhiệm vụ hằng ngày, Blue dùng trả tiền thuê / gia hạn máy (1 Blue = 1đ).
  *  blue_info() → info {on, blue, can_use, need_topup, today, streak, next_got, tasks[{id, got, done, ready}], cfg, items}.
  *  Máy chủ chưa chạy SQL v27 / admin tắt → info = null hoặc on = false → app ẩn hết, chạy như cũ.
- *  Bản CH Play: chỉ điểm danh + nhiệm vụ mở máy; không nói chuyện trả tiền / mời bạn (luật thanh toán Google Play). */
+ *  Bản CH Play: không có mời bạn / chia sẻ link (dẫn ra web); trả bằng Blue có khi bản build có nạp qua Google Play (Api.SHOP). */
 final class Blue {
     static volatile JSONObject info = null;
     static volatile long at = 0;
 
     static boolean on() { JSONObject i = info; return i != null && i.optBoolean("on"); }
     static long bal() { JSONObject i = info; return i == null ? 0 : i.optLong("blue"); }
-    static boolean canUse() { JSONObject i = info; return !Api.PLAY && i != null && i.optBoolean("on") && i.optBoolean("can_use"); }
+    static boolean canUse() { JSONObject i = info; return Api.SHOP && i != null && i.optBoolean("on") && i.optBoolean("can_use"); }
     static int maxPct() {
         JSONObject i = info, c = i == null ? null : i.optJSONObject("cfg");
         return c == null ? 100 : Math.max(0, Math.min(100, c.optInt("max_pct", 100)));
@@ -144,8 +144,8 @@ final class Blue {
             s.append(taskIcon(x.optString("id"))).append(" ").append(taskName(x.optString("id"))).append(": +").append(n(x.optLong("got")))
                     .append(Ui.L(" Blue mỗi ngày", " Blue a day")).append("\n");
         }
-        if (!Api.PLAY) {
-            if (c.optLong("ref") > 0) s.append("🎁 ").append(Ui.L("Bạn được mời nạp tiền lần đầu" + (c.optLong("ref_min_topup") > 0 ? " (từ " + n(c.optLong("ref_min_topup")) + "đ)" : "") + ": +", "An invited friend's first top-up: +")).append(n(c.optLong("ref"))).append(" Blue\n");
+        if (Api.SHOP) {
+            if (!Api.PLAY && c.optLong("ref") > 0) s.append("🎁 ").append(Ui.L("Bạn được mời nạp tiền lần đầu" + (c.optLong("ref_min_topup") > 0 ? " (từ " + n(c.optLong("ref_min_topup")) + "đ)" : "") + ": +", "An invited friend's first top-up: +")).append(n(c.optLong("ref"))).append(" Blue\n");
             if (c.optDouble("cashback") > 0) s.append("💸 ").append(Ui.L("Mỗi đơn trả bằng tiền: hoàn ", "Every paid order: ")).append(fmtPct(c.optDouble("cashback"))).append(Ui.L("% thành Blue\n", "% back in Blue\n"));
             s.append("\n").append(Ui.L("Dùng Blue: bật \"💎 Trả bằng Blue\" khi thuê / gia hạn máy — 1 Blue = 1đ", "Spend: turn on \"💎 Pay with Blue\" when renting / renewing — 1 Blue = 1đ"))
                     .append(maxPct() < 100 ? Ui.L(", tối đa " + maxPct() + "% mỗi đơn.", ", up to " + maxPct() + "% per order.") : Ui.L(", trả được cả đơn.", ", up to the whole order."));
@@ -159,7 +159,7 @@ final class Blue {
     /** 🎉 Hộp giới thiệu "Tích Blue" — hiện 1 lần / tài khoản / máy (MainActivity.blueChanged gọi). */
     static void intro(MainActivity a) {
         LinearLayout c = Ui.col(a, 12);
-        c.addView(Ui.text(a, Api.PLAY ? Ui.L("Ghé app mỗi ngày để tích Blue. Cách nhận:", "Drop by every day to earn Blue. How:")
+        c.addView(Ui.text(a, !Api.SHOP ? Ui.L("Ghé app mỗi ngày để tích Blue. Cách nhận:", "Drop by every day to earn Blue. How:")
                 : Ui.L("Tích Blue để thuê / gia hạn máy rẻ hơn — 1 Blue = 1đ. Cách nhận:", "Earn Blue to pay less for phones — 1 Blue = 1đ. How to earn:"), 14.5f, Ui.FG, true), Ui.fill());
         c.addView(Ui.text(a, introText(), 14, Ui.FG, false), Ui.fill());
         Button later = Ui.button(a, Ui.L("Để sau", "Later"), Ui.GHOST);
@@ -190,7 +190,7 @@ final class Blue {
             // số Blue
             LinearLayout hero = Ui.card(a);
             hero.addView(Ui.text(a, "💎 " + n(i.optLong("blue")) + " Blue", 26, Ui.SKY, true));
-            hero.addView(Ui.muted(a, Api.PLAY ? Ui.L("Blue tích từ điểm danh và nhiệm vụ hằng ngày.", "Earn Blue from daily check-ins and missions.")
+            hero.addView(Ui.muted(a, !Api.SHOP ? Ui.L("Blue tích từ điểm danh và nhiệm vụ hằng ngày.", "Earn Blue from daily check-ins and missions.")
                     : Ui.L("1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây", "1 Blue = 1đ on cloud phone rentals / renewals")
                       + (maxPct() < 100 ? Ui.L(" (tối đa " + maxPct() + "% mỗi đơn)", " (max " + maxPct() + "% per order)") : "")));
             if (i.optBoolean("hold"))
@@ -199,7 +199,7 @@ final class Blue {
             else if (i.optBoolean("new_account"))
                 hero.addView(Ui.text(a, "🆕 " + Ui.L("Tài khoản mới — sau " + Math.max(1, i.optInt("min_age_h", 24)) + " giờ mới bắt đầu tích Blue được.",
                         "New account — you can start earning Blue after " + Math.max(1, i.optInt("min_age_h", 24)) + " hours."), 12.5f, Ui.WAIT, false), Ui.fill());
-            else if (!Api.PLAY && !i.optBoolean("can_use") && i.optBoolean("need_topup"))
+            else if (Api.SHOP && !i.optBoolean("can_use") && i.optBoolean("need_topup"))
                 hero.addView(Ui.text(a, "🔒 " + Ui.L("Nạp tiền" + (i.optLong("use_min_topup") > 0 ? " từ " + n(i.optLong("use_min_topup")) + "đ" : " lần đầu") + " để mở khoá trả bằng Blue. Blue vẫn được tích bình thường.",
                         "Top up to unlock paying with Blue. You keep earning meanwhile."), 12.5f, Ui.WAIT, false), Ui.fill());
             if (i.optLong("day_cap") > 0)
@@ -243,7 +243,7 @@ final class Blue {
                     String label; final Runnable act;
                     if ("checkin".equals(id)) { label = Ui.L("Điểm danh", "Check in"); act = () -> checkin(a, draw[0]); }
                     else if ("play".equals(id)) {
-                        label = t.optBoolean("ready") ? Ui.L("Mở máy", "Open") : (Api.PLAY ? null : Ui.L("Thuê máy", "Rent"));
+                        label = t.optBoolean("ready") ? Ui.L("Mở máy", "Open") : (!Api.SHOP ? null : Ui.L("Thuê máy", "Rent"));
                         act = () -> { if (d[0] != null) d[0].dismiss(); a.show(t.optBoolean("ready") ? 0 : 1); };
                     }
                     else if ("share".equals(id)) { label = Ui.L("Chia sẻ", "Share"); act = () -> share(a, draw[0]); }
@@ -258,9 +258,9 @@ final class Blue {
                 c.addView(r, Ui.fill());
             }
             // nhận thêm
-            if (!Api.PLAY) {
+            if (Api.SHOP) {
                 StringBuilder more = new StringBuilder();
-                if (cfg.optLong("ref") > 0) more.append("• ").append(Ui.L("Bạn bè bạn mời nạp tiền lần đầu" + (cfg.optLong("ref_min_topup") > 0 ? " từ " + n(cfg.optLong("ref_min_topup")) + "đ" : "") + " (khác mạng / thiết bị): +", "Each invited friend's first top-up: +")).append(n(cfg.optLong("ref"))).append(" Blue\n");
+                if (!Api.PLAY && cfg.optLong("ref") > 0) more.append("• ").append(Ui.L("Bạn bè bạn mời nạp tiền lần đầu" + (cfg.optLong("ref_min_topup") > 0 ? " từ " + n(cfg.optLong("ref_min_topup")) + "đ" : "") + " (khác mạng / thiết bị): +", "Each invited friend's first top-up: +")).append(n(cfg.optLong("ref"))).append(" Blue\n");
                 if (cfg.optDouble("cashback") > 0) more.append("• ").append(Ui.L("Mỗi đơn trả bằng tiền: hoàn ", "Every paid order: ")).append(fmtPct(cfg.optDouble("cashback"))).append(Ui.L("% bằng Blue\n", "% back in Blue\n"));
                 more.append("• ").append(Ui.L("Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)", "Missions reset at midnight (Vietnam time)"));
                 c.addView(Ui.muted(a, more.toString()), Ui.fill());
@@ -287,7 +287,7 @@ final class Blue {
         load(() -> { if (d[0].isShowing()) draw[0].run(); a.blueChanged(); });
     }
 
-    /** Dòng "💎 Trả bằng Blue" trong bảng thuê / gia hạn máy (chỉ bản web). use(pay) = số Blue sẽ trừ cho đơn. */
+    /** Dòng "💎 Trả bằng Blue" trong bảng thuê / gia hạn máy (khi mua được trong app — Api.SHOP). use(pay) = số Blue sẽ trừ cho đơn. */
     static final class Pay {
         final LinearLayout view; final android.widget.Switch sw; final TextView sub; final Button earn;
         boolean on;
@@ -313,7 +313,7 @@ final class Blue {
         }
         long use(double pay) { return on ? Blue.use(pay) : 0; }
         void paint(double pay, boolean hide) {
-            if (hide || Api.PLAY || !Blue.on()) { view.setVisibility(View.GONE); return; }
+            if (hide || !Api.SHOP || !Blue.on()) { view.setVisibility(View.GONE); return; }
             view.setVisibility(View.VISIBLE);
             boolean can = Blue.canUse(); long have = Blue.bal(), u = use(pay);
             boolean ok = can && have > 0;

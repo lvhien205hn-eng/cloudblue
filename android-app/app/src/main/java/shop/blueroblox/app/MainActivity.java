@@ -186,7 +186,7 @@ public class MainActivity extends Activity {
         top.addView(brand, Ui.weight(1));
         balTop = Ui.pill(this, "…", Ui.SKY);
         balTop.setOnClickListener(v -> openTopup());
-        if (Api.PLAY) balTop.setVisibility(View.GONE);   // bản CH Play: không hiện số dư / nạp tiền trong app
+        if (!Api.SHOP) balTop.setVisibility(View.GONE);  // không mua trong app → không hiện số dư / nạp tiền
         top.addView(balTop, Ui.wrap());
         blueTop = Ui.pill(this, "💎", Ui.SKY);              // 💎 Tích Blue (SQL v27) — hiện khi máy chủ đã bật
         blueTop.setVisibility(View.GONE);
@@ -217,7 +217,7 @@ public class MainActivity extends Activity {
             n.setOnClickListener(v -> show(t));
             Ui.ripple(n, Color.TRANSPARENT, 14, 0);
             nav[i] = n;
-            if (Api.PLAY && i == 1) n.setVisibility(View.GONE);   // bản CH Play: không có tab Thuê máy (thuê trên web)
+            if (!Api.SHOP && i == 1) n.setVisibility(View.GONE);  // không mua trong app → không có tab Thuê máy
             bar.addView(n, Ui.weight(1));
         }
         root.addView(bar, Ui.fill());
@@ -236,6 +236,7 @@ public class MainActivity extends Activity {
         Api.onOutdated = () -> { if (!isFinishing()) Updater.check(this, false); };   // máy chủ báo app cũ → hộp bắt buộc cập nhật
         if (Api.loggedIn()) refresh();
         Updater.check(this, false);
+        PlayPay.resume(this, this::credited);       // ▶️ bản CH Play: đã trả tiền Google Play mà chưa cộng (mất mạng / tắt app) → gửi lại
         h.removeCallbacks(vis);
         h.postDelayed(vis, 400);                    // quay lại màn này → bật lại hình các ô đang hiện
     }
@@ -243,6 +244,7 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
+        PlayPay.pause(this);
         h.removeCallbacks(poll);
         h.removeCallbacks(vis);
         for (LivePreview lp : previews.values()) lp.pause();   // rời màn (vào điều khiển, ra ngoài…) → tắt hết hình xem trước
@@ -313,7 +315,7 @@ public class MainActivity extends Activity {
         if (on) blueTop.setText("💎 " + Blue.n(Blue.bal()) + (todo > 0 ? " •" : ""));
         if (blueAcc != null && blueAcc.isAttachedToWindow())
             blueAcc.setText(on ? "💎 " + Blue.n(Blue.bal()) + " Blue" + (todo > 0 ? Ui.L("  ·  " + todo + " nhiệm vụ nhận được", "  ·  " + todo + " mission(s) ready") : "") : "");
-        if (tab == 1 && loaded && !Api.PLAY && rentUpd != null) rentUpd.run();
+        if (tab == 1 && loaded && Api.SHOP && rentUpd != null) rentUpd.run();
         JSONObject i = Blue.info;
         if (on && i != null && resumed) {
             android.content.SharedPreferences sp = getSharedPreferences("blue", MODE_PRIVATE);
@@ -330,7 +332,7 @@ public class MainActivity extends Activity {
     }
 
     void show(int t) {
-        if (Api.PLAY && t == 1) t = 0;                  // bản CH Play: không có màn Thuê máy
+        if (!Api.SHOP && t == 1) t = 0;                 // không mua trong app → không có màn Thuê máy
         tab = t;
         for (int i = 0; i < 3; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
@@ -430,15 +432,15 @@ public class MainActivity extends Activity {
             TextView ic = Ui.text(this, "📱", 44, Ui.FG, false);
             ic.setGravity(Gravity.CENTER);
             e.addView(ic, Ui.fill());
-            TextView t = Ui.h2(this, Api.PLAY ? Ui.L("Bạn chưa có máy nào", "You have no phones yet") : Ui.L("Bạn chưa thuê máy nào", "You have no phones yet"));
+            TextView t = Ui.h2(this, !Api.SHOP ? Ui.L("Bạn chưa có máy nào", "You have no phones yet") : Ui.L("Bạn chưa thuê máy nào", "You have no phones yet"));
             t.setGravity(Gravity.CENTER);
             e.addView(t, Ui.fill());
-            TextView d = Ui.muted(this, Api.PLAY
+            TextView d = Ui.muted(this, !Api.SHOP
                     ? Ui.L("Máy Android đám mây của bạn và máy được chia sẻ cho bạn sẽ hiện ở đây.", "Your cloud Android phones and phones shared with you appear here.")
                     : Ui.L("Chọn RAM, CPU, số ngày — máy Android sẵn sàng sau khoảng 2–3 phút.", "Pick RAM, CPU and days — your Android phone is ready in 2–3 minutes."));
             d.setGravity(Gravity.CENTER);
             e.addView(d, Ui.fill());
-            if (!Api.PLAY) {                            // bản CH Play: không có nút thuê máy
+            if (Api.SHOP) {                             // không mua trong app → không có nút thuê máy
                 Button go = Ui.button(this, Ui.L("Thuê máy ngay", "Rent a phone"), Ui.PRIMARY);
                 go.setOnClickListener(v -> show(1));
                 e.addView(go, Ui.fill());
@@ -821,7 +823,7 @@ public class MainActivity extends Activity {
             c.addView(acts, Ui.fill());
             return c;
         }
-        if (!Api.PLAY) {                                // bản CH Play: gia hạn trên web, không có nút trong app
+        if (Api.SHOP) {                                 // gia hạn (trả bằng số dư)
             Button rn = Ui.button(this, Ui.L("Gia hạn", "Renew"), Ui.GHOST);
             rn.setOnClickListener(v -> renew(p));
             rn.setEnabled(!lk && ("active".equals(st) || "expired".equals(st)));
@@ -876,7 +878,7 @@ public class MainActivity extends Activity {
         x.addTextChangedListener(new Simple(() -> {
             try { int v = Integer.parseInt(x.getText().toString()); if (v >= 1 && v <= max) { days[0] = v; draw.run(); } } catch (Exception ignored) { }
         }));
-        if (!Api.PLAY) {
+        if (Api.SHOP) {
             pr[0] = new Promo(this, "cp_renew", () -> new JSONObject().put("p_phone", p.optString("id")).put("p_days", days[0]), draw);
             bp[0] = new Blue.Pay(this, false, draw);
             c.addView(pr[0].view, Ui.fill());
@@ -973,7 +975,7 @@ public class MainActivity extends Activity {
             ch.setOnClickListener(x -> { nr[0] = (int) x.getTag(); draw[0].run(); quote.run(); }); wr.addView(ch); }
         for (int v : cs) { TextView ch = Ui.chip(this, (v == C0 ? Ui.L("Giữ ", "Keep ") : "") + v + Ui.L(" nhân", " cores"), false); ch.setTag(v);
             ch.setOnClickListener(x -> { nc[0] = (int) x.getTag(); draw[0].run(); quote.run(); }); wc.addView(ch); }
-        if (!Api.PLAY) {
+        if (Api.SHOP) {
             pr[0] = new Promo(this, "cp_upgrade", () -> nr[0] == R0 && nc[0] == C0 ? null
                     : new JSONObject().put("p_phone", p.optString("id")).put("p_ram", nr[0]).put("p_cpu", nc[0]), () -> draw[0].run());
             pzu.addView(pr[0].view, Ui.fill());
@@ -1040,7 +1042,7 @@ public class MainActivity extends Activity {
         boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && andList().size() > 1;
         sw.setEnabled(canSw); sw.setAlpha(canSw ? 1f : .45f);
         Button del = Ui.button(this, "🗑 " + Ui.L("Huỷ máy (xoá vĩnh viễn)", "Delete phone"), Ui.DANGER);
-        if (!Api.PLAY) c.addView(up, Ui.fill());       // bản CH Play: nâng cấp (trả tiền) làm trên web
+        if (Api.SHOP) c.addView(up, Ui.fill());        // nâng cấp (trả bằng số dư)
         c.addView(sw, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
         Dialog d = Ui.sheet(this, p.optString("name"), c);
         sw.setOnClickListener(v -> { d.dismiss(); SwitchAndroid.open(this, p, price, status, isAdmin(), () -> { phonesSig = null; refresh(); h.postDelayed(this::refresh, 5000); }); });
@@ -1398,8 +1400,8 @@ public class MainActivity extends Activity {
         cust.addView(boxed(rc), Ui.fill());
         body.addView(cust, Ui.fill());
 
-        // 🏷️ Mã giảm giá + 💎 Trả bằng Blue (bản web; máy miễn phí không dùng mã / Blue)
-        if (!Api.PLAY) {
+        // 🏷️ Mã giảm giá + 💎 Trả bằng Blue (máy miễn phí không dùng mã / Blue)
+        if (Api.SHOP) {
             prm[0] = new Promo(this, "cp_new", () -> sFree ? null : new JSONObject().put("p_ram", sRam).put("p_cpu", sCpu).put("p_days", sDays).put("p_qty", sQty), upd);
             bp[0] = new Blue.Pay(this, bluePayRent, () -> { bluePayRent = bp[0].on; upd.run(); });
             LinearLayout pz = Ui.col(this, 10);
@@ -1690,7 +1692,7 @@ public class MainActivity extends Activity {
         String name = prof.optString("username", "");
         c.addView(Ui.h1(this, "👤 " + (name.isEmpty() || name.equals("null") ? Ui.L("Tài khoản", "Account") : name)));
         c.addView(Ui.muted(this, Api.email));
-        if (!Api.PLAY) {                                // bản CH Play: không số dư / nạp tiền / hoa hồng trong app (luật thanh toán Google Play)
+        if (Api.SHOP) {                                 // số dư + Nạp tiền (bản CH Play: nạp qua Google Play — PlayPay)
             c.addView(Ui.text(this, Ui.L("Số dư: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0)), 18, Ui.SKY, true));
             if (isCtv()) c.addView(Ui.pill(this, "🤝 CTV −" + prof.optInt("ctv_discount") + "%", Ui.OK), Ui.wrap());
             Button top = Ui.button(this, "💳 " + Ui.L("Nạp tiền", "Top up"), Ui.PRIMARY);
@@ -1699,7 +1701,7 @@ public class MainActivity extends Activity {
         }
         body.addView(c, Ui.fill());
 
-        if (!Api.PLAY) {                                // 🧾 1.115: lịch sử nạp tiền — đọc THẲNG từ máy chủ, cùng nguồn với web
+        if (Api.SHOP) {                                 // 🧾 1.115: lịch sử nạp tiền — đọc THẲNG từ máy chủ, cùng nguồn với web
             LinearLayout hc = Ui.card(this);
             hc.addView(Ui.h2(this, "🧾 " + Ui.L("Lịch sử nạp tiền", "Top-up history")));
             TextView hInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
@@ -1715,7 +1717,9 @@ public class MainActivity extends Activity {
             bc.addView(Ui.h2(this, "💎 " + Ui.L("Tích Blue", "Blue rewards")));
             blueAcc = Ui.text(this, "", 16, Ui.SKY, true);
             bc.addView(blueAcc, Ui.fill());
-            bc.addView(Ui.muted(this, Api.PLAY ? Ui.L("Điểm danh mỗi ngày, mở máy đám mây để tích Blue.", "Check in daily and open your cloud phone to earn Blue.")
+            bc.addView(Ui.muted(this, !Api.SHOP ? Ui.L("Điểm danh mỗi ngày, mở máy đám mây để tích Blue.", "Check in daily and open your cloud phone to earn Blue.")
+                    : Api.PLAY ? Ui.L("Điểm danh, làm nhiệm vụ hằng ngày để tích Blue — 1 Blue = 1đ khi thuê / gia hạn máy.",
+                           "Check in and do daily missions to earn Blue — 1 Blue = 1đ on rentals and renewals.")
                     : Ui.L("Điểm danh, làm nhiệm vụ hằng ngày, mời bạn để tích Blue — 1 Blue = 1đ khi thuê / gia hạn máy.",
                            "Check in, do daily missions and invite friends to earn Blue — 1 Blue = 1đ on rentals and renewals.")));
             Button ob = Ui.button(this, "💎 " + Ui.L("Mở Tích Blue · điểm danh", "Open Blue rewards · check in"), Ui.PRIMARY);
@@ -1725,7 +1729,7 @@ public class MainActivity extends Activity {
             blueChanged();
         }
 
-        if (!Api.PLAY) {
+        if (!Api.PLAY) {                                // bản CH Play: không giới thiệu bạn bè (link mời dẫn ra web)
             LinearLayout rf = Ui.card(this);            // 🎁 Giới thiệu bạn bè (SQL v24: ref_info / ref_claim)
             rf.addView(Ui.h2(this, "🎁 " + Ui.L("Giới thiệu bạn bè", "Invite friends")));
             TextView rfInfo = Ui.muted(this, Ui.L("Đang tải…", "Loading…"));
@@ -1793,7 +1797,8 @@ public class MainActivity extends Activity {
         final String me = Api.uid;
         if (me == null || me.isEmpty()) { info.setText(Ui.L("Đăng nhập lại để xem lịch sử nạp.", "Log in again to see your top-ups.")); return; }
         if (topCache != null && SystemClock.elapsedRealtime() - topAt < 60_000L) { drawTopups(info, box, topCache); return; }
-        Api.bg(() -> Api.get("topups?user_id=eq." + me + "&select=memo,amount,asked,status,created_at,done_at&order=created_at.desc&limit=20"), r -> {
+        Api.bg(() -> Api.get("topups?user_id=eq." + me + (Api.PLAY ? "&via=eq.play" : "")      // bản CH Play: chỉ lệnh nạp qua Google Play
+                + "&select=memo,amount,asked,status,via,created_at,done_at&order=created_at.desc&limit=20"), r -> {
             JSONArray a = r instanceof JSONArray ? (JSONArray) r : new JSONArray();
             topCache = a; topAt = SystemClock.elapsedRealtime();
             if (destroyed || tab != 2 || !info.isAttachedToWindow()) return;
@@ -1807,28 +1812,44 @@ public class MainActivity extends Activity {
         for (int i = 0; i < a.length(); i++) {
             JSONObject t = a.optJSONObject(i);
             if (t == null) continue;
-            boolean ok = "done".equals(t.optString("status"));
-            double amt = ok ? t.optDouble("amount", 0) : t.optDouble("asked", t.optDouble("amount", 0));
+            boolean ok = "done".equals(t.optString("status")), back = "reversed".equals(t.optString("status"));
+            boolean gp = "play".equals(t.optString("via"));
+            double amt = ok || back ? t.optDouble("amount", 0) : t.optDouble("asked", t.optDouble("amount", 0));
             if (ok) sum += Math.round(amt);
             long at = parseTime(t.optString(ok && !t.isNull("done_at") ? "done_at" : "created_at"));
             LinearLayout row = Ui.row(this, 8);
             LinearLayout col = Ui.col(this, 2);
-            col.addView(Ui.text(this, Ui.L("Nạp tiền · ", "Top-up · ") + t.optString("memo"), 14, Ui.FG, true));
+            col.addView(Ui.text(this, (gp ? "▶️ Google Play · " : Ui.L("Nạp tiền · ", "Top-up · ")) + t.optString("memo"), 14, Ui.FG, true));
             col.addView(Ui.muted(this, (at > 0 ? fdate(at) + " · " : "") + (ok ? Ui.L("✓ Đã cộng vào số dư", "✓ Credited")
+                    : back ? Ui.L("↩️ Google Play đã hoàn tiền — đã trừ lại", "↩️ Refunded by Google Play — deducted")
                     : Ui.L("⏳ Chưa thấy tiền về (chỉ là lệnh tạo mã, chưa cộng)", "⏳ No payment yet (code only, not credited)"))));
             row.addView(col, Ui.weight(1));
-            row.addView(Ui.text(this, (ok ? "+" : "") + Ui.vnd(amt), 15, ok ? Ui.OK : Ui.MUTED, ok), Ui.wrap());
+            TextView av = Ui.text(this, (ok ? "+" : "") + Ui.vnd(amt), 15, ok ? Ui.OK : Ui.MUTED, ok);
+            if (back) av.setPaintFlags(av.getPaintFlags() | android.graphics.Paint.STRIKE_THRU_TEXT_FLAG);
+            row.addView(av, Ui.wrap());
             box.addView(row, Ui.fill());
         }
-        info.setText(a.length() == 0 ? Ui.L("Chưa có lệnh nạp nào.", "No top-ups yet.")
+        info.setText(a.length() == 0 ? (Api.PLAY ? Ui.L("Chưa nạp lần nào qua Google Play.", "No Google Play top-ups yet.") : Ui.L("Chưa có lệnh nạp nào.", "No top-ups yet."))
+                : Api.PLAY ? Ui.L("Lấy trực tiếp từ máy chủ. 20 lần nạp gần nhất · đã cộng: ", "Straight from the server. Latest 20 · credited: ") + Ui.vnd(sum)
                 : Ui.L("Lấy trực tiếp từ máy chủ, giống hệt trên web. 20 lệnh gần nhất · đã cộng: ", "Straight from the server, same as the website. Latest 20 · credited: ") + Ui.vnd(sum));
     }
 
     void openTopup() { openTopup(0); }
 
-    /** need > 0: số tiền còn thiếu (điền sẵn, làm tròn lên 1.000đ). */
+    /** need > 0: số tiền còn thiếu (điền sẵn, làm tròn lên 1.000đ). Bản CH Play: chọn gói nạp qua Google Play (PlayPay). */
     void openTopup(double need) {
+        if (Api.PLAY) {
+            if (PlayPay.ON) PlayPay.open(this, prof.optDouble("balance", 0), need, this::credited);
+            return;                                      // bản CH Play KHÔNG BAO GIỜ hiện QR ngân hàng / crypto
+        }
         Api.<JSONObject>bg(Api::site, site -> topupSheet(site, need), m -> Ui.toast(this, m));
+    }
+
+    /** ▶️ Nạp qua Google Play xong (PlayPay) → tải lại số dư + lịch sử nạp. */
+    void credited() {
+        if (destroyed) return;
+        topCache = null;
+        refresh();
     }
 
     void topupSheet(JSONObject site, double need) {

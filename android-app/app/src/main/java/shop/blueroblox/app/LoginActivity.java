@@ -46,7 +46,7 @@ public class LoginActivity extends Activity {
         title.setText(bn);
         title.setGravity(Gravity.CENTER);
         root.addView(title, Ui.fill());
-        sub = Ui.muted(this, Api.PLAY                     // bản CH Play không bán gì trong app → không nói "thuê" (khớp trang CH Play)
+        sub = Ui.muted(this, !Api.SHOP                    // bản không bán gì trong app → không nói "thuê"
                 ? Ui.L("Điện thoại Android chạy 24/7 trên cloud — xem và điều khiển ngay trên điện thoại của bạn.",
                        "Android phones running 24/7 in the cloud — view and control them right from your phone.")
                 : Ui.L("Điện thoại Android chạy 24/7 trên cloud — thuê và điều khiển ngay trên điện thoại của bạn.",

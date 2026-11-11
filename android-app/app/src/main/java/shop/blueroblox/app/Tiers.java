@@ -40,6 +40,21 @@ final class Tiers {
                     "Free Fire, Liên Quân, PUBG Mobile…|Không có card đồ hoạ — game nặng có thể giật", "Free Fire, PUBG Mobile, Genshin…|No GPU — heavy games may stutter"},
     };
 
+    /** Bản CH Play: gói gợi ý viết trung tính (không nêu tên game / ứng dụng của hãng khác — chính sách Google Play).
+     *  Giá vẫn tính theo bảng giá thật của máy chủ (perDay), chỉ khác chữ trên thẻ. */
+    private static final String[][] PLAY_DEF = {
+            {"p-lite", "💬", "Blue Lite", "Ứng dụng nhẹ · chạy 24/7", "Light apps · runs 24/7", "2", "2", "30", "", "blue",
+                    "Nhắn tin, mạng xã hội, đọc tin|Vẫn chạy khi bạn tắt điện thoại", "Messaging, social, news|Keeps running when your phone is off"},
+            {"p-std", "📱", "Blue Standard", "Dùng hằng ngày · đa nhiệm", "Everyday use · multitasking", "4", "2", "30", "", "teal",
+                    "Mở nhiều ứng dụng cùng lúc|Game 2D, cờ, bài", "Several apps at once|2D, card & board games"},
+            {"p-plus", "⚡", "Blue Plus", "Mượt hơn · 4 nhân", "Smoother · 4 cores", "4", "4", "30", "", "amber",
+                    "Ứng dụng nặng hơn vẫn mượt|Còn dư RAM để đa nhiệm", "Heavier apps stay smooth|Spare RAM for multitasking"},
+            {"p-pro", "🚀", "Blue Pro", "8GB · 8 nhân · nhiều việc cùng lúc", "8GB · 8 cores · heavy multitasking", "8", "8", "30", "⭐ Đề xuất", "violet",
+                    "Nhiều ứng dụng chạy song song|Phù hợp làm việc cả ngày", "Many apps side by side|Built for all-day work"},
+            {"p-max", "🔥", "Blue Max", "Mạnh nhất · 60 FPS", "Most power · 60 FPS", "12", "8", "60", "", "rose",
+                    "Ứng dụng & game 3D nặng|Không có card đồ hoạ — game rất nặng có thể giật", "Heavy apps & 3D games|No GPU — very heavy games may stutter"},
+    };
+
     static int color(String k) {
         if (k == null) k = "";
         switch (k) {
@@ -56,10 +71,10 @@ final class Tiers {
         }
     }
 
-    /** Danh sách gói đang bật (tối đa 8). */
+    /** Danh sách gói đang bật (tối đa 8). Bản CH Play: luôn dùng gói trung tính PLAY_DEF. */
     static List<T> list() {
         List<T> out = new ArrayList<>();
-        JSONArray a = Api.tiers;
+        JSONArray a = Api.PLAY ? null : Api.tiers;
         if (a != null && a.length() > 0) {
             for (int i = 0; i < a.length() && out.size() < 8; i++) {
                 JSONObject o = a.optJSONObject(i);
@@ -77,7 +92,7 @@ final class Tiers {
             }
             return out;
         }
-        for (String[] d : DEF) {
+        for (String[] d : Api.PLAY ? PLAY_DEF : DEF) {
             T t = new T();
             t.id = d[0]; t.icon = d[1]; t.name = d[2]; t.tag = Ui.L(d[3], d[4]);
             t.ram = Integer.parseInt(d[5]); t.cpu = Integer.parseInt(d[6]); t.fps = Integer.parseInt(d[7]);

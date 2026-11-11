@@ -1949,8 +1949,8 @@ window.BR_CONFIG = {
     <div class="dbody" id="pane-tx" hidden>
       <div class="note">Tiền <b>tự cộng</b> khi ngân hàng báo có — chuyển <b>thiếu</b> thì cộng đúng số tiền thật đã chuyển. Tiền về <b>không khớp mã</b> nằm ở mục "🏦 Tiền về chưa khớp" bên dưới để bạn gán đúng người. <b>✋ Duyệt tay</b> chỉ dùng khi đã mở app ngân hàng thấy tiền về — phải nhập số tiền THẬT (không theo số khách gõ).</div>
       <div class="txbar"><input class="search" id="tq" placeholder="🔍 Tìm: tên khách, email, mã nạp, mã ngân hàng, số tiền (VD 50k)…" autocomplete="off" spellcheck="false" aria-label="Tìm lệnh nạp">
-        <select class="in" id="tst" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="pending">Chờ</option><option value="done">Đã cộng</option></select>
-        <select class="in" id="tvia" aria-label="Lọc cách nạp"><option value="">Mọi cách nạp</option><option value="sepay">🏦 Ngân hàng tự động</option><option value="crypto">🪙 Crypto</option><option value="manual">✋ Duyệt tay</option><option value="assign">🔗 Gán tiền về</option></select>
+        <select class="in" id="tst" aria-label="Lọc trạng thái"><option value="">Mọi trạng thái</option><option value="pending">Chờ</option><option value="done">Đã cộng</option><option value="reversed">↩️ Đã hoàn</option></select>
+        <select class="in" id="tvia" aria-label="Lọc cách nạp"><option value="">Mọi cách nạp</option><option value="sepay">🏦 Ngân hàng tự động</option><option value="crypto">🪙 Crypto</option><option value="manual">✋ Duyệt tay</option><option value="assign">🔗 Gán tiền về</option><option value="play">▶️ Google Play</option></select>
         <span class="hint" id="tx-sum"></span></div>
       <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Cách nạp</th><th>Mã nạp</th><th class="num">Khách gõ</th><th class="num">Thực nhận</th><th>Trạng thái</th><th></th></tr></thead><tbody id="ttbl"></tbody></table></div>
       <h4 style="margin:18px 0 4px">🏦 Tiền về chưa khớp mã nạp</h4>
@@ -3896,7 +3896,7 @@ async function openOrders() {
           return `<div class="hint">${esc(x.items || "")}</div>` + (m && x.status === "pending" ? `<div class="oacts"><span class="hint" style="margin-right:auto">${L("Mã thanh toán", "Payment code")}: <b style="color:var(--gold-hi)">${esc(payCode(x))}</b></span><button class="btn sm" data-cpmsg="${x.id}">📋 ${L("Copy tin nhắn gửi shop", "Copy message for the shop")}</button></div>` : ""); })();
     return { t: x.created_at, h: `<div class="oi"><div class="h"><b>${esc(x.product_name)} × ${x.qty}</b><span style="color:${x.status === "refunded" ? "var(--muted)" : "var(--bad)"};font-family:var(--mono)">${x.status === "refunded" ? L("Đã hoàn", "Refunded") : "−" + fmt(x.total)}</span></div><div class="hint">${ago(x.created_at)} · ${ordPill(x.status)}</div>${body}</div>` };
   }),
-    ...(t.data || []).map(x => ({ t: x.created_at, h: `<div class="oi"><div class="h"><b>${L("Nạp tiền", "Top-up")} · ${esc(x.memo)}</b><span style="color:${x.status === "done" ? "var(--ok)" : "var(--gold)"};font-family:var(--mono)">${x.status === "done" ? "+" : ""}${fmt(x.amount)}</span></div><div class="hint">${ago(x.created_at)} · ${x.status === "done" ? L("Thành công", "Completed") : L("Đang chờ chuyển khoản", "Waiting for payment")}</div></div>` }))]
+    ...(t.data || []).map(x => ({ t: x.created_at, h: `<div class="oi"><div class="h"><b>${L("Nạp tiền", "Top-up")} · ${esc(x.memo)}</b><span style="color:${x.status === "done" ? "var(--ok)" : x.status === "reversed" ? "var(--muted)" : "var(--gold)"};font-family:var(--mono)">${x.status === "done" ? "+" : ""}${fmt(x.amount)}</span></div><div class="hint">${ago(x.created_at)}${x.via === "play" ? " · ▶️ Google Play" : ""} · ${x.status === "done" ? L("Thành công", "Completed") : x.status === "reversed" ? L("Google Play đã hoàn tiền — đã trừ lại", "Refunded by Google Play — deducted") : L("Đang chờ chuyển khoản", "Waiting for payment")}</div></div>` }))]
     .sort((a, b) => new Date(b.t) - new Date(a.t));
   $("or-list").innerHTML = rows.length ? rows.map(r => r.h).join("") : `<div class="empty">${L("Bạn chưa có đơn hàng hay lệnh nạp nào.", "You have no orders or top-ups yet.")}</div>`;
 }
@@ -3956,13 +3956,14 @@ function txMethod(t) {
   const c = String(t.coin || "").toLowerCase();
   if (c === "ltc") return '<span class="pill" style="background:rgba(52,152,219,.18);color:#5dade2">Ł LTC</span>';
   if (c === "usdttrc20" || c === "usdt") return '<span class="pill" style="background:rgba(39,174,96,.18);color:#2ecc71">🪙 USDT</span>';
+  if (t.via === "play") return '<span class="pill" style="background:rgba(66,133,244,.18);color:#7fb0ff">▶️ Google Play</span>';
   return '<span class="pill wt">🏦 Bank</span>';
 }
 function renderTx() {
   $("ttbl").innerHTML = ADM.topups.length ? ADM.topups.map(t => {
     const isCrypto = !!t.coin, usdTxt = (t.usd != null) ? `<div class="hint">≈ $${(+t.usd).toLocaleString("en-US")} ${String(t.coin).toUpperCase().replace("TRC20", "")}</div>` : "";
     return `<tr><td>${ago(t.created_at)}</td><td>${esc(uname(t.user_id))}</td><td>${txMethod(t)}</td><td class="num">${esc(t.memo)}</td><td class="num">${vnd(t.amount)}${isCrypto ? usdTxt : ""}</td>
-    <td>${t.status === "done" ? '<span class="pill ok">Thành công</span>' : '<span class="pill wt">Chờ</span>'}</td>
+    <td>${t.status === "done" ? '<span class="pill ok">Thành công</span>' : t.status === "reversed" ? '<span class="pill bad">↩️ Đã hoàn</span>' : '<span class="pill wt">Chờ</span>'}</td>
     <td style="text-align:right;white-space:nowrap">${t.status === "pending" ? `<button class="btn ghost sm" data-approve="${t.id}">Duyệt tay</button> ` : ""}<button class="btn danger sm" data-deltop="${t.id}">Xoá</button></td></tr>`;
   }).join("")
     : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">Chưa có lệnh nạp nào.</td></tr>`;
@@ -7743,8 +7744,8 @@ $("am-save") && ($("am-save").onclick = () => busy($("am-save"), async () => {
 /* ===== 🛡️ BẢO MẬT (SQL v29): bot gác · quét gian lận · nhật ký tiền · ban / xoá · nạp tiền tìm kiếm + tiền về chưa khớp · tiền khách ở bảng máy ===== */
 const V29_MISS = e => /admin_(topup|bank|user|fraud|money|ban|sec|blue_hold)|sec_watch|sec_alerts|function .* does not exist|Could not find the function/i.test((e && e.message) || "");
 const V29_TXT = "⚠️ Chưa chạy file SQL <b>cloud-phones-v29.sql</b> trong Supabase — chạy xong bấm làm mới.";
-const VIA_TXT = { sepay: "🏦 Ngân hàng (tự động)", crypto: "🪙 Crypto", manual: "✋ Duyệt tay", assign: "🔗 Gán tiền về" };
-const VIA_DO = { credit_topup: "Nạp ngân hàng (tự động)", credit_crypto: "Nạp crypto", admin_topup_approve: "Admin duyệt tay", admin_bank_in_assign: "Admin gán tiền về",
+const VIA_TXT = { sepay: "🏦 Ngân hàng (tự động)", crypto: "🪙 Crypto", manual: "✋ Duyệt tay", assign: "🔗 Gán tiền về", play: "▶️ Google Play" };
+const VIA_DO = { credit_topup: "Nạp ngân hàng (tự động)", credit_crypto: "Nạp crypto", credit_play_topup: "▶️ Nạp Google Play", reverse_play_topup: "↩️ Google Play hoàn tiền", admin_topup_approve: "Admin duyệt tay", admin_bank_in_assign: "Admin gán tiền về",
   admin_adjust_balance: "Admin cộng / trừ", admin_set_balance: "Admin đặt số dư", cloudphone_refund: "Hoàn tiền máy tạo lỗi", _refund: "Hoàn đơn hàng", admin_refund_order: "Admin hoàn đơn",
   cloudphone_order_custom: "Thuê máy", cloudphone_renew: "Gia hạn máy", cloudphone_upgrade: "Nâng cấp máy", buy_product: "Mua hàng", renew_vps: "Gia hạn VPS",
   blue_checkin: "Điểm danh", blue_task: "Nhiệm vụ Blue", admin_blue_add: "Admin cộng / trừ Blue", admin_user_ban: "Ban (thu hồi)", sec_watch: "Bot gác" };
@@ -7779,7 +7780,7 @@ renderTx = function () {
   let rows = TX_ROWS;
   if (!rows) {                                   // chưa chạy v29: lọc tạm trên 100 lệnh gần nhất
     const q = ($("tq") && $("tq").value || "").trim().toLowerCase(), st = $("tst") ? $("tst").value : "";
-    rows = (ADM.topups || []).map(t => ({ ...t, username: uname(t.user_id), via: t.status === "done" ? (String(t.bank_ref || "").startsWith("MANUAL-") ? "manual" : t.coin ? "crypto" : "sepay") : null }))
+    rows = (ADM.topups || []).map(t => ({ ...t, username: uname(t.user_id), via: t.via && t.status !== "pending" ? t.via : t.status === "done" ? (String(t.bank_ref || "").startsWith("MANUAL-") ? "manual" : t.coin ? "crypto" : "sepay") : null }))
       .filter(t => (!st || t.status === st) && (!q || [t.username, t.memo, t.bank_ref, t.amount].join(" ").toLowerCase().includes(q)));
   }
   tb.innerHTML = rows.length ? rows.map(t => {
@@ -7787,11 +7788,11 @@ renderTx = function () {
     const diff = t.asked != null && +t.asked !== +t.amount && t.status === "done";
     return `<tr data-bkid="${esc(String(t.id))}" data-bkst="${esc(t.status || "")}" data-bku="${esc(t.user_id || "")}" data-bkn="${esc(t.username || uname(t.user_id) || "")}"${t.via === "manual" ? ' class="tx-man"' : ""}><td>${ago(t.created_at)}${t.ip ? `<div class="hint">${ipTxt(t.ip)}</div>` : ""}</td>
       <td><b>${esc(t.username || uname(t.user_id))}</b>${t.u_locked ? ' <span class="pill bad">khoá</span>' : ""}${t.email ? `<div class="hint">${esc(t.email)}</div>` : ""}</td>
-      <td>${t.status === "done" ? esc(VIA_TXT[t.via] || t.via || "") : '<span class="hint">—</span>'}${t.approver ? `<div class="hint">bởi ${esc(t.approver)}</div>` : ""}</td>
+      <td>${t.status === "done" || t.status === "reversed" ? esc(VIA_TXT[t.via] || t.via || "") : '<span class="hint">—</span>'}${t.approver ? `<div class="hint">bởi ${esc(t.approver)}</div>` : ""}</td>
       <td class="num">${esc(t.memo)}${t.bank_ref && !String(t.bank_ref).startsWith("MANUAL-") ? `<div class="hint">NH: ${esc(t.bank_ref)}</div>` : ""}</td>
       <td class="num">${t.asked != null ? vnd(t.asked) : "—"}</td>
-      <td class="num">${t.status === "done" ? `<b${diff ? ' style="color:var(--warn)"' : ""}>${vnd(t.amount)}</b>` : '<span class="hint">chưa nhận</span>'}${usd}${t.note ? `<div class="hint">${esc(t.note)}</div>` : ""}</td>
-      <td>${t.status === "done" ? '<span class="pill ok">Đã cộng</span>' : '<span class="pill wt">Chờ</span>'}</td>
+      <td class="num">${t.status === "done" ? `<b${diff ? ' style="color:var(--warn)"' : ""}>${vnd(t.amount)}</b>` : t.status === "reversed" ? `<s class="hint">${vnd(t.amount)}</s>` : '<span class="hint">chưa nhận</span>'}${usd}${t.note ? `<div class="hint">${esc(t.note)}</div>` : ""}</td>
+      <td>${t.status === "done" ? '<span class="pill ok">Đã cộng</span>' : t.status === "reversed" ? '<span class="pill bad">↩️ Đã hoàn</span>' : '<span class="pill wt">Chờ</span>'}</td>
       <td style="text-align:right;white-space:nowrap">${t.status === "pending" ? `<button class="btn ghost sm" data-approve="${t.id}">✋ Duyệt tay</button> <button class="btn danger sm" data-deltop="${t.id}">Xoá</button>` : ""}
         ${t.user_id ? `<button class="btn ghost sm" data-audit="${esc(t.user_id)}" title="Soát khách này">🔍</button>` : ""}</td></tr>`;
   }).join("") : `<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:24px">${($("tq") && $("tq").value) || ($("tst") && $("tst").value) ? "Không có lệnh nào khớp." : "Chưa có lệnh nạp nào."}</td></tr>`;
