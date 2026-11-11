@@ -318,7 +318,7 @@ input.tg:disabled{opacity:.45;cursor:default}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.0";
+const VER = "web-1.1";
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -530,8 +530,8 @@ async function connect() {
   const cto = setTimeout(() => { if (P.ws === ws && ws.readyState !== 1) { detach(); reconnectSoon(); } }, 8000);
   ws.onopen = () => {
     clearTimeout(cto); if (P.ws !== ws) return;
-    P.lastRx = Date.now();
-    sendJSON(T.HELLO, { v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: 60, maxh: maxH() });
+    P.lastRx = Date.now(); P.sst = null;
+    sendJSON(T.HELLO, { v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT ? 30 : 60, maxh: maxH() });      // Safari/iPhone: 30 hình/s (vẽ nhẹ một nửa)
     startTimers();
   };
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
@@ -607,7 +607,7 @@ function onMsg(buf) {
   if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
   if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
   if (t === T.ERROR) return onErr(json(p));
-  if (t === T.STATS) { P.srv = Object.assign(P.srv || {}, json(p)); return; }
+  if (t === T.STATS) { const j = json(p); P.sst = j; P.srv = Object.assign(P.srv || {}, j); return; }
 }
 function onErr(j) {
   const code = j.code || "", msg = j.msg || "Lỗi kết nối.";
@@ -682,6 +682,7 @@ function configure(sps, pps) {
   const codec = "avc1." + [sps[1], sps[2], sps[3]].map(v => v.toString(16).padStart(2, "0")).join("");
   try {
     P.codec = codec;
+    if (IS_WEBKIT && P.dec && P.dec.state !== "closed" && P.cfg && P.cfg !== k) { const old = P.dec; P.dec = null; try { old.close(); } catch {} }
     if (!P.dec || P.dec.state === "closed") P.dec = new VideoDecoder({ output: onFrame, error: e => decErr("giải mã", e) });
     const c = { codec, optimizeForLatency: true };
     if (!(DM & 1)) c.description = avcC(sps, pps);                                   // có description = AVCC; không có = Annex-B
@@ -1133,7 +1134,9 @@ function tick() {
   else if (!P.f0t) P.f0t = now;
   if ($("stats").hidden) return;
   const s = P.srv || {};
+  const ss = P.sst;
   $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: Cloudflare · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
+    (ss ? `\nmáy chủ gửi ${ss.fps} khung/s · ${ss.kbps} kbps · bỏ ${ss.drop || 0}` : "") +
     `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · giải mã ${dmName()} · ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
     (P.lastErr ? `\n${P.lastErr}` : "");
 }
