@@ -126,7 +126,8 @@ def machine():
 RE_T = re.compile(r"^(\d\d):(\d\d):(\d\d) (.*)$")
 RE_T2 = re.compile(r"^\d\d:\d\d:\d\d ")
 RE_START = re.compile(r"▶ (\S+) ← \S+ \((direct|ws), ([^)]*)\)")
-RE_CLOSE = re.compile(r"■ (\S+) đóng \(gửi (\d+) khung, bỏ (\d+)(?:, (\d+) kbps)?\)")
+RE_CLOSE = re.compile(r"■ (\S+) đóng \(gửi (\d+) khung, bỏ (\d+)(?:, (\d+) kbps)?\)(?: · (\d+) giây)?(?: · (.+))?")
+RE_VER = re.compile(r"bản (\S+) \(ngưỡng")
 RE_DOWN = re.compile(r"^\s*(\S+): mạng khách ~(\d+) kbps → hạ còn (\d+) kbps")
 RE_UP = re.compile(r"^\s*(\S+): mạng ổn → tăng lên (\d+) kbps")
 RE_ENC = re.compile(r"^\s*(\S+): bộ nén dừng → bật lại")
@@ -155,7 +156,8 @@ def sessions():
         if prev is not None and t < prev - 6 * 3600: day += 1
         prev = t; t += day * 86400; last = t
         msg = RE_T2.sub("", m.group(4), count=1)          # bảng CloudBlue ghi thêm 1 mốc giờ trước dòng của bluestream
-        if "mã chứng chỉ:" in msg: open_s.clear(); continue      # phát hình vừa khởi động lại → phiên cũ đã mất
+        if "mã chứng chỉ:" in msg:                               # phát hình vừa khởi động lại → phiên cũ đã mất
+            open_s.clear(); x = RE_VER.search(msg); cnt["ver"] = x.group(1) if x else "cũ"; cnt["boot"] = t; continue
         x = RE_START.search(msg)
         if x:
             open_s[x.group(1)] = {"name": x.group(1), "kind": x.group(2), "app": x.group(3).strip() or "?", "t0": t,
@@ -165,7 +167,8 @@ def sessions():
         if x:
             s = open_s.pop(x.group(1), None)
             if s:
-                s.update(t1=t, sent=int(x.group(2)), drop=int(x.group(3)), kbps=int(x.group(4)) if x.group(4) else None)
+                s.update(t1=t, sent=int(x.group(2)), drop=int(x.group(3)), kbps=int(x.group(4)) if x.group(4) else None,
+                         why=(x.group(6) or "").strip())
                 done.append(s)
             continue
         x = RE_DOWN.search(msg)
@@ -185,6 +188,7 @@ def sessions():
             if s: s["enc"] += 1
             continue
         if RE_STALL.search(msg): cnt["stall"] += 1; continue
+        if "bật lại hình lỗi" in msg: cnt["refail"] += 1; continue
         if "tạm dùng lệnh input" in msg: cnt["ctl_input"] += 1; continue
         if "card NVIDIA không nén được" in msg: cnt["x264"] += 1; continue
         if "Android không xuất được hình" in msg: cnt["noscreen"] += 1; continue
@@ -206,6 +210,8 @@ def report_sessions():
     r = sessions()
     if r is None: return warn
     done, live, cnt, taps, last = r
+    ver = cnt.get("ver") or "?"
+    print("== PHÁT HÌNH bản %s%s" % (ver, (" · chạy từ %s" % hm(cnt["boot"])) if cnt.get("boot") else ""))
     print("== PHIÊN XEM %d GIỜ QUA (tới %s) · đang xem lúc này: %d" % (HOURS, hm(last), len(live)))
     for s in sorted(live, key=lambda s: s["t0"]):
         print("  • đang xem: %-16s %-6s %-7s từ %s (%d phút) · đổi chất lượng %d lần" % (s["name"][:16], "thẳng" if s["kind"] == "direct" else "vòng",
@@ -223,17 +229,21 @@ def report_sessions():
     for k in ("direct", "ws"):
         ss = [s for s in done if s["kind"] == k]
         if not ss: continue
-        longs = [s for s in ss if s["t1"] - s["t0"] >= 60]
+        longs = [s for s in ss if s["t1"] - s["t0"] >= 60] or [s for s in ss if s["t1"] - s["t0"] >= 20]
         dur = sum(s["t1"] - s["t0"] for s in longs) or 1
         sent = sum(s["sent"] for s in longs); drop = sum(s["drop"] for s in longs)
         short = len([s for s in ss if s["t1"] - s["t0"] < 60])
         downs = sum(s["down"] + s["up"] for s in ss)
-        agg[k] = (len(ss), sent / dur, 100 * drop / max(1, sent + drop), short, downs * 3600 / dur, len(longs))
+        alldur = sum(max(1, s["t1"] - s["t0"]) for s in ss)        # đổi chất lượng / giờ: chia cho TỔNG thời gian xem (cả phiên ngắn)
+        agg[k] = (len(ss), sent / dur, 100 * drop / max(1, sent + drop), short, downs * 3600 / alldur, len(longs))
         print("  → %s: %d phiên · hình/s TB %.1f · bỏ khung %d%% · %d phiên < 1 phút (đứt/nối lại) · tự đổi chất lượng %.1f lần/giờ xem" % (
             "Đường THẲNG" if k == "direct" else "Vòng Cloudflare", len(ss), agg[k][1], agg[k][2], short, agg[k][4]))
+    whys = collections.Counter(s.get("why") or "?" for s in done if s.get("why"))
+    if whys: print("  → Lý do đóng phiên: " + " · ".join("%s %d" % (w, n) for w, n in whys.most_common(5)))
     extra = []
     if cnt["enc"]: extra.append("bộ nén Android dừng %d lần" % cnt["enc"])
     if cnt["stall"]: extra.append("scrcpy ngừng gửi hình %d lần" % cnt["stall"])
+    if cnt["refail"]: extra.append("bật lại hình lỗi %d lần" % cnt["refail"])
     if cnt["ctl_input"]: extra.append("chạm rơi xuống lệnh input %d lần" % cnt["ctl_input"])
     if cnt["x264"]: extra.append("NVENC hỏng → CPU x264 %d lần" % cnt["x264"])
     if cnt["noscreen"]: extra.append("Android không ra hình %d lần" % cnt["noscreen"])
@@ -248,7 +258,8 @@ def report_sessions():
         if "direct" in agg and "ws" in agg and agg["direct"][5] and agg["ws"][5]:
             d, w = agg["direct"], agg["ws"]
             if d[1] < w[1] * 0.7 or d[2] > w[2] + 8: warn.append("Đường THẲNG kém hơn vòng Cloudflare (hình/s %.0f vs %.0f, bỏ %d%% vs %d%%)" % (d[1], w[1], d[2], w[2]))
-    rate = [a[4] for a in agg.values() if a[5]]
+    rate = [a[4] for a in agg.values()]
+    if ver in ("cũ", "?"): warn.append("Phát hình còn BẢN CŨ → cập nhật bluestream.py (bản 11/11c)")
     if rate and max(rate) >= 4: warn.append("Máy chủ tự đổi chất lượng nhiều (%.0f lần/giờ) → mỗi lần đổi, bộ nén trong máy Android bật lại → đứng hình 1–3 giây" % max(rate))
     if cnt["enc"] >= 3: warn.append("Bộ nén trong máy Android dừng/bật lại %d lần → mỗi lần đứng hình 1–3 giây" % cnt["enc"])
     if cnt["ctl_input"] >= 3: warn.append("Điều khiển chạm hay rơi xuống lệnh input (%d lần) → bấm chậm ~1 giây" % cnt["ctl_input"])

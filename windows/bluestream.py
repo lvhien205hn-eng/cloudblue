@@ -95,11 +95,19 @@ AUTO_CELL_KBPS = 1500                     # app báo đang dùng 4G/5G → bắt
 def _int_conf(k, d):
     try: return int(float(str(C.get(k, d)).strip() or d))
     except (TypeError, ValueError): return d
-WS_START_KBPS = max(300, _int_conf("STREAM_WS_START_KBPS", 1200))
+WS_START_KBPS = max(300, _int_conf("STREAM_WS_START_KBPS", 1500))
 # Nghẽn → hạ bitrate rồi GIỮ mức đó ≥ RATE_HOLD_MIN giây (nghẽn lại trong 3 phút → giữ gấp đôi, tối đa RATE_HOLD_MAX) mới thử tăng,
 # và tăng từng bước nhỏ (×1,15). Trước đây cứ yên 10 giây là tăng ×1,3 → vượt sức đường truyền → nghẽn → hạ → tăng… (log 09/11:
 # mỗi ~35 giây 1 vòng, phiên đứt rồi nối lại). Mức đã dò được nhớ 15 phút theo khách + máy + loại đường → nối lại bắt đầu đúng mức.
 RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
+# 11/11 (kiemlag.py trên 4 máy chủ): đường vòng đổi chất lượng ~110 lần / giờ xem (≈ 30 giây 1 lần), mỗi lần đổi = bật lại bộ nén
+# (MuMu: scrcpy trong máy Android) → đứng hình 1–3 giây = "ping thấp mà lag". Nay: 1–2 lần app báo nhận chậm chỉ bỏ tới khung khoá
+# (≤ 1 giây), KHÔNG đổi chất lượng; chỉ hạ khi chậm LẶP LẠI (≥ CONG_REPEAT lần trong CONG_WIN giây kể từ lần đổi trước) hoặc máy chủ
+# đẩy hình ra không kịp (nghẽn thật); hạ cách nhau > RATE_DOWN_GAP giây; tăng lại khi yên > RATE_UP_GAP giây, bước lớn hơn.
+# Đường vòng Cloudflare (trạm HKG + 4G/5G) hay giật ngắn → ngưỡng "app chậm" 700 ms (đường thẳng giữ 350 ms).
+LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
+RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
+BS_VER = "11/11c"
 _RATE_MEM = {}                            # (uid, mã máy, loại đường) → {"k": kbps, "until": giữ tới lúc, "hs": số giây giữ, "lc": lúc nghẽn, "t": lúc ghi}
 KEYCODE = {"back": 4, "home": 3, "recents": 187, "power": 26, "volup": 24, "voldown": 25, "menu": 82}
 
@@ -1810,6 +1818,8 @@ class Session:
         self.dead = 0                      # số lần scrcpy chết khi CHƯA gửi được khung nào
         self._wn, self._wn_t = -1, time.time()   # số khung cửa sổ lần trước + lúc đổi (canh cửa sổ ngừng ra hình)
         self.t_auth = time.time()          # lần kiểm lại quyền gần nhất (REAUTH_S)
+        self.t_start = time.time(); self.why = ""   # lúc mở phiên · lý do đóng (ghi nhật ký cho kiemlag.py)
+        self.fail_n = 0; self.fail_t = 0.0  # bật lại hình lỗi liên tiếp (thử lại tại chỗ, không đóng phiên)
 
     # ---------- hình ----------
     def _kbps_start(self):
@@ -1838,14 +1848,15 @@ class Session:
         _RATE_MEM[self._rate_key()] = {"k": int(self.kbps_cur), "until": self.hold_until, "hs": self.hold_s, "lc": self.last_cong, "t": time.time()}
 
     def _may_raise(self, now):
-        """Được thử tăng bitrate chưa: dưới trần, yên ≥ 10 giây, đổi mức gần nhất ≥ 10 giây, hết thời gian giữ mức sau nghẽn."""
+        """Được thử tăng bitrate chưa: dưới trần, yên > RATE_UP_GAP giây, đổi mức gần nhất > RATE_UP_GAP giây, hết thời gian giữ mức sau nghẽn.
+           (Mỗi lần đổi = bật lại bộ nén → đứng hình 1–3 giây; trước 11/11 là 10 giây.)"""
         cur = self.kbps_cur or self.kbps_cap
-        return cur < self.kbps_cap and now - self.calm_since > 10 and now - self.rate_t > 10 and now >= self.hold_until
+        return cur < self.kbps_cap and now - self.calm_since > RATE_UP_GAP and now - self.rate_t > RATE_UP_GAP and now >= self.hold_until
 
     def _raise_to(self, now):
         cur = self.kbps_cur or self.kbps_cap
-        if now - self.last_cong < 600: return min(self.kbps_cap, int(cur * 1.15) + 50)      # vừa nghẽn trong 10 phút → bước nhỏ
-        return min(self.kbps_cap, int(cur * 1.3) + 100)
+        if now - self.last_cong < 600: return min(self.kbps_cap, int(cur * 1.25) + 50)      # vừa nghẽn trong 10 phút → bước vừa
+        return min(self.kbps_cap, int(cur * 1.5) + 100)
 
     def _dims(self):
         maxh, fps, kbps = PRESETS[self.cur_q]
@@ -1949,8 +1960,8 @@ class Session:
             if self.closed: return
             self.wait_key = True
             old = (self.vw, self.vh)
-            w, h = await asyncio.to_thread(self._start_video, cpu)
-            self.last_restart = time.time()
+            try: w, h = await asyncio.to_thread(self._start_video, cpu)
+            finally: self.last_restart = time.time()
             if size_msg or (w, h) != old: self.link.send_nowait(S_SIZE, json.dumps({"w": w, "h": h}).encode())
 
     # ---------- vòng chính ----------
@@ -1988,7 +1999,22 @@ class Session:
             ex = t.exception() if not t.cancelled() else None
             if ex and not isinstance(ex, (asyncio.TimeoutError, asyncio.IncompleteReadError, ConnectionError, EOFError, OSError, ssl.SSLError, Closed)):
                 log(f"  {self.name}: lỗi phiên {ex!r}")
+            if not self.why: self.why = self._why(tasks.index(t), ex)
         await self.finish()
+
+    @staticmethod
+    def _why(i, ex):
+        """Lý do phiên đóng: i = 0 bộ gửi hình · 1 bộ nhận lệnh của app · 2 bộ canh phiên."""
+        name = type(ex).__name__ if ex else ""
+        if i == 0:
+            if isinstance(ex, asyncio.TimeoutError): return "gửi hình kẹt quá 10 giây"
+            return f"lỗi gửi hình {name}" if ex else "dừng gửi hình"
+        if i == 1:
+            if ex is None: return "app đóng"
+            if isinstance(ex, asyncio.TimeoutError): return "15 giây app không gửi gì"
+            if isinstance(ex, (asyncio.IncompleteReadError, ConnectionError, EOFError, OSError, ssl.SSLError)): return "app ngắt kết nối"
+            return f"lỗi nhận {name}"
+        return f"lỗi canh phiên {name}" if ex else "canh phiên dừng"
 
     async def _sender(self):
         while not self.closed:
@@ -2002,7 +2028,7 @@ class Session:
                 if time.monotonic() - items[0][5] > 0.15:
                     ki = max((i for i, x in enumerate(items) if x[2] and x[1] is not None), default=None)
                     if ki is None:
-                        self.drop += len(items); self.wait_key = True; self._congested(); continue
+                        self.drop += len(items); self.wait_key = True; self._congested(hard=True); continue
                     self.drop += ki; items = items[ki:]; self.wait_key = False
                 for x in items: await self._consider(x)
                 continue
@@ -2012,7 +2038,8 @@ class Session:
         gen, data, key, cfg, pts, tp = it
         if gen != self.gen: return
         if data is None: self.wait_key = True; return          # mất khung → chờ khung khoá (tối đa ~1 giây), không hiện hình vỡ
-        if self._behind_ms() > (1500 if time.time() < self.key_grace else 350):   # app chậm > 0,35 s → bỏ khung cho kịp (không để trễ dồn)
+        lim = 1500 if time.time() < self.key_grace else LAG_DROP_MS.get(getattr(self.link, "kind", ""), 350)
+        if self._behind_ms() > lim:                            # app chậm quá ngưỡng (thẳng 0,35 s · vòng 0,7 s) → bỏ khung cho kịp (không để trễ dồn)
             if not self.wait_key: self._congested()
             self.drop += 1; self.wait_key = True
             return
@@ -2038,10 +2065,13 @@ class Session:
         now = time.time(); b = sum(n for t, n in self.delivered if now - t <= 2.0)
         return b * 8 / 2.0 / 1000
 
-    def _congested(self):
-        """Mạng khách không kịp: hạ bitrate theo tốc độ app THẬT SỰ nhận được (đo bằng ACK)."""
+    def _congested(self, hard=False):
+        """Mạng khách không kịp: hạ bitrate theo tốc độ app THẬT SỰ nhận được (đo bằng ACK).
+           hard=True: máy chủ đẩy hình ra không kịp (nghẽn thật) → hạ ngay. Còn lại (app báo nhận chậm): chỉ hạ khi chậm LẶP LẠI
+           ≥ CONG_REPEAT lần trong CONG_WIN giây kể từ lần đổi mức trước — 1–2 lần giật ngắn chỉ bỏ tới khung khoá, không bật lại bộ nén."""
         now = time.time(); self.congest.append(now); self.calm_since = now
-        if now - self.rate_t > 3 and self.ack_t and now - self.ack_t < 3:
+        if not hard and sum(1 for t in self.congest if now - t <= CONG_WIN and t > self.rate_t) < CONG_REPEAT: return
+        if now - self.rate_t > RATE_DOWN_GAP and self.ack_t and now - self.ack_t < 3:
             gp = self.goodput_kbps(); cur = self.kbps_cur or self.kbps_cap
             new = int(max(250, min(cur * 0.7, gp * 0.8 if gp > 50 else cur * 0.5)))
             if new < cur * 0.92:
@@ -2105,7 +2135,7 @@ class Session:
         t_stat = time.time(); s0 = b0 = 0
         while not self.closed:
             await asyncio.sleep(0.25)
-            if time.time() - self.last_rx > 15: return
+            if time.time() - self.last_rx > 15: self.why = self.why or "15 giây app không gửi gì"; return
             try:
                 if time.time() - self.t_auth >= REAUTH_S:
                     self.t_auth = time.time()
@@ -2144,7 +2174,18 @@ class Session:
             except Closed:
                 return
             except Deny as d:
+                self.why = self.why or f"báo app {d.code}"
                 self.link.send_nowait(S_ERROR, json.dumps({"code": d.code, "msg": d.msg}, ensure_ascii=False).encode()); return
+            except Exception as e:                       # bật lại hình lỗi (scrcpy chưa nối được, adb chập chờn…) → thử lại tại chỗ, KHÔNG đóng phiên
+                now = time.time()
+                self.fail_n = self.fail_n + 1 if now - self.fail_t < 90 else 1; self.fail_t = now
+                log(f"  {self.name}: bật lại hình lỗi (lần {self.fail_n}): {str(e).strip()[:160] or type(e).__name__}")
+                if self.fail_n >= 6:
+                    self.why = "bật lại hình lỗi 6 lần"
+                    self.link.send_nowait(S_ERROR, json.dumps({"code": "OFFLINE", "msg": "Máy chủ chưa lấy được hình của máy này — thử mở lại sau ít phút hoặc báo hỗ trợ."}, ensure_ascii=False).encode())
+                    return
+                self.restart_req = self.restart_req or "retry"
+                await asyncio.sleep(min(8.0, 1.5 * self.fail_n)); continue
             if time.time() - t_stat >= 2:
                 dt = time.time() - t_stat
                 st = {"fps": round((self.sent - s0) / dt, 1), "kbps": int((self.bytes - b0) * 8 / dt / 1000), "drop": self.drop,
@@ -2159,6 +2200,7 @@ class Session:
             except RuntimeError: pass
 
     async def kick(self):
+        self.why = self.why or "mở ở nơi khác"
         self.link.send_nowait(S_ERROR, json.dumps({"code": "KICKED", "msg": "Máy đang được mở ở nơi khác."}, ensure_ascii=False).encode())
         await self.finish()
 
@@ -2175,7 +2217,8 @@ class Session:
         await self.link.close()
         try: self._rate_save()
         except Exception: pass
-        log(f"■ {self.name} đóng (gửi {self.sent} khung, bỏ {self.drop}" + (f", {self.kbps_cur} kbps" if self.kbps_cur else "") + ")")
+        log(f"■ {self.name} đóng (gửi {self.sent} khung, bỏ {self.drop}" + (f", {self.kbps_cur} kbps" if self.kbps_cur else "") + ")"
+            + f" · {int(time.time() - getattr(self, 't_start', time.time()))} giây" + (f" · {self.why}" if getattr(self, "why", "") else ""))
 
 
 # ================================================================ XEM TRƯỚC TRỰC TIẾP (ô máy trong danh sách / "Xem tất cả" của app)
@@ -2209,7 +2252,7 @@ class Preview(Session):
         if video_mode() == "fake": return super()._start_video(cpu=True)     # chạy thử (không có Android) → hình giả
         return self._start_video_scrcpy()
 
-    def _congested(self):                                # mạng chậm → chỉ bỏ khung (không bật lại bộ nén cho ô nhỏ)
+    def _congested(self, hard=False):                    # mạng chậm → chỉ bỏ khung (không bật lại bộ nén cho ô nhỏ)
         self.calm_since = time.time()
 
     async def _receiver(self):
@@ -2924,7 +2967,8 @@ async def main():
     srv2 = await asyncio.start_server(on_ws, "127.0.0.1", WS_PORT, limit=1 << 20)
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
         f" · {f'giữ cú bấm {int(TAP_HOLD * 1000)} ms' if TAP_HOLD else 'chạm gửi ngay'} · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
-    log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}")
+    log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
+        f" · bản {BS_VER} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
     if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
     elif not SELFTEST: log(f"UPnP: tắt (UPNP=0) — nhớ mở cổng TCP {PORT} về máy này bằng tay trong trang modem")
