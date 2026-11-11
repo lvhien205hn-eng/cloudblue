@@ -1609,11 +1609,14 @@ body.past-hero .cbl *,body.past-hero .cbl *::before{animation-play-state:paused!
 
 /* ---------- khung trang màn rộng: cột menu + nội dung đứng giữa màn hình, không hở 2 bên ---------- */
 @media (min-width:1280px){
-  body:not(.admin-page){--fx:max(0px,calc((100vw - 1740px) / 2))}
-  html[data-theme] body:not(.admin-page){padding-right:var(--fx)}
+  body:not(.admin-page){--fx:0px}                         /* cột menu sát mép trái màn hình */
+  html[data-theme] body:not(.admin-page){padding-right:0}
   body:not(.admin-page) header.top::before{left:var(--fx)}
   body:not(.admin-page) .wrap,html[data-theme] body:not(.admin-page) .hero.m3h{max-width:1508px;padding-left:38px;padding-right:38px;margin-left:auto;margin-right:auto}
   body:not(.admin-page) header.top .wrap{max-width:1508px;padding-left:38px;padding-right:38px}
+}
+@media (min-width:2200px){        /* màn rất rộng (2K, 4K): nội dung rộng hơn cho đỡ trống 2 bên */
+  body:not(.admin-page) .wrap,html[data-theme] body:not(.admin-page) .hero.m3h,body:not(.admin-page) header.top .wrap{max-width:1680px}
 }
 
 /* ---------- cột menu bên trái (màn rộng): rộng hơn, thoáng, không chạm viền, ô hỗ trợ gộp 1 khung ---------- */
