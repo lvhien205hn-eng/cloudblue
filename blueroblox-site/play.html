@@ -477,7 +477,7 @@ function retryLater(msg, ms) {
   overlay("wait", msg);
   P.timer = setTimeout(connect, ms || 5000);
 }
-const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; connect(); };
+const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; DM_TRIED = 0; connect(); };
 const statusMsg = s => ({ pending: "Máy đang được tạo, chờ thêm chút…", creating: "Máy đang được tạo, chờ thêm chút…", expired: "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.",
                           error: "Máy đang lỗi — liên hệ hỗ trợ.", cancelling: "Máy đang bị huỷ." }[s] || "");
 
@@ -628,12 +628,44 @@ function nals(u8) {
     if (u8[i] === 0 && u8[i + 1] === 0) {
       let sc = 0;
       if (u8[i + 2] === 1) sc = 3; else if (u8[i + 2] === 0 && i + 3 < n && u8[i + 3] === 1) sc = 4;
-      if (sc) { if (s >= 0) out.push(u8.subarray(s, i)); i += sc; s = i; continue; }
+      if (sc) { if (s >= 0) out.push(trimZ(u8, s, i)); i += sc; s = i; continue; }
     }
     i++;
   }
-  if (s >= 0 && s < n) out.push(u8.subarray(s, n));
+  if (s >= 0 && s < n) out.push(trimZ(u8, s, n));
   return out;
+}
+function trimZ(u8, s, e) { while (e > s && u8[e - 1] === 0) e--; return u8.subarray(s, e); }      // byte 0 đệm sau NAL không thuộc NAL (Safari kén)
+/* Safari / iPhone (VideoToolbox) kén luồng H.264 hơn Chrome. Lỗi giải mã khi CHƯA hiện được khung nào → lần lượt thử cách đóng gói khác:
+   0 avcC · 1 Annex-B · 2 avcC gọn (chỉ khung hình) · 3 Annex-B gọn + giải mã phần mềm. Cách chạy được thì nhớ lại cho lần sau. */
+const DM_N = IS_WEBKIT ? 4 : 2;
+let DM = 0, DM_TRIED = 0; try { DM = Math.min(DM_N - 1, Math.max(0, parseInt(localStorage.getItem("cb_dm"), 10) || 0)); } catch {}
+const dmName = () => ["avcC", "Annex-B", "avcC gọn", "Annex-B gọn"][DM] || "?";
+const OS_VER = (() => { const m = navigator.userAgent.match(/(?:iPhone )?OS (\d+[_.]\d+)|Version\/(\d+\.\d+)/); return m ? (m[1] ? "iOS " + m[1].replace("_", ".") : "Safari " + m[2]) : ""; })();
+function nextMode() { if (P.first || DM_TRIED >= DM_N - 1) return false; DM_TRIED++; DM = (DM + 1) % DM_N; return true; }
+/* Kích thước hình ghi trong SPS (Safari cần codedWidth / codedHeight đi kèm) */
+function spsSize(sps) {
+  try {
+    const r = []; for (let i = 0; i < sps.length; i++) { if (i >= 2 && sps[i] === 3 && sps[i - 1] === 0 && sps[i - 2] === 0) continue; r.push(sps[i]); }
+    let bp = 8; const bit = () => { const v = (r[bp >> 3] >> (7 - (bp & 7))) & 1; bp++; return v; };
+    const bits = n => { let v = 0; while (n--) v = v * 2 + bit(); return v; };
+    const ue = () => { let z = 0; while (bit() === 0) { if (++z > 31 || bp >= r.length * 8) throw 0; } return z ? (2 ** z - 1) + bits(z) : 0; };
+    const se = () => { const k = ue(); return k & 1 ? (k + 1) / 2 : -k / 2; };
+    const prof = bits(8); bits(16); ue();
+    let cf = 1;
+    if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(prof)) {
+      cf = ue(); if (cf === 3) bit(); ue(); ue(); bit();
+      if (bit()) for (let i = 0; i < (cf !== 3 ? 8 : 12); i++) if (bit()) { let last = 8, nx = 8; for (let j = 0; j < (i < 6 ? 16 : 64); j++) { if (nx) nx = (last + se() + 256) % 256; last = nx || last; } }
+    }
+    ue(); const poc = ue();
+    if (poc === 0) ue(); else if (poc === 1) { bit(); se(); se(); const c = ue(); for (let i = 0; i < c; i++) se(); }
+    ue(); bit();
+    const wm = ue() + 1, hm = ue() + 1, fmo = bit(); if (!fmo) bit(); bit();
+    let cl = 0, cr = 0, ct = 0, cb = 0; if (bit()) { cl = ue(); cr = ue(); ct = ue(); cb = ue(); }
+    const cx = cf === 0 || cf === 3 ? 1 : 2, cy = (cf === 1 ? 2 : 1) * (2 - fmo);
+    const w = wm * 16 - (cl + cr) * cx, h = (2 - fmo) * hm * 16 - (ct + cb) * cy;
+    return w > 0 && h > 0 && w <= 8192 && h <= 8192 ? { w, h } : null;
+  } catch { return null; }
 }
 function avcC(sps, pps) {
   const hi = [100, 110, 122, 144].includes(sps[1]);
@@ -645,16 +677,24 @@ function avcC(sps, pps) {
   return b;
 }
 function configure(sps, pps) {
-  const k = sps.join(",") + "|" + pps.join(",");
+  const k = DM + "|" + sps.join(",") + "|" + pps.join(",");
   if (P.dec && P.dec.state === "configured" && P.cfg === k) return true;
   const codec = "avc1." + [sps[1], sps[2], sps[3]].map(v => v.toString(16).padStart(2, "0")).join("");
   try {
     P.codec = codec;
     if (!P.dec || P.dec.state === "closed") P.dec = new VideoDecoder({ output: onFrame, error: e => decErr("giải mã", e) });
-    P.dec.configure({ codec, description: avcC(sps, pps), optimizeForLatency: true });
+    const c = { codec, optimizeForLatency: true };
+    if (!(DM & 1)) c.description = avcC(sps, pps);                                   // có description = AVCC; không có = Annex-B
+    if (IS_WEBKIT) {
+      const z = spsSize(sps); if (z) { c.codedWidth = z.w; c.codedHeight = z.h; }
+      if (DM >= 2) delete c.optimizeForLatency;
+      if (DM === 3) c.hardwareAcceleration = "prefer-software";
+    }
+    P.dec.configure(c);
     P.cfg = k; P.needKey = true; return true;
   } catch (e) {
     console.warn("configure:", e && e.message); resetDecoder();
+    if (nextMode()) { P.lastErr = "cấu hình " + codec + " · " + errText(e) + " → thử " + dmName(); askKey(); return false; }
     P.fatal = true; detach();
     overlay("err", "Trình duyệt không giải mã được hình của máy (" + codec + "). Hãy cập nhật iOS / trình duyệt rồi thử lại.", [["Thử lại", retryNow], ["Về danh sách", toList]]);
     return false;
@@ -669,21 +709,27 @@ function onVideo(p) {
   if (p.length < 10) return;
   const flags = p[0], pts = new DataView(p.buffer, p.byteOffset + 1, 8).getBigUint64(0), au = p.subarray(9);
   P.pts = pts; P.newVid = true; P.bytes += p.length + 1;
-  let sps = null, pps = null, isKey = (flags & 1) === 1; const parts = [];
+  let sps = null, pps = null, isKey = (flags & 1) === 1; const parts = [], lean = IS_WEBKIT && DM >= 2;
   for (const n of nals(au)) {
     if (!n.length) continue;
     const ty = n[0] & 31;
     if (ty === 7) sps = n; else if (ty === 8) pps = n;
-    else if (ty !== 9) { if (ty === 5) isKey = true; parts.push(n); }
+    else if (ty !== 9) { if (ty === 5) isKey = true; if (lean && ty !== 1 && ty !== 5) continue; parts.push(n); }
   }
   if (sps && pps) { P.sps = sps.slice(); P.pps = pps.slice(); if (!configure(P.sps, P.pps)) return; }
   else if (isKey && P.sps && (!P.dec || P.dec.state !== "configured")) { if (!configure(P.sps, P.pps)) return; }
   if (!P.dec || P.dec.state !== "configured" || !parts.length) { if (!P.dec) askKey(); return; }
   if (!isKey && P.needKey) return;
   if (!isKey && P.dec.decodeQueueSize > 3) { P.needKey = true; askKey(); return; }     // máy giải mã đang chậm → bỏ tới khung khoá kế
-  let n = 0; for (const x of parts) n += 4 + x.length;
+  const ab = (DM & 1) === 1, list = ab && isKey && P.sps && P.pps ? [P.sps, P.pps, ...parts] : parts;      // Annex-B: khung khoá kèm SPS + PPS
+  let n = 0; for (const x of list) n += 4 + x.length;
   const data = new Uint8Array(n); let o = 0;
-  for (const x of parts) { const L = x.length; data[o] = L >>> 24; data[o + 1] = (L >>> 16) & 255; data[o + 2] = (L >>> 8) & 255; data[o + 3] = L & 255; data.set(x, o + 4); o += 4 + L; }
+  for (const x of list) {
+    const L = x.length;
+    if (ab) { data[o] = 0; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 1; }
+    else { data[o] = L >>> 24; data[o + 1] = (L >>> 16) & 255; data[o + 2] = (L >>> 8) & 255; data[o + 3] = L & 255; }
+    data.set(x, o + 4); o += 4 + L;
+  }
   try { P.dec.decode(new EncodedVideoChunk({ type: isKey ? "key" : "delta", timestamp: (P.ts += 16667), data })); if (isKey) P.needKey = false; }
   catch (e) { decErr("gửi khung", e); }
   if (isKey) sendAck();
@@ -719,15 +765,16 @@ function dropHeld() { holdFrame(null); holdBmp(null); }
 const errText = e => String((e && ((e.name && e.name !== "Error" ? e.name + ": " : "") + (e.message || ""))) || e || "?").slice(0, 140);
 /* Lỗi giải mã: thử lại từ khung khoá kế; chưa hiện được khung nào mà hỏng liên tục → báo rõ lý do (trước đây: đen mãi, không chữ) */
 function decErr(where, e) {
-  P.lastErr = where + (P.codec ? " " + P.codec : "") + " · " + errText(e);
+  P.lastErr = where + (P.codec ? " " + P.codec : "") + " [" + dmName() + "] · " + errText(e);
   console.warn(P.lastErr);
   const now = Date.now();
   if (now - P.decErrT > 15000) P.decErr = 0;
   P.decErr++; P.decErrT = now;
   resetDecoder();
-  if (P.decErr >= 6 && !P.first && !P.stopped) {
+  if (!P.first && !P.stopped && P.decErr % 2 === 0 && nextMode()) { P.lastErr += " → thử " + dmName(); askKey(); return; }      // 2 lần hỏng → đổi cách đóng gói
+  if (P.decErr >= Math.max(6, 2 * DM_N) && !P.first && !P.stopped) {
     P.fatal = true; detach();
-    return overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
+    return overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + " · đã thử " + (DM_TRIED + 1) + " cách" + (OS_VER ? " · " + OS_VER : "") + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
                    [["Thử lại", retryNow], ["Về danh sách", toList]]);
   }
   askKey();
@@ -753,7 +800,7 @@ function blackCheck() {
 }
 function shown() {
   if (!$("ovl").hidden) overlay(null);
-  if (!P.first) { P.first = true; }
+  if (!P.first) { P.first = true; DM_TRIED = 0; try { localStorage.setItem("cb_dm", String(DM)); } catch {} }
   P.tries = 0; P.authRetry = false; P.decErr = 0; setDot("ok");
 }
 
@@ -1087,7 +1134,7 @@ function tick() {
   if ($("stats").hidden) return;
   const s = P.srv || {};
   $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: Cloudflare · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
-    `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · đã giải mã ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
+    `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · giải mã ${dmName()} · ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
     (P.lastErr ? `\n${P.lastErr}` : "");
 }
 
