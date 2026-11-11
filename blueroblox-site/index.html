@@ -2135,6 +2135,14 @@ window.BR_CONFIG = {
         <div class="gph"><h3 style="margin:0">🧹 Máy đổi Android</h3><span style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="swc-check">🔎 Kiểm tra</button><button class="btn danger sm" type="button" id="swc-go">🧹 Xoá sạch máy cũ</button></span></div>
         <div class="hint" id="swc-msg">Bấm Kiểm tra để xem.</div>
         <div class="tbl" id="swc-tblbox" hidden><table><thead><tr><th>Máy mới</th><th>Khách</th><th>Tình trạng</th><th></th></tr></thead><tbody id="swc-tb"></tbody></table></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)">
+          <b style="font-size:13.5px">🤖 Khách đổi Android trong 24 giờ:</b>
+          <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">tối thiểu <input id="swl-day" class="in" type="number" min="1" max="999" step="1" inputmode="numeric" style="width:76px" placeholder="3"> lần / tài khoản</label>
+          <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· mỗi máy đang thuê <input id="swl-pp" class="in" type="number" min="0" max="99" step="1" inputmode="numeric" style="width:66px" placeholder="1"> lần</label>
+          <button class="btn sm" type="button" id="swl-save">Lưu</button>
+          <span class="hint" id="swl-msg" style="margin:0"></span>
+        </div>
+        <div class="hint" style="margin-top:4px">Khách được đổi = số lớn hơn giữa <b>tối thiểu</b> và <b>số máy đang thuê × mỗi máy</b>. Mặc định 3 và 1: khách 1 máy → 3 lần, khách 5 máy → 5 lần. Để trống = mặc định. Admin không bị giới hạn. Cần chạy SQL v32.</div>
       </div>
       <div class="gpubox" id="rnfbox">
         <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
@@ -5464,12 +5472,12 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
 /* ===== ĐỔI ANDROID (SQL v24): máy mới bản Android khác, miễn phí, giữ hạn — máy cũ + dữ liệu tự xoá khi máy mới chạy ===== */
 Object.assign(ERR, { NO_PHONE: "Không tìm thấy máy (hoặc máy không phải của bạn).", SWITCH_EXPIRING: "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.",
   SWITCH_BUSY: "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.", SWITCHING: "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).",
-  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", SWITCH_NOT_STUCK: "Máy này không bị kẹt / lỗi.",
+  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Tài khoản đã đổi Android hết số lần cho phép trong 24 giờ — thử lại sau, hoặc nhắn shop để được hỗ trợ.", SWITCH_NOT_STUCK: "Máy này không bị kẹt / lỗi.",
   REF_INVALID: "Mã mời không đúng.", REF_SELF: "Không thể tự mời chính mình.", REF_TOO_LATE: "Chỉ tài khoản mới (tạo trong 7 ngày, chưa nạp tiền) mới nhận lời mời.",
   REF_ALREADY: "Tài khoản đã nhận lời mời trước đó." });
 Object.assign(ERR_EN, { NO_PHONE: "Phone not found.", SWITCH_EXPIRING: "Less than 30 minutes left — renew first, then switch Android.",
   SWITCH_BUSY: "The phone is being upgraded / renewed — try again in 1–2 minutes.", SWITCHING: "An Android switch is already in progress — wait for the new phone (2–5 min).",
-  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "Each account can switch Android at most 3 times per 24 hours.", SWITCH_NOT_STUCK: "This phone isn't stuck.",
+  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "You have used all Android switches allowed in the last 24 hours — try again later or contact support.", SWITCH_NOT_STUCK: "This phone isn't stuck.",
   REF_INVALID: "Invalid invite code.", REF_SELF: "You can't invite yourself.", REF_TOO_LATE: "Only new accounts (under 7 days old, no top-ups yet) can accept an invite.",
   REF_ALREADY: "This account has already accepted an invite." });
 function cpSwNote(p) {                      // máy MỚI của lệnh đổi Android (SQL v28: xoá máy cũ TRƯỚC rồi mới tạo)
@@ -7740,6 +7748,20 @@ $("am-save") && ($("am-save").onclick = () => busy($("am-save"), async () => {
   if (SITE !== before) { AM_F.forEach(([id]) => { delete $(id).dataset.dirty; }); amFill(true); $("am-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
 }));
 { const _lc23 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc23.apply(this, arguments); try { amFill(); } catch (e) {} return r; }; }
+
+/* ===================== ADMIN: 🤖 GIỚI HẠN ĐỔI ANDROID (settings.switch_day / switch_per_phone — SQL v32) ===================== */
+const SWL_F = [["swl-day", "switch_day"], ["swl-pp", "switch_per_phone"]];
+function swlFill(force) { for (const [id, k] of SWL_F) { const el = $(id); if (el && (force || !el.dataset.dirty)) el.value = SITE[k] ?? ""; } }
+SWL_F.forEach(([id]) => { const el = $(id); if (el) el.addEventListener("input", () => { el.dataset.dirty = "1"; }); });
+$("swl-save") && ($("swl-save").onclick = () => busy($("swl-save"), async () => {
+  const d = $("swl-day").value.trim(), pp = $("swl-pp").value.trim();
+  if ((d && !/^\d{1,3}$/.test(d)) || (d && +d < 1) || (pp && !/^\d{1,2}$/.test(pp))) return toast("Nhập số nguyên: tối thiểu 1–999 lần, mỗi máy 0–99 lần (để trống = mặc định 3 và 1).", 1);
+  try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}   // đọc lại trước khi ghi → không đè thay đổi khác
+  const before = SITE;
+  await saveSettings({ switch_day: d, switch_per_phone: pp }, null, "Đã lưu — khách đổi Android theo giới hạn mới ngay (cần SQL v32).");
+  if (SITE !== before) { SWL_F.forEach(([id]) => { delete $(id).dataset.dirty; }); swlFill(true); $("swl-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
+}));
+{ const _lc32 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc32.apply(this, arguments); try { swlFill(); } catch (e) {} return r; }; }
 
 /* ===== 🛡️ BẢO MẬT (SQL v29): bot gác · quét gian lận · nhật ký tiền · ban / xoá · nạp tiền tìm kiếm + tiền về chưa khớp · tiền khách ở bảng máy ===== */
 const V29_MISS = e => /admin_(topup|bank|user|fraud|money|ban|sec|blue_hold)|sec_watch|sec_alerts|function .* does not exist|Could not find the function/i.test((e && e.message) || "");
