@@ -529,6 +529,11 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .vps-opts button small{font-size:12px;color:var(--muted)}
 .vps-opts button.on{border-color:var(--gold);background:rgba(201,215,238,.1)}
 .vps-opts button.on b{color:var(--gold-hi)}
+.vps-opts.one{grid-template-columns:1fr}
+.vps-more{display:grid;gap:12px}
+.xo-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.xo-scope{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+@media (max-width:560px){.xo-grid{grid-template-columns:1fr}}
 #m-pin{font-family:var(--mono);font-size:16px;letter-spacing:.08em}
 /* sửa lệch trang trên điện thoại (trống to tràn ra ngoài làm trang trượt ngang) */
 .hero{max-width:none;padding-inline:max(18px,calc((100% - 1184px) / 2));overflow:clip}
@@ -2073,6 +2078,7 @@ body.past-hero .m3-col{animation-play-state:paused}
     <div id="m-name" style="color:var(--muted);font-size:14px"></div>
     <div id="m-desc" style="font-size:13px;line-height:1.6;color:#b9c6e6;white-space:pre-line;margin:4px 0 2px"></div>
     <div id="m-plans-box" hidden style="display:grid;gap:8px"><span style="font-size:13px;color:var(--muted)" data-i18n="rent_period">Chọn thời gian thuê</span><div class="amts plans" id="m-plans"></div></div>
+    <div id="m-more" class="vps-more" hidden></div>
     <div id="m-vps" class="vps-pick" hidden>
       <span class="hint" data-i18n="vps_how">Cách nhận VPS</span>
       <div class="vps-opts" id="m-vps-opts">
@@ -2387,6 +2393,14 @@ body.past-hero .m3-col{animation-play-state:paused}
         <div class="acts full"><button class="btn" type="submit" id="pf-save">Thêm sản phẩm</button><button class="btn ghost" type="button" id="pf-reset">Làm mới form</button></div>
         <div class="hint full"><b>Tự động:</b> bấm "Nhập kho" ở bảng dưới để tải file .txt tài khoản lên — khách mua xong nhận tài khoản ngay và tải file .txt. <b>Thủ công (VPS):</b> chỉ cần số lượng — khách mua xong được dẫn tới Discord/Telegram/Zalo để bạn giao máy.</div>
       </form>
+      </details>
+      <details id="xo-details" style="border:1px solid var(--line);border-radius:14px;background:var(--panel)">
+        <summary style="cursor:pointer;list-style:none;padding:14px 18px;font-weight:800;font-size:15px;color:#cfe0ff">🧩 Mục chọn thêm khi khách mua VPS <span class="hint" style="font-weight:500">(VD: Hệ điều hành Windows / Linux, bản Windows — bấm để mở/đóng)</span></summary>
+        <div class="f" id="xo-box" style="border:0;border-top:1px solid var(--line);border-radius:0 0 14px 14px">
+          <div class="hint full">Mỗi mục hiện thành 1 hàng nút chọn trong bảng <b>Mua VPS</b>, nằm trên "Cách nhận VPS". Mục chỉ có <b>1 lựa chọn</b> = chỉ để khách xem (tự chọn sẵn). Khách chọn gì sẽ được ghi vào <b>tin nhắn khách gửi shop</b> sau khi thanh toán, cùng mã PIN.</div>
+          <div class="full" id="xo-list" style="display:grid;gap:12px"></div>
+          <div class="acts full"><button class="btn ghost sm" type="button" id="xo-add">+ Thêm mục</button><button class="btn" type="button" id="xo-save">💾 Lưu mục chọn thêm</button><button class="btn ghost sm" type="button" id="xo-reset">↺ Bỏ thay đổi</button><span class="hint" id="xo-msg"></span></div>
+        </div>
       </details>
     </div>
     <div class="dbody" id="pane-cust" hidden>
@@ -4236,15 +4250,40 @@ function setVpsMethod(m) {
 }
 $("m-pin").oninput = () => upd();
 $("m-vps-opts").onclick = e => { const b = e.target.closest("button"); if (b) { setVpsMethod(b.dataset.m); $("m-err").textContent = ""; } };
+/* VPS: mục chọn thêm do admin đặt (📦 Sản phẩm › 🧩) — VD "Hệ điều hành": Windows / Linux. Lựa chọn ghi vào tin nhắn khách gửi shop.
+   settings.vps_more = [{ t, t_en, o: [{ n, d }], req, p: [id sản phẩm] (rỗng = mọi VPS) }] */
+let moreSel = {}, moreG = [];                                                       // mục chọn thêm của bảng Mua đang mở (chụp lúc mở)
+const xoTitle = g => (LANG === "en" && g.t_en) ? g.t_en : g.t;
+function xoGroups(p) {
+  if (!isVps(p) || !Array.isArray(SITE.vps_more)) return [];
+  return SITE.vps_more.filter(g => g && g.t && Array.isArray(g.o) && g.o.length && (!Array.isArray(g.p) || !g.p.length || g.p.map(String).includes(String(p.id))));
+}
+function renderMore(p) {
+  const G = moreG = xoGroups(p); moreSel = {};
+  G.forEach((g, i) => { if (g.o.length === 1) moreSel[i] = 0; });                   // 1 lựa chọn = thông tin, chọn sẵn
+  $("m-more").innerHTML = G.map((g, i) => `<div class="vps-pick"><span class="hint">${esc(xoTitle(g))}${g.req !== false && g.o.length > 1 ? ' <b style="color:var(--gold-hi)">*</b>' : ""}</span>` +
+    `<div class="vps-opts${g.o.length === 1 ? " one" : ""}" data-g="${i}">${g.o.map((o, j) => `<button type="button" data-o="${j}"${moreSel[i] === j ? ' class="on"' : ""}><b>${esc(o.n)}</b>${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("")}</div></div>`).join("");
+  show("m-more", G.length > 0);
+}
+$("m-more").onclick = e => {
+  const b = e.target.closest("button[data-o]"); if (!b) return;
+  const box = b.closest("[data-g]"), gi = +box.dataset.g, g = moreG[gi]; if (!g || g.o.length === 1) return;
+  const j = +b.dataset.o; moreSel[gi] = moreSel[gi] === j && g.req === false ? undefined : j;     // mục không bắt buộc: bấm lại để bỏ chọn
+  box.querySelectorAll("button").forEach(x => x.classList.toggle("on", +x.dataset.o === moreSel[gi])); $("m-err").textContent = "";
+};
+const moreChosen = () => moreG.map((g, i) => moreSel[i] == null || !g.o[moreSel[i]] ? null : { t: g.t, t_en: g.t_en || "", n: g.o[moreSel[i]].n }).filter(Boolean);
+const moreMissing = () => moreG.find((g, i) => g.req !== false && g.o.length > 1 && moreSel[i] == null) || null;
 function openBuy(id) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +(pl.find(x => +x.days === 30) || pl[0]).days : null;
   $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description); $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
-  show("m-vps", isVps(p)); $("m-pin").value = ""; setVpsMethod("farmv5"); show("modal"); }
+  show("m-vps", isVps(p)); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }
 function closeBuy() { show("modal", false); sel = null; }
 async function doBuy() {
   const p = selP(); if (!p) return;
   if (!profile) { closeBuy(); openAuth("login"); return; }
+  const miss = isVps(p) ? moreMissing() : null;
+  if (miss) { $("m-err").textContent = L("Chọn " + xoTitle(miss) + " trước khi thanh toán.", "Choose " + xoTitle(miss) + " before paying."); return; }
   if (isVps(p) && vpsMethod === "farmv5" && !$("m-pin").value.trim()) { $("m-err").textContent = L("Nhập mã PIN FarmV5 trước khi thanh toán.", "Enter your FarmV5 PIN before paying."); $("m-pin").focus(); return; }
-  const vpsInfo = isVps(p) ? { m: vpsMethod, pin: $("m-pin").value.trim() } : null;
+  const vpsInfo = isVps(p) ? { m: vpsMethod, pin: $("m-pin").value.trim(), x: moreChosen() } : null;
   const q = buyQty(p), tot0 = unitPrice(p) * q;
   await busy($("m-ok"), async () => {
     if (!(await prmEnsure("buy", "m-err"))) return;                 // ô mã có chữ → phải là mã hợp lệ (ô trống = mua bình thường)
@@ -4510,12 +4549,13 @@ function openThanks(ord, p, q, tot, vpsInfo) {
     const dt = d => `${pad(d.getHours())}:${pad(d.getMinutes())} ${L("ngày", "on")} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
     const days = plansOf(p).length ? +selDays : 0, exp = days ? new Date(t0.getTime() + days * 864e5) : null;
     const paid = fmt(tot) + (cur === "USD" ? " (" + vnd(tot) + ")" : "");
+    const xl = (vpsInfo.x || []).map(c => `\n• ${(LANG === "en" && c.t_en) ? c.t_en : c.t}: ${c.n}`).join("");   // mục chọn thêm (VD Hệ điều hành)
     thMsg = LANG === "en"
       ? `[CLOUDBLUE] PAYMENT SUCCESSFUL — PLEASE SET UP MY VPS\n• Payment code: ${code || "(see Orders)"}\n• Product: ${label}\n• VPS quantity: ${q}\n• Paid: ${paid}\n• Account: ${profile ? profile.username : ""}\n` +
-        (vpsInfo.m === "farmv5" ? `• Method: FarmV5\n• FarmV5 PIN: ${vpsInfo.pin}` : `• Method: FarmSync\n• I will send my UltraViewer ID + password right after this message`) +
+        (vpsInfo.m === "farmv5" ? `• Method: FarmV5\n• FarmV5 PIN: ${vpsInfo.pin}` : `• Method: FarmSync\n• I will send my UltraViewer ID + password right after this message`) + xl +
         `\n• Purchased: ${dt(t0)}` + (exp ? `\n• Rental: ${days} days → Expires: ${dt(exp)}` : "") + `${ord && ord.id ? "\n• Order ID: " + ord.id : ""}`
       : `[CLOUDBLUE] ĐÃ THANH TOÁN THÀNH CÔNG — NHỜ SHOP CÀI VPS\n• Mã thanh toán: ${code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${label}\n• Số lượng VPS: ${q}\n• Đã thanh toán: ${paid}\n• Tài khoản: ${profile ? profile.username : ""}\n` +
-        (vpsInfo.m === "farmv5" ? `• Cách nhận: FarmV5\n• Mã PIN FarmV5: ${vpsInfo.pin}` : `• Cách nhận: FarmSync\n• Mình sẽ gửi ID + mật khẩu UltraViewer ngay sau tin nhắn này`) +
+        (vpsInfo.m === "farmv5" ? `• Cách nhận: FarmV5\n• Mã PIN FarmV5: ${vpsInfo.pin}` : `• Cách nhận: FarmSync\n• Mình sẽ gửi ID + mật khẩu UltraViewer ngay sau tin nhắn này`) + xl +
         `\n• Thời gian mua: ${dt(t0)}` + (exp ? `\n• Thuê: ${days} ngày → Hạn sử dụng: ${dt(exp)}` : "") + `${ord && ord.id ? "\n• Mã đơn: " + ord.id : ""}`;
     try { if (ord && ord.id) localStorage.setItem("br_vmsg_" + ord.id, thMsg); } catch (e) {}
     $("th-title").textContent = L("Thanh toán thành công!", "Payment successful!");
@@ -4859,6 +4899,78 @@ $("pf-img-file").onchange = () => {
   pfFile = f; try { $("pf-img-prev").src = URL.createObjectURL(f); show("pf-img-row"); } catch (e) {}
 };
 $("pf-img-clear").onclick = () => { pfImage = ""; pfFile = null; $("pf-img-file").value = ""; show("pf-img-row", false); };
+/* 🧩 Mục chọn thêm khi khách mua VPS → settings.vps_more (xem renderMore ở bảng Mua) */
+const XO_MAX_G = 8, XO_MAX_O = 12;
+let xoDirty = false;
+function xoRow(g) {
+  g = g || { t: "", t_en: "", o: [], req: true, p: [] };
+  const vps = P.filter(x => x.cat === "vps"), all = !Array.isArray(g.p) || !g.p.length, ids = (g.p || []).map(String);
+  const d = document.createElement("div"); d.className = "plan-ed xo-g";
+  d.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="xo-no" style="font-family:var(--display)"></b><span class="hint" style="margin-right:auto">1 hàng nút chọn trong bảng Mua VPS</span><button type="button" class="btn ghost sm" data-xo="up" title="Đưa mục này lên trên">↑</button><button type="button" class="btn ghost sm" data-xo="del">🗑 Xoá mục</button></div>
+    <div class="xo-grid"><label>Tên mục<input class="in xo-t" maxlength="60" placeholder="VD: Hệ điều hành"></label><label>Tên tiếng Anh (tuỳ chọn)<input class="in xo-te" maxlength="60" placeholder="VD: Operating system"></label></div>
+    <label><span>Lựa chọn — mỗi dòng 1 lựa chọn, dạng <code>Tên | mô tả ngắn</code> (mô tả có thể bỏ)</span><textarea class="in xo-o" rows="4" placeholder="Windows 10 Pro 22H2 | 64-bit, có driver GPU&#10;Windows Server 2022 | bản chuẩn&#10;Ubuntu 22.04 | Linux"></textarea></label>
+    <label class="chk"><input type="checkbox" class="xo-req"> Khách bắt buộc chọn (khi có từ 2 lựa chọn)</label>
+    <div class="xo-scope"><span class="hint">Áp dụng cho:</span><label class="chk"><input type="checkbox" class="xo-all"> Mọi sản phẩm VPS</label>${vps.map(x => `<label class="chk"><input type="checkbox" class="xo-p" value="${esc(x.id)}"> ${esc(x.name)}</label>`).join("")}${vps.length ? "" : '<span class="hint">(chưa có sản phẩm VPS)</span>'}</div>`;
+  d.querySelector(".xo-t").value = g.t || ""; d.querySelector(".xo-te").value = g.t_en || "";
+  d.querySelector(".xo-o").value = (g.o || []).map(o => o.n + (o.d ? " | " + o.d : "")).join("\n");
+  d.querySelector(".xo-req").checked = g.req !== false; d.querySelector(".xo-all").checked = all;
+  d.querySelectorAll(".xo-p").forEach(c => { c.checked = !all && ids.includes(c.value); c.disabled = all; });
+  return d;
+}
+function xoNumber() { $("xo-list").querySelectorAll(".xo-g").forEach((r, i) => { r.querySelector(".xo-no").textContent = "Mục " + (i + 1); });
+  if (!$("xo-list").querySelector(".xo-g")) $("xo-list").innerHTML = '<div class="hint xo-empty">Chưa có mục nào — bấm "+ Thêm mục".</div>'; }
+function xoFill() {
+  $("xo-list").innerHTML = ""; (Array.isArray(SITE.vps_more) ? SITE.vps_more : []).forEach(g => $("xo-list").appendChild(xoRow(g)));
+  xoNumber(); xoDirty = false; $("xo-msg").textContent = "";
+}
+function xoRead() {
+  const out = [], rows = [...$("xo-list").querySelectorAll(".xo-g")];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i], k = "Mục " + (i + 1) + ": ", t = r.querySelector(".xo-t").value.trim(), te = r.querySelector(".xo-te").value.trim();
+    const lines = r.querySelector(".xo-o").value.split("\n").map(s => s.trim()).filter(Boolean);
+    if (!t && !lines.length) continue;                                                // dòng trống → bỏ
+    if (!t) throw new Error(k + "nhập tên mục (VD: Hệ điều hành).");
+    if (!lines.length) throw new Error(k + "nhập ít nhất 1 lựa chọn.");
+    if (lines.length > XO_MAX_O) throw new Error(k + "tối đa " + XO_MAX_O + " lựa chọn.");
+    const o = [], seen = new Set();
+    for (const ln of lines) {
+      const at = ln.indexOf("|"), n = (at < 0 ? ln : ln.slice(0, at)).trim(), dsc = at < 0 ? "" : ln.slice(at + 1).trim();
+      if (!n) throw new Error(k + 'có dòng thiếu tên trước dấu "|".');
+      if (n.length > 60 || dsc.length > 80) throw new Error(k + '"' + n.slice(0, 30) + '": tên tối đa 60 ký tự, mô tả tối đa 80.');
+      if (seen.has(n.toLowerCase())) throw new Error(k + 'lựa chọn "' + n + '" bị trùng.'); seen.add(n.toLowerCase());
+      o.push(dsc ? { n, d: dsc } : { n });
+    }
+    const all = r.querySelector(".xo-all").checked, p = all ? [] : [...r.querySelectorAll(".xo-p:checked")].map(c => c.value);
+    if (!all && !p.length) throw new Error(k + 'tích "Mọi sản phẩm VPS" hoặc chọn ít nhất 1 sản phẩm.');
+    out.push({ t, ...(te ? { t_en: te } : {}), o, req: r.querySelector(".xo-req").checked, p });
+  }
+  if (out.length > XO_MAX_G) throw new Error("Tối đa " + XO_MAX_G + " mục.");
+  return out;
+}
+$("xo-details").addEventListener("toggle", () => { if ($("xo-details").open && !xoDirty) xoFill(); });
+$("xo-list").addEventListener("input", () => { xoDirty = true; $("xo-msg").textContent = "Chưa lưu"; });
+$("xo-list").addEventListener("change", e => {
+  xoDirty = true; $("xo-msg").textContent = "Chưa lưu";
+  if (e.target.classList.contains("xo-all")) e.target.closest(".xo-g").querySelectorAll(".xo-p").forEach(c => { c.disabled = e.target.checked; if (e.target.checked) c.checked = false; });
+});
+$("xo-list").addEventListener("click", e => {
+  const b = e.target.closest("button[data-xo]"); if (!b) return; const r = b.closest(".xo-g");
+  if (b.dataset.xo === "del") { if (!confirm("Xoá mục này? (chỉ mất hẳn khi bấm Lưu)")) return; r.remove(); }
+  else if (b.dataset.xo === "up" && r.previousElementSibling) r.parentNode.insertBefore(r, r.previousElementSibling);
+  xoDirty = true; $("xo-msg").textContent = "Chưa lưu"; xoNumber();
+});
+$("xo-add").onclick = () => {
+  if ($("xo-list").querySelectorAll(".xo-g").length >= XO_MAX_G) return toast("Tối đa " + XO_MAX_G + " mục.", 1);
+  const e0 = $("xo-list").querySelector(".xo-empty"); if (e0) e0.remove();
+  const r = xoRow(); $("xo-list").appendChild(r); xoNumber(); xoDirty = true; $("xo-msg").textContent = "Chưa lưu"; r.querySelector(".xo-t").focus();
+};
+$("xo-reset").onclick = () => xoFill();
+$("xo-save").onclick = async () => {
+  let groups; try { groups = xoRead(); } catch (err) { return toast(err.message, 1); }
+  const before = SITE;
+  await saveSettings({ vps_more: groups }, $("xo-save"), groups.length ? "Đã lưu " + groups.length + " mục chọn thêm cho VPS." : "Đã xoá hết mục chọn thêm.");
+  if (SITE !== before) { xoFill(); $("xo-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
+};
 function resetForm() { editId = null; $("pf").reset(); pfRestock = null; pfRsUI(); $("pf-plans").innerHTML = ""; $("pf-ms").value = 10; $("pf-mode").value = "auto"; $("pf-thumb").value = ""; syncMode(); pfImage = ""; pfFile = null; $("pf-img-file").value = ""; show("pf-img-row", false); syncPlanUI(); $("pf-o").value = P.length ? Math.max(...P.map(p => +p.sort || 0)) + 1 : 1; $("pf-title").textContent = "Thêm sản phẩm"; $("pf-save").textContent = "Thêm sản phẩm"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "➕ Thêm sản phẩm mới "; }
 function fillForm(p) { editId = p.id; $("pf-n").value = p.name; $("pf-c").value = p.cat; $("pf-vnd").value = p.price; $("pf-o").value = p.sort; $("pf-f").value = (p.features || []).join(", "); $("pf-desc").value = p.description || ""; $("pf-n-en").value = p.name_en || ""; $("pf-f-en").value = (p.features_en || []).join(", "); $("pf-desc-en").value = p.description_en || ""; $("pf-h").checked = !!p.hot; $("pf-ms").value = +p.stock || 0; pfRestock = p.restock_at || null; pfRsUI(); $("pf-mode").value = p.manual ? "manual" : "auto"; $("pf-thumb").value = p.thumb || ""; syncMode(); pfImage = p.image || ""; pfFile = null; $("pf-img-file").value = ""; if (pfImage) { $("pf-img-prev").src = pfImage; show("pf-img-row"); } else show("pf-img-row", false); $("pf-plans").innerHTML = ""; plansOf(p).forEach(x => planRow(x.days, x.price)); syncPlanUI(); $("pf-title").textContent = "Sửa sản phẩm"; $("pf-save").textContent = "Lưu thay đổi"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "✏️ Đang sửa sản phẩm "; if ($("pf-details")) $("pf-details").open = true; $("pf-details") ? $("pf-details").scrollIntoView({ behavior: "smooth", block: "start" }) : ($("pane-prod").scrollTop = 0); setTimeout(() => $("pf-n").focus(), 150); }
 $("pf").onsubmit = e => { e.preventDefault(); busy($("pf-save"), async () => {
