@@ -314,11 +314,12 @@ input.tg:disabled{opacity:.45;cursor:default}
 "use strict";
 /* =====================================================================================================
    ĐIỀU KHIỂN MÁY TRÊN TRÌNH DUYỆT — cùng giao thức BRS2 với app máy tính / app Android (docs/STREAM-PROTOCOL.md),
-   đi đường WebSocket qua Cloudflare (stream.ws trong cloudphone_endpoint). Giải mã H.264 bằng WebCodecs
+   đi THẲNG vào máy chủ (stream.wss: wss://dN.<miền>:cổng — từ web-1.2, thử trước 3,5 giây) hoặc vòng qua Cloudflare
+   (stream.ws) khi đường thẳng không vào được (cổng modem chưa mở, mạng chặn cổng lạ). Giải mã H.264 bằng WebCodecs
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.1";
+const VER = "web-1.2";
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -436,6 +437,7 @@ const P = {
   rmode: 0, held: null, heldBmp: null,                 // cách vẽ: 0 = vẽ thẳng khung · 1 = đổi qua ảnh (createImageBitmap)
   bcT: 0, bcN: 0, bcOk: 0, bcSw: 0, bcDone: false,      // kiểm "màn hình đen" (chỉ Safari / iPhone)
   decErr: 0, decErrT: 0, lastErr: "", codec: "",
+  path: "", pathWhy: "", wdBad: 0, wdMiss: 0, cx: null,             // đường đang đi ("thẳng" / "Cloudflare") · đường thẳng hỏng tới lúc nào · kết nối hiện tại
 };
 
 function openPhone(id) {
@@ -501,7 +503,7 @@ async function connect() {
   if (P.stopped) return;
   overlay("wait", P.first ? "Đang nối lại…" : "Đang mở máy…");
   let token = "test", ep;
-  if (TEST) ep = { online: true, status: "active", name: Q.get("name") || "Máy thử", android: "?", stream: { ws: Q.get("ws") || "ws://127.0.0.1:8020/v2/stream", api: Q.get("api") || "" } };
+  if (TEST) ep = { online: true, status: "active", name: Q.get("name") || "Máy thử", android: "?", stream: { ws: Q.get("ws") || "ws://127.0.0.1:8020/v2/stream", wss: Q.get("wss") || undefined, api: Q.get("api") || "" } };
   else {
     const s = await session(); if (P.stopped) return; if (!s) return showLogin();
     token = s.access_token; blueUid = (s.user && s.user.id) || "";
@@ -521,24 +523,46 @@ async function connect() {
   $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
   if (ep.status && ep.status !== "active") { P.fatal = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
   bluePlay();
-  const url = ep.stream && ep.stream.ws;
+  const cf = ep.stream && ep.stream.ws, wd = ep.stream && ep.stream.wss;
+  const wdKey = "cb_wsd_bad:" + (wd || "");
+  const direct = !!wd && Date.now() > Math.max(P.wdBad, Number(lsGet(wdKey)) || 0);    // đường thẳng hỏng gần đây → đi Cloudflare 30 phút
+  const url = direct ? wd : cf;
+  P.pathWhy = direct || !cf ? "" : !wd ? "máy chủ chưa bật đường thẳng" :
+    "đường thẳng vừa không vào được, thử lại sau " + Math.max(1, Math.ceil((Math.max(P.wdBad, Number(lsGet(wdKey)) || 0) - Date.now()) / 60000)) + " phút";
   if (!url) return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000);
+  const directFail = () => {                // không vào được đường thẳng (cổng modem chưa mở / mạng chặn cổng lạ) → Cloudflare ngay
+    P.wdBad = Date.now() + 30 * 60000; lsSet(wdKey, String(P.wdBad));
+    detach(); if (!P.stopped) { if (cf) connect(); else reconnectSoon(); }
+  };
   // "online" chỉ là nhịp báo của phần nhận đơn; phần phát hình có thể vẫn chạy → cứ thử nối (máy chủ tự báo OFFLINE nếu không giữ máy này)
   let ws;
-  try { ws = new WebSocket(url); } catch { return retryLater("Không mở được kết nối — tự thử lại…", 4000); }
-  ws.binaryType = "arraybuffer"; P.ws = ws; P.lastRx = Date.now();
-  const cto = setTimeout(() => { if (P.ws === ws && ws.readyState !== 1) { detach(); reconnectSoon(); } }, 8000);
+  try { ws = new WebSocket(url); } catch { return direct ? directFail() : retryLater("Không mở được kết nối — tự thử lại…", 4000); }
+  ws.binaryType = "arraybuffer"; P.ws = ws; P.lastRx = Date.now(); P.path = direct ? "thẳng" : "Cloudflare";
+  P.cx = { direct, key: wdKey, openedAt: 0, f0: P.frames };
+  const cto = setTimeout(() => { if (P.ws === ws && ws.readyState !== 1) { if (direct) return directFail(); detach(); reconnectSoon(); } }, direct ? 3500 : 8000);
   ws.onopen = () => {
     clearTimeout(cto); if (P.ws !== ws) return;
+    P.cx.openedAt = Date.now(); P.cx.f0 = P.frames;
     P.lastRx = Date.now(); P.sst = null;
     sendJSON(T.HELLO, { v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT ? 30 : 60, maxh: maxH() });      // Safari/iPhone: 30 hình/s (vẽ nhẹ một nửa)
     startTimers();
   };
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
-  ws.onclose = () => { clearTimeout(cto); if (P.ws !== ws) return; P.ws = null; stopTimers(); if (!P.stopped && !P.kicked && !P.fatal) reconnectSoon(); };
+  ws.onclose = () => {
+    clearTimeout(cto); if (P.ws !== ws) return;
+    if (direct && !P.cx.openedAt) return directFail();
+    directMiss(); P.cx = null;
+    P.ws = null; stopTimers(); if (!P.stopped && !P.kicked && !P.fatal) reconnectSoon();
+  };
   ws.onerror = () => {};
 }
+function directMiss() {                    // đường thẳng mở được mà 15 giây đầu không có hình, 2 lần liền → đi Cloudflare 30 phút
+  const c = P.cx; if (!c || !c.direct || !c.openedAt) return;
+  if (P.frames > c.f0) { P.wdMiss = 0; return; }
+  if (Date.now() - c.openedAt < 15000 && ++P.wdMiss >= 2) { P.wdMiss = 0; P.wdBad = Date.now() + 30 * 60000; lsSet(c.key, String(P.wdBad)); }
+}
 function detach() {                        // bỏ kết nối hiện tại (không tự nối lại từ sự kiện close của nó)
+  directMiss(); P.cx = null;
   stopTimers();
   const w = P.ws; P.ws = null;
   if (w) { w.onopen = w.onmessage = w.onclose = w.onerror = null; try { w.close(); } catch {} }
@@ -1135,7 +1159,7 @@ function tick() {
   if ($("stats").hidden) return;
   const s = P.srv || {};
   const ss = P.sst;
-  $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: Cloudflare · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
+  $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: ${P.path || "?"}${P.pathWhy ? " (" + P.pathWhy + ")" : ""} · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
     (ss ? `\nmáy chủ gửi ${ss.fps} khung/s · ${ss.kbps} kbps · bỏ ${ss.drop || 0}` : "") +
     `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · giải mã ${dmName()} · ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
     (P.lastErr ? `\n${P.lastErr}` : "");
