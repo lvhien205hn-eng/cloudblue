@@ -125,7 +125,7 @@ def machine():
 
 RE_T = re.compile(r"^(\d\d):(\d\d):(\d\d) (.*)$")
 RE_T2 = re.compile(r"^\d\d:\d\d:\d\d ")
-RE_START = re.compile(r"▶ (\S+) ← \S+ \((direct|ws), ([^)]*)\)")
+RE_START = re.compile(r"▶ (\S+) ← \S+ \((direct|wsd|ws), ([^)]*)\)")        # wsd = web / iPhone đi THẲNG (bản 11/12b)
 RE_CLOSE = re.compile(r"■ (\S+) đóng \(gửi (\d+) khung, bỏ (\d+)(?:, (\d+) kbps)?\)(?: · (\d+) giây)?(?: · (.+))?")
 RE_VER = re.compile(r"bản (\S+) \(ngưỡng")
 RE_DOWN = re.compile(r"^\s*(\S+): mạng khách ~(\d+) kbps → hạ còn (\d+) kbps")
@@ -160,7 +160,7 @@ def sessions():
             open_s.clear(); x = RE_VER.search(msg); cnt["ver"] = x.group(1) if x else "cũ"; cnt["boot"] = t; continue
         x = RE_START.search(msg)
         if x:
-            open_s[x.group(1)] = {"name": x.group(1), "kind": x.group(2), "app": x.group(3).strip() or "?", "t0": t,
+            open_s[x.group(1)] = {"name": x.group(1), "kind": "direct" if x.group(2) == "wsd" else x.group(2), "app": x.group(3).strip() or "?", "t0": t,
                                   "down": 0, "up": 0, "enc": 0, "kmin": None}
             continue
         x = RE_CLOSE.search(msg)
@@ -259,7 +259,7 @@ def report_sessions():
             d, w = agg["direct"], agg["ws"]
             if d[1] < w[1] * 0.7 or d[2] > w[2] + 8: warn.append("Đường THẲNG kém hơn vòng Cloudflare (hình/s %.0f vs %.0f, bỏ %d%% vs %d%%)" % (d[1], w[1], d[2], w[2]))
     rate = [a[4] for a in agg.values()]
-    if ver in ("cũ", "?"): warn.append("Phát hình còn BẢN CŨ → cập nhật bluestream.py (bản 11/11c)")
+    if ver in ("cũ", "?"): warn.append("Phát hình còn BẢN CŨ → cập nhật (lệnh capnhat-ngu.ps1, bản 11/12b)")
     if rate and max(rate) >= 4: warn.append("Máy chủ tự đổi chất lượng nhiều (%.0f lần/giờ) → mỗi lần đổi, bộ nén trong máy Android bật lại → đứng hình 1–3 giây" % max(rate))
     if cnt["enc"] >= 3: warn.append("Bộ nén trong máy Android dừng/bật lại %d lần → mỗi lần đứng hình 1–3 giây" % cnt["enc"])
     if cnt["ctl_input"] >= 3: warn.append("Điều khiển chạm hay rơi xuống lệnh input (%d lần) → bấm chậm ~1 giây" % cnt["ctl_input"])

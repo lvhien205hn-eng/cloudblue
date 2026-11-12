@@ -6,6 +6,7 @@
 #   python phonectl.py create TÊN --ram 4 --cpu 4 --days 7 [--res 720x1280] [--nowait]
 #   python phonectl.py list | capacity | delete TÊN | stop TÊN | start TÊN | restart TÊN | renew TÊN --days N
 #   python phonectl.py resize TÊN --ram 6 --cpu 6 | waitboot TÊN | connect-all | reap | rootfix --all | ksuprobe TÊN
+#   python phonectl.py idle [--dry -v] | sleep TÊN | wake TÊN | wake --all   ← máy rảnh lâu tự NGỦ, khách mở máy tự bật lại (IDLE_STOP_MIN)
 #  Máy số N của MEmu ⇄ adb 127.0.0.1:(21503 + 10·N)
 # =====================================================================
 import argparse, ctypes, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, time
@@ -1003,10 +1004,11 @@ def cmd_create(a):
     if not SAFE.match(a.name): print("LỖI: tên máy chỉ gồm chữ, số, _ . -"); sys.exit(1)
     if not re.match(r"^\d+x\d+$", a.res): print("LỖI: --res phải dạng 720x1280."); sys.exit(1)
     if not MEMU: print("LỖI: không thấy MEmu (memuc.exe)."); sys.exit(4)
-    tot, av = mem()
+    tot, av = mem(); zz = _sleep_ram(st); av -= zz                # máy đang NGỦ sẽ bật lại khi khách mở → RAM của chúng không bán cho máy mới
     need = min(float(a.ram), MAX_RAM)                     # MEmu chạy tối đa 16GB/máy → chỉ cần đủ RAM cho phần thật sự cấp
     if av - (need + 1) < RESERVE:
-        print(f"HẾT HÀNG: RAM Windows còn {av:.1f}GB, máy {need:g}GB cần thêm {need + 1:g}GB và chừa {RESERVE:g}GB."); sys.exit(2)
+        print(f"HẾT HÀNG: RAM Windows còn {av:.1f}GB" + (f" (đã chừa {zz:g}GB cho máy đang ngủ)" if zz else "")
+              + f", máy {need:g}GB cần thêm {need + 1:g}GB và chừa {RESERVE:g}GB."); sys.exit(2)
     try: open(os.path.join(HOME, "redroid", f"creating_{os.getpid()}.flag"), "w").write(a.name)   # báo "đang tạo máy khách" → dựng máy sẵn nhường đường
     except OSError: pass
     ver = norm_android(a.android)
@@ -1188,10 +1190,16 @@ def cmd_forget(a):
     st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st); _vmdata_rm(a.name)
     print(f"Đã bỏ '{a.name}' khỏi danh sách ({EMU_NAME} không còn máy này).")
 
-def set_hold(name, on):
-    """hold = máy CỐ Ý tắt (admin khoá / hết hạn) → bộ tự bật lại không đụng vào. Tắt ngoài ý muốn (bấm Close trong MEmu, MEmu văng) → tự bật lại."""
+def set_hold(name, on, sleep=False):
+    """hold = máy CỐ Ý tắt (admin khoá / hết hạn) → bộ tự bật lại không đụng vào. Tắt ngoài ý muốn (bấm Close trong MEmu, MEmu văng) → tự bật lại.
+       sleep = máy NGỦ (tự tắt vì lâu không dùng, khách mở là bật lại) — cũng là hold. Bật lại (on=False) hoặc tạm dừng thật → hết ngủ."""
     st = load(); p = rec(name, st)
-    if p and bool(p.get("hold")) != on: p["hold"] = on; save(st)
+    if not p: return
+    ch = bool(p.get("hold")) != on
+    p["hold"] = on
+    if on and sleep: ch = ch or not p.get("sleep"); p["sleep"] = p.get("sleep") or int(time.time())
+    elif p.pop("sleep", None) is not None: ch = True
+    if ch: save(st)
 def cmd_stop(a):
     st, p = _need(a.name); adb("disconnect", serial(p), timeout=15)
     memuc("stop", "-i", IDX(p), timeout=120); set_hold(a.name, True); print(f"⏸  Đã tạm dừng '{a.name}'.")
@@ -1415,14 +1423,14 @@ def cmd_renew(a):
     if not q: print("Không có máy tên này."); sys.exit(1)
     q["expires"] = base.isoformat(); save(st); p["expires"] = q["expires"]
     if parse_dt(rec(a.name)["expires"]) != base: print("❌ Chưa ghi được hạn mới vào phones.json."); sys.exit(3)
-    if not is_running(a.name, p): start_phone(p); wait_boot(a.name, p["port"], apps=False)
+    if not is_running(a.name, p) and not _asleep(q): start_phone(p); wait_boot(a.name, p["port"], apps=False)   # máy đang ngủ: để ngủ tiếp (khách mở là bật)
     print(f"🔄 '{a.name}' gia hạn +{a.days} ngày → hết hạn {fmt(base)}")
     print("RENEW_OK " + base.isoformat())
 
 def cmd_resize(a):
     st, p = _need(a.name)
     ram = a.ram if a.ram > 0 else float(p["ram"]); cpu = a.cpu if a.cpu > 0 else float(p["cpu"])
-    tot, av = mem()
+    tot, av = mem(); av -= _sleep_ram(st)
     if ram > float(p["ram"]) and av - (ram - float(p["ram"])) < RESERVE: print("LỖI: RAM Windows không đủ để nâng."); sys.exit(4)
     adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
     configure(IDX(p), ram, cpu, p.get("res", "720x1280"), p.get("dpi"))
@@ -2063,13 +2071,16 @@ def cmd_capacity(a):
     st = load(); tot, av = mem()
     print(f"Windows: RAM {tot:.1f} GB (còn trống {av:.1f} GB, chừa {RESERVE:g} GB) · CPU {os.cpu_count()} luồng · {EMU_NAME}: {MEMU or 'KHÔNG THẤY'}"
           f" · 1 máy tối đa {MAX_RAM:g}GB · {MAX_CPU} nhân")
-    print(f"Đã cấp:  RAM {sum(float(p['ram']) for p in st['phones']):.1f} GB  ({len(st['phones'])} máy)")
+    nz = sum(1 for p in st["phones"] if _asleep(p))
+    print(f"Đã cấp:  RAM {sum(float(p['ram']) for p in st['phones']):.1f} GB  ({len(st['phones'])} máy)"
+          + (f" · {nz} máy đang ngủ (chừa {_sleep_ram(st):g} GB để bật lại)" if nz else ""))
 
 def cmd_list(a):
     st = load(); v = vms()
     if not st["phones"]: print("(chưa có máy nào)"); return
     for p in st["phones"]:
-        i = IDX(p, v); print(f"{p['name']:<16} #{'?' if i is None else i:<3} cổng {p['port']:<6} {p['ram']}G/{p['cpu']}  hết hạn {fmt(parse_dt(p['expires']))}  {'chạy' if is_running(p['name'], p, v) else 'tắt'}")
+        i = IDX(p, v); on = is_running(p['name'], p, v)       # chữ cuối dòng "chạy" = đang chạy (run.py đọc) — máy ngủ ghi "ngủ"
+        print(f"{p['name']:<16} #{'?' if i is None else i:<3} cổng {p['port']:<6} {p['ram']}G/{p['cpu']}  hết hạn {fmt(parse_dt(p['expires']))}  {'chạy' if on else 'ngủ' if _asleep(p) else 'tắt'}")
 
 # ---------- KHỞI ĐỘNG LẠI CẢ MÁY CHỦ (admin bấm trên web → cpapi → rebootserver) ----------
 RB_F = os.path.join(HOME, "redroid", "reboot_hold.json")      # máy khách đang GIỮ (hold) để khởi động lại máy chủ
@@ -2114,7 +2125,7 @@ def cmd_serverinfo(a):
     st = load(); v = vms()
     print("SERVERINFO " + json.dumps({"node": CONF.get("NODE_ID", ""), "emu": EMU_NAME, "autologon": _autologon(), "autostart": _autostart(),
           "uptime_h": round(_uptime() / 3600, 1), "running": sum(1 for x in v.values() if x["running"]), "phones": len(st["phones"]),
-          "pending": os.path.isfile(RB_F)}, ensure_ascii=False))
+          "sleeping": sum(1 for p in st["phones"] if _asleep(p)), "pending": os.path.isfile(RB_F)}, ensure_ascii=False))
 def cmd_rebootserver(a):
     """Admin ép KHỞI ĐỘNG LẠI CẢ MÁY CHỦ: giữ các máy khách đang chạy (bảng không tự bật lại giữa chừng) → tắt êm hết → shutdown /r /f.
        Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên)."""
@@ -2210,6 +2221,201 @@ def cmd_heal(a):
         if k not in seen: h.pop(k, None)
     _hs(h)
     if a.orphans: _cleanup(v, quiet=True)
+
+# ---------- NGỦ KHI KHÔNG DÙNG: máy rảnh lâu → tự tắt · khách mở máy → bluestream gọi `wake` bật lại ----------
+# Máy khách ĐANG CHẠY mà liền IDLE_STOP_MIN phút đủ cả 3 điều: KHÔNG AI XEM (app / web / PC — bluestream ghi redroid/viewers.json),
+# đứng ở MÀN HÌNH CHÍNH (không game / app nào ở màn trước, kể cả cửa sổ nổi) và CPU trong máy thấp → tắt êm cho NGỦ (app, dữ liệu
+# giữ nguyên). Máy treo game (game ở màn trước) KHÔNG BAO GIỜ bị tắt. Ngủ = hold + sleep: bootall / heal / cloudphoned không tự bật
+# lại; bật bằng bất cứ đường nào (khách mở máy → wake, admin start / restart, đổi cấu hình…) là hết ngủ. RAM của máy ngủ vẫn được
+# CHỪA (create / resize / cloudphoned) → khách mở lúc nào cũng bật lại được.
+def _cf(k, d):
+    try: return float(CONF.get(k, d) or 0)
+    except (TypeError, ValueError): return float(d)
+IDLE_MIN = _cf("IDLE_STOP_MIN", 30)          # phút rảnh liền mới cho ngủ · 0 = tắt tính năng
+IDLE_CPU = _cf("IDLE_CPU_PCT", 10)           # CPU trong máy (cộng mọi nhân) từ mức này = máy đang làm gì đó → không cho ngủ
+IDLE_SKIP = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_SKIP", "")) if x}     # tên máy KHÔNG BAO GIỜ cho ngủ: cp_abc,cp_def
+IDLE_IGNORE = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_IGNORE", "")) if x}    # gói (hiện trên màn / chạy nền) KHÔNG tính là máy đang làm việc
+IDLE_BATCH = 6                                # mỗi lượt cho ngủ tối đa 6 máy (đo sai → không tắt hàng loạt)
+IDLE_F = os.path.join(HOME, "redroid", "idle.json")
+VIEW_F = os.path.join(HOME, "redroid", "viewers.json")
+HOMES = {"com.mumu.launcher", "com.android.launcher3", "com.android.launcher", "com.android.launcher2", "com.microvirt.launcher",
+         "com.microvirt.launcher2", "com.google.android.apps.nexuslauncher"}
+_FG_RE = re.compile(r"\bu\d+\s+([A-Za-z][\w.]*)/")
+_HOME_CACHE = {}
+
+def _asleep(p):
+    """Máy đang NGỦ thật (dấu ngủ + hold). Dấu ngủ sót lại mà hold đã gỡ (vd quay về bản cũ rồi bản cũ bật máy) → coi như thức."""
+    return bool(p and p.get("sleep") and p.get("hold"))
+def _sleep_ram(st=None):
+    """RAM (GB) phải CHỪA cho máy đang ngủ — khách mở là bật lại, không bán chỗ này cho máy mới."""
+    return sum(min(float(p.get("ram") or 0), MAX_RAM) for p in (st or load())["phones"] if _asleep(p))
+def _viewers():
+    """(bluestream BIẾT ĐÁNH THỨC máy đang chạy?, {cổng adb: lúc có người xem gần nhất}) — bluestream ghi file mỗi 30 giây."""
+    try:
+        with open(VIEW_F, encoding="utf-8") as f: d = json.load(f)
+        ok = time.time() - float(d.get("t") or 0) < 180 and int(d.get("wake") or 0) >= 1
+        return ok, {str(k): float(x) for k, x in (d.get("seen") or {}).items()}
+    except Exception: return False, {}
+def _idle_load():
+    try:
+        with open(IDLE_F, encoding="utf-8") as f: return json.load(f)
+    except Exception: return {}
+def _idle_save(d):
+    os.makedirs(os.path.dirname(IDLE_F), exist_ok=True)
+    with open(IDLE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f)
+    os.replace(IDLE_F + ".tmp", IDLE_F)
+def _fg_pkgs(port):
+    """Các gói đang HIỆN trên màn: cửa sổ giữ tiêu điểm + app đang mở (mọi màn hình) + MỌI cửa sổ app đang hiện (cả game ở cửa sổ
+       nổi nằm cạnh màn hình chính). Rỗng = không đọc được."""
+    r = adb("-s", f"127.0.0.1:{port}", "shell",
+            "dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'; echo ---; dumpsys window visible | grep -E 'Window[{ ]'", timeout=25)
+    foc, _, vis = (r.stdout or "").partition("---")
+    pk = lambda t: {m.group(1) for ln in t.splitlines() for m in [_FG_RE.search(ln)] if m}
+    f = pk(foc)
+    return f | pk(vis) if f else set()
+def _home_pkgs(port):
+    """Gói màn hình chính của máy: hỏi Android + các launcher quen của MuMu / LDPlayer / MEmu."""
+    if port not in _HOME_CACHE:
+        r = adb("-s", f"127.0.0.1:{port}", "shell",
+                "cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME", timeout=20)
+        hs = set(HOMES)
+        for ln in (r.stdout or "").splitlines():
+            m = re.match(r"^\s*([A-Za-z][\w.]*)/", ln)
+            if m and m.group(1) not in ("android", "com.android.settings"): hs.add(m.group(1))   # hộp chọn launcher / màn chờ khởi động: không tính
+        _HOME_CACHE[port] = hs
+    return _HOME_CACHE[port]
+def _fg_services(port):
+    """App CỦA KHÁCH (không phải app hệ thống) đang chạy dịch vụ nền có thông báo (bot, tool treo, tải file…) → máy đang làm việc."""
+    s = f"127.0.0.1:{port}"; cur, fg = "", set()
+    r = adb("-s", s, "shell", "dumpsys activity services | grep -E '\\* ServiceRecord|isForeground=true'", timeout=25)
+    for ln in (r.stdout or "").splitlines():
+        if "* ServiceRecord{" in ln: m = _FG_RE.search(ln); cur = m.group(1) if m else ""
+        elif "isForeground=true" in ln and cur: fg.add(cur)
+    if not fg: return set()
+    third = {ln.split(":", 1)[1].strip() for ln in (adb("-s", s, "shell", "pm list packages -3", timeout=25).stdout or "").splitlines() if ln.startswith("package:")}
+    return {x for x in fg if x in third and x not in IDLE_IGNORE and "launcher" not in x.lower()}
+def _guest_cpu(port):
+    """% CPU đang dùng TRONG máy (cộng mọi nhân, đo 2 giây). None = không đo được."""
+    r = adb("-s", f"127.0.0.1:{port}", "shell", "grep '^cpu ' /proc/stat; sleep 2; grep '^cpu ' /proc/stat", timeout=25)
+    rows = [ln.split()[1:9] for ln in (r.stdout or "").splitlines() if ln.startswith("cpu ")]
+    if len(rows) < 2: return None
+    try: a0, a1 = [list(map(int, x)) for x in rows[:2]]
+    except ValueError: return None
+    d = [y - x for x, y in zip(a0, a1)]; tot = sum(d)
+    if tot <= 0: return None
+    return round(100.0 * (tot - d[3] - (d[4] if len(d) > 4 else 0)) / tot, 1)
+def _idle_probe(p, seen, t):
+    """(rảnh?, lý do, số giây từ lần có người xem) của 1 máy đang chạy."""
+    port = p["port"]; ago = t - seen.get(str(port), 0.0)
+    if ago < 90: return False, "đang có người xem", ago
+    if not booted(port): return False, "Android chưa sẵn sàng / mất kết nối", ago
+    fg = _fg_pkgs(port)
+    if not fg: return False, "không đọc được màn trước", ago
+    hs = _home_pkgs(port)
+    busy = sorted(x for x in fg if x not in hs and x not in IDLE_IGNORE and "launcher" not in x.lower())
+    if busy: return False, "đang mở " + ", ".join(busy), ago
+    bg = _fg_services(port)
+    if bg: return False, "app chạy nền " + ", ".join(sorted(bg)), ago
+    c = _guest_cpu(port)
+    if c is None: return False, "không đo được CPU", ago
+    if c >= IDLE_CPU: return False, f"màn hình chính nhưng CPU trong máy {c:g}%", ago
+    return True, f"màn hình chính · CPU {c:g}%", ago
+def _sleep_one(p, why="", check_view=True):
+    """Cho 1 máy NGỦ: đánh dấu ngủ TRƯỚC (bootall / cloudphoned không bật lại giữa chừng) → tắt êm. Không tắt được → bỏ dấu, chạy tiếp."""
+    nm = p["name"]
+    if check_view:
+        ok, seen = _viewers()
+        if not ok: return False, "phát hình không báo người xem — để máy chạy"
+        if time.time() - seen.get(str(p["port"]), 0.0) < 120: return False, "vừa có người mở máy — để máy chạy"
+    q = rec(nm)
+    if not q or q.get("hold"): return False, "máy vừa bị tạm dừng / xoá — bỏ qua"
+    set_hold(nm, True, sleep=True)
+    adb("disconnect", serial(p), timeout=15)
+    i = IDX(p)
+    if i is not None: memuc("stop", "-i", i, timeout=120)
+    for _ in range(30):
+        if not is_running(nm, p): return True, why
+        time.sleep(2)
+    set_hold(nm, False)
+    return False, f"{EMU_NAME} chưa tắt được máy — để máy chạy tiếp"
+
+def cmd_idle(a):
+    """Gọi định kỳ (cloudphoned ~2 phút/lần): máy rảnh liền IDLE_STOP_MIN phút → cho ngủ. --dry: chỉ in, không tắt máy nào."""
+    mins = IDLE_MIN if a.min is None else a.min
+    if mins <= 0: print("IDLE_OFF tính năng đang tắt (IDLE_STOP_MIN=0)"); return
+    fresh, seen = _viewers()
+    if not fresh and not a.dry:
+        print("IDLE_SKIP phát hình (bluestream) bản biết đánh thức máy chưa chạy → không cho máy nào ngủ"); return
+    st = load(); v = vms(); t = time.time(); old = _idle_load(); new = {}
+    cands = [p for p in st["phones"] if p["name"] not in IDLE_SKIP and not p.get("hold") and p.get("kind") != "gpu"
+             and parse_dt(p["expires"]) > now() and is_running(p["name"], p, v)]
+    def probe(p):
+        try: return _idle_probe(p, seen, t)
+        except Exception as e: return False, f"lỗi đo: {e!r}", 0.0
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as ex: res = list(ex.map(probe, cands))
+    n_idle = n_slept = 0; talk = a.dry or a.verbose
+    for p, (idle, why, ago) in zip(cands, res):
+        nm = p["name"]
+        if not idle:
+            if talk: print(f"  {nm}: không rảnh — {why}")
+            continue
+        n_idle += 1
+        since = float((old.get(nm) or {}).get("since") or t); new[nm] = {"since": since}
+        rest = max(mins * 60 - (t - since), mins * 60 - ago)
+        if rest > 0:
+            if talk: print(f"  {nm}: rảnh {int((t - since) // 60)} phút ({why}) — {int(rest // 60) + 1} phút nữa cho ngủ")
+            continue
+        if a.dry: print(f"NGU_THU {nm}: sẽ cho ngủ ({why}, rảnh {int((t - since) // 60)} phút)"); continue
+        if n_slept >= IDLE_BATCH: continue
+        ok, how = _sleep_one(p, f"rảnh {int((t - since) // 60)} phút · {why}")
+        print(("NGU " if ok else "NGU_LOI ") + f"{nm}: {how}", flush=True)
+        if ok: n_slept += 1; new.pop(nm, None)
+    if not a.dry: _idle_save(new)
+    print(f"IDLE_OK {len(cands)} máy đang chạy · {n_idle} máy rảnh · {n_slept} máy vừa cho ngủ · ngưỡng {mins:g} phút, CPU < {IDLE_CPU:g}%")
+
+def cmd_sleep(a):
+    """Admin cho 1 máy ngủ NGAY (thử tính năng). Khách mở máy → tự bật lại."""
+    st, p = _need(a.name)
+    if p.get("hold"):
+        print(f"'{a.name}' " + ("đang ngủ sẵn." if _asleep(p) else "đang tạm dừng (admin khoá / hết hạn) — không cho ngủ.")); return
+    if not is_running(a.name, p): print(f"'{a.name}' đang tắt — không cần cho ngủ."); return
+    if not _viewers()[0] and not a.force:
+        print("LỖI: phát hình (bluestream) bản biết đánh thức máy chưa chạy — khách sẽ không tự bật lại được. Cập nhật bluestream trước."); sys.exit(3)
+    ok, how = _sleep_one(p, "admin cho ngủ", check_view=False)
+    print(f"💤 Đã cho '{a.name}' ngủ — khách mở máy là tự bật lại." if ok else f"❌ Chưa cho ngủ được: {how}"); sys.exit(0 if ok else 5)
+
+def _wake_one(p):
+    """Bật 1 máy đang ngủ → chờ Android lên → in WAKE_READY (bluestream cho khách vào ngay) → tối ưu / quyền / root / ẩn cửa sổ như bootall."""
+    nm = p["name"]; t0 = time.time()
+    if p.get("hold") and not _asleep(p): return False, "WAKE_NO máy đang tạm dừng (admin khoá / hết hạn) — không bật"
+    try: lk = _Lock("wake_" + nm, wait=1); lk.__enter__()
+    except RuntimeError: return False, "WAKE_BUSY lệnh khác đang bật máy này"
+    try:
+        if is_running(nm, p): set_hold(nm, False)                  # còn chạy (tắt chưa xong / dấu ngủ sót) → chỉ bỏ dấu ngủ
+        else:
+            r = start_phone(p)
+            if _start_failed(r): return False, f"WAKE_FAIL {EMU_NAME} không bật được: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
+        ok = False
+        while time.time() - t0 < BOOT_WAIT:
+            adb_connect(p["port"])
+            if booted(p["port"]): ok = True; break
+            time.sleep(2)
+        if not ok: return False, f"WAKE_FAIL Android chưa lên sau {BOOT_WAIT // 60} phút"
+        print(f"WAKE_READY {nm} {int(time.time() - t0)}", flush=True)
+        for fn in (lambda: _root_keep(p), lambda: grant_perms(nm), lambda: tune(nm, p["port"]), lambda: hide_window(nm)):
+            try: fn()
+            except Exception as e: print("   (sau khi bật:", repr(e)[:120], ")", flush=True)
+        return True, f"WAKE_OK {nm} sẵn sàng sau {int(time.time() - t0)} giây"
+    finally: lk.__exit__()
+def cmd_wake(a):
+    """wake TÊN | --all: bật lại máy đang NGỦ (bluestream gọi khi khách mở máy)."""
+    if not a.all:
+        st, p = _need(a.name); ok, msg = _wake_one(p); print(msg, flush=True); sys.exit(0 if ok else 5)
+    bad = 0
+    for p in [x for x in load()["phones"] if _asleep(x)]:
+        ok, msg = _wake_one(p); print(msg, flush=True); bad += 0 if ok else 1
+    print("WAKEALL xong" + (f" ({bad} máy lỗi)" if bad else "")); sys.exit(6 if bad else 0)
 
 def _ours(nm):
     """Máy do CloudBlue tạo? MuMu hay cài chung máy có sẵn máy riêng của chủ máy → chỉ đụng máy cp_… / spare_….
@@ -2623,6 +2829,10 @@ def main():
     tp = s.add_parser("template"); tp.add_argument("name", nargs="?", default=""); tp.add_argument("--apply", action="store_true"); tp.set_defaults(f=cmd_template)
     hd = s.add_parser("hide"); hd.add_argument("name", nargs="?", default=""); hd.set_defaults(f=cmd_hide)
     he = s.add_parser("heal"); he.add_argument("--orphans", action="store_true"); he.set_defaults(f=cmd_heal)
+    il = s.add_parser("idle"); il.add_argument("--min", type=float, default=None); il.add_argument("--dry", action="store_true")
+    il.add_argument("--verbose", "-v", action="store_true"); il.set_defaults(f=cmd_idle)
+    sl = s.add_parser("sleep"); sl.add_argument("name"); sl.add_argument("--force", action="store_true"); sl.set_defaults(f=cmd_sleep)
+    wk = s.add_parser("wake"); wk.add_argument("name", nargs="?", default=""); wk.add_argument("--all", action="store_true"); wk.set_defaults(f=cmd_wake)
     cl = s.add_parser("cleanup"); cl.add_argument("--all", action="store_true"); cl.add_argument("--yes", action="store_true"); cl.set_defaults(f=cmd_cleanup)
     s.add_parser("pool").set_defaults(f=cmd_pool)
     s.add_parser("probe").set_defaults(f=cmd_probe)

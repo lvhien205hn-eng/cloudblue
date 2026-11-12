@@ -12,6 +12,11 @@
 #  Giao thức:   BRS2 — docs/STREAM-PROTOCOL.md
 #
 #  Mở cổng:     máy chủ TỰ mở cổng TCP STREAM_PORT trên modem bằng UPnP-IGD (lúc chạy + mỗi 30 phút) — modem tắt UPnP thì mở tay
+#  Máy ngủ:     ghi redroid/viewers.json (máy nào đang có người xem) cho `phonectl idle`; khách mở máy đang NGỦ → `phonectl wake`
+#               (web / app Android: "đang thức dậy", tự thử lại · app PC: giữ kết nối tới khi máy lên) — bản 11/12a
+#  Web thẳng:   trình duyệt (web, iPhone) nối THẲNG vào chính cổng TLS của app: wss://dN.<miền>:STREAM_PORT/v2/stream —
+#               SNI dN.<miền> → chứng chỉ Let's Encrypt (tự xin / gia hạn bằng mã Cloudflare CF_DNS_TOKEN), tên tự trỏ IP nhà
+#               mạng; app nối bằng IP vẫn chứng chỉ tự ký cũ. Bật 1 lần: python bluestream.py --webdirect — bản 11/12b
 #  Chạy:  python bluestream.py            (bảng BlueRoblox tự chạy — dịch vụ "phat-hinh")
 #         python bluestream.py --selftest (máy Linux/thử: nguồn hình giả, không cần đăng nhập)
 #         python bluestream.py --upnp     (thử mở cổng trên modem bằng UPnP 1 lần, in kết quả — không chạy máy chủ)
@@ -107,7 +112,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 # Đường vòng Cloudflare (trạm HKG + 4G/5G) hay giật ngắn → ngưỡng "app chậm" 700 ms (đường thẳng giữ 350 ms).
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
-BS_VER = "11/11c"
+BS_VER = "11/12b"
 _RATE_MEM = {}                            # (uid, mã máy, loại đường) → {"k": kbps, "until": giữ tới lúc, "hs": số giây giữ, "lc": lúc nghẽn, "t": lúc ghi}
 KEYCODE = {"back": 4, "home": 3, "recents": 187, "power": 26, "volup": 24, "voldown": 25, "menu": 82}
 
@@ -1627,7 +1632,9 @@ WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 # Tắt: WS_NUDGE=0 trong cloudphone.conf.
 WS_NUDGE = str(C.get("WS_NUDGE", "1")).strip() != "0"
 NUDGE_WIN, NUDGE_COOL, NUDGE_PROOF = 20, 6 * 3600, 24 * 3600
-_direct_ok_t = 0.0                  # lúc gần nhất có máy ở ngoài mạng nhà nối được vào cổng phát hình
+_DIRECT_OK_F = os.path.join(RTC, "direct-ok.txt")          # giữ mốc qua khởi động lại (đường thẳng web chỉ báo khi cổng đã mở)
+try: _direct_ok_t = float(open(_DIRECT_OK_F).read().strip() or 0)   # lúc gần nhất có máy ở ngoài mạng nhà nối được vào cổng phát hình
+except (OSError, ValueError): _direct_ok_t = 0.0
 _nudge = {}                         # IP khách → (hết trả 503 lúc, hết miễn lúc)
 
 
@@ -1646,7 +1653,13 @@ def note_direct_peer(writer):
     global _direct_ok_t
     try: host = (writer.get_extra_info("peername") or ("",))[0]
     except Exception: host = ""
-    if _global_ip(host): _direct_ok_t = time.time()
+    if _global_ip(host):
+        save = time.time() - _direct_ok_t > 600
+        _direct_ok_t = time.time()
+        if save:
+            try:
+                with open(_DIRECT_OK_F, "w") as fh: fh.write(str(int(_direct_ok_t)))
+            except OSError: pass
 
 
 def ws_should_nudge(hdr, now=None):
@@ -1713,8 +1726,9 @@ class WSLink(Link):
         _small_buffers(writer)
 
     @staticmethod
-    async def accept(reader, writer):
-        head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 10)
+    async def accept(reader, writer, first=b"", direct=False):
+        """direct=True: TRÌNH DUYỆT nối thẳng vào cổng TLS của app (wss://dN.<miền>:PORT/v2/stream) — first = dòng đầu đã đọc."""
+        head = first + await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 10)
         lines = head.decode("latin-1").split("\r\n")
         hdr = {}
         for ln in lines[1:]:
@@ -1724,14 +1738,16 @@ class WSLink(Link):
             body = b"BlueRoblox stream v2"
             writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s" % (len(body), body))
             await writer.drain(); writer.close(); return None
-        if ws_should_nudge(hdr):                                     # app cũ đang dính Cloudflare → bảo nó thử đường thẳng
+        if not direct and ws_should_nudge(hdr):                      # app cũ đang dính Cloudflare → bảo nó thử đường thẳng
             writer.write(b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
             await writer.drain(); writer.close(); return None
         acc = base64.b64encode(hashlib.sha1((hdr["sec-websocket-key"] + WS_GUID).encode()).digest()).decode()
         writer.write(("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                       f"Sec-WebSocket-Accept: {acc}\r\n\r\n").encode())
         await writer.drain()
-        return WSLink(reader, writer)
+        lk = WSLink(reader, writer)
+        if direct: lk.kind = "wsd"                                 # web đi THẲNG: ngưỡng chậm / bitrate như app đi thẳng
+        return lk
 
     async def _frame(self):
         b0, b1 = await self.r.readexactly(2)
@@ -1971,6 +1987,7 @@ class Session:
             self.link.send_nowait(S_ERROR, json.dumps({"code": "BUSY", "msg": "Đang mở máy ở kết nối khác."}).encode())
             await self.link.close(); return
         SESSIONS[self.pid] = self
+        mark_seen(self.phone, write=True)                    # máy có người xem → phonectl idle không cho ngủ
         if old and old is not self: await old.kick()
         log(f"▶ {self.name} ← {self.me['uid'][:8]} ({self.link.kind}, {self.hello.get('client', '?')})")
         self.ctl = Control(self.serial, self._on_clip)
@@ -2208,6 +2225,7 @@ class Session:
         if self.closed: return
         self.closed = True
         if SESSIONS.get(self.pid) is self: SESSIONS.pop(self.pid, None)
+        mark_seen(self.phone, write=True)                    # lúc rời máy = mốc tính "rảnh" của máy
         objs = [x for x in (self.enc, self.src, self.ctl) if x]
         def stop_all():
             for x in objs:
@@ -2280,6 +2298,7 @@ class Preview(Session):
             await old.finish()
             if old in lst: lst.remove(old)
         lst = PREVIEWS.setdefault(self.pid, []); lst.append(self)
+        mark_seen(self.phone, write=True)
         log(f"▷ xem trước {self.name} ← {self.me['uid'][:8]} ({self.link.kind})")
         try:
             async with self.vlock:
@@ -2310,6 +2329,7 @@ class Preview(Session):
         lst = PREVIEWS.get(self.pid) or []
         if self in lst: lst.remove(self)
         if not lst: PREVIEWS.pop(self.pid, None)
+        mark_seen(self.phone, write=True)
         objs = [x for x in (self.enc, self.src) if x]
         def stop_all():
             for x in objs:
@@ -2318,6 +2338,150 @@ class Preview(Session):
         threading.Thread(target=stop_all, daemon=True).start()
         await self.link.close()
         log(f"▫ xem trước {self.name} đóng ({self.sent} khung)")
+
+
+# ================================================================ MÁY NGỦ: ghi ai đang xem · khách mở máy đang ngủ → bật lại
+# phonectl idle (cloudphoned gọi ~2 phút/lần) cho máy rảnh lâu NGỦ và đọc redroid/viewers.json (ghi mỗi 30 giây) để KHÔNG BAO GIỜ
+# tắt máy đang có người xem. Khách mở máy đang ngủ → gọi `phonectl wake TÊN`: web / app Android nhận OFFLINE "đang thức dậy" (tự thử
+# lại vài giây / lần, tự vào khi máy lên) · app PC (gặp lỗi là dừng) được GIỮ kết nối tới khi máy lên rồi vào luôn · ô xem trước của
+# máy đang ngủ đứng yên (mở danh sách máy KHÔNG đánh thức cả loạt máy).
+VIEW_F = os.path.join(B, "redroid", "viewers.json")
+PHONECTL = os.path.join(B, "phonectl.py")
+WAKE_HOLD_S = 240              # app PC chờ máy thức dậy tối đa 4 phút
+WAKE_RETRY_S = 60              # bật lại lỗi → 1 phút sau khách mở mới thử bật lần nữa
+_SEEN = {}                     # "cổng adb" → lúc có người xem gần nhất
+_WAKING = {}                   # tên máy → lần bật lại gần nhất {proc, t, ready, done, ok, msg, end}
+
+
+def mark_seen(phone, write=False):
+    port = str((phone or {}).get("port") or "")
+    if port and port != "0": _SEEN[port] = time.time()
+    if write and not SELFTEST: write_seen()
+
+
+def write_seen():
+    t = time.time()
+    for s in list(SESSIONS.values()) + [x for lst in list(PREVIEWS.values()) for x in lst]:
+        if not s.closed: mark_seen(s.phone)
+    for k in [k for k, v in _SEEN.items() if t - v > 3 * 86400]: _SEEN.pop(k, None)
+    try:
+        os.makedirs(os.path.dirname(VIEW_F), exist_ok=True)
+        with open(VIEW_F + ".tmp", "w", encoding="utf-8") as f: json.dump({"t": t, "wake": 1, "ver": BS_VER, "seen": _SEEN}, f)
+        os.replace(VIEW_F + ".tmp", VIEW_F)
+    except OSError:
+        pass                   # phonectl đang đọc đúng lúc (Windows không cho thay file đang mở) → lượt sau ghi lại
+
+
+async def seen_loop():
+    try:
+        with open(VIEW_F, encoding="utf-8") as f: _SEEN.update({str(k): float(v) for k, v in (json.load(f).get("seen") or {}).items()})
+    except Exception:
+        pass                   # chưa có file / hỏng → bắt đầu trống
+    while True:
+        write_seen()
+        await asyncio.sleep(30)
+
+
+def _pid_alive(pid):
+    if WIN:                    # KHÔNG dùng os.kill(pid, 0) trên Windows (= tắt tiến trình)
+        try:
+            h = _K32.OpenProcess(0x1000, False, int(pid))
+            if not h: return False
+            try:
+                c = ctypes.c_ulong(); ok = ctypes.windll.kernel32.GetExitCodeProcess(ctypes.c_void_p(h), ctypes.byref(c))
+                return not ok or c.value == 259                  # STILL_ACTIVE
+            finally: _K32.CloseHandle(h)
+        except Exception:
+            return True
+    try: os.kill(int(pid), 0); return True
+    except (OSError, ValueError): return False
+
+
+def _wake_lock_alive(name):
+    """`phonectl wake` (vd do bluestream TRƯỚC khi khởi động lại gọi) còn đang bật máy này?"""
+    f = os.path.join(B, "redroid", f"wake_{name}.lock")
+    try:
+        if time.time() - os.path.getmtime(f) > 900: return False
+        with open(f) as fh: pid = fh.read().strip()
+        return pid.isdigit() and _pid_alive(pid)
+    except OSError:
+        return False
+
+
+def _wake_reader(name, w):
+    p = w["proc"]; last = ""
+    try:
+        for ln in p.stdout:
+            ln = ln.strip()
+            if not ln: continue
+            last = ln
+            if ln.startswith("WAKE_READY"):
+                w["ready"] = True; log(f"☀ {name}: Android đã lên sau {int(time.time() - w['t'])} giây → khách vào được")
+    except Exception:
+        pass
+    rc = p.wait()
+    w["ok"] = rc == 0 and (w["ready"] or last.startswith("WAKE_OK"))
+    w["msg"], w["end"], w["done"] = last[:200], time.time(), True
+    log(f"☀ {name}: {'xong' if w['ok'] else 'LỖI'} — {last[:160] or f'mã {rc}'} ({int(w['end'] - w['t'])} giây)")
+
+
+def _start_wake(name):
+    t = time.time()
+    try:
+        p = subprocess.Popen([sys.executable, PHONECTL, "wake", name], cwd=B, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, creationflags=NOWIN, text=True, encoding="utf-8", errors="replace")
+    except OSError as e:
+        _WAKING[name] = {"proc": None, "t": t, "ready": False, "done": True, "ok": False, "msg": f"không chạy được phonectl: {e}", "end": t}
+        log(f"☀ {name}: không gọi được phonectl wake: {e!r}"); return
+    w = _WAKING[name] = {"proc": p, "t": t, "ready": False, "done": False, "ok": False, "msg": "", "end": 0.0}
+    log(f"☀ {name}: khách mở máy đang NGỦ → bật lại")
+    threading.Thread(target=_wake_reader, args=(name, w), daemon=True).start()
+
+
+def wake_check(phone, start=True):
+    """None = máy thức → mở bình thường. Không thì ("ngu" | "day" | "loi", giây đã chờ | lý do).
+       start=True (phiên điều khiển): máy đang ngủ → tự gọi bật lại. Xem trước (start=False) không đánh thức máy."""
+    name = phone.get("container") or ""
+    if not name: return None
+    w = _WAKING.get(name)
+    if w and not w["done"]:
+        return None if w["ready"] else ("day", int(time.time() - w["t"]))
+    ps = phones_json().get(name) or {}
+    if not (ps.get("sleep") and ps.get("hold")):        # dấu ngủ + hold = đang ngủ thật (dấu sót mà hold đã gỡ → máy thức)
+        return ("day", 0) if _wake_lock_alive(name) else None
+    if not start: return ("ngu", 0)
+    if _wake_lock_alive(name): return ("day", 0)
+    if w and not w["ok"] and time.time() - w["end"] < WAKE_RETRY_S and not w["msg"].startswith("WAKE_BUSY"):
+        return ("loi", w["msg"])                       # vừa bật lỗi → chưa thử lại ngay (WAKE_BUSY = lệnh khác đang bật máy này: chờ tiếp)
+    _start_wake(name)
+    return ("day", 0)
+
+
+def wake_msg(wk):
+    if wk[0] == "loi": return "Máy chưa bật lại được — máy chủ sẽ tự thử lại. Quá 5 phút vẫn vậy thì báo hỗ trợ."
+    s = wk[1] if isinstance(wk[1], int) else 0
+    return "💤 Máy đang thức dậy sau khi tự nghỉ (lâu không dùng) — khoảng 1 phút" + (f", đã {s} giây" if s >= 5 else "") + "."
+
+
+async def hold_for_wake(link, phone, wk):
+    """App PC gặp lỗi là dừng hẳn → GIỮ kết nối (trả lời ping: app không tưởng mất mạng) tới khi máy thức dậy rồi vào luôn."""
+    t0 = time.time()
+    while wk:
+        if wk[0] == "loi" or time.time() - t0 > WAKE_HOLD_S:
+            msg = wake_msg(wk) if wk[0] == "loi" else "Máy chưa thức dậy sau 4 phút — mở lại sau ít phút hoặc báo hỗ trợ."
+            link.send_nowait(S_ERROR, json.dumps({"code": "OFFLINE", "msg": msg}, ensure_ascii=False).encode()); await link.close(); return False
+        mark_seen(phone)
+        try:
+            t, p = await asyncio.wait_for(link.recv(), 2.5)
+            if t == C_PING: link.send_nowait(S_PONG, p[:8])
+            elif t == C_BYE: await link.close(); return False
+        except asyncio.TimeoutError:
+            pass
+        wk = await asyncio.to_thread(wake_check, phone, True)
+    ps = phones_json().get(phone.get("container") or "") or {}
+    if ps.get("port"): phone["port"] = ps["port"]          # cổng adb thật sau khi bật lại
+    log(f"☀ {phone.get('container')}: app PC chờ {int(time.time() - t0)} giây → vào máy")
+    return True
 
 
 async def serve_link(link):
@@ -2330,7 +2494,18 @@ async def serve_link(link):
             me, phone = await asyncio.to_thread(authorize, hello)
         except Deny as d:
             link.send_nowait(S_ERROR, json.dumps({"code": d.code, "msg": d.msg}, ensure_ascii=False).encode()); await link.close(); return
-        if str(hello.get("mode") or "") == "preview": await Preview(link, me, phone, hello, t_hello).run()
+        preview = str(hello.get("mode") or "") == "preview"
+        wk = None if SELFTEST else await asyncio.to_thread(wake_check, phone, not preview)
+        if wk:
+            if preview:                                    # máy ngủ: ô đứng yên (app thôi nối lại) · đang thức dậy: app thử lại sau
+                code, msg = ("PREVIEW_LIMIT", "Máy đang nghỉ — mở máy để bật lại.") if wk[0] == "ngu" else ("OFFLINE", wake_msg(wk))
+                link.send_nowait(S_ERROR, json.dumps({"code": code, "msg": msg}, ensure_ascii=False).encode()); await link.close(); return
+            if str(hello.get("client") or "") == "pc":
+                if not await hold_for_wake(link, phone, wk): return
+            else:
+                mark_seen(phone)
+                link.send_nowait(S_ERROR, json.dumps({"code": "OFFLINE", "msg": wake_msg(wk)}, ensure_ascii=False).encode()); await link.close(); return
+        if preview: await Preview(link, me, phone, hello, t_hello).run()
         else: await Session(link, me, phone, hello, t_hello).run()
     except (asyncio.IncompleteReadError, asyncio.TimeoutError, ConnectionError, EOFError, ssl.SSLError, ValueError, OSError):
         await link.close()
@@ -2342,12 +2517,12 @@ CPAPI_LOCAL = ("127.0.0.1", int(C.get("CPAPI_PORT") or 8010))
 HTTP_VERBS = (b"GET ", b"POST", b"PUT ", b"HEAD", b"OPTI", b"DELE", b"PATC")
 
 
-async def http_to_cpapi(head, reader, writer):
+async def http_to_cpapi(head, reader, writer, line=None):
     """CÔNG CỤ MÁY qua chính cổng TLS này (cài APK, clone tab, khởi động lại, chụp màn…): chuyển thẳng tới cpapi 127.0.0.1:8010.
        App không cần tên miền / Cloudflare. cpapi tự kiểm phiên đăng nhập + quyền với từng máy như khi đi qua web."""
     uw = None
     try:
-        line = head + await asyncio.wait_for(reader.readuntil(b"\r\n"), 15)
+        if line is None: line = head + await asyncio.wait_for(reader.readuntil(b"\r\n"), 15)
         parts = line.split(b" ")
         if len(parts) != 3 or not parts[1].startswith(b"/cpapi/"):
             writer.write(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"); await writer.drain(); return
@@ -2388,7 +2563,22 @@ async def on_direct(reader, writer):
         try: writer.close()
         except Exception: pass
         return
-    if head in HTTP_VERBS: return await http_to_cpapi(head, reader, writer)     # app gọi công cụ máy (HTTP)
+    if head in HTTP_VERBS:
+        try: line = head + await asyncio.wait_for(reader.readuntil(b"\r\n"), 15)
+        except Exception:
+            try: writer.close()
+            except Exception: pass
+            return
+        p = line.split(b" ")
+        if head == b"GET " and len(p) == 3 and p[1].split(b"?")[0] == b"/v2/stream":         # TRÌNH DUYỆT đi thẳng (WebSocket)
+            try: link = await WSLink.accept(reader, writer, first=line, direct=True)
+            except Exception:
+                try: writer.close()
+                except Exception: pass
+                return
+            if link: await serve_link(link)
+            return
+        return await http_to_cpapi(head, reader, writer, line=line)              # app gọi công cụ máy (HTTP)
     await serve_link(DirectLink(reader, writer, head))                          # app xem / điều khiển (BRS2)
 
 
@@ -2458,8 +2648,11 @@ def publish_loop(fp):
             if pip_ and pip_ != lip: direct.append({"host": pip_, "port": PORT})
             stream = {"direct": direct, "cert": fp, "ws": WS_URL or None, "api": API_BASE, "v": 2,
                       "preview": 1}          # có hình xem trước trực tiếp (app chỉ bật ô xem trước khi máy chủ báo có — máy chủ cũ sẽ đá phiên điều khiển)
+            wss = web_url(pip_)
+            if wss: stream["wss"] = wss       # web / iPhone đi THẲNG (play.html web-1.2 thử trước, không được thì đi "ws")
             if stream != last:
                 log(f"đường nối: trực tiếp {', '.join(d['host'] + ':' + str(d['port']) for d in direct) or '—'}"
+                    + (f" · web thẳng {wss}" if wss else "")
                     + (f" · dự phòng {WS_URL}" if WS_URL else " · (chưa có dự phòng Cloudflare STREAM_WS)"))
             sb("PATCH", f"/rest/v1/cloud_nodes?id=eq.{urllib.parse.quote(NODE_ID)}", {"stream": stream}, extra={"Prefer": "return=minimal"})
             last = stream
@@ -2468,6 +2661,373 @@ def publish_loop(fp):
         except Exception as e:
             if not warned: log("chưa báo được đường nối lên web:", e); warned = True
         time.sleep(60)
+
+
+# ================================================================ ĐƯỜNG THẲNG CHO WEB / iPhone (wss://dN.<miền>:PORT/v2/stream)
+# Trình duyệt chỉ nói WebSocket + chứng chỉ thật → trước đây web/iPhone luôn đi vòng Cloudflare (đo 11/11: 7,5 hình/s, bỏ 13–29 %
+# khung) trong khi app đi thẳng (27 hình/s, bỏ 0 %). Giờ CHÍNH cổng phát hình của app (STREAM_PORT, modem đã mở) nhận luôn trình
+# duyệt: tên dN.<miền> (bản ghi A, mây XÁM) trỏ IP nhà mạng (tự cập nhật khi IP đổi) + chứng chỉ Let's Encrypt (DNS-01 bằng mã
+# Cloudflare CF_DNS_TOKEN, tự gia hạn). Trình duyệt gửi SNI dN.<miền> → chứng chỉ thật; app nối bằng IP (không SNI) → chứng chỉ tự
+# ký cũ (app vẫn kiểm mã SHA-256). Chỉ báo web (stream.wss) khi có chứng chỉ, tên đã trỏ đúng IP và cổng modem đã mở (có máy ở
+# ngoài mạng nối thẳng trong 7 ngày). Web thử đường thẳng trước 3,5 giây, không được thì đi Cloudflare như cũ.
+# Bật lần đầu (hỏi mã Cloudflare + đồng ý điều khoản Let's Encrypt):  python bluestream.py --webdirect      Tắt: WEB_DIRECT=0
+CF_TOKEN = (C.get("CF_DNS_TOKEN") or "").strip()
+CF_API = (C.get("CF_API") or "https://api.cloudflare.com/client/v4").rstrip("/")
+WEB_DIRECT = str(C.get("WEB_DIRECT", "1")).strip().lower() not in ("0", "off", "false", "no")
+LE_AGREE = str(C.get("LE_AGREE", "")).strip() == "1"
+ACME_DIR = (C.get("ACME_DIRECTORY") or "https://acme-v02.api.letsencrypt.org/directory").strip()
+DOH_URL = (C.get("DOH_URL") or "https://cloudflare-dns.com/dns-query").strip()
+ACME_TXT_WAIT = float(C.get("ACME_TXT_WAIT") or 10)
+WEB_PROOF = 7 * 86400                # cổng modem coi là đã mở nếu có máy ngoài mạng nối thẳng trong 7 ngày
+
+
+def _zone_of(h):
+    p = [x for x in (h or "").split(":")[0].split(".") if x]
+    n = 3 if len(p) >= 3 and len(p[-1]) == 2 and p[-2] in ("com", "net", "org", "edu", "gov", "co", "ac", "info", "biz") else 2
+    return ".".join(p[-n:]).lower() if len(p) >= n else ""
+
+
+ZONE = (C.get("CF_ZONE") or _zone_of(urllib.parse.urlparse(API_BASE).hostname or "") or "cloudblue.vn").strip().lower()
+WEB_HOST = (C.get("WEB_DIRECT_HOST") or ("d" + (re.sub(r"\D", "", NODE_ID) or re.sub(r"[^a-z0-9-]", "", NODE_ID.lower())) + "." + ZONE)).strip().lower()
+LE_DIR = os.path.join(B, "le")
+LE_ACC = os.path.join(LE_DIR, "account-key.pem")
+LE_KEY = os.path.join(LE_DIR, WEB_HOST + "-key.pem")
+LE_CRT = os.path.join(LE_DIR, WEB_HOST + "-fullchain.pem")
+WEB = {"ctx": None, "mtime": 0.0, "dns_ip": None, "dns_t": 0.0, "err": ""}
+
+
+class CfError(RuntimeError):
+    pass
+
+
+class AcmeError(RuntimeError):
+    pass
+
+
+def _cf_msg(d):
+    return "; ".join(f"{x.get('code')}: {x.get('message')}" for x in (d.get("errors") or []) if isinstance(x, dict))
+
+
+def cf_api(method, path, body=None):
+    req = urllib.request.Request(CF_API + path, method=method, data=None if body is None else json.dumps(body).encode(),
+                                 headers={"Authorization": "Bearer " + CF_TOKEN, "Content-Type": "application/json",
+                                          "User-Agent": "CloudBlue-bluestream"})
+    try:
+        with urllib.request.urlopen(req, timeout=25) as r: d = json.loads(r.read().decode() or "{}")
+    except urllib.error.HTTPError as e:
+        try: d = json.loads(e.read().decode() or "{}")
+        except Exception: d = {}
+        raise CfError("Cloudflare " + (_cf_msg(d) or f"HTTP {e.code}")) from None
+    if not d.get("success"): raise CfError("Cloudflare " + (_cf_msg(d) or "báo lỗi"))
+    return d.get("result")
+
+
+_CF_Z = {}
+
+
+def cf_zone():
+    if ZONE not in _CF_Z:
+        r = cf_api("GET", "/zones?name=" + urllib.parse.quote(ZONE))
+        if not r: raise CfError(f"mã Cloudflare không thấy tên miền {ZONE} (cần quyền Zone · Zone · Read + Zone · DNS · Edit cho {ZONE})")
+        _CF_Z[ZONE] = r[0]["id"]
+    return _CF_Z[ZONE]
+
+
+def web_dns(ip):
+    """dN.<miền> → IP nhà mạng (bản ghi A, mây XÁM: trình duyệt nói thẳng với máy chủ). True = vừa đổi."""
+    body = {"type": "A", "name": WEB_HOST, "content": ip, "ttl": 60, "proxied": False}
+    recs = cf_api("GET", f"/zones/{cf_zone()}/dns_records?type=A&name={urllib.parse.quote(WEB_HOST)}") or []
+    if recs and recs[0].get("content") == ip and not recs[0].get("proxied"): return False
+    if recs: cf_api("PUT", f"/zones/{cf_zone()}/dns_records/{recs[0]['id']}", body)
+    else: cf_api("POST", f"/zones/{cf_zone()}/dns_records", body)
+    return True
+
+
+def _b64u(b):
+    return base64.urlsafe_b64encode(b).rstrip(b"=").decode()
+
+
+def _write_private(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "wb") as f: f.write(data)
+    os.replace(path + ".tmp", path)
+
+
+def _ec_key(path):
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    if os.path.isfile(path):
+        with open(path, "rb") as f: return serialization.load_pem_private_key(f.read(), None)
+    k = ec.generate_private_key(ec.SECP256R1())
+    _write_private(path, k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    return k
+
+
+def _acme_why(d):
+    errs = [d.get("error")] + [c.get("error") for c in d.get("challenges") or []]
+    msg = "; ".join(f"{(e.get('type') or '').split(':')[-1]} {e.get('detail') or ''}".strip() for e in errs if isinstance(e, dict))
+    if "caa" in msg.lower(): msg += f" → tên miền có bản ghi CAA chặn: thêm CAA  0 issue \"letsencrypt.org\"  cho {ZONE}"
+    return msg or f"trạng thái {d.get('status')}"
+
+
+class Acme:
+    """ACME v2 (RFC 8555) tối giản: khoá EC P-256 (ES256), chỉ DNS-01. Chỉ cần thư viện cryptography (đã có để tạo chứng chỉ app)."""
+    def __init__(self, key, directory=None):
+        self.key, self.kid, self.nonce = key, None, None
+        with urllib.request.urlopen(urllib.request.Request(directory or ACME_DIR, headers=self._h()), timeout=30) as r:
+            self.dir = json.loads(r.read().decode())
+
+    @staticmethod
+    def _h(extra=None):
+        h = {"User-Agent": "CloudBlue-bluestream/" + BS_VER}
+        h.update(extra or {})
+        return h
+
+    def jwk(self):
+        n = self.key.public_key().public_numbers()
+        return {"crv": "P-256", "kty": "EC", "x": _b64u(n.x.to_bytes(32, "big")), "y": _b64u(n.y.to_bytes(32, "big"))}
+
+    def thumbprint(self):                # RFC 7638: các khoá bắt buộc, xếp theo tên, không khoảng trắng
+        return _b64u(hashlib.sha256(json.dumps(self.jwk(), sort_keys=True, separators=(",", ":")).encode()).digest())
+
+    def _new_nonce(self):
+        with urllib.request.urlopen(urllib.request.Request(self.dir["newNonce"], method="HEAD", headers=self._h()), timeout=30) as r:
+            return r.headers["Replay-Nonce"]
+
+    def post(self, url, payload):
+        """payload None = POST-as-GET. Trả (headers, bytes)."""
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+        for tries in range(4):
+            nonce, self.nonce = (self.nonce or self._new_nonce()), None
+            prot = {"alg": "ES256", "nonce": nonce, "url": url}
+            if self.kid: prot["kid"] = self.kid
+            else: prot["jwk"] = self.jwk()
+            p64 = "" if payload is None else _b64u(json.dumps(payload).encode())
+            h64 = _b64u(json.dumps(prot).encode())
+            r_, s_ = decode_dss_signature(self.key.sign(f"{h64}.{p64}".encode(), ec.ECDSA(hashes.SHA256())))
+            body = json.dumps({"protected": h64, "payload": p64, "signature": _b64u(r_.to_bytes(32, "big") + s_.to_bytes(32, "big"))}).encode()
+            req = urllib.request.Request(url, data=body, method="POST", headers=self._h({"Content-Type": "application/jose+json"}))
+            try:
+                with urllib.request.urlopen(req, timeout=40) as r:
+                    self.nonce = r.headers.get("Replay-Nonce")
+                    return r.headers, r.read()
+            except urllib.error.HTTPError as e:
+                self.nonce = e.headers.get("Replay-Nonce")
+                raw = e.read()
+                try: err = json.loads(raw.decode() or "{}")
+                except Exception: err = {}
+                if str(err.get("type", "")).endswith(":badNonce") and tries < 3: continue
+                raise AcmeError(f"Let's Encrypt {e.code}: {err.get('detail') or raw[:200]!r}") from None
+        raise AcmeError("Let's Encrypt: mã dùng một lần (nonce) sai liên tục")
+
+    def get(self, url):
+        return json.loads(self.post(url, None)[1].decode() or "{}")
+
+    def poll(self, url, ok, bad=("invalid",), timeout=120):
+        t0 = time.time()
+        while True:
+            d = self.get(url)
+            if d.get("status") in ok: return d
+            if d.get("status") in bad: raise AcmeError("Let's Encrypt từ chối: " + _acme_why(d))
+            if time.time() - t0 > timeout: raise AcmeError(f"Let's Encrypt: chờ quá {timeout} giây (trạng thái {d.get('status')})")
+            time.sleep(3)
+
+
+def _wait_txt(name, val):
+    """Chờ bản ghi TXT hiện trên DNS công cộng (DoH), rồi chờ thêm cho mọi máy chủ tên của Cloudflare."""
+    t0 = time.time()
+    while time.time() - t0 < 90:
+        try:
+            u = f"{DOH_URL}?name={urllib.parse.quote(name)}&type=TXT"
+            with urllib.request.urlopen(urllib.request.Request(u, headers={"Accept": "application/dns-json"}), timeout=10) as r:
+                d = json.loads(r.read().decode() or "{}")
+            if any(val in str(x.get("data", "")) for x in d.get("Answer") or []): break
+        except Exception:
+            pass
+        time.sleep(4)
+    time.sleep(ACME_TXT_WAIT)
+
+
+def le_issue():
+    """Xin chứng chỉ Let's Encrypt cho WEB_HOST (DNS-01: bản ghi TXT tạm qua mã Cloudflare) → le/<tên>-fullchain.pem + -key.pem."""
+    from cryptography import x509
+    from cryptography.x509.oid import NameOID
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    if not LE_AGREE: raise AcmeError("chưa đồng ý điều khoản Let's Encrypt — chạy 1 lần: python bluestream.py --webdirect")
+    a = Acme(_ec_key(LE_ACC))
+    h, _ = a.post(a.dir["newAccount"], {"termsOfServiceAgreed": True})
+    a.kid = h["Location"]
+    h, b = a.post(a.dir["newOrder"], {"identifiers": [{"type": "dns", "value": WEB_HOST}]})
+    order_url, order = h["Location"], json.loads(b.decode())
+    made = []                                        # bản ghi TXT tạm → xoá sau cùng
+    try:
+        todo = []
+        for az_url in order.get("authorizations") or []:
+            az = a.get(az_url)
+            if az.get("status") == "valid": continue
+            ch = next((c for c in az.get("challenges") or [] if c.get("type") == "dns-01"), None)
+            if not ch: raise AcmeError("Let's Encrypt không cho kiểu xác minh DNS-01")
+            name = "_acme-challenge." + az["identifier"]["value"]
+            val = _b64u(hashlib.sha256(f"{ch['token']}.{a.thumbprint()}".encode()).digest())
+            made.append(cf_api("POST", f"/zones/{cf_zone()}/dns_records", {"type": "TXT", "name": name, "content": val, "ttl": 60})["id"])
+            todo.append((az_url, ch, name, val))
+        for az_url, ch, name, val in todo:
+            _wait_txt(name, val)
+            a.post(ch["url"], {})
+            a.poll(az_url, ok=("valid",), bad=("invalid", "deactivated", "expired", "revoked"))
+        a.poll(order_url, ok=("ready", "valid"))
+        k = rsa.generate_private_key(public_exponent=65537, key_size=2048)       # RSA: chuỗi R1x → ISRG Root X1, máy / trình duyệt cũ cũng tin
+        csr = (x509.CertificateSigningRequestBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, WEB_HOST)]))
+               .add_extension(x509.SubjectAlternativeName([x509.DNSName(WEB_HOST)]), critical=False).sign(k, hashes.SHA256()))
+        a.post(order["finalize"], {"csr": _b64u(csr.public_bytes(serialization.Encoding.DER))})
+        done = a.poll(order_url, ok=("valid",))
+        pem = a.post(done["certificate"], None)[1]
+        if b"BEGIN CERTIFICATE" not in pem: raise AcmeError("Let's Encrypt trả về chứng chỉ không đọc được")
+        _write_private(LE_KEY, k.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+        _write_private(LE_CRT, pem)
+    finally:
+        for rid in made:
+            try: cf_api("DELETE", f"/zones/{cf_zone()}/dns_records/{rid}")
+            except Exception: pass
+
+
+def le_cert_days():
+    """(ngày còn lại, tổng số ngày) của chứng chỉ đường thẳng web; None = chưa có / hỏng / sai tên."""
+    try:
+        from cryptography import x509
+        with open(LE_CRT, "rb") as f: c = x509.load_pem_x509_certificate(f.read())
+        names = [n.lower() for n in c.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.DNSName)]
+        if WEB_HOST not in names: return None
+        utc = datetime.timezone.utc
+        na = getattr(c, "not_valid_after_utc", None) or c.not_valid_after.replace(tzinfo=utc)
+        nb = getattr(c, "not_valid_before_utc", None) or c.not_valid_before.replace(tzinfo=utc)
+        return (na - datetime.datetime.now(utc)).total_seconds() / 86400, (na - nb).total_seconds() / 86400
+    except Exception:
+        return None
+
+
+def le_need_renew():
+    d = le_cert_days()
+    return d is None or d[0] < max(2.0, min(30.0, d[1] / 3))
+
+
+def web_ctx_load():
+    """Nạp (lại) chứng chỉ thật cho SNI dN.<miền>; file đang ghi dở / hỏng / hết hạn → giữ bản đang dùng."""
+    try: m = os.path.getmtime(LE_CRT)
+    except OSError: return WEB["ctx"]
+    if WEB["ctx"] is not None and m == WEB["mtime"]: return WEB["ctx"]
+    d = le_cert_days()
+    if not d or d[0] <= 0: return WEB["ctx"]
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.minimum_version = ssl.TLSVersion.TLSv1_2
+        ctx.load_cert_chain(LE_CRT, LE_KEY)
+    except (OSError, ssl.SSLError):
+        return WEB["ctx"]
+    WEB["ctx"], WEB["mtime"] = ctx, m
+    return ctx
+
+
+def sni_pick(sslobj, name, ctx):
+    """Trình duyệt hỏi dN.<miền> → chứng chỉ Let's Encrypt; còn lại (app nối bằng IP, không SNI) → chứng chỉ tự ký app đã biết mã."""
+    if name and WEB["ctx"] is not None and name.lower().rstrip(".") == WEB_HOST:
+        sslobj.context = WEB["ctx"]
+
+
+def web_url(pip_=None):
+    """wss://dN.<miền>:PORT/v2/stream khi đường thẳng web dùng được — None thì web đi Cloudflare như cũ."""
+    if not (WEB_DIRECT and CF_TOKEN) or WEB["ctx"] is None or not WEB["dns_ip"]: return None
+    if pip_ and pip_ != WEB["dns_ip"]: return None                        # IP nhà mạng vừa đổi, tên chưa trỏ lại
+    if time.time() - _direct_ok_t > WEB_PROOF: return None               # chưa chắc cổng modem đã mở
+    return f"wss://{WEB_HOST}:{PORT}/v2/stream"
+
+
+def web_direct_loop():
+    """15 phút / lần: IP nhà mạng đổi → trỏ lại dN.<miền>; chứng chỉ sắp hết (còn < 1/3) → xin mới. Lỗi → lùi 30 phút … 12 giờ."""
+    fails = 0
+    while True:
+        wait = 900
+        try:
+            ip = public_ip()
+            if ip and (ip != WEB["dns_ip"] or time.time() - WEB["dns_t"] > 6 * 3600):
+                if web_dns(ip): log(f"đường thẳng web: {WEB_HOST} → {ip} (mây xám)")
+                WEB["dns_ip"], WEB["dns_t"] = ip, time.time()
+            if le_need_renew():
+                if not LE_AGREE: raise AcmeError("chưa đồng ý điều khoản Let's Encrypt — chạy 1 lần: python bluestream.py --webdirect")
+                log(f"đường thẳng web: xin chứng chỉ Let's Encrypt cho {WEB_HOST}…")
+                le_issue()
+                d = le_cert_days()
+                log(f"đường thẳng web: ✓ chứng chỉ {WEB_HOST} còn {int(d[0]) if d else '?'} ngày")
+            web_ctx_load()
+            fails, WEB["err"] = 0, ""
+        except Exception as e:
+            fails += 1; wait = min(12 * 3600, 1800 * 2 ** (fails - 1))
+            if str(e) != WEB["err"]: log(f"đường thẳng web: ✗ {e} — thử lại sau {wait // 60} phút")
+            WEB["err"] = str(e)
+        time.sleep(wait)
+
+
+def set_conf(key, val):
+    """Ghi KEY=giá trị vào cloudphone.conf (giữ nguyên các dòng khác)."""
+    f = os.path.join(B, "cloudphone.conf")
+    try:
+        with open(f, encoding="utf-8-sig") as fh: lines = fh.read().splitlines()
+    except FileNotFoundError:
+        lines = []
+    out, done = [], False
+    for ln in lines:
+        if not ln.lstrip().startswith("#") and ln.split("=", 1)[0].strip() == key:
+            if not done: out.append(f"{key}={val}"); done = True
+            continue
+        out.append(ln)
+    if not done: out.append(f"{key}={val}")
+    with open(f + ".tmp", "w", encoding="utf-8") as fh: fh.write("\n".join(out) + "\n")
+    os.replace(f + ".tmp", f)
+
+
+def cmd_webdirect():
+    """Bật / kiểm đường thẳng cho web + iPhone trên máy chủ này (PowerShell Admin, chạy tay): mã Cloudflare → điều khoản Let's
+       Encrypt (người dùng tự gõ đồng ý) → trỏ dN.<miền> → xin chứng chỉ → nhắc mở cổng modem. Đã bật rồi thì chỉ kiểm."""
+    global CF_TOKEN, LE_AGREE
+    import getpass
+    print(f"ĐƯỜNG THẲNG CHO WEB / iPhone — máy chủ {NODE_ID}: wss://{WEB_HOST}:{PORT}/v2/stream", flush=True)
+    if not WEB_DIRECT: print("Đang tắt (WEB_DIRECT=0 trong cloudphone.conf) — xoá dòng đó để bật."); return 0
+    if not CF_TOKEN or "--ma-moi" in sys.argv:
+        print(f"Cần 1 mã Cloudflare (API Token) quyền Zone · DNS · Edit + Zone · Zone · Read cho {ZONE} — cách tạo: tài liệu, Bước 2.")
+        print("Dán mã rồi bấm Enter. Mã KHÔNG hiện ra khi dán (bình thường). Enter trống = bỏ qua.", flush=True)
+        try: tok = getpass.getpass("Mã Cloudflare: ").strip()
+        except (EOFError, KeyboardInterrupt): tok = ""
+        if not tok: print("→ Bỏ qua: web vẫn đi Cloudflare như cũ."); return 1
+        CF_TOKEN = tok; _CF_Z.clear()
+    try:
+        cf_zone(); print(f"✓ Mã Cloudflare dùng được cho {ZONE}")
+    except Exception as e:
+        print(f"✗ Mã Cloudflare chưa dùng được: {e}")
+        print("   Tạo lại mã theo Bước 2 rồi chạy lại:  python bluestream.py --webdirect --ma-moi"); return 2
+    if (C.get("CF_DNS_TOKEN") or "").strip() != CF_TOKEN: set_conf("CF_DNS_TOKEN", CF_TOKEN)
+    if not LE_AGREE:
+        print("Chứng chỉ HTTPS miễn phí do Let's Encrypt cấp. Điều khoản: https://letsencrypt.org/repository/")
+        try: ans = input("Gõ  dong y  rồi Enter nếu bạn đồng ý (Enter trống = bỏ qua): ").strip().lower()
+        except (EOFError, KeyboardInterrupt): ans = ""
+        if ans not in ("dong y", "đồng ý", "dongy", "dong ý", "đồng y"): print("→ Chưa đồng ý: chưa bật đường thẳng web."); return 3
+        set_conf("LE_AGREE", "1"); LE_AGREE = True
+    ip = public_ip()
+    if not ip: print("✗ Không lấy được IP nhà mạng — máy có vào được Internet không?"); return 4
+    try: print(f"✓ {WEB_HOST} → {ip} (mây xám)" + ("" if web_dns(ip) else " — đã đúng từ trước"))
+    except Exception as e: print(f"✗ Trỏ tên {WEB_HOST} lỗi: {e}"); return 5
+    if le_need_renew():
+        print("Đang xin chứng chỉ Let's Encrypt (thường 30–90 giây)…", flush=True)
+        try: le_issue()
+        except Exception as e: print(f"✗ Xin chứng chỉ lỗi: {e}"); return 6
+    d = le_cert_days()
+    print(f"✓ Chứng chỉ {WEB_HOST} còn {int(d[0])} ngày (máy chủ tự gia hạn)" if d else "✗ Chứng chỉ chưa dùng được")
+    lip = lan_ip() or "?"
+    if time.time() - _direct_ok_t < WEB_PROOF: print(f"✓ Cổng modem TCP {PORT} đã mở (đã có máy ở ngoài mạng nối thẳng)")
+    else: print(f"⚠ Chưa thấy máy ở ngoài mạng nối thẳng vào cổng {PORT}: mở cổng modem TCP {PORT} → {lip} (web tự đi thẳng khi cổng mở)")
+    print(f"MODEM: TCP {PORT} -> {lip}")
+    return 0 if d else 7
 
 
 def firewall():
@@ -2963,6 +3523,8 @@ async def main():
     firewall()
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER); ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     ctx.load_cert_chain(CERT, CKEY)
+    ctx.sni_callback = sni_pick                           # trình duyệt hỏi dN.<miền> → chứng chỉ Let's Encrypt (đường thẳng web)
+    web_ctx_load()
     srv1 = await asyncio.start_server(on_direct, "0.0.0.0", PORT, ssl=ctx, limit=1 << 20)
     srv2 = await asyncio.start_server(on_ws, "127.0.0.1", WS_PORT, limit=1 << 20)
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
@@ -2970,6 +3532,9 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
+    if not SELFTEST and WEB_DIRECT and CF_TOKEN: threading.Thread(target=web_direct_loop, daemon=True).start()
+    elif not SELFTEST: log(f"đường thẳng web: chưa bật — chạy 1 lần: python bluestream.py --webdirect (web / iPhone đang đi Cloudflare)")
+    seen_task = None if SELFTEST else asyncio.create_task(seen_loop())          # ghi máy nào đang có người xem (máy ngủ) — giữ biến: task không bị dọn
     if not SELFTEST and UPNP: threading.Thread(target=upnp_loop, daemon=True).start()        # tự mở cổng TCP PORT trên modem (UPnP)
     elif not SELFTEST: log(f"UPnP: tắt (UPNP=0) — nhớ mở cổng TCP {PORT} về máy này bằng tay trong trang modem")
     async with srv1, srv2:
@@ -2987,6 +3552,8 @@ if __name__ == "__main__":
         sys.exit(captest(_a[0], _a[1] if len(_a) > 1 else None))
     if "--upnp" in sys.argv:                                     # thử mở cổng trên modem bằng UPnP (không chạy máy chủ)
         sys.exit(upnp_cli())
+    if "--webdirect" in sys.argv:                                # bật / kiểm đường thẳng cho web + iPhone (mã Cloudflare, chứng chỉ)
+        sys.exit(cmd_webdirect())
     if "--netcheck" in sys.argv:                                 # chẩn đoán đường nối thẳng (+ --fix: tự đổi sang cổng mở được)
         sys.exit(netcheck(fix="--fix" in sys.argv))
     if WIN:
