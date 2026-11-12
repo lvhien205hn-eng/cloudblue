@@ -59,6 +59,7 @@ def win_caps(st):
        CPU dùng chung (72 luồng) → chỉ ngừng khi CPU thật đã nóng. Trả (đã cấp RAM, đã cấp CPU, trần RAM, trần CPU)."""
     a_r = sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st); a_c = sum(min(float(p.get("cpu", 0)), MEMU_MAX_CPU) for p in st)
     t_r, av_r = meminfo(); cpu_t = os.cpu_count() or 1
+    av_r -= sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st if p.get("sleep") and p.get("hold"))   # máy NGỦ bật lại khi khách mở → chừa RAM, không bán
     c_r = a_r + max(0.0, av_r - WIN_RESERVE)
     c_c = a_c + cpu_t * CPU_OVER
     c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))          # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
@@ -544,7 +545,7 @@ def heartbeat():
     if WIN: a_ram, a_cpu, c_ram, c_cpu = win_caps(st)   # Windows: sức chứa theo RAM trống thật, CPU dùng chung
     metrics = {"cpu_pct": cp_now, "cpu_avg5": avg5, "cpu_over": CPU_OVER, "cpu_busy_pct": CPU_BUSY, "cpu_busy": busy, "ram_over": RAM_OVER, "ram_pct": ram_pct, "ram_busy_pct": RAM_BUSY, "ram_busy": ram_busy, "disk_busy": disk_busy, "disk_busy_pct": DISK_BUSY, "load": [round(x, 2) for x in os.getloadavg()], "cpu_temp": cpu_temp(),
                "ram_used": round(ram_t - ram_avail, 1), "gpus": gpus(), "disk_data": disk(DATA_ROOT), "disk_root": disk("/"),
-               "running": running, "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
+               "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -596,6 +597,11 @@ def sec_tick():
             try: notify(("🚨" if r.get("level") == "crit" else "⚠️") + " <b>BẢO MẬT CLOUDBLUE</b>\n" + msg + "\n👉 Admin › 🛡️ Bảo mật")
             except Exception: pass
 
+def asleep(name):
+    """Máy đang NGỦ (phonectl idle tắt vì lâu không dùng; khách mở máy → phát hình bật lại): dấu ngủ + hold."""
+    q = phone_state(name) or {}
+    return bool(q.get("sleep") and q.get("hold"))
+
 def do_locks():
     """Máy admin khoá → tắt; hết hạn khoá → tự mở khoá; máy đang chạy mà bị tắt ngoài ý muốn → bật lại."""
     rows = sb("GET", "cloud_phones?status=eq.active&select=id,container,locked,locked_until") or []
@@ -610,9 +616,26 @@ def do_locks():
         on = running(name)
         if lk and on:
             print(f"[khoá] tắt {name}"); phonectl(["stop", name])
+        elif not lk and not on and asleep(name):
+            continue                        # máy NGỦ (tự tắt vì lâu không dùng) → khách mở máy thì phát hình bật lại
         elif not lk and not on:
             print(f"[bật lại] {name}")
             phonectl(["start", name])
+
+IDLE_ON = WIN and _f("IDLE_STOP_MIN", 30) > 0          # Windows: máy rảnh lâu tự NGỦ (phonectl idle) · IDLE_STOP_MIN=0 → tắt
+_idle = {"th": None, "old": 0.0, "skip": 0.0}
+def idle_job():
+    """~2 phút/lần: máy khách đứng ở MÀN HÌNH CHÍNH, không ai xem, CPU thấp liền IDLE_STOP_MIN phút → phonectl cho NGỦ (tắt êm,
+       giữ dữ liệu). Máy treo game không bao giờ bị tắt. Khách mở máy → bluestream gọi phonectl wake bật lại."""
+    try: r = subprocess.run(["python3", PHONECTL, "idle"], capture_output=True, text=True, timeout=900)
+    except Exception as e: print("lỗi cho máy ngủ:", e); return
+    o = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 2 and "invalid choice" in o:                  # phonectl.py cũ chưa có lệnh idle
+        if time.time() - _idle["old"] > 6 * 3600: _idle["old"] = time.time(); print("[ngủ] phonectl.py bản cũ chưa có lệnh idle — tải phonectl.py mới")
+        return
+    for ln in o.splitlines():
+        if ln.startswith("NGU"): print("[ngủ]", ln.strip())
+        elif ln.startswith("IDLE_SKIP") and time.time() - _idle["skip"] > 3600: _idle["skip"] = time.time(); print("[ngủ]", ln.strip())
 
 _cancel_try = {}          # máy xoá chưa được: {id đơn: (số lần lỗi, lúc được thử lại)}
 def do_cancel(row):
@@ -756,6 +779,7 @@ if __name__ == "__main__":
     except Exception as e: print("lỗi memfix:", e)
     print(f"Server: {NODE_ID} ({'CHÍNH' if PRIMARY else 'phụ'}) · {BASE}")
     e = engine(); print(f"Giả lập: {e['emu'] or '?'} · nhận đơn Android: {', '.join(e['androids']) or 'mọi bản'}")
+    if WIN: print(f"Máy rảnh tự ngủ (IDLE_STOP_MIN={_f('IDLE_STOP_MIN', 30):g}): " + ("máy ở màn hình chính, không ai xem, CPU thấp liền ngần ấy phút → tắt; khách mở máy tự bật lại" if IDLE_ON else "TẮT"))
     adopt_old()
     n = 0; last = 0.0; _rootjob = [None]
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
@@ -773,6 +797,9 @@ if __name__ == "__main__":
         if n % 2 == 0:                      # ~30 giây: khoá / mở khoá / bật lại máy (báo cáo tài nguyên chạy ở luồng riêng _hb_loop)
             try: do_locks()
             except Exception as e: print("lỗi khoá máy:", e)
+        if IDLE_ON and n % 8 == 3:          # ~2 phút: máy rảnh lâu → cho NGỦ (luồng riêng, không chặn việc nhận đơn)
+            if _idle["th"] is None or not _idle["th"].is_alive():
+                _idle["th"] = threading.Thread(target=idle_job, daemon=True); _idle["th"].start()
         if n % 4 == 1:                      # ~1 phút: 🛡️ bot gác bảo mật — nhắn Telegram cảnh báo, quét 5 phút / lần
             try: sec_tick()
             except Exception as e: print("lỗi bot gác:", e)
