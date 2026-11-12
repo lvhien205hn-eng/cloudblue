@@ -530,6 +530,7 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .vps-opts button.on{border-color:var(--gold);background:rgba(201,215,238,.1)}
 .vps-opts button.on b{color:var(--gold-hi)}
 .vps-opts.one{grid-template-columns:1fr}
+.vps-opts button[aria-disabled="true"]{cursor:default}
 .vps-more{display:grid;gap:12px}
 .xo-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .xo-scope{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
@@ -1762,8 +1763,9 @@ html[data-theme] .hero.m3h>.notice{grid-column:1/-1}
   html[data-theme] .hero.m3h h1{font-size:33px}
   html[data-theme] .hero.m3h p#h-desc{font-size:15px;margin-bottom:16px}
   html[data-theme] .hero.m3h .cta .btn{flex:1 1 140px;justify-content:center}
-  .m3h-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
-  .m3h-facts div{padding:9px 10px;border-radius:12px}
+  .m3h-facts{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+  .m3h-facts div{padding:9px 10px;border-radius:12px;grid-column:span 2}
+  .m3h-facts div.hf-n{grid-column:span 3}
   .m3h-facts dt{font-size:11px}.m3h-facts dd{font-size:15px;gap:3px;flex-wrap:wrap}.m3h-facts dd small{font-size:11px}.m3h-facts dd svg{width:18px}
 }
 
@@ -1999,6 +2001,8 @@ body.past-hero .m3-col{animation-play-state:paused}
       <div><dt data-i18n="f_price">Giá thuê từ</dt><dd id="hf-price">…</dd></div>
       <div><dt data-i18n="f_and">Bản Android</dt><dd id="hf-and">9 · 12 · 15</dd></div>
       <div><dt data-i18n="f_srv">Máy chủ</dt><dd><svg viewBox="0 0 120 84" aria-hidden="true"><use href="#i-flag"/></svg><span data-i18n="f_srv_v">Việt Nam</span></dd></div>
+      <div class="hf-n" id="hf-users-w" hidden><dt data-i18n="f_users">Đã đăng ký</dt><dd id="hf-users">…</dd></div>
+      <div class="hf-n" id="hf-buyers-w" hidden><dt data-i18n="f_buyers">Đã mua</dt><dd id="hf-buyers">…</dd></div>
     </dl>
     <div style="display:none"><b id="st-a"></b><b id="st-b"></b></div>
   </div>
@@ -2397,7 +2401,7 @@ body.past-hero .m3-col{animation-play-state:paused}
       <details id="xo-details" style="border:1px solid var(--line);border-radius:14px;background:var(--panel)">
         <summary style="cursor:pointer;list-style:none;padding:14px 18px;font-weight:800;font-size:15px;color:#cfe0ff">🧩 Mục chọn thêm khi khách mua VPS <span class="hint" style="font-weight:500">(VD: Hệ điều hành Windows / Linux, bản Windows — bấm để mở/đóng)</span></summary>
         <div class="f" id="xo-box" style="border:0;border-top:1px solid var(--line);border-radius:0 0 14px 14px">
-          <div class="hint full">Mỗi mục hiện thành 1 hàng nút chọn trong bảng <b>Mua VPS</b>, nằm trên "Cách nhận VPS". Mục chỉ có <b>1 lựa chọn</b> = chỉ để khách xem (tự chọn sẵn). Khách chọn gì sẽ được ghi vào <b>tin nhắn khách gửi shop</b> sau khi thanh toán, cùng mã PIN.</div>
+          <div class="hint full">Mỗi mục hiện thành 1 hàng nút trong bảng <b>Mua VPS</b>, nằm trên "Cách nhận VPS". Các mục <b>gộp chung</b>: khách chỉ chọn <b>1 lựa chọn trong tất cả các mục</b> (VD mục Windows 10 Pro + mục debian13 → khách chọn 1 bản), bấm lại để bỏ chọn. Muốn khách chọn <b>thêm</b> ở một mục (VD Phần mềm cài sẵn) → tích <b>Mục riêng</b> ở mục đó. Khách chọn gì sẽ được ghi vào <b>tin nhắn khách gửi shop</b> sau khi thanh toán, cùng mã PIN.</div>
           <div class="full" id="xo-list" style="display:grid;gap:12px"></div>
           <div class="acts full"><button class="btn ghost sm" type="button" id="xo-add">+ Thêm mục</button><button class="btn" type="button" id="xo-save">💾 Lưu mục chọn thêm</button><button class="btn ghost sm" type="button" id="xo-reset">↺ Bỏ thay đổi</button><span class="hint" id="xo-msg"></span></div>
         </div>
@@ -3732,7 +3736,7 @@ const show = (id, on = true) => { $(id).hidden = !on; };
 let LANG = "en"; try { const _sv = localStorage.getItem("br_lang"); if (_sv) LANG = _sv === "vi" ? "vi" : "en"; } catch (e) {}
 const EN = {
   rail_h:"24/7 support", vn_t:"Vietnamese brand · servers in Vietnam", cb_tag:"VIETNAM CLOUD PHONE",
-  products:"Products", m3_rent:"Rent a phone", f_price:"Rent from", f_and:"Android", f_srv:"Servers", f_srv_v:"Vietnam",
+  products:"Products", m3_rent:"Rent a phone", f_price:"Rent from", f_and:"Android", f_srv:"Servers", f_srv_v:"Vietnam", f_users:"Signed up", f_buyers:"Bought",
   vid_h:"See CloudBlue in 14 seconds", vid_a:"Wall of phones", vid_b:"Day & night", mine_h:"Your cloud phones", mine_all:"Manage all", mine_new:"+ Rent another",
   vid_s:"Plays automatically (muted) when you scroll here — tap “Sound on” to listen.", vid_snd:"Sound on", st_h:"Rent a phone in 3 steps", st_s:"Your balance works for every product.",
   st1:"Top up your balance", st1d:"Bank transfer by QR — credited in about a minute. USDT and Litecoin too.", st2:"Choose & rent", st2d:"Pick Android version, RAM, CPU and days — ready in 2–3 minutes.",
@@ -4075,6 +4079,19 @@ function m3Facts() {
   if ($("hf-and")) $("hf-and").textContent = av.join(" · ");
   if ($("st-price")) $("st-price").innerHTML = pr ? esc(fmt(cv(cpPerDay(pr.min_ram, pr.min_cpu)))) + L("/ngày", "/day") : "…";
   const sa = $("st-app"); if (sa) sa.innerHTML = m3AppBtn().replace('class="btn ghost appdl"', 'class="btn ghost"') || `<a class="btn ghost" href="#shop">${L("Xem sản phẩm", "See products")}</a>`;
+  heroStatsPaint();
+}
+/* số người đã đăng ký + đã mua: hàm SQL shop_stats (chỉ trả 2 con số THẬT, khách tăng là số tăng). Chưa chạy SQL / lỗi → ẩn 2 ô. */
+var HS = null;                                                                  // var: m3Facts có thể chạy trước dòng này
+function heroStatsPaint() {
+  if (!HS) return;
+  [["hf-users", HS.users], ["hf-buyers", HS.buyers]].forEach(([id, n]) => {
+    const ok = Number.isFinite(+n) && +n > 0; if (!$(id + "-w")) return; show(id + "-w", ok);
+    if (ok) $(id).innerHTML = esc(Math.round(+n).toLocaleString(LANG === "en" ? "en-US" : "vi-VN")) + `<small>${L("người", "people")}</small>`;
+  });
+}
+async function heroStats() {
+  try { const { data, error } = await sb.rpc("shop_stats"); if (error || !data) return; HS = typeof data === "string" ? JSON.parse(data) : data; heroStatsPaint(); } catch (e) {}
 }
 
 /* ===== ADMIN: 🏠 Hiển thị ở trang chủ — sửa tên + Chính/Phụ/Ẩn + thứ tự, lưu 1 nút, kiểm tra lại sau khi lưu ===== */
@@ -4250,29 +4267,44 @@ function setVpsMethod(m) {
 }
 $("m-pin").oninput = () => upd();
 $("m-vps-opts").onclick = e => { const b = e.target.closest("button"); if (b) { setVpsMethod(b.dataset.m); $("m-err").textContent = ""; } };
-/* VPS: mục chọn thêm do admin đặt (📦 Sản phẩm › 🧩) — VD "Hệ điều hành": Windows / Linux. Lựa chọn ghi vào tin nhắn khách gửi shop.
-   settings.vps_more = [{ t, t_en, o: [{ n, d }], req, p: [id sản phẩm] (rỗng = mọi VPS) }] */
-let moreSel = {}, moreG = [];                                                       // mục chọn thêm của bảng Mua đang mở (chụp lúc mở)
+/* VPS: mục chọn thêm do admin đặt (📦 Sản phẩm › 🧩) — VD mục "Windows 10 Pro" + mục "debian13". Lựa chọn ghi vào tin nhắn khách gửi shop.
+   settings.vps_more = [{ t, t_en, o: [{ n, d }], req, own, p: [id sản phẩm] (rỗng = mọi VPS) }]
+   Các mục GỘP CHUNG 1 lượt chọn: khách chọn đúng 1 lựa chọn trong tất cả các mục đó (chọn ở mục này → bỏ chọn ở mục kia).
+   own ("Mục riêng") = lượt chọn riêng của mục đó (khách chọn thêm). Lượt chọn bắt buộc khi có 1 mục trong đó tích "bắt buộc".
+   Không chọn sẵn, bấm lại để bỏ chọn — trừ lượt bắt buộc mà cả lượt chỉ có 1 lựa chọn (chọn sẵn, khoá — chỉ để khách xem). */
+let moreSel = {}, moreG = [], moreLock = {};                                        // bảng Mua đang mở: mục (chụp lúc mở), moreSel[mục] = số thứ tự lựa chọn
 const xoTitle = g => (LANG === "en" && g.t_en) ? g.t_en : g.t;
 function xoGroups(p) {
   if (!isVps(p) || !Array.isArray(SITE.vps_more)) return [];
   return SITE.vps_more.filter(g => g && g.t && Array.isArray(g.o) && g.o.length && (!Array.isArray(g.p) || !g.p.length || g.p.map(String).includes(String(p.id))));
 }
+function moreSets() { const S = {}; moreG.forEach((g, i) => { const k = g.own ? "r" + i : "chung"; (S[k] = S[k] || []).push(i); }); return Object.values(S); }
+const moreReq = s => s.some(i => moreG[i].req !== false);
+function morePaint() {
+  $("m-more").querySelectorAll("[data-g]").forEach(box => { const gi = +box.dataset.g;
+    box.querySelectorAll("button").forEach(x => { const on = moreSel[gi] === +x.dataset.o; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on ? "true" : "false"); }); });
+}
 function renderMore(p) {
-  const G = moreG = xoGroups(p); moreSel = {};
-  G.forEach((g, i) => { if (g.o.length === 1) moreSel[i] = 0; });                   // 1 lựa chọn = thông tin, chọn sẵn
-  $("m-more").innerHTML = G.map((g, i) => `<div class="vps-pick"><span class="hint">${esc(xoTitle(g))}${g.req !== false && g.o.length > 1 ? ' <b style="color:var(--gold-hi)">*</b>' : ""}</span>` +
-    `<div class="vps-opts${g.o.length === 1 ? " one" : ""}" data-g="${i}">${g.o.map((o, j) => `<button type="button" data-o="${j}"${moreSel[i] === j ? ' class="on"' : ""}><b>${esc(o.n)}</b>${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("")}</div></div>`).join("");
-  show("m-more", G.length > 0);
+  const G = moreG = xoGroups(p), star = {}; moreSel = {}; moreLock = {};
+  moreSets().forEach(s => {
+    const req = moreReq(s), n = s.reduce((a, i) => a + G[i].o.length, 0);
+    if (req && n === 1) { moreSel[s[0]] = 0; moreLock[s[0]] = true; }                 // bắt buộc mà cả lượt chỉ có 1 lựa chọn → chọn sẵn để khách xem
+    else if (req) s.forEach(i => { star[i] = true; });
+  });
+  $("m-more").innerHTML = G.map((g, i) => `<div class="vps-pick"><span class="hint">${esc(xoTitle(g))}${star[i] ? ' <b style="color:var(--gold-hi)">*</b>' : ""}</span>` +
+    `<div class="vps-opts${moreLock[i] ? " one" : ""}" data-g="${i}">${g.o.map((o, j) => `<button type="button" data-o="${j}"${moreLock[i] ? ' aria-disabled="true"' : ""}><b>${esc(o.n)}</b>${o.d ? `<small>${esc(o.d)}</small>` : ""}</button>`).join("")}</div></div>`).join("");
+  morePaint(); show("m-more", G.length > 0);
 }
 $("m-more").onclick = e => {
   const b = e.target.closest("button[data-o]"); if (!b) return;
-  const box = b.closest("[data-g]"), gi = +box.dataset.g, g = moreG[gi]; if (!g || g.o.length === 1) return;
-  const j = +b.dataset.o; moreSel[gi] = moreSel[gi] === j && g.req === false ? undefined : j;     // mục không bắt buộc: bấm lại để bỏ chọn
-  box.querySelectorAll("button").forEach(x => x.classList.toggle("on", +x.dataset.o === moreSel[gi])); $("m-err").textContent = "";
+  const gi = +b.closest("[data-g]").dataset.g; if (!moreG[gi] || moreLock[gi]) return;
+  const j = +b.dataset.o, was = moreSel[gi] === j;
+  (moreSets().find(s => s.includes(gi)) || [gi]).forEach(i => { delete moreSel[i]; });   // cùng lượt chọn: chỉ giữ 1 lựa chọn
+  if (!was) moreSel[gi] = j;                                                        // bấm lại lựa chọn đang chọn → bỏ chọn
+  morePaint(); $("m-err").textContent = "";
 };
 const moreChosen = () => moreG.map((g, i) => moreSel[i] == null || !g.o[moreSel[i]] ? null : { t: g.t, t_en: g.t_en || "", n: g.o[moreSel[i]].n }).filter(Boolean);
-const moreMissing = () => moreG.find((g, i) => g.req !== false && g.o.length > 1 && moreSel[i] == null) || null;
+const moreMissing = () => moreSets().find(s => moreReq(s) && !s.some(i => moreSel[i] != null)) || null;   // lượt bắt buộc chưa chọn → [số thứ tự mục]
 function openBuy(id) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +(pl.find(x => +x.days === 30) || pl[0]).days : null;
   $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description); $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
   show("m-vps", isVps(p)); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }
@@ -4281,7 +4313,7 @@ async function doBuy() {
   const p = selP(); if (!p) return;
   if (!profile) { closeBuy(); openAuth("login"); return; }
   const miss = isVps(p) ? moreMissing() : null;
-  if (miss) { $("m-err").textContent = L("Chọn " + xoTitle(miss) + " trước khi thanh toán.", "Choose " + xoTitle(miss) + " before paying."); return; }
+  if (miss) { const nm = miss.map(i => xoTitle(moreG[i])); $("m-err").textContent = L("Chọn " + nm.join(" hoặc ") + " trước khi thanh toán.", "Choose " + nm.join(" or ") + " before paying."); return; }
   if (isVps(p) && vpsMethod === "farmv5" && !$("m-pin").value.trim()) { $("m-err").textContent = L("Nhập mã PIN FarmV5 trước khi thanh toán.", "Enter your FarmV5 PIN before paying."); $("m-pin").focus(); return; }
   const vpsInfo = isVps(p) ? { m: vpsMethod, pin: $("m-pin").value.trim(), x: moreChosen() } : null;
   const q = buyQty(p), tot0 = unitPrice(p) * q;
@@ -4549,7 +4581,7 @@ function openThanks(ord, p, q, tot, vpsInfo) {
     const dt = d => `${pad(d.getHours())}:${pad(d.getMinutes())} ${L("ngày", "on")} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
     const days = plansOf(p).length ? +selDays : 0, exp = days ? new Date(t0.getTime() + days * 864e5) : null;
     const paid = fmt(tot) + (cur === "USD" ? " (" + vnd(tot) + ")" : "");
-    const xl = (vpsInfo.x || []).map(c => `\n• ${(LANG === "en" && c.t_en) ? c.t_en : c.t}: ${c.n}`).join("");   // mục chọn thêm (VD Hệ điều hành)
+    const xl = (vpsInfo.x || []).map(c => { const t = (LANG === "en" && c.t_en) ? c.t_en : c.t; return "\n• " + (t.trim().toLowerCase() === c.n.trim().toLowerCase() ? c.n : t + ": " + c.n); }).join("");   // mục chọn thêm (tên mục trùng lựa chọn → chỉ ghi lựa chọn)
     thMsg = LANG === "en"
       ? `[CLOUDBLUE] PAYMENT SUCCESSFUL — PLEASE SET UP MY VPS\n• Payment code: ${code || "(see Orders)"}\n• Product: ${label}\n• VPS quantity: ${q}\n• Paid: ${paid}\n• Account: ${profile ? profile.username : ""}\n` +
         (vpsInfo.m === "farmv5" ? `• Method: FarmV5\n• FarmV5 PIN: ${vpsInfo.pin}` : `• Method: FarmSync\n• I will send my UltraViewer ID + password right after this message`) + xl +
@@ -4909,11 +4941,11 @@ function xoRow(g) {
   d.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b class="xo-no" style="font-family:var(--display)"></b><span class="hint" style="margin-right:auto">1 hàng nút chọn trong bảng Mua VPS</span><button type="button" class="btn ghost sm" data-xo="up" title="Đưa mục này lên trên">↑</button><button type="button" class="btn ghost sm" data-xo="del">🗑 Xoá mục</button></div>
     <div class="xo-grid"><label>Tên mục<input class="in xo-t" maxlength="60" placeholder="VD: Hệ điều hành"></label><label>Tên tiếng Anh (tuỳ chọn)<input class="in xo-te" maxlength="60" placeholder="VD: Operating system"></label></div>
     <label><span>Lựa chọn — mỗi dòng 1 lựa chọn, dạng <code>Tên | mô tả ngắn</code> (mô tả có thể bỏ)</span><textarea class="in xo-o" rows="4" placeholder="Windows 10 Pro 22H2 | 64-bit, có driver GPU&#10;Windows Server 2022 | bản chuẩn&#10;Ubuntu 22.04 | Linux"></textarea></label>
-    <label class="chk"><input type="checkbox" class="xo-req"> Khách bắt buộc chọn (khi có từ 2 lựa chọn)</label>
+    <div class="xo-scope"><label class="chk"><input type="checkbox" class="xo-req"> Khách bắt buộc chọn</label><label class="chk"><input type="checkbox" class="xo-own"> Mục riêng <span class="hint">(khách chọn thêm ở mục này, VD Phần mềm cài sẵn — không tích = gộp, chỉ chọn 1 trong các mục)</span></label></div>
     <div class="xo-scope"><span class="hint">Áp dụng cho:</span><label class="chk"><input type="checkbox" class="xo-all"> Mọi sản phẩm VPS</label>${vps.map(x => `<label class="chk"><input type="checkbox" class="xo-p" value="${esc(x.id)}"> ${esc(x.name)}</label>`).join("")}${vps.length ? "" : '<span class="hint">(chưa có sản phẩm VPS)</span>'}</div>`;
   d.querySelector(".xo-t").value = g.t || ""; d.querySelector(".xo-te").value = g.t_en || "";
   d.querySelector(".xo-o").value = (g.o || []).map(o => o.n + (o.d ? " | " + o.d : "")).join("\n");
-  d.querySelector(".xo-req").checked = g.req !== false; d.querySelector(".xo-all").checked = all;
+  d.querySelector(".xo-req").checked = g.req !== false; d.querySelector(".xo-own").checked = !!g.own; d.querySelector(".xo-all").checked = all;
   d.querySelectorAll(".xo-p").forEach(c => { c.checked = !all && ids.includes(c.value); c.disabled = all; });
   return d;
 }
@@ -4942,7 +4974,7 @@ function xoRead() {
     }
     const all = r.querySelector(".xo-all").checked, p = all ? [] : [...r.querySelectorAll(".xo-p:checked")].map(c => c.value);
     if (!all && !p.length) throw new Error(k + 'tích "Mọi sản phẩm VPS" hoặc chọn ít nhất 1 sản phẩm.');
-    out.push({ t, ...(te ? { t_en: te } : {}), o, req: r.querySelector(".xo-req").checked, p });
+    out.push({ t, ...(te ? { t_en: te } : {}), o, req: r.querySelector(".xo-req").checked, ...(r.querySelector(".xo-own").checked ? { own: true } : {}), p });
   }
   if (out.length > XO_MAX_G) throw new Error("Tối đa " + XO_MAX_G + " mục.");
   return out;
@@ -5152,7 +5184,7 @@ sb.auth.onAuthStateChange((ev, s) => {
     if (profile && profile.locked) { const who = profile.username; profile = null; renderUser(); try { await sb.auth.signOut(); } catch (e) {} banNotice(who); return; }   // đang đăng nhập mà bị ban → đăng xuất + báo
     renderUser(); if (ev === "PASSWORD_RECOVERY") openAuth("newpw"); else pwForce(); if (profile) { minePending = null; watchMine(); pollPending(); } }, 0);
 });
-loadSettings(); loadProducts();
+loadSettings(); loadProducts(); heroStats(); setInterval(() => { if (!document.hidden) heroStats(); }, 300000);   // số người đăng ký / đã mua: 5 phút đọc lại 1 lần
 setInterval(() => { if (!document.hidden) loadProducts(); }, 60000);
 
 /* ===== công tắc hiệu ứng ===== */
@@ -7063,11 +7095,17 @@ function nodeAlerts(nodes) {
     const age = nAge(n), m = n.metrics || {};
     if (age > 3) { out.push(["r", `🔴 <b>${esc(n.name)}</b> mất kết nối ${Math.round(age)} phút — khách không thuê được máy mới trên server này.`]); continue; }
     const mm = n.metrics || {}, pr = mm.ram_over ? (mm.ram_pct || 0) : (+n.alloc_ram / +n.ram_total * 100 || 0), pc = mm.cpu_over ? (mm.cpu_avg5 || 0) : (+n.alloc_cpu / +n.cpu_total * 100 || 0), top = Math.max(pr, pc);
-    if (+n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1)
+    const full = +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1;
+    if (full && (m.gpu_busy || m.vram_busy))          // VGA / VRAM quá tải: máy chủ tự ngừng nhận, đơn mới tự sang máy chủ khác
+      out.push(["y", `🎮 <b>${esc(n.name)}</b>: ${m.gpu_busy ? `VGA quá tải ${Math.round(m.gpu_avg5)}% (TB 5 phút, ngưỡng ${m.gpu_busy_pct}%)` : `VRAM đầy ${Math.round(m.vram_avg5)}% (ngưỡng ${m.vram_busy_pct}%)`} — tạm ngừng nhận máy mới, đơn mới tự sang máy chủ khác.`]);
+    else if (full)
       out.push(["r", `🚨 <b>${esc(n.name)}</b> đã đạt ${n.limit_pct || 85}% (RAM ${Math.round(pr)}%, CPU ${Math.round(pc)}%) — khách đang thấy <b>Hết hàng</b>. Thêm server hoặc chờ máy hết hạn.`]);
     else if (top >= 75) out.push(["y", `⚠️ <b>${esc(n.name)}</b> sắp đầy: RAM ${Math.round(pr)}%, CPU ${Math.round(pc)}% (ngưỡng ${n.limit_pct || 85}%).`]);
     const d = m.disk_data; if (d && d.total && d.used / d.total > .9) out.push(["r", `💾 Ổ cứng <b>${esc(n.name)}</b> còn ${(d.total - d.used).toFixed(0)}GB — sắp hết chỗ cho máy mới.`]);
   }
+  const live = nodes.filter(n => n.enabled && nAge(n) <= 3);
+  if (live.length > 1 && live.every(n => +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1))
+    out.unshift(["r", "🚨 <b>Mọi máy chủ đều đang đầy / quá tải</b> — khách đang thấy <b>Hết hàng</b>."]);
   return out;
 }
 function renderAlerts() {
@@ -7116,7 +7154,7 @@ function renderNodes() {
     const d = m.disk_data;
     return `<div class="node${full ? " full" : ""}${off ? " off" : ""}">
       <div class="nh"><b>${esc(n.name)}</b><span class="hint">${esc(n.id)}</span>
-        <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : "Đầy") : "Đang chạy"}</span></div>
+        <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy") : "Đang chạy"}</span></div>
       ${nodeEmu(n, m)}
       ${nRow("CPU đang dùng thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct)}
       ${m.cpu_over ? nRow("CPU thật TB 5 phút (ngừng nhận khi ≥ " + (m.cpu_busy_pct || 85) + "%)", (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, m.cpu_busy_pct || 85) : ""}
@@ -7124,6 +7162,7 @@ function renderNodes() {
       ${nRow("RAM đang dùng thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100)}
       ${nRow(m.ram_over ? `RAM đã cấp (dùng chung ×${m.ram_over} · ngừng nhận khi RAM thật ≥ ${m.ram_busy_pct || 85}%)` : "RAM đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(+n.cap_ram)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, +n.cap_ram) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? 100 : lim)}
       ${g}
+      ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`VGA TB 5 phút (${m.gpu_busy_pct ? "ngừng nhận khi ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""})`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0) : ""}
       ${d ? nRow(`Ổ cứng (dùng chung · ngừng nhận khi ≥ ${m.disk_busy_pct || 90}%)`, `${d.used}/${d.total} GB`, d.used / d.total * 100, m.disk_busy_pct || 90) : ""}
       <div class="nf"><span>📱 ${n.phones || 0} máy${m.running != null ? " (" + m.running + " đang chạy)" : ""}</span>
         ${m.cpu_temp ? `<span>🌡️ CPU ${Math.round(m.cpu_temp)}°C</span>` : ""}${m.load ? `<span>Tải ${m.load[0]}</span>` : ""}${m.uptime_h != null ? `<span>Bật ${m.uptime_h >= 48 ? Math.round(m.uptime_h / 24) + " ngày" : m.uptime_h + " giờ"}</span>` : ""}
