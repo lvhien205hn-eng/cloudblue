@@ -949,7 +949,7 @@ public class MainActivity extends Activity {
             final int qr = nr[0], qc = nc[0];
             cost[0] = localQuote(p, qr, qc); draw[0].run();
             Api.bg(() -> Api.rpc("cloudphone_upgrade_quote", new JSONObject().put("p_id", p.optString("id")).put("p_ram", qr).put("p_cpu", qc)),
-                    r -> { if (qr == nr[0] && qc == nc[0]) { try { cost[0] = Long.parseLong(String.valueOf(r).replaceAll("[^0-9]", "")); } catch (Exception e) { cost[0] = localQuote(p, qr, qc); } draw[0].run(); } },
+                    r -> { if (qr == nr[0] && qc == nc[0]) { long v = quoteOf(r); cost[0] = v >= 0 ? v : localQuote(p, qr, qc); draw[0].run(); } },
                     m -> { });
         };
         draw[0] = () -> {
@@ -959,11 +959,14 @@ public class MainActivity extends Activity {
             double bal = prof.optDouble("balance", 0);
             if (pr[0] != null) { pr[0].view.setVisibility(same ? View.GONE : View.VISIBLE); if (!same) pr[0].onOrderChanged(); }
             double pay = same || pr[0] == null ? cost[0] : pr[0].price(cost[0]);
+            String how = same ? "" : upgradeHow(p, nr[0], nc[0]);
             sum.setText(same ? Ui.L("Chọn RAM hoặc CPU muốn nâng.", "Pick more RAM or CPU.")
                     : Ui.L("Cấu hình mới: ", "New: ") + nr[0] + "GB · " + nc[0] + Ui.L(" nhân", " cores")
+                    + (how.isEmpty() ? "" : "\n" + how)
                     + "\n" + Ui.L("Trả thêm cho thời gian còn lại: ", "Pay for the remaining time: ") + Ui.vnd(pay)
                     + (pay < cost[0] ? "  (🏷️ −" + Ui.vnd(cost[0] - pay) + ")" : "")
-                    + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
+                    + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal)
+                    + (bal >= pay ? Ui.L(" → còn ", " → left ") + Ui.vnd(bal - pay) + Ui.L(" sau khi trừ", " after paying") : ""));
             ok.setEnabled(!same);
             ok.setText(!same && bal < pay ? Ui.L("Nạp thêm tiền", "Top up") : Ui.L("Nâng cấp ngay", "Upgrade now"));
         };
@@ -1008,6 +1011,31 @@ public class MainActivity extends Activity {
                         : m.contains("PHONE_NOT_ACTIVE") ? Ui.L("Máy phải đang chạy mới nâng cấp được.", "The phone must be running.") : m);
             });
         }
+    }
+
+    /** Số tiền máy chủ báo (cloudphone_upgrade_quote). Api.parse đọc số JSON thành Double (2122 → 2122.0): KHÔNG được bỏ ký tự
+     *  không phải số rồi ghép lại (2122.0 → "21220" = gấp 10 lần — lỗi khách báo 12/11). Đọc không được → -1 (dùng giá tự tính). */
+    static long quoteOf(Object r) {
+        try {
+            if (r instanceof Number) return Math.max(0, Math.round(((Number) r).doubleValue()));
+            if (r != null) return Math.max(0, Math.round(Double.parseDouble(String.valueOf(r).trim())));
+        } catch (Exception ignored) { }
+        return -1;
+    }
+
+    /** Dòng cách tính cho khách tự kiểm: (phần THÊM × giá admin đặt cho 1GB RAM / 1 nhân mỗi ngày) × số ngày còn lại.
+     *  Chưa đọc được bảng giá → "" (không đoán giá). Máy chủ vẫn là nơi tính và trừ tiền thật (cloudphone_upgrade). */
+    String upgradeHow(JSONObject p, int nr, int nc) {
+        if (!price.has("price_ram_gb_day") || !price.has("price_cpu_day")) return "";
+        int dr = nr - p.optInt("ram"), dc = nc - p.optInt("cpu");
+        StringBuilder s = new StringBuilder();
+        if (dr > 0) s.append("+").append(dr).append("GB × ").append(Ui.vnd(price.optDouble("price_ram_gb_day", 0)));
+        if (dc > 0) s.append(s.length() > 0 ? " + " : "").append("+").append(dc).append(Ui.L(" nhân × ", " cores × ")).append(Ui.vnd(price.optDouble("price_cpu_day", 0)));
+        if (s.length() == 0) return "";
+        double left = Math.max(0, (parseTime(p.optString("expires_at")) - System.currentTimeMillis()) / 86400000.0);
+        String d = String.format(java.util.Locale.US, "%.1f", left);
+        return Ui.L("Cách tính: (", "How: (") + s + Ui.L(")/ngày × ", ")/day × ") + Ui.L(d.replace('.', ','), d) + Ui.L(" ngày còn lại", " days left")
+                + (isCtv() ? Ui.L(" · giảm CTV ", " · reseller −") + Math.round(prof.optDouble("ctv_discount", 0)) + "%" : "");
     }
 
     /** Giá nâng cấp dự tính giống web (máy chủ tính lại chính xác lúc trừ tiền). */
