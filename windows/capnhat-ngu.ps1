@@ -47,7 +47,7 @@ if ($QuayLai) {
 $R = 'https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents'
 $W = 'https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main'
 $F = @(
-    @('windows/phonectl.py', 'phonectl.py', 'def cmd_wake'),
+    @('windows/phonectl.py', 'phonectl.py', 'def _mumu_main_fix'),
     @('windows/bluestream.py', 'bluestream.py', 'BS_VER = "11/12b"'),
     @('cloudphoned.py', 'cloudphoned.py', 'def idle_job')
 )

@@ -196,12 +196,18 @@ def _long_busy():
         pid = open(LONG_F).read().strip()
         return pid.isdigit() and int(pid) != os.getpid() and _pid_alive(pid) and time.time() - os.path.getmtime(LONG_F) < 960
     except OSError: return False
+UNSTICK_AGE = 300 if EMU == "mumu" else 420     # khoá giữ CHƯA quá chừng này giây = chương trình giữ khoá còn đang làm việc (mọi lệnh giả lập có giờ chặn riêng trong run())
 def _unstick_memuc():
-    """Khoá memuc bị giữ quá lâu (1 lệnh memuc treo) → tắt các memuc.exe đang treo + gỡ khoá, để đơn khách không bị huỷ."""
+    """Khoá memuc bị giữ quá lâu (1 lệnh memuc treo) → tắt các memuc.exe đang treo + gỡ khoá, để đơn khách không bị huỷ.
+       KHÔNG tắt chương trình giữ khoá khi khoá còn MỚI (< UNSTICK_AGE): 12/11 win3 nhiều khách mở máy ngủ cùng lúc → lệnh chờ lâu
+       tắt luôn lệnh đang bật máy dở ("mã 1", "lệnh MEmu bị treo") → máy nào cũng bật lỗi. Khoá mới → chỉ chờ tiếp."""
     if _long_busy():          # đang nhân bản / tạo máy cho khách (hợp lệ, vài phút) → CHỜ, không tắt (tắt giữa chừng = máy hỏng + đơn lỗi)
         t0 = time.time()
         while _long_busy() and time.time() - t0 < 600: time.sleep(3)
         return
+    try:
+        if time.time() - os.path.getmtime(os.path.join(HOME, "redroid", "memuc.lock")) < UNSTICK_AGE: return
+    except OSError: return                                # không còn khoá → không có gì để gỡ
     run(["powershell", "-NoProfile", "-Command",
          "Get-CimInstance Win32_Process | Where-Object { $_.Name -in 'memuc.exe','ldconsole.exe' } | Where-Object { $_.CreationDate -lt (Get-Date).AddSeconds(-45) } | "
          "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"], 60)
@@ -418,6 +424,97 @@ def _mumu_set(idx, kv):
         o = ((r.stdout or "") + (r.stderr or "")).lower()
         if r.returncode not in (0, None) or "error" in o or "invalid" in o:
             _mumurun(["setting", "--vmindex", idx, "--key", k, "--value", v], 60)
+# ---- MuMu: bật / tắt 1 máy mà KHÔNG giữ khoá memuc lúc chờ máy lên / xuống (12/11: giữ khoá cả phút → lệnh khác chờ quá lâu) ----
+MUMU_START_WAIT = 60        # giây chờ máy MuMu hiện "đang chạy" sau lệnh launch (máy chủ bận có thể quá 30 giây)
+MUMU_POLL = 3               # giây giữa 2 lần xem máy đã lên chưa
+MUMU_MAIN_SETTLE = 20       # giây chờ MuMuNxMain vừa mở lại nhận lệnh
+MUMU_MAIN_F = os.path.join(HOME, "redroid", "mumu_main_fix.txt")      # lúc mở lại MuMuNxMain gần nhất
+MUMU_MAIN_FIX = CONF.get("MUMU_MAIN_FIX", "1").strip() != "0"         # 0 = không tự mở lại chương trình chính của MuMu
+def _mumu_locked(fn, wait=240):
+    """fn() trong khoá memuc (lệnh MuMu không chạy chồng). Chờ lâu → _unstick_memuc (khoá mới thì chỉ chờ tiếp) → chờ thêm."""
+    lk = _Lock("memuc", wait=wait)
+    try: lk.__enter__()
+    except RuntimeError: _unstick_memuc(); lk = _Lock("memuc", wait=240); lk.__enter__()
+    try: return fn()
+    finally: lk.__exit__()
+def _mumu_is_on(idx):
+    return bool((_mumu_locked(_mumu_list).get(int(idx)) or {}).get("running"))
+def _mumu_main_bad(r):
+    """Lệnh MuMu báo {"errcode": -502, "errmsg": "mainnx request failed"}: chương trình chính MuMuNxMain treo / không chạy
+       → không bật / tắt được máy nào (12/11 win3: 15 máy ngủ không bật lại được)."""
+    o = ((r.stdout or "") + " " + (r.stderr or "")) if r is not None else ""
+    return "mainnx" in o.lower() or bool(re.search(r'errcode"?\s*[:=]\s*-502\b', o))
+def _mumu_main_up(exe):
+    """Mở MuMuNxMain tách khỏi phonectl (phonectl thoát / nhóm tiến trình bị tắt thì MuMu vẫn chạy)."""
+    for fl in (0x00000008 | 0x00000200 | 0x01000000, 0x00000008 | 0x00000200):     # DETACHED | NEW_PROCESS_GROUP | BREAKAWAY_FROM_JOB
+        try:
+            subprocess.Popen([exe], cwd=os.path.dirname(exe), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=fl, close_fds=True); return True
+        except OSError: continue
+    return False
+def _mumu_main_fix(why=""):
+    """MuMuNxMain không trả lời → tắt nó rồi mở lại (máy khách đang chạy là tiến trình riêng MuMuNxDevice / MuMuVMMHeadless,
+       không tắt theo). Nhiều lệnh cùng gặp lỗi → chỉ 1 lệnh mở lại; 3 phút tối đa 1 lần. True = vừa mở lại / lệnh khác vừa mở lại."""
+    exe = os.path.join(MUMU or "", "nx_main", "MuMuNxMain.exe")
+    if not MUMU_MAIN_FIX or EMU != "mumu" or not os.path.isfile(exe): return False
+    try: lk = _Lock("mumu_main", wait=120); lk.__enter__()
+    except RuntimeError: return False
+    try:
+        try: last = float(open(MUMU_MAIN_F).read().strip() or 0)
+        except (OSError, ValueError): last = 0.0
+        if time.time() - last < 180: return True
+        print(f"   ({EMU_NAME}: chương trình chính không trả lời{' khi ' + why if why else ''} → mở lại MuMuNxMain)", flush=True)
+        subprocess.run(["taskkill", "/IM", "MuMuNxMain.exe", "/F"], capture_output=True, creationflags=NOWIN)
+        time.sleep(3)
+        up = _mumu_main_up(exe)
+        try: open(MUMU_MAIN_F, "w").write(str(time.time()))
+        except OSError: pass
+        time.sleep(MUMU_MAIN_SETTLE)                       # chương trình chính cần ~10–20 giây mới nhận lệnh
+        return up
+    finally: lk.__exit__()
+def _mumu_start(idx, timeout, locked=False):
+    """Bật 1 máy MuMu: khoá memuc CHỈ lúc ghi cài đặt + gửi lệnh launch; chờ máy lên (≤ MUMU_START_WAIT giây) ở NGOÀI khoá.
+       MuMu báo mainnx → mở lại chương trình chính rồi gửi launch thêm 1 lần. locked=True: đang trong khoá (gọi từ _mumu)."""
+    idx = str(idx)
+    def launch():
+        if (_mumu_list().get(int(idx)) or {}).get("running"): return None
+        if MUMU_PERF:
+            try: _mumu_perf(idx)                          # giữ app chạy nền / không tự hạ FPS / card rời — ghi lúc máy đang tắt
+            except Exception: pass
+        return _mumurun(["control", "-v", idx, "launch"], timeout)
+    if locked:                                            # đường cũ (trong khoá): gửi lệnh rồi chờ ngắn trong khoá
+        r = launch()
+        if r is None: return _ok("start ok")
+        for _ in range(15):
+            if (_mumu_list().get(int(idx)) or {}).get("running"): return _ok("start ok")
+            time.sleep(2)
+        return subprocess.CompletedProcess([], 1, r.stdout, (r.stderr or "") + " start vm failed")
+    r = _mumu_locked(launch)
+    if r is None: return _ok("start ok (đã chạy sẵn)")
+    if _mumu_main_bad(r) and _mumu_main_fix(f"bật máy #{idx}"):
+        r = _mumu_locked(launch)
+        if r is None: return _ok("start ok")
+    t0 = time.time()
+    while time.time() - t0 < MUMU_START_WAIT:
+        time.sleep(MUMU_POLL)
+        if _mumu_is_on(idx): return _ok("start ok")
+    return subprocess.CompletedProcess([], 1, r.stdout, (r.stderr or "") + " start vm failed")
+def _mumu_stop(idx, timeout, locked=False):
+    """Tắt 1 máy MuMu: khoá memuc chỉ lúc gửi lệnh shutdown; chờ máy tắt (≤ 40 giây) ở ngoài khoá. MuMu báo mainnx → mở lại rồi gửi lại."""
+    idx = str(idx)
+    if locked:
+        _mumurun(["control", "-v", idx, "shutdown"], timeout)
+        for _ in range(20):
+            if not (_mumu_list().get(int(idx)) or {}).get("running"): break
+            time.sleep(2)
+        return _ok("stop ok")
+    r = _mumu_locked(lambda: _mumurun(["control", "-v", idx, "shutdown"], timeout))
+    if _mumu_main_bad(r) and _mumu_main_fix(f"tắt máy #{idx}"):
+        r = _mumu_locked(lambda: _mumurun(["control", "-v", idx, "shutdown"], timeout))
+    for _ in range(20):
+        if not _mumu_is_on(idx): break
+        time.sleep(2)
+    return _ok("stop ok")
 def _mumu_perf(idx):
     """Ghi MUMU_PERF cho 1 máy MuMu (máy phải đang tắt). Trả số khoá vừa ghi (0 = đã đúng sẵn)."""
     cur = _mumu_json(_mumurun(["setting", "-v", idx, "-a"], 60).stdout) or {}
@@ -456,21 +553,8 @@ def _mumu(a, timeout):
         r = _mumurun(["rename", "-v", ix(), "-n", a[-1]], timeout)
         if (_mumu_list().get(int(ix())) or {}).get("name") != a[-1]: r = _mumurun(["rename", "--vmindex", ix(), "--name", a[-1]], timeout)
         return r
-    if c == "start":
-        if MUMU_PERF and not running(ix()):
-            try: _mumu_perf(ix())                         # giữ app chạy nền / không tự hạ FPS / card rời — ghi lúc máy đang tắt
-            except Exception: pass
-        r = _mumurun(["control", "-v", ix(), "launch"], timeout)
-        for _ in range(15):
-            if running(ix()): return _ok("start ok")
-            time.sleep(2)
-        return subprocess.CompletedProcess([], 1, r.stdout, "start vm failed")
-    if c == "stop":
-        _mumurun(["control", "-v", ix(), "shutdown"], timeout)
-        for _ in range(20):
-            if not running(ix()): break
-            time.sleep(2)
-        return _ok("stop ok")
+    if c in ("start", "stop"):                            # memuc() chạy 2 lệnh này bằng _mumu_start / _mumu_stop (không giữ khoá lúc chờ)
+        return (_mumu_start if c == "start" else _mumu_stop)(ix(), timeout, locked=True)
     if c == "stopall": return _mumurun(["control", "-v", "all", "shutdown"], timeout)
     if c == "remove":
         if int(ix()) not in _mumu_list(): return subprocess.CompletedProcess([], 1, "", f"MuMu không có máy #{ix()} — không xoá")
@@ -500,11 +584,10 @@ def memuc(*a, timeout=300):
         if not iv.isdigit():
             return subprocess.CompletedProcess([], 1, "", f"bỏ lệnh {a[0]}: số máy không hợp lệ ({iv or 'trống'}) — không chạy để khỏi làm nhầm máy #0")
     if EMU == "mumu":
-        lk = _Lock("memuc", wait=min(max(120, timeout), 260))
-        try: lk.__enter__()
-        except RuntimeError: _unstick_memuc(); lk = _Lock("memuc", wait=60); lk.__enter__()
-        try: return _mumu(a, timeout)
-        finally: lk.__exit__()
+        c0 = str(a[0]) if a else ""
+        if c0 == "start" and iv is not None: return _mumu_start(iv, timeout)     # khoá chỉ lúc gửi lệnh, chờ máy lên ngoài khoá
+        if c0 == "stop" and iv is not None: return _mumu_stop(iv, timeout)
+        return _mumu_locked(lambda: _mumu(a, timeout), wait=min(max(120, timeout), 260))
     if EMU == "ld":
         lk = _Lock("memuc", wait=min(max(120, timeout), 260))
         try: lk.__enter__()
@@ -2235,7 +2318,7 @@ IDLE_MIN = _cf("IDLE_STOP_MIN", 30)          # phút rảnh liền mới cho ng�
 IDLE_CPU = _cf("IDLE_CPU_PCT", 10)           # CPU trong máy (cộng mọi nhân) từ mức này = máy đang làm gì đó → không cho ngủ
 IDLE_SKIP = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_SKIP", "")) if x}     # tên máy KHÔNG BAO GIỜ cho ngủ: cp_abc,cp_def
 IDLE_IGNORE = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_IGNORE", "")) if x}    # gói (hiện trên màn / chạy nền) KHÔNG tính là máy đang làm việc
-IDLE_BATCH = 6                                # mỗi lượt cho ngủ tối đa 6 máy (đo sai → không tắt hàng loạt)
+IDLE_BATCH = 3                                # mỗi lượt cho ngủ tối đa 3 máy (đo sai → không tắt hàng loạt; 12/11: 6 máy/lượt dồn lệnh tắt vào MuMu)
 IDLE_F = os.path.join(HOME, "redroid", "idle.json")
 VIEW_F = os.path.join(HOME, "redroid", "viewers.json")
 HOMES = {"com.mumu.launcher", "com.android.launcher3", "com.android.launcher", "com.android.launcher2", "com.microvirt.launcher",
@@ -2395,9 +2478,15 @@ def _wake_one(p):
         if is_running(nm, p): set_hold(nm, False)                  # còn chạy (tắt chưa xong / dấu ngủ sót) → chỉ bỏ dấu ngủ
         else:
             r = start_phone(p)
+            if _start_failed(r):                                     # máy kẹt nửa chừng (tiến trình cũ chưa tắt hẳn…) → tắt hẳn rồi bật lại 1 lần
+                print(f"   ({nm}: bật lần 1 chưa được — tắt hẳn rồi bật lại)", flush=True)
+                try: force_stop(p)
+                except Exception as e: print("   (tắt hẳn lỗi:", repr(e)[:120], ")", flush=True)
+                time.sleep(5)
+                r = start_phone(p)
             if _start_failed(r): return False, f"WAKE_FAIL {EMU_NAME} không bật được: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:]
-        ok = False
-        while time.time() - t0 < BOOT_WAIT:
+        ok = False; tb = time.time()                               # đếm giờ chờ Android TỪ LÚC máy đã bật (bật lâu không ăn vào giờ chờ)
+        while time.time() - tb < BOOT_WAIT:
             adb_connect(p["port"])
             if booted(p["port"]): ok = True; break
             time.sleep(2)
