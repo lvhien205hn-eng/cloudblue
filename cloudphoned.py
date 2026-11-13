@@ -5,7 +5,7 @@
 #   SUPABASE_SERVICE_KEY=eyJ...            (service_role key — bí mật)
 #   PUBLIC_BASE=https://xxxx.trycloudflare.com   (link ws-scrcpy ra internet)
 # Chạy:  python3 ~/cloudphoned.py           (vòng lặp mỗi 15s)
-import json, os, sys, time, subprocess, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading
+import json, os, re, sys, time, subprocess, tempfile, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading
 GRACE_MIN = 30          # hết hạn quá 30 phút không gia hạn → xoá máy + dữ liệu
 
 HOME = os.path.expanduser("~")
@@ -430,8 +430,56 @@ def patch(pid, fields):
                 except Exception: pass
         raise
 
-def phonectl(args):
-    return subprocess.run(["python3", PHONECTL] + args, capture_output=True, text=True)
+# Hạn chờ từng lệnh phonectl (giây). Trước 13/11 KHÔNG có hạn → 1 lệnh treo (giả lập / adb không trả lời) làm vòng nhận đơn đứng
+# MÃI: luồng báo cáo vẫn báo "còn sống" 30 phút nên web vẫn chia đơn cho máy chủ này, mà máy chủ không nhận, không làm gì.
+# Quá hạn → tắt riêng lệnh đó (mã 124), máy chủ chạy tiếp. Hạn rộng hơn hẳn thời gian thật (tạo máy MuMu nhân bản vài phút…).
+PCTL_T = {"connect-all": 300, "perms": 300, "list": 120, "show": 120, "hide": 120, "capacity": 120, "engine": 300, "memfix": 600,
+          "idle": 900, "preinstall": 1800, "stop": 600, "start": 900, "waitboot": 1200, "renew": 1200, "delete": 1200,
+          "resize": 1800, "create": 2400}
+PCTL_T_DEF = 1800
+_pc_main = {"args": None, "t": 0.0, "to": 0}     # lệnh phonectl mà VÒNG NHẬN ĐƠN đang chờ → luồng tự kiểm biết nó đứng vì đâu
+
+def _run_tf(cmd, timeout):
+    """Chạy 1 lệnh, kết quả ghi ra FILE tạm (KHÔNG dùng pipe — cùng cách phonectl.run): pipe mà bị chương trình con (adb server,
+       giả lập…) giữ đầu ghi thì Python chờ MÃI, kể cả khi đã quá giờ. Quá giờ → tắt RIÊNG chương trình đó (không tắt cả cây:
+       giả lập / adb server của khách có thể là "con" của nó). Trả về (mã, out, err, quá_giờ)."""
+    with tempfile.TemporaryFile() as fo, tempfile.TemporaryFile() as fe:
+        try: p = subprocess.Popen(cmd, stdout=fo, stderr=fe, stdin=subprocess.DEVNULL)
+        except Exception as e: return 127, "", str(e), False
+        hung = False
+        try: code = p.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            hung = True
+            try: p.kill()
+            except Exception: pass
+            try: p.wait(timeout=10)
+            except Exception: pass
+            code = 124
+        fo.seek(0); fe.seek(0)
+        dec = lambda b: b.decode("utf-8", "replace").replace("\r\n", "\n")
+        return code, dec(fo.read()), dec(fe.read()), hung
+
+def _dur(sec):
+    sec = int(sec)
+    return f"{sec // 60} phút" if sec >= 120 else f"{sec} giây"
+
+def phonectl(args, timeout=None):
+    args = [str(x) for x in args]
+    to = int(timeout or PCTL_T.get(args[0] if args else "", PCTL_T_DEF))
+    main = threading.current_thread() is threading.main_thread()
+    if main: _pc_main.update(args=args[:2], t=time.time(), to=to)
+    cmd = ["python3", PHONECTL] + args
+    try:
+        code, out, err, hung = _run_tf(cmd, to)
+        if hung:
+            msg = f"lệnh phonectl {' '.join(args[:2])} treo quá {_dur(to)} → đã tắt riêng lệnh đó, máy chủ chạy tiếp"
+            err = (err.rstrip() + "\n" if err.strip() else "") + msg
+            ts_note(msg, tg=True, key="pctl_" + (args[0] if args else ""), every=1800)
+        return subprocess.CompletedProcess(cmd, code, out, err)
+    finally:
+        if main:
+            _pc_main.update(args=None, t=0.0, to=0)
+            _loop_t[0] = max(_loop_t[0], time.time())     # xong 1 lệnh = vòng nhận đơn vẫn đang nhích
 
 def phone_state(name):
     try:
@@ -522,6 +570,223 @@ def notify(text):
         urllib.request.urlopen(req, timeout=10).read()
     except Exception as e:
         print("   không gửi được Telegram:", e)
+
+# ---------------- TỰ KIỂM · TỰ SỬA (13/11) ----------------
+# 13/11: 1 máy chủ "không nhận đơn mà cũng chả làm gì" = vòng nhận đơn đứng (chờ 1 lệnh không có hạn), trong khi luồng báo cáo
+# vẫn báo "còn sống" tới 30 phút → web vẫn chia đơn cho nó. Giờ:
+#   • mọi lệnh phonectl có hạn chờ (PCTL_T); cài app sẵn / nối lại adb chạy ở LUỒNG RIÊNG, không chặn việc nhận đơn
+#   • luồng tự kiểm (30 giây/lần):
+#       – vòng nhận đơn không nhích quá TS_STUCK_MIN phút → in chỗ đứng + báo Telegram → TỰ THOÁT, bảng CloudBlue / systemd
+#         bật lại sau 5 giây (đơn đang làm dở: máy đã tạo thì bản mới chờ Android lên rồi giao tiếp, không tạo trùng)
+#       – đọc đơn từ Supabase lỗi liên tục: 10 phút → báo admin · 30 phút → tự khởi động lại (đọc lại cloudphone.conf)
+#       – Windows: phát hình (bluestream) đóng cổng / không trả lời 3 lần liền (~3 phút) → tắt tiến trình phát hình chính,
+#         bảng CloudBlue tự bật lại (tối đa 3 lần / giờ; quá → chỉ báo admin)
+#       – Windows: máy khách đang chạy mà màn hình Android TẮT (khách bấm nút nguồn…) → bật sáng (~2 phút/lần). Phát hình
+#         chạy scrcpy với power_on=false nên màn tắt = khách thấy MÀN ĐEN.
+# Mỗi lần: dòng "🩺 tự sửa: …" trong nhật ký + redroid/tusua.json (20 lần gần nhất). Tắt hết: TUSUA=0 trong cloudphone.conf.
+TS_ON = CFG.get("TUSUA", "1") != "0"
+TS_STUCK_MIN = max(3.0, _f("TS_STUCK_MIN", 10))
+TS_F = os.path.join(HOME, "redroid", "tusua.json")
+_ts = {"ev": [], "noti": {}, "bs_bad": 0, "bs_seen": False, "bs_kill": 0.0, "bs_kills": [], "err_t": 0.0, "err_msg": ""}
+_ts_exit = os._exit
+
+def _ts_save():
+    try:
+        os.makedirs(os.path.dirname(TS_F), exist_ok=True)
+        tmp = TS_F + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"node": NODE_ID, "events": _ts["ev"][-20:], "noti": _ts["noti"]}, f, ensure_ascii=False)
+        os.replace(tmp, TS_F)
+    except Exception: pass
+
+def _ts_load():
+    """Nhớ lần nhắn Telegram trước qua các lần khởi động lại → tự thoát lặp lại không nhắn dồn."""
+    try:
+        j = json.load(open(TS_F, encoding="utf-8"))
+        _ts["ev"] = list(j.get("events") or [])[-20:]
+        _ts["noti"] = {str(k): float(v) for k, v in (j.get("noti") or {}).items()}
+    except Exception: pass
+
+def ts_note(what, tg=False, key=None, every=600, again=True):
+    """Ghi 1 lần tự kiểm / tự sửa: nhật ký "🩺 tự sửa: …" + redroid/tusua.json. tg=True → nhắn Telegram admin, mỗi loại (key)
+       tối đa 1 tin / every giây. again=False → việc lặp lại trong every giây thì không ghi lại (tránh rác nhật ký)."""
+    k = key or what[:40]; t = time.time()
+    fresh = t - float(_ts["noti"].get(k, 0)) > every
+    if not fresh and not again: return False
+    print(f"🩺 tự sửa: {what}", flush=True)
+    ev = _ts["ev"]; ev.append({"t": int(t), "what": what}); del ev[:-20]
+    if fresh: _ts["noti"][k] = t
+    _ts_save()
+    if tg and fresh:
+        w = what.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        notify(f"🩺 <b>{NODE_ID}</b> tự sửa: {w}")
+    return True
+
+def ts_stuck_check(now=None):
+    """Vòng nhận đơn có đứng không → (đứng, mô tả). Đang chờ 1 lệnh phonectl thì chỉ coi là đứng khi quá hạn lệnh đó + 3 phút."""
+    now = now or time.time()
+    idle = now - _loop_t[0]
+    pc = dict(_pc_main)
+    if pc.get("args"):
+        waited = now - pc["t"]
+        return (waited > pc["to"] + 180 and idle > TS_STUCK_MIN * 60), f"chờ lệnh phonectl {' '.join(pc['args'])} {waited / 60:.0f} phút"
+    return idle > TS_STUCK_MIN * 60, f"{idle / 60:.0f} phút không chạy hết 1 lượt"
+
+def ts_main_stack():
+    try:
+        import traceback
+        fr = sys._current_frames().get(threading.main_thread().ident)
+        return "".join(traceback.format_stack(fr)[-6:]) if fr else ""
+    except Exception:
+        return ""
+
+def ts_loop_err(now=None):
+    """Đọc đơn từ Supabase lỗi LIÊN TỤC: 10 phút → báo admin · 30 phút → True (tự khởi động lại: đọc lại cloudphone.conf, kết nối mới)."""
+    t0 = _ts.get("err_t") or 0
+    if not t0: return False
+    m = ((now or time.time()) - t0) / 60
+    why = _ts.get("err_msg") or "?"
+    if m >= 30:
+        ts_note(f"đọc đơn từ Supabase lỗi liên tục {m:.0f} phút ({why}) → tự khởi động lại", tg=True, key="sb_err_restart", every=3600)
+        return True
+    if m >= 10:
+        ts_note(f"đọc đơn từ Supabase lỗi liên tục {m:.0f} phút: {why} — kiểm tra mạng / khoá Supabase trong cloudphone.conf",
+                tg=True, key="sb_err", every=3600, again=False)
+    return False
+
+def _conf_ports():
+    """Cổng phát hình — đọc LẠI cloudphone.conf mỗi lần (bluestream --netcheck --fix có thể đổi STREAM_PORT lúc máy chủ đang chạy)."""
+    c = {}
+    try:
+        for ln in open(CONF, encoding="utf-8"):
+            if "=" in ln and not ln.lstrip().startswith("#"):
+                a, b = ln.split("=", 1); c[a.strip().lstrip("\ufeff")] = b.strip()
+    except Exception:
+        c = CFG
+    def num(k, d):
+        try: return int(c.get(k) or d)
+        except Exception: return d
+    return num("STREAM_PORT", 8189), num("STREAM_WS_PORT", 8020)
+
+def _listening(ports):
+    """Cổng nào ĐANG NGHE (netstat). None = không đọc được (không kết luận gì)."""
+    code, out, _, _ = _run_tf(["netstat", "-ano"], 30)
+    if not out.strip(): return None
+    return {p for p in ports if re.search(r":%d\s+(?:0\.0\.0\.0|\[::\]):0\s" % int(p), out)}
+
+def _ws_probe(port, t=8):
+    """Phát hình còn TRẢ LỜI không: hỏi HTTP thường vào cổng WebSocket nội bộ — bluestream trả "BlueRoblox stream v2" và không ghi
+       nhật ký. Vòng xử lý của nó bị treo thì cổng vẫn mở (Windows vẫn nhận kết nối) nhưng không ai trả lời → app khách quay mãi."""
+    try:
+        with socket.create_connection(("127.0.0.1", int(port)), timeout=t) as s:
+            s.settimeout(t)
+            s.sendall(b"GET /tusua HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+            return s.recv(16).startswith(b"HTTP/")
+    except Exception:
+        return False
+
+def _bs_pids():
+    """PID tiến trình phát hình CHÍNH (bảng CloudBlue chạy: python -u bluestream.py — không kèm tham số; các lệnh kiểm
+       --netcheck / --captest… có tham số → không đụng)."""
+    code, out, _, _ = _run_tf(["powershell", "-NoProfile", "-Command",
+                               "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and "
+                               "$_.CommandLine -match 'bluestream\\.py\\W*$' } | ForEach-Object { $_.ProcessId }"], 60)
+    return [int(x) for x in out.split() if x.strip().isdigit()]
+
+def ts_bluestream(now=None):
+    """Windows · ~1 phút/lần: phát hình còn mở cổng + còn trả lời không. Hỏng 3 lần liền (~3 phút) → tắt RIÊNG tiến trình phát hình
+       chính (không tắt cả cây: giữ adb server) → bảng CloudBlue tự bật lại sau 5 giây. Tối đa 3 lần / giờ; quá → chỉ báo admin."""
+    if not os.path.isfile(os.path.join(HOME, "bluestream.py")): return None
+    now = now or time.time()
+    port, wsp = _conf_ports()
+    up = _listening([port, wsp])
+    if up is None: return None
+    bad = []
+    if port not in up: bad.append(f"cổng {port} đóng")
+    if wsp not in up: bad.append(f"cổng {wsp} đóng")
+    elif not _ws_probe(wsp): bad.append("không trả lời")
+    s = _ts
+    if not bad:
+        if s["bs_kill"]: ts_note(f"phát hình đã chạy lại sau {(now - s['bs_kill']) / 60:.0f} phút"); s["bs_kill"] = 0.0
+        s["bs_seen"] = True; s["bs_bad"] = 0
+        return "ok"
+    s["bs_bad"] += 1
+    if s["bs_bad"] < 3: return "wait"
+    why = ", ".join(bad)
+    if s["bs_kill"]:
+        if now - s["bs_kill"] < 150: return "waitback"         # vừa tắt: chờ bảng CloudBlue bật lại (5 giây) + bluestream mở cổng
+        s["bs_kill"] = 0.0
+        pids = _bs_pids()
+        if not pids:
+            ts_note(f"phát hình CHƯA chạy lại sau khi tự tắt ({why}) → mở bảng CloudBlue bấm ▶ Bật tất cả", tg=True, key="bs_back", every=3600)
+            return "noback"
+    else:
+        pids = _bs_pids()
+    if not pids:
+        if s["bs_seen"]:
+            ts_note(f"phát hình (bluestream) không chạy ({why}) — bảng CloudBlue chưa bật lại thì bấm ▶ Bật tất cả",
+                    tg=True, key="bs_dead", every=3600, again=False)
+        return "dead"
+    s["bs_kills"] = [t for t in s["bs_kills"] if now - t < 3600]
+    if len(s["bs_kills"]) >= 3:
+        ts_note(f"phát hình hỏng lặp lại ({why}) — đã tự bật lại 3 lần trong 1 giờ, không tự tắt nữa: cần xem tay (nhật ký phat-hinh)",
+                tg=True, key="bs_loop", every=3600, again=False)
+        return "loop"
+    for pid in pids: _run_tf(["taskkill", "/PID", str(pid), "/F"], 30)
+    s["bs_kill"] = now; s["bs_kills"].append(now); s["bs_bad"] = 0
+    ts_note(f"phát hình (bluestream) hỏng ~3 phút ({why}) → đã tắt để bảng CloudBlue bật lại", tg=True, key="bs_hang", every=1800)
+    return "killed"
+
+def ts_wake_screens():
+    """Windows · ~2 phút/lần: máy khách đang chạy mà màn hình Android TẮT → bật sáng (KEYCODE_WAKEUP: máy đang sáng thì không gửi gì).
+       Bỏ qua máy đang tắt / ngủ / tạm dừng (hold)."""
+    try: st = json.load(open(PHONES_JSON, encoding="utf-8")).get("phones", [])
+    except Exception: return 0
+    woke = []
+    for p in st:
+        if p.get("hold") or p.get("sleep") or not p.get("port") or p.get("kind") == "gpu": continue
+        s = f"127.0.0.1:{p['port']}"
+        code, out, _, _ = _run_tf(["adb", "-s", s, "shell", "dumpsys power | grep mWakefulness="], 12)
+        if "mWakefulness=" in out and "mWakefulness=Awake" not in out:
+            _run_tf(["adb", "-s", s, "shell", "input keyevent 224"], 12); woke.append(str(p.get("name")))
+    if woke: ts_note(f"bật sáng màn hình {len(woke)} máy khách đang tắt màn: {', '.join(woke[:6])}" + (" …" if len(woke) > 6 else ""))
+    return len(woke)
+
+def _ts_loop():
+    k = 0
+    while True:
+        time.sleep(30); k += 1
+        try:
+            stuck, desc = ts_stuck_check()
+            if stuck:
+                stack = ts_main_stack()
+                if stack: print("🩺 phần nhận đơn đang đứng ở:\n" + stack, flush=True)
+                ts_note(f"phần nhận đơn ĐỨNG ({desc}) → tự khởi động lại cloudphoned", tg=True, key="stuck", every=1800)
+            if stuck or ts_loop_err():
+                time.sleep(3); _ts_exit(3); return
+            if WIN and k % 2 == 0: ts_bluestream()
+            if WIN and k % 4 == 1: ts_wake_screens()
+        except Exception as e:
+            print("lỗi tự kiểm:", e, flush=True)
+
+# Việc bảo trì chạy ở LUỒNG RIÊNG (mỗi loại 1 luồng, lượt trước chưa xong thì bỏ lượt này) → không bao giờ chặn việc nhận đơn
+_bg = {}
+def bg_job(key, fn):
+    th = _bg.get(key)
+    if th is not None and th.is_alive(): return False
+    th = threading.Thread(target=fn, name="bg-" + key, daemon=True); _bg[key] = th; th.start(); return True
+
+def _bg_connect():
+    try: phonectl(["connect-all"])
+    except Exception as e: print("lỗi connect-all:", e)
+
+def _bg_apps():
+    try:
+        r = phonectl(["preinstall", "--all"])
+        for ln in (r.stdout or "").splitlines():
+            if ln.strip(): print("  ", ln.strip())
+        phonectl(["perms"])
+    except Exception as e: print("lỗi cài app sẵn / mở quyền APK:", e)
 
 # ---------------- Bảo trì ----------------
 _maint = {"t": 0, "on": False, "off_at": None}
@@ -884,17 +1149,25 @@ if __name__ == "__main__":
     adopt_old()
     n = 0; last = 0.0; _rootjob = [None]
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
+    if TS_ON:
+        _ts_load(); _loop_t[0] = time.time()
+        threading.Thread(target=_ts_loop, daemon=True).start()
+        print(f"Tự kiểm · tự sửa (TUSUA): lệnh phonectl có hạn chờ · phần nhận đơn đứng quá {TS_STUCK_MIN:g} phút → tự khởi động lại"
+              + (" · phát hình hỏng ~3 phút → bật lại · màn hình máy khách tắt → bật sáng" if WIN else "") + " · nhật ký: 🩺 tự sửa")
+    else:
+        print("Tự kiểm · tự sửa: TẮT (TUSUA=0)")
     while True:
         _loop_t[0] = time.time()
-        try: tick_orders()                  # đơn mới: kiểm tra mỗi 3 giây → nhận đơn gần như tức thì
-        except Exception as e: print("lỗi vòng lặp:", e)
+        try: tick_orders(); _ts["err_t"] = 0.0      # đơn mới: kiểm tra mỗi 3 giây → nhận đơn gần như tức thì
+        except Exception as e:
+            print("lỗi vòng lặp:", e)
+            _ts["err_t"] = _ts["err_t"] or time.time(); _ts["err_msg"] = str(e)[:160]
         if time.time() - last < 15:
             time.sleep(3); continue
         last = time.time()
         try: tick()
         except Exception as e: print("lỗi vòng lặp:", e)
-        try: phonectl(["connect-all"])      # mỗi 15 giây: máy nào rớt kết nối thì nối lại (tránh màn xám)
-        except Exception as e: print("lỗi connect-all:", e)
+        bg_job("connect", _bg_connect)      # mỗi 15 giây: máy nào rớt kết nối thì nối lại (tránh màn xám) — luồng riêng (13/11)
         if n % 2 == 0:                      # ~30 giây: khoá / mở khoá / bật lại máy (báo cáo tài nguyên chạy ở luồng riêng _hb_loop)
             try: do_locks()
             except Exception as e: print("lỗi khoá máy:", e)
@@ -905,12 +1178,8 @@ if __name__ == "__main__":
             try: sec_tick()
             except Exception as e: print("lỗi bot gác:", e)
         if n % 20 == 5:                     # ~5 phút: cài app còn thiếu (máy nào lỡ) + mở quyền cài APK cho app khách mới cài
-            try:
-                r = phonectl(["preinstall", "--all"])
-                for ln in (r.stdout or "").splitlines():
-                    if ln.strip(): print("  ", ln.strip())
-                phonectl(["perms"])
-            except Exception as e: print("lỗi cài app sẵn / mở quyền APK:", e)
+            bg_job("apps", _bg_apps)        # luồng riêng (13/11): trước chạy ở vòng chính → 1 máy cài APK treo (chờ tới 15 phút / file)
+                                            # là cả máy chủ không nhận đơn
         if n % 20 == 12:                    # ~5 phút: máy nào chưa root → tự root (chạy nền, không chặn việc nhận đơn)
             try:
                 if _rootjob[0] is None or _rootjob[0].poll() is not None:
