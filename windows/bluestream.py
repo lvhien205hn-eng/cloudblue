@@ -113,7 +113,8 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "13/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "13/11b"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+                                          # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
 def _float_conf(k, d):
     try: return float(str(C.get(k, d)).strip() or d)
     except (TypeError, ValueError): return d
@@ -126,6 +127,20 @@ SCR_IFRAME = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S", 1.0)))
 SCR_IFRAME_A9 = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S_A9", 0.25)))
 KEY_WAIT_S = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S", 0.0))           # 0 = tắt
 KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 1.2))
+# Cửa sổ giả lập của 1 máy quay lỗi (không ra khung / ngừng vẽ / chỉ ra hình đen) → trong WGC_BAD_MIN phút sau, mở máy đó lấy hình
+# THẲNG từ Android luôn (khỏi chờ quay cửa sổ 6–15 giây mỗi lần mở). 0 = tắt (lần nào cũng thử quay cửa sổ trước như cũ).
+WGC_BAD_S = max(0.0, _float_conf("WGC_BAD_MIN", 30.0)) * 60
+_WGC_BAD = {}                                 # tên máy → lúc hết "quay cửa sổ lỗi"
+def wgc_mark_bad(name):
+    if WGC_BAD_S > 0 and name: _WGC_BAD[name] = time.time() + WGC_BAD_S
+def wgc_is_bad(name):
+    t = _WGC_BAD.get(name or "", 0)
+    if t and t <= time.time(): _WGC_BAD.pop(name, None); return False
+    return bool(t)
+def _is_black(a):
+    """Khung (numpy BGRA) gần như đen hết: lấy mẫu 1/8 mỗi chiều, không điểm nào sáng quá 24."""
+    try: return a is not None and int(a[::8, ::8, :3].max()) < 25
+    except Exception: return False
 _RATE_MEM = {}                            # (uid, mã máy, loại đường) → {"k": kbps, "until": giữ tới lúc, "hs": số giây giữ, "lc": lúc nghẽn, "t": lúc ghi}
 KEYCODE = {"back": 4, "home": 3, "recents": 187, "power": 26, "volup": 24, "voldown": 25, "menu": 82}
 
@@ -495,6 +510,17 @@ class WindowSource:
             if gone: raise Deny("OFFLINE", "Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại.")
             log(f"  {self.name}: cửa sổ chỉ ra {k} khung mới trong 2,5 giây (giả lập ngừng vẽ khi cửa sổ khuất?) — {win_info(h)}")
             raise CaptureBlocked("giả lập không vẽ hình liên tục ở cửa sổ này")
+        # Ra hình đều mà TOÀN ĐEN (giả lập mất hình sau khi card đồ hoạ treo / cửa sổ khuất…) → khách thấy màn đen. Chờ thêm 2 giây
+        # (màn đen thật lúc chuyển cảnh thì sẽ hết); vẫn đen → lấy hình thẳng từ Android (đen thật thì scrcpy cũng ra đúng màn đó).
+        if _is_black(self.latest):
+            t2 = time.time()
+            with self.cond:
+                while _is_black(self.latest) and time.time() - t2 < 2.0 and not self.closed and not self.stopping:
+                    self.cond.wait(0.25)
+            if _is_black(self.latest) and not self.closed and not self.stopping:
+                self._halt()
+                log(f"  {self.name}: cửa sổ giả lập chỉ ra hình ĐEN — {win_info(h)}")
+                raise CaptureBlocked("cửa sổ giả lập chỉ ra hình đen")
         return self.cw, self.ch
 
     def resized(self):
@@ -1593,6 +1619,7 @@ def _small_buffers(writer):
 class Link:
     kind = "?"
     closed = False
+    welcomed = False                   # đã gửi WELCOME (hello_keepalive thôi gửi PONG giữ chỗ)
     async def recv(self): raise NotImplementedError
     def write(self, t, payload=b""): raise NotImplementedError
 
@@ -1958,6 +1985,9 @@ class Session:
 
     def _start_video(self, cpu=False):
         """(Bật lại) bộ quay + bộ nén. Chạy trong luồng nền; phiên đã đóng giữa chừng → dọn sạch thứ vừa tạo."""
+        if video_mode() != "scrcpy" and not self.from_android and wgc_is_bad(self.name):
+            self.from_android = True
+            log(f"  {self.name}: cửa sổ máy này vừa quay lỗi / ra hình đen → lấy hình thẳng từ Android ngay (WGC_BAD_MIN)")
         if video_mode() == "scrcpy" or self.from_android: return self._start_video_scrcpy()
         if self.closed: raise Closed()
         if self.src is None or self.src.resized() or getattr(self.src, "closed", False):
@@ -1971,7 +2001,7 @@ class Session:
                 src.stop()
                 if self.closed: raise Closed()
                 log(f"  {self.name}: {e} → lấy hình thẳng từ Android (scrcpy, {self.serial})")
-                self.from_android = True
+                self.from_android = True; wgc_mark_bad(self.name)
                 try:
                     return self._start_video_scrcpy()
                 except (Closed, Deny):
@@ -2028,6 +2058,9 @@ class Session:
             await self.finish(); return
         if self.closed: return
         self.wait_key = True
+        self.link.welcomed = True
+        dt = time.monotonic() - self.t_hello
+        if dt > 5: log(f"  {self.name}: mở máy mất {dt:.0f} giây (app được giữ kết nối trong lúc chờ)")
         self.link.send_nowait(S_WELCOME, json.dumps({"ok": True, "w": w, "h": h, "fps": self.fps, "kbps": self.kbps, "codec": "h264",
                                                       "enc": self.enc.enc, "name": self.phone.get("name") or self.name,
                                                       "android": str(self.phone.get("android") or ""), "q": self.q}, ensure_ascii=False).encode())
@@ -2192,7 +2225,7 @@ class Session:
                     if self.src.n != self._wn: self._wn, self._wn_t = self.src.n, time.time()
                     elif time.time() - self._wn_t > 5 and time.time() - self.last_restart > 5:
                         log(f"  {self.name}: cửa sổ giả lập ngừng ra hình 5 giây → lấy hình thẳng từ Android (scrcpy)")
-                        self.from_android = True; self._wn = -1
+                        self.from_android = True; self._wn = -1; wgc_mark_bad(self.name)
                         await self.restart_video(size_msg=True); continue
                 if self.enc and self.enc.failed_early() and self.enc.enc == "nvenc":
                     log(f"  {self.name}: card NVIDIA không nén được → CPU x264")
@@ -2345,6 +2378,7 @@ class Preview(Session):
             await self.finish(); return
         if self.closed: return
         self.wait_key = True
+        self.link.welcomed = True
         self.link.send_nowait(S_WELCOME, json.dumps({"ok": True, "w": w, "h": h, "fps": self.fps, "kbps": self.kbps, "codec": "h264",
                                                       "enc": self.enc.enc, "name": self.phone.get("name") or self.name,
                                                       "android": str(self.phone.get("android") or ""), "q": "preview", "preview": True},
@@ -2515,12 +2549,30 @@ async def hold_for_wake(link, phone, wk):
     return True
 
 
+async def hello_keepalive(link):
+    """Từ lúc nhận HELLO tới lúc gửi WELCOME (kiểm quyền qua Supabase, đánh thức máy, quay cửa sổ giả lập chờ 6–15 giây rồi mới
+       sang scrcpy…) có thể quá 6 giây = ngưỡng app (web / Android / PC) coi là đứt → app nối lại → phiên mới bắt đầu lại từ đầu
+       → khách quay mãi "Đang kết nối lại" không vào được. 2 giây gửi 1 PONG RỖNG: app nào cũng tính là 'có nhận', bỏ qua vì ngắn
+       hơn 8 byte (web / Android / PC đều kiểm độ dài từ bản đầu) → app chờ tới khi có hình."""
+    n = 0
+    try:
+        while True:
+            await asyncio.sleep(2)
+            if link.closed or link.welcomed: break
+            link.send_nowait(S_PONG, b""); n += 1
+    except asyncio.CancelledError:
+        pass
+    return n
+
+
 async def serve_link(link):
+    ka = None
     try:
         t, p = await asyncio.wait_for(link.recv(), 10)
         t_hello = time.monotonic()
         if t != C_HELLO: raise ValueError("no hello")
         hello = json.loads(p.decode("utf-8"))
+        ka = asyncio.ensure_future(hello_keepalive(link))
         try:
             me, phone = await asyncio.to_thread(authorize, hello)
         except Deny as d:
@@ -2542,6 +2594,8 @@ async def serve_link(link):
         await link.close()
     except Exception as e:
         log("lỗi phiên:", repr(e)); await link.close()
+    finally:
+        if ka: ka.cancel()
 
 
 CPAPI_LOCAL = ("127.0.0.1", int(C.get("CPAPI_PORT") or 8010))
@@ -3562,6 +3616,7 @@ async def main():
         f" · {f'giữ cú bấm {int(TAP_HOLD * 1000)} ms' if TAP_HOLD else 'chạm gửi ngay'} · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
+    log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi {SCR_IFRAME:g} giây"
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
