@@ -113,6 +113,19 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
+BS_SUB = "13/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+def _float_conf(k, d):
+    try: return float(str(C.get(k, d)).strip() or d)
+    except (TypeError, ValueError): return d
+# Android 9 (LDPlayer 9) lấy hình bằng scrcpy: bộ nén trong máy là PHẦN MỀM (OMX.google.h264.encoder) và KHÔNG lặp khung khi màn đứng
+# yên → "khung khoá mỗi 1 giây" thật ra là mỗi 60 khung (scrcpy đặt KEY_FRAME_RATE 60): lúc vuốt chỉ ~15–20 khung/giây → 3–4 giây mới
+# có 1 khung khoá, màn đứng yên thì KHÔNG bao giờ có. Lỡ bỏ 1 khung (mạng chậm, app báo nhận chậm) là đứng hình tới khung khoá kế →
+# khách thấy "vuốt xong 3–4 giây mới lên" (13/11, win1). Android 9: khung khoá mỗi 0,25 giây (= 15 khung) + chờ khung khoá quá 1,2 giây
+# thì bật lại bộ nén (khung đầu luôn là khung khoá, hình đúng màn hiện tại). Máy MuMu (Android 12/15) giữ như cũ (đổi bằng conf nếu cần).
+SCR_IFRAME = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S", 1.0)))
+SCR_IFRAME_A9 = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S_A9", 0.25)))
+KEY_WAIT_S = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S", 0.0))           # 0 = tắt
+KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 1.2))
 _RATE_MEM = {}                            # (uid, mã máy, loại đường) → {"k": kbps, "until": giữ tới lúc, "hs": số giây giữ, "lc": lúc nghẽn, "t": lúc ghi}
 KEYCODE = {"back": 4, "home": 3, "recents": 187, "power": 26, "volup": 24, "voldown": 25, "menu": 82}
 
@@ -1019,8 +1032,10 @@ class ScrcpyVideo:
     """Hình lấy THẲNG từ Android: scrcpy-server 2.4 (video=true, control=false) mã hoá H.264 ngay trong máy → từng khung Annex-B → on_au.
        Dùng khi Windows không quay được cửa sổ giả lập (Windows 10 trước 1903: PrintWindow chỉ ra màn ĐEN với MEmu).
        Cùng giao diện với Encoder (start / stop / proc / enc / failed_early). Khung khoá mỗi ~1 giây; máy xoay → on_size(rộng, cao)."""
-    def __init__(self, serial, max_size, fps, kbps, on_au, on_size=None):
+    def __init__(self, serial, max_size, fps, kbps, on_au, on_size=None, iframe=1.0):
         self.serial, self.max_size, self.fps, self.kbps, self.on_au, self.on_size = serial, int(max_size), int(fps), int(kbps), on_au, on_size
+        try: self.iframe = max(0.1, min(5.0, float(iframe)))
+        except (TypeError, ValueError): self.iframe = 1.0
         self.enc = "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
         self.lock = threading.Lock(); self.w = self.h = 0; self.frames_in = 0; self.started = 0.0
 
@@ -1034,7 +1049,8 @@ class ScrcpyVideo:
         cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
                "video=true audio=false control=false tunnel_forward=true send_device_meta=false send_dummy_byte=true "
                "send_codec_meta=true send_frame_meta=true cleanup=false power_on=false video_codec=h264 "
-               f"max_size={self.max_size} max_fps={self.fps} video_bit_rate={self.kbps * 1000} video_codec_options=i-frame-interval=1")
+               f"max_size={self.max_size} max_fps={self.fps} video_bit_rate={self.kbps * 1000} video_codec_options="
+               + ("i-frame-interval=1" if abs(self.iframe - 1.0) < 1e-6 else f"i-frame-interval:float={self.iframe:g}"))
         with self.lock:
             if self.stopped: raise RuntimeError("đã dừng")
             self.proc = subprocess.Popen([ADB, "-s", self.serial, "shell", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1808,6 +1824,9 @@ class Closed(Exception):
 
 
 class Session:
+    is_preview = False
+    a9 = False; _wk_t = 0.0; n_keyfix = 0          # mặc định cho mọi phiên (kể cả phiên dựng thiếu __init__) — __init__ đặt lại theo máy
+
     def __init__(self, link, me, phone, hello, t_hello):
         self.link, self.me, self.phone, self.hello, self.t_hello = link, me, phone, hello, t_hello
         self.pid = phone["id"]; self.name = phone["container"]; self.serial = f"127.0.0.1:{phone['port']}"
@@ -1836,6 +1855,8 @@ class Session:
         self.t_auth = time.time()          # lần kiểm lại quyền gần nhất (REAUTH_S)
         self.t_start = time.time(); self.why = ""   # lúc mở phiên · lý do đóng (ghi nhật ký cho kiemlag.py)
         self.fail_n = 0; self.fail_t = 0.0  # bật lại hình lỗi liên tiếp (thử lại tại chỗ, không đóng phiên)
+        self.a9 = str(phone.get("android") or "").strip() == "9"     # Android 9 = LDPlayer 9 (bộ nén phần mềm, không lặp khung)
+        self._wk_t = 0.0; self.n_keyfix = 0  # lúc bắt đầu chờ khung khoá · số lần bật lại bộ nén để lấy khung khoá
 
     # ---------- hình ----------
     def _kbps_start(self):
@@ -1914,7 +1935,8 @@ class Session:
         ow, oh, fps, kbps = self._dims()
         self.gen += 1; g = self.gen
         old_enc = self.enc
-        enc = ScrcpyVideo(self.serial, max(ow, oh), fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h))
+        enc = ScrcpyVideo(self.serial, max(ow, oh), fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
+                          iframe=SCR_IFRAME_A9 if self.a9 and not self.is_preview else SCR_IFRAME)
         self.enc = enc
         if old_enc: old_enc.stop()
         if self.closed: enc.stop(); raise Closed()
@@ -2183,6 +2205,12 @@ class Session:
                             log(f"  {self.name}: Android không xuất được hình (scrcpy lỗi {self.dead} lần, 0 khung) → báo app")
                             raise Deny("OFFLINE", "Màn hình Android của máy này đang lỗi (máy chủ không lấy được hình) — báo hỗ trợ để làm lại máy.")
                     log(f"  {self.name}: bộ nén dừng → bật lại"); await self.restart_video(); continue
+                kw = 0.0 if self.is_preview else (KEY_WAIT_S_A9 if self.a9 else KEY_WAIT_S)
+                if not getattr(self, "wait_key", False): self._wk_t = 0.0
+                elif not self._wk_t: self._wk_t = time.time()
+                elif (kw > 0 and getattr(self, "sent", 0) > 0 and getattr(self.enc, "enc", "") == "scrcpy" and not self.restart_req
+                      and time.time() - self._wk_t > kw and time.time() - self.last_restart > max(2.0, kw)):
+                    self.restart_req = "key"; self.n_keyfix += 1; self._wk_t = time.time()   # bỏ khung rồi chờ khung khoá quá lâu → bật lại bộ nén
                 if self.restart_req and time.time() - self.last_restart > 1.0:
                     self.restart_req = None; await self.restart_video()
                 if self._may_raise(time.time()):
@@ -2235,6 +2263,7 @@ class Session:
         await self.link.close()
         try: self._rate_save()
         except Exception: pass
+        if self.n_keyfix: log(f"  {self.name}: bật lại bộ nén {self.n_keyfix} lần để lấy khung khoá (chờ quá lâu sau khi bỏ khung)")
         log(f"■ {self.name} đóng (gửi {self.sent} khung, bỏ {self.drop}" + (f", {self.kbps_cur} kbps" if self.kbps_cur else "") + ")"
             + f" · {int(time.time() - getattr(self, 't_start', time.time()))} giây" + (f" · {self.why}" if getattr(self, "why", "") else ""))
 
@@ -2250,6 +2279,8 @@ class Preview(Session):
     """Hình NHỎ (cạnh dài ≤ 480), 8 khung/giây, ít dữ liệu; KHÔNG điều khiển; KHÔNG đá phiên điều khiển đang mở và không bị
        phiên điều khiển đá (nhiều thiết bị xem cùng lúc). Hình lấy THẲNG từ Android (scrcpy-server nén ngay trong máy): không đụng
        tới cửa sổ giả lập (phiên điều khiển đang quay cửa sổ không bị xê dịch / mất hình) và không tốn ffmpeg của máy chủ."""
+    is_preview = True
+
     def __init__(self, link, me, phone, hello, t_hello):
         super().__init__(link, me, phone, hello, t_hello)
         try: self.pmax = max(160, min(480, int(hello.get("maxh") or 480)))
@@ -3530,7 +3561,9 @@ async def main():
     log(f"bluestream chạy · trực tiếp TLS :{PORT} (modem mở cổng TCP {PORT} về máy này) · WebSocket 127.0.0.1:{WS_PORT} · máy chủ {NODE_ID}"
         f" · {f'giữ cú bấm {int(TAP_HOLD * 1000)} ms' if TAP_HOLD else 'chạm gửi ngay'} · {'sửa app mở nhầm màn ảo' if DISPLAY_FIX else 'TẮT sửa màn ảo'}")
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
-        f" · bản {BS_VER} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
+        f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
+    log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi {SCR_IFRAME:g} giây"
+        + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()
     if not SELFTEST and WEB_DIRECT and CF_TOKEN: threading.Thread(target=web_direct_loop, daemon=True).start()
     elif not SELFTEST: log(f"đường thẳng web: chưa bật — chạy 1 lần: python bluestream.py --webdirect (web / iPhone đang đi Cloudflare)")
