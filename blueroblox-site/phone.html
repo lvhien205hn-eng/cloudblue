@@ -993,6 +993,7 @@ function renderHead() {
 }
 function setTools(on) { document.querySelectorAll(".tools .tb, .mbar .tb[data-key]").forEach(b => { b.disabled = !on; }); }
 
+const LIVE_ST = ["pending", "creating", "active", "expired", "cancelling"];   // máy còn trên máy chủ (giống cloudphoned LIVE_ST)
 async function loadPhones() {
   const want = new URLSearchParams(location.search).get("id");
   phones = (await myPhones()) || [];
@@ -1000,7 +1001,12 @@ async function loadPhones() {
     const { data: one } = await sb.from("cloud_phones").select("*").eq("id", want).maybeSingle();   // admin mở máy của khách
     if (one) phones.unshift(one);
   }
-  return phones.find(p => p.id === want) || phones.find(p => p.status === "active") || phones[0] || null;
+  const w = want ? phones.find(p => p.id === want) : null;
+  if (w && !LIVE_ST.includes(w.status)) {        // link / trang cũ của máy đã xoá hoặc tạo lỗi → mở máy còn dùng được của khách
+    const a = phones.find(p => p.id !== w.id && p.status === "active") || phones.find(p => p.id !== w.id && LIVE_ST.includes(p.status));
+    if (a) { phones = phones.filter(p => p.id !== w.id); return a; }
+  }
+  return w || phones.find(p => p.status === "active") || phones[0] || null;
 }
 function openPhone(p) {
   cur = p; main.size = null; zoom = 1; renderHead(); fit();
@@ -1008,8 +1014,11 @@ function openPhone(p) {
   const u = new URL(location.href); u.searchParams.set("id", p.id); history.replaceState(null, "", u);
   if (p.status !== "active" || !p.port) {
     main.stop(); setTools(false);
-    if (p.status === "pending") { setState("wait", L("Đang tạo máy", "Creating phone")); veil(true, L("Máy đang được tạo", "Your phone is being created"), L("Khoảng 2–3 phút, trang tự mở khi xong.", "About 2–3 minutes. This page opens it automatically when ready.")); }
-    else { setState("bad", L("Máy tạm dừng", "Phone paused")); veil(true, L("Máy đã hết hạn và đang tạm dừng", "This phone has expired and is paused"), L('Gia hạn trong 30 phút để giữ dữ liệu. <a href="/">Về cửa hàng để gia hạn</a>', 'Renew within 30 minutes to keep your data. <a href="/">Go to the store to renew</a>'), false); }
+    if (p.status === "pending" || p.status === "creating") { setState("wait", L("Đang tạo máy", "Creating phone")); veil(true, L("Máy đang được tạo", "Your phone is being created"), L("Khoảng 2–3 phút, trang tự mở khi xong.", "About 2–3 minutes. This page opens it automatically when ready.")); }
+    else if (p.status === "active") { setState("wait", L("Đang khởi động", "Starting")); veil(true, L("Máy đang khởi động", "Your phone is starting"), L("Trang tự mở khi máy sẵn sàng.", "This page opens it automatically when ready.")); }   // đang chạy mà chưa có cổng
+    else if (p.status === "expired") { setState("bad", L("Máy tạm dừng", "Phone paused")); veil(true, L("Máy đã hết hạn và đang tạm dừng", "This phone has expired and is paused"), L('Gia hạn trong 30 phút để giữ dữ liệu. <a href="/">Về cửa hàng để gia hạn</a>', 'Renew within 30 minutes to keep your data. <a href="/">Go to the store to renew</a>'), false); }
+    else if (p.status === "cancelling") { setState("bad", L("Đang xoá máy", "Deleting")); veil(true, L("Máy này đang được xoá", "This phone is being deleted"), '<a href="/">' + L("Về cửa hàng", "Go to the store") + '</a>', false); }
+    else { setState("bad", L("Máy không còn", "Phone gone")); veil(true, L("Máy này đã bị xoá hoặc tạo lỗi", "This phone was deleted or failed to create"), (p.error ? esc(p.error) + "<br>" : "") + '<a href="/">' + L("Về cửa hàng để mở / thuê máy khác", "Go to the store to open or rent another phone") + '</a>', false); }
     return;
   }
   setTools(true); main.tries = 0; main.open(p, quality);
@@ -1082,10 +1091,10 @@ async function checkInfo() {
   renderHead();
 }
 setInterval(checkInfo, 20000);
-setInterval(async () => {          // máy đang tạo / tạm dừng → tự cập nhật
-  if (!cur || cur.status === "active") return;
+setInterval(async () => {          // máy đang tạo / khởi động / tạm dừng → tự cập nhật (cả khi mới có cổng)
+  if (!cur || (cur.status === "active" && cur.port) || !LIVE_ST.includes(cur.status)) return;
   const { data } = await sb.from("cloud_phones").select("*").eq("id", cur.id).maybeSingle();
-  if (data && data.status !== cur.status) { Object.assign(cur, data); openPhone(cur); }
+  if (data && (data.status !== cur.status || data.port !== cur.port)) { Object.assign(cur, data); openPhone(cur); }
 }, 6000);
 setInterval(() => cur && ($("left").textContent = leftText(cur)), 30000);
 setInterval(() => openSession().catch(() => {}), 2 * 3600 * 1000);
