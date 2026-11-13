@@ -50,6 +50,55 @@ MEMU_MAX_RAM, MEMU_MAX_CPU = _f("MEMU_MAX_RAM", 1024 if _MUMU else 16), _f("MEMU
 WIN_RESERVE = _f("WIN_RAM_RESERVE", 4)
 MEMU_MAX_VMS = int(_f("MEMU_MAX_VMS", 0))      # Windows: giới hạn SỐ máy (0 = không giới hạn số máy, chỉ tính theo tổng nhân + RAM)
 WIN_VCPU_OVER = _f("WIN_VCPU_OVER", 0.9)        # tổng nhân ảo cấp cho các máy ≤ 90% số luồng thật (72 luồng → 64 nhân) — chừa 10% cho Windows + phát hình
+# ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
+# Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
+# 9 máy ngủ) báo ĐẦY lúc RAM thật mới dùng 32%. Giờ máy ngủ giữ đúng phần RAM THẬT 1 máy đang chạy dùng (đo trên chính
+# máy chủ này) → mọi máy ngủ cùng thức một lúc vẫn đủ RAM. RAM_OVER (dùng chung ×K) > 1 → giữ ít hơn K lần, bán được nhiều
+# hơn nhưng nếu quá nhiều máy ngủ cùng thức thì RAM có thể thiếu (giả lập giật / không bật được). Thiếu dòng RAM_OVER → ×1.
+RAM_RATIO_F = os.path.join(HOME, "redroid", "ram_ratio.json")   # cloudphoned ghi mỗi 30 giây · phonectl đọc (tạo / nâng máy)
+RATIO_HOURS, RATIO_MIN_N, RATIO_FLOOR = 12, 6, 0.5   # mức cao nhất 12 giờ qua · giờ cần ≥ 6 lần đo (3 phút) · giữ tối thiểu 50%
+_ram_rt = {"h": {}}       # {giờ: [tổng tỉ lệ, số lần đo]} — chỉ luồng báo cáo thay CẢ bảng (luồng nhận đơn đọc bảng cũ không lỗi)
+def _rr_load():
+    """Đọc lại số đo cũ: khởi động lại cloudphoned / Windows không mất (máy vừa bật lại chưa chạy game → đo thấp hơn thật)."""
+    try:
+        with open(RAM_RATIO_F, encoding="utf-8") as f: d = json.load(f)
+        t_h = int(time.time() // 3600)
+        _ram_rt["h"] = {int(k): [float(v[0]), int(v[1])] for k, v in (d.get("h") or {}).items() if int(k) > t_h - RATIO_HOURS}
+    except Exception: pass
+def ram_ratio(sample=None):
+    """RAM THẬT 1 máy ĐANG CHẠY dùng ÷ RAM đã cấp cho nó: lấy giờ CAO NHẤT trong 12 giờ qua (TB từng giờ), kẹp 0,5–1.
+       Chưa đo được (vừa cài, không máy nào chạy) → 1 = giữ đủ RAM đã cấp như cũ. Truyền sample = thêm 1 lần đo (luồng báo cáo)."""
+    t_h = int(time.time() // 3600)
+    if sample is not None:
+        h = {k: list(v) for k, v in _ram_rt["h"].items() if k > t_h - RATIO_HOURS}
+        s = h.setdefault(t_h, [0.0, 0]); s[0] += sample; s[1] += 1
+        _ram_rt["h"] = h
+    v = [x[0] / x[1] for k, x in _ram_rt["h"].items() if k > t_h - RATIO_HOURS and x[1] >= RATIO_MIN_N]
+    return max(RATIO_FLOOR, min(1.0, max(v))) if v else 1.0
+def sleep_reserve(st):
+    """(GB RAM giữ cho máy NGỦ, GB RAM đã cấp của chúng, số máy ngủ). Khách mở máy là bật lại → phần giữ không bán cho máy mới."""
+    zz = [min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st if p.get("sleep") and p.get("hold")]
+    return sum(zz) * ram_ratio() / WIN_RAM_OVER, sum(zz), len(zz)
+def ram_sample(st, rn, ram_t, ram_avail):
+    """Luồng báo cáo (30 giây/lần): đo (RAM thật đang dùng − phần của Windows WIN_RAM_RESERVE) ÷ RAM đã cấp của các máy ĐANG
+       CHẠY (cần ≥ 8GB đang chạy cho số đo đáng tin)."""
+    a_run = sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st
+                if rn and p.get("name") in rn and not (p.get("sleep") and p.get("hold")))
+    if a_run >= 8: ram_ratio(max(0.0, min(1.5, (ram_t - ram_avail - WIN_RESERVE) / a_run)))
+def rr_write(st, a_ram, c_ram):
+    """Ghi ram_ratio.json (30 giây/lần): phonectl đọc "factor" khi tạo / nâng máy (cùng mức với web + nhận đơn) · lệnh cập nhật
+       đọc để in kết quả. Trả (GB giữ cho máy ngủ, GB đã cấp của chúng, số máy ngủ)."""
+    zz, full, n = sleep_reserve(st); h = _ram_rt["h"]; t_h = int(time.time() // 3600)
+    try:
+        tmp = RAM_RATIO_F + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"t": time.time(), "factor": round(ram_ratio() / WIN_RAM_OVER, 4), "ratio": round(ram_ratio(), 3), "over": WIN_RAM_OVER,
+                       "measured": any(k > t_h - RATIO_HOURS and v[1] >= RATIO_MIN_N for k, v in h.items()),
+                       "sleeping": n, "sleep_gb": round(zz, 1), "sleep_full_gb": round(full, 1), "alloc_gb": round(a_ram, 1), "cap_gb": round(c_ram, 1),
+                       "h": {str(k): [round(v[0], 6), v[1]] for k, v in h.items()}}, f)
+        os.replace(tmp, RAM_RATIO_F)
+    except Exception as e: print("lỗi ghi ram_ratio.json:", e)
+    return zz, full, n
 def want(row):
     """RAM/CPU THẬT sẽ cấp cho đơn: Windows/MEmu tối đa 16GB · 16 nhân mỗi máy (gói to hơn vẫn nhận, chạy mức tối đa)."""
     r, c = float(row.get("ram") or 0), float(row.get("cpu") or 0)
@@ -59,12 +108,13 @@ def win_caps(st):
        CPU dùng chung (72 luồng) → chỉ ngừng khi CPU thật đã nóng. Trả (đã cấp RAM, đã cấp CPU, trần RAM, trần CPU)."""
     a_r = sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st); a_c = sum(min(float(p.get("cpu", 0)), MEMU_MAX_CPU) for p in st)
     t_r, av_r = meminfo(); cpu_t = os.cpu_count() or 1
-    av_r -= sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st if p.get("sleep") and p.get("hold"))   # máy NGỦ bật lại khi khách mở → chừa RAM, không bán
-    c_r = a_r + max(0.0, av_r - WIN_RESERVE)
+    hot = bool(t_r) and 100 * (1 - av_r / t_r) >= RAM_BUSY   # RAM THẬT đã đầy (chưa tính phần giữ cho máy ngủ)
+    av_r -= sleep_reserve(st)[0]                              # máy NGỦ bật lại khi khách mở → chừa RAM thật của chúng, không bán
+    c_r = a_r + max(0.0, av_r - WIN_RESERVE - 1)             # −1GB: khớp phonectl create (máy mới cần thêm 1GB) → web / nhận đơn / tạo máy cùng một mức, không nhận rồi hoàn tiền
     c_c = a_c + cpu_t * CPU_OVER
     c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))          # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
     if (cpu_avg5() or 0) >= CPU_BUSY: c_c = a_c
-    if t_r and 100 * (1 - av_r / t_r) >= RAM_BUSY: c_r = a_r
+    if hot: c_r = a_r
     if disk_full(): c_r = a_r
     if gpu_busy(): c_r, c_c = a_r, a_c                         # card đồ hoạ / VRAM quá tải → hết chỗ, đơn mới sang máy chủ khác
     if MEMU_MAX_VMS > 0 and len(st) >= MEMU_MAX_VMS: c_r, c_c = a_r, a_c   # đủ số máy tối đa → báo HẾT CHỖ, web ngừng bán
@@ -213,6 +263,8 @@ try: CPU_BUSY = max(30, min(100, int(CFG.get("CPU_BUSY_PCT", "85"))))   # CPU th
 except ValueError: CPU_BUSY = 85
 try: RAM_OVER = max(1.0, min(4.0, float(CFG.get("RAM_OVER", "2"))))     # RAM dùng chung: cấp vượt tối đa ×2
 except ValueError: RAM_OVER = 2.0
+try: WIN_RAM_OVER = max(1.0, min(4.0, float(CFG.get("RAM_OVER", "1"))))   # Windows: máy NGỦ giữ RAM thật ÷ ×K — thiếu dòng RAM_OVER → ×1 (an toàn)
+except ValueError: WIN_RAM_OVER = 1.0
 try: RAM_BUSY = max(30, min(98, int(CFG.get("RAM_BUSY_PCT", "85"))))   # RAM thật ≥ 85% → ngừng nhận máy mới
 except ValueError: RAM_BUSY = 85
 try: DISK_BUSY = max(50, min(98, int(CFG.get("DISK_BUSY_PCT", "90"))))  # ổ cứng ≥ 90% → ngừng nhận máy mới
@@ -555,8 +607,10 @@ def heartbeat():
     ram_t, ram_avail = meminfo(); cpu_t = os.cpu_count() or 1
     a_ram = sum(float(p.get("ram", 0)) for p in st); a_cpu = sum(float(p.get("cpu", 0)) for p in st)
     c_ram, c_cpu = ram_t * LIMIT_PCT / 100 * RAM_OVER, cpu_t * CPU_OVER
+    rn = None                                           # tên các máy đang chạy (Windows: đo RAM thật 1 máy chạy dùng)
     try:
-        running = len([l for l in subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True, timeout=15).stdout.split() if l.startswith("cp_")])
+        rn = {l for l in subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True, timeout=15).stdout.split() if l.startswith("cp_")}
+        running = len(rn)
         running += len([p for p in st if p.get("kind") == "gpu" and
                         subprocess.run(["systemctl", "is-active", "-q", f"cloudgpu@{p['name']}"]).returncode == 0])
     except Exception:
@@ -573,10 +627,17 @@ def heartbeat():
     if disk_busy: c_ram = a_ram                         # ổ cứng ≥ 90% → báo hết chỗ
     g_list = gpus(); g_avg, v_avg = gpu_avg5(g_list); g_why = gpu_busy()
     if g_why: c_ram, c_cpu = a_ram, a_cpu               # card đồ hoạ / VRAM quá tải → báo hết chỗ, đơn mới sang máy chủ khác
-    if WIN: a_ram, a_cpu, c_ram, c_cpu = win_caps(st)   # Windows: sức chứa theo RAM trống thật, CPU dùng chung (đã tính card đồ hoạ)
+    zz, zz_full, nz = 0.0, 0.0, 0
+    if WIN:
+        try: ram_sample(st, rn, ram_t, ram_avail)       # đo RAM thật máy đang chạy → phần giữ cho máy ngủ
+        except Exception as e: print("lỗi đo RAM máy ngủ:", e)
+        a_ram, a_cpu, c_ram, c_cpu = win_caps(st)       # Windows: sức chứa theo RAM trống thật, CPU dùng chung (đã tính card đồ hoạ)
+        try: zz, zz_full, nz = rr_write(st, a_ram, c_ram)
+        except Exception as e: print("lỗi ghi phần giữ RAM máy ngủ:", e)
     metrics = {"cpu_pct": cp_now, "cpu_avg5": avg5, "cpu_over": CPU_OVER, "cpu_busy_pct": CPU_BUSY, "cpu_busy": busy, "ram_over": RAM_OVER, "ram_pct": ram_pct, "ram_busy_pct": RAM_BUSY, "ram_busy": ram_busy, "disk_busy": disk_busy, "disk_busy_pct": DISK_BUSY, "load": [round(x, 2) for x in os.getloadavg()], "cpu_temp": cpu_temp(),
                "ram_used": round(ram_t - ram_avail, 1), "gpus": g_list, "gpu_avg5": g_avg, "vram_avg5": v_avg, "gpu_busy_pct": GPU_BUSY, "vram_busy_pct": VRAM_BUSY, "gpu_busy": g_why == "gpu", "vram_busy": g_why == "vram", "disk_data": disk(DATA_ROOT), "disk_root": disk("/"),
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
+    if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -598,7 +659,8 @@ def heartbeat():
                 f"🚨 <b>{NODE_ID}: ổ cứng sắp đầy</b> (ngưỡng {DISK_BUSY}%) — tạm ngừng nhận máy mới. Xoá bớt máy hết hạn / file thừa." if disk_busy else
                 f"🚨 <b>{NODE_ID}: card đồ hoạ đang chạy {g_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {GPU_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "gpu" else
                 f"🚨 <b>{NODE_ID}: VRAM card đồ hoạ đầy {v_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {VRAM_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "vram" else
-                f"🚨 <b>{NODE_ID} đã đầy</b> — RAM cấp {a_ram:.0f}/{c_ram:.0f}GB, CPU cấp {a_cpu:.0f}/{c_cpu:.0f}.") + " Đơn mới sang máy chủ khác (mọi máy chủ đều đầy thì khách thấy HẾT HÀNG)."
+                f"🚨 <b>{NODE_ID} đã đầy</b> — RAM cấp {a_ram:.0f}/{c_ram:.0f}GB, CPU cấp {a_cpu:.0f}/{c_cpu:.0f}."
+                + (f" Đang giữ {zz:.0f}GB RAM cho {nz} máy ngủ (khách mở là bật lại)." if nz else "")) + " Đơn mới sang máy chủ khác (mọi máy chủ đều đầy thì khách thấy HẾT HÀNG)."
                if full else f"✅ <b>{NODE_ID}</b> đã có chỗ trống trở lại (RAM cấp {a_ram:.0f}/{ram_t:.0f}GB).")
     _alert["full"] = full
 
@@ -815,6 +877,10 @@ if __name__ == "__main__":
           % (CPU_BUSY, RAM_BUSY, DISK_BUSY, "≥ %d%%" % GPU_BUSY if GPU_BUSY else "TẮT", "≥ %d%%" % VRAM_BUSY if VRAM_BUSY else "TẮT"))
     e = engine(); print(f"Giả lập: {e['emu'] or '?'} · nhận đơn Android: {', '.join(e['androids']) or 'mọi bản'}")
     if WIN: print(f"Máy rảnh tự ngủ (IDLE_STOP_MIN={_f('IDLE_STOP_MIN', 30):g}): " + ("máy ở màn hình chính, không ai xem, CPU thấp liền ngần ấy phút → tắt; khách mở máy tự bật lại" if IDLE_ON else "TẮT"))
+    if WIN:
+        _rr_load()
+        print(f"Máy ngủ giữ RAM (SLEEP_RAM): bằng RAM thật 1 máy đang chạy dùng (mức cao nhất {RATIO_HOURS} giờ, tối thiểu "
+              f"{RATIO_FLOOR:.0%} RAM cấp) ÷ RAM_OVER {WIN_RAM_OVER:g} → hiện giữ {ram_ratio() / WIN_RAM_OVER:.0%} RAM cấp của máy ngủ")
     adopt_old()
     n = 0; last = 0.0; _rootjob = [None]
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng

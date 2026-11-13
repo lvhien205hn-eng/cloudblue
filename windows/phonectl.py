@@ -1090,7 +1090,7 @@ def cmd_create(a):
     tot, av = mem(); zz = _sleep_ram(st); av -= zz                # máy đang NGỦ sẽ bật lại khi khách mở → RAM của chúng không bán cho máy mới
     need = min(float(a.ram), MAX_RAM)                     # MEmu chạy tối đa 16GB/máy → chỉ cần đủ RAM cho phần thật sự cấp
     if av - (need + 1) < RESERVE:
-        print(f"HẾT HÀNG: RAM Windows còn {av:.1f}GB" + (f" (đã chừa {zz:g}GB cho máy đang ngủ)" if zz else "")
+        print(f"HẾT HÀNG: RAM Windows còn {av:.1f}GB" + (f" (đã chừa {zz:.1f}GB cho máy đang ngủ)" if zz else "")
               + f", máy {need:g}GB cần thêm {need + 1:g}GB và chừa {RESERVE:g}GB."); sys.exit(2)
     try: open(os.path.join(HOME, "redroid", f"creating_{os.getpid()}.flag"), "w").write(a.name)   # báo "đang tạo máy khách" → dựng máy sẵn nhường đường
     except OSError: pass
@@ -2156,7 +2156,7 @@ def cmd_capacity(a):
           f" · 1 máy tối đa {MAX_RAM:g}GB · {MAX_CPU} nhân")
     nz = sum(1 for p in st["phones"] if _asleep(p))
     print(f"Đã cấp:  RAM {sum(float(p['ram']) for p in st['phones']):.1f} GB  ({len(st['phones'])} máy)"
-          + (f" · {nz} máy đang ngủ (chừa {_sleep_ram(st):g} GB để bật lại)" if nz else ""))
+          + (f" · {nz} máy đang ngủ (chừa {_sleep_ram(st):.1f} GB = {_sleep_factor():.0%} RAM cấp, để bật lại)" if nz else ""))
 
 def cmd_list(a):
     st = load(); v = vms()
@@ -2329,9 +2329,18 @@ _HOME_CACHE = {}
 def _asleep(p):
     """Máy đang NGỦ thật (dấu ngủ + hold). Dấu ngủ sót lại mà hold đã gỡ (vd quay về bản cũ rồi bản cũ bật máy) → coi như thức."""
     return bool(p and p.get("sleep") and p.get("hold"))
+RAM_RATIO_F = os.path.join(HOME, "redroid", "ram_ratio.json")
+def _sleep_factor():
+    """Máy NGỦ giữ bao nhiêu phần RAM đã cấp của nó: cloudphoned đo RAM THẬT 1 máy đang chạy dùng, chia RAM_OVER, ghi mỗi
+       30 giây vào ram_ratio.json (13/11). Không có số mới (cloudphoned bản cũ / tắt quá 15 phút) → giữ đủ 100% như trước."""
+    try:
+        with open(RAM_RATIO_F, encoding="utf-8") as f: d = json.load(f)
+        if 0 <= time.time() - float(d.get("t") or 0) < 900: return max(0.1, min(1.0, float(d["factor"])))
+    except Exception: pass
+    return 1.0
 def _sleep_ram(st=None):
-    """RAM (GB) phải CHỪA cho máy đang ngủ — khách mở là bật lại, không bán chỗ này cho máy mới."""
-    return sum(min(float(p.get("ram") or 0), MAX_RAM) for p in (st or load())["phones"] if _asleep(p))
+    """RAM (GB) phải CHỪA cho máy đang ngủ — khách mở là bật lại, không bán chỗ này cho máy mới (giữ theo RAM thật: _sleep_factor)."""
+    return sum(min(float(p.get("ram") or 0), MAX_RAM) for p in (st or load())["phones"] if _asleep(p)) * _sleep_factor()
 def _viewers():
     """(bluestream BIẾT ĐÁNH THỨC máy đang chạy?, {cổng adb: lúc có người xem gần nhất}) — bluestream ghi file mỗi 30 giây."""
     try:

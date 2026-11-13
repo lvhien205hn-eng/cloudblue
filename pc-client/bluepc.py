@@ -76,7 +76,7 @@ def must_update():
 
 
 ERRORS = {
-    "APP_OUTDATED": "Bản app này đã cũ — phải cập nhật bản mới nhất mới dùng tiếp được (bấm Cập nhật ngay trên danh sách máy).",
+    "APP_OUTDATED": "Bản app này đã cũ — phải cập nhật mới dùng tiếp được.",
     "Invalid login credentials": "Sai email hoặc mật khẩu.", "Email not confirmed": "Email chưa xác nhận — mở hộp thư để xác nhận.",
     "SESSION_EXPIRED": "Phiên đăng nhập hết hạn, hãy đăng nhập lại.", "NOT_LOGGED_IN": "Hãy đăng nhập.",
     "NOT_ALLOWED": "Bạn không có quyền mở máy này.", "NOT_FOUND": "Không tìm thấy máy.", "MAINTENANCE": "Hệ thống đang bảo trì.",
@@ -579,6 +579,8 @@ class Viewer:
             if d[0] == "connected":
                 self.path = d[1]
                 if self.cli and self.cli.prefer: prefs({"path_" + str(self.node): list(self.cli.prefer)})
+                if not getattr(self, "_upd_tried", False):             # có bản app mới → nhắc ngay trong cửa sổ máy
+                    self._upd_tried = True; threading.Thread(target=self._upd_note, daemon=True).start()
                 if not getattr(self, "_blue_tried", False):            # 💎 nhiệm vụ "mở máy đám mây" (SQL v27) — mỗi ngày 1 lần
                     self._blue_tried = True
                     threading.Thread(target=blue_play_task, args=(self.auth, lambda t: self._say(t, 5.0)), daemon=True).start()
@@ -667,6 +669,38 @@ class Viewer:
         try: self.connect()
         except Exception as e:
             self.state = ("error", str(e)); log("connect:", traceback.format_exc()); self._post()
+            if must_update() and not getattr(self, "_outdated_seen", False):
+                self._outdated_seen = True; threading.Thread(target=self._outdated, daemon=True).start()
+
+    # ---------- cập nhật app ngay trong cửa sổ máy ----------
+    def _outdated(self):
+        """Máy chủ báo app đã cũ: có bản mới trên web → tự mở trình cập nhật (tải, thay bản, mở lại ĐÚNG máy này).
+           Nhiều cửa sổ máy cùng báo / vừa tự cập nhật trong 10 phút → chỉ hiện nút (khỏi mở trình cập nhật lặp)."""
+        info = fetch_update_info(force=True)
+        if not info:
+            self.upd_hint = "Chưa có bản mới trên trang tải — báo shop giúp nhé."; self._post(); return
+        self.upd_info = info
+        if update_claim(): self._open_updater()
+        else: self.upd_hint = f"Bấm phím U hoặc bấm vào đây để cập nhật lên bản {info.get('version') or 'mới'}."; self._post()
+
+    def _open_updater(self):
+        """Mở trình cập nhật (danh sách máy ở chế độ cập nhật): tải + thay bản mới → tự mở lại máy này."""
+        try: spawn_viewer(self.pid, "--update")
+        except Exception as e:
+            log("update: không mở được trình cập nhật:", repr(e))
+            self.upd_hint = "Không mở được trình cập nhật — mở app CloudBlue PC rồi bấm Cập nhật."; self._post(); return
+        self.upd_hint = "Đang cập nhật — app tự tải bản mới, đóng cửa sổ này rồi mở lại máy (khoảng 1 phút)."
+        self._say("Đang mở trình cập nhật…", 4.0)
+
+    def _upd_note(self):
+        """Đang dùng máy mà web có bản app mới → nhắc 1 dòng (bấm vào để cập nhật) — mỗi bản nhắc tối đa 12 giờ / lần."""
+        if not FROZEN: return
+        info = fetch_update_info()
+        if not info or must_update(): return
+        v = str(info.get("version") or ""); seen = prefs().get("upd_note") or {}
+        if seen.get("v") == v and time.time() - num(seen.get("t")) < 43200: return
+        prefs({"upd_note": {"v": v, "t": time.time()}})
+        self._say(f"Có bản app mới {v} — bấm vào đây để cập nhật (app tự tải, máy này tự mở lại).", 15.0, self._open_updater)
 
     def _need_fit(self):
         """Chưa chỉnh cỡ lần nào, hoặc hình đổi tỉ lệ (máy XOAY dọc ↔ ngang: bấm Xoay, mở game / bản clone cần màn ngang…)."""
@@ -806,11 +840,16 @@ class Viewer:
             if st == "connected" and not has_video: msg = "Đang lấy hình…"
             lines = [msg]
             if st == "kicked": lines = ["Máy đang được mở ở nơi khác.", "Bấm phím R hoặc bấm vào đây để mở lại tại đây."]
-            if st == "error": lines = [msg, "Bấm phím R để thử lại."]
-            box_h = 30 + 26 * len(lines); bw = min(aw - 40, 520)
-            pygame.draw.rect(s, (10, 16, 30, 215), ((aw - bw) // 2, H // 2 - box_h // 2, bw, box_h), border_radius=14)
+            if st == "error":
+                lines = [msg, (getattr(self, "upd_hint", "") or "Đang tìm bản mới…") if must_update() else "Bấm phím R để thử lại."]
+            bw = min(aw - 40, 520); rows = []
             for i, ln in enumerate(lines):
-                t = (self.font_b if i == 0 else self.font).render(ln[:80], True, C_TXT if i == 0 else C_DIM)
+                f_ = self.font_b if i == 0 else self.font
+                rows += [(f_, w, C_TXT if i == 0 else C_DIM) for w in wrap_text(f_, ln, bw - 32) if w]
+            rows = rows[:7]; box_h = 30 + 26 * len(rows)
+            pygame.draw.rect(s, (10, 16, 30, 215), ((aw - bw) // 2, H // 2 - box_h // 2, bw, box_h), border_radius=14)
+            for i, (f_, ln, col) in enumerate(rows):
+                t = f_.render(ln, True, col)
                 s.blit(t, t.get_rect(center=(aw // 2, H // 2 - box_h // 2 + 26 + 26 * i)))
         if self.show_info and st == "connected":
             d = self.stats
@@ -949,6 +988,7 @@ class Viewer:
                 try: act()
                 except Exception as ex: log("notice:", ex)
                 return True
+            if self.state[0] == "error" and e.button == 1 and must_update(): self._open_updater(); return True
             if self.state[0] in ("kicked", "error") and e.button == 1: self._retry(); return True
             p = self._norm(e.pos)
             if p and c:
@@ -972,6 +1012,7 @@ class Viewer:
             if down and e.key == pygame.K_F10: self._toggle_bar(pygame); return True
             if down and e.key == pygame.K_F5: self._reload(); return True
             if down and e.key == pygame.K_F3: self.show_info = not self.show_info; return True
+            if down and e.key == pygame.K_u and self.state[0] == "error" and must_update(): self._open_updater(); return True
             if down and e.key == pygame.K_r and self.state[0] in ("kicked", "error"): self._retry(); return True
             if not c: return False
             if mods & pygame.KMOD_CTRL and e.key == pygame.K_v:
@@ -3128,6 +3169,42 @@ def finish_update(src, install, wait_pid=0, say=lambda m: None, procs=None, kill
     return exe, None, closed
 
 
+UPD = {"info": None, "t": 0.0}                       # bản app mới hơn trên web (download/pc.json) — đọc tối đa 5 phút / lần
+
+
+def fetch_update_info(force=False, timeout=8, with_min=True):
+    """Bản app MỚI HƠN đang phát hành (dict của download/pc.json) hoặc None. Kèm bản tối thiểu admin đặt (settings.min_app_pc):
+       cổng chặn app cũ vẫn cho đọc settings → app cũ bị chặn vẫn biết để hiện nút cập nhật. Bản chạy thử từ mã nguồn: luôn None."""
+    if not FROZEN: return None
+    if not force and time.time() - UPD["t"] < 300: return UPD["info"]
+    if with_min:
+        try:
+            sel = urllib.parse.quote("min_app_pc:data->>min_app_pc,web:data->>web", safe=":,")     # chỉ lấy 2 ô cần (đỡ tốn băng thông)
+            code, raw = http("GET", SB + "/rest/v1/settings?id=eq.1&select=" + sel, headers={"apikey": KEY}, timeout=timeout)
+            rows = json.loads(raw.decode("utf-8") or "[]") if code == 200 else []
+            d = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
+            if d is not None: set_web(d.get("web")); OUTDATED["min"] = str(d.get("min_app_pc") or "").strip()
+        except Exception as e: log("update check (settings):", e)
+    try:
+        code, raw = http("GET", WEB.rstrip("/") + "/download/pc.json", timeout=timeout)
+        j = json.loads(raw.decode("utf-8") or "{}") if code == 200 else {}
+        UPD["info"] = j if isinstance(j, dict) and int(num(j.get("code"))) > app_code() else None
+        UPD["t"] = time.time()
+    except Exception as e: log("update check:", e)
+    return UPD["info"]
+
+
+def update_claim(ttl=600):
+    """Chỉ 1 nơi được TỰ mở trình cập nhật trong 10 phút (mở nhiều cửa sổ máy cùng lúc / cập nhật lỗi rồi mở lại app → không lặp)."""
+    p = os.path.join(DATA, "update.claim")
+    try:
+        if time.time() - os.path.getmtime(p) < ttl: return False
+        os.remove(p)
+    except OSError: pass
+    try: os.close(os.open(p, os.O_CREAT | os.O_EXCL | os.O_WRONLY)); return True
+    except OSError: return False
+
+
 def cleanup_update_leftovers(here=None, tries=10, gap=3.0):
     """Bản mới mở lên: xoá thư mục '<tên>.update' và '<tên>.old-<số>' cạnh thư mục app — CHỈ khi bên trong đúng là bản app."""
     import shutil
@@ -3146,7 +3223,7 @@ def cleanup_update_leftovers(here=None, tries=10, gap=3.0):
                 if i + 1 < tries: time.sleep(gap)
 
 
-def run_finish_update(install, wait_pid, test_out=None):
+def run_finish_update(install, wait_pid, test_out=None, open_id=None):
     """--finish-update: cửa sổ nhỏ "Đang cập nhật…" trong lúc thay bản → mở lại app (lỗi thì mở lại bản cũ).
        test_out (GitHub Actions): không cửa sổ, không mở lại app — ghi kết quả ra file."""
     if test_out:
@@ -3176,7 +3253,7 @@ def run_finish_update(install, wait_pid, test_out=None):
                 _, exe, err, _closed = it
                 if err is None:
                     sub.config(text="Xong — đang mở lại app…", fg=OK)
-                    try: launch_app(exe, "--updated")
+                    try: launch_app(exe, "--updated", *([f"blueroblox://phone/{open_id}"] if open_id else []))   # mở lại máy đang dùng
                     except Exception as e: log("update: mở app mới lỗi:", e)
                     root.after(700, root.destroy); return
                 sub.config(text=err, fg=BAD); log("update:", err)
@@ -3194,7 +3271,7 @@ def run_finish_update(install, wait_pid, test_out=None):
 
 class UpdateDlg(Dlg):
     """Bấm dải "Có bản app mới": tải + thay bản mới + tự mở lại (giống app điện thoại). App nằm chung thư mục với file khác → hướng dẫn tải tay."""
-    def __init__(self, app, info):
+    def __init__(self, app, info, auto=False):
         super().__init__(app, "Cập nhật CloudBlue PC", 540, 360)
         tk = app.tk; self.info = info; self.stop = False; self.running = False; self.auto = can_self_update() and parent_writable()
         mb_ = num(info.get("size")) / 1048576
@@ -3211,6 +3288,7 @@ class UpdateDlg(Dlg):
         self.later = self.app.btn(bb, "Để sau", self.close, "soft"); self.later.pack(side="left")
         self.go = self.app.btn(bb, "Cập nhật ngay" if self.auto else "Tải về", self.start if self.auto else self.manual); self.go.pack(side="right")
         self.hand = self.app.btn(bb, "Tải bằng tay", self.manual, "soft")       # hiện khi tự cập nhật bị lỗi
+        if auto and self.auto: app.root.after(400, self.start)                 # app quá cũ / bấm cập nhật từ cửa sổ máy → tải luôn, khỏi bấm thêm
 
     def say_(self, text, col=TXT):
         if self.alive and self.msg.winfo_exists(): self.msg.config(text=text, fg=col)
@@ -3240,7 +3318,8 @@ class UpdateDlg(Dlg):
             src = prepare_update(self.info, HERE, prog, lambda: self.stop)
             if self.stop: raise ApiError(0, "Đã huỷ cập nhật.")
             self.app.ui(lambda: self.say_("Đang mở trình cập nhật — app tự đóng rồi mở lại…", WARN))
-            try: launch_app(os.path.join(src, EXE_NAME), "--finish-update", HERE, str(os.getpid()))
+            ro = getattr(self.app, "reopen_id", None)
+            try: launch_app(os.path.join(src, EXE_NAME), "--finish-update", HERE, str(os.getpid()), *(["--open", ro] if ro else []))
             except OSError as e:
                 log("update: không mở được trình cập nhật:", repr(e))
                 raise ApiError(0, "Không mở được bản mới vừa tải (phần mềm diệt virus chặn?) — bấm Tải bằng tay.") from e
@@ -3258,10 +3337,11 @@ class UpdateDlg(Dlg):
 
 
 class Launcher:
-    def __init__(self, open_id=None, tools_for=None, updated=False):
+    def __init__(self, open_id=None, tools_for=None, updated=False, upd_mode=False, reopen=None):
         import tkinter as tk
         self.tk = tk; self.auth = Auth(); self.shop = Shop(self.auth); self.open_id = open_id; self.rows = []; self.busy = False
         self.just_updated = updated
+        self.upd_mode = upd_mode; self.reopen_id = reopen      # --update <máy>: tự tải bản mới, xong mở lại đúng máy đó
         if FROZEN and not tools_for: threading.Thread(target=cleanup_update_leftovers, daemon=True).start()   # dọn thư mục của lần cập nhật trước
         self.scrollers = {}; self._fast = None; self._q = queue.Queue()
         self.root = tk.Tk(); self.root.title("CloudBlue PC"); self.root.configure(bg=BG); self.root.geometry("600x760"); self.root.minsize(480, 540)
@@ -3444,7 +3524,7 @@ class Launcher:
     def refresh(self, quiet=False):
         def job():
             try:
-                rows = self.auth.phones()
+                # bản app tối thiểu + bản mới đọc TRƯỚC danh sách máy: app cũ bị cổng chặn đọc máy vẫn hiện được nút ⬇ Cập nhật ngay
                 if not getattr(self, "_site_ok", False) or time.time() - getattr(self, "_site_t", 0) > 300:   # tên miền web + bản app tối thiểu (5 phút/lần)
                     try:
                         sd = self.shop.site(); self._site_ok = True; self._site_t = time.time()
@@ -3452,18 +3532,16 @@ class Launcher:
                     except Exception: pass
                 if FROZEN and (not getattr(self, "_upd_checked", False) or (must_update() and not getattr(self, "update_info", None))):
                     self._upd_checked = True                       # 1 lần mỗi lần mở app (bắt buộc cập nhật mà chưa đọc được → đọc lại)
-                    try:
-                        code, raw = http("GET", WEB.rstrip("/") + "/download/pc.json", timeout=10)
-                        j = json.loads(raw.decode("utf-8") or "{}") if code == 200 else {}
-                        if isinstance(j, dict) and int(num(j.get("code"))) > app_code(): self.update_info = j
-                    except Exception as e: log("update check:", e)
+                    u = fetch_update_info(force=True, timeout=10, with_min=not getattr(self, "_site_ok", False))
+                    if u: self.update_info = u
+                rows = self.auth.phones()
                 try: prof = self.shop.profile()
                 except ApiError as e:
                     if e.code == 401: raise
                     prof = None
                 if time.time() - BLUE["t"] > 60: blue_load(self.auth)          # 💎 Tích Blue (tối đa 1 lần / phút)
                 def show():
-                    self._paint_update(); self._paint_blue()
+                    self._paint_update(); self._paint_blue(); self._auto_update()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
@@ -3472,10 +3550,25 @@ class Launcher:
             except ApiError as e:
                 m = str(e)
                 if e.code == 401: self.ui(lambda m=m: self.show_login(m))
+                elif must_update(): self.ui(self._show_outdated)                    # app cũ bị chặn → dải đỏ + nút cập nhật (trước đây chỉ hiện chữ)
                 elif not quiet: self.ui(lambda m=m: self.msg.config(text=m) if self.msg.winfo_exists() else None)
             except Exception as e:
                 log("refresh:", traceback.format_exc())
         threading.Thread(target=job, daemon=True).start()
+
+    def _show_outdated(self):
+        self._paint_update()
+        if hasattr(self, "list") and self.list.winfo_exists(): self.render([])
+        self._auto_update()
+
+    def _auto_update(self):
+        """Tự mở hộp Cập nhật và tải luôn: app quá cũ (không dùng được nữa) hoặc mở từ nút cập nhật của cửa sổ máy.
+           Mỗi lần mở app tối đa 1 lần; app cũ tự mở thì cần update_claim (cập nhật lỗi → mở lại app → không tự tải lặp)."""
+        u = getattr(self, "update_info", None)
+        if not u or getattr(self, "_auto_upd", False) or not (self.upd_mode or must_update()): return
+        if not self.upd_mode and not update_claim(): return
+        self._auto_upd = True
+        UpdateDlg(self, u, auto=True)
 
     def _paint_blue(self):
         b = getattr(self, "blue_btn", None)
@@ -3637,9 +3730,14 @@ def main():
         return selftest(args[1])
     if len(args) >= 3 and args[0] == "--finish-update":              # bản mới vừa tải: thay thư mục app cũ rồi mở lại app
         t = args.index("--test") if "--test" in args else -1
+        o = args.index("--open") if "--open" in args else -1
+        oid = args[o + 1] if 0 <= o < len(args) - 1 and UUID_RE.fullmatch(args[o + 1]) else None
         try: wp = int(args[2])
         except ValueError: wp = 0
-        return run_finish_update(args[1], wp, args[t + 1] if 0 <= t < len(args) - 1 else None)
+        return run_finish_update(args[1], wp, args[t + 1] if 0 <= t < len(args) - 1 else None, oid)
+    if len(args) >= 1 and args[0] == "--update":                      # nút cập nhật trong cửa sổ máy: tải bản mới → mở lại đúng máy đó
+        rid = args[1] if len(args) >= 2 and UUID_RE.fullmatch(args[1]) else None
+        return Launcher(upd_mode=True, reopen=rid).run()
     if len(args) >= 2 and args[0] == "--view":
         return run_viewer(args[1])
     if len(args) >= 2 and args[0] == "--tools":

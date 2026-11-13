@@ -7108,8 +7108,10 @@ function nodeAlerts(nodes) {
     out.unshift(["r", "🚨 <b>Mọi máy chủ đều đang đầy / quá tải</b> — khách đang thấy <b>Hết hàng</b>."]);
   return out;
 }
+var AM_BAD = [];                                   // [tên app, bản tối thiểu, bản mới nhất] — tối thiểu > bản đang phát hành (amCheck)
 function renderAlerts() {
-  const al = nodeAlerts(NODES), red = al.some(x => x[0] === "r");
+  const al = AM_BAD.map(([nm, v, lv]) => ["r", `⛔ <b>App ${esc(nm)} tối thiểu ${esc(v)}</b> cao hơn bản mới nhất ${esc(lv)} — MỌI khách dùng app ${esc(nm)} đang bị chặn mà không có bản nào để cập nhật. Sửa: ⚙️ Cài đặt › 📲 Ứng dụng → "Lấy bản mới nhất" → Lưu bản tối thiểu.`])
+    .concat(nodeAlerts(NODES)), red = al.some(x => x[0] === "r");
   $("adm-alert").innerHTML = al.map(x => `<div class="${x[0]}">${x[1]}</div>`).join(""); show("adm-alert", al.length > 0);
   show("cp-adm-badge", red);
   return al;
@@ -7124,7 +7126,7 @@ let nodeCheckAt = 0;
 async function checkNodeAlerts(force) {
   if (!isAdmin()) return;
   if (!force && Date.now() - nodeCheckAt < 60000) return; nodeCheckAt = Date.now();
-  await loadNodes(); const al = renderAlerts();
+  await Promise.all([loadNodes(), typeof amCheck === "function" ? amCheck(force).catch(() => {}) : null]); const al = renderAlerts();
   const red = al.filter(x => x[0] === "r");
   if (red.length && !nodeToastShown) { nodeToastShown = true; toast("⚠️ Máy chủ cần chú ý — mở Bảng quản trị › ĐT đám mây", 1); }
 }
@@ -7161,6 +7163,7 @@ function renderNodes() {
       ${nRow(m.cpu_over ? `CPU đã cấp (dùng chung ×${m.cpu_over})` : "CPU đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim)}
       ${nRow("RAM đang dùng thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100)}
       ${nRow(m.ram_over ? `RAM đã cấp (dùng chung ×${m.ram_over} · ngừng nhận khi RAM thật ≥ ${m.ram_busy_pct || 85}%)` : "RAM đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(+n.cap_ram)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, +n.cap_ram) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? 100 : lim)}
+      ${m.sleeping > 0 && m.sleep_gb != null ? `<div class="nr" title="Khách mở máy ngủ là máy bật lại → phần RAM này không bán cho máy mới. Giữ bằng RAM thật 1 máy đang chạy dùng${m.ram_over > 1 ? " ÷ " + m.ram_over + " (dùng chung)" : ""}."><span>💤 ${m.sleeping} máy ngủ giữ chỗ (${m.sleep_pct}% RAM cấp)</span><em>${m.sleep_gb}/${m.sleep_full_gb} GB</em></div>` : ""}
       ${g}
       ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`VGA TB 5 phút (${m.gpu_busy_pct ? "ngừng nhận khi ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""})`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0) : ""}
       ${d ? nRow(`Ổ cứng (dùng chung · ngừng nhận khi ≥ ${m.disk_busy_pct || 90}%)`, `${d.used}/${d.total} GB`, d.used / d.total * 100, m.disk_busy_pct || 90) : ""}
@@ -8566,6 +8569,16 @@ async function amLatest(kind) {   // bản mới nhất đang phát hành: /down
   if (!amVer(v)) throw new Error("file không có số phiên bản hợp lệ");
   return v;
 }
+let amCheckAt = 0;
+async function amCheck(force) {                    // bản tối thiểu đang lưu > bản đang phát hành → cảnh báo đỏ (renderAlerts)
+  if (!force && Date.now() - amCheckAt < 300000) return; amCheckAt = Date.now();
+  const out = [];
+  for (const [, k, kind, nm] of AM_F) {
+    const v = String(SITE[k] || "").trim(); if (!v || !amVer(v)) continue;
+    try { const lv = await amLatest(kind); if (amCmp(v, lv) > 0) out.push([nm, v, lv]); } catch (e) {}
+  }
+  AM_BAD = out;
+}
 function amFill(force) { for (const [id, k] of AM_F) { const el = $(id); if (el && (force || !el.dataset.dirty)) el.value = SITE[k] || ""; } }
 AM_F.forEach(([id, , kind, nm]) => {
   const el = $(id), b = $(id + "-get"); if (!el || !b) return;
@@ -8580,11 +8593,14 @@ $("am-save") && ($("am-save").onclick = () => busy($("am-save"), async () => {
   if (vals.some(v => v && !amVer(v))) return toast("Phiên bản phải dạng số, VD 1.14 (để trống = không ép).", 1);
   const warn = [];
   for (let i = 0; i < AM_F.length; i++) if (vals[i]) { try { const lv = await amLatest(AM_F[i][2]); if (amCmp(vals[i], lv) > 0) warn.push(`• App ${AM_F[i][3]}: tối thiểu ${vals[i]} > bản mới nhất ${lv}`); } catch (e) {} }
-  if (warn.length && !confirm("⚠ Bản tối thiểu CAO HƠN bản đang phát hành — MỌI app đó sẽ bị chặn mà khách không có bản nào để cập nhật:\n" + warn.join("\n") + "\n\nVẫn lưu?")) return;
+  if (warn.length) {                               // không có bản nào để khách cập nhật lên → MỌI khách dùng app đó bị chặn → không cho lưu
+    $("am-msg").textContent = "✗ Chưa lưu — " + warn.map(w => w.replace(/^• /, "")).join(" · ");
+    return toast("Không lưu: bản tối thiểu cao hơn bản đang phát hành — mọi khách dùng app đó sẽ bị chặn mà không có bản để cập nhật.\n" + warn.join("\n") + "\nBấm \"Lấy bản mới nhất\" để điền đúng số.", 1);
+  }
   try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}   // đọc lại trước khi ghi → không đè thay đổi khác
   const before = SITE;
   await saveSettings({ min_app_pc: vals[0], min_app_android: vals[1] }, null, vals[0] || vals[1] ? "Đã lưu — app bản cũ hơn phải cập nhật mới mở máy / mua được." : "Đã tắt ép cập nhật app.");
-  if (SITE !== before) { AM_F.forEach(([id]) => { delete $(id).dataset.dirty; }); amFill(true); $("am-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
+  if (SITE !== before) { AM_F.forEach(([id]) => { delete $(id).dataset.dirty; }); amFill(true); $("am-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); try { await amCheck(true); renderAlerts(); } catch (e) {} }
 }));
 { const _lc23 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc23.apply(this, arguments); try { amFill(); } catch (e) {} return r; }; }
 
