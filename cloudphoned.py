@@ -127,7 +127,7 @@ def local_load():
     gl = (gpu_avg5()[0] or 0) / 100                     # card đồ hoạ bận → nhường máy chủ card rảnh hơn nhận trước
     if WIN:
         a_r, a_c, c_r, c_c = win_caps(st)
-        return max(a_r / max(c_r, 1), (cpu_avg5() or 0) / 100, gl), c_r - a_r, c_c - a_c
+        return max(a_r / max(c_r, 1), (cpu_avg5() or 0) / 100, gl), sell_cap(a_r, c_r) - a_r, sell_cap(a_c, c_c) - a_c   # đạt 95% → không nhận
     ram_t = meminfo()[0]; cpu_t = os.cpu_count() or 1
     a_r = sum(float(p.get("ram", 0)) for p in st); a_c = sum(float(p.get("cpu", 0)) for p in st)
     c_r, c_c = ram_t * LIMIT_PCT / 100 * RAM_OVER, cpu_t * CPU_OVER
@@ -269,6 +269,12 @@ try: RAM_BUSY = max(30, min(98, int(CFG.get("RAM_BUSY_PCT", "85"))))   # RAM th�
 except ValueError: RAM_BUSY = 85
 try: DISK_BUSY = max(50, min(98, int(CFG.get("DISK_BUSY_PCT", "90"))))  # ổ cứng ≥ 90% → ngừng nhận máy mới
 except ValueError: DISK_BUSY = 90
+try: FULL_PCT = max(50.0, min(100.0, float(CFG.get("FULL_PCT", "95"))))   # Windows: đã cấp tới 95% sức chứa (RAM / CPU) → NGỪNG nhận máy mới
+except ValueError: FULL_PCT = 95.0                                          #   (13/11; Linux vẫn dùng LIMIT_PCT như cũ)
+def sell_cap(a, c, pct=None):
+    """Sức chứa BÁN = pct % (mặc định FULL_PCT) sức chứa thật, không thấp hơn phần đã cấp (máy đang có vẫn chạy bình thường).
+       Báo lên web đúng số này → web, nâng cấp, chia đơn đều ngừng ở 95%; % đầy THẬT báo riêng trong metrics (fill_pct)."""
+    return max(a, c * (FULL_PCT if pct is None else pct) / 100)
 def _busy_pct(k, d, lo, hi):
     """Ngưỡng % trong cloudphone.conf — 0 = tắt kiểm tra này."""
     try: v = int(float(CFG.get(k, d)))
@@ -525,7 +531,7 @@ def do_create(row):
                       "--fps", str(row.get("fps") or 30), "--android", str(row.get("android") or "11"), "--nowait"]
                      + (["--until", str(row["until_at"])] if row.get("until_at") and phonectl_until() else []))
         if r.returncode == 2:   # HẾT HÀNG (quá ngưỡng)
-            refund(row, "Máy chủ đã đầy, chưa tạo được máy"); notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b> vì {NODE_ID} đã đầy {LIMIT_PCT}%."); return
+            refund(row, "Máy chủ đã đầy, chưa tạo được máy"); notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b> vì {NODE_ID} đã đầy {FULL_PCT if WIN else LIMIT_PCT:g}%."); return
         if r.returncode != 0:
             log_err = (r.stdout + r.stderr)[-300:]
             print("   ✗", log_err)
@@ -899,10 +905,17 @@ def heartbeat():
         a_ram, a_cpu, c_ram, c_cpu = win_caps(st)       # Windows: sức chứa theo RAM trống thật, CPU dùng chung (đã tính card đồ hoạ)
         try: zz, zz_full, nz = rr_write(st, a_ram, c_ram)
         except Exception as e: print("lỗi ghi phần giữ RAM máy ngủ:", e)
+    if WIN:                                             # 13/11: sức chứa THẬT → % đầy cho web; sức chứa BÁN (95%) → cap_ram / cap_cpu
+        f_ram, f_cpu, stop = c_ram, c_cpu, FULL_PCT
+        c_ram, c_cpu = sell_cap(a_ram, f_ram), sell_cap(a_cpu, f_cpu)
+    else:                                               # Linux: c_ram đã là LIMIT_PCT % RAM (như cũ) → sức chứa thật = 100%
+        f_ram, f_cpu, stop = (ram_t * RAM_OVER if c_ram > a_ram else c_ram), c_cpu, float(LIMIT_PCT)
+    fill = 100 * max(a_ram / f_ram if f_ram > 0 else 1.0, a_cpu / f_cpu if f_cpu > 0 else 1.0)
     metrics = {"cpu_pct": cp_now, "cpu_avg5": avg5, "cpu_over": CPU_OVER, "cpu_busy_pct": CPU_BUSY, "cpu_busy": busy, "ram_over": RAM_OVER, "ram_pct": ram_pct, "ram_busy_pct": RAM_BUSY, "ram_busy": ram_busy, "disk_busy": disk_busy, "disk_busy_pct": DISK_BUSY, "load": [round(x, 2) for x in os.getloadavg()], "cpu_temp": cpu_temp(),
                "ram_used": round(ram_t - ram_avail, 1), "gpus": g_list, "gpu_avg5": g_avg, "vram_avg5": v_avg, "gpu_busy_pct": GPU_BUSY, "vram_busy_pct": VRAM_BUSY, "gpu_busy": g_why == "gpu", "vram_busy": g_why == "vram", "disk_data": disk(DATA_ROOT), "disk_root": disk("/"),
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
+    metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -924,7 +937,7 @@ def heartbeat():
                 f"🚨 <b>{NODE_ID}: ổ cứng sắp đầy</b> (ngưỡng {DISK_BUSY}%) — tạm ngừng nhận máy mới. Xoá bớt máy hết hạn / file thừa." if disk_busy else
                 f"🚨 <b>{NODE_ID}: card đồ hoạ đang chạy {g_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {GPU_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "gpu" else
                 f"🚨 <b>{NODE_ID}: VRAM card đồ hoạ đầy {v_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {VRAM_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "vram" else
-                f"🚨 <b>{NODE_ID} đã đầy</b> — RAM cấp {a_ram:.0f}/{c_ram:.0f}GB, CPU cấp {a_cpu:.0f}/{c_cpu:.0f}."
+                f"🚨 <b>{NODE_ID} đã đầy {min(100.0, fill):.0f}%</b> (ngưng nhận ở {stop:g}%) — RAM cấp {a_ram:.0f}/{f_ram:.0f}GB, CPU cấp {a_cpu:.0f}/{f_cpu:.0f}."
                 + (f" Đang giữ {zz:.0f}GB RAM cho {nz} máy ngủ (khách mở là bật lại)." if nz else "")) + " Đơn mới sang máy chủ khác (mọi máy chủ đều đầy thì khách thấy HẾT HÀNG)."
                if full else f"✅ <b>{NODE_ID}</b> đã có chỗ trống trở lại (RAM cấp {a_ram:.0f}/{ram_t:.0f}GB).")
     _alert["full"] = full
@@ -1138,8 +1151,8 @@ if __name__ == "__main__":
         r = phonectl(["memfix"]); print(r.stdout.strip())
     except Exception as e: print("lỗi memfix:", e)
     print(f"Server: {NODE_ID} ({'CHÍNH' if PRIMARY else 'phụ'}) · {BASE}")
-    print("Ngừng nhận máy mới khi: CPU TB 5 phút ≥ %d%% · RAM ≥ %d%% · ổ cứng ≥ %d%% · card đồ hoạ TB 5 phút %s · VRAM %s (GPU_BUSY_PCT / VRAM_BUSY_PCT, 0 = tắt)"
-          % (CPU_BUSY, RAM_BUSY, DISK_BUSY, "≥ %d%%" % GPU_BUSY if GPU_BUSY else "TẮT", "≥ %d%%" % VRAM_BUSY if VRAM_BUSY else "TẮT"))
+    print("Ngừng nhận máy mới khi: đã cấp ≥ %g%% sức chứa (%s) · CPU TB 5 phút ≥ %d%% · RAM ≥ %d%% · ổ cứng ≥ %d%% · card đồ hoạ TB 5 phút %s · VRAM %s (GPU_BUSY_PCT / VRAM_BUSY_PCT, 0 = tắt)"
+          % (FULL_PCT if WIN else LIMIT_PCT, "FULL_PCT" if WIN else "LIMIT_PCT", CPU_BUSY, RAM_BUSY, DISK_BUSY, "≥ %d%%" % GPU_BUSY if GPU_BUSY else "TẮT", "≥ %d%%" % VRAM_BUSY if VRAM_BUSY else "TẮT"))
     e = engine(); print(f"Giả lập: {e['emu'] or '?'} · nhận đơn Android: {', '.join(e['androids']) or 'mọi bản'}")
     if WIN: print(f"Máy rảnh tự ngủ (IDLE_STOP_MIN={_f('IDLE_STOP_MIN', 30):g}): " + ("máy ở màn hình chính, không ai xem, CPU thấp liền ngần ấy phút → tắt; khách mở máy tự bật lại" if IDLE_ON else "TẮT"))
     if WIN:
