@@ -49,7 +49,12 @@ _MUMU = (CFG.get("EMU") or "").strip().lower() == "mumu"   # MuMu (Android 12 / 
 MEMU_MAX_RAM, MEMU_MAX_CPU = _f("MEMU_MAX_RAM", 1024 if _MUMU else 16), _f("MEMU_MAX_CPU", 1024 if _MUMU else 8)
 WIN_RESERVE = _f("WIN_RAM_RESERVE", 4)
 MEMU_MAX_VMS = int(_f("MEMU_MAX_VMS", 0))      # Windows: giới hạn SỐ máy (0 = không giới hạn số máy, chỉ tính theo tổng nhân + RAM)
-WIN_VCPU_OVER = _f("WIN_VCPU_OVER", 0.9)        # tổng nhân ảo cấp cho các máy ≤ 90% số luồng thật (72 luồng → 64 nhân) — chừa 10% cho Windows + phát hình
+WIN_VCPU_OVER = _f("WIN_VCPU_OVER", 0.9)        # (chỉ dùng khi ghi rõ trong cloudphone.conf) tổng nhân ảo ≤ ×K số luồng thật
+# 14/11 — TRẦN CỨNG mỗi máy chủ Windows (admin: "130 nhân máy không chịu nổi, cứ sập"): đã cấp tới 68 nhân hoặc 112GB RAM là NGỪNG
+# nhận máy mới / nâng cấp. Không bán vượt ("buff"): máy NGỦ tính đủ RAM + nhân đã cấp, RAM bán không vượt RAM thật − WIN_RAM_RESERVE,
+# nhân bán không vượt số luồng thật − CPU_KEEP. Máy đang có KHÔNG bị tắt bớt — chỉ ngừng nhận thêm tới khi xuống dưới trần.
+# Đổi trong cloudphone.conf: CAP_CPU=68 · CAP_RAM=112 (0 = bỏ trần, tính như trước 14/11) · CPU_KEEP=4
+CAP_CPU, CAP_RAM, CPU_KEEP = _f("CAP_CPU", 68), _f("CAP_RAM", 112), _f("CPU_KEEP", 4)
 # ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
 # Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
 # 9 máy ngủ) báo ĐẦY lúc RAM thật mới dùng 32%. Giờ máy ngủ giữ đúng phần RAM THẬT 1 máy đang chạy dùng (đo trên chính
@@ -112,7 +117,14 @@ def win_caps(st):
     av_r -= sleep_reserve(st)[0]                              # máy NGỦ bật lại khi khách mở → chừa RAM thật của chúng, không bán
     c_r = a_r + max(0.0, av_r - WIN_RESERVE - 1)             # −1GB: khớp phonectl create (máy mới cần thêm 1GB) → web / nhận đơn / tạo máy cùng một mức, không nhận rồi hoàn tiền
     c_c = a_c + cpu_t * CPU_OVER
-    c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))          # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
+    if CAP_CPU > 0:                                          # 14/11: trần cứng nhân (68 · không vượt luồng thật − 4)
+        lim = min(CAP_CPU, max(1.0, cpu_t - CPU_KEEP))
+        if "WIN_VCPU_OVER" in CFG: lim = min(lim, cpu_t * WIN_VCPU_OVER)
+        c_c = max(a_c, min(c_c, lim))
+    else:
+        c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))      # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
+    if CAP_RAM > 0:                                          # 14/11: trần cứng RAM (112GB · không vượt RAM thật − phần của Windows)
+        c_r = max(a_r, min(c_r, CAP_RAM, (t_r - WIN_RESERVE) if t_r else CAP_RAM))
     if (cpu_avg5() or 0) >= CPU_BUSY: c_c = a_c
     if hot: c_r = a_r
     if disk_full(): c_r = a_r
@@ -155,21 +167,42 @@ def node_enabled():
     return _en["v"]
 
 # ---------- LOẠI GIẢ LẬP + BẢN ANDROID của máy chủ này (LDPlayer 9 = Android 9 · MuMu/MEmu = Android 12, 7) ----------
-_eng = {"emu": "", "androids": []}
-def engine():
-    if not _eng["emu"]:
-        try:
-            r = phonectl(["engine"]); j = json.loads((r.stdout or "").strip().splitlines()[-1])
-            _eng.update(emu=j.get("emu") or "", androids=[str(x) for x in j.get("androids") or []])
-        except Exception:
-            _eng.update(emu=CFG.get("EMU", "") or "", androids=[x.strip() for x in (CFG.get("ANDROIDS") or "").split(",") if x.strip()])
+_eng = {"emu": "", "androids": [], "none": False, "missing": [], "t": 0.0, "bad": 0}
+ENG_RETRY_S = 15            # lúc bật mà đọc ra "không bản nào" → đọc lại 1 lần sau 15 giây
+def engine(refresh=False):
+    """none = THẤY giả lập mà KHÔNG bản Android nào tạo được (VD MuMu thiếu máy mẫu tpl_a12 / tpl_a15) → không nhận đơn nào.
+       13/11: trước đây danh sách rỗng bị hiểu là "nhận mọi bản" + web coi là máy chủ Android 9 → win5 (MuMu) hiện thành LD9,
+       giành đơn Android 9 rồi tạo lỗi, hoàn tiền. refresh: luồng báo cáo đọc lại định kỳ (tạo máy mẫu xong là bán lại, khỏi khởi động lại)."""
+    if refresh or not _eng["emu"]:
+        first = not _eng["emu"]
+        _engine_read()
+        if first and _eng.get("none"):       # 13/11 win5: giả lập đang NHÂN BẢN máy mẫu → đọc danh sách thiếu đúng lúc đó → đọc lại
+            time.sleep(ENG_RETRY_S); _engine_read()
     return _eng
+def _engine_read():
+    try:
+        r = phonectl(["engine"]); j = json.loads((r.stdout or "").strip().splitlines()[-1])
+        av = [str(x) for x in j.get("androids") or []]
+        if _eng["emu"] and not _eng.get("none") and set(av) < set(_eng["androids"]):
+            # ÍT bản hơn lần trước: có thể chỉ đọc thiếu 1 lúc (giả lập đang nhân bản máy mẫu để tạo máy khách) → giữ kết quả cũ,
+            # ~1 phút sau đọc lại; 3 lần liền vẫn thiếu mới tin (bớt bản / báo thiếu máy mẫu)
+            _eng["bad"] = _eng.get("bad", 0) + 1
+            if _eng["bad"] < 3: _eng["t"] = time.time() - 540; return
+        _eng.update(emu=j.get("emu") or "", androids=av, none=bool(j.get("found")) and not av,
+                    missing=[str(x) for x in j.get("missing_tpl") or []], t=time.time(), bad=0)
+    except Exception:
+        if not _eng["emu"]:
+            _eng.update(emu=CFG.get("EMU", "") or "", androids=[x.strip() for x in (CFG.get("ANDROIDS") or "").split(",") if x.strip()],
+                        t=time.time())
+        else: _eng["t"] = time.time()                # đọc lại lỗi → giữ kết quả cũ, lần sau thử lại
 # Bản Android bán ở máy chủ RIÊNG (LDPlayer 9 · MEmu 7/12 · MuMu 12/15…). Máy chủ chính KHÔNG được nhận các bản này nếu nó
 # không bán — trước đây thiếu "15" → máy chủ chính (LDPlayer, Android 9) giành đơn Android 15 rồi tạo nhầm Android 9.
 KNOWN_ANDROIDS = ("7", "9", "12", "13", "14", "15", "16")
 def android_ok(row):
     """Đơn này đúng bản Android máy chủ này bán? (đơn cũ không ghi bản / máy chủ chưa khai báo → nhận như cũ)"""
-    av = engine()["androids"]
+    e = engine()
+    if e.get("none"): return False          # có giả lập mà không bản nào tạo được (thiếu máy mẫu) → không nhận đơn nào
+    av = e["androids"]
     if not av: return True
     v = str(row.get("android") or "").strip()
     return (not v) or v in av or (v not in KNOWN_ANDROIDS and PRIMARY)   # bản lạ (đơn cũ 11…) → máy chủ chính lo
@@ -269,8 +302,8 @@ try: RAM_BUSY = max(30, min(98, int(CFG.get("RAM_BUSY_PCT", "85"))))   # RAM th�
 except ValueError: RAM_BUSY = 85
 try: DISK_BUSY = max(50, min(98, int(CFG.get("DISK_BUSY_PCT", "90"))))  # ổ cứng ≥ 90% → ngừng nhận máy mới
 except ValueError: DISK_BUSY = 90
-try: FULL_PCT = max(50.0, min(100.0, float(CFG.get("FULL_PCT", "95"))))   # Windows: đã cấp tới 95% sức chứa (RAM / CPU) → NGỪNG nhận máy mới
-except ValueError: FULL_PCT = 95.0                                          #   (13/11; Linux vẫn dùng LIMIT_PCT như cũ)
+try: FULL_PCT = max(50.0, min(100.0, float(CFG.get("FULL_PCT", "100"))))  # Windows: đã cấp tới N% sức chứa → NGỪNG nhận máy mới. 14/11: trần cứng
+except ValueError: FULL_PCT = 100.0                                         #   68 nhân / 112GB đã là điểm ngừng → mặc định 100% (13/11 là 95%)
 def sell_cap(a, c, pct=None):
     """Sức chứa BÁN = pct % (mặc định FULL_PCT) sức chứa thật, không thấp hơn phần đã cấp (máy đang có vẫn chạy bình thường).
        Báo lên web đúng số này → web, nâng cấp, chia đơn đều ngừng ở 95%; % đầy THẬT báo riêng trong metrics (fill_pct)."""
@@ -325,7 +358,9 @@ def sb(method, path, body=None, extra=None):
     req = urllib.request.Request(url, data=data, method=method, headers={**H, **(extra or {})})
     with urllib.request.urlopen(req, timeout=30) as r:
         t = r.read().decode()
-        return json.loads(t) if t else None
+    if threading.current_thread() is threading.main_thread():
+        _loop_t[0] = max(_loop_t[0], time.time())     # 14/11: vòng nhận đơn vẫn đang nhích (nhiều máy → 1 lượt dài) → không báo "đứng" nhầm
+    return json.loads(t) if t else None
 
 def get_pending(status):
     return sb("GET", f"cloud_phones?status=eq.{status}&select=*&order=created_at.asc") or []
@@ -480,7 +515,7 @@ def phonectl(args, timeout=None):
         if hung:
             msg = f"lệnh phonectl {' '.join(args[:2])} treo quá {_dur(to)} → đã tắt riêng lệnh đó, máy chủ chạy tiếp"
             err = (err.rstrip() + "\n" if err.strip() else "") + msg
-            ts_note(msg, tg=True, key="pctl_" + (args[0] if args else ""), every=1800)
+            ts_note(msg, key="pctl_" + (args[0] if args else ""), every=1800)     # 14/11: không nhắn Telegram (tin rác)
         return subprocess.CompletedProcess(cmd, code, out, err)
     finally:
         if main:
@@ -547,7 +582,20 @@ def do_create(row):
 def finish_boot(pid, name):
     try:
         t0 = time.time()
-        phonectl(["waitboot", name, "--noapps"])   # chỉ chờ Android lên → giao máy cho khách NGAY
+        r = phonectl(["waitboot", name, "--noapps"])   # chỉ chờ Android lên → giao máy cho khách NGAY
+        # 14/11: Android chưa lên sau 5 phút (máy chủ bận / MuMu nhân bản máy mẫu lâu — hay gặp khi ĐỔI ANDROID) → bản cũ vẫn
+        # giao máy → khách mở thấy MÀN ĐEN, bấm không được. Giờ: chờ thêm 1 lượt → vẫn chưa thì ép khởi động lại 1 lần → mới giao.
+        if r.returncode in (5, 124):
+            print(f"   … {name}: Android chưa lên sau {time.time() - t0:.0f}s → chờ thêm 1 lượt (chưa giao cho khách, tránh màn đen)")
+            r = phonectl(["waitboot", name, "--noapps"])
+        if r.returncode in (5, 124):
+            print(f"   … {name}: vẫn chưa lên sau {time.time() - t0:.0f}s → ép khởi động lại 1 lần")
+            phonectl(["restart", name, "--force"])
+            r = phonectl(["waitboot", name, "--noapps"])
+        if r.returncode in (5, 124):
+            print(f"   ⚠ {name}: Android vẫn chưa lên sau {(time.time() - t0) / 60:.0f} phút — vẫn giao, bảng CloudBlue tự chống kẹt")
+            notify(f"⚠️ <b>{NODE_ID}</b>: máy mới <b>{name}</b> chờ {(time.time() - t0) / 60:.0f} phút (đã ép khởi động lại 1 lần) mà Android "
+                   f"chưa lên — vẫn giao cho khách. Khách báo màn đen thì xem máy này.")
         ps = phone_state(name)
         if not ps: return
         patch(pid, {"status": "active", "container": name, "port": ps["port"], "node": NODE_ID,
@@ -582,11 +630,11 @@ def notify(text):
 # vẫn báo "còn sống" tới 30 phút → web vẫn chia đơn cho nó. Giờ:
 #   • mọi lệnh phonectl có hạn chờ (PCTL_T); cài app sẵn / nối lại adb chạy ở LUỒNG RIÊNG, không chặn việc nhận đơn
 #   • luồng tự kiểm (30 giây/lần):
-#       – vòng nhận đơn không nhích quá TS_STUCK_MIN phút → in chỗ đứng + báo Telegram → TỰ THOÁT, bảng CloudBlue / systemd
+#       – vòng nhận đơn không nhích quá TS_STUCK_MIN phút → in chỗ đứng (Telegram chỉ khi lặp lại trong 1 giờ) → TỰ THOÁT, bảng CloudBlue / systemd
 #         bật lại sau 5 giây (đơn đang làm dở: máy đã tạo thì bản mới chờ Android lên rồi giao tiếp, không tạo trùng)
 #       – đọc đơn từ Supabase lỗi liên tục: 10 phút → báo admin · 30 phút → tự khởi động lại (đọc lại cloudphone.conf)
-#       – Windows: phát hình (bluestream) đóng cổng / không trả lời 3 lần liền (~3 phút) → tắt tiến trình phát hình chính,
-#         bảng CloudBlue tự bật lại (tối đa 3 lần / giờ; quá → chỉ báo admin)
+#       – Windows: phát hình (bluestream) ĐÓNG CỔNG 3 lần liền (~3 phút) → tắt tiến trình phát hình chính, bảng CloudBlue tự
+#         bật lại (tối đa 3 lần / giờ; quá → chỉ báo admin). Mở cổng mà chậm trả lời → chỉ ghi nhật ký (14/11: không tắt nữa)
 #       – Windows: máy khách đang chạy mà màn hình Android TẮT (khách bấm nút nguồn…) → bật sáng (~2 phút/lần). Phát hình
 #         chạy scrcpy với power_on=false nên màn tắt = khách thấy MÀN ĐEN.
 # Mỗi lần: dòng "🩺 tự sửa: …" trong nhật ký + redroid/tusua.json (20 lần gần nhất). Tắt hết: TUSUA=0 trong cloudphone.conf.
@@ -700,25 +748,29 @@ def _bs_pids():
     return [int(x) for x in out.split() if x.strip().isdigit()]
 
 def ts_bluestream(now=None):
-    """Windows · ~1 phút/lần: phát hình còn mở cổng + còn trả lời không. Hỏng 3 lần liền (~3 phút) → tắt RIÊNG tiến trình phát hình
-       chính (không tắt cả cây: giữ adb server) → bảng CloudBlue tự bật lại sau 5 giây. Tối đa 3 lần / giờ; quá → chỉ báo admin."""
+    """Windows · ~1 phút/lần: phát hình (bluestream) còn MỞ CỔNG không. Cổng đóng 3 lần liền (~3 phút) mà tiến trình phát hình vẫn
+       còn (kẹt lúc khởi động / hỏng giữa chừng) → tắt RIÊNG tiến trình đó (không tắt cả cây: giữ adb server) → bảng CloudBlue tự
+       bật lại sau 5 giây. Tối đa 3 lần / giờ; quá → chỉ báo admin.
+       14/11: cổng MỞ mà hỏi không trả lời (máy chủ đang bận, nhiều khách xem) → CHỈ ghi nhật ký, KHÔNG tắt. Bản 13/11 tắt luôn
+       trường hợp này → mọi khách đang xem trên máy chủ đó bị ngắt cùng lúc, mở lại thấy màn đen + Telegram báo liên tục."""
     if not os.path.isfile(os.path.join(HOME, "bluestream.py")): return None
     now = now or time.time()
     port, wsp = _conf_ports()
     up = _listening([port, wsp])
     if up is None: return None
-    bad = []
-    if port not in up: bad.append(f"cổng {port} đóng")
-    if wsp not in up: bad.append(f"cổng {wsp} đóng")
-    elif not _ws_probe(wsp): bad.append("không trả lời")
+    closed = [p for p in (port, wsp) if p not in up]
     s = _ts
-    if not bad:
+    if not closed:
         if s["bs_kill"]: ts_note(f"phát hình đã chạy lại sau {(now - s['bs_kill']) / 60:.0f} phút"); s["bs_kill"] = 0.0
         s["bs_seen"] = True; s["bs_bad"] = 0
+        if not _ws_probe(wsp, 15):
+            ts_note(f"phát hình mở cổng nhưng hỏi cổng {wsp} không trả lời trong 15 giây (máy chủ bận?) — chỉ ghi lại, KHÔNG tắt",
+                    key="bs_slow", every=3600, again=False)
+            return "slow"
         return "ok"
     s["bs_bad"] += 1
     if s["bs_bad"] < 3: return "wait"
-    why = ", ".join(bad)
+    why = ", ".join(f"cổng {p} đóng" for p in closed)
     if s["bs_kill"]:
         if now - s["bs_kill"] < 150: return "waitback"         # vừa tắt: chờ bảng CloudBlue bật lại (5 giây) + bluestream mở cổng
         s["bs_kill"] = 0.0
@@ -740,7 +792,7 @@ def ts_bluestream(now=None):
         return "loop"
     for pid in pids: _run_tf(["taskkill", "/PID", str(pid), "/F"], 30)
     s["bs_kill"] = now; s["bs_kills"].append(now); s["bs_bad"] = 0
-    ts_note(f"phát hình (bluestream) hỏng ~3 phút ({why}) → đã tắt để bảng CloudBlue bật lại", tg=True, key="bs_hang", every=1800)
+    ts_note(f"phát hình (bluestream) đóng cổng ~3 phút ({why}) → đã tắt để bảng CloudBlue bật lại", tg=True, key="bs_hang", every=1800)
     return "killed"
 
 def ts_wake_screens():
@@ -767,7 +819,9 @@ def _ts_loop():
             if stuck:
                 stack = ts_main_stack()
                 if stack: print("🩺 phần nhận đơn đang đứng ở:\n" + stack, flush=True)
-                ts_note(f"phần nhận đơn ĐỨNG ({desc}) → tự khởi động lại cloudphoned", tg=True, key="stuck", every=1800)
+                again = any(str(e.get("what", "")).startswith("phần nhận đơn ĐỨNG") and time.time() - float(e.get("t", 0)) < 3600
+                            for e in _ts["ev"])           # 14/11: chỉ nhắn Telegram khi đứng LẶP LẠI trong 1 giờ
+                ts_note(f"phần nhận đơn ĐỨNG ({desc}) → tự khởi động lại cloudphoned", tg=again, key="stuck" if again else "stuck1", every=1800)
             if stuck or ts_loop_err():
                 time.sleep(3); _ts_exit(3); return
             if WIN and k % 2 == 0: ts_bluestream()
@@ -785,6 +839,18 @@ def bg_job(key, fn):
 def _bg_connect():
     try: phonectl(["connect-all"])
     except Exception as e: print("lỗi connect-all:", e)
+
+def _bg_dondep():
+    """14/11: máy khách web đã HUỶ (đổi Android, hết hạn, khách / admin huỷ) mà vẫn còn trên máy chủ (lần xoá trước lỗi, máy chủ bận
+       quá 10 phút lúc đổi Android…) → xoá hẳn máy ảo + dữ liệu, như admin bấm 🧹 Xoá sạch. Máy web ghi còn dùng / không có trên web:
+       KHÔNG bao giờ đụng."""
+    try:
+        r = phonectl(["dondep", "--xoa"])
+        m = re.search(r"DONDEP (\{.*\})", r.stdout or "")
+        j = json.loads(m.group(1)) if m else {}
+        if j.get("deleted"):
+            ts_note(f"tự dọn {j['deleted']} máy khách web đã huỷ mà còn sót trên máy chủ (đã xoá hẳn máy + dữ liệu)", key="dondep", every=1800)
+    except Exception as e: print("lỗi tự dọn máy sót:", e)
 
 def _bg_apps():
     try:
@@ -858,7 +924,7 @@ def cpu_temp():
             pass
     return best
 
-_alert = {"full": None}
+_alert = {"full": None, "none": None}
 _hb_old = {"v": False}
 _loop_t = [time.time()]             # lần cuối vòng chính chạy xong 1 lượt
 def _hb_loop():
@@ -919,8 +985,16 @@ def heartbeat():
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
+    if time.time() - _eng.get("t", 0) > (120 if _eng.get("none") else 600): _engine_read()   # thiếu máy mẫu: 2 phút đọc lại 1 lần
     eng = engine()
-    if eng["emu"] and not _hb_old["v"]: body.update(engine=eng["emu"], androids=",".join(eng["androids"]))
+    metrics["missing_tpl"] = list(eng.get("missing") or [])                      # web: thẻ máy chủ báo thiếu máy mẫu
+    if eng["emu"] and not _hb_old["v"]:
+        body.update(engine=eng["emu"], androids=",".join(eng["androids"]) or ("-" if eng.get("none") else ""))   # "-" = không bán bản nào (KHÔNG phải Android 9)
+    if bool(eng.get("none")) != bool(_alert["none"]) and (_alert["none"] is not None or eng.get("none")):
+        notify(f"⚠️ <b>{NODE_ID}</b>: giả lập {eng['emu']} thiếu máy mẫu {', '.join(eng.get('missing') or []) or '?'} → máy chủ này KHÔNG bán được bản Android nào, "
+               f"web không chia đơn vào đây. Tạo máy mẫu (đúng tên, để tắt) là tự bán lại sau ~2 phút." if eng.get("none") else
+               f"✅ <b>{NODE_ID}</b>: đã có máy mẫu — bán lại Android {', '.join(eng['androids'])}.")
+    _alert["none"] = bool(eng.get("none"))
     try:
         sb("POST", "cloud_nodes", body, {"Prefer": "resolution=merge-duplicates,return=minimal"})
     except urllib.error.HTTPError as e:
@@ -947,6 +1021,7 @@ def running(name):
     if ps and ps.get("kind") == "gpu":          # máy GPU chạy bằng dịch vụ cloudgpu@TÊN
         return subprocess.run(["systemctl", "is-active", "-q", f"cloudgpu@{name}"]).returncode == 0
     r = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", name], capture_output=True, text=True)
+    if threading.current_thread() is threading.main_thread(): _loop_t[0] = max(_loop_t[0], time.time())
     return r.stdout.strip() == "true"
 
 _sec_t = {"pull": 0.0, "watch": 0.0, "miss": 0}
@@ -978,7 +1053,7 @@ def asleep(name):
 def do_locks():
     """Máy admin khoá → tắt; hết hạn khoá → tự mở khoá; máy đang chạy mà bị tắt ngoài ý muốn → bật lại."""
     rows = sb("GET", "cloud_phones?status=eq.active&select=id,container,locked,locked_until") or []
-    t = now()
+    t = now(); relaunch = []
     for row in rows:
         name = row.get("container") or cname(row)
         if not phone_state(name): continue
@@ -992,8 +1067,14 @@ def do_locks():
         elif not lk and not on and asleep(name):
             continue                        # máy NGỦ (tự tắt vì lâu không dùng) → khách mở máy thì phát hình bật lại
         elif not lk and not on:
-            print(f"[bật lại] {name}")
-            phonectl(["start", name])
+            relaunch.append(name)
+    if relaunch:                                            # 14/11: bật lần lượt (phonectl giãn cách) ở luồng riêng — không chặn nhận đơn
+        def go(names=tuple(relaunch)):
+            for nm in names:
+                print(f"[bật lại] {nm}")
+                try: phonectl(["start", nm])
+                except Exception as e: print("lỗi bật lại:", e)
+        bg_job("relaunch", go)
 
 IDLE_ON = WIN and _f("IDLE_STOP_MIN", 30) > 0          # Windows: máy rảnh lâu tự NGỦ (phonectl idle) · IDLE_STOP_MIN=0 → tắt
 _idle = {"th": None, "old": 0.0, "skip": 0.0}
@@ -1105,8 +1186,20 @@ def do_expiry(row):
     if m["on"]: return                       # đang bảo trì: không tạm dừng / không xoá máy khách
     start = max(exp, m["off_at"]) if m["off_at"] else exp   # hết hạn lúc bảo trì → 30 phút tính từ lúc tắt bảo trì
     if t > start + datetime.timedelta(minutes=GRACE_MIN):
+        pid = row["id"]; n, nxt = _cancel_try.get(pid, (0, 0))
+        if time.time() < nxt: return
         print(f"[xoá hết hạn] {name}")
-        if ps: phonectl(["delete", name])
+        if ps or str(name).startswith("cp_"):               # 14/11: xoá hẳn (cả máy sót trong giả lập) — chưa xoá được thì CHƯA ghi huỷ, thử lại sau
+            r = phonectl(["delete", name]); o = (r.stdout or "") + (r.stderr or "")
+            gone = (r.returncode == 0 and "Chưa xoá được" not in o) or (r.returncode == 1 and "Không có máy tên này" in o)
+            if not gone:
+                n += 1; wait = min(60 * n, 900); _cancel_try[pid] = (n, time.time() + wait)
+                why = (o.strip().splitlines() or ["?"])[-1]
+                print(f"   ⚠ chưa xoá được {name} (lần {n}, {wait}s sau thử lại): {why[:200]}")
+                if n in (1, 5) or n % 20 == 0:
+                    notify(f"⚠️ <b>{NODE_ID}</b>: máy hết hạn <b>{name}</b> chưa xoá được — máy chủ tự thử lại. Lý do: {why[:160]}")
+                return
+        _cancel_try.pop(pid, None)
         patch(row["id"], {"status": "cancelled", "error": f"Hết hạn quá {GRACE_MIN} phút không gia hạn — máy và dữ liệu đã bị xoá."})
     elif t > exp and row["status"] == "active":
         print(f"[tạm dừng] {name} hết hạn, chờ gia hạn {GRACE_MIN} phút")
@@ -1146,14 +1239,16 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 14/11 chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     try:                                    # nới RAM cho máy đang chạy (chống văng app khi hết RAM)
         r = phonectl(["memfix"]); print(r.stdout.strip())
     except Exception as e: print("lỗi memfix:", e)
     print(f"Server: {NODE_ID} ({'CHÍNH' if PRIMARY else 'phụ'}) · {BASE}")
     print("Ngừng nhận máy mới khi: đã cấp ≥ %g%% sức chứa (%s) · CPU TB 5 phút ≥ %d%% · RAM ≥ %d%% · ổ cứng ≥ %d%% · card đồ hoạ TB 5 phút %s · VRAM %s (GPU_BUSY_PCT / VRAM_BUSY_PCT, 0 = tắt)"
           % (FULL_PCT if WIN else LIMIT_PCT, "FULL_PCT" if WIN else "LIMIT_PCT", CPU_BUSY, RAM_BUSY, DISK_BUSY, "≥ %d%%" % GPU_BUSY if GPU_BUSY else "TẮT", "≥ %d%%" % VRAM_BUSY if VRAM_BUSY else "TẮT"))
-    e = engine(); print(f"Giả lập: {e['emu'] or '?'} · nhận đơn Android: {', '.join(e['androids']) or 'mọi bản'}")
+    e = engine(); print(f"Giả lập: {e['emu'] or '?'} · nhận đơn Android: "
+                        + (f"KHÔNG bản nào — thiếu máy mẫu {', '.join(e.get('missing') or []) or '?'} (tạo trong giả lập, đúng tên, để tắt)"
+                           if e.get("none") else (', '.join(e['androids']) or 'mọi bản')))
     if WIN: print(f"Máy rảnh tự ngủ (IDLE_STOP_MIN={_f('IDLE_STOP_MIN', 30):g}): " + ("máy ở màn hình chính, không ai xem, CPU thấp liền ngần ấy phút → tắt; khách mở máy tự bật lại" if IDLE_ON else "TẮT"))
     if WIN:
         _rr_load()
@@ -1166,7 +1261,7 @@ if __name__ == "__main__":
         _ts_load(); _loop_t[0] = time.time()
         threading.Thread(target=_ts_loop, daemon=True).start()
         print(f"Tự kiểm · tự sửa (TUSUA): lệnh phonectl có hạn chờ · phần nhận đơn đứng quá {TS_STUCK_MIN:g} phút → tự khởi động lại"
-              + (" · phát hình hỏng ~3 phút → bật lại · màn hình máy khách tắt → bật sáng" if WIN else "") + " · nhật ký: 🩺 tự sửa")
+              + (" · phát hình đóng cổng ~3 phút → bật lại · màn hình máy khách tắt → bật sáng" if WIN else "") + " · nhật ký: 🩺 tự sửa (14/11)")
     else:
         print("Tự kiểm · tự sửa: TẮT (TUSUA=0)")
     while True:
@@ -1193,6 +1288,8 @@ if __name__ == "__main__":
         if n % 20 == 5:                     # ~5 phút: cài app còn thiếu (máy nào lỡ) + mở quyền cài APK cho app khách mới cài
             bg_job("apps", _bg_apps)        # luồng riêng (13/11): trước chạy ở vòng chính → 1 máy cài APK treo (chờ tới 15 phút / file)
                                             # là cả máy chủ không nhận đơn
+        if WIN and n % 120 == 60:           # ~30 phút: xoá hẳn máy web đã huỷ mà còn sót trên máy chủ (14/11)
+            bg_job("dondep", _bg_dondep)
         if n % 20 == 12:                    # ~5 phút: máy nào chưa root → tự root (chạy nền, không chặn việc nhận đơn)
             try:
                 if _rootjob[0] is None or _rootjob[0].poll() is not None:

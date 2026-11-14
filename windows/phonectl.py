@@ -259,6 +259,20 @@ def _vmdata_rm(name):
     root = os.path.realpath(VMDATA); p = os.path.realpath(_vmdir(name))
     if os.path.dirname(p) != root or not os.path.isdir(p): return            # chỉ đúng 1 thư mục con trực tiếp của vmdata
     shutil.rmtree(p, ignore_errors=True)
+def _forget_files(name):
+    """14/11: máy đã xoá hẳn → xoá luôn mọi dấu vết nhỏ của nó trên máy chủ (dấu cài app sẵn, lịch chống kẹt / bật lỗi, suất khởi động)."""
+    d = os.path.join(HOME, "redroid")
+    for fn in os.listdir(d) if os.path.isdir(d) else []:
+        if fn.startswith(f"pre_{name}_") and fn.endswith(".ok"):
+            try: os.remove(os.path.join(d, fn))
+            except OSError: pass
+    for f in (os.path.join(d, "heal.json"), os.path.join(d, "startfail.json")):
+        try:
+            j = json.load(open(f, encoding="utf-8"))
+            if isinstance(j, dict) and j.pop(name, None) is not None: json.dump(j, open(f, "w", encoding="utf-8"))
+        except Exception: pass
+    try: _boot_done(name)
+    except Exception: pass
 def _vmdata_rm_if_gone(name):
     """Chỉ xoá thư mục riêng khi đọc được danh sách máy và CHẮC CHẮN không còn máy nào tên đó."""
     if not _vmname_ok(name): return
@@ -1057,6 +1071,7 @@ def wait_boot(name, port, apps=True):
         adb_connect(port)
         if booted(port): ok = True; break
         time.sleep(3)
+    _boot_done(name)                                     # Android lên (hoặc quá giờ) → trả suất khởi động cho máy khác
     if ok:
         try: set_wallpaper(name, port)
         except Exception as e: print("   (ảnh nền lỗi:", e, ")")
@@ -1134,7 +1149,9 @@ def cmd_create(a):
            "android": ver, "kind": EMU, "created": fmt(now()), "expires": exp.isoformat()}
     st = load(); st["phones"].append(row); save(st)
     print(f"[3/4] Bật máy…", flush=True)
+    _boot_take(a.name, True)
     s = memu_start(idx)
+    if _start_failed(s): _boot_done(a.name)
     if not a.nowait: print(f"[4/4] Chờ Android khởi động (tối đa {BOOT_WAIT // 60} phút)…", flush=True)
     if s.returncode not in (0, None) and "SUCCESS" not in (s.stdout or "").upper():
         print("CẢNH BÁO bật máy:", (s.stdout or s.stderr or "").strip()[-200:])
@@ -1193,19 +1210,20 @@ def cmd_delete(a):
     if not p:
         if str(a.name).startswith("cp_") and any(x["name"] == a.name for x in v.values()):
             gone = _kill_locked(a.name)
-            if gone: print(f"🗑️  Đã xoá máy thừa '{a.name}' (không còn trong danh sách) và toàn bộ dữ liệu."); return
+            if gone: _forget_files(a.name); print(f"🗑️  Đã xoá máy thừa '{a.name}' (không còn trong danh sách) và toàn bộ dữ liệu."); return
             print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} — sẽ thử lại sau."); sys.exit(5)
         print("Không có máy tên này."); sys.exit(1)
     i = IDX(p, v)
     if i is None:                          # máy đã không còn trong giả lập → chỉ xoá khỏi danh sách
         st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
-        _vmdata_rm_if_gone(a.name)
+        _vmdata_rm_if_gone(a.name); _forget_files(a.name)
         print(f"🗑️  '{a.name}' không còn trong {EMU_NAME} — đã bỏ khỏi danh sách."); return
     adb("disconnect", serial(p), timeout=15)
     gone = _kill_locked(a.name)
     if not gone:                                     # không xoá được → GIỮ trong danh sách (vẫn tính RAM, lần sau thử lại), KHÔNG thử số máy khác
         print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} — máy vẫn giữ trong danh sách, sẽ thử lại sau."); sys.exit(5)
     st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
+    _forget_files(a.name)
     print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
 
 def _sb_get(path):
@@ -1424,9 +1442,82 @@ def memu_start(idx):
         return r
     finally:
         if got: lk.__exit__()
+# ---------- GIÃN CÁCH BẬT MÁY (14/11) ----------
+# Máy chủ "sập" khi nhiều máy khách KHỞI ĐỘNG cùng lúc (đơn mới dồn, khách mở nhiều máy ngủ, giả lập văng rồi bật lại hết): lúc khởi
+# động là lúc 1 máy ngốn CPU + ổ cứng nhiều nhất. Giờ mọi lệnh bật máy (tạo, bật lại, đánh thức, khởi động lại…) xin "suất khởi
+# động": tối đa BOOT_PARALLEL máy cùng khởi động, 2 lần bật cách nhau ≥ BOOT_GAP_S giây, CPU thật ≥ BOOT_CPU_PCT% thì chờ dịu bớt.
+# Việc khách đang chờ (tạo máy, mở máy ngủ, khởi động lại) được thêm 1 suất + nửa khoảng cách. Android lên → trả suất ngay; lệnh
+# không chờ Android lên thì suất tự hết sau BOOT_HOLD_S giây. Chờ quá 15 phút → vẫn bật (không để khách chờ mãi).
+def _cfn(k, d):
+    try: return float(CONF.get(k, d) or d)
+    except (TypeError, ValueError): return float(d)
+BOOT_PAR = max(1, int(_cfn("BOOT_PARALLEL", 2)))
+BOOT_GAP = max(0.0, _cfn("BOOT_GAP_S", 20))
+BOOT_HOLD = max(30.0, _cfn("BOOT_HOLD_S", 150))
+BOOT_CPU = max(50.0, min(101.0, _cfn("BOOT_CPU_PCT", 90)))
+BOOT_MAXWAIT = 900
+BOOT_F = os.path.join(HOME, "redroid", "bootslots.json")
+PRIO = False                                   # lệnh hiện tại là việc khách đang chờ (main() đặt)
+def _bs_load():
+    try:
+        d = json.load(open(BOOT_F, encoding="utf-8"))
+        return {"slots": {str(k): float(v) for k, v in (d.get("slots") or {}).items()}, "last": float(d.get("last") or 0)}
+    except Exception: return {"slots": {}, "last": 0.0}
+def _bs_save(d):
+    try:
+        os.makedirs(os.path.dirname(BOOT_F), exist_ok=True); tmp = BOOT_F + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f)
+        os.replace(tmp, BOOT_F)
+    except Exception: pass
+def _cpu_pct(dt=1.0):
+    """% CPU thật của cả máy chủ (đo dt giây). Không đo được → 0 (không chặn)."""
+    if os.name != "nt": return 0.0
+    try:
+        class FT(ctypes.Structure): _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
+        def get():
+            i, k, u = FT(), FT(), FT(); ctypes.windll.kernel32.GetSystemTimes(ctypes.byref(i), ctypes.byref(k), ctypes.byref(u))
+            return [(x.hi << 32) | x.lo for x in (i, k, u)]
+        a = get(); time.sleep(dt); b = get()
+        tot = (b[1] - a[1]) + (b[2] - a[2])                      # thời gian nhân (kernel) đã gồm thời gian rảnh
+        return max(0.0, min(100.0, 100.0 * (1 - (b[0] - a[0]) / tot))) if tot > 0 else 0.0
+    except Exception: return 0.0
+def _boot_take(key, prio=None):
+    """Chờ tới lượt được bật 1 máy (xem trên). Trả số giây đã chờ."""
+    prio = PRIO if prio is None else prio
+    par = BOOT_PAR + (1 if prio else 0); gap = BOOT_GAP / 2 if prio else BOOT_GAP
+    t0 = time.time(); said = t0 - 55                       # chờ quá 5 giây mới báo, sau đó 1 phút / lần
+    while True:
+        late = time.time() - t0 > BOOT_MAXWAIT
+        hot = 0.0 if late or prio else _cpu_pct()           # khách đang chờ → không chờ CPU dịu (chỉ giới hạn số máy + giãn cách)
+        why = ""
+        try:
+            with _Lock("bootslot", wait=60):
+                d = _bs_load(); now = time.time()
+                d["slots"] = {k: t for k, t in d["slots"].items() if now - t < BOOT_HOLD and k != key}
+                if late or (len(d["slots"]) < par and now - d["last"] >= gap and (prio or hot < BOOT_CPU)):
+                    d["slots"][key] = now; d["last"] = now; _bs_save(d); return now - t0
+                why = (f"{len(d['slots'])} máy đang khởi động" if len(d["slots"]) >= par else
+                       f"CPU đang {hot:.0f}%" if hot >= BOOT_CPU else f"giãn cách {gap:.0f} giây giữa 2 lần bật")
+        except RuntimeError:
+            if late: return time.time() - t0
+        if time.time() - said > 60:
+            print(f"   (chờ lượt bật {key}: {why or 'đang bận'} — giãn cách để máy chủ không quá tải)", flush=True); said = time.time()
+        time.sleep(2)
+def _boot_done(key):
+    """Máy đã lên (hoặc bật lỗi) → trả suất khởi động cho máy khác."""
+    try:
+        with _Lock("bootslot", wait=60):
+            d = _bs_load()
+            if d["slots"].pop(str(key), None) is not None: _bs_save(d)
+    except Exception: pass
 def start_phone(p):
+    took = False
+    try: on = is_running(p["name"], p)
+    except Exception: on = False
+    if not on: _boot_take(p["name"]); took = True             # máy đang chạy sẵn → không giành suất của máy khác
     r = memu_start(IDX(p)); adb_connect(p["port"])
     if not _start_failed(r): set_hold(p["name"], False)
+    elif took: _boot_done(p["name"])
     return r
 def cmd_start(a):
     st, p = _need(a.name); r = start_phone(p)
@@ -1631,6 +1722,9 @@ def cmd_liveres(a):
 
 def cmd_connect_all(a):
     st = load(); v = vms()
+    held = _bs_load()["slots"]
+    for p in st["phones"]:
+        if p["name"] in held and booted(p["port"]): _boot_done(p["name"])
     online = {l.split()[0] for l in (adb("devices", timeout=20).stdout or "").splitlines()[1:] if l.strip().endswith("device")}
     n = 0
     for p in st["phones"]:
@@ -2260,6 +2354,7 @@ def cmd_bootall(a):
             adb_connect(p["port"])
             if booted(p["port"]): ok = True; break
             time.sleep(3)
+        _boot_done(p["name"])
         if ok:
             tune(p["name"], p["port"]); grant_perms(p["name"]); _root_keep(p)
             try: hide_window(p["name"])
@@ -2499,6 +2594,7 @@ def _wake_one(p):
             adb_connect(p["port"])
             if booted(p["port"]): ok = True; break
             time.sleep(2)
+        _boot_done(nm)
         if not ok: return False, f"WAKE_FAIL Android chưa lên sau {BOOT_WAIT // 60} phút"
         print(f"WAKE_READY {nm} {int(time.time() - t0)}", flush=True)
         for fn in (lambda: _root_keep(p), lambda: grant_perms(nm), lambda: tune(nm, p["port"]), lambda: hide_window(nm)):
@@ -2654,7 +2750,8 @@ def cmd_pool(a):
         configure(idx, 2, 2, "720x1280", auto_dpi("720x1280")); memuc("setconfigex", "-i", idx, "fps", 30, timeout=60); apply_template(idx)
         if _creating_now(): print(f"LỖI {nm}: nhường đơn máy khách — dựng lại sau"); return
         port = port_of(idx)
-        if _start_failed(memu_start(idx)): print(f"LỖI {nm}: không bật được"); return
+        _boot_take("spare:" + nm, False)
+        if _start_failed(memu_start(idx)): _boot_done("spare:" + nm); print(f"LỖI {nm}: không bật được"); return
         ok = False; t0 = time.time()
         while time.time() - t0 < BOOT_WAIT:
             adb_connect(port)
@@ -2950,7 +3047,10 @@ def main():
     for nm, fn in (("connect-all", cmd_connect_all), ("reap", cmd_reap), ("perms", cmd_perms), ("capacity", cmd_capacity), ("list", cmd_list),
                    ("memfix", cmd_noop), ("boost", cmd_noop), ("gpuinfo", cmd_noop)):
         s.add_parser(nm).set_defaults(f=fn)
-    a = ap.parse_args(); a.f(a)
+    a = ap.parse_args()
+    global PRIO
+    PRIO = a.f in (cmd_create, cmd_wake, cmd_restart, cmd_waitboot, cmd_resize, cmd_reconfig, cmd_ramfix, cmd_renew)   # khách / admin đang chờ
+    a.f(a)
 
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(encoding="utf-8")

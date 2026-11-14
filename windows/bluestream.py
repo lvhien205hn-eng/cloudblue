@@ -113,8 +113,9 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "13/11b"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "13/11c"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
+                                          # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
 def _float_conf(k, d):
     try: return float(str(C.get(k, d)).strip() or d)
     except (TypeError, ValueError): return d
@@ -130,6 +131,10 @@ KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 1.2))
 # Cửa sổ giả lập của 1 máy quay lỗi (không ra khung / ngừng vẽ / chỉ ra hình đen) → trong WGC_BAD_MIN phút sau, mở máy đó lấy hình
 # THẲNG từ Android luôn (khỏi chờ quay cửa sổ 6–15 giây mỗi lần mở). 0 = tắt (lần nào cũng thử quay cửa sổ trước như cũ).
 WGC_BAD_S = max(0.0, _float_conf("WGC_BAD_MIN", 30.0)) * 60
+# 14/11: khách mở máy mà màn hình Android đang TẮT (khách bấm nút nguồn, Android tự tắt, máy vừa tạo / vừa thức dậy) → scrcpy chạy với
+# power_on=false và cửa sổ giả lập đều chỉ ra MÀN ĐEN. Mỗi lần mở máy: màn tắt → bật sáng (KEYCODE_WAKEUP, máy đang sáng thì không gửi
+# phím) + bỏ màn khoá + giữ màn luôn sáng (Android quên khi khởi động lại / ảnh mẫu cũ). WAKE_ON_OPEN=0 → tắt.
+WAKE_ON_OPEN = str(C.get("WAKE_ON_OPEN", "1")).strip() != "0"
 _WGC_BAD = {}                                 # tên máy → lúc hết "quay cửa sổ lỗi"
 def wgc_mark_bad(name):
     if WGC_BAD_S > 0 and name: _WGC_BAD[name] = time.time() + WGC_BAD_S
@@ -2033,6 +2038,14 @@ class Session:
             if size_msg or (w, h) != old: self.link.send_nowait(S_SIZE, json.dumps({"w": w, "h": h}).encode())
 
     # ---------- vòng chính ----------
+    def _wake(self):
+        """Màn hình Android đang tắt → bật sáng TRƯỚC khi lấy hình (khỏi màn đen). Đang sáng thì không gửi phím (không đổi gì)."""
+        rc, o, _ = adb(self.serial, "shell", "dumpsys power | grep -m1 mWakefulness=", timeout=6)
+        if rc == 0 and "mWakefulness=" in o and "Awake" not in o:
+            adb(self.serial, "shell", "input keyevent 224", timeout=6)
+            log(f"  {self.name}: ☀ màn hình Android đang tắt → đã bật sáng trước khi mở")
+        adb(self.serial, "shell", "wm dismiss-keyguard; settings put system screen_off_timeout 2147483647; svc power stayon true", timeout=8)
+
     async def run(self):
         old = SESSIONS.get(self.pid)
         if old and not old.closed and old.t_hello > self.t_hello:     # HELLO cũ đến muộn → không đá phiên mới hơn
@@ -2042,6 +2055,9 @@ class Session:
         mark_seen(self.phone, write=True)                    # máy có người xem → phonectl idle không cho ngủ
         if old and old is not self: await old.kick()
         log(f"▶ {self.name} ← {self.me['uid'][:8]} ({self.link.kind}, {self.hello.get('client', '?')})")
+        if WAKE_ON_OPEN:
+            try: await asyncio.wait_for(asyncio.to_thread(self._wake), 15)
+            except Exception: pass
         self.ctl = Control(self.serial, self._on_clip)
         threading.Thread(target=self.ctl.start, daemon=True).start()
         try:
@@ -3617,6 +3633,7 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
+    log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi {SCR_IFRAME:g} giây"
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
     if not SELFTEST: threading.Thread(target=publish_loop, args=(fp,), daemon=True).start()

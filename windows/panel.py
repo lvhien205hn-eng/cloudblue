@@ -269,6 +269,16 @@ def free_port(port):
         if pid.isdigit() and int(pid) not in (0, os.getpid()):
             kill_tree(pid)
     return len(pids)
+def cmd_pids(rx):
+    """PID các chương trình python đang chạy có dòng lệnh khớp biểu thức rx (VD bản nhận đơn cloudphoned.py), trừ chính bảng này."""
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command",
+                              "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' -and $_.CommandLine -match '%s' } | "
+                              "ForEach-Object { $_.ProcessId }" % rx.replace("'", "''")],
+                             capture_output=True, text=True, creationflags=NOWIN, timeout=60).stdout or ""
+    except Exception: return []
+    return [int(x) for x in out.split() if x.strip().isdigit() and int(x) != os.getpid()]
+
 def adb_pid():
     """PID của adb SERVER (tiến trình đang nghe cổng 5037) — KHÔNG phải các lệnh adb chạy thoáng qua
        (bản trước lấy nhầm lệnh adb tạm → tưởng adb khởi động lại → bật lại trình phát hình liên tục → web giật/đứt)."""
@@ -288,6 +298,10 @@ class Svc:
         if not os.path.isdir(cwd): self.ui.say(self.name, f"✗ Chưa cài ({cwd}) — bấm Cài đặt trước"); return
         if self.name in PORTS and free_port(PORTS[self.name]): self.ui.say(self.name, f"♻ Đã tắt bản cũ còn giữ cổng {PORTS[self.name]}"); time.sleep(1)
         if self.name == "ws-scrcpy": self.ui.adb_seen = adb_pid()
+        if self.name == "cloudphoned":                 # 14/11: bảng cũ bị tắt ngang → bản nhận đơn cũ còn chạy → 2 bản cùng nhận đơn
+            old = cmd_pids(r"cloudphoned\.py\W*$")
+            for pid in old: subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, creationflags=NOWIN)
+            if old: self.ui.say(self.name, f"♻ Đã tắt {len(old)} bản nhận đơn cũ còn chạy (tránh 2 bản cùng nhận đơn)"); time.sleep(1)
         try:
             self.p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
                                       env=ENV, creationflags=HIPRI, bufsize=1, text=True, encoding="utf-8", errors="replace")
@@ -382,6 +396,7 @@ class App:
         threading.Thread(target=self._checker, daemon=True).start()
         r.protocol("WM_DELETE_WINDOW", self.on_close)
         if auto: r.after(1500, self.boot_auto)          # Windows khởi động lại → tự bật A→Z
+        else: r.after(4000, self._auto_if_idle)         # 14/11: bảng mở KHÔNG kèm --auto mà chưa chạy gì → cũng tự bật A→Z
         if not conf().get("EMU") and not auto: r.after(1200, self.choose_emu)    # lần đầu: hỏi máy chủ này chạy LDPlayer hay MuMu/MEmu
 
     # ---------- nhật ký ----------
@@ -582,6 +597,22 @@ Write-Host '[OK] Khong ngu, khong tat man hinh'
 
     # ================= TỰ BẬT A→Z KHI WINDOWS KHỞI ĐỘNG LẠI =================
     boot_step = ""
+    def _auto_if_idle(self):
+        """14/11: có máy chủ khởi động lại mà bảng mở KHÔNG kèm --auto (bấm biểu tượng Desktop trước, lối tắt / tác vụ cũ thiếu
+           --auto…) → bảng mở ra mà không bật gì: máy khách không chạy, không nhận đơn. Giờ: bảng mở lên, đã cài đủ (adb + khoá
+           Supabase) mà CHƯA dịch vụ nào chạy → tự bật A→Z như lúc Windows vừa khởi động. Tắt: PANEL_AUTOSTART=0 trong cloudphone.conf."""
+        def chk():
+            try:
+                c = conf()
+                if str(c.get("PANEL_AUTOSTART", "1")).strip() == "0": return
+                if not os.path.isfile(os.path.join(B, "platform-tools", "adb.exe")) or len(c.get("SUPABASE_SERVICE_KEY", "")) < 30: return
+                if self.booting or any(x.want for x in self.svcs.values()): return
+                if port_open(8000) or port_open(8010) or port_open(PORTS["phat-hinh"]) or cmd_pids(r"cloudphoned\.py\W*$"): return
+                self.say("Tổng quan", "🔄 Bảng vừa mở mà chưa dịch vụ nào chạy → TỰ BẬT A→Z (dịch vụ + máy khách), khỏi bấm ▶ Bật tất cả")
+                self.root.after(0, self.boot_auto)
+            except Exception as e:
+                self.say("Tổng quan", f"✗ Tự bật lỗi: {e}")
+        threading.Thread(target=chk, daemon=True).start()
     def boot_auto(self):
         self.booting = True; threading.Thread(target=self._boot, daemon=True).start()
     def _boot(self):
@@ -1013,5 +1044,7 @@ if __name__ == "__main__":
     try:   # chỉ mở 1 bảng điều khiển
         _lock = socket.socket(); _lock.bind(("127.0.0.1", 47123))
     except OSError:
-        ctypes.windll.user32.MessageBoxW(0, "Bảng điều khiển CloudBlue đang mở rồi.", "CloudBlue", 0); sys.exit(0)
+        if "--auto" not in sys.argv:          # 14/11: bản tự chạy lúc đăng nhập thứ 2 (tác vụ + lối tắt) → thoát êm, không hiện hộp thoại
+            ctypes.windll.user32.MessageBoxW(0, "Bảng điều khiển CloudBlue đang mở rồi.", "CloudBlue", 0)
+        sys.exit(0)
     App(auto="--auto" in sys.argv).root.mainloop()

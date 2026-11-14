@@ -7201,9 +7201,11 @@ function nRow(label, val, pct, mark) {
 const NODE_ENGINE = { ld: "LDPlayer 9", mumu: "MuMu", memu: "MEmu" };
 function nodeEmu(n, m) {
   const e = String(n.engine ?? m.engine ?? "").trim(), a = n.androids ?? m.androids;
-  const av = (Array.isArray(a) ? a : String(a ?? "").split(",")).map(x => String(x).trim()).filter(Boolean);
-  if (!e && !av.length) return "";
-  return `<div class="nr"><span>Giả lập · Android</span><em>${esc([e ? NODE_ENGINE[e.toLowerCase()] || e : "", av.length ? "Android " + av.join(", ") : ""].filter(Boolean).join(" · "))}</em></div>`;
+  const av = (Array.isArray(a) ? a : String(a ?? "").split(",")).map(x => String(x).trim()).filter(x => x && x !== "-");
+  const none = String(a ?? "").trim() === "-", miss = Array.isArray(m.missing_tpl) ? m.missing_tpl : [];   // "-": máy chủ báo KHÔNG bán bản nào
+  if (!e && !av.length && !none) return "";
+  return `<div class="nr"><span>Giả lập · Android</span><em>${esc([e ? NODE_ENGINE[e.toLowerCase()] || e : "", av.length ? "Android " + av.join(", ") : none ? "KHÔNG bán bản nào" : ""].filter(Boolean).join(" · "))}</em></div>`
+    + (miss.length ? `<div class="nr" style="color:var(--bad)" title="Tạo máy trong giả lập đúng bản Android, đặt đúng tên, để TẮT — máy chủ tự bán lại sau khoảng 2 phút"><span>⚠ Thiếu máy mẫu</span><em>${esc(miss.join(", "))}</em></div>` : "");
 }
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
