@@ -638,7 +638,18 @@ def load():
     try:
         with open(STATE, encoding="utf-8") as f: return json.load(f)
     except Exception: return {"phones": []}
+_DROPPED = set()          # tên máy CHÍNH lệnh này cố ý bỏ khỏi danh sách (xoá / quên / dọn) — save() không giữ lại
+def drop_phone(st, name):
+    _DROPPED.add(name); st["phones"] = [x for x in st["phones"] if x["name"] != name]
 def save(st):
+    # 14/11: nhiều lệnh phonectl chạy cùng lúc (tạo máy, nối lại adb, cho ngủ, chống kẹt…) — lệnh đọc danh sách TRƯỚC khi lệnh khác
+    # thêm máy rồi ghi đè → MẤT DÒNG máy vừa tạo → bộ dọn máy thừa tưởng máy khách là máy thừa. Giờ: dòng đang có trên đĩa mà bản
+    # sắp ghi không có (và lệnh này không cố ý bỏ) → giữ lại.
+    try:
+        names = {x.get("name") for x in st.get("phones", [])}
+        for x in load().get("phones", []):
+            if x.get("name") not in names and x.get("name") not in _DROPPED: st["phones"].append(x)
+    except Exception: pass
     os.makedirs(os.path.dirname(STATE), exist_ok=True)
     tmp = STATE + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f: json.dump(st, f, ensure_ascii=False, indent=1)
@@ -1215,14 +1226,14 @@ def cmd_delete(a):
         print("Không có máy tên này."); sys.exit(1)
     i = IDX(p, v)
     if i is None:                          # máy đã không còn trong giả lập → chỉ xoá khỏi danh sách
-        st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
+        st = load(); drop_phone(st, a.name); save(st)
         _vmdata_rm_if_gone(a.name); _forget_files(a.name)
         print(f"🗑️  '{a.name}' không còn trong {EMU_NAME} — đã bỏ khỏi danh sách."); return
     adb("disconnect", serial(p), timeout=15)
     gone = _kill_locked(a.name)
     if not gone:                                     # không xoá được → GIỮ trong danh sách (vẫn tính RAM, lần sau thử lại), KHÔNG thử số máy khác
         print(f"⚠ Chưa xoá được '{a.name}' trong {EMU_NAME} — máy vẫn giữ trong danh sách, sẽ thử lại sau."); sys.exit(5)
-    st = load(); st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st)
+    st = load(); drop_phone(st, a.name); save(st)
     _forget_files(a.name)
     print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
 
@@ -1232,6 +1243,53 @@ def _sb_get(path):
     url = CONF["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path; k = CONF["SUPABASE_SERVICE_KEY"]
     req = urllib.request.Request(url, headers={"apikey": k, "Authorization": "Bearer " + k, "Accept": "application/json"})
     return json.loads(urllib.request.urlopen(req, timeout=25).read().decode("utf-8") or "[]")
+
+def _web_rows(names):
+    """{tên máy: dòng web} (ưu tiên dòng còn sống khi trùng tên). Đọc lỗi → None (KHÔNG kết luận gì, không xoá gì)."""
+    import urllib.parse
+    out = {}
+    try:
+        for i in range(0, len(names), 40):
+            part = names[i:i + 40]
+            for r in _sb_get("cloud_phones?select=id,container,status,node,ram,cpu,res,fps,android,expires_at&container=in.("
+                             + ",".join(urllib.parse.quote(n) for n in part) + ")") or []:
+                c = r.get("container")
+                if c and (c not in out or out[c].get("status") in ("cancelled", "error")): out[c] = r
+    except Exception:
+        return None
+    return out
+ADOPT_ST = ("active", "expired")
+def _adopt(v=None, quiet=False):
+    """14/11: máy cp_… CÓ trong giả lập mà KHÔNG có trong danh sách (phones.json mất dòng) trong khi web ghi máy đó đang thuê ở
+       máy chủ này → NHẬN LẠI vào danh sách (giữ nguyên máy + dữ liệu khách; đang tắt thì bảng / cloudphoned tự bật lại).
+       Trả [tên đã nhận lại]."""
+    v = v if v is not None else vms_sure()
+    if not v: return []
+    st = load(); mine = {p["name"] for p in st["phones"]}
+    strays = {x["name"]: i for i, x in v.items() if str(x["name"]).startswith("cp_") and x["name"] not in mine}
+    if not strays: return []
+    web = _web_rows(sorted(strays))
+    if web is None:
+        if not quiet: print("   (không đọc được web — chưa nhận lại máy nào)", flush=True)
+        return []
+    me = CONF.get("NODE_ID", ""); got = []
+    for nm, i in sorted(strays.items()):
+        r = web.get(nm)
+        if not r or r.get("status") not in ADOPT_ST or (r.get("node") or me) != me: continue
+        res = r.get("res") or "720x1280"
+        if not re.match(r"^\d+x\d+$", str(res)): res = "720x1280"
+        row = {"name": nm, "idx": i, "port": port_of(i), "ram": float(r.get("ram") or 2), "cpu": float(r.get("cpu") or 2), "res": res,
+               "fps": clamp_fps(r.get("fps") or 30), "dpi": auto_dpi(res), "android": norm_android(r.get("android") or DEF_ANDROID),
+               "kind": EMU, "created": fmt(now()), "expires": r.get("expires_at") or (now() + datetime.timedelta(days=1)).isoformat(),
+               "adopted": int(time.time())}
+        st = load()
+        if rec(nm, st): continue
+        st["phones"].append(row); save(st); got.append(nm)
+        print(f"NHAN_LAI {nm} (#{i}, cổng {row['port']}): giả lập còn máy, web đang thuê ở máy chủ này → đã nhận lại vào danh sách (giữ dữ liệu)", flush=True)
+    return got
+def cmd_nhanlai(a):
+    got = _adopt()
+    print(f"NHANLAI {json.dumps({'adopted': got}, ensure_ascii=False)}")
 
 def cmd_dondep(a):
     """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): máy cũ đổi Android, đơn huỷ lúc máy chủ
@@ -1288,7 +1346,7 @@ def cmd_forget(a):
     v = vms_sure()
     if not v: print(f"LỖI: không đọc được danh sách máy của {EMU_NAME} — thử lại sau."); sys.exit(4)
     if any(x["name"] == a.name for x in v.values()): print(f"LỖI: '{a.name}' vẫn còn trong {EMU_NAME} — không bỏ khỏi danh sách."); sys.exit(3)
-    st["phones"] = [x for x in st["phones"] if x["name"] != a.name]; save(st); _vmdata_rm(a.name)
+    drop_phone(st, a.name); save(st); _vmdata_rm(a.name)
     print(f"Đã bỏ '{a.name}' khỏi danh sách ({EMU_NAME} không còn máy này).")
 
 def set_hold(name, on, sleep=False):
@@ -2365,10 +2423,10 @@ def cmd_bootall(a):
 
 # ---------- CHỐNG KẸT: máy chạy mà Android không lên (kẹt 99%, màn đen, adb offline) ----------
 HEAL_F = os.path.join(HOME, "redroid", "heal.json")
-STUCK_MIN = 6          # chạy quá 6 phút mà Android chưa lên → coi là kẹt
+STUCK_MIN = 10         # chạy quá 10 phút mà Android chưa lên → coi là kẹt (14/11: 6 phút — máy chủ quá tải khởi động chậm bị coi là kẹt)
 # Kẹt sau 2 lần khởi động lại → XOÁ máy + tạo lại máy mới (MẤT dữ liệu khách). MEmu mặc định TẮT (lỗi chung của giả lập —
 # VD màn đen do cấu hình — sẽ xoá hàng loạt máy khách); bật lại: HEAL_DELETE=1 trong cloudphone.conf.
-HEAL_DELETE = (CONF.get("HEAL_DELETE") or ("0" if EMU == "memu" else "1")).strip() == "1"
+HEAL_DELETE = (CONF.get("HEAL_DELETE") or "0").strip() == "1"     # 14/11: mặc định KHÔNG tự xoá (win5: máy quá tải bị xoá → web còn, máy chủ mất)
 def _hl():
     try: return json.load(open(HEAL_F, encoding="utf-8"))
     except Exception: return {}
@@ -2618,7 +2676,16 @@ def _ours(nm):
 def _cleanup(v=None, quiet=False, all_=False):
     """Xoá máy trong MEmu KHÔNG thuộc danh sách BlueRoblox (giả lập cũ / thừa / tạo dở). Giữ máy mẫu (MEMU_TEMPLATE)."""
     if quiet and _creating_now(): return                 # đang tạo máy khách → để lần sau
-    v = v if v is not None else vms(); mine = {p["name"] for p in load()["phones"]}; tpl = CONF.get("MEMU_TEMPLATE", "")
+    v = v if v is not None else vms()
+    if quiet and v:
+        try: _adopt(v, quiet=True)                       # 14/11: máy khách lạc khỏi danh sách → nhận lại, KHÔNG xoá
+        except Exception as e: print("   (nhận lại máy lạc lỗi:", repr(e)[:120], ")", flush=True)
+    mine = {p["name"] for p in load()["phones"]}; tpl = CONF.get("MEMU_TEMPLATE", "")
+    web = None
+    if quiet:                                            # tự động: hỏi web trước khi xoá — web còn ghi máy này (bất kỳ trạng thái nào trừ huỷ / lỗi) → giữ
+        cand = [x["name"] for x in v.values() if str(x["name"]).startswith("cp_") and x["name"] not in mine]
+        web = _web_rows(cand) if cand else {}
+        if web is None: return                           # không đọc được web → không xoá gì
     gone = 0
     for i in sorted(v, reverse=True):          # xoá từ số lớn xuống → số máy còn lại ít bị đổi
         nm = v[i]["name"]
@@ -2628,6 +2695,9 @@ def _cleanup(v=None, quiet=False, all_=False):
         if not _ours(nm): continue                            # máy riêng của chủ máy (MuMu dùng chung máy) — không bao giờ đụng
         if quiet and not nm.startswith("cp_"): continue     # tự động: chỉ dọn máy do BlueRoblox tạo (cp_…)
         if quiet and (_creating_now() or nm in {p["name"] for p in load()["phones"]}): continue   # kiểm lại ngay trước khi xoá
+        if quiet and web is not None and nm in web and web[nm].get("status") not in ("cancelled", "error"):
+            print(f"GIU_LAI {nm}: không có trong danh sách nhưng web còn ghi '{web[nm].get('status')}' (máy chủ {web[nm].get('node') or '?'}) — không xoá", flush=True)
+            continue
         print(f"XOA_THUA {nm} (MEmu #{i})", flush=True)
         def _at(n):                                          # số máy HIỆN TẠI của máy tên n (MEmu đổi số khi xoá máy khác) — KHÔNG BAO GIỜ đụng máy khác tên
             return next(((k, x) for k, x in vms().items() if x["name"] == n), (None, None))
@@ -2647,7 +2717,9 @@ def _cleanup(v=None, quiet=False, all_=False):
             print(f"   (chưa xoá được, thử lại: {((r.stdout or '') + (r.stderr or '')).strip()[-120:]})", flush=True); time.sleep(5)
         else: print(f"   ✗ KHÔNG xoá được {nm} — tắt bằng tay trong MEmu Multi-Instance rồi chạy lại", flush=True)
     if all_:
-        st = load(); st["phones"] = []; save(st)
+        st = load()
+        for x in list(st["phones"]): drop_phone(st, x["name"])
+        save(st)
     if not quiet or gone: print(f"Đã xoá {gone} giả lập.")
 def cmd_cleanup(a):
     if a.all and not a.yes: print("Thêm --yes để xác nhận XOÁ TẤT CẢ (kể cả máy khách)."); sys.exit(1)
@@ -3036,6 +3108,7 @@ def main():
     s.add_parser("perfset").set_defaults(f=cmd_perfset)
     s.add_parser("ramcheck").set_defaults(f=cmd_ramcheck)
     dd = s.add_parser("dondep"); dd.add_argument("--xoa", action="store_true"); dd.set_defaults(f=cmd_dondep)
+    s.add_parser("nhanlai").set_defaults(f=cmd_nhanlai)
     rf = s.add_parser("ramfix"); rf.add_argument("names", nargs="*"); rf.add_argument("--all", action="store_true"); rf.set_defaults(f=cmd_ramfix)
     mt = s.add_parser("mktpl"); mt.add_argument("android"); mt.set_defaults(f=cmd_mktpl)
     s.add_parser("tuneall").set_defaults(f=cmd_tuneall)

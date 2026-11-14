@@ -28,14 +28,15 @@ LOGS = os.path.join(B, "logs")
 REPO = "lvhien205hn-eng/cloudblue"
 NW = 0x08000000 if os.name == "nt" else 0
 ONLY_CHECK = "--chi-kiem" in sys.argv
+REMAKE = "--lam-moi-may-ma" in sys.argv          # tạo lại máy MỚI cho khách có máy "ma" (web còn thuê, máy chủ mất hẳn máy)
 NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "13/11c"', "bluestream"),
-         ("windows/panel.py", "panel.py", "def _auto_if_idle", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _boot_take", None)]
+         ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
+         ("windows/phonectl.py", "phonectl.py", "def cmd_nhanlai", None)]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "(WAKE_ON_OPEN)"}       # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
@@ -129,14 +130,23 @@ def good_py(data, name):
     try: ast.parse(data.decode("utf-8"), name); return True
     except Exception: return False
 
+CREATE_RX = r"phonectl\.py\S*\s+(create|resize)\s"
+HUNG_S = 1800                                      # lệnh tạo / nâng máy chạy quá 30 phút = treo (bình thường 2–6 phút)
 def wait_not_creating(limit=600):
-    """Đang tạo / nâng cấp máy khách → chờ xong rồi mới thay file (tối đa 10 phút)."""
+    """Đang tạo / nâng cấp máy khách → chờ xong rồi mới bật lại nhận đơn (tối đa 10 phút). Lệnh tạo đã chạy quá 30 phút = TREO
+       → tắt riêng lệnh đó (đơn đó được hoàn tiền / tạo lại) rồi đi tiếp. True = không còn lệnh tạo nào."""
     t0 = time.time(); said = 0
-    while time.time() - t0 < limit:
-        if not re.search(r"phonectl\.py\S*\s+(create|resize)\s", py_cmdlines()): return True
-        if time.time() - said > 60: say("   … đang tạo / nâng cấp máy khách — chờ xong rồi mới thay (tối đa 10 phút)"); said = time.time()
+    while True:
+        pr = procs(CREATE_RX)
+        if not pr: return True
+        hung = [pid for pid, age in pr if age > HUNG_S]
+        if hung:
+            for pid in hung: kill(pid)
+            say(f"   ⚠ lệnh tạo / nâng máy chạy quá {HUNG_S // 60} phút (treo) → đã tắt riêng lệnh đó (pid {', '.join(map(str, hung))})")
+            continue
+        if time.time() - t0 >= limit: return False
+        if time.time() - said > 60: say("   … đang tạo / nâng cấp máy khách — chờ xong rồi mới bật lại nhận đơn (tối đa 10 phút)"); said = time.time()
         time.sleep(10)
-    return False
 
 def update_files():
     changed = []; problems = []
@@ -156,9 +166,6 @@ def update_files():
         except OSError: cur = b""
         if cur == data: say(f"   = {local}: đã là bản mới"); continue
         todo.append((local, lp, data, svc))
-    if todo and not wait_not_creating():
-        say("   ✗ máy chủ tạo máy khách quá 10 phút chưa xong — chưa thay file, chạy lại lệnh sau"); problems.append("chưa thay được file (đang tạo máy)")
-        return changed, problems
     for local, lp, data, svc in todo:
         try:
             bak = lp + ".truoc-1411"
@@ -184,7 +191,7 @@ def log_new(svc, since):
     except OSError:
         return ""
 
-def restart_services(changed):
+def restart_services(changed, done_new=()):
     say("2/6 Bật lại dịch vụ (bản mới chạy ngay)")
     probs = []
     if ONLY_CHECK: say("   (bỏ qua — chỉ kiểm)"); return probs
@@ -198,8 +205,12 @@ def restart_services(changed):
         try: age_file = time.time() - os.path.getmtime(fp)
         except OSError: age_file = 0
         old = svc in changed or any(age > age_file + 5 for _, age in pr)          # chạy từ TRƯỚC khi file được thay → đang chạy bản cũ
-        if not old: say(f"   = {SVC_VN[svc]}: đang chạy bản mới"); continue
-        if svc == "cloudphoned" and not waited: wait_not_creating(); waited = True
+        if not old: say(f"   = {SVC_VN[svc]}: đang chạy đúng file hiện có" + (" (bản mới)" if svc in done_new else "")); continue
+        if svc == "cloudphoned" and not waited:
+            waited = True
+            if not wait_not_creating():
+                say("   ✗ nhận đơn: máy chủ đang tạo máy khách quá 10 phút — CHƯA bật lại (file mới đã thay), chạy lại lệnh sau ít phút")
+                probs.append("nhận đơn chưa chạy bản mới (đang tạo máy) — chạy lại lệnh sau"); continue
         if svc == "bluestream": say("   … phát hình bật lại: khách đang xem bị ngắt ~10 giây rồi app tự nối lại")
         since = log_size(svc); t0 = time.time()
         for pid, _ in pr: kill(pid)
@@ -399,6 +410,19 @@ def sb_rows(c, q):
     except Exception:
         return None
 
+GHOST = []
+
+def remake_ghosts():
+    """--lam-moi-may-ma: tạo lại máy MỚI (đúng cấu hình, bản Android, hạn) cho khách có máy "ma" còn hạn — remake.py, từng máy một."""
+    if not GHOST: return []
+    say(f"--- tạo lại {len(GHOST)} máy \"ma\" còn hạn (mỗi máy 2–5 phút, làm lần lượt) ---")
+    code, out = run2([sys.executable, os.path.join(B, "run.py"), "remake.py", "all"], 4 * 3600)
+    for ln in out.splitlines():
+        ln = ln.strip()
+        if ln.startswith(("✓ ĐÃ LÀM MỚI", "✗", "=====")) or "ĐÃ LÀM MỚI" in ln: say("   " + ln[:170])
+    m = re.search(r"ĐÃ LÀM MỚI (\d+)/(\d+)", out)
+    return [m.group(1), m.group(2)] if m else []
+
 def phones():
     try: return json.load(open(os.path.join(B, "redroid", "phones.json"), encoding="utf-8-sig")).get("phones", [])
     except Exception: return None
@@ -406,13 +430,28 @@ def phones():
 def check_phones(c):
     say("5/6 Kiểm từng máy khách (nối adb · Android đã lên · bật sáng màn hình · màn đen)")
     if not os.path.isfile(PHONECTL): say("   - máy chủ này không có phonectl.py — bỏ qua"); return [], {}, []
-    code, lst = pctl("list", t=300)                         # đọc lại số máy / cổng thật trong giả lập (phonectl tự sửa cổng lệch)
-    ph = phones()
-    names = {str(p.get("name")) for p in ph or []}
+    if not ONLY_CHECK:
+        code, out = pctl("nhanlai", t=300)                  # máy còn trong giả lập mà mất khỏi danh sách, web còn thuê → nhận lại (giữ dữ liệu)
+        for ln in out.splitlines():
+            if ln.startswith("NHAN_LAI "): say("   ✓ " + ln[9:])
+    code, vl = pctl("vmlist", t=120)
+    odd = [q[1].strip() for q in (ln.split(",") for ln in vl.splitlines()) if len(q) > 2 and q[0].strip().isdigit() and q[0].strip() != "0"
+           and not q[1].strip().startswith(("cp_", "spare_", "tpl_"))]
+    if odd: say(f"   ⚠ máy lạ trong giả lập (không phải máy khách — thường là lần tạo máy hỏng): {', '.join(odd[:8])} — không dùng thì xoá tay trong giả lập")
     state = {}
-    for ln in lst.splitlines():
-        q = ln.split()
-        if len(q) > 2 and q[0] in names and q[-1] in ("chạy", "ngủ", "tắt"): state[q[0]] = q[-1]
+    if ONLY_CHECK:                                          # chỉ kiểm: đọc giả lập, không ghi gì
+        ph = phones()
+        run_by = {q[1].strip(): q[2].strip() == "1" for q in (ln.split(",") for ln in vl.splitlines()) if len(q) > 2 and q[0].strip().isdigit()}
+        for p in ph or []:
+            nm = str(p.get("name"))
+            if nm in run_by: state[nm] = "chạy" if run_by[nm] else ("ngủ" if p.get("hold") and p.get("sleep") else "tắt")
+    else:
+        code, lst = pctl("list", t=300)                     # đọc lại số máy / cổng thật trong giả lập (phonectl tự sửa cổng lệch)
+        ph = phones()
+        names = {str(p.get("name")) for p in ph or []}
+        for ln in lst.splitlines():
+            q = ln.split()
+            if len(q) > 2 and q[0] in names and q[-1] in ("chạy", "ngủ", "tắt"): state[q[0]] = q[-1]
     if ph is None: say("   ✗ không đọc được redroid\\phones.json"); return [], {}, ["không đọc được phones.json"]
     if not ph: say("   (máy chủ chưa có máy khách nào)"); return [], {}, []
     ports = {}
@@ -421,14 +460,21 @@ def check_phones(c):
     probs = []
     for k, v in dup.items(): say(f"   ✗ {len(v)} máy cùng cổng {k}: {', '.join(v)} — gửi Claude dòng này"); probs.append(f"trùng cổng {k}")
     node = c.get("NODE_ID", "")
-    rows = sb_rows(c, "cloud_phones?node=eq.%s&status=in.(active,expired)&select=container,port,status" % urllib.parse.quote(node)) if node else None
+    rows = sb_rows(c, "cloud_phones?node=eq.%s&status=in.(active,expired)&select=container,port,status,ram,cpu,android,expires_at" % urllib.parse.quote(node)) if node else None
     if rows is not None:
         byn = {str(p.get("name")): p for p in ph}
         ghost = [r["container"] for r in rows if r.get("container") and r["container"] not in byn]
+        gact = [r for r in rows if r.get("container") in ghost and r.get("status") == "active"]
+        GHOST[:] = gact
         lech = [r["container"] for r in rows if r.get("container") in byn and str(r.get("port")) != str(byn[r["container"]].get("port"))]
         if ghost:
-            say(f"   ✗ web ghi {len(ghost)} máy đang ở máy chủ này mà máy chủ KHÔNG có: {', '.join(ghost[:8])}{' …' if len(ghost) > 8 else ''} — gửi Claude dòng này")
-            probs.append(f"{len(ghost)} máy trên web không có ở máy chủ")
+            say(f"   ✗ {len(ghost)} máy \"ma\": web ghi khách đang thuê ở máy chủ này mà máy chủ KHÔNG còn máy (khách mở cứ quay 'Đang mở máy…'): "
+                f"{', '.join(ghost[:8])}{' …' if len(ghost) > 8 else ''}")
+            if gact:
+                say(f"     trong đó {len(gact)} máy còn hạn — tổng {sum(float(r.get('cpu') or 0) for r in gact):g} nhân · {sum(float(r.get('ram') or 0) for r in gact):g}GB"
+                    + ("" if REMAKE else " → muốn tạo lại máy MỚI cho khách (giữ cấu hình + hạn, dữ liệu cũ đã mất): chạy lại lệnh này kèm --lam-moi-may-ma"))
+            if len(ghost) > len(gact): say(f"     {len(ghost) - len(gact)} máy đã hết hạn → nhận đơn tự ghi huỷ sau 30 phút")
+            probs.append(f"{len(ghost)} máy ma (web còn, máy chủ không có)")
         if lech:
             say(f"   ⚠ {len(lech)} máy web ghi cổng khác máy chủ (app vẫn vào đúng, web xem có thể đen): {', '.join(lech[:8])}")
     now = datetime.datetime.now().astimezone()
@@ -534,6 +580,10 @@ def log_report():
     if ev:
         say("--- tự sửa gần nhất (redroid\\tusua.json) ---")
         for e in ev[-5:]: say("   " + time.strftime("%d/%m %H:%M", time.localtime(int(e.get("t", 0)))) + "  " + str(e.get("what", ""))[:150])
+    T = [x for x in tail(os.path.join(LOGS, "bang-tu-sua.log"), 400000) if any(k in x for k in ("XOA", "KHOI_DONG_LAI", "NHAN_LAI", "GIU_LAI", "làm mới", "tạo lại"))]
+    if T:
+        say("--- bảng CloudBlue tự sửa gần nhất (logs\\bang-tu-sua.log) ---")
+        for x in T[-5:]: say("   " + x[:170])
     L = tail(os.path.join(LOGS, "phat-hinh.log"))
     ks = ("lỗi bật hình", "ĐEN", "hình đen", "không ra khung", "ngừng ra hình", "lỗi quay", "không xuất được hình", "Traceback")
     er = [x for x in L if any(k in x for k in ks)]
@@ -546,7 +596,8 @@ def main():
     say(f"== CloudBlue · sửa tất cả ({VER}) · máy chủ {node} · {time.strftime('%d/%m %H:%M')}" + (" · CHỈ KIỂM" if ONLY_CHECK else "") + " ==")
     probs = []
     changed, p = update_files(); probs += p
-    probs += restart_services(changed)
+    probs += restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
+                                        and mark.encode() in open(os.path.join(B, local), "rb").read()})
     probs += fix_autostart()
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
@@ -559,6 +610,8 @@ def main():
     else:
         res, extra, p = check_phones(c); probs += p
         done, final = fix_phones(res, extra) if res or extra.get("off") else ([], [])
+    rm = []
+    if REMAKE and GHOST and not ONLY_CHECK: rm = remake_ghosts()
     recent_report(c, res)
     log_report()
     okn = sum(1 for r in res if r["st"] == "OK")
@@ -568,6 +621,7 @@ def main():
     if changed: say("   ✓ đã cập nhật: " + ", ".join(sorted(set(changed))))
     say(f"   máy khách: {okn} có hình · {len(done)} vừa sửa ({sum(1 for _, k in final if k == 'ok')} đã có hình)"
         + (f" · {extra.get('sleep', 0)} đang ngủ" if extra else "") + (f" · {len(inapp)} đen trong app (không đụng)" if inapp else ""))
+    if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     say("   → XONG, máy chủ ổn." if not probs and not still else "   → Còn dòng ✗ ở trên: chụp phần TÓM TẮT gửi Claude.")

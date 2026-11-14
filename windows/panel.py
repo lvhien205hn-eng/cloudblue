@@ -429,7 +429,11 @@ class App:
             self.banner.configure(text=f"⚠ {good}/{len(self.NAMES)} đèn xanh — lỗi: {', '.join(bad) or 'đang kiểm tra'}", bg=BAD, fg="white")
 
     # ================= TỰ QUÉT + TỰ SỬA (chạy ngầm, mỗi 4 giây) =================
-    def _fix(self, what): self.say("Tổng quan", f"🩺 Tự sửa: {what}  ({time.strftime('%H:%M:%S')})")
+    def _fix(self, what):
+        self.say("Tổng quan", f"🩺 Tự sửa: {what}  ({time.strftime('%H:%M:%S')})")
+        try:                                   # 14/11: ghi cả ra file (trước chỉ hiện trong bảng — đóng bảng là mất dấu máy bị chống kẹt xoá)
+            with open(os.path.join(LOGS, "bang-tu-sua.log"), "a", encoding="utf-8") as f: f.write(time.strftime("%d/%m %H:%M:%S ") + str(what) + "\n")
+        except Exception: pass
     def _bad(self, k, cond):
         """Đếm số lần lỗi liên tiếp của mục k."""
         f = self.__dict__.setdefault("_fails", {}); f[k] = f.get(k, 0) + 1 if cond else 0; return f[k]
