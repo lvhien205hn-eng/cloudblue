@@ -24,7 +24,7 @@
 #  cloudphone.conf:  STREAM_PORT=8189 · STREAM_WS_PORT=8020 · STREAM_WS=wss://stream.blueroblox.shop/v2/stream
 #                    STREAM_PUBLIC_IP= (trống = tự dò) · STREAM_CPU=1 (luôn nén CPU) · NVENC_MAX=5 · UPNP=0 (không tự mở cổng)
 # =====================================================================================================
-import asyncio, base64, collections, ctypes, datetime, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time
+import asyncio, base64, collections, ctypes, datetime, hashlib, json, logging, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "13/11c"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "13/11d"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
 def _float_conf(k, d):
@@ -1628,14 +1628,22 @@ class Link:
     async def recv(self): raise NotImplementedError
     def write(self, t, payload=b""): raise NotImplementedError
 
+    def dead(self):
+        """App / trình duyệt đã ngắt (kết nối đang đóng) — 13/11d: thôi ghi ngay, kết thúc phiên."""
+        if self.closed: return True
+        try: return bool(self.w.is_closing())
+        except AttributeError: return False                 # kiểu kết nối không có is_closing → coi như còn sống (như trước 13/11d)
+        except Exception: return True
+
     async def send(self, t, payload=b"", timeout=5.0):
         """Gửi + chờ mạng nhận bớt (tối đa `timeout` giây — app treo/không đọc → báo lỗi để đóng phiên)."""
+        if self.dead(): raise ConnectionResetError("app đã ngắt kết nối")
         self.write(t, payload)
         await asyncio.wait_for(self.w.drain(), timeout)
 
     def send_nowait(self, t, payload=b""):
         """Gói nhỏ (PONG, STATS, chữ copy…): ghi luôn, KHÔNG chờ — không để hình đang nghẽn làm chậm lệnh khác."""
-        if self.closed: return
+        if self.dead(): return
         try: self.write(t, payload)
         except Exception: pass
 
@@ -3607,7 +3615,32 @@ def captest(name, port=None):
     return 0 if ok else 1
 
 
+class _QuietNet(logging.Filter):
+    """13/11d: bỏ cảnh báo của asyncio khi app ngắt ngang ("SSL connection is closed", "socket.send() raised exception.")."""
+    def filter(self, rec):
+        m = rec.getMessage()
+        return not (m.startswith("SSL connection is closed") or m.startswith("socket.send() raised exception"))
+
+_NET_QUIET = (ConnectionResetError, ConnectionAbortedError, BrokenPipeError, TimeoutError)
+_net_noise = [0, 0.0]
+def _loop_err(loop, ctx):
+    """13/11d: app / trình duyệt ngắt ngang (WinError 10054 / 10053, TLS đóng dở, máy quét cổng…) là chuyện thường → không in traceback
+       đỏ đầy nhật ký phát hình (admin tưởng lỗi). Lỗi khác vẫn in như cũ. 30 phút ghi 1 dòng đếm."""
+    e = ctx.get("exception"); msg = str(ctx.get("message") or "")
+    noise = isinstance(e, _NET_QUIET) or (isinstance(e, OSError) and getattr(e, "winerror", None) in (64, 121, 1236, 10053, 10054, 10060)) \
+        or (isinstance(e, ssl.SSLError) and msg.startswith(("SSL handshake failed", "Fatal error on SSL transport", "Error on reading from the event loop")))
+    if not noise:
+        try: loop.default_exception_handler(ctx)
+        except Exception: pass
+        return
+    _net_noise[0] += 1
+    if time.time() - _net_noise[1] > 1800:
+        if _net_noise[1]: log(f"  (30 phút qua: {_net_noise[0]} lần app / trình duyệt ngắt ngang — bình thường, không in chi tiết)")
+        _net_noise[0] = 0; _net_noise[1] = time.time()
+
 async def main():
+    logging.getLogger("asyncio").addFilter(_QuietNet())
+    asyncio.get_running_loop().set_exception_handler(_loop_err)
     if not SELFTEST and (not SB or not KEY):
         log("THIẾU SUPABASE_URL / SUPABASE_SERVICE_KEY trong cloudphone.conf"); sys.exit(1)
     if WIN:

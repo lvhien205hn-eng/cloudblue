@@ -29,12 +29,13 @@ REPO = "lvhien205hn-eng/cloudblue"
 NW = 0x08000000 if os.name == "nt" else 0
 ONLY_CHECK = "--chi-kiem" in sys.argv
 REMAKE = "--lam-moi-may-ma" in sys.argv          # tạo lại máy MỚI cho khách có máy "ma" (web còn thuê, máy chủ mất hẳn máy)
+REMAKE_BROKEN = "--lam-moi-may-hong" in sys.argv  # máy ép khởi động lại rồi vẫn KHÔNG lên → xoá máy hỏng + tạo lại máy mới (mất dữ liệu)
 NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "13/11c"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "13/11d"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
          ("windows/phonectl.py", "phonectl.py", "def cmd_nhanlai", None)]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "(WAKE_ON_OPEN)"}       # dòng khởi động của bản mới (trong nhật ký)
@@ -554,7 +555,20 @@ def fix_phones(res, extra):
                     say(f"   ✗ {j[1]}: Android đã lên nhưng VẪN ĐEN — gửi Claude dòng này"); final.append((j[1], "vẫn đen"))
                 else:
                     say(f"   ✓ {j[1]}: Android đã lên, có hình — khách vào được"); final.append((j[1], "ok"))
-    for j in left: say(f"   ✗ {j[1]}: VẪN CHƯA LÊN sau 5 phút — gửi Claude dòng này"); final.append((j[1], "chưa lên"))
+    for j in left:
+        if REMAKE_BROKEN and str(j[1]).startswith("cp_"):
+            say(f"   … {j[1]}: ép khởi động lại vẫn không lên → máy hỏng: xoá hẳn + tạo lại máy mới (giữ cấu hình + hạn, mất dữ liệu cũ)")
+            code, out = pctl("delete", j[1], t=600)
+            gone = "Đã xoá" in out or "không còn trong" in out
+            if gone:
+                code, out = run2([sys.executable, os.path.join(B, "run.py"), "remake.py", "one", j[1]], 1800)
+                okm = "ĐÃ LÀM MỚI" in out and "1/1" in out
+                say(f"   {'✓' if okm else '✗'} {j[1]}: " + ("đã tạo lại máy mới — khách vào được" if okm else "tạo lại CHƯA được — gửi Claude dòng này: "
+                    + " / ".join(x.strip() for x in out.strip().splitlines()[-2:])[:160]))
+                final.append((j[1], "ok" if okm else "tạo lại lỗi")); continue
+            say(f"   ✗ {j[1]}: chưa xoá được máy hỏng: {' / '.join(x.strip() for x in out.strip().splitlines()[-2:])[:160]}")
+        say(f"   ✗ {j[1]}: VẪN CHƯA LÊN sau 5 phút" + ("" if REMAKE_BROKEN else " — máy hỏng: chạy lại lệnh kèm --lam-moi-may-hong để xoá + tạo lại máy mới"))
+        final.append((j[1], "chưa lên"))
     return done, final
 
 # ------------------------------------------------------------------ báo cáo thêm
