@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
-# sua-tat-ca.py — 14/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1411):
+# sua-tat-ca.py — 15/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1511):
+#        phonectl     — 15/11: ĐỔI ANDROID lỗi "chưa tạo được máy mới": MuMu báo "mainnx request failed" lúc nhân bản máy mẫu →
+#                       tự mở lại chương trình chính MuMu rồi nhân bản lại (trước chỉ bật / tắt máy mới tự mở lại); tin báo lỗi ghi rõ LÝ DO
 #        cloudphoned  — tự sửa an toàn hơn (không tắt phát hình chỉ vì máy chủ chậm trả lời, bớt tin Telegram rác),
 #                       máy mới / đổi Android chưa lên thì CHƯA giao cho khách (hết cảnh mở ra màn đen)
 #        bluestream   — 13/11c: khách mở máy → bật sáng màn hình Android trước khi lấy hình
@@ -15,12 +17,12 @@
 #   6. Máy chưa lên / mất adb / đen ở màn hình chính → ép khởi động lại. Máy đen mà đang mở app/game → KHÔNG đụng, chỉ báo
 #      (game treo máy hay tắt hình cho nhẹ). Máy khách tắt ngoài ý muốn → bật lại.
 #   Chạy:  python sua-tat-ca.py            · chỉ kiểm, không thay / không bật lại gì:  python sua-tat-ca.py --chi-kiem
-import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess, sys, threading, time, urllib.parse, urllib.request
+import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "14/11"
+VER = "15/11c"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -37,7 +39,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "13/11d"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def cmd_nhanlai", None)]
+         ("windows/phonectl.py", "phonectl.py", "def _mumu_do", None)]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "(WAKE_ON_OPEN)"}       # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
@@ -169,7 +171,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1411"
+            bak = lp + ".truoc-1511"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -322,6 +324,49 @@ def ensure_running(c):
     say("   ✗ 3 phút dịch vụ vẫn chưa chạy — xem bảng CloudBlue (tab Tổng quan)"); return "dịch vụ chưa chạy"
 
 # ------------------------------------------------------------------ 4. mạng / dịch vụ
+def cf_status(host):
+    """Hỏi https://<host>/ qua Cloudflare → 200 = tới được bộ phát hình (trả 'BlueRoblox stream v2') · 1033 = đường hầm KHÔNG NỐI
+       (Cloudflare trả 530 / lỗi 1033) · 502 = hầm nối mà không tới cổng phát hình web · mã khác · 0 = không hỏi được."""
+    try:
+        with urllib.request.urlopen(urllib.request.Request("https://" + host + "/", headers={"User-Agent": "cloudblue-sua-tat-ca"}), timeout=12) as r:
+            b = r.read(200)
+            return 200 if r.status == 200 and b"stream v2" in b else 2000 + r.status if r.status == 200 else r.status
+    except urllib.error.HTTPError as e:
+        try: body = e.read(8000).decode("utf-8", "replace")
+        except Exception: body = ""
+        return 1033 if e.code == 530 or "Error 1033" in body else e.code
+    except Exception:
+        return 0
+
+def cf_check(c, running):
+    """15/11: dịch vụ cloudflared 'đang chạy' chưa chắc đường hầm đã NỐI. Hầm không nối → khách web / iPhone không mở được máy nào
+       của máy chủ này (app / PC vẫn vào vì đi thẳng IP). Hỏi thử tên Cloudflare của máy chủ (STREAM_WS); lỗi 1033 → khởi động lại
+       đường hầm rồi hỏi lại tối đa 30 giây. --chi-kiem: chỉ báo."""
+    m = re.match(r"wss?://([A-Za-z0-9.-]+)", str(c.get("STREAM_WS") or "").strip())
+    if not m: return []
+    host = m.group(1); st = cf_status(host)
+    if st == 0:
+        say(f"   ? web qua Cloudflare ({host}): chưa hỏi thử được (máy chủ chưa ra mạng?)"); return []
+    if st == 200:
+        say(f"   ✓ web qua Cloudflare ({host}): thông"); return []
+    if st == 2200:
+        say(f"   ✗ web qua Cloudflare ({host}): trả về trang khác, không phải bộ phát hình — tên này đang trỏ nhầm chỗ?")
+        return ["web qua Cloudflare trả trang lạ"]
+    if st != 1033:
+        say(f"   ✗ web qua Cloudflare ({host}): lỗi {st}" + (" — hầm nối mà không tới cổng phát hình web (xem dòng phát hình bên dưới)" if st == 502 else ""))
+        return [f"web qua Cloudflare lỗi {st}"]
+    say(f"   ✗ web qua Cloudflare ({host}): đường hầm KHÔNG NỐI (lỗi 1033) — khách web / iPhone không mở được máy nào ở máy chủ này")
+    if ONLY_CHECK: return ["đường hầm Cloudflare không nối (lỗi 1033)"]
+    if running: run(["sc", "stop", "cloudflared"], 40); time.sleep(4)
+    run(["sc", "start", "cloudflared"], 40)
+    for _ in range(6):                                   # hầm nối lại thường mất 5–20 giây
+        time.sleep(5); st = cf_status(host)
+        if st == 200: break
+    if st == 200:
+        say("     → đã khởi động lại đường hầm: ✓ web nối lại được"); return []
+    say(f"     → đã khởi động lại đường hầm mà VẪN lỗi {st or '(không hỏi được)'} — xem mục 'Đường hầm Cloudflare' trong hướng dẫn")
+    return [f"đường hầm Cloudflare vẫn lỗi {st or '?'} sau khi khởi động lại"]
+
 def check_net(c):
     say("4/6 Dịch vụ + đường mạng")
     probs = []
@@ -336,8 +381,9 @@ def check_net(c):
         okc = re.search(r":\s*4\s+RUNNING", q) is not None
         say(f"   {'✓' if okc else '✗'} đường hầm Cloudflare: {'đang chạy' if okc else 'KHÔNG CHẠY'}")
         if not okc:
-            if not ONLY_CHECK: run(["sc", "start", "cloudflared"], 30); say("     → đã bật lại đường hầm")
+            if not ONLY_CHECK: run(["sc", "start", "cloudflared"], 30); say("     → đã bật lại đường hầm"); time.sleep(10)
             probs.append("Cloudflare tắt")
+        probs += cf_check(c, okc)
     ph = phones() or []
     a_c = sum(float(p.get("cpu") or 0) for p in ph); a_r = sum(float(p.get("ram") or 0) for p in ph)
     cap_c = float(c.get("CAP_CPU") or 68); cap_r = float(c.get("CAP_RAM") or 112)
@@ -588,6 +634,50 @@ def recent_report(c, res):
         k = by[r["container"]]
         say(f"   {r['container']:<16} Android {r.get('android') or '?':<3} {'ĐỔI ANDROID · ' if r.get('replaces') else ''}{k['st']}")
 
+def switch_report(c):
+    """15/11: máy mới ĐỔI ANDROID đang "Lỗi" mà máy chủ này là nơi tạo lỗi lần cuối (3 ngày qua) → khách đang KHÔNG có máy.
+       Chỉ ĐỌC + nhắc admin bấm 🔁 Tạo lại trên web (hạn dùng của khách vẫn giữ). Trả [dòng cho phần TÓM TẮT]."""
+    node = c.get("NODE_ID", "")
+    since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    rows = sb_rows(c, "cloud_phones?node=eq.%s&status=eq.error&replaces=not.is.null&updated_at=gte.%s&select=name,android,error,updated_at"
+                      "&order=updated_at.desc&limit=30" % (urllib.parse.quote(node), since)) if node else None
+    if not rows: return []
+    say(f"--- {len(rows)} máy ĐỔI ANDROID đang LỖI (tạo lỗi lần cuối ở máy chủ này) — khách đang không có máy ---")
+    for r in rows[:10]:
+        say(f"   {str(r.get('name') or '?')[:24]:<24} Android {str(r.get('android') or '?'):<3} {str(r.get('error') or '')[:110]}")
+    say("   → web Quản trị › 📱 ĐT đám mây › Công cụ › 🧹 Máy đổi Android › 🔁 Tạo lại (hạn dùng của khách vẫn giữ)")
+    return [f"{len(rows)} máy đổi Android đang lỗi — vào web bấm 🔁 Tạo lại (Công cụ › 🧹 Máy đổi Android)"]
+
+def web_report():
+    """15/11: khách WEB / iPhone gần đây đi đường nào, có ra hình không — chỉ ĐỌC logs\\phat-hinh.log:
+       ▶ tên ← mã (đường, web) … ■ tên đóng (gửi N khung, bỏ M…) · S giây · lý do. Không in gì về khách ngoài 2 dòng nhật ký đó."""
+    L = tail(os.path.join(LOGS, "phat-hinh.log"), 3000000)
+    live, done = {}, []
+    for x in L:
+        m = re.search(r"▶ (\S+) ← \S+ \((\w+), (\w+)\)", x)
+        if m:
+            if m.group(3) == "web": live[m.group(1)] = (m.group(2), x[:8])
+            else: live.pop(m.group(1), None)
+            continue
+        m = re.search(r"■ (\S+) đóng \(gửi (\d+) khung[^)]*\) · (\d+) giây(?: · (.*))?", x)
+        if m and m.group(1) in live:
+            k, t = live.pop(m.group(1)); done.append((k, int(m.group(2)), int(m.group(3)), (m.group(4) or "").strip(), t))
+    wd = [x for x in L if "đường thẳng web" in x]
+    if not done and not live and not wd: return
+    nm = {"wsd": "thẳng", "ws": "Cloudflare", "direct": "thẳng (app)"}
+    say(f"--- khách WEB / iPhone gần đây: {len(done)} phiên đã đóng · {len(live)} đang xem (logs\\phat-hinh.log) ---")
+    if done:
+        by = {}
+        for k, *_ in done: by[k] = by.get(k, 0) + 1
+        zero = sum(1 for _, n, *_ in done if n == 0); short = sum(1 for _, n, sec, *_ in done if n > 0 and sec < 8)
+        say("   đường: " + " · ".join(f"{nm.get(k, k)} {n}" for k, n in sorted(by.items(), key=lambda kv: -kv[1]))
+            + f" · không gửi được khung nào: {zero} · thoát dưới 8 giây: {short}")
+        for k, n, sec, why, t in done[-6:]:
+            say(f"   {t} {nm.get(k, k):<10} gửi {n} khung · {sec} giây" + (f" · {why[:70]}" if why else ""))
+    else:
+        say("   chưa có phiên web nào đóng trong nhật ký (khách iPhone không vào tới máy chủ, hoặc chưa ai dùng web)")
+    if wd: say("   " + wd[-1].strip()[:170])
+
 def log_report():
     try: ev = json.load(open(os.path.join(B, "redroid", "tusua.json"), encoding="utf-8")).get("events", [])
     except Exception: ev = []
@@ -627,7 +717,9 @@ def main():
     rm = []
     if REMAKE and GHOST and not ONLY_CHECK: rm = remake_ghosts()
     recent_report(c, res)
+    probs += switch_report(c)
     log_report()
+    web_report()
     okn = sum(1 for r in res if r["st"] == "OK")
     inapp = [r["name"] for r in res if r["st"] == "ĐEN TRONG APP"]
     still = [n for n, k in final if k != "ok"]

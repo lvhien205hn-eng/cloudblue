@@ -196,6 +196,13 @@ def _long_busy():
         pid = open(LONG_F).read().strip()
         return pid.isdigit() and int(pid) != os.getpid() and _pid_alive(pid) and time.time() - os.path.getmtime(LONG_F) < 960
     except OSError: return False
+MUMU_CLONE_T = 900          # 15/11: giây tối đa cho 1 lần MuMu nhân bản máy mẫu (máy chủ bận có thể mất nhiều phút)
+def _lock_touch(name):
+    """15/11: đang giữ khoá LÂU hợp lệ (nhân bản máy mẫu) → làm mới giờ file khoá để lệnh khác thấy khoá còn mới thì CHỜ, không coi là treo."""
+    f = os.path.join(HOME, "redroid", name + ".lock")
+    try:
+        if open(f).read().strip() == str(os.getpid()): os.utime(f, None)
+    except OSError: pass
 UNSTICK_AGE = 300 if EMU == "mumu" else 420     # khoá giữ CHƯA quá chừng này giây = chương trình giữ khoá còn đang làm việc (mọi lệnh giả lập có giờ chặn riêng trong run())
 def _unstick_memuc():
     """Khoá memuc bị giữ quá lâu (1 lệnh memuc treo) → tắt các memuc.exe đang treo + gỡ khoá, để đơn khách không bị huỷ.
@@ -446,11 +453,65 @@ MUMU_MAIN_F = os.path.join(HOME, "redroid", "mumu_main_fix.txt")      # lúc m�
 MUMU_MAIN_FIX = CONF.get("MUMU_MAIN_FIX", "1").strip() != "0"         # 0 = không tự mở lại chương trình chính của MuMu
 def _mumu_locked(fn, wait=240):
     """fn() trong khoá memuc (lệnh MuMu không chạy chồng). Chờ lâu → _unstick_memuc (khoá mới thì chỉ chờ tiếp) → chờ thêm."""
-    lk = _Lock("memuc", wait=wait)
-    try: lk.__enter__()
-    except RuntimeError: _unstick_memuc(); lk = _Lock("memuc", wait=240); lk.__enter__()
+    t0 = time.time(); lk = None
+    while lk is None:
+        lk = _Lock("memuc", wait=wait)
+        try: lk.__enter__()
+        except RuntimeError:
+            lk = None
+            if _long_busy() and time.time() - t0 < MUMU_CLONE_T + 600: continue     # 15/11: lệnh khác đang NHÂN BẢN máy cho khách → chờ tiếp
+            _unstick_memuc(); lk = _Lock("memuc", wait=240); lk.__enter__()
     try: return fn()
     finally: lk.__exit__()
+def _mumu_do(args, timeout, why=""):
+    """15/11: lệnh MuMu đi qua chương trình chính (xoá máy, đổi tên…). Chương trình chính kẹt ("mainnx request failed") → mở lại nó
+       rồi gửi lại lệnh 1 lần. Trước 15/11 chỉ bật / tắt máy có bước này → tạo máy (đổi Android) / xoá máy lỗi mãi tới khi admin mở lại MuMu."""
+    r = _mumurun(args, timeout)
+    if _mumu_main_bad(r) and _mumu_main_fix(why or str(args[0])): r = _mumurun(args, timeout)
+    return r
+def _mumu_stable(tries=6, gap=2.0):
+    """15/11: danh sách máy MuMu đọc 2 LẦN LIỀN GIỐNG NHAU. MuMu đang xoá / nhân bản máy khác thì 1 lần đọc có thể THIẾU máy
+       → máy đang có bị tưởng là "máy mới" → tạo máy báo lỗi oan. Mãi không ổn định → trả lần đọc đủ máy nhất."""
+    prev = None; best = {}
+    for k in range(tries):
+        cur = _mumu_list()
+        if cur and len(cur) > len(best): best = cur
+        if cur and prev and set(cur) == set(prev) and all(cur[i]["name"] == prev[i]["name"] for i in cur): return cur
+        prev = cur
+        if k < tries - 1: time.sleep(gap)
+    return best
+def _mumu_out_err(r):
+    """Lỗi MuMu ghi trong kết quả lệnh (errcode khác 0 đầu tiên, kể cả nằm trong khối con) — không có → ''."""
+    o = ((r.stdout or "") + " " + (r.stderr or "")) if r is not None else ""
+    for m in re.finditer(r'"errcode"\s*:\s*(-?\d+)', o):
+        if int(m.group(1)) == 0: continue
+        e = re.search(r'"errmsg"\s*:\s*"([^"]*)"', o[m.end():m.end() + 300])
+        return (f"mã {m.group(1)}" + (f" · {e.group(1)}" if e and e.group(1) else ""))[:160]
+    return ""
+def _mumu_out_new(r):
+    """Số máy MỚI mà MuMu ghi trong kết quả create / clone, dạng {"7": {"errcode": 0, …}} → [7]. Kết quả không có dạng đó → []."""
+    j = _mumu_json((r.stdout or "") if r is not None else "")
+    out = []
+    if isinstance(j, dict):
+        for k, v in j.items():
+            try:
+                if str(k).isdigit() and isinstance(v, dict) and int(v.get("errcode", 0) or 0) == 0: out.append(int(k))
+            except (TypeError, ValueError): pass
+    return out
+def _fail_reason(r):
+    """1 dòng ngắn: vì sao tạo máy lỗi. In ở dòng CUỐI của lệnh create → cloudphoned gửi nguyên vào Telegram cho admin (trước 15/11 tin
+       Telegram chỉ thấy danh sách máy, mất hẳn lý do thật)."""
+    o = ((r.stdout or "") + " " + (r.stderr or "")) if r is not None else ""
+    if EMU == "mumu":
+        e = _mumu_out_err(r)
+        if _mumu_main_bad(r):
+            return (f"chương trình chính MuMu (MuMuNxMain) không trả lời [{e or 'mainnx request failed'}] — "
+                    + ("đã tự mở lại 1 lần mà chưa được, đơn sẽ được tạo lại sau" if "đã mở lại MuMuNxMain" in o else "CHƯA tự mở lại (xem MUMU_MAIN_FIX), đơn sẽ được tạo lại sau"))
+        if e: return "MuMu báo " + e
+    m = re.search(r"(chưa có máy mẫu[^|]*|không đọc được danh sách[^|]*|MuMu tạo ra Android[^|]*|không tạo được đúng 1 máy[^|·]*|không có sẵn Android[^|]*)", o)
+    if m: return m.group(1).strip()[:170]
+    if r is not None and r.returncode == 124: return "lệnh tạo máy của giả lập quá giờ (máy chủ đang rất bận)"
+    return (o.strip().splitlines() or ["không rõ"])[-1].strip()[-170:]
 def _mumu_is_on(idx):
     return bool((_mumu_locked(_mumu_list).get(int(idx)) or {}).get("running"))
 def _mumu_main_bad(r):
@@ -544,27 +605,68 @@ def _mumu(a, timeout):
         L = _mumu_list(); run_only = "--running" in a
         return _ok("\n".join(f"{i},{x['name']},0,{1 if x['running'] else 0},{x['pid']}" for i, x in sorted(L.items()) if x["running"] or not run_only))
     if c == "create":                                     # create <bản android>: có máy mẫu tpl_a<bản> → nhân bản, không thì tạo mới
+        # 15/11 — ĐỔI ANDROID lỗi "chưa tạo được máy mới sau 3 lần" (win4): MuMu trả "mainnx request failed" (-502) khi nhân bản =
+        # chương trình chính MuMuNxMain kẹt; bản cũ không tự mở lại ở bước này → tạo lần nào lỗi lần đó. Giờ: -502 → mở lại
+        # MuMuNxMain → nhân bản lại 1 lần. Thêm: đánh dấu "lệnh dài" (lệnh khác chờ, không tắt lệnh nhân bản giữa chừng), nhân bản
+        # được tới 15 phút khi máy chủ bận, đọc danh sách ổn định trước / sau, lỗi thì ghi rõ MuMu báo gì.
         ver = a[1] if len(a) > 1 else DEF_ANDROID
-        L0 = _mumu_list()
-        if not L0:                                        # không đọc được danh sách → KHÔNG tạo (đọc sau sẽ tưởng mọi máy có sẵn là máy mới → nhận nhầm máy của chủ)
-            return subprocess.CompletedProcess([], 1, "", "không đọc được danh sách máy MuMu — chưa tạo máy")
-        before = set(L0); tpl = next((i for i, x in L0.items() if x["name"] == tpl_name(ver)), None)
-        r = _mumurun(["clone", "-v", tpl], timeout) if tpl is not None else _mumurun(["create"], timeout)
-        new = []
-        for _ in range(40):                               # máy mới có thể hiện trễ vài giây
-            L1 = _mumu_list()
-            new = sorted(set(L1) - before) if L1 else []
-            if new: break
-            time.sleep(3)
-        if len(new) != 1:                                 # 0 hoặc nhiều hơn 1 máy "mới" → không chắc máy nào là của mình → không dùng
-            return subprocess.CompletedProcess([], 1, r.stdout, (r.stderr or "") + f" MuMu không tạo được đúng 1 máy (thấy {len(new)} máy mới)")
-        got = _mumu_major(_mumu_info().get(new[0]))      # MuMu 6 tạo mới mặc định Android 15 → khách mua bản khác phải nhân bản máy mẫu đúng bản
-        if got and got != str(ver):
-            _mumurun(["delete", "-v", new[0]], timeout)  # đúng 1 máy vừa tạo (đã kiểm ở trên) → xoá, không giao nhầm bản cho khách
-            return subprocess.CompletedProcess([], 1, r.stdout, f"MuMu tạo ra Android {got}, không phải Android {ver} — cần máy mẫu {tpl_name(ver)} (Android {ver})")
-        return _ok(f"index: {new[0]}")
+        def keep(): _long_mark(True); _lock_touch("memuc"); _lock_touch("memu")
+        _long_mark(True)
+        try:
+            L0 = _mumu_stable()
+            if not L0:                                    # không đọc được danh sách → KHÔNG tạo (đọc sau sẽ tưởng mọi máy có sẵn là máy mới → nhận nhầm máy của chủ)
+                return subprocess.CompletedProcess([], 1, "", "không đọc được danh sách máy MuMu — chưa tạo máy")
+            before = set(L0); tpl = next((i for i, x in L0.items() if x["name"] == tpl_name(ver)), None)
+            fresh = lambda L: sorted(i for i in set(L) - before if not str(L[i]["name"]).startswith(("cp_", "spare_")))   # cp_… / spare_… = máy ĐÃ CÓ (lần đọc trước thiếu)
+            if tpl is not None and L0[tpl].get("running"):   # máy mẫu đang BẬT thì MuMu không nhân bản được → tắt máy mẫu trước
+                print(f"   (máy mẫu {tpl_name(ver)} đang bật → tắt rồi mới nhân bản)", flush=True)
+                _mumu_stop(tpl, 120, locked=True)
+            def go(): return _mumurun(["clone", "-v", tpl], max(int(timeout), MUMU_CLONE_T)) if tpl is not None else _mumurun(["create"], timeout)
+            vdir = os.path.join(MUMU or "", "vms")       # mỗi máy MuMu là 1 thư mục con ở đây → có thư mục MỚI = MuMu đang / đã chép máy mới
+            def vnow():
+                try: return {x for x in os.listdir(vdir) if os.path.isdir(os.path.join(vdir, x))}
+                except OSError: return None
+            d0 = vnow()
+            keep(); t0 = time.time(); r = go(); fixed = False; copying = False
+            if _mumu_main_bad(r):                         # chương trình chính MuMu báo không trả lời
+                time.sleep(3); L1 = _mumu_list(); d1 = vnow()
+                copying = d0 is not None and d1 is not None and bool(d1 - d0)
+                if L1 and fresh(L1): pass                 # máy mới đã có dù MuMu báo lỗi → dùng luôn
+                elif copying:                             # MuMu đang chép máy mới (chỉ là trả lời chậm) → KHÔNG tắt MuMu, chờ máy hiện ra
+                    print(f"   (MuMu báo chậm trả lời nhưng đang chép máy mới: {', '.join(sorted(d1 - d0))[:80]} → chờ)", flush=True)
+                else:                                     # chưa hề tạo gì = kẹt thật → mở lại MuMuNxMain → nhân bản lại 1 lần
+                    keep()
+                    if _mumu_main_fix(f"nhân bản máy mẫu Android {ver}"): fixed = True; keep(); r = go()
+            keep()
+            slow = r.returncode == 124 or copying         # lệnh nhân bản quá giờ / MuMu vẫn đang chép → chờ máy mới lâu hơn
+            err = "" if copying else _mumu_out_err(r)
+            hint = [i for i in _mumu_out_new(r) if i not in before]
+            new = []; seen = None; t_end = time.time() + (600 if slow else 20 if err else 150)
+            while time.time() < t_end:                    # máy mới có thể hiện trễ; phải thấy ĐÚNG 1 máy mới 2 lần đọc liền (không tin 1 lần đọc thiếu)
+                L1 = _mumu_list()
+                if L1:
+                    if len(hint) == 1 and hint[0] in L1: new = hint; break
+                    cand = fresh(L1)
+                    if len(cand) == 1 and cand == seen: new = cand; break
+                    seen = cand if len(cand) == 1 else None
+                keep(); time.sleep(3)
+            if len(new) != 1:                             # 0 hoặc nhiều hơn 1 máy "mới" → không chắc máy nào là của mình → không dùng
+                n_new = len(fresh(_mumu_list() or {}))
+                why = err or (f"MuMu chép máy mới chưa xong sau {int(time.time() - t0)} giây" if slow else "")
+                return subprocess.CompletedProcess([], 1, r.stdout, (r.stderr or "") + f" MuMu không tạo được đúng 1 máy (thấy {n_new} máy mới sau {int(time.time() - t0)} giây)"
+                                                   + (f" · MuMu báo: {why}" if why else "") + (" · đã mở lại MuMuNxMain 1 lần" if fixed else ""))
+            got = ""
+            for _ in range(5):                            # thông tin máy mới có thể chưa đủ ngay
+                got = _mumu_major(_mumu_info().get(new[0]))      # MuMu 6 tạo mới mặc định Android 15 → khách mua bản khác phải nhân bản máy mẫu đúng bản
+                if got: break
+                time.sleep(2)
+            if got and got != str(ver):
+                _mumu_do(["delete", "-v", new[0]], timeout, "xoá máy sai bản")  # đúng 1 máy vừa tạo (đã kiểm ở trên) → xoá, không giao nhầm bản cho khách
+                return subprocess.CompletedProcess([], 1, r.stdout, f"MuMu tạo ra Android {got}, không phải Android {ver} — cần máy mẫu {tpl_name(ver)} (Android {ver})")
+            return _ok(f"index: {new[0]}")
+        finally: _long_mark(False)
     if c == "rename":
-        r = _mumurun(["rename", "-v", ix(), "-n", a[-1]], timeout)
+        r = _mumu_do(["rename", "-v", ix(), "-n", a[-1]], timeout, "đổi tên máy")
         if (_mumu_list().get(int(ix())) or {}).get("name") != a[-1]: r = _mumurun(["rename", "--vmindex", ix(), "--name", a[-1]], timeout)
         return r
     if c in ("start", "stop"):                            # memuc() chạy 2 lệnh này bằng _mumu_start / _mumu_stop (không giữ khoá lúc chờ)
@@ -572,8 +674,10 @@ def _mumu(a, timeout):
     if c == "stopall": return _mumurun(["control", "-v", "all", "shutdown"], timeout)
     if c == "remove":
         if int(ix()) not in _mumu_list(): return subprocess.CompletedProcess([], 1, "", f"MuMu không có máy #{ix()} — không xoá")
-        r = _mumurun(["delete", "-v", ix()], timeout)
-        return _ok("remove ok") if int(ix()) not in _mumu_list() else subprocess.CompletedProcess([], 1, r.stdout, "remove failed")
+        r = _mumu_do(["delete", "-v", ix()], timeout, "xoá máy")
+        if int(ix()) not in _mumu_list(): return _ok("remove ok")
+        e = _mumu_out_err(r)
+        return subprocess.CompletedProcess([], 1, r.stdout, "remove failed" + (f" · MuMu báo: {e}" if e else ""))
     if c == "setconfigex":
         k, v = a[-2], a[-1]
         if k == "memory": _mumu_set(ix(), {"mem": float(v) / 1024})
@@ -1125,19 +1229,21 @@ def cmd_create(a):
     if sp is not None:
         idx = sp
         print(f"[1/4] ⚡ Dùng máy dựng sẵn (MEmu #{idx}) → đổi tên, RAM, CPU…", flush=True)
-        with _Lock("memu"):
+        with _Lock("memu", wait=1500):
             dpi = a.dpi or auto_dpi(a.res)
             configure(idx, a.ram, a.cpu, a.res, dpi)
             memuc("setconfigex", "-i", idx, "fps", clamp_fps(a.fps), timeout=60)
             apply_template(idx)
     else:
         print(f"[1/4] Tạo máy Android {ver} trên {EMU_NAME}…", flush=True)
-        with _Lock("memu"):
+        with _Lock("memu", wait=1500):
             for oi, ox in sorted(vms().items(), reverse=True):   # máy trùng tên còn sót trong MEmu (lần tạo trước bị ngắt) → xoá trước
                 if ox["name"] == a.name:
                     print(f"   (xoá máy sót cùng tên #{oi})", flush=True); memuc("stop", "-i", oi, timeout=60); memuc("remove", "-i", oi, timeout=180)
             r, idx = create_vm(ver, a.name)
-            if idx is None: print("LỖI tạo máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-300:]); sys.exit(4)
+            if idx is None:
+                print("LỖI tạo máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-300:])
+                print("LÝ DO:", _fail_reason(r), flush=True); sys.exit(4)
             print(f"[2/4] Đã tạo máy #{idx} → đặt tên, RAM, CPU, root…", flush=True)
             for _t in range(4):                                          # đổi tên PHẢI thành công — máy tìm theo TÊN (không thì thành "MEmuNN" mồ côi)
                 memuc("rename", "-i", idx, a.name, timeout=60)
