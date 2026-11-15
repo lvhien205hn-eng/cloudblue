@@ -43,6 +43,8 @@ public class MainActivity extends Activity {
 
     private FrameLayout content;
     private TextView balTop, blueTop;
+    private TextView tickerV;                         // 📣 dòng chữ chạy ưu đãi (SQL v35) — bản CH Play không có
+    private String offersSig = "";                    // ưu đãi đang vẽ trên màn (đổi mới vẽ lại)
     private TextView blueAcc;                         // dòng 💎 trong thẻ Tài khoản (cập nhật tại chỗ, không vẽ lại cả trang)
     boolean bluePayRent = false;                      // khách đã bật "Trả bằng Blue" ở bảng thuê (giữ khi bảng vẽ lại)
     String rentPromo = "";                            // mã giảm giá đang gõ ở bảng thuê (giữ khi bảng vẽ lại)
@@ -202,6 +204,9 @@ public class MainActivity extends Activity {
         th.setOnClickListener(v -> { Ui.setLight(this, !Ui.LIGHT); recreate(); });
         top.addView(th, new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         root.addView(top, Ui.fill());
+        tickerV = Offers.ticker(this);
+        root.addView(tickerV, Ui.fill());
+        Offers.fillTicker(tickerV);
 
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -289,6 +294,7 @@ public class MainActivity extends Activity {
             prof = o[0]; price = clampHard(o[1]); status = o[2]; phones = (JSONArray) r[1];
             balTop.setText("💰 " + Ui.vnd(prof.optDouble("balance", 0)));
             if (System.currentTimeMillis() - Blue.at > 60_000L) Blue.load(this::blueChanged);
+            if (System.currentTimeMillis() - Offers.at > 120_000L) Offers.load(this::offersChanged);
             ExpiryAlarm.schedule(this, phones);
             if (tab == 0) {
                 if (phonesSig().equals(phonesSig)) tick();      // không có gì đổi → chỉ cập nhật chữ thời hạn (ô xem trước chạy liền, không nháy)
@@ -307,6 +313,32 @@ public class MainActivity extends Activity {
             Ui.toast(this, m);
             h.postDelayed(poll, 30000);
         });
+    }
+
+    /** 🎁 Ưu đãi vừa tải lại (SQL v35) → dòng chữ chạy; nội dung ĐỔI thì vẽ lại trang đang mở (ô Kiếm tiền / Ưu đãi, chữ dùng thử, mã của tôi). */
+    void offersChanged() {
+        if (destroyed) return;
+        Offers.fillTicker(tickerV);
+        String sig = String.valueOf(Offers.pub) + "|" + String.valueOf(Offers.my);
+        if (sig.equals(offersSig)) return;
+        offersSig = sig;
+        if (!loaded) return;
+        if (tab == 0) renderPhones(); else if (tab == 1 && Api.SHOP) renderRent();
+    }
+    /** Mở trang Thuê máy ở chế độ dùng thử. */
+    void openTrial() {
+        if (!Api.SHOP || !freeLive()) { show(Api.SHOP ? 1 : 0); return; }
+        sFree = true; sQty = 1;
+        sRam = Math.min(sRam, price.optInt("free_max_ram", 4)); sCpu = Math.min(sCpu, price.optInt("free_max_cpu", 4));
+        show(1);
+    }
+    /** 🔁 Máy mới của lệnh ĐỔI ANDROID đang "Lỗi" → khách tự xếp lại lệnh tạo máy (hạn dùng vẫn giữ). */
+    void switchRetry(JSONObject p, Button b) {
+        b.setEnabled(false);
+        Api.bg(() -> Api.rpc("cloudphone_switch_retry", new JSONObject().put("p_id", p.optString("id"))), r -> {
+            Ui.toast(this, Ui.L("Đã xếp lại lệnh tạo máy — máy mới sẽ có sau ít phút. Hạn dùng của bạn vẫn giữ nguyên.", "Queued again — your new phone will be ready in a few minutes. Your expiry is unchanged."));
+            phonesSig = null; refresh();
+        }, m -> { b.setEnabled(true); Ui.toast(this, m); });
     }
 
     /** Blue vừa tải lại / đổi → chip 💎 trên đầu + dòng trong thẻ Tài khoản + bảng thuê (nếu đang mở) · nhắc điểm danh 1 lần / ngày. */
@@ -420,6 +452,7 @@ public class MainActivity extends Activity {
         head.addView(rf, Ui.wrap());
         body.addView(head, Ui.fill());
         if (Api.SHOP && Wheel.on()) body.addView(Wheel.strip(this), Ui.fill());       // 🎡 vòng quay may mắn — dải gọn ngay đầu trang
+        { View os = Offers.strip(this); if (os != null) body.addView(os, Ui.fill()); }  // 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35)
 
         // Nhập mã: mã TẶNG MÁY (12 ký tự) · mã chia sẻ / chuyển nhượng (8 ký tự)
         LinearLayout cr = Ui.row(this, 8);
@@ -784,7 +817,13 @@ public class MainActivity extends Activity {
         if ("error".equals(st)) {                        // lỗi tạo máy / đổi Android lỗi hẳn → nói rõ lý do (đã hoàn tiền / admin sẽ tạo lại)
             String er = p.optString("error", "");
             if (!er.isEmpty() && !"null".equals(er)) c.addView(Ui.text(this, er, 13, Ui.BAD, false), Ui.fill());
+            if (!p.isNull("replaces") && !p.optBoolean("shared", false)) {       // máy mới của lệnh đổi Android → khách tự thử lại (SQL doi-android-1511)
+                Button rt = Ui.button(this, "🔁 " + Ui.L("Thử tạo lại máy", "Try again"), Ui.GHOST);
+                rt.setOnClickListener(v -> switchRetry(p, rt));
+                c.addView(rt, Ui.fill());
+            }
         }
+        { String tn = Offers.phoneNote(p); if (tn != null && !"error".equals(st)) c.addView(Ui.text(this, tn, 13, Ui.WAIT, false), Ui.fill()); }
         String swFail = SwitchAndroid.failNote(p);
         if (swFail != null && swTo == null) c.addView(Ui.text(this, swFail, 13, Ui.BAD, false), Ui.fill());
         boolean shared = p.optBoolean("shared", false);
@@ -1329,8 +1368,8 @@ public class MainActivity extends Activity {
             calc.setVisibility(View.VISIBLE);
             Tiers.T cur = null;
             for (int i = 0; i < tl.size(); i++) if (tierOn(tl.get(i), minR, minC, minF, maxF)) { cur = tl.get(i); break; }
-            sumL.setText((sFree ? Ui.L("🎁 Máy miễn phí", "🎁 Free phone") : cur != null ? cur.name : Ui.L("⚙️ Tự chọn", "⚙️ Custom"))
-                    + " · Android " + sAnd + " · " + (sFree ? price.optInt("free_days", 1) : sDays) + Ui.L(" ngày", "d") + (!sFree && sQty > 1 ? " × " + sQty + Ui.L(" máy", "") : ""));
+            sumL.setText((sFree ? Offers.freeName(price) : cur != null ? cur.name : Ui.L("⚙️ Tự chọn", "⚙️ Custom"))
+                    + " · Android " + sAnd + " · " + (sFree ? Offers.dur(price) : sDays + Ui.L(" ngày", "d")) + (!sFree && sQty > 1 ? " × " + sQty + Ui.L(" máy", "") : ""));
             double t0 = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty, bal = prof.optDouble("balance", 0);
             if (prm[0] != null) { prm[0].view.setVisibility(sFree ? View.GONE : View.VISIBLE); rentPromo = prm[0].code; if (!sFree) prm[0].onOrderChanged(); }
             double pay = sFree || prm[0] == null ? t0 : prm[0].price(t0);
@@ -1345,8 +1384,8 @@ public class MainActivity extends Activity {
                     + (pay < t0 ? "  ·  🏷️ −" + Ui.vnd(t0 - pay) : "") + (bu > 0 ? "  ·  💎 −" + Blue.n(bu) + " Blue" : ""));
             String bad = check();
             err.setText(bad.isEmpty() && bal < t ? Ui.L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + Ui.vnd(t - bal) : bad);
-            if (sFree) calc.setText(Ui.L("🎁 Miễn phí " + price.optInt("free_days", 1) + " ngày", "🎁 Free for " + price.optInt("free_days", 1) + " day(s)") + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
-            buy.setText(sFree ? Ui.L("🎁 Nhận máy miễn phí", "🎁 Get free phone") : bad.isEmpty() && bal < t ? Ui.L("Nạp tiền", "Top up")
+            if (sFree) calc.setText(Ui.L("🎁 Dùng thử miễn phí " + Offers.dur(price), "🎁 Free trial · " + Offers.dur(price)) + "\n" + Ui.L("Số dư: ", "Balance: ") + Ui.vnd(bal));
+            buy.setText(sFree ? Offers.freeBtn(price) : bad.isEmpty() && bal < t ? Ui.L("Nạp tiền", "Top up")
                     : t <= 0 && bu > 0 ? Ui.L("💎 Thuê bằng Blue", "💎 Rent with Blue") : Ui.L("Thuê ngay", "Rent now") + (sQty > 1 ? " " + sQty + Ui.L(" máy", " phones") : ""));
             buy.setEnabled(bad.isEmpty());
             buy.setAlpha(bad.isEmpty() ? 1f : .5f);
@@ -1356,10 +1395,16 @@ public class MainActivity extends Activity {
         // 🎁 Miễn phí ưu đãi (khi admin bật)
         if (freeLive()) {
             LinearLayout fc = Ui.card(this);
-            TextView fch = Ui.chip(this, Ui.L("🎁 Nhận máy MIỄN PHÍ " + price.optInt("free_days", 1) + " ngày", "🎁 Get a FREE phone for " + price.optInt("free_days", 1) + " day(s)"), sFree);
+            TextView fch = Ui.chip(this, Offers.freeTitle(price), sFree);
             fc.addView(fch, Ui.fill());
-            fc.addView(Ui.muted(this, Ui.L("Tối đa " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " nhân · mỗi tài khoản dùng thử 1 máy. Bấm lần nữa để tắt nếu muốn thuê trả phí.",
-                    "Up to " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " cores · one free trial per account. Tap again to rent a paid phone instead.")));
+            fc.addView(Ui.muted(this, Offers.freeNote(price)));
+            if (Offers.trialNeedsTopup(price, isAdmin())) {          // chưa nạp đủ → nói rõ + nút nạp đúng số tiền
+                final long nd = Offers.need(price);
+                fc.addView(Ui.text(this, "🔒 " + Ui.L("Nạp 1 lần từ " + Ui.vnd(nd) + " để mở dùng thử miễn phí.", "Top up " + Ui.vnd(nd) + "+ once to unlock the free trial."), 13, Ui.WAIT, true), Ui.fill());
+                Button tb = Ui.button(this, Ui.L("Nạp ", "Top up ") + Ui.vnd(nd), Ui.GHOST);
+                tb.setOnClickListener(v -> openTopup(nd));
+                fc.addView(tb, Ui.fill());
+            }
             fch.setOnClickListener(v -> { sFree = !sFree; if (sFree) { sQty = 1; sRam = Math.min(sRam, price.optInt("free_max_ram", 4)); sCpu = Math.min(sCpu, price.optInt("free_max_cpu", 4)); } renderRent(); });
             body.addView(fc, Ui.fill());
         }
@@ -1619,7 +1664,7 @@ public class MainActivity extends Activity {
         }, r -> {
             Ui.toast(this, Ui.L("Đã đặt máy! Máy đang khởi tạo, khoảng 2–3 phút.", "Ordered! Your phone is being created (2–3 min)."));
             bluePayRent = false; rentPromo = "";
-            Blue.at = 0;
+            Blue.at = 0; Offers.at = 0;
             show(0);
             refresh();
         }, m -> { buy.setEnabled(true); Ui.toast(this, m); if (m.contains("Blue")) Blue.load(this::blueChanged); });
@@ -1631,6 +1676,7 @@ public class MainActivity extends Activity {
         if (sFree && !isAdmin() && (sRam > price.optInt("free_max_ram", 4) || sCpu > price.optInt("free_max_cpu", 4)))
             return Ui.L("Máy miễn phí tối đa " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " nhân — chọn nhỏ hơn.",
                     "Free phones are limited to " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " cores.");
+        if (sFree) { String te = Offers.trialErr(price, isAdmin()); if (!te.isEmpty()) return te; }        // v35: chưa nạp đủ / đã dùng thử rồi
         if (!andList().contains(sAnd)) return Ui.L("Hãy chọn hệ điều hành (bản Android).", "Choose an Android version.");
         int[] al = andLim(sAnd);
         if (sRam > al[0] || sCpu > al[1])
@@ -2008,6 +2054,9 @@ public class MainActivity extends Activity {
         LinearLayout c = Ui.col(this, 12);
         if (Wheel.on()) c.addView(Wheel.card(this), Ui.fill());           // 🎡 vòng quay may mắn hiện ngay trong hộp nạp
         final TextView wh = Wheel.hint(this);                              // "🎡 Lệnh nạp này được +N lượt quay"
+        final TextView oh = Offers.topupHint(this);                        // "🎁 Lần nạp này được tặng mã giảm N%" (SQL v35)
+        final Offers.Amt[] pickAmt = new Offers.Amt[1];
+        { View ob = Offers.topupBox(this, v -> { if (pickAmt[0] != null) pickAmt[0].set(v); }); if (ob != null) c.addView(ob, Ui.fill()); }
         c.addView(Ui.muted(this, Ui.L("Số dư hiện tại: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0))
                 + (need > 0 ? Ui.L("  ·  Cần thêm ", "  ·  Need ") + Ui.vnd(need) : "")));
         Ui.Wrap w = new Ui.Wrap(this, 8);
@@ -2027,7 +2076,9 @@ public class MainActivity extends Activity {
             make.setEnabled(ok);
             make.setAlpha(ok ? 1f : .5f);
             Wheel.hint(wh, amt[0]);
+            Offers.topupHint(this, oh, amt[0]);
         };
+        pickAmt[0] = v -> { amt[0] = Math.max(min, v); x.setText(""); draw.run(); };
         for (long v : opts) {
             TextView ch = Ui.chip(this, Ui.vnd(v), false);
             ch.setTag(v);
@@ -2043,6 +2094,7 @@ public class MainActivity extends Activity {
         c.addView(w, Ui.fill());
         c.addView(x, Ui.fill());
         c.addView(wh, Ui.fill());
+        c.addView(oh, Ui.fill());
         c.addView(Ui.muted(this, Ui.L("Chuyển khoản ngân hàng: quét mã QR bằng app ngân hàng bất kỳ, tiền tự cộng vào số dư sau khoảng 1 phút.",
                 "Bank transfer: scan the QR with any banking app; your balance is credited in about a minute.")));
         c.addView(err, Ui.fill());
@@ -2058,6 +2110,7 @@ public class MainActivity extends Activity {
             final long a = amt[0];
             Api.bg(() -> Api.rpc("create_topup", new JSONObject().put("p_amount", a)), r -> {
                 topCache = null;                                  // 🧾 lịch sử nạp: hiện ngay lệnh vừa tạo
+                Offers.at = 0;                                    // nạp xong → tải lại ưu đãi (mã vừa tặng, lượt dùng thử)
                 d.dismiss();
                 if (r instanceof JSONObject) paySheet(site, (JSONObject) r);
             }, m -> { make.setEnabled(true); err.setText(m); err.setVisibility(View.VISIBLE); });

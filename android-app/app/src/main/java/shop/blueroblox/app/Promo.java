@@ -25,6 +25,7 @@ final class Promo {
 
     final Activity a; final String scope; final Ctx ctx; final Runnable changed;
     final LinearLayout view; final EditText in; final TextView res; final Button ap;
+    final Ui.Wrap mine;                                         // 🎫 mã của tôi còn dùng được cho loại đơn này — bấm là điền + áp dụng (SQL v35)
     private final Handler h = new Handler(Looper.getMainLooper());
     String code = "", key = "";
     JSONObject r = null;
@@ -44,6 +45,9 @@ final class Promo {
         res.setVisibility(View.GONE);
         view.addView(row, Ui.fill());
         view.addView(res, Ui.fill());
+        mine = new Ui.Wrap(a, 6);
+        view.addView(mine, Ui.fill());
+        fillMine();
         ap.setOnClickListener(v -> check(null));
         in.addTextChangedListener(new MainActivity.Simple(() -> {
             String c = norm(in.getText().toString());
@@ -51,6 +55,24 @@ final class Promo {
             code = c; r = null; key = ""; seq++; busy = false;   // sửa / xoá mã → bỏ kết quả cũ, tổng tiền về giá thường
             paint(); changed.run();
         }));
+    }
+
+    /** Vẽ lại các mã của tôi dùng được cho loại đơn này (Offers tải xong → gọi lại). */
+    void fillMine() {
+        mine.removeAllViews();
+        List<JSONObject> cs = Offers.codes(scope);
+        mine.setVisibility(cs.isEmpty() ? View.GONE : View.VISIBLE);
+        if (cs.isEmpty()) return;
+        TextView lb = Ui.text(a, "🎫 " + Ui.L("Mã của bạn:", "Your codes:"), 12.5f, Ui.MUTED, false);
+        lb.setPadding(0, Ui.dp(5), Ui.dp(2), Ui.dp(5));
+        mine.addView(lb);
+        for (final JSONObject c : cs) {
+            TextView ch = Ui.pill(a, Offers.codeLabel(c), Ui.OK);
+            ch.setPadding(Ui.dp(11), Ui.dp(6), Ui.dp(11), Ui.dp(7));              // đủ to để bấm bằng ngón tay
+            ch.setContentDescription(Ui.L("Dùng mã ", "Use code ") + c.optString("code"));
+            ch.setOnClickListener(v -> { in.setText(c.optString("code")); in.setSelection(in.getText().length()); check(null); });
+            mine.addView(ch);
+        }
     }
 
     static String norm(String s) { return s == null ? "" : s.toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9]", ""); }
@@ -113,6 +135,9 @@ final class Promo {
         if (x.optBoolean("ok") && "gift".equals(x.optString("kind")))
             return Ui.L("Đây là mã TẶNG MÁY — nhập ở nút \"🎟 Nhập mã\" trong Máy của tôi (không dùng khi thanh toán).", "This is a gift-phone code — enter it with \"🎟 Enter code\" in My phones.");
         if ("PROMO_OFF".equals(e)) return Ui.L("Tính năng mã giảm giá chưa bật.", "Discount codes aren't available yet.");
+        if ("PROMO_DAY_LIMIT".equals(e)) { int lim = x.optInt("limit", Offers.dayLimit());
+            return Ui.L("Mỗi tài khoản dùng tối đa " + (lim > 0 ? lim + " " : "") + "mã giảm giá mỗi ngày — hôm nay bạn đã dùng đủ, mai dùng tiếp nhé.",
+                    "Each account can use up to " + (lim > 0 ? lim + " " : "a set number of ") + "discount codes per day — you've reached today's limit."); }
         if ("PROMO_MIN_ORDER".equals(e) && x.has("min_order"))
             return Ui.L("Mã chỉ dùng cho đơn từ " + Ui.vnd(x.optDouble("min_order")) + " (đơn này " + Ui.vnd(x.optDouble("base")) + ").",
                     "This code needs an order of at least " + Ui.vnd(x.optDouble("min_order")) + " (this one is " + Ui.vnd(x.optDouble("base")) + ").");

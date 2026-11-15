@@ -540,7 +540,8 @@ final class Wheel {
                 LinearLayout tx = Ui.col(a, 1);
                 TextView ct = Ui.text(a, code, 13.5f, Color.WHITE, true); ct.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
                 tx.addView(ct);
-                tx.addView(Ui.text(a, used ? Ui.L("Đã dùng", "Used") : !act ? Ui.L("Đã tắt", "Disabled") : gone ? Ui.L("Hết hạn", "Expired") : Ui.L("Dùng được đến ", "Valid until ") + MainActivity.fdate(exp), 12, SUB, false));
+                tx.addView(Ui.text(a, (used ? Ui.L("Đã dùng", "Used") : !act ? Ui.L("Đã tắt", "Disabled") : gone ? Ui.L("Hết hạn", "Expired") : Ui.L("Dùng được đến ", "Valid until ") + MainActivity.fdate(exp))
+                        + (live && c.optBoolean("share") ? " · " + Ui.L("🤝 tặng bạn bè được", "🤝 shareable") : ""), 12, SUB, false));
                 r.addView(tx, Ui.weight(1));
                 if (live) { TextView cp = Ui.text(a, Ui.L("Chép", "Copy"), 13, Ui.SKY, true); cp.setPadding(Ui.dp(8), Ui.dp(6), Ui.dp(4), Ui.dp(6)); cp.setOnClickListener(v -> copy(a, code)); r.addView(cp, Ui.wrap()); }
                 mine.addView(r, Ui.fill());
@@ -570,8 +571,8 @@ final class Wheel {
                 rule("🍀 " + Ui.L("Vé may mắn: " + Ui.vnd(lk[0]) + "/vé = 1 lượt quay riêng (không dùng lượt miễn phí), trừ vào số dư. Tỷ lệ công khai: " + o + ". Mã từ vé không giới hạn số lượng.",
                         "Lucky ticket: " + Ui.vnd(lk[0]) + " each = one separate spin (doesn't use free spins), paid from your balance. Published odds: " + o + ". Ticket codes are unlimited."));
             }
-            rule("🎟️ " + Ui.L("Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn " + w.optInt("days", 7) + " ngày, chỉ tài khoản quay trúng dùng được" + (w.optLong("max_disc") > 0 ? ", giảm tối đa " + Ui.vnd(w.optLong("max_disc")) : "") + ".",
-                    "Every spin wins a discount code: one use on one order, valid " + w.optInt("days", 7) + " days, only for the winning account."));
+            rule("🎟️ " + Ui.L("Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn " + w.optInt("days", 7) + " ngày, " + (w.optBoolean("share") ? "giữ dùng sau hoặc tặng bạn bè dùng đều được" : "chỉ tài khoản quay trúng dùng được") + (w.optLong("max_disc") > 0 ? ", giảm tối đa " + Ui.vnd(w.optLong("max_disc")) : "") + ".",
+                    "Every spin wins a discount code: one use on one order, valid " + w.optInt("days", 7) + " days, " + (w.optBoolean("share") ? "keep it for later or give it to a friend." : "only for the winning account.")));
             rule("🎲 " + Ui.L("Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết.",
                     "Results are completely random and decided by the server. Each slice has a different chance — the bigger the prize, the rarer it is. Prizes are limited; a slice marked GONE has been fully won."));
             List<JSONObject> pz = order(w.optJSONArray("prizes"));
@@ -750,8 +751,8 @@ final class Wheel {
             Button cp = Ui.button(a, Ui.L("Chép mã", "Copy code"), Ui.GHOST);
             cp.setOnClickListener(x -> copy(a, code));
             cr.addView(ct, Ui.wrap()); cr.addView(cp, Ui.wrap());
-            TextView h = Ui.text(a, Ui.L("Dùng 1 lần · hạn đến " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · chỉ tài khoản của bạn dùng được. Nhập ở ô \"🏷️ Mã giảm giá\" khi thanh toán.",
-                    "One use · valid until " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · only your account can use it. Enter it in the \"🏷️ Discount code\" box at checkout."), 12.5f, SUB, false);
+            TextView h = Ui.text(a, Ui.L("Dùng 1 lần · hạn đến " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · " + (r.optBoolean("share") ? "giữ dùng sau hoặc tặng bạn bè dùng đều được" : "chỉ tài khoản của bạn dùng được") + ". Nhập ở ô \"🏷️ Mã giảm giá\" khi thanh toán.",
+                    "One use · valid until " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · " + (r.optBoolean("share") ? "keep it or give it to a friend" : "only your account can use it") + ". Enter it in the \"🏷️ Discount code\" box at checkout."), 12.5f, SUB, false);
             h.setGravity(Gravity.CENTER);
             if (r.optBoolean("lucky")) {
                 TextView lt = Ui.text(a, "🍀 " + Ui.L("Vé may mắn", "Lucky ticket"), 13, Color.rgb(3, 38, 27), true);

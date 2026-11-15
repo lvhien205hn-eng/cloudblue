@@ -604,7 +604,29 @@ public final class Api {
         if (e instanceof java.net.UnknownHostException || e instanceof java.net.ConnectException)
             return Ui.L("Không có kết nối mạng.", "No internet connection.");
         if (e instanceof java.net.SocketTimeoutException) return Ui.L("Mạng chậm, thử lại.", "Network timeout, try again.");
+        // v35: máy chủ viết sẵn câu dễ hiểu rồi mới tới (MÃ_LỖI) → tiếng Việt hiện đúng câu đó (số tiền / số lần luôn khớp cài đặt của admin)
+        java.util.regex.Matcher sm = java.util.regex.Pattern.compile("^(.{12,}?)\\s*\\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\\)\\s*$", java.util.regex.Pattern.DOTALL).matcher(m.trim());
+        if (sm.find() && Ui.vi()) return sm.group(1).trim();
         String[][] map = {
+                // 🎁 ưu đãi · 🎬 Kiếm tiền · 🔁 thử lại đổi Android (SQL v35 + doi-android-1511) — bản tiếng Anh; tiếng Việt lấy câu của máy chủ ở trên
+                {"FREE_NEED_TOPUP", "Dùng thử miễn phí dành cho tài khoản đã nạp tiền đủ mức — nạp xong quay lại nhận máy nhé.", "Free trials are for accounts that have topped up enough — top up, then come back."},
+                {"PROMO_DAY_LIMIT", "Hôm nay bạn đã dùng đủ số mã giảm giá cho phép — mai dùng tiếp nhé.", "You've used today's maximum number of discount codes — try again tomorrow."},
+                {"CREATOR_OFF", "Chương trình Kiếm tiền đang tạm tắt.", "The Earn program is paused."},
+                {"CREATOR_BAD_URL", "Link video không đúng — dán link đầy đủ bắt đầu bằng https://", "That doesn't look like a video link — paste the full https:// link."},
+                {"CREATOR_PLATFORM", "Nền tảng này chưa được nhận.", "This platform isn't accepted."},
+                {"CREATOR_DUP_MINE", "Video này bạn đã gửi rồi — bấm \"Báo view mới\" ở danh sách video.", "You've already submitted this video — use \"Report views\" in your list."},
+                {"CREATOR_DUP", "Video này đã có tài khoản khác gửi.", "Another account has already submitted this video."},
+                {"CREATOR_DAY_LIMIT", "Hôm nay bạn đã gửi đủ số video — mai gửi tiếp nhé.", "You've reached today's submission limit — try again tomorrow."},
+                {"CREATOR_PENDING_LIMIT", "Bạn đang có nhiều video chờ duyệt — đợi admin duyệt rồi gửi tiếp.", "You have too many videos pending review — wait for approval first."},
+                {"CREATOR_NOT_FOUND", "Không tìm thấy video.", "Video not found."},
+                {"CREATOR_REJECTED", "Video này đã bị từ chối.", "This video was rejected."},
+                {"CREATOR_BAD_VIEWS", "Số view không hợp lệ.", "Invalid view count."},
+                {"CREATOR_WAIT", "Mỗi video báo view mới tối đa 12 giờ / lần — thử lại sau nhé.", "You can report new views once every 12 hours per video."},
+                {"SWITCH_NOT_STUCK", "Máy này không ở trạng thái lỗi đổi Android — tải lại để xem.", "This phone isn't stuck on an Android switch — refresh to check."},
+                {"SWITCH_EXPIRED", "Máy đã hết hạn nên không tạo lại được — nhắn shop nếu cần hỗ trợ.", "This phone has expired, so it can't be recreated — contact support."},
+                {"SWITCH_RETRY_LIMIT", "Bạn đã bấm thử lại nhiều lần — admin sẽ xử lý máy này.", "You've retried several times — an admin will handle this phone."},
+                {"SWITCH_WAIT", "Vừa thử xong — đợi 2 phút rồi bấm lại nhé.", "Just retried — wait 2 minutes and try again."},
+                {"cloudphone_switch_retry", "Máy chủ chưa bật nút thử lại — nhắn shop để được tạo lại máy.", "Retry isn't enabled on the server yet — contact support."},
                 // ▶️ nạp qua Google Play (bản CH Play, api/play-topup) — đặt TRƯỚC "TOO_MANY" / "LOCKED"
                 {"PLAY_OTHER_ACCOUNT", "Giao dịch này được mua khi đăng nhập tài khoản CloudBlue khác — đăng nhập lại đúng tài khoản đó để nhận tiền.", "This payment was made while signed in to another CloudBlue account — sign in to that account to receive it."},
                 {"PLAY_NOT_READY", "Nạp qua Google Play đang bảo trì. Tiền của bạn vẫn an toàn — app tự gửi lại sau, KHÔNG cần mua lại.", "Google Play top-up is under maintenance. Your money is safe — the app retries automatically, don't buy again."},
@@ -614,7 +636,7 @@ public final class Api {
                 {"PLAY_API_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 {"PLAY_SERVER_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 // 🎡 vòng quay may mắn (SQL v34c)
-                {"PROMO_NOT_YOURS", "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.", "This lucky-wheel code belongs to another account — only the winner can use it."},
+                {"PROMO_NOT_YOURS", "Mã này là mã riêng của tài khoản khác — chỉ tài khoản được tặng mới dùng được.", "This code belongs to another account — only that account can use it."},
                 {"WHEEL_NO_SPIN", "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.", "You have no spins left — top up to earn more."},
                 {"WHEEL_NOT_STARTED", "Vòng quay chưa bắt đầu.", "The lucky wheel hasn't started yet."},
                 {"WHEEL_ENDED", "Chương trình vòng quay đã kết thúc.", "The lucky-wheel event has ended."},

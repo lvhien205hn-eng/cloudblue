@@ -124,6 +124,7 @@ final class Blue {
             case "task": return Ui.L("Nhiệm vụ", "Mission"); case "ref": return Ui.L("Mời bạn", "Invite");
             case "cashback": return Ui.L("Hoàn đơn", "Cashback"); case "spend": return Ui.L("Đã dùng", "Spent");
             case "refund": return Ui.L("Hoàn lại", "Refund"); case "clawback": return Ui.L("Thu lại", "Reversed");
+            case "creator": return Ui.L("Kiếm tiền (video)", "Creator reward");
             default: return "Admin";
         }
     }
@@ -191,7 +192,7 @@ final class Blue {
             LinearLayout hero = Ui.card(a);
             hero.addView(Ui.text(a, "💎 " + n(i.optLong("blue")) + " Blue", 26, Ui.SKY, true));
             hero.addView(Ui.muted(a, !Api.SHOP ? Ui.L("Blue tích từ điểm danh và nhiệm vụ hằng ngày.", "Earn Blue from daily check-ins and missions.")
-                    : Ui.L("1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây", "1 Blue = 1đ on cloud phone rentals / renewals")
+                    : Ui.L("1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây — không dùng cho sản phẩm khác", "1 Blue = 1đ on cloud phone rentals / renewals — not for other products")
                       + (maxPct() < 100 ? Ui.L(" (tối đa " + maxPct() + "% mỗi đơn)", " (max " + maxPct() + "% per order)") : "")));
             if (i.optBoolean("hold"))
                 hero.addView(Ui.text(a, "🧊 " + Ui.L("Blue của bạn đang được tạm giữ để kiểm tra (không nhận / không dùng được). Liên hệ hỗ trợ nếu cần.",
