@@ -1728,6 +1728,7 @@ public class MainActivity extends Activity {
             c.addView(top, Ui.fill());
         }
         body.addView(c, Ui.fill());
+        if (Api.SHOP && Wheel.on()) body.addView(Wheel.card(this), Ui.fill());    // 🎡 vòng quay may mắn (SQL v34c) — bản CH Play không có
 
         if (Api.SHOP) {                                 // 🧾 1.115: lịch sử nạp tiền — đọc THẲNG từ máy chủ, cùng nguồn với web
             LinearLayout hc = Ui.card(this);
@@ -1885,6 +1886,8 @@ public class MainActivity extends Activity {
         final String acc = site.optString("bankAcc", "").replaceAll("\\D", "");
         final long[] amt = {need > 0 ? Math.max(min, (long) Math.ceil(need / 1000.0) * 1000) : Math.max(min, 50000)};
         LinearLayout c = Ui.col(this, 12);
+        if (Wheel.on()) c.addView(Wheel.card(this), Ui.fill());           // 🎡 vòng quay may mắn hiện ngay trong hộp nạp
+        final TextView wh = Wheel.hint(this);                              // "🎡 Lệnh nạp này được +N lượt quay"
         c.addView(Ui.muted(this, Ui.L("Số dư hiện tại: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0))
                 + (need > 0 ? Ui.L("  ·  Cần thêm ", "  ·  Need ") + Ui.vnd(need) : "")));
         Ui.Wrap w = new Ui.Wrap(this, 8);
@@ -1903,6 +1906,7 @@ public class MainActivity extends Activity {
             make.setText(Ui.L("Tạo mã chuyển khoản ", "Create transfer code ") + Ui.vnd(amt[0]));
             make.setEnabled(ok);
             make.setAlpha(ok ? 1f : .5f);
+            Wheel.hint(wh, amt[0]);
         };
         for (long v : opts) {
             TextView ch = Ui.chip(this, Ui.vnd(v), false);
@@ -1918,6 +1922,7 @@ public class MainActivity extends Activity {
         }));
         c.addView(w, Ui.fill());
         c.addView(x, Ui.fill());
+        c.addView(wh, Ui.fill());
         c.addView(Ui.muted(this, Ui.L("Chuyển khoản ngân hàng: quét mã QR bằng app ngân hàng bất kỳ, tiền tự cộng vào số dư sau khoảng 1 phút.",
                 "Bank transfer: scan the QR with any banking app; your balance is credited in about a minute.")));
         c.addView(err, Ui.fill());
@@ -1939,6 +1944,7 @@ public class MainActivity extends Activity {
         });
         draw.run();
         d.show();
+        if (Wheel.on()) Wheel.load(draw);                                  // có trạng thái vòng quay → vẽ lại dòng "+N lượt"
     }
 
     void paySheet(JSONObject site, JSONObject t) {

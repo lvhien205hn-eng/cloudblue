@@ -1061,6 +1061,161 @@ html.lite body{background-attachment:scroll!important}
 .fxtoggle[aria-pressed="true"]{border-color:#ffb800;color:#ffd666}
 .fxbar small{color:var(--muted);font-size:12px}
 
+/* ===== 🎡 VÒNG QUAY MAY MẮN (SQL v34c) — bản VIP: bạch kim + sapphire, đèn chạy, ẩn số khi quay, mở quà nổ ===== */
+.lwcard{position:relative;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:11px 12px;border-radius:16px;overflow:hidden;
+  background:radial-gradient(120% 140% at 0% 0%,rgba(91,149,255,.32),transparent 55%),linear-gradient(135deg,#132160,#0b1236);
+  border:1px solid rgba(220,232,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 12px 30px -18px rgba(61,123,255,.9)}
+.lwcard::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(105deg,transparent 35%,rgba(255,255,255,.12) 45%,transparent 55%);
+  transform:translateX(-100%);animation:lwsheen 5s ease-in-out 1.2s infinite}
+.lwcard b{display:block;font-size:14.5px;color:#f2f7ff;line-height:1.35}
+.lwcard small{display:block;font-size:12.5px;color:#b9c8ea;line-height:1.45;margin-top:2px}
+.lwcard .btn{white-space:nowrap;position:relative;z-index:1}
+.lwmini{width:48px;height:48px;display:block;filter:drop-shadow(0 4px 10px rgba(61,123,255,.55))}
+#tp-lwhint{font-size:13px;color:var(--sky);line-height:1.45}
+@keyframes lwsheen{0%,62%{transform:translateX(-100%)}100%{transform:translateX(100%)}}
+
+#lwheel.modal{align-items:start}                       /* hộp cao hơn màn hình: KHÔNG được tràn lên trên (mất tiêu đề + vòng quay) — canh giữa bằng margin tự động */
+#lwheel .dlg.lwdlg{width:min(500px,100%);position:relative;overflow:clip;margin:auto 0;color:#eaf2ff;
+  background:radial-gradient(90% 55% at 50% 0%,rgba(91,149,255,.32),transparent 62%),radial-gradient(70% 40% at 50% 100%,rgba(42,95,224,.22),transparent 70%),linear-gradient(180deg,#101b4c,#080e2a);
+  border:1px solid rgba(220,232,255,.26);box-shadow:0 50px 120px -40px rgba(0,0,0,.95),inset 0 1px 0 rgba(255,255,255,.12)}
+#lwheel .dlg.lwdlg::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.6;
+  background-image:radial-gradient(1px 1px at 12% 9%,#fff,transparent),radial-gradient(1px 1px at 84% 7%,#cfe0ff,transparent),radial-gradient(1.5px 1.5px at 74% 22%,#fff,transparent),
+    radial-gradient(1px 1px at 22% 30%,#b9d2ff,transparent),radial-gradient(1px 1px at 92% 38%,#fff,transparent),radial-gradient(1.2px 1.2px at 6% 44%,#dfe9ff,transparent),
+    radial-gradient(1px 1px at 60% 4%,#fff,transparent),radial-gradient(1px 1px at 36% 16%,#cfe0ff,transparent)}
+#lwheel .dlg.lwdlg>*{position:relative}
+#lwheel .hint{color:#aebde0}
+.lwhead{display:flex;align-items:center;gap:10px}
+.lwhead h3{flex:1;margin:0;font-size:20px;letter-spacing:-.01em;line-height:1.25;
+  background:linear-gradient(100deg,#ffffff 0%,#cfdcf3 38%,#ffffff 50%,#aebcd6 62%,#ffffff 100%);background-size:220% 100%;
+  -webkit-background-clip:text;background-clip:text;color:transparent;animation:lwtitle 2.8s ease-in-out .25s 1 both}
+@keyframes lwtitle{from{background-position:100% 0}to{background-position:0 0}}
+.lwvip{display:inline-block;margin-left:8px;vertical-align:3px;font-size:11px;font-weight:800;letter-spacing:.1em;padding:3px 7px;border-radius:7px;
+  color:#0b1433;-webkit-text-fill-color:#0b1433;background:linear-gradient(180deg,#ffffff,#c9d7ee);box-shadow:0 4px 12px -4px rgba(201,215,238,.9)}
+.lwleft{font-size:13px;font-weight:800;padding:6px 12px;border-radius:999px;border:1px solid rgba(220,232,255,.3);color:#cfe0ff;white-space:nowrap;
+  font-variant-numeric:tabular-nums;background:rgba(8,13,40,.6)}
+.lwleft.has{background:linear-gradient(180deg,#ffffff,#c9d7ee);color:#0b1433;border-color:transparent;box-shadow:0 6px 18px -6px rgba(201,215,238,.85)}
+.lwsub{margin:-6px 0 0;font-size:13px;color:#b9c8ea;line-height:1.5}
+
+.lwstage{position:relative;width:min(318px,80vw);aspect-ratio:1;margin:12px auto 10px}
+.lwstage::before{content:"";position:absolute;inset:-16%;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(91,149,255,.38),rgba(42,95,224,.12) 46%,transparent 68%)}
+.lwstage::after{content:"";position:absolute;left:14%;right:14%;bottom:-18px;height:24px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(closest-side,rgba(0,0,0,.7),transparent)}
+.lwdisc{position:absolute;inset:0;border-radius:50%;overflow:hidden;pointer-events:none;transition:transform 5.6s cubic-bezier(.12,.67,.06,1);will-change:transform;z-index:1}
+.lwdisc svg,.lwrim{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible}
+.lwrim{pointer-events:none;z-index:2}
+.lwdisc .real path{stroke:rgba(230,238,252,.6);stroke-width:.8}
+.lwdisc .mys{opacity:0;transition:opacity .35s ease}
+.lwdisc.mys .mys{opacity:1}
+.lwdisc .mys path{stroke:rgba(230,238,252,.45);stroke-width:.8}
+.lwdisc .q{animation:lwq 1.6s ease-in-out infinite}
+@keyframes lwq{50%{opacity:.45}}
+.lwdisc path.win{stroke:#fff;stroke-width:2.2;filter:brightness(1.25);animation:lwwin 1s ease-in-out 3}
+@keyframes lwwin{50%{filter:brightness(1.65)}}
+.lwrim .c{fill:#fffaf0}.lwrim .g{fill:#ffe7a8;opacity:.8}
+.lwrim .a{animation:lwbulb 2.4s ease-in-out infinite}.lwrim .b{animation:lwbulb 2.4s ease-in-out 1.2s infinite}
+.lwrim.spin .a{animation:lwchase .3s steps(1) infinite}.lwrim.spin .b{animation:lwchase .3s steps(1) .15s infinite}
+@keyframes lwbulb{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes lwchase{0%{opacity:1}50%{opacity:.1}}
+.lwptr{position:absolute;left:50%;top:-13px;width:32px;height:44px;transform:translateX(-50%);filter:drop-shadow(0 5px 6px rgba(0,0,0,.7));z-index:4;pointer-events:none}
+.lwhub{position:absolute;left:50%;top:50%;width:25%;aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;border:0;z-index:3;padding:0;cursor:pointer;
+  background:radial-gradient(circle at 34% 28%,#ffffff 0 5%,#a8c8ff 11%,#3d7bff 40%,#1b3fae 72%,#0d2170);color:#fff;
+  font-weight:800;font-size:clamp(12px,3.5vw,15px);letter-spacing:.06em;text-shadow:0 1px 2px rgba(0,0,0,.5);
+  box-shadow:0 0 0 4px #e9eef8,0 0 0 6px #8e9cb6,0 0 0 7.5px rgba(11,18,51,.95),0 14px 30px -10px rgba(0,0,0,.95)}
+.lwhub.live{animation:lwhalo 1.9s ease-out infinite}
+@keyframes lwhalo{0%{box-shadow:0 0 0 4px #e9eef8,0 0 0 6px #8e9cb6,0 0 0 7.5px rgba(11,18,51,.95),0 0 0 8px rgba(143,208,255,.6),0 14px 30px -10px rgba(0,0,0,.95)}
+  100%{box-shadow:0 0 0 4px #e9eef8,0 0 0 6px #8e9cb6,0 0 0 7.5px rgba(11,18,51,.95),0 0 0 26px rgba(143,208,255,0),0 14px 30px -10px rgba(0,0,0,.95)}}
+.lwhub:not([disabled]):hover{filter:brightness(1.12)}
+.lwhub[disabled]{filter:saturate(.35) brightness(.72);cursor:default}
+.lwgo{width:100%;position:relative;overflow:hidden;font-size:16px!important;padding:14px 18px!important;border-radius:14px!important}
+.lwgo:not(.ghost):not(.buy):not([disabled])::after{content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.32) 45%,transparent 60%);transform:translateX(-120%);animation:lwsheen 3.6s ease-in-out 1s infinite}
+.lwgo.buy{background:linear-gradient(180deg,#ffffff,#c9d7ee)!important;color:#0b1433!important;border:0!important;box-shadow:0 12px 28px -12px rgba(201,215,238,.95)!important}
+.lwask{border-radius:14px;padding:14px;border:1px solid rgba(220,232,255,.32);background:rgba(6,11,36,.72);display:grid;gap:10px;text-align:center}
+.lwask b{font-size:16px;color:#fff}
+.lwask .r{display:flex;gap:8px}.lwask .r .btn{flex:1}
+.lwguide{display:grid;gap:8px}
+.lwguide>b,.lwmine>b{font-size:14px;color:#f2f7ff}
+.lwsteps{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.lwstep{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:10px;border-radius:12px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(220,232,255,.13);font-size:12.5px;line-height:1.45;color:#c3d1f0}
+.lwstep i{font-style:normal;width:28px;height:28px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+  background:linear-gradient(180deg,#2f66ec,#16236a);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.lwstep b{display:block;color:#f2f7ff;font-size:13px;margin-bottom:1px}
+.lwapps{font-size:12.5px;color:#b9c8ea;line-height:1.5;padding:9px 11px;border-radius:12px;border:1px dashed rgba(220,232,255,.24)}
+.lwmine{display:grid;gap:8px}
+.lwlist{display:grid;gap:6px;max-height:228px;overflow:auto}
+.lwrow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid rgba(220,232,255,.14);border-radius:12px;font-size:13px;background:rgba(255,255,255,.03)}
+.lwrow .p{font-weight:800;min-width:48px;text-align:center;padding:4px 0;border-radius:8px;background:linear-gradient(180deg,#2f66ec,#16236a);color:#fff;font-variant-numeric:tabular-nums}
+.lwrow .p.big{background:linear-gradient(180deg,#ffffff,#c9d7ee);color:#0b1433}
+.lwrow code{font-family:var(--mono);font-size:13px;color:#f2f7ff;user-select:all}
+.lwrow small{display:block;color:#aebde0;font-size:12px}
+.lwrow.off{opacity:.5}
+.lwrules summary{cursor:pointer;font-weight:700;font-size:14px;color:#f2f7ff}
+.lwrules .b{display:grid;gap:8px;margin-top:10px;font-size:13px;color:#b9c5e8;line-height:1.55}
+.lwrules p{margin:0}
+.lwodds{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}
+.lwodds th,.lwodds td{padding:6px 8px;border-bottom:1px solid rgba(220,232,255,.12);text-align:left}
+.lwodds th{color:#aebde0;font-weight:600}
+.lwodds td:nth-child(n+2),.lwodds th:nth-child(n+2){text-align:right}
+#lwheel .lwdlg>.btn.ghost.sm:last-child{justify-self:center}
+.lwa-pz input{padding:7px 9px!important}
+.lwa-pz td{vertical-align:middle}
+.lwa-sc{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:13px}
+.lwa-sc label{display:flex!important;align-items:center;gap:6px;color:var(--fg);cursor:pointer}
+.lwa-sc input{width:auto!important}
+.lwa-add{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* màn mở quà */
+.lwrev.modal{z-index:70;padding:20px;overflow:hidden;place-items:center;align-items:center}
+html body .lwrev.modal{background:radial-gradient(60% 48% at 50% 46%,#16327a,#060b1d 62%,#03050c)!important}
+.lwfx{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+.lwrevin{position:relative;display:grid;grid-template-columns:minmax(0,1fr);place-items:center;width:min(400px,100%)}
+.lwrevin>*{grid-area:1/1}
+.lwrays{position:absolute;left:50%;top:50%;width:560px;height:560px;margin:-280px 0 0 -280px;border-radius:50%;opacity:0;pointer-events:none;
+  background:repeating-conic-gradient(from 0deg,rgba(143,208,255,.22) 0 8deg,transparent 8deg 20deg);
+  -webkit-mask:radial-gradient(circle,#000 16%,transparent 66%);mask:radial-gradient(circle,#000 16%,transparent 66%)}
+.lwgift{position:relative;width:150px;height:150px;z-index:1}
+.lwgift .bd{position:absolute;left:12px;right:12px;bottom:0;height:92px;border-radius:12px;background:linear-gradient(180deg,#4f8dff,#2a5fe0);
+  box-shadow:inset 0 -12px 20px rgba(0,0,0,.28),0 26px 40px -16px rgba(0,0,0,.9)}
+.lwgift .bd::before,.lwgift .ld::before{content:"";position:absolute;left:50%;top:0;bottom:0;width:22px;transform:translateX(-50%);background:linear-gradient(180deg,#ffffff,#c9d7ee)}
+.lwgift .ld{position:absolute;left:0;right:0;top:30px;height:34px;border-radius:10px;background:linear-gradient(180deg,#7aaeff,#3d7bff);box-shadow:0 8px 14px -6px rgba(0,0,0,.7);z-index:2}
+.lwgift .bw{position:absolute;left:50%;top:-24px;width:72px;height:30px;transform:translateX(-50%)}
+.lwgift .bw::before,.lwgift .bw::after{content:"";position:absolute;bottom:0;width:32px;height:25px;border:7px solid #f2f7ff;border-radius:50%;box-sizing:border-box}
+.lwgift .bw::before{left:1px;transform:rotate(-24deg)}.lwgift .bw::after{right:1px;transform:rotate(24deg)}
+.lwgift.big .bd{background:linear-gradient(180deg,#ffffff,#c9d7ee)}.lwgift.big .ld{background:linear-gradient(180deg,#ffffff,#dde8fa)}
+.lwgift.big .bd::before,.lwgift.big .ld::before{background:linear-gradient(180deg,#4f8dff,#2a5fe0)}.lwgift.big .bw::before,.lwgift.big .bw::after{border-color:#3d7bff}
+.lwprize{position:relative;z-index:4;width:100%;text-align:center;display:grid;gap:12px;padding:24px 20px 18px;border-radius:22px;opacity:0;transform:scale(.3) translateY(40px);
+  background:linear-gradient(180deg,#15215c,#0b1233);border:1px solid rgba(220,232,255,.3);color:#eaf2ff;
+  box-shadow:0 40px 80px -30px rgba(0,0,0,.95),0 0 0 1px rgba(201,215,238,.08) inset,0 0 70px -12px rgba(61,123,255,.65)}
+.lwprize.big{border-color:rgba(242,247,255,.75);box-shadow:0 40px 80px -30px rgba(0,0,0,.95),0 0 90px -8px rgba(242,247,255,.5)}
+.lwprize .t{font-size:15px;font-weight:700;color:var(--sky)}
+.lwprize .v{font-size:60px;font-weight:800;letter-spacing:-.03em;line-height:.95;color:var(--gold-hi);font-variant-numeric:tabular-nums}
+.lwprize .v small{display:block;font-size:15px;font-weight:700;letter-spacing:.01em;color:#aebde0;margin-top:8px}
+.lwprize .hint{color:#aebde0}
+.lwprize .acts{display:flex;flex-direction:column;gap:8px}
+.lwprize .btn.buy{background:linear-gradient(180deg,#ffffff,#c9d7ee)!important;color:#0b1433!important;border:0!important}
+.lwcode{display:flex;gap:8px;justify-content:center;align-items:center;flex-wrap:wrap}
+.lwcode code{font-family:var(--mono);font-size:17px;font-weight:700;letter-spacing:.06em;padding:7px 12px;border-radius:10px;background:rgba(6,10,28,.6);border:1px dashed rgba(220,232,255,.35);color:#fff;user-select:all}
+.lwrev.show .lwgift{animation:lwdrop .42s cubic-bezier(.2,1.5,.45,1) both,lwshake .26s ease-in-out .5s 3}
+.lwrev.burst .lwgift .ld{animation:lwlid .75s cubic-bezier(.15,.85,.3,1) forwards}
+.lwrev.burst .lwgift .bd{animation:lwsink .5s ease-in .12s forwards}
+.lwrev.burst .lwrays{animation:lwray .9s ease-out forwards,lwturn 18s linear infinite}
+.lwrev.burst .lwprize{animation:lwpop .62s cubic-bezier(.18,1.45,.4,1) .16s forwards}
+.lwrev.burst::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:2;
+  background:radial-gradient(circle at 50% 50%,rgba(255,255,255,.9),rgba(143,208,255,.28) 26%,transparent 58%);animation:lwflash .6s ease-out forwards}
+@keyframes lwdrop{from{transform:translateY(-70px) scale(.55);opacity:0}to{transform:none;opacity:1}}
+@keyframes lwshake{0%,100%{transform:rotate(0)}25%{transform:rotate(-8deg) scale(1.04)}75%{transform:rotate(8deg) scale(1.04)}}
+@keyframes lwlid{to{transform:translate(-34px,-200px) rotate(-40deg);opacity:0}}
+@keyframes lwsink{to{transform:translateY(46px) scale(.7);opacity:0}}
+@keyframes lwray{from{opacity:0;transform:scale(.2)}to{opacity:1;transform:scale(1)}}
+@keyframes lwturn{to{rotate:360deg}}
+@keyframes lwpop{0%{opacity:0;transform:scale(.3) translateY(40px)}100%{opacity:1;transform:none}}
+@keyframes lwflash{0%{opacity:0}16%{opacity:1}100%{opacity:0}}
+@media (max-width:520px){.lwcard{grid-template-columns:auto 1fr}.lwcard .btn{grid-column:1/-1}.lwprize .v{font-size:52px}}
+@media (max-width:420px){.lwsteps{grid-template-columns:1fr}}
+@media (prefers-reduced-motion:reduce){.lwdisc{transition-duration:1.2s}.lwrim .a,.lwrim .b,.lwdisc path.win,.lwdisc .q,.lwhub.live,.lwcard::after,.lwgo::after{animation:none!important}
+  .lwhead h3{animation:none}.lwrev .lwgift{display:none}.lwrev .lwprize{animation:none!important;opacity:1;transform:none}.lwrev.burst::after{display:none}.lwrev .lwrays{animation:none!important;opacity:.5}}
+
 </style>
 <style>
 /* ================================================================
@@ -2157,6 +2312,7 @@ body.past-hero .m3-col{animation-play-state:paused}
 <div class="modal" id="topup" hidden>
   <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="tp-title">
     <h3 id="tp-title" data-i18n="topup_title">Nạp tiền</h3>
+    <div class="lwcard" id="lw-card" hidden></div>
     <div class="seg" id="tp-method" style="justify-self:center"><button id="tp-m-bank" class="on" data-i18n="m_bank">🏦 Ngân hàng</button><button id="tp-m-usdt" data-i18n="m_usdt">🪙 Crypto</button></div>
     <div id="tp-step1" style="display:grid;gap:12px">
       <div class="seg" id="tp-coin" hidden style="justify-self:center"><button id="tp-c-usdt" class="on" type="button">₮ USDT (TRC20)</button><button id="tp-c-ltc" type="button">Ł LTC</button></div>
@@ -2204,6 +2360,35 @@ body.past-hero .m3-col{animation-play-state:paused}
       <div class="acts"><button class="btn ghost" id="cr-back" data-i18n="change_amount">Đổi số tiền</button></div>
     </div>
     <button class="btn ghost sm" id="tp-close" data-i18n="close">Đóng</button>
+  </div>
+</div>
+
+<!-- 🎡 VÒNG QUAY MAY MẮN (SQL v34c) -->
+<div class="modal" id="lwheel" hidden>
+  <div class="dlg lwdlg" role="dialog" aria-modal="true" aria-labelledby="lw-title">
+    <div class="lwhead"><h3 id="lw-title">Vòng quay may mắn</h3><span class="lwleft" id="lw-left"></span></div>
+    <p class="lwsub" id="lw-sub"></p>
+    <div class="lwstage">
+      <div class="lwdisc" id="lw-disc"></div>
+      <svg class="lwrim" id="lw-rim" viewBox="0 0 200 200" aria-hidden="true"></svg>
+      <svg class="lwptr" viewBox="0 0 34 46" aria-hidden="true"><defs><linearGradient id="lwPtrG" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#aebbd2"/><stop offset="1" stop-color="#eef3fb"/></linearGradient><radialGradient id="lwGem" cx="40%" cy="35%" r="62%"><stop offset="0" stop-color="#cfe6ff"/><stop offset=".5" stop-color="#3d7bff"/><stop offset="1" stop-color="#132c90"/></radialGradient></defs><path d="M17 45 4.2 19.5A14.5 14.5 0 1 1 29.8 19.5Z" fill="url(#lwPtrG)" stroke="#0b1233" stroke-width="2" stroke-linejoin="round"/><circle cx="17" cy="15" r="6.6" fill="url(#lwGem)" stroke="#0b1233" stroke-width="1.5"/><circle cx="15" cy="12.8" r="1.9" fill="#fff" opacity=".85"/></svg>
+      <button class="lwhub" type="button" id="lw-hub" tabindex="-1" aria-hidden="true">QUAY</button>
+    </div>
+    <button class="btn lwgo" type="button" id="lw-go">Quay</button>
+    <div class="lwask" id="lw-ask" hidden aria-live="polite"></div>
+    <div class="err" id="lw-err" role="alert"></div>
+    <div class="lwguide" id="lw-guide"></div>
+    <div class="lwmine" id="lw-mine"></div>
+    <details class="lwrules"><summary id="lw-rules-s">📜 Thể lệ</summary><div class="b" id="lw-rules-b"></div></details>
+    <button class="btn ghost sm" type="button" id="lw-close">Đóng</button>
+  </div>
+</div>
+<div class="modal lwrev" id="lw-rev" hidden>
+  <canvas class="lwfx" id="lw-fx" aria-hidden="true"></canvas>
+  <div class="lwrevin">
+    <div class="lwrays" aria-hidden="true"></div>
+    <div class="lwgift" id="lw-gift" aria-hidden="true"><div class="bd"></div><div class="ld"><i class="bw"></i></div></div>
+    <div class="lwprize" id="lw-prize" role="dialog" aria-modal="true" aria-live="polite"></div>
   </div>
 </div>
 
@@ -2651,7 +2836,7 @@ body.past-hero .m3-col{animation-play-state:paused}
       </div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
-      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button></div>
+      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button><button type="button" role="tab" data-sub="wheel" aria-selected="false">🎡 Vòng quay</button></div>
       <div class="subpane" data-sub="codes">
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
@@ -2768,6 +2953,38 @@ body.past-hero .m3-col{animation-play-state:paused}
         <div class="refst full" id="rfa-sum"></div>
         <div class="full rfa-head"><b>Hoa hồng đã trả gần đây</b><button class="btn ghost sm" type="button" id="rfa-reload">↻ Làm mới</button></div>
         <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Người mời</th><th>Người được mời</th><th>Hoa hồng</th></tr></thead><tbody id="rfa-tb"></tbody></table></div>
+      </form>
+      </div>
+      <div class="subpane" data-sub="wheel" hidden>
+      <form class="f mtbox prf" id="lwa-f" autocomplete="off" novalidate>
+        <h3>🎡 Vòng quay may mắn <span class="hint">· web + app Android (bản tải từ web) + app PC</span></h3>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="lwa-on"><i></i></span><span><b>Bật vòng quay</b><small>Tắt thì ẩn khỏi hộp Nạp tiền (web + app) và khách không quay được nữa. Mã khách đã trúng vẫn dùng được đến hết hạn.</small></span></label>
+        <label>Bắt đầu tính lượt từ<input id="lwa-start" type="datetime-local"></label>
+        <label><span>Kết thúc <span class="hint">(trống = chạy đến khi tắt)</span></span><input id="lwa-end" type="datetime-local"></label>
+        <label>Cứ mỗi số tiền nạp này (đ)<input id="lwa-per" type="number" min="1000" step="1000" inputmode="numeric"></label>
+        <label>… được bao nhiêu lượt miễn phí<input id="lwa-sp" type="number" min="1" max="20" step="1" inputmode="numeric"></label>
+        <label>Lệnh nạp từ bao nhiêu mới được tính lượt (đ)<input id="lwa-min" type="number" min="0" step="1000" inputmode="numeric"></label>
+        <label>Hạn dùng mã trúng (ngày)<input id="lwa-days" type="number" min="1" max="365" step="1" inputmode="numeric"></label>
+        <label><span>Giá quay thêm 1 lượt (đ) <span class="hint">(0 = không bán)</span></span><input id="lwa-price" type="number" min="0" max="1000000" step="1000" inputmode="numeric"></label>
+        <label><span>Tối đa lượt mua / khách / ngày <span class="hint">(0 = không giới hạn)</span></span><input id="lwa-bmax" type="number" min="0" max="1000" step="1" inputmode="numeric"></label>
+        <label class="mtrow full"><span class="sw"><input type="checkbox" id="lwa-need"><i></i></span><span><b>Chỉ khách đã nạp từ mức tối thiểu mới được mua lượt</b><small>Tắt thì ai có số dư cũng mua lượt quay được. Tiền mua lượt trừ thẳng vào số dư, có hỏi lại trước khi trừ.</small></span></label>
+        <label><span>Giảm tối đa mỗi mã (đ) <span class="hint">(trống = không giới hạn)</span></span><input id="lwa-max" type="number" min="1000" step="1000" inputmode="numeric" placeholder="VD 200000"></label>
+        <div class="full"><div class="hint" style="margin-bottom:6px">Mã trúng dùng được cho:</div><div class="lwa-sc" id="lwa-sc"></div></div>
+        <div class="hint full">💳 Tính lượt cho nạp ngân hàng, crypto, admin duyệt tay / gán tiền về. <b>Không</b> tính nạp Google Play, và vòng quay KHÔNG hiện trong app bản CH Play (Google cấm quay thưởng trả tiền mà giấu tỷ lệ).</div>
+        <div class="full rfa-head"><b>Bảng giải</b><span class="hint">Khách KHÔNG thấy tỷ lệ — chỉ thấy các ô + số giải còn lại · Tỷ lệ = % số lượt quay · "Số giải" trống = không giới hạn · ô đã hết giải → khách nhận mã của giải không giới hạn nhỏ nhất</span></div>
+        <div class="tbl full"><table class="lwa-pz"><thead><tr><th>Giảm (%)</th><th>Tỷ lệ trúng (%)</th><th>Số giải</th><th>Đã trúng</th><th>Thực tế</th><th></th></tr></thead><tbody id="lwa-pz-tb"></tbody></table></div>
+        <div class="full lwa-add"><button class="btn ghost sm" type="button" id="lwa-add">＋ Thêm giải</button><span class="hint" id="lwa-sum"></span></div>
+        <div class="acts full"><button class="btn" type="submit" id="lwa-save">Lưu vòng quay</button><button class="btn ghost" type="button" id="lwa-reset">↺ Làm mới kho giải</button><span class="hint" id="lwa-msg"></span></div>
+        <div class="refst r4 full" id="lwa-stats"></div>
+        <div class="full rfa-head"><b>Tặng / trừ lượt quay cho 1 khách</b></div>
+        <div class="full bl-add">
+          <label>Tên đăng nhập hoặc email<input id="lwa-who" maxlength="120" autocomplete="off" spellcheck="false"></label>
+          <label>Số lượt (âm = trừ)<input id="lwa-n" type="number" min="-100" max="100" step="1" inputmode="numeric" placeholder="VD 1"></label>
+          <label>Lý do<input id="lwa-note" maxlength="120" placeholder="VD Bù nạp lỗi 15/11"></label>
+          <button class="btn ghost" type="button" id="lwa-give">Tặng / trừ</button>
+        </div>
+        <div class="full rfa-head"><b>Lượt quay gần đây</b><button class="btn ghost sm" type="button" id="lwa-reload">↻ Làm mới</button></div>
+        <div class="tbl full rfa-tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Ô trúng → mã nhận</th><th>Mã</th><th>Lượt</th><th>Tình trạng</th></tr></thead><tbody id="lwa-tb"></tbody></table></div>
       </form>
       </div>
     </div>
@@ -3675,6 +3892,10 @@ const DEF_SITE = {
 };
 const ST = k => (LANG === "en" && SITE[k + "_en"]) ? SITE[k + "_en"] : SITE[k];
 const ERR = {
+  PROMO_NOT_YOURS: "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.", WHEEL_NO_SPIN: "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.",
+  WHEEL_NOT_STARTED: "Vòng quay chưa bắt đầu.", WHEEL_ENDED: "Chương trình vòng quay đã kết thúc.", WHEEL_OFF: "Vòng quay đang tạm tắt.", WHEEL_EMPTY: "Vòng quay đã hết giải.",
+  WHEEL_NO_BUY: "Hiện không bán thêm lượt quay.", WHEEL_PRICE_CHANGED: "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.", WHEEL_NEED_TOPUP: "Nạp từ 100.000đ trong chương trình để được quay thêm.",
+  WHEEL_BUY_LIMIT: "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.",
   // v23 — mã khuyến mãi / ép cập nhật app (errMsg chọn mã DÀI NHẤT khớp → PROMO_TOO_MANY không bị nhầm thành TOO_MANY, PROMO_EMPTY ≠ EMPTY)
   PROMO_INVALID: "Mã không đúng hoặc đã bị tắt.", PROMO_EXPIRED: "Mã đã hết hạn.", PROMO_NOT_STARTED: "Mã chưa đến ngày sử dụng.", PROMO_USED_UP: "Mã đã hết lượt sử dụng.",
   PROMO_USER_LIMIT: "Bạn đã dùng hết số lượt của mã này.", PROMO_SCOPE: "Mã này không áp dụng cho loại đơn này.", PROMO_MIN_ORDER: "Đơn chưa đạt giá trị tối thiểu để dùng mã này.",
@@ -3692,6 +3913,10 @@ const ERR = {
   WEAK_PASS: "Mật khẩu mới phải ≥ 6 ký tự.", IS_ADMIN: "Không thể xoá tài khoản admin.", "duplicate key": "Tên đăng nhập hoặc email này đã có người dùng."
 };
 const ERR_EN = {
+  PROMO_NOT_YOURS: "This lucky-wheel code belongs to another account — only the winner can use it.", WHEEL_NO_SPIN: "You have no spins left — top up to earn more.",
+  WHEEL_NOT_STARTED: "The lucky wheel hasn't started yet.", WHEEL_ENDED: "The lucky-wheel event has ended.", WHEEL_OFF: "The lucky wheel is currently off.", WHEEL_EMPTY: "All wheel prizes are gone.",
+  WHEEL_NO_BUY: "Extra spins aren't on sale right now.", WHEEL_PRICE_CHANGED: "The extra-spin price just changed — check it and try again.", WHEEL_NEED_TOPUP: "Top up 100,000đ during the event to buy extra spins.",
+  WHEEL_BUY_LIMIT: "You've reached today's extra-spin limit — come back tomorrow.",
   PROMO_INVALID: "Wrong or disabled code.", PROMO_EXPIRED: "This code has expired.", PROMO_NOT_STARTED: "This code isn't active yet.", PROMO_USED_UP: "This code has no uses left.",
   PROMO_USER_LIMIT: "You've already used this code the maximum number of times.", PROMO_SCOPE: "This code doesn't apply to this kind of order.", PROMO_MIN_ORDER: "Your order is below this code's minimum.",
   PROMO_TOO_MANY: "Too many wrong codes — try again in 10 minutes.", PROMO_IS_GIFT: "This is a gift-phone code — enter it in the \"Enter code\" box under Cloud phones.",
@@ -4436,7 +4661,7 @@ function i18nCrypto() {
 function openTopup(pre) {
   if (!profile) { openAuth("login"); toast(L("Đăng nhập để nạp tiền.", "Log in to top up."), 1); return; }
   topPre = +pre || 0;
-  setTopMethod("bank"); show("topup");
+  setTopMethod("bank"); show("topup"); lwLoad();
 }
 function markAmt() { document.querySelectorAll("#tp-amts button").forEach(b => b.classList.toggle("on", +b.dataset.v === +$("tp-amt").value)); }
 function convHint() {
@@ -4445,6 +4670,7 @@ function convHint() {
   const v = +$("tp-amt").value || 0;
   if (topMethod === "usdt") el.textContent = v ? "\u2248 " + vnd(Math.round(v * rate())) + " " + t("sẽ cộng vào số dư", "will_credit") : "";
   else el.textContent = v ? "\u2248 $" + (v / rate()).toFixed(2) : "";
+  lwAmtHint();
 }
 $("tp-amts").onclick = e => { const b = e.target.closest("button"); if (!b) return; $("tp-amt").value = b.dataset.v; markAmt(); convHint(); };
 $("tp-amt").oninput = () => { markAmt(); convHint(); };
@@ -4503,7 +4729,7 @@ function startPoll(waitId, waitTxtId) {
     const { data } = await sb.from("topups").select("status,amount").eq("id", curTop.id).maybeSingle();
     if (data && data.status === "done") {
       clearInterval(pollT); $(waitId).className = "wait done"; $(waitTxtId).textContent = t("Đã nhận ", "received") + vnd(data.amount) + ". " + t("Số dư đã được cộng.", "credited");
-      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount));
+      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop();
     }
   }, 5000);
 }
@@ -4536,12 +4762,402 @@ function pollCrypto(paymentId) {
     if (data && data.status === "done") {
       clearInterval(pollT); setCryptoProgress("finished");
       $("cr-wait").className = "wait done"; $("cr-wait-t").textContent = t("Đã nhận ", "received") + vnd(data.amount) + ". " + t("Số dư đã được cộng.", "credited");
-      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount));
+      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop();
       return;
     }
     setCryptoProgress(st);
   }, 8000);
 }
+/* ===== 🎡 VÒNG QUAY MAY MẮN (SQL v34c) — thẻ trong hộp Nạp tiền + hộp quay VIP. Máy chủ rút số (khách không sửa được);
+   trang chỉ quay hình tới đúng ô mã khách nhận. Khi quay: ẨN hết số + màu ô (li kì) → kim dừng → hộp quà nổ ra mã.
+   Hết lượt miễn phí → quay thêm có tính phí (hỏi lại, trừ số dư cùng giao dịch ở máy chủ). Chưa chạy SQL → ẩn hết. ===== */
+var LW = null, lwBusy = false, lwRot = 0, lwLast = null, lwSig = "", lwFxRun = 0, lwRevPend = false;
+var LW_SC = { cp_new: ["thuê máy mới", "new phones"], cp_renew: ["gia hạn máy", "phone renewals"], cp_upgrade: ["nâng cấp máy", "phone upgrades"],
+              vps_new: ["mua VPS", "new VPS"], vps_renew: ["gia hạn VPS", "VPS renewals"], product: ["mua hàng", "shop orders"] };
+function lwLoc() { return LANG === "en" ? "en-GB" : "vi-VN"; }
+function lwWhen(iso) {            // "00:00 15/11" (giờ máy khách) — tự ghép, không phụ thuộc kiểu ngày của trình duyệt
+  if (!iso) return ""; const d = new Date(iso), p = n => String(n).padStart(2, "0"), t = p(d.getHours()) + ":" + p(d.getMinutes()), dm = p(d.getDate()) + "/" + p(d.getMonth() + 1);
+  return LANG === "en" ? dm + " " + t : t + " " + dm;
+}
+function lwOdds(o) { const v = +o || 0; return (v >= 1 || v === 0 ? v.toLocaleString(lwLoc(), { maximumFractionDigits: 2 }) : v.toLocaleString(lwLoc(), { maximumSignificantDigits: 2 })) + "%"; }
+function lwReduce() { return !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches); }
+function lwLive() { return !!(LW && (LW.state === "on" || LW.state === "soon") && (LW.prizes || []).length); }
+function lwPer() { return LW ? Math.max(1, +LW.spins_per || 1) : 1; }
+function lwFirst() { const w = LW || {}, per = Math.max(1, +w.per || 100000), a = Math.max(+w.min || 0, per); return [a, Math.floor(a / per) * lwPer()]; }   // [nạp bao nhiêu, được mấy lượt]
+function lwBal() { return +((profile && profile.balance != null) ? profile.balance : (LW && LW.balance) || 0); }
+function lwOrder(pz) {          // xen kẽ giải nhỏ / giải lớn: 5 · 40 · 10 · 50 · 15 · 60 · 20 · 80 · 25
+  const a = [...(pz || [])].sort((x, y) => x.pct - y.pct), lo = a.filter(p => p.pct < 40), hi = a.filter(p => p.pct >= 40), out = [];
+  while (lo.length || hi.length) { if (lo.length) out.push(lo.shift()); if (hi.length) out.push(hi.shift()); }
+  return out;
+}
+function lwErr(e) { const m = String((e && e.message) || e || ""), i = m.indexOf("BAD_INPUT:"); return i >= 0 ? m.slice(i + 10).trim() : errMsg(e); }
+async function lwLoad() {
+  if (!profile) { LW = null; lwCard(); return null; }
+  try { const { data, error } = await sb.rpc("wheel_status"); LW = error ? null : data; } catch (e) { LW = null; }
+  lwCard(); if ($("lwheel") && !$("lwheel").hidden && !lwBusy) lwRender();
+  return LW;
+}
+function lwMini() {
+  let d = "";
+  for (let i = 0; i < 8; i++) {
+    const a0 = (i - .5) * Math.PI / 4, a1 = (i + .5) * Math.PI / 4, p = (a, r) => (24 + r * Math.sin(a)).toFixed(1) + " " + (24 - r * Math.cos(a)).toFixed(1);
+    d += `<path d="M24 24L${p(a0, 19)}A19 19 0 0 1 ${p(a1, 19)}Z" fill="${i % 4 === 1 ? "#f2f7ff" : i % 2 ? "#3d7bff" : "#1b2a63"}" stroke="rgba(230,238,252,.5)" stroke-width=".5"/>`;
+  }
+  return `<svg class="lwmini" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="lwMiniP" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".5" stop-color="#9eaccb"/><stop offset="1" stop-color="#eef3fb"/></linearGradient></defs>`
+    + `${d}<circle cx="24" cy="24" r="21" fill="none" stroke="url(#lwMiniP)" stroke-width="3.2"/><circle cx="24" cy="24" r="5.5" fill="#2a5fe0" stroke="#e9eef8" stroke-width="1.6"/><path d="M24 8.5l-3.6-6.5h7.2z" fill="#eef3fb" stroke="#0b1233" stroke-width=".8"/></svg>`;
+}
+function lwCard() {
+  const c = $("lw-card"); if (!c) return;
+  const on = lwLive(); c.hidden = !on; lwAmtHint(); if (!on) return;
+  const w = LW, av = w.prizes.filter(p => p.left !== 0), top = Math.max(...(av.length ? av : w.prizes).map(p => +p.pct)), left = +w.left || 0, [fa, fn] = lwFirst();
+  let sub, btn;
+  if (w.state === "soon") {
+    sub = L(`Bắt đầu ${lwWhen(w.starts_at)} · nạp ${vnd(fa)} = ${fn} lượt quay`, `Starts ${lwWhen(w.starts_at)} · top up ${vnd(fa)} = ${fn} spins`);
+    btn = `<button class="btn ghost sm" type="button" data-lwopen="1">${L("Xem giải", "See prizes")}</button>`;
+  } else if (left > 0) {
+    sub = L(`Bạn đang có ${left} lượt quay — lượt nào cũng trúng 1 mã giảm giá`, `You have ${left} spin${left > 1 ? "s" : ""} — every spin wins a discount code`);
+    btn = `<button class="btn sm" type="button" data-lwopen="1">🎡 ${L("Quay ngay", "Spin now")} · ${left}</button>`;
+  } else {
+    sub = L(`Nạp ${vnd(fa)} = ${fn} lượt quay` + (+w.price > 0 ? ` · hết lượt quay thêm ${vnd(w.price)}/lượt` : ""), `Top up ${vnd(fa)} = ${fn} spins` + (+w.price > 0 ? ` · extra spins ${vnd(w.price)} each` : ""));
+    btn = `<button class="btn ghost sm" type="button" data-lwopen="1">🎡 ${L("Mở vòng quay", "Open wheel")}</button>`;
+  }
+  c.innerHTML = `${lwMini()}<div><b>${esc(L("Vòng quay may mắn", "Lucky wheel"))} · ${esc(L("mã giảm đến", "codes up to"))} ${top}%</b><small>${esc(sub)}</small></div>${btn}`;
+}
+function lwAmtHint() {          // dưới ô số tiền: lệnh nạp này được mấy lượt
+  const conv = $("tp-conv"); let el = $("tp-lwhint");
+  if (!el) { if (!conv || !conv.parentNode) return; el = document.createElement("div"); el.id = "tp-lwhint"; conv.parentNode.insertBefore(el, conv.nextSibling); }
+  let txt = "";
+  if (lwLive()) {
+    const w = LW, raw = +$("tp-amt").value || 0, a = topMethod === "usdt" ? Math.round(raw * rate()) : Math.round(raw), n = a >= +w.min ? Math.floor(a / Math.max(1, +w.per)) * lwPer() : 0;
+    if (w.state === "soon") txt = L(`🎡 Vòng quay bắt đầu ${lwWhen(w.starts_at)} — lệnh nạp từ lúc đó mới được tính lượt quay.`, `🎡 The lucky wheel starts ${lwWhen(w.starts_at)} — only top-ups from then on earn spins.`);
+    else if (n > 0) txt = L(`🎡 Lệnh nạp này được +${n} lượt quay may mắn`, `🎡 This top-up earns +${n} lucky-wheel spin${n > 1 ? "s" : ""}`) + (topMethod === "usdt" ? L(" (tính theo số tiền thực cộng)", " (based on the amount credited)") : "");
+    else { const [fa, fn] = lwFirst(); txt = L(`🎡 Nạp từ ${vnd(fa)} để được ${fn} lượt quay may mắn`, `🎡 Top up ${vnd(fa)}+ to earn ${fn} lucky-wheel spins`); }
+  }
+  el.textContent = txt; el.hidden = !txt;
+}
+async function lwAfterTop() {   // nạp xong → cập nhật số lượt + báo
+  const before = LW && LW.state === "on" ? +LW.left || 0 : 0;
+  const w = await lwLoad(); if (!w || w.state !== "on") return;
+  const got = Math.max(0, (+w.left || 0) - before);
+  if (got > 0) setTimeout(() => toast(L(`🎡 +${got} lượt quay may mắn — bấm "Quay ngay" trong hộp nạp tiền.`, `🎡 +${got} lucky-wheel spin${got > 1 ? "s" : ""} — tap "Spin now" in the top-up box.`)), 2600);
+}
+function openLwheel() { if (!profile) { openAuth("login"); return; } $("lw-err").textContent = ""; $("lw-ask").hidden = true; show("lwheel"); lwRender(); lwLoad(); }
+function lwRim() {
+  let d = '<defs><linearGradient id="lwPlat" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset=".25" stop-color="#aebbd2"/><stop offset=".5" stop-color="#f4f7fc"/><stop offset=".75" stop-color="#8e9cb6"/><stop offset="1" stop-color="#e9eef8"/></linearGradient>'
+    + '<radialGradient id="lwGloss" cx="36%" cy="24%" r="72%"><stop offset="0" stop-color="#fff" stop-opacity=".26"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/></radialGradient>'
+    + '<filter id="lwBlur" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="1.7"/></filter></defs>'
+    + '<circle cx="100" cy="100" r="85" fill="url(#lwGloss)"/>'
+    + '<circle cx="100" cy="100" r="91.5" fill="none" stroke="url(#lwPlat)" stroke-width="12"/>'
+    + '<circle cx="100" cy="100" r="85.6" fill="none" stroke="#0b1233" stroke-width="1.6"/><circle cx="100" cy="100" r="97.6" fill="none" stroke="rgba(11,18,51,.95)" stroke-width="1"/>';
+  for (let i = 0; i < 24; i++) {
+    const a = i * Math.PI / 12, x = (100 + 91.5 * Math.sin(a)).toFixed(2), y = (100 - 91.5 * Math.cos(a)).toFixed(2), k = i % 2 ? "b" : "a";
+    d += `<circle class="g ${k}" cx="${x}" cy="${y}" r="3.9" filter="url(#lwBlur)"/><circle class="c ${k}" cx="${x}" cy="${y}" r="2.1"/>`;
+  }
+  return d;
+}
+function lwSlices(pz) {
+  const n = pz.length, seg = 360 / n, R = 85, C = 100, fs = n <= 8 ? 16 : n <= 10 ? 14.5 : 12.5;
+  const pt = (a, r) => (C + r * Math.sin(a * Math.PI / 180)).toFixed(2) + " " + (C - r * Math.cos(a * Math.PI / 180)).toFixed(2);
+  const wedge = i => `M${C} ${C}L${pt((i - .5) * seg, R)}A${R} ${R} 0 0 1 ${pt((i + .5) * seg, R)}Z`;
+  const rg = (id, a, b) => `<radialGradient id="${id}" gradientUnits="userSpaceOnUse" cx="${C}" cy="${C}" r="${R}"><stop offset=".22" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient>`;
+  let o = `<svg viewBox="0 0 200 200" role="img" aria-label="${esc(L("Vòng quay ", "Wheel ") + n + L(" ô", " slices"))}"><defs>`
+    + rg("lwLo1", "#0d1644", "#26388f") + rg("lwLo2", "#091137", "#1a2972") + rg("lwMid", "#1a45bd", "#5b95ff") + rg("lwHi", "#c3d0e8", "#ffffff")
+    + rg("lwGone", "#171c33", "#2c3352") + rg("lwM1", "#0a1240", "#22327f") + rg("lwM2", "#0f1952", "#2c43a6") + "</defs>";
+  let real = "", mys = "", lo = 0;
+  pz.forEach((p, i) => {
+    const gone = p.left === 0, tier = p.pct >= 40 ? "hi" : p.pct >= 20 ? "mid" : "lo", rot = `rotate(${(i * seg).toFixed(2)} ${C} ${C})`;
+    const fill = gone ? "url(#lwGone)" : tier === "hi" ? "url(#lwHi)" : tier === "mid" ? "url(#lwMid)" : (lo++ % 2 ? "url(#lwLo2)" : "url(#lwLo1)");
+    const ink = gone ? "#6f7da3" : tier === "hi" ? "#0b1433" : "#eaf2ff";
+    real += `<path data-pct="${p.pct}" d="${wedge(i)}" fill="${fill}"/><g transform="${rot}" fill="${ink}" text-anchor="middle"><text x="${C}" y="${C - 56}" font-size="${fs}" font-weight="800">${p.pct}%</text>`
+      + (gone ? `<text x="${C}" y="${C - 43}" font-size="7.5" font-weight="700" letter-spacing=".08em">${L("HẾT", "GONE")}</text>` : "") + "</g>";
+    mys += `<path d="${wedge(i)}" fill="url(#lwM${i % 2 ? 2 : 1})"/><text class="q" transform="${rot}" x="${C}" y="${C - 54}" font-size="19" font-weight="800" fill="#dfe9ff" text-anchor="middle">?</text>`;
+  });
+  let riv = "";
+  for (let i = 0; i < n; i++) { const a = (i + .5) * seg * Math.PI / 180; riv += `<circle cx="${(C + 80 * Math.sin(a)).toFixed(2)}" cy="${(C - 80 * Math.cos(a)).toFixed(2)}" r="1.5" fill="#eef3fb" stroke="#0b1233" stroke-width=".5"/>`; }
+  return o + `<g class="real">${real}</g><g class="mys">${mys}</g>${riv}</svg>`;
+}
+function lwBtns() {
+  const w = LW, go = $("lw-go"), hub = $("lw-hub"); if (!go) return;
+  const left = w ? +w.left || 0 : 0, [fa, fn] = lwFirst();
+  let txt, dis = false, act = "spin", cls = "";
+  if (lwBusy) { txt = L("Đang quay…", "Spinning…"); dis = true; }
+  else if (!w || w.state === "off") { txt = L("Vòng quay đang tạm tắt", "The wheel is off"); dis = true; }
+  else if (w.state === "ended") { txt = L("Chương trình đã kết thúc", "This event has ended"); dis = true; }
+  else if (w.state === "soon") { txt = L(`Bắt đầu lúc ${lwWhen(w.starts_at)}`, `Starts ${lwWhen(w.starts_at)}`); dis = true; }
+  else if (left > 0) txt = L(`Quay ngay · còn ${left} lượt`, `Spin now · ${left} left`);
+  else if (w.can_buy) { txt = L(`➕ Quay thêm · ${vnd(w.price)}/lượt`, `➕ Extra spin · ${vnd(w.price)}`); act = "buy"; cls = " buy"; }
+  else if (+w.price > 0 && w.qualified && w.buy_left === 0) { txt = L("Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "Daily extra-spin limit reached — top up for more"); act = "top"; cls = " ghost"; }
+  else { txt = L(`💳 Nạp ${vnd(fa)} để nhận ${fn} lượt quay`, `💳 Top up ${vnd(fa)} to get ${fn} spins`); act = "top"; cls = " ghost"; }
+  go.textContent = txt; go.disabled = dis; go.dataset.act = act; go.className = "btn lwgo" + cls;
+  hub.disabled = lwBusy || !(w && w.state === "on" && (left > 0 || w.can_buy));
+  hub.classList.toggle("live", !hub.disabled);
+}
+function lwMine() {
+  const cs = (LW && LW.codes) || [];
+  if (!cs.length) return `<div class="hint">${esc(L("Mã bạn quay trúng sẽ nằm ở đây.", "Codes you win will show up here."))}</div>`;
+  return `<b>🎟️ ${esc(L("Mã của tôi", "My codes"))}</b><div class="lwlist">` + cs.map(c => {
+    const exp = c.expires_at && new Date(c.expires_at) <= new Date(), live = !c.used && c.active && !exp;
+    const st = c.used ? L("Đã dùng", "Used") : !c.active ? L("Đã tắt", "Disabled") : exp ? L("Hết hạn", "Expired") : L("Dùng được đến ", "Valid until ") + lwWhen(c.expires_at);
+    return `<div class="lwrow${live ? "" : " off"}"><span class="p${+c.pct >= 40 ? " big" : ""}">${+c.pct}%</span><span><code>${esc(c.code)}</code><small>${esc(st)}</small></span>`
+      + (live ? `<button class="btn ghost sm" type="button" data-lwcopy="${esc(c.code)}">${esc(L("Chép", "Copy"))}</button>` : "<span></span>") + "</div>";
+  }).join("") + "</div>";
+}
+function lwGuide() {
+  const w = LW; if (!w) return "";
+  const [fa, fn] = lwFirst(), sp = lwPer();
+  const st = [["💳", L(`Nạp ${vnd(fa)} = ${fn} lượt`, `Top up ${vnd(fa)} = ${fn} spins`),
+               L(`Cứ ${vnd(w.per)} nạp được ${sp} lượt quay miễn phí. Nạp ngân hàng hay crypto đều tính.`, `Every ${vnd(w.per)} topped up gives ${sp} free spin${sp > 1 ? "s" : ""}. Bank and crypto both count.`)],
+              ["🎡", L("Bấm Quay", "Tap Spin"), L("Đang quay, số trên vòng ẩn hết. Kim dừng là hộp quà mở ra mã của bạn.", "While it spins the numbers hide. When it stops, a gift box opens with your code.")],
+              ["🏷️", L("Dùng mã khi thanh toán", "Use the code at checkout"), L(`Nhập ở ô "Mã giảm giá" khi thuê / gia hạn máy. Mã dùng 1 lần, hạn ${w.days} ngày.`, `Enter it in the "Discount code" box when renting or renewing. One use, valid ${w.days} days.`)]];
+  if (+w.price > 0) st.push(["➕", L(`Quay thêm ${vnd(w.price)}/lượt`, `Extra spins ${vnd(w.price)} each`),
+      L("Hết lượt miễn phí vẫn quay tiếp được — trừ vào số dư, luôn hỏi lại trước khi trừ.", "Out of free spins? Keep going — paid from your balance, always confirmed first.")]);
+  return `<b>📖 ${esc(L("Hướng dẫn chơi", "How to play"))}</b><div class="lwsteps">` + st.map(x => `<div class="lwstep"><i aria-hidden="true">${x[0]}</i><span><b>${esc(x[1])}</b>${esc(x[2])}</span></div>`).join("") + "</div>"
+    + `<div class="lwapps">📱 ${esc(L("Chơi được cả trên app Android (bản tải từ web) và app máy tính CloudBlue PC: vào Nạp tiền → 🎡 Vòng quay may mắn. Lượt quay và mã dùng chung cho cả tài khoản.",
+        "Also on the Android app (website download) and the CloudBlue PC app: Top up → 🎡 Lucky wheel. Spins and codes are shared across your account."))}</div>`;
+}
+function lwRules() {
+  const w = LW; if (!w) return "";
+  const sc = (w.scopes || []).map(k => (LW_SC[k] || [k, k])[LANG === "en" ? 1 : 0]).join(", "), sp = lwPer();
+  const rows = [...(w.prizes || [])].sort((a, b) => b.pct - a.pct).map(p => `<tr><td>${esc(L("Mã giảm ", "Code −"))}${+p.pct}%</td>`
+    + `<td>${p.stock == null ? esc(L("Không giới hạn", "Unlimited")) : esc(L(`${+p.stock} giải`, String(+p.stock)))}</td><td>${p.stock == null ? "—" : +p.left}</td></tr>`).join("");
+  return `<p>⏰ ${esc(L(`Thời gian: từ ${lwWhen(w.starts_at)}${w.ends_at ? " đến " + lwWhen(w.ends_at) : " đến khi có thông báo kết thúc"}.`, `When: from ${lwWhen(w.starts_at)}${w.ends_at ? " to " + lwWhen(w.ends_at) : " until further notice"}.`))}</p>`
+    + `<p>💳 ${esc(L(`Mỗi lệnh nạp thành công từ ${vnd(w.min)} trong thời gian chương trình: cứ ${vnd(w.per)} = ${sp} lượt quay (ví dụ nạp ${vnd(w.per * 2.5)} = ${2 * sp} lượt). Tính nạp ngân hàng và crypto; nạp qua Google Play không tính lượt.`,
+        `Each successful top-up of ${vnd(w.min)}+ during the event: every ${vnd(w.per)} = ${sp} spin${sp > 1 ? "s" : ""} (e.g. ${vnd(w.per * 2.5)} = ${2 * sp}). Bank and crypto top-ups count; Google Play top-ups don't.`))}</p>`
+    + (+w.price > 0 ? `<p>➕ ${esc(L(`Hết lượt miễn phí: quay thêm ${vnd(w.price)}/lượt, trừ vào số dư${w.need_topup ? `, dành cho tài khoản đã nạp từ ${vnd(w.min)} trong chương trình` : ""}${+w.buy_max > 0 ? `, tối đa ${w.buy_max} lượt/ngày` : ""}. Luôn hỏi lại trước khi trừ tiền.`,
+        `Out of free spins: extra spins cost ${vnd(w.price)} each from your balance${w.need_topup ? `, for accounts that topped up ${vnd(w.min)}+ during the event` : ""}${+w.buy_max > 0 ? `, up to ${w.buy_max} per day` : ""}. You're always asked before paying.`))}</p>` : "")
+    + `<p>🎟️ ${esc(L(`Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn (${sc}), hạn ${w.days} ngày, chỉ tài khoản quay trúng dùng được${w.max_disc ? `, giảm tối đa ${vnd(w.max_disc)}` : ""}.`,
+        `Every spin wins a discount code: one use on one order (${sc}), valid ${w.days} days, only for the winning account${w.max_disc ? `, max ${vnd(w.max_disc)} off` : ""}.`))}</p>`
+    + `<p>🎲 ${esc(L("Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết.",
+        "Results are completely random and decided by the server. Each slice has a different chance — the bigger the prize, the rarer it is. Prizes are limited; a slice marked GONE has been fully won."))}</p>`
+    + `<table class="lwodds"><thead><tr><th>${esc(L("Giải thưởng", "Prize"))}</th><th>${esc(L("Số lượng", "Quantity"))}</th><th>${esc(L("Còn lại", "Left"))}</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+function lwRender() {
+  if (!$("lwheel")) return;
+  const w = LW;
+  $("lw-title").innerHTML = esc(L("Vòng quay may mắn", "Lucky wheel")) + '<span class="lwvip">VIP</span>';
+  $("lw-rules-s").textContent = "📜 " + L("Thể lệ", "Rules");
+  $("lw-close").textContent = L("Đóng", "Close"); $("lw-hub").textContent = L("QUAY", "SPIN");
+  if (!$("lw-rim").innerHTML) $("lw-rim").innerHTML = lwRim();
+  const left = w ? +w.left || 0 : 0, [fa, fn] = lwFirst();
+  $("lw-left").textContent = L(`${left} lượt`, `${left} spin${left === 1 ? "" : "s"}`); $("lw-left").classList.toggle("has", !!(w && w.state === "on" && left > 0));
+  $("lw-sub").textContent = !w ? L("Vòng quay đang tạm tắt.", "The lucky wheel is currently off.")
+    : w.state === "soon" ? L(`Bắt đầu ${lwWhen(w.starts_at)}. Nạp ${vnd(fa)} = ${fn} lượt quay.`, `Starts ${lwWhen(w.starts_at)}. Top up ${vnd(fa)} = ${fn} spins.`)
+    : w.state === "on" ? L(`Nạp ${vnd(fa)} = ${fn} lượt · lượt nào cũng trúng mã giảm giá · số dư ${vnd(lwBal())}`, `Top up ${vnd(fa)} = ${fn} spins · every spin wins a code · balance ${vnd(lwBal())}`)
+    : w.state === "ended" ? L("Chương trình đã kết thúc. Mã đã trúng vẫn dùng được đến hết hạn.", "This event has ended. Codes you won stay valid until they expire.")
+    : L("Vòng quay đang tạm tắt. Mã đã trúng vẫn dùng được đến hết hạn.", "The lucky wheel is off. Codes you won stay valid until they expire.");
+  const pz = lwOrder(w ? w.prizes : []), sig = pz.map(p => p.pct + (p.left === 0 ? "x" : "")).join(",") + LANG;
+  if (sig !== lwSig && !lwBusy) { $("lw-disc").innerHTML = pz.length ? lwSlices(pz) : ""; lwSig = sig; }
+  $("lw-disc").classList.toggle("mys", lwBusy || lwRevPend || !$("lw-rev").hidden);     // đang quay / đang mở quà → vẫn ẩn số
+  if (lwLast) { const el = $("lw-disc").querySelector(`.real [data-pct="${+lwLast.pct}"]`); if (el) el.classList.add("win"); }
+  lwBtns(); $("lw-guide").innerHTML = lwGuide(); $("lw-mine").innerHTML = lwMine(); $("lw-rules-b").innerHTML = lwRules();
+}
+function lwCopy(b) {
+  const v = b.dataset.lwcopy, o = b.textContent;
+  (navigator.clipboard ? navigator.clipboard.writeText(v) : Promise.reject()).then(() => { b.textContent = L("Đã chép", "Copied"); setTimeout(() => { b.textContent = o; }, 1500); },
+    () => toast(L("Không chép được — bôi đen mã để chép.", "Couldn't copy — select the code to copy it."), 1));
+}
+function lwReveal(r) {             // kim dừng: che hết → hộp quà rơi xuống, rung, NỔ → thẻ mã bật ra
+  const rv = $("lw-rev"); lwRevPend = false; if (!rv) return;
+  const big = +r.pct >= 40, w = LW || {}, left = +w.left || 0, buy = !left && w.can_buy && (w.buy_left == null || w.buy_left > 0);
+  $("lw-gift").className = "lwgift" + (big ? " big" : "");
+  const pz = $("lw-prize"); pz.className = "lwprize" + (big ? " big" : "");
+  pz.setAttribute("aria-label", L(`Bạn nhận được mã giảm ${r.pct}%`, `You got a ${r.pct}% discount code`));
+  pz.innerHTML = `<div class="t">${big ? "🎉" : "🎁"} ${esc(L("Chúc mừng! Bạn nhận được", "Congratulations! You got"))}</div>`
+    + `<div class="v">−${+r.pct}%<small>${esc(L("mã giảm giá", "discount code"))}</small></div>`
+    + `<div class="lwcode"><code>${esc(r.code)}</code><button class="btn ghost sm" type="button" data-lwcopy="${esc(r.code)}">${esc(L("Chép mã", "Copy code"))}</button></div>`
+    + `<div class="hint">${esc(L(`Dùng 1 lần · hạn đến ${lwWhen(r.expires_at)} · chỉ tài khoản của bạn dùng được. Nhập ở ô "Mã giảm giá" khi thanh toán.`, `One use · valid until ${lwWhen(r.expires_at)} · only your account can use it. Enter it in the "Discount code" box at checkout.`))}</div>`
+    + (+r.paid > 0 ? `<div class="hint">${esc(L(`Đã trừ ${vnd(r.paid)} · số dư còn ${vnd(r.balance)}`, `${vnd(r.paid)} paid · balance ${vnd(r.balance)}`))}</div>` : "")
+    + `<div class="acts">${left > 0 ? `<button class="btn" type="button" data-lwrev="again">🎡 ${esc(L(`Quay tiếp · còn ${left} lượt`, `Spin again · ${left} left`))}</button>`
+        : buy ? `<button class="btn buy" type="button" data-lwrev="buy">➕ ${esc(L(`Quay thêm · ${vnd(w.price)}`, `Extra spin · ${vnd(w.price)}`))}</button>` : ""}`
+    + `<button class="btn${left > 0 || buy ? " ghost" : ""}" type="button" data-lwrev="done">${esc(L("Xong", "Done"))}</button></div>`;
+  rv.classList.remove("show", "burst"); lwFxRun++; rv.hidden = false; void rv.offsetWidth;
+  const focus = () => { try { pz.querySelector("[data-lwcopy]").focus({ preventScroll: true }); } catch (e) {} };
+  if (lwReduce()) { rv.classList.add("show", "burst"); focus(); return; }
+  rv.classList.add("show");
+  setTimeout(() => { if (rv.hidden) return; rv.classList.add("burst"); lwBurst(big); focus(); }, 1250);
+}
+function lwBurst(big) {            // pháo giấy rơi xuống + bong bóng nước bay lên (hợp chủ đề biển của trang)
+  const cv = $("lw-fx"); if (!cv || !cv.getContext) return;
+  const run = ++lwFxRun, dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth || innerWidth, H = cv.clientHeight || innerHeight;
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  const x = cv.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cols = big ? ["#ffffff", "#f2f7ff", "#c9d7ee", "#8fd0ff", "#3d7bff", "#ffe7a8"] : ["#8fd0ff", "#3d7bff", "#f2f7ff", "#c9d7ee", "#3ce0b0"];
+  const cx = W / 2, cy = H / 2, P = [], lite = document.documentElement.classList.contains("lite");
+  for (let i = 0, n = (big ? 200 : 140) / (lite ? 2.5 : 1); i < n; i++) {
+    const a = Math.random() * Math.PI * 2, sp = 3 + Math.random() * (big ? 12 : 9);
+    P.push({ x: cx, y: cy, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 3 - Math.random() * 3, r: Math.random() * 6, vr: (Math.random() - .5) * .4,
+             w: 5 + Math.random() * 6, h: 9 + Math.random() * 8, c: cols[i % cols.length], bub: Math.random() < .3 });
+  }
+  const t0 = performance.now();
+  (function step(t) {
+    if (run !== lwFxRun || $("lw-rev").hidden) { x.clearRect(0, 0, W, H); return; }
+    const k = (t - t0) / 1000; x.clearRect(0, 0, W, H); x.globalAlpha = Math.max(0, 1 - Math.max(0, k - 1.7) / 1.1);
+    for (const p of P) {
+      p.vx *= .982; p.vy = p.bub ? p.vy * .965 - .06 : p.vy * .985 + .24; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+      if (p.bub) { x.beginPath(); x.arc(p.x, p.y, p.w * .6, 0, 6.3); x.strokeStyle = p.c; x.lineWidth = 1.6; x.stroke(); }
+      else { const f = Math.abs(Math.cos(p.r * 1.7)); x.save(); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.w / 2, -p.h * f / 2, p.w, p.h * f + 1); x.restore(); }
+    }
+    x.globalAlpha = 1;
+    if (k < 2.8) requestAnimationFrame(step); else x.clearRect(0, 0, W, H);
+  })(t0);
+}
+function lwRevClose() {
+  const rv = $("lw-rev"); if (!rv) return;
+  rv.hidden = true; rv.classList.remove("show", "burst"); lwFxRun++; lwRevPend = false;
+  if (!lwBusy) $("lw-disc").classList.remove("mys");          // hết bất ngờ → hiện lại số, ô vừa trúng sáng lên
+}
+function lwAsk() {                 // quay thêm có tính phí: luôn hỏi lại, ghi rõ giá + số dư còn lại
+  const w = LW; if (!w || lwBusy || w.state !== "on") return;
+  const box = $("lw-ask"), price = +w.price || 0, bal = lwBal(), enough = bal >= price;
+  box.innerHTML = `<b>${esc(L("Quay thêm 1 lượt?", "One more spin?"))}</b><div class="hint">`
+    + esc(enough ? L(`Trừ ${vnd(price)} vào số dư · còn lại ${vnd(bal - price)}`, `${vnd(price)} from your balance · ${vnd(bal - price)} left`)
+                 : L(`Số dư ${vnd(bal)} chưa đủ ${vnd(price)} — nạp thêm để quay tiếp.`, `Your balance ${vnd(bal)} is below ${vnd(price)} — top up to keep spinning.`))
+    + (w.buy_left != null ? esc(L(` · hôm nay còn mua được ${w.buy_left} lượt`, ` · ${w.buy_left} extra spins left today`)) : "") + "</div>"
+    + `<div class="r"><button class="btn ghost" type="button" data-lwask="no">${esc(L("Huỷ", "Cancel"))}</button>`
+    + (enough ? `<button class="btn" type="button" data-lwask="yes">${esc(L(`Trả ${vnd(price)} & quay`, `Pay ${vnd(price)} & spin`))}</button>`
+              : `<button class="btn" type="button" data-lwask="top">💳 ${esc(L("Nạp thêm", "Top up"))}</button>`) + "</div>";
+  box.hidden = false;
+  try { box.scrollIntoView({ block: "nearest", behavior: "smooth" }); box.querySelector('[data-lwask="yes"],[data-lwask="top"]').focus({ preventScroll: true }); } catch (e) {}
+}
+function lwToTop() { show("lwheel", false); if ($("topup").hidden) openTopup(); try { $("tp-amt").focus(); } catch (e) {} }
+async function lwSpin(pay) {
+  const w = LW;
+  if (lwBusy || !w || w.state !== "on") return;
+  const left = +w.left || 0;
+  if (left <= 0 && !pay) { if (w.can_buy) lwAsk(); else lwBtns(); return; }
+  lwBusy = true; lwLast = null; $("lw-err").textContent = ""; $("lw-ask").hidden = true; lwRevClose();
+  const disc = $("lw-disc"), rim = $("lw-rim");
+  disc.querySelectorAll(".win").forEach(e => e.classList.remove("win"));
+  disc.classList.add("mys");                                       // ẨN hết số + màu ô khi quay
+  lwBtns();
+  let r = null;
+  try {
+    const { data, error } = await sb.rpc("wheel_spin", left > 0 ? {} : { p_pay: true, p_price: +w.price || 0 });
+    if (error) throw error; r = data; if (!r || !r.code) throw new Error("WHEEL_EMPTY");
+  } catch (e) { lwBusy = false; disc.classList.remove("mys"); $("lw-err").textContent = lwErr(e); await lwLoad(); lwRender(); return; }
+  if (+r.paid > 0 && profile) { profile.balance = +r.balance; try { $("bal").textContent = fmt(profile.balance); } catch (e) {} }
+  const pz = lwOrder(w.prizes), seg = 360 / (pz.length || 1);
+  let k = pz.findIndex(p => +p.pct === +r.pct); if (k < 0) k = pz.findIndex(p => +p.pct === +r.drawn); if (k < 0) k = 0;   // kim dừng đúng ô mã khách NHẬN
+  const reduce = lwReduce(), ms = reduce ? 1300 : 5700;
+  const want = (((-k * seg + (Math.random() - .5) * seg * .6) % 360) + 360) % 360, cur = ((lwRot % 360) + 360) % 360;
+  lwRot += 360 * (reduce ? 2 : 8) + ((want - cur + 360) % 360);
+  rim.classList.add("spin"); disc.style.transitionDuration = (ms - 100) + "ms"; disc.style.transform = `rotate(${lwRot}deg)`;
+  await new Promise(res => setTimeout(res, ms));
+  rim.classList.remove("spin");
+  lwBusy = false; lwLast = r; lwRevPend = true;
+  if (LW) { LW.left = Math.max(0, +r.left || 0); if (r.buy_left !== undefined) LW.buy_left = r.buy_left; if (+r.paid > 0) LW.balance = +r.balance;
+            if (LW.buy_left === 0) LW.can_buy = false; }
+  const el = disc.querySelector(`.real [data-pct="${+r.pct}"]`); if (el) el.classList.add("win");
+  lwBtns(); lwCard();
+  setTimeout(() => lwReveal(r), reduce ? 0 : 380);
+  await lwLoad();
+}
+$("lw-card") && $("lw-card").addEventListener("click", e => { if (e.target.closest("[data-lwopen]")) openLwheel(); });
+$("lw-go") && ($("lw-go").onclick = () => { const a = $("lw-go").dataset.act; if (a === "top") return lwToTop(); if (a === "buy") return lwAsk(); lwSpin(false); });
+$("lw-hub") && ($("lw-hub").onclick = () => { const w = LW; if (w && !(+w.left > 0) && w.can_buy) lwAsk(); else lwSpin(false); });
+$("lw-close") && ($("lw-close").onclick = () => show("lwheel", false));
+$("lwheel") && $("lwheel").addEventListener("click", e => {
+  const b = e.target.closest("[data-lwcopy]"); if (b) return lwCopy(b);
+  const q = e.target.closest("[data-lwask]"); if (!q) return;
+  $("lw-ask").hidden = true;
+  if (q.dataset.lwask === "yes") lwSpin(true); else if (q.dataset.lwask === "top") lwToTop();
+});
+$("lw-rev") && $("lw-rev").addEventListener("click", e => {
+  if (e.target === $("lw-rev")) { lwRevClose(); return; }                     // bấm ra ngoài → đóng (vòng quay hiện lại số)
+  const c = e.target.closest("[data-lwcopy]"); if (c) return lwCopy(c);
+  const b = e.target.closest("[data-lwrev]"); if (!b) return;
+  lwRevClose();
+  if (b.dataset.lwrev === "again") lwSpin(false);
+  else if (b.dataset.lwrev === "buy") lwAsk();
+  else { try { $("lw-go").focus({ preventScroll: true }); } catch (er) {} }
+});
+document.addEventListener("br-lang", () => { lwSig = ""; lwCard(); if ($("lwheel") && !$("lwheel").hidden) lwRender(); });
+
+/* ===== Admin › 🎁 Khuyến mãi › 🎡 Vòng quay ===== */
+var LWA = null;
+var LWA_SC = [["cp_new", "Thuê máy mới"], ["cp_renew", "Gia hạn máy"], ["cp_upgrade", "Nâng cấp máy"], ["vps_new", "Mua VPS"], ["vps_renew", "Gia hạn VPS"], ["product", "Mua hàng"]];
+function lwaLocal(iso) { if (!iso) return ""; const d = new Date(iso); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 16); }
+function lwaIso(v) { return v ? new Date(v).toISOString() : null; }
+async function lwaLoad() {
+  if (!isAdmin() || !$("lwa-f")) return;
+  $("lwa-msg").textContent = "Đang tải…";
+  const { data, error } = await sb.rpc("admin_wheel_get", { p_limit: 200 });
+  if (error) { $("lwa-msg").innerHTML = prmMissing(error) ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v34c.sql</b> trong Supabase — chạy xong bấm ↻ Làm mới." : esc(lwErr(error)); return; }
+  LWA = data; $("lwa-msg").textContent = ""; lwaFill();
+}
+function lwaRow(p) {
+  return `<tr><td><input type="number" min="1" max="90" step="1" inputmode="numeric" data-k="pct" value="${p.pct ?? ""}" aria-label="Giảm (%)"></td>`
+    + `<td><input type="number" min="0" max="100" step="any" inputmode="decimal" data-k="odds" value="${p.weight != null ? +(p.weight / 10000).toFixed(4) : ""}" aria-label="Tỷ lệ trúng (%)"></td>`
+    + `<td><input type="number" min="0" max="100000" step="1" inputmode="numeric" data-k="stock" value="${p.stock ?? ""}" placeholder="∞" aria-label="Số giải"></td>`
+    + `<td class="hint">${+p.won || 0}</td><td class="hint" data-k="one"></td><td><button class="btn ghost sm" type="button" data-lwadel="1" title="Bỏ giải này">✕</button></td></tr>`;
+}
+function lwaRows() {
+  return [...$("lwa-pz-tb").querySelectorAll("tr")].map(tr => {
+    const g = k => String((tr.querySelector(`[data-k="${k}"]`) || {}).value ?? "").trim();
+    return { pct: Math.round(+g("pct") || 0), weight: Math.round((+g("odds") || 0) * 10000), stock: g("stock") === "" ? null : Math.round(+g("stock")) };
+  });
+}
+function lwaSum() {
+  const rows = lwaRows(), tot = rows.reduce((a, r) => a + Math.max(0, r.weight), 0);
+  [...$("lwa-pz-tb").querySelectorAll("tr")].forEach((tr, i) => {
+    const r = rows[i], c = tr.querySelector('[data-k="one"]');
+    if (c) c.textContent = r.weight > 0 && tot > 0 ? lwOdds(r.weight * 100 / tot) + " · 1/" + Math.round(tot / r.weight).toLocaleString("vi-VN") + " lượt" : "—";
+  });
+  const by = f => rows.filter(f).reduce((a, r) => a + Math.max(0, r.weight), 0) * 100 / (tot || 1);
+  $("lwa-sum").innerHTML = !tot ? '<b style="color:var(--bad)">Tổng tỷ lệ đang bằng 0</b>'
+    : `Tổng bạn nhập: <b>${(tot / 10000).toLocaleString("vi-VN", { maximumFractionDigits: 4 })}%</b>${tot !== 1000000 ? " (không cần đúng 100% — máy chủ tự chia theo tỷ lệ, cột Thực tế là % thật)" : ""}`
+      + ` · dưới 20%: <b>${lwOdds(by(r => r.pct < 20))}</b> · từ 40% trở lên: <b>${lwOdds(by(r => r.pct >= 40))}</b>`
+      + (rows.some(r => r.stock === null) ? "" : ' · <b style="color:var(--bad)">cần ít nhất 1 giải không giới hạn</b>');
+}
+function lwaFill() {
+  const a = LWA || {}, c = a.cfg || {};
+  $("lwa-on").checked = !!c.active; $("lwa-start").value = lwaLocal(c.starts_at); $("lwa-end").value = lwaLocal(c.ends_at);
+  $("lwa-per").value = c.per_amount ?? 100000; $("lwa-sp").value = c.spins_per ?? 2; $("lwa-min").value = c.min_topup ?? 100000; $("lwa-days").value = c.code_days ?? 7;
+  $("lwa-price").value = c.spin_price ?? 15000; $("lwa-bmax").value = c.buy_day_max ?? 20; $("lwa-need").checked = c.buy_need_topup !== false; $("lwa-max").value = c.max_disc ?? "";
+  $("lwa-sc").innerHTML = LWA_SC.map(([k, n]) => `<label><input type="checkbox" value="${k}"${(c.scopes || []).includes(k) ? " checked" : ""}> ${n}</label>`).join("");
+  $("lwa-pz-tb").innerHTML = (a.prizes || []).map(lwaRow).join(""); lwaSum();
+  const s = a.stats || {}, st = { on: "🟢 Đang chạy", soon: "🕒 Chưa tới giờ", ended: "⏹ Đã kết thúc", off: "⚪ Đang tắt" }[a.state] || "—";
+  $("lwa-stats").innerHTML = [[st, `Trạng thái · mã đã dùng ${+s.used || 0}/${+s.spins || 0}`], [(+s.spins || 0).toLocaleString("vi-VN"), `Lượt đã quay · ${+s.users || 0} khách`],
+      [vnd(s.revenue || 0), `Tiền bán lượt · ${+s.paid || 0} lượt mua`], [vnd(s.discount || 0), "Tiền khách đã được giảm"]]
+    .map(([b, t]) => `<div><b>${esc(String(b))}</b><span>${esc(t)}</span></div>`).join("");
+  const sp = a.spins || [];
+  $("lwa-tb").innerHTML = sp.length ? sp.map(x => {
+    const exp = x.expires_at && new Date(x.expires_at) <= new Date();
+    const stt = x.used ? "✅ Đã dùng" : !x.active ? "Đã tắt" : exp ? "Hết hạn" : "Chưa dùng · hạn " + new Date(x.expires_at).toLocaleDateString("vi-VN");
+    const prize = +x.drawn === +x.pct ? `${+x.pct}%` : `${+x.drawn}% → <b>${+x.pct}%</b> <span class="hint">(hết giải)</span>`;
+    return `<tr><td>${new Date(x.at).toLocaleString("vi-VN")}</td><td>${esc(x.username || "?")}</td><td>${+x.pct >= 40 ? "🎉 " : ""}${prize}</td><td><code>${esc(x.code)}</code></td>`
+      + `<td>${+x.paid > 0 ? "💳 " + vnd(x.paid) : "Miễn phí"}</td><td>${esc(stt)}</td></tr>`;
+  }).join("") : '<tr><td colspan="6" class="hint">Chưa có lượt quay nào.</td></tr>';
+}
+async function lwaSave(reset) {
+  const cfg = { active: $("lwa-on").checked, starts_at: lwaIso($("lwa-start").value), ends_at: lwaIso($("lwa-end").value),
+    per_amount: Math.round(+$("lwa-per").value || 0), spins_per: Math.round(+$("lwa-sp").value || 0), min_topup: Math.round(+$("lwa-min").value || 0), code_days: Math.round(+$("lwa-days").value || 0),
+    spin_price: Math.round(+$("lwa-price").value || 0), buy_day_max: Math.round(+$("lwa-bmax").value || 0), buy_need_topup: $("lwa-need").checked,
+    max_disc: $("lwa-max").value.trim() === "" ? null : Math.round(+$("lwa-max").value), scopes: [...$("lwa-sc").querySelectorAll("input:checked")].map(i => i.value) };
+  const rows = lwaRows();
+  if (!cfg.starts_at) return toast("Chọn giờ bắt đầu.", 1);
+  if (!rows.length) return toast("Cần ít nhất 1 giải.", 1);
+  await busy($("lwa-save"), async () => {
+    const { data, error } = await sb.rpc("admin_wheel_save", { p_cfg: cfg, p_prizes: rows, p_reset: !!reset });
+    if (error) { const m = prmMissing(error) ? "Chưa chạy file SQL cloud-phones-v34c.sql." : lwErr(error); $("lwa-msg").textContent = "⚠ " + m; toast(m, 1); return; }
+    LWA = data; lwaFill(); LW = null; lwSig = "";
+    $("lwa-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); toast(reset ? "Đã lưu và làm mới kho giải." : "Đã lưu vòng quay.");
+  });
+}
+$("lwa-f") && ($("lwa-f").onsubmit = e => { e.preventDefault(); lwaSave(false); });
+$("lwa-reset") && ($("lwa-reset").onclick = () => { if (confirm("Làm mới kho giải: đặt \"Đã trúng\" của mọi giải về 0 để mở đợt mới (cài đặt đang nhập cũng được lưu luôn).\nMã khách đã trúng vẫn giữ nguyên. Tiếp tục?")) lwaSave(true); });
+$("lwa-add") && ($("lwa-add").onclick = () => { if ($("lwa-pz-tb").children.length >= 12) return toast("Tối đa 12 giải.", 1); $("lwa-pz-tb").insertAdjacentHTML("beforeend", lwaRow({ weight: null, stock: null, won: 0 })); lwaSum(); });
+$("lwa-pz-tb") && ($("lwa-pz-tb").oninput = lwaSum);
+$("lwa-pz-tb") && ($("lwa-pz-tb").onclick = e => { const b = e.target.closest("[data-lwadel]"); if (b) { b.closest("tr").remove(); lwaSum(); } });
+$("lwa-reload") && ($("lwa-reload").onclick = () => lwaLoad());
+$("lwa-give") && ($("lwa-give").onclick = () => busy($("lwa-give"), async () => {
+  const who = $("lwa-who").value.trim(), n = Math.round(+$("lwa-n").value || 0), note = $("lwa-note").value.trim();
+  if (!who || !n) return toast("Nhập tên đăng nhập / email và số lượt (âm = trừ).", 1);
+  const { data, error } = await sb.rpc("admin_wheel_give", { p_who: who, p_n: n, p_note: note || null });
+  if (error) return toast(/NO_USER/.test(error.message || "") ? "Không tìm thấy tài khoản này." : lwErr(error), 1);
+  toast(`${n > 0 ? "Đã tặng" : "Đã trừ"} ${Math.abs(n)} lượt cho ${data.username} — khách còn ${data.left} lượt.`);
+  $("lwa-n").value = ""; $("lwa-note").value = ""; lwaLoad();
+}));
 $("cr-back").onclick = () => { clearInterval(pollT); setTopMethod("usdt"); };
 $("tp-back").onclick = () => { clearInterval(pollT); show("tp-step1"); show("tp-step2", false); };
 $("tp-close").onclick = () => { clearInterval(pollT); show("topup", false); };
@@ -5139,6 +5755,7 @@ $("bf").onsubmit = e => { e.preventDefault(); const acc = $("bf-acc").value.repl
 function setTab(t) { document.querySelectorAll("#adm-tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t)); ["stats", "prod", "cust", "tx", "ord", "vps", "biz", "cloud", "promo", "bank", "site"].forEach(x => show("pane-" + x, x === t)); if (t === "vps") renderVps(); if (t === "stats") loadStats(); if (t === "biz") loadBiz(); if (t === "cloud") loadCloudAdm(); if (t === "promo") { loadPromoAdm(); rfFill(); loadRefAdm(); try { loadBlueAdm(); } catch (e) {} } }
 /* ===== Admin: mục con trong thẻ 📱 ĐT đám mây · 🎁 Khuyến mãi · ⚙️ Cài đặt (nhớ mục đang mở) — khối HTML giữ nguyên id, chỉ đổi chỗ ===== */
 const SUB_HOOK = { "cloud:sales": () => loadCpSales(), "cloud:tools": () => swcLoad() };
+SUB_HOOK["promo:wheel"] = () => lwaLoad();
 function subShow(pane, sub) {
   const box = $("pane-" + pane), bar = box && box.querySelector(":scope > .subtabs"); if (!bar) return;
   const btns = [...bar.querySelectorAll("button[data-sub]")];

@@ -2096,16 +2096,17 @@ class TopupDlg(Dlg):
         super().__init__(app, "Nạp tiền", 600, 640)
         self.need = need; self.top = None
         self.loading()
-        self.bg(lambda: (app.shop.site(), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+        self.bg(lambda: (app.shop.site(), app.shop.profile(), wheel_fresh(app.auth)), self._loaded, lambda m: self.loading(m))   # 🎡 + trạng thái vòng quay
 
     def _loaded(self, r):
-        tk = self.app.tk; self.site, self.prof = r; self.clear()
+        tk = self.app.tk; self.site, self.prof = r[0], r[1]; self.clear()
         self.min = max(1000, int(num(self.site.get("minTop")) or 10000))
         amt = max(self.min, int(-(-self.need // 1000) * 1000)) if self.need > 0 else max(self.min, 50000)
         self.amt = amt
         self.label(self.body, "Nạp tiền vào tài khoản", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
         self.label(self.body, "Số dư hiện tại: " + vnd(self.prof.get("balance")) + (f"   ·   Cần thêm {vnd(self.need)}" if self.need > 0 else ""),
                    self.app.f_t, DIM).pack(fill="x", padx=18)
+        self.whb = tk.Frame(self.body, bg=BG); self.whb.pack(fill="x", padx=18); wheel_banner(self, self.whb)   # 🎡 vòng quay may mắn
         f = self.section("Số tiền nạp", f"tối thiểu {vnd(self.min)}")
         items = sorted(set([a for a in TOP_AMTS if a >= self.min] + ([amt] if self.need > 0 else [])))
         self.ch = Chips(self.app, f, [(a, vnd(a)) for a in items], lambda: self.amt, lambda v: (setattr(self, "amt", v), self.x.delete(0, "end")), self.upd, wrap=3)
@@ -2118,6 +2119,7 @@ class TopupDlg(Dlg):
             v = int(re.sub(r"\D", "", self.x.get()) or 0)
             if v: self.amt = v; self.upd()
         self.x.bind("<KeyRelease>", typed)
+        self.wh = self.label(f, "", self.app.f_s, W_SKY, wraplength=540)      # 🎡 "Lệnh nạp này được +N lượt quay" (wheel_hint tự hiện / ẩn)
         self.label(self.body, "Chuyển khoản ngân hàng: quét mã QR bằng app ngân hàng bất kỳ, tiền tự cộng vào số dư sau khoảng 1 phút.",
                    self.app.f_s, DIM, wraplength=540).pack(fill="x", padx=18, pady=(14, 4))
         lk = self.label(self.body, "Nạp bằng USDT / LTC trên web ↗", self.app.f_s, ACC, cursor="hand2"); lk.pack(fill="x", padx=18)
@@ -2132,7 +2134,7 @@ class TopupDlg(Dlg):
         self.upd()
 
     def upd(self):
-        self.ch.paint()
+        self.ch.paint(); wheel_hint(self)
         if self.top is None and hasattr(self, "go") and str(self.site.get("bankAcc") or "").strip():
             ok = self.amt >= self.min
             self.err.config(text="" if ok else "Số tiền tối thiểu là " + vnd(self.min) + ".")
@@ -2205,7 +2207,683 @@ class TopupDlg(Dlg):
         if not self.alive: return
         self.state.config(text=f"✓ Đã nhận {vnd(amt)} — số dư đã được cộng.", fg=OK)
         self.done_btn.config(text="Xong", bg=ACC)
+        wheel_after_top(self, amt)                     # 🎡 lệnh nạp được lượt quay → nút Quay ngay
         self.app.refresh()
+
+
+# ================= 🎡 VÒNG QUAY MAY MẮN (SQL v34c) — giống web / app Android: nạp 100.000đ = 2 lượt, hết lượt quay thêm 15.000đ/lượt =================
+# Máy chủ rút số (wheel_spin) → app chỉ quay hình tới ĐÚNG ô mã khách nhận. Lúc chưa quay: hiện số. Đang quay: ẩn hết số + màu ô (dấu ?)
+# → kim dừng → cửa sổ mở quà: hộp quà rơi · rung · NỔ (nắp bay, chớp sáng, tia sáng, pháo giấy + bong bóng) → thẻ mã. Khách KHÔNG thấy tỷ lệ.
+# Quay thêm có tính phí: luôn hỏi lại (giá + số dư còn lại) — máy chủ trừ tiền và quay trong CÙNG 1 lệnh.
+# Máy chủ chưa chạy SQL v34c / admin tắt → wheel_status lỗi hoặc state off → ẩn hết, app như cũ.
+import math
+
+WHEEL = {"st": None, "t": 0.0, "dlg": None}
+W_INK, W_PEARL, W_PEARL2, W_SUB, W_SKY = "#0b1433", "#f2f7ff", "#c9d7ee", "#b9c8ea", "#8fd0ff"
+W_DEEP, W_CARD, W_FOOT, W_EDGE, W_TILE = "#0d1640", "#132160", "#0a1132", "#2a3a78", "#14205a"
+W_REV = "#060b1d"
+
+ERRORS.update({                                                  # 🎡 vòng quay may mắn (SQL v34c)
+    "PROMO_NOT_YOURS": "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.",
+    "WHEEL_NO_SPIN": "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.", "WHEEL_NOT_STARTED": "Vòng quay chưa bắt đầu.",
+    "WHEEL_ENDED": "Chương trình vòng quay đã kết thúc.", "WHEEL_OFF": "Vòng quay đang tạm tắt.", "WHEEL_EMPTY": "Vòng quay đã hết giải.",
+    "WHEEL_NO_BUY": "Hiện không bán thêm lượt quay.", "WHEEL_PRICE_CHANGED": "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.",
+    "WHEEL_NEED_TOPUP": "Nạp từ 100.000đ trong chương trình để được quay thêm.",
+    "WHEEL_BUY_LIMIT": "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.",
+})
+
+
+def wheel_load(auth):
+    """Đọc wheel_status (gọi ở luồng nền). Chưa chạy SQL v34c → None (ẩn mọi thứ); mất mạng / máy chủ lỗi tạm → giữ bản cũ."""
+    try: s = auth.rpc("wheel_status")
+    except ApiError as e:
+        if e.code == 401: raise
+        if e.code == 0 or e.code >= 500: WHEEL["t"] = time.time(); return WHEEL["st"]
+        s = None
+    except Exception: s = None
+    WHEEL["st"] = s if isinstance(s, dict) and s.get("state") else None; WHEEL["t"] = time.time()
+    return WHEEL["st"]
+
+def wheel_fresh(auth, age=30.0):
+    if time.time() - WHEEL["t"] > age: wheel_load(auth)
+    return WHEEL["st"]
+
+def wheel_live(s=None):
+    s = WHEEL["st"] if s is None else s
+    return bool(s and s.get("state") in ("on", "soon") and (s.get("prizes") or []))
+
+def wheel_per(s=None): return max(1, int(num((s or WHEEL["st"] or {}).get("spins_per")) or 1))
+
+def wheel_first(s=None):
+    """(nạp bao nhiêu, được mấy lượt) cho câu 'Nạp 100.000đ = 2 lượt'."""
+    s = s or WHEEL["st"] or {}
+    per = max(1, int(num(s.get("per")) or 100000)); a = max(int(num(s.get("min"))), per)
+    return a, (a // per) * wheel_per(s)
+
+def wheel_spins_for(amount, s=None):
+    s = s or WHEEL["st"]
+    if not s or num(amount) < num(s.get("min")): return 0
+    return int(num(amount) // max(1, int(num(s.get("per")) or 100000))) * wheel_per(s)
+
+def wheel_top(s=None):
+    pz = (s or WHEEL["st"] or {}).get("prizes") or []
+    av = [p for p in pz if p.get("left") is None or num(p.get("left")) > 0]
+    return max([int(num(p.get("pct"))) for p in (av or pz)] or [0])
+
+def wheel_when(iso):
+    d = parse_iso(iso)
+    return d.astimezone().strftime("%H:%M %d/%m") if d else ""
+
+def wheel_order(pz):
+    """Xen kẽ giải nhỏ / giải lớn: 5 · 40 · 10 · 50 · 15 · 60 · 20 · 80 · 25 (giống web + app Android)."""
+    a = sorted(pz or [], key=lambda p: num(p.get("pct"))); lo = [p for p in a if num(p.get("pct")) < 40]; hi = [p for p in a if num(p.get("pct")) >= 40]; out = []
+    while lo or hi:
+        if lo: out.append(lo.pop(0))
+        if hi: out.append(hi.pop(0))
+    return out
+
+def wheel_mix(c1, c2, t):
+    """Pha 2 màu #rrggbb (Tk không có độ trong suốt)."""
+    t = max(0.0, min(1.0, t)); a = [int(c1[i:i + 2], 16) for i in (1, 3, 5)]; b = [int(c2[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#%02x%02x%02x" % tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))
+
+def wheel_ease(t, x1=.12, y1=.67, x2=.06, y2=1.0):
+    """cubic-bezier(.12,.67,.06,1) — đúng đường chậm dần của web / app Android."""
+    if t <= 0: return 0.0
+    if t >= 1: return 1.0
+    lo, hi = 0.0, 1.0
+    for _ in range(32):
+        u = (lo + hi) / 2
+        if 3 * (1 - u) ** 2 * u * x1 + 3 * (1 - u) * u * u * x2 + u ** 3 < t: lo = u
+        else: hi = u
+    u = (lo + hi) / 2
+    return 3 * (1 - u) ** 2 * u * y1 + 3 * (1 - u) * u * u * y2 + u ** 3
+
+def wheel_scale(app):
+    """Màn hình phóng to 125–150%: chữ Tk tự to theo, hình vẽ trên Canvas phải nhân theo cho cân."""
+    try: return max(1.0, min(2.0, float(app.root.tk.call("tk", "scaling")) / (96 / 72)))
+    except Exception: return 1.0
+
+def wheel_open(app, parent=None):
+    """Mở hộp vòng quay (đang mở rồi thì đưa lên trước, không mở 2 hộp)."""
+    d = WHEEL.get("dlg")
+    if d is not None and d.alive:
+        try: d.win.deiconify(); d.win.lift(); d.win.focus_force()
+        except Exception: pass
+        return d
+    WHEEL["dlg"] = d = WheelDlg(app, parent)
+    return d
+
+def wheel_icon(cv, m):
+    """Vòng quay nhỏ trên thẻ (giống icon web)."""
+    k = m / 48.0; c = 24 * k; r = 19 * k
+    for i in range(8):
+        col = W_PEARL if i % 4 == 1 else "#3d7bff" if i % 2 else "#1b2a63"
+        cv.create_arc(c - r, c - r, c + r, c + r, start=90 - (i + .5) * 45, extent=45, fill=col, outline="#9eacc8", width=1)
+    cv.create_oval(c - 21 * k, c - 21 * k, c + 21 * k, c + 21 * k, outline="#dfe6f2", width=max(2, round(3 * k)))
+    cv.create_oval(c - 5.5 * k, c - 5.5 * k, c + 5.5 * k, c + 5.5 * k, fill="#2a5fe0", outline="#e9eef8", width=max(1, round(1.6 * k)))
+    cv.create_polygon(c, 9 * k, c - 4 * k, 1.5 * k, c + 4 * k, 1.5 * k, fill="#eef3fb", outline=W_INK)
+
+def wheel_banner(owner, holder):
+    """Thẻ 🎡 ngay trong hộp Nạp tiền + màn danh sách máy (ẩn khi chưa chạy SQL / admin tắt / đã kết thúc)."""
+    app = getattr(owner, "app", owner); tk = app.tk; sc = wheel_scale(app)
+    try:
+        for w in holder.winfo_children(): w.destroy()
+    except Exception: return
+    s = WHEEL["st"]
+    if not wheel_live(s): return
+    a, n = wheel_first(s); left = int(num(s.get("left"))); soon = s.get("state") == "soon"; hot = not soon and left > 0
+    sub = (f"Bắt đầu {wheel_when(s.get('starts_at'))} · nạp {vnd(a)} = {n} lượt quay" if soon
+           else f"Bạn đang có {left} lượt quay — lượt nào cũng trúng 1 mã giảm giá" if hot
+           else f"Nạp {vnd(a)} = {n} lượt quay" + (f" · hết lượt quay thêm {vnd(s.get('price'))}/lượt" if num(s.get("price")) > 0 else ""))
+    f = tk.Frame(holder, bg=W_CARD, highlightbackground="#5a6c9c", highlightthickness=1); f.pack(fill="x", pady=(8, 0))
+    b = app.btn(f, f"🎡 Quay ngay · {left}" if hot else "Xem giải" if soon else "🎡 Mở vòng quay",
+                lambda: wheel_open(app, owner if isinstance(owner, Dlg) else None), "primary" if hot else "soft")
+    if not hot: b.config(bg="#24357a", activebackground="#33489a")
+    b.pack(side="right", padx=10, pady=8)
+    m = int(44 * sc); ic = tk.Canvas(f, width=m, height=m, bg=W_CARD, highlightthickness=0); ic.pack(side="left", padx=(10, 0), pady=8)
+    wheel_icon(ic, m)
+    ic.bind("<Button-1>", lambda e: wheel_open(app, owner if isinstance(owner, Dlg) else None)); ic.configure(cursor="hand2")
+    tx = tk.Frame(f, bg=W_CARD); tx.pack(side="left", fill="x", expand=True, padx=10, pady=8)
+    tk.Label(tx, text=f"Vòng quay may mắn · mã giảm đến {wheel_top(s)}%", font=("Segoe UI", 10, "bold"), fg=W_PEARL, bg=W_CARD, anchor="w").pack(fill="x")
+    tk.Label(tx, text=sub, font=("Segoe UI", 9), fg=W_SUB, bg=W_CARD, anchor="w", justify="left", wraplength=int(300 * sc)).pack(fill="x")
+
+def wheel_hint(dlg):
+    """Dòng '🎡 Lệnh nạp này được +N lượt quay' dưới ô số tiền (hộp Nạp tiền)."""
+    l = getattr(dlg, "wh", None)
+    try:
+        if l is None or not l.winfo_exists(): return
+    except Exception: return
+    s = WHEEL["st"]; t = ""
+    if wheel_live(s):
+        n = wheel_spins_for(getattr(dlg, "amt", 0), s); a, fn = wheel_first(s)
+        t = (f"🎡 Vòng quay bắt đầu {wheel_when(s.get('starts_at'))} — lệnh nạp từ lúc đó mới được tính lượt quay." if s.get("state") == "soon"
+             else f"🎡 Lệnh nạp này được +{n} lượt quay may mắn" if n > 0 else f"🎡 Nạp từ {vnd(a)} để được {fn} lượt quay may mắn")
+    l.config(text=t)
+    if t and not l.winfo_manager(): l.pack(fill="x", pady=(6, 0))
+    elif not t and l.winfo_manager(): l.pack_forget()
+
+def wheel_after_top(dlg, amt):
+    """Nạp xong (hộp Nạp tiền): lệnh nạp được lượt quay → báo +N lượt + nút 🎡 Quay ngay. Lần làm mới sau đọc lại số lượt từ máy chủ."""
+    s = WHEEL["st"]; WHEEL["t"] = 0.0
+    n = wheel_spins_for(amt, s) if s and s.get("state") == "on" else 0
+    if n <= 0 or not dlg.alive: return
+    try:
+        dlg.state.config(text=f"✓ Đã nhận {vnd(amt)} — số dư đã được cộng.   🎡 +{n} lượt quay may mắn!", fg=OK)
+        app = dlg.app
+        dlg.app.btn(dlg.done_btn.master, f"🎡 Quay ngay · +{n} lượt", lambda: (dlg.close(), wheel_open(app))).pack(side="right", padx=(0, 8))
+    except Exception: log("wheel:", traceback.format_exc())
+
+
+class WheelDlg(Dlg):
+    """🎡 Hộp vòng quay: vẽ trên Canvas, quay tới đúng ô máy chủ báo, ẩn số khi quay, mở quà, quay thêm có hỏi lại, hướng dẫn, mã của tôi, thể lệ."""
+    LO = ("#22337f", "#16236a"); LO_IN = ("#121c4f", "#0d1540"); MID, MID_IN = "#4a86ff", "#1f4bc4"; HI, HI_IN = "#f4f7fc", "#c2cfe8"
+    GONE, GONE_IN = "#2c3352", "#1a1f36"; MYS = ("#1d2c74", "#283d9c"); MYS_IN = ("#0e1648", "#142060")
+
+    def __init__(self, app, parent=None):
+        self.sc = sc = wheel_scale(app)
+        super().__init__(app, "🎡 Vòng quay may mắn", int(560 * sc), int(840 * sc))
+        self.parent = parent; self.S = int(360 * sc)
+        self.st = WHEEL["st"]; self.rot = 0.0; self.mys = False; self.busy = False; self.win_i = -1; self.pz = []; self.paid_any = False
+        self.act = "spin"; self.rules_open = False; self.cv = None; self.t_bulb = 0; self.hub_on = False; self.bulb_ids = []; self.geo = None
+        self.win.configure(bg=W_DEEP); self.body.configure(bg=W_DEEP)                       # nền xanh sapphire sâu (giống web)
+        scv = app.scrollers.get(str(self.win))
+        if scv is not None: scv.configure(bg=W_DEEP); scv.master.configure(bg=W_DEEP)
+        self.foot.configure(bg=W_FOOT, highlightbackground=W_EDGE)
+        self.loading("Đang tải vòng quay…")
+        self.bg(lambda: wheel_load(app.auth), self._loaded, lambda m: self.loading(m))
+
+    def px(self, v): return int(v * self.sc)
+
+    def close(self):
+        if not self.alive: return
+        paid, par = self.paid_any, self.parent
+        super().close()
+        if WHEEL.get("dlg") is self: WHEEL["dlg"] = None
+        try: self.app._paint_wheel()
+        except Exception: pass
+        if par is not None and getattr(par, "alive", False):                               # mở từ hộp Nạp tiền → trả lại hộp đó
+            try:
+                if getattr(par, "whb", None) is not None: wheel_banner(par, par.whb)
+                wheel_hint(par); par._grab()
+            except Exception: pass
+        if paid:
+            try: self.app.refresh(quiet=True)
+            except Exception: pass
+
+    def _grab(self):
+        if self.alive: super()._grab()
+
+    def _loaded(self, s):
+        self.st = s
+        if not s:
+            self.clear(); self.label(self.body, "Vòng quay chưa mở — quay lại sau nhé.", self.app.f_t, W_SUB).pack(padx=18, pady=30)
+            self.app.btn(self.foot, "Đóng", self.close, "soft").pack(side="right", padx=16, pady=10); return
+        self.build()
+
+    # ---------------------------------------------------------------- bố cục
+    def build(self):
+        tk = self.app.tk; self.clear()
+        hd = tk.Frame(self.body, bg=W_DEEP); hd.pack(fill="x", padx=18, pady=(16, 0))
+        tk.Label(hd, text="Vòng quay may mắn", font=("Segoe UI", 17, "bold"), fg=W_PEARL, bg=W_DEEP).pack(side="left")
+        tk.Label(hd, text=" VIP ", font=("Segoe UI", 8, "bold"), fg=W_INK, bg=W_PEARL2).pack(side="left", padx=8, pady=(4, 0))
+        self.left_l = tk.Label(hd, text="", font=("Segoe UI", 10, "bold"), bg=W_DEEP, padx=12, pady=3); self.left_l.pack(side="right")
+        self.sub_l = self.label(self.body, "", self.app.f_s, W_SUB, wraplength=self.px(500)); self.sub_l.pack(fill="x", padx=18, pady=(4, 0))
+        self.cv = tk.Canvas(self.body, width=self.S, height=int(self.S * 1.07), bg=W_DEEP, highlightthickness=0); self.cv.pack(pady=(6, 0))
+        self.cv.tag_bind("hub", "<Button-1>", lambda e: self.hub())
+        self.cv.tag_bind("hub", "<Enter>", lambda e: self.cv.configure(cursor="hand2" if self.hub_on and not self.busy else ""))
+        self.cv.tag_bind("hub", "<Leave>", lambda e: self.cv.configure(cursor=""))
+        self.err_l = self.label(self.body, "", self.app.f_s, BAD, wraplength=self.px(500)); self.err_l.pack(fill="x", padx=18)
+        self.guide_f = tk.Frame(self.body, bg=W_DEEP); self.guide_f.pack(fill="x", padx=18, pady=(8, 0))
+        self.mine_f = tk.Frame(self.body, bg=W_DEEP); self.mine_f.pack(fill="x", padx=18, pady=(12, 0))
+        self.rules_b = self.label(self.body, "📜 Thể lệ  ▸", ("Segoe UI", 10, "bold"), W_PEARL, cursor="hand2"); self.rules_b.pack(fill="x", padx=18, pady=(12, 14))
+        self.rules_b.bind("<Button-1>", lambda e: self.toggle_rules())
+        self.rules_f = tk.Frame(self.body, bg=W_DEEP)
+        bb = tk.Frame(self.foot, bg=W_FOOT); bb.pack(fill="x", padx=16, pady=10)
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, "Quay", self.main, padx=18, pady=10); self.go.config(font=("Segoe UI", 11, "bold"))
+        self.go.pack(side="right", fill="x", expand=True, padx=(10, 0))
+        self.render(); self._bulbs()
+
+    def render(self):
+        s = self.st or {}; left = int(num(s.get("left"))); st = s.get("state", "off"); a, n = wheel_first(s); has = st == "on" and left > 0
+        self.left_l.config(text=f"{left} lượt", fg=W_INK if has else "#cfe0ff", bg=W_PEARL if has else "#16205a")
+        self.sub_l.config(text=(f"Bắt đầu {wheel_when(s.get('starts_at'))}. Nạp {vnd(a)} = {n} lượt quay." if st == "soon"
+                                else f"Nạp {vnd(a)} = {n} lượt · lượt nào cũng trúng mã giảm giá · số dư {vnd(self.balance())}" if st == "on"
+                                else "Chương trình đã kết thúc. Mã đã trúng vẫn dùng được đến hết hạn." if st == "ended"
+                                else "Vòng quay đang tạm tắt. Mã đã trúng vẫn dùng được đến hết hạn."))
+        if not self.busy: self.pz = wheel_order(s.get("prizes"))
+        self.buttons(); self.draw(); self.fill_guide(); self.fill_mine(); self.fill_rules()
+
+    def balance(self):
+        s = self.st or {}
+        if s.get("balance") is not None: return num(s.get("balance"))
+        return num((getattr(self.app, "prof", None) or {}).get("balance"))
+
+    def buttons(self):
+        s = self.st or {}; left = int(num(s.get("left"))); st = s.get("state", "off"); a, n = wheel_first(s); dis = False; self.act = "spin"; kind = "primary"
+        if self.busy: txt, dis = "Đang quay…", True
+        elif st == "off": txt, dis = "Vòng quay đang tạm tắt", True
+        elif st == "ended": txt, dis = "Chương trình đã kết thúc", True
+        elif st == "soon": txt, dis = f"Bắt đầu lúc {wheel_when(s.get('starts_at'))}", True
+        elif left > 0: txt = f"🎡 Quay ngay · còn {left} lượt"
+        elif s.get("can_buy"): txt, self.act, kind = f"➕ Quay thêm · {vnd(s.get('price'))}/lượt", "buy", "pearl"
+        elif num(s.get("price")) > 0 and s.get("qualified") and s.get("buy_left") == 0: txt, self.act, kind = "Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "top", "soft"
+        else: txt, self.act, kind = f"💳 Nạp {vnd(a)} để nhận {n} lượt quay", "top", "soft"
+        bg = {"primary": ACC, "pearl": W_PEARL2, "soft": "#24357a"}[kind]
+        try:
+            self.go.config(text=txt, state="disabled" if dis else "normal", bg="#1c2550" if dis else bg, fg=W_INK if kind == "pearl" else TXT,
+                           activebackground="#ffffff" if kind == "pearl" else "#4b8cff", activeforeground=W_INK if kind == "pearl" else TXT,
+                           disabledforeground="#8f9bbd")
+        except Exception: pass
+        self.hub_on = not self.busy and st == "on" and (left > 0 or bool(s.get("can_buy")))
+
+    def main(self):
+        if self.act == "top": self.to_topup(); return
+        if self.act == "buy": self.ask(); return
+        self.spin(False)
+
+    def to_topup(self, need=0):
+        par = self.parent
+        self.close()
+        if par is not None and getattr(par, "alive", False) and isinstance(par, TopupDlg): return    # đang ở hộp Nạp tiền rồi
+        self.app.open_topup(need)
+
+    def hub(self):
+        s = self.st or {}
+        if self.busy or not self.hub_on: return
+        if int(num(s.get("left"))) > 0: self.spin(False)
+        elif s.get("can_buy"): self.ask()
+
+    def ask(self):
+        """Quay thêm có tính phí: LUÔN hỏi lại, ghi rõ giá + số dư còn lại. Thiếu tiền → mời nạp thêm."""
+        import tkinter.messagebox as mb
+        s = self.st or {}; price = int(num(s.get("price"))); bal = self.balance()
+        if self.busy or price <= 0 or not self.alive: return
+        if bal < price:
+            if mb.askyesno("Số dư chưa đủ", f"Quay thêm 1 lượt giá {vnd(price)} — số dư của bạn còn {vnd(bal)}.\n\nNạp thêm để quay tiếp?", parent=self.win):
+                self.to_topup(price - bal)
+            return
+        more = "" if s.get("buy_left") is None else f"\nHôm nay còn mua được {int(num(s.get('buy_left')))} lượt."
+        if mb.askyesno("Quay thêm 1 lượt?", f"Trừ {vnd(price)} vào số dư · còn lại {vnd(bal - price)}.{more}\n\nTrả {vnd(price)} và quay?", parent=self.win):
+            self.spin(True)
+
+    # ---------------------------------------------------------------- quay
+    def spin(self, pay=False):
+        s = self.st
+        if self.busy or not s or s.get("state") != "on" or not self.alive: return
+        left = int(num(s.get("left")))
+        if left <= 0 and not pay:
+            if s.get("can_buy"): self.ask()
+            return
+        self.busy = True; self.mys = True; self.win_i = -1; self.err_l.config(text="", fg=BAD); self.buttons(); self.draw()   # ẨN hết số + màu ô
+        args = {} if left > 0 else {"p_pay": True, "p_price": int(num(s.get("price")))}       # còn lượt miễn phí → máy chủ dùng lượt đó, không trừ tiền
+        self.bg(lambda: self.app.auth.rpc("wheel_spin", args), self._spun, self._fail)
+
+    def _fail(self, m):
+        self.busy = False; self.mys = False; self.err_l.config(text=m, fg=BAD); self.buttons(); self.draw()
+        self.bg(lambda: wheel_load(self.app.auth), lambda s: self._reloaded(s))                 # giá đổi / hết lượt… → đọc lại
+
+    def _reloaded(self, s):
+        if s: self.st = s
+        if not self.busy: self.render()
+
+    def _spun(self, r):
+        if not isinstance(r, dict) or not r.get("code"): return self._fail("Vòng quay đã hết giải.")
+        if num(r.get("paid")) > 0:
+            self.paid_any = True
+            p = getattr(self.app, "prof", None)
+            if isinstance(p, dict): p["balance"] = r.get("balance")
+            try:
+                if getattr(self.app, "bal", None) is not None and self.app.bal.winfo_exists():
+                    self.app.bal.config(text=vnd(r.get("balance")) + (f"  · CTV −{int(num(p.get('ctv_discount')))}%" if isinstance(p, dict) and is_ctv(p) else ""))
+            except Exception: pass
+        k = next((i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("pct"))), None)              # kim dừng đúng ô mã khách NHẬN
+        if k is None: k = next((i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("drawn"))), 0)
+        seg = 360.0 / max(1, len(self.pz)); want = (-k * seg + (secrets.randbelow(1000) / 1000 - .5) * seg * .6) % 360; cur = self.rot % 360
+        self.r0, self.r1, self.t0, self.dur, self.res, self.k = self.rot, self.rot + 360 * 8 + ((want - cur) % 360), time.time(), 5.6, r, k
+        self._frame()
+
+    def _frame(self):
+        if not self.alive: return
+        t = min(1.0, (time.time() - self.t0) / self.dur)
+        self.rot = self.r0 + (self.r1 - self.r0) * wheel_ease(t); self.draw_disc()
+        if t < 1: self.win.after(15, self._frame); return
+        self.rot = self.r1; self.busy = False; self.win_i = self.k; r = self.res; s = self.st
+        if s is not None:
+            s["left"] = r.get("left", 0)
+            if "buy_left" in r: s["buy_left"] = r.get("buy_left")
+            if r.get("balance") is not None: s["balance"] = r.get("balance")
+            if s.get("buy_left") == 0: s["can_buy"] = False
+            self.render()
+        self.win.after(380, lambda: self.alive and RevealWin(self, r))
+        self.bg(lambda: wheel_load(self.app.auth), lambda s2: self._reloaded(s2))
+
+    def after_reveal(self, what):
+        if not self.alive: return
+        self.mys = False; self._grab(); self.draw()                      # hết bất ngờ → hiện lại số, ô vừa trúng sáng viền
+        if what == "again": self.spin(False)
+        elif what == "buy": self.ask()
+
+    # ---------------------------------------------------------------- vẽ (nền + đĩa quay + viền/đèn/kim/núm)
+    def draw(self):
+        cv = self.cv
+        if cv is None or not cv.winfo_exists(): return
+        cv.delete("all"); k = self.S / 200.0; cx, cy, R = 100 * k, 108 * k, 85 * k; self.geo = (k, cx, cy, R)
+        for x, y, r in ((12, 9, 1), (186, 14, 1), (172, 46, 1.4), (20, 60, 1), (190, 92, 1), (8, 150, 1.2), (192, 168, 1), (28, 196, 1)):
+            cv.create_oval(x * k - r, y * k - r, x * k + r, y * k + r, fill="#cfe0ff", outline="")              # sao lấp lánh
+        for i in range(8, 0, -1):                                                                          # quầng sáng sân khấu
+            rr = R + 20 * k * i / 8; cv.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, fill=wheel_mix(W_DEEP, "#1d3a8c", (8 - i) / 8 * .85), outline="")
+        cv.create_oval(cx - 70 * k, cy + 92 * k, cx + 70 * k, cy + 104 * k, fill="#091033", outline="")         # bóng đổ dưới chân
+        self.draw_disc(); O = ("over",)
+        for i, col in enumerate(("#0b1233", "#8e9cb6", "#c8d2e3", "#f4f7fc", "#e3e9f4", "#b8c4d9", "#dfe6f2", "#9eabc4", "#0b1233")):   # viền bạch kim
+            rr = R + (i * 1.5 + .5) * k; cv.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, outline=col, width=max(1, round(1.6 * k)), tags=O)
+        self.bulb_ids = []
+        for i in range(24):                                                                                # 24 bóng đèn: quầng vàng + lõi trắng
+            a = math.radians(i * 15); x, y = cx + 91.5 * k * math.sin(a), cy - 91.5 * k * math.cos(a); r1, r2 = 3.4 * k, 2.1 * k
+            self.bulb_ids.append((cv.create_oval(x - r1, y - r1, x + r1, y + r1, fill="#ffe6a0", outline="", tags=O),
+                                  cv.create_oval(x - r2, y - r2, x + r2, y + r2, fill="#fffdf4", outline="#f0c35a", tags=O)))
+        cv.create_polygon(cx, 31 * k, cx - 8 * k, 11 * k, cx + 8 * k, 11 * k, fill="#dfe6f2", outline=W_INK, width=1, tags=O)   # kim bạch kim + đá sapphire
+        cv.create_line(cx, 29 * k, cx - 5.5 * k, 13 * k, fill="#ffffff", tags=O)
+        cv.create_oval(cx - 7.5 * k, 1 * k, cx + 7.5 * k, 16 * k, fill="#eef3fb", outline=W_INK, width=1, tags=O)
+        cv.create_oval(cx - 4 * k, 4.5 * k, cx + 4 * k, 12.5 * k, fill="#3d7bff", outline="#132c90", tags=O)
+        cv.create_oval(cx - 2.2 * k, 5.6 * k, cx - .4 * k, 7.4 * k, fill="#ffffff", outline="", tags=O)
+        on = self.hub_on and not self.busy; H = ("over", "hub")
+        if on: cv.create_oval(cx - 36 * k, cy - 36 * k, cx + 36 * k, cy + 36 * k, outline="#6f9cff", width=max(2, round(2.4 * k)), tags=O)
+        for rr, col in ((33, "#0b1233"), (31.5, "#8e9cb6"), (29.5, "#e9eef8"), (26, "#c6d1e6"), (24, "#0d2170"), (20, "#1b3fae"), (15, "#3d7bff")):  # núm QUAY
+            cv.create_oval(cx - rr * k, cy - rr * k, cx + rr * k, cy + rr * k, fill=col if on or rr > 24 else wheel_mix(col, "#2a3150", .55), outline="", tags=H)
+        cv.create_oval(cx - 12 * k, cy - 16 * k, cx - 2 * k, cy - 9 * k, fill="#9cc0ff" if on else "#5f6f95", outline="", tags=H)
+        cv.create_text(cx, cy + .5 * k, text="QUAY", font=("Segoe UI", -int(10.5 * k), "bold"), fill="#ffffff" if on else "#aab4cf", tags=H)
+
+    def draw_disc(self):
+        cv = self.cv
+        if cv is None or self.geo is None or not cv.winfo_exists(): return
+        k, cx, cy, R = self.geo; cv.delete("disc"); T = ("disc",)
+        n = max(1, len(self.pz)); seg = 360.0 / n; lo = 0
+        for i, p in enumerate(self.pz):
+            pct = int(num(p.get("pct"))); gone = p.get("left") is not None and num(p.get("left")) == 0
+            if self.mys: c1, c2 = self.MYS[i % 2], self.MYS_IN[i % 2]
+            elif gone: c1, c2 = self.GONE, self.GONE_IN
+            elif pct >= 40: c1, c2 = self.HI, self.HI_IN
+            elif pct >= 20: c1, c2 = self.MID, self.MID_IN
+            else: c1, c2 = self.LO[lo % 2], self.LO_IN[lo % 2]; lo += 1
+            st = 90 - ((i - .5) * seg + self.rot) - seg                    # ô i: giữa ô ở góc i·seg + rot, tính theo chiều kim đồng hồ từ 12 giờ
+            for rr, t in ((R, 0), (R * .89, .2), (R * .78, .4), (R * .67, .6), (R * .56, .8), (R * .45, 1)):
+                cv.create_arc(cx - rr, cy - rr, cx + rr, cy + rr, start=st, extent=seg, fill=wheel_mix(c1, c2, t), outline="", style="pieslice", tags=T)
+        for i in range(n):                                                 # vạch chia + đinh tán
+            a = math.radians((i - .5) * seg + self.rot)
+            cv.create_line(cx, cy, cx + R * math.sin(a), cy - R * math.cos(a), fill="#b9c6de", width=1, tags=T)
+            b = math.radians((i + .5) * seg + self.rot); x, y = cx + 80 * k * math.sin(b), cy - 80 * k * math.cos(b)
+            cv.create_oval(x - 1.6 * k, y - 1.6 * k, x + 1.6 * k, y + 1.6 * k, fill=W_PEARL, outline=W_INK, tags=T)
+        if not self.mys and 0 <= self.win_i < n:                           # ô vừa trúng: viền sáng
+            st = 90 - ((self.win_i - .5) * seg + self.rot) - seg
+            cv.create_arc(cx - R + 2, cy - R + 2, cx + R - 2, cy + R - 2, start=st, extent=seg, outline="#ffffff", width=max(2, round(1.8 * k)), style="pieslice", tags=T)
+        fs = -int(15.5 * k * (1 if n <= 8 else .92 if n <= 10 else .8))
+        for i, p in enumerate(self.pz):
+            pct = int(num(p.get("pct"))); gone = p.get("left") is not None and num(p.get("left")) == 0; a = i * seg + self.rot; ar = math.radians(a)
+            ang = (-a) % 360
+            if self.mys:
+                x, y = cx + 54 * k * math.sin(ar), cy - 54 * k * math.cos(ar)
+                cv.create_text(x, y, text="?", angle=ang, font=("Segoe UI", -int(19 * k), "bold"), fill="#dfe9ff", tags=T)
+                continue
+            rr = 58 * k if gone else 54 * k; x, y = cx + rr * math.sin(ar), cy - rr * math.cos(ar)
+            cv.create_text(x, y, text=f"{pct}%", angle=ang, font=("Segoe UI", fs, "bold"), fill="#6f7da3" if gone else W_INK if pct >= 40 else "#eef4ff", tags=T)
+            if gone:
+                x2, y2 = cx + 42 * k * math.sin(ar), cy - 42 * k * math.cos(ar)
+                cv.create_text(x2, y2, text="HẾT", angle=ang, font=("Segoe UI", -int(7 * k), "bold"), fill="#8a95b8", tags=T)
+        cv.tag_raise("over")
+
+    def _bulbs(self):
+        """Đèn viền: lúc chờ nhấp nháy chậm, lúc quay chạy đuổi nhanh."""
+        if not self.alive or self.cv is None or not self.cv.winfo_exists(): return
+        self.t_bulb += 1; fast = self.busy
+        for i, (h, c) in enumerate(self.bulb_ids):
+            lit = ((self.t_bulb + i) % 2 == 0) if fast else ((self.t_bulb // 5 + i) % 2 == 0)
+            try:
+                self.cv.itemconfig(h, fill="#ffe6a0" if lit else "#c6cfdf")
+                self.cv.itemconfig(c, fill="#fffdf4" if lit else "#7c8496", outline="#f0c35a" if lit else "#5f677a")
+            except Exception: return
+        self.win.after(90 if fast else 130, self._bulbs)
+
+    # ---------------------------------------------------------------- hướng dẫn · mã của tôi · thể lệ
+    def fill_guide(self):
+        tk = self.app.tk; f = self.guide_f
+        for w in f.winfo_children(): w.destroy()
+        s = self.st or {}; a, n = wheel_first(s); sp = wheel_per(s); days = int(num(s.get("days")) or 7)
+        self.label(f, "📖 Hướng dẫn chơi", ("Segoe UI", 11, "bold"), W_PEARL).pack(fill="x", pady=(0, 4))
+        steps = [("💳", f"Nạp {vnd(a)} = {n} lượt", f"Cứ {vnd(s.get('per'))} nạp được {sp} lượt quay miễn phí. Nạp ngân hàng hay crypto đều tính."),
+                 ("🎡", "Bấm QUAY", "Đang quay, số trên vòng ẩn hết. Kim dừng là hộp quà nổ ra mã của bạn."),
+                 ("🏷", "Dùng mã khi thanh toán", f"Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy. Mã dùng 1 lần, hạn {days} ngày.")]
+        if num(s.get("price")) > 0:
+            steps.append(("➕", f"Quay thêm {vnd(s.get('price'))}/lượt", "Hết lượt miễn phí vẫn quay tiếp được — trừ vào số dư, luôn hỏi lại trước khi trừ."))
+        grid = tk.Frame(f, bg=W_DEEP); grid.pack(fill="x")
+        for i, (ic, t, d) in enumerate(steps):
+            c = tk.Frame(grid, bg=W_TILE, highlightbackground=W_EDGE, highlightthickness=1)
+            c.grid(row=i // 2, column=i % 2, sticky="nsew", padx=(0, 4) if i % 2 == 0 else (4, 0), pady=3)
+            tk.Label(c, text=ic, font=("Segoe UI", 12), fg="#ffffff", bg="#2f66ec", width=2).pack(side="left", anchor="n", padx=8, pady=8)
+            tx = tk.Frame(c, bg=W_TILE); tx.pack(side="left", fill="both", expand=True, pady=6, padx=(0, 8))
+            tk.Label(tx, text=t, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
+            tk.Label(tx, text=d, font=("Segoe UI", 8), fg=W_SUB, bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
+        grid.grid_columnconfigure(0, weight=1, uniform="g"); grid.grid_columnconfigure(1, weight=1, uniform="g")
+        self.label(f, "🌐 Chơi được cả trên web và app Android (bản tải từ web): vào Nạp tiền → 🎡 Vòng quay may mắn. "
+                      "Lượt quay và mã dùng chung cho cả tài khoản.", self.app.f_s, W_SUB, wraplength=self.px(500)).pack(fill="x", pady=(6, 0))
+
+    def fill_mine(self):
+        tk = self.app.tk; f = self.mine_f
+        for w in f.winfo_children(): w.destroy()
+        cs = (self.st or {}).get("codes") or []
+        self.label(f, "🎟 Mã của tôi", ("Segoe UI", 11, "bold"), W_PEARL).pack(fill="x", pady=(0, 4))
+        if not cs: self.label(f, "Mã bạn quay trúng sẽ nằm ở đây.", self.app.f_s, W_SUB).pack(fill="x"); return
+        now = now_utc()
+        for c in cs[:12]:
+            exp = parse_iso(c.get("expires_at")); used = bool(c.get("used")); act = c.get("active", True) is not False; gone = exp is not None and exp <= now
+            live = not used and act and not gone
+            st = ("Đã dùng" if used else "Đã tắt" if not act else "Hết hạn" if gone else "Dùng được đến " + (exp.astimezone().strftime("%H:%M %d/%m") if exp else ""))
+            if num(c.get("paid")) > 0: st += f"  ·  lượt mua {vnd(c.get('paid'))}"
+            r = tk.Frame(f, bg="#111b4c", highlightbackground="#26345f", highlightthickness=1); r.pack(fill="x", pady=2)
+            big = num(c.get("pct")) >= 40
+            tk.Label(r, text=f"{int(num(c.get('pct')))}%", font=("Segoe UI", 10, "bold"), fg=W_INK if big else "#ffffff",
+                     bg=(W_PEARL2 if big else "#2f66ec") if live else "#2c3352", width=5).pack(side="left", padx=8, pady=6)
+            if live: self.app.btn(r, "Chép", lambda v=str(c.get("code")): self.copy(v), "soft", padx=10, pady=2).pack(side="right", padx=8)
+            tx = tk.Frame(r, bg="#111b4c"); tx.pack(side="left", fill="x", expand=True)
+            tk.Label(tx, text=str(c.get("code")), font=("Consolas", 10, "bold"), fg="#ffffff" if live else "#7f8bab", bg="#111b4c", anchor="w").pack(fill="x")
+            tk.Label(tx, text=st, font=("Segoe UI", 8), fg=W_SUB if live else "#6c779a", bg="#111b4c", anchor="w").pack(fill="x")
+
+    def copy(self, v):
+        try: self.app.root.clipboard_clear(); self.app.root.clipboard_append(v)
+        except Exception: pass
+        try: self.err_l.config(text=f"✓ Đã chép mã {v}", fg=OK)
+        except Exception: pass
+
+    def toggle_rules(self):
+        self.rules_open = not self.rules_open
+        self.rules_b.config(text="📜 Thể lệ  " + ("▾" if self.rules_open else "▸"))
+        if self.rules_open: self.rules_f.pack(fill="x", padx=18, pady=(0, 16), after=self.rules_b)
+        else: self.rules_f.pack_forget()
+
+    def fill_rules(self):
+        f = self.rules_f
+        for w in f.winfo_children(): w.destroy()
+        s = self.st or {}; sp = wheel_per(s); per = int(num(s.get("per")) or 100000); mn = vnd(s.get("min")); wl = self.px(500)
+        lines = [f"⏰ Thời gian: từ {wheel_when(s.get('starts_at'))}" + (f" đến {wheel_when(s.get('ends_at'))}." if s.get("ends_at") else " đến khi có thông báo kết thúc."),
+                 f"💳 Mỗi lệnh nạp thành công từ {mn} trong thời gian chương trình: cứ {vnd(per)} = {sp} lượt quay (ví dụ nạp {vnd(per * 2.5)} = {2 * sp} lượt). "
+                 "Tính nạp ngân hàng và crypto; nạp qua Google Play không tính lượt."]
+        if num(s.get("price")) > 0:
+            lines.append(f"➕ Hết lượt miễn phí: quay thêm {vnd(s.get('price'))}/lượt, trừ vào số dư" + (f", dành cho tài khoản đã nạp từ {mn} trong chương trình" if s.get("need_topup") else "")
+                         + (f", tối đa {int(num(s.get('buy_max')))} lượt/ngày" if num(s.get("buy_max")) > 0 else "") + ". Luôn hỏi lại trước khi trừ tiền.")
+        lines += [f"🎟 Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn {int(num(s.get('days')) or 7)} ngày, chỉ tài khoản quay trúng dùng được"
+                  + (f", giảm tối đa {vnd(s.get('max_disc'))}" if num(s.get("max_disc")) > 0 else "") + ".",
+                  "🎲 Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. "
+                  "Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết."]
+        for t in lines: self.label(f, t, self.app.f_s, W_SUB, wraplength=wl).pack(fill="x", pady=2)
+        tb = self.app.tk.Frame(f, bg=W_TILE, highlightbackground=W_EDGE, highlightthickness=1); tb.pack(fill="x", pady=(6, 0))
+        for p in sorted(s.get("prizes") or [], key=lambda x: -num(x.get("pct"))):
+            r = self.app.tk.Frame(tb, bg=W_TILE); r.pack(fill="x", padx=10, pady=1)
+            self.label(r, f"Mã giảm {int(num(p.get('pct')))}%", self.app.f_s, TXT).pack(side="left")
+            self.label(r, "Không giới hạn" if p.get("stock") is None else f"{int(num(p.get('stock')))} giải · còn {int(num(p.get('left')))}", self.app.f_s, W_SUB).pack(side="right")
+
+
+class RevealWin:
+    """Cửa sổ mở quà: nền sapphire sâu · hộp quà rơi, rung, NỔ (nắp bay, chớp sáng, tia sáng xoay, pháo giấy rơi + bong bóng bay) → thẻ mã."""
+
+    def __init__(self, dlg, r):
+        app = dlg.app; tk = app.tk; self.sc = sc = dlg.sc; self.W, self.H = int(460 * sc), int(620 * sc)
+        self.dlg = dlg; self.r = r; self.alive = True; self.big = num(r.get("pct")) >= 40
+        self.win = w = tk.Toplevel(dlg.win); w.title("🎁 Chúc mừng!"); w.configure(bg=W_REV); w.resizable(False, False)
+        dlg.win.update_idletasks()
+        x = dlg.win.winfo_rootx() + (dlg.win.winfo_width() - self.W) // 2; y = dlg.win.winfo_rooty() + 20
+        w.geometry(f"{self.W}x{self.H}+{max(0, x)}+{max(0, y)}"); w.transient(dlg.win)
+        w.protocol("WM_DELETE_WINDOW", self.close); w.bind("<Escape>", lambda e: self.close())
+        self.cv = cv = tk.Canvas(w, width=self.W, height=self.H, bg=W_REV, highlightthickness=0); cv.pack(fill="both", expand=True)
+        cx, cy = self.W / 2, self.H * .46
+        for i in range(18, 0, -1):                                          # nền: quầng xanh sâu ở giữa (radial-gradient #16327a → #060b1d)
+            rr = (14 + i * 22) * sc; cv.create_oval(cx - rr * 1.05, cy - rr * .92, cx + rr * 1.05, cy + rr * .92, fill=wheel_mix("#16327a", W_REV, i / 18), outline="")
+        self.rays = [cv.create_polygon(cx, cy, cx, cy, cx, cy, fill="#16327a", outline="", state="hidden") for _ in range(18)]
+        self.flash = cv.create_oval(cx, cy, cx, cy, fill="#ffffff", outline="", state="hidden")
+        self.waves = [cv.create_oval(cx, cy, cx, cy, outline="#ffffff", width=1, state="hidden") for _ in range(2)]
+        self.card = self.make_card(); self.card_id = None
+        self.parts = []; self.t0 = time.time(); self.tb = None; self.cx, self.cy = cx, cy
+        cv.bind("<Button-1>", self._bg_click)
+        w.after(60, self._grab); self._frame()
+
+    def _grab(self):
+        try: self.win.grab_set(); self.win.focus_force()
+        except Exception: pass
+
+    def _bg_click(self, e):
+        if self.tb is not None and (time.time() - self.tb) > .8: self.close("done")      # bấm ra ngoài thẻ (sau khi thẻ hiện) = Xong
+
+    def make_card(self):
+        tk = self.dlg.app.tk; r = self.r; big = self.big; app = self.dlg.app; bg = "#15215c"
+        c = tk.Frame(self.cv, bg=bg, highlightbackground=W_PEARL2 if big else "#5a6c9c", highlightthickness=2 if big else 1)
+        tk.Label(c, text=("🎉 " if big else "🎁 ") + "Chúc mừng! Bạn nhận được", font=("Segoe UI", 11, "bold"), fg=W_SKY, bg=bg).pack(pady=(18, 0))
+        tk.Label(c, text=f"−{int(num(r.get('pct')))}%", font=("Segoe UI", 46, "bold"), fg=W_PEARL, bg=bg).pack()
+        tk.Label(c, text="mã giảm giá", font=("Segoe UI", 11, "bold"), fg=W_SUB, bg=bg).pack(pady=(0, 10))
+        cr = tk.Frame(c, bg=bg); cr.pack()
+        tk.Label(cr, text=str(r.get("code")), font=("Consolas", 15, "bold"), fg="#ffffff", bg="#060a1c", padx=12, pady=6).pack(side="left")
+        self.cp = app.btn(cr, "Chép mã", self.copy, "soft", padx=10, pady=6); self.cp.pack(side="left", padx=(8, 0))
+        exp = parse_iso(r.get("expires_at")); exp = exp.astimezone().strftime("%H:%M %d/%m/%Y") if exp else ""
+        tk.Label(c, text=f"Dùng 1 lần · hạn đến {exp} · chỉ tài khoản của bạn dùng được. Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy.",
+                 font=("Segoe UI", 9), fg=W_SUB, bg=bg, justify="center", wraplength=self.W - int(110 * self.sc)).pack(padx=16, pady=(10, 0))
+        if num(r.get("paid")) > 0:
+            tk.Label(c, text=f"Đã trừ {vnd(r.get('paid'))} · số dư còn {vnd(r.get('balance'))}", font=("Segoe UI", 9), fg=W_SUB, bg=bg).pack(pady=(4, 0))
+        s = self.dlg.st or {}; left = int(num(s.get("left"))); buy = left <= 0 and bool(s.get("can_buy"))
+        bb = tk.Frame(c, bg=bg); bb.pack(fill="x", padx=18, pady=(14, 16))
+        if left > 0: app.btn(bb, f"🎡 Quay tiếp · còn {left} lượt", lambda: self.close("again"), pady=9).pack(fill="x")
+        elif buy:
+            b = app.btn(bb, f"➕ Quay thêm · {vnd(s.get('price'))}", lambda: self.close("buy"), pady=9)
+            b.config(bg=W_PEARL2, fg=W_INK, activebackground="#ffffff", activeforeground=W_INK); b.pack(fill="x")
+        x = app.btn(bb, "Xong", lambda: self.close("done"), "soft" if left > 0 or buy else "primary", pady=8); x.pack(fill="x", pady=(6, 0))
+        if left > 0 or buy: x.config(bg="#24357a", activebackground="#33489a")
+        return c
+
+    def copy(self):
+        try: self.dlg.app.root.clipboard_clear(); self.dlg.app.root.clipboard_append(str(self.r.get("code")))
+        except Exception: pass
+        try: self.cp.config(text="✓ Đã chép")
+        except Exception: pass
+
+    def close(self, what="done"):
+        if not self.alive: return
+        self.alive = False
+        try: self.win.grab_release()
+        except Exception: pass
+        try: self.win.destroy()
+        except Exception: pass
+        self.dlg.after_reveal(what)
+
+    def _burst(self):
+        self.tb = time.time(); n = 150 if self.big else 110; cx, cy = self.cx, self.cy + 30 * self.sc; sc = self.sc
+        cols = ["#ffffff", W_PEARL, W_PEARL2, W_SKY, "#3d7bff", "#ffe7a8"] if self.big else [W_SKY, "#3d7bff", W_PEARL, W_PEARL2, "#3ce0b0"]
+        rnd = secrets.SystemRandom()
+        for i in range(n):
+            a = rnd.random() * math.pi * 2; sp = (3 + rnd.random() * (10 if self.big else 8)) * sc; bub = rnd.random() < .28
+            q = {"x": cx, "y": cy, "vx": math.cos(a) * sp, "vy": math.sin(a) * sp - (3 + rnd.random() * 3) * sc, "rot": rnd.random() * 6,
+                 "vr": (rnd.random() - .5) * .4, "w": (4 + rnd.random() * 5) * sc, "h": (7 + rnd.random() * 7) * sc, "bub": bub}
+            col = cols[i % len(cols)]
+            q["id"] = (self.cv.create_oval(cx, cy, cx, cy, outline=col, width=max(1, round(1.6 * sc))) if bub
+                       else self.cv.create_polygon(cx, cy, cx, cy, cx, cy, cx, cy, fill=col, outline=""))
+            self.parts.append(q)
+        for it in self.rays + self.waves + [self.flash]: self.cv.itemconfig(it, state="normal")
+
+    def _frame(self):
+        if not self.alive: return
+        try:
+            if not self.win.winfo_exists(): self.alive = False; return
+        except Exception: self.alive = False; return
+        cv = self.cv; now = time.time(); t = (now - self.t0) * 1000; cx, cy, sc = self.cx, self.cy, self.sc
+        if self.tb is None and t >= 1250: self._burst()
+        b = None if self.tb is None else (now - self.tb) * 1000
+        if b is not None:                                                    # tia sáng xoay chậm
+            s = min(1.0, b / 900); rr = 300 * sc * (.25 + .75 * s); rot = (now % 24) / 24 * 360
+            for i, ray in enumerate(self.rays):
+                a0, a1 = math.radians(i * 20 + rot), math.radians(i * 20 + 9 + rot)
+                cv.coords(ray, cx, cy, cx + rr * math.cos(a0), cy + rr * math.sin(a0), cx + rr * math.cos(a1), cy + rr * math.sin(a1))
+                if b < 950: cv.itemconfig(ray, fill=wheel_mix(W_REV, "#2a4fae" if i % 2 else "#1d3a8c", s))
+        cv.delete("gift"); self._gift(t, b); cv.tag_lower("gift", self.flash)
+        if b is not None:                                                    # chớp sáng: lõi trắng loé 0,14 giây + 2 vòng sóng nổ lan ra rồi tắt
+            if b < 140:
+                rr = (30 + 60 * b / 140) * sc; cv.coords(self.flash, cx - rr, cy - rr, cx + rr, cy + rr); cv.itemconfig(self.flash, fill="#ffffff" if b < 70 else "#dff1ff")
+            else: cv.itemconfig(self.flash, state="hidden")
+            for j, wv in enumerate(self.waves):
+                u = (b - j * 110) / 520
+                if 0 <= u <= 1:
+                    rr = (40 + 250 * (1 - (1 - u) ** 2)) * sc; cv.coords(wv, cx - rr, cy - rr, cx + rr, cy + rr)
+                    cv.itemconfig(wv, width=max(1, round((9 - 8 * u) * sc)), outline=wheel_mix("#ffffff", "#3d7bff", u), state="normal")
+                else: cv.itemconfig(wv, state="hidden")
+        if b is not None and self.parts:                                     # pháo giấy rơi · bong bóng bay lên (~3 giây)
+            if b > 3300:
+                for q in self.parts: cv.delete(q["id"])
+                self.parts = []
+            else:
+                shrink = max(0.0, 1 - max(0.0, b - 1900) / 1400)
+                for q in self.parts:
+                    q["vx"] *= .982
+                    q["vy"] = q["vy"] * .965 - .06 * sc if q["bub"] else q["vy"] * .985 + .24 * sc
+                    q["x"] += q["vx"]; q["y"] += q["vy"]; q["rot"] += q["vr"]
+                    if q["bub"]:
+                        rr = q["w"] * .7 * shrink; cv.coords(q["id"], q["x"] - rr, q["y"] - rr, q["x"] + rr, q["y"] + rr)
+                    else:
+                        f = abs(math.cos(q["rot"] * 1.7)); w2, h2 = q["w"] / 2, max(.5, q["h"] * f / 2); ca, sa = math.cos(q["rot"]), math.sin(q["rot"])
+                        cv.coords(q["id"], *[v for dx, dy in ((-w2, -h2), (w2, -h2), (w2, h2), (-w2, h2)) for v in (q["x"] + dx * ca - dy * sa, q["y"] + dx * sa + dy * ca)])
+        if b is not None and b >= 300:                                       # thẻ mã bật ra (trượt lên) sau khi nổ
+            u = min(1.0, (b - 300) / 380); e = 1 - (1 - u) ** 3; y = cy + 40 * sc * (1 - e)
+            if self.card_id is None: self.card_id = cv.create_window(cx, y, window=self.card, width=self.W - int(56 * sc))
+            else: cv.coords(self.card_id, cx, y)
+        self.win.after(16 if b is None or b < 3400 else 50, self._frame)
+
+    def _gift(self, t, b):
+        """Hộp quà: rơi xuống (0–0,42 giây) · rung 3 nhịp · nổ: nắp bay lên xoay, thân hộp rơi xuống mờ dần."""
+        cv = self.cv; sc = self.sc; cx, cy = self.cx, self.cy + 30 * sc
+        drop = min(1.0, t / 420); ease = 1 - (1 - drop) ** 3; y0 = cy - 80 * sc * (1 - ease); k = 1.25 * sc * (.55 + .45 * ease)
+        ang = math.radians(8 * math.sin((t - 500) / 260 * 2 * math.pi)) if b is None and 500 < t < 1280 else 0.0
+        lid = (0.0, 0.0, 0.0, 1.0); body = (0.0, 1.0)
+        if b is not None:
+            u = min(1.0, b / 750); e2 = 1 - (1 - u) ** 3; lid = (-34 * e2, -220 * e2, math.radians(-40 * e2), 1 - u)
+            v = max(0.0, min(1.0, (b - 120) / 520)); body = (60 * v * v, 1 - v)
+        top, bot, rib, bow = ("#ffffff", W_PEARL2, "#3d7bff", "#3d7bff") if self.big else ("#5a95ff", "#2a5fe0", W_PEARL, W_PEARL)
+        def poly(pts, dx, dy, rot, fill):
+            c, s_ = math.cos(rot), math.sin(rot); out = []
+            for x, y in pts:
+                x, y = x * c - y * s_, x * s_ + y * c; out += [cx + (x + dx) * k, y0 + (y + dy) * k]
+            cv.create_polygon(out, fill=fill, outline="", tags=("gift",))
+        if body[1] > 0:
+            m = lambda col: wheel_mix(W_REV, col, body[1])
+            poly([(-60, -44), (60, -44), (60, 46), (-60, 46)], 0, body[0], ang, m(bot))
+            poly([(-60, -44), (60, -44), (60, -12), (-60, -12)], 0, body[0], ang, m(top))
+            poly([(-10, -44), (10, -44), (10, 46), (-10, 46)], 0, body[0], ang, m(rib))
+        if lid[3] > 0:
+            m = lambda col: wheel_mix(W_REV, col, lid[3]); ox, oy, rot = lid[0], -44 - 15 + lid[1], ang + lid[2]
+            poly([(-70, -15), (70, -15), (70, 15), (-70, 15)], ox, oy, rot, m("#ffffff" if self.big else "#7aaeff"))
+            poly([(-10, -15), (10, -15), (10, 15), (-10, 15)], ox, oy, rot, m(rib))
+            for side in (-1, 1):                                              # nơ: 2 vòng bầu dục nghiêng
+                tilt = math.radians(26 * side); loop = []
+                for j in range(18):
+                    q = j * math.pi / 9; ex, ey = 16 * math.cos(q), 10 * math.sin(q)
+                    loop.append((side * 17 + ex * math.cos(tilt) - ey * math.sin(tilt), -15 - 9 + ex * math.sin(tilt) + ey * math.cos(tilt)))
+                poly(loop, ox, oy, rot, m(bow))
+                poly([(side * 17 + (x - side * 17) * .5, -24 + (y + 24) * .5) for x, y in loop], ox, oy, rot, m("#15215c"))
+            poly([(-6, -30), (6, -30), (6, -18), (-6, -18)], ox, oy, rot, m(bow))
 
 
 class UpgradeDlg(Dlg):
@@ -3505,6 +4183,8 @@ class Launcher:
         self.btn(shop, "Nạp tiền", self.open_topup, "soft").pack(side="right", pady=10)
         self.btn(shop, "🎟 Nhập mã", lambda: CodeDlg(self), "soft").pack(side="right", padx=(0, 6), pady=10)
         self.blue_btn = self.btn(shop, "💎 Tích Blue", lambda: BlueDlg(self), "soft")      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
+        self.wheel_slot = tk.Frame(self.body, bg=BG); self.wheel_slot.pack(fill="x", padx=18)   # 🎡 vòng quay may mắn (SQL v34c) — trống khi chưa bật
+        self._paint_wheel()
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=10, pady=10)
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
         self.list = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.list, anchor="nw")
@@ -3540,8 +4220,9 @@ class Launcher:
                     if e.code == 401: raise
                     prof = None
                 if time.time() - BLUE["t"] > 60: blue_load(self.auth)          # 💎 Tích Blue (tối đa 1 lần / phút)
+                if time.time() - WHEEL["t"] > 60: wheel_load(self.auth)        # 🎡 vòng quay may mắn (tối đa 1 lần / phút)
                 def show():
-                    self._paint_update(); self._paint_blue(); self._auto_update()
+                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._auto_update()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
@@ -3592,6 +4273,10 @@ class Launcher:
                 self.root.after(800, lambda: mb.askyesno("💎 Tích Blue", f"Hôm nay bạn chưa điểm danh — nhận +{blue_n(i.get('next_got'))} Blue ngay?",
                                                          parent=self.root) and BlueDlg(self))
             except Exception: pass
+
+    def _paint_wheel(self):
+        slot = getattr(self, "wheel_slot", None)
+        if slot is not None and slot.winfo_exists(): wheel_banner(self, slot)
 
     def _paint_update(self):
         """Dải báo trên danh sách máy: "Có bản app mới — Cập nhật" (bấm 1 lần: tự tải, thay bản, mở lại) / "Đã cập nhật lên bản …".

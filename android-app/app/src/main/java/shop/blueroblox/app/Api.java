@@ -613,6 +613,17 @@ public final class Api {
                 {"PLAY_TOO_MANY", "Gửi quá nhiều lần — đợi vài phút rồi mở lại app.", "Too many attempts — wait a few minutes and reopen the app."},
                 {"PLAY_API_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 {"PLAY_SERVER_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
+                // 🎡 vòng quay may mắn (SQL v34c)
+                {"PROMO_NOT_YOURS", "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.", "This lucky-wheel code belongs to another account — only the winner can use it."},
+                {"WHEEL_NO_SPIN", "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.", "You have no spins left — top up to earn more."},
+                {"WHEEL_NOT_STARTED", "Vòng quay chưa bắt đầu.", "The lucky wheel hasn't started yet."},
+                {"WHEEL_ENDED", "Chương trình vòng quay đã kết thúc.", "The lucky-wheel event has ended."},
+                {"WHEEL_OFF", "Vòng quay đang tạm tắt.", "The lucky wheel is currently off."},
+                {"WHEEL_EMPTY", "Vòng quay đã hết giải.", "All wheel prizes are gone."},
+                {"WHEEL_NO_BUY", "Hiện không bán thêm lượt quay.", "Extra spins aren't on sale right now."},
+                {"WHEEL_PRICE_CHANGED", "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.", "The extra-spin price just changed — check it and try again."},
+                {"WHEEL_NEED_TOPUP", "Nạp từ 100.000đ trong chương trình để được quay thêm.", "Top up 100,000đ during the event to buy extra spins."},
+                {"WHEEL_BUY_LIMIT", "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.", "You've reached today's extra-spin limit — come back tomorrow."},
                 // mã tặng máy (SQL v23) — đặt TRƯỚC "TOO_MANY" để PROMO_TOO_MANY không bị hiểu nhầm
                 {"PROMO_TOO_MANY", "Bạn nhập sai mã quá nhiều lần — thử lại sau 10 phút.", "Too many wrong codes — try again in 10 minutes."},
                 {"PROMO_INVALID", "Mã không đúng hoặc đã bị tắt.", "Wrong or disabled code."},
