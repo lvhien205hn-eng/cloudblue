@@ -73,8 +73,25 @@ public final class Ui {
     public static String L(String vi, String en) { return vi() ? vi : en; }
 
     private static float density = 3f;
+    // 16/11 · CỠ GIAO DIỆN do khách tự chỉnh (Tài khoản › Giao diện): 80–130%, nhớ theo máy. Mọi kích thước (dp) + cỡ chữ (text / button /
+    // input) của app đều đi qua lớp này nên chỉ cần nhân 1 hệ số ở đây — không đụng cài đặt hệ thống, không cần quyền gì. 100% = y như cũ.
+    public static final int SCALE_MIN = 80, SCALE_MAX = 130, SCALE_STEP = 5;
+    private static float scale = 1f;
+    public static int scalePct(Context c) {
+        int v = 100;
+        try { v = c.getSharedPreferences("ui", Context.MODE_PRIVATE).getInt("scale", 100); } catch (Exception ignored) { }
+        return Math.max(SCALE_MIN, Math.min(SCALE_MAX, v));
+    }
+    /** Lưu cỡ giao diện (%). Màn đang mở phải vẽ lại (recreate) mới thấy. */
+    public static void setScale(Context c, int pct) {
+        int v = Math.max(SCALE_MIN, Math.min(SCALE_MAX, Math.round(pct / (float) SCALE_STEP) * SCALE_STEP));
+        c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putInt("scale", v).apply();
+    }
+    /** Cỡ chữ (sp) đã nhân cỡ giao diện — cho những chỗ tự gọi setTextSize. */
+    public static float sp(float v) { return v * scale; }
     public static void init(Context c) {
-        density = c.getResources().getDisplayMetrics().density; Api.init(c);
+        scale = scalePct(c) / 100f;
+        density = c.getResources().getDisplayMetrics().density * scale; Api.init(c);
         if (c instanceof Activity) Guard.gate((Activity) c);         // 🔒 app bị sửa → hộp chặn (Guard.java)
         String t = c.getSharedPreferences("ui", Context.MODE_PRIVATE).getString("theme", null);
         boolean light = t != null ? "light".equals(t)
@@ -151,7 +168,7 @@ public final class Ui {
     public static TextView text(Context c, String s, float sp, int color, boolean bold) {
         TextView t = new TextView(c);
         t.setText(s);
-        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp);
+        t.setTextSize(TypedValue.COMPLEX_UNIT_SP, sp * scale);
         t.setTextColor(color);
         if (bold) t.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         t.setLineSpacing(0, 1.15f);
@@ -177,7 +194,7 @@ public final class Ui {
         Button b = new Button(c);
         b.setText(s);
         b.setAllCaps(false);
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15 * scale);
         b.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
         b.setStateListAnimator(null);
         b.setMinHeight(dp(46));
@@ -216,7 +233,7 @@ public final class Ui {
         e.setHint(hint);
         e.setHintTextColor(HINT);
         e.setTextColor(FG);
-        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
+        e.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16 * scale);
         e.setInputType(type);
         e.setSingleLine(type != (InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE));
         e.setPadding(dp(14), dp(12), dp(14), dp(12));
@@ -386,6 +403,63 @@ public final class Ui {
                 ch.layout(x, y, x + w, y + h);
                 x += w + gap;
                 lineH = Math.max(lineH, h);
+            }
+        }
+    }
+
+    // ---------------- Đầu trang tự xếp (16/11): tên thương hiệu KHÔNG BAO GIỜ bị che ----------------
+    /** 3 phần: [trái: logo + tên] [giữa: các ô số dư / Blue] [phải: nút Sáng/Tối].
+     *  Đủ chỗ → 1 hàng như cũ. Không đủ (màn hẹp, số dư dài, khách chỉnh giao diện to) → các ô ở giữa tự xuống hàng 2 (canh phải);
+     *  phần trái luôn được đo trước với đủ bề rộng của nó — chữ "CloudBlue" không còn bị cắt thành "Clo…" như trước. */
+    public static class Head extends ViewGroup {
+        private final int gap, rowGap;
+        private boolean two;
+        public Head(Context c, int gapDp, int rowGapDp) { super(c); gap = dp(gapDp); rowGap = dp(rowGapDp); }
+        /** Đang xếp 2 hàng? */
+        public boolean twoRows() { return two; }
+        private static boolean shown(View v) { return v != null && v.getVisibility() != GONE; }
+        private View kid(int i) { return getChildCount() > i ? getChildAt(i) : null; }
+
+        @Override protected void onMeasure(int ws, int hs) {
+            int W = MeasureSpec.getSize(ws), in = Math.max(0, W - getPaddingLeft() - getPaddingRight()), free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
+            View a = kid(0), m = kid(1), z = kid(2);
+            int zw = 0, zh = 0, aw = 0, ah = 0, mw = 0, mh = 0;
+            if (shown(z)) {
+                LayoutParams lp = z.getLayoutParams();
+                z.measure(lp != null && lp.width > 0 ? MeasureSpec.makeMeasureSpec(Math.min(lp.width, in), MeasureSpec.EXACTLY) : MeasureSpec.makeMeasureSpec(in, MeasureSpec.AT_MOST),
+                        lp != null && lp.height > 0 ? MeasureSpec.makeMeasureSpec(lp.height, MeasureSpec.EXACTLY) : free);
+                zw = z.getMeasuredWidth(); zh = z.getMeasuredHeight();
+            }
+            int zs = zw > 0 ? zw + gap : 0;
+            if (shown(a)) {                                               // logo + tên: đo TRƯỚC, được hết chỗ còn lại của hàng 1
+                a.measure(MeasureSpec.makeMeasureSpec(Math.max(0, in - zs), MeasureSpec.AT_MOST), free);
+                aw = a.getMeasuredWidth(); ah = a.getMeasuredHeight();
+            }
+            two = false;
+            if (shown(m)) {
+                m.measure(free, free);                                    // bề rộng tự nhiên của các ô
+                mw = m.getMeasuredWidth(); mh = m.getMeasuredHeight();
+                if (mw > 0 && mw > in - zs - aw - (aw > 0 ? gap : 0)) {   // không đủ chỗ cùng hàng → xuống hàng 2
+                    two = true;
+                    m.measure(MeasureSpec.makeMeasureSpec(in, MeasureSpec.AT_MOST), free);
+                    mh = m.getMeasuredHeight();
+                }
+            }
+            int h1 = Math.max(ah, Math.max(zh, two ? 0 : mh));
+            setMeasuredDimension(W, getPaddingTop() + h1 + (two ? rowGap + mh : 0) + getPaddingBottom());
+        }
+
+        @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
+            int W = r - l, pl = getPaddingLeft(), pr = getPaddingRight(), pt = getPaddingTop();
+            View a = kid(0), m = kid(1), z = kid(2);
+            int ah = shown(a) ? a.getMeasuredHeight() : 0, zh = shown(z) ? z.getMeasuredHeight() : 0, mh = shown(m) ? m.getMeasuredHeight() : 0;
+            int h1 = Math.max(ah, Math.max(zh, two ? 0 : mh)), right = W - pr;
+            if (shown(z)) { int w = z.getMeasuredWidth(), y = pt + (h1 - zh) / 2; z.layout(right - w, y, right, y + zh); right -= w + gap; }
+            if (shown(a)) { int y = pt + (h1 - ah) / 2; a.layout(pl, y, pl + a.getMeasuredWidth(), y + ah); }
+            if (shown(m)) {
+                int w = m.getMeasuredWidth();
+                if (two) { int y = pt + h1 + rowGap; m.layout(W - pr - w, y, W - pr, y + mh); }
+                else { int y = pt + (h1 - mh) / 2; m.layout(right - w, y, right, y + mh); }
             }
         }
     }

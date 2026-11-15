@@ -320,7 +320,7 @@ final class Offers {
             for (int i = 0; i < l.length(); i++) {
                 final JSONObject x = l.optJSONObject(i); if (x == null) continue;
                 TextView ch = Ui.pill(a, Ui.L("Từ ", "From ") + Ui.vnd(x.optDouble("min")) + " → " + Ui.L("mã ", "") + x.optInt("pct") + "%", Ui.OK);
-                ch.setTextSize(13);
+                ch.setTextSize(Ui.sp(13));
                 ch.setPadding(Ui.dp(12), Ui.dp(7), Ui.dp(12), Ui.dp(8));
                 ch.setOnClickListener(v -> pick.set(x.optLong("min")));
                 w.addView(ch);

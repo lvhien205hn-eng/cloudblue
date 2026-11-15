@@ -160,6 +160,22 @@ public final class Api {
 
     public static void ui(Runnable r) { MAIN.post(r); }
 
+    /** 16/11 · như bg nhưng chạy ở luồng RIÊNG — cho việc chờ lâu (chờ máy khởi động lại vài phút) khỏi chiếm chỗ của các lệnh mạng
+     *  thường (bể chỉ có 4 luồng: bị chiếm hết thì cả app đứng chờ). */
+    public static <T> void bgLong(Job<T> job, Cb<T> ok, Err err) {
+        Thread t = new Thread(() -> {
+            try {
+                T v = job.run();
+                MAIN.post(() -> { if (ok != null) ok.ok(v); });
+            } catch (Exception e) {
+                String m = friendly(e);
+                MAIN.post(() -> { if (err != null) err.fail(m); });
+            }
+        }, "BRS-long");
+        t.setDaemon(true);
+        t.start();
+    }
+
     // ---------------- HTTP ----------------
     public static class Res {
         public int code; public byte[] body; public String cookie;
@@ -726,6 +742,9 @@ public final class Api {
                 {"BAD_RAM", "RAM ngoài giới hạn.", "RAM out of range."},
                 {"BAD_CPU", "CPU ngoài giới hạn.", "CPU out of range."},
                 {"BAD_DAYS", "Số ngày ngoài giới hạn.", "Days out of range."},
+                {"FPS_NOT_ACTIVE", "Máy phải đang chạy mới đổi FPS được.", "The phone must be running to change FPS."},
+                {"FPS_WAIT", "Vừa đổi FPS xong — đợi vài giây rồi đổi tiếp nhé.", "FPS was just changed — wait a few seconds and try again."},
+                {"cloudphone_set_fps", "Máy chủ chưa bật tính năng đổi FPS — thử lại sau ít phút.", "Changing FPS isn't enabled on the server yet — try again shortly."},
                 {"BAD_FPS", "FPS ngoài giới hạn.", "FPS out of range."},
                 {"FPS_TOO_HIGH", "Máy dưới 4 nhân chỉ chọn tối đa 60 FPS.", "Under 4 cores: max 60 FPS."},
                 {"BAD_RES", "Độ phân giải không hợp lệ.", "Invalid resolution."},

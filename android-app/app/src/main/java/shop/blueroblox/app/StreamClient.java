@@ -84,6 +84,9 @@ public final class StreamClient {
         void onStats(int fps, int kbps, int pingMs, boolean direct, JSONObject server);
         /** Lỗi tạm (máy chủ báo / mạng) — client tự thử lại. */
         void onProblem(String code, String msg);
+        /** 16/11: như onProblem + gợi ý của máy chủ (có thể null): fix = "reboot" → nên hiện nút "Khởi động lại máy" ·
+         *  boot = 1 → máy đang được bật lại, cứ chờ (client tự hỏi lại mỗi 5 giây). Mặc định gọi onProblem (ô xem trước không cần). */
+        default void onProblemX(String code, String msg, JSONObject extra) { onProblem(code, msg); }
         /** Dừng hẳn, không tự nối lại: KICKED, LOGIN (phải đăng nhập lại), AUTH, NOT_YOURS, LOCKED, BAD, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, NO_RPC;
          *  ô xem trước thêm: NO_PREVIEW (máy chủ chưa hỗ trợ), PREVIEW_LIMIT (máy đang được xem trước ở quá nhiều nơi). */
         void onStopped(String code, String msg);
@@ -143,6 +146,13 @@ public final class StreamClient {
     public boolean isLive() {
         Session s = cur;
         return s != null && s.ready && !s.dead && !closed;
+    }
+
+    /** 16/11: đã bao lâu (ms) không nhận được gì từ máy chủ trong phiên đang mở · −1 = chưa vào phiên.
+     *  Máy chủ gửi ít nhất 1 tin / giây → quá ~2,5 giây im lặng = mạng của khách đang nghẽn (màn điều khiển báo "mạng chậm — đang chờ hình"). */
+    public long silentMs() {
+        Session s = cur;
+        return s == null || !s.ready || s.dead || closed ? -1 : SystemClock.uptimeMillis() - s.lastRx;
     }
 
     /** Đóng hẳn: gửi BYE rồi cắt kết nối (làm ở luồng nền, gọi từ luồng giao diện được). */
@@ -295,7 +305,8 @@ public final class StreamClient {
                 if (e.delay > 0) delay = preview ? Math.max(delay, e.delay) : e.delay;
                 why = e.msg;
                 final String c = e.code, m = e.msg;
-                post(() -> ui.onProblem(c, m));
+                final JSONObject x = e.extra;
+                post(() -> ui.onProblemX(c, m, x));
             } catch (Exception e) {
                 if (closed) break;
                 if (!opened) refetch = true;                          // không nối được đường nào → lần sau hỏi lại máy chủ
@@ -415,6 +426,18 @@ public final class StreamClient {
     private String failKey() { return "dfail_" + node + "_" + netTag(); }
 
     private String netTag() { return netTag(app); }
+
+    /** 16/11 · mạng yếu: tốc độ tải xuống (kbps) Android ước lượng cho mạng đang dùng — CHỈ gửi khi thấp (< 2500) để máy chủ bắt đầu ở mức
+     *  nhẹ ngay từ đầu (khỏi phát nét cao rồi mới hạ → đứng hình mấy giây đầu). 0 = không rõ / mạng khoẻ (máy chủ tự đo như cũ). */
+    private int downKbps() {
+        try {
+            ConnectivityManager cm = (ConnectivityManager) app.getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network n = cm == null ? null : cm.getActiveNetwork();
+            NetworkCapabilities nc = n == null ? null : cm.getNetworkCapabilities(n);
+            int k = nc == null ? 0 : nc.getLinkDownstreamBandwidthKbps();
+            return k >= 60 && k < 2500 ? k : 0;
+        } catch (Exception e) { return 0; }
+    }
 
     /** Loại mạng đang dùng: w = wifi / dây · c = 4G/5G · x = không rõ. */
     static String netTag(Context app) {
@@ -573,6 +596,7 @@ public final class StreamClient {
                     .put("client", "android").put("ver", Api.version).put("q", q)
                     .put("net", netTag());                       // w = wifi · c = 4G/5G → chế độ Tự động bắt đầu nhẹ hơn khi dùng 4G
             if (preview) hello.put("mode", "preview").put("maxh", previewMax);
+            else { int dl = downKbps(); if (dl > 0) hello.put("dl", dl); }   // 16/11: mạng yếu → gợi ý tốc độ (máy chủ cũ bỏ qua trường lạ)
             writeMsg(s, C_HELLO, hello.toString().getBytes(StandardCharsets.UTF_8));
             s.lastRx = SystemClock.uptimeMillis();
             Thread tx = new Thread(() -> writer(s), "BRS-tx");
@@ -667,14 +691,14 @@ public final class StreamClient {
                 String code = j.isNull("code") ? "INTERNAL" : j.optString("code", "INTERNAL");
                 String msg = j.isNull("msg") ? "" : j.optString("msg", "");
                 if (preview && ("PREVIEW_LIMIT".equals(code) || "KICKED".equals(code))) throw new Stop(code, msg);   // nhường chỗ → thôi, không giành lại
-                throw serverError(code, msg);
+                throw serverError(code, msg, j);
             }
             default:
                 break;                                                     // kiểu tin lạ → bỏ qua
         }
     }
 
-    private static Exception serverError(String code, String msg) {
+    private static Exception serverError(String code, String msg, JSONObject j) {
         switch (code) {
             case "KICKED":
                 return new Stop(code, msg.isEmpty() ? Ui.L("Máy đang được mở ở nơi khác.", "This phone was opened somewhere else.") : msg);
@@ -684,8 +708,12 @@ public final class StreamClient {
             case "LOCKED":
             case "BAD":
                 return new Stop(code, msg.isEmpty() ? Ui.L("Máy chủ từ chối mở máy này.", "The server refused to open this phone.") : msg);
-            case "OFFLINE":                                                 // máy có thể đã chuyển máy chủ → hỏi lại đường nối
-                return new Retry(code, msg.isEmpty() ? Ui.L("Máy chưa sẵn sàng.", "The phone is not ready.") : msg, true, 0);
+            case "OFFLINE": {                                               // máy có thể đã chuyển máy chủ → hỏi lại đường nối
+                // 16/11: máy chủ báo kèm boot = 1 (máy đang được bật lại → hỏi lại đều 5 giây) · fix = "reboot" (cần khách bấm Khởi động lại
+                // máy → hỏi thưa hơn, 12 giây) — màn điều khiển nhận qua onProblemX.
+                boolean boot = j != null && j.optInt("boot", 0) == 1, fix = j != null && "reboot".equals(j.optString("fix", ""));
+                return new Retry(code, msg.isEmpty() ? Ui.L("Máy chưa sẵn sàng.", "The phone is not ready.") : msg, true, boot ? 5000 : fix ? 12000 : 0, j);
+            }
             case "MAINT":
                 return new Retry(code, msg.isEmpty() ? Ui.L("Hệ thống đang bảo trì.", "Under maintenance.") : msg, false, 10000);
             default:                                                        // BUSY, INTERNAL…
@@ -987,12 +1015,15 @@ public final class StreamClient {
         final String code, msg;
         final boolean refetch;
         final long delay;
-        Retry(String code, String msg, boolean refetch, long delay) {
+        final JSONObject extra;                        // 16/11: gợi ý của máy chủ (fix / boot) — null nếu không có
+        Retry(String code, String msg, boolean refetch, long delay) { this(code, msg, refetch, delay, null); }
+        Retry(String code, String msg, boolean refetch, long delay, JSONObject extra) {
             super(code + ": " + msg);
             this.code = code;
             this.msg = msg;
             this.refetch = refetch;
             this.delay = delay;
+            this.extra = extra;
         }
     }
 }

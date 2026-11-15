@@ -83,6 +83,15 @@ public class ControlActivity extends Activity {
     private String quality = "bal";
     private boolean full = false, loaded = false, resumed = false, kicked = false, stopped = false, showStats = false;
     private long rebootUntil = 0;
+    // 16/11 · màn chờ: giữ ĐÚNG câu máy chủ vừa báo (không nháy sang "Đang kết nối lại…"), máy chủ gợi ý thì hiện nút Khởi động lại máy
+    private String srvMsg = "";
+    private boolean srvFix = false, srvBoot = false, fixing = false;
+    private long srvAt = 0;
+    private int probN = 0;                   // số lần liền máy chủ báo lỗi chung chung (máy chủ bản cũ) → đủ 3 lần cũng cho khởi động lại
+    // 16/11 · mạng yếu: ô chữ nhỏ trên hình ("mạng yếu — đã giảm nét" / "mạng chậm — đang chờ hình")
+    private TextView netChip;
+    private boolean weakOn = false;
+    private long weakT = 0;
     private SharedPreferences pref;
     // Bàn phím: máy cloud mở bàn phím (bấm vào ô nhập) → bật bàn phím điện thoại vào 1 ô gõ vô hình, gõ tới đâu gửi tới đó
     private ImeSink sink;
@@ -191,6 +200,14 @@ public class ControlActivity extends Activity {
         FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.START);
         sp.setMargins(Ui.dp(8), Ui.dp(8), 0, 0);
         stage.addView(stats, sp);
+
+        netChip = Ui.text(this, "", 12.5f, Color.WHITE, true);     // nằm dưới màn chờ; không nhận chạm (chạm lọt xuống màn hình máy)
+        netChip.setBackground(Ui.round(Color.argb(205, 10, 22, 46), 99, Color.argb(130, 255, 214, 102)));
+        netChip.setPadding(Ui.dp(12), Ui.dp(5), Ui.dp(12), Ui.dp(6));
+        netChip.setVisibility(View.GONE);
+        FrameLayout.LayoutParams np = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        np.setMargins(Ui.dp(8), Ui.dp(10), Ui.dp(8), 0);
+        stage.addView(netChip, np);
 
         veil = Ui.col(this, 12);
         veil.setGravity(Gravity.CENTER);
@@ -301,9 +318,11 @@ public class ControlActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
-        if (loaded && !kicked && !stopped && client == null) connect();
+        if (loaded && !kicked && !stopped && client == null && !fixing) connect();     // đang khởi động lại máy → chờ xong mới nối (fixReboot)
         h.removeCallbacks(kbPoll);
         h.postDelayed(kbPoll, 1500);
+        h.removeCallbacks(netTick);
+        h.postDelayed(netTick, 1000);
         Api.onOutdated = () -> { if (!isFinishing()) Updater.check(this, false); };   // máy chủ báo app cũ → hộp bắt buộc cập nhật
         Updater.check(this, false);
     }
@@ -312,6 +331,7 @@ public class ControlActivity extends Activity {
         super.onPause();
         resumed = false;
         h.removeCallbacks(kbPoll);
+        h.removeCallbacks(netTick);
         stopStream();                            // rời màn hình → đóng phiên (BYE); quay lại tự nối lại
     }
 
@@ -331,6 +351,7 @@ public class ControlActivity extends Activity {
         kicked = false;
         stopped = false;
         api = "";
+        fixing = false; srvMsg = ""; probN = 0;          // 16/11: đổi sang máy khác → bỏ trạng thái "đang khởi động lại" của máy trước
         showVeil(Ui.L("Đang mở máy…", "Opening phone…"), true, null, null);
         final String pid = id;
         Api.bg(() -> {
@@ -360,6 +381,7 @@ public class ControlActivity extends Activity {
         stopStream();
         kicked = false;
         stopped = false;
+        srvMsg = ""; probN = 0; weakOn = false;
         if (!rebooting()) showVeil(Ui.L("Đang kết nối…", "Connecting…"), true, null, null);
         client = new StreamClient(this, id, quality, net);
         screen.attach(client);
@@ -373,7 +395,8 @@ public class ControlActivity extends Activity {
 
     private final StreamClient.Listener net = new StreamClient.Listener() {
         @Override public void onConnecting(int attempt, String why) {
-            if (rebooting()) return;
+            if (rebooting() || fixing) return;
+            if (attempt > 0 && srvRecent()) { showSrv(); return; }     // máy chủ vừa nói rõ tình trạng → giữ câu đó (không nháy qua lại)
             if (attempt <= 0) showVeil(Ui.L("Đang kết nối…", "Connecting…"), true, null, null);
             else showVeil(Ui.L("Đang kết nối lại… (lần " + attempt + ")", "Reconnecting… (attempt " + attempt + ")")
                     + (why == null || why.isEmpty() ? "" : "\n" + why), true, Ui.L("Mở lại", "Reopen"), ControlActivity.this::connect);
@@ -395,14 +418,29 @@ public class ControlActivity extends Activity {
 
         @Override public void onStats(int fps, int kbps, int ping, boolean direct, JSONObject server) {
             if (ControlActivity.this.ping != ping) { ControlActivity.this.ping = ping; paintBall(); }   // nút nổi: độ trễ mạng
+            boolean weak = server != null && server.optInt("weak", 0) == 1;      // 16/11: máy chủ đang phải giảm nét vì mạng của khách yếu
+            if (weak && !weakOn) weakT = SystemClock.uptimeMillis();
+            weakOn = weak;
+            netBadge();
             if (stats.getVisibility() != View.VISIBLE) return;
             stats.setText(fps + " fps · " + kbps + " kbps · " + (ping >= 0 ? ping + " ms" : "– ms") + " · "
-                    + (direct ? Ui.L("trực tiếp", "direct") : "Cloudflare"));
+                    + (direct ? Ui.L("trực tiếp", "direct") : "Cloudflare") + (weak ? Ui.L(" · mạng yếu", " · weak net") : ""));
         }
 
-        @Override public void onProblem(String code, String msg) {
-            if (rebooting()) return;
-            showVeil(msg + "\n" + Ui.L("Đang thử lại…", "Retrying…"), true, null, null);
+        @Override public void onProblem(String code, String msg) { onProblemX(code, msg, null); }
+
+        @Override public void onProblemX(String code, String msg, JSONObject x) {
+            if (rebooting() || fixing) return;
+            boolean fix = x != null && "reboot".equals(x.optString("fix", "")), boot = x != null && x.optInt("boot", 0) == 1;
+            probN = "INTERNAL".equals(code) ? probN + 1 : 0;
+            String m = msg == null ? "" : msg;
+            if (!fix && !boot && probN >= 3) {           // máy chủ bản cũ báo lỗi chung chung 3 lần liền → vẫn cho khách tự khởi động lại máy
+                fix = true;
+                m += "\n" + Ui.L("Vẫn chưa vào được? Bấm “Khởi động lại máy” (1–2 phút, dữ liệu giữ nguyên).",
+                        "Still stuck? Tap “Restart phone” (1–2 minutes, your data is kept).");
+            }
+            srvMsg = m; srvFix = fix; srvBoot = boot; srvAt = SystemClock.uptimeMillis();
+            showSrv();
         }
 
         @Override public void onStopped(String code, String msg) { streamStopped(code, msg); }
@@ -436,11 +474,86 @@ public class ControlActivity extends Activity {
     /** Khung hình đầu tiên đã lên → ẩn màn chờ. */
     private void frameShown() {
         if (kicked || stopped || rebooting() || client == null) return;
+        srvMsg = ""; probN = 0;
         veil.setVisibility(View.GONE);
         Blue.playTask(this);                     // 💎 nhiệm vụ "mở máy đám mây" (SQL v27) — mỗi ngày 1 lần, im lặng nếu đã nhận / chưa bật
     }
 
     private boolean rebooting() { return rebootUntil > SystemClock.uptimeMillis(); }
+
+    // ---------------- 16/11 · màn chờ theo câu máy chủ báo + nút Khởi động lại máy ----------------
+    private boolean srvRecent() { return !srvMsg.isEmpty() && SystemClock.uptimeMillis() - srvAt < 30000; }
+
+    /** Máy đang được bật lại (boot) → chỉ chờ, tự vào · cần sửa (fix) → nút "Khởi động lại máy" · còn lại → "Đang thử lại…" như cũ. */
+    private void showSrv() {
+        String t = srvMsg + (srvBoot ? "" : "\n" + Ui.L("Đang thử lại…", "Retrying…"));
+        if (srvFix) showVeil(t, true, "⚡ " + Ui.L("Khởi động lại máy", "Restart phone"), this::fixAsk);
+        else showVeil(t, true, null, null);
+    }
+
+    private void fixAsk() {
+        Ui.confirm(this, Ui.L("Khởi động lại máy?", "Restart this phone?"),
+                Ui.L("Máy tắt rồi bật lại, khoảng 1–2 phút. App đang mở trong máy sẽ tắt — dữ liệu vẫn giữ nguyên.",
+                        "The phone restarts in 1–2 minutes. Running apps will close — your data is kept."),
+                Ui.L("Khởi động lại", "Restart"), this::fixReboot);
+    }
+
+    /** Khởi động lại máy rồi CHỜ máy chủ làm xong mới nối lại (trước đây đoán 45 giây — máy treo cần lâu hơn thì quay mãi).
+     *  Trong lúc chờ không nối phát hình (máy đang tắt / bật). Xong → tự vào máy; lỗi → báo rõ + nút Thử lại. */
+    private void fixReboot() {
+        if (fixing || id == null) return;
+        fixing = true; srvMsg = ""; probN = 0;
+        stopStream();
+        showVeil(Ui.L("Đang khởi động lại máy… (1–2 phút)", "Restarting the phone… (1–2 minutes)"), true, null, null);
+        final String base = api, pid = id;
+        Api.bgLong(() -> {
+            JSONObject j = Api.cpAt(base, "POST", pid + "/reboot", new JSONObject());
+            String job = j.optString("job", "");
+            if (job.isEmpty()) { Thread.sleep(45000); return ""; }             // máy chủ rất cũ (không trả mã việc) → chờ như trước
+            int miss = 0;
+            for (int i = 0; i < 200; i++) {                                    // tối đa ~5 phút
+                Thread.sleep(1500);
+                JSONObject q;
+                try { q = Api.cpAt(base, "GET", "job?id=" + job, null); miss = 0; }
+                catch (Exception e) { if (++miss >= 8) throw e; continue; }    // mạng chập chờn lúc hỏi → hỏi lại, 8 lần liền mới bỏ
+                String st = q.optString("state"), msg = q.optString("msg");
+                if ("done".equals(st)) return msg;
+                if ("error".equals(st)) throw new Exception(msg.isEmpty() ? Ui.L("Chưa khởi động lại được.", "Couldn't restart.") : msg);
+                if (!msg.isEmpty()) Api.ui(() -> { if (fixing && pid.equals(id) && !isFinishing()) showVeil(msg, true, null, null); });
+            }
+            return "";
+        }, msg -> {
+            if (!pid.equals(id) || isFinishing()) return;
+            fixing = false;
+            if (resumed && loaded) connect();
+        }, m -> {
+            if (!pid.equals(id) || isFinishing()) return;
+            fixing = false;
+            showVeil(Ui.L("Chưa khởi động lại được: ", "Couldn't restart: ") + m + "\n" + Ui.L("Bấm Thử lại; vẫn lỗi thì báo hỗ trợ kèm tên máy.", "Tap Retry; if it keeps failing, contact support with the phone name."),
+                    false, Ui.L("Thử lại", "Retry"), this::connect);
+        });
+    }
+
+    /** Ô chữ nhỏ trên hình: mạng im lặng quá 2,5 giây → "đang chờ hình" · máy chủ vừa phải giảm nét vì mạng yếu → báo 8 giây. */
+    private void netBadge() {
+        if (netChip == null || veil == null) return;
+        String t = null;
+        if (veil.getVisibility() != View.VISIBLE && client != null) {
+            long quiet = client.silentMs(), now = SystemClock.uptimeMillis();
+            if (quiet > 2500) t = "⏳ " + Ui.L("Mạng chậm — đang chờ hình…", "Slow network — waiting for video…");
+            else if (weakOn && now - weakT < 8000) t = "📶 " + Ui.L("Mạng yếu — đã giảm nét cho hình mượt", "Weak network — quality lowered to stay smooth");
+        }
+        if (t == null) { if (netChip.getVisibility() != View.GONE) netChip.setVisibility(View.GONE); return; }
+        if (!t.contentEquals(netChip.getText())) netChip.setText(t);
+        if (netChip.getVisibility() != View.VISIBLE) netChip.setVisibility(View.VISIBLE);
+    }
+
+    private final Runnable netTick = new Runnable() {
+        @Override public void run() {
+            netBadge();
+            if (resumed) h.postDelayed(this, 1000);
+        }
+    };
 
     private void showVeil(String t, boolean spin, String btn, Runnable act) {
         veil.setVisibility(View.VISIBLE);
@@ -805,16 +918,7 @@ public class ControlActivity extends Activity {
                 });
     }
 
-    private void reboot() {
-        Ui.confirm(this, Ui.L("Khởi động lại máy?", "Reboot phone?"), Ui.L("Máy tắt khoảng 1 phút rồi tự bật lại. Dữ liệu vẫn giữ.", "The phone restarts in about a minute. Data is kept."),
-                Ui.L("Khởi động lại", "Reboot"), () -> {
-                    cpPost("reboot", new JSONObject(), Ui.L("Đang khởi động lại…", "Rebooting…"));
-                    rebootUntil = SystemClock.uptimeMillis() + 45000;
-                    showVeil(Ui.L("Máy đang khởi động lại, khoảng 1 phút…", "Rebooting, about a minute…"), true, null, null);
-                    h.removeCallbacks(afterReboot);
-                    h.postDelayed(afterReboot, 45000);
-                });
-    }
+    private void reboot() { fixAsk(); }         // 16/11: cùng 1 đường với nút trên màn chờ — chờ máy chủ làm xong rồi tự vào (hết đoán 45 giây)
 
     private final Runnable afterReboot = () -> {
         rebootUntil = 0;

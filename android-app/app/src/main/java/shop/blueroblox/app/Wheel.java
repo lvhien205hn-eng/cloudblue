@@ -159,7 +159,9 @@ final class Wheel {
     /** Dải 🎡 gọn ở đầu trang Máy của tôi + Thuê máy — khách thấy ngay vòng quay, bấm là mở. Ẩn khi vòng quay tắt / bản CH Play.
      *  Trạng thái đã tải trong 60 giây → vẽ ngay (khỏi nháy), không gọi máy chủ lại. */
     static long stAt = 0;
-    static View strip(MainActivity a) {
+    static View strip(MainActivity a) { return strip(a, null); }
+    /** after (16/11): gọi mỗi lần dải vừa được vẽ lại (hiện / ẩn) — trang chủ dùng để cập nhật dòng "Ẩn / Hiện ưu đãi". */
+    static View strip(MainActivity a, Runnable after) {
         LinearLayout c = Ui.row(a, 12);
         c.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(40, 70, 182), Color.rgb(20, 34, 100), Color.rgb(11, 18, 54)});
@@ -190,7 +192,7 @@ final class Wheel {
         c.setOnClickListener(v -> open(a));
         c.setVisibility(View.GONE);
         Runnable fill = () -> {
-            if (a.isFinishing() || !live()) { c.setVisibility(View.GONE); return; }
+            if (a.isFinishing() || !live()) { c.setVisibility(View.GONE); if (after != null) after.run(); return; }
             JSONObject w = st; int left = w.optInt("left"); long[] f = first();
             t.setText(Ui.L("Vòng quay may mắn", "Lucky wheel"));
             String up = Ui.L("Mã giảm đến ", "Codes up to ") + topPct() + "% · ";
@@ -207,6 +209,7 @@ final class Wheel {
                 go.setText(Ui.L("Mở ›", "Open ›"));
             }
             c.setVisibility(View.VISIBLE);
+            if (after != null) after.run();
         };
         if (on()) {
             if (st != null) fill.run();
@@ -296,7 +299,7 @@ final class Wheel {
             wv.onHub = this::hub;
 
             go = Ui.button(a, "", Ui.PRIMARY);
-            go.setTextSize(16);
+            go.setTextSize(Ui.sp(16));
             go.setMinHeight(Ui.dp(52));
             box.addView(go, Ui.fill());
             go.setOnClickListener(v -> main());

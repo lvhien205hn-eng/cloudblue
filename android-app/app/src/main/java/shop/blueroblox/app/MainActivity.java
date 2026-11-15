@@ -178,31 +178,38 @@ public class MainActivity extends Activity {
         root.setBackground(Ui.bubbles(this));
 
         // Đầu trang: cá voi Cloud Blue + tên + số dư + nút Sáng/Tối
-        LinearLayout top = Ui.row(this, 10);
+        // 16/11: Ui.Head — tên "CloudBlue" luôn hiện ĐỦ; ô số dư / Blue không đủ chỗ thì tự xuống hàng 2 (trước đây chúng đè, tên chỉ còn "Clo…")
+        Ui.Head top = new Ui.Head(this, 10, 6);
         top.setPadding(Ui.dp(14), Ui.dp(10), Ui.dp(14), Ui.dp(10));
         top.setBackground(Ui.round(Ui.LIGHT ? Color.argb(246, 243, 247, 252) : Color.argb(246, 7, 18, 38), 0, 0));
-        top.addView(Ui.whale(this, 34), new LinearLayout.LayoutParams(Ui.dp(50), Ui.dp(34)));
+        LinearLayout logo = Ui.row(this, 10);
+        logo.addView(Ui.whale(this, 34), new LinearLayout.LayoutParams(Ui.dp(50), Ui.dp(34)));
         SpannableString bn = new SpannableString("CloudBlue");          // "Cloud" màu chữ thường + "Blue" xanh (giống logo web)
         bn.setSpan(new ForegroundColorSpan(Ui.LIGHT ? Ui.BLUE : Color.rgb(90, 168, 255)), 5, 9, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         TextView brand = Ui.text(this, "", 19, Ui.FG, true);
         brand.setText(bn);
         brand.setSingleLine(true);
-        top.addView(brand, Ui.weight(1));
+        logo.addView(brand, Ui.wrap());
+        top.addView(logo, new ViewGroup.LayoutParams(-2, -2));
+        LinearLayout chips = Ui.row(this, 8);
         balTop = Ui.pill(this, "…", Ui.SKY);
+        balTop.setSingleLine(true);
         balTop.setOnClickListener(v -> openTopup());
         if (!Api.SHOP) balTop.setVisibility(View.GONE);  // không mua trong app → không hiện số dư / nạp tiền
-        top.addView(balTop, Ui.wrap());
+        chips.addView(balTop, Ui.wrap());
         blueTop = Ui.pill(this, "💎", Ui.SKY);              // 💎 Tích Blue (SQL v27) — hiện khi máy chủ đã bật
+        blueTop.setSingleLine(true);
         blueTop.setVisibility(View.GONE);
         blueTop.setContentDescription(Ui.L("Tích Blue", "Blue rewards"));
         blueTop.setOnClickListener(v -> Blue.sheet(this));
-        top.addView(blueTop, Ui.wrap());
+        chips.addView(blueTop, Ui.wrap());
+        top.addView(chips, new ViewGroup.LayoutParams(-2, -2));
         TextView th = Ui.text(this, Ui.LIGHT ? "🌙" : "☀️", 17, Ui.FG, false);
         th.setGravity(Gravity.CENTER);
         th.setContentDescription(Ui.L("Đổi chế độ Sáng / Tối", "Switch light / dark mode"));
         Ui.ripple(th, Ui.PANEL, 99, Ui.RING);
         th.setOnClickListener(v -> { Ui.setLight(this, !Ui.LIGHT); recreate(); });
-        top.addView(th, new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
+        top.addView(th, new ViewGroup.LayoutParams(Ui.dp(40), Ui.dp(40)));
         root.addView(top, Ui.fill());
         tickerV = Offers.ticker(this);
         root.addView(tickerV, Ui.fill());
@@ -300,7 +307,7 @@ public class MainActivity extends Activity {
                 if (phonesSig().equals(phonesSig)) tick();      // không có gì đổi → chỉ cập nhật chữ thời hạn (ô xem trước chạy liền, không nháy)
                 else renderPhones();
             }
-            else if (tab == 2) renderAccount();
+            else if (tab == 2) { if (!uiDrag) renderAccount(); }   // đang kéo thanh cỡ giao diện → khoan vẽ lại (thanh kéo biến mất dưới tay)
             else if (!loaded) renderRent();          // lần đầu: vẽ lại bảng thuê với giá và giới hạn thật
             loaded = true;
             boolean pending = false;
@@ -369,6 +376,7 @@ public class MainActivity extends Activity {
         if (!Api.SHOP && t == 1) t = 0;                 // không mua trong app → không có màn Thuê máy
         if (t == 1 && tab != 1) rentPicked = false;     // vào lại trang Thuê máy → chưa chọn gói, chưa hiện tiền
         tab = t;
+        try { getIntent().putExtra("tab", t); } catch (Exception ignored) { }   // 16/11: màn vẽ lại (Sáng/Tối, cỡ giao diện, xoay máy) → ở lại tab này
         for (int i = 0; i < 3; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
             nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 14, 0) : null);
@@ -451,8 +459,7 @@ public class MainActivity extends Activity {
         });
         head.addView(rf, Ui.wrap());
         body.addView(head, Ui.fill());
-        if (Api.SHOP && Wheel.on()) body.addView(Wheel.strip(this), Ui.fill());       // 🎡 vòng quay may mắn — dải gọn ngay đầu trang
-        { View os = Offers.strip(this); if (os != null) body.addView(os, Ui.fill()); }  // 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35)
+        promo(body, true);                          // 🎡 vòng quay · 🎬 Kiếm tiền · 🎁 Ưu đãi — khách bấm ẩn / hiện được (16/11)
 
         // Nhập mã: mã TẶNG MÁY (12 ký tự) · mã chia sẻ / chuyển nhượng (8 ký tự)
         LinearLayout cr = Ui.row(this, 8);
@@ -499,6 +506,42 @@ public class MainActivity extends Activity {
         phonesSig = phonesSig();
         h.removeCallbacks(vis);
         if (resumed) h.postDelayed(vis, 300);
+    }
+
+    // ---------------- 16/11 · khách tự ẨN / HIỆN các ô ưu đãi đầu trang ----------------
+    boolean promoHidden() { return getSharedPreferences("ui", MODE_PRIVATE).getBoolean("promo_hide", false); }
+    void setPromoHidden(boolean hide) { getSharedPreferences("ui", MODE_PRIVATE).edit().putBoolean("promo_hide", hide).apply(); }
+
+    /** Các ô 🎡 Vòng quay · 🎬 Kiếm tiền · 🎁 Ưu đãi ở đầu trang "Máy của tôi" (offers = true) / "Thuê máy": 1 dòng nhỏ để ẩn / hiện, nhớ theo máy.
+     *  Ẩn chỉ để gọn màn hình — dòng chữ chạy, thẻ vòng quay ở Tài khoản và hộp Nạp tiền vẫn như cũ. Không có ô nào → không hiện dòng này. */
+    private void promo(LinearLayout body, boolean offers) {
+        final View os = offers ? Offers.strip(this) : null;
+        final boolean wheel = Api.SHOP && Wheel.on();
+        if (!wheel && os == null) return;
+        final LinearLayout wrap = Ui.col(this, 6), box = Ui.col(this, 14);
+        final TextView bar = Ui.text(this, "", 12.5f, Ui.MUTED, true);
+        bar.setGravity(Gravity.CENTER);
+        bar.setPadding(Ui.dp(12), Ui.dp(4), Ui.dp(12), Ui.dp(5));
+        Ui.ripple(bar, Color.TRANSPARENT, 99, 0);
+        bar.setTag("promo_bar");
+        final View[] ws = {null};
+        final Runnable upd = () -> {
+            boolean hide = promoHidden(), any = os != null || (ws[0] != null && ws[0].getVisibility() == View.VISIBLE);
+            wrap.setVisibility(any ? View.VISIBLE : View.GONE);
+            box.setVisibility(hide ? View.GONE : View.VISIBLE);
+            bar.setText(hide ? "🎁 " + Ui.L("Hiện ưu đãi · vòng quay", "Show offers · lucky wheel") + "  ▾" : Ui.L("Ẩn ưu đãi", "Hide offers") + "  ▴");
+            bar.setTextColor(hide ? Ui.SKY : Ui.MUTED);
+            bar.setContentDescription(hide ? Ui.L("Hiện các ô ưu đãi và vòng quay", "Show offers and the lucky wheel") : Ui.L("Ẩn các ô ưu đãi và vòng quay", "Hide offers and the lucky wheel"));
+        };
+        if (wheel) { ws[0] = Wheel.strip(this, upd); box.addView(ws[0], Ui.fill()); }
+        if (os != null) box.addView(os, Ui.fill());
+        bar.setOnClickListener(v -> { setPromoHidden(!promoHidden()); upd.run(); });
+        LinearLayout.LayoutParams bl = Ui.wrap();       // chỉ chữ bấm được (canh phải) — chạm chỗ trống bên trái không đổi gì
+        bl.gravity = Gravity.END;
+        wrap.addView(bar, bl);
+        wrap.addView(box, Ui.fill());
+        body.addView(wrap, Ui.fill());
+        upd.run();
     }
 
     /** Máy điều khiển được (đang chạy, không bị khoá — admin bỏ qua khoá — và không bảo trì). */
@@ -1113,15 +1156,150 @@ public class MainActivity extends Activity {
         boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && andList().size() > 1;
         sw.setEnabled(canSw); sw.setAlpha(canSw ? 1f : .45f);
         Button del = Ui.button(this, "🗑 " + Ui.L("Huỷ máy (xoá vĩnh viễn)", "Delete phone"), Ui.DANGER);
+        final int fpsNow = p.optInt("fps", 30);          // 16/11: khách tự đổi FPS máy đang thuê (không tạo máy mới, không tốn tiền)
+        Button fp = Ui.button(this, "🎞 " + Ui.L("Đổi FPS (đang " + fpsNow + " FPS)", "Change FPS (now " + fpsNow + ")"), Ui.GHOST);
+        boolean canFps = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing;
+        fp.setEnabled(canFps); fp.setAlpha(canFps ? 1f : .45f);
         if (Api.SHOP) c.addView(up, Ui.fill());        // nâng cấp (trả bằng số dư)
+        c.addView(fp, Ui.fill());
         c.addView(sw, Ui.fill()); c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(del, Ui.fill());
         Dialog d = Ui.sheet(this, p.optString("name"), c);
+        fp.setOnClickListener(v -> { d.dismiss(); changeFps(p); });
         sw.setOnClickListener(v -> { d.dismiss(); SwitchAndroid.open(this, p, price, status, isAdmin(), () -> { phonesSig = null; refresh(); h.postDelayed(this::refresh, 5000); }); });
         del.setOnClickListener(v -> { d.dismiss(); cancelPhone(p); });
         up.setOnClickListener(v -> { d.dismiss(); upgrade(p); });
         sh.setOnClickListener(v -> { d.dismiss(); share(p); });
         rn.setOnClickListener(v -> { d.dismiss(); rename(p); });
         d.show();
+    }
+
+    // ---------------- 16/11 · KHÁCH TỰ ĐỔI FPS (SQL doi-fps-1611 → cloudphone_set_fps) ----------------
+    static final int[] FPS_PICK = {15, 20, 30, 45, 60, 90, 120};
+    static String fpsTip(int f) {
+        return f < 20 ? Ui.L("tiết kiệm nhất", "lightest") : f < 30 ? Ui.L("mạng yếu", "weak network") : f <= 30 ? Ui.L("treo game", "idling")
+                : f <= 45 ? Ui.L("cân bằng", "balanced") : f <= 60 ? Ui.L("mượt", "smooth") : Ui.L("rất mượt", "very smooth");
+    }
+
+    /** Đổi FPS của máy đang thuê: cùng máy đó, giữ nguyên dữ liệu, không tốn tiền. Hình truyền về đổi ở lần mở máy kế tiếp;
+     *  máy Android 12 · 15 cần khởi động lại 1 lần để FPS mới có tác dụng trong game (máy chủ trả reboot = true → hỏi khách). */
+    void changeFps(JSONObject p) {
+        final String pid = p.optString("id");
+        final int cur = p.optInt("fps", 30), lo = price.optInt("min_fps", 10), hi = Math.min(price.optInt("max_fps", 60), p.optInt("cpu") < 4 ? 60 : 120);
+        final int[] pick = {cur};
+        LinearLayout c = Ui.col(this, 12);
+        String av = p.optString("android", "").trim();
+        c.addView(Ui.muted(this, "📱 " + p.optString("name") + (av.isEmpty() || "null".equals(av) ? "" : " · Android " + av) + " · " + p.optInt("ram") + "GB · "
+                + p.optInt("cpu") + Ui.L(" nhân · đang dùng ", " cores · now ") + cur + " FPS"), Ui.fill());
+        final Ui.Wrap w = new Ui.Wrap(this, 8);
+        java.util.TreeSet<Integer> opts = new java.util.TreeSet<>();
+        for (int x : FPS_PICK) if (x >= lo && x <= hi) opts.add(x);
+        opts.add(cur);
+        final Button ok = Ui.button(this, "", Ui.PRIMARY);
+        final TextView err = Ui.text(this, "", 13, Ui.BAD, false);
+        err.setVisibility(View.GONE);
+        final boolean[] busy = {false};
+        final Runnable draw = () -> {
+            for (int i = 0; i < w.getChildCount(); i++) Ui.setChip((TextView) w.getChildAt(i), (int) w.getChildAt(i).getTag() == pick[0]);
+            boolean ch = pick[0] != cur && !busy[0];
+            ok.setText(busy[0] ? Ui.L("Đang lưu…", "Saving…") : pick[0] != cur ? Ui.L("Lưu " + pick[0] + " FPS", "Save " + pick[0] + " FPS") : Ui.L("Chọn số FPS khác để đổi", "Pick a different FPS"));
+            ok.setEnabled(ch); ok.setAlpha(ch ? 1f : .45f);
+        };
+        for (int x : opts) {
+            TextView ch = Ui.chip(this, x + " FPS\n" + fpsTip(x), false);
+            ch.setTextSize(Ui.sp(13));
+            ch.setTag(x);
+            ch.setOnClickListener(v -> { if (busy[0]) return; pick[0] = (int) v.getTag(); err.setVisibility(View.GONE); draw.run(); });
+            w.addView(ch);
+        }
+        c.addView(w, Ui.fill());
+        c.addView(Ui.muted(this, Ui.L("FPS càng cao hình càng mượt nhưng máy chạy nặng hơn và tốn mạng hơn. Treo game cả ngày nên để 30 FPS (mạng yếu: 20 FPS).",
+                "Higher FPS looks smoother but loads the phone and your network more. For idling all day use 30 FPS (weak network: 20 FPS).")
+                + (p.optInt("cpu") < 4 ? " " + Ui.L("Máy dưới 4 nhân chọn tối đa 60 FPS.", "Phones under 4 cores go up to 60 FPS.") : "")), Ui.fill());
+        c.addView(Ui.muted(this, "✔ " + Ui.L("Không tạo máy mới · không mất dữ liệu · không tốn tiền.", "Same phone · data kept · free.")), Ui.fill());
+        c.addView(err, Ui.fill());
+        c.addView(ok, Ui.fill());
+        final Dialog d = Ui.sheet(this, "🎞 " + Ui.L("Đổi FPS", "Change FPS"), c);
+        ok.setOnClickListener(v -> {
+            final int want = pick[0];
+            if (want == cur || busy[0]) return;
+            busy[0] = true; draw.run();
+            Api.bg(() -> Api.rpc("cloudphone_set_fps", new JSONObject().put("p_id", pid).put("p_fps", want)), r -> {
+                busy[0] = false;
+                try { d.dismiss(); } catch (Exception ignored) { }
+                if (destroyed) return;
+                try { p.put("fps", want); } catch (Exception ignored) { }
+                phonesSig = null; refresh();
+                JSONObject j = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
+                if (j.optBoolean("reboot", false)) fpsReboot(p, want);
+                else Ui.toast(this, Ui.L("Đã đổi sang " + want + " FPS — mở lại màn hình máy là thấy.", "Changed to " + want + " FPS — reopen the phone screen to see it."));
+            }, m -> { busy[0] = false; err.setText(m); err.setVisibility(View.VISIBLE); draw.run(); });
+        });
+        draw.run();
+        d.show();
+    }
+
+    /** Đã lưu FPS mới mà máy cần khởi động lại 1 lần (Android 12 · 15) → khách chọn: khởi động lại ngay, hay để sau (lần bật kế tiếp tự áp dụng). */
+    void fpsReboot(JSONObject p, int fps) {
+        LinearLayout c = Ui.col(this, 12);
+        c.addView(Ui.text(this, "✅ " + Ui.L("Đã lưu " + fps + " FPS. Hình truyền về đổi ngay ở lần mở máy kế tiếp.",
+                "Saved " + fps + " FPS. The picture you see changes the next time you open the phone."), 14.5f, Ui.OK, true), Ui.fill());
+        c.addView(Ui.muted(this, Ui.L("Để FPS mới có tác dụng BÊN TRONG GAME, máy cần khởi động lại 1 lần (khoảng 1–2 phút). App đang mở trong máy sẽ tắt, dữ liệu giữ nguyên. Chưa tiện thì để sau — lần máy bật lại kế tiếp sẽ tự áp dụng.",
+                "For the new FPS to apply INSIDE GAMES the phone must restart once (about 1–2 minutes). Apps running on the phone will close; your data is kept. Not now? It applies by itself the next time the phone starts.")), Ui.fill());
+        final TextView st = Ui.text(this, "", 13.5f, Ui.SKY, false);
+        st.setVisibility(View.GONE);
+        c.addView(st, Ui.fill());
+        LinearLayout r = Ui.row(this, 10);
+        final Button later = Ui.button(this, Ui.L("Để sau", "Later"), Ui.GHOST), now = Ui.button(this, "⚡ " + Ui.L("Khởi động lại ngay", "Restart now"), Ui.PRIMARY);
+        r.addView(later, Ui.weight(1));
+        r.addView(now, Ui.weight(1.6f));
+        c.addView(r, Ui.fill());
+        final Dialog d = Ui.sheet(this, "🎞 " + Ui.L("Đổi FPS", "Change FPS"), c);
+        later.setOnClickListener(v -> d.dismiss());
+        now.setOnClickListener(v -> {
+            now.setEnabled(false); now.setAlpha(.45f);
+            st.setTextColor(Ui.SKY);
+            st.setText(Ui.L("Đang khởi động lại máy… (1–2 phút, có thể đóng hộp này)", "Restarting… (1–2 minutes, you may close this)"));
+            st.setVisibility(View.VISIBLE);
+            rebootPhone(p.optString("id"), msg -> { if (d.isShowing()) st.setText(msg); }, msg -> {
+                if (destroyed) return;
+                phonesSig = null; refresh();
+                if (d.isShowing()) { st.setTextColor(Ui.OK); st.setText("✅ " + msg); later.setText(Ui.L("Xong", "Done")); }
+                else Ui.toast(this, "✅ " + msg);
+            }, m -> {
+                if (destroyed) return;
+                String t = Ui.L("Chưa khởi động lại được: ", "Couldn't restart: ") + m;
+                if (d.isShowing()) { st.setTextColor(Ui.BAD); st.setText(t); now.setEnabled(true); now.setAlpha(1f); }
+                else Ui.toast(this, t);
+            });
+        });
+        d.show();
+    }
+
+    /** Khởi động lại 1 máy từ danh sách: hỏi máy đang ở máy chủ nào (cloudphone_endpoint) → POST …/reboot → chờ máy chủ làm xong.
+     *  step = câu tiến độ máy chủ báo · done = câu kết quả · fail = câu lỗi (đã dễ hiểu). */
+    void rebootPhone(String pid, Api.Cb<String> step, Api.Cb<String> done, Api.Err fail) {
+        Api.bgLong(() -> {
+            Object o = Api.rpc("cloudphone_endpoint", new JSONObject().put("p_id", pid));
+            JSONObject ep = o instanceof JSONObject ? (JSONObject) o : new JSONObject(), s = ep.optJSONObject("stream");
+            String a = s == null || s.isNull("api") ? "" : s.optString("api", "").trim();
+            final String base = a.startsWith("https://") ? a : "";
+            Api.direct(base, s);
+            JSONObject j = Api.cpAt(base, "POST", pid + "/reboot", new JSONObject());
+            String job = j.optString("job", "");
+            if (job.isEmpty()) return Ui.L("Máy đang khởi động lại — khoảng 1–2 phút.", "The phone is restarting — about 1–2 minutes.");
+            int miss = 0;
+            for (int i = 0; i < 200; i++) {                                    // tối đa ~5 phút
+                Thread.sleep(1500);
+                JSONObject q;
+                try { q = Api.cpAt(base, "GET", "job?id=" + job, null); miss = 0; }
+                catch (Exception e) { if (++miss >= 8) throw e; continue; }    // mạng chập chờn lúc hỏi → hỏi lại
+                String stt = q.optString("state"), msg = q.optString("msg");
+                if ("done".equals(stt)) return msg.isEmpty() ? Ui.L("Máy đã khởi động lại xong.", "The phone has restarted.") : msg;
+                if ("error".equals(stt)) throw new Exception(msg.isEmpty() ? Ui.L("máy chủ báo lỗi", "server error") : msg);
+                if (!msg.isEmpty() && step != null) Api.ui(() -> step.ok(msg));
+            }
+            return Ui.L("Máy vẫn đang khởi động — mở máy sau ít phút.", "Still restarting — open the phone in a few minutes.");
+        }, done, fail);
     }
 
     void claim(EditText code, Button b) {
@@ -1301,7 +1479,7 @@ public class MainActivity extends Activity {
                     "⚠ Maintenance is ON — customers can't rent. Admin can still rent to test."), 13, Ui.WAIT, true), Ui.fill());
         body.addView(Ui.muted(this, Ui.L("3 bước: chọn hệ điều hành → chọn gói → số ngày. Máy mới tinh, có Play Store.",
                 "3 steps: Android version → plan → days. Fresh device with Play Store.")), Ui.fill());
-        if (Api.SHOP && Wheel.on()) body.addView(Wheel.strip(this), Ui.fill());       // 🎡 vòng quay may mắn — dải gọn, bấm là mở
+        promo(body, false);                         // 🎡 vòng quay may mắn — dải gọn, bấm là mở · khách ẩn / hiện được (16/11)
 
         int minR = price.optInt("min_ram", 1), minC = price.optInt("min_cpu", 1);
         final int mpu = maxPerUser(), left = mpu > 0 ? mpu - myLive() : 20;
@@ -1355,7 +1533,7 @@ public class MainActivity extends Activity {
             if (pzBox[0] != null) pzBox[0].setVisibility(sFree || need[0] ? View.GONE : View.VISIBLE);
             if (need[0]) {
                 sumL.setText(Ui.L("Chưa chọn gói", "No plan yet"));
-                total.setTextSize(15);
+                total.setTextSize(Ui.sp(15));
                 total.setText(Ui.L("Chọn 1 gói ở bước 2 để xem giá", "Pick a plan in step 2 to see the price"));
                 calc.setVisibility(View.GONE);
                 err.setVisibility(View.GONE);
@@ -1364,7 +1542,7 @@ public class MainActivity extends Activity {
                 buy.setAlpha(1f);
                 return;
             }
-            total.setTextSize(22);
+            total.setTextSize(Ui.sp(22));
             calc.setVisibility(View.VISIBLE);
             Tiers.T cur = null;
             for (int i = 0; i < tl.size(); i++) if (tierOn(tl.get(i), minR, minC, minF, maxF)) { cur = tl.get(i); break; }
@@ -1477,7 +1655,7 @@ public class MainActivity extends Activity {
         Ui.Wrap rw = new Ui.Wrap(this, 8);
         for (String[] r : RES) {
             TextView ch = Ui.chip(this, Ui.L(r[1], r[0]) + "\n" + r[0], r[0].equals(sRes));
-            ch.setTextSize(13);
+            ch.setTextSize(Ui.sp(13));
             ch.setTag(r[0]);
             ch.setOnClickListener(v -> {
                 sRes = (String) v.getTag();
@@ -1880,7 +2058,71 @@ public class MainActivity extends Activity {
         d.show();
     }
 
+    private ScrollView accSv = null;                  // trang Tài khoản đang hiện (16/11: tự vẽ lại mỗi 30 giây vẫn giữ chỗ đang cuộn)
+    private boolean uiDrag = false;                   // khách đang kéo thanh cỡ giao diện
+
+    /** 16/11 · thẻ 🎨 Giao diện: thanh chỉnh CỠ CHỮ & NÚT 80–130% (thả tay là áp dụng, nhớ theo máy) · ẩn / hiện ô ưu đãi đầu trang. */
+    private View lookCard() {
+        LinearLayout s = Ui.card(this);
+        s.setTag("look_card");
+        s.addView(Ui.h2(this, "🎨 " + Ui.L("Giao diện", "Appearance")));
+        final int n = (Ui.SCALE_MAX - Ui.SCALE_MIN) / Ui.SCALE_STEP, cur = Ui.scalePct(this);
+        final TextView lab = Ui.text(this, "", 15, Ui.FG, false);
+        s.addView(lab, Ui.fill());
+        LinearLayout r = Ui.row(this, 6);
+        final TextView minus = Ui.text(this, "A−", 13, Ui.FG, true), plus = Ui.text(this, "A+", 18, Ui.FG, true);
+        final android.widget.SeekBar sb = new android.widget.SeekBar(this);
+        sb.setMax(n);
+        sb.setProgress((cur - Ui.SCALE_MIN) / Ui.SCALE_STEP);
+        sb.setTag("scale_bar");
+        try {
+            sb.setProgressTintList(android.content.res.ColorStateList.valueOf(Ui.BLUE));
+            sb.setThumbTintList(android.content.res.ColorStateList.valueOf(Ui.BLUE));
+        } catch (Exception ignored) { }
+        sb.setContentDescription(Ui.L("Cỡ chữ và nút của app", "App text and button size"));
+        final Runnable txt = () -> {
+            int v = Ui.SCALE_MIN + sb.getProgress() * Ui.SCALE_STEP;
+            lab.setText("🔍 " + Ui.L("Cỡ chữ & nút: ", "Text & button size: ") + v + "%" + (v == 100 ? Ui.L(" (mặc định)", " (default)") : ""));
+        };
+        final Runnable apply = () -> {
+            int v = Ui.SCALE_MIN + sb.getProgress() * Ui.SCALE_STEP;
+            if (destroyed || isFinishing() || v == Ui.scalePct(this)) return;
+            Ui.setScale(this, v);
+            recreate();                                 // vẽ lại cả màn với cỡ mới (show() đã nhớ tab đang xem)
+        };
+        sb.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(android.widget.SeekBar x, int pr, boolean user) {
+                txt.run();
+                if (user && !uiDrag) { h.removeCallbacks(apply); h.postDelayed(apply, 600); }     // chỉnh bằng phím / trợ năng (không kéo)
+            }
+            @Override public void onStartTrackingTouch(android.widget.SeekBar x) { uiDrag = true; h.removeCallbacks(apply); }
+            @Override public void onStopTrackingTouch(android.widget.SeekBar x) { uiDrag = false; apply.run(); }
+        });
+        for (TextView b : new TextView[]{minus, plus}) { b.setGravity(Gravity.CENTER); Ui.ripple(b, Ui.PANEL, 12, Ui.RING); }
+        minus.setContentDescription(Ui.L("Nhỏ hơn", "Smaller"));
+        plus.setContentDescription(Ui.L("To hơn", "Bigger"));
+        minus.setOnClickListener(v -> { if (sb.getProgress() > 0) { sb.setProgress(sb.getProgress() - 1); txt.run(); h.removeCallbacks(apply); h.postDelayed(apply, 350); } });
+        plus.setOnClickListener(v -> { if (sb.getProgress() < n) { sb.setProgress(sb.getProgress() + 1); txt.run(); h.removeCallbacks(apply); h.postDelayed(apply, 350); } });
+        r.addView(minus, new LinearLayout.LayoutParams(Ui.dp(44), Ui.dp(40)));
+        r.addView(sb, Ui.weight(1));
+        r.addView(plus, new LinearLayout.LayoutParams(Ui.dp(44), Ui.dp(40)));
+        s.addView(r, Ui.fill());
+        s.addView(Ui.muted(this, Ui.L("Kéo sang phải cho chữ và nút TO hơn, sang trái cho NHỎ hơn — thả tay là đổi ngay.",
+                "Drag right for bigger text and buttons, left for smaller — it applies when you let go.")));
+        txt.run();
+        if (Api.SHOP && Offers.on()) {                  // bản có ô ưu đãi / vòng quay ở đầu trang
+            final TextView pt = Ui.text(this, "", 15, Ui.FG, false);
+            final Runnable pd = () -> pt.setText("🎁 " + Ui.L("Ô ưu đãi · vòng quay ở đầu trang: ", "Offers · lucky wheel on top: ") + (promoHidden() ? Ui.L("Đang ẩn", "Hidden") : Ui.L("Đang hiện", "Shown")));
+            pt.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
+            pt.setOnClickListener(v -> { setPromoHidden(!promoHidden()); pd.run(); });
+            pd.run();
+            s.addView(pt, Ui.fill());
+        }
+        return s;
+    }
+
     void renderAccount() {
+        final int keepY = tab == 2 && accSv != null && accSv.getParent() != null ? accSv.getScrollY() : 0;
         LinearLayout body = Ui.col(this, 14);
         LinearLayout c = Ui.card(this);
         String name = prof.optString("username", "");
@@ -1894,6 +2136,7 @@ public class MainActivity extends Activity {
             c.addView(top, Ui.fill());
         }
         body.addView(c, Ui.fill());
+        body.addView(lookCard(), Ui.fill());            // 🎨 16/11: cỡ chữ & nút · ẩn / hiện ô ưu đãi
         if (Api.SHOP && Wheel.on()) body.addView(Wheel.card(this), Ui.fill());    // 🎡 vòng quay may mắn (SQL v34c) — bản CH Play không có
 
         if (Api.SHOP) {                                 // 🧾 1.115: lịch sử nạp tiền — đọc THẲNG từ máy chủ, cùng nguồn với web
@@ -1973,7 +2216,9 @@ public class MainActivity extends Activity {
         TextView ver = Ui.muted(this, "CloudBlue v" + Api.version);
         ver.setGravity(Gravity.CENTER);
         body.addView(ver, Ui.fill());
-        page(body);
+        final ScrollView sv = page(body);
+        accSv = sv;
+        if (keepY > 0) sv.post(() -> sv.scrollTo(0, keepY));
     }
 
     // ---------------- Nạp tiền ngay trong app: chuyển khoản + mã VietQR, ngân hàng báo có là tự cộng số dư (giống web) ----------------

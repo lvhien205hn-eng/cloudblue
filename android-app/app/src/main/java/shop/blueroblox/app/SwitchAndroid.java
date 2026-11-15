@@ -129,7 +129,7 @@ final class SwitchAndroid {
         CheckBox ok = new CheckBox(a);
         ok.setText(Ui.L("Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", "I understand all data on this phone will be erased"));
         ok.setTextColor(Ui.FG);
-        ok.setTextSize(14);
+        ok.setTextSize(Ui.sp(14));
         ok.setButtonTintList(ColorStateList.valueOf(Ui.BAD));
         c.addView(ok, Ui.fill());
         c.addView(Ui.muted(a, Ui.L("Miễn phí · giữ nguyên hạn còn lại · tối đa 3 lần / 24 giờ. Máy mới có sau khoảng 2–5 phút.",
@@ -174,7 +174,7 @@ final class SwitchAndroid {
         };
         for (String v : vs) {
             TextView ch = Ui.chip(a, "Android " + v, false);
-            ch.setTextSize(13);
+            ch.setTextSize(Ui.sp(13));
             ch.setTag(v);
             ch.setOnClickListener(x -> { sel[0] = (String) x.getTag(); err.setVisibility(View.GONE); draw.run(); });
             w.addView(ch);
