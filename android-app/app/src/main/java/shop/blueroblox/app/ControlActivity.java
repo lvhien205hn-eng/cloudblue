@@ -1185,8 +1185,8 @@ public class ControlActivity extends Activity {
             list.addView(Ui.muted(this, Ui.L("Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.", "No apps installed yet. Install one (e.g. Termux) and reopen.")));
         for (String x : apps) rootRow(list, rows, pkgs, x, allow.contains(x), "", false);
         c.addView(list, Ui.fill());
-        c.addView(Ui.text(this, Ui.L("Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.",
-                "Some games and apps (e.g. Roblox) may detect a rooted phone. Only enable apps that need it, like Termux."), 12.5f, Ui.MUTED, false), Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Một số game và app có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.",
+                "Some games and apps may detect a rooted phone. Only enable apps that need it, like Termux."), 12.5f, Ui.MUTED, false), Ui.fill());
 
         Runnable paint = () -> {
             boolean on = main.isChecked();

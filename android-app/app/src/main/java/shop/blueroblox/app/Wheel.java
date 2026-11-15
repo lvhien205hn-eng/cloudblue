@@ -116,7 +116,7 @@ final class Wheel {
 
     static void load(Runnable cb) {
         if (!on()) return;
-        Api.bg(() -> Api.rpc("wheel_status", new JSONObject()), r -> { st = r instanceof JSONObject ? (JSONObject) r : null; if (cb != null) cb.run(); },
+        Api.bg(() -> Api.rpc("wheel_status", new JSONObject()), r -> { st = r instanceof JSONObject ? (JSONObject) r : null; stAt = SystemClock.elapsedRealtime(); if (cb != null) cb.run(); },
                 m -> { st = null; if (cb != null) cb.run(); });
     }
 
@@ -153,6 +153,65 @@ final class Wheel {
         b.setOnClickListener(v -> open(a));
         c.setOnClickListener(v -> open(a));
         if (on()) load(fill);
+        return c;
+    }
+
+    /** Dải 🎡 gọn ở đầu trang Máy của tôi + Thuê máy — khách thấy ngay vòng quay, bấm là mở. Ẩn khi vòng quay tắt / bản CH Play.
+     *  Trạng thái đã tải trong 60 giây → vẽ ngay (khỏi nháy), không gọi máy chủ lại. */
+    static long stAt = 0;
+    static View strip(MainActivity a) {
+        LinearLayout c = Ui.row(a, 12);
+        c.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(10), Ui.dp(10));
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(40, 70, 182), Color.rgb(20, 34, 100), Color.rgb(11, 18, 54)});
+        bg.setCornerRadius(Ui.dp(18));
+        bg.setStroke(Ui.dp(1), Color.argb(110, 220, 232, 255));
+        c.setBackground(bg);
+        TextView ic = Ui.text(a, "🎡", 24, Color.WHITE, false);
+        ic.setGravity(Gravity.CENTER);
+        ic.setBackground(Ui.round(Color.argb(38, 255, 255, 255), 14, Color.argb(90, 220, 232, 255)));
+        c.addView(ic, new LinearLayout.LayoutParams(Ui.dp(46), Ui.dp(46)));
+        LinearLayout tx = Ui.col(a, 1);
+        TextView t = Ui.text(a, "", 15, Color.WHITE, true), s = Ui.text(a, "", 12.5f, SUB, false);
+        t.setMaxLines(1);
+        t.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        s.setMaxLines(2);
+        tx.addView(t, Ui.fill());
+        tx.addView(s, Ui.fill());
+        c.addView(tx, Ui.weight(1));
+        TextView go = Ui.text(a, "", 13.5f, INK, true);
+        go.setGravity(Gravity.CENTER);
+        go.setPadding(Ui.dp(12), Ui.dp(8), Ui.dp(12), Ui.dp(8));
+        GradientDrawable gg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{PEARL, PEARL2});
+        gg.setCornerRadius(Ui.dp(99));
+        go.setBackground(gg);
+        c.addView(go, Ui.wrap());
+        c.setClickable(true);
+        c.setFocusable(true);
+        c.setOnClickListener(v -> open(a));
+        c.setVisibility(View.GONE);
+        Runnable fill = () -> {
+            if (a.isFinishing() || !live()) { c.setVisibility(View.GONE); return; }
+            JSONObject w = st; int left = w.optInt("left"); long[] f = first();
+            t.setText(Ui.L("Vòng quay may mắn", "Lucky wheel"));
+            String up = Ui.L("Mã giảm đến ", "Codes up to ") + topPct() + "% · ";
+            c.setContentDescription(t.getText() + " · " + up);
+            if ("soon".equals(w.optString("state"))) {
+                s.setText(up + Ui.L("bắt đầu ", "starts ") + when(w.optString("starts_at")));
+                go.setText(Ui.L("Xem giải", "Prizes"));
+            } else if (left > 0) {
+                s.setText(Ui.L("Bạn đang có " + left + " lượt quay — lượt nào cũng trúng mã giảm giá", "You have " + left + " spins — every spin wins a discount code"));
+                go.setText(Ui.L("Quay · ", "Spin · ") + left);
+            } else {
+                s.setText(up + Ui.L("nạp ", "top up ") + Ui.vnd(f[0]) + " = " + f[1] + Ui.L(" lượt", " spins")
+                        + (w.optLong("price") > 0 ? Ui.L(" · mua lượt " + Ui.vnd(w.optLong("price")), " · buy one " + Ui.vnd(w.optLong("price"))) : ""));
+                go.setText(Ui.L("Mở ›", "Open ›"));
+            }
+            c.setVisibility(View.VISIBLE);
+        };
+        if (on()) {
+            if (st != null) fill.run();
+            if (st == null || SystemClock.elapsedRealtime() - stAt > 60_000L) load(fill);
+        }
         return c;
     }
 

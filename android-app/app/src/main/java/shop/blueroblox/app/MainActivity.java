@@ -73,6 +73,8 @@ public class MainActivity extends Activity {
     int sRam = 2, sCpu = 2, sDays = 7, sFps = 30, sQty = 1;
     String sRes = "720x1280", sAnd = "";
     boolean rentCustom = false;                       // ⚙️ Tự chỉnh cấu hình (RAM · CPU · FPS · độ phân giải) đang mở
+    boolean rentPicked = false;                       // khách ĐÃ bấm 1 gói / tự chỉnh — chưa thì trang Thuê máy không hiện số tiền
+    private ScrollView rentSv = null;                 // trang Thuê máy đang hiện (giữ chỗ cuộn khi vẽ lại)
     boolean sFree = false;
 
     /** Phiên bản Android admin đang bán — đúng thứ tự admin nhập (VD "9,12,7"); trống → Android 9.
@@ -333,6 +335,7 @@ public class MainActivity extends Activity {
 
     void show(int t) {
         if (!Api.SHOP && t == 1) t = 0;                 // không mua trong app → không có màn Thuê máy
+        if (t == 1 && tab != 1) rentPicked = false;     // vào lại trang Thuê máy → chưa chọn gói, chưa hiện tiền
         tab = t;
         for (int i = 0; i < 3; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
@@ -416,6 +419,7 @@ public class MainActivity extends Activity {
         });
         head.addView(rf, Ui.wrap());
         body.addView(head, Ui.fill());
+        if (Api.SHOP && Wheel.on()) body.addView(Wheel.strip(this), Ui.fill());       // 🎡 vòng quay may mắn — dải gọn ngay đầu trang
 
         // Nhập mã: mã TẶNG MÁY (12 ký tự) · mã chia sẻ / chuyển nhượng (8 ký tự)
         LinearLayout cr = Ui.row(this, 8);
@@ -1247,14 +1251,18 @@ public class MainActivity extends Activity {
     }
 
     // ---------------- TAB 2: Thuê máy ----------------
+    /** 3 bước giống web: ① hệ điều hành (ô to, chia đều) · ② chọn gói (danh sách dọc gọn) · ③ số ngày & số máy.
+     *  CHƯA chọn gói thì KHÔNG hiện số tiền — thanh dưới chỉ nhắc "Chọn gói" (bấm → cuộn tới bước 2). */
     void renderRent() {
+        final int keepY = tab == 1 && rentSv != null && rentSv.getParent() != null ? rentSv.getScrollY() : 0;   // chọn gói / đổi bản → giữ chỗ đang cuộn
         LinearLayout body = Ui.col(this, 14);
         body.addView(Ui.h1(this, Ui.L("Thuê điện thoại đám mây", "Rent a cloud phone")), Ui.fill());
         if (isAdmin() && status.optBoolean("maint", false))
             body.addView(Ui.text(this, Ui.L("⚠ Đang bật BẢO TRÌ — khách không thuê được. Tài khoản admin vẫn thuê được để thử máy.",
                     "⚠ Maintenance is ON — customers can't rent. Admin can still rent to test."), 13, Ui.WAIT, true), Ui.fill());
-        body.addView(Ui.muted(this, Ui.L("Chọn gợi ý bên dưới là xong — hoặc tự chỉnh RAM, CPU, số ngày. Máy mới tinh, có Play Store.",
-                "Pick a preset below — or set RAM, CPU and days yourself. Fresh device with Play Store.")), Ui.fill());
+        body.addView(Ui.muted(this, Ui.L("3 bước: chọn hệ điều hành → chọn gói → số ngày. Máy mới tinh, có Play Store.",
+                "3 steps: Android version → plan → days. Fresh device with Play Store.")), Ui.fill());
+        if (Api.SHOP && Wheel.on()) body.addView(Wheel.strip(this), Ui.fill());       // 🎡 vòng quay may mắn — dải gọn, bấm là mở
 
         int minR = price.optInt("min_ram", 1), minC = price.optInt("min_cpu", 1);
         final int mpu = maxPerUser(), left = mpu > 0 ? mpu - myLive() : 20;
@@ -1267,7 +1275,7 @@ public class MainActivity extends Activity {
             go.setOnClickListener(v -> show(0));
             full.addView(go, Ui.fill());
             body.addView(full, Ui.fill());
-            page(body);
+            rentSv = page(body);
             return;
         }
         if (left <= 1) sQty = 1;
@@ -1278,27 +1286,51 @@ public class MainActivity extends Activity {
         final int[] lim = andLim(sAnd);
         final int maxR = lim[0], maxC = lim[1];                  // trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 7: 16GB · 16 nhân)
         sRam = clamp(sRam, minR, maxR); sCpu = clamp(sCpu, minC, maxC); sDays = clamp(sDays, minD, maxD); sFps = clamp(sFps, minF, maxF);
-        final Ui.Wrap aw = new Ui.Wrap(this, 8);
+        final LinearLayout aw = Ui.row(this, 8);                 // ô hệ điều hành chia đều 1 hàng
         final TextView andTip = Ui.text(this, "", 12.5f, Ui.WAIT, false);
 
         TextView total = Ui.text(this, "", 22, Ui.SKY, true);
         TextView calc = Ui.text(this, "", 11.5f, Ui.MUTED, false);
         calc.setMaxLines(3);
+        final TextView sumL = Ui.text(this, "", 12, Ui.MUTED, true);    // "Blue Plus · Android 9 · 7 ngày" / "Chưa chọn gói"
+        sumL.setMaxLines(1);
+        sumL.setEllipsize(android.text.TextUtils.TruncateAt.END);
         final Promo[] prm = new Promo[1];                // 🏷️ mã giảm giá (SQL v23) · 💎 trả bằng Blue (SQL v27) — bản web
         final Blue.Pay[] bp = new Blue.Pay[1];
+        final View[] pzBox = new View[1];
         TextView err = Ui.text(this, "", 12.5f, Ui.BAD, false);
         Button buy = Ui.button(this, "", Ui.PRIMARY);
 
-        // 🎴 thẻ gói cấu hình (cùng danh sách với web) — máy miễn phí không dùng gói
+        // 🎴 gói cấu hình (cùng danh sách với web) — máy miễn phí không dùng gói
         final java.util.List<Tiers.T> tl = sFree ? new java.util.ArrayList<Tiers.T>() : Tiers.list();
         final java.util.List<Tiers.Card> tcs = new java.util.ArrayList<>();
         final TextView[] csum = new TextView[1];
+        final boolean[] need = new boolean[1];
 
         Runnable upd = () -> {
+            need[0] = !sFree && !rentPicked && !tl.isEmpty();      // còn gói mà khách chưa chọn → chưa hiện số tiền nào
             for (int i = 0; i < tcs.size(); i++) tcs.get(i).setOn(tierOn(tl.get(i), minR, minC, minF, maxF));
-            if (csum[0] != null) csum[0].setText(sRam + "GB · " + sCpu + Ui.L(" nhân · ", " cores · ") + sRes + " · " + sFps + " FPS");
-            paintAnd(aw);
+            if (csum[0] != null) csum[0].setText(need[0] ? "" : sRam + "GB · " + sCpu + Ui.L(" nhân · ", " cores · ") + sRes + " · " + sFps + " FPS");
+            paintAndTiles(aw);
             andTip.setVisibility("15".equals(sAnd) ? View.VISIBLE : View.GONE);
+            if (pzBox[0] != null) pzBox[0].setVisibility(sFree || need[0] ? View.GONE : View.VISIBLE);
+            if (need[0]) {
+                sumL.setText(Ui.L("Chưa chọn gói", "No plan yet"));
+                total.setTextSize(15);
+                total.setText(Ui.L("Chọn 1 gói ở bước 2 để xem giá", "Pick a plan in step 2 to see the price"));
+                calc.setVisibility(View.GONE);
+                err.setVisibility(View.GONE);
+                buy.setText(Ui.L("Chọn gói", "Pick a plan"));
+                buy.setEnabled(true);
+                buy.setAlpha(1f);
+                return;
+            }
+            total.setTextSize(22);
+            calc.setVisibility(View.VISIBLE);
+            Tiers.T cur = null;
+            for (int i = 0; i < tl.size(); i++) if (tierOn(tl.get(i), minR, minC, minF, maxF)) { cur = tl.get(i); break; }
+            sumL.setText((sFree ? Ui.L("🎁 Máy miễn phí", "🎁 Free phone") : cur != null ? cur.name : Ui.L("⚙️ Tự chọn", "⚙️ Custom"))
+                    + " · Android " + sAnd + " · " + (sFree ? price.optInt("free_days", 1) : sDays) + Ui.L(" ngày", "d") + (!sFree && sQty > 1 ? " × " + sQty + Ui.L(" máy", "") : ""));
             double t0 = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty, bal = prof.optDouble("balance", 0);
             if (prm[0] != null) { prm[0].view.setVisibility(sFree ? View.GONE : View.VISIBLE); rentPromo = prm[0].code; if (!sFree) prm[0].onOrderChanged(); }
             double pay = sFree || prm[0] == null ? t0 : prm[0].price(t0);
@@ -1331,41 +1363,14 @@ public class MainActivity extends Activity {
             fch.setOnClickListener(v -> { sFree = !sFree; if (sFree) { sQty = 1; sRam = Math.min(sRam, price.optInt("free_max_ram", 4)); sCpu = Math.min(sCpu, price.optInt("free_max_cpu", 4)); } renderRent(); });
             body.addView(fc, Ui.fill());
         }
-        // 🎴 Chọn gói cấu hình — bấm 1 thẻ là điền sẵn RAM · CPU · FPS
-        if (!tl.isEmpty()) {
-            LinearLayout pc = Ui.col(this, 6);
-            pc.addView(Ui.text(this, Ui.L("🎴 Chọn gói cấu hình", "🎴 Pick a plan"), 15, Ui.FG, true));
-            pc.addView(Ui.muted(this, Ui.L("Bấm 1 gói là điền sẵn RAM · CPU · FPS — muốn khác thì mở ⚙️ Tự chỉnh ở dưới.", "Tap a plan to fill RAM · CPU · FPS — or open ⚙️ Customize below.")));
-            final android.widget.HorizontalScrollView hs = new android.widget.HorizontalScrollView(this);
-            hs.setHorizontalScrollBarEnabled(false);
-            hs.setClipToPadding(false);
-            hs.setPadding(0, Ui.dp(4), 0, Ui.dp(4));
-            final LinearLayout tr = Ui.row(this, 10);
-            tr.setGravity(Gravity.TOP);
-            int selI = -1;
-            for (int i = 0; i < tl.size(); i++) {
-                final Tiers.T t = tl.get(i);
-                final java.util.List<String> ands = new java.util.ArrayList<>(), busy = new java.util.ArrayList<>();
-                for (String v : avs) { int[] l2 = andLim(v); if (t.ram <= l2[0] && t.cpu <= l2[1]) { ands.add(v); if (!andWhy(v, t.ram, t.cpu).isEmpty()) busy.add(v); } }
-                Tiers.Card cd = new Tiers.Card(this, t, perDay(t.ram, t.cpu), ands, busy, () -> pickTier(t, ands, busy));
-                tcs.add(cd);
-                if (selI < 0 && tierOn(t, minR, minC, minF, maxF)) selI = i;
-                tr.addView(cd.view, new LinearLayout.LayoutParams(Ui.dp(212), -1));
-            }
-            hs.addView(tr);
-            pc.addView(hs, Ui.fill());
-            body.addView(pc, Ui.fill());
-            final int sel = selI;
-            if (sel > 0) hs.post(() -> hs.scrollTo(Math.max(0, tr.getChildAt(sel).getLeft() - Ui.dp(12)), 0));    // gói đang chọn nằm xa → cuộn tới
-        }
-        // Phiên bản Android
-        LinearLayout ac = Ui.col(this, 8);
-        ac.addView(Ui.text(this, Ui.L("Hệ điều hành", "Operating system"), 14, Ui.MUTED, true));
+
+        // ① Hệ điều hành — ô to, bấm là chọn
+        LinearLayout s1 = Ui.col(this, 12);
+        s1.addView(stepHead("1", Ui.L("Chọn hệ điều hành", "Choose Android version"),
+                avs.size() > 1 && avs.contains("9") ? Ui.L("Chưa chắc thì chọn Android 9 — ổn định, chạy được nhiều app nhất.", "Not sure? Android 9 is the most stable and runs the most apps.") : ""), Ui.fill());
         for (String v : avs) {
-            TextView ch = Ui.chip(this, "Android " + v + "\n" + andHint(v), v.equals(sAnd));
-            ch.setTextSize(13);
-            ch.setTag(v);
-            ch.setOnClickListener(x -> {
+            FrameLayout tile = andTile(v);
+            tile.setOnClickListener(x -> {
                 if (!andWhy((String) x.getTag()).isEmpty()) return;      // bản đang bảo trì / hết chỗ
                 String nv = (String) x.getTag();
                 int[] a0 = andLim(sAnd), a1 = andLim(nv);
@@ -1373,44 +1378,56 @@ public class MainActivity extends Activity {
                 if (a0[0] != a1[0] || a0[1] != a1[1]) { sRam = Math.min(sRam, a1[0]); sCpu = Math.min(sCpu, a1[1]); renderRent(); }   // trần khác → vẽ lại danh sách RAM/CPU
                 else upd.run();
             });
-            aw.addView(ch);
+            aw.addView(tile, new LinearLayout.LayoutParams(0, Ui.dp(88), 1));
         }
-        ac.addView(aw, Ui.fill());
+        s1.addView(aw, Ui.fill());
         if (avs.contains("15")) {                        // khách báo Android 15 có máy không vào được Google → chỉ cách chọn / đổi sang 12
             andTip.setText(Ui.L("💡 Android 15 không vào được Google / Play Store? Chọn Android 12. Máy đang thuê thì vào ⋯ → 🤖 Đổi Android (giữ nguyên hạn, miễn phí).",
                     "💡 Google / Play Store not working on Android 15? Pick Android 12. For a phone you already rent: ⋯ → 🤖 Switch Android (same expiry, free)."));
-            ac.addView(andTip, Ui.fill());
+            s1.addView(andTip, Ui.fill());
         }
-        body.addView(boxed(ac), Ui.fill());
+        body.addView(boxed(s1), Ui.fill());
 
-        if (!sFree) body.addView(boxed(group(Ui.L("Số ngày", "Days"), DAYS, minD, maxD, Ui.L(" ngày", "d"), v -> { sDays = v; upd.run(); }, () -> sDays)), Ui.fill());
-        if (!sFree && left > 1) body.addView(boxed(group(Ui.L("Số lượng máy", "Quantity"), QTY, 1, Math.min(20, left), Ui.L(" máy", ""), v -> { sQty = v; upd.run(); }, () -> sQty)), Ui.fill());
-
-        // ⚙️ Tự chỉnh cấu hình: RAM · CPU · FPS · độ phân giải — thu gọn khi cấu hình đang khớp 1 gói (máy miễn phí / không có gói: luôn mở)
-        final LinearLayout cust = Ui.col(this, 10);
+        // ② Chọn gói — danh sách dọc: bấm hàng nào chọn hàng đó, hàng đang chọn mở thêm chi tiết · ⚙️ Tự chỉnh ngay dưới
+        LinearLayout s2 = Ui.col(this, 10);
+        boolean hasT = !tl.isEmpty();
+        s2.addView(stepHead("2", sFree ? Ui.L("Cấu hình máy miễn phí", "Free phone setup") : hasT ? Ui.L("Chọn gói", "Choose a plan") : Ui.L("Cấu hình máy", "Phone setup"),
+                sFree ? Ui.L("Tối đa " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " nhân — để mặc định là dùng được.",
+                        "Up to " + price.optInt("free_max_ram", 4) + "GB RAM · " + price.optInt("free_max_cpu", 4) + " cores — the defaults work fine.")
+                        : hasT ? Ui.L("Bấm 1 gói để xem giá — muốn khác thì tự chỉnh ở dưới.", "Tap a plan to see the price — or customize below.")
+                        : Ui.L("Chọn RAM · CPU · FPS cho máy.", "Pick RAM · CPU · FPS.")), Ui.fill());
+        for (int i = 0; i < tl.size(); i++) {
+            final Tiers.T t = tl.get(i);
+            final java.util.List<String> ands = new java.util.ArrayList<>(), busy = new java.util.ArrayList<>();
+            for (String v : avs) { int[] l2 = andLim(v); if (t.ram <= l2[0] && t.cpu <= l2[1]) { ands.add(v); if (!andWhy(v, t.ram, t.cpu).isEmpty()) busy.add(v); } }
+            Tiers.Card cd = new Tiers.Card(this, t, perDay(t.ram, t.cpu), ands, busy, ands.size() < avs.size() || !busy.isEmpty(), () -> pickTier(t, ands, busy));
+            tcs.add(cd);
+            s2.addView(cd.view, Ui.fill());
+        }
+        final LinearLayout cust = Ui.col(this, 14);
         boolean anyTier = false;
-        for (Tiers.T t : tl) if (tierOn(t, minR, minC, minF, maxF)) { anyTier = true; break; }
-        if (tl.isEmpty() || !anyTier) rentCustom = true;
-        if (!tl.isEmpty()) {
+        for (Tiers.T t : tl) if (tierMatch(t, minR, minC, minF, maxF)) { anyTier = true; break; }
+        if (tl.isEmpty() || (rentPicked && !anyTier)) rentCustom = true;
+        if (hasT) {
             LinearLayout ch = Ui.row(this, 8);
             ch.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
-            ch.setBackground(Ui.ringed(Ui.PANEL, 16));
-            ch.addView(Ui.text(this, "⚙️ " + Ui.L("Tự chỉnh", "Customize"), 14, Ui.FG, true), Ui.wrap());
+            ch.setBackground(Ui.round(Ui.LIGHT ? Ui.SUNK : Color.argb(20, 255, 255, 255), 14, Ui.LINE2));
+            ch.addView(Ui.text(this, "⚙️ " + Ui.L("Tự chỉnh cấu hình", "Customize"), 14, Ui.FG, true), Ui.wrap());
             csum[0] = Ui.text(this, "", 12, Ui.SKY, true);
+            csum[0].setMaxLines(1);
+            csum[0].setEllipsize(android.text.TextUtils.TruncateAt.END);
             ch.addView(csum[0], Ui.weight(1));
             final TextView arw = Ui.text(this, rentCustom ? "▴" : "▾", 16, Ui.MUTED, true);
             ch.addView(arw, Ui.wrap());
             ch.setClickable(true);
             ch.setOnClickListener(v -> { rentCustom = !rentCustom; cust.setVisibility(rentCustom ? View.VISIBLE : View.GONE); arw.setText(rentCustom ? "▴" : "▾"); });
-            body.addView(ch, Ui.fill());
+            s2.addView(ch, Ui.fill());
         }
         cust.setVisibility(rentCustom ? View.VISIBLE : View.GONE);
-        cust.addView(boxed(group(Ui.L("RAM", "RAM"), RAM, minR, maxR, "GB", v -> { sRam = v; upd.run(); }, () -> sRam)), Ui.fill());
-        cust.addView(boxed(group(Ui.L("CPU (nhân)", "CPU cores"), CPU, minC, maxC, "", v -> { sCpu = v; upd.run(); }, () -> sCpu)), Ui.fill());
-        cust.addView(boxed(group("FPS", FPS, minF, maxF, "", v -> { sFps = v; upd.run(); }, () -> sFps)), Ui.fill());
-
-        // Độ phân giải
-        LinearLayout rc = Ui.col(this, 8);
+        cust.addView(group(Ui.L("RAM", "RAM"), RAM, minR, maxR, "GB", v -> { sRam = v; rentPicked = true; upd.run(); }, () -> sRam), Ui.fill());
+        cust.addView(group(Ui.L("CPU (nhân)", "CPU cores"), CPU, minC, maxC, "", v -> { sCpu = v; rentPicked = true; upd.run(); }, () -> sCpu), Ui.fill());
+        cust.addView(group("FPS", FPS, minF, maxF, "", v -> { sFps = v; rentPicked = true; upd.run(); }, () -> sFps), Ui.fill());
+        LinearLayout rc = Ui.col(this, 8);                // Độ phân giải
         rc.addView(Ui.text(this, Ui.L("Độ phân giải", "Resolution"), 14, Ui.MUTED, true));
         Ui.Wrap rw = new Ui.Wrap(this, 8);
         for (String[] r : RES) {
@@ -1419,43 +1436,65 @@ public class MainActivity extends Activity {
             ch.setTag(r[0]);
             ch.setOnClickListener(v -> {
                 sRes = (String) v.getTag();
+                rentPicked = true;
                 for (int i = 0; i < rw.getChildCount(); i++) Ui.setChip((TextView) rw.getChildAt(i), rw.getChildAt(i).getTag().equals(sRes));
                 upd.run();
             });
             rw.addView(ch);
         }
         rc.addView(rw, Ui.fill());
-        cust.addView(boxed(rc), Ui.fill());
-        body.addView(cust, Ui.fill());
+        cust.addView(rc, Ui.fill());
+        s2.addView(cust, Ui.fill());
+        final View step2 = boxed(s2);
+        body.addView(step2, Ui.fill());
 
-        // 🏷️ Mã giảm giá + 💎 Trả bằng Blue (máy miễn phí không dùng mã / Blue)
+        // ③ Số ngày & số máy (máy miễn phí: số ngày cố định, 1 máy → bỏ bước này)
+        if (!sFree) {
+            LinearLayout s3 = Ui.col(this, 14);
+            s3.addView(stepHead("3", left > 1 ? Ui.L("Số ngày & số máy", "Days & phones") : Ui.L("Số ngày thuê", "Rental days"), ""), Ui.fill());
+            s3.addView(group(Ui.L("Số ngày", "Days"), DAYS, minD, maxD, Ui.L(" ngày", "d"), v -> { sDays = v; upd.run(); }, () -> sDays), Ui.fill());
+            if (left > 1) s3.addView(group(Ui.L("Số lượng máy", "Quantity"), QTY, 1, Math.min(20, left), Ui.L(" máy", ""), v -> { sQty = v; upd.run(); }, () -> sQty), Ui.fill());
+            body.addView(boxed(s3), Ui.fill());
+        }
+
+        // 🏷️ Mã giảm giá + 💎 Trả bằng Blue (máy miễn phí không dùng mã / Blue · chưa chọn gói thì ẩn)
         if (Api.SHOP) {
             prm[0] = new Promo(this, "cp_new", () -> sFree ? null : new JSONObject().put("p_ram", sRam).put("p_cpu", sCpu).put("p_days", sDays).put("p_qty", sQty), upd);
             bp[0] = new Blue.Pay(this, bluePayRent, () -> { bluePayRent = bp[0].on; upd.run(); });
             LinearLayout pz = Ui.col(this, 10);
             pz.addView(prm[0].view, Ui.fill());
             pz.addView(bp[0].view, Ui.fill());
-            body.addView(boxed(pz), Ui.fill());
+            pzBox[0] = boxed(pz);
+            body.addView(pzBox[0], Ui.fill());
             if (!rentPromo.isEmpty()) { prm[0].in.setText(rentPromo); prm[0].check(null); }
         }
 
-        // Thanh thanh toán ghim dưới màn hình: luôn thấy tổng tiền + nút Thuê ngay
+        // Thanh dưới màn hình: gói đang chọn + tổng tiền + nút — chưa chọn gói thì chỉ nhắc chọn gói
         LinearLayout sum = Ui.col(this, 6);
-        sum.setPadding(Ui.dp(14), Ui.dp(10), Ui.dp(10), Ui.dp(10));
-        sum.setBackground(Ui.ringed(Ui.PANEL, 20));
-        sum.setElevation(Ui.dp(8));
+        sum.setPadding(Ui.dp(16), Ui.dp(10), Ui.dp(10), Ui.dp(10));
+        android.graphics.drawable.GradientDrawable sbg = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                Ui.LIGHT ? new int[]{Color.WHITE, Color.rgb(238, 244, 255)} : new int[]{Color.rgb(22, 44, 104), Color.rgb(9, 19, 50)});
+        sbg.setCornerRadius(Ui.dp(20));
+        sbg.setStroke(Math.max(2, Ui.dp(1.5f)), Ui.LIGHT ? Color.argb(80, 43, 110, 240) : Color.argb(120, 124, 188, 255));
+        sum.setBackground(sbg);
+        sum.setElevation(Ui.dp(10));
         sum.addView(err, Ui.fill());
         LinearLayout sr = Ui.row(this, 10);
         LinearLayout st = Ui.col(this, 0);
-        st.addView(Ui.text(this, Ui.L("Tổng thanh toán", "Total"), 12, Ui.MUTED, false));
+        st.addView(sumL);
         st.addView(total);
         st.addView(calc);
         sr.addView(st, Ui.weight(1));
-        buy.setMinWidth(Ui.dp(132));
+        buy.setMinWidth(Ui.dp(124));
         sr.addView(buy, Ui.wrap());
         sum.addView(sr, Ui.fill());
 
+        final ScrollView[] svr = new ScrollView[1];
         buy.setOnClickListener(v -> {
+            if (need[0]) {                               // chưa chọn gói → cuộn tới bước 2
+                if (svr[0] != null) svr[0].smoothScrollTo(0, Math.max(0, step2.getTop() - Ui.dp(8)));
+                return;
+            }
             Runnable go = () -> {
                 double t0 = sFree ? 0 : ctv(perDay(sRam, sCpu) * sDays) * sQty;
                 double pay = sFree || prm[0] == null ? t0 : prm[0].price(t0);
@@ -1475,11 +1514,88 @@ public class MainActivity extends Activity {
         rentUpd = upd;
         upd.run();
         body.setTag("rent");
-        page(body);
+        final ScrollView sv = page(body);
+        svr[0] = sv;
+        rentSv = sv;
+        if (keepY > 0) sv.post(() -> sv.scrollTo(0, keepY));
         body.setPadding(body.getPaddingLeft(), body.getPaddingTop(), body.getPaddingRight(), Ui.dp(150));
         FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
         blp.setMargins(Ui.dp(10), 0, Ui.dp(10), Ui.dp(8));
         content.addView(sum, blp);
+    }
+
+    /** Đầu mỗi bước: số tròn xanh bóng + tiêu đề + 1 dòng gợi ý (giống web). */
+    private View stepHead(String n, String title, String sub) {
+        LinearLayout r = Ui.row(this, 10);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        TextView b = Ui.text(this, n, 14, Ui.LIGHT ? Color.WHITE : Color.rgb(4, 18, 46), true);
+        b.setGravity(Gravity.CENTER);
+        android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                Ui.LIGHT ? new int[]{Color.rgb(91, 152, 255), Color.rgb(31, 95, 224)} : new int[]{Color.rgb(227, 241, 255), Color.rgb(159, 208, 255), Color.rgb(61, 123, 255)});
+        g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
+        b.setBackground(g);
+        r.addView(b, new LinearLayout.LayoutParams(Ui.dp(28), Ui.dp(28)));
+        LinearLayout t = Ui.col(this, 1);
+        t.addView(Ui.text(this, title, 16.5f, Ui.FG, true));
+        if (sub != null && !sub.isEmpty()) t.addView(Ui.text(this, sub, 12.5f, Ui.MUTED, false));
+        r.addView(t, Ui.weight(1));
+        return r;
+    }
+
+    /** 1 ô hệ điều hành: "Android" nhỏ · số bản TO · gợi ý ngắn. Màu / dấu ✓ vẽ ở paintAndTiles. */
+    private FrameLayout andTile(String v) {
+        FrameLayout f = new FrameLayout(this);
+        f.setTag(v);
+        f.setClickable(true);
+        f.setFocusable(true);
+        f.setContentDescription("Android " + v);
+        LinearLayout c = Ui.col(this, 0);
+        c.setGravity(Gravity.CENTER);
+        c.setPadding(Ui.dp(2), Ui.dp(6), Ui.dp(2), Ui.dp(6));
+        TextView k = Ui.text(this, "Android", 12, Ui.MUTED, true);
+        TextView n = Ui.text(this, v, 28, Ui.FG, true);
+        TextView h = Ui.text(this, "", 11, Ui.WAIT, true);
+        for (TextView x : new TextView[]{k, n, h}) { x.setGravity(Gravity.CENTER); x.setMaxLines(1); }
+        n.setIncludeFontPadding(false);
+        c.addView(k, Ui.fill());
+        c.addView(n, Ui.fill());
+        c.addView(h, Ui.fill());
+        f.addView(c, new FrameLayout.LayoutParams(-1, -1));
+        return f;
+    }
+
+    /** Tô lại các ô hệ điều hành theo bản đang chọn + chỗ trống (đổi RAM/CPU là cập nhật ngay). */
+    void paintAndTiles(LinearLayout aw) {
+        if (!andList().contains(sAnd) || "off".equals(andWhy(sAnd))) {         // bản đang chọn bảo trì → tự đổi (hết chỗ thì giữ, báo lỗi để khách chọn lại)
+            sAnd = andPick(); int[] l = andLim(sAnd); sRam = Math.min(sRam, l[0]); sCpu = Math.min(sCpu, l[1]);
+        }
+        for (int i = 0; i < aw.getChildCount(); i++) {
+            if (!(aw.getChildAt(i) instanceof FrameLayout)) continue;
+            FrameLayout f = (FrameLayout) aw.getChildAt(i);
+            LinearLayout c = (LinearLayout) f.getChildAt(0);
+            TextView k = (TextView) c.getChildAt(0), n = (TextView) c.getChildAt(1), hn = (TextView) c.getChildAt(2);
+            String v = (String) f.getTag(), why = andWhy(v);
+            boolean on = v.equals(sAnd), ok = why.isEmpty();
+            String hint = "off".equals(why) ? Ui.L("Bảo trì", "Unavailable") : "full".equals(why) ? Ui.L("Hết chỗ", "Full") : andHint(v);
+            int dot = hint.indexOf(" · ");
+            hn.setText(dot > 0 ? hint.substring(0, dot) : hint);                 // ô hẹp → chỉ giữ ý đầu ("Ổn định")
+            hn.setTextColor(ok ? Ui.WAIT : Ui.BAD);
+            k.setText(on ? "✓ Android" : "Android");
+            k.setTextColor(on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(207, 228, 255)) : Ui.MUTED);
+            n.setTextColor(on ? (Ui.LIGHT ? Ui.SKY : Color.WHITE) : Ui.FG);
+            android.graphics.drawable.GradientDrawable g = on
+                    ? new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+                            Ui.LIGHT ? new int[]{Color.rgb(238, 244, 255), Color.rgb(221, 233, 255)} : new int[]{Color.rgb(36, 78, 168), Color.rgb(13, 32, 80)})
+                    : new android.graphics.drawable.GradientDrawable();
+            if (!on) g.setColor(Ui.LIGHT ? Color.WHITE : Ui.SUNK);
+            g.setCornerRadius(Ui.dp(16));
+            g.setStroke(on ? Ui.dp(2) : Math.max(1, Ui.dp(1)), on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(124, 188, 255)) : Ui.LINE2);
+            f.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 143, 208, 255)), g, null));
+            f.setElevation(on ? Ui.dp(5) : 0);
+            f.setEnabled(ok);
+            f.setAlpha(ok ? 1f : .45f);
+            f.setSelected(on);
+        }
     }
 
     /** Bọc 1 nhóm lựa chọn vào thẻ viền neon cho gọn mắt. */
@@ -1538,8 +1654,11 @@ public class MainActivity extends Activity {
 
     static int clamp(int v, int lo, int hi) { return Math.max(lo, Math.min(hi, v)); }
 
+    /** Gói t đang được chọn: khách ĐÃ chọn + cấu hình khớp gói. */
+    boolean tierOn(Tiers.T t, int minR, int minC, int minF, int maxF) { return rentPicked && tierMatch(t, minR, minC, minF, maxF); }
+
     /** Cấu hình đang chọn khớp gói t (sau khi kẹp theo trần của bản Android đang chọn). */
-    boolean tierOn(Tiers.T t, int minR, int minC, int minF, int maxF) {
+    boolean tierMatch(Tiers.T t, int minR, int minC, int minF, int maxF) {
         int[] l = andLim(sAnd);
         return sRam == clamp(t.ram, minR, l[0]) && sCpu == clamp(t.cpu, minC, l[1]) && sFps == clamp(t.fps, minF, maxF)
                 && (t.res == null || t.res.isEmpty() || t.res.equals(sRes));
@@ -1547,6 +1666,7 @@ public class MainActivity extends Activity {
 
     /** Bấm 1 thẻ gói → điền RAM · CPU · FPS (· độ phân giải). Bản Android đang chọn không đủ trần (VD Android 9 tối đa 8GB) → chuyển bản. */
     void pickTier(Tiers.T t, java.util.List<String> ands, java.util.List<String> busy) {
+        rentPicked = true;
         if (!ands.isEmpty() && !ands.contains(sAnd)) {
             String nv = ands.get(0);
             for (String v : ands) if (!busy.contains(v)) { nv = v; break; }

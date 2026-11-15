@@ -6,6 +6,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -32,10 +33,10 @@ final class Tiers {
                     "Zalo, Facebook, TikTok, Telegram|Chạy 24/7 kể cả khi tắt máy tính", "Zalo, Facebook, TikTok, Telegram|Runs 24/7 even when your PC is off"},
             {"game", "🎮", "Blue Game", "Game nhẹ · treo cả ngày", "Light games · all-day idle", "4", "2", "30", "", "teal",
                     "Game 2D, nhàn rỗi, cờ, bài|Treo game nhẹ ổn định", "2D, idle, card & board games|Stable for light games"},
-            {"roblox", "🕹️", "Blue Roblox", "Treo Roblox 1 tab mượt", "Smooth Roblox · 1 tab", "4", "4", "30", "🔥 Bán chạy", "amber",
-                    "Roblox 1 tab, đồ hoạ thấp|Roblox dùng ~2GB RAM — vẫn còn dư", "Roblox · 1 tab, low graphics|Roblox uses ~2GB RAM — room to spare"},
-            {"pro", "🚀", "Blue Pro", "Treo Roblox 2–4 tab", "Roblox · 2–4 tabs", "8", "8", "30", "⭐ Đề xuất", "violet",
-                    "2–4 tab Roblox cùng lúc|Mỗi tab thêm cần ~1,5–2GB RAM", "2–4 Roblox tabs at once|Each extra tab needs ~1.5–2GB RAM"},
+            {"roblox", "🕹️", "Blue Plus", "Treo game 1 tab mượt", "Smooth gaming · 1 tab", "4", "4", "30", "🔥 Bán chạy", "amber",
+                    "1 tab game, đồ hoạ thấp|Game dùng ~2GB RAM — vẫn còn dư", "1 game tab, low graphics|Games use ~2GB RAM — room to spare"},
+            {"pro", "🚀", "Blue Pro", "Treo 2–4 tab game", "2–4 game tabs", "8", "8", "30", "⭐ Đề xuất", "violet",
+                    "2–4 tab game cùng lúc|Mỗi tab thêm cần ~1,5–2GB RAM", "2–4 game tabs at once|Each extra tab needs ~1.5–2GB RAM"},
             {"max", "🔥", "Blue Max", "Game nặng 3D · 60 FPS", "Heavy 3D games · 60 FPS", "12", "8", "60", "", "rose",
                     "Free Fire, Liên Quân, PUBG Mobile…|Không có card đồ hoạ — game nặng có thể giật", "Free Fire, PUBG Mobile, Genshin…|No GPU — heavy games may stutter"},
     };
@@ -80,14 +81,14 @@ final class Tiers {
                 JSONObject o = a.optJSONObject(i);
                 if (o == null || !o.optBoolean("on", true)) continue;
                 T t = new T();
-                t.id = o.optString("id", "t" + i); t.icon = o.optString("icon", "📱"); t.name = o.optString("name", "").trim();
+                t.id = o.optString("id", "t" + i); t.icon = o.optString("icon", "📱"); t.name = clean(o.optString("name", "").trim());
                 String vi = o.optString("vi", ""), en = o.optString("en", "");
-                t.tag = Ui.L(vi, en.isEmpty() ? vi : en);
+                t.tag = clean(Ui.L(vi, en.isEmpty() ? vi : en));
                 t.ram = o.optInt("ram", 0); t.cpu = o.optInt("cpu", 0); t.fps = o.optInt("fps", 30);
-                t.res = o.optString("res", ""); t.badge = o.optString("badge", ""); t.color = o.optString("color", "blue");
+                t.res = o.optString("res", ""); t.badge = clean(o.optString("badge", "")); t.color = o.optString("color", "blue");
                 JSONArray f = o.optJSONArray(Ui.L("fvi", "fen"));
                 if (f == null || f.length() == 0) f = o.optJSONArray("fvi");
-                if (f != null) for (int j = 0; j < f.length() && t.fit.size() < 3; j++) { String s = f.optString(j, "").trim(); if (!s.isEmpty()) t.fit.add(s); }
+                if (f != null) for (int j = 0; j < f.length() && t.fit.size() < 3; j++) { String s = clean(f.optString(j, "").trim()); if (!s.isEmpty()) t.fit.add(s); }
                 if (t.ram > 0 && t.cpu > 0 && !t.name.isEmpty()) out.add(t);
             }
             return out;
@@ -108,87 +109,116 @@ final class Tiers {
                 Math.round(Color.blue(a) * k + Color.blue(b) * (1 - k)));
     }
 
-    /** 1 thẻ gói. setOn(true/false) đổi viền + nút "Đã chọn" mà không vẽ lại cả trang. */
+    /** Thẻ hiện cho khách không nhắc tên game: "Roblox" → "game", "Blue Roblox" → "Blue Plus" (gói admin lưu từ trước cũng tự đổi — giống web). */
+    static String clean(String s) {
+        if (s == null || !s.toLowerCase(java.util.Locale.ROOT).contains("roblox")) return s;
+        String r = s.replaceAll("(?i)blue\\s*roblox", "Blue Plus").replaceAll("(?i)roblox", "game")
+                .replaceAll("(?i)\\bgame(\\s+game)+\\b", "game").replaceAll("\\s{2,}", " ").trim();
+        if (!r.isEmpty() && Character.isUpperCase(s.charAt(0))) r = Character.toUpperCase(r.charAt(0)) + r.substring(1);
+        return r;
+    }
+
+    private static int a(int alpha, int c) { return Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c)); }
+
+    /** 1 hàng gói trong danh sách dọc: biểu tượng · tên + nhãn · công dụng · "4 nhân · 4GB RAM · 30 FPS" · giá / ngày bên phải.
+     *  Hàng đang chọn: viền màu gói + dấu ✓ + mở thêm "phù hợp" và giá 30 ngày. setOn() đổi tại chỗ, không vẽ lại trang. */
     static final class Card {
         final LinearLayout view;
-        private final TextView btn;
+        private final TextView ck;
+        private final LinearLayout more;
         private final int acc;
         private final GradientDrawable bg;
 
-        Card(Context c, T t, double perDay, List<String> ands, List<String> busy, Runnable pick) {
+        Card(Context c, T t, double perDay, List<String> ands, List<String> busy, boolean partial, Runnable pick) {
             acc = color(t.color);
             view = Ui.col(c, 8);
-            view.setPadding(Ui.dp(14), Ui.dp(14), Ui.dp(14), Ui.dp(13));
-            bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{mix(acc, Ui.PANEL, Ui.LIGHT ? .16f : .26f), Ui.PANEL});
-            bg.setCornerRadius(Ui.dp(18));
+            view.setPadding(Ui.dp(12), Ui.dp(12), Ui.dp(12), Ui.dp(12));
+            bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{mix(acc, Ui.PANEL, Ui.LIGHT ? .12f : .22f), Ui.PANEL});
+            bg.setCornerRadius(Ui.dp(16));
             view.setBackground(bg);
             view.setClickable(true);
             view.setFocusable(true);
+            view.setContentDescription(t.name);
             view.setOnClickListener(v -> pick.run());
 
-            LinearLayout h = Ui.row(c, 8);
-            TextView ic = Ui.text(c, t.icon == null || t.icon.isEmpty() ? "📱" : t.icon, 17, Ui.FG, false);
+            LinearLayout top = Ui.row(c, 10);
+            top.setGravity(Gravity.CENTER_VERTICAL);
+            FrameLayout ib = new FrameLayout(c);                       // biểu tượng + huy hiệu ✓ ở góc khi đang chọn
+            TextView ic = Ui.text(c, t.icon == null || t.icon.isEmpty() ? "📱" : t.icon, 16, Ui.FG, false);
             ic.setGravity(Gravity.CENTER);
-            ic.setBackground(Ui.round(Color.argb(55, Color.red(acc), Color.green(acc), Color.blue(acc)), 11, Color.argb(110, Color.red(acc), Color.green(acc), Color.blue(acc))));
-            h.addView(ic, new LinearLayout.LayoutParams(Ui.dp(34), Ui.dp(34)));
-            TextView nm = Ui.text(c, t.name, 18, Ui.LIGHT ? mix(acc, Color.rgb(10, 26, 58), .62f) : mix(acc, Color.WHITE, .55f), true);
+            ic.setBackground(Ui.round(a(55, acc), 10, a(110, acc)));
+            ib.addView(ic, new FrameLayout.LayoutParams(Ui.dp(34), Ui.dp(34)));
+            ck = Ui.text(c, "✓", 10, Ui.LIGHT ? Color.WHITE : Color.rgb(6, 17, 43), true);
+            ck.setGravity(Gravity.CENTER);
+            GradientDrawable cg = new GradientDrawable();
+            cg.setShape(GradientDrawable.OVAL);
+            cg.setColor(acc);
+            cg.setStroke(Ui.dp(2), Ui.PANEL);
+            ck.setBackground(cg);
+            ib.addView(ck, new FrameLayout.LayoutParams(Ui.dp(18), Ui.dp(18), Gravity.END | Gravity.BOTTOM));
+            top.addView(ib, new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
+
+            LinearLayout mid = Ui.col(c, 2);
+            LinearLayout nr = Ui.row(c, 6);
+            TextView nm = Ui.text(c, t.name, 16.5f, Ui.LIGHT ? mix(acc, Color.rgb(10, 26, 58), .62f) : mix(acc, Color.WHITE, .55f), true);
             nm.setMaxLines(1);
-            h.addView(nm, Ui.weight(1));
-            view.addView(h, Ui.fill());
-            if (t.badge != null && !t.badge.isEmpty()) {
-                TextView b = Ui.text(c, t.badge, 11.5f, Color.WHITE, true);
-                b.setPadding(Ui.dp(9), Ui.dp(2), Ui.dp(9), Ui.dp(3));
+            nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            nr.addView(nm, Ui.fill());
+            mid.addView(nr, Ui.fill());
+            if (t.tag != null && !t.tag.isEmpty()) {
+                TextView tg = Ui.text(c, t.tag, 12.5f, Ui.MUTED, false);
+                tg.setMaxLines(1);
+                tg.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                mid.addView(tg, Ui.fill());
+            }
+            TextView spc = Ui.text(c, t.cpu + Ui.L(" nhân · ", " cores · ") + t.ram + "GB · " + t.fps + " FPS", 12.5f, Ui.FG, true);
+            spc.setMaxLines(2);
+            mid.addView(spc, Ui.fill());
+            top.addView(mid, Ui.weight(1));
+
+            LinearLayout pr = Ui.col(c, 0);
+            pr.setGravity(Gravity.END);
+            if (t.badge != null && !t.badge.isEmpty()) {             // nhãn 🔥 Bán chạy · ⭐ Đề xuất nằm trên giá
+                TextView b = Ui.text(c, t.badge, 10.5f, Color.WHITE, true);
+                b.setPadding(Ui.dp(7), Ui.dp(1), Ui.dp(7), Ui.dp(2));
+                b.setMaxLines(1);
                 GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(255, 79, 109), Color.rgb(255, 154, 68)});
                 g.setCornerRadius(Ui.dp(99));
                 b.setBackground(g);
-                LinearLayout br = Ui.row(c, 0);
-                br.addView(b, Ui.wrap());
-                view.addView(br, 0, Ui.wrap());              // nhãn nằm trên cùng thẻ
+                LinearLayout.LayoutParams bl = Ui.wrap();
+                bl.gravity = Gravity.END;
+                bl.bottomMargin = Ui.dp(3);
+                pr.addView(b, bl);
             }
-            if (t.tag != null && !t.tag.isEmpty()) view.addView(Ui.text(c, t.tag, 12.5f, Ui.MUTED, false), Ui.fill());
+            TextView p = Ui.text(c, Ui.vnd(perDay), 17, Ui.FG, true);
+            p.setGravity(Gravity.END);
+            pr.addView(p, Ui.wrap());
+            TextView pd = Ui.text(c, Ui.L("/ ngày", "/ day"), 11.5f, Ui.MUTED, false);
+            pd.setGravity(Gravity.END);
+            pr.addView(pd, Ui.wrap());
+            top.addView(pr, Ui.wrap());
+            view.addView(top, Ui.fill());
 
-            LinearLayout sp = Ui.row(c, 4);
-            String[][] S = {{"⚙️", String.valueOf(t.cpu), Ui.L("nhân", "cores")}, {"🧠", t.ram + "GB", "RAM"}, {"🎞️", String.valueOf(t.fps), "FPS"}};
-            for (String[] s : S) {
-                LinearLayout k = Ui.col(c, 0);
-                k.setGravity(Gravity.CENTER_HORIZONTAL);
-                TextView e = Ui.text(c, s[0], 13, Ui.FG, false); e.setGravity(Gravity.CENTER);
-                e.setBackground(Ui.round(Ui.LIGHT ? Color.argb(14, 10, 26, 58) : Color.argb(20, 255, 255, 255), 99, 0));
-                k.addView(e, new LinearLayout.LayoutParams(Ui.dp(28), Ui.dp(28)));
-                TextView v = Ui.text(c, s[1], 14.5f, Ui.FG, true); v.setGravity(Gravity.CENTER);
-                k.addView(v, Ui.fill());
-                TextView l = Ui.text(c, s[2], 11.5f, Ui.MUTED, false); l.setGravity(Gravity.CENTER);
-                k.addView(l, Ui.fill());
-                sp.addView(k, Ui.weight(1));
+            if (partial) {                                           // gói không chạy đủ mọi bản Android → luôn nói rõ
+                StringBuilder an = new StringBuilder();
+                for (String v : ands) an.append(an.length() == 0 ? "" : " · ").append(v).append(busy.contains(v) ? Ui.L(" (hết chỗ)", " (full)") : "");
+                TextView al = Ui.text(c, "Android  " + (an.length() == 0 ? Ui.L("vượt trần cấu hình", "over the limit") : an.toString()), 12, Ui.WAIT, true);
+                al.setPadding(Ui.dp(50), 0, 0, 0);
+                view.addView(al, Ui.fill());
             }
-            view.addView(sp, Ui.fill());
-
-            View line = new View(c);
-            line.setBackgroundColor(Color.argb(60, Color.red(acc), Color.green(acc), Color.blue(acc)));
-            view.addView(line, new LinearLayout.LayoutParams(-1, Math.max(1, Ui.dp(1))));
-            StringBuilder an = new StringBuilder();
-            for (String v : ands) an.append(an.length() == 0 ? "" : " · ").append(v).append(busy.contains(v) ? Ui.L(" (hết chỗ)", " (full)") : "");
-            view.addView(Ui.text(c, "Android  " + (an.length() == 0 ? Ui.L("vượt trần cấu hình", "over the limit") : an.toString()), 12, Ui.FG, true), Ui.fill());
-            for (String f : t.fit) {
-                TextView ft = Ui.text(c, "✓  " + f, 12, Ui.FG, false);
-                view.addView(ft, Ui.fill());
-            }
-            TextView pr = Ui.text(c, Ui.vnd(perDay) + Ui.L(" / ngày", " / day"), 18, Ui.FG, true);
-            view.addView(pr, Ui.fill());
-            view.addView(Ui.text(c, "≈ " + Ui.vnd(perDay * 30) + Ui.L(" / 30 ngày", " / 30 days"), 11.5f, Ui.MUTED, false), Ui.fill());
-            btn = Ui.text(c, "", 14, Ui.FG, true);
-            btn.setGravity(Gravity.CENTER);
-            btn.setPadding(Ui.dp(10), Ui.dp(10), Ui.dp(10), Ui.dp(10));
-            view.addView(btn, Ui.fill());
+            more = Ui.col(c, 3);                                     // chỉ hàng đang chọn mới mở phần này
+            more.setPadding(Ui.dp(50), 0, 0, 0);
+            for (String f : t.fit) more.addView(Ui.text(c, "✓  " + f, 12.5f, Ui.FG, false), Ui.fill());
+            more.addView(Ui.text(c, "≈ " + Ui.vnd(perDay * 30) + Ui.L(" / 30 ngày", " / 30 days"), 11.5f, Ui.MUTED, false), Ui.fill());
+            view.addView(more, Ui.fill());
         }
 
         void setOn(boolean on) {
-            bg.setStroke(on ? Ui.dp(2.5f) : Math.max(1, Ui.dp(1)), on ? acc : Color.argb(95, Color.red(acc), Color.green(acc), Color.blue(acc)));
-            btn.setText(on ? "✓ " + Ui.L("Đã chọn", "Selected") : Ui.L("Chọn gói này", "Choose"));
-            btn.setTextColor(on ? (Ui.LIGHT ? Color.WHITE : Color.rgb(6, 17, 43)) : Ui.FG);
-            btn.setBackground(Ui.round(on ? acc : (Ui.LIGHT ? Color.argb(12, 10, 26, 58) : Color.argb(16, 255, 255, 255)), 12,
-                    on ? 0 : Color.argb(110, Color.red(acc), Color.green(acc), Color.blue(acc))));
-            btn.setTypeface(Typeface.DEFAULT_BOLD);
+            bg.setStroke(on ? Ui.dp(2.5f) : Math.max(1, Ui.dp(1)), on ? acc : a(90, acc));
+            ck.setVisibility(on ? View.VISIBLE : View.GONE);
+            more.setVisibility(on ? View.VISIBLE : View.GONE);
+            view.setElevation(on ? Ui.dp(6) : 0);
+            view.setSelected(on);
         }
     }
 }
