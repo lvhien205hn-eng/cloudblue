@@ -1264,13 +1264,21 @@ TIERS_DEF = [   # 🎴 5 gói mặc định — giống web (admin chỉnh trên
      "fvi": ["Zalo, Facebook, TikTok, Telegram", "Chạy 24/7 kể cả khi tắt máy tính"]},
     {"id": "game", "icon": "🎮", "name": "Blue Game", "vi": "Game nhẹ · treo cả ngày", "ram": 4, "cpu": 2, "fps": 30, "res": "", "badge": "", "color": "teal",
      "fvi": ["Game 2D, nhàn rỗi, cờ, bài", "Treo game nhẹ ổn định"]},
-    {"id": "roblox", "icon": "🕹️", "name": "Blue Roblox", "vi": "Treo Roblox 1 tab mượt", "ram": 4, "cpu": 4, "fps": 30, "res": "", "badge": "🔥 Bán chạy", "color": "amber",
-     "fvi": ["Roblox 1 tab, đồ hoạ thấp", "Roblox dùng ~2GB RAM — vẫn còn dư"]},
-    {"id": "pro", "icon": "🚀", "name": "Blue Pro", "vi": "Treo Roblox 2–4 tab", "ram": 8, "cpu": 8, "fps": 30, "res": "", "badge": "⭐ Đề xuất", "color": "violet",
-     "fvi": ["2–4 tab Roblox cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"]},
+    {"id": "roblox", "icon": "🕹️", "name": "Blue Plus", "vi": "Treo game 1 tab mượt", "ram": 4, "cpu": 4, "fps": 30, "res": "", "badge": "🔥 Bán chạy", "color": "amber",
+     "fvi": ["1 tab game, đồ hoạ thấp", "Game dùng ~2GB RAM — vẫn còn dư"]},
+    {"id": "pro", "icon": "🚀", "name": "Blue Pro", "vi": "Treo 2–4 tab game", "ram": 8, "cpu": 8, "fps": 30, "res": "", "badge": "⭐ Đề xuất", "color": "violet",
+     "fvi": ["2–4 tab game cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"]},
     {"id": "max", "icon": "🔥", "name": "Blue Max", "vi": "Game nặng 3D · 60 FPS", "ram": 12, "cpu": 8, "fps": 60, "res": "", "badge": "", "color": "rose",
      "fvi": ["Free Fire, Liên Quân, PUBG Mobile…", "Không có card đồ hoạ — game nặng có thể giật"]},
 ]
+
+
+def tier_clean(s):
+    """Thẻ hiện cho khách không nhắc tên game: "Roblox" → "game", "Blue Roblox" → "Blue Plus" (gói admin lưu từ trước cũng tự đổi — giống web)."""
+    s = str(s or "")
+    if "roblox" not in s.lower(): return s
+    r = re.sub(r"\s{2,}", " ", re.sub(r"(?i)\bgame(\s+game)+\b", "game", re.sub(r"(?i)roblox", "game", re.sub(r"(?i)blue\s*roblox", "Blue Plus", s)))).strip()
+    return r[:1].upper() + r[1:] if r and s[:1].isupper() else r
 
 
 def tiers_list(site):
@@ -1279,11 +1287,11 @@ def tiers_list(site):
     out = []
     for t in (a if isinstance(a, list) and a else TIERS_DEF):
         if not isinstance(t, dict) or t.get("on") is False: continue
-        ram, cpu, name = int(num(t.get("ram"))), int(num(t.get("cpu"))), str(t.get("name") or "").strip()
+        ram, cpu, name = int(num(t.get("ram"))), int(num(t.get("cpu"))), tier_clean(str(t.get("name") or "").strip())
         if ram > 0 and cpu > 0 and name:
-            fit = [str(x).strip() for x in (t.get("fvi") or []) if str(x).strip()][:3]
-            out.append({"id": str(t.get("id") or name), "icon": str(t.get("icon") or "📱")[:4], "name": name[:24], "vi": str(t.get("vi") or "")[:60],
-                        "ram": ram, "cpu": cpu, "fps": int(num(t.get("fps"))) or 30, "res": str(t.get("res") or ""), "badge": str(t.get("badge") or "")[:20],
+            fit = [tier_clean(str(x).strip()) for x in (t.get("fvi") or []) if str(x).strip()][:3]
+            out.append({"id": str(t.get("id") or name), "icon": str(t.get("icon") or "📱")[:4], "name": name[:24], "vi": tier_clean(t.get("vi"))[:60],
+                        "ram": ram, "cpu": cpu, "fps": int(num(t.get("fps"))) or 30, "res": str(t.get("res") or ""), "badge": tier_clean(t.get("badge"))[:20],
                         "color": TIER_COLORS.get(t.get("color"), t.get("color") if re.match(r"^#[0-9a-fA-F]{6}$", str(t.get("color") or "")) else TIER_COLORS["blue"]),
                         "fit": fit})
     return out[:8]
@@ -1295,54 +1303,87 @@ def _mix(a, b, k):
     return "#%02x%02x%02x" % tuple(round(x * k + y * (1 - k)) for x, y in zip(pa, pb))
 
 
-class TierStrip:
-    """Dải thẻ gói cuộn ngang (‹ ›): bấm 1 thẻ → dlg.pick_tier(gói). paint() tô lại thẻ đang khớp cấu hình."""
-    W = 182
-
-    def __init__(self, dlg, parent, tiers):
-        tk = dlg.app.tk; self.dlg = dlg; self.cards = []
-        self.frame = tk.Frame(parent, bg=BG)
-        nav = tk.Frame(self.frame, bg=BG); nav.pack(fill="x")
-        self.cv = cv = tk.Canvas(self.frame, bg=BG, highlightthickness=0, height=10)
-        inner = tk.Frame(cv, bg=BG); cv.create_window((0, 0), window=inner, anchor="nw")
-        sb = tk.Scrollbar(self.frame, orient="horizontal", command=cv.xview); cv.configure(xscrollcommand=sb.set)
-        def fit(_e=None):
-            cv.configure(scrollregion=cv.bbox("all"), height=inner.winfo_reqheight())
-        inner.bind("<Configure>", fit)
-        for i, t in enumerate(tiers): self.cards.append(self._card(inner, t, i))
-        cv.pack(fill="x"); sb.pack(fill="x", pady=(2, 0))
-        step = lambda d: cv.xview_moveto(max(0.0, min(1.0, cv.xview()[0] + d * (self.W + 10) / max(1, inner.winfo_reqwidth()))))
-        for txt, d in (("›", 1), ("‹", -1)):
-            b = tk.Label(nav, text=txt, font=("Segoe UI", 12, "bold"), bg=CARD, fg=TXT, padx=10, cursor="hand2", highlightthickness=1, highlightbackground=LINE)
-            b.pack(side="right", padx=(6, 0)); b.bind("<Button-1>", lambda _e, d=d: step(d))
-        tk.Label(nav, text="Kéo thanh dưới hoặc bấm ‹ › để xem thêm gói", font=dlg.app.f_s, bg=BG, fg=DIM).pack(side="left")
-
-    def _card(self, parent, t, i):
-        tk = self.dlg.app.tk; acc = t["color"]; bg = _mix(acc, CARD, .18)
-        c = tk.Frame(parent, bg=bg, highlightthickness=1, highlightbackground=_mix(acc, BG, .45), cursor="hand2", width=self.W)
-        c.grid(row=0, column=i, padx=(0, 10), pady=4, sticky="ns")
-        L = lambda text, font, fg=TXT, **kw: tk.Label(c, text=text, font=font, bg=bg, fg=fg, anchor="w", justify="left", wraplength=self.W - 22, **kw)
-        if t["badge"]: tk.Label(c, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ff5f6d", fg="white", padx=8).pack(anchor="e", padx=8, pady=(6, 0))
-        L(f"{t['icon']}  {t['name']}", ("Segoe UI", 12, "bold"), _mix(acc, "#ffffff", .55)).pack(fill="x", padx=10, pady=(8 if not t["badge"] else 2, 0))
-        if t["vi"]: L(t["vi"], ("Segoe UI", 9), DIM).pack(fill="x", padx=10)
-        L(f"⚙ {t['cpu']} nhân   🧠 {t['ram']}GB   🎞 {t['fps']} FPS", ("Segoe UI", 9, "bold")).pack(fill="x", padx=10, pady=(6, 0))
-        ands = self.dlg.tier_ands(t)
-        L("Android " + (" · ".join(ands) if ands else "— vượt trần cấu hình"), ("Segoe UI", 9), DIM).pack(fill="x", padx=10, pady=(4, 0))
-        for f in t["fit"]: L("✓ " + f, ("Segoe UI", 9)).pack(fill="x", padx=10)
-        per = per_day(self.dlg.pr, t["ram"], t["cpu"])
-        L(f"{vnd(per)} / ngày", ("Segoe UI", 12, "bold")).pack(fill="x", padx=10, pady=(6, 0))
-        L(f"≈ {vnd(per * 30)} / 30 ngày", ("Segoe UI", 8), DIM).pack(fill="x", padx=10)
-        btn = tk.Label(c, text="Chọn gói này", font=("Segoe UI", 10, "bold"), bg=_mix(acc, CARD, .30), fg=TXT, pady=6, cursor="hand2")
-        btn.pack(fill="x", padx=10, pady=(8, 10))
-        def click(_e, t=t): self.dlg.pick_tier(t)
-        for w in [c] + list(c.winfo_children()): w.bind("<Button-1>", click)
-        return t, c, btn
+class AndTiles:
+    """Bước ① — ô hệ điều hành TO, chia đều 1 hàng: "Android" nhỏ · số bản to · gợi ý. Bấm → set_(v) → on_change()."""
+    def __init__(self, app, parent, items, get, set_, on_change, why=None):
+        tk = app.tk; self.get, self.why = get, why
+        self.frame = tk.Frame(parent, bg=BG); self.tiles = []
+        for i, (val, hint) in enumerate(items):
+            self.frame.grid_columnconfigure(i, weight=1, uniform="and")
+            t = tk.Frame(self.frame, bg=CARD, highlightthickness=1, highlightbackground=LINE, cursor="hand2", height=86)
+            t.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0), pady=2); t.grid_propagate(False); t.pack_propagate(False)
+            inner = tk.Frame(t, bg=CARD); inner.place(relx=.5, rely=.5, anchor="center")
+            k = tk.Label(inner, text="Android", font=("Segoe UI", 9, "bold"), bg=CARD, fg=DIM)
+            n = tk.Label(inner, text=str(val), font=("Segoe UI", 22, "bold"), bg=CARD, fg=TXT)
+            h = tk.Label(inner, text=hint, font=("Segoe UI", 8, "bold"), bg=CARD, fg=WARN)
+            for w in (k, n, h): w.pack()
+            def click(_e, v=val):
+                if self.why and self.why(v): return
+                set_(v); on_change()
+            for w in (t, inner, k, n, h): w.bind("<Button-1>", click)
+            self.tiles.append((val, hint, t, inner, k, n, h))
+        self.paint()
 
     def paint(self):
-        for t, c, btn in self.cards:
+        cur = self.get()
+        for v, hint, t, inner, k, n, h in self.tiles:
+            w = self.why(v) if self.why else ""; off = bool(w); on = (v == cur) and not off
+            bg = "#1c3f93" if on else CARD
+            t.config(bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="arrow" if off else "hand2")
+            inner.config(bg=bg)
+            k.config(bg=bg, text="✓ Android" if on else "Android", fg="#cfe4ff" if on else ("#55607a" if off else DIM))
+            n.config(bg=bg, fg="#ffffff" if on else ("#55607a" if off else TXT))
+            h.config(bg=bg, text=("Bảo trì" if w == "off" else "Hết chỗ") if off else hint, fg=BAD if off else WARN)
+
+
+class TierList:
+    """Bước ② — danh sách gói dọc (thấy đủ hết, không phải kéo ngang): bấm hàng nào chọn hàng đó → dlg.pick_tier(gói).
+       Hàng đang chọn: viền màu gói + "✓ Đã chọn" + mở thêm "phù hợp". paint() tô lại theo dlg.tier_on()."""
+    def __init__(self, dlg, parent, tiers):
+        tk = dlg.app.tk; self.dlg = dlg; self.rows = []
+        self.frame = tk.Frame(parent, bg=BG)
+        for t in tiers: self.rows.append(self._row(t))
+
+    def _row(self, t):
+        tk = self.dlg.app.tk; acc = t["color"]; bg = _mix(acc, CARD, .14)
+        c = tk.Frame(self.frame, bg=bg, highlightthickness=1, highlightbackground=_mix(acc, BG, .45), cursor="hand2")
+        c.pack(fill="x", pady=(0, 8))
+        bar = tk.Frame(c, bg=acc, width=4); bar.pack(side="left", fill="y")
+        body = tk.Frame(c, bg=bg); body.pack(side="left", fill="both", expand=True, padx=(10, 10), pady=8)
+        top = tk.Frame(body, bg=bg); top.pack(fill="x")
+        ic = tk.Label(top, text=t["icon"], font=("Segoe UI", 16), bg=bg, fg=TXT, width=2); ic.pack(side="left", padx=(0, 8))
+        mid = tk.Frame(top, bg=bg); mid.pack(side="left", fill="x", expand=True)
+        nm = tk.Label(mid, text=t["name"], font=("Segoe UI", 12, "bold"), bg=bg, fg=_mix(acc, "#ffffff", .55), anchor="w"); nm.pack(fill="x")
+        wl = [c, bar, body, top, ic, mid, nm]
+        if t["vi"]: x = tk.Label(mid, text=t["vi"], font=("Segoe UI", 9), bg=bg, fg=DIM, anchor="w"); x.pack(fill="x"); wl.append(x)
+        ands = self.dlg.tier_ands(t); allv = and_list(self.dlg.pr)
+        spec = f"{t['cpu']} nhân · {t['ram']}GB RAM · {t['fps']} FPS"
+        if len(ands) < len(allv): spec += "   ·   Android " + (" / ".join(ands) if ands else "— vượt trần")
+        sp = tk.Label(mid, text=spec, font=("Segoe UI", 9, "bold"), bg=bg, fg=TXT, anchor="w"); sp.pack(fill="x"); wl.append(sp)
+        rt = tk.Frame(top, bg=bg); rt.pack(side="right", padx=(8, 0)); wl.append(rt)
+        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ff5f6d", fg="white", padx=7); b.pack(anchor="e"); wl.append(b)
+        per = per_day(self.dlg.pr, t["ram"], t["cpu"])
+        pr = tk.Label(rt, text=vnd(per), font=("Segoe UI", 13, "bold"), bg=bg, fg=TXT, anchor="e"); pr.pack(anchor="e")
+        pd = tk.Label(rt, text="/ ngày", font=("Segoe UI", 8), bg=bg, fg=DIM, anchor="e"); pd.pack(anchor="e"); wl += [pr, pd]
+        btn = tk.Label(top, text="Chọn", font=("Segoe UI", 9, "bold"), bg=_mix(acc, CARD, .30), fg=TXT, padx=10, pady=5, cursor="hand2")
+        btn.pack(side="right", padx=(10, 0)); wl.append(btn)
+        more = tk.Frame(body, bg=bg)
+        mw = []
+        for f in t["fit"]: y = tk.Label(more, text="✓  " + f, font=("Segoe UI", 9), bg=bg, fg=TXT, anchor="w"); y.pack(fill="x"); mw.append(y)
+        z = tk.Label(more, text=f"≈ {vnd(per * 30)} / 30 ngày", font=("Segoe UI", 8), bg=bg, fg=DIM, anchor="w"); z.pack(fill="x"); mw.append(z)
+        def click(_e, t=t): self.dlg.pick_tier(t)
+        for w in wl + [more] + mw: w.bind("<Button-1>", click)
+        return t, c, btn, more, ic
+
+    def paint(self):
+        for t, c, btn, more, ic in self.rows:
             on = self.dlg.tier_on(t)
             c.config(highlightthickness=2 if on else 1, highlightbackground=t["color"] if on else _mix(t["color"], BG, .45))
-            btn.config(text="✓ Đã chọn" if on else "Chọn gói này", bg=t["color"] if on else _mix(t["color"], CARD, .30), fg="#06112b" if on else TXT)
+            btn.config(text="✓ Đã chọn" if on else "Chọn", bg=t["color"] if on else _mix(t["color"], CARD, .30), fg="#06112b" if on else TXT)
+            if on: more.pack(fill="x", padx=(ic.winfo_reqwidth() + 8, 0), pady=(6, 0))
+            else: more.pack_forget()
+
+
 
 
 class Dlg:
@@ -1733,7 +1774,7 @@ class CodeDlg(Dlg):
 class OrderDlg(Dlg):
     """Thuê máy mới — y như bảng thuê trên web (giá, giới hạn, chỗ trống từng bản Android, máy miễn phí, CTV)."""
     def __init__(self, app):
-        super().__init__(app, "Thuê điện thoại đám mây", 600, 760)
+        super().__init__(app, "Thuê điện thoại đám mây", 620, 800)
         self.loading("Đang tải bảng giá…")
         def load():
             sh = app.shop
@@ -1745,6 +1786,7 @@ class OrderDlg(Dlg):
     def _loaded(self, r):
         self.pr, self.st, self.prof, have, self.site = r
         self.custom = False                                                 # ⚙️ Tự chỉnh cấu hình đang mở
+        self.picked = False                                                 # khách ĐÃ bấm 1 gói / tự chỉnh — chưa thì chưa hiện tiền
         p = self.pr; cl = lambda v, lo, hi: max(int(num(lo)), min(int(num(hi)), v))
         mpu = int(num(p.get("max_per_user")))
         self.left = 20 if mpu <= 0 or self.prof.get("role") == "admin" else mpu - have
@@ -1760,6 +1802,22 @@ class OrderDlg(Dlg):
         self.build()
 
     # ---------- vẽ ----------
+    def need(self):
+        """Còn gói mà khách CHƯA chọn → chưa hiện số tiền nào (giống web + app điện thoại)."""
+        return not self.s["free"] and not getattr(self, "picked", False) and bool(getattr(self, "tl", []))
+
+    def step(self, n, title, sub=""):
+        """Đầu mỗi bước: số tròn xanh + tiêu đề to + 1 dòng gợi ý."""
+        tk = self.app.tk
+        f = tk.Frame(self.body, bg=BG); f.pack(fill="x", padx=18, pady=(16, 6))
+        hr = tk.Frame(f, bg=BG); hr.pack(fill="x")
+        cv = tk.Canvas(hr, width=28, height=28, bg=BG, highlightthickness=0); cv.pack(side="left", padx=(0, 10))
+        cv.create_oval(2, 2, 26, 26, fill=ACC, outline="#9fd0ff", width=1); cv.create_text(14, 14, text=str(n), fill="white", font=("Segoe UI", 11, "bold"))
+        tx = tk.Frame(hr, bg=BG); tx.pack(side="left", fill="x", expand=True)
+        self.label(tx, title, ("Segoe UI", 12, "bold"), TXT).pack(fill="x")
+        if sub: self.label(tx, sub, self.app.f_s, DIM, wraplength=500).pack(fill="x")
+        return f
+
     def build(self):
         tk = self.app.tk; p, s = self.pr, self.s; self.clear(); self.rows = []
         lo = lambda k: int(num(p.get(k)))
@@ -1774,25 +1832,58 @@ class OrderDlg(Dlg):
                            anchor="w", cursor="hand2").pack(fill="x", padx=10, pady=(8, 0))
             self.label(fb, f"Tối đa {lo('free_max_ram')}GB RAM · {lo('free_max_cpu')} nhân · mỗi tài khoản dùng thử 1 máy. Hết hạn máy tự tắt, không gia hạn được.",
                        self.app.f_s, DIM, wraplength=520).pack(fill="x", padx=12, pady=(0, 8))
-        ch = lambda key: (lambda v: self.s.__setitem__(key, v))
+        def chp(key):                                        # tự chỉnh RAM / CPU / độ phân giải / FPS = đã chọn cấu hình
+            def setv(v):
+                self.s[key] = v
+                if not self.picked:
+                    self.picked = True; self.app.root.after_idle(lambda: self.alive and self.build())
+            return setv
         get = lambda key: (lambda: self.s[key])
         avs = and_list(p)
-        f = self.section("Hệ điều hành")
-        self.rows.append(Chips(self.app, f, [(v, f"Android {v}\n{AND_HINT.get(v, '')}".strip()) for v in avs], get("android"), self.set_android, self.upd,
-                               why=lambda v: and_why(self.st, v, *self.fit(v)) if self.prof.get("role") != "admin" else ""))
-        self.rows[-1].frame.pack(fill="x")
+        self.tl = [] if s["free"] else tiers_list(getattr(self, "site", {}))
+        need = self.need()
+        # ① Hệ điều hành — ô to
+        f = self.step(1, "Chọn hệ điều hành", "Chưa chắc thì chọn Android 9 — ổn định, chạy được nhiều app nhất." if len(avs) > 1 and "9" in avs else "")
+        self.rows.append(AndTiles(self.app, f, [(v, AND_HINT.get(v, "").split(" · ")[0]) for v in avs], get("android"), self.set_android, self.upd,
+                                  why=lambda v: and_why(self.st, v, *self.fit(v)) if self.prof.get("role") != "admin" else ""))
+        self.rows[-1].frame.pack(fill="x", pady=(4, 0))
         self.and_note = self.label(f, "", self.app.f_s, DIM); self.and_note.pack(fill="x")
         if "15" in avs:
-            self.label(f, "Android 15 không vào được Google / Play Store? Chọn Android 12 — máy đang thuê thì dùng Khác ▾ → Đổi Android (giữ nguyên hạn).",
-                       self.app.f_s, DIM, wraplength=520).pack(fill="x")
-        # 🎴 Chọn gói cấu hình (cùng danh sách với web — admin chỉnh ở 📱 ĐT đám mây › 💰 Giá & thẻ bán) · máy miễn phí không dùng gói
-        self.tl = [] if s["free"] else tiers_list(getattr(self, "site", {}))
+            self.label(f, "💡 Android 15 không vào được Google / Play Store? Chọn Android 12 — máy đang thuê thì dùng Khác ▾ → Đổi Android (giữ nguyên hạn).",
+                       self.app.f_s, WARN, wraplength=540).pack(fill="x", pady=(4, 0))
+        # ② Chọn gói (cùng danh sách với web) — máy miễn phí / không có gói: tự chỉnh cấu hình
         if self.tl:
-            f = self.section("🎴 Chọn gói cấu hình", "bấm 1 gói là điền sẵn RAM · CPU · FPS")
-            self.rows.append(TierStrip(self, f, self.tl)); self.rows[-1].frame.pack(fill="x")
+            f = self.step(2, "Chọn gói", "Bấm 1 gói để xem giá — muốn khác thì mở ⚙️ Tự chỉnh ở dưới.")
+            self.rows.append(TierList(self, f, self.tl)); self.rows[-1].frame.pack(fill="x", pady=(4, 0))
             self.tier_note = self.label(f, getattr(self, "_tier_msg", ""), self.app.f_s, WARN, wraplength=540); self.tier_note.pack(fill="x")
             self._tier_msg = ""
+        else:
+            self.step(2, "Cấu hình máy miễn phí" if s["free"] else "Cấu hình máy",
+                      f"Tối đa {lo('free_max_ram')}GB RAM · {lo('free_max_cpu')} nhân — để mặc định là dùng được." if s["free"] else "Chọn RAM · CPU · FPS cho máy.")
+        self.cust_lbl = None
+        if self.tl:
+            if self.picked and not any(self.tier_match(t) for t in self.tl): self.custom = True
+            tg = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, cursor="hand2"); tg.pack(fill="x", padx=18, pady=(2, 2))
+            self.cust_lbl = self.label(tg, "", ("Segoe UI", 10, "bold"), TXT, cursor="hand2"); self.cust_lbl.pack(side="left", padx=10, pady=8)
+            arw = self.label(tg, "▴" if self.custom else "▾", ("Segoe UI", 11, "bold"), DIM, cursor="hand2"); arw.pack(side="right", padx=10)
+            for w in (tg, self.cust_lbl, arw): w.bind("<Button-1>", lambda _e: self.toggle_custom())
+        if not self.tl or self.custom:
+            ar, ac = and_lim(p, s["android"])                                   # trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 15: 16GB · 32 nhân)
+            mr = min(ar, lo("free_max_ram") or 999) if s["free"] else ar
+            mc = min(ac, lo("free_max_cpu") or 999) if s["free"] else ac
+            f = self.section("RAM", f"{lo('min_ram')}–{mr} GB")
+            self.rows.append(Chips(self.app, f, [(v, f"{v}GB") for v in cp_opts(CP_RAM, lo("min_ram"), mr)], get("ram"), chp("ram"), self.upd, wrap=8)); self.rows[-1].frame.pack(fill="x")
+            f = self.section("CPU (nhân)", f"{lo('min_cpu')}–{mc} nhân")
+            self.rows.append(Chips(self.app, f, [(v, str(v)) for v in cp_opts(CP_CPU, lo("min_cpu"), mc)], get("cpu"), chp("cpu"), self.upd, wrap=9)); self.rows[-1].frame.pack(fill="x")
+            self.label(f, "💡 Treo game 1 tab: nên chọn từ 4GB RAM · 4 nhân (vào trận game đã dùng khoảng 2GB RAM) — 3GB · 2 nhân dễ giật. "
+                          "Treo 2–4 tab: 8GB · 8 nhân.", self.app.f_s, DIM, wraplength=520).pack(fill="x", pady=(4, 0))
+            f = self.section("Độ phân giải")
+            self.rows.append(Chips(self.app, f, [(r, f"{n}\n{r}") for r, n in CP_RES], get("res"), chp("res"), self.upd)); self.rows[-1].frame.pack(fill="x")
+            f = self.section("FPS (khung hình / giây)")
+            self.rows.append(Chips(self.app, f, [(v, f"{v} FPS") for v in CP_FPS if lo("min_fps") <= v <= lo("max_fps")], get("fps"), chp("fps"), self.upd)); self.rows[-1].frame.pack(fill="x")
+        # ③ Số ngày & số máy (máy miễn phí: số ngày cố định, 1 máy → bỏ bước này)
         if not s["free"]:
+            self.step(3, "Số ngày & số máy" if self.left > 1 else "Số ngày thuê")
             f = self.section("Số ngày", f"{lo('min_days')}–{lo('max_days')} ngày")
             line = tk.Frame(f, bg=BG); line.pack(fill="x")
             self.days_x = tk.Entry(line, width=6, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
@@ -1805,33 +1896,12 @@ class OrderDlg(Dlg):
             self.rows[-1].frame.pack(side="left")
             self.label(line, "  khác:", self.app.f_s, DIM).pack(side="left"); self.days_x.pack(side="left", ipady=4)
             self.days_x.bind("<KeyRelease>", typed)
-        if not s["free"] and self.left > 1:
-            f = self.section("Số lượng máy")
-            self.rows.append(Chips(self.app, f, [(v, f"{v} máy") for v in CP_QTY if v <= min(20, self.left)], get("qty"), ch("qty"), self.upd)); self.rows[-1].frame.pack(fill="x")
-        # ⚙️ Tự chỉnh cấu hình — thu gọn khi cấu hình đang khớp 1 gói (máy miễn phí / không có gói: luôn mở)
-        self.cust_lbl = None
-        if self.tl:
-            if not any(self.tier_on(t) for t in self.tl): self.custom = True
-            tg = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, cursor="hand2"); tg.pack(fill="x", padx=18, pady=(14, 2))
-            self.cust_lbl = self.label(tg, "", ("Segoe UI", 10, "bold"), TXT, cursor="hand2"); self.cust_lbl.pack(side="left", padx=10, pady=8)
-            arw = self.label(tg, "▴" if self.custom else "▾", ("Segoe UI", 11, "bold"), DIM, cursor="hand2"); arw.pack(side="right", padx=10)
-            for w in (tg, self.cust_lbl, arw): w.bind("<Button-1>", lambda _e: self.toggle_custom())
-        if not self.tl or self.custom:
-            ar, ac = and_lim(p, s["android"])                                   # trần theo bản Android đang chọn (Android 9: 8GB · 8 nhân · Android 12 / 15: 16GB · 32 nhân)
-            mr = min(ar, lo("free_max_ram") or 999) if s["free"] else ar
-            mc = min(ac, lo("free_max_cpu") or 999) if s["free"] else ac
-            f = self.section("RAM", f"{lo('min_ram')}–{mr} GB")
-            self.rows.append(Chips(self.app, f, [(v, f"{v}GB") for v in cp_opts(CP_RAM, lo("min_ram"), mr)], get("ram"), ch("ram"), self.upd, wrap=8)); self.rows[-1].frame.pack(fill="x")
-            f = self.section("CPU (nhân)", f"{lo('min_cpu')}–{mc} nhân")
-            self.rows.append(Chips(self.app, f, [(v, str(v)) for v in cp_opts(CP_CPU, lo("min_cpu"), mc)], get("cpu"), ch("cpu"), self.upd, wrap=9)); self.rows[-1].frame.pack(fill="x")
-            self.label(f, "💡 Treo 1 tab Roblox: nên chọn từ 4GB RAM · 4 nhân (vào game Roblox đã dùng khoảng 2GB RAM) — 3GB · 2 nhân thường không treo nổi. "
-                          "Treo 2–4 tab: 8GB · 8 nhân.", self.app.f_s, DIM, wraplength=520).pack(fill="x", pady=(4, 0))
-            f = self.section("Độ phân giải")
-            self.rows.append(Chips(self.app, f, [(r, f"{n}\n{r}") for r, n in CP_RES], get("res"), ch("res"), self.upd)); self.rows[-1].frame.pack(fill="x")
-            f = self.section("FPS (khung hình / giây)")
-            self.rows.append(Chips(self.app, f, [(v, f"{v} FPS") for v in CP_FPS if lo("min_fps") <= v <= lo("max_fps")], get("fps"), ch("fps"), self.upd)); self.rows[-1].frame.pack(fill="x")
+            if self.left > 1:
+                f = self.section("Số lượng máy")
+                self.rows.append(Chips(self.app, f, [(v, f"{v} máy") for v in CP_QTY if v <= min(20, self.left)], get("qty"),
+                                       lambda v: self.s.__setitem__("qty", v), self.upd)); self.rows[-1].frame.pack(fill="x")
         self.promo = self.bpay = None
-        if not s["free"]:                                    # 🏷️ mã giảm giá + 💎 trả bằng Blue (máy miễn phí không dùng)
+        if not s["free"] and not need:                       # 🏷️ mã giảm giá + 💎 trả bằng Blue (máy miễn phí / chưa chọn gói: ẩn)
             f = self.section("Mã giảm giá · Blue")
             self.promo = PromoBox(self, f, "cp_new", lambda: None if self.s["free"] else {"p_ram": self.s["ram"], "p_cpu": self.s["cpu"],
                                                                                       "p_days": self.s["days"], "p_qty": self.s["qty"]}, self.upd)
@@ -1841,9 +1911,10 @@ class OrderDlg(Dlg):
         note = (p.get("order_note") or "").strip() or ("Máy mới tinh, không dính dữ liệu hay tài khoản Gmail của ai. Hết hạn máy tạm dừng — "
                                                        "gia hạn trong 30 phút, quá thời gian máy và dữ liệu bị xoá.")
         self.label(self.body, note, self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=18, pady=(14, 18))
-        # ---- chân: tổng tiền + nút ----
+        # ---- chân: gói đang chọn + tổng tiền + nút ----
         ft = self.foot
-        self.calc = self.label(ft, "", self.app.f_s, DIM); self.calc.pack(fill="x", padx=16, pady=(10, 0))
+        self.pick_lbl = self.label(ft, "", ("Segoe UI", 10, "bold"), TXT); self.pick_lbl.pack(fill="x", padx=16, pady=(10, 0))
+        self.calc = self.label(ft, "", self.app.f_s, DIM); self.calc.pack(fill="x", padx=16)
         r = tk.Frame(ft, bg=CARD); r.pack(fill="x", padx=16)
         self.total = self.label(r, "", ("Segoe UI", 18, "bold"), TXT); self.total.pack(side="left")
         self.bal = self.label(r, "", self.app.f_t, DIM); self.bal.pack(side="right")
@@ -1853,20 +1924,25 @@ class OrderDlg(Dlg):
         self.go = self.app.btn(bb, "Thuê ngay", self.buy); self.go.pack(side="right")
         self.upd()
 
-    def tier_on(self, t):
+    def tier_match(self, t):
         """Cấu hình đang chọn khớp gói t (kẹp theo trần của bản Android đang chọn)."""
         p, s = self.pr, self.s; lo = lambda k: int(num(p.get(k))); ar, ac = and_lim(p, s["android"])
         cl = lambda v, a, b: max(a, min(b, v))
         return (s["ram"] == cl(t["ram"], lo("min_ram"), ar) and s["cpu"] == cl(t["cpu"], lo("min_cpu"), ac)
                 and s["fps"] == cl(t["fps"], lo("min_fps"), lo("max_fps")) and (not t.get("res") or s["res"] == t["res"]))
 
+    def tier_on(self, t):
+        """Gói t đang được chọn = khách ĐÃ chọn + cấu hình khớp gói."""
+        return getattr(self, "picked", False) and self.tier_match(t)
+
     def tier_ands(self, t):
         """Bản Android chạy được gói t (đủ trần RAM / nhân)."""
         return [v for v in and_list(self.pr) if t["ram"] <= and_lim(self.pr, v)[0] and t["cpu"] <= and_lim(self.pr, v)[1]]
 
     def pick_tier(self, t):
-        """Bấm 1 thẻ gói → điền RAM · CPU · FPS (· độ phân giải); bản Android đang chọn không đủ trần → chuyển bản."""
+        """Bấm 1 gói → điền RAM · CPU · FPS (· độ phân giải); bản Android đang chọn không đủ trần → chuyển bản."""
         p, s = self.pr, self.s; lo = lambda k: int(num(p.get(k)))
+        self.picked = True
         ands = self.tier_ands(t)
         if ands and s["android"] not in ands:
             free = [v for v in ands if not and_why(self.st, v, t["ram"], t["cpu"])]
@@ -1942,13 +2018,26 @@ class OrderDlg(Dlg):
                 nv = "9" if "9" in ok else ok[0]
                 if nv != s["android"]: s["android"] = nv; self.app.root.after_idle(lambda: self.alive and self.build())
         for r in self.rows: r.paint()
+        need = self.need()
         if getattr(self, "cust_lbl", None):
-            try: self.cust_lbl.config(text=f"⚙️ Tự chỉnh cấu hình    {s['ram']}GB · {s['cpu']} nhân · {s['res']} · {s['fps']} FPS")
+            try: self.cust_lbl.config(text="⚙️ Tự chỉnh cấu hình" + ("" if need else f"    {s['ram']}GB · {s['cpu']} nhân · {s['res']} · {s['fps']} FPS"))
             except Exception: pass
-        bad, price, bal = self.check(), self.price(), num(self.prof.get("balance"))
         why = {v: and_why(self.st, v, *self.fit(v)) for v in and_list(p)}                  # giải thích vì sao bản Android bị mờ
         self.and_note.config(text="   ".join(f"Android {v}: " + ("máy chủ đang bảo trì" if w == "off" else "hết chỗ cho cấu hình này")
                                              for v, w in why.items() if w and self.prof.get("role") != "admin"))
+        bal = num(self.prof.get("balance"))
+        self.bal.config(text="Số dư: " + vnd(bal))
+        if need:                                             # CHƯA chọn gói → không hiện số tiền nào
+            self.pick_lbl.config(text="Chưa chọn gói", fg=DIM)
+            self.calc.config(text="Bấm 1 gói ở bước 2 để xem giá.")
+            self.total.config(text="—"); self.err.config(text="")
+            self.go.config(text="Chọn gói trước", state="disabled", bg=LINE)
+            return
+        cur = next((t for t in getattr(self, "tl", []) if self.tier_on(t)), None)
+        name = "★ Máy miễn phí" if s["free"] else (f"{cur['icon']}  {cur['name']}" if cur else "⚙️ Cấu hình tự chọn")
+        self.pick_lbl.config(fg=TXT, text=f"{name}   ·   Android {s['android']} · {s['cpu']} nhân · {s['ram']}GB · {s['fps']} FPS · "
+                                          + (f"{int(num(p.get('free_days'))) or 1} ngày" if s["free"] else f"{s['days']} ngày" + (f" × {s['qty']} máy" if s["qty"] > 1 else "")))
+        bad, price = self.check(), self.price()
         if s["free"]:
             self.calc.config(text=f"Miễn phí {int(num(p.get('free_days'))) or 1} ngày · Android {s['android']} · {s['ram']}GB · {s['cpu']} nhân")
         else:
@@ -1962,15 +2051,17 @@ class OrderDlg(Dlg):
         disc = price0 - price; price = price - bu
         if not s["free"] and (disc > 0 or bu > 0):
             self.calc.config(text=self.calc.cget("text") + (f"  ·  🏷️ −{vnd(disc)}" if disc > 0 else "") + (f"  ·  💎 −{blue_n(bu)} Blue" if bu > 0 else ""))
-        self.total.config(text="—" if bad else vnd(price)); self.bal.config(text="Số dư: " + vnd(bal))
+        self.total.config(text="—" if bad else vnd(price))
+        low = (s["ram"] < 4 or s["cpu"] < 4) and cur is None and not s["free"]     # gói đã ghi rõ công dụng → chỉ nhắc khi tự chỉnh
         warn = "" if bad else ("Số dư không đủ — cần nạp thêm " + vnd(price - bal) + "." if price > bal
-                               else "⚠ Cấu hình này chưa đủ chơi game 3D (cần tối thiểu 4GB · 4 nhân) — hợp treo app, game nhẹ." if s["ram"] < 4 or s["cpu"] < 4 else "")
+                               else "⚠ Cấu hình này chưa đủ chơi game 3D (cần tối thiểu 4GB · 4 nhân) — hợp treo app, game nhẹ." if low else "")
         self.err.config(text=bad or warn, fg=BAD if bad or price > bal else WARN)
         self.go.config(text="Nhận máy miễn phí" if s["free"] else ("Nạp tiền" if not bad and price > bal else "💎 Thuê bằng Blue" if price <= 0 and bu > 0
                                                                    else "Thuê ngay" + (f" {s['qty']} máy" if s["qty"] > 1 else "")),
                        state="disabled" if bad else "normal", bg=LINE if bad else ACC)
 
     def buy(self):
+        if self.need(): return                                 # chưa chọn gói → nút đang khoá, chặn thêm 1 lớp
         bad = self.check()
         if bad: self.err.config(text=bad, fg=BAD); return
         if self.promo and not self.s["free"]: self.promo.ensure(self._buy, self.err)
@@ -3242,7 +3333,7 @@ class ToolsDlg(Dlg):
     def _page_screen(self):
         tk = self.app.tk; pg = self.pages["screen"]
         f = self.section("Xoay màn", parent=pg)
-        self.muted(f, "Khoá màn máy NGANG hoặc DỌC (giữ luôn cả khi tắt app). Game chỉ chạy màn ngang (VD Roblox) vẫn tự xoay ngang. "
+        self.muted(f, "Khoá màn máy NGANG hoặc DỌC (giữ luôn cả khi tắt app). Game chỉ chạy màn ngang vẫn tự xoay ngang. "
                       "Cửa sổ máy trên máy tính tự xoay theo — không phải nghiêng đầu.")
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
         self.app.btn(r, "▭  Màn ngang", lambda: self.rotate("land")).pack(side="left")
@@ -3621,7 +3712,7 @@ class ToolsDlg(Dlg):
         self.rt_st = self.label(sw, "Đang đọc…", self.app.f_s, DIM, wraplength=560); self.rt_st.pack(fill="x", padx=36, pady=(0, 8))
         self.rt_warn = self.label(f, "", self.app.f_s, WARN, wraplength=580)
         self.rt_box = tk.Frame(f, bg=BG); self.rt_box.pack(fill="x", pady=(8, 0))
-        self.muted(f, "Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần.")
+        self.muted(f, "Một số game và app có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần.")
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
         self.rt_save = self.app.btn(r, "Lưu", self.save_root); self.rt_save.pack(side="left")
         self.app.btn(r, "Đọc lại", self.load_root, "soft").pack(side="left", padx=(8, 0))
