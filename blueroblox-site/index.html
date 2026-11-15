@@ -4678,7 +4678,7 @@ function m3CloudSt() {
   const p = CPpricing || CP_DEF, s = CPstatus, stk = p.stock == null ? null : +p.stock;
   return s && s.maint ? ["wt", L("Bảo trì", "Maintenance")] : s && s.online === false ? ["wt", L("Tạm ngưng", "Paused")]
     : stk !== null && stk <= 0 ? ["out", L("Hết hàng", "Sold out")]
-    : s && (+s.free_ram < p.min_ram || +s.free_cpu < p.min_cpu) ? ["out", L("Hết hàng", "Sold out")]
+    : s && !cpAnyRoom() ? ["out", L("Hết hàng", "Sold out")]
     : ["ok", stk !== null ? L("Còn " + stk + " máy", stk + " left") : L("Còn hàng", "In stock")];
 }
 function m3AppBtn() {
@@ -7145,13 +7145,23 @@ async function cpLoadStatus() {
   try { const { data, error } = await sb.rpc("cloudphone_status"); if (!error && data) CPstatus = data; } catch (e) {}
   return CPstatus;
 }
+/* 15/11: còn bản Android nào đủ chỗ cho máy NHỎ NHẤT không. Trước đây web chỉ nhìn 2 số CHUNG free_ram / free_cpu
+   (= sức chứa các máy chủ đang nối − máy của MỌI khách, kể cả máy ở máy chủ đang tắt) → ra 0 nhân, web báo "Hết hàng" + chặn mở bảng
+   thuê dù Android 12 · 15 còn chỗ. Giờ: có bảng theo từng bản → xét từng bản đang bán; máy chủ cũ chưa có bảng đó → 2 số chung như trước. */
+function cpAnyRoom() {
+  const s = CPstatus, p = CPpricing || CP_DEF; if (!s) return true;
+  const m = s.android && typeof s.android === "object" ? s.android : null;
+  if (!m) return !(+s.free_ram < p.min_ram || +s.free_cpu < p.min_cpu);
+  const vs = String(p.android_versions || "9").split(",").map(x => x.trim()).filter(Boolean);
+  return vs.some(v => { const a = m[v]; return !!a && a.online !== false && +a.free_ram >= p.min_ram && +a.free_cpu >= p.min_cpu; });
+}
 function cpBlocked() {      // lý do không cho thuê (null = được thuê)
   const s = CPstatus; if (!s || isAdmin()) return null;
   if (s.maint) return "Đang bảo trì" + (s.maint_msg ? ": " + s.maint_msg : "") + ". Vui lòng quay lại sau.";
   if (s.online === false) return "Máy chủ điện thoại đang tạm ngưng, vui lòng quay lại sau.";
   const p = CPpricing || CP_DEF;
   if (p.stock != null && +p.stock <= 0) return L("Đã hết hàng. Vui lòng quay lại sau.", "Sold out. Please come back later.");
-  if (+s.free_ram < p.min_ram || +s.free_cpu < p.min_cpu) return "Đã hết máy trống. Vui lòng quay lại sau.";
+  if (!cpAnyRoom()) return L("Đã hết máy trống. Vui lòng quay lại sau.", "No free capacity right now. Please come back later.");
   return null;
 }
 // Luôn đọc giá mới nhất từ máy chủ (admin vừa sửa là khách thấy ngay)
@@ -7208,7 +7218,7 @@ function cpCheck() {
       return L(`Máy chủ Android ${cpSel.android} chỉ còn trống ${Math.floor(+as.free_ram)}GB RAM và ${Math.floor(+as.free_cpu)} nhân CPU — chọn ít máy hơn, cấu hình nhỏ hơn hoặc bản Android khác.`,
         `The Android ${cpSel.android} server only has ${Math.floor(+as.free_ram)}GB RAM and ${Math.floor(+as.free_cpu)} CPU cores free — choose fewer phones, a smaller setup or another Android version.`);
   }
-  if (s && !isAdmin() && (cpSel.ram * cpSel.qty > +s.free_ram || cpSel.cpu * cpSel.qty > +s.free_cpu))
+  if (!am && s && !isAdmin() && (cpSel.ram * cpSel.qty > +s.free_ram || cpSel.cpu * cpSel.qty > +s.free_cpu))
     return `Máy chủ chỉ còn trống ${Math.floor(+s.free_ram)}GB RAM và ${Math.floor(+s.free_cpu)} nhân CPU — chọn ít máy hơn hoặc cấu hình nhỏ hơn.`;
   const m = /^(\d{3,4})x(\d{3,4})$/.exec(cpSel.res);
   if (!m || +m[1] < 320 || +m[2] < 320 || +m[1] > 4096 || +m[2] > 4096) return "Độ phân giải phải dạng rộng x cao, VD 720x1280 (mỗi cạnh 320–4096).";
@@ -8198,7 +8208,7 @@ function cloudGridCard() {
   const stk = p.stock == null ? null : +p.stock;
   const st = s && s.maint ? ["wt", L("Bảo trì", "Maintenance")] : s && s.online === false ? ["wt", L("Tạm ngưng", "Paused")]
     : stk !== null && stk <= 0 ? ["out", L("Hết hàng", "Sold out")]
-    : s && (+s.free_ram < p.min_ram || +s.free_cpu < p.min_cpu) ? ["out", L("Hết hàng", "Sold out")]
+    : s && !cpAnyRoom() ? ["out", L("Hết hàng", "Sold out")]
     : ["ok", stk !== null ? L("Còn " + stk + " máy", stk + " left") : L("Còn hàng", "In stock")];
   return `<article class="card" style="cursor:pointer" data-cpbuy="1">
     <div class="thumb"><canvas data-id="cloudphone" data-c="vps"></canvas><span class="tag">ĐT ĐÁM MÂY</span><span class="hot">MỚI</span></div>
@@ -8415,6 +8425,7 @@ function renderNodes() {
   let tr = 0, ar = 0, tc = 0, ac = 0, ph = 0;
   box.innerHTML = NODES.map(n => {
     const m = n.metrics || {}, age = nAge(n), off = age > 3, lim = n.limit_pct || 85;
+    const capC = m.cap_cpu_full != null && +m.cap_cpu_full > 0 ? +m.cap_cpu_full : 0;   // trần bán nhân THẬT (máy chủ bản 13/11 trở đi báo) — đạt là ngừng nhận
     const capR = m.cap_ram_full != null ? +m.cap_ram_full : +n.cap_ram, stopR = m.full_pct != null && +m.full_pct < 100 ? +m.full_pct : 0;   // SQL v33: sức chứa thật · mức ngừng
     const full = +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1;
     if (!off && n.enabled) { tr += +n.ram_total; ar += +n.alloc_ram; tc += +n.cpu_total; ac += +n.alloc_cpu; ph += +n.phones || 0; }
@@ -8428,7 +8439,8 @@ function renderNodes() {
       ${nodeEmu(n, m)}
       ${nRow("CPU đang dùng thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct)}
       ${m.cpu_over ? nRow("CPU thật TB 5 phút (ngừng nhận khi ≥ " + (m.cpu_busy_pct || 85) + "%)", (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, m.cpu_busy_pct || 85) : ""}
-      ${nRow(m.cpu_over ? `CPU đã cấp (dùng chung ×${m.cpu_over})` : "CPU đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim)}
+      ${capC ? nRow("CPU đã cấp (đạt trần là ngừng nhận)", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100)
+      : nRow(m.cpu_over ? `CPU đã cấp (dùng chung ×${m.cpu_over})` : "CPU đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim)}
       ${nRow("RAM đang dùng thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100)}
       ${nRow(m.ram_over ? `RAM đã cấp (dùng chung ×${m.ram_over} · ngừng nhận khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${m.ram_busy_pct || 85}%)` : "RAM đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(capR)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, capR) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? stopR || 100 : lim)}
       ${m.sleeping > 0 && m.sleep_gb != null ? `<div class="nr" title="Khách mở máy ngủ là máy bật lại → phần RAM này không bán cho máy mới. Giữ bằng RAM thật 1 máy đang chạy dùng${m.ram_over > 1 ? " ÷ " + m.ram_over + " (dùng chung)" : ""}."><span>💤 ${m.sleeping} máy ngủ giữ chỗ (${m.sleep_pct}% RAM cấp)</span><em>${m.sleep_gb}/${m.sleep_full_gb} GB</em></div>` : ""}
