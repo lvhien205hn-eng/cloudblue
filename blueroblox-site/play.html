@@ -98,6 +98,8 @@ body[data-view="v-play"]{position:fixed;inset:0;overflow:hidden;overscroll-behav
 .ovl .nm{font-weight:700;font-size:17px;margin-bottom:4px}
 .ovl p{margin:10px 0 0;color:#d5def8;font-size:15px}
 .ovl .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.ovl p.sm{font-size:13.5px;line-height:1.5;color:#aebbe0}
+.ovl .dg{margin:12px 0 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.06);color:#93a2cc;text-align:left;white-space:pre-wrap;word-break:break-word;font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-user-select:text;user-select:text}
 .spin{width:34px;height:34px;margin:0 auto;border-radius:50%;border:3px solid rgba(143,208,255,.2);border-top-color:var(--sky);animation:sp 0.9s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}}
@@ -208,6 +210,8 @@ input.tg:disabled{opacity:.45;cursor:default}
         <div class="spin" id="ovl-spin"></div>
         <div class="nm" id="ovl-nm"></div>
         <p id="ovl-t">Đang mở máy…</p>
+        <p class="sm" id="ovl-d" hidden></p>
+        <div class="dg" id="ovl-g" hidden></div>
         <div class="acts" id="ovl-acts"></div>
       </div>
     </div>
@@ -314,12 +318,13 @@ input.tg:disabled{opacity:.45;cursor:default}
 "use strict";
 /* =====================================================================================================
    ĐIỀU KHIỂN MÁY TRÊN TRÌNH DUYỆT — cùng giao thức BRS2 với app máy tính / app Android (docs/STREAM-PROTOCOL.md),
-   đi THẲNG vào máy chủ (stream.wss: wss://dN.<miền>:cổng — từ web-1.2, thử trước 3,5 giây) hoặc vòng qua Cloudflare
-   (stream.ws) khi đường thẳng không vào được (cổng modem chưa mở, mạng chặn cổng lạ). Giải mã H.264 bằng WebCodecs
+   đi THẲNG vào máy chủ (stream.wss: wss://dN.<miền>:cổng) hoặc vòng qua Cloudflare (stream.ws). Từ web-1.3 các đường được
+   nối SO LE, đường nào mở trước thì dùng (xem "kết nối" bên dưới) — iPhone đời mới (Safari iOS 26) hay kẹt WebSocket trên
+   Wi-Fi nên có thêm cổng phụ 8443 / 2053 của Cloudflare. Giải mã H.264 bằng WebCodecs
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.2";
+const VER = "web-1.3";
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -437,7 +442,10 @@ const P = {
   rmode: 0, held: null, heldBmp: null,                 // cách vẽ: 0 = vẽ thẳng khung · 1 = đổi qua ảnh (createImageBitmap)
   bcT: 0, bcN: 0, bcOk: 0, bcSw: 0, bcDone: false,      // kiểm "màn hình đen" (chỉ Safari / iPhone)
   decErr: 0, decErrT: 0, lastErr: "", codec: "",
-  path: "", pathWhy: "", wdBad: 0, wdMiss: 0, cx: null,             // đường đang đi ("thẳng" / "Cloudflare") · đường thẳng hỏng tới lúc nào · kết nối hiện tại
+  path: "", pathWhy: "", cx: null,                                   // đường đang đi ("thẳng" / "Cloudflare" / "Cloudflare 8443"…) · kết nối hiện tại
+  cands: [], race: null, bad: {}, cseq: 0,                           // các đường của lượt nối này · lượt đang nối · đường vừa hỏng (tới lúc nào) · số thứ tự lượt nối
+  rounds: 0, noOpen: 0, hangs: 0, silent: 0, helpOn: false, rlAsked: false, lastFail: "", httpOk: null, httpT: 0, ovlKind: "", waitT: 0,
+  epT: 0, epStale: false,                                            // thông tin máy vừa lấy lúc nào (nối lại trong 45 giây khỏi hỏi lại)
 };
 
 function openPhone(id) {
@@ -445,7 +453,8 @@ function openPhone(id) {
   if (!TEST) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
   view("v-play");
   Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
-                     bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "" });
+                     bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "",
+                     rounds: 0, noOpen: 0, hangs: 0, silent: 0, helpOn: false, rlAsked: false, lastFail: "", httpOk: null, httpT: 0, epT: 0, epStale: false, waitT: 0 });
   setQ(P.q, false); layout(); wake();
   if (!HAS_WC) return overlay("err", IS_IOS ? "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm."
                                             : "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.", [["Về danh sách", toList]]);
@@ -459,15 +468,17 @@ function stopPlay() {
 const toList = () => { stopPlay(); showList(); };
 
 /* ---------- trạng thái / lớp phủ ---------- */
-function overlay(kind, msg, acts) {
+function overlay(kind, msg, acts, tip) {
   const o = $("ovl");
-  if (!kind) { o.hidden = true; return; }
-  o.hidden = false; $("ovl-spin").hidden = kind !== "wait";
+  if (!kind) { o.hidden = true; P.ovlKind = ""; return; }
+  o.hidden = false; $("ovl-spin").hidden = kind !== "wait"; P.ovlKind = kind;
   $("ovl-nm").textContent = P.name || ""; $("ovl-t").textContent = msg || "";
+  const d = $("ovl-d"); d.textContent = tip || ""; d.hidden = !tip; diagLine("");
   const a = $("ovl-acts"); a.innerHTML = "";
   for (const [label, fn] of acts || []) { const b = document.createElement("button"); b.type = "button"; b.className = "btn" + (a.children.length ? " ghost" : ""); b.textContent = label; b.onclick = fn; a.appendChild(b); }
   setDot(kind === "err" ? "bad" : "");
 }
+function diagLine(t) { const g = $("ovl-g"); g.textContent = t || ""; g.hidden = !t; }      // dòng chữ nhỏ: đang đi đường nào, chờ gì, vì sao chưa vào
 function setDot(c) { $("dot").className = "dot" + (c ? " " + c : ""); }
 function setName(n, a) {
   if (n) P.name = n; if (a) P.android = String(a);
@@ -479,7 +490,8 @@ function retryLater(msg, ms) {
   overlay("wait", msg);
   P.timer = setTimeout(connect, ms || 5000);
 }
-const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; DM_TRIED = 0; connect(); };
+const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; DM_TRIED = 0;
+  P.rounds = 0; P.noOpen = 0; P.hangs = 0; P.silent = 0; P.helpOn = false; P.rlAsked = false; P.epStale = true; P.waitT = 0; connect(); };
 const statusMsg = s => ({ pending: "Máy đang được tạo, chờ thêm chút…", creating: "Máy đang được tạo, chờ thêm chút…", expired: "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.",
                           error: "Máy đang lỗi — liên hệ hỗ trợ.", cancelling: "Máy đang bị huỷ." }[s] || "");
 
@@ -497,81 +509,198 @@ function bluePlay() {
   }, () => {});
 }
 
-/* ---------- kết nối ---------- */
+/* ---------- kết nối ----------
+   web-1.3 — NỐI NHIỀU ĐƯỜNG SO LE, đường nào mở trước thì dùng:
+     thẳng (stream.wss) → Cloudflare cổng phụ 8443 → Cloudflare (443) → Cloudflare cổng phụ 2053      [Safari / iPhone]
+     thẳng (stream.wss) → Cloudflare (443) → Cloudflare cổng phụ 8443                                  [trình duyệt khác]
+   Vì sao: Safari trên iOS 26 (iPhone đời mới) có lỗi WebSocket của chính Apple — trên Wi-Fi nó nối qua HTTP/3 (QUIC) rồi bị từ chối
+   hoặc treo mãi ở bước nối, đổi sang 4G lại vào ngay; bật iCloud Private Relay thì chỉ nối được 1 WebSocket tới cùng máy chủ + cổng.
+   Cổng phụ của Cloudflare chỉ đi TCP (không HTTP/3) và mỗi đường là một cổng khác nhau → né được cả hai. Bản cũ gặp lỗi đó là
+   nối lại vô tận ("quay mãi"). Nay: nối được mà không ra hình → tự đổi đường; không đường nào vào → hiện hướng dẫn + lý do;
+   WebSocket kẹt mà HTTP vẫn chạy (đúng kiểu lỗi của Safari) → tự tải lại trang 1 lần. */
+const RACE_GAP = 1200, OPEN_MAX = 8000, DIRECT_HOLD = 2500;         // so le giữa 2 đường · 1 lượt nối tối đa · chờ thêm đường thẳng (nét hơn) bao lâu
+const FIRST_MAX = 9000, DEC_SILENT = 5000, WELCOME_MAX = 45000;     // đã vào máy mà không có hình · có hình mà bộ giải mã im lặng · nối được mà máy chủ không trả lời
+const EP_KEEP = 45000, HELP_AFTER = 14000;                             // chờ quá 14 giây chưa vào → hiện hướng dẫn + lý do
+const timed = (p, ms) => new Promise(res => {                       // chờ tối đa ms: { v } xong · { err } lỗi · { timeout } quá lâu (mạng treo không làm đứng trang)
+  let done = false; const t = setTimeout(() => { if (!done) { done = true; res({ timeout: true }); } }, ms);
+  Promise.resolve(p).then(v => { if (!done) { done = true; clearTimeout(t); res({ v }); } }, e => { if (!done) { done = true; clearTimeout(t); res({ err: e }); } });
+});
+const quiet = w => { try { w.onopen = w.onmessage = w.onclose = w.onerror = null; w.close(); } catch {} };
+function cfAlt(u, port) {                  // wss://streamN.<miền>/v2/stream → cùng tên, cổng HTTPS phụ của Cloudflare
+  try { const x = new URL(u); if (x.protocol !== "wss:" || x.port) return ""; x.port = String(port); return x.toString(); } catch { return ""; }
+}
+const badKey = c => (c.direct ? "cb_wsd_bad:" : "cb_pbad:") + c.url;
+const badUntil = c => Math.max(P.bad[c.url] || 0, Number(lsGet(badKey(c))) || 0);
+function pathBad(c, min) { if (c) { P.bad[c.url] = Date.now() + min * 60000; lsSet(badKey(c), String(P.bad[c.url])); } }      // đường vừa hỏng → lượt sau thử đường khác trước
+function pathGood(c) { if (!c) return; delete P.bad[c.url]; if (Number(lsGet(badKey(c)))) lsSet(badKey(c), "0"); }
+function buildCands(ep) {
+  const cf = ep.stream && ep.stream.ws, wd = ep.stream && ep.stream.wss, L = [], now = Date.now();
+  const add = (k, url, direct) => { if (url && !L.some(x => x.url === url)) L.push({ k, url, direct: !!direct, res: "", t0: 0 }); };
+  add("thẳng", wd, true);
+  if (IS_WEBKIT) add("Cloudflare 8443", cfAlt(cf, 8443));           // Safari: cổng phụ TRƯỚC (chỉ TCP — né lỗi WebSocket qua HTTP/3 của iOS 26)
+  add("Cloudflare", cf);
+  if (!IS_WEBKIT) add("Cloudflare 8443", cfAlt(cf, 8443));
+  if (IS_WEBKIT) add("Cloudflare 2053", cfAlt(cf, 2053));
+  const bad = L.filter(c => now <= badUntil(c)); bad.forEach(c => { c.res = "vừa không vào được — thử sau cùng"; });
+  return L.filter(c => now > badUntil(c)).concat(bad);              // đường vừa hỏng xếp cuối (vẫn thử nếu các đường khác đều không vào)
+}
+function race(cands, onWin, onFail) {
+  const R = { done: false, tm: [], ws: [], dead: 0, started: 0, pend: null, t0: Date.now() };
+  const conn = i => R.ws[i] && R.ws[i].readyState === 0;
+  const stop = keep => { R.done = true; R.tm.forEach(clearTimeout); clearInterval(R.iv); R.ws.forEach(w => { if (w && w !== keep) quiet(w); }); };
+  R.iv = setInterval(() => {                                        // nối quá 4 giây chưa xong → ghi rõ đang thử đường nào
+    if (R.done || P.helpOn || P.ovlKind !== "wait" || Date.now() - R.t0 < 4000) return;
+    diagLine("đang nối · " + cands.filter(c => c.t0).map(c => c.k + (/đang nối/.test(c.res) ? "" : " ✗")).join(" · ") + " · " + Math.round((Date.now() - R.t0) / 1000) + " giây");
+  }, 1000);
+  const win = (c, w) => {
+    if (R.done) return;
+    cands.forEach((x, i) => { if (x !== c && conn(i) && Date.now() - x.t0 >= DIRECT_HOLD - 60) { x.res = "treo ở bước nối"; pathBad(x, x.direct ? 30 : 5); } });
+    stop(w); onWin(c, w);
+  };
+  const fail = hang => { if (R.done) return; stop(null); onFail(hang); };
+  const directBusy = () => cands.some((c, i) => c.direct && conn(i) && Date.now() - c.t0 < DIRECT_HOLD);
+  const died = () => {
+    R.dead++;
+    if (R.pend && !directBusy()) return win(R.pend[0], R.pend[1]);  // đang giữ đường Cloudflare để chờ đường thẳng — đường thẳng vừa hỏng
+    if (R.dead >= cands.length) return fail(false);
+    start();                                                         // 1 đường hỏng → thử đường kế NGAY (không đợi hết nhịp so le)
+  };
+  function start() {
+    if (R.done || R.started >= cands.length) return;
+    const i = R.started++, c = cands[i]; c.t0 = Date.now(); c.res = "đang nối…";
+    let w; try { w = new WebSocket(c.url); } catch { c.res = "không mở được"; return died(); }
+    w.binaryType = "arraybuffer"; R.ws[i] = w; let gone = false;
+    w.onopen = () => {
+      if (R.done || gone) return;
+      c.res = "nối được sau " + (Date.now() - c.t0) + " ms";
+      if (!c.direct && directBusy()) {                              // đường thẳng (nhanh, nét hơn) đang nối dở → chờ nó thêm chút rồi mới quyết
+        if (!R.pend) { R.pend = [c, w]; const d = cands.find(x => x.direct); R.tm.push(setTimeout(() => win(c, w), Math.max(60, DIRECT_HOLD - (Date.now() - d.t0)))); }
+        return;
+      }
+      win(c, w);
+    };
+    const lost = () => {
+      if (gone) return; gone = true; if (R.done) return;
+      if (R.pend && R.pend[1] === w) R.pend = null;
+      c.res = "không vào được (" + (Date.now() - c.t0) + " ms)"; pathBad(c, c.direct ? 30 : 5); died();
+    };
+    w.onclose = lost; w.onerror = lost;
+    if (R.started < cands.length) R.tm.push(setTimeout(start, RACE_GAP));
+  }
+  R.tm.push(setTimeout(() => {
+    if (R.done) return;
+    if (R.pend) return win(R.pend[0], R.pend[1]);
+    let hang = false;
+    cands.forEach((c, i) => { if (conn(i)) { hang = true; c.res = "treo ở bước nối (quá " + OPEN_MAX / 1000 + " giây)"; pathBad(c, c.direct ? 30 : 5); } });
+    fail(hang);
+  }, OPEN_MAX));
+  start();
+  return { stop: () => stop(null) };
+}
 async function connect() {
   clearTimeout(P.timer); detach();
   if (P.stopped) return;
-  overlay("wait", P.first ? "Đang nối lại…" : "Đang mở máy…");
+  const my = ++P.cseq, mine = () => my === P.cseq && !P.stopped;     // gọi chồng lên nhau (quay lại tab, bấm Thử lại) → chỉ lượt mới nhất chạy tiếp
+  if (!P.waitT) P.waitT = Date.now();                              // khách bắt đầu chờ từ lúc này (ra hình thì xoá)
+  if (!P.helpOn) overlay("wait", P.first ? "Đang nối lại…" : "Đang mở máy…");
   let token = "test", ep;
   if (TEST) ep = { online: true, status: "active", name: Q.get("name") || "Máy thử", android: "?", stream: { ws: Q.get("ws") || "ws://127.0.0.1:8020/v2/stream", wss: Q.get("wss") || undefined, api: Q.get("api") || "" } };
   else {
-    const s = await session(); if (P.stopped) return; if (!s) return showLogin();
+    const s0 = await timed(session(), 8000); if (!mine()) return;
+    if (s0.timeout) return roundFail("chưa kiểm tra được phiên đăng nhập (mạng chậm)", "Mạng chậm — đang thử lại…");
+    const s = s0.v; if (!s) return showLogin();
     token = s.access_token; blueUid = (s.user && s.user.id) || "";
-    let r;
-    try { r = await sb.rpc("cloudphone_endpoint", { p_id: P.id }); } catch (e) { r = { error: e }; }
-    if (P.stopped) return;
-    if (r.error) {
-      const m = String(r.error.message || r.error);
-      if (/NOT_LOGGED_IN|JWT/i.test(m)) return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
-      if (/NOT_FOUND|NOT_ALLOWED/.test(m)) { P.fatal = true; return overlay("err", "Không thấy máy này trong tài khoản của bạn.", [["Về danh sách", toList]]); }
-      return retryLater("Không lấy được thông tin máy — tự thử lại…", 5000);
+    if (P.ep && !P.epStale && Date.now() - P.epT < EP_KEEP) ep = P.ep;            // vừa lấy xong → nối lại khỏi hỏi lại máy chủ web
+    else {
+      const r0 = await timed(sb.rpc("cloudphone_endpoint", { p_id: P.id }), 9000); if (!mine()) return;
+      const r = r0.timeout ? { error: { message: "TIMEOUT" } } : r0.err ? { error: r0.err } : (r0.v || {});
+      if (r.error) {
+        const m = String(r.error.message || r.error);
+        if (/NOT_LOGGED_IN|JWT/i.test(m)) return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
+        if (/NOT_FOUND|NOT_ALLOWED/.test(m)) { P.fatal = true; return overlay("err", "Không thấy máy này trong tài khoản của bạn.", [["Về danh sách", toList]]); }
+        return roundFail("chưa lấy được thông tin máy" + (m === "TIMEOUT" ? " (mạng chậm)" : ""), "Không lấy được thông tin máy — tự thử lại…");
+      }
+      ep = r.data || {}; P.epT = Date.now(); P.epStale = false;
     }
-    ep = r.data || {};
   }
   P.ep = ep; setName(ep.name, ep.android);
   if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
   $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
-  if (ep.status && ep.status !== "active") { P.fatal = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
+  if (ep.status && ep.status !== "active") { P.fatal = true; P.epStale = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
   bluePlay();
-  const cf = ep.stream && ep.stream.ws, wd = ep.stream && ep.stream.wss;
-  const wdKey = "cb_wsd_bad:" + (wd || "");
-  const direct = !!wd && Date.now() > Math.max(P.wdBad, Number(lsGet(wdKey)) || 0);    // đường thẳng hỏng gần đây → đi Cloudflare 30 phút
-  const url = direct ? wd : cf;
-  P.pathWhy = direct || !cf ? "" : !wd ? "máy chủ chưa bật đường thẳng" :
-    "đường thẳng vừa không vào được, thử lại sau " + Math.max(1, Math.ceil((Math.max(P.wdBad, Number(lsGet(wdKey)) || 0) - Date.now()) / 60000)) + " phút";
-  if (!url) return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000);
-  const directFail = () => {                // không vào được đường thẳng (cổng modem chưa mở / mạng chặn cổng lạ) → Cloudflare ngay
-    P.wdBad = Date.now() + 30 * 60000; lsSet(wdKey, String(P.wdBad));
-    detach(); if (!P.stopped) { if (cf) connect(); else reconnectSoon(); }
-  };
+  const cands = P.cands = buildCands(ep);
+  if (!cands.length) { P.epStale = true; return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000); }
   // "online" chỉ là nhịp báo của phần nhận đơn; phần phát hình có thể vẫn chạy → cứ thử nối (máy chủ tự báo OFFLINE nếu không giữ máy này)
-  let ws;
-  try { ws = new WebSocket(url); } catch { return direct ? directFail() : retryLater("Không mở được kết nối — tự thử lại…", 4000); }
-  ws.binaryType = "arraybuffer"; P.ws = ws; P.lastRx = Date.now(); P.path = direct ? "thẳng" : "Cloudflare";
-  P.cx = { direct, key: wdKey, openedAt: 0, f0: P.frames };
-  const cto = setTimeout(() => { if (P.ws === ws && ws.readyState !== 1) { if (direct) return directFail(); detach(); reconnectSoon(); } }, direct ? 3500 : 8000);
-  ws.onopen = () => {
-    clearTimeout(cto); if (P.ws !== ws) return;
-    P.cx.openedAt = Date.now(); P.cx.f0 = P.frames;
-    P.lastRx = Date.now(); P.sst = null;
-    sendJSON(T.HELLO, { v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT ? 30 : 60, maxh: maxH() });      // Safari/iPhone: 30 hình/s (vẽ nhẹ một nửa)
-    startTimers();
-  };
+  P.race = race(cands,
+    (c, ws) => { P.race = null; if (!mine()) return quiet(ws); linkUp(c, ws, token); },
+    hang => { P.race = null; if (!mine()) return; P.noOpen++; if (hang) P.hangs++; P.epStale = true; roundFail("không đường nào nối được"); });
+}
+function linkUp(c, ws, token) {            // 1 đường vừa mở được → chào máy chủ trên đường đó
+  const d = (P.cands || []).find(x => x.direct);
+  P.ws = ws; P.lastRx = Date.now(); P.sst = null; P.noOpen = 0; P.hangs = 0; P.path = c.k;
+  P.pathWhy = c.direct ? "" : !d ? "máy chủ chưa bật đường thẳng" : "đường thẳng " + (d.res || "chưa thử");
+  P.cx = { c, direct: c.direct, openedAt: Date.now(), f0: P.frames, welAt: 0, vidAt: 0, ok: false };
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
-  ws.onclose = () => {
-    clearTimeout(cto); if (P.ws !== ws) return;
-    if (direct && !P.cx.openedAt) return directFail();
-    directMiss(); P.cx = null;
-    P.ws = null; stopTimers(); if (!P.stopped && !P.kicked && !P.fatal) reconnectSoon();
-  };
+  ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
   ws.onerror = () => {};
+  sendJSON(T.HELLO, { v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT ? 30 : 60, maxh: maxH(), via: c.k });      // Safari/iPhone: 30 hình/s (vẽ nhẹ một nửa)
+  startTimers();
 }
-function directMiss() {                    // đường thẳng mở được mà 15 giây đầu không có hình, 2 lần liền → đi Cloudflare 30 phút
-  const c = P.cx; if (!c || !c.direct || !c.openedAt) return;
-  if (P.frames > c.f0) { P.wdMiss = 0; return; }
-  if (Date.now() - c.openedAt < 15000 && ++P.wdMiss >= 2) { P.wdMiss = 0; P.wdBad = Date.now() + 30 * 60000; lsSet(c.key, String(P.wdBad)); }
+function linkLost(why, blame) {            // kết nối đang dùng đứt / không ra hình → nối lại (đường chưa ra được khung nào thì lượt sau thử đường khác trước)
+  const cx = P.cx;
+  if (cx && P.frames === cx.f0) {
+    cx.c.res = why; P.lastFail = cx.c.k + ": " + why;
+    if (blame || Date.now() - cx.openedAt < 15000) pathBad(cx.c, cx.direct ? 30 : 10);
+  }
+  detach(); if (!P.stopped && !P.kicked && !P.fatal) reconnectSoon();
 }
-function detach() {                        // bỏ kết nối hiện tại (không tự nối lại từ sự kiện close của nó)
-  directMiss(); P.cx = null;
-  stopTimers();
+function detach() {                        // bỏ kết nối hiện tại + lượt nối đang chạy (không tự nối lại từ sự kiện close của nó)
+  if (P.race) { P.race.stop(); P.race = null; }
+  P.cx = null; stopTimers();
   const w = P.ws; P.ws = null;
-  if (w) { w.onopen = w.onmessage = w.onclose = w.onerror = null; try { w.close(); } catch {} }
+  if (w) quiet(w);
 }
-function reconnectSoon() {
+function roundFail(why, msg) { P.lastFail = why; reconnectSoon(msg); }
+function reconnectSoon(msg) {
   resetDecoder();
   const d = [500, 1000, 2000, 4000, 5000][Math.min(P.tries++, 4)];
-  overlay("wait", P.ep && P.ep.online === false && !P.first ? "Máy chủ đang tạm offline — tự thử lại…" : "Mất kết nối — đang nối lại…");
-  clearTimeout(P.timer); P.timer = setTimeout(connect, d);
+  P.rounds++; clearTimeout(P.timer);
+  // Safari: mọi WebSocket đều treo / không mở được → tải lại trang là cách duy nhất gỡ (chỉ khi HTTP vẫn chạy, tối đa 1 lần / 3 phút)
+  if (IS_WEBKIT && !P.rlAsked && ((P.hangs >= 1 && P.rounds >= 2) || (P.noOpen >= 2 && P.rounds >= 3))) { P.rlAsked = true; autoReload(d); return; }
+  const help = P.rounds >= 3 || (P.waitT && Date.now() - P.waitT > HELP_AFTER);
+  if (help) helpShow();
+  else overlay("wait", msg || (P.ep && P.ep.online === false && !P.first ? "Máy chủ đang tạm offline — tự thử lại…" : "Mất kết nối — đang nối lại…"));
+  P.timer = setTimeout(connect, help ? Math.max(d, 3000) : d);
+}
+/* Thử 3 lượt chưa vào → KHÔNG quay mãi không chữ: nói rõ cách tự gỡ + lý do (khách chụp màn hình gửi là biết kẹt ở đâu); vẫn tự thử lại */
+function helpShow() {
+  P.helpOn = true;
+  overlay("wait", "Chưa nối được tới máy — vẫn đang tự thử lại…", [["Tải lại trang", () => location.reload()], ["Về danh sách", toList]],
+    IS_IOS ? "iPhone / iPad: tắt Wi-Fi, dùng 4G / 5G rồi mở lại — hoặc mở cloudblue.vn bằng Chrome. Đang bật iCloud Private Relay (Chuyển tiếp bảo mật) thì tắt cho mạng này."
+           : "Kiểm tra mạng, tắt VPN / proxy (nếu có) rồi thử lại. Vẫn không được: dùng app CloudBlue trên máy tính / Android.");
+  diagLine(diagText()); httpProbe();
+}
+function diagText() {
+  const cs = (P.cands || []).map(c => c.k + ": " + (c.res || "chưa thử")).join("\n");
+  return VER + (OS_VER ? " · " + OS_VER : "") + " · đã thử " + P.rounds + " lượt" + (P.lastFail ? " · " + P.lastFail : "") + (cs ? "\n" + cs : "")
+    + (P.httpOk == null ? "" : "\nHTTP tới máy chủ: " + (P.httpOk ? "được — chỉ WebSocket không vào" : "không được")) + (P.lastErr ? "\n" + P.lastErr : "");
+}
+function httpProbe() {                     // HTTP thường tới cùng máy chủ có chạy không (chạy mà WebSocket không vào = lỗi WebSocket của trình duyệt)
+  if (Date.now() - P.httpT < 30000) return; P.httpT = Date.now();
+  const c = (P.cands || []).find(x => !x.direct) || (P.cands || [])[0]; if (!c) return;
+  timed(fetch(c.url.replace(/^ws/, "http"), { mode: "no-cors", cache: "no-store" }), 5000).then(r => { P.httpOk = !!r.v; if (P.helpOn && !$("ovl").hidden) diagLine(diagText()); });
+}
+const reloadTo = u => (typeof window.__cbReload === "function" ? window.__cbReload : x => location.replace(x))(u);
+async function autoReload(d) {
+  const back = () => { helpShow(); P.timer = setTimeout(connect, Math.max(d, 3000)); };
+  let last = 0; try { last = Number(sessionStorage.getItem("cb_rl")) || 0; } catch {}
+  if (Date.now() - last < 180000 || navigator.onLine === false) return back();
+  const r = await timed(fetch("/play.webmanifest?t=" + Date.now(), { cache: "no-store" }), 4000);      // mạng mất thật thì không tải lại (kẻo ra trang lỗi của Safari)
+  if (P.stopped) return;
+  if (!r.v || !r.v.ok) return back();
+  try { sessionStorage.setItem("cb_rl", String(Date.now())); } catch {}
+  overlay("wait", "Đang tải lại trang để nối lại…");
+  reloadTo(location.pathname + "?id=" + encodeURIComponent(P.id) + (TEST ? "&test=1" : ""));
 }
 const maxH = () => Math.min(1920, Math.max(960, Math.round(Math.max(screen.width, screen.height) * (devicePixelRatio || 1))));
 
@@ -580,11 +709,23 @@ function startTimers() {
   P.t.ping = setInterval(() => send(T.PING, u64(Date.now())), 2000);
   P.t.ack = setInterval(() => { if (P.newVid) sendAck(); }, 100);
   P.t.dog = setInterval(() => {
-    if (P.ws && Date.now() - P.lastRx > 6000) { detach(); reconnectSoon(); return; }   // 6 giây không nhận gì → đường chết → nối lại
+    const now = Date.now(), cx = P.cx;
+    if (P.ws && now - P.lastRx > 6000) return linkLost("không nhận được gì 6 giây");          // đường chết → nối lại
+    if (cx && P.frames === cx.f0 && document.visibilityState !== "hidden") {                   // kết nối này chưa ra khung nào
+      if (cx.vidAt) { if (now - cx.vidAt >= DEC_SILENT - 200) { cx.vidAt = now; decSilent(); if (!P.cx) return; } }
+      else if (cx.welAt ? now - cx.welAt > FIRST_MAX : now - cx.openedAt > WELCOME_MAX)
+        return linkLost(cx.welAt ? "vào được máy nhưng không nhận được hình" : "nối được nhưng máy chủ chưa trả lời", true);
+      waitNote(now);
+    }
     tick();
   }, 1000);
 }
 function stopTimers() { for (const k in P.t) clearInterval(P.t[k]); P.t = {}; }
+function waitNote(now) {                   // chờ quá 5 giây → ghi rõ đang đi đường nào, chờ gì
+  const cx = P.cx; if (!cx || $("ovl").hidden || P.ovlKind !== "wait" || P.helpOn) return;
+  const sec = Math.round((now - cx.openedAt) / 1000); if (sec < 5) return;
+  diagLine("đường " + cx.c.k + " · " + (cx.vidAt ? "có hình, đang giải mã" : cx.welAt ? "đã vào máy, đang chờ hình" : "đã nối, máy chủ đang bật hình") + " · " + sec + " giây");
+}
 
 /* ---------- gửi ---------- */
 function send(type, payload) {
@@ -625,8 +766,8 @@ function onMsg(buf) {
   if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
   P.lastRx = Date.now();
   const u8 = new Uint8Array(buf), t = u8[0], p = u8.subarray(1);
-  if (t === T.VIDEO) return onVideo(p);
-  if (t === T.WELCOME) { const j = json(p); P.srv = j; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android; return; }
+  if (t === T.VIDEO) { if (P.cx && !P.cx.vidAt) P.cx.vidAt = Date.now(); return onVideo(p); }
+  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android; return; }
   if (t === T.SIZE) { const j = json(p); if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } P.needKey = true; return; }
   if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
   if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
@@ -635,7 +776,7 @@ function onMsg(buf) {
 }
 function onErr(j) {
   const code = j.code || "", msg = j.msg || "Lỗi kết nối.";
-  detach(); resetDecoder();
+  detach(); resetDecoder(); P.epStale = true;
   if (code === "AUTH" && !TEST) {
     if (!P.authRetry) { P.authRetry = true; overlay("wait", "Đang làm mới phiên đăng nhập…"); sb.auth.refreshSession().catch(() => {}).finally(() => { if (!P.stopped) connect(); }); return; }
     P.fatal = true; return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
@@ -665,7 +806,10 @@ function trimZ(u8, s, e) { while (e > s && u8[e - 1] === 0) e--; return u8.subar
 const DM_N = IS_WEBKIT ? 4 : 2;
 let DM = 0, DM_TRIED = 0; try { DM = Math.min(DM_N - 1, Math.max(0, parseInt(localStorage.getItem("cb_dm"), 10) || 0)); } catch {}
 const dmName = () => ["avcC", "Annex-B", "avcC gọn", "Annex-B gọn"][DM] || "?";
-const OS_VER = (() => { const m = navigator.userAgent.match(/(?:iPhone )?OS (\d+[_.]\d+)|Version\/(\d+\.\d+)/); return m ? (m[1] ? "iOS " + m[1].replace("_", ".") : "Safari " + m[2]) : ""; })();
+const OS_VER = (() => {                    // iOS 26 trở đi Safari ghi cứng "OS 18_x" trong UA → bản thật xem ở Version/…
+  const ua = navigator.userAgent, o = /iPhone|iPad|iPod/.test(ua) && ua.match(/OS (\d+[_.]\d+)/), v = ua.match(/Version\/(\d+(?:\.\d+)?)/);
+  return [o ? "iOS " + o[1].replace("_", ".") : "", v && IS_WEBKIT ? "Safari " + v[1] : ""].filter(Boolean).join(" · ");
+})();
 function nextMode() { if (P.first || DM_TRIED >= DM_N - 1) return false; DM_TRIED++; DM = (DM + 1) % DM_N; return true; }
 /* Kích thước hình ghi trong SPS (Safari cần codedWidth / codedHeight đi kèm) */
 function spsSize(sps) {
@@ -804,6 +948,18 @@ function decErr(where, e) {
   }
   askKey();
 }
+/* Có dữ liệu hình mà bộ giải mã KHÔNG ra khung nào, cũng không báo lỗi (Safari đôi khi im lặng) → coi như hỏng: đổi cách đóng gói
+   ngay; thử hết các cách vẫn im lặng → báo rõ (trước đây: quay mãi). */
+function decSilent() {
+  if (P.first || P.stopped) return;
+  P.lastErr = "giải mã" + (P.codec ? " " + P.codec : "") + " [" + dmName() + "] · không ra hình sau " + DEC_SILENT / 1000 + " giây";
+  console.warn(P.lastErr);
+  resetDecoder(); P.silent++;
+  if (nextMode()) { P.lastErr += " → thử " + dmName(); askKey(); return; }
+  P.fatal = true; detach();                  // mỗi cách đã được 5 giây mà không cách nào ra hình
+  overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + " · đã thử " + (DM_TRIED + 1) + " cách" + (OS_VER ? " · " + OS_VER : "") + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
+          [["Thử lại", retryNow], ["Về danh sách", toList]]);
+}
 /* Safari: đã "vẽ" mà màn hình vẫn đen toàn bộ ~3 giây trong khi vẫn nhận khung → đổi cách vẽ (thẳng khung ↔ qua ảnh), tối đa 2 lần.
    Chỉ kiểm lúc mới mở (tới khi thấy hình 5 lần); đọc 16×16 điểm ảnh mỗi 0,8 giây — rất nhẹ. */
 let bcv = null, bctx = null;
@@ -827,6 +983,8 @@ function shown() {
   if (!$("ovl").hidden) overlay(null);
   if (!P.first) { P.first = true; DM_TRIED = 0; try { localStorage.setItem("cb_dm", String(DM)); } catch {} }
   P.tries = 0; P.authRetry = false; P.decErr = 0; setDot("ok");
+  P.rounds = 0; P.silent = 0; P.helpOn = false; P.waitT = 0;
+  if (P.cx && !P.cx.ok) { P.cx.ok = true; pathGood(P.cx.c); }
 }
 
 /* ---------- bố cục: màn hình máy luôn vừa khung, đúng tỉ lệ ---------- */
@@ -1162,6 +1320,7 @@ function tick() {
   $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: ${P.path || "?"}${P.pathWhy ? " (" + P.pathWhy + ")" : ""} · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
     (ss ? `\nmáy chủ gửi ${ss.fps} khung/s · ${ss.kbps} kbps · bỏ ${ss.drop || 0}` : "") +
     `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · giải mã ${dmName()} · ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
+    ((P.cands || []).length > 1 ? "\n" + P.cands.map(c => c.k + ": " + (c.res || "chưa thử")).join(" · ") : "") +
     (P.lastErr ? `\n${P.lastErr}` : "");
 }
 
@@ -1172,7 +1331,7 @@ function unwake() { try { wl && wl.release(); } catch {} wl = null; }
 function onBack() {                                           // quay lại tab / mở lại app → nối lại ngay nếu đường đã chết
   if (document.visibilityState !== "visible" || P.stopped) return;
   wake(); fitApp();
-  if (P.kicked || P.fatal) return;
+  if (P.kicked || P.fatal || P.race) return;                // đang nối dở → để yên (gọi lại chỉ làm chậm thêm)
   if (!P.ws || P.ws.readyState > 1 || Date.now() - P.lastRx > 3000) { P.tries = 0; connect(); }
 }
 document.addEventListener("visibilitychange", onBack);

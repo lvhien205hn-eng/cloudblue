@@ -2385,6 +2385,133 @@ html[data-theme=light] .cpb-t b{color:#0f3fb3}
 html[data-theme=light] .cpb-t small.bad{color:var(--warn)}
 html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var(--fg)}
 </style>
+<style>
+/* ===== v35 · ưu đãi cloud phone · kiếm tiền · dòng chữ chạy ===== */
+.freebar[data-mode=promo] .fb-track span{margin-right:26px}
+.freebar[data-mode=promo] .fb-track span::after{content:"•";margin-left:26px;opacity:.5}
+#cb-home-w{padding-block:0 26px}
+.cbhome{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.cbhome.one{grid-template-columns:1fr}
+.cbt{position:relative;display:grid;grid-template-columns:auto 1fr;grid-template-areas:"ic tx" "go go";gap:12px 14px;align-items:start;text-align:left;padding:16px 18px;border-radius:18px;
+  border:1px solid var(--line2);background:var(--panel);color:var(--fg);font:inherit;cursor:pointer;overflow:hidden;transition:transform .15s,border-color .15s}
+.cbt:hover{transform:translateY(-2px)}
+.cbt:focus-visible{outline:2px solid var(--sky);outline-offset:3px}
+.cbt-ic{grid-area:ic;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;font-size:26px}
+.cbt-tx{grid-area:tx;min-width:0;display:grid;gap:3px}
+.cbt-tx small{font-size:12.5px;font-weight:700}
+.cbt-tx b{font-size:19px;line-height:1.25}
+.cbt-tx>span{font-size:13.5px;color:var(--muted);line-height:1.5}
+.cbt-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.cbt-chips i{font-style:normal;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:999px;border:1px solid var(--line2);color:var(--fg)}
+.cbt-go{grid-area:go;justify-self:start;font-weight:800;font-size:14px;padding:9px 16px;border-radius:999px}
+.cbt-earn{border-color:rgba(60,224,176,.45);background:linear-gradient(135deg,rgba(60,224,176,.14),transparent 60%),var(--panel)}
+.cbt-earn .cbt-ic{background:rgba(60,224,176,.16)}
+.cbt-earn .cbt-tx small{color:var(--ok)}
+.cbt-earn .cbt-go{background:var(--ok);color:#04231a}
+html[data-theme=light] .cbt-earn .cbt-go{color:#fff}
+.cbt-ofr{border-color:rgba(255,196,0,.45);background:linear-gradient(135deg,rgba(255,196,0,.13),transparent 60%),var(--panel)}
+.cbt-ofr .cbt-ic{background:rgba(255,196,0,.16)}
+.cbt-ofr .cbt-tx small{color:#ffcf4a}
+.cbt-ofr .cbt-go{background:#ffc400;color:#2a1c00}
+html[data-theme=light] .cbt-ofr .cbt-tx small{color:var(--warn)}
+body.admin-page #cb-home-w{display:none!important}
+.cbo{display:grid;gap:8px}
+.cbo[hidden]{display:none}
+.cbo-row{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:11px 12px;border:1px solid var(--line2);border-radius:14px;background:var(--soft,rgba(143,208,255,.06))}
+.cbo-row .ic{font-size:20px;line-height:1.3}
+.cbo-row b{font-size:14px}
+.cbo-row small{display:block;color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:4px}
+.cbo-lv{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.cbo-lv button,.cbo-lv span{font:inherit;font-size:13px;padding:6px 10px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--fg)}
+.cbo-lv button{cursor:pointer}
+.cbo-lv button:hover{border-color:var(--sky)}
+.cbo-lv b{color:var(--ok)}
+.cbo-got{margin-top:7px;font-size:13px;color:var(--ok)}
+.cbo-got code{font-family:var(--mono);user-select:all;color:var(--fg)}
+.cbo-row .btn{margin-top:8px}
+.cbhint{font-size:13px;color:var(--ok);margin-top:2px;line-height:1.5}
+.cbhint[hidden]{display:none}
+.cbdlg{width:min(560px,100%);max-height:calc(100vh - 32px);overflow:auto}
+.cb-top{display:flex;align-items:center;gap:10px}
+.cb-top h3{margin:0}
+.cb-top .btn{margin-left:auto}
+.cbo-card{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;padding:13px 14px;border:1px solid var(--line);border-radius:14px}
+.cbo-card>.ic{font-size:22px;line-height:1.2}
+.cbo-t{display:block;font-size:15px}
+.cbo-card p{margin:5px 0 0;font-size:13.5px;color:var(--muted);line-height:1.55}
+.cbo-card p b{color:var(--fg)}
+.cbo-card .cbo-lv span{background:transparent}
+.cbo-act{grid-column:2;margin-top:8px;display:flex;gap:8px;flex-wrap:wrap}
+.cb-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:4px}
+.cb-h span{font-size:12.5px;color:var(--muted)}
+.cbks{display:grid;gap:6px;max-height:240px;overflow:auto}
+.cbk{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.cbk .p{font-weight:800;min-width:50px;text-align:center;padding:4px 6px;border-radius:8px;background:linear-gradient(180deg,#2f66ec,#16236a);color:#fff;font-variant-numeric:tabular-nums}
+.cbk code{font-family:var(--mono);font-size:13px;user-select:all;color:var(--fg)}
+.cbk small{display:block;color:var(--muted);font-size:12px}
+.cbk.off{opacity:.5}
+.cb-lock{margin-top:8px;padding:9px 11px;border-radius:12px;border:1px dashed var(--line2);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.cbpick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:12.5px;color:var(--muted)}
+.cbpick[hidden]{display:none}
+.cbpick button{font:inherit;font-size:12.5px;font-family:var(--mono);padding:5px 9px;border-radius:9px;border:1px dashed var(--line2);background:transparent;color:var(--fg);cursor:pointer}
+.cbpick button b{color:var(--ok);font-family:var(--body)}
+.cbpick button:hover{border-style:solid;border-color:var(--sky)}
+.cbc-hero{padding:16px;border-radius:16px;text-align:center;border:1px solid rgba(60,224,176,.4);background:linear-gradient(160deg,rgba(60,224,176,.16),transparent 70%)}
+.cbc-big{font-size:24px;font-weight:800}
+.cbc-big b{color:var(--ok)}
+.cbc-sub{font-size:13px;color:var(--muted);margin-top:3px}
+.cbc-st{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:11px}
+.cbc-st span{font-size:12.5px;padding:5px 11px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.cbc-st b{color:var(--fg)}
+.cbc-steps{margin:0;padding-left:20px;display:grid;gap:6px;font-size:13.5px;line-height:1.55}
+.cbc-rules{margin:0;padding:10px 12px 10px 28px;display:grid;gap:5px;font-size:12.5px;color:var(--muted);line-height:1.55;border:1px solid var(--line);border-radius:12px}
+.cbc-form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cbc-form label{display:grid;gap:5px;font-size:13px;color:var(--muted);min-width:0}
+.cbc-form .full{grid-column:1/-1}
+.cbc-login{text-align:center}
+.cbc-list{display:grid;gap:8px;max-height:300px;overflow:auto}
+.cbc-v{display:grid;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.cbc-v1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0}
+.cbc-v1 a{color:var(--sky);overflow-wrap:anywhere;min-width:0}
+.cbc-v2{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted)}
+.cbc-v2 b{color:var(--fg)}
+.cbc-note{color:var(--muted)}
+.cbc-rep{display:flex;gap:8px}
+.cbc-rep .in{flex:1;min-width:0}
+.cbst.ok{color:var(--ok);border-color:var(--ok)}
+.cbst.bad{color:var(--bad);border-color:var(--bad)}
+.cbst.wt{color:#ffcf4a;border-color:rgba(255,196,0,.5)}
+html[data-theme=light] .cbst.wt{color:var(--warn)}
+.cba-sec{border:1px solid var(--line);border-radius:14px;padding:4px 14px 14px;background:var(--panel)}
+.cba-sec+.cba-sec{margin-top:14px}
+.cba-sec>summary{cursor:pointer;font-weight:800;font-size:15.5px;padding:10px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.cba-sec>summary .hint{font-weight:400}
+.refst.cba-stats{grid-template-columns:repeat(5,1fr);margin-bottom:12px}
+#cba-form{display:grid;gap:12px}
+.cba-g{border:1px solid var(--line);border-radius:12px;padding:10px 12px 12px;margin:0;min-width:0}
+.cba-g legend{padding:0 6px;font-weight:700;font-size:13.5px;color:var(--fg)}
+.cba-fs{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px}
+.cba-fs label{display:grid;gap:5px;font-size:13px;color:var(--muted);min-width:0;align-content:start}
+.cba-fs .full{grid-column:1/-1}
+.cba-fs small{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.cba-fs .mtrow b{color:var(--fg);font-weight:600}
+#cba-form .sw input:checked+i{background:var(--ok);border-color:var(--ok)}
+.cba-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+#cbc-seg button i{font-style:normal;opacity:.7;margin-left:4px}
+#cbc-list{display:grid;gap:10px}
+.cbcv{display:grid;gap:7px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;font-size:13px}
+.cbcv-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cbcv-l{display:flex;gap:8px;align-items:center;min-width:0}
+.cbcv-l a{color:var(--sky);overflow-wrap:anywhere}
+.cbcv-a{display:grid;grid-template-columns:1fr 1.4fr auto auto auto;gap:8px;align-items:end}
+.cbcv-a label{display:grid;gap:4px;font-size:12.5px;color:var(--muted)}
+.cbcv-pv{font-weight:700;color:var(--ok);align-self:center;white-space:nowrap}
+@media (max-width:900px){.refst.cba-stats{grid-template-columns:repeat(2,1fr)}.cba-fs{grid-template-columns:1fr}.cbcv-a{grid-template-columns:1fr 1fr}}
+@media (max-width:760px){.cbhome{grid-template-columns:1fr}.cbt{padding:14px}.cbt-tx b{font-size:17px}.cbt-go{justify-self:stretch;text-align:center}}
+@media (max-width:560px){.cbc-form{grid-template-columns:1fr}.cbc-big{font-size:21px}}
+/* nút "Nhận máy dùng thử" vừa khít ô (chữ dài hơn nút thanh toán) */
+#cporderdlg .cpside .acts #cp-obuy{padding-left:6px;padding-right:6px}
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -2455,6 +2582,7 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
 </section>
 
 <section class="wrap" id="lw-home-w" hidden><div class="lwhome" id="lw-home"></div></section>
+<section class="wrap" id="cb-home-w" hidden><div class="cbhome" id="cb-home"></div></section>
 
 <section class="wrap" id="join-wrap" hidden style="padding-block:0 28px">
   <a id="join-band" href="#" target="_blank" rel="noopener">
@@ -2594,6 +2722,7 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
   <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="tp-title">
     <h3 id="tp-title" data-i18n="topup_title">Nạp tiền</h3>
     <div class="lwcard" id="lw-card" hidden></div>
+    <div class="cbo" id="tp-offers" hidden></div>
     <div class="seg" id="tp-method" style="justify-self:center"><button id="tp-m-bank" class="on" data-i18n="m_bank">🏦 Ngân hàng</button><button id="tp-m-usdt" data-i18n="m_usdt">🪙 Crypto</button></div>
     <div id="tp-step1" style="display:grid;gap:12px">
       <div class="seg" id="tp-coin" hidden style="justify-self:center"><button id="tp-c-usdt" class="on" type="button">₮ USDT (TRC20)</button><button id="tp-c-ltc" type="button">Ł LTC</button></div>
@@ -3119,7 +3248,7 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
       </div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
-      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button><button type="button" role="tab" data-sub="wheel" aria-selected="false">🎡 Vòng quay</button></div>
+      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button><button type="button" role="tab" data-sub="wheel" aria-selected="false">🎡 Vòng quay</button><button type="button" data-cbjump="1">⚙️ Ưu đãi &amp; Kiếm tiền</button></div>
       <div class="subpane" data-sub="codes">
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
@@ -3178,6 +3307,8 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
         <h3>🎁 Miễn phí ưu đãi</h3>
         <div class="hint full" id="fr-state"></div>
         <label>Số ngày miễn phí<input id="fr-days" type="number" min="1" inputmode="numeric" value="1"></label>
+        <label>⏱ Dùng thử theo GIỜ <span class="hint">(0 = tính theo số ngày bên cạnh)</span><input id="fr-hours" type="number" min="0" max="720" step="1" inputmode="numeric" placeholder="VD 2"></label>
+        <label class="full">💳 Chỉ tài khoản đã nạp 1 lần từ (đ) mới được dùng thử <span class="hint">(0 = ai cũng được)</span><input id="fr-need" type="number" min="0" step="1000" inputmode="numeric" placeholder="VD 50000"></label>
         <div class="hint" style="align-self:end">👤 Mỗi tài khoản chỉ được dùng thử <b>1 máy</b> mỗi đợt (đã nhận rồi thì không nhận lại được, kể cả khi máy đã hết hạn).</div>
         <label class="full">⏳ Ưu đãi kéo dài (số ngày — web hiện đồng hồ đếm ngược, hết giờ khách không nhận máy miễn phí được nữa)<input id="fr-until" type="number" min="0" step="0.25" placeholder="VD 3 = 3 ngày · 0.5 = 12 giờ · để trống = giữ nguyên"><small id="fr-until-now" class="hint" style="display:block;margin-top:4px"></small></label>
         <label>RAM tối đa (GB)<input id="fr-ram" type="number" min="1" inputmode="numeric" value="4"></label>
@@ -3276,7 +3407,7 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
     </div>
     <div class="dbody" id="pane-bank" hidden></div>
     <div class="dbody" id="pane-site" hidden>
-      <div class="subtabs" role="tablist" aria-label="Mục cài đặt"><button type="button" role="tab" data-sub="web" class="on" aria-selected="true">🌐 Trang web</button><button type="button" role="tab" data-sub="notice" aria-selected="false">📢 Thông báo</button><button type="button" role="tab" data-sub="maint" aria-selected="false">🛠️ Bảo trì</button><button type="button" role="tab" data-sub="bank" aria-selected="false">🏦 Ngân hàng</button><button type="button" role="tab" data-sub="app" aria-selected="false">📲 Ứng dụng</button></div>
+      <div class="subtabs" role="tablist" aria-label="Mục cài đặt"><button type="button" role="tab" data-sub="web" class="on" aria-selected="true">🌐 Trang web</button><button type="button" role="tab" data-sub="notice" aria-selected="false">📢 Thông báo</button><button type="button" role="tab" data-sub="maint" aria-selected="false">🛠️ Bảo trì</button><button type="button" role="tab" data-sub="bank" aria-selected="false">🏦 Ngân hàng</button><button type="button" role="tab" data-sub="app" aria-selected="false">📲 Ứng dụng</button><button type="button" role="tab" data-sub="promo35" aria-selected="false">🎁 Ưu đãi &amp; Kiếm tiền</button></div>
       <div class="subpane" data-sub="web">
       <form class="f" id="sf">
         <h3>Phần đầu trang</h3>
@@ -3370,6 +3501,24 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
         <div class="acts full"><button class="btn" type="button" id="am-save">Lưu bản tối thiểu</button><span class="hint" id="am-msg"></span></div>
       </div>
       </div>
+      <div class="subpane" data-sub="promo35" hidden>
+      <div class="note">🎁 <b>Ưu đãi &amp; Kiếm tiền</b> — các ô ở đây do máy chủ trả về cho riêng tài khoản admin. Đổi là áp dụng ngay cho web + app Android + app PC, không cần cập nhật app. Máy dùng thử (số giờ, mức nạp) chỉnh ở 🎁 Khuyến mãi › 🎁 Máy miễn phí.</div>
+      <details class="cba-sec" open><summary>⚙️ Cài đặt ưu đãi <span class="hint" id="cba-state">Đang tải…</span></summary>
+        <div class="refst cba-stats" id="cba-stats"></div>
+        <div id="cba-form"></div>
+        <div class="acts" style="margin-top:12px"><button class="btn" type="button" id="cba-save">Lưu cài đặt</button><button class="btn ghost" type="button" id="cba-reload">↻ Tải lại</button></div>
+      </details>
+      <details class="cba-sec" open><summary>🎬 Duyệt video Kiếm tiền</summary>
+        <div class="cba-bar"><div class="seg" id="cbc-seg"><button type="button" data-s="pending" class="on">Chờ duyệt <i>0</i></button><button type="button" data-s="ok">Đã duyệt <i>0</i></button><button type="button" data-s="rejected">Từ chối <i>0</i></button></div><button class="btn ghost sm" type="button" id="cbc-reload">↻ Làm mới</button></div>
+        <div class="hint" id="cbc-state" style="margin-bottom:8px"></div>
+        <div class="hint" style="margin-bottom:10px">Cách duyệt: bấm link mở video → xem có đúng video nói về CloudBlue không → nhìn số view đang hiện → gõ số đó vào ô → <b>✓ Duyệt &amp; cộng 💎</b>. Máy chủ tự tính phần view mới và các mức trần.</div>
+        <div id="cbc-list"></div>
+      </details>
+      <details class="cba-sec"><summary>🧾 Sổ thưởng đã phát</summary>
+        <div class="cba-bar"><select class="in" id="cbr-kind" aria-label="Loại thưởng" style="width:auto"></select><button class="btn ghost sm" type="button" id="cbr-reload">↻ Làm mới</button></div>
+        <div class="tbl"><table><thead><tr><th>Lúc</th><th>Khách</th><th>Loại</th><th>Số tiền</th><th>Thưởng</th><th>Tình trạng</th></tr></thead><tbody id="cbr-body"></tbody></table></div>
+      </details>
+      </div>
     </div>
   </div>
 </div>
@@ -3448,7 +3597,7 @@ html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var
         <div class="cppick" id="cp-pick"></div>
         <div class="hint" id="cp-lim"></div>
         <div class="sum"><span>Cách tính</span><span id="cp-calc"></span></div>
-        <div class="promo" id="cp-promo-box"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="cp-promo" data-promo="cpn" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Mã giảm giá" placeholder="Mã giảm giá (nếu có)" data-ph="promo_ph"><button class="btn ghost sm" type="button" data-papply="cpn" data-i18n="promo_apply">Áp dụng</button></div><div class="pres" id="cp-pres"></div></div>
+        <div class="promo" id="cp-promo-box"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="cp-promo" data-promo="cpn" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Mã giảm giá" placeholder="Mã giảm giá (nếu có)" data-ph="promo_ph"><button class="btn ghost sm" type="button" data-papply="cpn" data-i18n="promo_apply">Áp dụng</button></div><div class="pres" id="cp-pres"></div><div class="cbpick" data-pick="cpn" hidden></div></div>
         <div class="bluepay" id="cp-bluebox" hidden></div>
         <div class="sum"><span>Tổng thanh toán</span><b id="cp-total"></b></div>
         <div class="sum"><span>Số dư hiện tại</span><span id="cp-bal" style="font-family:var(--mono)"></span></div>
@@ -4184,7 +4333,7 @@ const DEF_SITE = {
 };
 const ST = k => (LANG === "en" && SITE[k + "_en"]) ? SITE[k + "_en"] : SITE[k];
 const ERR = {
-  PROMO_NOT_YOURS: "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.", WHEEL_NO_SPIN: "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.",
+  PROMO_NOT_YOURS: "Mã này là mã riêng của tài khoản khác — chỉ tài khoản được tặng mới dùng được.", WHEEL_NO_SPIN: "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.",
   WHEEL_NOT_STARTED: "Vòng quay chưa bắt đầu.", WHEEL_ENDED: "Chương trình vòng quay đã kết thúc.", WHEEL_OFF: "Vòng quay đang tạm tắt.", WHEEL_EMPTY: "Vòng quay đã hết giải.",
   WHEEL_NO_BUY: "Hiện không bán thêm lượt quay.", WHEEL_PRICE_CHANGED: "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.", WHEEL_NEED_TOPUP: "Nạp từ 100.000đ trong chương trình để được quay thêm.",
   WHEEL_TERMS_CHANGED: "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.", WHEEL_NO_LUCKY: "Hiện không bán vé may mắn.",
@@ -4206,7 +4355,7 @@ const ERR = {
   WEAK_PASS: "Mật khẩu mới phải ≥ 6 ký tự.", IS_ADMIN: "Không thể xoá tài khoản admin.", "duplicate key": "Tên đăng nhập hoặc email này đã có người dùng."
 };
 const ERR_EN = {
-  PROMO_NOT_YOURS: "This lucky-wheel code belongs to another account — only the winner can use it.", WHEEL_NO_SPIN: "You have no spins left — top up to earn more.",
+  PROMO_NOT_YOURS: "This code belongs to another account — only that account can use it.", WHEEL_NO_SPIN: "You have no spins left — top up to earn more.",
   WHEEL_NOT_STARTED: "The lucky wheel hasn't started yet.", WHEEL_ENDED: "The lucky-wheel event has ended.", WHEEL_OFF: "The lucky wheel is currently off.", WHEEL_EMPTY: "All wheel prizes are gone.",
   WHEEL_NO_BUY: "Extra spins aren't on sale right now.", WHEEL_PRICE_CHANGED: "The extra-spin price just changed — check it and try again.", WHEEL_NEED_TOPUP: "Top up 100,000đ during the event to buy extra spins.",
   WHEEL_TERMS_CHANGED: "The spin / ticket terms just changed — check them and try again.", WHEEL_NO_LUCKY: "Lucky tickets aren't on sale right now.",
@@ -4417,7 +4566,7 @@ function prmFail(name, error) {
 }
 function prmRowHtml(name) {     // ô mã cho hộp thoại vẽ bằng JS (gia hạn / nâng cấp máy) — giữ nguyên mã đã gõ khi vẽ lại
   const P = PRM[name]; if (!P) return "";
-  return `<div class="promo"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="${P.inp}" data-promo="${name}" maxlength="40" autocomplete="off" spellcheck="false" aria-label="${esc(L("Mã giảm giá", "Discount code"))}" placeholder="${esc(L("Mã giảm giá (nếu có)", "Discount code (optional)"))}" value="${esc(P.st.code)}"><button class="btn ghost sm" type="button" data-papply="${name}">${L("Áp dụng", "Apply")}</button></div><div class="pres" id="${P.out}"></div></div>`;
+  return `<div class="promo"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="${P.inp}" data-promo="${name}" maxlength="40" autocomplete="off" spellcheck="false" aria-label="${esc(L("Mã giảm giá", "Discount code"))}" placeholder="${esc(L("Mã giảm giá (nếu có)", "Discount code (optional)"))}" value="${esc(P.st.code)}"><button class="btn ghost sm" type="button" data-papply="${name}">${L("Áp dụng", "Apply")}</button></div><div class="pres" id="${P.out}"></div>${cbPickWrap(name)}</div>`;
 }
 document.addEventListener("input", e => {
   const n = e.target && e.target.dataset ? e.target.dataset.promo : null, P = n && PRM[n]; if (!P) return;
@@ -4718,7 +4867,7 @@ function m3MineCard(p) {
   const open = run ? (WEB_FIRST ? `<a class="btn sm" href="${cpWebLink(p.id)}">▶ ${L("Mở máy", "Open")}</a>` : `<button class="btn sm" type="button" data-cpopen="${esc(p.id)}">▶ ${L("Mở máy", "Open")}</button>`)
     : `<button class="btn sm" type="button" disabled>${locked ? "🔒" : p.status === "pending" ? L("Đang tạo…", "Creating…") : p.status === "expired" ? L("Tạm dừng", "Paused") : L("Chưa sẵn sàng", "Not ready")}</button>`;
   return `<div class="m3m-card${run ? " run" : ""}${soon || p.status === "expired" ? " soon" : ""}">
-    <div class="m3m-top">${cpPill(p)}${p.is_free ? `<span class="pill">🎁 ${L("Miễn phí", "Free")}</span>` : ""}${p.shared ? `<span class="pill">👥 ${L("Được chia sẻ", "Shared")}</span>` : ""}</div>
+    <div class="m3m-top">${cpPill(p)}${p.is_free ? `<span class="pill">🎁 ${esc(cbPhoneTag(p))}</span>` : ""}${p.shared ? `<span class="pill">👥 ${L("Được chia sẻ", "Shared")}</span>` : ""}</div>
     <b class="m3m-nm">${esc(p.name || "Máy")}</b>
     <small class="m3m-spec">Android ${esc(p.android || "9")} · ${+p.ram || "?"}GB · ${+p.cpu || "?"} ${L("nhân", "cores")}</small>
     ${state}
@@ -4955,7 +5104,7 @@ function i18nCrypto() {
 function openTopup(pre) {
   if (!profile) { openAuth("login"); toast(L("Đăng nhập để nạp tiền.", "Log in to top up."), 1); return; }
   topPre = +pre || 0;
-  setTopMethod("bank"); show("topup"); lwLoad();
+  setTopMethod("bank"); show("topup"); lwLoad(); try { cbTopOffers(); promoLoad(); } catch (e) {}
 }
 function markAmt() { document.querySelectorAll("#tp-amts button").forEach(b => b.classList.toggle("on", +b.dataset.v === +$("tp-amt").value)); }
 function convHint() {
@@ -4964,7 +5113,7 @@ function convHint() {
   const v = +$("tp-amt").value || 0;
   if (topMethod === "usdt") el.textContent = v ? "\u2248 " + vnd(Math.round(v * rate())) + " " + t("sẽ cộng vào số dư", "will_credit") : "";
   else el.textContent = v ? "\u2248 $" + (v / rate()).toFixed(2) : "";
-  lwAmtHint();
+  lwAmtHint(); try { cbAmtHint(); } catch (e) {}
 }
 $("tp-amts").onclick = e => { const b = e.target.closest("button"); if (!b) return; $("tp-amt").value = b.dataset.v; markAmt(); convHint(); };
 $("tp-amt").oninput = () => { markAmt(); convHint(); };
@@ -5023,7 +5172,7 @@ function startPoll(waitId, waitTxtId) {
     const { data } = await sb.from("topups").select("status,amount").eq("id", curTop.id).maybeSingle();
     if (data && data.status === "done") {
       clearInterval(pollT); $(waitId).className = "wait done"; $(waitTxtId).textContent = t("Đã nhận ", "received") + vnd(data.amount) + ". " + t("Số dư đã được cộng.", "credited");
-      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop();
+      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop(); try { cbSoon(); } catch (e) {}
     }
   }, 5000);
 }
@@ -5056,7 +5205,7 @@ function pollCrypto(paymentId) {
     if (data && data.status === "done") {
       clearInterval(pollT); setCryptoProgress("finished");
       $("cr-wait").className = "wait done"; $("cr-wait-t").textContent = t("Đã nhận ", "received") + vnd(data.amount) + ". " + t("Số dư đã được cộng.", "credited");
-      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop();
+      await loadProfile(); renderUser(); toast(t("Nạp thành công +", "topup_ok") + vnd(data.amount)); lwAfterTop(); try { cbSoon(); } catch (e) {}
       return;
     }
     setCryptoProgress(st);
@@ -5280,7 +5429,7 @@ function lwMine() {
   return `<b>🎟️ ${esc(L("Mã của tôi", "My codes"))}</b><div class="lwlist">` + cs.map(c => {
     const exp = c.expires_at && new Date(c.expires_at) <= new Date(), live = !c.used && c.active && !exp;
     const st = c.used ? L("Đã dùng", "Used") : !c.active ? L("Đã tắt", "Disabled") : exp ? L("Hết hạn", "Expired") : L("Dùng được đến ", "Valid until ") + lwWhen(c.expires_at);
-    return `<div class="lwrow${live ? "" : " off"}"><span class="p${+c.pct >= 40 ? " big" : ""}">${+c.pct}%</span><span><code>${esc(c.code)}</code><small>${esc(st)}</small></span>`
+    return `<div class="lwrow${live ? "" : " off"}"><span class="p${+c.pct >= 40 ? " big" : ""}">${+c.pct}%</span><span><code>${esc(c.code)}</code><small>${esc(st)}${live && c.share ? " · " + esc(L("🤝 tặng bạn bè được", "🤝 shareable")) : ""}</small></span>`
       + (live ? `<button class="btn ghost sm" type="button" data-lwcopy="${esc(c.code)}">${esc(L("Chép", "Copy"))}</button>` : "<span></span>") + "</div>";
   }).join("") + "</div>";
 }
@@ -5315,8 +5464,8 @@ function lwRules() {
         const odds = lk.pool.slice().sort((a, b) => b.pct - a.pct).map(p => L(`mã ${p.pct}%: ${lwRate(p.rate)}%`, `${p.pct}% code: ${lwRate(p.rate)}%`)).join(" · ");
         return `<p>🍀 ${esc(L(`Vé may mắn: ${vnd(lk.price)}/vé = 1 lượt quay riêng (không dùng lượt miễn phí), trừ vào số dư. Tỷ lệ công khai: ${odds}. Mã từ vé không giới hạn số lượng.`,
                               `Lucky ticket: ${vnd(lk.price)} each = one separate spin (doesn't use free spins), paid from your balance. Published odds: ${odds}. Ticket codes are unlimited.`))}</p>`; })()
-    + `<p>🎟️ ${esc(L(`Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn (${sc}), hạn ${w.days} ngày, chỉ tài khoản quay trúng dùng được${w.max_disc ? `, giảm tối đa ${vnd(w.max_disc)}` : ""}.`,
-        `Every spin wins a discount code: one use on one order (${sc}), valid ${w.days} days, only for the winning account${w.max_disc ? `, max ${vnd(w.max_disc)} off` : ""}.`))}</p>`
+    + `<p>🎟️ ${esc(L(`Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn (${sc}), hạn ${w.days} ngày, ${w.share ? "giữ dùng sau hoặc tặng bạn bè dùng đều được" : "chỉ tài khoản quay trúng dùng được"}${w.max_disc ? `, giảm tối đa ${vnd(w.max_disc)}` : ""}.`,
+        `Every spin wins a discount code: one use on one order (${sc}), valid ${w.days} days, ${w.share ? "keep it for later or give it to a friend" : "only for the winning account"}${w.max_disc ? `, max ${vnd(w.max_disc)} off` : ""}.`))}</p>`
     + `<p>🎲 ${esc(L("Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết.",
         "Results are completely random and decided by the server. Each slice has a different chance — the bigger the prize, the rarer it is. Prizes are limited; a slice marked GONE has been fully won."))}</p>`
     + `<table class="lwodds"><thead><tr><th>${esc(L("Giải thưởng", "Prize"))}</th><th>${esc(L("Số lượng", "Quantity"))}</th><th>${esc(L("Còn lại", "Left"))}</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -5358,7 +5507,7 @@ function lwReveal(r) {             // kim dừng: che hết → hộp quà rơi 
     + `<div class="t">${big ? "🎉" : "🎁"} ${esc(L("Chúc mừng! Bạn nhận được", "Congratulations! You got"))}</div>`
     + `<div class="v">−${+r.pct}%<small>${esc(L("mã giảm giá", "discount code"))}</small></div>`
     + `<div class="lwcode"><code>${esc(r.code)}</code><button class="btn ghost sm" type="button" data-lwcopy="${esc(r.code)}">${esc(L("Chép mã", "Copy code"))}</button></div>`
-    + `<div class="hint">${esc(L(`Dùng 1 lần · hạn đến ${lwWhen(r.expires_at)} · chỉ tài khoản của bạn dùng được. Nhập ở ô "Mã giảm giá" khi thanh toán.`, `One use · valid until ${lwWhen(r.expires_at)} · only your account can use it. Enter it in the "Discount code" box at checkout.`))}</div>`
+    + `<div class="hint">${esc(L(`Dùng 1 lần · hạn đến ${lwWhen(r.expires_at)} · ${r.share ? "giữ dùng sau hoặc tặng bạn bè dùng đều được" : "chỉ tài khoản của bạn dùng được"}. Nhập ở ô "Mã giảm giá" khi thanh toán.`, `One use · valid until ${lwWhen(r.expires_at)} · ${r.share ? "keep it or give it to a friend" : "only your account can use it"}. Enter it in the "Discount code" box at checkout.`))}</div>`
     + (+r.paid > 0 ? `<div class="hint">${esc(L(`Đã trừ ${vnd(r.paid)} · số dư còn ${vnd(r.balance)}`, `${vnd(r.paid)} paid · balance ${vnd(r.balance)}`))}</div>` : "")
     + `<div class="acts">${left > 0 ? `<button class="btn" type="button" data-lwrev="again">🎡 ${esc(L(`Quay tiếp · còn ${left} lượt`, `Spin again · ${left} left`))}</button>`
         : buy ? `<button class="btn buy" type="button" data-lwrev="buy">➕ ${esc(L(`Quay thêm · ${vnd(w.price)}`, `Extra spin · ${vnd(w.price)}`))}</button>`
@@ -6239,7 +6388,7 @@ sb.auth.onAuthStateChange((ev, s) => {
   setTimeout(async () => { await loadProfile();
     if (profile && profile.locked) { const who = profile.username; profile = null; renderUser(); try { await sb.auth.signOut(); } catch (e) {} banNotice(who); return; }   // đang đăng nhập mà bị ban → đăng xuất + báo
     renderUser(); if (ev === "PASSWORD_RECOVERY") openAuth("newpw"); else pwForce(); if (profile) { minePending = null; watchMine(); pollPending(); }
-    try { lwLoad(); } catch (e) {} }, 0);
+    try { lwLoad(); } catch (e) {} try { promoLoad(); } catch (e) {} }, 0);
 });
 loadSettings(); loadProducts(); heroStats(); setInterval(() => { if (!document.hidden) heroStats(); }, 300000);   // số người đăng ký / đã mua: 5 phút đọc lại 1 lần
 setInterval(() => { if (!document.hidden) loadProducts(); }, 60000);
@@ -7039,6 +7188,7 @@ function cpCheck() {
     if (cpSel.ram > +p.free_max_ram) return L(`Máy miễn phí tối đa ${p.free_max_ram}GB RAM.`, `Free phones: max ${p.free_max_ram}GB RAM.`);
     if (cpSel.cpu > +p.free_max_cpu) return L(`Máy miễn phí tối đa ${p.free_max_cpu} nhân.`, `Free phones: max ${p.free_max_cpu} cores.`);
     if (cpSel.qty > 1) return L("Mỗi tài khoản chỉ được dùng thử 1 máy miễn phí.", "Only 1 free trial phone per account.");
+    { const te = cbTrialErr(); if (te) return te; }                // v35: chưa nạp đủ / đã dùng thử rồi
   }
   if (!(cpSel.ram >= p.min_ram && cpSel.ram <= p.max_ram)) return `RAM phải từ ${p.min_ram} đến ${p.max_ram} GB.`;
   if (!(cpSel.cpu >= p.min_cpu && cpSel.cpu <= p.max_cpu)) return `CPU phải từ ${p.min_cpu} đến ${p.max_cpu} nhân.`;
@@ -7100,7 +7250,7 @@ function renderCloud() {
     const run = p.status === "active" && !locked;          // máy đang chạy → mở được bằng app máy tính / app Android
     const lk = run && !!p.stream_url;                      // (giữ điều kiện cũ cho nút Root máy)
     const canRenew = !p.shared && !p.is_free && !locked && (p.status === "active" || (p.status === "expired" && g > 0));
-    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + L("Miễn phí", "Free") + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
+    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
@@ -7115,6 +7265,7 @@ function renderCloud() {
         ${run ? (WEB_FIRST ? `<a class="btn sm" href="${cpWebLink(p.id)}">▶ ${L("Mở máy", "Open phone")}</a> <button class="btn ghost sm" type="button" data-cpopen="${esc(p.id)}">📲 ${L("Cách khác", "Other ways")}</button>`
                            : `<button class="btn sm" type="button" data-cpopen="${esc(p.id)}">📲 ${L("Mở trong app", "Open in app")}</button> <a class="btn ghost sm" href="${cpWebLink(p.id)}" title="${L("Điều khiển ngay trên trình duyệt — dùng được cho iPhone, iPad, Mac", "Control it right in the browser — works on iPhone, iPad, Mac")}">🌐 ${L("Mở trên web", "Open on web")}</a>`)
            : `<button class="btn sm" disabled>${locked ? "🔒 Bị khoá" : p.status === "pending" ? "Đang tạo…" : p.status === "expired" ? "Đã tạm dừng" : "Chưa sẵn sàng"}</button>`}
+        ${cbSwRetryOk(p) ? `<button class="btn sm" type="button" data-cbswretry="${esc(p.id)}">🔁 ${L("Thử lại", "Retry")}</button>` : ""}
         ${canRenew ? `<button class="btn ghost sm" data-cprenew="${p.id}">🔄 Gia hạn</button>` : ""}
         ${canRenew && p.status === "active" ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
         ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android 9 / 12 / 15 — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to Android 9 / 12 / 15 — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android", "Switch Android")}</button>` : ""}
@@ -7262,7 +7413,7 @@ async function openCpOrder(wantFree) {
   { const qf = $("cp-qty").closest(".cpf"); if (qf) qf.hidden = cpLeft <= 1; if (cpLeft <= 1) cpSel.qty = 1;
     $("cp-qty").querySelectorAll("button").forEach(b => { b.hidden = +b.dataset.v > cpLeft; }); if ($("cp-qty-x")) $("cp-qty-x").max = Math.min(20, cpLeft); window.__cpLeft = cpLeft; }
   cpResChips(); cpAndChips(); cpGuide();
-  cpSel.free = false; cpFreeBox(freeLive(p) && wantFree !== false);
+  cpSel.free = false; cpFreeBox(freeLive(p) && (wantFree === true || (wantFree !== false && !cbTrialErr())));
   ["cp-ram-x", "cp-cpu-x", "cp-days-x", "cp-fps-x", "cp-qty-x"].forEach(id => { $(id).value = ""; });
   $("cp-fps-x").min = p.min_fps; $("cp-fps-x").max = p.max_fps;
   $("cp-ram-x").max = cpP().max_ram; $("cp-cpu-x").max = cpP().max_cpu; $("cp-days-x").max = p.max_days;
@@ -7279,10 +7430,10 @@ function cpOrderUpd() {
   const price = cpPrice(), p = cpP(), bad = cpCheck();
   const pb = $("cp-promo-box"); if (pb) pb.hidden = !!cpSel.free;
   if (cpSel.free) { blueRow("cp-bluebox", "cpn", 0, true);
-    $("cp-calc").textContent = L(`🎁 Miễn phí ${p.free_days} ngày`, `🎁 Free for ${p.free_days} day(s)`) + (cpSel.qty > 1 ? ` × ${cpSel.qty} máy` : "");
+    $("cp-calc").textContent = L(`🎁 Dùng thử miễn phí ${cbFreeDur(p)}`, `🎁 Free trial · ${cbFreeDur(p)}`) + (cpSel.qty > 1 ? ` × ${cpSel.qty} máy` : "");
     $("cp-total").textContent = bad ? "—" : "0đ"; $("cp-bal").textContent = profile ? fmt(profile.balance) : "—";
-    $("cp-err").textContent = bad || ""; $("cp-obuy").textContent = L("🎁 Nhận máy miễn phí", "🎁 Get free phone");
-    $("cp-lim").innerHTML = L(`Máy miễn phí: tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · ${p.free_days} ngày. Hết hạn máy tự tắt, không gia hạn được.`, `Free phone: max ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · ${p.free_days} day(s). Stops when it expires; can't be renewed.`);
+    $("cp-err").textContent = bad || ""; $("cp-obuy").textContent = cbFreeBtn(p);
+    $("cp-lim").innerHTML = cbHours(p) > 0 ? cbTrialLim(p) : L(`Máy miễn phí: tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · ${p.free_days} ngày. Hết hạn máy tự tắt, không gia hạn được.`, `Free phone: max ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · ${p.free_days} day(s). Stops when it expires; can't be renewed.`);
     return;
   }
   prmChanged("cpn"); const pay0 = prmPrice("cpn", price);          // có mã giảm giá đúng cho cấu hình này → tổng sau giảm
@@ -7307,7 +7458,7 @@ async function cpBuy() {
   const args = { p_ram: cpSel.ram, p_cpu: cpSel.cpu, p_days: cpSel.days, p_res: cpSel.res, p_name: null, p_fps: cpSel.fps, p_qty: cpSel.qty, p_android: cpSel.android || "9", ...(free ? { p_free: true } : {}), ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) };
   const { error } = await sb.rpc(node ? "cloudphone_order_at" : "cloudphone_order_custom", node ? { p_node: node, ...args } : args);
   if (error) { if (!free) prmFail("cpn", error); $("cp-err").textContent = errMsg(error); if (/BLUE_/.test(error.message || "")) blueLoad().then(() => cpOrderUpd()); return; }
-  show("cporderdlg", false); BPAY.cpn = false; await loadProfile(); renderUser();
+  show("cporderdlg", false); BPAY.cpn = false; await loadProfile(); renderUser(); try { cbSoon(); } catch (e) {}
   CPpricing = null; cpLoadPricing().then(() => { try { renderGrid(); } catch (e) {} });
   toast(cpSel.qty > 1 ? `Đã tạo đơn ${cpSel.qty} máy! Các máy đang khởi tạo (khoảng 2–3 phút mỗi máy).` : L("Đã tạo đơn! Máy đang khởi tạo (khoảng 2–3 phút).", "Order placed! Creating…"));
   notifyTg && notifyTg(`📱 <b>Đơn ĐT đám mây mới${cpSel.free ? " (🎁 MIỄN PHÍ)" : ""}</b>\n${cpSel.qty} máy × Android ${cpSel.android || 9} · ${cpSel.ram}GB / ${cpSel.cpu} nhân / ${cpSel.days} ngày / ${cpSel.res} / ${cpSel.fps} FPS${node ? ` · 🖥 ${esc(cpSrvName(node) || node)} (admin chọn)` : ""}\nGiá: ${vnd(price)}${code ? ` (mã ${code})` : ""}${bu > 0 ? ` · 💎 ${bnum(bu)} Blue` : ""}`);
@@ -7385,7 +7536,7 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
       if (bal < pay) { m.hidden = true; openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((pay - bal) / 1000) * 1000)); return; }
       const { error } = await sb.rpc("cloudphone_renew", { p_id: p.id, p_days: days, ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) });
       if (error) { prmFail("cren", error); $("crn-err").textContent = errMsg(error); if (/BLUE_/.test(error.message || "")) blueLoad().then(sum); return; }
-      m.hidden = true; BPAY.cren = false; await loadProfile(); renderUser(); toast(L("Đã gia hạn +" + days + " ngày.", "Renewed +" + days + " days.")); openCloud();
+      m.hidden = true; BPAY.cren = false; await loadProfile(); renderUser(); try { cbSoon(); } catch (e) {} toast(L("Đã gia hạn +" + days + " ngày.", "Renewed +" + days + " days.")); openCloud();
     } finally { going = false; }
   };
   prmDef("cren", { inp: "crn-promo", out: "crn-pres", scope: () => "cp_renew", upd: () => sum(),
@@ -7637,7 +7788,7 @@ const BLUE_T = () => ({
   share: ["📣", L("Chia sẻ link mời", "Share your invite link"), L("Gửi link CloudBlue cho bạn bè hoặc nhóm", "Send your CloudBlue link to friends or a group")],
   invite: ["🤝", L("Bạn được mời nạp tiền", "An invited friend tops up"), L("Có bạn đăng ký qua link của bạn và NẠP TIỀN trong hôm nay", "A friend who joined with your link tops up today")] });
 const BLUE_K = () => ({ checkin: L("Điểm danh", "Check-in"), streak: L("Thưởng chuỗi", "Streak bonus"), task: L("Nhiệm vụ", "Mission"), ref: L("Mời bạn", "Invite"),
-  cashback: L("Hoàn đơn", "Cashback"), spend: L("Đã dùng", "Spent"), refund: L("Hoàn lại", "Refund"), admin: L("Admin", "Admin"), clawback: L("Thu lại", "Reversed") });
+  cashback: L("Hoàn đơn", "Cashback"), spend: L("Đã dùng", "Spent"), refund: L("Hoàn lại", "Refund"), admin: L("Admin", "Admin"), clawback: L("Thu lại", "Reversed"), creator: L("Kiếm tiền", "Creator reward") });
 const GEM = `<svg class="bl-gem" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="blgm" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#d8f0ff"/><stop offset=".45" stop-color="#6fb0ff"/><stop offset="1" stop-color="#1b53d6"/></linearGradient></defs><path d="M14 7h20l10 13-20 22L4 20z" fill="url(#blgm)"/><path d="M4 20h40M14 7l10 13L34 7M24 42 14 20M24 42l10-22" stroke="#fff" stroke-opacity=".6" stroke-width="1.3" fill="none" stroke-linejoin="round"/></svg>`;
 
 async function openBlue() {
@@ -7678,7 +7829,9 @@ function blueRender() {
   const more = [];
   if (+c.ref > 0) more.push(L(`Bạn bè bạn mời <b>nạp tiền lần đầu${+c.ref_min_topup ? " từ " + vnd(c.ref_min_topup) : ""}</b>: <b>+${bnum(c.ref)} Blue</b> mỗi bạn (bạn ở khác mạng / thiết bị)`, `Each invited friend's <b>first top-up</b>: <b>+${bnum(c.ref)} Blue</b>`));
   if (+c.cashback > 0) more.push(L(`Mỗi đơn trả bằng tiền (thuê, gia hạn, nâng cấp máy, mua hàng): hoàn <b>${+c.cashback}%</b> bằng Blue`, `Every paid order (rent, renew, upgrade, shop): <b>${+c.cashback}%</b> back in Blue`));
+  { const cm = cbBlueMore(); if (cm) more.unshift(cm); }
   more.push(L("Nhiệm vụ làm mới lúc 0 giờ mỗi ngày (giờ Việt Nam)", "Missions reset at midnight (Vietnam time)"));
+  more.push(L("Blue <b>chỉ dùng cho cloud phone</b> (thuê / gia hạn máy) — không dùng cho VPS hay sản phẩm khác", "Blue is <b>for cloud phones only</b> (rent / renew) — not for VPS or other products"));
   const items = Array.isArray(B.items) ? B.items : [], K = BLUE_K();
   const capLine = +B.day_cap ? `<div class="hint" style="margin:-4px 0 6px">${L(`Hôm nay đã nhận ${bnum(B.today_earned)} / ${bnum(B.day_cap)} Blue (điểm danh + nhiệm vụ)`, `Today: ${bnum(B.today_earned)} / ${bnum(B.day_cap)} Blue from check-in + missions`)}</div>` : "";
   const holdNote = B.hold ? `<div class="bl-lock">🧊 ${L("Blue của bạn đang được tạm giữ để kiểm tra (không nhận / không dùng được). Liên hệ hỗ trợ nếu cần.", "Your Blue is on hold for review. Contact support if needed.")}</div>`
@@ -9170,6 +9323,7 @@ setInterval(() => { if (profile && isAdmin() && !rtAdmin) startRealtime(); }, 20
 
 /* ========= MIỄN PHÍ ƯU ĐÃI ========= */
 function freeText(p) {
+  if (cbHours(p) > 0 || cbNeed() > 0) return ((LANG === "en" ? p.free_msg_en : p.free_msg) || "").trim() || cbFreeText(p);     // v35: dùng thử theo giờ / cần nạp
   if (LANG === "en") return (p.free_msg_en || "").trim() || `🎁 FREE Cloud Phone for ${p.free_days} day${+p.free_days > 1 ? "s" : ""}: keep games & apps running 24/7 (up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores) — tap here to claim yours! 📱☁️`;
   return (p.free_msg || "").trim() || L(`🎁 MIỄN PHÍ thuê điện thoại đám mây ${p.free_days} ngày — tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân. Bấm vào đây để nhận máy ngay!`,
     `🎁 FREE cloud phone for ${p.free_days} day(s) — up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores. Tap here to get yours now!`);
@@ -9185,16 +9339,19 @@ function tickerLive() {
 function tickerText() { const vi = (SITE.ticker_vi || "").trim(), en = (SITE.ticker_en || "").trim(); return LANG === "en" ? (en || vi) : (vi || en); }
 function renderFreeBar() {
   const bar = $("freebar"), p = CPpricing; if (!bar) return;
-  const note = tickerLive();
-  if (!note && !freeLive(p)) { bar.hidden = true; return; }
-  bar.dataset.mode = note ? "note" : "free";
-  bar.setAttribute("role", note ? "status" : "button"); bar.tabIndex = note ? -1 : 0;
-  bar.setAttribute("aria-label", note ? L("Thông báo", "Announcement") : L("Ưu đãi miễn phí", "Free offer"));
-  const t = esc(note ? tickerText() : freeText(p));
-  const half = `<span>${t}</span><span>${t}</span>`;        // 2 nửa giống hệt nhau → chạy vòng liên tục không bị hở
+  const note = tickerLive(); let promo = []; try { promo = cbTicker(); } catch (e) {}
+  if (!note && !promo.length && !freeLive(p)) { bar.hidden = true; return; }
+  const mode = promo.length ? "promo" : note ? "note" : "free";       // promo: các ưu đãi công khai (+ thông báo của admin nếu đang bật)
+  bar.dataset.mode = mode;
+  bar.setAttribute("role", mode === "note" ? "status" : "button"); bar.tabIndex = mode === "note" ? -1 : 0;
+  bar.setAttribute("aria-label", mode === "note" ? L("Thông báo", "Announcement") : mode === "promo" ? L("Ưu đãi đang có — bấm để xem", "Current offers — tap to view") : L("Ưu đãi miễn phí", "Free offer"));
+  const items = mode === "promo" ? (note ? [tickerText()] : []).concat(promo) : [note ? tickerText() : freeText(p)];
+  const one = items.map(x => `<span>${esc(x)}</span>`).join(""), n0 = items.join("").length + items.length * 6;
+  let half = one, n = n0;
+  while (n < 320 && n0 > 0) { half += one; n += n0; }        // nửa dải phải dài hơn màn hình thì chạy vòng liên tục mới không bị hở
   $("fb-track").innerHTML = half + half;
-  bar.style.setProperty("--fb-dur", Math.max(18, Math.round(t.length * 0.45)) + "s");
-  let cd = bar.querySelector(".fb-cd"); const until = note ? (SITE.ticker_until || null) : freeCd(p);
+  bar.style.setProperty("--fb-dur", Math.max(18, Math.round(n * 0.225)) + "s");
+  let cd = bar.querySelector(".fb-cd"); const until = mode === "note" ? (SITE.ticker_until || null) : mode === "free" ? freeCd(p) : null;
   if (until) { if (!cd) { cd = document.createElement("span"); cd.className = "fb-cd"; bar.appendChild(cd); }
     cd.innerHTML = `⏳ ${L("Còn", "Ends in")} <b data-cd="${esc(until)}" data-cdend="free">${cdText(until)}</b>`; }
   else if (cd) cd.remove();
@@ -9202,16 +9359,16 @@ function renderFreeBar() {
 }
 function openFree() { if (!profile) { openAuth("login"); return; } openCpOrder(true); }
 const freeBarNote = () => $("freebar").dataset.mode === "note";             // đang hiện THÔNG BÁO → bấm không mở nhận máy miễn phí
-$("freebar") && ($("freebar").onclick = () => { if (!freeBarNote()) openFree(); });
-$("freebar") && $("freebar").addEventListener("keydown", e => { if (!freeBarNote() && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openFree(); } });
+$("freebar") && ($("freebar").onclick = () => cbBarGo());
+$("freebar") && $("freebar").addEventListener("keydown", e => { if (!freeBarNote() && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); cbBarGo(); } });
 
 function cpFreeBox(on) {
   const box = $("cp-free"), p = CPpricing || {}; if (!box) return;
   if (!freeLive(p)) { box.hidden = true; cpSel.free = false; const df = $("cp-days") && $("cp-days").closest(".cpf"); if (df) df.hidden = false; return; }
   box.hidden = false;
   box.innerHTML = `<label class="fsw"><span class="sw"><input type="checkbox" id="cp-free-sw"${on ? " checked" : ""}><i></i></span>
-    <span>🎁 <b>${L(`Nhận máy MIỄN PHÍ ${p.free_days} ngày`, `Get a FREE phone for ${p.free_days} day(s)`)}</b>
-    <small>${L(`Tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · mỗi tài khoản chỉ dùng thử 1 máy. Tắt công tắc nếu muốn thuê trả phí lâu dài.${isAdmin() ? " <b style=\"color:#8fd0ff\">(Admin: không giới hạn số máy & cấu hình)</b>" : ""}`, `Up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · 1 trial phone per account. Switch off to rent a paid phone instead.`)}</small></span></label>`;
+    <span>🎁 <b>${L(`Dùng thử MIỄN PHÍ ${cbFreeDur(p)}`, `FREE trial for ${cbFreeDur(p)}`)}</b>
+    <small>${cbTrialSmall(p)}</small></span></label>${cbTrialLock()}`;
   if (freeCd(p)) box.insertAdjacentHTML("beforeend", `<div class="free-cd">⏳ ${L("Ưu đãi kết thúc sau", "Offer ends in")} <b data-cd="${esc(p.free_until)}" data-cdend="free">${cdText(p.free_until)}</b></div>`);
   cpSetFree(on);
 }
@@ -9225,6 +9382,7 @@ function cpSetFree(on) {
   }
   if (on) cpSel.days = +p.free_days || 1;
   const df = $("cp-days") && $("cp-days").closest(".cpf"); if (df) df.hidden = !!on;
+  try { cbFreeQty(!!on); } catch (e) {}
   cpOrderUpd();
 }
 document.addEventListener("change", e => { if (e.target && e.target.id === "cp-free-sw") cpSetFree(e.target.checked); });
@@ -9233,11 +9391,13 @@ document.addEventListener("change", e => { if (e.target && e.target.id === "cp-f
 function frFill(pr) {
   if (!$("fr-days")) return;
   $("fr-days").value = pr.free_days || 1;
+  for (const [id, k] of [["fr-hours", "free_hours"], ["fr-need", "free_need_topup"]]) { const el = $(id); if (!el) continue;
+    el.disabled = pr[k] == null; el.value = pr[k] == null ? "" : +pr[k]; if (pr[k] == null) el.placeholder = "Cần chạy file SQL cloud-phones-v35.sql"; }
   if ($("fr-until")) { $("fr-until").value = ""; $("fr-until-now").textContent = pr.free_until ? (Date.parse(pr.free_until) > Date.now() ? "Đang đếm ngược: còn " + cdText(pr.free_until) + " — nhập số mới để đổi, nhập 0 = không giới hạn." : "Đã hết giờ ưu đãi (khách không nhận máy miễn phí được nữa) — nhập số ngày mới để chạy lại.") : "Không giới hạn thời gian."; }
   $("fr-ram").value = pr.free_max_ram || 4; $("fr-cpu").value = pr.free_max_cpu || 4; $("fr-msg").value = pr.free_msg || ""; if ($("fr-msg-en")) $("fr-msg-en").value = pr.free_msg_en || "";
   const n = (CPA_ROWS || []).filter(r => r.is_free && r.status !== "cancelled").length;
   $("fr-state").innerHTML = pr.free_on == null ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v12.sql</b> trên Supabase."
-    : pr.free_on ? `🟢 <b>ĐANG BẬT</b> — khách nhận máy 0đ ${pr.free_days} ngày. Đang có <b>${n}</b> máy miễn phí.` : `⚪ Đang tắt (tính phí bình thường).`;
+    : pr.free_on ? `🟢 <b>ĐANG BẬT</b> — khách nhận máy 0đ ${+pr.free_hours > 0 ? +pr.free_hours + " giờ" : pr.free_days + " ngày"}${+pr.free_need_topup > 0 ? " · chỉ tài khoản đã nạp 1 lần từ " + vnd(pr.free_need_topup) : ""}. Đang có <b>${n}</b> máy miễn phí.` : `⚪ Đang tắt (tính phí bình thường).`;
 }
 $("fr-on") && ($("fr-on").onclick = () => busy($("fr-on"), async () => {
   const n = id => Math.max(1, Math.floor(+$(id).value || 1));
@@ -9247,6 +9407,12 @@ $("fr-on") && ($("fr-on").onclick = () => busy($("fr-on"), async () => {
   if ($("fr-until") && $("fr-until").value.trim() !== "") { const d = parseFloat($("fr-until").value);
     const { error: e3 } = await sb.from("cloudphone_pricing").update({ free_until: d > 0 ? new Date(Date.now() + d * 86400000).toISOString() : null }).eq("id", 1);
     if (e3) toast("Chưa lưu được thời gian ưu đãi — chạy file SQL cloud-phones-v14.sql trên Supabase.", 1); }
+  if ($("fr-hours") && !$("fr-hours").disabled) {
+    const { error: e4 } = await sb.from("cloudphone_pricing").update({ free_hours: Math.max(0, Math.min(720, Math.floor(+$("fr-hours").value || 0))),
+      free_need_topup: Math.max(0, Math.min(100000000, Math.floor(+$("fr-need").value || 0))) }).eq("id", 1);
+    if (e4) toast("Chưa lưu được số giờ dùng thử / mức nạp — chạy file SQL cloud-phones-v35.sql trên Supabase.", 1);
+  }
+  try { CPpricing = null; await cpLoadPricing(); promoLoad(); } catch (e) {}
   toast("🎁 Đã BẬT ưu đãi miễn phí — web đang hiện dòng chữ chạy."); notifyTg && notifyTg(`🎁 Bật ưu đãi miễn phí ${n("fr-days")} ngày`);
   await loadCloudAdm();
 }));
@@ -9402,7 +9568,7 @@ async function cpUpgrade(id) {
         const msg = /cloudphone_upgrade/.test(error.message || "") ? L("Chưa chạy file SQL cloud-phones-v19.sql.", "Server not updated yet.") : errMsg(error);
         toast(msg, 1); if ($("up-err")) $("up-err").textContent = msg; return;
       }
-      m.hidden = true; await loadProfile(); renderUser(); toast(L(`Đã nâng lên ${nr}GB · ${nc} nhân — máy nhận tài nguyên mới trong ~30 giây.`, `Upgraded to ${nr}GB · ${nc} cores — applies in ~30s.`)); openCloud();
+      m.hidden = true; await loadProfile(); renderUser(); try { cbSoon(); } catch (e) {} toast(L(`Đã nâng lên ${nr}GB · ${nc} nhân — máy nhận tài nguyên mới trong ~30 giây.`, `Upgraded to ${nr}GB · ${nc} cores — applies in ~30s.`)); openCloud();
     } finally { going = false; }
   };
   prmDef("cup", { inp: "cup-promo", out: "cup-pres", money: vnd, scope: () => "cp_upgrade", upd: () => sum(),
@@ -10806,12 +10972,12 @@ function cpPickLine() {                       // đầu khung thanh toán: gói 
     return;
   }
   const p = CPpricing || {}, t0 = cpSel.free ? null : cpTiers().find(cpTierIs), t = t0 ? cptClean(t0) : null;
-  const name = cpSel.free ? L("Máy miễn phí", "Free phone") : t ? t.name : L("Cấu hình tự chọn", "Custom setup");
+  const name = cpSel.free ? cbFreeName(p) : t ? t.name : L("Cấu hình tự chọn", "Custom setup");
   const ic = cpSel.free ? "🎁" : t ? (t.icon || "📱") : "⚙️", q = cpSel.qty || 1;
   const days = cpSel.free ? (+p.free_days || 1) : cpSel.days;
   el.innerHTML = `<div class="cpp" style="--t:${t ? cptColor(t) : cpSel.free ? "#ffb800" : "#8fd0ff"}"><span class="cpp-ic" aria-hidden="true">${esc(ic)}</span>`
     + `<div class="cpp-t"><b>${esc(name)}</b><small>Android ${esc(String(cpSel.android || "9"))} · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.ram}GB RAM · ${cpSel.fps} FPS</small></div></div>`
-    + `<div class="cpp-r"><span>${L("Thời gian", "Duration")}</span><b>${days} ${L("ngày", days > 1 ? "days" : "day")} × ${q} ${L("máy", q > 1 ? "phones" : "phone")}</b></div>`;
+    + `<div class="cpp-r"><span>${L("Thời gian", "Duration")}</span><b>${cpSel.free && cbHours(p) > 0 ? cbFreeDur(p) : `${days} ${L("ngày", days > 1 ? "days" : "day")}`} × ${q} ${L("máy", q > 1 ? "phones" : "phone")}</b></div>`;
 }
 function cpBarUpd() {                         // thanh dính đáy (điện thoại / máy tính bảng)
   const bar = $("cp-bar"); if (!bar || typeof cpSel !== "object" || !cpSel) return;
@@ -10820,12 +10986,12 @@ function cpBarUpd() {                         // thanh dính đáy (điện tho�
   const t0 = !need && !cpSel.free ? cpTiers().find(cpTierIs) : null, p = CPpricing || {};
   if (lb) {
     lb.textContent = need ? L("Chưa chọn gói", "No plan yet") : err ? err
-      : `${cpSel.free ? L("Máy miễn phí", "Free phone") : t0 ? cptClean(t0).name : L("Tự chọn", "Custom")} · ${cpSel.free ? (+p.free_days || 1) : cpSel.days} ${L("ngày", "d")}${cpSel.qty > 1 ? ` × ${cpSel.qty} ${L("máy", "phones")}` : ""}`;
+      : `${cpSel.free ? cbFreeName(p) : t0 ? cptClean(t0).name : L("Tự chọn", "Custom")} · ${cpSel.free && cbHours(p) > 0 ? cbFreeDur(p) : (cpSel.free ? (+p.free_days || 1) : cpSel.days) + " " + L("ngày", "d")}${cpSel.qty > 1 ? ` × ${cpSel.qty} ${L("máy", "phones")}` : ""}`;
     lb.classList.toggle("bad", !need && !!err);
   }
   if (v) v.innerHTML = need ? `<span class="cp-wait">${L("Chọn gói để xem giá", "Pick a plan to see the price")}</span>` : $("cp-total").innerHTML;
   if (go) {
-    go.textContent = need ? L("Chọn gói", "Pick a plan") : (ob ? ob.textContent : "").replace(" & tạo máy", "").replace(" & create phone", "").replace("Nhận máy miễn phí", "Nhận máy") || L("Thanh toán", "Pay");
+    go.textContent = need ? L("Chọn gói", "Pick a plan") : (ob ? ob.textContent : "").replace(" & tạo máy", "").replace(" & create phone", "").replace("Nhận máy miễn phí", "Nhận máy").replace("Nhận máy dùng thử", "Nhận máy") || L("Thanh toán", "Pay");
     go.classList.toggle("ghost", need);
   }
 }
@@ -10881,6 +11047,459 @@ document.addEventListener("click", e => {
   }
   const b = $("cp-obuy"); if (b && !b.disabled) b.click();
 });
+
+
+/* ===================== v35 · 🎁 ƯU ĐÃI CLOUD PHONE · 🎬 KIẾM TIỀN · 📣 DÒNG CHỮ CHẠY =====================
+   Mọi số và chữ ưu đãi do máy chủ trả về (promo_public · promo_my · creator_my) — web không ghi cứng số nào. */
+var PROMO = null, PMY = null, CRE = null, CBA = null, CBC = null, cbSoonT = 0;      // var: các hàm vẽ ở trên có thể chạy trước dòng này
+function cbT(x) { return !x ? "" : (LANG === "en" ? (x.en || x.vi) : x.vi) || ""; }
+function cbPlat(p) { return ({ tiktok: "TikTok", youtube: "YouTube", facebook: "Facebook", instagram: "Instagram", other: L("Nền tảng khác", "Other") })[p] || String(p || ""); }
+function cbNum(n) { return (+n || 0).toLocaleString(LANG === "en" ? "en-US" : "vi-VN"); }
+function cbHours(p) { return +(p && p.free_hours) || 0; }
+function cbNeed() { return +((CPpricing && CPpricing.free_need_topup != null ? CPpricing.free_need_topup : PROMO && PROMO.trial && PROMO.trial.need) || 0); }
+function cbFreeDur(p) { const h = cbHours(p); return h > 0 ? L(`${h} giờ`, `${h} hour${h > 1 ? "s" : ""}`) : L(`${+(p && p.free_days) || 1} ngày`, `${+(p && p.free_days) || 1} day(s)`); }
+function cbSrc(s) { return ({ wheel: L("🎡 Vòng quay", "🎡 Lucky wheel"), topup: L("💰 Ưu đãi nạp", "💰 Top-up bonus"), gift: L("🎁 Quà tặng", "🎁 Gift") })[s] || L("🎁 Mã giảm giá", "🎁 Discount code"); }
+
+async function promoLoad(notify) {
+  const before = PMY && Array.isArray(PMY.codes) ? new Set(PMY.codes.map(c => c.code)) : null;
+  try { const r = await sb.rpc("promo_public"); if (!r.error && r.data) PROMO = r.data; } catch (e) {}
+  if (profile) { try { const r = await sb.rpc("promo_my"); PMY = !r.error && r.data ? r.data : null; } catch (e) { PMY = null; } } else PMY = null;
+  cbRefresh();
+  if (notify && before && PMY && Array.isArray(PMY.codes)) {                 // mã mới (nạp / quà) → báo khách ngay
+    PMY.codes.filter(c => c.usable && !before.has(c.code) && c.src !== "wheel").slice(0, 2).forEach((c, i) => setTimeout(() =>
+      toast(L(`${cbSrc(c.src)}: bạn nhận mã giảm ${c.pct}% — ${c.code} (dùng khi thuê cloud phone)`, `${cbSrc(c.src)}: you got a ${c.pct}% off code — ${c.code} (for cloud phones)`)), 900 + i * 2600));
+  }
+}
+function cbSoon() { clearTimeout(cbSoonT); cbSoonT = setTimeout(() => promoLoad(true), 1200); }
+function cbRefresh() {
+  try { renderFreeBar(); } catch (e) {} try { cbHome(); } catch (e) {} try { cbTopOffers(); } catch (e) {} try { cbPicks(); } catch (e) {}
+  try { const d = $("cporderdlg"); if (d && !d.hidden) { cpFreeBox(!!cpSel.free); cpOrderUpd(); } } catch (e) {}
+  try { cbOffersRender(); } catch (e) {} try { cbCreRender(); } catch (e) {}
+}
+setInterval(() => { if (!document.hidden) promoLoad(); }, 300000);
+document.addEventListener("br-lang", () => cbRefresh());
+
+/* ----- 📣 dòng chữ chạy: ưu đãi công khai (máy chủ viết sẵn chữ vi / en) ----- */
+function cbTicker() {
+  const t = PROMO && Array.isArray(PROMO.ticker) ? PROMO.ticker : [];
+  return t.filter(x => x && x.vi && (x.k !== "wheel" || lwLive()) && (x.k !== "trial" || freeLive(CPpricing))).map(cbT).filter(Boolean);
+}
+function cbBarGo() { const m = $("freebar").dataset.mode; if (m === "promo") openOffers(); else if (m !== "note") openFree(); }
+function cbFreeText(p) {
+  const need = cbNeed(), h = cbFreeDur(p);
+  return L(`🎁 Dùng thử cloud phone MIỄN PHÍ ${h}${need ? ` — tài khoản đã nạp từ ${vnd(need)}` : ""} (tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân). Bấm để nhận máy!`,
+           `🎁 Try a cloud phone FREE for ${h}${need ? ` — for accounts that topped up ${vnd(need)}+` : ""} (up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores). Tap to claim!`);
+}
+
+/* ----- 📱 dùng thử: chữ trong hộp Thuê máy ----- */
+function cbTrialSmall(p) {
+  const need = cbNeed(), h = cbFreeDur(p);
+  return L(`Tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · mỗi tài khoản 1 máy${need ? ` · dành cho tài khoản đã nạp 1 lần từ ${vnd(need)}` : ""}. Hết ${h} (tính từ lúc máy chạy) máy và dữ liệu tự xoá, không gia hạn được — muốn dùng tiếp thì thuê máy.${isAdmin() ? " <b style=\"color:#8fd0ff\">(Admin: không giới hạn)</b>" : ""}`,
+           `Up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · 1 per account${need ? ` · for accounts that topped up ${vnd(need)}+ at once` : ""}. After ${h} (from when it starts) the phone and its data are deleted; it can't be renewed.`);
+}
+function cbFreeBtn(p) { return cbHours(p) > 0 ? L("🎁 Nhận máy dùng thử", "🎁 Get trial phone") : L("🎁 Nhận máy miễn phí", "🎁 Get free phone"); }
+function cbFreeName(p) { return cbHours(p) > 0 ? L("Máy dùng thử", "Trial phone") : L("Máy miễn phí", "Free phone"); }
+function cbTrialLim(p) {
+  const h = cbFreeDur(p);
+  return L(`Máy dùng thử: tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân · ${h}. Hết ${h} máy tự xoá, không gia hạn được.`,
+           `Trial phone: max ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores · ${h}. Deleted when time is up; can't be renewed.`);
+}
+function cbFreeQty(on) {                          // dùng thử chỉ 1 máy → ẩn ô chọn số máy (admin vẫn thấy)
+  const q = $("cp-qty"), qf = q && q.closest(".cpf"); if (!qf) return;
+  const left = +window.__cpLeft; qf.hidden = (on && !isAdmin()) || (isFinite(left) && left <= 1);
+}
+function cbTrialLock() {
+  const tr = PMY && PMY.trial, need = cbNeed();
+  if (isAdmin() || !tr) return "";
+  if (tr.used) return `<div class="cb-lock">✓ ${esc(L("Bạn đã dùng thử 1 máy rồi — tắt công tắc để thuê máy trả phí.", "You've already used your free trial — switch off to rent a paid phone."))}</div>`;
+  if (!tr.ok && need > 0) return `<div class="cb-lock">🔒 ${esc(L(`Nạp 1 lần từ ${vnd(need)} để mở dùng thử miễn phí.`, `Top up ${vnd(need)}+ once to unlock the free trial.`))} <button class="btn sm" type="button" data-cbtop="${need}">${esc(L(`Nạp ${vnd(need)}`, `Top up ${vnd(need)}`))}</button></div>`;
+  return "";
+}
+function cbTrialErr() {
+  const tr = PMY && PMY.trial; if (isAdmin() || !tr) return "";
+  if (tr.used) return L("Mỗi tài khoản chỉ được dùng thử 1 máy miễn phí.", "Only 1 free trial phone per account.");
+  if (!tr.ok && cbNeed() > 0) return L(`Dùng thử miễn phí dành cho tài khoản đã nạp 1 lần từ ${vnd(cbNeed())}.`, `Free trials are for accounts that topped up ${vnd(cbNeed())}+ at once.`);
+  return "";
+}
+function cbPhoneTag(p) { return +p.trial_hours > 0 ? L(`Dùng thử ${+p.trial_hours} giờ`, `${+p.trial_hours}h trial`) : L("Miễn phí", "Free"); }
+
+/* ----- 💰 hộp Nạp tiền: ưu đãi khi nạp ----- */
+function cbTopOffers() {
+  const box = $("tp-offers"); if (!box) return;
+  const tc = PROMO && PROMO.topup, tr = PROMO && PROMO.trial, rows = [];
+  if (tc && Array.isArray(tc.levels) && tc.levels.length) {
+    const got = PMY && PMY.topup_got, mine = PMY && (PMY.codes || []).find(c => c.src === "topup" && c.usable);
+    rows.push(`<div class="cbo-row"><span class="ic" aria-hidden="true">💰</span><div><b>${esc(L("Nạp 1 lần — nhận 1 mã giảm giá cloud phone", "Top up once — get a cloud phone discount code"))}</b>
+      <div class="cbo-lv">${tc.levels.map(x => `<button type="button" data-cbamt="${+x.min}">${esc(L(`Từ ${vnd(x.min)}`, `${vnd(x.min)}+`))} → <b>${esc(L(`mã ${x.pct}%`, `${x.pct}% off`))}</b></button>`).join("")}</div>
+      <small>${esc(L(`Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp) · dùng 1 lần · hạn ${tc.days} ngày${+tc.max ? ` · giảm tối đa ${vnd(tc.max)}` : ""} · chỉ cho cloud phone (thuê / gia hạn / nâng cấp).`,
+                         `One code per account (highest level reached in one top-up) · single use · valid ${tc.days} days${+tc.max ? ` · up to ${vnd(tc.max)} off` : ""} · cloud phones only (rent / renew / upgrade).`))}</small>
+      ${mine ? `<div class="cbo-got">🎫 ${esc(L("Mã của bạn:", "Your code:"))} <code>${esc(mine.code)}</code> −${+mine.pct}%</div>` : got ? `<div class="cbo-got">✓ ${esc(L("Bạn đã nhận mã ưu đãi nạp đợt này.", "You've already received this round's top-up code."))}</div>` : ""}</div></div>`);
+  }
+  if (tr && +tr.need > 0 && freeLive(CPpricing) && !(PMY && PMY.trial && PMY.trial.used)) {
+    const ok = PMY && PMY.trial && PMY.trial.ok;
+    rows.push(`<div class="cbo-row"><span class="ic" aria-hidden="true">📱</span><div><b>${esc(ok ? L(`Bạn được dùng thử 1 cloud phone ${cbFreeDur(CPpricing)} miễn phí`, `You can try a cloud phone free for ${cbFreeDur(CPpricing)}`)
+                                                                   : L(`Nạp 1 lần từ ${vnd(tr.need)} → dùng thử 1 cloud phone ${cbFreeDur(CPpricing)} miễn phí`, `Top up ${vnd(tr.need)}+ once → try a cloud phone free for ${cbFreeDur(CPpricing)}`))}</b>
+      <small>${esc(L("Mỗi tài khoản 1 máy · nạp xong mở Thuê máy, bật “Dùng thử miễn phí”.", "One per account · after topping up, open Rent and switch on “Free trial”."))}</small>
+      ${ok ? `<button class="btn ghost sm" type="button" data-cbgo="trial">${esc(L("Nhận máy dùng thử", "Get trial phone"))}</button>` : ""}</div></div>`);
+  }
+  box.innerHTML = rows.join(""); box.hidden = !rows.length;
+  try { cbAmtHint(); } catch (e) {}
+}
+function cbAmtHint() {
+  const conv = $("tp-conv"); let el = $("tp-cbhint");
+  if (!el) { if (!conv || !conv.parentNode) return; el = document.createElement("div"); el.id = "tp-cbhint"; el.className = "cbhint"; conv.parentNode.insertBefore(el, conv.nextSibling); }
+  const raw = +$("tp-amt").value || 0, a = topMethod === "usdt" ? Math.round(raw * rate()) : Math.round(raw), out = [];
+  const tc = PROMO && PROMO.topup, tr = PROMO && PROMO.trial;
+  if (tc && Array.isArray(tc.levels) && !(PMY && PMY.topup_got)) {
+    const lv = tc.levels.filter(x => a >= +x.min).pop();
+    if (lv) out.push(L(`💰 Lần nạp này được tặng mã giảm ${lv.pct}% cloud phone`, `💰 This top-up earns a ${lv.pct}% off cloud phone code`));
+  }
+  if (tr && +tr.need > 0 && freeLive(CPpricing) && a >= +tr.need && PMY && PMY.trial && !PMY.trial.ok && !PMY.trial.used)
+    out.push(L(`📱 Mở dùng thử 1 cloud phone ${cbFreeDur(CPpricing)} miễn phí`, `📱 Unlocks a free ${cbFreeDur(CPpricing)} cloud phone trial`));
+  el.innerHTML = out.map(esc).join("<br>"); el.hidden = !out.length;
+}
+
+/* ----- 🏠 trang chủ: ô Kiếm tiền + ô Ưu đãi ----- */
+function cbHome() {
+  const wr = $("cb-home-w"), box = $("cb-home"); if (!wr || !box) return;
+  const P = PROMO || {}, cr = P.creator, tc = P.topup && P.topup.levels && P.topup.levels.length ? P.topup : null, tr = P.trial && freeLive(CPpricing) ? P.trial : null, tiles = [];
+  if (cr) tiles.push(`<button class="cbt cbt-earn" type="button" data-cbgo="creator"><span class="cbt-ic" aria-hidden="true">🎬</span><span class="cbt-tx"><small>${esc(L("Kiếm tiền", "Earn"))}</small>`
+    + `<b>${esc(L(`${cbNum(cr.per)} view = ${cbNum(cr.rate)} 💎 Blue`, `${cbNum(cr.per)} views = ${cbNum(cr.rate)} 💎 Blue`))}</b>`
+    + `<span>${esc(L("Làm video về CloudBlue trên TikTok, YouTube, Facebook… View càng tăng, 💎 càng nhiều — dùng thuê cloud phone.", "Make videos about CloudBlue on TikTok, YouTube, Facebook… More views, more 💎 — spend it on cloud phones."))}</span></span>`
+    + `<span class="cbt-go">${esc(L("Bắt đầu kiếm tiền", "Start earning"))}</span></button>`);
+  const chips = [];
+  if (tc) chips.push(L(`💰 Nạp từ ${vnd(tc.levels[0].min)} nhận mã đến ${tc.levels[tc.levels.length - 1].pct}%`, `💰 Top up ${vnd(tc.levels[0].min)}+ for up to ${tc.levels[tc.levels.length - 1].pct}% off`));
+  if (tr) chips.push(+tr.need > 0 ? L(`📱 Nạp ${vnd(tr.need)} dùng thử ${cbFreeDur(CPpricing)}`, `📱 Top up ${vnd(tr.need)} → ${cbFreeDur(CPpricing)} free trial`) : L(`📱 Dùng thử ${cbFreeDur(CPpricing)} miễn phí`, `📱 ${cbFreeDur(CPpricing)} free trial`));
+  const n = PMY && Array.isArray(PMY.codes) ? PMY.codes.filter(c => c.usable).length : 0;
+  if (n) chips.push(L(`🎫 Bạn có ${n} mã giảm giá`, `🎫 You have ${n} code${n > 1 ? "s" : ""}`));
+  if (chips.length) tiles.push(`<button class="cbt cbt-ofr" type="button" data-cbgo="offers"><span class="cbt-ic" aria-hidden="true">🎁</span><span class="cbt-tx"><small>${esc(L("Ưu đãi", "Offers"))}</small>`
+    + `<b>${esc(L("Ưu đãi cloud phone đang có", "Cloud phone offers"))}</b><span class="cbt-chips">${chips.map(c => `<i>${esc(c)}</i>`).join("")}</span></span>`
+    + `<span class="cbt-go">${esc(L("Xem ưu đãi", "See offers"))}</span></button>`);
+  box.innerHTML = tiles.join(""); box.classList.toggle("one", tiles.length === 1); wr.hidden = !tiles.length;
+}
+
+/* ----- hộp thoại dùng chung ----- */
+function cbModal(id) {
+  let m = $(id);
+  if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = id; m.hidden = true; document.body.appendChild(m);
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-cbx]")) m.hidden = true; });
+    document.addEventListener("keydown", e => { if (e.key === "Escape" && !m.hidden) m.hidden = true; }); }
+  return m;
+}
+function cbClose() { return `<button class="btn ghost sm" type="button" data-cbx>${esc(L("Đóng", "Close"))}</button>`; }
+function cbCard(ic, title, body, act) { return `<section class="cbo-card"><span class="ic" aria-hidden="true">${ic}</span><div><b class="cbo-t">${esc(title)}</b>${body}</div>${act ? `<div class="cbo-act">${act}</div>` : ""}</section>`; }
+
+/* ----- 🎁 hộp Ưu đãi (bấm dòng chữ chạy / ô trang chủ) ----- */
+function openOffers() { cbModal("cbofr").hidden = false; cbOffersRender(); promoLoad(); }
+function cbOffersRender() {
+  const m = $("cbofr"); if (!m || m.hidden) return;
+  const P = PROMO || {}, sec = [], dl = +P.day_limit || 0;
+  if (P.topup && P.topup.levels && P.topup.levels.length) {
+    const tc = P.topup;
+    sec.push(cbCard("💰", L("Ưu đãi khi nạp", "Top-up bonus"),
+      `<div class="cbo-lv">${tc.levels.map(x => `<span>${esc(L(`Nạp 1 lần từ ${vnd(x.min)}`, `Top up ${vnd(x.min)}+ once`))} → <b>${esc(L(`mã giảm ${x.pct}%`, `${x.pct}% off`))}</b></span>`).join("")}</div>`
+      + `<p>${esc(L(`Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp đó), dùng 1 lần, hạn ${tc.days} ngày${+tc.max ? `, giảm tối đa ${vnd(tc.max)}` : ""}. Chỉ dùng cho cloud phone: thuê, gia hạn, nâng cấp máy.`,
+                   `One code per account (the highest level reached in that top-up), single use, valid ${tc.days} days${+tc.max ? `, up to ${vnd(tc.max)} off` : ""}. Cloud phones only: rent, renew, upgrade.`))}</p>`,
+      `<button class="btn sm" type="button" data-cbgo="topup">${esc(L("Nạp tiền", "Top up"))}</button>`));
+  }
+  if (P.trial && freeLive(CPpricing)) {
+    const tr = P.trial, my = PMY && PMY.trial, need = +tr.need || 0;
+    const act = !profile ? `<button class="btn ghost sm" type="button" data-cbgo="login">${esc(L("Đăng nhập", "Log in"))}</button>`
+      : my && my.used ? `<span class="pill">✓ ${esc(L("Đã dùng thử", "Trial used"))}</span>`
+      : my && !my.ok && need > 0 ? `<button class="btn sm" type="button" data-cbtop="${need}">${esc(L(`Nạp ${vnd(need)}`, `Top up ${vnd(need)}`))}</button>`
+      : `<button class="btn sm" type="button" data-cbgo="trial">${esc(L("Nhận máy dùng thử", "Get trial phone"))}</button>`;
+    sec.push(cbCard("📱", L(`Dùng thử cloud phone ${cbFreeDur(CPpricing)} miễn phí`, `Free ${cbFreeDur(CPpricing)} cloud phone trial`),
+      `<p>${esc(L(`${need > 0 ? `Dành cho tài khoản đã nạp 1 lần từ ${vnd(need)}. ` : ""}Mỗi tài khoản 1 máy (tối đa ${tr.ram}GB RAM · ${tr.cpu} nhân). Hết giờ, máy và dữ liệu tự xoá — muốn dùng tiếp thì thuê máy.`,
+                   `${need > 0 ? `For accounts that topped up ${vnd(need)}+ at once. ` : ""}One phone per account (up to ${tr.ram}GB RAM · ${tr.cpu} cores). When time's up the phone and its data are deleted — rent one to keep going.`))}</p>`, act));
+  }
+  if (P.wheel && lwLive()) sec.push(cbCard("🎡", L("Vòng quay may mắn", "Lucky wheel"), `<p>${esc(cbT(P.wheel))}</p>`, `<button class="btn ghost sm" type="button" data-cbgo="wheel">${esc(L("Mở vòng quay", "Open wheel"))}</button>`));
+  if (P.creator) sec.push(cbCard("🎬", L("Kiếm tiền", "Earn"), `<p>${esc(L(`Làm video về CloudBlue: ${cbNum(P.creator.per)} view = ${cbNum(P.creator.rate)} 💎 Blue. View tăng thì nhận thêm.`, `Make videos about CloudBlue: ${cbNum(P.creator.per)} views = ${cbNum(P.creator.rate)} 💎 Blue. More views, more Blue.`))}</p>`,
+    `<button class="btn ghost sm" type="button" data-cbgo="creator">${esc(L("Xem cách làm", "How it works"))}</button>`));
+  if (P.blue) sec.push(cbCard("💎", "Blue", `<p>${esc(cbT(P.blue))}</p>`, profile ? `<button class="btn ghost sm" type="button" data-cbgo="blue">${esc(L("Tích Blue", "Blue rewards"))}</button>` : ""));
+  if (dl > 0) sec.push(cbCard("🎟️", L("Mã giảm giá", "Discount codes"), `<p>${esc(L(`Mỗi tài khoản dùng tối đa ${dl} mã giảm giá mỗi ngày.`, `Each account can use up to ${dl} discount codes per day.`))}${PMY ? ` <b>${esc(L(`Hôm nay: ${+PMY.day_used || 0}/${dl}`, `Today: ${+PMY.day_used || 0}/${dl}`))}</b>` : ""}</p>`));
+  const mine = cbCodesHtml(), mineTop = !!(PMY && Array.isArray(PMY.codes) && PMY.codes.some(c => c.usable));
+  m.innerHTML = `<div class="dlg cbdlg" role="dialog" aria-modal="true" aria-labelledby="cbo-t"><div class="cb-top"><h3 id="cbo-t">🎁 ${esc(L("Ưu đãi", "Offers"))}</h3>${cbClose()}</div>`
+    + (mineTop ? mine : "") + (sec.join("") || `<div class="hint">${esc(L("Hiện chưa có ưu đãi nào.", "No offers right now."))}</div>`) + (mineTop ? "" : mine) + `</div>`;
+}
+function cbCodesHtml() {
+  if (!profile || !PMY) return "";
+  const cs = Array.isArray(PMY.codes) ? PMY.codes : [];
+  const rows = cs.map(c => {
+    const st = c.used ? L("Đã dùng", "Used") : c.usable ? L("Dùng được đến ", "Valid until ") + lwWhen(c.expires_at) : c.expires_at && new Date(c.expires_at) <= new Date() ? L("Hết hạn", "Expired") : L("Đã tắt", "Disabled");
+    return `<div class="cbk${c.usable ? "" : " off"}"><span class="p">${c.pct ? +c.pct + "%" : vnd(c.amount)}</span><span><code>${esc(c.code)}</code><small>${esc(cbSrc(c.src))} · ${esc(st)}${c.usable && c.share ? " · " + esc(L("🤝 tặng bạn bè được", "🤝 shareable")) : ""}</small></span>`
+      + (c.usable ? `<button class="btn ghost sm" type="button" data-cbcopy="${esc(c.code)}">${esc(L("Chép", "Copy"))}</button>` : "<span></span>") + `</div>`;
+  });
+  return `<div class="cb-h"><b>🎫 ${esc(L("Mã của tôi", "My codes"))}</b><span>${esc(L("chỉ dùng cho cloud phone", "cloud phones only"))}</span></div>`
+    + (rows.length ? `<div class="cbks">${rows.join("")}</div><div class="hint">${esc(L("Nhập ở ô “Mã giảm giá” khi thuê / gia hạn / nâng cấp máy — hoặc bấm chọn mã ngay dưới ô đó.", "Enter it in the “Discount code” box when renting / renewing / upgrading — or tap a code under that box."))}</div>`
+                   : `<div class="hint">${esc(L("Chưa có mã nào. Mã từ ưu đãi nạp, vòng quay, quà tặng sẽ nằm ở đây.", "No codes yet. Codes from top-up bonuses, the wheel and gifts show up here."))}</div>`);
+}
+
+/* ----- 🎫 chọn nhanh mã của tôi ngay dưới ô "Mã giảm giá" (thuê / gia hạn / nâng cấp máy) ----- */
+var CB_SCOPE = { cpn: "cp_new", cren: "cp_renew", cup: "cp_upgrade" };
+function cbPickHtml(name) {
+  const sc = CB_SCOPE[name], cs = sc && PMY && Array.isArray(PMY.codes) ? PMY.codes.filter(c => c.usable && (c.scopes || []).includes(sc)).slice(0, 6) : [];
+  if (!cs.length) return "";
+  return `<span>🎫 ${esc(L("Mã của bạn:", "Your codes:"))}</span>` + cs.map(c => `<button type="button" data-cbpick="${esc(c.code)}" data-cbpn="${name}">${esc(c.code)} <b>−${+c.pct}%</b></button>`).join("");
+}
+function cbPickWrap(name) { const h = cbPickHtml(name); return `<div class="cbpick" data-pick="${name}"${h ? "" : " hidden"}>${h}</div>`; }
+function cbPicks() {
+  document.querySelectorAll(".cbpick[data-pick]").forEach(el => { const h = cbPickHtml(el.dataset.pick); el.innerHTML = h; el.hidden = !h; });
+}
+
+/* ----- 🎬 Kiếm tiền ----- */
+async function openCreator() {
+  cbModal("cbcre").hidden = false; cbCreRender();
+  if (profile) { try { const r = await sb.rpc("creator_my"); if (!r.error) CRE = r.data; } catch (e) {} cbCreRender(); }
+}
+function cbCreRender() {
+  const m = $("cbcre"); if (!m || m.hidden) return;
+  const cr = PROMO && PROMO.creator, host = (location.host || "cloudblue.vn").replace(/^www\./, "");
+  if (!cr) { m.innerHTML = `<div class="dlg cbdlg" role="dialog" aria-modal="true" aria-labelledby="cbc-t"><div class="cb-top"><h3 id="cbc-t">🎬 ${esc(L("Kiếm tiền", "Earn"))}</h3>${cbClose()}</div><div class="hint">${esc(L("Chương trình Kiếm tiền đang tạm dừng.", "The earn program is paused right now."))}</div></div>`; return; }
+  const pl = (cr.platforms || []).filter(p => p !== "other").map(cbPlat), other = (cr.platforms || []).includes("other");
+  const plats = pl.join(", ") + (other ? L(" và nền tảng khác", " and other platforms") : "");
+  const caps = [+cr.video_max ? L(`tối đa ${cbNum(cr.video_max)} 💎 / video`, `up to ${cbNum(cr.video_max)} 💎 per video`) : "", +cr.month_max ? L(`${cbNum(cr.month_max)} 💎 / tháng`, `${cbNum(cr.month_max)} 💎 per month`) : "",
+                L(`gửi tối đa ${cr.day_submit} video / ngày`, `up to ${cr.day_submit} videos per day`)].filter(Boolean).join(" · ");
+  const stats = CRE ? `<div class="cbc-st"><span>${esc(L("Đã nhận", "Earned"))} <b>${cbNum(CRE.total)} 💎</b></span><span>${esc(L("Tháng này", "This month"))} <b>${cbNum(CRE.month)} 💎</b></span><span>${esc(L("Chờ duyệt", "Pending"))} <b>${cbNum(CRE.pending)}</b></span></div>` : "";
+  const steps = [L(`Quay video giới thiệu CloudBlue — ví dụ treo game 24/7 trên cloud phone, cách thuê máy, so sánh giá.`, `Film a video about CloudBlue — e.g. AFK gaming 24/7 on a cloud phone, how to rent one, price comparisons.`),
+                 L(`Đăng công khai lên ${plats}. Nói hoặc ghi rõ tên web ${host}.`, `Post it publicly on ${plats}. Say or show the site name ${host}.`),
+                 L("Dán link video vào ô bên dưới. Admin mở video kiểm tra rồi cộng 💎 theo số view.", "Paste the link below. An admin checks the video and adds 💎 for its views."),
+                 L("View tăng thì bấm “Báo view mới” — mỗi lần duyệt cộng thêm 💎 cho phần view mới.", "Views keep growing? Tap “Report new views” — each review adds 💎 for the new views.")];
+  const rules = [caps, L("Video của chính bạn, để công khai. Không mua view, không đăng lại video người khác — vi phạm bị từ chối.", "Your own video, set to public. No bought views, no re-uploads of other people's videos — those are rejected."),
+                 L(`💎 Blue chỉ dùng cho cloud phone (thuê / gia hạn), 1 💎 = 1đ, dùng được khi tài khoản đã nạp từ ${vnd(cr.blue_min || 10000)}. Không dùng cho sản phẩm khác.`,
+                   `💎 Blue is for cloud phones only (rent / renew), 1 💎 = 1đ, usable once your account has topped up ${vnd(cr.blue_min || 10000)}+. Not for other products.`)];
+  const form = profile ? `<form class="cbc-form" id="cbc-form" novalidate>
+      <label class="full">${esc(L("Link video", "Video link"))}<input class="in" id="cbc-url" type="url" maxlength="300" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://www.tiktok.com/@ban/video/…"></label>
+      <label>${esc(L("Số view hiện tại (nếu có)", "Current views (optional)"))}<input class="in" id="cbc-views" type="number" min="0" step="1" inputmode="numeric"></label>
+      <label>${esc(L("Ghi chú cho admin", "Note for the admin"))}<input class="in" id="cbc-note" maxlength="300" placeholder="${esc(L("không bắt buộc", "optional"))}"></label>
+      <div class="err full" id="cbc-err" role="alert"></div>
+      <button class="btn full" type="submit" id="cbc-send">${esc(L("Gửi video", "Submit video"))}</button></form>`
+    : `<div class="cbc-login"><button class="btn" type="button" data-cbgo="login">${esc(L("Đăng nhập để gửi video", "Log in to submit a video"))}</button></div>`;
+  const vids = CRE && Array.isArray(CRE.videos) ? CRE.videos : [];
+  const keep = id => { const el = $(id); return el ? el.value : ""; }, u0 = keep("cbc-url"), v0 = keep("cbc-views"), n0 = keep("cbc-note");
+  m.innerHTML = `<div class="dlg cbdlg cbcdlg" role="dialog" aria-modal="true" aria-labelledby="cbc-t"><div class="cb-top"><h3 id="cbc-t">🎬 ${esc(L("Kiếm tiền", "Earn"))}</h3>${cbClose()}</div>
+    <div class="cbc-hero"><div class="cbc-big">${esc(L(`${cbNum(cr.per)} view`, `${cbNum(cr.per)} views`))} = <b>${cbNum(cr.rate)} 💎</b></div><div class="cbc-sub">${esc(L("1 💎 Blue = 1đ khi thuê / gia hạn cloud phone", "1 💎 Blue = 1đ on cloud phone rentals / renewals"))}</div>${stats}</div>
+    <div class="cb-h"><b>${esc(L("Cách làm", "How it works"))}</b></div><ol class="cbc-steps">${steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+    <ul class="cbc-rules">${rules.map(s => `<li>${esc(s)}</li>`).join("")}</ul>${form}
+    ${vids.length ? `<div class="cb-h"><b>${esc(L("Video của bạn", "Your videos"))}</b><span>${vids.length}</span></div><div class="cbc-list">${vids.map(cbVidRow).join("")}</div>` : ""}</div>`;
+  if (u0 && $("cbc-url")) $("cbc-url").value = u0; if (v0 && $("cbc-views")) $("cbc-views").value = v0; if (n0 && $("cbc-note")) $("cbc-note").value = n0;
+}
+function cbVidRow(v) {
+  const st = { pending: ["wt", L("Chờ duyệt", "Pending")], ok: ["ok", L("Đã duyệt", "Approved")], rejected: ["bad", L("Từ chối", "Rejected")] }[v.status] || ["", v.status];
+  const short = String(v.url || "").replace(/^https?:\/\/(www\.|m\.)?/i, "");
+  return `<div class="cbc-v"><div class="cbc-v1"><span class="pill cbst ${st[0]}">${esc(st[1])}</span><b>${esc(cbPlat(v.platform))}</b><a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(short.length > 48 ? short.slice(0, 47) + "…" : short)}</a></div>`
+    + `<div class="cbc-v2"><span>${esc(L("View đã duyệt", "Verified views"))}: <b>${cbNum(v.views)}</b>${v.claimed != null && v.status === "pending" ? ` · ${esc(L("bạn báo", "you reported"))} ${cbNum(v.claimed)}` : ""}</span><span>${esc(L("Đã nhận", "Earned"))}: <b>${cbNum(v.paid)} 💎</b></span></div>`
+    + (v.admin_note ? `<div class="cbc-note">💬 ${esc(v.admin_note)}</div>` : "")
+    + (v.status === "ok" ? `<div class="cbc-rep"><input class="in" type="number" min="0" step="1" inputmode="numeric" placeholder="${esc(L("Số view mới", "New view count"))}" data-cbrepin="${+v.id}" aria-label="${esc(L("Số view mới", "New view count"))}"><button class="btn ghost sm" type="button" data-cbrep="${+v.id}">${esc(L("Báo view mới", "Report new views"))}</button></div>` : "")
+    + `</div>`;
+}
+document.addEventListener("submit", e => {
+  if (!e.target || e.target.id !== "cbc-form") return;
+  e.preventDefault();
+  const b = $("cbc-send"), url = ($("cbc-url").value || "").trim(), views = $("cbc-views").value.trim(), note = ($("cbc-note").value || "").trim();
+  if (!/^https?:\/\/\S+\.\S+\/\S+/i.test(url)) { $("cbc-err").textContent = errMsg("CREATOR_BAD_URL"); $("cbc-url").focus(); return; }
+  busy(b, async () => {
+    const { data, error } = await sb.rpc("creator_submit", { p_url: url, p_views: views === "" ? null : Math.max(0, Math.floor(+views)), p_note: note || null });
+    if (error) { $("cbc-err").textContent = errMsg(error); return; }
+    $("cbc-url").value = ""; $("cbc-views").value = ""; $("cbc-note").value = "";
+    toast(L("Đã gửi video — admin kiểm tra xong sẽ cộng 💎 vào tài khoản của bạn.", "Video submitted — you'll get 💎 once an admin checks it."));
+    try { const r = await sb.rpc("creator_my"); if (!r.error) CRE = r.data; } catch (er) {}
+    cbCreRender();
+  });
+});
+
+/* ----- bấm nút chung (uỷ quyền trên document) ----- */
+document.addEventListener("click", e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const go = t.closest("[data-cbgo]");
+  if (go) {
+    if (go.tagName === "A") e.preventDefault();
+    const k = go.dataset.cbgo, close = () => { ["cbofr", "cbcre"].forEach(id => { const m = $(id); if (m && k !== "creator" && k !== "offers") m.hidden = true; }); };
+    if (k === "creator") { ["cbofr", "bluedlg"].forEach(id => { const o = $(id); if (o) o.hidden = true; }); openCreator(); }
+    else if (k === "offers") openOffers();
+    else if (k === "topup") { close(); openTopup(); }
+    else if (k === "trial") { close(); try { show("topup", false); } catch (er) {} openFree(); }
+    else if (k === "wheel") { close(); openLwheel(); }
+    else if (k === "blue") { close(); openBlue(); }
+    else if (k === "login") { close(); openAuth("login"); }
+    return;
+  }
+  const tp = t.closest("[data-cbtop]");
+  if (tp) { ["cbofr", "cbcre"].forEach(id => { const m = $(id); if (m) m.hidden = true; }); try { show("cporderdlg", false); } catch (er) {} openTopup(+tp.dataset.cbtop || 0); return; }
+  const am = t.closest("[data-cbamt]");
+  if (am) { $("tp-amt").value = am.dataset.cbamt; try { markAmt(); convHint(); } catch (er) {} return; }
+  const cp = t.closest("[data-cbcopy]");
+  if (cp) { const c = cp.dataset.cbcopy; (navigator.clipboard ? navigator.clipboard.writeText(c) : Promise.reject()).then(() => toast(L("Đã chép mã " + c, "Copied " + c)), () => toast(c)); return; }
+  const pk = t.closest("[data-cbpick]");
+  if (pk) {
+    const n = pk.dataset.cbpn, P = PRM[n], i = P && $(P.inp); if (!i) return;
+    i.value = pk.dataset.cbpick; i.dispatchEvent(new Event("input", { bubbles: true }));
+    const w = i.closest(".promo"), ab = w && w.querySelector("[data-papply]"); if (ab && !ab.disabled) ab.click();
+    return;
+  }
+  const rp = t.closest("[data-cbrep]");
+  if (rp) {
+    const id = +rp.dataset.cbrep, inp = document.querySelector(`[data-cbrepin="${id}"]`), v = inp ? inp.value.trim() : "";
+    if (v === "" || !(+v >= 0)) { if (inp) inp.focus(); toast(errMsg("CREATOR_BAD_VIEWS"), 1); return; }
+    busy(rp, async () => {
+      const { error } = await sb.rpc("creator_report", { p_id: id, p_views: Math.floor(+v) });
+      if (error) { toast(errMsg(error), 1); return; }
+      toast(L("Đã báo view mới — chờ admin kiểm tra.", "New views reported — waiting for an admin check."));
+      try { const r = await sb.rpc("creator_my"); if (!r.error) CRE = r.data; } catch (er) {}
+      cbCreRender();
+    });
+  }
+});
+
+/* ----- lỗi mới (chữ có số lấy theo cài đặt hiện tại) ----- */
+Object.defineProperty(ERR, "FREE_NEED_TOPUP", { enumerable: true, configurable: true, get: () => `Dùng thử miễn phí dành cho tài khoản đã nạp 1 lần từ ${vnd(cbNeed() || 50000)} — nạp xong quay lại nhận máy nhé.` });
+Object.defineProperty(ERR_EN, "FREE_NEED_TOPUP", { enumerable: true, configurable: true, get: () => `Free trials are for accounts that topped up ${vnd(cbNeed() || 50000)}+ at once — top up, then come back.` });
+Object.defineProperty(ERR, "PROMO_DAY_LIMIT", { enumerable: true, configurable: true, get: () => `Mỗi tài khoản chỉ dùng tối đa ${+(PROMO && PROMO.day_limit) || 2} mã giảm giá mỗi ngày — hôm nay bạn đã dùng đủ, mai dùng tiếp nhé.` });
+Object.defineProperty(ERR_EN, "PROMO_DAY_LIMIT", { enumerable: true, configurable: true, get: () => `Each account can use up to ${+(PROMO && PROMO.day_limit) || 2} discount codes per day — you've reached today's limit.` });
+Object.assign(ERR, {
+  CREATOR_OFF: "Chương trình Kiếm tiền đang tạm dừng.", CREATOR_BAD_URL: "Link video không đúng — dán link đầy đủ bắt đầu bằng https://",
+  CREATOR_PLATFORM: "Nền tảng này chưa được nhận — xem danh sách nền tảng trong mục Kiếm tiền.", CREATOR_DUP_MINE: "Video này bạn đã gửi rồi — bấm “Báo view mới” ở danh sách video.",
+  CREATOR_DUP: "Video này đã có tài khoản khác gửi.", CREATOR_DAY_LIMIT: "Hôm nay bạn đã gửi đủ số video — mai gửi tiếp nhé.",
+  CREATOR_PENDING_LIMIT: "Bạn đang có nhiều video chờ duyệt — đợi admin duyệt rồi gửi tiếp.", CREATOR_NOT_FOUND: "Không tìm thấy video.",
+  CREATOR_REJECTED: "Video này đã bị từ chối — xem lý do bên dưới video.", CREATOR_BAD_VIEWS: "Nhập số view đang hiện trên video.",
+  CREATOR_WAIT: "Mỗi video báo view mới tối đa 12 giờ / lần — thử lại sau nhé.", CREATOR_HOLD: "Tài khoản khách đang bị khoá / giữ Blue — xem 🛡️ Bảo mật trước khi cộng." });
+Object.assign(ERR_EN, {
+  CREATOR_OFF: "The earn program is paused.", CREATOR_BAD_URL: "That video link isn't valid — paste the full link starting with https://",
+  CREATOR_PLATFORM: "That platform isn't accepted — see the list in Earn.", CREATOR_DUP_MINE: "You've already submitted this video — use “Report new views” in your list.",
+  CREATOR_DUP: "Another account has already submitted this video.", CREATOR_DAY_LIMIT: "You've submitted today's maximum — come back tomorrow.",
+  CREATOR_PENDING_LIMIT: "You have many videos waiting for review — wait for them first.", CREATOR_NOT_FOUND: "Video not found.",
+  CREATOR_REJECTED: "This video was rejected — see the reason under it.", CREATOR_BAD_VIEWS: "Enter the view count shown on the video.",
+  CREATOR_WAIT: "Each video can report new views once every 12 hours — try later.", CREATOR_HOLD: "This customer is locked / their Blue is on hold." });
+
+/* ===================== ⚙️ ADMIN: cài đặt ưu đãi · duyệt video · sổ thưởng =====================
+   Ô nhập, nhãn, gợi ý, thống kê đều do máy chủ trả về cho admin (máy chủ kiểm quyền) — trang này chỉ vẽ lại. */
+async function cbaLoad() {
+  const st = $("cba-state"); if (!st) return;
+  st.textContent = "Đang tải…";
+  const { data, error } = await sb.rpc("admin_rules_get");
+  if (error) { st.innerHTML = /admin_rules_get|function|schema cache/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v35.sql</b> trên Supabase." : esc(errMsg(error)); $("cba-form").innerHTML = ""; return; }
+  CBA = data; cbaRender();
+}
+function cbaField(f) {
+  const v = CBA.form[f.k], id = "cba-" + f.k, hint = f.h ? `<small>${esc(f.h)}</small>` : "";
+  if (f.t === "bool") return `<label class="mtrow full"><span class="sw"><input type="checkbox" id="${id}" data-cbk="${esc(f.k)}" data-cbt="bool"${v ? " checked" : ""}><i></i></span><span><b>${esc(f.l)}</b>${hint}</span></label>`;
+  if (f.t === "reset") return `<label class="mtrow full"><span class="sw"><input type="checkbox" id="${id}" data-cbk="${esc(f.k)}" data-cbt="reset"><i></i></span><span><b>${esc(f.l)}</b><small>${esc(v ? "Đợt hiện tại tính từ " + new Date(v).toLocaleString("vi-VN") : "Đợt hiện tại: từ lúc bắt đầu")}${f.h ? " · " + esc(f.h) : ""}</small></span></label>`;
+  if (f.t === "lines") return `<label class="full"><span>${esc(f.l)}</span>${hint}<textarea class="in" id="${id}" data-cbk="${esc(f.k)}" data-cbt="lines" rows="3">${esc(v || "")}</textarea></label>`;
+  const num = f.t === "int" || f.t === "money";
+  return `<label class="${num ? "" : "full"}"><span>${esc(f.l)}</span>${hint}<input class="in" id="${id}" data-cbk="${esc(f.k)}" data-cbt="${esc(f.t)}" ${num ? 'type="number" min="0" step="1" inputmode="numeric"' : 'type="text" autocomplete="off" spellcheck="false"'} value="${esc(v == null ? "" : String(v))}"></label>`;
+}
+function cbaRender() {
+  if (!CBA || !$("cba-form")) return;
+  const groups = [];
+  (CBA.schema || []).forEach(f => { let g = groups.find(x => x.g === f.g); if (!g) groups.push(g = { g: f.g, f: [] }); g.f.push(f); });
+  $("cba-form").innerHTML = groups.map(g => `<fieldset class="cba-g"><legend>${esc(g.g)}</legend><div class="cba-fs">${g.f.map(cbaField).join("")}</div></fieldset>`).join("");
+  $("cba-state").innerHTML = `Đã lưu lúc <b>${CBA.updated_at ? new Date(CBA.updated_at).toLocaleString("vi-VN") : "—"}</b>. Đổi là áp dụng ngay cho web + app Android + app PC (không cần cập nhật app).`;
+  $("cba-stats").innerHTML = (Array.isArray(CBA.stats) ? CBA.stats : []).map(x => `<div><span>${esc(x.l)}</span><b>${esc(String(x.v == null ? 0 : x.v))}</b></div>`).join("");
+  const sel = $("cbr-kind");
+  if (sel && !sel.options.length) sel.innerHTML = (CBA.reward_kinds || []).map(x => `<option value="${esc(x.k)}">${esc(x.l)}</option>`).join("");
+}
+async function cbaSave() {
+  const p = {};
+  document.querySelectorAll("#cba-form [data-cbk]").forEach(el => {
+    const k = el.dataset.cbk, t = el.dataset.cbt;
+    if (t === "bool") p[k] = el.checked; else if (t === "reset") { if (el.checked) p[k] = true; } else p[k] = el.value.trim();
+  });
+  const { data, error } = await sb.rpc("admin_rules_save", { p });
+  if (error) { const m = String(error.message || ""), i = m.indexOf("BAD_INPUT:"); toast(i >= 0 ? m.slice(i + 10).trim() : errMsg(error), 1); return; }
+  CBA = data; cbaRender(); toast("Đã lưu — web + app áp dụng ngay."); promoLoad();
+}
+async function cbcLoad(stv) {
+  if (!$("cbc-list")) return;
+  CBC = Object.assign(CBC || {}, { st: stv || (CBC && CBC.st) || "pending" });
+  document.querySelectorAll("#cbc-seg button").forEach(b => b.classList.toggle("on", b.dataset.s === CBC.st));
+  const { data, error } = await sb.rpc("admin_creator_list", { p_status: CBC.st, p_limit: 200 });
+  if (error) { $("cbc-state").innerHTML = /admin_creator_list|function|schema cache/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL <b>cloud-phones-v35.sql</b> trên Supabase." : esc(errMsg(error)); $("cbc-list").innerHTML = ""; return; }
+  CBC.d = data; cbcRender();
+}
+function cbcCalc(v, views) {        // xem trước số 💎 sẽ cộng (máy chủ tính lại khi bấm — đây chỉ để admin nhìn)
+  const r = (CBC && CBC.d && CBC.d.rules) || {}, per = +r.per || 1000, rate = +r.rate || 0;
+  let amt = Math.max(0, Math.floor((+views || 0) / per) - (+v.paid_units || 0)) * rate;
+  if (+r.video_max > 0) amt = Math.min(amt, Math.max(0, +r.video_max - (+v.paid_blue || 0)));
+  if (+r.month_max > 0) amt = Math.min(amt, Math.max(0, +r.month_max - (+v.month_paid || 0)));
+  return amt;
+}
+function cbcRender() {
+  const d = CBC && CBC.d; if (!d) return;
+  const r = d.rules || {}, c = d.counts || {};
+  $("cbc-state").innerHTML = `${r.on ? "🟢 <b>Đang bật</b>" : "⚪ <b>Đang tắt</b> (khách không thấy ô Kiếm tiền)"} · ${cbNum(r.per)} view = ${cbNum(r.rate)} 💎 · tối đa ${+r.video_max ? cbNum(r.video_max) : "∞"} 💎/video · ${+r.month_max ? cbNum(r.month_max) : "∞"} 💎/tháng — đổi ở mục cài đặt phía trên.`;
+  [["pending", c.pending], ["ok", c.ok], ["rejected", c.rejected]].forEach(([k, n]) => { const b = document.querySelector(`#cbc-seg button[data-s="${k}"] i`); if (b) b.textContent = n || 0; });
+  const vs = d.videos || [];
+  $("cbc-list").innerHTML = vs.length ? vs.map(v => `<div class="cbcv" data-vid="${+v.id}">
+      <div class="cbcv-h"><b>${esc(v.username || "?")}</b><span class="hint">${esc(v.email || "")}</span>${v.locked ? '<span class="pill bad">Đã khoá</span>' : ""}${v.blue_hold ? '<span class="pill bad">Đang giữ Blue</span>' : ""}<span class="hint">· ${cbNum(v.user_videos)} video · tháng này ${cbNum(v.month_paid)} 💎</span></div>
+      <div class="cbcv-l"><span class="pill">${esc(cbPlat(v.platform))}</span><a href="${esc(v.url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(v.url)}</a></div>
+      <div class="hint">Khách báo: <b>${v.claimed_views == null ? "—" : cbNum(v.claimed_views)}</b> view · đã duyệt ${cbNum(v.views)} view · đã trả ${cbNum(v.paid_blue)} 💎 · gửi ${esc(new Date(v.asked_at || v.at).toLocaleString("vi-VN"))}${v.note ? ` · khách ghi: “${esc(v.note)}”` : ""}${v.admin_note ? ` · admin ghi: “${esc(v.admin_note)}”` : ""}</div>
+      <div class="cbcv-a"><label>Số view đang hiện trên video<input class="in" type="number" min="0" step="1" inputmode="numeric" data-cbcv="${+v.id}" value="${v.claimed_views == null ? "" : +v.claimed_views}"></label>
+        <label>Ghi chú (khách thấy)<input class="in" maxlength="300" data-cbcn="${+v.id}" value="${esc(v.admin_note || "")}"></label>
+        <span class="cbcv-pv" data-cbcp="${+v.id}"></span>
+        <button class="btn okb sm" type="button" data-cbcpay="${+v.id}">✓ Duyệt & cộng 💎</button>${v.status !== "rejected" ? `<button class="btn ghost sm" type="button" data-cbcrej="${+v.id}">✕ Từ chối</button>` : ""}</div></div>`).join("")
+    : `<div class="hint">Không có video nào ở mục này.</div>`;
+  vs.forEach(v => cbcPrev(v.id));
+}
+function cbcPrev(id) {
+  const v = ((CBC && CBC.d && CBC.d.videos) || []).find(x => +x.id === +id), inp = document.querySelector(`[data-cbcv="${id}"]`), out = document.querySelector(`[data-cbcp="${id}"]`);
+  if (!v || !inp || !out) return; const a = cbcCalc(v, inp.value);
+  out.textContent = inp.value === "" ? "" : a > 0 ? `→ cộng ${cbNum(a)} 💎` : "→ chưa có mốc view mới (0 💎)";
+}
+async function cbcAct(id, act) {
+  const views = document.querySelector(`[data-cbcv="${id}"]`), note = document.querySelector(`[data-cbcn="${id}"]`);
+  if (act === "pay" && (!views || views.value.trim() === "")) { if (views) views.focus(); toast("Mở video, nhập số view đang hiện rồi bấm duyệt.", 1); return; }
+  if (act === "reject" && !confirm("Từ chối video này? Khách sẽ thấy ghi chú làm lý do.")) return;
+  const { data, error } = await sb.rpc("admin_creator_review", { p_id: id, p_action: act, p_views: act === "pay" ? Math.floor(+views.value) : null, p_note: note ? note.value.trim() || null : null });
+  if (error) { toast(errMsg(error), 1); return; }
+  toast(act === "pay" ? (+data.paid > 0 ? `Đã cộng ${cbNum(data.paid)} 💎 cho khách.` : "Đã duyệt (chưa có mốc view mới nên không cộng).") : "Đã từ chối video.");
+  cbcLoad();
+}
+async function cbrLoad() {
+  if (!$("cbr-body")) return;
+  const k = $("cbr-kind") ? $("cbr-kind").value || null : null;
+  const { data, error } = await sb.rpc("admin_promo_rewards", { p_kind: k, p_limit: 300 });
+  if (error) { $("cbr-body").innerHTML = `<tr><td colspan="6">${/admin_promo_rewards|function|schema cache/i.test(error.message || "") ? "⚠️ Chưa chạy file SQL cloud-phones-v35.sql trên Supabase." : esc(errMsg(error))}</td></tr>`; return; }
+  $("cbr-body").innerHTML = (data || []).map(x => `<tr><td>${esc(new Date(x.at).toLocaleString("vi-VN"))}</td><td>${esc(x.username || "?")}</td><td>${esc(x.kind_label || "")}</td>`
+    + `<td>${x.amount ? vnd(x.amount) : ""}</td><td style="white-space:normal">${esc(x.what || "")}</td><td>${esc(x.state || "")}${x.note ? ` <span class="hint">${esc(x.note)}</span>` : ""}</td></tr>`).join("")
+    || `<tr><td colspan="6">Chưa có dòng nào.</td></tr>`;
+}
+Object.assign(SUB_HOOK, { "site:promo35": () => { cbaLoad().then(() => cbrLoad()); cbcLoad(); } });
+document.addEventListener("click", e => {
+  const t = e.target; if (!t || !t.closest) return;
+  if (t.closest("#cba-save")) { const b = $("cba-save"); busy(b, cbaSave); return; }
+  if (t.closest("#cba-reload")) { cbaLoad(); return; }
+  const sg = t.closest("#cbc-seg button[data-s]"); if (sg) { cbcLoad(sg.dataset.s); return; }
+  if (t.closest("#cbc-reload")) { cbcLoad(); return; }
+  if (t.closest("#cbr-reload")) { cbrLoad(); return; }
+  const py = t.closest("[data-cbcpay]"); if (py) { busy(py, () => cbcAct(+py.dataset.cbcpay, "pay")); return; }
+  const rj = t.closest("[data-cbcrej]"); if (rj) { busy(rj, () => cbcAct(+rj.dataset.cbcrej, "reject")); return; }
+  const jp = t.closest("[data-cbjump]"); if (jp) { try { fillSite(); } catch (er) {} setTab("site"); subShow("site", "promo35"); }
+});
+document.addEventListener("input", e => { const t = e.target; if (t && t.dataset && t.dataset.cbcv) cbcPrev(+t.dataset.cbcv); });
+document.addEventListener("change", e => { if (e.target && e.target.id === "cbr-kind") cbrLoad(); });
+try { promoLoad(); } catch (e) {}
+
+/* ----- 🤖 Đổi Android: máy mới tạo lỗi → khách tự bấm Thử lại (SQL doi-android-1511) ----- */
+Object.assign(ERR, { SWITCH_WAIT: "Vừa thử xong — đợi 2 phút rồi bấm lại nhé.", SWITCH_RETRY_LIMIT: "Bạn đã bấm thử lại 5 lần — admin sẽ xử lý máy này, nhắn shop nếu cần gấp.",
+  SWITCH_EXPIRED: "Máy đã hết hạn nên không tạo lại được — nhắn shop nếu cần hỗ trợ." });
+Object.assign(ERR_EN, { SWITCH_WAIT: "Just tried — wait 2 minutes, then tap again.", SWITCH_RETRY_LIMIT: "You've retried 5 times — an admin will handle this phone; contact support if it's urgent.",
+  SWITCH_EXPIRED: "This phone has expired, so it can't be recreated — contact support if you need help." });
+function cbSwRetryOk(p) { return !!(p && p.replaces && p.status === "error" && !p.shared && /^Đổi Android: /.test(p.error || "")); }
+document.addEventListener("click", e => {
+  const b = e.target && e.target.closest ? e.target.closest("[data-cbswretry]") : null; if (!b) return;
+  busy(b, async () => {
+    const { error } = await sb.rpc("cloudphone_switch_retry", { p_id: b.dataset.cbswretry });
+    if (error) { toast(/cloudphone_switch_retry|schema cache|does not exist/i.test(error.message || "") ? L("Chưa thử lại được lúc này — nhắn shop để được tạo lại máy.", "Can't retry right now — contact support.") : errMsg(error), 1); return; }
+    toast(L("Đang tạo lại máy (2–5 phút). Trang tự cập nhật.", "Recreating the phone (2–5 min). This page updates by itself."));
+    try { openCloud(); } catch (er) {}
+  });
+});
+
+/* ----- 💎 Blue: thêm dòng Kiếm tiền + ghi rõ chỉ dùng cho cloud phone ----- */
+function cbBlueMore() {
+  const cr = PROMO && PROMO.creator; if (!cr) return "";
+  return L(`🎬 <b>Kiếm tiền</b>: làm video về CloudBlue — ${cbNum(cr.per)} view = <b>${cbNum(cr.rate)} Blue</b>. <a href="#" data-cbgo="creator">Xem cách làm</a>`,
+           `🎬 <b>Earn</b>: make videos about CloudBlue — ${cbNum(cr.per)} views = <b>${cbNum(cr.rate)} Blue</b>. <a href="#" data-cbgo="creator">How it works</a>`);
+}
 
 </script>
 <script>
