@@ -624,6 +624,8 @@ public final class Api {
                 {"WHEEL_PRICE_CHANGED", "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.", "The extra-spin price just changed — check it and try again."},
                 {"WHEEL_NEED_TOPUP", "Nạp từ 100.000đ trong chương trình để được quay thêm.", "Top up 100,000đ during the event to buy extra spins."},
                 {"WHEEL_BUY_LIMIT", "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.", "You've reached today's extra-spin limit — come back tomorrow."},
+                {"WHEEL_TERMS_CHANGED", "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.", "The spin / ticket terms just changed — check them and try again."},
+                {"WHEEL_NO_LUCKY", "Hiện không bán vé may mắn.", "Lucky tickets aren't on sale right now."},
                 // mã tặng máy (SQL v23) — đặt TRƯỚC "TOO_MANY" để PROMO_TOO_MANY không bị hiểu nhầm
                 {"PROMO_TOO_MANY", "Bạn nhập sai mã quá nhiều lần — thử lại sau 10 phút.", "Too many wrong codes — try again in 10 minutes."},
                 {"PROMO_INVALID", "Mã không đúng hoặc đã bị tắt.", "Wrong or disabled code."},

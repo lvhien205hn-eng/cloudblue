@@ -73,6 +73,47 @@ final class Wheel {
         return m > 0 ? m : any;
     }
 
+    /** 🍀 vé may mắn: {giá, % trúng nhóm cao, mức thấp nhất nhóm cao, mức cao nhất, mức còn lại (-1 = không có)} · null = không bán vé (SQL cũ / admin tắt). */
+    static double[] lucky() {
+        JSONObject s = st; if (s == null || s.optLong("lucky_price") <= 0) return null;
+        JSONArray p = s.optJSONArray("lucky_pool"); if (p == null || p.length() == 0) return null;
+        int lo = Integer.MAX_VALUE; for (int i = 0; i < p.length(); i++) lo = Math.min(lo, p.optJSONObject(i).optInt("pct"));
+        double rate = 0, all = 0; int gl = Integer.MAX_VALUE, gh = 0; boolean up = false;
+        for (int i = 0; i < p.length(); i++) { JSONObject x = p.optJSONObject(i); int q = x.optInt("pct"); double r = x.optDouble("rate", 0); all += r;
+            if (q > lo) { up = true; rate += r; gl = Math.min(gl, q); gh = Math.max(gh, q); } }
+        if (!up) { rate = all; gl = lo; gh = lo; }
+        return new double[]{s.optLong("lucky_price"), Math.round(rate * 100) / 100.0, gl, gh, up ? lo : -1};
+    }
+    static String rate(double v) {
+        String t = v == Math.rint(v) ? String.valueOf((long) v) : String.format(java.util.Locale.US, "%.2f", v).replaceAll("0+$", "");
+        return Ui.L(t.replace('.', ','), t);
+    }
+    static String luckyLine(double[] k) {
+        String rg = k[2] == k[3] ? (int) k[2] + "%" : (int) k[2] + "–" + (int) k[3] + "%";
+        return Ui.L(rate(k[1]) + "% trúng mã " + rg + (k[4] >= 0 ? " · còn lại mã " + (int) k[4] + "%" : ""),
+                rate(k[1]) + "% chance of a " + rg + " code" + (k[4] >= 0 ? " · otherwise " + (int) k[4] + "%" : ""));
+    }
+    /** [5, 10] → "5% hoặc 10%" */
+    static String pcts(JSONArray a) {
+        List<Integer> v = new ArrayList<>();
+        for (int i = 0; a != null && i < a.length(); i++) if (!v.contains(a.optInt(i))) v.add(a.optInt(i));
+        java.util.Collections.sort(v);
+        if (v.isEmpty()) return "";
+        if (v.size() == 1) return v.get(0) + "%";
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < v.size() - 1; i++) b.append(i > 0 ? "%, " : "").append(v.get(i));
+        return b + "%" + Ui.L(" hoặc ", " or ") + v.get(v.size() - 1) + "%";
+    }
+    /** mặt vé: các mức giải của vé lặp lại cho đủ ~8 ô */
+    static List<JSONObject> luckySlices() {
+        List<JSONObject> out = new ArrayList<>(); JSONObject s = st; JSONArray p = s == null ? null : s.optJSONArray("lucky_pool");
+        if (p == null || p.length() == 0) return out;
+        int rep = Math.max(1, (int) Math.ceil(8.0 / p.length()));
+        for (int r = 0; r < rep; r++) for (int i = 0; i < p.length() && out.size() < 12; i++) {
+            JSONObject x = new JSONObject(); try { x.put("pct", p.optJSONObject(i).optInt("pct")); x.put("left", JSONObject.NULL); } catch (Exception ignored) { } out.add(x); }
+        return out;
+    }
+
     static void load(Runnable cb) {
         if (!on()) return;
         Api.bg(() -> Api.rpc("wheel_status", new JSONObject()), r -> { st = r instanceof JSONObject ? (JSONObject) r : null; if (cb != null) cb.run(); },
@@ -101,8 +142,10 @@ final class Wheel {
                 s.setText(Ui.L("Bạn đang có " + left + " lượt quay — lượt nào cũng trúng 1 mã giảm giá", "You have " + left + " spins — every spin wins a discount code"));
                 b.setText("🎡 " + Ui.L("Quay ngay · ", "Spin now · ") + left);
             } else {
+                double[] lk = lucky();
                 s.setText(Ui.L("Nạp ", "Top up ") + Ui.vnd(f[0]) + " = " + f[1] + Ui.L(" lượt quay", " spins")
-                        + (w.optLong("price") > 0 ? Ui.L(" · hết lượt quay thêm " + Ui.vnd(w.optLong("price")) + "/lượt", " · extra spins " + Ui.vnd(w.optLong("price"))) : ""));
+                        + (w.optLong("price") > 0 ? Ui.L(" · mua lượt " + Ui.vnd(w.optLong("price")), " · buy a spin " + Ui.vnd(w.optLong("price"))) : "")
+                        + (lk != null ? Ui.L(" · 🍀 vé may mắn " + Ui.vnd(lk[0]), " · 🍀 lucky ticket " + Ui.vnd(lk[0])) : ""));
                 b.setText("🎡 " + Ui.L("Mở vòng quay", "Open the wheel"));
             }
             c.setVisibility(View.VISIBLE);
@@ -158,8 +201,8 @@ final class Wheel {
 
     static final class Sheet {
         final MainActivity a; final Dialog d; final WheelView wv;
-        final TextView left, sub, err, rulesT; final Button go; final LinearLayout guide, mine, rules;
-        boolean busy = false, paidAny = false;
+        final TextView left, sub, err, rulesT, luckT; final Button go, luckB; final LinearLayout guide, mine, rules, luckBox;
+        boolean busy = false, paidAny = false, luck = false;
         JSONObject last = null;
 
         Sheet(MainActivity a) {
@@ -198,6 +241,21 @@ final class Wheel {
             go.setMinHeight(Ui.dp(52));
             box.addView(go, Ui.fill());
             go.setOnClickListener(v -> main());
+            // 🍀 vé may mắn (SQL v34d): 1 lượt quay riêng, công khai tỷ lệ, luôn hỏi lại trước khi trừ tiền
+            luckBox = Ui.row(a, 12);
+            luckBox.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(12), Ui.dp(12));
+            GradientDrawable lbg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.argb(80, 28, 150, 112), Color.argb(110, 8, 58, 56)});
+            lbg.setCornerRadius(Ui.dp(14)); lbg.setStroke(Ui.dp(1), Color.argb(130, 122, 240, 200)); luckBox.setBackground(lbg);
+            luckBox.addView(Ui.text(a, "🍀", 26, Color.WHITE, false), Ui.wrap());
+            luckT = Ui.text(a, "", 13, Color.rgb(169, 220, 201), false);
+            luckBox.addView(luckT, Ui.weight(1));
+            luckB = Ui.button(a, Ui.L("Dùng vé", "Use ticket"), Ui.PRIMARY);
+            GradientDrawable lb2 = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(92, 240, 194), Color.rgb(20, 169, 125)}); lb2.setCornerRadius(Ui.dp(12));
+            luckB.setBackground(lb2); luckB.setTextColor(Color.rgb(3, 38, 27));
+            luckB.setOnClickListener(v -> askLucky());
+            luckBox.addView(luckB, Ui.wrap());
+            luckBox.setVisibility(View.GONE);
+            box.addView(luckBox, Ui.fill());
             err = Ui.text(a, "", 13.5f, Ui.BAD, true);
             err.setVisibility(View.GONE);
             box.addView(err, Ui.fill());
@@ -241,8 +299,12 @@ final class Wheel {
                     : "on".equals(state) ? Ui.L("Nạp ", "Top up ") + Ui.vnd(f[0]) + " = " + f[1] + Ui.L(" lượt · lượt nào cũng trúng mã giảm giá · số dư ", " spins · every spin wins a code · balance ") + Ui.vnd(bal())
                     : "ended".equals(state) ? Ui.L("Chương trình đã kết thúc. Mã đã trúng vẫn dùng được đến hết hạn.", "This event has ended. Codes you won stay valid until they expire.")
                     : Ui.L("Vòng quay đang tạm tắt. Mã đã trúng vẫn dùng được đến hết hạn.", "The wheel is off. Codes you won stay valid until they expire."));
-            if (!busy) wv.set(order(w == null ? null : w.optJSONArray("prizes")));
+            if (!busy) { wv.lucky = luck; wv.set(luck ? luckySlices() : order(w == null ? null : w.optJSONArray("prizes"))); }
             buttons();
+            double[] lk = lucky();
+            boolean showLk = lk != null && w != null && "on".equals(state);
+            luckBox.setVisibility(showLk ? View.VISIBLE : View.GONE);
+            if (showLk) { luckT.setText(Ui.L("Vé may mắn · ", "Lucky ticket · ") + Ui.vnd(lk[0]) + "\n" + luckyLine(lk)); luckB.setEnabled(!busy); luckB.setAlpha(busy ? .6f : 1f); }
             fillGuide(); fillMine(); fillRules();
         }
         double bal() { JSONObject w = st; return a.prof.has("balance") ? a.prof.optDouble("balance", 0) : (w == null ? 0 : w.optDouble("balance", 0)); }
@@ -256,7 +318,8 @@ final class Wheel {
             else if ("ended".equals(state)) { txt = Ui.L("Chương trình đã kết thúc", "This event has ended"); dis = true; }
             else if ("soon".equals(state)) { txt = Ui.L("Bắt đầu lúc ", "Starts ") + when(w.optString("starts_at")); dis = true; }
             else if (l > 0) txt = Ui.L("Quay ngay · còn " + l + " lượt", "Spin now · " + l + " left");
-            else if (w.optBoolean("can_buy")) { txt = "➕ " + Ui.L("Quay thêm · " + Ui.vnd(w.optLong("price")) + "/lượt", "Extra spin · " + Ui.vnd(w.optLong("price"))); act = "buy"; kind = 1; }
+            else if (w.optBoolean("can_buy")) { txt = "➕ " + (w.optInt("earned") > 0 ? Ui.L("Quay thêm · " + Ui.vnd(w.optLong("price")) + "/lượt", "Extra spin · " + Ui.vnd(w.optLong("price")))
+                    : Ui.L("Mua lượt quay · " + Ui.vnd(w.optLong("price")), "Buy a spin · " + Ui.vnd(w.optLong("price")))); act = "buy"; kind = 1; }
             else if (w.optLong("price") > 0 && w.optBoolean("qualified") && !w.isNull("buy_left") && w.optInt("buy_left") == 0) {
                 txt = Ui.L("Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "Daily extra-spin limit reached — top up for more"); act = "top"; kind = 2; }
             else { txt = "💳 " + Ui.L("Nạp " + Ui.vnd(f[0]) + " để nhận " + f[1] + " lượt quay", "Top up " + Ui.vnd(f[0]) + " to get " + f[1] + " spins"); act = "top"; kind = 2; }
@@ -264,7 +327,7 @@ final class Wheel {
             if (kind == 1) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.WHITE, PEARL2}); g.setCornerRadius(Ui.dp(14)); go.setBackground(g); go.setTextColor(INK); }
             else if (kind == 2) { Ui.ripple(go, Color.argb(120, 8, 13, 40), 14, Color.argb(110, 220, 232, 255)); go.setTextColor(Color.WHITE); }
             else { Ui.glossy(go, 14); go.setTextColor(Color.WHITE); }
-            wv.hubOn = !busy && w != null && "on".equals(state) && (l > 0 || w.optBoolean("can_buy"));
+            wv.hubOn = !busy && !luck && w != null && "on".equals(state) && (l > 0 || w.optBoolean("can_buy"));
             wv.invalidate();
         }
         void main() { if ("top".equals(act)) { d.dismiss(); a.openTopup(); } else if ("buy".equals(act)) ask(); else spin(false); }
@@ -280,46 +343,80 @@ final class Wheel {
                         "💳 " + Ui.L("Nạp thêm", "Top up"), () -> { d.dismiss(); a.openTopup(price - b); });
                 return;
             }
-            Ui.confirm(a, Ui.L("Quay thêm 1 lượt?", "One more spin?"), Ui.L("Trừ " + Ui.vnd(price) + " vào số dư · còn lại " + Ui.vnd(b - price), Ui.vnd(price) + " from your balance · " + Ui.vnd(b - price) + " left") + more,
-                    Ui.L("Trả " + Ui.vnd(price) + " & quay", "Pay " + Ui.vnd(price) + " & spin"), () -> spin(true));
+            String note = w.isNull("paid_max") ? "" : "🎯 " + Ui.L("Lượt mua chỉ trúng mã " + pcts(w.optJSONArray("paid_pcts")) + " — mã lớn hơn có ở lượt nạp tiền" + (lucky() != null ? " và 🍀 vé may mắn" : "") + ".",
+                    "Bought spins only win " + pcts(w.optJSONArray("paid_pcts")) + " codes — bigger codes come from top-up spins" + (lucky() != null ? " and 🍀 lucky tickets" : "") + ".") + "\n\n";
+            Ui.confirm(a, w.optInt("earned") > 0 ? Ui.L("Quay thêm 1 lượt?", "One more spin?") : Ui.L("Mua 1 lượt quay?", "Buy a spin?"),
+                    note + Ui.L("Trừ " + Ui.vnd(price) + " vào số dư · còn lại " + Ui.vnd(b - price), Ui.vnd(price) + " from your balance · " + Ui.vnd(b - price) + " left") + more,
+                    Ui.L("Trả " + Ui.vnd(price) + " & quay", "Pay " + Ui.vnd(price) + " & spin"), () -> spin(true, false));
         }
 
-        void spin(boolean pay) {
+        /** 🍀 dùng vé: LUÔN hỏi lại, ghi đủ từng mức giải + tỷ lệ, giá, số dư còn lại. */
+        void askLucky() {
+            JSONObject w = st; double[] k = lucky(); if (w == null || k == null || busy || !"on".equals(w.optString("state"))) return;
+            long price = (long) k[0]; double b = bal();
+            if (w.has("can_lucky") && !w.optBoolean("can_lucky")) { Ui.toast(a, Ui.L("Hôm nay bạn đã mua đủ số lượt / vé — mai quay tiếp nhé.", "You've reached today's limit for spins / tickets — come back tomorrow.")); return; }
+            if (b < price) {
+                Ui.confirm(a, Ui.L("Số dư chưa đủ", "Not enough balance"), Ui.L("Số dư " + Ui.vnd(b) + " chưa đủ " + Ui.vnd(price) + " — nạp thêm để dùng vé.", "Your balance " + Ui.vnd(b) + " is below " + Ui.vnd(price) + " — top up to use a ticket."),
+                        "💳 " + Ui.L("Nạp thêm", "Top up"), () -> { d.dismiss(); a.openTopup(price - b); });
+                return;
+            }
+            StringBuilder odds = new StringBuilder();
+            List<JSONObject> pool = new ArrayList<>(); JSONArray p = w.optJSONArray("lucky_pool");
+            for (int i = 0; p != null && i < p.length(); i++) pool.add(p.optJSONObject(i));
+            pool.sort((x, y) -> y.optInt("pct") - x.optInt("pct"));
+            for (JSONObject x : pool) odds.append(Ui.L("Mã ", "Code ")).append(x.optInt("pct")).append("% · ").append(rate(x.optDouble("rate", 0))).append("%\n");
+            String more = w.isNull("buy_left") ? "" : Ui.L(" · hôm nay còn mua được " + w.optInt("buy_left") + " lượt / vé", " · " + w.optInt("buy_left") + " spins / tickets left today");
+            Ui.confirm(a, "🍀 " + Ui.L("Dùng 1 vé may mắn?", "Use a lucky ticket?"),
+                    odds + "\n" + Ui.L("Trừ " + Ui.vnd(price) + " vào số dư · còn lại " + Ui.vnd(b - price), Ui.vnd(price) + " from your balance · " + Ui.vnd(b - price) + " left") + more,
+                    Ui.L("Trả " + Ui.vnd(price) + " & quay", "Pay " + Ui.vnd(price) + " & spin"), () -> spin(true, true));
+        }
+
+        void spin(boolean pay) { spin(pay, false); }
+        void spin(boolean pay, boolean lucky) {
             JSONObject w = st;
             if (busy || w == null || !"on".equals(w.optString("state"))) return;
-            int l = w.optInt("left");
-            if (l <= 0 && !pay) { if (w.optBoolean("can_buy")) ask(); return; }
+            int l = w.optInt("left"); double[] k = lucky ? lucky() : null;
+            if (lucky && k == null) return;
+            if (!lucky && l <= 0 && !pay) { if (w.optBoolean("can_buy")) ask(); return; }
+            luck = lucky; wv.lucky = lucky; wv.set(lucky ? luckySlices() : order(w.optJSONArray("prizes")));
             busy = true; err.setVisibility(View.GONE); wv.win = -1; wv.mys = true; buttons();     // ẨN hết số + màu ô khi quay
             final long price = w.optLong("price");
             JSONObject args = new JSONObject();
-            try { if (l <= 0) { args.put("p_pay", true); args.put("p_price", price); } } catch (Exception ignored) { }
+            try {
+                if (lucky) { args.put("p_lucky", true); args.put("p_price", (long) k[0]); args.put("p_terms", w.optString("terms")); }
+                else if (l <= 0) { args.put("p_pay", true); args.put("p_price", price); if (w.has("terms")) args.put("p_terms", w.optString("terms")); }   // SQL cũ (chưa có terms) → gửi như bản 3
+            } catch (Exception ignored) { }
             Api.bg(() -> Api.rpc("wheel_spin", args), r -> {
                 if (!(r instanceof JSONObject) || ((JSONObject) r).optString("code").isEmpty()) { fail(Ui.L("Vòng quay đã hết giải.", "All prizes are gone.")); return; }
                 JSONObject x = (JSONObject) r; last = x;
                 if (x.optLong("paid") > 0) { paidAny = true; try { a.prof.put("balance", x.optDouble("balance")); } catch (Exception ignored) { } }
-                List<JSONObject> pz = wv.pz; int k = -1;
-                for (int i = 0; i < pz.size(); i++) if (pz.get(i).optInt("pct") == x.optInt("pct")) k = i;      // kim dừng đúng ô mã khách NHẬN
-                if (k < 0) for (int i = 0; i < pz.size(); i++) if (pz.get(i).optInt("pct") == x.optInt("drawn")) k = i;
-                final int kk = Math.max(0, k);
+                try { x.put("lucky", lucky); } catch (Exception ignored) { }
+                List<JSONObject> pz = wv.pz; List<Integer> ks = new ArrayList<>();
+                for (int i = 0; i < pz.size(); i++) if (pz.get(i).optInt("pct") == x.optInt("pct")) ks.add(i);       // kim dừng đúng ô mã khách NHẬN
+                if (ks.isEmpty()) for (int i = 0; i < pz.size(); i++) if (pz.get(i).optInt("pct") == x.optInt("drawn")) ks.add(i);
+                final int kk = ks.isEmpty() ? 0 : ks.get((int) (Math.random() * ks.size()));                        // mặt vé: ô trùng → chọn ngẫu nhiên 1 ô
                 wv.spinTo(kk, calm(a), () -> {
                     busy = false; wv.win = kk;
                     try { JSONObject s = st; if (s != null) { s.put("left", x.optInt("left")); if (x.has("buy_left")) s.put("buy_left", x.opt("buy_left"));
-                        if (x.optLong("paid") > 0) s.put("balance", x.optDouble("balance")); if (!s.isNull("buy_left") && s.optInt("buy_left") == 0) s.put("can_buy", false); } } catch (Exception ignored) { }
+                        if (x.optLong("paid") > 0) s.put("balance", x.optDouble("balance"));
+                        if (!s.isNull("buy_left") && s.optInt("buy_left") == 0) { s.put("can_buy", false); s.put("can_lucky", false); } } } catch (Exception ignored) { }
                     buttons();
                     wv.postDelayed(() -> reveal(x), calm(a) ? 0 : 380);
                     load(() -> { if (!busy) render(); });
                 });
             }, this::fail);
         }
-        void fail(String m) { busy = false; wv.mys = false; err.setText(m); err.setVisibility(View.VISIBLE); buttons(); load(this::render); }
+        void fail(String m) { busy = false; wv.mys = false; luck = false; err.setText(m); err.setVisibility(View.VISIBLE); buttons(); load(this::render); }
 
         void reveal(JSONObject r) {
             if (a.isFinishing()) return;
-            JSONObject w = st; int l = w == null ? 0 : w.optInt("left");
-            boolean buy = l <= 0 && w != null && w.optBoolean("can_buy");
-            new Reveal(a, r, l, buy ? w.optLong("price") : 0, again -> {
-                wv.mys = false; wv.invalidate();                                        // hết bất ngờ → hiện lại số, ô vừa trúng sáng lên
-                if ("again".equals(again)) spin(false); else if ("buy".equals(again)) ask();
+            JSONObject w = st; boolean lk = r.optBoolean("lucky"); int l = w == null || lk ? 0 : w.optInt("left");
+            boolean buy = !lk && l <= 0 && w != null && w.optBoolean("can_buy");
+            double[] k = lucky(); long more = lk && k != null && (w == null || !w.has("can_lucky") || w.optBoolean("can_lucky")) ? (long) k[0] : 0;
+            new Reveal(a, r, l, buy ? w.optLong("price") : 0, more, again -> {
+                wv.mys = false;                                                         // hết bất ngờ → hiện lại số, ô vừa trúng sáng lên
+                if (luck) { luck = false; wv.win = -1; render(); } else wv.invalidate();  // xong vé may mắn → về mặt vòng chính
+                if ("again".equals(again)) spin(false); else if ("buy".equals(again)) ask(); else if ("lucky".equals(again)) askLucky();
             }).show();
         }
 
@@ -334,9 +431,14 @@ final class Wheel {
             step("🎡", Ui.L("Bấm Quay", "Tap Spin"), Ui.L("Đang quay, số trên vòng ẩn hết. Kim dừng là hộp quà mở ra mã của bạn.", "While it spins the numbers hide. When it stops, a gift box opens with your code."));
             step("🏷️", Ui.L("Dùng mã khi thanh toán", "Use the code at checkout"), Ui.L("Nhập ở ô \"🏷️ Mã giảm giá\" khi thuê / gia hạn máy. Mã dùng 1 lần, hạn " + w.optInt("days", 7) + " ngày.",
                     "Enter it in the \"🏷️ Discount code\" box when renting or renewing. One use, valid " + w.optInt("days", 7) + " days."));
-            if (w.optLong("price") > 0) step("➕", Ui.L("Quay thêm " + Ui.vnd(w.optLong("price")) + "/lượt", "Extra spins " + Ui.vnd(w.optLong("price")) + " each"),
-                    Ui.L("Hết lượt miễn phí vẫn quay tiếp được — trừ vào số dư, luôn hỏi lại trước khi trừ.", "Out of free spins? Keep going — paid from your balance, always confirmed first."));
-            TextView apps = Ui.text(a, "💻 " + Ui.L("Chơi được cả trên web và app máy tính CloudBlue PC (vào Nạp tiền → 🎡 Vòng quay may mắn). Lượt quay và mã dùng chung cho cả tài khoản.",
+            if (w.optLong("price") > 0) step("➕", Ui.L("Mua lượt " + Ui.vnd(w.optLong("price")), "Buy a spin " + Ui.vnd(w.optLong("price"))),
+                    (w.optBoolean("need_topup") ? Ui.L("Hết lượt miễn phí vẫn quay tiếp được.", "Out of free spins? Keep going.") : Ui.L("Không cần nạp đủ " + Ui.vnd(f[0]) + " — có số dư là mua được.", "No need to top up " + Ui.vnd(f[0]) + " — any balance works."))
+                    + (w.isNull("paid_max") ? "" : Ui.L(" Lượt mua trúng mã " + pcts(w.optJSONArray("paid_pcts")) + ".", " Bought spins win " + pcts(w.optJSONArray("paid_pcts")) + " codes."))
+                    + Ui.L(" Luôn hỏi lại trước khi trừ tiền.", " Always confirmed before paying."));
+            double[] lk = lucky();
+            if (lk != null) step("🍀", Ui.L("Vé may mắn " + Ui.vnd(lk[0]), "Lucky ticket " + Ui.vnd(lk[0])),
+                    luckyLine(lk) + Ui.L(". Vòng đổi sang mặt vé riêng, trừ vào số dư, luôn hỏi lại trước khi trừ.", ". The wheel switches to the ticket face; paid from your balance, always confirmed first."));
+            TextView apps = Ui.text(a, "💻 " + Ui.L("Chơi được cả trên web (vòng quay ngay trang chủ) và app máy tính CloudBlue PC. Lượt quay, vé và mã dùng chung cho cả tài khoản.",
                     "Also on the website and the CloudBlue PC app (Top up → 🎡 Lucky wheel). Spins and codes are shared across your account."), 12.5f, SUB, false);
             apps.setPadding(Ui.dp(11), Ui.dp(9), Ui.dp(11), Ui.dp(9));
             apps.setBackground(Ui.round(Color.TRANSPARENT, 12, Color.argb(60, 220, 232, 255)));
@@ -394,9 +496,21 @@ final class Wheel {
                     "When: from " + when(w.optString("starts_at")) + (w.isNull("ends_at") ? " until further notice." : " to " + when(w.optString("ends_at")) + ".")));
             rule("💳 " + Ui.L("Mỗi lệnh nạp thành công từ " + Ui.vnd(w.optLong("min")) + " trong thời gian chương trình: cứ " + Ui.vnd(pa) + " = " + sp + " lượt quay (ví dụ nạp " + Ui.vnd(pa * 2.5) + " = " + (2 * sp) + " lượt). Tính nạp ngân hàng và crypto; nạp qua Google Play không tính lượt.",
                     "Each successful top-up of " + Ui.vnd(w.optLong("min")) + "+ during the event: every " + Ui.vnd(pa) + " = " + sp + " spins (e.g. " + Ui.vnd(pa * 2.5) + " = " + (2 * sp) + "). Bank and crypto count; Google Play top-ups don't."));
-            if (w.optLong("price") > 0) rule("➕ " + Ui.L("Hết lượt miễn phí: quay thêm " + Ui.vnd(w.optLong("price")) + "/lượt, trừ vào số dư" + (w.optBoolean("need_topup") ? ", dành cho tài khoản đã nạp từ " + Ui.vnd(w.optLong("min")) + " trong chương trình" : "")
-                    + (w.optInt("buy_max") > 0 ? ", tối đa " + w.optInt("buy_max") + " lượt/ngày" : "") + ". Luôn hỏi lại trước khi trừ tiền.",
-                    "Out of free spins: extra spins cost " + Ui.vnd(w.optLong("price")) + " each from your balance" + (w.optInt("buy_max") > 0 ? ", up to " + w.optInt("buy_max") + " per day" : "") + ". You're always asked before paying."));
+            boolean hasLk = lucky() != null;
+            if (w.optLong("price") > 0) rule("➕ " + Ui.L("Mua lượt: " + Ui.vnd(w.optLong("price")) + "/lượt, trừ vào số dư" + (w.optBoolean("need_topup") ? ", dành cho tài khoản đã nạp từ " + Ui.vnd(w.optLong("min")) + " trong chương trình" : "")
+                    + (w.optInt("buy_max") > 0 ? ", tối đa " + w.optInt("buy_max") + " lượt mua + vé/ngày" : "") + "."
+                    + (w.isNull("paid_max") ? "" : " Lượt mua chỉ trúng mã " + pcts(w.optJSONArray("paid_pcts")) + "; mã lớn hơn có ở lượt nạp tiền" + (hasLk ? " và vé may mắn" : "") + ".") + " Luôn hỏi lại trước khi trừ tiền.",
+                    "Buy a spin: " + Ui.vnd(w.optLong("price")) + " each from your balance" + (w.optInt("buy_max") > 0 ? ", up to " + w.optInt("buy_max") + " spins + tickets per day" : "") + "."
+                    + (w.isNull("paid_max") ? "" : " Bought spins only win " + pcts(w.optJSONArray("paid_pcts")) + " codes; bigger codes come from top-up spins" + (hasLk ? " and lucky tickets" : "") + ".") + " You're always asked before paying."));
+            double[] lk = lucky();
+            if (lk != null) {
+                StringBuilder o = new StringBuilder(); List<JSONObject> pool = new ArrayList<>(); JSONArray lp = w.optJSONArray("lucky_pool");
+                for (int i = 0; lp != null && i < lp.length(); i++) pool.add(lp.optJSONObject(i));
+                pool.sort((x, y) -> y.optInt("pct") - x.optInt("pct"));
+                for (JSONObject x : pool) o.append(o.length() > 0 ? " · " : "").append(Ui.L("mã ", "")).append(x.optInt("pct")).append(Ui.L("%: ", "% code: ")).append(rate(x.optDouble("rate", 0))).append("%");
+                rule("🍀 " + Ui.L("Vé may mắn: " + Ui.vnd(lk[0]) + "/vé = 1 lượt quay riêng (không dùng lượt miễn phí), trừ vào số dư. Tỷ lệ công khai: " + o + ". Mã từ vé không giới hạn số lượng.",
+                        "Lucky ticket: " + Ui.vnd(lk[0]) + " each = one separate spin (doesn't use free spins), paid from your balance. Published odds: " + o + ". Ticket codes are unlimited."));
+            }
             rule("🎟️ " + Ui.L("Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn " + w.optInt("days", 7) + " ngày, chỉ tài khoản quay trúng dùng được" + (w.optLong("max_disc") > 0 ? ", giảm tối đa " + Ui.vnd(w.optLong("max_disc")) : "") + ".",
                     "Every spin wins a discount code: one use on one order, valid " + w.optInt("days", 7) + " days, only for the winning account."));
             rule("🎲 " + Ui.L("Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết.",
@@ -417,12 +531,12 @@ final class Wheel {
     static final class WheelView extends View {
         static final float H = 214f, C = 100f, CY = 108f, R = 85f;
         List<JSONObject> pz = new ArrayList<>();
-        float rot = 0; boolean mys = false, spinning = false, hubOn = false, alive = true; int win = -1;
+        float rot = 0; boolean mys = false, spinning = false, hubOn = false, alive = true, lucky = false; int win = -1;
         Runnable onHub;
         final long t0 = SystemClock.uptimeMillis();
         final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG), tp = new Paint(Paint.ANTI_ALIAS_FLAG);
         final RectF oval = new RectF(C - R, CY - R, C + R, CY + R);
-        Shader lo1, lo2, mid, hi, gone, m1, m2, rim, gloss, hub, gem, glow, pinG;
+        Shader lo1, lo2, mid, hi, gone, m1, m2, rim, gloss, hub, gem, glow, pinG, k1, k2, k3, k4, km1, km2, kglow;
         final Path pin = new Path();
 
         WheelView(Context c) {
@@ -431,6 +545,10 @@ final class Wheel {
             lo1 = rg(Color.rgb(13, 22, 68), Color.rgb(38, 56, 143)); lo2 = rg(Color.rgb(9, 17, 55), Color.rgb(26, 41, 114)); mid = rg(Color.rgb(26, 69, 189), Color.rgb(91, 149, 255));
             hi = rg(Color.rgb(195, 208, 232), Color.WHITE); gone = rg(Color.rgb(23, 28, 51), Color.rgb(44, 51, 82));
             m1 = rg(Color.rgb(10, 18, 64), Color.rgb(34, 50, 127)); m2 = rg(Color.rgb(15, 25, 82), Color.rgb(44, 67, 166));
+            k1 = rg(Color.rgb(122, 90, 16), Color.rgb(255, 224, 138)); k2 = rg(Color.rgb(13, 122, 95), Color.rgb(92, 240, 194));      // 🍀 mặt vé: cao nhất vàng · xanh ngọc · thấp nhất xanh đậm
+            k3 = rg(Color.rgb(10, 85, 70), Color.rgb(32, 185, 140)); k4 = rg(Color.rgb(6, 42, 40), Color.rgb(17, 82, 74));
+            km1 = rg(Color.rgb(4, 38, 31), Color.rgb(15, 90, 74)); km2 = rg(Color.rgb(7, 58, 48), Color.rgb(19, 122, 99));
+            kglow = new RadialGradient(C, CY, 112, new int[]{Color.argb(95, 60, 224, 176), Color.argb(30, 19, 120, 90), Color.argb(0, 0, 0, 0)}, new float[]{0, .46f, 1}, Shader.TileMode.CLAMP);
             rim = new LinearGradient(0, 0, 200, 216, new int[]{Color.WHITE, Color.rgb(174, 187, 210), Color.rgb(244, 247, 252), Color.rgb(142, 156, 182), Color.rgb(233, 238, 248)}, null, Shader.TileMode.CLAMP);
             gloss = new RadialGradient(C - 22, CY - 40, 120, new int[]{Color.argb(66, 255, 255, 255), Color.argb(0, 255, 255, 255)}, new float[]{0, .5f}, Shader.TileMode.CLAMP);
             hub = new RadialGradient(C - 8, CY - 11, 32, new int[]{Color.WHITE, Color.rgb(168, 200, 255), Color.rgb(61, 123, 255), Color.rgb(27, 63, 174), Color.rgb(13, 33, 112)}, new float[]{0, .1f, .4f, .72f, 1}, Shader.TileMode.CLAMP);
@@ -442,7 +560,12 @@ final class Wheel {
         }
         static Shader rg(int in, int out) { return new RadialGradient(C, CY, R, new int[]{in, in, out}, new float[]{0, .22f, 1}, Shader.TileMode.CLAMP); }
 
-        void set(List<JSONObject> list) { pz = list; invalidate(); }
+        final List<Integer> ranks = new ArrayList<>();                   // mặt vé: các mức % từ cao xuống thấp (tính 1 lần khi đổi ô, không tính mỗi khung hình)
+        void set(List<JSONObject> list) {
+            pz = list; ranks.clear();
+            for (JSONObject x : list) if (!ranks.contains(x.optInt("pct"))) ranks.add(x.optInt("pct"));
+            ranks.sort((x, y) -> y - x); invalidate();
+        }
 
         @Override protected void onDraw(Canvas c) {
             float k = getWidth() / 200f; if (k <= 0) return;
@@ -450,13 +573,15 @@ final class Wheel {
             c.save(); c.scale(k, k);
             int n = Math.max(1, pz.size()); float seg = 360f / n;
             // quầng sáng sân khấu
-            p.setStyle(Paint.Style.FILL); p.setShader(glow); c.drawCircle(C, CY, 112, p); p.setShader(null);
+            p.setStyle(Paint.Style.FILL); p.setShader(lucky ? kglow : glow); c.drawCircle(C, CY, 112, p); p.setShader(null);
             // các ô (quay)
             c.save(); c.rotate(rot, C, CY);
             int lo = 0;
             for (int i = 0; i < pz.size(); i++) {
                 JSONObject x = pz.get(i); int pct = x.optInt("pct"); boolean out = !x.isNull("left") && x.optInt("left") == 0;
-                Shader f = mys ? (i % 2 == 1 ? m2 : m1) : out ? gone : pct >= 40 ? hi : pct >= 20 ? mid : (lo++ % 2 == 1 ? lo2 : lo1);
+                int kr = lucky ? (ranks.indexOf(pct) == ranks.size() - 1 && ranks.size() > 1 ? 3 : Math.min(2, ranks.indexOf(pct))) : -1;
+                Shader f = mys ? (lucky ? (i % 2 == 1 ? km2 : km1) : (i % 2 == 1 ? m2 : m1)) : lucky ? (kr == 0 ? k1 : kr == 1 ? k2 : kr == 2 ? k3 : k4)
+                        : out ? gone : pct >= 40 ? hi : pct >= 20 ? mid : (lo++ % 2 == 1 ? lo2 : lo1);
                 p.setStyle(Paint.Style.FILL); p.setShader(f);
                 c.drawArc(oval, -90 + (i - .5f) * seg, seg, true, p);
                 p.setShader(null);
@@ -466,7 +591,7 @@ final class Wheel {
                 if (mys) { tp.setTextSize(19); tp.setColor(Color.argb((int) (150 + 80 * Math.abs(Math.sin(t / 500.0 + i))), 223, 233, 255)); c.drawText("?", C, CY - 54, tp); }
                 else {
                     tp.setTextSize(n <= 8 ? 16 : n <= 10 ? 14.5f : 12.5f);
-                    tp.setColor(out ? Color.rgb(111, 125, 163) : pct >= 40 ? INK : TXT);
+                    tp.setColor(lucky ? (kr == 0 ? Color.rgb(42, 28, 0) : Color.rgb(239, 255, 249)) : out ? Color.rgb(111, 125, 163) : pct >= 40 ? INK : TXT);
                     c.drawText(pct + "%", C, CY - 56, tp);
                     if (out) { tp.setTextSize(7.5f); c.drawText(Ui.L("HẾT", "GONE"), C, CY - 43, tp); }
                 }
@@ -542,7 +667,7 @@ final class Wheel {
     static final class Reveal {
         final Dialog d; final FrameLayout root; final FxView fx; final LinearLayout card;
         String result = "done";
-        Reveal(MainActivity a, JSONObject r, int left, long buyPrice, Next next) {
+        Reveal(MainActivity a, JSONObject r, int left, long buyPrice, long luckPrice, Next next) {
             final boolean big = r.optInt("pct") >= 40, calm = calm(a);
             d = new Dialog(a);
             d.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -569,6 +694,12 @@ final class Wheel {
             TextView h = Ui.text(a, Ui.L("Dùng 1 lần · hạn đến " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · chỉ tài khoản của bạn dùng được. Nhập ở ô \"🏷️ Mã giảm giá\" khi thanh toán.",
                     "One use · valid until " + MainActivity.fdate(MainActivity.parseTime(r.optString("expires_at"))) + " · only your account can use it. Enter it in the \"🏷️ Discount code\" box at checkout."), 12.5f, SUB, false);
             h.setGravity(Gravity.CENTER);
+            if (r.optBoolean("lucky")) {
+                TextView lt = Ui.text(a, "🍀 " + Ui.L("Vé may mắn", "Lucky ticket"), 13, Color.rgb(3, 38, 27), true);
+                lt.setPadding(Ui.dp(12), Ui.dp(4), Ui.dp(12), Ui.dp(5));
+                GradientDrawable lg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(122, 240, 200), Color.rgb(34, 195, 154)}); lg.setCornerRadius(Ui.dp(99));
+                lt.setBackground(lg); card.addView(lt, Ui.wrap());
+            }
             card.addView(t1, Ui.fill()); card.addView(v, Ui.fill()); card.addView(v2, Ui.fill()); card.addView(cr, Ui.fill()); card.addView(h, Ui.fill());
             if (r.optLong("paid") > 0) { TextView pd = Ui.text(a, Ui.L("Đã trừ " + Ui.vnd(r.optLong("paid")) + " · số dư còn " + Ui.vnd(r.optDouble("balance")), Ui.vnd(r.optLong("paid")) + " paid · balance " + Ui.vnd(r.optDouble("balance"))), 12.5f, SUB, false);
                 pd.setGravity(Gravity.CENTER); card.addView(pd, Ui.fill()); }
@@ -576,7 +707,10 @@ final class Wheel {
             else if (buyPrice > 0) { Button g = Ui.button(a, "➕ " + Ui.L("Quay thêm · " + Ui.vnd(buyPrice), "Extra spin · " + Ui.vnd(buyPrice)), Ui.PRIMARY);
                 GradientDrawable gb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.WHITE, PEARL2}); gb.setCornerRadius(Ui.dp(14)); g.setBackground(gb); g.setTextColor(INK);
                 g.setOnClickListener(x -> { result = "buy"; d.dismiss(); }); card.addView(g, Ui.fill()); }
-            Button done = Ui.button(a, Ui.L("Xong", "Done"), left > 0 || buyPrice > 0 ? Ui.GHOST : Ui.PRIMARY);
+            else if (luckPrice > 0) { Button g = Ui.button(a, "🍀 " + Ui.L("Dùng thêm vé · " + Ui.vnd(luckPrice), "Another ticket · " + Ui.vnd(luckPrice)), Ui.PRIMARY);
+                GradientDrawable gb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(92, 240, 194), Color.rgb(20, 169, 125)}); gb.setCornerRadius(Ui.dp(14)); g.setBackground(gb); g.setTextColor(Color.rgb(3, 38, 27));
+                g.setOnClickListener(x -> { result = "lucky"; d.dismiss(); }); card.addView(g, Ui.fill()); }
+            Button done = Ui.button(a, Ui.L("Xong", "Done"), left > 0 || buyPrice > 0 || luckPrice > 0 ? Ui.GHOST : Ui.PRIMARY);
             done.setOnClickListener(x -> d.dismiss());
             card.addView(done, Ui.fill());
             int sw = a.getResources().getDisplayMetrics().widthPixels;

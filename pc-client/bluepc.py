@@ -2211,7 +2211,7 @@ class TopupDlg(Dlg):
         self.app.refresh()
 
 
-# ================= 🎡 VÒNG QUAY MAY MẮN (SQL v34c) — giống web / app Android: nạp 100.000đ = 2 lượt, hết lượt quay thêm 15.000đ/lượt =================
+# ================= 🎡 VÒNG QUAY MAY MẮN (SQL v34d) — giống web / app Android: nạp 100.000đ = 2 lượt · mua lượt 15.000đ · 🍀 vé may mắn 20.000đ =================
 # Máy chủ rút số (wheel_spin) → app chỉ quay hình tới ĐÚNG ô mã khách nhận. Lúc chưa quay: hiện số. Đang quay: ẩn hết số + màu ô (dấu ?)
 # → kim dừng → cửa sổ mở quà: hộp quà rơi · rung · NỔ (nắp bay, chớp sáng, tia sáng, pháo giấy + bong bóng) → thẻ mã. Khách KHÔNG thấy tỷ lệ.
 # Quay thêm có tính phí: luôn hỏi lại (giá + số dư còn lại) — máy chủ trừ tiền và quay trong CÙNG 1 lệnh.
@@ -2230,6 +2230,7 @@ ERRORS.update({                                                  # 🎡 vòng qu
     "WHEEL_NO_BUY": "Hiện không bán thêm lượt quay.", "WHEEL_PRICE_CHANGED": "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.",
     "WHEEL_NEED_TOPUP": "Nạp từ 100.000đ trong chương trình để được quay thêm.",
     "WHEEL_BUY_LIMIT": "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.",
+    "WHEEL_TERMS_CHANGED": "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.", "WHEEL_NO_LUCKY": "Hiện không bán vé may mắn.",   # SQL v34d
 })
 
 
@@ -2280,6 +2281,39 @@ def wheel_order(pz):
     while lo or hi:
         if lo: out.append(lo.pop(0))
         if hi: out.append(hi.pop(0))
+    return out
+
+def wheel_rate(v):
+    v = round(float(num(v)), 2)
+    return (str(int(v)) if v == int(v) else f"{v:.2f}".rstrip("0")).replace(".", ",")
+
+def wheel_pcts(a):
+    """[5, 10] → "5% hoặc 10%"."""
+    v = sorted({int(num(x)) for x in (a or [])})
+    if not v: return ""
+    return f"{v[0]}%" if len(v) == 1 else "%, ".join(str(x) for x in v[:-1]) + f"% hoặc {v[-1]}%"
+
+def wheel_lucky(s=None):
+    """🍀 vé may mắn (SQL v34d): {price, pool, rate, lo, hi, else} — rate = % trúng nhóm mức cao · None = không bán vé / SQL cũ."""
+    s = s or WHEEL["st"] or {}
+    pool = [{"pct": int(num(p.get("pct"))), "rate": float(num(p.get("rate")))} for p in (s.get("lucky_pool") or []) if isinstance(p, dict)]
+    if num(s.get("lucky_price")) <= 0 or not pool: return None
+    lo = min(p["pct"] for p in pool); up = [p for p in pool if p["pct"] > lo]; g = up or pool
+    return {"price": int(num(s.get("lucky_price"))), "pool": pool, "rate": round(sum(p["rate"] for p in g), 2),
+            "lo": min(p["pct"] for p in g), "hi": max(p["pct"] for p in g), "else": lo if up else None}
+
+def wheel_lucky_line(k):
+    rg = f"{k['lo']}%" if k["lo"] == k["hi"] else f"{k['lo']}–{k['hi']}%"
+    return f"{wheel_rate(k['rate'])}% trúng mã {rg}" + (f" · còn lại mã {k['else']}%" if k["else"] is not None else "")
+
+def wheel_luck_slices(s=None):
+    """Mặt vé: các mức giải của vé lặp lại cho đủ ~8 ô."""
+    k = wheel_lucky(s)
+    if not k: return []
+    out = []
+    for _ in range(max(1, -(-8 // len(k["pool"])))):
+        for p in k["pool"]:
+            if len(out) < 12: out.append({"pct": p["pct"], "stock": None, "left": None})
     return out
 
 def wheel_mix(c1, c2, t):
@@ -2335,7 +2369,8 @@ def wheel_banner(owner, holder):
     a, n = wheel_first(s); left = int(num(s.get("left"))); soon = s.get("state") == "soon"; hot = not soon and left > 0
     sub = (f"Bắt đầu {wheel_when(s.get('starts_at'))} · nạp {vnd(a)} = {n} lượt quay" if soon
            else f"Bạn đang có {left} lượt quay — lượt nào cũng trúng 1 mã giảm giá" if hot
-           else f"Nạp {vnd(a)} = {n} lượt quay" + (f" · hết lượt quay thêm {vnd(s.get('price'))}/lượt" if num(s.get("price")) > 0 else ""))
+           else f"Nạp {vnd(a)} = {n} lượt quay" + (f" · mua lượt {vnd(s.get('price'))}" if num(s.get("price")) > 0 else "")
+                + (f" · 🍀 vé may mắn {vnd(wheel_lucky(s)['price'])}" if wheel_lucky(s) else ""))
     f = tk.Frame(holder, bg=W_CARD, highlightbackground="#5a6c9c", highlightthickness=1); f.pack(fill="x", pady=(8, 0))
     b = app.btn(f, f"🎡 Quay ngay · {left}" if hot else "Xem giải" if soon else "🎡 Mở vòng quay",
                 lambda: wheel_open(app, owner if isinstance(owner, Dlg) else None), "primary" if hot else "soft")
@@ -2379,13 +2414,15 @@ class WheelDlg(Dlg):
     """🎡 Hộp vòng quay: vẽ trên Canvas, quay tới đúng ô máy chủ báo, ẩn số khi quay, mở quà, quay thêm có hỏi lại, hướng dẫn, mã của tôi, thể lệ."""
     LO = ("#22337f", "#16236a"); LO_IN = ("#121c4f", "#0d1540"); MID, MID_IN = "#4a86ff", "#1f4bc4"; HI, HI_IN = "#f4f7fc", "#c2cfe8"
     GONE, GONE_IN = "#2c3352", "#1a1f36"; MYS = ("#1d2c74", "#283d9c"); MYS_IN = ("#0e1648", "#142060")
+    LK = (("#ffe08a", "#7a5a10"), ("#5cf0c2", "#0d7a5f"), ("#20b98c", "#0a5546"), ("#11524a", "#062a28"))   # 🍀 mặt vé: cao nhất vàng → thấp nhất xanh đậm
+    LK_MYS = ("#0f5a4a", "#137a63"); LK_MYS_IN = ("#04261f", "#073a30")
 
     def __init__(self, app, parent=None):
         self.sc = sc = wheel_scale(app)
         super().__init__(app, "🎡 Vòng quay may mắn", int(560 * sc), int(840 * sc))
         self.parent = parent; self.S = int(360 * sc)
         self.st = WHEEL["st"]; self.rot = 0.0; self.mys = False; self.busy = False; self.win_i = -1; self.pz = []; self.paid_any = False
-        self.act = "spin"; self.rules_open = False; self.cv = None; self.t_bulb = 0; self.hub_on = False; self.bulb_ids = []; self.geo = None
+        self.act = "spin"; self.rules_open = False; self.cv = None; self.t_bulb = 0; self.hub_on = False; self.bulb_ids = []; self.geo = None; self.luck = False
         self.win.configure(bg=W_DEEP); self.body.configure(bg=W_DEEP)                       # nền xanh sapphire sâu (giống web)
         scv = app.scrollers.get(str(self.win))
         if scv is not None: scv.configure(bg=W_DEEP); scv.master.configure(bg=W_DEEP)
@@ -2433,6 +2470,7 @@ class WheelDlg(Dlg):
         self.cv.tag_bind("hub", "<Button-1>", lambda e: self.hub())
         self.cv.tag_bind("hub", "<Enter>", lambda e: self.cv.configure(cursor="hand2" if self.hub_on and not self.busy else ""))
         self.cv.tag_bind("hub", "<Leave>", lambda e: self.cv.configure(cursor=""))
+        self.luck_f = tk.Frame(self.body, bg=W_DEEP); self.luck_f.pack(fill="x", padx=18, pady=(6, 0))     # 🍀 vé may mắn
         self.err_l = self.label(self.body, "", self.app.f_s, BAD, wraplength=self.px(500)); self.err_l.pack(fill="x", padx=18)
         self.guide_f = tk.Frame(self.body, bg=W_DEEP); self.guide_f.pack(fill="x", padx=18, pady=(8, 0))
         self.mine_f = tk.Frame(self.body, bg=W_DEEP); self.mine_f.pack(fill="x", padx=18, pady=(12, 0))
@@ -2452,8 +2490,22 @@ class WheelDlg(Dlg):
                                 else f"Nạp {vnd(a)} = {n} lượt · lượt nào cũng trúng mã giảm giá · số dư {vnd(self.balance())}" if st == "on"
                                 else "Chương trình đã kết thúc. Mã đã trúng vẫn dùng được đến hết hạn." if st == "ended"
                                 else "Vòng quay đang tạm tắt. Mã đã trúng vẫn dùng được đến hết hạn."))
-        if not self.busy: self.pz = wheel_order(s.get("prizes"))
-        self.buttons(); self.draw(); self.fill_guide(); self.fill_mine(); self.fill_rules()
+        if not self.busy: self.pz = wheel_luck_slices(s) if self.luck else wheel_order(s.get("prizes"))
+        self.buttons(); self.draw(); self.fill_luck(); self.fill_guide(); self.fill_mine(); self.fill_rules()
+
+    def fill_luck(self):
+        tk = self.app.tk; f = self.luck_f
+        for w in f.winfo_children(): w.destroy()
+        s = self.st or {}; k = wheel_lucky(s)
+        if not k or s.get("state") != "on": return
+        c = tk.Frame(f, bg="#0f3d37", highlightbackground="#4fd6ad", highlightthickness=1); c.pack(fill="x")
+        b = self.app.btn(c, "Dùng vé", self.ask_lucky, padx=14, pady=6)
+        b.config(bg="#2fd9a6", fg="#03261b", activebackground="#5cf0c2", activeforeground="#03261b", state="disabled" if self.busy else "normal")
+        b.pack(side="right", padx=10, pady=8)
+        tk.Label(c, text="🍀", font=("Segoe UI", 18), fg="#ffffff", bg="#0f3d37").pack(side="left", padx=(10, 6))
+        tx = tk.Frame(c, bg="#0f3d37"); tx.pack(side="left", fill="x", expand=True, pady=8)
+        tk.Label(tx, text=f"Vé may mắn · {vnd(k['price'])}", font=("Segoe UI", 10, "bold"), fg="#dcfff2", bg="#0f3d37", anchor="w").pack(fill="x")
+        tk.Label(tx, text=wheel_lucky_line(k), font=("Segoe UI", 9), fg="#a9dcc9", bg="#0f3d37", anchor="w", justify="left", wraplength=self.px(330)).pack(fill="x")
 
     def balance(self):
         s = self.st or {}
@@ -2467,7 +2519,7 @@ class WheelDlg(Dlg):
         elif st == "ended": txt, dis = "Chương trình đã kết thúc", True
         elif st == "soon": txt, dis = f"Bắt đầu lúc {wheel_when(s.get('starts_at'))}", True
         elif left > 0: txt = f"🎡 Quay ngay · còn {left} lượt"
-        elif s.get("can_buy"): txt, self.act, kind = f"➕ Quay thêm · {vnd(s.get('price'))}/lượt", "buy", "pearl"
+        elif s.get("can_buy"): txt, self.act, kind = (f"➕ Quay thêm · {vnd(s.get('price'))}/lượt" if num(s.get("earned")) > 0 else f"➕ Mua lượt quay · {vnd(s.get('price'))}"), "buy", "pearl"
         elif num(s.get("price")) > 0 and s.get("qualified") and s.get("buy_left") == 0: txt, self.act, kind = "Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "top", "soft"
         else: txt, self.act, kind = f"💳 Nạp {vnd(a)} để nhận {n} lượt quay", "top", "soft"
         bg = {"primary": ACC, "pearl": W_PEARL2, "soft": "#24357a"}[kind]
@@ -2476,7 +2528,7 @@ class WheelDlg(Dlg):
                            activebackground="#ffffff" if kind == "pearl" else "#4b8cff", activeforeground=W_INK if kind == "pearl" else TXT,
                            disabledforeground="#8f9bbd")
         except Exception: pass
-        self.hub_on = not self.busy and st == "on" and (left > 0 or bool(s.get("can_buy")))
+        self.hub_on = not self.busy and not self.luck and st == "on" and (left > 0 or bool(s.get("can_buy")))
 
     def main(self):
         if self.act == "top": self.to_topup(); return
@@ -2504,24 +2556,50 @@ class WheelDlg(Dlg):
             if mb.askyesno("Số dư chưa đủ", f"Quay thêm 1 lượt giá {vnd(price)} — số dư của bạn còn {vnd(bal)}.\n\nNạp thêm để quay tiếp?", parent=self.win):
                 self.to_topup(price - bal)
             return
-        more = "" if s.get("buy_left") is None else f"\nHôm nay còn mua được {int(num(s.get('buy_left')))} lượt."
-        if mb.askyesno("Quay thêm 1 lượt?", f"Trừ {vnd(price)} vào số dư · còn lại {vnd(bal - price)}.{more}\n\nTrả {vnd(price)} và quay?", parent=self.win):
+        more = "" if s.get("buy_left") is None else f"\nHôm nay còn mua được {int(num(s.get('buy_left')))} lượt / vé."
+        note = "" if s.get("paid_max") is None else (f"🎯 Lượt mua chỉ trúng mã {wheel_pcts(s.get('paid_pcts'))} — mã lớn hơn có ở lượt nạp tiền"
+                                                     + (" và 🍀 vé may mắn" if wheel_lucky(s) else "") + ".\n\n")
+        if mb.askyesno("Quay thêm 1 lượt?" if num(s.get("earned")) > 0 else "Mua 1 lượt quay?",
+                       f"{note}Trừ {vnd(price)} vào số dư · còn lại {vnd(bal - price)}.{more}\n\nTrả {vnd(price)} và quay?", parent=self.win):
             self.spin(True)
 
+    def ask_lucky(self):
+        """🍀 Dùng vé: LUÔN hỏi lại, ghi đủ từng mức giải + tỷ lệ, giá, số dư còn lại."""
+        import tkinter.messagebox as mb
+        s = self.st or {}; k = wheel_lucky(s); bal = self.balance()
+        if self.busy or not k or s.get("state") != "on" or not self.alive: return
+        if s.get("can_lucky") is False:
+            mb.showinfo("Vé may mắn", "Hôm nay bạn đã mua đủ số lượt / vé — mai quay tiếp nhé.", parent=self.win); return
+        if bal < k["price"]:
+            if mb.askyesno("Số dư chưa đủ", f"Vé may mắn giá {vnd(k['price'])} — số dư của bạn còn {vnd(bal)}.\n\nNạp thêm để dùng vé?", parent=self.win):
+                self.to_topup(k["price"] - bal)
+            return
+        odds = "\n".join(f"   Mã {p['pct']}% · {wheel_rate(p['rate'])}%" for p in sorted(k["pool"], key=lambda x: -x["pct"]))
+        more = "" if s.get("buy_left") is None else f"\nHôm nay còn mua được {int(num(s.get('buy_left')))} lượt / vé."
+        if mb.askyesno("🍀 Dùng 1 vé may mắn?", f"Giải của vé (tỷ lệ công khai):\n{odds}\n\nTrừ {vnd(k['price'])} vào số dư · còn lại {vnd(bal - k['price'])}.{more}\n\nTrả {vnd(k['price'])} và quay?",
+                       parent=self.win):
+            self.spin(True, lucky=True)
+
     # ---------------------------------------------------------------- quay
-    def spin(self, pay=False):
+    def spin(self, pay=False, lucky=False):
         s = self.st
         if self.busy or not s or s.get("state") != "on" or not self.alive: return
-        left = int(num(s.get("left")))
-        if left <= 0 and not pay:
+        left = int(num(s.get("left"))); k = wheel_lucky(s) if lucky else None
+        if lucky and not k: return
+        if not lucky and left <= 0 and not pay:
             if s.get("can_buy"): self.ask()
             return
-        self.busy = True; self.mys = True; self.win_i = -1; self.err_l.config(text="", fg=BAD); self.buttons(); self.draw()   # ẨN hết số + màu ô
-        args = {} if left > 0 else {"p_pay": True, "p_price": int(num(s.get("price")))}       # còn lượt miễn phí → máy chủ dùng lượt đó, không trừ tiền
+        self.luck = lucky; self.pz = wheel_luck_slices(s) if lucky else wheel_order(s.get("prizes"))
+        self.busy = True; self.mys = True; self.win_i = -1; self.err_l.config(text="", fg=BAD); self.buttons(); self.draw(); self.fill_luck()   # ẨN hết số + màu ô
+        if lucky: args = {"p_lucky": True, "p_price": k["price"], "p_terms": s.get("terms")}
+        elif left > 0: args = {}                                                            # còn lượt miễn phí → máy chủ dùng lượt đó, không trừ tiền
+        else:
+            args = {"p_pay": True, "p_price": int(num(s.get("price")))}
+            if s.get("terms"): args["p_terms"] = s.get("terms")                             # SQL cũ (chưa có terms) → gửi như bản 3
         self.bg(lambda: self.app.auth.rpc("wheel_spin", args), self._spun, self._fail)
 
     def _fail(self, m):
-        self.busy = False; self.mys = False; self.err_l.config(text=m, fg=BAD); self.buttons(); self.draw()
+        self.busy = False; self.mys = False; self.luck = False; self.err_l.config(text=m, fg=BAD); self.render()
         self.bg(lambda: wheel_load(self.app.auth), lambda s: self._reloaded(s))                 # giá đổi / hết lượt… → đọc lại
 
     def _reloaded(self, s):
@@ -2538,8 +2616,10 @@ class WheelDlg(Dlg):
                 if getattr(self.app, "bal", None) is not None and self.app.bal.winfo_exists():
                     self.app.bal.config(text=vnd(r.get("balance")) + (f"  · CTV −{int(num(p.get('ctv_discount')))}%" if isinstance(p, dict) and is_ctv(p) else ""))
             except Exception: pass
-        k = next((i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("pct"))), None)              # kim dừng đúng ô mã khách NHẬN
-        if k is None: k = next((i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("drawn"))), 0)
+        r["lucky"] = self.luck
+        ks = [i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("pct"))]                         # kim dừng đúng ô mã khách NHẬN
+        if not ks: ks = [i for i, p in enumerate(self.pz) if num(p.get("pct")) == num(r.get("drawn"))] or [0]
+        k = ks[secrets.randbelow(len(ks))]                                                                         # mặt vé: ô trùng → chọn ngẫu nhiên 1 ô
         seg = 360.0 / max(1, len(self.pz)); want = (-k * seg + (secrets.randbelow(1000) / 1000 - .5) * seg * .6) % 360; cur = self.rot % 360
         self.r0, self.r1, self.t0, self.dur, self.res, self.k = self.rot, self.rot + 360 * 8 + ((want - cur) % 360), time.time(), 5.6, r, k
         self._frame()
@@ -2554,16 +2634,19 @@ class WheelDlg(Dlg):
             s["left"] = r.get("left", 0)
             if "buy_left" in r: s["buy_left"] = r.get("buy_left")
             if r.get("balance") is not None: s["balance"] = r.get("balance")
-            if s.get("buy_left") == 0: s["can_buy"] = False
+            if s.get("buy_left") == 0: s["can_buy"] = False; s["can_lucky"] = False
             self.render()
         self.win.after(380, lambda: self.alive and RevealWin(self, r))
         self.bg(lambda: wheel_load(self.app.auth), lambda s2: self._reloaded(s2))
 
     def after_reveal(self, what):
         if not self.alive: return
-        self.mys = False; self._grab(); self.draw()                      # hết bất ngờ → hiện lại số, ô vừa trúng sáng viền
+        self.mys = False; self._grab()                                   # hết bất ngờ → hiện lại số, ô vừa trúng sáng viền
+        if self.luck: self.luck = False; self.win_i = -1; self.render()  # xong vé may mắn → về mặt vòng chính
+        else: self.draw()
         if what == "again": self.spin(False)
         elif what == "buy": self.ask()
+        elif what == "lucky": self.ask_lucky()
 
     # ---------------------------------------------------------------- vẽ (nền + đĩa quay + viền/đèn/kim/núm)
     def draw(self):
@@ -2600,9 +2683,13 @@ class WheelDlg(Dlg):
         if cv is None or self.geo is None or not cv.winfo_exists(): return
         k, cx, cy, R = self.geo; cv.delete("disc"); T = ("disc",)
         n = max(1, len(self.pz)); seg = 360.0 / n; lo = 0
+        ranks = sorted({int(num(p.get("pct"))) for p in self.pz}, reverse=True) if self.luck else []
+        def lkr(pct): r_ = ranks.index(pct); return 3 if r_ == len(ranks) - 1 and len(ranks) > 1 else min(2, r_)
         for i, p in enumerate(self.pz):
             pct = int(num(p.get("pct"))); gone = p.get("left") is not None and num(p.get("left")) == 0
-            if self.mys: c1, c2 = self.MYS[i % 2], self.MYS_IN[i % 2]
+            if self.mys and self.luck: c1, c2 = self.LK_MYS[i % 2], self.LK_MYS_IN[i % 2]
+            elif self.luck: c1, c2 = self.LK[lkr(pct)]
+            elif self.mys: c1, c2 = self.MYS[i % 2], self.MYS_IN[i % 2]
             elif gone: c1, c2 = self.GONE, self.GONE_IN
             elif pct >= 40: c1, c2 = self.HI, self.HI_IN
             elif pct >= 20: c1, c2 = self.MID, self.MID_IN
@@ -2627,7 +2714,8 @@ class WheelDlg(Dlg):
                 cv.create_text(x, y, text="?", angle=ang, font=("Segoe UI", -int(19 * k), "bold"), fill="#dfe9ff", tags=T)
                 continue
             rr = 58 * k if gone else 54 * k; x, y = cx + rr * math.sin(ar), cy - rr * math.cos(ar)
-            cv.create_text(x, y, text=f"{pct}%", angle=ang, font=("Segoe UI", fs, "bold"), fill="#6f7da3" if gone else W_INK if pct >= 40 else "#eef4ff", tags=T)
+            ink = ("#2a1c00" if lkr(pct) == 0 else "#effff9") if self.luck else "#6f7da3" if gone else W_INK if pct >= 40 else "#eef4ff"
+            cv.create_text(x, y, text=f"{pct}%", angle=ang, font=("Segoe UI", fs, "bold"), fill=ink, tags=T)
             if gone:
                 x2, y2 = cx + 42 * k * math.sin(ar), cy - 42 * k * math.cos(ar)
                 cv.create_text(x2, y2, text="HẾT", angle=ang, font=("Segoe UI", -int(7 * k), "bold"), fill="#8a95b8", tags=T)
@@ -2655,7 +2743,11 @@ class WheelDlg(Dlg):
                  ("🎡", "Bấm QUAY", "Đang quay, số trên vòng ẩn hết. Kim dừng là hộp quà nổ ra mã của bạn."),
                  ("🏷", "Dùng mã khi thanh toán", f"Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy. Mã dùng 1 lần, hạn {days} ngày.")]
         if num(s.get("price")) > 0:
-            steps.append(("➕", f"Quay thêm {vnd(s.get('price'))}/lượt", "Hết lượt miễn phí vẫn quay tiếp được — trừ vào số dư, luôn hỏi lại trước khi trừ."))
+            steps.append(("➕", f"Mua lượt {vnd(s.get('price'))}",
+                          ("Hết lượt miễn phí vẫn quay tiếp được." if s.get("need_topup") else f"Không cần nạp đủ {vnd(a)} — có số dư là mua được.")
+                          + (f" Lượt mua trúng mã {wheel_pcts(s.get('paid_pcts'))}." if s.get("paid_max") is not None else "") + " Luôn hỏi lại trước khi trừ tiền."))
+        k = wheel_lucky(s)
+        if k: steps.append(("🍀", f"Vé may mắn {vnd(k['price'])}", wheel_lucky_line(k) + ". Vòng đổi sang mặt vé riêng, trừ vào số dư, luôn hỏi lại trước khi trừ."))
         grid = tk.Frame(f, bg=W_DEEP); grid.pack(fill="x")
         for i, (ic, t, d) in enumerate(steps):
             c = tk.Frame(grid, bg=W_TILE, highlightbackground=W_EDGE, highlightthickness=1)
@@ -2665,8 +2757,8 @@ class WheelDlg(Dlg):
             tk.Label(tx, text=t, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
             tk.Label(tx, text=d, font=("Segoe UI", 8), fg=W_SUB, bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
         grid.grid_columnconfigure(0, weight=1, uniform="g"); grid.grid_columnconfigure(1, weight=1, uniform="g")
-        self.label(f, "🌐 Chơi được cả trên web và app Android (bản tải từ web): vào Nạp tiền → 🎡 Vòng quay may mắn. "
-                      "Lượt quay và mã dùng chung cho cả tài khoản.", self.app.f_s, W_SUB, wraplength=self.px(500)).pack(fill="x", pady=(6, 0))
+        self.label(f, "🌐 Chơi được cả trên web (vòng quay ngay trang chủ) và app Android (bản tải từ web). "
+                      "Lượt quay, vé và mã dùng chung cho cả tài khoản.", self.app.f_s, W_SUB, wraplength=self.px(500)).pack(fill="x", pady=(6, 0))
 
     def fill_mine(self):
         tk = self.app.tk; f = self.mine_f
@@ -2679,7 +2771,8 @@ class WheelDlg(Dlg):
             exp = parse_iso(c.get("expires_at")); used = bool(c.get("used")); act = c.get("active", True) is not False; gone = exp is not None and exp <= now
             live = not used and act and not gone
             st = ("Đã dùng" if used else "Đã tắt" if not act else "Hết hạn" if gone else "Dùng được đến " + (exp.astimezone().strftime("%H:%M %d/%m") if exp else ""))
-            if num(c.get("paid")) > 0: st += f"  ·  lượt mua {vnd(c.get('paid'))}"
+            if c.get("lucky"): st += f"  ·  🍀 vé {vnd(c.get('paid'))}"
+            elif num(c.get("paid")) > 0: st += f"  ·  lượt mua {vnd(c.get('paid'))}"
             r = tk.Frame(f, bg="#111b4c", highlightbackground="#26345f", highlightthickness=1); r.pack(fill="x", pady=2)
             big = num(c.get("pct")) >= 40
             tk.Label(r, text=f"{int(num(c.get('pct')))}%", font=("Segoe UI", 10, "bold"), fg=W_INK if big else "#ffffff",
@@ -2709,8 +2802,14 @@ class WheelDlg(Dlg):
                  f"💳 Mỗi lệnh nạp thành công từ {mn} trong thời gian chương trình: cứ {vnd(per)} = {sp} lượt quay (ví dụ nạp {vnd(per * 2.5)} = {2 * sp} lượt). "
                  "Tính nạp ngân hàng và crypto; nạp qua Google Play không tính lượt."]
         if num(s.get("price")) > 0:
-            lines.append(f"➕ Hết lượt miễn phí: quay thêm {vnd(s.get('price'))}/lượt, trừ vào số dư" + (f", dành cho tài khoản đã nạp từ {mn} trong chương trình" if s.get("need_topup") else "")
-                         + (f", tối đa {int(num(s.get('buy_max')))} lượt/ngày" if num(s.get("buy_max")) > 0 else "") + ". Luôn hỏi lại trước khi trừ tiền.")
+            lines.append(f"➕ Mua lượt: {vnd(s.get('price'))}/lượt, trừ vào số dư" + (f", dành cho tài khoản đã nạp từ {mn} trong chương trình" if s.get("need_topup") else "")
+                         + (f", tối đa {int(num(s.get('buy_max')))} lượt mua + vé/ngày" if num(s.get("buy_max")) > 0 else "") + "."
+                         + (f" Lượt mua chỉ trúng mã {wheel_pcts(s.get('paid_pcts'))}; mã lớn hơn có ở lượt nạp tiền" + (" và vé may mắn" if wheel_lucky(s) else "") + "."
+                            if s.get("paid_max") is not None else "") + " Luôn hỏi lại trước khi trừ tiền.")
+        k = wheel_lucky(s)
+        if k:
+            odds = " · ".join(f"mã {p['pct']}%: {wheel_rate(p['rate'])}%" for p in sorted(k["pool"], key=lambda x: -x["pct"]))
+            lines.append(f"🍀 Vé may mắn: {vnd(k['price'])}/vé = 1 lượt quay riêng (không dùng lượt miễn phí), trừ vào số dư. Tỷ lệ công khai: {odds}. Mã từ vé không giới hạn số lượng.")
         lines += [f"🎟 Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn {int(num(s.get('days')) or 7)} ngày, chỉ tài khoản quay trúng dùng được"
                   + (f", giảm tối đa {vnd(s.get('max_disc'))}" if num(s.get("max_disc")) > 0 else "") + ".",
                   "🎲 Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. "
@@ -2756,7 +2855,8 @@ class RevealWin:
     def make_card(self):
         tk = self.dlg.app.tk; r = self.r; big = self.big; app = self.dlg.app; bg = "#15215c"
         c = tk.Frame(self.cv, bg=bg, highlightbackground=W_PEARL2 if big else "#5a6c9c", highlightthickness=2 if big else 1)
-        tk.Label(c, text=("🎉 " if big else "🎁 ") + "Chúc mừng! Bạn nhận được", font=("Segoe UI", 11, "bold"), fg=W_SKY, bg=bg).pack(pady=(18, 0))
+        if r.get("lucky"): tk.Label(c, text=" 🍀 Vé may mắn ", font=("Segoe UI", 9, "bold"), fg="#03261b", bg="#5cf0c2").pack(pady=(14, 0))
+        tk.Label(c, text=("🎉 " if big else "🎁 ") + "Chúc mừng! Bạn nhận được", font=("Segoe UI", 11, "bold"), fg=W_SKY, bg=bg).pack(pady=(8 if r.get("lucky") else 18, 0))
         tk.Label(c, text=f"−{int(num(r.get('pct')))}%", font=("Segoe UI", 46, "bold"), fg=W_PEARL, bg=bg).pack()
         tk.Label(c, text="mã giảm giá", font=("Segoe UI", 11, "bold"), fg=W_SUB, bg=bg).pack(pady=(0, 10))
         cr = tk.Frame(c, bg=bg); cr.pack()
@@ -2767,14 +2867,18 @@ class RevealWin:
                  font=("Segoe UI", 9), fg=W_SUB, bg=bg, justify="center", wraplength=self.W - int(110 * self.sc)).pack(padx=16, pady=(10, 0))
         if num(r.get("paid")) > 0:
             tk.Label(c, text=f"Đã trừ {vnd(r.get('paid'))} · số dư còn {vnd(r.get('balance'))}", font=("Segoe UI", 9), fg=W_SUB, bg=bg).pack(pady=(4, 0))
-        s = self.dlg.st or {}; left = int(num(s.get("left"))); buy = left <= 0 and bool(s.get("can_buy"))
+        s = self.dlg.st or {}; lk = bool(r.get("lucky")); left = 0 if lk else int(num(s.get("left"))); buy = not lk and left <= 0 and bool(s.get("can_buy"))
+        k = wheel_lucky(s); more = lk and k is not None and s.get("can_lucky") is not False
         bb = tk.Frame(c, bg=bg); bb.pack(fill="x", padx=18, pady=(14, 16))
         if left > 0: app.btn(bb, f"🎡 Quay tiếp · còn {left} lượt", lambda: self.close("again"), pady=9).pack(fill="x")
         elif buy:
             b = app.btn(bb, f"➕ Quay thêm · {vnd(s.get('price'))}", lambda: self.close("buy"), pady=9)
             b.config(bg=W_PEARL2, fg=W_INK, activebackground="#ffffff", activeforeground=W_INK); b.pack(fill="x")
-        x = app.btn(bb, "Xong", lambda: self.close("done"), "soft" if left > 0 or buy else "primary", pady=8); x.pack(fill="x", pady=(6, 0))
-        if left > 0 or buy: x.config(bg="#24357a", activebackground="#33489a")
+        elif more:
+            b = app.btn(bb, f"🍀 Dùng thêm vé · {vnd(k['price'])}", lambda: self.close("lucky"), pady=9)
+            b.config(bg="#2fd9a6", fg="#03261b", activebackground="#5cf0c2", activeforeground="#03261b"); b.pack(fill="x")
+        x = app.btn(bb, "Xong", lambda: self.close("done"), "soft" if left > 0 or buy or more else "primary", pady=8); x.pack(fill="x", pady=(6, 0))
+        if left > 0 or buy or more: x.config(bg="#24357a", activebackground="#33489a")
         return c
 
     def copy(self):
