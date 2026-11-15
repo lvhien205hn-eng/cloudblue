@@ -2415,6 +2415,21 @@ html[data-theme=light] .cbt-earn .cbt-go{color:#fff}
 .cbt-ofr .cbt-go{background:#ffc400;color:#2a1c00}
 html[data-theme=light] .cbt-ofr .cbt-tx small{color:var(--warn)}
 body.admin-page #cb-home-w{display:none!important}
+/* ===== 16/11 · ẩn / hiện khối ưu đãi + vòng quay · hộp đổi FPS ===== */
+#cb-pbar-w{padding-block:0 10px}
+#cb-pbar-w[hidden]{display:none}
+.cbpbar{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:9px 14px;border-radius:12px;border:1px dashed var(--line2);
+  background:transparent;color:var(--muted);font:inherit;font-size:13.5px;text-align:left;cursor:pointer}
+.cbpbar b{color:var(--fg);font-weight:700;white-space:nowrap}
+.cbpbar:hover{border-style:solid;color:var(--fg)}
+.cbpbar:focus-visible{outline:2px solid var(--sky);outline-offset:3px}
+body.cb-promo-off #lw-home-w,body.cb-promo-off #cb-home-w,body.cb-promo-off .lwfab{display:none!important}
+body.cb-promo-off #cb-pbar-w{padding-block:0 26px}
+body.admin-page #cb-pbar-w{display:none!important}
+.fpschips button{min-width:74px;display:grid;gap:2px;justify-items:center}
+.fpschips button small{font-size:11px;font-weight:600;opacity:.8}
+.fpsnote{margin-top:2px;padding:10px 12px;border-radius:12px;border:1px solid var(--line2);font-size:13.5px;line-height:1.55;color:var(--fg)}
+.fpsnote.ok{border-color:rgba(60,224,176,.5);background:rgba(60,224,176,.08)}
 .cbo{display:grid;gap:8px}
 .cbo[hidden]{display:none}
 .cbo-row{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:11px 12px;border:1px solid var(--line2);border-radius:14px;background:var(--soft,rgba(143,208,255,.06))}
@@ -2581,6 +2596,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
   <div class="notice" id="notices"></div>
 </section>
 
+<section class="wrap" id="cb-pbar-w" hidden><button class="cbpbar" id="cb-pbar" type="button" aria-expanded="true" aria-controls="lw-home-w cb-home-w"></button></section>
 <section class="wrap" id="lw-home-w" hidden><div class="lwhome" id="lw-home"></div></section>
 <section class="wrap" id="cb-home-w" hidden><div class="cbhome" id="cb-home"></div></section>
 
@@ -7279,6 +7295,7 @@ function renderCloud() {
         ${canRenew ? `<button class="btn ghost sm" data-cprenew="${p.id}">🔄 Gia hạn</button>` : ""}
         ${canRenew && p.status === "active" ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
         ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android 9 / 12 / 15 — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to Android 9 / 12 / 15 — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android", "Switch Android")}</button>` : ""}
+        ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" type="button" data-cpfps="${p.id}" title="${esc(L("Đổi số khung hình/giây của máy — không tạo máy mới, không mất dữ liệu, không tốn tiền", "Change this phone's frames per second — same phone, data kept, free"))}">🎞 ${L("Đổi FPS", "Change FPS")}</button>` : ""}
         ${lk ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&root=1" title="${esc(L("Bật / tắt root và chọn app được dùng lệnh su (vd Termux)", "Turn root on/off and pick which apps may use su (e.g. Termux)"))}">🔓 ${L("Root", "Root")}</a>` : ""}
         ${p.shared ? `<button class="btn ghost sm" data-shleave="${p.share_id}">🚪 ${L("Rời máy", "Leave")}</button>` : `
         ${["active", "pending"].includes(p.status) && !locked ? `<button class="btn ghost sm" data-cpshare="${p.id}">👥 ${L("Chia sẻ", "Share")}</button>` : ""}
@@ -7495,6 +7512,7 @@ document.addEventListener("click", e => {
   if (rn) cpRenew(rn.dataset.cprenew); else if (rm) cpRename(rm.dataset.cprename); else if (cc) cpCancel(cc.dataset.cpcancel);
   const up = t.closest("[data-cpup]"); if (up) cpUpgrade(up.dataset.cpup);
   const swb = t.closest("[data-cpswitch]"); if (swb) cpSwitch(swb.dataset.cpswitch);
+  const fpb = t.closest("[data-cpfps]"); if (fpb) cpFps(fpb.dataset.cpfps);
   const sh = t.closest("[data-cpshare]"), lv = t.closest("[data-shleave]"), rv = t.closest("[data-shrevoke]"), cp = t.closest("[data-shcopy]");
   if (sh) cpShareOpen(sh.dataset.cpshare);
   else if (lv && confirm(L("Rời máy này? Bạn sẽ không điều khiển được nữa (chủ máy có thể chia sẻ lại).", "Leave this phone? You will lose access."))) cpShareRevoke(lv.dataset.shleave, true);
@@ -11200,6 +11218,86 @@ function cbModal(id) {
 }
 function cbClose() { return `<button class="btn ghost sm" type="button" data-cbx>${esc(L("Đóng", "Close"))}</button>`; }
 function cbCard(ic, title, body, act) { return `<section class="cbo-card"><span class="ic" aria-hidden="true">${ic}</span><div><b class="cbo-t">${esc(title)}</b>${body}</div>${act ? `<div class="cbo-act">${act}</div>` : ""}</section>`; }
+
+/* ===== 🎞 ĐỔI FPS (SQL doi-fps-1611) — khách tự đổi FPS của máy đang thuê: không tạo máy mới · không mất dữ liệu · không tốn tiền =====
+   Hình truyền về đổi ngay ở lần mở máy kế. Máy Android 12 · 15: FPS trong game cần KHỞI ĐỘNG LẠI máy 1 lần (máy chủ chỉ ghi được lúc máy tắt). */
+Object.assign(ERR, { FPS_NOT_ACTIVE: "Máy phải đang chạy mới đổi FPS được.", FPS_WAIT: "Vừa đổi FPS xong — đợi vài giây rồi đổi tiếp nhé.",
+  cloudphone_set_fps: "Tính năng đổi FPS chưa bật — admin cần chạy SQL doi-fps-1611." });
+Object.assign(ERR_EN, { FPS_NOT_ACTIVE: "The phone must be running to change its FPS.", FPS_WAIT: "FPS was just changed — wait a few seconds and try again.",
+  BAD_FPS: "That FPS is outside the allowed range.", cloudphone_set_fps: "Changing FPS isn't enabled yet." });
+const CP_FPS_PICK = [15, 20, 30, 45, 60, 90, 120];
+function cpFpsTip(f) {
+  return f < 20 ? L("tiết kiệm nhất", "lightest") : f < 30 ? L("mạng yếu", "weak network") : f <= 30 ? L("treo game", "idling") : f <= 45 ? L("cân bằng", "balanced") : f <= 60 ? L("mượt", "smooth") : L("rất mượt", "very smooth");
+}
+async function cpFps(id) {
+  const p = myCloud.find(x => x.id === id); if (!p || p.shared) return;
+  if (cpSwitchingTo(p)) { toast(errMsg({ message: "SWITCHING" }), 1); return; }
+  await cpLoadPricing();
+  const pr = CPpricing || CP_DEF, lo = +pr.min_fps || 10, hi = Math.min(+pr.max_fps || 60, +p.cpu < 4 ? 60 : 999), cur = +p.fps || 30;
+  const opts = CP_FPS_PICK.filter(x => x >= lo && x <= hi);
+  if (cur >= lo && cur <= hi && !opts.includes(cur)) { opts.push(cur); opts.sort((a, b) => a - b); }
+  let v = cur, going = false, saved = null, booting = false, bootMsg = "", bootErr = false;
+  const m = cbModal("cpfpsdlg");
+  const save = async () => {
+    if (going || v === cur) return; going = true;
+    try {
+      const { data, error } = await sb.rpc("cloudphone_set_fps", { p_id: p.id, p_fps: v });
+      if (error) { const el = $("cfp-err"); if (el) el.textContent = errMsg(error); return; }
+      p.fps = v; renderCloud();
+      if (data && data.reboot) { saved = { fps: v }; draw(); return; }
+      m.hidden = true;
+      toast(L(`Đã đổi sang ${v} FPS — mở lại màn hình máy là thấy.`, `Changed to ${v} FPS — reopen the phone screen to see it.`));
+    } finally { going = false; }
+  };
+  const reboot = async () => {
+    if (booting) return; booting = true; bootMsg = ""; bootErr = false; draw();
+    try { bootMsg = await cpRunJob(p.id + "/reboot", L("Đang khởi động lại máy", "Restarting the phone"), cpHost(p), {}) || L("Máy đã khởi động lại xong.", "The phone has restarted."); }
+    catch (e) { bootErr = true; bootMsg = L("Chưa khởi động lại được: ", "Couldn't restart: ") + (e && e.message || e); }
+    finally { booting = false; if (!m.hidden) draw(); else toast(bootMsg, bootErr ? 1 : 0); }
+  };
+  const draw = () => {
+    const head = `<h3 id="cfp-t">🎞 ${L("Đổi FPS", "Change FPS")}</h3>
+      <div class="hint">📱 <b>${esc(p.name)}</b> · Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}</div>`;
+    if (saved) {
+      m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="cfp-t">${head}
+        <div class="fpsnote ok">✅ ${L(`Đã lưu <b>${saved.fps} FPS</b>. Hình truyền về đổi ngay ở lần mở máy kế tiếp.`, `Saved <b>${saved.fps} FPS</b>. The picture you see changes the next time you open the phone.`)}</div>
+        <div class="fpsnote">${L("Để FPS mới có tác dụng <b>bên trong game</b>, máy cần <b>khởi động lại 1 lần</b> (khoảng 1–2 phút). App đang mở trong máy sẽ tắt, <b>dữ liệu giữ nguyên</b>. Chưa tiện thì để sau — lần máy bật lại kế tiếp sẽ tự áp dụng.",
+                                "For the new FPS to apply <b>inside games</b> the phone must <b>restart once</b> (about 1–2 minutes). Apps running on the phone will close; <b>your data is kept</b>. Not now? It applies by itself the next time the phone starts.")}</div>
+        <div class="err" id="cfp-err"${bootErr ? "" : ' style="color:var(--ok)"'}>${booting ? esc(L("Đang khởi động lại máy… (1–2 phút, có thể đóng hộp này)", "Restarting… (1–2 minutes, you may close this)")) : esc(bootMsg)}</div>
+        <div class="row2"><button class="btn ghost" type="button" data-cbx>${bootMsg && !bootErr ? L("Xong", "Done") : L("Để sau", "Later")}</button>
+          <button class="btn" type="button" id="cfp-boot"${booting || (bootMsg && !bootErr) ? " disabled" : ""}>⚡ ${L("Khởi động lại ngay", "Restart now")}</button></div></div>`;
+      $("cfp-boot").onclick = reboot; return;
+    }
+    m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="cfp-t">${head}
+      <label>${L("Số khung hình mỗi giây", "Frames per second")} <span style="font-weight:500;color:var(--muted);white-space:nowrap">(${L("đang dùng", "now")} ${cur} FPS)</span></label>
+      <div class="upchips fpschips">${opts.map(x => `<button type="button" data-fpv="${x}" class="${x === v ? "on" : ""}" aria-pressed="${x === v}">${x} FPS<small>${esc(cpFpsTip(x))}</small></button>`).join("")}</div>
+      <div class="hint">${L("FPS càng cao hình càng mượt nhưng máy chạy nặng hơn và tốn mạng hơn. Treo game cả ngày nên để <b>30 FPS</b> (mạng yếu: 20 FPS).",
+                             "Higher FPS looks smoother but loads the phone and your network more. For idling all day use <b>30 FPS</b> (weak network: 20 FPS).")}${+p.cpu < 4 ? " " + L("Máy dưới 4 nhân chọn tối đa 60 FPS.", "Phones under 4 cores go up to 60 FPS.") : ""}</div>
+      <div class="hint">✔ ${L("Không tạo máy mới · không mất dữ liệu · không tốn tiền.", "Same phone · data kept · free.")}</div>
+      <div class="err" id="cfp-err"></div>
+      <div class="row2"><button class="btn ghost" type="button" data-cbx>${L("Đóng", "Close")}</button><button class="btn" type="button" id="cfp-go"${v === cur ? " disabled" : ""}>${L("Lưu", "Save")} ${v} FPS</button></div></div>`;
+    m.querySelectorAll("[data-fpv]").forEach(b => b.onclick = () => { v = +b.dataset.fpv; draw(); });
+    $("cfp-go").onclick = () => busy($("cfp-go"), save);
+  };
+  draw(); m.hidden = false;
+}
+
+/* ===== 🎁 ẨN / HIỆN khối ưu đãi + vòng quay ở trang chủ — khách tự chọn, nhớ trên trình duyệt này ===== */
+const CB_PH_KEY = "cb_promo_hide";
+function cbPromoHidden() { try { return localStorage.getItem(CB_PH_KEY) === "1"; } catch (e) { return false; } }
+function cbPromoBar() {
+  const w = $("cb-pbar-w"), b = $("cb-pbar"); if (!w || !b) return;
+  const lw = $("lw-home-w"), cb = $("cb-home-w"), any = !!((lw && !lw.hidden) || (cb && !cb.hidden)), off = cbPromoHidden();
+  if (w.hidden === any) w.hidden = !any;
+  document.body.classList.toggle("cb-promo-off", any && off);
+  b.setAttribute("aria-expanded", String(!off));
+  const html = `<span>🎁 ${esc(off ? L("Ưu đãi & vòng quay đang ẩn", "Offers & lucky wheel are hidden") : L("Ưu đãi & vòng quay", "Offers & lucky wheel"))}</span><b>${esc(off ? L("Hiện", "Show") : L("Ẩn", "Hide"))} ${off ? "▾" : "▴"}</b>`;
+  if (b.innerHTML !== html) b.innerHTML = html;
+}
+$("cb-pbar") && $("cb-pbar").addEventListener("click", () => { try { localStorage.setItem(CB_PH_KEY, cbPromoHidden() ? "0" : "1"); } catch (e) {} cbPromoBar(); });
+try { const mo = new MutationObserver(cbPromoBar); for (const id of ["lw-home-w", "cb-home-w"]) { const el = $(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ["hidden"] }); } } catch (e) {}
+document.addEventListener("br-lang", cbPromoBar);
+cbPromoBar();
 
 /* ----- 🎁 hộp Ưu đãi (bấm dòng chữ chạy / ô trang chủ) ----- */
 function openOffers() { cbModal("cbofr").hidden = false; cbOffersRender(); promoLoad(); }
