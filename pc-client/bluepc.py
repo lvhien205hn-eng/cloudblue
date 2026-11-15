@@ -57,6 +57,14 @@ def prefs(upd=None):
     return p
 
 
+# 16/11 · CỠ CHỮ do khách tự chỉnh (🎨 Giao diện): 80–130%, nhớ theo máy. 100% = y như cũ.
+UI_MIN, UI_MAX, UI_STEP = 80, 130, 5
+def ui_scale():
+    try: v = int(float(prefs().get("ui_scale") or 100))
+    except (TypeError, ValueError): v = 100
+    return max(UI_MIN, min(UI_MAX, v))
+
+
 # ================================================================ HTTP + Supabase
 OUTDATED = {"v": False, "min": ""}               # máy chủ báo app đã cũ (APP_OUTDATED) / admin đặt bản tối thiểu (settings.min_app_pc)
 
@@ -545,6 +553,9 @@ class Viewer:
         self.full = False; self.fit = None; self.geo = {}  # fit = (rộng, cao) hình lúc chỉnh cỡ cửa sổ lần trước · geo = cỡ hình đã dùng cho từng hướng
         self.notice = None; self.notice_rect = None       # (chữ, hết hạn lúc, việc khi bấm vào) — thông báo nhỏ trên hình
         self.cp = None; self.gen = 0                      # cp = cổng công cụ máy (xoay, chụp màn…) · gen: tải lại hình thì bỏ sự kiện của luồng cũ
+        # 16/11: gợi ý của máy chủ khi báo lỗi (fix = "reboot" → cho khởi động lại máy · boot = 1 → máy đang được bật, tự thử lại)
+        self.err_x = {}; self.fix_arm = 0.0; self.fixing = False; self.auto_at = 0.0; self.auto_n = 0
+        self.weak = False; self.stall = False; self.slow = False      # mạng yếu (máy chủ đã giảm nét) · đang đứng hình · chờ máy chủ lâu
 
     # ---------- mạng ----------
     def connect(self):
@@ -576,12 +587,21 @@ class Viewer:
             self.name = d.get("name") or self.name; self._reset_decoder(); self._post()
         elif k == "size": self._reset_decoder(); self._post()        # máy xoay / đổi cỡ: cửa sổ tự xoay theo khi có khung hình mới (run)
         elif k == "clip": clip_put(d)
-        elif k == "stats": self.stats = d; self._post()
+        elif k == "stats":
+            w = bool(d.get("weak")) if isinstance(d, dict) else False        # 16/11: máy chủ đang phải giảm nét vì mạng của khách yếu
+            if w and not self.weak: self._say("📶 Mạng yếu — đã giảm nét cho hình mượt.", 6)
+            self.weak = w; self.stats = d; self._post()
         elif k == "ping": self.ping = d
         elif k == "state":
             if d[0] == "closed" and self.state[0] in ("kicked", "error"): return      # giữ thông báo lỗi / "mở ở nơi khác"
             self.state = d
+            x = d[3] if d[0] == "error" and len(d) > 3 and isinstance(d[3], dict) else {}
+            if d[0] == "error" and not x and "Khởi động lại máy" in str(d[1]): x = {"fix": "reboot"}      # brstream bản cũ không chuyển gợi ý → đọc theo câu
+            self.err_x = x
+            if d[0] == "error" and x.get("boot") and self.auto_n < 40:       # máy đang được bật lại → tự thử lại sau 6 giây (tối đa ~4 phút)
+                self.auto_n += 1; self.auto_at = time.time() + 6
             if d[0] == "connected":
+                self.auto_n = 0; self.auto_at = 0.0
                 self.path = d[1]
                 if self.cli and self.cli.prefer: prefs({"path_" + str(self.node): list(self.cli.prefer)})
                 if not getattr(self, "_upd_tried", False):             # có bản app mới → nhắc ngay trong cửa sổ máy
@@ -665,10 +685,59 @@ class Viewer:
             if self.vw and self._need_fit(): self._fit_window(pygame); dirty = True
             n = self.notice                                   # thông báo do luồng khác đặt / xoá → đọc 1 lần
             if n and time.time() >= n[1]: self.notice = None; dirty = True
+            dirty |= self._watch()
             if dirty: self._draw(pygame); dirty = False
             clock.tick(500)
         if self.cli: self.cli.close()
         pygame.quit()
+
+    def _watch(self):
+        """16/11 · gọi ~4 lần / giây: tự thử lại khi máy đang được bật · báo đứng hình vì mạng chậm · nói rõ khi chờ máy chủ lâu. Trả True nếu cần vẽ lại."""
+        now = time.time(); ch = False; c = self.cli; st = self.state[0]
+        if self.auto_at and now >= self.auto_at:
+            self.auto_at = 0.0
+            if st == "error" and not self.fixing: self._retry(); ch = True
+        rx = getattr(c, "last_rx", 0) if c is not None else 0
+        if st == "connected" and rx:
+            q = now - rx
+            if q > 2.5 and not self.stall: self.stall = True; self._say("⏳ Mạng chậm — đang chờ hình…", 6)
+            elif q < 1.0 and self.stall:
+                self.stall = False; n = self.notice
+                if n and str(n[0]).startswith("⏳"): self.notice = None; ch = True
+        else: self.stall = False
+        ht = getattr(c, "hello_t", 0) if c is not None else 0
+        slow = bool(st in ("connecting", "reconnecting") and not self.fixing and ht and now - ht > 8 and rx and now - rx < 5)
+        if slow != self.slow: self.slow = slow; ch = True
+        return ch
+
+    def _fix_click(self):
+        """Lỗi có gợi ý "Khởi động lại máy": bấm / phím K lần 1 = hỏi lại (8 giây), lần 2 = làm (cửa sổ máy không có hộp hỏi)."""
+        if self.fixing: return
+        if time.time() < self.fix_arm: self.fix_arm = 0.0; return self._fix_reboot()
+        self.fix_arm = time.time() + 8
+        self._say("Bấm lần nữa (hoặc phím K) để KHỞI ĐỘNG LẠI máy — khoảng 1–2 phút. App đang mở trong máy sẽ tắt, dữ liệu vẫn giữ nguyên.", 8)
+
+    def _fix_reboot(self):
+        """Khởi động lại máy rồi CHỜ máy chủ làm xong mới nối lại (không nối trong lúc máy đang tắt / bật)."""
+        if self.fixing: return
+        self.fixing = True; self.notice = None; self.auto_at = 0.0; self.err_x = {}
+        old, self.cli = self.cli, None; self.gen += 1
+        if old: threading.Thread(target=old.close, daemon=True).start()
+        self.kicked = False; self.state = ("connecting", "Đang khởi động lại máy… (1–2 phút)"); self.need_key = True; self._post()
+        def job():
+            try:
+                cp = self._cp(); j = cp.json("POST", "reboot", {}, timeout=60)
+                def prog(m): self.state = ("connecting", str(m)); self._post()
+                if j.get("job"): cp.wait_job(j["job"], prog, limit=420)
+                else: time.sleep(45)
+            except Exception as e:
+                log("fix reboot:", e)
+                self.fixing = False
+                self.state = ("error", "Chưa khởi động lại được: " + (str(e) or "lỗi") + " Bấm R để thử lại; vẫn lỗi thì báo hỗ trợ kèm tên máy."); self._post(); return
+            self.fixing = False
+            self.state = ("connecting", "Máy đã khởi động lại — đang kết nối…"); self._post()
+            self._connect_bg()
+        threading.Thread(target=job, daemon=True).start()
 
     def _connect_bg(self):
         try: self.connect()
@@ -756,7 +825,7 @@ class Viewer:
         surf_v = pygame.image.frombuffer(arr if arr.flags["C_CONTIGUOUS"] else arr.tobytes(), (arr.shape[1], arr.shape[0]), "RGB") if arr is not None else None
         key = (W, H, self.hover, self.q, tuple(self.state[:2]), self.show_info, surf_v is not None,
                int(self.fps_show) if self.show_info else 0, self.stats.get("kbps") if self.show_info else 0, self.ping if self.show_info else 0, self.path,
-               self.bar_on, (self.notice or ("",))[0])
+               self.bar_on, (self.notice or ("",))[0], self.slow, self.err_x.get("fix"), self.err_x.get("boot"), self.weak if self.show_info else 0)
         if key != self._ui_key:                          # lớp nút / chữ chỉ vẽ lại khi có thay đổi (đỡ tốn CPU mỗi khung)
             ui = pygame.Surface((W, H), pygame.SRCALPHA); ui.fill((0, 0, 0, 0))
             self._draw_bar(pygame, ui, W, H)
@@ -846,7 +915,13 @@ class Viewer:
             lines = [msg]
             if st == "kicked": lines = ["Máy đang được mở ở nơi khác.", "Bấm phím R hoặc bấm vào đây để mở lại tại đây."]
             if st == "error":
-                lines = [msg, (getattr(self, "upd_hint", "") or "Đang tìm bản mới…") if must_update() else "Bấm phím R để thử lại."]
+                x = self.err_x                               # 16/11: máy chủ gợi ý → nói rõ khách cần làm gì (trước đây chỉ "bấm R" rồi lỗi lặp lại)
+                lines = [msg, (getattr(self, "upd_hint", "") or "Đang tìm bản mới…") if must_update()
+                         else "App tự thử lại sau vài giây — không cần bấm gì." if x.get("boot") and self.auto_at
+                         else "Bấm phím K (hoặc bấm vào đây) để KHỞI ĐỘNG LẠI MÁY · phím R: thử lại." if x.get("fix") == "reboot"
+                         else "Bấm phím R để thử lại."]
+            elif self.slow:                                  # máy chủ đang giữ kết nối chờ máy bật lên (máy vừa tự nghỉ / đang khởi động)
+                lines = [msg, "Máy đang được bật lên (thức dậy / khởi động) — thường 1–2 phút, app tự vào khi máy lên."]
             bw = min(aw - 40, 520); rows = []
             for i, ln in enumerate(lines):
                 f_ = self.font_b if i == 0 else self.font
@@ -859,6 +934,7 @@ class Viewer:
         if self.show_info and st == "connected":
             d = self.stats
             txt = f"{self.fps_show:.0f} khung/s · {d.get('kbps', 0) / 1000:.1f} Mbps · trễ mạng {self.ping} ms · {self.path} · {str(d.get('enc', '')).upper()}"
+            if self.weak: txt += " · mạng yếu (đã giảm nét)"
             if d.get("drop"): txt += f" · bỏ {d['drop']}"
             t = self.font_s.render(txt, True, C_TXT)
             pygame.draw.rect(s, (0, 0, 0, 150), (6, 6, t.get_width() + 14, t.get_height() + 8), border_radius=8); s.blit(t, (13, 10))
@@ -967,7 +1043,7 @@ class Viewer:
 
     def _retry(self):
         if self.state[0] in ("kicked", "error"):
-            self.kicked = False; self.state = ("connecting", "Đang kết nối…"); self.need_key = True
+            self.kicked = False; self.state = ("connecting", "Đang kết nối…"); self.need_key = True; self.err_x = {}; self.fix_arm = 0.0
             threading.Thread(target=self._connect_bg, daemon=True).start()
 
     def _reload(self):
@@ -994,6 +1070,7 @@ class Viewer:
                 except Exception as ex: log("notice:", ex)
                 return True
             if self.state[0] == "error" and e.button == 1 and must_update(): self._open_updater(); return True
+            if self.state[0] == "error" and e.button == 1 and self.err_x.get("fix") == "reboot": self._fix_click(); return True
             if self.state[0] in ("kicked", "error") and e.button == 1: self._retry(); return True
             p = self._norm(e.pos)
             if p and c:
@@ -1018,6 +1095,7 @@ class Viewer:
             if down and e.key == pygame.K_F5: self._reload(); return True
             if down and e.key == pygame.K_F3: self.show_info = not self.show_info; return True
             if down and e.key == pygame.K_u and self.state[0] == "error" and must_update(): self._open_updater(); return True
+            if down and e.key == pygame.K_k and self.state[0] == "error" and self.err_x.get("fix") == "reboot" and not must_update(): self._fix_click(); return True
             if down and e.key == pygame.K_r and self.state[0] in ("kicked", "error"): self._retry(); return True
             if not c: return False
             if mods & pygame.KMOD_CTRL and e.key == pygame.K_v:
@@ -1393,12 +1471,13 @@ class TierList:
 
 class Dlg:
     """Cửa sổ con (mua / gia hạn / nạp): phần trên cuộn được, phần dưới (tổng tiền + nút) đứng yên."""
-    def __init__(self, app, title, w=580, h=700):
+    def __init__(self, app, title, w=580, h=700, grow=True):
         tk = app.tk; self.app = app; self.alive = True
         self.win = d = tk.Toplevel(app.root); d.title(title); d.configure(bg=BG)
         if not getattr(app, "tools_only", False): d.transient(app.root)
         app.root.update_idletasks()
-        sw, sh = d.winfo_screenwidth(), d.winfo_screenheight(); h = min(h, sh - 80)
+        g = max(1.0, getattr(app, "scale", 1.0)) if grow else 1.0     # 16/11: khách chỉnh chữ to → hộp thoại rộng / cao theo (không quá màn hình)
+        sw, sh = d.winfo_screenwidth(), d.winfo_screenheight(); w = min(int(w * g), max(440, sw - 40)); h = min(int(h * g), sh - 80)
         x = app.root.winfo_rootx() + (app.root.winfo_width() - w) // 2; y = app.root.winfo_rooty() + 20
         d.geometry(f"{w}x{h}+{max(0, min(x, sw - w))}+{max(0, min(y, sh - h - 40))}"); d.minsize(440, 380)
         d.bind("<Escape>", lambda e: self.close())
@@ -2904,7 +2983,7 @@ class WheelDlg(Dlg):
 
     def __init__(self, app, parent=None):
         self.sc = sc = wheel_scale(app)
-        super().__init__(app, "🎡 Vòng quay may mắn", int(560 * sc), int(840 * sc))
+        super().__init__(app, "🎡 Vòng quay may mắn", int(560 * sc), int(840 * sc), grow=False)       # hộp này tự nhân theo cỡ chữ (sc) rồi
         self.parent = parent; self.S = int(360 * sc)
         self.st = WHEEL["st"]; self.rot = 0.0; self.mys = False; self.busy = False; self.win_i = -1; self.pz = []; self.paid_any = False
         self.act = "spin"; self.rules_open = False; self.cv = None; self.t_bulb = 0; self.hub_on = False; self.bulb_ids = []; self.geo = None; self.luck = False
@@ -3636,6 +3715,134 @@ class SwitchDlg(Dlg):
         self.bg(lambda: self.app.auth.rpc("cloudphone_switch_android", {"p_id": self.p["id"], "p_android": v}), done, fail)
 
 
+# ================= 🎞 16/11 · KHÁCH TỰ ĐỔI FPS (SQL doi-fps-1611 → cloudphone_set_fps) =================
+FPS_PICK = [15, 20, 30, 45, 60, 90, 120]
+def fps_tip(v):
+    return "tiết kiệm nhất" if v < 20 else "mạng yếu" if v < 30 else "treo game" if v <= 30 else "cân bằng" if v <= 45 else "mượt" if v <= 60 else "rất mượt"
+
+
+class FpsDlg(Dlg):
+    """Đổi FPS của máy đang thuê: cùng máy đó, giữ nguyên dữ liệu, không tốn tiền. Hình truyền về đổi ở lần mở máy kế tiếp;
+       máy Android 12 · 15 cần khởi động lại 1 lần để FPS mới có tác dụng trong game (máy chủ trả reboot = true → hỏi khách)."""
+    def __init__(self, app, phone):
+        super().__init__(app, "Đổi FPS — " + (phone.get("name") or "máy"), 560, 520)
+        self.p = phone; self.cur = int(num(phone.get("fps")) or 30); self.v = self.cur; self.busy = False
+        self.loading("Đang tải…")
+        self.bg(lambda: app.shop.pricing(), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, pr):
+        tk = self.app.tk; p = self.p; self.clear()
+        small = int(num(p.get("cpu"))) < 4
+        lo = int(num(pr.get("min_fps")) or 10); hi = min(int(num(pr.get("max_fps")) or 60), 60 if small else 120)
+        opts = sorted({x for x in FPS_PICK if lo <= x <= hi} | {self.cur})
+        self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
+        self.label(self.body, f"Android {p.get('android') or '9'} · {p.get('ram')}GB · {p.get('cpu')} nhân · đang dùng {self.cur} FPS",
+                   self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
+        s = self.section("Số khung hình mỗi giây")
+        self.cv = Chips(self.app, s, [(x, f"{x} FPS\n{fps_tip(x)}") for x in opts], lambda: self.v, lambda x: setattr(self, "v", x), self.upd, wrap=4)
+        self.cv.frame.pack(fill="x")
+        self.label(self.body, "FPS càng cao hình càng mượt nhưng máy chạy nặng hơn và tốn mạng hơn. Treo game cả ngày nên để 30 FPS (mạng yếu: 20 FPS)."
+                   + (" Máy dưới 4 nhân chọn tối đa 60 FPS." if small else ""), self.app.f_s, DIM, wraplength=510).pack(fill="x", padx=18, pady=(8, 0))
+        self.label(self.body, "✔ Không tạo máy mới · không mất dữ liệu · không tốn tiền.", self.app.f_s, OK, wraplength=510).pack(fill="x", padx=18, pady=(4, 12))
+        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(8, 0))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, "Lưu", self.save); self.go.pack(side="right")
+        self.upd()
+
+    def upd(self):
+        self.cv.paint()
+        ch = self.v != self.cur and not self.busy
+        self.go.config(text="Đang lưu…" if self.busy else f"Lưu {self.v} FPS" if self.v != self.cur else "Chọn số FPS khác để đổi",
+                       state="normal" if ch else "disabled", bg=ACC if ch else LINE)
+
+    def save(self):
+        if self.busy or self.v == self.cur: return
+        v = self.v; self.busy = True; self.err.config(text=""); self.upd()
+        def done(r):
+            self.busy = False; self.p["fps"] = v; self.cur = v; self.app.refresh(quiet=True)
+            if isinstance(r, dict) and r.get("reboot"): return self._ask_reboot(v)
+            import tkinter.messagebox as mb
+            self.close()
+            mb.showinfo("CloudBlue", f"Đã đổi sang {v} FPS — mở lại cửa sổ máy là thấy.", parent=self.app.root)
+        def fail(m):
+            self.busy = False; self.err.config(text=m); self.upd()
+        self.bg(lambda: self.app.auth.rpc("cloudphone_set_fps", {"p_id": self.p["id"], "p_fps": v}), done, fail)
+
+    def _ask_reboot(self, v):
+        """Đã lưu FPS mới mà máy cần khởi động lại 1 lần (Android 12 · 15) → khởi động lại ngay, hay để sau (lần bật kế tiếp tự áp dụng)."""
+        tk = self.app.tk; self.clear()
+        self.label(self.body, f"✅ Đã lưu {v} FPS", self.app.f_h2, OK).pack(fill="x", padx=18, pady=(18, 0))
+        self.label(self.body, "Hình truyền về đổi ngay ở lần mở máy kế tiếp.", self.app.f_t, TXT, wraplength=510).pack(fill="x", padx=18, pady=(4, 0))
+        self.label(self.body, "Để FPS mới có tác dụng BÊN TRONG GAME, máy cần khởi động lại 1 lần (khoảng 1–2 phút). App đang mở trong máy sẽ tắt, "
+                              "dữ liệu giữ nguyên. Chưa tiện thì để sau — lần máy bật lại kế tiếp sẽ tự áp dụng.", self.app.f_t, DIM, wraplength=510).pack(fill="x", padx=18, pady=(10, 0))
+        self.st = self.label(self.body, "", self.app.f_t, ACC, wraplength=510); self.st.pack(fill="x", padx=18, pady=(12, 12))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=12)
+        self.b_later = self.app.btn(bb, "Để sau", self.close, "soft"); self.b_later.pack(side="left")
+        self.b_now = self.app.btn(bb, "⚡ Khởi động lại ngay", self._reboot); self.b_now.pack(side="right")
+
+    def _reboot(self):
+        self.b_now.config(state="disabled", bg=LINE); self.st.config(text="Đang khởi động lại máy… (1–2 phút, có thể đóng hộp này)", fg=ACC)
+        cp = CpClient(self.app.auth, self.p["id"])
+        def job():
+            j = cp.json("POST", "reboot", {}, timeout=60)
+            if not j.get("job"): return "Máy đang khởi động lại — khoảng 1–2 phút."
+            return cp.wait_job(j["job"], lambda m: self.app.ui(lambda: self.alive and self.st.config(text=str(m))), limit=420)
+        def done(m):
+            self.st.config(text="✅ " + str(m), fg=OK); self.b_later.config(text="Xong"); self.app.refresh(quiet=True)
+        def fail(m):
+            self.st.config(text="Chưa khởi động lại được: " + str(m), fg=BAD); self.b_now.config(state="normal", bg=ACC)
+        self.bg(job, done, fail)
+
+
+class LookDlg(Dlg):
+    """16/11 · 🎨 Giao diện: thanh chỉnh CỠ CHỮ 80–130% (bấm Áp dụng → app mở lại với cỡ mới, nhớ theo máy) · ẩn / hiện ô ưu đãi đầu danh sách."""
+    def __init__(self, app):
+        super().__init__(app, "Giao diện", 520, 440)
+        tk = app.tk; self.cur = ui_scale()
+        self.label(self.body, "🔍 Cỡ chữ của app", app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
+        self.val = self.label(self.body, "", app.f_t, TXT); self.val.pack(fill="x", padx=18, pady=(4, 0))
+        self.var = tk.IntVar(value=self.cur)
+        self.sc = tk.Scale(self.body, from_=UI_MIN, to=UI_MAX, resolution=UI_STEP, orient="horizontal", variable=self.var, showvalue=False,
+                           command=lambda *_: self.upd(), bg=ACC, fg=TXT, troughcolor=LINE, activebackground="#4b8cff", highlightthickness=0, bd=0,
+                           sliderlength=34, width=18, sliderrelief="flat", cursor="hand2")
+        self.sc.pack(fill="x", padx=18, pady=(6, 0))
+        ends = tk.Frame(self.body, bg=BG); ends.pack(fill="x", padx=18)
+        self.label(ends, f"nhỏ {UI_MIN}%", app.f_s, DIM).pack(side="left"); self.label(ends, f"to {UI_MAX}%", app.f_s, DIM).pack(side="right")
+        box = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1); box.pack(fill="x", padx=18, pady=(10, 0))
+        self.demo = tk.Label(box, text="Chữ mẫu: Máy 6GB · 6 nhân · 60 FPS", fg=TXT, bg=CARD, anchor="w"); self.demo.pack(fill="x", padx=12, pady=10)
+        self.label(self.body, "Kéo sang phải cho chữ TO hơn, sang trái cho NHỎ hơn rồi bấm Áp dụng. App sẽ tự mở lại cửa sổ danh sách với cỡ mới — "
+                              "các cửa sổ máy đang mở không bị đóng.", app.f_s, DIM, wraplength=470).pack(fill="x", padx=18, pady=(8, 0))
+        self.pv = tk.BooleanVar(value=not prefs().get("promo_hide"))
+        tk.Checkbutton(self.body, text="Hiện ô ưu đãi · vòng quay ở đầu danh sách máy", variable=self.pv, command=self.promo, font=app.f_t,
+                       fg=TXT, bg=BG, selectcolor=CARD, activebackground=BG, activeforeground=TXT, anchor="w", cursor="hand2",
+                       highlightthickness=0, bd=0).pack(fill="x", padx=14, pady=(14, 12))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=12)
+        app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, "Áp dụng", self.apply); self.go.pack(side="right")
+        app.btn(bb, "Mặc định 100%", lambda: (self.var.set(100), self.upd()), "ghost").pack(side="right", padx=8)
+        self.upd()
+
+    def value(self):
+        try: v = int(round(float(self.var.get()) / UI_STEP)) * UI_STEP
+        except Exception: v = self.cur
+        return max(UI_MIN, min(UI_MAX, v))
+
+    def upd(self):
+        v = self.value(); ch = v != self.cur
+        self.val.config(text=f"{v}%" + (" (mặc định)" if v == 100 else "") + (f"  ·  đang dùng {self.cur}%" if ch else ""))
+        self.demo.config(font=("Segoe UI", max(6, int(round(10 * v / self.cur)))))            # hộp này đang vẽ ở cỡ hiện tại → chữ mẫu theo tỉ lệ
+        self.go.config(state="normal" if ch else "disabled", bg=ACC if ch else LINE)
+
+    def promo(self):
+        prefs({"promo_hide": not self.pv.get()}); self.app._promo_sig = None; self.app._paint_promo()
+
+    def apply(self):
+        v = self.value()
+        if v == self.cur: return
+        prefs({"ui_scale": v}); self.close(); self.app.restart_ui()
+
+
 APP_NAMES = {"com.roblox.client": "Roblox", "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram",
              "com.zhiliaoapp.musically": "TikTok", "com.ss.android.ugc.trill": "TikTok", "com.android.chrome": "Chrome",
              "com.termux": "Termux", "com.termux.api": "Termux:API", "com.termux.boot": "Termux:Boot", "bin.mt.plus": "MT Manager",
@@ -4206,6 +4413,8 @@ ERRORS.update({                                                  # 🏷️ mã g
     "BLUE_NEW_ACCOUNT": "Tài khoản mới — sau 24 giờ mới tích Blue được.", "MONEY_GUARD": "Bị chặn: không được tự cộng tiền.", "BLUE_GUARD": "Bị chặn.",
     "MAX_AMOUNT": "Số tiền quá lớn.", "banned": "⛔ Tài khoản đã bị cấm do vi phạm điều khoản sử dụng (gian lận / cày clone / lợi dụng lỗi). Nếu là nhầm lẫn, liên hệ hỗ trợ kèm tên đăng nhập.",
 })
+ERRORS.update({"FPS_NOT_ACTIVE": "Máy phải đang chạy mới đổi FPS được.", "FPS_WAIT": "Vừa đổi FPS xong — đợi vài giây rồi đổi tiếp nhé.",
+               "cloudphone_set_fps": "Máy chủ chưa bật tính năng đổi FPS — thử lại sau ít phút."})                      # 16/11 · khách tự đổi FPS
 ERRORS.update({"UPGRADE_PENDING": "Máy đang được nâng cấp, đợi khoảng 1 phút rồi thử lại.", "FREE_NO_UPGRADE": "Máy miễn phí không nâng cấp được — thuê máy trả phí để nâng.",
                "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "BAD_UPGRADE": "Cấu hình nâng cấp không hợp lệ."})
 
@@ -4613,7 +4822,15 @@ class Launcher:
         self.upd_mode = upd_mode; self.reopen_id = reopen      # --update <máy>: tự tải bản mới, xong mở lại đúng máy đó
         if FROZEN and not tools_for: threading.Thread(target=cleanup_update_leftovers, daemon=True).start()   # dọn thư mục của lần cập nhật trước
         self.scrollers = {}; self._fast = None; self._q = queue.Queue()
-        self.root = tk.Tk(); self.root.title("CloudBlue PC"); self.root.configure(bg=BG); self.root.geometry("600x760"); self.root.minsize(480, 540)
+        self.root = tk.Tk(); self.root.title("CloudBlue PC"); self.root.configure(bg=BG)
+        self.scale = ui_scale() / 100.0                   # 16/11: cỡ chữ khách tự chỉnh (🎨 Giao diện) — chữ Tk tính theo điểm nên nhân hệ số là to / nhỏ theo
+        if abs(self.scale - 1.0) > 0.01:
+            try: self.root.tk.call("tk", "scaling", float(self.root.tk.call("tk", "scaling")) * self.scale)
+            except Exception as e: log("scale:", e); self.scale = 1.0
+        g = max(1.0, self.scale)                          # chữ to → cửa sổ rộng / cao theo (chữ nhỏ thì giữ cỡ cửa sổ cũ)
+        try: sw_, sh_ = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        except Exception: sw_, sh_ = 1920, 1080
+        self.root.geometry(f"{min(int(600 * g), max(480, sw_ - 40))}x{min(int(760 * g), max(540, sh_ - 80))}"); self.root.minsize(480, 540)
         self.root.bind_all("<MouseWheel>", self._wheel)
         self.root.after(40, self._pump)
         try:
@@ -4702,6 +4919,39 @@ class Launcher:
                 m = str(e); self.ui(lambda m=m: mb.showerror("CloudBlue", m, parent=self.root))
         threading.Thread(target=job, daemon=True).start()
 
+    def restart_ui(self):
+        """16/11 · mở lại app (tiến trình mới) để áp dụng cỡ chữ mới — cửa sổ máy đang mở là tiến trình riêng nên không bị đóng."""
+        try:
+            args = [sys.executable] if FROZEN else [sys.executable, os.path.abspath(__file__)]
+            kw = {"creationflags": 0x00000008 | 0x00000200} if os.name == "nt" else {"start_new_session": True}     # DETACHED_PROCESS | NEW_PROCESS_GROUP
+            subprocess.Popen(args, close_fds=True, **kw)
+        except Exception as e:
+            log("restart:", e)
+            import tkinter.messagebox as mb
+            mb.showinfo("CloudBlue", "Đã lưu cỡ chữ mới — đóng app rồi mở lại là thấy.", parent=self.root); return
+        self.root.after(200, self.root.destroy)
+
+    def toggle_promo(self):
+        prefs({"promo_hide": not prefs().get("promo_hide")}); self._promo_sig = None; self._paint_promo()
+
+    def _paint_promo(self):
+        """16/11 · dòng nhỏ "Ẩn ưu đãi ▴" / "🎁 Hiện ưu đãi · vòng quay ▾" trên các ô 🎡 Vòng quay · 🎬 Kiếm tiền · 🎁 Ưu đãi — khách bấm ẩn / hiện,
+           nhớ theo máy. Ẩn chỉ để gọn danh sách: dòng chữ chạy và hộp Nạp tiền vẫn như cũ. Không có ô nào → không hiện dòng này."""
+        bar, ws, os_, anchor = (getattr(self, k, None) for k in ("promo_bar", "wheel_slot", "offers_slot", "list_wrap"))
+        try:
+            if any(w is None or not w.winfo_exists() for w in (bar, ws, os_, anchor)): return
+            hide = bool(prefs().get("promo_hide")); any_ = bool(ws.winfo_children() or os_.winfo_children())
+            sig = (hide, any_)
+            if getattr(self, "_promo_sig", None) == sig: return
+            self._promo_sig = sig
+            for w in (bar, ws, os_): w.pack_forget()
+            if any_:
+                bar.config(text="🎁 Hiện ưu đãi · vòng quay  ▾" if hide else "Ẩn ưu đãi  ▴", fg=ACC if hide else DIM)
+                bar.pack(anchor="e", padx=18, pady=(6, 0), before=anchor)
+            if not hide:
+                ws.pack(fill="x", padx=18, before=anchor); os_.pack(fill="x", padx=18, before=anchor)
+        except Exception: log("promo:", traceback.format_exc())
+
     def more(self, p, widget):
         """Menu "Khác" của 1 máy: công cụ (xoay màn, độ rộng, cài app, ứng dụng, clone tab…), nâng cấp RAM/CPU, huỷ máy."""
         m = self.tk.Menu(self.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
@@ -4713,6 +4963,8 @@ class Launcher:
         m.add_separator()
         m.add_command(label="Nâng cấp RAM / CPU", command=lambda: self.open_upgrade(p), state="normal" if can_up else "disabled")
         sw = self.switching(p); can_sw = p.get("status") == "active" and not p.get("locked") and not sw
+        m.add_command(label=f"Đổi FPS (đang {int(num(p.get('fps')) or 30)} FPS)…", command=lambda: FpsDlg(self, p),      # 16/11: khách tự đổi FPS, không tạo máy mới
+                      state="normal" if can_sw else "disabled")
         m.add_command(label="Đang đổi Android… (chờ máy mới)" if sw else "Đổi Android (9 / 12 / 15)…", command=lambda: self.open_switch(p),
                       state="normal" if can_sw else "disabled")
         m.add_separator()
@@ -4762,6 +5014,7 @@ class Launcher:
         tk.Label(top, text="Máy của tôi", font=self.f_h1, fg=TXT, bg=BG).pack(side="left")
         self.btn(top, "Đăng xuất", self.logout, "ghost").pack(side="right")
         self.btn(top, "⟳ Làm mới", self.refresh, "ghost").pack(side="right", padx=6)
+        self.btn(top, "🎨 Giao diện", lambda: LookDlg(self), "ghost").pack(side="right")       # 16/11: cỡ chữ · ẩn / hiện ô ưu đãi
         sub = tk.Frame(self.body, bg=BG); sub.pack(fill="x", padx=18)
         tk.Label(sub, text=self.auth.email, font=self.f_s, fg=DIM, bg=BG).pack(side="left")
         lk = tk.Label(sub, text="Mở web ↗", font=self.f_s, fg=ACC, bg=BG, cursor="hand2"); lk.pack(side="right")
@@ -4776,11 +5029,14 @@ class Launcher:
         self.btn(shop, "Nạp tiền", self.open_topup, "soft").pack(side="right", pady=10)
         self.btn(shop, "🎟 Nhập mã", lambda: CodeDlg(self), "soft").pack(side="right", padx=(0, 6), pady=10)
         self.blue_btn = self.btn(shop, "💎 Tích Blue", lambda: BlueDlg(self), "soft")      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
+        self.promo_bar = tk.Label(self.body, text="", font=self.f_s, fg=DIM, bg=BG, cursor="hand2")      # 16/11: bấm để ẩn / hiện các ô ưu đãi bên dưới
+        self.promo_bar.bind("<Button-1>", lambda *_: self.toggle_promo()); self._promo_sig = None
         self.wheel_slot = tk.Frame(self.body, bg=BG); self.wheel_slot.pack(fill="x", padx=18)   # 🎡 vòng quay may mắn (SQL v34c) — trống khi chưa bật
         self._paint_wheel()
         self.offers_slot = tk.Frame(self.body, bg=BG); self.offers_slot.pack(fill="x", padx=18)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
         self._paint_offers()
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=10, pady=10)
+        self.list_wrap = wrap; self._paint_promo()
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
         self.list = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.list, anchor="nw")
         self.list.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
@@ -4818,7 +5074,7 @@ class Launcher:
                 if time.time() - WHEEL["t"] > 60: wheel_load(self.auth)        # 🎡 vòng quay may mắn (tối đa 1 lần / phút)
                 if time.time() - OFFERS["t"] > 120: offers_load(self.auth)     # 🎁 ưu đãi + Kiếm tiền (tối đa 1 lần / 2 phút)
                 def show():
-                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._paint_offers(); self._auto_update()
+                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._paint_offers(); self._paint_promo(); self._auto_update()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))

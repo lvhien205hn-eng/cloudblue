@@ -17,7 +17,7 @@ VERSION = "1.0.0"
 
 
 class Fatal(Exception):
-    def __init__(self, code, msg): super().__init__(msg); self.code, self.msg = code, msg
+    def __init__(self, code, msg, extra=None): super().__init__(msg); self.code, self.msg, self.extra = code, msg, extra or {}
 
 
 # ------------------------------------------------------------------ đường truyền
@@ -153,7 +153,7 @@ class StreamClient:
         self.prefer = prefer                       # (kind, desc) lần trước nối được
         self.direct_fail_t = 0.0                   # lúc đường trực tiếp vừa hỏng trong phiên này (nối lại trong 5 phút thì đi Cloudflare luôn)
         self.conn = None; self.stop_flag = False; self.thread = None
-        self.last_rx = 0.0; self.path = ""; self.fails = 0; self.auth_retry = False
+        self.last_rx = 0.0; self.hello_t = 0.0; self.path = ""; self.fails = 0; self.auth_retry = False
         self.moves = {}; self.mlock = threading.Lock(); self.last_pts = 0; self.acked = 0
 
     # ---------- vòng nối / nối lại ----------
@@ -207,7 +207,7 @@ class StreamClient:
                 if self.maxh: hello["maxh"] = int(self.maxh)
                 self.conn.send(C_HELLO, json.dumps(hello).encode())
                 self.conn.settimeout(6)
-                self.last_rx = time.time()
+                self.last_rx = self.hello_t = time.time()      # hello_t: lúc bắt đầu chờ máy chủ cho vào (chờ lâu = máy đang được bật)
                 threading.Thread(target=self._pinger, args=(self.conn,), daemon=True).start()
                 threading.Thread(target=self._mover, args=(self.conn,), daemon=True).start()
                 got_video = self._loop(self.conn)
@@ -218,7 +218,8 @@ class StreamClient:
                     try: self.token_fn(force=True)
                     except Exception: pass
                     continue
-                self._emit("state", ("kicked" if f.code == "KICKED" else "error", f.msg, f.code))
+                # 16/11: kèm gợi ý của máy chủ — fix = "reboot" (nên khởi động lại máy) · boot = 1 (máy đang được bật, thử lại sau vài giây)
+                self._emit("state", ("kicked" if f.code == "KICKED" else "error", f.msg, f.code, f.extra))
                 self.stop_flag = True; break
             except Exception as e:
                 if self.stop_flag: break
@@ -250,7 +251,7 @@ class StreamClient:
             elif t == S_PONG and len(p) >= 8: self._emit("ping", max(0, int(time.time() * 1000) - struct.unpack(">Q", p[:8])[0]))
             elif t == S_ERROR:
                 j = json.loads(p.decode("utf-8") or "{}")
-                raise Fatal(j.get("code") or "INTERNAL", j.get("msg") or "Lỗi máy chủ")
+                raise Fatal(j.get("code") or "INTERNAL", j.get("msg") or "Lỗi máy chủ", {k: j[k] for k in ("fix", "boot") if j.get(k)})
         return got_video
 
     def _pinger(self, c):
