@@ -134,6 +134,7 @@ def http(method, url, body=None, headers=None, timeout=25):
         raise ApiError(0, "Không có kết nối mạng.") from e
 
 
+SAID = {}                                              # câu máy chủ vừa trả → mã lỗi của câu đó (để biết lỗi thuộc ô mã giảm giá)
 def err_text(code, raw):
     try:
         j = json.loads(raw.decode("utf-8") or "{}")
@@ -141,6 +142,10 @@ def err_text(code, raw):
     except Exception:
         m = ""
     if "APP_OUTDATED" in (m or ""): OUTDATED["v"] = True
+    sm = re.match(r"^(.{12,}?)\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)\s*$", (m or "").strip(), re.S)
+    if sm:                                             # v35: máy chủ viết sẵn câu dễ hiểu + (MÃ_LỖI) → hiện đúng câu đó (số tiền / số lần khớp cài đặt admin)
+        if len(SAID) > 200: SAID.clear()
+        SAID[sm.group(1).strip()] = sm.group(2); return sm.group(1).strip()
     best = max((k for k in ERRORS if k in (m or "")), key=len, default=None)       # mã DÀI NHẤT khớp (PROMO_TOO_MANY thắng TOO_MANY)
     return ERRORS[best] if best else (m or f"Lỗi {code}")
 
@@ -1467,7 +1472,17 @@ class PromoBox:
         self.ent.pack(side="left", fill="x", expand=True, ipady=5, padx=(6, 6))
         dlg.app.btn(row, "Áp dụng", lambda: self.check(), "soft").pack(side="left")
         self.res = dlg.label(self.frame, "Mã giảm giá (nếu có) — nhập rồi bấm Áp dụng.", dlg.app.f_s, DIM, wraplength=520); self.res.pack(fill="x", pady=(3, 0))
+        self.mine = tk.Frame(self.frame, bg=parent["bg"])                  # 🎫 mã của tôi dùng được cho loại đơn này — bấm là điền + áp dụng (SQL v35)
+        cs = my_codes(scope)
+        if cs:
+            self.mine.pack(fill="x", pady=(4, 0))
+            dlg.label(self.mine, "🎫 Mã của bạn:", dlg.app.f_s, DIM).pack(side="left")
+            for c in cs[:4]:
+                dlg.app.btn(self.mine, code_label(c), lambda v=str(c.get("code")): self.pick(v), "soft", padx=8, pady=2).pack(side="left", padx=(6, 0))
         self.ent.bind("<KeyRelease>", self._typed); self.ent.bind("<Return>", lambda *_: self.check())
+
+    def pick(self, code):
+        self.ent.delete(0, "end"); self.ent.insert(0, code); self.check()
 
     @staticmethod
     def norm(v): return re.sub(r"[^A-Z0-9]", "", str(v or "").upper())
@@ -1520,6 +1535,9 @@ class PromoBox:
         e = str(x.get("err") or "")
         if x.get("ok") and x.get("kind") == "gift": return code_text("PROMO_IS_GIFT")
         if e == "PROMO_MIN_ORDER" and x.get("min_order") is not None: return f"Mã chỉ dùng cho đơn từ {vnd(x.get('min_order'))} (đơn này {vnd(x.get('base'))})."
+        if e == "PROMO_DAY_LIMIT":
+            lim = int(num(x.get("limit")) or num((OFFERS["pub"] or {}).get("day_limit")))
+            return f"Mỗi tài khoản dùng tối đa {str(lim) + ' ' if lim > 0 else ''}mã giảm giá mỗi ngày — hôm nay bạn đã dùng đủ, mai dùng tiếp nhé."
         return code_text(e or "PROMO_INVALID")
 
     def paint(self):
@@ -1542,6 +1560,8 @@ class PromoBox:
 
     def fail(self, m):
         """Đơn bị từ chối vì mã → hiện lỗi dưới ô mã."""
+        k = SAID.get(m)
+        if k and k.startswith("PROMO_"): self.r, self.key = {"ok": False, "err": k}, self._keynow(); self.paint(); return True
         for k in ERRORS:
             if k.startswith("PROMO_") and ERRORS[k] == m:
                 self.r, self.key = {"ok": False, "err": k}, self._keynow(); self.paint(); return True
@@ -1628,7 +1648,7 @@ class BlueDlg(Dlg):
             "share": ("📣", "Chia sẻ link mời", "Copy link CloudBlue của bạn gửi bạn bè / nhóm"),
             "invite": ("🤝", "Bạn được mời nạp tiền", "Có bạn đăng ký qua link của bạn và NẠP TIỀN trong hôm nay")}
     KIND = {"checkin": "Điểm danh", "streak": "Thưởng chuỗi", "task": "Nhiệm vụ", "ref": "Mời bạn", "cashback": "Hoàn đơn",
-            "spend": "Đã dùng", "refund": "Hoàn lại", "admin": "Admin", "clawback": "Thu lại"}
+            "spend": "Đã dùng", "refund": "Hoàn lại", "admin": "Admin", "clawback": "Thu lại", "creator": "Kiếm tiền (video)"}
 
     def __init__(self, app):
         super().__init__(app, "💎 Tích Blue", 560, 720)
@@ -1732,6 +1752,333 @@ class BlueDlg(Dlg):
         self.bg(job, done)
 
 
+# ================= 🎁 ƯU ĐÃI & 🎬 KIẾM TIỀN (SQL v35) — mọi con số / câu chữ do MÁY CHỦ trả về, app chỉ hiển thị =================
+# promo_public() → pub {day_limit, topup{levels[{min,pct}],days,max}, trial{hours,days,need,ram,cpu}, wheel, creator{rate,per,video_max,month_max,
+#                       day_submit,platforms,blue_min}, blue, ticker[{k,vi,en}]}
+# promo_my()     → my  {day_limit, day_used, topup_got, codes[{code,pct,amount,expires_at,scopes,usable,used,share,src}], trial{on,hours,need,ok,used}}
+# Máy chủ chưa chạy SQL v35 → pub = None → app ẩn hết, chạy như cũ.
+OFFERS = {"pub": None, "my": None, "t": 0.0}
+SRC_NAME = {"wheel": "🎡 Vòng quay", "topup": "💰 Ưu đãi nạp", "gift": "🎁 Quà tặng"}
+PLATFORM = {"tiktok": "TikTok", "youtube": "YouTube", "facebook": "Facebook", "instagram": "Instagram", "other": "nền tảng khác"}
+def offers_load(auth):
+    """Đọc promo_public + promo_my (gọi ở luồng nền). Chưa chạy SQL v35 → None (ẩn mọi thứ); mất mạng / máy chủ lỗi tạm → giữ bản cũ."""
+    def soft(e): return e.code == 0 or e.code >= 500
+    try: p = auth.rpc("promo_public")
+    except ApiError as e:
+        if e.code == 401: raise
+        if soft(e): OFFERS["t"] = time.time(); return OFFERS
+        p = None
+    except Exception: p = None
+    m = None
+    if isinstance(p, dict):
+        try: m = auth.rpc("promo_my")
+        except ApiError as e:
+            if e.code == 401: raise
+            m = OFFERS["my"] if soft(e) else None
+        except Exception: m = None
+    OFFERS.update(pub=p if isinstance(p, dict) else None, my=m if isinstance(m, dict) else None, t=time.time())
+    return OFFERS
+def offers_fresh(auth, age=30.0):
+    if time.time() - OFFERS["t"] > age: offers_load(auth)
+    return OFFERS
+def offers_sec(k):
+    v = (OFFERS["pub"] or {}).get(k); return v if isinstance(v, dict) else None
+def offers_topup():
+    t = offers_sec("topup"); return t if t and t.get("levels") else None
+def offers_text(o): return str((o or {}).get("vi") or "")
+def trial_hours(pr): return max(0, int(num((pr or {}).get("free_hours"))))
+def trial_need(pr): return max(0, int(num((pr or {}).get("free_need_topup"))))
+def trial_dur(pr):
+    h = trial_hours(pr); return f"{h} giờ" if h > 0 else f"{int(num((pr or {}).get('free_days'))) or 1} ngày"
+def trial_my():
+    t = (OFFERS["my"] or {}).get("trial"); return t if isinstance(t, dict) else None
+def trial_err(pr, admin=False):
+    """"" = nhận được · không thì lý do. Chưa có SQL v35 / chưa tải xong → "" (máy chủ tự kiểm khi đặt)."""
+    t = trial_my()
+    if admin or not t: return ""
+    if t.get("used"): return "Mỗi tài khoản chỉ được dùng thử 1 máy miễn phí — bạn đã nhận rồi."
+    if not t.get("ok") and trial_need(pr) > 0: return f"Dùng thử miễn phí dành cho tài khoản đã nạp 1 lần từ {vnd(trial_need(pr))}."
+    return ""
+def trial_locked(pr, admin=False):
+    t = trial_my(); return bool(not admin and t and not t.get("used") and not t.get("ok") and trial_need(pr) > 0)
+def my_codes(scope=None):
+    cs = (OFFERS["my"] or {}).get("codes") or []
+    return [c for c in cs if isinstance(c, dict) and c.get("usable") and (scope is None or scope in (c.get("scopes") or []))][:6]
+def code_label(c):
+    return f"{c.get('code')}  −" + (f"{int(num(c.get('pct')))}%" if num(c.get("pct")) > 0 else vnd(c.get("amount")))
+def offers_hint(dlg):
+    """Dòng '🎁 Lần nạp này được tặng mã giảm N%' / '📱 Mở dùng thử…' dưới ô số tiền (hộp Nạp tiền)."""
+    l = getattr(dlg, "oh", None)
+    try:
+        if l is None or not l.winfo_exists(): return
+    except Exception: return
+    amt = getattr(dlg, "amt", 0); out = []; tc = offers_topup(); my = OFFERS["my"] or {}
+    if tc and not my.get("topup_got"):
+        best = max([int(num(x.get("pct"))) for x in tc["levels"] if isinstance(x, dict) and amt >= num(x.get("min"))] or [0])
+        if best > 0: out.append(f"🎁 Lần nạp này được tặng mã giảm {best}% cloud phone")
+    tr = offers_sec("trial"); t = trial_my()
+    if tr and t and not t.get("used") and not t.get("ok") and num(tr.get("need")) > 0 and amt >= num(tr.get("need")):
+        out.append(f"📱 Mở dùng thử 1 cloud phone {int(num(tr.get('hours')))} giờ miễn phí" if num(tr.get("hours")) > 0 else "📱 Mở dùng thử 1 cloud phone miễn phí")
+    l.config(text="\n".join(out))
+    if out and not l.winfo_manager(): l.pack(fill="x", pady=(6, 0))
+    elif not out and l.winfo_manager(): l.pack_forget()
+
+def offers_after_top(dlg, amt):
+    """Nạp xong (hộp Nạp tiền): đọc lại ưu đãi của tôi → báo mã vừa được tặng / lượt dùng thử vừa mở. Máy chủ quyết định, app chỉ hiện."""
+    old = OFFERS["my"]; app = dlg.app
+    if old is None: OFFERS["t"] = 0; return                       # chưa từng tải (chưa chạy SQL v35) → không đoán
+    had = {str(c.get("code")) for c in (old.get("codes") or []) if isinstance(c, dict)}; was_ok = bool((old.get("trial") or {}).get("ok"))
+    def show(_r):
+        my = OFFERS["my"] or {}; t = my.get("trial") or {}; tk = app.tk
+        new = [c for c in (my.get("codes") or []) if isinstance(c, dict) and c.get("usable") and c.get("src") == "topup" and str(c.get("code")) not in had]
+        opened = bool(t.get("on") and t.get("ok") and not t.get("used") and not was_ok)
+        try:
+            bb = dlg.done_btn.master
+            if new:
+                dlg.label(dlg.foot, f"🎁 Bạn được tặng mã giảm giá cloud phone:  {code_label(new[0])}  — mã nằm ở 🎁 Ưu đãi, bấm chọn khi thuê / gia hạn máy.",
+                          ("Segoe UI", 9, "bold"), OK, wraplength=540).pack(fill="x", padx=16, pady=(4, 0), before=bb)
+            if opened:
+                h = int(num(t.get("hours")))
+                dlg.label(dlg.foot, f"📱 Đã mở dùng thử 1 cloud phone {str(h) + ' giờ ' if h > 0 else ''}miễn phí.", ("Segoe UI", 9, "bold"), OK, wraplength=540).pack(
+                    fill="x", padx=16, pady=(4, 0), before=bb)
+                app.btn(bb, "📱 Nhận máy dùng thử", lambda: (dlg.close(), OrderDlg(app, True)), "soft").pack(side="right", padx=(0, 8))
+        except Exception: log("offers:", traceback.format_exc())
+        try: app._paint_offers()
+        except Exception: pass
+    dlg.bg(lambda: offers_load(app.auth), show)
+
+
+class Ticker:
+    """📣 Dòng chữ chạy ưu đãi trên cùng màn danh sách máy (bấm → hộp Ưu đãi). Chữ trôi sang trái ~40 px / giây, nối vòng liên tục."""
+    GAP = "      •      "
+    def __init__(self, app, holder):
+        tk = app.tk; self.app = app; self.text = ""; self.x = 0.0; self.w = 1; self.job = None
+        self.cv = tk.Canvas(holder, height=26, bg="#2e2206", highlightthickness=0, cursor="hand2")
+        self.cv.bind("<Button-1>", lambda e: OffersDlg(app))
+
+    def set(self, items):
+        t = self.GAP.join(x for x in items if x)
+        if t == self.text: return
+        self.text = t
+        if not t:
+            self.stop()
+            try: self.cv.pack_forget()
+            except Exception: pass
+            return
+        import tkinter.font as tkfont
+        f = tkfont.Font(family="Segoe UI", size=10, weight="bold"); unit = t + self.GAP
+        self.w = max(1, f.measure(unit)); self.cv.delete("all")
+        self.cv.create_text(0, 13, text=unit * (2 + int(2600 / self.w)), anchor="w", fill="#ffe296", font=f, tags="t")      # lặp đủ dài để phủ kín cửa sổ rộng
+        self.x = 0.0
+        if not self.cv.winfo_manager(): self.cv.pack(fill="x")
+        if self.job is None: self._step()
+
+    def _step(self):
+        self.job = None
+        try:
+            if not self.text or not self.cv.winfo_exists(): return
+            self.x -= 1.2
+            if self.x <= -self.w: self.x += self.w
+            self.cv.coords("t", self.x, 13)
+            self.job = self.cv.after(30, self._step)
+        except Exception: self.job = None
+
+    def stop(self):
+        if self.job is not None:
+            try: self.cv.after_cancel(self.job)
+            except Exception: pass
+            self.job = None
+
+
+class OffersDlg(Dlg):
+    """🎁 Ưu đãi: mã của tôi · ưu đãi khi nạp · dùng thử · vòng quay · Kiếm tiền · Blue (giống hộp Ưu đãi trên web)."""
+    def __init__(self, app):
+        super().__init__(app, "Ưu đãi", 600, 720)
+        self.draw()
+        self.bg(lambda: offers_load(app.auth), lambda _r: self.draw())
+
+    def card(self, title):
+        tk = self.app.tk
+        c = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1); c.pack(fill="x", padx=18, pady=(10, 0))
+        self.label(c, title, ("Segoe UI", 11, "bold"), TXT).pack(fill="x", padx=12, pady=(10, 2))
+        return c
+
+    def copy(self, v, lbl):
+        try: self.app.root.clipboard_clear(); self.app.root.clipboard_append(v)
+        except Exception: pass
+        try: lbl.config(text=f"✓ Đã chép mã {v}", fg=OK)
+        except Exception: pass
+
+    def codes(self):
+        tk = self.app.tk; my = OFFERS["my"]
+        if my is None: return
+        cs = [c for c in (my.get("codes") or []) if isinstance(c, dict)]
+        c = self.card("🎫 Mã của tôi")
+        msg = self.label(c, "Chỉ dùng cho cloud phone: nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn / nâng cấp máy — hoặc bấm chọn mã ngay dưới ô đó.",
+                         self.app.f_s, DIM, wraplength=530)
+        if not cs: self.label(c, "Chưa có mã nào. Mã từ ưu đãi nạp, vòng quay, quà tặng sẽ nằm ở đây.", self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12, pady=(0, 10)); return
+        now = now_utc()
+        for x in cs[:12]:
+            ok = bool(x.get("usable")); exp = parse_iso(x.get("expires_at"))
+            st = ("Đã dùng" if x.get("used") else "Dùng được đến " + (exp.astimezone().strftime("%H:%M %d/%m") if exp else "") if ok
+                  else "Hết hạn" if exp is not None and exp <= now else "Đã tắt")
+            r = tk.Frame(c, bg=BG, highlightbackground=LINE, highlightthickness=1); r.pack(fill="x", padx=12, pady=2)
+            tk.Label(r, text=f"{int(num(x.get('pct')))}%" if num(x.get("pct")) > 0 else vnd(x.get("amount")), font=("Segoe UI", 10, "bold"), fg=OK if ok else DIM, bg=BG, width=6).pack(side="left", padx=6, pady=6)
+            if ok: self.app.btn(r, "Chép", lambda v=str(x.get("code")): self.copy(v, msg), "soft", padx=10, pady=2).pack(side="right", padx=8)
+            tx = tk.Frame(r, bg=BG); tx.pack(side="left", fill="x", expand=True)
+            tk.Label(tx, text=str(x.get("code")), font=("Consolas", 10, "bold"), fg=TXT if ok else DIM, bg=BG, anchor="w").pack(fill="x")
+            tk.Label(tx, text=SRC_NAME.get(x.get("src"), "🎁 Mã giảm giá") + " · " + st + (" · 🤝 tặng bạn bè được" if ok and x.get("share") else ""),
+                     font=("Segoe UI", 8), fg=DIM, bg=BG, anchor="w").pack(fill="x")
+        msg.pack(fill="x", padx=12, pady=(4, 10))
+
+    def draw(self):
+        if not self.alive: return
+        tk = self.app.tk; app = self.app; self.clear()
+        pub = OFFERS["pub"]; my = OFFERS["my"] or {}
+        self.app.btn(self.foot, "Đóng", self.close, "soft").pack(side="right", padx=16, pady=10)
+        if not pub:
+            self.label(self.body, "Hiện chưa có ưu đãi nào.", self.app.f_t, DIM).pack(padx=18, pady=30); return
+        top = bool(my_codes())
+        if top: self.codes()
+        tc = offers_topup()
+        if tc:
+            c = self.card("💰 Ưu đãi khi nạp")
+            for x in tc["levels"]:
+                if isinstance(x, dict): self.label(c, f"Nạp 1 lần từ {vnd(x.get('min'))}  →  mã giảm {int(num(x.get('pct')))}%", ("Segoe UI", 10, "bold"), OK).pack(fill="x", padx=12)
+            self.label(c, f"Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp đó), dùng 1 lần, hạn {int(num(tc.get('days')) or 7)} ngày"
+                          + (f", giảm tối đa {vnd(tc.get('max'))}" if num(tc.get("max")) > 0 else "") + ". Chỉ dùng cho cloud phone: thuê, gia hạn, nâng cấp máy.",
+                       self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12, pady=(4, 0))
+            app.btn(c, "Nạp tiền", lambda: (self.close(), app.open_topup()), padx=12, pady=5).pack(anchor="w", padx=12, pady=(8, 10))
+        tr = offers_sec("trial")
+        if tr:
+            h = int(num(tr.get("hours"))); need = int(num(tr.get("need"))); t = trial_my() or {}
+            c = self.card(f"📱 Dùng thử cloud phone {str(h) + ' giờ' if h > 0 else str(int(num(tr.get('days')) or 1)) + ' ngày'} miễn phí")
+            self.label(c, (f"Dành cho tài khoản đã nạp 1 lần từ {vnd(need)}. " if need > 0 else "") + f"Mỗi tài khoản 1 máy (tối đa {int(num(tr.get('ram')))}GB RAM · {int(num(tr.get('cpu')))} nhân). "
+                          "Hết giờ, máy và dữ liệu tự xoá — muốn dùng tiếp thì thuê máy.", self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12)
+            if t.get("used"): self.label(c, "✓ Bạn đã dùng thử rồi.", self.app.f_s, DIM).pack(fill="x", padx=12, pady=(6, 10))
+            elif t and not t.get("ok") and need > 0: app.btn(c, f"Nạp {vnd(need)}", lambda: (self.close(), app.open_topup(need)), padx=12, pady=5).pack(anchor="w", padx=12, pady=(8, 10))
+            else: app.btn(c, "Nhận máy dùng thử", lambda: (self.close(), OrderDlg(app, True)), padx=12, pady=5).pack(anchor="w", padx=12, pady=(8, 10))
+        wh = offers_sec("wheel")
+        if wh and wheel_live(WHEEL["st"]):
+            c = self.card("🎡 Vòng quay may mắn")
+            self.label(c, offers_text(wh), self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12)
+            app.btn(c, "Mở vòng quay", lambda: (self.close(), wheel_open(app)), "soft", padx=12, pady=5).pack(anchor="w", padx=12, pady=(8, 10))
+        cr = offers_sec("creator")
+        if cr:
+            c = self.card("🎬 Kiếm tiền")
+            self.label(c, f"Làm video về CloudBlue: {blue_n(cr.get('per'))} view = {blue_n(cr.get('rate'))} 💎 Blue. View tăng thì nhận thêm.", self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12)
+            app.btn(c, "Xem cách làm", lambda: (self.close(), CreatorDlg(app)), "soft", padx=12, pady=5).pack(anchor="w", padx=12, pady=(8, 10))
+        bl = offers_sec("blue")
+        if bl and blue_on():
+            c = self.card("💎 Blue"); self.label(c, offers_text(bl), self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12, pady=(0, 10))
+        dl = int(num(pub.get("day_limit")))
+        if dl > 0:
+            self.label(self.body, f"🎟 Mỗi tài khoản dùng tối đa {dl} mã giảm giá mỗi ngày." + (f"  Hôm nay: {int(num(my.get('day_used')))}/{dl}" if OFFERS["my"] is not None else ""),
+                       self.app.f_s, DIM, wraplength=540).pack(fill="x", padx=18, pady=(10, 0))
+        if not top: self.codes()
+        tk.Frame(self.body, bg=BG, height=14).pack()
+
+
+class CreatorDlg(Dlg):
+    """🎬 Kiếm tiền: luật + gửi link video + danh sách video của tôi (báo view mới). creator_my / creator_submit / creator_report."""
+    def __init__(self, app):
+        super().__init__(app, "Kiếm tiền", 620, 780)
+        self.data = None
+        self.draw()
+        self.reload()
+
+    def reload(self):
+        def ok(r): self.data = r if isinstance(r, dict) else {}; self.fill()
+        def fail(m):
+            self.data = self.data or {}; self.fill()
+            if hasattr(self, "err"): self.err.config(text=m, fg=BAD)
+        self.bg(lambda: self.app.auth.rpc("creator_my"), ok, fail)
+
+    def draw(self):
+        tk = self.app.tk; app = self.app; self.clear()
+        cr = offers_sec("creator")
+        app.btn(self.foot, "Đóng", self.close, "soft").pack(side="right", padx=16, pady=10)
+        if not cr:
+            self.label(self.body, "Chương trình Kiếm tiền đang tạm tắt.", app.f_t, DIM).pack(padx=18, pady=30); return
+        hero = tk.Frame(self.body, bg=CARD, highlightbackground=OK, highlightthickness=1); hero.pack(fill="x", padx=18, pady=(14, 0))
+        self.label(hero, f"{blue_n(cr.get('per'))} view = {blue_n(cr.get('rate'))} 💎", ("Segoe UI", 18, "bold"), OK).pack(fill="x", padx=14, pady=(10, 0))
+        self.label(hero, "1 💎 Blue = 1đ khi thuê / gia hạn cloud phone", app.f_s, DIM).pack(fill="x", padx=14)
+        self.sum = self.label(hero, "", ("Segoe UI", 9, "bold"), TXT); self.sum.pack(fill="x", padx=14, pady=(4, 10))
+        pl = [str(x) for x in (cr.get("platforms") or [])]
+        pf = ", ".join(PLATFORM.get(x, x) for x in pl if x != "other") + (" và nền tảng khác" if "other" in pl else "")
+        caps = " · ".join(x for x in (f"Tối đa {blue_n(cr.get('video_max'))} 💎 / video" if num(cr.get("video_max")) > 0 else "",
+                                      f"{blue_n(cr.get('month_max'))} 💎 / tháng" if num(cr.get("month_max")) > 0 else "",
+                                      f"gửi tối đa {int(num(cr.get('day_submit')))} video / ngày" if num(cr.get("day_submit")) > 0 else "") if x)
+        f = self.section("Cách làm")
+        for t in ("1. Quay video giới thiệu CloudBlue — ví dụ treo game 24/7 trên cloud phone, cách thuê máy, so sánh giá.",
+                  f"2. Đăng công khai lên {pf}. Nói hoặc ghi rõ tên web {WEB.split('//')[-1]}.",
+                  "3. Dán link video vào ô bên dưới. Admin mở video kiểm tra rồi cộng 💎 theo số view.",
+                  "4. View tăng thì bấm “Báo view mới” — mỗi lần duyệt cộng thêm 💎 cho phần view mới."):
+            self.label(f, t, app.f_t, TXT, wraplength=540).pack(fill="x", pady=1)
+        for t in ("• " + caps[:1].upper() + caps[1:] if caps else "",
+                  "• Video của chính bạn, để công khai. Không mua view, không đăng lại video người khác — vi phạm bị từ chối.",
+                  "• 💎 Blue chỉ dùng cho cloud phone (thuê / gia hạn), 1 💎 = 1đ" + (f", dùng được khi tài khoản đã nạp từ {vnd(cr.get('blue_min'))}" if num(cr.get("blue_min")) > 0 else "")
+                  + ". Không dùng cho sản phẩm khác."):
+            if t: self.label(f, t, app.f_s, DIM, wraplength=540).pack(fill="x", pady=1)
+        f = self.section("Gửi video")
+        self.url = tk.Entry(f, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.url.pack(fill="x", ipady=5)
+        self.label(f, "Link video (TikTok, YouTube…) — dán link đầy đủ bắt đầu bằng https://", app.f_s, DIM).pack(fill="x")
+        line = tk.Frame(f, bg=BG); line.pack(fill="x", pady=(6, 0))
+        self.label(line, "Số view hiện tại:", app.f_s, DIM).pack(side="left")
+        self.views = tk.Entry(line, width=10, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.views.pack(side="left", padx=6, ipady=4)
+        self.label(line, "Ghi chú:", app.f_s, DIM).pack(side="left", padx=(8, 0))
+        self.note = tk.Entry(line, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.note.pack(side="left", fill="x", expand=True, padx=6, ipady=4)
+        self.err = self.label(f, "", app.f_s, BAD, wraplength=540); self.err.pack(fill="x", pady=(4, 0))
+        self.send = app.btn(f, "Gửi video", self.submit); self.send.pack(anchor="w", pady=(4, 0))
+        self.list_f = self.section("Video của bạn")
+        self.fill()
+        tk.Frame(self.body, bg=BG, height=14).pack()
+
+    def fill(self):
+        if not self.alive or not hasattr(self, "list_f"): return
+        tk = self.app.tk; app = self.app; f = self.list_f
+        for w in f.winfo_children()[1:]: w.destroy()                 # giữ dòng tiêu đề của mục
+        o = self.data
+        if o is None: self.label(f, "Đang tải…", app.f_s, DIM).pack(fill="x"); return
+        self.sum.config(text=f"Đã nhận {blue_n(o.get('total'))} 💎   ·   tháng này {blue_n(o.get('month'))} 💎   ·   chờ duyệt {int(num(o.get('pending')))}")
+        vs = [v for v in (o.get("videos") or []) if isinstance(v, dict)]
+        if not vs: self.label(f, "Bạn chưa gửi video nào.", app.f_s, DIM).pack(fill="x"); return
+        for v in vs:
+            st = v.get("status"); r = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); r.pack(fill="x", pady=3)
+            hd = tk.Frame(r, bg=CARD); hd.pack(fill="x", padx=10, pady=(8, 0))
+            tk.Label(hd, text=PLATFORM.get(str(v.get("platform")), str(v.get("platform") or "")), font=("Segoe UI", 9, "bold"), fg=ACC, bg=CARD).pack(side="left")
+            tk.Label(hd, text="Đã duyệt" if st == "ok" else "Từ chối" if st == "rejected" else "Chờ duyệt", font=("Segoe UI", 9, "bold"),
+                     fg=OK if st == "ok" else BAD if st == "rejected" else WARN, bg=CARD).pack(side="right")
+            u = str(v.get("url") or "")
+            self.label(r, u if len(u) <= 76 else u[:50] + "…" + u[-22:], app.f_s, DIM).pack(fill="x", padx=10)
+            self.label(r, f"Đã duyệt {blue_n(v.get('views'))} view  ·  đã nhận {blue_n(v.get('paid'))} 💎" + (f"  ·  bạn báo {blue_n(v.get('claimed'))} view" if v.get("claimed") is not None and st == "pending" else ""),
+                       app.f_t, TXT).pack(fill="x", padx=10)
+            if v.get("admin_note"): self.label(r, "💬 " + str(v.get("admin_note")), app.f_s, BAD if st == "rejected" else DIM, wraplength=520).pack(fill="x", padx=10)
+            if st == "ok":
+                ln = tk.Frame(r, bg=CARD); ln.pack(fill="x", padx=10, pady=(4, 0))
+                e = tk.Entry(ln, width=12, font=("Segoe UI", 10), bg=BG, fg=TXT, insertbackground=TXT, relief="flat"); e.pack(side="left", ipady=3)
+                app.btn(ln, "Báo view mới", lambda vid=v.get("id"), ent=e: self.report(vid, ent), "soft", padx=10, pady=2).pack(side="left", padx=8)
+            tk.Frame(r, bg=CARD, height=8).pack()
+
+    def submit(self):
+        u = self.url.get().strip(); vw = re.sub(r"\D", "", self.views.get()); nt = self.note.get().strip()
+        if not re.match(r"(?i)^https://[^\s/]+\.[^\s/]+/.+", u):
+            self.err.config(text="Link video không đúng — dán link đầy đủ bắt đầu bằng https://", fg=BAD); return
+        self.err.config(text=""); self.send.config(state="disabled", text="Đang gửi…")
+        def done(_r):
+            self.send.config(state="normal", text="Gửi video")
+            for e in (self.url, self.views, self.note): e.delete(0, "end")
+            self.err.config(text="✓ Đã gửi — admin duyệt xong sẽ cộng 💎 vào tài khoản.", fg=OK); self.reload()
+        def fail(m): self.send.config(state="normal", text="Gửi video"); self.err.config(text=m, fg=BAD)
+        self.bg(lambda: self.app.auth.rpc("creator_submit", {"p_url": u, "p_views": int(vw) if vw and len(vw) <= 11 else None, "p_note": nt or None}), done, fail)
+
+    def report(self, vid, ent):
+        vw = re.sub(r"\D", "", ent.get())
+        if not vw or len(vw) > 11: self.err.config(text="Nhập số view đang hiện trên video.", fg=BAD); return
+        def done(_r): self.err.config(text="✓ Đã báo — admin duyệt xong sẽ cộng 💎 cho phần view mới.", fg=OK); self.reload()
+        self.bg(lambda: self.app.auth.rpc("creator_report", {"p_id": vid, "p_views": int(vw)}), done, lambda m: self.err.config(text=m, fg=BAD))
+
+
 class CodeDlg(Dlg):
     """🎟 Nhập mã: mã TẶNG MÁY (12 ký tự — nhận 1 máy miễn phí) hoặc mã CHIA SẺ / CHUYỂN NHƯỢNG máy (8 ký tự) — giống app điện thoại."""
     def __init__(self, app):
@@ -1773,13 +2120,16 @@ class CodeDlg(Dlg):
 
 class OrderDlg(Dlg):
     """Thuê máy mới — y như bảng thuê trên web (giá, giới hạn, chỗ trống từng bản Android, máy miễn phí, CTV)."""
-    def __init__(self, app):
+    def __init__(self, app, free=False):
         super().__init__(app, "Thuê điện thoại đám mây", 620, 800)
+        self.want_free = bool(free)                                         # mở từ nút "Nhận máy dùng thử" → bật sẵn chế độ dùng thử
         self.loading("Đang tải bảng giá…")
         def load():
             sh = app.shop
             try: site = sh.site()
             except Exception: site = {}
+            try: offers_fresh(app.auth)                                     # 🎁 lượt dùng thử + mã của tôi (SQL v35)
+            except Exception: pass
             return sh.pricing(), sh.status(), sh.profile(), sh.live_count(), site
         self.bg(load, self._loaded, lambda m: self.loading(m))
 
@@ -1799,7 +2149,8 @@ class OrderDlg(Dlg):
                   "res": "720x1280", "fps": cl(30, p["min_fps"], p["max_fps"]), "qty": 1, "android": "9", "free": False}
         avs = and_list(p); ok = [v for v in avs if not and_why(self.st, v, *self.fit(v))]
         self.s["android"] = "9" if "9" in ok else (ok[0] if ok else ("9" if "9" in avs else avs[0]))
-        self.build()
+        if self.want_free and free_live(p): self.set_free(True)
+        else: self.build()
 
     # ---------- vẽ ----------
     def need(self):
@@ -1827,11 +2178,17 @@ class OrderDlg(Dlg):
         if free_live(p):
             fb = tk.Frame(self.body, bg=CARD, highlightbackground=WARN if s["free"] else LINE, highlightthickness=1); fb.pack(fill="x", padx=18, pady=(14, 0))
             v = tk.BooleanVar(value=s["free"])
-            tk.Checkbutton(fb, text=f"  ★ Nhận máy MIỄN PHÍ {lo('free_days') or 1} ngày", variable=v, command=lambda: self.set_free(v.get()),
+            tk.Checkbutton(fb, text=f"  ★ Dùng thử MIỄN PHÍ {trial_dur(p)}", variable=v, command=lambda: self.set_free(v.get()),
                            font=("Segoe UI", 11, "bold"), fg=TXT, bg=CARD, selectcolor=BG, activebackground=CARD, activeforeground=TXT,
                            anchor="w", cursor="hand2").pack(fill="x", padx=10, pady=(8, 0))
-            self.label(fb, f"Tối đa {lo('free_max_ram')}GB RAM · {lo('free_max_cpu')} nhân · mỗi tài khoản dùng thử 1 máy. Hết hạn máy tự tắt, không gia hạn được.",
+            self.label(fb, f"Tối đa {lo('free_max_ram')}GB RAM · {lo('free_max_cpu')} nhân · mỗi tài khoản 1 máy"
+                           + (f" · dành cho tài khoản đã nạp 1 lần từ {vnd(trial_need(p))}" if trial_need(p) > 0 else "")
+                           + f". Hết {trial_dur(p)} (tính từ lúc máy chạy) máy và dữ liệu tự xoá, không gia hạn được — muốn dùng tiếp thì thuê máy.",
                        self.app.f_s, DIM, wraplength=520).pack(fill="x", padx=12, pady=(0, 8))
+            if trial_locked(p, self.prof.get("role") == "admin"):          # chưa nạp đủ → nói rõ + nút nạp đúng số tiền
+                lk = tk.Frame(fb, bg=CARD); lk.pack(fill="x", padx=12, pady=(0, 8))
+                self.app.btn(lk, f"Nạp {vnd(trial_need(p))}", lambda: (self.close(), self.app.open_topup(trial_need(p))), "soft", padx=10, pady=3).pack(side="right")
+                self.label(lk, f"🔒 Nạp 1 lần từ {vnd(trial_need(p))} để mở dùng thử miễn phí.", ("Segoe UI", 9, "bold"), WARN).pack(side="left")
         def chp(key):                                        # tự chỉnh RAM / CPU / độ phân giải / FPS = đã chọn cấu hình
             def setv(v):
                 self.s[key] = v
@@ -1858,7 +2215,7 @@ class OrderDlg(Dlg):
             self.tier_note = self.label(f, getattr(self, "_tier_msg", ""), self.app.f_s, WARN, wraplength=540); self.tier_note.pack(fill="x")
             self._tier_msg = ""
         else:
-            self.step(2, "Cấu hình máy miễn phí" if s["free"] else "Cấu hình máy",
+            self.step(2, ("Cấu hình máy dùng thử" if trial_hours(p) else "Cấu hình máy miễn phí") if s["free"] else "Cấu hình máy",
                       f"Tối đa {lo('free_max_ram')}GB RAM · {lo('free_max_cpu')} nhân — để mặc định là dùng được." if s["free"] else "Chọn RAM · CPU · FPS cho máy.")
         self.cust_lbl = None
         if self.tl:
@@ -1986,6 +2343,8 @@ class OrderDlg(Dlg):
         if st.get("maint") and not adm: return "Hệ thống đang bảo trì, vui lòng quay lại sau."
         if st.get("online") is False and not adm: return "Máy chủ điện thoại đang tạm ngưng, vui lòng quay lại sau."
         if s["free"] and not adm:
+            te = trial_err(p)                                               # v35: chưa nạp đủ / đã dùng thử rồi
+            if te: return te
             if s["ram"] > lo("free_max_ram"): return f"Máy miễn phí tối đa {int(lo('free_max_ram'))}GB RAM."
             if s["cpu"] > lo("free_max_cpu"): return f"Máy miễn phí tối đa {int(lo('free_max_cpu'))} nhân."
         ar, ac = and_lim(p, s["android"])
@@ -2034,12 +2393,12 @@ class OrderDlg(Dlg):
             self.go.config(text="Chọn gói trước", state="disabled", bg=LINE)
             return
         cur = next((t for t in getattr(self, "tl", []) if self.tier_on(t)), None)
-        name = "★ Máy miễn phí" if s["free"] else (f"{cur['icon']}  {cur['name']}" if cur else "⚙️ Cấu hình tự chọn")
+        name = ("★ Máy dùng thử" if trial_hours(p) else "★ Máy miễn phí") if s["free"] else (f"{cur['icon']}  {cur['name']}" if cur else "⚙️ Cấu hình tự chọn")
         self.pick_lbl.config(fg=TXT, text=f"{name}   ·   Android {s['android']} · {s['cpu']} nhân · {s['ram']}GB · {s['fps']} FPS · "
-                                          + (f"{int(num(p.get('free_days'))) or 1} ngày" if s["free"] else f"{s['days']} ngày" + (f" × {s['qty']} máy" if s["qty"] > 1 else "")))
+                                          + (trial_dur(p) if s["free"] else f"{s['days']} ngày" + (f" × {s['qty']} máy" if s["qty"] > 1 else "")))
         bad, price = self.check(), self.price()
         if s["free"]:
-            self.calc.config(text=f"Miễn phí {int(num(p.get('free_days'))) or 1} ngày · Android {s['android']} · {s['ram']}GB · {s['cpu']} nhân")
+            self.calc.config(text=f"Dùng thử miễn phí {trial_dur(p)} · Android {s['android']} · {s['ram']}GB · {s['cpu']} nhân")
         else:
             self.calc.config(text=f"({s['ram']}GB × {vnd(p.get('price_ram_gb_day'))} + {s['cpu']} nhân × {vnd(p.get('price_cpu_day'))}) × {s['days']} ngày"
                                   + (f" − {int(num(self.prof.get('ctv_discount')))}% CTV" if is_ctv(self.prof) else "") + (f" × {s['qty']} máy" if s["qty"] > 1 else ""))
@@ -2056,7 +2415,7 @@ class OrderDlg(Dlg):
         warn = "" if bad else ("Số dư không đủ — cần nạp thêm " + vnd(price - bal) + "." if price > bal
                                else "⚠ Cấu hình này chưa đủ chơi game 3D (cần tối thiểu 4GB · 4 nhân) — hợp treo app, game nhẹ." if low else "")
         self.err.config(text=bad or warn, fg=BAD if bad or price > bal else WARN)
-        self.go.config(text="Nhận máy miễn phí" if s["free"] else ("Nạp tiền" if not bad and price > bal else "💎 Thuê bằng Blue" if price <= 0 and bu > 0
+        self.go.config(text=("Nhận máy dùng thử" if trial_hours(p) else "Nhận máy miễn phí") if s["free"] else ("Nạp tiền" if not bad and price > bal else "💎 Thuê bằng Blue" if price <= 0 and bu > 0
                                                                    else "Thuê ngay" + (f" {s['qty']} máy" if s["qty"] > 1 else "")),
                        state="disabled" if bad else "normal", bg=LINE if bad else ACC)
 
@@ -2076,7 +2435,7 @@ class OrderDlg(Dlg):
             need = price - bal; self.close(); self.app.open_topup(need); return
         what = f"Android {s['android']} · {s['qty']} máy · {s['ram']}GB · {s['cpu']} nhân · " + (f"{s['days']} ngày · " if not s["free"] else "") + f"{s['res']} · {s['fps']} FPS"
         extra = (f"\n🏷️ Mã {code}: −{vnd(price0 - pay)}" if code else "") + (f"\n💎 Trả {blue_n(bu)} Blue" if bu > 0 else "")
-        if not mb.askyesno("Xác nhận thuê máy", what + extra + ("\n\nMáy miễn phí — không trừ tiền." if s["free"] else f"\n\nTrừ {vnd(price)} từ số dư?"), parent=self.win): return
+        if not mb.askyesno("Xác nhận thuê máy", what + extra + ((f"\n\nMáy dùng thử {trial_dur(self.pr)} — không trừ tiền. Hết giờ máy và dữ liệu tự xoá." if trial_hours(self.pr) else "\n\nMáy miễn phí — không trừ tiền.") if s["free"] else f"\n\nTrừ {vnd(price)} từ số dư?"), parent=self.win): return
         self.go.config(state="disabled", text="Đang tạo đơn…")
         args = {"p_ram": s["ram"], "p_cpu": s["cpu"], "p_days": s["days"], "p_res": s["res"], "p_name": None, "p_fps": s["fps"],
                 "p_qty": 1 if s["free"] else s["qty"], "p_android": s["android"]}
@@ -2087,7 +2446,7 @@ class OrderDlg(Dlg):
             notify_admin(f"📱 <b>Đơn ĐT đám mây mới{' (MIỄN PHÍ)' if s['free'] else ''}</b> — app PC\n{s['qty']} máy × Android {s['android']} · "
                          f"{s['ram']}GB / {s['cpu']} nhân / {s['days']} ngày / {s['res']} / {s['fps']} FPS\nGiá: {vnd(price)}"
                          + (f" (mã {code})" if code else "") + (f" · 💎 {blue_n(bu)} Blue" if bu > 0 else "") + f"\n{self.app.auth.email}", self.app.auth)
-            self._promo_code = ""; self._blue_on = False; BLUE["t"] = 0
+            self._promo_code = ""; self._blue_on = False; BLUE["t"] = 0; OFFERS["t"] = 0
             self.close(); self.app.refresh()
             mb.showinfo("CloudBlue", ("Đã tạo đơn " + str(s["qty"]) + " máy!" if s["qty"] > 1 else "Đã tạo đơn!") +
                         " Máy đang khởi tạo (khoảng 2–3 phút) — danh sách tự cập nhật khi máy chạy.", parent=self.app.root)
@@ -2187,7 +2546,7 @@ class TopupDlg(Dlg):
         super().__init__(app, "Nạp tiền", 600, 640)
         self.need = need; self.top = None
         self.loading()
-        self.bg(lambda: (app.shop.site(), app.shop.profile(), wheel_fresh(app.auth)), self._loaded, lambda m: self.loading(m))   # 🎡 + trạng thái vòng quay
+        self.bg(lambda: (app.shop.site(), app.shop.profile(), wheel_fresh(app.auth), offers_fresh(app.auth)), self._loaded, lambda m: self.loading(m))   # 🎡 vòng quay + 🎁 ưu đãi
 
     def _loaded(self, r):
         tk = self.app.tk; self.site, self.prof = r[0], r[1]; self.clear()
@@ -2198,6 +2557,7 @@ class TopupDlg(Dlg):
         self.label(self.body, "Số dư hiện tại: " + vnd(self.prof.get("balance")) + (f"   ·   Cần thêm {vnd(self.need)}" if self.need > 0 else ""),
                    self.app.f_t, DIM).pack(fill="x", padx=18)
         self.whb = tk.Frame(self.body, bg=BG); self.whb.pack(fill="x", padx=18); wheel_banner(self, self.whb)   # 🎡 vòng quay may mắn
+        self._offers_box()                                                   # 💰 ưu đãi khi nạp + 📱 dùng thử (SQL v35)
         f = self.section("Số tiền nạp", f"tối thiểu {vnd(self.min)}")
         items = sorted(set([a for a in TOP_AMTS if a >= self.min] + ([amt] if self.need > 0 else [])))
         self.ch = Chips(self.app, f, [(a, vnd(a)) for a in items], lambda: self.amt, lambda v: (setattr(self, "amt", v), self.x.delete(0, "end")), self.upd, wrap=3)
@@ -2211,6 +2571,7 @@ class TopupDlg(Dlg):
             if v: self.amt = v; self.upd()
         self.x.bind("<KeyRelease>", typed)
         self.wh = self.label(f, "", self.app.f_s, W_SKY, wraplength=540)      # 🎡 "Lệnh nạp này được +N lượt quay" (wheel_hint tự hiện / ẩn)
+        self.oh = self.label(f, "", ("Segoe UI", 9, "bold"), OK, wraplength=540)   # 🎁 "Lần nạp này được tặng mã giảm N%" (offers_hint tự hiện / ẩn)
         self.label(self.body, "Chuyển khoản ngân hàng: quét mã QR bằng app ngân hàng bất kỳ, tiền tự cộng vào số dư sau khoảng 1 phút.",
                    self.app.f_s, DIM, wraplength=540).pack(fill="x", padx=18, pady=(14, 4))
         lk = self.label(self.body, "Nạp bằng USDT / LTC trên web ↗", self.app.f_s, ACC, cursor="hand2"); lk.pack(fill="x", padx=18)
@@ -2224,8 +2585,38 @@ class TopupDlg(Dlg):
             self.err.config(text="Shop chưa cài tài khoản ngân hàng — tạm thời nạp trên web."); self.go.config(state="disabled", bg=LINE)
         self.upd()
 
+    def _offers_box(self):
+        tk = self.app.tk; tc = offers_topup(); tr = offers_sec("trial"); my = OFFERS["my"] or {}
+        trial = bool(tr and num(tr.get("need")) > 0)
+        if not tc and not trial: return
+        c = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1); c.pack(fill="x", padx=18, pady=(8, 0))
+        if tc:
+            self.label(c, "💰 Nạp 1 lần — nhận 1 mã giảm giá cloud phone", ("Segoe UI", 10, "bold"), TXT).pack(fill="x", padx=12, pady=(8, 2))
+            row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=12)
+            for x in tc["levels"]:
+                if not isinstance(x, dict): continue
+                self.app.btn(row, f"Từ {vnd(x.get('min'))} → mã {int(num(x.get('pct')))}%", lambda v=int(num(x.get("min"))): self._pick_amt(v), "soft", padx=8, pady=3).pack(side="left", padx=(0, 6))
+            self.label(c, f"Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp) · dùng 1 lần · hạn {int(num(tc.get('days')) or 7)} ngày · chỉ cho cloud phone (thuê / gia hạn / nâng cấp).",
+                       self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12, pady=(4, 0))
+            if my.get("topup_got"):
+                mine = next((x for x in (my.get("codes") or []) if isinstance(x, dict) and x.get("src") == "topup" and x.get("usable")), None)
+                self.label(c, "🎫 " + ("Mã của bạn: " + code_label(mine) if mine else "Bạn đã nhận mã của đợt này rồi."), ("Segoe UI", 9, "bold"), OK).pack(fill="x", padx=12, pady=(2, 0))
+        if trial:
+            t = trial_my() or {}; h = int(num(tr.get("hours"))); dur = f"{h} giờ" if h > 0 else f"{int(num(tr.get('days')) or 1)} ngày"
+            self.label(c, "📱 " + ("Bạn đã dùng thử 1 máy rồi." if t.get("used")
+                                   else f"Bạn được dùng thử 1 cloud phone {dur} miễn phí — mở + Thuê máy, tích “Dùng thử MIỄN PHÍ”." if t.get("ok")
+                                   else f"Nạp 1 lần từ {vnd(tr.get('need'))} → dùng thử 1 cloud phone {dur} miễn phí."),
+                       self.app.f_s, TXT, wraplength=530).pack(fill="x", padx=12, pady=(6 if tc else 8, 0))
+        tk.Frame(c, bg=CARD, height=8).pack()
+
+    def _pick_amt(self, v):
+        self.amt = max(self.min, int(v))
+        try: self.x.delete(0, "end")
+        except Exception: pass
+        self.upd()
+
     def upd(self):
-        self.ch.paint(); wheel_hint(self)
+        self.ch.paint(); wheel_hint(self); offers_hint(self)
         if self.top is None and hasattr(self, "go") and str(self.site.get("bankAcc") or "").strip():
             ok = self.amt >= self.min
             self.err.config(text="" if ok else "Số tiền tối thiểu là " + vnd(self.min) + ".")
@@ -2299,6 +2690,7 @@ class TopupDlg(Dlg):
         self.state.config(text=f"✓ Đã nhận {vnd(amt)} — số dư đã được cộng.", fg=OK)
         self.done_btn.config(text="Xong", bg=ACC)
         wheel_after_top(self, amt)                     # 🎡 lệnh nạp được lượt quay → nút Quay ngay
+        offers_after_top(self, amt)                    # 🎁 mã vừa được tặng / lượt dùng thử vừa mở (SQL v35)
         self.app.refresh()
 
 
@@ -2315,7 +2707,9 @@ W_DEEP, W_CARD, W_FOOT, W_EDGE, W_TILE = "#0d1640", "#132160", "#0a1132", "#2a3a
 W_REV = "#060b1d"
 
 ERRORS.update({                                                  # 🎡 vòng quay may mắn (SQL v34c)
-    "PROMO_NOT_YOURS": "Mã này là mã vòng quay của tài khoản khác — chỉ tài khoản quay trúng mới dùng được.",
+    "PROMO_NOT_YOURS": "Mã này là mã riêng của tài khoản khác — chỉ tài khoản được tặng mới dùng được.",
+    "PROMO_DAY_LIMIT": "Hôm nay bạn đã dùng đủ số mã giảm giá cho phép — mai dùng tiếp nhé.",
+    "cloudphone_switch_retry": "Máy chủ chưa bật nút thử lại — nhắn shop để được tạo lại máy.",
     "WHEEL_NO_SPIN": "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.", "WHEEL_NOT_STARTED": "Vòng quay chưa bắt đầu.",
     "WHEEL_ENDED": "Chương trình vòng quay đã kết thúc.", "WHEEL_OFF": "Vòng quay đang tạm tắt.", "WHEEL_EMPTY": "Vòng quay đã hết giải.",
     "WHEEL_NO_BUY": "Hiện không bán thêm lượt quay.", "WHEEL_PRICE_CHANGED": "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.",
@@ -2864,6 +3258,7 @@ class WheelDlg(Dlg):
             st = ("Đã dùng" if used else "Đã tắt" if not act else "Hết hạn" if gone else "Dùng được đến " + (exp.astimezone().strftime("%H:%M %d/%m") if exp else ""))
             if c.get("lucky"): st += f"  ·  🍀 vé {vnd(c.get('paid'))}"
             elif num(c.get("paid")) > 0: st += f"  ·  lượt mua {vnd(c.get('paid'))}"
+            if live and c.get("share"): st += "  ·  🤝 tặng bạn bè được"
             r = tk.Frame(f, bg="#111b4c", highlightbackground="#26345f", highlightthickness=1); r.pack(fill="x", pady=2)
             big = num(c.get("pct")) >= 40
             tk.Label(r, text=f"{int(num(c.get('pct')))}%", font=("Segoe UI", 10, "bold"), fg=W_INK if big else "#ffffff",
@@ -2901,7 +3296,7 @@ class WheelDlg(Dlg):
         if k:
             odds = " · ".join(f"mã {p['pct']}%: {wheel_rate(p['rate'])}%" for p in sorted(k["pool"], key=lambda x: -x["pct"]))
             lines.append(f"🍀 Vé may mắn: {vnd(k['price'])}/vé = 1 lượt quay riêng (không dùng lượt miễn phí), trừ vào số dư. Tỷ lệ công khai: {odds}. Mã từ vé không giới hạn số lượng.")
-        lines += [f"🎟 Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn {int(num(s.get('days')) or 7)} ngày, chỉ tài khoản quay trúng dùng được"
+        lines += [f"🎟 Lượt nào cũng trúng 1 mã giảm giá: dùng 1 lần cho 1 đơn, hạn {int(num(s.get('days')) or 7)} ngày, " + ("giữ dùng sau hoặc tặng bạn bè dùng đều được" if s.get("share") else "chỉ tài khoản quay trúng dùng được")
                   + (f", giảm tối đa {vnd(s.get('max_disc'))}" if num(s.get("max_disc")) > 0 else "") + ".",
                   "🎲 Kết quả quay hoàn toàn ngẫu nhiên do máy chủ quyết định. Mỗi ô có tỷ lệ trúng khác nhau — giải càng lớn càng hiếm. "
                   "Giải có số lượng giới hạn; ô ghi HẾT là đã có người trúng hết."]
@@ -2954,7 +3349,8 @@ class RevealWin:
         tk.Label(cr, text=str(r.get("code")), font=("Consolas", 15, "bold"), fg="#ffffff", bg="#060a1c", padx=12, pady=6).pack(side="left")
         self.cp = app.btn(cr, "Chép mã", self.copy, "soft", padx=10, pady=6); self.cp.pack(side="left", padx=(8, 0))
         exp = parse_iso(r.get("expires_at")); exp = exp.astimezone().strftime("%H:%M %d/%m/%Y") if exp else ""
-        tk.Label(c, text=f"Dùng 1 lần · hạn đến {exp} · chỉ tài khoản của bạn dùng được. Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy.",
+        tk.Label(c, text=f"Dùng 1 lần · hạn đến {exp} · " + ("giữ dùng sau hoặc tặng bạn bè dùng đều được" if r.get("share") else "chỉ tài khoản của bạn dùng được")
+                         + ". Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy.",
                  font=("Segoe UI", 9), fg=W_SUB, bg=bg, justify="center", wraplength=self.W - int(110 * self.sc)).pack(padx=16, pady=(10, 0))
         if num(r.get("paid")) > 0:
             tk.Label(c, text=f"Đã trừ {vnd(r.get('paid'))} · số dư còn {vnd(r.get('balance'))}", font=("Segoe UI", 9), fg=W_SUB, bg=bg).pack(pady=(4, 0))
@@ -4360,6 +4756,8 @@ class Launcher:
     # ---------- danh sách máy ----------
     def show_list(self):
         tk = self.tk; self.clear()
+        self.tick_slot = tk.Frame(self.body, bg=BG); self.tick_slot.pack(fill="x")         # 📣 dòng chữ chạy ưu đãi (SQL v35) — trống khi chưa bật
+        self.ticker = Ticker(self, self.tick_slot); self._offers_sig = None
         top = tk.Frame(self.body, bg=BG); top.pack(fill="x", padx=18, pady=(16, 6))
         tk.Label(top, text="Máy của tôi", font=self.f_h1, fg=TXT, bg=BG).pack(side="left")
         self.btn(top, "Đăng xuất", self.logout, "ghost").pack(side="right")
@@ -4380,6 +4778,8 @@ class Launcher:
         self.blue_btn = self.btn(shop, "💎 Tích Blue", lambda: BlueDlg(self), "soft")      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
         self.wheel_slot = tk.Frame(self.body, bg=BG); self.wheel_slot.pack(fill="x", padx=18)   # 🎡 vòng quay may mắn (SQL v34c) — trống khi chưa bật
         self._paint_wheel()
+        self.offers_slot = tk.Frame(self.body, bg=BG); self.offers_slot.pack(fill="x", padx=18)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
+        self._paint_offers()
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=10, pady=10)
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
         self.list = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.list, anchor="nw")
@@ -4416,8 +4816,9 @@ class Launcher:
                     prof = None
                 if time.time() - BLUE["t"] > 60: blue_load(self.auth)          # 💎 Tích Blue (tối đa 1 lần / phút)
                 if time.time() - WHEEL["t"] > 60: wheel_load(self.auth)        # 🎡 vòng quay may mắn (tối đa 1 lần / phút)
+                if time.time() - OFFERS["t"] > 120: offers_load(self.auth)     # 🎁 ưu đãi + Kiếm tiền (tối đa 1 lần / 2 phút)
                 def show():
-                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._auto_update()
+                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._paint_offers(); self._auto_update()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
@@ -4472,6 +4873,55 @@ class Launcher:
     def _paint_wheel(self):
         slot = getattr(self, "wheel_slot", None)
         if slot is not None and slot.winfo_exists(): wheel_banner(self, slot)
+
+    def _paint_offers(self):
+        """📣 dòng chữ chạy + 2 ô 🎬 Kiếm tiền / 🎁 Ưu đãi (SQL v35). Máy chủ chưa bật → không hiện gì."""
+        tk = self.tk; pub = OFFERS["pub"] or {}
+        tkr = getattr(self, "ticker", None)
+        if tkr is not None:
+            try: tkr.set([str(x.get("vi") or "") for x in (pub.get("ticker") or []) if isinstance(x, dict)])
+            except Exception: log("ticker:", traceback.format_exc())
+        slot = getattr(self, "offers_slot", None)
+        try:
+            if slot is None or not slot.winfo_exists(): return
+        except Exception: return
+        cr, tc, tr, mine = offers_sec("creator"), offers_topup(), offers_sec("trial"), len(my_codes())
+        sig = json.dumps([cr, tc, tr, mine], sort_keys=True, default=str)
+        if getattr(self, "_offers_sig", None) == sig: return
+        self._offers_sig = sig
+        for w in slot.winfo_children(): w.destroy()
+        def tile(col, icon, title, sub, cmd, edge):
+            f = tk.Frame(slot, bg=CARD, highlightbackground=edge, highlightthickness=1, cursor="hand2")
+            f.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 6, 0), pady=(8, 0))
+            t1 = tk.Label(f, text=icon + "  " + title, font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD, anchor="w", cursor="hand2")
+            t2 = tk.Label(f, text=sub, font=self.f_s, fg=DIM, bg=CARD, anchor="w", justify="left", wraplength=250, cursor="hand2")
+            t1.pack(fill="x", padx=10, pady=(7, 0)); t2.pack(fill="x", padx=10, pady=(0, 7))
+            for w in (f, t1, t2): w.bind("<Button-1>", lambda *_: cmd())
+        col = 0
+        if cr:
+            tile(col, "🎬", f"Kiếm tiền · {blue_n(cr.get('per'))} view = {blue_n(cr.get('rate'))} 💎", "Làm video về CloudBlue trên TikTok, YouTube… view càng tăng 💎 càng nhiều.",
+                 lambda: CreatorDlg(self), OK); col += 1
+        sub = []
+        if tc:
+            lv = [x for x in tc["levels"] if isinstance(x, dict)]
+            if lv: sub.append(f"Nạp từ {vnd(lv[0].get('min'))} nhận mã đến {int(num(lv[-1].get('pct')))}%")
+        if tr:
+            h = int(num(tr.get("hours"))); dur = f"{h} giờ" if h > 0 else f"{int(num(tr.get('days')) or 1)} ngày"
+            sub.append(f"nạp {vnd(tr.get('need'))} dùng thử {dur}" if num(tr.get("need")) > 0 else f"dùng thử {dur} miễn phí")
+        if mine: sub.append(f"bạn có {mine} mã")
+        if sub: tile(col, "🎁", "Ưu đãi cloud phone", " · ".join(sub), lambda: OffersDlg(self), WARN); col += 1
+        for i in range(col): slot.grid_columnconfigure(i, weight=1, uniform="ofr")
+
+    def switch_retry(self, p):
+        """🔁 Máy mới của lệnh ĐỔI ANDROID đang "Lỗi" → khách tự xếp lại lệnh tạo máy (hạn dùng vẫn giữ) — SQL doi-android-1511."""
+        import tkinter.messagebox as mb
+        def job():
+            try:
+                self.auth.rpc("cloudphone_switch_retry", {"p_id": p["id"]})
+                self.ui(lambda: (self.refresh(), mb.showinfo("CloudBlue", "Đã xếp lại lệnh tạo máy — máy mới sẽ có sau ít phút. Hạn dùng của bạn vẫn giữ nguyên.", parent=self.root)))
+            except Exception as e:
+                m = str(e); self.ui(lambda m=m: mb.showerror("CloudBlue", m, parent=self.root))
+        threading.Thread(target=job, daemon=True).start()
 
     def _paint_update(self):
         """Dải báo trên danh sách máy: "Có bản app mới — Cập nhật" (bấm 1 lần: tự tải, thay bản, mở lại) / "Đã cập nhật lên bản …".
@@ -4540,6 +4990,11 @@ class Launcher:
         tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14)
         if p.get("expires_at"): tk.Label(c, text="⏱ " + fmt_left(p["expires_at"]), font=self.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
         if p.get("status") == "error" and p.get("error"): tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+        if p.get("status") == "error" and p.get("replaces") and not p.get("shared"):       # máy mới của lệnh đổi Android → khách tự thử lại
+            self.btn(c, "🔁 Thử tạo lại máy", lambda q=p: self.switch_retry(q), "soft", padx=10, pady=4).pack(anchor="w", padx=14, pady=(6, 0))
+        if int(num(p.get("trial_hours"))) > 0 and p.get("status") != "error":
+            tk.Label(c, text=f"🎁 Máy dùng thử {int(num(p.get('trial_hours')))} giờ — hết giờ máy và dữ liệu tự xoá, không gia hạn được.", font=self.f_s, fg=WARN, bg=CARD,
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
         if p.get("replaces") and p.get("status") in ("pending", "creating"):
             tk.Label(c, text=self.switch_note(p), font=self.f_s, fg=WARN, bg=CARD,
                      anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
