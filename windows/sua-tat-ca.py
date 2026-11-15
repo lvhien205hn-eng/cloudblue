@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
-# sua-tat-ca.py — 15/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1511):
+# sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611):
+#        bluestream   — 16/11a: hết quay mãi "Máy chủ chưa bật được hình" (máy tắt / Android chưa lên → tự gọi bật máy đang TẮT, báo
+#                       khách rõ + nút Khởi động lại máy) · MẠNG YẾU vẫn mượt (khung khoá theo giây thật, đo sức đường truyền để hạ
+#                       đúng mức ngay, nhớ trần, bắt đầu nhẹ theo gợi ý của app)
+#        phonectl     — 16/11: KHÁCH TỰ ĐỔI FPS (bật máy là ghi FPS khách chọn) · khách bấm Khởi động lại mà máy treo → tắt hẳn đúng
+#                       máy đó rồi bật · wake báo WAKE_RUNNING và KHÔNG bật chen ngang lệnh khác đang làm dở với máy đó
 #        phonectl     — 15/11: ĐỔI ANDROID lỗi "chưa tạo được máy mới": MuMu báo "mainnx request failed" lúc nhân bản máy mẫu →
 #                       tự mở lại chương trình chính MuMu rồi nhân bản lại (trước chỉ bật / tắt máy mới tự mở lại); tin báo lỗi ghi rõ LÝ DO
 #        cloudphoned  — tự sửa an toàn hơn (không tắt phát hình chỉ vì máy chủ chậm trả lời, bớt tin Telegram rác),
@@ -22,7 +27,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "15/11c"
+VER = "16/11a"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -37,10 +42,10 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "13/11d"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11a"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _mumu_do", None)]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "(WAKE_ON_OPEN)"}       # dòng khởi động của bản mới (trong nhật ký)
+         ("windows/phonectl.py", "phonectl.py", "def _op_busy", None)]
+MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "BOOT_IF_OFF"}       # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)"}
@@ -171,7 +176,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1511"
+            bak = lp + ".truoc-1611"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -689,7 +694,8 @@ def log_report():
         say("--- bảng CloudBlue tự sửa gần nhất (logs\\bang-tu-sua.log) ---")
         for x in T[-5:]: say("   " + x[:170])
     L = tail(os.path.join(LOGS, "phat-hinh.log"))
-    ks = ("lỗi bật hình", "ĐEN", "hình đen", "không ra khung", "ngừng ra hình", "lỗi quay", "không xuất được hình", "Traceback")
+    ks = ("lỗi bật hình", "ĐEN", "hình đen", "không ra khung", "ngừng ra hình", "lỗi quay", "không xuất được hình", "Traceback",
+          "adb không thấy máy", "bật lại hình lỗi", "LỖI —")
     er = [x for x in L if any(k in x for k in ks)]
     if er:
         say(f"--- lỗi phát hình gần nhất ({len(er)} dòng trong nhật ký) ---")

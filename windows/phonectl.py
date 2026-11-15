@@ -547,14 +547,44 @@ def _mumu_main_fix(why=""):
         time.sleep(MUMU_MAIN_SETTLE)                       # chương trình chính cần ~10–20 giây mới nhận lệnh
         return up
     finally: lk.__exit__()
+# 16/11 — KHÁCH TỰ ĐỔI FPS (web / app gọi cloudphone_set_fps → ô fps của cloud_phones). Giả lập chỉ cho ghi "khung/giây tối đa" lúc máy
+# TẮT → mỗi lần BẬT máy (start / restart / wake / tự bật lại sau khi văng) đọc FPS khách đang chọn rồi ghi TRƯỚC khi bật.
+# Hình phát ra thì đổi ngay ở lần mở máy kế (bluestream đọc ô fps mỗi lần mở); FPS TRONG game đổi sau lần khởi động lại máy.
+_FPS_FORCE = {}            # số máy → FPS chính lệnh này vừa đặt (reconfig) — ưu tiên hơn web
+def _fps_wanted(idx):
+    """(tên máy, FPS khách đang chọn) của máy MuMu số idx · None nếu không phải máy khách cp_… / không biết FPS.
+       Đọc web tối đa 6 giây (gọi NGOÀI khoá memuc); không đọc được → theo phones.json. Web khác phones.json → ghi lại phones.json."""
+    try:
+        if EMU != "mumu": return None
+        i = int(idx); st = load()
+        p = next((x for x in st["phones"] if str(x.get("idx", "")) == str(i) and str(x.get("name", "")).startswith("cp_")), None)
+        if not p: return None
+        nm = p["name"]
+        if i in _FPS_FORCE: return nm, clamp_fps(_FPS_FORCE[i])
+        fps = None
+        try:
+            import urllib.parse
+            rows = _sb_get("cloud_phones?select=fps&container=eq." + urllib.parse.quote(nm)
+                           + "&status=in.(active,expired,pending,creating)&order=created_at.desc&limit=1", timeout=6) or []
+            if rows and rows[0].get("fps"): fps = clamp_fps(rows[0]["fps"])
+        except Exception: pass
+        if fps is None: return (nm, clamp_fps(p["fps"])) if p.get("fps") else None
+        if not p.get("fps") or clamp_fps(p["fps"]) != fps:
+            st = load(); q = rec(nm, st)
+            if q: q["fps"] = fps; save(st)
+        return nm, fps
+    except Exception: return None
 def _mumu_start(idx, timeout, locked=False):
     """Bật 1 máy MuMu: khoá memuc CHỈ lúc ghi cài đặt + gửi lệnh launch; chờ máy lên (≤ MUMU_START_WAIT giây) ở NGOÀI khoá.
        MuMu báo mainnx → mở lại chương trình chính rồi gửi launch thêm 1 lần. locked=True: đang trong khoá (gọi từ _mumu)."""
     idx = str(idx)
+    want = None if locked else _fps_wanted(idx)           # (tên máy, FPS khách chọn) — đọc web ở NGOÀI khoá
     def launch():
-        if (_mumu_list().get(int(idx)) or {}).get("running"): return None
-        if MUMU_PERF:
-            try: _mumu_perf(idx)                          # giữ app chạy nền / không tự hạ FPS / card rời — ghi lúc máy đang tắt
+        v = _mumu_list().get(int(idx)) or {}
+        if v.get("running"): return None
+        fps = want[1] if want and want[0] == str(v.get("name", "")) else None      # đúng máy đó (số máy không bị đổi giữa chừng) mới ghi
+        if MUMU_PERF or fps:
+            try: _mumu_perf(idx, fps)                     # giữ app chạy nền / không tự hạ FPS / card rời / FPS khách chọn — ghi lúc máy đang tắt
             except Exception: pass
         return _mumurun(["control", "-v", idx, "launch"], timeout)
     if locked:                                            # đường cũ (trong khoá): gửi lệnh rồi chờ ngắn trong khoá
@@ -590,10 +620,15 @@ def _mumu_stop(idx, timeout, locked=False):
         if not _mumu_is_on(idx): break
         time.sleep(2)
     return _ok("stop ok")
-def _mumu_perf(idx):
-    """Ghi MUMU_PERF cho 1 máy MuMu (máy phải đang tắt). Trả số khoá vừa ghi (0 = đã đúng sẵn)."""
+def _mumu_perf(idx, fps=None):
+    """Ghi MUMU_PERF (+ FPS khách chọn, nếu có) cho 1 máy MuMu (máy phải đang tắt). Trả số khoá vừa ghi (0 = đã đúng sẵn)."""
     cur = _mumu_json(_mumurun(["setting", "-v", idx, "-a"], 60).stdout) or {}
     want = {k: val for k, val in MUMU_PERF.items() if k in cur and str(cur.get(k)).strip().lower() != val}
+    if fps:
+        fk = "max_frame_rate" if "max_frame_rate" in cur else next((k for k in sorted(cur, key=len) if k.startswith("max_frame_rate")), None)
+        if fk and _fnum(cur.get(fk)) != float(int(fps)):
+            want["fps"] = int(fps)
+            print(f"   (máy #{idx}: khung/giây trong máy {cur.get(fk)} → {int(fps)} theo lựa chọn của khách)", flush=True)
     if want: _MUMU_KEYS.pop(str(idx), None); _mumu_set(str(idx), want)
     return len(want)
 def _mumu(a, timeout):
@@ -692,6 +727,31 @@ def _mumu(a, timeout):
     if c == "clone": return _mumurun(["clone", "-v", ix()], timeout)
     return _ok()
 _IDX_CHECK = ("remove", "rename")                 # lệnh làm mất / đổi máy → phải chắc máy số đó CÓ THẬT trước khi chạy
+def _op_file(iv): return os.path.join(HOME, "redroid", f"op_{iv}.mark")
+_OP_MINE = set()
+def _op_mark(iv):
+    """16/11b: lệnh này vừa TẮT máy số iv (khởi động lại / nâng cấp / đổi cấu hình / root / cho ngủ…) → ghi dấu "đang làm dở" + mã chương trình.
+       Lệnh chạy xong (thoát bình thường) → tự gỡ dấu của mình; bị ngắt giữa chừng → dấu của chương trình đã tắt không còn hiệu lực."""
+    try:
+        os.makedirs(os.path.join(HOME, "redroid"), exist_ok=True)
+        with open(_op_file(iv), "w") as f: f.write(str(os.getpid()))
+        if not _OP_MINE:
+            import atexit; atexit.register(lambda: [_op_unmark(x) for x in list(_OP_MINE)])
+        _OP_MINE.add(str(iv))
+    except OSError: pass
+def _op_unmark(iv):
+    try:
+        f = _op_file(iv)
+        if open(f).read().strip() == str(os.getpid()): os.remove(f)
+    except OSError: pass
+def _op_busy(iv):
+    """Có lệnh phonectl KHÁC (còn đang chạy) vừa tắt máy số iv và chưa làm xong? Dấu của chương trình đã tắt / quá 15 phút → không tính."""
+    try:
+        f = _op_file(iv)
+        if time.time() - os.path.getmtime(f) > 900: return False
+        pid = open(f).read().strip()
+        return pid.isdigit() and int(pid) != os.getpid() and bool(_pid_alive(pid))
+    except (OSError, ValueError): return False
 def memuc(*a, timeout=300):
     """memuc chỉ xử lý 1 lệnh một lúc (chạy chồng → "read failed: 233") → xếp hàng bằng khoá + thử lại.
        memuc gặp số máy KHÔNG CÓ (VD "-i 7" khi không có máy 7, hay "-i None") thì làm NHẦM SANG MÁY #0 (đã thấy: rename -i 7 đổi tên máy #0)
@@ -701,6 +761,7 @@ def memuc(*a, timeout=300):
         k = a.index("-i"); iv = str(a[k + 1]).strip() if k + 1 < len(a) else ""
         if not iv.isdigit():
             return subprocess.CompletedProcess([], 1, "", f"bỏ lệnh {a[0]}: số máy không hợp lệ ({iv or 'trống'}) — không chạy để khỏi làm nhầm máy #0")
+        if a and str(a[0]) == "stop": _op_mark(iv)        # 16/11b: wake không bật chen ngang trong lúc lệnh này còn làm dở với máy đó
     if EMU == "mumu":
         c0 = str(a[0]) if a else ""
         if c0 == "start" and iv is not None: return _mumu_start(iv, timeout)     # khoá chỉ lúc gửi lệnh, chờ máy lên ngoài khoá
@@ -1343,12 +1404,12 @@ def cmd_delete(a):
     _forget_files(a.name)
     print(f"🗑️  Đã xoá máy '{a.name}' và toàn bộ dữ liệu.")
 
-def _sb_get(path):
+def _sb_get(path, timeout=25):
     """Đọc Supabase (khoá máy chủ trong cloudphone.conf) → list/dict. Lỗi → ném lỗi (KHÔNG coi là "không có")."""
     import urllib.request
     url = CONF["SUPABASE_URL"].rstrip("/") + "/rest/v1/" + path; k = CONF["SUPABASE_SERVICE_KEY"]
     req = urllib.request.Request(url, headers={"apikey": k, "Authorization": "Bearer " + k, "Accept": "application/json"})
-    return json.loads(urllib.request.urlopen(req, timeout=25).read().decode("utf-8") or "[]")
+    return json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode("utf-8") or "[]")
 
 def _web_rows(names):
     """{tên máy: dòng web} (ưu tiên dòng còn sống khi trùng tên). Đọc lỗi → None (KHÔNG kết luận gì, không xoá gì)."""
@@ -1674,11 +1735,15 @@ def _boot_done(key):
             d = _bs_load()
             if d["slots"].pop(str(key), None) is not None: _bs_save(d)
     except Exception: pass
-def start_phone(p):
+def start_phone(p, guard=None):
+    """guard (16/11b, chỉ wake dùng): hàm kiểm "có nên thôi không bật nữa" gọi SAU khi chờ tới lượt — trả True thì trả suất, trả None."""
     took = False
     try: on = is_running(p["name"], p)
     except Exception: on = False
     if not on: _boot_take(p["name"]); took = True             # máy đang chạy sẵn → không giành suất của máy khác
+    if guard is not None and not on and guard():
+        if took: _boot_done(p["name"])
+        return None
     r = memu_start(IDX(p)); adb_connect(p["port"])
     if not _start_failed(r): set_hold(p["name"], False)
     elif took: _boot_done(p["name"])
@@ -1711,13 +1776,15 @@ def _vm_pids(idx):
                 if len(q) >= 7 and q[0].strip() == str(idx): out = [q[6], q[5]]       # pid máy ảo (Ld9BoxHeadless), pid cửa sổ (dnplayer)
     except Exception: pass
     return [int(x) for x in out if str(x).strip().isdigit() and int(x) > 0]
-def force_stop(p):
+def force_stop(p, graceful=True):
     """TẮT HẲN 1 máy: tắt bình thường trước; ~40 giây vẫn chạy (máy treo, giả lập không tắt được) → tắt cưỡng bức đúng tiến trình
-       của máy đó (kiểm tên file chạy là của giả lập). Không đụng máy khác. Trả về (đã tắt?, cách tắt)."""
+       của máy đó (kiểm tên file chạy là của giả lập). Không đụng máy khác. Trả về (đã tắt?, cách tắt).
+       graceful=False: nơi gọi vừa tắt bình thường rồi mà máy vẫn chạy → vào thẳng bước tắt cưỡng bức."""
     i = IDX(p)
     if i is None: return False, f"không thấy máy trong {EMU_NAME}"
-    memuc("stop", "-i", i, timeout=90)
-    if not is_running(p["name"], p): return True, "tắt bình thường"
+    if graceful:
+        memuc("stop", "-i", i, timeout=90)
+        if not is_running(p["name"], p): return True, "tắt bình thường"
     killed = []
     pids = _vm_pids(i) + (sorted(_memu_front_pids(p["name"])) if EMU == "memu" else [])
     for pid in pids:
@@ -1732,17 +1799,26 @@ def force_stop(p):
     return False, how
 def cmd_restart(a):
     st, p = _need(a.name); adb("disconnect", serial(p), timeout=15)
-    force = bool(getattr(a, "force", False))
+    force = bool(getattr(a, "force", False)); hard = False
     if force:                                                 # admin ÉP khởi động lại (máy treo): tắt hẳn rồi mới bật
         ok, how = force_stop(p); print(("   ✓ " if ok else "   ⚠ ") + how, flush=True)
         if not ok: print(f"❌ Chưa tắt được máy ({EMU_NAME} không trả lời) — đợi 1 phút rồi thử lại, hoặc ■ Tắt tất cả → ▶ Bật tất cả."); sys.exit(6)
     else:
         memuc("stop", "-i", IDX(p), timeout=120)
+        # 16/11: khách / admin bấm "Khởi động lại" mà máy TREO (tắt êm không được) → trước đây máy vẫn chạy, lệnh bật không làm gì,
+        # máy treo mãi tới khi admin ép. Chờ thêm 15 giây (máy chủ bận tắt chậm); vẫn chạy → tắt hẳn ĐÚNG máy đó rồi bật.
+        t_w = time.time()
+        while time.time() - t_w < 15 and is_running(a.name, p): time.sleep(3)
+        if is_running(a.name, p):
+            ok, how = force_stop(p, graceful=False); print(("   ✓ " if ok else "   ⚠ ") + how, flush=True)
+            if not ok: print("❌ Chưa tắt được máy (máy đang treo) — đợi 1 phút rồi bấm khởi động lại lần nữa, hoặc báo hỗ trợ."); sys.exit(6)
+            force = True                                      # vừa tắt cưỡng bức → bật lỗi thì thử lại 1 lần (như ép khởi động lại)
+            hard = True
     time.sleep(3); r = start_phone(p)
     if _start_failed(r) and force:
         time.sleep(10); r = start_phone(p)                    # vừa tắt cưỡng bức: giả lập có thể cần vài giây mới bật lại được
     if _start_failed(r): print(f"❌ {EMU_NAME} không bật được máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-200:]); sys.exit(5)
-    print("✅ Đã ép khởi động lại" if force else "✅ Đã khởi động lại")
+    print("✅ Đã khởi động lại (máy treo — đã tắt hẳn rồi bật)" if hard else "✅ Đã ép khởi động lại" if force else "✅ Đã khởi động lại")
 
 def cmd_waitboot(a):
     st, p = _need(a.name)
@@ -1873,7 +1949,10 @@ def cmd_reconfig(a):
     st, p = _need(a.name)
     res = a.res or p.get("res") or "720x1280"; fps = clamp_fps(a.fps or p.get("fps", 30)); dpi = auto_dpi(res)
     adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
-    configure(IDX(p), p["ram"], p["cpu"], res, dpi); start_phone(p); ok = wait_boot(a.name, p["port"], apps=False)
+    configure(IDX(p), p["ram"], p["cpu"], res, dpi)
+    if EMU == "mumu": _FPS_FORCE[int(IDX(p))] = fps        # 16/11: trước đây đổi FPS chỉ ghi vào danh sách, máy vẫn chạy FPS cũ → ghi lúc bật (start)
+    elif EMU == "memu": memuc("setconfigex", "-i", IDX(p), "fps", fps, timeout=60)
+    start_phone(p); ok = wait_boot(a.name, p["port"], apps=False)
     st = load(); q = rec(a.name, st); q["res"], q["fps"], q["dpi"] = res, fps, dpi; save(st)
     print(f"✅ '{a.name}' → {res} · {fps} FPS" + ("" if ok else " (đang kết nối lại)"))
 
@@ -2685,7 +2764,9 @@ def _sleep_one(p, why="", check_view=True):
     i = IDX(p)
     if i is not None: memuc("stop", "-i", i, timeout=120)
     for _ in range(30):
-        if not is_running(nm, p): return True, why
+        if not is_running(nm, p):
+            if i is not None: _op_unmark(i)                # 16/11b: máy ngủ xong → khách mở là bật lại NGAY (không tính là "lệnh khác đang làm dở")
+            return True, why
         time.sleep(2)
     set_hold(nm, False)
     return False, f"{EMU_NAME} chưa tắt được máy — để máy chạy tiếp"
@@ -2743,9 +2824,17 @@ def _wake_one(p):
     try: lk = _Lock("wake_" + nm, wait=1); lk.__enter__()
     except RuntimeError: return False, "WAKE_BUSY lệnh khác đang bật máy này"
     try:
-        if is_running(nm, p): set_hold(nm, False)                  # còn chạy (tắt chưa xong / dấu ngủ sót) → chỉ bỏ dấu ngủ
+        if is_running(nm, p):                                      # còn chạy (tắt chưa xong / dấu ngủ sót) → chỉ bỏ dấu ngủ
+            print(f"WAKE_RUNNING {nm}", flush=True)                # 16/11: phát hình biết máy ĐANG CHẠY mà Android chưa trả lời (không bật gì thêm)
+            set_hold(nm, False)
         else:
-            r = start_phone(p)
+            def busy():                                              # 16/11b: lệnh khác vừa tắt máy này và đang làm dở?
+                i_ = IDX(p)
+                return i_ is not None and _op_busy(i_)
+            BUSY = "WAKE_BUSY lệnh khác đang làm việc với máy này (khởi động lại / đổi cấu hình…) — xong sẽ tự bật"
+            if busy(): return False, BUSY                            # → KHÔNG bật chen ngang
+            r = start_phone(p, guard=busy)                           # kiểm lại lần nữa SAU khi chờ tới lượt bật (có thể chờ vài phút)
+            if r is None: return False, BUSY
             if _start_failed(r):                                     # máy kẹt nửa chừng (tiến trình cũ chưa tắt hẳn…) → tắt hẳn rồi bật lại 1 lần
                 print(f"   ({nm}: bật lần 1 chưa được — tắt hẳn rồi bật lại)", flush=True)
                 try: force_stop(p)
