@@ -2162,6 +2162,229 @@ body.past-hero .m3-col{animation-play-state:paused}
 }
 
 </style>
+<style id="cp5css">
+/* ===== v5 · hộp THUÊ MÁY bản VIP: 3 bước · hệ điều hành ô to · chọn gói rồi mới hiện giá · điện thoại có thanh tổng tiền dính đáy ===== */
+#cporderdlg{--cpv-ice:#9fd0ff;--cpv-sap:#3d7bff;--cpv-line:rgba(159,208,255,.18)}
+#cporderdlg .dlg.cpwide{width:min(1240px,100%);gap:14px;padding:18px 20px 20px;border:1px solid rgba(159,208,255,.3);border-radius:26px;
+  background:radial-gradient(80% 50% at 0% 0%,rgba(61,123,255,.18),transparent 62%),radial-gradient(60% 40% at 100% 0%,rgba(159,208,255,.1),transparent 60%),linear-gradient(180deg,#101d4a 0%,#0a1535 45%,#081029 100%);
+  box-shadow:0 50px 100px -40px rgba(0,0,0,.95),inset 0 0 0 1px rgba(255,255,255,.04)}
+/* đầu hộp */
+#cporderdlg .cphead{display:flex;align-items:center;gap:10px 14px;flex-wrap:nowrap}
+#cporderdlg .cpht{flex:1;min-width:0}
+#cporderdlg .cpht h3{font-size:23px;font-weight:800;letter-spacing:-.02em;color:#f4f8ff;text-shadow:0 0 26px rgba(124,188,255,.35)}
+#cporderdlg #cp-rate{display:none}
+#cporderdlg .cpapphelp{flex:none}
+#cporderdlg .cpo-x{flex:none;width:40px;height:40px;border-radius:13px;border:1px solid var(--line2);background:rgba(255,255,255,.05);color:var(--fg);font:400 26px/1 var(--body);display:grid;place-items:center;cursor:pointer;padding:0}
+#cporderdlg .cpo-x:hover{background:rgba(255,255,255,.11)}
+/* bố cục: các bước | khung thanh toán */
+#cporderdlg .cpbody{grid-template-columns:minmax(0,1fr) 300px;grid-template-rows:auto 1fr;grid-template-areas:"main s3" "main foot";gap:14px 16px;align-items:start}
+#cporderdlg .cpmain{grid-area:main}
+#cporderdlg #cp-s3{grid-area:s3}
+#cporderdlg .cpfoot{grid-area:foot}
+#cporderdlg .cpmain{gap:12px}
+/* từng bước */
+#cporderdlg .cpstep{display:block;padding:14px 16px 16px;border:1px solid var(--cpv-line);border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.008)),rgba(5,11,32,.45)}
+#cporderdlg .cpstep[hidden]{display:none}
+#cporderdlg .cps{display:flex;align-items:center;gap:11px;margin:0 0 12px}
+#cporderdlg .cps-n{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font:800 14px/1 var(--display);color:#04122e;
+  background:linear-gradient(160deg,#e3f1ff 0%,#9fd0ff 45%,#3d7bff 100%);box-shadow:0 0 0 3px rgba(159,208,255,.14),0 8px 18px -8px rgba(61,123,255,.95)}
+#cporderdlg .cps-t{display:grid;gap:2px;min-width:0}
+#cporderdlg .cps-t b{font:800 16.5px/1.25 var(--display);letter-spacing:-.01em;color:var(--fg)}
+#cporderdlg .cps-t small{font-size:12.5px;line-height:1.4;color:var(--muted)}
+#cporderdlg .cps-t small:empty{display:none}
+/* bước 1 · hệ điều hành: ô to, chia đều */
+#cporderdlg .cpav{display:grid;grid-template-columns:repeat(var(--n,3),minmax(0,1fr));gap:10px}
+#cporderdlg .cpav button{position:relative;display:grid;align-content:center;justify-items:start;gap:4px;min-height:76px;padding:12px 46px 12px 16px;border-radius:16px;
+  border:1.5px solid rgba(159,208,255,.26);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.012)),rgba(4,10,30,.6);color:var(--fg);text-align:left;font:inherit;cursor:pointer;
+  transition:border-color .18s,box-shadow .18s,transform .15s,background .18s}
+#cporderdlg .cpav button:hover:not([disabled]){border-color:rgba(159,208,255,.62);transform:translateY(-1px)}
+#cporderdlg .cpav .av-name{font:800 21px/1.1 var(--display);letter-spacing:-.015em;color:var(--fg)}
+#cporderdlg .cpav .av-name em{font-style:normal}
+#cporderdlg .cpav .av-h{font-size:12px;font-weight:700;line-height:1.3;color:#ffd27a;padding:0;background:none;border-radius:0}
+#cporderdlg .cpav .av-ck{position:absolute;top:50%;right:14px;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font:900 13px/1 var(--body);font-style:normal;
+  border:1.5px solid rgba(159,208,255,.4);color:transparent;transition:background .18s,box-shadow .18s}
+#cporderdlg .cpav button.on{border-color:#7cbcff;background:radial-gradient(120% 140% at 0% 0%,rgba(124,188,255,.34),rgba(61,123,255,.12) 55%,rgba(61,123,255,.06)),rgba(8,22,58,.85);
+  box-shadow:0 0 0 3px rgba(124,188,255,.18),0 16px 34px -18px rgba(61,123,255,1)}
+#cporderdlg .cpav button.on .av-ck{background:linear-gradient(160deg,#e3f1ff,#7cbcff 50%,#3d7bff);border-color:transparent;color:#04122e;box-shadow:0 0 14px rgba(124,188,255,.75)}
+#cporderdlg .cpav button.off{opacity:.5}
+#cporderdlg .cpav button.off .av-h{color:var(--bad)}
+#cporderdlg .cpav button[disabled]{cursor:not-allowed;filter:grayscale(.6)}
+#cporderdlg #cp-and-tip{margin-top:10px}
+/* bước 2 · thẻ gói: hiện đủ hết, không phải kéo ngang */
+.cpt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;padding-top:8px}
+.cpt{gap:8px;padding:14px 12px 12px;border-radius:18px;border:1px solid color-mix(in srgb,var(--t) 32%,transparent);
+  background:linear-gradient(170deg,color-mix(in srgb,var(--t) 18%,#0c1638) 0%,#0a1330 55%,#08102a 100%);transition:transform .18s,border-color .18s,box-shadow .18s}
+.cpt::before{content:"";position:absolute;left:16px;right:16px;top:0;height:2px;border-radius:2px;background:linear-gradient(90deg,transparent,var(--t),transparent);opacity:.75}
+.cpt-h{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;column-gap:9px;row-gap:6px;min-width:0}
+.cpt-nt{display:contents}
+.cpt-tag{grid-column:1/-1}
+.cpt-ic{position:relative;width:34px;height:34px;border-radius:11px;font-size:17px}
+.cpt.on .cpt-ic::after{content:"✓";position:absolute;right:-6px;bottom:-6px;width:17px;height:17px;border-radius:50%;display:grid;place-items:center;font:900 10px/1 var(--body);color:#06112b;background:var(--t);box-shadow:0 0 0 2px #0a1330}
+.cpt-n{font-size:16.5px;line-height:1.15}
+.cpt-tag{display:block;margin:0;font-size:12px;line-height:1.3;color:var(--muted)}
+.cpt-spec{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;padding:7px 2px;border-radius:12px;background:rgba(255,255,255,.045);text-align:center}
+.cpt-spec span{display:grid;justify-items:center;gap:0;font-size:11px;line-height:1.25;color:var(--muted)}
+.cpt-spec b{font-size:15px;line-height:1.15;color:var(--fg)}
+.cpt-sec{padding-top:0;border-top:0}
+.cpt-fit{gap:3px;font-size:12px}
+.cpt-foot{gap:8px;padding-top:8px;border-top:1px dashed color-mix(in srgb,var(--t) 26%,transparent)}
+.cpt-price b{font-size:19px}
+.cpt-price span{font-size:12px}
+.cpt-btn{padding:9px 8px;font-size:13px;border-radius:12px}
+.cpt:hover{transform:translateY(-2px)}
+.cpt.on{transform:translateY(-3px);border-color:var(--t);box-shadow:0 0 0 2px var(--t),0 22px 40px -24px color-mix(in srgb,var(--t) 90%,#000),0 0 30px -10px color-mix(in srgb,var(--t) 60%,transparent)}
+/* Tự chỉnh cấu hình — nằm ngay dưới thẻ gói */
+#cporderdlg #cp-s2 .cpmore{margin-top:12px;border:1px dashed rgba(159,208,255,.3);border-radius:14px;background:rgba(255,255,255,.02)}
+#cporderdlg #cp-s2 .cpmore>summary{padding:10px 14px;font-size:13.5px}
+#cporderdlg #cp-guide[hidden]+.cpmore{margin-top:0}
+#cporderdlg .cpm-rate{padding:0 14px 8px;margin:0}
+#cporderdlg .cpm-rate:empty{display:none}
+#cporderdlg.cp-nopick #cp-more .amts button.on{border-color:var(--line2);background:var(--sunk,rgba(6,10,28,.55));color:var(--fg);box-shadow:none}
+/* bước 3 · số ngày & số máy */
+#cporderdlg #cp-s3 .cpgrid{gap:12px 18px;grid-template-columns:1fr}
+#cporderdlg #cp-s3 .cpgrid.cp1{grid-template-columns:1fr}
+#cporderdlg #cp-s3 .cpf{padding:0;border:0;background:none;gap:8px}
+#cporderdlg #cp-s3 .cpf .cpl{font-size:13px;font-weight:700;color:var(--muted)}
+#cporderdlg #cp-s3 .cpf .amts button{min-height:42px!important;padding:8px 2px!important;font-size:13.5px!important}
+#cporderdlg #cp-s3 .cpx{padding:6px 11px;font-size:12.5px;border-style:dashed;background:transparent;margin-top:2px}
+#cporderdlg .amts button{border-radius:12px;transition:border-color .15s,background .15s,box-shadow .15s}
+#cporderdlg .amts button.on{border-color:#7cbcff;background:linear-gradient(180deg,rgba(124,188,255,.26),rgba(61,123,255,.12));color:#fff;box-shadow:0 0 0 2px rgba(124,188,255,.16)}
+/* khung thanh toán (PC: dính bên phải) */
+#cporderdlg .cpfoot{position:sticky;top:0;display:grid;grid-template-columns:1fr;gap:12px;padding:18px 16px 16px;border-radius:22px;border:1px solid rgba(159,208,255,.32);
+  box-shadow:0 30px 60px -34px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.08)}
+#cporderdlg .cpfoot,html[data-theme] #cporderdlg .cpfoot{background:radial-gradient(120% 60% at 50% 0%,rgba(124,188,255,.16),transparent 60%),linear-gradient(180deg,#112255 0%,#0b1840 40%,#091331 100%)}
+#cporderdlg .cpsum{gap:9px}
+#cporderdlg .cppick:empty{display:none}
+#cporderdlg .cpp{display:flex;align-items:center;gap:11px}
+#cporderdlg .cpp-ic{flex:none;width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:22px;background:color-mix(in srgb,var(--t) 22%,transparent);border:1px solid color-mix(in srgb,var(--t) 50%,transparent)}
+#cporderdlg .cpp-t{display:grid;min-width:0;gap:1px}
+#cporderdlg .cpp-t b{font:800 17.5px/1.2 var(--display);color:color-mix(in srgb,var(--t) 40%,#fff)}
+#cporderdlg .cpp-t small{font-size:12px;line-height:1.35;color:var(--muted)}
+#cporderdlg .cpp-r{display:flex;justify-content:space-between;gap:10px;margin-top:10px;padding:9px 0 11px;border-top:1px solid rgba(159,208,255,.12);border-bottom:1px dashed rgba(159,208,255,.28);font-size:13px;color:var(--muted)}
+#cporderdlg .cpp-r b{color:var(--fg);font-weight:700;text-align:right}
+#cporderdlg .cpp-empty{display:grid;justify-items:center;gap:4px;padding:16px 14px;border-radius:16px;border:1px dashed rgba(159,208,255,.38);background:rgba(124,188,255,.06);text-align:center}
+#cporderdlg .cpp-empty i{font-style:normal;font-size:24px;line-height:1}
+#cporderdlg .cpp-empty b{font-size:15px;color:var(--fg)}
+#cporderdlg .cpp-empty small{font-size:12.5px;color:var(--muted);line-height:1.45}
+#cporderdlg #cp-lim{font-size:12px;line-height:1.5}
+#cporderdlg #cp-lim[hidden]{display:none}
+#cporderdlg .cpsum .sum{font-size:13.5px}
+#cporderdlg #cp-calc{font:500 11.5px/1.45 var(--mono);color:var(--muted);text-align:right}
+#cporderdlg .cpsum .sum:has(#cp-calc){gap:10px}
+#cporderdlg .cpsum .sum:has(#cp-calc)>span:first-child{white-space:nowrap}
+#cporderdlg.cp-nopick .cpsum .sum:has(#cp-calc),#cporderdlg.cp-nopick .cpsum .sum:has(#cp-total){display:none}
+#cporderdlg .cpsum .sum:has(#cp-total){align-items:center;padding-top:4px}
+#cporderdlg .cpfoot #cp-total{font-size:30px;font-weight:800;letter-spacing:-.02em;color:#f4f8ff;text-shadow:0 0 24px rgba(124,188,255,.45);text-align:right}
+#cporderdlg #cp-total .cp-wait,#cporderdlg #cp-bar-v .cp-wait{font-size:14px;font-weight:700;letter-spacing:0;color:var(--muted);text-shadow:none}
+#cporderdlg .cpside{gap:10px}
+#cporderdlg #cp-note{margin:0;font-size:12.5px;line-height:1.55;padding:11px 14px;border-radius:14px}
+#cporderdlg .cpside .err:empty{display:none}
+#cporderdlg .cpside .acts{grid-template-columns:1fr 2.3fr}
+#cporderdlg #cp-obuy,#cporderdlg #cp-bar-go{min-height:50px;font-size:15.5px;border-radius:14px;background:linear-gradient(180deg,#6aa8ff 0%,#3d7bff 55%,#2a5fe0 100%);
+  box-shadow:0 14px 30px -14px rgba(61,123,255,1),inset 0 1px 0 rgba(255,255,255,.35)}
+#cporderdlg #cp-obuy[disabled]{background:rgba(255,255,255,.06);color:var(--muted);box-shadow:none;border:1px dashed rgba(159,208,255,.32);opacity:1;cursor:not-allowed}
+#cporderdlg #cp-bar-go.ghost{background:rgba(255,255,255,.07);color:var(--fg);border:1px solid rgba(159,208,255,.45);box-shadow:none}
+/* thanh tổng tiền dính đáy — chỉ khi khung thanh toán không nằm cạnh */
+#cporderdlg .cpbar{display:none}
+.cpb-t{flex:1;min-width:0;display:grid;gap:1px}
+.cpb-t small{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cpb-t small.bad{color:#ffd27a}
+.cpb-t b{font-size:22px;font-weight:800;line-height:1.15;color:#f4f8ff;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cpb-t b .oldp{font-size:13px}
+#cporderdlg #cp-bar-go{flex:none;min-height:48px;padding:10px 18px;font-size:15px}
+@media (max-width:1060px){
+  #cporderdlg .cpbody{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-template-areas:"main" "s3" "foot"}
+  #cporderdlg #cp-s3 .cpgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #cporderdlg #cp-s3 .cpf .amts button{min-height:46px!important;padding:10px 4px!important;font-size:14.5px!important}
+  #cporderdlg .cpfoot{position:static}
+  #cporderdlg .cpbar{display:flex;align-items:center;gap:12px;position:sticky;bottom:0;z-index:4;padding:10px 10px 10px 16px;border-radius:20px;border:1px solid rgba(159,208,255,.38);
+    background:linear-gradient(180deg,rgba(20,40,96,.97),rgba(9,19,50,.98));box-shadow:0 -6px 30px -4px rgba(0,0,0,.75),inset 0 1px 0 rgba(255,255,255,.08)}
+  #cporderdlg .cpbar[hidden],#cporderdlg .cpbar.away{display:none}
+}
+@media (max-width:640px){
+  #cporderdlg.modal{padding:8px 6px}
+  #cporderdlg .dlg.cpwide{padding:14px 12px 12px;border-radius:22px;gap:12px}
+  #cporderdlg .cphead{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}
+  #cporderdlg .cpht h3{font-size:19.5px}
+  #cporderdlg .cpapphelp{grid-column:1/-1;grid-row:2;display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  #cporderdlg .cpo-x{grid-column:2;grid-row:1}
+  #cporderdlg .cpchip{padding:8px 6px;font-size:12.5px}
+  #cporderdlg .cpstep{padding:12px 12px 14px;border-radius:18px}
+  #cporderdlg #cp-s3 .cpgrid{grid-template-columns:1fr}
+  #cporderdlg #cp-note{display:none}
+  #cporderdlg .cps{margin-bottom:10px}
+  #cporderdlg .cps-t b{font-size:16px}
+  /* hệ điều hành: 3 ô vuông vức, số to */
+  #cporderdlg .cpav{gap:8px}
+  #cporderdlg .cpav button{justify-items:center;text-align:center;min-height:96px;padding:12px 4px 10px;gap:3px}
+  #cporderdlg .cpav .av-name{display:grid;justify-items:center;font-size:12.5px;font-weight:700;color:var(--muted);line-height:1.2}
+  #cporderdlg .cpav .av-name em{font-size:30px;font-weight:800;color:var(--fg);line-height:1.05;letter-spacing:-.02em}
+  #cporderdlg .cpav button.on .av-name{color:#cfe4ff}
+  #cporderdlg .cpav .av-h{font-size:10.5px;padding:0 3px}
+  #cporderdlg .cpav .av-ck{top:-8px;right:-8px;transform:none;width:22px;height:22px;font-size:11.5px}
+  #cporderdlg .cpav button:not(.on) .av-ck{display:none}
+  #cporderdlg .cpav .av-h2{display:none}
+  /* gói: danh sách dọc gọn — bấm hàng nào chọn hàng đó, hàng đang chọn mở thêm chi tiết */
+  #cporderdlg .cpt-grid{grid-template-columns:1fr;gap:9px;padding-top:6px}
+  #cporderdlg .cpt{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:6px;padding:12px;border-radius:16px}
+  #cporderdlg .cpt:hover,#cporderdlg .cpt.on{transform:none}
+  #cporderdlg .cpt::before{display:none}
+  #cporderdlg .cpt-h{grid-column:1;grid-row:1;display:flex}
+  #cporderdlg .cpt-nt{display:grid;min-width:0;gap:1px}
+  #cporderdlg .cpt-tag{grid-column:auto}
+  #cporderdlg .cpt-ic{width:30px;height:30px;font-size:15px;border-radius:9px}
+  #cporderdlg .cpt-n{font-size:16px}
+  #cporderdlg .cpt-spec{grid-column:1;grid-row:2;display:flex;flex-wrap:wrap;gap:2px 12px;padding:0 0 0 39px;background:none;text-align:left}
+  #cporderdlg .cpt-spec span{display:inline;font-size:12px}
+  #cporderdlg .cpt-spec b{font-size:12.5px}
+  #cporderdlg .cpt-foot{grid-column:2;grid-row:1/span 2;align-self:center;margin:0;padding:0;border:0;text-align:right}
+  #cporderdlg .cpt-price b{display:block;font-size:17px;line-height:1.1}
+  #cporderdlg .cpt-price span{font-size:11px}
+  #cporderdlg .cpt-price small,#cporderdlg .cpt-btn{display:none}
+  #cporderdlg .cpt-sec,#cporderdlg .cpt-fit{grid-column:1/-1;padding-left:39px}
+  #cporderdlg .cpt:not(.on) .cpt-fit{display:none}
+  #cporderdlg .cpt-badge{top:-9px;right:10px;font-size:10.5px;padding:2px 8px}
+  #cporderdlg .cpfoot{padding:14px 12px;box-shadow:none}
+  #cporderdlg .cpfoot #cp-total{font-size:26px}
+  #cporderdlg .cpbar{padding:8px 8px 8px 14px;border-radius:18px}
+  .cpb-t b{font-size:20px}
+  #cporderdlg #cp-bar-go{min-height:46px;padding:10px 14px;font-size:14.5px}
+}
+/* hiệu ứng: nút thanh toán loé sáng · số tiền "bật" lên khi vừa chọn gói · bước 2 nháy khi bấm "Chọn gói" ở thanh dưới */
+@media (prefers-reduced-motion:no-preference){
+  #cporderdlg #cp-obuy:not([disabled])::after,#cporderdlg #cp-bar-go:not(.ghost)::after{animation:cpv-sheen 4s ease-in-out 1.2s infinite}
+  #cporderdlg .cpv-pop{animation:cpv-pop .45s cubic-bezier(.2,.9,.3,1.25)}
+  #cporderdlg .cpstep.cp-hl{animation:cpv-hl 1.1s ease-out}
+}
+@keyframes cpv-sheen{0%,64%{transform:translateX(-140%) skewX(-20deg)}100%{transform:translateX(330%) skewX(-20deg)}}
+@keyframes cpv-pop{0%{transform:scale(.82);opacity:.15}100%{transform:scale(1);opacity:1}}
+@keyframes cpv-hl{0%{box-shadow:0 0 0 0 rgba(124,188,255,.8)}100%{box-shadow:0 0 0 16px rgba(124,188,255,0)}}
+/* giao diện sáng */
+html[data-theme=light] #cporderdlg .dlg.cpwide{background:radial-gradient(80% 50% at 0% 0%,rgba(43,110,240,.08),transparent 62%),#fff;border-color:rgba(43,110,240,.22);box-shadow:0 0 0 3px var(--ring),0 40px 80px -40px rgba(10,26,58,.45)}
+html[data-theme=light] #cporderdlg .cpht h3{color:var(--fg);text-shadow:none}
+html[data-theme=light] #cporderdlg .cpo-x{background:#f1f5fc}
+html[data-theme=light] #cporderdlg .cpstep{background:#f6f9ff;border-color:rgba(43,110,240,.14)}
+html[data-theme=light] #cporderdlg .cps-n{color:#fff;background:linear-gradient(160deg,#5b98ff,#1f5fe0);box-shadow:0 0 0 3px rgba(43,110,240,.14)}
+html[data-theme=light] #cporderdlg .cpav button{background:#fff;border-color:rgba(43,110,240,.25)}
+html[data-theme=light] #cporderdlg .cpav button.on{background:linear-gradient(180deg,#eef4ff,#dde9ff);border-color:#2b6ef0;box-shadow:0 0 0 3px rgba(43,110,240,.18),0 14px 28px -18px rgba(43,110,240,.8)}
+html[data-theme=light] #cporderdlg .cpav button.on .av-name{color:var(--fg)}
+html[data-theme=light] #cporderdlg .cpav .av-h{color:var(--warn)}
+html[data-theme=light] #cporderdlg .cpav .av-ck{border-color:rgba(43,110,240,.35)}
+html[data-theme=light] #cporderdlg .cpav button.on .av-ck{background:#2b6ef0;color:#fff;box-shadow:none}
+html[data-theme=light] .cpt-spec{background:rgba(10,26,58,.045)}
+html[data-theme=light] .cpt.on .cpt-ic::after{box-shadow:0 0 0 2px #fff}
+html[data-theme=light] #cporderdlg .amts button.on{background:#e8f0ff;color:#0f3fb3;border-color:#2b6ef0;box-shadow:none}
+html[data-theme=light] #cporderdlg #cp-s2 .cpmore{background:#fff}
+html[data-theme=light] #cporderdlg .cpfoot{background:linear-gradient(180deg,#eef4ff,#fff 45%);border-color:rgba(43,110,240,.25);box-shadow:0 20px 40px -30px rgba(10,26,58,.4)}
+html[data-theme=light] #cporderdlg .cpfoot #cp-total{color:#0f3fb3;text-shadow:none}
+html[data-theme=light] #cporderdlg .cpp-t b{color:color-mix(in srgb,var(--t) 60%,#0a1a3a)}
+html[data-theme=light] #cporderdlg .cpp-empty{background:#f3f7ff}
+html[data-theme=light] #cporderdlg #cp-obuy[disabled]{background:#eef3fb;color:var(--muted)}
+html[data-theme=light] #cporderdlg .cpbar{background:#fff;border-color:rgba(43,110,240,.28);box-shadow:0 -10px 30px -10px rgba(10,26,58,.35)}
+html[data-theme=light] .cpb-t b{color:#0f3fb3}
+html[data-theme=light] .cpb-t small.bad{color:var(--warn)}
+html[data-theme=light] #cporderdlg #cp-bar-go.ghost{background:#f1f5fc;color:var(--fg)}
+</style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
@@ -2847,7 +3070,7 @@ body.past-hero .m3-col{animation-play-state:paused}
       <div class="hint">Giá trên thẻ tự tính theo đơn giá ở trên. Gói cần RAM / nhân vượt trần của bản Android nào thì bản đó không hiện trên thẻ (VD Android 9 tối đa 8GB · 8 nhân); khách bấm gói đó sẽ tự chuyển bản Android.</div>
       <div class="tier-ed" id="tier-ed"></div>
       <div class="acts" style="justify-content:flex-start;flex-wrap:wrap"><button class="btn ghost sm" type="button" id="tier-add">➕ Thêm gói</button><button class="btn ghost sm" type="button" id="tier-def">↺ Về 5 gói mặc định</button><button class="btn" type="button" id="tier-save">💾 Lưu thẻ gói</button></div>
-      <div class="hint" style="margin-top:4px">Xem trước (khách thấy như này):</div>
+      <div class="hint" style="margin-top:4px">Xem trước (khách thấy như này). Thẻ hiện cho khách không nhắc tên game: chữ “Roblox” tự đổi thành “game”, tên “Blue Roblox” thành “Blue Plus”.</div>
       <div class="cpt-track tier-pv" id="tier-pv" role="list"></div>
       </div>
       <div class="subpane" data-sub="tools" hidden>
@@ -3190,19 +3413,15 @@ body.past-hero .m3-col{animation-play-state:paused}
 <!-- ĐIỆN THOẠI ĐÁM MÂY — thuê máy mới -->
 <div class="modal" id="cporderdlg" hidden>
   <div class="dlg cpwide" role="dialog" aria-modal="true" aria-labelledby="cpo-title">
-    <div class="cphead"><div class="cpht"><h3 id="cpo-title">Thuê điện thoại đám mây</h3><div class="hint" id="cp-rate"></div></div><div class="cpapphelp" data-compact="1"></div></div>
+    <div class="cphead"><div class="cpht"><h3 id="cpo-title">Thuê điện thoại đám mây</h3><div class="hint" id="cp-rate"></div></div><div class="cpapphelp" data-compact="1"></div><button class="cpo-x" type="button" id="cp-oclose" aria-label="Đóng">×</button></div>
     <div class="cpfree" id="cp-free" hidden></div>
     <div class="cpbody"><div class="cpmain">
-    <div class="cpf cpandf"><span class="cpl" id="cp-and-l">Hệ điều hành</span><div class="cpand" id="cp-and" role="group" aria-labelledby="cp-and-l"></div></div>
+    <div class="cpstep" id="cp-s1"><div class="cps"><span class="cps-n" aria-hidden="true">1</span><span class="cps-t"><b id="cp-and-l">Chọn hệ điều hành</b><small id="cp-and-sub"></small></span></div><div class="cpand cpav" id="cp-and" role="group" aria-labelledby="cp-and-l"></div></div>
     <div class="cpf cpandf" id="cp-srv-f" hidden><span class="cpl" id="cp-srv-l">Máy chủ</span><div class="cpsrv" id="cp-srv" role="group" aria-labelledby="cp-srv-l"></div></div>
+    <div class="cpstep" id="cp-s2"><div class="cps"><span class="cps-n" aria-hidden="true">2</span><span class="cps-t"><b id="cp-s2-t">Chọn gói</b><small id="cp-s2-s"></small></span></div>
     <div class="cpguide" id="cp-guide"></div>
-    <div class="cpgrid cp2">
-      <div class="cpf"><label class="cpl" for="cp-days-x">Số ngày thuê</label><div class="amts" id="cp-days"></div>
-        <input class="in cpx" id="cp-days-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số ngày, VD 45"></div>
-      <div class="cpf"><label class="cpl" for="cp-qty-x">Số lượng máy (cùng cấu hình)</label><div class="amts" id="cp-qty"></div>
-        <input class="in cpx" id="cp-qty-x" type="number" min="1" max="20" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số máy, tối đa 20"></div>
-    </div>
     <details class="cpmore" id="cp-more"><summary><span class="cpm-t">⚙️ <span id="cp-more-l">Tự chỉnh cấu hình</span></span><b id="cp-more-s"></b><span class="cpm-h" id="cp-more-h">RAM · CPU · độ phân giải · FPS</span></summary>
+    <div class="hint cpm-rate" id="cp-rate2"></div>
     <div class="cpgrid cp4">
       <div class="cpf"><label class="cpl" for="cp-ram-x">RAM (GB)</label><div class="amts" id="cp-ram"></div>
         <input hidden class="in cpx" id="cp-ram-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số GB, VD 32"></div>
@@ -3215,21 +3434,31 @@ body.past-hero .m3-col{animation-play-state:paused}
     </div>
     </details>
     </div>
+    <div class="note" id="cp-note">Mỗi máy là một điện thoại Android <b>mới tinh</b>, không có dữ liệu hay tài khoản Gmail của ai. Hết hạn máy tạm dừng; không gia hạn trong <b>30 phút</b> thì máy và toàn bộ dữ liệu bị xoá.</div>
+    </div>
+    <div class="cpstep" id="cp-s3"><div class="cps"><span class="cps-n" aria-hidden="true">3</span><span class="cps-t"><b id="cp-s3-t">Số ngày &amp; số máy</b></span></div>
+    <div class="cpgrid cp2">
+      <div class="cpf"><label class="cpl" for="cp-days-x">Số ngày thuê</label><div class="amts" id="cp-days"></div>
+        <input class="in cpx" id="cp-days-x" type="number" min="1" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số ngày, VD 45"></div>
+      <div class="cpf"><label class="cpl" for="cp-qty-x">Số lượng máy (cùng cấu hình)</label><div class="amts" id="cp-qty"></div>
+        <input class="in cpx" id="cp-qty-x" type="number" min="1" max="20" step="1" inputmode="numeric" placeholder="Hoặc tự nhập số máy, tối đa 20"></div>
+    </div></div>
     <div class="cpfoot">
       <div class="cpsum">
+        <div class="cppick" id="cp-pick"></div>
         <div class="hint" id="cp-lim"></div>
-        <div class="sum"><span>Cách tính</span><span id="cp-calc" style="font-family:var(--mono);font-size:12px;text-align:right"></span></div>
+        <div class="sum"><span>Cách tính</span><span id="cp-calc"></span></div>
         <div class="promo" id="cp-promo-box"><div class="prow"><span aria-hidden="true">🏷️</span><input class="in" id="cp-promo" data-promo="cpn" maxlength="40" autocomplete="off" spellcheck="false" aria-label="Mã giảm giá" placeholder="Mã giảm giá (nếu có)" data-ph="promo_ph"><button class="btn ghost sm" type="button" data-papply="cpn" data-i18n="promo_apply">Áp dụng</button></div><div class="pres" id="cp-pres"></div></div>
         <div class="bluepay" id="cp-bluebox" hidden></div>
         <div class="sum"><span>Tổng thanh toán</span><b id="cp-total"></b></div>
         <div class="sum"><span>Số dư hiện tại</span><span id="cp-bal" style="font-family:var(--mono)"></span></div>
       </div>
       <div class="cpside">
-        <div class="note" id="cp-note" style="margin-top:10px">Mỗi máy là một điện thoại Android <b>mới tinh</b>, không có dữ liệu hay tài khoản Gmail của ai. Hết hạn máy tạm dừng; không gia hạn trong <b>30 phút</b> thì máy và toàn bộ dữ liệu bị xoá.</div>
         <div class="err" id="cp-err"></div>
         <div class="acts"><button class="btn ghost" type="button" id="cp-ocancel">Đóng</button><button class="btn" type="button" id="cp-obuy">Thanh toán &amp; tạo máy</button></div>
       </div>
     </div>
+    <div class="cpbar" id="cp-bar" hidden><div class="cpb-t"><small id="cp-bar-l">Chưa chọn gói</small><b id="cp-bar-v">—</b></div><button class="btn" type="button" id="cp-bar-go">Chọn gói</button></div>
     </div>
   </div>
 </div>
@@ -6968,8 +7197,8 @@ function cpAndPick() {        // mặc định Android 9; bản 9 hết chỗ / 
 const CP_GUIDE = [
   { k: "app", i: "💬", vi: "Treo app · nuôi acc", en: "Apps · account farming", dvi: "Zalo, Facebook, TikTok, Telegram, tool treo…", den: "Social apps, idle tools…", ram: 2, cpu: 2, fps: 30 },
   { k: "light", i: "🎮", vi: "Game nhẹ", en: "Light games", dvi: "Game 2D, game nhàn rỗi, cờ, bài…", den: "2D, idle, card & board games…", ram: 4, cpu: 2, fps: 30 },
-  { k: "roblox", i: "🕹️", vi: "Treo Roblox 1 tab", en: "Roblox · 1 tab", dvi: "Nên 4GB · 4 nhân — vào game Roblox đã dùng khoảng 2GB RAM; 3GB · 2 nhân không treo nổi. Đồ hoạ trong game để thấp.", den: "Use 4GB · 4 cores — Roblox alone uses ~2GB RAM in game; 3GB · 2 cores can't keep up. Keep in-game graphics low.", ram: 4, cpu: 4, fps: 30, hot: 1 },
-  { k: "roblox4", i: "🕹️", vi: "Treo Roblox 2–4 tab", en: "Roblox · 2–4 tabs", dvi: "8GB · 8 nhân (mỗi tab thêm cần khoảng 1,5–2GB RAM).", den: "8GB · 8 cores (each extra tab needs ~1.5–2GB RAM).", ram: 8, cpu: 8, fps: 30 },
+  { k: "roblox", i: "🕹️", vi: "Treo game 1 tab", en: "Games · 1 tab", dvi: "Nên 4GB · 4 nhân — vào trận game đã dùng khoảng 2GB RAM; 3GB · 2 nhân dễ giật. Đồ hoạ trong game để thấp.", den: "Use 4GB · 4 cores — a game alone uses ~2GB RAM; 3GB · 2 cores may lag. Keep in-game graphics low.", ram: 4, cpu: 4, fps: 30, hot: 1 },
+  { k: "roblox4", i: "🕹️", vi: "Treo 2–4 tab game", en: "Games · 2–4 tabs", dvi: "8GB · 8 nhân (mỗi tab thêm cần khoảng 1,5–2GB RAM).", den: "8GB · 8 cores (each extra tab needs ~1.5–2GB RAM).", ram: 8, cpu: 8, fps: 30 },
   { k: "heavy", i: "🔥", vi: "Game nặng 3D", en: "Heavy 3D games", dvi: "Free Fire, Liên Quân, PUBG Mobile, Genshin… cần 8GB · 8 nhân, máy ảo không có card đồ hoạ nên có thể giật.", den: "Free Fire, PUBG Mobile, Genshin… need 8GB · 8 cores; may stutter (no GPU).", ram: 8, cpu: 8, fps: 30 },
 ];
 function cpGuide() {
@@ -8814,8 +9043,8 @@ const HELP = [
    `<ul><li><b>Macro</b>: bấm Ghi → thao tác trên máy → Dừng → đặt tên; phát lại 1 lần hoặc lặp vô hạn.</li><li><b>Gán phím</b> (máy tính): gán phím bàn phím vào vị trí trên màn hình, WASD làm cần di chuyển.</li><li><b>Đồng bộ</b>: bấm <b>Nhiều máy</b> ở trên cùng → bật <b>Đồng bộ</b> → bấm 1 máy, mọi máy làm theo.</li><li><b>Vị trí GPS</b> (Android 12): dán toạ độ hoặc chọn thành phố có sẵn.</li></ul>`,
    `<ul><li><b>Macro</b>: Record → do your actions → Stop → name it; replay once or loop.</li><li><b>Key mapping</b> (PC): bind keys to screen spots, WASD as a joystick.</li><li><b>Sync</b>: tap <b>Multi</b> at the top → turn on <b>Sync</b> → tap one phone, all phones follow.</li><li><b>GPS location</b> (Android 12): paste coordinates or pick a city.</li></ul>`],
   ["Root & tool", "Root & tools",
-   `<ul><li>Mở <b>Công cụ → 🔓 Root</b> (web, app điện thoại, app máy tính): bật công tắc <b>Root</b> rồi gạt bật app cần root (vd Termux) → <b>Lưu</b>.</li><li>Chỉ app được bật mới dùng được lệnh su; app khác xin root sẽ bị từ chối và hiện ở mục <b>Vừa xin root</b>.</li><li>Một số game (vd Roblox) có thể phát hiện máy đã root — chỉ bật cho app thật sự cần.</li></ul>`,
-   `<ul><li>Open <b>Tools → 🔓 Root</b> (web, phone app, PC app): turn <b>Root</b> on, switch on the apps that need it (e.g. Termux) → <b>Save</b>.</li><li>Only those apps can use su; other apps asking for root are refused and listed under <b>Asked for root</b>.</li><li>Some games (e.g. Roblox) may detect a rooted phone — only enable apps that need it.</li></ul>`],
+   `<ul><li>Mở <b>Công cụ → 🔓 Root</b> (web, app điện thoại, app máy tính): bật công tắc <b>Root</b> rồi gạt bật app cần root (vd Termux) → <b>Lưu</b>.</li><li>Chỉ app được bật mới dùng được lệnh su; app khác xin root sẽ bị từ chối và hiện ở mục <b>Vừa xin root</b>.</li><li>Một số game có thể phát hiện máy đã root — chỉ bật cho app thật sự cần.</li></ul>`,
+   `<ul><li>Open <b>Tools → 🔓 Root</b> (web, phone app, PC app): turn <b>Root</b> on, switch on the apps that need it (e.g. Termux) → <b>Save</b>.</li><li>Only those apps can use su; other apps asking for root are refused and listed under <b>Asked for root</b>.</li><li>Some games may detect a rooted phone — only enable apps that need it.</li></ul>`],
   ["Gia hạn · Hết hạn · Chia sẻ", "Renew · Expiry · Sharing",
    `<ul><li>Bấm <b>Gia hạn</b> trong <b>Máy của tôi</b> trước khi hết hạn (app Android báo trước 1 ngày và 1 giờ).</li><li>Hết hạn máy <b>tạm dừng</b> — gia hạn trong <b>30 phút</b> để giữ máy; quá 30 phút máy và dữ liệu bị xoá.</li><li>Nút <b>…</b> → <b>Chia sẻ</b> để cho bạn bè dùng chung, hoặc <b>chuyển nhượng</b> máy.</li></ul>`,
    `<ul><li>Tap <b>Renew</b> in <b>My phones</b> before it expires (the Android app reminds you 1 day and 1 hour before).</li><li>When it expires the phone <b>pauses</b> — renew within <b>30 minutes</b> to keep it; after that it's deleted.</li><li><b>…</b> → <b>Share</b> to let a friend use it, or <b>transfer</b> it.</li></ul>`],
@@ -10328,10 +10557,10 @@ const CPT_DEF = [
     fvi: ["Zalo, Facebook, TikTok, Telegram", "Chạy 24/7 kể cả khi tắt máy tính"], fen: ["Zalo, Facebook, TikTok, Telegram", "Runs 24/7 even when your PC is off"] },
   { id: "game", on: true, icon: "🎮", name: "Blue Game", vi: "Game nhẹ · treo cả ngày", en: "Light games · all-day idle", ram: 4, cpu: 2, fps: 30, res: "", badge: "", color: "teal",
     fvi: ["Game 2D, nhàn rỗi, cờ, bài", "Treo game nhẹ ổn định"], fen: ["2D, idle, card & board games", "Stable for light games"] },
-  { id: "roblox", on: true, icon: "🕹️", name: "Blue Roblox", vi: "Treo Roblox 1 tab mượt", en: "Smooth Roblox · 1 tab", ram: 4, cpu: 4, fps: 30, res: "", badge: "🔥 Bán chạy", color: "amber",
-    fvi: ["Roblox 1 tab, đồ hoạ thấp", "Roblox dùng ~2GB RAM — vẫn còn dư"], fen: ["Roblox · 1 tab, low graphics", "Roblox uses ~2GB RAM — room to spare"] },
-  { id: "pro", on: true, icon: "🚀", name: "Blue Pro", vi: "Treo Roblox 2–4 tab", en: "Roblox · 2–4 tabs", ram: 8, cpu: 8, fps: 30, res: "", badge: "⭐ Đề xuất", color: "violet",
-    fvi: ["2–4 tab Roblox cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"], fen: ["2–4 Roblox tabs at once", "Each extra tab needs ~1.5–2GB RAM"] },
+  { id: "roblox", on: true, icon: "🕹️", name: "Blue Plus", vi: "Treo game 1 tab mượt", en: "Smooth gaming · 1 tab", ram: 4, cpu: 4, fps: 30, res: "", badge: "🔥 Bán chạy", color: "amber",
+    fvi: ["1 tab game, đồ hoạ thấp", "Game dùng ~2GB RAM — vẫn còn dư"], fen: ["1 game tab, low graphics", "Games use ~2GB RAM — room to spare"] },
+  { id: "pro", on: true, icon: "🚀", name: "Blue Pro", vi: "Treo 2–4 tab game", en: "2–4 game tabs", ram: 8, cpu: 8, fps: 30, res: "", badge: "⭐ Đề xuất", color: "violet",
+    fvi: ["2–4 tab game cùng lúc", "Mỗi tab thêm cần ~1,5–2GB RAM"], fen: ["2–4 game tabs at once", "Each extra tab needs ~1.5–2GB RAM"] },
   { id: "max", on: true, icon: "🔥", name: "Blue Max", vi: "Game nặng 3D · 60 FPS", en: "Heavy 3D games · 60 FPS", ram: 12, cpu: 8, fps: 60, res: "", badge: "", color: "rose",
     fvi: ["Free Fire, Liên Quân, PUBG Mobile…", "Không có card đồ hoạ — game nặng có thể giật"], fen: ["Free Fire, PUBG Mobile, Genshin…", "No GPU — heavy games may stutter"] },
 ];
@@ -10404,7 +10633,7 @@ function cpTierSync() {
     if (a) a.innerHTML = cptAndHtml(t);
   });
   const s = $("cp-more-s"); if (s) s.textContent = `${cpSel.ram}GB · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.res || "720x1280"} · ${cpSel.fps} FPS`;
-  const d = $("cp-more"); if (d && !cpSel.free && T.length && !T.some(cpTierIs) && !d.open && !d.dataset.auto) { d.open = true; d.dataset.auto = "1"; }
+  const d = $("cp-more"); if (d && !cpSel.free && T.length && cpSel.picked && !T.some(cpTierIs) && !d.open && !d.dataset.auto) { d.open = true; d.dataset.auto = "1"; }
   if (d && !T.length) d.open = true;
 }
 function cpTierPick(id) {
@@ -10445,7 +10674,7 @@ function tierEdRender() {
     <div class="ted-r ted-num"><label>RAM (GB)<input class="in" data-k="ram" type="number" min="1" max="64" value="${+t.ram || 2}"></label><label>Nhân CPU<input class="in" data-k="cpu" type="number" min="1" max="64" value="${+t.cpu || 2}"></label>
       <label>FPS<input class="in" data-k="fps" type="number" min="10" max="120" value="${+t.fps || 30}"></label>
       <label>Độ phân giải<select class="in" data-k="res"><option value="">Khách tự chọn</option>${CP_RES.map(r => `<option value="${r[0]}"${t.res === r[0] ? " selected" : ""}>${esc(r[1])} · ${r[0]}</option>`).join("")}</select></label></div>
-    <label class="ted-w">Mô tả ngắn<input class="in" data-k="vi" maxlength="60" value="${esc(t.vi || "")}" placeholder="VD Treo Roblox 1 tab mượt"></label>
+    <label class="ted-w">Mô tả ngắn<input class="in" data-k="vi" maxlength="60" value="${esc(t.vi || "")}" placeholder="VD Treo game 1 tab mượt"></label>
     <label class="ted-w">Phù hợp — mỗi dòng 1 ý (tối đa 3)<textarea class="in" data-k="fvi" rows="2" maxlength="200">${esc((t.fvi || []).join("\n"))}</textarea></label>
   </div>`).join("") : `<div class="hint">Chưa có gói nào — bấm ➕ Thêm gói. (Không có gói nào bật thì hộp thuê máy chỉ hiện phần tự chỉnh.)</div>`;
   tierEdPreview();
@@ -10484,13 +10713,174 @@ $("tier-ed") && ($("tier-ed").onclick = e => {
 });
 $("tier-add") && ($("tier-add").onclick = () => { if (!TIER_ED) tierEdLoad(); if (TIER_ED.length >= 8) return toast("Tối đa 8 gói.", 1);
   TIER_ED.push({ id: "t" + Date.now().toString(36), on: true, icon: "📱", name: "Gói mới", vi: "", ram: 4, cpu: 4, fps: 30, res: "", badge: "", color: "sky", fvi: [] }); tierEdRender(); });
-$("tier-def") && ($("tier-def").onclick = () => { if (!confirm("Đưa thẻ gói về 5 gói mặc định (Lite · Game · Roblox · Pro · Max)? Chưa lưu thì chưa áp dụng.")) return; TIER_ED = tierClone(CPT_DEF); tierEdRender(); });
+$("tier-def") && ($("tier-def").onclick = () => { if (!confirm("Đưa thẻ gói về 5 gói mặc định (Lite · Game · Plus · Pro · Max)? Chưa lưu thì chưa áp dụng.")) return; TIER_ED = tierClone(CPT_DEF); tierEdRender(); });
 $("tier-save") && ($("tier-save").onclick = () => {
   const arr = tierEdNorm(TIER_ED);
   if (TIER_ED && TIER_ED.some(t => !String(t.name || "").trim())) return toast("Gói nào cũng cần tên.", 1);
   saveSettings({ cp_tiers: arr }, $("tier-save"), "Đã lưu thẻ gói — khách thấy ngay khi mở hộp thuê máy (web + app).").then(() => { TIER_ED = tierClone(arr); tierEdRender(); });
 });
 Object.assign(SUB_HOOK, { "cloud:price": (f => () => { try { f && f(); } catch (e) {} tierEdLoad(); })(SUB_HOOK["cloud:price"]) });
+
+/* ===== v5 · hộp THUÊ MÁY: 3 bước · hệ điều hành ô to · CHỌN GÓI RỒI MỚI HIỆN GIÁ · thẻ gói không nhắc tên game ===== */
+const cptClean = t => {                       // thẻ hiện cho khách: "Roblox" → "game", "Blue Roblox" → "Blue Plus" (gói admin lưu từ trước cũng tự đổi)
+  if (!t || typeof t !== "object") return t;
+  const f = v => {
+    if (typeof v !== "string" || !/roblox/i.test(v)) return v;
+    const r = v.replace(/blue\s*roblox/gi, "Blue Plus").replace(/roblox/gi, "game").replace(/\bgame(\s+game)+\b/gi, "game").replace(/\s{2,}/g, " ").trim();
+    return r && v[0] !== v[0].toLowerCase() ? r[0].toUpperCase() + r.slice(1) : r;
+  };
+  return Object.assign({}, t, { name: f(t.name), vi: f(t.vi), en: f(t.en), badge: f(t.badge),
+    fvi: Array.isArray(t.fvi) ? t.fvi.map(f) : t.fvi, fen: Array.isArray(t.fen) ? t.fen.map(f) : t.fen });
+};
+const cpNeedPick = () => typeof cpSel === "object" && !!cpSel && !cpSel.free && !cpSel.picked && cpTiers().length > 0;   // còn gói mà khách chưa chọn → chưa hiện giá
+{ const _is = cpTierIs; cpTierIs = function (t) { return typeof cpSel === "object" && !!cpSel && !!cpSel.picked && _is(t); }; }
+{ const _pk = cpTierPick; cpTierPick = function (id) { if (typeof cpSel === "object" && cpSel && !cpSel.free) cpSel.picked = true; return _pk.apply(this, arguments); }; }
+// tự chỉnh RAM / CPU / FPS / độ phân giải cũng tính là "đã chọn" (chạy trước bộ bắt sự kiện cũ)
+document.addEventListener("click", e => { if (typeof cpSel === "object" && cpSel && e.target.closest && e.target.closest("#cp-ram button, #cp-cpu button, #cp-fps button, #cp-resq button")) cpSel.picked = true; }, true);
+document.addEventListener("input", e => { if (typeof cpSel === "object" && cpSel && /^cp-(ram-x|cpu-x|fps-x|res)$/.test(e.target.id || "")) cpSel.picked = true; }, true);
+
+cpAndChips = function () {                    // bước 1: ô hệ điều hành to, chia đều (PC + điện thoại)
+  const box = $("cp-and"); if (!box || typeof cpSel !== "object" || !cpSel) return;
+  const l0 = cpAndList();
+  if (!l0.includes(cpSel.android)) cpSel.android = l0.includes("9") ? "9" : l0[0];
+  const lb = $("cp-and-l"); if (lb) lb.textContent = L("Chọn hệ điều hành", "Choose Android version");
+  const sub = $("cp-and-sub");
+  if (sub) sub.textContent = l0.length < 2 ? "" : l0.includes("9") ? L("Chưa chắc thì chọn Android 9 — ổn định, chạy được nhiều app nhất.", "Not sure? Android 9 is the most stable and runs the most apps.") : L("Bấm để chọn bản Android cho máy.", "Tap to pick the Android version.");
+  box.className = "cpand cpav"; box.style.setProperty("--n", Math.max(1, Math.min(l0.length, 4)));
+  box.innerHTML = l0.map(v => {
+    const why = cpAndWhy(v), h = CP_AND_HINT[v], on = v === cpSel.android, a = (cpAndMap() || {})[v] || {};
+    const tip = why === "off" ? L("Máy chủ bản Android này đang bảo trì", "The server for this Android version is under maintenance")
+      : why === "full" ? L(`Chỉ còn trống ${Math.floor(+a.free_ram || 0)}GB RAM · ${Math.floor(+a.free_cpu || 0)} nhân`, `Only ${Math.floor(+a.free_ram || 0)}GB RAM · ${Math.floor(+a.free_cpu || 0)} cores free`) : "";
+    const hint = why ? L("Hết chỗ", "Unavailable") : h ? L(h[0], h[1]) : "", hp = hint.split(" · ");      // điện thoại chỉ hiện ý đầu (VD "Ổn định")
+    return `<button type="button" data-and="${esc(v)}" class="${on ? "on" : ""}${why ? " off" : ""}" aria-pressed="${on}"${why && !isAdmin() ? " disabled" : ""}${tip ? ` title="${esc(tip)}"` : ""}>`
+      + `<span class="av-name">Android <em>${esc(v)}</em></span>${hint ? `<small class="av-h">${esc(hp[0])}${hp.length > 1 ? `<span class="av-h2"> · ${esc(hp.slice(1).join(" · "))}</span>` : ""}</small>` : ""}<i class="av-ck" aria-hidden="true">✓</i></button>`;
+  }).join("");
+  let tip = $("cp-and-tip");
+  if (!tip) { tip = document.createElement("div"); tip.id = "cp-and-tip"; tip.className = "hint"; box.insertAdjacentElement("afterend", tip); }
+  tip.innerHTML = cpSel.android === "15" ? L("Android 15 không vào được Google / Play Store? Chọn Android 12 — máy đang thuê thì dùng nút 🤖 <b>Đổi Android</b> (giữ nguyên hạn).", "Google / Play Store not working on Android 15? Pick Android 12 — for a phone you already rent use 🤖 <b>Switch Android</b> (same expiry).") : "";
+  tip.hidden = !tip.innerHTML;
+};
+
+cpTierCard = function (t0) {                  // thẻ gói gọn: tên · công dụng · 3 thông số · tối đa 2 ý · giá / ngày
+  const t = cptClean(t0), P = CPpricing || CP_DEF, per = (+t.ram) * (+P.price_ram_gb_day || 0) + (+t.cpu) * (+P.price_cpu_day || 0), on = cpTierIs(t0);
+  const fit = (LANG === "en" && Array.isArray(t.fen) && t.fen.length ? t.fen : t.fvi) || [];
+  const ands = cpTierAnds(t0), part = ands.length < cpAndList().length || ands.some(a => a.why);   // chỉ hiện dòng Android khi gói KHÔNG chạy đủ mọi bản
+  return `<div class="cpt${on ? " on" : ""}" style="--t:${cptColor(t)}" data-tier="${esc(String(t.id))}" role="listitem">
+    ${t.badge ? `<span class="cpt-badge">${esc(t.badge)}</span>` : ""}
+    <div class="cpt-h"><span class="cpt-ic" aria-hidden="true">${esc(t.icon || "📱")}</span><span class="cpt-nt"><b class="cpt-n">${esc(t.name)}</b><span class="cpt-tag">${esc(LANG === "en" && t.en ? t.en : t.vi || "")}</span></span></div>
+    <div class="cpt-spec"><span><b>${+t.cpu}</b> ${L("nhân", "cores")}</span><span><b>${+t.ram}GB</b> RAM</span><span><b>${+t.fps || 30}</b> FPS</span></div>
+    ${part ? `<div class="cpt-sec"><small>Android</small><div class="cpt-and">${cptAndHtml(t0)}</div></div>` : ""}
+    ${fit.length ? `<ul class="cpt-fit">${fit.slice(0, 2).map(f => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}
+    <div class="cpt-foot"><div class="cpt-price"><b>${vnd(per)}</b><span> / ${L("ngày", "day")}</span><small>≈ ${vnd(per * 30)} / 30 ${L("ngày", "days")}</small></div>
+      <button type="button" class="cpt-btn" aria-pressed="${on}">${on ? "✓ " + L("Đã chọn", "Selected") : L("Chọn gói", "Choose")}</button></div>
+  </div>`;
+};
+cpGuide = function () {                       // bước 2: lưới thẻ gói (PC thấy đủ hết · điện thoại là danh sách dọc)
+  const g = $("cp-guide"); if (!g) return;
+  const T = cpTiers();
+  g.innerHTML = T.length ? `<div class="cpt-grid" id="cp-tiers" role="list" aria-labelledby="cp-s2-t"></div>` : "";
+  g.hidden = !T.length;
+  const ml = $("cp-more-l"), mh = $("cp-more-h");
+  if (ml) ml.textContent = L("Tự chỉnh cấu hình", "Customize");
+  if (mh) mh.textContent = T.length ? L("khi không có gói vừa ý — RAM · CPU · FPS", "if no plan fits — RAM · CPU · FPS") : L("RAM · CPU · độ phân giải · FPS", "RAM · CPU · resolution · FPS");
+  cpTierSync();
+};
+cpTierSync = function () {
+  const g = $("cp-guide"); if (!g || typeof cpSel !== "object" || !cpSel) return;
+  const T = cpTiers(), tr = $("cp-tiers");
+  g.hidden = !!cpSel.free || !T.length;
+  if (tr && !g.hidden) {                      // vẽ lại thẻ (giá · chỗ trống từng bản Android đổi theo số máy) — giữ ô đang được bấm phím
+    const ae = document.activeElement, fc = ae && tr.contains(ae) ? ae.closest(".cpt") : null, fid = fc ? fc.dataset.tier : null;
+    tr.innerHTML = T.map(cpTierCard).join("");
+    if (fid != null) { const c = [...tr.querySelectorAll(".cpt")].find(x => x.dataset.tier === fid), b = c && c.querySelector(".cpt-btn"); if (b) try { b.focus({ preventScroll: true }); } catch (e) {} }
+  }
+  const s = $("cp-more-s"); if (s) s.textContent = cpNeedPick() ? "" : `${cpSel.ram}GB · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.res || "720x1280"} · ${cpSel.fps} FPS`;
+  const d = $("cp-more"); if (d && !cpSel.free && T.length && cpSel.picked && !T.some(cpTierIs) && !d.open && !d.dataset.auto) { d.open = true; d.dataset.auto = "1"; }
+  if (d && !T.length) d.open = true;
+};
+
+function cpPickLine() {                       // đầu khung thanh toán: gói đang chọn (hoặc nhắc chọn gói)
+  const el = $("cp-pick"); if (!el || typeof cpSel !== "object" || !cpSel) return;
+  if (cpNeedPick()) {
+    el.innerHTML = `<div class="cpp-empty"><i aria-hidden="true">🎴</i><b>${L("Chưa chọn gói", "No plan selected")}</b><small>${L("Chọn 1 gói ở bước 2 — giá hiện ngay tại đây.", "Pick a plan in step 2 — the price shows up here.")}</small></div>`;
+    return;
+  }
+  const p = CPpricing || {}, t0 = cpSel.free ? null : cpTiers().find(cpTierIs), t = t0 ? cptClean(t0) : null;
+  const name = cpSel.free ? L("Máy miễn phí", "Free phone") : t ? t.name : L("Cấu hình tự chọn", "Custom setup");
+  const ic = cpSel.free ? "🎁" : t ? (t.icon || "📱") : "⚙️", q = cpSel.qty || 1;
+  const days = cpSel.free ? (+p.free_days || 1) : cpSel.days;
+  el.innerHTML = `<div class="cpp" style="--t:${t ? cptColor(t) : cpSel.free ? "#ffb800" : "#8fd0ff"}"><span class="cpp-ic" aria-hidden="true">${esc(ic)}</span>`
+    + `<div class="cpp-t"><b>${esc(name)}</b><small>Android ${esc(String(cpSel.android || "9"))} · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.ram}GB RAM · ${cpSel.fps} FPS</small></div></div>`
+    + `<div class="cpp-r"><span>${L("Thời gian", "Duration")}</span><b>${days} ${L("ngày", days > 1 ? "days" : "day")} × ${q} ${L("máy", q > 1 ? "phones" : "phone")}</b></div>`;
+}
+function cpBarUpd() {                         // thanh dính đáy (điện thoại / máy tính bảng)
+  const bar = $("cp-bar"); if (!bar || typeof cpSel !== "object" || !cpSel) return;
+  bar.hidden = false;
+  const need = cpNeedPick(), err = (($("cp-err") || {}).textContent || "").trim(), lb = $("cp-bar-l"), v = $("cp-bar-v"), go = $("cp-bar-go"), ob = $("cp-obuy");
+  const t0 = !need && !cpSel.free ? cpTiers().find(cpTierIs) : null, p = CPpricing || {};
+  if (lb) {
+    lb.textContent = need ? L("Chưa chọn gói", "No plan yet") : err ? err
+      : `${cpSel.free ? L("Máy miễn phí", "Free phone") : t0 ? cptClean(t0).name : L("Tự chọn", "Custom")} · ${cpSel.free ? (+p.free_days || 1) : cpSel.days} ${L("ngày", "d")}${cpSel.qty > 1 ? ` × ${cpSel.qty} ${L("máy", "phones")}` : ""}`;
+    lb.classList.toggle("bad", !need && !!err);
+  }
+  if (v) v.innerHTML = need ? `<span class="cp-wait">${L("Chọn gói để xem giá", "Pick a plan to see the price")}</span>` : $("cp-total").innerHTML;
+  if (go) {
+    go.textContent = need ? L("Chọn gói", "Pick a plan") : (ob ? ob.textContent : "").replace(" & tạo máy", "").replace(" & create phone", "").replace("Nhận máy miễn phí", "Nhận máy") || L("Thanh toán", "Pay");
+    go.classList.toggle("ghost", need);
+  }
+}
+function cpBarWatch() {                       // khung thanh toán thật đã hiện trên màn hình → giấu thanh dính đáy (khỏi 2 nút trùng)
+  const bar = $("cp-bar"), acts = document.querySelector("#cporderdlg .cpside .acts"), root = $("cporderdlg");
+  if (!bar || !acts || !root || bar.dataset.io || !("IntersectionObserver" in window)) return;
+  bar.dataset.io = "1";
+  new IntersectionObserver(es => es.forEach(en => bar.classList.toggle("away", en.isIntersecting)), { root, threshold: 0.5 }).observe(acts);
+}
+function cpGate() {
+  const dlg = $("cporderdlg"); if (!dlg || typeof cpSel !== "object" || !cpSel) return;
+  const need = cpNeedPick(), T = cpTiers(), b = $("cp-obuy"), p = CPpricing || {};
+  dlg.classList.toggle("cp-nopick", need);
+  const s2t = $("cp-s2-t"), s2s = $("cp-s2-s");
+  if (s2t) s2t.textContent = cpSel.free ? L("Cấu hình máy miễn phí", "Free phone setup") : T.length ? L("Chọn gói", "Choose a plan") : L("Cấu hình máy", "Phone setup");
+  if (s2s) s2s.textContent = cpSel.free ? L(`Tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân — để mặc định là dùng được.`, `Up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores — the defaults work fine.`)
+    : T.length ? L("Bấm 1 gói để xem giá — muốn khác thì tự chỉnh ở dưới.", "Tap a plan to see the price — or customize below.") : L("Chọn RAM · CPU · FPS cho máy.", "Pick RAM · CPU · FPS.");
+  const s3 = $("cp-s3");
+  if (s3) {
+    const fs = [...s3.querySelectorAll(".cpgrid > .cpf")], vis = fs.filter(f => !f.hidden), g3 = s3.querySelector(".cpgrid");
+    s3.hidden = !vis.length;
+    const dOn = vis.some(f => f.contains($("cp-days"))), qOn = vis.some(f => f.contains($("cp-qty"))), t3 = $("cp-s3-t");
+    if (t3) t3.textContent = dOn && qOn ? L("Số ngày & số máy", "Days & phones") : dOn ? L("Số ngày thuê", "Rental days") : L("Số máy", "Phones");
+    if (g3) g3.classList.toggle("cp1", vis.length === 1);
+  }
+  const r1 = $("cp-rate"), r2 = $("cp-rate2"); if (r1 && r2) r2.innerHTML = r1.innerHTML;
+  const mh = $("cp-more-h"); if (mh) mh.textContent = !cpSel.free && T.length ? L("khi không có gói vừa ý — RAM · CPU · FPS", "if no plan fits — RAM · CPU · FPS") : L("RAM · CPU · độ phân giải · FPS", "RAM · CPU · resolution · FPS");
+  if (need) {                                  // CHƯA chọn gói → không hiện số tiền nào
+    $("cp-calc").textContent = "";
+    $("cp-total").innerHTML = `<span class="cp-wait">—</span>`;
+    $("cp-err").textContent = "";
+    const pb = $("cp-promo-box"); if (pb) pb.hidden = true;
+    const bb = $("cp-bluebox"); if (bb) bb.hidden = true;
+    if (b) { b.disabled = true; b.dataset.gate = "1"; b.textContent = L("Chọn gói trước", "Pick a plan first"); }
+  } else if (b && b.dataset.gate) { b.disabled = false; delete b.dataset.gate; }
+  const lim = $("cp-lim"); if (lim) lim.hidden = need || (!cpSel.free && T.length > 0 && T.some(cpTierIs));   // gói đã nói rõ công dụng → bỏ dòng giới hạn
+  cpPickLine(); cpBarUpd(); cpBarWatch();
+  const was = dlg.dataset.priced === "1"; dlg.dataset.priced = need ? "0" : "1";
+  if (!need && !was) ["cp-total", "cp-bar-v"].forEach(id => { const el = $(id); if (el) { el.classList.remove("cpv-pop"); void el.offsetWidth; el.classList.add("cpv-pop"); } });
+}
+{ const _u = cpOrderUpd; cpOrderUpd = function () { const r = _u.apply(this, arguments); try { cpGate(); } catch (e) { console.warn("cpGate", e); } return r; }; }
+{ const _b = cpBuy; cpBuy = async function () {   // chặn thêm 1 lớp: chưa chọn gói thì không gửi đơn
+  if (cpNeedPick()) { $("cp-err").textContent = L("Chọn 1 gói trước nhé.", "Pick a plan first."); const s2 = $("cp-s2"); if (s2) s2.scrollIntoView({ block: "start" }); return; }
+  return _b.apply(this, arguments); }; }
+document.addEventListener("click", e => {
+  if (e.target.closest("#cp-oclose")) { show("cporderdlg", false); return; }
+  if (!e.target.closest("#cp-bar-go")) return;
+  if (cpNeedPick()) {                          // chưa chọn → cuộn tới bước 2 và nháy sáng
+    const s2 = $("cp-s2"); if (!s2) return;
+    s2.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+    s2.classList.remove("cp-hl"); void s2.offsetWidth; s2.classList.add("cp-hl");
+    return;
+  }
+  const b = $("cp-obuy"); if (b && !b.disabled) b.click();
+});
 
 </script>
 <script>
