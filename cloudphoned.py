@@ -311,6 +311,7 @@ def handover(row):
     rid = str(row.get("id") or "")
     if not rid or rid in _HANDED: return False      # đơn máy này đã chuyển đi rồi quay lại → nhận luôn (không chuyển vòng)
     if phone_state(cname(row)): return False        # máy của đơn đã có trên máy chủ này (lần tạo trước dở dang) → làm tiếp ở đây
+    if not node_enabled(): return False             # 16/11h: máy chủ đang "Ngừng nhận máy" → admin cố ý tạo máy THỬ ở đây (SQL v37) → giữ
     me = my_pct()
     if me < NEAR_PCT: return False
     v = str(row.get("android") or "").strip() or "9"; wr, wc = want(row); best = None
@@ -1445,7 +1446,7 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 16/11g chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 16/11h chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if SICK_MIN > 0: print(f"Máy mới tạo ra mà không lên → tự ngừng nhận đơn mới {SICK_MIN:g} phút + báo admin (máy chủ hỏng không giành đơn nữa)")
     if STUCK_MIN > 0: print(f"Đơn tạo máy quá {STUCK_MIN:g} phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · máy tạo dở của đơn đó tự xoá")
     if BOOT_MAX > 0: print(f"Đang có ≥ {BOOT_MAX} máy mới chưa lên, hoặc 1 máy mới chờ quá {BOOT_SLOW_S / 60:g} phút → tạm không nhận đơn mới (đơn sang máy chủ khác)")
