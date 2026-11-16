@@ -2267,6 +2267,11 @@ SRV_R = [
 ""
 ],
 [
+"🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.",
+"🔄 The phone is restarting — the server is busy, so it's taking longer than usual ({1} s so far). You can leave; it keeps restarting — open it again to get in.",
+""
+],
+[
 "🔄 Máy đang khởi động lại — khoảng 1–2 phút, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.",
 "🔄 The phone is restarting — about 1–2 minutes ({1} s so far). You can leave; it keeps restarting — open it again to get in.",
 ""
