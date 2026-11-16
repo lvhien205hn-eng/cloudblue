@@ -9465,22 +9465,16 @@ async function cpaReloadRows() {
   const { data } = await sb.from("cloud_phones").select("*").order("created_at", { ascending: false });
   CPA_ROWS = (data || []).filter(r => r.status !== "cancelled"); renderCpaTbl();
 }
-function startRealtime() {
-  if (!sb.channel) return;
-  if (!rtPub) {          // mọi khách: ưu đãi miễn phí / giá bật tắt là dòng chữ chạy đổi ngay
-    rtPub = sb.channel("pub-pricing").on("postgres_changes", { event: "*", schema: "public", table: "cloudphone_pricing" },
-      () => rtLater("pr", () => { CPpricing = null; cpLoadPricing().then(() => { try { renderGrid(); } catch (e) {} }); }, 400)).subscribe();
+function startRealtime() {   // 16/11j: BỎ Realtime (postgres_changes): Supabase phải đọc WAL liên tục cho mọi khách đang mở web (62% thời gian CSDL) → tải lại định kỳ
+  if (!rtPub) {                  // mọi khách: giá / dùng thử bật tắt → 3 phút đọc lại 1 lần (trang đang mở)
+    rtPub = setInterval(() => { if (!document.hidden) rtLater("pr", () => { CPpricing = null; cpLoadPricing().then(() => { try { renderGrid(); } catch (e) {} }); }, 0); }, 180000);
   }
   if (rtAdmin || !profile || !isAdmin()) return;
-  const on = (ch, table, fn) => ch.on("postgres_changes", { event: "*", schema: "public", table }, fn);
-  const ch = sb.channel("adm-live");
-  ["orders", "topups", "profiles", "vps_machines"].forEach(t => on(ch, t, () => {
-    rtLater("pend", pollPending, 300);
-    if (!$("drawer").hidden) rtLater("adm", () => loadAdmin(), 800);
-  }));
-  on(ch, "biz_sync", () => { if (paneOn("pane-biz")) rtLater("biz", loadBiz, 500); });
-  on(ch, "cloud_phones", () => { if (paneOn("pane-cloud")) rtLater("cpa", cpaReloadRows, 600); });
-  rtAdmin = ch.subscribe();
+  rtAdmin = setInterval(() => {  // admin: đơn chờ giao đã có pollPending 30 giây · bảng máy khách / kinh doanh đang mở → 30 giây tải lại 1 lần
+    if (document.hidden || !profile || !isAdmin() || $("drawer").hidden) return;
+    if (paneOn("pane-cloud")) rtLater("cpa", cpaReloadRows, 0);
+    if (paneOn("pane-biz")) rtLater("biz", loadBiz, 0);
+  }, 30000);
 }
 startRealtime();
 setInterval(() => { if (profile && isAdmin() && !rtAdmin) startRealtime(); }, 2000);
@@ -11768,8 +11762,8 @@ async function dropLoad() {
 }
 function dropSched(ok) {
   clearTimeout(dropT);
-  const ds = dropList(); let ms = ok ? 60000 : 300000;
-  if (ds.some(d => d.state === "on")) ms = 20000;
+  const ds = dropList(); let ms = ok ? 120000 : 300000;
+  if (ds.some(d => d.state === "on")) ms = 30000;
   ds.forEach(d => { if (d.state === "soon") { const w = Date.parse(d.starts_at) - dropNow(); ms = Math.min(ms, Math.max(1000, w + 500)); } });
   dropT = setTimeout(() => { if (document.hidden) dropSched(ok); else dropLoad(); }, ms);
 }
