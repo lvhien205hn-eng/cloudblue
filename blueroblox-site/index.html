@@ -2468,6 +2468,50 @@ body.admin-page #cb-pbar-w{display:none!important}
 .cbk code{font-family:var(--mono);font-size:13px;user-select:all;color:var(--fg)}
 .cbk small{display:block;color:var(--muted);font-size:12px}
 .cbk.off{opacity:.5}
+/* v38 ⚡ phát mã nhanh tay: ô nổi góc màn hình */
+.cbdrop{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:45;width:min(352px,calc(100vw - 32px));pointer-events:none}
+.cbdrop>*{pointer-events:auto}
+.cbd-card{position:relative;padding:14px 14px 12px;border-radius:18px;background:var(--panel-solid);border:1px solid rgba(245,165,36,.6);box-shadow:0 26px 50px -20px rgba(0,0,0,.8);color:var(--fg)}
+.cbd-top{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
+.cbd-pct{display:grid;place-items:center;min-width:66px;height:54px;padding:0 9px;border-radius:14px;background:linear-gradient(180deg,#ffd77a,#f5a524);color:#2a1700;font-weight:900;font-size:23px;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.cbd-tt{min-width:0}
+.cbd-tt b{display:block;font-size:15.5px;line-height:1.25}
+.cbd-tt small{display:block;color:var(--muted);font-size:12.5px;margin-top:3px}
+.cbd-x{align-self:start;background:transparent;border:0;color:var(--muted);font-size:15px;width:32px;height:32px;border-radius:10px;cursor:pointer}
+.cbd-x:hover,.cbd-x:focus-visible{color:var(--fg);background:rgba(143,208,255,.12)}
+.cbd-meter{height:10px;border-radius:99px;background:rgba(245,165,36,.16);margin:13px 0 6px;overflow:hidden}
+.cbd-meter i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#f5a524,#ffd77a);transition:width .6s ease}
+.cbd-row{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:var(--muted)}
+.cbd-row b{color:var(--fg);font-variant-numeric:tabular-nums}
+.cbd-cd{font-variant-numeric:tabular-nums;white-space:nowrap}
+.cbd-go{display:block;width:100%;margin-top:11px;min-height:46px;border:0;border-radius:13px;background:linear-gradient(180deg,#ffd77a,#f5a524);color:#2a1700;font:inherit;font-weight:800;font-size:15.5px;cursor:pointer}
+.cbd-go:hover{filter:brightness(1.05)}
+.cbd-go:disabled{opacity:.55;cursor:default;filter:none}
+.cbd-go.alt{background:var(--panel2);color:var(--fg);border:1px solid var(--line2)}
+.cbd-go:focus-visible,.cbd-pill:focus-visible{outline:2px solid #ffd77a;outline-offset:2px}
+.cbd-terms{display:block;margin-top:8px;font-size:12px;color:var(--muted);line-height:1.45}
+.cbd-why{margin-top:10px;font-size:13px;line-height:1.45}
+.cbd-mine{display:flex;align-items:center;gap:8px;margin-top:11px;padding:8px 8px 8px 11px;border-radius:12px;border:1px dashed rgba(245,165,36,.7)}
+.cbd-mine code{flex:1;min-width:0;font-family:var(--mono);font-size:15px;font-weight:700;letter-spacing:.5px;user-select:all;overflow-wrap:anywhere}
+.cbd-pill{float:right;display:inline-flex;gap:6px;align-items:center;padding:10px 15px;border-radius:99px;border:1px solid rgba(245,165,36,.65);background:var(--panel-solid);color:var(--fg);font:inherit;font-weight:800;font-size:14px;box-shadow:0 14px 30px -14px rgba(0,0,0,.85);cursor:pointer}
+.cbd-pill b{color:#f5a524}
+.cbd-dlg .cbd-big{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;margin:14px 0 8px;padding:12px;border-radius:14px;border:1px dashed rgba(245,165,36,.7)}
+.cbd-dlg .cbd-big code{font-family:var(--mono);font-size:19px;font-weight:800;letter-spacing:1px;user-select:all;overflow-wrap:anywhere}
+.cbd-dlg p{margin:6px 0 0;font-size:13.5px;color:var(--muted);line-height:1.55}
+.cbd-dlg .acts{margin-top:14px}
+.cbo-card.cbo-drop{border-color:rgba(245,165,36,.6)}
+@media (max-width:640px){.cbdrop{left:10px;right:10px;width:auto;bottom:calc(10px + env(safe-area-inset-bottom,0px))}.cbd-pct{min-width:58px;height:48px;font-size:20px}}
+@media (prefers-reduced-motion:no-preference){.cbd-card.new{animation:cbdIn .45s cubic-bezier(.2,.8,.2,1) both}}
+@keyframes cbdIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+/* admin: phát mã nhanh tay */
+.pdr-bar{height:6px;border-radius:99px;background:rgba(245,165,36,.16);overflow:hidden;margin-top:4px;min-width:70px}
+.pdr-bar i{display:block;height:100%;background:#f5a524}
+.pdr-prev{border:1px dashed rgba(245,165,36,.6);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.5}
+#pdrwho{z-index:70}
+.pdr-who{display:grid;gap:6px;max-height:min(60vh,520px);overflow:auto;margin-top:10px}
+.pdr-who div{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:7px 10px;border:1px solid var(--line);border-radius:10px;font-size:13px}
+.pdr-who code{font-family:var(--mono)}
+.pdr-who small{display:block;color:var(--muted)}
 .cb-lock{margin-top:8px;padding:9px 11px;border-radius:12px;border:1px dashed var(--line2);font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .cbpick{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:7px;font-size:12.5px;color:var(--muted)}
 .cbpick[hidden]{display:none}
@@ -2544,6 +2588,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 <symbol id="i-non" viewBox="0 0 120 120"><path fill="url(#g-nl)" d="M60 20 C62 20 64 22 66 25 L106 78 C108 82 104 86 98 87 C74 92 46 92 22 87 C16 86 12 82 14 78 L54 25 C56 22 58 20 60 20 Z"/><path fill="url(#g-nlh)" d="M60 20 C58 20 56 22 54 25 L14 78 C13 81 15 84 20 86 C30 70 44 46 60 20 Z"/><g stroke="#fff" stroke-opacity=".38" stroke-width="1.4" fill="none"><path d="M30 70 C50 74 70 74 90 70"/><path d="M40 56 C53 59 67 59 80 56"/><path d="M48 44 C56 46 64 46 72 44"/></g><path d="M14 80 C40 92 80 92 106 80" stroke="#0f3fb3" stroke-width="3" fill="none" stroke-linecap="round" opacity=".55"/><path d="M40 86 C46 100 74 100 80 86" stroke="#d9262b" stroke-width="2.6" fill="none" stroke-linecap="round"/></symbol>
 </defs></svg>
 <div class="freebar" id="freebar" hidden role="button" tabindex="0" aria-label="Ưu đãi miễn phí"><div class="fb-track" id="fb-track"></div></div>
+<aside class="cbdrop" id="cbdrop" hidden aria-live="polite" aria-label="Phát mã giảm giá"></aside>
 <header class="top">
   <div class="wrap">
     <a class="logo" href="/" aria-label="CloudBlue"><span class="mark"></span><span class="wm"><b>Cloud<em>Blue</em></b><small>Cloud Phone &amp; VPS GPU</small></span></a>
@@ -3176,6 +3221,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
       </div>
       <div class="subpane" data-sub="servers" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">🖥️ Máy chủ</h3><span class="hint" id="cpa-nodesum"></span><button class="btn ghost sm" type="button" id="cpa-nodes-reload" style="margin-left:auto">Làm mới</button></div>
+      <div class="note" id="nres-box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><b>⏯ Máy chủ đang “Ngừng nhận máy” tự nhận máy lại</b><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">khi đang dùng ≤ <input id="nres-pct" class="in" type="number" min="0" max="95" step="5" inputmode="numeric" style="width:72px" placeholder="50">%</label><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· đã ngừng ít nhất <input id="nres-min" class="in" type="number" min="1" max="1440" step="1" inputmode="numeric" style="width:72px" placeholder="10"> phút</label><button class="btn sm" type="button" id="nres-save">Lưu</button><span class="hint" id="nres-msg" style="margin:0"></span><span class="hint" style="flex-basis:100%;margin:0">Chỉ tự bật khi máy chủ khoẻ: đang kết nối, có máy mẫu, CPU / RAM / ổ cứng không quá tải. 0% = tắt tự bật. Máy chủ đang sửa / bảo trì → bấm <b>⛔ Ngừng hẳn</b> (không tự bật lại). Cần SQL v39.</span></div>
       <div class="nodes" id="cpa-nodes"><div class="empty">Đang tải…</div></div>
       </div>
       <div class="subpane" data-sub="price" hidden>
@@ -3230,10 +3276,11 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
           <b style="font-size:13.5px">🤖 Khách đổi Android trong 24 giờ:</b>
           <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">tối thiểu <input id="swl-day" class="in" type="number" min="1" max="999" step="1" inputmode="numeric" style="width:76px" placeholder="3"> lần / tài khoản</label>
           <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· mỗi máy đang thuê <input id="swl-pp" class="in" type="number" min="0" max="99" step="1" inputmode="numeric" style="width:66px" placeholder="1"> lần</label>
+          <label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· nhưng tối đa <input id="swl-max" class="in" type="number" min="1" max="999" step="1" inputmode="numeric" style="width:66px" placeholder="5"> lần</label>
           <button class="btn sm" type="button" id="swl-save">Lưu</button>
           <span class="hint" id="swl-msg" style="margin:0"></span>
         </div>
-        <div class="hint" style="margin-top:4px">Khách được đổi = số lớn hơn giữa <b>tối thiểu</b> và <b>số máy đang thuê × mỗi máy</b>. Mặc định 3 và 1: khách 1 máy → 3 lần, khách 5 máy → 5 lần. Để trống = mặc định. Admin không bị giới hạn. Cần chạy SQL v32.</div>
+        <div class="hint" style="margin-top:4px">Khách được đổi = số lớn hơn giữa <b>tối thiểu</b> và <b>số máy đang thuê × mỗi máy</b>, nhưng <b>không quá tối đa</b>. Mặc định 3 · 1 · 5: khách 1 máy → 3 lần, khách 5 máy trở lên → 5 lần. Khách đang có máy đổi dở (máy cũ chưa xoá xong / máy mới chưa tạo xong) phải đợi xong mới đổi tiếp được. Để trống = mặc định. Admin không bị giới hạn. Cần chạy SQL v39.</div>
       </div>
       <div class="gpubox" id="rnfbox">
         <div class="gph"><h3 style="margin:0">🩹 Gia hạn bị thiếu ngày</h3><button class="btn ghost sm" type="button" id="rnf-check">🔎 Kiểm tra</button></div>
@@ -3267,7 +3314,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
       </div>
     </div>
     <div class="dbody" id="pane-promo" hidden>
-      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button><button type="button" role="tab" data-sub="wheel" aria-selected="false">🎡 Vòng quay</button><button type="button" data-cbjump="1">⚙️ Ưu đãi &amp; Kiếm tiền</button></div>
+      <div class="subtabs" role="tablist" aria-label="Mục khuyến mãi"><button type="button" role="tab" data-sub="codes" class="on" aria-selected="true">🎟️ Mã khuyến mãi</button><button type="button" role="tab" data-sub="drop" aria-selected="false">⚡ Phát mã nhanh tay</button><button type="button" role="tab" data-sub="free" aria-selected="false">🎁 Máy miễn phí</button><button type="button" role="tab" data-sub="blue" aria-selected="false">💎 Tích Blue</button><button type="button" role="tab" data-sub="ref" aria-selected="false">🤝 Giới thiệu bạn bè</button><button type="button" role="tab" data-sub="wheel" aria-selected="false">🎡 Vòng quay</button><button type="button" data-cbjump="1">⚙️ Ưu đãi &amp; Kiếm tiền</button></div>
       <div class="subpane" data-sub="codes">
       <div class="note">🎁 <b>Mã tặng máy</b>: khách nhập ở ô <b>"Nhập mã"</b> trong mục ĐT đám mây → nhận <b>1 máy miễn phí</b> đúng cấu hình bạn đặt (mỗi mã 12 ký tự ngẫu nhiên, dùng đúng 1 lần; tạo máy lỗi thì mã tự mở lại). <b>Mã giảm giá</b>: khách nhập ở ô <b>"Mã giảm giá"</b> khi thuê / gia hạn / nâng cấp máy, mua / gia hạn VPS hoặc mua sản phẩm.</div>
       <div class="prbox">
@@ -3320,6 +3367,27 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
         <button class="btn danger sm" type="button" id="pl-delall" hidden>🗑️ Xoá tất cả</button>
       </div>
       <div class="tbl"><table class="prtbl"><thead><tr><th>Mã</th><th>Loại</th><th>Ưu đãi</th><th>Đã dùng</th><th>Áp dụng cho</th><th>Trạng thái</th><th>Hạn</th><th>Tổng giảm</th><th></th></tr></thead><tbody id="pr-tbl"></tbody></table></div>
+      </div>
+      <div class="subpane" data-sub="drop" hidden>
+      <div class="note">⚡ <b>Phát mã nhanh tay</b>: bấm <b>🚀 Phát hành</b> → web + app hiện ô thông báo <b>"Đang phát mã giảm X%"</b> ở góc màn hình. Khách bấm <b>Nhận mã</b> — ai nhanh thì có, hết số lượng là thôi.
+        Mỗi tài khoản nhận <b>1 mã / đợt</b>; mã là <b>mã riêng</b> của người nhận (người khác nhập không dùng được) và chỉ hiện cho chính họ ở <b>🎫 Mã của tôi</b>. Mã giảm % dùng 1 lần, chỉ cho cloud phone (thuê / gia hạn / nâng cấp).</div>
+      <form class="f mtbox prf" id="pdr-form" autocomplete="off" novalidate>
+        <h3>🚀 Phát hành đợt mới</h3>
+        <label>Phần trăm giảm (1–90%)<input id="pdr-pct" type="number" min="1" max="90" step="1" inputmode="numeric" value="30" required></label>
+        <label>Số mã phát ra (1–5000)<input id="pdr-total" type="number" min="1" max="5000" step="1" inputmode="numeric" value="50" required></label>
+        <label><span>Giảm tối đa mỗi mã (đ) <span class="hint">(trống = không giới hạn)</span></span><input id="pdr-max" type="number" min="1" step="1000" inputmode="numeric" placeholder="VD 50000"></label>
+        <label>Mã dùng được trong (ngày, kể từ lúc nhận)<input id="pdr-days" type="number" min="1" max="365" step="1" inputmode="numeric" value="3" required></label>
+        <label><span>Mở nhận lúc <span class="hint">(trống = ngay)</span></span><input id="pdr-start" type="datetime-local"></label>
+        <label><span>Nhận trong (giờ) <span class="hint">(trống = tới khi hết mã)</span></span><input id="pdr-hours" type="number" min="0.1" max="720" step="0.5" inputmode="decimal" placeholder="VD 2"></label>
+        <label class="full"><span>🛡️ Chỉ tài khoản đã nạp tổng từ (đ) <span class="hint">(0 = ai cũng nhận — dễ bị tạo nick ảo gom mã)</span></span><input id="pdr-dep" type="number" min="0" step="1000" inputmode="numeric" value="10000"></label>
+        <label class="chk full"><input id="pdr-old" type="checkbox" checked> 🛡️ Chỉ tài khoản tạo trước lúc phát hành (chống tạo nick mới để gom mã)</label>
+        <label class="chk full"><input id="pdr-dev" type="checkbox" checked> 🛡️ Mỗi thiết bị chỉ nhận 1 mã / đợt (đổi tài khoản trên cùng máy không nhận thêm được)</label>
+        <label class="full">Ghi chú (chỉ admin thấy)<input id="pdr-note" maxlength="200" placeholder="VD: Mừng 1.000 khách"></label>
+        <div class="pdr-prev full" id="pdr-prev"></div>
+        <div class="acts full"><button class="btn" type="submit" id="pdr-go">🚀 Phát hành mã lên web</button></div>
+      </form>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px"><h3 style="margin:0">📋 Các đợt đã phát</h3><span class="hint" id="pdr-count" style="margin-left:auto"></span><button class="btn ghost sm" type="button" id="pdr-reload">↻ Làm mới</button></div>
+      <div class="tbl"><table><thead><tr><th>Đợt</th><th>Ưu đãi</th><th>Đã nhận</th><th>Đã dùng</th><th>Điều kiện</th><th>Trạng thái</th><th></th></tr></thead><tbody id="pdr-tb"></tbody></table></div>
       </div>
       <div class="subpane" data-sub="free" hidden>
       <div class="f mtbox freebox">
@@ -8519,7 +8587,7 @@ function renderNodes() {
     return `<div class="node${full ? " full" : ""}${off ? " off" : ""}">
       <div class="nh"><b>${esc(n.name)}</b><span class="hint">${esc(n.id)}</span>
         <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-      ${nodeEmu(n, m)}
+      ${nodePauseRow(n)}${nodeEmu(n, m)}
       ${nRow("CPU đang dùng thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct)}
       ${m.cpu_over ? nRow("CPU thật TB 5 phút (ngừng nhận khi ≥ " + (m.cpu_busy_pct || 85) + "%)", (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, m.cpu_busy_pct || 85) : ""}
       ${capC ? nRow("CPU đã cấp (đạt trần là ngừng nhận)", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100)
@@ -8535,6 +8603,7 @@ function renderNodes() {
         <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span>
         <span class="acts"><button class="btn ghost sm" data-nrename="${esc(n.id)}">✏️ Đổi tên</button>
           <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${esc(n.id)}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
+          ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${esc(n.id)}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
           ${!off ? `<button class="btn danger sm" data-nreboot="${esc(n.id)}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
           ${n.phones ? `<button class="btn danger sm" data-nwipe="${esc(n.id)}">🧹 Xoá sạch máy</button>` : ""}
           ${off ? `<button class="btn danger sm" data-ndel="${esc(n.id)}">Xoá</button>` : ""}</span></div>
@@ -8551,7 +8620,7 @@ $("cpa-nodes") && ($("cpa-nodes").onclick = async e => {
     const { error } = await sb.from("cloud_nodes").update({ name: v.trim().slice(0, 40) }).eq("id", n.id); if (error) return toast(errMsg(error), 1);
   } else if (en) {
     const n = NODES.find(x => x.id === en.dataset.nenable);
-    if (n.enabled && !confirm(`Ngừng nhận máy mới trên ${n.name}? Máy đang chạy không bị ảnh hưởng.`)) return;
+    if (n.enabled && !confirm(`Ngừng nhận máy mới trên ${n.name}? Máy đang chạy không bị ảnh hưởng.\n\n⏯ Máy chủ sẽ TỰ NHẬN MÁY LẠI khi đang dùng ≤ ${nresPct()}% (sau ${nresMin()} phút).\nĐang sửa máy / bảo trì thì bấm ⛔ Ngừng hẳn thay vì nút này.`)) return;
     const { error } = await sb.from("cloud_nodes").update({ enabled: !n.enabled }).eq("id", n.id); if (error) return toast(errMsg(error), 1);
   } else if (dl) {
     if (!confirm("Xoá máy chủ này khỏi danh sách? (Nếu server chạy lại nó sẽ tự hiện lại.)")) return;
@@ -9981,15 +10050,15 @@ $("am-save") && ($("am-save").onclick = () => busy($("am-save"), async () => {
 { const _lc23 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc23.apply(this, arguments); try { amFill(); } catch (e) {} return r; }; }
 
 /* ===================== ADMIN: 🤖 GIỚI HẠN ĐỔI ANDROID (settings.switch_day / switch_per_phone — SQL v32) ===================== */
-const SWL_F = [["swl-day", "switch_day"], ["swl-pp", "switch_per_phone"]];
+const SWL_F = [["swl-day", "switch_day"], ["swl-pp", "switch_per_phone"], ["swl-max", "switch_max"]];
 function swlFill(force) { for (const [id, k] of SWL_F) { const el = $(id); if (el && (force || !el.dataset.dirty)) el.value = SITE[k] ?? ""; } }
 SWL_F.forEach(([id]) => { const el = $(id); if (el) el.addEventListener("input", () => { el.dataset.dirty = "1"; }); });
 $("swl-save") && ($("swl-save").onclick = () => busy($("swl-save"), async () => {
-  const d = $("swl-day").value.trim(), pp = $("swl-pp").value.trim();
-  if ((d && !/^\d{1,3}$/.test(d)) || (d && +d < 1) || (pp && !/^\d{1,2}$/.test(pp))) return toast("Nhập số nguyên: tối thiểu 1–999 lần, mỗi máy 0–99 lần (để trống = mặc định 3 và 1).", 1);
+  const d = $("swl-day").value.trim(), pp = $("swl-pp").value.trim(), mx = $("swl-max") ? $("swl-max").value.trim() : "";
+  if ((d && !/^\d{1,3}$/.test(d)) || (d && +d < 1) || (pp && !/^\d{1,2}$/.test(pp)) || (mx && (!/^\d{1,3}$/.test(mx) || +mx < 1))) return toast("Nhập số nguyên: tối thiểu 1–999 lần, mỗi máy 0–99 lần, tối đa 1–999 lần (để trống = mặc định 3 · 1 · 5).", 1);
   try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}   // đọc lại trước khi ghi → không đè thay đổi khác
   const before = SITE;
-  await saveSettings({ switch_day: d, switch_per_phone: pp }, null, "Đã lưu — khách đổi Android theo giới hạn mới ngay (cần SQL v32).");
+  await saveSettings({ switch_day: d, switch_per_phone: pp, switch_max: mx }, null, "Đã lưu — khách đổi Android theo giới hạn mới ngay (cần SQL v39).");
   if (SITE !== before) { SWL_F.forEach(([id]) => { delete $(id).dataset.dirty; }); swlFill(true); $("swl-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
 }));
 { const _lc32 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc32.apply(this, arguments); try { swlFill(); } catch (e) {} return r; }; }
@@ -11164,7 +11233,7 @@ function cbNum(n) { return (+n || 0).toLocaleString(LANG === "en" ? "en-US" : "v
 function cbHours(p) { return +(p && p.free_hours) || 0; }
 function cbNeed() { return +((CPpricing && CPpricing.free_need_topup != null ? CPpricing.free_need_topup : PROMO && PROMO.trial && PROMO.trial.need) || 0); }
 function cbFreeDur(p) { const h = cbHours(p); return h > 0 ? L(`${h} giờ`, `${h} hour${h > 1 ? "s" : ""}`) : L(`${+(p && p.free_days) || 1} ngày`, `${+(p && p.free_days) || 1} day(s)`); }
-function cbSrc(s) { return ({ wheel: L("🎡 Vòng quay", "🎡 Lucky wheel"), topup: L("💰 Ưu đãi nạp", "💰 Top-up bonus"), gift: L("🎁 Quà tặng", "🎁 Gift") })[s] || L("🎁 Mã giảm giá", "🎁 Discount code"); }
+function cbSrc(s) { return ({ drop: L("⚡ Mã nhanh tay", "⚡ Flash code"), wheel: L("🎡 Vòng quay", "🎡 Lucky wheel"), topup: L("💰 Ưu đãi nạp", "💰 Top-up bonus"), gift: L("🎁 Quà tặng", "🎁 Gift") })[s] || L("🎁 Mã giảm giá", "🎁 Discount code"); }
 
 async function promoLoad(notify) {
   const before = PMY && Array.isArray(PMY.codes) ? new Set(PMY.codes.map(c => c.code)) : null;
@@ -11172,7 +11241,7 @@ async function promoLoad(notify) {
   if (profile) { try { const r = await sb.rpc("promo_my"); PMY = !r.error && r.data ? r.data : null; } catch (e) { PMY = null; } } else PMY = null;
   cbRefresh();
   if (notify && before && PMY && Array.isArray(PMY.codes)) {                 // mã mới (nạp / quà) → báo khách ngay
-    PMY.codes.filter(c => c.usable && !before.has(c.code) && c.src !== "wheel").slice(0, 2).forEach((c, i) => setTimeout(() =>
+    PMY.codes.filter(c => c.usable && !before.has(c.code) && c.src !== "wheel" && c.src !== "drop").slice(0, 2).forEach((c, i) => setTimeout(() =>
       toast(L(`${cbSrc(c.src)}: bạn nhận mã giảm ${c.pct}% — ${c.code} (dùng khi thuê cloud phone)`, `${cbSrc(c.src)}: you got a ${c.pct}% off code — ${c.code} (for cloud phones)`)), 900 + i * 2600));
   }
 }
@@ -11188,7 +11257,7 @@ document.addEventListener("br-lang", () => cbRefresh());
 /* ----- 📣 dòng chữ chạy: ưu đãi công khai (máy chủ viết sẵn chữ vi / en) ----- */
 function cbTicker() {
   const t = PROMO && Array.isArray(PROMO.ticker) ? PROMO.ticker : [];
-  return t.filter(x => x && x.vi && (x.k !== "wheel" || lwLive()) && (x.k !== "trial" || freeLive(CPpricing))).map(cbT).filter(Boolean);
+  return t.filter(x => x && x.vi && (x.k !== "wheel" || lwLive()) && (x.k !== "trial" || freeLive(CPpricing)) && (x.k !== "drop" || dropTickOk(x))).map(cbT).filter(Boolean);
 }
 function cbBarGo() { const m = $("freebar").dataset.mode; if (m === "promo") openOffers(); else if (m !== "note") openFree(); }
 function cbFreeText(p) {
@@ -11406,7 +11475,7 @@ function cbOffersRender() {
   if (dl > 0) sec.push(cbCard("🎟️", L("Mã giảm giá", "Discount codes"), `<p>${esc(L(`Mỗi tài khoản dùng tối đa ${dl} mã giảm giá mỗi ngày.`, `Each account can use up to ${dl} discount codes per day.`))}${PMY ? ` <b>${esc(L(`Hôm nay: ${+PMY.day_used || 0}/${dl}`, `Today: ${+PMY.day_used || 0}/${dl}`))}</b>` : ""}</p>`));
   const mine = cbCodesHtml(), mineTop = !!(PMY && Array.isArray(PMY.codes) && PMY.codes.some(c => c.usable));
   m.innerHTML = `<div class="dlg cbdlg" role="dialog" aria-modal="true" aria-labelledby="cbo-t"><div class="cb-top"><h3 id="cbo-t">🎁 ${esc(L("Ưu đãi", "Offers"))}</h3>${cbClose()}</div>`
-    + (mineTop ? mine : "") + (sec.join("") || `<div class="hint">${esc(L("Hiện chưa có ưu đãi nào.", "No offers right now."))}</div>`) + (mineTop ? "" : mine) + `</div>`;
+    + dropOfferHtml() + (mineTop ? mine : "") + (sec.join("") || `<div class="hint">${esc(L("Hiện chưa có ưu đãi nào.", "No offers right now."))}</div>`) + (mineTop ? "" : mine) + `</div>`;
 }
 function cbCodesHtml() {
   if (!profile || !PMY) return "";
@@ -11664,6 +11733,283 @@ document.addEventListener("click", e => {
 document.addEventListener("input", e => { const t = e.target; if (t && t.dataset && t.dataset.cbcv) cbcPrev(+t.dataset.cbcv); });
 document.addEventListener("change", e => { if (e.target && e.target.id === "cbr-kind") cbrLoad(); });
 try { promoLoad(); } catch (e) {}
+
+/* ===================== v38 · ⚡ PHÁT MÃ NHANH TAY (SQL v38: promo_drop_now · promo_drop_claim · admin_promo_drop_*) =====================
+   Ô nổi góc màn hình: đang phát mã giảm X% · còn N/T mã · đếm ngược giờ mở · bấm Nhận mã (ai nhanh thì có, mỗi tài khoản 1 mã / đợt).
+   Mã chỉ hiện cho chính người nhận. Máy chủ chưa chạy SQL v38 → hàm báo lỗi → ô ẩn, web chạy như cũ. */
+Object.assign(ERR, { DROP_NONE: "Đợt phát mã này không còn nữa.", DROP_SOON: "Chưa tới giờ phát mã — chờ chút nhé.", DROP_OUT: "Đã phát hết mã đợt này — chờ đợt sau nhé!",
+  DROP_ENDED: "Đợt phát mã đã kết thúc.", DROP_NEED_TOPUP: "Mã này dành cho tài khoản đã nạp tiền — nạp rồi quay lại nhận nhé.",
+  DROP_NEW_ACCOUNT: "Mã này dành cho tài khoản tạo trước lúc phát mã.", DROP_SAME_DEVICE: "Thiết bị này đã nhận mã đợt này bằng tài khoản khác — mỗi thiết bị 1 mã.",
+  DROP_BAD_PCT: "Phần trăm giảm phải từ 1 đến 90.", DROP_BAD_TOTAL: "Số mã phải từ 1 đến 5000.", DROP_BAD_DAYS: "Hạn dùng mã phải từ 1 đến 365 ngày.",
+  DROP_BAD_MAX: "Giảm tối đa phải lớn hơn 0 (hoặc để trống).", DROP_BAD_START: "Giờ mở nhận chỉ đặt trong 30 ngày tới.", DROP_BAD_HOURS: "Thời gian nhận tối đa 720 giờ.",
+  DROP_TOO_MANY: "Đang có 5 đợt chưa xong — dừng bớt rồi phát đợt mới.",
+  promo_drop_now: "Tính năng phát mã chưa bật — admin cần chạy SQL v38.", promo_drop_claim: "Tính năng phát mã chưa bật — admin cần chạy SQL v38.",
+  admin_promo_drop: "Chưa chạy SQL v38 (phát mã nhanh tay) trong Supabase." });
+Object.assign(ERR_EN, { DROP_NONE: "This code drop no longer exists.", DROP_SOON: "The drop hasn't opened yet — hang on.", DROP_OUT: "All codes in this drop are gone — catch the next one!",
+  DROP_ENDED: "This code drop has ended.", DROP_NEED_TOPUP: "This code is for accounts that have topped up — top up, then come back.",
+  DROP_NEW_ACCOUNT: "This code is for accounts created before the drop started.", DROP_SAME_DEVICE: "This device already claimed a code from this drop with another account — one per device.",
+  promo_drop_now: "Code drops aren't enabled yet.", promo_drop_claim: "Code drops aren't enabled yet." });
+var DROP = null, dropT = 0, dropSkew = 0, dropTk = 0, dropSig = "", dropAt = 0, dropSeen = {};
+function dropErr(e) {                       // máy chủ viết sẵn câu tiếng Việt (có giờ mở / số tiền) rồi mới tới (MÃ_LỖI) → hiện đúng câu đó
+  const m = String(e && (e.message || e.error_description || e) || ""), s = m.match(/^([\s\S]{8,}?)\s*\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\)\s*$/);
+  return s && LANG !== "en" ? s[1].trim() : errMsg(e);
+}
+function dropNow() { return Date.now() + dropSkew; }
+function dropList() { return DROP && Array.isArray(DROP.drops) ? DROP.drops : []; }
+function dropMain() { const ds = dropList(); return ds.find(d => d.state === "on") || ds.find(d => d.state === "soon") || ds[0] || null; }
+function dropTickOk(x) { if (!DROP) return true; const d = dropList().find(y => +y.id === +x.id); return !!d && (d.state === "on" || d.state === "soon"); }
+async function dropLoad() {
+  clearTimeout(dropT); let ok = false;
+  try {
+    const r = await sb.rpc("promo_drop_now");
+    if (!r.error && r.data) { DROP = r.data; ok = true; if (DROP.now) dropSkew = Date.parse(DROP.now) - Date.now(); } else if (r.error) DROP = null;
+  } catch (e) {}
+  dropAt = Date.now(); dropRender(); dropSched(ok);
+}
+function dropSched(ok) {
+  clearTimeout(dropT);
+  const ds = dropList(); let ms = ok ? 60000 : 300000;
+  if (ds.some(d => d.state === "on")) ms = 20000;
+  ds.forEach(d => { if (d.state === "soon") { const w = Date.parse(d.starts_at) - dropNow(); ms = Math.min(ms, Math.max(1000, w + 500)); } });
+  dropT = setTimeout(() => { if (document.hidden) dropSched(ok); else dropLoad(); }, ms);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden && Date.now() - dropAt > 10000) dropLoad(); });
+sb.auth.onAuthStateChange(() => { clearTimeout(dropT); dropT = setTimeout(dropLoad, 500); });
+function dropMinKey(d) { return "cb_drop_min_" + d.id + (d.state === "soon" ? "_soon" : ""); }
+function dropIsMin(d) { try { return localStorage.getItem(dropMinKey(d)) === "1"; } catch (e) { return false; } }
+function dropSetMin(d, on) { try { if (on) localStorage.setItem(dropMinKey(d), "1"); else localStorage.removeItem(dropMinKey(d)); } catch (e) {} }
+function dropDur(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60, p = n => String(n).padStart(2, "0");
+  return h ? `${h}:${p(m)}:${p(x)}` : `${p(m)}:${p(x)}`;
+}
+function dropTerms(d) {
+  return [+d.max ? L(`Giảm tối đa ${vnd(d.max)}`, `Up to ${vnd(d.max)} off`) : "", L(`dùng trong ${+d.days} ngày`, `valid ${+d.days} days`),
+          L("1 mã / tài khoản", "1 per account"), L("chỉ cloud phone", "cloud phones only")].filter(Boolean).join(" · ") + ".";
+}
+function dropCond(d) {
+  const c = [];
+  if (+d.need > 0) c.push(L(`tài khoản đã nạp từ ${vnd(d.need)}`, `accounts that topped up ${vnd(d.need)}+`));
+  if (d.old_only) c.push(L("tạo trước lúc phát mã", "created before the drop"));
+  return c.length ? L("Dành cho ", "For ") + c.join(L(" và ", " and ")) + "." : "";
+}
+function dropAct(d) {                       // nút / dòng cuối của ô nổi và thẻ trong hộp Ưu đãi
+  if (d.mine) return d.mine.used ? `<div class="cbd-why">✓ ${esc(L("Bạn đã dùng mã này rồi.", "You've already used this code."))}</div>`
+    : `<button class="cbd-go" type="button" data-dropgo="rent">🛒 ${esc(L("Thuê máy dùng mã ngay", "Rent a phone with it"))}</button>`;
+  if (d.state === "soon") return `<button class="cbd-go" type="button" disabled>⏰ ${esc(L("Chờ tới giờ mở", "Opens soon"))}</button>`;
+  if (d.state === "out") return `<div class="cbd-why">${esc(L(`Đã phát hết ${d.total} mã — chờ đợt sau nhé!`, `All ${d.total} codes are gone — catch the next drop!`))}</div>`;
+  if (d.state !== "on") return `<div class="cbd-why">${esc(L("Đợt phát mã đã kết thúc.", "This drop has ended."))}</div>`;
+  if (d.why === "login") return `<button class="cbd-go" type="button" data-cbgo="login">${esc(L("Đăng nhập để nhận mã", "Log in to claim"))}</button>`;
+  if (d.why === "need_dep") return `<div class="cbd-why">${esc(L(`Mã này dành cho tài khoản đã nạp từ ${vnd(d.need)}.`, `For accounts that topped up ${vnd(d.need)}+.`))}</div>`
+    + `<button class="cbd-go alt" type="button" data-cbtop="${+d.need}">${esc(L("Nạp tiền rồi nhận mã", "Top up, then claim"))}</button>`;
+  if (d.why === "new_account") return `<div class="cbd-why">${esc(L("Mã này dành cho tài khoản tạo trước lúc phát mã — đợt sau nhé!", "This drop is for accounts created before it started — next time!"))}</div>`;
+  return `<button class="cbd-go" type="button" data-dropclaim="${+d.id}">⚡ ${esc(L("Nhận mã ngay", "Claim my code"))}</button>`;
+}
+function dropMineHtml(d) {
+  return `<div class="cbd-mine"><code>${esc(d.mine.code)}</code><button class="btn ghost sm" type="button" data-cbcopy="${esc(d.mine.code)}">${esc(L("Chép", "Copy"))}</button></div>`
+    + `<small class="cbd-terms">${esc(L("Mã riêng của bạn · hạn đến ", "Your own code · valid until ") + lwWhen(d.mine.expires_at))} · ${esc(L("dùng khi thuê / gia hạn / nâng cấp cloud phone", "for cloud phone rent / renew / upgrade"))}</small>`;
+}
+function dropCardHtml(d, isNew) {
+  const pct = +d.pct, total = +d.total, left = +d.left, fill = total ? Math.max(0, Math.min(100, Math.round(left / total * 100))) : 0;
+  const title = d.mine ? L(`🎫 Mã giảm ${pct}% của bạn`, `🎫 Your ${pct}% off code`) : L(`Mã giảm ${pct}% cloud phone`, `${pct}% off cloud phones`);
+  const sub = d.mine ? L("Đã nhận — chỉ tài khoản bạn dùng được", "Claimed — only your account can use it")
+    : d.state === "soon" ? L(`Mở nhận lúc ${lwWhen(d.starts_at)} — canh giờ nhé!`, `Opens at ${lwWhen(d.starts_at)} — be ready!`)
+    : d.state === "on" ? L("Ai nhanh tay thì có!", "First come, first served!") : L("Đợt phát mã", "Code drop");
+  let mid = "";
+  if (d.mine) mid = dropMineHtml(d);
+  else if (d.state === "soon") mid = `<div class="cbd-row" style="margin-top:12px"><span>${esc(L(`${total} mã`, `${total} codes`))}</span><span class="cbd-cd">${esc(L("còn ", "in "))}<b data-dropcd="${esc(d.starts_at)}"></b></span></div>`;
+  else mid = `<div class="cbd-meter" role="progressbar" aria-label="${esc(L("Số mã còn lại", "Codes left"))}" aria-valuemin="0" aria-valuemax="${total}" aria-valuenow="${left}"><i data-dropfill style="width:${fill}%"></i></div>`
+    + `<div class="cbd-row"><span>${L("Còn", "Left:")} <b data-dropleft>${left}</b>/${total} ${esc(L("mã", "codes"))}</span>`
+    + (d.state === "on" && d.ends_at ? `<span class="cbd-cd">${esc(L("hết giờ sau ", "ends in "))}<b data-dropcd="${esc(d.ends_at)}"></b></span>` : "") + `</div>`;
+  const cond = !d.mine && (d.state === "on" || d.state === "soon") && !d.why ? dropCond(d) : "";
+  return `<div class="cbd-card${isNew ? " new" : ""}" role="region" aria-label="${esc(L("Phát mã giảm giá", "Code drop"))}">`
+    + `<div class="cbd-top"><span class="cbd-pct">−${pct}%</span><div class="cbd-tt"><b>${esc(title)}</b><small>${esc(sub)}</small></div>`
+    + `<button class="cbd-x" type="button" data-dropmin aria-label="${esc(L("Thu nhỏ", "Minimize"))}">✕</button></div>`
+    + mid + dropAct(d) + (d.mine ? "" : `<small class="cbd-terms">${esc(dropTerms(d))}${cond ? " " + esc(cond) : ""}</small>`) + `</div>`;
+}
+function dropPillHtml(d) {
+  const t = d.mine ? L("🎫 Mã của bạn", "🎫 Your code") : d.state === "soon" ? L("⏰ Sắp phát", "⏰ Soon") : d.state === "on" ? L(`còn ${+d.left}`, `${+d.left} left`) : L("hết mã", "gone");
+  return `<button class="cbd-pill" type="button" data-dropmax aria-label="${esc(L("Mở ô phát mã giảm giá", "Open the code drop"))}">⚡ <b>−${+d.pct}%</b> · <span data-droppill>${esc(t)}</span></button>`;
+}
+function dropRender() {
+  const box = $("cbdrop"); if (!box) return;
+  const d = dropMain();
+  if (!d || d.why === "locked") { box.hidden = true; box.innerHTML = ""; dropSig = ""; dropTickSet(false); try { renderFreeBar(); } catch (e) {} return; }
+  const min = dropIsMin(d), sig = [d.id, d.state, d.why, d.mine && d.mine.code, d.mine && d.mine.used, d.ends_at, d.starts_at, min].join("|");
+  if (sig === dropSig) {                    // chỉ đổi số mã còn lại → sửa tại chỗ (không vẽ lại, nút đang bấm không mất tiêu điểm)
+    box.querySelectorAll("[data-dropleft]").forEach(x => x.textContent = +d.left);
+    box.querySelectorAll("[data-dropfill]").forEach(x => { x.style.width = (d.total ? Math.round(+d.left / +d.total * 100) : 0) + "%"; x.parentNode.setAttribute("aria-valuenow", +d.left); });
+    if (d.state === "on" && !d.mine) box.querySelectorAll("[data-droppill]").forEach(x => x.textContent = L(`còn ${+d.left}`, `${+d.left} left`));
+  } else {
+    const isNew = !dropSeen[d.id + d.state]; dropSeen[d.id + d.state] = 1; dropSig = sig;
+    box.innerHTML = min ? dropPillHtml(d) : dropCardHtml(d, isNew); box.hidden = false;
+    try { renderFreeBar(); } catch (e) {}
+  }
+  dropTickSet(!!box.querySelector("[data-dropcd]")); dropTick();
+  try { const m = $("cbofr"); if (m && !m.hidden) cbOffersRender(); } catch (e) {}
+}
+function dropTickSet(on) { if (on && !dropTk) dropTk = setInterval(dropTick, 1000); else if (!on && dropTk) { clearInterval(dropTk); dropTk = 0; } }
+function dropTick() {
+  let due = false;
+  document.querySelectorAll("[data-dropcd]").forEach(x => { const w = Date.parse(x.dataset.dropcd) - dropNow(); x.textContent = dropDur(w); if (w <= 0) due = true; });
+  if (due && Date.now() - dropAt > 3000) dropLoad();
+}
+async function dropClaim(id, btn) {
+  if (!profile) { openAuth("login"); return; }
+  await busy(btn, async () => {
+    const { data, error } = await sb.rpc("promo_drop_claim", { p_id: id });
+    if (error) { toast(dropErr(error), 1); dropLoad(); return; }
+    dropGot(data); dropLoad(); try { promoLoad(); } catch (e) {}
+  });
+}
+function dropGot(r) {
+  const m = cbModal("cbdropdlg");
+  m.innerHTML = `<div class="dlg cbdlg cbd-dlg" role="dialog" aria-modal="true" aria-labelledby="cbd-t"><div class="cb-top"><h3 id="cbd-t">${esc(r.again ? L("🎫 Mã của bạn", "🎫 Your code") : L("🎉 Bạn đã nhận được mã!", "🎉 You got a code!"))}</h3>${cbClose()}</div>`
+    + `<div class="cbd-big"><span class="cbd-pct">−${+r.pct}%</span><code>${esc(r.code)}</code><button class="btn sm" type="button" data-cbcopy="${esc(r.code)}">${esc(L("Chép mã", "Copy"))}</button></div>`
+    + `<p>${esc(L(`Mã giảm ${+r.pct}%${+r.max ? ` (tối đa ${vnd(r.max)})` : ""}, dùng 1 lần, hạn đến ${lwWhen(r.expires_at)}. Chỉ tài khoản của bạn dùng được — người khác nhập mã này sẽ bị từ chối.`,
+                 `${+r.pct}% off${+r.max ? ` (up to ${vnd(r.max)})` : ""}, single use, valid until ${lwWhen(r.expires_at)}. Only your account can use it.`))}</p>`
+    + `<p>${esc(L("Dùng khi thuê / gia hạn / nâng cấp cloud phone: chọn mã ngay dưới ô “Mã giảm giá”. Mã cũng nằm ở 🎁 Ưu đãi › 🎫 Mã của tôi.", "Use it when renting / renewing / upgrading a cloud phone: tap it under the “Discount code” box. It's also in 🎁 Offers › 🎫 My codes."))}</p>`
+    + `<div class="acts"><button class="btn" type="button" data-dropgo="rent">🛒 ${esc(L("Thuê máy ngay", "Rent a phone"))}</button><button class="btn ghost" type="button" data-cbx>${esc(L("Để sau", "Later"))}</button></div></div>`;
+  m.hidden = false;
+  try { m.querySelector("[data-dropgo]").focus(); } catch (e) {}
+}
+function dropOfferHtml() {                  // thẻ đầu hộp 🎁 Ưu đãi
+  const d = dropMain(); if (!d || d.why === "locked" || (d.state !== "on" && d.state !== "soon" && !d.mine)) return "";
+  const head = d.state === "soon" ? L(`⏰ ${lwWhen(d.starts_at)} phát ${d.total} mã giảm ${d.pct}%`, `⏰ ${d.total} codes for ${d.pct}% off at ${lwWhen(d.starts_at)}`)
+    : L(`Đang phát mã giảm ${d.pct}% — còn ${d.left}/${d.total}`, `Dropping ${d.pct}% off codes — ${d.left}/${d.total} left`);
+  const body = (d.mine ? dropMineHtml(d) : `<p>${esc(dropTerms(d))}${dropCond(d) ? " " + esc(dropCond(d)) : ""}</p>`) + dropAct(d);
+  return `<section class="cbo-card cbo-drop"><span class="ic" aria-hidden="true">⚡</span><div><b class="cbo-t">${esc(head)}</b>${body}</div></section>`;
+}
+document.addEventListener("click", e => {
+  const t = e.target; if (!t || !t.closest) return;
+  const c = t.closest("[data-dropclaim]"); if (c) { dropClaim(+c.dataset.dropclaim, c); return; }
+  if (t.closest("[data-dropmin]")) { const d = dropMain(); if (d) { dropSetMin(d, true); dropRender(); const p = document.querySelector("[data-dropmax]"); if (p) p.focus(); } return; }
+  if (t.closest("[data-dropmax]")) { const d = dropMain(); if (d) { dropSetMin(d, false); dropRender(); const g = document.querySelector("#cbdrop .cbd-go:not([disabled]), #cbdrop .cbd-x"); if (g) g.focus(); } return; }
+  const g = t.closest("[data-dropgo]");
+  if (g && g.dataset.dropgo === "rent") { ["cbdropdlg", "cbofr"].forEach(id => { const m = $(id); if (m) m.hidden = true; }); if (!profile) { openAuth("login"); return; } try { openCpOrder(); } catch (er) {} }
+});
+dropLoad();
+
+/* ----- admin: ⚡ Phát mã nhanh tay ----- */
+var PDR = [], pdrT = 0;
+SUB_HOOK["promo:drop"] = () => { pdrPrev(); pdrLoad(); };
+function pdrErr(e) { const m = String(e && (e.message || e) || ""); return /admin_promo_drop|promo_drop/.test(m) && /function|schema cache|Could not find/i.test(m) ? ERR.admin_promo_drop : dropErr(e); }
+function pdrPrev() {
+  const el = $("pdr-prev"); if (!el) return;
+  const pct = Math.floor(+$("pdr-pct").value || 0), n = Math.floor(+$("pdr-total").value || 0), st = $("pdr-start").value, mx = Math.floor(+$("pdr-max").value || 0);
+  const dep = Math.max(0, Math.floor(+$("pdr-dep").value || 0)), days = Math.floor(+$("pdr-days").value || 0), h = +$("pdr-hours").value || 0;
+  const when = st ? lwWhen(new Date(st).toISOString()) : "";
+  const line = st && new Date(st) > new Date() ? `⏰ ${when} phát ${n} mã giảm ${pct}% cloud phone — canh giờ nhận nhé!` : `⚡ Đang phát ${n} mã giảm ${pct}% cloud phone — ai nhanh tay thì có!`;
+  const c = [dep > 0 ? `đã nạp từ ${vnd(dep)}` : "ai cũng nhận", $("pdr-old").checked ? "tài khoản tạo trước lúc phát" : "", $("pdr-dev").checked ? "1 thiết bị 1 mã" : ""].filter(Boolean).join(" · ");
+  el.innerHTML = `👀 <b>Khách sẽ thấy:</b> ${esc(line)}<br><span class="hint">Mỗi mã: −${pct}%${mx ? ` (tối đa ${vnd(mx)})` : ""} · dùng trong ${days} ngày kể từ lúc nhận · chỉ cloud phone · ${esc(c)}${h > 0 ? ` · nhận trong ${h} giờ` : " · nhận tới khi hết mã"}</span>`;
+}
+document.addEventListener("input", e => { if (e.target && e.target.closest && e.target.closest("#pdr-form")) pdrPrev(); });
+document.addEventListener("change", e => { if (e.target && e.target.closest && e.target.closest("#pdr-form")) pdrPrev(); });
+$("pdr-form") && ($("pdr-form").onsubmit = e => { e.preventDefault(); busy($("pdr-go"), async () => {
+  const pct = Math.floor(+$("pdr-pct").value || 0), n = Math.floor(+$("pdr-total").value || 0), days = Math.floor(+$("pdr-days").value || 0);
+  const mx = $("pdr-max").value.trim(), hs = $("pdr-hours").value.trim(), dep = Math.max(0, Math.floor(+$("pdr-dep").value || 0)), st = prIso($("pdr-start").value);
+  if (pct < 1 || pct > 90) return toast(ERR.DROP_BAD_PCT, 1);
+  if (n < 1 || n > 5000) return toast(ERR.DROP_BAD_TOTAL, 1);
+  if (days < 1 || days > 365) return toast(ERR.DROP_BAD_DAYS, 1);
+  if (mx && !(Math.floor(+mx) >= 1)) return toast(ERR.DROP_BAD_MAX, 1);
+  if (hs && !(+hs > 0 && +hs <= 720)) return toast(ERR.DROP_BAD_HOURS, 1);
+  const soon = st && new Date(st) > new Date();
+  if (!confirm(`Phát hành ${n} mã giảm ${pct}%${mx ? ` (tối đa ${vnd(+mx)})` : ""} lên web + app ${soon ? "lúc " + lwWhen(st) : "NGAY BÂY GIỜ"}?\n`
+    + `Khách thấy ô thông báo và bấm nhận — ai nhanh thì có, mỗi tài khoản 1 mã.`)) return;
+  const { data, error } = await sb.rpc("admin_promo_drop_create", { p_pct: pct, p_total: n, p_days: days, p_max: mx ? Math.floor(+mx) : null, p_starts: st,
+    p_hours: hs ? +hs : null, p_need_dep: dep, p_old_only: $("pdr-old").checked, p_one_dev: $("pdr-dev").checked, p_note: $("pdr-note").value.trim() || null });
+  if (error) return toast(pdrErr(error), 1);
+  toast(data && data.state === "soon" ? `⏰ Đã hẹn giờ — web hiện “sắp phát” và tự mở lúc ${lwWhen(data.starts_at)}.` : "🚀 Đã phát hành — web + app đang hiện ô thông báo.");
+  $("pdr-note").value = ""; pdrLoad(); dropLoad();
+}); });
+async function pdrLoad() {
+  const tb = $("pdr-tb"); if (!tb || !isAdmin()) return;
+  clearTimeout(pdrT);
+  const { data, error } = await sb.rpc("admin_promo_drop_list", { p_limit: 40 });
+  if (error) { tb.innerHTML = `<tr><td colspan="7" style="text-align:left;white-space:normal;color:var(--bad)">${esc(pdrErr(error))}</td></tr>`; $("pdr-count").textContent = ""; return; }
+  PDR = Array.isArray(data) ? data : []; pdrRender();
+  const pane = document.querySelector('#pane-promo > .subpane[data-sub="drop"]');
+  if (PDR.some(x => x.state === "on" || x.state === "soon")) pdrT = setTimeout(() => { if (pane && !pane.hidden && !document.hidden) pdrLoad(); }, 10000);
+}
+function pdrState(x) {
+  return ({ on: ["ok", "🟢 Đang phát"], soon: ["wt", "⏰ Sắp phát " + lwWhen(x.starts_at)], out: ["bad", "Đã hết mã"], ended: ["", "Hết giờ nhận"], stopped: ["", "Đã dừng"] })[x.state] || ["", x.state];
+}
+function pdrRender() {
+  const tb = $("pdr-tb"); if (!tb) return;
+  $("pdr-count").textContent = PDR.length ? `${PDR.length} đợt` : "";
+  if (!PDR.length) { tb.innerHTML = `<tr><td colspan="7" class="hint" style="text-align:left">Chưa phát đợt nào.</td></tr>`; return; }
+  tb.innerHTML = PDR.map(x => {
+    const [cl, st] = pdrState(x), f = x.total ? Math.round(x.claimed / x.total * 100) : 0, live = x.state === "on" || x.state === "soon";
+    const cond = [+x.need_dep > 0 ? `nạp từ ${vnd(x.need_dep)}` : "ai cũng nhận", x.old_only ? "tạo trước lúc phát" : "", x.one_dev ? "1 thiết bị 1 mã" : ""].filter(Boolean).join("<br>");
+    return `<tr><td>#${+x.id}<small style="display:block" class="hint">${esc(lwWhen(x.created_at))}${x.by_name ? " · " + esc(x.by_name) : ""}</small>${x.note ? `<small style="display:block">${esc(x.note)}</small>` : ""}</td>`
+      + `<td><b>−${+x.pct}%</b>${x.max_disc != null ? `<small style="display:block">tối đa ${vnd(x.max_disc)}</small>` : ""}<small style="display:block" class="hint">hạn ${+x.code_days} ngày</small></td>`
+      + `<td><b>${+x.claimed}</b>/${+x.total}<div class="pdr-bar"><i style="width:${f}%"></i></div>${x.ends_at ? `<small class="hint">nhận tới ${esc(lwWhen(x.ends_at))}</small>` : ""}</td>`
+      + `<td><b>${+x.used}</b> mã${+x.disc ? `<small style="display:block">giảm ${vnd(x.disc)}</small><small style="display:block" class="hint">khách trả ${vnd(x.paid)}</small>` : ""}</td>`
+      + `<td><small>${cond}</small></td><td><span class="pill ${cl}">${esc(st)}</span>${x.revoked_at ? '<small style="display:block" class="hint">đã thu hồi mã chưa dùng</small>' : ""}</td>`
+      + `<td style="white-space:nowrap"><button class="btn ghost sm" type="button" data-pdrwho="${+x.id}">👥 Ai nhận</button>`
+      + (live ? ` <button class="btn danger sm" type="button" data-pdrstop="${+x.id}">⏹ Dừng</button>` : "")
+      + (!x.revoked_at && +x.claimed > +x.used ? ` <button class="btn danger sm" type="button" data-pdrrevoke="${+x.id}">🚫 Thu hồi</button>` : "") + `</td></tr>`;
+  }).join("");
+}
+async function pdrWho(id) {
+  const m = cbModal("pdrwho");
+  m.innerHTML = `<div class="dlg cbdlg" role="dialog" aria-modal="true" aria-labelledby="pdrw-t"><div class="cb-top"><h3 id="pdrw-t">👥 Ai đã nhận mã — đợt #${id}</h3>${cbClose()}</div><div class="hint">Đang tải…</div></div>`;
+  m.hidden = false;
+  const { data, error } = await sb.rpc("admin_promo_drop_claims", { p_id: id });
+  const rows = Array.isArray(data) ? data : [], dup = rows.filter(r => r.same_dev).length;
+  m.querySelector(".hint").outerHTML = error ? `<div class="hint" style="color:var(--bad)">${esc(pdrErr(error))}</div>`
+    : `<div class="hint">${rows.length} người nhận${dup ? ` · ⚠ ${dup} người dùng chung thiết bị` : ""}</div><div class="pdr-who">` + (rows.map(r => `<div><span>${esc(lwWhen(r.at))}</span>`
+      + `<span><b>${esc(r.username || "?")}</b><small>${esc(r.email || "")}${r.same_dev ? " · ⚠ chung thiết bị" : ""}</small></span>`
+      + `<span><code>${esc(r.code)}</code><small>${r.used ? `✓ đã dùng${+r.disc ? " · giảm " + vnd(r.disc) : ""}` : !r.active ? "đã tắt" : r.expires_at && new Date(r.expires_at) <= new Date() ? "hết hạn" : "chưa dùng"}</small></span></div>`).join("") || `<span class="hint">Chưa ai nhận.</span>`) + `</div>`;
+}
+document.addEventListener("click", e => {
+  const t = e.target; if (!t || !t.closest) return;
+  if (t.closest("#pdr-reload")) { pdrLoad(); return; }
+  const w = t.closest("[data-pdrwho]"); if (w) { pdrWho(+w.dataset.pdrwho); return; }
+  const sp = t.closest("[data-pdrstop]");
+  if (sp) { const id = +sp.dataset.pdrstop; if (!confirm(`Dừng phát đợt #${id}? Ô thông báo trên web / app tắt ngay. Mã khách đã nhận vẫn dùng được.`)) return;
+    busy(sp, async () => { const { error } = await sb.rpc("admin_promo_drop_stop", { p_id: id, p_revoke: false }); if (error) return toast(pdrErr(error), 1); toast("Đã dừng phát."); pdrLoad(); dropLoad(); }); return; }
+  const rv = t.closest("[data-pdrrevoke]");
+  if (rv) { const id = +rv.dataset.pdrrevoke; if (!confirm(`Dừng đợt #${id} VÀ tắt mọi mã khách đã nhận mà CHƯA dùng?\nKhách đang giữ mã sẽ không dùng được nữa (mã đã dùng giữ nguyên). Không mở lại được.`)) return;
+    busy(rv, async () => { const { data, error } = await sb.rpc("admin_promo_drop_stop", { p_id: id, p_revoke: true }); if (error) return toast(pdrErr(error), 1); toast(`Đã dừng + tắt ${(data && data.revoked) || 0} mã chưa dùng.`); pdrLoad(); dropLoad(); }); return; }
+});
+
+/* ===================== v39 · 🤖 đổi Android: tối đa 5 lần / ngày, lần trước xong mới đổi tiếp · ⏯ máy chủ ngừng tự nhận máy lại ===================== */
+Object.assign(ERR, { SWITCH_OLD_PENDING: "Máy cũ của lần đổi Android trước chưa xoá xong — đợi xoá xong (thường 1–3 phút) rồi mới đổi tiếp nhé.",
+  SWITCH_NEW_PENDING: "Máy mới của lần đổi Android trước đang tạo — đợi tạo xong (2–5 phút) rồi mới đổi tiếp nhé." });
+Object.assign(ERR_EN, { SWITCH_OLD_PENDING: "Your previous Android switch is still deleting the old phone — wait for it to finish (usually 1–3 min), then switch again.",
+  SWITCH_NEW_PENDING: "Your previous Android switch is still creating the new phone — wait for it (2–5 min), then switch again." });
+function nresPct() { const v = String(SITE.node_resume_pct ?? "").trim(); return /^\d{1,3}$/.test(v) ? Math.min(+v, 95) : 50; }
+function nresMin() { const v = String(SITE.node_resume_min ?? "").trim(); return /^\d{1,4}$/.test(v) ? Math.max(+v, 1) : 10; }
+function nodePauseRow(n) {
+  if (!n.enabled) {
+    const t = n.pause_hard ? "⛔ Ngừng hẳn — không tự nhận máy lại" : nresPct() > 0 ? `⏸ Đang ngừng — tự nhận máy lại khi dùng ≤ ${nresPct()}% (sau ${nresMin()} phút)` : "⏸ Đang ngừng (đã tắt tự nhận máy lại)";
+    return `<div class="nr"><span>${t}</span><em>${n.paused_at ? "từ " + esc(lwWhen(n.paused_at)) : ""}</em></div>`;
+  }
+  if (n.auto_on_at && Date.now() - Date.parse(n.auto_on_at) < 6 * 3600e3) return `<div class="nr"><span>⏯ Tự nhận máy lại lúc ${esc(lwWhen(n.auto_on_at))}</span><em></em></div>`;
+  return "";
+}
+document.addEventListener("click", async e => {
+  const h = e.target && e.target.closest && e.target.closest("[data-nhard]"); if (!h) return;
+  const n = (typeof NODES !== "undefined" ? NODES : []).find(x => x.id === h.dataset.nhard); if (!n) return;
+  if (!confirm(`⛔ Ngừng hẳn ${n.name}?\nKhông nhận máy mới và KHÔNG tự bật lại cho tới khi bấm “Nhận máy lại”. Máy khách đang chạy không bị ảnh hưởng.`)) return;
+  await busy(h, async () => {
+    const { error } = await sb.from("cloud_nodes").update({ enabled: false, pause_hard: true }).eq("id", n.id);
+    if (error) return toast(/pause_hard/.test(error.message || "") ? "Cần chạy SQL v39 trong Supabase trước." : errMsg(error), 1);
+    toast(`Đã ngừng hẳn ${n.name} — không tự bật lại.`); refreshNodes();
+  });
+});
+const NRES_F = [["nres-pct", "node_resume_pct"], ["nres-min", "node_resume_min"]];
+function nresFill(force) { for (const [id, k] of NRES_F) { const el = $(id); if (el && (force || !el.dataset.dirty)) el.value = SITE[k] ?? ""; } }
+NRES_F.forEach(([id]) => { const el = $(id); if (el) el.addEventListener("input", () => { el.dataset.dirty = "1"; }); });
+$("nres-save") && ($("nres-save").onclick = () => busy($("nres-save"), async () => {
+  const p = $("nres-pct").value.trim(), m = $("nres-min").value.trim();
+  if ((p && !(/^\d{1,3}$/.test(p) && +p <= 95)) || (m && !(/^\d{1,4}$/.test(m) && +m >= 1 && +m <= 1440))) return toast("Nhập số: ngưỡng 0–95%, thời gian 1–1440 phút (để trống = mặc định 50% · 10 phút).", 1);
+  try { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (!error && data && data.data) SITE = { ...DEF_SITE, ...data.data }; } catch (e) {}
+  const before = SITE;
+  await saveSettings({ node_resume_pct: p, node_resume_min: m }, null, "Đã lưu — máy chủ đang ngừng sẽ tự nhận máy lại theo ngưỡng mới (cần SQL v39).");
+  if (SITE !== before) { NRES_F.forEach(([id]) => { delete $(id).dataset.dirty; }); nresFill(true); $("nres-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); try { renderNodes(); } catch (e) {} }
+}));
+{ const _lc39 = loadCloudAdm; loadCloudAdm = async function () { const r = await _lc39.apply(this, arguments); try { nresFill(); } catch (e) {} return r; }; }
 
 /* ----- 🤖 Đổi Android: máy mới tạo lỗi → khách tự bấm Thử lại (SQL doi-android-1511) ----- */
 Object.assign(ERR, { SWITCH_WAIT: "Vừa thử xong — đợi 2 phút rồi bấm lại nhé.", SWITCH_RETRY_LIMIT: "Bạn đã bấm thử lại 5 lần — admin sẽ xử lý máy này, nhắn shop nếu cần gấp.",
