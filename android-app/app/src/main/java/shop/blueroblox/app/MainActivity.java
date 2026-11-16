@@ -44,6 +44,7 @@ public class MainActivity extends Activity {
     private FrameLayout content;
     private TextView balTop, blueTop;
     private TextView tickerV;                         // 📣 dòng chữ chạy ưu đãi (SQL v35) — bản CH Play không có
+    LinearLayout dropV;                               // ⚡ ô phát mã nhanh tay (SQL v38) — ngay dưới dải chữ chạy
     private String offersSig = "";                    // ưu đãi đang vẽ trên màn (đổi mới vẽ lại)
     private TextView blueAcc;                         // dòng 💎 trong thẻ Tài khoản (cập nhật tại chỗ, không vẽ lại cả trang)
     boolean bluePayRent = false;                      // khách đã bật "Trả bằng Blue" ở bảng thuê (giữ khi bảng vẽ lại)
@@ -216,6 +217,10 @@ public class MainActivity extends Activity {
         tkLp.setMargins(Ui.dp(12), Ui.dp(2), Ui.dp(12), Ui.dp(4));
         root.addView(tickerV, tkLp);
         Offers.fillTicker(tickerV);
+        dropV = Drop.bar(this);
+        LinearLayout.LayoutParams dpLp = Ui.fill();
+        dpLp.setMargins(Ui.dp(12), Ui.dp(2), Ui.dp(12), Ui.dp(4));
+        root.addView(dropV, dpLp);
 
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
@@ -319,6 +324,7 @@ public class MainActivity extends Activity {
             balTop.setText("💰 " + Ui.vnd(prof.optDouble("balance", 0)));
             if (System.currentTimeMillis() - Blue.at > 60_000L) Blue.load(this::blueChanged);
             if (System.currentTimeMillis() - Offers.at > 120_000L) Offers.load(this::offersChanged);
+            if (Drop.on() && System.currentTimeMillis() - Drop.at > (Drop.live() ? 15_000L : 45_000L)) Drop.load(this::dropChanged);   // ⚡ đợt phát mã
             ExpiryAlarm.schedule(this, phones);
             if (tab == 0) {
                 if (phonesSig().equals(phonesSig)) tick();      // không có gì đổi → chỉ cập nhật chữ thời hạn (ô xem trước chạy liền, không nháy)
@@ -338,6 +344,9 @@ public class MainActivity extends Activity {
             h.postDelayed(poll, 30000);
         });
     }
+
+    /** ⚡ Đợt phát mã vừa tải lại → vẽ lại ô (đổi số mã còn lại tại chỗ, không nháy). */
+    void dropChanged() { if (!destroyed) Drop.fill(this, dropV); }
 
     /** 🎁 Ưu đãi vừa tải lại (SQL v35) → dòng chữ chạy; nội dung ĐỔI thì vẽ lại trang đang mở (ô Kiếm tiền / Ưu đãi, chữ dùng thử, mã của tôi). */
     void offersChanged() {

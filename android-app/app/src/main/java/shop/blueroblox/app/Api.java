@@ -654,6 +654,16 @@ public final class Api {
                 {"PLAY_API_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 {"PLAY_SERVER_ERROR", "Đã thanh toán nhưng máy chủ chưa xác nhận được với Google — app tự thử lại, KHÔNG cần mua lại.", "Paid, but the server couldn't confirm with Google yet — the app retries automatically, don't buy again."},
                 // 🎡 vòng quay may mắn (SQL v34c)
+                // ⚡ phát mã nhanh tay (SQL v38) — tiếng Việt lấy câu của máy chủ ở trên
+                {"DROP_OUT", "Đã phát hết mã đợt này — chờ đợt sau nhé!", "All codes in this drop are gone — catch the next one!"},
+                {"DROP_SOON", "Chưa tới giờ phát mã — chờ chút nhé.", "The drop hasn't opened yet — hang on."},
+                {"DROP_ENDED", "Đợt phát mã đã kết thúc.", "This code drop has ended."},
+                {"DROP_NONE", "Đợt phát mã này không còn nữa.", "This code drop no longer exists."},
+                {"DROP_NEED_TOPUP", "Mã này dành cho tài khoản đã nạp tiền — nạp rồi quay lại nhận nhé.", "This code is for accounts that have topped up — top up, then come back."},
+                {"DROP_NEW_ACCOUNT", "Mã này dành cho tài khoản tạo trước lúc phát mã.", "This code is for accounts created before the drop started."},
+                {"DROP_SAME_DEVICE", "Máy này đã nhận mã đợt này bằng tài khoản khác — mỗi máy 1 mã.", "This device already claimed a code from this drop with another account."},
+                {"SWITCH_OLD_PENDING", "Máy cũ của lần đổi Android trước chưa xoá xong — đợi xong rồi đổi tiếp nhé.", "Your previous Android switch is still deleting the old phone — wait, then switch again."},
+                {"SWITCH_NEW_PENDING", "Máy mới của lần đổi Android trước đang tạo — đợi xong rồi đổi tiếp nhé.", "Your previous Android switch is still creating the new phone — wait, then switch again."},
                 {"PROMO_NOT_YOURS", "Mã này là mã riêng của tài khoản khác — chỉ tài khoản được tặng mới dùng được.", "This code belongs to another account — only that account can use it."},
                 {"WHEEL_NO_SPIN", "Bạn đã hết lượt quay — nạp thêm để nhận lượt mới.", "You have no spins left — top up to earn more."},
                 {"WHEEL_NOT_STARTED", "Vòng quay chưa bắt đầu.", "The lucky wheel hasn't started yet."},

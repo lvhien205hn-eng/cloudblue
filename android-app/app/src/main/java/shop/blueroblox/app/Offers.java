@@ -110,6 +110,7 @@ final class Offers {
     }
     static String codeLabel(JSONObject c) { return c.optString("code") + "  −" + (c.optInt("pct") > 0 ? c.optInt("pct") + "%" : Ui.vnd(c.optDouble("amount"))); }
     static String srcName(String s) {
+        if ("drop".equals(s)) return Ui.L("⚡ Mã nhanh tay", "⚡ Flash code");
         return "wheel".equals(s) ? Ui.L("🎡 Vòng quay", "🎡 Lucky wheel") : "topup".equals(s) ? Ui.L("💰 Ưu đãi nạp", "💰 Top-up bonus") : Ui.L("🎁 Quà tặng", "🎁 Gift");
     }
     static void copy(Context c, String code) {
@@ -231,6 +232,7 @@ final class Offers {
         Runnable[] draw = new Runnable[1];
         draw[0] = () -> {
             c.removeAllViews();
+            { View dv = Drop.offerBlock(a, () -> { if (d[0] != null) d[0].dismiss(); }); if (dv != null) c.addView(dv, Ui.fill()); }   // ⚡ đang phát mã (SQL v38)
             JSONObject p = pub, m = my;
             if (p == null) { c.addView(Ui.muted(a, Ui.L("Hiện chưa có ưu đãi nào.", "No offers right now.")), Ui.fill()); return; }
             JSONArray cs = m == null ? null : m.optJSONArray("codes");
