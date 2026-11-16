@@ -24,7 +24,7 @@
 #  cloudphone.conf:  STREAM_PORT=8189 · STREAM_WS_PORT=8020 · STREAM_WS=wss://stream.blueroblox.shop/v2/stream
 #                    STREAM_PUBLIC_IP= (trống = tự dò) · STREAM_CPU=1 (luôn nén CPU) · NVENC_MAX=5 · UPNP=0 (không tự mở cổng)
 # =====================================================================================================
-import asyncio, base64, collections, ctypes, datetime, hashlib, json, logging, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time
+import asyncio, base64, collections, ctypes, datetime, hashlib, json, logging, os, queue, random, re, select, socket, ssl, struct, subprocess, sys, threading, time
 import urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "16/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "16/11k"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
                                           # · 16/11a: máy tắt / Android chưa lên → tự gọi bật + báo rõ (hết quay mãi "chưa bật được hình")
@@ -1143,6 +1143,69 @@ class ScrcpySource:
     def stop(self): self.stopping = True
 
 
+# ---------- 16/11k: HÌNH VỠ / NHIỄU MÀU khi đổi FPS ----------
+# Khách đổi FPS (máy chạy 60–120 khung) mà xem bằng iPhone (xin 30) → bộ nén trong máy ảo bỏ qua giới hạn khung → máy chủ tưởng mạng
+# yếu, hạ bậc độ phân giải → scrcpy ra cỡ 360x640 / 536x960 … (cạnh KHÔNG chia hết 16). Bộ nén trong máy ảo + bộ giải mã iPhone
+# (VideoToolbox) dễ ra hình nhiễu màu / sọc ngang với cỡ lẻ như vậy. Giờ: (1) max_size cho scrcpy chọn sao cho CẢ HAI cạnh chia hết 16
+# (lệch tỉ lệ < 2%) · (2) bộ nén chia 1 khung thành nhiều gói (nhiều lát) → ghép lại đủ khung rồi mới gửi (trước: gửi từng lát như 1
+# khung → app giải mã khung thiếu → sọc / nhiễu; còn bị đếm gấp đôi khung → tưởng Android gửi thừa khung → hạ độ phân giải oan)
+# · (3) bộ scrcpy cũ được dọn hẳn trong máy khi bật bộ mới. Tắt (1): STREAM_ALIGN16=0 · tắt (2): STREAM_SLICE_JOIN=0.
+SCR_ALIGN = 8 if str(C.get("STREAM_ALIGN16", "1")).strip() == "0" else 16
+SLICE_JOIN = str(C.get("STREAM_SLICE_JOIN", "1")).strip() != "0"
+SLICE_WAIT = 0.03                         # giây chờ lát tiếp theo của khung đang ghép (chỉ khi chưa biết khung có mấy lát)
+_SLICE_SAID = set()
+
+
+def _scr_out(nw, nh, m):
+    """Cỡ hình scrcpy 2.4 sẽ phát cho màn nw×nh với max_size m (y như ScreenInfo.computeVideoSize của scrcpy)."""
+    w, h = int(nw) & ~7, int(nh) & ~7
+    if m > 0:
+        portrait = h > w
+        major, minor = (h, w) if portrait else (w, h)
+        if major > m:
+            minor = (minor * int(m) // major + 4) & ~7
+            major = int(m)
+        w, h = (minor, major) if portrait else (major, minor)
+    return w, h
+
+
+def _scr_max(nw, nh, want):
+    """max_size cho scrcpy: LỚN NHẤT ≤ want mà hình ra có CẢ HAI cạnh chia hết 16 (không có thì trả want như cũ)."""
+    try: nw, nh, want = int(nw), int(nh), int(want)
+    except (TypeError, ValueError): return want
+    if SCR_ALIGN <= 8 or nw <= 0 or nh <= 0: return want
+    major = max(nw, nh) & ~7
+    top = major if want <= 0 or want >= major else want
+    if top >= major:
+        w, h = _scr_out(nw, nh, 0)
+        if w % 16 == 0 and h % 16 == 0: return want
+        top = major - 1
+    m = top & ~15
+    while m >= max(160, int(top * 0.8)):
+        w, h = _scr_out(nw, nh, m)
+        if w % 16 == 0 and h % 16 == 0 and abs(w / h - nw / nh) <= 0.02 * (nw / nh): return m
+        m -= 16
+    return want
+
+
+def _first_mb(au):
+    """first_mb_in_slice của lát hình ĐẦU TIÊN trong gói Annex-B: 0 = đầu khung · > 0 = lát tiếp theo của khung trước · None = không có lát."""
+    try:
+        i = 0; n = len(au)
+        while True:
+            j = au.find(b"\x00\x00\x01", i)
+            if j < 0 or j + 4 >= n: return None
+            if au[j + 3] & 0x1F in (1, 5):
+                raw = au[j + 4:j + 16]; rb = bytearray(); z = 0
+                for x in raw:                                    # bỏ byte chống giả mã (00 00 03)
+                    if z >= 2 and x == 3: z = 0; continue
+                    rb.append(x); z = z + 1 if x == 0 else 0
+                return _Bits(bytes(rb)).ue()
+            i = j + 3
+    except Exception:
+        return None
+
+
 class ScrcpyVideo:
     """Hình lấy THẲNG từ Android: scrcpy-server 2.4 (video=true, control=false) mã hoá H.264 ngay trong máy → từng khung Annex-B → on_au.
        Dùng khi Windows không quay được cửa sổ giả lập (Windows 10 trước 1903: PrintWindow chỉ ra màn ĐEN với MEmu).
@@ -1154,6 +1217,7 @@ class ScrcpyVideo:
         except (TypeError, ValueError): self.iframe = 1.0
         self.enc = "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
         self.lock = threading.Lock(); self.w = self.h = 0; self.frames_in = 0; self.started = 0.0
+        self.scid = 0; self.pk_in = 0; self.cont_in = 0; self.multi = False; self.layout = None   # 16/11k: gói / lát tiếp theo / khung nhiều lát
 
     def start(self):
         """Bật scrcpy-server + nối socket hình → (rộng, cao) THẬT của hình. Lỗi → RuntimeError."""
@@ -1162,7 +1226,7 @@ class ScrcpyVideo:
             if self.ready_wait > 0 and not adb_ready(self.serial, self.ready_wait): raise AdbGone(f"adb không thấy máy {self.serial}")
             if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
             push_jar(self.serial)
-        scid = random.randint(1, 0x7FFFFFFF)
+        scid = random.randint(1, 0x7FFFFFFF); self.scid = scid
         cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
                "video=true audio=false control=false tunnel_forward=true send_device_meta=false send_dummy_byte=true "
                "send_codec_meta=true send_frame_meta=true cleanup=false power_on=false video_codec=h264 "
@@ -1214,23 +1278,55 @@ class ScrcpyVideo:
                 if t and not self.stopped: log(f"  [scrcpy hình {self.serial}] {t[:200]}")
         except Exception: pass
 
+    def _emit(self, it):
+        """it = [dữ liệu, khung khoá?, có SPS/PPS?, pts, [các first_mb]] → gửi 1 khung ĐỦ lát; nhớ cách chia lát để lần sau gửi ngay."""
+        if len(it[4]) > 1: self.layout = tuple(it[4])
+        self.on_au(bytes(it[0]), it[1], it[2], it[3])
+
     def _reader(self, s):
-        cfg = b""
+        cfg = b""; held = None
         try:
             while not self.stopped:
+                if held is not None:                                 # đang ghép khung nhiều lát: chờ lát kế tối đa SLICE_WAIT giây
+                    try: rd = select.select([s], [], [], SLICE_WAIT)[0]
+                    except (OSError, ValueError): rd = [s]
+                    if not rd: self._emit(held); held = None; continue
                 pf, n = struct.unpack(">QI", _recv_exact(s, 12))
                 data = _recv_exact(s, n)
                 if pf & (1 << 63):                                   # gói cấu hình (SPS/PPS) → ghép trước mỗi khung khoá
+                    if held is not None: self._emit(held); held = None
                     cfg = data
                     d = _sps_dims(cfg)
                     if d and d != (self.w, self.h):                  # máy xoay / đổi cỡ → báo app cỡ mới TRƯỚC khung khoá mới
                         self.w, self.h = d
                         if self.on_size: self.on_size(*d)
                     continue
-                key = bool(pf & (1 << 62)); self.frames_in += 1
-                self.on_au(cfg + data if key and cfg else data, key, key and bool(cfg), int(time.monotonic() * 1e6))
+                key = bool(pf & (1 << 62)); self.pk_in += 1
+                fm = _first_mb(data) if SLICE_JOIN else None
+                if fm:                                               # lát TIẾP THEO của cùng 1 khung (16/11k)
+                    self.cont_in += 1
+                    if held is not None:
+                        if key and not held[1] and cfg: held[0][0:0] = cfg; held[2] = True      # cờ khung khoá nằm ở lát sau
+                        held[0] += data; held[1] = held[1] or key; held[4].append(fm)
+                        if self.layout and len(held[4]) == len(self.layout) and fm == self.layout[-1]: self._emit(held); held = None
+                        continue
+                    if not self.multi:
+                        self.multi = True
+                        if self.serial not in _SLICE_SAID:
+                            _SLICE_SAID.add(self.serial)
+                            log(f"  [hình {self.serial}] bộ nén trong máy chia mỗi khung thành nhiều gói → ghép đủ khung rồi mới gửi (hết sọc / nhiễu)")
+                    self.on_au(None, False, False, int(time.monotonic() * 1e6))   # lát lẻ của khung đã gửi → bỏ, chờ khung khoá kế
+                    continue
+                if held is not None: self._emit(held); held = None
+                self.frames_in += 1
+                au = cfg + data if key and cfg else data; ts = int(time.monotonic() * 1e6)
+                if self.multi: held = [bytearray(au), key, key and bool(cfg), ts, [0]]
+                else: self.on_au(au, key, key and bool(cfg), ts)
         except Exception:
             pass
+        if held is not None and not self.stopped:
+            try: self._emit(held)
+            except Exception: pass
         if not self.stopped:
             log(f"  [hình {self.serial}] scrcpy ngừng gửi hình → bật lại")
             self._kill()                                             # tiến trình dừng → phiên xem tự bật lại hình
@@ -1239,6 +1335,9 @@ class ScrcpyVideo:
         with self.lock:
             s, p, fp = self.sock, self.proc, self.fport
             self.sock = None; self.fport = None
+        if p is not None and self.scid and not getattr(self, "_swept", False):   # 16/11k: dọn hẳn bộ scrcpy này TRONG máy (không để 2 bộ nén chạy chồng)
+            self._swept = True
+            threading.Thread(target=adb, args=(self.serial, "shell", f"pkill -f scid={self.scid:08x}"), kwargs={"timeout": 8}, daemon=True).start()
         try:
             if s: s.shutdown(socket.SHUT_RDWR)
         except Exception: pass
@@ -2116,7 +2215,8 @@ class Session:
         op = getattr(old_enc, "proc", None)                   # bộ scrcpy cũ đang chạy tốt (đã ra khung, tiến trình adb còn sống) → máy thấy được, file có sẵn
         quick = bool(self.vid_ok_t) and getattr(old_enc, "enc", "") == "scrcpy" and getattr(old_enc, "frames_in", 0) > 0 and op is not None and op.poll() is None
         self.vid_ok_t = 0.0                                    # bật lỗi → lần sau kiểm adb + file đầy đủ
-        enc = ScrcpyVideo(self.serial, max(ow, oh), fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
+        msz = _scr_max(self.src.cw, self.src.ch, max(ow, oh))       # 16/11k: cả hai cạnh hình chia hết 16
+        enc = ScrcpyVideo(self.serial, msz, fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
                           iframe=self._iframe(fps, kbps), quick=quick, ready_wait=wait)
         self.enc = enc
         if old_enc: old_enc.stop()
@@ -4079,6 +4179,154 @@ def captest(name, port=None):
     return 0 if ok else 1
 
 
+def _png_size(path):
+    try:
+        b = open(path, "rb").read(24)
+        return struct.unpack(">II", b[16:24]) if b[:8] == b"\x89PNG\r\n\x1a\n" else None
+    except OSError: return None
+
+
+def _shot(serial, path):
+    """Chụp màn hình THẬT của Android (không qua bộ nén) → file PNG. True = được."""
+    try:
+        p = subprocess.run([ADB, "-s", serial, "exec-out", "screencap", "-p"], capture_output=True, timeout=20, creationflags=NOWIN)
+        if p.returncode == 0 and p.stdout[:8] == b"\x89PNG\r\n\x1a\n": open(path, "wb").write(p.stdout); return True
+    except Exception: pass
+    return False
+
+
+def _ffrun(args, timeout=60):
+    try:
+        p = subprocess.run([FF, "-hide_banner"] + args, capture_output=True, timeout=timeout, creationflags=NOWIN)
+        return p.returncode, (p.stderr or b"").decode("utf-8", "replace")
+    except Exception as e: return -1, str(e)
+
+
+def _ssim(a, b):
+    """Độ giống 2 ảnh (SSIM 0–1) bằng FFmpeg; ảnh b được co về cỡ ảnh a. Không đo được → None."""
+    z = _png_size(a)
+    if not z or not os.path.isfile(b): return None
+    code, err = _ffrun(["-i", a, "-i", b, "-lavfi", f"[1:v]scale={z[0]}:{z[1]}:flags=area,format=yuv420p[r];[0:v]format=yuv420p[m];[m][r]ssim",
+                        "-f", "null", "-"], 60)
+    m = re.search(r"All:([0-9.]+)", err)
+    return float(m.group(1)) if m else None
+
+
+def _sps_info(au):
+    """(profile, level) đọc từ SPS trong gói Annex-B."""
+    for n in re.split(b"\x00\x00\x01", au or b""):
+        if n and (n[0] & 0x1F) == 7 and len(n) >= 4: return n[1], n[3]
+    return None
+
+
+def kiemhinh(name=None, port=None):
+    """16/11k: CHẨN ĐOÁN HÌNH VỠ / NHIỄU MÀU (máy MuMu, đường scrcpy) ngay trên máy chủ — không cần app, không đụng phiên khách:
+         python bluestream.py --kiemhinh TÊN_MÁY [CỔNG_ADB]
+       Để máy ở MÀN HÌNH CHÍNH (đứng yên) rồi chạy. Ghi hình thẳng từ Android 4 lần, mỗi lần ~4 giây:
+         A cỡ 1280 như thường · B cỡ 640 kiểu cũ (rộng 360, không chia hết 16) · C cỡ 1280 + 1 ô xem trước chạy cùng lúc · D xin 60 khung.
+       Mỗi lần: khung/giây thật, số lát mỗi khung, cỡ, profile/level, số lỗi giải mã (FFmpeg), độ giống ảnh chụp màn hình thật (SSIM).
+       In KẾT LUẬN; ảnh lưu ở logs\\kiemhinh_<tên>_*.png để tự xem."""
+    if not name:                                             # không ghi tên → chọn máy khách đang chạy, ưu tiên FPS cao (máy đã đổi FPS)
+        cand = sorted(((n, p) for n, p in phones_json().items() if str(n).startswith("cp_") and p.get("port")),
+                      key=lambda x: -int(x[1].get("fps") or 30))
+        for n, p in cand:
+            s_ = f"127.0.0.1:{p['port']}"; adb_connect(s_)
+            if adb_ready(s_, 2): name, port = n, p["port"]; break
+        if not name: print("  ✗ không có máy khách nào đang chạy để thử — ghi tên máy: --kiemhinh TÊN_MÁY"); return 1
+    print(f"== Chẩn đoán hình máy {name} (bản {BS_SUB}) — để máy đứng yên ở màn hình chính trong lúc chạy (~40 giây)")
+    port = port or (phones_json().get(name) or {}).get("port")
+    if not port: print("  ✗ không biết cổng adb của máy này → thêm cổng: --kiemhinh TÊN CỔNG"); return 1
+    serial = f"127.0.0.1:{port}"; adb_connect(serial)
+    if not adb_ready(serial, 15): print(f"  ✗ adb không thấy máy {serial} (máy tắt / đang khởi động)"); return 1
+    if not ensure_jar(): print("  ✗ thiếu scrcpy-server"); return 1
+    push_jar(serial)
+    ld = os.path.join(B, "logs"); os.makedirs(ld, exist_ok=True)
+    base = os.path.join(ld, "kiemhinh_" + re.sub(r"[^A-Za-z0-9_.-]", "_", name))
+    nat = device_size(serial) or (0, 0)
+    _, disp, _ = adb(serial, "shell", "dumpsys display | grep -m6 -o -E 'fps=[0-9.]+|renderFrameRate [0-9.]+'", timeout=15)
+    _, ver, _ = adb(serial, "shell", "getprop ro.build.version.release", timeout=10)
+    fr = sorted(set(float(x) for x in re.findall(r"(?:fps=|renderFrameRate )([0-9]+(?:\.[0-9]+)?)", disp or "")))
+    print(f"  Android {ver.strip() or '?'} · màn {nat[0]}x{nat[1]} · khung/giây màn hình: {' / '.join(f'{x:g}' for x in fr) or '?'}")
+    code, enc_out, _ = adb(serial, "shell", f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 list_encoders=true log_level=info", timeout=25)
+    encs = re.findall(r"--video-codec=h264\s+--video-encoder='?([\w.\-]+)'?", enc_out or "")
+    print(f"  bộ nén H.264 trong máy: {', '.join(encs) or '?'}" + (f"  (mặc định: {encs[0]})" if encs else ""))
+    try: ensure_ffmpeg()                                       # máy chủ phát hình đã tải sẵn lúc bật — thiếu thì tải 1 lần
+    except Exception: pass
+    ff_ok = os.path.isfile(FF) or FF == "ffmpeg"
+    if not ff_ok: print("  (máy chủ chưa có FFmpeg → chỉ đếm khung, không đo lỗi giải mã / độ giống)")
+    res = {}
+
+    def one(tag, msz, fps, kbps, with_preview=False):
+        got = []; lock = threading.Lock(); sv = pv = None; out = {"tag": tag}
+        def on_au(d, k, c, p):
+            if d is not None:
+                with lock: got.append(bytes(d))
+        shot0 = base + f"_{tag}_truoc.png"; s0 = _shot(serial, shot0)
+        try:
+            sv = ScrcpyVideo(serial, msz, fps, kbps, on_au, iframe=1.0)
+            w, h = sv.start(); out["size"] = (w, h)
+            if with_preview:
+                try: pv = ScrcpyVideo(serial, 480, 8, 400, lambda *a: None, iframe=1.0); pv.start()
+                except Exception as e: out["pv_err"] = repr(e)[:80]
+            t0 = time.time(); time.sleep(4.0); dt = max(0.5, time.time() - t0)
+            out.update(frames=sv.frames_in, pk=sv.pk_in, cont=sv.cont_in, fps=sv.frames_in / dt)
+        except Exception as e:
+            out["err"] = repr(e)[:160]
+        finally:
+            if pv: pv.stop()
+            if sv: sv.stop()
+        with lock: aus = list(got)
+        if not aus: return out
+        si = next((_sps_info(a) for a in aus if _sps_info(a)), None)
+        if si: out["prof"] = si
+        f264 = base + f"_{tag}.h264"; open(f264, "wb").write(b"".join(aus))
+        shot = base + f"_{tag}_man.png"; out["shot"] = _shot(serial, shot)
+        if ff_ok:
+            code, err = _ffrun(["-v", "error", "-i", f264, "-f", "null", "-"], 90)
+            out["dec_err"] = len([x for x in err.splitlines() if x.strip()])
+            last = base + f"_{tag}_hinh.png"
+            _ffrun(["-v", "error", "-i", f264, "-update", "1", "-y", last], 90)
+            st_ = _ssim(shot, shot0) if s0 and out["shot"] else None
+            out["static"] = st_ is not None and st_ >= 0.9
+            if out["static"] and os.path.isfile(last): out["ssim"] = _ssim(last, shot)
+        return out
+
+    tests = [("A", 1280, 30, 3000, False), ("B", 640, 30, 1500, False), ("C", 1280, 30, 3000, True), ("D", 1280, 60, 3000, False)]
+    for tag, msz, fps, kbps, pv in tests:
+        r = one(tag, msz, fps, kbps, pv); res[tag] = r; time.sleep(1.0)
+        nm = {"A": "1280 như thường", "B": "640 kiểu cũ (cỡ lẻ)", "C": "1280 + ô xem trước cùng lúc", "D": "1280 xin 60 khung"}[tag]
+        if "err" in r and "frames" not in r: print(f"  {tag} {nm}: ✗ lỗi {r['err']}"); continue
+        sz = r.get("size") or (0, 0); pr = r.get("prof")
+        print(f"  {tag} {nm}: {sz[0]}x{sz[1]}" + ("" if sz[0] % 16 == 0 and sz[1] % 16 == 0 else " (KHÔNG chia hết 16)")
+              + f" · {r.get('fps', 0):.0f} khung/giây (xin {fps}) · {r.get('pk', 0)} gói / {r.get('frames', 0)} khung"
+              + (f" · {r['cont']} lát tách rời" if r.get("cont") else "")
+              + (f" · {({66: 'Baseline', 77: 'Main', 100: 'High'}).get(pr[0], 'profile ' + str(pr[0]))} {pr[1] / 10:g}" if pr else "")
+              + (f" · lỗi giải mã {r['dec_err']}" if "dec_err" in r else "")
+              + (f" · giống màn thật {r['ssim']:.2f}" if r.get("ssim") is not None else " · màn đang thay đổi (không so độ giống)" if "static" in r else "")
+              + (f" · ô xem trước lỗi {r['pv_err']}" if r.get("pv_err") else ""))
+
+    def dirty(r):
+        if not r or "frames" not in r: return None
+        if r.get("dec_err", 0) > 0: return True
+        if r.get("ssim") is not None: return r["ssim"] < 0.6
+        return None
+    vA, vB, vC, vD = (dirty(res.get(t)) for t in "ABCD")
+    print("== KẾT LUẬN")
+    said = False
+    if any((res.get(t) or {}).get("cont") for t in "ABCD"):
+        print("  • Bộ nén trong máy chia 1 khung thành nhiều gói → bản 16/11k ĐÃ ghép lại đủ khung trước khi gửi (hết sọc / nhiễu do khung thiếu)."); said = True
+    if vA is False and vB: print("  • Cỡ hình lẻ (không chia hết 16) làm hỏng hình → bản 16/11k ĐÃ luôn chọn cỡ chia hết 16."); said = True
+    if vA is False and vC: print("  • 2 bộ nén chạy cùng lúc (xem trước + điều khiển) làm hỏng hình → gửi dòng này cho Claude."); said = True
+    if vA is False and vD: print("  • Xin 60 khung làm hỏng hình → gửi dòng này cho Claude."); said = True
+    if vA:
+        print("  • Ngay cả cỡ thường cũng hỏng → bộ nén / màn hình trong máy ảo đang lỗi ở FPS hiện tại của máy. Xem ảnh "
+              f"{os.path.basename(base)}_A_man.png (màn hình thật): ảnh đó cũng nhiễu = lỗi giả lập, ảnh đẹp = lỗi bộ nén → gửi Claude cả phần này."); said = True
+    if not said:
+        print("  • Hình phát ra từ máy SẠCH ở mọi kiểu thử → lỗi nằm ở đường truyền / trình duyệt của khách (gửi Claude phần này + ảnh khách chụp).")
+    print(f"  (file: {base}_*.h264 / *_hinh.png / *_man.png)")
+    return 0
+
+
 class _QuietNet(logging.Filter):
     """13/11d: bỏ cảnh báo của asyncio khi app ngắt ngang ("SSL connection is closed", "socket.send() raised exception.")."""
     def filter(self, rec):
@@ -4130,6 +4378,7 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
+    log(f"nén 16/11k: hình scrcpy cạnh chia hết 16 {'BẬT' if SCR_ALIGN == 16 else 'TẮT'} · ghép lát {'BẬT' if SLICE_JOIN else 'TẮT'} (chẩn đoán hình vỡ: python bluestream.py --kiemhinh TÊN_MÁY)")
     log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
         + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"
         " · máy Android gửi nhiều khung hơn đã xin thì tính bù · máy đang khởi động lại → báo khách chờ, tự vào khi máy lên")
@@ -4159,6 +4408,9 @@ if __name__ == "__main__":
         _a = sys.argv[sys.argv.index("--captest") + 1:]
         if not _a: print("Cách dùng: python bluestream.py --captest TÊN_MÁY [CỔNG_ADB]"); sys.exit(2)
         sys.exit(captest(_a[0], _a[1] if len(_a) > 1 else None))
+    if "--kiemhinh" in sys.argv:                                 # 16/11k: chẩn đoán hình vỡ / nhiễu màu của 1 máy
+        _a = sys.argv[sys.argv.index("--kiemhinh") + 1:]
+        sys.exit(kiemhinh(_a[0] if _a else None, _a[1] if len(_a) > 1 else None))
     if "--upnp" in sys.argv:                                     # thử mở cổng trên modem bằng UPnP (không chạy máy chủ)
         sys.exit(upnp_cli())
     if "--webdirect" in sys.argv:                                # bật / kiểm đường thẳng cho web + iPhone (mã Cloudflare, chứng chỉ)

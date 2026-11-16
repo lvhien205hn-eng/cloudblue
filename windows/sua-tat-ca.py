@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611h):
-#        phonectl     — 16/11e: KHỞI ĐỘNG LẠI KHÔNG KẸT: xin lượt bật khi máy còn chạy rồi mới tắt (máy không nằm tắt chờ lượt) · lệnh
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611k):
+#        phonectl     — 16/11k: SỔ KHOÁ ANDROID HỎNG (máy mới / máy đang chạy sập liên tục, màn đen, khách chờ hàng giờ) → tự
+#                       sửa lúc máy lên + lệnh ksfix · đặt ảnh nền xong chờ giao diện lên thật mới giao máy
+#                       16/11e: KHỞI ĐỘNG LẠI KHÔNG KẸT: xin lượt bật khi máy còn chạy rồi mới tắt (máy không nằm tắt chờ lượt) · lệnh
 #                       tạo máy (nhân bản) nhường máy đang khởi động lại bật trước · chống kẹt: máy chủ bận thì để lần sau, không tắt
 #                       máy rồi chờ CPU dịu · dấu "đang khởi động lại" ghi lúc tắt thật, kèm giờ chạy (không nhầm số PID cũ)
-#        bluestream   — 16/11e: nhận đúng lệnh khởi động lại còn chạy · quá 3 phút báo thật "máy chủ đang bận" · app PC không bị bảo
+#        bluestream   — 16/11k: HẾT HÌNH VỠ / NHIỄU MÀU khi đổi FPS (cỡ hình chia hết 16, ghép đủ lát mỗi khung, dọn bộ nén cũ) ·
+#                       chẩn đoán: python bluestream.py --kiemhinh TÊN_MÁY
+#                       16/11e: nhận đúng lệnh khởi động lại còn chạy · quá 3 phút báo thật "máy chủ đang bận" · app PC không bị bảo
 #                       bấm khởi động lại lần nữa khi máy đang khởi động lại
 #        cpapi        — 16/11e: lệnh khởi động lại / đổi FPS / root / chế độ vẽ được chờ tới 40 phút (trước 2 phút → bị cắt giữa chừng,
 #                       máy nằm tắt, khách thấy "Không khởi động lại được … timed out")
@@ -44,7 +48,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11h"
+VER = "16/11k"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -59,11 +63,11 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11e"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11k"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _cyc_busy", None),
+         ("windows/phonectl.py", "phonectl.py", "def keystore_heal", None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "nén 16/11e", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "nén 16/11k", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -206,7 +210,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611h"
+            bak = lp + ".truoc-1611k"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -463,12 +467,19 @@ def focus(s):
 
 def is_home(pk): return pk in ("-", "?") or any(k in pk.lower() for k in HOME_PK)
 
+# 16/11k: sổ khoá Android (keystore2) hỏng → Android sập / khởi động lại liên tục (màn đen, khách chờ mãi) — xem phonectl ksfix
+KS_SH = ("F=/data/misc/keystore/persistent.sqlite; if [ ! -e $F ]; then echo KS_NOFILE; elif [ ! -s $F ]; then echo KS_EMPTY; "
+         "elif ! H=$(head -c 15 $F); then echo KS_ERR; elif [ \"$H\" = \"SQLite format 3\" ]; then echo KS_OK; else echo KS_BAD; fi")
+def ks_bad(s): return "KS_BAD" in adb("-s", s, "shell", "su -c '" + KS_SH + "'", t=20)
+
 def check_phone(p):
     nm = str(p["name"]); s = "127.0.0.1:%s" % p["port"]; r = {"name": nm, "s": s, "port": p["port"], "st": "OK", "note": "", "act": None}
     ok, note = adb_ok(s)
     if note: r["note"] += " (" + note + ")"
     if not ok: r.update(st="MẤT ADB", act="restart"); return r
     if not booted(s): r.update(st="CHƯA LÊN", act="restart"); return r
+    if ks_bad(s):
+        r.update(st="SỔ KHOÁ HỎNG", act="ksfix"); r["note"] += " — Android sẽ sập liên tục (màn đen) → sửa sổ khoá + khởi động lại"; return r
     w = adb("-s", s, "shell", "dumpsys power | grep -m1 mWakefulness=", t=10)
     if "mWakefulness=" in w and "Awake" not in w:
         adb("-s", s, "shell", "input keyevent 224", t=10); r["note"] += " (màn hình đang TẮT → đã bật sáng)"; time.sleep(1)
@@ -602,7 +613,7 @@ def fix_phones(res, extra):
         if r["st"] in ("CHƯA LÊN", "MẤT ADB"):
             if whole: say(f"   - {r['name']}: bảng đang bật lại máy khách hàng loạt — để bảng làm xong"); continue
             slow.append(r); continue
-        jobs.append(("restart", r["name"], r["s"], r["st"]))
+        jobs.append(("ksfix" if r["act"] == "ksfix" else "restart", r["name"], r["s"], r["st"]))
     if slow:                                                  # có thể đang khởi động dở → chờ chung thêm 45 giây
         say(f"   … {len(slow)} máy chưa lên — chờ thêm 45 giây xem có tự lên không")
         t0 = time.time()
@@ -619,9 +630,9 @@ def fix_phones(res, extra):
     lock = threading.Lock()
     def one(j):
         kind, nm, s, why = j
-        code, out = pctl(*(["restart", nm, "--force"] if kind == "restart" else ["start", nm]), t=600)
+        code, out = pctl(*(["restart", nm, "--force"] if kind == "restart" else ["ksfix", nm] if kind == "ksfix" else ["start", nm]), t=900)
         last = " / ".join(x.strip() for x in out.strip().splitlines()[-2:]) or "(không có kết quả)"
-        with lock: say(f"   {'✓' if code == 0 else '✗'} {nm} ({why}) → {'ép khởi động lại' if kind == 'restart' else 'bật lại'}: {last[:160]}")
+        with lock: say(f"   {'✓' if code == 0 else '✗'} {nm} ({why}) → {'ép khởi động lại' if kind == 'restart' else 'sửa sổ khoá' if kind == 'ksfix' else 'bật lại'}: {last[:160]}")
         return j, code
     done = []
     with cf.ThreadPoolExecutor(max_workers=3) as ex:
