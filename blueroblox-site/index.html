@@ -2158,6 +2158,7 @@ body.past-hero .m3-col{animation-play-state:paused}
   html[data-theme] #user-acts{flex:1 1 0;min-width:0;width:auto;flex-wrap:nowrap!important;overflow-x:auto;scrollbar-width:none;padding:2px 1px 4px}
   html[data-theme] #user-acts::-webkit-scrollbar{display:none}
   html[data-theme] #user-acts>*{flex:none}
+  html[data-theme] #user-acts.more{-webkit-mask-image:linear-gradient(90deg,#000 82%,transparent);mask-image:linear-gradient(90deg,#000 82%,transparent)}
   html[data-theme] #guest-acts{margin-left:auto}
 }
 
@@ -7243,8 +7244,12 @@ function cpCheck() {
 
 /* ---- Danh sách máy của khách (web chỉ thuê / cấu hình — điều khiển & xem màn hình bằng app, xem "Mở trong app") ---- */
 function cpGraceLeft(p) { if (!p.expires_at) return null; return Math.ceil((new Date(p.expires_at).getTime() + CP_GRACE_MIN * 60000 - Date.now()) / 60000); }
+function cpRebootT(id) { try { const t = +localStorage.getItem("cp_rb_" + id) || 0; return t && Date.now() - t < 5 * 60000 ? t : 0; } catch (e) { return 0; } }
+function cpRebootMark(id, on) { try { if (on) localStorage.setItem("cp_rb_" + id, String(Date.now())); else localStorage.removeItem("cp_rb_" + id); } catch (e) {} }
 function cpPill(p) {
-  const m = { pending: ["wt", "⏳ Đang tạo…"], active: ["ok", "● Đang chạy"], error: ["bad", "⚠ Lỗi"], expired: ["bad", "⏸ Hết hạn"], cancelling: ["wt", "Đang huỷ…"], cancelled: ["", "Đã huỷ"] };
+  if (p.status === "active" && cpRebootT(p.id)) return `<span class="pill wt">🔄 ${esc(L("Đang khởi động lại…", "Restarting…"))}</span>`;   // 16/11c
+  const m = { pending: ["wt", L("⏳ Đang tạo…", "⏳ Creating…")], active: ["ok", L("● Đang chạy", "● Running")], error: ["bad", L("⚠ Lỗi", "⚠ Error")],
+    expired: ["bad", L("⏸ Hết hạn", "⏸ Expired")], cancelling: ["wt", L("Đang huỷ…", "Cancelling…")], cancelled: ["", L("Đã huỷ", "Cancelled")] };
   const s = m[p.status] || ["", p.status]; return `<span class="pill ${s[0]}">${esc(s[1])}</span>`;
 }
 async function openCloud() {
@@ -10820,7 +10825,7 @@ cpGuide = function () {                                       // thay "Gợi ý 
 function cpTierSync() {
   const g = $("cp-guide"); if (!g || typeof cpSel !== "object" || !cpSel) return;
   const T = cpTiers();
-  g.hidden = !!cpSel.free || !T.length;
+  g.hidden = !T.length;                         // 16/11c: gói LUÔN hiện (đang bật dùng thử vẫn thấy — web là bộ mặt, phải đủ)
   g.querySelectorAll(".cpt").forEach(el => {
     const t = T.find(x => String(x.id) === el.dataset.tier); if (!t) return;
     const on = cpTierIs(t), b = el.querySelector(".cpt-btn"), a = el.querySelector(".cpt-and");
@@ -10850,8 +10855,18 @@ function cpTierPick(id) {
 }
 document.addEventListener("click", e => {
   const c = e.target.closest("#cp-tiers .cpt"); if (!c) return;
+  if (typeof cpSel === "object" && cpSel && cpSel.free) cpFreeOff();   // 16/11c: đang bật dùng thử mà bấm 1 gói → chuyển sang thuê trả phí gói đó
   cpTierPick(c.dataset.tier);
 });
+function cpFreeOff() {                          // tắt "Dùng thử miễn phí" (bấm gói trả phí khi đang bật dùng thử)
+  const sw = $("cp-free-sw"); if (sw) sw.checked = false;
+  cpSetFree(false);
+  const p = CPpricing || {}, on = $("cp-days") && $("cp-days").querySelector("button.on");   // số ngày: ô đang sáng (≠ số ngày dùng thử), không thì 7 như lúc mở hộp
+  const d = on && +on.dataset.v !== +(p.free_days || 0) ? +on.dataset.v : Math.min(Math.max(7, +p.min_days || 1), +p.max_days || 7);
+  cpSel.days = d; $("cp-days") && $("cp-days").querySelectorAll("button").forEach(z => z.classList.toggle("on", +z.dataset.v === d));
+  const dx = $("cp-days-x"); if (dx) dx.value = "";
+  cpOrderUpd();
+}
 { const _cpu = cpOrderUpd; cpOrderUpd = function () { const r = _cpu.apply(this, arguments); try { cpTierSync(); } catch (e) {} return r; }; }
 
 /* ---------- admin: sửa thẻ gói (📱 ĐT đám mây › 💰 Giá & thẻ bán) ---------- */
@@ -10929,7 +10944,7 @@ const cptClean = t => {                       // thẻ hiện cho khách: "Roblo
     fvi: Array.isArray(t.fvi) ? t.fvi.map(f) : t.fvi, fen: Array.isArray(t.fen) ? t.fen.map(f) : t.fen });
 };
 const cpNeedPick = () => typeof cpSel === "object" && !!cpSel && !cpSel.free && !cpSel.picked && cpTiers().length > 0;   // còn gói mà khách chưa chọn → chưa hiện giá
-{ const _is = cpTierIs; cpTierIs = function (t) { return typeof cpSel === "object" && !!cpSel && !!cpSel.picked && _is(t); }; }
+{ const _is = cpTierIs; cpTierIs = function (t) { return typeof cpSel === "object" && !!cpSel && !!cpSel.picked && !cpSel.free && _is(t); }; }
 { const _pk = cpTierPick; cpTierPick = function (id) { if (typeof cpSel === "object" && cpSel && !cpSel.free) cpSel.picked = true; return _pk.apply(this, arguments); }; }
 // tự chỉnh RAM / CPU / FPS / độ phân giải cũng tính là "đã chọn" (chạy trước bộ bắt sự kiện cũ)
 document.addEventListener("click", e => { if (typeof cpSel === "object" && cpSel && e.target.closest && e.target.closest("#cp-ram button, #cp-cpu button, #cp-fps button, #cp-resq button")) cpSel.picked = true; }, true);
@@ -10984,7 +10999,7 @@ cpGuide = function () {                       // bước 2: lưới thẻ gói (
 cpTierSync = function () {
   const g = $("cp-guide"); if (!g || typeof cpSel !== "object" || !cpSel) return;
   const T = cpTiers(), tr = $("cp-tiers");
-  g.hidden = !!cpSel.free || !T.length;
+  g.hidden = !T.length;                         // 16/11c: gói LUÔN hiện (đang bật dùng thử vẫn thấy — web là bộ mặt, phải đủ)
   if (tr && !g.hidden) {                      // vẽ lại thẻ (giá · chỗ trống từng bản Android đổi theo số máy) — giữ ô đang được bấm phím
     const ae = document.activeElement, fc = ae && tr.contains(ae) ? ae.closest(".cpt") : null, fid = fc ? fc.dataset.tier : null;
     tr.innerHTML = T.map(cpTierCard).join("");
@@ -11036,8 +11051,9 @@ function cpGate() {
   const need = cpNeedPick(), T = cpTiers(), b = $("cp-obuy"), p = CPpricing || {};
   dlg.classList.toggle("cp-nopick", need);
   const s2t = $("cp-s2-t"), s2s = $("cp-s2-s");
-  if (s2t) s2t.textContent = cpSel.free ? L("Cấu hình máy miễn phí", "Free phone setup") : T.length ? L("Chọn gói", "Choose a plan") : L("Cấu hình máy", "Phone setup");
-  if (s2s) s2s.textContent = cpSel.free ? L(`Tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân — để mặc định là dùng được.`, `Up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores — the defaults work fine.`)
+  if (s2t) s2t.textContent = T.length ? L("Chọn gói", "Choose a plan") : cpSel.free ? L("Cấu hình máy miễn phí", "Free phone setup") : L("Cấu hình máy", "Phone setup");
+  if (s2s) s2s.textContent = cpSel.free ? (T.length ? L("🎁 Đang chọn dùng thử miễn phí — muốn thuê trả phí thì bấm 1 gói bên dưới.", "🎁 Free trial selected — tap a plan below to rent a paid phone instead.")
+      : L(`Tối đa ${p.free_max_ram}GB RAM · ${p.free_max_cpu} nhân — để mặc định là dùng được.`, `Up to ${p.free_max_ram}GB RAM · ${p.free_max_cpu} cores — the defaults work fine.`))
     : T.length ? L("Bấm 1 gói để xem giá — muốn khác thì tự chỉnh ở dưới.", "Tap a plan to see the price — or customize below.") : L("Chọn RAM · CPU · FPS cho máy.", "Pick RAM · CPU · FPS.");
   const s3 = $("cp-s3");
   if (s3) {
@@ -11251,9 +11267,10 @@ async function cpFps(id) {
   };
   const reboot = async () => {
     if (booting) return; booting = true; bootMsg = ""; bootErr = false; draw();
+    cpRebootMark(p.id, true); try { renderCloud(); } catch (e) {}           // 16/11c: thẻ máy hiện "Đang khởi động lại…" (đóng trang máy vẫn tự khởi động)
     try { bootMsg = await cpRunJob(p.id + "/reboot", L("Đang khởi động lại máy", "Restarting the phone"), cpHost(p), {}) || L("Máy đã khởi động lại xong.", "The phone has restarted."); }
     catch (e) { bootErr = true; bootMsg = L("Chưa khởi động lại được: ", "Couldn't restart: ") + (e && e.message || e); }
-    finally { booting = false; if (!m.hidden) draw(); else toast(bootMsg, bootErr ? 1 : 0); }
+    finally { booting = false; cpRebootMark(p.id, false); try { renderCloud(); } catch (e) {} if (!m.hidden) draw(); else toast(bootMsg, bootErr ? 1 : 0); }
   };
   const draw = () => {
     const head = `<h3 id="cfp-t">🎞 ${L("Đổi FPS", "Change FPS")}</h3>
@@ -11263,7 +11280,7 @@ async function cpFps(id) {
         <div class="fpsnote ok">✅ ${L(`Đã lưu <b>${saved.fps} FPS</b>. Hình truyền về đổi ngay ở lần mở máy kế tiếp.`, `Saved <b>${saved.fps} FPS</b>. The picture you see changes the next time you open the phone.`)}</div>
         <div class="fpsnote">${L("Để FPS mới có tác dụng <b>bên trong game</b>, máy cần <b>khởi động lại 1 lần</b> (khoảng 1–2 phút). App đang mở trong máy sẽ tắt, <b>dữ liệu giữ nguyên</b>. Chưa tiện thì để sau — lần máy bật lại kế tiếp sẽ tự áp dụng.",
                                 "For the new FPS to apply <b>inside games</b> the phone must <b>restart once</b> (about 1–2 minutes). Apps running on the phone will close; <b>your data is kept</b>. Not now? It applies by itself the next time the phone starts.")}</div>
-        <div class="err" id="cfp-err"${bootErr ? "" : ' style="color:var(--ok)"'}>${booting ? esc(L("Đang khởi động lại máy… (1–2 phút, có thể đóng hộp này)", "Restarting… (1–2 minutes, you may close this)")) : esc(bootMsg)}</div>
+        <div class="err" id="cfp-err"${bootErr ? "" : ' style="color:var(--ok)"'}>${booting ? esc(L("Đang khởi động lại máy… (1–2 phút). Cứ đóng hộp này / thoát trang — máy vẫn tự khởi động, mở lại là vào.", "Restarting… (1–2 minutes). You can close this or leave — the phone keeps restarting; open it again when you're back.")) : esc(bootMsg)}</div>
         <div class="row2"><button class="btn ghost" type="button" data-cbx>${bootMsg && !bootErr ? L("Xong", "Done") : L("Để sau", "Later")}</button>
           <button class="btn" type="button" id="cfp-boot"${booting || (bootMsg && !bootErr) ? " disabled" : ""}>⚡ ${L("Khởi động lại ngay", "Restart now")}</button></div></div>`;
       $("cfp-boot").onclick = reboot; return;
@@ -11735,6 +11752,16 @@ function cbBlueMore() {
       toast("Đã lưu tên & nội dung thẻ Điện thoại đám mây.");
     } finally { cs.disabled = false; }
   });
+})();
+</script>
+<script>
+/* 16/11c — đầu trang trên điện thoại: hàng nút cuộn ngang bị che bớt → mép phải mờ dần (báo còn nút, vuốt ngang để xem) */
+(function () {
+  const ua = document.getElementById("user-acts"); if (!ua) return;
+  const f = () => ua.classList.toggle("more", ua.scrollWidth > ua.clientWidth + 4 && ua.scrollLeft + ua.clientWidth < ua.scrollWidth - 6);
+  ua.addEventListener("scroll", f, { passive: true }); addEventListener("resize", f);
+  try { new MutationObserver(f).observe(ua, { childList: true, subtree: true, attributes: true, attributeFilter: ["hidden", "style", "class"] }); } catch (e) {}
+  setTimeout(f, 400); f();
 })();
 </script>
 </body>
