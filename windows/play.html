@@ -1,0 +1,1535 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>CloudBlue – Điều khiển máy</title>
+<meta name="description" content="Điều khiển điện thoại đám mây CloudBlue ngay trên trình duyệt (iPhone, iPad, Mac, máy tính).">
+<link rel="manifest" href="/play.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="CloudBlue">
+<meta name="theme-color" content="#060a1c">
+<link rel="preconnect" href="https://nprftgodswlpzomcttal.supabase.co" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap">
+<style>
+/* CloudBlue — trang điều khiển máy trên trình duyệt (iPhone / iPad / Mac / máy tính chưa cài app).
+   Màu theo web chính: nền xanh đêm, xanh trời cho điều hướng, chữ trắng ngà. Màn hình máy là trung tâm — mọi thứ khác thu nhỏ quanh nó. */
+:root{
+  --bg:#060a1c; --bg2:#070c22; --panel:#0e1638; --panel2:#16224f; --line:rgba(143,208,255,.14); --line2:rgba(143,208,255,.28);
+  --fg:#eef3ff; --muted:#97a5cf; --blue:#3d7bff; --blue2:#2a5fe0; --sky:#8fd0ff; --ok:#3ce0b0; --warn:#ffc46b; --bad:#ff6b81;
+  --font:"Be Vietnam Pro",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px); --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  --app-h:100dvh;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:var(--font);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+a{color:var(--sky)}
+button{font:inherit;color:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+
+/* ---------- đăng nhập + danh sách ---------- */
+.page{min-height:100%;padding:calc(18px + var(--sat)) calc(16px + var(--sar)) calc(24px + var(--sab)) calc(16px + var(--sal));
+  background:radial-gradient(70% 45% at 85% 0%,rgba(61,123,255,.16),transparent 70%),radial-gradient(60% 40% at 0% 100%,rgba(143,208,255,.08),transparent 70%)}
+.wrap{max-width:560px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--fg)}
+.brand img{width:36px;height:36px;border-radius:10px}
+.brand b{font-size:20px;font-weight:800;letter-spacing:-.4px}
+.brand b em{font-style:normal;color:var(--sky)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:22px}
+.lnk{background:none;border:0;color:var(--muted);font-size:14px;padding:8px 4px}
+.topr{display:flex;align-items:center;gap:6px}
+.lnk.langb{border:1px solid var(--line, rgba(140,180,255,.35));border-radius:999px;padding:6px 12px;font-weight:600;color:var(--fg, #e8f1ff)}
+.lnk:hover{color:var(--fg)}
+h1{font-size:26px;line-height:1.2;margin:0 0 6px;letter-spacing:-.5px}
+.sub{color:var(--muted);margin:0 0 20px}
+.card{background:linear-gradient(180deg,rgba(22,34,79,.55),rgba(14,22,56,.75));border:1px solid var(--line);border-radius:16px;padding:16px}
+.form label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+.form input{width:100%;font:inherit;font-size:16px;color:var(--fg);background:#0a1230;border:1px solid var(--line2);border-radius:12px;padding:12px 14px}
+.form input:focus{outline:none;border-color:var(--sky)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;padding:12px 18px;font-weight:700;
+  background:var(--blue);color:#fff;text-decoration:none;min-height:44px}
+.btn:hover{background:var(--blue2)}
+.btn.ghost{background:transparent;border:1px solid var(--line2);color:var(--fg)}
+.btn.ghost:hover{border-color:var(--sky)}
+.btn.wide{width:100%;margin-top:18px}
+.btn:disabled{opacity:.5;cursor:default}
+.err{color:var(--bad);font-size:14px;min-height:20px;margin-top:10px}
+.tip{display:flex;gap:12px;align-items:flex-start;border:1px dashed var(--line2);border-radius:14px;padding:12px 14px;margin:0 0 16px;color:var(--muted);font-size:14px}
+.tip b{color:var(--fg)}
+.tip .x{margin-left:auto;background:none;border:0;color:var(--muted);font-size:18px;line-height:1;padding:2px 4px}
+.list{display:grid;gap:12px}
+.ph{display:grid;grid-template-columns:1fr auto;gap:4px 14px;align-items:center}
+.ph h3{margin:0;font-size:17px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph .meta{color:var(--muted);font-size:13px}
+.ph .st{grid-column:1;font-size:13px}
+.ph .st.ok{color:var(--ok)} .ph .st.wait{color:var(--warn)} .ph .st.bad{color:var(--bad)}
+.ph .go{grid-column:2;grid-row:1/span 3}
+.empty{color:var(--muted);text-align:center;padding:28px 12px}
+.foot{margin-top:22px;color:var(--muted);font-size:13px;text-align:center}
+
+/* ---------- màn điều khiển ---------- */
+body[data-view="v-play"]{position:fixed;inset:0;overflow:hidden;overscroll-behavior:none;background:#000;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+#v-play{position:fixed;left:0;right:0;top:0;height:var(--app-h);display:flex;flex-direction:column;background:#000}
+.stage{position:relative;flex:1;min-height:0;min-width:0;display:flex;align-items:center;justify-content:center;overflow:hidden;
+  padding:var(--sat) var(--sar) 0 var(--sal)}
+#cv{display:block;background:#05070f;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;cursor:default}
+.bar{flex:none;display:flex;align-items:center;justify-content:space-around;gap:4px;background:var(--bg2);border-top:1px solid var(--line);
+  padding:4px calc(8px + var(--sar)) calc(4px + var(--sab)) calc(8px + var(--sal))}
+.bar button{position:relative;display:grid;place-items:center;width:52px;height:46px;border:0;border-radius:12px;background:transparent;color:#cfdcff}
+.bar button:active,.bar button.on{background:rgba(143,208,255,.12);color:#fff}
+.bar svg{width:24px;height:24px}
+.bar .dot{position:absolute;right:10px;top:9px;width:8px;height:8px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 2px var(--bg2)}
+.bar .dot.ok{background:var(--ok)} .bar .dot.bad{background:var(--bad)}
+@media (orientation:landscape) and (max-height:560px){
+  #v-play{flex-direction:row}
+  .stage{padding:var(--sat) 0 var(--sab) var(--sal)}
+  .bar{flex-direction:column;border-top:0;border-left:1px solid var(--line);padding:calc(6px + var(--sat)) calc(4px + var(--sar)) calc(6px + var(--sab)) 4px}
+  .bar button{width:46px;height:46px}
+}
+#kb{position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;border:0;padding:0;font-size:16px;color:transparent;background:transparent;caret-color:transparent;resize:none;z-index:-1}
+
+.ovl{position:absolute;inset:0;display:grid;place-items:center;padding:24px;background:rgba(3,6,16,.62);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+.ovl .box{max-width:340px;text-align:center}
+.ovl .nm{font-weight:700;font-size:17px;margin-bottom:4px}
+.ovl p{margin:10px 0 0;color:#d5def8;font-size:15px}
+.ovl .acts{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:16px}
+.ovl p.sm{font-size:13.5px;line-height:1.5;color:#aebbe0}
+.ovl .dg{margin:12px 0 0;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.06);color:#93a2cc;text-align:left;white-space:pre-wrap;word-break:break-word;font:11.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;-webkit-user-select:text;user-select:text}
+.spin{width:34px;height:34px;margin:0 auto;border-radius:50%;border:3px solid rgba(143,208,255,.2);border-top-color:var(--sky);animation:sp 0.9s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:2.5s}}
+.stats{position:absolute;left:calc(8px + var(--sal));top:calc(8px + var(--sat));pointer-events:none;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;
+  color:#e7f0ff;background:rgba(0,0,0,.55);border-radius:8px;padding:6px 8px;white-space:pre-wrap;max-width:calc(100vw - 40px);overflow-wrap:anywhere}
+.netw{position:absolute;right:calc(8px + var(--sar));top:calc(8px + var(--sat));z-index:3;pointer-events:none;max-width:calc(100% - 16px - var(--sal) - var(--sar));
+  padding:5px 11px;border-radius:999px;background:rgba(6,10,28,.78);border:1px solid rgba(255,196,107,.5);color:#ffdcaa;font-size:12.5px;font-weight:600;line-height:1.35}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(74px + var(--sab));max-width:min(92vw,460px);z-index:30;
+  display:flex;gap:10px;align-items:center;background:#111a3f;border:1px solid var(--line2);border-radius:14px;padding:10px 12px;font-size:14px;box-shadow:0 8px 30px rgba(0,0,0,.45)}
+.toast span{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical}
+.toast .btn{min-height:34px;padding:6px 12px;font-size:13px;flex:none}
+
+/* bảng menu: điện thoại = tấm trượt từ dưới lên · màn rộng = hộp giữa màn hình */
+.sheet{position:fixed;inset:0;z-index:40;display:flex;align-items:flex-end;justify-content:center;background:rgba(2,4,12,.55)}
+.sheet .in{width:100%;max-width:460px;max-height:86vh;overflow:auto;background:#0b1333;border:1px solid var(--line2);border-bottom:0;border-radius:18px 18px 0 0;
+  padding:14px 14px calc(16px + var(--sab));-webkit-user-select:none;user-select:none}
+@media (min-width:700px),(orientation:landscape) and (max-height:560px){.sheet{align-items:center}.sheet .in{border-radius:18px;border-bottom:1px solid var(--line2);padding-bottom:16px}}
+.sheet .hd{display:flex;align-items:center;gap:10px;padding:2px 4px 10px}
+.sheet .hd b{font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet .hd small{color:var(--muted)}
+.sheet .hd .lnk{margin-left:auto}
+.sec{color:var(--muted);font-size:12px;margin:12px 4px 6px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.grid button{display:flex;flex-direction:column;align-items:center;gap:4px;border:1px solid var(--line);background:#0e1842;border-radius:12px;padding:10px 4px;font-size:12px;color:#d9e3ff;min-height:64px}
+.grid button:active{background:#16224f}
+.grid button i{font-style:normal;font-size:20px;line-height:1.1}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.seg button{border:1px solid var(--line);background:#0e1842;border-radius:10px;padding:9px 4px;font-size:13px;color:#d9e3ff}
+.seg button.on{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700}
+.dlg textarea,.dlg input{width:100%;font:inherit;font-size:16px;color:var(--fg);background:#0a1230;border:1px solid var(--line2);border-radius:12px;padding:10px 12px}
+.dlg textarea{min-height:110px;resize:vertical}
+.dlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:12px}
+/* 🔓 Root theo app: công tắc + danh sách app (gạt từng app) */
+.rsw{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#0e1842;border:1px solid var(--line);border-radius:12px;padding:12px 14px;cursor:pointer}
+.rsw b{display:block;font-size:15px}
+.rsw small{display:block;color:var(--muted);font-size:12px;line-height:1.4;margin-top:2px}
+input.tg{appearance:none;-webkit-appearance:none;width:46px;height:26px;border-radius:13px;background:#28325e;position:relative;flex:none;margin:0;cursor:pointer;transition:background .15s}
+input.tg::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#c9d4ff;transition:transform .15s}
+input.tg:checked{background:var(--blue)}
+input.tg:checked::after{transform:translateX(20px);background:#fff}
+input.tg:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+input.tg:disabled{opacity:.45;cursor:default}
+@media (prefers-reduced-motion:reduce){input.tg,input.tg::after{transition:none}}
+.rnote{color:var(--muted);font-size:12.5px;line-height:1.45;margin:10px 4px 0}
+.rnote.warn{color:var(--warn)}
+.rlist{display:flex;flex-direction:column;gap:6px}
+.rapp{display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--line);background:#0b1438;border-radius:10px;padding:9px 12px;cursor:pointer}
+.rapp .nm{min-width:0}
+.rapp .nm b{display:block;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rapp .nm small{display:block;color:var(--muted);font-size:11.5px;word-break:break-all}
+.rapp.ask{border-color:rgba(255,196,107,.45)}
+/* 🛍 Kho app */
+.kapp{display:grid;grid-template-columns:40px minmax(0,1fr) auto;gap:10px;align-items:center;border:1px solid var(--line);background:#0b1438;border-radius:12px;padding:10px 12px}
+.kapp .ki{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:rgba(143,208,255,.12);font-size:20px}
+.kapp b{display:block;font-size:14px}.kapp small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
+.kapp .btn{padding:8px 14px;font-size:13px}.kapp .okc{color:var(--ok,#3ce0b0);font-size:12.5px;white-space:nowrap}
+#r-body.off .rapp{opacity:.5}
+.rempty{color:var(--muted);font-size:13px;padding:6px 4px}
+#rootdlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+.prog{height:6px;border-radius:6px;background:rgba(143,208,255,.15);overflow:hidden;margin-top:10px}
+.prog i{display:block;height:100%;width:0;background:var(--sky);transition:width .2s}
+</style>
+</head>
+<body data-view="">
+
+<!-- ĐĂNG NHẬP -->
+<section id="v-login" class="page" hidden>
+  <div class="wrap">
+    <div class="top"><a class="brand" href="/"><img src="/icon-192.png" alt=""><b>Cloud<em>Blue</em></b></a><button class="lnk langb" type="button" data-noi18n>🌐 English</button></div>
+    <h1>Đăng nhập để mở máy</h1>
+    <p class="sub">Dùng cùng tài khoản trên cloudblue.vn.</p>
+    <form class="card form" id="lf" autocomplete="on">
+      <label for="le">Email</label>
+      <input id="le" type="email" inputmode="email" autocomplete="username" required>
+      <label for="lp">Mật khẩu</label>
+      <input id="lp" type="password" autocomplete="current-password" required>
+      <button class="btn wide" id="lb" type="submit">Đăng nhập</button>
+      <div class="err" id="lerr" role="alert"></div>
+    </form>
+    <p class="foot">Chưa có tài khoản? <a href="/">Đăng ký trên cloudblue.vn</a></p>
+  </div>
+</section>
+
+<!-- DANH SÁCH MÁY -->
+<section id="v-list" class="page" hidden>
+  <div class="wrap">
+    <div class="top">
+      <a class="brand" href="/"><img src="/icon-192.png" alt=""><b>Cloud<em>Blue</em></b></a>
+      <span class="topr"><button class="lnk langb" type="button" data-noi18n>🌐 English</button><button class="lnk" id="logout" type="button">Đăng xuất</button></span>
+    </div>
+    <h1>Máy của tôi</h1>
+    <p class="sub" id="who"></p>
+    <div class="tip" id="a2hs" hidden>
+      <div>Mở CloudBlue như một app: bấm nút <b>Chia sẻ</b> của Safari, chọn <b>Thêm vào MH chính</b>. Lần sau bấm biểu tượng là vào thẳng, toàn màn hình.</div>
+      <button class="x" type="button" id="a2hs-x" aria-label="Ẩn mẹo">×</button>
+    </div>
+    <div class="list" id="list"></div>
+    <p class="foot"><a href="/">Thuê thêm máy · gia hạn · nạp tiền trên cloudblue.vn</a></p>
+  </div>
+</section>
+
+<!-- ĐIỀU KHIỂN MÁY -->
+<section id="v-play" hidden>
+  <div class="stage" id="stage">
+    <canvas id="cv" width="540" height="960" aria-label="Màn hình máy"></canvas>
+    <div class="stats" id="stats" hidden></div>
+    <div class="netw" id="netw" role="status" hidden></div>
+    <div class="ovl" id="ovl">
+      <div class="box">
+        <div class="spin" id="ovl-spin"></div>
+        <div class="nm" id="ovl-nm"></div>
+        <p id="ovl-t">Đang mở máy…</p>
+        <p class="sm" id="ovl-d" hidden></p>
+        <div class="dg" id="ovl-g" hidden></div>
+        <div class="acts" id="ovl-acts"></div>
+      </div>
+    </div>
+  </div>
+  <nav class="bar" aria-label="Điều khiển">
+    <button type="button" data-a="list" aria-label="Về danh sách máy" title="Danh sách máy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>
+    </button>
+    <button type="button" data-a="back" aria-label="Quay lại" title="Quay lại">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 5v14L6 12z"/></svg>
+    </button>
+    <button type="button" data-a="home" aria-label="Màn hình chính" title="Màn hình chính">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg>
+    </button>
+    <button type="button" data-a="recents" aria-label="Ứng dụng gần đây" title="Ứng dụng gần đây">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>
+    </button>
+    <button type="button" data-a="kb" id="kb-btn" aria-label="Bàn phím" title="Bàn phím">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"/></svg>
+    </button>
+    <button type="button" data-a="menu" aria-label="Thêm" title="Thêm">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
+      <span class="dot" id="dot"></span>
+    </button>
+  </nav>
+  <textarea id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" aria-label="Gõ chữ vào máy"></textarea>
+  <input type="file" id="apkf" accept=".apk,.xapk,.apks,.apkm,application/vnd.android.package-archive" hidden>
+</section>
+
+<!-- MENU -->
+<div class="sheet" id="menu" hidden>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="m-nm">
+    <div class="hd"><div><b id="m-nm">Máy</b><br><small id="m-sub"></small></div><button class="lnk" type="button" data-a="close">Đóng</button></div>
+    <div class="sec">Chất lượng hình</div>
+    <div class="seg" id="q-seg">
+      <button type="button" data-q="auto">Tự động</button><button type="button" data-q="eco">Tiết kiệm</button>
+      <button type="button" data-q="bal">Cân bằng</button><button type="button" data-q="hd">Nét</button>
+    </div>
+    <div class="sec">Nút của máy</div>
+    <div class="grid">
+      <button type="button" data-a="voldown"><i>🔉</i>Nhỏ tiếng</button>
+      <button type="button" data-a="volup"><i>🔊</i>To tiếng</button>
+      <button type="button" data-a="rotate"><i>⟳</i>Xoay</button>
+      <button type="button" data-a="notif"><i>🔔</i>Thông báo</button>
+      <button type="button" data-a="power"><i>⏻</i>Nút nguồn</button>
+      <button type="button" data-a="paste"><i>📋</i>Dán chữ</button>
+      <button type="button" data-a="stats"><i>📊</i>Thông số</button>
+      <button type="button" data-a="full" id="m-full"><i>⛶</i>Toàn màn hình</button>
+    </div>
+    <div class="sec">Công cụ</div>
+    <div class="grid">
+      <button type="button" data-a="apkfile"><i>📦</i>Cài file APK</button>
+      <button type="button" data-a="apklink"><i>🔗</i>Cài APK từ link</button>
+      <button type="button" data-a="store"><i>🛍</i>Kho app</button>
+      <button type="button" data-a="root"><i>🔓</i>Root</button>
+      <button type="button" data-a="reboot"><i>↻</i>Khởi động lại</button>
+      <button type="button" data-a="list"><i>☰</i>Danh sách máy</button>
+    </div>
+  </div>
+</div>
+
+<!-- 🔓 ROOT THEO APP: công tắc root của máy + chọn app được dùng lệnh su -->
+<div class="sheet" id="rootdlg" hidden>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="r-t">
+    <div class="hd"><div><b id="r-t">🔓 Root</b><br><small>Chỉ app được bật mới dùng được lệnh su</small></div><button class="lnk" type="button" data-a="rclose">Đóng</button></div>
+    <label class="rsw" for="r-on"><span><b>Bật root cho máy này</b><small id="r-st">Đang đọc…</small></span><input type="checkbox" class="tg" id="r-on" role="switch" disabled></label>
+    <p class="rnote warn" id="r-warn" hidden></p>
+    <div id="r-body">
+      <div class="sec" id="r-ask-h" hidden>Vừa xin root (chưa được bật)</div>
+      <div class="rlist" id="r-ask"></div>
+      <div class="sec">Ứng dụng trong máy</div>
+      <div class="rlist" id="r-apps"><div class="rempty">Đang tải danh sách app…</div></div>
+    </div>
+    <p class="rnote">Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.</p>
+    <div class="acts"><button class="btn ghost" type="button" data-a="rclose">Đóng</button><button class="btn" type="button" data-a="rsave" id="r-save" disabled>Lưu</button></div>
+  </div>
+</div>
+
+<!-- 🛍 KHO APP: app hay dùng, máy chủ tải từ trang chính chủ rồi cài 1 chạm -->
+<div class="sheet" id="storedlg" hidden>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="s-t">
+    <div class="hd"><div><b id="s-t">🛍 Kho app</b><br><small>Tải từ trang chính chủ · cài 1 chạm</small></div><button class="lnk" type="button" data-a="sclose">Đóng</button></div>
+    <div class="rlist" id="s-list"><div class="rempty">Đang tải…</div></div>
+    <p class="rnote">Termux lấy từ GitHub chính thức, MT Manager từ mt.cc, ZArchiver từ zdevs.ru. Lần đầu máy chủ tải mất vài chục giây, máy sau cài ngay. Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.</p>
+  </div>
+</div>
+
+<!-- HỘP NHẬP (dán chữ / link APK) -->
+<div class="sheet" id="dlg" hidden>
+  <div class="in dlg" role="dialog" aria-modal="true" aria-labelledby="d-t">
+    <div class="hd"><b id="d-t"></b></div>
+    <p class="sub" id="d-h" style="margin:0 4px 10px"></p>
+    <textarea id="d-ta"></textarea>
+    <input id="d-in" type="url" inputmode="url" autocapitalize="off" autocomplete="off" spellcheck="false">
+    <div class="prog" id="d-prog" hidden><i></i></div>
+    <div class="acts"><button class="btn ghost" type="button" data-a="dno">Huỷ</button><button class="btn" type="button" data-a="dok" id="d-ok">OK</button></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden><span id="toast-t"></span></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+"use strict";
+/* =====================================================================================================
+   ĐIỀU KHIỂN MÁY TRÊN TRÌNH DUYỆT — cùng giao thức BRS2 với app máy tính / app Android (docs/STREAM-PROTOCOL.md),
+   đi THẲNG vào máy chủ (stream.wss: wss://dN.<miền>:cổng) hoặc vòng qua Cloudflare (stream.ws). Từ web-1.3 các đường được
+   nối SO LE, đường nào mở trước thì dùng (xem "kết nối" bên dưới) — iPhone đời mới (Safari iOS 26) hay kẹt WebSocket trên
+   Wi-Fi nên có thêm cổng phụ 8443 / 2053 của Cloudflare. Giải mã H.264 bằng WebCodecs
+   (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
+   ===================================================================================================== */
+const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
+const VER = "web-1.4";
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+const TEST = LOCAL && Q.get("test") === "1";                    // chỉ chạy thử ở máy lập trình (localhost) — không có ở web thật
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+const STANDALONE = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
+// WebKit = MỌI trình duyệt trên iPhone/iPad (kể cả Chrome iOS) + Safari trên Mac
+const IS_WEBKIT = IS_IOS || (/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium|CriOS|FxiOS|EdgiOS|Edg\//.test(navigator.userAgent));
+const HAS_WC = typeof VideoDecoder === "function" && typeof EncodedVideoChunk === "function" && window.isSecureContext !== false;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+const enc = new TextEncoder(), dec8 = new TextDecoder();
+/* 16/11c — TIẾNG VIỆT / ENGLISH: theo lựa chọn trên web (br_lang), chưa chọn → theo ngôn ngữ trình duyệt. Nút 🌐 ở đăng nhập / danh sách máy. */
+let LANG = (() => { const v = lsGet("br_lang"); return v === "en" || v === "vi" ? v : (/^vi\b/i.test(navigator.language || "") ? "vi" : "en"); })();
+const L = (vi, en) => (LANG === "en" ? en : vi);
+
+function safeLock(name, t, fn) {            // giống web chính: khoá phiên đăng nhập không treo khi mở nhiều thẻ
+  const L = globalThis.navigator && navigator.locks;
+  if (!L) return fn();
+  if (t === 0) return L.request(name, { mode: "exclusive", ifAvailable: true }, async lk => {
+    if (!lk) { const e = new Error("lock busy"); e.isAcquireTimeout = true; throw e; } return await fn(); });
+  let ok = false; const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), t > 0 ? Math.min(t, 4000) : 4000);
+  return L.request(name, { mode: "exclusive", signal: ac.signal }, async () => { ok = true; clearTimeout(tm); return await fn(); })
+    .catch(e => { if (!ok && e && e.name === "AbortError") return fn(); throw e; });
+}
+let sb = null;
+if (!TEST && window.supabase) sb = window.supabase.createClient(CFG.url, CFG.key, { auth: { lock: safeLock } });
+async function session() {
+  if (TEST) return { access_token: "test", user: { id: "test", email: "test@local" } };
+  if (!sb) return null;
+  try { const { data } = await sb.auth.getSession(); return data.session || null; } catch { return null; }
+}
+
+/* ---------------- màn hình ---------------- */
+function view(v) {
+  for (const id of ["v-login", "v-list", "v-play"]) $(id).hidden = id !== v;
+  document.body.dataset.view = v;
+  if (v !== "v-play") { $("menu").hidden = true; $("dlg").hidden = true; }
+}
+let toastT = 0;
+function toast(msg, btn, ms) {
+  const t = $("toast"); clearTimeout(toastT);
+  $("toast-t").textContent = msg;
+  t.querySelectorAll(".btn").forEach(b => b.remove());
+  if (btn) { const b = document.createElement("button"); b.className = "btn"; b.type = "button"; b.textContent = btn[0]; b.onclick = () => { btn[1](); t.hidden = true; }; t.appendChild(b); }
+  t.hidden = false; toastT = setTimeout(() => { t.hidden = true; }, ms || (btn ? 9000 : 3500));
+}
+
+/* ---------------- đăng nhập ---------------- */
+function showLogin(msg) {
+  stopPlay();
+  view("v-login"); $("lerr").textContent = msg || "";
+  setTimeout(() => $("le").focus(), 50);
+}
+$("lf").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!sb) { $("lerr").textContent = "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang."; return; }
+  const b = $("lb"); b.disabled = true; $("lerr").textContent = "";
+  try {
+    const { error } = await sb.auth.signInWithPassword({ email: $("le").value.trim(), password: $("lp").value });
+    if (error) { $("lerr").textContent = /invalid login/i.test(error.message) ? "Sai email hoặc mật khẩu." : /confirm/i.test(error.message) ? "Email chưa xác nhận — mở hộp thư để xác nhận trước." : error.message; return; }
+    $("lp").value = ""; boot();
+  } catch (err) { $("lerr").textContent = "Không đăng nhập được: " + (err.message || err); }
+  finally { b.disabled = false; }
+});
+
+/* ---------------- danh sách máy ---------------- */
+const ST = { active: ["Đang chạy", "ok"], pending: ["Đang tạo máy…", "wait"], creating: ["Đang tạo máy…", "wait"], expired: ["Đã hết hạn — gia hạn trên web", "bad"],
+             error: ["Máy lỗi — liên hệ hỗ trợ", "bad"], cancelling: ["Đang huỷ", "bad"] };
+const fmtT = s => { try { return new Date(s).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }); } catch { return ""; } };
+async function showList() {
+  stopPlay();
+  view("v-list");
+  if (location.search) history.replaceState(null, "", location.pathname);
+  if (IS_IOS && !STANDALONE && !lsGet("cb_a2hs_off")) $("a2hs").hidden = false;
+  const box = $("list"); box.innerHTML = '<div class="empty">Đang tải…</div>';
+  const s = await session(); if (!s) return showLogin();
+  $("who").textContent = s.user && s.user.email ? s.user.email : "";
+  let rows = [];
+  try {
+    const [own, sh] = await Promise.all([
+      sb.from("cloud_phones").select("id,name,android,ram,cpu,status,expires_at,locked,locked_until,lock_reason").eq("user_id", s.user.id)
+        .in("status", ["active", "pending", "creating", "expired", "error"]).order("created_at", { ascending: false }),
+      sb.rpc("cp_shared_with_me").then(r => r, () => ({}))]);
+    if (own.error) throw own.error;
+    rows = (own.data || []).concat(Array.isArray(sh && sh.data) ? sh.data.map(x => Object.assign({}, x, { shared: true })) : []);
+  } catch (e) { box.innerHTML = `<div class="empty">Không tải được danh sách máy (${esc(e.message || e)}).<br><button class="btn ghost" type="button" id="re">Thử lại</button></div>`; $("re").onclick = showList; return; }
+  if (!rows.length) { box.innerHTML = '<div class="card empty">Bạn chưa có máy nào.<br><a class="btn" href="/" style="margin-top:14px">Thuê máy trên cloudblue.vn</a></div>'; return; }
+  box.innerHTML = rows.map(p => {
+    const locked = p.locked && (!p.locked_until || new Date(p.locked_until) > new Date());
+    const st = locked ? ["Máy đang bị khoá" + (p.lock_reason ? ": " + p.lock_reason : ""), "bad"] : (ST[p.status] || [p.status, "wait"]);
+    const can = p.status === "active" && !locked;
+    return `<div class="card ph">
+      <h3>${esc(p.name || "Máy")}</h3>
+      <div class="meta">Android ${esc(p.android || "9")} · ${esc(p.ram)}GB · ${esc(p.cpu)} nhân${p.expires_at ? " · hết hạn " + esc(fmtT(p.expires_at)) : ""}${p.shared ? " · được chia sẻ" : ""}</div>
+      <div class="st ${st[1]}">${esc(st[0])}</div>
+      <div class="go">${can ? `<button class="btn" type="button" data-open="${esc(p.id)}">Mở máy</button>` : ""}</div></div>`;
+  }).join("");
+}
+$("list").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openPhone(b.dataset.open); });
+$("a2hs-x").onclick = () => { $("a2hs").hidden = true; lsSet("cb_a2hs_off", "1"); };
+$("logout").onclick = async () => { try { await sb.auth.signOut(); } catch {} showLogin(); };
+
+/* =====================================================================================================
+   ĐIỀU KHIỂN
+   ===================================================================================================== */
+const T = { HELLO: 0x01, TOUCH: 0x10, KEY: 0x11, TEXT: 0x12, SCROLL: 0x13, CMD: 0x14, PING: 0x15, QUALITY: 0x16, KEYFRAME: 0x17, CLIP: 0x18, BYE: 0x19, ACK: 0x1A,
+            WELCOME: 0x81, VIDEO: 0x82, SIZE: 0x83, CLIPBOARD: 0x84, PONG: 0x85, ERROR: 0x86, STATS: 0x87 };
+const cv = $("cv"), ctx = cv.getContext("2d", { alpha: false, desynchronized: true });
+const P = {
+  id: "", ep: null, ws: null, stopped: true, kicked: false, fatal: false, authRetry: false, tries: 0, timer: 0, t: {},
+  lastRx: 0, lastAsk: 0, dec: null, cfg: "", sps: null, pps: null, needKey: true, pend: null, raf: 0, ts: 0, vw: 540, vh: 960,
+  pts: 0n, newVid: false, first: false, frames: 0, bytes: 0, f0: 0, b0: 0, fps: 0, kbps: 0, rtt: null, srv: null,
+  q: lsGet("cb_q") || "auto", name: "", android: "",
+  rmode: 0, held: null, heldBmp: null,                 // cách vẽ: 0 = vẽ thẳng khung · 1 = đổi qua ảnh (createImageBitmap)
+  bcT: 0, bcN: 0, bcOk: 0, bcSw: 0, bcDone: false,      // kiểm "màn hình đen" (chỉ Safari / iPhone)
+  decErr: 0, decErrT: 0, lastErr: "", codec: "",
+  path: "", pathWhy: "", cx: null,                                   // đường đang đi ("thẳng" / "Cloudflare" / "Cloudflare 8443"…) · kết nối hiện tại
+  cands: [], race: null, bad: {}, cseq: 0,                           // các đường của lượt nối này · lượt đang nối · đường vừa hỏng (tới lúc nào) · số thứ tự lượt nối
+  rounds: 0, noOpen: 0, hangs: 0, silent: 0, helpOn: false, rlAsked: false, lastFail: "", httpOk: null, httpT: 0, ovlKind: "", waitT: 0,
+  epT: 0, epStale: false,                                            // thông tin máy vừa lấy lúc nào (nối lại trong 45 giây khỏi hỏi lại)
+  sm: null, fixing: false, lastVid: 0, ovl: [],                      // máy chủ vừa nói gì { msg, fix, boot, t } · đang hỏi / đang khởi động lại máy · khung gần nhất · các lần giải mã quá tải
+  fps30: Date.now() - (Number(lsGet("cb_fps30")) || 0) < 3 * 86400000,   // máy này giải mã 60 hình/giây không kịp (nhớ 3 ngày) → xin 30
+};
+
+function openPhone(id) {
+  if (!UUID.test(id)) return showList();
+  if (!TEST) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
+  view("v-play");
+  Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
+                     bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "",
+                     rounds: 0, noOpen: 0, hangs: 0, silent: 0, helpOn: false, rlAsked: false, lastFail: "", httpOk: null, httpT: 0, epT: 0, epStale: false, waitT: 0,
+                     sm: null, fixing: false, lastVid: 0, ovl: [], sst: null });
+  setQ(P.q, false); layout(); wake();
+  if (!HAS_WC) return overlay("err", IS_IOS ? "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm."
+                                            : "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.", [["Về danh sách", toList]]);
+  connect();
+}
+function stopPlay() {
+  if (P.stopped) return;
+  P.stopped = true; clearTimeout(P.timer);
+  send(T.BYE); detach(); resetDecoder(); dropHeld(); unwake(); kbHide();
+}
+const toList = () => { stopPlay(); showList(); };
+
+/* ---------- trạng thái / lớp phủ ---------- */
+function overlay(kind, msg, acts, tip) {
+  const o = $("ovl");
+  if (!kind) { o.hidden = true; P.ovlKind = ""; return; }
+  o.hidden = false; $("ovl-spin").hidden = kind !== "wait"; P.ovlKind = kind;
+  $("ovl-nm").textContent = P.name || ""; $("ovl-t").textContent = msg || "";
+  const d = $("ovl-d"); d.textContent = tip || ""; d.hidden = !tip; diagLine("");
+  const a = $("ovl-acts"); a.innerHTML = "";
+  for (const [label, fn] of acts || []) { const b = document.createElement("button"); b.type = "button"; b.className = "btn" + (a.children.length ? " ghost" : ""); b.textContent = label; b.onclick = fn; a.appendChild(b); }
+  setDot(kind === "err" ? "bad" : "");
+}
+function diagLine(t) { const g = $("ovl-g"); g.textContent = t || ""; g.hidden = !t; }      // dòng chữ nhỏ: đang đi đường nào, chờ gì, vì sao chưa vào
+function setDot(c) { $("dot").className = "dot" + (c ? " " + c : ""); }
+function setName(n, a) {
+  if (n) P.name = n; if (a) P.android = String(a);
+  $("ovl-nm").textContent = P.name; $("m-nm").textContent = P.name || "Máy";
+  document.title = (P.name ? P.name + " – " : "") + "CloudBlue";
+}
+function retryLater(msg, ms) {
+  detach(); resetDecoder(); clearTimeout(P.timer);
+  overlay("wait", msg);
+  P.timer = setTimeout(connect, ms || 5000);
+}
+const retryNow = () => { P.fatal = false; P.kicked = false; P.tries = 0; P.decErr = 0; DM_TRIED = 0; P.sm = null; P.fixing = false;
+  P.rounds = 0; P.noOpen = 0; P.hangs = 0; P.silent = 0; P.helpOn = false; P.rlAsked = false; P.epStale = true; P.waitT = 0; connect(); };
+/* web-1.4 — máy chủ đã nói rõ tình trạng (máy đang được bật lại, Android chưa trả lời, chưa lấy được hình…): GIỮ câu đó trên màn hình
+   trong lúc tự thử lại (trước đây cứ 5 giây lại nháy về "Đang mở máy…" → khách chỉ thấy quay mãi). Máy chủ gợi ý fix=reboot → có nút
+   "Khởi động lại máy" ngay tại đây (hỏi lại 1 bước, không dùng hộp thoại của trình duyệt). */
+function srvWait(ms) {
+  const sm = P.sm; if (!sm) return; clearTimeout(P.timer);
+  overlay("wait", sm.msg + (sm.boot ? "" : " Tự thử lại…"), sm.fix ? [["Khởi động lại máy", fixAsk], ["Về danh sách", toList]] : [["Về danh sách", toList]]);
+  P.timer = setTimeout(connect, ms);
+}
+function fixAsk() {
+  P.fixing = true; clearTimeout(P.timer); P.cseq++; detach();
+  overlay("ask", "Khởi động lại máy?", [["Khởi động lại", fixReboot], ["Thôi", () => { P.fixing = false; if (P.sm) srvWait(1200); else retryNow(); }]],
+          "Máy tắt rồi bật lại trong 1–3 phút. App đang mở trong máy sẽ bị đóng, dữ liệu giữ nguyên.");
+}
+async function fixReboot() {
+  const my = ++P.cseq, mine = () => my === P.cseq && !P.stopped;     // bấm Về danh sách / Thử lại giữa chừng → thôi theo dõi (máy vẫn khởi động lại)
+  const fail = m => { P.fixing = false; overlay("err", m, [["Thử lại", fixAsk], ["Mở lại máy", retryNow], ["Về danh sách", toList]]); };
+  P.fixing = true; P.sm = null; clearTimeout(P.timer); detach();
+  overlay("wait", "Đang khởi động lại máy… (1–3 phút). Bạn có thể đóng trang — máy vẫn tự khởi động, mở lại là vào.", [["Về danh sách", toList]]);
+  let j;
+  try { j = await api(P.id + "/reboot"); rbMark(P.id, true); } catch (e) { if (mine()) fail("Không khởi động lại được: " + e.message); return; }
+  for (let i = 0; i < 150 && j && j.job; i++) {
+    await sleep(2000); if (!mine()) return;
+    let st; try { st = await api("job?id=" + encodeURIComponent(j.job), { method: "GET" }); } catch { continue; }
+    if (!mine()) return;
+    if (st.state === "running") { if (st.msg) diagLine(st.msg); continue; }
+    if (st.state === "error") { rbMark(P.id, false); return fail("Khởi động lại chưa được: " + (st.msg || "máy chủ bận") + " Thử lại sau ít phút hoặc báo hỗ trợ."); }
+    break;
+  }
+  rbMark(P.id, false);
+  if (!mine()) return;
+  P.fixing = false; P.tries = 0; P.rounds = 0; P.waitT = 0; P.epStale = true; P.helpOn = false; connect();
+}
+const statusMsg = s => ({ pending: "Máy đang được tạo, chờ thêm chút…", creating: "Máy đang được tạo, chờ thêm chút…", expired: "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.",
+                          error: "Máy đang lỗi — liên hệ hỗ trợ.", cancelling: "Máy đang bị huỷ." }[s] || "");
+
+/* 💎 nhiệm vụ "mở máy đám mây" (SQL v27): mở được máy → tự nhận Blue · mỗi ngày 1 lần, mỗi lần mở trang thử 1 lần
+   (đã nhận / chưa chạy SQL v27 / admin tắt → im lặng bỏ qua) */
+let blueUid = "", blueTried = false;
+function bluePlay() {
+  if (TEST || !sb || blueTried) return; blueTried = true;
+  const d = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }), k = "cb_bplay_" + blueUid;
+  try { if (localStorage.getItem(k) === d) return; } catch (e) {}
+  const mark = () => { try { localStorage.setItem(k, d); } catch (e) {} };
+  sb.rpc("blue_task", { p_task: "play" }).then(r => {
+    if (r.error) { if (/TASK_DONE|TASK_OFF|BLUE_OFF/.test(r.error.message || "")) mark(); return; }
+    mark(); const g = r.data && +r.data.got; if (g > 0) toast("💎 +" + g.toLocaleString("vi-VN") + " Blue — nhiệm vụ mở máy hôm nay");
+  }, () => {});
+}
+
+/* ---------- kết nối ----------
+   web-1.3 — NỐI NHIỀU ĐƯỜNG SO LE, đường nào mở trước thì dùng:
+     thẳng (stream.wss) → Cloudflare cổng phụ 8443 → Cloudflare (443) → Cloudflare cổng phụ 2053      [Safari / iPhone]
+     thẳng (stream.wss) → Cloudflare (443) → Cloudflare cổng phụ 8443                                  [trình duyệt khác]
+   Vì sao: Safari trên iOS 26 (iPhone đời mới) có lỗi WebSocket của chính Apple — trên Wi-Fi nó nối qua HTTP/3 (QUIC) rồi bị từ chối
+   hoặc treo mãi ở bước nối, đổi sang 4G lại vào ngay; bật iCloud Private Relay thì chỉ nối được 1 WebSocket tới cùng máy chủ + cổng.
+   Cổng phụ của Cloudflare chỉ đi TCP (không HTTP/3) và mỗi đường là một cổng khác nhau → né được cả hai. Bản cũ gặp lỗi đó là
+   nối lại vô tận ("quay mãi"). Nay: nối được mà không ra hình → tự đổi đường; không đường nào vào → hiện hướng dẫn + lý do;
+   WebSocket kẹt mà HTTP vẫn chạy (đúng kiểu lỗi của Safari) → tự tải lại trang 1 lần. */
+const RACE_GAP = 1200, OPEN_MAX = 8000, DIRECT_HOLD = 2500;         // so le giữa 2 đường · 1 lượt nối tối đa · chờ thêm đường thẳng (nét hơn) bao lâu
+const FIRST_MAX = 9000, DEC_SILENT = 5000, WELCOME_MAX = 45000;     // đã vào máy mà không có hình · có hình mà bộ giải mã im lặng · nối được mà máy chủ không trả lời
+const EP_KEEP = 45000, HELP_AFTER = 14000;                             // chờ quá 14 giây chưa vào → hiện hướng dẫn + lý do
+const timed = (p, ms) => new Promise(res => {                       // chờ tối đa ms: { v } xong · { err } lỗi · { timeout } quá lâu (mạng treo không làm đứng trang)
+  let done = false; const t = setTimeout(() => { if (!done) { done = true; res({ timeout: true }); } }, ms);
+  Promise.resolve(p).then(v => { if (!done) { done = true; clearTimeout(t); res({ v }); } }, e => { if (!done) { done = true; clearTimeout(t); res({ err: e }); } });
+});
+const quiet = w => { try { w.onopen = w.onmessage = w.onclose = w.onerror = null; w.close(); } catch {} };
+function cfAlt(u, port) {                  // wss://streamN.<miền>/v2/stream → cùng tên, cổng HTTPS phụ của Cloudflare
+  try { const x = new URL(u); if (x.protocol !== "wss:" || x.port) return ""; x.port = String(port); return x.toString(); } catch { return ""; }
+}
+const badKey = c => (c.direct ? "cb_wsd_bad:" : "cb_pbad:") + c.url;
+const badUntil = c => Math.max(P.bad[c.url] || 0, Number(lsGet(badKey(c))) || 0);
+function pathBad(c, min) { if (c) { P.bad[c.url] = Date.now() + min * 60000; lsSet(badKey(c), String(P.bad[c.url])); } }      // đường vừa hỏng → lượt sau thử đường khác trước
+function pathGood(c) { if (!c) return; delete P.bad[c.url]; if (Number(lsGet(badKey(c)))) lsSet(badKey(c), "0"); }
+function buildCands(ep) {
+  const cf = ep.stream && ep.stream.ws, wd = ep.stream && ep.stream.wss, L = [], now = Date.now();
+  const add = (k, url, direct) => { if (url && !L.some(x => x.url === url)) L.push({ k, url, direct: !!direct, res: "", t0: 0 }); };
+  add("thẳng", wd, true);
+  if (IS_WEBKIT) add("Cloudflare 8443", cfAlt(cf, 8443));           // Safari: cổng phụ TRƯỚC (chỉ TCP — né lỗi WebSocket qua HTTP/3 của iOS 26)
+  add("Cloudflare", cf);
+  if (!IS_WEBKIT) add("Cloudflare 8443", cfAlt(cf, 8443));
+  if (IS_WEBKIT) add("Cloudflare 2053", cfAlt(cf, 2053));
+  const bad = L.filter(c => now <= badUntil(c)); bad.forEach(c => { c.res = "vừa không vào được — thử sau cùng"; });
+  return L.filter(c => now > badUntil(c)).concat(bad);              // đường vừa hỏng xếp cuối (vẫn thử nếu các đường khác đều không vào)
+}
+function race(cands, onWin, onFail) {
+  const R = { done: false, tm: [], ws: [], dead: 0, started: 0, pend: null, t0: Date.now() };
+  const conn = i => R.ws[i] && R.ws[i].readyState === 0;
+  const stop = keep => { R.done = true; R.tm.forEach(clearTimeout); clearInterval(R.iv); R.ws.forEach(w => { if (w && w !== keep) quiet(w); }); };
+  R.iv = setInterval(() => {                                        // nối quá 4 giây chưa xong → ghi rõ đang thử đường nào
+    if (R.done || P.helpOn || P.ovlKind !== "wait" || Date.now() - R.t0 < 4000) return;
+    diagLine("đang nối · " + cands.filter(c => c.t0).map(c => c.k + (/đang nối/.test(c.res) ? "" : " ✗")).join(" · ") + " · " + Math.round((Date.now() - R.t0) / 1000) + " giây");
+  }, 1000);
+  const win = (c, w) => {
+    if (R.done) return;
+    cands.forEach((x, i) => { if (x !== c && conn(i) && Date.now() - x.t0 >= DIRECT_HOLD - 60) { x.res = "treo ở bước nối"; pathBad(x, x.direct ? 30 : 5); } });
+    stop(w); onWin(c, w);
+  };
+  const fail = hang => { if (R.done) return; stop(null); onFail(hang); };
+  const directBusy = () => cands.some((c, i) => c.direct && conn(i) && Date.now() - c.t0 < DIRECT_HOLD);
+  const died = () => {
+    R.dead++;
+    if (R.pend && !directBusy()) return win(R.pend[0], R.pend[1]);  // đang giữ đường Cloudflare để chờ đường thẳng — đường thẳng vừa hỏng
+    if (R.dead >= cands.length) return fail(false);
+    start();                                                         // 1 đường hỏng → thử đường kế NGAY (không đợi hết nhịp so le)
+  };
+  function start() {
+    if (R.done || R.started >= cands.length) return;
+    const i = R.started++, c = cands[i]; c.t0 = Date.now(); c.res = "đang nối…";
+    let w; try { w = new WebSocket(c.url); } catch { c.res = "không mở được"; return died(); }
+    w.binaryType = "arraybuffer"; R.ws[i] = w; let gone = false;
+    w.onopen = () => {
+      if (R.done || gone) return;
+      c.res = "nối được sau " + (Date.now() - c.t0) + " ms";
+      if (!c.direct && directBusy()) {                              // đường thẳng (nhanh, nét hơn) đang nối dở → chờ nó thêm chút rồi mới quyết
+        if (!R.pend) { R.pend = [c, w]; const d = cands.find(x => x.direct); R.tm.push(setTimeout(() => win(c, w), Math.max(60, DIRECT_HOLD - (Date.now() - d.t0)))); }
+        return;
+      }
+      win(c, w);
+    };
+    const lost = () => {
+      if (gone) return; gone = true; if (R.done) return;
+      if (R.pend && R.pend[1] === w) R.pend = null;
+      c.res = "không vào được (" + (Date.now() - c.t0) + " ms)"; pathBad(c, c.direct ? 30 : 5); died();
+    };
+    w.onclose = lost; w.onerror = lost;
+    if (R.started < cands.length) R.tm.push(setTimeout(start, RACE_GAP));
+  }
+  R.tm.push(setTimeout(() => {
+    if (R.done) return;
+    if (R.pend) return win(R.pend[0], R.pend[1]);
+    let hang = false;
+    cands.forEach((c, i) => { if (conn(i)) { hang = true; c.res = "treo ở bước nối (quá " + OPEN_MAX / 1000 + " giây)"; pathBad(c, c.direct ? 30 : 5); } });
+    fail(hang);
+  }, OPEN_MAX));
+  start();
+  return { stop: () => stop(null) };
+}
+async function connect() {
+  clearTimeout(P.timer); detach();
+  if (P.stopped) return;
+  const my = ++P.cseq, mine = () => my === P.cseq && !P.stopped;     // gọi chồng lên nhau (quay lại tab, bấm Thử lại) → chỉ lượt mới nhất chạy tiếp
+  if (!P.waitT) P.waitT = Date.now();                              // khách bắt đầu chờ từ lúc này (ra hình thì xoá)
+  P.fixing = false;
+  if (!P.helpOn && !(P.sm && Date.now() - P.sm.t < 90000)) overlay("wait", P.first ? "Đang nối lại…" : "Đang mở máy…");
+  let token = "test", ep;
+  if (TEST) ep = { online: true, status: "active", name: Q.get("name") || "Máy thử", android: "?", stream: { ws: Q.get("ws") || "ws://127.0.0.1:8020/v2/stream", wss: Q.get("wss") || undefined, api: Q.get("api") || "" } };
+  else {
+    const s0 = await timed(session(), 8000); if (!mine()) return;
+    if (s0.timeout) return roundFail("chưa kiểm tra được phiên đăng nhập (mạng chậm)", "Mạng chậm — đang thử lại…");
+    const s = s0.v; if (!s) return showLogin();
+    token = s.access_token; blueUid = (s.user && s.user.id) || "";
+    if (P.ep && !P.epStale && Date.now() - P.epT < EP_KEEP) ep = P.ep;            // vừa lấy xong → nối lại khỏi hỏi lại máy chủ web
+    else {
+      const r0 = await timed(sb.rpc("cloudphone_endpoint", { p_id: P.id }), 9000); if (!mine()) return;
+      const r = r0.timeout ? { error: { message: "TIMEOUT" } } : r0.err ? { error: r0.err } : (r0.v || {});
+      if (r.error) {
+        const m = String(r.error.message || r.error);
+        if (/NOT_LOGGED_IN|JWT/i.test(m)) return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
+        if (/NOT_FOUND|NOT_ALLOWED/.test(m)) { P.fatal = true; return overlay("err", "Không thấy máy này trong tài khoản của bạn.", [["Về danh sách", toList]]); }
+        return roundFail("chưa lấy được thông tin máy" + (m === "TIMEOUT" ? " (mạng chậm)" : ""), "Không lấy được thông tin máy — tự thử lại…");
+      }
+      ep = r.data || {}; P.epT = Date.now(); P.epStale = false;
+    }
+  }
+  P.ep = ep; setName(ep.name, ep.android);
+  if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
+  $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
+  if (ep.status && ep.status !== "active") { P.fatal = true; P.epStale = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
+  bluePlay();
+  const cands = P.cands = buildCands(ep);
+  if (!cands.length) { P.epStale = true; return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000); }
+  // "online" chỉ là nhịp báo của phần nhận đơn; phần phát hình có thể vẫn chạy → cứ thử nối (máy chủ tự báo OFFLINE nếu không giữ máy này)
+  P.race = race(cands,
+    (c, ws) => { P.race = null; if (!mine()) return quiet(ws); linkUp(c, ws, token); },
+    hang => { P.race = null; if (!mine()) return; P.noOpen++; if (hang) P.hangs++; P.epStale = true; roundFail("không đường nào nối được"); });
+}
+function linkUp(c, ws, token) {            // 1 đường vừa mở được → chào máy chủ trên đường đó
+  const d = (P.cands || []).find(x => x.direct);
+  P.ws = ws; P.lastRx = Date.now(); P.sst = null; P.noOpen = 0; P.hangs = 0; P.path = c.k;
+  P.pathWhy = c.direct ? "" : !d ? "máy chủ chưa bật đường thẳng" : "đường thẳng " + (d.res || "chưa thử");
+  P.cx = { c, direct: c.direct, openedAt: Date.now(), f0: P.frames, welAt: 0, vidAt: 0, ok: false };
+  ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
+  ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
+  ws.onerror = () => {};
+  sendJSON(T.HELLO, Object.assign({ v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT || P.fps30 ? 30 : 60, maxh: maxH(), via: c.k }, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
+  startTimers();
+}
+/* Gợi ý cho máy chủ BẮT ĐẦU NHẸ khi mạng yếu rõ ràng (Chrome / Edge / Android; Safari không có → không gửi gì, máy chủ tự dò như cũ).
+   Chỉ tin khi trình duyệt xếp mạng vào loại 2G / 3G hoặc khách bật Tiết kiệm dữ liệu — số "downlink" của mạng 4G / wifi hay là số mặc định. */
+function netHint() {
+  const h = {};
+  try {
+    const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection; if (!c) return h;
+    const et = String(c.effectiveType || ""), d = Number(c.downlink) || 0;
+    if (c.type === "cellular" || /^(slow-2g|2g|3g)$/.test(et)) h.net = "c"; else if (c.type === "wifi" || c.type === "ethernet") h.net = "w";
+    if (/^(slow-2g|2g)$/.test(et)) h.dl = Math.max(100, Math.min(250, Math.round(d * 1000) || 150));
+    else if (et === "3g") h.dl = Math.max(300, Math.min(1200, Math.round(d * 1000) || 500));
+    if (c.saveData) h.dl = Math.min(h.dl || 700, 700);
+  } catch (e) {}
+  return h;
+}
+function linkLost(why, blame) {            // kết nối đang dùng đứt / không ra hình → nối lại (đường chưa ra được khung nào thì lượt sau thử đường khác trước)
+  const cx = P.cx;
+  if (cx && P.frames === cx.f0) {
+    cx.c.res = why; P.lastFail = cx.c.k + ": " + why;
+    if (blame || Date.now() - cx.openedAt < 15000) pathBad(cx.c, cx.direct ? 30 : 10);
+  }
+  detach(); if (!P.stopped && !P.kicked && !P.fatal) reconnectSoon();
+}
+function detach() {                        // bỏ kết nối hiện tại + lượt nối đang chạy (không tự nối lại từ sự kiện close của nó)
+  if (P.race) { P.race.stop(); P.race = null; }
+  P.cx = null; stopTimers();
+  const w = P.ws; P.ws = null;
+  if (w) quiet(w);
+}
+function roundFail(why, msg) { P.lastFail = why; reconnectSoon(msg); }
+function reconnectSoon(msg) {
+  resetDecoder(); P.sm = null;
+  const d = [500, 1000, 2000, 4000, 5000][Math.min(P.tries++, 4)];
+  P.rounds++; clearTimeout(P.timer);
+  // Safari: mọi WebSocket đều treo / không mở được → tải lại trang là cách duy nhất gỡ (chỉ khi HTTP vẫn chạy, tối đa 1 lần / 3 phút)
+  if (IS_WEBKIT && !P.rlAsked && ((P.hangs >= 1 && P.rounds >= 2) || (P.noOpen >= 2 && P.rounds >= 3))) { P.rlAsked = true; autoReload(d); return; }
+  const help = P.rounds >= 3 || (P.waitT && Date.now() - P.waitT > HELP_AFTER);
+  if (help) helpShow();
+  else overlay("wait", msg || (P.ep && P.ep.online === false && !P.first ? "Máy chủ đang tạm offline — tự thử lại…" : "Mất kết nối — đang nối lại…"));
+  P.timer = setTimeout(connect, help ? Math.max(d, 3000) : d);
+}
+/* Thử 3 lượt chưa vào → KHÔNG quay mãi không chữ: nói rõ cách tự gỡ + lý do (khách chụp màn hình gửi là biết kẹt ở đâu); vẫn tự thử lại */
+function helpShow() {
+  P.helpOn = true;
+  overlay("wait", "Chưa nối được tới máy — vẫn đang tự thử lại…", [["Tải lại trang", () => location.reload()], ["Về danh sách", toList]],
+    IS_IOS ? "iPhone / iPad: tắt Wi-Fi, dùng 4G / 5G rồi mở lại — hoặc mở cloudblue.vn bằng Chrome. Đang bật iCloud Private Relay (Chuyển tiếp bảo mật) thì tắt cho mạng này."
+           : "Kiểm tra mạng, tắt VPN / proxy (nếu có) rồi thử lại. Vẫn không được: dùng app CloudBlue trên máy tính / Android.");
+  diagLine(diagText()); httpProbe();
+}
+function diagText() {
+  const cs = (P.cands || []).map(c => c.k + ": " + (c.res || "chưa thử")).join("\n");
+  return VER + (OS_VER ? " · " + OS_VER : "") + " · đã thử " + P.rounds + " lượt" + (P.lastFail ? " · " + P.lastFail : "") + (cs ? "\n" + cs : "")
+    + (P.httpOk == null ? "" : "\nHTTP tới máy chủ: " + (P.httpOk ? "được — chỉ WebSocket không vào" : "không được")) + (P.lastErr ? "\n" + P.lastErr : "");
+}
+function httpProbe() {                     // HTTP thường tới cùng máy chủ có chạy không (chạy mà WebSocket không vào = lỗi WebSocket của trình duyệt)
+  if (Date.now() - P.httpT < 30000) return; P.httpT = Date.now();
+  const c = (P.cands || []).find(x => !x.direct) || (P.cands || [])[0]; if (!c) return;
+  timed(fetch(c.url.replace(/^ws/, "http"), { mode: "no-cors", cache: "no-store" }), 5000).then(r => { P.httpOk = !!r.v; if (P.helpOn && !$("ovl").hidden) diagLine(diagText()); });
+}
+const reloadTo = u => (typeof window.__cbReload === "function" ? window.__cbReload : x => location.replace(x))(u);
+async function autoReload(d) {
+  const back = () => { helpShow(); P.timer = setTimeout(connect, Math.max(d, 3000)); };
+  let last = 0; try { last = Number(sessionStorage.getItem("cb_rl")) || 0; } catch {}
+  if (Date.now() - last < 180000 || navigator.onLine === false) return back();
+  const r = await timed(fetch("/play.webmanifest?t=" + Date.now(), { cache: "no-store" }), 4000);      // mạng mất thật thì không tải lại (kẻo ra trang lỗi của Safari)
+  if (P.stopped) return;
+  if (!r.v || !r.v.ok) return back();
+  try { sessionStorage.setItem("cb_rl", String(Date.now())); } catch {}
+  overlay("wait", "Đang tải lại trang để nối lại…");
+  reloadTo(location.pathname + "?id=" + encodeURIComponent(P.id) + (TEST ? "&test=1" : ""));
+}
+const maxH = () => Math.min(1920, Math.max(960, Math.round(Math.max(screen.width, screen.height) * (devicePixelRatio || 1))));
+
+function startTimers() {
+  stopTimers();
+  P.t.ping = setInterval(() => send(T.PING, u64(Date.now())), 2000);
+  P.t.ack = setInterval(() => { if (P.newVid) sendAck(); }, 100);
+  P.t.dog = setInterval(() => {
+    const now = Date.now(), cx = P.cx;
+    if (P.ws && now - P.lastRx > 6000) return linkLost("không nhận được gì 6 giây");          // đường chết → nối lại
+    if (cx && P.frames === cx.f0 && document.visibilityState !== "hidden") {                   // kết nối này chưa ra khung nào
+      if (cx.vidAt) { if (now - cx.vidAt >= DEC_SILENT - 200) { cx.vidAt = now; decSilent(); if (!P.cx) return; } }
+      else if (cx.welAt ? now - cx.welAt > FIRST_MAX : now - cx.openedAt > WELCOME_MAX)
+        return linkLost(cx.welAt ? "vào được máy nhưng không nhận được hình" : "nối được nhưng máy chủ chưa trả lời", true);
+      waitNote(now);
+    }
+    tick(); netBadge();
+  }, 1000);
+}
+function stopTimers() { for (const k in P.t) clearInterval(P.t[k]); P.t = {}; netBadge(); }
+/* Chip nhỏ góc trên phải (không che màn hình máy, không chặn chạm): hình đang chờ mạng · máy chủ đã giảm nét vì mạng yếu.
+   Máy Android 9 đứng yên thì máy chủ không gửi khung (bình thường) → chỉ báo "chờ hình" khi máy chủ ĐANG gửi mà mình không nhận được. */
+function netBadge() {
+  const el = $("netw"); if (!el) return;
+  const now = Date.now(), ss = P.sst; let t = "";
+  if (P.first && P.ws && P.t.dog && !P.stopped && $("ovl").hidden && document.visibilityState !== "hidden") {
+    if (now - P.lastRx > 2500 || (P.lastVid && now - P.lastVid > 2500 && ss && ss.fps >= 3)) t = "⏳ Mạng chậm — đang chờ hình…";
+    else if (ss && ss.weak) {                                  // báo 8 giây lúc vừa giảm nét (không treo chip che góc màn hình cả buổi)
+      if (!P.weakOn) { P.weakOn = true; P.weakT = now; }
+      if (now - P.weakT < 8000) t = "📶 Mạng yếu — đã giảm nét cho hình mượt";
+    } else P.weakOn = false;
+  }
+  if (el.textContent !== t) el.textContent = t;
+  el.hidden = !t;
+}
+function waitNote(now) {                   // chờ quá 5 giây → ghi rõ đang đi đường nào, chờ gì
+  const cx = P.cx; if (!cx || $("ovl").hidden || P.ovlKind !== "wait" || P.helpOn) return;
+  const sec = Math.round((now - cx.openedAt) / 1000); if (sec < 5) return;
+  diagLine("đường " + cx.c.k + " · " + (cx.vidAt ? "có hình, đang giải mã" : cx.welAt ? "đã vào máy, đang chờ hình" : "đã nối, máy chủ đang bật hình") + " · " + sec + " giây");
+}
+
+/* ---------- gửi ---------- */
+function send(type, payload) {
+  const w = P.ws; if (!w || w.readyState !== 1) return false;
+  const p = payload || new Uint8Array(0), b = new Uint8Array(1 + p.length);
+  b[0] = type; b.set(p, 1);
+  try { w.send(b); return true; } catch { return false; }
+}
+const sendJSON = (t, o) => send(t, enc.encode(JSON.stringify(o)));
+function u64(n) { const b = new Uint8Array(8); new DataView(b.buffer).setBigUint64(0, BigInt(n)); return b; }
+function sendAck() { P.newVid = false; send(T.ACK, u64(P.pts)); }
+function askKey() { if (Date.now() - P.lastAsk > 1000) { P.lastAsk = Date.now(); send(T.KEYFRAME); } }
+const c01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const i16 = v => Math.max(-32768, Math.min(32767, v | 0));
+function touch(action, ptr, x, y) {
+  const b = new Uint8Array(6), d = new DataView(b.buffer);
+  b[0] = action; b[1] = ptr; d.setUint16(2, Math.round(c01(x) * 65535)); d.setUint16(4, Math.round(c01(y) * 65535));
+  send(T.TOUCH, b);
+}
+function keyAct(action, code, meta) {
+  const b = new Uint8Array(9), d = new DataView(b.buffer);
+  b[0] = action; d.setUint32(1, code >>> 0); d.setUint32(5, (meta || 0) >>> 0);
+  send(T.KEY, b);
+}
+const key = (code, meta) => { keyAct(0, code, meta); keyAct(1, code, meta); };
+const typeText = s => { if (s) send(T.TEXT, enc.encode(s)); };
+const cmd = c => sendJSON(T.CMD, { cmd: c });
+function scroll(x, y, h, v) {
+  const b = new Uint8Array(8), d = new DataView(b.buffer);
+  d.setUint16(0, Math.round(c01(x) * 65535)); d.setUint16(2, Math.round(c01(y) * 65535)); d.setInt16(4, i16(h)); d.setInt16(6, i16(v));
+  send(T.SCROLL, b);
+}
+function setClip(text, paste) { const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); }
+
+/* ---------- nhận ---------- */
+function json(p) { try { return JSON.parse(dec8.decode(p)); } catch { return {}; } }
+function onMsg(buf) {
+  if (!(buf instanceof ArrayBuffer) || !buf.byteLength) return;
+  P.lastRx = Date.now();
+  const u8 = new Uint8Array(buf), t = u8[0], p = u8.subarray(1);
+  if (t === T.VIDEO) { P.lastVid = P.lastRx; if (P.cx && !P.cx.vidAt) P.cx.vidAt = P.lastRx; return onVideo(p); }
+  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android; return; }
+  if (t === T.SIZE) { const j = json(p); if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } P.needKey = true; return; }
+  if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
+  if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
+  if (t === T.ERROR) return onErr(json(p));
+  if (t === T.STATS) { const j = json(p); P.sst = j; P.srv = Object.assign(P.srv || {}, j); return; }
+}
+function onErr(j) {
+  const code = j.code || "", msg = j.msg || "Lỗi kết nối.";
+  detach(); resetDecoder(); P.epStale = true;
+  if (code === "AUTH" && !TEST) {
+    if (!P.authRetry) { P.authRetry = true; overlay("wait", "Đang làm mới phiên đăng nhập…"); sb.auth.refreshSession().catch(() => {}).finally(() => { if (!P.stopped) connect(); }); return; }
+    P.fatal = true; return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
+  }
+  if (code === "KICKED") { P.kicked = true; return overlay("err", "Máy đang được mở ở nơi khác (app hoặc trình duyệt khác).", [["Mở lại ở đây", retryNow], ["Về danh sách", toList]]); }
+  if (code === "NOT_YOURS" || code === "LOCKED" || code === "BAD") { P.fatal = true; return overlay("err", msg, [["Về danh sách", toList], ["Thử lại", retryNow]]); }
+  // OFFLINE / MAINT / BUSY / INTERNAL: chờ rồi thử lại — giữ nguyên câu máy chủ nói; máy không tự hồi được (fix, không phải đang bật) thì thử thưa hơn
+  P.sm = { msg, fix: j.fix === "reboot", boot: !!j.boot, t: Date.now() };
+  srvWait(code === "MAINT" ? 15000 : P.sm.fix && !P.sm.boot ? 12000 : 5000);
+}
+
+/* ---------- giải mã H.264 (Annex-B → AVCC + avcC: chạy được cả Safari lẫn Chrome) ---------- */
+function nals(u8) {
+  const out = [], n = u8.length; let i = 0, s = -1;
+  while (i + 2 < n) {
+    if (u8[i] === 0 && u8[i + 1] === 0) {
+      let sc = 0;
+      if (u8[i + 2] === 1) sc = 3; else if (u8[i + 2] === 0 && i + 3 < n && u8[i + 3] === 1) sc = 4;
+      if (sc) { if (s >= 0) out.push(trimZ(u8, s, i)); i += sc; s = i; continue; }
+    }
+    i++;
+  }
+  if (s >= 0 && s < n) out.push(trimZ(u8, s, n));
+  return out;
+}
+function trimZ(u8, s, e) { while (e > s && u8[e - 1] === 0) e--; return u8.subarray(s, e); }      // byte 0 đệm sau NAL không thuộc NAL (Safari kén)
+/* Safari / iPhone (VideoToolbox) kén luồng H.264 hơn Chrome. Lỗi giải mã khi CHƯA hiện được khung nào → lần lượt thử cách đóng gói khác:
+   0 avcC · 1 Annex-B · 2 avcC gọn (chỉ khung hình) · 3 Annex-B gọn + giải mã phần mềm. Cách chạy được thì nhớ lại cho lần sau. */
+const DM_N = IS_WEBKIT ? 4 : 2;
+let DM = 0, DM_TRIED = 0; try { DM = Math.min(DM_N - 1, Math.max(0, parseInt(localStorage.getItem("cb_dm"), 10) || 0)); } catch {}
+const dmName = () => ["avcC", "Annex-B", "avcC gọn", "Annex-B gọn"][DM] || "?";
+const OS_VER = (() => {                    // iOS 26 trở đi Safari ghi cứng "OS 18_x" trong UA → bản thật xem ở Version/…
+  const ua = navigator.userAgent, o = /iPhone|iPad|iPod/.test(ua) && ua.match(/OS (\d+[_.]\d+)/), v = ua.match(/Version\/(\d+(?:\.\d+)?)/);
+  return [o ? "iOS " + o[1].replace("_", ".") : "", v && IS_WEBKIT ? "Safari " + v[1] : ""].filter(Boolean).join(" · ");
+})();
+function nextMode() { if (P.first || DM_TRIED >= DM_N - 1) return false; DM_TRIED++; DM = (DM + 1) % DM_N; return true; }
+/* Kích thước hình ghi trong SPS (Safari cần codedWidth / codedHeight đi kèm) */
+function spsSize(sps) {
+  try {
+    const r = []; for (let i = 0; i < sps.length; i++) { if (i >= 2 && sps[i] === 3 && sps[i - 1] === 0 && sps[i - 2] === 0) continue; r.push(sps[i]); }
+    let bp = 8; const bit = () => { const v = (r[bp >> 3] >> (7 - (bp & 7))) & 1; bp++; return v; };
+    const bits = n => { let v = 0; while (n--) v = v * 2 + bit(); return v; };
+    const ue = () => { let z = 0; while (bit() === 0) { if (++z > 31 || bp >= r.length * 8) throw 0; } return z ? (2 ** z - 1) + bits(z) : 0; };
+    const se = () => { const k = ue(); return k & 1 ? (k + 1) / 2 : -k / 2; };
+    const prof = bits(8); bits(16); ue();
+    let cf = 1;
+    if ([100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135].includes(prof)) {
+      cf = ue(); if (cf === 3) bit(); ue(); ue(); bit();
+      if (bit()) for (let i = 0; i < (cf !== 3 ? 8 : 12); i++) if (bit()) { let last = 8, nx = 8; for (let j = 0; j < (i < 6 ? 16 : 64); j++) { if (nx) nx = (last + se() + 256) % 256; last = nx || last; } }
+    }
+    ue(); const poc = ue();
+    if (poc === 0) ue(); else if (poc === 1) { bit(); se(); se(); const c = ue(); for (let i = 0; i < c; i++) se(); }
+    ue(); bit();
+    const wm = ue() + 1, hm = ue() + 1, fmo = bit(); if (!fmo) bit(); bit();
+    let cl = 0, cr = 0, ct = 0, cb = 0; if (bit()) { cl = ue(); cr = ue(); ct = ue(); cb = ue(); }
+    const cx = cf === 0 || cf === 3 ? 1 : 2, cy = (cf === 1 ? 2 : 1) * (2 - fmo);
+    const w = wm * 16 - (cl + cr) * cx, h = (2 - fmo) * hm * 16 - (ct + cb) * cy;
+    return w > 0 && h > 0 && w <= 8192 && h <= 8192 ? { w, h } : null;
+  } catch { return null; }
+}
+function avcC(sps, pps) {
+  const hi = [100, 110, 122, 144].includes(sps[1]);
+  const b = new Uint8Array(11 + sps.length + pps.length + (hi ? 4 : 0));
+  b[0] = 1; b[1] = sps[1]; b[2] = sps[2]; b[3] = sps[3]; b[4] = 0xFF; b[5] = 0xE1;
+  b[6] = sps.length >> 8; b[7] = sps.length & 255; b.set(sps, 8);
+  let o = 8 + sps.length; b[o] = 1; b[o + 1] = pps.length >> 8; b[o + 2] = pps.length & 255; b.set(pps, o + 3); o += 3 + pps.length;
+  if (hi) { b[o] = 0xFD; b[o + 1] = 0xF8; b[o + 2] = 0xF8; b[o + 3] = 0; }       // 4:2:0 · 8 bit
+  return b;
+}
+function configure(sps, pps) {
+  const k = DM + "|" + sps.join(",") + "|" + pps.join(",");
+  if (P.dec && P.dec.state === "configured" && P.cfg === k) return true;
+  const codec = "avc1." + [sps[1], sps[2], sps[3]].map(v => v.toString(16).padStart(2, "0")).join("");
+  try {
+    P.codec = codec;
+    if (IS_WEBKIT && P.dec && P.dec.state !== "closed" && P.cfg && P.cfg !== k) { const old = P.dec; P.dec = null; try { old.close(); } catch {} }
+    if (!P.dec || P.dec.state === "closed") P.dec = new VideoDecoder({ output: onFrame, error: e => decErr("giải mã", e) });
+    const c = { codec, optimizeForLatency: true };
+    if (!(DM & 1)) c.description = avcC(sps, pps);                                   // có description = AVCC; không có = Annex-B
+    if (IS_WEBKIT) {
+      const z = spsSize(sps); if (z) { c.codedWidth = z.w; c.codedHeight = z.h; }
+      if (DM >= 2) delete c.optimizeForLatency;
+      if (DM === 3) c.hardwareAcceleration = "prefer-software";
+    }
+    P.dec.configure(c);
+    P.cfg = k; P.needKey = true; return true;
+  } catch (e) {
+    console.warn("configure:", e && e.message); resetDecoder();
+    if (nextMode()) { P.lastErr = "cấu hình " + codec + " · " + errText(e) + " → thử " + dmName(); askKey(); return false; }
+    P.fatal = true; detach();
+    overlay("err", "Trình duyệt không giải mã được hình của máy (" + codec + "). Hãy cập nhật iOS / trình duyệt rồi thử lại.", [["Thử lại", retryNow], ["Về danh sách", toList]]);
+    return false;
+  }
+}
+function resetDecoder() {
+  const d = P.dec; P.dec = null; P.cfg = ""; P.needKey = true;
+  if (d && d.state !== "closed") { try { d.close(); } catch {} }
+  if (P.pend) { try { P.pend.close(); } catch {} P.pend = null; }
+}
+function onVideo(p) {
+  if (p.length < 10) return;
+  const flags = p[0], pts = new DataView(p.buffer, p.byteOffset + 1, 8).getBigUint64(0), au = p.subarray(9);
+  P.pts = pts; P.newVid = true; P.bytes += p.length + 1;
+  let sps = null, pps = null, isKey = (flags & 1) === 1; const parts = [], lean = IS_WEBKIT && DM >= 2;
+  for (const n of nals(au)) {
+    if (!n.length) continue;
+    const ty = n[0] & 31;
+    if (ty === 7) sps = n; else if (ty === 8) pps = n;
+    else if (ty !== 9) { if (ty === 5) isKey = true; if (lean && ty !== 1 && ty !== 5) continue; parts.push(n); }
+  }
+  if (sps && pps) { P.sps = sps.slice(); P.pps = pps.slice(); if (!configure(P.sps, P.pps)) return; }
+  else if (isKey && P.sps && (!P.dec || P.dec.state !== "configured")) { if (!configure(P.sps, P.pps)) return; }
+  if (!P.dec || P.dec.state !== "configured" || !parts.length) { if (!P.dec) askKey(); return; }
+  if (!isKey && P.needKey) return;
+  if (!isKey && P.dec.decodeQueueSize > dqMax()) { P.needKey = true; askKey(); decOver(); return; }     // máy giải mã chậm THẬT (dồn > ¼ giây) → bỏ tới khung khoá kế
+  const ab = (DM & 1) === 1, list = ab && isKey && P.sps && P.pps ? [P.sps, P.pps, ...parts] : parts;      // Annex-B: khung khoá kèm SPS + PPS
+  let n = 0; for (const x of list) n += 4 + x.length;
+  const data = new Uint8Array(n); let o = 0;
+  for (const x of list) {
+    const L = x.length;
+    if (ab) { data[o] = 0; data[o + 1] = 0; data[o + 2] = 0; data[o + 3] = 1; }
+    else { data[o] = L >>> 24; data[o + 1] = (L >>> 16) & 255; data[o + 2] = (L >>> 8) & 255; data[o + 3] = L & 255; }
+    data.set(x, o + 4); o += 4 + L;
+  }
+  try { P.dec.decode(new EncodedVideoChunk({ type: isKey ? "key" : "delta", timestamp: (P.ts += 16667), data })); if (isKey) P.needKey = false; }
+  catch (e) { decErr("gửi khung", e); }
+  if (isKey) sendAck();
+}
+/* web-1.3 bỏ khung khi hàng chờ giải mã > 3 khung (0,05 giây ở 60 hình/s): điện thoại khựng 1 nhịp là mất hình tới khung khoá kế (≤ 1 giây).
+   Nay cho dồn tới ¼ giây (bộ giải mã phần cứng đuổi kịp ngay); dồn quá mức đó 3 lần trong 20 giây = máy không giải mã kịp 60 hình/giây
+   → tự xin máy chủ 30 hình/giây (nhẹ một nửa) và nhớ 3 ngày. */
+const dqMax = () => Math.max(6, Math.round((P.wfps || 30) / 4));      // P.wfps: số hình/giây máy chủ báo lúc vào máy (WELCOME)
+function decOver() {
+  const now = Date.now(); P.ovl = (P.ovl || []).filter(t => now - t < 20000); P.ovl.push(now);
+  if (P.ovl.length < 3 || P.fps30 || IS_WEBKIT || (P.wfps || 60) <= 30) return;
+  P.fps30 = true; P.ovl = []; lsSet("cb_fps30", String(now));
+  sendJSON(T.QUALITY, { q: P.q, fps: 30 });
+  toast("Thiết bị giải mã chưa kịp — đã chuyển sang 30 hình/giây cho mượt.");
+}
+function onFrame(f) {
+  if (P.pend) { try { P.pend.close(); } catch {} }
+  P.pend = f; P.frames++;
+  if (!P.raf) P.raf = requestAnimationFrame(draw);
+}
+function draw() {
+  P.raf = 0;
+  const f = P.pend; if (!f) return; P.pend = null;
+  const w = f.displayWidth, h = f.displayHeight;
+  if (!w || !h) { try { f.close(); } catch {} return; }
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; P.vw = w; P.vh = h; layout(); }
+  if (P.rmode === 0) {
+    try {
+      ctx.drawImage(f, 0, 0, w, h);
+      // Safari (iPhone/iPad/Mac) vẽ canvas TRỄ ở tiến trình GPU: đóng khung ngay sau drawImage → khung bị huỷ trước khi
+      // kịp vẽ → màn hình ĐEN. Nên Safari giữ khung vừa vẽ, tới khung sau mới đóng. Chrome / Edge vẫn đóng ngay như cũ.
+      if (IS_WEBKIT) holdFrame(f); else f.close();
+      shown(); blackCheck(); return;
+    } catch (e) { P.lastErr = "vẽ khung · " + errText(e); P.rmode = 1; }      // trình duyệt cũ không vẽ thẳng VideoFrame → đổi qua ảnh
+  }
+  createImageBitmap(f).then(b => {
+    if (P.stopped) { try { b.close && b.close(); } catch {} return; }
+    ctx.drawImage(b, 0, 0, w, h); holdBmp(b); shown(); blackCheck();
+  }).catch(e => { P.lastErr = "tạo ảnh · " + errText(e); }).finally(() => { try { f.close(); } catch {} });
+}
+function holdFrame(f) { const o = P.held; P.held = f; if (o && o !== f) { try { o.close(); } catch {} } }
+function holdBmp(b) { const o = P.heldBmp; P.heldBmp = b; if (o && o !== b) { try { o.close && o.close(); } catch {} } }
+function dropHeld() { holdFrame(null); holdBmp(null); }
+const errText = e => String((e && ((e.name && e.name !== "Error" ? e.name + ": " : "") + (e.message || ""))) || e || "?").slice(0, 140);
+/* Lỗi giải mã: thử lại từ khung khoá kế; chưa hiện được khung nào mà hỏng liên tục → báo rõ lý do (trước đây: đen mãi, không chữ) */
+function decErr(where, e) {
+  P.lastErr = where + (P.codec ? " " + P.codec : "") + " [" + dmName() + "] · " + errText(e);
+  console.warn(P.lastErr);
+  const now = Date.now();
+  if (now - P.decErrT > 15000) P.decErr = 0;
+  P.decErr++; P.decErrT = now;
+  resetDecoder();
+  if (!P.first && !P.stopped && P.decErr % 2 === 0 && nextMode()) { P.lastErr += " → thử " + dmName(); askKey(); return; }      // 2 lần hỏng → đổi cách đóng gói
+  if (P.decErr >= Math.max(6, 2 * DM_N) && !P.first && !P.stopped) {
+    P.fatal = true; detach();
+    return overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + " · đã thử " + (DM_TRIED + 1) + " cách" + (OS_VER ? " · " + OS_VER : "") + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
+                   [["Thử lại", retryNow], ["Về danh sách", toList]]);
+  }
+  askKey();
+}
+/* Có dữ liệu hình mà bộ giải mã KHÔNG ra khung nào, cũng không báo lỗi (Safari đôi khi im lặng) → coi như hỏng: đổi cách đóng gói
+   ngay; thử hết các cách vẫn im lặng → báo rõ (trước đây: quay mãi). */
+function decSilent() {
+  if (P.first || P.stopped) return;
+  P.lastErr = "giải mã" + (P.codec ? " " + P.codec : "") + " [" + dmName() + "] · không ra hình sau " + DEC_SILENT / 1000 + " giây";
+  console.warn(P.lastErr);
+  resetDecoder(); P.silent++;
+  if (nextMode()) { P.lastErr += " → thử " + dmName(); askKey(); return; }
+  P.fatal = true; detach();                  // mỗi cách đã được 5 giây mà không cách nào ra hình
+  overlay("err", "Trình duyệt chưa giải mã được hình của máy (" + P.lastErr + " · đã thử " + (DM_TRIED + 1) + " cách" + (OS_VER ? " · " + OS_VER : "") + "). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.",
+          [["Thử lại", retryNow], ["Về danh sách", toList]]);
+}
+/* Safari: đã "vẽ" mà màn hình vẫn đen toàn bộ ~3 giây trong khi vẫn nhận khung → đổi cách vẽ (thẳng khung ↔ qua ảnh), tối đa 2 lần.
+   Chỉ kiểm lúc mới mở (tới khi thấy hình 5 lần); đọc 16×16 điểm ảnh mỗi 0,8 giây — rất nhẹ. */
+let bcv = null, bctx = null;
+function blackCheck() {
+  if (!IS_WEBKIT || P.bcDone) return;
+  const now = Date.now(); if (now - P.bcT < 800) return; P.bcT = now;
+  try {
+    if (!bcv) { bcv = document.createElement("canvas"); bcv.width = bcv.height = 16; bctx = bcv.getContext("2d", { willReadFrequently: true }); }
+    bctx.drawImage(cv, 0, 0, 16, 16);
+    const d = bctx.getImageData(0, 0, 16, 16).data; let mx = 0;
+    for (let i = 0; i < d.length; i += 4) { const v = d[i] + d[i + 1] + d[i + 2]; if (v > mx) mx = v; }
+    if (mx > 24) { P.bcN = 0; if (++P.bcOk >= 5) P.bcDone = true; return; }
+    if (++P.bcN < 4) return;
+    P.bcN = 0;
+    if (P.bcSw >= 2) { P.bcDone = true; return; }
+    P.bcSw++; P.rmode = P.rmode ? 0 : 1; P.lastErr = "màn hình đen → đổi cách vẽ (" + (P.rmode ? "qua ảnh" : "thẳng khung") + ")";
+    console.warn(P.lastErr); askKey();
+  } catch (e) { P.bcDone = true; }
+}
+function shown() {
+  if (!$("ovl").hidden) overlay(null);
+  if (!P.first) { P.first = true; DM_TRIED = 0; try { localStorage.setItem("cb_dm", String(DM)); } catch {} }
+  P.tries = 0; P.authRetry = false; P.decErr = 0; setDot("ok");
+  P.rounds = 0; P.silent = 0; P.helpOn = false; P.waitT = 0; P.sm = null;
+  if (P.cx && !P.cx.ok) { P.cx.ok = true; pathGood(P.cx.c); }
+}
+
+/* ---------- bố cục: màn hình máy luôn vừa khung, đúng tỉ lệ ---------- */
+function layout() {
+  const st = $("stage"); if (!st || $("v-play").hidden) return;
+  const cs = getComputedStyle(st);
+  const W = st.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const H = st.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (W <= 0 || H <= 0) return;
+  const s = Math.min(W / P.vw, H / P.vh);
+  cv.style.width = Math.max(1, Math.floor(P.vw * s)) + "px"; cv.style.height = Math.max(1, Math.floor(P.vh * s)) + "px";
+}
+function fitApp() {
+  const vv = window.visualViewport;
+  document.documentElement.style.setProperty("--app-h", (vv ? vv.height : innerHeight) + "px");
+  if (vv && document.body.dataset.view === "v-play" && (vv.offsetTop || scrollY)) scrollTo(0, 0);
+  layout();
+}
+addEventListener("resize", fitApp);
+addEventListener("orientationchange", () => setTimeout(fitApp, 250));
+if (window.visualViewport) { visualViewport.addEventListener("resize", fitApp); visualViewport.addEventListener("scroll", fitApp); }
+
+/* ---------- chạm / chuột ---------- */
+const ptrs = new Map();
+function rel(e) { const r = cv.getBoundingClientRect(); return [(e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height]; }
+cv.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  if (e.pointerType === "mouse" && e.button !== 0) { if (e.button === 2) cmd("back"); else if (e.button === 1) cmd("home"); return; }
+  const [x, y] = rel(e); if (x < 0 || x > 1 || y < 0 || y > 1) return;
+  const used = new Set([...ptrs.values()].map(v => v.id)); let id = 0; while (used.has(id)) id++;
+  if (id > 9) return;
+  try { cv.setPointerCapture(e.pointerId); } catch {}
+  ptrs.set(e.pointerId, { id, x, y, t: performance.now(), pend: 0 });
+  touch(0, id, x, y);
+}, { passive: false });
+cv.addEventListener("pointermove", e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  e.preventDefault();
+  [p.x, p.y] = rel(e);
+  const now = performance.now();
+  if (now - p.t >= 8) { p.t = now; touch(2, p.id, p.x, p.y); }
+  else if (!p.pend) p.pend = setTimeout(() => { p.pend = 0; if (ptrs.get(e.pointerId) === p) { p.t = performance.now(); touch(2, p.id, p.x, p.y); } }, 8);
+}, { passive: false });
+function ptrEnd(e, action) {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  e.preventDefault(); clearTimeout(p.pend); ptrs.delete(e.pointerId);
+  const [x, y] = action === 3 ? [p.x, p.y] : rel(e);
+  touch(action, p.id, x, y);
+}
+cv.addEventListener("pointerup", e => ptrEnd(e, 1), { passive: false });
+cv.addEventListener("pointercancel", e => ptrEnd(e, 3), { passive: false });
+cv.addEventListener("contextmenu", e => e.preventDefault());
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const [x, y] = rel(e), k = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 800 : 1;
+  const h = Math.round(-e.deltaX * k * 1.2), v = Math.round(-e.deltaY * k * 1.2);
+  if (h || v) scroll(x, y, h, v);
+}, { passive: false });
+for (const ev of ["touchstart", "touchmove", "gesturestart", "gesturechange", "dblclick"]) cv.addEventListener(ev, e => e.preventDefault(), { passive: false });
+
+/* ---------- bàn phím ---------- */
+const KMAP = { Backspace: 67, Enter: 66, Tab: 61, Escape: 111, ArrowUp: 19, ArrowDown: 20, ArrowLeft: 21, ArrowRight: 22, Delete: 112, Home: 122, End: 123, PageUp: 92, PageDown: 93 };
+const kb = $("kb"), SENT = "​​";               // 2 ký tự "giữ chỗ": xoá trên ô trống vẫn bắt được nút xoá
+let kbPrev = SENT;
+function kbShow() { kb.value = SENT; kbPrev = SENT; kb.focus({ preventScroll: true }); try { kb.setSelectionRange(kb.value.length, kb.value.length); } catch {} $("kb-btn").classList.add("on"); }
+function kbHide() { if (document.activeElement === kb) kb.blur(); $("kb-btn").classList.remove("on"); }
+kb.addEventListener("blur", () => $("kb-btn").classList.remove("on"));
+kb.addEventListener("input", () => {            // so chữ trước/sau → gửi phần bị xoá + phần mới gõ (chạy với cả gõ tiếng Việt, gợi ý, dán)
+  const v = kb.value;
+  let i = 0; while (i < kbPrev.length && i < v.length && kbPrev[i] === v[i]) i++;
+  const del = [...kbPrev.slice(i)].length, add = v.slice(i).replace(/​/g, "");
+  for (let k = 0; k < del; k++) key(67);
+  if (add) add.split("\n").forEach((s, j) => { if (j) key(66); typeText(s); });
+  if (v.length > 48 || v.includes("\n") || !v.startsWith(SENT)) { kb.value = SENT; kbPrev = SENT; } else kbPrev = v;
+});
+document.addEventListener("keydown", e => {
+  if (document.body.dataset.view !== "v-play" || !$("menu").hidden || !$("dlg").hidden) return;
+  const inKb = e.target === kb;
+  if (e.target !== document.body && !inKb && e.target.closest && e.target.closest("input,textarea,select")) return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && (e.key === "v" || e.key === "V") && !inKb) {           // Ctrl/⌘+V → dán chữ trong máy tính vào máy
+    e.preventDefault();
+    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(t => { if (t) setClip(t, true); }).catch(() => openDlg("paste"));
+    else openDlg("paste");
+    return;
+  }
+  if (mod && /^[a-z]$/i.test(e.key)) { e.preventDefault(); key(29 + e.key.toLowerCase().charCodeAt(0) - 97, 0x1000); return; }   // Ctrl+A/C/X/Z…
+  if (KMAP[e.key] !== undefined) {
+    if (inKb && (e.key === "Backspace" || e.key === "Enter")) return;  // ô gõ tự xử lý (để không xoá 2 lần)
+    e.preventDefault(); keyAct(0, KMAP[e.key], e.shiftKey ? 1 : 0); return;
+  }
+  if (!inKb && e.key.length === 1 && !e.altKey && !mod) { e.preventDefault(); typeText(e.key); }
+});
+document.addEventListener("keyup", e => {
+  if (document.body.dataset.view !== "v-play" || KMAP[e.key] === undefined) return;
+  if (e.target === kb && (e.key === "Backspace" || e.key === "Enter")) return;
+  if (e.target !== document.body && e.target !== kb && e.target.closest && e.target.closest("input,textarea,select")) return;
+  keyAct(1, KMAP[e.key], e.shiftKey ? 1 : 0);
+});
+
+/* ---------- nút + menu ---------- */
+function setQ(q, tell) {
+  P.q = q; lsSet("cb_q", q);
+  $("q-seg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.q === q));
+  if (tell) { sendJSON(T.QUALITY, P.fps30 && !IS_WEBKIT ? { q, fps: 30 } : { q }); toast("Chất lượng hình: " + { auto: "Tự động", eco: "Tiết kiệm", bal: "Cân bằng", hd: "Nét" }[q]); }
+}
+$("q-seg").addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) setQ(b.dataset.q, true); });
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-a]"); if (!b) return;
+  const a = b.dataset.a;
+  if (b.closest(".bar")) b.blur();                                     // không giữ tiêu điểm trên nút (Enter/Space gõ vào máy, không bấm lại nút)
+  if (b.closest("#menu") && a !== "close") $("menu").hidden = true;
+  switch (a) {
+    case "back": case "home": case "recents": case "volup": case "voldown": case "power": case "rotate": case "notif": return cmd(a);
+    case "kb": return document.activeElement === kb ? kbHide() : kbShow();
+    case "menu": kbHide(); $("menu").hidden = false; return;
+    case "close": $("menu").hidden = true; return;
+    case "list": return toList();
+    case "paste": return openDlg("paste");
+    case "apklink": return openDlg("link");
+    case "apkfile": return $("apkf").click();
+    case "stats": $("stats").hidden = !$("stats").hidden; tick(); return;
+    case "full": return toggleFull();
+    case "reboot": return reboot();
+    case "root": return openRoot();
+    case "store": return openStore();
+    case "sclose": $("storedlg").hidden = true; return;
+    case "rclose": $("rootdlg").hidden = true; return;
+    case "rsave": return saveRoot();
+    case "dno": $("dlg").hidden = true; return;
+    case "dok": return dlgOk();
+  }
+});
+for (const id of ["menu", "dlg", "rootdlg", "storedlg"]) $(id).addEventListener("click", e => { if (e.target === $(id) && !(id === "dlg" && DLG.busy)) $(id).hidden = true; });
+const FS_OK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+if (!FS_OK) $("m-full").hidden = true;
+function toggleFull() {
+  const d = document, el = d.documentElement;
+  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+}
+async function copyOut(s) {
+  try { await navigator.clipboard.writeText(s); toast("Đã chép vào bộ nhớ tạm."); }
+  catch { openDlg("show", s); }
+}
+
+/* ---------- hộp nhập: dán chữ / cài APK từ link / hiện chữ để chép tay ---------- */
+const DLG = { kind: "", busy: false };
+function openDlg(kind, text) {
+  kbHide(); DLG.kind = kind; DLG.busy = false;
+  const ta = $("d-ta"), inp = $("d-in"); $("d-prog").hidden = true; $("d-ok").disabled = false;
+  ta.hidden = kind === "link"; inp.hidden = kind !== "link";
+  if (kind === "paste") { $("d-t").textContent = "Dán chữ vào máy"; $("d-h").textContent = "Dán (hoặc gõ) chữ vào ô dưới, bấm OK — chữ được dán vào ô đang chọn trong máy."; ta.value = ""; ta.readOnly = false; }
+  if (kind === "link") { $("d-t").textContent = "Cài APK từ link"; $("d-h").textContent = "Dán link tải file .apk (bắt đầu bằng https://). Máy chủ tải về rồi cài vào máy."; inp.value = ""; }
+  if (kind === "show") { $("d-t").textContent = "Chữ máy vừa sao chép"; $("d-h").textContent = "Giữ tay vào ô dưới → Chọn tất cả → Sao chép."; ta.value = text || ""; ta.readOnly = true; }
+  $("dlg").hidden = false;
+  setTimeout(() => (kind === "link" ? inp : ta).focus(), 60);
+}
+async function dlgOk() {
+  if (DLG.kind === "show") { $("dlg").hidden = true; return; }
+  if (DLG.kind === "paste") { const t = $("d-ta").value; if (t) { setClip(t, true); toast("Đã dán vào máy."); } $("dlg").hidden = true; return; }
+  if (DLG.kind === "link") {
+    const u = $("d-in").value.trim();
+    if (!/^https?:\/\/\S+$/i.test(u)) { $("d-h").textContent = "Link phải bắt đầu bằng http:// hoặc https://"; return; }
+    $("dlg").hidden = true;
+    try { const j = await api(P.id + "/fromurl", { json: { url: u } }); toast("Đang tải và cài app…"); watchJob(j.job, L("Cài app", "Install app")); }
+    catch (e) { toast("Không cài được: " + e.message); }
+  }
+}
+
+/* ---------- công cụ máy (cpapi của máy chủ đang giữ máy) ---------- */
+async function api(path, opt) {
+  opt = opt || {};
+  const base = (P.ep && P.ep.stream && P.ep.stream.api) || "https://phone.cloudblue.vn";
+  const s = await session(); if (!s) throw new Error("Phiên đăng nhập hết hạn.");
+  const h = { Authorization: "Bearer " + s.access_token };
+  if (opt.json) h["Content-Type"] = "application/json";
+  const r = await fetch(base.replace(/\/$/, "") + "/cpapi/" + path, { method: opt.method || "POST", headers: h, body: opt.json ? JSON.stringify(opt.json) : opt.body });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(j.error || ("Lỗi " + r.status)); e.status = r.status; e.j = j; throw e; }
+  return j;
+}
+const jobT = m => LANG === "en" ? (srvEn(m, true, null) ?? m) : m;          // 16/11c: câu tiến độ / kết quả việc theo ngôn ngữ
+const rbMark = (id, on) => { try { if (on) localStorage.setItem("cp_rb_" + id, String(Date.now())); else localStorage.removeItem("cp_rb_" + id); } catch {} };
+async function watchJob(id, label) {
+  if (!id) return;
+  for (let i = 0; i < 400; i++) {
+    await sleep(2000);
+    let j; try { j = await api("job?id=" + encodeURIComponent(id), { method: "GET" }); } catch { continue; }
+    if (j.state === "running") { if (j.msg) toast(label + ": " + jobT(j.msg), null, 2500); continue; }
+    toast(label + (j.state === "done" ? L(" xong", " done") : L(" lỗi", " failed")) + (j.msg ? ": " + jobT(j.msg) : ""), null, 6000); return j;
+  }
+}
+async function reboot() {
+  if (!confirm(L("Khởi động lại máy? Máy tắt rồi bật lại trong 1–3 phút, app đang mở sẽ bị đóng.", "Restart this phone? It turns off and back on in 1–3 minutes; open apps will close."))) return;
+  try {
+    const j = await api(P.id + "/reboot"); rbMark(P.id, true);                 // 16/11c: thẻ máy trên web hiện "Đang khởi động lại…"
+    toast(L("Đang khởi động lại máy… Cứ đóng trang — máy vẫn tự khởi động.", "Restarting the phone… You can close this page — it keeps restarting."));
+    watchJob(j.job, L("Khởi động lại", "Restart")).finally(() => rbMark(P.id, false));
+  }
+  catch (e) { toast(L("Không khởi động lại được: ", "Couldn't restart: ") + e.message); }
+}
+$("apkf").addEventListener("change", async () => {
+  const f = $("apkf").files && $("apkf").files[0]; $("apkf").value = "";
+  if (!f) return;
+  DLG.kind = "show"; DLG.busy = true;
+  $("d-t").textContent = "Đang gửi " + f.name; $("d-h").textContent = "Giữ trang này mở tới khi xong."; $("d-ta").hidden = true; $("d-in").hidden = true;
+  $("d-prog").hidden = false; $("d-prog").firstElementChild.style.width = "0%"; $("d-ok").disabled = true; $("dlg").hidden = false;
+  const upid = (Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 32);
+  const CH = 8 * 1024 * 1024; let off = 0, job = null, fails = 0;
+  try {
+    while (off < f.size && !job) {
+      try {
+        const j = await api(`${P.id}/upload?id=${upid}&name=${encodeURIComponent(f.name)}&total=${f.size}&off=${off}`, { body: f.slice(off, Math.min(off + CH, f.size)) });
+        off = j.size || off; job = j.job || null; fails = 0;
+      } catch (e) {
+        if (e.status === 409 && e.j && typeof e.j.size === "number") { off = e.j.size; continue; }
+        if (++fails > 3 || (e.status && e.status < 500)) throw e;
+        await sleep(1500 * fails);
+      }
+      $("d-prog").firstElementChild.style.width = Math.round(100 * off / f.size) + "%";
+    }
+    DLG.busy = false; $("dlg").hidden = true;
+    toast("Đã gửi xong — đang cài " + f.name + "…"); watchJob(job, L("Cài ", "Install ") + f.name);
+  } catch (e) { DLG.busy = false; $("dlg").hidden = true; toast("Gửi file lỗi: " + e.message); }
+});
+
+/* ---------- 🛍 KHO APP (cpapi GET/POST <máy>/store): app chính chủ (id) + app admin bỏ thêm (name) ---------- */
+const ST_ = { busy: new Set() };
+function storeRow(icon, name, desc, inst, key, isFile) {
+  const d = document.createElement("div"); d.className = "kapp";
+  const i = document.createElement("span"); i.className = "ki"; i.textContent = icon; i.setAttribute("aria-hidden", "true");
+  const t = document.createElement("span"); const b = document.createElement("b"); b.textContent = name; const sm = document.createElement("small"); sm.textContent = desc; t.append(b, sm);
+  const bt = document.createElement("button"); bt.type = "button"; bt.className = "btn" + (inst ? " ghost" : "");
+  bt.textContent = ST_.busy.has(key) ? "Đang cài…" : inst ? "Cài lại" : "Cài"; bt.disabled = ST_.busy.has(key);
+  bt.onclick = () => storeInstall(key, isFile, name, bt);
+  d.append(i, t, bt);
+  if (inst) { const ok = document.createElement("span"); ok.className = "okc"; ok.textContent = "✓ Đã cài"; sm.append(document.createTextNode(" · ")); sm.append(ok); }
+  return d;
+}
+async function openStore() {
+  $("storedlg").hidden = false; const L_ = $("s-list"); L_.innerHTML = '<div class="rempty">Đang tải…</div>';
+  let j; try { j = await api(P.id + "/store", { method: "GET" }); }
+  catch (e) { L_.innerHTML = ""; const m = document.createElement("div"); m.className = "rempty"; m.textContent = "Không mở được kho: " + e.message; L_.append(m); return; }
+  L_.innerHTML = "";
+  const inst = new Set(j.installed || []), apps = j.apps || [], files = j.files || [];
+  if (!apps.length && !files.length) { L_.innerHTML = '<div class="rempty">Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.</div>'; return; }
+  for (const a of apps) L_.append(storeRow(a.icon || "📦", a.name, a.desc || "", !!a.installed, a.id, false));
+  for (const f of files) L_.append(storeRow("📦", f.name.replace(/\.(apk|apks|xapk|apkm)$/i, ""), "App shop thêm sẵn · " + (f.size / 1048576).toFixed(1) + " MB", false, f.name, true));
+}
+async function storeInstall(key, isFile, name, bt) {
+  if (ST_.busy.has(key)) return;
+  ST_.busy.add(key); bt.disabled = true; bt.textContent = "Đang cài…";
+  try {
+    const j = await api(P.id + "/store", { json: isFile ? { name: key } : { id: key } });
+    toast("Đang chuẩn bị " + name + "…"); const r = await watchJob(j.job, name);
+    if (r && r.state === "done" && !$("storedlg").hidden) openStore();
+  } catch (e) { toast("Không cài được " + name + ": " + e.message); }
+  finally { ST_.busy.delete(key); if (bt.isConnected) { bt.disabled = false; bt.textContent = "Cài"; } }
+}
+
+/* ---------- 🔓 ROOT THEO APP (cpapi GET/POST <máy>/rootcfg → phonectl rootcfg) ---------- */
+const APP_NAMES = { "com.termux": "Termux", "com.roblox.client": "Roblox", "com.android.chrome": "Chrome", "org.mozilla.firefox": "Firefox",
+  "com.facebook.katana": "Facebook", "com.zing.zalo": "Zalo", "org.telegram.messenger": "Telegram", "com.discord": "Discord",
+  "com.google.android.youtube": "YouTube", "com.whatsapp": "WhatsApp", "com.ss.android.ugc.trill": "TikTok", "com.zhiliaoapp.musically": "TikTok",
+  "bin.mt.plus": "MT Manager", "bin.mt.plus.canary": "MT Manager (bản 2)", "ru.zdevs.zarchiver": "ZArchiver", "com.speedsoftware.rootexplorer": "Root Explorer", "com.catchingnow.icebox": "Ice Box",
+  "com.github.uiautomator": "ATX Agent", "com.termux.api": "Termux:API", "com.termux.boot": "Termux:Boot", "com.termux.widget": "Termux:Widget" };
+const appName = pkg => APP_NAMES[pkg] || pkg.split(".").slice(-1)[0].replace(/^./, c => c.toUpperCase());
+const R = { cfg: null, busy: false };
+function rootRow(pkg, on, ask) {
+  const l = document.createElement("label"); l.className = "rapp" + (ask ? " ask" : "");
+  const nm = document.createElement("span"); nm.className = "nm";
+  const b = document.createElement("b"); b.textContent = appName(pkg);
+  const sm = document.createElement("small"); sm.textContent = pkg + (ask && ask.t ? " · xin lúc " + String(ask.t).slice(11, 16) : "");
+  nm.append(b, sm);
+  const c = document.createElement("input"); c.type = "checkbox"; c.className = "tg"; c.dataset.pkg = pkg; c.checked = on;
+  c.setAttribute("aria-label", "Cho " + appName(pkg) + " dùng root");
+  l.append(nm, c); return l;
+}
+function rootPaint() {
+  const j = R.cfg || {}, on = $("r-on").checked, allow = new Set(j.apps || []);
+  $("r-st").textContent = !j.online ? "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng."
+    : on !== !!j.on ? (on ? "Bấm Lưu để bật root." : "Bấm Lưu để tắt root.")
+    : on && j.su === false ? "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi mới cài cho app đã chọn."
+    : on ? (j.running ? "Đang bật · " + allow.size + " app được dùng su" : "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.")
+         : "Đang tắt — không app nào dùng được lệnh su.";
+  const w = $("r-warn"); w.hidden = j.selinux !== "Enforcing";
+  w.textContent = "⚠ Máy này đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.";
+  $("r-body").classList.toggle("off", !on);
+}
+function rootFill(j) {
+  R.cfg = j; const allow = new Set(j.apps || []);
+  $("r-on").checked = !!j.on; $("r-on").disabled = false; $("r-save").disabled = false;
+  const asked = (j.asked || []).filter(a => !allow.has(a.pkg));
+  const ak = $("r-ask"); ak.innerHTML = ""; $("r-ask-h").hidden = !asked.length;
+  for (const a of asked) ak.appendChild(rootRow(a.pkg, false, a));
+  const list = $("r-apps"); list.innerHTML = "";
+  const shown = new Set(asked.map(a => a.pkg));
+  const pk = [...new Set([...(j.apps || []), ...(j.installed || [])])].filter(x => !shown.has(x))
+    .sort((a, b) => (allow.has(b) - allow.has(a)) || appName(a).localeCompare(appName(b)));
+  if (!pk.length) list.innerHTML = '<div class="rempty">Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.</div>';
+  for (const x of pk) list.appendChild(rootRow(x, allow.has(x), null));
+  rootPaint();
+}
+async function openRoot() {
+  $("rootdlg").hidden = false; $("r-on").disabled = true; $("r-save").disabled = true;
+  $("r-st").textContent = "Đang đọc…"; $("r-warn").hidden = true;
+  $("r-ask").innerHTML = ""; $("r-ask-h").hidden = true; $("r-apps").innerHTML = '<div class="rempty">Đang tải danh sách app…</div>';
+  try { rootFill(await api(P.id + "/rootcfg", { method: "GET" })); }
+  catch (e) {
+    $("r-st").textContent = e.status === 409 && e.j && e.j.old ? "Máy chủ chưa có tính năng này — báo admin cập nhật." : "Không đọc được: " + e.message;
+    $("r-apps").innerHTML = "";
+  }
+}
+async function saveRoot() {
+  if (R.busy || !R.cfg) return;
+  const on = $("r-on").checked;
+  const apps = [...document.querySelectorAll("#rootdlg input.tg[data-pkg]")].filter(c => c.checked).map(c => c.dataset.pkg);
+  if (on && !apps.length && !confirm(L("Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?", "No app selected — root will be on but every app asking for root will be denied. Save anyway?"))) return;
+  R.busy = true; $("r-save").disabled = true; $("r-save").textContent = "Đang lưu…";
+  try {
+    const j = await api(P.id + "/rootcfg", { json: { on, apps: [...new Set(apps)] } });
+    const r = await watchJob(j.job, "Root");
+    if (r && r.state === "done") { $("rootdlg").hidden = true; }
+    else if (!$("rootdlg").hidden) openRoot();
+  } catch (e) { toast("Không lưu được: " + e.message); }
+  finally { R.busy = false; $("r-save").disabled = false; $("r-save").textContent = "Lưu"; }
+}
+$("r-on").addEventListener("change", rootPaint);
+
+/* ---------- thông số (bấm 📊 trong menu) ---------- */
+function tick() {
+  const now = performance.now(), dt = (now - (P.f0t || now)) / 1000;
+  if (dt >= 0.9) { P.fps = Math.round((P.frames - P.f0) / dt); P.kbps = Math.round((P.bytes - P.b0) * 8 / 1000 / dt); P.f0 = P.frames; P.b0 = P.bytes; P.f0t = now; }
+  else if (!P.f0t) P.f0t = now;
+  if ($("stats").hidden) return;
+  const s = P.srv || {};
+  const ss = P.sst;
+  $("stats").textContent = `${P.vw}×${P.vh} · ${P.fps} khung/s\n${P.kbps} kbps · trễ mạng ${P.rtt == null ? "?" : P.rtt + " ms"}\nđường: ${P.path || "?"}${P.pathWhy ? " (" + P.pathWhy + ")" : ""} · nén: ${s.enc || "?"}${s.q ? " · " + s.q : ""}` +
+    (ss ? `\nmáy chủ gửi ${ss.fps} khung/s · ${ss.kbps} kbps · bỏ ${ss.drop || 0}` + (ss.weak ? ` · mạng yếu → đang phát ${ss.tgt} kbps` : "") : "") +
+    `\nvẽ: ${P.rmode ? "qua ảnh" : "thẳng khung"}${IS_WEBKIT ? " (Safari)" : ""} · giải mã ${dmName()} · ${P.frames} khung${P.decErr ? " · lỗi " + P.decErr : ""}` +
+    ((P.cands || []).length > 1 ? "\n" + P.cands.map(c => c.k + ": " + (c.res || "chưa thử")).join(" · ") : "") +
+    (P.lastErr ? `\n${P.lastErr}` : "");
+}
+
+/* ---------- giữ màn hình sáng khi đang điều khiển ---------- */
+let wl = null;
+async function wake() { try { if (navigator.wakeLock && !wl && document.visibilityState === "visible") { wl = await navigator.wakeLock.request("screen"); wl.addEventListener("release", () => { wl = null; }); } } catch {} }
+function unwake() { try { wl && wl.release(); } catch {} wl = null; }
+function onBack() {                                           // quay lại tab / mở lại app → nối lại ngay nếu đường đã chết
+  if (document.visibilityState !== "visible" || P.stopped) return;
+  wake(); fitApp();
+  if (P.kicked || P.fatal || P.race || P.fixing) return;    // đang nối dở / đang hỏi · đang khởi động lại máy → để yên
+  if (!P.ws || P.ws.readyState > 1 || Date.now() - P.lastRx > 3000) { P.tries = 0; connect(); }
+}
+document.addEventListener("visibilitychange", onBack);
+addEventListener("pageshow", e => { if (e.persisted) onBack(); });
+addEventListener("pagehide", () => { if (!P.stopped) send(T.BYE); });
+
+/* ---------------- khởi động ---------------- */
+async function boot() {
+  fitApp();
+  if (TEST) return openPhone(Q.get("id") || "00000000-0000-4000-8000-000000000001");
+  if (!sb) { view("v-login"); $("lerr").textContent = "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang."; return; }
+  const s = await session();
+  if (!s) return showLogin();
+  const id = Q.get("id");
+  P.wantRoot = Q.get("root") === "1";
+  if (id && UUID.test(id)) openPhone(id); else showList();
+}
+boot();
+</script>
+<script>
+"use strict";
+/* 16/11c — CÂU MÁY CHỦ (tiếng Việt) → tiếng Anh khi web dùng English. SINH TỰ ĐỘNG từ i18n/server.json (v2/gen/make_srv.py). */
+const SRV_GEN = "Something went wrong on the server — try again in a moment or contact support.";
+const SRV_R = [["Máy chủ chưa lấy được hình của máy này\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa \\(1–2 phút, dữ liệu giữ nguyên\\) — vẫn lỗi thì báo hỗ trợ\\.", "The server couldn't get this phone's screen. Tap “Restart phone” to fix it (1–2 minutes, your data is kept) — if it still fails, contact support."], ["Máy chưa bật lại được — máy chủ sẽ tự thử lại\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ\\.", "The phone couldn't be started yet — the server will keep trying. Tap “Restart phone” for a quick fix; if it's still like this after 5 minutes, contact support."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút, đã (\\d+) giây\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes ({1} s so far). You'll get in automatically when it's up."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes. You'll get in automatically when it's up."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes ({1} s so far). You can leave; it keeps restarting — open it again to get in."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes. You can leave; it keeps restarting — open it again to get in."], ["Máy đang bật nhưng Android chưa trả lời, đã (\\d+) giây\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet ({1} s). Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang bật nhưng Android chưa trả lời\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet. Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang tạm dừng trên máy chủ\\. Bấm [“\"]Khởi động lại máy[”\"] để bật lại; không được thì báo hỗ trợ\\.", "The phone is paused on the server. Tap “Restart phone” to start it again; if that doesn't work, contact support."], ["Máy chủ chưa có máy này \\(có thể đang được tạo lại\\)\\. Chờ ít phút; vẫn vậy thì báo hỗ trợ kèm tên máy\\.", "The server doesn't have this phone yet (it may be being recreated). Wait a few minutes; if it stays like this, contact support with the phone's name."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút, đã (\\d+) giây\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute ({1} s so far)."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute."], ["Máy chưa thức dậy sau 4 phút — mở lại sau ít phút hoặc báo hỗ trợ\\.", "The phone hasn't woken up after 4 minutes — reopen it in a few minutes or contact support."], ["Máy chưa lên sau 4 phút — bấm [“\"]Khởi động lại máy[”\"] hoặc báo hỗ trợ\\.", "The phone isn't up after 4 minutes — tap “Restart phone” or contact support."], ["Máy không còn tồn tại\\.", "This phone no longer exists."], ["Chủ máy đã tắt chia sẻ hoặc đã chuyển máy — bạn không còn quyền dùng máy này\\.", "The owner stopped sharing or transferred this phone — you no longer have access."], ["Thiếu mã máy\\.", "Missing phone ID."], ["Phiên đăng nhập hết hạn, hãy đăng nhập lại\\.", "Session expired, please log in again."], ["Không tìm thấy máy\\.", "Phone not found."], ["Đây không phải máy của bạn\\.", "This isn't your phone."], ["Máy nằm ở máy chủ khác — hãy mở lại\\.", "This phone is on another server — please reopen it."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã hết hạn\\)\\.", "The phone isn't running (being created, paused or expired)."], ["Máy chưa sẵn sàng, thử lại sau ít giây\\.", "The phone isn't ready yet, try again in a few seconds."], ["Máy chưa sẵn sàng\\.", "The phone isn't ready yet."], ["Máy đang bị khoá: liên hệ hỗ trợ\\.", "This phone is locked — contact support."], ["Máy đang bị khoá: (.+)", "This phone is locked: {1}"], ["Hệ thống đang bảo trì, quay lại sau ít phút\\.", "Under maintenance — please come back in a few minutes."], ["Không lấy được hình từ cửa sổ máy — thử mở lại\\.", "Couldn't get the phone's picture — try reopening it."], ["Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại\\.", "The phone is off or restarting — wait a few seconds, then reopen it."], ["Máy đang tắt hoặc đang khởi động lại\\.", "The phone is off or restarting."], ["Máy đang được mở ở nơi khác\\.", "This phone was opened somewhere else."], ["Đang mở máy ở kết nối khác\\.", "The phone is being opened on another connection."], ["Màn hình Android của máy này đang lỗi \\(máy chủ không lấy được hình\\)\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa — vẫn lỗi thì báo hỗ trợ\\.", "This phone's Android screen has a problem (the server can't get the picture). Tap “Restart phone” to fix it — if it still fails, contact support."], ["Máy chủ đang bận — tạm tắt hình xem trước\\.", "The server is busy — live preview is paused."], ["Máy đang được xem trước ở nhiều nơi\\.", "This phone is being previewed in too many places."], ["Chưa bật được hình xem trước\\.", "Couldn't start the live preview."], ["Máy đang nghỉ — mở máy để bật lại\\.", "The phone is resting — open it to wake it up."], ["Máy chủ chưa bật được hình — thử lại\\.", "The server couldn't start the picture — retrying."], ["Máy chủ đang bận, thử lại…", "The server is busy, retrying…"], ["Hệ thống đang bảo trì: (.+)\\. Vui lòng quay lại sau\\.", "Under maintenance: {1}. Please come back later."], ["Hệ thống đang bảo trì\\. Vui lòng quay lại sau\\.", "Under maintenance. Please come back later."], ["Máy đang bị khoá đến (\\S+ \\S+): (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}: {2}. Contact support if needed."], ["Máy đang bị khoá đến (\\S+ \\S+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn: (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked: {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked. Contact support if needed."], ["Không có chức năng này\\.", "This feature isn't available."], ["Không được phép\\.", "Not allowed."], ["Nguồn không được phép\\.", "Source not allowed."], ["Phiên đăng nhập hết hạn — tải lại trang và đăng nhập lại\\.", "Session expired — reload and log in again."], ["Không tìm thấy máy của bạn\\.", "Your phone wasn't found."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã huỷ\\)\\.", "The phone isn't running (being created, paused or cancelled)."], ["Hãy mở máy từ app hoặc trang web\\.", "Open the phone from the app or the website."], ["Máy phản hồi quá lâu, thử lại\\.", "The phone took too long to respond, try again."], ["Không có việc này\\.", "Job not found."], ["Chỉ admin\\.", "Admins only."], ["Không có file này\\.", "File not found."], ["Phím không hợp lệ\\.", "Invalid key."], ["Chưa nhập chữ\\.", "No text entered."], ["Chỉ dán được chữ KHÔNG DẤU\\. Chữ có dấu hãy gõ trực tiếp trên màn hình máy\\.", "Only plain text without accents can be pasted. Type accented text directly on the phone screen."], ["Link phải bắt đầu bằng http:// hoặc https://", "The link must start with http:// or https://"], ["Chưa xoay được — máy chưa sẵn sàng, thử lại sau giây lát\\.", "Couldn't rotate — the phone isn't ready, try again shortly."], ["Chưa đọc được màn hình máy — thử lại sau giây lát\\.", "Couldn't read the phone's screen — try again shortly."], ["Chưa lấy được mã — mở Cửa hàng Play 1 lần, đợi 1 phút rồi thử lại\\.", "Couldn't get the ID yet — open the Play Store once, wait 1 minute, then try again."], ["Không có app này trong kho\\.", "This app isn't in the store."], ["Tên app không hợp lệ\\.", "Invalid app name."], ["Tên ứng dụng không hợp lệ\\.", "Invalid app name."], ["Đã tắt vị trí giả\\.", "Fake location turned off."], ["Toạ độ không hợp lệ\\.", "Invalid coordinates."], ["Đổi vị trí GPS cần máy Android 12 trở lên\\.", "Changing the GPS location needs Android 12 or newer."], ["Đã bỏ các bản clone\\.", "Clones removed."], ["Chưa có bản clone này — bấm Clone trước\\.", "This clone doesn't exist yet — tap Clone first."], ["Số bản clone không hợp lệ\\.", "Invalid number of clones."], ["Máy này chỉ đủ chạy (\\d+) bản clone cho mượt \\(mỗi bản cần \\+3GB RAM, \\+2 nhân\\)\\. Chọn ít bản hơn, hoặc bấm Nâng cấp RAM/CPU\\.", "This phone can only run {1} clone(s) smoothly (each needs +3GB RAM, +2 cores). Choose fewer, or tap Upgrade RAM/CPU."], ["Máy ([\\d.]+)GB / ([\\d.]+) nhân chưa đủ để chạy thêm .+", "A {1}GB / {2}-core phone isn't enough for clones (it would freeze). Clone tab needs at least 6GB RAM + 4 cores for 1 clone (+3GB RAM, +2 cores for each extra) — upgrade the phone first."], ["Máy chưa cài app này — cài bản chính trước rồi mới clone\\.", "This app isn't installed — install the main app first, then clone it."], ["Android trong máy không cho tạo hồ sơ clone\\.", "Android on this phone doesn't allow clone profiles."], ["Đã mở bản clone (\\d+) của (.+)\\.", "Opened clone {1} of {2}."], ["Mã tải lên không hợp lệ\\.", "Invalid upload ID."], ["File rỗng hoặc lớn hơn 4GB\\.", "The file is empty or larger than 4GB."], ["Server tạm hết dung lượng, thử lại sau\\.", "The server is out of space, try again later."], ["Lệch vị trí", "Upload position mismatch", "j"], ["Dữ liệu vượt kích thước file\\.", "The data is larger than the file."], ["FPS phải từ (\\d+) đến (\\d+)\\.", "FPS must be between {1} and {2}."], ["FPS phải từ (\\d+) đến (\\d+)", "FPS must be between {1} and {2}"], ["FPS không hợp lệ\\.", "Invalid FPS."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS \\(treo game nên để 30 FPS cho mượt\\)\\.", "Phones under 4 cores can use up to 60 FPS (30 FPS is best for idling games)."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS\\.?", "Phones under 4 cores can use up to 60 FPS."], ["Độ phân giải phải dạng rộng x cao, VD 1080x1920\\.", "Resolution must be width x height, e.g. 1080x1920."], ["Máy đang được đổi cấu hình, đợi chút\\.", "The phone's setup is being changed, please wait."], ["Không xác định được máy\\.", "Couldn't identify the phone."], ["Thiếu bật / tắt root\\.", "Missing root on / off."], ["Danh sách app không hợp lệ\\.", "Invalid app list."], ["Đang lưu cấu hình root của máy này, đợi vài giây\\.", "Saving this phone's root settings, wait a few seconds."], ["Chế độ không hợp lệ\\.", "Invalid mode."], ["Máy đang bị khoá — mở khoá trước rồi hãy ép khởi động lại\\.", "The phone is locked — unlock it before forcing a restart."], ["Máy đang khởi động lại / đổi cấu hình — đợi xong rồi thử lại\\.", "The phone is restarting / changing setup — wait until it's done, then try again."], ["Đang bảo trì\\.", "Under maintenance."], ["Lỗi máy chủ: .*", "Server error — try again."], ["Chỉ nhận file \\.apk / \\.apks / \\.apkm / \\.xapk", "Only .apk / .apks / .apkm / .xapk files are accepted"], ["Link không phải file APK\\.", "The link isn't an APK file."], ["Link không hợp lệ \\(chỉ nhận link http/https công khai\\)\\.", "Invalid link (public http/https links only)."], ["File quá lớn \\(tối đa 4GB\\)\\.", "File too large (max 4GB)."], ["File đã hết hạn, tải lên lại\\.", "The file expired — upload it again."], ["File gói hỏng hoặc bị mã hoá\\.", "The package file is corrupted or encrypted."], ["Gói không có file \\.apk bên trong\\.", "The package has no .apk inside."], ["Link này là TRANG WEB, không phải link tải file\\..*", "This link is a WEB PAGE, not a file download. Open it on your computer, tap Download, then copy the real download link (usually ending in .apk) and paste it here — or download the file and use “Upload file / APK”."], ["Không tải được từ Google Drive — hãy chia sẻ file ở chế độ [“\"]Bất kỳ ai có đường liên kết[”\"]\\.", "Couldn't download from Google Drive — share the file as “Anyone with the link”."], ["Độ rộng nhỏ nhất phải từ 240 đến 1600 dp\\.", "Smallest width must be between 240 and 1600 dp."], ["Độ rộng nhỏ nhất không hợp lệ\\.", "Invalid smallest width."], ["Máy chủ chưa cập nhật bản có Root theo app — báo admin cập nhật\\.", "The server doesn't support per-app root yet — ask an admin to update it."], ["Không lưu được cấu hình root, thử lại sau\\.", "Couldn't save root settings, try again later."], ["Cấu hình root đọc được bị lỗi\\.", "The root settings are corrupted."], ["Không chụp được màn hình\\.", "Couldn't take a screenshot."], ["Máy hết bộ nhớ — xoá bớt file / gỡ bớt app rồi thử lại\\.", "The phone is out of storage — delete some files or apps and try again."], ["Máy chủ của máy này chưa có tính năng này — đang được cập nhật, thử lại sau\\.", "This phone's server doesn't have this feature yet — try again later."], ["Đang khởi động Android \\(1–3 phút\\)…", "Starting Android (1–3 minutes)…"], ["Đang tắt hẳn máy \\(máy treo thì tắt cưỡng bức\\)…", "Shutting the phone down fully (force-stopping it if frozen)…"], ["Máy đã khởi động lại xong\\.", "The phone has restarted."], ["Máy đã khởi động, đang kết nối lại…", "The phone has started, reconnecting…"], ["Máy đã bật lại, đang kết nối….*", "The phone is back on, connecting…"], ["Đã ép khởi động lại xong.*", "Forced restart done."], ["Đang kiểm tra / bật root \\(máy có thể khởi động lại ~1 phút\\)…", "Checking / enabling root (the phone may restart, ~1 minute)…"], ["✅ Máy đã ROOT\\. Tool cần root \\(gọi lệnh su\\) dùng được ngay, không cần khởi động lại\\.", "✅ The phone is ROOTED. Tools that need root (su) work right away, no restart needed."], ["⏳ Máy đang bật root, chờ 1 phút rồi bấm lại\\.", "⏳ Root is being enabled — wait 1 minute, then tap again."], ["Đang bật root cho app đã chọn… \\(máy chưa có root gốc sẽ tự khởi động lại ~1 phút\\)", "Enabling root for the selected apps… (a phone without base root restarts, ~1 minute)"], ["Đang tắt root…", "Turning root off…"], ["Đã lưu\\.", "Saved.", "j"], ["Máy đang khởi động lại với chế độ mới \\(khoảng 1–2 phút\\)…", "Restarting the phone with the new mode (about 1–2 minutes)…"], ["Đã chuyển sang MƯỢT\\.", "Switched to SMOOTH."], ["Đã chuyển sang HIỆN 3D\\.", "Switched to 3D DISPLAY."], ["Đã đổi, đang kết nối lại…", "Changed, reconnecting…"], ["Đang áp dụng và khởi động lại máy \\(1–3 phút\\)…", "Applying and restarting the phone (1–3 minutes)…"], ["Đang đổi kích thước màn hình…", "Changing the screen size…"], ["Đã đổi sang (\\S+) · (\\d+) FPS\\. Dữ liệu vẫn giữ nguyên\\.", "Changed to {1} · {2} FPS. Your data is kept."], ["Đã đổi sang (\\S+) — app đang chạy vẫn giữ nguyên\\.", "Changed to {1} — running apps keep running."], ["Đang tạo (\\d+) bản clone \\(mỗi bản ~20 giây\\)…", "Creating {1} clone(s) (~20 s each)…"], ["✅ Đã có (\\d+) bản clone! Mở lại Clone tab.*", "✅ {1} clone(s) ready! Reopen Clone tab and tap ▶ Open clone 1, 2… to run them (or use the Work tab in the app list)."], ["✅ Đã có (\\d+) bản clone! Trên màn hình chính máy.*", "✅ {1} clone(s) ready! The phone's home screen has whale icons “Clone 1”, “Clone 2”… — tap one to open it."], ["Đã có (\\d+) bản clone\\. Máy cần KHỞI ĐỘNG LẠI 1 lần.*", "{1} clone(s) exist. The phone needs ONE restart to add more — tap “Restart”, then clone again."], ["Đã có (\\d+) bản clone — máy này chỉ cho tối đa.*", "{1} clone(s) exist — that's the most this phone allows. For more accounts, rent another phone."], ["Đã đặt vị trí (.+)\\. Mở lại app cần vị trí để nhận vị trí mới\\.", "Location set to {1}. Reopen apps that use location to get the new one."], ["✅ Đã cài (.+) — mở trên màn hình chính của máy\\.", "✅ Installed {1} — open it from the phone's home screen."], ["Đã cài xong (.+?)( \\(kèm (\\d+) file dữ liệu game\\))?", "Installed {1}", "j"], ["✅ Đã cài (.+)", "✅ Installed {1}", "j"], ["Đang cài (.+)", "Installing {1}", "j"], ["Đã lưu vào thư mục Download: (.+)", "Saved to the Download folder: {1}"], ["Đã tải (.+)", "Downloaded {1}", "j"], ["Không lấy được (.+) từ trang chính chủ \\(.*\\)\\. Thử lại sau ít phút\\.", "Couldn't download {1} from the official site. Try again in a few minutes."], ["Không khởi động lại được: .*", "Couldn't restart the phone — try again in a minute or contact support."], ["Không ép khởi động lại được: .*", "Couldn't force-restart the phone — try again in a minute or contact support."], ["Chưa khởi động lại được: .*", "Couldn't restart yet — try again in a minute."], ["Không đổi được: .*", "Couldn't change it — try again later."], ["Đổi cấu hình lỗi: .*", "Couldn't change the setup — try again later."], ["Chưa root được: .*", "Couldn't root the phone — try again later."], ["Không đọc được cấu hình root: .*", "Couldn't read the root settings."], ["Chưa clone được: .*", "Couldn't clone — try again later."], ["Chưa mở được bản clone: .*", "Couldn't open the clone."], ["Chưa đặt được vị trí: .*", "Couldn't set the location."], ["Cài APK lỗi: .*", "Couldn't install the APK."], ["Không chép được file vào máy: .*", "Couldn't copy the file to the phone."], ["Không chép được file: .*", "Couldn't copy the file."], ["Khởi động lại", "Restart", "j"], ["Ép khởi động lại", "Forced restart", "j"], ["Root máy", "Root phone", "j"], ["Đổi chế độ hình", "Change display mode", "j"], ["Cài (.+)", "Install {1}", "j"]].map(r => { try { return [new RegExp("^(?:" + r[0] + ")$", "s"), r[1], r[2] || ""]; } catch (e) { return null; } }).filter(Boolean);
+const SRV_VN = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+function srvFind(s, job) {
+  const t = String(s || "").trim(); if (!t) return null;
+  for (const [re, en, j] of SRV_R) { if (j && !job) continue; const m = re.exec(t); if (!m) continue;
+    let out = en; for (let g = 9; g >= 1; g--) out = out.split("{" + g + "}").join(m[g] != null ? m[g] : ""); return out; }
+  return null;
+}
+function srvEn(s, job, fb) {
+  if (!s || !String(s).trim() || !SRV_VN.test(s)) return s;
+  const f = srvFind(s, job); if (f != null) return f;
+  if (String(s).includes("\n")) { const out = []; for (const ln of String(s).split("\n")) { const x = ln.trim() ? srvEn(ln, job, null) : ln; if (x == null) return fb || SRV_GEN; out.push(x); } return out.join("\n"); }
+  return fb != null ? fb : (job ? null : SRV_GEN);
+}
+
+/* ===== 16/11c — ENGLISH: lớp dịch giao diện I18X (giống web): từ điển (nguyên câu) · câu ghép (đầu / đuôi) · mẫu (bảng Thông số…) ·
+   câu máy chủ. Không khớp → giữ nguyên. Đổi lại Tiếng Việt → trả nguyên chữ cũ. Bỏ qua ô nhập, [data-noi18n]. ===== */
+const I18X = {"CloudBlue – Điều khiển máy": "CloudBlue – Phone control", "Đăng nhập để mở máy": "Log in to open your phones", "Dùng cùng tài khoản trên cloudblue.vn.": "Use the same account as on cloudblue.vn.", "Mật khẩu": "Password", "Đăng nhập": "Log in", "Chưa có tài khoản?": "No account yet?", "Đăng ký trên cloudblue.vn": "Sign up on cloudblue.vn", "Đăng xuất": "Log out", "Máy của tôi": "My phones", "Mở CloudBlue như một app: bấm nút": "Use CloudBlue like an app: tap", "Chia sẻ": "Share", "của Safari, chọn": "in Safari, choose", "Thêm vào MH chính": "Add to Home Screen", ". Lần sau bấm biểu tượng là vào thẳng, toàn màn hình.": ". Next time tap the icon to go straight in, full screen.", "Thuê thêm máy · gia hạn · nạp tiền trên cloudblue.vn": "Rent more phones · renew · top up on cloudblue.vn", "Ẩn mẹo": "Hide tip", "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang.": "Couldn't load the login library — check your network and reload the page.", "Sai email hoặc mật khẩu.": "Wrong email or password.", "Email chưa xác nhận — mở hộp thư để xác nhận trước.": "Email not confirmed yet — open your inbox to confirm it first.", "Đang chạy": "Running", "Đang tạo máy…": "Creating…", "Đã hết hạn — gia hạn trên web": "Expired — renew on the website", "Máy lỗi — liên hệ hỗ trợ": "Error — contact support", "Đang huỷ": "Cancelling", "Đang tải…": "Loading…", "Thử lại": "Retry", "Bạn chưa có máy nào.": "You don't have any phones yet.", "Thuê máy trên cloudblue.vn": "Rent a phone on cloudblue.vn", "Máy đang bị khoá": "This phone is locked", "Mở máy": "Open phone", "Máy": "Phone", "màn hình đen": "black screen", "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm.": "iPhone / iPad needs iOS 16.4 or later to open phones in the browser. Go to Settings → General → Software Update.", "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.": "This browser can't show the phone yet. Use an up-to-date Chrome, Edge or Safari, or get the app on cloudblue.vn.", "Màn hình máy": "Phone screen", "Điều khiển": "Controls", "Về danh sách máy": "Back to my phones", "Danh sách máy": "My phones", "Quay lại": "Back", "Màn hình chính": "Home", "Ứng dụng gần đây": "Recent apps", "Bàn phím": "Keyboard", "Thêm": "More", "Gõ chữ vào máy": "Type on the phone", "Về danh sách": "Back to list", "Khởi động lại máy": "Restart phone", "Khởi động lại máy?": "Restart this phone?", "Khởi động lại": "Restart", "Thôi": "Cancel", "Máy tắt rồi bật lại trong 1–3 phút. App đang mở trong máy sẽ bị đóng, dữ liệu giữ nguyên.": "The phone turns off and back on in 1–3 minutes. Open apps will close; your data is kept.", "Mở lại máy": "Reopen phone", "Đang khởi động lại máy… (1–3 phút)": "Restarting the phone… (1–3 minutes)", "Đang khởi động lại máy… (1–3 phút). Bạn có thể đóng trang — máy vẫn tự khởi động, mở lại là vào.": "Restarting the phone… (1–3 minutes). You can close this page — it keeps restarting; open it again to get in.", "Máy đang được tạo, chờ thêm chút…": "The phone is being created, please wait…", "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.": "This phone has expired — renew it on cloudblue.vn and reopen.", "Máy đang lỗi — liên hệ hỗ trợ.": "This phone has an error — contact support.", "Máy đang bị huỷ.": "This phone is being cancelled.", "Đang nối lại…": "Reconnecting…", "Đang mở máy…": "Opening phone…", "Máy thử": "Test phone", "Mạng chậm — đang thử lại…": "Slow network — retrying…", "Phiên đăng nhập hết hạn, hãy đăng nhập lại.": "Your session expired, please log in again.", "Không thấy máy này trong tài khoản của bạn.": "This phone isn't in your account.", "Không lấy được thông tin máy — tự thử lại…": "Couldn't get the phone's details — retrying…", "Máy chưa chạy.": "The phone isn't running.", "Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…": "The server is under maintenance or offline — retrying…", "Máy chủ đang tạm offline — tự thử lại…": "The server is offline for now — retrying…", "Mất kết nối — đang nối lại…": "Connection lost — reconnecting…", "Chưa nối được tới máy — vẫn đang tự thử lại…": "Can't reach the phone yet — still retrying…", "Tải lại trang": "Reload page", "iPhone / iPad: tắt Wi-Fi, dùng 4G / 5G rồi mở lại — hoặc mở cloudblue.vn bằng Chrome. Đang bật iCloud Private Relay (Chuyển tiếp bảo mật) thì tắt cho mạng này.": "iPhone / iPad: turn off Wi-Fi and use 4G / 5G, then reopen — or open cloudblue.vn in Chrome. If iCloud Private Relay is on, turn it off for this network.", "Kiểm tra mạng, tắt VPN / proxy (nếu có) rồi thử lại. Vẫn không được: dùng app CloudBlue trên máy tính / Android.": "Check your network, turn off any VPN / proxy and try again. Still not working? Use the CloudBlue app on PC / Android.", "Đang tải lại trang để nối lại…": "Reloading the page to reconnect…", "⏳ Mạng chậm — đang chờ hình…": "⏳ Slow network — waiting for video…", "📶 Mạng yếu — đã giảm nét cho hình mượt": "📶 Weak network — quality lowered to stay smooth", "Chép": "Copy", "Lỗi kết nối.": "Connection error.", "Đang làm mới phiên đăng nhập…": "Refreshing your session…", "Máy đang được mở ở nơi khác (app hoặc trình duyệt khác).": "This phone is open somewhere else (another app or browser).", "Mở lại ở đây": "Open here", "Thiết bị giải mã chưa kịp — đã chuyển sang 30 hình/giây cho mượt.": "Your device couldn't keep up — switched to 30 fps to stay smooth.", "Đóng": "Close", "Chất lượng hình": "Picture quality", "Tự động": "Auto", "Tiết kiệm": "Saver", "Cân bằng": "Balanced", "Nét": "Sharp", "Nút của máy": "Phone buttons", "Nhỏ tiếng": "Volume down", "To tiếng": "Volume up", "Thông báo": "Notifications", "Nút nguồn": "Power", "Dán chữ": "Paste text", "Thông số": "Stats", "Toàn màn hình": "Full screen", "Công cụ": "Tools", "Cài file APK": "Install APK file", "Cài APK từ link": "Install APK from link", "Đã chép vào bộ nhớ tạm.": "Copied to the clipboard.", "Dán chữ vào máy": "Paste text into the phone", "Dán (hoặc gõ) chữ vào ô dưới, bấm OK — chữ được dán vào ô đang chọn trong máy.": "Paste (or type) text below and tap OK — it goes into the field selected on the phone.", "Dán link tải file .apk (bắt đầu bằng https://). Máy chủ tải về rồi cài vào máy.": "Paste a link to an .apk file (starting with https://). The server downloads and installs it.", "Chữ máy vừa sao chép": "Text copied on the phone", "Giữ tay vào ô dưới → Chọn tất cả → Sao chép.": "Press and hold the box below → Select all → Copy.", "Đã dán vào máy.": "Pasted into the phone.", "Link phải bắt đầu bằng http:// hoặc https://": "The link must start with http:// or https://", "Đang tải và cài app…": "Downloading and installing the app…", "Cài app": "Install app", "Phiên đăng nhập hết hạn.": "Session expired.", "Đang khởi động lại máy…": "Restarting the phone…", "Giữ trang này mở tới khi xong.": "Keep this page open until it's done.", "Đang cài…": "Installing…", "Cài lại": "Reinstall", "Cài": "Install", "✓ Đã cài": "✓ Installed", "Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.": "The server doesn't have the app store yet — ask the admin to update.", "MT Manager (bản 2)": "MT Manager (v2)", "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng.": "The phone is off or offline — you can still save; it applies when the phone is on.", "Bấm Lưu để bật root.": "Tap Save to turn root on.", "Bấm Lưu để tắt root.": "Tap Save to turn root off.", "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi mới cài cho app đã chọn.": "Root isn't enabled on this phone yet — tap Save: the phone restarts for about 1 minute to enable root, then sets it up for the chosen apps.", "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.": "On but not running — tap Save to start it again.", "Đang tắt — không app nào dùng được lệnh su.": "Off — no app can use su.", "⚠ Máy này đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.": "⚠ This phone has SELinux Enforcing on — per-app root may not work yet. Contact support if the app still says there's no su.", "Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.": "No apps installed by you yet. Install one (e.g. Termux), then reopen this.", "Đang đọc…": "Reading…", "Đang tải danh sách app…": "Loading apps…", "Máy chủ chưa có tính năng này — báo admin cập nhật.": "The server doesn't have this feature yet — ask the admin to update.", "Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?": "No app selected — root will be on but every root request will be denied. Save anyway?", "Đang lưu…": "Saving…", "Lưu": "Save", "Chỉ app được bật mới dùng được lệnh su": "Only enabled apps can use su", "Bật root cho máy này": "Enable root on this phone", "Vừa xin root (chưa được bật)": "Just asked for root (not enabled)", "Ứng dụng trong máy": "Apps on the phone", "Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.": "Some games and apps (e.g. Roblox) can detect a rooted phone. Only enable it for apps that really need it, like Termux.", "Tải từ trang chính chủ · cài 1 chạm": "From the official sites · one-tap install", "Huỷ": "Cancel", "Termux lấy từ GitHub chính thức, MT Manager từ mt.cc, ZArchiver từ zdevs.ru. Lần đầu máy chủ tải mất vài chục giây, máy sau cài ngay. Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.": "Termux comes from its official GitHub, MT Manager from mt.cc, ZArchiver from zdevs.ru. The first download takes the server a few dozen seconds; later phones install instantly. Need root for Termux / MT Manager → open 🔓 Root and turn it on for that app.", "máy chủ bận": "server busy.", "Xoay": "Rotate", "Kho app": "App store", "🛍 Kho app": "🛍 App store", "Đang khởi động lại máy… Cứ đóng trang — máy vẫn tự khởi động.": "Restarting the phone… You can close this page — it keeps restarting.", "Điều khiển điện thoại đám mây CloudBlue ngay trên trình duyệt (iPhone, iPad, Mac, máy tính).": "Control CloudBlue cloud phones right in your browser (iPhone, iPad, Mac, computer).", "Khởi động lại máy? Máy tắt rồi bật lại trong 1–3 phút, app đang mở sẽ bị đóng.": "Restart this phone? It turns off and back on in 1–3 minutes; open apps will close."};
+const I18X_PRE = [["Trình duyệt không giải mã được hình của máy (", "The browser can't decode the phone's video ("], ["Trình duyệt chưa giải mã được hình của máy (", "The browser can't decode the phone's video yet ("], ["Không tải được danh sách máy (", "Couldn't load your phones ("], ["Không khởi động lại được: ", "Couldn't restart: "], ["Khởi động lại chưa được: ", "Couldn't restart yet: "], ["Đã gửi xong — đang cài ", "Uploaded — installing "], ["Không đăng nhập được: ", "Couldn't log in: "], ["App shop thêm sẵn · ", "Shop's app · "], ["Khởi động lại xong: ", "Restart done: "], ["Không mở được kho: ", "Couldn't open the app store: "], ["Máy vừa sao chép: “", "The phone copied: “"], ["Khởi động lại lỗi: ", "Restart failed: "], ["Máy đang bị khoá: ", "This phone is locked: "], ["Chất lượng hình: ", "Picture quality: "], ["Không cài được: ", "Couldn't install: "], ["Không đọc được: ", "Couldn't read: "], ["Không lưu được: ", "Couldn't save: "], ["Không cài được ", "Couldn't install "], ["Khởi động lại: ", "Restart: "], ["Gửi file lỗi: ", "Upload failed: "], ["Đang chuẩn bị ", "Preparing "], ["Cài app xong: ", "App installed: "], ["Cài app lỗi: ", "App install failed: "], ["Đang bật · ", "On · "], ["Đang gửi ", "Uploading "], ["Cài app: ", "Install app: "], ["Lỗi ", "Error "]];
+const I18X_SUF = [["). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.", "). Update iOS / your browser and try again, or use the CloudBlue app on PC / Android."], ["). Hãy cập nhật iOS / trình duyệt rồi thử lại.", "). Update iOS / your browser and try again."], [" Thử lại sau ít phút hoặc báo hỗ trợ.", " Try again in a few minutes or contact support."], [" — nhiệm vụ mở máy hôm nay", " — today's open-a-phone mission"], [" app được dùng su", " apps can use su"], [" Tự thử lại…", " Retrying…"], [" (mạng chậm)", " (slow network)"], [" dùng root", " uses root"]];
+const I18X_TOK = [["chưa kiểm tra được phiên đăng nhập (mạng chậm)", "couldn't check the session (slow network)"], ["vào được máy nhưng không nhận được hình", "got in but no video"], ["nối được nhưng máy chủ chưa trả lời", "connected but the server hasn't answered"], ["vừa không vào được — thử sau cùng", "just failed — tried last"], ["được — chỉ WebSocket không vào", "OK — only WebSocket is blocked"], ["đã nối, máy chủ đang bật hình", "connected, server is starting video"], ["máy chủ chưa bật đường thẳng", "server has no direct path"], ["màn hình đen → đổi cách vẽ (", "black screen → switching render mode ("], ["chưa lấy được thông tin máy", "couldn't get the phone's details"], ["không nhận được gì 6 giây", "nothing received for 6 s"], ["đã vào máy, đang chờ hình", "in, waiting for video"], ["không đường nào nối được", "no path connected"], ["] · không ra hình sau ", "] · no picture after "], ["có hình, đang giải mã", "video arriving, decoding"], ["treo ở bước nối (quá ", "stuck connecting (over "], ["mạng yếu → đang phát", "weak network → streaming"], ["HTTP tới máy chủ: ", "HTTP to server: "], ["không vào được (", "couldn't get in ("], ["treo ở bước nối", "stuck connecting"], ["kết nối bị đóng", "connection closed"], [" · được chia sẻ", " · shared"], ["không mở được", "couldn't open"], ["nối được sau ", "connected after "], ["đường thẳng ", "direct path "], ["máy chủ gửi", "server sends"], ["thẳng khung", "direct frame"], ["đang nối · ", "connecting · "], ["vẽ khung · ", "draw frame · "], ["Annex-B gọn", "lean Annex-B"], [" · hết hạn ", " · expires "], ["không được", "failed"], ["tạo ảnh · ", "make bitmap · "], ["đang nối…", "connecting…"], ["cấu hình ", "config "], ["gửi khung", "send frame"], ["trễ mạng", "latency"], ["chưa thử", "not tried"], ["Hết hạn ", "Expires "], ["avcC gọn", "lean avcC"], ["xin lúc ", "asked at "], ["khung/s", "fps"], ["đường: ", "path: "], ["qua ảnh", "via bitmap"], ["giải mã", "decoder"], [" · lỗi ", " · errors "], ["đã thử ", "tried "], [" → thử ", " → trying "], ["giữ chỗ", "placeholder"], [" · bỏ ", " · dropped "], [" khung", " frames"], ["đường ", "path "], [" lượt", " rounds"], [" giây", " s"], ["thẳng", "direct"], [" nhân", " cores"], [" cách", " modes"], ["nén: ", "codec: "], ["vẽ: ", "render: "], ["còn ", "left "]];
+const I18X_KEEP = new Set(["Tiếng Việt"]);
+const i18xVn = t => SRV_VN.test(String(t).replace(/\d[\d.,]*\s?đ/g, ""));
+function i18xOne(k, depth) {
+  let v = I18X[k]; if (v != null) return v;
+  const sv = srvFind(k, false); if (sv != null) return sv;
+  if (depth > 2) return null;
+  for (const [a, b] of I18X_PRE) if (k.startsWith(a) && k.length > a.length) {   // đầu kiểu nhãn ("…: " / "“") → phần sau chưa dịch được thì giữ nguyên
+    const r = k.slice(a.length); const t = i18xVn(r) ? (i18xOne(r.trim(), depth + 1) ?? (/(: |“)$/.test(a) ? r : null)) : r; if (t != null) return b + t; }
+  for (const [a, b] of I18X_SUF) if (k.endsWith(a) && k.length > a.length) { const r = k.slice(0, -a.length); const t = i18xVn(r) ? i18xOne(r.trim(), depth + 1) : r; if (t != null) return t + b; }
+  let x = k; for (const [a, b] of I18X_TOK) x = x.split(a).join(b);
+  if (x !== k && !i18xVn(x)) return x;
+  return null;
+}
+function i18xText(t) {
+  const raw = String(t), k = raw.replace(/[ \t]+/g, " ").trim(); if (!k || I18X_KEEP.has(k)) return null;
+  if (I18X[k] != null) return raw.match(/^\s*/)[0] + I18X[k] + raw.match(/\s*$/)[0];      // từ điển trước (có chữ Việt không dấu: "Xoay", "Kho app")
+  if (!i18xVn(k)) return null;
+  // nhiều dòng (bảng 📊 Thông số, chẩn đoán…): dịch từng dòng, dòng nào chưa dịch được thì giữ nguyên
+  const v = k.includes("\n") ? (() => { let hit = 0; const out = k.split("\n").map(ln => { const z = ln.trim(); if (!z || !i18xVn(z)) return ln; const y = i18xOne(z, 0); if (y == null) return ln; hit++; return y; }); return hit ? out.join("\n") : null; })() : i18xOne(k, 0);
+  if (v == null) return null;
+  return raw.match(/^\s*/)[0] + v + raw.match(/\s*$/)[0];
+}
+const I18X_SKIP = "script,style,textarea,input,select,option,[contenteditable],[data-noi18n]";
+function i18xNode(nd) {
+  if (LANG !== "en" || !nd || nd.nodeType !== 3) return;
+  const cur = nd.nodeValue; if (nd._i18xEn != null && cur === nd._i18xEn) return;
+  const p = nd.parentElement; if (!p || p.closest(I18X_SKIP)) return;
+  const v = i18xText(cur); if (v == null || v === cur) return;
+  nd._i18xVi = cur; nd._i18xEn = v; nd.nodeValue = v;
+}
+const I18X_ATTR = ["placeholder", "title", "aria-label"];
+function i18xAttrs(el) {
+  if (LANG !== "en" || !el || el.nodeType !== 1 || el.closest("script,style,[data-noi18n]")) return;
+  for (const a of I18X_ATTR) { const cur = el.getAttribute(a); if (!cur) continue; const mine = el._i18xA && el._i18xA[a]; if (mine && mine.en === cur) continue;
+    const v = i18xText(cur); if (v == null || v === cur) continue; (el._i18xA = el._i18xA || {})[a] = { vi: cur, en: v }; el.setAttribute(a, v); }
+}
+function i18xScan(root) {
+  if (LANG !== "en" || !root) return; if (root.nodeType === 3) return i18xNode(root); if (root.nodeType !== 1) return;
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); for (let x; (x = w.nextNode());) i18xNode(x);
+  i18xAttrs(root); root.querySelectorAll("[placeholder],[title],[aria-label]").forEach(i18xAttrs);
+}
+function i18xRestore() {
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  for (let x; (x = w.nextNode());) if (x._i18xVi != null) { if (x.nodeValue === x._i18xEn) x.nodeValue = x._i18xVi; x._i18xVi = x._i18xEn = null; }
+  document.querySelectorAll("[placeholder],[title],[aria-label]").forEach(el => { const A = el._i18xA; if (!A) return; for (const a in A) if (el.getAttribute(a) === A[a].en) el.setAttribute(a, A[a].vi); el._i18xA = null; });
+}
+let i18xQ = [], i18xT = 0;
+new MutationObserver(ms => {
+  if (LANG !== "en") return;
+  for (const m of ms) { if (m.type === "childList") m.addedNodes.forEach(x => i18xQ.push(x)); else i18xQ.push(m.target); }
+  if (!i18xT) i18xT = requestAnimationFrame(() => { i18xT = 0; const q = i18xQ; i18xQ = []; for (const x of q) { if (x.nodeType === 3) i18xNode(x); else if (x.isConnected) i18xScan(x); } });
+}).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: I18X_ATTR });
+function langPaint() {
+  document.documentElement.lang = LANG; document.title = LANG === "en" ? "CloudBlue – Phone control" : "CloudBlue – Điều khiển máy";
+  document.querySelectorAll(".langb").forEach(b => { b.textContent = LANG === "en" ? "🌐 Tiếng Việt" : "🌐 English"; b.setAttribute("aria-label", LANG === "en" ? "Chuyển sang tiếng Việt" : "Switch to English"); });
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest(".langb"); if (!b) return;
+  LANG = LANG === "en" ? "vi" : "en"; try { localStorage.setItem("br_lang", LANG); } catch {}
+  langPaint(); if (LANG === "en") i18xScan(document.body); else i18xRestore();
+});
+langPaint(); if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document.body), 500); }
+</script>
+</body>
+</html>
