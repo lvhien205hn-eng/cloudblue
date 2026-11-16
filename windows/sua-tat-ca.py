@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611c):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611d):
+#        cloudphoned  — 16/11d: TRẦN 100 NHÂN mỗi máy chủ (trước 68) · đơn mới ƯU TIÊN máy chủ còn trống (tính cả nhân đã cấp) · tạo máy
+#                       mà máy chủ hết chỗ → TRẢ ĐƠN cho máy chủ khác còn chỗ (không hoàn tiền nhầm), máy chủ đó nghỉ nhận đơn 5 phút
 #        bluestream   — 16/11c: HÌNH SẠCH KHI LƯỚT (khung khoá 2 giây, bộ đệm lớn hơn, nén đẹp hơn, mạng yếu thì bớt điểm ảnh thay vì vỡ ô)
 #                       · máy đang KHỞI ĐỘNG LẠI → khách mở máy được báo "đang khởi động lại, tự vào khi máy lên" (không báo lỗi)
 #        phonectl     — 16/11c: ghi dấu "máy đang khởi động lại" cho phát hình biết
@@ -30,7 +32,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11c"
+VER = "16/11d"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -44,11 +46,11 @@ NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "CPU_SELL_X", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11c"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
          ("windows/phonectl.py", "phonectl.py", "def _restart_mark", None)]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "nén 16/11c"}       # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11", "bluestream": "nén 16/11c"}       # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)"}
@@ -179,7 +181,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611c"
+            bak = lp + ".truoc-1611d"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -394,7 +396,7 @@ def check_net(c):
         probs += cf_check(c, okc)
     ph = phones() or []
     a_c = sum(float(p.get("cpu") or 0) for p in ph); a_r = sum(float(p.get("ram") or 0) for p in ph)
-    cap_c = float(c.get("CAP_CPU") or 68); cap_r = float(c.get("CAP_RAM") or 112)
+    cap_c = float(c.get("CAP_CPU") or 100); cap_r = float(c.get("CAP_RAM") or 112)       # 16/11d: trần nhân 100 (trước 68)
     over = (cap_c > 0 and a_c >= cap_c) or (cap_r > 0 and a_r >= cap_r)
     say(f"   {'⚠' if over else '✓'} đã cấp {a_c:g} nhân · {a_r:g}GB cho {len(ph)} máy (trần {cap_c:g} nhân · {cap_r:g}GB)"
         + (" → ĐÃ ĐẦY: ngừng nhận máy mới tới khi xuống dưới trần (máy đang có vẫn chạy bình thường)" if over else ""))
