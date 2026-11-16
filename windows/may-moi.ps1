@@ -37,7 +37,7 @@ Write-Host "`n#################### CAI MAY CHU $Node (1 lenh - ban 16/11) ######
 
 function Get-Conf([string]$key) {
     if (-not (Test-Path "$B\cloudphone.conf")) { return '' }
-    $ln = Select-String -Path "$B\cloudphone.conf" -Pattern "^$key=" -ErrorAction SilentlyContinue | Select-Object -First 1
+    $ln = @(Select-String -Path "$B\cloudphone.conf" -Pattern "^$key=" -ErrorAction SilentlyContinue) | Select-Object -Last 1   # dong CUOI thang (nhu dich vu)
     if ($ln) { return ($ln.Line -replace "^$key=", '').Trim() } else { return '' }
 }
 
@@ -48,22 +48,75 @@ function Get-VmRows {
         $vp = "$_" -split ','; [pscustomobject]@{ Idx = [int]$vp[0]; Name = $vp[1]; On = ($vp[2] -eq '1') } }
 }
 function Test-Ours([string]$nm) { return ($nm -like 'cp_*' -or $nm -like 'spare_*') }
+# Kiem may khach tren web bang Python - doc cau hinh Y NHU dich vu (dong CUOI thang), khong in khoa.
+# Ra 1 dong: LIVE <so> <trang thai:so ...> | NOKEY (cau hinh chua co khoa) | ERR <ly do> (HTTP 401/403 = khoa khong con dung)
+$XsPy = @'
+import json, sys, urllib.request, urllib.parse, urllib.error
+cfg = {}
+try:
+    for ln in open(sys.argv[1], encoding="utf-8-sig", errors="replace"):
+        ln = ln.strip()
+        if ln and not ln.startswith("#") and "=" in ln:
+            k, v = ln.split("=", 1); cfg[k.strip()] = v.strip()
+except Exception as e:
+    print("ERR doc cau hinh " + type(e).__name__); sys.exit(0)
+u = cfg.get("SUPABASE_URL", "").rstrip("/"); key = cfg.get("SUPABASE_SERVICE_KEY", "")
+if not u or len(key) < 30 or "DAN_" in key:
+    print("NOKEY"); sys.exit(0)
+q = u + "/rest/v1/cloud_phones?node=eq." + urllib.parse.quote(sys.argv[2], safe="") + "&status=in.(pending,active,expired,cancelling)&select=status"
+try:
+    rq = urllib.request.Request(q, headers={"apikey": key, "Authorization": "Bearer " + key, "Accept": "application/json"})
+    rows = json.loads(urllib.request.urlopen(rq, timeout=30).read().decode("utf-8") or "[]")
+except urllib.error.HTTPError as e:
+    print("ERR HTTP %d" % e.code); sys.exit(0)
+except Exception as e:
+    print("ERR " + type(e).__name__ + " " + str(e)[:120].replace(key, "***")); sys.exit(0)
+by = {}
+for x in rows:
+    st = str((x or {}).get("status")); by[st] = by.get(st, 0) + 1
+print("LIVE %d %s" % (len(rows), " ".join("%s:%d" % kv for kv in sorted(by.items()))))
+'@
+function Get-WebLive([string]$Was) {
+    $wpy = $PY; if (-not (Test-Path $wpy)) { $wpy = 'python' }
+    $wf = Join-Path $env:TEMP 'cb-xoasach-kiem.py'
+    try { [IO.File]::WriteAllText($wf, $XsPy) } catch {}
+    $wo = @(& $wpy $wf "$B\cloudphone.conf" $Was 2>&1 | ForEach-Object { "$_" })
+    Remove-Item $wf -ErrorAction SilentlyContinue
+    $wl = @($wo | Where-Object { $_ -match '^(LIVE|NOKEY|ERR)' }) | Select-Object -Last 1
+    if ($wl) { return [string]$wl }
+    $wu = Get-Conf 'SUPABASE_URL'; $wk = Get-Conf 'SUPABASE_SERVICE_KEY'          # khong chay duoc Python -> hoi bang PowerShell
+    if (-not $wu -or $wk.Length -lt 30 -or $wk -match 'DAN_') { return 'NOKEY' }
+    try {
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        $wr = Invoke-RestMethod -Uri "$($wu.TrimEnd('/'))/rest/v1/cloud_phones?node=eq.$Was&status=in.(pending,active,expired,cancelling)&select=status" `
+              -Headers @{ apikey = $wk; Authorization = "Bearer $wk" } -TimeoutSec 30 -ErrorAction Stop
+    } catch {
+        $wm = ("$($_.Exception.Message)" -replace [regex]::Escape($wk), '***') -replace '\s+', ' '
+        return "ERR $($wm.Substring(0, [Math]::Min(150, $wm.Length)))"
+    }
+    $wa = @(@($wr) | Where-Object { $_ -and $_.status })
+    return ("LIVE $($wa.Count) " + ((@($wa | Group-Object status | ForEach-Object { "$($_.Name):$($_.Count)" })) -join ' '))
+}
 function Invoke-XoaSach([string]$Was) {
     Write-Host "`n== 0/6 XOA SACH may chu $Was roi cai lai thanh $Node ==" -ForegroundColor Yellow
-    $xsUrl = Get-Conf 'SUPABASE_URL'; $xsKey = Get-Conf 'SUPABASE_SERVICE_KEY'
-    $xsHaveKey = [bool]($xsUrl -and $xsKey.Length -ge 30 -and $xsKey -notmatch 'DAN_')
-    if ($xsHaveKey) {
-        try {
-            [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
-            $xsRes = Invoke-RestMethod -Uri "$($xsUrl.TrimEnd('/'))/rest/v1/cloud_phones?node=eq.$Was&status=in.(pending,active,expired,cancelling)&select=status" `
-                     -Headers @{ apikey = $xsKey; Authorization = "Bearer $xsKey" } -TimeoutSec 30 -ErrorAction Stop
-        } catch {
-            Write-Host "DUNG: chua doc duoc web de kiem may khach cua $Was (mang?) - thu lai sau 1 phut. Chua xoa gi." -ForegroundColor Red; return $false
+    Write-Host "  Kiem may khach cua $Was tren web..." -ForegroundColor Cyan
+    $xsWeb = [string](Get-WebLive $Was)
+    $xsHaveKey = ($xsWeb -notmatch '^NOKEY')
+    if ($xsWeb -match '^ERR\s*(.*)$') {
+        $xsWhy = $Matches[1]
+        if ($xsWhy -match 'HTTP (401|403)') {
+            Write-Host "DUNG: khoa Supabase trong cau hinh $Was KHONG con dung ($xsWhy) nen chua kiem duoc may khach. Chua xoa gi." -ForegroundColor Red
+            Write-Host "      Mo bang CloudBlue -> bam '2 Dan khoa Supabase' -> dan khoa service_role HIEN TAI (KHONG gui ai) -> dan lai lenh nay." -ForegroundColor Yellow
+        } else {
+            Write-Host "DUNG: chua doc duoc web de kiem may khach cua $Was ($xsWhy) - thu lai sau 1 phut. Chua xoa gi." -ForegroundColor Red
         }
-        $xsLive = @(@($xsRes) | Where-Object { $_ -and $_.status })
-        if ($xsLive.Count) {
-            $xsBy = (@($xsLive | Group-Object status | ForEach-Object { "$($_.Name) $($_.Count)" })) -join ', '
-            Write-Host "DUNG: web con $($xsLive.Count) may khach dang thue o $Was ($xsBy). Chua xoa gi." -ForegroundColor Red
+        return $false
+    }
+    if ($xsWeb -match '^LIVE (\d+)\s*(.*)$') {
+        $xsN = [int]$Matches[1]; $xsBy = $Matches[2]
+        if ($xsN -gt 0) {
+            Write-Host "DUNG: web con $xsN may khach dang thue o $Was ($xsBy). Chua xoa gi." -ForegroundColor Red
+            Write-Host "      (pending = dang tao, active = dang chay, expired = tam dung cho gia han, cancelling = dang huy)" -ForegroundColor DarkGray
             Write-Host "      Chuyen / huy + hoan tien het may khach cua $Was tren web quan tri, cho het 'dang huy', roi dan lai lenh." -ForegroundColor Red
             return $false
         }
