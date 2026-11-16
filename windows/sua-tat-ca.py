@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611k):
-#        phonectl     — 16/11k: SỔ KHOÁ ANDROID HỎNG (máy mới / máy đang chạy sập liên tục, màn đen, khách chờ hàng giờ) → tự
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611k2):
+#        phonectl     — 16/11k2: máy hỏng sổ khoá KHỞI ĐỘNG LẠI LIÊN TỤC (không bao giờ "lên", adb chập chờn) → canh + sửa ở mọi chỗ
+#                       chờ máy lên, chống kẹt, lệnh ksfix canh tới khi nối được · trước khi tắt máy ảo: Android ghi hết dữ liệu xuống đĩa
+#                       16/11k: SỔ KHOÁ ANDROID HỎNG (máy mới / máy đang chạy sập liên tục, màn đen, khách chờ hàng giờ) → tự
 #                       sửa lúc máy lên + lệnh ksfix · đặt ảnh nền xong chờ giao diện lên thật mới giao máy
 #                       16/11e: KHỞI ĐỘNG LẠI KHÔNG KẸT: xin lượt bật khi máy còn chạy rồi mới tắt (máy không nằm tắt chờ lượt) · lệnh
 #                       tạo máy (nhân bản) nhường máy đang khởi động lại bật trước · chống kẹt: máy chủ bận thì để lần sau, không tắt
@@ -48,7 +50,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11k"
+VER = "16/11k2"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -65,7 +67,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11k"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def keystore_heal", None),
+         ("windows/phonectl.py", "phonectl.py", "def _wait_android", None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "nén 16/11k", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -210,7 +212,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611k"
+            bak = lp + ".truoc-1611k2"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -468,9 +470,15 @@ def focus(s):
 def is_home(pk): return pk in ("-", "?") or any(k in pk.lower() for k in HOME_PK)
 
 # 16/11k: sổ khoá Android (keystore2) hỏng → Android sập / khởi động lại liên tục (màn đen, khách chờ mãi) — xem phonectl ksfix
-KS_SH = ("F=/data/misc/keystore/persistent.sqlite; if [ ! -e $F ]; then echo KS_NOFILE; elif [ ! -s $F ]; then echo KS_EMPTY; "
-         "elif ! H=$(head -c 15 $F); then echo KS_ERR; elif [ \"$H\" = \"SQLite format 3\" ]; then echo KS_OK; else echo KS_BAD; fi")
-def ks_bad(s): return "KS_BAD" in adb("-s", s, "shell", "su -c '" + KS_SH + "'", t=20)
+KS_SH = ("[ $(id -u) = 0 ] || { echo KS_NOROOT; exit 0; }; F=/data/misc/keystore/persistent.sqlite; if [ ! -e $F ]; then echo KS_NOFILE; "
+         "elif [ ! -s $F ]; then echo KS_EMPTY; elif ! H=$(head -c 6 $F); then echo KS_ERR; elif [ x$H = xSQLite ]; then echo KS_OK; else echo KS_BAD; fi")
+def ks_bad(s):
+    """16/11k2: lệnh kiểm không có dấu nháy, chỉ chạy khi đang là root; thử su -c · su 0 sh -c · adb đã là root. Không kiểm được → False."""
+    for pre in ("su -c", "su 0 sh -c", ""):
+        o = adb("-s", s, "shell", KS_SH if pre == "" else f"{pre} '{KS_SH}'", t=20)
+        k = re.findall(r"KS_[A-Z]+", o)
+        if k and k[-1] != "KS_NOROOT": return k[-1] == "KS_BAD"
+    return False
 
 def check_phone(p):
     nm = str(p["name"]); s = "127.0.0.1:%s" % p["port"]; r = {"name": nm, "s": s, "port": p["port"], "st": "OK", "note": "", "act": None}
@@ -611,7 +619,6 @@ def fix_phones(res, extra):
     for r in bad:
         if busy(r["name"], cl): say(f"   - {r['name']}: đang được bật / sửa — để nó làm xong"); continue
         if r["st"] in ("CHƯA LÊN", "MẤT ADB"):
-            if whole: say(f"   - {r['name']}: bảng đang bật lại máy khách hàng loạt — để bảng làm xong"); continue
             slow.append(r); continue
         jobs.append(("ksfix" if r["act"] == "ksfix" else "restart", r["name"], r["s"], r["st"]))
     if slow:                                                  # có thể đang khởi động dở → chờ chung thêm 45 giây
@@ -621,7 +628,7 @@ def fix_phones(res, extra):
             time.sleep(9)
             for r in list(slow):
                 if adb_ok(r["s"])[0] and booted(r["s"]): slow.remove(r); say(f"   ✓ {r['name']}: Android vừa lên — không cần khởi động lại")
-        jobs += [("restart", r["name"], r["s"], r["st"]) for r in slow]
+        jobs += [("ksboot", r["name"], r["s"], r["st"]) for r in slow]
     for p in extra.get("off", []):
         if whole: say(f"   - {p['name']}: bảng đang bật lại máy khách hàng loạt — để bảng làm xong"); continue
         if not busy(str(p["name"]), cl): jobs.append(("start", str(p["name"]), "127.0.0.1:%s" % p["port"], "TẮT"))
@@ -630,13 +637,27 @@ def fix_phones(res, extra):
     lock = threading.Lock()
     def one(j):
         kind, nm, s, why = j
-        code, out = pctl(*(["restart", nm, "--force"] if kind == "restart" else ["ksfix", nm] if kind == "ksfix" else ["start", nm]), t=900)
+        if kind == "ksboot":                              # 16/11k2: máy chưa lên → canh sửa sổ khoá trước (máy hỏng sổ khoá khởi động lại bao nhiêu cũng không lên)
+            code, out = pctl("ksfix", nm, "--cho", "150", t=1200)
+            last = " / ".join(x.strip() for x in out.strip().splitlines()[-2:]) or "(không có kết quả)"
+            if "đã sửa 1" in out:
+                with lock: say(f"   ✓ {nm} ({why}) → sổ khoá Android hỏng, đã sửa: {last[:160]}")
+                return j, code
+            if adb_ok(s)[0] and booted(s):
+                with lock: say(f"   ✓ {nm} ({why}) → Android vừa lên — không cần khởi động lại")
+                return j, 0
+            if whole:
+                with lock: say(f"   - {nm} ({why}) → sổ khoá không hỏng ({last[:90]}); bảng đang bật lại máy hàng loạt — để bảng làm xong")
+                return None, code
+            kind = "restart"
+        code, out = pctl(*(["restart", nm, "--force"] if kind == "restart" else ["ksfix", nm, "--cho", "150"] if kind == "ksfix" else ["start", nm]), t=1200)
         last = " / ".join(x.strip() for x in out.strip().splitlines()[-2:]) or "(không có kết quả)"
         with lock: say(f"   {'✓' if code == 0 else '✗'} {nm} ({why}) → {'ép khởi động lại' if kind == 'restart' else 'sửa sổ khoá' if kind == 'ksfix' else 'bật lại'}: {last[:160]}")
         return j, code
     done = []
     with cf.ThreadPoolExecutor(max_workers=3) as ex:
-        for j, code in ex.map(one, jobs): done.append(j)
+        for j, code in ex.map(one, jobs):
+            if j is not None: done.append(j)
     say("   Chờ các máy vừa sửa lên (tối đa 5 phút)…")
     left = list(done); t0 = time.time(); final = []
     while left and time.time() - t0 < 300:
@@ -727,6 +748,24 @@ def web_report():
         say("   chưa có phiên web nào đóng trong nhật ký (khách iPhone không vào tới máy chủ, hoặc chưa ai dùng web)")
     if wd: say("   " + wd[-1].strip()[:170])
 
+def ks_report():
+    """16/11k2: các lần phonectl tự sửa sổ khoá Android hỏng (24 giờ qua). Nhiều máy bị ngay lúc vừa bật → máy mẫu có thể đang hỏng."""
+    rows = []
+    for x in tail(os.path.join(B, "redroid", "ks_events.log"), 60000):
+        q = x.rstrip("\n").split("\t")
+        try:
+            if len(q) >= 3 and 0 <= (datetime.datetime.fromtimestamp(time.time()) - datetime.datetime.strptime(q[0], "%Y-%m-%d %H:%M:%S")).total_seconds() < 86400:
+                rows.append(q)
+        except (ValueError, OverflowError, OSError): pass
+    if not rows: return []
+    say(f"--- sổ khoá Android hỏng đã tự sửa 24 giờ qua: {len(rows)} lần (redroid\\ks_events.log) ---")
+    for q in rows[-5:]: say(f"   {q[0][5:16]}  {q[1]:<16} {q[2]}")
+    new = len({q[1] for q in rows if "vừa bật" in q[2]})
+    if new >= 3:
+        say(f"   ⚠ {new} máy bị ngay lúc vừa bật → MÁY MẪU (tpl_a12 / tpl_a15) có thể đang hỏng: xoá máy mẫu trong MuMu, tạo máy mẫu mới (không bật), rồi chạy lại lệnh")
+        return [f"{new} máy mới bị hỏng sổ khoá ngay lúc bật — nên làm lại máy mẫu"]
+    return []
+
 def log_report():
     try: ev = json.load(open(os.path.join(B, "redroid", "tusua.json"), encoding="utf-8")).get("events", [])
     except Exception: ev = []
@@ -769,10 +808,14 @@ def main():
     recent_report(c, res)
     probs += switch_report(c)
     log_report()
+    probs += ks_report()
     web_report()
     okn = sum(1 for r in res if r["st"] == "OK")
     inapp = [r["name"] for r in res if r["st"] == "ĐEN TRONG APP"]
     still = [n for n, k in final if k != "ok"]
+    fixed_n = {j[1] for j in done}                       # 16/11k2: máy hỏng mà lần này chưa sửa (lệnh khác đang làm / bảng đang bật) → vẫn là CHƯA ổn
+    left = [r["name"] for r in res if r["act"] and r["name"] not in fixed_n] + [str(p["name"]) for p in (extra or {}).get("off", []) if str(p["name"]) not in fixed_n]
+    if left and not ONLY_CHECK: probs.append(f"{len(left)} máy chưa lên, lần này chưa sửa được ({', '.join(left[:6])}) — 5 phút nữa chạy lại lệnh A")
     say(f"== TÓM TẮT {node} ==")
     if changed: say("   ✓ đã cập nhật: " + ", ".join(sorted(set(changed))))
     say(f"   máy khách: {okn} có hình · {len(done)} vừa sửa ({sum(1 for _, k in final if k == 'ok')} đã có hình)"
