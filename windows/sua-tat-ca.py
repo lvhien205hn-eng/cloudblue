@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611d):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611e):
+#        phonectl     — 16/11e: KHỞI ĐỘNG LẠI KHÔNG KẸT: xin lượt bật khi máy còn chạy rồi mới tắt (máy không nằm tắt chờ lượt) · lệnh
+#                       tạo máy (nhân bản) nhường máy đang khởi động lại bật trước · chống kẹt: máy chủ bận thì để lần sau, không tắt
+#                       máy rồi chờ CPU dịu · dấu "đang khởi động lại" ghi lúc tắt thật, kèm giờ chạy (không nhầm số PID cũ)
+#        bluestream   — 16/11e: nhận đúng lệnh khởi động lại còn chạy · quá 3 phút báo thật "máy chủ đang bận" · app PC không bị bảo
+#                       bấm khởi động lại lần nữa khi máy đang khởi động lại
+#        cpapi        — 16/11e: lệnh khởi động lại / đổi FPS / root / chế độ vẽ được chờ tới 40 phút (trước 2 phút → bị cắt giữa chừng,
+#                       máy nằm tắt, khách thấy "Không khởi động lại được … timed out")
+#        cloudphoned  — 16/11e: đơn ADMIN chọn máy chủ GẦN ĐẦY (≥ 80%) → tự chuyển sang máy chủ còn trống nhất
 #        cloudphoned  — 16/11d: TRẦN 100 NHÂN mỗi máy chủ (trước 68) · đơn mới ƯU TIÊN máy chủ còn trống (tính cả nhân đã cấp) · tạo máy
 #                       mà máy chủ hết chỗ → TRẢ ĐƠN cho máy chủ khác còn chỗ (không hoàn tiền nhầm), máy chủ đó nghỉ nhận đơn 5 phút
 #        bluestream   — 16/11c: HÌNH SẠCH KHI LƯỚT (khung khoá 2 giây, bộ đệm lớn hơn, nén đẹp hơn, mạng yếu thì bớt điểm ảnh thay vì vỡ ô)
@@ -32,7 +40,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11d"
+VER = "16/11e"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -46,14 +54,17 @@ NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "CPU_SELL_X", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11c"', "bluestream"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "NEAR_PCT", "cloudphoned"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _restart_mark", None)]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11", "bluestream": "nén 16/11c"}       # dòng khởi động của bản mới (trong nhật ký)
-SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
-SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
-SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)"}
+         ("windows/phonectl.py", "phonectl.py", "def _cyc_busy", None),
+         ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11e", "bluestream": "nén 16/11e", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
+SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
+SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
+SVC_FILE = {"cloudphoned": "cloudphoned.py", "bluestream": "bluestream.py", "cpapi": "cpapi.py"}
+CYCLE_RX = r"phonectl\.py\S*\s+(?:restart|reconfig|resize|render|rootcfg|ramfix|rootfix(?!\s+--all))\s"   # khách đang khởi động lại / đổi cấu hình máy
 HOME_PK = ("launcher", "lawnchair", "systemui", "keyguard", "trebuchet", "quickstep", "nexuslauncher", "com.android.settings")
 
 def say(*a): print(*a, flush=True)
@@ -161,6 +172,16 @@ def wait_not_creating(limit=600):
         if time.time() - said > 60: say("   … đang tạo / nâng cấp máy khách — chờ xong rồi mới bật lại nhận đơn (tối đa 10 phút)"); said = time.time()
         time.sleep(10)
 
+def wait_no_cycles(limit=300):
+    """16/11e: cpapi đang chạy lệnh khởi động lại / đổi cấu hình cho khách → chờ xong rồi mới bật lại cpapi (tối đa 5 phút).
+       Bật lại cpapi lúc đó: máy vẫn khởi động lại bình thường nhưng app / web của khách mất theo dõi việc đang làm."""
+    t0 = time.time(); said = 0
+    while procs(CYCLE_RX):
+        if time.time() - t0 >= limit: return False
+        if time.time() - said > 60: say("   … khách đang khởi động lại / đổi cấu hình máy — chờ xong rồi mới bật lại công cụ máy (tối đa 5 phút)"); said = time.time()
+        time.sleep(10)
+    return True
+
 def update_files():
     changed = []; problems = []
     say("1/6 Cập nhật bản sửa từ GitHub")
@@ -181,7 +202,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611d"
+            bak = lp + ".truoc-1611e"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -209,8 +230,8 @@ def restart_services(changed, done_new=()):
     probs = []
     if ONLY_CHECK: say("   (bỏ qua — chỉ kiểm)"); return probs
     waited = False
-    for svc in ("cloudphoned", "bluestream"):
-        fp = os.path.join(B, "cloudphoned.py" if svc == "cloudphoned" else "bluestream.py")
+    for svc in ("cloudphoned", "bluestream", "cpapi"):
+        fp = os.path.join(B, SVC_FILE[svc])
         if not os.path.isfile(fp): continue
         pr = procs(SVC_RX[svc])
         if not pr:
@@ -224,6 +245,9 @@ def restart_services(changed, done_new=()):
             if not wait_not_creating():
                 say("   ✗ nhận đơn: máy chủ đang tạo máy khách quá 10 phút — CHƯA bật lại (file mới đã thay), chạy lại lệnh sau ít phút")
                 probs.append("nhận đơn chưa chạy bản mới (đang tạo máy) — chạy lại lệnh sau"); continue
+        if svc == "cpapi" and not wait_no_cycles():
+            say("   ✗ công cụ máy: khách đang khởi động lại máy quá 5 phút — CHƯA bật lại (file mới đã thay), chạy lại lệnh sau ít phút")
+            probs.append("công cụ máy chưa chạy bản mới (khách đang khởi động lại máy) — chạy lại lệnh sau"); continue
         if svc == "bluestream": say("   … phát hình bật lại: khách đang xem bị ngắt ~10 giây rồi app tự nối lại")
         since = log_size(svc); t0 = time.time()
         for pid, _ in pr: kill(pid)

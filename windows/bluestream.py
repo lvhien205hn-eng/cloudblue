@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "16/11c"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "16/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
                                           # · 16/11a: máy tắt / Android chưa lên → tự gọi bật + báo rõ (hết quay mãi "chưa bật được hình")
@@ -2807,6 +2807,39 @@ def _pid_alive(pid):
     except (OSError, ValueError): return False
 
 
+def _proc_ct(pid):
+    """16/11e: giờ (giây, Unix) chương trình số pid được chạy — khác giờ ghi trong dấu = số PID đã bị Windows dùng lại cho chương trình khác."""
+    try:
+        pid = int(pid)
+        if WIN:
+            h = _K32.OpenProcess(0x1000, False, pid)
+            if not h: return None
+            try:
+                c, e_, kt, ut = (ctypes.c_ulonglong() for _ in range(4))
+                if not ctypes.windll.kernel32.GetProcessTimes(ctypes.c_void_p(h), ctypes.byref(c), ctypes.byref(e_), ctypes.byref(kt), ctypes.byref(ut)):
+                    return None
+                return c.value / 1e7 - 11644473600.0
+            finally: _K32.CloseHandle(h)
+        st = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()
+        bt = next(float(l.split()[1]) for l in open("/proc/stat") if l.startswith("btime"))
+        return bt + int(st[19]) / os.sysconf("SC_CLK_TCK")
+    except Exception:
+        return None
+
+
+def _alive_who(pid, ct=None):
+    """Chương trình số pid (chạy lúc ct, nếu dấu có ghi) CÒN đang chạy? Cùng số mà khác giờ chạy → chương trình khác → False."""
+    pid = str(pid or "").strip()
+    if not pid.isdigit() or not _pid_alive(pid): return False
+    try:
+        if ct not in (None, ""):
+            now_ct = _proc_ct(pid)
+            if now_ct is not None and abs(now_ct - float(ct)) > 3: return False
+    except (TypeError, ValueError):
+        pass
+    return True
+
+
 def _wake_lock_alive(name):
     """`phonectl wake` (vd do bluestream TRƯỚC khi khởi động lại gọi) còn đang bật máy này?"""
     f = os.path.join(B, "redroid", f"wake_{name}.lock")
@@ -2818,6 +2851,7 @@ def _wake_lock_alive(name):
         return False
 
 
+KDL_SLOW_S = 180                   # 16/11e: đang khởi động lại quá chừng này giây → câu báo "máy chủ đang bận nên lâu hơn bình thường"
 RESTART_WIN_S = 300                # phonectl ghi redroid/restart_<tên>.json lúc khởi động lại → trong 5 phút: Android chưa xong = "đang khởi động lại"
 _RS_OK = {}                        # tên máy → lúc đã thấy Android lên xong sau lần khởi động lại gần nhất
 
@@ -2837,8 +2871,8 @@ def _op_mark_t(iv):
     try:
         t = os.path.getmtime(f)
         if time.time() - t > 900: return None
-        with open(f) as fh: pid = fh.read().strip()
-        return t if pid.isdigit() and _pid_alive(pid) else None
+        with open(f) as fh: w = fh.read().split()                # "PID GIỜ_CHẠY" (phonectl 16/11e) · "PID" (bản cũ)
+        return t if w and _alive_who(w[0], w[1] if len(w) > 1 else None) else None
     except (OSError, ValueError):
         return None
 
@@ -2858,7 +2892,7 @@ def restarting(phone):
         t = float(d.get("t") or 0)
         if 0 <= now - t < RESTART_WIN_S:
             t0 = t; pid = str(d.get("pid") or "")
-            alive = pid.isdigit() and _pid_alive(pid)
+            alive = _alive_who(pid, d.get("ct"))
     except (OSError, ValueError, TypeError, AttributeError):
         pass
     if alive: return max(0, int(now - t0))                 # phonectl restart còn đang tắt / bật máy
@@ -2963,6 +2997,8 @@ def wake_msg(wk):
     t = f", đã {s} giây" if s >= 5 else ""
     if k == "loi": return "Máy chưa bật lại được — máy chủ sẽ tự thử lại. Bấm “Khởi động lại máy” để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ."
     if k == "bat": return "🔄 Máy đang được bật lại — khoảng 1–2 phút" + t + ". Tự vào khi máy lên."
+    if k == "kdl" and s >= KDL_SLOW_S:                 # 16/11e: quá 3 phút → nói thật là máy chủ đang bận (trước cứ "khoảng 1–2 phút, đã 348 giây")
+        return "🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường" + t + ". Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào."
     if k == "kdl": return "🔄 Máy đang khởi động lại — khoảng 1–2 phút" + t + ". Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào."
     if k == "treo": return "Máy đang bật nhưng Android chưa trả lời" + t + ". Chờ thêm ít phút, hoặc bấm “Khởi động lại máy” để sửa nhanh (1–2 phút, dữ liệu giữ nguyên)."
     if k == "khoa": return "Máy đang tạm dừng trên máy chủ. Bấm “Khởi động lại máy” để bật lại; không được thì báo hỗ trợ."
@@ -2983,6 +3019,7 @@ async def hold_for_wake(link, phone, wk):
         bad = wk[0] in ("loi", "khoa", "treo", "mat")           # không phải cứ chờ là lên → báo luôn (app PC hiện nút Khởi động lại máy)
         if bad or time.time() - t0 > WAKE_HOLD_S:
             if bad: msg, ex = wake_msg(wk), wake_extra(wk)
+            elif wk[0] == "kdl": msg, ex = wake_msg(wk), wake_extra(wk)   # 16/11e: đang khởi động lại → báo chờ (app tự thử lại), KHÔNG bảo bấm khởi động lại lần nữa
             elif wk[0] == "day": msg, ex = "Máy chưa thức dậy sau 4 phút — mở lại sau ít phút hoặc báo hỗ trợ.", {"fix": "reboot"}
             else: msg, ex = "Máy chưa lên sau 4 phút — bấm “Khởi động lại máy” hoặc báo hỗ trợ.", {"fix": "reboot"}
             link.send_nowait(S_ERROR, err_json("OFFLINE", msg, **ex)); await link.close(); return False
@@ -4093,7 +4130,7 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
-    log(f"nén 16/11c: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
+    log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
         + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"
         " · máy Android gửi nhiều khung hơn đã xin thì tính bù · máy đang khởi động lại → báo khách chờ, tự vào khi máy lên")
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
