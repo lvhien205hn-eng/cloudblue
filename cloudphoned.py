@@ -68,6 +68,17 @@ NEAR_PCT = max(0.0, min(100.0, _f("NEAR_PCT", 80)))
 NEAR_GAP = max(0.0, min(50.0, _f("NEAR_GAP", 5)))
 _HANDED = {}                       # id đơn → lúc máy chủ này đã chuyển đi (đơn quay lại thì nhận, không chuyển vòng)
 _FULL = {"until": 0.0}
+# 16/11f: đơn tạo máy quá STUCK_MIN phút chưa lên → tự HUỶ + HOÀN TIỀN, báo khách tạo máy mới (hàm SQL cloudphone_timeout_stuck — v36;
+#   có pg_cron thì Supabase tự quét mỗi phút, mọi máy chủ cũng gọi mỗi phút cho chắc). Đơn đổi Android (giữ hạn máy cũ) KHÔNG đụng.
+#   Máy đang tạo dở của đơn đã huỷ: máy chủ tự xoá (máy CHƯA giao cho khách, chưa có dữ liệu khách). STUCK_MIN=0 = tắt.
+STUCK_MIN = max(0.0, _f("STUCK_MIN", 30))
+# 16/11f: máy chủ đang có ≥ BOOT_MAX máy MỚI chưa lên, hoặc 1 máy mới chờ Android quá BOOT_SLOW_MIN phút → máy chủ đang quá tải tạo
+#   máy: tạm KHÔNG nhận đơn mới + báo web hết chỗ (đơn sang máy chủ khác, khách không phải chờ 20–30 phút). Đơn admin chọn đúng máy
+#   chủ này vẫn làm. BOOT_MAX=0 = tắt.
+BOOT_MAX = max(0, int(_f("BOOT_MAX", 3)))
+BOOT_SLOW_S = max(60.0, _f("BOOT_SLOW_MIN", 10) * 60)
+BOOT_T = {}                        # tên máy MỚI → lúc bắt đầu chờ Android lên (chưa giao cho khách)
+_busy_said = {"t": 0.0}
 # ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
 # Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
 # 9 máy ngủ) báo ĐẦY lúc RAM thật mới dùng 32%. Giờ máy ngủ giữ đúng phần RAM THẬT 1 máy đang chạy dùng (đo trên chính
@@ -319,6 +330,72 @@ def handover(row):
     print(f"[chuyển] đơn {rid[:8]}: {NODE_ID} gần đầy ({me:.0f}%) → {best[1]} ({best[0]:.0f}%) còn trống nhất")
     return True
 
+def busy_boot():
+    """16/11f: máy chủ này đang quá tải TẠO MÁY? → lý do (chuỗi); không → ''. (Xem BOOT_MAX / BOOT_SLOW_MIN ở trên.)"""
+    if BOOT_MAX <= 0: return ""
+    t_now = time.time(); ts = list(BOOT_T.values())
+    slow = [t for t in ts if t_now - t > BOOT_SLOW_S]
+    if slow: return f"1 máy mới chờ Android lên đã {(t_now - min(slow)) / 60:.0f} phút"
+    if len(ts) >= BOOT_MAX: return f"{len(ts)} máy mới đang khởi động"
+    return ""
+
+def still_pending(pid):
+    """16/11f: đơn còn đang chờ tạo (chưa bị huỷ / hoàn tiền / tự huỷ vì quá STUCK_MIN phút)? Lỗi mạng → coi như còn (không xoá nhầm)."""
+    try:
+        rows = sb("GET", f"cloud_phones?id=eq.{pid}&select=status")
+        return not rows or rows[0].get("status") == "pending"
+    except Exception:
+        return True
+
+def drop_vm(name, why):
+    """16/11f: xoá máy ảo VỪA TẠO của đơn đã bị huỷ / hoàn tiền trong lúc tạo (máy chưa giao cho khách — chưa có dữ liệu khách)."""
+    BOOT_T.pop(name, None)
+    if not phone_state(name): return
+    print(f"   ✗ {name}: {why} → xoá máy vừa tạo (chưa giao cho khách)")
+    try:
+        r = phonectl(["delete", name])
+        if r.returncode != 0: print("   lỗi xoá máy:", ((r.stdout or "") + (r.stderr or "")).strip()[-200:])
+    except Exception as e: print("   lỗi xoá máy:", e)
+
+_stuck = {"next": 0.0, "del": {}}
+def stuck_sweep():
+    """16/11f: gọi hàm SQL v36 — đơn tạo máy quá STUCK_MIN phút chưa lên → huỷ + hoàn tiền + báo khách tạo máy mới."""
+    if STUCK_MIN <= 0 or time.time() < _stuck["next"]: return
+    try:
+        n = sb("POST", "rpc/cloudphone_timeout_stuck", {"p_min": int(round(STUCK_MIN))})
+    except urllib.error.HTTPError as e:
+        if e.code == 404:                      # web chưa chạy SQL v36 → 30 phút sau hỏi lại (chạy SQL xong là tự dùng, khỏi khởi động lại)
+            _stuck["next"] = time.time() + 1800
+            print("   (chưa có hàm SQL cloudphone_timeout_stuck — chạy SQL v36 trên Supabase để tự huỷ + hoàn tiền đơn treo)")
+            return
+        raise
+    if isinstance(n, int) and n > 0:
+        print(f"[⏱ quá {STUCK_MIN:g} phút] {n} đơn tạo máy chưa lên → đã tự huỷ + hoàn tiền, báo khách tạo máy mới")
+        notify(f"⏱ <b>{n} đơn ĐT đám mây</b> tạo quá {STUCK_MIN:g} phút chưa lên → đã tự huỷ + hoàn tiền, khách được báo tạo máy mới "
+               f"(máy chủ gọi: {NODE_ID}).")
+
+def stuck_cleanup():
+    """16/11f: đơn của máy chủ này đã tự huỷ (⏱) mà máy ảo tạo dở vẫn còn → xoá (máy chưa giao cho khách)."""
+    if STUCK_MIN <= 0: return
+    rows = sb("GET", f"cloud_phones?node=eq.{urllib.parse.quote(NODE_ID, safe='')}&status=eq.error"
+                     f"&error=like.{urllib.parse.quote('⏱*', safe='*')}&select=id,container&order=updated_at.desc&limit=50") or []
+    for row in rows:
+        name = row.get("container") or cname(row)
+        if name in BOOTING or not phone_state(name): continue          # đang chờ lên → luồng chờ tự xoá
+        k = _stuck["del"].get(name, 0)
+        if time.time() < k: continue
+        _stuck["del"][name] = time.time() + 600                          # xoá lỗi → 10 phút sau thử lại
+        drop_vm(name, "đơn đã tự huỷ vì tạo quá lâu")
+
+def _stuck_loop():
+    time.sleep(20)
+    while True:
+        try: stuck_sweep()
+        except Exception as e: print("lỗi quét đơn tạo máy treo:", e)
+        try: stuck_cleanup()
+        except Exception as e: print("lỗi dọn máy của đơn đã tự huỷ:", e)
+        time.sleep(60)
+
 def claim(row):
     """Giành đơn mới cho server này. Server còn trống nhiều nhận trước; không đủ chỗ thì nhường server khác.
     Trả về True nếu server này được làm đơn đó."""
@@ -331,6 +408,12 @@ def claim(row):
         if PRIMARY: refund_unserved(row)
         return False
     if not android_ok(row):                          # đơn Android 12/7 → máy chủ MuMu/MEmu; Android 9 → máy chủ LDPlayer
+        if PRIMARY: refund_unserved(row)
+        return False
+    why = busy_boot()                                # 16/11f: đang quá tải tạo máy → nhường máy chủ khác (khách khỏi chờ 20–30 phút)
+    if why:
+        if time.time() - _busy_said["t"] > 60:
+            print(f"[bận] {why} → tạm không nhận đơn mới, nhường máy chủ khác"); _busy_said["t"] = time.time()
         if PRIMARY: refund_unserved(row)
         return False
     load, fr, fc = local_load(); age = age_s(row)
@@ -651,20 +734,26 @@ def do_create(row):
         ps = phone_state(name)
         if not ps:
             refund(row, "Tạo máy lỗi, vui lòng thử lại"); return
+        if not still_pending(row["id"]):             # 16/11f: đơn bị huỷ / tự huỷ (quá lâu) trong lúc nhân bản → không giao máy
+            drop_vm(name, f"đơn {row['id'][:8]} đã huỷ trong lúc tạo"); return
         patch(row["id"], {"container": name, "port": ps["port"], "node": NODE_ID})
     if name in BOOTING: return
-    BOOTING.add(name)
+    BOOTING.add(name); BOOT_T.setdefault(name, time.time())
     threading.Thread(target=finish_boot, args=(row["id"], name), daemon=True).start()
 
 def finish_boot(pid, name):
     try:
         t0 = time.time()
         r = phonectl(["waitboot", name, "--noapps"])   # chỉ chờ Android lên → giao máy cho khách NGAY
+        if r.returncode in (5, 124) and not still_pending(pid):    # 16/11f: đơn đã tự huỷ (quá lâu) / khách huỷ → thôi chờ
+            return drop_vm(name, "đơn đã huỷ trong lúc chờ Android lên")
         # 14/11: Android chưa lên sau 5 phút (máy chủ bận / MuMu nhân bản máy mẫu lâu — hay gặp khi ĐỔI ANDROID) → bản cũ vẫn
         # giao máy → khách mở thấy MÀN ĐEN, bấm không được. Giờ: chờ thêm 1 lượt → vẫn chưa thì ép khởi động lại 1 lần → mới giao.
         if r.returncode in (5, 124):
             print(f"   … {name}: Android chưa lên sau {time.time() - t0:.0f}s → chờ thêm 1 lượt (chưa giao cho khách, tránh màn đen)")
             r = phonectl(["waitboot", name, "--noapps"])
+        if r.returncode in (5, 124) and not still_pending(pid):
+            return drop_vm(name, "đơn đã huỷ trong lúc chờ Android lên")
         if r.returncode in (5, 124):
             print(f"   … {name}: vẫn chưa lên sau {time.time() - t0:.0f}s → ép khởi động lại 1 lần")
             phonectl(["restart", name, "--force"])
@@ -675,8 +764,20 @@ def finish_boot(pid, name):
                    f"chưa lên — vẫn giao cho khách. Khách báo màn đen thì xem máy này.")
         ps = phone_state(name)
         if not ps: return
-        patch(pid, {"status": "active", "container": name, "port": ps["port"], "node": NODE_ID,
-                    "stream_url": stream_url(ps["port"]), "expires_at": parse_dt(ps["expires"]).isoformat(), "error": None})
+        live = {"status": "active", "container": name, "port": ps["port"], "node": NODE_ID,
+                "stream_url": stream_url(ps["port"]), "expires_at": parse_dt(ps["expires"]).isoformat(), "error": None}
+        # 16/11f: chỉ giao khi đơn CÒN chờ (cùng 1 lệnh với điều kiện) — đơn vừa tự huỷ + hoàn tiền (quá lâu) / khách huỷ thì KHÔNG
+        # "sống lại" (trước: ghi đè thành đang chạy → khách vừa được hoàn tiền vừa có máy, hoặc máy đã huỷ vẫn chạy).
+        try:
+            got = sb("PATCH", f"cloud_phones?id=eq.{pid}&status=eq.pending", {**live, "updated_at": datetime.datetime.now().isoformat()},
+                     {"Prefer": "return=representation"})
+        except urllib.error.HTTPError as e:
+            if e.code != 409: raise
+            got = still_pending(pid)                    # trùng cổng / máy (máy ma) → đường cũ tự gỡ rồi ghi lại
+            if got: patch(pid, live)
+        if not got:
+            return drop_vm(name, "đơn đã bị huỷ / tự huỷ trước khi giao")
+        BOOT_T.pop(name, None)
         print(f"   ✓ {name} sẵn sàng sau {time.time() - t0:.0f}s, cổng {ps['port']} — đang cài app sẵn ở nền")
         r = phonectl(["preinstall", name])     # cài app sẵn song song, khách đang dùng máy vẫn được
         for ln in (r.stdout or "").splitlines():
@@ -684,7 +785,7 @@ def finish_boot(pid, name):
     except Exception as e:
         if getattr(e, "code", 0) != 409: print("lỗi chờ khởi động:", e)     # 409 trùng máy: patch() đã ghi nhật ký (1 lần / phút)
     finally:
-        BOOTING.discard(name)
+        BOOTING.discard(name); BOOT_T.pop(name, None)
 
 def refund(row, msg):
     """Tạo máy lỗi → hoàn lại tiền khách đã trả (hàm SQL cloudphone_refund)."""
@@ -1052,6 +1153,7 @@ def heartbeat():
         f_ram, f_cpu, stop = c_ram, c_cpu, FULL_PCT
         c_ram, c_cpu = sell_cap(a_ram, f_ram), sell_cap(a_cpu, f_cpu)
         if time.time() < _FULL["until"]: c_ram, c_cpu = a_ram, a_cpu    # 16/11: vừa hết chỗ lúc tạo máy → báo web hết chỗ ít phút
+        if busy_boot(): c_ram, c_cpu = a_ram, a_cpu                     # 16/11f: đang quá tải tạo máy → web bán máy chủ khác
     else:                                               # Linux: c_ram đã là LIMIT_PCT % RAM (như cũ) → sức chứa thật = 100%
         f_ram, f_cpu, stop = (ram_t * RAM_OVER if c_ram > a_ram else c_ram), c_cpu, float(LIMIT_PCT)
     fill = 100 * max(a_ram / f_ram if f_ram > 0 else 1.0, a_cpu / f_cpu if f_cpu > 0 else 1.0)
@@ -1317,7 +1419,9 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 16/11e chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 16/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if STUCK_MIN > 0: print(f"Đơn tạo máy quá {STUCK_MIN:g} phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · máy tạo dở của đơn đó tự xoá")
+    if BOOT_MAX > 0: print(f"Đang có ≥ {BOOT_MAX} máy mới chưa lên, hoặc 1 máy mới chờ quá {BOOT_SLOW_S / 60:g} phút → tạm không nhận đơn mới (đơn sang máy chủ khác)")
     if NEAR_PCT > 0: print(f"Đơn admin chọn máy chủ này lúc đã đầy ≥ {NEAR_PCT:g}% → tự chuyển sang máy chủ còn trống nhất (trống hơn ≥ {NEAR_GAP:g} điểm)")
     if WIN and CAP_CPU > 0: print(f"Trần mỗi máy chủ: {CAP_CPU:g} nhân (≤ luồng × {CPU_SELL_X:g} − {CPU_KEEP:g}) · {CAP_RAM:g}GB RAM · hết chỗ lúc tạo máy → trả đơn cho máy chủ khác")
     try:                                    # nới RAM cho máy đang chạy (chống văng app khi hết RAM)
@@ -1337,6 +1441,7 @@ if __name__ == "__main__":
     adopt_old()
     n = 0; last = 0.0; _rootjob = [None]
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
+    threading.Thread(target=_stuck_loop, daemon=True).start()  # 16/11f: đơn tạo máy treo quá lâu → tự huỷ + hoàn tiền (luồng riêng)
     if TS_ON:
         _ts_load(); _loop_t[0] = time.time()
         threading.Thread(target=_ts_loop, daemon=True).start()
