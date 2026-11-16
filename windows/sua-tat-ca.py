@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611e):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611f):
 #        phonectl     — 16/11e: KHỞI ĐỘNG LẠI KHÔNG KẸT: xin lượt bật khi máy còn chạy rồi mới tắt (máy không nằm tắt chờ lượt) · lệnh
 #                       tạo máy (nhân bản) nhường máy đang khởi động lại bật trước · chống kẹt: máy chủ bận thì để lần sau, không tắt
 #                       máy rồi chờ CPU dịu · dấu "đang khởi động lại" ghi lúc tắt thật, kèm giờ chạy (không nhầm số PID cũ)
@@ -8,7 +8,9 @@
 #                       bấm khởi động lại lần nữa khi máy đang khởi động lại
 #        cpapi        — 16/11e: lệnh khởi động lại / đổi FPS / root / chế độ vẽ được chờ tới 40 phút (trước 2 phút → bị cắt giữa chừng,
 #                       máy nằm tắt, khách thấy "Không khởi động lại được … timed out")
-#        cloudphoned  — 16/11e: đơn ADMIN chọn máy chủ GẦN ĐẦY (≥ 80%) → tự chuyển sang máy chủ còn trống nhất
+#        cloudphoned  — 16/11f: đơn tạo máy quá 30 phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · đơn đã
+#                       huỷ không "sống lại" (máy tạo dở tự xoá) · máy chủ đang quá tải tạo máy → tạm nhường đơn mới cho máy chủ khác
+#                       16/11e: đơn ADMIN chọn máy chủ GẦN ĐẦY (≥ 80%) → tự chuyển sang máy chủ còn trống nhất
 #        cloudphoned  — 16/11d: TRẦN 100 NHÂN mỗi máy chủ (trước 68) · đơn mới ƯU TIÊN máy chủ còn trống (tính cả nhân đã cấp) · tạo máy
 #                       mà máy chủ hết chỗ → TRẢ ĐƠN cho máy chủ khác còn chỗ (không hoàn tiền nhầm), máy chủ đó nghỉ nhận đơn 5 phút
 #        bluestream   — 16/11c: HÌNH SẠCH KHI LƯỚT (khung khoá 2 giây, bộ đệm lớn hơn, nén đẹp hơn, mạng yếu thì bớt điểm ảnh thay vì vỡ ô)
@@ -40,7 +42,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11e"
+VER = "16/11f"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -54,12 +56,12 @@ NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "NEAR_PCT", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "STUCK_MIN", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
          ("windows/phonectl.py", "phonectl.py", "def _cyc_busy", None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11e", "bluestream": "nén 16/11e", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11f", "bluestream": "nén 16/11e", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -202,7 +204,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611e"
+            bak = lp + ".truoc-1611f"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
