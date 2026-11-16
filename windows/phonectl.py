@@ -727,6 +727,16 @@ def _mumu(a, timeout):
     if c == "clone": return _mumurun(["clone", "-v", ix()], timeout)
     return _ok()
 _IDX_CHECK = ("remove", "rename")                 # lệnh làm mất / đổi máy → phải chắc máy số đó CÓ THẬT trước khi chạy
+def _restart_mark(name):
+    """16/11c: máy này sắp được TẮT rồi BẬT lại (khởi động lại / nâng cấu hình / đổi độ phân giải-FPS / đổi chế độ vẽ / sửa máy kẹt)
+       → ghi redroid/restart_<tên>.json (mốc + mã chương trình). Phát hình (bluestream 16/11c) thấy dấu: khách mở máy giữa chừng được
+       báo "đang khởi động lại, tự vào khi máy lên" thay vì lỗi "không lấy được hình". Dấu tự hết khi Android lên xong / quá 5 phút."""
+    if not name or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", str(name)): return
+    try:
+        os.makedirs(os.path.join(HOME, "redroid"), exist_ok=True)
+        with open(os.path.join(HOME, "redroid", f"restart_{name}.json"), "w", encoding="utf-8") as f:
+            json.dump({"t": time.time(), "pid": os.getpid()}, f)
+    except (OSError, TypeError, ValueError): pass
 def _op_file(iv): return os.path.join(HOME, "redroid", f"op_{iv}.mark")
 _OP_MINE = set()
 def _op_mark(iv):
@@ -1798,7 +1808,7 @@ def force_stop(p, graceful=True):
         time.sleep(2)
     return False, how
 def cmd_restart(a):
-    st, p = _need(a.name); adb("disconnect", serial(p), timeout=15)
+    st, p = _need(a.name); _restart_mark(a.name); adb("disconnect", serial(p), timeout=15)
     force = bool(getattr(a, "force", False)); hard = False
     if force:                                                 # admin ÉP khởi động lại (máy treo): tắt hẳn rồi mới bật
         ok, how = force_stop(p); print(("   ✓ " if ok else "   ⚠ ") + how, flush=True)
@@ -1846,7 +1856,7 @@ def cmd_resize(a):
     ram = a.ram if a.ram > 0 else float(p["ram"]); cpu = a.cpu if a.cpu > 0 else float(p["cpu"])
     tot, av = mem(); av -= _sleep_ram(st)
     if ram > float(p["ram"]) and av - (ram - float(p["ram"])) < RESERVE: print("LỖI: RAM Windows không đủ để nâng."); sys.exit(4)
-    adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
+    _restart_mark(p.get("name")); adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
     configure(IDX(p), ram, cpu, p.get("res", "720x1280"), p.get("dpi"))
     fl = _fails()
     if fl.pop(a.name, None) is not None: _fails_put(fl)          # cấu hình mới → bỏ lịch "tạm không bật" do lỗi bật với cấu hình cũ
@@ -1948,7 +1958,7 @@ def cmd_ramfix(a):
 def cmd_reconfig(a):
     st, p = _need(a.name)
     res = a.res or p.get("res") or "720x1280"; fps = clamp_fps(a.fps or p.get("fps", 30)); dpi = auto_dpi(res)
-    adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
+    _restart_mark(p.get("name")); adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
     configure(IDX(p), p["ram"], p["cpu"], res, dpi)
     if EMU == "mumu": _FPS_FORCE[int(IDX(p))] = fps        # 16/11: trước đây đổi FPS chỉ ghi vào danh sách, máy vẫn chạy FPS cũ → ghi lúc bật (start)
     elif EMU == "memu": memuc("setconfigex", "-i", IDX(p), "fps", fps, timeout=60)
@@ -2637,7 +2647,7 @@ def cmd_heal(a):
             a.name = nm; cmd_delete(a); h.pop(nm, None); continue
         e["tries"] += 1; e["since"] = t
         print(f"KHOI_DONG_LAI {nm}: Android không lên quá {STUCK_MIN} phút → khởi động lại (lần {e['tries']})", flush=True)
-        adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3); start_phone(p)
+        _restart_mark(p.get("name")); adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3); start_phone(p)
     for k in list(h):
         if k not in seen: h.pop(k, None)
     _hs(h)
@@ -3125,7 +3135,7 @@ def cmd_perfset(a):
 def cmd_render(a):
     """Đổi chế độ vẽ của 1 máy: opengl | directx (khởi động lại máy ~1 phút)."""
     st, p = _need(a.name); m = {"opengl": 0, "directx": 1}[a.mode]
-    adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
+    _restart_mark(p.get("name")); adb("disconnect", serial(p), timeout=15); memuc("stop", "-i", IDX(p), timeout=120); time.sleep(3)
     memuc("setconfigex", "-i", IDX(p), "graphics_render_mode", m, timeout=60)
     start_phone(p); ok = wait_boot(a.name, p["port"], apps=False)
     print(f"✅ '{a.name}' → vẽ bằng {a.mode.upper()}" + ("" if ok else " (đang kết nối lại)"))

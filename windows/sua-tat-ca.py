@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611c):
+#        bluestream   — 16/11c: HÌNH SẠCH KHI LƯỚT (khung khoá 2 giây, bộ đệm lớn hơn, nén đẹp hơn, mạng yếu thì bớt điểm ảnh thay vì vỡ ô)
+#                       · máy đang KHỞI ĐỘNG LẠI → khách mở máy được báo "đang khởi động lại, tự vào khi máy lên" (không báo lỗi)
+#        phonectl     — 16/11c: ghi dấu "máy đang khởi động lại" cho phát hình biết
 #        bluestream   — 16/11a: hết quay mãi "Máy chủ chưa bật được hình" (máy tắt / Android chưa lên → tự gọi bật máy đang TẮT, báo
 #                       khách rõ + nút Khởi động lại máy) · MẠNG YẾU vẫn mượt (khung khoá theo giây thật, đo sức đường truyền để hạ
 #                       đúng mức ngay, nhớ trần, bắt đầu nhẹ theo gợi ý của app)
@@ -27,7 +30,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11a"
+VER = "16/11c"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -42,10 +45,10 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "def _bg_dondep", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11a"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11c"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _op_busy", None)]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "BOOT_IF_OFF"}       # dòng khởi động của bản mới (trong nhật ký)
+         ("windows/phonectl.py", "phonectl.py", "def _restart_mark", None)]
+MARK_RUN = {"cloudphoned": "cloudphoned bản 14/11", "bluestream": "nén 16/11c"}       # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)"}
@@ -176,7 +179,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611"
+            bak = lp + ".truoc-1611c"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)

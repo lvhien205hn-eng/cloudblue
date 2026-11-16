@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "16/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "16/11c"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
                                           # · 16/11a: máy tắt / Android chưa lên → tự gọi bật + báo rõ (hết quay mãi "chưa bật được hình")
@@ -140,6 +140,16 @@ LOW_KEY_KBPS = _int_conf("STREAM_LOW_KEY_KBPS", 450)        # dưới mức này
 def key_every(kbps):
     """Hệ số khoảng khung khoá theo bitrate: 1 (bình thường) · 2 khi bitrate rất thấp."""
     return 2.0 if 0 < int(kbps or 0) < LOW_KEY_KBPS else 1.0
+# 16/11c — HÌNH SẠCH KHI LƯỚT (máy chủ nén bằng ffmpeg: NVENC / x264). Đo trên video cuộn trang web 540x960 · 30 khung · 1500 kbps
+# (SSIM lúc cuộn, 1 = y hệt gốc): x264 ultrafast (cũ) 0,938 · khung xấu nhất 0,870 → superfast 0,962 · xấu nhất 0,929 — CÙNG cỡ khung,
+# cùng độ trễ (CPU +36%, ~3 ms/khung). Khung khoá 2 giây / bộ đệm to hơn còn đẹp thêm (0,975) nhưng thử mạng giật: đứng hình nhiều
+# và lâu hơn → GIỮ như cũ (đổi được bằng conf nếu muốn thử).
+KEY_S = max(0.5, min(5.0, _float_conf("STREAM_KEY_S", 1.0)))          # khung khoá mỗi KEY_S giây (như cũ: 1)
+VBV_S = max(0.0, min(1.0, _float_conf("STREAM_VBV_S", 0.0)))          # bộ đệm bitrate (giây) · 0 = công thức cũ (~6 khung)
+X264_PRESET = str(C.get("STREAM_X264_PRESET") or "superfast").strip() or "superfast"   # trước ultrafast (không lọc khối → vỡ ô khi lướt)
+if X264_PRESET not in ("ultrafast", "superfast", "veryfast", "faster", "fast", "medium"): X264_PRESET = "superfast"
+NVENC_PRESET = str(C.get("NVENC_PRESET") or "p4").strip().lower() or "p4"              # trước p1; ffmpeg / card không nhận → tự về p1
+if not re.fullmatch(r"p[1-7]", NVENC_PRESET): NVENC_PRESET = "p4"
 _KF_LEGACY = {}                           # "127.0.0.1:cổng" → tới lúc nào máy đó dùng lại khoảng khung khoá kiểu cũ
 MIN_KBPS = max(120, _int_conf("STREAM_MIN_KBPS", 180))      # mức thấp nhất của Tự động (trước 16/11: 250)
 DL_HINT_MAX = 2500                        # app / web báo tốc độ tải ước lượng (kbps) dưới mức này → bắt đầu ~60% tốc độ đó (chỉ để BẮT ĐẦU nhẹ)
@@ -781,6 +791,30 @@ class _NvencSlots:
 
 NVENC = _NvencSlots()
 _nvenc_broken = {"until": 0}
+_NV_PRE = {"v": None, "retry": 0.0, "lock": threading.Lock()}
+
+
+def nvenc_preset():
+    """16/11c: preset NVENC. Lần đầu thử NVENC_PRESET (mặc định p4 — nén đẹp hơn p1 rõ khi lướt, card vẫn dư sức) bằng 5 khung giả;
+       ffmpeg / card / driver không nhận → p1 như cũ (10 phút sau thử lại: lúc thử có thể card đang đủ phiên)."""
+    v = _NV_PRE["v"]
+    if v and (v != "p1" or NVENC_PRESET == "p1" or time.time() < _NV_PRE["retry"]): return v
+    with _NV_PRE["lock"]:
+        v = _NV_PRE["v"]
+        if v and (v != "p1" or NVENC_PRESET == "p1" or time.time() < _NV_PRE["retry"]): return v
+        ok = NVENC_PRESET == "p1"
+        if not ok:
+            try:
+                r = subprocess.run([FF, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x240:r=30", "-frames:v", "5",
+                                    "-c:v", "h264_nvenc", "-preset", NVENC_PRESET, "-tune", "ull", "-zerolatency", "1", "-rc", "cbr",
+                                    "-b:v", "500k", "-f", "null", "-"], capture_output=True, timeout=20, creationflags=NOWIN)
+                ok = r.returncode == 0
+                if not ok: log(f"  NVENC preset {NVENC_PRESET} không chạy được ({(r.stderr or b'').decode('utf-8', 'replace').strip()[-120:]}) → dùng p1, 10 phút sau thử lại")
+            except Exception as e:
+                log(f"  NVENC preset {NVENC_PRESET}: thử lỗi {e!r} → dùng p1")
+        _NV_PRE["v"] = NVENC_PRESET if ok else "p1"; _NV_PRE["retry"] = time.time() + 600
+        if ok and NVENC_PRESET != "p1": log(f"  NVENC: dùng preset {NVENC_PRESET} (đẹp hơn p1 khi lướt)")
+        return _NV_PRE["v"]
 
 
 class Encoder:
@@ -797,17 +831,17 @@ class Encoder:
         cmd = [FF, "-hide_banner", "-loglevel", "error", "-y",
                "-f", "rawvideo", "-pix_fmt", "bgra", "-s", f"{sw}x{sh}", "-framerate", str(fps), "-i", "-"]
         vf = []
-        if (self.ow, self.oh) != (sw, sh): vf.append(f"scale={self.ow}:{self.oh}:flags=fast_bilinear")
-        gop = str(max(int(fps * key_every(k)), 15))             # khung khoá mỗi ~1 giây (bitrate rất thấp: 2 giây): mạng chập chờn → hình hồi lại nhanh
-        buf = f"{max(k * 6 // max(fps, 1), min(250, max(96, k // 2)))}k"   # bộ đệm ~6 khung (~0,1 s) — nhỏ = ít trễ; bitrate thấp: khung khoá ≤ ~0,5 giây dữ liệu
+        if (self.ow, self.oh) != (sw, sh): vf.append(f"scale={self.ow}:{self.oh}:flags=area")      # 16/11c: area (trước fast_bilinear) → chữ nét, ít răng cưa khi cuộn
+        gop = str(max(int(fps * KEY_S * key_every(k)), 15))     # khung khoá mỗi ~1 giây (bitrate rất thấp: 2 giây): mạng chập chờn → hình hồi lại nhanh
+        buf = f"{max(int(k * VBV_S) if VBV_S > 0 else k * 6 // max(fps, 1), min(250, max(96, k // 2)))}k"   # bộ đệm ~6 khung — nhỏ = ít trễ (STREAM_VBV_S để thử to hơn)
         if self.enc == "nvenc":
             if vf: cmd += ["-vf", ",".join(vf)]
-            cmd += ["-c:v", "h264_nvenc", "-preset", "p1", "-tune", "ull", "-zerolatency", "1", "-delay", "0", "-rc", "cbr",
+            cmd += ["-c:v", "h264_nvenc", "-preset", nvenc_preset(), "-tune", "ull", "-zerolatency", "1", "-delay", "0", "-rc", "cbr",
                     "-profile:v", "baseline", "-bf", "0", "-g", gop, "-forced-idr", "1", "-strict_gop", "1",
                     "-b:v", f"{k}k", "-maxrate", f"{k}k", "-bufsize", buf]
         else:
             vf.append("format=yuv420p")
-            cmd += ["-vf", ",".join(vf), "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-profile:v", "baseline",
+            cmd += ["-vf", ",".join(vf), "-c:v", "libx264", "-preset", X264_PRESET, "-tune", "zerolatency", "-profile:v", "baseline",
                     "-threads", "1", "-x264-params", f"sliced-threads=0:keyint={gop}:min-keyint={gop}:scenecut=0:bframes=0:rc-lookahead=0:sync-lookahead=0:repeat-headers=1",
                     "-b:v", f"{k}k", "-maxrate", f"{k}k", "-bufsize", buf]
         cmd += ["-an", "-bsf:v", "dump_extra=freq=keyframe", "-f", "rtp", "-rtpflags", "skip_rtcp", "-payload_type", "96",
@@ -1920,6 +1954,7 @@ class Closed(Exception):
 class Session:
     is_preview = False
     a9 = False; _wk_t = 0.0; n_keyfix = 0          # mặc định cho mọi phiên (kể cả phiên dựng thiếu __init__) — __init__ đặt lại theo máy
+    fps_over = 1.0; _fw = None                     # 16/11c: Android gửi nhiều khung hơn đã xin bao nhiêu lần · cửa sổ đo
     dl = 0; net = ""; ceil_kbps = 0; ceil_until = 0.0; ceil_s = 0.0; t_rate0 = 0.0; prodlog = None      # 16/11 (như trên)
     kf_legacy = False; kf_probe = False; vid_ok_t = 0.0
 
@@ -2030,9 +2065,13 @@ class Session:
         kbps = self.kbps_cur                                   # tự hạ theo mạng khách (đo bằng ACK)
         if kbps < 700: fps = min(fps, 20)
         elif kbps < 1400: fps = min(fps, 30)
+        kbe = kbps / max(1.0, float(getattr(self, "fps_over", 1.0) or 1.0))   # 16/11c: Android gửi nhiều khung hơn đã xin → mỗi khung ít dữ liệu hơn
         if self.q == "auto":                                   # Tự động: mạng yếu → giảm cả độ nét
             for lim, mh, mf in AUTO_TIERS:
-                if kbps < lim: maxh, fps = min(maxh, mh), min(fps, mf); break
+                if kbe < lim: maxh, fps = min(maxh, mh), min(fps, mf); break
+        else:                                                  # 16/11c: Tiết kiệm / Cân bằng / Nét mà mạng kéo bitrate xuống DƯỚI mức gói
+            for lim, mh, mf in AUTO_TIERS:                     # → bớt điểm ảnh / khung theo bậc như Tự động: mỗi điểm nhiều dữ liệu hơn → hết vỡ ô
+                if kbe < lim: maxh, fps = min(maxh, mh), min(fps, mf); break      # (đo: 600 kbps 960 → 640: SSIM khi cuộn 0,84 → 0,89 · 450 kbps 0,74 → 0,87)
         sw, sh = self.src.cw, self.src.ch
         sc = min(1.0, maxh / max(sw, sh, 1))
         ow, oh = (sw, sh) if sc >= 0.999 else (max(16, int(sw * sc) & ~7), max(16, int(sh * sc) & ~7))
@@ -2058,7 +2097,7 @@ class Session:
         if self.is_preview: return SCR_IFRAME
         if self.a9: return SCR_IFRAME_A9
         if SCR_KEY_S <= 0 or self.kf_legacy: return SCR_IFRAME
-        return max(0.1, min(SCR_IFRAME, SCR_KEY_S * key_every(kbps) * max(10, int(fps)) / 60.0))
+        return max(0.1, min(5.0, SCR_KEY_S * key_every(kbps) * max(10, int(fps)) / 60.0))       # 16/11c: trần 5 (trước SCR_IFRAME = 1 → 60 khung)
 
     def _start_video_scrcpy(self):
         """Hình lấy thẳng từ Android (scrcpy). Tắt bộ cũ TRƯỚC (máy ảo chỉ nên chạy 1 bộ mã hoá) rồi bật bộ mới → (rộng, cao) thật."""
@@ -2245,6 +2284,8 @@ class Session:
                     log(f"  {self.name}: không thấy cửa sổ máy nhưng Android vẫn chạy → lấy hình thẳng từ Android (scrcpy, {self.serial})")
                     continue
                 gone = not alive
+                if alive and not await asyncio.to_thread(boot_done, self.serial):
+                    gone = True                                # 16/11c: adb thấy máy nhưng Android CHƯA khởi động xong (vừa khởi động lại) → chờ như máy đang bật
             if isinstance(err, NoWindow) and SELFTEST: raise err
             if not gone:
                 e_ = self.enc                                  # scrcpy lỗi với khoảng khung khoá kiểu mới → lần sau thử kiểu cũ
@@ -2257,8 +2298,9 @@ class Session:
                         log(f"  {self.name}: quay cửa sổ / nén trên Windows lỗi, Android vẫn chạy → thử lấy hình thẳng từ Android (scrcpy, {self.serial})")
                     await asyncio.sleep(min(3.0, 1.0 * n)); continue
                 raise Deny("OFFLINE", MSG_NOVIDEO, fix="reboot")
-            wk = await asyncio.to_thread(boot_if_off, self.phone)
-            if wk[0] == "bat" and not held and str(self.hello.get("client") or "") == "pc":
+            rs = await asyncio.to_thread(restarting, getattr(self, "phone", None))
+            wk = ("kdl", rs) if rs is not None else await asyncio.to_thread(boot_if_off, self.phone)
+            if wk[0] in ("bat", "kdl") and not held and str(self.hello.get("client") or "") == "pc":
                 held = True                                    # app PC gặp lỗi là dừng → giữ kết nối tới khi máy lên rồi vào luôn
                 if not await hold_for_wake(self.link, self.phone, wk): raise Closed()
                 self._reserial(); n = 0; t0 = time.time(); continue
@@ -2365,6 +2407,23 @@ class Session:
         prod = sum(n for _, n in pr) * 8 / span / 1000
         if peak <= 0 or prod <= 0: return None
         return peak, prod
+
+    def _fps_watch(self):
+        """16/11c: máy Android gửi NHIỀU khung hơn đã xin (bộ nén trong máy bỏ qua giới hạn khung/giây — VD máy đặt 60 FPS mà xem
+           ở Tiết kiệm 30) → cùng bitrate chia cho gấp đôi số khung = mỗi khung ít dữ liệu → vỡ ô khi lướt. Đo mỗi 4 giây; vượt ≥ 35%
+           2 lần liền → coi bitrate "mỗi khung" thấp tương ứng để chọn bậc độ phân giải (_dims) rồi bật lại hình 1 lần."""
+        e = self.enc; now = time.time(); n = getattr(e, "frames_in", 0) or 0
+        w = self._fw
+        if not w or w[0] is not e: self._fw = [e, now, n, 0]; return
+        if now - w[1] < 4.0: return
+        got = (n - w[2]) / (now - w[1]); want = max(1, int(getattr(e, "fps", 0) or 30))
+        hits = w[3] + 1 if got > want * 1.35 else 0
+        self._fw = [e, now, n, hits]
+        if hits >= 2 and got / want > (self.fps_over or 1.0) + 0.2:
+            self.fps_over = round(min(4.0, got / want), 2)
+            log(f"  {self.name}: Android gửi ~{got:.0f} khung/giây dù xin {want} (bộ nén trong máy bỏ qua giới hạn) → mỗi khung ít dữ liệu"
+                f" hơn ×{self.fps_over} → chọn độ phân giải theo đó")
+            self.restart_req = self.restart_req or "quality"
 
     def _congested(self, hard=False):
         """Mạng khách không kịp: hạ bitrate theo tốc độ app THẬT SỰ nhận được (đo bằng ACK).
@@ -2510,6 +2569,7 @@ class Session:
                 elif (kw > 0 and getattr(self, "sent", 0) > 0 and getattr(self.enc, "enc", "") == "scrcpy" and not self.restart_req
                       and time.time() - self._wk_t > kw and time.time() - self.last_restart > max(2.0, kw)):
                     self.restart_req = "key"; self.n_keyfix += 1; self._wk_t = time.time()   # bỏ khung rồi chờ khung khoá quá lâu → bật lại bộ nén
+                if not self.is_preview and getattr(self.enc, "enc", "") == "scrcpy": self._fps_watch()
                 if self.restart_req and time.time() - self.last_restart > 1.0:
                     self.restart_req = None; await self.restart_video()
                 if not self.is_preview and self._early_down(time.time()): continue      # nhịp sau bật lại bộ nén ở mức mới
@@ -2526,6 +2586,11 @@ class Session:
                 now = time.time()
                 self.fail_n = self.fail_n + 1 if now - self.fail_t < 90 else 1; self.fail_t = now
                 log(f"  {self.name}: bật lại hình lỗi (lần {self.fail_n}): {str(e).strip()[:160] or type(e).__name__}")
+                rs = None if self.is_preview else await asyncio.to_thread(restarting, getattr(self, "phone", None))
+                if rs is not None:                       # 16/11c: máy đang khởi động lại → báo chờ (app tự vào lại khi máy lên)
+                    self.why = "máy đang khởi động lại"
+                    self.link.send_nowait(S_ERROR, err_json("OFFLINE", wake_msg(("kdl", rs)), **wake_extra(("kdl", rs))))
+                    return
                 if isinstance(e, AdbGone) and self.fail_n >= 2 and not self.is_preview:
                     # adb không thấy máy 2 lần liền (máy vừa tắt / treo giữa chừng) → không thử mù tới 6 lần: gọi bật máy đang TẮT + báo rõ
                     wk = await asyncio.to_thread(boot_if_off, self.phone)
@@ -2753,6 +2818,59 @@ def _wake_lock_alive(name):
         return False
 
 
+RESTART_WIN_S = 300                # phonectl ghi redroid/restart_<tên>.json lúc khởi động lại → trong 5 phút: Android chưa xong = "đang khởi động lại"
+_RS_OK = {}                        # tên máy → lúc đã thấy Android lên xong sau lần khởi động lại gần nhất
+
+
+def boot_done(serial):
+    """Android đã khởi động XONG (sys.boot_completed = 1)? adb không trả lời → False."""
+    if SELFTEST: return True
+    adb_connect(serial)
+    code, out, _ = adb(serial, "shell", "getprop", "sys.boot_completed", timeout=6)
+    if code == -2: return True                             # không có chương trình adb → không kết luận
+    return code == 0 and out.strip() == "1"
+
+
+def _op_mark_t(iv):
+    """phonectl (16/11b) đang làm dở với máy số iv (vừa TẮT máy để khởi động lại / đổi cấu hình / root…) → lúc ghi dấu; không → None."""
+    f = os.path.join(B, "redroid", f"op_{iv}.mark")
+    try:
+        t = os.path.getmtime(f)
+        if time.time() - t > 900: return None
+        with open(f) as fh: pid = fh.read().strip()
+        return t if pid.isdigit() and _pid_alive(pid) else None
+    except (OSError, ValueError):
+        return None
+
+
+def restarting(phone):
+    """16/11c: máy đang được KHỞI ĐỘNG LẠI (khách / admin bấm, đổi FPS…) → số giây đã chờ; không → None.
+       Trước: khách thoát app rồi mở lại giữa chừng → máy chủ cố lấy hình từ Android chưa lên → báo lỗi "không lấy được hình" + nút
+       Khởi động lại (bấm nữa → càng lâu). Giờ: lệnh khởi động lại còn chạy, hoặc vừa khởi động lại (≤ 5 phút) mà Android chưa xong
+       → báo "đang khởi động lại, tự vào khi máy lên" (app / web tự thử lại, app PC được giữ chờ)."""
+    phone = phone if isinstance(phone, dict) else {}
+    name = phone.get("container") or ""
+    if not name or SELFTEST: return None
+    ps = phones_json().get(name) or {}
+    now = time.time(); t0 = None; alive = False
+    try:
+        with open(os.path.join(B, "redroid", f"restart_{name}.json"), encoding="utf-8") as fh: d = json.load(fh)
+        t = float(d.get("t") or 0)
+        if 0 <= now - t < RESTART_WIN_S:
+            t0 = t; pid = str(d.get("pid") or "")
+            alive = pid.isdigit() and _pid_alive(pid)
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    if alive: return max(0, int(now - t0))                 # phonectl restart còn đang tắt / bật máy
+    port = ps.get("port") or phone.get("port")
+    iv = str(ps.get("idx", "")).strip()
+    m = _op_mark_t(iv) if iv.isdigit() else None           # lệnh khác (đổi cấu hình, root…) vừa tắt máy và còn làm dở
+    if m is None and (t0 is None or _RS_OK.get(name, 0) >= t0): return None
+    if port and not boot_done(f"127.0.0.1:{port}"): return max(0, int(now - min(x for x in (t0, m) if x is not None)))
+    if t0 is not None: _RS_OK[name] = now                   # Android đã lên sau lần khởi động lại này
+    return None
+
+
 def _wake_reader(name, w):
     p = w["proc"]; last = ""
     try:
@@ -2820,10 +2938,12 @@ def boot_if_off(phone):
 
 
 def wake_check(phone, start=True):
-    """None = máy thức → mở bình thường. Không thì ("ngu" | "day" | "loi", giây đã chờ | lý do).
+    """None = máy thức → mở bình thường. Không thì ("ngu" | "day" | "loi" | "kdl", giây đã chờ | lý do).
        start=True (phiên điều khiển): máy đang ngủ → tự gọi bật lại. Xem trước (start=False) không đánh thức máy."""
     name = phone.get("container") or ""
     if not name: return None
+    rs = restarting(phone)                             # 16/11c: đang khởi động lại → chờ, khỏi cố lấy hình rồi báo lỗi
+    if rs is not None: return ("kdl", rs)
     w = _WAKING.get(name)
     if w and not w["done"]:
         return None if w["ready"] else _wk_live(w)
@@ -2843,6 +2963,7 @@ def wake_msg(wk):
     t = f", đã {s} giây" if s >= 5 else ""
     if k == "loi": return "Máy chưa bật lại được — máy chủ sẽ tự thử lại. Bấm “Khởi động lại máy” để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ."
     if k == "bat": return "🔄 Máy đang được bật lại — khoảng 1–2 phút" + t + ". Tự vào khi máy lên."
+    if k == "kdl": return "🔄 Máy đang khởi động lại — khoảng 1–2 phút" + t + ". Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào."
     if k == "treo": return "Máy đang bật nhưng Android chưa trả lời" + t + ". Chờ thêm ít phút, hoặc bấm “Khởi động lại máy” để sửa nhanh (1–2 phút, dữ liệu giữ nguyên)."
     if k == "khoa": return "Máy đang tạm dừng trên máy chủ. Bấm “Khởi động lại máy” để bật lại; không được thì báo hỗ trợ."
     if k == "mat": return "Máy chủ chưa có máy này (có thể đang được tạo lại). Chờ ít phút; vẫn vậy thì báo hỗ trợ kèm tên máy."
@@ -2852,7 +2973,7 @@ def wake_msg(wk):
 def wake_extra(wk):
     """Trường phụ của S_ERROR cho app mới: boot=1 máy đang được bật (cứ chờ) · fix="reboot" nên hiện nút Khởi động lại máy."""
     k = wk[0]
-    return {"boot": 1 if k in ("day", "bat", "treo") else 0, "fix": "reboot" if k in ("loi", "treo", "khoa") else ""}
+    return {"boot": 1 if k in ("day", "bat", "treo", "kdl") else 0, "fix": "reboot" if k in ("loi", "treo", "khoa") else ""}
 
 
 async def hold_for_wake(link, phone, wk):
@@ -3972,6 +4093,9 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
+    log(f"nén 16/11c: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
+        + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"
+        " · máy Android gửi nhiều khung hơn đã xin thì tính bù · máy đang khởi động lại → báo khách chờ, tự vào khi máy lên")
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi "
         + (f"{SCR_KEY_S:g} giây THẬT theo khung/giây đang phát (SCRCPY_KEY_EVERY_S)" if SCR_KEY_S > 0 else f"{SCR_IFRAME:g} giây ở 60 khung/giây (kiểu cũ)")
