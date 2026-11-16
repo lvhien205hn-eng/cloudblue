@@ -53,8 +53,16 @@ WIN_VCPU_OVER = _f("WIN_VCPU_OVER", 0.9)        # (chỉ dùng khi ghi rõ trong
 # 14/11 — TRẦN CỨNG mỗi máy chủ Windows (admin: "130 nhân máy không chịu nổi, cứ sập"): đã cấp tới 68 nhân hoặc 112GB RAM là NGỪNG
 # nhận máy mới / nâng cấp. Không bán vượt ("buff"): máy NGỦ tính đủ RAM + nhân đã cấp, RAM bán không vượt RAM thật − WIN_RAM_RESERVE,
 # nhân bán không vượt số luồng thật − CPU_KEEP. Máy đang có KHÔNG bị tắt bớt — chỉ ngừng nhận thêm tới khi xuống dưới trần.
-# Đổi trong cloudphone.conf: CAP_CPU=68 · CAP_RAM=112 (0 = bỏ trần, tính như trước 14/11) · CPU_KEEP=4
-CAP_CPU, CAP_RAM, CPU_KEEP = _f("CAP_CPU", 68), _f("CAP_RAM", 112), _f("CPU_KEEP", 4)
+# 16/11 — admin NÂNG TRẦN NHÂN: cấp tới 100 nhân mới ngừng (68 làm máy chủ còn nhiều RAM mà đã báo đầy, đơn bị hoàn tiền). Nhân bán
+#   không vượt số luồng thật × CPU_SELL_X − CPU_KEEP (×2: máy 72 luồng → 140, trần 100 chặn trước; máy nhỏ vẫn giữ an toàn).
+#   CPU thật nóng (TB 5 phút ≥ CPU_BUSY_PCT, 85%) vẫn ngừng nhận như cũ — chỗ chặn quá tải thật.
+# Đổi trong cloudphone.conf: CAP_CPU=100 · CAP_RAM=112 (0 = bỏ trần, tính như trước 14/11) · CPU_SELL_X=2 · CPU_KEEP=4
+CAP_CPU, CAP_RAM, CPU_KEEP = _f("CAP_CPU", 100), _f("CAP_RAM", 112), _f("CPU_KEEP", 4)
+CPU_SELL_X = max(0.5, min(3.0, _f("CPU_SELL_X", 2.0)))
+# 16/11 — tạo máy mà phonectl báo HẾT CHỖ (RAM thật lúc tạo ít hơn số ước) → không hoàn tiền ngay: còn máy chủ khác đủ chỗ thì TRẢ ĐƠN
+#   cho nó nhận; máy chủ này nghỉ nhận đơn mới + báo web hết chỗ FULL_COOL_S giây (đơn không quay lại đúng máy vừa hết chỗ).
+FULL_COOL_S = max(60, int(_f("FULL_COOL_S", 300)))
+_FULL = {"until": 0.0}
 # ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
 # Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
 # 9 máy ngủ) báo ĐẦY lúc RAM thật mới dùng 32%. Giờ máy ngủ giữ đúng phần RAM THẬT 1 máy đang chạy dùng (đo trên chính
@@ -117,9 +125,8 @@ def win_caps(st):
     av_r -= sleep_reserve(st)[0]                              # máy NGỦ bật lại khi khách mở → chừa RAM thật của chúng, không bán
     c_r = a_r + max(0.0, av_r - WIN_RESERVE - 1)             # −1GB: khớp phonectl create (máy mới cần thêm 1GB) → web / nhận đơn / tạo máy cùng một mức, không nhận rồi hoàn tiền
     c_c = a_c + cpu_t * CPU_OVER
-    if CAP_CPU > 0:                                          # 14/11: trần cứng nhân (68 · không vượt luồng thật − 4)
-        lim = min(CAP_CPU, max(1.0, cpu_t - CPU_KEEP))
-        if "WIN_VCPU_OVER" in CFG: lim = min(lim, cpu_t * WIN_VCPU_OVER)
+    if CAP_CPU > 0:                                          # 16/11: trần cứng 100 nhân (không vượt luồng thật × 2 − 4)
+        lim = min(CAP_CPU, max(1.0, cpu_t * CPU_SELL_X - CPU_KEEP))
         c_c = max(a_c, min(c_c, lim))
     else:
         c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))      # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
@@ -139,7 +146,8 @@ def local_load():
     gl = (gpu_avg5()[0] or 0) / 100                     # card đồ hoạ bận → nhường máy chủ card rảnh hơn nhận trước
     if WIN:
         a_r, a_c, c_r, c_c = win_caps(st)
-        return max(a_r / max(c_r, 1), (cpu_avg5() or 0) / 100, gl), sell_cap(a_r, c_r) - a_r, sell_cap(a_c, c_c) - a_c   # đạt 95% → không nhận
+        # 16/11: độ bận tính cả NHÂN đã cấp → máy chủ còn trống nhiều (RAM lẫn nhân) nhận đơn trước, máy sắp đầy chờ thêm vài giây
+        return max(a_r / max(c_r, 1), a_c / max(c_c, 1), (cpu_avg5() or 0) / 100, gl), sell_cap(a_r, c_r) - a_r, sell_cap(a_c, c_c) - a_c
     ram_t = meminfo()[0]; cpu_t = os.cpu_count() or 1
     a_r = sum(float(p.get("ram", 0)) for p in st); a_c = sum(float(p.get("cpu", 0)) for p in st)
     c_r, c_c = ram_t * LIMIT_PCT / 100 * RAM_OVER, cpu_t * CPU_OVER
@@ -262,6 +270,9 @@ def claim(row):
     n = row.get("node")
     if n: return n == NODE_ID                       # đã có server nhận rồi
     if not node_enabled(): return False
+    if time.time() < _FULL["until"]:                 # 16/11: vừa tạo máy báo HẾT CHỖ → nghỉ nhận đơn ít phút, nhường máy chủ khác
+        if PRIMARY: refund_unserved(row)
+        return False
     if not android_ok(row):                          # đơn Android 12/7 → máy chủ MuMu/MEmu; Android 9 → máy chủ LDPlayer
         if PRIMARY: refund_unserved(row)
         return False
@@ -565,8 +576,17 @@ def do_create(row):
                       "--days", str(row["days"]), "--res", row.get("res") or "720x1280",
                       "--fps", str(row.get("fps") or 30), "--android", str(row.get("android") or "11"), "--nowait"]
                      + (["--until", str(row["until_at"])] if row.get("until_at") and phonectl_until() else []))
-        if r.returncode == 2:   # HẾT HÀNG (quá ngưỡng)
-            refund(row, "Máy chủ đã đầy, chưa tạo được máy"); notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b> vì {NODE_ID} đã đầy {FULL_PCT if WIN else LIMIT_PCT:g}%."); return
+        if r.returncode == 2:   # HẾT CHỖ lúc tạo (RAM thật ít hơn số ước)
+            _FULL["until"] = time.time() + FULL_COOL_S
+            print(f"   ✗ {NODE_ID} hết chỗ khi tạo máy → nghỉ nhận đơn {FULL_COOL_S // 60} phút, nhường đơn cho máy chủ khác")
+            if age_s(row) < 600 and others_for(row)[1]:      # 16/11: còn máy chủ khác đủ chỗ → TRẢ ĐƠN cho nó nhận, KHÔNG hoàn tiền
+                try:
+                    back = sb("PATCH", f"cloud_phones?id=eq.{row['id']}&node=eq.{NODE_ID}&status=eq.pending", {"node": None},
+                              {"Prefer": "return=representation"})
+                    if back: print("   ↪ đã trả đơn — máy chủ còn chỗ sẽ nhận"); return
+                except Exception as e: print("   lỗi trả đơn:", e)
+            refund(row, "Máy chủ đã đầy, chưa tạo được máy")
+            notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b>: {NODE_ID} hết chỗ khi tạo máy và không máy chủ nào khác còn chỗ."); return
         if r.returncode != 0:
             log_err = (r.stdout + r.stderr)[-300:]
             print("   ✗", log_err)
@@ -974,6 +994,7 @@ def heartbeat():
     if WIN:                                             # 13/11: sức chứa THẬT → % đầy cho web; sức chứa BÁN (95%) → cap_ram / cap_cpu
         f_ram, f_cpu, stop = c_ram, c_cpu, FULL_PCT
         c_ram, c_cpu = sell_cap(a_ram, f_ram), sell_cap(a_cpu, f_cpu)
+        if time.time() < _FULL["until"]: c_ram, c_cpu = a_ram, a_cpu    # 16/11: vừa hết chỗ lúc tạo máy → báo web hết chỗ ít phút
     else:                                               # Linux: c_ram đã là LIMIT_PCT % RAM (như cũ) → sức chứa thật = 100%
         f_ram, f_cpu, stop = (ram_t * RAM_OVER if c_ram > a_ram else c_ram), c_cpu, float(LIMIT_PCT)
     fill = 100 * max(a_ram / f_ram if f_ram > 0 else 1.0, a_cpu / f_cpu if f_cpu > 0 else 1.0)
@@ -1239,7 +1260,8 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 14/11 chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 16/11 chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if WIN and CAP_CPU > 0: print(f"Trần mỗi máy chủ: {CAP_CPU:g} nhân (≤ luồng × {CPU_SELL_X:g} − {CPU_KEEP:g}) · {CAP_RAM:g}GB RAM · hết chỗ lúc tạo máy → trả đơn cho máy chủ khác")
     try:                                    # nới RAM cho máy đang chạy (chống văng app khi hết RAM)
         r = phonectl(["memfix"]); print(r.stdout.strip())
     except Exception as e: print("lỗi memfix:", e)
