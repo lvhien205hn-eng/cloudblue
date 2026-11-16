@@ -65,6 +65,35 @@ def ui_scale():
     return max(UI_MIN, min(UI_MAX, v))
 
 
+# 16/11c · TIẾNG VIỆT / ENGLISH: khách chọn ở 🌐 (màn đăng nhập · dưới "Máy của tôi" · 🎨 Giao diện) → nhớ trong settings.json.
+#   Chưa chọn → theo Windows: ngôn ngữ hiển thị / định dạng / vùng là Việt Nam → tiếng Việt, còn lại → English.
+#   English: bluepc_en.py dịch mọi chữ Tk (nhãn, nút, menu, hộp thoại, tiêu đề) + chữ cửa sổ máy (T()). Thiếu file → tiếng Việt như cũ.
+def _sys_vi():
+    if os.name != "nt": return True
+    try:
+        import ctypes; k = ctypes.windll.kernel32
+        if (k.GetUserDefaultUILanguage() & 0x3FF) == 0x2A or (k.GetUserDefaultLCID() & 0x3FF) == 0x2A: return True
+        return k.GetUserGeoID(16) == 251                          # GEOCLASS_NATION · 251 = Việt Nam
+    except Exception: return True
+
+
+def ui_lang():
+    v = str(prefs().get("lang") or "")
+    return v if v in ("vi", "en") else ("vi" if _sys_vi() else "en")
+
+
+LANG, EN_UI = ui_lang(), None
+if LANG == "en":
+    try:
+        import bluepc_en; bluepc_en.install(); EN_UI = bluepc_en
+    except Exception as _e:
+        LANG = "vi"; log("lang en:", repr(_e))
+
+
+def T(s): return EN_UI.tr(s) if EN_UI else s
+def L(vi, en): return en if EN_UI else vi
+
+
 # ================================================================ HTTP + Supabase
 OUTDATED = {"v": False, "min": ""}               # máy chủ báo app đã cũ (APP_OUTDATED) / admin đặt bản tối thiểu (settings.min_app_pc)
 
@@ -878,7 +907,7 @@ class Viewer:
                 for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
                     pygame.draw.rect(s, c, (cx + (1 if dx > 0 else -q - 1), cy + (1 if dy > 0 else -q - 1), q, q), 2, border_radius=2)
             elif name == "quality":
-                t = self.font_s.render({"auto": "AUTO", "hd": "HD", "bal": "CB", "eco": "TK"}[self.q], True, c); s.blit(t, t.get_rect(center=(cx, cy)))
+                t = self.font_s.render({"auto": "AUTO", "hd": "HD", "bal": L("CB", "BAL"), "eco": L("TK", "ECO")}[self.q], True, c); s.blit(t, t.get_rect(center=(cx, cy)))
             elif name == "full":
                 for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
                     ax, ay = cx + dx * r, cy + dy * r
@@ -893,14 +922,14 @@ class Viewer:
                 for off in (-4, 3):
                     pygame.draw.lines(s, c, False, [(cx + off - 3, cy - r + 2), (cx + off + 3, cy), (cx + off - 3, cy + r - 2)], 2)
             if small: continue
-            lb = self.font_s.render(label if name != "quality" else dict(QUALITIES)[self.q], True, C_DIM if not hot else C_TXT)
+            lb = self.font_s.render(T(label if name != "quality" else dict(QUALITIES)[self.q]), True, C_DIM if not hot else C_TXT)
             s.blit(lb, lb.get_rect(center=(x + w // 2, y + int(h * 0.80))))
 
     def _draw_overlay(self, pygame, s, W, H, has_video):
         st = self.state[0]; aw = W - self._bw()
         self.notice_rect = None; n = self.notice
         if n:                                            # thông báo nhỏ phía dưới hình (VD "Đang xoay ngang…", "Đã lưu ảnh…")
-            lines = [ln for ln in wrap_text(self.font, n[0], max(120, min(aw - 60, 560))) if ln][:3]
+            lines = [ln for ln in wrap_text(self.font, T(n[0]), max(120, min(aw - 60, 560))) if ln][:3]
             if lines:
                 lh = self.font.get_height() + 4; bw_ = max(self.font.size(ln)[0] for ln in lines) + 28; bh = lh * len(lines) + 16
                 x0, y0 = max(4, (aw - bw_) // 2), max(4, H - bh - 30)
@@ -925,7 +954,7 @@ class Viewer:
             bw = min(aw - 40, 520); rows = []
             for i, ln in enumerate(lines):
                 f_ = self.font_b if i == 0 else self.font
-                rows += [(f_, w, C_TXT if i == 0 else C_DIM) for w in wrap_text(f_, ln, bw - 32) if w]
+                rows += [(f_, w, C_TXT if i == 0 else C_DIM) for w in wrap_text(f_, T(ln), bw - 32) if w]
             rows = rows[:7]; box_h = 30 + 26 * len(rows)
             pygame.draw.rect(s, (10, 16, 30, 215), ((aw - bw) // 2, H // 2 - box_h // 2, bw, box_h), border_radius=14)
             for i, (f_, ln, col) in enumerate(rows):
@@ -933,9 +962,9 @@ class Viewer:
                 s.blit(t, t.get_rect(center=(aw // 2, H // 2 - box_h // 2 + 26 + 26 * i)))
         if self.show_info and st == "connected":
             d = self.stats
-            txt = f"{self.fps_show:.0f} khung/s · {d.get('kbps', 0) / 1000:.1f} Mbps · trễ mạng {self.ping} ms · {self.path} · {str(d.get('enc', '')).upper()}"
-            if self.weak: txt += " · mạng yếu (đã giảm nét)"
-            if d.get("drop"): txt += f" · bỏ {d['drop']}"
+            txt = T(f"{self.fps_show:.0f} khung/s · {d.get('kbps', 0) / 1000:.1f} Mbps · trễ mạng {self.ping} ms · {self.path} · {str(d.get('enc', '')).upper()}")
+            if self.weak: txt += T(" · mạng yếu (đã giảm nét)")
+            if d.get("drop"): txt += T(f" · bỏ {d['drop']}")
             t = self.font_s.render(txt, True, C_TXT)
             pygame.draw.rect(s, (0, 0, 0, 150), (6, 6, t.get_width() + 14, t.get_height() + 8), border_radius=8); s.blit(t, (13, 10))
 
@@ -1372,8 +1401,10 @@ def tiers_list(site):
         if not isinstance(t, dict) or t.get("on") is False: continue
         ram, cpu, name = int(num(t.get("ram"))), int(num(t.get("cpu"))), tier_clean(str(t.get("name") or "").strip())
         if ram > 0 and cpu > 0 and name:
-            fit = [tier_clean(str(x).strip()) for x in (t.get("fvi") or []) if str(x).strip()][:3]
-            out.append({"id": str(t.get("id") or name), "icon": str(t.get("icon") or "📱")[:4], "name": name[:24], "vi": tier_clean(t.get("vi"))[:60],
+            fv = (t.get("fen") if EN_UI and t.get("fen") else None) or t.get("fvi") or []
+            fit = [tier_clean(str(x).strip()) for x in fv if str(x).strip()][:3]
+            out.append({"id": str(t.get("id") or name), "icon": str(t.get("icon") or "📱")[:4], "name": name[:24],
+                        "vi": tier_clean((t.get("en") if EN_UI and t.get("en") else None) or t.get("vi"))[:60],
                         "ram": ram, "cpu": cpu, "fps": int(num(t.get("fps"))) or 30, "res": str(t.get("res") or ""), "badge": tier_clean(t.get("badge"))[:20],
                         "color": TIER_COLORS.get(t.get("color"), t.get("color") if re.match(r"^#[0-9a-fA-F]{6}$", str(t.get("color") or "")) else TIER_COLORS["blue"]),
                         "fit": fit})
@@ -1823,7 +1854,7 @@ class BlueDlg(Dlg):
                 return WEB + "/?ref=" + r["code"] if r.get("code") else WEB + "/"
             except Exception: return WEB + "/"
         def done(link):
-            text = "Thuê điện thoại Android đám mây chạy 24/7 ở CloudBlue — đăng ký qua link của mình nhé: " + link
+            text = T("Thuê điện thoại Android đám mây chạy 24/7 ở CloudBlue — đăng ký qua link của mình nhé: ") + link
             try: self.win.clipboard_clear(); self.win.clipboard_append(text)
             except Exception: pass
             self.task("share")
@@ -1864,7 +1895,9 @@ def offers_sec(k):
     v = (OFFERS["pub"] or {}).get(k); return v if isinstance(v, dict) else None
 def offers_topup():
     t = offers_sec("topup"); return t if t and t.get("levels") else None
-def offers_text(o): return str((o or {}).get("vi") or "")
+def offers_text(o):
+    o = o or {}
+    return str((o.get("en") if EN_UI else None) or o.get("vi") or "")
 def trial_hours(pr): return max(0, int(num((pr or {}).get("free_hours"))))
 def trial_need(pr): return max(0, int(num((pr or {}).get("free_need_topup"))))
 def trial_dur(pr):
@@ -3798,7 +3831,7 @@ class FpsDlg(Dlg):
 class LookDlg(Dlg):
     """16/11 · 🎨 Giao diện: thanh chỉnh CỠ CHỮ 80–130% (bấm Áp dụng → app mở lại với cỡ mới, nhớ theo máy) · ẩn / hiện ô ưu đãi đầu danh sách."""
     def __init__(self, app):
-        super().__init__(app, "Giao diện", 520, 440)
+        super().__init__(app, "Giao diện", 520, 520)
         tk = app.tk; self.cur = ui_scale()
         self.label(self.body, "🔍 Cỡ chữ của app", app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
         self.val = self.label(self.body, "", app.f_t, TXT); self.val.pack(fill="x", padx=18, pady=(4, 0))
@@ -3813,6 +3846,12 @@ class LookDlg(Dlg):
         self.demo = tk.Label(box, text="Chữ mẫu: Máy 6GB · 6 nhân · 60 FPS", fg=TXT, bg=CARD, anchor="w"); self.demo.pack(fill="x", padx=12, pady=10)
         self.label(self.body, "Kéo sang phải cho chữ TO hơn, sang trái cho NHỎ hơn rồi bấm Áp dụng. App sẽ tự mở lại cửa sổ danh sách với cỡ mới — "
                               "các cửa sổ máy đang mở không bị đóng.", app.f_s, DIM, wraplength=470).pack(fill="x", padx=18, pady=(8, 0))
+        lr = tk.Frame(self.body, bg=BG); lr.pack(fill="x", padx=18, pady=(14, 0))            # 16/11c: 🌐 Tiếng Việt / English
+        self.label(lr, "🌐 Ngôn ngữ · Language", app.f_h2).pack(side="left")
+        for code, name in (("en", "English"), ("vi", "Tiếng Việt")):
+            b = app.btn(lr, ("✓ " if LANG == code else "") + name, lambda c=code: self.app.set_lang(c), "soft" if LANG == code else "ghost")
+            b.pack(side="right", padx=(6, 0))
+            if LANG == code: b.config(state="disabled")
         self.pv = tk.BooleanVar(value=not prefs().get("promo_hide"))
         tk.Checkbutton(self.body, text="Hiện ô ưu đãi · vòng quay ở đầu danh sách máy", variable=self.pv, command=self.promo, font=app.f_t,
                        fg=TXT, bg=BG, selectcolor=CARD, activebackground=BG, activeforeground=TXT, anchor="w", cursor="hand2",
@@ -4919,6 +4958,11 @@ class Launcher:
                 m = str(e); self.ui(lambda m=m: mb.showerror("CloudBlue", m, parent=self.root))
         threading.Thread(target=job, daemon=True).start()
 
+    def set_lang(self, code):
+        """16/11c · 🌐 đổi Tiếng Việt / English → nhớ theo máy, mở lại app (cửa sổ máy đang mở giữ nguyên, mở lại máy là theo ngôn ngữ mới)."""
+        if code not in ("vi", "en") or code == LANG: return
+        prefs({"lang": code}); self.restart_ui()
+
     def restart_ui(self):
         """16/11 · mở lại app (tiến trình mới) để áp dụng cỡ chữ mới — cửa sổ máy đang mở là tiến trình riêng nên không bị đóng."""
         try:
@@ -4928,7 +4972,7 @@ class Launcher:
         except Exception as e:
             log("restart:", e)
             import tkinter.messagebox as mb
-            mb.showinfo("CloudBlue", "Đã lưu cỡ chữ mới — đóng app rồi mở lại là thấy.", parent=self.root); return
+            mb.showinfo("CloudBlue", "Đã lưu — đóng app rồi mở lại là thấy.", parent=self.root); return
         self.root.after(200, self.root.destroy)
 
     def toggle_promo(self):
@@ -5003,6 +5047,8 @@ class Launcher:
         ents["pw"].bind("<Return>", go); ents["email"].bind("<Return>", lambda *_: ents["pw"].focus_set())
         lk = tk.Label(box, text="Chưa có tài khoản? Đăng ký trên web  ↗", font=self.f_t, fg=ACC, bg=BG, cursor="hand2"); lk.pack()
         lk.bind("<Button-1>", lambda *_: webbrowser.open(WEB))
+        lg = tk.Label(box, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_t, fg=DIM, bg=BG, cursor="hand2"); lg.pack(pady=(14, 0))
+        lg.bind("<Button-1>", lambda *_: self.set_lang("en" if LANG == "vi" else "vi"))          # 16/11c
         (ents["pw"] if ents["email"].get() else ents["email"]).focus_set()
 
     # ---------- danh sách máy ----------
@@ -5019,6 +5065,8 @@ class Launcher:
         tk.Label(sub, text=self.auth.email, font=self.f_s, fg=DIM, bg=BG).pack(side="left")
         lk = tk.Label(sub, text="Mở web ↗", font=self.f_s, fg=ACC, bg=BG, cursor="hand2"); lk.pack(side="right")
         lk.bind("<Button-1>", lambda *_: webbrowser.open(WEB))
+        lg = tk.Label(sub, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_s, fg=DIM, bg=BG, cursor="hand2"); lg.pack(side="right", padx=(0, 14))
+        lg.bind("<Button-1>", lambda *_: self.set_lang("en" if LANG == "vi" else "vi"))          # 16/11c
         self.upd_slot = tk.Frame(self.body, bg=BG); self.upd_slot.pack(fill="x", padx=18)    # báo có bản app mới (nếu có)
         self._paint_update()
         shop = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1); shop.pack(fill="x", padx=18, pady=(10, 0))
@@ -5135,7 +5183,7 @@ class Launcher:
         tk = self.tk; pub = OFFERS["pub"] or {}
         tkr = getattr(self, "ticker", None)
         if tkr is not None:
-            try: tkr.set([str(x.get("vi") or "") for x in (pub.get("ticker") or []) if isinstance(x, dict)])
+            try: tkr.set([str((x.get("en") if EN_UI else None) or x.get("vi") or "") for x in (pub.get("ticker") or []) if isinstance(x, dict)])
             except Exception: log("ticker:", traceback.format_exc())
         slot = getattr(self, "offers_slot", None)
         try:
@@ -5293,7 +5341,7 @@ def selftest(out):
     """Mở thử mọi thư viện cửa sổ máy cần (giải mã H.264, cửa sổ GPU, tkinter) → ghi kết quả ra file."""
     res = []
     try:
-        import av, numpy, pygame, tkinter, ssl, brstream, qrcodegen              # noqa: F401,E401
+        import av, numpy, pygame, tkinter, ssl, brstream, qrcodegen, bluepc_en   # noqa: F401,E401
         from pygame._sdl2.video import Window, Renderer, Texture                 # noqa: F401
         ctx = av.CodecContext.create("h264", "r"); ctx.options = {"flags": "+low_delay"}
         res.append(f"av {av.__version__} · pygame {pygame.version.ver} · numpy {numpy.__version__} · {ssl.OPENSSL_VERSION}")
