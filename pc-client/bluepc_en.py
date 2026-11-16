@@ -691,6 +691,7 @@ EXACT = {
 "QUAY": "SPIN",
 "Xong": "Done",
 "Xong.": "Done.",
+"⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.": "⚠️ The system is under maintenance, so signing in and loading data are paused. Please try again in a few minutes.",
 "\n🔒 Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (vẫn tích bình thường).": "\n🔒 Top up at least once to unlock paying with Blue (you still earn it as usual).",
 "   ·   Android — vượt trần": "   ·   Android — over the limit",
 "1 Blue = 1đ khi thuê / gia hạn điện thoại đám mây — bật 💎 Trả bằng Blue lúc thanh toán.": "1 Blue = 1đ when renting / renewing cloud phones — turn on 💎 Pay with Blue at checkout.",

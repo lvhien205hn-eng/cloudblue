@@ -121,6 +121,7 @@ ERRORS = {
     "SWITCHING": "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).", "SWITCH_SAME": "Máy đang chạy bản Android này rồi.",
     "SWITCH_LIMIT": "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", "NO_PHONE": "Không tìm thấy máy (hoặc máy không phải của bạn).",
     "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "PHONE_LOCKED": "Máy đang bị khoá.", "BAD_ANDROID": "Bản Android này chưa bán.",
+    "Service for this project is restricted": "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.",
     "SERVER_OFFLINE": "Máy chủ bản Android này đang bảo trì — thử lại sau.", "OUT_OF_CAPACITY": "Máy chủ bản Android này đang hết chỗ — chọn bản khác hoặc thử lại sau.",
 }
 
