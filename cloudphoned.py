@@ -79,6 +79,11 @@ BOOT_MAX = max(0, int(_f("BOOT_MAX", 3)))
 BOOT_SLOW_S = max(60.0, _f("BOOT_SLOW_MIN", 10) * 60)
 BOOT_T = {}                        # tên máy MỚI → lúc bắt đầu chờ Android lên (chưa giao cho khách)
 _busy_said = {"t": 0.0}
+# 16/11g: máy chủ "ốm" — máy MỚI tạo ra mà không lên (tạo lỗi / chờ ~10 phút chưa lên / đơn tự huỷ ⏱) → tự NGỪNG nhận đơn mới
+#   SICK_MIN phút (mỗi lần hỏng tính lại từ đầu) + báo web hết chỗ + nhắn admin. Trước: máy chủ hỏng mà đang trống thì giành đơn
+#   TRƯỚC mọi máy chủ khác (ưu tiên máy chủ trống) → khách nào cũng chờ 30 phút rồi bị hoàn tiền. SICK_MIN=0 = tắt.
+SICK_MIN = max(0.0, _f("SICK_MIN", 20))
+_SICK = {"until": 0.0, "why": "", "said": 0.0, "rows": set()}
 # ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
 # Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
 # 9 máy ngủ) báo ĐẦY lúc RAM thật mới dùng 32%. Giờ máy ngủ giữ đúng phần RAM THẬT 1 máy đang chạy dùng (đo trên chính
@@ -339,6 +344,20 @@ def busy_boot():
     if len(ts) >= BOOT_MAX: return f"{len(ts)} máy mới đang khởi động"
     return ""
 
+def mark_sick(why):
+    """16/11g: máy mới không lên → ngừng nhận đơn mới SICK_MIN phút (xem trên). Nhắn admin tối đa 10 phút / lần."""
+    if SICK_MIN <= 0: return
+    _SICK["until"] = max(_SICK["until"], time.time() + SICK_MIN * 60); _SICK["why"] = why
+    print(f"[ốm] {why} → tạm ngừng nhận đơn mới {SICK_MIN:g} phút (đơn sang máy chủ khác)")
+    if time.time() - _SICK["said"] > 600:
+        _SICK["said"] = time.time()
+        notify(f"⚠️ <b>{NODE_ID}</b>: {why} → tự ngừng nhận đơn mới {SICK_MIN:g} phút (đơn sang máy chủ khác). "
+               f"Lặp lại nhiều lần thì kiểm máy chủ này (lệnh A) hoặc bấm \"Ngừng nhận máy\" trên web.")
+
+def sick_why():
+    """16/11g: đang trong thời gian ngừng nhận đơn vì máy mới không lên → lý do; không → ''."""
+    return _SICK["why"] if time.time() < _SICK["until"] else ""
+
 def still_pending(pid):
     """16/11f: đơn còn đang chờ tạo (chưa bị huỷ / hoàn tiền / tự huỷ vì quá STUCK_MIN phút)? Lỗi mạng → coi như còn (không xoá nhầm)."""
     try:
@@ -378,8 +397,12 @@ def stuck_cleanup():
     """16/11f: đơn của máy chủ này đã tự huỷ (⏱) mà máy ảo tạo dở vẫn còn → xoá (máy chưa giao cho khách)."""
     if STUCK_MIN <= 0: return
     rows = sb("GET", f"cloud_phones?node=eq.{urllib.parse.quote(NODE_ID, safe='')}&status=eq.error"
-                     f"&error=like.{urllib.parse.quote('⏱*', safe='*')}&select=id,container&order=updated_at.desc&limit=50") or []
+                     f"&error=like.{urllib.parse.quote('⏱*', safe='*')}&select=id,container,updated_at&order=updated_at.desc&limit=50") or []
     for row in rows:
+        try: fresh = (now() - parse_dt(row.get("updated_at"))).total_seconds() < SICK_MIN * 60 + 120
+        except Exception: fresh = False
+        if fresh and row.get("id") not in _SICK["rows"]:              # 16/11g: đơn ở máy chủ này vừa tự huỷ vì máy không lên → ốm
+            _SICK["rows"].add(row.get("id")); mark_sick(f"đơn {str(row.get('id'))[:8]} tạo quá {STUCK_MIN:g} phút không lên (đã tự huỷ + hoàn tiền)")
         name = row.get("container") or cname(row)
         if name in BOOTING or not phone_state(name): continue          # đang chờ lên → luồng chờ tự xoá
         k = _stuck["del"].get(name, 0)
@@ -410,7 +433,7 @@ def claim(row):
     if not android_ok(row):                          # đơn Android 12/7 → máy chủ MuMu/MEmu; Android 9 → máy chủ LDPlayer
         if PRIMARY: refund_unserved(row)
         return False
-    why = busy_boot()                                # 16/11f: đang quá tải tạo máy → nhường máy chủ khác (khách khỏi chờ 20–30 phút)
+    why = busy_boot() or sick_why()                  # 16/11f: đang quá tải tạo máy / 16/11g: máy mới không lên → nhường máy chủ khác (khách khỏi chờ 20–30 phút)
     if why:
         if time.time() - _busy_said["t"] > 60:
             print(f"[bận] {why} → tạm không nhận đơn mới, nhường máy chủ khác"); _busy_said["t"] = time.time()
@@ -730,6 +753,7 @@ def do_create(row):
         if r.returncode != 0:
             log_err = (r.stdout + r.stderr)[-300:]
             print("   ✗", log_err)
+            mark_sick("tạo máy mới bị lỗi")
             refund(row, "Tạo máy lỗi, vui lòng thử lại"); notify(f"⚠️ <b>Tạo máy lỗi</b> trên {NODE_ID} (đã hoàn tiền khách):\n<code>{log_err[-200:]}</code>"); return
         ps = phone_state(name)
         if not ps:
@@ -752,6 +776,8 @@ def finish_boot(pid, name):
         if r.returncode in (5, 124):
             print(f"   … {name}: Android chưa lên sau {time.time() - t0:.0f}s → chờ thêm 1 lượt (chưa giao cho khách, tránh màn đen)")
             r = phonectl(["waitboot", name, "--noapps"])
+        if r.returncode in (5, 124):
+            mark_sick(f"máy mới {name} chờ {(time.time() - t0) / 60:.0f} phút vẫn chưa lên")
         if r.returncode in (5, 124) and not still_pending(pid):
             return drop_vm(name, "đơn đã huỷ trong lúc chờ Android lên")
         if r.returncode in (5, 124):
@@ -1153,7 +1179,7 @@ def heartbeat():
         f_ram, f_cpu, stop = c_ram, c_cpu, FULL_PCT
         c_ram, c_cpu = sell_cap(a_ram, f_ram), sell_cap(a_cpu, f_cpu)
         if time.time() < _FULL["until"]: c_ram, c_cpu = a_ram, a_cpu    # 16/11: vừa hết chỗ lúc tạo máy → báo web hết chỗ ít phút
-        if busy_boot(): c_ram, c_cpu = a_ram, a_cpu                     # 16/11f: đang quá tải tạo máy → web bán máy chủ khác
+        if busy_boot() or sick_why(): c_ram, c_cpu = a_ram, a_cpu       # 16/11f/g: quá tải / máy mới không lên → web bán máy chủ khác
     else:                                               # Linux: c_ram đã là LIMIT_PCT % RAM (như cũ) → sức chứa thật = 100%
         f_ram, f_cpu, stop = (ram_t * RAM_OVER if c_ram > a_ram else c_ram), c_cpu, float(LIMIT_PCT)
     fill = 100 * max(a_ram / f_ram if f_ram > 0 else 1.0, a_cpu / f_cpu if f_cpu > 0 else 1.0)
@@ -1419,7 +1445,8 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 16/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 16/11g chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if SICK_MIN > 0: print(f"Máy mới tạo ra mà không lên → tự ngừng nhận đơn mới {SICK_MIN:g} phút + báo admin (máy chủ hỏng không giành đơn nữa)")
     if STUCK_MIN > 0: print(f"Đơn tạo máy quá {STUCK_MIN:g} phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · máy tạo dở của đơn đó tự xoá")
     if BOOT_MAX > 0: print(f"Đang có ≥ {BOOT_MAX} máy mới chưa lên, hoặc 1 máy mới chờ quá {BOOT_SLOW_S / 60:g} phút → tạm không nhận đơn mới (đơn sang máy chủ khác)")
     if NEAR_PCT > 0: print(f"Đơn admin chọn máy chủ này lúc đã đầy ≥ {NEAR_PCT:g}% → tự chuyển sang máy chủ còn trống nhất (trống hơn ≥ {NEAR_GAP:g} điểm)")
