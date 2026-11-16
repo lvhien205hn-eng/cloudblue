@@ -212,7 +212,9 @@ public class MainActivity extends Activity {
         top.addView(th, new ViewGroup.LayoutParams(Ui.dp(40), Ui.dp(40)));
         root.addView(top, Ui.fill());
         tickerV = Offers.ticker(this);
-        root.addView(tickerV, Ui.fill());
+        LinearLayout.LayoutParams tkLp = Ui.fill();
+        tkLp.setMargins(Ui.dp(12), Ui.dp(2), Ui.dp(12), Ui.dp(4));
+        root.addView(tickerV, tkLp);
         Offers.fillTicker(tickerV);
 
         content = new FrameLayout(this);
@@ -220,8 +222,9 @@ public class MainActivity extends Activity {
 
         // Thanh điều hướng dưới
         LinearLayout bar = Ui.row(this, 0);
-        bar.setBackground(Ui.ringed(Ui.PANEL, 0));
-        bar.setPadding(Ui.dp(6), Ui.dp(4), Ui.dp(6), Ui.dp(4));
+        bar.setBackground(Ui.ringed(Ui.PANEL, 99));                   // 16/11c: thanh điều hướng nổi, bo tròn hẳn
+        bar.setPadding(Ui.dp(6), Ui.dp(5), Ui.dp(6), Ui.dp(5));
+        bar.setElevation(Ui.dp(6));
         String[][] items = {{"📱", Ui.L("Máy của tôi", "My phones")}, {"➕", Ui.L("Thuê máy", "Rent")}, {"👤", Ui.L("Tài khoản", "Account")}};
         for (int i = 0; i < 3; i++) {
             final int t = i;
@@ -229,12 +232,15 @@ public class MainActivity extends Activity {
             n.setGravity(Gravity.CENTER);
             n.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
             n.setOnClickListener(v -> show(t));
-            Ui.ripple(n, Color.TRANSPARENT, 14, 0);
+            Ui.ripple(n, Color.TRANSPARENT, 99, 0);
+            Ui.press(n);
             nav[i] = n;
             if (!Api.SHOP && i == 1) n.setVisibility(View.GONE);  // không mua trong app → không có tab Thuê máy
             bar.addView(n, Ui.weight(1));
         }
-        root.addView(bar, Ui.fill());
+        LinearLayout.LayoutParams barLp = Ui.fill();
+        barLp.setMargins(Ui.dp(12), Ui.dp(4), Ui.dp(12), Ui.dp(8));
+        root.addView(bar, barLp);
         Ui.insets(root, true, true);
         setContentView(root);
 
@@ -244,9 +250,18 @@ public class MainActivity extends Activity {
         refresh();
     }
 
+    private final Reboots.Watch rbWatch = (pid, done, ok, msg) -> {      // 16/11c: máy bắt đầu / xong khởi động lại → vẽ lại thẻ máy
+        if (destroyed) return;
+        phonesSig = null;
+        if (tab == 0) renderPhones();
+        if (done && resumed) Ui.toast(this, (ok ? "✅ " : "⚠ ") + msg);
+    };
+
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        Reboots.visible++;
+        Reboots.listen(rbWatch);
         Api.onOutdated = () -> { if (!isFinishing()) Updater.check(this, false); };   // máy chủ báo app cũ → hộp bắt buộc cập nhật
         if (Api.loggedIn()) refresh();
         Updater.check(this, false);
@@ -258,6 +273,8 @@ public class MainActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
+        Reboots.visible = Math.max(0, Reboots.visible - 1);
+        Reboots.unlisten(rbWatch);
         PlayPay.pause(this);
         h.removeCallbacks(poll);
         h.removeCallbacks(vis);
@@ -379,7 +396,7 @@ public class MainActivity extends Activity {
         try { getIntent().putExtra("tab", t); } catch (Exception ignored) { }   // 16/11: màn vẽ lại (Sáng/Tối, cỡ giao diện, xoay máy) → ở lại tab này
         for (int i = 0; i < 3; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
-            nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 14, 0) : null);
+            nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 99, 0) : null);
         }
         if (t != 0) { releasePreviews(); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng)
         if (t == 0) renderPhones(); else if (t == 1) renderRent(); else renderAccount();
@@ -440,7 +457,8 @@ public class MainActivity extends Activity {
             String msg = status.optString("maint_msg", "");
             m.addView(Ui.muted(this, isAdmin() ? Ui.L("Khách đang không dùng được. Tài khoản admin vẫn toàn quyền: điều khiển, thuê, gia hạn, công cụ.",
                     "Customers are blocked. Admin keeps full access: control, rent, renew, tools.")
-                    : msg.isEmpty() || msg.equals("null") ? Ui.L("Máy của bạn vẫn được giữ, không bị tính hết hạn trong lúc bảo trì.", "Your phones are kept during maintenance.") : msg));
+                    : msg.isEmpty() || msg.equals("null") ? Ui.L("Máy của bạn vẫn được giữ, không bị tính hết hạn trong lúc bảo trì.", "Your phones are kept during maintenance.")
+                    : Ui.vi() ? msg : Srv.en(msg, false, "Your phones are kept during maintenance. Please try again later.")));
             body.addView(m, Ui.fill());
         }
         LinearLayout head = Ui.row(this, 10);
@@ -773,7 +791,7 @@ public class MainActivity extends Activity {
             box.addView(dot, dlp);
             if (live) box.setOnClickListener(v -> startActivity(new Intent(this, ControlActivity.class).putExtra("id", pid)));   // bấm: vào điều khiển
             cell.addView(box, new LinearLayout.LayoutParams(-1, cellH));
-            TextView nm = Ui.text(this, p.optString("name", "Máy"), 12, Ui.FG, true);
+            TextView nm = Ui.text(this, p.optString("name", Ui.L("Máy", "Phone")), 12, Ui.FG, true);
             nm.setSingleLine(true); nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
             cell.addView(nm, Ui.fill());
             if (parseTime(p.optString("expires_at")) > 0) cell.addView(expiryText(p, false, gridTicks), Ui.fill());
@@ -832,9 +850,10 @@ public class MainActivity extends Activity {
         long remain = exp - System.currentTimeMillis();
 
         LinearLayout r1 = Ui.row(this, 10);
-        r1.addView(Ui.text(this, p.optString("name", "Máy"), 17, Ui.FG, true), Ui.weight(1));
+        r1.addView(Ui.text(this, p.optString("name", Ui.L("Máy", "Phone")), 17, Ui.FG, true), Ui.weight(1));
         String label; int col;
         if (lk) { label = "🔒 " + Ui.L("Bị khoá", "Locked"); col = Ui.BAD; }
+        else if ("active".equals(st) && Reboots.active(this, p.optString("id"))) { label = "🔄 " + Ui.L("Đang khởi động lại…", "Restarting…"); col = Ui.WAIT; }   // 16/11c
         else if ("active".equals(st)) { label = "● " + Ui.L("Đang chạy", "Running"); col = Ui.OK; }
         else if ("pending".equals(st)) { label = "◌ " + Ui.L("Đang tạo…", "Creating…"); col = Ui.WAIT; }
         else if ("expired".equals(st)) { label = "⏸ " + Ui.L("Tạm dừng", "Paused"); col = Ui.BAD; }
@@ -859,7 +878,7 @@ public class MainActivity extends Activity {
                     "Switching to Android " + SwitchAndroid.cur(swTo) + ": the new phone is being created; this one keeps working until then."), 13, Ui.WAIT, false), Ui.fill());
         if ("error".equals(st)) {                        // lỗi tạo máy / đổi Android lỗi hẳn → nói rõ lý do (đã hoàn tiền / admin sẽ tạo lại)
             String er = p.optString("error", "");
-            if (!er.isEmpty() && !"null".equals(er)) c.addView(Ui.text(this, er, 13, Ui.BAD, false), Ui.fill());
+            if (!er.isEmpty() && !"null".equals(er)) c.addView(Ui.text(this, Ui.srv(er), 13, Ui.BAD, false), Ui.fill());
             if (!p.isNull("replaces") && !p.optBoolean("shared", false)) {       // máy mới của lệnh đổi Android → khách tự thử lại (SQL doi-android-1511)
                 Button rt = Ui.button(this, "🔁 " + Ui.L("Thử tạo lại máy", "Try again"), Ui.GHOST);
                 rt.setOnClickListener(v -> switchRetry(p, rt));
@@ -1256,28 +1275,26 @@ public class MainActivity extends Activity {
         final Dialog d = Ui.sheet(this, "🎞 " + Ui.L("Đổi FPS", "Change FPS"), c);
         later.setOnClickListener(v -> d.dismiss());
         now.setOnClickListener(v -> {
-            now.setEnabled(false); now.setAlpha(.45f);
-            st.setTextColor(Ui.SKY);
-            st.setText(Ui.L("Đang khởi động lại máy… (1–2 phút, có thể đóng hộp này)", "Restarting… (1–2 minutes, you may close this)"));
-            st.setVisibility(View.VISIBLE);
-            rebootPhone(p.optString("id"), msg -> { if (d.isShowing()) st.setText(msg); }, msg -> {
-                if (destroyed) return;
-                phonesSig = null; refresh();
-                if (d.isShowing()) { st.setTextColor(Ui.OK); st.setText("✅ " + msg); later.setText(Ui.L("Xong", "Done")); }
-                else Ui.toast(this, "✅ " + msg);
-            }, m -> {
-                if (destroyed) return;
-                String t = Ui.L("Chưa khởi động lại được: ", "Couldn't restart: ") + m;
-                if (d.isShowing()) { st.setTextColor(Ui.BAD); st.setText(t); now.setEnabled(true); now.setAlpha(1f); }
-                else Ui.toast(this, t);
-            });
+            // 16/11c: KHỞI ĐỘNG LẠI CHẠY NGẦM — đóng hộp ngay, thẻ máy hiện "🔄 Đang khởi động lại…"; khách thoát app vẫn được,
+            // xong mà không mở app → thông báo (Reboots). Kết quả báo bằng toast (rbWatch) khi đang mở app.
+            d.dismiss();
+            Ui.toast(this, "🔄 " + Ui.L("Đang khởi động lại máy (1–2 phút). Cứ thoát app — máy vẫn tự khởi động, xong sẽ có thông báo.",
+                    "Restarting the phone (1–2 minutes). You can leave the app — it keeps restarting and you'll get a notification."));
+            rebootPhone(p.optString("id"), p.optString("name"), null, null, null);
         });
         d.show();
     }
 
     /** Khởi động lại 1 máy từ danh sách: hỏi máy đang ở máy chủ nào (cloudphone_endpoint) → POST …/reboot → chờ máy chủ làm xong.
      *  step = câu tiến độ máy chủ báo · done = câu kết quả · fail = câu lỗi (đã dễ hiểu). */
-    void rebootPhone(String pid, Api.Cb<String> step, Api.Cb<String> done, Api.Err fail) {
+    void rebootPhone(String pid, String name, Api.Cb<String> step, Api.Cb<String> done, Api.Err fail) {
+        Reboots.start(this, pid, name, null, step, done, fail);          // 16/11c: theo dõi ở Reboots (không gắn với màn này)
+        phonesSig = null;
+        if (tab == 0) renderPhones();
+    }
+
+    /** (cũ, giữ để đối chiếu — không dùng nữa) */
+    void rebootPhoneOld(String pid, Api.Cb<String> step, Api.Cb<String> done, Api.Err fail) {
         Api.bgLong(() -> {
             Object o = Api.rpc("cloudphone_endpoint", new JSONObject().put("p_id", pid));
             JSONObject ep = o instanceof JSONObject ? (JSONObject) o : new JSONObject(), s = ep.optJSONObject("stream");
@@ -1654,7 +1671,7 @@ public class MainActivity extends Activity {
         rc.addView(Ui.text(this, Ui.L("Độ phân giải", "Resolution"), 14, Ui.MUTED, true));
         Ui.Wrap rw = new Ui.Wrap(this, 8);
         for (String[] r : RES) {
-            TextView ch = Ui.chip(this, Ui.L(r[1], r[0]) + "\n" + r[0], r[0].equals(sRes));
+            TextView ch = Ui.chip(this, Ui.L(r[1], "Nhẹ máy".equals(r[1]) ? "Light" : "HD+ dài".equals(r[1]) ? "HD+ tall" : r[1]) + "\n" + r[0], r[0].equals(sRes));
             ch.setTextSize(Ui.sp(13));
             ch.setTag(r[0]);
             ch.setOnClickListener(v -> {
@@ -1697,7 +1714,7 @@ public class MainActivity extends Activity {
         sum.setPadding(Ui.dp(16), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         android.graphics.drawable.GradientDrawable sbg = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
                 Ui.LIGHT ? new int[]{Color.WHITE, Color.rgb(238, 244, 255)} : new int[]{Color.rgb(22, 44, 104), Color.rgb(9, 19, 50)});
-        sbg.setCornerRadius(Ui.dp(20));
+        sbg.setCornerRadius(Ui.dp(Ui.rad(20)));
         sbg.setStroke(Math.max(2, Ui.dp(1.5f)), Ui.LIGHT ? Color.argb(80, 43, 110, 240) : Color.argb(120, 124, 188, 255));
         sum.setBackground(sbg);
         sum.setElevation(Ui.dp(10));
@@ -1811,7 +1828,7 @@ public class MainActivity extends Activity {
                             Ui.LIGHT ? new int[]{Color.rgb(238, 244, 255), Color.rgb(221, 233, 255)} : new int[]{Color.rgb(36, 78, 168), Color.rgb(13, 32, 80)})
                     : new android.graphics.drawable.GradientDrawable();
             if (!on) g.setColor(Ui.LIGHT ? Color.WHITE : Ui.SUNK);
-            g.setCornerRadius(Ui.dp(16));
+            g.setCornerRadius(Ui.dp(Ui.rad(16)));
             g.setStroke(on ? Ui.dp(2) : Math.max(1, Ui.dp(1)), on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(124, 188, 255)) : Ui.LINE2);
             f.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 143, 208, 255)), g, null));
             f.setElevation(on ? Ui.dp(5) : 0);
@@ -2110,14 +2127,22 @@ public class MainActivity extends Activity {
         s.addView(Ui.muted(this, Ui.L("Kéo sang phải cho chữ và nút TO hơn, sang trái cho NHỎ hơn — thả tay là đổi ngay.",
                 "Drag right for bigger text and buttons, left for smaller — it applies when you let go.")));
         txt.run();
-        if (Api.SHOP && Offers.on()) {                  // bản có ô ưu đãi / vòng quay ở đầu trang
-            final TextView pt = Ui.text(this, "", 15, Ui.FG, false);
-            final Runnable pd = () -> pt.setText("🎁 " + Ui.L("Ô ưu đãi · vòng quay ở đầu trang: ", "Offers · lucky wheel on top: ") + (promoHidden() ? Ui.L("Đang ẩn", "Hidden") : Ui.L("Đang hiện", "Shown")));
-            pt.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
-            pt.setOnClickListener(v -> { setPromoHidden(!promoHidden()); pd.run(); });
-            pd.run();
-            s.addView(pt, Ui.fill());
+        // 16/11c: NGÔN NGỮ — Tiếng Việt / English (nhớ cho cả app, vẽ lại ngay, ở lại tab Tài khoản)
+        LinearLayout lr = Ui.row(this, 8);
+        lr.setPadding(0, Ui.dp(8), 0, Ui.dp(2));
+        lr.addView(Ui.text(this, "🌐 " + Ui.L("Ngôn ngữ", "Language"), 15, Ui.FG, false), Ui.weight(1));
+        final String curL = Ui.vi() ? "vi" : "en";
+        for (String[] o : new String[][]{{"vi", "Tiếng Việt"}, {"en", "English"}}) {
+            TextView ch = Ui.chip(this, o[1], o[0].equals(curL));
+            ch.setMinWidth(0);
+            ch.setPadding(Ui.dp(12), Ui.dp(7), Ui.dp(12), Ui.dp(8));
+            ch.setOnClickListener(v -> { if (!o[0].equals(curL)) { Ui.setLang(this, o[0]); recreate(); } });
+            lr.addView(ch, Ui.wrap());
         }
+        s.addView(lr, Ui.fill());
+        if (Api.SHOP && Offers.on())                    // bản có ô ưu đãi / vòng quay ở đầu trang — công tắc thật (16/11c)
+            s.addView(Ui.toggle(this, "🎁 " + Ui.L("Ô ưu đãi · vòng quay ở đầu trang", "Offers · lucky wheel on top"),
+                    Ui.L("Tắt nếu muốn trang gọn hơn.", "Turn off for a cleaner screen."), !promoHidden(), on -> setPromoHidden(!on)), Ui.fill());
         return s;
     }
 
@@ -2180,14 +2205,9 @@ public class MainActivity extends Activity {
 
         LinearLayout s = Ui.card(this);
         s.addView(Ui.h2(this, Ui.L("Cài đặt", "Settings")));
-        TextView nt = Ui.text(this, "", 15, Ui.FG, false);
-        Runnable ntDraw = () -> nt.setText((ExpiryAlarm.enabled(this) ? "🔔 " : "🔕 ") + Ui.L("Nhắc khi máy sắp hết hạn: ", "Expiry reminders: ")
-                + (ExpiryAlarm.enabled(this) ? Ui.L("Bật", "On") : Ui.L("Tắt", "Off")));
-        nt.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
-        nt.setOnClickListener(v -> { ExpiryAlarm.setEnabled(this, !ExpiryAlarm.enabled(this)); ExpiryAlarm.schedule(this, phones); ntDraw.run(); });
-        ntDraw.run();
-        s.addView(nt, Ui.fill());
-        s.addView(Ui.muted(this, Ui.L("Nhắc trước 1 ngày và 1 giờ khi máy sắp hết hạn.", "Reminds you 1 day and 1 hour before a phone expires.")));
+        s.addView(Ui.toggle(this, "🔔 " + Ui.L("Nhắc khi máy sắp hết hạn", "Expiry reminders"),
+                Ui.L("Nhắc trước 1 ngày và 1 giờ khi máy sắp hết hạn.", "Reminds you 1 day and 1 hour before a phone expires."),
+                ExpiryAlarm.enabled(this), on -> { ExpiryAlarm.setEnabled(this, on); ExpiryAlarm.schedule(this, phones); }), Ui.fill());
         body.addView(s, Ui.fill());
 
         LinearLayout l = Ui.card(this);

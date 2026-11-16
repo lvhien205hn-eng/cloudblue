@@ -126,7 +126,7 @@ final class Offers {
         t.setHorizontallyScrolling(true);
         t.setFocusable(false);
         t.setPadding(Ui.dp(14), Ui.dp(7), Ui.dp(14), Ui.dp(7));
-        t.setBackground(Ui.round(Ui.LIGHT ? Color.rgb(255, 244, 214) : Color.rgb(46, 34, 6), 0, 0));
+        t.setBackground(Ui.round(Ui.LIGHT ? Color.rgb(255, 244, 214) : Color.rgb(46, 34, 6), 99, Ui.LIGHT ? Color.argb(70, 178, 107, 0) : Color.argb(70, 255, 214, 102)));   // 16/11c: dải ưu đãi dạng viên thuốc
         t.setContentDescription(Ui.L("Ưu đãi đang có — bấm để xem", "Current offers — tap to view"));
         t.setOnClickListener(v -> sheet(a));
         t.setVisibility(View.GONE);
@@ -154,7 +154,7 @@ final class Offers {
         LinearLayout c = Ui.row(a, 10);
         c.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{c1, c2});
-        bg.setCornerRadius(Ui.dp(18));
+        bg.setCornerRadius(Ui.dp(Ui.rad(18)));
         bg.setStroke(Ui.dp(1), Color.argb(90, 220, 232, 255));
         c.setBackground(bg);
         TextView ic = Ui.text(a, icon, 22, Color.WHITE, false);

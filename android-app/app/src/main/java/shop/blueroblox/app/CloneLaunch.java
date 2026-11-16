@@ -23,7 +23,8 @@ import java.util.List;
 public class CloneLaunch extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
-        try { open(); } catch (Exception e) { Toast.makeText(this, "Chưa mở được bản clone: " + e.getMessage(), Toast.LENGTH_LONG).show(); }
+        Ui.loadLang(this);
+        try { open(); } catch (Exception e) { Toast.makeText(this, Ui.L("Chưa mở được bản clone: ", "Couldn't open the clone: ") + e.getMessage(), Toast.LENGTH_LONG).show(); }
         finish();
     }
 
@@ -36,7 +37,7 @@ public class CloneLaunch extends Activity {
         List<UserHandle> ps = new ArrayList<>(la.getProfiles());
         ps.remove(Process.myUserHandle());
         Collections.sort(ps, (a, c) -> Long.compare(um.getSerialNumberForUser(a), um.getSerialNumberForUser(c)));
-        if (ps.size() < n) { Toast.makeText(this, "Chưa có bản clone " + n + " — tạo trong Clone tab trên web.", Toast.LENGTH_LONG).show(); return; }
+        if (ps.size() < n) { Toast.makeText(this, Ui.L("Chưa có bản clone " + n + " — tạo trong Clone tab trên web.", "Clone " + n + " doesn't exist yet — create it in Clone tab on the web."), Toast.LENGTH_LONG).show(); return; }
         UserHandle u = ps.get(n - 1);
         for (LauncherActivityInfo i : la.getActivityList(null, u)) {
             ApplicationInfo ai = i.getApplicationInfo();
@@ -44,6 +45,6 @@ public class CloneLaunch extends Activity {
             la.startMainActivity(i.getComponentName(), u, null, null);
             return;
         }
-        Toast.makeText(this, "Bản clone " + n + " chưa có app.", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, Ui.L("Bản clone " + n + " chưa có app.", "Clone " + n + " has no app yet."), Toast.LENGTH_LONG).show();
     }
 }

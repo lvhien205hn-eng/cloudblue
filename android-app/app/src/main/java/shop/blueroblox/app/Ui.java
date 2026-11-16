@@ -1,5 +1,6 @@
 package shop.blueroblox.app;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.Dialog;
 import android.content.Context;
@@ -20,6 +21,7 @@ import android.os.Build;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
@@ -69,8 +71,17 @@ public final class Ui {
         apply(light);
     }
 
-    public static boolean vi() { return "vi".equals(Locale.getDefault().getLanguage()); }
+    // 16/11c · NGÔN NGỮ do khách chọn (màn đăng nhập / Tài khoản › Giao diện): "vi" | "en" · chưa chọn → theo ngôn ngữ của máy
+    public static volatile String lang = null;
+    public static void loadLang(Context c) { try { lang = c.getSharedPreferences("ui", Context.MODE_PRIVATE).getString("lang", null); } catch (Exception ignored) { } }
+    public static void setLang(Context c, String l) { lang = l; c.getSharedPreferences("ui", Context.MODE_PRIVATE).edit().putString("lang", l).apply(); }
+    public static boolean vi() { String l = lang; return l != null ? "vi".equals(l) : "vi".equals(Locale.getDefault().getLanguage()); }
     public static String L(String vi, String en) { return vi() ? vi : en; }
+    /** Câu MÁY CHỦ (luôn tiếng Việt) theo ngôn ngữ khách chọn: English → bảng dịch Srv, không có → câu tiếng Anh chung. */
+    public static String srv(String s) { return vi() ? s : Srv.en(s, false, null); }
+    /** Như srv cho câu của VIỆC (tiến độ / kết quả): không có trong bảng → fbEn. */
+    public static String srvJob(String s, String fbEn) { if (vi()) return s; String t = Srv.en(s, true, null); return t != null ? t : fbEn; }
+    public static String srvJob(String s) { return srvJob(s, "Working on it…"); }
 
     private static float density = 3f;
     // 16/11 · CỠ GIAO DIỆN do khách tự chỉnh (Tài khoản › Giao diện): 80–130%, nhớ theo máy. Mọi kích thước (dp) + cỡ chữ (text / button /
@@ -90,6 +101,7 @@ public final class Ui {
     /** Cỡ chữ (sp) đã nhân cỡ giao diện — cho những chỗ tự gọi setTextSize. */
     public static float sp(float v) { return v * scale; }
     public static void init(Context c) {
+        loadLang(c);
         scale = scalePct(c) / 100f;
         density = c.getResources().getDisplayMetrics().density * scale; Api.init(c);
         if (c instanceof Activity) Guard.gate((Activity) c);         // 🔒 app bị sửa → hộp chặn (Guard.java)
@@ -105,10 +117,13 @@ public final class Ui {
     }
 
     // ---------------- Hình nền ----------------
+    /** 16/11c · BO TRÒN mượt hơn: mọi góc ×1,3 (0 giữ vuông · ≥ 99 = viên thuốc). */
+    public static int rad(int r) { return r <= 0 ? 0 : r >= 99 ? 999 : Math.round(r * 1.3f); }
+
     public static GradientDrawable round(int fill, int radius, int stroke) {
         GradientDrawable g = new GradientDrawable();
         g.setColor(fill);
-        g.setCornerRadius(dp(radius));
+        g.setCornerRadius(dp(rad(radius)));
         if (stroke != 0) g.setStroke(dp(1), stroke);
         return g;
     }
@@ -120,7 +135,7 @@ public final class Ui {
     /** Nút xanh bóng (chuyển màu từ trên xuống, như web). */
     public static GradientDrawable gloss(int radius) {
         GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)});
-        g.setCornerRadius(dp(radius));
+        g.setCornerRadius(dp(rad(radius)));
         return g;
     }
 
@@ -200,9 +215,10 @@ public final class Ui {
         b.setMinHeight(dp(46));
         b.setMinimumHeight(dp(46));
         b.setPadding(dp(16), 0, dp(16), 0);
-        if (kind == PRIMARY) { b.setTextColor(Color.WHITE); glossy(b, 14); }
-        else if (kind == DANGER) { b.setTextColor(BAD); ripple(b, Color.argb(20, 255, 107, 129), 12, Color.argb(110, 255, 107, 129)); }
-        else { b.setTextColor(FG); ripple(b, PANEL, 14, RING); }
+        if (kind == PRIMARY) { b.setTextColor(Color.WHITE); glossy(b, 99); }                       // 16/11c: nút viên thuốc
+        else if (kind == DANGER) { b.setTextColor(BAD); ripple(b, Color.argb(20, 255, 107, 129), 99, Color.argb(110, 255, 107, 129)); }
+        else { b.setTextColor(FG); ripple(b, PANEL, 99, RING); }
+        press(b);
         return b;
     }
 
@@ -224,6 +240,7 @@ public final class Ui {
         l.setContentDescription(label);
         ripple(l, Color.TRANSPARENT, 12, 0);
         l.setOnClickListener(on);
+        press(l);
         return l;
     }
 
@@ -473,12 +490,45 @@ public final class Ui {
         t.setClickable(true);
         t.setFocusable(true);
         setChip(t, on);
+        press(t);
         return t;
     }
 
     public static void setChip(TextView t, boolean on) {
         t.setSelected(on);
         t.setTextColor(on ? Color.WHITE : FG);
-        if (on) glossy(t, 12); else ripple(t, PANEL, 12, RING);
+        if (on) glossy(t, 99); else ripple(t, PANEL, 99, RING);                     // 16/11c: chip viên thuốc
+    }
+
+    /** 16/11c · bấm → hơi lún (96%) rồi bật lại: cảm giác mượt, không đổi bố cục, không chặn cú bấm. */
+    @SuppressLint("ClickableViewAccessibility")
+    public static void press(View v) {
+        v.setOnTouchListener((x, e) -> {
+            int a = e.getActionMasked();
+            if (a == MotionEvent.ACTION_DOWN && x.isEnabled()) x.animate().scaleX(.96f).scaleY(.96f).setDuration(90).start();
+            else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) x.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+            return false;
+        });
+    }
+
+    /** 16/11c · CÔNG TẮC bật / tắt (thay dòng chữ "Đang hiện / Đang ẩn"): chữ bên trái, công tắc bên phải, bấm cả dòng cũng đổi. */
+    public interface OnToggle { void set(boolean on); }
+    public static LinearLayout toggle(Context c, String label, String sub, boolean on, OnToggle cb) {
+        LinearLayout r = row(c, 10);
+        r.setPadding(0, dp(6), 0, dp(6));
+        LinearLayout t = col(c, 2);
+        t.addView(text(c, label, 15, FG, false));
+        if (sub != null && !sub.isEmpty()) t.addView(muted(c, sub));
+        r.addView(t, weight(1));
+        android.widget.Switch s = new android.widget.Switch(c);
+        s.setChecked(on);
+        s.setContentDescription(label);
+        int[][] st = {{android.R.attr.state_checked}, {}};
+        s.setThumbTintList(new ColorStateList(st, new int[]{BLUE, LIGHT ? Color.WHITE : Color.rgb(200, 214, 240)}));
+        s.setTrackTintList(new ColorStateList(st, new int[]{Color.argb(140, Color.red(BLUE), Color.green(BLUE), Color.blue(BLUE)), LINE2}));
+        s.setOnCheckedChangeListener((b, v) -> cb.set(v));
+        r.addView(s, wrap());
+        r.setOnClickListener(v -> s.toggle());
+        return r;
     }
 }

@@ -27,6 +27,16 @@ final class Tiers {
         List<String> fit = new ArrayList<>();
     }
 
+    /** 16/11c: nhãn gói (admin gõ tiếng Việt) theo ngôn ngữ khách chọn; English mà không dịch được → ẩn nhãn. */
+    static String badge(String b) {
+        if (b == null || Ui.vi()) return b == null ? "" : b;
+        String s = b;
+        String[][] m = {{"Bán chạy", "Popular"}, {"Đề xuất", "Recommended"}, {"Khuyên dùng", "Recommended"}, {"Mới", "New"}, {"Giá tốt", "Best value"},
+                {"Tiết kiệm", "Saver"}, {"Mạnh nhất", "Most powerful"}, {"Hot", "Hot"}, {"Giảm giá", "Sale"}};
+        for (String[] x : m) s = s.replace(x[0], x[1]);
+        return Srv.hasVi(s) ? "" : s;
+    }
+
     private static final String[][] DEF = {
             // id, icon, name, mô tả VI, mô tả EN, ram, cpu, fps, nhãn, màu, phù hợp VI (|), phù hợp EN (|)
             {"lite", "💬", "Blue Lite", "Treo app · nuôi acc", "Apps · account farming", "2", "2", "30", "", "blue",
@@ -134,7 +144,7 @@ final class Tiers {
             view = Ui.col(c, 8);
             view.setPadding(Ui.dp(12), Ui.dp(12), Ui.dp(12), Ui.dp(12));
             bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{mix(acc, Ui.PANEL, Ui.LIGHT ? .12f : .22f), Ui.PANEL});
-            bg.setCornerRadius(Ui.dp(16));
+            bg.setCornerRadius(Ui.dp(Ui.rad(16)));
             view.setBackground(bg);
             view.setClickable(true);
             view.setFocusable(true);
@@ -178,8 +188,8 @@ final class Tiers {
 
             LinearLayout pr = Ui.col(c, 0);
             pr.setGravity(Gravity.END);
-            if (t.badge != null && !t.badge.isEmpty()) {             // nhãn 🔥 Bán chạy · ⭐ Đề xuất nằm trên giá
-                TextView b = Ui.text(c, t.badge, 10.5f, Color.WHITE, true);
+            if (t.badge != null && !badge(t.badge).isEmpty()) {      // nhãn 🔥 Bán chạy · ⭐ Đề xuất nằm trên giá
+                TextView b = Ui.text(c, badge(t.badge), 10.5f, Color.WHITE, true);
                 b.setPadding(Ui.dp(7), Ui.dp(1), Ui.dp(7), Ui.dp(2));
                 b.setMaxLines(1);
                 GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(255, 79, 109), Color.rgb(255, 154, 68)});

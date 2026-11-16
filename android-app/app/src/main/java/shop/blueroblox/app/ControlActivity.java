@@ -318,6 +318,7 @@ public class ControlActivity extends Activity {
     @Override protected void onResume() {
         super.onResume();
         resumed = true;
+        Reboots.visible++;
         if (loaded && !kicked && !stopped && client == null && !fixing) connect();     // đang khởi động lại máy → chờ xong mới nối (fixReboot)
         h.removeCallbacks(kbPoll);
         h.postDelayed(kbPoll, 1500);
@@ -330,12 +331,14 @@ public class ControlActivity extends Activity {
     @Override protected void onPause() {
         super.onPause();
         resumed = false;
+        Reboots.visible = Math.max(0, Reboots.visible - 1);
         h.removeCallbacks(kbPoll);
         h.removeCallbacks(netTick);
         stopStream();                            // rời màn hình → đóng phiên (BYE); quay lại tự nối lại
     }
 
     @Override protected void onDestroy() {
+        Reboots.unlisten(rbWatch);
         if (Build.VERSION.SDK_INT >= 33 && backCb != null)
             getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback((android.window.OnBackInvokedCallback) backCb);
         h.removeCallbacksAndMessages(null);
@@ -370,6 +373,7 @@ public class ControlActivity extends Activity {
             info.setText(phone.optInt("ram") + "GB · " + phone.optInt("cpu") + Ui.L(" nhân · ", " cores · ") + res + " · " + phone.optInt("fps", 30) + " FPS");
             if (!"active".equals(phone.optString("status"))) { fail(Ui.L("Máy chưa chạy (đang tạo hoặc đã hết hạn).", "This phone is not running.")); return; }
             loaded = true;
+            if (Reboots.running(pid)) { waitReboot(); return; }      // 16/11c: máy đang khởi động lại (app đang theo dõi) → chờ xong rồi tự vào
             if (resumed) connect();
         }, m -> { if (pid.equals(id)) fail(m); });
     }
@@ -433,7 +437,7 @@ public class ControlActivity extends Activity {
             if (rebooting() || fixing) return;
             boolean fix = x != null && "reboot".equals(x.optString("fix", "")), boot = x != null && x.optInt("boot", 0) == 1;
             probN = "INTERNAL".equals(code) ? probN + 1 : 0;
-            String m = msg == null ? "" : msg;
+            String m = msg == null ? "" : Ui.srv(msg);
             if (!fix && !boot && probN >= 3) {           // máy chủ bản cũ báo lỗi chung chung 3 lần liền → vẫn cho khách tự khởi động lại máy
                 fix = true;
                 m += "\n" + Ui.L("Vẫn chưa vào được? Bấm “Khởi động lại máy” (1–2 phút, dữ liệu giữ nguyên).",
@@ -458,10 +462,10 @@ public class ControlActivity extends Activity {
         if ("LOGIN".equals(code)) { Api.logout(); toLogin(); return; }
         stopped = true;
         if ("AUTH".equals(code)) {
-            showVeil(msg, false, Ui.L("Đăng nhập lại", "Log in again"), () -> { Api.logout(); toLogin(); });
+            showVeil(Ui.srv(msg), false, Ui.L("Đăng nhập lại", "Log in again"), () -> { Api.logout(); toLogin(); });
             return;
         }
-        showVeil(msg, false, Ui.L("Thử lại", "Retry"), this::connect);
+        showVeil(Ui.srv(msg), false, Ui.L("Thử lại", "Retry"), this::connect);
     }
 
     private void toLogin() {
@@ -500,7 +504,46 @@ public class ControlActivity extends Activity {
 
     /** Khởi động lại máy rồi CHỜ máy chủ làm xong mới nối lại (trước đây đoán 45 giây — máy treo cần lâu hơn thì quay mãi).
      *  Trong lúc chờ không nối phát hình (máy đang tắt / bật). Xong → tự vào máy; lỗi → báo rõ + nút Thử lại. */
+    private String rbStep = "";
+    private final Runnable rbTick = new Runnable() { @Override public void run() {
+        if (!fixing || isFinishing()) return;
+        long t = Reboots.since(ControlActivity.this, id);
+        int s = t > 0 ? (int) ((System.currentTimeMillis() - t) / 1000) : 0;
+        showVeil("🔄 " + Ui.L("Đang khởi động lại máy… đã " + s + " giây (thường 1–2 phút).", "Restarting the phone… " + s + " s so far (usually 1–2 minutes).")
+                        + (rbStep.isEmpty() ? "" : "\n" + rbStep)
+                        + "\n\n" + Ui.L("Bạn có thể thoát app — máy vẫn tự khởi động, xong sẽ có thông báo.", "You can leave the app — it keeps restarting and you'll get a notification."),
+                true, "← " + Ui.L("Về danh sách", "Back to list"), ControlActivity.this::finish);
+        h.postDelayed(this, 1000);
+    } };
+
+    private final Reboots.Watch rbWatch = (p, done, ok, msg) -> {        // 16/11c: theo dõi việc khởi động lại (bấm ở đây hay ở danh sách)
+        if (!done || p == null || !p.equals(id) || isFinishing()) return;
+        Reboots.unlisten(this.rbWatch);
+        h.removeCallbacks(rbTick);
+        fixing = false;
+        if (ok) { if (resumed && loaded) connect(); }
+        else showVeil(Ui.L("Chưa khởi động lại được: ", "Couldn't restart: ") + msg + "\n" + Ui.L("Bấm Thử lại; vẫn lỗi thì báo hỗ trợ kèm tên máy.", "Tap Retry; if it keeps failing, contact support with the phone name."),
+                false, Ui.L("Thử lại", "Retry"), this::connect);
+    };
+    /** 16/11c: máy đang khởi động lại → màn chờ có giây đếm + nút về danh sách; xong tự vào (rbWatch). */
+    private void waitReboot() {
+        fixing = true; srvMsg = ""; probN = 0;
+        stopStream();
+        Reboots.listen(rbWatch);
+        h.removeCallbacks(rbTick);
+        rbTick.run();
+    }
+
     private void fixReboot() {
+        if (fixing || id == null) return;
+        rbStep = "";
+        final String pid = id, nm = phone == null ? "" : phone.optString("name");
+        Reboots.start(this, pid, nm, api, msg -> { if (pid.equals(id)) rbStep = msg; }, null, null);    // 16/11c: chạy ngầm (thoát màn / app vẫn theo dõi)
+        waitReboot();
+    }
+
+    /** (cũ, giữ để đối chiếu — không dùng nữa) */
+    private void fixRebootOld() {
         if (fixing || id == null) return;
         fixing = true; srvMsg = ""; probN = 0;
         stopStream();
@@ -1425,9 +1468,9 @@ public class ControlActivity extends Activity {
             Thread.sleep(1500);
             JSONObject j = Api.cpAt(base, "GET", "job?id=" + job, null);
             String st = j.optString("state"), msg = j.optString("msg");
-            Api.ui(() -> setProgress(pd, msg));
-            if ("done".equals(st)) return "✅ " + msg;
-            if ("error".equals(st)) throw new Exception(msg);
+            Api.ui(() -> setProgress(pd, Ui.srvJob(msg)));
+            if ("done".equals(st)) return "✅ " + Ui.srvJob(msg, "Done.");
+            if ("error".equals(st)) throw new Exception(Ui.srv(msg));
         }
         throw new Exception(Ui.L("Quá lâu, kiểm tra lại trên máy.", "Timed out."));
     }
@@ -1572,7 +1615,7 @@ public class ControlActivity extends Activity {
         final String base = api, pid = id;
         final JSONObject b = new JSONObject();
         try { if (reset) b.put("reset", true); else b.put("sw", sw); } catch (Exception ignored) { }
-        Api.bg(() -> Api.cpAt(base, "POST", pid + "/density", b), j -> { pd[0].dismiss(); Ui.toast(this, j.optString("msg", Ui.L("Đã đổi.", "Done."))); },
+        Api.bg(() -> Api.cpAt(base, "POST", pid + "/density", b), j -> { pd[0].dismiss(); Ui.toast(this, Ui.srvJob(j.optString("msg", Ui.L("Đã đổi.", "Done.")), "Done.")); },
                 m -> { pd[0].dismiss(); Ui.toast(this, missing(m)); });
     }
 

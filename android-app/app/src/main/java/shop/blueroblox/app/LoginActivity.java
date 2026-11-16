@@ -35,6 +35,16 @@ public class LoginActivity extends Activity {
         root.setPadding(Ui.dp(24), Ui.dp(36), Ui.dp(24), Ui.dp(28));
         root.setGravity(Gravity.CENTER_HORIZONTAL);
 
+        // 16/11c: chọn ngôn ngữ ngay từ màn đăng nhập (nhớ cho cả app)
+        TextView lg = Ui.pill(this, Ui.vi() ? "🌐 English" : "🌐 Tiếng Việt", Ui.SKY);
+        lg.setPadding(Ui.dp(14), Ui.dp(7), Ui.dp(14), Ui.dp(8));
+        lg.setContentDescription(Ui.vi() ? "Switch to English" : "Chuyển sang tiếng Việt");
+        lg.setOnClickListener(v -> { Ui.setLang(this, Ui.vi() ? "en" : "vi"); recreate(); });
+        Ui.press(lg);
+        LinearLayout.LayoutParams lgp = Ui.wrap();
+        lgp.gravity = Gravity.END;
+        root.addView(lg, lgp);
+
         ImageView logo = Ui.whale(this, 120);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(Ui.dp(176), Ui.dp(120));
         lp.gravity = Gravity.CENTER_HORIZONTAL;
@@ -57,7 +67,7 @@ public class LoginActivity extends Activity {
         // Thanh chọn Đăng nhập / Đăng ký
         LinearLayout seg = Ui.row(this, 6);
         seg.setPadding(Ui.dp(4), Ui.dp(4), Ui.dp(4), Ui.dp(4));
-        seg.setBackground(Ui.ringed(Ui.PANEL, 16));
+        seg.setBackground(Ui.ringed(Ui.PANEL, 99));
         for (int i = 0; i < 2; i++) {
             final int m = i;
             tabs[i] = Ui.chip(this, i == 0 ? Ui.L("Đăng nhập", "Log in") : Ui.L("Đăng ký", "Sign up"), i == 0);

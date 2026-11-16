@@ -51,7 +51,7 @@ public class ExpiryAlarm extends BroadcastReceiver {
             if (ph == null || !"active".equals(ph.optString("status"))) continue;
             long exp = MainActivity.parseTime(ph.optString("expires_at"));
             if (exp <= now) continue;
-            String name = ph.optString("name", "Máy");
+            String name = ph.optString("name", Ui.L("Máy", "Phone"));
             long[] at = {exp - 86400000L, exp - 3600000L};
             String[] txt = {
                     Ui.L("Còn 1 ngày nữa là hết hạn. Gia hạn để giữ máy và dữ liệu.", "Expires in 1 day. Renew to keep your phone and data."),
@@ -70,6 +70,7 @@ public class ExpiryAlarm extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context c, Intent i) {
+        Ui.loadLang(c);                                                  // 16/11c: app đang đóng → lấy ngôn ngữ khách đã chọn
         NotificationManager nm = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
         if (nm == null) return;
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CH) == null)

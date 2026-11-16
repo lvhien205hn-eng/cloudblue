@@ -301,7 +301,7 @@ public final class Api {
                 if (!v.isEmpty()) return v;
             }
         } catch (Exception ignored) { }
-        return "Lỗi " + r.code;
+        return Ui.L("Lỗi ", "Error ") + r.code;
     }
 
     // ---------------- Đăng nhập ----------------
@@ -384,7 +384,7 @@ public final class Api {
         String t = r.text().trim();
         JSONObject o;
         try { o = new JSONObject(t.isEmpty() ? "{}" : t); } catch (Exception e) { o = new JSONObject(); }
-        if (r.code >= 300) throw new ApiError(r.code, o.optString("error", "Lỗi " + r.code));
+        if (r.code >= 300) throw new ApiError(r.code, o.optString("error", Ui.L("Lỗi ", "Error ") + r.code));
         return o;
     }
 
@@ -758,8 +758,27 @@ public final class Api {
                 {"PHONE_NOT_ACTIVE", "Máy phải đang chạy mới làm được việc này.", "The phone must be running to do this."},
                 {"NOT_ALLOWED", "Bạn không có quyền làm việc này.", "Not allowed."},
                 {"cp_share", "Tính năng chia sẻ chưa bật trên máy chủ.", "Sharing is not enabled yet."},
+                // 16/11c: thêm mã web đã có mà app chưa có
+                {"PROMO_IS_DISCOUNT", "Đây là mã giảm giá — nhập ở ô \"Mã giảm giá\" khi thanh toán (thuê / gia hạn / nâng cấp máy, mua hàng).", "This is a discount code — enter it in the \"Discount code\" box when you pay."},
+                {"GIFT_CODE_SHORT", "Mã tặng máy tự đặt phải từ 10 ký tự trở lên (để khó đoán).", "Custom gift codes must be at least 10 characters."},
+                {"NO_CODE", "Không tìm thấy mã.", "Code not found."},
+                {"NODE_OFFLINE", "Máy chủ đã chọn đang mất kết nối hoặc ngừng nhận máy — chọn máy chủ khác hoặc Tự chọn.", "The chosen server is offline or not taking phones — pick another server or Auto."},
+                {"NODE_FULL", "Máy chủ đã chọn không đủ chỗ cho cấu hình × số lượng này — chọn máy chủ khác hoặc Tự chọn.", "The chosen server doesn't have room for this setup — pick another server or Auto."},
+                {"NODE_ANDROID", "Máy chủ đã chọn không chạy bản Android này.", "The chosen server doesn't run this Android version."},
+                {"WEAK_PASS", "Mật khẩu phải từ 6 ký tự.", "Password must be at least 6 characters."},
+                {"same_password", "Mật khẩu mới phải khác mật khẩu cũ.", "The new password must differ from the old one."},
+                {"PW_NOT_CHANGED", "Mật khẩu chưa được đổi — thử lại.", "The password was not changed — try again."},
+                {"BAD_PLAN", "Gói thời gian này không còn bán. Chọn gói khác.", "This rental plan is no longer available. Choose another."},
+                {"NO_PRODUCT", "Sản phẩm không còn tồn tại.", "This product no longer exists."},
         };
         for (String[] k : map) if (m.contains(k[0])) return Ui.L(k[1], k[2]);
-        return m.isEmpty() ? Ui.L("Có lỗi, thử lại.", "Something went wrong.") : m;
+        if (m.isEmpty()) return Ui.L("Có lỗi, thử lại.", "Something went wrong.");
+        if (!Ui.vi() && Srv.hasVi(m)) {                  // 16/11c: câu máy chủ tiếng Việt khi khách dùng English → bảng dịch / câu chung kèm mã lỗi
+            String t = Srv.find(m.trim(), false);
+            if (t != null) return t;
+            java.util.regex.Matcher cm = java.util.regex.Pattern.compile("\\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\\)\\s*$").matcher(m.trim());
+            return cm.find() ? "Something went wrong (" + cm.group(1) + ") — try again or contact support." : Srv.GENERIC;
+        }
+        return m;
     }
 }

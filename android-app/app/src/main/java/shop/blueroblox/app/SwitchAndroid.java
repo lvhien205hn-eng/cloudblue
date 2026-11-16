@@ -84,13 +84,13 @@ final class SwitchAndroid {
                     "Deleting the old phone… the Android " + v + " phone is created right after (2–5 min).");
         String e = p.optString("error", "");
         return Ui.L("Máy cũ đã xoá — đang tạo máy Android " + v + " (2–5 phút).", "Old phone deleted — creating the Android " + v + " phone (2–5 min).")
-                + (e.startsWith("Đổi Android:") ? "\n" + e : "");
+                + (e.startsWith("Đổi Android:") ? "\n" + Ui.srv(e) : "");
     }
 
     /** Ghi chú lỗi đổi Android còn lưu trên máy cũ (máy vẫn chạy) — null nếu không có. */
     static String failNote(JSONObject p) {
         String e = p.optString("error", "");
-        return "active".equals(p.optString("status")) && e.startsWith("Đổi Android") ? e : null;
+        return "active".equals(p.optString("status")) && e.startsWith("Đổi Android") ? Ui.srv(e) : null;
     }
 
     /** Mở hộp thoại đổi Android. done chạy sau khi máy chủ nhận lệnh (tải lại danh sách / rời màn điều khiển). */
