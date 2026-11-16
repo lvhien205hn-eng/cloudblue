@@ -624,6 +624,8 @@ public final class Api {
         java.util.regex.Matcher sm = java.util.regex.Pattern.compile("^(.{12,}?)\\s*\\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\\)\\s*$", java.util.regex.Pattern.DOTALL).matcher(m.trim());
         if (sm.find() && Ui.vi()) return sm.group(1).trim();
         String[][] map = {
+                // 16/11c: hệ thống tạm ngừng (Supabase vượt hạn mức → 402) — báo bảo trì, không hiện câu tiếng Anh của Supabase
+                {"Service for this project is restricted", "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.", "⚠️ The system is under maintenance, so signing in and loading data are paused. Please try again in a few minutes."},
                 // 🎁 ưu đãi · 🎬 Kiếm tiền · 🔁 thử lại đổi Android (SQL v35 + doi-android-1511) — bản tiếng Anh; tiếng Việt lấy câu của máy chủ ở trên
                 {"FREE_NEED_TOPUP", "Dùng thử miễn phí dành cho tài khoản đã nạp tiền đủ mức — nạp xong quay lại nhận máy nhé.", "Free trials are for accounts that have topped up enough — top up, then come back."},
                 {"PROMO_DAY_LIMIT", "Hôm nay bạn đã dùng đủ số mã giảm giá cho phép — mai dùng tiếp nhé.", "You've used today's maximum number of discount codes — try again tomorrow."},
