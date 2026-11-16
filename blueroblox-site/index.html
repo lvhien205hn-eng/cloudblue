@@ -7122,6 +7122,7 @@ async function cpLoadServers() {
 const cpSrvName = id => (id && id !== "wait-old" && CPservers && CPservers.names && CPservers.names[id]) || "";
 function cpSrvState(s) {         // [chữ, màu]: "ok" còn trống · "y" gần đầy · "r" đầy / không nhận máy mới
   if (!s.online) return [isAdmin() ? L("Mất kết nối", "Offline") : L("Bảo trì", "Maintenance"), "r"];
+  if (s.paused) return [L("Ngừng nhận đơn · admin thử được", "Paused · admin can test"), s.full ? "r" : "y"];   // 16/11h (SQL v37, chỉ admin thấy)
   if (s.full) return [+s.pct >= +s.stop ? L("Đầy · ngưng nhận", "Full · paused") : L("Hết chỗ", "No room"), "r"];
   if (+s.pct >= 80) return [L("Gần đầy", "Almost full"), "y"];
   return [L("Còn trống", "Available"), "ok"];
@@ -7136,8 +7137,8 @@ const CP_NEAR = 80, CP_NEAR_GAP = 5;
 function cpSrvList() { const v = String(cpSel.android || "9"); return CPservers ? CPservers.servers.filter(s => (s.androids || []).map(String).includes(v)) : []; }
 function cpSrvBetter(id) {       // máy chủ id đang gần đầy mà có máy chủ trống hơn đủ chỗ → máy đó (trống nhất); không → null
   const list = cpSrvList(), cur = list.find(s => s.id === id);
-  if (!cur || !cur.online || +cur.pct < CP_NEAR) return null;
-  const alt = list.filter(s => s.id !== id && cpSrvFits(s) && +s.pct <= +cur.pct - CP_NEAR_GAP).sort((a, b) => (+a.pct) - (+b.pct));
+  if (!cur || !cur.online || cur.paused || +cur.pct < CP_NEAR) return null;     // 16/11h: máy chủ đang ngừng = admin cố ý thử ở đó → không chuyển
+  const alt = list.filter(s => s.id !== id && !s.paused && cpSrvFits(s) && +s.pct <= +cur.pct - CP_NEAR_GAP).sort((a, b) => (+a.pct) - (+b.pct));
   return alt[0] || null;
 }
 function cpSrvRoute(id, say) {   // id admin chọn → id thật sẽ dùng (+ báo khi đổi)
@@ -7160,11 +7161,15 @@ function cpSrvChips() {          // vẽ lại theo bản Android + cấu hình 
       + list.map(s => {
         const [lab, c] = cpSrvState(s), fit = cpSrvFits(s), on = cpSel.node === s.id;
         const mv = fit ? cpSrvBetter(s.id) : null;                // 16/11e: gần đầy → bấm vào là tự chuyển sang máy trống nhất
-        const tip = `${lab} · ${s.pct}%` + (s.free_ram != null ? ` · ${L("còn bán được", "free")} ${Math.floor(+s.free_ram * 10) / 10}GB RAM · ${Math.floor(+s.free_cpu)} ${L("nhân", "cores")}` : "")
+        const tip = (s.paused ? L("Đang ngừng nhận đơn của khách — admin chọn để tạo máy THỬ ở máy chủ này (khách không thấy máy chủ này). ",
+                                  "Not taking customer orders — admin can pick it to create a TEST phone here (customers don't see this server). ") : "")
+          + `${lab} · ${s.pct}%` + (s.free_ram != null ? ` · ${L("còn bán được", "free")} ${Math.floor(+s.free_ram * 10) / 10}GB RAM · ${Math.floor(+s.free_cpu)} ${L("nhân", "cores")}` : "")
           + (!fit && s.online && !s.full ? ` — ${L("không đủ chỗ cho cấu hình × số lượng này", "not enough room for this setup")}` : "")
           + (mv ? ` — ${L(`gần đầy: chọn máy này thì đơn tự sang ${mv.name} (${mv.pct}%) còn trống nhất`, `almost full: picking it sends the order to ${mv.name} (${mv.pct}%), the emptiest`)}` : "");
-        return `<button type="button" data-srv="${esc(s.id)}" class="${on ? "on" : ""}${fit ? "" : " off"}" aria-pressed="${on}"${fit ? "" : " disabled"} title="${esc(tip)}">🖥 ${esc(s.name)} <small class="${c}">${s.online ? s.pct + "%" : lab}${mv ? " ↪" : ""}</small></button>`;
+        return `<button type="button" data-srv="${esc(s.id)}" class="${on ? "on" : ""}${fit ? "" : " off"}" aria-pressed="${on}"${fit ? "" : " disabled"} title="${esc(tip)}">${s.paused ? "⏸" : "🖥"} ${esc(s.name)} <small class="${c}">${s.online ? (s.paused ? L("ngừng", "paused") + " · " : "") + s.pct + "%" : lab}${mv ? " ↪" : ""}</small></button>`;
       }).join("")
+      + (list.some(s => s.paused) ? `<div class="hint cpsrvh">${L("⏸ Máy chủ đang ngừng nhận đơn: khách không thấy, đơn của khách không vào; admin chọn được để tạo máy thử.",
+                                                                   "⏸ Paused servers: hidden from customers and get no customer orders; admin can pick one to create a test phone.")}</div>` : "")
       + (list.some(s => cpSrvFits(s) && cpSrvBetter(s.id)) ? `<div class="hint cpsrvh">${L("↪ Máy chủ gần đầy (từ 80%): bấm chọn thì đơn tự sang máy chủ còn trống nhất để máy chạy mượt.",
                                                                                              "↪ Almost-full servers (80%+): picking one sends the order to the emptiest server so phones run smoothly.")}</div>` : "");
   } else {
@@ -7178,10 +7183,10 @@ function cpSrvChips() {          // vẽ lại theo bản Android + cấu hình 
 }
 document.addEventListener("click", e => { const b = e.target.closest("[data-srv]"); if (!b || b.disabled || !isAdmin()) return; cpSel.node = cpSrvRoute(b.dataset.srv, true); cpOrderUpd(); });
 Object.assign(ERR, { NODE_ADMIN_ONLY: "Chỉ tài khoản admin được chọn máy chủ.", NODE_NOT_FOUND: "Không có máy chủ này — tải lại trang.",
-  NODE_OFFLINE: "Máy chủ đã chọn đang mất kết nối hoặc ngừng nhận máy — chọn máy chủ khác hoặc Tự chọn.", NODE_ANDROID: "Máy chủ đã chọn không chạy bản Android này.",
+  NODE_OFFLINE: "Máy chủ đã chọn đang mất kết nối (bảng CloudBlue / dịch vụ nhận đơn trên máy đó chưa chạy) — chọn máy chủ khác hoặc Tự chọn.", NODE_ANDROID: "Máy chủ đã chọn không chạy bản Android này.",
   NODE_FULL: "Máy chủ đã chọn không đủ chỗ cho cấu hình × số lượng này (tới mức ngừng 95%) — chọn máy chủ khác hoặc Tự chọn." });
 Object.assign(ERR_EN, { NODE_ADMIN_ONLY: "Only admin accounts can pick a server.", NODE_NOT_FOUND: "That server doesn't exist — reload the page.",
-  NODE_OFFLINE: "The chosen server is offline or not taking phones — pick another server or Auto.", NODE_ANDROID: "The chosen server doesn't run this Android version.",
+  NODE_OFFLINE: "The chosen server is offline (its CloudBlue panel / order service isn't running) — pick another server or Auto.", NODE_ANDROID: "The chosen server doesn't run this Android version.",
   NODE_FULL: "The chosen server doesn't have room for this setup (stops at 95%) — pick another server or Auto." });
 
 let CPstatus = null;
