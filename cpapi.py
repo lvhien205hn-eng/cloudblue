@@ -271,6 +271,9 @@ JOBS, JLOCK = {}, threading.Lock()
 VIEWERS, VLOCK = {}, threading.Lock()      # cổng máy → nơi đang xem (mã trang cpv)
 
 
+PCTL_LONG = 2400        # 16/11e: giây tối đa cho lệnh tắt → bật lại 1 máy (phonectl chờ lượt bật / chờ nhân bản máy khác xong khi máy chủ bận)
+
+
 def new_job(owner, title):
     jid = secrets.token_hex(8)
     with JLOCK:
@@ -1506,7 +1509,7 @@ class H(BaseHTTPRequestHandler):
                             return f"Đã đổi sang {res} — app đang chạy vẫn giữ nguyên."
                     JOBS[j]["msg"] = "Đang áp dụng và khởi động lại máy (1–3 phút)…"
                     r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "reconfig", cont, "--fps", str(fps), "--res", res],
-                                       capture_output=True, text=True, timeout=600)
+                                       capture_output=True, text=True, timeout=PCTL_LONG)
                     if r.returncode: raise RuntimeError("Đổi cấu hình lỗi: " + (r.stdout + r.stderr)[-300:])
                     sb_patch(f"/rest/v1/cloud_phones?id=eq.{pid}", {"fps": fps, "res": res})
                     return f"Đã đổi sang {res} · {fps} FPS. Dữ liệu vẫn giữ nguyên."
@@ -1520,7 +1523,7 @@ class H(BaseHTTPRequestHandler):
             jid = new_job(me["uid"], "Root máy")
             def work(j):
                 JOBS[j]["msg"] = "Đang kiểm tra / bật root (máy có thể khởi động lại ~1 phút)…"
-                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "rootfix", cont, "--force"], capture_output=True, text=True, timeout=600)
+                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "rootfix", cont, "--force"], capture_output=True, text=True, timeout=PCTL_LONG)
                 line = next((l for l in (r.stdout or "").splitlines() if l.startswith("ROOT_")), "")
                 msg = line.split(":", 1)[1].strip() if ":" in line else "Không kiểm tra được, thử lại sau."
                 if line.startswith("ROOT_OK"): return "✅ Máy đã ROOT. Tool cần root (gọi lệnh su) dùng được ngay, không cần khởi động lại."
@@ -1553,7 +1556,7 @@ class H(BaseHTTPRequestHandler):
                 try:
                     JOBS[j]["msg"] = ("Đang bật root cho app đã chọn… (máy chưa có root gốc sẽ tự khởi động lại ~1 phút)" if on else "Đang tắt root…")
                     r = subprocess.run(["python3", pc_, "rootcfg", cont, "--set", "--on" if on else "--off", "--apps", ",".join(dict.fromkeys(apps))],
-                                       capture_output=True, text=True, timeout=600)
+                                       capture_output=True, text=True, timeout=PCTL_LONG)
                     line = next((l for l in reversed((r.stdout or "").splitlines()) if l.startswith("ROOTCFG_")), "")
                     if line.startswith("ROOTCFG_OK"): return line.split(" ", 1)[1].strip() if " " in line else "Đã lưu."
                     if not line and r.returncode == 2 and "rootcfg" in (r.stderr or ""):
@@ -1575,7 +1578,7 @@ class H(BaseHTTPRequestHandler):
             jid = new_job(me["uid"], "Đổi chế độ hình")
             def work(j):
                 JOBS[j]["msg"] = "Máy đang khởi động lại với chế độ mới (khoảng 1–2 phút)…"
-                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "render", cont, mode], capture_output=True, timeout=600)
+                r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "render", cont, mode], capture_output=True, timeout=PCTL_LONG)
                 if r.returncode: raise RuntimeError("Không đổi được: " + out(r)[-200:])
                 return ("Đã chuyển sang MƯỢT." if mode == "directx" else "Đã chuyển sang HIỆN 3D.") if wait_ready(cont, port) else "Đã đổi, đang kết nối lại…"
             run_job(jid, work)
@@ -1590,16 +1593,16 @@ class H(BaseHTTPRequestHandler):
             if force: _busy.add(pid)                                  # giữ chỗ ngay: bấm 2 lần liền không chạy chồng
             def work(j):
                 if not force:
-                    r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "restart", cont], capture_output=True, timeout=120)
+                    r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "restart", cont], capture_output=True, timeout=PCTL_LONG)
                     if r.returncode: raise RuntimeError("Không khởi động lại được: " + out(r)[-200:])
                     JOBS[j]["msg"] = "Đang khởi động Android (1–3 phút)…"
                     return "Máy đã khởi động lại xong." if wait_ready(cont, port) else "Máy đã khởi động, đang kết nối lại…"
                 try:
                     JOBS[j]["msg"] = "Đang tắt hẳn máy (máy treo thì tắt cưỡng bức)…"
                     cmd = ["python3", os.path.join(HOME, "phonectl.py"), "restart", cont]
-                    r = subprocess.run(cmd + ["--force"], capture_output=True, timeout=420)
+                    r = subprocess.run(cmd + ["--force"], capture_output=True, timeout=PCTL_LONG)
                     if r.returncode == 2 and b"--force" in (r.stderr or b""):     # phonectl cũ chưa có --force → khởi động lại thường
-                        r = subprocess.run(cmd, capture_output=True, timeout=180)
+                        r = subprocess.run(cmd, capture_output=True, timeout=PCTL_LONG)
                     if r.returncode: raise RuntimeError("Không ép khởi động lại được: " + out(r)[-300:])
                     hard = "cưỡng bức" in out(r)
                     JOBS[j]["msg"] = "Đang khởi động Android (1–3 phút)…"
@@ -1756,5 +1759,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else ""))
+    log(f"cpapi bản 16/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+        + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()

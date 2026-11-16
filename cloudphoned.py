@@ -62,6 +62,11 @@ CPU_SELL_X = max(0.5, min(3.0, _f("CPU_SELL_X", 2.0)))
 # 16/11 — tạo máy mà phonectl báo HẾT CHỖ (RAM thật lúc tạo ít hơn số ước) → không hoàn tiền ngay: còn máy chủ khác đủ chỗ thì TRẢ ĐƠN
 #   cho nó nhận; máy chủ này nghỉ nhận đơn mới + báo web hết chỗ FULL_COOL_S giây (đơn không quay lại đúng máy vừa hết chỗ).
 FULL_COOL_S = max(60, int(_f("FULL_COOL_S", 300)))
+# 16/11e: đơn ADMIN chọn đúng máy chủ này (web: "Máy chủ (admin chọn)") mà máy chủ này đã GẦN ĐẦY (% đầy như web hiện ≥ NEAR_PCT)
+# → tự chuyển đơn sang máy chủ còn trống nhất (đúng bản Android, đang chạy, đủ chỗ, trống hơn ≥ NEAR_GAP điểm %). NEAR_PCT=0 = tắt.
+NEAR_PCT = max(0.0, min(100.0, _f("NEAR_PCT", 80)))
+NEAR_GAP = max(0.0, min(50.0, _f("NEAR_GAP", 5)))
+_HANDED = {}                       # id đơn → lúc máy chủ này đã chuyển đi (đơn quay lại thì nhận, không chuyển vòng)
 _FULL = {"until": 0.0}
 # ---------- Máy NGỦ giữ bao nhiêu RAM (Windows) ----------
 # Trước 13/11: mỗi máy ngủ giữ ĐỦ RAM đã cấp (máy 6GB giữ 6GB) trong khi máy đang chạy thật chỉ dùng ~3GB → win1 (14 máy,
@@ -264,11 +269,63 @@ def refund_unserved(row):
         msg = f"Máy chủ Android {v} đang bảo trì — đã hoàn tiền, thử lại sau"; why = f"không máy chủ Android {v} nào đang chạy"
     refund(row, msg); notify(f"⚠️ <b>Đơn Android {v} bị hoàn tiền</b>: {why}.")
 
+def node_pct(r):
+    """% đầy của 1 máy chủ khác (dòng cloud_nodes) — cùng cách web tính: max(RAM đã cấp ÷ sức chứa, nhân đã cấp ÷ sức chứa)."""
+    try:
+        cr, ar = float(r.get("cap_ram") or 0), float(r.get("alloc_ram") or 0)
+        cc, ac = float(r.get("cap_cpu") or 0), float(r.get("alloc_cpu") or 0)
+    except (TypeError, ValueError):
+        return 100.0
+    return 100 * max(ar / cr if cr > 0 else 1.0, ac / cc if cc > 0 else 1.0)
+
+def my_pct():
+    """% đầy của CHÍNH máy chủ này (như web hiện): đã cấp ÷ sức chứa thật. Vừa hết chỗ lúc tạo máy → 100."""
+    if time.time() < _FULL["until"]: return 100.0
+    try: st = json.load(open(PHONES_JSON)).get("phones", [])
+    except Exception: st = []
+    if WIN:
+        a_r, a_c, c_r, c_c = win_caps(st)
+        return 100 * max(a_r / c_r if c_r > 0 else 1.0, a_c / c_c if c_c > 0 else 1.0)
+    return 100 * local_load()[0]
+
+def handover(row):
+    """16/11e: đơn ADMIN chọn máy chủ này (node = máy này, chưa tạo máy) mà máy chủ này GẦN ĐẦY → chuyển sang máy chủ còn trống nhất.
+       True = đã chuyển (máy này không làm đơn đó). Không có máy chủ nào trống hơn → giữ, làm như admin chọn."""
+    if NEAR_PCT <= 0 or row.get("status") != "pending" or row.get("container") or row.get("replaces"): return False
+    rid = str(row.get("id") or "")
+    if not rid or rid in _HANDED: return False      # đơn máy này đã chuyển đi rồi quay lại → nhận luôn (không chuyển vòng)
+    if phone_state(cname(row)): return False        # máy của đơn đã có trên máy chủ này (lần tạo trước dở dang) → làm tiếp ở đây
+    me = my_pct()
+    if me < NEAR_PCT: return False
+    v = str(row.get("android") or "").strip() or "9"; wr, wc = want(row); best = None
+    for r in live_nodes():
+        if r.get("id") == NODE_ID or not node_sells(r, v): continue
+        try:
+            room = float(r.get("cap_ram") or 0) - float(r.get("alloc_ram") or 0) + 0.01 >= wr and \
+                   float(r.get("cap_cpu") or 0) - float(r.get("alloc_cpu") or 0) + 0.01 >= wc
+        except (TypeError, ValueError):
+            room = False
+        if not room: continue
+        p = node_pct(r)
+        if p <= me - NEAR_GAP and (best is None or p < best[0]): best = (p, str(r.get("id")))
+    if not best: return False
+    _HANDED[rid] = time.time()
+    try:
+        got = sb("PATCH", f"cloud_phones?id=eq.{rid}&node=eq.{urllib.parse.quote(NODE_ID, safe='')}&status=eq.pending&container=is.null",
+                 {"node": best[1]}, {"Prefer": "return=representation"})
+    except Exception as e:
+        print("lỗi chuyển đơn sang máy chủ trống hơn:", e); return False
+    if not got: return True                         # đơn vừa đổi (máy chủ khác nhận / bị huỷ) → lượt sau đọc lại rồi mới quyết
+    print(f"[chuyển] đơn {rid[:8]}: {NODE_ID} gần đầy ({me:.0f}%) → {best[1]} ({best[0]:.0f}%) còn trống nhất")
+    return True
+
 def claim(row):
     """Giành đơn mới cho server này. Server còn trống nhiều nhận trước; không đủ chỗ thì nhường server khác.
     Trả về True nếu server này được làm đơn đó."""
     n = row.get("node")
-    if n: return n == NODE_ID                       # đã có server nhận rồi
+    if n:                                           # đã có server nhận rồi (admin chọn / máy chủ khác)
+        if n != NODE_ID: return False
+        return not handover(row)                    # 16/11e: admin chọn máy chủ này mà nó gần đầy → chuyển sang máy chủ trống nhất
     if not node_enabled(): return False
     if time.time() < _FULL["until"]:                 # 16/11: vừa tạo máy báo HẾT CHỖ → nghỉ nhận đơn ít phút, nhường máy chủ khác
         if PRIMARY: refund_unserved(row)
@@ -1260,7 +1317,8 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 16/11 chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 16/11e chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if NEAR_PCT > 0: print(f"Đơn admin chọn máy chủ này lúc đã đầy ≥ {NEAR_PCT:g}% → tự chuyển sang máy chủ còn trống nhất (trống hơn ≥ {NEAR_GAP:g} điểm)")
     if WIN and CAP_CPU > 0: print(f"Trần mỗi máy chủ: {CAP_CPU:g} nhân (≤ luồng × {CPU_SELL_X:g} − {CPU_KEEP:g}) · {CAP_RAM:g}GB RAM · hết chỗ lúc tạo máy → trả đơn cho máy chủ khác")
     try:                                    # nới RAM cho máy đang chạy (chống văng app khi hết RAM)
         r = phonectl(["memfix"]); print(r.stdout.strip())
