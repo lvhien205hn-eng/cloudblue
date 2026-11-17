@@ -59,6 +59,11 @@
       "permanent": false
     },
     {
+      "source": "/download/CloudBluePC-Setup.exe",
+      "destination": "https://github.com/lvhien205hn-eng/cloudblue/releases/download/pc-latest/CloudBluePC-Setup.exe",
+      "permanent": false
+    },
+    {
       "source": "/download/BlueRobloxPC.zip",
       "destination": "https://github.com/lvhien205hn-eng/cloudblue/releases/download/pc-latest/CloudBluePC.zip",
       "permanent": false
