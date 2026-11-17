@@ -308,7 +308,8 @@ $ISMUMU = (-not $LDP) -and $MUMU -and (-not $MEMU)
 $MAXR = if ($LDP) { "8" } else { "16" }     # 1 máy tối đa: Android 9 (LDPlayer 9) = 8GB · 8 nhân · MuMu (Android 12 / 15) = 16GB · 32 nhân · MEmu = 16 · 16
 $MAXC = if ($LDP) { "8" } elseif ($ISMUMU) { "32" } else { "16" }
 # MuMu: bán Android 12 + 15 (cần máy mẫu tpl_a12 / tpl_a15), không dựng máy sẵn, hình lấy thẳng từ Android (MuMu ẩn cửa sổ thì ngừng vẽ → không quay cửa sổ được)
-$EMUL = if ($LDP) { "EMU=ld`nANDROIDS=9" } elseif ($ISMUMU) { "EMU=mumu`nANDROIDS=12,15`nCAPTURE=scrcpy" } else { "EMU=memu`nANDROIDS=7" }
+# 17/11a: LDPlayer cũng lấy hình THẲNG từ Android (CAPTURE=scrcpy) — quay cửa sổ LDPlayer: khách mở máy chỉ thấy OFFLINE (win8) / thấy quảng cáo LDPlayer (win1)
+$EMUL = if ($LDP) { "EMU=ld`nANDROIDS=9`nCAPTURE=scrcpy" } elseif ($ISMUMU) { "EMU=mumu`nANDROIDS=12,15`nCAPTURE=scrcpy" } else { "EMU=memu`nANDROIDS=7" }
 $POOL = if ($ISMUMU) { "0" } else { "1" }
 # PUBLIC_BASE / STREAM_WS / CPAPI_ORIGINS / NOTIFY_URL: giống doi-ten-mien.py <tên miền> <phoneN>
 @"

@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1611k2):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711a):
+#        17/11a — MÁY CHỦ LDPLAYER (Android 9): khách mở máy chỉ thấy OFFLINE (máy chủ quay cửa sổ LDPlayer, Windows đóng phiên quay
+#                       ngay) → bluestream: máy chủ LDPlayer mặc định lấy hình thẳng từ Android, phiên quay bị đóng thì tự chuyển ·
+#                       lệnh này tự ghi CAPTURE=scrcpy · LDPlayer vừa cài chưa có máy nào ("không đọc được danh sách máy") →
+#                       phonectl tự tạo máy gốc 'LDPlayer' rồi tạo máy khách · --kiemhinh không kết luận bừa khi máy chưa lên
 #        phonectl     — 16/11k2: máy hỏng sổ khoá KHỞI ĐỘNG LẠI LIÊN TỤC (không bao giờ "lên", adb chập chờn) → canh + sửa ở mọi chỗ
 #                       chờ máy lên, chống kẹt, lệnh ksfix canh tới khi nối được · trước khi tắt máy ảo: Android ghi hết dữ liệu xuống đĩa
 #                       16/11k: SỔ KHOÁ ANDROID HỎNG (máy mới / máy đang chạy sập liên tục, màn đen, khách chờ hàng giờ) → tự
@@ -50,7 +54,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "16/11k2"
+VER = "17/11a"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -65,11 +69,11 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "16/11k"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11a"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def _wait_android", None),
+         ("windows/phonectl.py", "phonectl.py", "def cmd_ldbase", None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "nén 16/11k", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "lấy hình 17/11a", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -212,7 +216,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1611k2"
+            bak = lp + ".truoc-1711a"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -222,6 +226,47 @@ def update_files():
         except Exception as e:
             say(f"   ✗ {local}: không ghi được ({e}) — đóng chương trình đang mở file này rồi chạy lại"); problems.append(f"không ghi được {local}")
     return changed, problems
+
+# ------------------------------------------------------------------ 1b. máy chủ LDPlayer (17/11a)
+def ld_fix(c, changed):
+    """Máy chủ LDPlayer (Android 9): (1) hình phải lấy THẲNG từ Android — quay cửa sổ LDPlayer thì khách mở máy chỉ thấy OFFLINE (Windows
+       đóng phiên quay ngay, win8 17/11) hoặc thấy quảng cáo LDPlayer (win1 13/11) → ghi CAPTURE=scrcpy + bật lại phát hình;
+       (2) LDPlayer phải có ít nhất 1 máy (máy gốc) thì mới tạo được máy khách → chưa có thì tạo. Máy chủ MuMu / MEmu: không làm gì.
+       --chi-kiem: chỉ báo. Trả [dòng cho phần TÓM TẮT]."""
+    probs = []
+    e = (c.get("EMU") or "").strip().lower()
+    if e in ("mumu", "memu"): return probs
+    if e != "ld":                                            # cấu hình cũ không ghi EMU → hỏi phonectl (chỉ đọc)
+        rc, out = pctl("engine", t=120)
+        try: e = str(json.loads((out or "").strip().splitlines()[-1]).get("emu") or "") if rc == 0 else ""
+        except Exception: e = ""
+        if e != "ld": return probs
+    cap = (c.get("CAPTURE") or "").strip().lower()
+    if cap == "scrcpy": say("   ✓ máy chủ LDPlayer: hình lấy thẳng từ Android (CAPTURE=scrcpy)")
+    elif cap in ("wgc", "gdi"):
+        say(f"   ⚠ máy chủ LDPlayer đang ÉP quay cửa sổ (CAPTURE={cap}) — khách có thể thấy quảng cáo LDPlayer / mở máy báo OFFLINE.\n"
+            "     Bỏ ép: python phonectl.py setconf CAPTURE=scrcpy  rồi chạy lại lệnh này")
+    elif ONLY_CHECK:
+        say("   ✗ máy chủ LDPlayer CHƯA ghi CAPTURE=scrcpy (đang quay cửa sổ → khách mở máy có thể chỉ thấy OFFLINE)"); probs.append("máy chủ LDPlayer chưa ghi CAPTURE=scrcpy")
+    else:
+        pctl("setconf", "CAPTURE=scrcpy", t=60)
+        if (conf().get("CAPTURE") or "").strip().lower() == "scrcpy":
+            say("   ✓ máy chủ LDPlayer: đã ghi CAPTURE=scrcpy → hình lấy thẳng từ Android (trước: quay cửa sổ LDPlayer → khách mở máy báo OFFLINE / thấy quảng cáo)")
+            if "bluestream" not in changed: changed.append("bluestream")          # bật lại phát hình để dùng cách lấy hình mới
+        else:
+            say("   ✗ máy chủ LDPlayer: chưa ghi được CAPTURE=scrcpy vào cloudphone.conf"); probs.append("chưa ghi được CAPTURE=scrcpy (máy chủ LDPlayer)")
+    if ONLY_CHECK:
+        rc, out = pctl("vmlist", t=120)
+        if rc == 0 and not [ln for ln in (out or "").splitlines() if re.match(r"^\d+,", ln.strip())]:
+            say("   ✗ LDPlayer chưa có máy nào (chưa có máy gốc) → chưa tạo được máy khách"); probs.append("LDPlayer chưa có máy gốc — chạy lệnh A không kèm --chi-kiem")
+        return probs
+    rc, out = pctl("ldbase", t=300)
+    last = next((ln.strip() for ln in reversed((out or "").splitlines()) if ln.strip().startswith("LDBASE")), "")
+    if last.startswith("LDBASE da_tao"): say("   ✓ LDPlayer chưa có máy nào → đã tạo máy gốc 'LDPlayer' (để nguyên, đừng xoá) — giờ tạo được máy khách")
+    elif last.startswith("LDBASE loi"):
+        say("   ✗ LDPlayer không đọc được danh sách máy (" + last[10:].strip()[:120] + ") → mở LDPlayer 1 lần, thấy có máy trong danh sách rồi chạy lại lệnh")
+        probs.append("LDPlayer không đọc được danh sách máy — mở LDPlayer 1 lần rồi chạy lại lệnh A")
+    return probs
 
 # ------------------------------------------------------------------ 2. bật lại dịch vụ
 def log_size(svc):
@@ -789,6 +834,7 @@ def main():
     say(f"== CloudBlue · sửa tất cả ({VER}) · máy chủ {node} · {time.strftime('%d/%m %H:%M')}" + (" · CHỈ KIỂM" if ONLY_CHECK else "") + " ==")
     probs = []
     changed, p = update_files(); probs += p
+    probs += ld_fix(c, changed)
     probs += restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
                                         and mark.encode() in open(os.path.join(B, local), "rb").read()})
     probs += fix_autostart()

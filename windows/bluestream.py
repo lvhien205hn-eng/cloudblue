@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "16/11k"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "17/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
                                           # · 16/11a: máy tắt / Android chưa lên → tự gọi bật + báo rõ (hết quay mãi "chưa bật được hình")
@@ -299,6 +299,11 @@ class NoWindow(Deny):
 
 class WinBad(Deny):
     """Cửa sổ máy có nhưng kích thước lỗi (đang khởi động / thu nhỏ) → thử lấy hình thẳng từ Android."""
+
+
+class CapGone(Deny):
+    """17/11a: Windows ĐÓNG phiên quay cửa sổ ngay khi vừa bắt đầu (cửa sổ ẩn, màn hình máy chủ không vẽ, máy đang tắt…).
+       Android còn chạy → phiên lấy hình thẳng từ Android; máy tắt thật → báo khách như cũ."""
 
 
 class AdbGone(RuntimeError):
@@ -557,7 +562,7 @@ class WindowSource:
             gone, stopping = self.closed, self.stopping
             self._halt()
             if stopping: raise Deny("OFFLINE", "Không lấy được hình từ cửa sổ máy — thử mở lại.")
-            if gone: raise Deny("OFFLINE", "Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại.")
+            if gone: raise CapGone("OFFLINE", "Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại.")
             log(f"  {self.name}: cửa sổ không ra khung hình nào sau 6 giây — {win_info(h)}")
             raise CaptureBlocked("cửa sổ giả lập không ra hình")
         # Phải RA HÌNH LIÊN TỤC: giả lập ở cửa sổ khuất / chạy ngầm có thể ngừng vẽ (MuMu: chỉ 1 khung đầu rồi 0 khung/giây)
@@ -570,7 +575,7 @@ class WindowSource:
             k, gone, stopping = self.n - n1, self.closed, self.stopping
             self._halt()
             if stopping: raise Deny("OFFLINE", "Không lấy được hình từ cửa sổ máy — thử mở lại.")
-            if gone: raise Deny("OFFLINE", "Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại.")
+            if gone: raise CapGone("OFFLINE", "Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại.")
             log(f"  {self.name}: cửa sổ chỉ ra {k} khung mới trong 2,5 giây (giả lập ngừng vẽ khi cửa sổ khuất?) — {win_info(h)}")
             raise CaptureBlocked("giả lập không vẽ hình liên tục ở cửa sổ này")
         # Ra hình đều mà TOÀN ĐEN (giả lập mất hình sau khi card đồ hoạ treo / cửa sổ khuất…) → khách thấy màn đen. Chờ thêm 2 giây
@@ -735,6 +740,9 @@ def video_mode():
         c = (C.get("CAPTURE") or "").strip().lower()
         if SELFTEST or not WIN: v = "scrcpy" if c == "scrcpy" else "fake"
         elif c in ("scrcpy", "gdi"): v = c
+        # 17/11a: máy chủ LDPlayer (EMU=ld) không ghi CAPTURE → lấy thẳng từ Android. Quay cửa sổ LDPlayer: quảng cáo LDPlayer lọt vào
+        # hình của khách (win1 13/11) + Windows có thể đóng phiên quay ngay → khách mở máy chỉ thấy OFFLINE (win8 17/11). Ép quay cửa sổ: CAPTURE=wgc
+        elif c != "wgc" and (C.get("EMU") or "").strip().lower() == "ld": v = "scrcpy"
         else: v = "wgc" if wgc_ok() else "scrcpy"
         _VMODE["v"] = v
         log("cách lấy hình: " + {"wgc": "quay cửa sổ giả lập (Windows Graphics Capture)", "scrcpy": "lấy thẳng từ Android (scrcpy-server mã hoá H.264 trong máy)",
@@ -2252,12 +2260,17 @@ class Session:
             self.src = src
             try:
                 src.open()
-            except (CaptureBlocked, WinBad) as e:
+            except (CaptureBlocked, WinBad, CapGone) as e:
                 src.stop()
                 if self.closed: raise Closed()
-                log(f"  {self.name}: {e} → lấy hình thẳng từ Android (scrcpy, {self.serial})")
+                if isinstance(e, CapGone):
+                    # 17/11a: trước đây lỗi này đi thẳng tới khách = "OFFLINE" ngay lập tức, không ghi nhật ký, mở mãi không vào (win8)
+                    if not adb_ready(self.serial, 3.0): self.src = None; raise e      # máy tắt thật / Android chưa lên → báo như cũ
+                    log(f"  {self.name}: Windows đóng phiên quay cửa sổ ngay mà Android vẫn chạy → lấy hình thẳng từ Android (scrcpy, {self.serial})")
+                else:
+                    log(f"  {self.name}: {e} → lấy hình thẳng từ Android (scrcpy, {self.serial})")
                 self.from_android = True
-                if isinstance(e, CaptureBlocked): wgc_mark_bad(self.name)
+                if isinstance(e, (CaptureBlocked, CapGone)): wgc_mark_bad(self.name)
                 try:
                     return self._start_video_scrcpy()
                 except (Closed, Deny, AdbGone):                # AdbGone: máy tắt / Android chưa lên → nơi gọi quyết định (gọi bật máy, báo khách)
@@ -4219,6 +4232,17 @@ def _sps_info(au):
     return None
 
 
+def _kh_ready(serial, wait=2.0):
+    """Máy dùng được để chẩn đoán: adb nối, Android đã lên xong, đọc được cỡ màn hình. → (True, "") / (False, lý do)."""
+    adb_connect(serial)
+    if not adb_ready(serial, wait): return False, "adb không thấy máy (máy tắt / đang khởi động lại)"
+    _, o, _ = adb(serial, "shell", "getprop sys.boot_completed", timeout=10)
+    if (o or "").strip() != "1": return False, "Android chưa lên xong (đang khởi động / đang sập)"
+    _devsize.pop(serial, None)
+    if not device_size(serial): return False, "Android chưa trả lời (giao diện đang sập / khởi động lại)"
+    return True, ""
+
+
 def kiemhinh(name=None, port=None):
     """16/11k: CHẨN ĐOÁN HÌNH VỠ / NHIỄU MÀU (máy MuMu, đường scrcpy) ngay trên máy chủ — không cần app, không đụng phiên khách:
          python bluestream.py --kiemhinh TÊN_MÁY [CỔNG_ADB]
@@ -4230,14 +4254,16 @@ def kiemhinh(name=None, port=None):
         cand = sorted(((n, p) for n, p in phones_json().items() if str(n).startswith("cp_") and p.get("port")),
                       key=lambda x: -int(x[1].get("fps") or 30))
         for n, p in cand:
-            s_ = f"127.0.0.1:{p['port']}"; adb_connect(s_)
-            if adb_ready(s_, 2): name, port = n, p["port"]; break
-        if not name: print("  ✗ không có máy khách nào đang chạy để thử — ghi tên máy: --kiemhinh TÊN_MÁY"); return 1
+            if _kh_ready(f"127.0.0.1:{p['port']}")[0]: name, port = n, p["port"]; break
+        if not name: print("  ✗ không có máy khách nào đang chạy ỔN để thử (máy tắt / chưa lên / đang sập) — chạy lại sau, hoặc ghi tên máy: --kiemhinh TÊN_MÁY"); return 1
     print(f"== Chẩn đoán hình máy {name} (bản {BS_SUB}) — để máy đứng yên ở màn hình chính trong lúc chạy (~40 giây)")
     port = port or (phones_json().get(name) or {}).get("port")
     if not port: print("  ✗ không biết cổng adb của máy này → thêm cổng: --kiemhinh TÊN CỔNG"); return 1
-    serial = f"127.0.0.1:{port}"; adb_connect(serial)
-    if not adb_ready(serial, 15): print(f"  ✗ adb không thấy máy {serial} (máy tắt / đang khởi động)"); return 1
+    serial = f"127.0.0.1:{port}"
+    okr, why = _kh_ready(serial, 15)
+    if not okr:
+        print(f"  ✗ {why} → KHÔNG chẩn đoán được hình máy này. Máy đang sập thì chạy lệnh sửa máy trước (lệnh A / phonectl ksfix), rồi thử lại.")
+        return 1
     if not ensure_jar(): print("  ✗ thiếu scrcpy-server"); return 1
     push_jar(serial)
     ld = os.path.join(B, "logs"); os.makedirs(ld, exist_ok=True)
@@ -4313,6 +4339,13 @@ def kiemhinh(name=None, port=None):
     vA, vB, vC, vD = (dirty(res.get(t)) for t in "ABCD")
     print("== KẾT LUẬN")
     said = False
+    got = [t for t in "ABCD" if (res.get(t) or {}).get("frames")]
+    if not got:
+        print("  ✗ KHÔNG lấy được khung hình nào ở cả 4 lần thử → máy vừa sập / mất adb giữa chừng → không kết luận được. "
+              "Sửa máy trước (lệnh A / phonectl ksfix) rồi chạy lại lệnh này.")
+        return 1
+    miss = [t for t in "ABCD" if t not in got]
+    if miss: print(f"  ⚠ lần thử {', '.join(miss)} không lấy được hình (máy chập chờn) — kết luận chỉ dựa trên {', '.join(got)}")
     if any((res.get(t) or {}).get("cont") for t in "ABCD"):
         print("  • Bộ nén trong máy chia 1 khung thành nhiều gói → bản 16/11k ĐÃ ghép lại đủ khung trước khi gửi (hết sọc / nhiễu do khung thiếu)."); said = True
     if vA is False and vB: print("  • Cỡ hình lẻ (không chia hết 16) làm hỏng hình → bản 16/11k ĐÃ luôn chọn cỡ chia hết 16."); said = True
@@ -4321,6 +4354,8 @@ def kiemhinh(name=None, port=None):
     if vA:
         print("  • Ngay cả cỡ thường cũng hỏng → bộ nén / màn hình trong máy ảo đang lỗi ở FPS hiện tại của máy. Xem ảnh "
               f"{os.path.basename(base)}_A_man.png (màn hình thật): ảnh đó cũng nhiễu = lỗi giả lập, ảnh đẹp = lỗi bộ nén → gửi Claude cả phần này."); said = True
+    if not said and "A" not in got:
+        print("  • Lần thử A (cỡ thường) không lấy được hình → chưa kết luận được, chạy lại lệnh khi máy đứng yên ở màn hình chính."); said = True
     if not said:
         print("  • Hình phát ra từ máy SẠCH ở mọi kiểu thử → lỗi nằm ở đường truyền / trình duyệt của khách (gửi Claude phần này + ảnh khách chụp).")
     print(f"  (file: {base}_*.h264 / *_hinh.png / *_man.png)")
@@ -4378,6 +4413,8 @@ async def main():
     log(f"mã chứng chỉ: {fp[:16]}…  · bộ nén: {'CPU x264' if ALWAYS_CPU else f'NVENC (tối đa {NVENC_MAX}) → x264'} · ffmpeg: {FF}"
         f" · bản {BS_VER}+{BS_SUB} (ngưỡng app chậm thẳng {LAG_DROP_MS['direct']} ms / vòng {LAG_DROP_MS['ws']} ms, vòng bắt đầu {WS_START_KBPS} kbps)")
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
+    log(f"lấy hình 17/11a: {video_mode()} · máy chủ LDPlayer mặc định lấy thẳng từ Android (ép quay cửa sổ: CAPTURE=wgc) · "
+        "Windows đóng phiên quay cửa sổ ngay mà máy vẫn chạy → tự lấy thẳng từ Android")
     log(f"nén 16/11k: hình scrcpy cạnh chia hết 16 {'BẬT' if SCR_ALIGN == 16 else 'TẮT'} · ghép lát {'BẬT' if SLICE_JOIN else 'TẮT'} (chẩn đoán hình vỡ: python bluestream.py --kiemhinh TÊN_MÁY)")
     log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
         + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"

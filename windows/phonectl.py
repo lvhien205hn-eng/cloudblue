@@ -302,6 +302,23 @@ def _ld(a, timeout):
     if c == "listvms":
         L = _ldlist(); run_only = "--running" in a
         return _ok("\n".join(f"{i},{x['name']},0,{1 if x['running'] else 0},{x['pid']}" for i, x in sorted(L.items()) if x["running"] or not run_only))
+    if c == "ensurebase":
+        # 17/11a: LDPlayer vừa cài không có máy nào — list2 chỉ ra dòng "99999,…" (màn hình máy tính, không phải máy). Phần còn lại của tool
+        # coi danh sách rỗng là "chưa đọc được" (an toàn cho lệnh xoá) nên không tạo được máy nào. CHỈ khi CHẮC LDPlayer trống (list2 chạy
+        # được, không có máy, có dòng 99999 hoặc thư mục vms không có leidianN) mới tạo máy gốc tên LDPlayer. Không chắc → báo lỗi, không tạo.
+        r = _ldrun(["list2"], 60)
+        lines = [ln.strip() for ln in (r.stdout or "").splitlines() if ln.strip()]
+        if any(re.match(r"^\d+,", ln) and not ln.startswith("99999,") for ln in lines): return _ok("LDBASE co")
+        desk = any(ln.startswith("99999,") for ln in lines)
+        try: dirs = [d for d in os.listdir(os.path.join(LD, "vms")) if re.fullmatch(r"leidian\d+", d)]
+        except OSError: dirs = None
+        if r.returncode not in (0, None) or not (desk or dirs == []):
+            return subprocess.CompletedProcess([], 1, r.stdout, ((r.stderr or "").strip() + " chưa chắc LDPlayer trống (lệnh list2 lỗi / không trả lời)").strip())
+        r2 = _ldrun(["add", "--name", "LDPlayer"], timeout)
+        for _ in range(20):
+            if _ldlist(): return _ok("LDBASE da_tao")
+            time.sleep(2)
+        return subprocess.CompletedProcess([], 1, r2.stdout, ((r2.stderr or "").strip() + " LDPlayer không tạo được máy gốc").strip())
     if c == "create":
         before = set(_ldlist()); tmp = f"new_{int(time.time())}"
         r = _ldrun(["add", "--name", tmp], timeout)
@@ -957,6 +974,13 @@ def create_vm(android, name=None):
        name: tên sẽ đặt cho máy (MEmu nhân bản đặt tên luôn lúc nhân bản → tìm lại máy chắc chắn theo tên)."""
     ver = norm_android(android)
     cur = vms_sure()
+    if not cur and EMU == "ld":                            # 17/11a: LDPlayer vừa cài chưa có máy nào → tạo máy gốc rồi tạo tiếp (win8)
+        r0 = memuc("ensurebase", timeout=240)
+        if r0.returncode != 0:
+            why = ((r0.stderr or "").strip() or "không rõ lý do")[-110:]
+            return subprocess.CompletedProcess([], 1, "", f"không đọc được danh sách máy của {EMU_NAME} ({why}) — mở LDPlayer 1 lần, thấy có máy trong danh sách rồi thử lại"), None
+        if "da_tao" in (r0.stdout or ""): print("   (LDPlayer chưa có máy nào → đã tạo máy gốc 'LDPlayer' — đừng xoá máy này)", flush=True)
+        cur = vms_sure()
     if not cur: return subprocess.CompletedProcess([], 1, "", f"không đọc được danh sách máy của {EMU_NAME} — thử lại sau"), None
     has_tpl = any(x["name"] == tpl_name(ver) for x in cur.values())
     clone = False
@@ -2474,6 +2498,16 @@ def cmd_perms(a):
     for p in load()["phones"]:
         if is_running(p["name"], p, v): grant_perms(p["name"])
 
+def cmd_ldbase(a):
+    """17/11a: máy chủ LDPlayer phải có ít nhất 1 máy trong LDPlayer (máy gốc) thì tool mới đọc được danh sách + tạo được máy khách.
+       LDPlayer vừa cài chưa có máy nào → tạo máy gốc 'LDPlayer' (không bao giờ xoá máy này).
+       In 1 dòng: LDBASE co · LDBASE da_tao · LDBASE bo_qua (không phải máy chủ LDPlayer) · LDBASE loi <lý do> (mã 4)."""
+    if EMU != "ld" or not LD: print("LDBASE bo_qua (máy chủ này không chạy LDPlayer)"); return
+    if vms_sure(tries=2): print("LDBASE co"); return
+    r = memuc("ensurebase", timeout=240)
+    if r.returncode == 0: print((r.stdout or "").strip() or "LDBASE co"); return
+    print("LDBASE loi " + (((r.stderr or "") + " " + (r.stdout or "")).strip()[-160:] or "không rõ lý do")); sys.exit(4)
+
 def cmd_vmlist(a):
     """In mọi máy trong giả lập (MEmu hoặc LDPlayer): số,tên,đang chạy(1/0),số nhân — cho kiemtra.py / donweb.py."""
     for i, x in sorted(vms().items()):
@@ -3479,6 +3513,7 @@ def cmd_pool(a):
         print(f"DUNG_SAN {nm}: tạo + khởi động + cài sẵn…", flush=True)
         with _Lock("memu", wait=5):                     # không chờ: đang có việc MEmu khác (máy khách) → để lần sau
             v0 = vms()
+            if not v0 and EMU == "ld" and memuc("ensurebase", timeout=240).returncode == 0: v0 = vms()     # 17/11a: LDPlayer chưa có máy nào → tạo máy gốc
             if not v0: print("LỖI dựng máy sẵn: không đọc được danh sách máy — để lần sau"); return    # danh sách rỗng → mọi máy sẽ bị coi là "mới" → không làm
             before = set(v0)
             d = _pl(); d.setdefault("building", []).append(nm); _ps(d)      # ghi trước: chương trình bị ngắt giữa chừng → lần sau tự xoá máy dở
@@ -3800,6 +3835,7 @@ def main():
     mt = s.add_parser("mktpl"); mt.add_argument("android"); mt.set_defaults(f=cmd_mktpl)
     s.add_parser("tuneall").set_defaults(f=cmd_tuneall)
     s.add_parser("vmlist").set_defaults(f=cmd_vmlist)
+    s.add_parser("ldbase").set_defaults(f=cmd_ldbase)
     ba = s.add_parser("bootall"); ba.add_argument("--quiet", action="store_true"); ba.set_defaults(f=cmd_bootall)
     si = s.add_parser("serverinfo"); si.set_defaults(f=cmd_serverinfo)
     rs = s.add_parser("rebootserver"); rs.add_argument("--anyway", action="store_true"); rs.add_argument("--wait", type=int, default=120)
