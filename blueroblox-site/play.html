@@ -829,14 +829,18 @@ function keyAct(action, code, meta) {
   send(T.KEY, b);
 }
 const key = (code, meta) => { keyAct(0, code, meta); keyAct(1, code, meta); };
-const typeText = s => { if (s) send(T.TEXT, enc.encode(s)); };
+const OWN_CLIP = new Map();                      // 17/11e: chữ vừa dán / gõ sang máy → máy báo "vừa sao chép" đúng chữ đó thì không hiện lại
+const OWN_TYPED = { s: "", at: 0 };               // chữ có dấu vừa gõ (máy chủ gom vài chữ gõ liền → dán 1 lần)
+function ownClip(s) { const now = Date.now(); for (const [k, t] of OWN_CLIP) if (now - t > 15000) OWN_CLIP.delete(k); if (s) OWN_CLIP.set(s, now); }
+function isOwnClip(s) { ownClip(""); return OWN_CLIP.has(s) || (Date.now() - OWN_TYPED.at < 15000 && OWN_TYPED.s.includes(s)); }
+const typeText = s => { if (s) { if (/[^\x00-\x7e]/.test(s)) { const now = Date.now(); OWN_TYPED.s = (now - OWN_TYPED.at < 15000 ? OWN_TYPED.s : "").slice(-2000) + s; OWN_TYPED.at = now; } send(T.TEXT, enc.encode(s)); } };
 const cmd = c => sendJSON(T.CMD, { cmd: c });
 function scroll(x, y, h, v) {
   const b = new Uint8Array(8), d = new DataView(b.buffer);
   d.setUint16(0, Math.round(c01(x) * 65535)); d.setUint16(2, Math.round(c01(y) * 65535)); d.setInt16(4, i16(h)); d.setInt16(6, i16(v));
   send(T.SCROLL, b);
 }
-function setClip(text, paste) { const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); }
+function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); }
 
 /* ---------- nhận ---------- */
 function json(p) { try { return JSON.parse(dec8.decode(p)); } catch { return {}; } }
@@ -847,7 +851,7 @@ function onMsg(buf) {
   if (t === T.VIDEO) { P.lastVid = P.lastRx; if (P.cx && !P.cx.vidAt) P.cx.vidAt = P.lastRx; return onVideo(p); }
   if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android; return; }
   if (t === T.SIZE) { const j = json(p); if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } P.needKey = true; return; }
-  if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
+  if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s && isOwnClip(s)) return; if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
   if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
   if (t === T.ERROR) return onErr(json(p));
   if (t === T.STATS) { const j = json(p); P.sst = j; P.srv = Object.assign(P.srv || {}, j); return; }
