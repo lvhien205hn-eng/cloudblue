@@ -59,6 +59,7 @@ def prefs(upd=None):
 
 # 16/11 · CỠ CHỮ do khách tự chỉnh (🎨 Giao diện): 80–130%, nhớ theo máy. 100% = y như cũ.
 UI_MIN, UI_MAX, UI_STEP = 80, 130, 5
+UI_ZOOM = 1.12        # 17/11c: cỡ chữ GỐC to hơn 12% (bằng cỡ chữ app điện thoại, đỡ mỏi mắt) — "100%" trong 🎨 Giao diện chính là cỡ mới này
 def ui_scale():
     try: v = int(float(prefs().get("ui_scale") or 100))
     except (TypeError, ValueError): v = 100
@@ -566,7 +567,7 @@ TOOLS = [("back", "Quay lại"), ("home", "Màn chính"), ("recents", "Đa nhi�
          ("rotate", "Xoay"), ("shot", "Chụp màn"), ("paste", "Dán chữ"), ("tools", "Công cụ"), ("quality", "Chất lượng"),
          ("full", "Toàn màn"), ("hide", "Ẩn thanh"), ("info", "Thông số")]
 BAR, BAR_MIN = 72, 14              # thanh công cụ bên phải · khi ẩn còn dải mỏng (bấm để hiện lại)
-C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (8, 12, 22), (17, 24, 39), (210, 220, 235), (47, 123, 255), (235, 240, 248), (130, 142, 160), (47, 123, 255)
+C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (7, 18, 38), (13, 29, 61), (214, 228, 250), (61, 134, 255), (232, 241, 255), (159, 180, 216), (61, 134, 255)   # 17/11c: tông "Thuỷ đêm" như danh sách máy
 
 
 class Viewer:
@@ -883,13 +884,13 @@ class Viewer:
     def _draw_bar(self, pygame, s, W, H):
         if not self.bar_on:                              # thanh đang ẩn: dải mỏng có mũi tên ‹ — bấm vào để hiện lại
             hot = self.hover == "showbar"; x0 = W - BAR_MIN; cy = H // 2
-            pygame.draw.rect(s, ((47, 123, 255, 150) if hot else C_BAR + (235,)), (x0, 0, BAR_MIN, H))
+            pygame.draw.rect(s, ((61, 134, 255, 150) if hot else C_BAR + (235,)), (x0, 0, BAR_MIN, H))
             pygame.draw.polygon(s, C_TXT if hot else C_ICON, [(x0 + 10, cy - 8), (x0 + 4, cy), (x0 + 10, cy + 8)])
             return
         pygame.draw.rect(s, C_BAR + (255,), (W - BAR, 0, BAR, H))
         for name, label, (x, y, w, h) in self._tool_rects(W, H):
             hot = self.hover == name; small = h < 38             # cửa sổ thấp: chỉ còn biểu tượng (bỏ chữ dưới nút)
-            if hot: pygame.draw.rect(s, (47, 123, 255, 70), (x, y, w, h), border_radius=10)
+            if hot: pygame.draw.rect(s, (61, 134, 255, 70), (x, y, w, h), border_radius=10)
             cx, cy = x + w // 2, y + (h // 2 if small else int(h * 0.38)); c = C_HOT if hot else C_ICON
             r = max(6, min(9, h // 3)) if small else max(7, min(11, h // 5))
             if name == "back": pygame.draw.polygon(s, c, [(cx + r, cy - r), (cx - r, cy), (cx + r, cy + r)], 2)
@@ -934,7 +935,7 @@ class Viewer:
             if lines:
                 lh = self.font.get_height() + 4; bw_ = max(self.font.size(ln)[0] for ln in lines) + 28; bh = lh * len(lines) + 16
                 x0, y0 = max(4, (aw - bw_) // 2), max(4, H - bh - 30)
-                pygame.draw.rect(s, (10, 16, 30, 228), (x0, y0, bw_, bh), border_radius=12)
+                pygame.draw.rect(s, (6, 17, 42, 228), (x0, y0, bw_, bh), border_radius=12)
                 if n[2]: pygame.draw.rect(s, C_ACC + (200,), (x0, y0, bw_, bh), 1, border_radius=12)   # bấm được → có viền
                 for i, ln in enumerate(lines):
                     s.blit(self.font.render(ln, True, C_TXT), (x0 + 14, y0 + 8 + i * lh))
@@ -957,7 +958,7 @@ class Viewer:
                 f_ = self.font_b if i == 0 else self.font
                 rows += [(f_, w, C_TXT if i == 0 else C_DIM) for w in wrap_text(f_, T(ln), bw - 32) if w]
             rows = rows[:7]; box_h = 30 + 26 * len(rows)
-            pygame.draw.rect(s, (10, 16, 30, 215), ((aw - bw) // 2, H // 2 - box_h // 2, bw, box_h), border_radius=14)
+            pygame.draw.rect(s, (6, 17, 42, 215), ((aw - bw) // 2, H // 2 - box_h // 2, bw, box_h), border_radius=14)
             for i, (f_, ln, col) in enumerate(rows):
                 t = f_.render(ln, True, col)
                 s.blit(t, t.get_rect(center=(aw // 2, H // 2 - box_h // 2 + 26 + 26 * i)))
@@ -1152,10 +1153,568 @@ def run_viewer(pid):
         except Exception: pass
 
 
+# ================================================================ VỎ GIAO DIỆN "THUỶ ĐÊM" (17/11c) — giống app điện thoại: thẻ bo góc · nút viên thuốc · ô nhập tròn
+#   App vẫn dựng bằng tkinter như cũ; mọi cửa sổ lấy widget qua self.tk = Skin(tkinter, root):
+#     · Frame có viền (highlightthickness ≥ 1)  → tự bo 4 góc (4 mảnh ảnh nhỏ đặt đè lên góc, viền thẳng vẫn là viền của Tk)
+#     · Button                                   → nút viên thuốc vẽ bằng ảnh (bóng chuyển màu, rê chuột sáng lên, mờ khi khoá)
+#     · Label có viền / pill=True                → chip viên thuốc (ô chọn, nhãn trạng thái)
+#     · Entry                                    → ô nhập bo tròn, viền xanh khi đang gõ
+#     · Scrollbar                                → thanh cuộn mảnh · Checkbutton → công tắc gạt
+#   Ảnh tự vẽ bằng Python thuần (PNG, có khử răng cưa) nên không cần thêm thư viện nào; mọi thứ khác (Tk, Canvas, Menu…) lấy thẳng từ tkinter.
+SUNK, SKY = "#06112a", "#8cc4ff"                   # nền ô nhập (lõm xuống) · xanh trời (chip Làm mới / Blue)
+BTN_TOP, BTN_BOT = "#5c9dff", "#2b6ef0"            # nút chính: bóng chuyển màu trên → dưới (giống nút "▶ Điều khiển" trên điện thoại)
+
+
+def _png(w, h, rows, alpha=False):
+    """rows = h dòng bytes (RGB hoặc RGBA) → file PNG (bytes)."""
+    import struct, zlib
+    def chunk(t, d): return struct.pack(">I", len(d)) + t + d + struct.pack(">I", zlib.crc32(t + d) & 0xffffffff)
+    raw = b"".join(b"\x00" + bytes(r) for r in rows)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6 if alpha else 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+
+
+def _rr_rows(w, h, r, out, top, bot, ring=None, t=0):
+    """Hình chữ nhật bo góc đặc (RGB): ngoài góc màu `out`, viền `ring` dày t px, ruột chuyển màu top → bot. Trả h dòng bytes."""
+    import math
+    r = max(0, min(int(r), w // 2, h // 2)); t = t if ring else 0; ring = ring or top
+    rows = []
+    for y in range(h):
+        k = y / (h - 1) if h > 1 else 0.0
+        fill = tuple(int(a + (b - a) * k + 0.5) for a, b in zip(top, bot))
+        edge = y < t or y >= h - t
+        mid = bytes(ring if edge else fill)
+        if r <= y < h - r:
+            rows.append(mid * w if edge else bytes(ring) * t + mid * (w - 2 * t) + bytes(ring) * t); continue
+        cy = (r - y - 0.5) if y < r else (y - (h - r) + 0.5)
+        left = bytearray()
+        for x in range(r):
+            cx = r - x - 0.5; d = math.sqrt(cx * cx + cy * cy)
+            ao = min(1.0, max(0.0, r - d + 0.5)); ai = min(1.0, max(0.0, r - t - d + 0.5))
+            left += bytes(int(o * (1 - ao) + g * (ao - ai) + f * ai + 0.5) for o, g, f in zip(out, ring, fill))
+        right = b"".join(bytes(left[i:i + 3]) for i in range(3 * (r - 1), -1, -3))
+        rows.append(bytes(left) + mid * (w - 2 * r) + right)
+    return rows
+
+
+def _disc(rows, cx, cy, rad, col):
+    """Vẽ đè 1 hình tròn đặc (khử răng cưa) lên rows (list bytearray RGB)."""
+    import math
+    for y in range(max(0, int(cy - rad - 1)), min(len(rows), int(cy + rad + 2))):
+        row = rows[y]
+        for x in range(max(0, int(cx - rad - 1)), min(len(row) // 3, int(cx + rad + 2))):
+            a = min(1.0, max(0.0, rad - math.sqrt((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) + 0.5))
+            if a > 0:
+                i = 3 * x
+                for j in range(3): row[i + j] = int(row[i + j] * (1 - a) + col[j] * a + 0.5)
+
+
+class Skin:
+    """Vỏ giao diện: đứng thay module tkinter (self.tk) — xem ghi chú đầu mục."""
+    R_CARD, R_IN = 16, 13
+
+    def __init__(self, tk, root):
+        self._tk, self.root = tk, root
+        try: sc = float(root.tk.call("tk", "scaling"))
+        except Exception: sc = 96 / 72.0
+        self.dp = max(0.8, min(4.0, sc / (96 / 72.0)))      # 1.0 = màn 100% · 1.5 = màn 150% (đã gồm cỡ chữ khách tự chỉnh)
+        self._imgs, self._keep, self._rgbs, self._sizes, self._probe, self._dot, self._bad = {}, {}, {}, {}, None, None, False
+        self._build()
+
+    def __getattr__(self, k): return getattr(self._tk, k)
+
+    # ---------- số đo · màu ----------
+    def px(self, n): return int(n * self.dp + 0.5) if n > 0 else 0
+    def ring(self, t): return max(1, int(t * self.dp + 0.5)) if t > 0 else 0
+
+    def rgb(self, c):
+        c = str(c); v = self._rgbs.get(c)
+        if v is None:
+            try: v = tuple(x >> 8 for x in self.root.winfo_rgb(c))
+            except Exception: v = (13, 29, 61)
+            self._rgbs[c] = v
+        return v
+
+    def wrap(self, kw):
+        """wraplength app ghi theo điểm ảnh của màn 100% → nhân theo độ phóng (chữ to bao nhiêu thì bề ngang xuống dòng rộng bấy nhiêu)."""
+        w = kw.get("wraplength")
+        if isinstance(w, (int, float)) and w > 0 and self.dp > 1.0:
+            try: lim = max(240, self.root.winfo_screenwidth() - 110)
+            except Exception: lim = 4000
+            kw["wraplength"] = min(int(w * self.dp), lim)
+        return kw
+
+    def bg_of(self, w):
+        try: return str(w.cget("bg"))
+        except Exception: return BG
+
+    def mix(self, a, b, k):
+        pa, pb = self.rgb(a), self.rgb(b)
+        return "#%02x%02x%02x" % tuple(int(x * k + y * (1 - k) + 0.5) for x, y in zip(pa, pb))
+
+    # ---------- ảnh (có nhớ đệm) ----------
+    def _photo(self, key, make, keep=False):
+        """Ảnh theo khoá (có nhớ đệm). keep=True: ảnh dùng chung, giữ mãi (đồng xu, công tắc). Ảnh khác: đệm đầy thì xoá đệm —
+           widget nào đang dùng ảnh nào thì TỰ GIỮ ảnh đó (Tk xoá ảnh khi Python không còn ai giữ)."""
+        im = self._keep.get(key) if keep else self._imgs.get(key)
+        if im is None:
+            import base64
+            if len(self._imgs) > 900: self._imgs.clear()
+            try:
+                w, h, rows, alpha = make()
+                im = self._tk.PhotoImage(master=self.root, data=base64.b64encode(_png(w, h, rows, alpha)).decode("ascii"), format="png")
+            except Exception:                                            # vẽ ảnh lỗi (rất hiếm) → ảnh 1 điểm: nút / thẻ vẫn dùng được, chỉ mất nền bo tròn
+                if not self._bad: self._bad = True; log("skin: ảnh lỗi", key[:3], traceback.format_exc())
+                im = self.dot()
+            (self._keep if keep else self._imgs)[key] = im
+        return im
+
+    def rr(self, w, h, r, out, top, bot=None, ring=None, t=0):
+        """Ảnh chữ nhật bo góc w×h."""
+        w, h = max(1, int(w)), max(1, int(h)); bot = bot or top; t = t if ring else 0
+        key = ("rr", w, h, int(r), out, top, bot, ring, t)
+        return self._photo(key, lambda: (w, h, _rr_rows(w, h, r, self.rgb(out), self.rgb(top), self.rgb(bot), self.rgb(ring) if ring else None, t), False))
+
+    def corner(self, r, t, out, ring, fill, i):
+        """1 trong 4 góc bo (0 trên-trái · 1 trên-phải · 2 dưới-trái · 3 dưới-phải) cỡ r×r của thẻ có viền."""
+        def make():
+            rows = [x[:3 * r] for x in _rr_rows(2 * r, 2 * r, r, self.rgb(out), self.rgb(fill), self.rgb(fill), self.rgb(ring), t)[:r]]
+            if i in (1, 3): rows = [b"".join(x[j:j + 3] for j in range(3 * (r - 1), -1, -3)) for x in rows]
+            if i in (2, 3): rows = rows[::-1]
+            return r, r, rows, False
+        return self._photo(("c", r, t, out, ring, fill, i), make)
+
+    def switch(self, out, on):
+        """Công tắc gạt (thay ô tích)."""
+        w, h, gap = self.px(34), self.px(20), self.px(7)
+        def make():
+            a, b = (BTN_TOP, BTN_BOT) if on else (self.mix(DIM, out, .22), self.mix(DIM, out, .22))
+            rows = [bytearray(x) for x in _rr_rows(w, h, h // 2, self.rgb(out), self.rgb(a), self.rgb(b), None if on else self.rgb(self.mix(DIM, out, .45)), self.ring(1))]
+            k = h / 2.0 - self.px(3)
+            _disc(rows, (w - h / 2.0) if on else h / 2.0, h / 2.0, k, self.rgb("#ffffff" if on else DIM))
+            return w + gap, h, [x + bytes(self.rgb(out)) * gap for x in rows], False
+        return self._photo(("sw", w, h, out, on), make, keep=True)
+
+    def coin(self, out, d=18):
+        """Đồng xu vàng nhỏ cạnh số dư."""
+        d = self.px(d)
+        def make():
+            rows = [bytearray(x) for x in _rr_rows(d, d, d // 2, self.rgb(out), self.rgb("#ffe08a"), self.rgb("#f0a92c"), self.rgb("#c9861a"), self.ring(1))]
+            return d, d, rows, False
+        return self._photo(("coin", d, out), make, keep=True)
+
+    def dot(self):
+        if self._dot is None: self._dot = self._tk.PhotoImage(master=self.root, width=1, height=1)
+        return self._dot
+
+    def text_size(self, text, font, wrap=0):
+        """Cỡ chữ đúng như Tk sẽ vẽ (nhiều dòng / tự xuống dòng đều tính) — đo bằng 1 nhãn ẩn."""
+        key = (text, str(font), str(wrap)); v = self._sizes.get(key)
+        if v is None:
+            if self._probe is None: self._probe = self._tk.Label(self.root, bd=0, highlightthickness=0, padx=0, pady=0)
+            p = self._probe
+            self.root.tk.call(p._w, "configure", "-text", text or "X", "-font", font, "-wraplength", wrap or 0)
+            v = (p.winfo_reqwidth() if text else 0, p.winfo_reqheight())
+            if len(self._sizes) > 3000: self._sizes.clear()
+            self._sizes[key] = v
+        return v
+
+    def chrome(self, win):
+        """Windows 10/11: thanh tiêu đề tối + màu trùng nền app (máy khác / bản Windows cũ: bỏ qua, không lỗi)."""
+        if os.name != "nt": return
+        def go():
+            try:
+                import ctypes
+                hwnd = ctypes.windll.user32.GetParent(win.winfo_id()) or win.winfo_id()
+                dwm = ctypes.windll.dwmapi.DwmSetWindowAttribute
+                one = ctypes.c_int(1)
+                if dwm(hwnd, 20, ctypes.byref(one), 4) != 0: dwm(hwnd, 19, ctypes.byref(one), 4)       # DWMWA_USE_IMMERSIVE_DARK_MODE
+                r, g, b = self.rgb(BG); col = ctypes.c_int(r | (g << 8) | (b << 16))
+                dwm(hwnd, 35, ctypes.byref(col), 4)                                                    # Windows 11: màu thanh tiêu đề = nền app
+                ctypes.windll.user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020)   # vẽ lại khung (không đổi vị trí / cỡ / tiêu điểm)
+            except Exception: pass
+        try: win.after(30, go)
+        except Exception: pass
+
+    # ---------- các widget ----------
+    def _build(self):
+        sk, tk, root = self, self._tk, self.root
+
+        class Frame(tk.Frame):
+            """Frame của Tk; có viền (hoặc radius=…) thì tự bo góc. radius=0 → góc vuông như cũ · radius=99 → bo hết cỡ."""
+            def __init__(f, master=None, cnf={}, **kw):
+                kw = dict(cnf or {}, **kw)
+                f._rad = kw.pop("radius", None); f._c = None; f._ci = None; f._sig = None; f._wh = None
+                f._t = int(kw.get("highlightthickness") or 0)
+                if f._t > 0: kw["highlightthickness"] = sk.ring(f._t)
+                tk.Frame.__init__(f, master, **kw)
+                if f._rad != 0 and (f._t > 0 or (f._rad or 0) > 0): f.bindtags(("SkRing",) + tuple(f.bindtags()))
+
+            def configure(f, cnf=None, **kw):
+                if kw or isinstance(cnf, dict):
+                    o = dict(cnf or {}, **kw)
+                    if "radius" in o: f._rad = o.pop("radius")
+                    if "highlightthickness" in o:
+                        f._t = int(o["highlightthickness"] or 0); o["highlightthickness"] = sk.ring(f._t)
+                    r = tk.Frame.configure(f, **o) if o else None
+                    if f._wh and any(k in o for k in ("bg", "background", "highlightbackground", "highlightthickness", "cursor")):
+                        try: f._sk_lay()
+                        except Exception: pass
+                    if "bg" in o or "background" in o:              # nền đổi → con trực tiếp vẽ lại phần "ngoài góc" theo màu mới
+                        for c in list(f.children.values()):
+                            try:
+                                if isinstance(c, (Button, Chip)): c._paint()
+                                elif isinstance(c, Frame): c._sk_lay()
+                                elif isinstance(c, (Scrollbar, Scale)): c._draw()
+                            except Exception: pass
+                    return r
+                return tk.Frame.configure(f, cnf)
+            config = configure
+
+            def _sk_lay(f, w=None, h=None):
+                """Đặt / vẽ lại 4 góc theo cỡ + màu hiện tại."""
+                if w is not None: f._wh = (w, h)
+                if not f._wh: return
+                w, h = f._wh
+                r = sk.px(sk.R_CARD if f._rad is None else f._rad)
+                r = min(r, w // 2, h // 2) if f._rad is not None else min(r, w // 2, max(sk.px(8), h // 4), h // 2)
+                if r < 3:
+                    for c in f._c or (): c.place_forget()
+                    f._sig = None; return
+                t = sk.ring(f._t); fill = str(tk.Frame.cget(f, "bg")); out = sk.bg_of(f.master)
+                ring = str(tk.Frame.cget(f, "highlightbackground")) if t else fill
+                cur = str(tk.Frame.cget(f, "cursor"))
+                sig = (r, t, out, ring, fill, cur)
+                if sig == f._sig: return
+                new = f._sig is None
+                f._sig = sig
+                if f._c is None:
+                    f._c = []
+                    for i in range(4):
+                        c = tk.Label(f, bd=0, highlightthickness=0, padx=0, pady=0)
+                        c.bind("<Button-1>", lambda e, f=f: f.event_generate("<Button-1>", x=max(0, e.x_root - f.winfo_rootx()), y=max(0, e.y_root - f.winfo_rooty())))
+                        f._c.append(c)
+                f._ci = [sk.corner(r, t, out, ring, fill, i) for i in range(4)]         # thẻ tự giữ 4 ảnh góc của mình
+                for i, c in enumerate(f._c):
+                    c.configure(image=f._ci[i], bg=out, cursor=cur)
+                    if new:
+                        c.place(relx=i % 2, rely=i // 2, anchor=("nw", "ne", "sw", "se")[i], bordermode="outside")
+                        c.lower()                                  # góc nằm DƯỚI nội dung của thẻ → không bao giờ che chữ
+
+            def winfo_children(f):                                 # 4 mảnh góc là đồ trang trí: app duyệt / xoá con của thẻ không thấy chúng
+                cs = tk.Frame.winfo_children(f)
+                return [c for c in cs if c not in f._c] if f._c else cs
+
+        def ring_ev(e):
+            f = e.widget
+            if not isinstance(f, Frame): return
+            try: f._sk_lay(e.width, e.height)
+            except Exception: pass
+        root.bind_class("SkRing", "<Configure>", ring_ev)
+
+        def pill(base, is_btn):
+            class P(base):
+                """Nút / chip viên thuốc: nền là 1 ảnh bo tròn vẽ đúng cỡ widget, chữ do Tk vẽ đè lên (compound=center).
+                   Khoá (state=disabled) là khoá "mềm": Tk vẫn thấy nút thường (khỏi bị phủ chấm xám lên ảnh), app hỏi state vẫn ra disabled."""
+                def __init__(p, master=None, cnf={}, **kw):
+                    kw = dict(cnf or {}, **kw)
+                    p._kind = kw.pop("kind", None) or ("ghost" if is_btn else "chip"); p._tint = kw.pop("tint", None); p._rad = kw.pop("radius", 99)
+                    p._cmd = kw.pop("command", None); p._state = "disabled" if str(kw.pop("state", "normal")) == "disabled" else "normal"
+                    p._padx, p._pady = int(kw.pop("padx", 14 if is_btn else 10)), int(kw.pop("pady", 7 if is_btn else 3))
+                    p._fill = kw.pop("bg", kw.pop("background", None)); p._fg = kw.pop("fg", kw.pop("foreground", None))
+                    p._ring = kw.pop("highlightbackground", None); t = kw.pop("highlightthickness", None); p._t = None if t is None else int(t)
+                    p._cur = kw.pop("cursor", "hand2" if is_btn else ""); p._dim = bool(kw.pop("dim", True))
+                    for k in ("activebackground", "activeforeground", "disabledforeground", "relief", "bd", "borderwidth", "image", "compound", "width", "height",
+                              "highlightcolor", "pill"): kw.pop(k, None)
+                    p._hot = p._down = p._foc = False; p._img = None; p._wh = None; p._sig = None; p._nat = (1, 1)
+                    out = sk.bg_of(master)
+                    if is_btn: kw["command"] = p._fire
+                    base.__init__(p, master, image=sk.dot(), compound="center", bd=0, relief="flat", highlightthickness=0, padx=0, pady=0, bg=out, activebackground=out,
+                                  cursor=p._cur if p._state == "normal" else "", **kw)
+                    p.bindtags((str(p), "SkPill") + tuple(x for x in p.bindtags() if x not in (str(p), "Button", "Label")))
+                    fg = p._look()[5]
+                    base.configure(p, fg=fg, activeforeground=fg)
+                    p._measure()
+
+                def _fire(p):
+                    if p._state != "disabled" and p._cmd: return p._cmd()
+
+                def _measure(p):
+                    tw, th = sk.text_size(str(base.cget(p, "text")), str(base.cget(p, "font")), str(base.cget(p, "wraplength")))
+                    p._nat = (tw + 2 * sk.px(p._padx), th + 2 * sk.px(p._pady))
+                    base.configure(p, width=p._nat[0], height=p._nat[1])
+
+                def _look(p):
+                    """(ngoài, trên, dưới, viền, dày viền, chữ) theo kiểu nút + trạng thái."""
+                    out = sk.bg_of(p.master); k = p._kind; f = p._fill; ring = None; t = 0
+                    if f is not None and k == "primary" and str(f).lower() == LINE: f = None       # app tô nút chính màu "khoá" → vẫn là nút chính (mờ đi khi khoá)
+                    if p._tint:
+                        top = bot = sk.mix(p._tint, out, .13); ring = sk.mix(p._tint, out, .45); t = 1; fg = p._fg or p._tint
+                    elif f is not None and str(f).lower() not in (ACC, LINE, CARD):          # app tự tô màu riêng (nút vòng quay, nhãn gói…)
+                        top = bot = str(f); fg = p._fg or TXT
+                        if p._t and p._ring and str(p._ring).lower() != str(f).lower(): ring, t = str(p._ring), p._t
+                    elif (f is not None and str(f).lower() == ACC) or (f is None and k == "primary"):
+                        top, bot, fg = BTN_TOP, BTN_BOT, p._fg if p._fg and str(p._fg).lower() != TXT else "#ffffff"
+                    elif k == "danger":
+                        top = bot = sk.mix(BAD, out, .09); ring = sk.mix(BAD, out, .45); t = 1; fg = BAD
+                    elif k == "flat":
+                        top = bot = out; fg = p._fg or TXT
+                    elif k == "soft":                                                         # nút phụ nổi hơn ghost 1 bậc: nền xanh nhạt
+                        top = bot = sk.mix(ACC, out, .17); ring = sk.mix(ACC, out, .42); t = 1; fg = p._fg or TXT
+                    else:                                                                     # ghost / soft / chip thường: nền tấm + viền mảnh
+                        top = bot = CARD if out.lower() != CARD else sk.mix(BG, CARD, .45)
+                        ring = str(p._ring) if (p._ring and str(p._ring).lower() not in (LINE, CARD)) else sk.mix("#5aafff", top, .30); t = 1; fg = p._fg or TXT
+                        if p._t == 0: ring, t = None, 0
+                    if p._state == "disabled" and not p._dim: pass                           # khoá nhưng vẫn vẽ rõ (nút đang được chọn)
+                    elif p._state == "disabled":
+                        top, bot, fg = sk.mix(top, out, .42), sk.mix(bot, out, .42), sk.mix(fg, out, .42)
+                        if ring: ring = sk.mix(ring, out, .5)
+                    elif p._down: top, bot = sk.mix("#000000", top, .14), sk.mix("#000000", bot, .14)
+                    elif p._hot and (is_btn or p._cur == "hand2"):
+                        top, bot = sk.mix("#ffffff", top, .09), sk.mix("#ffffff", bot, .09)
+                        if ring: ring = sk.mix("#ffffff", ring, .25)
+                    if p._foc and is_btn and p._state != "disabled": ring, t = sk.mix("#ffffff", ACC, .45), max(t, 1)
+                    return out, top, bot, ring, sk.ring(t), fg
+
+                def _paint(p):
+                    if not p._wh: return
+                    (w, h), look = p._wh, p._look()
+                    sig = (w, h) + look
+                    if sig == p._sig: return
+                    p._sig = sig; out, top, bot, ring, t, fg = look
+                    r = min(h // 2, w // 2, sk.px(p._rad) if p._rad < 99 else (h if h <= sk.px(38) else sk.px(15)))
+                    p._img = sk.rr(w, h, r, out, top, bot, ring, t)
+                    base.configure(p, image=p._img, fg=fg, activeforeground=fg, bg=out, activebackground=out, cursor=p._cur if p._state == "normal" else "")
+
+                def configure(p, cnf=None, **kw):
+                    if not (kw or isinstance(cnf, dict)): return base.configure(p, cnf)
+                    o = dict(cnf or {}, **kw); meas = False
+                    if "command" in o: p._cmd = o.pop("command")
+                    if "state" in o: p._state = "disabled" if str(o.pop("state")) == "disabled" else "normal"
+                    for a, b in (("bg", "_fill"), ("background", "_fill"), ("fg", "_fg"), ("foreground", "_fg"), ("highlightbackground", "_ring"),
+                                 ("kind", "_kind"), ("tint", "_tint"), ("cursor", "_cur"), ("radius", "_rad"), ("dim", "_dim")):
+                        if a in o: setattr(p, b, o.pop(a))
+                    if "highlightthickness" in o: p._t = int(o.pop("highlightthickness") or 0)
+                    for a in ("padx", "pady"):
+                        if a in o: setattr(p, "_" + a, int(o.pop(a))); meas = True
+                    for a in ("activebackground", "activeforeground", "disabledforeground", "relief", "bd", "borderwidth", "image", "compound", "width", "height", "highlightcolor"):
+                        o.pop(a, None)
+                    if o:
+                        base.configure(p, **o)
+                        meas = meas or any(a in o for a in ("text", "font", "wraplength"))
+                    if meas: p._measure()
+                    if p._wh: p._paint()
+                    else:
+                        fg = p._look()[5]; base.configure(p, fg=fg, activeforeground=fg, cursor=p._cur if p._state == "normal" else "")
+                config = configure
+
+                def cget(p, key):
+                    if key == "state": return p._state
+                    if key in ("bg", "background"): return p._fill if p._fill is not None else p._look()[1]
+                    if key in ("fg", "foreground"): return p._fg if p._fg is not None else p._look()[5]
+                    if key == "cursor": return p._cur
+                    return base.cget(p, key)
+                __getitem__ = cget
+            P.__name__ = "Button" if is_btn else "Chip"
+            return P
+
+        Button, Chip = pill(tk.Button, True), pill(tk.Label, False)
+
+        def pill_ev(what):
+            def h(e):
+                p = e.widget
+                if not isinstance(p, (Button, Chip)): return
+                fire = False
+                try:
+                    if what == "cfg": p._wh = (e.width, e.height)
+                    elif what == "in": p._hot = True
+                    elif what == "out":
+                        p._hot = False
+                        if not (isinstance(e.state, int) and e.state & 0x100): p._down = False      # còn giữ chuột trái thì quay lại nút vẫn bấm được (như nút Tk)
+                    elif what == "foc": p._foc = True
+                    elif what == "blur": p._foc = False
+                    elif not isinstance(p, Button): return
+                    elif what == "down": p._down = p._state != "disabled"
+                    elif what == "up":
+                        was, p._down = p._down, False
+                        fire = was and 0 <= e.x < p.winfo_width() and 0 <= e.y < p.winfo_height()
+                    elif what == "key": fire = True
+                    p._paint()
+                except Exception: log("skin:", traceback.format_exc())
+                if fire:                                            # lệnh của nút chạy NGOÀI khối bắt lỗi của vỏ: lỗi trong lệnh ghi log riêng, không lẫn với lỗi vẽ
+                    try: p._fire()
+                    except Exception: log("ui: nút", traceback.format_exc())
+            return h
+        for seq, what in (("<Configure>", "cfg"), ("<Enter>", "in"), ("<Leave>", "out"), ("<FocusIn>", "foc"), ("<FocusOut>", "blur"),
+                          ("<ButtonPress-1>", "down"), ("<ButtonRelease-1>", "up"), ("<Key-space>", "key")):
+            root.bind_class("SkPill", seq, pill_ev(what))
+
+        def Label(master=None, cnf={}, **kw):
+            """Nhãn thường của Tk; có viền (highlightthickness ≥ 1) hoặc pill=True → chip viên thuốc."""
+            kw = sk.wrap(dict(cnf or {}, **kw))
+            if kw.pop("pill", False) or int(kw.get("highlightthickness") or 0) > 0 or kw.get("tint"): return Chip(master, **kw)
+            return tk.Label(master, **kw)
+
+        class Entry(tk.Entry):
+            """Ô nhập bo tròn: ô nhập thật nằm trong 1 khung có viền; pack / grid / place tác động lên khung (kiểu ScrolledText)."""
+            def __init__(e, master=None, cnf={}, **kw):
+                kw = dict(cnf or {}, **kw)
+                for k in ("bg", "background", "relief", "bd", "borderwidth", "highlightthickness", "highlightbackground", "highlightcolor"): kw.pop(k, None)
+                e._ring = sk.mix("#5aafff", SUNK, .36)
+                e._box = Frame(master, bg=SUNK, highlightthickness=1, highlightbackground=e._ring, radius=sk.R_IN)
+                kw.setdefault("insertbackground", TXT); kw.setdefault("fg", TXT)
+                tk.Entry.__init__(e, e._box, bg=SUNK, relief="flat", bd=0, highlightthickness=0, disabledbackground=SUNK, readonlybackground=SUNK,
+                                  disabledforeground=DIM, selectbackground=ACC, selectforeground="#ffffff", **kw)
+                tk.Entry.pack(e, fill="both", expand=True, padx=sk.px(11), pady=sk.px(3))
+                e.bind("<FocusIn>", lambda _e: e._box.configure(highlightbackground=ACC), add="+")
+                e.bind("<FocusOut>", lambda _e: e._box.configure(highlightbackground=e._ring), add="+")
+                for m in (vars(tk.Pack).keys() | vars(tk.Grid).keys() | vars(tk.Place).keys()) - vars(tk.Entry).keys():
+                    if m[0] != "_" and m not in ("config", "configure"): setattr(e, m, getattr(e._box, m))
+                e.winfo_manager = e._box.winfo_manager
+
+            def destroy(e):
+                box, e._box = getattr(e, "_box", None), None
+                if box is not None: box.destroy()
+                else: tk.Entry.destroy(e)
+
+        class Scrollbar(tk.Canvas):
+            """Thanh cuộn mảnh (chỉ dọc): thanh trượt bo tròn, rê chuột sáng lên, nội dung vừa khung thì ẩn."""
+            def __init__(s, master=None, cnf={}, **kw):
+                kw = dict(cnf or {}, **kw)
+                s._cmd = kw.pop("command", None); s._lo, s._hi, s._grab, s._hot = 0.0, 1.0, None, False
+                tk.Canvas.__init__(s, master, width=sk.px(10), highlightthickness=0, bd=0, bg=sk.bg_of(master))
+                for seq, fn in (("<Configure>", lambda e: s._draw()), ("<Map>", lambda e: s._draw()), ("<ButtonPress-1>", s._press), ("<B1-Motion>", s._drag),
+                                ("<ButtonRelease-1>", s._up), ("<Enter>", lambda e: s._glow(True)), ("<Leave>", lambda e: s._glow(False))): s.bind(seq, fn)
+
+            def set(s, lo, hi):
+                lo, hi = float(lo), float(hi)
+                if (lo, hi) != (s._lo, s._hi): s._lo, s._hi = lo, hi; s._draw()
+            def get(s): return s._lo, s._hi
+            def _glow(s, on): s._hot = on; s._draw()
+
+            def _span(s):
+                h = max(1, s.winfo_height()); sp = max(0.0, min(1.0, s._hi - s._lo)); n = min(h, max(sk.px(28), int(sp * h)))
+                return h, n, (int(s._lo / (1 - sp) * (h - n)) if sp < 1 else 0)
+
+            def _draw(s):
+                s.delete("all"); out = sk.bg_of(s.master)
+                if out != str(tk.Canvas.cget(s, "bg")): tk.Canvas.configure(s, bg=out)
+                if s._hi - s._lo >= 0.999: return
+                h, n, y = s._span(); w = max(1, s.winfo_width()); k = sk.px(6 if (s._hot or s._grab is not None) else 4)
+                s.create_line(w / 2.0, y + k / 2.0 + 1, w / 2.0, y + n - k / 2.0 - 1, width=k, capstyle="round",
+                              fill=sk.mix("#5aafff", BG, .55 if (s._hot or s._grab is not None) else .32))
+
+            def _press(s, e):
+                h, n, y = s._span()
+                if y <= e.y <= y + n: s._grab = e.y - y
+                else: s._grab = n / 2.0; s._drag(e)
+                s._draw()
+            def _drag(s, e):
+                if s._grab is None or not s._cmd: return
+                h, n, y = s._span(); sp = s._hi - s._lo
+                s._cmd("moveto", max(0.0, min(1.0, (e.y - s._grab) / float(max(1, h - n)) * (1 - sp))))
+            def _up(s, e): s._grab = None; s._draw()
+
+        class Scale(tk.Canvas):
+            """Thanh kéo ngang bo tròn (thay Scale của Tk): rãnh mảnh + núm tròn. Nhận from_ / to / resolution / variable / command như Scale."""
+            def __init__(s, master=None, cnf={}, **kw):
+                kw = dict(cnf or {}, **kw)
+                s._lo, s._hi, s._res = float(kw.get("from_", 0)), float(kw.get("to", 100)), float(kw.get("resolution") or 1)
+                s._var, s._cmd, s._h = kw.get("variable"), kw.get("command"), sk.px(26)
+                s._val = s._lo
+                tk.Canvas.__init__(s, master, height=s._h, highlightthickness=0, bd=0, bg=sk.bg_of(master), cursor=kw.get("cursor", "hand2"))
+                if s._var is not None:
+                    s._sync(); s._var.trace_add("write", lambda *_: s._sync())
+                for seq, fn in (("<Configure>", lambda e: s._draw()), ("<ButtonPress-1>", s._drag), ("<B1-Motion>", s._drag)): s.bind(seq, fn)
+
+            def cget(s, k):
+                return s._lo if k in ("from", "from_") else s._hi if k == "to" else s._res if k == "resolution" else tk.Canvas.cget(s, k)
+            __getitem__ = cget
+            def get(s): return s._val
+
+            def set(s, v):
+                v = max(s._lo, min(s._hi, s._lo + round((float(v) - s._lo) / s._res) * s._res)); s._val = v
+                if s._var is not None: s._var.set(int(v) if float(v).is_integer() else v)
+                else: s._draw()
+
+            def _sync(s):
+                try:
+                    s._val = max(s._lo, min(s._hi, float(s._var.get())))
+                    if s.winfo_exists(): s._draw()
+                except Exception: pass
+
+            def _draw(s):
+                s.delete("all"); out = sk.bg_of(s.master)
+                if out != str(tk.Canvas.cget(s, "bg")): tk.Canvas.configure(s, bg=out)
+                w, h = max(1, s.winfo_width()), s._h; k = h / 2.0
+                x = k + (s._val - s._lo) / max(1e-9, s._hi - s._lo) * (w - 2 * k); t = sk.px(6)
+                s.create_line(k, k, w - k, k, width=t, capstyle="round", fill=sk.mix("#5aafff", out, .22))
+                if x > k: s.create_line(k, k, x, k, width=t, capstyle="round", fill=ACC)
+                d = sk.px(18); s._knob = sk.rr(d, d, d // 2, out, "#ffffff", "#dbe8ff", sk.mix(ACC, "#ffffff", .6), sk.ring(1))
+                s.create_image(int(x), int(k), image=s._knob)
+
+            def _drag(s, e):
+                w = max(1, s.winfo_width()); k = s._h / 2.0; old = s._val
+                s.set(s._lo + max(0.0, min(1.0, (e.x - k) / max(1.0, w - 2 * k))) * (s._hi - s._lo))
+                if s._val != old and s._cmd: s._cmd(str(s._val))
+
+        def Checkbutton(master=None, cnf={}, **kw):
+            """Ô tích → công tắc gạt (vẫn là Checkbutton của Tk, chỉ thay hình)."""
+            kw = sk.wrap(dict(cnf or {}, **kw)); out = str(kw.get("bg") or kw.get("background") or sk.bg_of(master))
+            for k in ("selectcolor", "relief", "bd", "borderwidth", "indicatoron", "image", "selectimage", "compound", "offrelief", "overrelief", "highlightthickness",
+                      "activebackground"): kw.pop(k, None)
+            kw.setdefault("cursor", "hand2"); kw.setdefault("activeforeground", kw.get("fg", TXT))
+            c = tk.Checkbutton(master, image=sk.switch(out, False), selectimage=sk.switch(out, True), compound="left", indicatoron=False, bd=0, relief="flat",
+                               offrelief="flat", overrelief="flat", selectcolor=out, activebackground=out, highlightthickness=0, **kw)
+            return c
+
+        def Toplevel(master=None, cnf={}, **kw):
+            w = tk.Toplevel(master, cnf, **kw); sk.chrome(w); return w
+
+        sk.Frame, sk.Label, sk.Button, sk.Chip, sk.Entry, sk.Scrollbar, sk.Scale, sk.Checkbutton, sk.Toplevel = Frame, Label, Button, Chip, Entry, Scrollbar, Scale, Checkbutton, Toplevel
+
+
+class PlainSkin:
+    """Dự phòng: dựng vỏ lỗi (rất hiếm — bản Tk lạ) → app vẫn chạy bằng widget Tk thường, chỉ kém đẹp. Các tuỳ chọn riêng của vỏ được bỏ qua."""
+    dp = 1.0
+    def __init__(self, tk): self._tk = tk
+    def __getattr__(self, k): return getattr(self._tk, k)
+    def px(self, n): return int(n)
+    def chrome(self, win): pass
+    def coin(self, out, d=18): return ""
+    def _kw(self, kw):
+        return {k: v for k, v in kw.items() if k not in ("radius", "kind", "tint", "pill", "dim")}
+    def Frame(self, master=None, **kw): return self._tk.Frame(master, **self._kw(kw))
+    def Label(self, master=None, **kw):
+        if kw.get("tint"): kw.setdefault("fg", kw["tint"]); kw.setdefault("bg", master["bg"])
+        return self._tk.Label(master, **self._kw(kw))
+    def Button(self, master=None, **kw):
+        kind = kw.get("kind") or "ghost"
+        kw.setdefault("bg", {"primary": ACC, "danger": "#3a1d27", "flat": BG}.get(kind, LINE)); kw.setdefault("fg", kw.get("tint") or TXT)
+        o = dict(activebackground="#4b8cff" if kind == "primary" else "#2a3a5c", activeforeground=TXT, relief="flat", bd=0, cursor="hand2"); o.update(self._kw(kw))
+        return self._tk.Button(master, **o)
+
+
+# logo cá voi thu nhỏ sẵn (PNG, nền = màu nền app) cho đầu trang / màn đăng nhập — cỡ theo độ phóng màn hình
+LOGO_PNG = {
+    36: "iVBORw0KGgoAAAANSUhEUgAAACQAAAAkCAMAAADW3miqAAABIFBMVEX+/fr5+Pbz9fXg6fLI2Oy20vGvyeihxO6mvd6euuKZu+aetdmartSNuvCNtemMsOJ7ru6Qp9B0pueFm8iAlMFqoutlnehgm+ldl+VZmu5ZmOxWlu1WledTlu9TlOtSkupPketNkOpZjdpNjupMj+pKjupKjOhHjetIi+hGiudGiedDiOZrgLVHg9s9g+U3fuJbcqxIbrlGYKM4VJwsS5cYPJYVOI4ROJgUN44TN44RN5MTNo0SNo0RNpESNY0RNY0RNYwQNY8RNIwQNIwQNIsPNIwRM4wQM4wQM4oQM4kPM4wQMooPMYQOM4sNMYoKL4kJLokMLX4OK3QHLIgFKocDKYYCKYcCKIYAJ4UJJGILIlcAHX8HFS8HFCoHEicHEiY+nS1wAAAC5ElEQVR42o2UfW+iQBDGtxRfUBFB0QIt6mlRXooEqZZCBbu9q61VjKgYa/T7f4tb2rtrL+WP7iabwPzyTGYyz4Dj8XA47nfLKfxypsvdPo4ewRE9u5fbO5hw7m5fdkjkCA6H/XI4njwkQQ+T8XC5PxwQtBw+JSJv2NNwiaDjbviUEPVH9xCOPAifhrsj2L+ME3RGs3DmemEwgg/jlz3Y3U4SmGDQH4RB31qM4OR2B5Z3X4X8+XW+mO2bGcIK/Ie7JUjQgfZWIzssUbgoaVsbwglIqslbWGmmw5zKRH9hOw5MhKAb9iuUSBSMaBqs1n4yBAeb1zKTxulCgS4bi0+Q77r+33yRVS6en9c5gef5nPYB+bNVOH+n/FDDS9wFJ6DbYWsEgjzbdmz3/nlUKVzPUY/hDSoux7ZbTakuqz8IqQigH0Tb1Tq0F/lUyohQxd7GTHVqIidyglRNn2BSDniBpWmVsvlq4GzJWNvQXmtptluXGlJDp04AONUJ4IaFDEmmChZOsmlzM0C5MjLX4Oqc2KhiAAOpNg2ctUZekmkTJ2s8mXfCyMx0W0hFandlHGAnJ2dVVN3zlM6lsvkMw7MdMmtY6QbSafItoXOGYUiol7cA9OY3Gp1N1XiRF2s5PHum1LstuS039FgIu6pVtnELZtH0l5HjhBqXwTN1oSVcXlwKrSsiTlbS81YQN9O3fe+1Quq1IqPKSl1pKW2lrSIdgDE9wtjYfzruw/sCWyrxl3xX6IpdUepU4+rZHqVFH1MwCq7zGb0l15Wm2lTbikphONWTssbahR+j4gaPFepc7+hNRVQasqqe9XoM3d868BME3Vlo0FSxWtW7aqPH5BiKNu5XN3Ho0/j67iboG1olX0UaZdOw5tFPNw5M/jOC4y02q9dySaLK82i98J03fyIj/G8pzxkEJl0xw9mN473/ii31xZz+4jFce/4/o8fm/GrzEXTdj683m39rYXxr9XxriX1nHf4GxcAbTxdRSRAAAAAASUVORK5CYII=",
+    54: "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",
+    72: "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",
+    108: "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",
+}
+
+
 # ================================================================ CỬA SỔ DANH SÁCH (tkinter)
-BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#0b1220", "#121b2f", "#1f2b45", "#eef2f8", "#8b97ad", "#2f7bff", "#22c38e", "#f0b429", "#ef5b5b"
-BRAND = "#5aa8ff"          # màu chữ "Blue" trong tên CloudBlue
+# 17/11c: bảng màu "Thuỷ đêm" của app điện thoại (nền xanh đêm · tấm nổi · viền xanh mờ · chữ trắng xanh)
+BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#071226", "#0d1d3d", "#244978", "#e8f1ff", "#9fb4d8", "#3d86ff", "#3ce0b0", "#ffd666", "#ff6b81"
+BRAND = "#4f95ff"          # màu chữ "Blue" trong tên CloudBlue
 STATUS = {"active": ("Đang chạy", OK), "pending": ("Đang tạo…", WARN), "expired": ("Hết hạn — chờ gia hạn", BAD), "error": ("Lỗi", BAD)}
+
+
+def left_secs(iso):
+    """Số giây còn lại tới hạn (không đọc được → coi như còn rất lâu)."""
+    try: return (datetime.datetime.fromisoformat(str(iso).replace("Z", "+00:00")) - datetime.datetime.now(datetime.timezone.utc)).total_seconds()
+    except Exception: return 9e9
 
 
 def fmt_left(iso):
@@ -1425,7 +1984,7 @@ class AndTiles:
         self.frame = tk.Frame(parent, bg=BG); self.tiles = []
         for i, (val, hint) in enumerate(items):
             self.frame.grid_columnconfigure(i, weight=1, uniform="and")
-            t = tk.Frame(self.frame, bg=CARD, highlightthickness=1, highlightbackground=LINE, cursor="hand2", height=86)
+            t = tk.Frame(self.frame, bg=CARD, highlightthickness=1, highlightbackground=LINE, cursor="hand2", height=tk.px(86))
             t.grid(row=0, column=i, sticky="nsew", padx=(0 if i == 0 else 8, 0), pady=2); t.grid_propagate(False); t.pack_propagate(False)
             inner = tk.Frame(t, bg=CARD); inner.place(relx=.5, rely=.5, anchor="center")
             k = tk.Label(inner, text="Android", font=("Segoe UI", 9, "bold"), bg=CARD, fg=DIM)
@@ -1463,8 +2022,8 @@ class TierList:
         tk = self.dlg.app.tk; acc = t["color"]; bg = _mix(acc, CARD, .14)
         c = tk.Frame(self.frame, bg=bg, highlightthickness=1, highlightbackground=_mix(acc, BG, .45), cursor="hand2")
         c.pack(fill="x", pady=(0, 8))
-        bar = tk.Frame(c, bg=acc, width=4); bar.pack(side="left", fill="y")
-        body = tk.Frame(c, bg=bg); body.pack(side="left", fill="both", expand=True, padx=(10, 10), pady=8)
+        bar = tk.Frame(c, bg=acc, width=4); bar.pack(side="left", fill="y", padx=(9, 0), pady=11)       # 17/11c: vạch màu thụt vào trong (thẻ đã bo góc)
+        body = tk.Frame(c, bg=bg); body.pack(side="left", fill="both", expand=True, padx=(10, 12), pady=9)
         top = tk.Frame(body, bg=bg); top.pack(fill="x")
         ic = tk.Label(top, text=t["icon"], font=("Segoe UI", 16), bg=bg, fg=TXT, width=2); ic.pack(side="left", padx=(0, 8))
         mid = tk.Frame(top, bg=bg); mid.pack(side="left", fill="x", expand=True)
@@ -1476,11 +2035,11 @@ class TierList:
         if len(ands) < len(allv): spec += "   ·   Android " + (" / ".join(ands) if ands else "— vượt trần")
         sp = tk.Label(mid, text=spec, font=("Segoe UI", 9, "bold"), bg=bg, fg=TXT, anchor="w"); sp.pack(fill="x"); wl.append(sp)
         rt = tk.Frame(top, bg=bg); rt.pack(side="right", padx=(8, 0)); wl.append(rt)
-        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ff5f6d", fg="white", padx=7); b.pack(anchor="e"); wl.append(b)
+        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ff5f6d", fg="white", padx=8, pady=2, pill=True); b.pack(anchor="e"); wl.append(b)
         per = per_day(self.dlg.pr, t["ram"], t["cpu"])
         pr = tk.Label(rt, text=vnd(per), font=("Segoe UI", 13, "bold"), bg=bg, fg=TXT, anchor="e"); pr.pack(anchor="e")
         pd = tk.Label(rt, text="/ ngày", font=("Segoe UI", 8), bg=bg, fg=DIM, anchor="e"); pd.pack(anchor="e"); wl += [pr, pd]
-        btn = tk.Label(top, text="Chọn", font=("Segoe UI", 9, "bold"), bg=_mix(acc, CARD, .30), fg=TXT, padx=10, pady=5, cursor="hand2")
+        btn = tk.Label(top, text="Chọn", font=("Segoe UI", 9, "bold"), bg=_mix(acc, CARD, .30), fg=TXT, padx=12, pady=5, cursor="hand2", pill=True)
         btn.pack(side="right", padx=(10, 0)); wl.append(btn)
         more = tk.Frame(body, bg=bg)
         mw = []
@@ -1515,7 +2074,8 @@ class Dlg:
         d.bind("<Escape>", lambda e: self.close())
         d.protocol("WM_DELETE_WINDOW", self.close)
         d.after(80, self._grab)
-        self.foot = tk.Frame(d, bg=CARD, highlightbackground=LINE, highlightthickness=1); self.foot.pack(side="bottom", fill="x")
+        self.foot = tk.Frame(d, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=20); self.foot.pack(side="bottom", fill="x")
+        self._foot_on = None; self.foot.bind("<Configure>", self._foot_fix, add="+")     # 17/11c: chân hộp (tổng tiền + nút) nổi, bo tròn như thanh dưới của app điện thoại
         wrap = tk.Frame(d, bg=BG); wrap.pack(side="top", fill="both", expand=True)
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
         self.body = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.body, anchor="nw")
@@ -1526,6 +2086,16 @@ class Dlg:
 
     def _grab(self):
         try: self.win.grab_set(); self.win.focus_force()
+        except Exception: pass
+
+    def _foot_fix(self, e=None):
+        """Chân hộp có nút → nổi cách mép 12 px, có viền bo tròn; chưa có gì trong chân → thu lại (không để 1 vệt viền trơ trọi)."""
+        try:
+            has = bool(self.foot.winfo_children())
+            if has == self._foot_on: return
+            self._foot_on = has
+            self.foot.configure(highlightthickness=1 if has else 0)
+            self.foot.pack_configure(padx=12 if has else 0, pady=(2, 12) if has else 0)
         except Exception: pass
 
     def close(self):
@@ -1961,13 +2531,18 @@ def offers_after_top(dlg, amt):
     dlg.bg(lambda: offers_load(app.auth), show)
 
 
+TICK_BG, TICK_RING = "#2a2106", "#7d6216"
+
+
 class Ticker:
     """📣 Dòng chữ chạy ưu đãi trên cùng màn danh sách máy (bấm → hộp Ưu đãi). Chữ trôi sang trái ~40 px / giây, nối vòng liên tục."""
     GAP = "      •      "
     def __init__(self, app, holder):
         tk = app.tk; self.app = app; self.text = ""; self.x = 0.0; self.w = 1; self.job = None
-        self.cv = tk.Canvas(holder, height=26, bg="#2e2206", highlightthickness=0, cursor="hand2")
-        self.cv.bind("<Button-1>", lambda e: OffersDlg(app))
+        self.h = max(26, tk.px(26))
+        self.box = tk.Frame(holder, bg=TICK_BG, highlightbackground=TICK_RING, highlightthickness=1, radius=99, cursor="hand2")     # 17/11c: viên thuốc vàng như app điện thoại
+        self.cv = tk.Canvas(self.box, height=self.h, bg=TICK_BG, highlightthickness=0, cursor="hand2")
+        for w in (self.box, self.cv): w.bind("<Button-1>", lambda e: OffersDlg(app))
 
     def set(self, items):
         t = self.GAP.join(x for x in items if x)
@@ -1975,15 +2550,16 @@ class Ticker:
         self.text = t
         if not t:
             self.stop()
-            try: self.cv.pack_forget()
+            try: self.cv.pack_forget(); self.box.pack_forget()
             except Exception: pass
             return
         import tkinter.font as tkfont
         f = tkfont.Font(family="Segoe UI", size=10, weight="bold"); unit = t + self.GAP
         self.w = max(1, f.measure(unit)); self.cv.delete("all")
-        self.cv.create_text(0, 13, text=unit * (2 + int(2600 / self.w)), anchor="w", fill="#ffe296", font=f, tags="t")      # lặp đủ dài để phủ kín cửa sổ rộng
+        self.cv.create_text(0, self.h // 2, text=unit * (2 + int(2600 / self.w)), anchor="w", fill="#ffe7a3", font=f, tags="t")      # lặp đủ dài để phủ kín cửa sổ rộng
         self.x = 0.0
-        if not self.cv.winfo_manager(): self.cv.pack(fill="x")
+        if not self.cv.winfo_manager():
+            self.box.pack(fill="x", padx=18, pady=(10, 0)); self.cv.pack(fill="x", padx=self.h // 2 + 2, pady=1)       # chữ chạy trong phần thẳng của viên thuốc
         if self.job is None: self._step()
 
     def _step(self):
@@ -1992,7 +2568,7 @@ class Ticker:
             if not self.text or not self.cv.winfo_exists(): return
             self.x -= 1.2
             if self.x <= -self.w: self.x += self.w
-            self.cv.coords("t", self.x, 13)
+            self.cv.coords("t", self.x, self.h // 2)
             self.job = self.cv.after(30, self._step)
         except Exception: self.job = None
 
@@ -2275,8 +2851,8 @@ class OrderDlg(Dlg):
         tk = self.app.tk
         f = tk.Frame(self.body, bg=BG); f.pack(fill="x", padx=18, pady=(16, 6))
         hr = tk.Frame(f, bg=BG); hr.pack(fill="x")
-        cv = tk.Canvas(hr, width=28, height=28, bg=BG, highlightthickness=0); cv.pack(side="left", padx=(0, 10))
-        cv.create_oval(2, 2, 26, 26, fill=ACC, outline="#9fd0ff", width=1); cv.create_text(14, 14, text=str(n), fill="white", font=("Segoe UI", 11, "bold"))
+        m = tk.px(28); cv = tk.Canvas(hr, width=m, height=m, bg=BG, highlightthickness=0); cv.pack(side="left", padx=(0, 10))
+        cv.create_oval(2, 2, m - 2, m - 2, fill=ACC, outline="#9fd0ff", width=1); cv.create_text(m // 2, m // 2, text=str(n), fill="white", font=("Segoe UI", 11, "bold"))
         tx = tk.Frame(hr, bg=BG); tx.pack(side="left", fill="x", expand=True)
         self.label(tx, title, ("Segoe UI", 12, "bold"), TXT).pack(fill="x")
         if sub: self.label(tx, sub, self.app.f_s, DIM, wraplength=500).pack(fill="x")
@@ -2961,6 +3537,7 @@ def wheel_banner(owner, holder):
     app = getattr(owner, "app", owner); tk = app.tk; sc = wheel_scale(app)
     try:
         for w in holder.winfo_children(): w.destroy()
+        holder.configure(height=1)                         # khung rỗng thì Tk giữ chiều cao cũ → ép về 1 px
     except Exception: return
     s = WHEEL["st"]
     if not wheel_live(s): return
@@ -2979,7 +3556,7 @@ def wheel_banner(owner, holder):
     ic.bind("<Button-1>", lambda e: wheel_open(app, owner if isinstance(owner, Dlg) else None)); ic.configure(cursor="hand2")
     tx = tk.Frame(f, bg=W_CARD); tx.pack(side="left", fill="x", expand=True, padx=10, pady=8)
     tk.Label(tx, text=f"Vòng quay may mắn · mã giảm đến {wheel_top(s)}%", font=("Segoe UI", 10, "bold"), fg=W_PEARL, bg=W_CARD, anchor="w").pack(fill="x")
-    tk.Label(tx, text=sub, font=("Segoe UI", 9), fg=W_SUB, bg=W_CARD, anchor="w", justify="left", wraplength=int(300 * sc)).pack(fill="x")
+    tk.Label(tx, text=sub, font=("Segoe UI", 9), fg=W_SUB, bg=W_CARD, anchor="w", justify="left", wraplength=300).pack(fill="x")
 
 def wheel_hint(dlg):
     """Dòng '🎡 Lệnh nạp này được +N lượt quay' dưới ô số tiền (hộp Nạp tiền)."""
@@ -3061,15 +3638,15 @@ class WheelDlg(Dlg):
         tk = self.app.tk; self.clear()
         hd = tk.Frame(self.body, bg=W_DEEP); hd.pack(fill="x", padx=18, pady=(16, 0))
         tk.Label(hd, text="Vòng quay may mắn", font=("Segoe UI", 17, "bold"), fg=W_PEARL, bg=W_DEEP).pack(side="left")
-        tk.Label(hd, text=" VIP ", font=("Segoe UI", 8, "bold"), fg=W_INK, bg=W_PEARL2).pack(side="left", padx=8, pady=(4, 0))
-        self.left_l = tk.Label(hd, text="", font=("Segoe UI", 10, "bold"), bg=W_DEEP, padx=12, pady=3); self.left_l.pack(side="right")
-        self.sub_l = self.label(self.body, "", self.app.f_s, W_SUB, wraplength=self.px(500)); self.sub_l.pack(fill="x", padx=18, pady=(4, 0))
+        tk.Label(hd, text=" VIP ", font=("Segoe UI", 8, "bold"), fg=W_INK, bg=W_PEARL2, padx=5, pady=1, pill=True).pack(side="left", padx=8, pady=(4, 0))
+        self.left_l = tk.Label(hd, text="", font=("Segoe UI", 10, "bold"), bg=W_DEEP, padx=12, pady=3, pill=True); self.left_l.pack(side="right")
+        self.sub_l = self.label(self.body, "", self.app.f_s, W_SUB, wraplength=500); self.sub_l.pack(fill="x", padx=18, pady=(4, 0))
         self.cv = tk.Canvas(self.body, width=self.S, height=int(self.S * 1.07), bg=W_DEEP, highlightthickness=0); self.cv.pack(pady=(6, 0))
         self.cv.tag_bind("hub", "<Button-1>", lambda e: self.hub())
         self.cv.tag_bind("hub", "<Enter>", lambda e: self.cv.configure(cursor="hand2" if self.hub_on and not self.busy else ""))
         self.cv.tag_bind("hub", "<Leave>", lambda e: self.cv.configure(cursor=""))
         self.luck_f = tk.Frame(self.body, bg=W_DEEP); self.luck_f.pack(fill="x", padx=18, pady=(6, 0))     # 🍀 vé may mắn
-        self.err_l = self.label(self.body, "", self.app.f_s, BAD, wraplength=self.px(500)); self.err_l.pack(fill="x", padx=18)
+        self.err_l = self.label(self.body, "", self.app.f_s, BAD, wraplength=500); self.err_l.pack(fill="x", padx=18)
         self.guide_f = tk.Frame(self.body, bg=W_DEEP); self.guide_f.pack(fill="x", padx=18, pady=(8, 0))
         self.mine_f = tk.Frame(self.body, bg=W_DEEP); self.mine_f.pack(fill="x", padx=18, pady=(12, 0))
         self.rules_b = self.label(self.body, "📜 Thể lệ  ▸", ("Segoe UI", 10, "bold"), W_PEARL, cursor="hand2"); self.rules_b.pack(fill="x", padx=18, pady=(12, 14))
@@ -3103,7 +3680,7 @@ class WheelDlg(Dlg):
         tk.Label(c, text="🍀", font=("Segoe UI", 18), fg="#ffffff", bg="#0f3d37").pack(side="left", padx=(10, 6))
         tx = tk.Frame(c, bg="#0f3d37"); tx.pack(side="left", fill="x", expand=True, pady=8)
         tk.Label(tx, text=f"Vé may mắn · {vnd(k['price'])}", font=("Segoe UI", 10, "bold"), fg="#dcfff2", bg="#0f3d37", anchor="w").pack(fill="x")
-        tk.Label(tx, text=wheel_lucky_line(k), font=("Segoe UI", 9), fg="#a9dcc9", bg="#0f3d37", anchor="w", justify="left", wraplength=self.px(330)).pack(fill="x")
+        tk.Label(tx, text=wheel_lucky_line(k), font=("Segoe UI", 9), fg="#a9dcc9", bg="#0f3d37", anchor="w", justify="left", wraplength=330).pack(fill="x")
 
     def balance(self):
         s = self.st or {}
@@ -3352,11 +3929,11 @@ class WheelDlg(Dlg):
             c.grid(row=i // 2, column=i % 2, sticky="nsew", padx=(0, 4) if i % 2 == 0 else (4, 0), pady=3)
             tk.Label(c, text=ic, font=("Segoe UI", 12), fg="#ffffff", bg="#2f66ec", width=2).pack(side="left", anchor="n", padx=8, pady=8)
             tx = tk.Frame(c, bg=W_TILE); tx.pack(side="left", fill="both", expand=True, pady=6, padx=(0, 8))
-            tk.Label(tx, text=t, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
-            tk.Label(tx, text=d, font=("Segoe UI", 8), fg=W_SUB, bg=W_TILE, anchor="w", justify="left", wraplength=self.px(185)).pack(fill="x")
+            tk.Label(tx, text=t, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=W_TILE, anchor="w", justify="left", wraplength=185).pack(fill="x")
+            tk.Label(tx, text=d, font=("Segoe UI", 8), fg=W_SUB, bg=W_TILE, anchor="w", justify="left", wraplength=185).pack(fill="x")
         grid.grid_columnconfigure(0, weight=1, uniform="g"); grid.grid_columnconfigure(1, weight=1, uniform="g")
         self.label(f, "🌐 Chơi được cả trên web (vòng quay ngay trang chủ) và app Android (bản tải từ web). "
-                      "Lượt quay, vé và mã dùng chung cho cả tài khoản.", self.app.f_s, W_SUB, wraplength=self.px(500)).pack(fill="x", pady=(6, 0))
+                      "Lượt quay, vé và mã dùng chung cho cả tài khoản.", self.app.f_s, W_SUB, wraplength=500).pack(fill="x", pady=(6, 0))
 
     def fill_mine(self):
         tk = self.app.tk; f = self.mine_f
@@ -3396,7 +3973,7 @@ class WheelDlg(Dlg):
     def fill_rules(self):
         f = self.rules_f
         for w in f.winfo_children(): w.destroy()
-        s = self.st or {}; sp = wheel_per(s); per = int(num(s.get("per")) or 100000); mn = vnd(s.get("min")); wl = self.px(500)
+        s = self.st or {}; sp = wheel_per(s); per = int(num(s.get("per")) or 100000); mn = vnd(s.get("min")); wl = 500
         lines = [f"⏰ Thời gian: từ {wheel_when(s.get('starts_at'))}" + (f" đến {wheel_when(s.get('ends_at'))}." if s.get("ends_at") else " đến khi có thông báo kết thúc."),
                  f"💳 Mỗi lệnh nạp thành công từ {mn} trong thời gian chương trình: cứ {vnd(per)} = {sp} lượt quay (ví dụ nạp {vnd(per * 2.5)} = {2 * sp} lượt). "
                  "Tính nạp ngân hàng và crypto; nạp qua Google Play không tính lượt."]
@@ -3464,7 +4041,7 @@ class RevealWin:
         exp = parse_iso(r.get("expires_at")); exp = exp.astimezone().strftime("%H:%M %d/%m/%Y") if exp else ""
         tk.Label(c, text=f"Dùng 1 lần · hạn đến {exp} · " + ("giữ dùng sau hoặc tặng bạn bè dùng đều được" if r.get("share") else "chỉ tài khoản của bạn dùng được")
                          + ". Nhập ở ô 🏷️ Mã giảm giá khi thuê / gia hạn máy.",
-                 font=("Segoe UI", 9), fg=W_SUB, bg=bg, justify="center", wraplength=self.W - int(110 * self.sc)).pack(padx=16, pady=(10, 0))
+                 font=("Segoe UI", 9), fg=W_SUB, bg=bg, justify="center", wraplength=int(self.W / self.sc) - 110).pack(padx=16, pady=(10, 0))
         if num(r.get("paid")) > 0:
             tk.Label(c, text=f"Đã trừ {vnd(r.get('paid'))} · số dư còn {vnd(r.get('balance'))}", font=("Segoe UI", 9), fg=W_SUB, bg=bg).pack(pady=(4, 0))
         s = self.dlg.st or {}; lk = bool(r.get("lucky")); left = 0 if lk else int(num(s.get("left"))); buy = not lk and left <= 0 and bool(s.get("can_buy"))
@@ -3850,7 +4427,7 @@ class LookDlg(Dlg):
         lr = tk.Frame(self.body, bg=BG); lr.pack(fill="x", padx=18, pady=(14, 0))            # 16/11c: 🌐 Tiếng Việt / English
         self.label(lr, "🌐 Ngôn ngữ · Language", app.f_h2).pack(side="left")
         for code, name in (("en", "English"), ("vi", "Tiếng Việt")):
-            b = app.btn(lr, ("✓ " if LANG == code else "") + name, lambda c=code: self.app.set_lang(c), "soft" if LANG == code else "ghost")
+            b = app.btn(lr, ("✓ " if LANG == code else "") + name, lambda c=code: self.app.set_lang(c), "soft" if LANG == code else "ghost", dim=False)
             b.pack(side="right", padx=(6, 0))
             if LANG == code: b.config(state="disabled")
         self.pv = tk.BooleanVar(value=not prefs().get("promo_hide"))
@@ -4861,12 +5438,14 @@ class Launcher:
         self.just_updated = updated
         self.upd_mode = upd_mode; self.reopen_id = reopen      # --update <máy>: tự tải bản mới, xong mở lại đúng máy đó
         if FROZEN and not tools_for: threading.Thread(target=cleanup_update_leftovers, daemon=True).start()   # dọn thư mục của lần cập nhật trước
-        self.scrollers = {}; self._fast = None; self._q = queue.Queue()
+        self.scrollers = {}; self._fast = None; self._q = queue.Queue(); self._logos = {}; self._list_sig = None
         self.root = tk.Tk(); self.root.title("CloudBlue PC"); self.root.configure(bg=BG)
-        self.scale = ui_scale() / 100.0                   # 16/11: cỡ chữ khách tự chỉnh (🎨 Giao diện) — chữ Tk tính theo điểm nên nhân hệ số là to / nhỏ theo
+        self.scale = ui_scale() / 100.0 * UI_ZOOM         # 16/11: cỡ chữ khách tự chỉnh (🎨 Giao diện) — chữ Tk tính theo điểm nên nhân hệ số là to / nhỏ theo · 17/11c: × UI_ZOOM
         if abs(self.scale - 1.0) > 0.01:
             try: self.root.tk.call("tk", "scaling", float(self.root.tk.call("tk", "scaling")) * self.scale)
             except Exception as e: log("scale:", e); self.scale = 1.0
+        try: self.scale = max(0.5, min(4.0, float(self.root.tk.call("tk", "scaling")) / (96 / 72.0)))     # 17/11c: tính cả độ phóng màn hình của Windows (125% · 150%…)
+        except Exception: pass
         g = max(1.0, self.scale)                          # chữ to → cửa sổ rộng / cao theo (chữ nhỏ thì giữ cỡ cửa sổ cũ)
         try: sw_, sh_ = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
         except Exception: sw_, sh_ = 1920, 1080
@@ -4878,6 +5457,10 @@ class Launcher:
             if os.path.isfile(ico): self.root.iconphoto(True, tk.PhotoImage(file=ico))
         except Exception: pass
         self.f_h1 = ("Segoe UI", 18, "bold"); self.f_h2 = ("Segoe UI", 12, "bold"); self.f_t = ("Segoe UI", 10); self.f_s = ("Segoe UI", 9)
+        try: self.tk = tk = Skin(tk, self.root)                     # 17/11c: từ đây mọi cửa sổ dựng bằng widget đã "mặc áo" (bo góc, nút viên thuốc…)
+        except Exception:
+            log("skin:", traceback.format_exc()); self.tk = tk = PlainSkin(tk)   # vỏ lỗi → widget Tk thường, app vẫn dùng được
+        tk.chrome(self.root)
         self.body = tk.Frame(self.root, bg=BG); self.body.pack(fill="both", expand=True)
         self.tools_only = bool(tools_for)
         if tools_for:                                    # mở từ nút "Công cụ" của cửa sổ máy: chỉ hiện cửa sổ Công cụ
@@ -4900,11 +5483,9 @@ class Launcher:
         for w in self.body.winfo_children(): w.destroy()
 
     def btn(self, parent, text, cmd, kind="primary", **kw):
-        bg = {"primary": ACC, "ghost": CARD, "soft": LINE, "danger": "#3a1d27"}[kind]; fg = TXT
-        o = dict(padx=14, pady=7); o.update(kw)
-        b = self.tk.Button(parent, text=text, command=cmd, bg=bg, fg=fg, activebackground="#4b8cff" if kind == "primary" else "#2a3a5c",
-                           activeforeground=TXT, relief="flat", bd=0, font=("Segoe UI", 10, "bold"), cursor="hand2", **o)
-        return b
+        """Nút viên thuốc (17/11c): primary = xanh bóng · ghost / soft = nền tấm viền mảnh · danger = đỏ nhạt · flat = không viền · tint="#màu" = chip màu."""
+        o = dict(padx=14, pady=7, font=("Segoe UI", 10, "bold")); o.update(kw)
+        return self.tk.Button(parent, text=text, command=cmd, kind=kind, **o)
 
     def ui(self, fn):
         """Luồng nền gửi việc cập nhật giao diện về luồng chính (Tk chỉ an toàn khi gọi từ luồng chính)."""
@@ -4921,10 +5502,48 @@ class Launcher:
         except Exception: pass
 
     def _wheel(self, e):
-        """Lăn chuột cuộn đúng cửa sổ đang trỏ vào (danh sách máy hoặc hộp thoại mua / nạp)."""
+        """Lăn chuột cuộn đúng cửa sổ đang trỏ vào (danh sách máy hoặc hộp thoại mua / nạp).
+           17/11c: cuộn TRƯỢT ÊM (không giật từng nấc) + bàn rê cảm ứng lăn ít một cũng cuộn được."""
         try: cv = self.scrollers.get(str(e.widget.winfo_toplevel()))
         except Exception: return
-        if cv is not None and cv.winfo_exists(): cv.yview_scroll(int(-e.delta / 120), "units")
+        if cv is None or not cv.winfo_exists() or not e.delta: return
+        try: self._glide(cv, -e.delta / 120.0)
+        except Exception: cv.yview_scroll(int(-e.delta / 120), "units")
+
+    def _glide(self, cv, notches):
+        box = cv.bbox("all")
+        if not box: return
+        full, view = float(box[3] - box[1]), float(cv.winfo_height())
+        if full <= view + 1: return
+        st = getattr(cv, "_glide", None)
+        if st is None or st["job"] is None: st = cv._glide = {"t": cv.yview()[0] * full, "job": None}
+        st["t"] = max(0.0, min(full - view, st["t"] + notches * self.tk.px(110)))
+        if st["job"] is None: self._glide_step(cv)
+
+    def _glide_step(self, cv):
+        st = getattr(cv, "_glide", None)
+        if st is None: return
+        st["job"] = None
+        try:
+            if not cv.winfo_exists(): return
+            box = cv.bbox("all"); full = float(box[3] - box[1]) if box else 0.0
+            if full <= 0: return
+            cur = cv.yview()[0] * full; d = st["t"] - cur
+            if abs(d) < 1.0: cv.yview_moveto(st["t"] / full); return
+            cv.yview_moveto((cur + d * 0.34) / full)
+            if abs(cv.yview()[0] * full - cur) < 0.01: return            # chạm đầu / cuối danh sách
+            st["job"] = self.root.after(12, lambda: self._glide_step(cv))
+        except Exception: pass
+
+    def logo(self, parent, size=36):
+        """Logo cá voi (ảnh nhỏ nhúng sẵn trong file, nền trùng nền app) — chọn cỡ gần nhất với độ phóng màn hình."""
+        tk = self.tk
+        try:
+            n = min(LOGO_PNG, key=lambda k: abs(k - size * tk.dp)); im = self._logos.get(n)
+            if im is None: im = self._logos[n] = tk.PhotoImage(master=self.root, data=LOGO_PNG[n], format="png")
+            return tk.Label(parent, image=im, bg=BG, bd=0, highlightthickness=0)
+        except Exception:
+            log("logo:", traceback.format_exc()); return tk.Label(parent, bg=BG)
 
     # ---------- mua / nạp / gia hạn / nâng cấp / huỷ (cửa sổ con) ----------
     def open_order(self): OrderDlg(self)
@@ -4992,9 +5611,9 @@ class Launcher:
             for w in (bar, ws, os_): w.pack_forget()
             if any_:
                 bar.config(text="🎁 Hiện ưu đãi · vòng quay  ▾" if hide else "Ẩn ưu đãi  ▴", fg=ACC if hide else DIM)
-                bar.pack(anchor="e", padx=18, pady=(6, 0), before=anchor)
+                bar.pack(anchor="e", padx=10, pady=(2, 0), before=anchor)
             if not hide:
-                ws.pack(fill="x", padx=18, before=anchor); os_.pack(fill="x", padx=18, before=anchor)
+                ws.pack(fill="x", padx=8, before=anchor); os_.pack(fill="x", padx=8, before=anchor)
         except Exception: log("promo:", traceback.format_exc())
 
     def more(self, p, widget):
@@ -5020,18 +5639,21 @@ class Launcher:
     # ---------- đăng nhập ----------
     def show_login(self, msg=""):
         tk = self.tk; self.clear()
-        box = tk.Frame(self.body, bg=BG); box.place(relx=0.5, rely=0.45, anchor="center")
+        box = tk.Frame(self.body, bg=BG); box.place(relx=0.5, rely=0.46, anchor="center")
+        self.logo(box, 72).pack(pady=(0, 10))
         hb = tk.Frame(box, bg=BG); hb.pack()                        # chữ "CloudBlue" 2 màu giống logo web
         for t, c in (("Cloud", TXT), ("Blue", BRAND)):
             tk.Label(hb, text=t, font=("Segoe UI", 26, "bold"), fg=c, bg=BG, bd=0, padx=0, highlightthickness=0).pack(side="left")
-        tk.Label(box, text="Điện thoại đám mây — điều khiển trên máy tính", font=self.f_t, fg=DIM, bg=BG).pack(pady=(2, 22))
+        tk.Label(box, text="Điện thoại đám mây — điều khiển trên máy tính", font=self.f_t, fg=DIM, bg=BG).pack(pady=(2, 18))
+        card = tk.Frame(box, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=20); card.pack(fill="x")     # 17/11c: tấm nổi bo góc như app điện thoại
+        inn = tk.Frame(card, bg=CARD); inn.pack(fill="x", padx=20, pady=18)
         ents = {}
         for k, lab, show in (("email", "Email", ""), ("pw", "Mật khẩu", "•")):
-            tk.Label(box, text=lab, font=self.f_t, fg=DIM, bg=BG, anchor="w").pack(fill="x")
-            e = tk.Entry(box, font=("Segoe UI", 12), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat", show=show, width=30)
-            e.pack(fill="x", ipady=8, pady=(3, 12)); ents[k] = e
+            tk.Label(inn, text=lab, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x")
+            e = tk.Entry(inn, font=("Segoe UI", 12), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat", show=show, width=30)
+            e.pack(fill="x", ipady=6, pady=(4, 12)); ents[k] = e
         ents["email"].insert(0, prefs().get("email", ""))
-        err = tk.Label(box, text=msg, font=self.f_t, fg=BAD, bg=BG, wraplength=320, justify="left"); err.pack(fill="x")
+        err = tk.Label(inn, text=msg, font=self.f_t, fg=BAD, bg=CARD, wraplength=320, justify="left"); err.pack(fill="x")
         def go(*_):
             if self.busy: return
             em, pw = ents["email"].get().strip(), ents["pw"].get()
@@ -5044,54 +5666,65 @@ class Launcher:
                     m = str(e); self.ui(lambda m=m: (err.config(text=m), b.config(text="Đăng nhập")))
                 finally: self.busy = False
             threading.Thread(target=job, daemon=True).start()
-        b = self.btn(box, "Đăng nhập", go); b.pack(fill="x", pady=(8, 10))
+        b = self.btn(inn, "Đăng nhập", go, pady=9); b.pack(fill="x", pady=(8, 0))
         ents["pw"].bind("<Return>", go); ents["email"].bind("<Return>", lambda *_: ents["pw"].focus_set())
-        lk = tk.Label(box, text="Chưa có tài khoản? Đăng ký trên web  ↗", font=self.f_t, fg=ACC, bg=BG, cursor="hand2"); lk.pack()
+        lk = tk.Label(box, text="Chưa có tài khoản? Đăng ký trên web  ↗", font=self.f_t, fg=ACC, bg=BG, cursor="hand2"); lk.pack(pady=(16, 0))
         lk.bind("<Button-1>", lambda *_: webbrowser.open(WEB))
-        lg = tk.Label(box, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_t, fg=DIM, bg=BG, cursor="hand2"); lg.pack(pady=(14, 0))
+        lg = tk.Label(box, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_t, fg=DIM, bg=BG, cursor="hand2"); lg.pack(pady=(12, 0))
         lg.bind("<Button-1>", lambda *_: self.set_lang("en" if LANG == "vi" else "vi"))          # 16/11c
         (ents["pw"] if ents["email"].get() else ents["email"]).focus_set()
 
     # ---------- danh sách máy ----------
     def show_list(self):
-        tk = self.tk; self.clear()
-        self.tick_slot = tk.Frame(self.body, bg=BG); self.tick_slot.pack(fill="x")         # 📣 dòng chữ chạy ưu đãi (SQL v35) — trống khi chưa bật
-        self.ticker = Ticker(self, self.tick_slot); self._offers_sig = None
-        top = tk.Frame(self.body, bg=BG); top.pack(fill="x", padx=18, pady=(16, 6))
-        tk.Label(top, text="Máy của tôi", font=self.f_h1, fg=TXT, bg=BG).pack(side="left")
-        self.btn(top, "Đăng xuất", self.logout, "ghost").pack(side="right")
-        self.btn(top, "⟳ Làm mới", self.refresh, "ghost").pack(side="right", padx=6)
-        self.btn(top, "🎨 Giao diện", lambda: LookDlg(self), "ghost").pack(side="right")       # 16/11: cỡ chữ · ẩn / hiện ô ưu đãi
-        sub = tk.Frame(self.body, bg=BG); sub.pack(fill="x", padx=18)
+        """17/11c · bố cục giống app điện thoại: logo + CloudBlue · viên số dư / Blue ở góc phải · dòng chữ chạy bo tròn ·
+           "Máy của tôi" + chip Làm mới · thẻ máy bo góc · thanh nổi dưới cùng (Thuê máy · Nạp tiền · Nhập mã)."""
+        tk = self.tk; self.clear(); self._list_sig = None
+        top = tk.Frame(self.body, bg=BG); top.pack(fill="x", padx=18, pady=(14, 0))
+        self.logo(top).pack(side="left", padx=(0, 9))
+        for t, c in (("Cloud", TXT), ("Blue", BRAND)):
+            tk.Label(top, text=t, font=("Segoe UI", 17, "bold"), fg=c, bg=BG, bd=0, padx=0, highlightthickness=0).pack(side="left")
+        bp = tk.Frame(top, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=99, cursor="hand2"); bp.pack(side="right")     # viên số dư — bấm để nạp tiền
+        ci = tk.Label(bp, image=tk.coin(CARD), bg=CARD, bd=0, cursor="hand2"); ci.pack(side="left", padx=(10, 5), pady=5)
+        self.bal = tk.Label(bp, text="…", font=("Segoe UI", 11, "bold"), fg=TXT, bg=CARD, cursor="hand2"); self.bal.pack(side="left", padx=(0, 13))
+        for w in (bp, ci, self.bal): w.bind("<Button-1>", lambda *_: self.open_topup())
+        self.blue_btn = self.btn(top, "💎 Tích Blue", lambda: BlueDlg(self), tint=SKY, padx=12, pady=5)      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
+        sub = tk.Frame(self.body, bg=BG); sub.pack(fill="x", padx=18, pady=(8, 0))
         tk.Label(sub, text=self.auth.email, font=self.f_s, fg=DIM, bg=BG).pack(side="left")
-        lk = tk.Label(sub, text="Mở web ↗", font=self.f_s, fg=ACC, bg=BG, cursor="hand2"); lk.pack(side="right")
+        self.btn(sub, "Đăng xuất", self.logout, "ghost", padx=10, pady=3, font=("Segoe UI", 9, "bold")).pack(side="right")
+        self.btn(sub, "🎨 Giao diện", lambda: LookDlg(self), "ghost", padx=10, pady=3, font=("Segoe UI", 9, "bold")).pack(side="right", padx=6)       # 16/11: cỡ chữ · ẩn / hiện ô ưu đãi
+        lk = tk.Label(sub, text="Mở web ↗", font=self.f_s, fg=ACC, bg=BG, cursor="hand2"); lk.pack(side="right", padx=(0, 8))
         lk.bind("<Button-1>", lambda *_: webbrowser.open(WEB))
         lg = tk.Label(sub, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_s, fg=DIM, bg=BG, cursor="hand2"); lg.pack(side="right", padx=(0, 14))
         lg.bind("<Button-1>", lambda *_: self.set_lang("en" if LANG == "vi" else "vi"))          # 16/11c
+        self.tick_slot = tk.Frame(self.body, bg=BG); self.tick_slot.pack(fill="x")         # 📣 dòng chữ chạy ưu đãi (SQL v35) — trống khi chưa bật
+        self.ticker = Ticker(self, self.tick_slot); self._offers_sig = None
         self.upd_slot = tk.Frame(self.body, bg=BG); self.upd_slot.pack(fill="x", padx=18)    # báo có bản app mới (nếu có)
         self._paint_update()
-        shop = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1); shop.pack(fill="x", padx=18, pady=(10, 0))
-        bl = tk.Frame(shop, bg=CARD); bl.pack(side="left", padx=14, pady=8)
-        tk.Label(bl, text="Số dư", font=self.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x")
-        self.bal = tk.Label(bl, text="…", font=("Segoe UI", 15, "bold"), fg=TXT, bg=CARD, anchor="w"); self.bal.pack(fill="x")
-        self.btn(shop, "+ Thuê máy", self.open_order).pack(side="right", padx=(6, 12), pady=10)
-        self.btn(shop, "Nạp tiền", self.open_topup, "soft").pack(side="right", pady=10)
-        self.btn(shop, "🎟 Nhập mã", lambda: CodeDlg(self), "soft").pack(side="right", padx=(0, 6), pady=10)
-        self.blue_btn = self.btn(shop, "💎 Tích Blue", lambda: BlueDlg(self), "soft")      # hiện khi máy chủ đã bật Tích Blue (SQL v27)
-        self.promo_bar = tk.Label(self.body, text="", font=self.f_s, fg=DIM, bg=BG, cursor="hand2")      # 16/11: bấm để ẩn / hiện các ô ưu đãi bên dưới
-        self.promo_bar.bind("<Button-1>", lambda *_: self.toggle_promo()); self._promo_sig = None
-        self.wheel_slot = tk.Frame(self.body, bg=BG); self.wheel_slot.pack(fill="x", padx=18)   # 🎡 vòng quay may mắn (SQL v34c) — trống khi chưa bật
-        self._paint_wheel()
-        self.offers_slot = tk.Frame(self.body, bg=BG); self.offers_slot.pack(fill="x", padx=18)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
-        self._paint_offers()
-        wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=10, pady=10)
-        self.list_wrap = wrap; self._paint_promo()
+        hd = tk.Frame(self.body, bg=BG); hd.pack(fill="x", padx=18, pady=(12, 0))
+        tk.Label(hd, text="Máy của tôi", font=self.f_h1, fg=TXT, bg=BG).pack(side="left")
+        self.btn(hd, "⟳ Làm mới", self.refresh, tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+        nav = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=22)      # thanh nổi dưới cùng (giống thanh thẻ của app điện thoại)
+        nav.pack(side="bottom", fill="x", padx=18, pady=(4, 14))
+        for i, (t, cmd, kind) in enumerate((("+ Thuê máy", self.open_order, "primary"), ("Nạp tiền", self.open_topup, "flat"), ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))):
+            nav.grid_columnconfigure(i, weight=1, uniform="nav")
+            self.btn(nav, t, cmd, kind, pady=9).grid(row=0, column=i, sticky="ew", padx=(8 if i == 0 else 3, 8 if i == 2 else 3), pady=8)
+        # 17/11c: các ô ưu đãi + thẻ máy nằm CHUNG 1 vùng cuộn (như app điện thoại) → màn hình thấp (laptop 768) kéo xuống là thấy nhiều máy
+        wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=(10, 5), pady=(6, 2))
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
-        self.list = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=self.list, anchor="nw")
-        self.list.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
+        page = tk.Frame(cv, bg=BG); win = cv.create_window((0, 0), window=page, anchor="nw")
+        page.bind("<Configure>", lambda e: cv.configure(scrollregion=cv.bbox("all")))
         cv.bind("<Configure>", lambda e: cv.itemconfigure(win, width=e.width))
         cv.configure(yscrollcommand=sb.set); cv.pack(side="left", fill="both", expand=True); sb.pack(side="right", fill="y")
         self.scrollers[str(self.root)] = cv
+        self.promo_bar = tk.Label(page, text="", font=self.f_s, fg=DIM, bg=BG, cursor="hand2")      # 16/11: bấm để ẩn / hiện các ô ưu đãi bên dưới
+        self.promo_bar.bind("<Button-1>", lambda *_: self.toggle_promo()); self._promo_sig = None
+        self.wheel_slot = tk.Frame(page, bg=BG); self.wheel_slot.pack(fill="x", padx=8)   # 🎡 vòng quay may mắn (SQL v34c) — trống khi chưa bật
+        self._paint_wheel()
+        self.offers_slot = tk.Frame(page, bg=BG); self.offers_slot.pack(fill="x", padx=8)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
+        self._paint_offers()
+        self.list = tk.Frame(page, bg=BG); self.list.pack(fill="x", pady=(10, 0))             # các thẻ máy
+        self._cards = []; self._ncol = 0; self.list.bind("<Configure>", lambda e: self._lay_cards(), add="+")
+        self.list_wrap = self.list; self._paint_promo()
         self.msg = tk.Label(self.list, text="Đang tải…", font=self.f_t, fg=DIM, bg=BG); self.msg.pack(pady=30)
         self.refresh()
         self._tick()
@@ -5158,7 +5791,7 @@ class Launcher:
         if not blue_on(): b.pack_forget(); return
         n = blue_todo()
         b.config(text=f"💎 {blue_n(BLUE['info'].get('blue'))} Blue" + (f"  •{n}" if n else ""))
-        if not b.winfo_manager(): b.pack(side="right", padx=(0, 6), pady=10)
+        if not b.winfo_manager(): b.pack(side="right", padx=(0, 8))
         i = BLUE["info"]; k, d = "blue_nudge_" + str(self.auth.uid or ""), vn_today(); ki = "blue_intro_" + str(self.auth.uid or "")
         if i and not prefs().get(ki):                    # lần đầu thấy Tích Blue → hộp hướng dẫn cách nhận (1 lần / tài khoản / máy)
             prefs({ki: 1, k: d})
@@ -5195,6 +5828,7 @@ class Launcher:
         if getattr(self, "_offers_sig", None) == sig: return
         self._offers_sig = sig
         for w in slot.winfo_children(): w.destroy()
+        slot.configure(height=1)                           # khung rỗng thì Tk giữ chiều cao cũ → ép về 1 px (có ô mới thì tự giãn lại)
         def tile(col, icon, title, sub, cmd, edge):
             f = tk.Frame(slot, bg=CARD, highlightbackground=edge, highlightthickness=1, cursor="hand2")
             f.grid(row=0, column=col, sticky="nsew", padx=(0 if col == 0 else 6, 0), pady=(8, 0))
@@ -5236,6 +5870,7 @@ class Launcher:
         mode = "force" if must_update() else ("avail" if u else ("done" if self.just_updated else ""))
         if slot.winfo_children() and getattr(self, "_upd_mode", None) == mode: return
         for w in slot.winfo_children(): w.destroy()
+        slot.configure(height=1)                           # khung rỗng thì Tk giữ chiều cao cũ → ép về 1 px (có ô mới thì tự giãn lại)
         self._upd_mode = mode
         tk = self.tk
         if mode == "force":
@@ -5261,65 +5896,97 @@ class Launcher:
         t1.pack(fill="x", padx=12, pady=(8, 0)); t2.pack(fill="x", padx=12, pady=(0, 8))
         for w in (b, t1, t2): w.bind("<Button-1>", lambda *_: UpdateDlg(self, u))
 
+    def _rows_sig(self, rows):
+        """Dấu vân tay của mọi thứ đang vẽ trong danh sách máy (máy + dòng "còn … ngày" + quyền admin + cờ bắt buộc cập nhật)."""
+        try:
+            return json.dumps([must_update(), (getattr(self, "prof", None) or {}).get("role"), rows,
+                               [fmt_left(p["expires_at"]) if p.get("expires_at") else "" for p in rows]], sort_keys=True, default=str)
+        except Exception: return None
+
     def render(self, rows):
         tk = self.tk; self.rows_last = rows
         if not self.list.winfo_exists(): return
-        for w in self.list.winfo_children(): w.destroy()
+        sig = self._rows_sig(rows)                          # 17/11c: 20 giây app tự hỏi máy chủ 1 lần — không có gì đổi thì GIỮ NGUYÊN các thẻ (hết nháy màn)
+        same = sig is not None and sig == self._list_sig and bool(self.list.winfo_children())
+        self._list_sig = sig
+        if not same:
+            for w in self.list.winfo_children(): w.destroy()
         if must_update():                                  # app quá cũ: không cho mở / thuê máy tới khi cập nhật
-            tk.Label(self.list, text="Cần cập nhật app để dùng tiếp", font=self.f_h2, fg=TXT, bg=BG).pack(pady=(40, 6))
-            tk.Label(self.list, text="Bấm ⬇ Cập nhật ngay ở dải đỏ phía trên — app tự tải, thay bản mới và mở lại.", font=self.f_t, fg=DIM, bg=BG).pack()
-            self.msg = tk.Label(self.list, bg=BG); return
+            if not same:
+                tk.Label(self.list, text="Cần cập nhật app để dùng tiếp", font=self.f_h2, fg=TXT, bg=BG).pack(pady=(40, 6))
+                tk.Label(self.list, text="Bấm ⬇ Cập nhật ngay ở dải đỏ phía trên — app tự tải, thay bản mới và mở lại.", font=self.f_t, fg=DIM, bg=BG).pack()
+                self.msg = tk.Label(self.list, bg=BG)
+            return
         if self._fast: self.root.after_cancel(self._fast); self._fast = None
         if any(p.get("status") in ("pending", "cancelling") or p.get("pending_ram") is not None for p in rows):
             self._fast = self.root.after(6000, lambda: self.refresh(quiet=True))         # máy đang tạo / nâng cấp → cập nhật nhanh hơn
         if not rows:
-            tk.Label(self.list, text="Bạn chưa có máy nào.", font=self.f_h2, fg=TXT, bg=BG).pack(pady=(40, 6))
-            tk.Label(self.list, text="Thuê máy ngay trong app — chọn cấu hình, thanh toán bằng số dư.", font=self.f_t, fg=DIM, bg=BG).pack()
-            self.btn(self.list, "+ Thuê máy", self.open_order).pack(pady=14)
-            self.msg = tk.Label(self.list, bg=BG); return
-        self.msg = tk.Label(self.list, bg=BG)
-        for p in rows: self._card(p)
+            if not same:
+                tk.Label(self.list, text="Bạn chưa có máy nào.", font=self.f_h2, fg=TXT, bg=BG).pack(pady=(40, 6))
+                tk.Label(self.list, text="Thuê máy ngay trong app — chọn cấu hình, thanh toán bằng số dư.", font=self.f_t, fg=DIM, bg=BG).pack()
+                self.btn(self.list, "+ Thuê máy", self.open_order).pack(pady=14)
+                self.msg = tk.Label(self.list, bg=BG)
+            return
+        if not same:
+            self.msg = tk.Label(self.list, bg=BG)
+            self._cards = [self._card(p) for p in rows]
+            self._lay_cards(True)
         if self.open_id:
             pid, self.open_id = self.open_id, None
             if any(str(p.get("id")) == pid for p in rows): spawn_viewer(pid)
 
+    def _lay_cards(self, force=False):
+        """Xếp thẻ máy thành lưới theo bề ngang: cửa sổ thường = 1 cột (như điện thoại); kéo rộng / phóng to = 2–3 cột → nhìn được nhiều máy cùng lúc."""
+        try:
+            cards = [c for c in getattr(self, "_cards", []) if c.winfo_exists()]
+            n = max(1, min(3, int(self.list.winfo_width() // self.tk.px(500))))
+            if not cards or (not force and n == getattr(self, "_ncol", 0)): return
+            self._ncol = n
+            for j in range(3): self.list.grid_columnconfigure(j, weight=1 if j < n else 0, uniform="card" if j < n else "")
+            for i, c in enumerate(cards): c.grid(row=i // n, column=i % n, sticky="nsew", padx=8, pady=(0, 10))
+        except Exception: log("cards:", traceback.format_exc())
+
     def _card(self, p):
+        """Thẻ 1 máy (17/11c: bo góc, nhãn trạng thái dạng chip, nút viên thuốc — giống thẻ máy của app điện thoại). Trả về khung thẻ (chưa xếp chỗ)."""
         tk = self.tk
-        c = tk.Frame(self.list, bg=CARD, highlightbackground=LINE, highlightthickness=1); c.pack(fill="x", padx=8, pady=6)
-        row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=14, pady=(12, 2))
-        tk.Label(row, text=p.get("name") or "Máy", font=self.f_h2, fg=TXT, bg=CARD).pack(side="left")
+        c = tk.Frame(self.list, bg=CARD, highlightbackground=LINE, highlightthickness=1)
+        row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(13, 3))
+        tk.Label(row, text=p.get("name") or "Máy", font=("Segoe UI", 13, "bold"), fg=TXT, bg=CARD).pack(side="left")
         st, col = STATUS.get(p.get("status"), (p.get("status") or "", DIM))
-        tk.Label(row, text="● " + st, font=("Segoe UI", 9, "bold"), fg=col, bg=CARD).pack(side="right")
+        tk.Label(row, text="● " + st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         info = f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân · {p.get('res') or ''} · {p.get('fps') or 30} FPS · Android {p.get('android') or '9'}"
         if p.get("shared"): info += " · được chia sẻ"
-        tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14)
-        if p.get("expires_at"): tk.Label(c, text="⏱ " + fmt_left(p["expires_at"]), font=self.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(2, 0))
-        if p.get("status") == "error" and p.get("error"): tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+        tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
+        if p.get("expires_at"):                                    # còn dưới 1 ngày → vàng · hết hạn → đỏ (nhìn là biết máy nào cần gia hạn)
+            lf = left_secs(p["expires_at"])
+            tk.Label(c, text="⏱ " + fmt_left(p["expires_at"]), font=self.f_s, fg=BAD if lf <= 0 else WARN if lf < 86400 else DIM, bg=CARD, anchor="w").pack(fill="x", padx=16, pady=(2, 0))
+        if p.get("status") == "error" and p.get("error"): tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         if p.get("status") == "error" and p.get("replaces") and not p.get("shared"):       # máy mới của lệnh đổi Android → khách tự thử lại
-            self.btn(c, "🔁 Thử tạo lại máy", lambda q=p: self.switch_retry(q), "soft", padx=10, pady=4).pack(anchor="w", padx=14, pady=(6, 0))
+            self.btn(c, "🔁 Thử tạo lại máy", lambda q=p: self.switch_retry(q), "soft", padx=10, pady=4).pack(anchor="w", padx=16, pady=(6, 0))
         if int(num(p.get("trial_hours"))) > 0 and p.get("status") != "error":
             tk.Label(c, text=f"🎁 Máy dùng thử {int(num(p.get('trial_hours')))} giờ — hết giờ máy và dữ liệu tự xoá, không gia hạn được.", font=self.f_s, fg=WARN, bg=CARD,
-                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         if p.get("replaces") and p.get("status") in ("pending", "creating"):
             tk.Label(c, text=self.switch_note(p), font=self.f_s, fg=WARN, bg=CARD,
-                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         elif self.switching(p):
             tk.Label(c, text="🔄 Đang đổi Android: máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", font=self.f_s, fg=WARN, bg=CARD,
-                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+                     anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         elif p.get("status") == "active" and str(p.get("error") or "").startswith("Đổi Android"):
-            tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=14)
+            tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         if p.get("pending_ram") is not None:
-            tk.Label(c, text=f"⏳ Đang nâng cấp lên {p.get('pending_ram')}GB · {p.get('pending_cpu')} nhân…", font=self.f_s, fg=WARN, bg=CARD, anchor="w").pack(fill="x", padx=14)
-        bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=14, pady=(10, 12))
+            tk.Label(c, text=f"⏳ Đang nâng cấp lên {p.get('pending_ram')}GB · {p.get('pending_cpu')} nhân…", font=self.f_s, fg=WARN, bg=CARD, anchor="w").pack(fill="x", padx=16)
+        bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=16, pady=(11, 14))
         st = p.get("status"); adm = (getattr(self, "prof", None) or {}).get("role") == "admin"
         active = st == "active" and (not p.get("locked") or adm)                 # admin: toàn quyền (kể cả máy bị khoá, lúc bảo trì)
-        b = self.btn(bar, "▶  Điều khiển", lambda pid=str(p["id"]): spawn_viewer(pid)); b.pack(side="left")
+        b = self.btn(bar, "▶  Điều khiển", lambda pid=str(p["id"]): spawn_viewer(pid), padx=18, pady=8); b.pack(side="left")
         if not active: b.config(state="disabled", bg=LINE)
-        if active: self.btn(bar, "Khởi động lại", lambda q=p: self.reboot(q), "ghost").pack(side="left", padx=8)
-        if p.get("shared"): return                                  # máy người khác chia sẻ: chỉ điều khiển
-        mo = self.btn(bar, "Khác ▾", None, "soft", padx=10); mo.config(command=lambda q=p, w=mo: self.more(q, w)); mo.pack(side="right")
+        if active: self.btn(bar, "Khởi động lại", lambda q=p: self.reboot(q), "ghost", pady=8).pack(side="left", padx=8)
+        if p.get("shared"): return c                                # máy người khác chia sẻ: chỉ điều khiển
+        mo = self.btn(bar, "Khác ▾", None, "ghost", padx=12, pady=8); mo.config(command=lambda q=p, w=mo: self.more(q, w)); mo.pack(side="right")
         if st in ("active", "expired") and not p.get("is_free"):
-            self.btn(bar, "Gia hạn", lambda q=p: self.open_renew(q), "soft").pack(side="right", padx=(0, 6))
+            self.btn(bar, "Gia hạn", lambda q=p: self.open_renew(q), "ghost", pady=8).pack(side="right", padx=(0, 6))
+        return c
 
     def reboot(self, p):
         import tkinter.messagebox as mb
@@ -5338,6 +6005,55 @@ class Launcher:
     def run(self): self.root.mainloop()
 
 
+def skin_selftest():
+    """17/11c · dựng thử VỎ GIAO DIỆN ngay trên máy đóng gói (GitHub Actions = Windows thật, đúng bản Tk nằm trong exe): ảnh PNG tự vẽ nạp được + đúng màu,
+       nút viên thuốc đúng cỡ + bấm được, thẻ bo đủ 4 góc, ô nhập / thanh kéo / công tắc chạy. Trả 1 dòng tóm tắt; sai chỗ nào → ném lỗi (selftest FAIL)."""
+    import tkinter as tk
+    try: root = tk.Tk()
+    except Exception as e: return f"skin: bỏ qua (máy này không mở được cửa sổ Tk: {e})"
+    try:
+        root.withdraw(); sk = Skin(tk, root); hits = []
+        top = sk.Toplevel(root); top.configure(bg=BG); top.geometry("560x460+40+40")
+        card = sk.Frame(top, bg=CARD, highlightbackground=LINE, highlightthickness=1); card.pack(fill="x", padx=18, pady=14)
+        sk.Label(card, text="Máy thử", font=("Segoe UI", 12, "bold"), fg=TXT, bg=CARD).pack(anchor="w", padx=16, pady=(12, 2))
+        chip = sk.Label(card, text="● Đang chạy", font=("Segoe UI", 9, "bold"), tint=OK, padx=10, pady=3); chip.pack(anchor="w", padx=16)
+        b = sk.Button(card, text="▶  Điều khiển", command=lambda: hits.append(1), kind="primary", font=("Segoe UI", 10, "bold"), padx=18, pady=8); b.pack(side="left", padx=16, pady=12)
+        g = sk.Button(card, text="Gia hạn", command=None, kind="ghost", font=("Segoe UI", 10, "bold")); g.pack(side="right", padx=16)
+        wide = sk.Button(top, text="Thuê máy", command=None, kind="primary"); wide.pack(fill="x", padx=18)
+        e = sk.Entry(top, font=("Segoe UI", 11)); e.pack(fill="x", padx=18, pady=10, ipady=4); e.insert(0, "abc")
+        var = tk.IntVar(value=100); sc = sk.Scale(top, from_=80, to=130, resolution=5, variable=var); sc.pack(fill="x", padx=18)
+        bv = tk.BooleanVar(value=False); cb = sk.Checkbutton(top, text="  công tắc", variable=bv, fg=TXT, bg=BG); cb.pack(anchor="w", padx=18)
+        t_end = time.time() + 4.0
+        while time.time() < t_end:                        # chờ cửa sổ dựng xong (các nút nhận cỡ thật rồi mới vẽ nền)
+            root.update_idletasks(); root.update()
+            if b._img is not None and wide._img is not None and chip._img is not None and card._c: break
+            time.sleep(0.02)
+        names = set(root.tk.splitlist(root.tk.call("image", "names")))
+        def has(w, opt="-image"): return str(root.tk.call(str(w), "cget", opt)) in names
+        try:
+            px = sk.rr(40, 20, 8, "#000000", ACC).get(20, 10)
+            px = tuple(int(v) for v in (px if isinstance(px, (tuple, list)) else str(px).split()))[:3]
+        except Exception as ex: px = ("không đọc được điểm ảnh", str(ex))
+        b.event_generate("<ButtonPress-1>", x=4, y=4); b.event_generate("<ButtonRelease-1>", x=4, y=4); cb.invoke(); var.set(120); root.update()
+        errs = []
+        if sk._bad: errs.append("ảnh PNG tự vẽ không nạp được")
+        if px != sk.rgb(ACC): errs.append(f"màu ảnh sai {px}")
+        if not (has(b) and has(g) and has(chip) and has(wide)): errs.append("nút / chip chưa có ảnh nền")
+        rw, rh = b.winfo_reqwidth(), b.winfo_reqheight(); nw, nh = b._nat               # Tk phải hiểu width / height của nút có ảnh là ĐIỂM ẢNH (lệch vài điểm thì được)
+        if not (0.7 * nw - 4 <= rw <= 1.35 * nw + 12 and 0.7 * nh - 4 <= rh <= 1.35 * nh + 12): errs.append(f"cỡ nút {rw}x{rh} lệch cỡ tính {nw}x{nh}")
+        if wide.winfo_width() < 400 or wide._wh != (wide.winfo_width(), wide.winfo_height()): errs.append(f"nút kéo giãn {wide.winfo_width()} / {wide._wh}")
+        if not (card._c and len(card._c) == 4 and all(has(c) for c in card._c)): errs.append("thẻ chưa bo đủ 4 góc")
+        if e.get() != "abc" or e._box.winfo_height() <= e.winfo_height(): errs.append("ô nhập bo tròn")
+        if hits != [1]: errs.append(f"bấm nút không gọi lệnh {hits}")
+        if bv.get() is not True or not has(cb, "-selectimage"): errs.append("công tắc")
+        if sc.get() != 120: errs.append("thanh kéo")
+        if errs: raise RuntimeError("skin: " + " · ".join(errs))
+        return f"skin ok · Tk {root.tk.call('info', 'patchlevel')} · dp {sk.dp:.2f} · nút {b.winfo_width()}x{b.winfo_height()} · {len(names)} ảnh"
+    finally:
+        try: root.destroy()
+        except Exception: pass
+
+
 def selftest(out):
     """Mở thử mọi thư viện cửa sổ máy cần (giải mã H.264, cửa sổ GPU, tkinter) → ghi kết quả ra file."""
     res = []
@@ -5354,6 +6070,7 @@ def selftest(out):
             Texture.from_surface(r, s).draw(dstrect=(0, 0, 16, 16)); r.present(); res.append("gpu ok")
         except Exception as e: res.append(f"gpu: {e} (dùng CPU)")
         pygame.quit()
+        res.append(skin_selftest())                       # 17/11c: vỏ giao diện dựng được trên đúng bản Tk đi kèm exe — hỏng → FAIL → bản này KHÔNG phát hành
         res.insert(0, "OK")
     except Exception:
         res.insert(0, "FAIL"); res.append(traceback.format_exc())
