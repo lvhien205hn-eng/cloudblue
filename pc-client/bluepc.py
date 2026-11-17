@@ -721,7 +721,7 @@ class Viewer:
             if self.vw and not self.docked and self._need_fit(): self._fit_window(pygame); dirty = True
             if self.docked and self.dock is not None:              # 17/11d: theo cỡ ô bên phải · lệnh của app (tách ra / đóng / nhận bàn phím)
                 r = self._dock_sync()
-                if r is False: running = False
+                if r == "quit": running = False
                 elif r: dirty = True
             n = self.notice                                   # thông báo do luồng khác đặt / xoá → đọc 1 lần
             if n and time.time() >= n[1]: self.notice = None; dirty = True
@@ -734,11 +734,11 @@ class Viewer:
 
     def _dock_sync(self):
         """Mỗi vòng (đang gắn trong app): theo cỡ ô · lệnh của app · báo app cỡ hình khi máy xoay (17/11e: app chia lại lưới nhiều máy).
-           Trả False = thoát (app đã đóng / bảo đóng máy) · True = cần vẽ lại."""
+           Trả "quit" = thoát (app đã đóng / bảo đóng máy) · True = cần vẽ lại · False = không có gì."""
         dirty = False
         for c in self.dock.sync():
             k = c.get("cmd")
-            if k in ("gone", "close"): return False
+            if k in ("gone", "close"): return "quit"
             elif k == "left": self.docked = False; self.fit = None; dirty = True
             elif k == "undock": self._undock(c); dirty = True
             elif k == "focus": self.dock.focus()
