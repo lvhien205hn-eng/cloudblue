@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711a):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711e):
+#        17/11e — bluestream: DÁN CHỮ VÀO TERMUX (Termux bỏ qua phím PASTE → khách bấm "Dán chữ" mà Termux đứng im → nay dán bằng
+#                       Ctrl+Alt+V của Termux) · HẾT KẸT HÌNH VỠ Ô SAU KHI MẠNG YẾU (mức mạng yếu nhớ từ lâu không còn kéo phiên mới xuống
+#                       272x480; khách tự chọn chất lượng → dò lại từ đầu; yên 3 phút → bỏ trần cũ) · ghép lát chờ thêm khi còn thiếu lát
 #        17/11a — MÁY CHỦ LDPLAYER (Android 9): khách mở máy chỉ thấy OFFLINE (máy chủ quay cửa sổ LDPlayer, Windows đóng phiên quay
 #                       ngay) → bluestream: máy chủ LDPlayer mặc định lấy hình thẳng từ Android, phiên quay bị đóng thì tự chuyển ·
 #                       lệnh này tự ghi CAPTURE=scrcpy · LDPlayer vừa cài chưa có máy nào ("không đọc được danh sách máy") →
@@ -42,6 +45,10 @@
 #        cloudphoned  — TRẦN CỨNG mỗi máy chủ: cấp tới 68 nhân / 112GB là ngừng nhận (không bán vượt); hết hạn / huỷ / đổi Android
 #                       xoá hẳn máy + dữ liệu, máy sót tự dọn 30 phút / lần
 #        phonectl     — GIÃN CÁCH BẬT MÁY: tối đa 2 máy cùng khởi động (khách đang chờ được 3), cách nhau 20 giây
+#        17/11e — phonectl: GIẢ LẬP CHẠY LẪN QUYỀN ADMIN (lệnh A dán vào PowerShell thường → máy bật từ đó chạy quyền thường, bảng chạy
+#                       Admin → MuMu "Unable to start the Android Device … administrator privileges", không bật được máy nào) → không
+#                       bật máy từ cửa sổ khác quyền + lệnh `quyen --sua` bật lại đúng máy chạy sai quyền. Lệnh A: phải chạy CÙNG quyền
+#                       với bảng (thường là Admin), khác quyền thì dừng ngay từ đầu, không đụng gì
 #   2. Bật lại đúng dịch vụ vừa thay / đang chạy bản cũ (bảng CloudBlue tự bật lại sau 5 giây) — không đụng máy khách
 #   3. Tự chạy khi Windows khởi động lại: tác vụ / lối tắt phải có --auto · bảng mở mà chưa chạy gì → mở lại bảng kiểu tự bật
 #   4. Kiểm cổng phát hình, đường hầm Cloudflare
@@ -54,7 +61,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11a"
+VER = "17/11e"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -69,11 +76,11 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11a"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def cmd_ldbase", None),
+         ("windows/phonectl.py", "phonectl.py", "def cmd_quyen", None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "lấy hình 17/11a", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "bản 17/11e: dán vào Termux", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -216,7 +223,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1711a"
+            bak = lp + ".truoc-1711e"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -376,6 +383,79 @@ def fix_autostart():
             "     Sửa: bảng CloudBlue → bấm 🔑 Tự đăng nhập + tự chạy (tự gõ mật khẩu Windows vào bảng)")
         probs.append("Windows chưa tự đăng nhập (bấm 🔑 trong bảng)")
     return probs
+
+# ------------------------------------------------------------------ 0. 17/11e: chạy cùng quyền với bảng CloudBlue
+_WIN = os.name == "nt"
+def is_admin():
+    if not _WIN: return False
+    try:
+        import ctypes; return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception: return False
+
+def elev(pid):
+    """Tiến trình chạy bằng quyền Admin? True / False / None (không đọc được). Cửa sổ thường bị từ chối đọc → coi là Admin."""
+    if not _WIN: return None
+    try:
+        import ctypes
+        k = ctypes.WinDLL("kernel32", use_last_error=True); a = ctypes.WinDLL("advapi32", use_last_error=True)
+        k.OpenProcess.restype = ctypes.c_void_p; k.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        k.CloseHandle.argtypes = [ctypes.c_void_p]
+        a.OpenProcessToken.argtypes = [ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_void_p)]
+        a.GetTokenInformation.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong)]
+        hp = k.OpenProcess(0x1000, False, int(pid))                      # PROCESS_QUERY_LIMITED_INFORMATION
+        if not hp: return None
+        try:
+            tok = ctypes.c_void_p()
+            if not a.OpenProcessToken(hp, 0x0008, ctypes.byref(tok)):    # TOKEN_QUERY
+                return True if ctypes.get_last_error() == 5 and not is_admin() else None
+            try:
+                e = ctypes.c_ulong(0); n = ctypes.c_ulong(0)
+                if not a.GetTokenInformation(tok, 20, ctypes.byref(e), 4, ctypes.byref(n)): return None   # TokenElevation
+                return bool(e.value)
+            finally: k.CloseHandle(tok)
+        finally: k.CloseHandle(hp)
+    except Exception: return None
+
+def priv_gate():
+    """17/11e: lệnh A phải chạy CÙNG quyền với bảng CloudBlue (bảng chạy bằng quyền Admin). Khác quyền → máy bật từ lệnh này chạy quyền
+       khác → MuMu báo xung đột ("Unable to start the Android Device … administrator privileges") và không bật được máy nào nữa.
+       Trả None (chạy tiếp) hoặc câu báo (dừng, không đụng gì)."""
+    if not _WIN: return None
+    me = is_admin()
+    pe = [elev(pid) for pid, _ in panel_procs()] + [elev(pid) for sv in ("cloudphoned", "bluestream", "cpapi") for pid, _ in procs(SVC_RX[sv])]
+    ref = True if any(e is True for e in pe) else (False if any(e is False for e in pe) else None)
+    if not me and ref is not False:
+        return ("lệnh A đang chạy KHÔNG có quyền Admin" + (" mà bảng CloudBlue chạy bằng quyền Admin" if ref else "") + ".\n"
+                "     Bật / khởi động lại máy từ cửa sổ này → giả lập chạy lẫn quyền, MuMu báo \"Unable to start the Android Device\" và\n"
+                "     không bật được máy nào nữa. Đóng cửa sổ này → chuột phải nút Start → Terminal (Admin) (hoặc Windows PowerShell (Admin))\n"
+                "     → dán lại lệnh A. Thanh tiêu đề cửa sổ phải có chữ \"Administrator\".")
+    if me and ref is False:
+        return ("bảng CloudBlue đang chạy KHÔNG có quyền Admin mà lệnh A chạy bằng quyền Admin → máy bật từ đây sẽ lẫn quyền.\n"
+                "     Đóng bảng CloudBlue, mở lại bằng quyền Admin (bảng → 🔑 Tự đăng nhập + tự chạy cài sẵn tác vụ chạy Admin), rồi chạy lại lệnh A.")
+    return None
+
+PRIV_DONE = []
+def priv_fix():
+    """17/11e: máy ảo đang chạy sai quyền (bật từ lệnh A chạy KHÔNG Admin lần trước, mở MuMu bằng tay…) → phonectl quyen --sua:
+       mở lại chương trình chính MuMu chạy sai quyền + tắt êm rồi bật lại đúng các máy khách chạy sai quyền."""
+    say("4b/6 Quyền chạy của giả lập (lẫn Admin / quyền thường → MuMu báo xung đột, không bật được máy)")
+    if not _WIN: say("   (bỏ qua — không phải Windows)"); return []
+    rc, out = pctl("quyen", *([] if ONLY_CHECK else ["--sua"]), t=1800)
+    if "QUYEN_KQ" not in out:
+        say("   ? phonectl chưa có lệnh kiểm quyền (bản cũ) — bỏ qua"); return []
+    for ln in out.splitlines():
+        if ln.startswith("   ") and ("SAI QUYỀN" in ln or "✓" in ln or "✗" in ln or "⚠" in ln or "…" in ln): say(ln)
+    kq = next((ln for ln in out.splitlines() if ln.startswith("QUYEN_KQ")), "")
+    if kq.split()[1:2] in (["dung"], ["khong_biet"]): say("   ✓ giả lập chạy đúng 1 loại quyền"); return []
+    m = re.search(r"da_sua=(\d+) chua_sua=(\d+)", kq)
+    if m:
+        if int(m.group(1)): PRIV_DONE.append(int(m.group(1)))
+        if int(m.group(2)): return [f"{m.group(2)} máy chạy sai quyền chưa sửa được (xem dòng ⚠ / ✗ ở bước 4b)"]
+        return []
+    m = re.search(r"sai=(\d+)", kq)
+    if m: return [f"{m.group(1)} máy chạy sai quyền Admin — chạy lệnh A (không --chi-kiem) bằng PowerShell (Admin) để bật lại đúng quyền"]
+    if "khong_admin" in kq: return ["chưa sửa được máy chạy sai quyền — chạy lệnh A bằng PowerShell (Admin)"]
+    return []
 
 def panel_procs():
     out = ps("Get-CimInstance Win32_Process | Where-Object { ($_.Name -like 'python*' -and $_.CommandLine -match 'panel\\.py') -or $_.Name -eq 'BlueRobloxServer.exe' } | "
@@ -833,6 +913,13 @@ def main():
     c = conf(); node = c.get("NODE_ID") or "?"
     say(f"== CloudBlue · sửa tất cả ({VER}) · máy chủ {node} · {time.strftime('%d/%m %H:%M')}" + (" · CHỈ KIỂM" if ONLY_CHECK else "") + " ==")
     probs = []
+    g = priv_gate()                                         # 17/11e: chạy khác quyền với bảng → dừng NGAY, không đụng gì
+    if g and not ONLY_CHECK:
+        say("   ✗✗ DỪNG: " + g)
+        say(f"== TÓM TẮT {node} ==")
+        say("   ✗ chưa làm gì — xem dòng DỪNG ở trên (lệnh A phải chạy CÙNG quyền với bảng CloudBlue: PowerShell (Admin))")
+        return
+    if g: say("   ⚠ " + g)
     changed, p = update_files(); probs += p
     probs += ld_fix(c, changed)
     probs += restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
@@ -847,6 +934,7 @@ def main():
         res, extra, done, final = [], {}, [], []
         probs.append("vừa mở lại bảng — 10 phút nữa chạy lại lệnh để kiểm máy khách")
     else:
+        probs += priv_fix()                                 # 17/11e: máy chạy sai quyền → bật lại đúng quyền TRƯỚC khi kiểm từng máy
         res, extra, p = check_phones(c); probs += p
         done, final = fix_phones(res, extra) if res or extra.get("off") else ([], [])
     rm = []
@@ -867,6 +955,7 @@ def main():
     say(f"   máy khách: {okn} có hình · {len(done)} vừa sửa ({sum(1 for _, k in final if k == 'ok')} đã có hình)"
         + (f" · {extra.get('sleep', 0)} đang ngủ" if extra else "") + (f" · {len(inapp)} đen trong app (không đụng)" if inapp else ""))
     if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")
+    if PRIV_DONE: say(f"   ✓ đã bật lại {sum(PRIV_DONE)} máy chạy sai quyền (lẫn Admin — MuMu hết báo xung đột)")
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     say("   → XONG, máy chủ ổn." if not probs and not still else "   → Còn dòng ✗ ở trên: chụp phần TÓM TẮT gửi Claude.")

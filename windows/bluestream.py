@@ -113,7 +113,8 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "17/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): Android 9 khung khoá dày + tự lấy khung khoá
+BS_SUB = "17/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+                                          # · 17/11a: Android 9 khung khoá dày + tự lấy khung khoá · máy chủ LDPlayer lấy hình thẳng từ Android
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
                                           # · 16/11a: máy tắt / Android chưa lên → tự gọi bật + báo rõ (hết quay mãi "chưa bật được hình")
@@ -159,6 +160,23 @@ CELL_LAG_MS = max(150, _int_conf("STREAM_CELL_LAG_MS", 500))   # khách dùng 4G
 # thay vì 15 phút: lần mở sau bắt đầu đúng mức, khỏi 3 lần đứng hình đầu phiên.
 CEIL_S, CEIL_MAX_S = 600.0, 3600.0
 RATE_MEM_LONG_S = max(RATE_MEM_S, _float_conf("RATE_MEM_LONG_MIN", 360.0) * 60)
+# 17/11e — HẾT KẸT HÌNH VỠ Ô SAU KHI MẠNG YẾU (ticket 17/11: app Android, "Mạng yếu — đã giảm nét", hạ FPS + khởi động lại máy vẫn vỡ ô).
+# Mạng khách giật vài lần → hạ dần tới mức rất thấp (180–300 kbps: hình 272x480 phóng to = vỡ ô) + nhớ mức đó tới 6 GIỜ + nhớ "trần" tới
+# 1 giờ + cứ có 1 lần app nhận chậm là không được tăng → mạng đã khoẻ lại vẫn kẹt ở mức thấp; khởi động lại máy / đổi FPS / đổi máy
+# (mức nhớ theo KHÁCH) đều nạp lại đúng mức thấp đó. Nay: (1) mức nhớ cũ hơn RATE_FRESH_S giây → phiên mới bắt đầu ≥ RATE_FRESH_KBPS và
+# KHÔNG giữ trần / thời gian giữ cũ (mạng còn yếu thật thì vài giây sau tự hạ lại) · (2) khách TỰ chọn chất lượng → bỏ mức đã nhớ, dò lại
+# từ đầu · (3) yên CEIL_CALM_S giây không phải hạ → bỏ trần cũ + thời gian giữ, được thử tăng · (4) mạng 4G hay giật lẻ: ≤ 1 lần chậm
+# trong 90 giây vẫn tính là yên để tăng.
+RATE_FRESH_S = max(30.0, _float_conf("RATE_FRESH_S", 180.0))
+RATE_FRESH_KBPS = max(300, _int_conf("RATE_FRESH_KBPS", 700))
+CEIL_CALM_S = max(60.0, _float_conf("CEIL_CALM_S", 180.0))
+# 17/11e — DÁN CHỮ VÀO TERMUX: dán = đặt bộ nhớ copy của máy + phím PASTE. Termux (dòng lệnh) BỎ QUA phím PASTE → khách bấm "Dán chữ"
+# mà Termux đứng im (ticket 17/11). App đang mở là Termux → đặt bộ nhớ copy rồi bấm Ctrl+Alt+V = phím tắt dán của chính Termux (dán
+# thật: giữ chữ có dấu, nhiều dòng, bracketed paste). Tắt: PASTE_TERMUX=0. Thêm app khác dán bằng Ctrl+Alt+V: PASTE_CTRL_ALT_V=gói1,gói2
+PASTE_TERMUX = str(C.get("PASTE_TERMUX", "1")).strip() != "0"
+PASTE_CAV_PKGS = tuple(p.strip() for p in ("com.termux," + str(C.get("PASTE_CTRL_ALT_V") or "")).split(",") if p.strip())
+_FG_RE = re.compile(r"\bu\d+\s+([A-Za-z][\w.]*)/")
+_CAV_SAID = set()
 # 16/11 — HẾT QUAY MÃI "Máy chủ chưa bật được hình": lỗi lặt vặt lúc bật hình lần đầu → thử lại tại chỗ (app được giữ kết nối);
 # adb KHÔNG thấy máy (máy đang tắt mà không phải "ngủ", Android treo / chưa lên) → gọi `phonectl wake` (CHỈ bật máy đang TẮT, không
 # bao giờ khởi động lại máy đang chạy) + báo khách đúng tình trạng + trường fix="reboot" để app hiện nút "Khởi động lại máy".
@@ -1161,6 +1179,7 @@ class ScrcpySource:
 SCR_ALIGN = 8 if str(C.get("STREAM_ALIGN16", "1")).strip() == "0" else 16
 SLICE_JOIN = str(C.get("STREAM_SLICE_JOIN", "1")).strip() != "0"
 SLICE_WAIT = 0.03                         # giây chờ lát tiếp theo của khung đang ghép (chỉ khi chưa biết khung có mấy lát)
+SLICE_WAIT_MAX = 0.12                     # 17/11e: đã biết khung có mấy lát mà còn thiếu → chờ tối đa chừng này giây (máy ảo bận) rồi mới gửi
 _SLICE_SAID = set()
 
 
@@ -1296,7 +1315,10 @@ class ScrcpyVideo:
         try:
             while not self.stopped:
                 if held is not None:                                 # đang ghép khung nhiều lát: chờ lát kế tối đa SLICE_WAIT giây
-                    try: rd = select.select([s], [], [], SLICE_WAIT)[0]
+                    w = SLICE_WAIT
+                    if self.layout and len(held[4]) < len(self.layout):         # 17/11e: còn thiếu lát → chờ thêm, đỡ gửi khung thiếu (hình vỡ tới khung khoá)
+                        w = max(SLICE_WAIT, SLICE_WAIT_MAX - (time.monotonic() - held[3] / 1e6))
+                    try: rd = select.select([s], [], [], w)[0]
                     except (OSError, ValueError): rd = [s]
                     if not rd: self._emit(held); held = None; continue
                 pf, n = struct.unpack(">QI", _recv_exact(s, 12))
@@ -1415,6 +1437,7 @@ class Control:
         self.n_tap = 0; self.n_late = 0; self.stat_t = time.time(); self.dpos = {}
         self.dfix_at = 0.0; self.dfix_busy = False                                              # đưa app từ màn ảo về màn chính
         self.miss_t = 0.0; self.miss_log = 0.0; self.n_miss = 0; self.miss_same = 0             # scrcpy bỏ cú chạm vì sai cỡ màn hình
+        self.fg = ""; self.fg_t = 0.0                                                           # 17/11e: app đang mở (để dán vào Termux)
 
     # ---------- khởi động (luồng nền) ----------
     def start(self):
@@ -1603,7 +1626,15 @@ class Control:
                     if nx is not None and nx[0] == "paste": text += nx[1]; continue
                     carry = nx; break
                 b = text.encode("utf-8")[:200000]; self.seq += 1
-                self._raw(struct.pack(">BqBI", 9, self.seq, 1, len(b)) + b)
+                pkg = self._fg_pkg() if PASTE_TERMUX else ""
+                if pkg and self._cav_app(pkg):                   # 17/11e: Termux bỏ qua phím PASTE → đặt bộ nhớ copy rồi Ctrl+Alt+V (dán của Termux)
+                    self._raw(struct.pack(">BqBI", 9, self.seq, 0, len(b)) + b)
+                    time.sleep(0.12)
+                    self._raw(self._cav_pkt(0) + self._cav_pkt(1))
+                    if self.serial not in _CAV_SAID:
+                        _CAV_SAID.add(self.serial); log(f"  [điều khiển {self.serial}] dán vào {pkg} bằng Ctrl+Alt+V (app này bỏ qua phím PASTE)")
+                else:
+                    self._raw(struct.pack(">BqBI", 9, self.seq, 1, len(b)) + b)
                 time.sleep(0.15)                             # chờ app trong máy dán xong (dán là bất đồng bộ) rồi mới gửi lệnh sau
             elif kind == "raw":
                 self._raw(val)
@@ -1611,6 +1642,36 @@ class Control:
                 cmd, t0 = val if isinstance(val, tuple) else (val, 0.0)
                 if t0 and cmd.startswith("input ") and time.time() - t0 > 4: continue      # chạm đã cũ (adb kẹt) → bỏ, khỏi bấm nhầm muộn
                 adb(self.serial, "shell", cmd, timeout=8 if cmd.startswith("input ") else 15)
+
+    # ---------- 17/11e: dán vào app dòng lệnh (Termux) ----------
+    def _fg_pkg(self):
+        """Gói app đang hiện trên màn máy ('' = không đọc được). Nhớ 2 giây (dán liên tiếp khỏi hỏi lại). Chỉ gọi từ luồng gửi."""
+        now = time.time()
+        if now - self.fg_t < 2.0: return self.fg
+        pkg = ""
+        try:
+            rc, out, _ = adb(self.serial, "shell", "dumpsys window | grep -E 'mCurrentFocus|mFocusedApp'", timeout=4)
+            if rc == 0:
+                for key in ("mCurrentFocus", "mFocusedApp"):          # cửa sổ đang nhận phím trước; popup / bàn phím → app đang mở
+                    for ln in (out or "").splitlines():
+                        if key in ln:
+                            m = _FG_RE.search(ln)
+                            if m: pkg = m.group(1); break
+                    if pkg: break
+        except Exception:
+            pkg = ""
+        self.fg, self.fg_t = pkg, time.time()
+        return pkg
+
+    @staticmethod
+    def _cav_app(pkg):
+        """App dán bằng Ctrl+Alt+V (Termux + bản Termux khác tên gói con) thay cho phím PASTE."""
+        return any(pkg == p or pkg.startswith(p + ".") for p in PASTE_CAV_PKGS)
+
+    @staticmethod
+    def _cav_pkt(action):
+        # phím V (50) kèm Ctrl + Alt bên trái: META_CTRL_ON | META_CTRL_LEFT_ON | META_ALT_ON | META_ALT_LEFT_ON
+        return struct.pack(">BBiii", 0, action, 50, 0, 0x1000 | 0x2000 | 0x02 | 0x10)
 
     def _raw(self, b):
         s = self.sock
@@ -2131,9 +2192,27 @@ class Session:
             m = _RATE_MEM.get(self._rate_key(any_phone=True))
             if not self._mem_ok(m, now): return
         cur = self.kbps_cur or PRESETS[self.cur_q][2]
+        age = now - float(m.get("t", now))
+        if age > RATE_FRESH_S:                                 # 17/11e: mức nhớ đã cũ (mạng có thể đã khoẻ) → bắt đầu ≥ RATE_FRESH_KBPS, bỏ trần / giữ cũ
+            k = max(int(m["k"]), min(int(cur), RATE_FRESH_KBPS))
+            if k < cur: self.kbps_cur = k
+            if int(m["k"]) < k:
+                log(f"  {self.name}: mức mạng yếu đã nhớ ({int(m['k'])} kbps, {int(age // 60)} phút trước) → bắt đầu {k} kbps, không giữ trần cũ")
+            return
         if m["k"] < cur: self.kbps_cur = m["k"]
         self.hold_until, self.hold_s, self.last_cong = m["until"], m["hs"], m["lc"]
         self.ceil_kbps, self.ceil_until, self.ceil_s = int(m.get("ck", 0)), float(m.get("cu", 0.0)), float(m.get("cs", 0.0))
+
+    def _rate_forget(self):
+        """17/11e: khách TỰ chọn chất lượng → bỏ mức đã nhớ + trần + thời gian giữ của khách này (trên loại đường này): dò lại từ đầu.
+           Trả về True nếu trước đó đang có mức nhớ."""
+        had = False
+        for k in (self._rate_key(), self._rate_key(any_phone=True)):
+            had = _RATE_MEM.pop(k, None) is not None or had
+        had = had or bool(self.ceil_kbps)
+        self.ceil_kbps = 0; self.ceil_until = 0.0; self.ceil_s = 0.0
+        self.hold_until = 0.0; self.hold_s = 0.0; self.last_cong = 0.0
+        return had
 
     def _rate_save(self, bump=0):
         """bump=1: vừa phải hạ vì nghẽn (đếm số lần → biết khách mạng yếu thường xuyên) · bump=-1: đã lên lại gần trần (mạng khoẻ) → xoá đếm."""
@@ -2150,14 +2229,23 @@ class Session:
         """Được thử tăng bitrate chưa: dưới trần, yên > RATE_UP_GAP giây, đổi mức gần nhất > RATE_UP_GAP giây, hết thời gian giữ mức sau nghẽn.
            (Mỗi lần đổi = bật lại bộ nén → đứng hình 1–3 giây; trước 11/11 là 10 giây.)"""
         cur = self.kbps_cur or self.kbps_cap
-        if not (cur < self.kbps_cap and now - self.calm_since > RATE_UP_GAP and now - self.rate_t > RATE_UP_GAP and now >= self.hold_until): return False
+        long_calm = now - self.last_cong > CEIL_CALM_S and now - self.calm_since > RATE_UP_GAP / 3       # 17/11e: lâu không phải hạ → hết giữ mức
+        if not (cur < self.kbps_cap and self._calm(now) and now - self.rate_t > RATE_UP_GAP and (now >= self.hold_until or long_calm)): return False
         new = self._raise_to(now)
         return new >= cur * 1.15 or new >= self.kbps_cap      # 16/11: trần vừa đo còn hiệu lực mà đã sát trần → KHÔNG bật lại bộ nén vì vài %
+
+    def _calm(self, now):
+        """Đủ yên để thử tăng: không lần chậm nào trong RATE_UP_GAP giây — hoặc (17/11e, 4G hay giật lẻ) chỉ ≤ 1 lần chậm trong 90 giây gần
+           đây và đã ≥ 90 giây chưa phải hạ (trước: cứ 1 lần chậm là chờ lại từ đầu → mạng giật lẻ 30 giây/lần thì không bao giờ được tăng)."""
+        if now - self.calm_since > RATE_UP_GAP: return True
+        since = max(self.last_cong, self.rate_t, float(getattr(self, "t_start", now) or now))     # lần hạ / đổi mức / mở phiên gần nhất
+        return now - since > 90 and sum(1 for t in self.congest if now - t <= 90) <= 1
 
     def _raise_to(self, now):
         cur = self.kbps_cur or self.kbps_cap
         new = min(self.kbps_cap, int(cur * 1.25) + 50) if now - self.last_cong < 600 else min(self.kbps_cap, int(cur * 1.5) + 100)   # vừa nghẽn trong 10 phút → bước vừa
-        if self.ceil_kbps and now < self.ceil_until: new = min(new, int(self.ceil_kbps * 0.9))      # không thử lại mức vừa làm nghẽn
+        if self.ceil_kbps and now < self.ceil_until and now - self.last_cong < CEIL_CALM_S:
+            new = min(new, int(self.ceil_kbps * 0.9))          # không thử lại mức vừa làm nghẽn (17/11e: yên ≥ CEIL_CALM_S giây thì thôi giữ trần)
         return new
 
     def _dims(self):
@@ -2626,11 +2714,15 @@ class Session:
                     if time.time() - self.last_key_sent > 1.5 and time.time() - self.last_restart > 1.5: self.restart_req = "key"
                 elif t == C_QUALITY:
                     j = json.loads(p.decode() or "{}")
+                    old_q = self.q
                     if j.get("q") in PRESETS or j.get("q") == "auto":
                         self.q = j["q"]; self.cur_q = "bal" if self.q == "auto" else self.q
                     self.fps_req = int(j.get("fps") or self.fps_req or 0); self.kbps_req = int(j.get("kbps") or 0)
                     self.kbps_cur = self._kbps_start(); self.restart_req = "quality"
-                    self.ceil_kbps = 0; self._rate_load()        # khách tự đổi chất lượng → Tự động lấy lại mức đã dò
+                    if "fps" not in j or self.q != old_q:        # 17/11e: khách TỰ chọn chất lượng (không phải app tự xin 30 khung) → dò lại từ đầu
+                        if self._rate_forget(): log(f"  {self.name}: khách tự chọn chất lượng → bỏ mức mạng yếu đã nhớ, dò lại từ đầu")
+                    else:
+                        self.ceil_kbps = 0; self._rate_load()    # app tự xin 30 khung (máy khách giải mã không kịp) → giữ mức đã dò
                 elif t == C_BYE:
                     return
             except (ValueError, TypeError, struct.error, json.JSONDecodeError, AttributeError):
@@ -4420,6 +4512,8 @@ async def main():
         + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"
         " · máy Android gửi nhiều khung hơn đã xin thì tính bù · máy đang khởi động lại → báo khách chờ, tự vào khi máy lên")
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
+    log(f"bản 17/11e: dán vào Termux bằng Ctrl+Alt+V {'BẬT' if PASTE_TERMUX else 'TẮT (PASTE_TERMUX=0)'} · mạng yếu: mức nhớ cũ hơn "
+        f"{RATE_FRESH_S / 60:g} phút → bắt đầu ≥ {RATE_FRESH_KBPS} kbps, khách tự chọn chất lượng → dò lại, yên {CEIL_CALM_S / 60:g} phút → bỏ trần cũ")
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi "
         + (f"{SCR_KEY_S:g} giây THẬT theo khung/giây đang phát (SCRCPY_KEY_EVERY_S)" if SCR_KEY_S > 0 else f"{SCR_IFRAME:g} giây ở 60 khung/giây (kiểu cũ)")
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
