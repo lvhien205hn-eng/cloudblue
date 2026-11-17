@@ -147,9 +147,10 @@ class WSConn:
 
 # ------------------------------------------------------------------ máy khách
 class StreamClient:
-    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None):
+    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None, mode=None):
         self.ep, self.token_fn, self.phone, self.on_event = endpoint or {}, token_fn, phone_id, on_event
         self.q, self.client, self.fps, self.maxh = q, client, fps, maxh
+        self.mode = mode                           # 17/11d: "preview" = ô xem trước (hình nhỏ, chỉ xem — máy chủ không đá phiên điều khiển đang mở)
         self.prefer = prefer                       # (kind, desc) lần trước nối được
         self.direct_fail_t = 0.0                   # lúc đường trực tiếp vừa hỏng trong phiên này (nối lại trong 5 phút thì đi Cloudflare luôn)
         self.conn = None; self.stop_flag = False; self.thread = None
@@ -205,6 +206,7 @@ class StreamClient:
                 hello = {"v": 2, "token": self.token_fn(), "phone": self.phone, "client": self.client, "ver": VERSION, "q": self.q}
                 if self.fps: hello["fps"] = int(self.fps)
                 if self.maxh: hello["maxh"] = int(self.maxh)
+                if self.mode: hello["mode"] = str(self.mode)
                 self.conn.send(C_HELLO, json.dumps(hello).encode())
                 self.conn.settimeout(6)
                 self.last_rx = self.hello_t = time.time()      # hello_t: lúc bắt đầu chờ máy chủ cho vào (chờ lâu = máy đang được bật)
