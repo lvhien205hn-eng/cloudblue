@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711e):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711f):
+#        17/11f — MÁY CHỦ KHỞI ĐỘNG LẠI: phonectl bật máy khách SONG SONG (máy 72 luồng: 4 máy cùng lúc; trước: từng máy một, mỗi máy chờ
+#                       tới 5 phút), máy có khách vừa dùng lên trước, khách mở máy nào máy đó được chen lên, máy ảo treo lúc bật tự tắt
+#                       hẳn + bật lại 1 lần · KHÔNG MẤT DỮ LIỆU: khởi động lại máy chủ bằng nút trên web / lệnh `phonectl.py rebootserver`
+#                       / `phonectl.py tatem` → Android tự ghi dữ liệu rồi tắt (trước: tắt ngang); bấm Restart bằng tay → bảng kịp bảo mọi
+#                       máy ghi dữ liệu xuống đĩa · MÁY ĐÃ HUỶ: cloudphoned tự dọn ~1 phút sau khi bật rồi 10 phút / lần (trước 30 phút),
+#                       dọn cả máy MẤT TÊN ("Android Device-N") của khách đã huỷ; lệnh A dọn ngay · HÌNH VỠ: bluestream không bao giờ gửi
+#                       khung thiếu lát, không học sai cách chia lát (lỗi làm hình vỡ mãi), nhớ cách chia qua lần bật lại bộ nén
 #        17/11e — bluestream: DÁN CHỮ VÀO TERMUX (Termux bỏ qua phím PASTE → khách bấm "Dán chữ" mà Termux đứng im → nay dán bằng
 #                       Ctrl+Alt+V của Termux) · HẾT KẸT HÌNH VỠ Ô SAU KHI MẠNG YẾU (mức mạng yếu nhớ từ lâu không còn kéo phiên mới xuống
 #                       272x480; khách tự chọn chất lượng → dò lại từ đầu; yên 3 phút → bỏ trần cũ) · ghép lát chờ thêm khi còn thiếu lát
@@ -61,7 +68,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11e4"
+VER = "17/11f"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -75,12 +82,12 @@ NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11e"', "bluestream"),
-         ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11e4"', None),
+FILES = [("cloudphoned.py", "cloudphoned.py", "17/11f: tự dọn máy đã huỷ", "cloudphoned"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11f"', "bluestream"),
+         ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11f"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "bản 17/11e: dán vào Termux", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11f: KHÔNG gửi khung hình thiếu lát", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -223,7 +230,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1711e"
+            bak = lp + ".truoc-1711f"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -672,6 +679,46 @@ def phones():
     try: return json.load(open(os.path.join(B, "redroid", "phones.json"), encoding="utf-8-sig")).get("phones", [])
     except Exception: return None
 
+try: DISK_MIN_GB = float(os.environ.get("CB_DISK_MIN_GB") or 25)          # ổ đĩa còn dưới ngần này GB (hoặc dưới 7%) → dòng ✗ trong TÓM TẮT
+except ValueError: DISK_MIN_GB = 25.0
+DON = {}
+def dondep():
+    """17/11f — máy khách web đã HUỶ mà còn nằm trên máy chủ (lần xoá trước lỗi, khách huỷ lúc máy chủ tắt, máy mất tên…) → xoá hẳn máy ảo +
+       dữ liệu ngay (phonectl dondep --xoa: CHỈ máy web ghi "đã huỷ"; máy đang thuê / không có trên web không bao giờ bị đụng). Chỉ kiểm → chỉ đếm."""
+    code, out = pctl("dondep", *([] if ONLY_CHECK else ["--xoa"]), t=1800)
+    m = re.search(r"DONDEP (\{.*\})", out or "")
+    try: DON.update(json.loads(m.group(1)) if m else {})
+    except Exception: pass
+    if not m:
+        last = ((out or "").strip().splitlines() or ["?"])[-1]
+        if "invalid choice" not in (out or ""): say(f"   ⚠ chưa dọn được máy đã huỷ: {last[:160]}")
+        return
+    for ln in (out or "").splitlines():
+        if ln.startswith(("🗑", "⚠")) or (ln.startswith("✗") and ONLY_CHECK): say("   " + ln.strip()[:200])
+    if DON.get("deleted"): say(f"   ✓ đã xoá hẳn {DON['deleted']} máy khách web đã HUỶ còn sót trên máy chủ (máy ảo + dữ liệu) — nhả ổ đĩa")
+    elif DON.get("dead") and ONLY_CHECK: say(f"   ⚠ {DON['dead']} máy khách web đã huỷ còn sót trên máy chủ — chạy lệnh A (không --chi-kiem) để xoá")
+    if DON.get("lost_live"): say(f"   ⚠ {DON['lost_live']} máy khách ĐANG THUÊ bị mất tên trong giả lập — đã giữ nguyên (xem dòng ✓ đặt lại tên ở trên; còn thì chạy lại lệnh A sau 5 phút)")
+
+def disk_report():
+    """17/11f: ổ đĩa của máy chủ còn trống bao nhiêu (ổ chứa C:\\blue và ổ cài giả lập) → [(ổ, GB trống, GB tổng)], dòng cảnh báo nếu sắp đầy."""
+    import shutil
+    c = conf(); dirs = [B]
+    for k in ("MUMU_DIR", "LD_DIR", "MEMU_DIR"):
+        if c.get(k): dirs.append(c[k])
+    try: dirs.append(open(os.path.join(B, "redroid", "mumu_dir.txt"), encoding="utf-8").read().strip())
+    except OSError: pass
+    dirs += [r"C:\Program Files\Netease\MuMuPlayer", r"C:\LDPlayer\LDPlayer9", r"D:\LDPlayer\LDPlayer9"]
+    seen = {}; out = []; warn = []
+    for d in dirs:
+        if not d or not os.path.isdir(d): continue
+        drv = os.path.splitdrive(os.path.abspath(d))[0].upper() or "/"
+        if drv in seen: continue
+        try: u = shutil.disk_usage(d)
+        except OSError: continue
+        seen[drv] = 1; fr, tot = u.free / 2 ** 30, u.total / 2 ** 30; out.append((drv, fr, tot))
+        if fr < DISK_MIN_GB or (DISK_MIN_GB > 0 and fr / max(tot, 1) < 0.07): warn.append(f"ổ {drv} sắp ĐẦY: còn {fr:.0f}GB / {tot:.0f}GB — máy khách sẽ lỗi khi hết chỗ: huỷ bớt máy hết hạn, hoặc gửi Claude dòng này")
+    return out, warn
+
 def check_phones(c):
     say("5/6 Kiểm từng máy khách (nối adb · Android đã lên · bật sáng màn hình · màn đen)")
     if not os.path.isfile(PHONECTL): say("   - máy chủ này không có phonectl.py — bỏ qua"); return [], {}, []
@@ -679,11 +726,12 @@ def check_phones(c):
         code, out = pctl("nhanlai", t=300)                  # máy còn trong giả lập mà mất khỏi danh sách, web còn thuê → nhận lại (giữ dữ liệu)
         for ln in out.splitlines():
             if ln.startswith("NHAN_LAI "): say("   ✓ " + ln[9:])
+    dondep()                                                # 17/11f: máy khách web đã HUỶ còn sót (kể cả máy mất tên) → xoá hẳn ngay
     code, vl = pctl("vmlist", t=120)
     odd = [q[1].strip() for q in (ln.split(",") for ln in vl.splitlines()) if len(q) > 2 and q[0].strip().isdigit() and q[0].strip() != "0"
            and not q[1].strip().startswith(("cp_", "spare_", "tpl_"))]
-    if odd: say(f"   ⚠ máy lạ trong giả lập (tên không phải máy khách): {', '.join(odd[:8])} — ĐỪNG xoá khi chưa hỏi Claude "
-                f"(máy khách bị mất tên cũng hiện ở đây; lệnh A tự đặt lại tên khi máy nằm đúng ô của máy khách)")
+    if odd: say(f"   ⚠ máy lạ trong giả lập (tên không phải máy khách): {', '.join(odd[:8])} — máy của khách ĐÃ HUỶ thì lệnh A đã tự xoá ở trên; "
+                f"máy còn lại ở đây là máy khách đang thuê bị mất tên (tự đặt lại tên khi nằm đúng ô) hoặc máy không có trên web → ĐỪNG xoá khi chưa hỏi Claude")
     state = {}
     if ONLY_CHECK:                                          # chỉ kiểm: đọc giả lập, không ghi gì
         ph = phones()
@@ -967,8 +1015,20 @@ def main():
     fixed_n = {j[1] for j in done}                       # 16/11k2: máy hỏng mà lần này chưa sửa (lệnh khác đang làm / bảng đang bật) → vẫn là CHƯA ổn
     left = [r["name"] for r in res if r["act"] and r["name"] not in fixed_n] + [str(p["name"]) for p in (extra or {}).get("off", []) if str(p["name"]) not in fixed_n]
     if left and not ONLY_CHECK: probs.append(f"{len(left)} máy chưa lên, lần này chưa sửa được ({', '.join(left[:6])}) — 5 phút nữa chạy lại lệnh A")
+    disks, dwarn = disk_report(); probs += dwarn
+    si = {}
+    try:
+        if e != "LAUNCHED":                                 # bảng vừa mở lại đang bật máy khách → không gọi thêm lệnh nào vào giả lập
+            m_ = re.search(r"SERVERINFO (\{.*\})", pctl("serverinfo", t=120)[1] or ""); si = json.loads(m_.group(1)) if m_ else {}
+    except Exception: pass
     say(f"== TÓM TẮT {node} ==")
     if changed: say("   ✓ đã cập nhật: " + ", ".join(sorted(set(changed))))
+    if "panel" in changed: say("   (bảng CloudBlue bản mới chạy từ lần mở bảng / khởi động lại Windows kế tiếp — KHÔNG cần đóng bảng bây giờ)")
+    if DON.get("deleted"): say(f"   ✓ đã xoá hẳn {DON['deleted']} máy khách đã huỷ còn sót (nhả ổ đĩa)")
+    if disks: say("   ổ đĩa: " + " · ".join(f"{d} còn {fr:.0f}GB / {tot:.0f}GB" for d, fr, tot in disks))
+    if si.get("boot_par"):
+        say(f"   máy chủ khởi động lại → tự bật lại máy khách {si['boot_par']} máy cùng lúc, cách nhau {si.get('boot_gap', 20):g} giây (rảnh thì một nửa), "
+            f"khách mở máy nào máy đó lên trước" + ("" if si.get("autologon") else " · ⚠ Windows CHƯA bật tự đăng nhập (bảng → 🔑) — khởi động lại sẽ đứng ở màn hình mật khẩu"))
     say(f"   máy khách: {okn} có hình · {len(done)} vừa sửa ({sum(1 for _, k in final if k == 'ok')} đã có hình)"
         + (f" · {extra.get('sleep', 0)} đang ngủ" if extra else "") + (f" · {len(inapp)} đen trong app (không đụng)" if inapp else ""))
     if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")

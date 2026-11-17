@@ -287,6 +287,8 @@ def adb_pid():
         if "LISTENING" in ln and re.search(r"127\.0\.0\.1:5037\s", ln): return ln.split()[-1]
     return ""
 
+try: LOG_MAX = max(5, int(float(conf().get("LOG_MAX_MB") or 40))) * 1048576
+except Exception: LOG_MAX = 40 * 1048576
 class Svc:
     def __init__(self, name, ui):
         self.name, self.ui, self.p, self.want = name, ui, None, False
@@ -310,9 +312,23 @@ class Svc:
         self.ui.say(self.name, f"▶ Đã bật (pid {self.p.pid})")
         threading.Thread(target=self._pump, args=(self.p,), daemon=True).start()
     def _pump(self, p):
-        with open(self.log, "a", encoding="utf-8") as f:
+        # 17/11f: nhật ký quá LOG_MAX_MB (mặc định 40MB) → đổi tên thành <tên>.log.1 (đè bản cũ) rồi ghi file mới — không để nhật ký làm đầy ổ đĩa
+        k = 0; f = open(self.log, "a", encoding="utf-8")
+        try:
             for line in p.stdout:
                 f.write(time.strftime("%H:%M:%S ") + line); f.flush(); self.ui.say(self.name, line.rstrip())
+                k += 1
+                if k % 500 == 0:
+                    try:
+                        if f.tell() > LOG_MAX:
+                            f.close(); os.replace(self.log, self.log + ".1"); f = open(self.log, "a", encoding="utf-8")
+                    except Exception:
+                        try:
+                            if f.closed: f = open(self.log, "a", encoding="utf-8")
+                        except Exception: pass
+        finally:
+            try: f.close()
+            except Exception: pass
         code = p.wait()
         if self.want:
             self.ui.say(self.name, f"✗ Bị tắt (mã {code}) — tự bật lại sau 5 giây"); time.sleep(5)
@@ -395,6 +411,10 @@ class App:
         r.after(150, self._drain)
         threading.Thread(target=self._checker, daemon=True).start()
         r.protocol("WM_DELETE_WINDOW", self.on_close)
+        try:                                            # 17/11f: Windows sắp tắt / khởi động lại → ghi dữ liệu máy khách xuống đĩa trước
+            r.protocol("WM_SAVE_YOURSELF", self.on_winoff)
+            ctypes.windll.kernel32.SetProcessShutdownParameters(0x3FF, 0)     # bảng được Windows báo TRƯỚC các chương trình khác (giả lập còn chạy)
+        except Exception: pass
         if auto: r.after(1500, self.boot_auto)          # Windows khởi động lại → tự bật A→Z
         else: r.after(4000, self._auto_if_idle)         # 14/11: bảng mở KHÔNG kèm --auto mà chưa chạy gì → cũng tự bật A→Z
         if not conf().get("EMU") and not auto: r.after(1200, self.choose_emu)    # lần đầu: hỏi máy chủ này chạy LDPlayer hay MuMu/MEmu
@@ -472,8 +492,21 @@ class App:
             # web 5xx/không vào được 3 lần liền trong khi máy mình vẫn chạy → khởi động lại đường hầm
             web_bad = self.lights and not self.state.get("web", True)
             if self._bad("web", web_bad and port_open(8010)) == 3:
-                self._fix("web không vào được → khởi động lại đường hầm Cloudflare")
-                subprocess.run(["powershell", "-NoProfile", "-Command", "Restart-Service cloudflared -Force; Start-Sleep 2; Start-Service cloudflared"], capture_output=True, creationflags=NOWIN, timeout=120)
+                # 17/11f: khởi động lại đường hầm làm MỌI khách web của máy chủ rớt vài giây → chỉ làm khi lỗi nằm ở đường hầm thật: cổng bảo vệ
+                # của chính máy chủ (127.0.0.1:8010) vẫn trả lời nhanh, và 10 phút tối đa 1 lần. Máy chủ đang bận (cổng trong máy cũng chậm) → không làm.
+                loc = False
+                try:
+                    try: urllib.request.urlopen("http://127.0.0.1:8010/", timeout=4).close(); loc = True
+                    except urllib.error.HTTPError: loc = True
+                except Exception: loc = False
+                if time.time() - getattr(self, "_cf_rs", 0.0) < 600:
+                    self._fix("web không vào được — vừa khởi động lại đường hầm chưa tới 10 phút → không làm lại")
+                elif not loc:
+                    self._fix("web không vào được nhưng cổng bảo vệ trong máy chủ cũng chậm trả lời (máy chủ đang bận) → KHÔNG khởi động lại đường hầm")
+                else:
+                    self._cf_rs = time.time()
+                    self._fix("web không vào được (cổng trong máy vẫn tốt) → khởi động lại đường hầm Cloudflare")
+                    subprocess.run(["powershell", "-NoProfile", "-Command", "Restart-Service cloudflared -Force; Start-Sleep 2; Start-Service cloudflared"], capture_output=True, creationflags=NOWIN, timeout=120)
         # ~1 phút: lệnh MEmu treo quá 3 phút → tắt; máy khách mất kết nối điều khiển → nối lại
         if n % 15 == 5 and on("cloudphoned") and not getattr(self, "_stuckjob", False):
             def sj():
@@ -1034,6 +1067,30 @@ Write-Host '[OK] Tat Xbox Game DVR'
         finally:
             self._auto_on = False
 
+    def on_winoff(self):
+        """17/11f — Windows báo sắp TẮT / KHỞI ĐỘNG LẠI (ai đó bấm Restart, Windows Update…). Windows sẽ tắt ngang mọi máy ảo như rút điện →
+           file đang ghi dở trong máy khách có thể hỏng. Bảng được báo trước (mức ưu tiên tắt 0x3FF) → bảo MỌI máy khách `sync` (Android ghi
+           hết dữ liệu đang chờ xuống đĩa) cùng lúc, tối đa ~3,5 giây (Windows chỉ cho mỗi chương trình 5 giây), rồi để Windows tắt tiếp.
+           Muốn tắt ÊM hẳn (Android tự tắt): dùng nút Khởi động lại máy chủ trên web, hoặc lệnh `phonectl.py tatem` trước khi Restart."""
+        if time.time() - getattr(self, "_winoff_t", 0.0) < 30: return        # Windows hỏi nhiều cửa sổ / hỏi lại → 30 giây chỉ làm 1 lần
+        self._winoff_t = time.time()
+        try:
+            adb = os.path.join(B, "platform-tools", "adb.exe")
+            try: ports = [int(p["port"]) for p in json.load(open(os.path.join(B, "redroid", "phones.json"), encoding="utf-8")).get("phones", []) if not p.get("hold")]
+            except Exception: ports = []
+            ps = []
+            for pt in ports[:120]:
+                try: ps.append(subprocess.Popen([adb, "-s", f"127.0.0.1:{pt}", "shell", "sync"], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                                stderr=subprocess.DEVNULL, creationflags=NOWIN, env=ENV))
+                except Exception: pass
+            t0 = time.time(); done = 0
+            while time.time() - t0 < 3.5:
+                done = sum(1 for x in ps if x.poll() is not None)
+                if done >= len(ps): break
+                time.sleep(0.1)
+            with open(os.path.join(LOGS, "bang-tu-sua.log"), "a", encoding="utf-8") as f:
+                f.write(time.strftime("%d/%m %H:%M:%S ") + f"Windows sắp tắt / khởi động lại → đã bảo {done}/{len(ps)} máy khách ghi dữ liệu xuống đĩa (sync) trong {time.time() - t0:.1f} giây\n")
+        except Exception: pass
     def on_close(self):
         """Bấm X: chỉ THU NHỎ (dịch vụ vẫn chạy, khách vẫn dùng máy). Muốn tắt hẳn: nút ⏻ Thoát hẳn."""
         if any(s.alive() for s in self.svcs.values()):

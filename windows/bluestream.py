@@ -113,7 +113,8 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "17/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "17/11f"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+                                          # · 17/11f không gửi khung thiếu lát (hình vỡ) + máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước
                                           # · 17/11a: Android 9 khung khoá dày + tự lấy khung khoá · máy chủ LDPlayer lấy hình thẳng từ Android
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
@@ -1179,8 +1180,58 @@ class ScrcpySource:
 SCR_ALIGN = 8 if str(C.get("STREAM_ALIGN16", "1")).strip() == "0" else 16
 SLICE_JOIN = str(C.get("STREAM_SLICE_JOIN", "1")).strip() != "0"
 SLICE_WAIT = 0.03                         # giây chờ lát tiếp theo của khung đang ghép (chỉ khi chưa biết khung có mấy lát)
-SLICE_WAIT_MAX = 0.12                     # 17/11e: đã biết khung có mấy lát mà còn thiếu → chờ tối đa chừng này giây (máy ảo bận) rồi mới gửi
+SLICE_WAIT_MAX = 0.25                     # đã TIN cách chia lát mà khung còn thiếu lát → chờ lát kế tối đa chừng này giây (17/11e: 0,12 rồi gửi khung
+                                          # thiếu; 17/11f: 0,25 rồi BỎ khung — máy ảo khựng dưới 0,25 giây giữa khung không còn làm vỡ / đứng hình)
 _SLICE_SAID = set()
+# 17/11f — HÌNH VẪN VỠ trên nhiều máy (admin báo 23:01 17/11). Bản 16/11k / 17/11e còn 3 lỗ:
+#   (a) cách chia lát chỉ nhớ trong 1 lần chạy bộ nén → mỗi lần bộ nén bật lại (đổi chất lượng, mạng yếu, xoay máy…) KHUNG ĐẦU bị gửi
+#       thiếu lát → hình vỡ tới khung khoá kế;
+#   (b) "cách chia lát" học từ BẤT KỲ khung nào, kể cả khung bị gửi thiếu do hết giờ chờ → học sai 1 lần là MỌI khung sau bị cắt cụt
+#       (hình vỡ mãi, không tự hết);
+#   (c) hết giờ chờ mà khung còn thiếu lát vẫn gửi → app giải mã khung thiếu → nhiễu màu.
+# Giờ: chỉ học cách chia lát từ khung CHẮC CHẮN đủ (gói đầu của khung kế đã tới), lặp lại SLICE_CONFIRM khung liền mới tin; nhớ theo
+# (máy, cỡ hình) qua các lần bật lại bộ nén; hết giờ chờ mà thiếu lát cuối theo cách chia đã tin → KHÔNG gửi (báo phiên xem chờ khung khoá
+# kế — đứng hình ≤ ~1 giây thay vì hình vỡ); bộ nén chia lát không cố định (số lát đổi theo nội dung) → nhận ra và thôi gửi sớm theo cách
+# chia; khung ĐẦU của mỗi lần bật bộ nén được giữ lại 1 nhịp xem có lát kế không.
+SLICE_WAIT_NEW = 0.06                     # chưa biết cách chia lát: chờ lát kế tối đa chừng này giây rồi mới coi khung là đủ
+SLICE_CONFIRM = 3                         # cách chia lát lặp lại ngần này khung liền mới tin (gửi sớm khi đủ lát)
+SLICE_CONFIRM_VAR = 30                    # bộ nén từng đổi cách chia giữa chừng → phải lặp lại ngần này khung liền mới tin lại
+SLICE_CUT_RUN = 3                         # ngần này khung liền bị coi là "thiếu lát" → cách chia đã đổi → học lại (không đứng hình mãi)
+_SLICE_MEM = {}                           # (máy, rộng, cao) → {"multi", "layout", "var", "t"}: nhớ qua các lần bật lại bộ nén + lần bật lại phát hình
+_SLICE_CUT_SAID = {}
+_SLICE_F = os.path.join(B, "redroid", "slice_mem.json")
+_SLICE_DIRTY = [False]
+def _slice_mem_get(serial, w, h):
+    m = _SLICE_MEM.get((serial, int(w or 0), int(h or 0)))
+    return m if m and time.time() - m.get("t", 0) < 6 * 3600 else None
+def _slice_mem_put(serial, w, h, multi, layout, var=False):
+    if not serial or not w or not h: return
+    if len(_SLICE_MEM) > 4000: _SLICE_MEM.clear()
+    _SLICE_MEM[(serial, int(w), int(h))] = {"multi": bool(multi), "layout": tuple(layout) if layout else None, "var": bool(var), "t": time.time()}
+    _SLICE_DIRTY[0] = True
+def _slice_mem_save():
+    """Ghi cái đã nhớ ra redroid/slice_mem.json (phát hình bật lại không phải học lại → không có khung vỡ đầu tiên). Gọi 30 giây / lần."""
+    if not _SLICE_DIRTY[0] or SELFTEST: return
+    _SLICE_DIRTY[0] = False
+    try:
+        now = time.time()
+        d = {f"{k[0]}|{k[1]}|{k[2]}": {"multi": v["multi"], "layout": list(v["layout"]) if v.get("layout") else None, "var": bool(v.get("var")), "t": v["t"]}
+             for k, v in list(_SLICE_MEM.items()) if now - v.get("t", 0) < 6 * 3600}
+        os.makedirs(os.path.dirname(_SLICE_F), exist_ok=True)
+        with open(_SLICE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f)
+        os.replace(_SLICE_F + ".tmp", _SLICE_F)
+    except (OSError, TypeError, ValueError): pass
+def _slice_mem_load():
+    try:
+        with open(_SLICE_F, encoding="utf-8") as f: d = json.load(f)
+        now = time.time()
+        for k, v in d.items():
+            ser, w, h = k.rsplit("|", 2)
+            if now - float(v.get("t") or 0) < 6 * 3600:
+                _SLICE_MEM[(ser, int(w), int(h))] = {"multi": bool(v.get("multi")), "layout": tuple(int(x) for x in v["layout"]) if v.get("layout") else None,
+                                                     "var": bool(v.get("var")), "t": float(v["t"])}
+    except Exception: pass
+_slice_mem_load()
 
 
 def _scr_out(nw, nh, m):
@@ -1245,6 +1296,8 @@ class ScrcpyVideo:
         self.enc = "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
         self.lock = threading.Lock(); self.w = self.h = 0; self.frames_in = 0; self.started = 0.0
         self.scid = 0; self.pk_in = 0; self.cont_in = 0; self.multi = False; self.layout = None   # 16/11k: gói / lát tiếp theo / khung nhiều lát
+        self.cut_in = 0; self._lay_c = None; self._lay_n = 0; self._cut_run = 0                  # 17/11f: khung thiếu lát đã bỏ · cách chia đang kiểm
+        self._prev = ""; self._mem_t = 0.0; self._var = False; self._cut_to = False              # khung trước: "emit" đã gửi · "cut" đã bỏ · chia lát không cố định
 
     def start(self):
         """Bật scrcpy-server + nối socket hình → (rộng, cao) THẬT của hình. Lỗi → RuntimeError."""
@@ -1295,6 +1348,8 @@ class ScrcpyVideo:
             except Exception: pass
             self._kill(); raise
         with self.lock: self.sock = sock; self.w, self.h = w, h
+        m = _slice_mem_get(self.serial, w, h) if SLICE_JOIN else None        # 17/11f: máy này + cỡ hình này đã biết chia lát thế nào
+        if m: self.multi = bool(m.get("multi")); self.layout = m.get("layout"); self._var = bool(m.get("var"))
         threading.Thread(target=self._reader, args=(sock,), daemon=True).start()
         return w, h
 
@@ -1305,57 +1360,110 @@ class ScrcpyVideo:
                 if t and not self.stopped: log(f"  [scrcpy hình {self.serial}] {t[:200]}")
         except Exception: pass
 
-    def _emit(self, it):
-        """it = [dữ liệu, khung khoá?, có SPS/PPS?, pts, [các first_mb]] → gửi 1 khung ĐỦ lát; nhớ cách chia lát để lần sau gửi ngay."""
-        if len(it[4]) > 1: self.layout = tuple(it[4])
+    def _emit(self, it, natural=False):
+        """it = [dữ liệu, khung khoá?, có SPS/PPS?, pts, [các first_mb]] → gửi 1 khung. natural = khung kết thúc TỰ NHIÊN (gói đầu của khung
+           kế đã tới → chắc chắn đủ lát): chỉ khung như vậy mới dùng để học cách chia lát, và phải lặp lại SLICE_CONFIRM khung liền mới tin
+           (17/11f — trước: tin ngay khung đầu, kể cả khung bị gửi thiếu do hết giờ chờ → cắt cụt mọi khung sau)."""
+        lay = tuple(it[4])
+        if len(lay) > 1:
+            if natural:
+                if lay == self._lay_c: self._lay_n += 1
+                else: self._lay_c, self._lay_n = lay, 1
+                if self._lay_n >= (SLICE_CONFIRM_VAR if self._var else SLICE_CONFIRM) and self.layout != lay:
+                    self.layout = lay; self._var = False; _slice_mem_put(self.serial, self.w, self.h, True, lay, False)
+            if time.time() - self._mem_t > 600:                    # còn thấy khung nhiều lát → giữ cái đã nhớ (hết hạn 6 giờ sau lần thấy cuối)
+                self._mem_t = time.time(); _slice_mem_put(self.serial, self.w, self.h, True, self.layout, self._var)
+        else: self._lay_c, self._lay_n = None, 0
+        self._cut_run = 0; self._prev = "emit"
         self.on_au(bytes(it[0]), it[1], it[2], it[3])
 
+    def _unlearn(self, var=False):
+        """Bỏ cách chia lát đã tin. var=True: bộ nén chia lát KHÔNG cố định (số lát đổi theo nội dung) → từ giờ không gửi sớm theo cách chia
+           nữa, chỉ chốt khung khi khung kế tới / hết giờ chờ."""
+        self.layout = None; self._lay_c = None; self._lay_n = 0; self._cut_run = 0
+        if var: self._var = True
+        _slice_mem_put(self.serial, self.w, self.h, self.multi, None, self._var)
+
+    def _cut(self):
+        """Khung thiếu lát / lát lẻ → KHÔNG gửi khung vỡ: báo phiên xem chờ khung khoá kế (đứng hình ≤ ~1 giây thay vì hình nhiễu)."""
+        self.cut_in += 1; self._cut_run += 1; self._prev = "cut"
+        now = time.time(); c = _SLICE_CUT_SAID.setdefault(self.serial, [0.0, 0]); c[1] += 1
+        if now - c[0] > 300:
+            log(f"  [hình {self.serial}] {c[1]} khung thiếu lát (máy ảo đang bận / bộ nén gửi dở) → KHÔNG gửi khung vỡ, chờ khung khoá kế")
+            c[0] = now; c[1] = 0
+        self.on_au(None, False, False, int(time.monotonic() * 1e6))
+
+    def _flush(self, held, natural=False):
+        """Chốt khung đang ghép. natural=True: gói đầu của khung kế (hoặc gói cấu hình) đã tới → khung chắc chắn đủ lát → gửi; khác cách
+           chia đã tin = bộ nén chia lát không cố định → thôi tin. natural=False (hết giờ chờ): thiếu lát cuối theo cách chia ĐÃ TIN → bỏ."""
+        lay = self.layout; got = tuple(held[4])
+        if lay and got != lay:
+            if not natural and got == lay[:len(got)] and self._cut_run + 1 < SLICE_CUT_RUN:
+                self._cut(); self._cut_to = True; return          # bỏ vì hết giờ chờ: gói kế là KHUNG MỚI (không phải lát còn thiếu) = bỏ oan → thôi tin cách chia
+            self._unlearn(var=True)
+        self._emit(held, natural)
+
     def _reader(self, s):
-        cfg = b""; held = None
+        cfg = b""; held = None; first = SLICE_JOIN               # 17/11f: khung ĐẦU luôn giữ 1 nhịp (chưa biết bộ nén có chia lát không)
         try:
             while not self.stopped:
-                if held is not None:                                 # đang ghép khung nhiều lát: chờ lát kế tối đa SLICE_WAIT giây
-                    w = SLICE_WAIT
-                    if self.layout and len(held[4]) < len(self.layout):         # 17/11e: còn thiếu lát → chờ thêm, đỡ gửi khung thiếu (hình vỡ tới khung khoá)
+                if held is not None:                                 # đang ghép khung nhiều lát: chờ lát kế
+                    lay = self.layout
+                    hint = lay or self._lay_c                                   # cách chia đã tin, hoặc mới thấy ở khung trước (chưa tin) → chỉ dùng để CHỜ thêm
+                    if hint and len(held[4]) < len(hint) and tuple(held[4]) == hint[:len(held[4])]:    # còn thiếu lát → chờ thêm (máy ảo bận)
                         w = max(SLICE_WAIT, SLICE_WAIT_MAX - (time.monotonic() - held[3] / 1e6))
+                    else: w = SLICE_WAIT if lay else SLICE_WAIT_NEW
                     try: rd = select.select([s], [], [], w)[0]
                     except (OSError, ValueError): rd = [s]
-                    if not rd: self._emit(held); held = None; continue
+                    if not rd: self._flush(held); held = None; continue
                 pf, n = struct.unpack(">QI", _recv_exact(s, 12))
                 data = _recv_exact(s, n)
                 if pf & (1 << 63):                                   # gói cấu hình (SPS/PPS) → ghép trước mỗi khung khoá
-                    if held is not None: self._emit(held); held = None
+                    if held is not None: self._flush(held, True); held = None
                     cfg = data
                     d = _sps_dims(cfg)
                     if d and d != (self.w, self.h):                  # máy xoay / đổi cỡ → báo app cỡ mới TRƯỚC khung khoá mới
                         self.w, self.h = d
+                        m = _slice_mem_get(self.serial, d[0], d[1]) if SLICE_JOIN else None      # cỡ mới → cách chia lát của cỡ đó (chưa biết → học lại)
+                        self.layout = m.get("layout") if m else None; self._var = bool(m and m.get("var"))
+                        self._lay_c = None; self._lay_n = 0; self._cut_run = 0
+                        if m and m.get("multi"): self.multi = True
                         if self.on_size: self.on_size(*d)
                     continue
                 key = bool(pf & (1 << 62)); self.pk_in += 1
                 fm = _first_mb(data) if SLICE_JOIN else None
                 if fm:                                               # lát TIẾP THEO của cùng 1 khung (16/11k)
                     self.cont_in += 1
-                    if held is not None:
-                        if key and not held[1] and cfg: held[0][0:0] = cfg; held[2] = True      # cờ khung khoá nằm ở lát sau
-                        held[0] += data; held[1] = held[1] or key; held[4].append(fm)
-                        if self.layout and len(held[4]) == len(self.layout) and fm == self.layout[-1]: self._emit(held); held = None
-                        continue
                     if not self.multi:
-                        self.multi = True
+                        self.multi = True; _slice_mem_put(self.serial, self.w, self.h, True, None, self._var)
                         if self.serial not in _SLICE_SAID:
                             _SLICE_SAID.add(self.serial)
                             log(f"  [hình {self.serial}] bộ nén trong máy chia mỗi khung thành nhiều gói → ghép đủ khung rồi mới gửi (hết sọc / nhiễu)")
-                    self.on_au(None, False, False, int(time.monotonic() * 1e6))   # lát lẻ của khung đã gửi → bỏ, chờ khung khoá kế
+                    if held is not None:
+                        if key and not held[1] and cfg: held[0][0:0] = cfg; held[2] = True      # cờ khung khoá nằm ở lát sau
+                        held[0] += data; held[1] = held[1] or key; held[4].append(fm)
+                        lay = self.layout
+                        if lay:
+                            got = tuple(held[4])
+                            if got == lay: self._emit(held); held = None                       # đủ lát theo cách chia đã tin → gửi ngay
+                            elif got != lay[:len(got)]: self._unlearn(var=True)                 # không khớp → chia lát không cố định, ghép tiếp theo giờ chờ
+                        continue
+                    if self.layout and self._prev == "emit": self._unlearn(var=True)     # vừa GỬI SỚM mà khung đó còn lát → cách chia đã tin là SAI
+                    self._cut_to = False                             # lát còn thiếu tới thật (trễ) → lần bỏ khung vừa rồi là đúng
+                    self._cut()                                      # lát lẻ của khung đã gửi / đã bỏ → chờ khung khoá kế
                     continue
-                if held is not None: self._emit(held); held = None
+                if held is not None: self._flush(held, True); held = None
+                if self._cut_to:                                     # vừa bỏ 1 khung "thiếu lát" mà gói kế lại là khung MỚI → khung đó vốn đủ (bộ nén chia
+                    self._cut_to = False; self._unlearn(var=True)    # lát không cố định) → thôi tin cách chia, không bỏ oan nữa
                 self.frames_in += 1
                 au = cfg + data if key and cfg else data; ts = int(time.monotonic() * 1e6)
-                if self.multi: held = [bytearray(au), key, key and bool(cfg), ts, [0]]
+                if self.multi or first: held = [bytearray(au), key, key and bool(cfg), ts, [0]]
                 else: self.on_au(au, key, key and bool(cfg), ts)
+                first = False
         except Exception:
             pass
         if held is not None and not self.stopped:
-            try: self._emit(held)
+            try: self._flush(held)
             except Exception: pass
         if not self.stopped:
             log(f"  [hình {self.serial}] scrcpy ngừng gửi hình → bật lại")
@@ -2994,6 +3102,8 @@ async def seen_loop():
         pass                   # chưa có file / hỏng → bắt đầu trống
     while True:
         write_seen()
+        try: _slice_mem_save()                         # 17/11f: nhớ cách chia lát của từng máy qua lần bật lại phát hình
+        except Exception: pass
         await asyncio.sleep(30)
 
 
@@ -3043,6 +3153,29 @@ def _alive_who(pid, ct=None):
     except (TypeError, ValueError):
         pass
     return True
+
+
+_PRIO_T = {}
+def _prio_touch(name):
+    """17/11f: khách đang CHỜ đúng máy mà lệnh khác (đợt bật hàng loạt sau khi máy chủ khởi động lại) đang giữ máy đó trong hàng chờ
+       → ghi redroid/prio_<tên>.flag: phonectl thấy dấu thì cho máy đó lên TRƯỚC (không chờ hết hàng). Mỗi máy tối đa 20 giây / lần."""
+    if not name or not re.fullmatch(r"[A-Za-z0-9_.-]{1,80}", str(name)): return
+    now = time.time()
+    if now - _PRIO_T.get(name, 0) < 20: return
+    _PRIO_T[name] = now
+    try:
+        with open(os.path.join(B, "redroid", f"prio_{name}.flag"), "w") as f: f.write(str(int(now)))
+    except OSError: pass
+
+
+def boot_wave():
+    """Đợt bật hàng loạt (phonectl bootall, 17/11f) đang chạy? → {"total", "left": [tên máy chưa lên]} · không → None."""
+    try:
+        with open(os.path.join(B, "redroid", "bootall.json"), encoding="utf-8") as fh: d = json.load(fh)
+        if time.time() - float(d.get("t") or 0) > 45 or not _pid_alive(d.get("pid") or 0): return None
+        return d if isinstance(d.get("left"), list) else None
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
 
 
 def _wake_lock_alive(name):
@@ -3162,7 +3295,7 @@ def boot_if_off(phone):
     now = time.time(); w = _WAKING.get(name)
     if w and not w["done"]:
         return ("treo", int(now - w["t"])) if w["ready"] else _wk_live(w)     # phonectl báo máy lên rồi mà adb ở đây vẫn không thấy → gợi ý khởi động lại
-    if _wake_lock_alive(name): return ("bat", 0)
+    if _wake_lock_alive(name): _prio_touch(name); return ("bat", 0)          # 17/11f: lệnh khác đang bật (đợt bật hàng loạt) → cho máy này lên trước
     if w:
         age = now - w["end"]
         if not w["ok"] and age < WAKE_RETRY_S and not w["msg"].startswith("WAKE_BUSY"):
@@ -3188,7 +3321,9 @@ def wake_check(phone, start=True):
         return None if w["ready"] else _wk_live(w)
     ps = phones_json().get(name) or {}
     if not (ps.get("sleep") and ps.get("hold")):        # dấu ngủ + hold = đang ngủ thật (dấu sót mà hold đã gỡ → máy thức)
-        return ("day", 0) if _wake_lock_alive(name) else None
+        if not _wake_lock_alive(name): return None
+        if start: _prio_touch(name)                     # 17/11f: khách đang chờ máy này → lên trước trong đợt bật
+        return ("day", 0)
     if not start: return ("ngu", 0)
     if _wake_lock_alive(name): return ("day", 0)
     if w and not w["ok"] and time.time() - w["end"] < WAKE_RETRY_S and not w["msg"].startswith("WAKE_BUSY"):
@@ -3201,6 +3336,8 @@ def wake_msg(wk):
     k = wk[0]; s = wk[1] if isinstance(wk[1], int) else 0
     t = f", đã {s} giây" if s >= 5 else ""
     if k == "loi": return "Máy chưa bật lại được — máy chủ sẽ tự thử lại. Bấm “Khởi động lại máy” để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ."
+    if k in ("bat", "day") and boot_wave():             # 17/11f: máy chủ vừa khởi động lại, đang bật lại hàng loạt
+        return "🔄 Máy chủ vừa khởi động lại và đang bật lại các máy — máy của bạn được ưu tiên vì bạn đang mở" + t + ". Khoảng 1–3 phút, tự vào khi máy lên; dữ liệu giữ nguyên."
     if k == "bat": return "🔄 Máy đang được bật lại — khoảng 1–2 phút" + t + ". Tự vào khi máy lên."
     if k == "kdl" and s >= KDL_SLOW_S:                 # 16/11e: quá 3 phút → nói thật là máy chủ đang bận (trước cứ "khoảng 1–2 phút, đã 348 giây")
         return "🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường" + t + ". Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào."
@@ -4387,7 +4524,7 @@ def kiemhinh(name=None, port=None):
                 try: pv = ScrcpyVideo(serial, 480, 8, 400, lambda *a: None, iframe=1.0); pv.start()
                 except Exception as e: out["pv_err"] = repr(e)[:80]
             t0 = time.time(); time.sleep(4.0); dt = max(0.5, time.time() - t0)
-            out.update(frames=sv.frames_in, pk=sv.pk_in, cont=sv.cont_in, fps=sv.frames_in / dt)
+            out.update(frames=sv.frames_in, pk=sv.pk_in, cont=sv.cont_in, cut=getattr(sv, "cut_in", 0), fps=sv.frames_in / dt)
         except Exception as e:
             out["err"] = repr(e)[:160]
         finally:
@@ -4417,7 +4554,7 @@ def kiemhinh(name=None, port=None):
         sz = r.get("size") or (0, 0); pr = r.get("prof")
         print(f"  {tag} {nm}: {sz[0]}x{sz[1]}" + ("" if sz[0] % 16 == 0 and sz[1] % 16 == 0 else " (KHÔNG chia hết 16)")
               + f" · {r.get('fps', 0):.0f} khung/giây (xin {fps}) · {r.get('pk', 0)} gói / {r.get('frames', 0)} khung"
-              + (f" · {r['cont']} lát tách rời" if r.get("cont") else "")
+              + (f" · {r['cont']} lát tách rời" if r.get("cont") else "") + (f" · {r['cut']} khung thiếu lát đã bỏ" if r.get("cut") else "")
               + (f" · {({66: 'Baseline', 77: 'Main', 100: 'High'}).get(pr[0], 'profile ' + str(pr[0]))} {pr[1] / 10:g}" if pr else "")
               + (f" · lỗi giải mã {r['dec_err']}" if "dec_err" in r else "")
               + (f" · giống màn thật {r['ssim']:.2f}" if r.get("ssim") is not None else " · màn đang thay đổi (không so độ giống)" if "static" in r else "")
@@ -4507,6 +4644,7 @@ async def main():
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
     log(f"lấy hình 17/11a: {video_mode()} · máy chủ LDPlayer mặc định lấy thẳng từ Android (ép quay cửa sổ: CAPTURE=wgc) · "
         "Windows đóng phiên quay cửa sổ ngay mà máy vẫn chạy → tự lấy thẳng từ Android")
+    log(f"bản 17/11f: KHÔNG gửi khung hình thiếu lát (chờ khung khoá kế thay vì hình vỡ) · cách chia lát phải lặp lại {SLICE_CONFIRM} khung mới tin, nhớ qua lần bật lại bộ nén · máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước")
     log(f"nén 16/11k: hình scrcpy cạnh chia hết 16 {'BẬT' if SCR_ALIGN == 16 else 'TẮT'} · ghép lát {'BẬT' if SLICE_JOIN else 'TẮT'} (chẩn đoán hình vỡ: python bluestream.py --kiemhinh TÊN_MÁY)")
     log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"
         + (f" · bộ đệm {VBV_S:g} giây" if VBV_S > 0 else "") + " · mạng kéo bitrate xuống thì bớt điểm ảnh / khung (mọi chất lượng)"
