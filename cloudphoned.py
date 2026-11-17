@@ -1054,7 +1054,16 @@ def _bg_dondep():
         m = re.search(r"DONDEP (\{.*\})", r.stdout or "")
         j = json.loads(m.group(1)) if m else {}
         if j.get("deleted"):
+            print(f"[tự dọn] đã xoá hẳn {j['deleted']} máy khách web đã huỷ còn sót trên máy chủ (máy ảo + dữ liệu)"
+                  + (f", trong đó {j['lost']} máy mất tên" if j.get("lost") else ""))
             ts_note(f"tự dọn {j['deleted']} máy khách web đã huỷ mà còn sót trên máy chủ (đã xoá hẳn máy + dữ liệu)", key="dondep", every=1800)
+        if j.get("fail"): print(f"[tự dọn] còn {j['fail']} máy đã huỷ chưa xoá được (giả lập bận) — 10 phút sau thử lại")
+        if j.get("lost_live"):                              # máy khách ĐANG THUÊ bị mất tên trong giả lập → tự đặt lại tên (giữ dữ liệu), như lệnh A
+            r2 = phonectl(["nhanlai"])
+            got = [ln[9:] for ln in (r2.stdout or "").splitlines() if ln.startswith("NHAN_LAI ")]
+            for ln in got: print("[tự sửa] " + ln)
+            ts_note(f"{j['lost_live']} máy khách đang thuê bị MẤT TÊN trong giả lập" + (f" — đã tự đặt lại tên {len(got)} máy" if got else " — chưa đặt lại được, chạy lệnh A"),
+                    key="lostlive", every=3600, again=False)
     except Exception as e: print("lỗi tự dọn máy sót:", e)
 
 def _bg_apps():
@@ -1446,7 +1455,8 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 16/11h chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 17/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if WIN: print("Tự dọn máy khách web đã HUỶ còn sót trên máy chủ (kể cả máy mất tên): ~1 phút sau khi bật, rồi 10 phút / lần (17/11f: tự dọn máy đã huỷ)")
     if SICK_MIN > 0: print(f"Máy mới tạo ra mà không lên → tự ngừng nhận đơn mới {SICK_MIN:g} phút + báo admin (máy chủ hỏng không giành đơn nữa)")
     if STUCK_MIN > 0: print(f"Đơn tạo máy quá {STUCK_MIN:g} phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · máy tạo dở của đơn đó tự xoá")
     if BOOT_MAX > 0: print(f"Đang có ≥ {BOOT_MAX} máy mới chưa lên, hoặc 1 máy mới chờ quá {BOOT_SLOW_S / 60:g} phút → tạm không nhận đơn mới (đơn sang máy chủ khác)")
@@ -1501,8 +1511,8 @@ if __name__ == "__main__":
         if n % 20 == 5:                     # ~5 phút: cài app còn thiếu (máy nào lỡ) + mở quyền cài APK cho app khách mới cài
             bg_job("apps", _bg_apps)        # luồng riêng (13/11): trước chạy ở vòng chính → 1 máy cài APK treo (chờ tới 15 phút / file)
                                             # là cả máy chủ không nhận đơn
-        if WIN and n % 120 == 60:           # ~30 phút: xoá hẳn máy web đã huỷ mà còn sót trên máy chủ (14/11)
-            bg_job("dondep", _bg_dondep)
+        if WIN and (n == 4 or n % 40 == 20): # 17/11f: tự dọn máy đã huỷ — ~1 phút sau khi bật (máy chủ vừa khởi động lại: máy khách huỷ lúc
+            bg_job("dondep", _bg_dondep)    #   máy chủ tắt được xoá ngay) rồi ~10 phút / lần (trước 30 phút): xoá hẳn máy web đã huỷ còn sót
         if n % 20 == 12:                    # ~5 phút: máy nào chưa root → tự root (chạy nền, không chặn việc nhận đơn)
             try:
                 if _rootjob[0] is None or _rootjob[0].poll() is not None:
