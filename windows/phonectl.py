@@ -887,6 +887,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
+PCTL_SUB = "17/11e3"          # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -1009,22 +1010,24 @@ def _priv_main_fix():
     return did
 
 
-def _hl_idx(pids):
-    """{pid: số máy} các tiến trình MuMuVMMHeadless trong pids — đọc dòng lệnh (--comment MuMuPlayer-12.0-<số>). Dùng khi MuMuManager
-       không báo máy đó (lúc lẫn quyền MuMuManager có thể không trả lời). Không đọc được → {}."""
+def _hl_info(pids):
+    """{pid: (số máy | -1, pid cha)} các tiến trình MuMuVMMHeadless trong pids — số máy đọc từ dòng lệnh (--comment
+       MuMuPlayer-12.0-<số>). MuMu chạy 2 tiến trình / máy (vỏ + máy thật, cùng dòng lệnh) → dùng để gộp. Không đọc được → {}."""
     out = {}
     if not _WIN or not pids: return out
     try:
         r = subprocess.run(["powershell", "-NoProfile", "-Command",
-                            "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'MuMuVMMHeadless.exe' } | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"],
+                            "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'MuMuVMMHeadless.exe' } | ForEach-Object { '{0}|{1}|{2}' -f $_.ProcessId, $_.ParentProcessId, $_.CommandLine }"],
                            capture_output=True, timeout=40, creationflags=NOWIN)
         for ln in (r.stdout or b"").decode("utf-8", "replace").splitlines():
-            pid, _, cl = ln.strip().partition("|")
-            if not pid.isdigit() or int(pid) not in pids: continue
+            q = ln.strip().split("|", 2)
+            if len(q) < 3 or not q[0].isdigit() or int(q[0]) not in pids: continue
+            cl = q[2]
             m = re.search(r"--comment\s+\"?[^\s\"]*?-(\d+)\"?(?:\s|$)", cl) or re.search(r"MuMuPlayer[^\s\"\\]*?-(\d+)(?![\d.])", cl)
-            if m: out[int(pid)] = int(m.group(1))
+            out[int(q[0])] = (int(m.group(1)) if m else -1, int(q[1]) if q[1].isdigit() else 0)
     except Exception: pass
     return out
+def _hl_idx(pids): return {p: i for p, (i, _) in _hl_info(pids).items() if i >= 0}
 
 
 def _vm_label(i, nm, pids):
@@ -1054,14 +1057,23 @@ def _priv_report():
                 vms.append((i, str(v.get("name", "")), e, pids))
             extra = sorted(p for p, im in allp.items() if im == "mumuvmmheadless.exe" and p not in seen)
             if extra:
-                ix = _hl_idx(set(extra)); byidx = {}
+                hi = _hl_info(set(extra)); byidx = {}
                 try:
                     for x in load().get("phones", []):
                         if str(x.get("idx", "")).strip().isdigit(): byidx[int(x["idx"])] = str(x.get("name", ""))
                 except Exception: pass
-                for p in extra:
-                    i = ix.get(p, -1)
+                pos = {i: k for k, (i, _, _, _) in enumerate(vms)}                       # số máy → vị trí trong vms
+                own = {q: k for k, (_, _, _, pp) in enumerate(vms) for q in pp}         # pid → vị trí
+                for p in extra:                                                         # 17/11e3: tiến trình thứ 2 của máy đã biết → gộp
+                    i, par = hi.get(p, (-1, 0))
+                    k = pos.get(i) if i >= 0 else None
+                    if k is None and par in own: k = own[par]
+                    if k is None: k = next((own[q] for q, (_, qp) in hi.items() if qp == p and q in own), None)
+                    if k is not None:
+                        i0, nm0, e0, pp0 = vms[k]; vms[k] = (i0, nm0, e0 if e0 is not None else _elev(p), pp0 + [p]); own[p] = k; continue
                     vms.append((i, str((info.get(i) or {}).get("name") or byidx.get(i) or "máy ?"), _elev(p), [p]))
+                    own[p] = len(vms) - 1
+                    if i >= 0: pos[i] = len(vms) - 1
         else:
             for i, x in sorted((vms_sure(tries=1) or {}).items()):
                 if not x.get("running"): continue
@@ -1188,10 +1200,45 @@ def memuc(*a, timeout=300):
 def adb(*a, timeout=60): return run([ADB] + list(a), timeout)
 
 # ---------- trạng thái ----------
-def load():
+STATE_BAK = STATE + ".bak"                        # 17/11e3: bản sao lần ghi thành công gần nhất
+STATE_ERR = os.path.join(HOME, "redroid", "phones_errors.log")
+def _state_err(msg):
     try:
-        with open(STATE, encoding="utf-8") as f: return json.load(f)
-    except Exception: return {"phones": []}
+        os.makedirs(os.path.dirname(STATE_ERR), exist_ok=True)
+        if os.path.isfile(STATE_ERR) and os.path.getsize(STATE_ERR) > 200000: os.replace(STATE_ERR, STATE_ERR + ".1")
+        with open(STATE_ERR, "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{os.getpid()}\t{' '.join(str(x) for x in sys.argv[1:3])}\t{msg}\n")
+    except Exception: pass
+def _read_list(path):
+    """{"phones": [...]} · None = file chưa có · lỗi đọc / sai dạng → raise."""
+    try:
+        with open(path, "rb") as f: raw = f.read()
+    except FileNotFoundError: return None
+    if not raw.strip(): raise ValueError("file rỗng (0 byte)")
+    d = json.loads(raw.decode("utf-8-sig"))
+    if not isinstance(d, dict) or not isinstance(d.get("phones"), list): raise ValueError("sai dạng (không có danh sách phones)")
+    return d
+def load():
+    """Đọc redroid/phones.json. File chưa có (máy chủ mới) → danh sách rỗng.
+       17/11e3: đọc lỗi (lệnh khác đang thay file / file hỏng) → thử lại ~2,5 giây → dùng bản sao phones.json.bak → vẫn không được →
+       BÁO LỖI, không trả danh sách rỗng giả (trước: rỗng giả → nhận lại máy lạc tưởng mất hết máy → dựng lại danh sách, mất dấu ngủ
+       và máy không tìm được theo tên — máy chủ 156 17/11 17:08)."""
+    last = None
+    for k in range(10):
+        try:
+            d = _read_list(STATE)
+            return d if d is not None else {"phones": []}
+        except Exception as e:
+            last = e; time.sleep(0.25)
+    _state_err(f"đọc phones.json lỗi: {type(last).__name__}: {last}")
+    try:
+        d = _read_list(STATE_BAK)
+        if d is not None:
+            print(f"   (phones.json đọc lỗi ({type(last).__name__}) → dùng bản sao phones.json.bak)", flush=True)
+            return d
+    except Exception: pass
+    if isinstance(last, ValueError) and "0 byte" in str(last): return {"phones": []}     # file rỗng, không có bản sao: không còn gì để giữ
+    raise RuntimeError(f"không đọc được redroid\\phones.json ({type(last).__name__}: {last}) — dừng, KHÔNG ghi gì để khỏi mất danh sách máy")
 _DROPPED = set()          # tên máy CHÍNH lệnh này cố ý bỏ khỏi danh sách (xoá / quên / dọn) — save() không giữ lại
 def drop_phone(st, name):
     _DROPPED.add(name); st["phones"] = [x for x in st["phones"] if x["name"] != name]
@@ -1199,15 +1246,32 @@ def save(st):
     # 14/11: nhiều lệnh phonectl chạy cùng lúc (tạo máy, nối lại adb, cho ngủ, chống kẹt…) — lệnh đọc danh sách TRƯỚC khi lệnh khác
     # thêm máy rồi ghi đè → MẤT DÒNG máy vừa tạo → bộ dọn máy thừa tưởng máy khách là máy thừa. Giờ: dòng đang có trên đĩa mà bản
     # sắp ghi không có (và lệnh này không cố ý bỏ) → giữ lại.
-    try:
+    # 17/11e3: 1 lệnh ghi 1 lúc (khoá phones_save) · file tạm RIÊNG mỗi lệnh (trước: chung phones.json.tmp → 2 lệnh ghi cùng lúc làm
+    # hỏng file) · đọc file trên đĩa để gộp mà lỗi → load() báo lỗi → KHÔNG ghi · ghi xong giữ bản sao phones.json.bak.
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    with _Lock("phones_save", wait=30):
         names = {x.get("name") for x in st.get("phones", [])}
         for x in load().get("phones", []):
             if x.get("name") not in names and x.get("name") not in _DROPPED: st["phones"].append(x)
-    except Exception: pass
-    os.makedirs(os.path.dirname(STATE), exist_ok=True)
-    tmp = STATE + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f: json.dump(st, f, ensure_ascii=False, indent=1)
-    os.replace(tmp, STATE)
+        data = json.dumps(st, ensure_ascii=False, indent=1)
+        tmp = f"{STATE}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(data); f.flush()
+            try: os.fsync(f.fileno())
+            except OSError: pass
+        for k in range(20):
+            try: os.replace(tmp, STATE); break
+            except PermissionError:                     # Windows: lệnh khác đang mở file → chờ chút rồi thay
+                if k == 19:
+                    try: os.remove(tmp)
+                    except OSError: pass
+                    _state_err("không thay được phones.json (đang bị giữ)"); raise
+                time.sleep(0.15)
+        try:
+            bt = f"{STATE_BAK}.{os.getpid()}.tmp"
+            with open(bt, "w", encoding="utf-8") as f: f.write(data)
+            os.replace(bt, STATE_BAK)
+        except Exception: pass
 def rec(name, st=None): return next((x for x in (st or load())["phones"] if x["name"] == name), None)
 def now(): return datetime.datetime.now().astimezone()
 def parse_dt(s):
@@ -2087,9 +2151,71 @@ def _adopt(v=None, quiet=False):
         st["phones"].append(row); save(st); got.append(nm)
         print(f"NHAN_LAI {nm} (#{i}, cổng {row['port']}): giả lập còn máy, web đang thuê ở máy chủ này → đã nhận lại vào danh sách (giữ dữ liệu)", flush=True)
     return got
+_DEF_VM = re.compile(r"^(Android Device|MuMu安卓设备|MuMu Android Device)(-\d+)?$", re.I)     # tên MuMu tự đặt cho máy mới
+def _node_rows():
+    """Máy web ghi đang thuê ở máy chủ này (có cổng). Đọc lỗi → None."""
+    import urllib.parse
+    me = CONF.get("NODE_ID", "")
+    if not me: return None
+    try:
+        return _sb_get("cloud_phones?select=container,port,status,node,ram,cpu,res,fps,android,expires_at&node=eq."
+                       + urllib.parse.quote(me) + "&status=in.(" + ",".join(ADOPT_ST) + ")") or []
+    except Exception: return None
+def _rename_back(v=None):
+    """17/11e3 — MÁY BỊ MẤT TÊN trong giả lập (17/11 máy chủ 156: MuMu chạy lẫn quyền → lệnh đổi tên lúc tạo máy không được lưu,
+       máy khách cp_147fd67c52 thành "Android Device-13" → tìm theo tên không thấy, khách mở mãi không được, lệnh A báo "máy lạ").
+       Máy khách (danh sách, hoặc web ghi đang thuê ở máy chủ này) mà giả lập KHÔNG có máy đúng tên, trong khi ĐÚNG ô của máy đó (cổng
+       adb = cổng của máy) là máy mang tên mặc định của MuMu, đang TẮT, không thuộc máy khách nào khác → đặt lại đúng tên (giữ dữ liệu)
+       rồi ghi lại cấu hình (RAM / CPU / độ phân giải / FPS). Không xoá, không tạo máy nào. Trả [(tên, số máy)]."""
+    if EMU != "mumu": return []
+    v = v if v is not None else vms_sure()
+    if not v: return []
+    names = {x["name"] for x in v.values()}
+    st = load(); want = {}
+    for p in st["phones"]:
+        nm = str(p.get("name", ""))
+        if nm.startswith("cp_") and nm not in names and str(p.get("port", "")).isdigit(): want[nm] = dict(p)
+    for r in _node_rows() or []:
+        nm = str(r.get("container") or "")
+        if nm.startswith("cp_") and nm not in names and nm not in want and str(r.get("port") or "").isdigit():
+            want[nm] = {"name": nm, "port": int(r["port"]), "ram": r.get("ram"), "cpu": r.get("cpu"), "res": r.get("res"), "fps": r.get("fps")}
+    if not want: return []
+    held = {int(p["idx"]) for p in st["phones"] if str(p.get("idx", "")).isdigit() and p.get("name") in names}    # ô của máy khách đang có tên
+    byport = {}
+    for i in v:
+        try: byport.setdefault(int(port_of(i)), i)
+        except Exception: pass
+    done = []
+    for nm, p in sorted(want.items()):
+        port = int(p["port"]); i = byport.get(port)
+        if i is None or i == 0 or i in held: continue
+        x = v.get(i) or {}
+        if not _DEF_VM.match(str(x.get("name", ""))) or x.get("running"): continue
+        if sum(1 for q in want.values() if int(q["port"]) == port) > 1:
+            print(f"   ⚠ {nm}: ô #{i} đúng cổng {port} nhưng có 2 máy khách cùng cổng này — không đoán, báo Claude", flush=True); continue
+        old = x.get("name")
+        for _t in range(3):
+            memuc("rename", "-i", i, nm, timeout=60)
+            if (vms().get(i) or {}).get("name") == nm: break
+            time.sleep(3)
+        else:
+            print(f"   ⚠ {nm}: ô #{i} ('{old}') đúng cổng {port} nhưng chưa đặt lại tên được — chạy lại lệnh A sau ít phút", flush=True); continue
+        try:
+            res = str(p.get("res") or "720x1280"); res = res if re.match(r"^\d+x\d+$", res) else "720x1280"
+            configure(i, float(p.get("ram") or 2), float(p.get("cpu") or 2), res, p.get("dpi") or auto_dpi(res))
+            memuc("setconfigex", "-i", i, "fps", clamp_fps(p.get("fps") or 30), timeout=60)
+        except Exception as e: print(f"   (ghi lại cấu hình {nm} lỗi: {repr(e)[:120]})", flush=True)
+        st2 = load(); q = rec(nm, st2)
+        if q and (q.get("idx") != i or q.get("port") != port): q["idx"], q["port"] = i, port; save(st2)
+        done.append((nm, i))
+        print(f"NHAN_LAI {nm} (#{i}, cổng {port}): máy bị MẤT TÊN trong giả lập ('{old}') → đã đặt lại tên + ghi lại cấu hình (giữ dữ liệu)", flush=True)
+    return done
 def cmd_nhanlai(a):
+    rb = []
+    try: rb = _rename_back()
+    except Exception as e: print(f"   (đặt lại tên máy lỗi: {repr(e)[:160]})", flush=True)
     got = _adopt()
-    print(f"NHANLAI {json.dumps({'adopted': got}, ensure_ascii=False)}")
+    print(f"NHANLAI {json.dumps({'adopted': got, 'renamed': [n for n, _ in rb]}, ensure_ascii=False)}")
 
 def cmd_dondep(a):
     """dondep [--xoa] — máy khách CÒN SÓT trên máy chủ dù web đã HUỶ (status cancelled): máy cũ đổi Android, đơn huỷ lúc máy chủ
@@ -2777,7 +2903,7 @@ def cmd_quyen(a):
     me, svc, main, vms = _priv_report()
     want = svc if svc is not None else (True if any(e for _, _, e, _ in vms) else (me if not vms else None))
     W = lambda e: "Admin" if e else ("quyền thường" if e is False else "?")
-    print(f"== Quyền chạy — máy chủ {CONF.get('NODE_ID') or '?'} ({EMU_NAME}) · phonectl {PRIV_VER}")
+    print(f"== Quyền chạy — máy chủ {CONF.get('NODE_ID') or '?'} ({EMU_NAME}) · phonectl {PCTL_SUB}")
     print(f"   lệnh này: {W(me)} · bảng / dịch vụ CloudBlue: {W(svc) if svc is not None else 'không thấy'}"
           + "".join(f" · {_PNAME.get(im, im)}: {W(e)}" for _, im, e in main))
     bad = [(i, nm, pids) for i, nm, e, pids in vms if want is not None and e is not None and e != want]
@@ -2802,8 +2928,10 @@ def cmd_quyen(a):
         print(f"   ⚠ {_vm_label(i, nm, pids)} chạy sai quyền nhưng không phải máy khách → không đụng: tắt tay máy này trong {EMU_NAME} "
               "(còn chạy là bật máy khác vẫn bị xung đột)")
     done, left = [], [nm for _, nm, _ in other]
-    st0 = load(); todo = []
+    st0 = load(); todo = []; seen_nm = set()
     for i, nm, pids in ours:
+        if nm in seen_nm: continue                         # 17/11e3: 1 máy chỉ tắt / bật 1 lần
+        seen_nm.add(nm)
         p = rec(nm, st0)
         if not p: print(f"   ⚠ {nm} (#{i}): không có trong danh sách máy khách của máy chủ — không đụng"); left.append(nm); continue
         todo.append((i, nm, pids, p))

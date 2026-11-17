@@ -61,7 +61,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11e2"
+VER = "17/11e3"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -78,7 +78,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PRIV_VER = "17/11e2"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11e3"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "bản 17/11e: dán vào Termux", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -681,7 +681,8 @@ def check_phones(c):
     code, vl = pctl("vmlist", t=120)
     odd = [q[1].strip() for q in (ln.split(",") for ln in vl.splitlines()) if len(q) > 2 and q[0].strip().isdigit() and q[0].strip() != "0"
            and not q[1].strip().startswith(("cp_", "spare_", "tpl_"))]
-    if odd: say(f"   ⚠ máy lạ trong giả lập (không phải máy khách — thường là lần tạo máy hỏng): {', '.join(odd[:8])} — không dùng thì xoá tay trong giả lập")
+    if odd: say(f"   ⚠ máy lạ trong giả lập (tên không phải máy khách): {', '.join(odd[:8])} — ĐỪNG xoá khi chưa hỏi Claude "
+                f"(máy khách bị mất tên cũng hiện ở đây; lệnh A tự đặt lại tên khi máy nằm đúng ô của máy khách)")
     state = {}
     if ONLY_CHECK:                                          # chỉ kiểm: đọc giả lập, không ghi gì
         ph = phones()
