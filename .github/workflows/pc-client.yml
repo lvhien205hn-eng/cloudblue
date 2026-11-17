@@ -1,4 +1,5 @@
-# Build app PC cho khách (Python → exe) → GitHub Release "pc-latest" → web tải ở /download/CloudBluePC.zip
+# Build app PC cho khách (Python → exe) → GitHub Release "pc-latest" → web tải ở /download/CloudBluePC-Setup.exe (bộ cài 1 file,
+# tải về bấm mở là cài + chạy, khỏi giải nén — từ 17/11) và /download/CloudBluePC.zip (bản giải nén, app tự cập nhật vẫn dùng file này)
 name: Build PC client
 
 on:
@@ -99,19 +100,67 @@ jobs:
           if (-not (Get-ChildItem $t -Directory | Where-Object { $_.Name -like "CloudBluePC.old-*" })) { Write-Error "không thấy thư mục bản cũ"; exit 1 }
           if (-not (Test-Path (Join-Path $inst "_internal"))) { Write-Error "bản mới thiếu _internal"; exit 1 }
 
+      # 17/11: BỘ CÀI 1 FILE CloudBluePC-Setup.exe (Inno Setup, có sẵn trên máy build Windows): khách tải về, bấm mở → tự cài vào
+      # %LOCALAPPDATA% (không cần quyền Admin) → tự mở app + biểu tượng ngoài Desktop. KHÔNG phải giải nén.
+      # Bước này lỗi thì KHÔNG làm đỏ lần build: bản .zip vẫn phát hành như cũ, pc.json không ghi "setup" → web vẫn đưa link .zip.
+      - name: Build installer (CloudBluePC-Setup.exe)
+        id: setup
+        continue-on-error: true
+        shell: pwsh
+        working-directory: pc-client
+        run: |
+          if (-not (Test-Path installer.iss)) { Write-Host "::warning::Chua co pc-client/installer.iss - bo qua bo cai 1 file"; exit 1 }
+          python -c "from PIL import Image; im = Image.open('icon.png').convert('RGBA'); im.save('icon.ico', sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])"
+          if (-not (Test-Path icon.ico)) { Write-Host "::warning::Khong tao duoc icon.ico tu icon.png - bo qua bo cai 1 file"; exit 1 }
+          $dirs = @("${env:ProgramFiles(x86)}\Inno Setup 6", "$env:ProgramFiles\Inno Setup 6")
+          $iscc = $dirs | ForEach-Object { Join-Path $_ "ISCC.exe" } | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup --no-progress -y | Out-Host
+            $iscc = $dirs | ForEach-Object { Join-Path $_ "ISCC.exe" } | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { Write-Host "::warning::May build khong co Inno Setup - bo qua bo cai 1 file"; exit 1 }
+          Write-Host "ISCC: $iscc"
+          & $iscc "/DAppVer=1.$env:PC_CODE" installer.iss
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path dist/CloudBluePC-Setup.exe)) { Write-Host "::warning::Bien dich bo cai loi (xem dong loi cua ISCC o tren)"; exit 1 }
+          # thử bộ cài trên Windows thật: cài im lặng vào thư mục tạm → thư mục app CHỈ có CloudBluePC.exe + _internal (app tự cập nhật cần vậy)
+          # → exe vừa cài chạy được (--selftest). Hỏng → không phát hành bộ cài.
+          $root = Join-Path $env:RUNNER_TEMP "setuptest"
+          if (Test-Path $root) { Remove-Item -Recurse -Force $root }
+          $app = Join-Path $root "CloudBluePC"
+          $p = Start-Process -FilePath dist/CloudBluePC-Setup.exe -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=`"$app`"" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Host "::warning::Bo cai chay loi (ma $($p.ExitCode))"; exit 1 }
+          $names = @(Get-ChildItem -Force $app | ForEach-Object { $_.Name.ToLower() })
+          Write-Host "thu muc app sau khi cai: $($names -join ', ')"
+          if ($names.Count -ne 2 -or $names -notcontains "_internal" -or $names -notcontains "cloudbluepc.exe") { Write-Host "::warning::Thu muc app sau khi cai co file la (app se khong tu cap nhat duoc)"; exit 1 }
+          $st = Join-Path $root "selftest.txt"
+          Start-Process -FilePath (Join-Path $app "CloudBluePC.exe") -ArgumentList "--selftest", "`"$st`"" -Wait -NoNewWindow
+          if (-not (Test-Path $st) -or (Get-Content $st -TotalCount 1) -ne "OK") { Write-Host "::warning::App cai tu bo cai khong chay duoc"; exit 1 }
+          $f = Get-Item dist/CloudBluePC-Setup.exe
+          $sha = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+          Write-Host "CloudBluePC-Setup.exe: $($f.Length) byte · sha256 $sha"
+          "SETUP_OK=1", "SETUP_SIZE=$($f.Length)", "SETUP_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - uses: actions/upload-artifact@v4
         with:
           name: CloudBluePC
-          path: pc-client/dist/CloudBluePC.zip
+          path: |
+            pc-client/dist/CloudBluePC.zip
+            pc-client/dist/CloudBluePC-Setup.exe
 
       - name: Publish (GitHub Release pc-latest)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="App máy tính cho khách. Tải CloudBluePC.zip, giải nén, chạy CloudBluePC.exe."
+          NOTES="App máy tính cho khách. Tải CloudBluePC-Setup.exe rồi bấm mở là cài + dùng luôn (không cần giải nén). CloudBluePC.zip: bản không cần cài — giải nén rồi chạy CloudBluePC.exe."
           gh release view pc-latest >/dev/null 2>&1 || gh release create pc-latest --title "CloudBlue PC (bản mới nhất)" --notes "$NOTES" --latest=false
           gh release upload pc-latest pc-client/dist/CloudBluePC.zip --clobber
+          # bộ cài 1 file: chỉ đưa lên khi bước "Build installer" đã thử xong và ĐẠT (SETUP_OK=1)
+          if [ "$SETUP_OK" = "1" ] && [ -f pc-client/dist/CloudBluePC-Setup.exe ]; then
+            gh release upload pc-latest pc-client/dist/CloudBluePC-Setup.exe --clobber
+          else
+            echo "::warning::Lan build nay KHONG co bo cai 1 file (CloudBluePC-Setup.exe) - web van dua link .zip"
+          fi
           gh release edit pc-latest --title "CloudBlue PC (bản mới nhất)" --notes "$NOTES" || true
           # bản tên cũ không còn được cập nhật → xoá cho khỏi tải nhầm (link cũ trên web đã chuyển sang tên mới)
           gh release delete-asset pc-latest BlueRobloxPC.zip --yes 2>/dev/null || true
@@ -125,7 +174,10 @@ jobs:
           mkdir -p blueroblox-site/download
           SIZE=$(stat -c %s pc-client/dist/CloudBluePC.zip)
           SHA=$(sha256sum pc-client/dist/CloudBluePC.zip | cut -d' ' -f1)          # app tự cập nhật kiểm file tải về đúng từng byte
-          printf '{"version":"1.%s","code":%s,"size":%s,"sha256":"%s","date":"%s"}\n' "$PC_CODE" "$PC_CODE" "$SIZE" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > blueroblox-site/download/pc.json
+          # "setup": web thấy trường này mới đổi nút tải sang /download/CloudBluePC-Setup.exe (lần build không có bộ cài → web quay về link .zip)
+          EXTRA=""
+          if [ "$SETUP_OK" = "1" ]; then EXTRA=$(printf ',"setup":"CloudBluePC-Setup.exe","setup_size":%s,"setup_sha256":"%s"' "$SETUP_SIZE" "$SETUP_SHA"); fi
+          printf '{"version":"1.%s","code":%s,"size":%s,"sha256":"%s","date":"%s"%s}\n' "$PC_CODE" "$PC_CODE" "$SIZE" "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$EXTRA" > blueroblox-site/download/pc.json
           cat blueroblox-site/download/pc.json
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
