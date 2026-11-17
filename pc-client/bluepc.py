@@ -720,12 +720,9 @@ class Viewer:
                     dirty |= self._input(e, pygame)
             if self.vw and not self.docked and self._need_fit(): self._fit_window(pygame); dirty = True
             if self.docked and self.dock is not None:              # 17/11d: theo cỡ ô bên phải · lệnh của app (tách ra / đóng / nhận bàn phím)
-                for c in self.dock.sync():
-                    k = c.get("cmd")
-                    if k in ("gone", "close"): running = False
-                    elif k == "left": self.docked = False; self.fit = None; dirty = True
-                    elif k == "undock": self._undock(c); dirty = True
-                    elif k == "focus": self.dock.focus()
+                r = self._dock_sync()
+                if r is False: running = False
+                elif r: dirty = True
             n = self.notice                                   # thông báo do luồng khác đặt / xoá → đọc 1 lần
             if n and time.time() >= n[1]: self.notice = None; dirty = True
             dirty |= self._watch()
@@ -734,6 +731,21 @@ class Viewer:
         if self.docked and self.dock is not None: self.dock.send("bye")
         if self.cli: self.cli.close()
         pygame.quit()
+
+    def _dock_sync(self):
+        """Mỗi vòng (đang gắn trong app): theo cỡ ô · lệnh của app · báo app cỡ hình khi máy xoay (17/11e: app chia lại lưới nhiều máy).
+           Trả False = thoát (app đã đóng / bảo đóng máy) · True = cần vẽ lại."""
+        dirty = False
+        for c in self.dock.sync():
+            k = c.get("cmd")
+            if k in ("gone", "close"): return False
+            elif k == "left": self.docked = False; self.fit = None; dirty = True
+            elif k == "undock": self._undock(c); dirty = True
+            elif k == "focus": self.dock.focus()
+            elif k == "full": self.full = bool(c.get("on"))          # 17/11e: app thôi toàn màn cho máy này (máy khác vừa xin / ô đóng)
+        if self.docked and self.dock is not None and self.vw and (self.vw, self.vh) != getattr(self, "_ar_sent", None):
+            self._ar_sent = (self.vw, self.vh); self.dock.send("size", w=self.vw, h=self.vh)
+        return dirty
 
     def _dock_start(self, title):
         """Gắn cửa sổ máy vào ô bên phải của app; không gắn được → hiện cửa sổ riêng như cũ + báo app thu ô lại."""
@@ -1133,13 +1145,18 @@ class Viewer:
 
     def _input(self, e, pygame):
         c = self.cli; t = e.type
+        if t == getattr(pygame, "WINDOWFOCUSGAINED", -2) and self.docked and self.dock is not None:   # 17/11e: máy này nhận bàn phím → app tô viền ô này
+            self._act_t = time.time(); self.dock.send("act"); return False
         if t == pygame.MOUSEMOTION:
             hv = self._tool_at(e.pos)
             ch = hv != self.hover; self.hover = hv
             if self.mouse_down and c: c.touch(2, 0, *self._clamp(e.pos))
             return ch
         if t == pygame.MOUSEBUTTONDOWN and e.button in (1, 2, 3):
-            if self.docked and self.dock is not None: self.dock.focus()        # bấm vào màn máy (đang gắn trong app) → bàn phím gõ vào máy
+            if self.docked and self.dock is not None:                       # bấm vào màn máy (đang gắn trong app) → bàn phím gõ vào máy
+                self.dock.focus()
+                if time.time() - getattr(self, "_act_t", 0.0) > 0.4:         # 17/11e: báo app ô này đang được chọn (viền xanh) — bấm dồn dập (game) thì thưa lại
+                    self._act_t = time.time(); self.dock.send("act")
             tl = self._tool_at(e.pos)
             if tl and e.button == 1: self._tool(tl, pygame); return True
             nr, n = self.notice_rect, self.notice
@@ -4695,8 +4712,8 @@ class LookDlg(Dlg):
                        fg=TXT, bg=BG, selectcolor=CARD, activebackground=BG, activeforeground=TXT, anchor="w", cursor="hand2",
                        highlightthickness=0, bd=0).pack(fill="x", padx=14, pady=(14, 12))
         self.dv = tk.BooleanVar(value=prefs().get("dock", True) is not False)          # 17/11d
-        tk.Checkbutton(self.body, text=L("Mở máy ngay trong cửa sổ app (ô bên phải) — tắt để mở cửa sổ riêng như trước",
-                                         "Open phones inside the app window (right panel) — off = separate windows"),
+        tk.Checkbutton(self.body, text=L("Mở máy ngay trong cửa sổ app (ô bên phải, mở nhiều máy cùng lúc được) — tắt để mở cửa sổ riêng như trước",
+                                         "Open phones inside the app window (right panel, several at once) — off = separate windows"),
                        variable=self.dv, command=lambda: prefs({"dock": bool(self.dv.get())}), font=app.f_t, fg=TXT, bg=BG, anchor="w",
                        cursor="hand2", wraplength=440, justify="left").pack(fill="x", padx=14, pady=(0, 12))
         bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=12)
@@ -5970,15 +5987,17 @@ class WallDlg(Dlg):
         now = time.time()
         if now - self.t_vis > 1.0 or self._dirty:
             self.t_vis = now; self._dirty = False
-            vis = self._visible(); docked = self.app.docked_pid()
+            vis = self._visible()
+            try: docked = set(self.app.docked_pids())                 # 17/11e: nhiều máy đang mở bên phải
+            except Exception: docked = {self.app.docked_pid()}
             n = sum(1 for t in self.tiles.values() if t.playing)
             for pid, t in self.tiles.items():
-                c = self.cells.get(pid)
-                if pid in vis and pid != docked: t.seen_t = now
-                want = pid in vis and pid != docked
+                c = self.cells.get(pid); on = pid in docked
+                if pid in vis and not on: t.seen_t = now
+                want = pid in vis and not on
                 if want and not t.playing and n < WALL_LIVE and not t.ended: t.play(); n += 1 if t.playing else 0
-                elif t.playing and (pid == docked or (not want and now - t.seen_t > 3.0)): t.pause(); n -= 1     # máy đang mở bên phải: thôi phát ngay
-                if c is not None: self._cover(c, t, pid == docked)
+                elif t.playing and (on or (not want and now - t.seen_t > 3.0)): t.pause(); n -= 1     # máy đang mở bên phải: thôi phát ngay
+                if c is not None: self._cover(c, t, on)
         for pid, t in self.tiles.items():
             f = t.take()
             c = self.cells.get(pid)
@@ -6019,7 +6038,7 @@ class WallDlg(Dlg):
         super().close()
 
 
-# ================================================================ ▶ Ô MÁY BÊN PHẢI (17/11d · Windows)
+# ================================================================ ▶ Ô MÁY BÊN PHẢI (17/11d · Windows) — 17/11e: MỞ NHIỀU MÁY CÙNG LÚC
 #   Bấm "Điều khiển" → màn hình máy hiện NGAY TRONG cửa sổ app, cạnh danh sách (không bật cửa sổ mới).
 #   Cửa sổ máy vẫn là tiến trình riêng (pygame — mượt, lỗi không kéo app sập) nhưng được gắn vào ô bên phải (SetParent).
 #   Hai bên nói chuyện qua file nhỏ trong %APPDATA%\CloudBluePC\ipc\<mã app>\ (m-*.json: máy → app · to-<mã>-*.json: app → máy).
@@ -6178,10 +6197,14 @@ class DockGuest:
 
 
 class _DockSess:
-    def __init__(self, pid, name, host, tok):
-        self.pid, self.name, self.host, self.tok = pid, name, host, tok
-        self.hwnd = int(host.winfo_id()); self.proc = None; self.child = 0; self.t0 = time.time()
+    """1 máy đang mở trong ô bên phải: khung của ô (thanh tên + màn máy) + cửa sổ máy (tiến trình riêng) gắn vào khung đó."""
+    def __init__(self, pid, name, tok):
+        self.pid, self.name, self.tok = pid, name, tok
+        self.tile = self.head = self.hold = self.host = None
+        self.dot = self.name_l = self.st_l = self.b_pop = self.b_close = None
+        self.hwnd = 0; self.proc = None; self.child = 0; self.t0 = time.time()
         self.ok = False; self.gone = False; self.kill_at = 0.0; self.undock_at = 0.0; self.rect = None
+        self.ar = 9 / 16                                   # tỉ lệ rộng / cao của hình máy (máy xoay ngang, game → 16 / 9)
 
     def alive(self):
         try: return self.proc is not None and self.proc.poll() is None
@@ -6197,13 +6220,19 @@ def launch_viewer(args):
     return subprocess.Popen(args, close_fds=True, **kw)
 
 
+DOCK_MAX = 9                                               # 17/11e: mở tối đa chừng này máy cùng lúc trong cửa sổ app
+
+
 class DockPanel:
-    """▶ Ô máy bên phải của cửa sổ app (phía APP). Mỗi lúc gắn 1 máy; mở máy khác thì máy đang gắn tự đóng (máy vẫn chạy trên máy chủ)."""
+    """▶ Ô MÁY bên phải cửa sổ app (phía APP) — 17/11e: MỞ NHIỀU MÁY CÙNG LÚC. Bấm "Điều khiển" máy nào → máy đó thêm 1 ô (máy
+       đang mở giữ nguyên); nhiều ô tự chia lưới sao cho màn máy to nhất. Mỗi ô: ● tên · tình trạng · ⧉ cửa sổ riêng · ✕ đóng.
+       Bấm vào máy nào thì bàn phím gõ vào máy đó (ô có viền xanh). Đóng ô: máy vẫn chạy trên máy chủ."""
     POLL = 250
 
     def __init__(self, app, api=None, launch=None):
         self.app = app; self.api = api or W32(); self.launch = launch or launch_viewer
-        self.cur = None; self.old = []; self.full = False; self.grown = None; self.job = None; self.full_geo = None
+        self.sess = []; self.old = []; self.act = None; self.full = None; self.list_off = False
+        self.grown = None; self.job = None
         self.ipc = os.path.join(DATA, "ipc", str(os.getpid()))
         try:                                              # dọn thư mục tin của các lần mở app trước (quá 12 giờ)
             import shutil
@@ -6212,68 +6241,161 @@ class DockPanel:
                 q = os.path.join(base, n)
                 if n != str(os.getpid()) and time.time() - os.path.getmtime(q) > 43200: shutil.rmtree(q, ignore_errors=True)
         except Exception: pass
-        tk = app.tk; f_s = getattr(app, "f_s", ("Segoe UI", 9))
+        tk = app.tk; f_s = getattr(app, "f_s", ("Segoe UI", 9)); bf = ("Segoe UI", 9, "bold")
         self.frame = tk.Frame(app.shell, bg=BG)                                       # chưa hiện tới khi mở máy
-        self.hd = hd = tk.Frame(self.frame, bg=BG); hd.pack(side="top", fill="x", padx=(2, 14), pady=(12, 8))
-        self.b_close = app.btn(hd, L("✕  Đóng máy", "✕  Close"), self.close, "ghost", padx=11, pady=4, font=("Segoe UI", 9, "bold"))
-        self.b_close.pack(side="right")                                              # nút xếp trước → ô hẹp thì tên máy bị cắt bớt, nút vẫn đủ
-        self.b_pop = app.btn(hd, L("⧉  Cửa sổ riêng", "⧉  Own window"), self.undock, "ghost", padx=11, pady=4, font=("Segoe UI", 9, "bold"))
-        self.b_pop.pack(side="right", padx=(0, 6))
-        self.dot = tk.Label(hd, text="●", font=("Segoe UI", 10, "bold"), fg=WARN, bg=BG); self.dot.pack(side="left")
-        self.name_l = tk.Label(hd, text="", font=("Segoe UI", 12, "bold"), fg=TXT, bg=BG, anchor="w"); self.name_l.pack(side="left", padx=(6, 8))
-        self.st_l = tk.Label(hd, text="", font=f_s, fg=DIM, bg=BG, anchor="w"); self.st_l.pack(side="left", fill="x", expand=True)
-        self.hold = tk.Frame(self.frame, bg="#000000", highlightbackground=LINE, highlightthickness=1, radius=14)
-        self.hold.pack(side="top", fill="both", expand=True, padx=(2, 14), pady=(0, 14))
+        self.bar = tk.Frame(self.frame, bg=BG)                                        # thanh chung — chỉ hiện khi mở ≥ 2 máy
+        self.b_all = app.btn(self.bar, L("✕  Đóng tất cả", "✕  Close all"), self.close_all, "ghost", padx=11, pady=4, font=bf)
+        self.b_all.pack(side="right")
+        self.b_list = app.btn(self.bar, L("«  Thu danh sách", "«  Hide list"), self.toggle_list, "ghost", padx=11, pady=4, font=bf)
+        self.b_list.pack(side="right", padx=(0, 6))
+        self.cnt_l = tk.Label(self.bar, text="", font=("Segoe UI", 12, "bold"), fg=TXT, bg=BG, anchor="w"); self.cnt_l.pack(side="left")
+        self.tip_l = tk.Label(self.bar, text=L("bấm vào máy nào thì gõ phím vào máy đó", "keys go to the phone you click"),
+                              font=f_s, fg=DIM, bg=BG, anchor="w")
+        self.tip_l.pack(side="left", fill="x", expand=True, padx=(10, 8))
+        self.area = tk.Frame(self.frame, bg=BG)                                       # các ô máy đặt bằng place() — tự chia lưới
+        self.area.pack(side="top", fill="both", expand=True, padx=(2, 14), pady=(12, 14))
+        self.area.bind("<Configure>", lambda e: self._place(), add="+")
 
     # ---------- trạng thái ----------
     def usable(self):
         return bool(self.api.ok) and prefs().get("dock", True) is not False and not getattr(self.app, "tools_only", False)
 
+    def live(self): return [s for s in self.sess if not s.gone]
+
+    def pids(self): return [s.pid for s in self.live()]
+
     def pid(self):
-        s = self.cur
-        return s.pid if s is not None and not s.gone else None
+        """Máy đang được chọn (bàn phím gõ vào) — không có thì máy mở sau cùng."""
+        lv = self.live()
+        s = self.act if self.act in lv else (lv[-1] if lv else None)
+        return s.pid if s is not None else None
+
+    @property
+    def cur(self):                                        # tương thích 17/11d (1 máy): máy đang được chọn
+        lv = self.live()
+        return self.act if self.act in lv else (lv[-1] if lv else None)
 
     def _row(self, pid): return next((r for r in (getattr(self.app, "rows_last", None) or []) if str(r.get("id")) == str(pid)), None)
 
-    def _status(self, text, col=None):
-        try: self.st_l.config(text=text); self.dot.config(fg=col or DIM)
+    def _status(self, s, text, col=None):
+        try: s.st_l.config(text=text); s.dot.config(fg=col or DIM)
         except Exception: pass
 
     # ---------- mở / đóng ----------
     def open(self, pid):
-        pid = str(pid); s = self.cur
-        if s is not None and s.pid == pid and s.alive(): self.focus(); return True
-        if s is not None: self._retire(s, "close")
+        pid = str(pid)
+        s = next((x for x in self.live() if x.pid == pid), None)
+        if s is not None:
+            if s.alive(): self.focus(s); return True
+            self._lost(s)                                  # cửa sổ máy cũ đã thoát mà chưa kịp dọn → mở lại
+        if len(self.live()) >= DOCK_MAX:
+            try:
+                import tkinter.messagebox as mb
+                mb.showinfo(L("Mở nhiều máy", "Many phones"),
+                                    L(f"Đang mở {DOCK_MAX} máy cùng lúc — tối đa {DOCK_MAX}. Đóng bớt 1 máy (nút ✕ trên ô máy) rồi mở máy này.",
+                                      f"{DOCK_MAX} phones are open — that's the limit. Close one (✕ on its panel) first."))
+            except Exception: pass
+            return True
         p = self._row(pid) or {}
-        tk = self.app.tk; pad = getattr(tk, "px", lambda n: n)(5)
-        host = tk.Frame(self.hold, bg="#000000", highlightthickness=0)
-        host.pack(fill="both", expand=True, padx=pad, pady=pad)
-        self._show(True)
+        s = _DockSess(pid, p.get("name") or L("Máy", "Phone"), secrets.token_hex(5))
+        self._mk_tile(s)
+        self.sess.append(s)
+        self._show(True); self._relabel(); self._grow()
         try: self.app.root.update_idletasks()
         except Exception: pass
-        s = _DockSess(pid, p.get("name") or L("Máy", "Phone"), host, secrets.token_hex(5))
-        host.bind("<Configure>", lambda e, s=s: self._fit_child(s), add="+")
+        self._place()
         try:
             os.makedirs(self.ipc, exist_ok=True)
             s.proc = self.launch(viewer_args(pid, "--dock", s.hwnd, "--ipc", self.ipc, "--tok", s.tok))
         except Exception as e:
             log("dock: mở máy lỗi:", e)
-            try: host.destroy()
+            self.sess.remove(s); s.gone = True
+            try: s.tile.destroy()
             except Exception: pass
-            if self.cur is None: self._show(False)
+            if not self.live(): self._show(False)
+            else: self._relabel(); self._place()
             return False
-        self.cur = s
-        self.name_l.config(text=s.name); self._status(L("Đang mở máy…", "Opening…"), WARN)
+        self._activate(s)
         self._kick(); self.app._dock_changed()
         return True
 
+    def _mk_tile(self, s):
+        a = self.app; tk = a.tk; px = getattr(tk, "px", lambda n: n); f_s = getattr(a, "f_s", ("Segoe UI", 9)); bf = ("Segoe UI", 9, "bold")
+        t = tk.Frame(self.area, bg=BG)
+        hd = tk.Frame(t, bg=BG); hd.pack(side="top", fill="x", pady=(0, 7))
+        s.b_close = a.btn(hd, "✕", lambda s=s: self.close_one(s), "ghost", padx=9, pady=4, font=bf)
+        s.b_close.pack(side="right")                                                 # nút xếp trước → ô hẹp thì tên máy bị cắt bớt, nút vẫn đủ
+        s.b_pop = a.btn(hd, "⧉", lambda s=s: self.undock(s), "ghost", padx=9, pady=4, font=bf)
+        s.b_pop.pack(side="right", padx=(0, 6))
+        s.dot = tk.Label(hd, text="●", font=("Segoe UI", 10, "bold"), fg=WARN, bg=BG); s.dot.pack(side="left")
+        s.name_l = tk.Label(hd, text=s.name, font=("Segoe UI", 11, "bold"), fg=TXT, bg=BG, anchor="w"); s.name_l.pack(side="left", padx=(6, 8))
+        s.st_l = tk.Label(hd, text=L("Đang mở máy…", "Opening…"), font=f_s, fg=WARN, bg=BG, anchor="w"); s.st_l.pack(side="left", fill="x", expand=True)
+        s.hold = tk.Frame(t, bg="#000000", highlightbackground=LINE, highlightthickness=1, radius=14)
+        s.hold.pack(side="top", fill="both", expand=True)
+        s.host = tk.Frame(s.hold, bg="#000000", highlightthickness=0)
+        s.host.pack(fill="both", expand=True, padx=px(5), pady=px(5))
+        s.host.bind("<Configure>", lambda e, s=s: self._fit_child(s), add="+")
+        for w in (hd, s.dot, s.name_l, s.st_l, s.hold):
+            w.bind("<Button-1>", lambda e, s=s: self.focus(s), add="+")              # bấm thanh tên / viền ô → chọn máy đó
+        s.tile, s.head = t, hd
+        s.hwnd = int(s.host.winfo_id())
+
+    def _relabel(self):
+        """1 máy: nút ghi đủ chữ như 17/11d · ≥ 2 máy: nút gọn + thanh chung (số máy, thu danh sách, đóng tất cả)."""
+        lv = self.live(); one = len(lv) <= 1
+        for s in lv:
+            try:
+                s.b_close.config(text=L("✕  Đóng máy", "✕  Close") if one else "✕", padx=11 if one else 9)
+                s.b_pop.config(text=L("⧉  Cửa sổ riêng", "⧉  Own window") if one else "⧉", padx=11 if one else 9)
+                s.name_l.config(font=("Segoe UI", 12 if one else 11, "bold"))
+                s.hold.config(highlightbackground=ACC if (s is self.act and not one) else LINE)
+            except Exception: pass
+        try:
+            self.cnt_l.config(text=L(f"▦ {len(lv)} máy đang mở", f"▦ {len(lv)} phones open"))
+            self.b_list.config(text=L("»  Hiện danh sách", "»  Show list") if self.list_off else L("«  Thu danh sách", "«  Hide list"))
+            if self.full is None and (len(lv) >= 2 or self.list_off):
+                if not self.bar.winfo_manager(): self.bar.pack(side="top", fill="x", padx=self._padx(), pady=(12, 0), before=self.area)
+                else: self.bar.pack_configure(padx=self._padx())
+            elif self.bar.winfo_manager(): self.bar.pack_forget()
+            if self.full is None: self.area.pack_configure(padx=self._padx())
+        except Exception: log("dock bar:", traceback.format_exc())
+
+    def _padx(self):
+        """Lề trái / phải vùng máy: cạnh danh sách thì sát (2) · danh sách đã thu thì cách mép cửa sổ đều 2 bên."""
+        return (14 if self.list_off else 2, 14)
+
+    def _activate(self, s):
+        """Ô đang được chọn (bàn phím gõ vào): viền xanh khi đang mở ≥ 2 máy."""
+        if s is None or s.gone: return
+        if self.act is not s:
+            self.act = s; self._relabel()
+
+    def _drop(self, s):
+        """Bỏ ô của máy s khỏi lưới (không gửi lệnh gì cho cửa sổ máy)."""
+        if s in self.sess: self.sess.remove(s)
+        s.gone = True
+        if self.full is s: self.set_full(None)
+        if self.act is s:
+            lv = self.live(); self.act = lv[-1] if lv else None
+        try: s.tile.place_forget()
+        except Exception: pass
+        if s not in self.old: self.old.append(s)
+
+    def _after(self):
+        """Sau khi bớt ô: chia lại lưới · hết máy → thu ô, trả cỡ cửa sổ · báo danh sách máy / Xem tất cả."""
+        if not self.live(): self._show(False)
+        else: self._relabel(); self._place()
+        self.app._dock_changed()
+
+    def _lost(self, s):
+        """Cửa sổ máy đã thoát / tự mở cửa sổ riêng → bỏ ô."""
+        self._drop(s); self._kick(); self._after()
+
     def _retire(self, s, how):
         """Thôi gắn máy s: 'close' = đóng máy (cửa sổ máy tự thoát) · 'undock' = tách ra cửa sổ riêng."""
-        if s is self.cur: self.cur = None
-        s.gone = True
         if how == "undock" and s.child:
             try:
-                h = self.hold
+                h = s.hold
                 s.rect = (h.winfo_rootx(), h.winfo_rooty(), max(320, h.winfo_width()), max(480, h.winfo_height()))
             except Exception: s.rect = (80, 60, 480, 860)
             ipc_put(self.ipc, ipc_name(f"to-{s.tok}-"), {"cmd": "undock", "x": s.rect[0], "y": s.rect[1], "w": s.rect[2], "h": s.rect[3]})
@@ -6284,69 +6406,112 @@ class DockPanel:
                 try: self.api.close(s.child)
                 except Exception: pass
             s.kill_at = time.time() + 4.0
-        try: s.host.pack_forget()
-        except Exception: pass
-        if s not in self.old: self.old.append(s)
-        self._kick()
+        self._drop(s); self._kick()
 
-    def close(self):
-        s = self.cur
-        if s is not None: self._retire(s, "close")
-        self._show(False); self.app._dock_changed()
+    def close_one(self, s):
+        if s is None or s.gone: return
+        self._retire(s, "close"); self._after()
 
-    def undock(self):
-        s = self.cur
-        if s is None: return
-        if not s.child: return self.close()
-        self._retire(s, "undock"); self._show(False); self.app._dock_changed()
+    def close_all(self):
+        for s in list(self.live()): self._retire(s, "close")
+        self._after()
 
-    def focus(self):
-        s = self.cur
-        if s is not None and s.child:
+    def close(self):                                       # tương thích 17/11d (đăng xuất…): đóng hết
+        self.close_all()
+
+    def undock(self, s=None):
+        s = s or self.cur
+        if s is None or s.gone: return
+        if not s.child: return self.close_one(s)
+        self._retire(s, "undock"); self._after()
+
+    def focus(self, s=None):
+        s = s or self.cur
+        if s is None or s.gone: return
+        self._activate(s)
+        if s.child:
             ipc_put(self.ipc, ipc_name(f"to-{s.tok}-"), {"cmd": "focus"})
             try: self.api.focus(s.child)
             except Exception: pass
 
+    def toggle_list(self):
+        self.set_list(self.list_off)
+
+    def set_list(self, show):
+        """« Thu danh sách: cả cửa sổ app dành cho các máy · » Hiện danh sách: cột danh sách máy trở lại bên trái."""
+        a = self.app; show = bool(show)
+        if show == (not self.list_off): return
+        self.list_off = not show
+        try:
+            if self.frame.winfo_manager() and self.full is None:
+                if show:
+                    a.stage.configure(width=self.stage_w()); a.stage.pack(side="left", fill="y", expand=False, before=self.frame)
+                else: a.stage.pack_forget()
+        except Exception: log("dock list:", traceback.format_exc())
+        self._relabel(); self._place()
+
     def shutdown(self):
         """App sắp đóng / mở lại: tách mọi cửa sổ máy ra khỏi app TRƯỚC (đóng cửa sổ cha mà còn ô con của tiến trình khác dễ làm cửa sổ máy lỗi), rồi đóng."""
-        for s in ([self.cur] if self.cur else []) + list(self.old):
+        allv = list(self.sess) + [o for o in self.old if o not in self.sess]
+        for s in allv:
             ipc_put(self.ipc, ipc_name(f"to-{s.tok}-"), {"cmd": "close"})
             ch = s.child or (self.api.child(s.hwnd) if self.api.ok else 0)
             if ch and self.api.is_window(ch):
                 try:
                     self.api.show(ch, False); self.api.to_top(ch, -32000, -32000, 400, 400, show=False); self.api.close(ch)
                 except Exception as e: log("dock shutdown:", e)
-        for s in ([self.cur] if self.cur else []) + list(self.old):
+        for s in allv:
             try:
                 if s.alive(): s.proc.wait(timeout=1.5)
             except Exception:
                 try: s.proc.terminate()
                 except Exception: pass
-        self.cur = None; self.old = []
+        self.sess = []; self.old = []; self.act = None
 
     # ---------- bố cục ----------
     def _show(self, on):
-        a = self.app; root = a.root; tk = a.tk; dp = getattr(tk, "dp", 1.0)
+        a = self.app; root = a.root
         try:
             if on:
                 if self.frame.winfo_manager(): return
-                rw, rh = max(root.winfo_width(), 300), max(root.winfo_height(), 300)
-                need_dock = int((rh - 70 * dp) * 9 / 16) + int(110 * dp)       # đủ chỗ cho màn dọc + thanh công cụ của cửa sổ máy
-                sw = self.stage_w(rw, cap=False)
-                if root.state() == "normal" and rw < sw + need_dock:
-                    scr = root.winfo_screenwidth(); nw = min(scr - 16, sw + need_dock)
-                    x, y = root.winfo_x(), root.winfo_y(); nx = max(0, min(x, scr - nw - 8))
-                    self.grown = (rw, x, nw); root.geometry(f"{nw}x{rh}+{nx}+{y}"); rw = nw
-                a.stage.configure(width=self.stage_w(rw)); a.stage.pack_configure(side="left", fill="y", expand=False)
+                a.stage.configure(width=self.stage_w()); a.stage.pack_configure(side="left", fill="y", expand=False)
                 self.frame.pack(side="left", fill="both", expand=True)
             else:
-                if self.full: self.set_full(False)
+                if self.full is not None: self.set_full(None)
+                if self.list_off:
+                    self.list_off = False
+                    try: a.stage.pack(side="left", fill="both", expand=True, before=self.frame if self.frame.winfo_manager() else None)
+                    except Exception: a.stage.pack(side="left", fill="both", expand=True)
                 if not self.frame.winfo_manager(): return
                 self.frame.pack_forget(); a.stage.pack_configure(side="left", fill="both", expand=True)
                 g, self.grown = self.grown, None
                 if g and root.state() == "normal" and abs(root.winfo_width() - g[2]) <= 2:      # app tự nới cửa sổ lúc mở máy → trả lại cỡ cũ
                     root.geometry(f"{g[0]}x{root.winfo_height()}+{g[1]}+{root.winfo_y()}")
         except Exception: log("dock show:", traceback.format_exc())
+
+    def _bar_px(self): return BAR_MIN if prefs().get("bar_hidden") else BAR      # thanh công cụ bên phải của cửa sổ máy (điểm ảnh thật)
+
+    def _need_w(self, rh):
+        """Bề ngang cần cho các ô máy đặt cạnh nhau, cao gần hết cửa sổ (màn dọc 9:16, máy xoay ngang thì theo hình)."""
+        dp = getattr(self.app.tk, "dp", 1.0); lv = self.live()
+        ph = max(200, rh - int((118 if len(lv) >= 2 else 84) * dp))                  # trừ thanh chung + thanh tên + lề
+        return int(sum(ph * s.ar + self._bar_px() + 12 * dp for s in lv) + 10 * dp * max(0, len(lv) - 1) + 16 * dp)
+
+    def _grow(self):
+        """Mở thêm máy mà cửa sổ app hẹp → nới cửa sổ (tối đa bằng màn hình). Cửa sổ đang phóng to / toàn màn → để nguyên."""
+        a = self.app; root = a.root
+        try:
+            if root.state() != "normal" or self.full is not None: return
+            rw, rh = max(root.winfo_width(), 300), max(root.winfo_height(), 300)
+            need = (0 if self.list_off else self.stage_w(rw, cap=False)) + self._need_w(rh)
+            if rw >= need: return
+            scr = root.winfo_screenwidth(); nw = min(scr - 16, need)
+            if nw <= rw + 2: return
+            x, y = root.winfo_x(), root.winfo_y(); nx = max(0, min(x, scr - nw - 8))
+            self.grown = (rw, x, nw) if self.grown is None else (self.grown[0], self.grown[1], nw)
+            root.geometry(f"{nw}x{rh}+{nx}+{y}")
+            if not self.list_off: a.stage.configure(width=self.stage_w(nw))
+        except Exception: log("dock grow:", traceback.format_exc())
 
     def stage_w(self, rw=None, cap=True):
         """Bề ngang cột trái khi đang gắn máy: đủ cho danh sách máy; đang mở trang rộng (Công cụ, Thuê máy…) thì rộng theo trang,
@@ -6359,27 +6524,81 @@ class DockPanel:
         return int(max(300, min(want, rw - 340 * dp))) if cap else int(want)
 
     def relayout(self):
-        """Gọi khi mở / đóng trang: chỉnh lại bề ngang cột trái (nếu đang gắn máy)."""
+        """Gọi khi mở / đóng trang: chỉnh lại bề ngang cột trái (nếu đang gắn máy). Danh sách đang thu mà có trang mới mở → hiện lại."""
         try:
-            if self.frame.winfo_manager() and not self.full:
+            if not self.frame.winfo_manager() or self.full is not None: return
+            if self.list_off and any(p.alive for p in getattr(self.app, "pages", [])): self.set_list(True)
+            if not self.list_off:
                 w = self.stage_w()
                 if int(self.app.stage.cget("width")) != w: self.app.stage.configure(width=w)
         except Exception: pass
 
-    def set_full(self, on):
-        """Toàn màn hình khi máy đang gắn: cả cửa sổ app phủ màn hình, chỉ còn màn máy (F11 / nút Toàn màn để thoát)."""
-        a = self.app; root = a.root
-        if bool(on) == self.full: return
-        self.full = bool(on)
+    def _grid(self, n, W, H, ars):
+        """(cột, hàng, rộng ô, cao ô): thử mọi số cột, chọn cách làm TỔNG diện tích màn máy hiện ra lớn nhất."""
+        dp = getattr(self.app.tk, "dp", 1.0); gap = int(10 * dp); head = int(38 * dp); pad = int(12 * dp); bar = self._bar_px()
+        best = None
+        for c in range(1, n + 1):
+            r = -(-n // c)
+            tw = (W - gap * (c - 1)) / c; th = (H - gap * (r - 1)) / r
+            vw, vh = tw - pad - bar, th - head - pad
+            if vw < 40 or vh < 40: continue
+            area = sum((vh * ar) * vh if vw / vh > ar else vw * (vw / ar) for ar in ars)
+            if best is None or area > best[0] * 1.0001: best = (area, c, r, tw, th)
+        if best is None:
+            c = max(1, min(n, int(W // max(1, 160 * dp)))); r = -(-n // c)
+            return c, r, max(60, (W - gap * (c - 1)) / c), max(80, (H - gap * (r - 1)) / r)
+        return best[1:]
+
+    def _place(self):
+        """Đặt các ô máy: 1 máy phủ kín · nhiều máy chia lưới (hàng cuối thiếu ô thì nằm giữa) · toàn màn → chỉ máy đó."""
+        lv = self.live()
+        try: W, H = self.area.winfo_width(), self.area.winfo_height()
+        except Exception: return
+        if W <= 1 or H <= 1 or not lv: return
         try:
-            if self.full:
-                self.hd.pack_forget(); a.stage.pack_forget(); self.hold.pack_configure(padx=0, pady=0)
-                root.attributes("-fullscreen", True)
+            if self.full is not None and self.full in lv:
+                for s in lv:
+                    if s is self.full: s.tile.place(x=0, y=0, width=W, height=H)
+                    else: s.tile.place_forget()
+                return
+            dp = getattr(self.app.tk, "dp", 1.0); gap = int(10 * dp)
+            c, r, tw, th = self._grid(len(lv), W, H, [s.ar for s in lv])
+            for i, s in enumerate(lv):
+                row, col = divmod(i, c)
+                in_row = min(c, len(lv) - row * c)
+                x0 = (W - (in_row * tw + gap * (in_row - 1))) / 2 if in_row < c else 0
+                s.tile.place(x=int(x0 + col * (tw + gap)), y=int(row * (th + gap)), width=int(tw), height=int(th))
+        except Exception: log("dock place:", traceback.format_exc())
+
+    def set_full(self, s):
+        """Toàn màn hình máy s (F11 / nút Toàn màn trong máy): cả cửa sổ app phủ màn hình, chỉ còn màn máy đó · s = None: thôi."""
+        a = self.app; root = a.root
+        if s is not None and (s.gone or s not in self.sess): s = None
+        if s is self.full: return
+        was, self.full = self.full, s
+        try:
+            if s is not None:
+                if was is not None:
+                    try: was.head.pack(side="top", fill="x", pady=(0, 7), before=was.hold)
+                    except Exception: pass
+                    ipc_put(self.ipc, ipc_name(f"to-{was.tok}-"), {"cmd": "full", "on": False})
+                else:
+                    if self.bar.winfo_manager(): self.bar.pack_forget()
+                    if a.stage.winfo_manager(): a.stage.pack_forget()
+                    self.area.pack_configure(padx=0, pady=0)
+                    root.attributes("-fullscreen", True)
+                s.head.pack_forget()
             else:
                 root.attributes("-fullscreen", False)
-                self.hold.pack_configure(padx=(2, 14), pady=(0, 14)); self.hd.pack(side="top", fill="x", padx=(2, 14), pady=(12, 8), before=self.hold)
-                a.stage.pack(side="left", fill="y", expand=False, before=self.frame)
+                if was is not None:
+                    try: was.head.pack(side="top", fill="x", pady=(0, 7), before=was.hold)
+                    except Exception: pass
+                    if not was.gone: ipc_put(self.ipc, ipc_name(f"to-{was.tok}-"), {"cmd": "full", "on": False})
+                self.area.pack_configure(padx=self._padx(), pady=(12, 14))
+                if not self.list_off: a.stage.pack(side="left", fill="y", expand=False, before=self.frame)
+                self._relabel()
         except Exception: log("dock full:", traceback.format_exc())
+        self._place()
 
     def _fit_child(self, s):
         if s.child and not s.gone:
@@ -6396,17 +6615,15 @@ class DockPanel:
         self.job = None
         try:
             for m in ipc_take(self.ipc, "m-"): self._msg(m)
-            now = time.time(); s = self.cur
-            if s is not None:
-                if not s.alive():
-                    self.cur = None; s.gone = True; self.old.append(s); self._show(False); self.app._dock_changed()
-                else:
-                    ch = self.api.child(s.hwnd)
-                    if ch and ch != s.child:
-                        s.child = ch; s.ok = True; self._fit_child(s)
-                        if self.st_l.cget("text") == L("Đang mở máy…", "Opening…"): self._status(L("Đang kết nối…", "Connecting…"), WARN)
-                    elif not ch and not s.ok and now - s.t0 > 25:          # 25 giây không gắn được → máy đã mở cửa sổ riêng
-                        self.cur = None; s.gone = True; self.old.append(s); self._show(False); self.app._dock_changed()
+            now = time.time()
+            for s in list(self.live()):
+                if not s.alive(): self._lost(s); continue
+                ch = self.api.child(s.hwnd)
+                if ch and ch != s.child:
+                    s.child = ch; s.ok = True; self._fit_child(s)
+                    if s.st_l.cget("text") == L("Đang mở máy…", "Opening…"): self._status(s, L("Đang kết nối…", "Connecting…"), WARN)
+                elif not ch and not s.ok and now - s.t0 > 25:              # 25 giây không gắn được → máy đã mở cửa sổ riêng
+                    self._lost(s)
             for o in list(self.old):
                 ch = self.api.child(o.hwnd) if self.api.ok else 0
                 if o.undock_at and now >= o.undock_at and ch and o.alive():     # máy chưa tự tách → app tách hộ
@@ -6421,31 +6638,42 @@ class DockPanel:
                 if not o.alive() or not ch:
                     if not o.alive() or (o.undock_at == 0.0 and not o.kill_at):
                         self.old.remove(o)
-                        try: o.host.destroy()
+                        try: o.tile.destroy()
                         except Exception: pass
         except Exception: log("dock poll:", traceback.format_exc())
-        if self.cur is not None or self.old: self._kick()
+        if self.live() or self.old: self._kick()
 
     def _msg(self, m):
         tok = str(m.get("tok") or ""); k = m.get("cmd")
-        s = next((x for x in ([self.cur] if self.cur else []) + self.old if x.tok == tok), None)
+        s = next((x for x in list(self.sess) + self.old if x.tok == tok), None)
         if s is None: return
+        on = s in self.sess and not s.gone
         if k == "hello":
             try: s.child = int(m.get("hwnd") or 0) or s.child
             except (TypeError, ValueError): pass
             s.ok = True; self._fit_child(s)
-        elif k == "undocked" and s is self.cur:                                # máy không gắn được / tự tách → cửa sổ riêng
-            self.cur = None; s.gone = True; s.undock_at = 0.0; self.old.append(s); self._show(False); self.app._dock_changed()
+        elif k == "undocked" and on:                                       # máy không gắn được / tự tách → cửa sổ riêng
+            s.undock_at = 0.0; self._lost(s)
         elif k == "undocked": s.undock_at = 0.0
-        elif s is not self.cur: return
+        elif not on: return
         elif k == "state":
             st = str(m.get("st") or "")
             col = OK if st == "connected" else BAD if st in ("error", "kicked") else WARN
             txt = L("Đang chạy", "Running") if st == "connected" else str(m.get("text") or "")[:60]
-            self._status(txt, col)
+            self._status(s, txt, col)
         elif k == "title" and m.get("name"):
-            s.name = str(m["name"])[:40]; self.name_l.config(text=s.name)
-        elif k == "full": self.set_full(bool(m.get("on")))
+            s.name = str(m["name"])[:40]
+            try: s.name_l.config(text=s.name)
+            except Exception: pass
+        elif k == "full":
+            if m.get("on"): self.set_full(s)
+            elif self.full is s: self.set_full(None)
+        elif k == "act": self._activate(s)                                # khách bấm vào màn máy này → ô này được chọn
+        elif k == "size":
+            try: w, h = int(m.get("w") or 0), int(m.get("h") or 0)
+            except (TypeError, ValueError): w = h = 0
+            if w > 0 and h > 0 and abs(w / h - s.ar) > 0.05:                   # máy xoay ngang / dọc → chia lại lưới theo hình mới
+                s.ar = w / h; self._place()
         elif k == "tools":
             p = self._row(m.get("pid") or s.pid)
             if p is not None: self.app.open_tools_page(p)
@@ -6600,6 +6828,11 @@ class Launcher:
     def docked_pid(self):
         try: return self.dockp.pid() if self.dockp else None
         except Exception: return None
+
+    def docked_pids(self):
+        """17/11e: mọi máy đang mở trong cửa sổ app (mở nhiều máy cùng lúc)."""
+        try: return set(self.dockp.pids()) if self.dockp else set()
+        except Exception: return set()
 
     def _dock_changed(self):
         for p in self.pages:
@@ -7051,7 +7284,7 @@ class Launcher:
     def _rows_sig(self, rows):
         """Dấu vân tay của mọi thứ đang vẽ trong danh sách máy (máy + dòng "còn … ngày" + quyền admin + cờ bắt buộc cập nhật)."""
         try:
-            return json.dumps([must_update(), (getattr(self, "prof", None) or {}).get("role"), self.docked_pid(), rows,
+            return json.dumps([must_update(), (getattr(self, "prof", None) or {}).get("role"), sorted(self.docked_pids()), rows,
                                [fmt_left(p["expires_at"]) if p.get("expires_at") else "" for p in rows]], sort_keys=True, default=str)
         except Exception: return None
 
@@ -7132,7 +7365,7 @@ class Launcher:
         bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=16, pady=(11, 14))
         st = p.get("status"); adm = (getattr(self, "prof", None) or {}).get("role") == "admin"
         active = st == "active" and (not p.get("locked") or adm)                 # admin: toàn quyền (kể cả máy bị khoá, lúc bảo trì)
-        on = self.docked_pid() == str(p["id"])                                  # 17/11d: máy đang mở ở ô bên phải
+        on = str(p["id"]) in self.docked_pids()                                 # 17/11d: máy đang mở ở ô bên phải (17/11e: nhiều máy)
         b = self.btn(bar, L("▶  Đang mở", "▶  Open now") if on else "▶  Điều khiển", lambda pid=str(p["id"]): self.open_machine(pid), padx=18, pady=8)
         if on: b.config(bg="#2fd9a6", fg="#03261b")
         b.pack(side="left")
