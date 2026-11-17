@@ -61,7 +61,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11e"
+VER = "17/11e2"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -78,7 +78,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", "def cmd_quyen", None),
+         ("windows/phonectl.py", "phonectl.py", 'PRIV_VER = "17/11e2"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "bản 17/11e: dán vào Termux", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -328,7 +328,7 @@ def restart_services(changed, done_new=()):
 # ------------------------------------------------------------------ 3. tự chạy khi Windows khởi động lại
 AUTOSTART_PS = r"""
 $t = Get-ScheduledTask -TaskName 'BlueRoblox' -ErrorAction SilentlyContinue
-if ($t) { 'TASK=1'; 'TASK_ARG=' + $t.Actions[0].Arguments } else { 'TASK=0' }
+if ($t) { 'TASK=1'; 'TASK_ARG=' + $t.Actions[0].Arguments; 'TASK_RL=' + $t.Principal.RunLevel } else { 'TASK=0' }
 $lnk = "$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\BlueRoblox.lnk"
 if (Test-Path $lnk) { $s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk); 'LNK=1'; 'LNK_ARG=' + $s.Arguments } else { 'LNK=0' }
 $u = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Startup\CloudBlue.lnk"
@@ -355,6 +355,13 @@ def fix_autostart():
     if not d: say("   ? không đọc được (PowerShell lỗi)"); return probs
     pw = pythonw(); pan = os.path.join(B, "panel.py")
     if d.get("TASK") == "1":
+        rl = (d.get("TASK_RL") or "").strip().lower()                         # 17/11e2: bảng chạy quyền gì sau mỗi lần Windows lên
+        if rl == "highest": say("   ✓ tác vụ BlueRoblox mở bảng bằng quyền Admin")
+        elif rl:
+            say("   ⚠ tác vụ BlueRoblox mở bảng bằng quyền THƯỜNG → lệnh A trên máy này phải chạy PowerShell thường.\n"
+                "     Khuyên: bảng → 🔑 Tự đăng nhập + tự chạy (tác vụ chạy Admin) rồi khởi động lại Windows lúc vắng khách")
+        if d.get("LNK") == "1" or d.get("ULNK") == "1":
+            say("   ⚠ ngoài tác vụ còn lối tắt Startup cũng mở bảng (quyền thường) → mỗi lần Windows lên bảng có thể chạy khác quyền")
         if "--auto" in d.get("TASK_ARG", ""): say("   ✓ tác vụ BlueRoblox (tự mở bảng lúc đăng nhập): có --auto")
         elif ONLY_CHECK: say("   ✗ tác vụ BlueRoblox THIẾU --auto (bảng mở mà không tự bật gì)"); probs.append("tác vụ thiếu --auto")
         else:
@@ -430,8 +437,10 @@ def priv_gate():
                 "     không bật được máy nào nữa. Đóng cửa sổ này → chuột phải nút Start → Terminal (Admin) (hoặc Windows PowerShell (Admin))\n"
                 "     → dán lại lệnh A. Thanh tiêu đề cửa sổ phải có chữ \"Administrator\".")
     if me and ref is False:
-        return ("bảng CloudBlue đang chạy KHÔNG có quyền Admin mà lệnh A chạy bằng quyền Admin → máy bật từ đây sẽ lẫn quyền.\n"
-                "     Đóng bảng CloudBlue, mở lại bằng quyền Admin (bảng → 🔑 Tự đăng nhập + tự chạy cài sẵn tác vụ chạy Admin), rồi chạy lại lệnh A.")
+        return ("bảng CloudBlue trên máy chủ này đang chạy KHÔNG có quyền Admin mà lệnh A chạy bằng quyền Admin → máy bật từ đây sẽ lẫn quyền.\n"
+                "     Lần này: đóng cửa sổ này, mở PowerShell THƯỜNG (không Admin) rồi dán lại lệnh A (cùng quyền với bảng).\n"
+                "     Muốn cả máy chủ chạy Admin (khuyên dùng): bảng → 🔑 Tự đăng nhập + tự chạy, rồi khởi động lại Windows lúc vắng khách.\n"
+                "     ĐỪNG đóng bảng mở lại bằng Admin lúc máy ảo còn chạy — máy ảo cũ quyền thường + bảng Admin = lẫn quyền.")
     return None
 
 PRIV_DONE = []
@@ -444,13 +453,19 @@ def priv_fix():
     if "QUYEN_KQ" not in out:
         say("   ? phonectl chưa có lệnh kiểm quyền (bản cũ) — bỏ qua"); return []
     for ln in out.splitlines():
-        if ln.startswith("   ") and ("SAI QUYỀN" in ln or "✓" in ln or "✗" in ln or "⚠" in ln or "…" in ln): say(ln)
+        if ln.startswith("   ") and ("lệnh này:" in ln or "máy đang chạy:" in ln or "sau khi sửa" in ln or "SAI QUYỀN" in ln
+                                      or "✓" in ln or "✗" in ln or "⚠" in ln or "…" in ln): say(ln)
     kq = next((ln for ln in out.splitlines() if ln.startswith("QUYEN_KQ")), "")
     if kq.split()[1:2] in (["dung"], ["khong_biet"]): say("   ✓ giả lập chạy đúng 1 loại quyền"); return []
+    if "bang_thuong" in kq:
+        return ["bảng CloudBlue chạy quyền thường mà có máy chạy quyền Admin (lẫn quyền) → khởi động lại Windows lúc vắng khách"]
     m = re.search(r"da_sua=(\d+) chua_sua=(\d+)", kq)
     if m:
         if int(m.group(1)): PRIV_DONE.append(int(m.group(1)))
-        if int(m.group(2)): return [f"{m.group(2)} máy chạy sai quyền chưa sửa được (xem dòng ⚠ / ✗ ở bước 4b)"]
+        if int(m.group(2)): return [f"{m.group(2)} máy chạy sai quyền chưa sửa được (xem dòng ⚠ / ✗ ở bước 4b) — chạy lại lệnh A sau 2 phút"]
+        cs = re.search(r"con_sai=(\d+)", kq)
+        if cs and int(cs.group(1)):
+            return [f"sau khi sửa vẫn còn {cs.group(1)} tiến trình / máy chạy sai quyền (xem bước 4b) — chạy lại lệnh A sau 2 phút"]
         return []
     m = re.search(r"sai=(\d+)", kq)
     if m: return [f"{m.group(1)} máy chạy sai quyền Admin — chạy lệnh A (không --chi-kiem) bằng PowerShell (Admin) để bật lại đúng quyền"]

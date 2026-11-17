@@ -564,6 +564,17 @@ def _mumu_main_fix(why=""):
         print(f"   ({EMU_NAME}: chương trình chính không trả lời{' khi ' + why if why else ''} → mở lại MuMuNxMain)", flush=True)
         subprocess.run(["taskkill", "/IM", "MuMuNxMain.exe", "/F"], capture_output=True, creationflags=NOWIN)
         time.sleep(3)
+        if _WIN and PRIV_GUARD and not _is_admin():     # 17/11e2: còn MuMuNxMain chạy quyền Admin (lệnh này quyền thường không tắt được)
+            for _k in range(3):
+                left = [p for p in _img_pids(("mumunxmain.exe",)) if _elev(p) is not False]
+                if not left: break
+                time.sleep(2)
+            if left:
+                try: open(MUMU_MAIN_F, "w").write(str(time.time()))
+                except OSError: pass
+                print("   (không tắt được MuMuNxMain — nó chạy quyền Admin còn lệnh này thì không → KHÔNG mở thêm bản thứ 2 (sẽ lẫn quyền, "
+                      "không bật được máy nào). Chạy lệnh bằng Terminal (Admin))", flush=True)
+                return False
         up = _mumu_main_up(exe)
         try: open(MUMU_MAIN_F, "w").write(str(time.time()))
         except OSError: pass
@@ -875,11 +886,14 @@ def _stop_marks(iv):
 # giả lập đang chạy Admin → không bật máy nào, báo rõ · phonectl Admin mà chương trình chính MuMu chạy quyền thường → mở lại nó ·
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
+PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
 _WIN = os.name == "nt"
-EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe"),
+EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
             "memu": ("memu.exe", "memuheadless.exe", "memuconsole.exe")}
 _PRIV = {}
+_PNAME = {"mumunxmain.exe": "chương trình chính", "mumuvmmsvc.exe": "dịch vụ máy ảo", "mumumultiplayer.exe": "trình nhiều máy",
+          "dnmultiplayer.exe": "trình nhiều máy"}          # tiến trình "chung" của giả lập (không thuộc 1 máy nào)
 
 
 def _is_admin():
@@ -903,7 +917,10 @@ def _elev(pid):
         try:
             tok = ctypes.c_void_p()
             if not a.OpenProcessToken(hp, 0x0008, ctypes.byref(tok)):    # TOKEN_QUERY
-                return True if ctypes.get_last_error() == 5 and not _is_admin() else None
+                if ctypes.get_last_error() != 5 or _is_admin(): return None
+                sid = ctypes.c_ulong(0)                                     # 17/11e2: dịch vụ Windows (phiên 0, chạy SYSTEM) → không biết
+                if k.ProcessIdToSessionId(ctypes.c_ulong(int(pid)), ctypes.byref(sid)) and sid.value == 0: return None
+                return True
             try:
                 e = ctypes.c_ulong(0); n = ctypes.c_ulong(0)
                 if not a.GetTokenInformation(tok, 20, ctypes.byref(e), 4, ctypes.byref(n)): return None   # TokenElevation
@@ -940,8 +957,13 @@ def _svc_pids():
 
 def _priv_block():
     """'' = bật máy được · câu báo = phonectl KHÔNG Admin mà bảng CloudBlue / giả lập đang chạy bằng quyền Admin (bật từ đây → giả lập
-       báo xung đột quyền, không bật được máy nào nữa). Nhớ 60 giây."""
+       báo xung đột quyền, không bật được máy nào nữa). Nhớ 60 giây.
+       17/11e2: CHỈ chặn khi NGƯỜI gõ lệnh trong cửa sổ PowerShell — bảng / dịch vụ / lệnh A gọi phonectl (không có cửa sổ) → không
+       chặn, chạy như trước 17/11e (máy chủ có bảng chạy quyền thường không bao giờ bị chặn oan)."""
     if not _WIN or not PRIV_GUARD: return ""
+    try: tty = bool(sys.stdout is not None and sys.stdout.isatty())
+    except Exception: tty = False
+    if not tty: return ""
     now = time.time()
     if now - _PRIV.get("t", 0) < 60: return _PRIV.get("v", "")
     v = ""
@@ -958,39 +980,158 @@ def _priv_block():
 
 
 def _priv_main_fix():
-    """phonectl chạy Admin mà chương trình chính MuMu (MuMuNxMain) chạy quyền thường (ai đó mở MuMu bằng tay / bật từ cửa sổ thường) →
-       mở lại MuMuNxMain bằng quyền Admin TRƯỚC khi bật máy (máy đang chạy không bị tắt). Nhớ 60 giây."""
+    """phonectl chạy Admin (dịch vụ bật máy) mà: chương trình chính MuMu (MuMuNxMain) chạy quyền thường (ai đó mở MuMu bằng tay / bật
+       từ cửa sổ thường) → mở lại nó bằng quyền Admin TRƯỚC khi bật máy (máy đang chạy không bị tắt) · 17/11e2: dịch vụ máy ảo MuMu
+       (MuMuVMMSVC) chạy quyền thường mà KHÔNG máy ảo nào chạy → tắt nó (bật máy kế mở lại bằng quyền Admin) · có máy ảo chạy quyền
+       thường → báo rõ 1 dòng (10 phút / lần; sửa = lệnh A bằng Terminal (Admin)) — KHÔNG tự khởi động lại máy khách. Nhớ 60 giây."""
     if not _WIN or not PRIV_GUARD or EMU != "mumu" or not _is_admin(): return False
     now = time.time()
     if now - _PRIV.get("mt", 0) < 60: return False
     _PRIV["mt"] = now
-    bad = [p for p, im in _img_pids(("mumunxmain.exe",)).items() if _elev(p) is False]
-    if not bad: return False
-    return bool(_mumu_main_fix("chương trình chính MuMu chạy KHÔNG quyền Admin (lẫn quyền → không bật được máy)"))
+    pr = {p: im.lower() for p, im in _img_pids(("mumunxmain.exe", "mumuvmmsvc.exe", "mumuvmmheadless.exe")).items()}
+    wrong = {p: im for p, im in pr.items() if _elev(p) is False}
+    if not wrong: return False
+    did = False
+    if "mumunxmain.exe" in wrong.values():
+        did = bool(_mumu_main_fix("chương trình chính MuMu chạy KHÔNG quyền Admin (lẫn quyền → không bật được máy)"))
+    hl = [p for p, im in wrong.items() if im == "mumuvmmheadless.exe"]
+    if hl:
+        if now - _PRIV.get("wt", 0) > 600:
+            _PRIV["wt"] = now
+            print(f"⚠ QUYEN: {len(hl)} máy ảo đang chạy KHÔNG quyền Admin (bật từ cửa sổ thường) → {EMU_NAME} có thể báo xung đột quyền, "
+                  "không bật được máy khác. Sửa: chuột phải Start → Terminal (Admin) → dán lệnh A (bước 4b bật lại đúng quyền).", flush=True)
+    elif "mumuvmmsvc.exe" in wrong.values() and "mumuvmmheadless.exe" not in pr.values():
+        for p, im in wrong.items():
+            if im == "mumuvmmsvc.exe": subprocess.run(["taskkill", "/PID", str(p), "/F"], capture_output=True, creationflags=NOWIN)
+        print(f"   ({EMU_NAME}: dịch vụ máy ảo MuMuVMMSVC chạy quyền thường mà không máy nào dùng → đã tắt, bật máy sẽ mở lại bằng quyền Admin)",
+              flush=True)
+        time.sleep(2); did = True
+    return did
+
+
+def _hl_idx(pids):
+    """{pid: số máy} các tiến trình MuMuVMMHeadless trong pids — đọc dòng lệnh (--comment MuMuPlayer-12.0-<số>). Dùng khi MuMuManager
+       không báo máy đó (lúc lẫn quyền MuMuManager có thể không trả lời). Không đọc được → {}."""
+    out = {}
+    if not _WIN or not pids: return out
+    try:
+        r = subprocess.run(["powershell", "-NoProfile", "-Command",
+                            "Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'MuMuVMMHeadless.exe' } | ForEach-Object { '{0}|{1}' -f $_.ProcessId, $_.CommandLine }"],
+                           capture_output=True, timeout=40, creationflags=NOWIN)
+        for ln in (r.stdout or b"").decode("utf-8", "replace").splitlines():
+            pid, _, cl = ln.strip().partition("|")
+            if not pid.isdigit() or int(pid) not in pids: continue
+            m = re.search(r"--comment\s+\"?[^\s\"]*?-(\d+)\"?(?:\s|$)", cl) or re.search(r"MuMuPlayer[^\s\"\\]*?-(\d+)(?![\d.])", cl)
+            if m: out[int(pid)] = int(m.group(1))
+    except Exception: pass
+    return out
+
+
+def _vm_label(i, nm, pids):
+    return f"{nm} (#{i})" if i is not None and int(i) >= 0 else f"{nm} (pid {pids[0] if pids else '?'})"
 
 
 def _priv_report():
-    """(phonectl Admin?, quyền bảng / dịch vụ, [(pid, quyền) MuMuNxMain], [(số máy, tên, quyền)] máy đang chạy). Quyền: True / False / None."""
+    """(phonectl Admin?, quyền bảng / dịch vụ, [(pid, tên file, quyền)] tiến trình chung của giả lập (chương trình chính, dịch vụ máy
+       ảo…), [(số máy, tên, quyền, [pid])] máy đang chạy). Quyền: True / False / None. 17/11e2: MuMu — máy ảo đang chạy mà MuMuManager
+       không báo vẫn được thấy qua tiến trình MuMuVMMHeadless (số máy đọc từ dòng lệnh; không đọc được → số -1)."""
     me = _is_admin()
     sv = [_elev(p) for p in _svc_pids()]
     svc = True if any(x is True for x in sv) else (False if any(x is False for x in sv) else None)
-    main = [(p, _elev(p)) for p, im in _img_pids(EMU_IMGS.get(EMU, ())).items() if im.lower() in ("mumunxmain.exe", "dnmultiplayer.exe", "mumumultiplayer.exe")]
+    allp = {p: im.lower() for p, im in _img_pids(EMU_IMGS.get(EMU, ())).items()}
+    main = [(p, im, _elev(p)) for p, im in sorted(allp.items()) if im in _PNAME]
     vms = []
     try:
         if EMU == "mumu":
-            for i, v in sorted(_mumu_info().items()):
-                if not _mumu_running(v): continue
+            try: info = _mumu_info() or {}
+            except Exception: info = {}
+            seen = set()
+            for i, v in sorted(info.items()):
                 pids = [int(x) for x in (v.get("headless_pid"), v.get("pid")) if str(x).strip().lstrip("-").isdigit() and int(x) > 0]
-                ev = [e for e in (_elev(p) for p in pids) if e is not None]
-                vms.append((i, str(v.get("name", "")), (True if any(ev) else False) if ev else None))
+                if not _mumu_running(v): continue
+                seen.update(pids)
+                e = next((x for x in (_elev(p) for p in pids) if x is not None), None)    # máy ảo (MuMuVMMHeadless) quyết định, không đọc được → cửa sổ
+                vms.append((i, str(v.get("name", "")), e, pids))
+            extra = sorted(p for p, im in allp.items() if im == "mumuvmmheadless.exe" and p not in seen)
+            if extra:
+                ix = _hl_idx(set(extra)); byidx = {}
+                try:
+                    for x in load().get("phones", []):
+                        if str(x.get("idx", "")).strip().isdigit(): byidx[int(x["idx"])] = str(x.get("name", ""))
+                except Exception: pass
+                for p in extra:
+                    i = ix.get(p, -1)
+                    vms.append((i, str((info.get(i) or {}).get("name") or byidx.get(i) or "máy ?"), _elev(p), [p]))
         else:
             for i, x in sorted((vms_sure(tries=1) or {}).items()):
                 if not x.get("running"): continue
                 pids = _vm_pids(i)
                 ev = [e for e in (_elev(p) for p in pids) if e is not None]
-                if pids: vms.append((int(i), str(x.get("name", "")), (True if any(ev) else False) if ev else None))
+                if pids: vms.append((int(i), str(x.get("name", "")), (True if any(ev) else False) if ev else None, pids))
     except Exception: pass
     return me, svc, main, vms
+
+
+def _emu_alive(pid):
+    """Tiến trình pid còn chạy VÀ là của giả lập (số PID có thể bị chương trình khác dùng lại)."""
+    im = _proc_image(pid).lower()
+    return bool(im) and any(k in im for k in _VM_IMAGES.get(EMU, ()))
+
+
+def _android_off(p):
+    """Tắt ÊM bằng Android (reboot -p): Android ghi xong dữ liệu rồi tắt → máy ảo tự thoát. Đi qua adb (không qua giả lập) nên vẫn làm
+       được lúc giả lập báo xung đột quyền. Thử quyền shell rồi root."""
+    s_ = serial(p)
+    try:
+        if (adb("-s", s_, "get-state", timeout=10).stdout or "").strip() != "device": adb_connect(p["port"])
+        adb("-s", s_, "shell", "reboot -p", timeout=12)
+        if (adb("-s", s_, "get-state", timeout=8).stdout or "").strip() == "device": adb("-s", s_, "shell", "su -c 'reboot -p'", timeout=12)
+    except Exception: pass
+
+
+def _kill_pids(pids):
+    """Tắt cưỡng bức đúng các tiến trình (chỉ khi là của giả lập) → ['MuMuVMMHeadless.exe #123', …]."""
+    out = []
+    for pid in pids:
+        im = _proc_image(pid)
+        if im and any(k in im.lower() for k in _VM_IMAGES.get(EMU, ())):
+            subprocess.run(["taskkill", "/PID", str(pid), "/F"], capture_output=True, creationflags=NOWIN); out.append(f"{im} #{pid}")
+    return out
+
+
+def _priv_leftovers(wait=60):
+    """Đã tắt hết máy khách sai quyền: (1) tắt chương trình chính MuMu chạy sai quyền (nó giữ dịch vụ máy ảo sai quyền còn sống) →
+       (2) chờ dịch vụ máy ảo MuMuVMMSVC chạy sai quyền tự thoát (≤ wait giây); còn → tắt CHỈ KHI không còn máy ảo nào chạy (còn máy
+       đang chạy thì không đụng) → (3) mở lại chương trình chính bằng quyền Admin (lúc này không còn gì sai quyền → không báo xung đột).
+       Trả ([tên file còn chạy sai quyền], đã mở lại chương trình chính?)."""
+    if not _WIN or EMU != "mumu": return [], False
+    imgs = ("mumuvmmsvc.exe", "mumunxmain.exe", "mumuvmmheadless.exe")
+    def snap():
+        pr = {p: im.lower() for p, im in _img_pids(imgs).items()}
+        return pr, {p: im for p, im in pr.items() if _elev(p) is False}
+    pr, wrong = snap()
+    if not wrong: return [], False
+    main_bad = [p for p, im in wrong.items() if im == "mumunxmain.exe"]
+    for p in main_bad: subprocess.run(["taskkill", "/PID", str(p), "/F"], capture_output=True, creationflags=NOWIN)
+    if main_bad: print("   … chương trình chính MuMu chạy quyền thường → đã tắt (mở lại bằng quyền Admin ở dưới)", flush=True)
+    t0 = time.time()
+    while "mumuvmmsvc.exe" in wrong.values() and time.time() - t0 < wait:
+        time.sleep(3); pr, wrong = snap()
+    if "mumuvmmsvc.exe" in wrong.values():
+        if "mumuvmmheadless.exe" not in pr.values():
+            for p, im in wrong.items():
+                if im == "mumuvmmsvc.exe": subprocess.run(["taskkill", "/PID", str(p), "/F"], capture_output=True, creationflags=NOWIN)
+            print("   … dịch vụ máy ảo MuMu (MuMuVMMSVC) còn chạy quyền thường, không máy nào dùng → đã tắt (bật máy sẽ mở lại bằng quyền Admin)", flush=True)
+            time.sleep(3)
+        else:
+            print("   ⚠ dịch vụ máy ảo MuMu (MuMuVMMSVC) còn chạy quyền thường mà vẫn có máy ảo đang chạy → không đụng (bật máy có thể còn báo xung đột)", flush=True)
+    redone = False
+    if main_bad:
+        _PRIV["mt"] = 0.0
+        try: open(MUMU_MAIN_F, "w").write("0")             # bỏ giới hạn 3 phút: mở lại ngay
+        except OSError: pass
+        redone = bool(_mumu_main_fix("chạy sai quyền"))
+    return sorted({im.lower() for p, im in _img_pids(imgs).items() if _elev(p) is False}), redone
 
 
 def memuc(*a, timeout=300):
@@ -2629,57 +2770,97 @@ def cmd_perms(a):
         if is_running(p["name"], p, v): grant_perms(p["name"])
 
 def cmd_quyen(a):
-    """17/11e: xem quyền Admin của bảng CloudBlue, chương trình chính giả lập và từng máy đang chạy. --sua (phải chạy Admin): mở lại
-       chương trình chính chạy sai quyền + khởi động lại ĐÚNG các máy khách đang chạy sai quyền (tắt êm, Android ghi xong dữ liệu rồi mới
-       tắt). Dòng cuối: QUYEN_KQ dung|sai=N|da_sua=N|chua_sua=N|khong_admin|khong_biet (lệnh A đọc dòng này). Không xoá / tạo máy nào."""
+    """17/11e: xem quyền Admin của bảng CloudBlue, tiến trình chung của giả lập và từng máy đang chạy. --sua (phải chạy Admin): mở lại
+       chương trình chính chạy sai quyền + tắt êm rồi bật lại ĐÚNG các máy khách đang chạy sai quyền. Dòng cuối (lệnh A đọc):
+       QUYEN_KQ dung | khong_biet | sai=N | khong_admin | bang_thuong | da_sua=N chua_sua=N [main=da_mo_lai] [con_sai=N].
+       Không xoá / tạo máy nào."""
     me, svc, main, vms = _priv_report()
-    want = svc if svc is not None else (True if any(e for _, _, e in vms) else (me if not vms else None))
+    want = svc if svc is not None else (True if any(e for _, _, e, _ in vms) else (me if not vms else None))
     W = lambda e: "Admin" if e else ("quyền thường" if e is False else "?")
-    print(f"== Quyền chạy — máy chủ {CONF.get('NODE_ID') or '?'} ({EMU_NAME})")
+    print(f"== Quyền chạy — máy chủ {CONF.get('NODE_ID') or '?'} ({EMU_NAME}) · phonectl {PRIV_VER}")
     print(f"   lệnh này: {W(me)} · bảng / dịch vụ CloudBlue: {W(svc) if svc is not None else 'không thấy'}"
-          + (f" · chương trình chính: {', '.join(W(e) for _, e in main)}" if main else ""))
-    bad = [(i, nm) for i, nm, e in vms if want is not None and e is not None and e != want]
-    badm = [p for p, e in main if want is not None and e is not None and e != want]
-    print(f"   máy đang chạy: {len(vms)} · đúng quyền: {sum(1 for _, _, e in vms if e == want)}"
-          + (f" · SAI QUYỀN: {', '.join(f'{nm} (#{i})' for i, nm in bad)}" if bad else ""))
+          + "".join(f" · {_PNAME.get(im, im)}: {W(e)}" for _, im, e in main))
+    bad = [(i, nm, pids) for i, nm, e, pids in vms if want is not None and e is not None and e != want]
+    badm = [(p, im) for p, im, e in main if want is not None and e is not None and e != want]
+    print(f"   máy đang chạy: {len(vms)} · đúng quyền: {sum(1 for _, _, e, _ in vms if e == want)}"
+          + (f" · SAI QUYỀN: {', '.join(_vm_label(*x) for x in bad)}" if bad else "")
+          + (f" · tiến trình chung sai quyền: {', '.join(_PNAME.get(im, im) for _, im in badm)}" if badm else ""))
     if want is None: print("QUYEN_KQ khong_biet"); return
     if not bad and not badm: print("   ✓ mọi máy cùng quyền " + W(want)); print("QUYEN_KQ dung"); return
     if not getattr(a, "sua", False):
-        print("   ✗ lẫn quyền → giả lập báo xung đột, không bật được máy. Sửa: PowerShell (Admin) → phonectl.py quyen --sua")
+        print("   ✗ lẫn quyền → giả lập báo xung đột, không bật được máy. Sửa: PowerShell (Admin) / Terminal (Admin) → phonectl.py quyen --sua")
         print(f"QUYEN_KQ sai={len(bad) + len(badm)}"); return
-    if not me or want is not True:
-        print("   ✗ phải chạy bằng PowerShell (Admin) — bảng CloudBlue chạy bằng quyền " + W(want)); print("QUYEN_KQ khong_admin"); sys.exit(3)
-    if badm and EMU == "mumu":
-        _PRIV["mt"] = 0.0
-        try: open(MUMU_MAIN_F, "w").write("0")             # bỏ giới hạn 3 phút: mở lại ngay
-        except OSError: pass
-        print("   … chương trình chính MuMu chạy quyền thường → mở lại bằng quyền Admin", flush=True)
-        _mumu_main_fix("chạy sai quyền")
-    ours = [(i, nm) for i, nm in bad if re.match(r"^(cp|spare)_", nm or "")]
-    other = [(i, nm) for i, nm in bad if (i, nm) not in ours]
-    for i, nm in other:
-        print(f"   ⚠ {nm} (#{i}) chạy sai quyền nhưng không phải máy khách → không đụng: tắt tay máy này trong {EMU_NAME} (còn chạy là bật máy khác vẫn bị xung đột)")
-    done, left = [], [nm for _, nm in other]
-    # TẮT HẾT máy sai quyền trước rồi mới BẬT lại (còn 1 máy chạy quyền thường là máy bật bằng Admin vẫn bị MuMu báo xung đột)
+    if want is False:
+        print("   ✗ bảng CloudBlue chạy quyền THƯỜNG mà có máy / chương trình giả lập chạy quyền Admin (bật từ cửa sổ Admin) → lẫn quyền.\n"
+              "     Sửa: khởi động lại Windows lúc vắng khách (bảng tự chạy lại, mọi máy bật lại cùng 1 quyền)")
+        print("QUYEN_KQ bang_thuong"); sys.exit(3)
+    if not me:
+        print("   ✗ phải chạy bằng PowerShell (Admin) / Terminal (Admin) — bảng CloudBlue chạy bằng quyền Admin"); print("QUYEN_KQ khong_admin"); sys.exit(3)
+    ours = [(i, nm, pids) for i, nm, pids in bad if re.match(r"^(cp|spare)_", nm or "") and i is not None and int(i) >= 0]
+    other = [x for x in bad if x not in ours]
+    for i, nm, pids in other:
+        print(f"   ⚠ {_vm_label(i, nm, pids)} chạy sai quyền nhưng không phải máy khách → không đụng: tắt tay máy này trong {EMU_NAME} "
+              "(còn chạy là bật máy khác vẫn bị xung đột)")
+    done, left = [], [nm for _, nm, _ in other]
     st0 = load(); todo = []
-    for i, nm in ours:
+    for i, nm, pids in ours:
         p = rec(nm, st0)
-        if not p or IDX(p) is None: print(f"   ⚠ {nm} (#{i}): không có trong danh sách máy khách của máy chủ — không đụng"); left.append(nm); continue
-        print(f"   … {nm} (#{i}) chạy quyền thường → tắt êm rồi bật lại bằng quyền Admin (khách đang xem bị ngắt ~1–2 phút)", flush=True)
-        _restart_mark(nm); adb("disconnect", serial(p), timeout=15)
-        memuc("stop", "-i", IDX(p), timeout=120)
-        t_w = time.time()
-        while time.time() - t_w < 30 and is_running(nm, p): time.sleep(3)
-        if is_running(nm, p):
-            okk, how = force_stop(p, graceful=False); print(("   ✓ " if okk else "   ⚠ ") + f"{nm}: " + how, flush=True)
-            if not okk: left.append(nm); continue
-        todo.append((nm, p))
-    for nm, p in todo:
-        r = start_phone(p)
-        if _start_failed(r): left.append(nm); print(f"   ✗ {nm}: chưa bật lại được — " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:], flush=True)
-        else: done.append(nm); print(f"   ✓ {nm}: đã bật lại bằng quyền Admin", flush=True)
-    print(f"QUYEN_KQ da_sua={len(done)} chua_sua={len(left)}" + (" main=da_mo_lai" if badm else ""))
-
+        if not p: print(f"   ⚠ {nm} (#{i}): không có trong danh sách máy khách của máy chủ — không đụng"); left.append(nm); continue
+        todo.append((i, nm, pids, p))
+    # 1) TẮT HẾT máy sai quyền trước rồi mới BẬT lại (còn 1 máy chạy quyền thường là máy bật bằng Admin vẫn bị MuMu báo xung đột).
+    #    Tắt êm bằng Android cho MỌI máy cùng lúc (đi qua adb, không qua giả lập đang báo xung đột) → chờ ≤ 60 giây
+    import threading
+    for i, nm, pids, p in todo:
+        print(f"   … {nm} (#{i}) chạy quyền thường → tắt êm rồi bật lại bằng quyền Admin (khách đang xem bị ngắt ~1–3 phút)", flush=True)
+        _restart_mark(nm); _stop_marks(str(i))            # dấu "đang khởi động lại" (khách mở máy được báo chờ) + dịch vụ không bật chen
+    th = [threading.Thread(target=_android_off, args=(p,), daemon=True) for _, _, _, p in todo]
+    for t in th: t.start()
+    for t in th: t.join(30)
+    alive = lambda pids: bool(pids) and _emu_alive(pids[0])
+    run_ = list(todo); t_w = time.time()
+    while run_ and time.time() - t_w < 60:
+        time.sleep(3); run_ = [x for x in run_ if alive(x[2])]
+    # 2) còn chạy → lệnh tắt của giả lập → chờ ≤ 25 giây
+    for i, nm, pids, p in run_: memuc("stop", "-i", str(i), timeout=90)
+    t_w = time.time()
+    while run_ and time.time() - t_w < 25:
+        time.sleep(3); run_ = [x for x in run_ if alive(x[2])]
+    # 3) còn chạy (máy treo) → tắt cưỡng bức đúng tiến trình của máy đó
+    for i, nm, pids, p in run_:
+        k = _kill_pids([x for x in pids if _emu_alive(x)])
+        print(("   ✓ " if k else "   ⚠ ") + f"{nm}: không tự tắt → tắt cưỡng bức " + (", ".join(k) if k else "(không tắt được)"), flush=True)
+    if run_: time.sleep(4)
+    gone = []
+    for x in todo:
+        if alive(x[2]): left.append(x[1]); print(f"   ✗ {x[1]}: chưa tắt được — không bật lại (chạy lại lệnh sau 1 phút)", flush=True)
+        else: gone.append(x); adb("disconnect", serial(x[3]), timeout=15)
+    # 4) tiến trình chung của MuMu chạy sai quyền: tắt chương trình chính sai quyền → chờ dịch vụ máy ảo sai quyền thoát → mở lại
+    #    chương trình chính bằng quyền Admin (sau khi máy sai quyền đã tắt hết → MuMu không báo xung đột nữa)
+    main_fixed = False
+    if gone or badm: _lo, main_fixed = _priv_leftovers(60 if gone else 30)
+    # 5) bật lại bằng quyền Admin THEO LƯỢT (tối đa vài máy cùng khởi động), trả lượt ngay khi Android lên
+    queue = list(gone); booting = {}; t_end = time.time() + 1500
+    while (queue or booting) and time.time() < t_end:
+        for nm in list(booting):
+            p, t1 = booting[nm]
+            if time.time() - t1 > 240 or booted(p["port"]): _boot_done(nm); del booting[nm]
+        if queue and _boot_take(queue[0][1], prio=True, maxwait=2) is not None:
+            i, nm, pids, p = queue.pop(0); _PRE.add(nm)
+            r = start_phone(p)
+            if r is None or _start_failed(r):
+                _PRE.discard(nm); _boot_done(nm); left.append(nm)
+                print(f"   ✗ {nm}: chưa bật lại được — " + ((((r.stdout or "") + (r.stderr or "")).strip()[-160:]) if r is not None else "?")
+                      + " (bảng sẽ tự bật lại)", flush=True)
+            else:
+                done.append(nm); booting[nm] = (p, time.time()); print(f"   ✓ {nm}: đã bật lại bằng quyền Admin", flush=True)
+            continue
+        time.sleep(3)
+    for x in queue: left.append(x[1]); print(f"   ✗ {x[1]}: hết giờ chờ lượt bật — bảng sẽ tự bật lại máy này", flush=True)
+    # 6) kiểm lại
+    me2, svc2, main2, vms2 = _priv_report()
+    nb = sum(1 for _, _, e, _ in vms2 if e is False) + sum(1 for _, _, e in main2 if e is False)
+    print(f"   sau khi sửa: máy đang chạy {len(vms2)} · còn sai quyền {nb}", flush=True)
+    print(f"QUYEN_KQ da_sua={len(done)} chua_sua={len(left)}" + (" main=da_mo_lai" if main_fixed else "") + (f" con_sai={nb}" if nb else ""))
 
 def cmd_ldbase(a):
     """17/11a: máy chủ LDPlayer phải có ít nhất 1 máy trong LDPlayer (máy gốc) thì tool mới đọc được danh sách + tạo được máy khách.
