@@ -61,7 +61,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11e3"
+VER = "17/11e4"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -78,7 +78,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "16/11h: máy chủ đang", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11e"', "bluestream"),
          ("windows/panel.py", "panel.py", "bang-tu-sua.log", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11e3"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11e4"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 16/11h", "bluestream": "bản 17/11e: dán vào Termux", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -456,6 +456,7 @@ def priv_fix():
         if ln.startswith("   ") and ("lệnh này:" in ln or "máy đang chạy:" in ln or "sau khi sửa" in ln or "SAI QUYỀN" in ln
                                       or "✓" in ln or "✗" in ln or "⚠" in ln or "…" in ln): say(ln)
     kq = next((ln for ln in out.splitlines() if ln.startswith("QUYEN_KQ")), "")
+    if kq.split()[1:2] == ["khong_can"]: return []          # 17/11e4: máy chủ LDPlayer / MEmu — không có lỗi xung đột quyền
     if kq.split()[1:2] in (["dung"], ["khong_biet"]): say("   ✓ giả lập chạy đúng 1 loại quyền"); return []
     if "bang_thuong" in kq:
         return ["bảng CloudBlue chạy quyền thường mà có máy chạy quyền Admin (lẫn quyền) → khởi động lại Windows lúc vắng khách"]

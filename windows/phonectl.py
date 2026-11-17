@@ -887,14 +887,15 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "17/11e3"          # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "17/11e4"          # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+                              # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
             "memu": ("memu.exe", "memuheadless.exe", "memuconsole.exe")}
 _PRIV = {}
-_PNAME = {"mumunxmain.exe": "chương trình chính", "mumuvmmsvc.exe": "dịch vụ máy ảo", "mumumultiplayer.exe": "trình nhiều máy",
-          "dnmultiplayer.exe": "trình nhiều máy"}          # tiến trình "chung" của giả lập (không thuộc 1 máy nào)
+_PNAME = {"mumunxmain.exe": "chương trình chính", "mumuvmmsvc.exe": "dịch vụ máy ảo"}     # tiến trình "chung" của MuMu quyết định quyền bật máy
+                                                  # (17/11e4: cửa sổ quản lý nhiều máy do chủ máy mở tay không tính — không gây xung đột)
 
 
 def _is_admin():
@@ -960,8 +961,9 @@ def _priv_block():
     """'' = bật máy được · câu báo = phonectl KHÔNG Admin mà bảng CloudBlue / giả lập đang chạy bằng quyền Admin (bật từ đây → giả lập
        báo xung đột quyền, không bật được máy nào nữa). Nhớ 60 giây.
        17/11e2: CHỈ chặn khi NGƯỜI gõ lệnh trong cửa sổ PowerShell — bảng / dịch vụ / lệnh A gọi phonectl (không có cửa sổ) → không
-       chặn, chạy như trước 17/11e (máy chủ có bảng chạy quyền thường không bao giờ bị chặn oan)."""
-    if not _WIN or not PRIV_GUARD: return ""
+       chặn, chạy như trước 17/11e (máy chủ có bảng chạy quyền thường không bao giờ bị chặn oan).
+       17/11e4: chỉ máy chủ MuMu (LDPlayer / MEmu không có lỗi xung đột quyền)."""
+    if not _WIN or not PRIV_GUARD or EMU != "mumu": return ""
     try: tty = bool(sys.stdout is not None and sys.stdout.isatty())
     except Exception: tty = False
     if not tty: return ""
@@ -2898,8 +2900,16 @@ def cmd_perms(a):
 def cmd_quyen(a):
     """17/11e: xem quyền Admin của bảng CloudBlue, tiến trình chung của giả lập và từng máy đang chạy. --sua (phải chạy Admin): mở lại
        chương trình chính chạy sai quyền + tắt êm rồi bật lại ĐÚNG các máy khách đang chạy sai quyền. Dòng cuối (lệnh A đọc):
-       QUYEN_KQ dung | khong_biet | sai=N | khong_admin | bang_thuong | da_sua=N chua_sua=N [main=da_mo_lai] [con_sai=N].
-       Không xoá / tạo máy nào."""
+       QUYEN_KQ dung | khong_biet | khong_can | sai=N | khong_admin | bang_thuong | da_sua=N chua_sua=N [main=da_mo_lai] [con_sai=N].
+       Không xoá / tạo máy nào. 17/11e4: máy chủ LDPlayer / MEmu → chỉ báo (khong_can), không tắt / bật lại máy nào."""
+    if EMU != "mumu":
+        me = _is_admin(); sv = [_elev(p) for p in _svc_pids()]
+        svc = True if any(x is True for x in sv) else (False if any(x is False for x in sv) else None)
+        W = lambda e: "Admin" if e else ("quyền thường" if e is False else "?")
+        print(f"== Quyền chạy — máy chủ {CONF.get('NODE_ID') or '?'} ({EMU_NAME}) · phonectl {PCTL_SUB}")
+        print(f"   lệnh này: {W(me)} · bảng / dịch vụ CloudBlue: {W(svc) if svc is not None else 'không thấy'}")
+        print(f"   ✓ {EMU_NAME} không có lỗi xung đột quyền như MuMu → không cần tắt / bật lại máy nào")
+        print("QUYEN_KQ khong_can"); return
     me, svc, main, vms = _priv_report()
     want = svc if svc is not None else (True if any(e for _, _, e, _ in vms) else (me if not vms else None))
     W = lambda e: "Admin" if e else ("quyền thường" if e is False else "?")
