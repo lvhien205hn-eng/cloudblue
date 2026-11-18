@@ -850,6 +850,7 @@ public class ControlActivity extends Activity {
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
                 {"📱", Ui.L("Đổi máy", "Switch"), (Runnable) this::switchPhone},
+                {"🎮", Ui.L("Nhiều máy", "Multi"), (Runnable) this::openMulti},
                 {"🤖", Ui.L("Đổi Android", "Android ver."), (Runnable) this::switchAndroid},
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
@@ -1015,6 +1016,15 @@ public class ControlActivity extends Activity {
                 finish();
             });
         }, m -> Ui.toast(this, m));
+    }
+
+    /** 18/11 · sang màn điều khiển NHIỀU máy cùng lúc (MultiActivity) — máy đang xem được chọn sẵn. Màn này tự đóng phiên khi rời
+     *  (onPause); bấm Back ở màn nhiều máy là về lại đây và tự nối lại. */
+    private void openMulti() {
+        try {
+            startActivity(new Intent(this, MultiActivity.class).putExtra("focus", id)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
+        } catch (Exception e) { Ui.toast(this, Ui.L("Chưa mở được màn nhiều máy — cập nhật app rồi thử lại.", "Couldn't open multi-control — update the app and try again.")); }
     }
 
     private void switchPhone() {

@@ -113,6 +113,9 @@ public final class StreamClient {
     private volatile long lastKeyReq = 0;
     private volatile boolean preview = false;      // ô xem trước: hình nhỏ, chỉ xem (xem preview())
     private volatile int previewMax = 480;
+    // 18/11 · ô điều khiển trong màn "nhiều máy" (xem tile()): giới hạn riêng của phiên — 0 = theo mức chất lượng
+    private volatile int tileMaxh = 0, tileFps = 0, tileKbps = 0;
+    private volatile boolean limitPending = false;       // limit() gọi lúc chưa vào phiên → gửi ngay sau WELCOME
     private Thread net;
     // chỉ luồng mạng dùng
     private String node = "";
@@ -134,6 +137,35 @@ public final class StreamClient {
         preview = true;
         previewMax = Math.max(160, Math.min(480, maxh));
         return this;
+    }
+
+    /** 18/11 · Ô điều khiển trong màn "NHIỀU MÁY": vẫn là phiên ĐIỀU KHIỂN bình thường (chạm, phím, chữ đầy đủ — máy chủ kiểm quyền
+     *  từng máy như mọi phiên) nhưng xin hình nhẹ hơn mức chất lượng: cạnh dài ≤ maxh (≥ 320), tối đa fps khung/giây (10–60),
+     *  trần kbps (≥ 300) — số nào = 0 là "theo mức chất lượng". Nhiều ô nhỏ cùng lúc → đỡ tốn mạng của khách, đỡ nặng máy chủ.
+     *  Chỉ dùng các trường máy chủ đã có sẵn (HELLO maxh / fps · QUALITY fps / kbps); máy chủ cũ bỏ qua trường lạ. Gọi trước start(). */
+    public StreamClient tile(int maxh, int fps, int kbps) {
+        tileMaxh = maxh <= 0 ? 0 : Math.max(320, maxh);
+        tileFps = fps <= 0 ? 0 : Math.max(10, Math.min(60, fps));
+        tileKbps = kbps <= 0 ? 0 : Math.max(300, Math.min(20000, kbps));
+        return this;
+    }
+
+    /** 18/11 · Đổi giới hạn khung/giây + trần kbps LÚC ĐANG CHẠY (ô vừa khuất → nhẹ hẳn; hiện lại → như cũ), nhớ cho lần nối lại.
+     *  0 = theo mức chất lượng. Cạnh dài (maxh) chỉ đổi được khi mở phiên mới. */
+    public void limit(int fps, int kbps) {
+        tileFps = fps <= 0 ? 0 : Math.max(10, Math.min(60, fps));
+        tileKbps = kbps <= 0 ? 0 : Math.max(300, Math.min(20000, kbps));
+        limitPending = true;                             // chưa vào phiên (đang nối) → luồng mạng gửi ngay sau WELCOME
+        if (sendLimit()) limitPending = false;
+    }
+
+    /** QUALITY kèm fps + kbps. Luôn gửi fps rõ ràng (0 → 60: máy chủ tự lấy số nhỏ hơn giữa 60 và mức chất lượng) vì máy chủ giữ
+     *  số fps cũ khi tin không có; có "fps" + không đổi mức → máy chủ coi là app tự chỉnh, không xoá mức mạng đã dò. */
+    private boolean sendLimit() {
+        try {
+            return send(C_QUALITY, new JSONObject().put("q", q).put("fps", tileFps > 0 ? tileFps : 60).put("kbps", tileKbps)
+                    .toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) { return false; }
     }
 
     public void start() {
@@ -597,6 +629,8 @@ public final class StreamClient {
                     .put("net", netTag());                       // w = wifi · c = 4G/5G → chế độ Tự động bắt đầu nhẹ hơn khi dùng 4G
             if (preview) hello.put("mode", "preview").put("maxh", previewMax);
             else { int dl = downKbps(); if (dl > 0) hello.put("dl", dl); }   // 16/11: mạng yếu → gợi ý tốc độ (máy chủ cũ bỏ qua trường lạ)
+            if (!preview && tileMaxh > 0) hello.put("maxh", tileMaxh);       // 18/11: ô "nhiều máy" — hình nhỏ hơn mức chất lượng
+            if (!preview && tileFps > 0) hello.put("fps", tileFps);
             writeMsg(s, C_HELLO, hello.toString().getBytes(StandardCharsets.UTF_8));
             s.lastRx = SystemClock.uptimeMillis();
             Thread tx = new Thread(() -> writer(s), "BRS-tx");
@@ -660,6 +694,7 @@ public final class StreamClient {
                 if (vs != null && w > 0 && h > 0 && !closed) vs.onVideoFormat(w, h);
                 s.ready = true;
                 try { prefs.edit().putString(pathKey(), s.key).apply(); } catch (Exception ignored) { }
+                if (!preview && (tileKbps > 0 || limitPending)) { limitPending = false; sendLimit(); }   // 18/11: ô "nhiều máy" có trần kbps (HELLO không có trường này)
                 final boolean direct = !s.ws;
                 post(() -> ui.onWelcome(j, direct));
                 break;

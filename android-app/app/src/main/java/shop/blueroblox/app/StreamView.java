@@ -38,6 +38,13 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
         default void onVideoSize(int w, int h) { }
     }
 
+    /** 18/11 · màn "nhiều máy": nhận lại MỌI lệnh chạm / lăn mà ô này vừa gửi cho máy của nó — để gửi y hệt sang các máy khác khi
+     *  khách bật Đồng bộ. Gọi trên luồng giao diện, ngay sau lệnh gửi cho máy của ô. Không đặt (mặc định) → ô chạy y như trước. */
+    public interface Mirror {
+        void touch(int action, int pointer, float nx, float ny);
+        void scroll(float nx, float ny, int h, int v);
+    }
+
     private static final String MIME = "video/avc";
 
     private final SurfaceView sv;
@@ -48,6 +55,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     private volatile StreamClient client;
     private volatile boolean released = false;
     private Events events;
+    private Mirror mirror;
 
     // ---- luồng giao diện: bố cục + chạm ----
     private int vidW = 9, vidH = 16;
@@ -72,24 +80,38 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     public StreamView(Context c) { this(c, false); }
 
     /** preview = ô xem trước nhỏ (chạm đi thẳng xuống ô cha để mở màn điều khiển). */
-    public StreamView(Context c, boolean preview) {
+    public StreamView(Context c, boolean preview) { this(c, preview, preview); }
+
+    /** 18/11 · small = ô NHỎ đứng chung nhiều ô (xem trước, hoặc ô điều khiển trong màn "nhiều máy"): ô nhập nhỏ + giải mã ưu tiên
+     *  thường. preview = không nhận chạm. Ô "nhiều máy": preview = false (điều khiển được), small = true. */
+    public StreamView(Context c, boolean preview, boolean small) {
         super(c);
         this.preview = preview;
-        maxIn = preview ? 256 << 10 : 1 << 20;        // hình xem trước ≤ 480: ô nhập nhỏ (nhiều ô cùng lúc đỡ tốn bộ nhớ); khung to hơn tự nới
+        maxIn = small ? 256 << 10 : 1 << 20;          // hình nhỏ: ô nhập nhỏ (nhiều ô cùng lúc đỡ tốn bộ nhớ); khung to hơn tự nới
         setBackgroundColor(Color.BLACK);
         sv = new SurfaceView(c);
         sv.getHolder().addCallback(this);
         addView(sv);
-        thread = new HandlerThread(preview ? "BRS-preview" : "BRS-decode");
+        thread = new HandlerThread(preview ? "BRS-preview" : small ? "BRS-tile" : "BRS-decode");
         thread.start();
         dec = new Handler(thread.getLooper());
-        final int prio = preview ? android.os.Process.THREAD_PRIORITY_DEFAULT : android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY;
+        final int prio = small ? android.os.Process.THREAD_PRIORITY_DEFAULT : android.os.Process.THREAD_PRIORITY_URGENT_DISPLAY;
         dec.post(() -> {
             try { android.os.Process.setThreadPriority(prio); } catch (Throwable ignored) { }
         });
     }
 
     public void setEvents(Events e) { events = e; }
+
+    /** 18/11 · màn "nhiều máy": nơi nhận lại lệnh chạm / lăn của ô này (null = thôi). Luồng giao diện. */
+    public void setMirror(Mirror m) { mirror = m; }
+
+    /** 18/11 · màn "nhiều máy": ẩn / hiện HẲN mặt vẽ của ô (ẩn → Surface bị huỷ, bộ giải mã dừng; hiện → dựng lại ở khung khoá tới).
+     *  Phải đặt trên chính SurfaceView: chỉ ẩn ô cha thì Android 7 vẫn để hình cũ nằm lại trên màn, các bản sau vẫn giải mã ngầm. */
+    public void setSurfaceShown(boolean on) {
+        int v = on ? VISIBLE : GONE;
+        if (sv.getVisibility() != v) sv.setVisibility(v);
+    }
 
     /** Gắn client (null = bỏ): chạm gửi về client này, hình của client này vẽ ra đây. */
     public void attach(StreamClient c) {
@@ -159,6 +181,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     @Override public boolean onTouchEvent(MotionEvent e) {
         if (preview) return false;                                       // ô xem trước: để ô cha nhận bấm
         StreamClient c = client;
+        final Mirror mr = mirror;
         int act = e.getActionMasked();
         switch (act) {
             case MotionEvent.ACTION_DOWN:
@@ -172,6 +195,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
                 lastX[id] = x / picW;
                 lastY[id] = y / picH;
                 if (c != null) c.touch(StreamClient.TOUCH_DOWN, id, lastX[id], lastY[id]);
+                if (mr != null) mr.touch(StreamClient.TOUCH_DOWN, id, lastX[id], lastY[id]);
                 break;
             }
             case MotionEvent.ACTION_MOVE: {
@@ -181,6 +205,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
                     lastX[id] = nx(e.getX(i));
                     lastY[id] = ny(e.getY(i));
                     if (c != null) c.touch(StreamClient.TOUCH_MOVE, id, lastX[id], lastY[id]);
+                    if (mr != null) mr.touch(StreamClient.TOUCH_MOVE, id, lastX[id], lastY[id]);
                 }
                 break;
             }
@@ -192,6 +217,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
                     lastX[id] = nx(e.getX(i));
                     lastY[id] = ny(e.getY(i));
                     if (c != null) c.touch(StreamClient.TOUCH_UP, id, lastX[id], lastY[id]);
+                    if (mr != null) mr.touch(StreamClient.TOUCH_UP, id, lastX[id], lastY[id]);
                 }
                 if (act == MotionEvent.ACTION_UP && downMask != 0) cancelAll(c);   // ngón nào còn kẹt (lỡ mất sự kiện) → huỷ
                 break;
@@ -206,8 +232,11 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     }
 
     private void cancelAll(StreamClient c) {
+        final Mirror mr = mirror;
         for (int id = 0; id < 10; id++) {
-            if ((downMask & (1 << id)) != 0 && c != null) c.touch(StreamClient.TOUCH_CANCEL, id, lastX[id], lastY[id]);
+            if ((downMask & (1 << id)) == 0) continue;
+            if (c != null) c.touch(StreamClient.TOUCH_CANCEL, id, lastX[id], lastY[id]);
+            if (mr != null) mr.touch(StreamClient.TOUCH_CANCEL, id, lastX[id], lastY[id]);
         }
         downMask = 0;
     }
@@ -223,7 +252,11 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
             if (c != null && picW > 0 && picH > 0 && x >= 0 && y >= 0 && x <= picW && y <= picH) {
                 int v = Math.round(e.getAxisValue(MotionEvent.AXIS_VSCROLL) * 120f);
                 int hh = Math.round(e.getAxisValue(MotionEvent.AXIS_HSCROLL) * 120f);
-                if (v != 0 || hh != 0) c.scroll(x / picW, y / picH, hh, v);
+                if (v != 0 || hh != 0) {
+                    c.scroll(x / picW, y / picH, hh, v);
+                    final Mirror mr = mirror;
+                    if (mr != null) mr.scroll(x / picW, y / picH, hh, v);
+                }
             }
             return true;
         }

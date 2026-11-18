@@ -486,6 +486,7 @@ public class MainActivity extends Activity {
         });
         head.addView(rf, Ui.wrap());
         body.addView(head, Ui.fill());
+        if (ctlCount() >= 2) body.addView(multiRow(), Ui.fill());       // 18/11: 🎮 điều khiển nhiều máy cùng lúc (từ 2 máy đang chạy)
         promo(body, true);                          // 🎡 vòng quay · 🎬 Kiếm tiền · 🎁 Ưu đãi — khách bấm ẩn / hiện được (16/11)
 
         // Nhập mã: mã TẶNG MÁY (12 ký tự) · mã chia sẻ / chuyển nhượng (8 ký tự)
@@ -574,6 +575,37 @@ public class MainActivity extends Activity {
     /** Máy điều khiển được (đang chạy, không bị khoá — admin bỏ qua khoá — và không bảo trì). */
     boolean canCtl(JSONObject p) {
         return "active".equals(p.optString("status")) && (!locked(p) || isAdmin()) && !maintBlocks();
+    }
+
+    /** Số máy điều khiển được ngay lúc này. */
+    int ctlCount() {
+        int n = 0;
+        for (int i = 0; i < phones.length(); i++) {
+            JSONObject p = phones.optJSONObject(i);
+            if (p != null && canCtl(p)) n++;
+        }
+        return n;
+    }
+
+    /** 18/11 · dòng mở màn 🎮 "Điều khiển nhiều máy cùng lúc" (MultiActivity): chia ô các máy, vuốt qua máy khác, đồng bộ thao tác. */
+    private View multiRow() {
+        LinearLayout r = Ui.row(this, 10);
+        r.setPadding(Ui.dp(14), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+        Ui.ripple(r, Ui.PANEL2, 14, Ui.LINE);
+        r.addView(Ui.text(this, "🎮", 20, Ui.FG, false), Ui.wrap());
+        LinearLayout tx = Ui.col(this, 1);
+        tx.addView(Ui.text(this, Ui.L("Điều khiển nhiều máy cùng lúc", "Control several phones at once"), 14.5f, Ui.FG, true));
+        tx.addView(Ui.text(this, Ui.L("Chia ô các máy · vuốt qua máy khác · đồng bộ thao tác", "Grid of phones · swipe to switch · mirror your taps"), 12, Ui.MUTED, false));
+        r.addView(tx, Ui.weight(1));
+        r.addView(Ui.text(this, "›", 22, Ui.MUTED, false), Ui.wrap());
+        r.setContentDescription(Ui.L("Điều khiển nhiều máy cùng lúc", "Control several phones at once"));
+        r.setOnClickListener(v -> openMulti());
+        return r;
+    }
+
+    void openMulti() {
+        try { startActivity(new Intent(this, MultiActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)); }
+        catch (Exception e) { Ui.toast(this, Ui.L("Chưa mở được màn nhiều máy — cập nhật app rồi thử lại.", "Couldn't open multi-control — update the app and try again.")); }
     }
 
     /** Dấu vân tay những gì danh sách đang hiện: giống lần trước → khỏi vẽ lại (thời hạn tự cập nhật bằng tick()). */
@@ -776,6 +808,11 @@ public class MainActivity extends Activity {
         tt.addView(Ui.muted(this, "● " + run + Ui.L(" đang chạy", " running") + (pause > 0 ? " · ⏸ " + pause + Ui.L(" tạm dừng", " paused") : "")
                 + (other > 0 ? " · " + other + Ui.L(" khác", " other") : "") + Ui.L(" · bấm ô: điều khiển", " · tap a phone to control")));
         top.addView(tt, Ui.weight(1));
+        if (ctlCount() >= 2) {                                           // 18/11: từ lưới xem → sang lưới ĐIỀU KHIỂN nhiều máy
+            TextView mc = Ui.pill(this, "🎮 " + Ui.L("Điều khiển", "Control"), Ui.OK);
+            mc.setOnClickListener(v -> { closeGrid(); openMulti(); });
+            top.addView(mc, Ui.wrap());
+        }
         TextView close = Ui.pill(this, "✕ " + Ui.L("Đóng", "Close"), Ui.SKY);
         top.addView(close, Ui.wrap());
         root.addView(top, Ui.fill());
