@@ -50,6 +50,14 @@
             </intent-filter>
         </activity>
 
+        <!-- 18/11 · Điều khiển NHIỀU máy cùng lúc (lưới / 1 máy to vuốt đổi máy / đồng bộ thao tác). Chỉ mở từ trong app:
+             exported = false, không có link mở từ ngoài. Mỗi ô vẫn là 1 phiên điều khiển thường, máy chủ kiểm quyền từng máy. -->
+        <activity
+            android:name=".MultiActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density"
+            android:screenOrientation="fullUser"
+            android:windowSoftInputMode="adjustNothing|stateHidden" />
 
         <!-- Biểu tượng mở bản clone trên màn hình chính máy cloud (server bật bằng pm enable khi khách tạo clone) -->
         <activity
