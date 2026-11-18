@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711f):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711g):
+#        17/11g — MÁY CHỦ BỊ TẮT NGANG (mất điện / bấm reset / sập) LÀM HỎNG FILE HỆ THỐNG ANDROID của máy khách đang chạy (roles.xml rỗng…)
+#                       → Android sập liên tục, không bao giờ lên, khách "thức dậy… quay mãi". phonectl: tự đổi tên file hỏng (Android tự
+#                       tạo lại, GIỮ dữ liệu khách) ở mọi chỗ chờ máy lên — khách mở máy, đợt bật sau khi máy chủ khởi động lại, chống kẹt,
+#                       lệnh ksfix; lệnh mới `phonectl.py khammay TÊN` (chỉ đọc): nói VÌ SAO máy không lên. bluestream: máy lên lâu thì báo
+#                       thật cho khách; bật lỗi → tự khám máy ghi nhật ký. Lệnh này: máy sửa rồi vẫn không lên → in kết quả khám máy
+#                       (KHÔNG còn gợi ý xoá máy), báo số lần máy chủ bị tắt ngang 3 ngày qua, báo khách mở máy ngủ lên trong bao lâu.
 #        17/11f — MÁY CHỦ KHỞI ĐỘNG LẠI: phonectl bật máy khách SONG SONG (máy 72 luồng: 4 máy cùng lúc; trước: từng máy một, mỗi máy chờ
 #                       tới 5 phút), máy có khách vừa dùng lên trước, khách mở máy nào máy đó được chen lên, máy ảo treo lúc bật tự tắt
 #                       hẳn + bật lại 1 lần · KHÔNG MẤT DỮ LIỆU: khởi động lại máy chủ bằng nút trên web / lệnh `phonectl.py rebootserver`
@@ -68,7 +74,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11f"
+VER = "17/11g"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -83,11 +89,11 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "17/11f: tự dọn máy đã huỷ", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11f"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11g"', "bluestream"),
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11f"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11g"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11f: KHÔNG gửi khung hình thiếu lát", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -230,7 +236,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1711f"
+            bak = lp + ".truoc-1711g"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -456,6 +462,7 @@ def priv_fix():
        mở lại chương trình chính MuMu chạy sai quyền + tắt êm rồi bật lại đúng các máy khách chạy sai quyền."""
     say("4b/6 Quyền chạy của giả lập (lẫn Admin / quyền thường → MuMu báo xung đột, không bật được máy)")
     if not _WIN: say("   (bỏ qua — không phải Windows)"); return []
+    if not ONLY_CHECK: say("   (bước này có thể mất 1–3 phút — trong lúc chờ ĐỪNG bấm gì trên bảng MuMu / đừng bấm \"Restart now\" của MuMu)")
     rc, out = pctl("quyen", *([] if ONLY_CHECK else ["--sua"]), t=1800)
     if "QUYEN_KQ" not in out:
         say("   ? phonectl chưa có lệnh kiểm quyền (bản cũ) — bỏ qua"); return []
@@ -831,7 +838,8 @@ def fix_phones(res, extra):
             code, out = pctl("ksfix", nm, "--cho", "150", t=1200)
             last = " / ".join(x.strip() for x in out.strip().splitlines()[-2:]) or "(không có kết quả)"
             if "đã sửa 1" in out:
-                with lock: say(f"   ✓ {nm} ({why}) → sổ khoá Android hỏng, đã sửa: {last[:160]}")
+                what = "file hệ thống Android hỏng do máy chủ bị tắt ngang" if "file hệ thống hỏng 1" in out else "sổ khoá Android hỏng"
+                with lock: say(f"   ✓ {nm} ({why}) → {what}, đã sửa (giữ dữ liệu khách): {last[:160]}")
                 return j, code
             if adb_ok(s)[0] and booted(s):
                 with lock: say(f"   ✓ {nm} ({why}) → Android vừa lên — không cần khởi động lại")
@@ -861,6 +869,7 @@ def fix_phones(res, extra):
                     say(f"   ✗ {j[1]}: Android đã lên nhưng VẪN ĐEN — gửi Claude dòng này"); final.append((j[1], "vẫn đen"))
                 else:
                     say(f"   ✓ {j[1]}: Android đã lên, có hình — khách vào được"); final.append((j[1], "ok"))
+    kham = kham_may([j[1] for j in left]) if left else {}      # 17/11g: vì sao máy vẫn không lên (chỉ đọc)
     for j in left:
         if REMAKE_BROKEN and str(j[1]).startswith("cp_"):
             say(f"   … {j[1]}: ép khởi động lại vẫn không lên → máy hỏng: xoá hẳn + tạo lại máy mới (giữ cấu hình + hạn, mất dữ liệu cũ)")
@@ -873,11 +882,71 @@ def fix_phones(res, extra):
                     + " / ".join(x.strip() for x in out.strip().splitlines()[-2:])[:160]))
                 final.append((j[1], "ok" if okm else "tạo lại lỗi")); continue
             say(f"   ✗ {j[1]}: chưa xoá được máy hỏng: {' / '.join(x.strip() for x in out.strip().splitlines()[-2:])[:160]}")
-        say(f"   ✗ {j[1]}: VẪN CHƯA LÊN sau 5 phút" + ("" if REMAKE_BROKEN else " — máy hỏng: chạy lại lệnh kèm --lam-moi-may-hong để xoá + tạo lại máy mới"))
-        final.append((j[1], "chưa lên"))
+        k = kham.get(j[1]) or ("", "")
+        say(f"   ✗ {j[1]}: VẪN CHƯA LÊN sau 5 phút" + (f" — vì sao: {k[1][:230]}" if k[1] else " — chưa khám được vì sao")
+            + " · KHÔNG xoá máy (dữ liệu khách còn trong ổ máy)")
+        final.append((j[1], "chưa lên" + (f" [{k[0]}]" if k[0] else "")))
     return done, final
 
+def kham_may(names):
+    """17/11g: `phonectl khammay TÊN…` (chỉ đọc) cho các máy sửa rồi vẫn không lên → in chi tiết + trả {tên: (mã, câu kết luận)}."""
+    names = [str(n) for n in names][:12]
+    if not names: return {}
+    say(f"   --- khám {len(names)} máy chưa lên (chỉ đọc, ~15 giây / máy) ---")
+    code, out = pctl("khammay", *names, t=120 + 60 * len(names))
+    res = {}
+    for ln in out.splitlines():
+        m = re.match(r"KHAMMAY (\S+): \[([A-Z]+)\] (.*)", ln.strip())
+        if m: res[m.group(1)] = (m.group(2), m.group(3).strip()); continue
+        if ln.startswith(("---", "   ")) and ln.strip() and "Traceback" not in ln: say("   " + ln.rstrip()[:230])
+    if not res and "KHAMMAY" not in out:
+        say("   ? phonectl chưa có lệnh khammay (bản cũ) — bỏ qua")
+    return res
+
 # ------------------------------------------------------------------ báo cáo thêm
+def power_report():
+    """17/11g: 3 ngày qua Windows bị TẮT NGANG mấy lần (sự kiện Kernel-Power 41: mất điện / bấm reset / treo cứng / sập)? Mỗi lần tắt ngang
+       lúc máy khách đang chạy có thể làm hỏng file của Android trong máy đó. Chỉ ĐỌC nhật ký Windows. Trả [dòng cho phần TÓM TẮT]."""
+    out = os.environ.get("CB_TEST_POWER")
+    if out is None:
+        if not _WIN: return []
+        out = ps("$ErrorActionPreference='SilentlyContinue'; Get-WinEvent -FilterHashtable @{LogName='System';Id=41;ProviderName='Microsoft-Windows-Kernel-Power';"
+                 "StartTime=(Get-Date).AddDays(-3)} | ForEach-Object { $d=@{}; ([xml]$_.ToXml()).Event.EventData.Data | ForEach-Object { $d[$_.Name]=$_.'#text' }; "
+                 "'KP41|{0:dd}/{0:MM} {0:HH}:{0:mm}|{1}|{2}' -f $_.TimeCreated, $d['BugcheckCode'], $d['PowerButtonTimestamp'] }", 60)
+    ev = [x.strip().split("|") for x in (out or "").splitlines() if x.strip().startswith("KP41|")]
+    ev = [e for e in ev if len(e) >= 4]
+    if not ev: return []
+    crash = sum(1 for e in ev if e[2].strip() not in ("", "0"))
+    how = ("Windows tự SẬP (màn hình xanh) " + str(crash) + " lần" if crash == len(ev) else
+           "mất điện / bấm nút reset / treo cứng" if not crash else f"{crash} lần Windows tự sập, còn lại mất điện / bấm reset / treo cứng")
+    say(f"--- máy chủ bị TẮT NGANG {len(ev)} lần trong 3 ngày qua (nhật ký Windows, Kernel-Power 41) ---")
+    say("   lúc: " + " · ".join(e[1] for e in ev[:8]) + (" …" if len(ev) > 8 else ""))
+    say(f"   kiểu: {how}. Mỗi lần tắt ngang lúc máy khách đang chạy có thể làm HỎNG FILE Android của máy đó (bản 17/11g tự sửa loại hay gặp).")
+    return [f"3 ngày qua máy chủ bị TẮT NGANG {len(ev)} lần (gần nhất {ev[0][1]}; {how}) — đây là gốc làm máy khách hỏng. Cần khởi động lại máy chủ thì "
+            "bấm nút trên web / chạy `python phonectl.py rebootserver`; ĐỪNG bấm reset, đừng tắt nguồn, đừng bấm \"Restart now\" của MuMu"]
+
+def wake_report():
+    """17/11g: khách mở máy đang NGỦ / TẮT gần đây lên trong bao lâu, mấy lần lỗi, vì sao (dòng ☀ và 🩺 trong logs\\phat-hinh.log). Chỉ ĐỌC."""
+    okt, bad, why = [], [], {}
+    for x in tail(os.path.join(LOGS, "phat-hinh.log"), 3000000):
+        m = re.search(r"☀ (\S+): Android đã lên sau (\d+) giây", x)
+        if m: okt.append(int(m.group(2))); continue
+        m = re.search(r"☀ (\S+): LỖI — (.*?) \((\d+) giây\)\s*$", x)
+        if m: bad.append((x[:8], m.group(1), m.group(2)[:110], int(m.group(3)))); continue
+        m = re.search(r"🩺 KHAMMAY (\S+): \[([A-Z]+)\] (.*)", x)
+        if m: why[m.group(1)] = (m.group(2), m.group(3).strip()[:170])
+    if not okt and not bad: return
+    okt.sort()
+    say(f"--- khách mở máy đang ngủ / tắt gần đây: {len(okt)} lần lên được · {len(bad)} lần LỖI (logs\\phat-hinh.log) ---")
+    if okt:
+        slow = sum(1 for t in okt if t > 150)
+        say(f"   lên được: thường {okt[len(okt) // 2]} giây · lâu nhất {okt[-1]} giây" + (f" · {slow} lần quá 150 giây (máy chủ bận / máy phải tự sửa)" if slow else ""))
+    seen = set()
+    for t, nm, msg, sec in bad[::-1]:
+        if nm in seen or len(seen) >= 6: continue
+        seen.add(nm)
+        say(f"   ✗ {t} {nm}: {msg} ({sec} giây)" + (f" → khám: [{why[nm][0]}] {why[nm][1]}" if nm in why else ""))
+
 def recent_report(c, res):
     node = c.get("NODE_ID", "")
     since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -948,8 +1017,10 @@ def ks_report():
                 rows.append(q)
         except (ValueError, OverflowError, OSError): pass
     if not rows: return []
-    say(f"--- sổ khoá Android hỏng đã tự sửa 24 giờ qua: {len(rows)} lần (redroid\\ks_events.log) ---")
+    nf = sum(1 for q in rows if "file hệ thống hỏng" in q[2])
+    say(f"--- Android hỏng file đã tự sửa 24 giờ qua: {len(rows)} lần — sổ khoá {len(rows) - nf} · file hệ thống {nf} (redroid\\ks_events.log) ---")
     for q in rows[-5:]: say(f"   {q[0][5:16]}  {q[1]:<16} {q[2]}")
+    if nf: say("   (file hệ thống hỏng = máy chủ bị TẮT NGANG lúc máy đó đang chạy; đã đổi tên file hỏng, Android tự tạo lại, dữ liệu khách giữ nguyên)")
     new = len({q[1] for q in rows if "vừa bật" in q[2]})
     if new >= 3:
         say(f"   ⚠ {new} máy bị ngay lúc vừa bật → MÁY MẪU (tpl_a12 / tpl_a15) có thể đang hỏng: xoá máy mẫu trong MuMu, tạo máy mẫu mới (không bật), rồi chạy lại lệnh")
@@ -1009,6 +1080,11 @@ def main():
     log_report()
     probs += ks_report()
     web_report()
+    try: wake_report()
+    except Exception as e_: say(f"   (báo cáo mở máy lỗi: {e_})")
+    pw = []
+    try: pw = power_report()
+    except Exception as e_: say(f"   (đọc nhật ký tắt ngang lỗi: {e_})")
     okn = sum(1 for r in res if r["st"] == "OK")
     inapp = [r["name"] for r in res if r["st"] == "ĐEN TRONG APP"]
     still = [n for n, k in final if k != "ok"]
@@ -1029,12 +1105,14 @@ def main():
     if si.get("boot_par"):
         say(f"   máy chủ khởi động lại → tự bật lại máy khách {si['boot_par']} máy cùng lúc, cách nhau {si.get('boot_gap', 20):g} giây (rảnh thì một nửa), "
             f"khách mở máy nào máy đó lên trước" + ("" if si.get("autologon") else " · ⚠ Windows CHƯA bật tự đăng nhập (bảng → 🔑) — khởi động lại sẽ đứng ở màn hình mật khẩu"))
+        if str(si.get("boot_par")) == "1": say("   (đang đặt mỗi lúc chỉ bật 1 máy — máy chủ khoẻ nên để 2–4: `python phonectl.py setconf BOOTALL_PARALLEL=3`)")
     say(f"   máy khách: {okn} có hình · {len(done)} vừa sửa ({sum(1 for _, k in final if k == 'ok')} đã có hình)"
         + (f" · {extra.get('sleep', 0)} đang ngủ" if extra else "") + (f" · {len(inapp)} đen trong app (không đụng)" if inapp else ""))
     if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")
     if PRIV_DONE: say(f"   ✓ đã bật lại {sum(PRIV_DONE)} máy chạy sai quyền (lẫn Admin — MuMu hết báo xung đột)")
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
+    for x in pw: say("   ⚠ " + x)
     say("   → XONG, máy chủ ổn." if not probs and not still else "   → Còn dòng ✗ ở trên: chụp phần TÓM TẮT gửi Claude.")
 
 if __name__ == "__main__":

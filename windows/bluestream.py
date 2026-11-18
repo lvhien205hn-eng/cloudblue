@@ -113,8 +113,9 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "17/11f"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "17/11g"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
                                           # · 17/11f không gửi khung thiếu lát (hình vỡ) + máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước
+                                          # · 17/11g máy thức dậy lâu: báo thật cho khách + bật lỗi thì tự "khám máy" ghi vào nhật ký (phần hình không đổi)
                                           # · 17/11a: Android 9 khung khoá dày + tự lấy khung khoá · máy chủ LDPlayer lấy hình thẳng từ Android
                                           # · 13/11b: giữ app chờ khi bật hình lâu + cửa sổ quay lỗi / ra hình đen → lấy hình thẳng từ Android
                                           # · 13/11c: bật sáng màn hình Android mỗi lần khách mở máy (màn tắt = khách thấy MÀN ĐEN)
@@ -3072,6 +3073,7 @@ VIEW_F = os.path.join(B, "redroid", "viewers.json")
 PHONECTL = os.path.join(B, "phonectl.py")
 WAKE_HOLD_S = 240              # app PC chờ máy thức dậy tối đa 4 phút
 WAKE_RETRY_S = 60              # bật lại lỗi → 1 phút sau khách mở mới thử bật lần nữa
+WAKE_SLOW_S = 150              # 17/11g: thức dậy / bật lại quá ngần này giây → câu báo "lâu hơn bình thường"
 _SEEN = {}                     # "cổng adb" → lúc có người xem gần nhất
 _WAKING = {}                   # tên máy → lần bật lại gần nhất {proc, t, ready, done, ok, msg, end}
 
@@ -3260,6 +3262,29 @@ def _wake_reader(name, w):
     w["msg"], w["end"], w["done"] = last[:200], time.time(), True
     how = "xong" if w["ok"] else "chờ lệnh khác" if last.startswith("WAKE_BUSY") else "LỖI"     # WAKE_BUSY: lệnh khác đang làm dở với máy đó → vài giây sau thử lại
     log(f"☀ {name}: {how} — {last[:160] or f'mã {rc}'} ({int(w['end'] - w['t'])} giây)")
+    if how == "LỖI" and not last.startswith("WAKE_NO"): _diag_async(name)
+
+
+_DIAG_T = {}                   # tên máy → lần khám gần nhất
+def _diag_async(name):
+    """17/11g: bật máy LỖI → gọi `phonectl khammay TÊN` (CHỈ ĐỌC, không sửa / không tắt bật gì) ở luồng nền, ghi dòng kết luận vào nhật ký
+       (lệnh A đọc lại để báo admin VÌ SAO máy không lên). Mỗi máy tối đa 1 lần / 10 phút. Không bao giờ ném lỗi."""
+    try:
+        now = time.time()
+        if now - _DIAG_T.get(name, 0) < 600: return
+        _DIAG_T[name] = now
+        def run():
+            try:
+                r = subprocess.run([sys.executable, PHONECTL, "khammay", name], cwd=B, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                                   encoding="utf-8", errors="replace", timeout=180, creationflags=NOWIN)
+                for ln in (r.stdout or "").splitlines():
+                    ln = ln.strip()
+                    if ln.startswith("KHAMMAY " + name + ":") or ln.startswith("dấu hiệu sập:"): log("🩺 " + ln[:300])
+            except Exception as e:
+                log(f"🩺 {name}: không khám được ({e!r})"[:200])
+        threading.Thread(target=run, daemon=True).start()
+    except Exception:
+        pass
 
 
 def _start_wake(name, why=""):
@@ -3338,6 +3363,9 @@ def wake_msg(wk):
     if k == "loi": return "Máy chưa bật lại được — máy chủ sẽ tự thử lại. Bấm “Khởi động lại máy” để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ."
     if k in ("bat", "day") and boot_wave():             # 17/11f: máy chủ vừa khởi động lại, đang bật lại hàng loạt
         return "🔄 Máy chủ vừa khởi động lại và đang bật lại các máy — máy của bạn được ưu tiên vì bạn đang mở" + t + ". Khoảng 1–3 phút, tự vào khi máy lên; dữ liệu giữ nguyên."
+    if k in ("bat", "day") and s >= WAKE_SLOW_S:        # 17/11g: quá 2,5 phút → nói thật (máy chủ bận / đang tự sửa máy), dặn cứ chờ
+        return ("⏳ Máy lên lâu hơn bình thường" + t + " — máy chủ đang bận hoặc đang tự sửa máy sau sự cố. Cứ để yên: máy tự vào khi lên "
+                "(tối đa khoảng 5 phút), dữ liệu giữ nguyên.")
     if k == "bat": return "🔄 Máy đang được bật lại — khoảng 1–2 phút" + t + ". Tự vào khi máy lên."
     if k == "kdl" and s >= KDL_SLOW_S:                 # 16/11e: quá 3 phút → nói thật là máy chủ đang bận (trước cứ "khoảng 1–2 phút, đã 348 giây")
         return "🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường" + t + ". Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào."
@@ -3345,7 +3373,7 @@ def wake_msg(wk):
     if k == "treo": return "Máy đang bật nhưng Android chưa trả lời" + t + ". Chờ thêm ít phút, hoặc bấm “Khởi động lại máy” để sửa nhanh (1–2 phút, dữ liệu giữ nguyên)."
     if k == "khoa": return "Máy đang tạm dừng trên máy chủ. Bấm “Khởi động lại máy” để bật lại; không được thì báo hỗ trợ."
     if k == "mat": return "Máy chủ chưa có máy này (có thể đang được tạo lại). Chờ ít phút; vẫn vậy thì báo hỗ trợ kèm tên máy."
-    return "💤 Máy đang thức dậy sau khi tự nghỉ (lâu không dùng) — khoảng 1 phút" + t + "."
+    return "💤 Máy đang thức dậy sau khi tự nghỉ (lâu không dùng) — thường 1–2 phút" + t + ". Tự vào khi máy lên."
 
 
 def wake_extra(wk):
@@ -4644,6 +4672,7 @@ async def main():
     log(f"bật hình: giữ app chờ khi bật lâu · cửa sổ quay lỗi / ra hình đen → {WGC_BAD_S / 60:g} phút sau mở máy đó lấy hình thẳng từ Android (WGC_BAD_MIN)")
     log(f"lấy hình 17/11a: {video_mode()} · máy chủ LDPlayer mặc định lấy thẳng từ Android (ép quay cửa sổ: CAPTURE=wgc) · "
         "Windows đóng phiên quay cửa sổ ngay mà máy vẫn chạy → tự lấy thẳng từ Android")
+    log("bản 17/11g: máy thức dậy / bật lại lâu thì báo thật cho khách · bật lỗi → tự khám máy (🩺) ghi vào nhật ký này")
     log(f"bản 17/11f: KHÔNG gửi khung hình thiếu lát (chờ khung khoá kế thay vì hình vỡ) · cách chia lát phải lặp lại {SLICE_CONFIRM} khung mới tin, nhớ qua lần bật lại bộ nén · máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước")
     log(f"nén 16/11k: hình scrcpy cạnh chia hết 16 {'BẬT' if SCR_ALIGN == 16 else 'TẮT'} · ghép lát {'BẬT' if SLICE_JOIN else 'TẮT'} (chẩn đoán hình vỡ: python bluestream.py --kiemhinh TÊN_MÁY)")
     log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"

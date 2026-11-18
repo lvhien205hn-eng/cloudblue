@@ -889,10 +889,12 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "17/11f"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "17/11g"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
+                              # 17/11g: máy chủ bị TẮT NGANG làm hỏng file hệ thống Android (roles.xml rỗng…) → máy không lên: tự đổi tên file
+                              #         hỏng, Android tự tạo lại (BOOT_FIX) · lệnh khammay: vì sao máy không lên (chỉ đọc)
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -1732,10 +1734,67 @@ KS_FIX = str(CONF.get("KS_FIX", "1")).strip() != "0"         # 0 = chỉ báo, k
 #   · thử lần lượt 3 cách có quyền root: "su -c" · "su 0 sh -c" · adb đã là root — nhớ cách chạy được;
 #   · MỌI chỗ chờ Android lên (tạo máy, khởi động lại, bật máy, khách mở máy) đều canh: adb vừa nối là kiểm + sửa ngay;
 #   · chống kẹt (bảng ~2 phút/lần) cũng canh; lệnh ksfix canh tới khi nối được (mặc định 5 phút), không nối được thì khởi động lại máy rồi canh tiếp.
-_KS_HEAD = ("[ $(id -u) = 0 ] || { echo KS_NOROOT; exit 0; }; F=" + KS_DB + "; if [ ! -e $F ]; then echo KS_NOFILE; elif [ ! -s $F ]; then echo KS_EMPTY; "
+# 17/11g — FILE HỆ THỐNG ANDROID HỎNG. Máy chủ bị tắt ngang (mất điện / bấm reset / sập) lúc máy khách đang chạy → file Android đang ghi
+# dở thành file RỖNG → system_server sập ngay lúc khởi động ("Missing <roles> in roles.xml"), zygote bật lại ~7 giây / vòng, Android không
+# bao giờ lên, MuMu báo VERR_ROM_START_TIMEOUT, khách thấy quay mãi (18/11 máy chủ 156: 5 lần tắt ngang trong 50 phút). File THIẾU thì
+# Android tự tạo lại như lần bật đầu → trong CÙNG lệnh root với kiểm sổ khoá: Android CHƯA lên mà file có đó nhưng rỗng / không chứa tên
+# thẻ của chính nó → ĐỔI TÊN sang .hong (không xoá). Máy đã lên (boot_completed = 1) không bao giờ bị đụng. Tắt: BOOT_FIX=0 (chỉ báo).
+BOOT_FIX = str(CONF.get("BOOT_FIX", "1")).strip() != "0"
+BF_DIR = "/data/misc_de/0/apexdata/com.android.permission"
+BF_FILES = ("roles", "runtime-permissions")                    # <tên>.xml — thẻ gốc trong file cùng tên
+def _bf_sh(fix):
+    act = "elif mv $P $P.hong; then sync; echo BF_FIXED_$X; else echo BF_FAIL_$X; " if fix else "else echo BF_BAD_$X; "
+    return ("if [ x$(getprop sys.boot_completed) != x1 ]; then for X in " + " ".join(BF_FILES) + "; do P=" + BF_DIR + "/$X.xml; "
+            "if [ -e $P ]; then if [ -s $P ] && grep -q $X $P; then :; " + act + "fi; fi; done; fi; ")
+_KS_ROOT_SH = "[ $(id -u) = 0 ] || { echo KS_NOROOT; exit 0; }; "
+_KS_BODY = ("F=" + KS_DB + "; if [ ! -e $F ]; then echo KS_NOFILE; elif [ ! -s $F ]; then echo KS_EMPTY; "
             "elif ! H=$(head -c 6 $F); then echo KS_ERR; elif [ x$H = xSQLite ]; then echo KS_OK; else echo KS_BAD $(stat -c %s $F 2>/dev/null); ")
-_KS_SH = _KS_HEAD + "fi"                                       # chỉ kiểm
-_KS_FIX_SH = _KS_HEAD + "rm -f $F $F-wal $F-shm $F-journal; sync; if [ -e $F ]; then echo KS_RMFAIL; else echo KS_FIXED; fi; fi"   # kiểm + xoá file hỏng
+_KS_HEAD = _KS_ROOT_SH + _KS_BODY
+_KS_SH = _KS_ROOT_SH + _bf_sh(False) + _KS_BODY + "fi"         # chỉ kiểm (sổ khoá + file hệ thống)
+_KS_FIX_SH = (_KS_ROOT_SH + _bf_sh(BOOT_FIX) + _KS_BODY        # kiểm + sửa: đổi tên file hệ thống hỏng (BOOT_FIX) · xoá sổ khoá hỏng (KS_FIX)
+              + ("rm -f $F $F-wal $F-shm $F-journal; sync; if [ -e $F ]; then echo KS_RMFAIL; else echo KS_FIXED; fi; " if KS_FIX else "") + "fi")
+_BF_HIT = {}                                                   # cổng → {"n": số lần vừa sửa, "t": lúc sửa, "fixed" / "bad" / "fail": [tên file], "said": đã báo}
+def _port_name(port):
+    try: return next((str(p["name"]) for p in load()["phones"] if str(p.get("port")) == str(port)), f"máy cổng {port}")
+    except Exception: return f"máy cổng {port}"
+def _bf_parse(port, o):
+    """Đọc dấu BF_… trong chữ lệnh root trả về → in 1 dòng + ghi nhật ký cho mỗi phát hiện mới. Không bao giờ ném lỗi."""
+    try:
+        got = {"FIXED": [], "BAD": [], "FAIL": []}
+        for k, f in re.findall(r"BF_(FIXED|BAD|FAIL)_([a-z][a-z-]*)", o or ""):
+            if f in BF_FILES and f not in got[k]: got[k].append(f)
+        h = _BF_HIT.setdefault(port, {"n": 0, "said": set()})
+        h["fixed"], h["bad"], h["fail"] = got["FIXED"], got["BAD"], got["FAIL"]
+        if not any(got.values()): return
+        nm = _port_name(port); ff = lambda L: ", ".join(x + ".xml" for x in L)
+        if got["FIXED"]:
+            h["n"] += 1; h["t"] = time.time(); h["last"] = list(got["FIXED"])
+            print(f"   📄 {nm}: file hệ thống Android HỎNG do máy chủ bị tắt ngang ({ff(got['FIXED'])}) → đã đổi tên file hỏng, Android tự tạo lại "
+                  "và khởi động tiếp (1–2 phút)", flush=True)
+            _ks_event(nm, "file hệ thống hỏng: " + ff(got["FIXED"]))
+            try: _restart_write(nm)                           # phát hình báo khách "máy đang khởi động lại, tự vào khi xong"
+            except Exception: pass
+        for k, txt in (("BAD", "→ Android sập liên tục, không lên" + ("" if BOOT_FIX else " (BOOT_FIX=0 → chỉ báo, không tự sửa)")),
+                       ("FAIL", "nhưng CHƯA đổi tên được file hỏng")):
+            new = [x for x in got[k] if (k, x) not in h["said"]]
+            if new:
+                h["said"].update((k, x) for x in new)
+                print(f"   📄 {nm}: file hệ thống Android HỎNG ({ff(new)}) {txt}", flush=True)
+    except Exception: pass
+def _sig_of(txt):
+    """Dấu hiệu Android sập lúc khởi động: dòng "Caused by" cuối của khối FATAL EXCEPTION (ưu tiên IN SYSTEM PROCESS) gần nhất. '' = không có."""
+    L = (txt or "").splitlines()
+    k = max((i for i, x in enumerate(L) if "FATAL EXCEPTION IN SYSTEM PROCESS" in x), default=-1)
+    if k < 0: k = max((i for i, x in enumerate(L) if "FATAL EXCEPTION" in x), default=-1)
+    if k < 0: return ""
+    blk = L[k:k + 80]; cb = [x for x in blk if "Caused by:" in x]
+    line = cb[-1] if cb else (blk[1] if len(blk) > 1 else blk[0])
+    line = re.sub(r"^.*?(?:AndroidRuntime|DEBUG)\s*:\s*", "", line).strip()
+    return re.sub(r"^Caused by:\s*", "", line)[:200]
+def _bf_sig(port, n=300):
+    """Dấu hiệu sập đọc từ logcat của máy (không cần root). '' = không thấy / không nối được."""
+    try: return _sig_of(adb("-s", f"127.0.0.1:{port}", "shell", f"logcat -d -b crash -t {int(n)}", timeout=20).stdout or "")
+    except Exception: return ""
 _KS_METHODS = ("su -c", "su 0 sh -c", "")                     # su kiểu MuMu / Magisk · su kiểu AOSP · adb đã là root (chạy thẳng)
 _KS_ROOT = {}                                                  # cổng → cách đã chạy được
 _KS_WHY = {}                                                   # cổng → vì sao lần gần nhất chưa kiểm được
@@ -1762,6 +1821,7 @@ def _ks_exec(port, script, timeout=12):
             _KS_ROOT[port] = pre; _KS_WHY.pop(port, None)
             m = re.search(r"KS_BAD (\d+)", o)
             if m: _KS_SIZE[port] = int(m.group(1))
+            _bf_parse(port, o)                                # 17/11g: file hệ thống Android hỏng (đã đổi tên / chỉ báo)
             return toks[-1], o
         if not toks and (_adb_gone(o) or r.returncode == 124):
             _KS_WHY[port] = "adb chưa nối được máy (" + _last(o, 50) + ")" if r.returncode != 124 else "máy không trả lời lệnh adb (quá giờ)"
@@ -1868,14 +1928,15 @@ def keystore_heal(name, port, p=None, why="", state=None):
        False = không hỏng / không sửa được (không bao giờ ném lỗi)."""
     try:
         if EMU == "ld": return False                          # Android 9: keystore kiểu cũ (không có file này)
-        if not KS_FIX or _KS_DONE.get(name, 0) >= 2:
+        if not (KS_FIX or BOOT_FIX) or _KS_DONE.get(name, 0) >= 2:
             if keystore_state(port) == "bad":
                 print(f"   🔑 {name}: sổ khoá Android (keystore) HỎNG{(' — ' + why) if why else ''} → Android sẽ sập liên tục (màn đen)", flush=True)
                 print("      (KS_FIX=0 → chỉ báo, không tự sửa)" if not KS_FIX else "      ✗ đã sửa 2 lần trong lệnh này mà vẫn hỏng → dừng (báo Claude)", flush=True)
             return False
-        r = _ks_fix_now(port)
+        r = _ks_fix_now(port)                                 # 17/11g: cùng lệnh này cũng đổi tên file hệ thống hỏng (BOOT_FIX), kể cả khi KS_FIX=0
         if r == "bad":
-            print(f"   🔑 {name}: sổ khoá Android (keystore) HỎNG{(' — ' + why) if why else ''} — ✗ chưa xoá được file hỏng", flush=True)
+            print(f"   🔑 {name}: sổ khoá Android (keystore) HỎNG{(' — ' + why) if why else ''}"
+                  + (" — ✗ chưa xoá được file hỏng" if KS_FIX else " → Android sẽ sập liên tục (màn đen) · KS_FIX=0 → chỉ báo, không tự sửa"), flush=True)
         if r != "fixed": return False
         return _ks_after_fix(name, port, p, why)
     except Exception as e:
@@ -1885,7 +1946,8 @@ def _wait_android(name, port, p=None, wait=None, step=3, why="lúc chờ Android
        ngay (máy hỏng sổ khoá khởi động lại liên tục, KHÔNG BAO GIỜ tới boot_completed — bản 16/11k chờ tới đó mới kiểm nên không cứu được).
        Sửa xong → khởi động lại Android → chờ lên lại (tính lại đủ giờ chờ)."""
     wait = wait or BOOT_WAIT; t0 = time.time(); ks = None; tp = 0.0; nr = 0
-    poke = EMU != "ld" and KS_FIX
+    poke = EMU != "ld" and (KS_FIX or BOOT_FIX)
+    bf0 = _BF_HIT.get(port, {}).get("n", 0)
     while time.time() - t0 < wait:
         seen = _adb_fresh(port)
         up = booted(port)
@@ -1894,6 +1956,8 @@ def _wait_android(name, port, p=None, wait=None, step=3, why="lúc chờ Android
             tp = time.time()
             try: r = _ks_fix_now(port)
             except Exception: r = "?"
+            bn = _BF_HIT.get(port, {}).get("n", 0)
+            if bn != bf0: bf0 = bn; t0 = time.time()        # 17/11g: vừa đổi tên file hệ thống hỏng → Android khởi động tiếp, tính lại đủ giờ chờ
             if r == "fixed": return _ks_after_fix(name, port, p, why, wait)
             if r in ("ok", "none", "bad"): ks = r
             elif _ks_noroot(port):                            # adb nối được mà không có root (Android 15 / KernelSU) → thôi canh, chờ như cũ
@@ -1903,6 +1967,7 @@ def _wait_android(name, port, p=None, wait=None, step=3, why="lúc chờ Android
         time.sleep(step)
     return False
 KS_OK_F = os.path.join(HOME, "redroid", "ks_ok.json")
+_KS_OK_VER = "|g"                                              # 17/11g: lệnh kiểm có thêm phần file hệ thống → dấu cũ không còn tính
 def _ks_ok_load():
     try:
         with open(KS_OK_F, encoding="utf-8") as f: return json.load(f)
@@ -1920,10 +1985,16 @@ def _ks_tick(nm, p, tries=3):
     port = p["port"]
     for k in range(max(1, tries)):
         bid = _boot_id(port)
-        if bid and _ks_ok_load().get(nm) == bid: return False
+        if bid and _ks_ok_load().get(nm) == bid + _KS_OK_VER: return False
+        b0 = _BF_HIT.get(port, {}).get("n", 0)
         r = _ks_fix_now(port)
+        hb = _BF_HIT.get(port, {})
+        if hb.get("n", 0) != b0 and r in ("ok", "none", "bad"):   # 17/11g: vừa đổi tên file hệ thống hỏng → Android tự khởi động tiếp (không cần lệnh khởi động lại)
+            print(f"KHOI_DONG_LAI {nm}: file hệ thống Android hỏng do máy chủ bị tắt ngang (" + ", ".join(x + ".xml" for x in hb.get("last") or [])
+                  + ") → đã đổi tên file hỏng, Android tự tạo lại và khởi động tiếp", flush=True)
+            return True
         if r in ("ok", "none"):
-            if bid: _ks_ok_put(nm, bid)
+            if bid: _ks_ok_put(nm, bid + _KS_OK_VER)
             return False
         if r == "fixed":
             _KS_DONE[nm] = _KS_DONE.get(nm, 0) + 1
@@ -1932,7 +2003,7 @@ def _ks_tick(nm, p, tries=3):
             return True
         if r == "bad": return False
         if _ks_noroot(port):                                  # không có root cho máy chủ → nhớ cho lần khởi động này, khỏi thử lại mỗi 2 phút
-            if bid: _ks_ok_put(nm, bid)
+            if bid: _ks_ok_put(nm, bid + _KS_OK_VER)
             return False
         if k + 1 < tries: time.sleep(3); _adb_fresh(port)
     return False
@@ -2786,12 +2857,15 @@ def cmd_ksfix(a):
     """16/11k2: SỔ KHOÁ Android (keystore) hỏng → máy sập / khởi động lại liên tục (màn đen, khách chờ mãi). Lệnh này CANH từng máy tới lúc
        adb nối được rồi kiểm + xoá file hỏng + khởi động lại Android, chờ lên lại.
          phonectl ksfix TÊN [TÊN …]   ·   phonectl ksfix --all (mọi máy khách đang chạy)
-         --chi-kiem: chỉ báo, không sửa · --cho GIÂY: canh tối đa (mặc định 300) · --bat: máy đang tắt thì bật lên để kiểm"""
+         --chi-kiem: chỉ báo, không sửa · --cho GIÂY: canh tối đa (mặc định 300) · --bat: máy đang tắt thì bật lên để kiểm
+       17/11g: cùng lúc kiểm + sửa FILE HỆ THỐNG Android hỏng do máy chủ bị tắt ngang (roles.xml… rỗng → Android không bao giờ lên): đổi tên
+       file hỏng, Android tự tạo lại, chờ máy lên. Dòng cuối "KSFIX: … hỏng N · đã sửa M" tính cả 2 loại."""
     if EMU == "ld": print("KSFIX: máy chủ LDPlayer (Android 9) không dùng sổ khoá kiểu mới — không cần kiểm."); return
     st = load(); names = list(a.names or [])
     if a.all: names = [str(p["name"]) for p in st["phones"] if str(p.get("name", "")).startswith(("cp_", "spare_"))]
     if not names: print("Cách dùng: phonectl ksfix TÊN_MÁY  ·  phonectl ksfix --all  (thêm --chi-kiem để chỉ kiểm, --cho GIÂY để canh lâu hơn)"); sys.exit(1)
-    cho = max(10, int(getattr(a, "cho", 300) or 300)); fixing = not a.chi_kiem and KS_FIX
+    cho = max(10, int(getattr(a, "cho", 300) or 300)); fixing = not a.chi_kiem and (KS_FIX or BOOT_FIX)
+    bfix = {}; bbad = {}                                    # 17/11g: tên máy → [file hệ thống vừa đổi tên] / [file hỏng chưa sửa]
     v = vms(); pend = {}; off = err = 0
     for nm in names:
         p = rec(nm, st)
@@ -2810,7 +2884,11 @@ def cmd_ksfix(a):
     while pend and time.time() - t0 < cho:
         for nm, p in list(pend.items()):
             port = p["port"]; _adb_fresh(port)
+            b0 = _BF_HIT.get(port, {}).get("n", 0)
             r = _ks_fix_now(port) if fixing else keystore_state(port)
+            hb = _BF_HIT.get(port, {})
+            if hb.get("n", 0) != b0: bfix[nm] = list(hb.get("last") or [])
+            if r != "?" and (hb.get("bad") or hb.get("fail")): bbad[nm] = list(hb.get("bad") or []) + list(hb.get("fail") or [])
             if r == "?" and _ks_noroot(port):                 # adb nối được nhưng không có root (Android 15 / KernelSU) → không kiểm được, bỏ qua
                 nr[nm] = nr.get(nm, 0) + 1
                 if nr[nm] >= 2:
@@ -2832,7 +2910,8 @@ def cmd_ksfix(a):
                 print(f"   🔑 {nm}: sổ khoá HỎNG" + (f" (file {sz} byte)" if sz else "") + " → đã xoá file hỏng, khởi động lại Android…", flush=True)
                 _ks_event(nm, "lệnh ksfix", port); _restart_write(nm); bids[nm] = _boot_id(port); _ks_reboot(port)
             elif r == "bad":
-                print(f"   ✗ {nm}: sổ khoá HỎNG" + (" (chạy lại không kèm --chi-kiem để sửa)" if not fixing else " — chưa xoá được file hỏng"), flush=True)
+                print(f"   ✗ {nm}: sổ khoá HỎNG" + (" (chạy lại không kèm --chi-kiem để sửa)" if not fixing else " — chưa xoá được file hỏng" if KS_FIX
+                                                     else " (KS_FIX=0 → chỉ báo, không tự sửa)"), flush=True)
             else: print(f"   ✓ {nm}: sổ khoá " + ("tốt" if r == "ok" else "chưa có (bình thường)"), flush=True)
         if pend:
             if not said and time.time() - t0 > 8:
@@ -2848,16 +2927,136 @@ def cmd_ksfix(a):
             ok = bool(port) and _wait_reboot(nm, port, bids.get(nm, ""), p)
             k = keystore_state(port) if ok else "?"
             if ok and k != "bad":
-                okf += 1; print(f"   ✓ {nm}: Android đã lên lại, sổ khoá " + {"ok": "tốt", "none": "mới (tốt)", "?": "chưa kiểm lại được"}[k], flush=True)
+                okf += 1; res[nm] = "fixed_ok"; print(f"   ✓ {nm}: Android đã lên lại, sổ khoá " + {"ok": "tốt", "none": "mới (tốt)", "?": "chưa kiểm lại được"}[k], flush=True)
                 try: set_hold(nm, False)
                 except Exception: pass
             else: print(f"   ✗ {nm}: " + ("sổ khoá VẪN HỎNG sau khi sửa" if ok else "Android chưa lên lại sau khi sửa — chống kẹt sẽ canh tiếp"), flush=True)
-    nbad = sum(1 for r in res.values() if r in ("fixed", "bad"))
-    nnr = sum(1 for r in res.values() if r == "noroot")
-    print(f"KSFIX: kiểm {n} máy đang chạy · hỏng {nbad} · đã sửa {okf} · lỗi {err + (len(fixed) - okf)}" + (f" · {off} máy tắt (bỏ qua)" if off else "")
-          + (f" · {nnr} máy không có root cho máy chủ (bỏ qua)" if nnr else ""))
-    if fixing and nbad > okf: sys.exit(2)
+    # 17/11g: máy vừa đổi tên file hệ thống hỏng → Android tự khởi động tiếp: chờ lên (máy vừa sửa cả sổ khoá đã chờ ở trên)
+    bok = set(); bno = set(); bw = [nm for nm in bfix if nm not in fixed]
+    if bw:
+        print(f"   Chờ {len(bw)} máy vừa sửa file hệ thống lên (tối đa {BOOT_WAIT // 60} phút)…", flush=True)
+        for nm in bw:
+            p = rec(nm) or {}; port = p.get("port")
+            ok = bool(port) and _wait_android(nm, port, p, why="sau khi sửa file hệ thống")
+            if ok:
+                bok.add(nm); print(f"   ✓ {nm}: Android đã lên sau khi sửa file hệ thống", flush=True)
+                try: set_hold(nm, False)
+                except Exception: pass
+            else:
+                bno.add(nm); print(f"   ✗ {nm}: Android CHƯA lên sau khi sửa file hệ thống — xem vì sao: phonectl khammay {nm}", flush=True)
+    def _rep_ok(nm):
+        r = res.get(nm)
+        if r in ("bad", "fixed"): return False                 # sổ khoá hỏng chưa xoá được / xoá rồi mà Android chưa lên lại
+        if nm in bbad and nm not in bfix: return False         # file hệ thống hỏng chưa đổi tên (chỉ kiểm / đổi tên lỗi)
+        if nm in bfix and r != "fixed_ok" and nm not in bok: return False
+        return True
+    broken = {nm for nm, r in res.items() if r in ("fixed", "fixed_ok", "bad")} | set(bfix) | set(bbad)
+    repaired = {nm for nm in broken if _rep_ok(nm)}
+    nnr = sum(1 for r in res.values() if r == "noroot"); nbf = len(set(bfix) | set(bbad))
+    print(f"KSFIX: kiểm {n} máy đang chạy · hỏng {len(broken)} · đã sửa {len(repaired)} · lỗi {err + (len(fixed) - okf) + len(bno)}"
+          + (f" · {off} máy tắt (bỏ qua)" if off else "") + (f" · {nnr} máy không có root cho máy chủ (bỏ qua)" if nnr else "")
+          + (f" · trong đó file hệ thống hỏng {nbf}" if nbf else ""))
+    if fixing and len(broken) > len(repaired): sys.exit(2)
     if fixing and err: sys.exit(3)
+
+# ---------- 17/11g: KHÁM MÁY — vì sao máy không lên (chỉ ĐỌC) ----------
+def _kh_tail(path, n=300000):
+    try:
+        with open(path, "rb") as f:
+            f.seek(0, 2); z = f.tell(); f.seek(max(0, z - n)); return f.read().decode("utf-8", "replace")
+    except OSError: return ""
+def _kh_host(i):
+    """Dấu vết phía máy chủ của máy ảo MuMu số i (không cần adb): bước khởi động cuối Android báo về, mã lỗi VBox gần nhất, cỡ ổ dữ liệu."""
+    out = []
+    try:
+        d = _vm_dir(i)
+        if not d: return out
+        st_ = re.findall(r"android_boot_status\W{1,8}([A-Za-z_]{3,40})", _kh_tail(os.path.join(d, "logs", "shell.log")))
+        if st_:
+            seq = []
+            for x in st_[-40:]:
+                if not seq or seq[-1] != x: seq.append(x)
+            out.append("bước khởi động Android gần nhất (shell.log): " + " → ".join(seq[-4:]) + (f" · lặp lại {st_.count(st_[0])} vòng" if len(st_) > 8 and st_.count(st_[0]) > 2 else ""))
+        ve = re.findall(r"VERR_[A-Z0-9_]{3,40}", _kh_tail(os.path.join(d, "logs", "VBox.log"), 120000))
+        if ve: out.append("mã lỗi máy ảo gần nhất (VBox.log): " + ", ".join(dict.fromkeys(ve[-6:])))
+        f = os.path.join(d, "data.vdi")
+        if os.path.isfile(f): out.append(f"ổ dữ liệu máy: {os.path.getsize(f) / 2**20:.0f} MB")
+        fr = shutil.disk_usage(d).free / 2**30
+        if fr < 10: out.append(f"⚠ ổ đĩa máy chủ chỉ còn {fr:.1f} GB trống")
+    except Exception: pass
+    return out
+def _kham_one(nm, p, v, inf):
+    """Khám 1 máy → (mã, câu kết luận); in các dòng chi tiết. Chỉ đọc: không sửa, không tắt / bật gì."""
+    i = IDX(p, v); port = p.get("port"); s_ = f"127.0.0.1:{port}"
+    print(f"--- {nm} · máy số {i if i is not None else '?'} · cổng {port} · Android {p.get('android') or '?'}"
+          + (" · đang NGỦ" if p.get("sleep") else " · đang GIỮ (khoá / tạm dừng)" if p.get("hold") else ""), flush=True)
+    if i is None: return "MAT", f"{EMU_NAME} không còn máy tên này (máy \"ma\") — chạy lệnh A để xử lý"
+    m = inf.get(i, {}) if isinstance(inf, dict) else {}
+    ec = m.get("launch_err_code"); em = str(m.get("launch_err_msg") or "").strip()[:100]
+    err_txt = f"{ec} {em}".strip() if ec not in (None, 0, "0", "") else ""
+    if m:
+        print(f"   {EMU_NAME}: tiến trình {'chạy' if m.get('is_process_started') else 'tắt'} · Android {'đã lên' if m.get('is_android_started') else 'chưa lên'}"
+              + (f" · trạng thái {m.get('player_state')}" if m.get("player_state") else "") + (f" · lỗi lúc bật: {err_txt}" if err_txt else ""), flush=True)
+    if not is_running(nm, p, v):
+        return "TAT", "máy đang tắt" + (" (ngủ — khách mở là tự bật)" if p.get("sleep") else " (đang giữ / khoá)" if p.get("hold") else f" — bật: phonectl start {nm}")
+    host = _kh_host(i) if EMU == "mumu" else []
+    seen = _adb_fresh(port); up = booted(port)
+    if up:
+        return "OK", "Android ĐÃ LÊN — máy bình thường"
+    if not seen:
+        for x in host: print("   " + x, flush=True)
+        return "ADB", ("máy ảo chạy nhưng adb KHÔNG nối được (Android không mở được cổng adb / máy ảo treo lúc bật)" + (f" · {EMU_NAME} báo {err_txt}" if err_txt else "")
+                       + f" — thử: phonectl restart {nm} --force · vẫn vậy thì gửi Claude các dòng trên")
+    try: upt = float(((adb("-s", s_, "shell", "cat /proc/uptime", timeout=10).stdout or "").split() or ["0"])[0])
+    except Exception: upt = 0.0
+    p1 = _ss_pid(port); time.sleep(8); p2 = _ss_pid(port)
+    loop = bool(p1 and p2 and p1 != p2)
+    sig = _bf_sig(port)
+    ks = keystore_state(port)                                 # lệnh root CHỈ KIỂM (in dòng 📄 nếu file hệ thống hỏng)
+    bad = list(_BF_HIT.get(port, {}).get("bad") or [])
+    print(f"   adb nối được · Android CHƯA lên · máy ảo đã chạy {int(upt)} giây · giao diện (system_server) "
+          + ("SẬP / bật lại liên tục" if loop else "chưa chạy" if not (p1 or p2) else "đang chạy") + f" · sổ khoá: "
+          + {"ok": "tốt", "none": "chưa có (bình thường)", "bad": "HỎNG", "?": "chưa kiểm được (" + _KS_WHY.get(port, "?") + ")"}[ks], flush=True)
+    if sig: print("   dấu hiệu sập: " + sig, flush=True)
+    for x in host: print("   " + x, flush=True)
+    if bad:
+        return "FILE", ("file hệ thống Android HỎNG (" + ", ".join(x + ".xml" for x in bad) + ") do máy chủ bị tắt ngang → sửa (giữ dữ liệu khách): phonectl ksfix " + nm)
+    if ks == "bad": return "KS", f"sổ khoá Android HỎNG → sửa: phonectl ksfix {nm}"
+    mf = re.search(r"Missing <([a-z-]+)> in ", sig or "")
+    if mf and ks == "?" and _ks_noroot(port):
+        return "FILE", (f"file hệ thống Android HỎNG ({mf.group(1)}.xml) do máy chủ bị tắt ngang, nhưng máy không cho máy chủ quyền root (Android 15) "
+                        "nên CHƯA tự sửa được — gửi Claude dòng này (dữ liệu khách còn nguyên trong ổ máy)")
+    if sig: return "SAP", "Android SẬP lúc khởi động vì lý do chưa có cách tự sửa — gửi Claude dòng \"dấu hiệu sập\" ở trên (dữ liệu khách còn nguyên trong ổ máy)"
+    if upt and upt < 240: return "DANGLEN", f"Android đang khởi động (máy ảo mới chạy {int(upt)} giây) — chờ thêm 2–3 phút"
+    if ks == "?" and _ks_noroot(port):
+        return "ROOT", "Android chưa lên; máy không cho máy chủ quyền root (Android 15) nên không kiểm sâu được" + (f" · {EMU_NAME} báo {err_txt}" if err_txt else "")
+    return "CHUALEN", f"Android chưa lên sau {int(upt)} giây, không thấy dấu hiệu sập — thử: phonectl restart {nm} --force"
+def cmd_khammay(a):
+    """17/11g: VÌ SAO MÁY KHÔNG LÊN — chỉ ĐỌC (không sửa, không tắt / bật gì).
+         phonectl khammay TÊN [TÊN …]   ·   phonectl khammay --all (mọi máy khách đang chạy mà Android chưa lên)
+       Mỗi máy 1 dòng kết luận: KHAMMAY <tên>: [MÃ] <vì sao + làm gì>. MÃ: OK · TAT · MAT · ADB · FILE · KS · SAP · ROOT · DANGLEN · CHUALEN."""
+    st = load(); v = vms(); names = list(dict.fromkeys(a.names or [])); inf = {}
+    if EMU == "mumu":
+        try: inf = _mumu_info()
+        except Exception: inf = {}
+    if a.all:
+        for p in st["phones"]:
+            nm = str(p.get("name", ""))
+            if not nm.startswith(("cp_", "spare_")) or p.get("hold") or nm in names: continue
+            try:
+                if is_running(nm, p, v) and not booted(p["port"]): names.append(nm)
+            except Exception: pass
+        if not names: print("KHAMMAY: mọi máy khách đang chạy đều đã lên Android — không có máy nào cần khám."); return
+    if not names: print("Cách dùng: phonectl khammay TÊN_MÁY [TÊN …]  ·  phonectl khammay --all"); sys.exit(1)
+    out = {}
+    for nm in names:
+        p = rec(nm, st)
+        if not p: print(f"--- {nm}: không có trong danh sách máy chủ này", flush=True); out[nm] = "KHONGCO"; continue
+        try: code, txt = _kham_one(nm, p, v, inf)
+        except Exception as e: code, txt = "LOI", f"khám lỗi: {e}"
+        out[nm] = code
+        print(f"KHAMMAY {nm}: [{code}] {txt}", flush=True)
+    print("KHAMMAY xong: " + " · ".join(f"{k} {sum(1 for c in out.values() if c == k)}" for k in sorted(set(out.values()))), flush=True)
 
 def cmd_waitboot(a):
     st, p = _need(a.name)
@@ -3865,7 +4064,7 @@ def _bootall(a, lk=None):
             except OSError: pass
             lines = [x.strip() for x in out.splitlines() if x.strip()]
             for x in lines:
-                if x.startswith("   (") or x.startswith("("): print("   " + x.lstrip(), flush=True)
+                if x.startswith(("   (", "(", "📄", "🔑")): print("   " + x.lstrip(), flush=True)     # 17/11g: + dòng tự sửa file Android hỏng
             last = lines[-1] if lines else ""
             if rc == 0: ok_n += 1; print(f"✅ {nm}: sẵn sàng" + (f" ({last.split('sẵn sàng', 1)[-1].strip()})" if "sẵn sàng" in last else ""), flush=True)
             elif rc in (4, 7): skip += 1; print(f"· {nm}: " + ("khách vừa mở — lệnh của khách đang bật máy này" if rc == 7 else "đang tạm dừng — không bật"), flush=True)
@@ -3900,7 +4099,7 @@ def cmd_heal(a):
         if p.get("hold") or IDX(p, v) is None or not is_running(nm, p, v): h.pop(nm, None); continue
         _adb_fresh(p["port"])
         # 16/11k2: sổ khoá Android hỏng → máy khởi động lại liên tục (kiểu "kẹt 10 phút" bên dưới chỉ tắt / bật lại, không bao giờ khỏi)
-        if EMU != "ld" and KS_FIX and str(nm).startswith(("cp_", "spare_")):
+        if EMU != "ld" and (KS_FIX or BOOT_FIX) and str(nm).startswith(("cp_", "spare_")):
             try:
                 if _ks_tick(nm, p, tries=3 if time.time() - t < 60 else 1): h.pop(nm, None); continue
             except Exception as e: print(f"   (kiểm sổ khoá {nm} lỗi: {e})", flush=True)
@@ -4636,6 +4835,7 @@ def main():
     ks = s.add_parser("ksfix"); ks.add_argument("names", nargs="*"); ks.add_argument("--all", action="store_true")
     ks.add_argument("--chi-kiem", dest="chi_kiem", action="store_true"); ks.add_argument("--cho", type=int, default=300)
     ks.add_argument("--bat", action="store_true"); ks.set_defaults(f=cmd_ksfix)
+    kh = s.add_parser("khammay"); kh.add_argument("names", nargs="*"); kh.add_argument("--all", action="store_true"); kh.set_defaults(f=cmd_khammay)   # 17/11g
     g = s.add_parser("reconfig"); g.add_argument("name"); g.add_argument("--fps", type=int, default=0); g.add_argument("--res", default=""); g.set_defaults(f=cmd_reconfig)
     lr = s.add_parser("liveres"); lr.add_argument("name"); lr.add_argument("--res", required=True); lr.set_defaults(f=cmd_liveres)
     pi = s.add_parser("preinstall"); pi.add_argument("name", nargs="?", default=""); pi.add_argument("--all", action="store_true"); pi.add_argument("--force", action="store_true"); pi.set_defaults(f=cmd_preinstall)
