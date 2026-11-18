@@ -3254,6 +3254,12 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
         <label>👤 Số máy tối đa mỗi tài khoản (cả miễn phí + trả phí · 0 = không giới hạn · admin không bị giới hạn)<input id="cpa-maxuser" type="number" min="0" step="1" value="1"></label>
         <label class="full">📝 Ghi chú trong bảng thuê máy — tiếng Việt (khung bên phải, trên nút Thanh toán · để trống = câu mặc định)<textarea id="cpa-onote" rows="3" maxlength="1000" placeholder="VD: Mỗi máy là một điện thoại Android mới tinh… Hết hạn máy tạm dừng; không gia hạn trong 30 phút thì máy và dữ liệu bị xoá."></textarea></label>
         <label class="full">📝 Ghi chú — tiếng Anh (khách chọn English sẽ thấy · để trống = câu mặc định)<textarea id="cpa-onote-en" rows="3" maxlength="1000" placeholder="E.g. Every phone is a brand-new Android device…"></textarea></label>
+        <h3>💾 Bộ nhớ máy khách (máy chủ MuMu · Android 12 / 15)</h3>
+        <label class="full">Bộ nhớ MIỄN PHÍ theo RAM — "RAM từ:GB", cách nhau dấu phẩy (VD 0:8, 4:13, 8:16 = dưới 4GB RAM → 8GB · 4–7GB → 13GB · từ 8GB → 16GB) · chỉ máy MỚI, máy cũ giữ nguyên<input id="cpa-dtiers" maxlength="120" placeholder="0:8, 4:13, 8:16"></label>
+        <label>Bộ nhớ tối đa 1 máy (GB, 8–512)<input id="cpa-dmax" type="number" min="8" max="512" step="1" placeholder="64"></label>
+        <label>🛒 Cho khách mua thêm bộ nhớ<select id="cpa-dshop"><option value="0">TẮT — khách chưa mua được</option><option value="1">BẬT — khách mua được</option></select></label>
+        <label class="full">Gói bán thêm — "GB thêm:giá (đồng)", cách nhau dấu phẩy, tối đa 8 gói (VD 8:20000, 16:35000) · giá trả 1 lần, bộ nhớ theo máy tới khi máy hết hạn / bị xoá<input id="cpa-dpkgs" maxlength="200" placeholder="8:20000, 16:35000"></label>
+        <div class="hint full" id="cpa-dhint"></div>
         <div class="acts full"><button class="btn" type="button" id="cpa-save">Lưu tất cả</button><span class="hint" id="cpa-msg"></span></div>
       </div>
       <h3 style="margin:4px 0 0">📊 Phân tích giá (theo đơn giá đang nhập)</h3>
@@ -3308,7 +3314,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
       </div>
       <div class="subpane" data-sub="sales" hidden>
       <h3 style="margin:10px 0 0">🧾 Lịch sử mua ĐT đám mây</h3>
-      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option><option value="bonus">➕ Admin cộng ngày</option><option value="fix">🩹 Bù gia hạn</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
+      <div class="cps-bar"><select id="cps-kind" class="in" style="max-width:190px"><option value="">Tất cả loại</option><option value="new">🆕 Thuê mới</option><option value="renew">🔄 Gia hạn</option><option value="upgrade">⬆️ Nâng cấp</option><option value="switch">🤖 Đổi Android</option><option value="free">🎁 Miễn phí</option><option value="gift">🎟 Mã tặng</option><option value="refund">↩️ Hoàn tiền</option><option value="bonus">➕ Admin cộng ngày</option><option value="fix">🩹 Bù gia hạn</option><option value="disk">💾 Bộ nhớ</option></select><input id="cps-q" class="in" placeholder="Tìm theo tên khách…" style="max-width:220px"><span class="hint" id="cps-hint"></span></div>
       <div class="tbl"><table><thead><tr><th>Thời gian</th><th>Khách</th><th>Loại</th><th>Máy</th><th>Số tiền</th></tr></thead><tbody id="cps-tb"></tbody></table></div>
       <button class="btn ghost sm" type="button" id="cps-more" hidden>Tải thêm</button>
       </div>
@@ -4465,6 +4471,14 @@ const ERR_EN = {
   "duplicate key": "This username or email is already taken."
 };
 ERR.NO_MACHINE = "Không tìm thấy máy VPS."; ERR.ALREADY = "Đơn này đã tạo máy VPS rồi."; ERR_EN && (ERR_EN.NO_MACHINE = "VPS machine not found.");
+// 💾 bộ nhớ máy khách (SQL v40)
+Object.assign(ERR, { DISK_SHOP_OFF: "Hiện chưa bán thêm bộ nhớ.", DISK_PENDING: "Máy đang nới bộ nhớ — đợi xong rồi mua tiếp.",
+  DISK_NOT_SUPPORTED: "Máy này chưa hỗ trợ mua thêm bộ nhớ (máy chủ Android 9).", BAD_DISK_PKG: "Gói bộ nhớ không còn bán — tải lại trang rồi chọn gói khác.",
+  DISK_MAX: "Máy đã đạt mức bộ nhớ tối đa — chọn gói nhỏ hơn.", BAD_DISK_TIERS: "Bậc bộ nhớ sai dạng — mỗi bậc là RAM:GB (bộ nhớ 4–512GB).",
+  BAD_DISK_PKGS: "Gói bộ nhớ sai dạng — mỗi gói là GB thêm:giá (tối đa 8 gói)." });
+ERR_EN && Object.assign(ERR_EN, { DISK_SHOP_OFF: "Extra storage isn't on sale right now.", DISK_PENDING: "Storage is being expanded — wait until it's done.",
+  DISK_NOT_SUPPORTED: "This phone doesn't support extra storage yet (Android 9 server).", BAD_DISK_PKG: "That storage pack is no longer sold — reload and pick another.",
+  DISK_MAX: "This phone is at the storage limit — pick a smaller pack." });
 // 💎 Tích Blue (SQL v27)
 Object.assign(ERR, { BLUE_OFF: "Tích Blue đang tạm tắt.", BLUE_DONE: "Hôm nay bạn đã điểm danh rồi — quay lại ngày mai nhé.",
   BLUE_IP_LIMIT: "Mạng (wifi / 4G) này đã đủ số tài khoản nhận Blue hôm nay — mai thử lại nhé.", BLUE_NEED_TOPUP: "Nạp tiền ít nhất 1 lần để mở khoá trả bằng Blue (Blue vẫn được tích bình thường).",
@@ -7368,6 +7382,24 @@ async function cpLoadPricing() {
 const cpN = v => +v || 0;
 function cpPerDay(ram, cpu, pr) { pr = pr || CPpricing || CP_DEF; return ram * cpN(pr.price_ram_gb_day) + cpu * cpN(pr.price_cpu_day); }
 function cpPrice() { if (cpSel.free) return 0; return cv(cpPerDay(cpSel.ram, cpSel.cpu) * cpSel.days) * (cpSel.qty || 1); }
+/* 19/11 · 💾 BỘ NHỚ MÁY KHÁCH (SQL v40): máy mới có bộ nhớ miễn phí theo RAM (bậc admin đặt) · khách MUA THÊM khi admin bật + đặt giá.
+   Chỉ máy chủ MuMu (Android 12 / 15) — máy Android 9 (LDPlayer) chưa quản bộ nhớ. Máy cũ không đụng tới khi khách mua. */
+function cpDiskTiers(pr) {
+  pr = pr || CPpricing || {}; const t = Array.isArray(pr.disk_tiers) ? pr.disk_tiers : [];
+  return t.filter(x => x && isFinite(+x.ram) && +x.gb >= 4).map(x => ({ ram: +x.ram, gb: Math.floor(+x.gb) })).sort((a, b) => a.ram - b.ram);
+}
+function cpDiskFree(ram, pr) {                       // GB miễn phí cho máy RAM này (null = web chưa chạy SQL v40)
+  pr = pr || CPpricing || {}; const t = cpDiskTiers(pr); if (!t.length) return null;
+  let g = null, lo = Infinity; for (const x of t) { lo = Math.min(lo, x.gb); if (+ram >= x.ram) g = x.gb; }
+  return Math.max(4, Math.min(g == null ? lo : g, +pr.disk_max_gb || 64));
+}
+function cpDiskPkgs(pr) {
+  pr = pr || CPpricing || {};
+  return (Array.isArray(pr.disk_pkgs) ? pr.disk_pkgs : []).filter(x => x && +x.gb >= 1 && +x.price > 0).map(x => ({ gb: Math.floor(+x.gb), price: Math.floor(+x.price) })).sort((a, b) => a.gb - b.gb);
+}
+const cpDiskOk = p => !!p && !["9", "7"].includes(String(p.android || "9"));                 // máy chủ MuMu (Android 12 / 15)
+const cpDiskShop = p => { const pr = CPpricing || {}; return !!pr.disk_shop_on && cpDiskPkgs(pr).length > 0 && cpDiskOk(p) && !p.is_free && !p.shared; };
+const cpDiskAfter = (p, gb, pr) => Math.max((cpDiskFree(p.ram, pr) || 0) + (+p.disk_extra || 0) + gb, (+p.disk_gb || 0) + gb);   // giống SQL cloudphone_disk_buy
 function cpCardShow() {
   const c = cpCard(), p = CPpricing || {}; if (LANG !== "en") return c;
   const fe = (p.card_feats_en || "").trim();
@@ -7440,7 +7472,7 @@ async function openCloud() {
   myCloud = (data || []).filter(p => p.status !== "cancelled" && !(p.status === "cancelling" && p.switch_to)).concat(Array.isArray(sh && sh.data) ? sh.data : []);
   renderCloud();
   clearTimeout(cpPollT);
-  if (myCloud.some(p => ["pending", "cancelling", "expired"].includes(p.status) || +p.pending_renew_days > 0)) cpPollT = setTimeout(() => { if (!$("cpdlg").hidden) openCloud(); }, 6000);
+  if (myCloud.some(p => ["pending", "cancelling", "expired"].includes(p.status) || +p.pending_renew_days > 0 || (+p.pending_disk > 0 && !p.shared))) cpPollT = setTimeout(() => { if (!$("cpdlg").hidden) openCloud(); }, 6000);
 }
 /* 16/11f: máy đang tạo quá 10 phút → nói thật đã chờ bao lâu; quá 30 phút chưa lên máy chủ tự huỷ + hoàn tiền (SQL v36) */
 const CP_STUCK_MIN = 30;
@@ -7464,11 +7496,13 @@ function renderCloud() {
     const run = p.status === "active" && !locked;          // máy đang chạy → mở được bằng app máy tính / app Android
     const lk = run && !!p.stream_url;                      // (giữ điều kiện cũ cho nút Root máy)
     const canRenew = !p.shared && !p.is_free && !locked && (p.status === "active" || (p.status === "expired" && g > 0));
-    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
+    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
       ${p.status === "pending" && !p.replaces ? cpWaitNote(p) : ""}
+      ${+p.pending_disk > 0 && !p.shared && p.status === "active" ? `<div class="exp" style="color:var(--gold-hi)">💾 ${L(`Đang nới bộ nhớ lên <b>${+p.pending_disk}GB</b> — máy không tắt, dữ liệu giữ nguyên. Máy đang ngủ thì nới khi bạn mở máy.`, `Expanding storage to <b>${+p.pending_disk}GB</b> — no restart, data kept. A sleeping phone expands when you open it.`)}</div>` : ""}
+      ${p.disk_note && !p.shared && !(+p.pending_disk > 0) ? `<div class="exp" style="color:var(--bad)">💾 ${esc(p.disk_note)}</div>` : ""}
       ${locked ? `<div class="exp" style="color:var(--bad)">🔒 Máy bị khoá${p.locked_until ? " đến " + new Date(p.locked_until).toLocaleString("vi-VN") : " vĩnh viễn"}${p.lock_reason ? ": " + esc(p.lock_reason) : ""}. Liên hệ hỗ trợ nếu cần.</div>` : ""}
       ${p.status === "error" && p.error ? `<div class="exp" style="color:var(--bad)">${esc(p.error)}</div>` : ""}
       ${p.replaces && ["pending", "creating"].includes(p.status) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${cpSwNote(p)}</div>` : ""}
@@ -7482,6 +7516,7 @@ function renderCloud() {
         ${cbSwRetryOk(p) ? `<button class="btn sm" type="button" data-cbswretry="${esc(p.id)}">🔁 ${L("Thử lại", "Retry")}</button>` : ""}
         ${canRenew ? `<button class="btn ghost sm" data-cprenew="${p.id}">🔄 Gia hạn</button>` : ""}
         ${canRenew && p.status === "active" ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
+        ${canRenew && p.status === "active" && cpDiskShop(p) ? (+p.pending_disk > 0 ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nới bộ nhớ…", "Expanding…")}</button>` : `<button class="btn ghost sm" type="button" data-cpdisk="${p.id}">💾 ${L("Thêm bộ nhớ", "More storage")}</button>`) : ""}
         ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android 9 / 12 / 15 — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to Android 9 / 12 / 15 — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android", "Switch Android")}</button>` : ""}
         ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" type="button" data-cpfps="${p.id}" title="${esc(L("Đổi số khung hình/giây của máy — không tạo máy mới, không mất dữ liệu, không tốn tiền", "Change this phone's frames per second — same phone, data kept, free"))}">🎞 ${L("Đổi FPS", "Change FPS")}</button>` : ""}
         ${lk ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&root=1" title="${esc(L("Bật / tắt root và chọn app được dùng lệnh su (vd Termux)", "Turn root on/off and pick which apps may use su (e.g. Termux)"))}">🔓 ${L("Root", "Root")}</a>` : ""}
@@ -7715,6 +7750,7 @@ document.addEventListener("click", e => {
   const rn = t.closest("[data-cprenew]"), rm = t.closest("[data-cprename]"), cc = t.closest("[data-cpcancel]");
   if (rn) cpRenew(rn.dataset.cprenew); else if (rm) cpRename(rm.dataset.cprename); else if (cc) cpCancel(cc.dataset.cpcancel);
   const up = t.closest("[data-cpup]"); if (up) cpUpgrade(up.dataset.cpup);
+  const dkb = t.closest("[data-cpdisk]"); if (dkb) cpDisk(dkb.dataset.cpdisk);
   const swb = t.closest("[data-cpswitch]"); if (swb) cpSwitch(swb.dataset.cpswitch);
   const fpb = t.closest("[data-cpfps]"); if (fpb) cpFps(fpb.dataset.cpfps);
   const sh = t.closest("[data-cpshare]"), lv = t.closest("[data-shleave]"), rv = t.closest("[data-shrevoke]"), cp = t.closest("[data-shcopy]");
@@ -8223,7 +8259,7 @@ $("bl-add") && ($("bl-add").onclick = () => busy($("bl-add"), async () => {
 
 /* ===== ADMIN: LỊCH SỬ MUA ĐT ĐÁM MÂY + HOA HỒNG (SQL v24) ===== */
 const CPS_KIND = { new: ["🆕", "Thuê mới"], renew: ["🔄", "Gia hạn"], upgrade: ["⬆️", "Nâng cấp"], switch: ["🤖", "Đổi Android"], free: ["🎁", "Miễn phí"], gift: ["🎟", "Mã tặng"], refund: ["↩️", "Hoàn tiền"],
-  bonus: ["➕", "Admin cộng ngày"], fix: ["🩹", "Bù gia hạn"] };
+  bonus: ["➕", "Admin cộng ngày"], fix: ["🩹", "Bù gia hạn"], disk: ["💾", "Bộ nhớ"] };
 let cpsRows = [], cpsPage = 0, cpsSeq = 0;
 async function loadCpSales(more) {
   const tb = $("cps-tb"); if (!tb || !isAdmin()) return;
@@ -8465,6 +8501,38 @@ function cpaLimParse(txt) {    // → { "9": {ram, cpu}, … } · sai cú pháp 
   }
   return out;
 }
+function cpaDiskTxt(pr) { return { tiers: cpDiskTiers(pr).map(x => `${x.ram}:${x.gb}`).join(", "), pkgs: (Array.isArray(pr.disk_pkgs) ? pr.disk_pkgs : []).map(x => `${+x.gb}:${+x.price}`).join(", ") }; }
+function cpaDiskParse() {      // → { disk_tiers, disk_pkgs, disk_shop_on, disk_max_gb } · sai dạng → chuỗi lỗi
+  const tiers = [], pkgs = [];
+  for (const part of ($("cpa-dtiers").value || "").split(",").map(s => s.trim()).filter(Boolean)) {
+    const m = part.match(/^(\d{1,3}(?:\.\d+)?)\s*:\s*(\d{1,3})$/);
+    if (!m || +m[2] < 4 || +m[2] > 512) return `Bậc "${part}" sai — viết kiểu 4:13 (RAM từ 4GB → 13GB bộ nhớ, bộ nhớ 4–512GB).`;
+    tiers.push({ ram: +m[1], gb: +m[2] });
+  }
+  if (!tiers.length || tiers.length > 10) return "Bộ nhớ miễn phí cần 1–10 bậc, VD 0:8, 4:13, 8:16.";
+  if (!tiers.some(x => x.ram === 0)) tiers.push({ ram: 0, gb: Math.min(...tiers.map(x => x.gb)) });
+  tiers.sort((a, b) => a.ram - b.ram);
+  for (const part of ($("cpa-dpkgs").value || "").split(",").map(s => s.trim()).filter(Boolean)) {
+    const m = part.replace(/[.\s](?=\d{3}\b)/g, "").match(/^(\d{1,3})\s*(?:gb)?\s*:\s*(\d{1,10})\s*(?:đ|d|vnd)?$/i);
+    if (!m || +m[1] < 1 || +m[1] > 256) return `Gói "${part}" sai — viết kiểu 8:20000 (thêm 8GB giá 20.000đ).`;
+    pkgs.push({ gb: +m[1], price: +m[2] });
+  }
+  if (pkgs.length > 8) return "Tối đa 8 gói bộ nhớ.";
+  const mx = Math.floor(+$("cpa-dmax").value || 64);
+  if (!(mx >= 8 && mx <= 512)) return "Bộ nhớ tối đa 1 máy phải từ 8 đến 512GB.";
+  const on = $("cpa-dshop").value === "1";
+  if (on && !pkgs.some(x => x.price > 0)) return "Muốn BẬT bán bộ nhớ thì cần ít nhất 1 gói có giá > 0đ.";
+  return { disk_tiers: tiers, disk_pkgs: pkgs.sort((a, b) => a.gb - b.gb), disk_shop_on: on, disk_max_gb: mx };
+}
+function cpaDiskHint() {
+  const h = $("cpa-dhint"); if (!h) return; const d = cpaDiskParse();
+  if (typeof d === "string") { h.innerHTML = `<span style="color:var(--bad)">✗ ${esc(d)}</span>`; return; }
+  const free = [1, 2, 4, 6, 8, 16].map(r => `${r}GB RAM → ${cpDiskFree(r, d)}GB`).join(" · ");
+  h.innerHTML = `Máy mới: ${free}` + (d.disk_shop_on ? ` · 🛒 đang BÁN: ${d.disk_pkgs.filter(x => x.price > 0).map(x => `+${x.gb}GB ${vnd(x.price)}`).join(", ")}` : " · 🛒 chưa bán thêm")
+    + (CPpricing && CPpricing.disk_tiers == null ? ` · <b style="color:var(--bad)">chưa chạy file SQL cloud-phones-v40.sql</b>` : "");
+}
+document.addEventListener("input", e => { if (["cpa-dtiers", "cpa-dpkgs", "cpa-dmax"].includes(e.target.id)) cpaDiskHint(); });
+document.addEventListener("change", e => { if (e.target.id === "cpa-dshop") cpaDiskHint(); });
 function cpaForm() {
   const n = id => +$(id).value || 0;
   return { price_ram_gb_day: n("cpa-ram"), price_cpu_day: n("cpa-cpu"), min_ram: n("cpa-minram") || 1, max_ram: n("cpa-maxram") || 16,
@@ -8499,6 +8567,8 @@ async function loadCloudAdm() {
   if ($("cpa-andlim")) $("cpa-andlim").value = cpaLimText(pr);
   if ($("cpa-onote")) { $("cpa-onote").value = pr.order_note || ""; $("cpa-onote-en").value = pr.order_note_en || ""; }
   if ($("cpa-maxuser")) $("cpa-maxuser").value = pr.max_per_user == null ? 1 : pr.max_per_user;
+  if ($("cpa-dtiers")) { const dt = cpaDiskTxt(pr); $("cpa-dtiers").value = dt.tiers || "0:8, 4:13, 8:16"; $("cpa-dpkgs").value = dt.pkgs;
+    $("cpa-dmax").value = pr.disk_max_gb || 64; $("cpa-dshop").value = pr.disk_shop_on ? "1" : "0"; cpaDiskHint(); }
   $("cpa-stock").value = pr.stock == null ? "" : pr.stock;
   $("cpa-stockhint").textContent = pr.stock == null ? "Đang: không giới hạn" : +pr.stock <= 0 ? "Đang HẾT HÀNG" : "Đang còn " + pr.stock + " máy";
   $("cpa-msg").textContent = ""; cpaAnalyze(); frFill(pr);
@@ -8529,6 +8599,13 @@ $("cpa-save") && ($("cpa-save").onclick = () => busy($("cpa-save"), async () => 
     if (/card_/.test(error.message || "")) return cpaFail("Chưa chạy file SQL cloud-phones-v3.sql trên Supabase.");
     if (/_fps/.test(error.message || "")) return cpaFail("Chưa chạy file SQL cloud-phones-v4.sql trên Supabase.");
     return cpaFail(errMsg(error));
+  }
+  if ($("cpa-dtiers")) {                              // 19/11 · 💾 bộ nhớ (SQL v40) — lưu riêng: web chưa chạy v40 thì phần giá vẫn lưu được
+    const dk = cpaDiskParse();
+    const dkFail = m => { toast(m, 1); if ($("cpa-dhint")) $("cpa-dhint").innerHTML = `<span style="color:var(--bad)">✗ ${esc(m)}</span>`; };
+    if (typeof dk === "string") dkFail("Bộ nhớ chưa lưu: " + dk);
+    else { const { error: ed } = await sb.from("cloudphone_pricing").update(dk).eq("id", 1);
+      if (ed) dkFail(/disk_/.test(ed.message || "") && !/BAD_DISK/.test(ed.message || "") ? "Bộ nhớ chưa lưu được — chạy file SQL cloud-phones-v40.sql trên Supabase." : "Bộ nhớ chưa lưu: " + errMsg(ed)); }
   }
   if ($("cpa-maxuser")) { const mu = Math.max(0, Math.floor(+$("cpa-maxuser").value || 0)); const { error: em } = await sb.from("cloudphone_pricing").update({ max_per_user: mu }).eq("id", 1);
     if (em) toast("Giới hạn máy / tài khoản chưa lưu được — chạy file SQL cloud-phones-v18.sql trên Supabase.", 1); }
@@ -8853,7 +8930,7 @@ function renderCpaTbl() {
     const exp = p.expires_at ? new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "—", lk = cpLocked(p);
     return `<tr${lk ? ' style="opacity:.85"' : ""}><td><input type="checkbox" data-cpsel="${p.id}"${cpaSel.has(p.id) ? " checked" : ""} aria-label="Chọn máy ${esc(p.name)}"></td>
       <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node === "wait-old" ? "⏳ chờ xoá máy cũ" : ((NODES.find(x => x.id === p.node) || {}).name ? NODES.find(x => x.id === p.node).name + " · " + p.node : p.node)) : ""}</div></td>
-      <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
+      <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu}${+p.disk_gb > 0 ? ` · 💾${+p.disk_gb}GB` : ""}${+p.pending_disk > 0 ? ` (→${+p.pending_disk})` : ""} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
       <td>${cpaStatus(p)}${+p.pending_renew_days > 0 ? `<div class="hint" style="color:var(--gold-hi)">⏳ chờ máy chủ cộng +${+p.pending_renew_days} ngày</div>` : ""}${lk ? `<div style="margin-top:4px"><span class="pill bad">🔒 Khoá ${p.locked_until ? "tới " + new Date(p.locked_until).toLocaleString("vi-VN") : "vĩnh viễn"}</span></div>${p.lock_reason ? `<div class="hint">${esc(p.lock_reason)}</div>` : ""}` : ""}${p.error ? `<div class="hint" style="color:var(--bad)">${esc(p.error)}</div>` : ""}</td>
       <td class="num">${exp}</td>
       <td style="text-align:right;white-space:nowrap">${p.status === "active" ? `<a class="btn ghost sm" href="/phone.html?id=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Điều khiển</a> ` : ""}${lk
@@ -9830,6 +9907,52 @@ async function cpUpgrade(id) {
     m.querySelectorAll("[data-upc]").forEach(b => b.onclick = () => { nc = +b.dataset.upc; draw(); });
     $("up-go").onclick = () => { const b = $("up-go"); if (!b.disabled && !going) busy(b, go); };
     prmShow("cup"); sum();
+  };
+  draw(); m.hidden = false;
+}
+
+/* ===== 19/11 · 💾 Khách MUA THÊM BỘ NHỚ (SQL v40) — máy chủ nới ngay, không tắt máy, giữ dữ liệu · không nới được thì tự hoàn tiền ===== */
+async function cpDisk(id) {
+  const p = myCloud.find(x => x.id === id); if (!p) return;
+  CPpricing = null; const pr = await cpLoadPricing();
+  let m = $("cpdiskdlg");
+  if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "cpdiskdlg"; m.hidden = true; document.body.appendChild(m);
+    m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-dkclose]")) m.hidden = true; }); }
+  if (!cpDiskShop(p)) { toast(L("Hiện chưa bán thêm bộ nhớ.", "Extra storage isn't on sale right now."), 1); return; }
+  const max = +pr.disk_max_gb || 64, pk = cpDiskPkgs(pr), cur = +p.disk_gb || 0;
+  const ok = pk.filter(x => cpDiskAfter(p, x.gb, pr) <= max);
+  let sel = ok.length ? ok[0].gb : 0, going = false;
+  const costOf = gb => { const x = pk.find(y => y.gb === gb); return x ? Math.round(x.price * (100 - ctvPct()) / 100) : 0; };
+  const go = async () => {
+    if (going || !sel) return; going = true;
+    try {
+      const pay = costOf(sel), bal = +(profile && profile.balance) || 0;
+      if (bal < pay) { m.hidden = true; try { openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((pay - bal) / 1000) * 1000)); } catch (e) {} return; }
+      const { error } = await sb.rpc("cloudphone_disk_buy", { p_id: id, p_gb: sel });
+      if (error) {
+        const msg = /cloudphone_disk_buy/.test(error.message || "") && !/DISK_|BAD_DISK/.test(error.message || "") ? L("Chưa chạy file SQL cloud-phones-v40.sql.", "Server not updated yet.") : errMsg(error);
+        toast(msg, 1); if ($("dk-err")) $("dk-err").textContent = msg; return;
+      }
+      m.hidden = true; await loadProfile(); renderUser(); try { cbSoon(); } catch (e) {}
+      toast(L(`Đã mua thêm ${sel}GB — máy đang nới bộ nhớ (vài giây, không tắt máy).`, `Bought ${sel}GB more — expanding now (a few seconds, no restart).`)); openCloud();
+    } finally { going = false; }
+  };
+  const draw = () => {
+    const pay = costOf(sel), bal = +(profile && profile.balance) || 0, low = sel && bal < pay;
+    m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="dk-h"><h3 id="dk-h">💾 ${L("Thêm bộ nhớ", "More storage")}</h3>
+      <div class="hint">📱 <b>${esc(p.name)}</b> · ${L("bộ nhớ hiện tại", "storage now")} <b>${cur ? cur + "GB" : L("theo máy cũ", "original size")}</b>${+p.disk_extra > 0 ? ` · ${L("đã mua thêm", "bought")} ${+p.disk_extra}GB` : ""}</div>
+      <label>${L("Chọn gói", "Choose a pack")}</label>
+      <div class="upchips">${pk.map(x => { const after = cpDiskAfter(p, x.gb, pr), over = after > max;
+        return `<button type="button" class="${sel === x.gb ? "on" : ""}" data-dkgb="${x.gb}"${over ? " disabled" : ""} title="${esc(over ? L(`Vượt mức tối đa ${max}GB / máy`, `Over the ${max}GB limit`) : L(`Sau khi mua: ${after}GB`, `After: ${after}GB`))}">+${x.gb}GB · ${vnd(costOf(x.gb))}</button>`; }).join("")}</div>
+      ${ok.length ? `<div class="sum"><span>${L("Bộ nhớ sau khi mua", "Storage after")}</span><b>${sel ? cpDiskAfter(p, sel, pr) + "GB" : "—"}</b></div>
+      <div class="sum"><span>${L("Trả 1 lần", "One-time price")}${isCtv() ? ` (−${ctvPct()}% CTV)` : ""}</span><b>${sel ? vnd(pay) : "—"}</b></div>`
+        : `<div class="hint" style="color:var(--bad)">${L(`Máy đã gần mức tối đa ${max}GB bộ nhớ — không thêm được nữa.`, `This phone is near the ${max}GB limit.`)}</div>`}
+      <div class="hint">${L("Máy không khởi động lại, app và dữ liệu giữ nguyên — bộ nhớ mới có sau vài giây (máy đang ngủ thì khi bạn mở máy). Bộ nhớ mua theo máy tới khi máy hết hạn / bị xoá, đổi Android vẫn giữ. Không nới được thì tự hoàn tiền.",
+        "No restart, apps and data stay — the new space appears in a few seconds (a sleeping phone gets it when you open it). It stays with the phone until it expires or is deleted, and is kept when you switch Android. If it can't be applied you're refunded automatically.")}${low ? `<br><b style="color:var(--bad)">${L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ")}${vnd(pay - bal)}</b>` : ""}</div>
+      <div class="err" id="dk-err"></div>
+      <div class="row2"><button class="btn ghost" type="button" data-dkclose>${L("Đóng", "Close")}</button><button class="btn" type="button" id="dk-go"${sel ? "" : " disabled"}>${low ? L("Nạp tiền", "Top up") : L("Mua ngay", "Buy now")}</button></div></div>`;
+    m.querySelectorAll("[data-dkgb]").forEach(b => b.onclick = () => { if (!b.disabled) { sel = +b.dataset.dkgb; draw(); } });
+    $("dk-go").onclick = () => { const b = $("dk-go"); if (!b.disabled && !going) busy(b, go); };
   };
   draw(); m.hidden = false;
 }
@@ -11229,7 +11352,7 @@ function cpPickLine() {                       // đầu khung thanh toán: gói 
   const ic = cpSel.free ? "🎁" : t ? (t.icon || "📱") : "⚙️", q = cpSel.qty || 1;
   const days = cpSel.free ? (+p.free_days || 1) : cpSel.days;
   el.innerHTML = `<div class="cpp" style="--t:${t ? cptColor(t) : cpSel.free ? "#ffb800" : "#8fd0ff"}"><span class="cpp-ic" aria-hidden="true">${esc(ic)}</span>`
-    + `<div class="cpp-t"><b>${esc(name)}</b><small>Android ${esc(String(cpSel.android || "9"))} · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.ram}GB RAM · ${cpSel.fps} FPS</small></div></div>`
+    + `<div class="cpp-t"><b>${esc(name)}</b><small>Android ${esc(String(cpSel.android || "9"))} · ${cpSel.cpu} ${L("nhân", "cores")} · ${cpSel.ram}GB RAM${(() => { const d = cpDiskOk({ android: cpSel.android }) ? cpDiskFree(cpSel.ram) : null; return d ? ` · 💾 ${d}GB ${L("bộ nhớ", "storage")}` : ""; })()} · ${cpSel.fps} FPS</small></div></div>`
     + `<div class="cpp-r"><span>${L("Thời gian", "Duration")}</span><b>${cpSel.free && cbHours(p) > 0 ? cbFreeDur(p) : `${days} ${L("ngày", days > 1 ? "days" : "day")}`} × ${q} ${L("máy", q > 1 ? "phones" : "phone")}</b></div>`;
 }
 function cpBarUpd() {                         // thanh dính đáy (điện thoại / máy tính bảng)
