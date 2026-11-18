@@ -9292,6 +9292,7 @@ $("cpa-bapk") && ($("cpa-bapk").onclick = () => openApkDlg(true));
 $("apk-close").onclick = () => show("apkdlg", false);
 $("apk-src").onclick = e => { const b = e.target.closest("button"); if (b && !apkBusy) { apkSrc = b.dataset.s; apkSyncSrc(); } };
 $("apk-tgt").onclick = e => { const b = e.target.closest("button"); if (b && !b.disabled && !apkBusy) { apkTgt = b.dataset.t; apkSyncTgt(); } };
+if (CP_IOS) $("apk-file").removeAttribute("accept");      // 18/11c: iPhone / iPad — Safari không biết loại .apk nên bộ lọc làm mờ mọi file; đuôi file vẫn kiểm khi bấm Cài
 $("apk-file").onchange = () => { const f = $("apk-file").files[0]; $("apk-fname").textContent = f ? `📦 ${f.name} · ${(f.size / 1048576).toFixed(1)}MB` : "Bấm để chọn file APK (hoặc kéo thả vào đây)"; $("apk-filebox").classList.toggle("on", !!f); };
 ["dragover", "dragenter"].forEach(ev => $("apk-filebox").addEventListener(ev, e => { e.preventDefault(); $("apk-filebox").classList.add("on"); }));
 $("apk-filebox").addEventListener("dragleave", () => $("apk-filebox").classList.toggle("on", !!$("apk-file").files[0]));

@@ -10,9 +10,10 @@
 <link rel="icon" href="/icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="CloudBlue">
 <meta name="theme-color" content="#060a1c">
+<script>/* web-1.9: iPhone / iPad → giao diện kiểu iOS (chữ hệ thống, nền kính mờ, tấm trượt có tay kéo) */if (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)) document.documentElement.classList.add("ios");</script>
 <link rel="preconnect" href="https://nprftgodswlpzomcttal.supabase.co" crossorigin>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap">
@@ -234,6 +235,52 @@ body.tile .ovl .acts{gap:6px;margin-top:8px}
 body.tile .ovl .btn{padding:7px 10px;font-size:12px;border-radius:9px}
 body.tile .spin{width:24px;height:24px}
 body.tile .toast{bottom:8px;font-size:12px;padding:6px 8px;max-width:94vw}
+/* ---------- web-1.9 (18/11c) · biểu tượng công cụ: nét vẽ trắng trong ô màu bo góc (thay emoji lẫn ký tự, nhìn đều nhau) ---------- */
+.grid button i.ic{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--c,#3d7bff);box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.grid button i.ic svg{width:20px;height:20px;fill:none;stroke:#fff;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.grid button i.ic svg .f{fill:#fff;stroke:none}
+.grid button:has(i.ic){gap:7px;padding-top:12px}
+/* ---------- web-1.9 · iPhone / iPad: chữ hệ thống (SF), nền kính mờ, tấm trượt có tay kéo + kéo xuống để đóng, nút chuyển & công tắc kiểu iOS ---------- */
+html.ios{--font:-apple-system,"SF Pro Text","SF Pro Display",system-ui,sans-serif}
+html.ios .sheet{background:rgba(0,0,0,.45);animation:cb-dim .25s ease-out}
+html.ios .sheet .in{background:rgba(20,28,60,.8);-webkit-backdrop-filter:blur(30px) saturate(170%);backdrop-filter:blur(30px) saturate(170%);border:0;border-top:.5px solid rgba(255,255,255,.16);
+  border-radius:22px 22px 0 0;padding-top:8px;animation:cb-up .42s cubic-bezier(.32,.72,0,1);box-shadow:0 -10px 40px rgba(0,0,0,.35)}
+html.ios .sheet .in::before{content:"";display:block;width:38px;height:5px;border-radius:3px;background:rgba(235,240,255,.32);margin:0 auto 12px}
+html.ios .sheet .hd b{font-size:17px;font-weight:600}
+html.ios .sheet .hd small{font-size:13px}
+html.ios .sheet .hd .lnk{color:var(--sky);font-size:16px;font-weight:600;padding:8px 6px}
+html.ios .sec{font-size:13px;font-weight:600;color:rgba(235,240,255,.55);margin:18px 6px 8px}
+html.ios .seg{gap:0;padding:2px;border-radius:10px;background:rgba(118,118,128,.24)}
+html.ios .seg button{border:0;background:transparent;border-radius:8px;padding:7px 4px;font-size:13px;font-weight:500;color:#e9eeff;transition:background .2s,box-shadow .2s}
+html.ios .seg button.on{background:var(--blue);font-weight:600;box-shadow:0 3px 8px rgba(0,0,0,.28),0 1px 1px rgba(0,0,0,.18)}
+html.ios .grid{gap:10px}
+html.ios .grid button{border:0;background:rgba(255,255,255,.07);border-radius:16px;font-size:12px;color:#eef2ff;transition:transform .12s ease-out,background .12s}
+html.ios .grid button:active{transform:scale(.95);background:rgba(255,255,255,.13)}
+html.ios .rsw,html.ios .rapp,html.ios .kapp{border:0;background:rgba(255,255,255,.07)}
+html.ios .rsw{border-radius:14px}
+html.ios input.tg{width:51px;height:31px;border-radius:16px;background:rgba(120,120,128,.36)}
+html.ios input.tg::after{top:2px;left:2px;width:27px;height:27px;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15),0 3px 1px rgba(0,0,0,.06);transition:transform .22s cubic-bezier(.32,.72,0,1)}
+html.ios input.tg:checked{background:#30d158}
+html.ios input.tg:checked::after{transform:translateX(20px)}
+html.ios .bar{background:rgba(8,12,30,.88);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%);border-top:.5px solid rgba(255,255,255,.1)}
+html.ios .bar button:active,html.ios .bar button.on{background:rgba(255,255,255,.12)}
+html.ios .toast{background:rgba(30,38,72,.84);-webkit-backdrop-filter:blur(24px) saturate(170%);backdrop-filter:blur(24px) saturate(170%);border:.5px solid rgba(255,255,255,.16);border-radius:16px}
+html.ios .btn{border-radius:14px;font-weight:600}
+html.ios .btn:active{opacity:.75}
+html.ios .card{border-radius:18px;border-color:rgba(255,255,255,.08)}
+html.ios .form input,html.ios .dlg textarea,html.ios .dlg input{border:0;background:rgba(118,118,128,.2);border-radius:12px}
+html.ios .form input:focus,html.ios .dlg textarea:focus,html.ios .dlg input:focus{outline:none;box-shadow:0 0 0 2px var(--sky)}
+html.ios .prog{height:4px;background:rgba(118,118,128,.3)}
+html.ios .prog i{background:var(--blue)}
+html.ios .mtop,html.ios .mbar{background:rgba(8,12,30,.88);-webkit-backdrop-filter:blur(20px) saturate(160%);backdrop-filter:blur(20px) saturate(160%)}
+html.ios .mpill.on{background:rgba(48,209,88,.16);border-color:#30d158;color:#30d158}
+@keyframes cb-up{from{transform:translateY(100%)}}
+@keyframes cb-pop{from{transform:scale(.94);opacity:0}}
+@keyframes cb-dim{from{background:rgba(0,0,0,0)}}
+@media (min-width:700px),(orientation:landscape) and (max-height:560px){html.ios .sheet .in{border-radius:22px;animation-name:cb-pop;animation-duration:.28s}html.ios .sheet .in::before{display:none}}
+html.ios body.rot .sheet .in{border-radius:22px;animation-name:cb-pop;animation-duration:.28s}
+html.ios body.rot .sheet .in::before{display:none}
+@media (prefers-reduced-motion:reduce){html.ios .sheet,html.ios .sheet .in{animation:none}html.ios .grid button{transition:none}}
 </style>
 </head>
 <body data-view="">
@@ -355,26 +402,26 @@ body.tile .toast{bottom:8px;font-size:12px;padding:6px 8px;max-width:94vw}
     </div>
     <div class="sec">Nút của máy</div>
     <div class="grid">
-      <button type="button" data-a="voldown"><i>🔉</i>Nhỏ tiếng</button>
-      <button type="button" data-a="volup"><i>🔊</i>To tiếng</button>
-      <button type="button" data-a="rotate"><i>⟳</i>Xoay</button>
-      <button type="button" data-a="notif"><i>🔔</i>Thông báo</button>
-      <button type="button" data-a="power"><i>⏻</i>Nút nguồn</button>
-      <button type="button" data-a="paste"><i>📋</i>Dán chữ</button>
-      <button type="button" data-a="stats"><i>📊</i>Thông số</button>
-      <button type="button" data-a="full" id="m-full"><i>⛶</i>Toàn màn hình</button>
+      <button type="button" data-a="voldown"><i data-ic="voldown"></i>Nhỏ tiếng</button>
+      <button type="button" data-a="volup"><i data-ic="volup"></i>To tiếng</button>
+      <button type="button" data-a="rotate"><i data-ic="rotate"></i>Xoay</button>
+      <button type="button" data-a="notif"><i data-ic="notif"></i>Thông báo</button>
+      <button type="button" data-a="power"><i data-ic="power"></i>Nút nguồn</button>
+      <button type="button" data-a="paste"><i data-ic="paste"></i>Dán chữ</button>
+      <button type="button" data-a="stats"><i data-ic="stats"></i>Thông số</button>
+      <button type="button" data-a="full" id="m-full"><i data-ic="full"></i>Toàn màn hình</button>
     </div>
     <label class="rsw" for="m-land" id="m-land-row" hidden style="margin-top:8px"><span><b>Tự hiện màn ngang</b><small>Máy đang ngang (game) → hình tự xoay ngang to hết màn, cầm ngang điện thoại là chơi — khỏi bật xoay màn hình rồi xoay điện thoại mỗi lần vào</small></span><input type="checkbox" class="tg" id="m-land" role="switch"></label>
     <button type="button" class="lnk" data-a="landflip" id="m-land-flip" hidden>⇅ Hình bị ngược? Đảo chiều màn ngang</button>
     <div class="sec">Công cụ</div>
     <div class="grid">
-      <button type="button" data-a="apkfile"><i>📦</i>Cài file APK</button>
-      <button type="button" data-a="apklink"><i>🔗</i>Cài APK từ link</button>
-      <button type="button" data-a="store"><i>🛍</i>Kho app</button>
-      <button type="button" data-a="root"><i>🔓</i>Root</button>
-      <button type="button" data-a="reboot"><i>↻</i>Khởi động lại</button>
-      <button type="button" data-a="multi" data-noi18n><i>🎮</i><span id="m-multi-t">Nhiều máy</span></button>
-      <button type="button" data-a="list"><i>☰</i>Danh sách máy</button>
+      <button type="button" data-a="apkfile"><i data-ic="apkfile"></i>Cài file APK</button>
+      <button type="button" data-a="apklink"><i data-ic="apklink"></i>Cài APK từ link</button>
+      <button type="button" data-a="store"><i data-ic="store"></i>Kho app</button>
+      <button type="button" data-a="root"><i data-ic="root"></i>Root</button>
+      <button type="button" data-a="reboot"><i data-ic="reboot"></i>Khởi động lại</button>
+      <button type="button" data-a="multi" data-noi18n><i data-ic="multi"></i><span id="m-multi-t">Nhiều máy</span></button>
+      <button type="button" data-a="list"><i data-ic="list"></i>Danh sách máy</button>
     </div>
   </div>
 </div>
@@ -430,7 +477,7 @@ body.tile .toast{bottom:8px;font-size:12px;padding:6px 8px;max-width:94vw}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.8";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
+const VER = "web-1.9";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -450,6 +497,31 @@ const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platfo
 const STANDALONE = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 // WebKit = MỌI trình duyệt trên iPhone/iPad (kể cả Chrome iOS) + Safari trên Mac
 const IS_WEBKIT = IS_IOS || (/Safari\//.test(navigator.userAgent) && !/Chrome\/|Chromium|CriOS|FxiOS|EdgiOS|Edg\//.test(navigator.userAgent));
+/* web-1.9 (18/11c): bộ biểu tượng công cụ — [màu ô, nét vẽ SVG 24×24]. Chuỗi cố định trong mã (không có chữ của khách) nên gán innerHTML an toàn. */
+const ICO = {
+  voldown: ["#ff375f", '<path d="M4 9.5h3l4-3.5v12l-4-3.5H4z"/><path d="M15 12h5"/>'],
+  volup: ["#ff375f", '<path d="M4 9.5h3l4-3.5v12l-4-3.5H4z"/><path d="M15 12h5M17.5 9.5v5"/>'],
+  rotate: ["#5e5ce6", '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5V9H15"/>'],
+  notif: ["#ff453a", '<path d="M6.5 16.5v-5a5.5 5.5 0 0 1 11 0v5l1.5 1.5h-14z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>'],
+  power: ["#8e8e93", '<path d="M12 3.5v8"/><path d="M7.2 6.7a7 7 0 1 0 9.6 0"/>'],
+  paste: ["#32ade6", '<rect x="6" y="5" width="12" height="15.5" rx="2"/><path d="M9.5 5V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v1M9.5 11h5M9.5 14.5h3.5"/>'],
+  stats: ["#30d158", '<path d="M6 19v-6M12 19V5.5M18 19v-9.5"/>'],
+  full: ["#0a84ff", '<path d="M4.5 9V4.5H9M19.5 9V4.5H15M4.5 15v4.5H9M19.5 15v4.5H15"/>'],
+  apkfile: ["#0a84ff", '<path d="M12 4v10.5M7.5 10 12 14.5l4.5-4.5M5 19.5h14"/>'],
+  apklink: ["#30b0c7", '<path d="M10.5 13.5a3.8 3.8 0 0 0 5.4 0l2.7-2.7a3.8 3.8 0 0 0-5.4-5.4l-.9.9"/><path d="M13.5 10.5a3.8 3.8 0 0 0-5.4 0l-2.7 2.7a3.8 3.8 0 0 0 5.4 5.4l.9-.9"/>'],
+  store: ["#bf5af2", '<path d="M5 8.5h14l-1.2 11.5H6.2z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>'],
+  root: ["#ff9f0a", '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8.5 11V7.5a3.5 3.5 0 0 1 6.6-1.6"/>'],
+  reboot: ["#ff453a", '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5V9H9"/>'],
+  multi: ["#5e5ce6", '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>'],
+  list: ["#8e8e93", '<path d="M9.5 6.5H19M9.5 12H19M9.5 17.5H19"/><circle class="f" cx="5.5" cy="6.5" r="1.2"/><circle class="f" cx="5.5" cy="12" r="1.2"/><circle class="f" cx="5.5" cy="17.5" r="1.2"/>'],
+  choose: ["#0a84ff", '<rect x="4.5" y="4.5" width="15" height="15" rx="3.5"/><path d="M8.5 12.2 11 14.7l4.6-5"/>'],
+  alone: ["#30b0c7", '<path d="M13.5 5H19v5.5M19 5l-7.5 7.5"/><path d="M17 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V8.5A1.5 1.5 0 0 1 6 7h4.5"/>'],
+  retry: ["#30d158", '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5V9H15"/>'],
+  help: ["#8e8e93", '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.6a2.3 2.3 0 0 1 4.4.9c0 1.6-2.2 2-2.2 3.4"/><circle class="f" cx="12" cy="17" r="1.1"/>'],
+};
+function icoFill(i) { const d = ICO[i.dataset.ic]; if (!d || i.firstChild) return i; i.className = "ic"; i.style.setProperty("--c", d[0]); i.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + d[1] + "</svg>"; return i; }
+const icoEl = n => { const i = document.createElement("i"); i.dataset.ic = n; return icoFill(i); };
+document.querySelectorAll("i[data-ic]").forEach(icoFill);
 const HAS_WC = typeof VideoDecoder === "function" && typeof EncodedVideoChunk === "function" && window.isSecureContext !== false;
 // web-1.5: GIẢI MÃ PHẦN MỀM (WebAssembly, luồng phụ) — chạy được cả iPhone iOS 11+ / trình duyệt không có WebCodecs
 const HAS_WASM = typeof WebAssembly === "object" && typeof WebAssembly.instantiate === "function" && typeof Worker === "function";
@@ -1626,7 +1698,9 @@ document.addEventListener("click", e => {
     case "multi": return showMulti(P.id);                                // web-1.8
     case "paste": return openDlg("paste");
     case "apklink": return openDlg("link");
-    case "apkfile": return $("apkf").click();
+    case "apkfile":                                                     // web-1.9: iPhone / iPad — Safari không biết loại .apk nên bộ lọc làm mờ mọi file → bỏ lọc, nhắc chỗ bấm
+      if (IS_IOS) { $("apkf").removeAttribute("accept"); toast(L("Bấm “Chọn tệp” → Duyệt → mục Tải về (hoặc nơi bạn lưu) → bấm file .apk.", "Tap “Choose File” → Browse → Downloads (or wherever you saved it) → tap the .apk file."), null, 7000); }
+      return $("apkf").click();
     case "stats": $("stats").hidden = !$("stats").hidden; tick(); return;
     case "full": return toggleFull();
     case "landflip": LCCW = !LCCW; try { localStorage.setItem("cb_land_ccw", LCCW ? "1" : "0"); } catch {} fitApp(); return toast("Đã đảo chiều màn ngang.");
@@ -1713,6 +1787,11 @@ async function reboot() {
 $("apkf").addEventListener("change", async () => {
   const f = $("apkf").files && $("apkf").files[0]; $("apkf").value = "";
   if (!f) return;
+  const ext = ((f.name || "").match(/\.([A-Za-z0-9]{1,8})$/) || [])[1] || "";      // web-1.9: iPhone không lọc được loại file → kiểm đuôi ở đây
+  if (ext && !/^(apk|apks|xapk|apkm)$/i.test(ext))
+    return toast(/^ipa$/i.test(ext) ? L("File .ipa là app của iPhone — máy cloud chạy Android nên không cài được. Hãy chọn file .apk.", "An .ipa is an iPhone app — the cloud phone runs Android, so it can't be installed. Pick an .apk file.")
+      : L("“" + f.name + "” không phải file cài app Android. Hãy chọn file .apk (hoặc .xapk / .apks).", "“" + f.name + "” isn't an Android app file. Pick an .apk (or .xapk / .apks)."), null, 7000);
+  if (!f.size) return toast(L("File trống (0 byte). File nằm trên iCloud thì mở app Tệp, bấm tải hẳn về máy rồi chọn lại.", "The file is empty (0 bytes). If it's in iCloud, open the Files app, download it to the device, then pick it again."), null, 7000);
   DLG.kind = "show"; DLG.busy = true;
   $("d-t").textContent = "Đang gửi " + f.name; $("d-h").textContent = "Giữ trang này mở tới khi xong."; $("d-ta").hidden = true; $("d-in").hidden = true;
   $("d-prog").hidden = false; $("d-prog").firstElementChild.style.width = "0%"; $("d-ok").disabled = true; $("dlg").hidden = false;
@@ -2081,11 +2160,11 @@ function muChoose() {
 function muMore() {
   muSheet(L("Thêm", "More"), (box, close) => {
     const all = MU.sync && muLive().length > 1, g = muEl("div", "grid");
-    const it = (ic, label, fn) => { const b = muEl("button"); b.append(muEl("i", "", ic), document.createTextNode(label)); b.onclick = () => { close(); fn(); }; g.appendChild(b); };
-    it("🔉", L("Nhỏ tiếng", "Vol −"), () => muCmd("voldown")); it("🔊", L("To tiếng", "Vol +"), () => muCmd("volup"));
-    it("⏻", L("Nút nguồn", "Power"), () => muCmd("power")); it("🔔", L("Thông báo", "Notifications"), () => muCmd("notif"));
-    it("☑", L("Chọn máy", "Choose phones"), muChoose); it("↗", L("Mở riêng máy này", "Open alone"), () => muAlone(muLive()[MU.act]));
-    it("↻", L("Nối lại tất cả", "Reconnect all"), () => muLive().forEach(t => { if (!t.paused) muSend(t, { k: "retry" }); })); it("❓", L("Cách dùng", "How to use"), muHelp);
+    const it = (ic, label, fn) => { const b = muEl("button"); b.append(ICO[ic] ? icoEl(ic) : muEl("i", "", ic), document.createTextNode(label)); b.onclick = () => { close(); fn(); }; g.appendChild(b); };
+    it("voldown", L("Nhỏ tiếng", "Vol −"), () => muCmd("voldown")); it("volup", L("To tiếng", "Vol +"), () => muCmd("volup"));
+    it("power", L("Nút nguồn", "Power"), () => muCmd("power")); it("notif", L("Thông báo", "Notifications"), () => muCmd("notif"));
+    it("choose", L("Chọn máy", "Choose phones"), muChoose); it("alone", L("Mở riêng máy này", "Open alone"), () => muAlone(muLive()[MU.act]));
+    it("retry", L("Nối lại tất cả", "Reconnect all"), () => muLive().forEach(t => { if (!t.paused) muSend(t, { k: "retry" }); })); it("help", L("Cách dùng", "How to use"), muHelp);
     box.appendChild(muEl("p", "", all ? L("Đang đồng bộ: 4 nút đầu gửi cho mọi máy.", "Sync is on: the first four go to every phone.") : L("4 nút đầu gửi cho máy đang chọn (ô có viền xanh).", "The first four go to the selected phone (blue border).")));
     box.appendChild(g);
   });
@@ -2094,6 +2173,32 @@ $("mu-back").onclick = () => showList();
 $("mu-mode").onclick = () => muOne(!MU.one, null);
 $("mu-sh-x").onclick = () => { $("mu-sheet").hidden = true; };
 $("mu-sheet").addEventListener("click", e => { if (e.target === $("mu-sheet")) $("mu-sheet").hidden = true; });
+if (IS_IOS) {                                                        // web-1.9: kéo tấm trượt xuống để đóng — chỉ khi đang ở đầu danh sách, kéo lên vẫn cuộn như thường
+  document.querySelectorAll(".sheet > .in").forEach(inn => {
+    const sh = inn.parentElement; let y0 = null, dy = 0, t0 = 0;
+    inn.addEventListener("touchstart", e => {
+      y0 = null;
+      if (e.touches.length !== 1 || inn.scrollTop > 0 || getComputedStyle(sh).alignItems === "center" || (sh.id === "dlg" && DLG.busy) || e.target.closest("textarea,input,select")) return;
+      y0 = e.touches[0].clientY; dy = 0; t0 = Date.now();
+    }, { passive: true });
+    inn.addEventListener("touchmove", e => {
+      if (y0 == null) return;
+      dy = e.touches[0].clientY - y0;
+      if (dy <= 0) { inn.style.transform = ""; return; }
+      if (e.cancelable) e.preventDefault();
+      inn.style.transition = "none"; inn.style.transform = "translateY(" + Math.round(dy) + "px)";
+    }, { passive: false });
+    const end = () => {
+      if (y0 == null) return; y0 = null;
+      const go = dy > 110 || (dy > 40 && Date.now() - t0 < 250);
+      inn.style.transition = "transform .24s cubic-bezier(.32,.72,0,1)";
+      inn.style.transform = go ? "translateY(100%)" : "";
+      if (go) setTimeout(() => { inn.style.transition = inn.style.transform = ""; sh.dispatchEvent(new MouseEvent("click", { bubbles: true })); }, 200);
+      dy = 0;
+    };
+    inn.addEventListener("touchend", end); inn.addEventListener("touchcancel", end);
+  });
+}
 $("mu-sync").onclick = () => {
   if (MU.sync) return muSync(false);
   if (muLive().length < 2) return;
