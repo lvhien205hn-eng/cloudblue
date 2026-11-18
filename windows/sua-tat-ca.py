@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711g):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1811a):
+#        18/11a — MÁY KHÁCH CHỈ TỰ NGỦ KHI BỎ KHÔNG 18 GIỜ (trước: 30 phút — khách treo máy kêu "máy cứ tự nghỉ"). phonectl chỉ cho ngủ khi
+#                       18 giờ liền không ai mở máy + không thấy máy có việc (game / app ở màn trước, app chạy nền) + 30 phút gần nhất máy
+#                       đứng yên. Máy treo game KHÔNG bao giờ bị tắt. Đổi số giờ: IDLE_STOP_H trong cloudphone.conf · tắt hẳn: IDLE_STOP_MIN=0
 #        17/11h — TỰ TẮT TIẾNG WINDOWS CỦA MÁY CHỦ (máy khách phát tiếng game ra loa máy chủ; khách không nghe tiếng từ máy chủ nên không
 #                       ảnh hưởng): lệnh này tắt ngay, phonectl (chống kẹt) kiểm 10 phút / lần — chỉ bật nút mute của loa Windows, KHÔNG
 #                       đụng giả lập. Thôi tự tắt: `python phonectl.py setconf HOST_MUTE=0` · bật tiếng lại: `python phonectl.py tattieng --bat`
@@ -77,7 +80,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11h"
+VER = "18/11a"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -94,7 +97,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "17/11f: tự dọn máy đã huỷ", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11g"', "bluestream"),
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11h"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "18/11a"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -239,7 +242,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1711g"
+            bak = lp + ".truoc-1811a"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -1138,6 +1141,12 @@ def main():
     if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")
     if PRIV_DONE: say(f"   ✓ đã bật lại {sum(PRIV_DONE)} máy chạy sai quyền (lẫn Admin — MuMu hết báo xung đột)")
     if hm: say("   🔇 " + hm + " — máy chủ tự giữ tắt tiếng (bật lại: python phonectl.py tattieng --bat · thôi tự tắt: python phonectl.py setconf HOST_MUTE=0)")
+    try:                                                    # 18/11a: luật máy khách tự ngủ đang dùng ở máy chủ này (phonectl cũ không báo → không in)
+        if "idle_h" in si:
+            ih = float(si.get("idle_h") or 0)
+            say(f"   💤 máy khách tự ngủ: chỉ khi {ih:g} giờ liền không ai mở máy và máy không có việc gì (đang treo game / mở app thì KHÔNG bao giờ bị tắt)"
+                if ih > 0 else "   💤 máy khách tự ngủ: ĐANG TẮT ở máy chủ này (IDLE_STOP_MIN=0 / IDLE_STOP_H=0) — máy không bao giờ tự ngủ")
+    except (TypeError, ValueError): pass
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     for x in pw: say("   ⚠ " + x)

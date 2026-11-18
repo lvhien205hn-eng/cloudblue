@@ -6,7 +6,7 @@
 #   python phonectl.py create TÊN --ram 4 --cpu 4 --days 7 [--res 720x1280] [--nowait]
 #   python phonectl.py list | capacity | delete TÊN | stop TÊN | start TÊN | restart TÊN | renew TÊN --days N
 #   python phonectl.py resize TÊN --ram 6 --cpu 6 | waitboot TÊN | connect-all | reap | rootfix --all | ksuprobe TÊN
-#   python phonectl.py idle [--dry -v] | sleep TÊN | wake TÊN | wake --all   ← máy rảnh lâu tự NGỦ, khách mở máy tự bật lại (IDLE_STOP_MIN)
+#   python phonectl.py idle [--dry -v] | sleep TÊN | wake TÊN | wake --all   ← máy bỏ không 18 giờ tự NGỦ, khách mở máy tự bật lại (IDLE_STOP_H)
 #  Máy số N của MEmu ⇄ adb 127.0.0.1:(21503 + 10·N)
 # =====================================================================
 import argparse, atexit, contextlib, ctypes, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, time
@@ -889,13 +889,14 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "17/11h"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "18/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
                               # 17/11g: máy chủ bị TẮT NGANG làm hỏng file hệ thống Android (roles.xml rỗng…) → máy không lên: tự đổi tên file
                               #         hỏng, Android tự tạo lại (BOOT_FIX) · lệnh khammay: vì sao máy không lên (chỉ đọc)
                               # 17/11h: tự TẮT TIẾNG loa Windows của máy chủ (HOST_MUTE, 10 phút kiểm 1 lần) · lệnh tattieng
+                              # 18/11a: máy khách chỉ TỰ NGỦ khi 18 GIỜ liền không ai mở máy + không thấy máy có việc (IDLE_STOP_H; trước 30 phút)
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -3910,7 +3911,8 @@ def cmd_serverinfo(a):
     print("SERVERINFO " + json.dumps({"node": CONF.get("NODE_ID", ""), "emu": EMU_NAME, "autologon": _autologon(), "autostart": _autostart(),
           "uptime_h": round(_uptime() / 3600, 1), "running": sum(1 for x in v.values() if x["running"]), "phones": len(st["phones"]),
           "sleeping": sum(1 for p in st["phones"] if _asleep(p)), "pending": os.path.isfile(RB_F),
-          "boot_par": _bootall_par(), "boot_gap": BOOT_GAP, "boot_rescue": BOOT_RESCUE_S, "ver": PCTL_SUB}, ensure_ascii=False))
+          "boot_par": _bootall_par(), "boot_gap": BOOT_GAP, "boot_rescue": BOOT_RESCUE_S, "ver": PCTL_SUB,
+          "idle_h": IDLE_H if IDLE_H > 0 and IDLE_MIN > 0 else 0, "idle_min": IDLE_MIN}, ensure_ascii=False))
 def _soft_off_all(wait=90, quiet=False):
     """17/11f — TẮT ÊM mọi máy đang chạy trước khi khởi động lại / tắt máy chủ (KHÔNG mất dữ liệu): từng máy `sync` (ghi hết dữ liệu đang
        chờ xuống đĩa) rồi cho ANDROID tự tắt (reboot -p: đóng app, gỡ ổ dữ liệu sạch rồi mới tắt) — mọi máy làm CÙNG LÚC. Trước: lệnh tắt
@@ -4210,16 +4212,25 @@ def cmd_heal(a):
     _hs(h)
     if a.orphans: _cleanup(v, quiet=True)
 
-# ---------- NGỦ KHI KHÔNG DÙNG: máy rảnh lâu → tự tắt · khách mở máy → bluestream gọi `wake` bật lại ----------
-# Máy khách ĐANG CHẠY mà liền IDLE_STOP_MIN phút đủ cả 3 điều: KHÔNG AI XEM (app / web / PC — bluestream ghi redroid/viewers.json),
-# đứng ở MÀN HÌNH CHÍNH (không game / app nào ở màn trước, kể cả cửa sổ nổi) và CPU trong máy thấp → tắt êm cho NGỦ (app, dữ liệu
-# giữ nguyên). Máy treo game (game ở màn trước) KHÔNG BAO GIỜ bị tắt. Ngủ = hold + sleep: bootall / heal / cloudphoned không tự bật
-# lại; bật bằng bất cứ đường nào (khách mở máy → wake, admin start / restart, đổi cấu hình…) là hết ngủ. RAM của máy ngủ vẫn được
-# CHỪA (create / resize / cloudphoned) → khách mở lúc nào cũng bật lại được.
+# ---------- NGỦ KHI KHÔNG DÙNG: máy bỏ không lâu → tự tắt · khách mở máy → bluestream gọi `wake` bật lại ----------
+# 18/11a (khách treo máy kêu "máy cứ tự nghỉ"): máy khách ĐANG CHẠY chỉ bị tắt êm cho NGỦ (app, dữ liệu giữ nguyên) khi đủ CẢ 3 điều:
+#   (1) IDLE_STOP_H giờ liền (mặc định 18) KHÔNG AI MỞ máy (app / web / PC / ô xem trước — bluestream ghi redroid/viewers.json);
+#   (2) cũng ngần ấy giờ liền, lượt đo nào (~2 phút / lần) cũng KHÔNG thấy máy có việc: không game / app nào ở màn trước (kể cả cửa
+#       sổ nổi), không app của khách chạy nền có thông báo — và Android đã chạy liền ngần ấy giờ (máy vừa bật / khởi động lại thì chưa);
+#   (3) IDLE_STOP_MIN phút gần nhất (mặc định 30) lượt đo nào cũng thấy máy ĐỨNG YÊN hẳn: màn hình chính + CPU trong máy thấp.
+# Trước 18/11a chỉ cần (3) + 30 phút không ai xem. Máy treo game (game ở màn trước) KHÔNG BAO GIỜ bị tắt. Đo KHÔNG CHẮC (không đọc được
+# màn hình / CPU, CPU cao ở màn hình chính) → lượt đó không cho ngủ, đếm lại (3), giữ mốc (2). Máy tắt / tạm dừng, hoặc máy chủ nghỉ đo
+# quá IDLE_GAP_S → không tin mốc cũ: (2) tính lại từ đầu (chưa theo dõi đủ 18 giờ thì chưa ngủ). Giả lập không cho đọc danh sách máy /
+# idle.json đang bận → lượt đó KHÔNG đo, giữ nguyên mốc (1 lần giả lập bận không được xoá mất mốc 18 giờ của mọi máy).
+# Ngủ = hold + sleep: bootall / heal / cloudphoned không tự bật lại; bật bằng bất cứ đường nào (khách mở máy → wake, admin start /
+# restart, đổi cấu hình…) là hết ngủ. RAM của máy ngủ vẫn được CHỪA (create / resize / cloudphoned) → khách mở lúc nào cũng bật lại được.
+# Đổi số giờ: python phonectl.py setconf IDLE_STOP_H=12 · tắt hẳn tính năng: IDLE_STOP_MIN=0 (hoặc IDLE_STOP_H=0).
 def _cf(k, d):
     try: return float(CONF.get(k, d) or 0)
     except (TypeError, ValueError): return float(d)
-IDLE_MIN = _cf("IDLE_STOP_MIN", 30)          # phút rảnh liền mới cho ngủ · 0 = tắt tính năng
+IDLE_MIN = _cf("IDLE_STOP_MIN", 30)          # phút ĐỨNG YÊN liền ngay trước lúc cho ngủ · 0 = tắt tính năng
+IDLE_H = _cf("IDLE_STOP_H", 18)              # 18/11a: GIỜ liền không ai mở máy + không thấy máy có việc mới cho ngủ · 0 = tắt tính năng
+IDLE_GAP_S = 7200                             # idle.json không được ghi quá 2 giờ (máy chủ tắt / nhận đơn dừng) → mốc cũ không còn chắc, tính lại
 IDLE_CPU = _cf("IDLE_CPU_PCT", 10)           # CPU trong máy (cộng mọi nhân) từ mức này = máy đang làm gì đó → không cho ngủ
 IDLE_SKIP = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_SKIP", "")) if x}     # tên máy KHÔNG BAO GIỜ cho ngủ: cp_abc,cp_def
 IDLE_IGNORE = {x for x in re.split(r"[\s,;]+", CONF.get("IDLE_IGNORE", "")) if x}    # gói (hiện trên màn / chạy nền) KHÔNG tính là máy đang làm việc
@@ -4254,13 +4265,31 @@ def _viewers():
         return ok, {str(k): float(x) for k, x in (d.get("seen") or {}).items()}
     except Exception: return False, {}
 def _idle_load():
-    try:
-        with open(IDLE_F, encoding="utf-8") as f: return json.load(f)
-    except Exception: return {}
+    """Mốc từng máy {tên: {"act": lượt đo đầu tiên thấy máy KHÔNG có việc (hoặc lúc Android bật), "since": bắt đầu chuỗi đứng yên liền,
+       "busy": lượt gần nhất thấy máy có việc (chỉ để xem)}}.
+       {} = chưa có / file hỏng / mốc quá cũ (tính lại từ đầu) · None = file đang bận, không đọc được → lượt này KHÔNG đo (giữ mốc)."""
+    for k in range(4):
+        try:
+            age = time.time() - os.path.getmtime(IDLE_F)
+            with open(IDLE_F, encoding="utf-8") as f: d = json.load(f)
+            if not isinstance(d, dict) or not (-300 <= age <= IDLE_GAP_S): return {}
+            return d
+        except FileNotFoundError: return {}
+        except ValueError: return {}                   # file hỏng (máy chủ bị tắt ngang lúc đang ghi) → coi như chưa có
+        except OSError:                                # Windows: file đang bị lệnh khác thay → đọc lại
+            if k < 3: time.sleep(0.3)
+    return None
 def _idle_save(d):
-    os.makedirs(os.path.dirname(IDLE_F), exist_ok=True)
-    with open(IDLE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f)
-    os.replace(IDLE_F + ".tmp", IDLE_F)
+    """→ True nếu ghi được. Không bao giờ ném lỗi (Windows: file đang bị đọc đúng lúc → thử lại; vẫn không được thì lượt sau ghi)."""
+    for k in range(4):
+        try:
+            os.makedirs(os.path.dirname(IDLE_F), exist_ok=True)
+            with open(IDLE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f)
+            os.replace(IDLE_F + ".tmp", IDLE_F)
+            return True
+        except OSError:
+            if k < 3: time.sleep(0.3)
+    return False
 def _fg_pkgs(port):
     """Các gói đang HIỆN trên màn: cửa sổ giữ tiêu điểm + app đang mở (mọi màn hình) + MỌI cửa sổ app đang hiện (cả game ở cửa sổ
        nổi nằm cạnh màn hình chính). Rỗng = không đọc được."""
@@ -4291,39 +4320,58 @@ def _fg_services(port):
     if not fg: return set()
     third = {ln.split(":", 1)[1].strip() for ln in (adb("-s", s, "shell", "pm list packages -3", timeout=25).stdout or "").splitlines() if ln.startswith("package:")}
     return {x for x in fg if x in third and x not in IDLE_IGNORE and "launcher" not in x.lower()}
+def _guest_cpu_up(port):
+    """(% CPU đang dùng TRONG máy — cộng mọi nhân, đo 2 giây · số giây Android đã chạy từ lần bật gần nhất). None = không đo / đọc được."""
+    r = adb("-s", f"127.0.0.1:{port}", "shell", "cat /proc/uptime; grep '^cpu ' /proc/stat; sleep 2; grep '^cpu ' /proc/stat", timeout=25)
+    lines = (r.stdout or "").splitlines(); up = None
+    for ln in lines[:3]:
+        m = re.match(r"^\s*(\d+(?:\.\d+)?)\s+\d+(?:\.\d+)?\s*$", ln)
+        if m: up = float(m.group(1)); break
+    rows = [ln.split()[1:9] for ln in lines if ln.startswith("cpu ")]
+    if len(rows) < 2: return None, up
+    try: a0, a1 = [list(map(int, x)) for x in rows[:2]]
+    except ValueError: return None, up
+    d = [y - x for x, y in zip(a0, a1)]; tot = sum(d)
+    if tot <= 0: return None, up
+    return round(100.0 * (tot - d[3] - (d[4] if len(d) > 4 else 0)) / tot, 1), up
 def _guest_cpu(port):
     """% CPU đang dùng TRONG máy (cộng mọi nhân, đo 2 giây). None = không đo được."""
-    r = adb("-s", f"127.0.0.1:{port}", "shell", "grep '^cpu ' /proc/stat; sleep 2; grep '^cpu ' /proc/stat", timeout=25)
-    rows = [ln.split()[1:9] for ln in (r.stdout or "").splitlines() if ln.startswith("cpu ")]
-    if len(rows) < 2: return None
-    try: a0, a1 = [list(map(int, x)) for x in rows[:2]]
-    except ValueError: return None
-    d = [y - x for x, y in zip(a0, a1)]; tot = sum(d)
-    if tot <= 0: return None
-    return round(100.0 * (tot - d[3] - (d[4] if len(d) > 4 else 0)) / tot, 1)
-def _idle_probe(p, seen, t):
-    """(rảnh?, lý do, số giây từ lần có người xem) của 1 máy đang chạy."""
+    return _guest_cpu_up(port)[0]
+def _idle_kind(p, seen, t):
+    """(loại, lý do, số giây từ lần có người xem, số giây Android đã chạy | None) của 1 máy đang chạy. Loại: "busy" = CHẮC CHẮN máy đang
+       có việc (có người xem · game / app ở màn trước · app của khách chạy nền) · "idle" = đứng yên hẳn · "soft" = không chắc (không đọc
+       được, CPU cao ở màn hình chính)."""
     port = p["port"]; ago = t - seen.get(str(port), 0.0)
-    if ago < 90: return False, "đang có người xem", ago
-    if not booted(port): return False, "Android chưa sẵn sàng / mất kết nối", ago
+    if ago < 90: return "busy", "đang có người xem", ago, None
+    if not booted(port): return "soft", "Android chưa sẵn sàng / mất kết nối", ago, None
     fg = _fg_pkgs(port)
-    if not fg: return False, "không đọc được màn trước", ago
+    if not fg: return "soft", "không đọc được màn trước", ago, None
     hs = _home_pkgs(port)
     busy = sorted(x for x in fg if x not in hs and x not in IDLE_IGNORE and "launcher" not in x.lower())
-    if busy: return False, "đang mở " + ", ".join(busy), ago
+    if busy: return "busy", "đang mở " + ", ".join(busy), ago, None
     bg = _fg_services(port)
-    if bg: return False, "app chạy nền " + ", ".join(sorted(bg)), ago
-    c = _guest_cpu(port)
-    if c is None: return False, "không đo được CPU", ago
-    if c >= IDLE_CPU: return False, f"màn hình chính nhưng CPU trong máy {c:g}%", ago
-    return True, f"màn hình chính · CPU {c:g}%", ago
-def _sleep_one(p, why="", check_view=True):
-    """Cho 1 máy NGỦ: đánh dấu ngủ TRƯỚC (bootall / cloudphoned không bật lại giữa chừng) → tắt êm. Không tắt được → bỏ dấu, chạy tiếp."""
+    if bg: return "busy", "app chạy nền " + ", ".join(sorted(bg)), ago, None
+    c, up = _guest_cpu_up(port)
+    if c is None: return "soft", "không đo được CPU", ago, up
+    if up is None: return "soft", "không đọc được máy đã chạy bao lâu", ago, None
+    if c >= IDLE_CPU: return "soft", f"màn hình chính nhưng CPU trong máy {c:g}%", ago, up
+    return "idle", f"màn hình chính · CPU {c:g}%", ago, up
+def _idle_probe(p, seen, t):
+    """(rảnh?, lý do, số giây từ lần có người xem) của 1 máy đang chạy — kiểu trả cũ."""
+    k, why, ago, _up = _idle_kind(p, seen, t)
+    return k == "idle", why, ago
+def _dur(sec):
+    """Số giây → chữ cho người đọc: "17 giờ 05 phút" · "12 phút"."""
+    m = max(0, int(sec // 60))
+    return f"{m // 60} giờ {m % 60:02d} phút" if m >= 60 else f"{m} phút"
+def _sleep_one(p, why="", check_view=True, view_s=120):
+    """Cho 1 máy NGỦ: đánh dấu ngủ TRƯỚC (bootall / cloudphoned không bật lại giữa chừng) → tắt êm. Không tắt được → bỏ dấu, chạy tiếp.
+       view_s: có người mở máy trong ngần ấy giây gần đây (đọc LẠI viewers.json ngay trước khi tắt) → không tắt."""
     nm = p["name"]
     if check_view:
         ok, seen = _viewers()
         if not ok: return False, "phát hình không báo người xem — để máy chạy"
-        if time.time() - seen.get(str(p["port"]), 0.0) < 120: return False, "vừa có người mở máy — để máy chạy"
+        if time.time() - seen.get(str(p["port"]), 0.0) < view_s: return False, "vừa có người mở máy — để máy chạy"
     q = rec(nm)
     if not q or q.get("hold"): return False, "máy vừa bị tạm dừng / xoá — bỏ qua"
     set_hold(nm, True, sleep=True)
@@ -4339,39 +4387,65 @@ def _sleep_one(p, why="", check_view=True):
     return False, f"{EMU_NAME} chưa tắt được máy — để máy chạy tiếp"
 
 def cmd_idle(a):
-    """Gọi định kỳ (cloudphoned ~2 phút/lần): máy rảnh liền IDLE_STOP_MIN phút → cho ngủ. --dry: chỉ in, không tắt máy nào."""
+    """Gọi định kỳ (cloudphoned ~2 phút/lần). 18/11a: máy chỉ NGỦ khi IDLE_STOP_H giờ (18) liền không ai mở máy + không thấy máy có việc,
+       và IDLE_STOP_MIN phút (30) gần nhất lượt đo nào cũng thấy máy đứng yên. --dry: chỉ in, không tắt máy nào, không ghi mốc."""
     mins = IDLE_MIN if a.min is None else a.min
-    if mins <= 0: print("IDLE_OFF tính năng đang tắt (IDLE_STOP_MIN=0)"); return
+    hrs = IDLE_H if getattr(a, "gio", None) is None else a.gio
+    if mins <= 0 or hrs <= 0: print("IDLE_OFF tính năng đang tắt (IDLE_STOP_MIN=0 hoặc IDLE_STOP_H=0)"); return
+    need = hrs * 3600.0
     fresh, seen = _viewers()
     if not fresh and not a.dry:
         print("IDLE_SKIP phát hình (bluestream) bản biết đánh thức máy chưa chạy → không cho máy nào ngủ"); return
-    st = load(); v = vms(); t = time.time(); old = _idle_load(); new = {}
+    st = load(); v = vms_sure(); t = time.time(); old = _idle_load(); new = {}
+    if not v:                                              # giả lập đang bận / lỗi → KHÔNG coi là "mọi máy đã tắt" (sẽ xoá hết mốc 18 giờ)
+        print(f"IDLE_SKIP không đọc được danh sách máy của {EMU_NAME} (đang bận) → lượt này không đo, giữ nguyên mốc"); return
+    if old is None:
+        print("IDLE_SKIP không đọc được redroid/idle.json (file đang bận) → lượt này không đo, giữ nguyên mốc"); return
     cands = [p for p in st["phones"] if p["name"] not in IDLE_SKIP and not p.get("hold") and p.get("kind") != "gpu"
              and parse_dt(p["expires"]) > now() and is_running(p["name"], p, v)]
     def probe(p):
-        try: return _idle_probe(p, seen, t)
-        except Exception as e: return False, f"lỗi đo: {e!r}", 0.0
+        try: return _idle_kind(p, seen, t)
+        except Exception as e: return "soft", f"lỗi đo: {e!r}", 0.0, None
+    def mark(e, *ks):
+        """Mốc đã ghi (không ở tương lai) — chưa có / hỏng → bây giờ."""
+        for k in ks:
+            try:
+                x = float(e.get(k) or 0)
+                if 0 < x <= t: return x
+            except (TypeError, ValueError): pass
+        return t
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=8) as ex: res = list(ex.map(probe, cands))
     n_idle = n_slept = 0; talk = a.dry or a.verbose
-    for p, (idle, why, ago) in zip(cands, res):
-        nm = p["name"]
-        if not idle:
+    for p, (kind, why, ago, up) in zip(cands, res):
+        nm = p["name"]; e = old.get(nm); e = e if isinstance(e, dict) else {}
+        if kind == "busy":                                 # CHẮC CHẮN máy đang có việc → bỏ mốc: 18 giờ sẽ tính từ LƯỢT ĐO ĐẦU TIÊN thấy máy
+            new[nm] = {"busy": t}                          # hết việc (việc có thể còn chạy tới sát lượt đó — không tính từ lượt này)
+            if talk: print(f"  {nm}: không rảnh — {why}")
+            continue
+        act = mark(e, "act", "since")                      # bản trước 18/11a chỉ ghi "since" (máy đứng yên từ lúc đó) → lấy làm mốc
+        if up is not None and up >= 0: act = max(act, min(t, t - up))      # máy vừa bật / khởi động lại → 18 giờ tính từ lúc Android chạy
+        if kind != "idle":                                 # không chắc → lượt này không cho ngủ, đếm lại chuỗi "đứng yên liền"
+            new[nm] = {"act": act}
             if talk: print(f"  {nm}: không rảnh — {why}")
             continue
         n_idle += 1
-        since = float((old.get(nm) or {}).get("since") or t); new[nm] = {"since": since}
-        rest = max(mins * 60 - (t - since), mins * 60 - ago)
+        since = mark(e, "since"); new[nm] = {"act": act, "since": since}
+        rest = max(mins * 60 - (t - since), need - ago, need - (t - act))
         if rest > 0:
-            if talk: print(f"  {nm}: rảnh {int((t - since) // 60)} phút ({why}) — {int(rest // 60) + 1} phút nữa cho ngủ")
+            if talk:
+                print(f"  {nm}: đứng yên {_dur(t - since)} ({why}) · không ai mở máy {_dur(ago) if ago < 3 * 86400 else 'hơn 3 ngày'}"
+                      f" · không thấy máy có việc {_dur(t - act)} — còn {_dur(rest + 59)} nữa mới cho ngủ")
             continue
-        if a.dry: print(f"NGU_THU {nm}: sẽ cho ngủ ({why}, rảnh {int((t - since) // 60)} phút)"); continue
+        if a.dry: print(f"NGU_THU {nm}: sẽ cho ngủ ({why}, {hrs:g} giờ không ai mở máy, không có việc)"); continue
         if n_slept >= IDLE_BATCH: continue
-        ok, how = _sleep_one(p, f"rảnh {int((t - since) // 60)} phút · {why}")
+        ok, how = _sleep_one(p, f"{hrs:g} giờ không ai mở máy, không có việc · {why}", view_s=max(120.0, need))
         print(("NGU " if ok else "NGU_LOI ") + f"{nm}: {how}", flush=True)
         if ok: n_slept += 1; new.pop(nm, None)
-    if not a.dry: _idle_save(new)
-    print(f"IDLE_OK {len(cands)} máy đang chạy · {n_idle} máy rảnh · {n_slept} máy vừa cho ngủ · ngưỡng {mins:g} phút, CPU < {IDLE_CPU:g}%")
+    if not a.dry and not _idle_save(new):
+        print("IDLE_SKIP không ghi được redroid/idle.json (file đang bận) → mốc của lượt này chưa lưu, lượt sau ghi lại")
+    print(f"IDLE_OK {len(cands)} máy đang chạy · {n_idle} máy rảnh · {n_slept} máy vừa cho ngủ · ngưỡng {hrs:g} giờ không ai mở máy + không có việc, "
+          f"{mins:g} phút đứng yên liền, CPU < {IDLE_CPU:g}%")
 
 def cmd_sleep(a):
     """Admin cho 1 máy ngủ NGAY (thử tính năng). Khách mở máy → tự bật lại."""
@@ -4934,6 +5008,7 @@ def main():
     hd = s.add_parser("hide"); hd.add_argument("name", nargs="?", default=""); hd.set_defaults(f=cmd_hide)
     he = s.add_parser("heal"); he.add_argument("--orphans", action="store_true"); he.set_defaults(f=cmd_heal)
     il = s.add_parser("idle"); il.add_argument("--min", type=float, default=None); il.add_argument("--dry", action="store_true")
+    il.add_argument("--gio", type=float, default=None)          # 18/11a: số giờ không ai mở máy + không có việc (mặc định IDLE_STOP_H = 18)
     il.add_argument("--verbose", "-v", action="store_true"); il.set_defaults(f=cmd_idle)
     sl = s.add_parser("sleep"); sl.add_argument("name"); sl.add_argument("--force", action="store_true"); sl.set_defaults(f=cmd_sleep)
     wk = s.add_parser("wake"); wk.add_argument("name", nargs="?", default=""); wk.add_argument("--all", action="store_true"); wk.set_defaults(f=cmd_wake)
