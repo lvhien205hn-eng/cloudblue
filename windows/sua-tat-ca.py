@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1811a):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1911a):
+#        19/11a — BỘ NHỚ MÁY KHÁCH THEO CẤU HÌNH + KHÁCH MUA THÊM: máy khách MuMu chỉ có 2,9GB (máy mẫu tạo ở "chế độ ổ nhỏ" → máy nhân
+#                       bản cũng vậy). phonectl: máy TẠO TỪ BẢN NÀY lúc lên lần đầu tự nới /data (ngay lúc máy chạy, giữ dữ liệu, ~1 giây)
+#                       theo RAM: dưới 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB (web chạy SQL v40 thì web quyết định cỡ). Khách MUA THÊM
+#                       bộ nhớ trên web (admin bật + đặt giá) → cloudphoned gọi `phonectl disk TÊN --gb N` → nới ngay, không tắt máy;
+#                       máy đang ngủ thì nới lúc bật; nới không được → tự hoàn tiền. MÁY CŨ ĐỂ NGUYÊN (chủ máy chọn) trừ khi khách mua.
+#                       Xem: `python phonectl.py bonho` · nới 1 máy cũ: `python phonectl.py bonho --sua TÊN` · tắt: setconf DISK_FIX=0
 #        18/11a — MÁY KHÁCH CHỈ TỰ NGỦ KHI BỎ KHÔNG 18 GIỜ (trước: 30 phút — khách treo máy kêu "máy cứ tự nghỉ"). phonectl chỉ cho ngủ khi
 #                       18 giờ liền không ai mở máy + không thấy máy có việc (game / app ở màn trước, app chạy nền) + 30 phút gần nhất máy
 #                       đứng yên. Máy treo game KHÔNG bao giờ bị tắt. Đổi số giờ: IDLE_STOP_H trong cloudphone.conf · tắt hẳn: IDLE_STOP_MIN=0
@@ -80,7 +86,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "18/11a"
+VER = "19/11a"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -94,12 +100,12 @@ NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "17/11f: tự dọn máy đã huỷ", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11g"', "bluestream"),
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "18/11a"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "19/11a"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -242,7 +248,7 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1811a"
+            bak = lp + ".truoc-1911a"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
@@ -1071,6 +1077,19 @@ def log_report():
         say(f"--- lỗi phát hình gần nhất ({len(er)} dòng trong nhật ký) ---")
         for x in er[-5:]: say("   " + x[:170])
 
+def disk_line():
+    """19/11a: 1 dòng TÓM TẮT về bộ nhớ máy khách — chỉ máy chủ MuMu có phonectl 19/11a trở lên; khác → ''."""
+    try:
+        cc = conf(); pc = open(PHONECTL, "rb").read()
+        m = re.search(rb'PCTL_SUB = "(\d+)/(\d+)([a-z]?)"', pc)
+        if not m or (int(m.group(2)), int(m.group(1)), m.group(3)) < (11, 19, b"a"): return ""
+        if (cc.get("EMU") or "").strip().lower() != "mumu": return ""
+        if str(cc.get("DISK_FIX", "1")).strip() == "0": return "bộ nhớ máy khách: ĐANG TẮT (DISK_FIX=0) — máy mới giữ cỡ ổ của máy mẫu, khách không mua thêm được"
+        tiers = (cc.get("DISK_TIERS") or "0:8,4:13,8:16").strip()
+        return (f"máy khách MỚI tự có bộ nhớ theo RAM (RAM:GB {tiers}; web chạy SQL v40 thì theo web) · khách mua thêm → nới ngay"
+                " · máy cũ để nguyên — xem: python phonectl.py bonho")
+    except Exception: return ""
+
 def main():
     c = conf(); node = c.get("NODE_ID") or "?"
     say(f"== CloudBlue · sửa tất cả ({VER}) · máy chủ {node} · {time.strftime('%d/%m %H:%M')}" + (" · CHỈ KIỂM" if ONLY_CHECK else "") + " ==")
@@ -1147,6 +1166,8 @@ def main():
             say(f"   💤 máy khách tự ngủ: chỉ khi {ih:g} giờ liền không ai mở máy và máy không có việc gì (đang treo game / mở app thì KHÔNG bao giờ bị tắt)"
                 if ih > 0 else "   💤 máy khách tự ngủ: ĐANG TẮT ở máy chủ này (IDLE_STOP_MIN=0 / IDLE_STOP_H=0) — máy không bao giờ tự ngủ")
     except (TypeError, ValueError): pass
+    dl = disk_line()                                        # 19/11a: bộ nhớ máy khách theo cấu hình + mua thêm
+    if dl: say("   💾 " + dl)
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     for x in pw: say("   ⚠ " + x)

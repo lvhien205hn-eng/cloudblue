@@ -7,6 +7,9 @@
 #   python phonectl.py list | capacity | delete TÊN | stop TÊN | start TÊN | restart TÊN | renew TÊN --days N
 #   python phonectl.py resize TÊN --ram 6 --cpu 6 | waitboot TÊN | connect-all | reap | rootfix --all | ksuprobe TÊN
 #   python phonectl.py idle [--dry -v] | sleep TÊN | wake TÊN | wake --all   ← máy bỏ không 18 giờ tự NGỦ, khách mở máy tự bật lại (IDLE_STOP_H)
+#   python phonectl.py bonho [TÊN…] | bonho --sua TÊN… [--gb N]   ← bộ nhớ /data máy khách (chỉ đọc) · --sua: nới ĐÚNG máy ghi tên, không tắt máy
+#   python phonectl.py disk TÊN --gb N   ← đặt bộ nhớ 1 máy lên N GB (khách mua thêm — cloudphoned gọi) · chỉ lớn lên, giữ dữ liệu
+#                                     (máy MỚI tự nới lúc lên lần đầu theo cấu hình: DISK_TIERS; máy cũ chỉ nới khi khách mua / admin gõ tên)
 #  Máy số N của MEmu ⇄ adb 127.0.0.1:(21503 + 10·N)
 # =====================================================================
 import argparse, atexit, contextlib, ctypes, datetime, glob, hashlib, json, os, re, shutil, subprocess, sys, time
@@ -889,7 +892,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "18/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "19/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -897,6 +900,9 @@ PCTL_SUB = "18/11a"           # 17/11e3: danh sách máy không bao giờ bị g
                               #         hỏng, Android tự tạo lại (BOOT_FIX) · lệnh khammay: vì sao máy không lên (chỉ đọc)
                               # 17/11h: tự TẮT TIẾNG loa Windows của máy chủ (HOST_MUTE, 10 phút kiểm 1 lần) · lệnh tattieng
                               # 18/11a: máy khách chỉ TỰ NGỦ khi 18 GIỜ liền không ai mở máy + không thấy máy có việc (IDLE_STOP_H; trước 30 phút)
+                              # 18/11b: BỘ NHỚ máy MỚI: MuMu "chế độ ổ nhỏ" → /data chỉ 2,9GB → nới bằng resize2fs lúc lên lần đầu
+                              # 19/11a: bộ nhớ MIỄN PHÍ theo cấu hình (RAM < 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB: DISK_TIERS) ·
+                              #         create --disk N · lệnh disk TÊN --gb N (khách MUA THÊM bộ nhớ) · máy cũ để nguyên
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -1662,6 +1668,183 @@ MUMU_PERF = {} if CONF.get("MUMU_PERF", "1") == "0" else {
     # root_permission = "Enable root" (Developer options) của MuMu: BẬT cho mọi máy — máy nào bật lại (start / ramfix / khoidonglai /
     # perfset lúc tắt) là có root (09/11: nhiều máy bấm "Root máy" không ăn vì MuMu chỉ cho ghi lúc máy TẮT).
     "root_permission": "true"}
+# ---------- 18/11 → 19/11: BỘ NHỚ MÁY KHÁCH THEO CẤU HÌNH ----------
+# Khách báo máy chỉ còn 3GB. MuMu: máy mẫu tpl_a12 / tpl_a15 tạo ở "chế độ ổ nhỏ" (mini_disk) → máy nhân bản ra đều vậy: /data là ext4
+# 2,9GB nằm trên phân vùng đã lớn sẵn (sdc3: 128GB Android 12 · 931GB Android 15). Chỉ tắt mini_disk rồi khởi động lại KHÔNG nới (thử
+# trên máy thử win5 18/11). Cách nới: resize2fs <ổ /data> <N>G bằng ROOT ngay lúc máy đang chạy — chỉ LỚN lên (không bao giờ thu nhỏ),
+# dữ liệu giữ nguyên, khách không bị ngắt. Thử trên máy thử win5 19/11: 2,9GB → 19,6GB trong 1 giây, khởi động lại 2 lần vẫn giữ (cả
+# Android 12 lẫn 15). Root: Android 12 qua "su -c" · Android 15 (KernelSU, không có su cho adb) qua "adb root" đúng 1 lệnh rồi "adb unroot"
+# (DISK_ADBROOT=0: không dùng).
+# Chủ máy 19/11: CHỈ MÁY MỚI, máy cũ để nguyên · bộ nhớ MIỄN PHÍ theo cấu hình (DISK_TIERS, mặc định RAM < 4GB → 8GB · 4–7GB → 13GB ·
+# từ 8GB → 16GB) · khách MUA THÊM được (SQL v40 + web, admin bật / tắt + đặt giá).
+#   · create --disk N (cloudphoned truyền cỡ web đã tính) → máy mới có dấu disk_new = N → lần đầu lên (wait_boot) thì nới, xong bỏ dấu.
+#   · disk TÊN --gb N (cloudphoned gọi khi khách mua thêm / nâng RAM lên bậc cao hơn) → máy đang chạy: nới ngay · đang tắt / ngủ: hẹn lần bật.
+#   · máy cũ (không có dấu) KHÔNG BAO GIỜ bị đụng, trừ khi khách mua thêm hoặc admin gõ đúng tên: `phonectl bonho --sua TÊN`.
+#   · ổ máy chủ còn < DISK_HOST_MIN_GB trống → không nới, chỉ báo · không có root → báo, thử lại lần bật sau (tối đa 5 lần).
+# Tắt hẳn: DISK_FIX=0 · bậc: DISK_TIERS=0:8,4:13,8:16 · trần 1 máy: DISK_MAX_GB=64.
+DISK_TIERS_DEF = "0:8,4:13,8:16"             # 19/11 chủ máy: RAM < 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB (khách mua thêm thì cao hơn)
+def _disk_tiers(txt):
+    """"RAM_tối_thiểu:GB,…" → [(ram, gb)] tăng dần. Sai dạng → bậc mặc định."""
+    out = []
+    try:
+        for part in str(txt or "").replace(";", ",").split(","):
+            if not part.strip(): continue
+            r, g = part.split(":"); out.append((max(0.0, float(r)), max(4, min(512, int(float(g))))))
+    except (ValueError, TypeError): out = []
+    return sorted(out) or _disk_tiers(DISK_TIERS_DEF)
+DISK_TIERS = _disk_tiers(CONF.get("DISK_TIERS") or DISK_TIERS_DEF)
+try: DISK_MAX = max(8, min(512, int(float(CONF.get("DISK_MAX_GB", "64") or 64))))
+except ValueError: DISK_MAX = 64
+def disk_tier(ram):
+    """Bộ nhớ MIỄN PHÍ (GB) của máy theo RAM — theo DISK_TIERS (cùng bậc với web: cloudphone_pricing.disk_tiers)."""
+    try: r = float(ram or 0)
+    except (TypeError, ValueError): r = 0.0
+    gb = DISK_TIERS[0][1]
+    for t, g in DISK_TIERS:
+        if r >= t: gb = g
+    return min(gb, DISK_MAX)
+DISK_FIX = str(CONF.get("DISK_FIX", "1")).strip() != "0"
+try: DISK_HOST_MIN = float(CONF.get("DISK_HOST_MIN_GB", "30") or 30)
+except ValueError: DISK_HOST_MIN = 30.0
+DG_ADBROOT = str(CONF.get("DISK_ADBROOT", "1")).strip() != "0"       # 0 = không dùng "adb root" (khi đó máy Android 15 / KernelSU không nới được)
+DG_LOG = os.path.join(HOME, "redroid", "disk_events.log")
+_DG_DEV = re.compile(r"^/dev/block/[A-Za-z0-9_.\-/]{1,60}$")
+_DG_ROOT = {}                                                  # cổng → cách chạy root được ("su -c" / "su 0 sh -c" / "")
+_DG_SAID = set()                                               # (tên máy, mã) đã báo trong lệnh này
+_DG_STATE_SH = ("df -k /data 2>/dev/null | tail -n +2 | head -1; echo @@; mount 2>/dev/null | grep ' /data ' | head -1; echo @@; "
+                "D=$(mount 2>/dev/null | grep ' /data ' | head -1 | cut -d' ' -f1); [ -n \"$D\" ] && cat /sys/class/block/${D##*/}/size 2>/dev/null")
+def _dg_state(port):
+    """/data của máy đang chạy (chỉ đọc, không cần root) → {total, avail (byte), dev, fs, part (byte)} — thiếu thì None / ''."""
+    out = {"total": None, "avail": None, "dev": "", "fs": "", "part": None}
+    try: o = adb("-s", f"127.0.0.1:{port}", "shell", _DG_STATE_SH, timeout=20).stdout or ""
+    except Exception: return out
+    parts = (o.split("@@") + ["", "", ""])[:3]
+    t = parts[0].split()
+    if len(t) >= 4 and t[1].isdigit() and t[3].isdigit(): out["total"], out["avail"] = int(t[1]) * 1024, int(t[3]) * 1024
+    m = parts[1].split()
+    if len(m) >= 5 and m[1] == "on" and m[2] == "/data" and m[3] == "type": out["dev"], out["fs"] = m[0], m[4]
+    elif len(m) >= 3 and m[1] == "/data": out["dev"], out["fs"] = m[0], m[2]
+    z = parts[2].split()
+    if z and z[0].isdigit(): out["part"] = int(z[0]) * 512
+    return out
+def _dg_root(port, script, timeout=900):
+    """Chạy script (KHÔNG có dấu nháy đơn) bằng ROOT trong máy: cách đã nhớ trước, rồi su -c · su 0 sh -c · adb đã là root.
+       Trả chữ in ra (script phải in DG_END ở cuối) · None = không có root / adb không nối được."""
+    s_ = f"127.0.0.1:{port}"; body = "[ $(id -u) = 0 ] || { echo DG_NOROOT; exit 0; }; " + script
+    order = ([_DG_ROOT[port]] if port in _DG_ROOT else []) + [m for m in ("su -c", "su 0 sh -c", "") if m != _DG_ROOT.get(port)]
+    for pre in order:
+        try: r = adb("-s", s_, "shell", body if pre == "" else f"{pre} '{body}'", timeout=timeout)
+        except Exception: return None
+        o = ((r.stdout or "") + " " + (r.stderr or "")).strip()
+        if "DG_END" in o and "DG_NOROOT" not in o: _DG_ROOT[port] = pre; return o
+        if _adb_gone(o) or r.returncode == 124: return None
+    _DG_ROOT.pop(port, None)
+    if not DG_ADBROOT: return None
+    # 19/11 (thử trên máy thử win5): Android 15 của MuMu dùng KernelSU → không có su cho adb, nhưng "adb root" chạy được → dùng adbd quyền
+    # root ĐÚNG 1 lệnh rồi trả adbd về quyền thường ngay ("adb unroot"). adbd khởi động lại 2 lần (vài giây) — chỉ xảy ra với máy MỚI lúc
+    # lên lần đầu (chưa giao khách), máy khách vừa MUA THÊM bộ nhớ (chạm có thể khựng 1–2 giây, hình vẫn chạy) hoặc máy admin gõ tên.
+    def back_up():
+        for _ in range(10):
+            time.sleep(1.5)
+            if _adb_fresh(port): return True
+        return False
+    rooted = False; o = ""
+    try:
+        r = adb("-s", s_, "root", timeout=20); o0 = ((r.stdout or "") + " " + (r.stderr or "")).lower()
+        if "as root" not in o0 or "cannot" in o0: return None
+        rooted = True
+        if back_up():
+            r = adb("-s", s_, "shell", body, timeout=timeout); o = ((r.stdout or "") + " " + (r.stderr or "")).strip()
+    except Exception: o = ""
+    finally:
+        if rooted:
+            try: adb("-s", s_, "unroot", timeout=20); back_up()
+            except Exception: pass
+    return o if "DG_END" in o and "DG_NOROOT" not in o else None
+def _dg_event(name, port, before, after, kq, why=""):
+    try:
+        os.makedirs(os.path.dirname(DG_LOG), exist_ok=True)
+        if os.path.isfile(DG_LOG) and os.path.getsize(DG_LOG) > 200000: os.replace(DG_LOG, DG_LOG + ".1")
+        with open(DG_LOG, "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')}\t{name}\t{port}\t{before}\t{after}\t{kq}\t{why}\n")
+    except OSError: pass
+def _dg_hostfree():
+    try: return shutil.disk_usage(os.path.join(MUMU, "vms") if EMU == "mumu" and MUMU else HOME).free / 2**30
+    except Exception: return None
+DG_OK = 0.95                 # df báo nhỏ hơn cỡ hệ thống tệp ~2% (siêu dữ liệu ext4) → coi là đủ khi ≥ 95% cỡ đích
+def disk_grow(port, name="", fix=True, want_gb=None):
+    """Bộ nhớ /data của 1 máy đang chạy → (mã, chữ). want_gb = cỡ đích (GB). Mã: ok (đã đủ) · grown (vừa nới) · small (nhỏ, fix=False) ·
+       noroot · nopart (phân vùng nhỏ hơn cỡ đích) · notext4 · hostlow (ổ máy chủ sắp đầy) · fail · ? (không đọc được) · skip (không phải MuMu / tắt)."""
+    if EMU != "mumu" or not DISK_FIX: return "skip", ""
+    if not want_gb:
+        p = rec(name) if name else None
+        want_gb = int((p or {}).get("disk_gb") or disk_tier((p or {}).get("ram")))
+    want_gb = max(4, min(DISK_MAX, int(want_gb)))
+    want = want_gb * 2**30; gb = lambda x: f"{x / 2**30:.1f}GB" if x else "?"
+    st = _dg_state(port)
+    if not st["total"]: return "?", "không đọc được /data (adb chưa nối / Android chưa lên)"
+    if st["total"] >= want * DG_OK: return "ok", f"/data {gb(st['total'])}"
+    if not fix: return "small", f"/data {gb(st['total'])} (trống {gb(st['avail'])})"
+    try:
+        with _Lock(f"disk_{int(port)}", wait=240):               # 19/11: 2 lệnh cùng nới 1 máy (mua thêm ↔ máy vừa bật) → lần lượt
+            return _dg_grow_locked(port, name, want_gb, want, gb)
+    except RuntimeError: return "?", "lệnh khác đang nới bộ nhớ máy này — thử lại sau"
+def _dg_grow_locked(port, name, want_gb, want, gb):
+    st = _dg_state(port)                                       # đọc lại trong khoá: lệnh khác có thể vừa nới xong
+    if not st["total"]: return "?", "không đọc được /data (adb chưa nối / Android chưa lên)"
+    if st["total"] >= want * DG_OK: return "ok", f"/data {gb(st['total'])}"
+    if not _DG_DEV.match(st["dev"] or ""): return "?", f"không rõ ổ chứa /data ({st['dev'][:40] or 'không thấy'})"
+    if st["fs"] != "ext4": return "notext4", f"/data kiểu {st['fs'] or '?'} — chỉ nới được ext4"
+    if not st["part"] or st["part"] < want: return "nopart", f"phân vùng /data chỉ {gb(st['part'])} < {want_gb}GB"
+    hf = _dg_hostfree()
+    if hf is not None and hf < DISK_HOST_MIN:
+        return "hostlow", f"ổ máy chủ chỉ còn {hf:.0f}GB trống (< {DISK_HOST_MIN:g}GB) — chưa nới, dọn ổ máy chủ trước"
+    o = _dg_root(port, f"resize2fs {st['dev']} {want_gb}G 2>&1 | tail -3; sync; echo DG_END")
+    if o is None:
+        return "noroot", "máy không cho máy chủ quyền root (su / adb root) — nới tay: MuMu › Cài đặt thiết bị › Ổ đĩa › Dung lượng ổ › Mở rộng"
+    st2 = _dg_state(port)
+    if st2["total"] and st2["total"] >= want * DG_OK:
+        _dg_event(name, port, st["total"], st2["total"], "grown")
+        return "grown", f"/data {gb(st['total'])} → {gb(st2['total'])} (trống {gb(st2['avail'])})"
+    why = " | ".join(x.strip() for x in o.replace("DG_END", "").splitlines() if x.strip())[-160:]
+    _dg_event(name, port, st["total"], st2["total"], "fail", why)
+    return "fail", f"resize2fs chưa nới được ({why or 'không rõ'}) · /data {gb(st2['total'] or st['total'])}"
+DG_TRIES = 5
+def _int0(x):
+    try: return int(float(x or 0))
+    except (TypeError, ValueError): return 0
+def _disk_target(p):
+    """Cỡ đích (GB) của 1 máy trong danh sách: dấu disk_new (máy mới / đã hẹn) → disk_gb → bậc theo RAM."""
+    for k in ("disk_new", "disk_gb"):
+        try:
+            v = int(float((p or {}).get(k) or 0))
+            if v >= 4: return min(v, DISK_MAX)
+        except (TypeError, ValueError): pass
+    return disk_tier((p or {}).get("ram"))
+def _disk_hook(name, port):
+    """Gọi sau khi máy vừa lên (wait_boot). CHỈ máy có dấu disk_new (máy MỚI, hoặc máy khách mua thêm lúc đang tắt / ngủ): /data nhỏ hơn
+       cỡ đích → nới. Đã đủ / vừa nới → bỏ dấu, ghi disk_gb. Chưa nới được → giữ dấu, thử lại lần bật sau (tối đa DG_TRIES lần).
+       Máy không có dấu → không làm gì. Không bao giờ ném lỗi."""
+    try:
+        p = rec(name)
+        if not p or not p.get("disk_new"): return
+        t = _disk_target(p)
+        k, msg = disk_grow(port, name, want_gb=t)
+        if k == "?": return                                    # chưa đọc được (adb / Android chưa sẵn) → để lần sau, không tính lần thử
+        if k == "grown": print(f"   💾 {name}: bộ nhớ {msg}", flush=True)
+        elif k not in ("ok", "skip") and (name, k) not in _DG_SAID:
+            _DG_SAID.add((name, k)); print(f"   💾 {name}: bộ nhớ chưa đủ {t}GB — {msg}", flush=True)
+        st = load(); q = rec(name, st)
+        if not q: return
+        if k in ("ok", "grown", "skip"):
+            for x in ("disk_new", "disk_try", "disk_buy"): q.pop(x, None)
+            if k != "skip": q["disk_gb"] = max(t, _int0(q.get("disk_gb")))
+        else:
+            q["disk_try"] = int(q.get("disk_try") or 0) + 1
+            if q["disk_try"] >= DG_TRIES and not q.get("disk_buy"):     # máy khách đã MUA thêm: lần bật nào cũng thử tới khi được
+                q.pop("disk_new", None); print(f"   💾 {name}: thôi tự nới bộ nhớ sau {DG_TRIES} lần ({k})", flush=True)
+        save(st)
+    except Exception as e: print(f"   (nới bộ nhớ lỗi: {e!r})"[:200], flush=True)
 # 16/11k: trần "khung/giây tối đa" ghi vào máy MuMu — 0 (mặc định) = đúng FPS khách chọn. Chỉ dùng khi chẩn đoán (bluestream --kiemhinh)
 # thấy bộ nén trong máy ra hình hỏng ở FPS cao: phonectl setconf MUMU_FPS_CAP=60 rồi khởi động lại các máy đó.
 try: MUMU_FPS_CAP = max(0, int(float(CONF.get("MUMU_FPS_CAP", "0") or 0)))
@@ -2026,6 +2209,7 @@ def wait_boot(name, port, apps=True):
         except Exception: pass
         tune(name, port); grant_perms(name, port)
         _root_keep({"name": name}, port)
+        if EMU == "mumu" and DISK_FIX: _disk_hook(name, port)     # 19/11: máy MỚI / máy vừa mua thêm bộ nhớ (có dấu disk_new) → nới tới cỡ đích
         if sp0:                                          # 16/11k: giao diện sập giữa lúc tối ưu (PID đổi) → kiểm sổ khoá lần nữa, chờ lên lại
             sp1 = _ss_pid(port)
             if sp1 != sp0:
@@ -2102,6 +2286,9 @@ def cmd_create(a):
         except Exception: pass
     row = {"name": a.name, "idx": idx, "port": port, "ram": a.ram, "cpu": a.cpu, "res": a.res, "fps": clamp_fps(a.fps), "dpi": dpi,
            "android": ver, "kind": EMU, "created": fmt(now()), "expires": exp.isoformat()}
+    if EMU == "mumu" and DISK_FIX:                                  # 19/11: máy MỚI → lần đầu lên tự nới bộ nhớ (máy cũ không có dấu)
+        dg = _int0(getattr(a, "disk", 0))
+        row["disk_new"] = min(dg, DISK_MAX) if dg >= 4 else disk_tier(a.ram)     # web truyền cỡ đã tính (bậc RAM + phần khách mua) · không có → bậc RAM
     st = load(); st["phones"].append(row); save(st)
     print(f"[3/4] Bật máy…", flush=True)
     _boot_take(a.name, True)
@@ -4157,6 +4344,101 @@ def _host_mute(force=False):
         except OSError: pass
         return r
     except Exception: return None
+def cmd_bonho(a):
+    """18/11 → 19/11: BỘ NHỚ máy khách ĐANG CHẠY (MuMu). phonectl bonho [TÊN…] → mỗi máy /data bao nhiêu, so với cỡ ĐÍCH của máy (cỡ đã
+       nới / bậc theo RAM: DISK_TIERS) — chỉ đọc. phonectl bonho --sua TÊN… [--gb N] → ĐÚNG các máy được ghi tên, nhỏ hơn cỡ đích (hoặc N)
+       thì nới lên (resize2fs bằng root, KHÔNG tắt máy, giữ dữ liệu). Không có lệnh nới mọi máy (chủ máy: máy cũ để nguyên).
+       Dòng cuối: BONHO {json}."""
+    fix = bool(getattr(a, "sua", False)); only = set(getattr(a, "names", None) or []); gbo = _int0(getattr(a, "gb", 0))
+    if fix and not only:
+        print("BONHO --sua phải ghi TÊN máy (VD: phonectl bonho --sua cp_ab12cd34ef) — máy cũ không tự nới (chủ máy: chỉ máy mới)", flush=True); sys.exit(2)
+    if gbo and not (4 <= gbo <= DISK_MAX):
+        print(f"BONHO --gb phải từ 4 tới {DISK_MAX}", flush=True); sys.exit(2)
+    tiers = ",".join(f"{r:g}:{g}" for r, g in DISK_TIERS)
+    res = {"emu": EMU, "tiers": tiers, "max": DISK_MAX, "fix": fix, "on": DISK_FIX, "ok": 0, "grown": 0, "small": 0, "bad": {}, "off": 0,
+           "wait": 0, "host_free": None}
+    if EMU != "mumu" or not DISK_FIX:
+        res["skip"] = True
+        print(("BONHO bỏ qua: máy chủ không chạy MuMu" if EMU != "mumu" else "BONHO đang tắt (DISK_FIX=0)"), flush=True)
+        print("BONHO " + json.dumps(res, ensure_ascii=False)); return
+    hf = _dg_hostfree(); res["host_free"] = round(hf, 1) if hf is not None else None
+    st = load(); v = _mumu_list()
+    if not v: print("BONHO lỗi: không đọc được danh sách máy MuMu", flush=True); res["err"] = "list"; print("BONHO " + json.dumps(res, ensure_ascii=False)); sys.exit(4)
+    seen = set()
+    for p in sorted(st["phones"], key=lambda x: str(x.get("name"))):
+        nm = str(p.get("name", ""))
+        if not nm.startswith(("cp_", "spare_")) or nm in seen or (only and nm not in only): continue
+        seen.add(nm)
+        if p.get("disk_new"): res["wait"] += 1
+        i = next((k for k, x in v.items() if x["name"] == nm), None)
+        if i is None or not v[i]["running"] or _asleep(p): res["off"] += 1; continue
+        port = port_of(i)
+        if not booted(port):
+            if not _adb_fresh(port) and not booted(port): res["bad"].setdefault("?", []).append(nm); continue
+        t = gbo if (fix and gbo) else _disk_target(p)
+        k, msg = disk_grow(port, nm, fix=fix, want_gb=t)
+        if k == "ok": res["ok"] += 1; continue
+        if k == "grown":
+            res["grown"] += 1; print(f"   ✓ {nm} (#{i}): {msg}", flush=True)
+            try:
+                st2 = load(); q = rec(nm, st2)
+                if q:
+                    q["disk_gb"] = max(t, _int0(q.get("disk_gb")))
+                    if _int0(q.get("disk_new")) <= t:
+                        for x in ("disk_new", "disk_try", "disk_buy"): q.pop(x, None)
+                    save(st2)
+            except Exception: pass
+            continue
+        if k == "small":
+            res["small"] += 1
+            print(f"   - {nm} (#{i}): {msg} · đích {t}GB" + (" (máy cũ — để nguyên)" if not (p.get("disk_gb") or p.get("disk_new")) else ""), flush=True); continue
+        res["bad"].setdefault(k, []).append(nm); print(f"   ✗ {nm} (#{i}): {msg}", flush=True)
+    print(f"BONHO {'nới' if fix else 'xem'} xong: {res['ok']} máy đủ bộ nhớ · {res['grown']} máy vừa nới · "
+          + (f"{res['small']} máy nhỏ hơn cỡ đích · " if not fix else "")
+          + f"{sum(len(x) for x in res['bad'].values())} máy chưa nới được · {res['off']} máy đang tắt / ngủ"
+          + (f" · {res['wait']} máy hẹn nới lúc bật" if res["wait"] else "")
+          + (f" · ổ máy chủ trống {hf:.0f}GB" if hf is not None else "") + f" · bậc miễn phí (RAM:GB) {tiers}", flush=True)
+    print("BONHO " + json.dumps(res, ensure_ascii=False))
+DISK_PERM = ("unsupported", "off", "bad", "noname", "nopart", "notext4")          # lỗi không tự hết → cloudphoned hoàn tiền ngay
+def cmd_disk(a):
+    """19/11: ĐẶT bộ nhớ /data của 1 máy khách lên --gb N (cloudphoned gọi khi khách MUA THÊM bộ nhớ / nâng RAM lên bậc cao hơn).
+       Chỉ LỚN lên, không bao giờ thu nhỏ · giữ dữ liệu · KHÔNG tắt máy. Máy đang chạy → nới ngay · đang tắt / ngủ / đang lên → hẹn,
+       lần bật tới tự nới (wait_boot) — cloudphoned gọi lại sau đến khi báo xong.
+       Dòng cuối: DISK {json}. k: ok (đã đủ) · grown (vừa nới) · later (đã hẹn) · lỗi: unsupported / off / bad / noname / nopart /
+       notext4 (không tự hết) · hostlow / noroot / fail / ? (thử lại sau). Mã thoát: 0 xong · 6 đã hẹn · 4 lỗi không tự hết · 5 thử lại."""
+    name = str(a.name or ""); n = _int0(getattr(a, "gb", 0))
+    res = {"name": name, "gb": n, "k": "", "msg": ""}
+    def out(k, msg="", code=0):
+        res.update(k=k, msg=msg); print("DISK " + json.dumps(res, ensure_ascii=False), flush=True); sys.exit(code)
+    if EMU != "mumu": out("unsupported", "máy chủ này chưa hỗ trợ đổi bộ nhớ", 4)
+    if not DISK_FIX: out("off", "máy chủ đang tắt tính năng bộ nhớ (DISK_FIX=0)", 4)
+    if not (4 <= n <= DISK_MAX): out("bad", f"cỡ bộ nhớ phải từ 4 tới {DISK_MAX}GB", 4)
+    if not SAFE.match(name) or not name.startswith(("cp_", "spare_")): out("noname", "tên máy không hợp lệ", 4)
+    p = rec(name)
+    if not p: out("noname", "không có máy tên này trên máy chủ", 4)
+    def later(why):
+        st = load(); q = rec(name, st)
+        if not q: out("noname", "không có máy tên này trên máy chủ", 4)
+        q["disk_new"] = max(n, _int0(q.get("disk_new"))); q["disk_buy"] = 1; q.pop("disk_try", None); save(st)
+        out("later", why, 6)
+    v = _mumu_list()
+    if not v: out("?", "không đọc được danh sách máy", 5)
+    i = next((k for k, x in v.items() if x["name"] == name), None)
+    if i is None: out("noname", "máy không còn trong giả lập", 4)
+    if not v[i]["running"] or _asleep(p): later("máy đang tắt / ngủ — tự nới lúc bật")
+    port = port_of(i)
+    if not booted(port) and not _adb_fresh(port) and not booted(port): later("máy đang khởi động — tự nới khi lên xong")
+    k, msg = disk_grow(port, name, want_gb=n)
+    if k in ("ok", "grown"):
+        st = load(); q = rec(name, st)
+        if q:
+            q["disk_gb"] = max(n, _int0(q.get("disk_gb")))
+            if _int0(q.get("disk_new")) <= n:
+                for x in ("disk_new", "disk_try", "disk_buy"): q.pop(x, None)
+            save(st)
+        if k == "grown": print(f"   💾 {name}: {msg}", flush=True)
+        out(k, msg, 0)
+    out(k or "?", msg, 4 if k in DISK_PERM else 5)
 def cmd_tattieng(a):
     """17/11h: tắt tiếng loa WINDOWS của máy chủ (không đụng giả lập / máy khách; khách không nghe tiếng từ máy chủ nên không ảnh hưởng).
          phonectl tattieng         → tắt tiếng ngay
@@ -4980,7 +5262,9 @@ def main():
     c = s.add_parser("create"); c.add_argument("name"); c.add_argument("--ram", type=float, default=2); c.add_argument("--cpu", type=float, default=2)
     c.add_argument("--days", type=int, default=7); c.add_argument("--res", default="720x1280"); c.add_argument("--dpi", type=int, default=0)
     c.add_argument("--fps", type=int, default=30); c.add_argument("--nowait", action="store_true"); c.add_argument("--android", default="9")
-    c.add_argument("--nogpu", action="store_true"); c.add_argument("--until", default=""); c.set_defaults(f=cmd_create)
+    c.add_argument("--nogpu", action="store_true"); c.add_argument("--until", default="")
+    c.add_argument("--disk", type=int, default=0)                    # 19/11: bộ nhớ /data (GB) web đã tính — 0 = theo bậc RAM (DISK_TIERS)
+    c.set_defaults(f=cmd_create)
     for nm, fn in (("delete", cmd_delete), ("forget", cmd_forget), ("stop", cmd_stop), ("start", cmd_start), ("restart", cmd_restart), ("show", cmd_show)):
         x = s.add_parser(nm); x.add_argument("name"); x.set_defaults(f=fn)
         if nm == "restart": x.add_argument("--force", action="store_true")      # tắt hẳn (treo thì tắt cưỡng bức) rồi bật lại
@@ -4993,6 +5277,9 @@ def main():
     ks.add_argument("--bat", action="store_true"); ks.set_defaults(f=cmd_ksfix)
     kh = s.add_parser("khammay"); kh.add_argument("names", nargs="*"); kh.add_argument("--all", action="store_true"); kh.set_defaults(f=cmd_khammay)   # 17/11g
     tt = s.add_parser("tattieng"); tt.add_argument("--bat", action="store_true"); tt.set_defaults(f=cmd_tattieng)                                     # 17/11h
+    bn = s.add_parser("bonho"); bn.add_argument("names", nargs="*"); bn.add_argument("--sua", action="store_true"); bn.add_argument("--gb", type=int, default=0)
+    bn.set_defaults(f=cmd_bonho)                                                                                               # 18/11b · 19/11 --gb
+    dk = s.add_parser("disk"); dk.add_argument("name"); dk.add_argument("--gb", type=int, required=True); dk.set_defaults(f=cmd_disk)   # 19/11
     g = s.add_parser("reconfig"); g.add_argument("name"); g.add_argument("--fps", type=int, default=0); g.add_argument("--res", default=""); g.set_defaults(f=cmd_reconfig)
     lr = s.add_parser("liveres"); lr.add_argument("name"); lr.add_argument("--res", required=True); lr.set_defaults(f=cmd_liveres)
     pi = s.add_parser("preinstall"); pi.add_argument("name", nargs="?", default=""); pi.add_argument("--all", action="store_true"); pi.add_argument("--force", action="store_true"); pi.set_defaults(f=cmd_preinstall)
