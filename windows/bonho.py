@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 # =====================================================================
-#  bonho.py — xem BỘ NHỚ (ổ dữ liệu) của từng máy ảo trên máy chủ này · bản 18/11a · CHỈ ĐỌC
-#   Không sửa, không tắt / bật, không xoá gì → chạy lúc nào cũng được, máy khách không bị gián đoạn.
-#   python bonho.py         ← mỗi máy: tổng / trống của /data trong Android (máy đang chạy), cỡ ổ ảo, cài đặt ổ của giả lập
-#   python bonho.py --json  ← thêm 1 dòng JSON cuối (gửi hỗ trợ)
+#  bonho.py — BỘ NHỚ (ổ dữ liệu) của từng máy ảo trên máy chủ này · bản 18/11b
+#   python bonho.py         ← CHỈ ĐỌC: mỗi máy tổng / trống của /data trong Android (máy đang chạy), cỡ ổ ảo, cài đặt ổ của giả lập.
+#                              Không sửa, không tắt / bật, không xoá gì → chạy lúc nào cũng được, máy khách không bị gián đoạn.
+#   python bonho.py --json  ← như trên + 1 dòng JSON cuối (gửi hỗ trợ)
+#   python bonho.py --thu 12[,15] [--giu]   ← MuMu: THỬ cách nới ổ trên 1 MÁY THỬ nhân bản từ máy mẫu (tên cbtest_disk12…, KHÔNG phải
+#                              máy khách): ghi dấu → tắt "chế độ ổ nhỏ" (mini_disk) → bật lại → ổ có lớn lên + dấu còn nguyên không.
+#                              Xong tắt + xoá ĐÚNG máy thử đó (--giu: để lại máy thử). Máy khách không bị đụng tới.
 # =====================================================================
 import json, os, re, struct, sys, time
 HOME = os.environ.get("BLUE_HOME") or os.path.dirname(os.path.abspath(__file__))
@@ -13,7 +16,7 @@ try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception: pass
 import phonectl as P
 
-VER = "18/11a"
+VER = "18/11b"
 GB = float(1 << 30)
 WANT_GB = 20
 # khoá cài đặt "về ổ": tên có disk / storage / capacity / expand / mini / fsAutoSize… hoặc có "size" mà không phải cửa sổ / màn hình / RAM.
@@ -63,27 +66,40 @@ def img_info(d):
         out.append((n, vdi_cap(f) if low.endswith(".vdi") else vmdk_cap(f), sz))
     return out
 
-def parse_df(txt):
-    """Kết quả `df -k` trong Android → {nơi gắn: (tổng, đã dùng, trống)} tính bằng byte."""
-    out = {}; carry = []
+def df_rows(txt):
+    """Kết quả `df -k` trong Android → [(nơi gắn, tổng, đã dùng, trống)] (byte), theo thứ tự in ra."""
+    out = []; carry = []
     for ln in (txt or "").splitlines():
         t = ln.split()
         if not t or t[0].lower() == "filesystem": continue
         t = carry + t
         if len(t) < 6: carry = t; continue
         carry = []
-        try: out[t[-1]] = (int(t[1]) * 1024, int(t[2]) * 1024, int(t[3]) * 1024)
+        try: out.append((t[-1], int(t[1]) * 1024, int(t[2]) * 1024, int(t[3]) * 1024))
         except ValueError: continue
     return out
+def parse_df(txt): return {m: (a, b, c) for m, a, b, c in df_rows(txt)}
+def sh(port, cmd, t=40):
+    try:
+        r = P.adb("-s", f"127.0.0.1:{port}", "shell", cmd, timeout=t)
+        return ((r.stdout or "") + (r.stderr or "")).strip()
+    except Exception as e: return f"(adb lỗi: {e})"
+DF_CMD = "df -k /data 2>&1; echo @@; df -k /storage/emulated/0 2>&1; echo @@; df -k /sdcard 2>&1"
+def df2(port):
+    """((tổng, dùng, trống) của ổ chứa /data, của bộ nhớ trong) — mỗi đường dẫn lấy dòng ĐẦU của `df -k <đường dẫn>`, và chữ df in ra."""
+    o = sh(port, DF_CMD, 30)
+    parts = (o.split("@@") + ["", "", ""])[:3]
+    rs = [df_rows(x) for x in parts]
+    pick = lambda r: tuple(r[0][1:]) if r else None
+    return pick(rs[0]), pick(rs[1]) or pick(rs[2]), o
+DF_RAW = []                      # chữ df của máy đầu tiên không đọc được /data (in 1 lần để biết vì sao)
 def android_df(port):
-    """(tổng, đã dùng, trống) của /data + của bộ nhớ trong (sdcard) nếu nằm ổ khác — máy phải đang chạy và adb nối được."""
+    """(tổng, đã dùng, trống) của /data + của bộ nhớ trong nếu nằm ổ khác — máy phải đang chạy và adb nối được."""
     try:
         if not P._adb_fresh(port) and not P._adb_fresh(port): return None, None
-        r = P.adb("-s", f"127.0.0.1:{port}", "shell", "df -k /data /sdcard /storage/emulated/0 2>/dev/null", timeout=25)
+        data, sd, raw = df2(port)
     except Exception: return None, None
-    d = parse_df(r.stdout)
-    data = d.get("/data") or next((v for k, v in d.items() if k.startswith("/data")), None)
-    sd = next((v for k, v in d.items() if k != "/data" and ("sdcard" in k or "emulated" in k or k.startswith("/storage"))), None)
+    if data is None and not DF_RAW: DF_RAW.append(" | ".join(x.strip() for x in raw.splitlines() if x.strip())[:300])
     if sd and data and abs(sd[0] - data[0]) < (64 << 20): sd = None          # cùng 1 ổ (Android 11+: bộ nhớ trong nằm trên /data)
     return data, sd
 
@@ -171,7 +187,167 @@ def line(r):
     if r["keys"]: s += " · " + " ".join(f"{k.split('.')[-1] if len(k) > 30 else k}={short(v, 24)}" for k, v in r["keys"].items())
     return s
 
+# ---------------- THỬ cách nới ổ trên 1 MÁY THỬ (MuMu) — không bao giờ đụng máy khách ----------------
+TEST_NAME = "cbtest_disk{}"
+INFO_CMD = ("echo uid=$(id -u) se=$(getenforce 2>/dev/null); mount | grep -E ' /data | /data/media | /storage/emulated ' | head -4; "
+            "cat /proc/partitions 2>/dev/null | tail -n +3 | head -12; getprop | grep -i -E 'mini|disk|datasize|data_size|userdata|resize' | head -10; "
+            "ls /system/bin/resize2fs /system/bin/resize.f2fs 2>&1 | head -2")
+def _cap(t):
+    return gb(t[0]) + f" (trống {gb(t[2])})" if t else "?"
+T_POLL = float(os.environ.get("BONHO_POLL", "5"))          # giây giữa 2 lần xem máy thử đã lên chưa (chỉ đổi khi chạy thử nghiệm)
+T_LIVE = float(os.environ.get("BONHO_T2", "30"))           # giây chờ sau khi đổi chế độ ổ lúc máy đang chạy
+T_BOOT = float(os.environ.get("BONHO_BOOT", "420"))        # giây tối đa chờ máy thử lên
+def _wait_up(idx, limit=None):
+    """Chờ máy số idx lên hẳn Android → (cổng adb, số giây) · không lên → (None, số giây)."""
+    t0 = time.time(); limit = limit or T_BOOT
+    while time.time() - t0 < limit:
+        time.sleep(T_POLL)
+        try: port = P.port_of(idx)
+        except Exception: port = 16384 + 32 * int(idx)
+        try:
+            if port and P._adb_fresh(port) and P.booted(port): return port, int(time.time() - t0)
+        except Exception: pass
+    return None, int(time.time() - t0)
+def _dump(port, tag):
+    o = sh(port, INFO_CMD, 40)
+    for ln in [x.strip() for x in o.splitlines() if x.strip()][:24]: print(f"      [{tag}] {ln[:170]}")
+    return o
+def _data_dev(info):
+    """(thiết bị, kiểu ổ) của /data theo dòng mount — không thấy → (None, None)."""
+    for ln in info.splitlines():
+        t = ln.split()
+        if len(t) >= 3 and " /data " in f" {ln} ":
+            if "on" in t and t.index("on") + 1 < len(t) and t[t.index("on") + 1] == "/data":
+                k = t.index("on"); return t[0], (t[k + 3] if len(t) > k + 3 and t[k + 2] == "type" else None)
+            if t[1] == "/data": return t[0], t[2]
+    return None, None
+def _marks_ok(port, mark):
+    o = sh(port, "cat /data/local/tmp/cb_disk_marker /sdcard/cb_disk_marker.txt 2>&1", 20)
+    return o.count(mark) >= 2, o.replace("\n", " | ")[:160]
+
+def thu_one(ver, keep=False):
+    name = TEST_NAME.format(ver)
+    print(f"\n== THỬ NỚI Ổ — Android {ver} · máy thử '{name}' (nhân bản {P.tpl_name(ver)}, KHÔNG phải máy khách) · bonho {VER}", flush=True)
+    if ver not in P.ANDROIDS: print(f"   máy chủ này không bán Android {ver} (ANDROIDS={','.join(P.ANDROIDS)}) — bỏ qua"); return "BO"
+    L = P._mumu_stable()
+    if not L: print("   ✗ không đọc được danh sách máy MuMu — dừng"); return "LOI"
+    if not any(x["name"] == P.tpl_name(ver) for x in L.values()): print(f"   ✗ không có máy mẫu {P.tpl_name(ver)} — dừng"); return "LOI"
+    old = [i for i, x in L.items() if x["name"] == name]
+    if old:
+        idx = old[0]; print(f"   dùng lại máy thử còn từ lần trước: #{idx}", flush=True)
+    else:
+        print("   tạo máy thử (nhân bản máy mẫu, 1–5 phút)…", flush=True)
+        r = P.memuc("create", ver, timeout=900)
+        m = re.search(r"index\D*(\d+)", r.stdout or "")
+        if r.returncode not in (0, None) or not m:
+            print("   ✗ không tạo được máy thử: " + ((r.stderr or "") + " " + (r.stdout or "")).strip()[-220:]); return "LOI"
+        idx = int(m.group(1))
+        P.memuc("rename", "-i", idx, name, timeout=120)
+        if (P._mumu_list().get(idx) or {}).get("name") != name:
+            cur = str((P._mumu_list().get(idx) or {}).get("name", ""))
+            if cur and not cur.startswith(("cp_", "spare_")) and cur != P.tpl_name(ver): P.memuc("remove", "-i", idx, timeout=300)
+            print(f"   ✗ đổi tên máy thử #{idx} không được — dừng"); return "LOI"
+    try:
+        k0 = P._mumu_all(idx).get("mini_disk")
+        print(f"   máy thử #{idx} · mini_disk={k0} (máy mẫu {P.tpl_name(ver)}: {P._mumu_all(next(i for i, x in L.items() if x['name'] == P.tpl_name(ver))).get('mini_disk')})", flush=True)
+        # Bước 1: bật như máy khách mới → ghi dấu + đo ổ
+        P.memuc("start", "-i", idx, timeout=180)
+        port, sec = _wait_up(idx)
+        if not port: print(f"   ✗ bước 1: máy thử không lên sau {sec} giây — dừng"); return "LOI"
+        mark = f"cb{int(time.time())}"
+        sh(port, f"echo {mark} > /data/local/tmp/cb_disk_marker; echo {mark} > /sdcard/cb_disk_marker.txt; sync", 20)
+        d1, s1, _ = df2(port)
+        print(f"   1) bật lần 1 ({sec} giây): /data {_cap(d1)} · bộ nhớ trong {_cap(s1)} · ghi dấu: {'ok' if _marks_ok(port, mark)[0] else 'LỖI'}", flush=True)
+        _dump(port, "1")
+        # Bước 2: tắt chế độ ổ nhỏ LÚC MÁY ĐANG CHẠY → xem MuMu có nới ngay không
+        r = P._mumu_locked(lambda: P._mumurun(["setting", "-v", str(idx), "-k", "mini_disk", "-val", "false"], 60))
+        ans = " ".join(((r.stdout or "") + " " + (r.stderr or "")).split())[:120]
+        k2 = P._mumu_all(idx).get("mini_disk")
+        time.sleep(T_LIVE)
+        d2, s2, _ = df2(port)
+        print(f"   2) đặt mini_disk=false lúc đang chạy → MuMu trả: {ans or '(trống)'} · đọc lại: {k2} · {T_LIVE:.0f} giây sau: /data {_cap(d2)} · bộ nhớ trong {_cap(s2)}", flush=True)
+        live = bool(d2 and d2[0] >= (WANT_GB - 1) * GB)
+        # Bước 3: tắt máy (đặt lại khi tắt nếu lúc chạy không ghi được) → bật lại
+        P.memuc("stop", "-i", idx, timeout=120)
+        for _ in range(30):
+            if not (P._mumu_list().get(idx) or {}).get("running"): break
+            time.sleep(2)
+        if str(P._mumu_all(idx).get("mini_disk")).lower() != "false":
+            P._mumu_locked(lambda: P._mumurun(["setting", "-v", str(idx), "-k", "mini_disk", "-val", "false"], 60))
+            print(f"   3) lúc chạy không ghi được → ghi lúc máy tắt, đọc lại: {P._mumu_all(idx).get('mini_disk')}", flush=True)
+        P.memuc("start", "-i", idx, timeout=180)
+        port, sec = _wait_up(idx)
+        if not port: print(f"   ✗ bước 3: máy thử KHÔNG LÊN sau khi tắt chế độ ổ nhỏ ({sec} giây)"); return "KHONG_LEN"
+        d3, s3, _ = df2(port); ok3, m3 = _marks_ok(port, mark)
+        print(f"   3) bật lại ({sec} giây): /data {_cap(d3)} · bộ nhớ trong {_cap(s3)} · dấu: {'CÒN NGUYÊN' if ok3 else 'MẤT — ' + m3}", flush=True)
+        info3 = _dump(port, "3")
+        if not ok3: return "MAT_DU_LIEU"
+        if d3 and d3[0] >= (WANT_GB - 1) * GB: return "LIVE" if live else "A"
+        # Bước 4: ổ vẫn nhỏ → thử nới hệ thống tệp ngay trong Android (chỉ máy thử; cần root + ext4 + thiết bị lớn hơn)
+        dev, fs = _data_dev(info3)
+        uid0 = "uid=0" in info3
+        size_dev = None
+        if dev:
+            try: size_dev = int(sh(port, f"cat /sys/class/block/{os.path.basename(dev)}/size", 15).split()[0]) * 512
+            except (ValueError, IndexError): size_dev = None
+        print(f"   4) /data trên {dev or '?'} · kiểu {fs or '?'} · thiết bị {gb(size_dev) if size_dev else '?'} · root={'có' if uid0 else 'không'}", flush=True)
+        if not (dev and fs == "ext4" and uid0 and size_dev and size_dev >= WANT_GB * GB): return "C"
+        o = sh(port, f"resize2fs {dev} 2>&1 | tail -3", 900)
+        d4, _, _ = df2(port)
+        print(f"   4) resize2fs: {' | '.join(o.splitlines())[:200]} → /data {_cap(d4)}", flush=True)
+        if not (d4 and d4[0] >= (WANT_GB - 1) * GB): return "C"
+        P.memuc("stop", "-i", idx, timeout=120); time.sleep(5)
+        P.memuc("start", "-i", idx, timeout=180)
+        port, sec = _wait_up(idx)
+        if not port: print(f"   ✗ bước 4: máy thử KHÔNG LÊN sau khi nới ({sec} giây)"); return "KHONG_LEN"
+        d5, _, _ = df2(port); ok5, m5 = _marks_ok(port, mark)
+        print(f"   4) bật lại sau nới: /data {_cap(d5)} · dấu: {'CÒN NGUYÊN' if ok5 else 'MẤT — ' + m5}", flush=True)
+        if not ok5: return "MAT_DU_LIEU"
+        return "B" if d5 and d5[0] >= (WANT_GB - 1) * GB else "C"
+    finally:
+        if keep: print(f"   (--giu: để lại máy thử #{idx} '{name}' — xoá tay trong MuMu khi xong)", flush=True)
+        else:
+            try:
+                P.memuc("stop", "-i", idx, timeout=120)
+                for _ in range(30):
+                    if not (P._mumu_list().get(idx) or {}).get("running"): break
+                    time.sleep(2)
+                cur = (P._mumu_list().get(idx) or {}).get("name")
+                if cur == name:
+                    r = P.memuc("remove", "-i", idx, timeout=300)
+                    print(f"   dọn: {'đã xoá máy thử #' + str(idx) if idx not in P._mumu_list() else '✗ chưa xoá được máy thử #' + str(idx) + ' — xoá tay trong MuMu'}", flush=True)
+                else: print(f"   dọn: máy #{idx} giờ tên '{cur}' (không phải máy thử) → KHÔNG xoá", flush=True)
+            except Exception as e: print(f"   dọn lỗi: {e!r}"[:200], flush=True)
+
+KQ_TXT = {"A": "tắt chế độ ổ nhỏ (mini_disk=false) lúc máy TẮT rồi bật lại là ổ lớn, dữ liệu còn nguyên",
+          "LIVE": "tắt chế độ ổ nhỏ lúc máy đang chạy là ổ lớn NGAY, dữ liệu còn nguyên",
+          "B": "phải tắt chế độ ổ nhỏ + nới hệ thống tệp trong Android (resize2fs), dữ liệu còn nguyên",
+          "C": "chưa nới được bằng cách tự động (dữ liệu còn nguyên)", "MAT_DU_LIEU": "⚠ ĐỔI CHẾ ĐỘ LÀM MẤT DỮ LIỆU — không dùng cách này",
+          "KHONG_LEN": "⚠ máy thử không lên sau khi đổi — không dùng cách này", "LOI": "không thử được", "BO": "bỏ qua"}
+def thu(vers, keep=False):
+    if P.EMU != "mumu": print("--thu chỉ dùng cho máy chủ MuMu."); return 2
+    pb = P._priv_block()
+    if pb: print("❌ " + pb); return 2
+    try:
+        import shutil
+        free = shutil.disk_usage(os.path.join(P.MUMU, "vms")).free / GB
+    except Exception: free = 99.0
+    if free < 15: print(f"Ổ máy chủ chỉ còn {free:.0f}GB trống — không thử."); return 2
+    t0 = time.time(); out = []
+    for v in vers:
+        try: k = thu_one(v, keep)
+        except Exception as e: print(f"   ✗ lỗi: {e!r}"[:240], flush=True); k = "LOI"
+        out.append((v, k))
+    print("\nKẾT QUẢ THỬ: " + " · ".join(f"Android {v}: {k} — {KQ_TXT.get(k, k)}" for v, k in out) + f" · {time.time() - t0:.0f} giây", flush=True)
+    return 0 if all(k in ("A", "LIVE", "B") for _, k in out) else 1
+
+
 def main():
+    if "--thu" in sys.argv:
+        k = sys.argv.index("--thu"); arg = sys.argv[k + 1] if k + 1 < len(sys.argv) else ""
+        vers = [x.strip() for x in arg.split(",") if x.strip().isdigit()]
+        if not vers: print("Cách dùng: python bonho.py --thu 12   (hoặc 12,15)"); return 2
+        return thu(vers, keep="--giu" in sys.argv)
     as_json = "--json" in sys.argv
     t0 = time.time()
     print(f"== BỘ NHỚ MÁY ẢO — {P.CONF.get('NODE_ID', '?')} · {P.EMU_NAME} · bonho {VER} · chỉ đọc", flush=True)
@@ -229,6 +405,7 @@ def main():
         for ln in inf.get("lines") or []: print("   " + ln)
         if not inf.get("keys") and not inf.get("lines"): print("   (MuMu không trả khoá nào về ổ)")
     for ln in extra.get("help") or []: print("   hướng dẫn: " + ln)
+    if DF_RAW: print("df /data (máy đầu tiên không đọc được): " + DF_RAW[0])
     if extra.get("names"): print(f"Tên mọi khoá cài đặt ({len(extra['names'])}): " + " ".join(extra["names"]))
     if extra.get("cfg"): print("File cấu hình (máy #%s): " % (inf or {}).get("vm", "?") + " ".join(f"{k}={short(v, 30)}" for k, v in list(extra["cfg"].items())[:30]))
 
