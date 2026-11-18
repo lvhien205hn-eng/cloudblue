@@ -651,7 +651,7 @@ def patch(pid, fields):
 # Quá hạn → tắt riêng lệnh đó (mã 124), máy chủ chạy tiếp. Hạn rộng hơn hẳn thời gian thật (tạo máy MuMu nhân bản vài phút…).
 PCTL_T = {"connect-all": 300, "perms": 300, "list": 120, "show": 120, "hide": 120, "capacity": 120, "engine": 300, "memfix": 600,
           "idle": 900, "preinstall": 1800, "stop": 600, "start": 900, "waitboot": 1200, "renew": 1200, "delete": 1200,
-          "resize": 1800, "create": 2400}
+          "resize": 1800, "create": 2400, "disk": 600}
 PCTL_T_DEF = 1800
 _pc_main = {"args": None, "t": 0.0, "to": 0}     # lệnh phonectl mà VÒNG NHẬN ĐƠN đang chờ → luồng tự kiểm biết nó đứng vì đâu
 
@@ -729,6 +729,93 @@ def phonectl_until():
         except Exception: _until["v"] = False
     return _until["v"]
 
+# ---------- 19/11: BỘ NHỚ máy khách theo cấu hình + khách MUA THÊM bộ nhớ (SQL v40 · phonectl 19/11a) ----------
+# Web tính cỡ (bậc miễn phí theo RAM + phần khách mua) → cloud_phones.disk_gb. Máy MỚI: create --disk N, phonectl nới lúc lên lần đầu.
+# Khách mua thêm / nâng RAM lên bậc cao hơn → web ghi pending_disk = cỡ mới → máy chủ giữ máy đó gọi `phonectl disk TÊN --gb N`:
+#   xong → disk_gb = N, bỏ pending · máy đang tắt / ngủ → phonectl hẹn lần bật, ở đây hỏi lại 5 phút / lần tới khi xong ·
+#   lỗi không tự hết (máy chủ không hỗ trợ, phân vùng nhỏ…) hoặc lỗi 6 lần liền → hoàn tiền phần mua (cloudphone_disk_refund).
+# Máy CŨ không bao giờ bị đụng nếu khách không mua. Web chưa chạy SQL v40 → không có cột → 10 phút hỏi lại 1 lần, không làm gì.
+def _int(x):
+    try: return int(float(x or 0))
+    except (TypeError, ValueError): return 0
+_pdisk = {"v": None}
+def phonectl_disk():
+    """phonectl.py trên máy này có lệnh disk + create --disk chưa (19/11a)?"""
+    if _pdisk["v"] is None:
+        try: _pdisk["v"] = 'add_parser("disk")' in open(PHONECTL, encoding="utf-8").read()
+        except Exception: _pdisk["v"] = False
+    return _pdisk["v"]
+def _disk_live(ps):
+    """Cột bộ nhớ ghi lên web lúc GIAO máy mới: máy chủ không nới được bộ nhớ (không phải MuMu / phonectl cũ) → bỏ số (web không hiện
+       số sai) · phonectl chưa nới xong (dấu disk_new còn) → pending_disk = đích để vòng nới làm tiếp."""
+    if engine().get("emu") != "mumu" or not phonectl_disk(): return {"disk_gb": None}
+    w = _int((ps or {}).get("disk_new"))
+    return {"pending_disk": w} if w >= 4 else {}
+_dk = {"nocol": 0.0, "said": {}}
+_dk_try = {}                       # id đơn → [số lần lỗi, lúc được thử lại]
+DK_LATER_S, DK_RETRY_S, DK_MAX_FAIL = 300, 60, 6
+def get_disk():
+    if time.time() < _dk["nocol"]: return []
+    try: return sb("GET", "cloud_phones?pending_disk=not.is.null&status=eq.active&select=*") or []
+    except urllib.error.HTTPError as e:
+        if e.code == 400: _dk["nocol"] = time.time() + 600; return []          # web chưa chạy SQL v40
+        raise
+def _bg_disk():
+    try:
+        for row in get_disk():
+            if not mine(row): continue
+            try: do_disk(row)
+            except Exception as e: print("lỗi bộ nhớ:", e)
+    except Exception as e: print("lỗi đọc đơn bộ nhớ:", e)
+def disk_refund(row, msg):
+    try: sb("POST", "rpc/cloudphone_disk_refund", {"p_id": row["id"], "p_err": msg})
+    except Exception as e: print("   lỗi hoàn tiền bộ nhớ:", e)
+def do_disk(row):
+    """Đặt bộ nhớ máy khách lên pending_disk GB (khách mua thêm / nâng RAM lên bậc cao hơn) — chỉ lớn lên, giữ dữ liệu, không tắt máy."""
+    pid = row["id"]; name = row.get("container") or cname(row); n = _int(row.get("pending_disk"))
+    paid = _int(row.get("pending_disk_paid")); add = _int(row.get("pending_disk_add")); label = row.get("name") or name
+    tr = _dk_try.get(pid) or [0, 0.0]
+    if time.time() < tr[1]: return
+    if n < 4:
+        return disk_refund(row, "Cỡ bộ nhớ không hợp lệ")
+    if not phonectl_disk():                       # phonectl máy này chưa cập nhật (chưa chạy lệnh A) → chờ, KHÔNG hoàn tiền
+        _dk_try[pid] = [tr[0], time.time() + 600]
+        if time.time() - _dk["said"].get(pid, 0) > 3600:
+            _dk["said"][pid] = time.time(); print(f"[bộ nhớ] {label}: phonectl máy chủ {NODE_ID} chưa có lệnh disk — chạy lệnh A cập nhật máy chủ")
+        return
+    print(f"[bộ nhớ] {label} ({name}) → {n}GB" + (f" (khách mua +{add}GB)" if add else ""))
+    r = phonectl(["disk", name, "--gb", str(n)])
+    m = re.search(r"^DISK (\{.*\})\s*$", r.stdout or "", re.M)
+    try: j = json.loads(m.group(1)) if m else {}
+    except ValueError: j = {}
+    k = j.get("k") or "?"; msg = str(j.get("msg") or (r.stdout or r.stderr or "")[-160:]).strip()
+    if r.returncode == 0 and k in ("ok", "grown"):
+        _dk_try.pop(pid, None)
+        try:
+            sb("PATCH", f"cloud_phones?id=eq.{pid}&pending_disk=eq.{n}",       # web vừa đổi đích (khách nâng RAM giữa chừng) → không ghi đè, vòng sau làm tiếp
+               {"disk_gb": n, "pending_disk": None, "pending_disk_paid": None, "pending_disk_add": None, "disk_note": None,
+                "updated_at": datetime.datetime.now().isoformat()}, {"Prefer": "return=minimal"})
+        except Exception as e: print("   lỗi ghi bộ nhớ lên web:", e); return
+        print(f"   ✓ {label}: bộ nhớ {msg}")
+        if paid or k == "grown":
+            notify(f"💾 Máy <b>{label}</b> ({NODE_ID}): bộ nhớ → {n}GB" + (f" · khách mua +{add}GB ({paid:,}đ)".replace(",", ".") if paid else ""))
+        return
+    if r.returncode == 6 or k == "later":         # máy tắt / ngủ / đang lên → phonectl đã hẹn lần bật, hỏi lại sau
+        _dk_try[pid] = [tr[0], time.time() + DK_LATER_S]
+        if time.time() - _dk["said"].get(pid, 0) > 3600: _dk["said"][pid] = time.time(); print(f"   … {label}: {msg}")
+        return
+    fails = tr[0] + 1
+    print(f"   ✗ {label}: chưa nới được bộ nhớ ({k}: {msg[:160]}) — lần {fails}")
+    if r.returncode == 4 or fails >= DK_MAX_FAIL:
+        _dk_try.pop(pid, None)
+        why = {"unsupported": "máy chủ chưa hỗ trợ", "nopart": "ổ máy không đủ chỗ", "notext4": "ổ máy không hỗ trợ nới",
+               "hostlow": "máy chủ đang đầy ổ", "noroot": "máy chưa cho quyền nới"}.get(k, "máy chủ bận")
+        disk_refund(row, f"Chưa nới được bộ nhớ ({why})")
+        notify(f"⚠️ <b>{NODE_ID}</b>: máy <b>{label}</b> chưa nới được bộ nhớ lên {n}GB ({k}: {msg[:160]})"
+               + (f" — đã hoàn {paid:,}đ cho khách.".replace(",", ".") if paid else "."))
+    else:
+        _dk_try[pid] = [fails, time.time() + DK_RETRY_S * fails]
+
 BOOTING = set()
 def do_create(row):
     """Tạo container ngay (vài giây), rồi chờ Android khởi động ở luồng riêng → nhiều máy khởi động song song."""
@@ -739,7 +826,8 @@ def do_create(row):
         r = phonectl(["create", name, "--ram", str(row["ram"]), "--cpu", str(row["cpu"]),
                       "--days", str(row["days"]), "--res", row.get("res") or "720x1280",
                       "--fps", str(row.get("fps") or 30), "--android", str(row.get("android") or "11"), "--nowait"]
-                     + (["--until", str(row["until_at"])] if row.get("until_at") and phonectl_until() else []))
+                     + (["--until", str(row["until_at"])] if row.get("until_at") and phonectl_until() else [])
+                     + (["--disk", str(int(row["disk_gb"]))] if _int(row.get("disk_gb")) >= 4 and phonectl_disk() else []))
         if r.returncode == 2:   # HẾT CHỖ lúc tạo (RAM thật ít hơn số ước)
             _FULL["until"] = time.time() + FULL_COOL_S
             print(f"   ✗ {NODE_ID} hết chỗ khi tạo máy → nghỉ nhận đơn {FULL_COOL_S // 60} phút, nhường đơn cho máy chủ khác")
@@ -764,9 +852,9 @@ def do_create(row):
         patch(row["id"], {"container": name, "port": ps["port"], "node": NODE_ID})
     if name in BOOTING: return
     BOOTING.add(name); BOOT_T.setdefault(name, time.time())
-    threading.Thread(target=finish_boot, args=(row["id"], name), daemon=True).start()
+    threading.Thread(target=finish_boot, args=(row["id"], name, "pending_disk" in row), daemon=True).start()
 
-def finish_boot(pid, name):
+def finish_boot(pid, name, v40=False):
     try:
         t0 = time.time()
         r = phonectl(["waitboot", name, "--noapps"])   # chỉ chờ Android lên → giao máy cho khách NGAY
@@ -793,6 +881,7 @@ def finish_boot(pid, name):
         if not ps: return
         live = {"status": "active", "container": name, "port": ps["port"], "node": NODE_ID,
                 "stream_url": stream_url(ps["port"]), "expires_at": parse_dt(ps["expires"]).isoformat(), "error": None}
+        if v40: live.update(_disk_live(ps))                # 19/11: bộ nhớ THẬT lúc giao (SQL v40)
         # 16/11f: chỉ giao khi đơn CÒN chờ (cùng 1 lệnh với điều kiện) — đơn vừa tự huỷ + hoàn tiền (quá lâu) / khách huỷ thì KHÔNG
         # "sống lại" (trước: ghi đè thành đang chạy → khách vừa được hoàn tiền vừa có máy, hoặc máy đã huỷ vẫn chạy).
         try:
@@ -1445,6 +1534,7 @@ def tick():
         if not mine(row): continue
         try: do_upgrade(row)
         except Exception as e: print("lỗi nâng cấp:", e)
+    bg_job("disk", _bg_disk)        # 19/11: khách mua thêm bộ nhớ / nâng RAM lên bậc cao hơn → nới (luồng riêng)
     for row in get_live():
         if not mine(row): continue
         try: do_expiry(row)
@@ -1455,7 +1545,9 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 17/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 19/11a chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
+          + ("" if phonectl_disk() else " — ⚠ phonectl máy này CHƯA có lệnh disk (chạy lệnh A)"))
     if WIN: print("Tự dọn máy khách web đã HUỶ còn sót trên máy chủ (kể cả máy mất tên): ~1 phút sau khi bật, rồi 10 phút / lần (17/11f: tự dọn máy đã huỷ)")
     if SICK_MIN > 0: print(f"Máy mới tạo ra mà không lên → tự ngừng nhận đơn mới {SICK_MIN:g} phút + báo admin (máy chủ hỏng không giành đơn nữa)")
     if STUCK_MIN > 0: print(f"Đơn tạo máy quá {STUCK_MIN:g} phút chưa lên → tự huỷ + hoàn tiền, báo khách tạo máy mới (SQL v36) · máy tạo dở của đơn đó tự xoá")
