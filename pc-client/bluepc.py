@@ -570,6 +570,281 @@ BAR, BAR_MIN = 72, 14              # thanh công cụ bên phải · khi ẩn c�
 C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (7, 18, 38), (13, 29, 61), (214, 228, 250), (61, 134, 255), (232, 241, 255), (159, 180, 216), (61, 134, 255)   # 17/11c: tông "Thuỷ đêm" như danh sách máy
 
 
+# ================================================================ 🔗 ĐỒNG BỘ THAO TÁC giữa các máy đang mở trong app (18/11b)
+#   Bật "🔗 Đồng bộ" trên thanh chung của ô máy (đang mở ≥ 2 máy) → chạm / kéo / cuộn / phím / chữ gõ / dán ở 1 máy được gửi y hệt
+#   sang các máy còn lại. Mỗi cửa sổ máy (tiến trình riêng) có 1 "sổ ghi" nhỏ trong BỘ NHỚ dùng chung của Windows (vùng nhớ có tên:
+#   không ghi ra đĩa, không mở cổng mạng): máy đang được thao tác ghi sự kiện vào sổ của mình, các máy bạn đọc rồi gửi cho máy của
+#   mình bằng CHÍNH phiên điều khiển đang có — máy chủ vẫn kiểm quyền từng máy như thường, không thêm quyền / đường vào nào.
+import mmap, struct, zlib                                  # noqa: E402
+
+SY_N, SY_REC, SY_DATA = 1024, 64, 48                       # số ô của sổ · cỡ 1 ô (byte) · phần dữ liệu trong 1 ô
+SY_TOUCH, SY_KEY, SY_SCROLL, SY_CMD, SY_TEXT, SY_CLIP = 1, 2, 3, 4, 5, 6
+SY_CMDS = ("back", "home", "recents", "volup", "voldown")
+SY_TEXT_MAX = 16000                                        # chữ dán dài hơn (byte) → chỉ dán ở máy đang thao tác
+SY_TOK = re.compile(r"[0-9A-Za-z]{4,40}")
+
+
+class SyRing:
+    """Sổ ghi vòng: 1 bên ghi – nhiều bên đọc. Mỗi ô 64 byte = số thứ tự (8) · loại · a · b · độ dài · dữ liệu (48) · mã kiểm (4).
+       Bên đọc tự kiểm số thứ tự + mã kiểm của từng ô nên đọc trúng lúc bên kia đang ghi dở cũng không sao (lượt sau đọc lại)."""
+    SIZE = SY_N * SY_REC
+    _ST = struct.Struct("<QBBBB48sI")
+
+    def __init__(self, base, key, write=False):
+        self.write = bool(write); self.path = None; self.mm = None; self.seq = 0
+        if os.name == "nt":
+            self.mm = mmap.mmap(-1, self.SIZE, tagname="CloudBlueSync-" + key)       # vùng nhớ dùng chung có tên — không có file nào trên đĩa
+        else:
+            self.path = os.path.join(base, "sy-" + key + ".bin")
+            fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                if os.fstat(fd).st_size < self.SIZE: os.ftruncate(fd, self.SIZE)
+                self.mm = mmap.mmap(fd, self.SIZE)
+            finally: os.close(fd)
+        self.seq = self.newest()                           # bên đọc: chỉ nhận thao tác TỪ LÚC NÀY · bên ghi: ghi tiếp sau ô mới nhất
+
+    def _at(self, i):
+        o = (i % SY_N) * SY_REC
+        raw = self.mm[o:o + SY_REC]
+        seq, kind, a, b, n, data, crc = self._ST.unpack(raw)
+        if not seq or n > SY_DATA or crc != zlib.crc32(raw[:60]) or (seq - 1) % SY_N != i % SY_N: return None
+        return seq, kind, a, b, data[:n]
+
+    def newest(self):
+        m = 0
+        for i in range(SY_N):
+            r = self._at(i)
+            if r is not None and r[0] > m: m = r[0]
+        return m
+
+    def put(self, kind, a=0, b=0, data=b""):
+        s = self.seq + 1
+        head = struct.pack("<QBBBB48s", s, kind & 255, a & 255, b & 255, len(data), data)
+        o = ((s - 1) % SY_N) * SY_REC
+        self.mm[o:o + SY_REC] = head + struct.pack("<I", zlib.crc32(head))
+        self.seq = s
+
+    def take(self, limit=4096):
+        """Các ô mới kể từ lần đọc trước → ([(loại, a, b, dữ liệu)…], lost). lost = bên ghi đã đi quá 1 vòng (mình đọc chậm) → bỏ qua tới ô mới nhất."""
+        out = []
+        while len(out) < limit:
+            r = self._at(self.seq)                         # ô kế tiếp (số thứ tự seq + 1) nằm ở vị trí seq % SY_N
+            if r is None: break
+            if r[0] == self.seq + 1: self.seq += 1; out.append(r[1:])
+            elif r[0] > self.seq + 1: self.seq = self.newest(); return out, True
+            else: break
+        return out, False
+
+    def wipe(self):
+        """Ghi đè cả sổ bằng ô trống (chữ đã gõ / dán không nằm lại trong bộ nhớ dùng chung) — số thứ tự vẫn chạy tiếp nên bên đọc không lệch."""
+        for _ in range(SY_N): self.put(0)
+
+    def close(self):
+        m, self.mm = self.mm, None
+        try:
+            if m is not None: m.close()
+        except Exception: pass
+        if self.write and self.path:
+            try: os.remove(self.path)
+            except Exception: pass
+
+
+def _sy_u16(v): return max(0, min(65535, int(v * 65535 + 0.5)))
+def _sy_i16(v): return max(-32768, min(32767, int(v)))
+
+
+class SyLink:
+    """Phía CỬA SỔ MÁY của 🔗 Đồng bộ: ghi thao tác của khách ở máy này vào sổ của mình + (luồng nền) đọc sổ các máy bạn rồi gửi cho máy mình.
+       cli_fn() trả luồng hình đang dùng (đổi khi nối lại). Chỉ gửi kéo / nhấc khi đã nhận được lần chạm xuống tương ứng; tắt đồng bộ, máy bạn
+       rời nhóm hoặc đọc không kịp → tự nhấc các ngón đang giữ hộ."""
+    POLL = 0.008
+
+    def __init__(self, ipc, tok, cli_fn):
+        if not SY_TOK.fullmatch(str(tok or "")): raise ValueError("mã phiên không hợp lệ")
+        self.base = ipc; self.group = re.sub(r"[^0-9A-Za-z]", "", os.path.basename(os.path.normpath(ipc)))[:24] or "x"
+        self.tok = str(tok); self.cli_fn = cli_fn
+        self.on = False; self.out = None; self.peers = {}; self.gone = []; self.lock = threading.Lock()
+        self.down = {}; self.txt = {}; self.th = None; self.stop = False; self.mv_t = 0.0
+
+    def _key(self, tok): return self.group + "-" + tok
+
+    def set(self, on, peers=()):
+        """Bật với danh sách mã phiên của các máy bạn · tắt (on = False / không còn máy bạn). Trả True nếu đang đồng bộ."""
+        want = []
+        if on:
+            for p in peers or ():
+                if isinstance(p, str) and SY_TOK.fullmatch(p) and p != self.tok and p not in want and len(want) < 16: want.append(p)
+        with self.lock:
+            for t in list(self.peers):
+                if t not in want: self.gone.append((t, self.peers.pop(t)))
+            if want and self.out is None: self.out = SyRing(self.base, self._key(self.tok), write=True)
+            for t in want:
+                if t not in self.peers: self.peers[t] = SyRing(self.base, self._key(t))
+            was, self.on = self.on, bool(self.peers)
+        if was and not self.on and self.out is not None:
+            try: self.out.wipe()
+            except Exception as e: log("sync wipe:", e)
+        if self.th is None and (self.on or self.gone):
+            self.th = threading.Thread(target=self._run, daemon=True); self.th.start()
+        return self.on
+
+    # ---------- ghi (luồng chính của cửa sổ máy — thao tác của khách ở máy này) ----------
+    def _put(self, kind, a=0, b=0, data=b""):
+        r = self.out
+        if not self.on or r is None: return
+        try: r.put(kind, a, b, data)
+        except Exception as e: log("sync put:", e)
+
+    def touch(self, action, pointer, nx, ny):
+        if action == 2:                                    # kéo: tối đa 1 ô / 6 ms (chuột rê rất nhanh không làm đầy sổ) — vị trí cuối đi kèm lúc nhấc
+            now = time.time()
+            if now - self.mv_t < 0.006: return
+            self.mv_t = now
+        self._put(SY_TOUCH, action, pointer, struct.pack("<HH", _sy_u16(nx), _sy_u16(ny)))
+
+    def key(self, action, code, meta=0): self._put(SY_KEY, action, 0, struct.pack("<II", int(code) & 0xffffffff, int(meta) & 0xffffffff))
+    def scroll(self, nx, ny, h, v): self._put(SY_SCROLL, 0, 0, struct.pack("<HHhh", _sy_u16(nx), _sy_u16(ny), _sy_i16(h), _sy_i16(v)))
+    def cmd(self, name):
+        if name in SY_CMDS: self._put(SY_CMD, SY_CMDS.index(name))
+    def text(self, s): return self._long(SY_TEXT, s)
+    def clip(self, s): return self._long(SY_CLIP, s)
+
+    def _long(self, kind, s):
+        raw = (s or "").encode("utf-8")
+        if not raw: return True
+        if len(raw) > SY_TEXT_MAX: return False
+        for i in range(0, len(raw), SY_DATA): self._put(kind, 0, 1 if i + SY_DATA < len(raw) else 0, raw[i:i + SY_DATA])
+        return True
+
+    # ---------- đọc (luồng nền) ----------
+    def _run(self):
+        while not self.stop:
+            try: self.pump()
+            except Exception:
+                if self.stop: return
+                log("sync:", traceback.format_exc()); time.sleep(0.5)
+            time.sleep(self.POLL if self.on else 0.05)
+
+    def pump(self):
+        with self.lock:
+            gone, self.gone = self.gone, []
+            batch = [(t, r.take()) for t, r in self.peers.items()] if self.on else []
+        c = self.cli_fn()
+        for t, r in gone:
+            self._release(t, c); r.close()
+        for t, (recs, lost) in batch:
+            if lost: self._release(t, c)
+            for kind, a, b, data in recs: self._apply(t, c, kind, a, b, data)
+
+    def _release(self, t, c):
+        for k in [k for k in self.down if k[0] == t]:
+            x, y = self.down.pop(k)
+            if c is not None: c.touch(1, k[1], x / 65535.0, y / 65535.0)
+        for k in [k for k in self.txt if k[0] == t]: del self.txt[k]
+
+    def _apply(self, t, c, kind, a, b, data):
+        if kind == SY_TOUCH and len(data) >= 4:
+            x, y = struct.unpack_from("<HH", data); k = (t, b)
+            if a == 0: self.down[k] = (x, y)
+            elif k not in self.down: return                # kéo / nhấc mà chưa có lần chạm xuống (vừa bật đồng bộ giữa chừng) → bỏ
+            elif a == 1: del self.down[k]
+            else: self.down[k] = (x, y)
+            if c is not None: c.touch(a, b, x / 65535.0, y / 65535.0)
+        elif kind == SY_KEY and len(data) >= 8:
+            code, meta = struct.unpack_from("<II", data)
+            if c is not None: c.key(a, code, meta)
+        elif kind == SY_SCROLL and len(data) >= 8:
+            x, y, h, v = struct.unpack_from("<HHhh", data)
+            if c is not None: c.scroll(x / 65535.0, y / 65535.0, h, v)
+        elif kind == SY_CMD:
+            if c is not None and a < len(SY_CMDS): c.cmd(SY_CMDS[a])
+        elif kind in (SY_TEXT, SY_CLIP):
+            buf = self.txt.setdefault((t, kind), bytearray()); buf += data
+            if not b:                                      # b = 1: còn mảnh nữa
+                s = bytes(buf).decode("utf-8", "replace"); del self.txt[(t, kind)]
+                if c is not None and s:
+                    if kind == SY_TEXT: c.text(s)
+                    else: c.clip_set(s, True)
+            elif len(buf) > SY_TEXT_MAX + SY_DATA: del self.txt[(t, kind)]
+
+    def close(self):
+        self.stop = True
+        with self.lock:
+            rs = list(self.peers.values()) + [r for _, r in self.gone]; self.peers = {}; self.gone = []; self.on = False
+            o, self.out = self.out, None
+        if o is not None:
+            try: o.wipe()
+            except Exception: pass
+            rs.append(o)
+        for r in rs: r.close()
+
+
+class _SyTee:
+    """Bọc luồng hình của máy khách ĐANG thao tác khi bật 🔗 đồng bộ: lệnh vẫn gửi cho máy này như thường + ghi vào sổ cho các máy bạn làm theo.
+       Lệnh khác (chất lượng, xoay, xin khung hình…) đi thẳng, không đồng bộ."""
+    def __init__(self, cli, sy, warn=None): self._c, self._s, self._w = cli, sy, warn
+    def __getattr__(self, k): return getattr(self._c, k)
+    def touch(self, action, pointer, nx, ny): self._c.touch(action, pointer, nx, ny); self._s.touch(action, pointer, nx, ny)
+    def key(self, action, code, meta=0): self._c.key(action, code, meta); self._s.key(action, code, meta)
+    def text(self, s): self._c.text(s); self._s.text(s)
+    def scroll(self, nx, ny, h, v): self._c.scroll(nx, ny, h, v); self._s.scroll(nx, ny, h, v)
+    def cmd(self, name): self._c.cmd(name); self._s.cmd(name)
+    def clip_set(self, text, paste=True):
+        self._c.clip_set(text, paste)
+        if paste and not self._s.clip(text) and self._w is not None: self._w()
+
+
+def sy_probe(base, key):
+    """(bước thử lúc đóng gói) Tiến trình CON: đọc sổ của tiến trình cha qua bộ nhớ dùng chung → thoát mã 7 nếu nhận đủ 3 thao tác đúng thứ tự."""
+    code = 4
+    try:
+        r = SyRing(base, key); w = SyRing(base, key + "c", write=True)
+        w.put(SY_CMD, 1)                                   # báo cha: đã sẵn sàng đọc
+        got = []; t = time.time() + 12
+        while time.time() < t and len(got) < 3:
+            got += r.take()[0]; time.sleep(0.01)
+        code = 7 if [g[0] for g in got] == [SY_TOUCH, SY_KEY, SY_CMD] and got[0][3] == struct.pack("<HH", 111, 222) else 3
+        r.close(); w.close()
+    except Exception: log("sy-probe:", traceback.format_exc())
+    os._exit(code)                                         # thoát thẳng bằng mã (bản đóng gói không hiện hộp báo lỗi nào)
+
+
+def sync_selftest():
+    """🔗 Sổ ghi đồng bộ chạy được trên máy này không: ghi – đọc – tràn vòng trong 1 tiến trình, rồi GIỮA 2 TIẾN TRÌNH thật (cha ghi, con đọc)."""
+    import tempfile
+    d = tempfile.mkdtemp(); k = "t" + secrets.token_hex(4)
+    w = SyRing(d, k, write=True); r = SyRing(d, k); rc = SyRing(d, k + "c"); p = None
+    try:
+        w.put(SY_TOUCH, 0, 0, struct.pack("<HH", 5, 6)); w.put(SY_CMD, 1)
+        got, lost = r.take()
+        if lost or [(g[0], g[1]) for g in got] != [(SY_TOUCH, 0), (SY_CMD, 1)]: raise RuntimeError(f"đọc sai {got!r}")
+        for i in range(SY_N + 9): w.put(SY_KEY, 0, 0, struct.pack("<II", i, 0))
+        if not r.take()[1]: raise RuntimeError("không nhận ra tràn vòng")
+        w.put(SY_CMD, 2); got, lost = r.take()
+        if lost or [(g[0], g[1]) for g in got] != [(SY_CMD, 2)]: raise RuntimeError(f"sau tràn vòng đọc sai {got!r}")
+        cross = "?"
+        try:
+            exe = [sys.executable] if FROZEN else [sys.executable, os.path.abspath(__file__)]
+            p = subprocess.Popen(exe + ["--sy-probe", d, k], close_fds=True)
+            t = time.time() + 20; ready = False
+            while time.time() < t and not ready and p.poll() is None:
+                ready = any(g[0] == SY_CMD and g[1] == 1 for g in rc.take()[0]); time.sleep(0.02)
+            if ready:
+                w.put(SY_TOUCH, 0, 0, struct.pack("<HH", 111, 222)); w.put(SY_KEY, 0, 0, struct.pack("<II", 4, 0)); w.put(SY_CMD, 2)
+                code = p.wait(timeout=20); cross = "ok" if code == 7 else f"LỖI (mã {code})"
+            else: cross = "LỖI (tiến trình con không báo sẵn sàng)"
+        except Exception as e: cross = f"LỖI ({e})"
+        return f"đồng bộ: sổ ghi ok · giữa 2 tiến trình {cross}"
+    finally:
+        try:
+            if p is not None and p.poll() is None: p.kill()
+        except Exception: pass
+        for x in (r, rc, w): x.close()
+        try:
+            import shutil; shutil.rmtree(d, ignore_errors=True)
+        except Exception: pass
+
+
 class Viewer:
     def __init__(self, pid, dock=None):
         self.pid = pid; self.auth = Auth()
@@ -588,6 +863,7 @@ class Viewer:
         # 16/11: gợi ý của máy chủ khi báo lỗi (fix = "reboot" → cho khởi động lại máy · boot = 1 → máy đang được bật, tự thử lại)
         self.err_x = {}; self.fix_arm = 0.0; self.fixing = False; self.auto_at = 0.0; self.auto_n = 0
         self.weak = False; self.stall = False; self.slow = False      # mạng yếu (máy chủ đã giảm nét) · đang đứng hình · chờ máy chủ lâu
+        self.sy = None                                    # 18/11b: 🔗 đồng bộ thao tác với các máy đang mở cùng trong app (SyLink)
 
     # ---------- mạng ----------
     def connect(self):
@@ -729,6 +1005,9 @@ class Viewer:
             if dirty: self._draw(pygame); dirty = False
             clock.tick(500)
         if self.docked and self.dock is not None: self.dock.send("bye")
+        if self.sy is not None:
+            try: self.sy.close()
+            except Exception: pass
         if self.cli: self.cli.close()
         pygame.quit()
 
@@ -739,13 +1018,36 @@ class Viewer:
         for c in self.dock.sync():
             k = c.get("cmd")
             if k in ("gone", "close"): return "quit"
-            elif k == "left": self.docked = False; self.fit = None; dirty = True
-            elif k == "undock": self._undock(c); dirty = True
+            elif k == "left": self.docked = False; self.fit = None; dirty = True; self._sync_set({})
+            elif k == "undock": self._undock(c); dirty = True; self._sync_set({})
+            elif k == "sync": self._sync_set(c); dirty = True      # 18/11b: app bật / tắt 🔗 đồng bộ, hoặc nhóm máy đang mở vừa đổi
             elif k == "focus": self.dock.focus()
             elif k == "full": self.full = bool(c.get("on"))          # 17/11e: app thôi toàn màn cho máy này (máy khác vừa xin / ô đóng)
         if self.docked and self.dock is not None and self.vw and (self.vw, self.vh) != getattr(self, "_ar_sent", None):
             self._ar_sent = (self.vw, self.vh); self.dock.send("size", w=self.vw, h=self.vh)
         return dirty
+
+    def _cx(self):
+        """Luồng hình để gửi thao tác của khách. Đang 🔗 đồng bộ → kèm ghi vào sổ cho các máy bạn làm theo (18/11b)."""
+        c = self.cli; s = self.sy
+        if c is None or s is None or not s.on: return c
+        return _SyTee(c, s, lambda: self._say(L("Chữ dán dài quá — chỉ dán vào máy này, các máy khác không nhận.", "That text is too long to mirror — pasted into this phone only."), 5))
+
+    def _sync_set(self, c):
+        """🔗 Đồng bộ (18/11b): app bật / tắt, hoặc báo lại các máy bạn (mã phiên) khi có máy mở thêm / đóng bớt. Tách khỏi app → tắt."""
+        d = self.dock; sy = self.sy
+        on = bool(c.get("on")) and self.docked and d is not None
+        was = bool(sy is not None and sy.on)
+        if sy is None and not on: return
+        try:
+            if sy is None: sy = self.sy = SyLink(d.ipc, d.tok, lambda: self.cli)
+            now = sy.set(on, c.get("peers") or ())
+        except Exception:
+            log("sync:", traceback.format_exc())
+            if on: self._say(L("Máy này chưa đồng bộ được — vẫn điều khiển riêng như thường.", "Sync isn't available for this phone — it still works on its own."), 6)
+            return
+        if now and not was: self._say(L("Đồng bộ BẬT — thao tác ở 1 máy, các máy khác làm theo.", "Sync ON — the other phones follow what you do."), 4)
+        elif was and not now: self._say(L("Đã tắt đồng bộ.", "Sync off."), 3)
 
     def _dock_start(self, title):
         """Gắn cửa sổ máy vào ô bên phải của app; không gắn được → hiện cửa sổ riêng như cũ + báo app thu ô lại."""
@@ -1042,7 +1344,7 @@ class Viewer:
         return None
 
     def _tool(self, name, pygame):
-        c = self.cli
+        c = self._cx()
         if name in ("back", "home", "recents", "volup", "voldown") and c: c.cmd(name)
         elif name == "rotate": self._rotate()
         elif name == "shot": self._shot()
@@ -1144,7 +1446,7 @@ class Viewer:
         threading.Thread(target=self._connect_bg, daemon=True).start()
 
     def _input(self, e, pygame):
-        c = self.cli; t = e.type
+        c = self._cx(); t = e.type
         if t == getattr(pygame, "WINDOWFOCUSGAINED", -2) and self.docked and self.dock is not None:   # 17/11e: máy này nhận bàn phím → app tô viền ô này
             self._act_t = time.time(); self.dock.send("act"); return False
         if t == pygame.MOUSEMOTION:
@@ -6233,6 +6535,7 @@ class DockPanel:
         self.app = app; self.api = api or W32(); self.launch = launch or launch_viewer
         self.sess = []; self.old = []; self.act = None; self.full = None; self.list_off = False
         self.grown = None; self.job = None
+        self.sync = False                                 # 18/11b: 🔗 đồng bộ thao tác giữa các máy đang mở
         self.ipc = os.path.join(DATA, "ipc", str(os.getpid()))
         try:                                              # dọn thư mục tin của các lần mở app trước (quá 12 giờ)
             import shutil
@@ -6248,6 +6551,8 @@ class DockPanel:
         self.b_all.pack(side="right")
         self.b_list = app.btn(self.bar, L("«  Thu danh sách", "«  Hide list"), self.toggle_list, "ghost", padx=11, pady=4, font=bf)
         self.b_list.pack(side="right", padx=(0, 6))
+        self.b_sync = app.btn(self.bar, L("🔗  Đồng bộ: tắt", "🔗  Sync: off"), self.toggle_sync, "ghost", padx=11, pady=4, font=bf)
+        self.b_sync.pack(side="right", padx=(0, 6))
         self.cnt_l = tk.Label(self.bar, text="", font=("Segoe UI", 12, "bold"), fg=TXT, bg=BG, anchor="w"); self.cnt_l.pack(side="left")
         self.tip_l = tk.Label(self.bar, text=L("bấm vào máy nào thì gõ phím vào máy đó", "keys go to the phone you click"),
                               font=f_s, fg=DIM, bg=BG, anchor="w")
@@ -6353,6 +6658,11 @@ class DockPanel:
         try:
             self.cnt_l.config(text=L(f"▦ {len(lv)} máy đang mở", f"▦ {len(lv)} phones open"))
             self.b_list.config(text=L("»  Hiện danh sách", "»  Show list") if self.list_off else L("«  Thu danh sách", "«  Hide list"))
+            sy = self.sync and len(lv) >= 2
+            self.b_sync.config(text=L("🔗  Đồng bộ: BẬT", "🔗  Sync: ON") if sy else L("🔗  Đồng bộ: tắt", "🔗  Sync: off"), fg=OK if sy else TXT,
+                               state="normal" if len(lv) >= 2 else "disabled")
+            self.tip_l.config(text=L("đang đồng bộ: thao tác ở 1 máy → mọi máy làm theo", "sync on: what you do on one phone happens on all") if sy
+                              else L("bấm vào máy nào thì gõ phím vào máy đó", "keys go to the phone you click"), fg=OK if sy else DIM)
             if self.full is None and (len(lv) >= 2 or self.list_off):
                 if not self.bar.winfo_manager(): self.bar.pack(side="top", fill="x", padx=self._padx(), pady=(12, 0), before=self.area)
                 else: self.bar.pack_configure(padx=self._padx())
@@ -6380,6 +6690,9 @@ class DockPanel:
         try: s.tile.place_forget()
         except Exception: pass
         if s not in self.old: self.old.append(s)
+        if self.sync:                                     # 18/11b: nhóm đồng bộ bớt 1 máy → báo các máy còn lại · còn dưới 2 máy → tắt
+            if len(self.live()) < 2: self.set_sync(False)
+            else: self._sync_push()
 
     def _after(self):
         """Sau khi bớt ô: chia lại lưới · hết máy → thu ô, trả cỡ cửa sổ · báo danh sách máy / Xem tất cả."""
@@ -6433,6 +6746,35 @@ class DockPanel:
             ipc_put(self.ipc, ipc_name(f"to-{s.tok}-"), {"cmd": "focus"})
             try: self.api.focus(s.child)
             except Exception: pass
+
+    # ---------- 🔗 đồng bộ thao tác (18/11b) ----------
+    def toggle_sync(self):
+        if self.sync: return self.set_sync(False)
+        if len(self.live()) < 2: return
+        if not prefs().get("sync_tip"):                    # lần đầu: nói rõ đồng bộ làm gì
+            try:
+                import tkinter.messagebox as mb
+                if not mb.askyesno(L("🔗 Bật đồng bộ?", "🔗 Turn sync on?"),
+                                   L("Mọi cú bấm chuột, phím và chữ bạn gõ / dán ở 1 máy sẽ được gửi y hệt sang TẤT CẢ máy đang mở trong app. "
+                                     "Hợp nhất khi các máy cùng độ phân giải và đang ở cùng một màn hình (ví dụ cài cùng 1 app, chỉnh cùng 1 cài đặt).\n\n"
+                                     "Nhớ TẮT đồng bộ trước khi đăng nhập mỗi máy một tài khoản khác nhau.",
+                                     "Every click, key and text you type or paste on one phone is sent to ALL phones open in the app. "
+                                     "Works best when the phones share a resolution and show the same screen.\n\n"
+                                     "Turn sync OFF before signing in to a different account on each phone.")): return
+                prefs({"sync_tip": 1})
+            except Exception: log("sync ask:", traceback.format_exc())
+        self.set_sync(True)
+
+    def set_sync(self, on):
+        on = bool(on) and len(self.live()) >= 2
+        if on == self.sync: return
+        self.sync = on; self._sync_push(); self._relabel()
+
+    def _sync_push(self):
+        """Báo từng cửa sổ máy: đang 🔗 đồng bộ hay không + mã phiên của các máy bạn (để đọc thao tác của nhau qua bộ nhớ dùng chung)."""
+        lv = self.live(); on = bool(self.sync) and len(lv) >= 2
+        for s in lv:
+            ipc_put(self.ipc, ipc_name(f"to-{s.tok}-"), {"cmd": "sync", "on": on, "peers": [x.tok for x in lv if x is not s] if on else []})
 
     def toggle_list(self):
         self.set_list(self.list_off)
@@ -6652,6 +6994,7 @@ class DockPanel:
             try: s.child = int(m.get("hwnd") or 0) or s.child
             except (TypeError, ValueError): pass
             s.ok = True; self._fit_child(s)
+            if self.sync and on: self._sync_push()             # 18/11b: đang đồng bộ mà mở thêm máy → máy mới vào nhóm
         elif k == "undocked" and on:                                       # máy không gắn được / tự tách → cửa sổ riêng
             s.undock_at = 0.0; self._lost(s)
         elif k == "undocked": s.undock_at = 0.0
@@ -7466,6 +7809,8 @@ def selftest(out):
             Texture.from_surface(r, s).draw(dstrect=(0, 0, 16, 16)); r.present(); res.append("gpu ok")
         except Exception as e: res.append(f"gpu: {e} (dùng CPU)")
         pygame.quit()
+        try: res.append(sync_selftest())                  # 18/11b: sổ ghi 🔗 đồng bộ (bộ nhớ dùng chung) — chỉ báo, không làm đỏ lần build
+        except Exception as e: res.append(f"đồng bộ: LỖI {e}")
         res.append(skin_selftest())                       # 17/11c: vỏ giao diện dựng được trên đúng bản Tk đi kèm exe — hỏng → FAIL → bản này KHÔNG phát hành
         res.insert(0, "OK")
     except Exception:
@@ -7479,6 +7824,7 @@ def main():
             import ctypes; ctypes.windll.shcore.SetProcessDpiAwareness(2)      # chữ / hình nét trên màn hình phóng to 125–150%
         except Exception: pass
     args = sys.argv[1:]
+    if len(args) >= 3 and args[0] == "--sy-probe": return sy_probe(args[1], args[2])      # 18/11b: tiến trình con của bước thử 🔗 đồng bộ
     if len(args) >= 2 and args[0] == "--selftest":                 # GitHub Actions: kiểm tra bản exe có đủ thư viện trước khi đưa khách
         return selftest(args[1])
     if len(args) >= 3 and args[0] == "--finish-update":              # bản mới vừa tải: thay thư mục app cũ rồi mở lại app
