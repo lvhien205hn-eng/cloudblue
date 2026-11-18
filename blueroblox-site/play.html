@@ -176,6 +176,64 @@ input.tg:disabled{opacity:.45;cursor:default}
 #rootdlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .prog{height:6px;border-radius:6px;background:rgba(143,208,255,.15);overflow:hidden;margin-top:10px}
 .prog i{display:block;height:100%;width:0;background:var(--sky);transition:width .2s}
+/* ---------- 18/11b · 🎮 NHIỀU MÁY (lưới các ô) + 🔗 đồng bộ thao tác ---------- */
+#v-multi{position:fixed;left:0;right:0;top:0;height:var(--app-h);display:flex;flex-direction:column;background:#000}
+.mtop{flex:none;display:flex;align-items:center;gap:6px;background:var(--bg2);border-bottom:1px solid var(--line);padding:calc(4px + var(--sat)) calc(8px + var(--sar)) 4px calc(4px + var(--sal))}
+.mtop .mb,.mbar button{display:grid;place-items:center;flex:none;width:42px;height:40px;border:0;border-radius:12px;background:transparent;color:#cfdcff;font-size:20px;line-height:1}
+.mtop .mb:active,.mbar button:active{background:rgba(143,208,255,.12);color:#fff}
+.mtt{flex:1;min-width:0;line-height:1.25}
+.mtt b{display:block;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mtt small{display:block;color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mpill{flex:none;border:1px solid var(--line2);border-radius:999px;background:rgba(143,208,255,.06);color:var(--muted);font-size:12.5px;font-weight:700;padding:6px 11px;white-space:nowrap}
+.mpill.on{border-color:var(--ok);background:rgba(60,224,176,.14);color:var(--ok)}
+.mstage{position:relative;flex:1;min-height:0;display:flex}
+.mgrid{flex:1;min-width:0;min-height:0;display:grid;gap:4px;padding:4px;padding-left:calc(4px + var(--sal))}
+.mt{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#000}
+.mt.act{border-color:var(--sky);box-shadow:0 0 0 1px var(--sky)}
+.mt.sy{border-color:var(--ok)}
+.mt.sy.act{box-shadow:0 0 0 1px var(--ok)}
+.mth{flex:none;display:flex;align-items:center;gap:6px;height:28px;padding:0 2px 0 8px;background:var(--bg2);font-size:12px}
+.mth .d{flex:none;width:8px;height:8px;border-radius:50%;background:var(--warn)}
+.mth .d.ok{background:var(--ok)}
+.mth .d.bad{background:var(--bad)}
+.mth b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.mth button{flex:none;width:30px;height:26px;border:0;background:transparent;color:#cfdcff;font-size:15px;line-height:1;border-radius:8px}
+.mth button:active{background:rgba(143,208,255,.14)}
+.mt iframe{flex:1;min-height:0;width:100%;border:0;display:block;background:#000}
+.mgrid.one{display:block}
+.mgrid.one .mt{display:none;height:100%}
+.mgrid.one .mt.cur{display:flex}
+.mrail{flex:none;width:calc(40px + var(--sar));padding-right:var(--sar);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:var(--bg2);border-left:1px solid var(--line);touch-action:none;-webkit-user-select:none;user-select:none}
+.mrail button{width:32px;height:32px;border:0;border-radius:50%;background:transparent;color:#cfdcff;font-size:13px;font-weight:700;touch-action:none}
+.mrail button.cur{background:var(--blue);color:#fff}
+.mnote{position:absolute;inset:0;z-index:2;display:grid;place-items:center;padding:24px;text-align:center;background:rgba(3,6,16,.94);color:#d5def8}
+.mnote .btn{margin-top:14px}
+.mbar{flex:none;display:flex;align-items:center;justify-content:space-around;gap:4px;background:var(--bg2);border-top:1px solid var(--line);padding:4px calc(6px + var(--sar)) calc(4px + var(--sab)) calc(6px + var(--sal))}
+.mbar button{width:52px;height:44px}
+.mbar svg{width:24px;height:24px}
+.msheet .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+.msheet textarea{width:100%;min-height:84px;border-radius:12px;border:1px solid var(--line2);background:#070c22;color:var(--fg);padding:10px 12px;font:inherit;resize:vertical;-webkit-user-select:text;user-select:text}
+.msheet p{margin:8px 2px 0;color:#c9d4f3;font-size:14px;line-height:1.55}
+.msheet .pick{display:flex;align-items:center;gap:10px;padding:11px 6px;border-bottom:1px solid var(--line)}
+.msheet .pick input{flex:none;width:20px;height:20px;accent-color:var(--blue)}
+.msheet .pick span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid var(--line2);border-radius:14px;background:rgba(143,208,255,.05);color:var(--fg);padding:12px 14px}
+.mrow i{font-style:normal;font-size:22px}
+.mrow b{display:block;font-size:15px}
+.mrow small{display:block;color:var(--muted);font-size:12.5px}
+.mrow u{margin-left:auto;text-decoration:none;color:var(--muted);font-size:20px}
+/* 1 ô trong lưới (trang này mở trong khung với ?tile=1): chỉ còn màn máy */
+body.tile .bar{display:none}
+body.tile .stage{padding:0}
+body.tile .stats,body.tile .netw{display:none}
+body.tile .ovl{padding:8px}
+body.tile .ovl .box{max-width:250px}
+body.tile .ovl .nm,body.tile .ovl p.sm,body.tile .ovl .dg{display:none}
+body.tile .ovl p{font-size:12.5px;margin-top:6px}
+body.tile .ovl .acts{gap:6px;margin-top:8px}
+body.tile .ovl .btn{padding:7px 10px;font-size:12px;border-radius:9px}
+body.tile .spin{width:24px;height:24px}
+body.tile .toast{bottom:8px;font-size:12px;padding:6px 8px;max-width:94vw}
 </style>
 </head>
 <body data-view="">
@@ -258,6 +316,34 @@ input.tg:disabled{opacity:.45;cursor:default}
   <input type="file" id="apkf" accept=".apk,.xapk,.apks,.apkm,application/vnd.android.package-archive" hidden>
 </section>
 
+<!-- 18/11b · 🎮 NHIỀU MÁY: lưới các ô (mỗi ô = chính trang này mở trong khung ở chế độ ô) + 🔗 đồng bộ thao tác -->
+<section id="v-multi" hidden data-noi18n>
+  <div class="mtop">
+    <button type="button" class="mb" id="mu-back">‹</button>
+    <div class="mtt"><b id="mu-title"></b><small id="mu-sub"></small></div>
+    <button type="button" class="mpill" id="mu-sync" hidden></button>
+    <button type="button" class="mb" id="mu-mode" hidden>▭</button>
+  </div>
+  <div class="mstage">
+    <div class="mgrid" id="mu-grid"></div>
+    <div class="mrail" id="mu-rail" hidden></div>
+    <div class="mnote" id="mu-note" hidden><div><div id="mu-note-t"></div><button type="button" class="btn" id="mu-note-b" hidden></button></div></div>
+  </div>
+  <nav class="mbar" id="mu-bar">
+    <button type="button" data-m="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M17 5v14L6 12z"/></svg></button>
+    <button type="button" data-m="home"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="7"/></svg></button>
+    <button type="button" data-m="recents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg></button>
+    <button type="button" data-m="type"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"/></svg></button>
+    <button type="button" data-m="more"><svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></button>
+  </nav>
+</section>
+<div class="sheet msheet" id="mu-sheet" hidden data-noi18n>
+  <div class="in" role="dialog" aria-modal="true" aria-labelledby="mu-sh-t">
+    <div class="hd"><div><b id="mu-sh-t"></b></div><button class="lnk" type="button" id="mu-sh-x"></button></div>
+    <div id="mu-sh-b"></div>
+  </div>
+</div>
+
 <!-- MENU -->
 <div class="sheet" id="menu" hidden>
   <div class="in" role="dialog" aria-modal="true" aria-labelledby="m-nm">
@@ -287,6 +373,7 @@ input.tg:disabled{opacity:.45;cursor:default}
       <button type="button" data-a="store"><i>🛍</i>Kho app</button>
       <button type="button" data-a="root"><i>🔓</i>Root</button>
       <button type="button" data-a="reboot"><i>↻</i>Khởi động lại</button>
+      <button type="button" data-a="multi" data-noi18n><i>🎮</i><span id="m-multi-t">Nhiều máy</span></button>
       <button type="button" data-a="list"><i>☰</i>Danh sách máy</button>
     </div>
   </div>
@@ -343,11 +430,22 @@ input.tg:disabled{opacity:.45;cursor:default}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.7";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
+const VER = "web-1.8";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
 const TEST = LOCAL && Q.get("test") === "1";                    // chỉ chạy thử ở máy lập trình (localhost) — không có ở web thật
+/* web-1.8 (18/11b) · 🎮 NHIỀU MÁY + 🔗 ĐỒNG BỘ — trang này chạy thêm 2 vai:
+   ?multi=1 → màn "Nhiều máy": lưới các ô, mỗi ô là 1 khung (iframe) mở CHÍNH trang này ở chế độ ô (?id=…&tile=1) = 1 phiên điều khiển bình thường,
+              máy chủ kiểm quyền từng máy như cũ. Bật 🔗 Đồng bộ → thao tác ở 1 ô được trang cha chuyển cho các ô còn lại.
+   ?tile=1  → 1 ô trong lưới: chỉ còn màn máy; nói chuyện với trang cha qua postMessage — chỉ nhận tin của ĐÚNG trang cha, cùng nguồn gốc
+              (web đã cấm trang khác nhúng trang này: X-Frame-Options SAMEORIGIN). */
+const TILE = Q.get("tile") === "1" && window.parent !== window;
+const MULTI = !TILE && Q.get("multi") === "1";
+const T_MAXH = TILE ? Math.max(0, Math.min(1920, parseInt(Q.get("mh"), 10) || 0)) : 0;      // ô nhỏ (lưới ≥ 5 máy): cạnh dài hình ≤ 640
+const T_FPS = TILE ? Math.max(10, Math.min(30, parseInt(Q.get("tf"), 10) || 30)) : 0;
+const T_KBPS = TILE ? Math.max(0, Math.min(3000, parseInt(Q.get("tk"), 10) || 0)) : 0;
+if (TILE) document.body.classList.add("tile");
 const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const STANDALONE = navigator.standalone === true || matchMedia("(display-mode: standalone)").matches;
 // WebKit = MỌI trình duyệt trên iPhone/iPad (kể cả Chrome iOS) + Safari trên Mac
@@ -384,10 +482,11 @@ async function session() {
 
 /* ---------------- màn hình ---------------- */
 function view(v) {
-  for (const id of ["v-login", "v-list", "v-play"]) $(id).hidden = id !== v;
+  for (const id of ["v-login", "v-list", "v-play", "v-multi"]) $(id).hidden = id !== v;
+  if (v !== "v-multi" && document.body.dataset.view === "v-multi") muStop();      // web-1.8: rời màn Nhiều máy → đóng các ô
   document.body.dataset.view = v;
   if (v !== "v-play") { $("menu").hidden = true; $("dlg").hidden = true; }
-  if (v === "v-play" || isRot()) fitApp();                                // 17/11f: rời màn điều khiển → bỏ xoay ngang
+  if (v === "v-play" || v === "v-multi" || isRot()) fitApp();                                // 17/11f: rời màn điều khiển → bỏ xoay ngang
 }
 let toastT = 0;
 function toast(msg, btn, ms) {
@@ -400,6 +499,7 @@ function toast(msg, btn, ms) {
 
 /* ---------------- đăng nhập ---------------- */
 function showLogin(msg) {
+  if (TILE) { stopPlay(); tilePost({ k: "login" }); return; }                   // web-1.8: đang là 1 ô → trang cha lo đăng nhập
   stopPlay();
   view("v-login"); $("lerr").textContent = msg || "";
   setTimeout(() => $("le").focus(), 50);
@@ -421,6 +521,7 @@ const ST = { active: ["Đang chạy", "ok"], pending: ["Đang tạo máy…", "w
              error: ["Máy lỗi — liên hệ hỗ trợ", "bad"], cancelling: ["Đang huỷ", "bad"] };
 const fmtT = s => { try { return new Date(s).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" }); } catch { return ""; } };
 async function showList() {
+  if (TILE) { stopPlay(); tilePost({ k: "gone" }); return; }                    // web-1.8: đang là 1 ô → trang cha đóng ô này
   stopPlay();
   view("v-list");
   if (location.search) history.replaceState(null, "", location.pathname);
@@ -448,8 +549,10 @@ async function showList() {
       <div class="st ${st[1]}">${esc(st[0])}</div>
       <div class="go">${can ? `<button class="btn" type="button" data-open="${esc(p.id)}">Mở máy</button>` : ""}</div></div>`;
   }).join("");
+  if (rows.filter(p => p.status === "active" && !(p.locked && (!p.locked_until || new Date(p.locked_until) > new Date()))).length >= 2)      // web-1.8
+    box.insertAdjacentHTML("afterbegin", `<button type="button" class="mrow" id="mu-open" data-noi18n><i>🎮</i><span><b>${esc(L("Điều khiển nhiều máy cùng lúc", "Control several phones at once"))}</b><small>${esc(L("Chia ô các máy · vuốt qua máy khác · 🔗 đồng bộ thao tác", "Grid of phones · swipe to switch · 🔗 mirror your taps"))}</small></span><u>›</u></button>`);
 }
-$("list").addEventListener("click", e => { const b = e.target.closest("[data-open]"); if (b) openPhone(b.dataset.open); });
+$("list").addEventListener("click", e => { if (e.target.closest("#mu-open")) return showMulti(); const b = e.target.closest("[data-open]"); if (b) openPhone(b.dataset.open); });
 $("a2hs-x").onclick = () => { $("a2hs").hidden = true; lsSet("cb_a2hs_off", "1"); };
 $("logout").onclick = async () => { try { await sb.auth.signOut(); } catch {} showLogin(); };
 
@@ -475,10 +578,11 @@ const P = {
   fps30: Date.now() - (Number(lsGet("cb_fps30")) || 0) < 3 * 86400000,   // máy này giải mã 60 hình/giây không kịp (nhớ 3 ngày) → xin 30
   sw: false, swz: null,                                              // web-1.5: đang giải mã phần mềm · cỡ hình thật (SPS) để cắt viền
 };
+if (TILE) P.q = "eco";                                                // web-1.8: ô trong lưới luôn dùng mức Tiết kiệm (không đụng lựa chọn đã nhớ của khách)
 
 function openPhone(id) {
   if (!UUID.test(id)) return showList();
-  if (!TEST) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
+  if (!TEST && !TILE) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
   view("v-play");
   Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
                      bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "",
@@ -703,7 +807,7 @@ function linkUp(c, ws, token) {            // 1 đường vừa mở được �
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
   ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
   ws.onerror = () => {};
-  sendJSON(T.HELLO, Object.assign({ v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: IS_WEBKIT || P.fps30 || P.sw ? 30 : 60, maxh: P.sw ? Math.min(maxH(), SW_MAXH) : maxH(), via: c.k }, P.sw ? { dec: "sw" } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
+  sendJSON(T.HELLO, Object.assign({ v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
   startTimers();
 }
 /* Gợi ý cho máy chủ BẮT ĐẦU NHẸ khi mạng yếu rõ ràng (Chrome / Edge / Android; Safari không có → không gửi gì, máy chủ tự dò như cũ).
@@ -867,6 +971,60 @@ function waitNote(now) {                   // chờ quá 5 giây → ghi rõ đa
 }
 
 /* ---------- gửi ---------- */
+/* ---------- 18/11b · 🔗 đồng bộ (phía 1 Ô trong lưới "Nhiều máy"): thao tác của khách ở ô này → báo trang cha · thao tác từ ô khác → làm theo ----------
+   Chỉ chạy khi trang mở trong khung với ?tile=1. Chỉ nhận tin của ĐÚNG trang cha, cùng nguồn gốc (trang khác không nhúng / không điều khiển được). */
+const SY_CMDS = ["back", "home", "recents", "volup", "voldown", "power", "notif"];
+const SY = { on: false, inj: false, down: new Map(), actT: 0, last: "" };
+function tilePost(o) { if (!TILE) return; try { parent.postMessage(Object.assign({ cb: "tile", id: P.id }, o), location.origin); } catch {} }
+function syOut(e) { if (TILE && SY.on && !SY.inj) tilePost({ k: "ev", e }); }
+function syDo(fn) { SY.inj = true; try { fn(); } finally { SY.inj = false; } }     // lệnh nhận từ trang cha: gửi cho máy mình, KHÔNG báo ngược lại (tránh vòng lặp)
+function syIn(src, e) {                        // 1 thao tác của khách ở ô khác
+  if (!Array.isArray(e) || e.length > 6 || P.stopped) return;
+  syDo(() => {
+    const k = e[0];
+    if (k === "t") {
+      const a = e[1] | 0, ptr = 5 + (Math.abs(e[2] | 0) % 5), key = src + ":" + ptr, x = +e[3], y = +e[4];     // ngón của ô khác dùng số 5–9: không đụng ngón khách đang chạm ở ô này
+      if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
+      if (a === 0) SY.down.set(key, [ptr, x, y]);
+      else if (!SY.down.has(key)) return;        // kéo / nhấc mà chưa có lần chạm xuống (vừa bật đồng bộ giữa chừng) → bỏ
+      else if (a === 2) SY.down.set(key, [ptr, x, y]);
+      else SY.down.delete(key);
+      touch(a === 0 || a === 2 ? a : a === 3 ? 3 : 1, ptr, x, y);
+    } else if (k === "k") keyAct(e[1] ? 1 : 0, e[2] >>> 0, e[3] >>> 0);
+    else if (k === "x") { if (typeof e[1] === "string" && e[1].length <= 4000) typeText(e[1]); }
+    else if (k === "c") { if (SY_CMDS.includes(e[1])) cmd(e[1]); }
+    else if (k === "s") scroll(+e[1] || 0, +e[2] || 0, e[3] | 0, e[4] | 0);
+    else if (k === "p") { if (typeof e[1] === "string" && e[1].length <= 16000) setClip(e[1], true); }
+  });
+}
+function syRelease(src) {                      // tắt đồng bộ / ô kia rời nhóm → nhấc các ngón đang giữ hộ
+  syDo(() => { for (const [key, v] of [...SY.down]) if (src == null || key.startsWith(src + ":")) { SY.down.delete(key); touch(1, v[0], v[1], v[2]); } });
+}
+function tileReport() {                        // báo trang cha: tên máy · cỡ hình (chia lại lưới khi máy xoay) · tình trạng (chấm màu trên ô)
+  const o = { k: "st", name: P.name || "", vw: P.vw, vh: P.vh, s: $("ovl").hidden ? "ok" : (P.ovlKind || "wait") };
+  const j = JSON.stringify(o); if (j !== SY.last) { SY.last = j; tilePost(o); }
+}
+if (TILE) {
+  addEventListener("message", ev => {
+    if (ev.source !== parent || ev.origin !== location.origin) return;
+    const d = ev.data; if (!d || d.cb !== "host") return;
+    if (d.k === "sync") { const on = !!d.on; if (SY.on && !on) syRelease(null); SY.on = on; }
+    else if (d.k === "ev") { if (SY.on) syIn(String(d.src || ""), d.e); }
+    else if (d.k === "drop") syRelease(String(d.src || ""));
+    else if (d.k === "cmd") { if (SY_CMDS.includes(d.name) && !P.stopped) syDo(() => cmd(d.name)); }
+    else if (d.k === "text") { if (typeof d.s === "string" && d.s && d.s.length <= 16000 && !P.stopped) syDo(() => setClip(d.s, true)); }
+    else if (d.k === "key") { if (!P.stopped) syDo(() => key(d.code >>> 0, 0)); }
+    else if (d.k === "type") { if (typeof d.s === "string" && d.s && d.s.length <= 200 && !P.stopped) syDo(() => typeText(d.s)); }      // phím gõ lúc tiêu điểm đang ở trang cha
+    else if (d.k === "pause") { if (!P.stopped) { syRelease(null); stopPlay(); P.paused = true; overlay("idle", L("Đang tạm nghỉ", "Paused"), []); } }
+    else if (d.k === "resume" || d.k === "retry") { if (P.paused || d.k === "retry") { P.paused = false; P.stopped = false; retryNow(); } }
+  });
+  cv.addEventListener("pointerdown", () => {                               // khách chạm ô này → bàn phím máy tính gõ vào ô này + trang cha tô viền "đang chọn"
+    try { window.focus(); } catch {}
+    const n = Date.now(); if (n - SY.actT > 300) { SY.actT = n; tilePost({ k: "act" }); }
+  });
+  setInterval(tileReport, 400);
+}
+
 function send(type, payload) {
   const w = P.ws; if (!w || w.readyState !== 1) return false;
   const p = payload || new Uint8Array(0), b = new Uint8Array(1 + p.length);
@@ -883,25 +1041,28 @@ function touch(action, ptr, x, y) {
   const b = new Uint8Array(6), d = new DataView(b.buffer);
   b[0] = action; b[1] = ptr; d.setUint16(2, Math.round(c01(x) * 65535)); d.setUint16(4, Math.round(c01(y) * 65535));
   send(T.TOUCH, b);
+  syOut(["t", action, ptr, c01(x), c01(y)]);
 }
 function keyAct(action, code, meta) {
   const b = new Uint8Array(9), d = new DataView(b.buffer);
   b[0] = action; d.setUint32(1, code >>> 0); d.setUint32(5, (meta || 0) >>> 0);
   send(T.KEY, b);
+  syOut(["k", action, code >>> 0, (meta || 0) >>> 0]);
 }
 const key = (code, meta) => { keyAct(0, code, meta); keyAct(1, code, meta); };
 const OWN_CLIP = new Map();                      // 17/11e: chữ vừa dán / gõ sang máy → máy báo "vừa sao chép" đúng chữ đó thì không hiện lại
 const OWN_TYPED = { s: "", at: 0 };               // chữ có dấu vừa gõ (máy chủ gom vài chữ gõ liền → dán 1 lần)
 function ownClip(s) { const now = Date.now(); for (const [k, t] of OWN_CLIP) if (now - t > 15000) OWN_CLIP.delete(k); if (s) OWN_CLIP.set(s, now); }
 function isOwnClip(s) { ownClip(""); return OWN_CLIP.has(s) || (Date.now() - OWN_TYPED.at < 15000 && OWN_TYPED.s.includes(s)); }
-const typeText = s => { if (s) { if (/[^\x00-\x7e]/.test(s)) { const now = Date.now(); OWN_TYPED.s = (now - OWN_TYPED.at < 15000 ? OWN_TYPED.s : "").slice(-2000) + s; OWN_TYPED.at = now; } send(T.TEXT, enc.encode(s)); } };
-const cmd = c => sendJSON(T.CMD, { cmd: c });
+const typeText = s => { if (s) { if (/[^\x00-\x7e]/.test(s)) { const now = Date.now(); OWN_TYPED.s = (now - OWN_TYPED.at < 15000 ? OWN_TYPED.s : "").slice(-2000) + s; OWN_TYPED.at = now; } send(T.TEXT, enc.encode(s)); syOut(["x", s]); } };
+const cmd = c => { sendJSON(T.CMD, { cmd: c }); if (SY_CMDS.includes(c)) syOut(["c", c]); };
 function scroll(x, y, h, v) {
   const b = new Uint8Array(8), d = new DataView(b.buffer);
   d.setUint16(0, Math.round(c01(x) * 65535)); d.setUint16(2, Math.round(c01(y) * 65535)); d.setInt16(4, i16(h)); d.setInt16(6, i16(v));
   send(T.SCROLL, b);
+  syOut(["s", c01(x), c01(y), i16(h), i16(v)]);
 }
-function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); }
+function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); if (paste) syOut(["p", text]); }
 
 /* ---------- nhận ---------- */
 function json(p) { try { return JSON.parse(dec8.decode(p)); } catch { return {}; } }
@@ -910,7 +1071,9 @@ function onMsg(buf) {
   P.lastRx = Date.now();
   const u8 = new Uint8Array(buf), t = u8[0], p = u8.subarray(1);
   if (t === T.VIDEO) { P.lastVid = P.lastRx; if (P.cx && !P.cx.vidAt) P.cx.vidAt = P.lastRx; return onVideo(p); }
-  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android; return; }
+  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android;
+    if (TILE && T_KBPS) sendJSON(T.QUALITY, { q: P.q, fps: T_FPS, kbps: T_KBPS });                // web-1.8: ô nhỏ (lưới ≥ 5 máy) → trần băng thông
+    return; }
   if (t === T.SIZE) { const j = json(p); if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } P.needKey = true; return; }
   if (t === T.CLIPBOARD) { const s = dec8.decode(p); if (s && isOwnClip(s)) return; if (s) toast("Máy vừa sao chép: “" + s.slice(0, 120) + (s.length > 120 ? "…" : "") + "”", ["Chép", () => copyOut(s)]); return; }
   if (t === T.PONG) { if (p.length >= 8) P.rtt = Math.max(0, Date.now() - Number(new DataView(p.buffer, p.byteOffset, 8).getBigUint64(0))); return; }
@@ -1312,7 +1475,7 @@ try { LAND = localStorage.getItem("cb_land") !== "0"; LCCW = localStorage.getIte
 function vpSize() { const vv = window.visualViewport; return [vv ? vv.width : innerWidth, vv ? vv.height : innerHeight]; }
 function isRot() { return document.body.classList.contains("rot"); }
 function wantRot(W, H) {
-  if (!PHONE || !LAND || document.body.dataset.view !== "v-play") return false;
+  if (TILE || !PHONE || !LAND || document.body.dataset.view !== "v-play") return false;
   let land = false; try { land = P.vw > P.vh * 1.1; } catch {}
   if (!land) return false;                                                 // máy cloud đang dọc → như cũ
   const ae = document.activeElement;
@@ -1437,7 +1600,7 @@ document.addEventListener("keyup", e => {
 
 /* ---------- nút + menu ---------- */
 function setQ(q, tell) {
-  P.q = q; lsSet("cb_q", q);
+  P.q = q; if (!TILE) lsSet("cb_q", q);
   $("q-seg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.q === q));
   if (tell) { sendJSON(T.QUALITY, P.fps30 && !IS_WEBKIT ? { q, fps: 30 } : { q }); toast("Chất lượng hình: " + { auto: "Tự động", eco: "Tiết kiệm", bal: "Cân bằng", hd: "Nét" }[q]); }
 }
@@ -1460,6 +1623,7 @@ document.addEventListener("click", e => {
     case "menu": kbHide(); $("menu").hidden = false; return;
     case "close": $("menu").hidden = true; return;
     case "list": return toList();
+    case "multi": return showMulti(P.id);                                // web-1.8
     case "paste": return openDlg("paste");
     case "apklink": return openDlg("link");
     case "apkfile": return $("apkf").click();
@@ -1704,16 +1868,306 @@ document.addEventListener("visibilitychange", onBack);
 addEventListener("pageshow", e => { if (e.persisted) onBack(); });
 addEventListener("pagehide", () => { if (!P.stopped) send(T.BYE); });
 
+/* =====================================================================================================
+   18/11b · 🎮 NHIỀU MÁY (trang cha): lưới các ô + 🔗 đồng bộ + thanh nút gửi cho máy đang chọn
+   Mỗi ô là 1 khung mở chính trang này (?id=…&tile=1) = 1 phiên điều khiển bình thường — máy chủ kiểm quyền từng máy như cũ.
+   Đồng bộ = trang cha chuyển thao tác của ô đang được chạm cho các ô còn lại (postMessage, cùng nguồn gốc); không thêm đường vào nào ở máy chủ.
+   ===================================================================================================== */
+const MU = { rows: [], tiles: [], sync: false, one: false, act: 0, uid: "", railSig: "" };
+const MU_MAX = 9, MU_HEAD = 30;
+const muLive = () => MU.tiles.filter(t => !t.gone);
+const muSend = (t, o) => { try { t.fr.contentWindow.postMessage(Object.assign({ cb: "host" }, o), location.origin); } catch {} };
+const muTargets = () => { const lv = muLive(); return MU.sync ? lv : lv.filter((t, i) => i === MU.act); };
+function muNote(text, btn, fn) {
+  $("mu-note").hidden = !text; $("mu-note-t").textContent = text || "";
+  const b = $("mu-note-b"); b.hidden = !btn; b.textContent = btn || ""; b.onclick = fn || null;
+}
+function muText() {                            // chữ cố định của màn này (theo ngôn ngữ đang dùng)
+  const A = (id, t) => { $(id).title = t; $(id).setAttribute("aria-label", t); };
+  A("mu-back", L("Về danh sách máy", "Back to phones")); A("mu-bar", L("Nút gửi cho máy đang chọn", "Buttons for the selected phone")); $("mu-sh-x").textContent = L("Đóng", "Close");
+  const T2 = { back: L("Quay lại", "Back"), home: L("Màn hình chính", "Home"), recents: L("Ứng dụng gần đây", "Recents"), type: L("Gõ chữ vào máy", "Type into phone"), more: L("Thêm", "More") };
+  $("mu-bar").querySelectorAll("[data-m]").forEach(b => { b.title = T2[b.dataset.m]; b.setAttribute("aria-label", T2[b.dataset.m]); });
+}
+async function showMulti(first) {
+  stopPlay(); view("v-multi"); wake(); muText(); muPaint();
+  if (!TEST) history.replaceState(null, "", location.pathname + "?multi=1");
+  let rows = [];
+  if (TEST) rows = (Q.get("ids") || "").split(",").filter(x => UUID.test(x)).map((id, i) => ({ id, name: "Máy thử " + (i + 1) }));
+  else {
+    if (!muLive().length) muNote(L("Đang tải danh sách máy…", "Loading your phones…"));
+    const s = await session(); if (!s) return showLogin();
+    MU.uid = s.user.id;
+    try {
+      const [own, sh] = await Promise.all([
+        sb.from("cloud_phones").select("id,name,status,locked,locked_until").eq("user_id", s.user.id).eq("status", "active").order("created_at", { ascending: false }),
+        sb.rpc("cp_shared_with_me").then(r => r, () => ({}))]);
+      if (own.error) throw own.error;
+      rows = (own.data || []).concat(Array.isArray(sh && sh.data) ? sh.data : [])
+        .filter(p => p && UUID.test(p.id) && p.status === "active" && !(p.locked && (!p.locked_until || new Date(p.locked_until) > new Date())));
+    } catch (e) {
+      if (document.body.dataset.view !== "v-multi") return;
+      return muNote(L("Không tải được danh sách máy", "Couldn't load your phones") + " (" + (e.message || e) + ").", L("Thử lại", "Retry"), () => showMulti(first));
+    }
+  }
+  if (document.body.dataset.view !== "v-multi") return;                    // khách đã rời màn này trong lúc chờ
+  MU.rows = rows;
+  if (!rows.length) return muNote("📱 " + L("Chưa có máy nào đang chạy.", "No running phones."), L("Về danh sách máy", "Back to phones"), showList);
+  muNote("");
+  muBuild(muPick(first), first);
+}
+function muPick(first) {                       // máy nào vào lưới: lần chọn trước (nhớ theo tài khoản) → không có thì các máy đầu danh sách
+  const have = MU.rows.map(r => r.id), out = [];
+  for (const id of (lsGet("cb_multi_" + MU.uid) || "").split(",")) if (have.includes(id) && !out.includes(id) && out.length < MU_MAX) out.push(id);
+  if (first && have.includes(first) && !out.includes(first)) { if (out.length >= MU_MAX) out.pop(); out.unshift(first); }
+  if (out.length < 2) {
+    out.length = 0; if (first && have.includes(first)) out.push(first);
+    for (const id of have) { if (out.length >= (PHONE ? 4 : MU_MAX)) break; if (!out.includes(id)) out.push(id); }
+  }
+  return out;
+}
+function muTile(id, n) {
+  const row = MU.rows.find(r => r.id === id) || {};
+  const el = document.createElement("div"), hd = document.createElement("div"), d = document.createElement("span"), lab = document.createElement("b");
+  const b1 = document.createElement("button"), b2 = document.createElement("button"), fr = document.createElement("iframe");
+  el.className = "mt"; hd.className = "mth"; d.className = "d"; b1.type = b2.type = "button"; b1.textContent = "↗"; b2.textContent = "⤢";
+  b1.title = L("Mở riêng máy này (đủ công cụ)", "Open this phone alone (all tools)"); b1.setAttribute("aria-label", b1.title);
+  const qs = new URLSearchParams({ id, tile: "1", tf: n >= 5 ? "20" : "30" });
+  if (n >= 5) { qs.set("mh", "640"); qs.set("tk", "900"); }                 // từ 5 ô: hình nhỏ + nhẹ (ô vốn nhỏ) cho đỡ tốn mạng, nhẹ máy
+  if (TEST) { qs.set("test", "1"); for (const k of ["ws", "wss", "name"]) if (Q.get(k)) qs.set(k, Q.get(k)); }
+  fr.setAttribute("allow", "clipboard-read; clipboard-write"); fr.title = row.name || "Máy"; fr.src = location.pathname + "?" + qs;
+  hd.append(d, lab, b1, b2); el.append(hd, fr);
+  const t = { id, name: row.name || L("Máy", "Phone"), el, fr, d, lab, big: b2, ar: 9 / 16, st: "wait", gone: false, paused: false };
+  b1.onclick = () => muAlone(t); b2.onclick = () => muOne(!MU.one, t);
+  hd.addEventListener("click", e => { if (!e.target.closest("button")) muAct(t); });
+  return t;
+}
+function muBuild(ids, first) {                 // dựng (lại) các ô: máy còn giữ thì dùng lại ô cũ (không nối lại), máy bỏ chọn thì đóng
+  const keep = new Map(muLive().map(t => [t.id, t])), next = [], g = $("mu-grid");
+  ids = ids.slice(0, MU_MAX);
+  for (const id of ids) { let t = keep.get(id); if (t) keep.delete(id); else t = muTile(id, ids.length); next.push(t); }
+  for (const t of keep.values()) muDrop(t);
+  MU.tiles = next;
+  next.forEach((t, i) => { t.el.style.order = i; if (!t.el.isConnected) g.appendChild(t.el); });      // KHÔNG dời ô cũ trong trang (dời khung = tải lại máy) → xếp thứ tự bằng CSS
+  const fi = first ? next.findIndex(t => t.id === first) : -1;
+  MU.act = fi >= 0 ? fi : Math.max(0, Math.min(MU.act, next.length - 1));
+  if (next.length < 2) { MU.one = false; if (MU.sync) muSync(false, true); }
+  muApply(); muPaint(); muLayout();
+}
+function muDrop(t) {
+  if (t.gone) return;
+  t.gone = true; t.el.remove();                                            // gỡ khung = đóng phiên của máy đó (máy vẫn chạy trên máy chủ)
+  muLive().forEach(x => muSend(x, { k: "drop", src: t.id }));
+}
+function muStop() {                            // rời màn Nhiều máy: đóng hết các ô
+  for (const t of MU.tiles) { t.gone = true; t.el.remove(); }
+  MU.tiles = []; MU.sync = false; MU.one = false; MU.act = 0; MU.railSig = "";
+  $("mu-sheet").hidden = true; $("mu-rail").hidden = true; $("mu-grid").classList.remove("one"); unwake();
+}
+function muLayout() {                          // chia cột / hàng sao cho tổng diện tích màn máy lớn nhất (theo tỉ lệ hình của từng máy)
+  const g = $("mu-grid"), lv = muLive(), n = lv.length;
+  if (!n || MU.one) { g.style.gridTemplateColumns = g.style.gridTemplateRows = ""; return; }
+  const cs = getComputedStyle(g), gap = 4;
+  const W = g.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), H = g.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  if (W <= 0 || H <= 0) return;
+  let best = Math.ceil(Math.sqrt(n)), bestA = -1;
+  for (let c = 1; c <= n; c++) {
+    const r = Math.ceil(n / c), cw = (W - gap * (c - 1)) / c - 2, ch = (H - gap * (r - 1)) / r - MU_HEAD;
+    if (cw <= 20 || ch <= 20) continue;
+    let A = 0; for (const t of lv) { const h = Math.min(ch, cw / t.ar); A += h * h * t.ar; }
+    if (A > bestA * 1.0001) { bestA = A; best = c; }
+  }
+  g.style.gridTemplateColumns = "repeat(" + best + ",minmax(0,1fr))"; g.style.gridTemplateRows = "repeat(" + Math.ceil(n / best) + ",minmax(0,1fr))";
+}
+function muPaint() {
+  const lv = muLive(), n = lv.length, on = MU.sync && n > 1, a = lv[MU.act];
+  $("mu-title").textContent = n ? L("Nhiều máy (" + n + ")", "Multi-control (" + n + ")") : L("Nhiều máy", "Multi-control");
+  $("mu-sub").textContent = !n ? "" : on ? L("Đồng bộ: thao tác 1 máy → cả " + n + " máy", "Sync: one phone → all " + n)
+    : MU.one ? L("Vuốt lên / xuống ở thanh số để qua máy khác", "Swipe the number rail to switch") : L("Đang chọn: ", "Selected: ") + (a ? a.name : "");
+  const sp = $("mu-sync"); sp.hidden = n < 2; sp.classList.toggle("on", on); sp.textContent = "🔗 " + (on ? L("Đồng bộ: BẬT", "Sync: ON") : L("Đồng bộ: tắt", "Sync: off"));
+  sp.setAttribute("aria-pressed", on ? "true" : "false");
+  const mb = $("mu-mode"), mt = MU.one ? L("Về lưới nhiều máy", "Back to the grid") : L("Xem 1 máy to", "One phone, big");
+  mb.hidden = n < 2; mb.textContent = MU.one ? "▦" : "▭"; mb.title = mt; mb.setAttribute("aria-label", mt);
+  $("mu-grid").classList.toggle("one", MU.one);
+  lv.forEach((t, i) => {
+    t.lab.textContent = (i + 1) + " · " + t.name; t.fr.title = t.name;
+    t.el.classList.toggle("act", i === MU.act && n > 1); t.el.classList.toggle("sy", on); t.el.classList.toggle("cur", MU.one && i === MU.act);
+    t.d.className = "d" + (t.st === "ok" ? " ok" : t.st === "err" ? " bad" : "");
+    const bt = MU.one ? L("Về lưới nhiều máy", "Back to the grid") : L("Xem máy này to", "Make this phone big");
+    t.big.hidden = n < 2; t.big.textContent = MU.one ? "▦" : "⤢"; t.big.title = bt; t.big.setAttribute("aria-label", bt);
+  });
+  const rl = $("mu-rail"), show = MU.one && n > 1, sig = show ? n + ":" + MU.act : "";
+  rl.hidden = !show;
+  if (sig !== MU.railSig) {                                                // chỉ vẽ lại thanh số khi số máy / máy đang xem đổi (đang vuốt không bị mất ngón)
+    MU.railSig = sig; rl.textContent = "";
+    if (show) {
+      const mk = (txt, i, lbl) => { const b = document.createElement("button"); b.type = "button"; b.textContent = txt; b.dataset.go = i; b.title = lbl; b.setAttribute("aria-label", lbl); if (i === MU.act) b.className = "cur"; rl.appendChild(b); };
+      mk("▲", "next", L("Máy kế", "Next phone"));
+      lv.forEach((t, i) => mk(String(i + 1), i, t.name));
+      mk("▼", "prev", L("Máy trước", "Previous phone"));
+      rl.setAttribute("aria-label", L("Thanh đổi máy: vuốt lên hoặc xuống để qua máy khác", "Phone switcher: swipe up or down"));
+    }
+  }
+}
+function muApply() {                           // kiểu 1 máy to + KHÔNG đồng bộ: các máy đang khuất tạm nghỉ (đỡ tốn mạng, nhẹ máy) · còn lại: chạy hết
+  muLive().forEach((t, i) => { const hide = MU.one && !MU.sync && i !== MU.act; if (hide !== t.paused) { t.paused = hide; muSend(t, { k: hide ? "pause" : "resume" }); } });
+}
+function muAct(t) { const i = muLive().indexOf(t); if (i >= 0 && i !== MU.act) { MU.act = i; muApply(); muPaint(); } }
+function muOne(on, t) {
+  const lv = muLive(); if (t) { const i = lv.indexOf(t); if (i >= 0) MU.act = i; }
+  MU.one = !!on && lv.length > 1; muApply(); muPaint(); muLayout();
+}
+function muGo(i) { const n = muLive().length; if (!n) return; MU.act = ((i % n) + n) % n; muApply(); muPaint(); }
+function muSync(on, quiet) {
+  on = !!on && muLive().length > 1; if (on === MU.sync) return;
+  MU.sync = on; muLive().forEach(t => muSend(t, { k: "sync", on })); muApply(); muPaint();
+  if (!quiet) toast(on ? L("Đã BẬT đồng bộ — thao tác 1 máy, mọi máy làm theo.", "Sync ON — all phones follow.") : L("Đã tắt đồng bộ.", "Sync off."));
+}
+function muAlone(t) { if (t && !t.gone) openPhone(t.id); }                  // mở riêng 1 máy (đủ công cụ) — rời màn Nhiều máy
+function muCmd(name) {
+  const l = muTargets().filter(t => t.st === "ok");
+  if (!l.length) return toast(muLive().length ? L("Máy đang kết nối, thử lại sau giây lát.", "Still connecting, try again in a moment.") : L("Chưa có máy nào đang mở.", "No phone is open."));
+  l.forEach(t => muSend(t, { k: "cmd", name }));
+}
+function muSheet(title, fill) {
+  const b = $("mu-sh-b"); b.textContent = ""; $("mu-sh-t").textContent = title;
+  fill(b, () => { $("mu-sheet").hidden = true; }); $("mu-sheet").hidden = false;
+}
+const muEl = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; if (tag === "button") e.type = "button"; return e; };
+function muType() {
+  muSheet("⌨ " + L("Gõ chữ vào máy", "Type into phone"), (box, close) => {
+    const all = MU.sync && muLive().length > 1;
+    box.appendChild(muEl("p", "", all ? L("Đang đồng bộ: chữ được dán vào ô đang nhập của MỌI máy. Bấm vào ô nhập trên máy trước.", "Sync is on: the text is pasted into the focused field on EVERY phone. Tap a field first.")
+                                       : L("Chữ được dán vào ô đang nhập của máy đang chọn. Bấm vào ô nhập trên máy trước.", "The text is pasted into the focused field of the selected phone. Tap a field first.")));
+    const ta = muEl("textarea"); ta.setAttribute("aria-label", L("Nội dung", "Text")); ta.autocapitalize = "off"; ta.spellcheck = false; ta.style.marginTop = "10px"; box.appendChild(ta);
+    const row = muEl("div", "row"), ok = muEl("button", "btn", L("Gửi vào máy", "Send")), ent = muEl("button", "btn ghost", "↵ Enter"), del = muEl("button", "btn ghost", "⌫ " + L("Xoá", "Delete"));
+    const each = o => { const l = muTargets().filter(t => t.st === "ok"); if (!l.length) { toast(L("Máy đang kết nối, thử lại sau giây lát.", "Still connecting, try again in a moment.")); return false; } l.forEach(t => muSend(t, o)); return l.length; };
+    ok.onclick = () => { const s = ta.value; if (!s) return ta.focus(); if (s.length > 16000) return toast(L("Chữ dài quá (tối đa 16.000 ký tự).", "That text is too long (16,000 characters max)."));
+      const n = each({ k: "text", s }); if (n) { ta.value = ""; toast(L("Đã dán vào ", "Pasted into ") + (n > 1 ? n + L(" máy.", " phones.") : L("máy.", "the phone."))); } };
+    ent.onclick = () => each({ k: "key", code: 66 }); del.onclick = () => each({ k: "key", code: 67 });
+    row.append(ok, ent, del); box.appendChild(row); setTimeout(() => ta.focus(), 60);
+  });
+}
+function muHelp() {
+  muSheet("🎮 " + L("Điều khiển nhiều máy", "Multi-control"), (box, close) => {
+    for (const s of [
+      "👆  " + L("Chạm vào máy nào là điều khiển máy đó (ô có viền xanh là máy đang chọn).", "Touch a phone to control it (the blue border marks the selected one)."),
+      "⤢  " + L("Bấm ⤢ trên ô để xem máy đó to. Khi đó vuốt LÊN / XUỐNG ở thanh số bên phải (hoặc bấm số) để qua máy khác.", "Tap ⤢ on a tile to make that phone big. Then swipe UP / DOWN on the number rail on the right (or tap a number) to switch."),
+      "🔗  " + L("Đồng bộ: bật lên thì thao tác trên 1 máy, mọi máy làm theo — hợp khi cài đặt nhiều máy giống nhau.", "Sync: when on, what you do on one phone happens on all of them — handy for setting up several phones the same way."),
+      "◁ ○ ▢ ⌨  " + L("Các nút dưới gửi cho máy đang chọn; đang đồng bộ thì gửi cho mọi máy.", "The bottom buttons go to the selected phone, or to every phone while sync is on."),
+      "↗  " + L("Mở riêng 1 máy để dùng đủ công cụ (cài app, xoay màn, root…).", "Open one phone alone for all tools (install apps, rotate, root…).")]) box.appendChild(muEl("p", "", s));
+    const row = muEl("div", "row"), ok = muEl("button", "btn", L("Đã hiểu", "Got it")); ok.onclick = close; row.appendChild(ok); box.appendChild(row);
+  });
+}
+function muChoose() {
+  muSheet("☑ " + L("Chọn máy", "Choose phones"), (box, close) => {
+    const sel = muLive().map(t => t.id), head = muEl("p", ""); box.appendChild(head);
+    const upd = () => { head.textContent = L("Đã chọn " + sel.length + " / tối đa " + MU_MAX + " máy.", sel.length + " selected · up to " + MU_MAX + "."); };
+    for (const r of MU.rows) {
+      const lb = muEl("label", "pick"), cb = muEl("input"); cb.type = "checkbox"; cb.checked = sel.includes(r.id);
+      cb.onchange = () => {
+        const i = sel.indexOf(r.id);
+        if (!cb.checked) { if (i >= 0) sel.splice(i, 1); }
+        else if (sel.length >= MU_MAX) { cb.checked = false; toast(L("Tối đa " + MU_MAX + " máy cùng lúc — bỏ bớt 1 máy trước.", "Up to " + MU_MAX + " phones — unselect one first.")); }
+        else if (i < 0) sel.push(r.id);
+        upd();
+      };
+      lb.append(cb, muEl("span", "", r.name || L("Máy", "Phone"))); box.appendChild(lb);
+    }
+    const row = muEl("div", "row"), ok = muEl("button", "btn", L("Xong", "Done"));
+    ok.onclick = () => { if (!sel.length) return toast(L("Chọn ít nhất 1 máy.", "Pick at least one phone.")); if (MU.uid) lsSet("cb_multi_" + MU.uid, sel.join(",")); close(); muBuild(sel); };
+    row.appendChild(ok); box.appendChild(row); upd();
+  });
+}
+function muMore() {
+  muSheet(L("Thêm", "More"), (box, close) => {
+    const all = MU.sync && muLive().length > 1, g = muEl("div", "grid");
+    const it = (ic, label, fn) => { const b = muEl("button"); b.append(muEl("i", "", ic), document.createTextNode(label)); b.onclick = () => { close(); fn(); }; g.appendChild(b); };
+    it("🔉", L("Nhỏ tiếng", "Vol −"), () => muCmd("voldown")); it("🔊", L("To tiếng", "Vol +"), () => muCmd("volup"));
+    it("⏻", L("Nút nguồn", "Power"), () => muCmd("power")); it("🔔", L("Thông báo", "Notifications"), () => muCmd("notif"));
+    it("☑", L("Chọn máy", "Choose phones"), muChoose); it("↗", L("Mở riêng máy này", "Open alone"), () => muAlone(muLive()[MU.act]));
+    it("↻", L("Nối lại tất cả", "Reconnect all"), () => muLive().forEach(t => { if (!t.paused) muSend(t, { k: "retry" }); })); it("❓", L("Cách dùng", "How to use"), muHelp);
+    box.appendChild(muEl("p", "", all ? L("Đang đồng bộ: 4 nút đầu gửi cho mọi máy.", "Sync is on: the first four go to every phone.") : L("4 nút đầu gửi cho máy đang chọn (ô có viền xanh).", "The first four go to the selected phone (blue border).")));
+    box.appendChild(g);
+  });
+}
+$("mu-back").onclick = () => showList();
+$("mu-mode").onclick = () => muOne(!MU.one, null);
+$("mu-sh-x").onclick = () => { $("mu-sheet").hidden = true; };
+$("mu-sheet").addEventListener("click", e => { if (e.target === $("mu-sheet")) $("mu-sheet").hidden = true; });
+$("mu-sync").onclick = () => {
+  if (MU.sync) return muSync(false);
+  if (muLive().length < 2) return;
+  if (lsGet("cb_sync_tip") === "1") return muSync(true);
+  muSheet("🔗 " + L("Bật đồng bộ?", "Turn sync on?"), (box, close) => {
+    box.appendChild(muEl("p", "", L("Mọi cú chạm, phím và chữ bạn gõ trên 1 máy sẽ được gửi y hệt sang TẤT CẢ máy đang mở ở đây. Hợp nhất khi các máy cùng độ phân giải và đang ở cùng một màn hình (ví dụ cài cùng 1 app, chỉnh cùng 1 cài đặt).",
+      "Every touch, key and text you send to one phone is sent to ALL phones open here. Works best when the phones share a resolution and show the same screen.")));
+    box.appendChild(muEl("p", "", L("Nhớ TẮT đồng bộ trước khi đăng nhập mỗi máy một tài khoản khác nhau.", "Turn sync OFF before signing in to a different account on each phone.")));
+    const row = muEl("div", "row"), ok = muEl("button", "btn", L("Bật đồng bộ", "Turn on")), no = muEl("button", "btn ghost", L("Thôi", "Not now"));
+    ok.onclick = () => { lsSet("cb_sync_tip", "1"); close(); muSync(true); }; no.onclick = close; row.append(ok, no); box.appendChild(row);
+  });
+};
+$("mu-bar").addEventListener("click", e => {
+  const b = e.target.closest("[data-m]"); if (!b) return; b.blur();
+  const m = b.dataset.m; if (m === "type") muType(); else if (m === "more") muMore(); else muCmd(m);
+});
+{                                              // thanh số (kiểu 1 máy to): vuốt LÊN = máy kế · XUỐNG = máy trước · bấm số = tới máy đó
+  const rl = $("mu-rail"); let y0 = null, moved = false, pid = -1;
+  rl.addEventListener("pointerdown", e => { y0 = e.clientY; moved = false; pid = e.pointerId; try { rl.setPointerCapture(pid); } catch {} });
+  rl.addEventListener("pointermove", e => {
+    if (y0 == null || e.pointerId !== pid) return;
+    const dy = e.clientY - y0; if (Math.abs(dy) < 40) return;
+    moved = true; y0 = e.clientY; muGo(MU.act + (dy < 0 ? 1 : -1));
+  });
+  const end = e => {
+    if (y0 == null || e.pointerId !== pid) return; y0 = null;
+    if (moved || e.type !== "pointerup") return;
+    const b = document.elementFromPoint(e.clientX, e.clientY), go = b && b.dataset ? b.dataset.go : null;
+    if (go === "next") muGo(MU.act + 1); else if (go === "prev") muGo(MU.act - 1); else if (go != null && go !== "") muGo(+go);
+  };
+  rl.addEventListener("pointerup", end); rl.addEventListener("pointercancel", end);
+  rl.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { const go = e.target.dataset ? e.target.dataset.go : null; if (go != null) { e.preventDefault(); if (go === "next") muGo(MU.act + 1); else if (go === "prev") muGo(MU.act - 1); else muGo(+go); } } });
+}
+addEventListener("message", ev => {              // tin từ các ô — chỉ nhận của đúng các khung do màn này tạo, cùng nguồn gốc
+  if (TILE || ev.origin !== location.origin) return;
+  const d = ev.data; if (!d || d.cb !== "tile") return;
+  const t = muLive().find(x => x.fr.contentWindow === ev.source); if (!t) return;
+  if (d.k === "hello") { muSend(t, { k: "sync", on: MU.sync }); if (t.paused) muSend(t, { k: "pause" }); }
+  else if (d.k === "st") {
+    if (typeof d.name === "string" && d.name) t.name = d.name.slice(0, 60);
+    t.st = d.s === "ok" ? "ok" : d.s === "err" ? "err" : "wait";
+    if (t.paused && d.s !== "idle") muSend(t, { k: "pause" }); else if (!t.paused && d.s === "idle") muSend(t, { k: "resume" });      // ô chưa kịp nhận lệnh nghỉ / chạy (vừa tải xong) → nhắc lại
+    const ar = d.vw > 0 && d.vh > 0 ? d.vw / d.vh : 0;
+    if (ar > 0.2 && ar < 5 && Math.abs(ar - t.ar) > 0.02) { t.ar = ar; muLayout(); }
+    muPaint();
+  }
+  else if (d.k === "act") muAct(t);
+  else if (d.k === "ev") { if (MU.sync && Array.isArray(d.e) && d.e.length <= 6) for (const x of muLive()) if (x !== t && !x.paused) muSend(x, { k: "ev", src: t.id, e: d.e }); }
+  else if (d.k === "gone") { muDrop(t); MU.tiles = muLive(); if (!MU.tiles.length) return showList(); MU.act = Math.min(MU.act, MU.tiles.length - 1); if (MU.tiles.length < 2) { MU.one = false; muSync(false, true); } muApply(); muPaint(); muLayout(); }
+  else if (d.k === "login") showLogin(L("Phiên đăng nhập hết hạn, hãy đăng nhập lại.", "Your session expired — please sign in again."));
+});
+$("v-multi").addEventListener("click", e => { const b = e.target.closest("button"); if (b) b.blur(); });      // không giữ tiêu điểm trên nút: Enter / Space là gõ vào máy, không bấm lại nút (vd lỡ tắt đồng bộ)
+document.addEventListener("keydown", e => {      // bàn phím máy tính lúc tiêu điểm ở trang cha (vừa bấm nút / đầu ô) → gõ vào máy đang chọn · đang đồng bộ: mọi máy
+  if (TILE || document.body.dataset.view !== "v-multi" || !$("mu-sheet").hidden || e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.target !== document.body && e.target.closest && e.target.closest("input,textarea,select,button,a")) return;
+  const code = KMAP[e.key], ch = code === undefined && e.key.length === 1 ? e.key : "";
+  if (code === undefined && !ch) return;
+  const l = muTargets().filter(t => t.st === "ok"); if (!l.length) return;
+  e.preventDefault(); l.forEach(t => muSend(t, code !== undefined ? { k: "key", code } : { k: "type", s: ch }));
+});
+addEventListener("resize", () => { if (document.body.dataset.view === "v-multi") muLayout(); });
+if (window.ResizeObserver) new ResizeObserver(() => { if (document.body.dataset.view === "v-multi") muLayout(); }).observe($("mu-grid"));
+
 /* ---------------- khởi động ---------------- */
 async function boot() {
   fitApp();
-  if (TEST) return openPhone(Q.get("id") || "00000000-0000-4000-8000-000000000001");
+  if (TILE) tilePost({ k: "hello" });                                       // web-1.8: ô báo trang cha đã sẵn sàng (cha gửi lại trạng thái đồng bộ)
+  if (TEST) return MULTI ? showMulti() : openPhone(Q.get("id") || "00000000-0000-4000-8000-000000000001");
   if (!sb) { view("v-login"); $("lerr").textContent = "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang."; return; }
   const s = await session();
   if (!s) return showLogin();
   const id = Q.get("id");
   P.wantRoot = Q.get("root") === "1";
-  if (id && UUID.test(id)) openPhone(id); else showList();
+  if (MULTI) showMulti(); else if (id && UUID.test(id)) openPhone(id); else showList();
 }
 boot();
 </script>
@@ -1796,6 +2250,7 @@ new MutationObserver(ms => {
 }).observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: I18X_ATTR });
 function langPaint() {
   document.documentElement.lang = LANG; document.title = LANG === "en" ? "CloudBlue – Phone control" : "CloudBlue – Điều khiển máy";
+  { const mm = document.getElementById("m-multi-t"); if (mm) mm.textContent = LANG === "en" ? "Multi" : "Nhiều máy"; }
   document.querySelectorAll(".langb").forEach(b => { b.textContent = LANG === "en" ? "🌐 Tiếng Việt" : "🌐 English"; b.setAttribute("aria-label", LANG === "en" ? "Chuyển sang tiếng Việt" : "Switch to English"); });
 }
 document.addEventListener("click", e => {
