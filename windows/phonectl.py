@@ -889,12 +889,13 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "17/11g"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "17/11h"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
                               # 17/11g: máy chủ bị TẮT NGANG làm hỏng file hệ thống Android (roles.xml rỗng…) → máy không lên: tự đổi tên file
                               #         hỏng, Android tự tạo lại (BOOT_FIX) · lệnh khammay: vì sao máy không lên (chỉ đọc)
+                              # 17/11h: tự TẮT TIẾNG loa Windows của máy chủ (HOST_MUTE, 10 phút kiểm 1 lần) · lệnh tattieng
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -4091,8 +4092,89 @@ def _recent_restart(nm, win=360):
         d = json.load(open(os.path.join(HOME, "redroid", f"restart_{nm}.json"), encoding="utf-8"))
         return 0 <= time.time() - float(d.get("t") or 0) < win
     except Exception: return False
+# ---------- 17/11h: TỰ TẮT TIẾNG WINDOWS CỦA MÁY CHỦ ----------
+# Máy khách (giả lập) phát tiếng game ra loa Windows của máy chủ → máy chủ kêu loạn. Khách KHÔNG nghe tiếng từ máy chủ (phát hình không
+# gửi tiếng) nên tắt tiếng Windows không ảnh hưởng khách. CHỈ bật nút "tắt tiếng" (mute) của loa mặc định Windows — không đổi mức âm
+# lượng, không đụng cài đặt giả lập / máy khách. Chống kẹt (bảng gọi ~2 phút / lần) kiểm 10 phút 1 lần: đang có tiếng thì tắt.
+# Thôi tự tắt: HOST_MUTE=0 trong cloudphone.conf (python phonectl.py setconf HOST_MUTE=0). Bật tiếng lại: python phonectl.py tattieng --bat
+HOST_MUTE = str(CONF.get("HOST_MUTE", "1")).strip() != "0"
+HOST_MUTE_F = os.path.join(HOME, "redroid", "hostmute.json")
+HOST_MUTE_EVERY = 600
+_HM_CS = ('using System; using System.Runtime.InteropServices; '
+          '[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IAudioEndpointVolume { '
+          'int f(); int g(); int h(); int i(); int SetMasterVolumeLevelScalar(float fLevel, ref Guid ctx); int j(); '
+          'int GetMasterVolumeLevelScalar(out float pfLevel); int k(); int l(); int m(); int n(); '
+          '[PreserveSig] int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, ref Guid ctx); [PreserveSig] int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute); } '
+          '[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDevice { '
+          '[PreserveSig] int Activate(ref Guid id, int clsCtx, IntPtr activationParams, out IAudioEndpointVolume aev); } '
+          '[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)] interface IMMDeviceEnumerator { '
+          'int f(); [PreserveSig] int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevice endpoint); } '
+          '[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumeratorComObject { } '
+          'public class CbAudio { static IAudioEndpointVolume Vol() { var e = new MMDeviceEnumeratorComObject() as IMMDeviceEnumerator; IMMDevice dev = null; '
+          'Marshal.ThrowExceptionForHR(e.GetDefaultAudioEndpoint(0, 1, out dev)); IAudioEndpointVolume v = null; var id = typeof(IAudioEndpointVolume).GUID; '
+          'Marshal.ThrowExceptionForHR(dev.Activate(ref id, 23, IntPtr.Zero, out v)); return v; } '
+          'public static bool Mute { get { bool m; Marshal.ThrowExceptionForHR(Vol().GetMute(out m)); return m; } '
+          'set { var g = Guid.Empty; Marshal.ThrowExceptionForHR(Vol().SetMute(value, ref g)); } } }')
+def _hm_ps(unmute=False):
+    """Lệnh PowerShell: nạp lớp CbAudio (Core Audio của Windows) → tắt / bật nút mute của loa mặc định. In đúng 1 dấu HM_…"""
+    act = "[CbAudio]::Mute = $false; 'HM_UNMUTED'" if unmute else "if ([CbAudio]::Mute) { 'HM_ALREADY' } else { [CbAudio]::Mute = $true; 'HM_DONE' }"
+    return ("$ErrorActionPreference = 'Stop'; $ProgressPreference = 'SilentlyContinue'; try { Add-Type -TypeDefinition '" + _HM_CS + "'; " + act
+            + " } catch { 'HM_ERR ' + $_.Exception.Message }")
+def _hm_run(unmute=False):
+    """→ "done" (vừa tắt) · "already" (đang tắt sẵn) · "unmuted" · "nodev" (máy không có loa / thiết bị âm thanh) · "skip" (không phải Windows) · "err: …"."""
+    out = os.environ.get("CB_TEST_HOSTMUTE")
+    if out is None:
+        if os.name != "nt": return "skip"
+        import base64
+        try:
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand",
+                                base64.b64encode(_hm_ps(unmute).encode("utf-16-le")).decode("ascii")], capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=90, creationflags=NOWIN, stdin=subprocess.DEVNULL)
+            out = (r.stdout or "") + "\n" + (r.stderr or "")
+        except Exception as e: return ("err: " + str(e))[:140]
+    m = re.search(r"HM_(DONE|ALREADY|UNMUTED|ERR)([^\r\n]*)", out or "")
+    if not m: return "err: PowerShell không trả kết quả"
+    if m.group(1) == "ERR":
+        t = m.group(2).strip()
+        return "nodev" if re.search(r"0x80070490|not found", t, re.I) else ("err: " + t)[:140]
+    return {"DONE": "done", "ALREADY": "already", "UNMUTED": "unmuted"}[m.group(1)]
+def _host_mute(force=False):
+    """Tắt tiếng loa Windows của máy chủ nếu đang bật. Không force: HOST_MUTE=0 thì thôi; tối đa 1 lần / HOST_MUTE_EVERY giây (dấu
+       redroid/hostmute.json). Trả kết quả _hm_run, hoặc None (chưa tới lượt / đã tắt tính năng). Không bao giờ ném lỗi."""
+    try:
+        if not force:
+            if not HOST_MUTE: return None
+            try:
+                with open(HOST_MUTE_F, encoding="utf-8") as f: dt = time.time() - float(json.load(f).get("t") or 0)
+                if 0 <= dt < HOST_MUTE_EVERY: return None
+            except Exception: pass
+        r = _hm_run()
+        try:
+            os.makedirs(os.path.dirname(HOST_MUTE_F), exist_ok=True)
+            with open(HOST_MUTE_F, "w", encoding="utf-8") as f: json.dump({"t": time.time(), "kq": r}, f)
+        except OSError: pass
+        return r
+    except Exception: return None
+def cmd_tattieng(a):
+    """17/11h: tắt tiếng loa WINDOWS của máy chủ (không đụng giả lập / máy khách; khách không nghe tiếng từ máy chủ nên không ảnh hưởng).
+         phonectl tattieng         → tắt tiếng ngay
+         phonectl tattieng --bat   → bật tiếng lại (máy chủ sẽ tự tắt lại sau ≤ 10 phút; muốn giữ bật: phonectl setconf HOST_MUTE=0)
+       Bình thường KHÔNG cần gọi: chống kẹt tự kiểm 10 phút / lần."""
+    if getattr(a, "bat", False):
+        r = _hm_run(unmute=True)
+        print("TATTIENG " + r + " — " + ("đã BẬT tiếng máy chủ" + (" · máy chủ sẽ tự tắt lại sau ≤ 10 phút — muốn giữ bật: python phonectl.py setconf HOST_MUTE=0" if HOST_MUTE else "")
+                                         if r == "unmuted" else "máy chủ không có loa / thiết bị âm thanh" if r == "nodev" else "chưa bật được tiếng: " + r), flush=True)
+        return
+    r = _host_mute(force=True) or "err: không rõ"
+    txt = {"done": "đã TẮT tiếng Windows của máy chủ", "already": "Windows của máy chủ đang tắt tiếng sẵn", "nodev": "máy chủ không có loa / thiết bị âm thanh — không cần tắt",
+           "skip": "không phải Windows — bỏ qua"}.get(r, "chưa tắt được tiếng: " + r)
+    print(f"TATTIENG {r} — {txt}", flush=True)
+
 def cmd_heal(a):
     """Gọi định kỳ (bảng BlueRoblox ~2 phút/lần): máy kẹt → khởi động lại; kẹt 3 lần liền → XOÁ máy hỏng (máy khách sẽ được tạo lại)."""
+    try:
+        if _host_mute() == "done": print("   🔇 Windows của máy chủ đang bật tiếng → đã tự tắt (thôi tự tắt: python phonectl.py setconf HOST_MUTE=0)", flush=True)
+    except Exception: pass
     st = load(); v = vms(); h = _hl(); t = time.time(); seen = set(); busy_n = 0
     for p in st["phones"]:
         nm = p["name"]; seen.add(nm)
@@ -4836,6 +4918,7 @@ def main():
     ks.add_argument("--chi-kiem", dest="chi_kiem", action="store_true"); ks.add_argument("--cho", type=int, default=300)
     ks.add_argument("--bat", action="store_true"); ks.set_defaults(f=cmd_ksfix)
     kh = s.add_parser("khammay"); kh.add_argument("names", nargs="*"); kh.add_argument("--all", action="store_true"); kh.set_defaults(f=cmd_khammay)   # 17/11g
+    tt = s.add_parser("tattieng"); tt.add_argument("--bat", action="store_true"); tt.set_defaults(f=cmd_tattieng)                                     # 17/11h
     g = s.add_parser("reconfig"); g.add_argument("name"); g.add_argument("--fps", type=int, default=0); g.add_argument("--res", default=""); g.set_defaults(f=cmd_reconfig)
     lr = s.add_parser("liveres"); lr.add_argument("name"); lr.add_argument("--res", required=True); lr.set_defaults(f=cmd_liveres)
     pi = s.add_parser("preinstall"); pi.add_argument("name", nargs="?", default=""); pi.add_argument("--all", action="store_true"); pi.add_argument("--force", action="store_true"); pi.set_defaults(f=cmd_preinstall)

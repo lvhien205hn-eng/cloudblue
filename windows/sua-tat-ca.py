@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1711g):
+#        17/11h — TỰ TẮT TIẾNG WINDOWS CỦA MÁY CHỦ (máy khách phát tiếng game ra loa máy chủ; khách không nghe tiếng từ máy chủ nên không
+#                       ảnh hưởng): lệnh này tắt ngay, phonectl (chống kẹt) kiểm 10 phút / lần — chỉ bật nút mute của loa Windows, KHÔNG
+#                       đụng giả lập. Thôi tự tắt: `python phonectl.py setconf HOST_MUTE=0` · bật tiếng lại: `python phonectl.py tattieng --bat`
 #        17/11g — MÁY CHỦ BỊ TẮT NGANG (mất điện / bấm reset / sập) LÀM HỎNG FILE HỆ THỐNG ANDROID của máy khách đang chạy (roles.xml rỗng…)
 #                       → Android sập liên tục, không bao giờ lên, khách "thức dậy… quay mãi". phonectl: tự đổi tên file hỏng (Android tự
 #                       tạo lại, GIỮ dữ liệu khách) ở mọi chỗ chờ máy lên — khách mở máy, đợt bật sau khi máy chủ khởi động lại, chống kẹt,
@@ -74,7 +77,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "17/11g"
+VER = "17/11h"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -91,7 +94,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 FILES = [("cloudphoned.py", "cloudphoned.py", "17/11f: tự dọn máy đã huỷ", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11g"', "bluestream"),
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11g"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "17/11h"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
 MARK_RUN = {"cloudphoned": "cloudphoned bản 17/11f", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
@@ -888,6 +891,15 @@ def fix_phones(res, extra):
         final.append((j[1], "chưa lên" + (f" [{k[0]}]" if k[0] else "")))
     return done, final
 
+def mute_host(c):
+    """17/11h: tắt tiếng loa Windows của máy chủ (`phonectl tattieng`). --chi-kiem hoặc HOST_MUTE=0 → không đụng. Trả câu cho TÓM TẮT ('' = không có)."""
+    if ONLY_CHECK or str(c.get("HOST_MUTE", "1")).strip() == "0": return ""
+    code, out = pctl("tattieng", t=150)
+    m = re.search(r"TATTIENG (\S+) — (.*)", out)
+    if not m: return ""                                      # phonectl cũ chưa có lệnh này
+    say("   🔇 " + m.group(2).strip()[:200])
+    return m.group(2).strip()[:120] if m.group(1) in ("done", "already") else ""
+
 def kham_may(names):
     """17/11g: `phonectl khammay TÊN…` (chỉ đọc) cho các máy sửa rồi vẫn không lên → in chi tiết + trả {tên: (mã, câu kết luận)}."""
     names = [str(n) for n in names][:12]
@@ -926,26 +938,37 @@ def power_report():
             "bấm nút trên web / chạy `python phonectl.py rebootserver`; ĐỪNG bấm reset, đừng tắt nguồn, đừng bấm \"Restart now\" của MuMu"]
 
 def wake_report():
-    """17/11g: khách mở máy đang NGỦ / TẮT gần đây lên trong bao lâu, mấy lần lỗi, vì sao (dòng ☀ và 🩺 trong logs\\phat-hinh.log). Chỉ ĐỌC."""
-    okt, bad, why = [], [], {}
+    """17/11h: khách mở máy đang NGỦ / TẮT hôm nay + hôm qua lên trong bao lâu, mấy lần lỗi, vì sao (dòng ☀ và 🩺 trong logs\\phat-hinh.log).
+       Nhật ký chỉ ghi giờ (không ghi ngày) → đếm ngày bằng chỗ giờ nhảy lùi hơn 1 tiếng (qua nửa đêm). Chỉ ĐỌC."""
+    okt, bad, why = [], [], {}; day = 0; prev = None
     for x in tail(os.path.join(LOGS, "phat-hinh.log"), 3000000):
+        m = re.match(r"(\d\d):(\d\d):(\d\d) ", x)
+        if m:
+            t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3))
+            if prev is None or 0 <= t - prev <= 82800: prev = t        # giờ đi tới bình thường
+            elif t < prev - 3600: day += 1; prev = t                   # giờ nhảy lùi hơn 1 tiếng = qua nửa đêm, sang ngày mới
+            # còn lại: dòng ghi lệch thứ tự quanh nửa đêm (lùi dưới 1 tiếng / vọt tới hơn 23 tiếng) → không tính
         m = re.search(r"☀ (\S+): Android đã lên sau (\d+) giây", x)
-        if m: okt.append(int(m.group(2))); continue
+        if m: okt.append((day, int(m.group(2)))); continue
         m = re.search(r"☀ (\S+): LỖI — (.*?) \((\d+) giây\)\s*$", x)
-        if m: bad.append((x[:8], m.group(1), m.group(2)[:110], int(m.group(3)))); continue
+        if m: bad.append((day, x[:8], m.group(1), m.group(2)[:110], int(m.group(3)))); continue
         m = re.search(r"🩺 KHAMMAY (\S+): \[([A-Z]+)\] (.*)", x)
         if m: why[m.group(1)] = (m.group(2), m.group(3).strip()[:170])
-    if not okt and not bad: return
-    okt.sort()
-    say(f"--- khách mở máy đang ngủ / tắt gần đây: {len(okt)} lần lên được · {len(bad)} lần LỖI (logs\\phat-hinh.log) ---")
+    old = sum(1 for q in bad if day - q[0] > 1)
+    okt = sorted(sec for d, sec in okt if day - d <= 1); bad = [q for q in bad if day - q[0] <= 1]
+    cu = f" · {old} lần lỗi cũ hơn trong nhật ký (bỏ qua)" if old else ""
+    if not okt and not bad:
+        if old: say(f"--- khách mở máy đang ngủ / tắt: hôm nay + hôm qua không có lần nào{cu} ---")
+        return
+    say(f"--- khách mở máy đang ngủ / tắt HÔM NAY + HÔM QUA: {len(okt)} lần lên được · {len(bad)} lần LỖI{cu} (logs\\phat-hinh.log) ---")
     if okt:
         slow = sum(1 for t in okt if t > 150)
         say(f"   lên được: thường {okt[len(okt) // 2]} giây · lâu nhất {okt[-1]} giây" + (f" · {slow} lần quá 150 giây (máy chủ bận / máy phải tự sửa)" if slow else ""))
     seen = set()
-    for t, nm, msg, sec in bad[::-1]:
+    for d, t, nm, msg, sec in bad[::-1]:
         if nm in seen or len(seen) >= 6: continue
         seen.add(nm)
-        say(f"   ✗ {t} {nm}: {msg} ({sec} giây)" + (f" → khám: [{why[nm][0]}] {why[nm][1]}" if nm in why else ""))
+        say(f"   ✗ {'hôm nay' if d == day else 'hôm qua'} {t} {nm}: {msg} ({sec} giây)" + (f" → khám: [{why[nm][0]}] {why[nm][1]}" if nm in why else ""))
 
 def recent_report(c, res):
     node = c.get("NODE_ID", "")
@@ -1064,6 +1087,10 @@ def main():
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
     probs += check_net(c)
+    hm = ""
+    if e != "LAUNCHED":                                     # bảng vừa mở lại đang bật máy khách → không gọi thêm lệnh nào (chống kẹt tự tắt tiếng sau ≤ 10 phút)
+        try: hm = mute_host(c)
+        except Exception as e_: say(f"   (tắt tiếng máy chủ lỗi: {e_})")
     if e == "LAUNCHED":
         say("5/6 · 6/6 Bỏ qua kiểm máy khách: bảng CloudBlue vừa tự bật lại và đang bật lần lượt từng máy (vài phút) —\n"
             "    10 phút nữa chạy lại lệnh này để kiểm từng máy.")
@@ -1110,6 +1137,7 @@ def main():
         + (f" · {extra.get('sleep', 0)} đang ngủ" if extra else "") + (f" · {len(inapp)} đen trong app (không đụng)" if inapp else ""))
     if rm: say(f"   ✓ đã tạo lại {rm[0]}/{rm[1]} máy \"ma\" cho khách")
     if PRIV_DONE: say(f"   ✓ đã bật lại {sum(PRIV_DONE)} máy chạy sai quyền (lẫn Admin — MuMu hết báo xung đột)")
+    if hm: say("   🔇 " + hm + " — máy chủ tự giữ tắt tiếng (bật lại: python phonectl.py tattieng --bat · thôi tự tắt: python phonectl.py setconf HOST_MUTE=0)")
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     for x in pw: say("   ⚠ " + x)
