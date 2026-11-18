@@ -6364,7 +6364,9 @@ $("ptbl").onclick = async e => {
    · mỗi đợt tối đa SK_LINES dòng VÀ SK_BYTES ký tự (file dòng dài tự chia nhỏ hơn), gửi lần lượt, nghỉ SK_PAUSE giữa 2 đợt;
    · mỗi đợt có giờ chờ SK_TIMEOUT — quá giờ / rớt mạng thì KHÔNG gửi lại bừa (dễ trùng hàng): đếm lại kho xem đợt đó đã vào chưa rồi
      mới quyết định gửi lại hay đi tiếp; không kiểm được thì dừng, giữ nguyên phần còn lại để bấm tiếp tục;
-   · máy chủ chậm dần thì tự giảm cỡ đợt; bấm Huỷ lúc đang gửi = dừng sau đợt hiện tại (phần đã vào giữ nguyên). */
+   · máy chủ chậm dần thì tự giảm cỡ đợt; bấm Huỷ lúc đang gửi = dừng sau đợt hiện tại (phần đã vào giữ nguyên);
+   · máy chủ (SQL kho v2) tự BỎ QUA dòng trùng: đang còn trong kho hoặc KHÁCH đã mua (so trên toàn kho). Hàng tài khoản ADMIN mua để rút ra
+     thì KHÔNG tính trùng — nhập lại được. Nhờ vậy gửi lại 1 đợt / chọn lại file cũ không sinh hàng trùng; web báo rõ đã thêm bao nhiêu, bỏ qua bao nhiêu. */
 let skFile = [], skNames = [];
 const SK_LINES = 500, SK_BYTES = 300000, SK_PAUSE = 150, SK_TIMEOUT = 45000;
 let skBusy = false, skStop = false, skPend = null;      // skPend = đợt chưa rõ đã vào kho chưa: { c0: số tồn trước khi gửi, n: số dòng, pid }
@@ -6374,8 +6376,10 @@ function skCount() {
   $("sk-count").innerHTML = n.toLocaleString("vi-VN") + " tài khoản" + (skFile.length ? ` <span style="color:var(--muted)">(${skFile.length.toLocaleString("vi-VN")} dòng từ ${skNames.length} file: ${esc(skNames.slice(0, 3).join(", "))}${skNames.length > 3 ? "…" : ""})</span> <button class="btn ghost sm" type="button" id="sk-unfile">Bỏ file</button>` : "");
   const u = $("sk-unfile"); if (u) u.onclick = () => { skFile = []; skNames = []; skPend = null; $("sk-file").value = ""; skCount(); };
 }
+/* dòng nhắc quy tắc lọc trùng — chèn 1 lần ngay dưới tên sản phẩm trong hộp nhập kho */
+function skHint() { if ($("sk-hint") || !$("sk-name")) return; const h = document.createElement("div"); h.id = "sk-hint"; h.className = "hint"; h.textContent = "Dòng trùng tự bỏ qua: đang còn trong kho hoặc khách đã mua. Hàng tài khoản admin mua để rút ra thì nhập lại được."; $("sk-name").insertAdjacentElement("afterend", h); }
 async function loadStockSrc(id) { try { const { data } = await sb.rpc("admin_stock_by_source", { p_product: id }); const el = $("sk-srcinfo"); if (!el) return; if (data && data.length) { el.style.display = "block"; el.innerHTML = "Tồn theo nguồn: " + data.map(s => `<b>${esc(s.source)}</b>: ${(+s.n).toLocaleString("vi-VN")}`).join(" · "); } else el.style.display = "none"; } catch (e) {} }
-function openStock(id) { if (skBusy) { show("stockdlg"); return; } stockFor = id; skPend = null; $("sk-source") && ($("sk-source").value = ""); loadStockSrc(id); const p = P.find(x => x.id === id); $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; $("sk-lines").value = ""; $("sk-file").value = ""; skFile = []; skNames = []; skCount(); $("sk-err").textContent = ""; show("stockdlg"); }
+function openStock(id) { skHint(); if (skBusy) { show("stockdlg"); return; } stockFor = id; skPend = null; $("sk-source") && ($("sk-source").value = ""); loadStockSrc(id); const p = P.find(x => x.id === id); $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; $("sk-lines").value = ""; $("sk-file").value = ""; skFile = []; skNames = []; skCount(); $("sk-err").textContent = ""; show("stockdlg"); }
 $("sk-file").onchange = async () => {
   const fs = [...($("sk-file").files || [])]; if (!fs.length) return;
   $("sk-err").textContent = ""; $("sk-count").textContent = "Đang đọc file…";
@@ -6417,41 +6421,53 @@ $("sk-save").onclick = () => busy($("sk-save"), async () => {
   let all = skFile.concat(skPaste()); if (!all.length) { $("sk-err").textContent = "Chọn file .txt hoặc dán ít nhất 1 dòng."; return; }
   const src = ($("sk-source") && $("sk-source").value.trim()) || null, pid = stockFor;
   skBusy = true; skStop = false; $("sk-err").textContent = ""; $("sk-cancel").textContent = "Dừng";
-  let done = 0, skip = 0, lim = SK_LINES, i = 0, msg = "";
+  let done = 0, added = 0, dup = 0, lim = SK_LINES, i = 0, msg = "", c00 = null, amb = 0;   // c00 = số tồn trước đợt đầu · amb = số lần quá giờ / rớt mạng
+  const nf = n => n.toLocaleString("vi-VN");
+  const did = () => "Đã thêm " + nf(added) + " dòng" + (dup ? " (bỏ qua " + nf(dup) + " dòng trùng)" : "");
   const keep = why => { skFile = all.slice(i); skNames = ["phần còn lại"]; $("sk-lines").value = ""; skCount(); msg = why; };
+  /* có đợt quá giờ / rớt mạng: dòng của đợt đó thật ra đã vào kho, lúc gửi lại máy chủ báo "đã có" → nhìn số tồn để không ghi nhầm thành dòng trùng */
+  const fixAmb = async () => { if (!amb || !dup || c00 == null) return; const c1 = await skFree(); if (c1 != null && c1 - c00 > added) { const g = Math.min(c1 - c00 - added, dup); added += g; dup -= g; } };
   try {
     if (skPend && skPend.pid === pid) {                       // lần trước dừng ở 1 đợt chưa rõ đã vào chưa → đếm lại kho trước khi gửi tiếp
       const c = await skFree();
       if (c == null) { keep("Máy chủ chưa trả lời — chờ 1–2 phút rồi bấm \"Thêm vào kho\" để tiếp tục (phần còn lại đã giữ trong ô)."); return; }
-      if (c >= skPend.c0 + skPend.n - 3 && all.length >= skPend.n) { all = all.slice(skPend.n); skip = skPend.n; }
+      c00 = skPend.c0;
+      if (c >= skPend.c0 + skPend.n - 3 && all.length >= skPend.n) { all = all.slice(skPend.n); added += skPend.n; }
+      else amb++;                                             // chưa vào đủ → gửi lại cả đợt đó, máy chủ tự bỏ dòng đã vào
       skPend = null;
-      if (!all.length) { skFile = []; skNames = []; show("stockdlg", false); toast("Đợt trước đã vào kho đủ — không còn gì để thêm."); await loadProducts(); return; }
+      if (!all.length) { skFile = []; skNames = []; skCount(); show("stockdlg", false); toast("Đợt trước đã vào kho đủ — không còn gì để thêm."); await loadProducts(); return; }
     }
     const total = all.length; let fails = 0;
     while (i < total) {
-      if (skStop) { keep(`Đã dừng theo yêu cầu. Đã thêm ${done.toLocaleString("vi-VN")} dòng — phần còn lại đã giữ trong ô, bấm "Thêm vào kho" để tiếp tục.`); return; }
-      const j = skTake(all, i, lim), part = all.slice(i, j), at = (i + 1).toLocaleString("vi-VN");
+      if (skStop) { await fixAmb(); keep(`Đã dừng theo yêu cầu. ${did()} — phần còn lại đã giữ trong ô, bấm "Thêm vào kho" để tiếp tục.`); return; }
+      const j = skTake(all, i, lim), part = all.slice(i, j), at = nf(i + 1);
       const c0 = await skFree();
-      if (c0 == null) { keep(`Máy chủ chưa trả lời ở dòng ${at}. Đã thêm ${done.toLocaleString("vi-VN")} dòng — chờ 1–2 phút rồi bấm "Thêm vào kho" để tiếp tục (phần còn lại đã giữ trong ô).`); return; }
+      if (c0 == null) { keep(`Máy chủ chưa trả lời ở dòng ${at}. ${did()} — chờ 1–2 phút rồi bấm "Thêm vào kho" để tiếp tục (phần còn lại đã giữ trong ô).`); return; }
+      if (c00 == null) c00 = c0;
       const t0 = Date.now(), r = await skSend(part, src);
-      let ok = r.n != null;
+      let ok = r.n != null, got = ok ? Math.min(r.n, part.length) : 0;
       if (!ok && !r.sure) {                                   // quá giờ / rớt mạng: chưa rõ đợt này đã vào chưa → đếm lại kho (không gửi lại bừa)
+        amb++;
         let c = null; for (let q = 0; q < 4 && c == null; q++) { await skWait(4000); c = await skFree(); }
-        if (c == null) { skPend = { c0, n: part.length, pid }; keep(`Máy chủ không trả lời ở dòng ${at}. Đã thêm chắc chắn ${done.toLocaleString("vi-VN")} dòng. Chờ 1–2 phút rồi bấm "Thêm vào kho": web tự kiểm đợt đang dở đã vào kho chưa rồi mới gửi tiếp (không bị trùng).`); return; }
-        if (c >= c0 + part.length - 3) ok = true;              // thật ra đã vào đủ
-        else if (c > c0 + 3) { keep(`Đợt ở dòng ${at} vào kho không đủ (tồn tăng ${(c - c0).toLocaleString("vi-VN")} / ${part.length.toLocaleString("vi-VN")}). Đã dừng để khỏi trùng hàng — báo hỗ trợ kỹ thuật.`); return; }
+        if (c == null) { skPend = { c0, n: part.length, pid }; keep(`Máy chủ không trả lời ở dòng ${at}. ${did()}. Chờ 1–2 phút rồi bấm "Thêm vào kho": web tự kiểm đợt đang dở đã vào kho chưa rồi mới gửi tiếp (không bị trùng).`); return; }
+        if (c >= c0 + part.length - 3) { ok = true; got = part.length; }   // thật ra đã vào đủ
+        // còn lại (chưa vào, hoặc vào ít hơn vì trong đợt có dòng trùng) → gửi lại: máy chủ tự bỏ dòng đang có trong kho nên không sinh hàng trùng
       }
       if (ok) {
-        fails = 0; done += part.length; i = j;
+        fails = 0; done += part.length; added += got; dup += part.length - got; i = j;
         if (Date.now() - t0 > 8000 && lim > 100) lim = Math.max(100, Math.floor(lim / 2));   // máy chủ chậm → đợt sau nhỏ hơn
-        skProg(done, total, lim < SK_LINES ? "máy chủ đang chậm, gửi đợt nhỏ hơn" : ""); await skWait(SK_PAUSE); continue;
+        skProg(done, total, [dup ? "bỏ qua " + nf(dup) + " dòng trùng" : "", lim < SK_LINES ? "máy chủ đang chậm, gửi đợt nhỏ hơn" : ""].filter(Boolean).join(" · ")); await skWait(SK_PAUSE); continue;
       }
       fails++;
-      if (fails >= 4 || (r.sure && /^(P0001|42501|42883|PGRST202)$/.test(r.code))) { keep(`Dừng ở dòng ${at}: ${errMsg(r.err)}. Đã thêm ${done.toLocaleString("vi-VN")} dòng — phần còn lại đã giữ trong ô, bấm "Thêm vào kho" để tiếp tục.`); return; }
+      if (fails >= 4 || (r.sure && /^(P0001|42501|42883|PGRST202)$/.test(r.code))) { keep(`Dừng ở dòng ${at}: ${errMsg(r.err)}. ${did()} — phần còn lại đã giữ trong ô, bấm "Thêm vào kho" để tiếp tục.`); return; }
       lim = Math.max(50, Math.floor(part.length / 2)); await skWait(1500 * fails);   // gửi lại đúng chỗ này với đợt nhỏ hơn
     }
+    await fixAmb();
     skFile = []; skNames = []; $("sk-lines").value = "";
-    show("stockdlg", false); toast("Đã thêm " + (done + skip).toLocaleString("vi-VN") + " tài khoản vào kho."); await loadProducts();
+    const sum = "Đã thêm " + nf(added) + " tài khoản vào kho" + (dup ? " · bỏ qua " + nf(dup) + " dòng trùng (đang còn trong kho hoặc khách đã mua)" : "") + ".";
+    await loadProducts(); toast(sum);
+    if (dup) { const p = P.find(x => x.id === pid); if (p) $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; $("sk-count").innerHTML = `<b style="color:#3ddc97">✅ ${esc(sum)}</b> Bấm Huỷ để đóng.`; }
+    else show("stockdlg", false);
   } finally {
     skBusy = false; skStop = false; $("sk-cancel").textContent = "Huỷ";
     if (msg) { $("sk-err").textContent = msg; try { await loadProducts(); const p = P.find(x => x.id === pid); if (p) $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; } catch (e) {} }
