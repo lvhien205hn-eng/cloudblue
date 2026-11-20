@@ -14,6 +14,23 @@
     <div class="acts"><button class="btn ghost" type="button" id="pcad-cancel">Đóng</button><button class="btn" type="button" id="pcad-save">Lưu</button></div>
   </div>
 </div>
+<div class="modal" id="pctdlg" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pctd-title">
+    <h3 id="pctd-title">Hạn thuê</h3>
+    <div class="hint" id="pctd-info"></div>
+    <label>Khách thuê (tên / số điện thoại — để bạn nhớ, có ghi trong cảnh báo)<input class="in" id="pctd-renter" maxlength="80" autocomplete="off"></label>
+    <div class="hint">Gia hạn thêm — nối vào hạn đang có; đã hết hạn hoặc chưa đặt thì tính từ bây giờ:</div>
+    <div class="amts" id="pctd-quick" style="grid-template-columns:repeat(3,1fr)">
+      <button type="button" data-h="1">+1 giờ</button><button type="button" data-h="3">+3 giờ</button><button type="button" data-h="12">+12 giờ</button>
+      <button type="button" data-h="24">+1 ngày</button><button type="button" data-h="168">+7 ngày</button><button type="button" data-h="720">+30 ngày</button>
+    </div>
+    <div class="pca-row pca-plain"><input class="in" id="pctd-n" type="number" min="1" step="1" inputmode="numeric" placeholder="Số khác…" aria-label="Số giờ hoặc số ngày gia hạn"><select class="in" id="pctd-u" aria-label="Đơn vị"><option value="1">giờ</option><option value="24">ngày</option></select></div>
+    <label>Hoặc đặt hạn tới đúng lúc<input class="in" id="pctd-until" type="datetime-local"></label>
+    <div class="note" id="pctd-new"></div>
+    <div class="err" id="pctd-err"></div>
+    <div class="acts"><button class="btn ghost" type="button" id="pctd-cancel">Đóng</button><button class="btn danger" type="button" id="pctd-clear">Bỏ hạn</button><button class="btn" type="button" id="pctd-save">Lưu</button></div>
+  </div>
+</div>
 <div class="modal" id="pcrdlg" hidden>
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pcrd-title">
     <h3 id="pcrd-title">Cài lại Windows</h3>

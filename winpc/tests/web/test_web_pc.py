@@ -3,7 +3,7 @@
    python3 test_web_pc.py <index gốc (chưa gắn)> <index đã gắn> [thư mục ghi ảnh chụp]
    Gắn bằng:  python3 patch_web_pc.py <index gốc> <index đã gắn>
    Mọi yêu cầu mạng đều bị chặn và trả lời tại chỗ — không gọi ra ngoài."""
-import datetime, json, os, re, sys
+import datetime, json, os, re, sys, time
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -65,6 +65,28 @@ def make_db():
     }
 
 
+VN = datetime.timezone(datetime.timedelta(hours=7))
+
+
+def at_vn(ts):
+    """Thời điểm (giây, hoặc chuỗi ISO) → 'HH:MM DD/MM' theo giờ Việt Nam — đúng kiểu trang in (trình duyệt thử đặt múi giờ Asia/Ho_Chi_Minh)."""
+    if isinstance(ts, str): ts = datetime.datetime.fromisoformat(ts).timestamp()
+    d = datetime.datetime.fromtimestamp(ts, VN)
+    return d.strftime("%H:%M %d/%m") + ("" if d.year == datetime.datetime.now(VN).year else "/%d" % d.year)
+
+
+def make_rent_db():
+    """Như make_db() + hạn thuê (SQL v42): B còn 2 ngày 3 giờ · C đã hết hạn 2 giờ (máy đã tự tắt) · Y còn ~30 phút · X hạn sai kiểu · A chưa đặt."""
+    db = make_db()
+    m = {x["id"]: x for x in db["pc_machines"]}
+    for x in m.values(): x.update(rent_until=None, renter=None, rent_set_at=None, rent_off_at=None)
+    m[B].update(rent_until=iso(-(2 * 86400 + 3 * 3600 + 1800)), renter="anh Tèo 0909", rent_set_at=iso(600))
+    m[C].update(rent_until=iso(7200), renter="<img src=x onerror=window.__xss=11>", rent_set_at=iso(90000), rent_off_at=iso(7100))
+    m[Y].update(rent_until=iso(-1790), rent_set_at=iso(60))
+    m[X].update(rent_until="<img src=x onerror=window.__xss=12>", renter={"a": 1}, rent_off_at="x")
+    return db
+
+
 QR_STUB = "window.qrcode=function(){return{addData(){},make(){},getModuleCount(){return 0},isDark(){return false},createSvgTag(){return ''},createImgTag(){return ''},createDataURL(){return ''}}};"
 MANIFEST = json.loads(read(os.path.join(WINPC, "manifest.json")))
 
@@ -74,8 +96,9 @@ class Site:
 
     def __init__(self, browser, html, init, mobile=False, path="/admin"):
         self.errors, self.dialogs, self.accept, self.manifest, self.unrouted = [], [], True, MANIFEST, []
+        self.api, self.api_reply = [], (200, {"ok": True, "sent": 0, "waiting": 0})        # các lần trang gọi /api/pc-notify + câu trả lời giả
         vp = {"width": 390, "height": 800} if mobile else {"width": 1360, "height": 900}
-        self.ctx = browser.new_context(viewport=vp, locale="vi-VN", permissions=["clipboard-read", "clipboard-write"])
+        self.ctx = browser.new_context(viewport=vp, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh", permissions=["clipboard-read", "clipboard-write"])
         self.ctx.add_init_script("window.__FAKE_INIT = %s; try { localStorage.setItem('br_lang', 'vi'); localStorage.setItem('br_lite', '1'); } catch (e) {}" % json.dumps(init))
         self.page = self.ctx.new_page()
         self.html = html
@@ -100,6 +123,13 @@ class Site:
         if "raw.githubusercontent.com" in u and "/winpc/manifest.json" in u:
             if self.manifest is None: return route.fulfill(status=404, content_type="text/plain", body="404: Not Found")
             return route.fulfill(status=200, content_type="text/plain; charset=utf-8", body=json.dumps(self.manifest), headers={"access-control-allow-origin": "*"})
+        if u == ORIGIN + "/api/pc-notify":
+            rq = route.request
+            try: body = json.loads(rq.post_data or "null")
+            except ValueError: body = rq.post_data
+            self.api.append({"method": rq.method, "body": body, "auth": rq.headers.get("authorization", "")})
+            st, js = self.api_reply
+            return route.fulfill(status=st, content_type="application/json", body=json.dumps(js))
         if u.startswith(ORIGIN + "/download/") or u.startswith(ORIGIN + "/api/"):
             return route.fulfill(status=404, content_type="application/json", body="{}")
         if re.search(r"\.(png|jpg|jpeg|svg|webp|ico|mp4|woff2?|ttf|webmanifest)(\?|$)", u) or "fonts.g" in u:
@@ -402,6 +432,169 @@ def main():
         s.page.click("#pca-showcmd"); s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % B, force=True); s.page.wait_for_timeout(300)
         ck("hộp cài lại vừa màn hình điện thoại", s.js("() => { const r = document.querySelector('#pcrdlg .dlg').getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1; }"))
         s.page.screenshot(path=os.path.join(SHOTS, "pc-mobile-reinstall.png"))
+        s.close()
+
+        print("15. Hạn thuê: cột trong bảng + hộp ⏱ (SQL v42)")
+        T = lambda i: s.js("i => document.getElementById(i).textContent", i)
+        TT = lambda i: s.js("i => document.getElementById(i).innerText", i)
+        HID = lambda i: s.js("i => document.getElementById(i).hidden", i)
+        TOAST = lambda: T("toast")
+        row = lambda name: next((r for r in s.rows() if r.startswith(name)), "")
+        open_rent = lambda pc: (s.page.click('#pctbl tr[data-pc="%s"] [data-pca="rent"]' % pc), s.page.wait_for_timeout(150))
+        db = make_rent_db(); dbm = {x["id"]: x for x in db["pc_machines"]}
+        t_open = time.time()
+        s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.tab("pc"); s.settle()
+        ck("bảng có cột 'Hạn thuê', không báo thiếu SQL v42", "Hạn thuê" in s.js("() => document.querySelector('#pane-pc thead').innerText") and HID("pca-miss42") and HID("pca-miss"))
+        rb, rc, ry, ra = row("Máy 14-85"), row("Máy khách Tèo"), row("May-Y"), row("CB-A1B2C3")
+        rx = next(r for r in s.rows() if "onerror=\"window.__xss=1\"" in r)
+        ck("máy còn hạn: đếm ngược + thời điểm hết hạn + tên khách + nút Gia hạn", all(k in rb for k in ["còn 2 ngày 3 giờ", "đến " + at_vn(dbm[B]["rent_until"]), "👤 anh Tèo 0909", "⏱ Gia hạn"]), rb)
+        ck("máy hết hạn: ⛔ + từ lúc nào + 'máy đã tự tắt'; tên khách chứa mã in ra dạng chữ", all(k in rc for k in ["⛔ hết hạn", "từ " + at_vn(dbm[C]["rent_until"]), "máy đã tự tắt", "👤 <img src=x onerror=window.__xss=11>", "⏱ Gia hạn"]), rc)
+        ck("máy sắp hết hạn (trong 60 phút): nhãn ⏳", re.search(r"⏳ còn (29|30) phút", ry) is not None, ry)
+        ck("máy chưa đặt hạn → 'chưa đặt hạn' + nút Đặt hạn; hạn sai kiểu coi như chưa đặt", "chưa đặt hạn" in ra and "⏱ Đặt hạn" in ra and "chưa đặt hạn" in rx and "__xss=12" not in rx, (ra, rx))
+        ck("không đoạn mã nào chạy, không thẻ lạ nào lọt vào bảng", s.js("() => window.__xss") is None and s.js("() => document.querySelectorAll('#pctbl img, #pctbl svg, #pctbl script').length") == 0, s.js("() => window.__xss"))
+        s.page.fill("#pcq", "tèo 0909"); s.page.wait_for_timeout(100)
+        ck("tìm theo tên khách thuê", len(s.rows()) == 1 and s.rows()[0].startswith("Máy 14-85"), s.rows())
+        s.page.fill("#pcq", ""); s.page.wait_for_timeout(100)
+        s.page.screenshot(path=os.path.join(SHOTS, "pc-rent-table.png"))
+
+        open_rent(A)
+        ck("hộp Hạn thuê nằm TRÊN bảng quản trị (bấm được)", s.js("() => { const m = document.getElementById('pctdlg'), r = m.querySelector('.dlg').getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + 16); return !!el && m.contains(el); }"))
+        ck("máy chưa đặt hạn: tiêu đề + lời báo, không có nút Bỏ hạn, phần giải thích hiện sẵn", T("pctd-title") == "Hạn thuê — CB-A1B2C3" and "chưa đặt hạn thuê" in T("pctd-info") and HID("pctd-clear") and "tự tắt" in TT("pctd-new") and "Hạn mới" not in TT("pctd-new"))
+        s.page.click('#pctd-quick [data-h="24"]'); s.page.wait_for_timeout(80)
+        ck("bấm +1 ngày: nút sáng, xem trước 'Hạn mới … còn 1 ngày'", s.js("() => [...document.querySelectorAll('#pctd-quick .on')].map(b => b.dataset.h).join()") == "24"
+           and re.search(r"Hạn mới: \d\d:\d\d \d\d/\d\d", TT("pctd-new")) is not None and "còn 1 ngày." in TT("pctd-new"), TT("pctd-new"))
+        s.page.click('#pctd-quick [data-h="24"]'); s.page.wait_for_timeout(80)
+        ck("bấm lại nút đang sáng → bỏ chọn", s.js("() => document.querySelectorAll('#pctd-quick .on').length") == 0 and "Hạn mới" not in TT("pctd-new"))
+        s.page.click('#pctd-quick [data-h="24"]'); s.page.fill("#pctd-renter", "  chị Lan 0988  "); s.page.screenshot(path=os.path.join(SHOTS, "pc-rent-dialog.png"))
+        s.page.click("#pctd-save"); s.settle()
+        ck("Lưu → gọi pc_admin_rent {renter, add_hours: 24}", s.calls("pc_admin_rent") == [{"p_id": A, "p_patch": {"renter": "chị Lan 0988", "add_hours": 24}}], s.calls("pc_admin_rent"))
+        ra = row("CB-A1B2C3")
+        ck("hộp đóng, báo hạn mới, dòng máy hiện đếm ngược + tên khách + nút Gia hạn", HID("pctdlg") and "Máy CB-A1B2C3: hạn thuê tới " in TOAST() and "còn 1 ngày" in ra and "👤 chị Lan 0988" in ra and "⏱ Gia hạn" in ra, (TOAST(), ra))
+
+        open_rent(A)
+        ck("mở lại: báo hạn hiện tại, có nút Bỏ hạn, tên khách điền sẵn", "Hạn hiện tại: " in T("pctd-info") and "(còn 1 ngày)" in T("pctd-info") and not HID("pctd-clear") and s.js("() => document.getElementById('pctd-renter').value") == "chị Lan 0988", T("pctd-info"))
+        s.page.click('#pctd-quick [data-h="3"]'); s.page.fill("#pctd-n", "2"); s.page.select_option("#pctd-u", "24"); s.page.wait_for_timeout(80)
+        ck("gõ ô số → nút nhanh tắt sáng; hạn mới NỐI vào hạn đang có (1 + 2 = còn 3 ngày)", s.js("() => document.querySelectorAll('#pctd-quick .on').length") == 0 and "còn 3 ngày." in TT("pctd-new"), TT("pctd-new"))
+        s.page.click("#pctd-save"); s.settle()
+        ck("Lưu → {add_hours: 48}; tên khách không đổi thì không gửi lại", s.calls("pc_admin_rent")[-1] == {"p_id": A, "p_patch": {"add_hours": 48}} and "còn 3 ngày" in row("CB-A1B2C3"), s.calls("pc_admin_rent")[-1])
+        open_rent(A); s.page.fill("#pctd-n", "1.5"); s.page.click("#pctd-save"); s.settle()
+        ck("số lẻ theo giờ (1.5 giờ) gửi đúng", s.calls("pc_admin_rent")[-1] == {"p_id": A, "p_patch": {"add_hours": 1.5}}, s.calls("pc_admin_rent")[-1])
+        n = len(s.calls("pc_admin_rent"))
+        open_rent(A); s.page.fill("#pctd-n", "0"); s.page.click("#pctd-save"); s.page.wait_for_timeout(120)
+        ck("số 0 → báo tại chỗ, không gửi", T("pctd-err") == "Nhập số giờ / số ngày lớn hơn 0." and len(s.calls("pc_admin_rent")) == n and not HID("pctdlg"), T("pctd-err"))
+        s.page.fill("#pctd-n", "400"); s.page.select_option("#pctd-u", "24"); s.page.click("#pctd-save"); s.page.wait_for_timeout(120)
+        ck("quá 366 ngày → báo tại chỗ, không gửi", T("pctd-err") == "Mỗi lần gia hạn tối đa 366 ngày." and len(s.calls("pc_admin_rent")) == n, T("pctd-err"))
+        want = (datetime.datetime.now(VN) + datetime.timedelta(days=3)).replace(hour=10, minute=30, second=0, microsecond=0)
+        s.page.fill("#pctd-until", want.strftime("%Y-%m-%dT%H:%M")); s.page.wait_for_timeout(80)
+        ck("chọn thời điểm → ô số tự xoá, xem trước đúng thời điểm đó", s.js("() => document.getElementById('pctd-n').value") == "" and ("Hạn mới: " + at_vn(want.timestamp())) in TT("pctd-new") and T("pctd-err") == "", TT("pctd-new"))
+        s.page.click("#pctd-save"); s.settle()
+        ck("Lưu → {until: đúng thời điểm theo giờ quốc tế}", s.calls("pc_admin_rent")[-1] == {"p_id": A, "p_patch": {"until": want.astimezone(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:00.000Z")}}
+           and ("đến " + at_vn(want.timestamp())) in row("CB-A1B2C3"), s.calls("pc_admin_rent")[-1])
+        n = len(s.calls("pc_admin_rent"))
+        open_rent(A); s.page.fill("#pctd-until", (datetime.datetime.now(VN) - datetime.timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")); s.page.click("#pctd-save"); s.page.wait_for_timeout(120)
+        ck("thời điểm đã qua → báo tại chỗ, không gửi", T("pctd-err") == "Thời điểm hết hạn phải ở tương lai." and len(s.calls("pc_admin_rent")) == n, T("pctd-err"))
+        s.page.click("#pctd-cancel")
+        ck("nút Đóng đóng hộp", HID("pctdlg"))
+
+        open_rent(B); s.page.fill("#pctd-renter", "anh Tí"); s.page.click("#pctd-save"); s.settle()
+        ck("chỉ đổi tên khách → {renter}, báo 'Đã lưu tên khách.', hạn giữ nguyên", s.calls("pc_admin_rent")[-1] == {"p_id": B, "p_patch": {"renter": "anh Tí"}} and TOAST() == "Đã lưu tên khách." and "còn 2 ngày 3 giờ" in row("Máy 14-85") and "👤 anh Tí" in row("Máy 14-85"), (TOAST(), row("Máy 14-85")))
+        n = len(s.calls("pc_admin_rent")); open_rent(B); s.page.click("#pctd-save"); s.page.wait_for_timeout(150)
+        ck("không đổi gì mà bấm Lưu → đóng hộp, không gửi", HID("pctdlg") and len(s.calls("pc_admin_rent")) == n)
+        ck("máy trong kho đang 'Sẵn sàng'", "Sẵn sàng" in row("Máy 14-85"))
+        open_rent(B); s.page.click('#pctd-quick [data-h="1"]'); s.page.click("#pctd-save"); s.settle()
+        ck("gia hạn máy trong kho → trạng thái chuyển 'Đang thuê'", "Đang thuê" in row("Máy 14-85") and "Sẵn sàng" not in row("Máy 14-85"), row("Máy 14-85"))
+        s.js("() => { window.__FAKE.failRpc.pc_admin_rent = 'BAD_HOURS'; }")
+        open_rent(B); s.page.click('#pctd-quick [data-h="1"]'); s.page.click("#pctd-save"); s.settle()
+        ck("máy chủ từ chối (BAD_HOURS) → câu dễ hiểu, hộp vẫn mở", "Số giờ gia hạn không hợp lệ" in TOAST() and not HID("pctdlg"), TOAST())
+        s.js("() => { window.__FAKE.failRpc = {}; }"); s.page.click("#pctd-cancel")
+
+        open_rent(C)
+        ck("máy đã hết hạn: lời báo ĐÃ HẾT HẠN + có nút Bỏ hạn", T("pctd-info").startswith("ĐÃ HẾT HẠN từ " + at_vn(dbm[C]["rent_until"])) and not HID("pctd-clear"), T("pctd-info"))
+        n = len(s.calls("pc_admin_rent")); s.accept = False; s.dialogs.clear(); s.page.click("#pctd-clear"); s.page.wait_for_timeout(150)
+        ck("Bỏ hạn → hỏi lại rõ ràng; Huỷ thì không gửi", len(s.dialogs) == 1 and 'BỎ hạn thuê của máy "Máy khách Tèo"?' in s.dialogs[0] and "KHÔNG tự tắt nữa" in s.dialogs[0] and 'Trạng thái máy về "Sẵn sàng".' in s.dialogs[0]
+           and len(s.calls("pc_admin_rent")) == n, s.dialogs)
+        s.accept = True; s.page.fill("#pctd-renter", ""); s.page.click("#pctd-clear"); s.settle()
+        ck("đồng ý → {until: null, renter: ''}; dòng máy về 'chưa đặt hạn' + 'Sẵn sàng'", s.calls("pc_admin_rent")[-1] == {"p_id": C, "p_patch": {"until": None, "renter": ""}} and HID("pctdlg")
+           and "chưa đặt hạn" in row("Máy khách Tèo") and "Sẵn sàng" in row("Máy khách Tèo") and "👤" not in row("Máy khách Tèo") and "Đã bỏ hạn thuê" in TOAST(), row("Máy khách Tèo"))
+
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="handover"]' % B); s.page.wait_for_timeout(150)
+        ck("Bàn giao máy đang có hạn thuê: hộp nói rõ hạn + tên khách cũ cũng được xoá", "hạn thuê + tên khách cũ cũng được xoá" in T("pcrd-info"), T("pcrd-info"))
+        s.dialogs.clear(); s.page.select_option("#pcrd-os", "22h2"); s.page.click("#pcrd-go"); s.settle(); s.page.wait_for_timeout(200); s.settle()
+        ck("đồng ý → gửi lệnh cài lại (dọn sạch) rồi tự xoá hạn thuê cũ", len(s.dialogs) == 1 and "Hạn thuê + tên khách cũ cũng được xoá." in s.dialogs[0]
+           and s.calls("pc_admin_order")[-1] == {"p_id": B, "p_cmd": "reinstall", "p_args": {"os": "22h2", "wipe": "all"}} and s.calls("pc_admin_rent")[-1] == {"p_id": B, "p_patch": {"until": None, "renter": ""}}, (s.dialogs, s.calls("pc_admin_rent")[-1]))
+        rb = row("Máy 14-85")
+        ck("dòng máy: lệnh cài lại đang chờ, hạn thuê đã trống, hết tên khách", "⏳ Cài lại 22H2 (dọn sạch cả máy)" in rb and "chưa đặt hạn" in rb and "👤" not in rb, rb)
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % A); s.page.wait_for_timeout(150)
+        ck("Cài lại thường (không phải bàn giao) không nhắc xoá hạn thuê", "hạn thuê" not in T("pcrd-info"), T("pcrd-info"))
+        n = len(s.calls("pc_admin_rent")); s.dialogs.clear(); s.page.click("#pcrd-go"); s.settle()
+        ck("… và không đụng tới hạn thuê", len(s.calls("pc_admin_rent")) == n and "Hạn thuê" not in s.dialogs[0] and "đến " in row("CB-A1B2C3"), s.dialogs)
+
+        print("16. 🔔 Cảnh báo về mail / Telegram")
+        ck("mở thẻ Máy PC: trang tự nhờ /api/pc-notify gửi cảnh báo đang chờ — không kèm mã đăng nhập, không kèm dữ liệu", len(s.api) >= 1 and all(c == {"method": "POST", "body": {}, "auth": ""} for c in s.api), s.api[:3])
+        ck("… tối đa 1 lần / phút dù bảng tải lại nhiều lần", len(s.api) <= 1 + int((time.time() - t_open) // 60), (len(s.api), time.time() - t_open))
+        s.page.click("#pca-showal"); s.page.wait_for_timeout(100)
+        ck("bấm 🔔: hiện khung, điền sẵn 60 phút / 15 phút / bật mail, chưa gửi lần nào", not HID("pca-albox") and s.js("() => [document.getElementById('pca-al-warn').value, document.getElementById('pca-al-off').value, document.getElementById('pca-al-mail').checked]") == ["60", "15", True]
+           and T("pca-al-st") == "Chưa có cảnh báo nào được gửi.", T("pca-al-st"))
+        s.page.fill("#pca-al-warn", "30"); s.page.fill("#pca-al-off", "0"); s.page.uncheck("#pca-al-mail"); s.page.click("#pca-al-save"); s.settle()
+        ck("Lưu → pc_admin_settings đúng 3 mục; ô giữ giá trị mới", s.calls("pc_admin_settings")[-1] == {"p_patch": {"alert_email": False, "rent_warn_min": 30, "off_alert_min": 0}} and TOAST() == "Đã lưu cài đặt cảnh báo."
+           and s.js("() => [document.getElementById('pca-al-warn').value, document.getElementById('pca-al-off').value, document.getElementById('pca-al-mail').checked]") == ["30", "0", False], s.calls("pc_admin_settings")[-1])
+        n = len(s.calls("pc_admin_settings"))
+        for bad in ("", "-5", "99999", "1.5"):
+            s.page.fill("#pca-al-warn", bad); s.page.click("#pca-al-save"); s.page.wait_for_timeout(120)
+            ck("số phút sai (%r) → báo, không lưu" % bad, "Số phút không hợp lệ" in TOAST() and len(s.calls("pc_admin_settings")) == n, TOAST())
+            s.js("() => { document.getElementById('toast').textContent = ''; }")
+        s.page.fill("#pca-al-warn", "30")
+        s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.notify_fail_at = new Date(Date.now() - 120000).toISOString(); st.notify_err = 'mail: <img src=x onerror=window.__xss=13> chưa đặt RESEND_API_KEY trên Vercel'; }")
+        s.page.click("#pca-reload"); s.settle()
+        ck("lần gửi gần nhất lỗi → báo rõ + lý do in dạng chữ + hẹn thử lại", all(k in TT("pca-al-st") for k in ["lần gửi gần nhất không được", "2 phút trước", "<img src=x onerror=window.__xss=13> chưa đặt RESEND_API_KEY", "tự thử lại sau 15 phút"])
+           and s.js("() => window.__xss") is None and s.js("() => document.querySelectorAll('#pca-albox img').length") == 0, TT("pca-al-st"))
+        s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.notify_fail_at = null; st.notify_err = null; st.notify_at = new Date(Date.now() - 300000).toISOString(); }")
+        s.page.click("#pca-reload"); s.settle()
+        ck("gửi được → ghi lần gửi gần nhất", "✓ gửi được" in TT("pca-al-st") and "5 phút trước" in TT("pca-al-st"), TT("pca-al-st"))
+        n_api = len(s.api)
+        s.api_reply = (200, {"ok": True, "mail": {"ok": True}, "tg": {"ok": False, "reason": "<b>chưa đặt</b> TELEGRAM_BOT_TOKEN"}})
+        s.page.click("#pca-al-test"); s.page.wait_for_timeout(400)
+        ck("Gửi thư thử → gọi API kèm mã đăng nhập + {test: true}; in kết quả từng kênh, lý do in dạng chữ", s.api[n_api:] == [{"method": "POST", "body": {"test": True}, "auth": "Bearer x"}]
+           and "✓ Mail" in TT("pca-al-r") and "✗ Telegram: <b>chưa đặt</b> TELEGRAM_BOT_TOKEN" in TT("pca-al-r") and not s.js("() => document.getElementById('pca-al-test').disabled"), (s.api[n_api:], TT("pca-al-r")))
+        s.page.screenshot(path=os.path.join(SHOTS, "pc-alerts.png"))
+        s.api_reply = (404, {}); s.page.click("#pca-al-test"); s.page.wait_for_timeout(400)
+        ck("web chưa có API (404) → báo rõ", "Web chưa có /api/pc-notify" in TT("pca-al-r"), TT("pca-al-r"))
+        s.api_reply = (401, {"ok": False}); s.page.click("#pca-al-test"); s.page.wait_for_timeout(400)
+        ck("phiên hết hạn (401) → nhắc đăng nhập lại", "đăng nhập lại" in TT("pca-al-r"), TT("pca-al-r"))
+        s.api_reply = (200, {"ok": True, "sent": 0, "waiting": 0})
+        s.page.click("#pca-showal"); ck("bấm 🔔 lần nữa → ẩn khung", HID("pca-albox"))
+        s.page.keyboard.press("Escape")
+        s.close()
+
+        print("17. Chưa chạy SQL v42: phần hạn thuê ẩn, mọi thứ khác chạy như cũ")
+        s = Site(br, new, {"admin": True, "v41": True, "v42": False, "db": make_db()}); s.wait_admin(); s.tab("pc"); s.settle()
+        ck("mở bảng quản trị: không lỗi mới", [x for x in sorted(set(s.errors)) if x not in e0] == [], [x for x in sorted(set(s.errors)) if x not in e0])
+        ck("hiện lời nhắc chạy cloud-pc-v42.sql (không phải lời nhắc v41), bảng vẫn đủ 5 máy", not HID("pca-miss42") and HID("pca-miss") and "cloud-pc-v42.sql" in TT("pca-miss42") and len(s.rows()) == 5, s.rows())
+        ck("cột Hạn thuê để trống, không có nút ⏱", s.js("() => document.querySelectorAll('#pctbl [data-pca=rent]').length") == 0 and s.js("() => [...document.querySelectorAll('#pctbl td.pca-rent')].map(t => t.innerText.trim()).join()") == "—,—,—,—,—")
+        ck("chưa có v42 thì không nhờ /api/pc-notify", s.api == [], s.api)
+        s.page.click("#pca-showal"); s.page.wait_for_timeout(100)
+        ck("bấm 🔔 → báo chưa chạy SQL v42, không mở khung", "Chưa chạy SQL v42" in TOAST() and HID("pca-albox"), TOAST())
+        probes = lambda: s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /rent_until|rent_warn_min/.test(c.cols || '')).length")
+        p0 = probes()
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="approve"]' % A); s.settle()
+        ck("các việc cũ vẫn chạy (duyệt máy) và lượt tải lại sau đó KHÔNG dò lại cột mới", s.calls("pc_admin_set") == [{"p_id": A, "p_patch": {"approved": True}}] and "Sẵn sàng" in row("CB-A1B2C3") and probes() == p0 and p0 >= 1, (p0, probes()))
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="handover"]' % B); s.page.wait_for_timeout(150)
+        s.dialogs.clear(); s.page.click("#pcrd-go"); s.settle()
+        ck("bàn giao khi chưa có v42: gửi lệnh cài lại, không gọi pc_admin_rent", s.calls("pc_admin_order")[-1]["p_cmd"] == "reinstall" and s.calls("pc_admin_rent") == [] and "Hạn thuê" not in s.dialogs[0], s.dialogs)
+        s.js("() => { window.__FAKE.v42 = true; }"); s.page.click("#pca-reload"); s.settle()
+        ck("chạy SQL v42 xong, bấm Tải lại → hết lời nhắc, có nút ⏱ ở mọi máy", HID("pca-miss42") and s.js("() => document.querySelectorAll('#pctbl [data-pca=rent]').length") == 5 and probes() > p0)
+        ck("cả lượt: không lỗi mới trong trang", [x for x in sorted(set(s.errors)) if x not in e0] == [], [x for x in sorted(set(s.errors)) if x not in e0])
+        s.close()
+
+        print("18. Hạn thuê trên màn hình điện thoại")
+        s = Site(br, new, {"admin": True, "v41": True, "db": make_rent_db()}, mobile=True); s.wait_admin(); s.tab("pc"); s.settle()
+        ck("trang không tràn ngang khi có cột Hạn thuê", s.js("() => document.documentElement.scrollWidth <= window.innerWidth + 1"), s.js("() => [document.documentElement.scrollWidth, window.innerWidth]"))
+        s.page.screenshot(path=os.path.join(SHOTS, "pc-rent-mobile.png"))
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="rent"]' % B, force=True); s.page.wait_for_timeout(300)
+        ck("hộp Hạn thuê vừa màn hình điện thoại, 6 nút nhanh xếp 3 cột", s.js("() => { const r = document.querySelector('#pctdlg .dlg').getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth + 1; }")
+           and s.js("() => getComputedStyle(document.getElementById('pctd-quick')).gridTemplateColumns.split(' ').length") == 3)
+        s.page.click('#pctd-quick [data-h="168"]'); s.page.wait_for_timeout(100)
+        s.page.screenshot(path=os.path.join(SHOTS, "pc-rent-mobile-dialog.png"))
         s.close()
         br.close()
     print("\n%d/%d đạt" % (OK, OK + FAIL))

@@ -18,6 +18,14 @@ import test_pe_helpers as H                           # noqa: E402
 OK = FAIL = 0
 
 
+# Mặc định cho mọi phép thử cb_provision: máy "có mạng" ngay, không có card NVIDIA, dòng tiến độ gom vào SAID (không in ra màn hình thử).
+SAID = []
+REAL_NET, REAL_GPU = cb_provision.real_net, cb_provision.real_nvidia_state
+cb_provision.real_net = lambda host, port, timeout=4: True
+cb_provision.real_nvidia_state = lambda: (False, False)
+cb_provision.Prov.say = lambda self, m: (self._say(m) if self._say else SAID.append(m))
+
+
 def ck(name, cond, extra=""):
     global OK, FAIL
     if cond: OK += 1; print("  ✓", name)
@@ -162,6 +170,8 @@ def sec_env(cfg, admins=("Administrator", "PC"), names="ADM=Administrators|USR=U
         st["calls"].append(list(argv)); a = " ".join(argv)
         if any(k in a for k in st["fail"]): return 1, "loi"
         if argv[0] == "powershell.exe" and "S-1-5-32-544" in a: return (0, st["names"] + "\r\n") if st["names"] else (1, "")
+        if argv[0] == "powershell.exe" and "WinNT://" in a:                     # hỏi thành viên nhóm quản trị (chỉ trả lời khi phép thử bật "adsi")
+            return (0, "".join("M=%s\r\n" % x for x in st["admins"]) + "M_END\r\n") if st.get("adsi") else (0, "")
         if argv[:2] == ["net", "localgroup"] and len(argv) == 3:
             mem = st["admins"] if argv[2] == st["names"].split("|")[0][4:] or (not st["names"] and argv[2] == "Administrators") else st["users"]
             return 0, "Alias name     %s\r\nMembers\r\n\r\n-------\r\n%s\r\nThe command completed successfully.\r\n" % (argv[2], "\r\n".join(mem))
@@ -244,6 +254,36 @@ else: os.environ["LOCALAPPDATA"] = old_la
 cmd = open(os.path.join(REPO, "os", "provision.cmd"), "rb").read().decode("ascii")
 ck("provision.cmd: không ghi được vào logs thì chuyển nhật ký sang hồ sơ người dùng, vẫn chạy", '|| set "CBLOG=%LOCALAPPDATA%\\CloudBluePC"' in cmd and '>> "%CBLOG%\\provision.out" 2>&1' in cmd and cmd.rstrip().endswith("exit /b 0"))
 
+print("5c. Việc lạ về bảo mật SAU khi đã khoá xong → ghi logs\\sec.event cho agent báo về web")
+def sec_ev(st):
+    p = os.path.join(st["base"], "logs", "sec.event")
+    return open(p).read() if os.path.exists(p) else None
+pr, st = sec_env({"user": "PC", "password": ""}, admins=("Administrator", "PC", "shopadmin"), names="ADM=Administrators|USR=Users|BIA=Administrator|DIS=False|")
+st["adsi"] = True
+pr.firstlogon()
+ck("lần khoá đầu: không coi là việc lạ; ghi nhớ tài khoản quản trị chủ shop tự tạo (shopadmin)", sec_ev(st) is None and st["admins"] == ["Administrator", "shopadmin"]
+   and open(os.path.join(st["base"], "logs", "admins.known")).read().split() == ["shopadmin"], (sec_ev(st), st["admins"]))
+st["names"] = "ADM=Administrators|USR=Users|BIA=Administrator|DIS=True|"
+st["calls"].clear(); pr.system()
+ck("các lần soát sau, không có gì đổi → không có việc lạ, không đặt lại mật khẩu Administrator", sec_ev(st) is None and not any("/active:no" in " ".join(c) for c in st["calls"]))
+st["admins"].append("PC"); st["calls"].clear(); pr.system()
+ck("tài khoản khách có lại quyền Admin → gỡ lại + ghi việc lạ", st["admins"] == ["Administrator", "shopadmin"] and "tai khoan khach 'PC' co lai quyen Admin - da ha lai" in (sec_ev(st) or ""), sec_ev(st))
+os.remove(os.path.join(st["base"], "logs", "sec.event"))
+st["names"] = "ADM=Administrators|USR=Users|BIA=Administrator|DIS=False|"; st["calls"].clear(); pr.system()
+pw2 = [c for c in st["calls"] if c[:2] == ["net", "user"] and len(c) == 5 and c[4] == "/active:no"]
+ck("tài khoản Administrator có sẵn bị bật lại → tắt lại bằng mật khẩu ngẫu nhiên MỚI + ghi việc lạ", len(pw2) == 1 and len(pw2[0][3]) == 14 and "co san bi bat lai" in (sec_ev(st) or "")
+   and not any(pw2[0][3] in l for l in pr.lines), (pw2, sec_ev(st)))
+os.remove(os.path.join(st["base"], "logs", "sec.event"))
+st["names"] = "ADM=Administrators|USR=Users|BIA=Administrator|DIS=True|"
+st["admins"].append("hacker"); pr.system()
+ck("nhóm quản trị có tài khoản MỚI → ghi việc lạ (không tự xoá)", "nhom quan tri co tai khoan moi: hacker" in (sec_ev(st) or "") and "hacker" in st["admins"], sec_ev(st))
+os.remove(os.path.join(st["base"], "logs", "sec.event")); pr.system()
+ck("tài khoản đó chỉ báo 1 lần", sec_ev(st) is None)
+st["admins"].append("PC"); st["admins"].append("x2"); pr.system()
+ck("nhiều việc lạ cùng lúc → gộp trong 1 file, chữ không dấu, không quá 300 ký tự", all(k in sec_ev(st) for k in ("co lai quyen Admin", "tai khoan moi: x2")) and len(sec_ev(st)) <= 300 and sec_ev(st).isascii(), sec_ev(st))
+pr, st = sec_env({"user": "PC", "password": ""}); pr.firstlogon(); st["admins"].append("PC"); pr.system()
+ck("không hỏi được thành viên nhóm / tình trạng Administrator (PowerShell lỗi) → vẫn gỡ quyền khách + ghi việc lạ, không lỗi", st["admins"] == ["Administrator"] and "co lai quyen Admin" in (sec_ev(st) or ""))
+
 print("6. Ảnh nền + script riêng theo từng bản Windows")
 def fake_reg():
     """reg add / reg query giả: nhớ các giá trị đã ghi (để thử 'mỗi tài khoản chỉ đặt ảnh nền 1 lần')."""
@@ -314,6 +354,153 @@ with tempfile.TemporaryDirectory() as base:
     p = cb_provision.Prov(base, run, log=lambda m: None, spi=lambda path: True); p.firstboot()
     ran = [os.path.relpath(c[-1], fb).replace(os.sep, "/") for c in calls if "firstboot.d" in " ".join(c)]
     ck("bản 22h2-2: chạy chung → thư mục 22h2-2 → thư mục 22h2", ran == ["c.cmd", "22h2-2/b.cmd", "22h2/a.cmd"], ran)
+
+print("7. Bản 1511: driver card mạng xong (máy có mạng) rồi mới cài driver VGA NVIDIA; tiến độ in ra màn hình")
+NV = "466.77-notebook-win10-64bit-international-whql.exe"
+def vga_env(tag="1511", gpu=(True, False), after=(True, True), net=True, packs=("1511/" + NV,), extra=()):
+    pr0, st = sec_env({"user": "PC", "password": "", "sb_url": "https://abcdxyz.supabase.co"})
+    fb = os.path.join(st["base"], "os", "firstboot.d")
+    for f in tuple(packs) + tuple(extra):
+        os.makedirs(os.path.dirname(os.path.join(fb, *f.split("/"))), exist_ok=True)
+        if not os.path.exists(os.path.join(fb, *f.split("/"))): open(os.path.join(fb, *f.split("/")), "wb").write(b"EXE")
+    open(os.path.join(st["base"], "seed.json"), "w").write(json.dumps({"os": tag}))
+    st.update(gpu=gpu, after=after, net=net, said=[], slept=0, net_calls=[], log=[], fb=fb, vga_runs=0)
+    base_run = pr0._run
+
+    def run(argv, timeout=300):
+        if cb_provision.NVIDIA_RE.match(os.path.basename(argv[0])):                # bộ cài VGA chạy ~10 phút; xong thì card nhận driver (hoặc không, tuỳ phép thử)
+            st["calls"].append(list(argv)); st["vga_runs"] += 1; st["clock"] += 600; st["gpu"] = st["after"]; st["vga_timeout"] = timeout
+            return st.get("vga_rc", 0), ""
+        return base_run(argv, timeout)
+
+    def net_fn(host, port):
+        st["net_calls"].append((host, port))
+        return st["net"](st) if callable(st["net"]) else st["net"]
+
+    def sleep(sec): st["clock"] += sec; st["slept"] += sec
+    pr = cb_provision.Prov(st["base"], run, log=st["log"].append, spi=lambda path: True, admin=True, rec=lambda: "", now=lambda: st["clock"],
+                           net=net_fn, gpu=lambda: st["gpu"], sleep=sleep, say=st["said"].append)
+    return pr, st
+vstate = lambda st: json.load(open(os.path.join(st["base"], "logs", "vga.json")))
+has_pack = lambda st, rel="1511/" + NV: os.path.exists(os.path.join(st["fb"], *rel.split("/")))
+idx = lambda st, word: next((i for i, c in enumerate(st["calls"]) if word in " ".join(c)), -1)
+
+pr, st = vga_env()
+ck("nơi thử mạng = máy chủ của hệ thống (sb_url trong cb.json), cổng 443", pr.net_target() == ("abcdxyz.supabase.co", 443))
+open(os.path.join(st["base"], "cb.json"), "w").write(json.dumps({"user": "PC"}))
+ck("không có sb_url → thử địa chỉ kiểm mạng của Microsoft", pr.net_target() == ("www.msftconnecttest.com", 80))
+pr, st = vga_env()
+ck("net_wait: có mạng ngay → 0 giây, không chờ", pr.net_wait(240) == 0 and st["slept"] == 0 and st["net_calls"] == [("abcdxyz.supabase.co", 443)])
+pr, st = vga_env(net=lambda s: s["clock"] >= 1_000_000 + 30)
+w = pr.net_wait(240)
+ck("net_wait: 30 giây sau mới có mạng → chờ đúng chừng đó rồi đi tiếp", w == 30 and st["slept"] == 30, (w, st["slept"]))
+pr, st = vga_env(net=False)
+ck("net_wait: mãi không có mạng → trả None sau đúng hạn chờ (không chờ vô hạn)", pr.net_wait(60) is None and 60 <= st["slept"] <= 63, st["slept"])
+pr, st = vga_env(net=lambda s: 1 / 0)
+ck("net_wait: hàm thử mạng lỗi → coi như chưa có mạng, không ném lỗi", pr.net_wait(6) is None)
+
+pr, st = vga_env(extra=("1511/05-lan.cmd",))
+pr.firstlogon()
+i_lan, i_vga, i_grp, i_boot = idx(st, "05-lan.cmd"), idx(st, NV), idx(st, "/passwordchg:no"), idx(st, "shutdown /r")
+ck("lần đăng nhập đầu, bản 1511, máy có card NVIDIA + có mạng: lệnh riêng (driver LAN) → thử mạng → cài VGA → khoá tài khoản → khởi động lại",
+   0 <= i_lan < i_vga < i_grp < i_boot and st["net_calls"] and st["calls"][i_vga][1:] == ["-s", "-noreboot"] and st["vga_timeout"] == 2400, (i_lan, i_vga, i_grp, i_boot, st["net_calls"]))
+ck("cài xong: card đã nhận driver → ghi 'done', xoá bản chép gói 700MB trên ổ C:", vstate(st)["state"] == "done" and vstate(st)["tries"] == 1 and not has_pack(st) and st["vga_runs"] == 1, vstate(st))
+said = "\n".join(st["said"])
+ck("tiến độ in ra màn hình đủ 5 bước, chữ không dấu, có nhắc KHÔNG tắt máy + tự khởi động lại", all(k in said for k in ["dang hoan tat cai dat Windows 1511", "KHONG tat may", "[1/5]", "[2/5]", "05-lan.cmd", "[3/5]", "da co mang", "[4/5]", NV,
+   "xong - card da nhan driver", "[5/5]", "XONG. May tu khoi dong lai sau 20 giay."]) and said.isascii(), said)
+ck("nhật ký ghi rõ đã có mạng + driver VGA đã vào", any("may da co mang" in x for x in st["log"]) and any("driver VGA NVIDIA da vao" in x for x in st["log"]))
+
+pr, st = vga_env(net=False)
+pr.firstlogon()
+said = "\n".join(st["said"])
+ck("CHƯA có mạng (driver card mạng chưa chạy): chờ đủ 4 phút rồi KHÔNG cài VGA, giữ nguyên gói, ghi 'wait'", st["vga_runs"] == 0 and has_pack(st) and vstate(st) == {"state": "wait", "tries": 0, "at": vstate(st)["at"]} and 240 <= st["slept"] <= 243, (st["slept"], vstate(st)))
+ck("… báo rõ trên màn hình: chưa có mạng, kiểm tra dây mạng / driver card mạng, VGA sẽ tự cài sau", all(k in said for k in ["!! CHUA CO MANG sau 4 phut", "day mang / driver card mang", "CHUA cai (chua co mang) - se tu cai khi may co mang"]), said)
+ck("… các bước còn lại vẫn chạy hết (khoá tài khoản, khởi động lại) — không treo lần đăng nhập đầu", idx(st, "shutdown /r") > 0 and os.path.exists(os.path.join(st["base"], "logs", "firstlogon.done")) and st["admins"] == ["Administrator"])
+st["net"] = True; st["calls"].clear(); st["net_calls"].clear(); pr.system()
+ck("sau đó máy có mạng → agent (SYSTEM) gọi pha system: cài nốt VGA, xoá gói", st["vga_runs"] == 1 and vstate(st)["state"] == "done" and not has_pack(st) and st["net_calls"], vstate(st))
+st["calls"].clear(); pr.system()
+ck("các lần soát sau không cài lại", st["vga_runs"] == 1 and idx(st, NV) == -1)
+
+pr, st = vga_env(gpu=(False, False), net=False)
+pr.firstlogon()
+ck("máy KHÔNG có card NVIDIA (máy ảo, máy dùng card khác): bỏ qua gói VGA, xoá bản chép, không chờ mạng 4 phút vì VGA", st["vga_runs"] == 0 and not has_pack(st) and vstate(st)["state"] == "skip" and 60 <= st["slept"] <= 63
+   and "may nay khong co card NVIDIA - bo qua" in "\n".join(st["said"]), (st["slept"], st["said"]))
+pr, st = vga_env(gpu=(True, True))
+pr.firstlogon()
+ck("card NVIDIA đã có driver sẵn → không chạy bộ cài, ghi 'done'", st["vga_runs"] == 0 and vstate(st)["state"] == "done" and not has_pack(st))
+pr, st = vga_env(gpu=(None, None), after=(None, None))
+pr.firstlogon()
+ck("không đọc được danh sách thiết bị → vẫn cài 1 lần rồi coi như xong (không chạy lại mãi)", st["vga_runs"] == 1 and vstate(st)["state"] == "done" and not has_pack(st))
+pr, st = vga_env(tag="22h2")
+pr.firstlogon()
+ck("đang cài bản 22H2: gói VGA của riêng bản 1511 không được đụng tới", st["vga_runs"] == 0 and has_pack(st) and not os.path.exists(os.path.join(st["base"], "logs", "vga.json")) and "khong co goi VGA nao" in "\n".join(st["said"]))
+pr, st = vga_env(tag="22h2", packs=(NV, "nvidia-vga-cua-toi.exe"))
+pr.firstlogon()
+ck("gói VGA để ở firstboot.d gốc (mọi bản) → bản nào cũng cài; nhiều gói thì cài lần lượt theo tên", [os.path.basename(c[0]) for c in st["calls"] if cb_provision.NVIDIA_RE.match(os.path.basename(c[0]))] == [NV, "nvidia-vga-cua-toi.exe"]
+   and not has_pack(st, NV) and not has_pack(st, "nvidia-vga-cua-toi.exe"))
+
+pr, st = vga_env(after=(True, False))
+pr.firstlogon()
+ck("bộ cài chạy xong mà card CHƯA nhận driver → ghi 'fail' lần 1, GIỮ gói để thử lại, báo trên màn hình", st["vga_runs"] == 1 and vstate(st)["state"] == "fail" and vstate(st)["tries"] == 1 and has_pack(st)
+   and "card chua nhan driver" in "\n".join(st["said"]), vstate(st))
+st["gpu"] = (True, True); pr.system()
+ck("sau khởi động lại card đã nhận driver → pha system chỉ kiểm lại, ghi 'done', không chạy bộ cài lần 2", st["vga_runs"] == 1 and vstate(st)["state"] == "done" and not has_pack(st))
+pr, st = vga_env(after=(True, False))
+pr.firstlogon(); pr.system(); pr.system(); pr.system(); pr.system()
+ck("card mãi không nhận driver → chạy bộ cài tối đa 3 lần rồi thôi (không lặp vô hạn), ghi rõ vào nhật ký", st["vga_runs"] == 3 and vstate(st)["state"] == "gave-up" and vstate(st)["tries"] == 3
+   and sum("thoi khong thu nua" in x for x in st["log"]) == 1, (st["vga_runs"], vstate(st)))
+pr, st = vga_env(net=False)
+os.remove(os.path.join(st["base"], "logs", "firstlogon.done")) if os.path.exists(os.path.join(st["base"], "logs", "firstlogon.done")) else None
+pr.touch("firstlogon.start"); st["net"] = True; pr.system()
+ck("lần đăng nhập đầu ĐANG chạy (chưa xong) → pha system không đụng tới VGA (khỏi cài chồng 2 lần cùng lúc)", st["vga_runs"] == 0 and has_pack(st))
+
+pr, st = vga_env(extra=("1511/50-vga-nvidia.cmd", "50-vga-nvidia.cmd", "1511/10-lan.cmd"))
+open(os.path.join(st["fb"], "1511", "50-vga-nvidia.cmd"), "wb").write(b'@echo off\r\nrem CloudBlue PC: cai driver VGA NVIDIA im lang o lan dang nhap dau (file nay do bo tao ISO tu sinh)\r\n"%~dp0x.exe" -s -noreboot\r\n')
+open(os.path.join(st["fb"], "50-vga-nvidia.cmd"), "wb").write(b"@echo off\r\nrem lenh cua chu shop, trung ten\r\n")
+n = pr.firstboot()
+ran = [os.path.relpath(c[-1], st["fb"]).replace(os.sep, "/") for c in st["calls"] if c[0] == "cmd.exe" and "firstboot.d" in " ".join(c)]
+ck("file 50-vga-nvidia.cmd do bộ tạo ISO bản cũ sinh → bỏ qua (bước VGA tự cài sau khi có mạng); file trùng tên của chủ shop vẫn chạy", ran == ["10-driver.cmd", "50-vga-nvidia.cmd", "1511/10-lan.cmd"] and n == 3, ran)
+cmd = open(os.path.join(REPO, "os", "provision.cmd"), "rb").read().decode("ascii")
+ck("provision.cmd: lần đăng nhập đầu chạy nhánh riêng — KHÔNG nuốt chữ in ra (tiến độ hiện trên cửa sổ), lỗi vẫn ghi vào provision.out, chờ vài giây cho kịp đọc",
+   'if /i "%~1"=="firstlogon" goto show' in cmd and '\r\n:show\r\n' in cmd and 'cb_provision.py" %* 2>> "%CBLOG%\\provision.out"\r\nping -n 9 127.0.0.1 >nul 2>&1\r\nexit /b 0' in cmd and cmd.count("exit /b 0") == 2 and cmd.isascii(), cmd)
+ck("real_nvidia_state / real_net có sẵn cho Windows thật; trên máy không phải Windows trả 'không biết' chứ không ném lỗi", REAL_GPU() == (None, None) and REAL_NET("127.0.0.1", 9, 0.2) is False)
+
+print("8. Dịch vụ khởi động (pha boot — lưới an toàn thứ 3): bản Windows không chạy file trả lời lẫn SetupComplete.cmd thì agent vẫn lên")
+def boot_env(admin=True):
+    pr0, st = sec_env({"user": "PC", "password": ""})
+    st["slept"] = 0
+    def sleep(sec): st["slept"] += sec; st["clock"] += sec
+    pr = cb_provision.Prov(st["base"], pr0._run, log=st.setdefault("log", []).append, spi=lambda path: True, admin=admin, rec=lambda: "", now=lambda: st["clock"], sleep=sleep, say=lambda m: None)
+    return pr, st
+J = lambda st: [" ".join(c) for c in st["calls"]]
+pr, st = boot_env(); st["fail"].add("schtasks /query")                               # chưa có tác vụ nào
+r = pr.boot(); j = J(st)
+ck("chưa có tác vụ agent → tự làm phần specialize: chính sách, điện năng, tạo 2 tác vụ, khoá quyền thư mục", r is True and any("DisablePrivacyExperience" in x for x in j) and any(x == "powercfg /hibernate off" for x in j)
+   and any("schtasks /create /tn CloudBluePC Agent /xml" in x for x in j) and any("CloudBluePC Watch /sc minute /mo 5" in x for x in j) and any(x.startswith("icacls") for x in j), j[:6])
+ck("… rồi bật agent và TỰ GỠ dịch vụ khởi động (hết việc)", j.index("schtasks /run /tn CloudBluePC Agent") < j.index("sc delete CloudBluePCBoot") and st["slept"] == 0, j[-4:])
+pr, st = boot_env()
+r = pr.boot(); j = J(st)
+ck("đã có tác vụ (file trả lời đã chạy bình thường) → không tạo lại gì, chỉ bật agent + gỡ dịch vụ", r is True and not any("schtasks /create" in x or x.startswith("icacls") or x.startswith("powercfg") for x in j)
+   and "schtasks /run /tn CloudBluePC Agent" in j and "sc delete CloudBluePCBoot" in j, j)
+pr, st = boot_env(); st["fail"].update({"schtasks /query", "schtasks /create"})
+r = pr.boot(); j = J(st)
+ck("dịch vụ tác vụ của Windows chưa sẵn sàng (tạo tác vụ lỗi mãi) → thử lại ~2 phút rồi thôi, GIỮ dịch vụ để lần bật máy sau làm tiếp", r is False and st["slept"] == 120 and "sc delete CloudBluePCBoot" not in j
+   and sum("CloudBluePC Agent /xml" in x for x in j) == 12 and any("LOI boot" in x for x in st["log"]), (st["slept"], j[-3:]))
+pr, st = boot_env(); st["fail"].add("schtasks /query")
+n = {"k": 0}
+real_run = pr._run
+def flaky(argv, timeout=300):
+    if argv[:2] == ["schtasks", "/create"]:
+        n["k"] += 1
+        if n["k"] <= 6: st["calls"].append(list(argv)); return 1, "ERROR: The Task Scheduler service is not available."
+    return real_run(argv, timeout)
+pr._run = flaky
+r = pr.boot(); j = J(st)
+ck("tạo tác vụ lỗi vài lần đầu rồi được → vẫn xong trong lần bật máy này", r is True and st["slept"] == 20 and "sc delete CloudBluePCBoot" in j, (st["slept"], n))
+pr, st = boot_env(admin=False)
+ck("không phải SYSTEM / quản trị gọi → không làm gì", pr.boot() is False and st["calls"] == [])
+ck("cb_provision và cbcore dùng CÙNG tên dịch vụ", cb_provision.BOOT_SVC == C.BOOT_SVC == "CloudBluePCBoot" and all(c[2].endswith("\\Services\\" + C.BOOT_SVC) for c in C.boot_service_cmds("HKLM\\X", 3))
+   and C.boot_service_cmds("HKLM\\X", 3)[0][2] == "HKLM\\X\\ControlSet003\\Services\\CloudBluePCBoot")
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

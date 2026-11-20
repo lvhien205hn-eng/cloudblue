@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "20.11c"
+CORE_VER = "21.11a"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -392,6 +392,30 @@ def recovery_cfg(cfg):
 SID_SYSTEM, SID_ADMINS, SID_USERS, SID_AUTH, SID_EVERYONE, SID_CREATOR = "*S-1-5-18", "*S-1-5-32-544", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "*S-1-3-0"
 ACL_FULL = [SID_SYSTEM + ":(OI)(CI)F", SID_ADMINS + ":(OI)(CI)F"]
 ACL_WEAK = [SID_USERS, SID_AUTH, SID_EVERYONE, SID_CREATOR]    # các dòng quyền phải gỡ khỏi gốc; CREATOR OWNER: để lại thì file do tài khoản thường tạo từ trước vẫn thuộc quyền họ
+
+
+BOOT_SVC = "CloudBluePCBoot"
+
+
+def boot_service_cmds(root, cs=1, base="C:\\CloudBluePC"):
+    """Các lệnh `reg add` ghi 1 DỊCH VỤ TỰ CHẠY lúc khởi động vào kho registry SYSTEM của Windows vừa bung (kho đã được nạp tại `root`, vd HKLM\\CB_OFFSYS;
+       cs = số ControlSet đang dùng). Mỗi lần máy bật, Windows chạy bằng SYSTEM:  cb_provision.py boot  → nếu chưa có tác vụ agent thì tự dựng + bật agent,
+       xong thì tự gỡ dịch vụ. Đây là lưới an toàn thứ 3 (sau file trả lời + SetupComplete.cmd): bản Windows tuỳ biến không chạy 2 thứ kia thì agent vẫn lên.
+       Lệnh không phải dịch vụ thật nên Windows ghi 1 dòng lỗi "dịch vụ không trả lời" — vô hại (ErrorControl = 0), tiến trình con vẫn chạy tiếp."""
+    k = "%s\\ControlSet%03d\\Services\\%s" % (root, int(cs), BOOT_SVC)
+    img = '%%SystemRoot%%\\System32\\cmd.exe /c start "" /b "%s\\py\\pythonw.exe" -I -B "%s\\os\\cb_provision.py" boot' % (base, base)
+    add = lambda name, typ, val: ["reg", "add", k, "/v", name, "/t", typ, "/d", str(val), "/f"]
+    return [add("Type", "REG_DWORD", 16), add("Start", "REG_DWORD", 2), add("ErrorControl", "REG_DWORD", 0), add("ImagePath", "REG_EXPAND_SZ", img),
+            add("ObjectName", "REG_SZ", "LocalSystem"), add("DisplayName", "REG_SZ", "CloudBlue PC boot")]
+
+
+def setup_state(reg_text):
+    """Chữ in ra của `reg query <kho SYSTEM>\\Setup` → Windows đó có đang ở trạng thái "cài đặt lần đầu" không:
+       True = sẽ chạy bước cài lần đầu (dùng file trả lời) · False = bản đã cài xong / kiểu ghost (khởi động thẳng vào Windows có sẵn) · None = không đọc được."""
+    v = dict((k.lower(), val.strip().lower()) for k, val in re.findall(r"^\s+(\w+)\s+REG_\w+\s*(.*?)\s*$", reg_text or "", re.M))
+    if "systemsetupinprogress" not in v and "setuptype" not in v: return None
+    num = lambda s: int(s, 16) if re.fullmatch(r"0x[0-9a-f]+", s or "") else 0
+    return num(v.get("systemsetupinprogress")) == 1 or num(v.get("setuptype")) in (1, 2) or "windeploy" in v.get("cmdline", "")
 
 
 def acl_lock_cmds(base):

@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "20.11d"
+BUILD_VER = "21.11a"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -145,12 +145,12 @@ def driver_report(cb):
 
 def place_vga_installers(cb):
     """Gói driver VGA NVIDIA dạng .exe bỏ trong cb\\drivers (hoặc cb\\drivers\\<bản>) KHÔNG nạp kiểu driver được: gói có hàng chục file .inf dùng chung
-       ~1GB file, nạp hết thì kho driver của Windows phình hàng chục GB. → chuyển sang os\\firstboot.d[\\<bản>] + sinh 1 file lệnh cài IM LẶNG
-       (-s -noreboot) chạy ở lần đăng nhập đầu; cài xong tự xoá bản chép trên ổ C: (phân vùng cứu hộ vẫn giữ để cài lại). Trả danh sách dòng ghi chú."""
+       ~1GB file, nạp hết thì kho driver của Windows phình hàng chục GB. → chuyển sang os\\firstboot.d[\\<bản>]; ở lần đăng nhập đầu cb_provision.py tự cài
+       IM LẶNG (-s -noreboot) SAU KHI máy đã có mạng (driver card mạng xong trước), máy không có card NVIDIA thì bỏ qua; cài xong tự xoá bản chép trên ổ C:
+       (phân vùng cứu hộ vẫn giữ để cài lại). Trả danh sách dòng ghi chú."""
     drv, notes = os.path.join(cb, "drivers"), []
     if not os.path.isdir(drv): return notes
     spots = [("", drv)] + [(n, os.path.join(drv, n)) for n in sorted(os.listdir(drv)) if os.path.isdir(os.path.join(drv, n))]
-    todo = {}                                                          # thư mục firstboot.d đích → [tên gói]
     for sub, folder in spots:
         packs = sorted(f for f in os.listdir(folder) if os.path.isfile(os.path.join(folder, f)) and NVIDIA_RE.match(f))
         if not packs: continue
@@ -161,14 +161,11 @@ def place_vga_installers(cb):
             dst = os.path.join(fb, f)
             if os.path.exists(dst): os.remove(dst)
             shutil.move(os.path.join(folder, f), dst)
-            if f not in todo.setdefault(fb, []): todo[fb].append(f)
-            notes.append("VGA NVIDIA %s: cai im lang o lan dang nhap dau%s" % (f, (" (chi ban %s)" % tag) if tag else " (moi ban)"))
-    for fb, packs in todo.items():
-        lines = ["@echo off", "rem CloudBlue PC: cai driver VGA NVIDIA im lang o lan dang nhap dau (file nay do bo tao ISO tu sinh)"]
-        for f in sorted(packs):
-            lines += ['if exist "%%~dp0%s" (' % f, '  "%%~dp0%s" -s -noreboot' % f, '  del /f /q "%%~dp0%s"' % f, ")"]
-        lines.append("exit /b 0")
-        with open(os.path.join(fb, "50-vga-nvidia.cmd"), "w", encoding="ascii", newline="") as fo: fo.write("\r\n".join(lines) + "\r\n")
+            notes.append("VGA NVIDIA %s: tu cai o lan dang nhap dau, SAU KHI may co mang%s" % (f, (" (chi ban %s)" % tag) if tag else " (moi ban)"))
+        old = os.path.join(fb, "50-vga-nvidia.cmd")                    # file lệnh do bộ tạo ISO bản cũ sinh (thư mục làm việc dùng lại) → bỏ, cb_provision tự cài
+        try:
+            if os.path.isfile(old) and b"cai driver VGA NVIDIA im lang" in open(old, "rb").read(600): os.remove(old)
+        except OSError: pass
     return notes
 
 

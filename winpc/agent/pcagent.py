@@ -2,13 +2,16 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 20.11a):
+#  Việc làm (bản 21.11a):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
 #        reboot · shutdown · update
 #    · báo kết quả lệnh cài lại sau khi Windows mới lên
 #    · tự cập nhật theo bản admin công bố (kiểm sha256 từng file, chỉ tải từ đúng kho GitHub của shop)
+#    · HẠN THUÊ (SQL v42): nhận hạn từ máy chủ, báo trước cho khách, hết hạn thì tự tắt máy (mất mạng vẫn đếm; chỉnh lùi đồng hồ không lách được)
+#    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
+#    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -23,12 +26,18 @@ for _p in (os.path.join(HERE, "..", "lib"), HERE):
 
 import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
-from cbsys import WIN, WinSys                                    # noqa: E402
+from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "20.11c"
+AGENT_VER = "21.11a"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
+RENT_WARN = (86400, 3600, 600, 60)       # báo cho khách khi hạn thuê còn: 1 ngày · 1 giờ · 10 phút · 1 phút
+RENT_BOOT_GRACE = 180                    # máy bật lên lúc ĐÃ hết hạn: chờ hỏi máy chủ tối đa 3 phút (có thể vừa được gia hạn) rồi mới tắt
+RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy
+RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
+CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy chủ quá 2 phút → agent đặt lại theo máy chủ (cb.json "clock_fix": false để tắt)
+NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
 
 
 # ====================================================================================== đọc phần cứng (không cần WMI)
@@ -155,6 +164,32 @@ class WinHost:
         try: subprocess.run(a, capture_output=True, timeout=60)
         except Exception: pass
 
+    def abort_shutdown(self):
+        """Huỷ lệnh tắt máy đang đếm ngược (khách vừa được gia hạn trong phút cuối)."""
+        try: subprocess.run(["shutdown", "/a"], capture_output=True, timeout=60)
+        except Exception: pass
+
+    def set_clock(self, epoch):
+        """Đặt đồng hồ hệ thống theo giờ quốc tế `epoch` (giây). Cần quyền SYSTEM / quản trị. True nếu Windows nhận."""
+        try:
+            import ctypes
+
+            class ST(ctypes.Structure):
+                _fields_ = [(n, ctypes.c_ushort) for n in ("y", "mo", "dow", "d", "h", "mi", "s", "ms")]
+            t = time.gmtime(int(epoch))
+            st = ST(t.tm_year, t.tm_mon, (t.tm_wday + 1) % 7, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec, 0)
+            return bool(ctypes.windll.kernel32.SetSystemTime(ctypes.byref(st)))
+        except Exception:
+            return False
+
+    def notify(self, text, secs=60):
+        """Hiện hộp thông báo cho người đang dùng máy (mọi phiên đăng nhập) bằng msg.exe của Windows. Không chờ ai bấm; không có msg.exe thì thôi."""
+        try:
+            exe = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32", "msg.exe")
+            subprocess.Popen([exe, "*", "/TIME:%d" % max(5, int(secs)), str(text)[:250]], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, close_fds=True)
+        except Exception: pass
+
     def mutex(self, name="Global\\CloudBluePCAgent"):
         """True nếu đây là bản agent DUY NHẤT đang chạy."""
         try:
@@ -225,6 +260,16 @@ class Net:
             return b
 
 
+def span_txt(sec):
+    """Số giây → chữ không dấu cho hộp thông báo: '2 ngay 3 gio' · '5 gio 10 phut' · '9 phut' · '40 giay'."""
+    sec = max(0, int(sec))
+    d, h, m = sec // 86400, sec % 86400 // 3600, sec % 3600 // 60
+    if d: return "%d ngay" % d + (" %d gio" % h if h else "")
+    if h: return "%d gio" % h + (" %d phut" % m if m else "")
+    if m: return "%d phut" % m
+    return "%d giay" % sec
+
+
 # ====================================================================================== agent
 class Agent:
     def __init__(self, sysx, host, net, base=BASE, log=None):
@@ -240,6 +285,15 @@ class Agent:
         self.bad_update = None
         self.enroll_turn = 0
         self.name = (self.ident or {}).get("name") or ""
+        self.rent = C.load_json(sysx, self.p("rent.json")) or {}    # hạn thuê máy chủ giao: {"until", "skew", "hi", "warned", "off"} — giữ cả khi mất mạng / khởi động lại
+        if not isinstance(self.rent, dict): self.rent = {}
+        self.events = []                    # việc lạ chờ báo về web (kèm trong p_info.ev)
+        self.t_start = sysx.now()
+        self.rent_synced = False            # từ lúc agent chạy đã hỏi được máy chủ về hạn thuê chưa
+        self.rent_call = None               # lúc đã báo khách "máy sắp tắt"
+        self.rent_saved = 0
+        self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
+        self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
 
     def p(self, rel): return self.base + "\\" + rel
     def log(self, m): self._log(m)
@@ -264,7 +318,7 @@ class Agent:
         try:
             i["fw"] = self.s.firmware()
             i["disks"] = [{"model": (d.model or "")[:40], "gb": round(d.size / 1e9), "bus": d.bus_name, "ssd": d.ssd} for d in self.s.disks()
-                          if not d.removable][:8]
+                          if not d.removable and d.bus not in BUS_EXTERNAL][:8]
             i["rec"] = cbrec.status(self.s)
         except Exception as e:
             i["err"] = str(e)[:120]
@@ -279,16 +333,141 @@ class Agent:
     def write_status(self):
         """Ghi os\\status.txt — tình trạng agent KHÔNG có bí mật, tài khoản thường đọc được (thư mục os cho đọc) để chủ shop xem tại máy
            khi máy không hiện trên web mà trên máy không còn tài khoản quản trị. Chỉ ghi khi tình trạng đổi."""
-        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "")
+        rent = self.rent_line()
+        try: lan = self.h.lan_ip() or ""
+        except Exception: lan = ""
+        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "", rent, lan)
         if st == getattr(self, "_last_status", None): return
         self._last_status = st
         lines = ["CloudBlue PC - tinh trang (ghi luc %s)" % time.strftime("%Y-%m-%d %H:%M:%S"),
                  "Phan mem agent: %s" % AGENT_VER,
+                 "Mang LAN: %s" % (("co - dia chi IP %s" % lan) if lan else "KHONG CO dia chi IP - kiem tra day mang / driver card mang"),
                  "Dang ky voi he thong: %s" % (("ROI - ten tren web: %s" % (self.name or "?")) if st[0] else "CHUA (dang thu dang ky)"),
                  "Ket noi may chu: %s" % ("duoc" if st[1] else ("CHUA DUOC - %s" % st[3][:200])),
+                 "Han thue: %s" % rent,
                  "May khong hien tren web: kiem tra day mang / driver card mang; van khong duoc thi cai lai bang USB CloudBlue."]
         try: self.s.write_text(self.p("os\\status.txt"), "\r\n".join(lines) + "\r\n")
         except Exception: pass
+
+    # ------------------------------------------------------------------ hạn thuê + việc lạ
+    def event(self, k, **kw):
+        """Ghi 1 việc lạ để báo về web ở lần gọi máy chủ kế (mỗi loại 1 mục đang chờ, tối đa 8 mục)."""
+        if len(self.events) < 8 and not any(e.get("k") == k for e in self.events): self.events.append(dict(kw, k=k))
+
+    def rent_save(self):
+        try:
+            C.save_json(self.s, self.p("rent.json"), self.rent); self.rent_saved = self.s.now()
+        except Exception: pass
+
+    def rent_est(self):
+        """Giờ MÁY CHỦ ước tính (giây) = giờ máy + độ lệch đo ở lần hỏi máy chủ gần nhất.
+           Lúc mất mạng mà đồng hồ máy bị chỉnh LÙI → nối tiếp từ mốc lớn nhất đã thấy (không lách được hạn thuê) + báo việc lạ."""
+        r = self.rent
+        est = self.s.now() + (r.get("skew") or 0)
+        hi = r.get("hi") or 0
+        if est < hi - 300:
+            self.event("clock", d=int(est - hi))
+            self.log("đồng hồ máy bị chỉnh lùi %d giây → hạn thuê vẫn tính theo mốc cũ" % (hi - est))
+            r["skew"] = (r.get("skew") or 0) + (hi - est); est = hi
+            self.rent_save()
+        elif est > hi:
+            r["hi"] = est
+        return est
+
+    def clock_fix(self, r):
+        """Đồng hồ máy lệch giờ máy chủ quá CLOCK_FIX_S giây → đặt lại theo máy chủ (bản Windows tuỳ biến hay lệch đúng 1 giờ sau khi cài, pin CMOS yếu…).
+           Mỗi 10 phút thử tối đa 1 lần. Các mốc thời gian agent đang giữ được dời theo để không tính nhầm."""
+        if self.cfg.get("clock_fix") is False: return False
+        try: now_srv = int(r.get("now") or 0)
+        except (TypeError, ValueError): return False
+        if now_srv < 1_600_000_000: return False
+        before = self.s.now()
+        d = now_srv - before
+        if abs(d) <= CLOCK_FIX_S: return False
+        if self.clock_at is not None and abs(before - self.clock_at) < 600: return False
+        ok = False
+        try: ok = bool(self.h.set_clock(now_srv))
+        except Exception: ok = False
+        moved = self.s.now() - before
+        self.clock_at = self.s.now()
+        if not ok:
+            self.log("đồng hồ máy lệch %+d giây so với máy chủ nhưng KHÔNG chỉnh được" % d); return False
+        self.log("đồng hồ máy lệch %+d giây so với máy chủ → đã chỉnh lại theo máy chủ" % d)
+        self.t_start += moved
+        if self.rent_call is not None: self.rent_call += moved
+        if self.rent_saved: self.rent_saved += moved
+        if self.rent.get("skew") is not None:                        # độ lệch đã đo trước đó không còn đúng nữa
+            self.rent["skew"] = now_srv - self.s.now(); self.rent["hi"] = max(now_srv, 0)
+        return True
+
+    def rent_stop_off(self, why):
+        """Đang đếm ngược tắt máy mà hạn thuê đổi (được gia hạn / bỏ hạn) → huỷ lệnh tắt."""
+        if self.rent_call is None: return
+        self.rent_call = None
+        self.log("huỷ lệnh tắt máy: %s" % why)
+        try: self.h.abort_shutdown()
+        except Exception: pass
+
+    def rent_sync(self, r):
+        """Sau mỗi lần hỏi được máy chủ: nhận hạn thuê + chỉnh độ lệch đồng hồ (máy chủ là chuẩn)."""
+        if not isinstance(r.get("rent"), dict): return                # máy chủ chưa có phần hạn thuê (chưa chạy SQL v42) → không làm gì
+        u = r["rent"].get("until")
+        u = int(u) if isinstance(u, (int, float)) and not isinstance(u, bool) and u > 0 else None
+        try: now_srv = int(r.get("now") or 0)
+        except (TypeError, ValueError): now_srv = 0
+        if now_srv > 1_600_000_000:
+            self.rent["skew"] = now_srv - self.s.now(); self.rent["hi"] = now_srv
+        self.rent_synced = True
+        if u != self.rent.get("until"):
+            self.rent_stop_off("hạn thuê vừa đổi")
+            self.rent["until"] = u; self.rent["warned"] = []; self.rent.pop("off", None)
+            self.log("hạn thuê: %s" % ("không đặt hạn" if u is None else "còn %s" % span_txt(u - self.rent_est())))
+            self.rent_save()
+        elif u and self.s.now() - self.rent_saved >= RENT_SAVE_S:
+            self.rent_save()
+
+    def rent_line(self):
+        u = self.rent.get("until")
+        if not u: return "khong dat han"
+        left = u - (self.s.now() + (self.rent.get("skew") or 0))
+        if left <= 0: return "DA HET HAN - may tu tat. Lien he shop de gia han."
+        if left < 60: return "con duoi 1 phut"
+        return "con %s" % span_txt(left // 60 * 60 if left < 3600 else left // 3600 * 3600)      # làm tròn (phút / giờ) để không ghi lại file liên tục
+
+    def rent_check(self):
+        """Soát hạn thuê (chạy cả khi mất mạng). Trả số giây tối đa được nghỉ trước lần soát sau, hoặc None nếu máy không đặt hạn."""
+        u = self.rent.get("until")
+        if not u: return None
+        est = self.rent_est()
+        left = u - est
+        if left > 0:
+            if left > 5: self.rent_stop_off("còn hạn thuê")            # dư vài giây do đo lại đồng hồ thì không huỷ lệnh tắt đang đếm
+            done = self.rent.get("warned") or []
+            if any(left <= w and w not in done for w in RENT_WARN):    # tới 1 mốc báo trước (máy vừa bật khi còn 5 phút thì chỉ báo 1 lần "con 5 phut")
+                self.rent["warned"] = [w for w in RENT_WARN if left <= w]
+                self.rent_save()
+                self.log("báo khách: hạn thuê còn %s" % span_txt(left))
+                self.h.notify("CloudBlue PC: may nay con %s nua la HET HAN THUE. Het han may se TU TAT. Lien he shop de gia han." % span_txt(left), 120 if left > 120 else 45)
+            if self.s.now() - self.rent_saved >= RENT_SAVE_S: self.rent_save()
+            nxt = max([w for w in RENT_WARN if w < left], default=0)   # ngủ không quá lúc tới mốc báo kế / lúc hết hạn
+            return max(2, min(left - nxt, 300))
+        if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
+            return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể chủ shop vừa gia hạn lúc máy đang tắt)
+        if self.rent_call is None:
+            self.rent_call = self.s.now()
+            self.event("rent_boot" if self.rent.get("off") else "rent_off")
+            self.log("HẾT HẠN THUÊ → báo khách, %d giây nữa tắt máy" % RENT_LAST_CALL)
+            self.h.notify("CloudBlue PC: may nay da HET HAN THUE. May se TU TAT sau %d giay. Lien he shop de gia han." % RENT_LAST_CALL, RENT_LAST_CALL)
+            # Windows tự đếm ngược + hiện lời nhắn của chính nó (máy không có msg.exe vẫn thấy). Khách có huỷ lệnh này thì 60 giây nữa agent vẫn tắt.
+            self.h.power(reboot=False, delay=RENT_LAST_CALL, msg="CloudBlue PC: het han thue - may tu tat sau %d giay. Lien he shop de gia han." % RENT_LAST_CALL)
+            return 3                                                   # nhịp kế báo về web ngay
+        wait = RENT_LAST_CALL - (self.s.now() - self.rent_call)
+        if wait > 0: return max(2, min(15, wait))
+        self.rent["off"] = int(est); self.rent_save()
+        self.log("hết hạn thuê → TẮT MÁY")
+        self.h.power(reboot=False, delay=0, msg="CloudBlue PC: het han thue - may tat.")
+        self.rent_call = self.s.now() + RENT_LAST_CALL                 # lệnh tắt bị chặn / máy chưa tắt: 2 phút sau ra lệnh lại
+        return 30
 
     # ------------------------------------------------------------------ đăng ký
     def enroll(self):
@@ -300,7 +479,11 @@ class Agent:
         self.enroll_turn += 1
         r = self.net.rpc("pc_enroll", {"p_hw": hw, "p_info": self.info(), "p_key": key})
         if not r:
-            self.log("đăng ký: chưa gọi được máy chủ (%s)" % self.net.last_err); return False
+            self.fail += 1
+            self.log("đăng ký: chưa gọi được máy chủ (%s)" % self.net.last_err)
+            self.tell_no_net()
+            return False
+        self.fail = 0
         if not r.get("ok"):
             why = {"NEED_KEY": "cần mã đăng ký — vào trang quản trị › Máy PC bấm 'Cho đăng ký lại' cho máy này, hoặc cài lại bằng USB / ISO CloudBlue",
                    "BAD_KEY": "mã đăng ký / vé không đúng hoặc đã hết hạn", "WRONG_NET": "máy đang ở mạng khác lúc trước",
@@ -317,6 +500,16 @@ class Agent:
         self.enroll_turn = 0
         self.log("ĐÃ ĐĂNG KÝ: máy %s (%s) — %s" % (self.name, r["id"], "đã duyệt" if r.get("approved") else "chờ admin duyệt trên trang quản trị"))
         return True
+
+    def tell_no_net(self):
+        """Máy mới cài (chưa đăng ký) mà không có địa chỉ IP → hiện 1 hộp báo tại máy để người cài biết vì sao máy không hiện trên web."""
+        if self.net_told or self.s.now() - self.t_start < NO_NET_TELL_S: return
+        try: lan = self.h.lan_ip()
+        except Exception: lan = "?"
+        if lan: return
+        self.net_told = True
+        self.log("máy chưa có địa chỉ IP (dây mạng / driver card mạng) → báo tại máy")
+        self.h.notify("CloudBlue PC: may nay CHUA CO MANG (chua co dia chi IP) nen chua hien tren web. Kiem tra day mang / driver card mang.", 600)
 
     # ------------------------------------------------------------------ lệnh
     def done(self, oid, ok, result):
@@ -424,7 +617,10 @@ class Agent:
 
     # ------------------------------------------------------------------ 1 nhịp
     def poll(self, send_info=True):
-        body = {"p_id": self.ident["id"], "p_token": self.ident["token"], "p_info": self.info() if send_info else None, "p_done": self.pending_done}
+        sent_ev = list(self.events) if send_info else []
+        info = self.info() if send_info else None
+        if sent_ev: info["ev"] = sent_ev
+        body = {"p_id": self.ident["id"], "p_token": self.ident["token"], "p_info": info, "p_done": self.pending_done}
         sent_done = self.pending_done
         r = self.net.rpc("pc_poll", body)
         if r is None:
@@ -453,6 +649,11 @@ class Agent:
                 idf["name"] = self.name; C.save_json(self.s, self.p("identity.json"), idf); cbrec.save_identity(self.s, idf)
             except Exception: pass
         self.last_manifest = r.get("agent")
+        if sent_ev: self.events = [e for e in self.events if e not in sent_ev]
+        try: self.clock_fix(r)
+        except Exception: self.log("lỗi chỉnh đồng hồ: " + traceback.format_exc())
+        try: self.rent_sync(r)
+        except Exception: self.log("lỗi nhận hạn thuê: " + traceback.format_exc())
         return r
 
     def tick(self):
@@ -462,13 +663,21 @@ class Agent:
         return nap
 
     def _tick(self):
+        nap = self._work()
+        if self.rebooting: return nap                               # đang khởi động lại / cài lại theo lệnh → không xét hạn thuê
+        try: rn = self.rent_check()
+        except Exception:
+            self.log("lỗi soát hạn thuê: " + traceback.format_exc()); rn = None
+        return nap if rn is None else max(1, min(nap, rn))
+
+    def _work(self):
         self.ticks += 1
         if self.rebooting: return 30
         if not self.ident:
             if self.enroll(): return 2
             return min(900, 30 * (2 ** min(self.enroll_turn // 3, 5)))
         self.check_result()
-        r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None))
+        r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None or bool(self.events)))
         if r is None: return min(300, self.poll_s * (1 + min(self.fail, 9)))
         if not r.get("ok"): return 5
         if r.get("order"):
@@ -530,9 +739,19 @@ def cmd_run(argv):
         if ag.restart:
             if ag.h.restart_self(): return 0
             ag.restart = False
-        if time.time() - t_sec > 6 * 3600:
+        since = abs(time.time() - t_sec)
+        if since > 6 * 3600 or (since > 300 and ag.ident and ag.fail == 0 and vga_pending()):     # driver VGA còn chờ mạng → máy có mạng rồi thì cài nốt
             secure(ag, log); t_sec = time.time()
         time.sleep(max(1, min(900, nap)))
+
+
+def vga_pending(base=BASE):
+    """cb_provision còn gói driver VGA chưa cài xong (lúc đăng nhập đầu chưa có mạng / card chưa nhận driver)?"""
+    try:
+        with open(os.path.join(base, "logs", "vga.json"), encoding="utf-8") as f: st = json.load(f)
+        return isinstance(st, dict) and st.get("state") in ("wait", "fail")
+    except Exception:
+        return False
 
 
 def secure(ag, log):
@@ -541,10 +760,18 @@ def secure(ag, log):
     prov, py = os.path.join(BASE, "os", "cb_provision.py"), os.path.join(BASE, "py", "python.exe")
     try:
         if os.path.isfile(prov) and os.path.isfile(py):
-            rc, out = ag.s.run([py, "-I", "-B", prov, "system"], timeout=1800)
+            rc, out = ag.s.run([py, "-I", "-B", prov, "system"], timeout=3000)      # có thể kèm cài nốt driver VGA (tối đa 40 phút)
             if rc != 0: log("khoá quyền (cb_provision system) báo mã %s" % rc)
     except Exception as e:
         log("khoá quyền lỗi: %s" % e)
+    try:                                                            # cb_provision thấy bảo mật bị đổi (vd tài khoản khách có lại quyền Admin) → báo về web
+        ev = os.path.join(BASE, "logs", "sec.event")
+        if os.path.isfile(ev):
+            with open(ev, encoding="ascii", errors="replace") as f: txt = f.read(200).strip()
+            os.remove(ev)
+            if txt: ag.event("sec", m=txt[:120]); log("việc lạ về bảo mật: %s" % txt[:120])
+    except Exception as e:
+        log("đọc sec.event lỗi: %s" % e)
 
 
 def cmd_selfcheck(argv):
@@ -568,6 +795,7 @@ def cmd_status(argv):
     rec = i.get("rec") or {}
     print("  Cuu ho:     %s" % ("co - doi duoc sang: " + ", ".join(rec.get("images") or []) if rec.get("ok") else "KHONG CO phan vung cuu ho (cai lai phai dung USB)"))
     print("  Phan cung:  %s - %s luong - %s GB RAM - %s" % (i.get("cpu"), i.get("cores"), i.get("ram_gb"), ", ".join(i.get("gpus") or []) or "?"))
+    print("  Han thue:   %s" % ag.rent_line())
     if ag.ident:
         r = ag.net.rpc("pc_poll", {"p_id": ag.ident["id"], "p_token": ag.ident["token"], "p_info": None, "p_done": None})
         print("  Ket noi:    %s" % ("OK - %s, %s" % ("da duyet" if r.get("approved") else "CHO ADMIN DUYET", r.get("status")) if r and r.get("ok")

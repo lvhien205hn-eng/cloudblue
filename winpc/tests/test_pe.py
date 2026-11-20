@@ -512,5 +512,47 @@ ck("cài lại từ xa sang 1511 (từ phân vùng cứu hộ): ổ C: nhận g�
    and fb_on(win, "cloudbluepc\\os\\firstboot.d\\") == ["10-chung.cmd", "1511\\10-nvidia-vga.cmd", "1511\\nvidia-vga-466.77.exe", "cong-cu\\tool.txt"]
    and "cb\\os\\firstboot.d\\22h2\\20-app.cmd" in rec.files, (rc, fb_on(win, "cloudbluepc\\os\\firstboot.d\\")))
 
+print("23. Múi giờ đặt sẵn trong Windows mới + dịch vụ khởi động (lưới an toàn thứ 3) + nhận ra bản Windows kiểu ghost")
+OOBE_REG = "\r\nHKEY_LOCAL_MACHINE\\CB_OFFSYS\\Setup\r\n    SetupType    REG_DWORD    0x2\r\n    SystemSetupInProgress    REG_DWORD    0x1\r\n    CmdLine    REG_SZ    oobe\\windeploy.exe\r\n    OOBEInProgress    REG_DWORD    0x1\r\n"
+GHOST_REG = "\r\nHKEY_LOCAL_MACHINE\\CB_OFFSYS\\Setup\r\n    SetupType    REG_DWORD    0x0\r\n    SystemSetupInProgress    REG_DWORD    0x0\r\n    CmdLine    REG_SZ    \r\n    OOBEInProgress    REG_DWORD    0x0\r\n"
+def regs(fs, verb): return [c for c in fs.cmds if c[0] == "reg" and c[1] == verb]
+def image_json(fs):
+    win, _ = fb_vols(fs)
+    return json.loads(win.files["cloudbluepc\\logs\\image.json"])
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg); fs.reg_off = {"Select": "    Default    REG_DWORD    0x1\r\n", "Setup": OOBE_REG}
+rc, ui, inst = run(fs)
+tz = next((c for c in fs.cmds if c[0] == "dism" and any(x.startswith("/Set-TimeZone:") for x in c)), [])
+ck("đặt múi giờ ngay trong Windows vừa bung (dism /Set-TimeZone, đúng ổ đích, dùng chỗ tạm trên ổ đích) — đồng hồ không lệch ở lần khởi động đầu",
+   rc == 0 and "/Set-TimeZone:SE Asia Standard Time" in tz and any(x.lower().startswith("/image:") for x in tz) and any(x.startswith("/ScratchDir:") for x in tz)
+   and [i for i, c in enumerate(fs.cmds) if "/Apply-Image" in c][0] < fs.cmds.index(tz), tz)
+adds = regs(fs, "add")
+ck("nạp kho registry của Windows mới → ghi dịch vụ khởi động CloudBluePCBoot (6 giá trị) → nhả kho, đúng thứ tự", len(regs(fs, "load")) == 1 and regs(fs, "load")[0][2] == "HKLM\\CB_OFFSYS"
+   and regs(fs, "load")[0][3].lower().endswith(":\\windows\\system32\\config\\system") and len(adds) == 6 and all(c[2] == "HKLM\\CB_OFFSYS\\ControlSet001\\Services\\CloudBluePCBoot" for c in adds)
+   and fs.cmds.index(regs(fs, "load")[0]) < fs.cmds.index(adds[0]) < fs.cmds.index(adds[-1]) < fs.cmds.index(regs(fs, "unload")[0]) and not fs.reg_loaded, [c[:5] for c in fs.cmds if c[0] == "reg"])
+vals = {c[4]: (c[6], c[8]) for c in adds}
+ck("dịch vụ: tự chạy lúc khởi động bằng SYSTEM, lỗi thì Windows bỏ qua, gọi đúng cb_provision.py boot", vals["Start"] == ("REG_DWORD", "2") and vals["Type"] == ("REG_DWORD", "16") and vals["ErrorControl"] == ("REG_DWORD", "0")
+   and vals["ObjectName"] == ("REG_SZ", "LocalSystem") and vals["ImagePath"] == ("REG_EXPAND_SZ", '%SystemRoot%\\System32\\cmd.exe /c start "" /b "C:\\CloudBluePC\\py\\pythonw.exe" -I -B "C:\\CloudBluePC\\os\\cb_provision.py" boot'), vals)
+ck("bản Windows chuẩn (đang ở trạng thái cài đặt lần đầu): ghi nhận, không cảnh báo", image_json(fs) == {"oobe": True, "control_set": 1, "boot_svc": True} and not any("kieu ghost" in x for x in fs.logs), image_json(fs))
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg); fs.reg_off = {"Select": "    Default    REG_DWORD    0x2\r\n", "Setup": GHOST_REG}
+rc, ui, inst = run(fs)
+ck("bản Windows kiểu GHOST (không qua bước cài lần đầu): vẫn cài xong, cảnh báo rõ trên màn hình bộ cài, dịch vụ ghi đúng ControlSet đang dùng (002)",
+   rc == 0 and image_json(fs) == {"oobe": False, "control_set": 2, "boot_svc": True} and any("KHONG o trang thai 'cai dat lan dau'" in x for x in fs.logs)
+   and all(c[2] == "HKLM\\CB_OFFSYS\\ControlSet002\\Services\\CloudBluePCBoot" for c in regs(fs, "add")) and len(regs(fs, "add")) == 6, (image_json(fs), [x for x in fs.logs if "ghost" in x]))
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+rc, ui, inst = run(fs)
+ck("không đọc được trạng thái (kho thiếu khoá) → coi là 'không biết', vẫn chèn dịch vụ vào ControlSet001, không cảnh báo nhầm", rc == 0 and image_json(fs) == {"oobe": None, "control_set": 1, "boot_svc": True}
+   and len(regs(fs, "add")) == 6 and not any("kieu ghost" in x for x in fs.logs), image_json(fs))
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg); fs.fail_reg_load = True; fs.fail_tz = True
+rc, ui, inst = run(fs)
+win, _ = fb_vols(fs)
+ck("không nạp được kho registry + dism đặt múi giờ lỗi → ghi nhật ký, BỎ QUA, Windows vẫn cài xong (2 lưới kia còn nguyên)", rc == 0 and not regs(fs, "add") and any("khong nap duoc kho registry" in x for x in fs.logs)
+   and any("mui gio" in x and "bo qua" in x for x in fs.logs) and "windows\\panther\\unattend.xml" in win.files and "windows\\setup\\scripts\\setupcomplete.cmd" in win.files, [x for x in fs.logs if "mui gio" in x or "registry" in x])
+fs = FakeSys("uefi"); cfg = cfg0()
+d, recp, winp = cb_layout(fs, cfg, job0()); fs.reg_off = {"Setup": OOBE_REG}
+rc, ui, inst = run(fs)
+ck("cài lại từ xa (từ phân vùng cứu hộ): cũng đặt múi giờ + chèn dịch vụ khởi động", rc == 0 and any(c[0] == "dism" and "/Set-TimeZone:SE Asia Standard Time" in c for c in fs.cmds) and len(regs(fs, "add")) == 6 and not fs.reg_loaded)
+ck("setup_state: đọc đúng chữ reg in ra", C.setup_state(OOBE_REG) is True and C.setup_state(GHOST_REG) is False and C.setup_state("") is None and C.setup_state("ERROR: x") is None
+   and C.setup_state("    SetupType    REG_DWORD    0x1\r\n") is True)
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

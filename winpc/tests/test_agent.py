@@ -63,6 +63,7 @@ class SqlNet:
 class FakeHost:
     def __init__(self, fs, name="CB-TEST01"):
         self.fs, self.name, self.powers, self.check_ok, self.restarts = fs, name, [], True, 0
+        self.ip, self.aborts, self.clock_ok, self.clock_tries, self.msgs = "192.168.1.77", 0, False, [], []
 
     def hostname(self): return self.name
 
@@ -74,10 +75,17 @@ class FakeHost:
     def cpu(self): return ("Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz", 56)
     def ram_gb(self): return 64.0
     def gpus(self): return ["NVIDIA GeForce GTX 1060 6GB"]
-    def lan_ip(self): return "192.168.1.77"
+    def lan_ip(self): return self.ip
     def uptime(self): return 1234
     def smbios(self): return {"uuid": "03000200040005000006000700080009", "board_serial": "BS123", "sys_serial": "Default string", "vendor": "HUANANZHI", "product": "X99", "board": "HUANANZHI X99-TF"}
     def power(self, reboot=True, delay=5, msg=""): self.powers.append(("reboot" if reboot else "shutdown", delay)); self.fs.rebooted = True
+    def notify(self, text, secs=60): self.msgs = getattr(self, "msgs", []) + [text]
+    def abort_shutdown(self): self.aborts += 1
+
+    def set_clock(self, epoch):                                       # clock_ok = False: Windows từ chối (mặc định của bộ thử → đồng hồ giả giữ nguyên)
+        self.clock_tries.append(epoch)
+        if not self.clock_ok: return False
+        self.fs.clock = float(epoch); return True
     def mutex(self, name=""): return True
     def restart_self(self): self.restarts += 1; return True
     def selfcheck(self, script): return (self.check_ok, "" if self.check_ok else "ImportError: x")
@@ -294,6 +302,194 @@ ck("đọc đúng hãng, tên máy, serial, UUID, bo mạch", sm == {"uuid": byt
 ck("bảng rỗng / hỏng không làm sập", pcagent.parse_smbios(b"")["uuid"] == "" and pcagent.parse_smbios(b"\0" * 9)["uuid"] == "" and pcagent.parse_smbios(raw[:30]) is not None)
 h1 = pcagent.hw_id(sm, "S466NX0M123456", "Samsung 970"); h2_ = pcagent.hw_id(sm, "S466NX0M999999", "Samsung 970")
 ck("2 máy cùng bo mạch 'UUID mặc định' nhưng khác ổ → dấu khác nhau; cùng máy → dấu giống", h1 != h2_ and h1 == pcagent.hw_id(dict(sm), " s466nx0m123456 ", "SAMSUNG 970") and len(h1) == 64)
+
+print("11. Hạn thuê: máy nhận hạn, báo trước cho khách, hết hạn tự tắt, bật lại cũng tự tắt (cần SQL v42)")
+q("delete from sec_alerts where kind like 'pc\\_%'")
+def rented_machine(serial, name):
+    """Cài 1 máy mới từ USB, Windows lên, agent đăng ký, admin duyệt. Trả (fs, net, host, agent, mã số máy)."""
+    fs = FakeSys("uefi"); H.usb(fs, H.cfg0(), key=KEY)
+    fs.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial=serial)
+    fs.disk(5, 64, bus=7, removable=False, model="WD Elements USB", style="mbr")          # ổ cứng gắn ngoài qua USB
+    assert cb_pe.Installer(fs).run(ScriptUI()) == 0
+    fs.fdisks = [d for d in fs.fdisks if d.index != 9]
+    boot_windows(fs)
+    net, host = SqlNet(), FakeHost(fs, name); host.msgs = []
+    ag = agent(fs, net, host); ag.tick()
+    pc = ag.ident["id"]
+    q(f"select pc_admin_set('{pc}', '{{\"approved\": true}}')", **A)
+    return fs, net, host, ag, pc
+def al(kind): return json.loads(q(f"select coalesce(json_agg(msg order by id), '[]') from sec_alerts where kind = '{kind}'"))
+def rentjson(fs): return json.loads(fs.file("C", "cloudbluepc\\rent.json") or "{}")
+fs, net, host, ag, PCR = rented_machine("RENT0001", "CB-THUE01")
+nap = ag.tick()
+ck("chưa đặt hạn → agent không làm gì thêm; status.txt ghi 'khong dat han'", ag.rent.get("until") is None and host.msgs == [] and not host.powers and nap == 30
+   and "Han thue: khong dat han" in (fs.file("C", "cloudbluepc\\os\\status.txt") or ""), (ag.rent, nap))
+ck("thông tin gửi web không tính ổ cứng gắn ngoài (USB) → cắm / rút ổ ngoài không bị coi là đổi phần cứng",
+   [d["bus"] for d in json.loads(q(f"select info->'disks' from pc_machines where id = '{PCR}'"))] == ["NVMe"], q(f"select info->'disks' from pc_machines where id = '{PCR}'"))
+q(f"select pc_admin_rent('{PCR}', '{{\"add_hours\": 30, \"renter\": \"anh Teo\"}}')", **A)
+nap = ag.tick()
+srv_now = int(q("select floor(extract(epoch from now()))"))
+ck("admin cho thuê 30 giờ → máy nhận hạn (giây epoch theo giờ MÁY CHỦ) + ghi rent.json; còn hơn 1 ngày nên chưa báo gì", abs(ag.rent["until"] - srv_now - 108000) < 10
+   and rentjson(fs)["until"] == ag.rent["until"] and host.msgs == [] and abs(ag.rent["skew"] - (srv_now - fs.clock)) < 10, (ag.rent, host.msgs))
+ck("đồng hồ máy lệch xa giờ máy chủ vẫn tính đúng thời gian còn lại (độ lệch đo lại mỗi lần hỏi máy chủ)", abs((ag.rent["until"] - ag.rent_est()) - 108000) < 10)
+import re as _re
+ck("status.txt ghi thời gian còn lại (làm tròn giờ)", _re.search(r"Han thue: con 1 ngay [56] gio", fs.file("C", "cloudbluepc\\os\\status.txt")), fs.file("C", "cloudbluepc\\os\\status.txt"))
+net.down = True
+fs.clock += 108000 - 86000; ag.tick()
+ck("MẤT MẠNG vẫn đếm: còn dưới 1 ngày → hộp thông báo cho khách (1 lần)", len(host.msgs) == 1 and "con 23 gio" in host.msgs[0] and "HET HAN THUE" in host.msgs[0], host.msgs)
+ag.tick(); fs.clock += 3000; ag.tick()
+ck("chưa tới mốc kế (1 giờ) → không báo lặp", len(host.msgs) == 1)
+fs.clock += 86000 - 3000 - 3500; nap = ag.tick()
+ck("còn dưới 1 giờ → báo lần 2; nghỉ không quá lúc tới mốc 10 phút", len(host.msgs) == 2 and "con 58 phut" in host.msgs[1] and nap <= 300, (host.msgs, nap))
+fs.clock += 3500 - 590; ag.tick(); fs.clock += 590 - 50; nap = ag.tick()
+ck("còn 10 phút và 1 phút → báo tiếp; sát giờ thì nhịp ngắn lại", len(host.msgs) == 4 and "con 9 phut" in host.msgs[2] and "giay" in host.msgs[3] and nap <= 50, (host.msgs, nap))
+ck("chưa hết hạn → chưa tắt máy", not host.powers)
+fs.clock += 51; nap = ag.tick()
+ck("HẾT HẠN (đang mất mạng) → báo khách 'tu tat sau 60 giay' + cho Windows ĐẾM NGƯỢC 60 giây (lời nhắn của chính Windows, không cần msg.exe)", len(host.msgs) == 5 and "da HET HAN THUE" in host.msgs[4]
+   and host.powers == [("shutdown", 60)] and nap <= 5 and ag.events == [{"k": "rent_off"}], (host.msgs[-1], host.powers, nap, ag.events))
+fs.clock += 30; nap = ag.tick()
+ck("trong 60 giây chờ → chưa ra lệnh tắt ngay, không đếm ngược lặp", host.powers == [("shutdown", 60)] and nap <= 15)
+fs.clock += 31; ag.tick()
+ck("hết 60 giây → agent ra lệnh TẮT NGAY (khách có huỷ lệnh đếm ngược cũng không thoát), ghi mốc 'off'", host.powers == [("shutdown", 60), ("shutdown", 0)] and rentjson(fs).get("off"), (host.powers, rentjson(fs)))
+fs.clock += 60; ag.tick()
+ck("máy chưa tắt hẳn → chưa ra lệnh lặp ngay", len(host.powers) == 2)
+fs.clock += 70; ag.tick()
+ck("2 phút sau máy vẫn chạy (lệnh tắt bị chặn) → ra lệnh tắt lại", host.powers == [("shutdown", 60), ("shutdown", 0), ("shutdown", 0)], host.powers)
+
+print("12. Máy hết hạn bị BẬT LẠI + gia hạn")
+fs.rebooted = False; host.powers.clear(); host.msgs.clear()
+ag2 = agent(fs, net, host)                                           # máy khởi động lại: agent mới, đọc rent.json cũ
+nap = ag2.tick()
+ck("bật lại lúc đã hết hạn, CHƯA hỏi được máy chủ → chờ (tối đa 3 phút) chứ chưa tắt", not host.powers and host.msgs == [] and nap == 10, (nap, host.msgs))
+fs.clock += 100; ag2.tick()
+ck("vẫn trong 3 phút chờ", not host.powers and host.msgs == [])
+fs.clock += 90; ag2.tick()
+ck("quá 3 phút vẫn không có mạng → báo khách + đếm ngược tắt, ghi việc lạ 'bật lại khi hết hạn'", len(host.msgs) == 1 and ag2.events == [{"k": "rent_boot"}] and host.powers == [("shutdown", 60)], (host.msgs, ag2.events, host.powers))
+fs.clock += 61; ag2.tick()
+ck("→ tắt lại", host.powers == [("shutdown", 60), ("shutdown", 0)])
+fs.rebooted = False; host.powers.clear(); host.msgs.clear(); net.down = False
+q(f"update pc_machines set rent_until = now() - interval '2 hours' where id = '{PCR}'")       # máy chủ: hạn đã qua 2 giờ, máy đã tự tắt 1 lần lúc hết hạn
+u_old = int(q(f"select floor(extract(epoch from rent_until)) from pc_machines where id = '{PCR}'"))
+next(x for _, _, x in fs._allvols() if x.letter == "C").put("cloudbluepc\\rent.json", json.dumps(dict(rentjson(fs), until=u_old, off=u_old + 60)))
+ag3 = agent(fs, net, host)
+nap = ag3.tick()
+ck("bật lại, CÓ mạng, máy chủ xác nhận vẫn hết hạn → báo khách ngay (không cần chờ 3 phút)", len(host.msgs) == 1 and ag3.events == [{"k": "rent_boot"}] and nap <= 5, (host.msgs, ag3.events, nap))
+ag3.tick()
+ck("việc 'bật lại khi hết hạn' đã báo về web → có cảnh báo cho admin", ag3.events == [] and len(al("pc_rent_boot")) == 1 and "BẬT LẠI" in al("pc_rent_boot")[0], al("pc_rent_boot"))
+q(f"select pc_admin_rent('{PCR}', '{{\"add_hours\": 48}}')", **A)       # admin gia hạn đúng lúc máy đang đếm 60 giây
+n_ab = host.aborts
+fs.clock += 61; ag3.tick()
+ck("được GIA HẠN trong lúc Windows đang đếm ngược tắt máy → HUỶ lệnh tắt (shutdown /a), không tắt nữa, xoá mốc 'off'", host.powers == [("shutdown", 60)] and host.aborts == n_ab + 1 and "off" not in rentjson(fs)
+   and ag3.rent_call is None and any("huỷ lệnh tắt máy" in x for x in ag3.logs), (host.powers, host.aborts, rentjson(fs)))
+ck("gia hạn xong còn 2 ngày → không báo gì thêm cho khách", len(host.msgs) == 1)
+q(f"update pc_machines set rent_until = now() - interval '1 second' where id = '{PCR}'")
+nap = ag3.tick()
+ck("hết hạn lúc máy ĐANG CHẠY + có mạng → việc lạ là 'rent_off' (không phải bật lại)", ag3.events == [{"k": "rent_off"}] and nap <= 5, ag3.events)
+ag3.tick()
+row = json.loads(q(f"select row_to_json(m) from pc_machines m where id = '{PCR}'"))
+ck("web nhận tin máy tự tắt vì hết hạn: ghi rent_off_at + cảnh báo 'máy đã tự tắt' có tên máy và tên khách", row["rent_off_at"] and len(al("pc_rent_end")) == 1
+   and "máy đã tự tắt" in al("pc_rent_end")[0] and "«CB-THUE01»" in al("pc_rent_end")[0] and "anh Teo" in al("pc_rent_end")[0], al("pc_rent_end"))
+fs.clock += 61; ag3.tick()
+ck("→ tắt máy", host.powers[-2:] == [("shutdown", 60), ("shutdown", 0)] and host.powers.count(("shutdown", 0)) == 1, host.powers)
+fs.rebooted = False; host.powers.clear(); host.msgs.clear()
+q(f"select pc_admin_rent('{PCR}', '{{\"add_hours\": 72}}')", **A)       # chủ shop gia hạn lúc máy đang TẮT
+ag4 = agent(fs, net, host); nap = ag4.tick()
+ck("gia hạn lúc máy đang tắt → bật lên máy hỏi máy chủ, thấy còn hạn → chạy bình thường", not host.powers and host.msgs == [] and nap == 30 and ag4.events == [] and "off" not in ag4.rent, (nap, host.msgs, ag4.rent))
+q(f"select pc_admin_rent('{PCR}', '{{\"until\": null}}')", **A); ag4.tick()
+ck("admin bỏ hạn → máy thôi đếm", ag4.rent.get("until") is None and "Han thue: khong dat han" in fs.file("C", "cloudbluepc\\os\\status.txt"))
+
+print("13. Chỉnh lùi đồng hồ để lách hạn thuê + việc lạ về bảo mật")
+q(f"select pc_admin_rent('{PCR}', '{{\"add_hours\": 3}}')", **A); ag4.tick()
+host.msgs.clear(); net.down = True
+fs.clock += 3600; ag4.tick()                                         # mất mạng 1 giờ → còn 2 giờ
+left1 = ag4.rent["until"] - ag4.rent_est()
+fs.clock -= 6 * 3600                                                 # khách (có quyền Admin) chỉnh đồng hồ lùi 6 giờ
+ag4.tick()
+left2 = ag4.rent["until"] - ag4.rent_est()
+ck("đồng hồ bị chỉnh lùi 6 giờ lúc mất mạng → thời gian còn lại KHÔNG tăng thêm", abs(left1 - left2) < 5 and 7100 < left2 <= 7200, (left1, left2))
+ck("ghi việc lạ 'clock' kèm số giây bị lùi", [e for e in ag4.events if e["k"] == "clock" and -21700 < e["d"] < -21500], ag4.events)
+fs.clock += 7200 + 5; ag4.tick(); fs.clock += 61; ag4.tick()
+ck("hết 2 giờ (tính nối tiếp) → vẫn tắt đúng hạn", host.powers == [("shutdown", 60), ("shutdown", 0)], host.powers)
+fs.rebooted = False; host.powers.clear(); net.down = False
+q(f"select pc_admin_rent('{PCR}', '{{\"add_hours\": 100}}')", **A)
+ag4.event("sec", m="tai khoan khach 'PC' co lai quyen Admin - da ha lai")
+ag4.tick()
+ck("có mạng lại → việc lạ được báo: cảnh báo đồng hồ + cảnh báo ĐỎ về bảo mật", ag4.events == [] and len(al("pc_clock")) == 1 and "LÙI" in al("pc_clock")[0] and len(al("pc_sec")) == 1
+   and "co lai quyen Admin" in al("pc_sec")[0] and q("select level from sec_alerts where kind = 'pc_sec'") == "crit", (ag4.events, al("pc_clock"), al("pc_sec")))
+ck("máy chủ là chuẩn: hỏi được máy chủ thì độ lệch đồng hồ được đo lại — còn đúng 3 giờ cũ (theo giờ máy chủ) + 100 giờ gia hạn",
+   abs((ag4.rent["until"] - ag4.rent_est()) - 103 * 3600) < 15, ag4.rent["until"] - ag4.rent_est())
+ev = "C:\\CloudBluePC"
+class OldNet(SqlNet):                                                # máy chủ CHƯA chạy SQL v42: câu trả lời không có mục rent
+    def rpc(self, fn, body, timeout=20):
+        r = super().rpc(fn, body, timeout)
+        if isinstance(r, dict): r.pop("rent", None)
+        return r
+fs5, net5, host5, ag5r, PC5 = rented_machine("RENT0005", "CB-THUE05")
+ag5r.net = OldNet(); ag5r.tick(); ag5r.tick()
+ck("máy chủ chưa có phần hạn thuê (SQL cũ) → agent bản mới vẫn chạy bình thường, không đếm gì", ag5r.rent.get("until") is None and not host5.powers and host5.msgs == [])
+ck("span_txt", [pcagent.span_txt(x) for x in (0, 59, 60, 3599, 3600, 3660, 86399, 86400, 90000, 200000)]
+   == ["0 giay", "59 giay", "1 phut", "59 phut", "1 gio", "1 gio 1 phut", "23 gio 59 phut", "1 ngay", "1 ngay 1 gio", "2 ngay 7 gio"])
+
+print("14. Đồng hồ máy lệch giờ máy chủ → agent chỉnh lại (bản Windows tuỳ biến hay lệch đúng 1 giờ sau khi cài)")
+srv = lambda: int(q("select floor(extract(epoch from now()))"))
+fs6, net6, host6, ag6, PC6 = rented_machine("CLOCK006", "CB-GIO06")
+ag6.tick()                                                           # nhịp báo sống đầu tiên: đồng hồ giả (năm 2027) lệch xa giờ máy chủ
+ck("(bộ thử) Windows từ chối đổi giờ → agent ghi nhật ký rồi chạy tiếp", len(host6.clock_tries) == 1 and any("KHÔNG chỉnh được" in x for x in ag6.logs) and not ag6.events, (host6.clock_tries, ag6.logs[-3:]))
+ag6.tick(); fs6.clock += 300; ag6.tick()
+ck("trong 10 phút không thử lại", len(host6.clock_tries) == 1)
+fs6.clock += 400; ag6.tick()
+ck("quá 10 phút → thử lại", len(host6.clock_tries) == 2)
+host6.clock_ok = True; host6.clock_tries.clear(); fs6.clock = srv() - 3600; ag6.clock_at = None; ag6.logs.clear()
+ag6.tick()
+ck("đồng hồ máy CHẬM 1 giờ → đặt lại đúng giờ máy chủ, ghi nhật ký, không coi là việc lạ", len(host6.clock_tries) == 1 and abs(host6.clock_tries[0] - srv()) < 10 and abs(fs6.clock - srv()) < 10
+   and any("đã chỉnh lại theo máy chủ" in x and "+36" in x for x in ag6.logs) and not ag6.events, (host6.clock_tries, ag6.logs))
+ag6.clock_at = None; ag6.tick()
+ck("đồng hồ đã đúng → không đụng nữa", len(host6.clock_tries) == 1)
+fs6.clock = srv() + 90; ag6.clock_at = None; ag6.tick()
+ck("lệch 90 giây (dưới ngưỡng 2 phút) → để yên", len(host6.clock_tries) == 1 and abs(fs6.clock - srv() - 90) < 10)
+q(f"select pc_admin_rent('{PC6}', '{{\"add_hours\": 0.5}}')", **A)
+fs6.clock = srv() + 3600; ag6.clock_at = None; host6.msgs.clear(); ag6.tick()
+left = ag6.rent["until"] - ag6.rent_est()
+ck("đồng hồ máy NHANH 1 giờ + máy còn 30 phút thuê: chỉnh lùi về đúng giờ, hạn thuê vẫn còn 30 phút, KHÔNG báo nhầm 'chỉnh lùi đồng hồ', không tắt máy",
+   len(host6.clock_tries) == 2 and abs(fs6.clock - srv()) < 10 and 1700 < left <= 1800 and not [e for e in ag6.events if e["k"] == "clock"] and not host6.powers
+   and len(host6.msgs) == 1 and _re.search(r"con (29|30) phut", host6.msgs[0]), (left, ag6.events, host6.powers, host6.msgs, host6.clock_tries))
+fs6.clock += 60; ag6.tick()
+ck("nhịp sau vẫn không có việc lạ về đồng hồ", not [e for e in ag6.events if e["k"] == "clock"] and len(al("pc_clock")) == 1)       # 1 = cảnh báo cũ của mục 13
+C6 = next(x for _, _, x in fs6._allvols() if x.letter == "C")
+cfg6 = json.loads(fs6.file("C", "cloudbluepc\\cb.json")); cfg6["clock_fix"] = False; C6.put("cloudbluepc\\cb.json", json.dumps(cfg6))
+ag7 = agent(fs6, net6, host6); host6.clock_tries.clear(); fs6.clock = srv() - 7200; ag7.tick(); ag7.tick()
+ck('cb.json "clock_fix": false → agent không bao giờ đụng đồng hồ', host6.clock_tries == [] and abs(fs6.clock - (srv() - 7200)) < 30)
+
+print("15. Máy mới cài KHÔNG có mạng: status.txt ghi đúng + hiện hộp báo tại máy")
+fs8 = FakeSys("uefi"); H.usb(fs8, H.cfg0(), key=KEY)
+fs8.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="NONET008")
+assert cb_pe.Installer(fs8).run(ScriptUI()) == 0
+fs8.fdisks = [d for d in fs8.fdisks if d.index != 9]; boot_windows(fs8)
+net8, host8 = SqlNet(), FakeHost(fs8, "CB-KOMANG"); net8.down = True; host8.ip = ""
+ag8 = agent(fs8, net8, host8); ag8.tick()
+st8 = fs8.file("C", "cloudbluepc\\os\\status.txt") or ""
+ck("chưa đăng ký + không gọi được máy chủ → status.txt ghi 'CHUA DUOC' kèm lý do (trước đây ghi nhầm 'duoc')", "Dang ky voi he thong: CHUA" in st8 and "Ket noi may chu: CHUA DUOC - " in st8 and "Ket noi may chu: duoc" not in st8, st8)
+ck("status.txt có dòng mạng LAN: không có địa chỉ IP → nhắc kiểm tra dây mạng / driver card mạng", "Mang LAN: KHONG CO dia chi IP - kiem tra day mang / driver card mang" in st8, st8)
+ck("mới chạy chưa tới 2,5 phút → chưa hiện hộp báo", host8.msgs == [])
+fs8.clock += 160; ag8.tick()
+ck("quá 2,5 phút vẫn không có IP → hiện 1 hộp báo tại máy: CHUA CO MANG, kiểm tra dây mạng / driver card mạng", len(host8.msgs) == 1 and "CHUA CO MANG" in host8.msgs[0] and "driver card mang" in host8.msgs[0] and host8.msgs[0].isascii(), host8.msgs)
+fs8.clock += 900; ag8.tick(); fs8.clock += 900; ag8.tick()
+ck("không báo lặp", len(host8.msgs) == 1)
+host8.ip = "192.168.1.88"; ag8.tick()
+ck("có IP nhưng chưa tới được máy chủ → status.txt ghi có IP, vẫn 'CHUA DUOC'", "Mang LAN: co - dia chi IP 192.168.1.88" in fs8.file("C", "cloudbluepc\\os\\status.txt") and "CHUA DUOC" in fs8.file("C", "cloudbluepc\\os\\status.txt"))
+ag9 = agent(fs8, net8, host8); host8.msgs.clear(); fs8.clock += 400; ag9.tick()
+ck("máy có IP mà máy chủ chưa tới được (mạng nội bộ chưa ra ngoài) → không hiện hộp 'chưa có mạng'", host8.msgs == [])
+net8.down = False; ag9.tick(); ag9.tick()
+st8 = fs8.file("C", "cloudbluepc\\os\\status.txt")
+ck("có mạng lại → đăng ký được, status.txt ghi 'ROI' + 'duoc'", ag9.ident and "Dang ky voi he thong: ROI" in st8 and "Ket noi may chu: duoc" in st8, st8)
+import tempfile as _tf
+with _tf.TemporaryDirectory() as tb:
+    os.makedirs(os.path.join(tb, "logs"))
+    r0 = pcagent.vga_pending(tb)
+    res = []
+    for body in ('{"state": "wait", "tries": 0}', '{"state": "fail", "tries": 1}', '{"state": "done", "tries": 1}', '{"state": "gave-up", "tries": 3}', '{"state": "skip"}', "khong phai json", "[1]"):
+        open(os.path.join(tb, "logs", "vga.json"), "w").write(body); res.append(pcagent.vga_pending(tb))
+    ck("vga_pending: chỉ 'wait' / 'fail' là còn việc (agent gọi lại cb_provision khi máy có mạng); file hỏng → không", r0 is False and res == [True, True, False, False, False, False, False], (r0, res))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

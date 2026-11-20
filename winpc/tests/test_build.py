@@ -90,21 +90,22 @@ NV1, NV2 = "466.77-notebook-win10-64bit-international-whql.exe", "511.23-desktop
 w(os.path.join(out, "cb", "drivers", "1511", NV1), b"N" * 5000); w(os.path.join(out, "cb", "drivers", "1511", "LAN", "rt640x64.inf"), "inf")
 w(os.path.join(out, "cb", "drivers", NV2), b"M" * 3000); w(os.path.join(out, "cb", "drivers", "setup.exe"), b"khac"); w(os.path.join(out, "cb", "drivers", "wifi", NV1), b"W" * 10)
 P5 = dict(json.loads(json.dumps(P)), info=os.path.join(tmp, "build-info.txt"))
+fb = os.path.join(out, "cb", "os", "firstboot.d")
+OLD_CMD = b'@echo off\r\nrem CloudBlue PC: cai driver VGA NVIDIA im lang o lan dang nhap dau (file nay do bo tao ISO tu sinh)\r\nexit /b 0\r\n'
+w(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), OLD_CMD)                           # thư mục làm việc dùng lại từ bản 20.11: còn file lệnh do bản cũ sinh
+w(os.path.join(fb, "50-vga-nvidia.cmd"), b"@echo off\r\nrem file cua chu shop tu viet, trung ten\r\n")
 B.layout(P5)
 info5 = open(P5["info"], "rb").read().decode("ascii").split("\r\n")
-fb = os.path.join(out, "cb", "os", "firstboot.d")
-c1511 = open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read()
 ck("gói VGA NVIDIA .exe trong drivers\\1511 → chuyển sang firstboot.d\\1511 (không nạp kiểu driver)", open(os.path.join(fb, "1511", NV1), "rb").read() == b"N" * 5000
    and not os.path.exists(os.path.join(out, "cb", "drivers", "1511", NV1)) and os.path.isfile(os.path.join(out, "cb", "drivers", "1511", "LAN", "rt640x64.inf")))
-ck("sinh file lệnh cài im lặng (-s -noreboot), cài xong xoá bản chép, ASCII + CRLF", c1511 == ('@echo off\r\nrem CloudBlue PC: cai driver VGA NVIDIA im lang o lan dang nhap dau (file nay do bo tao ISO tu sinh)\r\n'
-   'if exist "%~dp0' + NV1 + '" (\r\n  "%~dp0' + NV1 + '" -s -noreboot\r\n  del /f /q "%~dp0' + NV1 + '"\r\n)\r\nexit /b 0\r\n').encode("ascii"), c1511)
-croot = open(os.path.join(fb, "50-vga-nvidia.cmd"), "rb").read().decode("ascii")
+ck("KHÔNG còn sinh file lệnh 50-vga-nvidia.cmd (cb_provision tự cài sau khi máy có mạng); file do bản cũ sinh bị dọn, file trùng tên của chủ shop giữ nguyên",
+   not os.path.exists(os.path.join(fb, "1511", "50-vga-nvidia.cmd")) and open(os.path.join(fb, "50-vga-nvidia.cmd"), "rb").read().startswith(b"@echo off\r\nrem file cua chu shop"), os.listdir(os.path.join(fb, "1511")))
 ck("gói NVIDIA để ở gốc drivers hoặc thư mục không phải tên bản Windows → cài cho MỌI bản (firstboot.d gốc)", os.path.isfile(os.path.join(fb, NV2)) and os.path.isfile(os.path.join(fb, NV1))
-   and NV2 in croot and NV1 in croot and croot.count("-s -noreboot") == 2 and not os.path.exists(os.path.join(out, "cb", "drivers", "wifi", NV1)))
+   and not os.path.exists(os.path.join(out, "cb", "drivers", "wifi", NV1)) and not os.path.exists(os.path.join(out, "cb", "drivers", NV2)))
 ck("file .exe khác (không phải gói NVIDIA) để nguyên", open(os.path.join(out, "cb", "drivers", "setup.exe"), "rb").read() == b"khac")
-ck("khung tóm tắt ghi rõ gói VGA nào cài kiểu gì + cỡ cứu hộ tính cả gói đó", sum("VGA NVIDIA" in x for x in info5) == 3 and any("(chi ban 1511)" in x for x in info5) and any("(moi ban)" in x for x in info5), info5)
+ck("khung tóm tắt ghi rõ gói VGA nào, cài SAU KHI máy có mạng, cho bản nào", sum("VGA NVIDIA" in x and "SAU KHI may co mang" in x for x in info5) == 3 and any("(chi ban 1511)" in x for x in info5) and any("(moi ban)" in x for x in info5), info5)
 B.layout(P5)
-ck("chạy lại lần 2 không lỗi, không nhân đôi", open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read() == c1511 or not os.path.exists(os.path.join(out, "cb", "drivers", "1511", NV1)))
+ck("chạy lại lần 2 không lỗi, không nhân đôi", sorted(os.listdir(os.path.join(fb, "1511"))) == [NV1] and not os.path.exists(os.path.join(out, "cb", "drivers", "1511", NV1)), os.listdir(os.path.join(fb, "1511")))
 for d in ("drivers", os.path.join("os", "firstboot.d")): shutil.rmtree(os.path.join(out, "cb", d))
 cfg = B.layout(json.loads(json.dumps(P)))
 
@@ -122,10 +123,9 @@ info6 = open(P6["info"], "rb").read().decode("ascii").split("\r\n")
 ck("_img1 → drivers\\1511, _img2 → drivers\\22h2 (đúng thứ tự ISO), không còn thư mục _img1 / _img2", os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN", "netrtwlane.inf"))
    and os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN", "rtwlane.sys")) and os.path.isfile(os.path.join(drv, "22h2", "lan", "e1d68x64.inf"))
    and not os.path.exists(os.path.join(drv, "_img1")) and not os.path.exists(os.path.join(drv, "_img2")), os.listdir(drv))
-c6 = open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read().decode("ascii")
-ck("gói VGA NVIDIA kéo thả cho bản 1511 (cả file bị đổi tên đã đánh dấu nvidia-vga-) → cài im lặng ở lần đăng nhập đầu, CHỈ bản 1511",
-   os.path.isfile(os.path.join(fb, "1511", NV1)) and os.path.isfile(os.path.join(fb, "1511", "nvidia-vga-VGA_cua_toi.exe")) and c6.count("-s -noreboot") == 2
-   and NV1 in c6 and "nvidia-vga-VGA_cua_toi.exe" in c6 and not os.path.exists(os.path.join(fb, "50-vga-nvidia.cmd")) and not os.path.exists(os.path.join(drv, "1511", NV1)), c6)
+ck("gói VGA NVIDIA kéo thả cho bản 1511 (cả file bị đổi tên đã đánh dấu nvidia-vga-) → nằm ở firstboot.d\\1511 để cài ở lần đăng nhập đầu, CHỈ bản 1511",
+   sorted(os.listdir(os.path.join(fb, "1511"))) == [NV1, "nvidia-vga-VGA_cua_toi.exe"] and not any(B.NVIDIA_RE.match(f) for f in os.listdir(fb) if os.path.isfile(os.path.join(fb, f)))
+   and not os.path.exists(os.path.join(drv, "1511", NV1)), os.listdir(os.path.join(fb, "1511")))
 ck("khung tóm tắt: mỗi thư mục driver 1 dòng, ghi rõ nạp cho bản nào", "DRIVER 1511: 1 file .inf - chi nap khi cai ban 1511" in info6 and "DRIVER 22h2: 1 file .inf - chi nap khi cai ban 22h2" in info6
    and "DRIVER _img9: 1 file .inf - nap cho moi ban" in info6 and sum("VGA NVIDIA" in x and "(chi ban 1511)" in x for x in info6) == 2, info6)
 ck("thư mục có file mà không có .inf nào → dòng cảnh báo (!)", "(!) DRIVER rac: co 1 file nhung KHONG co file .inf nao - khong nap duoc" in info6, info6)

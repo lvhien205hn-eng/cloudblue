@@ -1,22 +1,24 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 20.11c)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11a)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
 1. **1 file ISO** (gộp các bản Windows bạn có, ví dụ 22H2 + 1511). Khởi động máy từ ISO / USB đó → máy **tự chọn ổ, đếm ngược 30 giây, xoá dữ liệu cũ, cài Windows, nạp driver bạn kèm theo, đặt ảnh nền CloudBlue**, không hỏi gì thêm.
 2. Windows lên là **tự hiện trong Bảng quản trị › 💻 Máy PC** (tên máy, cấu hình, IP, online / offline).
-3. Trên web bấm **🧹 Cài lại**: chọn bản Windows (22H2 / 1511) + mức xoá → máy tự khởi động lại, tự dọn sạch và cài lại, **không cần USB, không cần ra máy**.
+3. Trên web bấm **🧹 Cài lại** / **🧼 Bàn giao**: chọn bản Windows (22H2 / 1511) + mức xoá → máy tự khởi động lại, tự dọn sạch và cài lại, **không cần USB, không cần ra máy**.
+4. Đặt **hạn thuê** cho từng máy: máy tự báo trước cho khách, hết hạn mà chưa gia hạn thì **tự tắt** (bật lại cũng tự tắt). Hết hạn, máy đang thuê mất kết nối, có việc lạ trên máy → **tự báo về mail + Telegram** của bạn (mục C4).
 
 > **Chưa có ở đợt này:** điều khiển máy bằng app PC / app điện thoại CloudBlue và bán tự động (khách mua → tự giao máy). Đó là đợt 2.
 
-> **Chưa chạy trên máy thật.** Phần Windows mới được thử trên máy giả lập (hơn 200 phép thử logic) — lần đầu **phải thử trên 1 máy thử hoặc máy ảo**, đừng dùng ngay cho dàn máy đang có khách.
+> **Đã cài thật trên máy ảo (bản 22H2, ngày 21/11).** Bản 1511 và driver riêng của bạn (card mạng, VGA) chỉ thử được trên **máy thật** — máy ảo không có 2 card đó. Hãy thử trên **1 máy thật** trước khi dùng cho cả dàn.
 
 ---
 
 ## A. Làm 1 lần
 
 ### A1. Thêm phần Máy PC vào cơ sở dữ liệu
-Supabase › SQL Editor › New query › dán **toàn bộ** file `cloud-pc-v41.sql` › Run.
-Dòng cuối phải ra: `v41 xong | t | t | t | t`. Chạy lại nhiều lần không sao; file này chỉ **thêm** bảng / hàm `pc_…`, không đụng phần đang có.
+Supabase › SQL Editor › New query › dán **toàn bộ** file `cloud-pc-v41.sql` › Run. Dòng cuối phải ra: `v41 xong | t | t | t | t`.
+Rồi làm y như vậy với file **`cloud-pc-v42.sql`** (hạn thuê + cảnh báo về mail). Dòng cuối phải ra: `v42 xong | t | t | t | t | t`.
+Chạy lại nhiều lần không sao; 2 file này chỉ **thêm** bảng / cột / hàm `pc_…`, không đụng phần đang có. Chưa chạy v42 thì web vẫn dùng được, chỉ thiếu phần hạn thuê.
 
 ### A2. Tạo mã đăng ký
 Web › Bảng quản trị › **💻 Máy PC** › **🔑 Tạo mã đăng ký** › **Copy mã**.
@@ -32,7 +34,8 @@ Trên **máy tính Windows 10 / 11 đang có các file ISO Windows gốc** (ổ 
 2. Chuột phải nút Start › **Windows PowerShell (Admin)** hoặc **Terminal (Admin)** — *không dùng CMD*.
 3. Dán lệnh, Enter. Script sẽ hỏi lần lượt:
    - đường dẫn từng file ISO (kéo thả file vào cửa sổ rồi Enter; xong thì Enter trống) — **chỉ file `.iso`**, driver hỏi sau;
-   - **mã đăng ký** (chuột phải để dán; mã không hiện ra màn hình). Từ lần chạy thứ 2 trên cùng máy: **bấm Enter là dùng lại mã lần trước**;
+   - **mã đăng ký** (chuột phải để dán; mã không hiện ra màn hình). Từ lần chạy thứ 2 trên cùng máy: **bấm Enter là dùng lại mã lần trước**.
+     Script **hỏi máy chủ ngay** xem mã còn hiệu lực không: mã cũ (trên web đã bấm "Tạo mã đăng ký" lần nữa) thì báo đỏ và cho dán mã mới luôn — khỏi mất công tạo ISO rồi cài xong máy không lên web;
    - với **từng ISO**: nếu ISO có nhiều phiên bản (Home, Pro…) thì dùng bản số mấy (Enter = bản Pro); rồi **driver riêng cho bản Windows đó** —
      kéo thả file driver (`.exe`, `.zip`) hoặc thư mục driver vào cửa sổ rồi Enter, từng cái một; bản không cần driver / đã kéo hết thì **Enter trống** (xem mục D);
    - bản Windows **mặc định** khi cài từ USB (Enter = bản mới nhất; gõ số để chọn 1511).
@@ -52,6 +55,7 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
 | `-Driver "2=D:\drv\lan.zip","2=D:\drv\vga.exe"` | driver riêng cho bản Windows của **ISO thứ 2** mà không cần kéo thả (số = thứ tự ISO) |
 | `-KhongHoi` | không hỏi gì: mọi lựa chọn lấy mặc định, mã đăng ký lấy của lần chạy trước (dùng khi chạy tự động) |
 | `-KhongKhoaChung` | không điền khoá cài đặt chung (xem mục E) |
+| `-KhongKiemMa` | không hỏi máy chủ về mã đăng ký (dùng khi máy tạo ISO không ra được mạng tới Supabase) |
 
 ---
 
@@ -66,8 +70,12 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
 
 1. Màn hình đen chữ trắng **CloudBlue PC**: danh sách ổ cứng, ổ sẽ bị xoá, bản Windows sẽ cài, **đếm ngược 30 giây**.
    Phím: `Enter` = cài ngay bản mặc định · `1`–`9` = chọn bản Windows khác (ví dụ 1511) · `D` = đổi ổ đích · `A` = bật / tắt xoá cả các ổ khác · `X` = huỷ, chuyển sang bộ cài Windows thường · `C` = mở dòng lệnh. Bấm phím khác `Enter` thì đếm ngược dừng lại, khi đó phải bấm `Enter` mới cài.
-2. Tự chia ổ → bung Windows (5–20 phút) → khởi động lại 1–2 lần → vào thẳng màn hình Desktop. Vào Desktop lần đầu được 1–2 phút (cài xong driver của bạn) thì máy **tự khởi động lại thêm 1 lần** — đó là bước khoá bảo mật, hạ tài khoản khách xuống tài khoản thường (mục F).
-3. Khoảng 1 phút sau: máy hiện ở web › Máy PC, trạng thái **Chờ duyệt** → bấm **Duyệt**.
+2. Tự chia ổ → bung Windows (5–20 phút) → khởi động lại 1–2 lần → vào thẳng màn hình Desktop.
+3. Vào Desktop lần đầu sẽ có **cửa sổ đen "CloudBlue PC - dang hoan tat cai dat"** in tiến độ 5 bước:
+   `[1/5]` phần mềm quản lý · `[2/5]` lệnh riêng của bạn (`firstboot.d`) · `[3/5]` **chờ máy có mạng** (driver card mạng) · `[4/5]` **driver VGA NVIDIA** (chỉ cài sau khi đã có mạng) · `[5/5]` khoá tài khoản khách.
+   Xong máy **tự khởi động lại 1 lần** (bước khoá bảo mật, mục F). **Đừng tắt máy lúc cửa sổ này còn mở.**
+   Dòng `!! CHUA CO MANG` = máy chưa ra được mạng (dây mạng / driver card mạng) — máy sẽ chưa hiện trên web cho tới khi có mạng; driver VGA sẽ tự cài sau khi có mạng.
+4. Khoảng 1 phút sau: máy hiện ở web › Máy PC, trạng thái **Chờ duyệt** → bấm **Duyệt**.
 
 Sau đó thử tiếp trên web: **🧹 Cài lại** → chọn bản kia (ví dụ 1511) → máy tự khởi động lại, cài xong lại hiện online với đúng tên cũ.
 
@@ -87,6 +95,9 @@ Sau đó thử tiếp trên web: **🧹 Cài lại** → chọn bản kia (ví d
 | **Duyệt** | nhận máy mới vào kho (bật "Tự duyệt máy mới" nếu không muốn bấm từng máy) |
 | **Sửa** | tên hiển thị, mã riêng của shop, ghi chú, trạng thái (Sẵn sàng / Đang cho thuê / Bảo trì) · Khởi động lại · Tắt máy · Xoá khỏi danh sách |
 | **🧹 Cài lại** | chọn bản Windows + mức xoá, máy tự làm trong 15–30 phút |
+| **🧼 Bàn giao** | khách cũ trả máy: xoá sạch MỌI ổ cứng + cài Windows mới cho khách mới; hạn thuê + tên khách cũ cũng được xoá |
+| **⏱ Đặt hạn / Gia hạn** (cột Hạn thuê) | đặt, gia hạn, bỏ hạn thuê của máy + ghi tên khách (mục C4) |
+| **🔔 Cảnh báo** | bật / tắt gửi mail, số phút báo trước, **Gửi thư thử** (mục C4) |
 | **Huỷ lệnh** | gỡ lệnh chưa chạy. Máy đã nhận lệnh và đang cài thì vẫn cài tiếp |
 | **⬆ Công bố bản agent** | khi có bản phần mềm mới trên GitHub: mọi máy tự cập nhật trong khoảng 1 phút |
 
@@ -110,6 +121,29 @@ C:\CloudBluePC\agent\cbpc.cmd log
 ```
 
 `status` = đã đăng ký chưa, nối máy chủ được không · `reinstall <bản> all|disk|system` = cài lại ngay tại máy · `log` = nhật ký.
+
+### C4. Hạn thuê + cảnh báo về mail (cần SQL v42)
+**Đặt hạn**: cột **Hạn thuê** › **⏱ Đặt hạn / Gia hạn** › bấm `+1 giờ … +30 ngày`, hoặc gõ số khác, hoặc chọn hẳn 1 thời điểm › **Lưu**. Gia hạn thì **nối vào hạn đang có**; máy đã hết hạn / chưa đặt thì tính từ bây giờ. **Bỏ hạn** = máy không tự tắt nữa.
+
+Máy làm gì:
+
+- Nhận hạn mới trong khoảng 30 giây (máy đang tắt thì lúc bật lên). **Mất mạng máy vẫn tự đếm**, giờ tính theo máy chủ nên chỉnh đồng hồ trên máy không lách được.
+- Báo cho khách bằng hộp thông báo khi còn **1 ngày, 1 giờ, 10 phút, 1 phút**.
+- **Hết hạn**: báo khách, Windows đếm ngược 60 giây rồi **tắt máy**. Gia hạn kịp trong 60 giây đó thì lệnh tắt được huỷ.
+- Máy đã hết hạn mà bị **bật lại**: chờ hỏi máy chủ (tối đa 3 phút, phòng khi bạn vừa gia hạn) rồi tự tắt lại. Gia hạn lúc máy đang tắt → bật máy lên là dùng tiếp.
+- **🧼 Bàn giao** xoá luôn hạn thuê cũ; đặt hạn cho khách mới sau khi máy cài xong.
+
+Bạn nhận cảnh báo (tab 🛡️ Bảo mật + mail + Telegram) khi: sắp hết hạn (mặc định trước 60 phút) · hết hạn / máy đã tự tắt · máy hết hạn bị bật lại · máy đang thuê mất kết nối quá 15 phút · có máy mới đăng ký chờ duyệt · đồng hồ trên máy bị chỉnh lùi · bảo mật trên máy bị đổi (khách có lại quyền Admin, có tài khoản quản trị mới…) · phần cứng thay đổi (RAM, ổ cứng, CPU) · lệnh cài lại thất bại.
+
+Để **mail** chạy, đặt 2 biến trên Vercel (Project › Settings › Environment Variables) rồi Redeploy:
+
+| Biến | Giá trị |
+|---|---|
+| `ADMIN_EMAIL` | địa chỉ mail nhận cảnh báo |
+| `RESEND_API_KEY` | khoá API của dịch vụ gửi thư Resend (resend.com — gói miễn phí đủ dùng) |
+| `MAIL_FROM` *(không bắt buộc)* | người gửi, ví dụ `CloudBlue <no-reply@cloudblue.vn>` (tên miền phải được xác minh trong Resend). Chưa xác minh tên miền: đặt `CloudBlue <onboarding@resend.dev>` và `ADMIN_EMAIL` = đúng mail đăng ký Resend |
+
+Telegram dùng bot đang có của shop (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Kiểm tra: web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử** — dòng kết quả ghi rõ kênh nào được, kênh nào thiếu gì. Các khoá này **tự bạn dán vào Vercel, không gửi cho ai**.
 
 ---
 
@@ -145,7 +179,7 @@ dism /online /export-driver /destination:D:\drv-1511
 
 - **Thư mục có file `.inf`** (gói driver đã giải nén): dùng được ngay.
 - File **`.zip`, `.cab`**: script tự giải nén.
-- Gói **VGA NVIDIA `.exe`** (tên kiểu `466.77-notebook-win10-64bit-international-whql.exe`): đưa nguyên file. Gói này không nạp trước được, nên bộ cài sẽ **tự cài im lặng ở lần đăng nhập đầu** (mất vài phút, màn hình nháy 1–2 lần là bình thường). Khung TÓM TẮT ghi dòng `VGA NVIDIA …`.
+- Gói **VGA NVIDIA `.exe`** (tên kiểu `466.77-notebook-win10-64bit-international-whql.exe`): đưa nguyên file. Gói này không nạp trước được, nên bộ cài **tự cài im lặng ở lần đăng nhập đầu, SAU KHI máy đã có mạng** — driver card mạng luôn xong trước (bản 1511 phải có mạng thì bộ cài NVIDIA mới chạy được). Mất 5–15 phút, màn hình nháy 1–2 lần là bình thường. Máy **không có card NVIDIA** (máy ảo, máy dùng card khác) thì tự bỏ qua. Lúc đó **chưa có mạng** thì phần mềm trên máy tự cài sau, ngay khi máy có mạng. Khung TÓM TẮT ghi dòng `VGA NVIDIA …`.
 - File **`.exe`, `.7z`, `.rar` khác** (card mạng, Wi-Fi…): script thử giải nén bằng **7-Zip** (nếu máy tạo ISO có cài) rồi bằng công cụ có sẵn của Windows. Lấy ra được file `.inf` thì dùng; **không lấy ra được thì script bỏ gói đó và báo dòng `(!) Goi driver …` ở khung TÓM TẮT** — khi đó cài 7-Zip rồi chạy lại, hoặc dùng cách xuất driver ở trên.
 - Khung TÓM TẮT ghi mỗi thư mục driver 1 dòng, ví dụ `DRIVER 1511: 12 file .inf - chi nap khi cai ban 1511`. **Không có dòng `DRIVER` nào cho bản đó** nghĩa là không driver nào được nạp.
 - Driver mạng cho 1511 là **bắt buộc**: thiếu thì máy không có mạng, không lên web được.
@@ -170,6 +204,8 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 - **Chỉ hỗ trợ** Windows 64-bit, ISO chuẩn có `sources\install.wim` hoặc `install.esd`. ISO gộp x86 + x64 chỉ dùng được làm bản Windows phụ (cần thêm 1 ISO 64-bit chuẩn). ISO kiểu Ghost (`.gho`, `.tib`) không dùng được.
 - **Ổ đích** được chọn theo thứ tự: ổ gắn trong duy nhất → ổ đang có Windows cũ → ổ SSD nhỏ nhất. Không bao giờ chọn USB / thẻ nhớ / ổ ảo / ổ chứa bộ cài. Màn hình đếm ngược luôn ghi rõ ổ sẽ xoá.
 - **Mất điện giữa lúc cài lại**: bật lại máy, bộ cài tự làm tiếp (tối đa 3 lần). Quá 3 lần thì cần USB.
+- **Đồng hồ**: bộ cài đặt múi giờ Việt Nam ngay trong Windows mới (không còn cảnh bản tuỳ biến lệch 1 giờ sau khi cài); phần mềm trên máy tự chỉnh đồng hồ theo máy chủ khi lệch quá 2 phút.
+- **Bản Windows kiểu "ghost"** (khởi động thẳng vào Windows có sẵn, không qua bước cài đặt lần đầu): màn hình bộ cài ghi dòng `(!) Ban Windows nay KHONG o trang thai 'cai dat lan dau'`. Phần mềm CloudBlue vẫn tự chạy (bộ cài chèn sẵn 1 dịch vụ khởi động) và máy vẫn lên web, nhưng tài khoản khách **không được tạo / khoá** — web ghi "⏳ đang khoá bảo mật". Gặp dòng đó hãy báo hỗ trợ.
 
 ## F. Bảo mật — máy cho thuê được khoá thế nào
 
@@ -187,7 +223,7 @@ Phần chỉ bạn làm được (bộ cài không làm thay):
 - Đặt **mật khẩu BIOS** và để máy chỉ khởi động từ ổ cứng (không cho khởi động USB) — nếu khách ngồi trực tiếp tại máy.
 - Bật **xác minh 2 bước** cho tài khoản GitHub, Supabase, Vercel, Cloudflare. Ai chiếm được 1 trong các tài khoản đó là điều khiển được cả hệ thống.
 - Giữ kỹ USB / file ISO (trên đó có mã đăng ký). Nghi lộ → web › Máy PC › **Tạo mã đăng ký** lại (mã cũ hết dùng ngay) rồi tạo lại ISO.
-- Khách cũ trả máy: bấm **🧹 Cài lại › Dọn sạch cả máy** trước khi giao cho khách mới.
+- Khách cũ trả máy: bấm **🧼 Bàn giao** (xoá sạch mọi ổ + cài lại + xoá hạn thuê cũ) trước khi giao cho khách mới.
 
 ## G. Khi có trục trặc
 
@@ -197,7 +233,11 @@ Phần chỉ bạn làm được (bộ cài không làm thay):
 | Khung TÓM TẮT ghi `ISO: CHUA dong` | chưa lấy được công cụ đóng ISO (`oscdimg`) của Microsoft — dòng `(!)` ghi lý do; gửi cả khung cho hỗ trợ rồi chạy lại lệnh |
 | Khung TÓM TẮT có `(!) Goi driver …` | gói driver đó không dùng được (xem mục D) — các phần khác vẫn bình thường |
 | Khởi động USB vào thẳng bộ cài Windows thường | chèn boot.wim không thành công hoặc USB ghi bằng công cụ sửa file — gửi khung TÓM TẮT |
-| Cài xong nhưng không lên web | tại máy: mở `C:\CloudBluePC\os\status.txt`; kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO`) |
+| Cài xong nhưng không lên web | cửa sổ lúc đăng nhập đầu có dòng `!! CHUA CO MANG`? Sau 2–3 phút máy cũng hiện hộp báo `CHUA CO MANG`. Tại máy: bấm `Windows + R`, gõ `notepad C:\CloudBluePC\os\status.txt` — dòng `Mang LAN:` ghi máy có địa chỉ IP chưa, dòng `Ket noi may chu:` ghi lý do. Kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO … con hieu luc`) |
+| **Máy ảo** cài bản 1511 (bản Lite) không có mạng | bản Lite thường không kèm driver card mạng ảo, driver bạn đưa là của máy thật → thử bản 1511 trên **máy thật**. Muốn thử tiếp trên Hyper-V: tắt máy ảo › Settings › Add Hardware › **Legacy Network Adapter** › chọn cùng Virtual Switch |
+| Máy tự tắt, bật lại vài phút lại tắt | hết hạn thuê — xem cột **Hạn thuê** trên web; **⏱ Gia hạn** rồi bật máy lên |
+| Không nhận được mail cảnh báo | web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử**; dòng dưới nút ghi lý do (thiếu `ADMIN_EMAIL` / `RESEND_API_KEY` trên Vercel…). Mọi cảnh báo vẫn nằm ở tab 🛡️ Bảo mật |
+| Driver VGA không lên dù đã kèm gói | máy phải ra được mạng thì gói mới cài; card chưa nhận driver thì phần mềm tự chạy lại gói tối đa 3 lần (sau mỗi lần khởi động). Web › cột Cấu hình ghi tên card đang nhận |
 | Máy tự khởi động lại 1 lần ngay sau khi vào Desktop lần đầu | bình thường — bước hạ tài khoản khách xuống tài khoản thường (mục F) |
 | Máy báo "cần mã đăng ký" sau khi bạn tự cài lại bằng cách khác | web › Sửa máy › **🔓 Cho đăng ký lại** (mở 6 giờ) |
 | Lệnh cài lại báo ✗ | xem dòng lý do ngay dưới lệnh trong bảng Máy PC |
@@ -219,7 +259,10 @@ winpc/
   os/unattend.tpl.xml, provision.cmd, cb_provision.py, cb_stage.py
   agent/pcagent.py, watch.cmd, cbpc.cmd   agent chạy bằng SYSTEM trên máy cho thuê
   manifest.json        mã kiểm sha256 (tao-iso.ps1 kiểm khi tải; web đọc khi "Công bố bản agent")
+  tests/               bộ thử (máy Windows giả) · tests/ci/ chạy trên Windows thật của GitHub Actions · tests/web/ thử trang quản trị + API
+blueroblox-site/api/pc-notify.js   gửi cảnh báo máy PC về mail + Telegram (cơ sở dữ liệu tự gọi mỗi phút khi có cảnh báo chờ)
 ```
 
-Máy cho thuê chỉ nói chuyện với Supabase bằng **khoá công khai của web** + mã riêng của máy (`pc_enroll`, `pc_poll`, `pc_allow_reenroll`). Mọi việc quản trị đi qua các hàm `pc_admin_…` chỉ admin gọi được.
+Máy cho thuê chỉ nói chuyện với Supabase bằng **khoá công khai của web** + mã riêng của máy (`pc_enroll`, `pc_poll`, `pc_allow_reenroll`); bộ tạo ISO gọi `pc_key_check`. Mọi việc quản trị đi qua các hàm `pc_admin_…` chỉ admin gọi được (`pc_admin_rent` = hạn thuê); hàng chờ cảnh báo (`pc_alerts_take` / `pc_alerts_unsend`) chỉ máy chủ web gọi được.
+Ba đường để phần mềm tự chạy trong Windows mới: file trả lời (`unattend.xml`) → `SetupComplete.cmd` → dịch vụ khởi động `CloudBluePCBoot` (bộ cài ghi thẳng vào registry của Windows vừa bung; chạy xong tự gỡ).
 Sửa bất kỳ file nào trong `winpc/` → tăng số bản trong file đó nếu là agent, chạy lại `tests/mkmanifest.py` để ghi `manifest.json`, rồi mới đưa lên GitHub.
