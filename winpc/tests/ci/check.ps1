@@ -8,6 +8,8 @@
 #    4. chay lai khong dua ma dang ky -> phai dung lai ma cua lan truoc
 #    5. bao mat: khoa quyen that bang icacls + thu bang 1 tai khoan thuong that (sec_check.py)
 #    6. chep tep that cua bo cai: tep lon khong duoc ngon RAM (sys_check.py)
+#    7. soat ten chua khai bao trong moi file Python (lint.py) + thu tren Windows that cac ham goi thang vao Windows cua ban 21.11a:
+#       thu mang, tim card NVIDIA, provision.cmd in tien do, dat dong ho, huy hen tat may (os_check.py)
 #  Khong dua gi len web, khong dung toi may that nao. Luon thoat ma 0; ket qua nam o trang tom tat cua lan chay.
 # =====================================================================================================
 param([string]$WorkRoot = "")
@@ -244,7 +246,7 @@ try {
     $drv = @(("1=" + $lanDir), ("2=" + $nvPack), ("2=" + $badPack), ("2=" + $zipPack))
     if ($has7) { $drv += ("2=" + $sfxPack) }
     $log1 = Join-Path $Wk "run1.log"
-    $a1 = @{ Iso = @($iso1, $iso2); Work = $work; Out = $outIso; Nguon = $RepoDir; MaDangKy = $key; KhongHoi = $true; GiuWork = $true; Driver = $drv }
+    $a1 = @{ Iso = @($iso1, $iso2); Work = $work; Out = $outIso; Nguon = $RepoDir; MaDangKy = $key; KhongHoi = $true; GiuWork = $true; Driver = $drv; KhongKiemMa = $true }     # ma gia -> khong hoi may chu
     & $Ps1 @a1 *>&1 | ForEach-Object { $ln = "" + $_; Write-Host $ln; Add-Content -Path $log1 -Value $ln -Encoding UTF8 }
     $txt = ""
     if (Test-Path $log1) { $txt = Get-Content -Raw -Path $log1 }
@@ -258,6 +260,19 @@ try {
     if (-not ($txt -match "TOM TAT \(chep")) { foreach ($ln in @($txt -split "`r?`n" | Select-Object -Last 40)) { Info ("CUOI LOG> " + $ln) } }
     Ck "co file ISO moi" (Test-Path $outIso)
     Ck "khung tom tat: ma dang ky tu tham so + dong oscdimg + goi hong bi bo" (($txt -match "Ma dang ky: CO \(tham so\)") -and ($txt -match "oscdimg: ") -and ($txt -match "Goi driver bad.exe: khong lay ra duoc"))
+    # kiem ma dang ky voi may chu: ham Test-EnrollKey (ma GIA -> may chu khong bao gio tra "ok"; may chu chua co SQL v42 thi tra rong = bo qua)
+    Ck "Test-EnrollKey: may chu khong toi duoc -> tra rong (bo qua buoc kiem, khong nem loi)" ((Test-EnrollKey "https://127.0.0.1:9" "x" $key) -eq "")
+    $cjs = Join-Path $work "dl\config.js"
+    if (Test-Path $cjs) {
+      $cjt = Get-Content -Raw -Encoding UTF8 $cjs
+      $u9 = ""; $k9 = ""
+      if ($cjt -match 'supabaseUrl\s*:\s*"([^"]+)"') { $u9 = $Matches[1] }
+      if ($cjt -match 'supabaseAnonKey\s*:\s*"([^"]+)"') { $k9 = $Matches[1] }
+      $ks = "?"
+      if ($u9 -and $k9) { $ks = Test-EnrollKey $u9 $k9 $key }
+      Ck "Test-EnrollKey voi may chu that + ma GIA: 'bad' / 'nokey' (may chu da co SQL v42) hoac rong (chua co) - khong bao gio 'ok'" (@("bad", "nokey", "") -contains $ks) ("tra: " + $ks)
+      Info ("may chu tra loi ma gia: '" + $ks + "'")
+    } else { Info "khong thay dl\config.js - bo qua phep thu Test-EnrollKey voi may chu that" }
     if (Test-Path $outIso) {
       $mi = Mount-DiskImage -ImagePath $outIso -PassThru
       Start-Sleep -Seconds 2
@@ -272,7 +287,7 @@ try {
         Ck "driver rieng ISO thu 2 (goi .zip) -> cb\drivers\<ban 2>, da giai nen" (Test-Path (Join-Path $dr ("cb\drivers\" + $ids[1] + "\pack_one\Net Driver\netx.inf")))
         if ($has7) { Ck "driver rieng ISO thu 2 (goi .exe tu giai nen) -> da giai nen" (Test-Path (Join-Path $dr ("cb\drivers\" + $ids[1] + "\Driver_WLAN\Net Driver\netx.inf"))) }
         $fbd = Join-Path $dr ("cb\os\firstboot.d\" + $ids[1])
-        Ck "goi VGA NVIDIA cua ISO thu 2 -> firstboot.d\<ban 2> + file lenh cai im lang" ((Test-Path (Join-Path $fbd (Split-Path -Leaf $nvPack))) -and (Test-Path (Join-Path $fbd "50-vga-nvidia.cmd")) -and ((Get-Content -Raw (Join-Path $fbd "50-vga-nvidia.cmd")) -match "-s -noreboot"))
+        Ck "goi VGA NVIDIA cua ISO thu 2 -> firstboot.d\<ban 2>; KHONG con file lenh 50-vga-nvidia.cmd (cb_provision tu cai sau khi may co mang)" ((Test-Path (Join-Path $fbd (Split-Path -Leaf $nvPack))) -and (-not (Test-Path (Join-Path $fbd "50-vga-nvidia.cmd"))))
         Ck "khong con thu muc _img, khong co goi hong trong ISO" ((@(Get-ChildItem (Join-Path $dr "cb\drivers") -Directory | Where-Object { $_.Name -match "^_img" }).Count -eq 0) -and (@(Get-ChildItem (Join-Path $dr "cb") -Recurse -File -Filter "bad.exe").Count -eq 0))
         Ck "ma dang ky nam trong cb\enroll.key" ((("" + (Get-Content (Join-Path $dr "cb\enroll.key") -TotalCount 1)).Trim()) -eq $key)
         Ck "anh nen + file tra loi + CAI-DAT.cmd co trong ISO" ((Test-Path (Join-Path $dr "cb\os\wallpaper.jpg")) -and (Test-Path (Join-Path $dr "autounattend.xml")) -and (Test-Path (Join-Path $dr "CAI-DAT.cmd")))
@@ -296,7 +311,7 @@ try {
     # ---------------------------------------------------------------------------------------- 4. chay lai: dung lai ma dang ky, cac loi nhap
     Out-Line "== 4. Chay lai khong dua ma dang ky + cac kieu nhap sai"
     $log2 = Join-Path $Wk "run2.log"
-    $a2 = @{ Iso = @($iso1); Work = $work; KhongHoi = $true; KhongIso = $true }     # khong -Nguon: tai phan mem tu GitHub + kiem manifest nhu nguoi dung
+    $a2 = @{ Iso = @($iso1); Work = $work; KhongHoi = $true; KhongIso = $true; KhongKiemMa = $true }     # khong -Nguon: tai phan mem tu GitHub + kiem manifest nhu nguoi dung
     if ($env:GITHUB_REF_NAME) { $a2["Nhanh"] = $env:GITHUB_REF_NAME; Info ("lan 2 tai tu nhanh: " + $env:GITHUB_REF_NAME) }      # dang thu tren nhanh nao thi tai dung nhanh do
     & $Ps1 @a2 *>&1 | ForEach-Object { $ln = "" + $_; Add-Content -Path $log2 -Value $ln -Encoding UTF8 }
     $txt2 = ""
@@ -357,6 +372,28 @@ try {
       Ck "bo thu chep tep chay het" ($nSys -ge 14) ("" + $nSys + " phep thu, " + $sysOut.Count + " dong")
     } else {
       Info ("BO QUA buoc 6: khong co cay bo cai / python (" + $cbDir + ")")
+    }
+
+    Out-Line "== 7. Soat ten chua khai bao (lint.py) + thu tren Windows that: thu mang, card NVIDIA, provision.cmd, dat dong ho (os_check.py)"
+    if ((Test-Path $cbDir) -and (Test-Path $pyExe)) {
+      $oldEap = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      $lintOut = @(& $pyExe -I -B (Join-Path $RepoDir "tests\lint.py") 2>&1 | ForEach-Object { "" + $_ })
+      $lintRc = $LASTEXITCODE
+      $osTmp = New-Dir (Join-Path $Wk "oschk")
+      $osOut = @(& $pyExe -I -B (Join-Path $PSScriptRoot "os_check.py") $cbDir $osTmp 2>&1 | ForEach-Object { "" + $_ })
+      $ErrorActionPreference = $oldEap
+      Ck "lint.py: moi file Python dung cu phap, khong co ten chua khai bao" (($lintRc -eq 0) -and ($lintOut.Count -ge 15)) (("ma " + $lintRc + " ; ") + (($lintOut | Select-Object -Last 4) -join " | "))
+      $nOs = 0
+      foreach ($ln in $osOut) {
+        if ($ln -match '^OK  (.*)$') { $script:Pass++; $nOs++; Out-Line ("  OK  " + $Matches[1]) }
+        elseif ($ln -match '^XX  (.*)$') { $script:FailN++; $nOs++; Out-Line ("  XX  " + $Matches[1]) }
+        elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
+        elseif ($ln.Trim()) { Info ("? " + $ln) }
+      }
+      Ck "bo thu os_check chay het" ($nOs -ge 24) ("" + $nOs + " phep thu, " + $osOut.Count + " dong")
+    } else {
+      Info ("BO QUA buoc 7: khong co cay bo cai / python (" + $cbDir + ")")
     }
   }
 } catch {
