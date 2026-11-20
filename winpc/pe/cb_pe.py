@@ -187,16 +187,60 @@ class Installer:
         C.save_json(self.s, base + "\\cb.json", C.recovery_cfg(cfg))
         C.save_json(self.s, base + "\\seed.json", seed)
         tpl = self.s.read_text(src.p("cb\\os\\unattend.tpl.xml"))
-        self.s.write_text(W + ":\\Windows\\Panther\\unattend.xml", C.make_unattend(tpl, image, cfg, name))
-        drv = src.p("cb\\drivers")
-        if self.s.isdir(drv) and any(n.lower() != "doc-toi.txt" for n in self.s.listdir(drv)):
-            self.log("Nap driver trong cb\\drivers ...")
-            scratch = W + ":\\cb-scratch"                    # WinPE chỉ có ~32MB chỗ tạm trên ổ RAM → cho dism dùng chỗ tạm trên ổ đích
-            self.s.makedirs(scratch)
-            rc, out = self.s.run(["dism", "/English", "/Image:%s:\\" % W, "/Add-Driver", "/Driver:" + drv, "/Recurse", "/ScratchDir:" + scratch], timeout=1800)
-            try: self.s.run(["cmd", "/c", "rd", "/s", "/q", scratch], timeout=120)
+        # Bản Windows tuỳ biến hay kèm sẵn file trả lời riêng: Windows ưu tiên Panther\Unattend\unattend.xml rồi mới tới Panther\unattend.xml
+        # → ghi file của CloudBlue vào CẢ HAI chỗ (không thì phần cài agent không chạy). Khoá sản phẩm có sẵn trong file cũ được giữ lại.
+        pan = W + ":\\Windows\\Panther"
+        own_key = ""
+        for old in (pan + "\\Unattend\\unattend.xml", pan + "\\unattend.xml"):
+            try:
+                if not own_key and not self.s.dry and self.s.exists(old): own_key = C.find_unattend_key(self.s.read_text(old))
             except Exception: pass
-            self.log("  driver: " + ("xong" if rc == 0 else "co loi (ma %s) - bo qua, Windows van cai tiep" % rc))
+        if own_key and C.key_mode(cfg) != "off": self.log("  ban Windows nay co san khoa san pham trong file tra loi cu -> giu lai")
+        ua = C.make_unattend(tpl, image, cfg, name, own_key)
+        self.s.write_text(pan + "\\unattend.xml", ua)
+        self.s.write_text(pan + "\\Unattend\\unattend.xml", ua)
+        self.setup_complete(W)
+        self.add_drivers(src.p("cb\\drivers"), W, image)
+
+    def setup_complete(self, W):
+        """Lưới an toàn thứ 2: Windows\\Setup\\Scripts\\SetupComplete.cmd (Windows tự chạy sau khi cài xong, không phụ thuộc file trả lời)
+           gọi phần cài agent. Bản Windows đã có sẵn file này (bản tuỳ biến) → chèn dòng gọi lên ĐẦU, giữ nguyên phần cũ."""
+        path = W + ":\\Windows\\Setup\\Scripts\\SetupComplete.cmd"
+        line = b'call "C:\\CloudBluePC\\os\\provision.cmd" setupcomplete\r\n'
+        old = b""
+        try:
+            if not self.s.dry and self.s.exists(path): old = self.s.read_bytes(path)
+        except Exception: old = b""
+        if b"CloudBluePC\\os\\provision.cmd" in old: return
+        if old.startswith(b"\xef\xbb\xbf"): old = old[3:]
+        if old: self.log("  ban Windows nay co san SetupComplete.cmd -> giu nguyen, chen them dong goi CloudBlue len dau")
+        self.s.write_bytes(path, (line + old) if old else (b"@echo off\r\n" + line))
+
+    def add_drivers(self, drv, W, image):
+        """Nạp driver (.inf) chủ shop kèm theo vào Windows vừa bung.
+           cb\\drivers\\<tên bản, vd 1511>\\…  chỉ nạp khi cài đúng bản đó; file / thư mục khác trong cb\\drivers nạp cho mọi bản."""
+        if not self.s.isdir(drv): return
+        names = [n for n in self.s.listdir(drv) if n.lower() != "doc-toi.txt"]
+        dirs = [n for n in names if self.s.isdir(drv + "\\" + n)]
+        use = [n for n in dirs if C.folder_applies(n, image.get("id"))]
+        skip = [n for n in dirs if n not in use]
+        jobs = [(drv + "\\" + n, True) for n in use]
+        if any(n.lower().endswith(".inf") for n in names if n not in dirs): jobs.insert(0, (drv, False))     # file .inf để lẻ ngay trong cb\drivers
+        if skip: self.log("Driver cua ban khac (%s) - khong nap cho ban %s." % (", ".join(skip), image.get("id")))
+        if not jobs: return
+        self.log("Nap driver kem theo: %s ..." % ", ".join(["(file le)"] * (0 if jobs[0][1] else 1) + use))
+        scratch = W + ":\\cb-scratch"                        # WinPE chỉ có ~32MB chỗ tạm trên ổ RAM → cho dism dùng chỗ tạm trên ổ đích
+        self.s.makedirs(scratch)
+        bad = 0
+        for path, recurse in jobs:
+            argv = ["dism", "/English", "/Image:%s:\\" % W, "/Add-Driver", "/Driver:" + path] + (["/Recurse"] if recurse else []) + ["/ScratchDir:" + scratch]
+            rc, out = self.s.run(argv, timeout=3600)
+            if rc != 0:
+                bad += 1
+                self.log("  !! %s: dism ma %s - bo qua, Windows van cai tiep" % (path.split("\\")[-1], rc))
+        try: self.s.run(["cmd", "/c", "rd", "/s", "/q", scratch], timeout=120)
+        except Exception: pass
+        self.log("  driver: " + ("xong" if not bad else "%d / %d thu muc co loi" % (bad, len(jobs))))
 
     def wipe_others(self, disks, skip, fw):
         for d in C.candidates(disks, skip, 1):
