@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "20.11a"
+BUILD_VER = "20.11b"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -88,7 +88,59 @@ def make_autounattend(os_tpl, image, cfg, lang):
     return body[:i] + pe.lstrip() + "  " + body[i:]
 
 
-NVIDIA_RE = re.compile(r"^\d{3}\.\d{2}-(notebook|desktop)-.*\.exe$", re.I)      # vd 466.77-notebook-win10-64bit-international-whql.exe
+# Gói cài VGA NVIDIA: tên gốc kiểu 466.77-notebook-win10-64bit-international-whql.exe, hoặc file tao-iso.ps1 đã nhận ra (hãng NVIDIA) và đánh dấu nvidia-vga-…
+NVIDIA_RE = re.compile(r"^(\d{3}\.\d{2}-(notebook|desktop)-.*|nvidia-vga-.*)\.exe$", re.I)
+DROP_RE = re.compile(r"^_img(\d+)$", re.I)                         # cb\drivers\_img2 = driver người dùng đưa riêng cho bản Windows của ISO thứ 2
+
+
+def adopt_driver_drops(cb, images):
+    """tao-iso.ps1 chép driver người dùng kéo thả cho bản Windows thứ N vào cb\\drivers\\_img<N> (lúc đó chưa biết tên bản)
+       → đổi thành cb\\drivers\\<tên bản> (1511, 22h2…) để bộ cài chỉ nạp khi cài đúng bản đó; thư mục tên bản đã có sẵn (từ cb-them) thì gộp vào.
+       Trả {tên bản: số mục đã nhận}."""
+    drv, got = os.path.join(cb, "drivers"), {}
+    if not os.path.isdir(drv): return got
+    for n in sorted(os.listdir(drv)):
+        m, src = DROP_RE.match(n), os.path.join(drv, n)
+        if not m or not os.path.isdir(src): continue
+        k = int(m.group(1))
+        if not 1 <= k <= len(images): continue                     # không khớp bản nào: để nguyên (tên lạ → bộ cài nạp cho mọi bản)
+        tag = images[k - 1]["id"]
+        dst = os.path.join(drv, tag)
+        items = sorted(os.listdir(src))
+        if not os.path.exists(dst):
+            os.rename(src, dst)
+        else:
+            for f in items:
+                stem, ext = os.path.splitext(f)
+                to, i = os.path.join(dst, f), 1
+                while os.path.exists(to):
+                    i += 1; to = os.path.join(dst, "%s_%d%s" % (stem, i, ext))
+                shutil.move(os.path.join(src, f), to)
+            os.rmdir(src)
+        got[tag] = got.get(tag, 0) + len(items)
+    return got
+
+
+def driver_report(cb):
+    """Các dòng tóm tắt driver dạng .inf sẽ được nạp lúc cài, theo từng thư mục cấp 1 của cb\\drivers (gọi SAU khi đã chuyển gói VGA đi).
+       Thư mục rỗng thì dọn luôn; thư mục có file mà không có .inf nào → dòng cảnh báo bắt đầu bằng (!)."""
+    drv, lines = os.path.join(cb, "drivers"), []
+    if not os.path.isdir(drv): return lines
+
+    def count(d):
+        files = [f for _, _, fs in os.walk(d) for f in fs]
+        return sum(f.lower().endswith(".inf") for f in files), len(files)
+    loose = sum(f.lower().endswith(".inf") for f in os.listdir(drv) if os.path.isfile(os.path.join(drv, f)))
+    if loose: lines.append("DRIVER (file le trong drivers): %d file .inf - nap cho moi ban" % loose)
+    for n in sorted(os.listdir(drv)):
+        d = os.path.join(drv, n)
+        if not os.path.isdir(d): continue
+        ninf, nall = count(d)
+        who = ("chi nap khi cai ban %s" % n.lower()) if C.is_os_tag(n) else "nap cho moi ban"
+        if ninf: lines.append("DRIVER %s: %d file .inf - %s" % (n, ninf, who))
+        elif nall: lines.append("(!) DRIVER %s: co %d file nhung KHONG co file .inf nao - khong nap duoc" % (n, nall))
+        else: shutil.rmtree(d, ignore_errors=True)
+    return lines
 
 
 def place_vga_installers(cb):
@@ -229,12 +281,13 @@ def layout(P):
     for im in out_imgs:
         info.append("ANH %s | %s | ban so %s | %s | %.1f GB%s%s" % (im["id"], im.get("name"), im.get("index"), im.get("version"), im["bytes"] / 1e9, " | MAC DINH" if im["id"] == default else "",
                                                                   " | dien khoa cai dat chung" if C.generic_key_for(im, cfg) else ""))
+    adopt_driver_drops(cb, out_imgs)                               # _img<N> → tên bản (làm TRƯỚC khi xếp gói VGA + đếm driver)
     vga_notes = place_vga_installers(cb)
     drv = sum(os.path.getsize(os.path.join(r, f)) for d in (os.path.join(cb, "drivers"), os.path.join(cb, "os", "firstboot.d")) for r, _, fs in os.walk(d) for f in fs)
     info.append("CUU_HO %.0f GB | khoa cai dat chung: %s%s | anh nen: %s" % (C.recovery_bytes(cfg, os.path.getsize(os.path.join(out, "sources", "boot.wim")), drv) / C.GB, cfg["generic_key"],
                                                                             (" | driver kem theo: %.0f MB" % (drv / 1e6)) if drv > 4096 else "",
                                                                             "rieng" if wp else "CloudBlue"))
-    info += vga_notes
+    info += vga_notes + driver_report(cb)
     for ln in info: say(ln)
     if P.get("info"):                                              # tao-iso.ps1 in lại các dòng này trong khung TÓM TẮT
         try:

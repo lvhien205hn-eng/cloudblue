@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 20.11a)
+#  cloudblue-tao-iso   (ban 20.11b)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -14,7 +14,10 @@
 #     -Work "D:\cb-work"                                thu muc lam viec (can trong ~2 lan tong dung luong ISO, KHONG co dau cach)
 #     -TaiKhoan PC  -MatKhau ""                         tai khoan Windows tao san tren may cho thue
 #     -GiuWork                                          giu thu muc lam viec sau khi xong
-#     -Them "D:\cb-them"                                thu muc THEM vao bo cai (bo trong: tu tim thu muc ten cb-them nam canh file ISO, khong co thi hoi):
+#     -Driver "2=D:\drv\lan.zip","2=D:\drv\vga.exe"     driver RIENG cho ban Windows cua ISO thu 2: file .exe .zip .7z .rar .cab hoac thu muc co file .inf.
+#                                                       Khong dung tham so nay thi script HOI rieng cho tung ban (keo tha file / thu muc vao cua so).
+#     -KhongHoi                                         khong hoi gi (chay tu dong): moi lua chon lay mac dinh; ma dang ky lay tu -MaDangKy / lan chay truoc
+#     -Them "D:\cb-them"                                thu muc THEM vao bo cai (bo trong: tu tim thu muc ten cb-them nam canh file ISO):
 #                                                         drivers\            driver cho MOI ban Windows (thu muc co file .inf, hoac goi .zip / .exe)
 #                                                         drivers\1511\       driver chi cho ban 1511   (tuong tu: drivers\22h2\ ...)
 #                                                         firstboot.d\        file .cmd .bat .ps1 chay 1 lan o lan dang nhap dau (firstboot.d\1511\ = chi ban 1511)
@@ -35,6 +38,8 @@ param(
   [string]$MaDangKy = "",
   [switch]$GiuWork,
   [string]$Them = "",
+  [string[]]$Driver = @(),
+  [switch]$KhongHoi,
   [switch]$KhongIso,
   [switch]$KhoaChung,
   [switch]$KhongKhoaChung
@@ -42,7 +47,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "20.11a"
+$VER = "20.11b"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -51,8 +56,13 @@ $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
 $Notes = New-Object System.Collections.ArrayList
-$DrvInfo = New-Object System.Collections.ArrayList
 $MountDir = ""
+# oscdimg.exe 2.56 tren may chu ky hieu cua Microsoft (cung dia chi + ma kiem ma goi winget Microsoft.OSCDIMG dung)
+$OSC_SHA = "2000160b2c5044691b2f9a0ac308e5207f273d4880a572457af16d05886ba861"
+$OscInfo = ""
+$OscWhy = New-Object System.Collections.ArrayList
+$GetFileErr = ""
+$PACKEXT = @(".exe", ".zip", ".7z", ".rar", ".cab")
 
 function Say([string]$m, [string]$c = "Gray") { Write-Host $m -ForegroundColor $c }
 function Step([string]$m) { Write-Host ""; Write-Host ("== " + $m) -ForegroundColor Cyan }
@@ -66,16 +76,18 @@ function Stop-Build([string]$m) {
 }
 
 function Run-Exe([string]$exe, [string[]]$a) {
-  # Chay 1 chuong trinh ngoai, in thang ra man hinh, tra ma thoat (khong de chu loi cua no lam dung script).
+  # Chay 1 chuong trinh ngoai, in thang ra man hinh, tra ma thoat (khong de chu loi cua no lam dung script). Khong chay duoc -> 9009.
   $old = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
-  try { & $exe @a 2>&1 | ForEach-Object { Write-Host ("   " + $_) } } catch { Write-Host ("   " + $_) }
-  $rc = $LASTEXITCODE
+  $rc = 9009
+  try { & $exe @a 2>&1 | ForEach-Object { Write-Host ("   " + $_) }; $rc = $LASTEXITCODE } catch { Write-Host ("   " + $_) }
   $ErrorActionPreference = $old
   return $rc
 }
 
 function Get-File([string]$url, [string]$dst, [string]$agent = "") {
+  # Tai 1 file (curl.exe cua Windows truoc, khong duoc thi Invoke-WebRequest). Loi thi ly do nam o $script:GetFileErr.
+  $script:GetFileErr = ""
   $dir = Split-Path -Parent $dst
   if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Force $dir | Out-Null }
   if (Test-Path $dst) { Remove-Item -Force $dst }
@@ -86,16 +98,23 @@ function Get-File([string]$url, [string]$dst, [string]$agent = "") {
     $a += $url
     $old = $ErrorActionPreference; $ErrorActionPreference = "Continue"
     & $curl @a 2>$null | Out-Null
+    $crc = $LASTEXITCODE
     $ErrorActionPreference = $old
-    if ($LASTEXITCODE -eq 0 -and (Test-Path $dst) -and ((Get-Item $dst).Length -gt 0)) { return $true }
+    if ($crc -eq 0 -and (Test-Path $dst) -and ((Get-Item $dst).Length -gt 0)) { return $true }
+    $script:GetFileErr = "curl ma " + $crc
   }
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $h = @{}
-    if ($agent) { $h["User-Agent"] = $agent }
-    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $dst -Headers $h
-    return ((Test-Path $dst) -and ((Get-Item $dst).Length -gt 0))
-  } catch { return $false }
+    $iw = @{ UseBasicParsing = $true; Uri = $url; OutFile = $dst }
+    if ($agent) { $iw["UserAgent"] = $agent }
+    Invoke-WebRequest @iw
+    if ((Test-Path $dst) -and ((Get-Item $dst).Length -gt 0)) { return $true }
+    $script:GetFileErr = ($script:GetFileErr + " ; tai ve file rong").Trim(" ;")
+    return $false
+  } catch {
+    $script:GetFileErr = ($script:GetFileErr + " ; " + $_.Exception.Message).Trim(" ;")
+    return $false
+  }
 }
 
 function Run-Quiet([string]$exe, [string[]]$a) {
@@ -108,43 +127,160 @@ function Run-Quiet([string]$exe, [string[]]$a) {
   return $rc
 }
 
+function Test-There([string]$p) {
+  # Test-Path khong nem loi khi duong dan co ky tu la (nguoi dung dan nham).
+  if (-not $p) { return $false }
+  try { return [bool](Test-Path -LiteralPath $p) } catch { return $false }
+}
+
+function Test-IsoPath([string]$p) {
+  # File .iso, hoac thu muc (bo cai da giai nen).
+  try { if (Test-Path -LiteralPath $p -PathType Container) { return $true } } catch { return $false }
+  return [bool]($p -match '\.iso$')
+}
+
+function Split-Paths([string]$line) {
+  # 1 dong nguoi dung dan / keo tha -> cac duong dan. Keo nhieu file 1 luc thi cac duong dan cach nhau bang dau cach,
+  # cai nao co dau cach thi nam trong nhay kep.
+  $t = ("" + $line).Trim()
+  if (-not $t) { return }
+  $one = Clean-Path $t
+  if (Test-There $one) { return $one }
+  foreach ($mm in [regex]::Matches($t, '"([^"]+)"|(\S+)')) {
+    $v = ("" + $mm.Groups[1].Value + $mm.Groups[2].Value).Trim()
+    if ($v) { $v }
+  }
+}
+
+function Test-NvidiaName([string]$n) {
+  # Goi cai VGA NVIDIA (466.77-notebook-win10-64bit-international-whql.exe ...) hoac file script da danh dau nvidia-vga-...
+  return [bool](($n -match '^\d{3}\.\d{2}-(notebook|desktop)-.*\.exe$') -or ($n -match '^nvidia-vga-.*\.exe$'))
+}
+
+function Count-Inf([string]$dir) {
+  if (-not (Test-There $dir)) { return 0 }
+  return @(Get-ChildItem -LiteralPath $dir -Recurse -File -Filter *.inf -ErrorAction SilentlyContinue).Count
+}
+
+function Test-DriverDrop([string]$p) {
+  # Thu nguoi dung keo tha lam driver co dung duoc khong: "" = duoc, con lai = ly do tu choi.
+  if (-not (Test-There $p)) { return ("khong thay " + $p) }
+  $it = Get-Item -LiteralPath $p
+  if ($it.PSIsContainer) {
+    if ($it.FullName.TrimEnd("\").Length -le 3) { return ("day la ca o dia - hay keo dung thu muc driver: " + $p) }
+    $hit = @(Get-ChildItem -LiteralPath $it.FullName -Recurse -File -ErrorAction SilentlyContinue | Where-Object { ($_.Extension -eq ".inf") -or ($PACKEXT -contains $_.Extension.ToLower()) } | Select-Object -First 1).Count
+    if ($hit -eq 0) { return ("thu muc nay khong co file .inf / .exe / .zip nao: " + $p) }
+    return ""
+  }
+  $ext = $it.Extension.ToLower()
+  if ($ext -eq ".iso") { return ("day la file ISO, khong phai driver: " + $p) }
+  if ($ext -eq ".inf") { return ("file .inf phai di cung cac file khac cua driver - hay keo CA THU MUC chua no: " + $p) }
+  if (-not ($PACKEXT -contains $ext)) { return ("chi nhan file .exe .zip .7z .rar .cab hoac thu muc driver: " + $p) }
+  return ""
+}
+
+function Get-DropText([string]$p) {
+  $it = Get-Item -LiteralPath $p
+  if ($it.PSIsContainer) { return ($it.Name + "  (thu muc, " + (Count-Inf $it.FullName) + " file .inf)") }
+  return ($it.Name + "  (" + [math]::Round($it.Length / 1MB, 1) + " MB)")
+}
+
+function Get-DropName([IO.FileInfo]$f) {
+  # Ten file khi chep vao bo cai. Goi VGA NVIDIA da bi doi ten (khong con dang 466.77-notebook-...) -> them tien to nvidia-vga-
+  # de cb_build.py van nhan ra va cho cai im lang o lan dang nhap dau.
+  $n = $f.Name
+  if (($f.Extension -eq ".exe") -and (-not (Test-NvidiaName $n))) {
+    $co = ""
+    try { $co = "" + $f.VersionInfo.CompanyName } catch { $co = "" }
+    if ($co -match "NVIDIA") { $n = "nvidia-vga-" + $n }
+  }
+  return $n
+}
+
+function Free-Name([string]$dir, [string]$name) {
+  # Duong dan chua co ai dung trong $dir cho ten $name (ten chi giu chu / so / _ . - de cong cu nao cung doc duoc).
+  $n = ($name -replace '[^A-Za-z0-9_.-]', '_')
+  if (-not $n.Trim("._")) { $n = "driver" }
+  $bn = [IO.Path]::GetFileNameWithoutExtension($n)
+  $ex = [IO.Path]::GetExtension($n)
+  $c = Join-Path $dir $n
+  $i = 1
+  while (Test-Path -LiteralPath $c) { $i++; $c = Join-Path $dir ($bn + "_" + $i + $ex) }
+  return $c
+}
+
+function Get-OsTag([string]$osver) {
+  # "10.0.19045.4291" -> "22H2" ; "10.0.10586.0" -> "1511"  (chi de hien cho nguoi dung de nhin)
+  $b = 0
+  if (("" + $osver) -match '^\d+\.\d+\.(\d+)') { $b = [int]$Matches[1] }
+  $map = @{ 10240 = "1507"; 10586 = "1511"; 14393 = "1607"; 15063 = "1703"; 16299 = "1709"; 17134 = "1803"; 17763 = "1809"; 18362 = "1903"; 18363 = "1909"; 19041 = "2004"; 19042 = "20H2"; 19043 = "21H1"; 19044 = "21H2"; 19045 = "22H2"; 22000 = "11-21H2"; 22621 = "11-22H2"; 22631 = "11-23H2"; 26100 = "11-24H2"; 26200 = "11-25H2" }
+  if ($map.ContainsKey($b)) { return ("" + $map[$b]) }
+  return ("build " + $b)
+}
+
+function Expand-One([string]$file, [string]$to, [string]$seven) {
+  # Giai nen 1 goi driver ra thu muc $to, thu lan luot cac cong cu co tren may. Tra so file .inf lay duoc (0 = khong duoc).
+  $ext = [IO.Path]::GetExtension($file).ToLower()
+  $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+  $exp = Join-Path $env:SystemRoot "System32\expand.exe"
+  $rar = ""
+  foreach ($pf in @($env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+    if ($pf -and (-not $rar) -and (Test-Path (Join-Path $pf "WinRAR\WinRAR.exe"))) { $rar = Join-Path $pf "WinRAR\WinRAR.exe" }
+  }
+  foreach ($way in @("zip", "cab", "7z", "rar", "tar")) {
+    if (($way -eq "zip") -and ($ext -ne ".zip")) { continue }
+    if (($way -eq "cab") -and ($ext -ne ".cab")) { continue }
+    if (($way -eq "7z") -and (-not $seven)) { continue }
+    if (($way -eq "rar") -and (-not $rar)) { continue }
+    if (($way -eq "tar") -and (-not (Test-Path $tar))) { continue }
+    New-Item -ItemType Directory -Force $to | Out-Null
+    if ($way -eq "zip") { try { Expand-Archive -Force -LiteralPath $file -DestinationPath $to } catch { } }
+    elseif ($way -eq "cab") { [void](Run-Quiet $exp @("-F:*", $file, $to)) }
+    elseif ($way -eq "7z") { [void](Run-Quiet $seven @("x", "-y", ("-o" + $to), $file)) }
+    elseif ($way -eq "rar") { [void](Run-Quiet $rar @("x", "-ibck", "-inul", "-y", "-o+", $file, ($to.TrimEnd("\") + "\"))) }
+    else { [void](Run-Quiet $tar @("-xf", $file, "-C", $to)) }
+    $n = Count-Inf $to
+    if ($n -gt 0) { return $n }
+  }
+  return 0
+}
+
 function Expand-DriverPacks([string]$dir) {
-  # Goi driver de nguyen file .zip / .exe (tu giai nen) nam ngay trong cb\drivers hoac trong thu muc con cap 1 (vi du drivers\1511)
+  # Goi driver de nguyen file (.zip .cab .7z .rar, hoac .exe tu giai nen) nam ngay trong cb\drivers hoac trong thu muc con cap 1
+  # (vi du drivers\1511, hoac _img2 = driver nguoi dung keo tha cho ban Windows cua ISO thu 2)
   #   ->  giai nen ra thu muc cung ten de lay file .inf (bo cai chi nap duoc driver dang .inf).
-  # File .exe can 7-Zip da cai tren may nay; khong co thi ghi chu va bo qua. Thu muc da co san file .inf thi khong dung toi.
-  # Goi VGA NVIDIA (ten kieu 466.77-notebook-...exe) KHONG giai nen o day: cb_build.py chuyen no sang firstboot.d de cai im lang o lan dang nhap dau.
+  # Cong cu: Expand-Archive (.zip), expand.exe (.cab), 7-Zip / WinRAR neu may nay co cai, tar.exe cua Windows.
+  # Thu muc da co san file .inf ngay trong no thi khong dung toi (tru thu muc _img: moi file trong do deu la goi nguoi dung dua).
+  # Goi VGA NVIDIA KHONG giai nen o day: cb_build.py chuyen no sang firstboot.d de cai im lang o lan dang nhap dau.
   $seven = ""
   $cands = @((Join-Path $env:ProgramFiles "7-Zip\7z.exe"))
   $pf86 = ${env:ProgramFiles(x86)}
   if ($pf86) { $cands += (Join-Path $pf86 "7-Zip\7z.exe") }
   foreach ($c in $cands) { if ((-not $seven) -and (Test-Path $c)) { $seven = $c } }
   $tops = @($dir)
-  foreach ($d in @(Get-ChildItem $dir -Directory)) { $tops += $d.FullName }
+  foreach ($d in @(Get-ChildItem -LiteralPath $dir -Directory)) { $tops += $d.FullName }
   foreach ($t in $tops) {
-    if (@(Get-ChildItem $t -File -Filter *.inf).Count -gt 0) { continue }
-    $packs = @(Get-ChildItem $t -File | Where-Object { ($_.Extension -eq ".zip") -or (($_.Extension -eq ".exe") -and ($_.Length -gt 5MB)) })
+    $staged = [bool]((Split-Path -Leaf $t) -match '^_img\d+$')
+    if ((-not $staged) -and (@(Get-ChildItem -LiteralPath $t -File -Filter *.inf).Count -gt 0)) { continue }
+    $packs = @(Get-ChildItem -LiteralPath $t -File | Where-Object { ($PACKEXT -contains $_.Extension.ToLower()) -and ($staged -or ($_.Extension -ne ".exe") -or ($_.Length -gt 1MB)) })
     foreach ($f in $packs) {
-      if ($f.Name -match '^\d{3}\.\d{2}-(notebook|desktop)-') { continue }
+      if (Test-NvidiaName $f.Name) { continue }
       $to = Join-Path $t ($f.BaseName -replace '[^A-Za-z0-9_.-]', '_')
-      if (Test-Path $to) { $to = $to + "_x" }
-      $okx = $false
-      if ($f.Extension -eq ".zip") {
-        try { Expand-Archive -Force -Path $f.FullName -DestinationPath $to; $okx = $true } catch { $okx = $false }
-      } elseif ($seven) {
-        $rcx = Run-Quiet $seven @("x", "-y", ("-o" + $to), $f.FullName)
-        $okx = ($rcx -eq 0)
-      } else {
-        Note ("Goi driver " + $f.Name + " la file .exe ma may nay chua cai 7-Zip nen khong tu giai nen duoc. Giai nen bang tay (chuot phai > Extract) cho ra thu muc co file .inf roi chay lai.")
-        continue
-      }
-      $ninf = 0
-      if (Test-Path $to) { $ninf = @(Get-ChildItem $to -Recurse -File -Filter *.inf).Count }
-      if ($okx -and ($ninf -gt 0)) {
-        Remove-Item -Force $f.FullName
+      if (Test-Path -LiteralPath $to) { $to = $to + "_x" }
+      $ninf = Expand-One $f.FullName $to $seven
+      if ($ninf -gt 0) {
+        Remove-Item -LiteralPath $f.FullName -Force
         Say ("   da giai nen goi driver " + $f.Name + " (" + $ninf + " file .inf)") "DarkGray"
       } else {
-        if (Test-Path $to) { Remove-Item -Recurse -Force $to -ErrorAction SilentlyContinue }
-        Note ("Goi driver " + $f.Name + ": giai nen khong ra file .inf nao - se KHONG nap duoc kieu driver (neu la bo cai .exe thi dung lenh chay lan dau trong firstboot.d).")
+        if (Test-Path -LiteralPath $to) { Remove-Item -LiteralPath $to -Recurse -Force -ErrorAction SilentlyContinue }
+        $hint = ""
+        if ((-not $seven) -and ($f.Extension -ne ".zip")) { $hint = " (may nay chua cai 7-Zip: cai 7-Zip tu 7-zip.org roi chay lai co the giai nen duoc)" }
+        if ($staged) {
+          Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
+          Note ("Goi driver " + $f.Name + ": khong lay ra duoc file .inf nao" + $hint + " -> KHONG dua vao bo cai. Cach chac an: tren 1 may dang chay tot ban Windows do (da du driver), mo PowerShell (Admin) chay   dism /online /export-driver /destination:D:\drv   roi keo thu muc D:\drv vao buoc hoi driver.")
+        } else {
+          Note ("Goi driver " + $f.Name + ": giai nen khong ra file .inf nao" + $hint + " - se KHONG nap duoc kieu driver (neu la bo cai .exe thi dung lenh chay lan dau trong firstboot.d).")
+        }
       }
     }
   }
@@ -190,22 +326,63 @@ function Get-ImageList([string]$file) {
   return $res
 }
 
-function Find-Oscdimg([string]$dl) {
+function Test-Pe([string]$p) {
+  # File chuong trinh Windows (bat dau bang "MZ") va co co hop ly cho oscdimg.exe?
+  try {
+    $it = Get-Item -LiteralPath $p
+    if (($it.Length -lt 60KB) -or ($it.Length -gt 8MB)) { return $false }
+    $fs = [IO.File]::OpenRead($it.FullName)
+    try { $b0 = $fs.ReadByte(); $b1 = $fs.ReadByte() } finally { $fs.Close() }
+    return [bool](($b0 -eq 77) -and ($b1 -eq 90))
+  } catch { return $false }
+}
+
+function Find-Oscdimg([string]$dl, [string[]]$near) {
+  # Tim oscdimg.exe (cong cu dong ISO cua Microsoft): bo ADK da cai -> canh script / canh file ISO -> ban da tai lan truoc -> tai tu may chu Microsoft.
+  # Ban tai ve duoc kiem bang ma kiem SHA-256 da ghim (file tren may chu ky hieu cua Microsoft KHONG kem chu ky so nen khong kiem chu ky duoc).
+  # Ket qua: duong dan ("" = khong co). $script:OscInfo = lay tu dau ; $script:OscWhy = cac ly do that bai.
   $c = @()
-  $pf = ${env:ProgramFiles(x86)}
-  if ($pf) { $c += (Join-Path $pf "Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\amd64\Oscdimg\oscdimg.exe") }
-  if ($PSScriptRoot) { $c += (Join-Path $PSScriptRoot "oscdimg.exe") }
-  $c += (Join-Path $dl "oscdimg.exe")
-  foreach ($p in $c) { if (Test-Path $p) { return $p } }
-  Say "   tai oscdimg.exe (cong cu dong ISO cua Microsoft, ~150KB) tu may chu Microsoft..." "DarkGray"
-  $dst = Join-Path $dl "oscdimg.exe"
-  foreach ($id in @("688CABB065000", "3D44737265000")) {
-    $ok = Get-File ("https://msdl.microsoft.com/download/symbols/oscdimg.exe/" + $id + "/oscdimg.exe") $dst "Microsoft-Symbol-Server/10.0.0.0"
-    if ($ok) {
-      $sig = Get-AuthenticodeSignature $dst
-      if ($sig.Status -eq "Valid" -and $sig.SignerCertificate.Subject -match "Microsoft") { return $dst }
-      Remove-Item -Force $dst -ErrorAction SilentlyContinue
+  foreach ($pf in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+    if ($pf) {
+      foreach ($arch in @("amd64", "x86")) { $c += (Join-Path $pf ("Windows Kits\10\Assessment and Deployment Kit\Deployment Tools\" + $arch + "\Oscdimg\oscdimg.exe")) }
     }
+  }
+  if ($PSScriptRoot) { $c += (Join-Path $PSScriptRoot "oscdimg.exe") }
+  foreach ($n in $near) { if ($n) { $c += (Join-Path $n "oscdimg.exe") } }
+  foreach ($p in $c) {
+    if ((Test-There $p) -and (Test-Pe $p)) { $script:OscInfo = "co san tren may: " + $p; return $p }
+  }
+  $dst = Join-Path $dl "oscdimg.exe"
+  if ((Test-There $dst) -and (Test-Pe $dst)) {
+    $h = Get-Sha $dst
+    $script:OscInfo = "ban da tai lan truoc, ma kiem " + $h.Substring(0, 16) + $(if ($h -eq $OSC_SHA) { " (khop ban Microsoft 2.56)" } else { " (khong phai ban da ghim)" })
+    return $dst
+  }
+  Say "   tai oscdimg.exe (cong cu dong ISO cua Microsoft, ~150KB) tu may chu Microsoft..." "DarkGray"
+  foreach ($s in @(@("688CABB065000", $OSC_SHA), @("3D44737265000", ""))) {
+    $url = "https://msdl.microsoft.com/download/symbols/oscdimg.exe/" + $s[0] + "/oscdimg.exe"
+    $ok = Get-File $url $dst "Microsoft-Symbol-Server/10.0.0.0"
+    if (-not $ok) {
+      $e1 = $script:GetFileErr
+      $ok = Get-File $url $dst
+      if (-not $ok) { [void]$script:OscWhy.Add($s[0] + ": tai loi (" + $e1 + " | " + $script:GetFileErr + ")"); continue }
+    }
+    $len = (Get-Item -LiteralPath $dst).Length
+    if (-not (Test-Pe $dst)) {
+      [void]$script:OscWhy.Add($s[0] + ": file tai ve khong phai chuong trinh Windows (" + $len + " byte)")
+      Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
+      continue
+    }
+    $h = Get-Sha $dst
+    if ($s[1] -and ($h -ne $s[1])) {
+      [void]$script:OscWhy.Add($s[0] + ": ma kiem khac ban da ghim (" + $h.Substring(0, 16) + ", " + $len + " byte)")
+      Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
+      continue
+    }
+    $sg = "?"
+    try { $sg = "" + (Get-AuthenticodeSignature -LiteralPath $dst).Status } catch { $sg = "?" }
+    $script:OscInfo = "tai tu msdl.microsoft.com/" + $s[0] + ", " + $len + " byte, ma kiem " + $h.Substring(0, 16) + $(if ($s[1]) { " KHOP ban da ghim" } else { " (ban du phong, khong ghim)" }) + ", chu ky so: " + $sg
+    return $dst
   }
   return ""
 }
@@ -223,46 +400,68 @@ try {
 
   # ---------------------------------------------------------------- 1. ISO goc
   Step "1/8  File ISO Windows goc"
-  if ($Iso.Count -eq 0) {
+  if (($Iso.Count -eq 0) -and (-not $KhongHoi)) {
     Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan). Xong thi bam Enter trong." "White"
+    Say "   (CHI file .iso o buoc nay - driver se duoc hoi rieng cho tung ban Windows o buoc 5.)" "DarkGray"
     while ($true) {
-      $p = Clean-Path (Read-Host ("   ISO thu " + ($Iso.Count + 1) + " (Enter trong = het)"))
-      if (-not $p) { break }
-      if (-not (Test-Path $p)) { Say ("   khong thay: " + $p) "Yellow"; continue }
-      $Iso += $p
+      $line = "" + (Read-Host ("   ISO thu " + ($Iso.Count + 1) + " (Enter trong = het)"))
+      if (-not $line.Trim()) { break }
+      foreach ($p in @(Split-Paths $line)) {
+        if (-not (Test-There $p)) { Say ("   khong thay: " + $p) "Yellow"; continue }
+        if (-not (Test-IsoPath $p)) { Say ("   day KHONG phai file .iso (driver se duoc hoi rieng o buoc 5): " + $p) "Yellow"; continue }
+        $Iso += $p
+      }
     }
   }
   $Iso = @($Iso | ForEach-Object { Clean-Path $_ } | Where-Object { $_ })
   if ($Iso.Count -eq 0) { Stop-Build "Chua co file ISO nao." }
-  foreach ($p in $Iso) { if (-not (Test-Path $p)) { Stop-Build ("Khong thay: " + $p) } }
+  foreach ($p in $Iso) {
+    if (-not (Test-There $p)) { Stop-Build ("Khong thay: " + $p) }
+    if (-not (Test-IsoPath $p)) { Stop-Build ("Day khong phai file .iso (hoac thu muc bo cai da giai nen): " + $p) }
+  }
 
-  # ---------------------------------------------------------------- thu muc THEM (driver, lenh chay lan dau, anh nen rieng)
+  # ---------------------------------------------------------------- thu muc THEM (driver chung, lenh chay lan dau, anh nen rieng)
   if (-not $Them) {
     foreach ($p in $Iso) {
-      $par = Split-Path -Parent (Get-Item $p).FullName
+      $par = Split-Path -Parent (Get-Item -LiteralPath $p).FullName
       if ($par -and (-not $Them)) {
         $c = Join-Path $par "cb-them"
-        if (Test-Path $c) { $Them = $c }
+        if (Test-Path -LiteralPath $c -PathType Container) { $Them = $c }
       }
     }
     if ($Them) { Say ("   Thu muc them (tu tim thay canh file ISO): " + $Them) "White" }
-    else {
-      Say "   Thu muc THEM (driver, lenh chay lan dau, anh nen rieng): keo tha thu muc vao day roi Enter. Khong co thi Enter trong." "White"
-      $Them = Clean-Path ("" + (Read-Host "   Thu muc them"))
-    }
   }
   if ($Them) {
     $Them = Clean-Path $Them
-    if (-not (Test-Path $Them)) { Stop-Build ("Khong thay thu muc them: " + $Them) }
+    if (-not (Test-There $Them)) { Stop-Build ("Khong thay thu muc them: " + $Them) }
+    if (-not (Test-Path -LiteralPath $Them -PathType Container)) { Stop-Build ("-Them phai la THU MUC (ben trong co drivers\ , firstboot.d\ , wallpaper.jpg), khong phai file: " + $Them + "   Driver dang file .exe / .zip thi script se hoi rieng cho tung ban Windows o buoc 5.") }
+  }
+
+  # ---------------------------------------------------------------- driver rieng tung ban Windows dua bang tham so -Driver "<so thu tu ISO>=<duong dan>"
+  $DrvArg = @{}
+  foreach ($d in $Driver) {
+    if (-not (("" + $d) -match '^\s*(\d+)\s*=\s*(.+)$')) { Stop-Build ("-Driver phai co dang  <so thu tu ISO>=<duong dan>  (vi du  2=D:\drv\lan.zip): " + $d) }
+    $dk = [int]$Matches[1]
+    $dv = Clean-Path $Matches[2]
+    if (($dk -lt 1) -or ($dk -gt $Iso.Count)) { Stop-Build ("-Driver: khong co ISO thu " + $dk + " (chi co " + $Iso.Count + " ISO).") }
+    $why = Test-DriverDrop $dv
+    if ($why) { Stop-Build ("-Driver: " + $why) }
+    if (-not $DrvArg.ContainsKey($dk)) { $DrvArg[$dk] = @() }
+    $DrvArg[$dk] += $dv
   }
 
   # ---------------------------------------------------------------- thu muc lam viec
   $totalIso = 0
-  foreach ($p in $Iso) { $it = Get-Item $p; if (-not $it.PSIsContainer) { $totalIso += $it.Length } else { $totalIso += 6GB } }
+  foreach ($p in $Iso) { $it = Get-Item -LiteralPath $p; if (-not $it.PSIsContainer) { $totalIso += $it.Length } else { $totalIso += 6GB } }
   if (-not $Work) {
-    $best = Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending | Select-Object -First 1
-    if (-not $best) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
-    $Work = "" + $best.DriveLetter + ":\cb-work"
+    $vols = @(Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending)
+    if ($vols.Count -eq 0) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
+    $Work = "" + $vols[0].DriveLetter + ":\cb-work"
+    # uu tien thu muc lam viec cua lan chay truoc (con giu phan da tai + ma dang ky; cay bo cai cu se duoc don di)
+    foreach ($v in $vols) {
+      $prev = "" + $v.DriveLetter + ":\cb-work"
+      if (Test-Path -LiteralPath (Join-Path $prev "dl")) { $Work = $prev; break }
+    }
   }
   $Work = Clean-Path $Work
   if ($Work -match '\s') { Stop-Build ("Thu muc lam viec khong duoc co dau cach: " + $Work + "  (vi du dung -Work D:\cb-work)") }
@@ -271,11 +470,7 @@ try {
   if ($Out -match '\s') { Stop-Build ("Duong dan ISO moi khong duoc co dau cach: " + $Out) }
   New-Item -ItemType Directory -Force $Work | Out-Null
   $wdrive = (Split-Path -Qualifier $Work).TrimEnd(":")
-  $free = (Get-PSDrive $wdrive).Free
-  $need = [int64]($totalIso * 2.2 + 3GB)
   Say ("   Thu muc lam viec: " + $Work + "   ISO moi: " + $Out) "DarkGray"
-  Say ("   O " + $wdrive + ": con trong " + [math]::Round($free / 1GB, 1) + " GB - can khoang " + [math]::Round($need / 1GB, 1) + " GB") "DarkGray"
-  if ($free -lt $need) { Stop-Build ("O " + $wdrive + ": khong du cho trong. Don bot hoac dung -Work <o khac>:\cb-work") }
   $IsoRoot = Join-Path $Work "iso"
   $Tool = Join-Path $Work "tool"
   $PyDir = Join-Path $Work "py"
@@ -291,7 +486,32 @@ try {
     $ErrorActionPreference = $old
     Remove-Item -Recurse -Force $MountDir -ErrorAction SilentlyContinue
   }
+  # ma dang ky cua lan chay truoc (de bam Enter la dung lai): ban ma hoa DPAPI trong thu muc dl (chi tai khoan Windows nay giai duoc),
+  # hoac file enroll.key cua cay bo cai lan truoc con de lai. Doc TRUOC khi don.
+  $KeyFile = Join-Path $Dl "ma-dang-ky.dpapi"
+  $OldKey = ""
+  if (Test-Path -LiteralPath $KeyFile) {
+    try {
+      $sec0 = ConvertTo-SecureString (("" + (Get-Content -LiteralPath $KeyFile -TotalCount 1)).Trim())
+      $OldKey = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec0))
+    } catch { $OldKey = "" }
+  }
+  if (-not (("" + $OldKey) -match '^cbpc_[0-9a-f]{40}$')) {
+    $OldKey = ""
+    $kf = Join-Path $IsoRoot "cb\enroll.key"
+    if (Test-Path -LiteralPath $kf) {
+      try {
+        $kline = ("" + (Get-Content -LiteralPath $kf -TotalCount 1)).Trim()
+        if ($kline -match '^cbpc_[0-9a-f]{40}$') { $OldKey = $kline }
+      } catch { $OldKey = "" }
+    }
+  }
   foreach ($d in @($IsoRoot, $Tool, $PyDir)) { if (Test-Path $d) { Remove-Item -Recurse -Force $d } }
+  # cho trong: tinh SAU khi da don cay bo cai cua lan chay truoc
+  $free = (Get-PSDrive $wdrive).Free
+  $need = [int64]($totalIso * 2.2 + 3GB)
+  Say ("   O " + $wdrive + ": con trong " + [math]::Round($free / 1GB, 1) + " GB - can khoang " + [math]::Round($need / 1GB, 1) + " GB") "DarkGray"
+  if ($free -lt $need) { Stop-Build ("O " + $wdrive + ": khong du cho trong. Don bot hoac dung -Work <o khac>:\cb-work") }
 
   # ---------------------------------------------------------------- 2. phan mem CloudBlue
   Step "2/8  Tai phan mem CloudBlue PC"
@@ -353,20 +573,39 @@ try {
   if ($cj -match 'supabaseAnonKey\s*:\s*"([^"]+)"') { $SbKey = $Matches[1] }
   if (-not ($SbUrl -match '^https://[a-z0-9]+\.supabase\.co/?$') -or -not $SbKey) { Stop-Build "Khong doc duoc dia chi Supabase trong config.js." }
   Say ("   may chu: " + $SbUrl) "DarkGray"
+  $KeyFrom = "tham so"
   if (-not $MaDangKy) {
-    Say "   Vao web > Bang quan tri > May PC > 'Tao ma dang ky' > Copy, roi dan vao day (chuot phai = dan). Ma KHONG hien khi dan." "White"
-    $sec = Read-Host "   MA DANG KY (Enter trong = may cai xong se KHONG tu len web)" -AsSecureString
-    $MaDangKy = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+    $KeyFrom = ""
+    if (-not $KhongHoi) {
+      $q = "   MA DANG KY (Enter trong = may cai xong se KHONG tu len web)"
+      if ($OldKey) {
+        Say "   May nay con giu MA DANG KY cua lan chay truoc: bam Enter de DUNG LAI ma do." "White"
+        Say "   (Neu sau lan do ban da bam 'Tao ma dang ky' lan nua tren web thi ma cu HET hieu luc - khi do dan ma moi vao day.)" "DarkGray"
+        $q = "   MA DANG KY moi (Enter trong = dung lai ma lan truoc)"
+      } else {
+        Say "   Vao web > Bang quan tri > May PC > 'Tao ma dang ky' > Copy, roi dan vao day (chuot phai = dan). Ma KHONG hien khi dan." "White"
+      }
+      $sec = Read-Host $q -AsSecureString
+      $MaDangKy = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))
+      if (("" + $MaDangKy).Trim()) { $KeyFrom = "moi nhap" }
+    }
+    if ((-not ("" + $MaDangKy).Trim()) -and $OldKey) { $MaDangKy = $OldKey; $KeyFrom = "dung lai cua lan chay truoc" }
   }
   $MaDangKy = ("" + $MaDangKy).Trim()
   if ($MaDangKy -and -not ($MaDangKy -match '^cbpc_[0-9a-f]{40}$')) { Stop-Build "Ma dang ky sai dang (phai la cbpc_ + 40 ky tu). Copy lai tu trang quan tri." }
-  if ($MaDangKy) { Say "   ma dang ky: da nhan (khong in ra)" "DarkGray" } else { Note "Khong co ma dang ky: may cai tu ISO nay se khong tu hien len web." }
+  if ($MaDangKy) {
+    Say ("   ma dang ky: da nhan - " + $KeyFrom + " (khong in ra)") "DarkGray"
+    try {
+      $enc = ConvertTo-SecureString $MaDangKy -AsPlainText -Force | ConvertFrom-SecureString
+      [IO.File]::WriteAllText($KeyFile, ("" + $enc), [Text.Encoding]::ASCII)
+    } catch { Say "   (khong luu duoc ma cho lan sau - khong sao)" "DarkGray" }
+  } else { Note "Khong co ma dang ky: may cai tu ISO nay se khong tu hien len web." }
 
   # ---------------------------------------------------------------- 5. mo ISO goc, doc cac ban Windows
   Step "5/8  Doc cac ban Windows trong ISO goc"
   $src = @()
   foreach ($p in $Iso) {
-    $it = Get-Item $p
+    $it = Get-Item -LiteralPath $p
     if ($it.PSIsContainer) { $root = $it.FullName.TrimEnd("\") + "\" }
     else {
       $m = Mount-DiskImage -ImagePath $it.FullName -PassThru
@@ -410,7 +649,7 @@ try {
       if ($x.Arch -ne 9) { $mk = "   (32-bit - khong dung)" } elseif ($x.Index -eq $pick.Index) { $mk = "   <-- mac dinh" }
       Say ("      ban so " + $x.Index + ": " + $x.Name + "  (" + $x.Edition + ", " + $x.Version + ")" + $mk) "DarkGray"
     }
-    if ($x64.Count -gt 1) {
+    if (($x64.Count -gt 1) -and (-not $KhongHoi)) {
       $ans = ("" + (Read-Host ("   Dung ban so nao? (Enter = " + $pick.Index + ")"))).Trim()
       if ($ans) {
         $sel = $x64 | Where-Object { ("" + $_.Index) -eq $ans } | Select-Object -First 1
@@ -419,6 +658,28 @@ try {
       }
     }
     if (-not $std) { Say "      (ISO nay khong co du bo khoi dong chuan o goc - chi lay ban Windows, khong dung lam moi truong cai dat)" "DarkGray" }
+    # driver RIENG cho ban Windows nay: tu tham so -Driver, va / hoac nguoi dung keo tha vao cua so
+    $isoNo = $src.Count + 1
+    $osTag = Get-OsTag $pick.Version
+    $drops = @()
+    if ($DrvArg.ContainsKey($isoNo)) { $drops += $DrvArg[$isoNo] }
+    if (-not $KhongHoi) {
+      Say ("   DRIVER rieng cho ban WINDOWS " + $osTag + " nay (" + (Split-Path -Leaf $p) + ") - vi du card mang, VGA:") "White"
+      Say "      keo tha FILE driver (.exe .zip) hoac THU MUC driver vao cua so nay roi Enter; con cai nua thi keo tiep." "White"
+      Say "      Ban nay khong can driver rieng / da keo het thi bam Enter trong." "White"
+      while ($true) {
+        $line = "" + (Read-Host ("   Driver thu " + ($drops.Count + 1) + " cho ban " + $osTag + " (Enter trong = het)"))
+        if (-not $line.Trim()) { break }
+        foreach ($dp in @(Split-Paths $line)) {
+          $why = Test-DriverDrop $dp
+          if ($why) { Say ("      KHONG nhan: " + $why) "Yellow"; continue }
+          if ($drops -contains $dp) { continue }
+          $drops += $dp
+          Say ("      + " + (Get-DropText $dp)) "DarkGray"
+        }
+      }
+    }
+    if ($drops.Count -gt 0) { Say ("      driver rieng cho ban " + $osTag + ": " + $drops.Count + " muc") "DarkGray" }
     # ISO tuy bien hay kem file rieng cua nguoi lam: ghi lai de in vao khung TOM TAT (bo cai CloudBlue KHONG dung cac file nay)
     $extra = @()
     foreach ($n in @("autounattend.xml", "sources\pid.txt", "sources\ei.cfg")) { if (Test-Path (Join-Path $root $n)) { $extra += $n } }
@@ -427,7 +688,7 @@ try {
       $oemFiles = @(Get-ChildItem -LiteralPath $oemDir -Recurse -File)
       $extra += ('$OEM$ (' + $oemFiles.Count + ' file: ' + ((@($oemFiles | Select-Object -First 8 | ForEach-Object { $_.Name })) -join ', ') + ')')
     }
-    $src += [pscustomobject]@{ Root = $root; Image = $img; Pick = $pick; Bytes = $bytes; Path = $p; Std = $std; Extra = ($extra -join ' ; ') }
+    $src += [pscustomobject]@{ Root = $root; Image = $img; Pick = $pick; Bytes = $bytes; Path = $p; Std = $std; Extra = ($extra -join ' ; '); Drops = $drops; Tag = $osTag }
   }
   $stdSrc = @($src | Where-Object { $_.Std })
   if ($stdSrc.Count -eq 0) { Stop-Build "Khong ISO nao co du bo khoi dong chuan o goc (sources\boot.wim + boot\boot.sdi + efi\microsoft\boot\efisys.bin). ISO 2 kien truc (x86 + x64) chi dung duoc lam ban Windows phu - can them 1 ISO Windows 64-bit chuan." }
@@ -457,20 +718,36 @@ try {
       if ((-not $wpSrc) -and (Test-Path $c)) { $wpSrc = $c }
     }
     if (($nThem -eq 0) -and (-not $wpSrc)) { Note ("Thu muc them khong co drivers\ , firstboot.d\ hay wallpaper.jpg nao: " + $Them) } else { Say ("   them " + $nThem + " file tu " + $Them + " (drivers / firstboot.d)") "DarkGray" }
-    $ddir = Join-Path $IsoRoot "cb\drivers"
-    if (Test-Path $ddir) {
-      try { Expand-DriverPacks $ddir } catch { Note ("Giai nen goi driver loi: " + $_.Exception.Message) }
-      $loose = @(Get-ChildItem $ddir -File -Filter *.inf).Count
-      if ($loose -gt 0) { [void]$DrvInfo.Add("DRIVER (file le, moi ban): " + $loose + " file .inf") }
-      foreach ($sd in @(Get-ChildItem $ddir -Directory)) {
-        $ninf = @(Get-ChildItem $sd.FullName -Recurse -File -Filter *.inf).Count
-        $nvga = @(Get-ChildItem $sd.FullName -File | Where-Object { $_.Name -match '^\d{3}\.\d{2}-(notebook|desktop)-' }).Count
-        $line = "DRIVER " + $sd.Name + ": " + $ninf + " file .inf"
-        if ($nvga -gt 0) { $line = $line + " + " + $nvga + " goi VGA NVIDIA (.exe)" }
-        [void]$DrvInfo.Add($line)
-        if (($ninf -eq 0) -and ($nvga -eq 0)) { Note ("Thu muc driver '" + $sd.Name + "' khong co file .inf nao - se KHONG nap duoc. Driver dang .exe phai giai nen ra (7-Zip / WinRAR) de co file .inf.") }
+  }
+  # driver nguoi dung dua rieng cho tung ban Windows -> cb\drivers\_img<so thu tu ISO> ; cb_build.py doi thanh ten ban (1511, 22h2...)
+  $isoNo = 0
+  foreach ($s in $src) {
+    $isoNo++
+    $dlist = @($s.Drops)
+    if ($dlist.Count -eq 0) { continue }
+    $stage = Join-Path $IsoRoot ("cb\drivers\_img" + $isoNo)
+    New-Item -ItemType Directory -Force $stage | Out-Null
+    foreach ($dp in $dlist) {
+      $it = Get-Item -LiteralPath $dp
+      if ($it.PSIsContainer) {
+        if ((Count-Inf $it.FullName) -gt 0) {
+          $r3 = Run-Exe "robocopy.exe" @($it.FullName, (Free-Name $stage $it.Name), "/E", "/XF", "*.iso", "*.wim", "*.esd", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS", "/NP")
+          if ($r3 -ge 8) { Stop-Build ("Chep thu muc driver " + $it.FullName + " loi (robocopy ma " + $r3 + ").") }
+        } else {
+          # thu muc chi chua cac goi .exe / .zip: lay tung goi nam ngay trong no
+          foreach ($f in @(Get-ChildItem -LiteralPath $it.FullName -File | Where-Object { $PACKEXT -contains $_.Extension.ToLower() })) {
+            Copy-Item -LiteralPath $f.FullName -Destination (Free-Name $stage (Get-DropName $f)) -Force
+          }
+        }
+      } else {
+        Copy-Item -LiteralPath $it.FullName -Destination (Free-Name $stage (Get-DropName $it)) -Force
       }
     }
+    Say ("   da chep " + $dlist.Count + " muc driver rieng cho ban " + $s.Tag) "DarkGray"
+  }
+  $ddir = Join-Path $IsoRoot "cb\drivers"
+  if (Test-Path -LiteralPath $ddir) {
+    try { Expand-DriverPacks $ddir } catch { Note ("Giai nen goi driver loi: " + $_.Exception.Message) }
   }
   $images = @()
   foreach ($s in $src) {
@@ -480,7 +757,7 @@ try {
     $images += @{ src = $ipath; base = $isBase; index = $s.Pick.Index; name = $s.Pick.Name; edition = $s.Pick.Edition; version = $s.Pick.Version; lang = $s.Pick.Lang; arch = $s.Pick.Arch }
   }
   $defIdx = -1
-  if ($images.Count -gt 1) {
+  if (($images.Count -gt 1) -and (-not $KhongHoi)) {
     Say "   Ban Windows MAC DINH khi cai tu USB / ISO (luc dem nguoc 30 giay van doi duoc bang phim so):" "White"
     for ($i = 0; $i -lt $images.Count; $i++) { Say ("      " + ($i + 1) + " = " + $images[$i].name + "  [" + $images[$i].version + "]") "DarkGray" }
     $ans = ("" + (Read-Host "   Go so roi Enter (Enter trong = ban moi nhat)")).Trim()
@@ -549,17 +826,21 @@ try {
   $isoDone = $false
   if (-not $KhongIso) {
     Step "8/8  Dong file ISO (vai phut)"
-    $osc = Find-Oscdimg $Dl
+    $near = @()
+    foreach ($p in $Iso) { try { $near += (Split-Path -Parent (Get-Item -LiteralPath $p).FullName) } catch { } }
+    if ($Them) { $near += $Them }
+    $osc = Find-Oscdimg $Dl $near
     if (-not $osc) {
-      Note "Khong co oscdimg.exe (khong tai duoc tu Microsoft). Cay bo cai da dung xong o thu muc iso - xem huong dan de dong ISO sau."
+      Note ("Khong lay duoc oscdimg.exe (cong cu dong ISO): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ") + ". Cay bo cai da dung xong o thu muc iso - gui khung nay cho ho tro.")
     } else {
+      Say ("   oscdimg: " + $OscInfo) "DarkGray"
       if (Test-Path $Out) { Remove-Item -Force $Out }
       $bios = Join-Path $IsoRoot "boot\etfsboot.com"
       $efi = Join-Path $IsoRoot "efi\microsoft\boot\efisys.bin"
       if (-not (Test-Path $efi)) { Stop-Build "Bo cai goc thieu efi\microsoft\boot\efisys.bin." }
       if (Test-Path $bios) { $bd = "-bootdata:2#p0,e,b" + $bios + "#pEF,e,b" + $efi } else { $bd = "-bootdata:1#pEF,e,b" + $efi }
       $rc = Run-Exe $osc @("-m", "-o", "-u2", "-udfver102", $bd, "-lCLOUDBLUE_PC", $IsoRoot, $Out)
-      if ($rc -ne 0 -or -not (Test-Path $Out)) { Stop-Build ("Dong ISO loi (oscdimg ma " + $rc + ").") }
+      if ($rc -ne 0 -or -not (Test-Path $Out)) { Stop-Build ("Dong ISO loi (oscdimg ma " + $rc + "). oscdimg: " + $OscInfo) }
       $isoDone = $true
     }
   }
@@ -573,11 +854,13 @@ try {
     Write-Host ("  ISO goc: " + (Split-Path -Leaf $s.Path) + " -> " + $s.Pick.Name + " [" + $s.Pick.Edition + " " + $s.Pick.Version + "] ban so " + $s.Pick.Index + ", " + [math]::Round($s.Bytes / 1GB, 2) + " GB")
     if ($s.Extra) { Write-Host ("     file rieng cua ISO nay (khong dung toi): " + $s.Extra) }
   }
-  if (Test-Path $infoFile) { Get-Content -Encoding UTF8 $infoFile | ForEach-Object { Write-Host ("  " + $_) } }
-  foreach ($n in $DrvInfo) { Write-Host ("  " + $n) }
+  if (Test-Path $infoFile) {
+    Get-Content -Encoding UTF8 $infoFile | ForEach-Object { if (("" + $_) -match '^\(!\)') { Write-Host ("  " + $_) -ForegroundColor Yellow } else { Write-Host ("  " + $_) } }
+  }
   Write-Host ("  Chen boot.wim (ban so " + $bidx + "): OK")
   Write-Host ("  Tu kiem: doc o dia = " + $(if ($t1 -eq 0) { "DAT" } else { "CHUA DAT (" + $t1 + ")" }) + " ; chay thu bo cai = " + $(if ($t2 -eq 0) { "DAT" } else { "CHUA DAT (" + $t2 + ")" }))
-  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO" } else { "KHONG" }))
+  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" } else { "KHONG" }))
+  if ($OscInfo) { Write-Host ("  oscdimg: " + $OscInfo) }
   if ($isoDone) { Write-Host ("  ISO: " + $Out + "  (" + [math]::Round((Get-Item $Out).Length / 1GB, 2) + " GB)") -ForegroundColor Green }
   else { Write-Host ("  ISO: CHUA dong - cay bo cai o " + $IsoRoot) -ForegroundColor Yellow }
   foreach ($n in $Notes) { Write-Host ("  (!) " + $n) -ForegroundColor Yellow }
