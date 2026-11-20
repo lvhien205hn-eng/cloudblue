@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "20.11a"
+CORE_VER = "20.11c"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -386,3 +386,33 @@ def recovery_cfg(cfg):
         imgs.append(j)
     out["images"] = imgs
     return out
+
+
+# ====================================================================================== khoá quyền thư mục / phân vùng (icacls)
+SID_SYSTEM, SID_ADMINS, SID_USERS, SID_AUTH, SID_EVERYONE = "*S-1-5-18", "*S-1-5-32-544", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"
+ACL_FULL = [SID_SYSTEM + ":(OI)(CI)F", SID_ADMINS + ":(OI)(CI)F"]
+
+
+def acl_lock_cmds(base):
+    """Các lệnh icacls khoá thư mục phần mềm CloudBlue trên máy cho thuê (base = C:\\CloudBluePC):
+       - gốc + mọi thứ bên trong: CHỈ SYSTEM và Administrators (identity.json = mã máy, seed.json = mã đăng ký / vé, logs, agent, lib…)
+       - riêng py\\ và os\\: tài khoản thường được ĐỌC + CHẠY (phần chạy lúc đăng nhập để đặt ảnh nền) — không được ghi
+       - os\\firstboot.d (script riêng của chủ shop, có thể chứa khoá bản quyền…): lại chỉ SYSTEM + Administrators
+       Không khoá thì thư mục thừa hưởng quyền của C:\\ (Authenticated Users sửa được) → tài khoản thường sửa được file agent chạy quyền SYSTEM."""
+    b = base.rstrip("\\")
+    return [["icacls", b, "/inheritance:r", "/grant:r"] + ACL_FULL,
+            ["icacls", b, "/remove:g", SID_USERS, SID_AUTH, SID_EVERYONE],
+            ["icacls", b + "\\*", "/reset", "/T", "/C", "/Q"],
+            ["icacls", b + "\\py", "/grant:r", SID_USERS + ":(OI)(CI)RX"],
+            ["icacls", b + "\\os", "/grant:r", SID_USERS + ":(OI)(CI)RX"],
+            ["icacls", b + "\\os\\firstboot.d", "/inheritance:r", "/grant:r"] + ACL_FULL]
+
+
+def acl_vol_cmds(root):
+    """Các lệnh icacls khoá GỐC phân vùng cứu hộ (root = 'R:\\' hoặc '\\\\?\\Volume{…}\\'): chỉ SYSTEM + Administrators.
+       Phân vùng NTFS mới định dạng cho Authenticated Users quyền sửa, và phân vùng không có chữ ổ vẫn mở được qua đường \\\\?\\Volume{…}\\
+       → không khoá thì tài khoản thường sửa được bộ cài (thứ sẽ chạy quyền SYSTEM ở lần cài lại sau)."""
+    r = root if root.endswith("\\") else root + "\\"
+    return [["icacls", r, "/inheritance:r", "/grant:r"] + ACL_FULL,
+            ["icacls", r, "/remove:g", SID_USERS, SID_AUTH, SID_EVERYONE],
+            ["icacls", r + "*", "/reset", "/T", "/C", "/Q"]]
