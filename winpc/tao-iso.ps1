@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 20.11b)
+#  cloudblue-tao-iso   (ban 20.11c)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -12,7 +12,10 @@
 #     -Iso  "D:\Win10_22H2.iso","D:\Win10_1511.iso"     duong dan ISO goc (hoac thu muc da giai nen)
 #     -Out  "D:\CloudBlue-PC.iso"                       noi ghi ISO moi
 #     -Work "D:\cb-work"                                thu muc lam viec (can trong ~2 lan tong dung luong ISO, KHONG co dau cach)
-#     -TaiKhoan PC  -MatKhau ""                         tai khoan Windows tao san tren may cho thue
+#     -TaiKhoan PC  -MatKhau ""                         tai khoan Windows tao san tren may cho thue. Mac dinh la tai khoan THUONG (khong co quyen Admin):
+#                                                       khach khong go / sua duoc phan mem CloudBlue, khong dung duoc phan vung cuu ho; tren may khong con
+#                                                       tai khoan quan tri nao dung duoc (moi viec quan tri di qua web).
+#     -KhachAdmin                                       de tai khoan khach co quyen Admin (khach tu cai duoc moi phan mem, nhung pha duoc phan mem quan ly)
 #     -GiuWork                                          giu thu muc lam viec sau khi xong
 #     -Driver "2=D:\drv\lan.zip","2=D:\drv\vga.exe"     driver RIENG cho ban Windows cua ISO thu 2: file .exe .zip .7z .rar .cab hoac thu muc co file .inf.
 #                                                       Khong dung tham so nay thi script HOI rieng cho tung ban (keo tha file / thu muc vao cua so).
@@ -40,6 +43,7 @@ param(
   [string]$Them = "",
   [string[]]$Driver = @(),
   [switch]$KhongHoi,
+  [switch]$KhachAdmin,
   [switch]$KhongIso,
   [switch]$KhoaChung,
   [switch]$KhongKhoaChung
@@ -47,7 +51,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "20.11b"
+$VER = "20.11c"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -771,7 +775,7 @@ try {
   if ($KhongKhoaChung) { $gk = "off" }
   $infoFile = Join-Path $Dl "build-info.txt"
   Remove-Item -Force $infoFile -ErrorAction SilentlyContinue
-  $params = @{ out = $IsoRoot; tool = $Tool; py = $PyDir; images = $images; user = $TaiKhoan; password = $MatKhau; sb_url = $SbUrl; sb_key = $SbKey; enroll_key = $MaDangKy; generic_key = $gk; info = $infoFile; wallpaper = $wpSrc; default_index = $defIdx }
+  $params = @{ out = $IsoRoot; tool = $Tool; py = $PyDir; images = $images; user = $TaiKhoan; password = $MatKhau; sb_url = $SbUrl; sb_key = $SbKey; enroll_key = $MaDangKy; generic_key = $gk; info = $infoFile; wallpaper = $wpSrc; default_index = $defIdx; user_admin = [bool]$KhachAdmin }
   $pj = Join-Path $Dl "params.json"
   [IO.File]::WriteAllText($pj, ($params | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
   $rc = Run-Exe $PyExe @("-I", "-B", (Join-Path $Tool "cb_build.py"), "layout", $pj)
