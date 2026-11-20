@@ -60,6 +60,7 @@ class FakeSys:
         self.keys, self.prompts = [], []
         self.clock, self.rebooted = 1_800_000_000.0, False
         self.fail_dism = self.fail_shrink = self.fail_bcdboot = False
+        self.reg_off, self.reg_loaded, self.fail_reg_load, self.fail_tz = {}, set(), False, False     # kho registry offline của Windows vừa bung: {"Select": chữ reg in ra, "Setup": …}
         self.late = []                                 # volume chỉ hiện sau khi gọi wpeinit (USB lên chậm)
         self.sel_disk = self.sel_part = None
 
@@ -238,6 +239,17 @@ class FakeSys:
                 v.put("windows\\system32\\bcdboot.exe", b"exe")
                 v.put("windows\\cb-image.txt", "%s|%s" % (a["/imagefile"].split("\\")[-1].lower(), a["/index"]))
                 return 0, ""
+            if any(x.startswith("/Set-TimeZone:") for x in argv) and self.fail_tz: return 87, "Error: 87"
+            return 0, ""
+        if exe == "reg":                                   # reg load / query / add / unload trên kho registry offline
+            if argv[1] == "load":
+                if self.fail_reg_load or not self.exists(argv[3]): return 1, "ERROR: khong nap duoc"
+                self.reg_loaded.add(argv[2]); return 0, ""
+            if argv[1] == "unload": self.reg_loaded.discard(argv[2]); return 0, ""
+            if argv[2].split("\\")[:2] != ["HKLM", "CB_OFFSYS"] or "HKLM\\CB_OFFSYS" not in self.reg_loaded: return 1, "ERROR: kho chua nap"
+            if argv[1] == "query":
+                out = self.reg_off.get(argv[2].split("\\", 2)[2] if argv[2].count("\\") >= 2 else "")
+                return (0, out) if out is not None else (1, "ERROR: The system was unable to find the specified registry key or value.")
             return 0, ""
         if exe == "bcdboot":
             if self.fail_bcdboot: return 1, "BFSVC Error"
