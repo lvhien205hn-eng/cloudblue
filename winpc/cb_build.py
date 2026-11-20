@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "20.11c"
+BUILD_VER = "20.11b"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -256,7 +256,6 @@ def layout(P):
            "user": P.get("user") or "PC", "password": P.get("password") or "", "timezone": P.get("timezone") or "SE Asia Standard Time",
            "sb_url": (P.get("sb_url") or "").rstrip("/"), "sb_key": P.get("sb_key") or "", "countdown": int(P.get("countdown") or 30),
            "wipe_other_disks": bool(P.get("wipe_other_disks")), "recovery": True, "generic_key": C.key_mode({"generic_key": P.get("generic_key", "auto")}),
-           "user_admin": P.get("user_admin") is True,             # False (mặc định) = khách dùng TÀI KHOẢN THƯỜNG; True = để khách quyền Admin
            "update_base": P.get("update_base") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"}
     with open(os.path.join(cb, "cb.json"), "w", encoding="utf-8", newline="") as f: json.dump(cfg, f, ensure_ascii=True, indent=1)
     with open(os.path.join(cb, "media.tag"), "w", encoding="ascii", newline="") as f: f.write("CloudBlue PC %s\r\n" % BUILD_VER)
@@ -288,8 +287,6 @@ def layout(P):
     info.append("CUU_HO %.0f GB | khoa cai dat chung: %s%s | anh nen: %s" % (C.recovery_bytes(cfg, os.path.getsize(os.path.join(out, "sources", "boot.wim")), drv) / C.GB, cfg["generic_key"],
                                                                             (" | driver kem theo: %.0f MB" % (drv / 1e6)) if drv > 4096 else "",
                                                                             "rieng" if wp else "CloudBlue"))
-    info.append("KHACH tai khoan '%s' | %s" % (cfg["user"], "quyen ADMIN (khach tu cai duoc moi thu, nhung cung pha duoc phan mem quan ly tren may do)" if cfg["user_admin"]
-                                              else "tai khoan THUONG, khong co quyen Admin - thu muc CloudBluePC + phan vung cuu ho khoa quyen"))
     info += vga_notes + driver_report(cb)
     for ln in info: say(ln)
     if P.get("info"):                                              # tao-iso.ps1 in lại các dòng này trong khung TÓM TẮT
