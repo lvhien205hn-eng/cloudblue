@@ -30,6 +30,9 @@ async function send(text) {
 }
 
 module.exports = async (req, res) => {
+  // /api/pc-notify (cảnh báo máy PC cho thuê về mail + Telegram): vercel.json chuyển địa chỉ đó sang đây kèm ?pc=1 rồi giao cho _pc-notify.js.
+  // Làm vậy vì gói Vercel đang dùng chỉ cho tối đa 12 hàm API — thêm file hàm thứ 13 thì cả lần đưa web lên bị từ chối.
+  if (req.query && req.query.pc === "1") return require("./_pc-notify")(req, res);
   if (req.method !== "POST") return res.status(405).json({ error: "method" });
   if (!(await rateLimit(req, "notify-admin", 30, 60))) return res.status(429).json({ error: "slow" });
   const raw = String((body(req) || {}).text || "").slice(0, 1500);
