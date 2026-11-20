@@ -271,6 +271,25 @@ def clean_name(s, fallback="CB-PC"):
     return s
 
 
+def os_tag_base(tag):
+    """'22h2-2' → '22h2' (ISO có 2 bản cùng build thì bản sau mang đuôi -2, -3…)."""
+    return re.sub(r"-\d+$", "", str(tag or "").lower())
+
+
+def is_os_tag(name):
+    """Tên thư mục là tên 1 bản Windows (1511, 22h2, w11-23h2, b19045, 22h2-2…)?"""
+    n = os_tag_base(name)
+    return n in set(BUILD_IDS.values()) or re.fullmatch(r"b\d{4,6}", n) is not None
+
+
+def folder_applies(name, image_id):
+    """Thư mục con trong cb\\drivers (hoặc os\\firstboot.d) có dùng cho bản Windows đang cài không?
+       Tên là 1 bản Windows (vd '1511') → chỉ dùng cho đúng bản đó; tên khác → dùng cho mọi bản."""
+    if not is_os_tag(name): return True
+    n, i = str(name).lower(), str(image_id or "").lower()
+    return n == i or n == os_tag_base(i)
+
+
 def key_mode(cfg):
     """Mục generic_key của cb.json → 'auto' (mặc định) · 'on' · 'off'. Nhận cả true / false."""
     v = (cfg or {}).get("generic_key", "auto")
