@@ -389,8 +389,9 @@ def recovery_cfg(cfg):
 
 
 # ====================================================================================== khoá quyền thư mục / phân vùng (icacls)
-SID_SYSTEM, SID_ADMINS, SID_USERS, SID_AUTH, SID_EVERYONE = "*S-1-5-18", "*S-1-5-32-544", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"
+SID_SYSTEM, SID_ADMINS, SID_USERS, SID_AUTH, SID_EVERYONE, SID_CREATOR = "*S-1-5-18", "*S-1-5-32-544", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "*S-1-3-0"
 ACL_FULL = [SID_SYSTEM + ":(OI)(CI)F", SID_ADMINS + ":(OI)(CI)F"]
+ACL_WEAK = [SID_USERS, SID_AUTH, SID_EVERYONE, SID_CREATOR]    # các dòng quyền phải gỡ khỏi gốc; CREATOR OWNER: để lại thì file do tài khoản thường tạo từ trước vẫn thuộc quyền họ
 
 
 def acl_lock_cmds(base):
@@ -401,7 +402,8 @@ def acl_lock_cmds(base):
        Không khoá thì thư mục thừa hưởng quyền của C:\\ (Authenticated Users sửa được) → tài khoản thường sửa được file agent chạy quyền SYSTEM."""
     b = base.rstrip("\\")
     return [["icacls", b, "/inheritance:r", "/grant:r"] + ACL_FULL,
-            ["icacls", b, "/remove:g", SID_USERS, SID_AUTH, SID_EVERYONE],
+            ["icacls", b, "/remove:g"] + ACL_WEAK,
+            ["icacls", b, "/setowner", SID_ADMINS, "/T", "/C", "/Q"],      # file nào do tài khoản khác tạo từ trước cũng về tay Administrators
             ["icacls", b + "\\*", "/reset", "/T", "/C", "/Q"],
             ["icacls", b + "\\py", "/grant:r", SID_USERS + ":(OI)(CI)RX"],
             ["icacls", b + "\\os", "/grant:r", SID_USERS + ":(OI)(CI)RX"],
@@ -414,5 +416,6 @@ def acl_vol_cmds(root):
        → không khoá thì tài khoản thường sửa được bộ cài (thứ sẽ chạy quyền SYSTEM ở lần cài lại sau)."""
     r = root if root.endswith("\\") else root + "\\"
     return [["icacls", r, "/inheritance:r", "/grant:r"] + ACL_FULL,
-            ["icacls", r, "/remove:g", SID_USERS, SID_AUTH, SID_EVERYONE],
+            ["icacls", r, "/remove:g"] + ACL_WEAK,
+            ["icacls", r + "*", "/setowner", SID_ADMINS, "/T", "/C", "/Q"],
             ["icacls", r + "*", "/reset", "/T", "/C", "/Q"]]
