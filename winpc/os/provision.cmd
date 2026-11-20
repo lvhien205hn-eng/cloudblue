@@ -6,5 +6,12 @@ set "CBLOG=C:\CloudBluePC\logs"
 if not exist "%CBLOG%" mkdir "%CBLOG%" >nul 2>&1
 (echo.>>"%CBLOG%\provision.out") 2>nul || set "CBLOG=%LOCALAPPDATA%\CloudBluePC"
 if not exist "%CBLOG%" mkdir "%CBLOG%" >nul 2>&1
+if /i "%~1"=="firstlogon" goto show
 "C:\CloudBluePC\py\python.exe" -I -B "C:\CloudBluePC\os\cb_provision.py" %* >> "%CBLOG%\provision.out" 2>&1
+exit /b 0
+:show
+rem Lan dang nhap dau: cua so nay hien tren man hinh -> in tien do (cb_provision.py tu in), loi thi ghi vao provision.out
+title CloudBlue PC - dang hoan tat cai dat - KHONG tat may
+"C:\CloudBluePC\py\python.exe" -I -B "C:\CloudBluePC\os\cb_provision.py" %* 2>> "%CBLOG%\provision.out"
+ping -n 9 127.0.0.1 >nul 2>&1
 exit /b 0
