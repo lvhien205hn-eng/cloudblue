@@ -9,8 +9,10 @@
 # =====================================================================================================
 import ctypes, json, os, subprocess, sys, time
 
-SYS_VER = "20.11a"
+SYS_VER = "20.11d"
 WIN = os.name == "nt"
+COPY_BLOCK = 4 << 20                      # chép tệp theo khối 4MB
+COPY_SAY = 64 << 20                       # tệp từ 64MB trở lên: in tên + dung lượng để biết máy đang chép, không phải treo
 
 BUS_NAMES = {0: "?", 1: "SCSI", 2: "ATAPI", 3: "ATA", 4: "1394", 5: "SSA", 6: "Fibre", 7: "USB", 8: "RAID", 9: "iSCSI", 10: "SAS",
              11: "SATA", 12: "SD", 13: "MMC", 14: "Virtual", 15: "FileVirtual", 16: "Spaces", 17: "NVMe", 18: "SCM", 19: "UFS"}
@@ -364,21 +366,31 @@ class WinSys:
         os.replace(tmp, dst)
         if show: show(total, total, total / max(0.5, time.time() - t0))
 
-    def copy_tree(self, src, dst):
-        """Chép cả thư mục (tệp nhỏ). Trả số tệp."""
+    def copy_tree(self, src, dst, skip=None):
+        """Chép cả thư mục, TỪNG TỆP THEO KHỐI 4MB — tệp to cỡ nào cũng không ngốn RAM (WinPE không có tệp hoán trang:
+           đọc nguyên 1 gói driver 700MB vào bộ nhớ là hết RAM). Trả số tệp.
+           skip(đường dẫn thư mục con tính từ src, dùng dấu \\) trả True → bỏ cả thư mục con đó."""
         if self.dry: self.log("  [thu] chep thu muc %s -> %s" % (src, dst)); return 0
         n = 0
         for root, dirs, files in os.walk(src):
             rel = os.path.relpath(root, src)
+            if skip:
+                dirs[:] = [x for x in dirs if not skip((x if rel == "." else os.path.join(rel, x)).replace("/", "\\"))]
             to = dst if rel == "." else os.path.join(dst, rel)
             os.makedirs(to, exist_ok=True)
             for f in files:
                 s, d = os.path.join(root, f), os.path.join(to, f)
-                with open(s, "rb") as fi: data = fi.read()
+                try: big = os.path.getsize(s)
+                except OSError: big = 0
+                if big >= COPY_SAY: self.log("      %s (%.0f MB) ..." % (f, big / 1e6))
                 if os.path.exists(d):
                     try: os.chmod(d, 0o666)
                     except OSError: pass
-                with open(d, "wb") as fo: fo.write(data)
+                with open(s, "rb") as fi, open(d, "wb") as fo:
+                    while True:
+                        b = fi.read(COPY_BLOCK)
+                        if not b: break
+                        fo.write(b)
                 n += 1
         return n
 
