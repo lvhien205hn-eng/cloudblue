@@ -78,6 +78,14 @@ ck("mặc định KHÔNG điền khoá Windows vào file trả lời", "<Product
 ck("tên máy dạng CB-XXXXXX", len(seed["name"]) == 9 and seed["name"].startswith("CB-"), seed["name"])
 ck("identity.json trên phân vùng cứu hộ giữ tên máy", json.loads(rec.vol.files["cb\\identity.json"])["name"] == seed["name"])
 ck("chỉ xoá (clean) đúng 1 ổ", dp_all(fs).count("clean") == 1 and "select disk 0" in dp_all(fs) and "select disk 9" not in dp_all(fs))
+icl = [c for c in fs.cmds if c[0] == "icacls"]
+ck("khoá quyền thư mục CloudBluePC ngay lúc cài: chỉ SYSTEM + Administrators, tài khoản thường chỉ ĐỌC py / os, firstboot.d bị khoá",
+   ["icacls", "W:\\CloudBluePC", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl and ["icacls", "W:\\CloudBluePC\\*", "/reset", "/T", "/C", "/Q"] in icl
+   and sorted(c[1] for c in icl if "*S-1-5-32-545:(OI)(CI)RX" in c) == ["W:\\CloudBluePC\\os", "W:\\CloudBluePC\\py"]
+   and ["icacls", "W:\\CloudBluePC\\os\\firstboot.d", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl, icl)
+ck("khoá quyền gốc phân vùng cứu hộ: chỉ SYSTEM + Administrators (gỡ Users / Authenticated Users / Everyone)",
+   ["icacls", "R:\\", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl and ["icacls", "R:\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in icl
+   and ["icacls", "R:\\*", "/reset", "/T", "/C", "/Q"] in icl and not any("RX" in " ".join(c) for c in icl if c[1].startswith("R:")), icl)
 
 print("2. Cài mới — máy BIOS")
 fs = FakeSys("bios"); cfg = cfg0(); usb(fs, cfg)
@@ -208,6 +216,9 @@ ck("không còn dữ liệu khách cũ ở đâu trên ổ hệ thống", not an
 ck("ổ cứng khác bị xoá sạch (1 phân vùng DATA trống)", len(other.slots) == 1 and other.slots[0].vol.label == "DATA" and not other.slots[0].vol.files)
 ck("USB đang cắm không bị đụng", len(u.slots) == 1 and "cb\\cb.json" in u.slots[0].vol.files)
 ck("bung 22H2", fs.file(neww.vol, "windows\\cb-image.txt") == "22h2.wim|6")
+icl = [c for c in fs.cmds if c[0] == "icacls"]
+ck("cài lại theo lệnh: Windows mới + phân vùng cứu hộ đều được khoá quyền lại", any(c[1].endswith(":\\CloudBluePC") and "/inheritance:r" in c for c in icl)
+   and any(len(c[1]) == 3 and c[1].endswith(":\\") and "/remove:g" in c for c in icl), icl)
 fs = FakeSys("uefi"); cfg = cfg0()
 d, rec, win = cb_layout(fs, cfg, None, extra_data=True)
 other = fs.disk(1, 2000, ssd=False, style="gpt"); other.add(0, GPT_DATA, "NTFS", "GAME", "E", files={"roblox\\a": "1"})

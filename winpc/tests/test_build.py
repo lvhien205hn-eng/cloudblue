@@ -57,11 +57,17 @@ ck("$OEM$: cài bằng bộ cài Windows THƯỜNG vẫn có agent + mã đăng 
    and json.load(open(os.path.join(oem, "seed.json"))) == {"from": "setup", "pe": B.BUILD_VER, "enroll_key": KEY} and KEY not in open(os.path.join(oem, "cb.json")).read())
 ck("kiểm cây ISO: đạt", B.check(out) == 0)
 ck("mặc định (auto): chỉ bản 1511 được điền khoá cài đặt chung", [bool(C.generic_key_for(i, cfg)) for i in cfg["images"]] == [True, False])
+ck("mặc định: khách dùng TÀI KHOẢN THƯỜNG (user_admin = false) — cấu hình trên phân vùng cứu hộ / máy cũng vậy", cfg["user_admin"] is False and c["user_admin"] is False
+   and json.load(open(os.path.join(oem, "cb.json")))["user_admin"] is False)
+cfga = B.layout(dict(json.loads(json.dumps(P)), user_admin=True, info=os.path.join(tmp, "build-info.txt")))
+ck("-KhachAdmin: để khách quyền Admin, khung tóm tắt ghi rõ; giá trị lạ ('1', 1) không bật nhầm", cfga["user_admin"] is True and "quyen ADMIN" in open(os.path.join(tmp, "build-info.txt")).read()
+   and all(B.layout(dict(json.loads(json.dumps(P)), user_admin=x))["user_admin"] is False for x in ("1", 1, None, "true")))
+cfg = B.layout(json.loads(json.dumps(P)))
 P3 = dict(json.loads(json.dumps(P)), generic_key="on", info=os.path.join(tmp, "build-info.txt"), default="1511")
 cfg3 = B.layout(P3)
 info = open(P3["info"], "rb").read().decode("ascii").split("\r\n")
-ck("ghi file tóm tắt cho tao-iso.ps1 (ASCII): 2 dòng ANH + dòng CUU_HO, có ghi chế độ khoá", len(info) == 4 and info[0].startswith("ANH 1511 | Windows 10 Pro | ban so 1 | 10.0.10586.0") and "MAC DINH" in info[0]
-   and info[0].endswith("| dien khoa cai dat chung") and info[1].startswith("ANH 22h2") and info[1].endswith("| dien khoa cai dat chung") and info[2].startswith("CUU_HO ") and "| khoa cai dat chung: on |" in info[2] and info[3] == "", info)
+ck("ghi file tóm tắt cho tao-iso.ps1 (ASCII): 2 dòng ANH + dòng CUU_HO + dòng KHACH, có ghi chế độ khoá", len(info) == 5 and info[0].startswith("ANH 1511 | Windows 10 Pro | ban so 1 | 10.0.10586.0") and "MAC DINH" in info[0]
+   and info[0].endswith("| dien khoa cai dat chung") and info[1].startswith("ANH 22h2") and info[1].endswith("| dien khoa cai dat chung") and info[2].startswith("CUU_HO ") and "| khoa cai dat chung: on |" in info[2] and info[3].startswith("KHACH tai khoan 'PC' | tai khoan THUONG") and info[4] == "", info)
 au3 = open(os.path.join(out, "autounattend.xml"), encoding="utf-8").read()
 ck("autounattend.xml (bộ cài thường, người cài tự chọn phiên bản) KHÔNG BAO GIỜ kèm khoá", cfg3["generic_key"] == "on" and cfg3["default"] == "1511" and "<ProductKey>" not in au3 and "ProductKey" not in au)
 ck("ảnh nền CloudBlue mặc định đi theo bộ cài (cả đường cài bằng bộ cài Windows thường)", open(os.path.join(out, "cb", "os", "wallpaper.jpg"), "rb").read() == open(os.path.join(REPO, "os", "wallpaper.jpg"), "rb").read()

@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """Thử: cài lại từ trong Windows (CAI-DAT.cmd → cb_stage.py) + cài đặt lần đầu (cb_provision.py). Chạy: python3 tests/test_stage.py"""
-import json, os, subprocess, sys, tempfile
+import json, os, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.join(HERE, "..")
 sys.path.insert(0, HERE)
 for d in ("lib", "pe", "agent", "os"): sys.path.insert(0, os.path.join(HERE, "..", d))
 import cbcore as C                                    # noqa: E402
@@ -73,6 +74,8 @@ c = d.add(0, 0x07, "NTFS", "", "C", files=dict(H.WINFILES))
 cb_stage.stage(fs, "D:\\", "22h2", "system", "PC-BIOS", fs.now(), logs.append)
 rec = next(p for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
 ck("tạo phân vùng cứu hộ kiểu 27 (ẩn)", rec.type == 0x27 and rec.vol.letter is None and len(d.slots) == 3)
+ck("phân vùng cứu hộ tạo từ Windows đang chạy cũng được khoá quyền (chỉ SYSTEM + Administrators)", any(c[0] == "icacls" and len(c[1]) == 3 and "/remove:g" in c and "*S-1-5-11" in c for c in fs.cmds)
+   and any(c[0] == "icacls" and "/inheritance:r" in c and len(c[1]) == 3 for c in fs.cmds), [c for c in fs.cmds if c[0] == "icacls"])
 to_pe(fs); rc = cb_pe.Installer(fs).run(ScriptUI())
 ck("kiểu 'system': chỉ định dạng lại C:, không xoá phân vùng nào", rc == 0 and len(d.slots) == 3 and c in d.slots and sr in d.slots and "users\\khach\\bi-mat.txt" not in c.vol.files and c.vol.files.get("windows\\cb-image.txt") == "22h2.wim|6", (rc, len(d.slots), c.vol.files.get("windows\\cb-image.txt")))
 
@@ -134,7 +137,7 @@ with tempfile.TemporaryDirectory() as base:
     ck("firstlogon: tự đăng nhập vĩnh viễn (có DefaultPassword rỗng, xoá bộ đếm)", any("AutoAdminLogon" in x and x.endswith("/d 1 /f") for x in j()) and any("DefaultUserName /t REG_SZ /d PC" in x for x in j())
        and ["reg", "add", r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", "/v", "DefaultPassword", "/t", "REG_SZ", "/d", "", "/f"] in calls and any("reg delete" in x and "AutoLogonCount" in x for x in j()))
     ck("firstlogon: bật agent + chạy script riêng theo thứ tự tên (chỉ .cmd/.bat/.ps1)", any(x == "schtasks /run /tn CloudBluePC Agent" for x in j())
-       and [x.split("\\")[-1].split("/")[-1] for x in j() if "firstboot.d" in x] == ["10-phan-mem.ps1", "20-driver.cmd"], [x for x in j() if "firstboot.d" in x])
+       and [x.split("\\")[-1].split("/")[-1] for x in j() if "firstboot.d" in x and not x.startswith("icacls")] == ["10-phan-mem.ps1", "20-driver.cmd"], [x for x in j() if "firstboot.d" in x])
     ck("mật khẩu không bị ghi vào nhật ký", not any("DefaultPassword=" in l and "(an)" not in l for l in p.lines))
     calls.clear(); p.firstboot()
     ck("script riêng chỉ chạy 1 lần", not calls)
@@ -144,6 +147,101 @@ with tempfile.TemporaryDirectory() as base:
     rc = cb_provision.main(["specialize"]) if False else None
     p2 = cb_provision.Prov(base, run, log=lambda m: None); p2.specialize(); p2.firstlogon()
     ck("mọi lệnh tác vụ đều lỗi → vẫn chạy hết, không ném lỗi (không chặn bước cài Windows)", True)
+
+print("5b. Bảo mật: khoá quyền thư mục / phân vùng cứu hộ + hạ tài khoản khách xuống tài khoản thường")
+def sec_env(cfg, admins=("Administrator", "PC"), names="ADM=Administrators|USR=Users|BIA=Administrator|"):
+    base = tempfile.mkdtemp()
+    for sub in ("os", "agent", "py", "logs", "lib"): os.makedirs(os.path.join(base, sub))
+    shutil.copy(os.path.join(REPO, "lib", "cbcore.py"), os.path.join(base, "lib", "cbcore.py"))
+    open(os.path.join(base, "cb.json"), "w").write(json.dumps(cfg))
+    os.makedirs(os.path.join(base, "os", "firstboot.d")); open(os.path.join(base, "os", "firstboot.d", "10-driver.cmd"), "w").write("x")
+    open(os.path.join(base, "os", "wallpaper.jpg"), "w").write("jpg")
+    st = {"calls": [], "admins": list(admins), "users": [], "fail": set(), "names": names, "clock": 1_000_000, "base": base}
+
+    def run(argv, timeout=300):
+        st["calls"].append(list(argv)); a = " ".join(argv)
+        if any(k in a for k in st["fail"]): return 1, "loi"
+        if argv[0] == "powershell.exe" and "S-1-5-32-544" in a: return (0, st["names"] + "\r\n") if st["names"] else (1, "")
+        if argv[:2] == ["net", "localgroup"] and len(argv) == 3:
+            mem = st["admins"] if argv[2] == st["names"].split("|")[0][4:] or (not st["names"] and argv[2] == "Administrators") else st["users"]
+            return 0, "Alias name     %s\r\nMembers\r\n\r\n-------\r\n%s\r\nThe command completed successfully.\r\n" % (argv[2], "\r\n".join(mem))
+        if argv[:2] == ["net", "localgroup"] and argv[-1] == "/delete": st["admins"].remove(argv[3]); return 0, ""
+        if argv[:2] == ["net", "localgroup"] and argv[-1] == "/add":
+            if argv[3] in st["users"]: return 2, "System error 1378"
+            st["users"].append(argv[3]); return 0, ""
+        return 0, ""
+    pr = cb_provision.Prov(base, run, log=lambda m: None, spi=lambda path: True, admin=True, rec=lambda: "\\\\?\\Volume{abc}\\", now=lambda: st["clock"])
+    return pr, st
+FULL = ["*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"]
+pr, st = sec_env({"user": "PC", "password": ""})
+base, calls = st["base"], st["calls"]
+pr.specialize()
+ck("specialize khoá thư mục: bỏ thừa hưởng, chỉ SYSTEM + Administrators toàn quyền, gỡ Users / Authenticated Users / Everyone, đặt lại mọi thứ bên trong",
+   ["icacls", base, "/inheritance:r", "/grant:r"] + FULL in calls and ["icacls", base, "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in calls
+   and ["icacls", base + "\\*", "/reset", "/T", "/C", "/Q"] in calls, [c for c in calls if c[0] == "icacls"])
+ck("tài khoản thường chỉ được ĐỌC + CHẠY đúng 2 thư mục py và os; firstboot.d (script của chủ shop) lại bị khoá",
+   sorted(c[1].split("\\")[-1] for c in calls if c[0] == "icacls" and "*S-1-5-32-545:(OI)(CI)RX" in c) == ["os", "py"]
+   and ["icacls", base + "\\os\\firstboot.d", "/inheritance:r", "/grant:r"] + FULL in calls and not any("RX" in " ".join(c) and ("agent" in c[1] or "logs" in c[1] or "lib" in c[1]) for c in calls if c[0] == "icacls"))
+ck("thứ tự: đặt lại bên trong TRƯỚC, rồi mới cho đọc py / os, cuối cùng khoá firstboot.d", [i for i, c in enumerate(calls) if c[0] == "icacls" and "/reset" in c][0]
+   < [i for i, c in enumerate(calls) if c[0] == "icacls" and "*S-1-5-32-545:(OI)(CI)RX" in c][0] < calls.index(["icacls", base + "\\os\\firstboot.d", "/inheritance:r", "/grant:r"] + FULL))
+ck("khoá cả gốc phân vùng cứu hộ (qua đường \\\\?\\Volume{…}\\)", ["icacls", "\\\\?\\Volume{abc}\\", "/inheritance:r", "/grant:r"] + FULL in calls
+   and ["icacls", "\\\\?\\Volume{abc}\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in calls and ["icacls", "\\\\?\\Volume{abc}\\*", "/reset", "/T", "/C", "/Q"] in calls
+   and os.path.isfile(os.path.join(base, "logs", "lock.done")))
+calls.clear(); pr.system()
+ck("agent gọi pha system TRƯỚC lần đăng nhập đầu: chỉ khoá quyền, CHƯA hạ quyền tài khoản khách (script riêng còn cần quyền Admin)",
+   any(c[0] == "icacls" for c in calls) and not any(c[:2] == ["net", "localgroup"] and c[-1] == "/delete" for c in calls) and st["admins"] == ["Administrator", "PC"])
+calls.clear(); pr.firstlogon()
+j = [" ".join(c) for c in calls]
+i_script = next(i for i, x in enumerate(j) if x.startswith("cmd.exe /c") and "10-driver.cmd" in x)
+i_demote = j.index("net localgroup Administrators PC /delete")
+ck("firstlogon: chạy script riêng (còn quyền Admin) RỒI MỚI gỡ tài khoản khách khỏi nhóm Administrators, vẫn ở nhóm Users", i_script < i_demote and st["admins"] == ["Administrator"] and st["users"] == ["PC"])
+ck("cấm tài khoản khách tự đổi mật khẩu (giữ tự đăng nhập)", "net user PC /passwordchg:no" in j)
+adm_pw = [c for c in calls if c[:2] == ["net", "user"] and len(c) == 5 and c[2] == "Administrator" and c[4] == "/active:no"]
+ck("tài khoản Administrator có sẵn: mật khẩu ngẫu nhiên 14 ký tự + tắt", len(adm_pw) == 1 and len(adm_pw[0][3]) == 14 and adm_pw[0][3].startswith("Cb1!"), adm_pw)
+ck("mật khẩu ngẫu nhiên KHÔNG nằm trong nhật ký", adm_pw and not any(adm_pw[0][3] in l for l in pr.lines) and any("dat mat khau ngau nhien" in l for l in pr.lines))
+ck("hẹn khởi động lại 1 lần để quyền mới có hiệu lực + đặt mốc đã xong", any(x.startswith("shutdown /r /t 20") for x in j) and j.index("net localgroup Administrators PC /delete") < next(i for i, x in enumerate(j) if x.startswith("shutdown"))
+   and all(os.path.isfile(os.path.join(base, "logs", n)) for n in ("firstlogon.start", "firstlogon.done", "harden.done")))
+first_pw = adm_pw[0][3]
+calls.clear(); pr.system(); pr.harden()
+j = [" ".join(c) for c in calls]
+ck("chạy lại (agent gọi định kỳ): không gỡ lần 2, không đặt lại mật khẩu Administrator, không khởi động lại", not any("/delete" in x for x in j) and not any("/active:no" in x for x in j) and not any(x.startswith("shutdown") for x in j))
+calls.clear(); st["admins"].append("PC"); pr.system()
+ck("có ai thêm lại tài khoản khách vào nhóm Administrators → agent gỡ lại ở lần kiểm sau", "net localgroup Administrators PC /delete" in [" ".join(c) for c in calls] and st["admins"] == ["Administrator"])
+pr, st = sec_env({"user": "PC", "password": "", "user_admin": True}); pr.firstlogon()
+ck('chủ shop chọn để khách quyền Admin ("user_admin") → không hạ quyền, không khởi động lại — nhưng VẪN khoá quyền thư mục', st["admins"] == ["Administrator", "PC"] and not any(c[0] == "shutdown" for c in st["calls"])
+   and not any(c[:2] == ["net", "user"] and "/active:no" in c for c in st["calls"]) and any(c[0] == "icacls" for c in st["calls"]))
+pr, st = sec_env({"user": "PC", "password": ""})
+pr.touch("firstlogon.start"); st["clock"] += 1800; pr.system()
+half = list(st["admins"])
+st["clock"] += 1900; st["calls"].clear(); pr.system()
+ck("lần đăng nhập đầu chạy dở (mất điện…): chưa quá 1 giờ thì chờ, quá 1 giờ agent tự hạ quyền — không khởi động lại máy",
+   half == ["Administrator", "PC"] and st["admins"] == ["Administrator"] and not any(c[0] == "shutdown" for c in st["calls"]))
+pr, st = sec_env({"user": "PC", "password": ""})
+pr.system(); st["clock"] += 3700; pr.system()
+ck("bản Windows không chạy file trả lời (không có lần đăng nhập đầu của CloudBlue): 1 giờ sau lần chạy đầu của agent thì hạ quyền", st["admins"] == ["Administrator"])
+pr, st = sec_env({"user": "Khach", "password": ""}, admins=("Administrator",)); st["fail"].add("net user Khach"); pr.system(); st["clock"] += 4000; pr.system()
+ck("tài khoản khách chưa được Windows tạo → chưa làm gì, không lỗi", not any("/active:no" in c for c in st["calls"]) and not os.path.exists(os.path.join(st["base"], "logs", "harden.done")))
+pr, st = sec_env({"user": "Gast", "password": ""}, admins=("Administrator", "Gast"), names="ADM=Administratoren|USR=Benutzer|BIA=Administrator|"); pr.firstlogon()
+j = [" ".join(c) for c in st["calls"]]
+ck("Windows tiếng nước khác: dùng đúng tên nhóm theo ngôn ngữ máy (hỏi theo SID)", "net localgroup Administratoren Gast /delete" in j and "net localgroup Benutzer Gast /add" in j)
+pr, st = sec_env({"user": "PC", "password": ""}, names=""); pr.firstlogon()
+ck("không hỏi được tên nhóm → dùng tên tiếng Anh", "net localgroup Administrators PC /delete" in [" ".join(c) for c in st["calls"]])
+pr, st = sec_env({"user": "Administrator", "password": ""}, admins=("Administrator",)); pr.firstlogon()
+ck("tài khoản khách trùng tên tài khoản Administrator có sẵn → không đụng", st["admins"] == ["Administrator"] and not any("/active:no" in c for c in st["calls"]))
+pr, st = sec_env({"user": "PC", "password": ""})
+pu = cb_provision.Prov(st["base"], pr._run, log=lambda m: None, spi=lambda path: True, admin=False, rec=lambda: "")
+pu.logon(); pu.system()
+ck("tài khoản thường đăng nhập: chỉ đặt ảnh nền — không đụng tác vụ, không khoá quyền, không hạ quyền", not any(c[0] in ("schtasks", "icacls", "net", "shutdown") for c in st["calls"]) and any(c[0] == "reg" for c in st["calls"]))
+old_la = os.environ.get("LOCALAPPDATA")
+with tempfile.TemporaryDirectory() as la, tempfile.TemporaryDirectory() as b2:
+    os.environ["LOCALAPPDATA"] = la
+    open(os.path.join(b2, "logs"), "w").write("khong phai thu muc")                     # giả cảnh tài khoản thường không ghi được vào C:\CloudBluePC\logs
+    cb_provision.Prov(b2, lambda a, t=0: (0, ""), admin=False, rec=lambda: "").log("dong thu")
+    ck("không ghi được nhật ký vào thư mục bị khoá → ghi vào hồ sơ người dùng (%LOCALAPPDATA%\\CloudBluePC)", "dong thu" in open(os.path.join(la, "CloudBluePC", "provision.log"), encoding="utf-8").read())
+if old_la is None: os.environ.pop("LOCALAPPDATA", None)
+else: os.environ["LOCALAPPDATA"] = old_la
+cmd = open(os.path.join(REPO, "os", "provision.cmd"), "rb").read().decode("ascii")
+ck("provision.cmd: không ghi được vào logs thì chuyển nhật ký sang hồ sơ người dùng, vẫn chạy", '|| set "CBLOG=%LOCALAPPDATA%\\CloudBluePC"' in cmd and '>> "%CBLOG%\\provision.out" 2>&1' in cmd and cmd.rstrip().endswith("exit /b 0"))
 
 print("6. Ảnh nền + script riêng theo từng bản Windows")
 def fake_reg():

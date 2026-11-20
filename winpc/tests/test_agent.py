@@ -140,6 +140,10 @@ ck("web thấy cấu hình: CPU, RAM, card, ổ đĩa, bo mạch", row["info"]["
    and [(d["gb"], d["ssd"], d["bus"]) for d in row["info"]["disks"]] == [(515, True, "NVMe"), (2147, False, "SATA")] and row["info"]["board"] == "HUANANZHI X99-TF", row["info"])
 ck("web biết máy đổi được sang 22h2 / 1511", row["info"]["rec"] == {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a"}, row["info"].get("rec"))
 ck("sau khi đăng ký: seed.json hết mã đăng ký", KEY not in fs.file("C", "cloudbluepc\\seed.json"))
+ck("web biết tình trạng bảo mật của máy (khách là tài khoản thường; chưa có mốc khoá quyền / hạ quyền vì Windows giả chưa chạy cb_provision)", row["info"].get("sec") == {"std": True, "hard": False, "lock": False}, row["info"].get("sec"))
+stt = fs.file("C", "cloudbluepc\\os\\status.txt") or ""
+ck("os\\status.txt (tài khoản thường đọc được): ghi đã đăng ký + tên trên web, KHÔNG có mã máy / mã đăng ký", "Dang ky voi he thong: ROI" in stt and "CB-TEST01" in stt and "Ket noi may chu: duoc" in stt
+   and ag.ident["token"] not in stt and KEY not in stt and PC not in stt, stt)
 rec = next(p for p in ssd.slots if p.vol and p.vol.label == "CBRECOVERY")
 ident_rec = json.loads(rec.vol.files["cb\\identity.json"])
 ck("phân vùng cứu hộ nhớ mã số máy + dấu phần cứng, KHÔNG có mã bí mật", ident_rec["id"] == PC and len(ident_rec["hw"]) == 64 and "token" not in ident_rec and KEY not in json.dumps({k: str(v) for k, v in rec.vol.files.items()}))
@@ -151,6 +155,7 @@ print("2. Mất mạng / máy chủ lỗi")
 net.down = True
 naps = [ag.tick() for _ in range(3)]
 ck("mất mạng: không sập, giãn nhịp dần", naps == [60, 90, 120] and ag.ident is not None, naps)
+ck("mất mạng: status.txt ghi rõ chưa nối được máy chủ", "Ket noi may chu: CHUA DUOC" in (fs.file("C", "cloudbluepc\\os\\status.txt") or ""), fs.file("C", "cloudbluepc\\os\\status.txt"))
 net.down = False
 ck("có mạng lại: chạy tiếp bình thường", ag.tick() == 30 and ag.fail == 0)
 
