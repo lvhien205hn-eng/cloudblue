@@ -40,6 +40,10 @@
     {
       "source": "/admin",
       "destination": "/index.html"
+    },
+    {
+      "source": "/api/pc-notify",
+      "destination": "/api/notify-admin?pc=1"
     }
   ],
   "crons": [
