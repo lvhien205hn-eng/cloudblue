@@ -1,0 +1,26 @@
+    <div class="dbody" id="pane-pc" hidden>
+      <div class="note" id="pca-miss" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>Máy PC</b>. Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v41.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
+      <div class="tiles pca-tiles"><div><b id="pk-total">0</b><span>Máy đã đăng ký</span></div><div><b id="pk-on">0</b><span>Đang online</span></div><div><b id="pk-new">0</b><span>Chờ duyệt</span></div><div><b id="pk-busy">0</b><span>Đang cài lại</span></div></div>
+      <div class="pca-bar">
+        <span class="pca-key"><b>Mã đăng ký:</b> <span id="pca-keyst">—</span></span>
+        <button class="btn sm" type="button" id="pca-newkey">🔑 Tạo mã đăng ký</button>
+        <button class="btn ghost sm" type="button" id="pca-keyoff">Tắt mã</button>
+        <button class="btn ghost sm" type="button" id="pca-showcmd">📀 Lệnh tạo ISO</button>
+        <label class="pca-chk"><input type="checkbox" id="pca-auto"> Tự duyệt máy mới</label>
+        <span class="pca-sp"></span>
+        <span class="hint" id="pca-agent">Bản agent: —</span>
+        <button class="btn ghost sm" type="button" id="pca-pub">⬆ Công bố bản agent</button>
+        <button class="btn ghost sm" type="button" id="pca-reload">Tải lại</button>
+      </div>
+      <div class="note" id="pca-keybox" hidden>
+        <b>Mã đăng ký mới</b> — chỉ hiện <b>1 lần</b> ở đây (hệ thống không lưu mã gốc). Không gửi mã này cho ai. ISO tạo bằng mã cũ sẽ không đăng ký được máy mới nữa.
+        <div class="pca-row"><input class="in" id="pca-keyval" readonly aria-label="Mã đăng ký"><button class="btn sm" type="button" id="pca-keycopy">Copy mã</button></div>
+      </div>
+      <div class="note" id="pca-cmdbox" hidden>
+        <b>Tạo file ISO cài Windows tự động</b> — trên máy tính Windows đang có file ISO Windows gốc, mở <b>Windows PowerShell (Admin)</b> (không dùng CMD), dán nguyên dòng dưới rồi Enter. Lệnh sẽ hỏi đường dẫn ISO và mã đăng ký.
+        <div class="pca-row"><input class="in" id="pca-cmd" readonly aria-label="Lệnh tạo ISO"><button class="btn sm" type="button" id="pca-cmdcopy">Copy lệnh</button></div>
+      </div>
+      <input class="search" id="pcq" placeholder="Tìm theo tên máy, mã, IP…" style="width:100%" autocomplete="off">
+      <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Windows</th><th>Cấu hình</th><th>IP</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
+      <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
+    </div>

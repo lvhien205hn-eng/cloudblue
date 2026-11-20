@@ -1,0 +1,31 @@
+<div class="modal" id="pcadlg" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pcad-title">
+    <h3 id="pcad-title">Máy PC</h3>
+    <div class="hint" id="pcad-info"></div>
+    <label>Tên hiển thị<input class="in" id="pcad-name" maxlength="40"></label>
+    <label>Mã riêng của shop (khu / số máy)<input class="in" id="pcad-code" maxlength="40" placeholder="VD: A · 14-85"></label>
+    <label>Ghi chú<input class="in" id="pcad-note" maxlength="500"></label>
+    <label>Trạng thái<select class="in" id="pcad-status" style="width:100%"><option value="new">Chờ duyệt</option><option value="ready">Sẵn sàng (trong kho)</option><option value="rented">Đang cho thuê</option><option value="maint">Bảo trì</option></select></label>
+    <div class="amts" style="grid-template-columns:repeat(2,1fr)">
+      <button type="button" data-pcact="reboot">🔁 Khởi động lại</button><button type="button" data-pcact="shutdown">⏻ Tắt máy</button>
+      <button type="button" data-pcact="reenroll">🔓 Cho đăng ký lại</button><button type="button" data-pcact="delete">🗑 Xoá khỏi danh sách</button>
+    </div>
+    <div class="err" id="pcad-err"></div>
+    <div class="acts"><button class="btn ghost" type="button" id="pcad-cancel">Đóng</button><button class="btn" type="button" id="pcad-save">Lưu</button></div>
+  </div>
+</div>
+<div class="modal" id="pcrdlg" hidden>
+  <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pcrd-title">
+    <h3 id="pcrd-title">Cài lại Windows</h3>
+    <div class="hint" id="pcrd-info"></div>
+    <label>Bản Windows<select class="in" id="pcrd-os" style="width:100%"></select></label>
+    <div class="pca-wipe" id="pcrd-wipe">
+      <label><input type="radio" name="pcrd-w" value="all" checked><span><b>Dọn sạch cả máy</b> — xoá mọi ổ cứng trong máy (dùng khi khách cũ trả máy)</span></label>
+      <label><input type="radio" name="pcrd-w" value="disk"><span>Xoá cả ổ hệ thống, <b>giữ các ổ cứng khác</b></span></label>
+      <label><input type="radio" name="pcrd-w" value="system"><span>Chỉ cài lại phân vùng Windows (C:), <b>giữ các phân vùng và ổ khác</b> (đổi Windows cho khách đang thuê)</span></label>
+    </div>
+    <div class="note" id="pcrd-warn"></div>
+    <div class="err" id="pcrd-err"></div>
+    <div class="acts"><button class="btn ghost" type="button" id="pcrd-cancel">Đóng</button><button class="btn danger" type="button" id="pcrd-go">Cài lại</button></div>
+  </div>
+</div>

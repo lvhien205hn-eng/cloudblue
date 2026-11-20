@@ -1,0 +1,250 @@
+<style>
+/* 💻 Máy PC cho thuê (web 20/11a) */
+#pcadlg,#pcrdlg,#vmdlg{z-index:70}   /* hộp của trang quản trị phải nằm TRÊN bảng quản trị (z 60); #vmdlg (Sửa máy VPS) trước đây thiếu dòng này nên bị che */
+.pca-tiles{grid-template-columns:repeat(4,1fr)}
+.pca-bar{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center}
+.pca-bar .pca-sp{flex:1 1 auto}
+.pca-chk{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--muted);cursor:pointer}
+.pca-chk input{width:auto}
+.pca-row{display:flex;gap:8px;margin:8px 0 4px}
+.pca-row .in{flex:1 1 auto;min-width:0;font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.pca-wipe{display:grid;gap:8px}
+.dlg .pca-wipe label{display:flex;gap:9px;align-items:flex-start;font-size:13.5px;color:var(--fg);cursor:pointer;line-height:1.45}
+.dlg .pca-wipe input{width:auto;margin-top:3px;flex:0 0 auto}
+#pctbl td{vertical-align:top}
+#pctbl .pca-acts{white-space:nowrap;text-align:right}
+#pctbl .pca-cfg{font-size:12.5px;line-height:1.5;min-width:190px}
+@media (max-width:760px){.pca-tiles{grid-template-columns:1fr 1fr}}
+</style>
+<script>
+/* ===== 💻 MÁY PC CHO THUÊ — trang quản trị (SQL v41 · web 20/11a) =====
+   Máy cài bằng ISO CloudBlue tự đăng ký (pc_enroll) rồi báo sống (pc_poll). Ở đây admin: tạo mã đăng ký, duyệt máy, đổi tên,
+   ra lệnh cài lại / đổi Windows / dọn máy / khởi động lại, công bố bản agent. Chưa chạy SQL v41 thì chỉ hiện lời nhắc. */
+(function () {
+  const $i = id => document.getElementById(id);
+  if (!$i("pane-pc") || typeof sb === "undefined" || typeof setTab !== "function") return;
+  const TOOL = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc";
+  const UPD_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/";
+  const CMD = '$d = "$env:TEMP\\cb-tao-iso.ps1"; Remove-Item $d -Force -ErrorAction SilentlyContinue; curl.exe -fsSL -o $d "' + TOOL + '/tao-iso.ps1?t=$(Get-Random)"; if (-not ((Test-Path $d) -and (Select-String -Path $d -Pattern \'cloudblue-tao-iso\' -SimpleMatch -Quiet))) { Write-Host \'Chua tai duoc tao-iso.ps1 - thu lai sau 1 phut\' -ForegroundColor Red } else { Set-ExecutionPolicy -Scope Process Bypass -Force; & $d }';
+  const ST = { new: ["Chờ duyệt", "wt"], ready: ["Sẵn sàng", "ok"], rented: ["Đang thuê", ""], maint: ["Bảo trì", "bad"] };
+  const WIPE = { all: "dọn sạch cả máy", disk: "cả ổ hệ thống", system: "chỉ phân vùng Windows" };
+  const ERRS = { NOT_ADMIN: "Tài khoản này không phải admin.", BUSY: "Máy đang có lệnh cài lại chưa xong — chờ xong hoặc huỷ lệnh đó trước.", BAD_OS: "Bản Windows không hợp lệ.",
+    BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
+    BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
+    BAD_PATCH: "Dữ liệu gửi lên không hợp lệ.", BAD_POLL: "Chu kỳ báo sống phải từ 10 đến 600 giây." };
+  const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0 };
+  // info / result do MÁY CHO THUÊ gửi lên (khách có quyền admin trên máy đó) → coi là dữ liệu lạ: ép kiểu, cắt ngắn, luôn esc() khi in
+  const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
+  const A = (v, n) => Array.isArray(v) ? v.slice(0, n || 8) : [];
+  const O = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERRS) if (m.includes(k)) return ERRS[k]; return typeof errMsg === "function" ? errMsg(e) : m; };
+  const missing = e => /does not exist|schema cache|Could not find|relation .* does not/i.test(String((e && e.message) || ""));
+  const pollS = () => Math.max(10, +((P.set && P.set.poll_s) || 30));
+  const online = m => !!m.last_seen && (Date.now() - new Date(m.last_seen).getTime()) < Math.max(90, 3 * pollS()) * 1000;
+  const openOf = id => P.orders.filter(o => o.pc_id === id && (o.state === "queued" || o.state === "sent"));
+  const lastOf = id => P.orders.find(o => o.pc_id === id);
+  const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
+  const stOf = v => Object.prototype.hasOwnProperty.call(ST, v) ? ST[v] : [S(v, 20), ""];
+  const wipeName = w => Object.prototype.hasOwnProperty.call(WIPE, w) ? WIPE[w] : "?";
+  const cmdName = o => o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
+    : o.cmd === "reboot" ? "Khởi động lại" : o.cmd === "shutdown" ? "Tắt máy" : o.cmd === "update" ? "Cập nhật agent" : S(o.cmd, 20);
+  const copy = async (text, btn) => { try { await navigator.clipboard.writeText(text); } catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove(); }
+    if (btn) { const o = btn.textContent; btn.textContent = "Đã copy ✓"; setTimeout(() => { btn.textContent = o; }, 1500); } };
+
+  function load(quiet) {                    // đang tải dở mà có yêu cầu mới → tải thêm 1 lượt nữa khi xong (không bỏ sót thay đổi vừa lưu)
+    if (!isAdmin()) return Promise.resolve();
+    if (P.busy) { P.again = true; return P.wait; }
+    P.busy = true;
+    P.wait = (async () => { try { do { P.again = false; await loadOnce(quiet); } while (P.again); } catch (e) { if (!quiet) toast(em(e), 1); } finally { P.busy = false; } })();
+    return P.wait;
+  }
+  async function loadOnce(quiet) {
+    P.loads++;
+    const [m, o, st] = await Promise.all([
+      sb.from("pc_machines").select("id,name,code,note,approved,status,os,os_ver,info,lan_ip,pub_ip,first_seen,last_seen,enrolled_at,reenroll_until,created_at").order("created_at"),
+      sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300),
+      sb.from("pc_settings").select("enroll_hash,enroll_made_at,auto_approve,agent,poll_s").eq("id", 1).maybeSingle()]);
+    if (m.error) {
+      P.miss = missing(m.error); P.loaded = false;
+      try { if (P.miss) sessionStorage.setItem("pca_miss", "1"); } catch (e) {}
+      show("pca-miss", P.miss);
+      if (!P.miss && !quiet) toast(em(m.error), 1);
+      P.list = []; P.orders = []; P.set = null; render(); return;
+    }
+    try { sessionStorage.removeItem("pca_miss"); } catch (e) {}
+    P.miss = false; P.loaded = true; show("pca-miss", false);
+    if ((o.error || st.error) && !quiet) toast(em(o.error || st.error), 1);
+    P.list = Array.isArray(m.data) ? m.data : [];
+    if (!o.error) P.orders = (o.data || []).map(x => { const a = Object.assign({}, O(x.args)); delete a.ticket; return Object.assign({}, x, { args: a }); });    // vé cài lại không giữ trong trang
+    if (!st.error) P.set = st.data || null;
+    render();
+  }
+
+  function cfgCell(m) {
+    const i = O(m.info), out = [], cpu = S(i.cpu, 70).replace(/\(R\)|\(TM\)|CPU /g, "").replace(/\s+/g, " ").trim(), cores = Math.round(+i.cores) || 0, ram = Math.round(+i.ram_gb) || 0;
+    const gpus = A(i.gpus, 6).map(g => S(g, 60)).filter(Boolean), disks = A(i.disks, 8).map(O);
+    if (cpu || cores) out.push(esc(cpu || "CPU ?") + (cores ? " · " + cores + " luồng" : ""));
+    if (ram || S(i.board)) out.push((ram ? ram + "GB RAM" : "") + (ram && S(i.board) ? " · " : "") + esc(S(i.board, 60)));
+    if (gpus.length) out.push("🎮 " + gpus.map(esc).join(", "));
+    if (disks.length) out.push("💽 " + disks.map(d => (Math.round(+d.gb) || "?") + "GB" + (d.ssd === true ? " SSD" : d.ssd === false ? " HDD" : "")).join(" + "));
+    return out.length ? out.join("<br>") : '<span class="hint">chưa có thông tin</span>';
+  }
+  const recOf = m => { const r = O(O(m.info).rec), imgs = A(r.images, 8).map(x => S(x, 12)).filter(x => /^[a-z0-9]{2,12}$/.test(x)); return { ok: r.ok === true && imgs.length > 0, images: imgs }; };
+
+  function orderCell(m) {
+    const op = openOf(m.id)[0], last = lastOf(m.id);
+    if (op) {
+      const t = op.state === "queued" ? "chờ máy nhận" : "máy đã nhận";
+      return `<span class="pill wt">⏳ ${esc(cmdName(op))}</span><div class="hint">${t} · ${mins(op.sent_at || op.created_at)} phút</div><button class="btn ghost sm" type="button" data-pca="cancel" data-o="${+op.id}" style="margin-top:6px">Huỷ lệnh</button>`;
+    }
+    if (!last) return '<span class="hint">—</span>';
+    const r = O(last.result), msg = S(r.msg, 300) || S(r.err, 300), took = +r.secs > 0 ? Math.max(1, Math.round(+r.secs / 60)) : 0;
+    if (last.state === "done") return `<span class="pill ok">✓ ${esc(cmdName(last))}</span><div class="hint">${ago(last.done_at || last.created_at)}${took ? " · " + took + " phút" : ""}</div>`;
+    if (last.state === "failed") return `<span class="pill bad">✗ ${esc(cmdName(last))}</span><div class="hint" style="white-space:normal;max-width:240px">${esc(msg || "không rõ lý do")} · ${ago(last.done_at || last.created_at)}</div>`;
+    return `<span class="pill">${esc(cmdName(last))} — đã huỷ</span><div class="hint">${ago(last.done_at || last.created_at)}</div>`;
+  }
+
+  function render() {
+    const q = ($i("pcq").value || "").trim().toLowerCase();
+    const list = P.list.filter(m => !q || [m.name, m.code, m.note, m.lan_ip, m.pub_ip, m.os, O(m.info).host].some(v => S(v, 500).toLowerCase().includes(q)));
+    const nNew = P.list.filter(m => !m.approved).length, nBusy = P.list.filter(m => openOf(m.id).some(o => o.cmd === "reinstall")).length;
+    $i("pk-total").textContent = P.list.length; $i("pk-on").textContent = P.list.filter(online).length; $i("pk-new").textContent = nNew; $i("pk-busy").textContent = nBusy;
+    const bd = $i("pc-badge"); if (bd) { bd.textContent = nNew || ""; bd.hidden = !nNew; }
+    const s = P.set;
+    $i("pca-keyst").innerHTML = !P.loaded ? "—" : s && s.enroll_hash ? `<span class="pill ok">đang nhận máy mới</span> <span class="hint">mã tạo ${s.enroll_made_at ? ago(s.enroll_made_at) : ""}</span>` : '<span class="pill bad">đang đóng</span> <span class="hint">chưa có mã — máy mới không đăng ký được</span>';
+    $i("pca-keyoff").hidden = !(s && s.enroll_hash);
+    $i("pca-auto").checked = !!(s && s.auto_approve);
+    const av = S(O(s && s.agent).ver, 24), vs = {};
+    P.list.forEach(m => { const v = S(O(m.info).agent, 24); if (v) vs[v] = (vs[v] || 0) + 1; });
+    $i("pca-agent").textContent = "Bản agent công bố: " + (av || "chưa có") + (Object.keys(vs).length ? " · máy đang chạy: " + Object.keys(vs).sort().slice(0, 6).map(v => v + " ×" + vs[v]).join(", ") : "");
+    const row = m => {
+      const i = O(m.info), on = online(m), st = stOf(m.status), rec = recOf(m), reBusy = openOf(m.id).some(o => o.cmd === "reinstall"), host = S(i.host, 40);
+      return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b>${m.code ? ` <span class="pill">${esc(m.code)}</span>` : ""}${m.note ? `<div class="hint" style="white-space:normal;max-width:220px">${esc(m.note)}</div>` : ""}${host && host !== m.name ? `<div class="hint">Windows: ${esc(host)}</div>` : ""}</td>
+        <td>${on ? '<span class="pill ok">● online</span>' : `<span class="pill bad">○ offline</span><div class="hint">${m.last_seen ? ago(m.last_seen) : "chưa từng"}</div>`}<div style="margin-top:5px"><span class="pill ${st[1]}">${esc(st[0])}</span></div></td>
+        <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div></td>
+        <td class="pca-cfg">${cfgCell(m)}</td>
+        <td>${esc(S(m.lan_ip, 64) || "—")}<div class="hint">${esc(S(m.pub_ip, 64))}</div></td>
+        <td>${orderCell(m)}</td>
+        <td class="pca-acts">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button> `}<button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button> <button class="btn ghost sm" type="button" data-pca="edit">Sửa</button></td></tr>`;
+    };
+    $i("pctbl").innerHTML = list.length ? list.map(m => {
+      try { return row(m); }                  // 1 máy gửi thông tin lạ không được làm hỏng cả bảng
+      catch (e) { return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b></td><td colspan="5" class="hint">Máy này gửi thông tin không đọc được.</td><td class="pca-acts"><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button></td></tr>`; }
+    }).join("") : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">${P.miss ? "Chưa chạy SQL v41." : P.list.length ? "Không có máy nào khớp." : "Chưa có máy nào. Tạo mã đăng ký → tạo ISO → cài 1 máy thử, máy sẽ tự hiện ở đây."}</td></tr>`;
+  }
+
+  async function call(fn, args, okMsg, btn) {
+    const run = async () => { const { data, error } = await sb.rpc(fn, args); if (error) { toast(missing(error) ? "Chưa chạy SQL v41 (cloud-pc-v41.sql)." : em(error), 1); return null; } if (okMsg) toast(okMsg); return data === null || data === undefined ? true : data; };
+    const r = typeof busy === "function" ? await busy(btn || null, run) : await run();
+    if (r !== null) await load(true);
+    return r;
+  }
+  const mOf = id => P.list.find(x => x.id === id);
+
+  // ---- bảng: các nút từng máy
+  $i("pctbl").onclick = async e => {
+    const b = e.target.closest("[data-pca]"); if (!b) return;
+    const tr = b.closest("tr[data-pc]"), m = tr && mOf(tr.dataset.pc); if (!m) return;
+    const a = b.dataset.pca;
+    if (a === "approve") return call("pc_admin_set", { p_id: m.id, p_patch: { approved: true } }, `Đã duyệt máy ${m.name}.`, b);
+    if (a === "cancel") { if (!confirm("Huỷ lệnh này?\n\nLưu ý: nếu máy đã nhận lệnh và đang cài lại thì việc cài vẫn chạy tiếp — huỷ chỉ gỡ lệnh khỏi danh sách.")) return; return call("pc_admin_order_cancel", { p_order: +b.dataset.o }, "Đã huỷ lệnh.", b); }
+    if (a === "edit") return openEdit(m);
+    if (a === "reinstall") return openRe(m);
+  };
+  $i("pcq").oninput = render;
+  $i("pca-reload").onclick = () => load();
+
+  // ---- hộp Sửa máy
+  function openEdit(m) {
+    P.cur = m; const host = S(O(m.info).host, 40);
+    $i("pcad-title").textContent = "Máy PC — " + m.name;
+    $i("pcad-info").textContent = `${S(m.os, 20).toUpperCase() || "?"} · ${S(m.lan_ip, 64) || "?"} · đăng ký ${m.first_seen ? ago(m.first_seen) : "?"}${host ? " · tên Windows: " + host : ""}`;
+    $i("pcad-name").value = m.name || ""; $i("pcad-code").value = m.code || ""; $i("pcad-note").value = m.note || ""; $i("pcad-status").value = m.status;
+    $i("pcad-err").textContent = ""; show("pcadlg");
+  }
+  $i("pcad-cancel").onclick = () => show("pcadlg", false);
+  $i("pcad-save").onclick = async () => {
+    const m = P.cur; if (!m) return;
+    const name = $i("pcad-name").value.trim();
+    if (!name) { $i("pcad-err").textContent = "Nhập tên máy."; return; }
+    const patch = { name, code: $i("pcad-code").value.trim(), note: $i("pcad-note").value.trim(), status: $i("pcad-status").value };
+    patch.approved = patch.status !== "new";                 // "Chờ duyệt" = chưa duyệt; các trạng thái khác = đã duyệt
+    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, "Đã lưu.", $i("pcad-save"));
+    if (r) show("pcadlg", false);
+  };
+  document.querySelector("#pcadlg .amts").onclick = async e => {
+    const b = e.target.closest("[data-pcact]"), m = P.cur; if (!b || !m) return;
+    const a = b.dataset.pcact;
+    if (a === "reboot" || a === "shutdown") {
+      if (!confirm(`${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?${a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : ""}${online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại."}`)) return;
+      if (await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, "Đã gửi lệnh.", b)) show("pcadlg", false);
+    } else if (a === "reenroll") {
+      if (!confirm(`Cho máy "${m.name}" đăng ký lại KHÔNG cần mã trong 6 giờ?\n\nChỉ dùng khi máy báo "cần mã đăng ký" sau khi bạn tự cài lại Windows cho nó. Trong 6 giờ đó, máy nào khai đúng dấu phần cứng của máy này sẽ nhận được quyền của nó.`)) return;
+      await call("pc_admin_allow_reenroll", { p_id: m.id, p_hours: 6 }, "Đã mở 6 giờ cho máy đăng ký lại.", b);
+    } else if (a === "delete") {
+      if (!confirm(`XOÁ máy "${m.name}" khỏi danh sách?\n\nChỉ xoá dòng trên web (kèm lịch sử lệnh). Windows trên máy không bị đụng; máy còn mã đăng ký trong bộ cài thì cài lại sẽ hiện lại như máy mới.`)) return;
+      if (await call("pc_admin_delete", { p_id: m.id }, "Đã xoá máy khỏi danh sách.", b)) show("pcadlg", false);
+    }
+  };
+
+  // ---- hộp Cài lại / đổi Windows
+  function openRe(m) {
+    P.cur = m; const rec = recOf(m), imgs = rec.images;
+    $i("pcrd-title").textContent = "Cài lại Windows — " + m.name;
+    $i("pcrd-info").textContent = `Đang chạy ${S(m.os, 20).toUpperCase() || "?"} ${S(m.os_ver, 40)} · ${m.status === "rented" ? "ĐANG CÓ KHÁCH THUÊ" : stOf(m.status)[0]}`;
+    $i("pcrd-os").innerHTML = imgs.map(x => `<option value="${esc(x)}"${x === m.os ? " selected" : ""}>Windows 10 ${esc(x.toUpperCase())}${x === m.os ? " (bản đang chạy)" : ""}</option>`).join("");
+    document.querySelector(`#pcrd-wipe input[value="${m.status === "rented" ? "system" : "all"}"]`).checked = true;
+    const w = $i("pcrd-warn"), ok = rec.ok;
+    w.innerHTML = !ok ? "⚠️ Máy này <b>không có phân vùng cứu hộ</b> (cài bằng bộ cài Windows thường, hoặc ổ quá nhỏ) → không cài lại từ xa được. Cài lại bằng USB / ISO CloudBlue 1 lần là có."
+      : `Máy sẽ khởi động lại sau 30 giây kể từ lúc nhận lệnh, <b>xoá dữ liệu</b> theo lựa chọn ở trên rồi cài Windows mới (khoảng 15–30 phút). Dữ liệu đã xoá <b>không lấy lại được</b>.${online(m) ? "" : "<br>Máy đang <b>offline</b> — lệnh sẽ chạy khi máy online lại."}`;
+    $i("pcrd-go").disabled = !ok; $i("pcrd-err").textContent = ""; show("pcrdlg");
+  }
+  $i("pcrd-cancel").onclick = () => show("pcrdlg", false);
+  $i("pcrd-go").onclick = async () => {
+    const m = P.cur; if (!m) return;
+    const os = $i("pcrd-os").value, wipe = (document.querySelector("#pcrd-wipe input:checked") || {}).value || "all";
+    if (!os) { $i("pcrd-err").textContent = "Chọn bản Windows."; return; }
+    if (!confirm(`CÀI LẠI máy "${m.name}" sang Windows ${os.toUpperCase()}?\n\nXoá: ${wipeName(wipe)}.\nDữ liệu bị xoá KHÔNG lấy lại được.${m.status === "rented" && wipe !== "system" ? "\n\n⚠ Máy đang có khách thuê — mọi dữ liệu của khách sẽ mất." : ""}`)) return;
+    const r = await call("pc_admin_order", { p_id: m.id, p_cmd: "reinstall", p_args: { os, wipe } }, `Đã gửi lệnh cài lại ${os.toUpperCase()} cho ${m.name}.`, $i("pcrd-go"));
+    if (r) show("pcrdlg", false);
+  };
+
+  // ---- mã đăng ký + lệnh tạo ISO + tự duyệt + công bố agent
+  $i("pca-cmd").value = CMD;
+  $i("pca-showcmd").onclick = () => { $i("pca-cmdbox").hidden = !$i("pca-cmdbox").hidden; };
+  $i("pca-cmdcopy").onclick = e => copy(CMD, e.currentTarget);
+  $i("pca-keycopy").onclick = e => copy($i("pca-keyval").value, e.currentTarget);
+  $i("pca-newkey").onclick = async e => {
+    if (P.set && P.set.enroll_hash && !confirm("Tạo mã đăng ký MỚI?\n\nMã cũ hết dùng ngay: ISO / USB tạo bằng mã cũ sẽ không đăng ký được máy mới nữa (máy đã đăng ký không ảnh hưởng). Phải tạo lại ISO bằng mã mới.")) return;
+    const k = await call("pc_admin_new_key", {}, "", e.currentTarget);
+    if (typeof k === "string" && k) { $i("pca-keyval").value = k; show("pca-keybox"); show("pca-cmdbox"); toast("Đã tạo mã đăng ký — copy ngay, mã chỉ hiện 1 lần."); }
+  };
+  $i("pca-keyoff").onclick = async e => {
+    if (!confirm("TẮT mã đăng ký?\n\nMáy mới sẽ không đăng ký được cho tới khi bạn tạo mã mới. Máy đã đăng ký không ảnh hưởng.")) return;
+    if (await call("pc_admin_key_off", {}, "Đã tắt mã đăng ký.", e.currentTarget)) show("pca-keybox", false);
+  };
+  $i("pca-auto").onchange = async e => {
+    const on = e.target.checked;
+    if (on && !confirm("Bật TỰ DUYỆT?\n\nMáy nào có đúng mã đăng ký sẽ vào kho ngay, không cần bạn bấm Duyệt.")) { e.target.checked = false; return; }
+    if (!(await call("pc_admin_settings", { p_patch: { auto_approve: on } }, on ? "Đã bật tự duyệt máy mới." : "Đã tắt tự duyệt."))) e.target.checked = !on;
+  };
+  $i("pca-pub").onclick = async e => {
+    const b = e.currentTarget; b.disabled = true;
+    try {
+      let m = null;
+      try { const r = await fetch(TOOL + "/manifest.json?t=" + Date.now(), { cache: "no-store" }); if (r.ok) m = await r.json(); } catch (er) {}
+      const files = m && m.files, okf = files && typeof files === "object" && Object.keys(files).length > 0 && Object.keys(files).every(k => /^(agent|lib|os|pe)\/[A-Za-z0-9_.-]{1,60}$/.test(k) && /^[0-9a-f]{64}$/.test(files[k]));
+      if (!m || !/^[A-Za-z0-9._-]{1,24}$/.test(String(m.ver || "")) || !String(m.base || "").startsWith(UPD_BASE) || !okf || !files["agent/pcagent.py"]) { toast("Không đọc được bản kê agent trên GitHub (manifest.json) — thử lại sau ít phút.", 1); return; }
+      const cur = S(O(P.set && P.set.agent).ver, 24), ver = String(m.ver);
+      if (cur === ver) { toast("Bản " + ver + " đã được công bố rồi."); return; }
+      if (!confirm(`Công bố bản agent ${ver} (${Object.keys(files).length} file)${cur ? " thay cho bản " + cur : ""}?\n\nMọi máy PC đang online sẽ tự tải, kiểm mã, chạy thử rồi chuyển sang bản này trong khoảng 1 phút. Máy offline sẽ cập nhật khi online lại.`)) return;
+      await call("pc_admin_settings", { p_patch: { agent: { ver, base: String(m.base), files } } }, "Đã công bố bản agent " + ver + ".");
+    } finally { b.disabled = false; }
+  };
+
+  // ---- gắn vào thanh tab của trang quản trị (cùng kiểu các mục khác: bọc setTab / openAdmin)
+  { const _st = setTab; setTab = function (t) { _st(t); show("pane-pc", t === "pc"); if (t === "pc") load(); }; }
+  { const _oa = openAdmin; openAdmin = async function () { const r = await _oa.apply(this, arguments); let skip = false; try { skip = sessionStorage.getItem("pca_miss") === "1"; } catch (e) {} if (!skip) load(true); return r; }; }
+  setInterval(() => { try { if (!document.hidden && !$i("pane-pc").hidden && !$i("drawer").hidden && $i("pcadlg").hidden && $i("pcrdlg").hidden) load(true); } catch (e) {} }, 15000);
+})();
+</script>
