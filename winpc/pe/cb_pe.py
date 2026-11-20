@@ -12,7 +12,7 @@
 #  Chữ trên màn hình WinPE viết KHÔNG DẤU (phông chữ WinPE không vẽ được tiếng Việt có dấu).
 #  Chạy thử trên Windows thường, KHÔNG đổi gì:   python cb_pe.py --dry-run [thư mục bộ cài]
 # =====================================================================================================
-import json, os, sys, time, traceback
+import json, os, re, sys, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (os.path.join(HERE, "..", "lib"), HERE):
@@ -23,7 +23,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "20.11d"
+PE_VER = "21.11a"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -204,6 +204,8 @@ class Installer:
         self.s.write_text(pan + "\\Unattend\\unattend.xml", ua)
         self.setup_complete(W)
         self.add_drivers(src.p("cb\\drivers"), W, image)
+        self.set_timezone(W, cfg)
+        self.boot_hook(W)
         self.lock_acl(C.acl_lock_cmds(base), "khoa quyen thu muc CloudBluePC")
 
     def lock_acl(self, cmds, what):
@@ -255,6 +257,52 @@ class Installer:
         try: self.s.run(["cmd", "/c", "rd", "/s", "/q", scratch], timeout=120)
         except Exception: pass
         self.log("  driver: " + ("xong" if not bad else "%d / %d thu muc co loi" % (bad, len(jobs))))
+
+    def boot_hook(self, W):
+        """Nạp kho registry SYSTEM của Windows vừa bung để: (1) xem bản này có ở trạng thái "cài đặt lần đầu" không — bản tuỳ biến kiểu ghost thì KHÔNG,
+           khi đó file trả lời + SetupComplete.cmd không chạy; (2) chèn dịch vụ khởi động gọi cb_provision.py boot (C.boot_service_cmds) để phần mềm CloudBlue
+           vẫn tự dựng ở mọi kiểu bản Windows. Ghi kết quả vào logs\\image.json. Lỗi thì bỏ qua (2 lưới kia vẫn còn)."""
+        root, hive = "HKLM\\CB_OFFSYS", W + ":\\Windows\\System32\\config\\SYSTEM"
+        oobe, bad, cs = None, 0, 1
+        try:
+            rc, out = self.s.run(["reg", "load", root, hive], timeout=180)
+            if rc != 0:
+                self.log("  dich vu khoi dong: khong nap duoc kho registry cua Windows moi (ma %s) - bo qua" % rc); return
+            try:
+                rc, out = self.s.run(["reg", "query", root + "\\Select", "/v", "Default"], timeout=60, change=False)
+                m = re.search(r"Default\s+REG_DWORD\s+0x([0-9a-fA-F]+)", out or "")
+                if rc == 0 and m and 1 <= int(m.group(1), 16) <= 9: cs = int(m.group(1), 16)
+                rc, out = self.s.run(["reg", "query", root + "\\Setup"], timeout=60, change=False)
+                oobe = C.setup_state(out) if rc == 0 else None
+                bad = sum(1 for argv in C.boot_service_cmds(root, cs) if self.s.run(argv, timeout=60)[0] != 0)
+            finally:
+                for _ in range(5):                                  # kho còn bị giữ thì chờ rồi nhả lại (không nhả được thì lúc khởi động lại WinPE tự ghi xuống)
+                    if self.s.run(["reg", "unload", root], timeout=120)[0] == 0: break
+                    self.s.sleep(2)
+        except Exception as e:
+            self.log("  dich vu khoi dong: loi %s - bo qua" % e); return
+        self.log("  dich vu khoi dong (luoi an toan thu 3): %s" % ("da chen" if not bad else "%d lenh bao loi" % bad))
+        if oobe is False:
+            self.log("  (!) Ban Windows nay KHONG o trang thai 'cai dat lan dau' (ban kieu ghost): file tra loi khong chay -> KHONG tao tai khoan khach;")
+            self.log("      phan mem CloudBlue van tu chay nho dich vu khoi dong. Nen dung ban Windows da sysprep (cai qua man hinh cai dat).")
+        try: C.save_json(self.s, W + ":\\CloudBluePC\\logs\\image.json", {"oobe": oobe, "control_set": cs, "boot_svc": not bad})
+        except Exception: pass
+
+    def set_timezone(self, W, cfg):
+        """Đặt múi giờ NGAY TRONG Windows vừa bung (offline). Không làm thì lần khởi động đầu Windows đọc đồng hồ của máy theo múi giờ có sẵn trong bản đó
+           (bản tuỳ biến hay để múi giờ khác, vd UTC+8), sau đó file trả lời mới đổi sang múi giờ của shop → đồng hồ lệch đúng số giờ chênh cho tới khi
+           Windows tự đồng bộ giờ. Lỗi thì bỏ qua (file trả lời vẫn đặt múi giờ, agent sẽ chỉnh lại đồng hồ theo máy chủ)."""
+        tz = str((cfg or {}).get("timezone") or "SE Asia Standard Time")
+        if not re.fullmatch(r"[A-Za-z0-9 ().+-]{3,64}", tz): return
+        scratch = W + ":\\cb-scratch"
+        try:
+            self.s.makedirs(scratch)
+            rc, out = self.s.run(["dism", "/English", "/Image:%s:\\" % W, "/Set-TimeZone:" + tz, "/ScratchDir:" + scratch], timeout=900)
+        except Exception as e:
+            rc, out = 127, str(e)
+        try: self.s.run(["cmd", "/c", "rd", "/s", "/q", scratch], timeout=120)
+        except Exception: pass
+        self.log("  mui gio %s: %s" % (tz, "xong" if rc == 0 else "dism ma %s - bo qua (file tra loi se dat lai)" % rc))
 
     def wipe_others(self, disks, skip, fw):
         for d in C.candidates(disks, skip, 1):
