@@ -177,15 +177,16 @@ pr, st = sec_env({"user": "PC", "password": ""})
 base, calls = st["base"], st["calls"]
 pr.specialize()
 ck("specialize khoá thư mục: bỏ thừa hưởng, chỉ SYSTEM + Administrators toàn quyền, gỡ Users / Authenticated Users / Everyone, đặt lại mọi thứ bên trong",
-   ["icacls", base, "/inheritance:r", "/grant:r"] + FULL in calls and ["icacls", base, "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in calls
-   and ["icacls", base + "\\*", "/reset", "/T", "/C", "/Q"] in calls, [c for c in calls if c[0] == "icacls"])
+   ["icacls", base, "/inheritance:r", "/grant:r"] + FULL in calls and ["icacls", base, "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "*S-1-3-0"] in calls
+   and ["icacls", base + "\\*", "/reset", "/T", "/C", "/Q"] in calls and ["icacls", base, "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"] in calls, [c for c in calls if c[0] == "icacls"])
 ck("tài khoản thường chỉ được ĐỌC + CHẠY đúng 2 thư mục py và os; firstboot.d (script của chủ shop) lại bị khoá",
    sorted(c[1].split("\\")[-1] for c in calls if c[0] == "icacls" and "*S-1-5-32-545:(OI)(CI)RX" in c) == ["os", "py"]
    and ["icacls", base + "\\os\\firstboot.d", "/inheritance:r", "/grant:r"] + FULL in calls and not any("RX" in " ".join(c) and ("agent" in c[1] or "logs" in c[1] or "lib" in c[1]) for c in calls if c[0] == "icacls"))
 ck("thứ tự: đặt lại bên trong TRƯỚC, rồi mới cho đọc py / os, cuối cùng khoá firstboot.d", [i for i, c in enumerate(calls) if c[0] == "icacls" and "/reset" in c][0]
    < [i for i, c in enumerate(calls) if c[0] == "icacls" and "*S-1-5-32-545:(OI)(CI)RX" in c][0] < calls.index(["icacls", base + "\\os\\firstboot.d", "/inheritance:r", "/grant:r"] + FULL))
 ck("khoá cả gốc phân vùng cứu hộ (qua đường \\\\?\\Volume{…}\\)", ["icacls", "\\\\?\\Volume{abc}\\", "/inheritance:r", "/grant:r"] + FULL in calls
-   and ["icacls", "\\\\?\\Volume{abc}\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in calls and ["icacls", "\\\\?\\Volume{abc}\\*", "/reset", "/T", "/C", "/Q"] in calls
+   and ["icacls", "\\\\?\\Volume{abc}\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "*S-1-3-0"] in calls and ["icacls", "\\\\?\\Volume{abc}\\*", "/reset", "/T", "/C", "/Q"] in calls
+   and ["icacls", "\\\\?\\Volume{abc}\\*", "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"] in calls
    and os.path.isfile(os.path.join(base, "logs", "lock.done")))
 calls.clear(); pr.system()
 ck("agent gọi pha system TRƯỚC lần đăng nhập đầu: chỉ khoá quyền, CHƯA hạ quyền tài khoản khách (script riêng còn cần quyền Admin)",

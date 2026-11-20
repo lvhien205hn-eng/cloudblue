@@ -84,8 +84,9 @@ ck("khoá quyền thư mục CloudBluePC ngay lúc cài: chỉ SYSTEM + Administ
    and sorted(c[1] for c in icl if "*S-1-5-32-545:(OI)(CI)RX" in c) == ["W:\\CloudBluePC\\os", "W:\\CloudBluePC\\py"]
    and ["icacls", "W:\\CloudBluePC\\os\\firstboot.d", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl, icl)
 ck("khoá quyền gốc phân vùng cứu hộ: chỉ SYSTEM + Administrators (gỡ Users / Authenticated Users / Everyone)",
-   ["icacls", "R:\\", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl and ["icacls", "R:\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0"] in icl
-   and ["icacls", "R:\\*", "/reset", "/T", "/C", "/Q"] in icl and not any("RX" in " ".join(c) for c in icl if c[1].startswith("R:")), icl)
+   ["icacls", "R:\\", "/inheritance:r", "/grant:r", "*S-1-5-18:(OI)(CI)F", "*S-1-5-32-544:(OI)(CI)F"] in icl and ["icacls", "R:\\", "/remove:g", "*S-1-5-32-545", "*S-1-5-11", "*S-1-1-0", "*S-1-3-0"] in icl
+   and ["icacls", "R:\\*", "/reset", "/T", "/C", "/Q"] in icl and ["icacls", "R:\\*", "/setowner", "*S-1-5-32-544", "/T", "/C", "/Q"] in icl
+   and not any("RX" in " ".join(c) for c in icl if c[1].startswith("R:")), icl)
 
 print("2. Cài mới — máy BIOS")
 fs = FakeSys("bios"); cfg = cfg0(); usb(fs, cfg)
