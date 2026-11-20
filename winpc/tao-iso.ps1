@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 20.11d)
+#  cloudblue-tao-iso   (ban 21.11a)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -26,6 +26,8 @@
 #                                                         firstboot.d\        file .cmd .bat .ps1 chay 1 lan o lan dang nhap dau (firstboot.d\1511\ = chi ban 1511)
 #                                                         wallpaper.jpg       anh nen rieng (khong co thi dung anh nen CloudBlue)
 #     -KhongIso                                         chi dung cay thu muc, khong dong ISO
+#     -KhongKiemMa                                      khong hoi may chu xem ma dang ky con hieu luc khong (mac dinh CO hoi: ma cu thi dung lai ngay,
+#                                                       khoi mat cong tao ISO + cai may roi may khong hien len web)
 #     -KhoaChung / -KhongKhoaChung                      khoa CAI DAT chung cua Microsoft (khong kich hoat ban quyen), chi de man hinh
 #                                                       cai lan dau khong dung lai hoi key. Mac dinh: chi dien cho ban cu hon 1703 (vd 1511).
 #  MA DANG KY (cbpc_...): script HOI khi chay - dung dan vao dong lenh, dung gui cho ai.
@@ -45,13 +47,14 @@ param(
   [switch]$KhongHoi,
   [switch]$KhachAdmin,
   [switch]$KhongIso,
+  [switch]$KhongKiemMa,
   [switch]$KhoaChung,
   [switch]$KhongKhoaChung
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "20.11d"
+$VER = "21.11a"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -87,6 +90,21 @@ function Run-Exe([string]$exe, [string[]]$a) {
   try { & $exe @a 2>&1 | ForEach-Object { Write-Host ("   " + $_) }; $rc = $LASTEXITCODE } catch { Write-Host ("   " + $_) }
   $ErrorActionPreference = $old
   return $rc
+}
+
+function Test-EnrollKey([string]$url, [string]$anon, [string]$key) {
+  # Hoi may chu (ham pc_key_check, SQL v42): ma dang ky nay con dung duoc khong?
+  # Tra:  "ok" = con hieu luc ; "bad" = ma cu / sai ; "nokey" = tren web dang tat ma ; "" = khong hoi duoc (mat mang, may chu chua co ham nay...)
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $h = @{ apikey = $anon; Authorization = ("Bearer " + $anon) }
+    $body = '{"p_key":"' + $key + '"}'
+    $r = Invoke-RestMethod -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_key_check") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 20
+    if ($r.ok -eq $true) { return "ok" }
+    if (("" + $r.err) -eq "BAD_KEY") { return "bad" }
+    if (("" + $r.err) -eq "NO_KEY") { return "nokey" }
+    return ""
+  } catch { return "" }
 }
 
 function Get-File([string]$url, [string]$dst, [string]$agent = "") {
@@ -597,6 +615,28 @@ try {
   }
   $MaDangKy = ("" + $MaDangKy).Trim()
   if ($MaDangKy -and -not ($MaDangKy -match '^cbpc_[0-9a-f]{40}$')) { Stop-Build "Ma dang ky sai dang (phai la cbpc_ + 40 ky tu). Copy lai tu trang quan tri." }
+  # hoi may chu: ma nay con hieu luc khong? (tren web bam 'Tao ma dang ky' lan nua la ma cu het dung - ISO tao bang ma cu thi may cai xong khong len web)
+  $KeyState = ""
+  if ($MaDangKy -and (-not $KhongKiemMa)) {
+    $kTries = 0
+    while ($true) {
+      $KeyState = Test-EnrollKey $SbUrl $SbKey $MaDangKy
+      if ($KeyState -eq "ok") { Say "   ma dang ky: may chu xac nhan CON HIEU LUC" "Green"; break }
+      if ($KeyState -eq "") { Say "   (chua hoi duoc may chu ve ma dang ky - bo qua buoc kiem)" "DarkGray"; break }
+      $kWhy = "Ma dang ky nay KHONG con hieu luc (tren web da bam 'Tao ma dang ky' lan nua sau khi lay ma nay)."
+      if ($KeyState -eq "nokey") { $kWhy = "Tren web dang TAT ma dang ky (chua co ma nao dang mo)." }
+      Write-Host ""
+      Say ("   !! " + $kWhy) "Red"
+      Say "      ISO tao bang ma nay thi may cai xong se KHONG hien len web." "Red"
+      $kTries++
+      if ($KhongHoi -or ($kTries -ge 3)) { Stop-Build ($kWhy + " Vao web > Bang quan tri > May PC > 'Tao ma dang ky' > Copy, roi chay lai lenh va dan ma moi.") }
+      Say "      Vao web > Bang quan tri > May PC > 'Tao ma dang ky' > Copy, roi dan ma MOI vao day (chuot phai = dan). Ma KHONG hien khi dan." "White"
+      $sec2 = Read-Host "   MA DANG KY moi" -AsSecureString
+      $MaDangKy = ("" + [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec2))).Trim()
+      if (-not ($MaDangKy -match '^cbpc_[0-9a-f]{40}$')) { Stop-Build "Ma dang ky sai dang (phai la cbpc_ + 40 ky tu). Copy lai tu trang quan tri." }
+      $KeyFrom = "moi nhap"
+    }
+  }
   if ($MaDangKy) {
     Say ("   ma dang ky: da nhan - " + $KeyFrom + " (khong in ra)") "DarkGray"
     try {
@@ -863,7 +903,7 @@ try {
   }
   Write-Host ("  Chen boot.wim (ban so " + $bidx + "): OK")
   Write-Host ("  Tu kiem: doc o dia = " + $(if ($t1 -eq 0) { "DAT" } else { "CHUA DAT (" + $t1 + ")" }) + " ; chay thu bo cai = " + $(if ($t2 -eq 0) { "DAT" } else { "CHUA DAT (" + $t2 + ")" }))
-  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" } else { "KHONG" }))
+  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" + $(if ($KeyState -eq "ok") { " - may chu xac nhan con hieu luc" } else { " - CHUA kiem duoc voi may chu" }) } else { "KHONG" }))
   if ($OscInfo) { Write-Host ("  oscdimg: " + $OscInfo) }
   if (@($OscWhy).Count -gt 0) { Write-Host ("  oscdimg (cach thu khong duoc): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ")) }
   if ($isoDone) { Write-Host ("  ISO: " + $Out + "  (" + [math]::Round((Get-Item $Out).Length / 1GB, 2) + " GB)") -ForegroundColor Green }
