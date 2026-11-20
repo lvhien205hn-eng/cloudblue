@@ -2,13 +2,13 @@
 # =====================================================================================================
 #  cb_provision.py — CÀI ĐẶT LẦN ĐẦU trong Windows vừa cài (gọi bởi provision.cmd từ file trả lời unattend.xml)
 #     specialize  (tài khoản SYSTEM, trước màn hình đăng nhập): chính sách bỏ màn hình hỏi, điện năng, tác vụ tự chạy agent
-#     firstlogon  (tài khoản vừa tạo, lần đăng nhập đầu):        tự đăng nhập vĩnh viễn, tác vụ (làm lại cho chắc), chạy script riêng
-#                                                                 của chủ shop trong os\firstboot.d, bật agent
-#     logon       (mỗi lần đăng nhập — khoá Run):                 thiếu tác vụ / agent chưa chạy thì dựng lại
+#     firstlogon  (tài khoản vừa tạo, lần đăng nhập đầu):        tự đăng nhập vĩnh viễn, tác vụ (làm lại cho chắc), ẢNH NỀN, chạy script riêng
+#                                                                 của chủ shop trong os\firstboot.d (và os\firstboot.d\<tên bản, vd 1511>), bật agent
+#     logon       (mỗi lần đăng nhập — khoá Run):                 thiếu tác vụ / agent chưa chạy thì dựng lại; tài khoản chưa có ảnh nền thì đặt 1 lần
 #  Mọi lệnh lỗi đều được ghi nhật ký và BỎ QUA — không bao giờ làm hỏng bước cài Windows.
 #  Nhật ký: C:\CloudBluePC\logs\provision.log
 # =====================================================================================================
-import json, os, subprocess, sys, time
+import json, os, re, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
@@ -67,10 +67,17 @@ TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 """
 
 
+def spi_wallpaper(path):
+    """Đặt ảnh nền cho tài khoản đang đăng nhập (SPI_SETDESKWALLPAPER, ghi vào hồ sơ + báo cho Windows). True nếu được."""
+    import ctypes
+    return bool(ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3))
+
+
 class Prov:
-    def __init__(self, base=BASE, run=None, log=None):
+    def __init__(self, base=BASE, run=None, log=None, spi=None):
         self.base = base
         self._run = run or self._real_run
+        self._spi = spi or spi_wallpaper
         self.lines = []
         self._log = log
 
@@ -152,17 +159,54 @@ class Prov:
                 with open(src, "rb") as fi, open(dst, "wb") as fo: fo.write(fi.read())
         except OSError: pass
 
+    def os_tag(self):
+        """Tên bản Windows vừa cài (22h2, 1511…) do bộ cài ghi trong seed.json; không có → ''."""
+        try:
+            with open(os.path.join(self.base, "seed.json"), encoding="utf-8-sig") as f: t = str(json.load(f).get("os") or "")
+        except Exception:
+            t = ""
+        return t.lower() if re.fullmatch(r"[A-Za-z0-9-]{2,12}", t) else ""
+
+    def wallpaper(self):
+        """Đặt ảnh nền CloudBlue (os\\wallpaper.jpg) cho tài khoản đang đăng nhập. Mỗi tài khoản chỉ đặt 2 LẦN ĐẦU (lần đăng nhập đầu tiên Windows
+           có thể tự trả về ảnh mặc định ngay sau khi hiện màn hình → lần chạy kế tiếp đặt lại 1 lần nữa); sau đó khách đổi ảnh khác thì giữ ảnh của khách."""
+        img = next((p for p in (os.path.join(self.base, "os", n) for n in ("wallpaper.jpg", "wallpaper.png", "wallpaper.bmp")) if os.path.isfile(p)), None)
+        if not img: return False
+        mark = r"HKCU\Software\CloudBluePC"
+        if self._run(["reg", "query", mark, "/v", "Wallpaper2"], 60)[0] == 0: return False
+        step = "Wallpaper2" if self._run(["reg", "query", mark, "/v", "Wallpaper"], 60)[0] == 0 else "Wallpaper"
+        desk = r"HKCU\Control Panel\Desktop"
+        self.reg(desk, "WallpaperStyle", "REG_SZ", 10)             # 10 = phủ kín màn hình (Fill), giữ tỉ lệ
+        self.reg(desk, "TileWallpaper", "REG_SZ", 0)
+        try: ok = bool(self._spi(img))
+        except Exception as e:
+            ok = False; self.log("LOI dat anh nen: %r" % (e,))
+        if not ok:                                                 # dự phòng: ghi thẳng vào hồ sơ, Windows áp dụng ở lần đăng nhập sau
+            ok = self.reg(desk, "Wallpaper", "REG_SZ", img)
+            self._run(["rundll32.exe", "user32.dll,UpdatePerUserSystemParameters", "1", "True"], 60)
+        self.log("%s anh nen %s" % ("ok " if ok else "LOI", os.path.basename(img)))
+        if ok: self.reg(mark, step, "REG_SZ", PROV_VER)
+        return ok
+
     def firstboot(self):
-        """Chạy 1 LẦN các script của chủ shop: os\\firstboot.d\\*.cmd|*.bat|*.ps1 (theo thứ tự tên) — cài driver, phần mềm…"""
+        """Chạy 1 LẦN các script của chủ shop: os\\firstboot.d\\*.cmd|*.bat|*.ps1 rồi os\\firstboot.d\\<tên bản Windows, vd 1511>\\* (theo thứ tự tên)
+           — cài driver dạng .exe, phần mềm… Script đọc được biến CB_OS (tên bản đang cài)."""
         d, mark = os.path.join(self.base, "os", "firstboot.d"), os.path.join(self.base, "logs", "firstboot.done")
         if os.path.exists(mark) or not os.path.isdir(d): return 0
+        tag = self.os_tag()
+        os.environ["CB_OS"] = tag
+        todo = [(d, f) for f in sorted(os.listdir(d))]
+        for sub in dict.fromkeys([tag, re.sub(r"-\d+$", "", tag)]):       # '22h2-2' dùng cả thư mục 22h2-2 lẫn 22h2
+            sd = os.path.join(d, sub) if sub else ""
+            if sd and os.path.isdir(sd): todo += [(sd, f) for f in sorted(os.listdir(sd))]
         n = 0
-        for f in sorted(os.listdir(d)):
-            p, ext = os.path.join(d, f), f.lower().rsplit(".", 1)[-1]
+        for folder, f in todo:
+            p, ext = os.path.join(folder, f), f.lower().rsplit(".", 1)[-1]
+            if not os.path.isfile(p): continue
             if ext in ("cmd", "bat"): argv = ["cmd.exe", "/c", p]
             elif ext == "ps1": argv = ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", p]
             else: continue
-            self.sh(argv, "script rieng " + f, timeout=3600); n += 1
+            self.sh(argv, "script rieng " + os.path.relpath(p, d), timeout=3600); n += 1
         try:
             os.makedirs(os.path.dirname(mark), exist_ok=True)
             with open(mark, "w") as fo: fo.write(str(n))
@@ -186,6 +230,7 @@ class Prov:
         self.log("=== firstlogon (ban %s) ===" % PROV_VER)
         self.autologon(); self.policies(); self.power(); self.shortcut(); self.tasks()
         self.start_agent()
+        self.wallpaper()
         self.firstboot()
         self.log("xong firstlogon")
 
@@ -193,6 +238,7 @@ class Prov:
         if not (self.task_exists(TASK_AGENT) and self.task_exists(TASK_WATCH)):
             self.log("=== logon: thieu tac vu → dung lai ==="); self.tasks()
         self._run(["schtasks", "/run", "/tn", TASK_WATCH], 60)       # agent đang chạy thì lệnh này tự thoát ngay
+        self.wallpaper()                                             # tài khoản nào chưa từng được đặt ảnh nền thì đặt 1 lần
 
 
 def main(argv):
@@ -200,10 +246,12 @@ def main(argv):
     p = Prov()
     try:
         if phase == "specialize": p.specialize()
+        elif phase == "setupcomplete":                             # SetupComplete.cmd (lưới an toàn khi file trả lời không được Windows dùng)
+            p.specialize(); p.start_agent()
         elif phase == "firstlogon": p.firstlogon()
         elif phase == "logon": p.logon()
         else:
-            print("cb_provision %s — pha: specialize | firstlogon | logon" % PROV_VER); return 2
+            print("cb_provision %s — pha: specialize | setupcomplete | firstlogon | logon" % PROV_VER); return 2
     except Exception as e:                                           # không để lỗi nào chặn bước cài Windows
         p.log("LOI KHONG NGO: %r" % (e,))
     return 0
