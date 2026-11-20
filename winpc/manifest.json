@@ -1,0 +1,37 @@
+{
+ "base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc",
+ "files": {
+  "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
+  "agent/pcagent.py": "d51b3cc67cdac78d1cdb81c70f0bfa1fa2ae429f553658a39567fc4690fd1094",
+  "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
+  "lib/cbcore.py": "9d9c9cca572da398a03a1f113940032cc0a39b9f8a9c6b99cefc905535e5b11d",
+  "lib/cbrec.py": "69e713cb23fd6a26c8c6ed5e9c772552d9daf7407d3c98187daa468e04ebb0d2",
+  "lib/cbsys.py": "450ed7382d065d79f5595b32791f6d645b577769a2143b8b968c4ab4ada225d1",
+  "os/cb_provision.py": "08b233192445fd66fb5dcc17ee15d857ab6abf7f61be4990c8b13163a11f6a0a",
+  "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
+  "os/provision.cmd": "b72ef5007241b41df622c908963de90c7871e641c4f2d1d159e7b548807a6fa4",
+  "os/unattend.tpl.xml": "039e41249a9ad8dc733d70cc1dba8c99990cad4124f00788d861a9b2e5f18f6c",
+  "pe/cb_pe.py": "d125056011006eae8550569b2bb248790efaeb45ff2d9594e9214b1532a69bff",
+  "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c"
+ },
+ "sha256": {
+  "CAI-DAT.cmd": "27c94610547e0ef1a6189dfb07eaa148f269bd125ed1f96169649f8fa18d90de",
+  "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
+  "agent/pcagent.py": "d51b3cc67cdac78d1cdb81c70f0bfa1fa2ae429f553658a39567fc4690fd1094",
+  "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
+  "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
+  "cb_build.py": "55f94d5cb8dfec288cfc1a37faa749ced04fd53c5937585d09f8a3e1e597db92",
+  "lib/cbcore.py": "9d9c9cca572da398a03a1f113940032cc0a39b9f8a9c6b99cefc905535e5b11d",
+  "lib/cbrec.py": "69e713cb23fd6a26c8c6ed5e9c772552d9daf7407d3c98187daa468e04ebb0d2",
+  "lib/cbsys.py": "450ed7382d065d79f5595b32791f6d645b577769a2143b8b968c4ab4ada225d1",
+  "os/cb_provision.py": "08b233192445fd66fb5dcc17ee15d857ab6abf7f61be4990c8b13163a11f6a0a",
+  "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
+  "os/provision.cmd": "b72ef5007241b41df622c908963de90c7871e641c4f2d1d159e7b548807a6fa4",
+  "os/unattend.tpl.xml": "039e41249a9ad8dc733d70cc1dba8c99990cad4124f00788d861a9b2e5f18f6c",
+  "os/wallpaper.jpg": "292d2622e8239a4122e0c1c1ee7c4aa744aeb5c9f7150cab742edff4a39ead47",
+  "pe/cb_pe.py": "d125056011006eae8550569b2bb248790efaeb45ff2d9594e9214b1532a69bff",
+  "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
+  "tao-iso.ps1": "a9edd440aed6b90cb08fc1c2026becbf9a94de7fecdbf9d8dfd3c4248ab637c4"
+ },
+ "ver": "20.11a"
+}
