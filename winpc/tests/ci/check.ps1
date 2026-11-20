@@ -274,11 +274,18 @@ try {
         Ck "khong con thu muc _img, khong co goi hong trong ISO" ((@(Get-ChildItem (Join-Path $dr "cb\drivers") -Directory | Where-Object { $_.Name -match "^_img" }).Count -eq 0) -and (@(Get-ChildItem (Join-Path $dr "cb") -Recurse -File -Filter "bad.exe").Count -eq 0))
         Ck "ma dang ky nam trong cb\enroll.key" ((("" + (Get-Content (Join-Path $dr "cb\enroll.key") -TotalCount 1)).Trim()) -eq $key)
         Ck "anh nen + file tra loi + CAI-DAT.cmd co trong ISO" ((Test-Path (Join-Path $dr "cb\os\wallpaper.jpg")) -and (Test-Path (Join-Path $dr "autounattend.xml")) -and (Test-Path (Join-Path $dr "CAI-DAT.cmd")))
-        $bw = @(Get-WindowsImage -ImagePath (Join-Path $dr "sources\boot.wim"))
+        # boot.wim: chep ra cho ghi duoc roi moi doc danh sach file (doc thang tren dia ISO chi-doc bi tu choi)
+        $bwLocal = Join-Path $Wk "bootwim-check.wim"
+        Copy-Item (Join-Path $dr "sources\boot.wim") $bwLocal -Force
+        & attrib.exe -r $bwLocal | Out-Null
+        $bw = @(Get-WindowsImage -ImagePath $bwLocal)
         $bidx = 1
         if ($bw.Count -ge 2) { $bidx = 2 }
-        $inside = @(Get-WindowsImageContent -ImagePath (Join-Path $dr "sources\boot.wim") -Index $bidx | Where-Object { $_ -match '^\\cb\\(pe\\cb_pe\.py|py\\python\.exe|lib\\cbsys\.py)$|^\\Windows\\System32\\winpeshl\.ini$' })
+        $inside = @(Get-WindowsImageContent -ImagePath $bwLocal -Index $bidx | Where-Object { $_ -match '^\\cb\\(pe\\cb_pe\.py|py\\python\.exe|lib\\cbsys\.py)$|^\\Windows\\System32\\winpeshl\.ini$' })
         Ck "boot.wim trong ISO da duoc chen bo cai CloudBlue + winpeshl.ini" ($inside.Count -eq 4) ($inside -join " ; ")
+        Remove-Item -Force $bwLocal -ErrorAction SilentlyContinue
+      } catch {
+        Ck "kiem noi dung ISO moi" $false ($_.Exception.Message + " (dong " + $_.InvocationInfo.ScriptLineNumber + ")")
       } finally {
         Dismount-DiskImage -ImagePath $outIso | Out-Null
       }
