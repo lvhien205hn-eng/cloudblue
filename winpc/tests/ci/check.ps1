@@ -6,6 +6,8 @@
 #    3. chay CA tao-iso.ps1 tu dau toi luc ra file ISO, voi 2 "ISO Windows" gia lap dung tu anh WinRE cua may chay thu
 #       (co driver rieng tung ban, goi VGA NVIDIA gia, goi driver hong), roi mo ISO ra kiem
 #    4. chay lai khong dua ma dang ky -> phai dung lai ma cua lan truoc
+#    5. bao mat: khoa quyen that bang icacls + thu bang 1 tai khoan thuong that (sec_check.py)
+#    6. chep tep that cua bo cai: tep lon khong duoc ngon RAM (sys_check.py)
 #  Khong dua gi len web, khong dung toi may that nao. Luon thoat ma 0; ket qua nam o trang tom tat cua lan chay.
 # =====================================================================================================
 param([string]$WorkRoot = "")
@@ -336,6 +338,25 @@ try {
       Ck "bo thu bao mat chay het" ($nSec -ge 15) ("" + $nSec + " phep thu, " + $secOut.Count + " dong")
     } else {
       Info ("BO QUA buoc 5: khong co cay bo cai / python (" + $cbDir + ")")
+    }
+
+    Out-Line "== 6. Chep tep that (cbsys.WinSys): goi driver lon khong duoc lam het RAM trong WinPE"
+    if ((Test-Path $cbDir) -and (Test-Path $pyExe)) {
+      $sysTmp = New-Dir (Join-Path $Wk "syschk")
+      $oldEap = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      $sysOut = @(& $pyExe -I -B (Join-Path $PSScriptRoot "sys_check.py") $cbDir $sysTmp 2>&1 | ForEach-Object { "" + $_ })
+      $ErrorActionPreference = $oldEap
+      $nSys = 0
+      foreach ($ln in $sysOut) {
+        if ($ln -match '^OK  (.*)$') { $script:Pass++; $nSys++; Out-Line ("  OK  " + $Matches[1]) }
+        elseif ($ln -match '^XX  (.*)$') { $script:FailN++; $nSys++; Out-Line ("  XX  " + $Matches[1]) }
+        elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
+        elseif ($ln.Trim()) { Info ("? " + $ln) }
+      }
+      Ck "bo thu chep tep chay het" ($nSys -ge 14) ("" + $nSys + " phep thu, " + $sysOut.Count + " dong")
+    } else {
+      Info ("BO QUA buoc 6: khong co cay bo cai / python (" + $cbDir + ")")
     }
   }
 } catch {
