@@ -38,7 +38,7 @@ INFO_OK = {"host": "CB-A1B2C3", "os": "22h2", "os_ver": "10.0.19045.2965", "agen
 
 def make_db():
     evil = {"host": "\"><svg onload=window.__xss=2>", "cpu": {"a": 1}, "cores": "abc", "ram_gb": "<b>", "gpus": "not-array", "board": ["a"], "agent": {"x": 1},
-            "disks": [None, 5, {"gb": "<i>", "ssd": "x"}], "rec": {"ok": True, "images": "22h2"}}
+            "disks": [None, 5, {"gb": "<i>", "ssd": "x"}], "rec": {"ok": True, "images": "22h2"}, "sec": {"std": "<img src=x onerror=window.__xss=10>", "hard": "<b>", "lock": 1}}
     evil2 = {"host": "H", "cpu": "<img src=x onerror=window.__xss=4>", "cores": 4, "ram_gb": 8, "gpus": ["<img src=x onerror=window.__xss=5>", {"z": 1}], "agent": "<b>9</b>",
              "board": "<img src=x onerror=window.__xss=6>", "disks": [{"gb": 500, "ssd": False}], "rec": {"ok": True, "images": ["22h2", "<img src=x onerror=window.__xss=7>", "1511"]}}
     return {
@@ -47,9 +47,9 @@ def make_db():
             {"id": A, "name": "CB-A1B2C3", "code": None, "note": None, "approved": False, "status": "new", "os": "22h2", "os_ver": "10.0.19045.2965", "info": INFO_OK,
              "lan_ip": "192.168.1.50", "pub_ip": "1.54.69.205", "first_seen": iso(300), "last_seen": iso(10), "enrolled_at": iso(300), "reenroll_until": None, "created_at": iso(300)},
             {"id": B, "name": "Máy 14-85", "code": "A · 14-85", "note": "kệ 2, hàng trên", "approved": True, "status": "ready", "os": "1511", "os_ver": "10.0.10586.0",
-             "info": dict(INFO_OK, host="CB-B", os="1511", disks=[{"gb": 480, "ssd": True}, {"gb": 2000, "ssd": False}]),
+             "info": dict(INFO_OK, host="CB-B", os="1511", disks=[{"gb": 480, "ssd": True}, {"gb": 2000, "ssd": False}], sec={"std": True, "hard": True, "lock": True}),
              "lan_ip": "192.168.1.51", "pub_ip": "1.54.69.205", "first_seen": iso(90000), "last_seen": iso(20), "enrolled_at": iso(4000), "reenroll_until": None, "created_at": iso(90000)},
-            {"id": C, "name": "Máy khách Tèo", "code": None, "note": None, "approved": True, "status": "rented", "os": "22h2", "os_ver": "10.0.19045.1", "info": dict(INFO_OK, host="Máy khách Tèo", rec={"ok": False, "images": []}),
+            {"id": C, "name": "Máy khách Tèo", "code": None, "note": None, "approved": True, "status": "rented", "os": "22h2", "os_ver": "10.0.19045.1", "info": dict(INFO_OK, host="Máy khách Tèo", rec={"ok": False, "images": []}, sec={"std": False, "hard": False, "lock": True}),
              "lan_ip": "192.168.1.52", "pub_ip": "1.54.69.205", "first_seen": iso(200000), "last_seen": iso(3 * 3600), "enrolled_at": iso(200000), "reenroll_until": None, "created_at": iso(200000)},
             {"id": X, "name": "<img src=x onerror=\"window.__xss=1\">", "code": "<b>c</b>", "note": "<script>window.__xss=8</script>", "approved": True, "status": "maint", "os": "<script>window.__xss=3</script>",
              "os_ver": 12345, "info": evil, "lan_ip": "<u>ip</u>", "pub_ip": None, "first_seen": iso(500), "last_seen": iso(30), "enrolled_at": iso(500), "reenroll_until": None, "created_at": iso(250)},
@@ -207,10 +207,31 @@ def main():
         ck("dòng chuyển Sẵn sàng, hết nút Duyệt, huy hiệu tắt", "Sẵn sàng" in ra and "Duyệt" not in ra and s.js("() => document.getElementById('pc-badge').hidden") and s.js("() => document.getElementById('pk-new').textContent") == "0", ra)
         ck("có thông báo", "Đã duyệt máy CB-A1B2C3." in s.js("() => document.getElementById('toast').textContent"))
 
+        print("6b. Tình trạng bảo mật của máy + nút Bàn giao khách mới")
+        rb, rc_, ra = (next(r for r in s.rows() if r.startswith(n)) for n in ("Máy 14-85", "Máy khách Tèo", "CB-A1B2C3"))
+        ck("máy đã khoá (agent báo std + hard + lock) → dòng 🔒; máy khách là Admin → dòng ⚠; agent cũ không báo → không có dòng nào",
+           "🔒 đã khoá · khách dùng tài khoản thường" in rb and "⚠ khách có quyền Admin trên máy" in rc_ and "🔒" not in ra and "đang khoá" not in ra and "quyền Admin" not in ra, (rb, rc_, ra))
+        rx2 = next(r for r in s.rows() if "onerror=\"window.__xss=1\"" in r)
+        ck("máy gửi tình trạng bảo mật sai kiểu / kèm mã → chỉ hiện 'đang khoá', không chạy mã", "⏳ đang khoá bảo mật" in rx2 and s.js("() => window.__xss") is None, rx2)
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="handover"]' % B); s.page.wait_for_timeout(150)
+        ck("nút 🧼 Bàn giao mở hộp 'Bàn giao khách mới': chọn sẵn DỌN SẠCH CẢ MÁY, chọn được bản Windows, nút ghi 'Xoá sạch + cài lại'",
+           s.js("() => document.getElementById('pcrd-title').textContent") == "Bàn giao khách mới — Máy 14-85" and s.js("() => document.querySelector('#pcrd-wipe input:checked').value") == "all"
+           and s.js("() => [...document.getElementById('pcrd-os').options].map(o => o.value).join()") == "22h2,1511" and s.js("() => document.getElementById('pcrd-go').textContent") == "Xoá sạch + cài lại"
+           and "Xoá sạch mọi ổ cứng" in s.js("() => document.getElementById('pcrd-info').textContent"))
+        s.accept = False; s.dialogs.clear(); s.page.select_option("#pcrd-os", "22h2"); s.page.click("#pcrd-go"); s.page.wait_for_timeout(200)
+        ck("bàn giao: hỏi lại rõ ràng (xoá sạch máy rồi cài Windows 22H2); Huỷ thì không gửi gì", len(s.dialogs) == 1 and 'BÀN GIAO KHÁCH MỚI — xoá sạch máy "Máy 14-85" rồi cài Windows 22H2?' in s.dialogs[0]
+           and "dọn sạch cả máy" in s.dialogs[0] and s.calls("pc_admin_order") == [], s.dialogs)
+        s.accept = True; s.page.click("#pcrd-cancel")
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="handover"]' % C); s.page.wait_for_timeout(150)
+        ck("bàn giao máy đang ghi 'đang thuê': vẫn chọn sẵn dọn sạch cả máy (khác nút Cài lại); máy không có cứu hộ thì nút khoá", s.js("() => document.querySelector('#pcrd-wipe input:checked').value") == "all"
+           and s.js("() => document.getElementById('pcrd-go').disabled"))
+        s.page.click("#pcrd-cancel")
+
         print("7. Cài lại / đổi Windows")
         s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % B); s.page.wait_for_timeout(150)
         ck("hộp nằm TRÊN bảng quản trị (bấm được)", s.js("() => { const m = document.getElementById('pcrdlg'), r = m.querySelector('.dlg').getBoundingClientRect(); const el = document.elementFromPoint(r.left + r.width / 2, r.top + 16); return !!el && m.contains(el); }"))
-        ck("mở hộp cài lại, liệt kê đúng 2 bản, chọn sẵn bản đang chạy", s.js("() => !document.getElementById('pcrdlg').hidden && [...document.getElementById('pcrd-os').options].map(o => o.value + (o.selected ? '*' : '')).join()") == "22h2,1511*")
+        ck("mở hộp cài lại, liệt kê đúng 2 bản, chọn sẵn bản đang chạy; tiêu đề + nút trở về kiểu 'Cài lại'", s.js("() => !document.getElementById('pcrdlg').hidden && [...document.getElementById('pcrd-os').options].map(o => o.value + (o.selected ? '*' : '')).join()") == "22h2,1511*"
+           and s.js("() => document.getElementById('pcrd-title').textContent") == "Cài lại Windows — Máy 14-85" and s.js("() => document.getElementById('pcrd-go').textContent") == "Cài lại")
         ck("máy trong kho → mặc định dọn sạch cả máy", s.js("() => document.querySelector('#pcrd-wipe input:checked').value") == "all")
         ck("có cảnh báo mất dữ liệu, nút bấm được", "không lấy lại được" in s.js("() => document.getElementById('pcrd-warn').innerText") and not s.js("() => document.getElementById('pcrd-go').disabled"))
         s.accept = False; s.dialogs.clear()
