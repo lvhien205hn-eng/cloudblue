@@ -330,7 +330,7 @@ function Test-Pe([string]$p) {
   # File chuong trinh Windows (bat dau bang "MZ") va co co hop ly cho oscdimg.exe?
   try {
     $it = Get-Item -LiteralPath $p
-    if (($it.Length -lt 60KB) -or ($it.Length -gt 8MB)) { return $false }
+    if (($it.Length -lt 16KB) -or ($it.Length -gt 32MB)) { return $false }
     $fs = [IO.File]::OpenRead($it.FullName)
     try { $b0 = $fs.ReadByte(); $b1 = $fs.ReadByte() } finally { $fs.Close() }
     return [bool](($b0 -eq 77) -and ($b1 -eq 90))
@@ -368,14 +368,14 @@ function Find-Oscdimg([string]$dl, [string[]]$near) {
       if (-not $ok) { [void]$script:OscWhy.Add($s[0] + ": tai loi (" + $e1 + " | " + $script:GetFileErr + ")"); continue }
     }
     $len = (Get-Item -LiteralPath $dst).Length
-    if (-not (Test-Pe $dst)) {
-      [void]$script:OscWhy.Add($s[0] + ": file tai ve khong phai chuong trinh Windows (" + $len + " byte)")
-      Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
-      continue
-    }
     $h = Get-Sha $dst
     if ($s[1] -and ($h -ne $s[1])) {
       [void]$script:OscWhy.Add($s[0] + ": ma kiem khac ban da ghim (" + $h.Substring(0, 16) + ", " + $len + " byte)")
+      Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
+      continue
+    }
+    if ((-not $s[1]) -and (-not (Test-Pe $dst))) {
+      [void]$script:OscWhy.Add($s[0] + ": file tai ve khong phai chuong trinh Windows (" + $len + " byte)")
       Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
       continue
     }
@@ -861,6 +861,7 @@ try {
   Write-Host ("  Tu kiem: doc o dia = " + $(if ($t1 -eq 0) { "DAT" } else { "CHUA DAT (" + $t1 + ")" }) + " ; chay thu bo cai = " + $(if ($t2 -eq 0) { "DAT" } else { "CHUA DAT (" + $t2 + ")" }))
   Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" } else { "KHONG" }))
   if ($OscInfo) { Write-Host ("  oscdimg: " + $OscInfo) }
+  if (@($OscWhy).Count -gt 0) { Write-Host ("  oscdimg (cach thu khong duoc): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ")) }
   if ($isoDone) { Write-Host ("  ISO: " + $Out + "  (" + [math]::Round((Get-Item $Out).Length / 1GB, 2) + " GB)") -ForegroundColor Green }
   else { Write-Host ("  ISO: CHUA dong - cay bo cai o " + $IsoRoot) -ForegroundColor Yellow }
   foreach ($n in $Notes) { Write-Host ("  (!) " + $n) -ForegroundColor Yellow }
