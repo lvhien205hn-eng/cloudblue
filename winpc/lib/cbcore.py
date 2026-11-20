@@ -305,19 +305,41 @@ def build_no(version):
     return int(m.group(1)) if m else 0
 
 
+STOCK_WORDS = {"home", "pro", "education", "enterprise", "n", "single", "language", "for", "workstations", "s", "ltsb", "ltsc", "iot", "core", "country", "specific"}
+
+
+def is_stock_name(name):
+    """Tên ảnh đúng kiểu Microsoft phát hành ('Windows 10 Pro', 'Windows 10 Home Single Language'…)?
+       Bản tuỳ biến (Lite, Premium, có tên người làm…) → False: không tự điền khoá cho các bản đó."""
+    w = str(name or "").strip().lower().split()
+    return len(w) >= 3 and w[0] == "windows" and w[1] in ("10", "11") and all(x in STOCK_WORDS for x in w[2:])
+
+
 def generic_key_for(image, cfg):
     """Khoá CÀI ĐẶT CHUNG của Microsoft cho đúng phiên bản (edition) — chỉ để màn hình cài lần đầu không dừng lại hỏi key, KHÔNG kích hoạt bản quyền.
-       auto: chỉ điền cho các bản trước 1703 (1507 / 1511 / 1607: không có key thì lần khởi động đầu đứng chờ người bấm 'Do this later')."""
+       auto: chỉ điền cho bản GỐC của Microsoft (tên ảnh chuẩn) trước 1703 (1507 / 1511 / 1607: không có key thì lần khởi động đầu đứng chờ người bấm
+       'Do this later'). Bản tuỳ biến (Lite…) không tự điền — người làm bản đó thường đã lo sẵn; cần thì bật hẳn bằng mode on."""
     key = GENERIC_KEYS.get(str((image or {}).get("edition") or "").lower())
     mode = key_mode(cfg)
     if not key or mode == "off": return ""
     if mode == "on": return key
-    return key if 0 < build_no((image or {}).get("version")) < 15063 else ""
+    return key if (0 < build_no((image or {}).get("version")) < 15063 and is_stock_name((image or {}).get("name"))) else ""
 
 
-def make_unattend(tpl, image, cfg, name):
-    """Điền mẫu unattend (specialize + oobeSystem). Khoá cài đặt chung chỉ điền khi biết đúng phiên bản (edition) — xem generic_key_for."""
-    key = generic_key_for(image, cfg)
+KEY_RE = re.compile(r"<ProductKey>\s*(?:<Key>\s*)?([A-Za-z0-9]{5}(?:-[A-Za-z0-9]{5}){4})\s*(?:</Key>)?", re.S)
+
+
+def find_unattend_key(xml_text):
+    """Khoá sản phẩm nằm sẵn trong 1 file trả lời (của người làm bản Windows tuỳ biến) — để giữ lại khi ghi file trả lời của CloudBlue. Không có → ''."""
+    m = KEY_RE.search(str(xml_text or ""))
+    return m.group(1).upper() if m else ""
+
+
+def make_unattend(tpl, image, cfg, name, own_key=""):
+    """Điền mẫu unattend (specialize + oobeSystem). own_key = khoá nằm sẵn trong file trả lời cũ của chính bản Windows đó (giữ lại, trừ khi tắt hẳn);
+       không có thì khoá cài đặt chung chỉ điền khi biết đúng phiên bản (edition) — xem generic_key_for."""
+    own_key = own_key if (key_mode(cfg) != "off" and re.fullmatch(r"[A-Z0-9]{5}(-[A-Z0-9]{5}){4}", str(own_key or ""))) else ""
+    key = own_key or generic_key_for(image, cfg)
     vals = {
         "COMPUTERNAME": "*" if name == "*" else clean_name(name),           # "*" = Windows tự đặt tên ngẫu nhiên
         "PRODUCTKEY": ("<ProductKey>%s</ProductKey>" % key) if key else "",

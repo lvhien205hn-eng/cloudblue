@@ -29,8 +29,8 @@ def tree_bytes(sysx, root, depth=12):
 
 
 def extra_bytes(sysx, src_root):
-    """Phần chủ shop bỏ thêm vào bộ cài mà phân vùng cứu hộ phải chứa (hiện chỉ có cb\\drivers)."""
-    return tree_bytes(sysx, src_root + "cb\\drivers")
+    """Phần chủ shop bỏ thêm vào bộ cài mà phân vùng cứu hộ phải chứa: cb\\drivers + cb\\os\\firstboot.d (gói cài VGA .exe có thể nặng cả GB)."""
+    return tree_bytes(sysx, src_root + "cb\\drivers") + tree_bytes(sysx, src_root + "cb\\os\\firstboot.d")
 
 
 def find_recovery(sysx):
