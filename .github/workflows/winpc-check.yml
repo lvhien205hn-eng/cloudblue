@@ -1,0 +1,37 @@
+# Kiểm bộ tạo ISO "CloudBlue PC" (thư mục winpc/) trên máy Windows thật của GitHub mỗi khi winpc/ đổi.
+# CHỈ CHẠY THỬ — không build, không đưa gì lên web, không đụng máy thật nào:
+#   soát cú pháp tao-iso.ps1 bằng Windows PowerShell 5.1, thử từng hàm (tải + kiểm oscdimg, giải nén gói driver…),
+#   rồi chạy cả tao-iso.ps1 tới lúc ra file ISO với 2 "ISO Windows" giả lập và mở ISO đó ra kiểm.
+# Kết quả: trang Actions → lần chạy mới nhất → phần tóm tắt (winpc check: DAT / CHUA DAT). Lần chạy luôn "xanh" để không gửi thư báo lỗi.
+name: Check winpc ISO builder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "winpc/**"
+      - ".github/workflows/winpc-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: winpc-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      # giữ nguyên từng byte như trên GitHub (không đổi xuống dòng) để mã kiểm manifest khớp
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - name: Run winpc/tests/ci/check.ps1 (Windows PowerShell 5.1)
+        shell: cmd
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File winpc\tests\ci\check.ps1
