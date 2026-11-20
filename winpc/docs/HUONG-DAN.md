@@ -1,4 +1,4 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 20.11a)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 20.11b)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
@@ -31,12 +31,12 @@ Trên **máy tính Windows 10 / 11 đang có các file ISO Windows gốc** (ổ 
 1. Web › Máy PC › **📀 Lệnh tạo ISO** › **Copy lệnh**.
 2. Chuột phải nút Start › **Windows PowerShell (Admin)** hoặc **Terminal (Admin)** — *không dùng CMD*.
 3. Dán lệnh, Enter. Script sẽ hỏi lần lượt:
-   - đường dẫn từng file ISO (kéo thả file vào cửa sổ rồi Enter; xong thì Enter trống);
-   - thư mục thêm (driver, ảnh nền riêng… — mục D). Có thư mục tên `cb-them` nằm cạnh file ISO thì script tự lấy, không hỏi;
-   - **mã đăng ký** (chuột phải để dán; mã không hiện ra màn hình);
-   - nếu ISO có nhiều phiên bản (Home, Pro…): dùng bản số mấy (Enter = bản Pro);
+   - đường dẫn từng file ISO (kéo thả file vào cửa sổ rồi Enter; xong thì Enter trống) — **chỉ file `.iso`**, driver hỏi sau;
+   - **mã đăng ký** (chuột phải để dán; mã không hiện ra màn hình). Từ lần chạy thứ 2 trên cùng máy: **bấm Enter là dùng lại mã lần trước**;
+   - với **từng ISO**: nếu ISO có nhiều phiên bản (Home, Pro…) thì dùng bản số mấy (Enter = bản Pro); rồi **driver riêng cho bản Windows đó** —
+     kéo thả file driver (`.exe`, `.zip`) hoặc thư mục driver vào cửa sổ rồi Enter, từng cái một; bản không cần driver / đã kéo hết thì **Enter trống** (xem mục D);
    - bản Windows **mặc định** khi cài từ USB (Enter = bản mới nhất; gõ số để chọn 1511).
-4. Chờ 15–40 phút. Cuối cùng hiện khung **TÓM TẮT** và file `CloudBlue-PC.iso`.
+4. Chờ 5–40 phút tuỳ máy. Cuối cùng hiện khung **TÓM TẮT** và file `CloudBlue-PC.iso`.
 
 Script chỉ **đọc** ISO gốc và tạo thư mục làm việc + file ISO mới; không sửa ISO gốc, không đụng ổ đĩa của máy đang chạy.
 Chép cả khung TÓM TẮT gửi hỗ trợ nếu có dòng `(!)` hoặc `CHUA DAT`.
@@ -47,7 +47,9 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
 |---|---|
 | `-TaiKhoan Khach -MatKhau "abc123"` | tài khoản Windows tạo sẵn (mặc định `PC`, không mật khẩu, tự đăng nhập) |
 | `-Out D:\CloudBlue-PC.iso -Work D:\cb-work` | nơi ghi ISO / thư mục làm việc (không có dấu cách) |
-| `-Them D:\cb-them` | thư mục thêm: driver, lệnh chạy lần đầu, ảnh nền riêng (xem mục D) |
+| `-Them D:\cb-them` | thư mục thêm: driver chung, lệnh chạy lần đầu, ảnh nền riêng (xem mục D) |
+| `-Driver "2=D:\drv\lan.zip","2=D:\drv\vga.exe"` | driver riêng cho bản Windows của **ISO thứ 2** mà không cần kéo thả (số = thứ tự ISO) |
+| `-KhongHoi` | không hỏi gì: mọi lựa chọn lấy mặc định, mã đăng ký lấy của lần chạy trước (dùng khi chạy tự động) |
 | `-KhongKhoaChung` | không điền khoá cài đặt chung (xem mục E) |
 
 ---
@@ -110,7 +112,11 @@ C:\CloudBluePC\agent\cbpc.cmd log
 
 ## D. Driver, ảnh nền, lệnh chạy lần đầu
 
-Tạo thư mục tên **`cb-them`** ngay cạnh các file ISO (script tự tìm thấy). Bên trong:
+**Cách nhanh nhất — kéo thả lúc tạo ISO.** Ở bước 5 script hỏi riêng cho từng bản Windows (`DRIVER rieng cho ban WINDOWS 1511 nay…`):
+kéo file driver (`.exe`, `.zip`, `.7z`, `.rar`, `.cab`) hoặc cả thư mục driver vào cửa sổ PowerShell rồi Enter, từng cái một; hết thì Enter trống.
+Driver kéo ở bản nào thì **chỉ nạp khi cài bản đó** (kéo ở 1511 thì cài 22H2 không dính). Ví dụ bản 1511: kéo gói VGA NVIDIA `.exe`, Enter, kéo gói driver mạng, Enter, Enter trống.
+
+**Cách cho người dùng lâu dài — thư mục `cb-them`** (driver dùng chung nhiều bản, lệnh chạy lần đầu, ảnh nền riêng). Tạo thư mục tên **`cb-them`** ngay cạnh các file ISO (script tự tìm thấy). Bên trong:
 
 ```
 cb-them\
@@ -130,15 +136,15 @@ cb-them\
 dism /online /export-driver /destination:D:\drv-1511
 ```
 
-(đổi `D:\drv-1511` thành thư mục bạn muốn; thư mục phải có sẵn). Chép cả thư mục đó vào `cb-them\drivers\1511\`. Cách này lấy đủ card mạng, Wi-Fi, VGA, âm thanh… đúng loại máy, ở đúng dạng bộ cài cần. Dàn có nhiều loại máy thì xuất ở mỗi loại 1 lần, bỏ chung vào `drivers\1511\`.
+(đổi `D:\drv-1511` thành thư mục bạn muốn; thư mục phải có sẵn). Lúc tạo ISO **kéo cả thư mục đó** vào câu hỏi driver của bản 1511 (hoặc chép vào `cb-them\drivers\1511\`). Cách này lấy đủ card mạng, Wi-Fi, VGA, âm thanh… đúng loại máy, ở đúng dạng bộ cài cần. Dàn có nhiều loại máy thì xuất ở mỗi loại 1 lần, bỏ chung vào `drivers\1511\`.
 
-*Hoặc bỏ thẳng gói driver bạn đang có:*
+*Hoặc đưa thẳng gói driver bạn đang có* (kéo thả lúc tạo ISO, hoặc bỏ vào `cb-them\drivers\1511\`):
 
-- **Thư mục có file `.inf`** (gói driver đã giải nén): bỏ vào `drivers\1511\<tên gì cũng được>\`.
-- File **`.zip`**: script tự giải nén.
-- Gói **VGA NVIDIA `.exe`** (tên kiểu `466.77-notebook-win10-64bit-international-whql.exe`): bỏ nguyên file vào `drivers\1511\`. Gói này không nạp trước được, nên bộ cài sẽ **tự cài im lặng ở lần đăng nhập đầu** (mất vài phút, màn hình nháy 1–2 lần là bình thường).
-- File **`.exe` khác** (card mạng, Wi-Fi…): script thử giải nén **nếu máy tạo ISO có cài 7-Zip**. Không giải nén ra được file `.inf` thì script báo ở khung TÓM TẮT — khi đó dùng cách xuất driver ở trên.
-- Khung TÓM TẮT ghi `DRIVER 1511: N file .inf`. Ghi **0 file .inf** nghĩa là driver đó không được nạp.
+- **Thư mục có file `.inf`** (gói driver đã giải nén): dùng được ngay.
+- File **`.zip`, `.cab`**: script tự giải nén.
+- Gói **VGA NVIDIA `.exe`** (tên kiểu `466.77-notebook-win10-64bit-international-whql.exe`): đưa nguyên file. Gói này không nạp trước được, nên bộ cài sẽ **tự cài im lặng ở lần đăng nhập đầu** (mất vài phút, màn hình nháy 1–2 lần là bình thường). Khung TÓM TẮT ghi dòng `VGA NVIDIA …`.
+- File **`.exe`, `.7z`, `.rar` khác** (card mạng, Wi-Fi…): script thử giải nén bằng **7-Zip** (nếu máy tạo ISO có cài) rồi bằng công cụ có sẵn của Windows. Lấy ra được file `.inf` thì dùng; **không lấy ra được thì script bỏ gói đó và báo dòng `(!) Goi driver …` ở khung TÓM TẮT** — khi đó cài 7-Zip rồi chạy lại, hoặc dùng cách xuất driver ở trên.
+- Khung TÓM TẮT ghi mỗi thư mục driver 1 dòng, ví dụ `DRIVER 1511: 12 file .inf - chi nap khi cai ban 1511`. **Không có dòng `DRIVER` nào cho bản đó** nghĩa là không driver nào được nạp.
 - Driver mạng cho 1511 là **bắt buộc**: thiếu thì máy không có mạng, không lên web được.
 - Máy nối mạng bằng **Wi-Fi** thì ngoài driver còn phải có tên mạng + mật khẩu: bộ cài chưa tự làm việc này, hỏi hỗ trợ để thêm lệnh vào `firstboot.d`. Máy cắm dây LAN thì không cần.
 
@@ -167,6 +173,8 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 | Hiện tượng | Xem / làm |
 |---|---|
 | Tạo ISO dừng ở dòng `!! DUNG:` | chụp từ dòng `== ` gần nhất tới đó, gửi hỗ trợ |
+| Khung TÓM TẮT ghi `ISO: CHUA dong` | chưa lấy được công cụ đóng ISO (`oscdimg`) của Microsoft — dòng `(!)` ghi lý do; gửi cả khung cho hỗ trợ rồi chạy lại lệnh |
+| Khung TÓM TẮT có `(!) Goi driver …` | gói driver đó không dùng được (xem mục D) — các phần khác vẫn bình thường |
 | Khởi động USB vào thẳng bộ cài Windows thường | chèn boot.wim không thành công hoặc USB ghi bằng công cụ sửa file — gửi khung TÓM TẮT |
 | Cài xong nhưng không lên web | tại máy: `cbpc.cmd status` và `cbpc.cmd log`; kiểm tra mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO`) |
 | Máy báo "cần mã đăng ký" sau khi bạn tự cài lại bằng cách khác | web › Sửa máy › **🔓 Cho đăng ký lại** (mở 6 giờ) |
