@@ -477,5 +477,40 @@ rc, ui, inst = run(fs2)
 win = next(p.vol for d in fs2.fdisks for p in d.slots if p.vol and "windows\\cb-image.txt" in p.vol.files)
 ck("tắt hẳn khoá (off) → không giữ khoá cũ", rc == 0 and "<ProductKey>" not in win.files.get("windows\\panther\\unattend.xml", "x<ProductKey>"))
 
+print("22. Gói cài lần đầu riêng từng bản Windows (os\\firstboot.d\\<bản>): chỉ chép bản đang cài vào ổ C:, phân vùng cứu hộ giữ đủ")
+FB = ("cb\\os\\firstboot.d\\10-chung.cmd", "cb\\os\\firstboot.d\\cong-cu\\tool.txt", "cb\\os\\firstboot.d\\1511\\10-nvidia-vga.cmd",
+      "cb\\os\\firstboot.d\\1511\\nvidia-vga-466.77.exe", "cb\\os\\firstboot.d\\22h2\\20-app.cmd")
+def fb_media(fs, cfg):
+    u = usb(fs, cfg); v = u.slots[0].vol
+    for k in FB: v.put(k, "x")
+    fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+def fb_on(vol, prefix): return sorted(k[len(prefix):] for k in vol.files if k.startswith(prefix))
+def fb_vols(fs):
+    win = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and "windows\\cb-image.txt" in p.vol.files)
+    rec = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+    return win, rec
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+rc, ui, inst = run(fs)
+win, rec = fb_vols(fs)
+ck("cài 22H2: ổ C: có script chung + thư mục thường + thư mục 22h2, KHÔNG có gói của bản 1511", rc == 0 and fb_on(win, "cloudbluepc\\os\\firstboot.d\\")
+   == ["10-chung.cmd", "22h2\\20-app.cmd", "cong-cu\\tool.txt"], fb_on(win, "cloudbluepc\\os\\firstboot.d\\"))
+ck("cài 22H2: phân vùng cứu hộ vẫn giữ gói của MỌI bản", fb_on(rec, "cb\\os\\firstboot.d\\")
+   == ["10-chung.cmd", "1511\\10-nvidia-vga.cmd", "1511\\nvidia-vga-466.77.exe", "22h2\\20-app.cmd", "cong-cu\\tool.txt"], fb_on(rec, "cb\\os\\firstboot.d\\"))
+ck("phần còn lại của os\\ vẫn chép đủ", all(k in win.files for k in ("cloudbluepc\\os\\provision.cmd", "cloudbluepc\\os\\unattend.tpl.xml")))
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+rc, ui, inst = run(fs, ["2", "\r"])
+win, rec = fb_vols(fs)
+ck("cài 1511: ổ C: có gói 1511 (cả file .exe), KHÔNG có thư mục 22h2", rc == 0 and fb_on(win, "cloudbluepc\\os\\firstboot.d\\")
+   == ["10-chung.cmd", "1511\\10-nvidia-vga.cmd", "1511\\nvidia-vga-466.77.exe", "cong-cu\\tool.txt"], fb_on(win, "cloudbluepc\\os\\firstboot.d\\"))
+fs = FakeSys("uefi"); cfg = cfg0()
+d, recp, winp = cb_layout(fs, cfg, job0())
+for k in FB: recp.vol.put(k, "x")
+job = json.loads(recp.vol.files["cb\\job.json"]); job["win"] = {"offset": winp.offset, "size": winp.size}; recp.vol.put("cb\\job.json", json.dumps(job))
+rc, ui, inst = run(fs)
+win, rec = fb_vols(fs)
+ck("cài lại từ xa sang 1511 (từ phân vùng cứu hộ): ổ C: nhận gói 1511, không nhận 22h2; phân vùng cứu hộ còn đủ", rc == 0
+   and fb_on(win, "cloudbluepc\\os\\firstboot.d\\") == ["10-chung.cmd", "1511\\10-nvidia-vga.cmd", "1511\\nvidia-vga-466.77.exe", "cong-cu\\tool.txt"]
+   and "cb\\os\\firstboot.d\\22h2\\20-app.cmd" in rec.files, (rc, fb_on(win, "cloudbluepc\\os\\firstboot.d\\")))
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

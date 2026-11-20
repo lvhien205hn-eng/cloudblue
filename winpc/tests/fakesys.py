@@ -207,13 +207,15 @@ class FakeSys:
         vd, rd = self._need_fs(dst); vd.put(rd, vs.files[rs])
         if show: show(1, 1, 1)
 
-    def copy_tree(self, src, dst):
+    def copy_tree(self, src, dst, skip=None):
         vs, rs = self._res(src)
         if not vs: return 0
         vd, rd = self._need_fs(dst)
         n = 0
         for k, data in list(vs.files.items()):
             if k.startswith(rs + "\\"):
+                dirs = k[len(rs) + 1:].split("\\")[:-1]
+                if skip and any(skip("\\".join(dirs[:i + 1])) for i in range(len(dirs))): continue
                 vd.put(rd + k[len(rs):], data); n += 1
         return n
 
