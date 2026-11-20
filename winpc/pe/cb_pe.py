@@ -23,7 +23,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "20.11c"
+PE_VER = "20.11d"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -181,8 +181,11 @@ class Installer:
         """Đưa phần mềm CloudBlue + file trả lời vào Windows vừa bung."""
         base = W + ":\\CloudBluePC"
         self.log("Dua phan mem CloudBlue vao Windows moi ...")
+        def other_os(rel):                                   # os\firstboot.d\<tên bản Windows KHÁC> (vd gói VGA 700MB của bản 1511 khi đang cài 22H2) → không chép vào ổ C:
+            p = rel.lower().split("\\")
+            return len(p) == 2 and p[0] == "firstboot.d" and not C.folder_applies(p[1], (image or {}).get("id"))
         for sub in ("os", "agent", "lib", "py"):
-            if self.s.dry or self.s.isdir(src.p("cb\\" + sub)): self.s.copy_tree(src.p("cb\\" + sub), base + "\\" + sub)
+            if self.s.dry or self.s.isdir(src.p("cb\\" + sub)): self.s.copy_tree(src.p("cb\\" + sub), base + "\\" + sub, other_os if sub == "os" else None)
         self.s.makedirs(base + "\\logs")
         C.save_json(self.s, base + "\\cb.json", C.recovery_cfg(cfg))
         C.save_json(self.s, base + "\\seed.json", seed)
