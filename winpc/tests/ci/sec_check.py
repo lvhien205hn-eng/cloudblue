@@ -182,10 +182,8 @@ def main():
         hole = [k for k in ("doc_ma_may", "doc_ma_dang_ky", "sua_agent", "sua_provision", "ghi_goc") if before.get(k)]
         info("TRUOC khi khoa, tai khoan thuong lam duoc: " + ", ".join(k for k, v in before.items() if v is True and not k.startswith("_")))
         ck("TRUOC khi khoa: tai khoan thuong doc duoc ma may / ma dang ky va SUA duoc file agent (lo hong co that, phep thu nhay)", len(hole) == 5, before)
-        if have_vol: ck("TRUOC khi khoa: tai khoan thuong doc + sua duoc phan vung cuu ho qua duong \\\\?\\Volume", before.get("doc_cuu_ho") and before.get("sua_bo_cai_cuu_ho"), before)
-    for rel in ("os\\cay.txt", "py\\cay.txt", "cay.txt"):       # dọn file phép thử vừa tạo
-        try: os.remove(os.path.join(BASE, rel))
-        except OSError: pass
+        if have_vol: ck("TRUOC khi khoa: tai khoan thuong DOC duoc phan vung cuu ho va TAO duoc file moi trong do (qua duong \\\\?\\Volume)", before.get("doc_cuu_ho") and before.get("ghi_cuu_ho"), before)
+    # KHÔNG dọn các file cay.txt tài khoản thường vừa tạo (nó đang là chủ sở hữu): sau khi khoá nó phải mất quyền với cả các file đó
 
     # ---- khoá bằng đúng mã của bộ cài: cb_provision.lockdown() (thư mục) + cbcore.acl_vol_cmds (phân vùng cứu hộ)
     with open(os.path.join(BASE, "cb.json"), "w") as f: json.dump({"user": "cbkhach", "password": ""}, f)
@@ -214,7 +212,8 @@ def main():
         ck("SAU khi khoa: tai khoan thuong KHONG doc duoc ma may, ma dang ky, agent, lib, nhat ky, script cua chu shop; KHONG ghi / sua duoc gi",
            all(after.get(k) is False for k in deny), {k: after.get(k) for k in deny})
         ck("SAU khi khoa: tai khoan thuong VAN doc duoc os\\cb_provision.py va chay duoc py\\python.exe (de dat anh nen luc dang nhap)", after.get("doc_os") is True and after.get("doc_py") is True, after)
-        if have_vol: ck("SAU khi khoa: tai khoan thuong KHONG doc / sua / ghi duoc phan vung cuu ho", after.get("doc_cuu_ho") is False and after.get("sua_bo_cai_cuu_ho") is False and after.get("ghi_cuu_ho") is False, after)
+        if have_vol: ck("SAU khi khoa: tai khoan thuong KHONG doc / sua / ghi duoc phan vung cuu ho (ke ca file chinh no tao truoc do)", after.get("doc_cuu_ho") is False and after.get("sua_bo_cai_cuu_ho") is False and after.get("ghi_cuu_ho") is False,
+                        {k: after.get(k) for k in ("doc_cuu_ho", "sua_bo_cai_cuu_ho", "ghi_cuu_ho")})
         ck("tai khoan thuong chay provision.cmd logon (lenh luc dang nhap): chay duoc, nhat ky chuyen sang ho so nguoi dung", after.get("_prov_rc") == 0 and after.get("_prov_out") is True, {k: v for k, v in after.items() if k.startswith("_")})
         info("nhat ky pha logon cua tai khoan thuong: " + str(after.get("_prov_log")))
 
