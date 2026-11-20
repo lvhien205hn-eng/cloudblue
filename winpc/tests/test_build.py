@@ -102,6 +102,43 @@ ck("chạy lại lần 2 không lỗi, không nhân đôi", open(os.path.join(fb
 for d in ("drivers", os.path.join("os", "firstboot.d")): shutil.rmtree(os.path.join(out, "cb", d))
 cfg = B.layout(json.loads(json.dumps(P)))
 
+print("1b. Driver người dùng đưa riêng cho từng bản Windows (tao-iso.ps1 chép vào cb\\drivers\\_img<số thứ tự ISO>)")
+drv = os.path.join(out, "cb", "drivers")
+w(os.path.join(drv, "_img1", NV1), b"N" * 4000)                                      # ISO thứ 1 = bản 1511: gói VGA NVIDIA để nguyên file
+w(os.path.join(drv, "_img1", "nvidia-vga-VGA_cua_toi.exe"), b"V" * 100)               # gói NVIDIA bị đổi tên, tao-iso.ps1 đã nhận ra và đánh dấu
+w(os.path.join(drv, "_img1", "Driver_WLAN", "netrtwlane.inf"), "inf"); w(os.path.join(drv, "_img1", "Driver_WLAN", "rtwlane.sys"), "sys")
+w(os.path.join(drv, "_img2", "lan", "e1d68x64.inf"), "inf")                          # ISO thứ 2 = bản 22h2
+w(os.path.join(drv, "_img9", "x", "y.inf"), "inf")                                   # số lạ (không có ISO thứ 9)
+w(os.path.join(drv, "rac", "readme.txt"), "khong co inf")
+P6 = dict(json.loads(json.dumps(P)), info=os.path.join(tmp, "build-info.txt"))
+B.layout(P6)
+info6 = open(P6["info"], "rb").read().decode("ascii").split("\r\n")
+ck("_img1 → drivers\\1511, _img2 → drivers\\22h2 (đúng thứ tự ISO), không còn thư mục _img1 / _img2", os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN", "netrtwlane.inf"))
+   and os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN", "rtwlane.sys")) and os.path.isfile(os.path.join(drv, "22h2", "lan", "e1d68x64.inf"))
+   and not os.path.exists(os.path.join(drv, "_img1")) and not os.path.exists(os.path.join(drv, "_img2")), os.listdir(drv))
+c6 = open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read().decode("ascii")
+ck("gói VGA NVIDIA kéo thả cho bản 1511 (cả file bị đổi tên đã đánh dấu nvidia-vga-) → cài im lặng ở lần đăng nhập đầu, CHỈ bản 1511",
+   os.path.isfile(os.path.join(fb, "1511", NV1)) and os.path.isfile(os.path.join(fb, "1511", "nvidia-vga-VGA_cua_toi.exe")) and c6.count("-s -noreboot") == 2
+   and NV1 in c6 and "nvidia-vga-VGA_cua_toi.exe" in c6 and not os.path.exists(os.path.join(fb, "50-vga-nvidia.cmd")) and not os.path.exists(os.path.join(drv, "1511", NV1)), c6)
+ck("khung tóm tắt: mỗi thư mục driver 1 dòng, ghi rõ nạp cho bản nào", "DRIVER 1511: 1 file .inf - chi nap khi cai ban 1511" in info6 and "DRIVER 22h2: 1 file .inf - chi nap khi cai ban 22h2" in info6
+   and "DRIVER _img9: 1 file .inf - nap cho moi ban" in info6 and sum("VGA NVIDIA" in x and "(chi ban 1511)" in x for x in info6) == 2, info6)
+ck("thư mục có file mà không có .inf nào → dòng cảnh báo (!)", "(!) DRIVER rac: co 1 file nhung KHONG co file .inf nao - khong nap duoc" in info6, info6)
+ck("bộ cài chỉ nạp driver đúng bản: 1511 dùng thư mục 1511, không dùng 22h2", C.folder_applies("1511", "1511") and not C.folder_applies("22h2", "1511")
+   and not C.folder_applies("1511", "22h2") and C.folder_applies("_img9", "1511") and C.folder_applies("rac", "22h2"))
+w(os.path.join(drv, "_img1", "Driver_WLAN", "moi.inf"), "inf"); w(os.path.join(drv, "_img1", "le.zip"), b"zip")
+got = B.adopt_driver_drops(os.path.join(out, "cb"), cfg["images"])
+ck("thư mục tên bản đã có sẵn → gộp vào, trùng tên thì thêm đuôi _2 (không đè)", got == {"1511": 2} and os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN", "netrtwlane.inf"))
+   and os.path.isfile(os.path.join(drv, "1511", "Driver_WLAN_2", "moi.inf")) and os.path.isfile(os.path.join(drv, "1511", "le.zip")) and not os.path.exists(os.path.join(drv, "_img1")), (got, os.listdir(os.path.join(drv, "1511"))))
+w(os.path.join(drv, "trong", "con", ".giu"), b""); os.remove(os.path.join(drv, "trong", "con", ".giu"))
+rep6 = B.driver_report(os.path.join(out, "cb"))
+ck("thư mục driver rỗng → dọn đi, không ghi dòng nào", not os.path.exists(os.path.join(drv, "trong")) and not any("trong" in x for x in rep6)
+   and "DRIVER 1511: 2 file .inf - chi nap khi cai ban 1511" in rep6, rep6)
+w(os.path.join(drv, "le.inf"), "inf")
+ck("file .inf để lẻ ngay trong drivers → ghi là nạp cho mọi bản", B.driver_report(os.path.join(out, "cb"))[0] == "DRIVER (file le trong drivers): 1 file .inf - nap cho moi ban")
+ck("không có thư mục drivers → không lỗi", B.adopt_driver_drops(os.path.join(tmp, "khong-co"), cfg["images"]) == {} and B.driver_report(os.path.join(tmp, "khong-co")) == [])
+for d in ("drivers", os.path.join("os", "firstboot.d")): shutil.rmtree(os.path.join(out, "cb", d))
+cfg = B.layout(json.loads(json.dumps(P)))
+
 print("2. Chạy lại / đổi tham số")
 P2 = json.loads(json.dumps(P)); P2["enroll_key"] = ""; P2["images"] = [P["images"][1]]
 cfg = B.layout(P2)
