@@ -312,12 +312,24 @@ okx, err = xml_ok(u2)
 ck("ký tự đặc biệt trong tên / mật khẩu được mã hoá XML", okx and "A&amp;B" in u2 and "p&lt;w&gt;&quot;" in u2 and "<UILanguage>vi-VN</UILanguage>" in u2, err)
 ck("bật generic_key + đúng phiên bản → có khoá cài đặt chung của Pro", "<ProductKey>VK7JG-NPHTM-C97JM-9MPGT-3V66T</ProductKey>" in u2)
 ck("phiên bản lạ → không điền khoá", "<ProductKey>" not in C.make_unattend(TPL, {"edition": "EnterpriseS"}, {"generic_key": True}, "x1"))
-_pro = lambda ver: {"edition": "Professional", "version": ver}
+_pro = lambda ver: {"edition": "Professional", "version": ver, "name": "Windows 10 Pro"}
 ck("mặc định (auto): bản 1511 Pro → điền khoá cài đặt chung (màn hình cài lần đầu của 1511 dừng hỏi key)", "<ProductKey>VK7JG-NPHTM-C97JM-9MPGT-3V66T</ProductKey>" in C.make_unattend(TPL, _pro("10.0.10586.0"), {}, "x1"))
 ck("mặc định (auto): bản 22H2 → không điền khoá", "<ProductKey>" not in C.make_unattend(TPL, _pro("10.0.19045.2965"), {}, "x1") and "<ProductKey>" not in C.make_unattend(TPL, _pro(""), {}, "x1"))
 ck("auto: 1511 nhưng phiên bản lạ → không điền", "<ProductKey>" not in C.make_unattend(TPL, {"edition": "ProfessionalN", "version": "10.0.10586.0"}, {"generic_key": "auto"}, "x1"))
 ck("tắt (off / false) → 1511 cũng không điền", "<ProductKey>" not in C.make_unattend(TPL, _pro("10.0.10586.0"), {"generic_key": "off"}, "x1") and "<ProductKey>" not in C.make_unattend(TPL, _pro("10.0.10586.0"), {"generic_key": False}, "x1"))
-ck("bật (on) → 22H2 cũng điền; Home dùng đúng khoá Home", "VK7JG" in C.make_unattend(TPL, _pro("10.0.19045.1"), {"generic_key": "on"}, "x1") and "<ProductKey>YTMG3-N6DKC-DKB77-7M9GH-8HVX7</ProductKey>" in C.make_unattend(TPL, {"edition": "Core", "version": "10.0.10586.0"}, {}, "x1"))
+ck("bật (on) → 22H2 cũng điền; Home dùng đúng khoá Home", "VK7JG" in C.make_unattend(TPL, _pro("10.0.19045.1"), {"generic_key": "on"}, "x1") and "<ProductKey>YTMG3-N6DKC-DKB77-7M9GH-8HVX7</ProductKey>" in C.make_unattend(TPL, {"edition": "Core", "version": "10.0.10586.0", "name": "Windows 10 Home"}, {}, "x1"))
+ck("auto: bản 1511 TUỲ BIẾN (Lite, Premium, có tên người làm…) → KHÔNG tự điền khoá", not any("<ProductKey>" in C.make_unattend(TPL, {"edition": "Professional", "version": "10.0.10586.0", "name": n}, {}, "x1")
+   for n in ("Win10 Lite 1511 x64", "Windows 10 Pro Lite", "Windows 10 Pro 1511 by Abc", "", None)))
+ck("bản tuỳ biến mà bật hẳn (on) → vẫn điền", "VK7JG" in C.make_unattend(TPL, {"edition": "Professional", "version": "10.0.10586.0", "name": "Win10 Lite 1511"}, {"generic_key": "on"}, "x1"))
+ck("is_stock_name", all(C.is_stock_name(n) for n in ("Windows 10 Pro", "Windows 10 Home Single Language", "Windows 10 Pro N for Workstations", "windows 11 enterprise", "Windows 10 Enterprise LTSB"))
+   and not any(C.is_stock_name(n) for n in ("Windows 10", "Win10 Pro", "Windows 10 Pro 22H2 Premium V5", "Windows 10 Lite", "Windows 7 Pro", "", None)))
+ck("find_unattend_key: đọc khoá trong file trả lời cũ (2 kiểu viết), không có → rỗng",
+   C.find_unattend_key("<x><ProductKey>w269n-wfgwx-yvc9b-4j6c9-t83gx</ProductKey></x>") == "W269N-WFGWX-YVC9B-4J6C9-T83GX"
+   and C.find_unattend_key("<UserData><ProductKey>\n  <Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key><WillShowUI>Never</WillShowUI></ProductKey></UserData>") == "VK7JG-NPHTM-C97JM-9MPGT-3V66T"
+   and C.find_unattend_key("<ProductKey></ProductKey>") == "" and C.find_unattend_key("") == "" and C.find_unattend_key(None) == "" and C.find_unattend_key("<ProductKey>ABCDE-12345</ProductKey>") == "")
+ck("khoá có sẵn của bản Windows được giữ (kể cả 22H2); tắt hẳn (off) thì bỏ; khoá sai dạng thì bỏ", "<ProductKey>AAAAA-BBBBB-CCCCC-DDDDD-EEEEE</ProductKey>" in C.make_unattend(TPL, _pro("10.0.19045.1"), {}, "x1", "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE")
+   and "<ProductKey>" not in C.make_unattend(TPL, _pro("10.0.19045.1"), {"generic_key": "off"}, "x1", "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE")
+   and "<ProductKey>" not in C.make_unattend(TPL, _pro("10.0.19045.1"), {}, "x1", "<x>&bad"))
 ck("key_mode / build_no", C.key_mode({}) == "auto" and C.key_mode({"generic_key": True}) == "on" and C.key_mode({"generic_key": "OFF"}) == "off" and C.key_mode({"generic_key": "la"}) == "auto"
    and C.build_no("10.0.10586.0") == 10586 and C.build_no("x") == 0 and C.build_no(None) == 0)
 ck("job_valid", C.job_valid(job0()) and not C.job_valid(job0(attempts=3)) and not C.job_valid(job0(state="done")) and not C.job_valid(job0(os="../x")) and not C.job_valid(None) and not C.job_valid(job0(wipe="x")))
@@ -378,7 +390,7 @@ rc, ui, inst = run(fs)
 dc = next((c for c in fs.cmds if "/Add-Driver" in c), [])
 ck("có driver → gọi dism nạp vào Windows mới, dùng chỗ tạm trên ổ đích (không dùng ổ RAM của WinPE)", rc == 0 and dc[:2] == ["dism", "/English"] and "/Recurse" in dc
    and any(x.lower().startswith("/image:") for x in dc) and any(x.lower().endswith(":\\cb-scratch") and x.lower().startswith("/scratchdir:") for x in dc)
-   and next(x for x in dc if x.startswith("/Driver:")).lower().endswith("\\cb\\drivers"), dc)
+   and next(x for x in dc if x.startswith("/Driver:")).lower().endswith("\\cb\\drivers\\lan"), dc)
 ck("dọn chỗ tạm sau khi nạp", any(c[:5] == ["cmd", "/c", "rd", "/s", "/q"] and c[5].lower().endswith(":\\cb-scratch") for c in fs.cmds), [c for c in fs.cmds if c[0] == "cmd"])
 ck("nạp driver SAU khi bung Windows xong", [i for i, c in enumerate(fs.cmds) if "/Apply-Image" in c][0] < fs.cmds.index(dc), [c[:3] for c in fs.cmds])
 recv = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
@@ -392,7 +404,66 @@ d, rec, win = cb_layout(fs, cfg, job=None)
 rec.vol.put("cb\\drivers\\vga\\nv.inf", "inf"); rec.vol.put("cb\\job.json", json.dumps(job0(win, wipe="system", os="1511")))
 rc, ui, inst = run(fs)
 dc = next((c for c in fs.cmds if "/Add-Driver" in c), [])
-ck("cài lại từ phân vùng cứu hộ: cũng nạp driver nằm trên phân vùng cứu hộ", rc == 0 and bool(dc) and next(x for x in dc if x.startswith("/Driver:")).lower().endswith("\\cb\\drivers") and "/Recurse" in dc, (rc, dc))
+ck("cài lại từ phân vùng cứu hộ: cũng nạp driver nằm trên phân vùng cứu hộ", rc == 0 and bool(dc) and next(x for x in dc if x.startswith("/Driver:")).lower().endswith("\\cb\\drivers\\vga") and "/Recurse" in dc, (rc, dc))
+
+print("20. Driver riêng cho từng bản Windows (cb\\drivers\\1511, cb\\drivers\\22h2)")
+def drv_media(fs, cfg):
+    u = usb(fs, cfg); v = u.slots[0].vol
+    for k in ("cb\\drivers\\doc-toi.txt", "cb\\drivers\\chung.inf", "cb\\drivers\\lan\\rt640x64.inf", "cb\\drivers\\1511\\vga\\nv_dispi.inf",
+              "cb\\drivers\\1511\\lan-cu\\e1d65x64.inf", "cb\\drivers\\22h2\\wifi\\netwtw.inf"): v.put(k, "inf")
+    fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+def drv_jobs(fs):
+    return [(next(x for x in c if x.startswith("/Driver:"))[8:].lower().split("\\cb\\drivers")[-1] or "\\", "/Recurse" in c) for c in fs.cmds if "/Add-Driver" in c]
+fs = FakeSys("uefi"); cfg = cfg0(); drv_media(fs, cfg)
+rc, ui, inst = run(fs)
+ck("cài 22H2: nạp file lẻ (không đệ quy) + thư mục chung + thư mục 22h2, KHÔNG nạp thư mục 1511", rc == 0 and drv_jobs(fs) == [("\\", False), ("\\22h2", True), ("\\lan", True)], drv_jobs(fs))
+ck("có ghi rõ thư mục bị bỏ qua", any("Driver cua ban khac (1511)" in ln for ln in inst.lines), [ln for ln in inst.lines if "river" in ln])
+fs = FakeSys("uefi"); cfg = cfg0(); drv_media(fs, cfg)
+rc, ui, inst = run(fs, ["2", "\r"])
+ck("cài 1511: nạp file lẻ + thư mục 1511 + thư mục chung, KHÔNG nạp thư mục 22h2", rc == 0 and drv_jobs(fs) == [("\\", False), ("\\1511", True), ("\\lan", True)], drv_jobs(fs))
+recv = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+ck("phân vùng cứu hộ giữ driver của MỌI bản (để sau đổi bản vẫn có)", all(k in recv.files for k in ("cb\\drivers\\1511\\vga\\nv_dispi.inf", "cb\\drivers\\22h2\\wifi\\netwtw.inf", "cb\\drivers\\lan\\rt640x64.inf", "cb\\drivers\\chung.inf")))
+ck("folder_applies: tên bản Windows chỉ khớp đúng bản; tên khác dùng chung", C.folder_applies("1511", "1511") and not C.folder_applies("1511", "22h2") and C.folder_applies("LAN", "22h2")
+   and C.folder_applies("22H2", "22h2") and C.folder_applies("22h2", "22h2-2") and not C.folder_applies("22h2-2", "22h2") and C.folder_applies("22h2-2", "22h2-2")
+   and not C.folder_applies("w11-23h2", "22h2") and not C.folder_applies("b99999", "22h2") and C.folder_applies("b99999", "b99999") and C.folder_applies("2024-driver", "1511") and C.folder_applies("vga", None))
+ck("is_os_tag", all(C.is_os_tag(x) for x in ("1511", "22h2", "22H2", "1607", "w11-24h2", "b12345", "1511-2")) and not any(C.is_os_tag(x) for x in ("lan", "vga", "intel", "2024", "h22", "", "driver-1511")))
+
+print("21. Bản Windows tuỳ biến: file trả lời có sẵn, SetupComplete.cmd có sẵn")
+import fakesys as _fk
+fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg)
+fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+rc, ui, inst = run(fs)
+win = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and "windows\\cb-image.txt" in p.vol.files)
+ua1, ua2 = win.files.get("windows\\panther\\unattend.xml", ""), win.files.get("windows\\panther\\unattend\\unattend.xml", "")
+ck("file trả lời ghi vào CẢ HAI chỗ Windows có thể đọc (Panther và Panther\\Unattend)", rc == 0 and ua1 and ua1 == ua2 and "provision.cmd specialize" in ua2)
+sc = win.files.get("windows\\setup\\scripts\\setupcomplete.cmd", b"")
+ck("tạo SetupComplete.cmd gọi phần cài agent (lưới an toàn thứ 2)", sc == b'@echo off\r\ncall "C:\\CloudBluePC\\os\\provision.cmd" setupcomplete\r\n', sc)
+
+class CustomFS(FakeSys):
+    """Ảnh Windows tuỳ biến: bung ra đã có sẵn file trả lời (kèm khoá) + SetupComplete.cmd của người làm."""
+    def run(self, argv, timeout=3600, show=False, input=None, change=True):
+        r = super().run(argv, timeout, show, input, change)
+        if argv and os.path.basename(argv[0]).lower().startswith("dism") and "/Apply-Image" in argv and r[0] == 0:
+            a = {x.split(":", 1)[0].lower(): x.split(":", 1)[1] for x in argv[1:] if x.startswith("/") and ":" in x}
+            v, rel = self._res(a["/applydir"])
+            v.put("windows\\panther\\unattend\\unattend.xml", "<unattend><settings pass='specialize'><ProductKey>W269N-WFGWX-YVC9B-4J6C9-T83GX</ProductKey></settings></unattend>")
+            v.put("windows\\setup\\scripts\\setupcomplete.cmd", b"\xef\xbb\xbf@echo off\r\necho cua nguoi lam ban Lite\r\n")
+        return r
+fs = CustomFS("uefi"); cfg = cfg0(); usb(fs, cfg)
+fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+rc, ui, inst = run(fs)
+win = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and "windows\\cb-image.txt" in p.vol.files)
+ua1, ua2 = win.files.get("windows\\panther\\unattend.xml", ""), win.files.get("windows\\panther\\unattend\\unattend.xml", "")
+ck("ảnh có sẵn Panther\\Unattend\\unattend.xml → bị thay bằng file của CloudBlue (không thì agent không được cài)", rc == 0 and ua1 == ua2 and "provision.cmd firstlogon" in ua2 and "cua nguoi lam" not in ua2)
+ck("khoá sản phẩm trong file trả lời cũ được giữ lại (bản 22H2 bình thường không điền khoá)", "<ProductKey>W269N-WFGWX-YVC9B-4J6C9-T83GX</ProductKey>" in ua1, ua1[:400])
+sc = win.files.get("windows\\setup\\scripts\\setupcomplete.cmd", b"")
+ck("SetupComplete.cmd có sẵn → giữ nguyên phần cũ, dòng gọi CloudBlue chèn lên ĐẦU, bỏ dấu BOM", sc == b'call "C:\\CloudBluePC\\os\\provision.cmd" setupcomplete\r\n@echo off\r\necho cua nguoi lam ban Lite\r\n', sc)
+ck("có ghi nhật ký 2 việc trên", any("giu lai" in ln for ln in inst.lines) and any("SetupComplete.cmd" in ln for ln in inst.lines))
+fs2 = CustomFS("uefi"); cfg2 = cfg0(generic_key="off"); usb(fs2, cfg2)
+fs2.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+rc, ui, inst = run(fs2)
+win = next(p.vol for d in fs2.fdisks for p in d.slots if p.vol and "windows\\cb-image.txt" in p.vol.files)
+ck("tắt hẳn khoá (off) → không giữ khoá cũ", rc == 0 and "<ProductKey>" not in win.files.get("windows\\panther\\unattend.xml", "x<ProductKey>"))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

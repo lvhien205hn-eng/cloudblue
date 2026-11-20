@@ -61,10 +61,46 @@ P3 = dict(json.loads(json.dumps(P)), generic_key="on", info=os.path.join(tmp, "b
 cfg3 = B.layout(P3)
 info = open(P3["info"], "rb").read().decode("ascii").split("\r\n")
 ck("ghi file tóm tắt cho tao-iso.ps1 (ASCII): 2 dòng ANH + dòng CUU_HO, có ghi chế độ khoá", len(info) == 4 and info[0].startswith("ANH 1511 | Windows 10 Pro | ban so 1 | 10.0.10586.0") and "MAC DINH" in info[0]
-   and info[0].endswith("| dien khoa cai dat chung") and info[1].startswith("ANH 22h2") and info[1].endswith("| dien khoa cai dat chung") and info[2].startswith("CUU_HO ") and info[2].endswith("khoa cai dat chung: on") and info[3] == "", info)
+   and info[0].endswith("| dien khoa cai dat chung") and info[1].startswith("ANH 22h2") and info[1].endswith("| dien khoa cai dat chung") and info[2].startswith("CUU_HO ") and "| khoa cai dat chung: on |" in info[2] and info[3] == "", info)
 au3 = open(os.path.join(out, "autounattend.xml"), encoding="utf-8").read()
 ck("autounattend.xml (bộ cài thường, người cài tự chọn phiên bản) KHÔNG BAO GIỜ kèm khoá", cfg3["generic_key"] == "on" and cfg3["default"] == "1511" and "<ProductKey>" not in au3 and "ProductKey" not in au)
+ck("ảnh nền CloudBlue mặc định đi theo bộ cài (cả đường cài bằng bộ cài Windows thường)", open(os.path.join(out, "cb", "os", "wallpaper.jpg"), "rb").read() == open(os.path.join(REPO, "os", "wallpaper.jpg"), "rb").read()
+   and os.path.isfile(os.path.join(oem, "os", "wallpaper.jpg")) and "anh nen: CloudBlue" in info[2], info[2])
+wp = os.path.join(tmp, "anh-cua-shop.PNG"); w(wp, b"PNG-RIENG")
+P4 = dict(json.loads(json.dumps(P)), wallpaper=wp, info=os.path.join(tmp, "build-info.txt"), default_index=0)
+cfg4 = B.layout(P4)
+info4 = open(P4["info"], "rb").read().decode("ascii").split("\r\n")
+ck("ảnh nền riêng của shop (.png) thay ảnh mặc định, không để lẫn 2 file", open(os.path.join(out, "cb", "os", "wallpaper.png"), "rb").read() == b"PNG-RIENG"
+   and not os.path.exists(os.path.join(out, "cb", "os", "wallpaper.jpg")) and os.path.isfile(os.path.join(oem, "os", "wallpaper.png")) and not os.path.exists(os.path.join(oem, "os", "wallpaper.jpg"))
+   and "anh nen: rieng" in info4[2], info4[2])
+ck("chọn bản mặc định theo số thứ tự (bản thứ 1 trong danh sách = 1511)", cfg4["default"] == "1511" and "MAC DINH" in info4[0], (cfg4["default"], info4[0]))
+ck("số thứ tự -1 / ngoài khoảng / sai kiểu → bản mới nhất", all(B.layout(dict(json.loads(json.dumps(P)), default_index=x))["default"] == "22h2" for x in (-1, 5, None, "1", True)))
+try: B.layout(dict(json.loads(json.dumps(P)), wallpaper=os.path.join(tmp, "anh.gif"))); _bad = False
+except C.Stop: _bad = True
+ck("ảnh nền sai loại file → dừng có lời nhắn", _bad)
 cfg = B.layout(json.loads(json.dumps(P)))                       # trả cây về như bước 1 cho các bước sau
+ck("chạy lại không có ảnh riêng → trả về ảnh CloudBlue mặc định", os.path.isfile(os.path.join(out, "cb", "os", "wallpaper.jpg")))
+NV1, NV2 = "466.77-notebook-win10-64bit-international-whql.exe", "511.23-desktop-win10-win11-64bit-international-dch-whql.exe"
+w(os.path.join(out, "cb", "drivers", "1511", NV1), b"N" * 5000); w(os.path.join(out, "cb", "drivers", "1511", "LAN", "rt640x64.inf"), "inf")
+w(os.path.join(out, "cb", "drivers", NV2), b"M" * 3000); w(os.path.join(out, "cb", "drivers", "setup.exe"), b"khac"); w(os.path.join(out, "cb", "drivers", "wifi", NV1), b"W" * 10)
+P5 = dict(json.loads(json.dumps(P)), info=os.path.join(tmp, "build-info.txt"))
+B.layout(P5)
+info5 = open(P5["info"], "rb").read().decode("ascii").split("\r\n")
+fb = os.path.join(out, "cb", "os", "firstboot.d")
+c1511 = open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read()
+ck("gói VGA NVIDIA .exe trong drivers\\1511 → chuyển sang firstboot.d\\1511 (không nạp kiểu driver)", open(os.path.join(fb, "1511", NV1), "rb").read() == b"N" * 5000
+   and not os.path.exists(os.path.join(out, "cb", "drivers", "1511", NV1)) and os.path.isfile(os.path.join(out, "cb", "drivers", "1511", "LAN", "rt640x64.inf")))
+ck("sinh file lệnh cài im lặng (-s -noreboot), cài xong xoá bản chép, ASCII + CRLF", c1511 == ('@echo off\r\nrem CloudBlue PC: cai driver VGA NVIDIA im lang o lan dang nhap dau (file nay do bo tao ISO tu sinh)\r\n'
+   'if exist "%~dp0' + NV1 + '" (\r\n  "%~dp0' + NV1 + '" -s -noreboot\r\n  del /f /q "%~dp0' + NV1 + '"\r\n)\r\nexit /b 0\r\n').encode("ascii"), c1511)
+croot = open(os.path.join(fb, "50-vga-nvidia.cmd"), "rb").read().decode("ascii")
+ck("gói NVIDIA để ở gốc drivers hoặc thư mục không phải tên bản Windows → cài cho MỌI bản (firstboot.d gốc)", os.path.isfile(os.path.join(fb, NV2)) and os.path.isfile(os.path.join(fb, NV1))
+   and NV2 in croot and NV1 in croot and croot.count("-s -noreboot") == 2 and not os.path.exists(os.path.join(out, "cb", "drivers", "wifi", NV1)))
+ck("file .exe khác (không phải gói NVIDIA) để nguyên", open(os.path.join(out, "cb", "drivers", "setup.exe"), "rb").read() == b"khac")
+ck("khung tóm tắt ghi rõ gói VGA nào cài kiểu gì + cỡ cứu hộ tính cả gói đó", sum("VGA NVIDIA" in x for x in info5) == 3 and any("(chi ban 1511)" in x for x in info5) and any("(moi ban)" in x for x in info5), info5)
+B.layout(P5)
+ck("chạy lại lần 2 không lỗi, không nhân đôi", open(os.path.join(fb, "1511", "50-vga-nvidia.cmd"), "rb").read() == c1511 or not os.path.exists(os.path.join(out, "cb", "drivers", "1511", NV1)))
+for d in ("drivers", os.path.join("os", "firstboot.d")): shutil.rmtree(os.path.join(out, "cb", d))
+cfg = B.layout(json.loads(json.dumps(P)))
 
 print("2. Chạy lại / đổi tham số")
 P2 = json.loads(json.dumps(P)); P2["enroll_key"] = ""; P2["images"] = [P["images"][1]]

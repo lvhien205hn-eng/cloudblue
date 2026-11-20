@@ -145,5 +145,76 @@ with tempfile.TemporaryDirectory() as base:
     p2 = cb_provision.Prov(base, run, log=lambda m: None); p2.specialize(); p2.firstlogon()
     ck("mọi lệnh tác vụ đều lỗi → vẫn chạy hết, không ném lỗi (không chặn bước cài Windows)", True)
 
+print("6. Ảnh nền + script riêng theo từng bản Windows")
+def fake_reg():
+    """reg add / reg query giả: nhớ các giá trị đã ghi (để thử 'mỗi tài khoản chỉ đặt ảnh nền 1 lần')."""
+    store, calls = {}, []
+
+    def run(argv, timeout=300):
+        calls.append(list(argv))
+        if argv[:2] == ["reg", "add"]: store[(argv[2], argv[4])] = argv[8]; return 0, ""
+        if argv[:2] == ["reg", "query"]: return (0, "") if (argv[2], argv[4]) in store else (1, "khong co")
+        return 0, ""
+    return store, calls, run
+with tempfile.TemporaryDirectory() as base:
+    for sub in ("os", "agent", "py", "logs"): os.makedirs(os.path.join(base, sub))
+    open(os.path.join(base, "cb.json"), "w").write(json.dumps({"user": "PC", "password": ""}))
+    store, calls, run = fake_reg(); spi = []
+    p = cb_provision.Prov(base, run, log=lambda m: None, spi=lambda path: (spi.append(path), True)[1])
+    ck("không có file ảnh nền → không làm gì", p.wallpaper() is False and not calls and not spi)
+    wp = os.path.join(base, "os", "wallpaper.jpg"); open(wp, "wb").write(b"JPG")
+    ck("có ảnh nền → đặt kiểu phủ kín màn hình rồi gọi Windows đổi ảnh", p.wallpaper() is True and spi == [wp]
+       and store.get((r"HKCU\Control Panel\Desktop", "WallpaperStyle")) == "10" and store.get((r"HKCU\Control Panel\Desktop", "TileWallpaper")) == "0"
+       and [c[4] for c in calls if c[:2] == ["reg", "add"]][:2] == ["WallpaperStyle", "TileWallpaper"], (spi, store))
+    ck("ghi dấu lần 1 cho tài khoản này", (r"HKCU\Software\CloudBluePC", "Wallpaper") in store and (r"HKCU\Software\CloudBluePC", "Wallpaper2") not in store)
+    ck("lần chạy kế tiếp đặt lại 1 lần nữa (Windows hay trả về ảnh mặc định ở lần đăng nhập đầu) + ghi dấu lần 2", p.wallpaper() is True and len(spi) == 2 and (r"HKCU\Software\CloudBluePC", "Wallpaper2") in store)
+    ck("từ lần thứ 3 KHÔNG đặt lại → khách đổi ảnh nền thì giữ ảnh của khách", p.wallpaper() is False and p.wallpaper() is False and len(spi) == 2)
+    store, calls, run = fake_reg()
+
+    def spi_bad(path): raise OSError("khong goi duoc")
+    p = cb_provision.Prov(base, run, log=lambda m: None, spi=spi_bad)
+    ck("Windows từ chối đổi ngay → ghi thẳng vào hồ sơ (áp dụng lần đăng nhập sau) + vẫn ghi dấu", p.wallpaper() is True and store.get((r"HKCU\Control Panel\Desktop", "Wallpaper")) == wp
+       and any(c[0] == "rundll32.exe" for c in calls) and (r"HKCU\Software\CloudBluePC", "Wallpaper") in store, store)
+    store, calls, run = fake_reg(); spi = []
+    p = cb_provision.Prov(base, run, log=lambda m: None, spi=lambda path: (spi.append(path), True)[1])
+    p.firstlogon()
+    ck("firstlogon có đặt ảnh nền", spi == [wp])
+    calls.clear(); p.logon()
+    ck("logon ngay sau đó (cùng phiên đầu): đặt lại 1 lần nữa", spi == [wp, wp])
+    p.logon(); p.logon()
+    ck("các lần đăng nhập sau: không đặt lại", spi == [wp, wp])
+    store.pop((r"HKCU\Software\CloudBluePC", "Wallpaper")); store.pop((r"HKCU\Software\CloudBluePC", "Wallpaper2")); p.logon(); p.logon(); p.logon()
+    ck("tài khoản khác (chưa có dấu): cũng chỉ đặt 2 lần đầu", spi == [wp] * 4)
+    os.remove(wp); open(os.path.join(base, "os", "wallpaper.png"), "wb").write(b"PNG"); store.clear(); spi.clear()
+    ck("ảnh nền dạng .png cũng nhận", p.wallpaper() is True and spi[0].endswith("wallpaper.png"))
+with tempfile.TemporaryDirectory() as base:
+    for sub in ("os", "agent", "py", "logs"): os.makedirs(os.path.join(base, sub))
+    fb = os.path.join(base, "os", "firstboot.d")
+    for d in ("", "1511", "22h2", "ghi-chu"): os.makedirs(os.path.join(fb, d), exist_ok=True)
+    for f in ("20-chung.cmd", "10-chung.ps1", "1511/05-lan.cmd", "1511/50-vga.bat", "1511/setup.exe", "22h2/05-chi-22h2.cmd", "ghi-chu/x.cmd"):
+        open(os.path.join(fb, *f.split("/")), "w").write("x")
+    open(os.path.join(base, "seed.json"), "w").write(json.dumps({"os": "1511", "name": "CB-1"}))
+    store, calls, run = fake_reg(); envs = []
+
+    def run2(argv, timeout=300):
+        if "firstboot.d" in " ".join(argv): envs.append(os.environ.get("CB_OS"))
+        return run(argv, timeout)
+    p = cb_provision.Prov(base, run2, log=lambda m: None, spi=lambda path: True)
+    n = p.firstboot()
+    ran = [os.path.relpath(c[-1], fb).replace(os.sep, "/") for c in calls if "firstboot.d" in " ".join(c)]
+    ck("bản 1511: chạy script chung trước rồi tới thư mục 1511 (theo tên), KHÔNG chạy thư mục 22h2 / thư mục lạ / file .exe", n == 4 and ran == ["10-chung.ps1", "20-chung.cmd", "1511/05-lan.cmd", "1511/50-vga.bat"], ran)
+    ck("script đọc được biến CB_OS = tên bản đang cài", envs == ["1511"] * 4, envs)
+    ck("os_tag: đọc từ seed.json; thiếu / sai dạng → rỗng", p.os_tag() == "1511")
+    open(os.path.join(base, "seed.json"), "w").write(json.dumps({"os": "../x"})); ck("os_tag sai dạng → rỗng", p.os_tag() == "")
+    os.remove(os.path.join(base, "seed.json")); ck("không có seed.json → rỗng", p.os_tag() == "")
+with tempfile.TemporaryDirectory() as base:
+    fb = os.path.join(base, "os", "firstboot.d"); os.makedirs(os.path.join(fb, "22h2")); os.makedirs(os.path.join(fb, "22h2-2")); os.makedirs(os.path.join(base, "logs"))
+    for f in ("22h2/a.cmd", "22h2-2/b.cmd", "c.cmd"): open(os.path.join(fb, *f.split("/")), "w").write("x")
+    open(os.path.join(base, "seed.json"), "w").write(json.dumps({"os": "22h2-2"}))
+    store, calls, run = fake_reg()
+    p = cb_provision.Prov(base, run, log=lambda m: None, spi=lambda path: True); p.firstboot()
+    ran = [os.path.relpath(c[-1], fb).replace(os.sep, "/") for c in calls if "firstboot.d" in " ".join(c)]
+    ck("bản 22h2-2: chạy chung → thư mục 22h2-2 → thư mục 22h2", ran == ["c.cmd", "22h2-2/b.cmd", "22h2/a.cmd"], ran)
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
