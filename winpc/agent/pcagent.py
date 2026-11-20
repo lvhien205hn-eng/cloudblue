@@ -25,7 +25,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "20.11a"
+AGENT_VER = "20.11c"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -270,7 +270,25 @@ class Agent:
             i["err"] = str(e)[:120]
         smb = self.h.smbios()
         i["board"] = (smb.get("board") or (smb.get("vendor", "") + " " + smb.get("product", "")).strip())[:60]
+        try:                                                        # tình trạng bảo mật trên máy (cb_provision đặt mốc): khách là tài khoản thường? đã khoá quyền?
+            i["sec"] = {"std": not self.cfg.get("user_admin"), "hard": bool(self.s.exists(self.p("logs\\harden.done"))),
+                        "lock": bool(self.s.exists(self.p("logs\\lock.done")))}
+        except Exception: pass
         return i
+
+    def write_status(self):
+        """Ghi os\\status.txt — tình trạng agent KHÔNG có bí mật, tài khoản thường đọc được (thư mục os cho đọc) để chủ shop xem tại máy
+           khi máy không hiện trên web mà trên máy không còn tài khoản quản trị. Chỉ ghi khi tình trạng đổi."""
+        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "")
+        if st == getattr(self, "_last_status", None): return
+        self._last_status = st
+        lines = ["CloudBlue PC - tinh trang (ghi luc %s)" % time.strftime("%Y-%m-%d %H:%M:%S"),
+                 "Phan mem agent: %s" % AGENT_VER,
+                 "Dang ky voi he thong: %s" % (("ROI - ten tren web: %s" % (self.name or "?")) if st[0] else "CHUA (dang thu dang ky)"),
+                 "Ket noi may chu: %s" % ("duoc" if st[1] else ("CHUA DUOC - %s" % st[3][:200])),
+                 "May khong hien tren web: kiem tra day mang / driver card mang; van khong duoc thi cai lai bang USB CloudBlue."]
+        try: self.s.write_text(self.p("os\\status.txt"), "\r\n".join(lines) + "\r\n")
+        except Exception: pass
 
     # ------------------------------------------------------------------ đăng ký
     def enroll(self):
@@ -439,6 +457,11 @@ class Agent:
 
     def tick(self):
         """1 nhịp làm việc. Trả số giây nghỉ trước nhịp sau."""
+        nap = self._tick()
+        self.write_status()
+        return nap
+
+    def _tick(self):
         self.ticks += 1
         if self.rebooting: return 30
         if not self.ident:
@@ -498,6 +521,8 @@ def cmd_run(argv):
     log("=== CloudBlue PC agent %s chạy · máy %s · %s ===" % (AGENT_VER, ag.h.hostname(), "đã có mã máy" if ag.ident else "chưa đăng ký"))
     if not ag.net.url or not ag.net.key:
         log("THIẾU sb_url / sb_key trong %s — agent chờ (không làm gì)" % ag.p("cb.json"))
+    secure(ag, log)
+    t_sec = time.time()
     while True:
         try: nap = ag.tick()
         except Exception:
@@ -505,7 +530,21 @@ def cmd_run(argv):
         if ag.restart:
             if ag.h.restart_self(): return 0
             ag.restart = False
+        if time.time() - t_sec > 6 * 3600:
+            secure(ag, log); t_sec = time.time()
         time.sleep(max(1, min(900, nap)))
+
+
+def secure(ag, log):
+    """Gọi pha `system` của cb_provision: khoá lại quyền thư mục C:\\CloudBluePC + phân vùng cứu hộ, và hạ tài khoản khách xuống tài khoản thường nếu
+       lần đăng nhập đầu chưa làm xong. Agent chạy bằng SYSTEM nên làm được; lỗi thì ghi nhật ký rồi bỏ qua."""
+    prov, py = os.path.join(BASE, "os", "cb_provision.py"), os.path.join(BASE, "py", "python.exe")
+    try:
+        if os.path.isfile(prov) and os.path.isfile(py):
+            rc, out = ag.s.run([py, "-I", "-B", prov, "system"], timeout=1800)
+            if rc != 0: log("khoá quyền (cb_provision system) báo mã %s" % rc)
+    except Exception as e:
+        log("khoá quyền lỗi: %s" % e)
 
 
 def cmd_selfcheck(argv):

@@ -1,4 +1,4 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 20.11b)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 20.11c)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
@@ -45,7 +45,8 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
 
 | Tham số | Ý nghĩa |
 |---|---|
-| `-TaiKhoan Khach -MatKhau "abc123"` | tài khoản Windows tạo sẵn (mặc định `PC`, không mật khẩu, tự đăng nhập) |
+| `-TaiKhoan Khach -MatKhau "abc123"` | tài khoản Windows tạo sẵn cho khách (mặc định `PC`, không mật khẩu, tự đăng nhập). Là **tài khoản thường** — xem mục F |
+| `-KhachAdmin` | để tài khoản khách có quyền Admin (khách tự cài được mọi phần mềm, nhưng cũng phá được phần mềm quản lý trên máy đó) |
 | `-Out D:\CloudBlue-PC.iso -Work D:\cb-work` | nơi ghi ISO / thư mục làm việc (không có dấu cách) |
 | `-Them D:\cb-them` | thư mục thêm: driver chung, lệnh chạy lần đầu, ảnh nền riêng (xem mục D) |
 | `-Driver "2=D:\drv\lan.zip","2=D:\drv\vga.exe"` | driver riêng cho bản Windows của **ISO thứ 2** mà không cần kéo thả (số = thứ tự ISO) |
@@ -65,7 +66,7 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
 
 1. Màn hình đen chữ trắng **CloudBlue PC**: danh sách ổ cứng, ổ sẽ bị xoá, bản Windows sẽ cài, **đếm ngược 30 giây**.
    Phím: `Enter` = cài ngay bản mặc định · `1`–`9` = chọn bản Windows khác (ví dụ 1511) · `D` = đổi ổ đích · `A` = bật / tắt xoá cả các ổ khác · `X` = huỷ, chuyển sang bộ cài Windows thường · `C` = mở dòng lệnh. Bấm phím khác `Enter` thì đếm ngược dừng lại, khi đó phải bấm `Enter` mới cài.
-2. Tự chia ổ → bung Windows (5–20 phút) → khởi động lại 1–2 lần → vào thẳng màn hình Desktop.
+2. Tự chia ổ → bung Windows (5–20 phút) → khởi động lại 1–2 lần → vào thẳng màn hình Desktop. Vào Desktop lần đầu được 1–2 phút (cài xong driver của bạn) thì máy **tự khởi động lại thêm 1 lần** — đó là bước khoá bảo mật, hạ tài khoản khách xuống tài khoản thường (mục F).
 3. Khoảng 1 phút sau: máy hiện ở web › Máy PC, trạng thái **Chờ duyệt** → bấm **Duyệt**.
 
 Sau đó thử tiếp trên web: **🧹 Cài lại** → chọn bản kia (ví dụ 1511) → máy tự khởi động lại, cài xong lại hiện online với đúng tên cũ.
@@ -97,8 +98,10 @@ Mức xoá khi cài lại:
 
 Máy offline lúc ra lệnh: lệnh chờ, máy online lại là chạy.
 
-### C3. Lệnh tại máy
-Mở PowerShell (Admin) trên máy cho thuê:
+### C3. Xem tình trạng / lệnh tại máy
+Mở file **`C:\CloudBluePC\os\status.txt`** bằng Notepad (tài khoản khách cũng mở được): ghi máy đã đăng ký với hệ thống chưa, có nối được máy chủ không.
+
+Các lệnh dưới đây cần quyền Admin — chỉ dùng được khi tạo ISO với `-KhachAdmin` (mặc định trên máy không còn tài khoản quản trị nào, xem mục F):
 
 ```
 C:\CloudBluePC\agent\cbpc.cmd status
@@ -160,15 +163,33 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 
 - **Phân vùng cứu hộ**: mỗi máy có 1 phân vùng ẩn `CBRECOVERY` chứa bộ cài (cỡ ≈ tổng các bản Windows + 15% + 2GB; khung TÓM TẮT ghi dòng `CUU_HO … GB`). Nhờ nó mới cài lại từ xa được. Ổ đích phải lớn hơn **cỡ cứu hộ + 60GB**, nhỏ hơn thì bộ cài vẫn cài Windows nhưng bỏ phân vùng này. Máy không có phân vùng cứu hộ → web ghi "⚠ không có phân vùng cứu hộ" và muốn cài lại phải dùng USB.
 - **Bản quyền Windows**: bộ cài **không kích hoạt** Windows. Khoá sản phẩm nằm sẵn trong bản Windows (nếu người làm bản đó có để) được giữ nguyên. Với bản **gốc của Microsoft** cũ hơn 1703 (như 1511), màn hình cài lần đầu sẽ đứng chờ nhập key nên bộ cài tự điền *khoá cài đặt chung* của Microsoft cho đúng phiên bản (chỉ để qua màn hình, không kích hoạt). Bản tuỳ biến (Lite…) thì không tự điền; nếu cài bản đó mà màn hình dừng hỏi key, tạo lại ISO với `-KhoaChung`. Không muốn đụng tới khoá nào: `-KhongKhoaChung`. Kích hoạt bằng key của bạn: đặt lệnh vào `firstboot.d`.
-- **Khách có quyền Admin trên máy** thì về lý thuyết phá được phân vùng cứu hộ / phần mềm CloudBlue. Khi đó máy báo offline hoặc cài lại lỗi → cài lại bằng USB là sạch hoàn toàn. Mã đăng ký không nằm trên máy cho thuê (chỉ nằm trên USB / ISO); mỗi máy chỉ giữ mã riêng của chính nó và mã này đổi sau mỗi lần cài lại.
+- **Nếu bạn tạo ISO với `-KhachAdmin`** (khách có quyền Admin trên máy) thì khách phá được phân vùng cứu hộ / phần mềm CloudBlue trên máy đó. Khi đó máy báo offline hoặc cài lại lỗi → cài lại bằng USB là sạch hoàn toàn. Mã đăng ký không nằm trên máy cho thuê (chỉ nằm trên USB / ISO); mỗi máy chỉ giữ mã riêng của chính nó và mã này đổi sau mỗi lần cài lại.
 - **Giữ kỹ USB / file ISO**: trên đó có mã đăng ký. Đừng để khách cầm.
-- **Tài khoản Windows mặc định** `PC` không mật khẩu, tự đăng nhập. Tài khoản không mật khẩu không đăng nhập được qua mạng (chặn sẵn của Windows).
+- **Tài khoản Windows mặc định** `PC` không mật khẩu, tự đăng nhập, là **tài khoản thường** (không có quyền Admin). Tài khoản không mật khẩu không đăng nhập được qua mạng (chặn sẵn của Windows).
 - **ISO tuỳ biến** (bản Lite, bản có sẵn phần mềm…): bộ cài chỉ lấy **bản Windows** trong ISO (`install.wim` / `install.esd`). Các file cài thêm mà người làm ISO để riêng bên ngoài (`autounattend.xml`, thư mục `$OEM$`) **không được dùng** — khung TÓM TẮT liệt kê chúng ở dòng "file rieng cua ISO nay". Thiếu thứ gì sau khi cài thì báo hỗ trợ.
 - **Chỉ hỗ trợ** Windows 64-bit, ISO chuẩn có `sources\install.wim` hoặc `install.esd`. ISO gộp x86 + x64 chỉ dùng được làm bản Windows phụ (cần thêm 1 ISO 64-bit chuẩn). ISO kiểu Ghost (`.gho`, `.tib`) không dùng được.
 - **Ổ đích** được chọn theo thứ tự: ổ gắn trong duy nhất → ổ đang có Windows cũ → ổ SSD nhỏ nhất. Không bao giờ chọn USB / thẻ nhớ / ổ ảo / ổ chứa bộ cài. Màn hình đếm ngược luôn ghi rõ ổ sẽ xoá.
 - **Mất điện giữa lúc cài lại**: bật lại máy, bộ cài tự làm tiếp (tối đa 3 lần). Quá 3 lần thì cần USB.
 
-## F. Khi có trục trặc
+## F. Bảo mật — máy cho thuê được khoá thế nào
+
+Mặc định (không dùng `-KhachAdmin`) mỗi máy cài từ ISO này:
+
+- **Khách dùng tài khoản thường.** Lúc cài, tài khoản `PC` tạm là Admin để chạy driver / script của bạn; cuối lần đăng nhập đầu bộ cài **hạ nó xuống tài khoản thường rồi tự khởi động lại 1 lần**. Từ đó khách không cài được phần mềm đòi quyền quản trị, không gỡ / sửa được phần mềm CloudBlue, không đụng được phân vùng cứu hộ, không tự đổi được mật khẩu Windows.
+- **Trên máy không còn tài khoản quản trị nào dùng được.** Tài khoản `Administrator` có sẵn của Windows bị tắt và đặt mật khẩu ngẫu nhiên không ai biết (kể cả vào Safe Mode cũng không dùng được). Mọi việc quản trị đi qua web (cài lại, khởi động lại…). Phần mềm cần quyền Admin thì cài sẵn trong bản Windows hoặc bỏ vào `firstboot.d` (mục D).
+- **Thư mục `C:\CloudBluePC` bị khoá**: chỉ hệ thống (SYSTEM) và nhóm Administrators vào được. Mã riêng của máy, nhật ký, script `firstboot.d` của bạn — tài khoản khách không đọc được. Khách chỉ đọc được 2 thư mục `py` và `os` (để ảnh nền tự đặt lúc đăng nhập) và không ghi được vào đâu.
+- **Phân vùng cứu hộ bị khoá** tương tự: tài khoản thường không đọc, không sửa được bộ cài nằm trong đó → lần "Dọn sạch cả máy" kế tiếp luôn chạy đúng bộ cài gốc của bạn.
+- Phần mềm trên máy tự kiểm lại các khoá này mỗi lần khởi động và vài giờ một lần. Lần đăng nhập đầu bị dở (mất điện) thì 1 giờ sau máy tự hạ quyền tài khoản khách.
+- Trên web, **thông tin do máy gửi lên luôn được coi là dữ liệu lạ** (chỉ in ra dạng chữ) — khách không thể qua máy thuê mà chèn mã vào trang quản trị. Mỗi máy chỉ có 1 mã riêng, lộ mã đó cũng không đụng được máy khác hay tài khoản admin.
+
+Phần chỉ bạn làm được (bộ cài không làm thay):
+
+- Đặt **mật khẩu BIOS** và để máy chỉ khởi động từ ổ cứng (không cho khởi động USB) — nếu khách ngồi trực tiếp tại máy.
+- Bật **xác minh 2 bước** cho tài khoản GitHub, Supabase, Vercel, Cloudflare. Ai chiếm được 1 trong các tài khoản đó là điều khiển được cả hệ thống.
+- Giữ kỹ USB / file ISO (trên đó có mã đăng ký). Nghi lộ → web › Máy PC › **Tạo mã đăng ký** lại (mã cũ hết dùng ngay) rồi tạo lại ISO.
+- Khách cũ trả máy: bấm **🧹 Cài lại › Dọn sạch cả máy** trước khi giao cho khách mới.
+
+## G. Khi có trục trặc
 
 | Hiện tượng | Xem / làm |
 |---|---|
@@ -176,7 +197,8 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 | Khung TÓM TẮT ghi `ISO: CHUA dong` | chưa lấy được công cụ đóng ISO (`oscdimg`) của Microsoft — dòng `(!)` ghi lý do; gửi cả khung cho hỗ trợ rồi chạy lại lệnh |
 | Khung TÓM TẮT có `(!) Goi driver …` | gói driver đó không dùng được (xem mục D) — các phần khác vẫn bình thường |
 | Khởi động USB vào thẳng bộ cài Windows thường | chèn boot.wim không thành công hoặc USB ghi bằng công cụ sửa file — gửi khung TÓM TẮT |
-| Cài xong nhưng không lên web | tại máy: `cbpc.cmd status` và `cbpc.cmd log`; kiểm tra mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO`) |
+| Cài xong nhưng không lên web | tại máy: mở `C:\CloudBluePC\os\status.txt`; kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO`) |
+| Máy tự khởi động lại 1 lần ngay sau khi vào Desktop lần đầu | bình thường — bước hạ tài khoản khách xuống tài khoản thường (mục F) |
 | Máy báo "cần mã đăng ký" sau khi bạn tự cài lại bằng cách khác | web › Sửa máy › **🔓 Cho đăng ký lại** (mở 6 giờ) |
 | Lệnh cài lại báo ✗ | xem dòng lý do ngay dưới lệnh trong bảng Máy PC |
 
@@ -184,7 +206,7 @@ Nhật ký: `C:\CloudBluePC\logs\agent.log`, `provision.log`; bộ cài: `cb\log
 
 ---
 
-## G. Thành phần (cho người làm kỹ thuật)
+## H. Thành phần (cho người làm kỹ thuật)
 
 ```
 winpc/

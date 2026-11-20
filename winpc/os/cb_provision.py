@@ -1,18 +1,22 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================================
 #  cb_provision.py — CÀI ĐẶT LẦN ĐẦU trong Windows vừa cài (gọi bởi provision.cmd từ file trả lời unattend.xml)
-#     specialize  (tài khoản SYSTEM, trước màn hình đăng nhập): chính sách bỏ màn hình hỏi, điện năng, tác vụ tự chạy agent
-#     firstlogon  (tài khoản vừa tạo, lần đăng nhập đầu):        tự đăng nhập vĩnh viễn, tác vụ (làm lại cho chắc), ẢNH NỀN, chạy script riêng
-#                                                                 của chủ shop trong os\firstboot.d (và os\firstboot.d\<tên bản, vd 1511>), bật agent
-#     logon       (mỗi lần đăng nhập — khoá Run):                 thiếu tác vụ / agent chưa chạy thì dựng lại; tài khoản chưa có ảnh nền thì đặt 1 lần
+#     specialize  (tài khoản SYSTEM, trước màn hình đăng nhập): chính sách bỏ màn hình hỏi, điện năng, tác vụ tự chạy agent, KHOÁ QUYỀN thư mục
+#     firstlogon  (tài khoản vừa tạo — lúc này còn là Admin, lần đăng nhập đầu): tự đăng nhập vĩnh viễn, tác vụ, ẢNH NỀN, chạy script riêng của chủ shop
+#                                                                 trong os\firstboot.d (và os\firstboot.d\<tên bản, vd 1511>), bật agent, rồi HẠ tài khoản khách
+#                                                                 xuống TÀI KHOẢN THƯỜNG + khoá tài khoản Administrator có sẵn + khởi động lại 1 lần
+#     logon       (mỗi lần đăng nhập — khoá Run, chạy bằng quyền của người đăng nhập): tài khoản chưa có ảnh nền thì đặt; có quyền quản trị thì kiểm tác vụ
+#     system      (agent — SYSTEM — gọi lúc khởi động + định kỳ): khoá lại quyền thư mục / phân vùng cứu hộ; lần đăng nhập đầu chưa hạ quyền kịp thì làm nốt
+#  BẢO MẬT (mặc định, cb.json "user_admin": false): khách dùng tài khoản THƯỜNG, không còn tài khoản quản trị nào dùng được trên máy;
+#     C:\CloudBluePC + phân vùng cứu hộ chỉ SYSTEM / Administrators vào được (tài khoản thường chỉ đọc + chạy py\ và os\ để đặt ảnh nền).
 #  Mọi lệnh lỗi đều được ghi nhật ký và BỎ QUA — không bao giờ làm hỏng bước cài Windows.
-#  Nhật ký: C:\CloudBluePC\logs\provision.log
+#  Nhật ký: C:\CloudBluePC\logs\provision.log (phần chạy bằng tài khoản thường: %LOCALAPPDATA%\CloudBluePC\provision.log)
 # =====================================================================================================
-import json, os, re, subprocess, sys, time
+import json, os, re, secrets, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "20.11a"
+PROV_VER = "20.11c"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 NOWIN = 0x08000000 if os.name == "nt" else 0
 
@@ -73,11 +77,26 @@ def spi_wallpaper(path):
     return bool(ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3))
 
 
+def real_recovery_root():
+    """Đường dẫn gốc (\\\\?\\Volume{…}\\) của phân vùng cứu hộ trên máy này; không có → ''."""
+    try:
+        lib = os.path.join(BASE, "lib")
+        if lib not in sys.path: sys.path.insert(0, lib)
+        import cbsys, cbrec
+        v = cbrec.find_recovery(cbsys.WinSys(log=lambda *a: None))
+        return v.root if v else ""
+    except Exception:
+        return ""
+
+
 class Prov:
-    def __init__(self, base=BASE, run=None, log=None, spi=None):
+    def __init__(self, base=BASE, run=None, log=None, spi=None, admin=None, rec=None, now=None):
         self.base = base
         self._run = run or self._real_run
         self._spi = spi or spi_wallpaper
+        self._admin = admin                     # None = hỏi Windows; True / False = phép thử ép sẵn
+        self._rec = rec or real_recovery_root
+        self._now = now or time.time
         self.lines = []
         self._log = log
 
@@ -85,10 +104,40 @@ class Prov:
         ln = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), m)
         self.lines.append(ln)
         if self._log: self._log(ln); return
+        dirs = [os.path.join(self.base, "logs")]
+        if os.environ.get("LOCALAPPDATA"): dirs.append(os.path.join(os.environ["LOCALAPPDATA"], "CloudBluePC"))   # tài khoản thường không ghi được vào C:\CloudBluePC
+        for d in dirs:
+            try:
+                os.makedirs(d, exist_ok=True)
+                with open(os.path.join(d, "provision.log"), "a", encoding="utf-8") as f: f.write(ln + "\n")
+                return
+            except OSError: continue
+
+    def is_admin(self):
+        """Tiến trình này có quyền quản trị không (SYSTEM, hoặc tài khoản Admin đã nâng quyền)?"""
+        if self._admin is not None: return bool(self._admin)
+        try:
+            import ctypes
+            return bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except Exception:
+            return False
+
+    def mark(self, name):
+        return os.path.join(self.base, "logs", name)
+
+    def touch(self, name):
         try:
             os.makedirs(os.path.join(self.base, "logs"), exist_ok=True)
-            with open(os.path.join(self.base, "logs", "provision.log"), "a", encoding="utf-8") as f: f.write(ln + "\n")
+            if not os.path.exists(self.mark(name)):
+                with open(self.mark(name), "w") as f: f.write(str(int(self._now())))
         except OSError: pass
+
+    def mark_age(self, name):
+        """Số giây từ lúc đặt mốc `name`; chưa có mốc → None."""
+        try:
+            with open(self.mark(name)) as f: return max(0, int(self._now()) - int((f.read().strip() or "0")))
+        except (OSError, ValueError):
+            return None
 
     def _real_run(self, argv, timeout=300):
         try:
@@ -213,6 +262,90 @@ class Prov:
         except OSError: pass
         return n
 
+    # ------------------------------------------------------------------ bảo mật
+    def lockdown(self):
+        """Khoá quyền C:\\CloudBluePC (chỉ SYSTEM + Administrators; tài khoản thường chỉ đọc + chạy py\\ và os\\) và gốc phân vùng cứu hộ.
+           Cần quyền quản trị. Trả True nếu mọi lệnh icacls đều xong."""
+        try:
+            lib = os.path.join(self.base, "lib")
+            if lib not in sys.path: sys.path.insert(0, lib)
+            import cbcore
+            cmds, vol = cbcore.acl_lock_cmds(self.base), cbcore.acl_vol_cmds
+        except Exception as e:
+            self.log("LOI nap cbcore de khoa quyen: %r" % (e,)); return False
+        if not os.path.isdir(os.path.join(self.base, "os", "firstboot.d")): cmds = cmds[:-1]
+        bad = sum(1 for argv in cmds if self._run(argv, 900)[0] != 0)
+        self.log("%s khoa quyen thu muc %s%s" % ("ok " if not bad else "LOI", self.base, "" if not bad else " (%d / %d lenh bao loi)" % (bad, len(cmds))))
+        try: root = self._rec() or ""
+        except Exception: root = ""
+        if root:
+            bad2 = sum(1 for argv in vol(root) if self._run(argv, 900)[0] != 0)
+            self.log("%s khoa quyen phan vung cuu ho%s" % ("ok " if not bad2 else "LOI", "" if not bad2 else " (%d lenh bao loi)" % bad2))
+            bad += bad2
+        self.touch("lock.done")
+        return not bad
+
+    def names(self):
+        """Tên (theo ngôn ngữ của Windows đang chạy) của nhóm Administrators, nhóm Users và tài khoản Administrator có sẵn. Không hỏi được → tên tiếng Anh."""
+        ps = ("$a=([Security.Principal.SecurityIdentifier]'S-1-5-32-544').Translate([Security.Principal.NTAccount]).Value.Split('\\')[-1];"
+              "$u=([Security.Principal.SecurityIdentifier]'S-1-5-32-545').Translate([Security.Principal.NTAccount]).Value.Split('\\')[-1];"
+              "$b=(Get-WmiObject Win32_UserAccount -Filter 'LocalAccount=True' | Where-Object { $_.SID -like 'S-1-5-21-*-500' } | Select-Object -First 1).Name;"
+              "Write-Output ('ADM=' + $a + '|USR=' + $u + '|BIA=' + $b + '|')")
+        rc, out = self._run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps], 180)
+        m = re.search(r"ADM=([^|\r\n]*)\|USR=([^|\r\n]*)\|BIA=([^|\r\n]*)\|", out or "")
+        adm, usr, bia = (m.group(1).strip(), m.group(2).strip(), m.group(3).strip()) if (rc == 0 and m) else ("", "", "")
+        return adm or "Administrators", usr or "Users", bia or "Administrator"
+
+    def quiet(self, argv, what, timeout=120):
+        """Như sh() nhưng KHÔNG BAO GIỜ ghi dòng lệnh / chữ in ra vào nhật ký (lệnh có thể mang mật khẩu)."""
+        rc = self._run(argv, timeout)[0]
+        self.log("%s %s" % ("ok " if rc == 0 else "LOI(%s)" % rc, what))
+        return rc == 0
+
+    def in_group(self, group, user):
+        rc, out = self._run(["net", "localgroup", group], 60)
+        return rc == 0 and any(ln.strip().lower() == user.lower() for ln in (out or "").splitlines())
+
+    def harden(self):
+        """Chế độ khách = TÀI KHOẢN THƯỜNG (mặc định; cb.json có "user_admin": true thì bỏ qua). Cần quyền quản trị.
+             · gỡ tài khoản khách khỏi nhóm Administrators (giữ trong nhóm Users) — có hiệu lực từ lần đăng nhập sau
+             · cấm tài khoản khách tự đổi mật khẩu (đổi là hỏng tự đăng nhập)
+             · tài khoản Administrator có sẵn: đặt mật khẩu NGẪU NHIÊN không ai biết + tắt (không có nó thì vào Safe Mode là đăng nhập được, mật khẩu trống)
+           → trên máy không còn tài khoản quản trị nào dùng được; việc quản trị đi qua agent (SYSTEM) theo lệnh từ web, hoặc cài lại.
+           Trả True nếu VỪA gỡ quyền Admin của tài khoản khách (cần đăng nhập lại / khởi động lại để có hiệu lực)."""
+        c = self.cfg()
+        if c.get("user_admin"):
+            self.log("tai khoan khach duoc de quyen Admin (user_admin) - khong ha quyen"); return False
+        user = c.get("user") or "PC"
+        adm, usr, bia = self.names()
+        if user.lower() == bia.lower():
+            self.log("tai khoan khach trung ten tai khoan Administrator co san - khong ha quyen"); return False
+        changed = False
+        if self._run(["net", "user", user], 60)[0] != 0:
+            self.log("chua co tai khoan '%s' (Windows chua tao xong) - de lan sau" % user); return False
+        self._run(["net", "localgroup", usr, user, "/add"], 60)                      # đã ở trong nhóm thì lệnh báo lỗi 1378 — bỏ qua
+        if self.in_group(adm, user):
+            changed = self.sh(["net", "localgroup", adm, user, "/delete"], "go tai khoan '%s' khoi nhom %s (thanh tai khoan thuong)" % (user, adm))
+        self.sh(["net", "user", user, "/passwordchg:no"], "cam tai khoan '%s' tu doi mat khau" % user)
+        if not os.path.exists(self.mark("harden.done")):
+            pw = "Cb1!" + secrets.token_urlsafe(8)[:10]                             # 14 ký tự: dài hơn thì lệnh net hỏi lại
+            ok = self.quiet(["net", "user", bia, pw, "/active:no"], "tai khoan '%s' co san: dat mat khau ngau nhien (khong luu o dau) + tat" % bia)
+            pw = None
+            if ok: self.touch("harden.done")
+        return changed
+
+    def system(self):
+        """Agent (SYSTEM) gọi lúc khởi động + vài giờ 1 lần. Khoá lại quyền (rẻ, làm lại vô hại) và làm nốt việc hạ quyền tài khoản khách nếu lần đăng nhập
+           đầu không làm xong (mất điện giữa chừng, bản Windows tuỳ biến không chạy file trả lời…). KHÔNG khởi động lại máy."""
+        if not self.is_admin(): return False
+        self.touch("system.first")
+        self.lockdown()
+        done, started, first = self.mark_age("firstlogon.done"), self.mark_age("firstlogon.start"), self.mark_age("system.first")
+        # chỉ hạ quyền khi lần đăng nhập đầu ĐÃ xong (script riêng của chủ shop cần quyền Admin), hoặc đã quá 1 giờ mà nó không xong
+        if done is not None or (started is not None and started > 3600) or (started is None and first is not None and first > 3600):
+            return self.harden()
+        return False
+
     def start_agent(self):
         if not self.sh(["schtasks", "/run", "/tn", TASK_AGENT], "bat agent"):
             self.sh(["schtasks", "/run", "/tn", TASK_WATCH], "bat agent (qua tac vu canh)")
@@ -225,19 +358,27 @@ class Prov:
         self.log("=== specialize (ban %s) ===" % PROV_VER)
         self.policies(); self.power(); self.shortcut()
         self.tasks()                                               # lúc này dịch vụ tác vụ có thể chưa chạy → firstlogon / logon làm lại
+        self.lockdown()
 
     def firstlogon(self):
         self.log("=== firstlogon (ban %s) ===" % PROV_VER)
+        self.touch("firstlogon.start")
         self.autologon(); self.policies(); self.power(); self.shortcut(); self.tasks()
+        self.lockdown()
         self.start_agent()
         self.wallpaper()
-        self.firstboot()
+        self.firstboot()                                             # script riêng của chủ shop (driver .exe…) — chạy khi tài khoản còn quyền Admin
+        changed = self.harden()
+        self.touch("firstlogon.done")
+        if changed:                                                  # quyền mới (tài khoản thường) chỉ có hiệu lực ở lần đăng nhập sau → khởi động lại 1 lần
+            self.sh(["shutdown", "/r", "/t", "20", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 20 giay")
         self.log("xong firstlogon")
 
     def logon(self):
-        if not (self.task_exists(TASK_AGENT) and self.task_exists(TASK_WATCH)):
-            self.log("=== logon: thieu tac vu → dung lai ==="); self.tasks()
-        self._run(["schtasks", "/run", "/tn", TASK_WATCH], 60)       # agent đang chạy thì lệnh này tự thoát ngay
+        if self.is_admin():                                          # tài khoản thường không xem / dựng được tác vụ của SYSTEM — agent tự lo phần đó
+            if not (self.task_exists(TASK_AGENT) and self.task_exists(TASK_WATCH)):
+                self.log("=== logon: thieu tac vu → dung lai ==="); self.tasks()
+            self._run(["schtasks", "/run", "/tn", TASK_WATCH], 60)   # agent đang chạy thì lệnh này tự thoát ngay
         self.wallpaper()                                             # tài khoản nào chưa từng được đặt ảnh nền thì đặt 1 lần
 
 
@@ -250,8 +391,9 @@ def main(argv):
             p.specialize(); p.start_agent()
         elif phase == "firstlogon": p.firstlogon()
         elif phase == "logon": p.logon()
+        elif phase == "system": p.system()
         else:
-            print("cb_provision %s — pha: specialize | setupcomplete | firstlogon | logon" % PROV_VER); return 2
+            print("cb_provision %s — pha: specialize | setupcomplete | firstlogon | logon | system" % PROV_VER); return 2
     except Exception as e:                                           # không để lỗi nào chặn bước cài Windows
         p.log("LOI KHONG NGO: %r" % (e,))
     return 0

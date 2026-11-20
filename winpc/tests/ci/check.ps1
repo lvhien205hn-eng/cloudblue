@@ -295,6 +295,7 @@ try {
     Out-Line "== 4. Chay lai khong dua ma dang ky + cac kieu nhap sai"
     $log2 = Join-Path $Wk "run2.log"
     $a2 = @{ Iso = @($iso1); Work = $work; KhongHoi = $true; KhongIso = $true }     # khong -Nguon: tai phan mem tu GitHub + kiem manifest nhu nguoi dung
+    if ($env:GITHUB_REF_NAME) { $a2["Nhanh"] = $env:GITHUB_REF_NAME; Info ("lan 2 tai tu nhanh: " + $env:GITHUB_REF_NAME) }      # dang thu tren nhanh nao thi tai dung nhanh do
     & $Ps1 @a2 *>&1 | ForEach-Object { $ln = "" + $_; Add-Content -Path $log2 -Value $ln -Encoding UTF8 }
     $txt2 = ""
     if (Test-Path $log2) { $txt2 = Get-Content -Raw -Path $log2 }
@@ -314,6 +315,28 @@ try {
     Ck "dua file .exe vao cho ISO -> dung som, noi ro" (($t4 -match "!! DUNG") -and ($t4 -match "khong phai file .iso"))
     $t5 = (& $Ps1 -Iso $iso1 -Work $work -Nguon $RepoDir -KhongHoi -KhongIso -Driver ("3=" + $zipPack) *>&1 | Out-String)
     Ck "-Driver sai so thu tu ISO -> dung som" (($t5 -match "!! DUNG") -and ($t5 -match "khong co ISO thu 3"))
+
+    # ---------------------------------------------------------------------------------------- 5. bao mat tren may cho thue
+    Out-Line "== 5. Bao mat tren may cho thue: khoa quyen that bang icacls + thu bang 1 tai khoan thuong that"
+    $cbDir = Join-Path $work "iso\cb"
+    $pyExe = Join-Path $work "py\python.exe"
+    if ((Test-Path $cbDir) -and (Test-Path $pyExe)) {
+      $secTmp = New-Dir (Join-Path $Wk "sec")
+      $oldEap = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      $secOut = @(& $pyExe -I -B (Join-Path $PSScriptRoot "sec_check.py") $cbDir $secTmp 2>&1 | ForEach-Object { "" + $_ })
+      $ErrorActionPreference = $oldEap
+      $nSec = 0
+      foreach ($ln in $secOut) {
+        if ($ln -match '^OK  (.*)$') { $script:Pass++; $nSec++; Out-Line ("  OK  " + $Matches[1]) }
+        elseif ($ln -match '^XX  (.*)$') { $script:FailN++; $nSec++; Out-Line ("  XX  " + $Matches[1]) }
+        elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
+        elseif ($ln.Trim()) { Info ("? " + $ln) }
+      }
+      Ck "bo thu bao mat chay het" ($nSec -ge 15) ("" + $nSec + " phep thu, " + $secOut.Count + " dong")
+    } else {
+      Info ("BO QUA buoc 5: khong co cay bo cai / python (" + $cbDir + ")")
+    }
   }
 } catch {
   $script:FailN++

@@ -14,7 +14,7 @@
 # =====================================================================================================
 import cbcore as C
 
-REC_VER = "20.11a"
+REC_VER = "20.11c"
 SUBDIRS = ("lib", "pe", "os", "agent", "py", "drivers")         # "drivers": driver chủ shop bỏ thêm — cài lại từ xa cũng nạp
 
 
@@ -139,6 +139,16 @@ def take_result(sysx, clear=False):
     return C.load_json(sysx, p)
 
 
+def lock_volume(sysx, root):
+    """Khoá gốc phân vùng cứu hộ: chỉ SYSTEM + Administrators (xem cbcore.acl_vol_cmds). Trả số lệnh báo lỗi (0 = xong)."""
+    bad = 0
+    for argv in C.acl_vol_cmds(root):
+        try: rc, out = sysx.run(argv, timeout=900)
+        except Exception: rc = 127
+        if rc != 0: bad += 1
+    return bad
+
+
 def save_identity(sysx, ident):
     """Ghi tên máy / mã số máy lên phân vùng cứu hộ (KHÔNG ghi mã bí mật) để cài lại vẫn giữ đúng máy."""
     rec = find_recovery(sysx)
@@ -174,6 +184,7 @@ def create_recovery(sysx, src_root, cfg, log=None, progress=None):
     if rv is None: raise C.Stop("Tao xong nhung khong thay o %s:" % R)
     log("Chep bo cai sang phan vung cuu ho (%s:)..." % R)
     populate(sysx, src_root, cfg, R + ":\\", log, progress)
+    lock_volume(sysx, R + ":\\")
     part = next((p for d in sysx.disks() if d.index == disk.index for p in d.parts if p.offset == rv.offset), None)
     if part is None: raise C.Stop("Khong thay phan vung cuu ho vua tao trong bang phan vung.")
     rc, out = sysx.diskpart(C.plan_hide_recovery(disk.index, part.number, fw, R))

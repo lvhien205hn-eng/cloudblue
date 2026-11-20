@@ -23,7 +23,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "20.11a"
+PE_VER = "20.11c"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -201,6 +201,17 @@ class Installer:
         self.s.write_text(pan + "\\Unattend\\unattend.xml", ua)
         self.setup_complete(W)
         self.add_drivers(src.p("cb\\drivers"), W, image)
+        self.lock_acl(C.acl_lock_cmds(base), "khoa quyen thu muc CloudBluePC")
+
+    def lock_acl(self, cmds, what):
+        """Khoá quyền bằng icacls (chỉ SYSTEM + Administrators; xem cbcore.acl_lock_cmds / acl_vol_cmds). Lệnh nào lỗi thì ghi nhật ký rồi đi tiếp:
+           Windows mới sẽ tự khoá lại lần nữa lúc khởi động (cb_provision.lockdown)."""
+        bad = 0
+        for argv in cmds:
+            try: rc, out = self.s.run(argv, timeout=900)
+            except Exception as e: rc, out = 127, str(e)
+            if rc != 0: bad += 1
+        self.log("  %s: %s" % (what, "xong" if not bad else "%d / %d lenh bao loi (bo qua - Windows moi se tu khoa lai)" % (bad, len(cmds))))
 
     def setup_complete(self, W):
         """Lưới an toàn thứ 2: Windows\\Setup\\Scripts\\SetupComplete.cmd (Windows tự chạy sau khi cài xong, không phụ thuộc file trả lời)
@@ -335,6 +346,7 @@ class Installer:
         if rec_bytes:
             C.save_json(self.s, R + ":\\cb\\identity.json", {"name": name})
             self.save_logs(R + ":\\cb\\logs", W + ":\\CloudBluePC\\logs")
+            self.lock_acl(C.acl_vol_cmds(R + ":\\"), "khoa quyen phan vung cuu ho")
             if self.s.dry: self.s.diskpart(C.plan_hide_recovery(target.index, plan["rec_part"], fw, R))
             else: self.hide_recovery(target.index, rec_off, fw, R)
         else:
@@ -428,6 +440,7 @@ class Installer:
             if others: self.wipe_others(self.s.disks(), {disk.index}, fw)
             finish(True, "xong", "done")
             self.save_logs(R + ":\\cb\\logs", W + ":\\CloudBluePC\\logs")
+            self.lock_acl(C.acl_vol_cmds(R + ":\\"), "khoa quyen phan vung cuu ho")
             try: self.hide_recovery(disk.index, rec_off, fw, R, strict=False)
             except C.Stop: pass
             self.log("")
