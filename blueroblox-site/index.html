@@ -2083,6 +2083,12 @@ html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{top:12p
 .m3v-fig.on .m3v-play,.m3v-fig.on img{display:none}
 .m3v-snd{position:absolute;right:12px;top:12px;z-index:2;font:inherit;font-size:13px;font-weight:700;color:#fff;background:rgba(6,10,28,.72);border:1px solid rgba(255,255,255,.22);border-radius:99px;padding:7px 12px;cursor:pointer}
 .m3v-snd[hidden]{display:none}
+.m3v-sw button{display:inline-flex;align-items:center;gap:8px}
+.m3v-sw .m3v-len{font-size:12px;font-weight:700;opacity:.72;font-variant-numeric:tabular-nums}
+.m3v-tag{position:absolute;left:12px;top:12px;z-index:2;font-size:13px;font-weight:800;color:#fff;background:rgba(6,10,28,.72);border:1px solid rgba(255,255,255,.18);border-radius:99px;padding:6px 12px;pointer-events:none;opacity:0;transition:opacity .25s}
+.m3v-fig.on .m3v-tag{opacity:1}
+.m3v-snd{animation:m3vpulse 2.4s ease-in-out infinite}
+@keyframes m3vpulse{0%,100%{box-shadow:0 0 0 0 rgba(61,134,255,.0)}50%{box-shadow:0 0 0 6px rgba(61,134,255,.35)}}
 .m3v-ch{list-style:none;margin:0;padding:6px;display:flex;flex-direction:column;gap:4px;border-radius:18px;background:var(--card);box-shadow:0 0 0 1px var(--line2)}
 .m3v-ch button{width:100%;font:inherit;display:flex;align-items:center;gap:10px;padding:11px 12px;border-radius:12px;border:0;background:transparent;color:var(--fg);font-size:14px;font-weight:600;cursor:pointer;text-align:left;line-height:1.35}
 .m3v-ch button:hover{background:var(--soft)}
@@ -2667,14 +2673,15 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 </section>
 
 <section class="wrap m3v" id="m3v">
-  <div class="m3-sh"><div><h2 data-i18n="vid_h">Xem 14 giây là hiểu CloudBlue</h2><p class="m3-lead" data-i18n="vid_s">Video tự chạy khi bạn kéo tới (đang tắt tiếng) — bấm “Bật tiếng” để nghe.</p></div>
-    <div class="m3-seg m3v-sw" role="tablist" aria-label="Chọn video"><button type="button" class="on" data-v="a" role="tab" aria-selected="true" data-i18n="vid_a">Bức tường máy</button><button type="button" data-v="b" role="tab" aria-selected="false" data-i18n="vid_b">Ngày &amp; đêm</button></div></div>
+  <div class="m3-sh"><div><h2 data-i18n="vid_h">Video hướng dẫn — xem 1 phút là biết cách dùng</h2><p class="m3-lead" data-i18n="vid_s">Video tự chạy khi bạn kéo tới — bấm 🔊 để nghe nhạc.</p></div>
+    <div class="m3-seg m3v-sw" role="tablist" aria-label="Chọn video"><button type="button" class="on" data-v="cp" role="tab" aria-selected="true"><span data-i18n="vid_a">☁️ Cloud Phone</span><small class="m3v-len">1:02</small></button><button type="button" data-v="vps" role="tab" aria-selected="false"><span data-i18n="vid_b">🖥️ VPS GPU</span><small class="m3v-len">1:41</small></button></div></div>
   <div class="m3v-body">
     <figure class="m3v-fig" id="m3v-fig">
       <img id="m3v-poster" alt="" decoding="async">
       <video id="m3v-video" playsinline muted controls preload="none" hidden></video>
+      <div class="m3v-tag" id="m3v-tag" aria-hidden="true"></div>
       <button class="m3v-play" id="m3v-play" type="button" aria-label="Phát video giới thiệu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="#2a5fe0"/></svg></button>
-      <button class="m3v-snd" id="m3v-snd" type="button" hidden>🔇 <span data-i18n="vid_snd">Bật tiếng</span></button>
+      <button class="m3v-snd" id="m3v-snd" type="button" hidden>🔊 <span data-i18n="vid_snd">Bật tiếng</span></button>
     </figure>
     <ol class="m3v-ch" id="m3v-ch" aria-label="Các đoạn trong video"></ol>
   </div>
@@ -4614,8 +4621,8 @@ let LANG = "en"; try { const _sv = localStorage.getItem("br_lang"); if (_sv) LAN
 const EN = {
   rail_h:"24/7 support", vn_t:"Vietnamese brand · servers in Vietnam", cb_tag:"VIETNAM CLOUD PHONE",
   products:"Products", m3_rent:"Rent a phone", f_price:"Rent from", f_and:"Android", f_srv:"Servers", f_srv_v:"Vietnam", f_users:"Signed up", f_buyers:"Bought",
-  vid_h:"See CloudBlue in 14 seconds", vid_a:"Wall of phones", vid_b:"Day & night", mine_h:"Your cloud phones", mine_all:"Manage all", mine_new:"+ Rent another",
-  vid_s:"Plays automatically (muted) when you scroll here — tap “Sound on” to listen.", vid_snd:"Sound on", st_h:"Rent a phone in 3 steps", st_s:"Your balance works for every product.",
+  vid_h:"How-to videos — get started in a minute", vid_a:"☁️ Cloud Phone", vid_b:"🖥️ GPU VPS", mine_h:"Your cloud phones", mine_all:"Manage all", mine_new:"+ Rent another",
+  vid_s:"Plays automatically when you scroll here — tap 🔊 for music.", vid_snd:"Sound on", st_h:"Rent a phone in 3 steps", st_s:"Your balance works for every product.",
   st1:"Top up your balance", st1d:"Bank transfer by QR — credited in about a minute. USDT and Litecoin too.", st2:"Choose & rent", st2d:"Pick Android version, RAM, CPU and days — ready in 2–3 minutes.",
   st3:"Open it, use it 24/7", st3d:"Control it from the Android app, the PC app or right in your browser. It keeps running when your device is off.",
   nav_home:"Home", nav_shop:"Products", nav_topup:"Top up", nav_orders:"Orders", nav_policy:"Policy",
@@ -5185,15 +5192,14 @@ const moreChosen = () => moreG.map((g, i) => moreSel[i] == null || !g.o[moreSel[
 const moreMissing = () => moreSets().find(s => moreReq(s) && !s.some(i => moreSel[i] != null)) || null;   // lượt bắt buộc chưa chọn → [số thứ tự mục]
 function openBuy(id) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +(pl.find(x => +x.days === 30) || pl[0]).days : null;
   $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description); $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
-  show("m-vps", isVps(p)); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }
+  show("m-vps", false); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }   // 21.11j: bỏ chọn FarmV5 / FarmSync
 function closeBuy() { show("modal", false); sel = null; }
 async function doBuy() {
   const p = selP(); if (!p) return;
   if (!profile) { closeBuy(); openAuth("login"); return; }
   const miss = isVps(p) ? moreMissing() : null;
   if (miss) { const nm = miss.map(i => xoTitle(moreG[i])); $("m-err").textContent = L("Chọn " + nm.join(" hoặc ") + " trước khi thanh toán.", "Choose " + nm.join(" or ") + " before paying."); return; }
-  if (isVps(p) && vpsMethod === "farmv5" && !$("m-pin").value.trim()) { $("m-err").textContent = L("Nhập mã PIN FarmV5 trước khi thanh toán.", "Enter your FarmV5 PIN before paying."); $("m-pin").focus(); return; }
-  const vpsInfo = isVps(p) ? { m: vpsMethod, pin: $("m-pin").value.trim(), x: moreChosen() } : null;
+  const vpsInfo = isVps(p) ? { m: "", pin: "", x: moreChosen() } : null;
   const q = buyQty(p), tot0 = unitPrice(p) * q;
   await busy($("m-ok"), async () => {
     if (!(await prmEnsure("buy", "m-err"))) return;                 // ô mã có chữ → phải là mã hợp lệ (ô trống = mua bình thường)
@@ -5991,20 +5997,17 @@ function openThanks(ord, p, q, tot, vpsInfo) {
     const xl = (vpsInfo.x || []).map(c => { const t = (LANG === "en" && c.t_en) ? c.t_en : c.t; return "\n• " + (t.trim().toLowerCase() === c.n.trim().toLowerCase() ? c.n : t + ": " + c.n); }).join("");   // mục chọn thêm (tên mục trùng lựa chọn → chỉ ghi lựa chọn)
     thMsg = LANG === "en"
       ? `[CLOUDBLUE] PAYMENT SUCCESSFUL — PLEASE SET UP MY VPS\n• Payment code: ${code || "(see Orders)"}\n• Product: ${label}\n• VPS quantity: ${q}\n• Paid: ${paid}\n• Account: ${profile ? profile.username : ""}\n` +
-        (vpsInfo.m === "farmv5" ? `• Method: FarmV5\n• FarmV5 PIN: ${vpsInfo.pin}` : `• Method: FarmSync\n• I will send my UltraViewer ID + password right after this message`) + xl +
+        `• Delivery: assign the machine to my account (I control it in "Your GPU VPS" on the web / app)` + xl +
         `\n• Purchased: ${dt(t0)}` + (exp ? `\n• Rental: ${days} days → Expires: ${dt(exp)}` : "") + `${ord && ord.id ? "\n• Order ID: " + ord.id : ""}`
       : `[CLOUDBLUE] ĐÃ THANH TOÁN THÀNH CÔNG — NHỜ SHOP CÀI VPS\n• Mã thanh toán: ${code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${label}\n• Số lượng VPS: ${q}\n• Đã thanh toán: ${paid}\n• Tài khoản: ${profile ? profile.username : ""}\n` +
-        (vpsInfo.m === "farmv5" ? `• Cách nhận: FarmV5\n• Mã PIN FarmV5: ${vpsInfo.pin}` : `• Cách nhận: FarmSync\n• Mình sẽ gửi ID + mật khẩu UltraViewer ngay sau tin nhắn này`) + xl +
+        `• Nhận máy: shop gán máy vào tài khoản của mình (điều khiển ở mục "VPS GPU của bạn" trên web / app)` + xl +
         `\n• Thời gian mua: ${dt(t0)}` + (exp ? `\n• Thuê: ${days} ngày → Hạn sử dụng: ${dt(exp)}` : "") + `${ord && ord.id ? "\n• Mã đơn: " + ord.id : ""}`;
     try { if (ord && ord.id) localStorage.setItem("br_vmsg_" + ord.id, thMsg); } catch (e) {}
     $("th-title").textContent = L("Thanh toán thành công!", "Payment successful!");
     $("th-sum").innerHTML = `${esc(label)} × ${q} · ${fmt(tot)}<br>${L("Mã thanh toán", "Payment code")}: <b style="color:var(--gold-hi);font-family:var(--mono);font-size:16px">${esc(code)}</b>` + (exp ? `<br>${L("Hạn sử dụng", "Expires")}: <b style="color:var(--gold-hi)">${dt(exp)}</b>` : "");
     $("th-info").textContent = thMsg; $("th-copy").textContent = L("📋 Copy tin nhắn gửi shop", "📋 Copy message for the shop");
-    $("th-note").innerHTML = vpsInfo.m === "farmv5"
-      ? L("Bước 1: bấm <b>Copy tin nhắn</b>. Bước 2: bấm một kênh bên dưới, <b>dán và gửi</b> cho shop. Shop nhận tin có <b>mã thanh toán + mã PIN</b> sẽ bắt đầu cài FarmV5.",
-          "Step 1: tap <b>Copy message</b>. Step 2: tap a channel below, <b>paste and send</b> it to the shop. Setup of FarmV5 starts once the shop gets your <b>payment code + PIN</b>.")
-      : L("Bước 1: bấm <b>Copy tin nhắn</b>. Bước 2: bấm một kênh bên dưới, <b>dán và gửi</b> cho shop, rồi gửi tiếp <b>ID + mật khẩu UltraViewer</b>. Shop sẽ vào cài FarmSync.",
-          "Step 1: tap <b>Copy message</b>. Step 2: tap a channel below, <b>paste and send</b> it to the shop, then send your <b>UltraViewer ID + password</b>. The shop will set up FarmSync.");
+    $("th-note").innerHTML = L("Bước 1: bấm <b>Copy tin nhắn</b>. Bước 2: bấm một kênh bên dưới, <b>dán và gửi</b> cho shop. Shop gán máy vào tài khoản của bạn — mở mục <b>🖥 VPS GPU của bạn</b> (web / app) để điều khiển.",
+      "Step 1: tap <b>Copy message</b>. Step 2: tap a channel below, <b>paste and send</b> it to the shop. The shop assigns the machine to your account — open <b>🖥 Your GPU VPS</b> (web / app) to control it.");
     $("th-contacts").innerHTML = c || (SITE.zalo ? `<div class="note" style="text-align:center">Zalo shop: <b>${esc(SITE.zalo)}</b></div>` : "");
     show("thanks"); return;
   }
@@ -12366,32 +12369,40 @@ function cbBlueMore() {
   const mtg = $i("m3-mine-tg");
   if (mtg) mtg.addEventListener("click", () => { try { localStorage.setItem("cb_mine_min", m3MineMin() ? "0" : "1"); } catch (e) {} m3MineTg(); });
 
-  /* ---- video giới thiệu: tự phát (tắt tiếng) khi khách kéo tới · hết A tự sang B rồi quay lại A · kéo đi chỗ khác thì dừng ---- */
+  /* ---- video hướng dẫn (Cloud Phone · VPS GPU, có nhạc): tự phát (tắt tiếng — trình duyệt không cho tự phát có tiếng) khi khách kéo tới,
+         kể cả máy tắt hiệu ứng chuyển động · hết video này tự sang video kia · kéo đi chỗ khác thì dừng · bấm 🔊 để nghe nhạc ---- */
   const fig = $i("m3v-fig");
   if (fig) {
     const V = {
-      a: { src: "/gioi-thieu-a.mp4", poster: "/gioi-thieu-a.jpg", ch: [[0, "Mỗi chấm sáng là một máy", "Every dot is a phone"], [3, "Treo cả dàn máy 24/7", "A whole farm, 24/7"], [6.4, "Bấm Điều khiển — máy hiện ngay", "Tap Control — it opens"], [10.2, "Android 9 · 12 · 15", "Android 9 · 12 · 15"]] },
-      b: { src: "/gioi-thieu-b.mp4", poster: "/gioi-thieu-b.jpg", ch: [[0, "23:00 — bạn tắt máy đi ngủ", "11 PM — you go to sleep"], [3, "Máy trên mây vẫn chạy cả đêm", "Cloud phones keep running"], [9.2, "07:00 — máy vẫn đang chạy", "7 AM — still running"]] }
+      cp: { src: "/video/cloud-phone.mp4", poster: "/video/cloud-phone.jpg", name: ["☁️ Cloud Phone", "☁️ Cloud Phone"],
+            ch: [[0, "Cloud Phone là gì", "What it is"], [8, "Vì sao nên dùng", "Why use it"], [16, "Thuê máy 3 bước", "Rent in 3 steps"], [32, "Điều khiển ở đâu cũng được", "Control from anywhere"], [42, "Nhiều máy cùng lúc · đồng bộ", "Many phones at once · sync"], [54, "Bắt đầu ở cloudblue.vn", "Get started"]] },
+      vps: { src: "/video/vps-gpu.mp4", poster: "/video/vps-gpu.jpg", name: ["🖥️ VPS GPU", "🖥️ GPU VPS"],
+            ch: [[0, "VPS GPU là gì", "What it is"], [5, "Mua VPS GPU", "Buying"], [16, "Cách 1 · Trên web", "Way 1 · Web"], [40, "Cách 2 · App điện thoại", "Way 2 · Phone app"], [62, "Cách 3 · App máy tính", "Way 3 · PC app"], [81, "Trong lúc thuê", "While renting"], [96, "Tải app · cloudblue.vn", "Get the apps"]] }
     };
     const img = $i("m3v-poster"), vid = $i("m3v-video"), chs = $i("m3v-ch"), snd = $i("m3v-snd"), sw = [...document.querySelectorAll(".m3v-sw button")];
     const cn = navigator.connection || {};
-    const AUTO = !cn.saveData && !(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
-    let k = "a", seen = false, inView = false, skip = 0, userStop = false;
+    const AUTO = !cn.saveData;                                     // máy tắt hiệu ứng (Windows "Animation effects" off) vẫn tự phát — chỉ trừ chế độ tiết kiệm dữ liệu
+    let k = "cp", seen = false, inView = false, skip = 0, userStop = false;
     const autoPause = () => { if (!vid.paused) { skip++; vid.pause(); } };      // web tự dừng (không tính là khách bấm dừng)
     vid.muted = true;
     const LL = (vi, en) => (typeof LANG !== "undefined" && LANG === "en") ? en : vi;
-    const mmss = s => "0:" + String(Math.floor(s)).padStart(2, "0");
+    const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
     function paintCh() {
       chs.innerHTML = V[k].ch.map(([s, vi, en]) => `<li><button type="button" data-s="${s}"><b>${mmss(s)}</b><span>${LL(vi, en)}</span></button></li>`).join("");
       sw.forEach(b => { const on = b.dataset.v === k; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
+      const tg = $i("m3v-tag"); if (tg) tg.textContent = LL(V[k].name[0], V[k].name[1]);
     }
     const poster = () => { if (seen) img.src = V[k].poster; };
     const sndBtn = () => { snd.hidden = !(fig.classList.contains("on") && vid.muted); };
     function play(at) {
-      if (vid.getAttribute("src") !== V[k].src) vid.src = V[k].src;
+      // 21.11j: gọi play() NGAY (trước đây chờ "loadedmetadata" — với preload="none" sự kiện này không bao giờ tới → video không tự chạy, khách phải bấm tay)
+      if (vid.getAttribute("src") !== V[k].src) { vid.src = V[k].src; vid.preload = "auto"; }
       vid.hidden = false; fig.classList.add("on"); sndBtn();
-      const go = () => { if (at != null) { try { vid.currentTime = at; } catch (e) {} } const p = vid.play(); if (p && p.catch) p.catch(() => { vid.hidden = true; fig.classList.remove("on"); sndBtn(); }); };
-      if (vid.readyState >= 1) go(); else vid.addEventListener("loadedmetadata", go, { once: true });
+      if (at != null) {
+        const seek = () => { try { vid.currentTime = at; } catch (e) {} };
+        if (vid.readyState >= 1) seek(); else vid.addEventListener("loadedmetadata", seek, { once: true });
+      }
+      const p = vid.play(); if (p && p.catch) p.catch(() => { vid.hidden = true; fig.classList.remove("on"); sndBtn(); });   // trình duyệt chặn tự phát → hiện lại ảnh bìa + nút ▶
     }
     function pick(n, run) {
       if (n !== k) { k = n; try { autoPause(); } catch (e) {} vid.removeAttribute("src"); try { vid.load(); } catch (e) {} vid.hidden = true; fig.classList.remove("on"); poster(); paintCh(); sndBtn(); }
@@ -12403,7 +12414,7 @@ function cbBlueMore() {
     sw.forEach(b => b.addEventListener("click", () => { userStop = false; pick(b.dataset.v, true); }));
     snd.addEventListener("click", () => { vid.muted = false; sndBtn(); const p = vid.play(); if (p && p.catch) p.catch(() => {}); });
     vid.addEventListener("volumechange", sndBtn);
-    vid.addEventListener("ended", () => pick(k === "a" ? "b" : "a", inView));      // hết video này → tự sang video kia
+    vid.addEventListener("ended", () => pick(k === "cp" ? "vps" : "cp", inView));  // hết video này → tự sang video kia
     vid.addEventListener("pause", () => { if (skip > 0) { skip--; return; } if (!vid.ended) userStop = true; });   // khách tự bấm dừng → không tự phát lại
     vid.addEventListener("play", () => { userStop = false; });
     vid.addEventListener("timeupdate", () => { const t = vid.currentTime; let cur = 0; V[k].ch.forEach(([s], i) => { if (t >= s - .05) cur = i; });
@@ -12411,10 +12422,10 @@ function cbBlueMore() {
     if ("IntersectionObserver" in window) {
       new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { if (!seen) { seen = true; poster(); } } }, { rootMargin: "600px 0px" }).observe(fig);
       new IntersectionObserver(es => {
-        const r = es[es.length - 1].intersectionRatio; inView = r >= .45;
+        const r = es[es.length - 1].intersectionRatio; inView = r >= .35;
         if (inView && AUTO && !userStop && vid.paused) play();                                     // kéo tới → tự phát (tắt tiếng)
         else if (r < .15) autoPause();                                                            // kéo đi → dừng cho nhẹ máy
-      }, { threshold: [0, .15, .45, .7] }).observe(fig);
+      }, { threshold: [0, .15, .35, .6] }).observe(fig);
     } else { seen = true; poster(); }
     paintCh(); document.addEventListener("br-lang", paintCh);
   }
