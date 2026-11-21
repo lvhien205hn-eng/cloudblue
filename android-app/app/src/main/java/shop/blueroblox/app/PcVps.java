@@ -41,6 +41,52 @@ final class PcVps {
 
     private static JSONArray items() { return mine == null ? new JSONArray() : mine.optJSONArray("items") == null ? new JSONArray() : mine.optJSONArray("items"); }
 
+    /** 21/11f · Số VPS GPU đang thuê / đang chờ máy (theo dữ liệu đã tải). */
+    static int live() {
+        JSONArray it = items(); int n = 0;
+        for (int i = 0; i < it.length(); i++) {
+            JSONObject x = it.optJSONObject(i);
+            if (x != null && ("active".equals(x.optString("state")) || "waiting".equals(x.optString("state")))) n++;
+        }
+        return n;
+    }
+
+    /** 21/11f · "Máy của tôi" = cloud phone; VPS GPU là MỤC RIÊNG (tab 🖥️ VPS GPU) → ở đây chỉ 1 dòng gọn dẫn sang tab đó khi khách có VPS.
+     *  Bản không bán trong app (không có tab VPS GPU) → vẫn hiện đủ thẻ VPS ở đây như cũ. */
+    static void link(MainActivity a, LinearLayout body) {
+        if (!Api.SHOP) { section(a, body); return; }
+        final LinearLayout box = Ui.col(a, 0);
+        body.addView(box, Ui.fill());
+        final Runnable paint = () -> {
+            box.removeAllViews();
+            int n = live();
+            if (n == 0) return;
+            LinearLayout r = Ui.row(a, 12);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(Ui.dp(14), Ui.dp(11), Ui.dp(12), Ui.dp(11));
+            r.setBackground(Ui.round(Ui.LIGHT ? Color.argb(24, 43, 110, 240) : Color.argb(40, 90, 175, 255), 16, Color.argb(120, 90, 175, 255)));
+            r.addView(Ui.text(a, "🖥️", 22, Ui.FG, false), Ui.wrap());
+            LinearLayout tx = Ui.col(a, 2);
+            tx.addView(Ui.text(a, Ui.L("VPS GPU của bạn · " + n + " máy", "Your GPU VPS · " + n), 15, Ui.FG, true));
+            tx.addView(Ui.muted(a, Ui.L("Điều khiển · cài lại · gia hạn ở tab VPS GPU", "Control · reinstall · renew in the GPU VPS tab")));
+            r.addView(tx, Ui.weight(1));
+            r.addView(Ui.text(a, "›", 26, Ui.SKY, true), Ui.wrap());
+            r.setClickable(true);
+            r.setContentDescription(Ui.L("Mở tab VPS GPU", "Open the GPU VPS tab"));
+            r.setOnClickListener(v -> a.show(3));
+            box.addView(r, Ui.fill());
+        };
+        if (mine != null) paint.run();
+        if (mine == null || System.currentTimeMillis() - mineAt > 15000) {
+            Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> {
+                if (!(r instanceof JSONObject) || a.isFinishing()) return;
+                mine = (JSONObject) r; mineAt = System.currentTimeMillis();
+                if (box.getParent() != null) paint.run();
+                a.vpsAuto();
+            }, m -> { });
+        } else a.vpsAuto();
+    }
+
     private static void fill(MainActivity a, LinearLayout box) {
         box.removeAllViews();
         JSONArray it = items();

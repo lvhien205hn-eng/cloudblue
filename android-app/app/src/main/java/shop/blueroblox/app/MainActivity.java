@@ -400,6 +400,14 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static boolean vpsAutoDone = false;
+    /** 21/11f · Khách chỉ thuê VPS GPU (chưa có cloud phone) → lần đầu mở app tự sang tab VPS GPU (1 lần mỗi lần mở app). */
+    void vpsAuto() {
+        if (vpsAutoDone || destroyed || !loaded) return;
+        vpsAutoDone = true;
+        if (Api.SHOP && tab == 0 && phones.length() == 0 && PcVps.live() > 0) show(3);
+    }
+
     void show(int t) {
         if (!Api.SHOP && (t == 1 || t == 3)) t = 0;     // không mua trong app → không có màn Cloud Phone / VPS GPU
         if (t == 1 && tab != 1) rentPicked = false;     // vào lại trang Thuê máy → chưa chọn gói, chưa hiện tiền
@@ -524,7 +532,7 @@ public class MainActivity extends Activity {
         cb.setOnClickListener(v -> claim(code, cb));
         cr.addView(cb, Ui.wrap());
         body.addView(cr, Ui.fill());
-        PcVps.section(this, body);                  // 21/11 · 🖥️ VPS GPU của bạn (máy PC thật — SQL v43; chưa có thì không hiện gì)
+        PcVps.link(this, body);                     // 21/11f · VPS GPU là mục riêng (tab 🖥️ VPS GPU) — ở đây chỉ 1 dòng dẫn sang khi khách có VPS
 
         if (phones.length() == 0) {
             LinearLayout e = Ui.card(this);
