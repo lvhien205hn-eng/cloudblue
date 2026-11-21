@@ -126,8 +126,8 @@ ck("_img1 → drivers\\1511, _img2 → drivers\\22h2 (đúng thứ tự ISO), kh
 ck("gói VGA NVIDIA kéo thả cho bản 1511 (cả file bị đổi tên đã đánh dấu nvidia-vga-) → nằm ở firstboot.d\\1511 để cài ở lần đăng nhập đầu, CHỈ bản 1511",
    sorted(os.listdir(os.path.join(fb, "1511"))) == [NV1, "nvidia-vga-VGA_cua_toi.exe"] and not any(B.NVIDIA_RE.match(f) for f in os.listdir(fb) if os.path.isfile(os.path.join(fb, f)))
    and not os.path.exists(os.path.join(drv, "1511", NV1)), os.listdir(os.path.join(fb, "1511")))
-ck("khung tóm tắt: mỗi thư mục driver 1 dòng, ghi rõ nạp cho bản nào", "DRIVER 1511: 1 file .inf - chi nap khi cai ban 1511" in info6 and "DRIVER 22h2: 1 file .inf - chi nap khi cai ban 22h2" in info6
-   and "DRIVER _img9: 1 file .inf - nap cho moi ban" in info6 and sum("VGA NVIDIA" in x and "(chi ban 1511)" in x for x in info6) == 2, info6)
+ck("khung tóm tắt: mỗi thư mục driver 1 dòng, ghi rõ nạp cho bản nào", "DRIVER 1511: 1 file .inf [card mang: 0 | khac: 1] - chi nap khi cai ban 1511" in info6 and "DRIVER 22h2: 1 file .inf [card mang: 0 | khac: 1] - chi nap khi cai ban 22h2" in info6
+   and "DRIVER _img9: 1 file .inf [card mang: 0 | khac: 1] - nap cho moi ban" in info6 and sum("VGA NVIDIA" in x and "(chi ban 1511)" in x for x in info6) == 2, info6)
 ck("thư mục có file mà không có .inf nào → dòng cảnh báo (!)", "(!) DRIVER rac: co 1 file nhung KHONG co file .inf nao - khong nap duoc" in info6, info6)
 ck("bộ cài chỉ nạp driver đúng bản: 1511 dùng thư mục 1511, không dùng 22h2", C.folder_applies("1511", "1511") and not C.folder_applies("22h2", "1511")
    and not C.folder_applies("1511", "22h2") and C.folder_applies("_img9", "1511") and C.folder_applies("rac", "22h2"))
@@ -138,9 +138,31 @@ ck("thư mục tên bản đã có sẵn → gộp vào, trùng tên thì thêm 
 w(os.path.join(drv, "trong", "con", ".giu"), b""); os.remove(os.path.join(drv, "trong", "con", ".giu"))
 rep6 = B.driver_report(os.path.join(out, "cb"))
 ck("thư mục driver rỗng → dọn đi, không ghi dòng nào", not os.path.exists(os.path.join(drv, "trong")) and not any("trong" in x for x in rep6)
-   and "DRIVER 1511: 2 file .inf - chi nap khi cai ban 1511" in rep6, rep6)
+   and "DRIVER 1511: 2 file .inf [card mang: 0 | khac: 2] - chi nap khi cai ban 1511" in rep6, rep6)
 w(os.path.join(drv, "le.inf"), "inf")
-ck("file .inf để lẻ ngay trong drivers → ghi là nạp cho mọi bản", B.driver_report(os.path.join(out, "cb"))[0] == "DRIVER (file le trong drivers): 1 file .inf - nap cho moi ban")
+ck("file .inf để lẻ ngay trong drivers → ghi là nạp cho mọi bản", B.driver_report(os.path.join(out, "cb"))[0] == "DRIVER (file le trong drivers): 1 file .inf [card mang: 0 | khac: 1] - nap cho moi ban")
+# khung tóm tắt ghi LOẠI driver (đọc [Version] Class của từng .inf) → nhìn là biết gói driver của bản 1511 có driver card mạng hay không
+INF_NET = '; Realtek\r\n[Version]\r\nSignature = "$Windows NT$"\r\nClass       = Net   ; card mang\r\nClassGUID = {4d36e972-e325-11ce-bfc1-08002be10318}\r\nProvider = %Realtek%\r\n\r\n[Strings]\r\nRealtek = "Realtek Semiconductor Corp."\r\n'
+kd = os.path.join(tmp, "kinds", "cb", "drivers")
+wb = lambda path, data: (os.makedirs(os.path.dirname(path), exist_ok=True), open(path, "wb").write(data))
+wb(os.path.join(kd, "1511", "lan", "rt640x64.inf"), b"\xff\xfe" + INF_NET.encode("utf-16-le"))                                  # UTF-16 có BOM (kiểu hay gặp nhất)
+wb(os.path.join(kd, "1511", "wifi", "netrtwlane.inf"), INF_NET.replace("%Realtek%", '"Realtek"').encode("utf-16-le"))            # UTF-16 không BOM, hãng ghi thẳng
+wb(os.path.join(kd, "1511", "vga", "nvdm.inf"), b"[Version]\r\nClass=Display\r\nProvider=%NVIDIA%\r\n[Strings]\r\nNVIDIA=\"NVIDIA\"\r\n")   # ANSI
+wb(os.path.join(kd, "1511", "khac", "chipset.inf"), b"\xef\xbb\xbf[Version]\r\nClass=System\r\nProvider=Intel\r\n")                   # UTF-8 có BOM
+wb(os.path.join(kd, "1511", "khac", "hong.inf"), b"\x00\x01\x02khong phai inf")
+wb(os.path.join(kd, "22h2", "vga", "igdlh64.inf"), b"[Version]\r\nClass=Display\r\nProvider=%Intel%\r\n")
+ck("inf_info: đọc loại + hãng từ .inf UTF-16 có BOM (hãng ghi kiểu %tên% tra trong [Strings])", B.inf_info(os.path.join(kd, "1511", "lan", "rt640x64.inf")) == ("Net", "Realtek Semiconductor"), B.inf_info(os.path.join(kd, "1511", "lan", "rt640x64.inf")))
+ck("inf_info: UTF-16 không BOM · ANSI · UTF-8 có BOM · %tên% không có trong [Strings] → lấy tên trong dấu % · file hỏng → rỗng",
+   [B.inf_info(os.path.join(kd, *x)) for x in (("1511", "wifi", "netrtwlane.inf"), ("1511", "vga", "nvdm.inf"), ("1511", "khac", "chipset.inf"), ("22h2", "vga", "igdlh64.inf"), ("1511", "khac", "hong.inf"), ("khong", "co.inf"))]
+   == [("Net", "Realtek"), ("Display", "NVIDIA"), ("System", "Intel"), ("Display", "Intel"), ("", ""), ("", "")])
+repk = B.driver_report(os.path.join(tmp, "kinds", "cb"))
+ck("khung tóm tắt: gói driver bản 1511 CÓ driver card mạng → ghi số + tên file + hãng; kèm số driver VGA / khác",
+   repk[0] == "DRIVER 1511: 5 file .inf [card mang: 2 (rt640x64.inf Realtek Semiconductor; netrtwlane.inf Realtek) | VGA: 1 | khac: 2] - chi nap khi cai ban 1511", repk)
+ck("gói driver KHÔNG có driver card mạng → ghi rõ 'card mang: 0'", repk[1] == "DRIVER 22h2: 1 file .inf [card mang: 0 | VGA: 1] - chi nap khi cai ban 22h2" and all(x.isascii() for x in repk), repk)
+for i in range(7): wb(os.path.join(kd, "nhieu", "n%d.inf" % i), b"[Version]\r\nClass=NET\r\nProvider=\"H\xe3ng %d\"\r\n" % i)
+repk = B.driver_report(os.path.join(tmp, "kinds", "cb"))
+ck("nhiều driver card mạng → liệt kê 5 cái đầu rồi '...'; tên hãng có chữ lạ được lọc về ASCII", any(x.startswith("DRIVER nhieu: 7 file .inf [card mang: 7 (n0.inf Hng 0; n1.inf Hng 1; n2.inf Hng 2; n3.inf Hng 3; n4.inf Hng 4; ...)] - nap cho moi ban") for x in repk)
+   and all(x.isascii() for x in repk), repk)
 ck("không có thư mục drivers → không lỗi", B.adopt_driver_drops(os.path.join(tmp, "khong-co"), cfg["images"]) == {} and B.driver_report(os.path.join(tmp, "khong-co")) == [])
 for d in ("drivers", os.path.join("os", "firstboot.d")): shutil.rmtree(os.path.join(out, "cb", d))
 cfg = B.layout(json.loads(json.dumps(P)))
