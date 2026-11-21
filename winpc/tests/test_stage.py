@@ -11,6 +11,7 @@ import cbrec                                          # noqa: E402
 import cb_pe                                          # noqa: E402
 import cb_stage                                       # noqa: E402
 import cb_provision                                   # noqa: E402
+import cbsys                                          # noqa: E402
 from cbsys import GPT_DATA, GPT_ESP, GPT_MSR, GPT_WINRE  # noqa: E402
 from fakesys import GB, MB, FakeSys, ScriptUI         # noqa: E402
 import test_pe_helpers as H                           # noqa: E402
@@ -551,6 +552,25 @@ real_inf = os.path.join(st["base"], "lan.inf"); open(real_inf, "wb").write(b"[Ve
 pr._staged = lambda: [{"pub": "oem7.inf", "inf": os.path.join(st["base"], "khong-co.inf")}, {"pub": "oem8.inf", "inf": real_inf}]
 pr.drivers()
 ck("gói trong kho không ghi sẵn lớp → tự đọc file .inf để biết là driver mạng; file không đọc được thì bỏ qua", st["pnputil"] == [["-i", "-a", real_inf]], st["pnputil"])
+
+with tempfile.TemporaryDirectory() as wr:                              # kho driver giả: %SystemRoot%\\INF\\oemN.inf + System32\\DriverStore\\FileRepository\\<tên>.inf_<máy>_<mã>\\<tên>.inf
+    def wput(rel, data):
+        os.makedirs(os.path.dirname(os.path.join(wr, *rel.split("/"))), exist_ok=True); open(os.path.join(wr, *rel.split("/")), "wb").write(data)
+    I_A, I_B, I_C = b"[Version]\r\nClass=Net\r\n; A" + b"x" * 100, b"[Version]\r\nClass=Net\r\n; B" + b"y" * 100, b"[Version]\r\nClass=Display\r\n"
+    FR = "System32/DriverStore/FileRepository/"
+    wput(FR + "rt640x64.inf_amd64_aaa/rt640x64.inf", I_A); wput(FR + "e1d65x64.inf_amd64_bbb/e1d65x64.inf", I_B); wput(FR + "nv_dispi.inf_amd64_ccc/nv_dispi.inf", I_C)
+    wput(FR + "khong-dung-kieu/x.inf", I_A); wput(FR + "thieu.inf_amd64_ddd/khac.inf", I_A)
+    wput("INF/oem10.inf", I_B); wput("INF/OEM2.INF", I_A); wput("INF/oem3.inf", I_C); wput("INF/oem4.inf", b"goi kieu cu, khong nam trong kho"); wput("INF/netrtwlane.inf", I_A); wput("INF/oemx.inf", I_A)
+    how = {}
+    got = cbsys.staged_infs(how=how, root=wr)
+    ck("staged_infs: tìm gói driver bên thứ ba bằng cách so file oemN.inf với kho driver (2 file cùng cỡ khác nội dung vẫn ghép đúng), xếp theo số; gói kiểu cũ không có trong kho thì bỏ qua",
+       [(g["pub"], os.path.basename(g["inf"])) for g in got] == [("oem2.inf", "rt640x64.inf"), ("oem3.inf", "nv_dispi.inf"), ("oem10.inf", "e1d65x64.inf")] and how == {"pub": 4, "repo": 3, "match": 3}
+       and all(os.path.isfile(g["inf"]) and "FileRepository" in g["inf"] for g in got), (got, how))
+    ck("staged_infs: không có thư mục Windows → danh sách rỗng, không ném lỗi; có giới hạn số gói", cbsys.staged_infs(root=os.path.join(wr, "khong-co")) == [] and len(cbsys.staged_infs(limit=1, root=wr)) == 1)
+    pr, st = drv_env([D_LAN_OFF], fix_after_pnputil=True)
+    pr._staged = lambda: cbsys.staged_infs(root=wr)
+    pr.drivers()
+    ck("bước driver dùng kho driver thật: chỉ 2 gói lớp 'net' được chạy pnputil (đọc lớp từ file .inf), gói VGA không đụng", [os.path.basename(a[2]) for a in st["pnputil"]] == ["rt640x64.inf", "e1d65x64.inf"], st["pnputil"])
 
 pr, st = drv_env([D_LAN_OFF, D_VGA_BASIC], fix_after_kick=5, extra=("1511/05-lan.cmd",))
 pr.firstlogon()
