@@ -117,13 +117,30 @@
     return p;
   }
   const ok = v => () => Promise.resolve({ data: v, error: null });
+  // 21.11l · xác minh 2 bước (Supabase TOTP) — chỉ có khi bộ thử bơm INIT.mfa = { factors: [{id, status}], aal: "aal1"|"aal2", code: "123456" }
+  const MF = F.mfa = INIT.mfa ? Object.assign({ factors: [], aal: "aal1", code: "123456", calls: [] }, clone(INIT.mfa)) : null;
+  const mfaRes = v => Promise.resolve(v);
+  const mfa = MF && {
+    getAuthenticatorAssuranceLevel() { MF.calls.push(["aal"]); return mfaRes({ data: { currentLevel: MF.aal, nextLevel: MF.factors.some(f => f.status === "verified") ? "aal2" : MF.aal }, error: null }); },
+    listFactors() { MF.calls.push(["list"]); return mfaRes({ data: { all: clone(MF.factors), totp: clone(MF.factors.filter(f => f.status === "verified")), phone: [] }, error: null }); },
+    enroll(a) { MF.calls.push(["enroll", clone(a)]); const f = { id: "fac" + (++F.seq), status: "unverified", factor_type: "totp", friendly_name: a && a.friendlyName };
+      if (MF.factors.some(x => x.status === "verified") && MF.aal !== "aal2") return mfaRes({ data: null, error: { message: "AAL2 required to enroll a new factor" } });
+      MF.factors.push(f); return mfaRes({ data: { id: f.id, type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8'/></svg>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }, error: null }); },
+    challengeAndVerify(a) { MF.calls.push(["verify", clone(a)]); const f = MF.factors.find(x => x.id === a.factorId);
+      if (!f) return mfaRes({ data: null, error: { message: "Factor not found" } });
+      if (a.code !== MF.code) return mfaRes({ data: null, error: { message: "Invalid TOTP code entered", code: "mfa_verification_failed" } });
+      f.status = "verified"; MF.aal = "aal2"; return mfaRes({ data: { access_token: "y" }, error: null }); },
+    unenroll(a) { MF.calls.push(["unenroll", clone(a)]); const f = MF.factors.find(x => x.id === a.factorId);
+      if (f && f.status === "verified" && MF.aal !== "aal2") return mfaRes({ data: null, error: { message: "AAL2 required to unenroll a verified factor" } });
+      const i = MF.factors.indexOf(f); if (i >= 0) MF.factors.splice(i, 1); return mfaRes({ data: { id: a.factorId }, error: null }); },
+  };
   const client = {
     from: query, rpc,
-    auth: {
+    auth: Object.assign({
       onAuthStateChange(cb) { setTimeout(() => cb(session ? "SIGNED_IN" : "INITIAL_SESSION", session), 0); return { data: { subscription: { unsubscribe() {} } } }; },
       getSession: ok({ session }), getUser: ok({ user: session && session.user }), signOut: ok({}), updateUser: ok({}), resetPasswordForEmail: ok({}),
-      signUp: ok({}), signInWithPassword: ok({ session }), verifyOtp: ok({}),
-    },
+      signUp: ok({}), signInWithPassword: ok({ session }), verifyOtp: ok({}), refreshSession: ok({ session }),
+    }, mfa ? { mfa } : {}),
     storage: { from: () => new Proxy({}, { get: (t, k) => k === "getPublicUrl" ? () => ({ data: { publicUrl: "" } }) : ok(null) }) },
     channel: () => { const c = { on: () => c, subscribe: () => c, unsubscribe() {} }; return c; }, removeChannel() {}, functions: { invoke: ok(null) },
   };

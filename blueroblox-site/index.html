@@ -572,6 +572,20 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .admalert div{padding:9px 12px;border-radius:11px;font-size:13px;line-height:1.45;border:1px solid}
 .admalert .r{background:rgba(255,107,129,.1);border-color:rgba(255,107,129,.4);color:#ffd4db}
 .admalert .y{background:rgba(255,200,97,.08);border-color:rgba(255,200,97,.35);color:#ffe7b8}
+/* 21.11l · xác minh 2 bước (mã 6 số) cho tài khoản admin */
+#mfa{z-index:80}                                  /* trên bảng quản trị (60) và các hộp của quản trị (70) */
+.mfa-dlg{max-width:440px}
+.mfa-dlg section{display:grid;gap:12px}
+.mfa-dlg h3{margin:0;font-size:19px}
+.mfa-dlg p{margin:0;font-size:14px;line-height:1.55}
+.mfa-code{font:700 26px/1.2 var(--mono);letter-spacing:.35em;text-align:center;padding:12px 10px}
+.mfa-steps{margin:0;padding-left:20px;display:grid;gap:4px;font-size:14px;line-height:1.5}
+.mfa-qr{justify-self:center;padding:12px;border-radius:14px;background:#fff;line-height:0}
+.mfa-qr img{width:184px;height:184px}
+.mfa-sec{font-family:var(--mono);font-size:13px;word-break:break-all;user-select:all}
+.mfa-dlg .acts{display:flex;gap:8px;flex-wrap:wrap}
+.mfa-dlg .acts .btn{flex:1 1 auto}
+.admalert a[data-mfa]{color:inherit;font-weight:700;text-decoration:underline}
 .mtbox{grid-template-columns:1fr}
 .mtrow{display:flex!important;flex-direction:row!important;gap:12px;align-items:flex-start;cursor:pointer}
 .mtrow small{display:block;color:var(--muted);font-size:12.5px;font-weight:400;margin-top:2px}
@@ -2819,6 +2833,33 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
     <button class="btn ghost sm" id="auth-close" data-i18n="close">Đóng</button>
   </div>
 </div>
+<!-- 21.11l · XÁC MINH 2 BƯỚC (admin): nhập mã khi đăng nhập · bật · quản lý -->
+<div class="modal" id="mfa" hidden>
+  <div class="dlg mfa-dlg" role="dialog" aria-modal="true" aria-labelledby="mfa-t">
+    <h3 id="mfa-t">🔐 Xác minh 2 bước</h3>
+    <section id="mfa-ask">
+      <p>Tài khoản admin đã bật xác minh 2 bước. Mở app <b>Google Authenticator</b> trên điện thoại, nhập mã 6 số của <b>CloudBlue</b>.</p>
+      <input class="in mfa-code" id="mfa-code" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="000000" aria-label="Mã 6 số">
+      <div class="err" id="mfa-err" role="alert"></div>
+      <div class="acts"><button class="btn" type="button" id="mfa-ok">Xác nhận</button><button class="btn ghost" type="button" id="mfa-out">Đăng xuất</button></div>
+    </section>
+    <section id="mfa-new" hidden>
+      <ol class="mfa-steps"><li>Cài app <b>Google Authenticator</b> (hoặc Microsoft Authenticator) trên điện thoại.</li>
+        <li>Trong app bấm <b>+</b> › <b>Quét mã QR</b>, quét mã bên dưới.</li><li>Nhập mã 6 số app hiện ra rồi bấm <b>Bật</b>.</li></ol>
+      <div class="mfa-qr"><img id="mfa-qr" alt="Mã QR để thêm CloudBlue vào app xác minh" width="184" height="184"></div>
+      <p class="hint">Không quét được? Trong app chọn <b>Nhập khoá thiết lập</b>, gõ: <span class="mfa-sec" id="mfa-sec"></span></p>
+      <input class="in mfa-code" id="mfa-code2" inputmode="numeric" autocomplete="one-time-code" maxlength="9" placeholder="000000" aria-label="Mã 6 số">
+      <div class="err" id="mfa-err2" role="alert"></div>
+      <div class="acts"><button class="btn" type="button" id="mfa-on">Bật xác minh 2 bước</button><button class="btn ghost" type="button" id="mfa-new-x">Để sau</button></div>
+    </section>
+    <section id="mfa-man" hidden>
+      <p>✅ <b>Đã bật.</b> Mỗi lần đăng nhập vào quản trị cần thêm mã 6 số trong app. Lộ mật khẩu cũng không ai vào được trang quản trị.</p>
+      <p class="hint">Mất điện thoại: mở Supabase › SQL Editor, chạy dòng ghi ở đầu file SQL v47 để gỡ, rồi bật lại bằng điện thoại mới.</p>
+      <div class="err" id="mfa-err3" role="alert"></div>
+      <div class="acts"><button class="btn ghost" type="button" id="mfa-swap">Đổi sang điện thoại khác</button><button class="btn danger" type="button" id="mfa-off">Tắt xác minh 2 bước</button><button class="btn ghost" type="button" id="mfa-man-x">Đóng</button></div>
+    </section>
+  </div>
+</div>
 
 <!-- NẠP TIỀN -->
 <div class="modal" id="topup" hidden>
@@ -3107,7 +3148,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 <!-- ADMIN -->
 <div class="drawer" id="drawer" hidden>
   <div class="dpanel" role="dialog" aria-modal="true" aria-labelledby="d-title">
-    <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
+    <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-mfa" type="button" title="Xác minh 2 bước cho tài khoản admin" hidden>🔐 2 bước</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="xp-host" id="pca-rentbar" hidden></div>
     <div class="tabs" id="adm-tabs">
@@ -4718,7 +4759,9 @@ function setLang(l) { LANG = l === "en" ? "en" : "vi"; try { localStorage.setIte
 $("lang-vi").onclick = () => setLang("vi"); $("lang-en").onclick = () => setLang("en");
 const plansOf = p => (Array.isArray(p.plans) ? p.plans : []).filter(x => +x.days > 0 && +x.price >= 0).sort((a, b) => a.days - b.days);
 const minPrice = p => { const pl = plansOf(p); return pl.length ? Math.min(...pl.map(x => +x.price)) : +p.price; };
-const isAdmin = () => !!(profile && profile.role === "admin" && !profile.locked);
+/* 21.11l · xác minh 2 bước: admin đã bật mà phiên chưa nhập mã 6 số (aal1) → chưa coi là admin (máy chủ cũng chặn — SQL v47) */
+const MFA = { need: false, on: false, fid: null };
+const isAdmin = () => !!(profile && profile.role === "admin" && !profile.locked && !MFA.need);
 function toast(t, err) { const e = $("toast"); e.textContent = t; e.className = "toast" + (err ? " err" : ""); e.hidden = false; clearTimeout(e._t); e._t = setTimeout(() => e.hidden = true, 3800); }
 async function busy(btn, fn) { if (btn) btn.disabled = true; try { return await fn(); } finally { if (btn) btn.disabled = false; } }
 
@@ -4838,7 +4881,22 @@ function vietqr(bin, acc, amount, memo) {
 /* ---------- tải dữ liệu ---------- */
 async function loadSettings() { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (sysDownErr(error)) { sysDownOn(); return; } SITE = { ...DEF_SITE, ...((data && data.data) || {}) }; window.__siteLoaded = true; renderSite(); renderGrid(); try { renderFreeBar(); } catch (e) {} }
 async function loadProducts() { const { data, error } = await sb.from("product_list").select("*").order("sort"); if (sysDownErr(error)) sysDownOn(); if (error) { $("grid").innerHTML = `<div class="empty">${L("Không tải được sản phẩm. Tải lại trang để thử lại.", "Could not load products. Reload the page to try again.")}</div>`; return; } P = data || []; renderCats(); renderGrid(); if (isAdmin()) renderTable(); }
-async function loadProfile() { if (!session) { profile = null; return; } const { data } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(); profile = data || null; }
+async function loadProfile() { if (!session) { profile = null; mfaState(); return; } const { data } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(); profile = data || null; await mfaState(); }
+/* đọc ngay trong phiên (không gọi mạng): đã bật 2 bước chưa (mã đã xác nhận), phiên này đã nhập mã chưa */
+async function mfaState() {
+  const r = { need: false, on: false, fid: null };
+  try {
+    if (session && profile && profile.role === "admin" && sb.auth && sb.auth.mfa) {
+      const { data } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+      let fs = session.user && Array.isArray(session.user.factors) ? session.user.factors : null;      // phiên không ghi danh sách mã → hỏi máy chủ
+      if (!fs) { try { const { data: fl } = await sb.auth.mfa.listFactors(); fs = (fl && fl.all) || []; } catch (e) { fs = []; } }
+      const v = fs.filter(f => f && f.status === "verified" && f.factor_type === "totp");
+      r.fid = v.length ? v[0].id : null; r.on = v.length > 0;
+      r.need = !!(data && data.currentLevel !== "aal2" && (r.on || data.nextLevel === "aal2"));
+    }
+  } catch (e) {}
+  Object.assign(MFA, r); try { mfaBtn(); } catch (e) {} return MFA;
+}
 
 /* ---------- trang khách ---------- */
 function drawThumb(cv, seed, h) {
@@ -5281,8 +5339,83 @@ $("f-login").onsubmit = e => { e.preventDefault(); busy($("li-btn"), async () =>
   await loadProfile();
   if (profile && profile.locked) { const who = profile.username || $("li-e").value.trim(); await sb.auth.signOut(); $("li-p").value = ""; $("li-err").textContent = ""; show("auth", false); banNotice(who); return; }
   $("f-login").reset(); show("auth", false); renderUser();
+  if (MFA.need) { mfaAsk(); return; }                             // 21.11l: admin đã bật 2 bước → hỏi mã 6 số
   if (isAdmin() && ADMIN_PAGE) openAdmin(); else toast(L("Đăng nhập thành công.", "Logged in."));
 }); };
+/* ===== 21.11l · XÁC MINH 2 BƯỚC cho tài khoản admin (mã 6 số — Supabase TOTP; máy chủ chặn quyền admin của phiên chưa nhập mã: SQL v47) ===== */
+const mfaSec = id => ["mfa-ask", "mfa-new", "mfa-man"].forEach(x => show(x, x === id));
+const mfaCode = el => String(el.value || "").replace(/\D/g, "").slice(0, 6);
+const mfaErr = e => { const m = String((e && (e.message || e.code)) || "");
+  return /invalid|incorrect|expired|verification.?failed/i.test(m) ? "Mã sai hoặc đã hết hạn — đợi app ra mã mới rồi nhập lại."
+    : /too many|rate.?limit/i.test(m) ? "Nhập sai nhiều lần — đợi vài phút rồi thử lại." : (typeof errMsg === "function" ? errMsg(e) : m || "Có lỗi — thử lại."); };
+let MFA_NEW = null;                                                  // mã đang bật dở: {id}
+function mfaBtn() { const b = $("adm-mfa"); if (!b) return; b.hidden = !(sb.auth && sb.auth.mfa); b.textContent = MFA.on ? "🔐 Đã bật 2 bước" : "🔐 Bật 2 bước"; }
+function mfaAsk() {
+  if (!$("mfa").hidden && !$("mfa-ask").hidden) { $("mfa-code").focus(); return; }
+  mfaSec("mfa-ask"); $("mfa-code").value = ""; $("mfa-err").textContent = ""; show("mfa"); setTimeout(() => $("mfa-code").focus(), 30);
+}
+async function mfaFid() {                                            // mã đã xác nhận của tài khoản (phiên chưa có thì hỏi máy chủ)
+  if (MFA.fid) return MFA.fid;
+  try { const { data } = await sb.auth.mfa.listFactors(); const f = ((data && data.totp) || []).find(x => x.status === "verified"); return f ? f.id : null; } catch (e) { return null; }
+}
+async function mfaAfter(msg) {                                       // sau khi bật / tắt / nhập mã: đọc lại phiên + vẽ lại
+  try { const { data } = await sb.auth.getSession(); session = (data && data.session) || session; } catch (e) {}
+  await loadProfile(); renderUser(); try { renderAlerts(); } catch (e) {} mfaBtn(); if (msg) toast(msg);
+}
+$("mfa-ok").onclick = () => busy($("mfa-ok"), async () => {
+  const code = mfaCode($("mfa-code")); $("mfa-err").textContent = "";
+  if (code.length !== 6) { $("mfa-err").textContent = "Nhập đủ 6 số trong app."; return; }
+  const fid = await mfaFid(); if (!fid) { $("mfa-err").textContent = "Không đọc được mã xác minh của tài khoản — tải lại trang rồi thử lại."; return; }
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: fid, code });
+  if (error) { $("mfa-err").textContent = mfaErr(error); $("mfa-code").select(); return; }
+  show("mfa", false); await mfaAfter("🔐 Đã xác minh 2 bước.");
+  if (isAdmin() && ADMIN_PAGE && $("drawer").hidden) openAdmin();
+});
+$("mfa-out").onclick = async () => { show("mfa", false); await logout(); };
+async function mfaStart() {                                          // bật mới / thêm điện thoại mới (đổi máy): tạo mã QR
+  mfaSec("mfa-new"); $("mfa-err2").textContent = ""; $("mfa-code2").value = ""; $("mfa-qr").removeAttribute("src"); $("mfa-sec").textContent = "…"; show("mfa");
+  try { const { data } = await sb.auth.mfa.listFactors();
+    for (const f of ((data && data.all) || []).filter(x => x.status !== "verified")) { try { await sb.auth.mfa.unenroll({ factorId: f.id }); } catch (e) {} } } catch (e) {}   // dọn lần bật dở trước
+  const { data, error } = await sb.auth.mfa.enroll({ factorType: "totp", friendlyName: "CloudBlue admin " + new Date().toISOString().slice(0, 16).replace("T", " ") });
+  if (error || !data || !data.totp) { MFA_NEW = null; $("mfa-err2").textContent = mfaErr(error || {}); return; }
+  MFA_NEW = { id: data.id };
+  const qr = String(data.totp.qr_code || ""); if (/^data:image\/svg\+xml/i.test(qr)) $("mfa-qr").src = qr;
+  $("mfa-sec").textContent = String(data.totp.secret || ""); setTimeout(() => $("mfa-code2").focus(), 30);
+}
+$("mfa-on").onclick = () => busy($("mfa-on"), async () => {
+  const code = mfaCode($("mfa-code2")); $("mfa-err2").textContent = "";
+  if (!MFA_NEW) { $("mfa-err2").textContent = "Chưa tạo được mã QR — đóng hộp này rồi bấm 🔐 lại."; return; }
+  if (code.length !== 6) { $("mfa-err2").textContent = "Nhập đủ 6 số trong app."; return; }
+  let old = []; try { const { data } = await sb.auth.mfa.listFactors(); old = ((data && data.totp) || []).filter(x => x.status === "verified" && x.id !== MFA_NEW.id).map(x => x.id); } catch (e) {}
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: MFA_NEW.id, code });
+  if (error) { $("mfa-err2").textContent = mfaErr(error); $("mfa-code2").select(); return; }
+  for (const id of old) { try { await sb.auth.mfa.unenroll({ factorId: id }); } catch (e) {} }   // đổi điện thoại: máy mới chạy được rồi mới bỏ máy cũ
+  MFA_NEW = null; show("mfa", false);
+  try { await sb.auth.refreshSession(); } catch (e) {}
+  await mfaAfter(old.length ? "🔐 Đã chuyển xác minh 2 bước sang điện thoại mới." : "🔐 Đã bật xác minh 2 bước. Lần sau vào quản trị cần thêm mã 6 số.");
+});
+$("mfa-new-x").onclick = () => { if (MFA_NEW) { const id = MFA_NEW.id; Promise.resolve(sb.auth.mfa.unenroll({ factorId: id })).catch(() => {}); } MFA_NEW = null; show("mfa", false); };
+async function mfaManage() {
+  if (!(sb.auth && sb.auth.mfa)) return;
+  await mfaState(); mfaBtn();
+  if (!MFA.on) return mfaStart();
+  mfaSec("mfa-man"); $("mfa-err3").textContent = ""; $("mfa-off").dataset.sure = ""; $("mfa-off").textContent = "Tắt xác minh 2 bước"; show("mfa");
+}
+$("adm-mfa").onclick = () => mfaManage();
+$("mfa-man-x").onclick = () => show("mfa", false);
+$("mfa-swap").onclick = () => mfaStart();
+$("mfa-off").onclick = () => busy($("mfa-off"), async () => {
+  const b = $("mfa-off");
+  if (b.dataset.sure !== "1") { b.dataset.sure = "1"; b.textContent = "Bấm lần nữa để TẮT"; $("mfa-err3").textContent = "Tắt rồi thì chỉ cần mật khẩu là vào được trang quản trị (kém an toàn hơn)."; return; }
+  let bad = null;
+  try { const { data } = await sb.auth.mfa.listFactors(); for (const f of ((data && data.all) || [])) { const { error } = await sb.auth.mfa.unenroll({ factorId: f.id }); if (error) bad = error; } }
+  catch (e) { bad = e; }
+  if (bad) { $("mfa-err3").textContent = mfaErr(bad); return; }
+  show("mfa", false); try { await sb.auth.refreshSession(); } catch (e) {}
+  await mfaAfter("Đã tắt xác minh 2 bước.");
+});
+["mfa-code", "mfa-code2"].forEach((id, i) => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $(i ? "mfa-on" : "mfa-ok").click(); }));
+$("adm-alert").addEventListener("click", e => { const a = e.target.closest && e.target.closest("[data-mfa]"); if (!a) return; e.preventDefault(); mfaStart(); });
 let fgEmail = "";
 $("fg-send").onclick = () => busy($("fg-send"), async () => {
   fgEmail = $("fg-e").value.trim(); $("fg-err").textContent = "";
@@ -6706,6 +6839,7 @@ sb.auth.onAuthStateChange((ev, s) => {
   setTimeout(async () => { await loadProfile();
     if (profile && profile.locked) { const who = profile.username; profile = null; renderUser(); try { await sb.auth.signOut(); } catch (e) {} banNotice(who); return; }   // đang đăng nhập mà bị ban → đăng xuất + báo
     renderUser(); if (ev === "PASSWORD_RECOVERY") openAuth("newpw"); else pwForce(); if (profile) { minePending = null; watchMine(); pollPending(); }
+    if (MFA.need) mfaAsk(); else if ($("mfa") && !$("mfa").hidden && !$("mfa-ask").hidden) show("mfa", false);
     try { lwLoad(); } catch (e) {} try { promoLoad(); } catch (e) {} }, 0);
 });
 loadSettings(); loadProducts(); heroStats(); setInterval(() => { if (!document.hidden) heroStats(); }, 300000);   // số người đăng ký / đã mua: 5 phút đọc lại 1 lần
@@ -8839,8 +8973,10 @@ function nodeAlerts(nodes) {
 var AM_BAD = [];                                   // [tên app, bản tối thiểu, bản mới nhất] — tối thiểu > bản đang phát hành (amCheck)
 function renderAlerts() {
   const al = AM_BAD.map(([nm, v, lv]) => ["r", `⛔ <b>App ${esc(nm)} tối thiểu ${esc(v)}</b> cao hơn bản mới nhất ${esc(lv)} — MỌI khách dùng app ${esc(nm)} đang bị chặn mà không có bản nào để cập nhật. Sửa: ⚙️ Cài đặt › 📲 Ứng dụng → "Lấy bản mới nhất" → Lưu bản tối thiểu.`])
-    .concat(nodeAlerts(NODES)), red = al.some(x => x[0] === "r");
+    .concat(nodeAlerts(NODES)).concat(isAdmin() && sb.auth && sb.auth.mfa && !MFA.on ? [["y", `🔐 <b>Tài khoản admin chưa bật xác minh 2 bước</b> — lộ mật khẩu là người khác vào được trang quản trị. <a href="#" data-mfa="on">Bật ngay (1 phút)</a>`]] : []),
+    red = al.some(x => x[0] === "r");
   $("adm-alert").innerHTML = al.map(x => `<div class="${x[0]}">${x[1]}</div>`).join(""); show("adm-alert", al.length > 0);
+  try { mfaBtn(); } catch (e) {}
   show("cp-adm-badge", red);
   return al;
 }
@@ -9748,13 +9884,14 @@ function adminPageBoot() {
   const g = document.createElement("div"); g.className = "adm-gate"; g.id = "adm-gate";
   g.innerHTML = `<h2>Bảng quản trị CloudBlue</h2><p id="adm-gate-msg">Đang kiểm tra đăng nhập…</p><div style="display:flex;gap:10px"><button class="btn" id="adm-gate-login" hidden>Đăng nhập admin</button><a class="btn ghost" href="/">Về trang chủ</a></div>`;
   document.body.appendChild(g);
-  $("adm-gate-login").onclick = () => openAuth("login");
+  $("adm-gate-login").onclick = () => profile && MFA.need ? mfaAsk() : openAuth("login");
   let t0 = Date.now();
   const iv = setInterval(() => {
     if (profile && isAdmin()) { if ($("drawer").hidden) openAdmin(); g.hidden = true; return; }
     g.hidden = false;
-    if (profile) { $("adm-gate-msg").textContent = "Tài khoản này không phải admin."; $("adm-gate-login").hidden = true; }
-    else if (Date.now() - t0 > 2500) { $("adm-gate-msg").textContent = "Đăng nhập tài khoản admin để vào bảng quản trị."; $("adm-gate-login").hidden = false; }
+    if (profile && MFA.need) { $("adm-gate-msg").textContent = "🔐 Tài khoản admin đã bật xác minh 2 bước — nhập mã 6 số trong app Google Authenticator để vào."; $("adm-gate-login").textContent = "Nhập mã 6 số"; $("adm-gate-login").hidden = false; }
+    else if (profile) { $("adm-gate-msg").textContent = "Tài khoản này không phải admin."; $("adm-gate-login").hidden = true; }
+    else if (Date.now() - t0 > 2500) { $("adm-gate-msg").textContent = "Đăng nhập tài khoản admin để vào bảng quản trị."; $("adm-gate-login").textContent = "Đăng nhập admin"; $("adm-gate-login").hidden = false; }
   }, 700);
 }
 adminPageBoot();

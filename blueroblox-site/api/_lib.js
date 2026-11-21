@@ -40,7 +40,7 @@ function same(a, b) {
 }
 
 // Người gọi là ai? Đọc "Authorization: Bearer <mã đăng nhập Supabase>" → hỏi Supabase mã còn hạn không → đọc hồ sơ.
-// Trả { uid, email, username, admin, locked } hoặc null (không có / sai / hết hạn). admin = giống hàm SQL is_admin().
+// Trả { uid, email, username, admin, locked } hoặc null (không có / sai / hết hạn). admin = đúng hàm SQL is_admin() của phiên người gọi (kể cả xác minh 2 bước).
 async function whoAmI(req) {
   const m = String((req.headers || {}).authorization || "").match(/^Bearer\s+(\S+)$/i);
   if (!m || m[1].split(".").length !== 3) return null;          // chỉ nhận mã đăng nhập (JWT), không nhận khoá khác
@@ -50,7 +50,14 @@ async function whoAmI(req) {
     const u = await r.json();
     if (!u || !u.id) return null;
     const p = (await sb(`/rest/v1/profiles?select=username,email,role,locked&id=eq.${encodeURIComponent(u.id)}`))[0] || {};
-    return { uid: u.id, email: p.email || u.email || "", username: p.username || "", locked: !!p.locked, admin: p.role === "admin" && !p.locked };
+    let admin = p.role === "admin" && !p.locked;
+    if (admin) {          // 21.11l: hỏi đúng hàm SQL is_admin() bằng CHÍNH phiên của người gọi → admin đã bật xác minh 2 bước mà phiên chưa nhập mã 6 số (aal1) thì KHÔNG là admin
+      try {
+        const a = await fetch(SB + "/rest/v1/rpc/is_admin", { method: "POST", headers: { apikey: KEY, Authorization: "Bearer " + m[1], "Content-Type": "application/json" }, body: "{}" });
+        admin = a.ok && (await a.json()) === true;
+      } catch (e) { admin = false; }                                    // hỏi không được → coi như không phải admin (chặn chứ không mở)
+    }
+    return { uid: u.id, email: p.email || u.email || "", username: p.username || "", locked: !!p.locked, admin };
   } catch (e) { return null; }
 }
 

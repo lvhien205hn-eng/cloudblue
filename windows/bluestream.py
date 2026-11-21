@@ -250,7 +250,10 @@ def whoami(token):
     try: p = (sb("GET", f"/rest/v1/profiles?id=eq.{uid}&select=role,locked") or [{}])[0]
     except Exception: p = {}
     if p.get("locked"): return None
-    me = {"uid": uid, "admin": p.get("role") == "admin"}
+    me = {"uid": uid, "admin": False}
+    if p.get("role") == "admin":            # 21.11l: admin = hàm SQL is_admin() của CHÍNH phiên này → đã bật xác minh 2 bước mà chưa nhập mã 6 số thì không phải admin
+        try: me["admin"] = sb("POST", "/rest/v1/rpc/is_admin", {}, token=token) is True
+        except Exception: me["admin"] = False                           # hỏi không được → không cho quyền admin (chặn chứ không mở)
     if len(_ucache) > 5000: _ucache.clear()
     _ucache[k] = (me, now + 120)
     return me
