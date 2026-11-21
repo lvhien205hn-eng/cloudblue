@@ -261,6 +261,9 @@ def main():
         ck("khach CO quyen Admin that (tien trinh nang quyen) nhung KHONG sua / ghi / xoa duoc agent + script cua shop (bi dong TU CHOI chan)",
            hi.get("_admin") is True and all(hi.get(k) is False for k in ("sua_agent", "sua_provision", "ghi_goc", "xoa_agent")), hi)
     with open(os.path.join(BASE, "cb.json"), "w") as f: json.dump({"user": "cbkhach", "password": ""}, f)
+    try: os.remove(os.path.join(BASE, "logs", "sec.event"))          # việc lạ cũ của phép thử trước (bia_off của máy chạy thử) — chỉ xét lần hạ quyền này
+    except OSError: pass
+    P.names = lambda: (setattr(P, "bia_off", True), (adm, usr, "cbadm0"))[1]   # names() thật đọc lại trạng thái tài khoản thế vai: đã TẮT ở mục 4
     P.lines.clear()
     ck("shop TAT cong tac: harden() ha khach ve tai khoan thuong, KHONG bao nham vi pham bao mat",
        P.harden() is True and not P.in_group(adm, "cbkhach") and not any("VIEC LA" in l for l in P.lines) and not os.path.isfile(os.path.join(BASE, "logs", "sec.event"))
