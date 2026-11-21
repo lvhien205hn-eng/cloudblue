@@ -49,6 +49,7 @@ class FakeShop:
 
 B.Auth, B.Shop = FakeAuth, FakeShop
 app = B.Launcher()
+app._vps_auto = True              # ảnh 1 = trang chính (khách chỉ có VPS thì app tự mở trang VPS GPU — tắt cho ảnh này)
 app.root.geometry("640x750+0+0")
 
 
