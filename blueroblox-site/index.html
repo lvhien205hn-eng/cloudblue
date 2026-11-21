@@ -1397,7 +1397,7 @@ html[data-theme=dark] .cb-chunky{background:linear-gradient(180deg,#d4ebff 0%,#5
 .cb-chunky small{display:block;font-size:.42em;color:#0f3fb3;-webkit-text-fill-color:#0f3fb3;letter-spacing:.1em;margin-top:6px}
 html[data-theme=dark] .cb-chunky small{color:#bfe3ff;-webkit-text-fill-color:#bfe3ff}
 html.lite .cb-cloud img,body.past-hero .cb-cloud img{animation:none}
-@media (prefers-reduced-motion:reduce){.cb-cloud img{animation:none}}
+/* 21.11k: mây vẫn trôi khi máy tắt hiệu ứng */
 @media (max-width:900px){.cb-board .corner-flag{right:4px;top:-8px;width:50px}.vnt{display:none}.cb-stage{margin-top:8px}}
 
 /* thông báo đầu trang */
@@ -1720,11 +1720,12 @@ html[data-theme] .shmode button.on{border-color:var(--blue);background:var(--sof
 (function () {
   var m = null; try { m = localStorage.getItem("br_lite"); } catch (e) {}
   var n = navigator, c = n.connection || {}, touch = matchMedia("(hover: none) and (pointer: coarse)").matches;
-  var weak = (n.hardwareConcurrency || 8) <= 4 || (n.deviceMemory || 8) <= 4 || !!c.saveData || matchMedia("(prefers-reduced-motion: reduce)").matches
+  var weak = (n.hardwareConcurrency || 8) <= 4 || (n.deviceMemory || 8) <= 4 || !!c.saveData            // 21.11k: bỏ "giảm chuyển động" — shop muốn đầu trang luôn chuyển động
              || (touch && Math.min(screen.width, screen.height) < 760);
   window.BR_LITE = m === "1" ? true : m === "0" ? false : weak;
   window.BR_LITE_AUTO = m == null;
   if (window.BR_LITE) document.documentElement.classList.add("lite");
+  if (m === "1") document.documentElement.classList.add("lite-man");        // khách tự bật chế độ nhẹ ở cuối trang → mới dừng cả nền chạy đầu trang
 })();
 </script>
 <script>
@@ -1814,7 +1815,7 @@ html.lite .cbl *,html.lite .cbl *::before{animation:none!important}
 html.lite .cbl-spk,html.lite .cbl-bub,html.lite .cbl-sheen,html.lite .cbl-run{display:none}
 html.lite .cbl-whale{filter:none}
 body.past-hero .cbl *,body.past-hero .cbl *::before{animation-play-state:paused!important}
-@media (prefers-reduced-motion:reduce){.cbl *,.cbl *::before{animation:none!important}.cbl-bub,.cbl-sheen{display:none}}
+/* 21.11k: logo vẫn lấp lánh khi máy tắt hiệu ứng (shop muốn) — máy yếu (html.lite) vẫn tắt như trên */
 
 .cbl-panel .s1{stop-color:rgba(250,253,255,.93)}.cbl-panel .s2{stop-color:rgba(222,238,255,.86)}
 .cbl-panel .pf{fill:url(#cblpg)}.cbl-panel .pd{fill:url(#cblpd)}
@@ -2083,8 +2084,10 @@ html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{top:12p
 .m3v-fig.on .m3v-play,.m3v-fig.on img{display:none}
 .m3v-snd{position:absolute;right:12px;top:12px;z-index:2;font:inherit;font-size:13px;font-weight:700;color:#fff;background:rgba(6,10,28,.72);border:1px solid rgba(255,255,255,.22);border-radius:99px;padding:7px 12px;cursor:pointer}
 .m3v-snd[hidden]{display:none}
-.m3v-sw button{display:inline-flex;align-items:center;gap:8px}
-.m3v-sw .m3v-len{font-size:12px;font-weight:700;opacity:.72;font-variant-numeric:tabular-nums}
+.m3v-blk+.m3v-blk{margin-top:30px}
+.m3v-blk[hidden]{display:none!important}
+.m3v-bh{display:flex;align-items:baseline;gap:10px;margin:0 0 12px;font-size:20px;font-weight:800;letter-spacing:-.01em}
+.m3v-len{font-size:12.5px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;padding:3px 8px;border-radius:8px;background:var(--soft)}
 .m3v-tag{position:absolute;left:12px;top:12px;z-index:2;font-size:13px;font-weight:800;color:#fff;background:rgba(6,10,28,.72);border:1px solid rgba(255,255,255,.18);border-radius:99px;padding:6px 12px;pointer-events:none;opacity:0;transition:opacity .25s}
 .m3v-fig.on .m3v-tag{opacity:1}
 .m3v-snd{animation:m3vpulse 2.4s ease-in-out infinite}
@@ -2153,9 +2156,8 @@ html[data-theme] #policy .panel h3{margin:0 0 8px;font-size:clamp(20px,1.8vw,24p
 .cpa-cardsave{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 /* ---------- máy yếu / cuộn qua / giảm chuyển động ---------- */
-html.lite .m3-col{animation:none!important;will-change:auto}
+html.lite-man .m3-col{animation:none!important;will-change:auto}     /* 21.11k: nền máy chạy đầu trang luôn chuyển động (nhẹ: chỉ dịch ảnh) — trừ khi khách tự bật chế độ nhẹ */
 body.past-hero .m3-col{animation-play-state:paused}
-@media (prefers-reduced-motion:reduce){.m3-col{animation:none!important}}
 
 /* ---------- điện thoại: đầu trang gọn (khách đã đăng nhập không còn 4–5 hàng nút) ---------- */
 @media (max-width:620px){
@@ -2673,17 +2675,30 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 </section>
 
 <section class="wrap m3v" id="m3v">
-  <div class="m3-sh"><div><h2 data-i18n="vid_h">Video hướng dẫn — xem 1 phút là biết cách dùng</h2><p class="m3-lead" data-i18n="vid_s">Video tự chạy khi bạn kéo tới — bấm 🔊 để nghe nhạc.</p></div>
-    <div class="m3-seg m3v-sw" role="tablist" aria-label="Chọn video"><button type="button" class="on" data-v="cp" role="tab" aria-selected="true"><span data-i18n="vid_a">☁️ Cloud Phone</span><small class="m3v-len">1:02</small></button><button type="button" data-v="vps" role="tab" aria-selected="false"><span data-i18n="vid_b">🖥️ VPS GPU</span><small class="m3v-len">1:41</small></button></div></div>
-  <div class="m3v-body">
-    <figure class="m3v-fig" id="m3v-fig">
-      <img id="m3v-poster" alt="" decoding="async">
-      <video id="m3v-video" playsinline muted controls preload="none" hidden></video>
-      <div class="m3v-tag" id="m3v-tag" aria-hidden="true"></div>
-      <button class="m3v-play" id="m3v-play" type="button" aria-label="Phát video giới thiệu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="#2a5fe0"/></svg></button>
-      <button class="m3v-snd" id="m3v-snd" type="button" hidden>🔊 <span data-i18n="vid_snd">Bật tiếng</span></button>
-    </figure>
-    <ol class="m3v-ch" id="m3v-ch" aria-label="Các đoạn trong video"></ol>
+  <div class="m3-sh"><div><h2 data-i18n="vid_h">Video hướng dẫn — xem 1 phút là biết cách dùng</h2><p class="m3-lead" data-i18n="vid_s">Video tự chạy khi bạn kéo tới — bấm 🔊 để nghe nhạc.</p></div></div>
+  <div class="m3v-blk" id="m3v-cp" data-v="cp">
+    <h3 class="m3v-bh"><span data-i18n="vid_a">☁️ Cloud Phone</span><small class="m3v-len">1:02</small></h3>
+    <div class="m3v-body">
+      <figure class="m3v-fig">
+        <img class="m3v-poster" alt="" decoding="async">
+        <video playsinline muted controls preload="none" hidden></video>
+        <button class="m3v-play" type="button" aria-label="Phát video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="#2a5fe0"/></svg></button>
+        <button class="m3v-snd" type="button" hidden>🔊 <span data-i18n="vid_snd">Bật tiếng</span></button>
+      </figure>
+      <ol class="m3v-ch" aria-label="Các đoạn trong video"></ol>
+    </div>
+  </div>
+  <div class="m3v-blk" id="m3v-vps" data-v="vps">
+    <h3 class="m3v-bh"><span data-i18n="vid_b">🖥️ VPS GPU</span><small class="m3v-len">1:41</small></h3>
+    <div class="m3v-body">
+      <figure class="m3v-fig">
+        <img class="m3v-poster" alt="" decoding="async">
+        <video playsinline muted controls preload="none" hidden></video>
+        <button class="m3v-play" type="button" aria-label="Phát video"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l12 7-12 7z" fill="#2a5fe0"/></svg></button>
+        <button class="m3v-snd" type="button" hidden>🔊 <span data-i18n="vid_snd">Bật tiếng</span></button>
+      </figure>
+      <ol class="m3v-ch" aria-label="Các đoạn trong video"></ol>
+    </div>
   </div>
 </section>
 
@@ -12369,65 +12384,68 @@ function cbBlueMore() {
   const mtg = $i("m3-mine-tg");
   if (mtg) mtg.addEventListener("click", () => { try { localStorage.setItem("cb_mine_min", m3MineMin() ? "0" : "1"); } catch (e) {} m3MineTg(); });
 
-  /* ---- video hướng dẫn (Cloud Phone · VPS GPU, có nhạc): tự phát (tắt tiếng — trình duyệt không cho tự phát có tiếng) khi khách kéo tới,
-         kể cả máy tắt hiệu ứng chuyển động · hết video này tự sang video kia · kéo đi chỗ khác thì dừng · bấm 🔊 để nghe nhạc ---- */
-  const fig = $i("m3v-fig");
-  if (fig) {
+  /* ---- video hướng dẫn (21.11k): 2 video XẾP CHỒNG — Cloud Phone ở trên, VPS GPU ở dưới (khách không cần bấm chọn).
+         Mỗi video tự phát (tắt tiếng — trình duyệt không cho tự phát có tiếng) khi khách kéo tới, kể cả máy tắt hiệu ứng chuyển động;
+         chỉ 1 video chạy 1 lúc · kéo đi chỗ khác thì dừng · khách tự bấm dừng thì không tự phát lại · bấm 🔊 để nghe nhạc ---- */
+  const vblks = [...document.querySelectorAll(".m3v-blk")];
+  if (vblks.length) {
     const V = {
-      cp: { src: "/video/cloud-phone.mp4", poster: "/video/cloud-phone.jpg", name: ["☁️ Cloud Phone", "☁️ Cloud Phone"],
+      cp: { src: "/video/cloud-phone.mp4", poster: "/video/cloud-phone.jpg",
             ch: [[0, "Cloud Phone là gì", "What it is"], [8, "Vì sao nên dùng", "Why use it"], [16, "Thuê máy 3 bước", "Rent in 3 steps"], [32, "Điều khiển ở đâu cũng được", "Control from anywhere"], [42, "Nhiều máy cùng lúc · đồng bộ", "Many phones at once · sync"], [54, "Bắt đầu ở cloudblue.vn", "Get started"]] },
-      vps: { src: "/video/vps-gpu.mp4", poster: "/video/vps-gpu.jpg", name: ["🖥️ VPS GPU", "🖥️ GPU VPS"],
+      vps: { src: "/video/vps-gpu.mp4", poster: "/video/vps-gpu.jpg",
             ch: [[0, "VPS GPU là gì", "What it is"], [5, "Mua VPS GPU", "Buying"], [16, "Cách 1 · Trên web", "Way 1 · Web"], [40, "Cách 2 · App điện thoại", "Way 2 · Phone app"], [62, "Cách 3 · App máy tính", "Way 3 · PC app"], [81, "Trong lúc thuê", "While renting"], [96, "Tải app · cloudblue.vn", "Get the apps"]] }
     };
-    const img = $i("m3v-poster"), vid = $i("m3v-video"), chs = $i("m3v-ch"), snd = $i("m3v-snd"), sw = [...document.querySelectorAll(".m3v-sw button")];
     const cn = navigator.connection || {};
     const AUTO = !cn.saveData;                                     // máy tắt hiệu ứng (Windows "Animation effects" off) vẫn tự phát — chỉ trừ chế độ tiết kiệm dữ liệu
-    let k = "cp", seen = false, inView = false, skip = 0, userStop = false;
-    const autoPause = () => { if (!vid.paused) { skip++; vid.pause(); } };      // web tự dừng (không tính là khách bấm dừng)
-    vid.muted = true;
     const LL = (vi, en) => (typeof LANG !== "undefined" && LANG === "en") ? en : vi;
-    const mmss = s => Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
-    function paintCh() {
-      chs.innerHTML = V[k].ch.map(([s, vi, en]) => `<li><button type="button" data-s="${s}"><b>${mmss(s)}</b><span>${LL(vi, en)}</span></button></li>`).join("");
-      sw.forEach(b => { const on = b.dataset.v === k; b.classList.toggle("on", on); b.setAttribute("aria-selected", on ? "true" : "false"); });
-      const tg = $i("m3v-tag"); if (tg) tg.textContent = LL(V[k].name[0], V[k].name[1]);
-    }
-    const poster = () => { if (seen) img.src = V[k].poster; };
-    const sndBtn = () => { snd.hidden = !(fig.classList.contains("on") && vid.muted); };
-    function play(at) {
-      // 21.11j: gọi play() NGAY (trước đây chờ "loadedmetadata" — với preload="none" sự kiện này không bao giờ tới → video không tự chạy, khách phải bấm tay)
-      if (vid.getAttribute("src") !== V[k].src) { vid.src = V[k].src; vid.preload = "auto"; }
-      vid.hidden = false; fig.classList.add("on"); sndBtn();
-      if (at != null) {
-        const seek = () => { try { vid.currentTime = at; } catch (e) {} };
-        if (vid.readyState >= 1) seek(); else vid.addEventListener("loadedmetadata", seek, { once: true });
-      }
-      const p = vid.play(); if (p && p.catch) p.catch(() => { vid.hidden = true; fig.classList.remove("on"); sndBtn(); });   // trình duyệt chặn tự phát → hiện lại ảnh bìa + nút ▶
-    }
-    function pick(n, run) {
-      if (n !== k) { k = n; try { autoPause(); } catch (e) {} vid.removeAttribute("src"); try { vid.load(); } catch (e) {} vid.hidden = true; fig.classList.remove("on"); poster(); paintCh(); sndBtn(); }
-      if (run) play(0);
-    }
-    img.addEventListener("error", () => { const sec = $i("m3v"); if (sec && img.getAttribute("src")) sec.hidden = true; });   // chưa tải file video lên → ẩn cả mục
-    $i("m3v-play").addEventListener("click", () => { userStop = false; play(); });
-    chs.addEventListener("click", e => { const b = e.target.closest("button[data-s]"); if (b) { userStop = false; play(+b.dataset.s); } });
-    sw.forEach(b => b.addEventListener("click", () => { userStop = false; pick(b.dataset.v, true); }));
-    snd.addEventListener("click", () => { vid.muted = false; sndBtn(); const p = vid.play(); if (p && p.catch) p.catch(() => {}); });
-    vid.addEventListener("volumechange", sndBtn);
-    vid.addEventListener("ended", () => pick(k === "cp" ? "vps" : "cp", inView));  // hết video này → tự sang video kia
-    vid.addEventListener("pause", () => { if (skip > 0) { skip--; return; } if (!vid.ended) userStop = true; });   // khách tự bấm dừng → không tự phát lại
-    vid.addEventListener("play", () => { userStop = false; });
-    vid.addEventListener("timeupdate", () => { const t = vid.currentTime; let cur = 0; V[k].ch.forEach(([s], i) => { if (t >= s - .05) cur = i; });
-      chs.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === cur)); });
-    if ("IntersectionObserver" in window) {
-      new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { if (!seen) { seen = true; poster(); } } }, { rootMargin: "600px 0px" }).observe(fig);
-      new IntersectionObserver(es => {
-        const r = es[es.length - 1].intersectionRatio; inView = r >= .35;
-        if (inView && AUTO && !userStop && vid.paused) play();                                     // kéo tới → tự phát (tắt tiếng)
-        else if (r < .15) autoPause();                                                            // kéo đi → dừng cho nhẹ máy
-      }, { threshold: [0, .15, .35, .6] }).observe(fig);
-    } else { seen = true; poster(); }
-    paintCh(); document.addEventListener("br-lang", paintCh);
+    const mmss = t => Math.floor(t / 60) + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+    const ALL = [];
+    const vDecide = () => {                                        // mỗi lần khách cuộn: video nào lọt màn RÕ NHẤT (≥ 35%) thì chạy, video ra khỏi màn thì dừng
+      ALL.forEach(o => { if (o.r < .15) o.autoPause(); });
+      const best = ALL.filter(o => o.r >= .35).sort((x, y) => y.r - x.r)[0];
+      if (best && AUTO && !best.userStop && best.vid.paused) best.play(best.vid.ended ? 0 : null);   // xem hết rồi kéo lại tới → phát lại từ đầu
+    };
+    vblks.forEach(el => {
+      const D = V[el.dataset.v]; if (!D) return;
+      const fig = el.querySelector(".m3v-fig"), img = el.querySelector(".m3v-poster"), vid = el.querySelector("video"), chs = el.querySelector(".m3v-ch"), snd = el.querySelector(".m3v-snd");
+      const S = { seen: false, skip: 0, userStop: false, r: 0, vid };
+      S.autoPause = () => { if (!vid.paused) { S.skip++; vid.pause(); } };       // web tự dừng (không tính là khách bấm dừng)
+      const others = () => ALL.forEach(o => { if (o !== S) o.autoPause(); });     // chỉ 1 video chạy 1 lúc
+      vid.muted = true;
+      const paintCh = () => { chs.innerHTML = D.ch.map(([t, vi, en]) => `<li><button type="button" data-s="${t}"><b>${mmss(t)}</b><span>${LL(vi, en)}</span></button></li>`).join(""); };
+      const poster = () => { if (S.seen) img.src = D.poster; };
+      const sndBtn = () => { snd.hidden = !(fig.classList.contains("on") && vid.muted); };
+      S.play = at => {
+        others();
+        if (vid.getAttribute("src") !== D.src) { vid.src = D.src; vid.preload = "auto"; }
+        vid.hidden = false; fig.classList.add("on"); sndBtn();
+        if (at != null) {
+          const seek = () => { try { vid.currentTime = at; } catch (e) {} };
+          if (vid.readyState >= 1) seek(); else vid.addEventListener("loadedmetadata", seek, { once: true });
+        }
+        const p = vid.play();
+        if (p && p.catch) p.catch(e => {
+          if (e && e.name !== "NotAllowedError" && (S.retry = (S.retry || 0) + 1) <= 3) { setTimeout(vDecide, 400); return; }   // bị ngắt giữa chừng (bố cục trang nhảy / video kia vừa chạy) → xét lại
+          vid.hidden = true; fig.classList.remove("on"); sndBtn();                       // trình duyệt chặn tự phát → hiện lại ảnh bìa + nút ▶
+        });
+      };
+      img.addEventListener("error", () => { if (img.getAttribute("src")) el.hidden = true; });   // chưa có file video → ẩn khối đó
+      el.querySelector(".m3v-play").addEventListener("click", () => { S.userStop = false; S.play(); });
+      chs.addEventListener("click", e => { const b = e.target.closest("button[data-s]"); if (b) { S.userStop = false; S.play(+b.dataset.s); } });
+      snd.addEventListener("click", () => { vid.muted = false; sndBtn(); const p = vid.play(); if (p && p.catch) p.catch(() => {}); });
+      vid.addEventListener("volumechange", sndBtn);
+      vid.addEventListener("pause", () => { if (S.skip > 0) { S.skip--; return; } if (!vid.ended) S.userStop = true; });   // khách tự bấm dừng → không tự phát lại
+      vid.addEventListener("play", () => { S.userStop = false; others(); });
+      vid.addEventListener("playing", () => { S.retry = 0; });
+      vid.addEventListener("timeupdate", () => { const t = vid.currentTime; let cur = 0; D.ch.forEach(([x], i) => { if (t >= x - .05) cur = i; });
+        chs.querySelectorAll("button").forEach((b, i) => b.classList.toggle("on", i === cur)); });
+      if ("IntersectionObserver" in window) {
+        new IntersectionObserver(es => { if (es.some(e => e.isIntersecting) && !S.seen) { S.seen = true; poster(); } }, { rootMargin: "600px 0px" }).observe(fig);
+        new IntersectionObserver(es => { S.r = es[es.length - 1].intersectionRatio; vDecide(); }, { threshold: [0, .15, .35, .5, .65, .8, .95, 1] }).observe(fig);
+      } else { S.seen = true; poster(); }
+      paintCh(); document.addEventListener("br-lang", paintCh);
+      ALL.push(S);
+    });
   }
 
   /* ---- "Máy đám mây của bạn": nút + tự làm mới (máy đang tạo / hết hạn → 8 giây, bình thường → 60 giây) ---- */
@@ -13323,6 +13341,10 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 .pcs-os .vps-opts small.slow{color:var(--warn)}
 .pcs-how{font-size:12.5px;line-height:1.55;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
 .pcs-how b{color:var(--fg)}
+.pcs-cx-warn{border-color:rgba(255,107,129,.45);background:rgba(255,107,129,.07)}
+.pcs-ack{display:flex;gap:8px;align-items:center;margin:12px 2px 2px;font-size:13.5px;font-weight:600;cursor:pointer}
+.pcs-ack input{width:18px;height:18px;accent-color:var(--bad)}
+.pcs-hide{margin-top:6px}
 #modal.pcauto #m-vps,#modal.pcauto #m-more,#modal.pcauto .qty{display:none!important}
 .pcs-card .m3m-nm small{font-weight:500;color:var(--muted);margin-left:6px}
 .pcs-card .pcs-st{font-size:12.5px;line-height:1.45;color:var(--muted)}
@@ -13597,7 +13619,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   }
   // ---- 🎬 video hướng dẫn (mua máy · điều khiển trên web / app điện thoại / app máy tính · cài lại, gia hạn) — cùng file app mở
   const VID = "/video/vps-gpu.mp4", VIDP = "/video/vps-gpu.jpg";
-  const vidBtn = (txt, cls) => `<button type="button" class="${cls || "pcs-vidl"}" data-pcsvid="1">🎬 ${txt || L("Xem video hướng dẫn (1 phút 36 giây)", "Watch the video guide (1:36, Vietnamese)")}</button>`;
+  const vidBtn = (txt, cls) => `<button type="button" class="${cls || "pcs-vidl"}" data-pcsvid="1">🎬 ${txt || L("Xem video hướng dẫn (1 phút 41 giây)", "Watch the video guide (1:41, Vietnamese)")}</button>`;
   function vidOpen() {
     dlg(`<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 4px"><h3 style="margin:0">🎬 ${L("Hướng dẫn dùng VPS GPU", "GPU VPS video guide")}</h3>
         <button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
@@ -13760,7 +13782,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       const after = $i("m3-mine"); if (!after) return null;
       s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "pcs-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "pcs-mine-h");
       s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="pcs-mine-h"><span aria-hidden="true">🖥️</span> <span>${L("VPS GPU của bạn", "Your GPU VPS")}</span><small id="pcs-mine-n"></small></h2>
-        <div class="m3m-hacts">${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}<button class="btn sm" type="button" id="pcs-mine-new">+ ${L("Thuê thêm", "Rent another")}</button></div></div>
+        <div class="m3m-hacts"><a class="btn ghost sm" id="pcs-mine-multi" href="/play.html?multi=pc" hidden title="${esc(L("Mở nhiều VPS cùng lúc trên 1 màn — bật 🔗 Đồng bộ để bấm 1 máy, các máy khác làm theo", "Open several machines on one screen — turn on 🔗 Sync to mirror clicks"))}">▦ ${L("Điều khiển nhiều máy", "Control many")}</a>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}<button class="btn sm" type="button" id="pcs-mine-new">+ ${L("Thuê thêm", "Rent another")}</button></div></div>
         <div id="pcs-mine-mt"></div><div class="m3m-list" id="pcs-mine-list"></div></div>`;
       after.after(s);
       $i("pcs-mine-new").onclick = () => { const id = S(O(PC.info).product, 40) || S(O(PC.mine).product, 40); try { if (id && P.some(p => p.id === id)) { openBuy(id); return; } } catch (e) {} location.hash = "#shop"; };
@@ -13799,13 +13821,15 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       pc.id ? (canCtl ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(pc.id, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`) : "",
       pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${mt || st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
-      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : ""
+      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : "",
+      O(PC.mine).cancel && it.state === "active" && pc.id ? `<button class="btn danger sm pcs-cxl" type="button" data-pcscxl="${esc(S(pc.id, 40))}" title="${esc(L("Trả máy cho shop: xoá sạch dữ liệu, không hoàn tiền", "Give the machine back: all data erased, no refund"))}">🗑 ${L("Huỷ máy", "Cancel")}</button>` : ""
     ].join("");
     return `<div class="m3m-card pcs-card${st[0] === "run" ? " run" : ""}${soon || st[0] === "exp" || st[0] === "wait" ? " soon" : ""}">
       <div class="m3m-top"><span class="pill${st[0] === "run" ? " ok" : st[0] === "exp" || st[0] === "warn" ? " bad" : ""}">${esc(st[1])}</span>${pc.code ? `<span class="pill">№ ${esc(S(pc.code, 24))}</span>` : ""}</div>
       <b class="m3m-nm">${esc(S(pc.name, 40) || L("VPS GPU", "GPU VPS"))}${it.days ? `<small>${+it.days} ${L("ngày", "days")}</small>` : ""}</b>
       <small class="m3m-spec">${esc(spec)}</small>
       ${st[2] ? `<div class="pcs-st${st[0] === "exp" || st[0] === "warn" ? " bad" : st[0] === "off" ? " warn" : ""}">${esc(st[2])}${st[0] === "warn" && S(O(pc.last_job).msg, 120) ? " — " + esc(S(O(pc.last_job).msg, 120)) : ""}</div>` : ""}
+      ${st[0] === "end" && T(it.hide_at) !== null ? `<div class="hint pcs-hide">🕒 ${L("Thẻ này tự ẩn lúc", "This card disappears at")} ${hm(T(it.hide_at))}</div>` : ""}
       ${st[0] === "inst" ? progHTML("inst", O(pc.job).at, S(O(pc.job).os, 12), it) : st[0] === "wait" ? progHTML("wait", it.created_at, "", it) : ""}
       ${st[0] === "warn" ? `<button class="btn ghost sm pcs-rep" type="button" data-pcsrep="${esc(String(it.rental || ""))}">📋 ${L("Báo admin (copy nội dung gửi shop)", "Report to the admin")}</button>` : ""}
       ${st[0] === "exp" && T(it.grace_until) !== null && T(it.grace_until) > Date.now() ? `<div class="m3m-exp warn">⏳ ${L("Còn", "")} <b data-cd="${esc(S(it.grace_until, 40))}">${typeof cdText === "function" ? cdText(it.grace_until) : ""}</b> ${L("để gia hạn giữ máy", "left to renew")}</div>` : ""}
@@ -13815,10 +13839,14 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   function mineRender() {
     try { navPaint(); vmPaint(); } catch (e) {}
     const s = mineBox(); if (!s) return;
-    const items = A(O(PC.mine).items);
+    const now = Date.now(), items = A(O(PC.mine).items).filter(x => !(T(x.hide_at) !== null && T(x.hide_at) <= now));
+    const nextHide = Math.min(...items.map(x => T(x.hide_at)).filter(t => t !== null && t > now), Infinity);
+    clearTimeout(PC.ht); if (nextHide < Infinity) PC.ht = setTimeout(mineRender, Math.min(nextHide - now + 500, 2147483000));
     s.hidden = !me() || !items.length; if (s.hidden) return;
     const run = items.filter(x => x.state === "active").length, wait = items.filter(x => x.state === "waiting").length;
     $i("pcs-mine-n").textContent = L(`${run} máy đang thuê`, `${run} active`) + (wait ? L(` · ${wait} đang chờ máy`, ` · ${wait} waiting`) : "");
+    const mb = $i("pcs-mine-multi");                                  // 21.11k: ≥ 2 máy đang bật → mở nhiều máy cùng lúc trên web (play.html?multi=pc)
+    if (mb) mb.hidden = pcMaint() || items.filter(x => x.state === "active" && O(x.pc).id && O(x.pc).online && !O(x.pc).lock && O(x.pc).remote !== false).length < 2;
     const mtS = $i("pcs-mine-mt"); if (mtS) mtS.innerHTML = maintBar();
     $i("pcs-mine-list").innerHTML = items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("");
     progTick();
@@ -13827,8 +13855,10 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   }
   // ---- cài lại / đổi Windows
   document.addEventListener("click", async e => {
-    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp]"); if (!b) return;
+    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp],[data-pcscxl],[data-pcscxgo]"); if (!b) return;
     if (b.dataset.pcsapp) return appOpen(b.dataset.pcsapp);
+    if (b.dataset.pcscxl) return cxlOpen(b.dataset.pcscxl);
+    if (b.dataset.pcscxgo) return cxlGo(b);
     if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
     if (b.dataset.pcsrenew) return renewOpen(b.dataset.pcsrenew);
     if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); return; }
@@ -13877,6 +13907,28 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       const { data, error } = await sb.rpc("pc_my_reinstall", { p_pc: PC.reid, p_os: PC.reos });
       if (error) { const x = $i("pcs-re-err"); if (x) x.textContent = em(error); return; }
       $i("pcsdlg").hidden = true; toast(L(`Đã gửi lệnh cài lại — còn ${+O(data).left} lượt.`, `Reinstall started — ${+O(data).left} left.`)); mine(true);
+    });
+  }
+  // ---- 🗑 khách tự huỷ máy (SQL v45 pc_my_cancel): gỡ máy khỏi tài khoản → shop thu hồi, xoá sạch, về kho — KHÔNG hoàn tiền
+  function cxlOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    PC.cxid = id;
+    const pc = O(it.pc), ms = left(it.until), rest = ms !== null && ms > 0 && typeof cdText === "function" ? cdText(it.until) : "";
+    dlg(`<h3 style="margin:0">🗑 ${L("Huỷ máy", "Cancel machine")} <b>${esc(S(pc.name, 40))}</b>?</h3>
+      <div class="pcs-how pcs-cx-warn">⚠️ ${L("Máy bị <b>gỡ khỏi tài khoản của bạn ngay</b>. Shop thu hồi máy và <b>xoá sạch toàn bộ dữ liệu (mọi ổ đĩa)</b> để giao khách khác.", "The machine is <b>removed from your account right away</b>. The shop takes it back and <b>erases all data (every drive)</b>.")}
+        <br>💸 <b>${L("KHÔNG hoàn tiền", "NO refund")}</b>${rest ? L(` phần thời gian còn lại (<b>${esc(rest)}</b>)`, ` for the remaining time (<b>${esc(rest)}</b>)`) : ""}. ${L("Không hoàn tác được.", "This cannot be undone.")}</div>
+      <label class="pcs-ack"><input type="checkbox" id="pcs-cx-ok"> ${L("Tôi hiểu: mất hết dữ liệu, không hoàn tiền", "I understand: all data is erased, no refund")}</label>
+      <div class="err" id="pcs-cx-err"></div>
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">${L("Giữ máy", "Keep it")}</button><button class="btn danger" type="button" data-pcscxgo="1" disabled>🗑 ${L("Huỷ máy", "Cancel machine")}</button></div>`);
+    const cb = $i("pcs-cx-ok"), go = document.querySelector("#pcsdlg [data-pcscxgo]");
+    if (cb && go) cb.addEventListener("change", () => { go.disabled = !cb.checked; });
+  }
+  async function cxlGo(b) {
+    const it = itemOf(PC.cxid), cb = $i("pcs-cx-ok"); if (!it || !cb || !cb.checked) return;
+    await busy(b, async () => {
+      const { error } = await sb.rpc("pc_my_cancel", { p_pc: PC.cxid });
+      if (error) { const x = $i("pcs-cx-err"); if (x) x.textContent = em(error); return; }
+      $i("pcsdlg").hidden = true; toast(L("Đã huỷ máy — máy đang được xoá sạch và trả về shop.", "Machine cancelled — it is being wiped and returned to the shop.")); mine(true);
     });
   }
   // ---- gia hạn
