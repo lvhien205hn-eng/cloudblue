@@ -348,6 +348,29 @@ def main():
         s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
         ck("(Lưu khi chưa có v44 → không kèm reclaim)", all("reclaim" not in c["p_patch"] for c in s.calls("pc_admin_sell")), s.calls("pc_admin_sell"))
         s.close()
+        print("5c. Căn lề trang quản trị: mọi khối cùng mép trái / phải ở màn rộng 2296px, laptop 1366px, điện thoại 390px")
+        for vw, vh in ((2296, 985), (1366, 768), (390, 844)):
+            ctx = br.new_context(viewport={"width": vw, "height": vh}, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh")
+            init = {"admin": True, "db": {"product_list": PRODUCTS, "products": PRODUCTS}}
+            ctx.add_init_script("window.__FAKE_INIT = %s; window.__SHOP = %s; %s try { localStorage.setItem('br_lang', 'vi'); localStorage.setItem('br_lite', '1'); } catch (e) {}"
+                                % (json.dumps(init), json.dumps(dict(shop, bought=[])), HOOK))
+            pg = ctx.new_page()
+            pg.route("**/*", lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=html) if r.request.url in (ORIGIN + "/admin", ORIGIN + "/")
+                     else r.fulfill(status=200, content_type="application/javascript", body=read(os.path.join(HERE, "fake_supabase.js"))) if "supabase-js" in r.request.url
+                     else r.fulfill(status=204, body=""))
+            pg.goto(ORIGIN + "/admin", wait_until="load"); pg.wait_for_timeout(2600)
+            for tb in ("cust", "pc"):
+                pg.evaluate("t => document.querySelector('#adm-tabs button[data-tab=' + t + ']').click()", tb); pg.wait_for_timeout(700)
+                al = pg.evaluate("""() => { const dp = document.querySelector('#drawer .dpanel'), E = [];
+                    const vis = [...dp.querySelectorAll(':scope > .dbody')].find(x => !x.hidden), cs = getComputedStyle(vis), vr = vis.getBoundingClientRect();
+                    const L = vr.left + vis.clientLeft + parseFloat(cs.paddingLeft), R = vr.left + vis.clientLeft + vis.clientWidth - parseFloat(cs.paddingRight);
+                    const h2 = document.querySelector('#drawer .dhead h2').getBoundingClientRect();
+                    for (const c of dp.children) { if (c.classList.contains('dhead') || c.classList.contains('dbody') || c.hidden || getComputedStyle(c).display === 'none') continue;
+                      const b = c.getBoundingClientRect(); if (!b.width) continue; if (Math.abs(b.left - L) > 1.5 || Math.abs(b.right - R) > 1.5) E.push((c.id || c.className) + ' ' + Math.round(b.left - L) + '/' + Math.round(b.right - R)); }
+                    if (Math.abs(h2.left - L) > 1.5) E.push('tiêu đề ' + Math.round(h2.left - L));
+                    return { E, over: dp.scrollWidth - dp.clientWidth, n: [...dp.children].filter(c => !c.hidden && getComputedStyle(c).display !== 'none').length }; }""")
+                ck(f"{vw}px · thẻ {tb}: cảnh báo, 5 nhóm, thanh mục con, tiêu đề thẳng mép với nội dung; không tràn ngang", not al["E"] and al["over"] <= 0 and al["n"] >= 4, al)
+            ctx.close()
         print("6. Khách thường không thấy phần admin")
         s = Site(br, html, False, dict(shop, bought=[]))
         ck("khách: không có dải đơn chờ, không gọi pc_admin_rentals", s.js("() => !document.getElementById('pcs-waitbar') || document.getElementById('pcs-waitbar').hidden") and not s.calls("pc_admin_rentals"))

@@ -22,7 +22,7 @@
 .admgrp button.on .gt small{color:var(--fg);opacity:.82}
 .admgrp .badge{flex:none}
 /* hàng mục con: thanh viên thuốc, mục đang mở tô màu của nhóm */
-#adm-tabs.admsub{--grp-ac:#3d86ff;margin:0 20px 6px;padding:5px;gap:4px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow-x:auto;scrollbar-width:none}
+#adm-tabs.admsub{--grp-ac:#3d86ff;margin-top:0;margin-bottom:6px;padding:5px;gap:4px;border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow-x:auto;scrollbar-width:none}
 #adm-tabs.admsub::-webkit-scrollbar{display:none}
 #adm-tabs.admsub .tsep,#adm-tabs.admsub button[data-grp-off]{display:none!important}
 #adm-tabs.admsub button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;padding:8px 14px;border-radius:10px;font-weight:700;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
@@ -35,8 +35,21 @@ html[data-theme] #adm-tabs.admsub button.on,#adm-tabs.admsub button.on{color:#ff
   .admgrp{display:flex;overflow-x:auto;scrollbar-width:none;padding:2px 2px 4px}
   .admgrp::-webkit-scrollbar{display:none}
   .admgrp button{flex:0 0 auto;width:min(66vw,240px)}
-  #adm-tabs.admsub{margin:0 12px 6px}
 }
+/* ===== CĂN LỀ THỐNG NHẤT (21/11h) — mọi khối giữa tiêu đề và nội dung (cảnh báo máy chủ, 🔔 máy sắp hết hạn, dải đơn chờ, 5 nhóm,
+   thanh mục con) cùng mép trái / phải với chữ tiêu đề và với nội dung từng thẻ:
+   · cửa sổ quản trị bên phải (mở từ trang chủ): lề 20px
+   · trang /admin: cột giữa rộng tối đa 1600px (nội dung 1560px), màn hẹp hơn: lề 20px
+   · khung nội dung cuộn riêng: thanh cuộn nằm sát mép phải màn hình, lề phải trừ đúng bề rộng thanh cuộn (--adm-sb, đo bằng mã) → mép phải vẫn thẳng hàng */
+#drawer .dpanel{--adm-gx:20px}
+body.admin-page #drawer .dpanel{--adm-gx:max(20px,calc((100% - 1560px) / 2))}
+#drawer .dpanel>:not(.dhead):not(.dbody){width:auto;max-width:none;margin-left:var(--adm-gx);margin-right:var(--adm-gx)}
+body.admin-page #drawer .dpanel>:not(.dhead):not(.dbody){width:auto;max-width:none;margin-left:var(--adm-gx);margin-right:var(--adm-gx)}
+body.admin-page #drawer .dpanel>.dhead{width:100%;max-width:none;margin-left:0;margin-right:0;padding-left:var(--adm-gx);padding-right:var(--adm-gx)}
+#drawer .dpanel>.dbody{scrollbar-gutter:stable;padding-left:var(--adm-gx);padding-right:max(4px,calc(var(--adm-gx) - var(--adm-sb,0px)))}
+body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;margin-right:0;padding-left:var(--adm-gx);padding-right:max(4px,calc(var(--adm-gx) - var(--adm-sb,0px)))}
+/* điện thoại: tiêu đề 1 dòng riêng, 3 nút (Tải lại · Đăng xuất · Đóng) chung 1 dòng bên dưới — không còn nút "Đóng" lẻ loi */
+@media (max-width:520px){#drawer .dhead h2{flex-basis:100%}#drawer .dhead{row-gap:10px}}
 </style>
 <script>
 /* Gộp thẻ bảng quản trị theo nhóm. Không đổi gì bên trong các thẻ: nút thẻ cũ (#adm-tabs button[data-tab]) vẫn là nút thật —
@@ -85,6 +98,15 @@ html[data-theme] #adm-tabs.admsub button.on,#adm-tabs.admsub button.on{color:#ff
       if (tab && mine) x.classList.toggle("on", x.dataset.tab === tab);
     });
     const disp = shown > 1 ? "" : "none"; if (tabs.style.display !== disp) tabs.style.display = disp;
+    seeSub();
+  }
+  function seeSub() {                                                        // màn hẹp (hàng mục con cuộn ngang) → mục đang mở luôn nằm trong tầm nhìn
+    if (tabs.scrollWidth <= tabs.clientWidth + 4) return;
+    const b = tabs.querySelector("button[data-tab].on:not([data-grp-off])"); if (!b) return;
+    const tr = tabs.getBoundingClientRect(), br = b.getBoundingClientRect();
+    if (br.left >= tr.left + 4 && br.right <= tr.right - 4) return;
+    const x = tabs.scrollLeft + (br.left - tr.left) - (tabs.clientWidth - br.width) / 2;
+    try { tabs.scrollTo({ left: Math.max(0, x), behavior: "smooth" }); } catch (e) { tabs.scrollLeft = Math.max(0, x); }
   }
   function go(tab) {
     const tb = btnOf(tab); if (!tb) return;
@@ -119,6 +141,14 @@ html[data-theme] #adm-tabs.admsub button.on,#adm-tabs.admsub button.on{color:#ff
     });
   }
   new MutationObserver(paint).observe(tabs, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "hidden"] });
+  // bề rộng thanh cuộn của khung nội dung (Windows ~17px, điện thoại / Mac 0) → lề phải nội dung trừ đúng chừng đó (thẳng hàng với các khối phía trên)
+  const panel = tabs.closest(".dpanel");
+  const sbw = () => { try {
+    const p = [...panel.querySelectorAll(":scope > .dbody")].find(x => !x.hidden && x.offsetWidth); if (!p) return;
+    const cs = getComputedStyle(p), w = Math.max(0, Math.round(p.offsetWidth - p.clientWidth - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)));
+    if (panel.style.getPropertyValue("--adm-sb") !== w + "px") panel.style.setProperty("--adm-sb", w + "px");
+  } catch (e) {} };
+  if (panel) { addEventListener("resize", sbw); new MutationObserver(() => requestAnimationFrame(sbw)).observe(panel, { childList: true, attributes: true, attributeFilter: ["hidden"], subtree: true }); requestAnimationFrame(sbw); }
   window.ADMNAV = { grpOf, paint, go, groups: () => G.map(g => ({ id: g.id, t: g.ic + " " + g.t, m: g.m.filter(btnOf) })) };
   paint();
 })();
