@@ -345,6 +345,10 @@ class Agent:
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
         self.drv = None                     # tình trạng driver gần nhất (cbcore.drv_brief) — gửi về web trong info.drv, ghi vào os\status.txt
+        try: self.label = C.clean_label((C.load_json(sysx, self.p("seed.json")) or {}).get("label") or "")    # TÊN MÁY người cài gõ lúc cài xong → phải đưa lên web (ô "Tên hiển thị")
+        except Exception: self.label = ""
+        self.label_at = None                # lần gần nhất thử báo tên máy
+        self.label_tries = 0
         self.remote_try = None              # lần gần nhất thử mở chương trình điều khiển từ xa
         self.remote_err = ""                # lỗi mở gần nhất (ghi nhật ký 1 lần / loại lỗi)
 
@@ -453,6 +457,47 @@ class Agent:
         txt = "du - moi thiet bi da co driver" if not n else "THIEU %d thiet bi: %s%s" % (n, "; ".join(names), " ..." if n > len(names) else "")
         if d.get("vga") == "basic": txt += " | VGA dang chay driver co ban cua Windows (chua co driver cua hang)"
         return (net, txt)
+
+    # ------------------------------------------------------------------ tên máy người cài gõ lúc cài xong → tên hiển thị trên web
+    def label_drop(self):
+        self.label = ""
+        try:
+            seed = C.load_json(self.s, self.p("seed.json")) or {}
+            if "label" in seed: C.save_json(self.s, self.p("seed.json"), {k: v for k, v in seed.items() if k != "label"})
+        except Exception: pass
+
+    def label_sync(self):
+        """Người cài gõ TÊN MÁY ở bộ cài (seed.json "label") → sau khi máy đăng ký xong, báo tên đó lên web bằng hàm pc_label (máy chủ chỉ nhận trong 24 giờ đầu sau khi đăng ký).
+           Web đã đúng tên / máy chủ đã trả lời dứt khoát → xoá khỏi seed.json. Chưa gọi được (mất mạng, cơ sở dữ liệu chưa có phần này) → thử lại: 10 phút/lần, sau 12 lần thì 1 giờ/lần."""
+        if not self.label or not self.ident: return
+        if self.label == self.name:
+            self.log("tên máy trên web đã đúng tên gõ lúc cài: '%s'" % self.name); self.label_drop(); return
+        now = self.s.now()
+        if self.label_at is not None and 0 <= now - self.label_at < (600 if self.label_tries <= 12 else 3600): return
+        self.label_at = now; self.label_tries += 1
+        r = self.net.rpc("pc_label", {"p_id": self.ident["id"], "p_token": self.ident["token"], "p_name": self.label})
+        if not isinstance(r, dict):
+            if self.label_tries in (1, 13):
+                old_db = str(self.net.last_err or "").startswith("HTTP 404")
+                self.log("chưa báo được tên máy '%s' lên web (%s) — sẽ thử lại" % (self.label, "cơ sở dữ liệu chưa có phần này: chạy file SQL mới nhất" if old_db else self.net.last_err))
+            return
+        if r.get("ok"):
+            nm = str(r.get("name") or self.label)[:40]
+            self.log("đã báo tên máy lên web: '%s'" % nm)
+            self.label_drop()
+            if nm != self.name:
+                self.name = nm
+                try:
+                    self.ident = dict(self.ident, name=nm)
+                    C.save_json(self.s, self.p("identity.json"), self.ident); cbrec.save_identity(self.s, self.ident)
+                except Exception: pass
+            return
+        err = str(r.get("err") or "")
+        if err in ("LATE", "BAD_NAME"):
+            self.log("web không nhận tên máy '%s' gõ lúc cài (%s) — đặt tên trên trang quản trị › Máy PC" % (self.label, "quá 24 giờ sau khi đăng ký" if err == "LATE" else "tên không hợp lệ"))
+            self.label_drop()
+        elif self.label_tries in (1, 13):
+            self.log("chưa báo được tên máy '%s' lên web (%s) — sẽ thử lại" % (self.label, err or "?"))
 
     # ------------------------------------------------------------------ số máy (vị trí máy trong dàn — khách báo lỗi theo số này)
     def code_sync(self, r, sent):
@@ -684,11 +729,31 @@ class Agent:
         if self.pending_done: return
         try: res = cbrec.take_result(self.s)
         except Exception: res = None
-        if not isinstance(res, dict): return
+        if not isinstance(res, dict):
+            try: self.job_orphan()
+            except Exception: pass
+            return
         if not re.fullmatch(r"[0-9]{1,18}", str(res.get("id"))):
             cbrec.take_result(self.s, clear=True); return           # lệnh gõ tại máy (không có số trên web) → không cần báo
         self.done(int(res["id"]), res.get("ok"), {k: res.get(k) for k in ("msg", "os", "secs", "pe")})
         self.result_from_rec = True
+
+    def job_orphan(self):
+        """21.11d — bộ cài đã cài xong CHÍNH Windows này theo 1 lệnh nhưng không ghi được file kết quả (bộ cài bản ≤ 21.11c trên máy thật: WinPE gán chữ ổ
+           cho phân vùng cứu hộ rồi bộ cài đổi chữ → đường dẫn cũ không còn). Dấu hiệu: lệnh còn nằm "đang chạy" trên phân vùng cứu hộ mà seed.json của
+           Windows đang chạy mang đúng số lệnh đó. → gỡ lệnh cũ (để máy không bao giờ tự cài lại theo lệnh đã xong) + báo XONG về web. Mỗi lần agent chạy xét 1 lần."""
+        if self.orphan_checked: return
+        self.orphan_checked = True
+        seed = C.load_json(self.s, self.p("seed.json")) or {}
+        job = cbrec.pending_job(self.s)
+        if not (isinstance(seed, dict) and isinstance(job, dict) and seed.get("from") == "job"): return
+        if job.get("id") is None or str(job.get("id")) != str(seed.get("order")) or job.get("state") != "running": return
+        cbrec.drop_job(self.s)
+        self.log("lệnh cài lại #%s: bộ cài đã cài xong Windows này nhưng không ghi được kết quả → agent gỡ lệnh cũ + báo đã xong" % job.get("id"))
+        if re.fullmatch(r"[0-9]{1,18}", str(job.get("id"))):
+            self.done(int(job["id"]), True, {"msg": "xong (agent tự nhận ra: bộ cài không ghi được kết quả)", "os": seed.get("os"), "pe": seed.get("pe")})
+
+    orphan_checked = False
 
     def handle(self, o):
         cmd, oid, args = o.get("cmd"), o.get("id"), o.get("args") or {}
@@ -705,6 +770,16 @@ class Agent:
             self.done(oid, bool(v), {"msg": v or "không có bản mới / tải lỗi", "agent": AGENT_VER})
             return
         if cmd == "reinstall":
+            try:                                                    # 21.11d: Windows ĐANG CHẠY chính là do lệnh này cài ra mà máy chủ lại giao lần nữa
+                seed = C.load_json(self.s, self.p("seed.json")) or {}   # = bộ cài đã cài xong nhưng không ghi được file kết quả (bộ cài bản ≤ 21.11c lỗi chữ ổ) → báo XONG, không cài lại
+                mine = isinstance(seed, dict) and seed.get("from") == "job" and oid is not None and str(seed.get("order")) == str(oid)
+            except Exception: mine, seed = False, {}
+            if mine:
+                try: cbrec.drop_job(self.s)
+                except Exception: pass
+                self.log("lệnh #%s: Windows này do chính lệnh đó cài ra (bộ cài không ghi được kết quả) → báo đã xong, KHÔNG cài lại" % oid)
+                self.done(oid, True, {"msg": "xong (agent tự nhận ra: bộ cài không ghi được kết quả)", "os": seed.get("os"), "pe": seed.get("pe")})
+                return
             try:
                 old = cbrec.pending_job(self.s)
                 tries = int((old or {}).get("tries") or 0) if (old or {}).get("id") == oid else 0
@@ -852,6 +927,8 @@ class Agent:
         r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None or bool(self.events) or self.code_pending))
         if r is None: return min(300, self.poll_s * (1 + min(self.fail, 9)))
         if not r.get("ok"): return 5
+        try: self.label_sync()
+        except Exception as e: self.log("lỗi phần tên máy: %r" % (e,))
         if r.get("order"):
             try: self.handle(r["order"])
             except Exception:
