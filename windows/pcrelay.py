@@ -128,6 +128,14 @@ def _rpc_safe(H, fn, body):
         return {"ok": False, "err": "NET"}
 
 
+def _viewer(H, pid, me):
+    """21.11l · hỏi quyền xem máy PC, báo kèm người xem có phải admin THẬT không (whoami đã hỏi is_admin() bằng chính phiên người xem → admin đã bật
+       xác minh 2 bước mà chưa nhập mã 6 số thì không phải admin). Supabase chưa chạy SQL v47 (hàm cũ 2 tham số) → hỏi kiểu cũ."""
+    r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me.get("uid"), "p_admin": me.get("admin") is True})
+    if r.get("err") == "NO_SQL": r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me.get("uid")})
+    return r
+
+
 async def _refuse(H, link, code, msg, **extra):
     link.send_nowait(H.S_ERROR, H.err_json(code, msg, **extra))
     try: await asyncio.wait_for(link.w.drain(), 2)
@@ -361,7 +369,7 @@ class Viewer:
         """Phiên đang mở còn quyền không → None (còn) hoặc Bye. Lỗi mạng → không kết luận (không ngắt oan)."""
         H = self.H
         if H.SELFTEST: return None
-        r = _rpc_safe(H, "pc_relay_viewer", {"p_id": self.pid, "p_uid": self.me.get("uid")})
+        r = _viewer(H, self.pid, self.me)
         if r.get("ok"):
             self.until = r.get("until") if isinstance(r.get("until"), (int, float)) else None
             return None
@@ -443,7 +451,7 @@ def _auth_viewer(H, hello, pid):
     if H.SELFTEST: return {"uid": "test", "admin": True}, {"ok": True, "name": "PC thử", "code": "T-1", "admin": True, "owner": False, "until": None}
     me = H.whoami(hello.get("token") or "")
     if not me: raise Bye("AUTH", "Phiên đăng nhập hết hạn, hãy đăng nhập lại.")
-    r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me["uid"]})
+    r = _viewer(H, pid, me)
     if not r.get("ok"):
         if r.get("err") == "NO_SQL": raise Bye("OFFLINE", "Hệ thống chưa bật điều khiển máy PC — báo hỗ trợ.")
         if r.get("err") == "NET": raise Bye("OFFLINE", "Máy chủ chưa kiểm được quyền — thử lại sau ít giây.")
