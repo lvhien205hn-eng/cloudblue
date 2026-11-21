@@ -109,22 +109,51 @@ def main():
         ck("hộp mua VPS GPU tự động: hiện ô chọn Windows (22H2 / 1511), ẩn FarmV5 + mã PIN + số lượng", st["auto"] and [x[0] for x in st["os"]] == ["22h2", "1511"] and st["vps"] == "none" and st["qty"] == "none", st)
         ck("chọn sẵn bản có máy giao ngay (22H2), ghi rõ 'giao ngay' / 'cài theo yêu cầu'", st["os"][0][1] and "giao ngay" in st["os"][0][2] and "~20 phút" in st["os"][1][2], st["os"])
         ck("có dòng giải thích: tự giao máy, điều khiển web/app, 2 lần cài lại", "tự giao máy" in st["how"] and "app điện thoại" in st["how"] and "2 lần" in st["how"], st["how"])
+        ck("hộp mua có nút 🎬 Xem video hướng dẫn", s.js("() => !!document.querySelector('#pcs-os [data-pcsvid]')") and "video hướng dẫn" in st["how"], st["how"])
+        hz = s.js("""() => { const h = document.getElementById('pcs-hero'), cs = e => e ? getComputedStyle(e).display : 'none';
+                    return { vis: !!h && !h.hidden && cs(h) !== 'none', t: h ? h.innerText.replace(/\s+/g, ' ') : '', chips: h ? h.querySelectorAll('.ph-chips span').length : 0,
+                             title: cs(document.getElementById('m-title')), first: document.querySelector('#modal .dlg').firstElementChild.id,
+                             order: [...document.querySelector('#modal .dlg').children].map(e => e.id).filter(x => ['pcs-hero', 'pcs-os', 'm-plans-box'].includes(x)),
+                             plans: [...document.querySelectorAll('#m-plans button')].map(b => b.innerText.replace(/\s+/g, ' ')), lab: document.querySelector('#m-plans-box > span').textContent }; }""")
+        ck("hộp mua VPS GPU 'sịn': thẻ cấu hình đầu hộp (tên, cấu hình admin nhập, chỉ từ 50.000đ / ngày, Có máy sẵn), ẩn tiêu đề cũ",
+           hz["vis"] and hz["first"] == "pcs-hero" and "VPS GPU BLUE" in hz["t"] and hz["chips"] == 2 and "2686V4" in hz["t"] and "chỉ từ 50.000" in hz["t"] and "Có máy sẵn" in hz["t"] and hz["title"] == "none", hz)
+        ck("① Chọn Windows rồi ② Chọn thời gian thuê; gói ghi giá / ngày, gói rẻ hơn có nhãn −%",
+           hz["order"] == ["pcs-hero", "pcs-os", "m-plans-box"] and hz["lab"].startswith("②") and any("50.000" in x and "/ ngày" in x and "−3%" in x for x in hz["plans"])
+           and not any("−" in x for x in hz["plans"] if x.startswith("30")), hz)
         s.page.screenshot(path=os.path.join(SHOTS, "shop-1-buy.png"))
         s.page.click('#pcs-os [data-pcsos="1511"]'); s.page.click("#m-plans button[data-d='15']"); s.page.click("#m-ok"); s.page.wait_for_timeout(700)
         b = s.js("() => window.__SHOP.bought")
         ck("bấm Thanh toán → gọi pc_buy đúng sản phẩm + 15 ngày + 1511 (không gọi buy_product)", b == [{"p_product": PROD, "p_days": 15, "p_os": "1511"}] and not s.calls("buy_product"), (b, s.calls("buy_product")))
         d = s.js("() => { const m = document.getElementById('pcsdlg'); return m && !m.hidden ? m.innerText : ''; }")
-        ck("xong → hộp báo 'Đã giao máy' + đang cài Windows + nút xem VPS", "Đã giao máy cho bạn" in d and "đang tự cài Windows" in d and "Xem VPS GPU của bạn" in d and document_ok(s), d)
+        ck("xong → hộp 'Thanh toán thành công' kiểu ĐỢI MÁY: ① Đợi máy đang cài 1511 + mã thanh toán, nút VPS của tôi",
+           "Thanh toán thành công" in d and "Đợi máy" in d and "Đang cài Windows 10 Pro 1511" in d and "BR-O1" in d and "VPS của tôi" in d and document_ok(s), d)
+        mg = s.js("""() => { const g = document.getElementById('pcsw-msg'); return { open: g.open, sum: g.querySelector('summary').innerText, txt: document.getElementById('pcsw-txt').textContent,
+                    ct: g.querySelectorAll('.contacts a').length, copy: !!document.getElementById('pcsw-copy') }; }""")
+        ck("② nội dung gửi admin: ẨN sẵn (bấm mới hiện), có đủ mã thanh toán / sản phẩm / Windows / tài khoản / lượt thuê + nút Copy",
+           not mg["open"] and "Máy lâu chưa lên" in mg["sum"] and "VPS GPU LÂU CHƯA LÊN" in mg["txt"] and "Mã thanh toán: BR-O1" in mg["txt"] and "VPS GPU BLUE · 15 ngày" in mg["txt"]
+           and "Windows 10 Pro 1511" in mg["txt"] and "Lượt thuê: #30" in mg["txt"] and mg["copy"], mg)
         s.page.screenshot(path=os.path.join(SHOTS, "shop-2-done.png"))
+        s.js("() => { window.PCSHOP.w.t0 -= 46 * 60000; }"); s.page.wait_for_timeout(1300)
+        lt = s.js("() => { const g = document.getElementById('pcsw-msg'); return { open: g.open, late: g.classList.contains('late'), note: !document.getElementById('pcsw-late').hidden, txt: document.getElementById('pcsw-txt').textContent }; }")
+        ck("cài quá 45 phút → tự MỞ mục ② + nhắc gửi admin, nội dung ghi đúng trạng thái + số phút đã chờ",
+           lt["open"] and lt["late"] and lt["note"] and "Trạng thái: Đang cài Windows (đã chờ 46 phút" in lt["txt"], lt)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-2b-late.png"))
         s.js("() => document.getElementById('pcsdlg').hidden = true")
         s.js("() => { window.__SHOP.buyRes = { state: 'waiting', rental: 31, order: 'o2', total: 360000 }; }")
         s.js("id => openBuy(id)", PROD); s.page.wait_for_timeout(300); s.page.click("#m-ok"); s.page.wait_for_timeout(600)
         d = s.js("() => document.getElementById('pcsdlg').innerText")
-        ck("hết máy → hộp báo 'đang chuẩn bị máy', không cần nhắn shop", "shop đang chuẩn bị máy" in d and "không cần nhắn shop" in d, d)
+        ck("hết máy → ① Đang chờ máy, tự giao + cài Windows, không cần nhắn shop", "Đang chờ máy" in d and "tự giao" in d and "không cần nhắn shop" in d, d)
+        s.js("""() => { const m = window.PCSHOP.mine; window.PCSHOP.mine = { ...m, items: [...m.items, { rental: 31, state: 'active', os: '22h2', os_name: 'Windows 10 Pro 22H2', days: 7,
+                 until: new Date(Date.now() + 7 * 864e5).toISOString(), left: 2, used: 0, pc: { id: '%s', name: 'May-03', online: true, job: null, last_job: null, gpus: [] } }] }; }""" % PC3)
+        s.page.wait_for_timeout(1300)
+        rd = s.js("() => ({ t: document.getElementById('pcsdlg').innerText, a: (document.querySelector('#pcsw-acts a[href^=\"/play.html?pc=\"]') || {}).href || '', bar: document.getElementById('pcsw-bar').hidden })")
+        ck("có máy → hộp tự đổi sang '✅ Máy đã sẵn sàng' + nút ▶ Điều khiển đúng máy (không cần tải lại)", "Máy đã sẵn sàng" in rd["t"] and rd["a"].endswith("/play.html?pc=" + PC3) and rd["bar"], rd)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-3-ready.png"))
         s.js("() => document.getElementById('pcsdlg').hidden = true")
         s.js("id => openBuy(id)", OTHER); s.page.wait_for_timeout(300)
         st = s.js("() => ({ auto: document.getElementById('modal').classList.contains('pcauto'), os: !!document.getElementById('pcs-os') && !document.getElementById('pcs-os').hidden, vps: getComputedStyle(document.getElementById('m-vps')).display })")
         ck("sản phẩm VPS khác (không bật tự động) → hộp mua như cũ (FarmV5, không có ô Windows tự động)", not st["auto"] and not st["os"] and st["vps"] != "none", st)
+        ck("sản phẩm khác: không có thẻ cấu hình VPS GPU, tiêu đề + nhãn gói như cũ", s.js("() => { const h = document.getElementById('pcs-hero'); return (!h || h.hidden) && getComputedStyle(document.getElementById('m-title')).display !== 'none' && !document.querySelector('#m-plans-box > span').textContent.startsWith('②'); }"))
         print("2. VPS GPU của bạn (trang chủ)")
         s.js("() => window.PCSHOP && document.getElementById('modal') && (document.getElementById('modal').hidden = true)")
         s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 4", timeout=8000)
@@ -135,6 +164,15 @@ def main():
         ck("đơn chờ máy: báo tự giao, không cần nhắn shop", "Đang chờ máy" in cards[2]["t"] and "không cần nhắn shop" in cards[2]["t"], cards[2])
         ck("máy hết hạn đã tắt: báo gia hạn để dùng tiếp, hết lượt cài lại", "Hết hạn" in cards[3]["t"] and "Gia hạn" in cards[3]["t"] and cards[3]["re"] is True, cards[3])
         ck("tên máy / GPU lạ không chạy được mã (đã esc)", s.js("() => !window.__xss") and "<img" in cards[1]["t"])
+        s.page.click('#pcs-mine [data-pcsvid]'); s.page.wait_for_timeout(300)
+        vd = s.js("""() => { const m = document.getElementById('pcsdlg'), v = m && m.querySelector('video.pcs-vid');
+                    return { open: !!m && !m.hidden, src: v ? v.getAttribute('src') : '', poster: v ? v.getAttribute('poster') : '', ctl: !!v && v.controls, inl: !!v && v.playsInline,
+                             wide: !!m && m.querySelector('.pcs-dlg').classList.contains('vid'), t: m ? m.innerText : '' }; }""")
+        ck("🎬 Video hướng dẫn (đầu khung VPS GPU của bạn) → hộp phát /video/vps-gpu.mp4 (ảnh bìa, nút điều khiển, phát ngay trên iPhone)",
+           vd["open"] and vd["src"] == "/video/vps-gpu.mp4" and vd["poster"] == "/video/vps-gpu.jpg" and vd["ctl"] and vd["inl"] and vd["wide"] and "Hướng dẫn dùng VPS GPU" in vd["t"], vd)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-5-video.png"))
+        s.page.click('#pcsdlg [data-pcsx]'); s.page.wait_for_timeout(150)
+        ck("Đóng hộp video → ẩn + dừng video", s.js("() => { const m = document.getElementById('pcsdlg'); return m.hidden && [...m.querySelectorAll('video')].every(v => v.paused); }"))
         s.page.screenshot(path=os.path.join(SHOTS, "shop-3-mine.png"), full_page=False)
         apps = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => (c.querySelector('[data-pcsapp]') || {}).dataset ? (c.querySelector('[data-pcsapp]') || {dataset: {}}).dataset.pcsapp || '' : '')")
         ck("nút 📲 App chỉ có ở máy điều khiển được (máy sẵn sàng)", apps[0] == PC1 and apps[1:] == ["", "", ""], apps)
@@ -158,6 +196,20 @@ def main():
         rn = s.js("() => document.getElementById('pcsdlg').innerText")
         s.page.click('#pcsdlg [data-pcsplan="15"]'); s.page.click('#pcsdlg [data-pcsrnew]'); s.page.wait_for_timeout(600)
         ck("Gia hạn: hiện 3 gói giá thật, chọn +15 ngày → gọi pc_my_renew", "+7 ngày" in rn and "+30 ngày" in rn and s.calls("pc_my_renew") == [{"p_pc": PC3, "p_days": 15}], (rn, s.calls("pc_my_renew")))
+        s.js("() => { const m = document.getElementById('pcsdlg'); if (m) m.hidden = true; }")
+        nv = s.js("() => { const a = document.getElementById('nav-vps'), b = document.getElementById('vps-nav-badge'); return { vis: !!a && !a.hidden, has: !!a && a.classList.contains('has'), n: b && !b.hidden ? b.textContent : '' }; }")
+        ck("menu bên 'VPS của tôi': nổi bật + số VPS GPU (4 = 3 đang thuê + 1 chờ máy)", nv["vis"] and nv["has"] and nv["n"] == "4", nv)
+        s.page.click("#nav-vps"); s.page.wait_for_timeout(900)
+        vm = s.js("""() => { const m = document.getElementById('vmach'), b = document.getElementById('pcs-vm');
+                    return { open: !!m && !m.hidden, cards: b ? b.querySelectorAll('.pcs-card').length : 0, ctl: !!(b && b.querySelector('a[href="/play.html?pc=%s"]')),
+                             app: !!(b && b.querySelector('[data-pcsapp="%s"]')), vid: !!(b && b.querySelector('[data-pcsvid]')), list: document.getElementById('vm-list').innerText.trim(),
+                             note: document.getElementById('vm-note').hidden, first: b && b.nextElementSibling ? b.nextElementSibling.id : '', t: b ? b.innerText : '' }; }""" % (PC1, PC1))
+        ck("bấm 'VPS của tôi' → VPS GPU nằm ĐẦU hộp: đủ 4 thẻ, ▶ Điều khiển trên web, 📲 App, 🎬 Video; không còn dòng 'chưa có máy VPS nào'",
+           vm["open"] and vm["cards"] == 4 and vm["ctl"] and vm["app"] and vm["vid"] and vm["list"] == "" and vm["note"] and "Điều khiển ngay trên web" in vm["t"], vm)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-6-vps-cua-toi.png"))
+        s.page.click('#pcs-vm [data-pcsrenew="%s"]' % PC1); s.page.wait_for_timeout(300)
+        ck("trong hộp 'VPS của tôi': nút ⏱ Gia hạn mở hộp gia hạn (nằm trên)", s.js("() => !document.getElementById('pcsdlg').hidden && document.getElementById('pcsdlg').innerText.includes('Gia hạn')"))
+        s.js("() => { document.getElementById('pcsdlg').hidden = true; document.getElementById('vmach').hidden = true; }")
         ck("không lỗi JS / console", not s.errors, s.errors)
         s.close()
         print("3. Điện thoại (màn hình hẹp)")

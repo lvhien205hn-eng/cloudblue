@@ -1,0 +1,91 @@
+<style>
+/* ===== Bảng quản trị gọn (21/11f): 5 nhóm — mỗi nhóm ghi sẵn các mục bên trong — + hàng mục con của nhóm đang mở ===== */
+.admgrp{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:2px 0 8px}
+.admgrp button{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:10px 12px 11px;border-radius:14px;
+  border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;text-align:left;font:inherit}
+.admgrp button b{display:flex;align-items:center;gap:6px;max-width:100%;font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admgrp button small{font-size:12px;line-height:1.38;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.admgrp button:hover{border-color:var(--line2)}
+.admgrp button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+.admgrp button.on{border-color:rgba(110,170,255,.75);background:linear-gradient(180deg,rgba(61,123,255,.30),rgba(61,123,255,.10))}
+.admgrp button.on small{color:var(--fg);opacity:.85}
+.admgrp .badge{flex:none}
+#adm-tabs.admsub{margin-top:0}
+#adm-tabs.admsub .tsep,#adm-tabs.admsub button[data-grp-off]{display:none!important}
+@media (max-width:860px){
+  .admgrp{display:flex;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .admgrp::-webkit-scrollbar{display:none}
+  .admgrp button{flex:0 0 auto;width:min(62vw,230px)}
+}
+</style>
+<script>
+/* Gộp thẻ bảng quản trị theo nhóm. Không đổi gì bên trong các thẻ: nút thẻ cũ (#adm-tabs button[data-tab]) vẫn là nút thật —
+   bấm nhóm = bấm nút thẻ cũ (mục dùng gần nhất của nhóm); hàng #adm-tabs chỉ còn các mục của nhóm đang mở. */
+(() => {
+  const tabs = document.getElementById("adm-tabs"); if (!tabs || document.getElementById("adm-grp")) return;
+  const G = [
+    { id: "home", t: "📊 Tổng quan", m: ["stats"], d: "Doanh thu · đơn · sản phẩm bán chạy" },
+    { id: "sell", t: "🛒 Bán hàng", m: ["ord", "prod", "promo"] },
+    { id: "cust", t: "👥 Khách & tiền", m: ["cust", "tx", "sec"] },
+    { id: "mach", t: "🖥️ Máy cho thuê", m: ["cloud", "vps", "pc", "biz"] },
+    { id: "set", t: "⚙️ Cài đặt", m: ["site", "bank"] }
+  ];
+  const btnOf = t => tabs.querySelector('button[data-tab="' + t + '"]');
+  const label = b => { const c = b.cloneNode(true); c.querySelectorAll(".badge").forEach(x => x.remove()); return c.textContent.replace(/^[^\p{L}\p{N}]+/u, "").trim(); };
+  // thẻ mới chưa có nhóm (bản sau thêm) → nhóm "Khác" ở cuối, không bao giờ bị mất
+  const known = new Set(G.flatMap(g => g.m)), extra = [...tabs.querySelectorAll("button[data-tab]")].map(b => b.dataset.tab).filter(t => !known.has(t));
+  if (extra.length) G.push({ id: "more", t: "➕ Khác", m: extra });
+  const grpOf = t => (G.find(g => g.m.includes(t)) || {}).id || null;
+  const bar = document.createElement("div"); bar.className = "admgrp"; bar.id = "adm-grp"; bar.setAttribute("role", "tablist"); bar.setAttribute("aria-label", "Nhóm chức năng");
+  for (const g of G) {
+    const ms = g.m.map(btnOf).filter(Boolean); if (!ms.length) continue;
+    let d = g.d;
+    if (!d) {                                                      // 1 thẻ có mục con (Cài đặt) → liệt kê mục con; nhiều thẻ → liệt kê tên thẻ
+      const sub = ms.length === 1 ? [...document.querySelectorAll("#pane-" + g.m[0] + " > .subtabs button[data-sub]")] : [];
+      d = (sub.length ? sub.map(label) : ms.map(label)).join(" · ");
+    }
+    const b = document.createElement("button"); b.type = "button"; b.dataset.grp = g.id; b.setAttribute("role", "tab");
+    b.innerHTML = `<b>${g.t} <span class="badge" hidden></span></b><small></small>`; b.querySelector("small").textContent = d; b.title = d;
+    bar.appendChild(b);
+  }
+  tabs.before(bar); tabs.classList.add("admsub");
+  const last = g => { try { return localStorage.getItem("adm_grp_" + g); } catch (e) { return null; } };
+  bar.addEventListener("click", e => {
+    const b = e.target.closest("button[data-grp]"); if (!b) return;
+    const g = G.find(x => x.id === b.dataset.grp); if (!g) return;
+    const want = [last(g.id), ...g.m].find(t => t && g.m.includes(t) && btnOf(t));
+    const tb = want && btnOf(want); if (tb && !tb.classList.contains("on")) tb.click(); else paint();
+  });
+  function paint() {
+    const on = tabs.querySelector("button[data-tab].on"), cur = on ? on.dataset.tab : null, cg = grpOf(cur);
+    if (cur && cg) { try { localStorage.setItem("adm_grp_" + cg, cur); } catch (e) {} }
+    let shown = 0;
+    tabs.querySelectorAll("button[data-tab]").forEach(b => {
+      const mine = grpOf(b.dataset.tab) === cg;
+      if (mine) { shown++; if (b.hasAttribute("data-grp-off")) b.removeAttribute("data-grp-off"); }
+      else if (!b.hasAttribute("data-grp-off")) b.setAttribute("data-grp-off", "");
+    });
+    const disp = shown > 1 ? "" : "none"; if (tabs.style.display !== disp) tabs.style.display = disp;
+    bar.querySelectorAll("button[data-grp]").forEach(b => {
+      const g = G.find(x => x.id === b.dataset.grp), isOn = g.id === cg;
+      const was = b.classList.contains("on");
+      b.classList.toggle("on", isOn); b.setAttribute("aria-selected", isOn ? "true" : "false");
+      if (isOn && !was && bar.scrollWidth > bar.clientWidth + 4) {             // màn hẹp (hàng nhóm cuộn ngang) → kéo nhóm đang mở vào giữa tầm nhìn
+        const x = b.offsetLeft - (bar.clientWidth - b.offsetWidth) / 2; try { bar.scrollTo({ left: Math.max(0, x) }); } catch (e) { bar.scrollLeft = Math.max(0, x); }
+      }
+      let n = 0, flag = false;                                     // số trên nhóm = cộng số của các thẻ trong nhóm ("!" nếu chỉ có dấu nhắc)
+      for (const t of g.m) {
+        const bd = btnOf(t) && btnOf(t).querySelector(".badge"); if (!bd || bd.hidden) continue;
+        const v = bd.textContent.trim(); if (!v) continue;
+        if (/^\d+$/.test(v)) n += +v; else flag = true;
+      }
+      const s = b.querySelector(".badge"), txt = n ? String(n) : flag ? "!" : "";
+      if (s.textContent !== txt) s.textContent = txt;
+      if (s.hidden !== !txt) s.hidden = !txt;
+    });
+  }
+  new MutationObserver(paint).observe(tabs, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "hidden"] });
+  window.ADMNAV = { grpOf, paint, groups: () => G.map(g => ({ id: g.id, t: g.t, m: g.m.filter(btnOf) })) };
+  paint();
+})();
+</script>

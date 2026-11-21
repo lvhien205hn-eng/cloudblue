@@ -152,7 +152,12 @@ class Site:
         self.page.wait_for_timeout(400)
 
     def tab(self, t):
-        self.page.click('#adm-tabs button[data-tab="%s"]' % t)
+        """Như người dùng: bấm NHÓM ở hàng trên (21/11f), rồi bấm mục trong nhóm nếu nhóm chưa mở đúng mục đó."""
+        g = self.js("t => window.ADMNAV ? window.ADMNAV.grpOf(t) : null", t)
+        if g:
+            self.page.click('#adm-grp button[data-grp="%s"]' % g); self.page.wait_for_timeout(120)
+        if not self.js("t => { const b = document.querySelector('#adm-tabs button[data-tab=\"' + t + '\"]'); return !!b && b.classList.contains('on'); }", t):
+            self.page.click('#adm-tabs button[data-tab="%s"]' % t)
         self.page.wait_for_timeout(250)
 
     def settle(self):
@@ -198,6 +203,28 @@ def main():
         ck("thẻ Bảo mật vẫn chạy đúng", s.js("() => !document.getElementById('pane-sec').hidden && document.getElementById('pane-pc').hidden"))
         s.tab("pc"); s.settle()
         ck("không báo thiếu SQL", s.js("() => document.getElementById('pca-miss').hidden"))
+
+        print("2b. Thẻ bảng quản trị gộp theo nhóm (21/11f)")
+        gr = s.js("() => [...document.querySelectorAll('#adm-grp button[data-grp]')].map(b => [b.dataset.grp, b.querySelector('b').innerText.trim(), b.querySelector('small').textContent])")
+        ck("5 nhóm: Tổng quan · Bán hàng · Khách & tiền · Máy cho thuê · Cài đặt", [g[0] for g in gr] == ["home", "sell", "cust", "mach", "set"], gr)
+        sub = {g[0]: g[2] for g in gr}
+        ck("mỗi nhóm ghi sẵn các mục bên trong (mở lên là biết có gì)",
+           sub.get("sell") == "Đơn hàng · Sản phẩm · Khuyến mãi" and sub.get("cust") == "Khách hàng · Nạp tiền · Bảo mật"
+           and sub.get("mach") == "ĐT đám mây · Máy VPS · Máy PC · Dàn máy nội bộ" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
+        vis = lambda: s.js("() => getComputedStyle(document.getElementById('adm-tabs')).display === 'none' ? [] : [...document.querySelectorAll('#adm-tabs button[data-tab]')].filter(b => getComputedStyle(b).display !== 'none').map(b => b.dataset.tab)")
+        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 4 mục: ĐT đám mây · Máy VPS · Máy PC · Dàn máy nội bộ",
+           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "vps", "pc", "biz"], vis())
+        s.tab("stats")
+        ck("Tổng quan (1 mục) → ẩn hàng mục con", vis() == [] and not s.js("() => document.getElementById('pane-stats').hidden"), vis())
+        s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(300)
+        ck("bấm lại nhóm 'Máy cho thuê' → về đúng mục dùng gần nhất (Máy PC)", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "pc" and not s.js("() => document.getElementById('pane-pc').hidden"))
+        s.js("() => { const a = document.getElementById('sec-badge'), b = document.getElementById('ord-badge'); a.textContent = '42'; a.hidden = false; b.textContent = '1'; b.hidden = false; }")
+        s.page.wait_for_timeout(150)
+        bd = s.js("() => Object.fromEntries([...document.querySelectorAll('#adm-grp button[data-grp]')].map(b => [b.dataset.grp, b.querySelector('.badge').hidden ? '' : b.querySelector('.badge').textContent]))")
+        ck("số trên nhóm = cộng số các thẻ trong nhóm (Bảo mật 42 → Khách & tiền 42 · Đơn hàng 1 → Bán hàng 1 · Máy PC 1 chờ duyệt → Máy cho thuê 1)",
+           bd.get("cust") == "42" and bd.get("sell") == "1" and bd.get("mach") == "1" and bd.get("home") == "", bd)
+        s.js("() => { const a = document.getElementById('sec-badge'), b = document.getElementById('ord-badge'); a.hidden = true; b.hidden = true; }")
+        s.tab("pc"); s.settle()
 
         print("3. Số liệu + bảng")
         tiles = s.js("() => ['pk-total','pk-on','pk-new','pk-busy'].map(i => document.getElementById(i).textContent)")

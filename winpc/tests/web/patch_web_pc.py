@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Gắn thẻ "💻 Máy PC" (kho máy PC cho thuê, SQL v41) vào blueroblox-site/index.html.
+"""Gắn thẻ "💻 Máy PC" (kho máy PC cho thuê, SQL v41) + bán VPS GPU (pc_shop) + nhóm thẻ bảng quản trị (adm_nav) vào blueroblox-site/index.html.
    python3 patch_web_pc.py <index gốc> <index ra>
    Mỗi mốc phải có ĐÚNG 1 lần trong file gốc; file đã gắn rồi thì báo và dừng (không gắn 2 lần)."""
 import hashlib, os, sys
@@ -32,8 +32,9 @@ def main(src, dst):
     if "\r\n" in s:
         raise SystemExit("File gốc dùng CRLF — dừng để khỏi trộn kiểu xuống dòng.")
     base_len = len(s)
-    pane, dlg, script = read("pc_pane.html"), read("pc_dialogs.html"), read("pc_script.html") + read("pc_shop.html")
-    for name, t in (("pc_pane.html", pane), ("pc_dialogs.html", dlg), ("pc_script.html", read("pc_script.html")), ("pc_shop.html", read("pc_shop.html"))):
+    pane, dlg, script = read("pc_pane.html"), read("pc_dialogs.html"), read("pc_script.html") + read("pc_shop.html") + read("adm_nav.html")
+    for name, t in (("pc_pane.html", pane), ("pc_dialogs.html", dlg), ("pc_script.html", read("pc_script.html")), ("pc_shop.html", read("pc_shop.html")),
+                    ("adm_nav.html", read("adm_nav.html"))):
         if "\r" in t or not t.endswith("\n"):
             raise SystemExit("%s: phải dùng LF và kết thúc bằng xuống dòng" % name)
     s = insert(s, '<button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button>',
