@@ -9,7 +9,7 @@
 #    5. bao mat: khoa quyen that bang icacls + thu bang 1 tai khoan thuong that (sec_check.py)
 #    6. chep tep that cua bo cai: tep lon khong duoc ngon RAM (sys_check.py)
 #    7. soat ten chua khai bao trong moi file Python (lint.py) + thu tren Windows that cac ham goi thang vao Windows cua ban 21.11a:
-#       thu mang, tim card NVIDIA, provision.cmd in tien do, dat dong ho, huy hen tat may (os_check.py)
+#       thu mang, tim card NVIDIA, provision.cmd in tien do, dat dong ho, huy hen tat may, DRIVER: doc thiet bi that + kho driver + do lai phan cung (os_check.py)
 #  Khong dua gi len web, khong dung toi may that nao. Luon thoat ma 0; ket qua nam o trang tom tat cua lan chay.
 # =====================================================================================================
 param([string]$WorkRoot = "")
@@ -418,7 +418,7 @@ try {
         elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
         elseif ($ln.Trim()) { Info ("? " + $ln) }
       }
-      Ck "bo thu os_check chay het" ($nOs -ge 24) ("" + $nOs + " phep thu, " + $osOut.Count + " dong")
+      Ck "bo thu os_check chay het" ($nOs -ge 36) ("" + $nOs + " phep thu, " + $osOut.Count + " dong")
     } else {
       Info ("BO QUA buoc 7: khong co cay bo cai / python (" + $cbDir + ")")
     }

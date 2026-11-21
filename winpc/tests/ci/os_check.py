@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================================
-#  winpc/tests/ci/os_check.py   —   thu tren WINDOWS THAT cac ham ban 21.11a goi thang vao Windows (bo thu thuong dung lop gia):
+#  winpc/tests/ci/os_check.py   —   thu tren WINDOWS THAT cac ham ban 21.11a - 21.11c goi thang vao Windows (bo thu thuong dung lop gia):
 #       cb_provision: thu mang (real_net), tim card NVIDIA trong registry (real_nvidia_state), cho mang (net_wait), tien do in ra cua so
 #       provision.cmd: nhanh "firstlogon" phai de chu in ra man hinh, loi ghi vao provision.out
 #       pcagent:      dat dong ho (SetSystemTime), huy hen tat may, hop thong bao, vga_pending
 #       cb_pe:        chen dich vu khoi dong vao kho registry OFFLINE (reg load / add / unload that) + doc trang thai ban Windows + dat mui gio loi thi bo qua
 #       ban ghost (21.11b): doc danh sach tai khoan (WMI), doi ten tai khoan (ADSI), thu mat khau trong (LogonUser), bo han mat khau (net accounts), doc registry Setup that
+#       driver (21.11c): doc danh sach thiet bi (SetupAPI), kho driver (registry DriverDatabase), do lai phan cung (cfgmgr32), pnputil
 #    python os_check.py <thu muc cb cua bo cai, hoac thu muc winpc>  <thu muc tam>
 #  In ra:  "OK  ..." / "XX  ..." / ".. ghi chu"   (check.ps1 doc lai). Chay duoc tren ca Windows lan Linux (tren Linux bo qua phan chi-Windows).
 # =====================================================================================================
@@ -238,6 +239,72 @@ finally:
 ck("clean_code: lam sach so may nguoi cai go", C.clean_code("  a07 <khu 2> ") == "A07 KHU 2" and C.clean_code("") == "")
 if WIN:
     note("thu muc man hinh nen chung that cua may chay thu: " + os.path.join(os.environ.get("PUBLIC", "?"), "Desktop") + (" (co)" if os.path.isdir(os.path.join(os.environ.get("PUBLIC", ""), "Desktop")) else " (KHONG co)"))
+
+# ---- 9. DRIVER (21.11c): doc danh sach thiet bi THAT (SetupAPI + cfgmgr32), kho driver, lenh do lai phan cung, pnputil — buoc "driver card mang truoc, VGA sau"
+ck("drv_summary / drv_brief / inf_class / parse_dism_drivers chay duoc tren may nay", C.drv_brief(C.drv_summary([{"name": "Ethernet Controller", "cls": "", "id": "PCI\\VEN_10EC&DEV_8168\\1",
+   "problem": 28, "service": "", "compat": ["PCI\\CC_0200"]}])) == {"miss": 1, "names": ["Ethernet Controller [Realtek 10EC:8168]"], "net": "miss", "vga": "ok"}
+   and C.inf_class(b"[Version]\r\nClassGuid={4d36e972-e325-11ce-bfc1-08002be10318}\r\n") == "net" and C.parse_dism_drivers("oem1.inf | a.inf | No | Net | X | 1/1/2020 | 1.0") [0]["cls"] == "net")
+if WIN:
+    try:
+        t0 = time.time(); devs = cbsys.pnp_devices(); t_dev = time.time() - t0
+        named = [d for d in devs if d["name"]]
+        ck("pnp_devices: doc duoc danh sach thiet bi cua may that qua SetupAPI (>= 20 thiet bi, co ten + ma thiet bi + lop), nhanh",
+           len(devs) >= 20 and all(isinstance(d["id"], str) and d["id"] for d in devs) and len(named) >= 15 and any(d["cls"] for d in devs) and t_dev < 20, (len(devs), len(named), "%.1f giay" % t_dev))
+        note("thiet bi: %d (co ten %d) trong %.2f giay; vi du: %s" % (len(devs), len(named), t_dev, " | ".join("%s [%s] loi=%s" % (d["name"][:30], d["cls"], d["problem"]) for d in named[:4])))
+        ps = ("$a=@(Get-WmiObject Win32_PnPEntity); $b=@($a | Where-Object { $_.ConfigManagerErrorCode -ne 0 }); "
+              "Write-Output ('ALL=' + $a.Count + '|BAD=' + $b.Count + '|'); $b | Select-Object -First 5 | ForEach-Object { Write-Output ('B=' + $_.ConfigManagerErrorCode + ' ' + $_.Name) }")
+        r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True, text=True, timeout=300)
+        import re as _re
+        m = _re.search(r"ALL=(\d+)\|BAD=(\d+)\|", r.stdout or "")
+        bad_mine = [d for d in devs if d["problem"]]
+        if m:
+            n_all, n_bad = int(m.group(1)), int(m.group(2))
+            ck("pnp_devices khop voi WMI cua Windows: tong so thiet bi (sai lech <= 15%) va so thiet bi dang loi (sai lech <= 2)",
+               abs(len(devs) - n_all) <= max(5, n_all * 0.15) and abs(len(bad_mine) - n_bad) <= 2, (len(devs), n_all, len(bad_mine), n_bad, (r.stdout or "")[-300:]))
+        else:
+            note("khong hoi duoc WMI de doi chieu: " + ((r.stderr or r.stdout or "").strip()[:160]))
+        sm = C.drv_summary(devs); br = C.drv_brief(sm)
+        ck("drv_summary tren may that: du 5 muc, nhan thiet bi la chu ASCII, ban gon dung kieu", set(sm) == {"miss", "net_miss", "nics", "vga_basic", "vga_ok"} and all(C.drv_label(x).isascii() for x in sm["miss"])
+           and isinstance(br["miss"], int) and br["net"] in ("ok", "miss", "none") and br["vga"] in ("ok", "miss", "basic") and len(br["names"]) <= 6, br)
+        ck("may chay thu dang co mang -> phai thay it nhat 1 card mang phan cung da nhan driver", len(sm["nics"]) >= 1, (sm["nics"], [d for d in devs if d["cls"].lower() == "net"][:6]))
+        note("tom tat driver may chay thu: thieu %d (%s) | card mang: %s | VGA co ban: %d, VGA co driver: %d" % (len(sm["miss"]), "; ".join(C.drv_label(x) for x in sm["miss"][:4]),
+             ", ".join(sm["nics"][:3]), sm["vga_basic"], sm["vga_ok"]))
+        hd = pcagent.WinHost.__new__(pcagent.WinHost).drivers()
+        ck("WinHost.drivers (agent) tra cung tom tat", isinstance(hd, dict) and hd["nics"] == sm["nics"], hd)
+        cr = cbsys.pnp_retry()
+        ck("pnp_retry: ra duoc lenh 'do lai phan cung + cai lai thiet bi chua co driver' cho Windows (cfgmgr32 tra 0)", cr == 0, cr)
+        ck("real_pnp_retry / real_devices / real_staged cua cb_provision chay duoc", cb_provision.real_pnp_retry() is True and isinstance(cb_provision.real_devices(), list) and isinstance(cb_provision.real_staged(), list))
+        stg = cbsys.staged_infs()
+        ck("staged_infs: doc duoc kho driver cua Windows; moi goi ben thu ba deu chi toi file .inf co that", isinstance(stg, list) and all(os.path.isfile(x["inf"]) and x["pub"].startswith("oem") for x in stg), stg[:3])
+        cls = {}
+        for x in stg:
+            with open(x["inf"], "rb") as f: c0 = C.inf_class(f.read(2 << 20))
+            cls[c0 or "?"] = cls.get(c0 or "?", 0) + 1
+        note("kho driver may chay thu: %d goi ben thu ba, theo lop: %s" % (len(stg), ", ".join("%s=%d" % kv for kv in sorted(cls.items())) or "-"))
+        ck("doc duoc lop cua moi goi driver trong kho (khong goi nao 'khong ro')", "?" not in cls, cls)
+        exe = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32", "pnputil.exe")
+        r = subprocess.run([exe, "-e"], capture_output=True, text=True, timeout=300)
+        ck("pnputil: cu phap cu (-e / -i -a, dung duoc tu Windows 10 ban 1507) van chay tren Windows nay", r.returncode == 0 and "oem" in (r.stdout or "").lower() or (r.returncode == 0 and not stg), (r.returncode, (r.stdout or r.stderr or "")[-200:]))
+        n_pub = len(set(_re.findall(r"oem\d+\.inf", (r.stdout or "").lower())))
+        ck("staged_infs khop voi 'pnputil -e' cua Windows: cung so goi driver ben thu ba (sai lech <= 1)", abs(len(stg) - n_pub) <= 1, (len(stg), n_pub, (r.stdout or "")[-300:]))
+        if stg:
+            r = subprocess.run([exe, "-i", "-a", stg[0]["inf"]], capture_output=True, text=True, timeout=600)
+            note("pnputil -i -a tren 1 goi da co san trong kho (%s): ma %s :: %s" % (os.path.basename(stg[0]["inf"]), r.returncode, " ".join((r.stdout or r.stderr or "").split())[-200:]))
+            ck("pnputil -i -a <file .inf trong kho driver>: lenh duoc nhan (khong bao sai cu phap)", "/add-driver" not in (r.stdout or "").lower() or r.returncode == 0, (r.returncode, (r.stdout or "")[-200:]))
+        slept = []
+        pd = cb_provision.Prov(tmp, log=lambda m_: None, admin=True, rec=lambda: "", say=said.append, sleep=lambda s_: (slept.append(s_), time.sleep(min(s_, 1)))[0])
+        t0 = time.time(); res = pd.drivers(); dt = time.time() - t0
+        ck("Prov.drivers chay THAT tren may nay: tra tom tat, ghi logs\\drv.json, khong treo (card mang cua may dang chay tot nen khong can pnputil)",
+           isinstance(res, dict) and os.path.isfile(os.path.join(tmp, "logs", "drv.json")) and dt < 120 and len(res["nics"]) >= 1, (res, "%.1f giay" % dt, slept))
+        with open(os.path.join(tmp, "logs", "drv.json"), encoding="utf-8") as f: note("drv.json: " + f.read()[:300])
+        said2 = []; pd._say = said2.append; pd.drv_say(res)
+        ck("drv_say in ra dong tinh trang driver (chu khong dau)", said2 and all(x.isascii() for x in said2) and any("card mang da nhan driver" in x for x in said2), said2)
+    except Exception as e:
+        import traceback as _tb
+        ck("buoc 9 (driver) chay het khong nem loi", False, repr(e) + " :: " + _tb.format_exc()[-400:])
+else:
+    ck("pnp_devices tren may khong phai Windows: real_devices tra None, real_pnp_retry False, real_staged [] (khong nem loi)",
+       cb_provision.real_devices() is None and cb_provision.real_pnp_retry() is False and cb_provision.real_staged() == [])
 
 with open(os.path.join(tmp, "logs", "vga.json"), "w") as f: f.write('{"state": "wait", "tries": 0}')
 ck("pcagent.vga_pending doc logs\\vga.json", pcagent.vga_pending(tmp) is True)
