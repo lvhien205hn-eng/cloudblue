@@ -2024,6 +2024,23 @@ html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{top:12p
 .m3-row .feats{display:flex!important}
 .m3-row .feats span{font-size:12.5px;padding:4px 11px;font-weight:600}
 .m3-row .days-chip{font-size:13.5px}
+/* 21.11l · thẻ sản phẩm có gói (VPS GPU…): giá từng gói + giá / ngày, gói rẻ nhất / ngày có nhãn "Rẻ nhất"; bấm gói = mở hộp mua chọn sẵn gói đó */
+.m3-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;max-width:560px;margin-top:6px}
+.m3-plan{position:relative;display:grid;gap:1px;justify-items:start;padding:10px 12px 9px;border-radius:12px;border:1px solid var(--line2);background:var(--sunk);color:var(--fg);font:inherit;text-align:left;cursor:pointer;transition:border-color .2s,background .2s}
+.m3-plan b{font-size:12.5px;font-weight:700;color:var(--muted)}
+.m3-plan .pp{font-size:17px;font-weight:800;letter-spacing:-.02em;line-height:1.25;color:var(--money)}
+.m3-plan small{font-size:12px;color:var(--muted);white-space:nowrap}
+.m3-plan small em{font-style:normal;font-weight:800;color:var(--ok)}
+.m3-plan:hover:not(:disabled){border-color:var(--sky)}
+.m3-plan:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+.m3-plan:disabled{opacity:.55;cursor:not-allowed}
+.m3-plan.best{border-color:var(--ok);background:rgba(60,224,176,.09)}
+.m3-plan .tag{position:absolute;top:-9px;right:8px;padding:2px 8px;border-radius:99px;background:var(--ok);color:#032a1f;font-size:10.5px;font-style:normal;font-weight:800;line-height:1.4;white-space:nowrap}
+html[data-theme=light] .m3-plan.best{background:rgba(14,159,116,.07)}
+html[data-theme=light] .m3-plan .tag{color:#fff}
+.m3-row .info{container-type:inline-size}
+@container (max-width:420px){.m3-plans{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.m3-plan{padding:9px 8px 8px}.m3-plan .pp{font-size:14.5px}.m3-plan small{font-size:11px;white-space:normal}}
+@media (max-width:440px){.m3-plans{grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:6px}.m3-plan{padding:9px 8px 8px}.m3-plan .pp{font-size:14.5px}.m3-plan small{font-size:11px;white-space:normal}}
 .m3-row .restock{margin:0}
 .m3-box{display:flex;flex-direction:column;gap:10px;padding:16px;border-radius:18px;background:var(--sunk);box-shadow:inset 0 0 0 1px var(--line)}
 .m3-box .m3p{display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 6px;line-height:1}
@@ -4923,6 +4940,14 @@ function m3RowCloud() {
       <button class="btn main" type="button" data-cpbuy="1"${ok ? "" : " disabled"}>${ok ? L("Thuê ngay", "Rent now") : esc(st[1])}</button>
       ${m3AppBtn()}</div></article>`;
 }
+/* 21.11l: sản phẩm có gói → giá TỪNG gói + giá / ngày (so với gói ngắn nhất: −x%); gói rẻ nhất tính theo ngày có nhãn "Rẻ nhất". Bấm 1 gói = mở hộp mua chọn sẵn gói đó. */
+function m3Plans(p, pl, s) {
+  const pd = x => cv(+x.price) / Math.max(1, +x.days), base = pd(pl[0]), low = Math.min(...pl.map(pd));
+  const bi = pl.length > 1 ? pl.findIndex(x => pd(x) === low) : -1, off = s === 0 ? " disabled" : "";
+  return `<div class="m3-plans">${pl.map((x, i) => { const d = pd(x), sv = base > 0 ? Math.round((1 - d / base) * 100) : 0;
+    return `<button type="button" class="m3-plan${i === bi ? " best" : ""}" data-buy="${esc(p.id)}" data-days="${+x.days}"${off}>${i === bi ? `<i class="tag">${L("Rẻ nhất", "Best value")}</i>` : ""}`
+      + `<b>${+x.days} ${L("ngày", "days")}</b><span class="pp">${esc(fmt(cv(+x.price)))}</span><small>${esc(fmt(d))}/${L("ngày", "day")}${sv >= 1 ? ` · <em>−${sv}%</em>` : ""}</small></button>`; }).join("")}</div>`;
+}
 function m3RowProd(p) {
   const st = m3Stock(p), pl = plansOf(p), s = +p.stock || 0, fe = pFeats(p);
   return `<article class="m3-row ${esc(p.cat)}">
@@ -4930,7 +4955,7 @@ function m3RowProd(p) {
     <div class="info"><span class="cat">${esc(catName(p.cat))}</span><h3>${esc(pName(p))}</h3>
       ${p.description ? `<p class="pdesc">${esc(pDesc(p))}</p>` : ""}
       ${fe.length ? `<div class="feats">${fe.map(f => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
-      ${pl.length ? `<div class="days-chip">${t("Gói", "plan")}: ${pl.map(x => x.days).join(" · ")} ${t("ngày", "days")}</div>` : ""}
+      ${pl.length ? m3Plans(p, pl, s) : ""}
       ${m3Restock(p)}</div>
     <div class="m3-box"><div class="m3p">${pl.length ? `<small>${t("từ", "from")}</small>` : ""}<span class="price">${priceHtml(minPrice(p))}</span></div>
       <span class="stock ${st[0]}">${esc(st[1])}</span>
@@ -5205,7 +5230,7 @@ $("m-more").onclick = e => {
 };
 const moreChosen = () => moreG.map((g, i) => moreSel[i] == null || !g.o[moreSel[i]] ? null : { t: g.t, t_en: g.t_en || "", n: g.o[moreSel[i]].n }).filter(Boolean);
 const moreMissing = () => moreSets().find(s => moreReq(s) && !s.some(i => moreSel[i] != null)) || null;   // lượt bắt buộc chưa chọn → [số thứ tự mục]
-function openBuy(id) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +(pl.find(x => +x.days === 30) || pl[0]).days : null;
+function openBuy(id, days) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +((days && pl.find(x => +x.days === +days)) || pl.find(x => +x.days === 30) || pl[0]).days : null;
   $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description); $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
   show("m-vps", false); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }   // 21.11j: bỏ chọn FarmV5 / FarmSync
 function closeBuy() { show("modal", false); sel = null; }
@@ -6665,7 +6690,7 @@ $("drawer").onclick = e => { if (e.target.id === "drawer") show("drawer", false)
 $("cats").onclick = e => { const b = e.target.closest("button"); if (!b) return; cat = b.dataset.c; renderCats(); renderGrid(); };
 $("q").oninput = renderGrid; $("sort").onchange = renderGrid;
 $("cur-vnd").onclick = () => setCur("VND"); $("cur-usd").onclick = () => setCur("USD");
-$("grid").onclick = e => { if (e.target.closest(".appdl")) return; if (e.target.closest("[data-cpbuy]")) { openCpOrder(); return; } const b = e.target.closest("[data-buy]"); if (b) openBuy(b.dataset.buy); };
+$("grid").onclick = e => { if (e.target.closest(".appdl")) return; if (e.target.closest("[data-cpbuy]")) { openCpOrder(); return; } const b = e.target.closest("[data-buy]"); if (b) openBuy(b.dataset.buy, +b.dataset.days || null); };
 $("m-plus").onclick = () => { const p = selP(); $("m-qty").value = Math.min(+p.stock || 1, +$("m-qty").value + 1); upd(); };
 $("m-minus").onclick = () => { $("m-qty").value = Math.max(1, +$("m-qty").value - 1); upd(); };
 $("m-qty").oninput = upd; $("m-cancel").onclick = closeBuy; $("m-ok").onclick = doBuy;
@@ -13442,7 +13467,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
 #modal.pcauto #m-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 #modal.pcauto #m-plans button{position:relative;display:grid;justify-items:center;gap:2px;padding:10px 6px 9px}
 #modal.pcauto #m-plans button .pd{font-style:normal;font-size:11.5px;color:var(--muted)}
-#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
+#modal.pcauto #m-plans button.best{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset}
+#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;white-space:nowrap;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
 #modal.pcauto .pcs-how{font-size:12px}
 /* hộp sau khi mua: ① đợi máy · ② nội dung gửi admin (ẩn / hiện) */
 .pcsw .big{font-size:42px}
@@ -13560,10 +13586,12 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     let p = null; try { p = selP(); } catch (e) {} if (!p) return;
     const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
     const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
+    const low = pl.length > 1 ? Math.min(...pl.map(x => cv(+x.price) / Math.max(1, +x.days))) : -1;       // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất"
     $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
       const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
-      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0;
-      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${save >= 1 ? `<i class="sv">−${save}%</i>` : ""}`);
+      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = pd === low;
+      b.classList.toggle("best", best);
+      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${best || save >= 1 ? `<i class="sv">${best ? L("Rẻ nhất", "Best") + (save >= 1 ? " −" + save + "%" : "") : "−" + save + "%"}</i>` : ""}`);
     });
   }
   const _rp = window.renderPlans;
@@ -13984,6 +14012,11 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
             <label><input type="checkbox" id="pcs-rc-off"> Cài sạch xong tự tắt máy</label>
             <div class="hint" style="flex-basis:100%">Khách hết hạn: máy <b>khoá</b> (gia hạn trong thời gian chờ là máy tự mở lại, giữ nguyên dữ liệu) → quá thời gian chờ: lượt thuê <b>tự kết thúc</b>, máy về kho → tới mốc cài sạch: tự <b>xoá sạch mọi ổ + cài Windows</b> chọn ở trên → xong <b>tự tắt</b>. Có khách mới: bật máy lên, hệ thống tự giao trong 1 phút (hoặc bấm 🤝 Bàn giao) — giao ngay, không phải chờ cài. Đang có đơn chờ máy thì máy vừa thu hồi giao luôn cho đơn đó.</div>
           </div>
+          <div class="pcs-rc" id="pcs-ca-box" hidden>
+            <b>🔑 Quyền của khách trên máy thuê</b>
+            <label><input type="checkbox" id="pcs-ca"> Cho khách quyền <b>Admin</b> — chạy được app cần quyền Admin (vd executor Roblox: Volt, Wave…)</label>
+            <div class="hint" style="flex-basis:100%">Bật: máy tự thêm tài khoản khách vào nhóm Administrators trong ~1 phút (cần agent 21.11h), khách <b>khởi động lại máy 1 lần</b> là dùng được — app cần Admin chỉ hiện hộp Có / Không, không hỏi mật khẩu. Tắt: máy tự hạ khách về tài khoản thường (an toàn hơn: khách không gỡ được phần mềm quản lý của shop).</div>
+          </div>
           <button class="btn sm" type="button" id="pcs-set-save">Lưu</button>
           <div class="hint" style="flex-basis:100%">Bật rồi: khách mua sản phẩm này → hệ thống tự chọn máy <b>Sẵn sàng + online + chưa gán khách</b> → giao + cài đúng Windows. Ưu tiên máy vừa cài sạch đúng bản (giao ngay, không cài lại). Máy khách cũ trả: tự <b>xoá sạch mọi ổ</b> rồi cài. Không có máy → đơn chờ, dải đỏ hiện ở mọi thẻ; bật máy lên là máy tự nhận đơn trong 1 phút. Máy để <b>Bảo trì</b> không bao giờ bị giao.</div>
         </div>
@@ -14042,6 +14075,9 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     $i("pcs-set-max").value = +D.reinstall_max >= 0 ? +D.reinstall_max : 2;
     const ids = A(D.os).map(o => o.id); $i("pcs-set-22h2").checked = !ids.length || ids.includes("22h2"); $i("pcs-set-1511").checked = !ids.length || ids.includes("1511");
     const rc = D.reclaim && typeof D.reclaim === "object" ? D.reclaim : null; $i("pcs-rc").hidden = !rc;      // chưa chạy SQL v44 → ẩn
+    const cab = $i("pcs-ca-box");                                    // 21.11k (SQL v46): công tắc "Cho khách quyền Admin" — chưa chạy v46 thì ẩn
+    if (cab) { cab.hidden = true; Promise.resolve(sb.rpc("pc_admin_flags")).then(r => { const d = O(r && r.data); if (!r || r.error || typeof d.cust_admin !== "boolean") return;
+      $i("pcs-ca").checked = d.cust_admin; $i("pcs-ca").dataset.was = d.cust_admin ? "1" : "0"; cab.hidden = false; }).catch(() => {}); }
     if (rc) {
       $i("pcs-rc-on").checked = rc.on !== false; $i("pcs-rc-off").checked = rc.off !== false;
       $i("pcs-rc-grace").value = +rc.grace_min >= 0 ? +rc.grace_min : 30; $i("pcs-rc-clean").value = +rc.clean_min >= 0 ? +rc.clean_min : 60;
@@ -14063,7 +14099,14 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       const patch = { product: prod, os, reinstall_max: mx }; if (rc) patch.reclaim = rc;
       const { error } = await sb.rpc("pc_admin_sell", { p_patch: patch });
       if (error) { toast(/BAD_RECLAIM/.test(String(error.message)) ? "Tự thu hồi: số phút không hợp lệ." : em(error), 1); return; }
-      toast(prod ? "Đã bật bán VPS GPU tự động." : "Đã tắt bán tự động."); $i("pcs-adm-setbox").hidden = true; await Promise.all([adm(true), info(true)]);
+      const ca = $i("pcs-ca"), cab = $i("pcs-ca-box"); let caMsg = "";
+      if (cab && !cab.hidden && ca && (ca.checked ? "1" : "0") !== ca.dataset.was) {       // 21.11k: đổi công tắc quyền Admin của khách
+        const r2 = await sb.rpc("pc_admin_set_flags", { p_patch: { cust_admin: ca.checked } });
+        if (r2.error) { toast(em(r2.error), 1); return; }
+        ca.dataset.was = ca.checked ? "1" : "0";
+        caMsg = ca.checked ? " 🔑 Đã BẬT quyền Admin cho khách — máy tự áp dụng trong ~1 phút, khách khởi động lại máy 1 lần." : " 🔒 Đã TẮT quyền Admin của khách — máy tự hạ về tài khoản thường.";
+      }
+      toast((prod ? "Đã bật bán VPS GPU tự động." : "Đã tắt bán tự động.") + caMsg); $i("pcs-adm-setbox").hidden = true; await Promise.all([adm(true), info(true)]);
     });
   }
   async function admCall(fn, args, okMsg, btn) {
