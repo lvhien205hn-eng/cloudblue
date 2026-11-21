@@ -1,4 +1,4 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web, bán tự động (bản 21.11e)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web, bán tự động (bản 21.11f)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
@@ -8,6 +8,8 @@ Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển 
 4. Đặt **hạn thuê** cho từng máy: từ **2 ngày trước hạn** máy tự nhắc khách liên tục và **đầu Bảng quản trị luôn hiện dải báo** máy sắp hết hạn; hết hạn mà chưa gia hạn thì máy **tự tắt** (bật lại cũng tự tắt). Việc lạ trên máy hiện ở tab 🛡️ Bảo mật; gửi thêm về mail / Telegram là tuỳ chọn (mục C4)
 
 > **Đợt 2 (cần SQL v43):** khách mua VPS GPU trên web / app → hệ thống tự giao máy + cài đúng bản Windows khách chọn, khách điều khiển máy từ web, app điện thoại, app PC — mục **C5**.
+
+> **Bản 21.11f + SQL v44:** máy bán tự động hết hạn → **khoá** chờ khách gia hạn 30 phút → tự thu hồi → 60 phút tự cài sạch → tự tắt (mục **C5**). Làm nhanh từ đầu tới lúc bán: **`CAI-VPS-GPU-1-LENH.md`**.
 
 > **Đã cài thật trên máy ảo (bản 22H2, ngày 21/11).** Bản 1511 của shop là **bản kiểu ghost** (có sẵn tài khoản + tên máy) — từ bản 21.11b bộ cài tự xử lý kiểu này (mục E). Bản 1511 và driver riêng (card mạng, VGA) chỉ thử trọn được trên **máy thật** — hãy thử trên **1 máy thật** trước khi dùng cho cả dàn.
 
@@ -19,6 +21,7 @@ Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển 
 Supabase › SQL Editor › New query › dán **toàn bộ** file `cloud-pc-v41.sql` › Run. Dòng cuối phải ra: `v41 xong | t | t | t | t`.
 Rồi làm y như vậy với file **`cloud-pc-v42.sql`** (hạn thuê + nhắc hết hạn). Dòng cuối phải ra: `v42 xong | t | t | t | t | t`.
 Chạy lại nhiều lần không sao; 2 file này chỉ **thêm** bảng / cột / hàm `pc_…`, không đụng phần đang có. Chưa chạy v42 thì web vẫn dùng được, chỉ thiếu phần hạn thuê.
+Bán VPS GPU tự động + điều khiển từ xa: thêm **`cloud-pc-v43.sql`**; tự thu hồi máy hết hạn: **`cloud-pc-v44.sql`** (dòng cuối `v44 xong | true | 30 | 60 | …`). Lỡ chạy lại v42 / v43 thì chạy lại v44 sau cùng.
 
 ### A2. Tạo mã đăng ký
 Web › Bảng quản trị › **💻 Máy PC** › **🔑 Tạo mã đăng ký** › **Copy mã**.
@@ -180,7 +183,17 @@ Kiểm tra: web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử** �
 - Khách xem ở mục **VPS GPU của bạn** (web, app): tình trạng cài, hạn thuê, **▶ Điều khiển**, **Cài lại / đổi Windows** (hết lượt → bạn bấm **+1 lượt**), **Gia hạn**.
 
 **Quản lý** (🛒 Đơn VPS GPU): đơn chờ / đang thuê / đã xong · **Bàn giao** · **Đổi máy** · **+1 lượt** · ghi chú · **Huỷ + hoàn tiền** (đơn chờ) · **Thu hồi** máy.
-Hết hạn mà khách không gia hạn: máy tự tắt (mục C4). Cho khách khác thuê máy đó: bật máy › **🧼 Bàn giao** (xoá sạch mọi ổ) — xong máy về kho, bán tự động dùng lại được.
+**Tự thu hồi máy hết hạn (cần SQL v44 + agent 21.11f)** — ⚙ Cài đặt bán › ♻️ *Tự thu hồi máy hết hạn* (mặc định bật: chờ **30** phút, cài sạch ở mốc **60** phút, xong tự tắt). Chỉ áp dụng cho lượt thuê bán tự động:
+
+1. Hết hạn: máy báo khách 60 giây rồi **khoá** (khởi động lại, dừng ở màn hình đăng nhập, khách không mở điều khiển được).
+2. Khách gia hạn trong thời gian chờ → máy tự mở lại sau 1–2 phút, **giữ nguyên dữ liệu**.
+3. Quá thời gian chờ → lượt thuê tự kết thúc, máy về kho, 🔔 *đã tự thu hồi*.
+4. Tới mốc cài sạch → máy (đang online) tự **xoá sạch mọi ổ + cài bản Windows chọn ở ô Cài sẵn**; máy đang tắt thì bật lên là tự cài. Đang có đơn chờ máy → giao luôn cho đơn đó.
+5. Cài xong, ổn định 3 phút → **tự tắt**, 🔔 *máy mới sẵn sàng*. Có khách mới: bật máy lên, hệ thống tự giao trong 1 phút (hoặc bấm **Bàn giao**).
+
+Tắt tự thu hồi / máy đặt hạn tay (⏱): hết hạn máy tự tắt như mục C4; cho khách khác thuê thì bật máy › **🧼 Bàn giao** (xoá sạch mọi ổ) — xong máy về kho, bán tự động dùng lại được.
+
+**Bảo trì riêng VPS GPU**: 🛠️ Cài đặt › Bảo trì › *Bảo trì riêng VPS GPU* + lời nhắn — khách tạm không mua / điều khiển / cài lại VPS GPU (vẫn gia hạn được), cloud phone không bị ảnh hưởng, admin dùng bình thường.
 
 **Điều khiển từ xa** — chuột + bàn phím thật, phím Windows (Esc, Win, Win+D, Win+Tab, Alt+Tab, Ctrl+Shift+Esc…):
 
