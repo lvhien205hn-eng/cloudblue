@@ -1,4 +1,4 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11b)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11c)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
@@ -72,9 +72,10 @@ Tuỳ chọn (thêm vào cuối lệnh `& $d`):
    Phím: `Enter` = cài ngay bản mặc định · `1`–`9` = chọn bản Windows khác (ví dụ 1511) · `D` = đổi ổ đích · `A` = bật / tắt xoá cả các ổ khác · `X` = huỷ, chuyển sang bộ cài Windows thường · `C` = mở dòng lệnh. Bấm phím khác `Enter` thì đếm ngược dừng lại, khi đó phải bấm `Enter` mới cài.
 2. Tự chia ổ → bung Windows (5–20 phút) → khởi động lại 1–2 lần → vào thẳng màn hình Desktop.
 3. Vào Desktop lần đầu sẽ có **cửa sổ đen "CloudBlue PC - dang hoan tat cai dat"** in tiến độ 5 bước:
-   `[1/5]` phần mềm quản lý · `[2/5]` lệnh riêng của bạn (`firstboot.d`) · `[3/5]` **chờ máy có mạng** (driver card mạng) · `[4/5]` **driver VGA NVIDIA** (chỉ cài sau khi đã có mạng) · `[5/5]` khoá tài khoản khách.
+   `[1/5]` phần mềm quản lý · `[2/5]` lệnh riêng của bạn (`firstboot.d`) · `[3/5]` **driver card mạng, rồi chờ máy có mạng** · `[4/5]` **driver VGA NVIDIA** (chỉ cài sau khi đã có mạng) · `[5/5]` khoá tài khoản khách.
    Xong máy **tự khởi động lại 1 lần** (bước khoá bảo mật, mục F). **Đừng tắt máy lúc cửa sổ này còn mở.**
    Dòng `!! CHUA CO MANG` = máy chưa ra được mạng (dây mạng / driver card mạng) — máy sẽ chưa hiện trên web cho tới khi có mạng; driver VGA sẽ tự cài sau khi có mạng.
+   Dòng `!! CARD MANG CHUA CO DRIVER: Ethernet Controller [Realtek 10EC:8168]` = gói driver kèm theo **không có driver cho đúng loại card mạng đó** (chữ trong ngoặc vuông là hãng + mã phần cứng để tìm driver) — xem mục D.
 4. Khoảng 1 phút sau: máy hiện ở web › Máy PC, trạng thái **Chờ duyệt** → bấm **Duyệt**.
 
 Sau đó thử tiếp trên web: **🧹 Cài lại** → chọn bản kia (ví dụ 1511) → máy tự khởi động lại, cài xong lại hiện online với đúng tên cũ.
@@ -182,6 +183,13 @@ cb-them\
 
 **Driver** — bộ cài nạp thẳng vào Windows lúc cài (kể cả khi cài lại từ xa), nên máy có mạng ngay lần khởi động đầu.
 
+**Thứ tự lúc máy khởi động lần đầu (quan trọng với bản 1511): driver card mạng TRƯỚC, VGA SAU.** Từ bản 21.11c bộ cài không chỉ trông vào Windows tự nhận:
+1. soát mọi thiết bị của máy; còn thiết bị **chưa có driver** thì bảo Windows cài ngay từ gói driver bạn kèm theo (card mạng làm trước), card mạng vẫn chưa nhận thì cài thẳng từng gói driver card mạng;
+2. chờ máy **ra được mạng**;
+3. **rồi mới** chạy gói VGA NVIDIA.
+
+Máy nào còn thiếu driver thì **web › Máy PC › cột Cấu hình** hiện nhãn vàng `⚠ thiếu driver: 2 thiết bị (card mạng chưa có driver, …)` kèm tên thiết bị + hãng + mã phần cứng (ví dụ `Ethernet Controller [Realtek 10EC:8168]`) — biết ngay phải tìm driver nào. Máy đủ driver ghi `✓ đủ driver`. Tại máy (khi máy chưa lên web): `Windows + R` › `notepad C:\CloudBluePC\os\status.txt`, 2 dòng `Card mang:` và `Driver:`.
+
 *Cách chắc nhất — xuất driver từ 1 máy đang chạy ngon.* Trên 1 máy cùng loại đang chạy đúng bản Windows đó (ví dụ 1511) và đã cài đủ driver, mở **Windows PowerShell (Admin)**, dán:
 
 ```
@@ -250,10 +258,11 @@ Phần chỉ bạn làm được (bộ cài không làm thay):
 | Khung TÓM TẮT có `(!) File ISO cu dang bi chuong trinh khac giu` | máy ảo đang gắn file ISO cũ nên không ghi đè được → lần này ISO mới mang tên `…-2.iso` (dòng `ISO:` cuối khung ghi đúng tên). Gắn **file mới** đó vào máy ảo, hoặc tắt máy ảo / tháo ISO rồi chạy lại để ghi đè tên cũ |
 | Khung TÓM TẮT có `(!) Goi driver …` | gói driver đó không dùng được (xem mục D) — các phần khác vẫn bình thường |
 | Khởi động USB vào thẳng bộ cài Windows thường | chèn boot.wim không thành công hoặc USB ghi bằng công cụ sửa file — gửi khung TÓM TẮT |
-| Cài xong nhưng không lên web | cửa sổ lúc đăng nhập đầu có dòng `!! CHUA CO MANG`? Sau 2–3 phút máy cũng hiện hộp báo `CHUA CO MANG`. Tại máy: bấm `Windows + R`, gõ `notepad C:\CloudBluePC\os\status.txt` — dòng `Mang LAN:` ghi máy có địa chỉ IP chưa, dòng `Ket noi may chu:` ghi lý do. Kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO … con hieu luc`) |
+| Cài xong nhưng không lên web | cửa sổ lúc đăng nhập đầu có dòng `!! CHUA CO MANG`? Sau 2–3 phút máy cũng hiện hộp báo `CHUA CO MANG` (ghi luôn `Card mang CHUA CO DRIVER: …` nếu lý do là thiếu driver). Tại máy: bấm `Windows + R`, gõ `notepad C:\CloudBluePC\os\status.txt` — dòng `Mang LAN:` ghi máy có địa chỉ IP chưa, dòng `Card mang:` / `Driver:` ghi card mạng đã nhận driver chưa và thiết bị nào còn thiếu, dòng `Ket noi may chu:` ghi lý do. Kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO … con hieu luc`) |
 | **Máy ảo** cài bản 1511 (bản Lite) không có mạng | bản Lite thường không kèm driver card mạng ảo, driver bạn đưa là của máy thật → thử bản 1511 trên **máy thật**. Muốn thử tiếp trên Hyper-V: tắt máy ảo › Settings › Add Hardware › **Legacy Network Adapter** › chọn cùng Virtual Switch |
 | Máy tự tắt, bật lại vài phút lại tắt | hết hạn thuê — xem cột **Hạn thuê** trên web; **⏱ Gia hạn** rồi bật máy lên |
 | Không nhận được mail cảnh báo | mail là phần tuỳ chọn (mục C4): web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử**; dòng dưới nút ghi lý do (thiếu `ADMIN_EMAIL` / `RESEND_API_KEY` trên Vercel…). Không có mail thì dải báo đầu Bảng quản trị + tab 🛡️ Bảo mật vẫn đủ |
+| Web ghi `⚠ thiếu driver` ở cột Cấu hình | máy còn thiết bị chưa có driver — tên + mã phần cứng ghi ngay dưới nhãn (rê chuột vào nhãn để xem đủ). **Card mạng chưa có driver** trên bản 1511: gói driver kèm theo không đúng loại card → lấy driver đúng loại (cách chắc nhất: `dism /online /export-driver` trên 1 máy cùng loại đang chạy ngon, mục D) rồi tạo lại ISO. `VGA chưa có driver của hãng`: gói VGA chưa cài xong / không hợp card |
 | Driver VGA không lên dù đã kèm gói | máy phải ra được mạng thì gói mới cài; card chưa nhận driver thì phần mềm tự chạy lại gói tối đa 3 lần (sau mỗi lần khởi động). Web › cột Cấu hình ghi tên card đang nhận |
 | Máy tự khởi động lại 1 lần ngay sau khi vào Desktop lần đầu | bình thường — bước hạ tài khoản khách xuống tài khoản thường (mục F). Bản kiểu ghost: khởi động lại sau vài phút, kèm đổi tên máy + tên tài khoản |
 | Cài bản ghost xong vẫn thấy tài khoản cũ (vd `admin`) có quyền Admin, tên máy cũ | chờ vài phút cho máy tự khởi động lại. Quá 10 phút: xem `C:\CloudBluePC\logs\provision.log` (dòng `ghost`); bộ cài bản cũ hơn 21.11b không làm bước này → tạo lại ISO |
