@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11a):
+#  Việc làm (bản 21.11b):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -28,11 +28,16 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11a"
+AGENT_VER = "21.11b"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
-RENT_WARN = (86400, 3600, 600, 60)       # báo cho khách khi hạn thuê còn: 1 ngày · 1 giờ · 10 phút · 1 phút
+RENT_WARN_S = 2 * 86400                  # bắt đầu NHẮC khách từ khi hạn thuê còn 2 ngày (máy chủ gửi rent.warn_min thì theo máy chủ — thuê ngắn thì khoảng này ngắn theo)
+RENT_EVERY_S = 4 * 3600                  # trong khoảng nhắc: nhắc lại mỗi 4 giờ + mỗi lần bật máy (máy chủ gửi rent.every_min thì theo máy chủ; 0 = chỉ nhắc ở các mốc)
+RENT_MARKS = (3600, 1800, 600, 300, 60)  # giờ cuối luôn nhắc ở các mốc: còn 60 · 30 · 10 · 5 · 1 phút
+RENT_MIN_S = 600                         # admin tắt báo trước (0) thì vẫn báo khách 10 phút + 1 phút trước khi máy tự tắt
+RENT_BOOT_TELL = 60                      # vừa bật máy mà đang trong khoảng nhắc: chờ hỏi máy chủ tối đa 60 giây (có thể vừa được gia hạn) rồi nhắc 1 lần
+RENT_POP_MAX = 6 * 3600                  # hộp nhắc nằm trên màn hình tới lần nhắc kế (tối đa 6 giờ) hoặc tới khi khách bấm OK
 RENT_BOOT_GRACE = 180                    # máy bật lên lúc ĐÃ hết hạn: chờ hỏi máy chủ tối đa 3 phút (có thể vừa được gia hạn) rồi mới tắt
 RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy
 RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
@@ -291,6 +296,7 @@ class Agent:
         self.t_start = sysx.now()
         self.rent_synced = False            # từ lúc agent chạy đã hỏi được máy chủ về hạn thuê chưa
         self.rent_call = None               # lúc đã báo khách "máy sắp tắt"
+        self.rent_boot_told = False         # từ lúc agent chạy (máy bật) đã nhắc khách "sắp hết hạn" lần nào chưa
         self.rent_saved = 0
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
@@ -418,13 +424,26 @@ class Agent:
         if now_srv > 1_600_000_000:
             self.rent["skew"] = now_srv - self.s.now(); self.rent["hi"] = now_srv
         self.rent_synced = True
+        ch = False
+        for key, name, hi in (("warn_min", "warn_s", 10080), ("every_min", "every_s", 1440)):     # khoảng nhắc + nhịp nhắc do admin đặt trên web (phút)
+            v = r["rent"].get(key)
+            if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= hi and int(v) * 60 != self.rent.get(name):
+                self.rent[name] = int(v) * 60; ch = True
         if u != self.rent.get("until"):
             self.rent_stop_off("hạn thuê vừa đổi")
-            self.rent["until"] = u; self.rent["warned"] = []; self.rent.pop("off", None)
+            self.rent["until"] = u; self.rent["warned"] = []; self.rent.pop("off", None); self.rent.pop("told", None)
             self.log("hạn thuê: %s" % ("không đặt hạn" if u is None else "còn %s" % span_txt(u - self.rent_est())))
             self.rent_save()
-        elif u and self.s.now() - self.rent_saved >= RENT_SAVE_S:
+        elif ch or (u and self.s.now() - self.rent_saved >= RENT_SAVE_S):
             self.rent_save()
+
+    def rent_plan(self):
+        """(khoảng nhắc, nhịp nhắc lại, các mốc) tính bằng giây cho hạn thuê hiện tại."""
+        w, e = self.rent.get("warn_s"), self.rent.get("every_s")
+        w = RENT_WARN_S if not isinstance(w, int) else w
+        e = RENT_EVERY_S if not isinstance(e, int) else e
+        win = w if w > 0 else RENT_MIN_S
+        return win, e, sorted({m for m in RENT_MARKS if m < win} | {win}, reverse=True)
 
     def rent_line(self):
         u = self.rent.get("until")
@@ -442,15 +461,33 @@ class Agent:
         left = u - est
         if left > 0:
             if left > 5: self.rent_stop_off("còn hạn thuê")            # dư vài giây do đo lại đồng hồ thì không huỷ lệnh tắt đang đếm
-            done = self.rent.get("warned") or []
-            if any(left <= w and w not in done for w in RENT_WARN):    # tới 1 mốc báo trước (máy vừa bật khi còn 5 phút thì chỉ báo 1 lần "con 5 phut")
-                self.rent["warned"] = [w for w in RENT_WARN if left <= w]
-                self.rent_save()
-                self.log("báo khách: hạn thuê còn %s" % span_txt(left))
-                self.h.notify("CloudBlue PC: may nay con %s nua la HET HAN THUE. Het han may se TU TAT. Lien he shop de gia han." % span_txt(left), 120 if left > 120 else 45)
+            win, every, marks = self.rent_plan()
+            if left > win:                                             # chưa tới khoảng nhắc
+                if self.s.now() - self.rent_saved >= RENT_SAVE_S: self.rent_save()
+                return max(2, min(left - win, 300))
+            # ĐANG TRONG KHOẢNG NHẮC (mặc định 2 ngày cuối): nhắc khi vừa vào khoảng / tới 1 mốc của giờ cuối, nhắc LẠI theo nhịp, và mỗi lần bật máy
             if self.s.now() - self.rent_saved >= RENT_SAVE_S: self.rent_save()
-            nxt = max([w for w in RENT_WARN if w < left], default=0)   # ngủ không quá lúc tới mốc báo kế / lúc hết hạn
-            return max(2, min(left - nxt, 300))
+            if not (self.rent_synced or self.s.now() - self.t_start >= RENT_BOOT_TELL or left <= 2 * RENT_BOOT_TELL):
+                return 5                                               # máy vừa bật: chờ hỏi máy chủ đã (có thể chủ shop vừa gia hạn lúc máy đang tắt)
+            done, told = self.rent.get("warned") or [], self.rent.get("told")
+            told = told if isinstance(told, (int, float)) and told <= est else None      # mốc "đã nhắc" nằm ở tương lai (đồng hồ bị chỉnh) → coi như chưa nhắc
+            due = (any(left <= w and w not in done for w in marks)     # máy vừa bật khi còn 5 phút thì chỉ nhắc 1 lần "con 5 phut"
+                   or (every > 0 and (told is None or est - told >= every))
+                   or not self.rent_boot_told)
+            self.rent_boot_told = True
+            nxt = [left - w for w in marks if w < left] + [left]       # tới mốc kế / lúc hết hạn
+            if due:
+                self.rent["warned"] = [w for w in marks if left <= w]
+                self.rent["told"] = int(est); self.rent_save()
+                if every > 0: nxt.append(every)
+                self.log("nhắc khách: hạn thuê còn %s" % span_txt(left))
+                try: when = time.strftime("%H:%M ngay %d/%m", time.localtime(self.rent["until"]))
+                except Exception: when = ""
+                self.h.notify("CloudBlue PC: may nay con %s nua la HET HAN THUE%s. Het han may se TU TAT. Lien he shop de gia han."
+                              % (span_txt(left), " (het han luc %s)" % when if when else ""), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
+            elif every > 0 and told is not None:
+                nxt.append(max(1, told + every - est))
+            return max(2, min(min(nxt), 300))
         if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
             return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể chủ shop vừa gia hạn lúc máy đang tắt)
         if self.rent_call is None:
