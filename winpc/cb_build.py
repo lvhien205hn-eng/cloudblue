@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "21.11b"
+BUILD_VER = "21.11c"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
