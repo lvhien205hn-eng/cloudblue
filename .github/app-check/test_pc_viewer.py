@@ -1,5 +1,7 @@
 # Thử nhanh phần chế độ máy PC của cửa sổ máy (bluepc.Viewer._input) bằng pygame GIẢ — không cần màn hình
 import os, sys, types, tempfile
+try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # máy Windows CI dùng cp1252
+except Exception: pass
 os.environ["APPDATA"] = tempfile.mkdtemp()
 sys.path.insert(0, sys.argv[1])
 import bluepc as B
