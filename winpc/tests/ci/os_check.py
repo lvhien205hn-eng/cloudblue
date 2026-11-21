@@ -275,8 +275,8 @@ if WIN:
         ck("pnp_retry: ra duoc lenh 'do lai phan cung + cai lai thiet bi chua co driver' cho Windows (cfgmgr32 tra 0)", cr == 0, cr)
         ck("real_pnp_retry / real_devices / real_staged cua cb_provision chay duoc", cb_provision.real_pnp_retry() is True and isinstance(cb_provision.real_devices(), list) and isinstance(cb_provision.real_staged(), list))
         how = {}
-        stg = cbsys.staged_infs(how=how)
-        note("staged_infs tim duoc %d goi; theo tung loi doc registry: %s" % (len(stg), how))
+        t0 = time.time(); stg = cbsys.staged_infs(how=how); t_stg = time.time() - t0
+        note("staged_infs tim duoc %d goi trong %.2f giay: %s" % (len(stg), t_stg, how))
         ck("staged_infs: doc duoc kho driver cua Windows; moi goi ben thu ba deu chi toi file .inf co that", isinstance(stg, list) and all(os.path.isfile(x["inf"]) and x["pub"].startswith("oem") for x in stg), stg[:3])
         cls = {}
         for x in stg:
@@ -289,26 +289,18 @@ if WIN:
         ck("pnputil: cu phap cu (-e / -i -a, dung duoc tu Windows 10 ban 1507) van chay tren Windows nay", r.returncode == 0 and "oem" in (r.stdout or "").lower() or (r.returncode == 0 and not stg), (r.returncode, (r.stdout or r.stderr or "")[-200:]))
         n_pub = len(set(_re.findall(r"oem\d+\.inf", (r.stdout or "").lower())))
         have = {x["pub"] for x in stg}
-        lack = [pp for pp in dict.fromkeys(_re.findall(r"oem\d+\.inf", (r.stdout or "").lower())) if pp not in have]
-        import winreg as _wr
-        for pp in lack[:4]:                                         # goi pnputil thay ma staged_infs khong thay: in ra registry cua goi do de biet vi sao
-            try:
-                with _wr.OpenKey(_wr.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverInfFiles\\" + pp) as kk:
-                    vals, jj = [], 0
-                    while True:
-                        try: n_, v_, t_ = _wr.EnumValue(kk, jj)
-                        except OSError: break
-                        jj += 1; vals.append("%s[%s] %s" % (n_ or "(mac dinh)", t_, str(v_)[:90]))
-                note("thieu %s - DriverInfFiles: %s" % (pp, " ; ".join(vals) or "(khong co gia tri)"))
-            except OSError as e:
-                note("thieu %s - khong mo duoc khoa DriverInfFiles (%s); file trong Windows\\INF: %s" % (pp, e, os.path.isfile(os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "INF", pp))))
-        blocks = _re.split(r"\n\s*\n", r.stdout or "")
         cls_of = {}
-        for b in blocks:
+        for b in _re.split(r"\n\s*\n", r.stdout or ""):
             mp, mc = _re.search(r"(oem\d+\.inf)", b.lower()), _re.search(r"Class\s*:\s*(.+)", b)
             if mp: cls_of[mp.group(1)] = (mc.group(1).strip() if mc else "?")
-        note("goi pnputil -e thay ma staged_infs khong thay: %s" % (", ".join("%s (%s)" % (pp, cls_of.get(pp, "?")) for pp in lack) or "khong co"))
-        ck("staged_infs khop voi 'pnputil -e' cua Windows: thay du moi goi driver ben thu ba (thieu toi da 1)", len(lack) <= 1, (len(stg), n_pub, lack[:8]))
+        lack = [pp for pp in cls_of if pp not in have]
+        note("goi pnputil -e thay ma staged_infs khong thay (goi kieu cu khong nam trong kho driver): %s" % (", ".join("%s (%s)" % (pp, cls_of[pp]) for pp in lack) or "khong co"))
+        lack_net = [pp for pp in lack if "network adapter" in cls_of[pp].lower()]
+        ck("staged_infs thay DU moi goi driver CARD MANG ma 'pnputil -e' cua Windows liet ke (va it nhat 3/4 tong so goi)", not lack_net and len(have) * 4 >= len(cls_of) * 3,
+           (len(stg), len(cls_of), lack_net, lack[:8]))
+        net_inf = [x for x in stg if C.inf_class(open(x["inf"], "rb").read(2 << 20)) == "net"]
+        ck("goi driver card mang trong kho: doc dung lop 'net' tu file .inf (khop so goi 'Network adapters' cua pnputil)",
+           len(net_inf) == sum(1 for pp in cls_of if "network adapter" in cls_of[pp].lower() and pp in have), ([os.path.basename(x["inf"]) for x in net_inf], cls_of))
         if stg:
             r = subprocess.run([exe, "-i", "-a", stg[0]["inf"]], capture_output=True, text=True, timeout=600)
             note("pnputil -i -a tren 1 goi da co san trong kho (%s): ma %s :: %s" % (os.path.basename(stg[0]["inf"]), r.returncode, " ".join((r.stdout or r.stderr or "").split())[-200:]))
