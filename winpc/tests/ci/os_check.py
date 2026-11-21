@@ -274,7 +274,9 @@ if WIN:
         cr = cbsys.pnp_retry()
         ck("pnp_retry: ra duoc lenh 'do lai phan cung + cai lai thiet bi chua co driver' cho Windows (cfgmgr32 tra 0)", cr == 0, cr)
         ck("real_pnp_retry / real_devices / real_staged cua cb_provision chay duoc", cb_provision.real_pnp_retry() is True and isinstance(cb_provision.real_devices(), list) and isinstance(cb_provision.real_staged(), list))
-        stg = cbsys.staged_infs()
+        how = {}
+        stg = cbsys.staged_infs(how=how)
+        note("staged_infs tim duoc %d goi; theo tung loi doc registry: %s" % (len(stg), how))
         ck("staged_infs: doc duoc kho driver cua Windows; moi goi ben thu ba deu chi toi file .inf co that", isinstance(stg, list) and all(os.path.isfile(x["inf"]) and x["pub"].startswith("oem") for x in stg), stg[:3])
         cls = {}
         for x in stg:
@@ -286,7 +288,27 @@ if WIN:
         r = subprocess.run([exe, "-e"], capture_output=True, text=True, timeout=300)
         ck("pnputil: cu phap cu (-e / -i -a, dung duoc tu Windows 10 ban 1507) van chay tren Windows nay", r.returncode == 0 and "oem" in (r.stdout or "").lower() or (r.returncode == 0 and not stg), (r.returncode, (r.stdout or r.stderr or "")[-200:]))
         n_pub = len(set(_re.findall(r"oem\d+\.inf", (r.stdout or "").lower())))
-        ck("staged_infs khop voi 'pnputil -e' cua Windows: cung so goi driver ben thu ba (sai lech <= 1)", abs(len(stg) - n_pub) <= 1, (len(stg), n_pub, (r.stdout or "")[-300:]))
+        have = {x["pub"] for x in stg}
+        lack = [pp for pp in dict.fromkeys(_re.findall(r"oem\d+\.inf", (r.stdout or "").lower())) if pp not in have]
+        import winreg as _wr
+        for pp in lack[:4]:                                         # goi pnputil thay ma staged_infs khong thay: in ra registry cua goi do de biet vi sao
+            try:
+                with _wr.OpenKey(_wr.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverInfFiles\\" + pp) as kk:
+                    vals, jj = [], 0
+                    while True:
+                        try: n_, v_, t_ = _wr.EnumValue(kk, jj)
+                        except OSError: break
+                        jj += 1; vals.append("%s[%s] %s" % (n_ or "(mac dinh)", t_, str(v_)[:90]))
+                note("thieu %s - DriverInfFiles: %s" % (pp, " ; ".join(vals) or "(khong co gia tri)"))
+            except OSError as e:
+                note("thieu %s - khong mo duoc khoa DriverInfFiles (%s); file trong Windows\\INF: %s" % (pp, e, os.path.isfile(os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "INF", pp))))
+        blocks = _re.split(r"\n\s*\n", r.stdout or "")
+        cls_of = {}
+        for b in blocks:
+            mp, mc = _re.search(r"(oem\d+\.inf)", b.lower()), _re.search(r"Class\s*:\s*(.+)", b)
+            if mp: cls_of[mp.group(1)] = (mc.group(1).strip() if mc else "?")
+        note("goi pnputil -e thay ma staged_infs khong thay: %s" % (", ".join("%s (%s)" % (pp, cls_of.get(pp, "?")) for pp in lack) or "khong co"))
+        ck("staged_infs khop voi 'pnputil -e' cua Windows: thay du moi goi driver ben thu ba (thieu toi da 1)", len(lack) <= 1, (len(stg), n_pub, lack[:8]))
         if stg:
             r = subprocess.run([exe, "-i", "-a", stg[0]["inf"]], capture_output=True, text=True, timeout=600)
             note("pnputil -i -a tren 1 goi da co san trong kho (%s): ma %s :: %s" % (os.path.basename(stg[0]["inf"]), r.returncode, " ".join((r.stdout or r.stderr or "").split())[-200:]))
