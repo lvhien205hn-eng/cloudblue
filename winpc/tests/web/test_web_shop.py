@@ -64,7 +64,8 @@ HOOK = """window.__FAKE_HOOK = {
   pc_admin_rental_set: a => ({ id: a.p_rental, left: 3, note: '' }),
   pc_admin_rental_end: a => ({ id: a.p_rental, state: 'cancelled', refunded: true }),
   pc_admin_sell: a => ({ product: a.p_patch.product, os: a.p_patch.os, reinstall_max: a.p_patch.reinstall_max }),
-  buy_product: a => ({ id: 'o-old', status: 'pending', total: 100000 })
+  buy_product: a => ({ id: 'o-old', status: 'pending', total: 100000 }),
+  pc_admin_deliver: a => ({ state: 'active', pc: a.p_pc, name: 'May-03', code: '', reinstall: false, order: a.p_order })
 };"""
 
 
@@ -152,7 +153,7 @@ def main():
         s.js("() => document.getElementById('pcsdlg').hidden = true")
         s.js("id => openBuy(id)", OTHER); s.page.wait_for_timeout(300)
         st = s.js("() => ({ auto: document.getElementById('modal').classList.contains('pcauto'), os: !!document.getElementById('pcs-os') && !document.getElementById('pcs-os').hidden, vps: getComputedStyle(document.getElementById('m-vps')).display })")
-        ck("sản phẩm VPS khác (không bật tự động) → hộp mua như cũ (FarmV5, không có ô Windows tự động)", not st["auto"] and not st["os"] and st["vps"] != "none", st)
+        ck("sản phẩm VPS khác (không bật tự động) → hộp mua kiểu cũ nhưng KHÔNG còn FarmV5 / FarmSync (21.11j), không có ô Windows tự động", not st["auto"] and not st["os"] and st["vps"] == "none", st)
         ck("sản phẩm khác: không có thẻ cấu hình VPS GPU, tiêu đề + nhãn gói như cũ", s.js("() => { const h = document.getElementById('pcs-hero'); return (!h || h.hidden) && getComputedStyle(document.getElementById('m-title')).display !== 'none' && !document.querySelector('#m-plans-box > span').textContent.startsWith('②'); }"))
         print("2. VPS GPU của bạn (trang chủ)")
         s.js("() => window.PCSHOP && document.getElementById('modal') && (document.getElementById('modal').hidden = true)")
@@ -294,6 +295,33 @@ def main():
         ck("bảng máy có nút 🖥 Điều khiển mở play.html?pc= (tab mới)", s.js("() => [...document.querySelectorAll('#pctbl a[href^=\"/play.html?pc=\"]')].every(a => a.target === '_blank')"))
         ck("admin: không lỗi JS / console, không chạy mã lạ", not s.errors and s.js("() => !window.__xss"), s.errors)
         s.close()
+        print("5d. Đơn hàng › Giao: chọn máy PC đang trống giao thẳng cho khách (SQL v45)")
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.js("""() => { const F = window.__FAKE; F.db.orders = [{ id: 'o-vps1', user_id: F.db.profiles[0].id, product_id: '%s', product_name: 'VPS GPU BLUE · 7 ngày', qty: 1, total: 360000,
+                     status: 'pending', days: 7, created_at: new Date(Date.now() - 7200e3).toISOString(), items: 'Đang chuẩn bị.' },
+                   { id: 'o-other', user_id: F.db.profiles[0].id, product_id: 'zzz', product_name: 'CLONE', qty: 3, total: 9000, status: 'pending', days: null, created_at: new Date().toISOString(), items: '' }];
+                   return loadAdmin(); }""" % PROD)
+        s.page.wait_for_timeout(600)
+        s.js("() => { const b = document.querySelector('#otbl [data-deliver=\"o-vps1\"]'); b.scrollIntoView(); b.click(); }")
+        s.page.wait_for_function("() => document.querySelectorAll('#dl-pcl [data-pc]').length === 2", timeout=6000)
+        d = s.js("""() => ({ box: !document.getElementById('dl-pcbox').hidden, items: [...document.querySelectorAll('#dl-pcl [data-pc]')].map(b => [b.dataset.pc, b.classList.contains('on'), b.innerText.replace(/\\s+/g, ' ')]),
+                    os: [...document.getElementById('dl-pcos').options].map(o => o.value), sel: document.getElementById('dl-pcos').value, go: !document.getElementById('dl-pcgo').disabled,
+                    hint: document.getElementById('dl-pchint').textContent })""")
+        ck("đơn VPS chờ giao: hiện khung 'Giao máy PC đang trống' 2 máy, tự chọn máy online + sạch, bản Windows theo máy", d["box"] and d["items"][0][0] == PC3 and d["items"][0][1] and d["os"] == ["22h2", "1511"] and d["sel"] == "22h2" and d["go"] and "dùng được ngay" in d["hint"], d)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-5d-deliver.png"))
+        s.page.click(f'#dl-pcl [data-pc="{PC2}"]'); s.page.wait_for_timeout(200)
+        h2 = s.js("() => [document.getElementById('dl-pcos').value, document.getElementById('dl-pchint').textContent]")
+        ck("chọn máy khách cũ trả (đang tắt) → báo sẽ tự xoá sạch + cài khi bật lên", h2[0] == "1511" and "xoá sạch" in h2[1] and "khi bật lên" in h2[1], h2)
+        s.page.click(f'#dl-pcl [data-pc="{PC3}"]'); s.accept = True
+        s.page.click("#dl-pcgo"); s.page.wait_for_timeout(900)
+        ck("bấm Giao → gọi pc_admin_deliver(đơn, máy, 22h2), đóng hộp", s.calls("pc_admin_deliver") == [{"p_order": "o-vps1", "p_pc": PC3, "p_os": "22h2"}] and s.js("() => document.getElementById('deldlg').hidden"), s.calls("pc_admin_deliver"))
+        s.js("() => { const b = document.querySelector('#otbl [data-deliver=\"o-other\"]'); b.click(); }"); s.page.wait_for_timeout(500)
+        ck("đơn không phải VPS / nhiều máy: KHÔNG hiện khung máy PC", s.js("() => document.getElementById('dl-pcbox').hidden"))
+        s.js("() => document.getElementById('deldlg').hidden = true")
+        ck("5d: không lỗi JS", not s.errors, s.errors)
+        s.close()
+
         print("5b. ♻️ Tự thu hồi máy hết hạn (SQL v44)")
         mine2 = {"product": PROD, "reinstall_max": 2, "os": MINE["os"], "items": [
             {"rental": 41, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(-600), "grace_until": iso(1200), "left": 2, "used": 0, "end_why": None,
