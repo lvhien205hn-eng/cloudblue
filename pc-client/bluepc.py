@@ -3978,9 +3978,17 @@ def vps_state(x):
     lf = left_secs(x.get("until")) if x.get("until") else None
     if st == "waiting": return "wait", L("⏳ Đang chờ máy", "⏳ Waiting"), WARN, L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received — delivered automatically.")
     if st == "cancelled": return "end", L("✕ Đã huỷ", "✕ Cancelled"), DIM, L("Tiền hoàn (nếu có) đã về số dư.", "Any refund went to your balance.")
-    if st == "ended": return "end", L("■ Đã kết thúc", "■ Ended"), DIM, ""
+    if st == "ended": return "end", L("■ Đã kết thúc", "■ Ended"), DIM, (L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới.",
+                                                                          "Expired without renewal — the machine was reclaimed and wiped.") if x.get("end_why") == "expired" else "")
     if job: return "inst", L("⚙ Đang cài Windows", "⚙ Installing Windows"), WARN, (L(f"Máy đang cài {str(job.get('os') or '').upper()} (15–30 phút), xong là vào được.", "Installing Windows (15–30 min).")
                                                                                if job.get("state") == "sent" else L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…"))
+    gu = parse_iso(x.get("grace_until")) if x.get("grace_until") else None                 # 21/11f · v44: hết hạn nhưng máy còn giữ cho khách tới lúc này
+    if lf is not None and lf <= 0 and gu and gu > now_utc():
+        t = gu.astimezone().strftime("%H:%M %d/%m")
+        return "exp", L("⛔ Hết hạn — đang giữ máy", "⛔ Expired — on hold"), BAD, (
+            (L("🔒 Máy đã khoá. ", "🔒 Locked. ") if pc.get("lock") else L("Máy đã tự tắt. ", "Shut down. ") if pc.get("off") else "")
+            + L(f"Gia hạn trước {t} để giữ máy + dữ liệu — gia hạn xong máy tự mở lại sau 1–2 phút. Quá giờ đó máy bị thu hồi và xoá sạch.",
+                f"Renew before {t} to keep the machine and data — it unlocks 1–2 min after renewal. After that it is reclaimed and wiped."))
     if lf is not None and lf <= 0: return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, (L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "Renew and the shop turns it back on.")
                                                                                    if pc.get("off") else L("Gia hạn để dùng tiếp.", "Renew to keep using it."))
     if not pc.get("online"): return "off", L("○ Máy đang tắt / mất mạng", "○ Offline"), WARN, L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts.")
@@ -4001,7 +4009,7 @@ def fitwrap(w, pad=4):
     return w
 
 
-def vps_cards(app, slot, data, more=True, prof=None):
+def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
     """Thẻ "VPS GPU của bạn" — dùng chung cho trang chính và trang 🖥 VPS GPU. more = có nút "+ Thuê thêm"."""
     items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict)]
     if not items: return
@@ -4011,7 +4019,7 @@ def vps_cards(app, slot, data, more=True, prof=None):
     hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
     tk.Label(hd, text=L("🖥 VPS GPU của bạn", "🖥 Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
     if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
-    if mt: vps_maint_bar(app, slot, mt).pack(fill="x", padx=8, pady=(2, 4))
+    if mt and mt_bar: vps_maint_bar(app, slot, mt).pack(fill="x", padx=8, pady=(2, 4))      # trang VPS GPU đã có dòng bảo trì ở đầu trang → không lặp
     for x in items:
         pc = x.get("pc") or {}; code, st, col, why = vps_state(x)
         c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off", "warn") else LINE, highlightthickness=1)
@@ -4219,7 +4227,7 @@ class VpsBuyDlg(Dlg):
                 try:
                     if box is not None and box.winfo_exists():
                         for w in box.winfo_children(): w.destroy()
-                        vps_cards(self.app, box, mine, more=False, prof=self.prof)
+                        vps_cards(self.app, box, mine, more=False, prof=self.prof, mt_bar=False)
                 except Exception: log("vps poll:", traceback.format_exc())
             self._arm()
         self.bg(lambda: self.app.auth.rpc("pc_my_vps", {}), ok, lambda m: self._arm())
@@ -4237,7 +4245,7 @@ class VpsBuyDlg(Dlg):
         if self.mt: vps_maint_bar(app, self.body, self.mt).pack(fill="x", padx=18, pady=(10, 0))
         if self.mine and (self.mine.get("items") or []):
             self.cards_box = box = tk.Frame(self.body, bg=BG); box.pack(fill="x", padx=10)
-            vps_cards(app, box, self.mine, more=False, prof=self.prof)
+            vps_cards(app, box, self.mine, more=False, prof=self.prof, mt_bar=False)
             self._arm()
         pl, os_ = vps_plans(self.prod), [o for o in (self.info or {}).get("os") or [] if o.get("id")]
         if not (self.info or {}).get("on") or not self.prod or not pl or not os_:
@@ -4505,7 +4513,9 @@ class VpsRenewDlg(Dlg):
         self.go.config(state="disabled"); d = self.days
         def done(r):
             self.close(); self.app.refresh()
+            held = bool(self.it.get("grace_until"))                     # 21/11f · đang giữ máy (đã khoá) → tự mở lại
             mb.showinfo("CloudBlue", L("Đã gia hạn. Máy đã tắt lúc hết hạn — shop sẽ bật lại cho bạn.", "Renewed. The shop will turn the machine back on.") if (r or {}).get("was_off")
+                        else L(f"Đã gia hạn +{d} ngày — máy tự mở lại sau khoảng 1–2 phút, dữ liệu giữ nguyên.", f"Renewed +{d} days — the machine unlocks in about 1–2 minutes.") if held
                         else L(f"Đã gia hạn +{d} ngày.", f"Renewed +{d} days."), parent=self.app.root)
         def fail(m): self.err.config(text=vps_err(m)); self.go.config(state="normal"); self.upd()
         self.bg(lambda: self.app.auth.rpc("pc_my_renew", {"p_pc": self.pc.get("id"), "p_days": d}), done, fail)
