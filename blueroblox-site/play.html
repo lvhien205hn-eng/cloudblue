@@ -281,6 +281,11 @@ html.ios .mpill.on{background:rgba(48,209,88,.16);border-color:#30d158;color:#30
 html.ios body.rot .sheet .in{border-radius:22px;animation-name:cb-pop;animation-duration:.28s}
 html.ios body.rot .sheet .in::before{display:none}
 @media (prefers-reduced-motion:reduce){html.ios .sheet,html.ios .sheet .in{animation:none}html.ios .grid button{transition:none}}
+/* web-2.0: chế độ máy PC thật — ẩn các nút chỉ dành cho điện thoại Android */
+body.pcm #menu [data-a="rotate"], body.pcm #menu [data-a="notif"], body.pcm #menu [data-a="power"], body.pcm #menu [data-a="apkfile"], body.pcm #menu [data-a="apklink"],
+body.pcm #menu [data-a="store"], body.pcm #menu [data-a="root"], body.pcm #menu [data-a="reboot"], body.pcm #menu [data-a="multi"], body.pcm #m-land-row, body.pcm #m-land-flip{display:none!important}
+body.pcm #cv{cursor:default}
+i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;place-items:center;width:22px;height:22px}
 </style>
 </head>
 <body data-view="">
@@ -477,11 +482,12 @@ html.ios body.rot .sheet .in::before{display:none}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-1.9";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
+const VER = "web-2.0";                 // web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-const TEST = LOCAL && Q.get("test") === "1";                    // chỉ chạy thử ở máy lập trình (localhost) — không có ở web thật
+const TEST = LOCAL && Q.get("test") === "1";
+const PCM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(Q.get("pc") || "") ? Q.get("pc") : "";   // web-2.0: ?pc=<máy> → điều khiển MÁY PC THẬT (VPS GPU) thay vì điện thoại đám mây                    // chỉ chạy thử ở máy lập trình (localhost) — không có ở web thật
 /* web-1.8 (18/11b) · 🎮 NHIỀU MÁY + 🔗 ĐỒNG BỘ — trang này chạy thêm 2 vai:
    ?multi=1 → màn "Nhiều máy": lưới các ô, mỗi ô là 1 khung (iframe) mở CHÍNH trang này ở chế độ ô (?id=…&tile=1) = 1 phiên điều khiển bình thường,
               máy chủ kiểm quyền từng máy như cũ. Bật 🔗 Đồng bộ → thao tác ở 1 ô được trang cha chuyển cho các ô còn lại.
@@ -654,7 +660,9 @@ if (TILE) P.q = "eco";                                                // web-1.8
 
 function openPhone(id) {
   if (!UUID.test(id)) return showList();
-  if (!TEST && !TILE) history.replaceState(null, "", location.pathname + "?id=" + encodeURIComponent(id));
+  P.kind = id === PCM ? "pc" : "";
+  if (!TEST && !TILE) history.replaceState(null, "", location.pathname + (P.kind === "pc" ? "?pc=" : "?id=") + encodeURIComponent(id));
+  pcMode(P.kind === "pc");
   view("v-play");
   Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
                      bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "",
@@ -671,7 +679,7 @@ function stopPlay() {
   P.stopped = true; clearTimeout(P.timer);
   send(T.BYE); detach(); resetDecoder(); dropHeld(); unwake(); kbHide(); swStop();
 }
-const toList = () => { stopPlay(); showList(); };
+const toList = () => { stopPlay(); if (P.kind === "pc") { location.href = "/#pcs-mine"; return; } showList(); };
 
 /* ---------- trạng thái / lớp phủ ---------- */
 function overlay(kind, msg, acts, tip) {
@@ -853,16 +861,21 @@ async function connect() {
     else {
       const g = await fetchEp(); if (!mine()) return;
       if (g.login) return showLogin("Phiên đăng nhập hết hạn, hãy đăng nhập lại.");
-      if (g.fatal) { P.fatal = true; return overlay("err", "Không thấy máy này trong tài khoản của bạn.", [["Về danh sách", toList]]); }
+      if (g.fatal) { P.fatal = true; return overlay("err", g.why || (P.kind === "pc" ? "Máy PC này không thuộc tài khoản của bạn." : "Không thấy máy này trong tài khoản của bạn."), [["Về danh sách", toList]]); }
       if (g.fail) return roundFail(g.fail, "Không lấy được thông tin máy — tự thử lại…");
       ep = g.ep;
     }
   }
   P.ep = ep; P.epId = P.id; setName(ep.name, ep.android);
+  if (P.kind === "pc") {                                             // web-2.0: máy PC — chưa nối tới máy chủ phát hình (đang tắt / khởi động / cài Windows) → tự thử lại
+    $("m-sub").textContent = (ep.os ? "Windows " + String(ep.os).toUpperCase() : "Windows") + (ep.code ? " · số " + ep.code : "");
+    if (!ep.online) { P.epStale = true; return retryLater(L("Máy PC chưa sẵn sàng (đang tắt, đang khởi động hoặc đang cài Windows) — tự thử lại…", "The PC isn't ready yet (off, starting or installing Windows) — retrying…"), 10000); }
+    ep.status = "active";
+  }
   if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
-  $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
+  if (P.kind !== "pc") $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
   if (ep.status && ep.status !== "active") { P.fatal = true; P.epStale = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
-  bluePlay();
+  if (P.kind !== "pc") bluePlay();
   const cands = P.cands = buildCands(ep);
   if (!cands.length) { P.epStale = true; return retryLater("Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…", 8000); }
   // "online" chỉ là nhịp báo của phần nhận đơn; phần phát hình có thể vẫn chạy → cứ thử nối (máy chủ tự báo OFFLINE nếu không giữ máy này)
@@ -879,7 +892,7 @@ function linkUp(c, ws, token) {            // 1 đường vừa mở được �
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
   ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
   ws.onerror = () => {};
-  sendJSON(T.HELLO, Object.assign({ v: 2, token, phone: P.id, client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
+  sendJSON(T.HELLO, Object.assign({ v: 2, token, ...(P.kind === "pc" ? { pc: P.id } : { phone: P.id }), client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
   startTimers();
 }
 /* Gợi ý cho máy chủ BẮT ĐẦU NHẸ khi mạng yếu rõ ràng (Chrome / Edge / Android; Safari không có → không gửi gì, máy chủ tự dò như cũ).
@@ -920,7 +933,7 @@ function epKnown() {
   try { const j = JSON.parse(sessionStorage.getItem("cb_ep_" + P.id) || "null"); return j && Date.now() - j.t < EP_OLD_MS && j.ep && j.ep.stream ? j.ep : null; } catch { return null; }
 }
 async function fetchEp() {
-  const r0 = await timed(sb.rpc("cloudphone_endpoint", { p_id: P.id }), 9000);
+  const r0 = await timed(sb.rpc(P.kind === "pc" ? "pc_endpoint" : "cloudphone_endpoint", { p_id: P.id }), 9000);
   const r = r0.timeout ? { error: { message: "TIMEOUT" } } : r0.err ? { error: r0.err } : (r0.v || {});
   if (!r.error) {
     const ep = r.data || {}; P.epT = Date.now(); P.epStale = false; P.epOld = false;
@@ -930,6 +943,7 @@ async function fetchEp() {
   const m = String(r.error.message || r.error);
   if (/NOT_LOGGED_IN|JWT/i.test(m)) return { login: true };
   if (/NOT_FOUND|NOT_ALLOWED/.test(m)) return { fatal: true };
+  if (P.kind === "pc" && /PGRST202|Could not find the function/i.test(m)) return { fatal: true, why: "Hệ thống chưa bật điều khiển máy PC — báo shop chạy bản cập nhật cơ sở dữ liệu (v43)." };
   const net = m === "TIMEOUT" || /Failed to fetch|Load failed|NetworkError|network (connection|error)|timed? ?out/i.test(m);
   const old = net ? epKnown() : null;
   if (old) { P.epOld = true; return { ep: old, old: true }; }
@@ -1143,7 +1157,7 @@ function onMsg(buf) {
   P.lastRx = Date.now();
   const u8 = new Uint8Array(buf), t = u8[0], p = u8.subarray(1);
   if (t === T.VIDEO) { P.lastVid = P.lastRx; if (P.cx && !P.cx.vidAt) P.cx.vidAt = P.lastRx; return onVideo(p); }
-  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android) $("m-sub").textContent = "Android " + j.android;
+  if (t === T.WELCOME) { if (P.cx) P.cx.welAt = Date.now(); const j = json(p); P.srv = j; P.wfps = +j.fps || 0; if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } setName(j.name, j.android); if (j.android && P.kind !== "pc") $("m-sub").textContent = "Android " + j.android;
     if (TILE && T_KBPS) sendJSON(T.QUALITY, { q: P.q, fps: T_FPS, kbps: T_KBPS });                // web-1.8: ô nhỏ (lưới ≥ 5 máy) → trần băng thông
     return; }
   if (t === T.SIZE) { const j = json(p); if (j.w && j.h) { P.vw = j.w; P.vh = j.h; layout(); } P.needKey = true; return; }
@@ -1597,6 +1611,7 @@ function rel(e) {
 }
 cv.addEventListener("pointerdown", e => {
   e.preventDefault();
+  if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 1);
   if (e.pointerType === "mouse" && e.button !== 0) { if (e.button === 2) cmd("back"); else if (e.button === 1) cmd("home"); return; }
   const [x, y] = rel(e); if (x < 0 || x > 1 || y < 0 || y > 1) return;
   const used = new Set([...ptrs.values()].map(v => v.id)); let id = 0; while (used.has(id)) id++;
@@ -1606,6 +1621,7 @@ cv.addEventListener("pointerdown", e => {
   touch(0, id, x, y);
 }, { passive: false });
 cv.addEventListener("pointermove", e => {
+  if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 0);
   const p = ptrs.get(e.pointerId); if (!p) return;
   e.preventDefault();
   [p.x, p.y] = rel(e);
@@ -1614,6 +1630,7 @@ cv.addEventListener("pointermove", e => {
   else if (!p.pend) p.pend = setTimeout(() => { p.pend = 0; if (ptrs.get(e.pointerId) === p) { p.t = performance.now(); touch(2, p.id, p.x, p.y); } }, 8);
 }, { passive: false });
 function ptrEnd(e, action) {
+  if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 2);
   const p = ptrs.get(e.pointerId); if (!p) return;
   e.preventDefault(); clearTimeout(p.pend); ptrs.delete(e.pointerId);
   const [x, y] = action === 3 ? [p.x, p.y] : rel(e);
@@ -1647,6 +1664,7 @@ kb.addEventListener("input", () => {            // so chữ trước/sau → g�
 });
 document.addEventListener("keydown", e => {
   if (document.body.dataset.view !== "v-play" || !$("menu").hidden || !$("dlg").hidden) return;
+  if (P.kind === "pc" && pcKey(e, 0)) return;                        // web-2.0: máy PC — phím thật (nhấn / nhả riêng, cả Ctrl / Alt / Shift / F1–F12)
   const inKb = e.target === kb;
   if (e.target !== document.body && !inKb && e.target.closest && e.target.closest("input,textarea,select")) return;
   const mod = e.ctrlKey || e.metaKey;
@@ -1664,6 +1682,7 @@ document.addEventListener("keydown", e => {
   if (!inKb && e.key.length === 1 && !e.altKey && !mod) { e.preventDefault(); typeText(e.key); }
 });
 document.addEventListener("keyup", e => {
+  if (document.body.dataset.view === "v-play" && P.kind === "pc" && pcKey(e, 1)) return;
   if (document.body.dataset.view !== "v-play" || KMAP[e.key] === undefined) return;
   if (e.target === kb && (e.key === "Backspace" || e.key === "Enter")) return;
   if (e.target !== document.body && e.target !== kb && e.target.closest && e.target.closest("input,textarea,select")) return;
@@ -2263,15 +2282,83 @@ addEventListener("resize", () => { if (document.body.dataset.view === "v-multi")
 if (window.ResizeObserver) new ResizeObserver(() => { if (document.body.dataset.view === "v-multi") muLayout(); }).observe($("mu-grid"));
 
 /* ---------------- khởi động ---------------- */
+/* ===== web-2.0 · ĐIỀU KHIỂN MÁY PC THẬT (VPS GPU) — chuột thật, phím thật, nút Windows ===== */
+const PC_KEYS = { Backspace: 67, Tab: 61, Enter: 66, NumpadEnter: 160, Escape: 111, Space: 62, ArrowUp: 19, ArrowDown: 20, ArrowLeft: 21, ArrowRight: 22,
+  Delete: 112, Insert: 124, Home: 122, End: 123, PageUp: 92, PageDown: 93, ShiftLeft: 59, ShiftRight: 60, ControlLeft: 113, ControlRight: 114,
+  AltLeft: 57, AltRight: 58, MetaLeft: 117, MetaRight: 118, OSLeft: 117, OSRight: 118, ContextMenu: 82, CapsLock: 115, NumLock: 143, ScrollLock: 116,
+  PrintScreen: 120, Pause: 121, Backquote: 68, Minus: 69, Equal: 70, BracketLeft: 71, BracketRight: 72, Backslash: 73, Semicolon: 74, Quote: 75,
+  Comma: 55, Period: 56, Slash: 76, NumpadDivide: 154, NumpadMultiply: 155, NumpadSubtract: 156, NumpadAdd: 157, NumpadDecimal: 158,
+  AudioVolumeUp: 24, AudioVolumeDown: 25, AudioVolumeMute: 164 };
+for (let i = 0; i < 26; i++) PC_KEYS["Key" + String.fromCharCode(65 + i)] = 29 + i;
+for (let i = 0; i < 10; i++) { PC_KEYS["Digit" + i] = 7 + i; PC_KEYS["Numpad" + i] = 144 + i; }
+for (let i = 1; i <= 12; i++) PC_KEYS["F" + i] = 130 + i;
+const PCK = { down: new Map(), mx: -1, my: -1, mt: 0, pend: 0, btn: new Set() };
+function pcMouseSend(action, button, x, y) {
+  const b = new Uint8Array(6), d = new DataView(b.buffer);
+  b[0] = action; b[1] = button; d.setUint16(2, Math.round(c01(x) * 65535)); d.setUint16(4, Math.round(c01(y) * 65535));
+  send(0x1B, b);                                                       // C_MOUSE: 0 rê · 1 nhấn · 2 nhả; nút 0 trái · 1 phải · 2 giữa · 3/4 nút phụ
+}
+function pcMouse(e, kind) {                                            // kind: 0 rê · 1 nhấn · 2 nhả
+  const [x, y] = rel(e);
+  if (kind === 0) {
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    PCK.mx = x; PCK.my = y;
+    const now = performance.now();
+    if (now - PCK.mt >= 12) { PCK.mt = now; pcMouseSend(0, 0, x, y); }
+    else if (!PCK.pend) PCK.pend = setTimeout(() => { PCK.pend = 0; PCK.mt = performance.now(); pcMouseSend(0, 0, PCK.mx, PCK.my); }, 12);
+    return;
+  }
+  const bt = { 0: 0, 1: 2, 2: 1, 3: 3, 4: 4 }[e.button];
+  if (bt === undefined) return;
+  if (kind === 1) { if (x < 0 || x > 1 || y < 0 || y > 1) return; try { cv.setPointerCapture(e.pointerId); } catch {} PCK.btn.add(bt); kbHide(); try { cv.focus({ preventScroll: true }); } catch {} }
+  else { if (!PCK.btn.has(bt)) return; PCK.btn.delete(bt); }
+  pcMouseSend(kind, bt, x, y);
+}
+function pcKey(e, up) {                                                // true = đã gửi (trang không xử lý thêm)
+  if (e.target === kb) return false;                                   // ô gõ của điện thoại (bàn phím ảo, gõ tiếng Việt) → đường gửi chữ như cũ
+  if (!up && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V") && !e.altKey && !e.shiftKey) return false;   // Ctrl+V → dán chữ của máy mình sang máy PC
+  const code = PC_KEYS[e.code]; if (code === undefined) return false;
+  e.preventDefault();
+  if (!up) { if (PCK.down.has(e.code) && e.repeat) { keyAct(0, code, 0); return true; } PCK.down.set(e.code, code); keyAct(0, code, 0); }
+  else { if (!PCK.down.has(e.code)) return true; PCK.down.delete(e.code); keyAct(1, code, 0); }
+  return true;
+}
+function pcRelease() {                                                 // rời trang / chuyển tab giữa chừng → nhả hết phím + nút chuột đang giữ (không kẹt phím bên máy PC)
+  if (P.kind !== "pc") return;
+  for (const code of PCK.down.values()) keyAct(1, code, 0);
+  PCK.down.clear();
+  for (const bt of PCK.btn) pcMouseSend(2, bt, PCK.mx < 0 ? 0.5 : PCK.mx, PCK.my < 0 ? 0.5 : PCK.my);
+  PCK.btn.clear();
+}
+window.addEventListener("blur", pcRelease);
+document.addEventListener("visibilitychange", () => { if (document.hidden) pcRelease(); });
+function pcMode(on) {
+  document.body.classList.toggle("pcm", !!on);
+  const tt = { back: on ? "Esc" : L("Quay lại", "Back"), home: on ? L("Màn hình nền (Win+D)", "Desktop (Win+D)") : L("Màn hình chính", "Home"), recents: on ? L("Chuyển cửa sổ (Win+Tab)", "Switch windows (Win+Tab)") : L("Ứng dụng gần đây", "Recent apps") };
+  for (const k in tt) { const b = document.querySelector('.bar [data-a="' + k + '"]'); if (b) { b.title = tt[k]; b.setAttribute("aria-label", tt[k]); } }
+  if (!on) return;
+  if (!$("pc-grid")) {
+    const g = document.createElement("div"); g.className = "grid"; g.id = "pc-grid";
+    const h = document.createElement("div"); h.className = "sec"; h.id = "pc-sec"; h.setAttribute("data-noi18n", ""); h.textContent = L("Phím Windows", "Windows keys");
+    g.setAttribute("data-noi18n", "");
+    g.innerHTML = [["win", "⊞", L("Nút Windows", "Windows key")], ["alttab", "⇄", "Alt + Tab"], ["altf4", "✕", "Alt + F4"], ["taskmgr", "📊", "Task Manager"],
+                   ["explorer", "📁", "File Explorer"], ["desktop", "🖥", L("Màn hình nền", "Desktop")], ["enter", "↵", "Enter"], ["mute", "🔇", L("Tắt tiếng", "Mute")]]
+      .map(([c, ic, t]) => `<button type="button" data-pck="${c}"><i class="ic pck">${ic}</i>${t}</button>`).join("");
+    const q = $("q-seg"); q.after(h); h.after(g);
+    g.addEventListener("click", e => { const b = e.target.closest("[data-pck]"); if (!b) return; $("menu").hidden = true; cmd(b.dataset.pck); });
+  }
+}
+
 async function boot() {
   fitApp();
   if (TILE) tilePost({ k: "hello" });                                       // web-1.8: ô báo trang cha đã sẵn sàng (cha gửi lại trạng thái đồng bộ)
-  if (TEST) return MULTI ? showMulti() : openPhone(Q.get("id") || "00000000-0000-4000-8000-000000000001");
+  if (TEST) return MULTI ? showMulti() : openPhone(PCM || Q.get("id") || "00000000-0000-4000-8000-000000000001");
   if (!sb) { view("v-login"); $("lerr").textContent = "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang."; return; }
   const s = await session();
   if (!s) return showLogin();
   const id = Q.get("id");
   P.wantRoot = Q.get("root") === "1";
+  if (PCM && !MULTI) return openPhone(PCM);                              // web-2.0: máy PC thật
   if (MULTI) showMulti(); else if (id && UUID.test(id)) openPhone(id); else showList();
 }
 boot();
