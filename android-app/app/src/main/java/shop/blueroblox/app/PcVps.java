@@ -39,6 +39,16 @@ final class PcVps {
         }
     }
 
+    /** 21/11f · bảo trì riêng VPS GPU (khách thường) → câu báo; không bảo trì / admin → "". */
+    static String maint(MainActivity a) { return a.isAdmin() ? "" : Api.pcMaintMsg(); }
+
+    private static View maintCard(MainActivity a, String m) {
+        TextView t = Ui.text(a, m, 13.5f, Ui.FG, true);
+        t.setPadding(Ui.dp(14), Ui.dp(11), Ui.dp(14), Ui.dp(11));
+        t.setBackground(Ui.round(Color.argb(34, 255, 200, 97), 14, Color.argb(150, 255, 200, 97)));
+        return t;
+    }
+
     private static JSONArray items() { return mine == null ? new JSONArray() : mine.optJSONArray("items") == null ? new JSONArray() : mine.optJSONArray("items"); }
 
     /** 21/11f · Số VPS GPU đang thuê / đang chờ máy (theo dữ liệu đã tải). */
@@ -99,6 +109,8 @@ final class PcVps {
             head.addView(more, Ui.wrap());
         }
         box.addView(head, Ui.fill());
+        String mt = maint(a);
+        if (!mt.isEmpty()) box.addView(maintCard(a, mt), Ui.fill());
         boolean busy = false;
         for (int i = 0; i < it.length(); i++) {
             JSONObject x = it.optJSONObject(i);
@@ -128,6 +140,9 @@ final class PcVps {
                         : Ui.L("Gia hạn để dùng tiếp.", "Renew to keep using it.")};
         if (pc == null || !pc.optBoolean("online")) return new String[]{"off", "○ " + Ui.L("Máy đang tắt / mất mạng", "Offline"),
                 Ui.L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts over 5 minutes.")};
+        JSONObject lj = pc.optJSONObject("last_job");                               // 21/11f · lần cài lại gần nhất bị lỗi (như web)
+        if (lj != null && "failed".equals(lj.optString("state"))) return new String[]{"warn", "⚠️ " + Ui.L("Cài lại chưa xong", "Reinstall failed"),
+                Ui.L("Lần cài lại vừa rồi bị lỗi — bấm 📋 Báo admin để shop xử lý.", "The last reinstall failed — tap 📋 Report to the admin.")};
         return new String[]{"run", "● " + Ui.L("Sẵn sàng", "Ready"), ""};
     }
 
@@ -137,9 +152,9 @@ final class PcVps {
         LinearLayout c = Ui.card(a);
         boolean run = "run".equals(st[0]);
         if (run) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(130, 60, 224, 176)));
-        else if ("exp".equals(st[0]) || "wait".equals(st[0])) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(150, 255, 200, 97)));
+        else if ("exp".equals(st[0]) || "wait".equals(st[0]) || "warn".equals(st[0])) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(150, 255, 200, 97)));
         LinearLayout top = Ui.row(a, 8);
-        top.addView(Ui.pill(a, st[1], run ? Ui.OK : "exp".equals(st[0]) ? Ui.BAD : Ui.SKY), Ui.wrap());
+        top.addView(Ui.pill(a, st[1], run ? Ui.OK : "exp".equals(st[0]) ? Ui.BAD : "warn".equals(st[0]) ? Ui.WAIT : Ui.SKY), Ui.wrap());
         if (pc != null && !pc.optString("code").isEmpty()) top.addView(Ui.pill(a, "№ " + pc.optString("code"), Ui.MUTED), Ui.wrap());
         c.addView(top, Ui.fill());
         c.addView(Ui.text(a, (pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name")) + (x.optInt("days") > 0 ? "  ·  " + x.optInt("days") + Ui.L(" ngày", " days") : ""), 16, Ui.FG, true));
@@ -150,21 +165,34 @@ final class PcVps {
             if (pc.optDouble("ram_gb", 0) > 0) spec.append(" · ").append(Math.round(pc.optDouble("ram_gb"))).append("GB RAM");
         }
         c.addView(Ui.muted(a, spec.toString()));
-        if (!st[2].isEmpty()) c.addView(Ui.text(a, st[2], 13, "exp".equals(st[0]) ? Ui.BAD : "off".equals(st[0]) ? Ui.WAIT : Ui.MUTED, false));
+        if (!st[2].isEmpty()) c.addView(Ui.text(a, st[2], 13, "exp".equals(st[0]) || "warn".equals(st[0]) ? Ui.BAD : "off".equals(st[0]) ? Ui.WAIT : Ui.MUTED, false));
+        if ("warn".equals(st[0]) && pc != null) {                                  // 21/11f · cài lại lỗi → lý do + Báo admin
+            JSONObject lj = pc.optJSONObject("last_job");
+            String why = lj == null ? "" : lj.optString("msg", "").trim();
+            if (!why.isEmpty()) c.addView(Ui.text(a, why, 12.5f, Ui.BAD, false));
+            c.addView(repBtn(a, x), Ui.fill());
+        }
+        if ("inst".equals(st[0]) || "wait".equals(st[0])) {                         // 21/11f · thanh tiến độ có đếm giờ (mỗi giây)
+            JSONObject job = pc == null ? null : pc.optJSONObject("job");
+            long t0 = MainActivity.parseTime("inst".equals(st[0]) ? (job == null ? "" : job.optString("at", "")) : x.optString("created_at", ""));
+            c.addView(progress(a, x, "inst".equals(st[0]), t0, job == null ? "" : job.optString("os", "")), Ui.fill());
+        }
         long until = MainActivity.parseTime(x.optString("until", ""));
         if ("active".equals(x.optString("state")) && until > System.currentTimeMillis())
             c.addView(Ui.text(a, MainActivity.left(until) + "  ·  " + Ui.L("hết hạn ", "expires ") + MainActivity.fdate(until), 13, Ui.FG, false));
         if (pc != null && "active".equals(x.optString("state"))) {
             LinearLayout acts = Ui.row(a, 8);
             Button open = Ui.button(a, "▶ " + Ui.L("Điều khiển", "Control"), Ui.PRIMARY);
-            open.setEnabled(run);
-            open.setAlpha(run ? 1f : 0.5f);
+            final boolean mtOn = !maint(a).isEmpty();                               // 21/11f · bảo trì riêng VPS GPU → khoá điều khiển
+            final boolean ctl = (run || "warn".equals(st[0])) && !mtOn;
+            open.setEnabled(ctl);
+            open.setAlpha(ctl ? 1f : 0.5f);
             open.setOnClickListener(v -> control(a, pc.optString("id"), pc.optString("name")));
             acts.addView(open, Ui.weight(1));
             if (!x.isNull("rental")) {
                 int left = x.optInt("left"), max = mine == null ? 2 : mine.optInt("reinstall_max", 2);
                 Button re = Ui.button(a, "🔄 " + left + "/" + max, Ui.GHOST);
-                boolean canRe = left > 0 && !"inst".equals(st[0]) && !"exp".equals(st[0]);
+                boolean canRe = left > 0 && !"inst".equals(st[0]) && !"exp".equals(st[0]) && maint(a).isEmpty();
                 re.setEnabled(canRe);
                 re.setAlpha(canRe ? 1f : 0.5f);
                 re.setOnClickListener(v -> reinstall(a, x));
@@ -195,6 +223,108 @@ final class PcVps {
         if (m.contains("INSUFFICIENT_BALANCE")) return Ui.L("Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first.");
         if (m.contains("SLOW_DOWN")) return Ui.L("Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again later.");
         return m;
+    }
+
+    // ---------------------------------------------------------------- 21/11f · thanh tiến độ có đếm giờ + Báo admin
+
+    private static String mmss(long sec) {
+        sec = Math.max(0, sec);
+        long h = sec / 3600, m = sec % 3600 / 60, x = sec % 60;
+        return (h > 0 ? h + ":" + (m < 10 ? "0" : "") + m : String.valueOf(m)) + ":" + (x < 10 ? "0" : "") + x;
+    }
+
+    /** Thanh % ước tính theo thời gian thường mất (cài Windows ~25 phút, chờ máy ~10 phút), tự đếm mỗi giây; quá lâu → vàng + nút Báo admin. */
+    private static View progress(MainActivity a, JSONObject x, boolean inst, long t0, String os) {
+        final LinearLayout box = Ui.col(a, 4);
+        final android.widget.ProgressBar bar = new android.widget.ProgressBar(a, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(100);
+        bar.setProgressTintList(android.content.res.ColorStateList.valueOf(Ui.SKY));
+        box.addView(bar, new LinearLayout.LayoutParams(-1, Ui.dp(10)));
+        final TextView t = Ui.text(a, "", 12.5f, Ui.MUTED, false);
+        box.addView(t, Ui.fill());
+        final Button rep = repBtn(a, x);
+        rep.setVisibility(View.GONE);
+        box.addView(rep, Ui.fill());
+        final long start = t0 > 0 ? t0 : System.currentTimeMillis(), exp = (inst ? 25 : 10) * 60L;
+        final String osU = os == null ? "" : os.toUpperCase();
+        final Runnable[] tick = new Runnable[1];
+        tick[0] = () -> {
+            long sec = Math.max(0, (System.currentTimeMillis() - start) / 1000);
+            int pct = (int) Math.min(inst ? 96 : 90, Math.max(2, Math.round(100 * (1 - Math.exp(-sec / (exp * .55))))));
+            boolean late = sec > exp * (inst ? 2 : 3);
+            String stage = !inst ? Ui.L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically")
+                    : sec < 150 ? Ui.L("Khởi động lại vào bộ cài", "Restarting into setup")
+                    : sec < 15 * 60 ? Ui.L("Đang cài Windows ", "Installing Windows ") + osU
+                    : sec < 26 * 60 ? Ui.L("Cài driver · khởi động lần đầu", "Drivers · first boot") : Ui.L("Sắp xong…", "Almost done…");
+            bar.setProgress(pct);
+            bar.setProgressTintList(android.content.res.ColorStateList.valueOf(late ? Ui.WAIT : Ui.SKY));
+            t.setText(stage + " · " + pct + "% · " + Ui.L("đã chạy ", "elapsed ") + mmss(sec)
+                    + (late ? Ui.L(" · lâu hơn bình thường", " · taking longer than usual") : Ui.L(" · thường ~", " · usually ~") + (exp / 60) + Ui.L(" phút", " min")));
+            t.setTextColor(late ? Ui.WAIT : Ui.MUTED);
+            rep.setVisibility(late ? View.VISIBLE : View.GONE);
+            if (box.isAttachedToWindow() && !a.isFinishing()) box.postDelayed(tick[0], 1000);
+        };
+        box.addOnAttachStateChangeListener(new View.OnAttachStateChangeListener() {
+            @Override public void onViewAttachedToWindow(View v) { box.removeCallbacks(tick[0]); tick[0].run(); }
+            @Override public void onViewDetachedFromWindow(View v) { box.removeCallbacks(tick[0]); }
+        });
+        tick[0].run();
+        return box;
+    }
+
+    /** 📋 Báo admin: nội dung soạn sẵn (máy · việc / lỗi · tài khoản · lượt thuê · giờ) → copy + mở kênh liên hệ shop (web cài ở Cài đặt). */
+    private static Button repBtn(MainActivity a, JSONObject x) {
+        Button b = Ui.button(a, "📋 " + Ui.L("Báo admin", "Report to the admin"), Ui.GHOST);
+        b.setOnClickListener(v -> report(a, x));
+        return b;
+    }
+
+    private static void report(MainActivity a, JSONObject x) {
+        JSONObject pc = x.optJSONObject("pc"), job = pc == null ? null : pc.optJSONObject("job"), lj = pc == null ? null : pc.optJSONObject("last_job");
+        String[] st = state(x);
+        long now = System.currentTimeMillis();
+        String what = "warn".equals(st[0]) ? Ui.L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (lj != null && !lj.optString("msg").isEmpty() ? ": " + lj.optString("msg") : "")
+                : "inst".equals(st[0]) && job != null ? Ui.L("Cài lại Windows ", "Reinstall ") + job.optString("os").toUpperCase()
+                        + Ui.L(" — đã chạy ", " — running for ") + mmss((now - MainActivity.parseTime(job.optString("at", ""))) / 1000) + Ui.L(" chưa xong", "")
+                : "wait".equals(st[0]) ? Ui.L("Chờ giao máy — đã chờ ", "Waiting for a machine — ") + mmss((now - MainActivity.parseTime(x.optString("created_at", ""))) / 1000)
+                : st[1];
+        String user = a.prof == null ? "" : a.prof.optString("username", "").trim();
+        if (user.isEmpty()) user = a.prof == null || a.prof.optString("email", "").isEmpty() ? Api.email : a.prof.optString("email");
+        final String msg = Ui.L("[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ", "[CLOUDBLUE] GPU VPS NEEDS HELP")
+                + "\n• " + Ui.L("Máy: ", "Machine: ") + (pc == null ? "—" : pc.optString("name")) + (pc != null && !pc.optString("code").isEmpty() ? " (№ " + pc.optString("code") + ")" : "")
+                + "\n• " + Ui.L("Việc: ", "Problem: ") + what
+                + "\n• Windows: " + x.optString("os_name")
+                + "\n• " + Ui.L("Tài khoản: ", "Account: ") + user
+                + "\n• " + Ui.L("Lượt thuê: #", "Rental: #") + (x.isNull("rental") ? "—" : x.optString("rental"))
+                + "\n• " + Ui.L("Lúc: ", "Time: ") + MainActivity.fdate(now);
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) a.getSystemService(android.content.Context.CLIPBOARD_SERVICE);
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("CloudBlue", msg));
+        } catch (Exception ignored) { }
+        LinearLayout c = Ui.col(a, 10);
+        c.addView(Ui.muted(a, Ui.L("✓ Đã copy nội dung dưới đây. Bấm 1 kênh để mở, dán và gửi cho admin — shop xử lý ngay.",
+                "✓ Copied. Open a channel, paste and send it to the admin.")));
+        TextView m = Ui.text(a, msg, 12.5f, Ui.FG, false);
+        m.setTypeface(android.graphics.Typeface.MONOSPACE);
+        m.setTextIsSelectable(true);
+        m.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+        m.setBackground(Ui.round(Color.argb(40, 0, 0, 0), 12, Color.argb(60, 159, 180, 216)));
+        c.addView(m, Ui.fill());
+        JSONObject d = Api.siteData;
+        String[][] ch = {{"linkDc", "🎮 Discord"}, {"linkZl", "💬 Zalo"}, {"linkTg", "✈️ Telegram"}};
+        for (String[] k : ch) {
+            final String u = d == null ? "" : d.optString(k[0], "").trim();
+            if (!u.matches("(?i)https?://.+")) continue;
+            Button go = Ui.button(a, k[1], Ui.PRIMARY);
+            go.setOnClickListener(v -> a.openWeb(u));
+            c.addView(go, Ui.fill());
+        }
+        if (!Api.PLAY) {
+            Button web = Ui.button(a, "🌐 " + Ui.L("Mở website ", "Open ") + Api.webHost(), Ui.GHOST);
+            web.setOnClickListener(v -> a.openWeb(Api.WEB));
+            c.addView(web, Ui.fill());
+        }
+        Ui.sheet(a, "📋 " + Ui.L("Báo admin", "Report to the admin"), c).show();
     }
 
     // ---------------------------------------------------------------- cài lại / đổi Windows
@@ -240,6 +370,7 @@ final class PcVps {
 
     /** [pc_shop_info, sản phẩm] — đọc thẳng từ web: giá, gói ngày, tên, cấu hình, bản Windows bán đều do admin đặt. */
     static JSONObject[] fetchShop() throws Exception {
+        try { Api.site(); } catch (Exception ignored) { }                        // 21/11f · trạng thái bảo trì VPS GPU luôn mới khi mở mục
         Object io = Api.rpc("pc_shop_info", new JSONObject());
         JSONObject i = io instanceof JSONObject ? (JSONObject) io : new JSONObject();
         JSONObject p = null;
@@ -361,6 +492,7 @@ final class PcVps {
         body.addView(head, Ui.fill());
         body.addView(Ui.muted(a, Ui.L("Máy tính thật có card đồ hoạ rời — cả máy chỉ mình bạn dùng. Chọn Windows + thời gian thuê, hệ thống tự giao máy và cài sẵn cho bạn.",
                 "A real PC with a dedicated graphics card — the whole machine is yours. Pick Windows and a rental time; a machine is assigned and set up for you.")), Ui.fill());
+        if (!maint(a).isEmpty()) body.addView(maintCard(a, maint(a)), Ui.fill());   // 21/11f · bảo trì riêng VPS GPU
         section(a, body);                                                      // VPS GPU của bạn (nếu có) — lên đầu trang
         boolean stale = info == null || System.currentTimeMillis() - infoAt > 45000;
         if (stale && System.currentTimeMillis() - tErrAt > 15000) loadTab(a);   // mở trang / quá 45 giây → đọc lại giá admin đặt
@@ -598,6 +730,7 @@ final class PcVps {
         sr.addView(buy, Ui.wrap());
         sum.addView(sr, Ui.fill());
         buy.setOnClickListener(v -> {
+            if (!maint(a).isEmpty()) { Ui.toast(a, maint(a)); return; }               // 21/11f · bảo trì riêng VPS GPU → không mua mới
             Runnable go = () -> {
                 buy.setEnabled(false);
                 Api.bg(PcVps::fetchShop, r -> {                                 // đọc lại giá admin đặt NGAY trước khi hỏi

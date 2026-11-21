@@ -383,8 +383,21 @@ public class ControlActivity extends Activity {
             info.setText(Ui.L("Máy PC · Windows", "PC · Windows"));
             try { screen.setVideoSize(1920, 1080); } catch (Exception ignored) { }
             kbDead = true;                       // máy PC không có cổng "bàn phím Android đang mở" — khách tự bấm ⌨️ khi cần gõ
-            loaded = true;
-            if (resumed) connect();
+            Api.<String>bg(() -> {                 // 21/11f · bảo trì riêng VPS GPU (admin bật trên web) → khách thường chưa vào được, admin vẫn vào
+                Api.site();
+                String m = Api.pcMaintMsg();
+                if (m.isEmpty()) return "";
+                return "admin".equals(Api.profile().optString("role")) ? "" : m;
+            }, m -> {
+                if (!pid.equals(id) || isFinishing()) return;
+                if (m != null && !m.isEmpty()) { fail(m); return; }
+                loaded = true;
+                if (resumed) connect();
+            }, e -> {                              // không đọc được (mạng) → cho vào như thường; máy chủ phát hình vẫn tự kiểm quyền
+                if (!pid.equals(id) || isFinishing()) return;
+                loaded = true;
+                if (resumed) connect();
+            });
             return;
         }
         Api.bg(() -> {
