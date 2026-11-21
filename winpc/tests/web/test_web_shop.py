@@ -65,7 +65,8 @@ HOOK = """window.__FAKE_HOOK = {
   pc_admin_rental_end: a => ({ id: a.p_rental, state: 'cancelled', refunded: true }),
   pc_admin_sell: a => ({ product: a.p_patch.product, os: a.p_patch.os, reinstall_max: a.p_patch.reinstall_max }),
   buy_product: a => ({ id: 'o-old', status: 'pending', total: 100000 }),
-  pc_admin_deliver: a => ({ state: 'active', pc: a.p_pc, name: 'May-03', code: '', reinstall: false, order: a.p_order })
+  pc_admin_deliver: a => ({ state: 'active', pc: a.p_pc, name: 'May-03', code: '', reinstall: false, order: a.p_order }),
+  pc_my_cancel: a => ({ ok: true, pc: a.p_pc, rental: 61 })
 };"""
 
 
@@ -376,6 +377,39 @@ def main():
         s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
         ck("(Lưu khi chưa có v44 → không kèm reclaim)", all("reclaim" not in c["p_patch"] for c in s.calls("pc_admin_sell")), s.calls("pc_admin_sell"))
         s.close()
+        print("5e. 🗑 Khách tự huỷ máy (SQL v45) + thẻ 'Đã kết thúc' tự ẩn sau 30 phút")
+        mine3 = {"product": PROD, "reinstall_max": 2, "os": MINE["os"], "cancel": True, "items": [
+            {"rental": 61, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(3 * 86400), "left": 2, "used": 0, "end_why": None,
+             "pc": {"id": PC1, "name": "May-01", "code": "A1", "os": "22h2", "online": True, "link": True, "remote": True, "off": False, "job": None, "last_job": None, "ram_gb": 128, "gpus": []}},
+            {"rental": 60, "state": "ended", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(-600), "left": 2, "used": 0, "end_why": "expired",
+             "ended_at": iso(-600), "hide_at": iso(1200), "pc": None},
+            {"rental": 59, "state": "ended", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(-4000), "left": 2, "used": 0, "end_why": "expired",
+             "ended_at": iso(-3600), "hide_at": iso(-1800), "pc": None}]}
+        s = Site(br, html, False, dict(shop, mine=mine3, bought=[]))
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 2", timeout=8000)
+        c3 = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => c.innerText.replace(/\\s+/g, ' '))")
+        ck("thẻ 'Đã kết thúc' quá giờ ẩn → không hiện nữa; thẻ vừa kết thúc ghi 'Thẻ này tự ẩn lúc …'; thẻ đang thuê có nút 🗑 Huỷ máy",
+           len(c3) == 2 and "Huỷ máy" in c3[0] and "Đã kết thúc" in c3[1] and "tự ẩn lúc" in c3[1] and "Huỷ máy" not in c3[1], c3)
+        s.page.click("#pcs-mine-list [data-pcscxl]"); s.page.wait_for_timeout(300)
+        d3 = s.js("() => ({ t: document.getElementById('pcsdlg').innerText, dis: document.querySelector('#pcsdlg [data-pcscxgo]').disabled })")
+        ck("bấm Huỷ máy → hộp xác nhận: gỡ khỏi tài khoản, xoá sạch mọi ổ, KHÔNG hoàn tiền (ghi thời gian còn lại); nút Huỷ khoá tới khi tick 'Tôi hiểu'",
+           "gỡ khỏi tài khoản" in d3["t"] and "xoá sạch" in d3["t"] and "KHÔNG hoàn tiền" in d3["t"] and "Không hoàn tác" in d3["t"] and "ngày" in d3["t"] and d3["dis"], d3)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-10-huy-may.png"))
+        s.page.click("#pcsdlg [data-pcscxgo]", force=True); s.page.wait_for_timeout(300)
+        ck("chưa tick 'Tôi hiểu' → bấm không ăn, không gọi pc_my_cancel", not s.calls("pc_my_cancel"))
+        s.page.check("#pcs-cx-ok"); s.page.click("#pcsdlg [data-pcscxgo]"); s.page.wait_for_timeout(900)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("tick + bấm → gọi pc_my_cancel(máy) đúng 1 lần, đóng hộp, báo 'Đã huỷ máy'", s.calls("pc_my_cancel") == [{"p_pc": PC1}] and s.js("() => document.getElementById('pcsdlg').hidden") and "Đã huỷ máy" in tt, (s.calls("pc_my_cancel"), tt))
+        s.page.click("#pcs-mine-list [data-pcscxl]"); s.page.wait_for_timeout(200)
+        s.page.click("#pcsdlg [data-pcsx]"); s.page.wait_for_timeout(200)
+        ck("bấm 'Giữ máy' → đóng hộp, không gọi thêm", s.js("() => document.getElementById('pcsdlg').hidden") and len(s.calls("pc_my_cancel")) == 1)
+        ck("5e: không lỗi JS", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, False, dict(shop, mine=dict(mine3, cancel=False), bought=[]))
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 2", timeout=8000)
+        ck("máy chủ chưa có v45 (không có cờ cancel) → không hiện nút Huỷ máy", not s.js("() => !!document.querySelector('[data-pcscxl]')"))
+        s.close()
+
         print("5c. Căn lề trang quản trị: mọi khối cùng mép trái / phải ở màn rộng 2296px, laptop 1366px, điện thoại 390px")
         for vw, vh in ((2296, 985), (1366, 768), (390, 844)):
             ctx = br.new_context(viewport={"width": vw, "height": vh}, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh")
