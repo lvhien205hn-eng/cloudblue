@@ -13328,6 +13328,78 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 .pcs-free label{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line);cursor:pointer}
 .pcs-free label:has(input:checked){border-color:var(--sky);background:rgba(61,123,255,.12)}
 #pcsdlg{z-index:70}   /* hộp của phần VPS GPU nằm TRÊN bảng quản trị (z 60) khi admin bấm Bàn giao */
+.pcs-dlg.vid{width:min(980px,96vw);max-width:min(980px,96vw);padding:12px 12px 10px}
+.pcs-vid{display:block;width:100%;aspect-ratio:16/9;border-radius:12px;background:#000}
+.pcs-vidl{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:0;border:0;background:none;font:inherit;font-weight:700;color:var(--sky);cursor:pointer}
+.pcs-vidl:hover{text-decoration:underline}
+/* "VPS của tôi" (menu bên): VPS GPU ở đầu hộp, điều khiển ngay trên web — tách riêng khỏi "ĐT đám mây của tôi" */
+html[data-theme] header.top nav a#nav-vps{position:relative}
+html[data-theme] header.top nav a#nav-vps.has:not(.on){color:var(--fg);background:linear-gradient(90deg,rgba(61,123,255,.24),rgba(61,123,255,.07));box-shadow:inset 0 0 0 1px rgba(110,170,255,.5)}
+html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-gradient(90deg,#dcebff,#f1f7ff)}
+#nav-vps.has .badge{position:absolute;top:-6px;right:-4px;margin:0!important;background:var(--ok);color:#032a1f;font-weight:800;box-shadow:0 0 0 2px var(--bg)}
+.pcs-vm{display:grid;gap:10px}
+.pcs-vm-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.pcs-vm-h b{font-size:16px}
+.pcs-vm-h .hint{flex:1 1 220px;font-size:12.5px}
+.pcs-vm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+.pcs-vm-list .m3m-card{flex:none;min-width:0}
+.pcs-vm-list .m3m-acts{flex-wrap:wrap}
+.pcs-vm-empty{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 14px;border-radius:14px;border:1px dashed var(--line2);font-size:13.5px;color:var(--muted)}
+.pcs-vm-old{margin:4px 0 -6px;font-size:14px;font-weight:800}
+/* 21/11f · hộp mua VPS GPU tự động — thẻ cấu hình nổi bật, ① Windows · ② thời gian thuê (giá / ngày, % tiết kiệm) */
+#modal.pcauto .dlg{width:min(560px,100%)}
+#modal.pcauto #m-title,#modal.pcauto #m-name,#modal.pcauto #m-desc{display:none!important}
+.pcs-hero{position:relative;display:grid;gap:10px;padding:16px 16px 14px;border-radius:18px;color:#fff;overflow:hidden;
+  background:radial-gradient(120% 140% at 100% 0%,rgba(140,196,255,.28),transparent 55%),linear-gradient(135deg,#1d48b8,#11286e 58%,#2b1f78);
+  box-shadow:inset 0 0 0 1px rgba(160,200,255,.35),0 18px 40px -24px rgba(29,72,184,.9)}
+.pcs-hero[hidden]{display:none}
+.pcs-hero .ph-top{display:flex;align-items:center;gap:12px}
+.pcs-hero .ph-ic{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;font-size:28px;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.pcs-hero .ph-t{flex:1;min-width:0;display:grid;gap:2px}
+.pcs-hero .ph-t b{font-size:22px;font-weight:800;letter-spacing:-.01em;line-height:1.15;overflow-wrap:anywhere}
+.pcs-hero .ph-t small{font-size:12.5px;color:#cfe0ff}
+.pcs-hero .ph-pill{flex:none;align-self:flex-start;font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:rgba(61,220,151,.18);color:#7ff0bd;box-shadow:inset 0 0 0 1px rgba(61,220,151,.55)}
+.pcs-hero .ph-pill.wt{background:rgba(255,200,97,.16);color:#ffd88a;box-shadow:inset 0 0 0 1px rgba(255,200,97,.55)}
+.pcs-hero .ph-chips,.pcs-hero .ph-bn{display:flex;flex-wrap:wrap;gap:6px}
+.pcs-hero .ph-chips span{font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:99px;background:rgba(255,255,255,.13);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.pcs-hero .ph-bn span{font-size:11.5px;font-weight:600;color:#d9e6ff;padding:3px 8px;border-radius:8px;background:rgba(6,14,40,.28)}
+.pcs-hero .ph-price{display:flex;align-items:baseline;gap:8px}
+.pcs-hero .ph-price small{font-size:12.5px;color:#cfe0ff}
+.pcs-hero .ph-price b{font-size:24px;font-weight:800}
+#modal.pcauto .pcs-sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:700}
+#modal.pcauto .pcs-sec small{font-size:12px;font-weight:500;color:var(--muted)}
+#modal.pcauto #pcs-os .vps-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+#modal.pcauto #pcs-os .vps-opts button{display:grid;justify-items:center;gap:1px;padding:10px 8px 11px;text-align:center}
+#modal.pcauto #pcs-os .vps-opts button .k0{font-size:11.5px;color:var(--muted);font-weight:700}
+#modal.pcauto #pcs-os .vps-opts button b{font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+#modal.pcauto #pcs-os .vps-opts button.on{border-color:var(--sky);background:linear-gradient(180deg,rgba(61,123,255,.30),rgba(61,123,255,.12));box-shadow:0 0 0 1px var(--sky) inset}
+.pcs-oshint{font-size:12.5px;line-height:1.45}
+.pcs-oshint.fast{color:var(--ok)} .pcs-oshint.slow{color:var(--warn,#ffc861)}
+#modal.pcauto #m-plans-box>span{font-size:13.5px!important;font-weight:700;color:var(--fg)!important}
+#modal.pcauto #m-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+#modal.pcauto #m-plans button{position:relative;display:grid;justify-items:center;gap:2px;padding:10px 6px 9px}
+#modal.pcauto #m-plans button .pd{font-style:normal;font-size:11.5px;color:var(--muted)}
+#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
+#modal.pcauto .pcs-how{font-size:12px}
+/* hộp sau khi mua: ① đợi máy · ② nội dung gửi admin (ẩn / hiện) */
+.pcsw .big{font-size:42px}
+.pcsw-code{color:var(--gold-hi);font-family:var(--mono,monospace);font-size:16px}
+.pcsw-box{display:grid;gap:7px;text-align:left;padding:12px 14px;border-radius:14px;background:var(--soft);border:1px solid var(--line2)}
+.pcsw-h,.pcsw-msg summary{font-size:13px;font-weight:800;color:var(--muted)}
+.pcsw-box>b{font-size:17px}
+.pcsw-box small{color:var(--muted);font-size:13px;line-height:1.5}
+.pcsw-box .pcs-bar{height:5px;border-radius:9px;background:var(--line);overflow:hidden}
+.pcsw-box .pcs-bar[hidden]{display:none}
+.pcsw-box .pcs-bar i{display:block;height:100%;width:35%;border-radius:9px;background:linear-gradient(90deg,var(--blue),var(--sky));animation:pcsrun 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.pcsw-box .pcs-bar i{animation:none;width:100%;opacity:.5}}
+.pcsw-acts{display:flex;flex-wrap:wrap;gap:8px}
+.pcsw-acts:empty{display:none}
+.pcsw-msg{text-align:left;border-radius:14px;border:1px solid var(--line2);padding:10px 12px}
+.pcsw-msg summary{cursor:pointer;color:var(--fg)}
+.pcsw-msg.late{border-color:rgba(255,200,97,.75);background:rgba(255,200,97,.07)}
+.pcsw-late{margin-top:8px;font-size:13px;color:var(--warn,#ffc861);font-weight:700}
+.pcsw-msg pre{white-space:pre-wrap;word-break:break-word;font:12.5px/1.5 var(--mono,monospace);background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:190px;overflow:auto;margin:10px 0}
+.pcsw-msg .btn{width:100%;justify-content:center}
 </style>
 <script>
 /* ===== VPS GPU tự động (SQL v43). Không có v43 → mọi phần dưới tự ẩn, cửa hàng chạy như cũ. ===== */
@@ -13370,25 +13442,68 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   // ---------------------------------------------------------------- MUA: hộp "Mua sản phẩm" của VPS GPU tự động
   function osBox() {
     let b = $i("pcs-os");
-    if (!b) { b = document.createElement("div"); b.id = "pcs-os"; b.className = "pcs-os"; $i("m-plans-box").after(b); }
+    if (!b) { b = document.createElement("div"); b.id = "pcs-os"; b.className = "pcs-os"; $i("m-plans-box").before(b); }      // ① Windows rồi ② thời gian (như app)
     return b;
   }
+  const osSplit = n => { n = S(n, 60).trim(); const i = n.lastIndexOf(" "); return i > 0 ? [n.slice(0, i), n.slice(i + 1)] : ["Windows", n]; };
   function osPaint() {
     const b = osBox(), I = O(PC.info), os = A(I.os);
     if (!os.some(o => o.id === PC.os)) PC.os = (os.find(o => o.fast) || os[0] || {}).id || "";
     const mx = +I.reinstall_max >= 0 ? +I.reinstall_max : 2;
-    b.innerHTML = `<span class="hint">${L("Chọn bản Windows", "Choose Windows")} <b style="color:var(--gold-hi)">*</b></span>
-      <div class="vps-opts">${os.map(o => `<button type="button" data-pcsos="${esc(o.id)}" class="${o.id === PC.os ? "on" : ""}"><b>${esc(S(o.name, 60))}</b>
-        <small class="${o.fast ? "fast" : "slow"}">${o.fast ? L("⚡ Có máy sẵn · giao ngay", "⚡ In stock · instant") : I.ready ? L("⏳ Cài theo yêu cầu · ~20 phút", "⏳ Installed on order · ~20 min") : L("⏳ Shop đang chuẩn bị máy", "⏳ Machine being prepared")}</small></button>`).join("")}</div>
+    const cur = os.find(o => o.id === PC.os) || {};
+    b.innerHTML = `<div class="pcs-sec"><span>① ${L("Chọn Windows", "Choose Windows")} <b style="color:var(--gold-hi)">*</b></span><small>${L(`đổi được ${mx} lần trong lượt thuê`, `switchable ${mx}× per rental`)}</small></div>
+      <div class="vps-opts">${os.map(o => { const [k0, k1] = osSplit(o.name || o.id); return `<button type="button" data-pcsos="${esc(o.id)}" class="${o.id === PC.os ? "on" : ""}" aria-pressed="${o.id === PC.os}">
+        <small class="k0">${o.id === PC.os ? "✓ " : ""}${esc(k0)}</small><b>${esc(k1)}</b>
+        <small class="${o.fast ? "fast" : "slow"}">${o.fast ? L("⚡ Có máy sẵn · giao ngay", "⚡ In stock · instant") : I.ready ? L("⏳ Cài theo yêu cầu · ~20 phút", "⏳ Installed on order · ~20 min") : L("⏳ Shop đang chuẩn bị máy", "⏳ Machine being prepared")}</small></button>`; }).join("")}</div>
+      <div class="pcs-oshint ${cur.fast ? "fast" : "slow"}">${cur.fast ? L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.")
+        : L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm thời gian cài).", "⏳ Installed for you in ~20 min (the install time is added to your rental).")}</div>
       <div class="pcs-how">✅ ${L("Thanh toán xong, hệ thống <b>tự giao máy</b> và cài đúng bản Windows bạn chọn.", "After payment the system <b>assigns a machine</b> and installs the Windows you chose.")}
         ${L("Điều khiển ngay trên <b>web · app điện thoại · app máy tính</b>, như máy đám mây.", "Control it from the <b>web · phone app · PC app</b>, just like a cloud phone.")}
-        ${L(`Được tự <b>cài lại / đổi Windows ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / Windows switches</b> per rental.`)}</div>`;
+        ${L(`Được tự <b>cài lại / đổi Windows ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / Windows switches</b> per rental.`)}<br>${vidBtn()}</div>`;
   }
+  // ---- 21/11f · hộp mua VPS GPU "sịn": thẻ cấu hình nổi bật (giá / cấu hình đúng như admin nhập) · ① Windows · ② thời gian thuê có giá / ngày + % tiết kiệm
+  const pdTxt = v => fmt(Math.round(v)) + L(" / ngày", " / day");
+  const icOf = f => { const l = f.toLowerCase();
+    return /ram/.test(l) ? "🧠" : /gtx|rtx|gpu|vga|radeon|quadro|card/.test(l) ? "🎮" : /ssd|nvme|hdd|disk|ổ/.test(l) ? "💾" : /xeon|core|ryzen|cpu|nhân|luồng|i[3579]-|\d{4} ?v\d/.test(l) ? "⚙️"
+         : /mbps|gbps|mạng|wifi|lan|net/.test(l) ? "🌐" : /win/.test(l) ? "🪟" : "✨"; };
+  function heroPaint(p) {
+    const m = $i("modal"), dl = m && m.querySelector(".dlg"); if (!dl || !p) return;
+    let h = $i("pcs-hero");
+    if (!h) { h = document.createElement("div"); h.id = "pcs-hero"; h.className = "pcs-hero"; dl.prepend(h); }
+    const I = O(PC.info), pl = (() => { try { return plansOf(p); } catch (e) { return []; } })().filter(x => +x.days > 0);
+    const best = pl.length ? Math.min(...pl.map(x => cv(+x.price) / +x.days)) : 0;
+    const fast = A(I.os).some(o => o.fast), mx = +I.reinstall_max >= 0 ? +I.reinstall_max : 2;
+    const feats = A(LANG === "en" && A(p.features_en).length ? p.features_en : p.features).map(f => S(f, 40).trim()).filter(Boolean).slice(0, 6);
+    let nm = ""; try { nm = pName(p); } catch (e) { nm = S(p.name, 80); }
+    h.innerHTML = `<div class="ph-top"><div class="ph-ic" aria-hidden="true">🖥️</div><div class="ph-t"><b>${esc(nm)}</b>
+        <small>${L("Máy tính thật · 1 cấu hình · tự giao + tự cài Windows", "Real PC · one configuration · auto delivery + Windows setup")}</small></div>
+        <span class="ph-pill ${fast ? "ok" : "wt"}">${fast ? "⚡ " + L("Có máy sẵn", "In stock") : "⏳ " + L("Đặt trước", "Pre-order")}</span></div>
+      ${feats.length ? `<div class="ph-chips">${feats.map(f => `<span>${icOf(f)} ${esc(f)}</span>`).join("")}</div>` : ""}
+      <div class="ph-bn"><span>⚡ ${L("Tự giao + cài Windows", "Auto delivery + setup")}</span><span>🎮 ${L("Chuột + phím thật", "Real mouse + keyboard")}</span>
+        <span>🔁 ${L(`Đổi Windows ${mx} lần`, `${mx} Windows switches`)}</span><span>🔒 ${L("Máy riêng của bạn", "Your own machine")}</span></div>
+      ${best ? `<div class="ph-price"><small>${L("chỉ từ", "from")}</small><b>${pdTxt(best)}</b></div>` : ""}`;
+  }
+  function plansDeco() {
+    const m = $i("modal"); if (!m || !m.classList.contains("pcauto")) return;
+    let p = null; try { p = selP(); } catch (e) {} if (!p) return;
+    const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
+    const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
+    $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
+      const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
+      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0;
+      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${save >= 1 ? `<i class="sv">−${save}%</i>` : ""}`);
+    });
+  }
+  const _rp = window.renderPlans;
+  if (typeof _rp === "function") window.renderPlans = function () { const r = _rp.apply(this, arguments); try { plansDeco(); } catch (e) {} return r; };
   function autoMode(on) {
     const m = $i("modal"); if (!m) return;
     m.classList.toggle("pcauto", !!on);
     const b = $i("pcs-os"); if (b) b.hidden = !on;
-    if (on) { $i("m-qty").value = 1; osPaint(); try { upd(); } catch (e) {} }
+    const h = $i("pcs-hero"); if (h) h.hidden = !on;
+    const lb = $i("m-plans-box") && $i("m-plans-box").querySelector("span");
+    if (lb) { if (!lb.dataset.t0) lb.dataset.t0 = lb.textContent; lb.textContent = on ? "② " + L("Chọn thời gian thuê", "Choose rental time") : lb.dataset.t0; }
+    if (on) { $i("m-qty").value = 1; let p = null; try { p = selP(); } catch (e) {} heroPaint(p); osPaint(); try { renderPlans(); upd(); } catch (e) {} }
   }
   document.addEventListener("click", e => {
     const b = e.target.closest && e.target.closest("[data-pcsos]"); if (!b) return;
@@ -13420,28 +13535,112 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       closeBuy();
       await Promise.all([loadProfile(), loadProducts(), mine(true), info(true)]).catch(() => {});
       try { renderUser(); } catch (e) {}
-      done(O(data), p, days);
+      done(O(data), p, days, tot);
     });
   }
-  function dlg(html) {
+  function dlg(html, cls) {
     let m = $i("pcsdlg");
     if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "pcsdlg"; m.hidden = true; document.body.appendChild(m);
-      m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-pcsx]")) m.hidden = true; }); }
-    m.innerHTML = `<div class="dlg pcs-dlg" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; return m;
+      m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-pcsx]")) { m.hidden = true; m.querySelectorAll("video").forEach(v => { try { v.pause(); } catch (x) {} }); } }); }
+    m.innerHTML = `<div class="dlg pcs-dlg${cls ? " " + cls : ""}" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; return m;
   }
-  function done(r, p, days) {
-    const act = r.state === "active", osn = S((A(O(PC.info).os).find(o => o.id === PC.os) || {}).name, 60) || PC.os;
-    dlg(`<div class="pcs-done"><div class="big">${act ? "🎉" : "⏳"}</div>
-      <h3>${act ? L("Đã giao máy cho bạn", "Your machine is ready") : L("Đã nhận đơn — shop đang chuẩn bị máy", "Order received — preparing your machine")}</h3>
-      <div class="hint">${esc(osn)} · ${days ? days + L(" ngày", " days") : ""}${act ? " · " + L("máy", "machine") + " <b>" + esc(S(r.name, 40)) + "</b>" : ""}</div>
-      <ol class="pcs-steps">${act ? (r.reinstall
-        ? `<li>${L("Máy đang tự cài Windows cho bạn (~15–30 phút) — theo dõi ở mục <b>VPS GPU của bạn</b> đầu trang chủ.", "Windows is being installed (~15–30 min) — follow it under <b>Your GPU VPS</b> on the home page.")}</li><li>${L("Cài xong bấm <b>▶ Điều khiển</b> để vào máy.", "Then tap <b>▶ Control</b> to use it.")}</li>`
-        : `<li>${L("Máy đã sẵn sàng — bấm <b>▶ Điều khiển</b> để vào máy ngay.", "Ready now — tap <b>▶ Control</b>.")}</li>`)
-        : `<li>${L("Tiền đã trừ, đơn đã ghi. Có máy là hệ thống <b>tự giao + cài Windows</b> (thường vài phút).", "Paid and recorded. As soon as a machine is free it is <b>assigned and installed automatically</b> (usually a few minutes).")}</li><li>${L("Theo dõi ở mục <b>VPS GPU của bạn</b> đầu trang chủ — không cần nhắn shop.", "Follow it under <b>Your GPU VPS</b> on the home page — no need to message the shop.")}</li>`}
-        <li>${L("Hạn thuê tính từ lúc giao máy.", "Your rental time starts when the machine is assigned.")}</li></ol>
-      <div class="acts" style="justify-content:center">${act && !r.reinstall ? `<a class="btn" href="/play.html?pc=${encodeURIComponent(S(r.pc, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : ""}
-        <button class="btn ghost" type="button" data-pcsx="1" data-pcsgo="1">${L("Xem VPS GPU của bạn", "See your GPU VPS")}</button></div></div>`);
+  // ---- 🎬 video hướng dẫn (mua máy · điều khiển trên web / app điện thoại / app máy tính · cài lại, gia hạn) — cùng file app mở
+  const VID = "/video/vps-gpu.mp4", VIDP = "/video/vps-gpu.jpg";
+  const vidBtn = (txt, cls) => `<button type="button" class="${cls || "pcs-vidl"}" data-pcsvid="1">🎬 ${txt || L("Xem video hướng dẫn (1 phút 36 giây)", "Watch the video guide (1:36, Vietnamese)")}</button>`;
+  function vidOpen() {
+    dlg(`<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 4px"><h3 style="margin:0">🎬 ${L("Hướng dẫn dùng VPS GPU", "GPU VPS video guide")}</h3>
+        <button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <video class="pcs-vid" src="${VID}" poster="${VIDP}" controls autoplay muted playsinline preload="metadata"></video>
+      <p class="hint" style="margin:8px 4px 0">${L("Mua máy · điều khiển trên web, app điện thoại, app máy tính · cài lại Windows, gia hạn.", "Buying · controlling from the web, the phone app and the PC app · reinstalling Windows, renewing. (Vietnamese)")}</p>`, "vid");
   }
+  document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-pcsvid]"); if (!b) return; e.preventDefault(); vidOpen(); });
+  // ---- sau khi mua: hộp "đợi máy" như cloud phone — ① Đợi máy (tự cập nhật: chờ máy → cài Windows → sẵn sàng) · ② nội dung gửi admin (ẩn / hiện)
+  const pad2 = n => String(n).padStart(2, "0");
+  const dtv = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${L("ngày", "on")} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  const ago = ms => { const s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60); return m ? L(`${m} phút ${pad2(s % 60)} giây`, `${m} min ${pad2(s % 60)} s`) : L(`${s} giây`, `${s} s`); };
+  const LATE = { wait: 15, inst: 45, off: 10, warn: 0 };              // quá bấy nhiêu phút → mở sẵn mục ② + nhắc gửi admin
+  function done(r, p, days, tot) {
+    const osn = S((A(O(PC.info).os).find(o => o.id === PC.os) || {}).name, 60) || S(PC.os, 20), u = me() || {};
+    const code = r.order ? "BR-" + String(r.order).replace(/-/g, "").slice(0, 8).toUpperCase() : "";
+    const label = S(p && p.name, 80) + (days ? ` · ${days} ${L("ngày", "days")}` : "");
+    PC.w = { rental: +r.rental || null, pc: S(r.pc, 40), name: S(r.name, 40), t0: Date.now(), label, osn, code, order: S(r.order, 60), user: S(u.username || u.email, 60),
+             tot: +tot || 0, poll: 0, late: false, st: r.state === "active" ? (r.reinstall ? "inst" : "run") : "wait" };
+    PC.w.at = dtv(new Date(PC.w.t0));
+    dlg(`<div class="pcs-done pcsw">
+      <div class="big" id="pcsw-ic" aria-hidden="true">⏳</div>
+      <h3>${L("Thanh toán thành công!", "Payment successful!")}</h3>
+      <div class="hint">${esc(label)}${PC.w.tot ? " · " + esc(fmt(PC.w.tot)) : ""}${code ? `<br>${L("Mã thanh toán", "Payment code")}: <b class="pcsw-code">${esc(code)}</b>` : ""}</div>
+      <div class="pcsw-box" aria-live="polite">
+        <div class="pcsw-h">① ${L("Đợi máy", "Waiting for your machine")}</div>
+        <b id="pcsw-st"></b>
+        <div class="pcs-bar" id="pcsw-bar" aria-hidden="true"><i></i></div>
+        <small id="pcsw-sub"></small>
+        <div class="pcsw-acts" id="pcsw-acts"></div>
+      </div>
+      <details class="pcsw-msg" id="pcsw-msg">
+        <summary>② ${L("Máy lâu chưa lên? Gửi nội dung này cho admin", "Taking too long? Send this to the admin")}</summary>
+        <div class="pcsw-late" id="pcsw-late" hidden>⏰ ${L("Máy lên lâu hơn bình thường — bấm Copy rồi gửi cho admin, shop xử lý ngay.", "This is taking longer than usual — copy this and send it to the admin.")}</div>
+        <pre id="pcsw-txt"></pre>
+        <button class="btn" type="button" id="pcsw-copy">📋 ${L("Copy nội dung gửi admin", "Copy message for the admin")}</button>
+        <div class="hint" style="margin:6px 0">${L("Bấm Copy, rồi bấm 1 kênh bên dưới — dán và gửi cho admin.", "Tap Copy, then a channel below — paste and send it.")}</div>
+        <div class="contacts">${typeof contactsHTML === "function" ? contactsHTML() : ""}</div>
+      </details>
+      <div class="acts" style="justify-content:center">${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost")}<button class="btn" type="button" data-pcsx="1">${L("Đóng", "Close")}</button></div></div>`);
+    $i("pcsw-copy").onclick = async e => {
+      const b = e.currentTarget, base = b.textContent;
+      try { await navigator.clipboard.writeText(wMsg()); b.textContent = L("✓ Đã copy", "✓ Copied"); setTimeout(() => { b.textContent = base; }, 2000); }
+      catch (x) { const rg = document.createRange(); rg.selectNodeContents($i("pcsw-txt")); getSelection().removeAllRanges(); getSelection().addRange(rg); toast(L("Bôi đen sẵn rồi, bấm Ctrl+C để copy.", "Selected — press Ctrl+C to copy."), 0); }
+    };
+    try { if (PC.w.order) localStorage.setItem("br_vmsg_" + PC.w.order, wMsg()); } catch (e) {}
+    wPaint(); clearInterval(PC.wt); PC.wt = setInterval(wTick, 1000);
+  }
+  const wItem = () => { const w = PC.w || {}; return A(O(PC.mine).items).find(x => w.rental ? +x.rental === w.rental : !!w.pc && O(x.pc).id === w.pc) || null; };
+  const wState = () => { const w = PC.w || {}, it = wItem(); return it ? stateOf(it)[0] : w.st === "run" ? "off" : w.st; };
+  const WST = k => ({ wait: L("Đang chờ máy", "Waiting for a machine"), inst: L("Đang cài Windows", "Installing Windows"), off: L("Máy đang khởi động / chưa báo về", "Machine starting / not reporting"),
+                      run: L("Máy đã sẵn sàng", "Ready"), warn: L("Cài lại lỗi", "Reinstall failed"), exp: L("Hết hạn", "Expired"), end: L("Đã kết thúc", "Ended") }[k] || k);
+  function wMsg() {
+    const w = PC.w || {}, it = wItem(), nm = S(O(it && it.pc).name, 40) || w.name, sl = WST(wState());
+    return LANG === "en"
+      ? `[CLOUDBLUE] GPU VPS NOT READY YET — PLEASE CHECK\n• Payment code: ${w.code || "(see Orders)"}\n• Product: ${w.label}\n• Windows: ${w.osn}\n• Account: ${w.user}\n• Purchased: ${w.at}\n` +
+        `• Status: ${sl} (${ago(Date.now() - w.t0)})` + (nm ? `\n• Machine: ${nm}` : "") + (w.order ? `\n• Order ID: ${w.order}` : "") + (w.rental ? `\n• Rental: #${w.rental}` : "")
+      : `[CLOUDBLUE] VPS GPU LÂU CHƯA LÊN — NHỜ SHOP KIỂM TRA\n• Mã thanh toán: ${w.code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${w.label}\n• Windows: ${w.osn}\n• Tài khoản: ${w.user}\n• Thời gian mua: ${w.at}\n` +
+        `• Trạng thái: ${sl} (đã chờ ${ago(Date.now() - w.t0)})` + (nm ? `\n• Máy: ${nm}` : "") + (w.order ? `\n• Mã đơn: ${w.order}` : "") + (w.rental ? `\n• Lượt thuê: #${w.rental}` : "");
+  }
+  function wPaint() {
+    const w = PC.w, ic = $i("pcsw-ic"); if (!w || !ic) return;
+    const it = wItem(), st = it ? stateOf(it) : [wState(), ""], k = st[0], pc = O(it && it.pc), waited = ago(Date.now() - w.t0);
+    const T = {
+      wait: ["⏳", L("Đang chờ máy", "Waiting for a machine"), L("Có máy là hệ thống tự giao + cài Windows — thường chỉ vài phút, không cần nhắn shop.", "A machine is assigned and set up automatically as soon as one is free — usually a few minutes.")],
+      inst: ["⚙️", L(`Đang cài ${w.osn} cho bạn`, `Installing ${w.osn}`), L("Khoảng 15–30 phút, máy tự khởi động lại vài lần là bình thường. Xong là vào được ngay.", "About 15–30 min; a few automatic restarts are normal.")],
+      off: ["🔌", L("Máy đang khởi động…", "Starting the machine…"), L("Thường 1–3 phút. Trang tự cập nhật — bạn có thể đóng hộp này.", "Usually 1–3 min. This updates by itself — you can close it.")],
+      run: ["✅", L("Máy đã sẵn sàng!", "Your machine is ready!"), L("Bấm ▶ Điều khiển để vào máy ngay trên web — hoặc mở bằng app điện thoại / app máy tính.", "Tap ▶ Control to use it in the browser — or open it in the phone / PC app.")],
+      warn: ["⚠️", L("Cài lại chưa xong", "Reinstall failed"), L("Gửi nội dung ở mục ② cho admin — shop sửa ngay.", "Send the message below to the admin.")],
+      exp: ["⛔", L("Máy đã hết hạn", "Expired"), ""], end: ["■", L("Lượt thuê đã kết thúc", "Rental ended"), ""]
+    }[k] || ["⏳", st[1] || "", st[2] || ""];
+    ic.textContent = T[0]; $i("pcsw-st").textContent = T[1];
+    $i("pcsw-sub").textContent = T[2] + (k === "run" || k === "exp" || k === "end" ? "" : " " + L("Đã chờ: ", "Waited: ") + waited + ".");
+    $i("pcsw-bar").hidden = !(k === "wait" || k === "inst" || k === "off");
+    const pid = S(pc.id || w.pc, 40), sig = k + "|" + pid;
+    if ($i("pcsw-acts").dataset.sig !== sig) {
+      $i("pcsw-acts").dataset.sig = sig;
+      $i("pcsw-acts").innerHTML = (k === "run" && pid ? `<a class="btn" href="/play.html?pc=${encodeURIComponent(pid)}">▶ ${L("Điều khiển", "Control")}</a><button class="btn ghost" type="button" data-pcsapp="${esc(pid)}">📲 App</button>` : "")
+        + `<button class="btn ghost" type="button" data-pcsvm="1">🖥️ ${L("VPS của tôi", "My VPS")}</button>`;
+    }
+    const lim = LATE[k], late = lim !== undefined && (Date.now() - w.t0) / 6e4 >= lim;
+    if (late && !w.late) { w.late = true; const d = $i("pcsw-msg"); if (d) { d.open = true; d.classList.add("late"); } $i("pcsw-late").hidden = false; }
+    const tx = $i("pcsw-txt"); if (tx) tx.textContent = wMsg();
+  }
+  function wTick() {
+    const m = $i("pcsdlg"), w = PC.w;
+    if (!w || !m || m.hidden || !$i("pcsw-st")) { clearInterval(PC.wt); PC.wt = 0; return; }
+    if (wState() !== "run" && ++w.poll % 8 === 0) mine(true).then(wPaint).catch(() => {});
+    wPaint();
+  }
+  document.addEventListener("click", e => {
+    if (!(e.target.closest && e.target.closest("[data-pcsvm]"))) return;
+    const m = $i("pcsdlg"); if (m) m.hidden = true;
+    try { openVmach(); } catch (x) { const s = $i("pcs-mine"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
   document.addEventListener("click", e => { if (e.target.closest && e.target.closest("[data-pcsgo]")) { const s = $i("pcs-mine"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } });
 
   // ---------------------------------------------------------------- "VPS GPU của bạn" (đầu trang chủ, dưới máy đám mây)
@@ -13451,7 +13650,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       const after = $i("m3-mine"); if (!after) return null;
       s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "pcs-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "pcs-mine-h");
       s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="pcs-mine-h"><span aria-hidden="true">🖥️</span> <span>${L("VPS GPU của bạn", "Your GPU VPS")}</span><small id="pcs-mine-n"></small></h2>
-        <div class="m3m-hacts"><button class="btn sm" type="button" id="pcs-mine-new">+ ${L("Thuê thêm", "Rent another")}</button></div></div>
+        <div class="m3m-hacts">${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}<button class="btn sm" type="button" id="pcs-mine-new">+ ${L("Thuê thêm", "Rent another")}</button></div></div>
         <div class="m3m-list" id="pcs-mine-list"></div></div>`;
       after.after(s);
       $i("pcs-mine-new").onclick = () => { const id = S(O(PC.info).product, 40) || S(O(PC.mine).product, 40); try { if (id && P.some(p => p.id === id)) { openBuy(id); return; } } catch (e) {} location.hash = "#shop"; };
@@ -13497,6 +13696,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       <div class="m3m-acts">${acts}</div></div>`;
   }
   function mineRender() {
+    try { navPaint(); vmPaint(); } catch (e) {}
     const s = mineBox(); if (!s) return;
     const items = A(O(PC.mine).items);
     s.hidden = !me() || !items.length; if (s.hidden) return;
@@ -13712,6 +13912,62 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     adm(true);
   };
 
+  // ---------------------------------------------------------------- "VPS của tôi" (menu bên): VPS GPU ở đầu hộp + số máy trên menu
+  const liveItems = () => me() ? A(O(PC.mine).items).filter(x => x.state === "active" || x.state === "waiting") : [];
+  function navPaint() {
+    const a = $i("nav-vps"), b = $i("vps-nav-badge"); if (!a || !b) return;
+    const n = liveItems().length;
+    a.classList.toggle("has", n > 0);
+    if (n > 0) { b.textContent = String(n); b.hidden = false; b.dataset.pcs = "1"; }
+    else if (b.dataset.pcs) { delete b.dataset.pcs; b.textContent = PC.oldSoon ? String(PC.oldSoon) : ""; b.hidden = !PC.oldSoon; }
+  }
+  function vmPaint() {
+    const m = $i("vmach"), note = $i("vm-note"), list = $i("vm-list"); if (!m || !note || !list) return;
+    let b = $i("pcs-vm");
+    if (!b) { b = document.createElement("div"); b.id = "pcs-vm"; b.className = "pcs-vm"; note.before(b); }
+    const items = liveItems(), on = !!(PC.info && PC.info.on);
+    const old = (typeof myMachines !== "undefined" && Array.isArray(myMachines) ? myMachines : []).filter(x => x.status !== "cancelled");
+    if (!me()) { b.innerHTML = ""; return; }
+    b.innerHTML = items.length
+      ? `<div class="pcs-vm-h"><b>🖥️ VPS GPU</b><span class="hint">${L("Điều khiển ngay trên web · app điện thoại · app máy tính", "Control it from the web · phone app · PC app")}</span>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}</div>
+         <div class="pcs-vm-list">${items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("")}</div>`
+      : on ? `<div class="pcs-vm-empty">🖥️ ${L("Chưa có VPS GPU — máy tính thật có card đồ hoạ, tự giao + tự cài Windows.", "No GPU VPS yet — a real PC with a GPU, delivered and set up automatically.")}
+         <button class="btn sm" type="button" data-pcsbuy="1">${L("Thuê VPS GPU", "Rent a GPU VPS")}</button>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}</div>` : "";
+    // máy VPS giao tay (kiểu cũ): có thì ghi rõ là danh sách riêng; không có mà đã có VPS GPU thì bỏ dòng "chưa có máy VPS nào"
+    const loading = !!list.querySelector(".empty") && !old.length && /Đang tải|Loading/.test(list.textContent);
+    note.hidden = !old.length && items.length > 0;
+    let oh = $i("pcs-vm-old");
+    if (old.length && items.length) { if (!oh) { oh = document.createElement("div"); oh.id = "pcs-vm-old"; oh.className = "pcs-vm-old"; note.before(oh); } oh.textContent = L("Máy VPS khác", "Other VPS machines"); }
+    else if (oh) oh.remove();
+    if (!old.length && items.length && !loading) list.innerHTML = "";
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-pcsbuy]"); if (!b) return;
+    const id = S(O(PC.info).product, 40);
+    try { if (id && P.some(p => p.id === id)) { const v = $i("vmach"); if (v) v.hidden = true; openBuy(id); return; } } catch (x) {}
+    const v = $i("vmach"); if (v) v.hidden = true; location.hash = "#shop";
+  });
+  const _ovm = window.openVmach;
+  if (typeof _ovm === "function") window.openVmach = async function () {
+    const r = await _ovm.apply(this, arguments);
+    try { vmPaint(); mine(true); info(); } catch (e) {}
+    return r;
+  };
+  const _cve = window.checkVpsExpiry;
+  if (typeof _cve === "function") window.checkVpsExpiry = async function () {      // số máy VPS giao tay sắp hết hạn (hàm cũ ghi vào ô số) → nhớ lại, ô số ưu tiên số VPS GPU
+    const b = $i("vps-nav-badge"), keep = b ? [b.textContent, b.hidden] : null;
+    if (b) b.textContent = "\u2063";
+    let r;
+    try { r = await _cve.apply(this, arguments); }
+    finally {
+      try {
+        if (b) { if (b.textContent !== "\u2063") PC.oldSoon = +(b.textContent || 0) || 0; else { b.textContent = keep[0]; b.hidden = keep[1]; } }
+        navPaint();
+      } catch (e) {}
+    }
+    return r;
+  };
+
   // ---------------------------------------------------------------- nhịp: theo trạng thái đăng nhập
   let lastUid = null;
   function tick(force) {
@@ -13725,6 +13981,97 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const _ru = window.renderUser;
   if (typeof _ru === "function") window.renderUser = function () { const r = _ru.apply(this, arguments); try { tick(false); } catch (e) {} return r; };
   setTimeout(() => tick(true), 1500);
+})();
+</script>
+<style>
+/* ===== Bảng quản trị gọn (21/11f): 5 nhóm — mỗi nhóm ghi sẵn các mục bên trong — + hàng mục con của nhóm đang mở ===== */
+.admgrp{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px;margin:2px 0 8px}
+.admgrp button{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0;padding:10px 12px 11px;border-radius:14px;
+  border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer;text-align:left;font:inherit}
+.admgrp button b{display:flex;align-items:center;gap:6px;max-width:100%;font-size:14.5px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.admgrp button small{font-size:12px;line-height:1.38;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.admgrp button:hover{border-color:var(--line2)}
+.admgrp button:focus-visible{outline:2px solid var(--sky);outline-offset:2px}
+.admgrp button.on{border-color:rgba(110,170,255,.75);background:linear-gradient(180deg,rgba(61,123,255,.30),rgba(61,123,255,.10))}
+.admgrp button.on small{color:var(--fg);opacity:.85}
+.admgrp .badge{flex:none}
+#adm-tabs.admsub{margin-top:0}
+#adm-tabs.admsub .tsep,#adm-tabs.admsub button[data-grp-off]{display:none!important}
+@media (max-width:860px){
+  .admgrp{display:flex;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .admgrp::-webkit-scrollbar{display:none}
+  .admgrp button{flex:0 0 auto;width:min(62vw,230px)}
+}
+</style>
+<script>
+/* Gộp thẻ bảng quản trị theo nhóm. Không đổi gì bên trong các thẻ: nút thẻ cũ (#adm-tabs button[data-tab]) vẫn là nút thật —
+   bấm nhóm = bấm nút thẻ cũ (mục dùng gần nhất của nhóm); hàng #adm-tabs chỉ còn các mục của nhóm đang mở. */
+(() => {
+  const tabs = document.getElementById("adm-tabs"); if (!tabs || document.getElementById("adm-grp")) return;
+  const G = [
+    { id: "home", t: "📊 Tổng quan", m: ["stats"], d: "Doanh thu · đơn · sản phẩm bán chạy" },
+    { id: "sell", t: "🛒 Bán hàng", m: ["ord", "prod", "promo"] },
+    { id: "cust", t: "👥 Khách & tiền", m: ["cust", "tx", "sec"] },
+    { id: "mach", t: "🖥️ Máy cho thuê", m: ["cloud", "vps", "pc", "biz"] },
+    { id: "set", t: "⚙️ Cài đặt", m: ["site", "bank"] }
+  ];
+  const btnOf = t => tabs.querySelector('button[data-tab="' + t + '"]');
+  const label = b => { const c = b.cloneNode(true); c.querySelectorAll(".badge").forEach(x => x.remove()); return c.textContent.replace(/^[^\p{L}\p{N}]+/u, "").trim(); };
+  // thẻ mới chưa có nhóm (bản sau thêm) → nhóm "Khác" ở cuối, không bao giờ bị mất
+  const known = new Set(G.flatMap(g => g.m)), extra = [...tabs.querySelectorAll("button[data-tab]")].map(b => b.dataset.tab).filter(t => !known.has(t));
+  if (extra.length) G.push({ id: "more", t: "➕ Khác", m: extra });
+  const grpOf = t => (G.find(g => g.m.includes(t)) || {}).id || null;
+  const bar = document.createElement("div"); bar.className = "admgrp"; bar.id = "adm-grp"; bar.setAttribute("role", "tablist"); bar.setAttribute("aria-label", "Nhóm chức năng");
+  for (const g of G) {
+    const ms = g.m.map(btnOf).filter(Boolean); if (!ms.length) continue;
+    let d = g.d;
+    if (!d) {                                                      // 1 thẻ có mục con (Cài đặt) → liệt kê mục con; nhiều thẻ → liệt kê tên thẻ
+      const sub = ms.length === 1 ? [...document.querySelectorAll("#pane-" + g.m[0] + " > .subtabs button[data-sub]")] : [];
+      d = (sub.length ? sub.map(label) : ms.map(label)).join(" · ");
+    }
+    const b = document.createElement("button"); b.type = "button"; b.dataset.grp = g.id; b.setAttribute("role", "tab");
+    b.innerHTML = `<b>${g.t} <span class="badge" hidden></span></b><small></small>`; b.querySelector("small").textContent = d; b.title = d;
+    bar.appendChild(b);
+  }
+  tabs.before(bar); tabs.classList.add("admsub");
+  const last = g => { try { return localStorage.getItem("adm_grp_" + g); } catch (e) { return null; } };
+  bar.addEventListener("click", e => {
+    const b = e.target.closest("button[data-grp]"); if (!b) return;
+    const g = G.find(x => x.id === b.dataset.grp); if (!g) return;
+    const want = [last(g.id), ...g.m].find(t => t && g.m.includes(t) && btnOf(t));
+    const tb = want && btnOf(want); if (tb && !tb.classList.contains("on")) tb.click(); else paint();
+  });
+  function paint() {
+    const on = tabs.querySelector("button[data-tab].on"), cur = on ? on.dataset.tab : null, cg = grpOf(cur);
+    if (cur && cg) { try { localStorage.setItem("adm_grp_" + cg, cur); } catch (e) {} }
+    let shown = 0;
+    tabs.querySelectorAll("button[data-tab]").forEach(b => {
+      const mine = grpOf(b.dataset.tab) === cg;
+      if (mine) { shown++; if (b.hasAttribute("data-grp-off")) b.removeAttribute("data-grp-off"); }
+      else if (!b.hasAttribute("data-grp-off")) b.setAttribute("data-grp-off", "");
+    });
+    const disp = shown > 1 ? "" : "none"; if (tabs.style.display !== disp) tabs.style.display = disp;
+    bar.querySelectorAll("button[data-grp]").forEach(b => {
+      const g = G.find(x => x.id === b.dataset.grp), isOn = g.id === cg;
+      const was = b.classList.contains("on");
+      b.classList.toggle("on", isOn); b.setAttribute("aria-selected", isOn ? "true" : "false");
+      if (isOn && !was && bar.scrollWidth > bar.clientWidth + 4) {             // màn hẹp (hàng nhóm cuộn ngang) → kéo nhóm đang mở vào giữa tầm nhìn
+        const x = b.offsetLeft - (bar.clientWidth - b.offsetWidth) / 2; try { bar.scrollTo({ left: Math.max(0, x) }); } catch (e) { bar.scrollLeft = Math.max(0, x); }
+      }
+      let n = 0, flag = false;                                     // số trên nhóm = cộng số của các thẻ trong nhóm ("!" nếu chỉ có dấu nhắc)
+      for (const t of g.m) {
+        const bd = btnOf(t) && btnOf(t).querySelector(".badge"); if (!bd || bd.hidden) continue;
+        const v = bd.textContent.trim(); if (!v) continue;
+        if (/^\d+$/.test(v)) n += +v; else flag = true;
+      }
+      const s = b.querySelector(".badge"), txt = n ? String(n) : flag ? "!" : "";
+      if (s.textContent !== txt) s.textContent = txt;
+      if (s.hidden !== !txt) s.hidden = !txt;
+    });
+  }
+  new MutationObserver(paint).observe(tabs, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class", "hidden"] });
+  window.ADMNAV = { grpOf, paint, groups: () => G.map(g => ({ id: g.id, t: g.t, m: g.m.filter(btnOf) })) };
+  paint();
 })();
 </script>
 </body>
