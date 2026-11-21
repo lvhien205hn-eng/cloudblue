@@ -121,6 +121,83 @@ r4 = s.copy_tree(src, dst4); s.copy_file(os.path.join(src, BIG), os.path.join(ds
 s.dry = False
 ck("che do chay thu: khong tao tep nao", r4 == 0 and not os.path.exists(dst4))
 
+# ---- 5. duong dan theo TEN VOLUME (Volume{GUID}) - bo cai 21.11d ghi ket qua lenh cai lai len phan vung cuu ho bang kieu duong dan nay
+#         (chu o cua phan vung cuu ho bi doi giua chung: ban <= 21.11c tinh duong dan theo chu o cu -> "No such file ... job-result.json.tmp")
+if os.name == "nt":
+    import json
+    vols = s.volumes()
+    drv = os.path.splitdrive(tmp)[0][:1].upper()
+    v5 = next((v for v in vols if drv in v.letters), None)
+    ck("tim duoc volume cua o dang chay thu + ten volume dung dang Volume{GUID}", v5 is not None and v5.path.startswith("\\\\?\\Volume{") and v5.path.endswith("}\\"), (drv, [(x.letters, x.path) for x in vols][:6]))
+    if v5 is not None:
+        rel5 = os.path.splitdrive(os.path.join(tmp, "theo-ten-volume"))[1].lstrip("\\")
+        gp = v5.path + rel5 + "\\cb\\job-result.json"
+        os.makedirs(os.path.join(tmp, "theo-ten-volume", "cb"))                  # nhu phan vung cuu ho: thu muc cb da co san
+        try:
+            s.write_text(gp, json.dumps({"id": 77, "ok": True}))
+            e1 = s.exists(gp); t1 = s.read_text(gp)
+            s.write_text(gp, json.dumps({"id": 78, "ok": False}))            # ghi de (di qua tep tam .tmp + doi ten)
+            t2 = s.read_text(gp)
+            same = open(os.path.join(tmp, "theo-ten-volume", "cb", "job-result.json"), encoding="utf-8").read()
+            s.remove(gp); e2 = s.exists(gp)
+            ck("WinSys ghi / doc / ghi de / xoa tep qua duong dan ten volume (kieu bo cai dung cho job-result.json)", e1 and json.loads(t1)["id"] == 77 and json.loads(t2)["id"] == 78 and same == t2 and not e2
+               and not os.path.exists(os.path.join(tmp, "theo-ten-volume", "cb", "job-result.json.tmp")), (e1, t1, t2, e2))
+        except Exception as e:
+            ck("WinSys ghi / doc / ghi de / xoa tep qua duong dan ten volume (kieu bo cai dung cho job-result.json)", False, repr(e))
+
+# ---- 6. bo cai trong boot.wim GOI TIEP 1 bo cai MOI HON nam tren phan vung cuu ho (cb/pe-next) - chay bang python that, dung cach goi that
+#         (nho co che nay, sua loi bo cai khong can tao lai ISO roi di cai lai tung may: agent tu cap nhat qua mang va dat ban moi len phan vung cuu ho)
+if os.name == "nt":
+    import json
+    sys.path.insert(0, os.path.join(root, "pe"))
+    try:
+        import cb_pe
+        rec6 = os.path.join(tmp, "rec6"); x6 = os.path.join(tmp, "x6"); out6 = os.path.join(tmp, "chain-out.json"); rc6 = os.path.join(tmp, "chain-rc.txt")
+        new_main = ("import json, os, sys\n"
+                    "HERE = os.path.dirname(os.path.abspath(__file__))\n"
+                    "sys.path.insert(0, os.path.abspath(os.path.join(HERE, '..', 'lib')))\n"
+                    "import cbnew\n"
+                    "json.dump({'argv': sys.argv[1:], 'here': HERE, 'lib': cbnew.MARK, 'chained': os.environ.get('CB_CHAINED'), 'base': os.environ.get('CB_CHAIN_BASE'),\n"
+                    "           'flags': [sys.flags.isolated, sys.flags.dont_write_bytecode]}, open(%r, 'w'))\n"
+                    "print('   (bo cai moi gia lap dang chay)', flush=True)\n"
+                    "sys.exit(int(open(%r).read()))\n" % (out6, rc6)).encode("utf-8")
+        files6 = {"pe/cb_pe.py": new_main, "lib/cbnew.py": b"MARK = 'thu vien cua ban moi'\n"}
+        for rel, data in files6.items(): put(os.path.join(rec6, "cb", "pe-next", *rel.split("/")), data)
+        put(os.path.join(rec6, "cb", "pe-next", "next.json"), json.dumps({"seq": cb_pe.PE_SEQ + 1, "ver": "thu-ci", "files": {r: hashlib.sha256(d).hexdigest() for r, d in files6.items()}}).encode())
+
+        class Rec6:
+            root = rec6 + "\\"
+            def p(self, rel): return self.root + rel
+
+        def chain6(code):
+            put(rc6, str(code).encode())
+            if os.path.exists(out6): os.remove(out6)
+            old_sd = os.environ.get("SystemDrive")
+            os.environ["SystemDrive"] = x6                               # o tam (trong WinPE la X:) -> thu muc thu
+            try:
+                inst = cb_pe.Installer(cbsys.WinSys(log=lambda *a: None))
+                r = inst.chain([Rec6()])
+            finally:
+                if old_sd is None: os.environ.pop("SystemDrive", None)
+                else: os.environ["SystemDrive"] = old_sd
+            return r, (json.load(open(out6)) if os.path.exists(out6) else None), inst.lines
+
+        r, o, lg = chain6(0)
+        ck("goi tiep bo cai moi: python that chay dung ban chep sang o tam (…\\cb-next\\pe\\cb_pe.py --chained), ban moi nap duoc thu vien rieng cua no", r == 0 and o is not None and o["argv"] == ["--chained"]
+           and os.path.normcase(o["here"]) == os.path.normcase(os.path.join(x6, "cb-next", "pe")) and o["lib"] == "thu vien cua ban moi", (r, o, lg[-2:]))
+        ck("goi tiep bo cai moi: dung co cach ly cua Python (-I -B) + bao cho ban moi biet ban goc so may / nam o dau", o is not None and o["flags"] == [1, 1] and o["chained"] == str(cb_pe.PE_SEQ)
+           and os.path.normcase(o["base"] or "") == os.path.normcase(os.path.abspath(root)), o)
+        r, o, lg = chain6(10)
+        ck("ban moi tra ma 10 -> bo cai goc coi la xong (tra 10)", r == 10 and o is not None, (r, lg[-2:]))
+        r, o, lg = chain6(5)
+        ck("ban moi chet giua chung (ma 5) -> bo cai goc nhan ra, tu lam tiep (tra None), co ghi nhat ky", r is None and o is not None and any("khong lam xong (ma thoat 5)" in x for x in lg), (r, lg[-2:]))
+        put(os.path.join(rec6, "cb", "pe-next", "lib", "cbnew.py"), b"MARK = 'bi sua'\n")
+        r, o, lg = chain6(0)
+        ck("1 tep cua ban moi bi sua (sai ma bam) -> KHONG chay ban moi", r is None and o is None and any("sai ma bam" in x for x in lg), (r, o, lg[-2:]))
+    except Exception as e:
+        import traceback
+        ck("goi tiep bo cai moi (cb/pe-next) chay duoc", False, traceback.format_exc()[-600:])
+
 for d, _, fs in os.walk(tmp):
     for f in fs:
         try: os.chmod(os.path.join(d, f), stat.S_IWRITE | stat.S_IREAD)
