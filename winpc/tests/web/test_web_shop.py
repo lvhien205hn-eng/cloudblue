@@ -467,19 +467,28 @@ def main():
             ck(f"{tag}: bấm 'Mua ngay' (không chọn gói) → vẫn chọn sẵn 30 ngày như cũ", s.js("() => [...document.querySelectorAll('#m-plans button.on')].map(b => b.dataset.d)") == ["30"])
             ck(f"5g {tag}: không lỗi JS", not s.errors, s.errors)
             s.close()
-        one = [dict(PRODUCTS[0], plans=[{"days": 30, "price": 1500000}], price=1500000, stock=0), PRODUCTS[1]]
-        ctx = br.new_context(viewport={"width": 1360, "height": 900}, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh")
-        ctx.add_init_script("window.__FAKE_INIT = %s; window.__SHOP = %s; %s try { localStorage.setItem('br_lang', 'vi'); localStorage.setItem('br_lite', '1'); } catch (e) {}"
-                            % (json.dumps({"admin": False, "db": {"product_list": one, "products": one}}), json.dumps(dict(shop, bought=[])), HOOK))
-        pg2 = ctx.new_page()
-        pg2.route("**/*", lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=html) if r.request.url in (ORIGIN + "/admin", ORIGIN + "/")
-                  else r.fulfill(status=200, content_type="application/javascript", body=read(os.path.join(HERE, "fake_supabase.js"))) if "supabase-js" in r.request.url
-                  else r.fulfill(status=204, body=""))
-        pg2.goto(ORIGIN + "/", wait_until="load"); pg2.wait_for_timeout(2600)
-        o1 = pg2.evaluate("""id => { const bs = [...document.querySelectorAll('#grid .m3-plan[data-buy="' + id + '"]')];
-                 return { n: bs.length, best: bs.filter(b => b.classList.contains('best')).length, dis: bs.every(b => b.disabled), t: bs.map(b => b.innerText.replace(/\\s+/g, ' ')) }; }""", PROD)
-        ck("chỉ 1 gói: không gắn nhãn 'Rẻ nhất'; hết hàng → ô gói bấm không được", o1["n"] == 1 and o1["best"] == 0 and o1["dis"] and "50.000đ/ngày" in o1["t"][0], o1)
-        ctx.close()
+        def grid_plans(prods):
+            ctx = br.new_context(viewport={"width": 1360, "height": 900}, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh")
+            ctx.add_init_script("window.__FAKE_INIT = %s; window.__SHOP = %s; %s try { localStorage.setItem('br_lang', 'vi'); localStorage.setItem('br_lite', '1'); } catch (e) {}"
+                                % (json.dumps({"admin": False, "db": {"product_list": prods, "products": prods}}), json.dumps(dict(shop, bought=[])), HOOK))
+            pg2 = ctx.new_page()
+            pg2.route("**/*", lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=html) if r.request.url in (ORIGIN + "/admin", ORIGIN + "/")
+                      else r.fulfill(status=200, content_type="application/javascript", body=read(os.path.join(HERE, "fake_supabase.js"))) if "supabase-js" in r.request.url
+                      else r.fulfill(status=204, body=""))
+            pg2.goto(ORIGIN + "/", wait_until="load"); pg2.wait_for_timeout(2600)
+            o = pg2.evaluate("""id => { const bs = [...document.querySelectorAll('#grid .m3-plan[data-buy="' + id + '"]')];
+                     return { n: bs.length, best: bs.map(b => b.classList.contains('best')), dis: bs.every(b => b.disabled), t: bs.map(b => b.innerText.replace(/\\s+/g, ' ')) }; }""", PROD)
+            pg2.evaluate("id => openBuy(id)", PROD); pg2.wait_for_timeout(400)
+            o["dlg"] = pg2.evaluate("() => [...document.querySelectorAll('#m-plans button')].map(b => [b.dataset.d, b.classList.contains('best')])")
+            ctx.close()
+            return o
+        o1 = grid_plans([dict(PRODUCTS[0], plans=[{"days": 30, "price": 1500000}], price=1500000, stock=0), PRODUCTS[1]])
+        ck("chỉ 1 gói: không gắn nhãn 'Rẻ nhất'; hết hàng → ô gói bấm không được", o1["n"] == 1 and o1["best"] == [False] and o1["dis"] and "50.000đ/ngày" in o1["t"][0], o1)
+        o2 = grid_plans([dict(PRODUCTS[0], plans=[{"days": 7, "price": 350000}, {"days": 15, "price": 700000}, {"days": 30, "price": 1400000}], price=350000), PRODUCTS[1]])
+        ck("2 gói cùng rẻ nhất / ngày (15 + 30 ngày đều 46.667đ) → gắn 'Rẻ nhất' cả 2, ở thẻ lẫn trong hộp mua",
+           o2["best"] == [False, True, True] and all("46.667đ/ngày" in x and "−7%" in x for x in o2["t"][1:]) and o2["dlg"] == [["7", False], ["15", True], ["30", True]], o2)
+        o3 = grid_plans([dict(PRODUCTS[0], plans=[{"days": 7, "price": 70000}, {"days": 14, "price": 140000}], price=70000), PRODUCTS[1]])
+        ck("mọi gói cùng giá / ngày → không gắn nhãn nào", o3["best"] == [False, False] and o3["dlg"] == [["7", False], ["14", False]], o3)
 
         print("5c. Căn lề trang quản trị: mọi khối cùng mép trái / phải ở màn rộng 2296px, laptop 1366px, điện thoại 390px")
         for vw, vh in ((2296, 985), (1366, 768), (390, 844)):

@@ -226,10 +226,11 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     let p = null; try { p = selP(); } catch (e) {} if (!p) return;
     const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
     const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
-    const low = pl.length > 1 ? Math.min(...pl.map(x => cv(+x.price) / Math.max(1, +x.days))) : -1;       // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất"
+    const r2 = v => Math.round(v * 100) / 100, per = x => cv(+x.price) / Math.max(1, +x.days);
+    const low = Math.min(...pl.map(x => r2(per(x)))), many = pl.some(x => r2(per(x)) !== low);   // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất" (bằng nhau thì gắn cả; mọi gói như nhau thì không gắn)
     $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
       const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
-      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = pd === low;
+      const pd = per(x), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = many && r2(pd) === low;
       b.classList.toggle("best", best);
       b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${best || save >= 1 ? `<i class="sv">${best ? L("Rẻ nhất", "Best") + (save >= 1 ? " −" + save + "%" : "") : "−" + save + "%"}</i>` : ""}`);
     });
