@@ -96,7 +96,9 @@ MINE["items"] = [
      "pc": PCX(2, "VPS-GPU-02", job={"state": "sent", "os": "1511", "at": AGO(7)})},
     {"rental": 9, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 30, "until": FUT, "left": 0, "used": 2, "created_at": AGO(300),
      "pc": PCX(3, "VPS-GPU-03", last_job={"state": "failed", "at": AGO(20), "msg": "Không tải được bộ cài Windows (mạng chập chờn)"})},
-    {"rental": 10, "state": "waiting", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": None, "left": 2, "used": 0, "created_at": AGO(36), "pc": None}]
+    {"rental": 10, "state": "waiting", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": None, "left": 2, "used": 0, "created_at": AGO(36), "pc": None},
+    {"rental": 11, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": AGO(10), "grace_until": AGO(-20), "left": 2, "used": 0, "created_at": AGO(9000),
+     "pc": PCX(4, "VPS-GPU-04", lock=True)}]
 dlg.close(); pump(0.5)
 dlg = B.VpsBuyDlg(app); pump(4)
 grab("pc-6-vps-states.png")
