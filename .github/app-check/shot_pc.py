@@ -86,8 +86,33 @@ scroll(0.42); grab("pc-3-vps-mid.png")
 scroll(1.0); grab("pc-4-vps-bottom.png")
 dlg.os = "1511"; dlg.days = 15; dlg.upd(); pump(1)
 scroll(0.42); grab("pc-5-vps-pick.png")
+
+# 21/11f · các trạng thái có thanh tiến độ đếm giờ: đang cài Windows · cài lại lỗi (📋 Báo admin) · chờ máy quá lâu (📋 Báo admin)
+AGO = lambda m: time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() - m * 60))
+PCX = lambda i, nm, **k: dict({"id": "00000000-0000-4000-8000-0000000000c" + str(i), "name": nm, "code": "A" + str(i), "os": "22h2", "online": True, "remote": True,
+                              "off": False, "job": None, "last_job": None, "ram_gb": 128, "gpus": ["NVIDIA GeForce GTX 1080"]}, **k)
+MINE["items"] = [
+    {"rental": 8, "state": "active", "os": "1511", "os_name": "Windows 10 Pro 1511", "days": 15, "until": FUT, "left": 1, "used": 1, "created_at": AGO(60),
+     "pc": PCX(2, "VPS-GPU-02", job={"state": "sent", "os": "1511", "at": AGO(7)})},
+    {"rental": 9, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 30, "until": FUT, "left": 0, "used": 2, "created_at": AGO(300),
+     "pc": PCX(3, "VPS-GPU-03", last_job={"state": "failed", "at": AGO(20), "msg": "Không tải được bộ cài Windows (mạng chập chờn)"})},
+    {"rental": 10, "state": "waiting", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": None, "left": 2, "used": 0, "created_at": AGO(36), "pc": None}]
+dlg.close(); pump(0.5)
+dlg = B.VpsBuyDlg(app); pump(4)
+grab("pc-6-vps-states.png")
+scroll(0.22); grab("pc-7-vps-states-2.png")
+rep = B.VpsReportDlg(app, MINE["items"][1]); pump(2)
+grab("pc-8-report.png")
+rep.close(); dlg.close(); pump(0.5)
+
+# 21/11f · admin bật bảo trì riêng VPS GPU → dòng vàng, khoá Điều khiển / Cài lại / Mua ngay (khách thường)
+B.SITE["d"] = {"pc_maint": True, "pc_maint_msg": "Nâng cấp máy chủ, khoảng 30 phút" if LANG == "vi" else "Server upgrade, about 30 minutes"}
+MINE["items"] = MINE["items"][:1] + [dict(MINE["items"][1], pc=PCX(3, "VPS-GPU-03"))]
+dlg = B.VpsBuyDlg(app); pump(4)
+grab("pc-9-vps-maint.png")
+scroll(1.0); grab("pc-10-vps-maint-bottom.png")
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 5 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+ok = len(mine) == 10 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
