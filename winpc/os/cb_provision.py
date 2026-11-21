@@ -18,6 +18,7 @@
 #  21.11i · shop BẬT "Cho khách quyền Admin" (cb.json "user_admin": true — agent ghi theo máy chủ, cả lên phân vùng cứu hộ để CÀI LẠI cũng mang theo):
 #     tài khoản khách GIỮ quyền Admin ngay từ lần đăng nhập đầu như máy cài thường (không hạ, không phải khởi động lại thêm); xong lần đăng nhập đầu
 #     mới chặn riêng tài khoản khách sửa / xoá phần mềm shop (guard). cb.json chưa có công tắc (cài từ USB) → lần đăng nhập đầu chờ agent hỏi máy chủ.
+#  21.11j · thư mục C:\CloudBluePC được ẨN (thuộc tính Ẩn + Hệ thống) cho khách khỏi để ý; ngoài thư mục đó + phân vùng cứu hộ, khách Admin toàn quyền.
 #  Mọi lệnh lỗi đều được ghi nhật ký và BỎ QUA — không bao giờ làm hỏng bước cài Windows.
 #  Nhật ký: C:\CloudBluePC\logs\provision.log (phần chạy bằng tài khoản thường: %LOCALAPPDATA%\CloudBluePC\provision.log)
 # =====================================================================================================
@@ -25,7 +26,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11i"
+PROV_VER = "21.11j"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -656,8 +657,16 @@ class Prov:
             bad2 = sum(1 for argv in vol(root) if self._run(argv, 900)[0] != 0)
             self.log("%s khoa quyen phan vung cuu ho%s" % ("ok " if not bad2 else "LOI", "" if not bad2 else " (%d lenh bao loi)" % bad2))
             bad += bad2
+        self.hide()
         self.touch("lock.done")
         return not bad
+
+    def hide(self):
+        """21.11j · ẨN thư mục phần mềm CloudBlue cho khách khỏi để ý: thuộc tính Ẩn + Hệ thống trên thư mục gốc (C:\\CloudBluePC) — Explorer không hiện
+           kể cả khi bật "Hiện mục ẩn" (phải bỏ "Ẩn tệp hệ điều hành được bảo vệ" mới thấy). Không đụng quyền / nội dung; agent, lệnh cbpc.cmd chạy như cũ."""
+        rc, _ = self._run(["attrib", "+h", "+s", self.base], 60)
+        self.log("%s an thu muc %s (thuoc tinh An + He thong)" % ("ok " if rc == 0 else "LOI", self.base))
+        return rc == 0
 
     def names(self):
         """Tên (theo ngôn ngữ của Windows đang chạy) của nhóm Administrators, nhóm Users và tài khoản Administrator có sẵn. Không hỏi được → tên tiếng Anh."""
