@@ -17,7 +17,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "21.11f"
+REMOTE_VER = "21.11g"
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
@@ -35,7 +35,9 @@ FF_ZIP_SHA = "742e32fc9f92681f9f254b925e1b613fdd8074ba40749d4879aefdb009b94cc5"
 FF_EXE_SHA = "04e1307997530f9cf2fe35cba2ca7e8875ca91da02f89d6c7243df819c94ad00"       # bin/ffmpeg.exe bên trong file zip
 
 # ---- chất lượng ----
-PRESETS = {"eco": (1280, 30, 2000), "bal": (1920, 30, 4500), "hd": (1920, 60, 9000)}    # cạnh dài tối đa, khung/giây, kbps ("auto" = bal + tự hạ / tăng)
+PRESETS = {"eco": (1280, 30, 2000), "bal": (1920, 30, 4500), "hd": (1920, 60, 9000), "uhd": (2560, 60, 16000)}  # cạnh dài tối đa, khung/giây, kbps ("auto" = bal + tự hạ / tăng)
+QS = ("auto", "eco", "bal", "hd", "uhd")   # Tự động · Tiết kiệm · Cân bằng · Nét · Siêu nét (21.11g)
+FIX_TIERS = ((900, 1280, 30),)            # khách TỰ CHỌN độ nét: giữ độ phân giải, chỉ bớt khi mạng rất yếu
 TIERS = ((500, 960, 15), (900, 1280, 20), (1600, 1280, 30), (2600, 1600, 30))           # bitrate dưới mức này → cạnh dài tối đa, khung/giây tối đa
 MIN_KBPS, MAX_KBPS = 300, 20000
 CPU_SIDE, CPU_FPS = 1600, 30              # nén bằng CPU (không có card nén): nhẹ hơn để không giành CPU của người đang dùng máy
@@ -61,15 +63,20 @@ def fit(sw, sh, side):
     return max(16, sw & ~1), max(16, sh & ~1)
 
 
-def plan(q, fps_req, maxh_req, kbps_req, kbps_cur, sw, sh, cpu=False):
-    """Chọn cỡ hình + khung/giây + bitrate cho phiên → (rộng, cao, khung/giây, kbps, trần kbps)."""
+def plan(q, fps_req, maxh_req, kbps_req, kbps_cur, sw, sh, cpu=False, fps_fix=0):
+    """Chọn cỡ hình + khung/giây + bitrate cho phiên → (rộng, cao, khung/giây, kbps, trần kbps).
+       fps_req = máy người xem chỉ chịu tới mức này (chỉ HẠ) · fps_fix = khung/giây KHÁCH TỰ CHỌN (21.11g, 5–120, kể cả cao hơn mặc định của mức nét).
+       Tự động: bitrate tụt → bớt điểm ảnh + khung (TIERS) cho hình không vỡ ô.
+       Khách tự chọn độ nét (eco / bal / hd / uhd): GIỮ độ phân giải — chỉ bớt khi mạng rất yếu (< 900 kbps)."""
+    fix = q in PRESETS
     side, fps, cap = PRESETS.get(q, PRESETS["bal"])
     if kbps_req: cap = clamp(kbps_req, MIN_KBPS, MAX_KBPS, cap)
+    if fps_fix: fps = max(5, min(120, clamp(fps_fix, 1, 240, fps)))
     if fps_req: fps = max(5, min(fps, clamp(fps_req, 1, 240, fps)))
     if maxh_req and int(maxh_req) >= 320: side = min(side, int(maxh_req))
-    if cpu: side = min(side, CPU_SIDE); fps = min(fps, CPU_FPS)
+    if cpu: side = min(side, 1920 if fix else CPU_SIDE); fps = min(fps, 60 if fix or fps_fix else CPU_FPS)
     k = clamp(kbps_cur or cap, MIN_KBPS, cap, cap)
-    for lim, s, f in TIERS:
+    for lim, s, f in (FIX_TIERS if fix else TIERS):
         if k < lim: side = min(side, s); fps = min(fps, f); break
     w, h = fit(sw, sh, side)
     return w, h, fps, k, cap
@@ -611,8 +618,9 @@ class Session:
         self.r, self.conn, self.req = remote, conn, req
         self.log = remote.log; self.io = remote.io
         self.sid = clamp(req.get("sid"), 0, 2 ** 31 - 1)
-        self.q = req.get("q") if req.get("q") in ("eco", "bal", "hd", "auto") else "auto"
+        self.q = req.get("q") if req.get("q") in QS else "auto"
         self.fps_req = clamp(req.get("fps"), 0, 240); self.maxh_req = clamp(req.get("maxh"), 0, 16384); self.kbps_req = clamp(req.get("kbps"), 0, MAX_KBPS)
+        self.fps_fix = clamp(req.get("fpsx"), 0, 120)                      # 21.11g: khung/giây khách tự chọn
         self.link = str(req.get("link") or "direct"); self.net = str(req.get("net") or "")[:2]
         self.lag_lim = LAG_DROP_MS.get(self.link, 350) + (150 if self.net == "c" else 0)
         cap = self.kbps_req or PRESETS.get(self.q, PRESETS["bal"])[2]
@@ -642,7 +650,7 @@ class Session:
             self.gen += 1; gen = self.gen; self.sq.clear(); self.wait_key = True
             cap, enc = self._pick()
             self.sw, self.sh = self.io.screen()
-            w, h, fps, kbps, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=(enc == "x264"))
+            w, h, fps, kbps, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=(enc == "x264"), fps_fix=self.fps_fix)
             self.vw, self.vh, self.fps = w, h, fps
             e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, lambda d, k, c, pts, g=gen: self._on_au(g, d, k, c, pts), self.log)
             e.start(); self.enc = e; self.t_restart = time.time()
@@ -691,8 +699,10 @@ class Session:
             try: j = json.loads(p.decode("utf-8") or "{}")
             except Exception: return
             if not isinstance(j, dict): return
-            if j.get("q") in ("eco", "bal", "hd", "auto"): self.q = j["q"]
+            if j.get("q") in QS: self.q = j["q"]
             if "fps" in j: self.fps_req = clamp(j.get("fps"), 0, 240)
+            if "maxh" in j: self.maxh_req = clamp(j.get("maxh"), 0, 16384)
+            if "fpsx" in j: self.fps_fix = clamp(j.get("fpsx"), 0, 120)
             self.kbps_req = clamp(j.get("kbps"), 0, MAX_KBPS)
             cap = self.kbps_req or PRESETS.get(self.q, PRESETS["bal"])[2]
             self.rate = Rate(cap, kbps_start(cap, self.q, self.net, self.link)); self.restart_why = "quality"

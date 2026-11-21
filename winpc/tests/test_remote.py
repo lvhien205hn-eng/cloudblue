@@ -34,10 +34,21 @@ def wait(fn, timeout=8.0, step=0.05):
 print("1. Chọn cỡ hình / khung giây / bitrate")
 ck("fit: không phóng to, giữ tỉ lệ, cạnh chẵn", R.fit(1920, 1080, 1280) == (1280, 720) and R.fit(1366, 768, 1920) == (1366, 768) and R.fit(1080, 1920, 960) == (540, 960)
    and R.fit(1365, 767, 0) == (1364, 766) and R.fit(3440, 1440, 1600) == (1600, 670), (R.fit(1365, 767, 0), R.fit(3440, 1440, 1600)))
-ck("Tự động / Cân bằng: màn 1080p giữ nguyên 1080p, 30 khung, 4500 kbps", R.plan("auto", 0, 0, 0, 0, 1920, 1080) == (1920, 1080, 30, 4500, 4500) and R.plan("bal", 60, 0, 0, 0, 1920, 1080)[:3] == (1920, 1080, 30))
-ck("Tiết kiệm: cạnh dài 1280 · Siêu nét: 60 khung, 9000 kbps", R.plan("eco", 0, 0, 0, 0, 1920, 1080) == (1280, 720, 30, 2000, 2000) and R.plan("hd", 0, 0, 0, 0, 2560, 1440) == (1920, 1080, 60, 9000, 9000))
+ck("Tự động / Cân bằng: màn 1080p giữ nguyên 1080p, 30 khung, 4500 kbps", R.plan("auto", 0, 0, 0, 0, 1920, 1080) == (1920, 1080, 30, 4500, 4500) and R.plan("bal", 0, 0, 0, 0, 1920, 1080)[:3] == (1920, 1080, 30)
+   and R.plan("auto", 60, 0, 0, 0, 1920, 1080)[:3] == (1920, 1080, 30))
+ck("Tiết kiệm: cạnh dài 1280 · Nét: 60 khung, 9000 kbps", R.plan("eco", 0, 0, 0, 0, 1920, 1080) == (1280, 720, 30, 2000, 2000) and R.plan("hd", 0, 0, 0, 0, 2560, 1440) == (1920, 1080, 60, 9000, 9000))
 ck("app xin ít khung / hình nhỏ hơn (điện thoại) → theo app", R.plan("hd", 30, 1280, 0, 0, 1920, 1080)[:3] == (1280, 720, 30) and R.plan("auto", 15, 0, 0, 0, 1920, 1080)[2] == 15)
-ck("nén bằng CPU: tối đa cạnh 1600, 30 khung", R.plan("hd", 0, 0, 0, 0, 1920, 1080, cpu=True)[:3] == (1600, 900, 30))
+ck("nén bằng CPU, Tự động: tối đa cạnh 1600, 30 khung · khách tự chọn: tối đa 1920, 60 khung", R.plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True)[:3] == (1600, 900, 30)
+   and R.plan("hd", 0, 0, 0, 0, 1920, 1080, cpu=True)[:3] == (1920, 1080, 60) and R.plan("uhd", 120, 0, 0, 0, 2560, 1440, cpu=True)[:3] == (1920, 1080, 60))
+ck("21.11g Siêu nét: màn 2K giữ nguyên 2560×1440, 60 khung, 16000 kbps · màn 1080p giữ 1080p", R.plan("uhd", 0, 0, 0, 0, 2560, 1440) == (2560, 1440, 60, 16000, 16000)
+   and R.plan("uhd", 0, 0, 0, 0, 1920, 1080) == (1920, 1080, 60, 16000, 16000) and "uhd" in R.QS)
+ck("app báo máy chỉ chịu 60 khung (fps) với Cân bằng → vẫn 30 khung như cũ (fps chỉ để HẠ)", R.plan("bal", 60, 0, 0, 0, 1920, 1080)[:3] == (1920, 1080, 30))
+ck("21.11g khách tự chọn khung/giây (fpsx): đúng như chọn (5–120), kể cả cao hơn mặc định của mức nét; máy người xem chịu ít hơn thì theo máy",
+   R.plan("bal", 0, 0, 0, 0, 1920, 1080, fps_fix=60)[2] == 60 and R.plan("hd", 0, 0, 0, 0, 1920, 1080, fps_fix=30)[2] == 30 and R.plan("uhd", 0, 0, 0, 0, 1920, 1080, fps_fix=120)[2] == 120
+   and R.plan("hd", 0, 0, 0, 0, 1920, 1080, fps_fix=500)[2] == 120 and R.plan("eco", 0, 0, 0, 0, 1920, 1080, fps_fix=2)[2] == 5 and R.plan("hd", 30, 0, 0, 0, 1920, 1080, fps_fix=60)[2] == 30
+   and R.plan("auto", 0, 0, 0, 0, 1920, 1080, fps_fix=60)[2] == 60 and R.plan("auto", 0, 0, 0, 2000, 1920, 1080, fps_fix=60)[2] == 30)
+ck("21.11g tự chọn độ nét: mạng tụt vẫn GIỮ độ phân giải (không mờ), dưới 900 kbps mới bớt", R.plan("hd", 0, 0, 0, 2000, 1920, 1080)[:2] == (1920, 1080)
+   and R.plan("bal", 0, 0, 0, 1200, 1920, 1080, fps_fix=60)[:3] == (1920, 1080, 60) and R.plan("uhd", 0, 0, 0, 800, 2560, 1440)[:3] == (1280, 720, 30))
 ck("bitrate bị kéo xuống → bớt điểm ảnh + khung (hình không vỡ ô)", R.plan("auto", 0, 0, 0, 800, 1920, 1080)[:4] == (1280, 720, 20, 800) and R.plan("auto", 0, 0, 0, 400, 1920, 1080)[:4] == (960, 540, 15, 400)
    and R.plan("auto", 0, 0, 0, 2000, 1920, 1080)[:4] == (1600, 900, 30, 2000) and R.plan("auto", 0, 0, 0, 50, 1920, 1080)[3] == R.MIN_KBPS, R.plan("auto", 0, 0, 0, 800, 1920, 1080))
 ck("app tự đặt bitrate: làm trần (trong khoảng 300–20000)", R.plan("auto", 0, 0, 12000, 0, 1920, 1080)[3:] == (12000, 12000) and R.plan("auto", 0, 0, 10 ** 9, 0, 1920, 1080)[4] == 20000 and R.plan("auto", 0, 0, 10, 0, 1920, 1080)[4] == 300)
@@ -337,7 +348,7 @@ else:
 
     pr.send(R.C_QUALITY, b'{"q":"bal","fps":20}')
     m = pr.take(R.P_INFO, 8); info = json.loads(m[1]) if m else {}
-    ck("người xem đổi chất lượng → bật lại bộ nén, báo P_INFO mới (cỡ hình + khung/giây mới, cùng số phiên)", info.get("sid") == 7 and (info.get("w"), info.get("h"), info.get("fps"), info.get("q")) == (1600, 900, 20, "bal"), info)
+    ck("người xem đổi chất lượng → bật lại bộ nén, báo P_INFO mới (cỡ hình + khung/giây mới, cùng số phiên)", info.get("sid") == 7 and (info.get("w"), info.get("h"), info.get("fps"), info.get("q")) == (1920, 1080, 20, "bal"), info)
     with pr.lock: pr.rx[:] = [m for m in pr.rx if m[0] != R.S_VIDEO]
     v = pr.take(R.S_VIDEO, 10)
     ck("sau khi bật lại: khung đầu lại là khung khoá", v is not None and v[1][0] & 1 == 1, v and v[1][:10])
@@ -348,6 +359,13 @@ else:
     io_.w, io_.h = 1280, 1024
     m = pr.take(R.P_INFO, 8); info = json.loads(m[1]) if m else {}
     ck("màn hình máy đổi độ phân giải → phát lại đúng cỡ mới", info.get("h") is not None and (info["w"] / info["h"]) == 1.25, info)
+    pr.send(R.C_QUALITY, b'{"q":"uhd","fps":0,"fpsx":45,"maxh":960}')
+    info, end = {}, time.time() + 8
+    while time.time() < end and info.get("q") != "uhd":
+        m = pr.take(R.P_INFO, max(0.2, end - time.time())); info = json.loads(m[1]) if m else info
+        if not m: break
+    ck("21.11g khách chọn Siêu nét + 45 khung (fpsx) + cạnh tối đa 960 → bật lại đúng (uhd, 45 khung, cạnh dài 960)",
+       (info.get("q"), info.get("fps"), max(info.get("w") or 0, info.get("h") or 0)) == ("uhd", 45, 960), info)
 
     io_.ev.clear(); sess = rm.sess; enc = sess.enc
     pr.send(R.C_KEY, struct.pack(">BII", 0, 62, 0)); pr.send(R.C_MOUSE, struct.pack(">BBHH", 1, 2, 9, 9)); time.sleep(0.4)
