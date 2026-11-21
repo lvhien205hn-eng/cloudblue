@@ -90,6 +90,8 @@
     const run = () => {
       F.calls.push({ kind: "rpc", name, args: clone(args || {}) });
       if (F.failRpc[name]) return raise(F.failRpc[name]);
+      const hk = (window.__FAKE_HOOK || {})[name];                    // bộ thử tự trả lời hàm này (phần bán VPS GPU — v43)
+      if (typeof hk === "function") { try { const r = hk(clone(args || {}), F); return r && ("data" in r || "error" in r) ? r : { data: r === undefined ? null : r, error: null }; } catch (e) { return raise(String(e && e.message || e)); } }
       if (isPc(name)) { if (!F.v41) return noFn(name); if (INIT.admin === false) return raise("NOT_ADMIN"); if (RPC[name]) return RPC[name](args || {}); }
       return { data: null, error: null };
     };

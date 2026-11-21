@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11d):
+#  Việc làm (bản 21.11e):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -15,6 +15,8 @@
 #    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
 #    · ĐIỀU KHIỂN TỪ XA (đợt 2, SQL v43): giữ chương trình pcremote.py chạy trong phiên màn hình của máy (tự mở lại khi nó thoát / người dùng
 #      đăng xuất). pcremote tự nối RA máy chủ phát hình và chỉ quay màn hình khi có khách của máy / admin mở điều khiển. Tắt: cb.json "remote": false
+#    · (21.11e) đặt BỘ CÀI bản mới nhất lên phân vùng cứu hộ (\cb\pe-next): bộ cài cũ nằm cố định trong ảnh khởi động gọi tiếp bản này
+#      → sửa bộ cài không cần tạo lại ISO / cài lại máy bằng USB
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -32,7 +34,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11d"
+AGENT_VER = "21.11e"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -49,6 +51,8 @@ CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy c
 NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
 REMOTE_MUTEX = "Global\\CloudBluePCRemote" # khoá do pcremote.py giữ khi đang chạy
 REMOTE_RETRY_S = 60                      # pcremote chưa chạy: mở lại, tối đa 1 lần / phút
+PE_NEXT_FILES = ("pe/cb_pe.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")   # bộ cài WinPE (cb_pe.py) chỉ cần đúng 4 file này
+PE_NEXT_DIR = "cb\\pe-next\\"                # trên phân vùng cứu hộ — bộ cài 21.11d trở lên đọc next.json ở đây (cb_pe.NEXT_DIR)
 
 
 # ====================================================================================== đọc phần cứng (không cần WMI)
@@ -842,6 +846,7 @@ class Agent:
                 rec = cbrec.find_recovery(self.s)
                 if rec:
                     for rel, data in got.items(): self.s.write_bytes(rec.root + "cb\\" + rel.replace("/", "\\"), data)
+                    self.pe_next(rec, got)
             except Exception as e:
                 self.log("chưa cập nhật được phân vùng cứu hộ: %s" % e)
             self.s.write_text(self.p("update\\applied.txt"), ver)
@@ -853,6 +858,57 @@ class Agent:
             return None
 
     restart = False
+    pe_synced = False
+
+    def pe_next(self, rec, got=None):
+        """Đặt BỘ CÀI bản này lên phân vùng cứu hộ (\\cb\\pe-next\\: 4 file + next.json ghi SAU CÙNG) cho lần cài lại / đổi Windows sau.
+           Bộ cài nằm cố định trong ảnh khởi động (boot.wim) chỉ chạy bản đặt ở đây khi số thứ tự (PE_SEQ) LỚN HƠN của nó và đúng mã băm
+           từng file → sửa bộ cài không cần tạo lại ISO. Bản không có PE_SEQ (cũ hơn 21.11d) → gỡ bản đặt trước để dùng bộ cài của boot.wim.
+           got = file vừa tải (ưu tiên); thiếu thì lấy file agent đang dùng rồi tới file trên phân vùng cứu hộ. Trả số thứ tự đã đặt / None."""
+        base = rec.root + PE_NEXT_DIR
+        src = {}
+        for rel in PE_NEXT_FILES:
+            data = (got or {}).get(rel)
+            for path in ([] if data else [self.p(rel.replace("/", "\\")), rec.root + "cb\\" + rel.replace("/", "\\")]):
+                try: data = self.s.read_bytes(path)
+                except Exception: data = None
+                if data: break
+            if not data or len(data) > (2 << 20):
+                self.log("chưa đặt được bộ cài mới lên phân vùng cứu hộ: thiếu %s" % rel); return None
+            src[rel] = data
+        m = re.search(rb"(?m)^PE_SEQ\s*=\s*(\d{1,6})\b", src["pe/cb_pe.py"])
+        if not m:
+            try:
+                if self.s.exists(base + "next.json"): self.s.remove(base + "next.json"); self.log("bộ cài bản này chưa có số thứ tự → gỡ bộ cài đặt trước trên phân vùng cứu hộ")
+            except Exception: pass
+            return None
+        seq = int(m.group(1))
+        mv = re.search(rb'(?m)^PE_VER\s*=\s*"([A-Za-z0-9._-]{1,16})"', src["pe/cb_pe.py"])
+        meta = {"seq": seq, "ver": mv.group(1).decode() if mv else str(seq), "files": {rel: hashlib.sha256(d).hexdigest() for rel, d in src.items()}}
+        try:
+            old = C.load_json(self.s, base + "next.json")
+            if isinstance(old, dict) and old.get("seq") == seq and old.get("files") == meta["files"] \
+               and all(hashlib.sha256(self.s.read_bytes(base + rel.replace("/", "\\"))).hexdigest() == h for rel, h in meta["files"].items()):
+                return seq                                          # đã đặt đúng bản này rồi
+        except Exception: pass
+        try:
+            if self.s.exists(base + "next.json"): self.s.remove(base + "next.json")      # gỡ trước: đang ghi dở thì bộ cài không thấy bản nào (dùng bản của boot.wim)
+        except Exception: pass
+        for rel, data in src.items(): self.s.write_bytes(base + rel.replace("/", "\\"), data)
+        self.s.write_text(base + "next.json", json.dumps(meta, ensure_ascii=True, sort_keys=True))
+        self.log("đã đặt bộ cài bản %s (số %d) lên phân vùng cứu hộ — lần cài lại / đổi Windows sau dùng bản này" % (meta["ver"], seq))
+        return seq
+
+    def pe_sync(self):
+        """1 lần mỗi lần agent chạy: bộ cài trên phân vùng cứu hộ khớp bản agent đang dùng (bản cập nhật đầu lên 21.11e do agent CŨ chép file,
+           agent cũ chưa biết đặt pe-next → agent mới làm bù; lúc cập nhật mà chưa ghi được phân vùng cứu hộ cũng được làm lại)."""
+        if self.pe_synced: return
+        self.pe_synced = True
+        try:
+            rec = cbrec.find_recovery(self.s)
+            if rec: self.pe_next(rec)
+        except Exception as e:
+            self.log("chưa đặt được bộ cài mới lên phân vùng cứu hộ: %r" % (e,))
 
     # ------------------------------------------------------------------ 1 nhịp
     def poll(self, send_info=True):
@@ -929,6 +985,7 @@ class Agent:
         if not r.get("ok"): return 5
         try: self.label_sync()
         except Exception as e: self.log("lỗi phần tên máy: %r" % (e,))
+        self.pe_sync()
         if r.get("order"):
             try: self.handle(r["order"])
             except Exception:

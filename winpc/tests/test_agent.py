@@ -835,5 +835,80 @@ ck("… nhịp kế agent báo tên mới → web đổi thành May-09 (đúng t
 age2.label = "Ten Moi"; age2.label_at = None; nete.down = True; age2.label_sync()
 ck("mất mạng lúc báo tên → không lỗi, giữ lại để thử sau", age2.label == "Ten Moi" and age2.label_tries >= 1)
 
+print("21. Agent đặt BỘ CÀI bản mới nhất lên phân vùng cứu hộ (cb\\pe-next) → bộ cài cũ trong boot.wim gọi tiếp bản đó: sửa bộ cài không cần tạo lại ISO (21.11e)")
+import types as _ty
+def rbytes(rec, rel):
+    v = rec.vol.files.get(rel)
+    return v.encode() if isinstance(v, str) else v
+def nxt(rec):
+    v = rec.vol.files.get("cb\\pe-next\\next.json")
+    return json.loads(v) if v else None
+def sha(b): return hashlib.sha256(b).hexdigest()
+def chain_sees(fs):
+    """Bộ cài THẬT (cb_pe.py, PE_SEQ hiện tại) đọc phân vùng cứu hộ như lúc chạy trong WinPE → (số, bản, {file: nội dung}) hoặc None."""
+    rv = cbrec.find_recovery(fs)
+    return cb_pe.Installer(fs).next_installer(_ty.SimpleNamespace(p=lambda rel: rv.root + rel))
+PE21 = b'PE_VER = "21.11d"\nPE_SEQ = 1\n# bo cai 21.11d\n'
+LIBS = {"lib/cbcore.py": b"# core 21.11d\n", "lib/cbrec.py": b"# rec 21.11d\n", "lib/cbsys.py": b"# sys 21.11d\n"}
+fsn, seedn, recn = install_named("PENEXT21A", ["", ""])
+netn, hostn = SqlNet(), FakeHost(fsn, seedn()["name"])
+agn = agent(fsn, netn, hostn); agn.tick(); agn.tick()
+ck("bộ cài trên máy thiếu file (máy cài bằng bộ cài rất cũ) → không đặt gì, agent chạy bình thường, ghi nhật ký lý do", agn.ident is not None and nxt(recn) is None
+   and any("chưa đặt được bộ cài mới" in x and "thiếu lib/cbcore.py" in x for x in agn.logs), [x for x in agn.logs if "bộ cài" in x])
+recn.vol.put("cb\\pe\\cb_pe.py", PE21)
+for rel, d in LIBS.items(): fsn.write_bytes("C:\\CloudBluePC\\" + rel.replace("/", "\\"), d)
+agn = agent(fsn, netn, hostn); agn.tick()
+m1 = nxt(recn)
+ck("agent chạy lại: đủ file → đặt bộ cài của máy (bộ cài trên phân vùng cứu hộ + thư viện agent đang dùng) vào cb\\pe-next, next.json đúng số thứ tự + bản + mã băm",
+   m1 == {"seq": 1, "ver": "21.11d", "files": dict({"pe/cb_pe.py": sha(PE21)}, **{k: sha(v) for k, v in LIBS.items()})}
+   and rbytes(recn, "cb\\pe-next\\pe\\cb_pe.py") == PE21 and all(rbytes(recn, "cb\\pe-next\\" + k.replace("/", "\\")) == v for k, v in LIBS.items()), m1)
+ck("… bản này CÙNG số thứ tự với bộ cài trong boot.wim (1) → bộ cài trong WinPE KHÔNG gọi (không chạy lại chính mình)", chain_sees(fsn) is None)
+n_put = sum("đã đặt bộ cài" in x for x in agn.logs)
+agn2 = agent(fsn, netn, hostn); agn2.tick(); agn2.tick()
+ck("đã đặt đúng rồi → các lần agent chạy sau không ghi lại", n_put == 1 and not any("đã đặt bộ cài" in x for x in agn2.logs))
+recn.vol.put("cb\\pe-next\\lib\\cbrec.py", b"bi sua")
+agn3 = agent(fsn, netn, hostn); agn3.tick()
+ck("1 file trong cb\\pe-next bị sửa / hỏng → agent chạy lại tự đặt lại đúng", rbytes(recn, "cb\\pe-next\\lib\\cbrec.py") == LIBS["lib/cbrec.py"] and any("đã đặt bộ cài" in x for x in agn3.logs))
+
+BASEN = pcagent.UPDATE_BASE + "main/winpc"
+PE22 = b'# bo cai moi\nPE_VER = "22.01a"\nPE_SEQ = 2\n'
+NEWF = {"agent/pcagent.py": b"# agent moi\nAGENT_VER = '22.01a'\n", "pe/cb_pe.py": PE22, "lib/cbcore.py": b"# core 22.01a\n", "pe/start.cmd": b"@echo off\r\n"}
+mann = {"ver": "22.01a", "base": BASEN, "files": {k: sha(v) for k, v in NEWF.items()}}
+netn.files = {BASEN + "/" + k: v for k, v in NEWF.items()}
+q("select pc_admin_settings('%s')" % json.dumps({"agent": mann}), **A)
+order = []
+_wb, _wt, _rm = fsn.write_bytes, fsn.write_text, fsn.remove
+fsn.write_bytes = lambda p, b: (order.append(("w", p)), _wb(p, b))[1]
+fsn.write_text = lambda p, t, **kw: (order.append(("w", p)), _wt(p, t, **kw))[1]
+fsn.remove = lambda p: (order.append(("rm", p)), _rm(p))[1]
+agu = agent(fsn, netn, hostn); agu.tick()
+fsn.write_bytes, fsn.write_text, fsn.remove = _wb, _wt, _rm
+m2 = nxt(recn)
+ck("admin công bố bản mới có bộ cài số 2 → agent cập nhật xong cũng đặt luôn bộ cài đó: file vừa tải (cb_pe.py, cbcore.py) + file đang dùng (cbrec.py, cbsys.py)",
+   agu.restart and m2 and m2["seq"] == 2 and m2["ver"] == "22.01a" and m2["files"] == {"pe/cb_pe.py": sha(PE22), "lib/cbcore.py": sha(NEWF["lib/cbcore.py"]),
+   "lib/cbrec.py": sha(LIBS["lib/cbrec.py"]), "lib/cbsys.py": sha(LIBS["lib/cbsys.py"])}, (m2, agu.logs[-3:]))
+pn = [(a, x.lower().split("pe-next\\")[1]) for a, x in order if "pe-next\\" in x.lower()]
+ck("thứ tự ghi an toàn: gỡ next.json cũ TRƯỚC, ghi 4 file, next.json ghi SAU CÙNG (mất điện giữa chừng → bộ cài không thấy bản dở dang)",
+   pn[0] == ("rm", "next.json") and pn[-1] == ("w", "next.json") and sorted(x for a, x in pn[1:-1]) == ["lib\\cbcore.py", "lib\\cbrec.py", "lib\\cbsys.py", "pe\\cb_pe.py"], pn)
+seen = chain_sees(fsn)
+ck("bộ cài THẬT trong boot.wim (số 1) đọc phân vùng cứu hộ: nhận bản số 2, đủ file, đúng mã băm → sẽ chạy bản đó thay nó", seen is not None and seen[0] == 2 and seen[1] == "22.01a"
+   and seen[2] == {"pe/cb_pe.py": PE22, "lib/cbcore.py": NEWF["lib/cbcore.py"], "lib/cbrec.py": LIBS["lib/cbrec.py"], "lib/cbsys.py": LIBS["lib/cbsys.py"]}, seen and seen[:2])
+ck("bản trên phân vùng cứu hộ (cb\\pe\\…) cũng lên bản mới như trước", rbytes(recn, "cb\\pe\\cb_pe.py") == PE22 and rbytes(recn, "cb\\pe\\start.cmd") == NEWF["pe/start.cmd"])
+OLDPE = b"# bo cai 21.11c (chua co so thu tu)\n"
+NEWF2 = dict(NEWF, **{"pe/cb_pe.py": OLDPE}); NEWF2["agent/pcagent.py"] = b"# agent 22.01b\n"
+man2 = {"ver": "22.01b", "base": BASEN, "files": {k: sha(v) for k, v in NEWF2.items()}}
+netn.files = {BASEN + "/" + k: v for k, v in NEWF2.items()}
+q("select pc_admin_settings('%s')" % json.dumps({"agent": man2}), **A)
+agb = agent(fsn, netn, hostn); agb.tick()
+ck("admin công bố LẠI bản cũ có bộ cài chưa biết số thứ tự (quay về bản cũ) → gỡ next.json: lần cài lại sau dùng bộ cài của boot.wim, không chạy bộ cài bản đã bỏ",
+   agb.restart and nxt(recn) is None and chain_sees(fsn) is None and any("gỡ bộ cài đặt trước" in x for x in agb.logs), agb.logs[-3:])
+q("select pc_admin_settings('{\"agent\": {}}')", **A)
+fsz, seedz, recz = install_named("PENEXT21Z", ["", ""])
+for d in fsz.fdisks:
+    d.slots = [p for p in d.slots if not (p.vol and p.vol.label == "CBRECOVERY")]
+netz, hostz = SqlNet(), FakeHost(fsz, seedz()["name"])
+agz = agent(fsz, netz, hostz); agz.tick(); agz.tick()
+ck("máy không còn phân vùng cứu hộ → bỏ qua, không lỗi", agz.ident is not None and not any("Traceback" in x for x in agz.logs))
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

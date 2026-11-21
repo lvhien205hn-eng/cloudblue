@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================================
-#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 21.11d)
+#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 21.11e)
 #
 #  pcagent (SYSTEM) mở chương trình này vào PHIÊN MÀN HÌNH đang hiện của máy. Việc làm:
 #    1. hỏi web (pc_relay_where, bằng mã riêng của máy) xem nối tới máy chủ phát hình nào → tự nối RA máy chủ đó (TLS, kiểm đúng
@@ -17,7 +17,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "21.11d"
+REMOTE_VER = "21.11e"
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
