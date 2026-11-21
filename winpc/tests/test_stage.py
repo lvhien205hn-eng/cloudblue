@@ -58,7 +58,7 @@ other = fs.disk(1, 1000, ssd=False, style="gpt", model="HDD phu"); other.add(0, 
 c_size0 = c.size
 img = cb_stage.stage(fs, "D:\\", "1511", "disk", "MAY-KHACH", fs.now(), logs.append)
 rec = next(p for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
-ck("ổ C: được thu nhỏ đúng bằng cỡ phân vùng cứu hộ (12GB), dữ liệu C: còn nguyên", c_size0 - c.size == 12 * GB and fs.file("C", "users\\khach\\bi-mat.txt") == "du lieu khach cu", (c_size0 - c.size) / GB)
+ck("ổ C: được thu nhỏ đúng bằng cỡ phân vùng cứu hộ (16GB = 12GB nội dung + 4GB để dành), dữ liệu C: còn nguyên", c_size0 - c.size == 16 * GB and fs.file("C", "users\\khach\\bi-mat.txt") == "du lieu khach cu", (c_size0 - c.size) / GB)
 ck("phân vùng cứu hộ nằm ngay sau C:, đã ẩn (không chữ ổ, cờ bảo vệ)", rec.offset == c.offset + c.size and rec.vol.letter is None and rec.attrs == 0x8000000000000001)
 ck("đã chép boot.wim + 2 bản Windows + phần mềm vào", all(k in rec.vol.files for k in ("cb\\boot\\boot.wim", "cb\\boot\\boot.sdi", "cb\\images\\22h2.wim", "cb\\images\\1511.wim", "cb\\py\\python.exe", "cb\\pe\\cb_pe.py", "cb\\recovery.tag")))
 job = json.loads(rec.vol.files["cb\\job.json"])
