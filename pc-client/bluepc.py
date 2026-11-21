@@ -8361,8 +8361,9 @@ class Launcher:
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
+                    self.vps_last = vps                                         # 21.11k: trước render → khách chỉ có VPS thì danh sách Cloud Phone hiện 1 dòng gọn
                     self.render(rows)
-                    self.vps_last = vps; self._paint_vps(vps)
+                    self._paint_vps(vps)
                 self.ui(show)
             except ApiError as e:
                 m = str(e)
@@ -8534,7 +8535,8 @@ class Launcher:
     def _rows_sig(self, rows):
         """Dấu vân tay của mọi thứ đang vẽ trong danh sách máy (máy + dòng "còn … ngày" + quyền admin + cờ bắt buộc cập nhật)."""
         try:
-            return json.dumps([must_update(), (getattr(self, "prof", None) or {}).get("role"), sorted(self.docked_pids()), rows,
+            vps_any = any(isinstance(x, dict) and x.get("state") in ("active", "waiting") for x in ((getattr(self, "vps_last", None) or {}).get("items") or []))
+            return json.dumps([must_update(), (getattr(self, "prof", None) or {}).get("role"), sorted(self.docked_pids()), vps_any, rows,
                                [fmt_left(p["expires_at"]) if p.get("expires_at") else "" for p in rows]], sort_keys=True, default=str)
         except Exception: return None
 
