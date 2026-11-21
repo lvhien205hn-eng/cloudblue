@@ -68,7 +68,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ.",
     NO_USER: "Không thấy tài khoản này — gõ đúng tên đăng nhập hoặc email của khách.", MANY_USERS: "Có nhiều tài khoản trùng tên này — gõ email của khách." };
   // v42: null = chưa biết (thử đọc cột mới) · true = đã chạy cloud-pc-v42.sql · false = chưa chạy (đọc kiểu cũ, không thử lại cho tới khi bấm Tải lại / mở lại thẻ)
-  const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, kickAt: 0 };
+  const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, v44: null, kickAt: 0 };
   // info / result do MÁY CHO THUÊ gửi lên (khách có quyền admin trên máy đó) → coi là dữ liệu lạ: ép kiểu, cắt ngắn, luôn esc() khi in
   const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
   const A = (v, n) => Array.isArray(v) ? v.slice(0, n || 8) : [];
@@ -83,7 +83,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
   const stOf = v => Object.prototype.hasOwnProperty.call(ST, v) ? ST[v] : [S(v, 20), ""];
   const wipeName = w => Object.prototype.hasOwnProperty.call(WIPE, w) ? WIPE[w] : "?";
-  const cmdName = o => o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
+  const cmdName = o => O(o.args).why === "reclaim" ? (o.cmd === "reinstall" ? "♻️ Tự cài sạch " + S(O(o.args).os, 12).toUpperCase() : o.cmd === "shutdown" ? "💤 Tự tắt (đã cài sạch)" : S(o.cmd, 20))     // v44: tự thu hồi
+    : o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
     : o.cmd === "reboot" ? "Khởi động lại" : o.cmd === "shutdown" ? "Tắt máy" : o.cmd === "update" ? "Cập nhật agent" : S(o.cmd, 20);
   const pad2 = n => String(n).padStart(2, "0");
   const atVN = t => { const d = new Date(t); return isNaN(d) ? "?" : pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + " " + pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + (d.getFullYear() !== new Date().getFullYear() ? "/" + d.getFullYear() : ""); };
@@ -107,6 +108,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       sb.from("pc_machines").select(COLS + (v2 ? COLS42 : "")).order("created_at"),
       sb.from("pc_settings").select(SETS + (v2 ? SETS42 : "")).eq("id", 1).maybeSingle()]);
     let v2 = P.v42 !== false;
+    const x44 = v2 && P.v44 !== false ? sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at") : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
     let [[m, st], o] = await Promise.all([get(v2), sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300)]);
     if (v2 && (noCol(m.error) || noCol(st.error))) { v2 = false; [m, st] = await get(false); }      // chưa chạy SQL v42: đọc kiểu cũ, phần hạn thuê tạm ẩn
     if (m.error) {
@@ -120,6 +122,11 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     P.miss = false; P.loaded = true; P.v42 = v2; show("pca-miss", false); show("pca-miss42", !v2);
     if ((o.error || st.error) && !quiet) toast(em(o.error || st.error), 1);
     P.list = Array.isArray(m.data) ? m.data : [];
+    if (x44) { try { const r44 = await x44;
+      if (r44.error) { if (noCol(r44.error)) P.v44 = false; }
+      else { P.v44 = true; const mp = {}; (r44.data || []).forEach(x => { if (x && x.id) mp[x.id] = x; });
+        P.list.forEach(x => { const y = O(mp[x.id]); x.reclaim_at = S(y.reclaim_at, 40) || null; x.clean_off = y.clean_off === true; x.rent_lock_at = S(y.rent_lock_at, 40) || null; }); }
+    } catch (e) {} }
     if (!o.error) P.orders = (o.data || []).map(x => { const a = Object.assign({}, O(x.args)); delete a.ticket; return Object.assign({}, x, { args: a }); });    // vé cài lại không giữ trong trang
     if (!st.error) P.set = st.data || null;
     render(); kick();
@@ -179,7 +186,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const now = Date.now(), who = id => { const n = S(XP.names[id], 40); return n ? ` · 👤 ${esc(n)}` : ""; };
     const A = xpPcRows().map(m => { const u = untilOf(m), over = u <= now, r = (S(m.code, 40) ? ` (№ ${esc(S(m.code, 40))})` : "") + (S(m.renter, 80) ? ` · 👤 ${esc(S(m.renter, 80))}` : "");
       return { t: u, over, go: "pc", id: m.id, btn: "⏱ Gia hạn", html: over
-        ? `💻 Máy PC <b>${esc(m.name)}</b>${r} đã <b>HẾT HẠN thuê</b> từ ${atVN(u)} — ${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}.`
+        ? `💻 Máy PC <b>${esc(m.name)}</b>${r} đã <b>HẾT HẠN thuê</b> từ ${atVN(u)} — ${m.rent_lock_at ? "máy đã khoá" : m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}.`
         : `💻 Máy PC <b>${esc(m.name)}</b>${r} còn <b>${leftTxt(u - now)}</b> là hết hạn thuê (đến ${atVN(u)}).` }; });
     XP.vps.forEach(v => { const u = xpT(v.expires_at); if (u === null || v.status !== "active" || u - now > XP_SOON) return;
       const nm = `🖥️ VPS <b>${esc(S(v.machine_name, 60) || "?")}</b>${who(v.user_id)}`;
@@ -307,13 +314,17 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!P.v42) return '<span class="hint">—</span>';
     const u = untilOf(m), who = S(m.renter, 80), wl = who ? `<div class="hint" style="white-space:normal;max-width:190px">👤 ${esc(who)}</div>` : "";
     const btn = t => `<div><button class="btn ghost sm" type="button" data-pca="rent" style="margin-top:6px">⏱ ${t}</button></div>`;
-    if (u === null) return '<span class="hint">chưa đặt hạn</span>' + wl + btn("Đặt hạn");
+    if (u === null) {
+      const rc = m.reclaim_at ? new Date(m.reclaim_at).getTime() : NaN;
+      if (!isNaN(rc)) return `<span class="pill wt">♻️ vừa thu hồi</span><div class="hint">khách cũ hết hạn không gia hạn</div><div class="hint">tự cài sạch ${rc > Date.now() ? "lúc " + atVN(rc) : "khi máy online"}</div>` + btn("Đặt hạn");
+      return '<span class="hint">chưa đặt hạn</span>' + (m.clean_off ? '<div class="hint">🧽 cài sạch xong sẽ tự tắt</div>' : "") + wl + btn("Đặt hạn");
+    }
     const left = u - Date.now();
     if (left > 0) {
       const soon = left <= warnMsOf(m);
       return `<span class="pill ${soon ? "wt" : "ok"}">${soon ? "⏳ " : ""}còn ${leftTxt(left)}</span><div class="hint">đến ${atVN(u)}</div>${wl}${btn("Gia hạn")}`;
     }
-    return `<span class="pill bad">⛔ hết hạn</span><div class="hint">từ ${atVN(u)}</div><div class="hint">${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}</div>${wl}${btn("Gia hạn")}`;
+    return `<span class="pill bad">⛔ hết hạn</span><div class="hint">từ ${atVN(u)}</div><div class="hint">${m.rent_lock_at ? "🔒 máy đã khoá — khách gia hạn là tự mở" : m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt / khoá" : "máy đang tắt"}</div>${wl}${btn("Gia hạn")}`;
   }
 
   function orderCell(m) {

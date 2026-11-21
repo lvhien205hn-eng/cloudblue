@@ -111,10 +111,10 @@ def main():
         ck("có dòng giải thích: tự giao máy, điều khiển web/app, 2 lần cài lại", "tự giao máy" in st["how"] and "app điện thoại" in st["how"] and "2 lần" in st["how"], st["how"])
         ck("hộp mua có nút 🎬 Xem video hướng dẫn", s.js("() => !!document.querySelector('#pcs-os [data-pcsvid]')") and "video hướng dẫn" in st["how"], st["how"])
         hz = s.js("""() => { const h = document.getElementById('pcs-hero'), cs = e => e ? getComputedStyle(e).display : 'none';
-                    return { vis: !!h && !h.hidden && cs(h) !== 'none', t: h ? h.innerText.replace(/\s+/g, ' ') : '', chips: h ? h.querySelectorAll('.ph-chips span').length : 0,
+                    return { vis: !!h && !h.hidden && cs(h) !== 'none', t: h ? h.innerText.replace(/\\s+/g, ' ') : '', chips: h ? h.querySelectorAll('.ph-chips span').length : 0,
                              title: cs(document.getElementById('m-title')), first: document.querySelector('#modal .dlg').firstElementChild.id,
                              order: [...document.querySelector('#modal .dlg').children].map(e => e.id).filter(x => ['pcs-hero', 'pcs-os', 'm-plans-box'].includes(x)),
-                             plans: [...document.querySelectorAll('#m-plans button')].map(b => b.innerText.replace(/\s+/g, ' ')), lab: document.querySelector('#m-plans-box > span').textContent }; }""")
+                             plans: [...document.querySelectorAll('#m-plans button')].map(b => b.innerText.replace(/\\s+/g, ' ')), lab: document.querySelector('#m-plans-box > span').textContent }; }""")
         ck("hộp mua VPS GPU 'sịn': thẻ cấu hình đầu hộp (tên, cấu hình admin nhập, chỉ từ 50.000đ / ngày, Có máy sẵn), ẩn tiêu đề cũ",
            hz["vis"] and hz["first"] == "pcs-hero" and "VPS GPU BLUE" in hz["t"] and hz["chips"] == 2 and "2686V4" in hz["t"] and "chỉ từ 50.000" in hz["t"] and "Có máy sẵn" in hz["t"] and hz["title"] == "none", hz)
         ck("① Chọn Windows rồi ② Chọn thời gian thuê; gói ghi giá / ngày, gói rẻ hơn có nhãn −%",
@@ -264,6 +264,7 @@ def main():
         s.page.click("#pcs-waitbar"); s.page.wait_for_timeout(600)
         ck("bấm dải đỏ → mở thẻ 💻 Máy PC, khung Đơn VPS GPU hiện", s.js("() => !document.getElementById('pane-pc').hidden && !document.getElementById('pcs-adm').hidden"))
         rows = s.js("() => [...document.querySelectorAll('#pcs-adm-tbl tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        ck("thời gian trên bảng đơn / dải đỏ đọc đúng (không ra NaN)", not any("NaN" in r for r in rows) and "NaN" not in wb and "phút trước" in rows[0], (rows, wb))
         ck("bảng đơn: đơn chờ lên đầu (Bàn giao), đơn đang thuê có máy + lượt cài lại + ghi chú", len(rows) == 2 and "Chờ máy" in rows[0] and "Bàn giao" in rows[0] and "May-01" in rows[1] and "Đổi máy" in rows[1] and "vip" in rows[1], rows)
         sm = s.js("() => document.getElementById('pcs-adm-sum').innerText + ' | ' + document.getElementById('pcs-adm-wait').innerText")
         ck("tóm tắt: đang thuê / chờ / kho trống + online; hướng dẫn bật máy", "1 đang thuê" in sm and "1 chờ máy" in sm and "kho trống 2 máy (1 online)" in sm and "tự giao trong 1 phút" in sm, sm)
@@ -292,6 +293,60 @@ def main():
         s.js("() => { SITE.pc_maint = false; }")
         ck("bảng máy có nút 🖥 Điều khiển mở play.html?pc= (tab mới)", s.js("() => [...document.querySelectorAll('#pctbl a[href^=\"/play.html?pc=\"]')].every(a => a.target === '_blank')"))
         ck("admin: không lỗi JS / console, không chạy mã lạ", not s.errors and s.js("() => !window.__xss"), s.errors)
+        s.close()
+        print("5b. ♻️ Tự thu hồi máy hết hạn (SQL v44)")
+        mine2 = {"product": PROD, "reinstall_max": 2, "os": MINE["os"], "items": [
+            {"rental": 41, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(-600), "grace_until": iso(1200), "left": 2, "used": 0, "end_why": None,
+             "pc": {"id": PC1, "name": "May-01", "code": "A1", "os": "22h2", "online": True, "link": True, "remote": True, "off": False, "lock": True, "job": None, "last_job": None, "ram_gb": 128, "gpus": []}},
+            {"rental": 40, "state": "ended", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(-7200), "grace_until": None, "left": 2, "used": 0, "end_why": "expired", "pc": None}]}
+        adm2 = dict(ADM, reclaim={"on": True, "grace_min": 30, "clean_min": 60, "os": None, "off": True, "since": iso(-86400)},
+                    free=[dict(ADM["free"][0], clean=False, cleaning=True, reclaim_at=None), dict(ADM["free"][1], reclaim_at=iso(1800), cleaning=False)],
+                    rentals=[dict(ADM["rentals"][1], id=50, until=iso(-600), grace_until=iso(1200), pc=dict(ADM["rentals"][1]["pc"], lock=True)),
+                             dict(ADM["rentals"][1], id=49, state="ended", until=iso(-7200), ended_at=iso(-5400), end_why="expired", pc=None)])
+        s = Site(br, html, False, dict(shop, mine=mine2, bought=[]))
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 2", timeout=8000)
+        c2 = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => ({ t: c.innerText.replace(/\\s+/g, ' '), cd: !!c.querySelector('.m3m-exp [data-cd]'), ctl: !!c.querySelector('a[href^=\"/play.html?pc=\"]'), renew: !!c.querySelector('[data-pcsrenew]') }))")
+        ck("khách: hết hạn trong thời gian chờ → 'Hết hạn — đang giữ máy', máy đã khoá, gia hạn trước giờ nào, đồng hồ đếm ngược, còn nút Gia hạn, chưa cho điều khiển",
+           "đang giữ máy" in c2[0]["t"] and "Máy đã khoá" in c2[0]["t"] and "Gia hạn trước" in c2[0]["t"] and "xoá sạch" in c2[0]["t"] and c2[0]["cd"] and c2[0]["renew"] and not c2[0]["ctl"], c2[0])
+        ck("khách: lượt thuê tự kết thúc → nói rõ máy đã thu hồi + xoá sạch, thuê máy mới", "Đã kết thúc" in c2[1]["t"] and "thu hồi" in c2[1]["t"] and "thuê máy mới" in c2[1]["t"], c2[1])
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-8-reclaim-khach.png"))
+        s.page.click("#pcs-mine-list [data-pcsrenew]"); s.page.wait_for_timeout(500)
+        s.js("() => { window.__FAKE_HOOK.pc_my_renew = a => ({ ok: true, until: new Date(Date.now() + 7 * 86400e3).toISOString(), was_off: false }); }")
+        gb = s.page.query_selector("#pcsdlg [data-pcsrngo], #pcsdlg .acts .btn:not(.ghost)")
+        if gb: gb.click(); s.page.wait_for_timeout(800)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("gia hạn lúc máy đang giữ → báo 'máy tự mở lại sau khoảng 1–2 phút'", "tự mở lại" in tt, tt)
+        ck("khách (5b): không lỗi JS", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, dict(shop, adm=adm2, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=pc]').click(); }"); s.page.wait_for_timeout(900)
+        rows = s.js("() => [...document.querySelectorAll('#pcs-adm-tbl tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        ck("admin: đơn đang thuê hết hạn → 'giữ máy tới … quá giờ tự thu hồi' + máy '🔒 đã khoá'; đơn tự kết thúc → '♻️ tự thu hồi'",
+           any("giữ máy tới" in r and "tự thu hồi" in r and "đã khoá" in r for r in rows) and any("♻️ tự thu hồi: hết hạn không gia hạn" in r for r in rows), rows)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        rc = s.js("() => ({ vis: !document.getElementById('pcs-rc').hidden, on: document.getElementById('pcs-rc-on').checked, g: document.getElementById('pcs-rc-grace').value, c: document.getElementById('pcs-rc-clean').value, off: document.getElementById('pcs-rc-off').checked, t: document.getElementById('pcs-rc').innerText })")
+        ck("⚙ Cài đặt bán có ô '♻️ Tự thu hồi máy hết hạn' (bật, 30 phút, mốc 60, tự tắt) + giải thích", rc["vis"] and rc["on"] and rc["g"] == "30" and rc["c"] == "60" and rc["off"] and "tự tắt" in rc["t"] and "Bàn giao" in rc["t"], rc)
+        s.page.fill("#pcs-rc-grace", "20"); s.page.fill("#pcs-rc-clean", "45"); s.page.select_option("#pcs-rc-os", "1511"); s.page.uncheck("#pcs-rc-off"); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(600)
+        sv = s.calls("pc_admin_sell")
+        ck("Lưu → pc_admin_sell kèm reclaim {on, 20, 45, 1511, không tự tắt}", sv and sv[-1]["p_patch"].get("reclaim") == {"on": True, "grace_min": 20, "clean_min": 45, "os": "1511", "off": False}, sv)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(200)
+        if s.js("() => document.getElementById('pcs-adm-setbox').hidden"): s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(200)
+        s.page.fill("#pcs-rc-grace", "50"); s.page.fill("#pcs-rc-clean", "40"); n0 = len(s.calls("pc_admin_sell")); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(400)
+        ck("mốc cài sạch nhỏ hơn thời gian chờ → báo lỗi, không gửi", len(s.calls("pc_admin_sell")) == n0)
+        s.page.click('#pcs-adm-tbl tr[data-r="50"] [data-ra="hand"]'); s.page.wait_for_timeout(300)
+        hd = s.js("() => document.getElementById('pcsdlg').innerText")
+        ck("hộp Bàn giao: máy trống ghi '🧽 đang tự cài sạch' / '♻️ tự cài sạch lúc …'", "đang tự cài sạch" in hd and "tự cài sạch lúc" in hd, hd)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-9-reclaim-admin.png"))
+        ck("admin (5b): không lỗi JS", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=pc]').click(); }"); s.page.wait_for_timeout(700)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        ck("chưa chạy SQL v44 (không có reclaim) → ẩn ô tự thu hồi, Lưu không gửi reclaim", s.js("() => document.getElementById('pcs-rc').hidden"))
+        s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
+        ck("(Lưu khi chưa có v44 → không kèm reclaim)", all("reclaim" not in c["p_patch"] for c in s.calls("pc_admin_sell")), s.calls("pc_admin_sell"))
         s.close()
         print("6. Khách thường không thấy phần admin")
         s = Site(br, html, False, dict(shop, bought=[]))
