@@ -131,10 +131,16 @@ final class PcVps {
         if ("waiting".equals(st)) return new String[]{"wait", "⏳ " + Ui.L("Đang chờ máy", "Waiting for a machine"),
                 Ui.L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received — a machine will be assigned and installed automatically.")};
         if ("cancelled".equals(st)) return new String[]{"end", "✕ " + Ui.L("Đã huỷ", "Cancelled"), Ui.L("Tiền hoàn (nếu có) đã về số dư.", "Any refund went to your balance.")};
-        if ("ended".equals(st)) return new String[]{"end", "■ " + Ui.L("Đã kết thúc", "Ended"), ""};
+        if ("ended".equals(st)) return new String[]{"end", "■ " + Ui.L("Đã kết thúc", "Ended"), "expired".equals(x.optString("end_why", ""))      // 21/11f · v44 tự thu hồi
+                ? Ui.L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới.", "Expired without renewal — the machine was reclaimed and wiped.") : ""};
         if (job != null) return new String[]{"inst", "⚙️ " + Ui.L("Đang cài Windows", "Installing Windows"),
                 "sent".equals(job.optString("state")) ? Ui.L("Máy đang cài " + job.optString("os").toUpperCase() + " (15–30 phút), xong là vào được.", "Installing " + job.optString("os").toUpperCase() + " (15–30 min).")
                         : Ui.L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…")};
+        long gu = MainActivity.parseTime(x.optString("grace_until", ""));          // 21/11f · v44: hết hạn nhưng máy còn giữ cho khách tới lúc này
+        if (until > 0 && until <= now && gu > now) return new String[]{"exp", "⛔ " + Ui.L("Hết hạn — đang giữ máy", "Expired — on hold"),
+                (pc != null && pc.optBoolean("lock") ? Ui.L("🔒 Máy đã khoá. ", "🔒 Locked. ") : pc != null && pc.optBoolean("off") ? Ui.L("Máy đã tự tắt. ", "Shut down. ") : "")
+                        + Ui.L("Gia hạn trước " + MainActivity.fdate(gu) + " để giữ máy + dữ liệu — gia hạn xong máy tự mở lại sau 1–2 phút. Quá giờ đó máy bị thu hồi và xoá sạch.",
+                        "Renew before " + MainActivity.fdate(gu) + " to keep the machine and data — it unlocks 1–2 min after renewal. After that it is reclaimed and wiped.")};
         if (until > 0 && until <= now) return new String[]{"exp", "⛔ " + Ui.L("Hết hạn", "Expired"),
                 pc != null && pc.optBoolean("off") ? Ui.L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "The machine shut down. Renew and the shop turns it back on.")
                         : Ui.L("Gia hạn để dùng tiếp.", "Renew to keep using it.")};
@@ -844,7 +850,9 @@ final class PcVps {
             Api.bg(() -> Api.rpc("pc_my_renew", new JSONObject().put("p_pc", pc.optString("id")).put("p_days", dd)), r -> {
                 d.dismiss();
                 boolean off = r instanceof JSONObject && ((JSONObject) r).optBoolean("was_off");
-                Ui.toast(a, off ? Ui.L("Đã gia hạn. Máy đã tắt lúc hết hạn — shop sẽ bật lại cho bạn.", "Renewed. The shop will turn the machine back on.") : Ui.L("Đã gia hạn.", "Renewed."));
+                boolean held = MainActivity.parseTime(x.optString("grace_until", "")) > 0;          // 21/11f · đang giữ máy (đã khoá) → tự mở lại
+                Ui.toast(a, off ? Ui.L("Đã gia hạn. Máy đã tắt lúc hết hạn — shop sẽ bật lại cho bạn.", "Renewed. The shop will turn the machine back on.")
+                        : held ? Ui.L("Đã gia hạn — máy tự mở lại sau khoảng 1–2 phút, dữ liệu giữ nguyên.", "Renewed — the machine unlocks in about 1–2 minutes.") : Ui.L("Đã gia hạn.", "Renewed."));
                 mineAt = 0; a.refresh();
             }, m -> { ok.setEnabled(true); Ui.toast(a, err(m)); });
         });
