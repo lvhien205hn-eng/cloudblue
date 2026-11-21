@@ -1,6 +1,7 @@
 # KIỂM THỬ app Android + app PC trên nhánh app-next (KHÔNG phát hành gì: không ký khoá thật, không đẩy CH Play, không đưa file lên web).
 # Đẩy lên main mới chạy 2 workflow phát hành (android-app.yml, pc-client.yml) như cũ.
 # App PC: chụp ảnh giao diện (máy chủ giả, Windows thật) → nhánh app-shots (chỉ chứa ảnh) để soát giao diện.
+# Nhánh app-shots kèm blueroblox-site/vercel.json {"git":{"deploymentEnabled":false}} → Vercel không tạo bản xem thử (khỏi tốn lượt deploy 100/ngày).
 name: Check apps (app-next)
 
 on:
@@ -75,6 +76,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan app-shots-tmp
           git rm -r -q --cached .
-          git add shots
+          New-Item -ItemType Directory -Force blueroblox-site | Out-Null
+          Set-Content -Path blueroblox-site/vercel.json -Value '{"git":{"deploymentEnabled":false}}' -Encoding ascii
+          git add shots blueroblox-site/vercel.json
           git commit -q -m "Anh giao dien app PC ($env:GITHUB_SHA)"
           git push -f origin HEAD:refs/heads/app-shots
