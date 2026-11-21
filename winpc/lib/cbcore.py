@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "21.11c"
+CORE_VER = "21.11d"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -93,10 +93,15 @@ def pick_letters(used, want=("W", "S", "R")):
     return out
 
 
+REC_SPARE_GB = 4                                                 # chỗ trống để dành trên phân vùng cứu hộ (bản hệ điều hành thêm sau này, bộ cài mới, file tải sẵn) — cb.json "rec_spare_gb" đổi được
+
+
 def recovery_bytes(cfg, boot_wim_bytes=600 * MB, extra_bytes=0):
-    """Cỡ phân vùng cứu hộ: tổng các bản Windows + boot.wim + phần mềm (+ driver kèm theo), dư 15 % + 1GB, làm tròn lên GB, tối thiểu 6GB."""
+    """Cỡ phân vùng cứu hộ: tổng các bản Windows + boot.wim + phần mềm (+ driver kèm theo), dư 15 % + 1GB, + chỗ để dành (mặc định 4GB), làm tròn lên GB, tối thiểu 6GB."""
     total = sum(int(im.get("bytes") or 0) for im in cfg.get("images") or []) + boot_wim_bytes + 400 * MB + max(0, int(extra_bytes or 0))
-    need = int(total * 1.15) + GB
+    try: spare = max(0, min(64, int(cfg.get("rec_spare_gb", REC_SPARE_GB))))
+    except (TypeError, ValueError): spare = REC_SPARE_GB
+    need = int(total * 1.15) + GB + spare * GB
     return max(6 * GB, -(-need // GB) * GB)
 
 
@@ -412,6 +417,23 @@ def boot_service_cmds(root, cs=1, base="C:\\CloudBluePC"):
 def clean_code(text):
     """SỐ MÁY người cài gõ (vị trí máy trong dàn: 14-85, A07, KHU B 3…): chỉ giữ chữ / số / dấu cách . _ / - , viết hoa, tối đa 24 ký tự. Không còn gì → ''."""
     return re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._/-]", "", str(text or ""))).strip().upper()[:24].strip()
+
+
+def clean_label(text):
+    """TÊN MÁY người cài gõ lúc cài xong (hiện ở ô "Tên hiển thị" trên web): chỉ giữ chữ không dấu / số / dấu cách . _ / - , tối đa 40 ký tự. Không còn gì → ''."""
+    s = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._/-]", "", str(text or ""))).strip()[:40].strip()
+    return s if re.search(r"[A-Za-z0-9]", s) else ""
+
+
+def win_name(label, prefix="CB", fallback="CB-PC"):
+    """Tên hiển thị (gõ lúc cài / đặt trên web) → tên máy Windows hợp lệ (chữ / số / gạch nối, tối đa 15 ký tự, không toàn số):
+       'May-01' → 'May-01' · 'Phong A 07' → 'PhongA07' · '07' → 'CB-07' · không còn ký tự nào dùng được → `fallback`."""
+    n = clean_name(label, "")
+    if n: return n
+    digits = re.sub(r"[^0-9]", "", str(label or ""))
+    if not digits: return fallback
+    pre = clean_name(prefix, "") or "CB"
+    return clean_name("%s-%s" % (pre[:15 - 1 - min(len(digits), 8)], digits), fallback)
 
 
 def setup_state(reg_text):
