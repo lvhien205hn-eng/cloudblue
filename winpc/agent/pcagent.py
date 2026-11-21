@@ -187,6 +187,25 @@ class WinHost:
         except Exception:
             return False
 
+    def show_code(self, code):
+        """Ghi SỐ MÁY ra màn hình nền CHUNG (C:\\Users\\Public\\Desktop): file "May so <số> (CloudBlue).txt" — mọi tài khoản đều thấy ngay tên file, tài khoản thường
+           không xoá / sửa được. Số máy rỗng → gỡ file. Trả True nếu màn hình nền đã đúng."""
+        try:
+            desk = os.path.join(os.environ.get("PUBLIC", "C:\\Users\\Public"), "Desktop")
+            want = ("May so %s (CloudBlue).txt" % code) if code else ""
+            if os.path.isdir(desk):
+                for f in os.listdir(desk):
+                    if re.fullmatch(r"May so .{1,40} \(CloudBlue\)\.txt", f) and f != want:
+                        try: os.remove(os.path.join(desk, f))
+                        except OSError: pass
+            if want:
+                os.makedirs(desk, exist_ok=True)
+                with open(os.path.join(desk, want), "w", encoding="utf-8-sig", newline="") as f:
+                    f.write("MÁY SỐ: %s\r\n\r\nKhi cần hỗ trợ (máy lỗi, gia hạn...), hãy báo cho shop SỐ MÁY này.\r\nCloudBlue PC\r\n" % code)
+            return True
+        except Exception:
+            return False
+
     def notify(self, text, secs=60):
         """Hiện hộp thông báo cho người đang dùng máy (mọi phiên đăng nhập) bằng msg.exe của Windows. Không chờ ai bấm; không có msg.exe thì thôi."""
         try:
@@ -297,6 +316,10 @@ class Agent:
         self.rent_synced = False            # từ lúc agent chạy đã hỏi được máy chủ về hạn thuê chưa
         self.rent_call = None               # lúc đã báo khách "máy sắp tắt"
         self.rent_boot_told = False         # từ lúc agent chạy (máy bật) đã nhắc khách "sắp hết hạn" lần nào chưa
+        self.code = str((self.ident or {}).get("code") or "")       # SỐ MÁY (vị trí trong dàn) do admin đặt trên web / người cài gõ lúc cài xong
+        self.code_shown = False             # lần chạy này đã ghi số máy ra màn hình nền chưa
+        try: self.code_pending = bool(C.clean_code((C.load_json(sysx, self.p("seed.json")) or {}).get("code") or ""))     # người cài vừa gõ số máy → phải báo về web
+        except Exception: self.code_pending = False
         self.rent_saved = 0
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
@@ -342,18 +365,43 @@ class Agent:
         rent = self.rent_line()
         try: lan = self.h.lan_ip() or ""
         except Exception: lan = ""
-        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "", rent, lan)
+        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "", rent, lan, self.code)
         if st == getattr(self, "_last_status", None): return
         self._last_status = st
         lines = ["CloudBlue PC - tinh trang (ghi luc %s)" % time.strftime("%Y-%m-%d %H:%M:%S"),
                  "Phan mem agent: %s" % AGENT_VER,
                  "Mang LAN: %s" % (("co - dia chi IP %s" % lan) if lan else "KHONG CO dia chi IP - kiem tra day mang / driver card mang"),
+                 "So may: %s" % (C.clean_code(self.code) or "chua dat (dat tren web: Bang quan tri > May PC > Sua)"),
                  "Dang ky voi he thong: %s" % (("ROI - ten tren web: %s" % (self.name or "?")) if st[0] else "CHUA (dang thu dang ky)"),
                  "Ket noi may chu: %s" % ("duoc" if st[1] else ("CHUA DUOC - %s" % st[3][:200])),
                  "Han thue: %s" % rent,
                  "May khong hien tren web: kiem tra day mang / driver card mang; van khong duoc thi cai lai bang USB CloudBlue."]
         try: self.s.write_text(self.p("os\\status.txt"), "\r\n".join(lines) + "\r\n")
         except Exception: pass
+
+    # ------------------------------------------------------------------ số máy (vị trí máy trong dàn — khách báo lỗi theo số này)
+    def code_sync(self, r, sent):
+        """Sau mỗi lần hỏi được máy chủ: máy chủ đã nhận số máy vừa gửi → xoá khỏi seed.json; số máy trên web (admin sửa / vừa nhận) khác số đang ghi → ghi lại ra màn hình."""
+        if sent:
+            seed = C.load_json(self.s, self.p("seed.json")) or {}
+            if "code" in seed:
+                C.save_json(self.s, self.p("seed.json"), {k: v for k, v in seed.items() if k != "code"})
+                self.log("đã báo số máy '%s' về web" % sent)
+            self.code_pending = False
+        c = r.get("code")
+        if not isinstance(c, str): return                           # máy chủ bản cũ không gửi số máy → để nguyên
+        c = c.strip()[:40]
+        if c != self.code or not self.code_shown:
+            if c != self.code:
+                self.code = c
+                self.ident = dict(self.ident or {}, code=c); C.save_json(self.s, self.p("identity.json"), self.ident)
+                self.log("số máy: %s" % (c or "(chưa đặt)"))
+            self.code_shown = bool(self.h.show_code(C.clean_code(c)))    # tên file trên màn hình nền chỉ dùng chữ / số an toàn
+
+    def tag(self):
+        """'CloudBlue PC' kèm số máy cho các hộp báo trên màn hình: 'CloudBlue PC [may so 14-85]'."""
+        c = C.clean_code(self.code)
+        return "CloudBlue PC [may so %s]" % c if c else "CloudBlue PC"
 
     # ------------------------------------------------------------------ hạn thuê + việc lạ
     def event(self, k, **kw):
@@ -483,8 +531,8 @@ class Agent:
                 self.log("nhắc khách: hạn thuê còn %s" % span_txt(left))
                 try: when = time.strftime("%H:%M ngay %d/%m", time.localtime(self.rent["until"]))
                 except Exception: when = ""
-                self.h.notify("CloudBlue PC: may nay con %s nua la HET HAN THUE%s. Het han may se TU TAT. Lien he shop de gia han."
-                              % (span_txt(left), " (het han luc %s)" % when if when else ""), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
+                self.h.notify("%s: may nay con %s nua la HET HAN THUE%s. Het han may se TU TAT. Lien he shop de gia han."
+                              % (self.tag(), span_txt(left), " (het han luc %s)" % when if when else ""), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
             elif every > 0 and told is not None:
                 nxt.append(max(1, told + every - est))
             return max(2, min(min(nxt), 300))
@@ -494,7 +542,7 @@ class Agent:
             self.rent_call = self.s.now()
             self.event("rent_boot" if self.rent.get("off") else "rent_off")
             self.log("HẾT HẠN THUÊ → báo khách, %d giây nữa tắt máy" % RENT_LAST_CALL)
-            self.h.notify("CloudBlue PC: may nay da HET HAN THUE. May se TU TAT sau %d giay. Lien he shop de gia han." % RENT_LAST_CALL, RENT_LAST_CALL)
+            self.h.notify("%s: may nay da HET HAN THUE. May se TU TAT sau %d giay. Lien he shop de gia han." % (self.tag(), RENT_LAST_CALL), RENT_LAST_CALL)
             # Windows tự đếm ngược + hiện lời nhắn của chính nó (máy không có msg.exe vẫn thấy). Khách có huỷ lệnh này thì 60 giây nữa agent vẫn tắt.
             self.h.power(reboot=False, delay=RENT_LAST_CALL, msg="CloudBlue PC: het han thue - may tu tat sau %d giay. Lien he shop de gia han." % RENT_LAST_CALL)
             return 3                                                   # nhịp kế báo về web ngay
@@ -657,6 +705,11 @@ class Agent:
         sent_ev = list(self.events) if send_info else []
         info = self.info() if send_info else None
         if sent_ev: info["ev"] = sent_ev
+        code_new = ""
+        if send_info and self.code_pending:                         # người cài vừa gõ SỐ MÁY lúc cài xong (bộ cài ghi vào seed.json) → gửi kèm tới khi máy chủ nhận
+            try: code_new = C.clean_code(((C.load_json(self.s, self.p("seed.json")) or {}).get("code")) or "")
+            except Exception: code_new = ""
+            if code_new: info["code_new"] = code_new
         body = {"p_id": self.ident["id"], "p_token": self.ident["token"], "p_info": info, "p_done": self.pending_done}
         sent_done = self.pending_done
         r = self.net.rpc("pc_poll", body)
@@ -672,6 +725,8 @@ class Agent:
                 C.save_json(self.s, self.p("identity.json"), self.ident)
                 self.ident = None
             return r
+        try: self.code_sync(r, code_new)
+        except Exception as e: self.log("lỗi phần số máy: %r" % (e,))
         if sent_done is not None and self.pending_done is sent_done:
             self.pending_done = None
             if self.result_from_rec:
@@ -714,7 +769,7 @@ class Agent:
             if self.enroll(): return 2
             return min(900, 30 * (2 ** min(self.enroll_turn // 3, 5)))
         self.check_result()
-        r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None or bool(self.events)))
+        r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None or bool(self.events) or self.code_pending))
         if r is None: return min(300, self.poll_s * (1 + min(self.fail, 9)))
         if not r.get("ok"): return 5
         if r.get("order"):
