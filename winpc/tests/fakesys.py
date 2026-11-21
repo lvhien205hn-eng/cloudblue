@@ -240,6 +240,7 @@ class FakeSys:
                 v.put("windows\\cb-image.txt", "%s|%s" % (a["/imagefile"].split("\\")[-1].lower(), a["/index"]))
                 return 0, ""
             if any(x.startswith("/Set-TimeZone:") for x in argv) and self.fail_tz: return 87, "Error: 87"
+            if "/Get-Drivers" in argv: return (0, getattr(self, "drv_table", "")) if getattr(self, "drv_table", "") is not None else (50, "Error: 50")
             return 0, ""
         if exe == "reg":                                   # reg load / query / add / unload trên kho registry offline
             if argv[1] == "load":

@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "21.11b"
+CORE_VER = "21.11c"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -448,3 +448,108 @@ def acl_vol_cmds(root):
             ["icacls", r, "/remove:g"] + ACL_WEAK,
             ["icacls", r + "*", "/setowner", SID_ADMINS, "/T", "/C", "/Q"],
             ["icacls", r + "*", "/reset", "/T", "/C", "/Q"]]
+
+
+# ---------------------------------------------------------------------------------------------------- driver của máy
+# Dùng ở lần khởi động đầu (cb_provision: cài driver card mạng TRƯỚC, có mạng rồi mới tới VGA) và ở agent (báo về web máy nào còn thiếu driver).
+PNP_FINE = (0, 14, 21, 22, 24, 45, 47)      # mã lỗi thiết bị KHÔNG tính là "thiếu driver": 14 chờ khởi động lại · 21 sắp gỡ · 22 người dùng tắt · 24 / 45 không còn cắm · 47 đã rút
+PNP_VENDORS = {"10EC": "Realtek", "0BDA": "Realtek", "8086": "Intel", "8087": "Intel", "14E4": "Broadcom", "1969": "Qualcomm Atheros", "168C": "Qualcomm Atheros",
+               "0CF3": "Qualcomm Atheros", "11AB": "Marvell", "1B4B": "Marvell", "10DE": "NVIDIA", "1002": "AMD", "1022": "AMD", "14C3": "MediaTek", "0E8D": "MediaTek",
+               "148F": "Ralink", "1814": "Ralink", "1B21": "ASMedia", "1106": "VIA", "1D6A": "Aquantia", "15AD": "VMware", "1AF4": "VirtIO", "1414": "Microsoft",
+               "2357": "TP-Link", "7392": "Edimax", "0B95": "ASIX", "1A3B": "AzureWave"}
+INF_NET_GUID, INF_DISPLAY_GUID = "{4d36e972-e325-11ce-bfc1-08002be10318}", "{4d36e968-e325-11ce-bfc1-08002be10318}"
+_DRV_NET = re.compile(r"ethernet|network|wireless|wi-?fi|wlan|802\.11|\blan\b|gigabit|\bgbe\b", re.I)
+_DRV_VGA = re.compile(r"video controller|\bvga\b|display|3d controller|graphics", re.I)
+_DRV_SOFT = ("ROOT\\", "SWD\\", "BTH\\", "BTHENUM\\", "HTREE\\", "SW\\", "UMB\\", "STORAGE\\", "TS_", "TERMINPUT_BUS\\", "PRINTENUM\\")    # thiết bị do phần mềm dựng, không phải phần cứng
+_DRV_BASIC = ("basicdisplay", "vga", "vgasave", "basicrender")      # driver màn hình "cơ bản" của Windows = card chưa có driver của hãng
+
+
+def inf_text(raw):
+    """Chữ của 1 file .inf (bytes): UTF-16 có / không có BOM, UTF-8 có BOM, hoặc ANSI."""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"): return raw.decode("utf-16", "replace")
+    if raw[:3] == b"\xef\xbb\xbf": return raw[3:].decode("utf-8", "replace")
+    if b"\x00" in raw[:400]: return raw.decode("utf-16-le", "replace")
+    return raw.decode("latin-1")
+
+
+def inf_class(raw):
+    """Lớp thiết bị ghi ở phần [Version] của 1 file .inf (bytes), viết thường: 'net' (card mạng) · 'display' (card màn hình) · 'media', 'usb'… Không đọc được → ''."""
+    sect = cls = guid = ""
+    for line in inf_text(raw or b"").splitlines():
+        t = line.split(";", 1)[0].strip()
+        if not t: continue
+        if t.startswith("[") and t.endswith("]"):
+            if sect == "version": break
+            sect = t[1:-1].strip().lower(); continue
+        if sect != "version" or "=" not in t: continue
+        k, v = [x.strip().strip('"').strip() for x in t.split("=", 1)]
+        if k.lower() == "class" and not cls: cls = v.lower()
+        elif k.lower() == "classguid" and not guid: guid = v.lower()
+    if guid == INF_NET_GUID: return "net"
+    if guid == INF_DISPLAY_GUID: return "display"
+    return re.sub(r"[^a-z0-9]", "", cls)[:20]
+
+
+def parse_dism_drivers(text):
+    """Chữ in ra của `dism /English /Image:… /Get-Drivers /Format:Table` → các gói driver BÊN THỨ BA trong bản Windows đó:
+       [{"pub": "oem0.inf", "inf": "rt640x64.inf", "cls": "net", "prov": "Realtek"}] (cls viết thường: net = card mạng, display = card màn hình…)."""
+    out = []
+    for line in (text or "").splitlines():
+        cols = [c.strip() for c in line.split("|")]
+        if len(cols) < 5 or not re.fullmatch(r"oem\d+\.inf", cols[0], re.I): continue
+        out.append({"pub": cols[0].lower(), "inf": re.sub(r"[^A-Za-z0-9 ._+-]", "", cols[1])[:60], "cls": re.sub(r"[^a-z0-9]", "", cols[3].lower())[:20],
+                    "prov": re.sub(r"[^A-Za-z0-9 ._+-]", "", cols[4])[:22].strip()})
+    return out
+
+
+def dev_hw(dev_id):
+    """Mã phần cứng trong mã thiết bị: 'PCI\\VEN_10EC&DEV_8168&…' → ('10EC:8168', 'Realtek') · 'USB\\VID_0BDA&PID_8179\\…' → ('0BDA:8179', 'Realtek'). Không có → ('', '')."""
+    up = str(dev_id or "").upper()
+    m = re.search(r"VEN_([0-9A-F]{4})&DEV_([0-9A-F]{4})", up) or re.search(r"VID_([0-9A-F]{4})&PID_([0-9A-F]{4})", up)
+    return ("%s:%s" % (m.group(1), m.group(2)), PNP_VENDORS.get(m.group(1), "")) if m else ("", "")
+
+
+def drv_summary(devs):
+    """Tóm tắt driver của máy từ danh sách thiết bị đang cắm (cbsys.pnp_devices: [{"name", "cls", "id", "problem", "service", "compat"}]):
+         miss       thiết bị PHẦN CỨNG chưa có driver / đang lỗi: [{"n" tên, "e" mã lỗi, "k" "net" | "vga" | "", "hw" "10EC:8168", "v" hãng}] — card mạng đứng trước, rồi VGA
+         net_miss   số thiết bị MẠNG trong đó
+         nics       tên các card mạng phần cứng ĐÃ nhận driver
+         vga_basic  số card màn hình đang chạy driver cơ bản của Windows (chưa có driver của hãng) · vga_ok số card đã có driver hãng"""
+    miss, nics, vga_basic, vga_ok = [], [], 0, 0
+    for d in devs or []:
+        if not isinstance(d, dict): continue
+        did = str(d.get("id") or "")
+        if did.upper().startswith(_DRV_SOFT): continue
+        name = re.sub(r"\s+", " ", str(d.get("name") or "")).strip() or "?"
+        cls = str(d.get("cls") or "").strip().lower()
+        compat = " ".join(str(x) for x in (d.get("compat") or [])).upper()
+        try: pb = int(d.get("problem") or 0)
+        except (TypeError, ValueError): pb = 0
+        if pb not in PNP_FINE:
+            k = "net" if (cls == "net" or "CC_02" in compat or (not cls and _DRV_NET.search(name))) else \
+                "vga" if (cls == "display" or "CC_03" in compat or (not cls and _DRV_VGA.search(name))) else ""
+            hw, ven = dev_hw(did)
+            miss.append({"n": name[:60], "e": pb, "k": k, "hw": hw, "v": ven})
+        elif cls == "net":
+            if pb in (0, 14): nics.append(name[:60])                 # 14 = driver đã vào, chờ khởi động lại; card bị người dùng tắt (22) không tính là card đang chạy
+        elif cls == "display" and pb in (0, 14):
+            if str(d.get("service") or "").strip().lower() in _DRV_BASIC: vga_basic += 1
+            else: vga_ok += 1
+    miss.sort(key=lambda x: ({"net": 0, "vga": 1}.get(x["k"], 2), x["n"]))
+    return {"miss": miss, "net_miss": sum(1 for x in miss if x["k"] == "net"), "nics": nics, "vga_basic": vga_basic, "vga_ok": vga_ok}
+
+
+def drv_label(x):
+    """1 thiết bị thiếu driver thành chữ ASCII ngắn cho màn hình / nhật ký / web: 'Ethernet Controller [Realtek 10EC:8168]'."""
+    n = re.sub(r"[^\x20-\x7e]", "?", str(x.get("n") or "?"))[:60]
+    tail = " ".join(t for t in (str(x.get("v") or ""), str(x.get("hw") or "")) if t)
+    return "%s [%s]" % (n, tail) if tail else n
+
+
+def drv_brief(st, n=6):
+    """Bản gọn gửi về web (info.drv): {"miss": số thiết bị thiếu driver, "names": [tối đa n tên], "net": "ok" | "miss" | "none", "vga": "ok" | "miss" | "basic"}.
+       net: ok = có card mạng đã nhận driver và không card mạng nào thiếu driver · miss = có card mạng thiếu driver · none = không thấy card mạng nào."""
+    miss = list(st.get("miss") or [])
+    return {"miss": len(miss), "names": [drv_label(x) for x in miss[:n]],
+            "net": "miss" if st.get("net_miss") else ("ok" if st.get("nics") else "none"),
+            "vga": "miss" if any(x.get("k") == "vga" for x in miss) else ("basic" if st.get("vga_basic") else "ok")}

@@ -33,23 +33,27 @@ def iso(sec_ago):
 A, B, C, X, Y = ["00000000-0000-4000-8000-0000000000a%d" % i for i in range(1, 6)]
 INFO_OK = {"host": "CB-A1B2C3", "os": "22h2", "os_ver": "10.0.19045.2965", "agent": "20.11a", "cpu": "Intel(R) Core(TM) i5-9400F CPU @ 2.90GHz", "cores": 6,
            "ram_gb": 15.9, "gpus": ["NVIDIA GeForce GTX 1650"], "lan_ip": "192.168.1.50", "fw": "uefi", "board": "ASUS PRIME B365M-A",
-           "disks": [{"model": "KINGSTON SA400", "gb": 240, "bus": "SATA", "ssd": True}], "rec": {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a"}}
+           "disks": [{"model": "KINGSTON SA400", "gb": 240, "bus": "SATA", "ssd": True}], "rec": {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a"},
+           "drv": {"miss": 0, "names": [], "net": "ok", "vga": "ok"}}
+DRV_BAD = {"miss": 5, "names": ["Ethernet Controller [Realtek 10EC:8168]", "SM Bus Controller [Intel 8086:A323]", "PCI Device [1B21:1242]", "USB Controller", "x5"], "net": "miss", "vga": "basic"}
 
 
 def make_db():
     evil = {"host": "\"><svg onload=window.__xss=2>", "cpu": {"a": 1}, "cores": "abc", "ram_gb": "<b>", "gpus": "not-array", "board": ["a"], "agent": {"x": 1},
-            "disks": [None, 5, {"gb": "<i>", "ssd": "x"}], "rec": {"ok": True, "images": "22h2"}, "sec": {"std": "<img src=x onerror=window.__xss=10>", "hard": "<b>", "lock": 1}}
+            "disks": [None, 5, {"gb": "<i>", "ssd": "x"}], "rec": {"ok": True, "images": "22h2"}, "sec": {"std": "<img src=x onerror=window.__xss=10>", "hard": "<b>", "lock": 1},
+            "drv": {"miss": 3, "names": ["<img src=x onerror=window.__xss=22>", {"a": 1}, "\"><svg onload=window.__xss=23>"], "net": "<b>miss</b>", "vga": 5}}
     evil2 = {"host": "H", "cpu": "<img src=x onerror=window.__xss=4>", "cores": 4, "ram_gb": 8, "gpus": ["<img src=x onerror=window.__xss=5>", {"z": 1}], "agent": "<b>9</b>",
-             "board": "<img src=x onerror=window.__xss=6>", "disks": [{"gb": 500, "ssd": False}], "rec": {"ok": True, "images": ["22h2", "<img src=x onerror=window.__xss=7>", "1511"]}}
+             "board": "<img src=x onerror=window.__xss=6>", "disks": [{"gb": 500, "ssd": False}], "rec": {"ok": True, "images": ["22h2", "<img src=x onerror=window.__xss=7>", "1511"]},
+             "drv": {"miss": "<img src=x onerror=window.__xss=24>", "names": ["a"], "net": "miss", "vga": "basic"}}
     return {
         "pc_settings": [{"id": 1, "enroll_hash": None, "enroll_made_at": None, "auto_approve": False, "agent": {}, "poll_s": 30}],
         "pc_machines": [
             {"id": A, "name": "CB-A1B2C3", "code": None, "note": None, "approved": False, "status": "new", "os": "22h2", "os_ver": "10.0.19045.2965", "info": INFO_OK,
              "lan_ip": "192.168.1.50", "pub_ip": "1.54.69.205", "first_seen": iso(300), "last_seen": iso(10), "enrolled_at": iso(300), "reenroll_until": None, "created_at": iso(300)},
             {"id": B, "name": "Máy 14-85", "code": "A · 14-85", "note": "kệ 2, hàng trên", "approved": True, "status": "ready", "os": "1511", "os_ver": "10.0.10586.0",
-             "info": dict(INFO_OK, host="CB-B", os="1511", disks=[{"gb": 480, "ssd": True}, {"gb": 2000, "ssd": False}], sec={"std": True, "hard": True, "lock": True}),
+             "info": dict(INFO_OK, host="CB-B", os="1511", disks=[{"gb": 480, "ssd": True}, {"gb": 2000, "ssd": False}], sec={"std": True, "hard": True, "lock": True}, drv=DRV_BAD),
              "lan_ip": "192.168.1.51", "pub_ip": "1.54.69.205", "first_seen": iso(90000), "last_seen": iso(20), "enrolled_at": iso(4000), "reenroll_until": None, "created_at": iso(90000)},
-            {"id": C, "name": "Máy khách Tèo", "code": None, "note": None, "approved": True, "status": "rented", "os": "22h2", "os_ver": "10.0.19045.1", "info": dict(INFO_OK, host="Máy khách Tèo", rec={"ok": False, "images": []}, sec={"std": False, "hard": False, "lock": True}),
+            {"id": C, "name": "Máy khách Tèo", "code": None, "note": None, "approved": True, "status": "rented", "os": "22h2", "os_ver": "10.0.19045.1", "info": {k: v for k, v in dict(INFO_OK, host="Máy khách Tèo", rec={"ok": False, "images": []}, sec={"std": False, "hard": False, "lock": True}).items() if k != "drv"},
              "lan_ip": "192.168.1.52", "pub_ip": "1.54.69.205", "first_seen": iso(200000), "last_seen": iso(3 * 3600), "enrolled_at": iso(200000), "reenroll_until": None, "created_at": iso(200000)},
             {"id": X, "name": "<img src=x onerror=\"window.__xss=1\">", "code": "<b>c</b>", "note": "<script>window.__xss=8</script>", "approved": True, "status": "maint", "os": "<script>window.__xss=3</script>",
              "os_ver": 12345, "info": evil, "lan_ip": "<u>ip</u>", "pub_ip": None, "first_seen": iso(500), "last_seen": iso(30), "enrolled_at": iso(500), "reenroll_until": None, "created_at": iso(250)},
@@ -208,6 +212,13 @@ def main():
         rc = next(r for r in rows if r.startswith("Máy khách Tèo"))
         ck("dòng máy đang thuê: offline, không cứu hộ, lệnh lỗi có lý do", all(k in rc for k in ["○ offline", "3 giờ trước", "Đang thuê", "⚠ không có phân vùng cứu hộ", "✗ Cài lại 1511 (chỉ phân vùng Windows)", "May nay chua co phan vung cuu ho CloudBlue <b>x</b>"]) and "Windows:" not in rc, rc)
 
+        ck("máy báo đủ driver → dòng nhỏ '✓ đủ driver'; máy agent cũ (không gửi mục driver) → không hiện gì về driver", "✓ đủ driver" in ra and "driver" not in rc.replace("(dọn sạch", ""), (ra, rc))
+        ck("máy 1511 còn thiếu driver: nhãn ⚠ ghi số thiết bị + card mạng chưa có driver + VGA chưa có driver hãng, kèm 3 tên đầu (hãng + mã phần cứng)",
+           "⚠ thiếu driver: 5 thiết bị (card mạng chưa có driver, VGA chưa có driver của hãng)" in rb and "Ethernet Controller [Realtek 10EC:8168] · SM Bus Controller [Intel 8086:A323] · PCI Device [1B21:1242] …" in rb
+           and "USB Controller" not in rb, rb)
+        ck("… rê chuột vào nhãn thấy đủ tên (tối đa 6)", s.js("() => { const e = [...document.querySelectorAll('#pctbl .pca-drv')].find(x => x.textContent.includes('5 thiết bị')); return e ? e.title : ''; }")
+           == "Ethernet Controller [Realtek 10EC:8168] · SM Bus Controller [Intel 8086:A323] · PCI Device [1B21:1242] · USB Controller · x5")
+
         print("4. Dữ liệu lạ từ máy cho thuê không chạy được mã, không làm hỏng bảng")
         ck("không đoạn mã nào chạy (window.__xss trống)", s.js("() => window.__xss") is None, s.js("() => window.__xss"))
         ck("không thẻ lạ nào lọt vào bảng", s.js("() => document.querySelectorAll('#pctbl img, #pctbl svg, #pctbl script, #pctbl u, #pctbl i').length") == 0)
@@ -217,6 +228,9 @@ def main():
         ry = next(r for r in rows if r.startswith("May-Y"))
         ck("chuỗi độc trong CPU / card / bo mạch in dạng chữ; tên bản Windows lạ bị loại", "<img src=x onerror=window.__xss=4>" in ry and "đổi được: 22H2, 1511" in ry and "window.__xss=7" not in ry and "chưa từng" in ry and "agent <b>9</b>" in ry, ry)
         ck("lệnh có tham số lạ vẫn in được", "✓ Cài lại (?)" in ry, ry)
+        ck("mục driver máy gửi sai kiểu: tên thiết bị chứa mã in ra dạng chữ, giá trị lạ không được tính; số thiết bị không phải số → bỏ cả mục",
+           "⚠ thiếu driver: 3 thiết bị" in rx and "<img src=x onerror=window.__xss=22> · \"><svg onload=window.__xss=23>" in rx and "card mạng chưa có driver" not in rx and "VGA chưa" not in rx
+           and "thiếu driver" not in ry and "đủ driver" not in ry, (rx, ry))
 
         print("5. Tìm kiếm")
         s.page.fill("#pcq", "14-85"); s.page.wait_for_timeout(100)

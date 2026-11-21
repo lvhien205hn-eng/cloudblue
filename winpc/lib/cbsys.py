@@ -7,9 +7,9 @@
 #
 #  Tự kiểm (chỉ ĐỌC, không đổi gì):   python cbsys.py --selftest
 # =====================================================================================================
-import ctypes, json, os, subprocess, sys, time
+import ctypes, json, os, re, subprocess, sys, time
 
-SYS_VER = "20.11d"
+SYS_VER = "21.11c"
 WIN = os.name == "nt"
 COPY_BLOCK = 4 << 20                      # chép tệp theo khối 4MB
 COPY_SAY = 64 << 20                       # tệp từ 64MB trở lên: in tên + dung lượng để biết máy đang chép, không phải treo
@@ -451,6 +451,111 @@ class WinSys:
 
     def now(self): return time.time()
     def sleep(self, s): time.sleep(s)
+
+
+# ====================================================================================== thiết bị + driver (Windows đang chạy)
+def pnp_devices(limit=1500):
+    """Mọi thiết bị ĐANG CẮM của máy — như danh sách của Device Manager, hỏi thẳng SetupAPI + cfgmgr32 (không cần WMI / PowerShell, không phụ thuộc ngôn ngữ):
+       [{"name", "cls" (tên lớp: Net, Display… — rỗng khi chưa có driver), "id" (mã thiết bị), "problem" (0 = chạy tốt, 28 = chưa có driver…), "service", "compat" [mã tương thích]}]."""
+    from ctypes import wintypes
+    sa, cm = ctypes.WinDLL("setupapi", use_last_error=True), ctypes.WinDLL("cfgmgr32")
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", wintypes.DWORD), ("b", wintypes.WORD), ("c", wintypes.WORD), ("d", ctypes.c_ubyte * 8)]
+
+    class DEVINFO(ctypes.Structure):
+        _fields_ = [("cbSize", wintypes.DWORD), ("ClassGuid", GUID), ("DevInst", wintypes.DWORD), ("Reserved", ctypes.c_void_p)]
+
+    sa.SetupDiGetClassDevsW.restype = ctypes.c_void_p
+    sa.SetupDiGetClassDevsW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p, ctypes.c_void_p, wintypes.DWORD]
+    sa.SetupDiEnumDeviceInfo.argtypes = [ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(DEVINFO)]
+    sa.SetupDiGetDeviceRegistryPropertyW.argtypes = [ctypes.c_void_p, ctypes.POINTER(DEVINFO), wintypes.DWORD, ctypes.POINTER(wintypes.DWORD), ctypes.c_void_p,
+                                                     wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    sa.SetupDiGetDeviceInstanceIdW.argtypes = [ctypes.c_void_p, ctypes.POINTER(DEVINFO), ctypes.c_void_p, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    sa.SetupDiDestroyDeviceInfoList.argtypes = [ctypes.c_void_p]
+    cm.CM_Get_DevNode_Status.argtypes = [ctypes.POINTER(wintypes.ULONG), ctypes.POINTER(wintypes.ULONG), wintypes.DWORD, wintypes.ULONG]
+    h = sa.SetupDiGetClassDevsW(None, None, None, 0x2 | 0x4)         # DIGCF_PRESENT | DIGCF_ALLCLASSES
+    if not h or h == ctypes.c_void_p(-1).value: raise OSError("SetupDiGetClassDevs loi %d" % ctypes.get_last_error())
+    chars = 4096
+    buf = ctypes.create_unicode_buffer(chars)
+
+    def prop(d, code, multi=False):
+        need = wintypes.DWORD(0)
+        if not sa.SetupDiGetDeviceRegistryPropertyW(h, ctypes.byref(d), code, None, buf, chars * 2, ctypes.byref(need)): return [] if multi else ""
+        txt = ctypes.wstring_at(ctypes.addressof(buf), max(0, min(need.value // 2, chars)))
+        return [x for x in txt.split("\0") if x] if multi else txt.split("\0", 1)[0]
+
+    out = []
+    try:
+        i = 0
+        while i < limit:
+            d = DEVINFO(); d.cbSize = ctypes.sizeof(DEVINFO)
+            if not sa.SetupDiEnumDeviceInfo(h, i, ctypes.byref(d)): break
+            i += 1
+            st, pb = wintypes.ULONG(0), wintypes.ULONG(0)
+            ok = cm.CM_Get_DevNode_Status(ctypes.byref(st), ctypes.byref(pb), d.DevInst, 0) == 0
+            did = buf.value if sa.SetupDiGetDeviceInstanceIdW(h, ctypes.byref(d), buf, chars, None) else ""
+            out.append({"name": prop(d, 12) or prop(d, 0), "cls": prop(d, 7), "id": did, "problem": pb.value if (ok and st.value & 0x400) else 0,     # DN_HAS_PROBLEM
+                        "service": prop(d, 4), "compat": prop(d, 2, True)[:8]})      # 12 FRIENDLYNAME · 0 DEVICEDESC · 7 CLASS · 4 SERVICE · 2 COMPATIBLEIDS
+    finally:
+        sa.SetupDiDestroyDeviceInfoList(h)
+    return out
+
+
+def pnp_retry():
+    """Bảo Windows DÒ LẠI PHẦN CỨNG + thử cài lại mọi thiết bị chưa có driver từ kho driver (đúng việc nút "Scan for hardware changes" của Device Manager làm).
+       Dùng sau khi bộ cài đã nạp sẵn driver vào kho (dism /Add-Driver) mà thiết bị vẫn chưa nhận. Trả mã cfgmgr32: 0 = đã ra lệnh được."""
+    from ctypes import wintypes
+    cm = ctypes.WinDLL("cfgmgr32")
+    cm.CM_Locate_DevNodeW.argtypes = [ctypes.POINTER(wintypes.DWORD), ctypes.c_wchar_p, wintypes.ULONG]
+    cm.CM_Reenumerate_DevNode.argtypes = [wintypes.DWORD, wintypes.ULONG]
+    dev = wintypes.DWORD(0)
+    cr = cm.CM_Locate_DevNodeW(ctypes.byref(dev), None, 0)           # gốc cây thiết bị
+    return cr if cr != 0 else cm.CM_Reenumerate_DevNode(dev, 0x2)   # CM_REENUMERATE_RETRY_INSTALLATION
+
+
+def staged_infs(limit=600, how=None, root=None):
+    """Gói driver BÊN THỨ BA đang nằm trong kho driver của Windows (bộ cài nạp bằng dism /Add-Driver, hoặc ai đó đã cài): [{"pub": "oem3.inf", "inf": đường dẫn
+       file .inf gốc trong kho}]. Đường dẫn này đưa được cho `pnputil -i -a` để cài ngay lên thiết bị khớp.
+       Cách tìm (không phụ thuộc ngôn ngữ lẫn registry — gói mới NẠP mà chưa thiết bị nào dùng thì KHÔNG có trong HKLM\\SYSTEM\\DriverDatabase, đã thử trên Windows thật):
+       mỗi gói bên thứ ba có 1 bản chép file .inf tên oemN.inf trong %SystemRoot%\\INF → tìm trong kho (System32\\DriverStore\\FileRepository\\<tên>.inf_<máy>_<mã>\\<tên>.inf)
+       file .inf GIỐNG HỆT bản chép đó (so cỡ trước, giống cỡ mới so nội dung). Gói kiểu cũ không nằm trong kho (vài driver máy in có sẵn) thì bỏ qua.
+       how (nếu đưa vào, kiểu dict): nhận {"pub": số file oemN.inf, "repo": số gói trong kho, "match": số gói khớp} — để bộ thử in ra."""
+    root = root or os.environ.get("SystemRoot") or "C:\\Windows"
+    inf_dir, repo = os.path.join(root, "INF"), os.path.join(root, "System32", "DriverStore", "FileRepository")
+    num = lambda pub: int(re.sub(r"\D", "", pub) or 0)
+    try: pubs = sorted(((n.lower(), n) for n in os.listdir(inf_dir) if re.fullmatch(r"oem\d+\.inf", n, re.I)), key=lambda t: num(t[0]))
+    except OSError: pubs = []
+    by_size, n_repo = {}, 0
+    try: dirs = os.listdir(repo)
+    except OSError: dirs = []
+    for d in dirs:
+        m = re.match(r"^(.+\.inf)_", d, re.I)
+        if not m: continue
+        path = os.path.join(repo, d, m.group(1))
+        try: size = os.path.getsize(path)
+        except OSError: continue
+        n_repo += 1
+        by_size.setdefault(size, []).append(path)
+    out = []
+    for pub, real in pubs:
+        if len(out) >= limit: break
+        src = os.path.join(inf_dir, real)
+        try:
+            cands = by_size.get(os.path.getsize(src)) or []
+            if not cands: continue
+            with open(src, "rb") as f: raw = f.read()
+        except OSError:
+            continue
+        for path in cands:
+            try:
+                with open(path, "rb") as f: same = f.read() == raw
+            except OSError:
+                same = False
+            if same:
+                out.append({"pub": pub, "inf": path}); break
+    if how is not None: how.update(pub=len(pubs), repo=n_repo, match=len(out))
+    return out
 
 
 # ====================================================================================== tự kiểm (chỉ đọc)
