@@ -21,6 +21,7 @@
 #      → sửa bộ cài không cần tạo lại ISO / cài lại máy bằng USB
 #    · (21.11h) công tắc "Cho khách quyền Admin" của shop (pc_poll.cust_admin) → cb.json "user_admin" + chạy ngay pha system của cb_provision
 #      (21.11i) ghi luôn công tắc lên cb.json của PHÂN VÙNG CỨU HỘ → cài lại (khách thuê mới / đổi Windows) thì khách có quyền Admin NGAY từ đầu
+#    · (21.11j) thư mục C:\CloudBluePC được ẩn (Ẩn + Hệ thống) cho khách khỏi để ý — cb_provision.lockdown() ở mỗi pha system
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -38,7 +39,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11i"
+AGENT_VER = "21.11j"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này

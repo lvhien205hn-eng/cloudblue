@@ -369,6 +369,34 @@ def main():
         ck("máy chủ báo BUSY → hiện câu dễ hiểu, hộp vẫn mở", "đang có lệnh cài lại chưa xong" in s.js("() => document.getElementById('toast').textContent") and not s.js("() => document.getElementById('pcadlg').hidden"))
         s.js("() => { window.__FAKE.failRpc = {}; }"); s.page.click("#pcad-cancel")
 
+        print("8a2. Nút 🔁 Khởi động lại / ⏻ Tắt máy ngay ở từng dòng (22/11)")
+        rb = lambda pid, a: '#pctbl tr[data-pc="%s"] [data-pca="%s"]' % (pid, a)
+        has = lambda sel: s.js("sel => !!document.querySelector(sel)", sel)
+        ck("máy đã duyệt có nút 🔁 Khởi động lại + ⏻ Tắt máy ngay ở dòng; máy chờ duyệt thì không",
+           has(rb(B, "reboot")) and has(rb(B, "shutdown")) and not has(rb(A, "reboot")) and not has(rb(A, "shutdown"))
+           and s.js("sel => document.querySelector(sel).textContent", rb(B, "reboot")) == "🔁 Khởi động lại" and s.js("sel => document.querySelector(sel).textContent", rb(B, "shutdown")) == "⏻ Tắt máy")
+        n0 = len(s.calls("pc_admin_order"))
+        s.accept = False; s.dialogs.clear(); s.page.click(rb(B, "reboot")); s.settle()
+        ck("bấm 🔁 ở dòng → hỏi lại; chọn Huỷ thì không gửi gì", len(s.dialogs) == 1 and 'KHỞI ĐỘNG LẠI máy "Máy 14-86"?' in s.dialogs[0] and len(s.calls("pc_admin_order")) == n0, s.dialogs)
+        s.accept = True; s.dialogs.clear(); s.page.click(rb(B, "shutdown")); s.settle()
+        ck("bấm ⏻ ở dòng → hỏi lại (nhắc phải bấm nút nguồn mới bật lại) → gửi lệnh tắt + báo rõ",
+           len(s.dialogs) == 1 and 'TẮT máy "Máy 14-86"?' in s.dialogs[0] and "bấm nút nguồn" in s.dialogs[0]
+           and s.calls("pc_admin_order")[-1] == {"p_id": B, "p_cmd": "shutdown", "p_args": {}} and len(s.calls("pc_admin_order")) == n0 + 1
+           and "Đã gửi lệnh tắt máy Máy 14-86." in s.js("() => document.getElementById('toast').textContent"), (s.dialogs, s.calls("pc_admin_order")[-1:]))
+        oid = s.js("() => window.__FAKE.seq"); s.js("id => { const o = window.__FAKE.db.pc_orders.find(x => x.id === id); o.state = 'done'; o.done_at = new Date().toISOString(); }", oid)
+        s.js("id => { const m = window.__FAKE.db.pc_machines.find(x => x.id === id); m.status = 'rented'; m.rent_until = new Date(Date.now() + 86400000).toISOString(); }", B)
+        s.page.click("#pca-reload"); s.settle()
+        for act, word in (("reboot", "khách bị ngắt khoảng 1–2 phút"), ("shutdown", "khách KHÔNG dùng được cho tới khi máy được bật lại")):
+            s.accept = False; s.dialogs.clear(); s.page.click(rb(B, act)); s.settle()
+            ck("máy đang có khách thuê → lời hỏi %s nhắc: %s" % (act, word), len(s.dialogs) == 1 and word in s.dialogs[0], s.dialogs)
+        s.accept = True
+        s.js("id => { const m = window.__FAKE.db.pc_machines.find(x => x.id === id); m.rent_until = null; }", B)
+        s.js("id => { window.__FAKE.db.pc_orders.push({id: 9901, pc_id: id, cmd: 'reinstall', args: {os: '22h2', wipe: 'all'}, state: 'queued', result: null, created_at: new Date().toISOString(), sent_at: null, done_at: null}); }", B)
+        s.page.click("#pca-reload"); s.settle()
+        ck("máy đang có lệnh cài lại chưa xong → 2 nút khoá (máy chủ cũng từ chối)", s.js("sel => document.querySelector(sel).disabled", rb(B, "reboot")) and s.js("sel => document.querySelector(sel).disabled", rb(B, "shutdown")))
+        s.js("() => { const o = window.__FAKE.db.pc_orders.find(x => x.id === 9901); o.state = 'done'; o.done_at = new Date().toISOString(); }")
+        s.page.click("#pca-reload"); s.settle()
+
         print("8b. Gán máy cho TÀI KHOẢN khách + bật / tắt điều khiển từ xa (SQL v43)")
         s.js("() => { window.__FAKE.db.profiles.push({ id: 'u-teo', username: 'TeoKhach', email: 'teo@mail.test', role: 'user' }, { id: 'u-ti1', username: 'ti', email: 'ti1@mail.test', role: 'user' }, { id: 'u-ti2', username: 'Ti', email: 'ti2@mail.test', role: 'user' }); }")
         asg = lambda: [c["args"] for c in s.js("() => window.__FAKE.calls.filter(c => c.kind === 'rpc' && c.name === 'pc_admin_assign')")]

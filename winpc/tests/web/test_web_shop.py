@@ -224,6 +224,18 @@ def main():
         ck("bấm 'VPS của tôi' → VPS GPU nằm ĐẦU hộp: đủ 4 thẻ, ▶ Điều khiển trên web, 📲 App, 🎬 Video; không còn dòng 'chưa có máy VPS nào'",
            vm["open"] and vm["cards"] == 4 and vm["ctl"] and vm["app"] and vm["vid"] and vm["list"] == "" and vm["note"] and "Điều khiển ngay trên web" in vm["t"], vm)
         s.page.screenshot(path=os.path.join(SHOTS, "shop-6-vps-cua-toi.png"))
+        ap = s.js("""() => { const b = document.querySelector('#pcs-vm .pcs-appdl'); if (!b) return null;
+                    return { t: b.innerText, links: [...b.querySelectorAll('a')].map(a => a.getAttribute('href')), dl: [...b.querySelectorAll('a[download]')].length,
+                             help: !!document.querySelector('#pcs-vm .pcs-vmhelp[data-pcsvid]'), order: [...document.getElementById('pcs-vm').children].map(e => e.className) }; }""")
+        ck("22/11: 'VPS của tôi' có thẻ 📲 Tải app đầy đủ như ĐT đám mây — app máy tính + app Android (tải về), iPhone · iPad · Mac mở VPS đầu tiên trên web, nhiều máy (≥ 2 VPS)",
+           ap and "Tải app" in ap["t"] and ap["dl"] == 2 and "/play.html?pc=" + PC1 in ap["links"] and "/play.html?multi=pc" in ap["links"]
+           and any(l and l.endswith(".apk") for l in ap["links"]) and "VPS" in ap["t"], ap)
+        ck("… + thẻ 🎬 Video hướng dẫn VPS GPU từ A đến Z (như thẻ Hướng dẫn A→Z bên ĐT đám mây), nằm trên danh sách VPS",
+           ap and ap["help"] and ap["order"].index("helpbtn pcs-vmhelp") < ap["order"].index("pcs-vm-list") and ap["order"].index("cpappdl pcs-appdl") < ap["order"].index("helpbtn pcs-vmhelp"), ap and ap["order"])
+        s.page.click('#pcs-vm .pcs-vmhelp'); s.page.wait_for_timeout(300)
+        ck("… bấm thẻ video → mở hộp phát video VPS (/video/vps-gpu.mp4) nằm trên hộp 'VPS của tôi'",
+           s.js("() => { const m = document.getElementById('pcsdlg'), v = m && m.querySelector('video.pcs-vid'); return !!m && !m.hidden && !!v && v.getAttribute('src') === '/video/vps-gpu.mp4' && !document.getElementById('vmach').hidden; }"))
+        s.page.click('#pcsdlg [data-pcsx]'); s.page.wait_for_timeout(150)
         s.page.click('#pcs-vm [data-pcsrenew="%s"]' % PC1); s.page.wait_for_timeout(300)
         ck("trong hộp 'VPS của tôi': nút ⏱ Gia hạn mở hộp gia hạn (nằm trên)", s.js("() => !document.getElementById('pcsdlg').hidden && document.getElementById('pcsdlg').innerText.includes('Gia hạn')"))
         s.js("() => { document.getElementById('pcsdlg').hidden = true; document.getElementById('vmach').hidden = true; }")

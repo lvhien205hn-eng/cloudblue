@@ -368,7 +368,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
         <td class="pca-cfg">${cfgCell(m)}</td>
         <td>${orderCell(m)}</td>
-        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
+        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button>${m.approved ? `<button class="btn ghost sm" type="button" data-pca="reboot"${reBusy ? " disabled" : ""} title="Khởi động lại Windows của máy này — khách đang dùng bị ngắt 1–2 phút">🔁 Khởi động lại</button><button class="btn ghost sm" type="button" data-pca="shutdown"${reBusy ? " disabled" : ""} title="Tắt hẳn máy — muốn bật lại phải bấm nút nguồn tại máy">⏻ Tắt máy</button>` : ""}<button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
     };
     $i("pctbl").innerHTML = list.length ? list.map(m => {
       try { return row(m); }                  // 1 máy gửi thông tin lạ không được làm hỏng cả bảng
@@ -396,7 +396,19 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (a === "reinstall") return openRe(m);
     if (a === "handover") return openRe(m, true);
     if (a === "rent") return openRent(m);
+    if (a === "reboot" || a === "shutdown") return power(m, a, b);
   };
+
+  // ---- Khởi động lại / Tắt máy: nút ở từng dòng + trong hộp Sửa. Hỏi lại rõ ràng (máy đang có khách / đang offline) rồi gửi lệnh cho agent.
+  async function power(m, a, b) {
+    const rent = m.status === "rented" && (untilOf(m) || 0) > Date.now();
+    const q = `${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?`
+      + (a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : "")
+      + (rent ? (a === "reboot" ? "\n\nMáy đang có khách thuê — khách bị ngắt khoảng 1–2 phút rồi dùng tiếp." : "\n\nMáy đang có khách thuê — khách KHÔNG dùng được cho tới khi máy được bật lại.") : "")
+      + (online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại.");
+    if (!confirm(q)) return false;
+    return !!(await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, `Đã gửi lệnh ${a === "reboot" ? "khởi động lại" : "tắt"} máy ${m.name}.`, b));
+  }
   $i("pcq").oninput = render;
   $i("pca-reload").onclick = () => { if (P.v42 === false) P.v42 = null; load(); };
 
@@ -449,8 +461,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const b = e.target.closest("[data-pcact]"), m = P.cur; if (!b || !m) return;
     const a = b.dataset.pcact;
     if (a === "reboot" || a === "shutdown") {
-      if (!confirm(`${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?${a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : ""}${online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại."}`)) return;
-      if (await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, "Đã gửi lệnh.", b)) show("pcadlg", false);
+      if (await power(m, a, b)) show("pcadlg", false);
     } else if (a === "reenroll") {
       if (!confirm(`Cho máy "${m.name}" đăng ký lại KHÔNG cần mã trong 6 giờ?\n\nChỉ dùng khi máy báo "cần mã đăng ký" sau khi bạn tự cài lại Windows cho nó. Trong 6 giờ đó, máy nào khai đúng dấu phần cứng của máy này sẽ nhận được quyền của nó.`)) return;
       await call("pc_admin_allow_reenroll", { p_id: m.id, p_hours: 6 }, "Đã mở 6 giờ cho máy đăng ký lại.", b);

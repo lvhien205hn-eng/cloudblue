@@ -7,7 +7,7 @@
      4. hạ 1 tài khoản khách thật từ Admin xuống tài khoản thường bằng cb_provision.harden()
    Dùng:  python sec_check.py <thư mục cb của cây bộ cài> <thư mục tạm>
    In ra từng dòng:  OK <tên>  |  XX <tên> -> <chi tiết>  |  .. <ghi chú>      (check.ps1 đọc các dòng này)"""
-import json, os, re, secrets, shutil, subprocess, sys, time
+import json, os, re, secrets, shutil, stat, subprocess, sys, time
 
 CB, TMP = sys.argv[1], sys.argv[2]
 BASE = r"C:\CloudBluePC"
@@ -191,6 +191,10 @@ def main():
     ck("is_admin() nhan ra dang co quyen quan tri", P.is_admin() is True)
     ok = P.lockdown()
     ck("cb_provision.lockdown(): moi lenh icacls deu xong + dat moc lock.done", ok and os.path.isfile(os.path.join(BASE, "logs", "lock.done")), P.lines[-4:])
+    fa = os.stat(BASE).st_file_attributes
+    ck("21.11j: thu muc C:\\CloudBluePC da AN (thuoc tinh An + He thong), file ben trong khong bi doi thuoc tinh",
+       bool(fa & stat.FILE_ATTRIBUTE_HIDDEN) and bool(fa & stat.FILE_ATTRIBUTE_SYSTEM) and not (os.stat(os.path.join(BASE, "cb.json")).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN), hex(fa))
+    ck("21.11j: thu muc an van vao / doc / chay binh thuong (duong dan thang)", os.path.isdir(BASE) and os.path.isfile(os.path.join(BASE, "cb.json")) and "cbkhach" in open(os.path.join(BASE, "cb.json"), encoding="utf-8").read())
     acl_root = sh(["icacls", BASE])[1]
     acl_os = sh(["icacls", os.path.join(BASE, "os")])[1]
     acl_fb = sh(["icacls", os.path.join(BASE, "os", "firstboot.d")])[1]
