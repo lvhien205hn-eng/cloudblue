@@ -440,6 +440,50 @@ ck("folder_applies: tên bản Windows chỉ khớp đúng bản; tên khác dù
    and not C.folder_applies("w11-23h2", "22h2") and not C.folder_applies("b99999", "22h2") and C.folder_applies("b99999", "b99999") and C.folder_applies("2024-driver", "1511") and C.folder_applies("vga", None))
 ck("is_os_tag", all(C.is_os_tag(x) for x in ("1511", "22h2", "22H2", "1607", "w11-24h2", "b12345", "1511-2")) and not any(C.is_os_tag(x) for x in ("lan", "vga", "intel", "2024", "h22", "", "driver-1511")))
 
+print("20b. Sau khi nạp driver: nhật ký ghi Windows mới có những gói driver nào — có driver CARD MẠNG không (21.11c)")
+DRV_TABLE = """Deployment Image Servicing and Management tool
+Version: 10.0.19041.3636
+
+Image Version: 10.0.10586.0
+
+Obtaining list of 3rd party drivers from the driver store...
+
+Driver packages listing:
+
+-------------- | ------------------ | ----- | ---------- | --------------------- | ---------- | ----------------
+Published Name | Original File Name | Inbox | Class Name | Provider Name         | Date       | Version
+-------------- | ------------------ | ----- | ---------- | --------------------- | ---------- | ----------------
+oem0.inf       | rt640x64.inf       | No    | Net        | Realtek               | 5/10/2019  | 10.35.510.2019
+oem1.inf       | netrtwlane.inf     | No    | Net        | Realtek Semiconductor Corp. | 1/2/2018 | 2023.66.1104.2017
+oem2.inf       | nv_dispi.inf       | No    | Display    | NVIDIA                | 6/1/2021   | 27.21.14.6677
+oem3.inf       | hdxrt.inf          | No    | MEDIA      | Realtek <b>           | 1/1/2019   | 6.0.1.8619
+
+The operation completed successfully.
+"""
+rows = C.parse_dism_drivers(DRV_TABLE)
+ck("đọc bảng driver của dism: tên công bố, tên file gốc, lớp (viết thường), hãng — chữ lạ trong tên hãng bị lược", [(r["pub"], r["inf"], r["cls"]) for r in rows] == [("oem0.inf", "rt640x64.inf", "net"),
+   ("oem1.inf", "netrtwlane.inf", "net"), ("oem2.inf", "nv_dispi.inf", "display"), ("oem3.inf", "hdxrt.inf", "media")] and rows[3]["prov"] == "Realtek b" and rows[1]["prov"] == "Realtek Semiconductor"
+   and C.parse_dism_drivers("") == [] and C.parse_dism_drivers(None) == [] and C.parse_dism_drivers("oem9.inf | thieu cot") == [], rows)
+fs = FakeSys("uefi"); cfg = cfg0(); drv_media(fs, cfg); fs.drv_table = DRV_TABLE
+rc, ui, inst = run(fs, ["2", "\r"])
+gd = [c for c in fs.cmds if "/Get-Drivers" in c]
+ck("cài 1511 có gói driver: sau khi nạp, hỏi dism danh sách driver của Windows mới (chỉ đọc) rồi ghi 1 dòng: số gói, card mạng (tên file + hãng), VGA",
+   rc == 0 and len(gd) == 1 and gd[0][:2] == ["dism", "/English"] and "/Format:Table" in gd[0] and fs.cmds.index(gd[0]) > max(i for i, c in enumerate(fs.cmds) if "/Add-Driver" in c)
+   and any("driver ben thu ba trong Windows moi: 4 goi - card mang: 2 (rt640x64.inf Realtek; netrtwlane.inf Realtek Semiconductor) | VGA: 1 | khac: 1" in ln for ln in inst.lines)
+   and not any("KHONG co goi driver card mang" in ln for ln in inst.lines), [ln for ln in inst.lines if "river" in ln])
+fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg); fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+fs.drv_table = DRV_TABLE.replace("| Net        |", "| System     |")
+rc, ui, inst = run(fs, ["2", "\r"])
+ck("cài 1511 mà KHÔNG có gói driver card mạng nào → nhật ký cảnh báo rõ: máy có thể không có mạng, đưa gói driver card mạng cho bản 1511", rc == 0
+   and any("(!) Ban Windows 1511 KHONG co goi driver card mang nao kem theo" in ln for ln in inst.lines) and any("dua goi driver card mang cho ban 1511" in ln for ln in inst.lines), [ln for ln in inst.lines if "river" in ln])
+fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg); fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt"); fs.drv_table = ""
+rc, ui, inst = run(fs)
+ck("cài 22H2 không kèm driver: không cảnh báo (Windows mới tự có driver card mạng), vẫn ghi dòng tổng", rc == 0 and any("driver ben thu ba trong Windows moi: 0 goi - card mang: 0 | VGA: 0 | khac: 0" in ln for ln in inst.lines)
+   and not any("KHONG co goi driver card mang" in ln for ln in inst.lines), [ln for ln in inst.lines if "river" in ln])
+fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg); fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt"); fs.drv_table = None
+rc, ui, inst = run(fs, ["2", "\r"])
+ck("dism không liệt kê được driver → bỏ qua, vẫn cài xong", rc == 0 and not any("driver ben thu ba" in ln for ln in inst.lines))
+
 print("21. Bản Windows tuỳ biến: file trả lời có sẵn, SetupComplete.cmd có sẵn")
 import fakesys as _fk
 fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg)

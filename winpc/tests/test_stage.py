@@ -465,6 +465,119 @@ ck("provision.cmd: lần đăng nhập đầu chạy nhánh riêng — KHÔNG nu
    'if /i "%~1"=="firstlogon" goto show' in cmd and '\r\n:show\r\n' in cmd and 'cb_provision.py" %* 2>> "%CBLOG%\\provision.out"\r\nping -n 9 127.0.0.1 >nul 2>&1\r\nexit /b 0' in cmd and cmd.count("exit /b 0") == 2 and cmd.isascii(), cmd)
 ck("real_nvidia_state / real_net có sẵn cho Windows thật; trên máy không phải Windows trả 'không biết' chứ không ném lỗi", REAL_GPU() == (None, None) and REAL_NET("127.0.0.1", 9, 0.2) is False)
 
+print("7b. Bước DRIVER CARD MẠNG (bản 21.11c): thiết bị chưa có driver → cài từ kho driver TRƯỚC khi chờ mạng; có mạng rồi mới tới VGA")
+D_LAN_OFF = {"name": "Ethernet Controller", "cls": "", "id": "PCI\\VEN_10EC&DEV_8168&SUBSYS_86771043&REV_15\\4&1", "problem": 28, "service": "", "compat": ["PCI\\CC_020000", "PCI\\CC_0200"]}
+D_LAN_ON = {"name": "Realtek PCIe GbE Family Controller", "cls": "Net", "id": D_LAN_OFF["id"], "problem": 0, "service": "rt640x64", "compat": ["PCI\\CC_020000"]}
+D_SMBUS = {"name": "SM Bus Controller", "cls": "", "id": "PCI\\VEN_8086&DEV_A323\\3&2", "problem": 28, "service": "", "compat": ["PCI\\CC_0C0500"]}
+D_VGA_BASIC = {"name": "Microsoft Basic Display Adapter", "cls": "Display", "id": "PCI\\VEN_10DE&DEV_1C8D\\4&3", "problem": 0, "service": "BasicDisplay", "compat": ["PCI\\CC_030000"]}
+D_SOFT = {"name": "WAN Miniport (IP)", "cls": "Net", "id": "SWD\\MSRRAS\\MS_NDISWANIP", "problem": 0, "service": "NdisWan", "compat": []}
+D_SOFT_BAD = {"name": "Teredo Tunneling Pseudo-Interface", "cls": "Net", "id": "SWD\\IP_TUNNEL_VBUS\\TEREDO", "problem": 10, "service": "tunnel", "compat": []}
+D_OFF = {"name": "Intel Wireless-AC 9560", "cls": "Net", "id": "PCI\\VEN_8086&DEV_9DF0\\3&9", "problem": 22, "service": "Netwtw08", "compat": []}
+NET_INF, VGA_INF = "C:\\Windows\\System32\\DriverStore\\FileRepository\\rt640x64.inf_amd64_0123\\rt640x64.inf", "C:\\Windows\\System32\\DriverStore\\FileRepository\\nv_dispi.inf_amd64_9\\nv_dispi.inf"
+def drv_env(devs, fix_after_kick=None, fix_after_pnputil=False, staged=(), pnp_ok=True, **kw):
+    """devs: thiết bị lúc đầu. fix_after_kick = số giây sau khi 'dò lại phần cứng' thì card mạng nhận driver (None = không bao giờ). fix_after_pnputil: chạy pnputil xong thì nhận."""
+    pr, st = vga_env(**kw)
+    st.update(devs=list(devs), kick_at=None, kicks=0, pnputil=[])
+    def cur():
+        if fix_after_kick is not None and st["kick_at"] is not None and st["clock"] - st["kick_at"] >= fix_after_kick:
+            st["devs"] = [D_LAN_ON if d is D_LAN_OFF else d for d in st["devs"]]
+        return list(st["devs"])
+    def kick():
+        st["kicks"] += 1; st["kick_at"] = st["clock"]; st["calls"].append(["<pnp-retry>"])
+        if pnp_ok is None: raise OSError("khong goi duoc cfgmgr32")
+        return pnp_ok
+    inner = pr._run
+    def run(argv, timeout=300):
+        if os.path.basename(argv[0]).lower() == "pnputil.exe":
+            st["calls"].append(list(argv)); st["pnputil"].append(list(argv[1:]))
+            if fix_after_pnputil: st["devs"] = [D_LAN_ON if d is D_LAN_OFF else d for d in st["devs"]]
+            return (0 if fix_after_pnputil else 259), "Microsoft PnP Utility"
+        return inner(argv, timeout)
+    pr._run, pr._devs, pr._pnp, pr._staged = run, cur, kick, (lambda: list(staged))
+    return pr, st
+dstate = lambda st: json.load(open(os.path.join(st["base"], "logs", "drv.json")))
+STAGED = ({"pub": "oem3.inf", "inf": NET_INF, "cls": "net"}, {"pub": "oem4.inf", "inf": VGA_INF, "cls": "display"})
+
+sm = C.drv_summary([D_LAN_OFF, D_LAN_ON, D_SMBUS, D_VGA_BASIC, D_SOFT, D_SOFT_BAD, D_OFF])
+ck("tóm tắt thiết bị: card mạng chưa có driver đứng đầu (kèm hãng + mã phần cứng), thiết bị phần mềm / thiết bị người dùng tắt không tính là thiếu driver",
+   [C.drv_label(x) for x in sm["miss"]] == ["Ethernet Controller [Realtek 10EC:8168]", "SM Bus Controller [Intel 8086:A323]"] and sm["net_miss"] == 1
+   and sm["nics"] == ["Realtek PCIe GbE Family Controller"] and sm["vga_basic"] == 1 and sm["vga_ok"] == 0, sm)
+ck("bản gọn gửi về web: số thiết bị thiếu, tên, card mạng thiếu driver, VGA đang chạy driver cơ bản", C.drv_brief(sm) == {"miss": 2, "names": ["Ethernet Controller [Realtek 10EC:8168]",
+   "SM Bus Controller [Intel 8086:A323]"], "net": "miss", "vga": "basic"} and C.drv_brief(C.drv_summary([D_LAN_ON])) == {"miss": 0, "names": [], "net": "ok", "vga": "ok"}
+   and C.drv_brief(C.drv_summary([D_SOFT]))["net"] == "none", C.drv_brief(sm))
+ck("tên thiết bị có ký tự lạ / dài → nhãn chỉ còn chữ ASCII, cắt ngắn; dữ liệu hỏng không làm lỗi", C.drv_label({"n": "Thiết bị ® lạ" + "x" * 90, "hw": "", "v": ""}).isascii()
+   and len(C.drv_label({"n": "y" * 200})) <= 60 and C.drv_summary([None, 5, {"problem": "abc", "id": None}, {"name": None, "problem": 28, "id": "USB\\VID_0BDA&PID_8179\\1"}])["miss"]
+   == [{"n": "?", "e": 28, "k": "", "hw": "0BDA:8179", "v": "Realtek"}])
+ck("đọc lớp driver trong file .inf: ANSI / UTF-16, theo mã lớp (không phụ thuộc chữ), chỉ đọc phần [Version]",
+   C.inf_class(b"; x\r\n[Version]\r\nSignature=\"$Windows NT$\"\r\nClass = Net\r\nClassGUID={4D36E972-E325-11CE-BFC1-08002BE10318}\r\n[Manufacturer]\r\nClass=Display\r\n") == "net"
+   and C.inf_class("[version]\r\nClass=\"LAN gi do\"\r\nClassGuid = {4d36e972-e325-11ce-bfc1-08002be10318} ; mang\r\n".encode("utf-16")) == "net"
+   and C.inf_class("[Version]\r\nClass=Display\r\n".encode("utf-16-le")) == "display" and C.inf_class(b"[Strings]\r\nClass=Net\r\n") == "" and C.inf_class(b"") == ""
+   and C.inf_class(b"[Version]\nClass=HDC\n") == "hdc")
+
+pr, st = drv_env([D_LAN_ON, D_SOFT, D_OFF])
+r = pr.drivers()
+ck("mọi thiết bị đã có driver → không đụng gì (không dò lại phần cứng, không pnputil, không chờ), ghi lại tình trạng", r["miss"] == [] and r["nics"] == ["Realtek PCIe GbE Family Controller"]
+   and st["kicks"] == 0 and st["pnputil"] == [] and st["slept"] == 0 and dstate(st)["kicks"] == 0 and dstate(st)["miss"] == [] and any("moi thiet bi da co driver" in x for x in st["log"]), (r, st["slept"]))
+pr, st = drv_env([D_LAN_OFF, D_SMBUS], fix_after_kick=10)
+r = pr.drivers()
+ck("card mạng chưa có driver → bảo Windows dò lại phần cứng + cài từ kho driver; 10 giây sau card nhận → đi tiếp ngay, KHÔNG cần pnputil",
+   st["kicks"] == 1 and st["pnputil"] == [] and r["nics"] == ["Realtek PCIe GbE Family Controller"] and r["net_miss"] == 0 and st["slept"] == 10 and dstate(st)["kicks"] == 1
+   and dstate(st)["miss"] == ["SM Bus Controller [Intel 8086:A323]"], (r, st["slept"], st["pnputil"]))
+ck("… nhật ký ghi rõ thiết bị nào chưa có driver lúc đầu và sau bước driver", any("thiet bi CHUA CO DRIVER: 2 (Ethernet Controller [Realtek 10EC:8168]; SM Bus Controller" in x for x in st["log"])
+   and any("sau buoc driver: con 1 thiet bi chua co driver" in x and "card mang da nhan driver: Realtek PCIe GbE" in x for x in st["log"]), st["log"])
+pr, st = drv_env([D_LAN_OFF], fix_after_pnputil=True, staged=STAGED)
+r = pr.drivers()
+ck("dò lại phần cứng 30 giây vẫn chưa nhận → chạy pnputil -i -a CHỈ cho gói driver card mạng trong kho (không đụng gói VGA) → card nhận",
+   st["kicks"] == 1 and st["pnputil"] == [["-i", "-a", NET_INF]] and r["nics"] and not r["miss"] and 30 <= st["slept"] <= 40 and idx(st, "<pnp-retry>") < idx(st, "pnputil.exe"), (st["pnputil"], st["slept"], r))
+pr, st = drv_env([D_LAN_OFF], staged=(STAGED[1],))
+r = pr.drivers()
+ck("kho driver không có gói driver card mạng nào → không chạy pnputil, ghi rõ vào nhật ký, card vẫn thiếu driver (không treo)",
+   st["pnputil"] == [] and r["net_miss"] == 1 and not r["nics"] and any("KHONG co goi driver card mang nao" in x for x in st["log"]) and dstate(st)["net_miss"] == 1 and st["slept"] <= 35, (r, st["slept"]))
+pr, st = drv_env([D_LAN_OFF], staged=tuple({"pub": "oem%d.inf" % i, "inf": NET_INF.replace("0123", "%04d" % i), "cls": "net"} for i in range(30)))
+pr.drivers()
+ck("kho có rất nhiều gói driver mạng → chạy tối đa 12 gói (không kéo dài lần cài)", len(st["pnputil"]) == 12)
+pr, st = drv_env([D_LAN_ON, D_SMBUS])
+r = pr.drivers()
+ck("card mạng đã chạy, chỉ thiếu driver thiết bị khác → vẫn bảo Windows cài lại (đủ driver), chờ 5 giây rồi đi tiếp, không pnputil", st["kicks"] == 1 and st["slept"] == 5 and st["pnputil"] == [] and len(r["miss"]) == 1)
+pr, st = drv_env([D_LAN_OFF], pnp_ok=None, fix_after_pnputil=True, staged=STAGED)
+r = pr.drivers()
+ck("không gọi được lệnh dò lại phần cứng → không sập, vẫn thử pnputil", r is not None and st["pnputil"] == [["-i", "-a", NET_INF]] and r["nics"])
+pr, st = drv_env([D_LAN_OFF]); pr._devs = lambda: None
+ck("không đọc được danh sách thiết bị → bỏ qua bước driver (Windows tự nhận như cũ), không chờ", pr.drivers() is None and st["kicks"] == 0 and st["slept"] == 0 and not os.path.exists(os.path.join(st["base"], "logs", "drv.json")))
+pr, st = drv_env([D_LAN_OFF]); pr._devs = lambda: 1 / 0
+ck("hàm đọc thiết bị lỗi → coi như không đọc được, không ném lỗi", pr.drivers() is None and pr.drv_retry() is None)
+pr, st = drv_env([D_LAN_OFF], fix_after_pnputil=True, staged=({"pub": "oem7.inf", "inf": os.path.join(st["base"], "khong-co.inf")},))
+real_inf = os.path.join(st["base"], "lan.inf"); open(real_inf, "wb").write(b"[Version]\r\nClass=Net\r\nClassGuid={4d36e972-e325-11ce-bfc1-08002be10318}\r\n")
+pr._staged = lambda: [{"pub": "oem7.inf", "inf": os.path.join(st["base"], "khong-co.inf")}, {"pub": "oem8.inf", "inf": real_inf}]
+pr.drivers()
+ck("gói trong kho không ghi sẵn lớp → tự đọc file .inf để biết là driver mạng; file không đọc được thì bỏ qua", st["pnputil"] == [["-i", "-a", real_inf]], st["pnputil"])
+
+pr, st = drv_env([D_LAN_OFF, D_VGA_BASIC], fix_after_kick=5, extra=("1511/05-lan.cmd",))
+pr.firstlogon()
+i_fb, i_kick, i_vga, i_grp, i_boot = idx(st, "05-lan.cmd"), idx(st, "<pnp-retry>"), idx(st, NV), idx(st, "/passwordchg:no"), idx(st, "shutdown /r")
+said = "\n".join(st["said"])
+ck("lần đăng nhập đầu bản 1511: lệnh riêng → DRIVER CARD MẠNG → thử mạng → VGA NVIDIA → khoá tài khoản → khởi động lại (đúng thứ tự LAN trước, VGA sau)",
+   0 <= i_fb < i_kick < i_vga < i_grp < i_boot and st["net_calls"] and st["vga_runs"] == 1, (i_fb, i_kick, i_vga, i_grp, i_boot))
+ck("… màn hình ghi bước 3 là driver card mạng, báo số thiết bị chưa có driver và card mạng đã nhận", all(k in said for k in ["[3/5] Driver card mang, roi cho may co mang",
+   "1 thiet bi chua co driver -> cai tu goi driver kem theo (card mang truoc)", "card mang da nhan driver: Realtek PCIe GbE Family Controller", "da co mang"]) and said.isascii(), said)
+pr, st = drv_env([D_LAN_OFF, D_SMBUS], net=False)
+pr.firstlogon()
+said = "\n".join(st["said"])
+ck("card mạng KHÔNG có driver phù hợp trong gói kèm theo: màn hình báo đúng tên thiết bị + hãng + mã phần cứng để tìm driver",
+   all(k in said for k in ["con 2 thiet bi chua co driver: Ethernet Controller [Realtek 10EC:8168]; SM Bus Controller [Intel 8086:A323]", "!! CARD MANG CHUA CO DRIVER: Ethernet Controller [Realtek 10EC:8168]",
+   "Goi driver kem theo khong co driver cho loai card nay", "!! CHUA CO MANG sau 1 phut"]) and said.isascii(), said)
+ck("… chưa card mạng nào nhận driver → chỉ chờ mạng 1 phút (không chờ 4 phút vô ích), CHƯA cài VGA, các bước sau vẫn chạy hết", st["vga_runs"] == 0 and vstate(st)["state"] == "wait"
+   and 90 <= st["slept"] <= 100 and idx(st, "shutdown /r") > 0, st["slept"])
+st["devs"] = [D_LAN_OFF, D_SMBUS]; st["calls"].clear(); k0 = st["kicks"]
+pr.system(); pr.system(); pr.system(); pr.system()
+ck("sau đó agent (pha system) thử lại bước driver — cả máy tối đa 3 lần rồi thôi (không lặp mãi)", st["kicks"] == 3 and k0 == 1 and dstate(st)["kicks"] == 3, (k0, st["kicks"]))
+pr, st = drv_env([D_LAN_OFF], net=False)
+pr.firstlogon(); st["devs"] = [D_LAN_ON]; st["net"] = True; k0 = st["kicks"]; pr.system()
+ck("máy sau đó đã có card mạng chạy → pha system không chạy lại bước driver, cài nốt VGA", st["kicks"] == k0 and st["vga_runs"] == 1 and dstate(st)["net_miss"] == 0)
+pr, st = drv_env([D_LAN_ON, D_SOFT], net=False)
+pr.firstlogon()
+ck("card mạng đã có driver mà vẫn chưa có mạng (dây mạng?) → vẫn chờ đủ 4 phút cho VGA như cũ", 240 <= st["slept"] <= 243 and "card mang da nhan driver" in "\n".join(st["said"]), st["slept"])
+
 print("8. Dịch vụ khởi động (pha boot — lưới an toàn thứ 3): bản Windows không chạy file trả lời lẫn SetupComplete.cmd thì agent vẫn lên")
 def boot_env(admin=True):
     pr0, st = sec_env({"user": "PC", "password": ""})
@@ -656,6 +769,25 @@ r = pr.system()
 ck("quá 1 giờ vẫn chưa có tài khoản khách + Windows không ở bước cài → pha system tự dựng kiểu ghost", r is True and has(st, "ghost.done") and names_on(st) == ["PC"] and any(x.startswith("shutdown /r") for x in J(st)), st["log"][-5:])
 pr, st = ghost_env(oobe=True, tasks=True, setup=SETUP_BUSY); st["clock"] += 0; pr.system(); st["clock"] += 3700; pr.system()
 ck("… nhưng Windows còn đang ở bước cài lần đầu thì không", names_on(st) == ["admin"] and not has(st, "ghost.start"))
+
+pr, st = ghost_env()                                                   # bản ghost 1511 trên máy thật: card mạng chưa có driver, gói VGA NVIDIA kèm theo
+fbv = os.path.join(st["base"], "os", "firstboot.d", "1511"); os.makedirs(fbv); open(os.path.join(fbv, NV), "wb").write(b"EXE")
+gs = {"devs": [D_LAN_OFF, D_VGA_BASIC], "gpu": (True, False), "order": []}
+g_run = pr._run
+def ghost_run(argv, timeout=300):
+    if cb_provision.NVIDIA_RE.match(os.path.basename(argv[0])): gs["order"].append("vga"); gs["gpu"] = (True, True); return 0, ""
+    if os.path.basename(argv[0]).lower() == "pnputil.exe": gs["order"].append("pnputil"); gs["devs"] = [D_LAN_ON, D_VGA_BASIC]; return 0, ""
+    return g_run(argv, timeout)
+def ghost_net(h, p_):
+    gs["order"].append("net:%s" % any(d is D_LAN_ON for d in gs["devs"])); return any(d is D_LAN_ON for d in gs["devs"])
+pr._run, pr._devs, pr._pnp, pr._staged = ghost_run, (lambda: list(gs["devs"])), (lambda: gs["order"].append("kick") or True), (lambda: [{"pub": "oem3.inf", "inf": NET_INF, "cls": "net"}])
+pr._net, pr._gpu = ghost_net, (lambda: gs["gpu"])
+r = pr.boot()
+ck("bản GHOST 1511 trên máy thật: dựng tài khoản → DRIVER CARD MẠNG (dò lại phần cứng → pnputil gói driver mạng) → có mạng → MỚI cài VGA NVIDIA → khoá → khởi động lại",
+   r is True and gs["order"][:2] == ["kick", "pnputil"] and "vga" in gs["order"] and gs["order"].index("pnputil") < gs["order"].index("net:True") < gs["order"].index("vga")
+   and "net:False" not in gs["order"] and has(st, "ghost.done") and any(x.startswith("shutdown /r") for x in J(st)), gs["order"])
+ck("… nhật ký ghi card mạng lúc đầu chưa có driver và sau bước driver đã nhận", any("thiet bi CHUA CO DRIVER: 1 (Ethernet Controller [Realtek 10EC:8168])" in x for x in st["log"])
+   and any("sau buoc driver: con 0 thiet bi chua co driver; card mang da nhan driver: Realtek PCIe GbE" in x for x in st["log"]), [x for x in st["log"] if "driver" in x])
 
 pr, st = sec_env({"user": "PC", "password": ""})
 pr.specialize(); n1 = sum(c == ["net", "accounts", "/maxpwage:unlimited"] for c in st["calls"]); pr.firstlogon(); pr.system()

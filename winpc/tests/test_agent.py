@@ -60,6 +60,13 @@ class SqlNet:
         return self.files[url]
 
 
+DEV_NIC = {"name": "Realtek PCIe GbE Family Controller", "cls": "Net", "id": "PCI\\VEN_10EC&DEV_8168&SUBSYS_1\\4&1", "problem": 0, "service": "rt640x64", "compat": ["PCI\\CC_020000"]}
+DEV_NIC_OFF = {"name": "Ethernet Controller", "cls": "", "id": DEV_NIC["id"], "problem": 28, "service": "", "compat": ["PCI\\CC_020000", "PCI\\CC_0200"]}
+DEV_SMBUS = {"name": "SM Bus Controller", "cls": "", "id": "PCI\\VEN_8086&DEV_A323\\3&2", "problem": 28, "service": "", "compat": ["PCI\\CC_0C0500"]}
+DEV_VGA_BASIC = {"name": "Microsoft Basic Display Adapter", "cls": "Display", "id": "PCI\\VEN_10DE&DEV_1C8D\\4&3", "problem": 0, "service": "BasicDisplay", "compat": ["PCI\\CC_030000"]}
+DEVS_OK = [DEV_NIC]
+
+
 class FakeHost:
     def __init__(self, fs, name="CB-TEST01"):
         self.fs, self.name, self.powers, self.check_ok, self.restarts = fs, name, [], True, 0
@@ -82,6 +89,7 @@ class FakeHost:
     def notify(self, text, secs=60): self.msgs = getattr(self, "msgs", []) + [text]; self.msg_secs = getattr(self, "msg_secs", []) + [secs]
     def abort_shutdown(self): self.aborts += 1
     def show_code(self, code): self.codes = getattr(self, "codes", []) + [code]; return getattr(self, "code_ok", True)
+    def drivers(self): return C.drv_summary(self.devs) if getattr(self, "devs", DEVS_OK) is not None else None      # devs = None: không đọc được danh sách thiết bị
 
     def set_clock(self, epoch):                                       # clock_ok = False: Windows từ chối (mặc định của bộ thử → đồng hồ giả giữ nguyên)
         self.clock_tries.append(epoch)
@@ -619,6 +627,39 @@ with _tf.TemporaryDirectory() as _d:                                 # WinHost.s
         else: os.environ["PUBLIC"] = _old
 ck("show_code thật: tạo file 'May so 14-85 (CloudBlue).txt' trên màn hình nền chung, trong file ghi rõ số máy", r1 and f1 == ["May so 14-85 (CloudBlue).txt"] and "MÁY SỐ: 14-85" in txt and "báo cho shop" in txt, (f1, txt[:60]))
 ck("đổi số máy → thay file cũ bằng file mới; xoá số máy → gỡ file; KHÔNG đụng file khác của khách", r2 and f2 == ["May so A-07 (CloudBlue).txt", "ghi chu cua khach.txt"] and r3 and f3 == ["ghi chu cua khach.txt"], (f2, f3))
+
+print("17. DRIVER: máy báo về web còn thiếu driver nào; tại máy status.txt + hộp báo ghi rõ card mạng chưa có driver (21.11c)")
+fsd = FakeSys("uefi"); H.usb(fsd, H.cfg0(), key=KEY)
+fsd.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="DRIVER017")
+assert cb_pe.Installer(fsd).run(ScriptUI()) == 0
+fsd.fdisks = [d for d in fsd.fdisks if d.index != 9]; boot_windows(fsd)
+netd, hostd = SqlNet(), FakeHost(fsd, "CB-DRIVER"); netd.down = True; hostd.ip = ""; hostd.devs = [DEV_NIC_OFF, DEV_SMBUS, DEV_VGA_BASIC]
+agd = agent(fsd, netd, hostd); agd.tick()
+std = fsd.file("C", "cloudbluepc\\os\\status.txt") or ""
+ck("máy 1511 mới cài, card mạng CHƯA có driver: status.txt ghi rõ card mạng chưa có driver + tên từng thiết bị thiếu (hãng + mã phần cứng) + VGA đang chạy driver cơ bản",
+   "Card mang: CHUA CO DRIVER - can goi driver dung loai card (xem dong Driver)" in std
+   and "Driver: THIEU 2 thiet bi: Ethernet Controller [Realtek 10EC:8168]; SM Bus Controller [Intel 8086:A323] | VGA dang chay driver co ban cua Windows" in std and all(x.isascii() for x in std.splitlines() if x.startswith(("Card mang:", "Driver:"))), std)
+fsd.clock += 160; agd.tick()
+ck("hộp báo 'chưa có mạng' tại máy nói đúng lý do: card mạng chưa có driver, kèm tên + mã phần cứng để tìm đúng driver", len(hostd.msgs) == 1 and "CHUA CO MANG" in hostd.msgs[0]
+   and "Card mang CHUA CO DRIVER: Ethernet Controller [Realtek 10EC:8168]" in hostd.msgs[0] and hostd.msgs[0].isascii() and len(hostd.msgs[0]) <= 250, hostd.msgs)
+hostd.devs = [DEV_NIC, DEV_SMBUS, DEV_VGA_BASIC]; hostd.ip = "192.168.1.90"; netd.down = False; agd.tick(); agd.tick()
+idd = agd.ident["id"]
+drv_db = json.loads(q("select info->'drv' from pc_machines where id = '%s'" % idd))
+ck("driver card mạng vào → máy lên web; web nhận info.drv: còn 1 thiết bị thiếu (tên), card mạng ok, VGA driver cơ bản", drv_db == {"miss": 1, "names": ["SM Bus Controller [Intel 8086:A323]"], "net": "ok", "vga": "basic"}, drv_db)
+std = fsd.file("C", "cloudbluepc\\os\\status.txt")
+ck("… status.txt cập nhật: card mạng đã nhận driver, còn thiếu 1 thiết bị", "Card mang: da nhan driver" in std and "Driver: THIEU 1 thiet bi: SM Bus Controller [Intel 8086:A323] | VGA dang chay driver co ban" in std, std)
+hostd.devs = [DEV_NIC]
+for _ in range(11): agd.tick()
+drv_db = json.loads(q("select info->'drv' from pc_machines where id = '%s'" % idd))
+ck("cài đủ driver → lần gửi cấu hình kế web nhận 'đủ driver'; status.txt ghi 'du'", drv_db == {"miss": 0, "names": [], "net": "ok", "vga": "ok"} and "Driver: du - moi thiet bi da co driver" in fsd.file("C", "cloudbluepc\\os\\status.txt"), drv_db)
+hostd.devs = None; agx = agent(fsd, netd, hostd); agx.tick()
+ck("không đọc được danh sách thiết bị → không gửi mục drv (web không hiện nhãn sai), status.txt ghi 'chua kiem duoc', agent vẫn chạy", "drv" not in agx.info() and agx.fail == 0
+   and "Driver: chua kiem duoc" in fsd.file("C", "cloudbluepc\\os\\status.txt"))
+hostd.devs = [dict(DEV_SMBUS, name="Thiết bị <img src=x onerror=alert(1)> " + "x" * 300, id="PCI\\VEN_ZZZZ&DEV_1") for _ in range(40)]
+big = agx.info()["drv"]
+ck("máy gửi tên thiết bị lạ / rất nhiều thiết bị: chỉ 6 tên, mỗi tên ≤ 60 ký tự ASCII (web vẫn esc() lại lần nữa)", big["miss"] == 40 and len(big["names"]) == 6 and all(len(x) <= 60 and x.isascii() for x in big["names"]), big)
+with_real = pcagent.WinHost().drivers()
+ck("WinHost.drivers thật: trên máy không phải Windows trả None (không ném lỗi)", with_real is None)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
