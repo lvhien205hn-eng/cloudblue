@@ -3,8 +3,9 @@
 #  cb_provision.py — CÀI ĐẶT LẦN ĐẦU trong Windows vừa cài (gọi bởi provision.cmd từ file trả lời unattend.xml)
 #     specialize  (tài khoản SYSTEM, trước màn hình đăng nhập): chính sách bỏ màn hình hỏi, điện năng, tác vụ tự chạy agent, KHOÁ QUYỀN thư mục
 #     firstlogon  (tài khoản vừa tạo — lúc này còn là Admin, lần đăng nhập đầu): tự đăng nhập vĩnh viễn, tác vụ, ẢNH NỀN, chạy script riêng của chủ shop
-#                                                                 trong os\firstboot.d (và os\firstboot.d\<tên bản, vd 1511>), bật agent, CHỜ MÁY CÓ MẠNG
-#                                                                 (driver card mạng) rồi mới cài driver VGA NVIDIA, sau đó HẠ tài khoản khách xuống
+#                                                                 trong os\firstboot.d (và os\firstboot.d\<tên bản, vd 1511>), bật agent, CÀI DRIVER CARD MẠNG
+#                                                                 (thiết bị chưa có driver → cài từ gói driver kèm theo), CHỜ MÁY CÓ MẠNG
+#                                                                 rồi mới cài driver VGA NVIDIA, sau đó HẠ tài khoản khách xuống
 #                                                                 TÀI KHOẢN THƯỜNG + khoá tài khoản Administrator có sẵn + khởi động lại 1 lần.
 #                                                                 Tiến độ in ra cửa sổ lệnh trên màn hình (chữ không dấu).
 #     logon       (mỗi lần đăng nhập — khoá Run, chạy bằng quyền của người đăng nhập): tài khoản chưa có ảnh nền thì đặt; có quyền quản trị thì kiểm tác vụ
@@ -21,7 +22,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11b"
+PROV_VER = "21.11c"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -29,6 +30,9 @@ NOWIN = 0x08000000 if os.name == "nt" else 0
 NVIDIA_RE = re.compile(r"^(\d{3}\.\d{2}-(notebook|desktop)-.*|nvidia-vga-.*)\.exe$", re.I)
 VGA_TRIES = 3                            # chạy bộ cài VGA tối đa 3 lần (lần đăng nhập đầu + các lần agent gọi lại)
 NET_WAIT_VGA, NET_WAIT = 240, 60         # lần đăng nhập đầu chờ mạng tối đa: 4 phút khi có gói VGA phải cài, 1 phút khi không
+DRV_SETTLE = 30                          # bước driver: sau khi bảo Windows cài lại thiết bị chưa có driver, chờ card mạng nhận driver tối đa 30 giây (5 giây xem 1 lần)
+DRV_PNPUTIL_MAX = 12                     # card mạng vẫn chưa nhận: chạy pnputil cho tối đa 12 gói driver MẠNG đang nằm trong kho driver
+DRV_KICKS = 3                            # bước driver chạy tối đa 3 lần cho 1 máy (lần đăng nhập đầu + các lần agent gọi lại khi máy vẫn chưa có card mạng chạy được)
 VGA_CMD_MARK = "cai driver VGA NVIDIA im lang"      # dấu của file 50-vga-nvidia.cmd do bộ tạo ISO bản cũ sinh ra (nay cb_provision tự cài → bỏ qua file đó)
 
 GHOST_SKIP_RIDS = (500, 501, 503, 504)      # Administrator · Guest · DefaultAccount · WDAGUtilityAccount có sẵn của Windows: không nhận làm tài khoản khách
@@ -173,6 +177,31 @@ def real_nvidia_state():
         return None, None
 
 
+def _cbsys():
+    lib = os.path.join(BASE, "lib")
+    if lib not in sys.path: sys.path.insert(0, lib)
+    import cbsys
+    return cbsys
+
+
+def real_devices():
+    """Danh sách thiết bị đang cắm của máy (cbsys.pnp_devices — như Device Manager). Không đọc được → None."""
+    try: return _cbsys().pnp_devices()
+    except Exception: return None
+
+
+def real_pnp_retry():
+    """Bảo Windows dò lại phần cứng + cài lại thiết bị chưa có driver từ kho driver. True nếu ra lệnh được."""
+    try: return _cbsys().pnp_retry() == 0
+    except Exception: return False
+
+
+def real_staged():
+    """Gói driver bên thứ ba đang nằm trong kho driver của Windows: [{"pub", "inf"}]. Không đọc được → []."""
+    try: return _cbsys().staged_infs()
+    except Exception: return []
+
+
 def real_recovery_root():
     """Đường dẫn gốc (\\\\?\\Volume{…}\\) của phân vùng cứu hộ trên máy này; không có → ''."""
     try:
@@ -186,7 +215,8 @@ def real_recovery_root():
 
 
 class Prov:
-    def __init__(self, base=BASE, run=None, log=None, spi=None, admin=None, rec=None, now=None, net=None, gpu=None, sleep=None, say=None, blank=None):
+    def __init__(self, base=BASE, run=None, log=None, spi=None, admin=None, rec=None, now=None, net=None, gpu=None, sleep=None, say=None, blank=None,
+                 devs=None, pnp=None, staged=None):
         self.base = base
         self._run = run or self._real_run
         self._spi = spi or spi_wallpaper
@@ -198,6 +228,9 @@ class Prov:
         self._sleep = sleep or time.sleep
         self._say = say
         self._blank = blank or real_blank_pw    # (tên tài khoản) → mật khẩu đang trống?
+        self._devs = devs or real_devices       # () → danh sách thiết bị đang cắm (None = không đọc được)
+        self._pnp = pnp or real_pnp_retry       # () → bảo Windows cài lại thiết bị chưa có driver
+        self._staged = staged or real_staged    # () → gói driver bên thứ ba trong kho driver
         self.lines = []
         self._log = log
 
@@ -391,6 +424,113 @@ class Prov:
             with open(path, "rb") as f: return VGA_CMD_MARK.encode("ascii") in f.read(600)
         except OSError:
             return False
+
+    # ------------------------------------------------------------------ driver CARD MẠNG (làm TRƯỚC khi chờ mạng; có mạng rồi mới tới driver VGA)
+    def drv_state(self):
+        """Tóm tắt driver của máy lúc này (cbcore.drv_summary: miss / net_miss / nics / vga_basic). Không đọc được danh sách thiết bị → None."""
+        try: devs = self._devs()
+        except Exception: devs = None
+        if devs is None: return None
+        try: return self.core().drv_summary(devs)
+        except Exception as e:
+            self.log("LOI tom tat thiet bi: %r" % (e,)); return None
+
+    def drv_text(self, st, n=4):
+        lab = self.core().drv_label
+        return "; ".join(lab(x) for x in st["miss"][:n]) + (" ... (+%d)" % (len(st["miss"]) - n) if len(st["miss"]) > n else "")
+
+    def drv_kicks(self):
+        try:
+            with open(self.mark("drv.json"), encoding="utf-8") as f: return max(0, int(json.load(f).get("kicks") or 0))
+        except Exception:
+            return 0
+
+    def drv_mark(self, st, kicks):
+        """Ghi logs\\drv.json: lần soát driver gần nhất (để xem tại máy + để đếm số lần đã chạy bước driver)."""
+        try:
+            lab = self.core().drv_label
+            os.makedirs(os.path.join(self.base, "logs"), exist_ok=True)
+            with open(self.mark("drv.json"), "w", encoding="utf-8") as f:
+                json.dump({"at": int(self._now()), "kicks": int(kicks), "miss": [lab(x) for x in st["miss"][:12]], "net_miss": st["net_miss"],
+                           "nics": st["nics"][:4], "vga_basic": st["vga_basic"]}, f)
+        except Exception: pass
+
+    def drv_pnputil(self):
+        """Chạy `pnputil -i -a` cho từng gói driver CARD MẠNG bên thứ ba đang nằm trong kho driver (bộ cài đã nạp từ gói chủ shop kèm theo) — cài ngay lên thiết bị khớp.
+           Cú pháp cũ `-i -a` chạy được từ Windows 10 bản 1507 tới bản mới nhất. Trả số gói đã chạy."""
+        try: staged = self._staged() or []
+        except Exception: staged = []
+        C, todo = self.core(), []
+        for x in staged:
+            cls = x.get("cls")
+            if cls is None:
+                try:
+                    with open(x["inf"], "rb") as f: cls = C.inf_class(f.read(2 << 20))
+                except Exception: cls = ""
+            if cls == "net": todo.append(x)
+        if not todo:
+            self.log("kho driver cua Windows KHONG co goi driver card mang nao cua ben thu ba (goi driver kem theo khong co driver card mang?)"); return 0
+        exe = os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32", "pnputil.exe")
+        for x in todo[:DRV_PNPUTIL_MAX]:
+            rc, out = self._run([exe, "-i", "-a", x["inf"]], 600)
+            if rc != 0 and "/add-driver" in (out or "").lower():      # bản Windows nào đó bỏ cú pháp cũ (in ra hướng dẫn cú pháp mới) → gọi cú pháp mới
+                rc, out = self._run([exe, "/add-driver", x["inf"], "/install"], 600)
+            self.log("pnputil: cai goi driver card mang %s (%s) -> ma %s%s" % (os.path.basename(x["inf"]), x.get("pub", "?"), rc,
+                                                                          "" if rc == 0 else " :: " + (out or "").replace("\r", " ").replace("\n", " ")[-160:]))
+        return len(todo[:DRV_PNPUTIL_MAX])
+
+    def drivers(self, show=True):
+        """BƯỚC DRIVER CARD MẠNG — chạy TRƯỚC khi chờ mạng (driver VGA chỉ cài sau khi máy đã có mạng):
+             1. soát thiết bị: mọi thứ đã có driver → xong ngay, không đụng gì
+             2. còn thiết bị chưa có driver → bảo Windows dò lại phần cứng + cài lại từ kho driver (bộ cài đã nạp sẵn gói driver chủ shop kèm theo vào kho)
+             3. chờ card mạng nhận driver (tối đa DRV_SETTLE giây); vẫn chưa → pnputil cài thẳng từng gói driver card mạng trong kho
+           Trả tóm tắt sau cùng (cbcore.drv_summary) — None nếu không đọc được danh sách thiết bị (khi đó để Windows tự nhận như cũ)."""
+        st = self.drv_state()
+        if st is None:
+            self.log("khong doc duoc danh sach thiet bi cua may - bo qua buoc driver (Windows van tu nhan driver da nap)"); return None
+        kicks = self.drv_kicks()
+        if not st["miss"]:
+            self.log("ok  moi thiet bi da co driver; card mang: %s" % (", ".join(st["nics"]) or "KHONG THAY card mang nao"))
+            self.drv_mark(st, kicks); return st
+        self.log("thiet bi CHUA CO DRIVER: %d (%s); card mang da nhan driver: %s" % (len(st["miss"]), self.drv_text(st, 8), ", ".join(st["nics"]) or "chua co"))
+        if show: self.say("    %d thiet bi chua co driver -> cai tu goi driver kem theo (card mang truoc) ..." % len(st["miss"]))
+        try: ok = bool(self._pnp())
+        except Exception: ok = False
+        self.log("%s bao Windows do lai phan cung + cai lai thiet bi chua co driver tu kho driver" % ("ok " if ok else "LOI"))
+        cur, t0 = st, self._now()
+        while self._now() - t0 < DRV_SETTLE:
+            self._sleep(5)
+            cur = self.drv_state() or cur
+            if not cur["net_miss"] and (cur["nics"] or not cur["miss"]): break
+        if cur["net_miss"] or (cur["miss"] and not cur["nics"]):       # card mạng vẫn chưa nhận driver → cài thẳng từng gói driver card mạng
+            if self.drv_pnputil():
+                self._sleep(5); cur = self.drv_state() or cur
+        self.drv_mark(cur, kicks + 1)
+        self.log("sau buoc driver: con %d thiet bi chua co driver%s; card mang da nhan driver: %s" % (
+            len(cur["miss"]), (" (%s)" % self.drv_text(cur, 8)) if cur["miss"] else "", ", ".join(cur["nics"]) or "CHUA CO"))
+        return cur
+
+    def drv_say(self, st):
+        """In tình trạng driver ra cửa sổ tiến độ (chữ không dấu)."""
+        if st is None: return
+        if st["miss"]: self.say("    con %d thiet bi chua co driver: %s" % (len(st["miss"]), self.drv_text(st)))
+        if st["net_miss"]:
+            self.say("    !! CARD MANG CHUA CO DRIVER: %s" % "; ".join(self.core().drv_label(x) for x in st["miss"] if x["k"] == "net")[:150])
+            self.say("       Goi driver kem theo khong co driver cho loai card nay -> may chua co mang.")
+        elif not st["nics"]:
+            self.say("    !! Khong thay card mang nao da nhan driver -> may chua co mang.")
+        else:
+            self.say("    card mang da nhan driver: %s" % ", ".join(st["nics"][:2])[:150])
+
+    def drv_retry(self):
+        """Agent (pha system) gọi: lần đăng nhập đầu đã xong mà máy vẫn chưa có card mạng chạy được → làm lại bước driver (cả máy tối đa DRV_KICKS lần).
+           Máy đã ổn thì chỉ ghi lại tình trạng."""
+        st = self.drv_state()
+        if st is None: return None
+        kicks = self.drv_kicks()
+        if kicks >= DRV_KICKS or not (st["net_miss"] or (st["miss"] and not st["nics"])):
+            self.drv_mark(st, kicks); return st
+        return self.drivers(show=False)
 
     # ------------------------------------------------------------------ mạng + driver VGA
     def net_target(self):
@@ -625,6 +765,9 @@ class Prov:
             if done is None and self.ghost_needed(late=True):       # 1 giờ rồi vẫn chưa có tài khoản khách: bản kiểu ghost mà bộ cài không nhận ra → dựng tại đây
                 return self.ghost()
             changed = self.harden()
+            try: self.drv_retry()                                    # máy vẫn chưa có card mạng chạy được → làm lại bước driver (tối đa DRV_KICKS lần)
+            except Exception as e:
+                self.log("LOI buoc driver: %r" % (e,))
             try:                                                     # driver VGA còn dở (lần đăng nhập đầu chưa có mạng / card chưa nhận driver) → làm nốt
                 if self.vga_packs(): self.vga(lambda: self.net_wait(45) is not None)
             except Exception as e:
@@ -783,6 +926,11 @@ class Prov:
         self.autologon(domain=target or None)
         self.firstboot()                                             # script riêng của chủ shop (driver .exe…) — chạy bằng SYSTEM
         limit = NET_WAIT_VGA if self.vga_needed() else NET_WAIT
+        drv = None
+        try: drv = self.drivers(show=False)                          # driver card mạng TRƯỚC — có mạng rồi mới tới VGA
+        except Exception as e:
+            self.log("LOI buoc driver: %r" % (e,))
+        if drv is not None and not drv["nics"]: limit = min(limit, NET_WAIT)
         waited = self.net_wait(limit)
         self.log("ok  may da co mang (cho %d giay)" % waited if waited is not None else "LOI chua co mang sau %d giay (day mang / driver card mang?)" % limit)
         try: self.vga(waited is not None)
@@ -823,7 +971,13 @@ class Prov:
         n = self.firstboot()                                         # script riêng của chủ shop (driver .exe…) — chạy khi tài khoản còn quyền Admin
         self.say("    %s" % ("da chay %d lenh" % n if n else "khong co lenh nao"))
         limit = NET_WAIT_VGA if self.vga_needed() else NET_WAIT      # có gói VGA phải cài (máy có card NVIDIA chưa có driver) thì chờ mạng lâu hơn
-        self.say("[3/5] Cho may co mang (driver card mang) - toi da %d phut ..." % (limit // 60))
+        self.say("[3/5] Driver card mang, roi cho may co mang - toi da %d phut ..." % (limit // 60))
+        drv = None
+        try: drv = self.drivers()                                    # driver card mạng TRƯỚC — có mạng rồi mới tới VGA
+        except Exception as e:
+            self.log("LOI buoc driver: %r" % (e,))
+        self.drv_say(drv)
+        if drv is not None and not drv["nics"]: limit = min(limit, NET_WAIT)      # chưa card mạng nào nhận driver: chờ lâu cũng không có mạng
         waited = self.net_wait(limit)
         if waited is None:
             self.log("LOI chua co mang sau %d giay (day mang / driver card mang?)" % limit)
