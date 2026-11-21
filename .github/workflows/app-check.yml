@@ -1,0 +1,61 @@
+# KIỂM THỬ app Android + app PC trên nhánh app-next (KHÔNG phát hành gì: không ký khoá thật, không đẩy CH Play, không đưa file lên web).
+# Đẩy lên main mới chạy 2 workflow phát hành (android-app.yml, pc-client.yml) như cũ.
+name: Check apps (app-next)
+
+on:
+  push:
+    branches: [app-next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-check
+  cancel-in-progress: true
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Android SDK
+        run: |
+          SDKM=$(ls -d "$ANDROID_HOME"/cmdline-tools/*/bin | sort -V | tail -1)/sdkmanager
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+      - name: Build APK (web, debug - chi de kiem bien dich)
+        env:
+          APP_VERSION_CODE: "1"
+        run: gradle -p android-app assembleWebDebug assemblePlayDebug --no-daemon --stacktrace
+
+  pc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build + selftest exe
+        shell: pwsh
+        working-directory: pc-client
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pyinstaller av pygame-ce numpy pillow
+          python -m py_compile bluepc.py brstream.py
+          python ..\.github\app-check\test_pc_viewer.py .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m PyInstaller --noconfirm --clean --windowed --name CloudBluePC --collect-submodules av bluepc.py
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $st = Join-Path $PWD "selftest.txt"
+          Start-Process -FilePath dist/CloudBluePC/CloudBluePC.exe -ArgumentList "--selftest", "`"$st`"" -Wait -NoNewWindow
+          if (-not (Test-Path $st)) { Write-Error "exe khong chay duoc"; exit 1 }
+          Get-Content $st
+          if ((Get-Content $st -TotalCount 1) -ne "OK") { exit 1 }
