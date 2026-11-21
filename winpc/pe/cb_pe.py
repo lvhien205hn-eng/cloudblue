@@ -23,7 +23,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "21.11b"
+PE_VER = "21.11c"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -204,6 +204,8 @@ class Installer:
         self.s.write_text(pan + "\\Unattend\\unattend.xml", ua)
         self.setup_complete(W)
         self.add_drivers(src.p("cb\\drivers"), W, image)
+        try: self.list_drivers(W, image)
+        except Exception as e: self.log("  (khong liet ke duoc driver: %r)" % (e,))
         self.set_timezone(W, cfg)
         self.boot_hook(W)
         self.lock_acl(C.acl_lock_cmds(base), "khoa quyen thu muc CloudBluePC")
@@ -257,6 +259,25 @@ class Installer:
         try: self.s.run(["cmd", "/c", "rd", "/s", "/q", scratch], timeout=120)
         except Exception: pass
         self.log("  driver: " + ("xong" if not bad else "%d / %d thu muc co loi" % (bad, len(jobs))))
+
+    def list_drivers(self, W, image):
+        """Ghi vào nhật ký: Windows vừa bung đang có những gói driver bên thứ ba nào (gói chủ shop kèm theo + gói có sẵn trong bản Windows tuỳ biến) —
+           quan trọng nhất là CÓ DRIVER CARD MẠNG KHÔNG (bản cũ như 1511 thiếu thì máy không có mạng → không lên web, driver VGA cũng không cài được)."""
+        if self.s.dry: return None
+        try: rc, out = self.s.run(["dism", "/English", "/Image:%s:\\" % W, "/Get-Drivers", "/Format:Table"], timeout=900, change=False)
+        except Exception: return None
+        if rc != 0: return None
+        rows = C.parse_dism_drivers(out)
+        net = [r for r in rows if r["cls"] == "net"]
+        vga = [r for r in rows if r["cls"] == "display"]
+        some = "; ".join(("%s %s" % (r["inf"], r["prov"])).strip() for r in net[:4]) + (" ..." if len(net) > 4 else "")
+        self.log("  driver ben thu ba trong Windows moi: %d goi - card mang: %d%s | VGA: %d | khac: %d" % (
+            len(rows), len(net), (" (%s)" % some) if net else "", len(vga), len(rows) - len(net) - len(vga)))
+        build = C.build_no(image.get("version"))
+        if not net and 0 < build < 15063:                           # bản trước 1703: Windows không tự có driver cho card mạng đời sau
+            self.log("  (!) Ban Windows %s KHONG co goi driver card mang nao kem theo - neu Windows khong tu nhan card mang cua may thi may se KHONG CO MANG." % image.get("id"))
+            self.log("      Tao lai ISO va dua goi driver card mang cho ban %s (xem HUONG-DAN muc D)." % image.get("id"))
+        return rows
 
     def boot_hook(self, W):
         """Nạp kho registry SYSTEM của Windows vừa bung để: (1) xem bản này có ở trạng thái "cài đặt lần đầu" không — bản tuỳ biến kiểu ghost thì KHÔNG,
