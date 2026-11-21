@@ -43,8 +43,10 @@ class FakeSB:
         self.pcs = {PC1: dict(token="tok-1", name="Máy 14-85", code="14-85", user=UA, approved=True, remote=True, until=None),
                     PC2: dict(token="tok-2", name="Máy 2", code="", user=UB, approved=True, remote=True, until=None),
                     PC3: dict(token="tok-3", name="Máy 3", code="", user=None, approved=False, remote=True, until=None)}
-        self.users = {"jwt-a": {"uid": UA, "admin": False}, "jwt-b": {"uid": UB, "admin": False}, "jwt-adm": {"uid": UADM, "admin": True}}
+        self.users = {"jwt-a": {"uid": UA, "admin": False}, "jwt-b": {"uid": UB, "admin": False}, "jwt-adm": {"uid": UADM, "admin": True},
+                      "jwt-adm1": {"uid": UADM, "admin": False}}            # 21.11l: admin đã bật 2 bước, phiên CHƯA nhập mã → whoami (is_admin()) = false
         self.calls = []; self.remote_on = True; self.nosql = False; self.down = False; self.relay = {}
+        self.role_admin = {UADM}; self.mfa = set(); self.v47 = True; self.viewer_bodies = []
 
     def whoami(self, token): return self.users.get(token)
 
@@ -68,11 +70,17 @@ class FakeSB:
             assert set(body) == {"p_id", "p_node"}, body
             return self.relay.pop(body["p_id"], None) == body["p_node"]
         if fn == "pc_relay_viewer":
-            assert set(body) == {"p_id", "p_uid"}, body
+            assert set(body) in ({"p_id", "p_uid"}, {"p_id", "p_uid", "p_admin"}), body
+            self.viewer_bodies.append(dict(body))
+            if "p_admin" in body and not self.v47:                    # Supabase chưa chạy SQL v47: chỉ có hàm cũ 2 tham số
+                raise urllib.error.HTTPError(path, 404, "Not Found", {}, io.BytesIO(b'{"code":"PGRST202"}'))
             u = next((x for x in self.users.values() if x["uid"] == body["p_uid"]), None)
             if not u: return {"ok": False, "code": "AUTH", "msg": "Phiên đăng nhập hết hạn, hãy đăng nhập lại."}
             m = self.pcs.get(body["p_id"])
             if not m: return {"ok": False, "code": "NOT_YOURS", "msg": "Không tìm thấy máy PC."}
+            ra = body["p_uid"] in self.role_admin                          # như SQL v47: admin = vai admin + (trạm báo p_admin | chưa bật 2 bước); SQL cũ: chỉ vai admin
+            adm = ra and (body["p_admin"] is True if "p_admin" in body else (body["p_uid"] not in self.mfa if self.v47 else True))
+            u = dict(u, admin=adm)
             if not u["admin"]:
                 if m["user"] != u["uid"]: return {"ok": False, "code": "NOT_YOURS", "msg": "Đây không phải máy PC của bạn."}
                 if not self.remote_on or not m["approved"] or not m["remote"]: return {"ok": False, "code": "LOCKED", "msg": "Máy PC này chưa bật điều khiển từ xa — liên hệ hỗ trợ."}
@@ -349,6 +357,24 @@ async def main():
     R._peer = real_peer; R._FAILS.clear()
     ck("khoá chặn có hạn 10 phút và tính riêng máy PC / khách", R._blocked("s:1.2.3.4") is False and [R._fail("s:1.2.3.4", now=1000.0) for _ in range(12)] and R._blocked("s:1.2.3.4", now=1100.0) is True
        and R._blocked("v:1.2.3.4", R.FAIL_VIEW, now=1100.0) is False and R._blocked("s:1.2.3.4", now=1000.0 + 601) is False and R._blocked("s:") is False)
+
+    print("10b. Xác minh 2 bước (21.11l): quyền admin trên trạm theo is_admin() của CHÍNH phiên người xem")
+    db.mfa.add(UADM)
+    s2, ok2 = await source(port, PC2, "tok-2")
+    ck("(chuẩn bị) máy PC2 vào trạm", ok2 and ok2[0] == R_OK, ok2)
+    n0 = len(db.viewer_bodies)
+    c = await viewer(port, PC2, "jwt-adm1"); m = await c.recv()
+    ck("admin đã bật 2 bước mà phiên chưa nhập mã (whoami: admin = false) → KHÔNG mở được máy của khách", m and m[0] == S_ERROR and json.loads(m[1])["code"] == "NOT_YOURS", m); c.close()
+    ck("… trạm báo kèm p_admin = false cho Supabase", db.viewer_bodies[n0:n0 + 1] and db.viewer_bodies[n0].get("p_admin") is False, db.viewer_bodies[n0:])
+    c = await viewer(port, PC2, "jwt-adm"); st = json.loads(await s2.want(R_START) or b"{}")
+    ck("admin đã nhập mã (whoami: admin = true) → mở được, trạm báo p_admin = true", st.get("admin") is True and db.viewer_bodies[-1].get("p_admin") is True, (st, db.viewer_bodies[-1:]))
+    c.close(); await s2.want(R_STOP, 2)
+    db.v47 = False; n0 = len(db.viewer_bodies)
+    c = await viewer(port, PC2, "jwt-adm"); st = json.loads(await s2.want(R_START) or b"{}")
+    ck("Supabase chưa chạy SQL v47 (hàm cũ 2 tham số) → trạm tự hỏi lại kiểu cũ, vẫn mở được như trước",
+       st.get("admin") is True and [sorted(b) for b in db.viewer_bodies[n0:n0 + 2]] == [["p_admin", "p_id", "p_uid"], ["p_id", "p_uid"]], db.viewer_bodies[n0:])
+    c.close(); await s2.want(R_STOP, 2); s2.close(); db.v47 = True; db.mfa.discard(UADM)
+    await asyncio.sleep(0.3)
 
     print("11. Khách nhận chậm → bỏ khung, không dồn trễ")
     R._FAILS.clear()
