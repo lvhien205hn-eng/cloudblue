@@ -90,6 +90,7 @@ class FakeHost:
     def power(self, reboot=True, delay=5, msg=""): self.powers.append(("reboot" if reboot else "shutdown", delay)); self.fs.rebooted = True
     def notify(self, text, secs=60): self.msgs = getattr(self, "msgs", []) + [text]; self.msg_secs = getattr(self, "msg_secs", []) + [secs]
     def abort_shutdown(self): self.aborts += 1
+    def autologon(self, on): self.autologons = getattr(self, "autologons", []) + [bool(on)]; return True
     def show_code(self, code): self.codes = getattr(self, "codes", []) + [code]; return getattr(self, "code_ok", True)
     def drivers(self): return C.drv_summary(self.devs) if getattr(self, "devs", DEVS_OK) is not None else None      # devs = None: không đọc được danh sách thiết bị
 
@@ -909,6 +910,77 @@ for d in fsz.fdisks:
 netz, hostz = SqlNet(), FakeHost(fsz, seedz()["name"])
 agz = agent(fsz, netz, hostz); agz.tick(); agz.tick()
 ck("máy không còn phân vùng cứu hộ → bỏ qua, không lỗi", agz.ident is not None and not any("Traceback" in x for x in agz.logs))
+
+print("22. Lượt thuê TỰ THU HỒI (SQL v44): hết hạn → KHOÁ máy (không tắt) · gia hạn → tự mở lại · quá hạn → giữ khoá chờ cài sạch (21.11f)")
+if q("select to_regprocedure('public._pc_reclaim()') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v44.sql)")
+else:
+    q("update pc_settings set reclaim_on = true, reclaim_grace_min = 30, reclaim_clean_min = 60, reclaim_off = true, reclaim_since = now() - interval '1 day' where id = 1")
+    CU = str(uuid.uuid4())
+    q(f"insert into auth.users(id) values ('{CU}'); insert into profiles(id, username, email, role, balance) values ('{CU}', 'khach_khoa_{CU[:6]}', 'khoa_{CU[:6]}@x.vn', 'user', 0)")
+    fsk, netk, hostk, agk, PCK = rented_machine("KHOA0022", "CB-KHOA22")
+    def lease(sql_until):                                           # máy chủ giao máy cho 1 lượt thuê (như _pc_give)
+        q(f"update pc_rentals set state = 'ended', ended_at = now() where pc_id = '{PCK}' and state = 'active'")
+        q(f"insert into pc_rentals(user_id, os, days, state, pc_id, assigned_at, until) values ('{CU}', '22h2', 1, 'active', '{PCK}', now(), {sql_until})")
+        q(f"update pc_machines set user_id = '{CU}', renter = 'khach_khoa', rent_until = {sql_until}, rent_set_at = now(), status = 'rented', rent_warned = null, rent_ended = null where id = '{PCK}'")
+    lease("now() + interval '1 day'")
+    nap = agk.tick()
+    ck("máy thuộc lượt thuê tự thu hồi → agent nhận lock_mode + thời gian chờ 30 phút (ghi rent.json)", agk.rent.get("lock_mode") is True and agk.rent.get("grace_s") == 1800
+       and rentjson(fsk).get("lock_mode") is True, agk.rent)
+    hostk.msgs.clear(); hostk.powers.clear()
+    q(f"update pc_machines set rent_until = now() + interval '4 minutes' where id = '{PCK}'"); agk.tick()
+    ck("nhắc trước giờ hết hạn nói rõ: hết hạn máy KHOÁ, gia hạn trong 30 phút vẫn giữ được máy, quá hạn bị thu hồi + xoá sạch",
+       hostk.msgs and "KHOA" in hostk.msgs[-1] and "30 phut" in hostk.msgs[-1] and "xoa sach" in hostk.msgs[-1] and "TU TAT" not in hostk.msgs[-1], hostk.msgs)
+    hostk.msgs.clear()
+    q(f"update pc_machines set rent_until = now() - interval '1 second' where id = '{PCK}'")
+    nap = agk.tick()
+    ck("HẾT HẠN → báo khách 'máy sẽ KHOÁ sau 60 giây, gia hạn trong 30 phút để giữ máy', KHÔNG tắt máy, việc lạ 'rent_lock'",
+       len(hostk.msgs) == 1 and "KHOA sau 60 giay" in hostk.msgs[0] and "trong 30 phut" in hostk.msgs[0] and not hostk.powers and agk.events == [{"k": "rent_lock"}] and nap <= 5,
+       (hostk.msgs, hostk.powers, agk.events))
+    agk.tick()
+    rk = json.loads(q(f"select row_to_json(m) from pc_machines m where id = '{PCK}'"))
+    ck("web nhận tin máy đã KHOÁ (rent_lock_at) + cảnh báo admin có hạn chót gia hạn", rk["rent_lock_at"] and rk["rent_off_at"] is None
+       and any("KHOÁ" in x and "CB-KHOA22" in x and "gia hạn trước" in x for x in al("pc_rent_end")), (rk["rent_lock_at"], al("pc_rent_end")[-1:]))
+    fsk.clock += 30; agk.tick()
+    ck("trong 60 giây chờ → chưa khoá", not hostk.powers and not getattr(hostk, "autologons", []))
+    fsk.clock += 31; nap = agk.tick()
+    ck("hết 60 giây → TẮT tự đăng nhập + KHỞI ĐỘNG LẠI (máy dừng ở màn hình đăng nhập), không tắt máy; ghi mốc 'locked'",
+       hostk.autologons == [False] and hostk.powers == [("reboot", 5)] and rentjson(fsk).get("locked") == agk.rent["until"] and "off" not in rentjson(fsk), (hostk.autologons, hostk.powers, rentjson(fsk)))
+    ck("status.txt ghi 'máy đã KHOÁ'", "may da KHOA" in (fsk.file("C", "cloudbluepc\\os\\status.txt") or ""), fsk.file("C", "cloudbluepc\\os\\status.txt"))
+    fsk.clock += 60; agk.tick()
+    ck("vừa ra lệnh → chưa lặp", hostk.powers == [("reboot", 5)])
+    fsk.clock += 130; agk.tick()
+    ck("3 phút sau máy vẫn chạy (khởi động lại bị chặn) → ra lệnh lại", hostk.powers == [("reboot", 5), ("reboot", 5)], hostk.powers)
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []; hostk.msgs.clear()
+    agk2 = agent(fsk, netk, hostk); nap = agk2.tick()
+    ck("máy lên lại (đang khoá) → giữ khoá: giữ 'tắt tự đăng nhập', KHÔNG khởi động lại / tắt máy lặp, không báo 'bật lại khi hết hạn'",
+       hostk.autologons == [False] and not hostk.powers and agk2.events == [] and not hostk.msgs, (hostk.autologons, hostk.powers, agk2.events, hostk.msgs))
+    agk2.tick(); agk2.tick()
+    ck("các nhịp sau không làm gì thêm", hostk.autologons == [False] and not hostk.powers)
+    q(f"update pc_machines set rent_until = now() + interval '7 days' where id = '{PCK}'; update pc_rentals set until = now() + interval '7 days' where pc_id = '{PCK}' and state = 'active'")
+    agk2.tick()
+    ck("khách GIA HẠN trong thời gian chờ → MỞ KHOÁ: bật lại tự đăng nhập + khởi động lại (vào thẳng Windows như cũ), bỏ mốc 'locked'",
+       hostk.autologons == [False, True] and hostk.powers == [("reboot", 15)] and "locked" not in rentjson(fsk), (hostk.autologons, hostk.powers, rentjson(fsk)))
+    agk2.tick()
+    ck("web hết 'đã khoá'", q(f"select rent_lock_at is null from pc_machines where id = '{PCK}'") == "t")
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []; hostk.msgs.clear()
+    agk3 = agent(fsk, netk, hostk); agk3.tick()
+    q(f"update pc_machines set rent_until = now() - interval '1 second' where id = '{PCK}'")
+    agk3.tick(); fsk.clock += 61; agk3.tick()
+    ck("hết hạn lần nữa → khoá lại", hostk.autologons == [False] and hostk.powers == [("reboot", 5)] and rentjson(fsk).get("locked"), (hostk.autologons, hostk.powers))
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []
+    q(f"update pc_machines set rent_until = now() - interval '31 minutes' where id = '{PCK}'")
+    agk4 = agent(fsk, netk, hostk); agk4.tick()
+    q("select _pc_reclaim()")
+    ck("quá 30 phút không gia hạn → máy chủ THU HỒI (bỏ hạn, bỏ khách, hẹn cài sạch)", q(f"select user_id is null and rent_until is null and reclaim_at is not null from pc_machines where id = '{PCK}'") == "t")
+    agk4.tick()
+    ck("agent: máy chủ bỏ hạn nhưng đang chờ cài sạch (hold) → GIỮ KHOÁ, không mở lại", agk4.rent.get("until") is None and rentjson(fsk).get("locked")
+       and True not in hostk.autologons and not hostk.powers, (agk4.rent, hostk.autologons, hostk.powers))
+    q(f"update pc_machines set reclaim_at = now() - interval '1 minute' where id = '{PCK}'")
+    q("select _pc_reclaim()")
+    agk4.tick()
+    ck("tới giờ → máy nhận lệnh CÀI SẠCH (xoá mọi ổ) và khởi động lại vào bộ cài", agk4.rebooting and ("reboot", 30) in hostk.powers
+       and json.loads(q(f"select args from pc_orders where pc_id = '{PCK}' and cmd = 'reinstall' order by id desc limit 1"))["wipe"] == "all", (hostk.powers, agk4.logs[-3:]))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
