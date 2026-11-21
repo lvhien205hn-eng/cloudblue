@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
-#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-1911a):
+#   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        21/11a — TRẠM TRUNG CHUYỂN MÁY PC CHO THUÊ (đợt 2 của "Máy PC"): thêm file pcrelay.py cạnh bluestream.py. Máy PC thuê tự nối RA cổng
+#                       phát hình của máy chủ này rồi chờ; khách mở điều khiển máy PC trên web / app cũng nối vào đây → máy chủ ghép 2 kết nối
+#                       (hình máy PC → khách, chuột phím khách → máy PC; máy chủ KHÔNG giải mã hình). Phần máy điện thoại KHÔNG đổi.
+#                       Cần SQL v43 trên web. Tắt trạm trên 1 máy chủ: `python phonectl.py setconf PC_RELAY=0` rồi chạy lại lệnh này.
 #        19/11a — BỘ NHỚ MÁY KHÁCH THEO CẤU HÌNH + KHÁCH MUA THÊM: máy khách MuMu chỉ có 2,9GB (máy mẫu tạo ở "chế độ ổ nhỏ" → máy nhân
 #                       bản cũng vậy). phonectl: máy TẠO TỪ BẢN NÀY lúc lên lần đầu tự nới /data (ngay lúc máy chạy, giữ dữ liệu, ~1 giây)
 #                       theo RAM: dưới 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB (web chạy SQL v40 thì web quyết định cỡ). Khách MUA THÊM
@@ -101,11 +105,13 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "17/11g"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
+         ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "21/11a"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
          ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "19/11a"', None),
          ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
-MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 17/11g: máy thức dậy / bật lại lâu thì báo thật", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -235,7 +241,7 @@ def update_files():
     todo = []
     for gp, local, mark, svc in FILES:
         lp = os.path.join(B, local)
-        if not os.path.isfile(lp) and svc != "panel":
+        if not os.path.isfile(lp) and svc != "panel" and not (local in NEW_WITH and os.path.isfile(os.path.join(B, NEW_WITH[local]))):
             say(f"   - {local}: máy chủ này không có — bỏ qua"); continue
         data = gh_get(gp)
         if data is None: say(f"   ✗ {local}: không tải được từ GitHub (mạng?) — giữ bản đang có"); problems.append(f"không tải được {local}"); continue
@@ -248,12 +254,12 @@ def update_files():
         todo.append((local, lp, data, svc))
     for local, lp, data, svc in todo:
         try:
-            bak = lp + ".truoc-1911a"
+            bak = lp + ".truoc-2111a"
             if os.path.isfile(lp) and not os.path.isfile(bak):
                 with open(lp, "rb") as a, open(bak, "wb") as b: b.write(a.read())
             with open(lp + ".new", "wb") as f: f.write(data)
             os.replace(lp + ".new", lp)
-            say(f"   ✓ {local}: đã thay bản mới" + (" (bản cũ: " + os.path.basename(bak) + ")" if os.path.isfile(bak) else ""))
+            say(f"   ✓ {local}: " + ("đã thay bản mới (bản cũ: " + os.path.basename(bak) + ")" if os.path.isfile(bak) else "đã thêm file mới" if local in NEW_WITH else "đã thay bản mới"))
             changed.append(svc or local)
         except Exception as e:
             say(f"   ✗ {local}: không ghi được ({e}) — đóng chương trình đang mở file này rồi chạy lại"); problems.append(f"không ghi được {local}")
@@ -344,7 +350,12 @@ def restart_services(changed, done_new=()):
             time.sleep(3)
             if MARK_RUN[svc] in log_new(svc, since): ok = True; break
         newp = [p for p, _ in procs(SVC_RX[svc])]
-        if ok: say(f"   ✓ {SVC_VN[svc]}: bản mới đã chạy sau {time.time() - t0:.0f} giây")
+        if ok:
+            say(f"   ✓ {SVC_VN[svc]}: bản mới đã chạy sau {time.time() - t0:.0f} giây")
+            if svc == "bluestream":                         # 21/11a: nói rõ trạm máy PC bật hay tắt (dòng khởi động của bluestream)
+                ln = next((x for x in reversed(log_new(svc, since).splitlines()) if MARK_RUN[svc] in x), "")
+                if " TẮT (" in ln: say("     ⚠ trạm máy PC cho thuê đang TẮT:" + ln.split(" TẮT", 1)[1][:160] + " — phần máy điện thoại vẫn chạy bình thường")
+                elif " BẬT" in ln: say("     ✓ trạm máy PC cho thuê: BẬT (máy PC thuê nối vào cổng phát hình của máy chủ này)")
         elif newp: say(f"   ✓ {SVC_VN[svc]}: đã chạy lại (pid {newp[0]}) — chưa thấy dòng khởi động trong nhật ký, xem lại sau 1 phút")
         else:
             say(f"   ✗ {SVC_VN[svc]}: CHƯA chạy lại sau 90 giây → mở bảng CloudBlue bấm ▶ Bật tất cả"); probs.append(f"{SVC_VN[svc]} chưa chạy lại")

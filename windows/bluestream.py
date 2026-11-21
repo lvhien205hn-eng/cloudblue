@@ -113,7 +113,8 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "17/11g"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "21/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+                                          # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
                                           # · 17/11f không gửi khung thiếu lát (hình vỡ) + máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước
                                           # · 17/11g máy thức dậy lâu: báo thật cho khách + bật lỗi thì tự "khám máy" ghi vào nhật ký (phần hình không đổi)
                                           # · 17/11a: Android 9 khung khoá dày + tự lấy khung khoá · máy chủ LDPlayer lấy hình thẳng từ Android
@@ -124,6 +125,17 @@ BS_SUB = "17/11g"                         # bản phụ (giữ BS_VER cho capnha
 def _float_conf(k, d):
     try: return float(str(C.get(k, d)).strip() or d)
     except (TypeError, ValueError): return d
+# 21/11a — TRẠM TRUNG CHUYỂN MÁY PC CHO THUÊ (pcrelay.py, đợt 2). Máy PC thuê tự nối RA cổng phát hình này rồi chờ; khách mở điều khiển
+# máy PC (web / app) cũng nối vào đây → pcrelay ghép 2 kết nối (hình máy PC → khách, chuột phím khách → máy PC). Thiếu file pcrelay.py /
+# file lỗi / PC_RELAY=0 trong cloudphone.conf → trạm TẮT, phần máy điện thoại chạy y như cũ.
+PCRELAY = None; PCRELAY_ERR = ""
+if str(C.get("PC_RELAY", "1")).strip() != "0":
+    try:
+        if B not in sys.path: sys.path.insert(0, B)
+        import pcrelay as PCRELAY
+    except Exception as _e:
+        PCRELAY = None; PCRELAY_ERR = "thiếu file pcrelay.py" if isinstance(_e, ModuleNotFoundError) else repr(_e)[:200]
+else: PCRELAY_ERR = "PC_RELAY=0"
 # Android 9 (LDPlayer 9) lấy hình bằng scrcpy: bộ nén trong máy là PHẦN MỀM (OMX.google.h264.encoder) và KHÔNG lặp khung khi màn đứng
 # yên → "khung khoá mỗi 1 giây" thật ra là mỗi 60 khung (scrcpy đặt KEY_FRAME_RATE 60): lúc vuốt chỉ ~15–20 khung/giây → 3–4 giây mới
 # có 1 khung khoá, màn đứng yên thì KHÔNG bao giờ có. Lỡ bỏ 1 khung (mạng chậm, app báo nhận chậm) là đứng hình tới khung khoá kế →
@@ -2168,6 +2180,7 @@ class WSLink(Link):
         await writer.drain()
         lk = WSLink(reader, writer)
         if direct: lk.kind = "wsd"                                 # web đi THẲNG: ngưỡng chậm / bitrate như app đi thẳng
+        else: lk.ip = (hdr.get("cf-connecting-ip") or "").strip()[:45]   # 21/11a: IP khách do Cloudflare ghi (pcrelay chặn dò mã theo IP)
         return lk
 
     async def _frame(self):
@@ -3428,8 +3441,10 @@ async def serve_link(link):
     try:
         t, p = await asyncio.wait_for(link.recv(), 10)
         t_hello = time.monotonic()
+        if PCRELAY and t == PCRELAY.P_HELLO: return await PCRELAY.serve_source(sys.modules[__name__], link, p)     # 21/11a: máy PC cho thuê xin vào trạm
         if t != C_HELLO: raise ValueError("no hello")
         hello = json.loads(p.decode("utf-8"))
+        if PCRELAY and isinstance(hello, dict) and hello.get("pc"): return await PCRELAY.serve_viewer(sys.modules[__name__], link, hello)   # 21/11a: khách mở điều khiển máy PC
         ka = asyncio.ensure_future(hello_keepalive(link))
         try:
             me, phone = await asyncio.to_thread(authorize, hello)
@@ -3593,6 +3608,7 @@ def publish_loop(fp):
                       "preview": 1}          # có hình xem trước trực tiếp (app chỉ bật ô xem trước khi máy chủ báo có — máy chủ cũ sẽ đá phiên điều khiển)
             wss = web_url(pip_)
             if wss: stream["wss"] = wss       # web / iPhone đi THẲNG (play.html web-1.2 thử trước, không được thì đi "ws")
+            if PCRELAY: stream["pc"] = 1      # 21/11a: máy chủ này nhận trung chuyển máy PC cho thuê (SQL v43 chỉ giao máy PC cho máy chủ có cờ này)
             if stream != last:
                 log(f"đường nối: trực tiếp {', '.join(d['host'] + ':' + str(d['port']) for d in direct) or '—'}"
                     + (f" · web thẳng {wss}" if wss else "")
@@ -4673,6 +4689,8 @@ async def main():
     log(f"lấy hình 17/11a: {video_mode()} · máy chủ LDPlayer mặc định lấy thẳng từ Android (ép quay cửa sổ: CAPTURE=wgc) · "
         "Windows đóng phiên quay cửa sổ ngay mà máy vẫn chạy → tự lấy thẳng từ Android")
     log("bản 17/11g: máy thức dậy / bật lại lâu thì báo thật cho khách · bật lỗi → tự khám máy (🩺) ghi vào nhật ký này")
+    log("bản 21/11a: trạm trung chuyển máy PC cho thuê " + (f"BẬT (pcrelay {PCRELAY.PCRELAY_VER} — máy PC thuê nối vào cổng này, khách điều khiển qua web / app)"
+        if PCRELAY else f"TẮT ({PCRELAY_ERR}) — phần máy điện thoại chạy như cũ"))
     log(f"bản 17/11f: KHÔNG gửi khung hình thiếu lát (chờ khung khoá kế thay vì hình vỡ) · cách chia lát phải lặp lại {SLICE_CONFIRM} khung mới tin, nhớ qua lần bật lại bộ nén · máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước")
     log(f"nén 16/11k: hình scrcpy cạnh chia hết 16 {'BẬT' if SCR_ALIGN == 16 else 'TẮT'} · ghép lát {'BẬT' if SLICE_JOIN else 'TẮT'} (chẩn đoán hình vỡ: python bluestream.py --kiemhinh TÊN_MÁY)")
     log(f"nén 16/11e: x264 {X264_PRESET} · NVENC {NVENC_PRESET} (thử khi bật bộ nén đầu tiên, lỗi → p1) · khung khoá mỗi {KEY_S:g} giây"

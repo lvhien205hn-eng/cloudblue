@@ -276,7 +276,7 @@ Write-Host "  cai thu vien Python (1-2 phut)..." -ForegroundColor DarkGray
 & { $ErrorActionPreference = "Continue"; & $PY -m pip install --quiet --disable-pip-version-check pillow windows-capture numpy cryptography 2>&1 | Out-Null }   # phát hình app: quay cửa sổ + chứng chỉ TLS
 if ($LASTEXITCODE -ne 0) { Warn "pip chua cai du thu vien (ma $LASTEXITCODE) - chay lai lenh cai sau it phut" }
 foreach ($f in "cloudphoned.py", "cpapi.py") { Get "$RAW/$f" "$B\$f" }
-foreach ($f in "phonectl.py", "run.py", "remake.py", "keep.bat", "start-blue.bat", "panel.py", "wallpaper.png", "donweb.py", "kiemtra.py", "suachua.ps1", "bluestream.py", "doi-ten-mien.py", "baomat.py") { Get "$RAW/windows/$f" "$B\$f" }
+foreach ($f in "phonectl.py", "run.py", "remake.py", "keep.bat", "start-blue.bat", "panel.py", "wallpaper.png", "donweb.py", "kiemtra.py", "suachua.ps1", "bluestream.py", "pcrelay.py", "doi-ten-mien.py", "baomat.py") { Get "$RAW/windows/$f" "$B\$f" }
 Ok "Da tai phonectl / cloudphoned / cpapi / bluestream / bang dieu khien"
 
 Step ("7/8 Gia lap + cau hinh may chu" + $(if ($KNOWN) { " ($Node - $PubHost)" } else { "" }))
