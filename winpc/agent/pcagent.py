@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11e):
+#  Việc làm (bản 21.11f):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -10,6 +10,8 @@
 #    · báo kết quả lệnh cài lại sau khi Windows mới lên
 #    · tự cập nhật theo bản admin công bố (kiểm sha256 từng file, chỉ tải từ đúng kho GitHub của shop)
 #    · HẠN THUÊ (SQL v42): nhận hạn từ máy chủ, báo trước cho khách, hết hạn thì tự tắt máy (mất mạng vẫn đếm; chỉnh lùi đồng hồ không lách được)
+#      21.11f + SQL v44: lượt thuê TỰ THU HỒI → hết hạn thì KHOÁ máy (tắt tự đăng nhập + khởi động lại) thay vì tắt; khách gia hạn → tự mở lại;
+#      quá hạn → máy chủ thu hồi, máy giữ khoá tới khi nhận lệnh cài sạch
 #    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
 #    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
 #    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
@@ -34,7 +36,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11e"
+AGENT_VER = "21.11f"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -45,7 +47,9 @@ RENT_MIN_S = 600                         # admin tắt báo trước (0) thì v�
 RENT_BOOT_TELL = 60                      # vừa bật máy mà đang trong khoảng nhắc: chờ hỏi máy chủ tối đa 60 giây (có thể vừa được gia hạn) rồi nhắc 1 lần
 RENT_POP_MAX = 6 * 3600                  # hộp nhắc nằm trên màn hình tới lần nhắc kế (tối đa 6 giờ) hoặc tới khi khách bấm OK
 RENT_BOOT_GRACE = 180                    # máy bật lên lúc ĐÃ hết hạn: chờ hỏi máy chủ tối đa 3 phút (có thể vừa được gia hạn) rồi mới tắt
-RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy
+RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy (lượt thuê tự thu hồi: 60 giây sau KHOÁ máy)
+RENT_LOCK_RETRY = 180                    # 21.11f: đã ra lệnh khởi động lại để khoá mà 3 phút sau máy vẫn chạy → ra lệnh lại
+WINLOGON = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
 CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy chủ quá 2 phút → agent đặt lại theo máy chủ (cb.json "clock_fix": false để tắt)
 NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
@@ -178,6 +182,15 @@ class WinHost:
         if msg: a += ["/c", msg[:120]]
         try: subprocess.run(a, capture_output=True, timeout=60)
         except Exception: pass
+
+    def autologon(self, on):
+        """21.11f · Bật / tắt TỰ ĐĂNG NHẬP Windows. Khoá máy hết hạn: tắt → khởi động lại dừng ở màn hình đăng nhập (mọi chương trình của khách dừng);
+           gia hạn: bật lại. Chỉ đổi AutoAdminLogon — tài khoản + mật khẩu bộ cài đã ghi giữ nguyên. True nếu Windows nhận."""
+        try:
+            r = subprocess.run(["reg", "add", WINLOGON, "/v", "AutoAdminLogon", "/t", "REG_SZ", "/d", "1" if on else "0", "/f"], capture_output=True, timeout=60)
+            return r.returncode == 0
+        except Exception:
+            return False
 
     def abort_shutdown(self):
         """Huỷ lệnh tắt máy đang đếm ngược (khách vừa được gia hạn trong phút cuối)."""
@@ -339,7 +352,9 @@ class Agent:
         self.events = []                    # việc lạ chờ báo về web (kèm trong p_info.ev)
         self.t_start = sysx.now()
         self.rent_synced = False            # từ lúc agent chạy đã hỏi được máy chủ về hạn thuê chưa
-        self.rent_call = None               # lúc đã báo khách "máy sắp tắt"
+        self.rent_call = None               # lúc đã báo khách "máy sắp tắt" (lượt thuê tự thu hồi: "máy sắp khoá")
+        self.lock_at = None                 # 21.11f: lúc ra lệnh khởi động lại để khoá máy (trong lần agent chạy này)
+        self.lock_ok = False                # 21.11f: lần chạy này đã giữ "tắt tự đăng nhập" cho máy đang khoá chưa
         self.rent_boot_told = False         # từ lúc agent chạy (máy bật) đã nhắc khách "sắp hết hạn" lần nào chưa
         self.code = str((self.ident or {}).get("code") or "")       # SỐ MÁY (vị trí trong dàn) do admin đặt trên web / người cài gõ lúc cài xong
         self.code_shown = False             # lần chạy này đã ghi số máy ra màn hình nền chưa
@@ -601,6 +616,11 @@ class Agent:
             v = r["rent"].get(key)
             if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= hi and int(v) * 60 != self.rent.get(name):
                 self.rent[name] = int(v) * 60; ch = True
+        lk = r["rent"].get("lock") is True                         # 21.11f (SQL v44): lượt thuê tự thu hồi → hết hạn thì KHOÁ máy thay vì tắt
+        g = r["rent"].get("grace_min")
+        g = int(g) * 60 if isinstance(g, (int, float)) and not isinstance(g, bool) and 0 <= g <= 1440 else 0
+        if lk != bool(self.rent.get("lock_mode")) or g != int(self.rent.get("grace_s") or 0):
+            self.rent["lock_mode"] = lk; self.rent["grace_s"] = g; ch = True
         if u != self.rent.get("until"):
             self.rent_stop_off("hạn thuê vừa đổi")
             self.rent["until"] = u; self.rent["warned"] = []; self.rent.pop("off", None); self.rent.pop("told", None)
@@ -608,6 +628,10 @@ class Agent:
             self.rent_save()
         elif ch or (u and self.s.now() - self.rent_saved >= RENT_SAVE_S):
             self.rent_save()
+        if self.rent.get("locked"):                                   # máy đang khoá vì hết hạn
+            if u is not None and u - self.rent_est() > 60: self.rent_unlock("được gia hạn")
+            elif u is None and not r["rent"].get("hold"): self.rent_unlock("máy chủ bỏ hạn thuê")
+            # bỏ hạn + hold: máy vừa bị thu hồi, chờ máy chủ ra lệnh cài sạch → giữ khoá
 
     def rent_plan(self):
         """(khoảng nhắc, nhịp nhắc lại, các mốc) tính bằng giây cho hạn thuê hiện tại."""
@@ -621,7 +645,9 @@ class Agent:
         u = self.rent.get("until")
         if not u: return "khong dat han"
         left = u - (self.s.now() + (self.rent.get("skew") or 0))
-        if left <= 0: return "DA HET HAN - may tu tat. Lien he shop de gia han."
+        if left <= 0:
+            if self.rent.get("locked"): return "DA HET HAN - may da KHOA. Gia han de mo lai."
+            return "DA HET HAN - may tu tat. Lien he shop de gia han."
         if left < 60: return "con duoi 1 phut"
         return "con %s" % span_txt(left // 60 * 60 if left < 3600 else left // 3600 * 3600)      # làm tròn (phút / giờ) để không ghi lại file liên tục
 
@@ -655,11 +681,17 @@ class Agent:
                 self.log("nhắc khách: hạn thuê còn %s" % span_txt(left))
                 try: when = time.strftime("%H:%M ngay %d/%m", time.localtime(self.rent["until"]))
                 except Exception: when = ""
-                self.h.notify("%s: may nay con %s nua la HET HAN THUE%s. Het han may se TU TAT. Lien he shop de gia han."
-                              % (self.tag(), span_txt(left), " (het han luc %s)" % when if when else ""), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
+                g = int(self.rent.get("grace_s") or 0)
+                tail = ("Het han may se KHOA%s, qua han may bi thu hoi va xoa sach. Gia han ngay trong app / web CloudBlue."
+                        % (" (gia han trong %d phut sau do van giu duoc may)" % (g // 60) if g >= 60 else "")) if self.rent.get("lock_mode") \
+                    else "Het han may se TU TAT. Lien he shop de gia han."
+                self.h.notify("%s: may nay con %s nua la HET HAN THUE%s. %s"
+                              % (self.tag(), span_txt(left), " (het han luc %s)" % when if when else "", tail), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
             elif every > 0 and told is not None:
                 nxt.append(max(1, told + every - est))
             return max(2, min(min(nxt), 300))
+        if self.rent.get("lock_mode") or self.rent.get("locked") == u:
+            return self.rent_lock_step(u)                              # 21.11f: lượt thuê tự thu hồi → KHOÁ máy (không tắt)
         if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
             return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể chủ shop vừa gia hạn lúc máy đang tắt)
         if self.rent_call is None:
@@ -677,6 +709,46 @@ class Agent:
         self.h.power(reboot=False, delay=0, msg="CloudBlue PC: het han thue - may tat.")
         self.rent_call = self.s.now() + RENT_LAST_CALL                 # lệnh tắt bị chặn / máy chưa tắt: 2 phút sau ra lệnh lại
         return 30
+
+    def rent_lock_step(self, u):
+        """21.11f · Hết hạn, lượt thuê TỰ THU HỒI (SQL v44): KHOÁ máy thay vì tắt — báo khách, 60 giây sau tắt tự đăng nhập + khởi động lại → máy dừng ở
+           màn hình đăng nhập, mọi chương trình của khách dừng. Máy vẫn chạy để: khách gia hạn trong thời gian chờ → tự mở lại (giữ nguyên dữ liệu);
+           quá hạn → máy chủ thu hồi rồi ra lệnh cài sạch + tắt máy. Trả số giây nghỉ."""
+        if self.rent.get("locked") == u:                              # đã khoá cho đúng hạn này
+            if not self.lock_ok:
+                self.lock_ok = bool(self.h.autologon(False))           # mỗi lần agent chạy: giữ "tắt tự đăng nhập" (phòng ai bật lại)
+            if self.lock_at is not None and self.s.now() - self.lock_at >= RENT_LOCK_RETRY:
+                self.log("đã ra lệnh khoá mà máy vẫn chạy → khởi động lại lần nữa")
+                self.lock_at = self.s.now()
+                self.h.power(reboot=True, delay=5, msg="CloudBlue PC: het han thue - may khoa.")
+            return 60
+        if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
+            return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể vừa được gia hạn)
+        if self.rent_call is None:
+            self.rent_call = self.s.now()
+            g = int(self.rent.get("grace_s") or 0)
+            self.event("rent_lock")
+            self.log("HẾT HẠN THUÊ → báo khách, %d giây nữa KHOÁ máy (lượt thuê tự thu hồi)" % RENT_LAST_CALL)
+            self.h.notify("%s: may nay da HET HAN THUE. May se KHOA sau %d giay. Gia han%s de giu may + du lieu - gia han xong may tu mo lai."
+                          % (self.tag(), RENT_LAST_CALL, " trong %d phut" % (g // 60) if g >= 60 else ""), RENT_LAST_CALL)
+            return 3                                                   # nhịp kế báo về web ngay
+        wait = RENT_LAST_CALL - (self.s.now() - self.rent_call)
+        if wait > 0: return max(2, min(15, wait))
+        self.rent["locked"] = u; self.rent.pop("off", None); self.rent_save()
+        self.rent_call = None
+        self.lock_ok = bool(self.h.autologon(False))
+        self.lock_at = self.s.now()
+        self.log("hết hạn thuê → KHOÁ MÁY (tắt tự đăng nhập + khởi động lại)")
+        self.h.power(reboot=True, delay=5, msg="CloudBlue PC: het han thue - may khoa. Gia han de mo lai.")
+        return 60
+
+    def rent_unlock(self, why):
+        """21.11f · Mở khoá máy (được gia hạn / máy chủ bỏ hạn): bật lại tự đăng nhập + khởi động lại để vào thẳng Windows như cũ."""
+        self.rent.pop("locked", None); self.rent_call = None; self.lock_at = None; self.lock_ok = False
+        self.rent_save()
+        self.h.autologon(True)
+        self.log("MỞ KHOÁ máy (%s) → bật lại tự đăng nhập + khởi động lại" % why)
+        self.h.power(reboot=True, delay=15, msg="CloudBlue PC: da gia han - may khoi dong lai de mo khoa sau 15 giay.")
 
     # ------------------------------------------------------------------ đăng ký
     def enroll(self):
