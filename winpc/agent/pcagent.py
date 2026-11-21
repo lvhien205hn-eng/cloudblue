@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11c):
+#  Việc làm (bản 21.11d):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -13,6 +13,8 @@
 #    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
 #    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
 #    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
+#    · ĐIỀU KHIỂN TỪ XA (đợt 2, SQL v43): giữ chương trình pcremote.py chạy trong phiên màn hình của máy (tự mở lại khi nó thoát / người dùng
+#      đăng xuất). pcremote tự nối RA máy chủ phát hình và chỉ quay màn hình khi có khách của máy / admin mở điều khiển. Tắt: cb.json "remote": false
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -30,7 +32,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11c"
+AGENT_VER = "21.11d"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -45,6 +47,8 @@ RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sa
 RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
 CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy chủ quá 2 phút → agent đặt lại theo máy chủ (cb.json "clock_fix": false để tắt)
 NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
+REMOTE_MUTEX = "Global\\CloudBluePCRemote" # khoá do pcremote.py giữ khi đang chạy
+REMOTE_RETRY_S = 60                      # pcremote chưa chạy: mở lại, tối đa 1 lần / phút
 
 
 # ====================================================================================== đọc phần cứng (không cần WMI)
@@ -213,6 +217,16 @@ class WinHost:
         try: return C.drv_summary(cbsys.pnp_devices())
         except Exception: return None
 
+    def remote_running(self):
+        """Chương trình điều khiển từ xa (pcremote.py) có đang chạy không."""
+        return cbsys.mutex_exists(REMOTE_MUTEX)
+
+    def remote_start(self, script):
+        """Mở pcremote.py bằng SYSTEM trong PHIÊN MÀN HÌNH đang hiện (agent nằm ở phiên 0 không thấy màn hình). Trả (pid, số phiên)."""
+        py = os.path.join(BASE, "py", "pythonw.exe")
+        if not os.path.isfile(py): py = sys.executable
+        return cbsys.spawn_console([py, "-I", "-B", script, "run"], cwd=BASE)
+
     def notify(self, text, secs=60):
         """Hiện hộp thông báo cho người đang dùng máy (mọi phiên đăng nhập) bằng msg.exe của Windows. Không chờ ai bấm; không có msg.exe thì thôi."""
         try:
@@ -331,6 +345,8 @@ class Agent:
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
         self.drv = None                     # tình trạng driver gần nhất (cbcore.drv_brief) — gửi về web trong info.drv, ghi vào os\status.txt
+        self.remote_try = None              # lần gần nhất thử mở chương trình điều khiển từ xa
+        self.remote_err = ""                # lỗi mở gần nhất (ghi nhật ký 1 lần / loại lỗi)
 
     def p(self, rel): return self.base + "\\" + rel
     def log(self, m): self._log(m)
@@ -369,7 +385,40 @@ class Agent:
             i["sec"] = {"std": not self.cfg.get("user_admin"), "hard": bool(self.s.exists(self.p("logs\\harden.done"))),
                         "lock": bool(self.s.exists(self.p("logs\\lock.done")))}
         except Exception: pass
+        try:                                                        # điều khiển từ xa: bản + tình trạng do pcremote ghi (web hiện cho admin khi máy "chưa nối")
+            r = self.remote_info()
+            if r: i["rmt"] = r
+        except Exception: pass
         return i
+
+    # ------------------------------------------------------------------ điều khiển từ xa (đợt 2)
+    def remote_info(self):
+        """Tình trạng pcremote ghi ở logs\\remote.state ("<lúc ghi> <bản> <tình trạng>") → {"v", "s", "age"}; chưa có → None."""
+        if self.cfg.get("remote") is False: return {"v": "", "s": "tat tren may nay (cb.json remote = false)", "age": 0}
+        path = self.p("logs\\remote.state")
+        if not self.s.exists(path): return None
+        q = self.s.read_text(path).strip().split(" ", 2)
+        if len(q) < 3 or not q[0].isdigit(): return None
+        return {"v": re.sub(r"[^0-9A-Za-z._-]", "", q[1])[:16], "s": re.sub(r"[^ -~]", "?", q[2])[:120], "age": max(0, int(self.s.now() - int(q[0])))}
+
+    def remote_keep(self):
+        """Giữ pcremote.py chạy trong phiên màn hình: chưa chạy (vừa bật máy / người dùng đăng xuất rồi đăng nhập / nó tự thoát để lên bản mới) → mở lại.
+           Trả "run" · "start" · "wait" · "err" · None (không áp dụng). Không bao giờ ném lỗi."""
+        try:
+            if self.cfg.get("remote") is False or not self.ident: return None
+            script = self.p("agent\\pcremote.py")
+            if not self.s.exists(script): return None
+            if self.h.remote_running(): self.remote_err = ""; return "run"
+            now = self.s.now()
+            if self.remote_try is not None and now - self.remote_try < REMOTE_RETRY_S: return "wait"
+            self.remote_try = now
+            pid, sid = self.h.remote_start(script)
+            self.log("đã mở chương trình điều khiển từ xa trong phiên màn hình %s (pid %s)" % (sid, pid))
+            return "start"
+        except Exception as e:
+            if str(e) != self.remote_err:
+                self.remote_err = str(e); self.log("chưa mở được chương trình điều khiển từ xa: %s" % e)
+            return "err"
 
     def write_status(self):
         """Ghi os\\status.txt — tình trạng agent KHÔNG có bí mật, tài khoản thường đọc được (thư mục os cho đọc) để chủ shop xem tại máy
@@ -781,6 +830,7 @@ class Agent:
     def tick(self):
         """1 nhịp làm việc. Trả số giây nghỉ trước nhịp sau."""
         nap = self._tick()
+        if not self.rebooting: self.remote_keep()
         self.write_status()
         return nap
 
@@ -903,6 +953,10 @@ def cmd_selfcheck(argv):
     i = ag.info()
     assert i.get("host") and i.get("os_ver") and len(ag.calc_hw()) == 64
     assert C.CORE_VER and cbrec.REC_VER
+    rs = os.path.join(HERE, "pcremote.py")                          # chương trình điều khiển từ xa đi kèm cũng phải tự thử đạt
+    if os.path.isfile(rs):
+        r = subprocess.run([sys.executable, "-I", "-B", rs, "selfcheck"], capture_output=True, timeout=60, creationflags=0x08000000 if WIN else 0)
+        assert r.returncode == 0, "pcremote selfcheck: %s" % ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "replace")[-300:]
     print("selfcheck ok", AGENT_VER)
     return 0
 
@@ -918,6 +972,10 @@ def cmd_status(argv):
     print("  Cuu ho:     %s" % ("co - doi duoc sang: " + ", ".join(rec.get("images") or []) if rec.get("ok") else "KHONG CO phan vung cuu ho (cai lai phai dung USB)"))
     print("  Phan cung:  %s - %s luong - %s GB RAM - %s" % (i.get("cpu"), i.get("cores"), i.get("ram_gb"), ", ".join(i.get("gpus") or []) or "?"))
     print("  Han thue:   %s" % ag.rent_line())
+    try: rmt = ag.remote_info()
+    except Exception: rmt = None
+    print("  Tu xa:      %s" % (("%s%s%s" % (rmt["s"], (" (ban %s)" % rmt["v"]) if rmt["v"] else "", (" - ghi %d giay truoc" % rmt["age"]) if rmt["age"] > 120 else "")) if rmt
+                                 else "chua chay (agent tu mo trong vong 1 phut sau khi may dang ky xong)"))
     if ag.ident:
         r = ag.net.rpc("pc_poll", {"p_id": ag.ident["id"], "p_token": ag.ident["token"], "p_info": None, "p_done": None})
         print("  Ket noi:    %s" % ("OK - %s, %s" % ("da duyet" if r.get("approved") else "CHO ADMIN DUYET", r.get("status")) if r and r.get("ok")
