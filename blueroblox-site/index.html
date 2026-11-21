@@ -2914,7 +2914,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
     <h3 id="pcad-title">Máy PC</h3>
     <div class="hint" id="pcad-info"></div>
     <label>Tên hiển thị<input class="in" id="pcad-name" maxlength="40"></label>
-    <label>Mã riêng của shop (khu / số máy)<input class="in" id="pcad-code" maxlength="40" placeholder="VD: A · 14-85"></label>
+    <label>Số máy (vị trí máy trong dàn — hiện trên màn hình máy để khách báo lỗi đúng máy)<input class="in" id="pcad-code" maxlength="40" placeholder="VD: 14-85 hoặc A07"></label>
     <label>Ghi chú<input class="in" id="pcad-note" maxlength="500"></label>
     <label>Trạng thái<select class="in" id="pcad-status" style="width:100%"><option value="new">Chờ duyệt</option><option value="ready">Sẵn sàng (trong kho)</option><option value="rented">Đang cho thuê</option><option value="maint">Bảo trì</option></select></label>
     <div class="amts" style="grid-template-columns:repeat(2,1fr)">
@@ -3066,6 +3066,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
   <div class="dpanel" role="dialog" aria-modal="true" aria-labelledby="d-title">
     <div class="dhead"><h2 id="d-title">Bảng <span>quản trị</span></h2><button class="btn ghost sm" id="adm-refresh">Tải lại</button><button class="btn ghost sm" id="adm-logout">Đăng xuất</button><button class="btn ghost sm" id="admin-close">Đóng</button></div>
     <div class="admalert" id="adm-alert" hidden></div>
+    <div class="xp-host" id="pca-rentbar" hidden></div>
     <div class="tabs" id="adm-tabs">
       <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button><button data-tab="biz">🏭 Dàn máy nội bộ</button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
     </div>
@@ -3183,7 +3184,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
     </div>
     <div class="dbody" id="pane-pc" hidden>
       <div class="note" id="pca-miss" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>Máy PC</b>. Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v41.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
-      <div class="note" id="pca-miss42" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>hạn thuê + cảnh báo về mail</b>. Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v42.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
+      <div class="note" id="pca-miss42" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>hạn thuê + nhắc hết hạn</b> (hoặc đang là bản cũ). Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v42.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
       <div class="tiles pca-tiles"><div><b id="pk-total">0</b><span>Máy đã đăng ký</span></div><div><b id="pk-on">0</b><span>Đang online</span></div><div><b id="pk-new">0</b><span>Chờ duyệt</span></div><div><b id="pk-busy">0</b><span>Đang cài lại</span></div></div>
       <div class="pca-bar">
         <span class="pca-key"><b>Mã đăng ký:</b> <span id="pca-keyst">—</span></span>
@@ -3206,21 +3207,23 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
         <div class="pca-row"><input class="in" id="pca-cmd" readonly aria-label="Lệnh tạo ISO"><button class="btn sm" type="button" id="pca-cmdcopy">Copy lệnh</button></div>
       </div>
       <div class="note" id="pca-albox" hidden>
-        <b>Cảnh báo máy PC về mail / Telegram của admin</b> — hết hạn thuê, sắp hết hạn, máy hết hạn bị bật lại, máy đang thuê mất kết nối, máy lạ đăng ký, đồng hồ / bảo mật / phần cứng trên máy bị đổi, cài lại thất bại. Mọi cảnh báo cũng hiện ở tab 🛡️ Bảo mật.
+        <b>Nhắc hết hạn + cảnh báo máy PC</b> — máy sắp hết hạn / đã hết hạn <b>luôn hiện ở đầu Bảng quản trị</b> cho tới khi gia hạn; trên máy, khách được nhắc lặp lại bằng hộp thông báo. Các việc khác (máy đang thuê mất kết nối, máy lạ đăng ký, đồng hồ / bảo mật / phần cứng trên máy bị đổi, cài lại thất bại) hiện ở tab 🛡️ Bảo mật.
         <div class="pca-al">
-          <label class="pca-chk"><input type="checkbox" id="pca-al-mail"> Gửi về mail admin</label>
-          <label class="pca-num">Báo trước khi hết hạn <input class="in" id="pca-al-warn" type="number" min="0" max="10080" step="5" inputmode="numeric"> phút</label>
+          <label class="pca-num">Bắt đầu nhắc khi còn <input class="in" id="pca-al-warn" type="number" min="0" max="168" step="1" inputmode="decimal"> giờ</label>
+          <label class="pca-num">Nhắc khách lại mỗi <input class="in" id="pca-al-every" type="number" min="0" max="24" step="0.5" inputmode="decimal"> giờ</label>
           <label class="pca-num">Máy đang thuê mất kết nối quá <input class="in" id="pca-al-off" type="number" min="0" max="1440" step="5" inputmode="numeric"> phút thì báo</label>
+          <label class="pca-chk"><input type="checkbox" id="pca-al-mail"> Gửi thêm về mail admin</label>
           <button class="btn sm" type="button" id="pca-al-save">Lưu</button>
           <button class="btn ghost sm" type="button" id="pca-al-test">Gửi thư thử</button>
         </div>
-        <div class="hint">Đặt 0 phút = tắt loại cảnh báo đó. Mail gửi tới địa chỉ <b>ADMIN_EMAIL</b> đặt trên Vercel (cần thêm <b>RESEND_API_KEY</b>); Telegram dùng bot đang có.</div>
+        <div class="hint">Mặc định: nhắc từ <b>48 giờ (2 ngày)</b> trước hạn, lặp lại mỗi 4 giờ và mỗi lần bật máy; giờ cuối nhắc ở 60 · 30 · 10 · 5 · 1 phút. Thuê ngắn thì chỉ nhắc ở 1/4 thời gian cuối (thuê 1 ngày → 6 giờ cuối). Đặt 0 = tắt mục đó.</div>
+        <div class="hint">Mail / Telegram là phần thêm, không bắt buộc: mail cần <b>ADMIN_EMAIL</b> + <b>RESEND_API_KEY</b>, Telegram cần <b>TELEGRAM_BOT_TOKEN</b> + <b>TELEGRAM_CHAT_ID</b> đặt trên Vercel.</div>
         <div class="hint" id="pca-al-st"></div>
         <div class="hint" id="pca-al-r"></div>
       </div>
       <input class="search" id="pcq" placeholder="Tìm theo tên máy, mã, IP, tên khách…" style="width:100%" autocomplete="off">
       <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hạn thuê</th><th>Windows</th><th>Cấu hình</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
-      <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — máy tự báo trước cho khách, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt) và bạn nhận cảnh báo. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
+      <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. <b>Số máy</b> (nhãn № cạnh tên): người cài gõ ngay sau khi cài xong, hoặc bấm <b>Sửa</b> để đặt — số này hiện trên màn hình máy (file “May so … (CloudBlue)”) và trong lời nhắc, khách báo lỗi theo số đó. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — từ 2 ngày trước hạn máy tự nhắc khách liên tục, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt); máy sắp / đã hết hạn luôn hiện ở ô 🔔 đầu trang. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
     </div>
     <div class="dbody" id="pane-biz" hidden>
       <div class="note">Dùng chung dữ liệu với phần mềm desktop (cùng cloud). Nhập ở đây hiện bên phần mềm & ngược lại. <b>Chỉ admin thấy.</b></div>
@@ -12659,6 +12662,26 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
 #pctbl .pca-cfg{font-size:12.5px;line-height:1.5;min-width:190px}
 #pctbl .pca-rent{min-width:128px}
 .pca-al{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:9px 0 6px}
+/* 🔔 máy sắp / đã hết hạn: 2 ô cho admin (trang ngoài + Bảng quản trị) và dải nhắc cho khách */
+.xp-home{margin-top:10px}
+.xp-host{margin:10px 20px 0}
+.xp-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin:0 0 6px;font-size:13.5px}
+.xp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px;align-items:start}
+.xp-box,.xp-cust{border:1px solid var(--line2);border-radius:14px;background:var(--panel);overflow:hidden}
+.xp-h{display:flex;align-items:center;gap:8px;width:100%;padding:9px 12px;background:none;border:0;color:var(--fg);font:inherit;font-weight:700;font-size:13.5px;cursor:pointer;text-align:left}
+.xp-h span{flex:1 1 auto;min-width:0}
+.xp-h i{font-style:normal;font-weight:600;font-size:12px;color:var(--muted);white-space:nowrap}
+.xp-l{display:flex;flex-direction:column;gap:6px;padding:0 10px 10px}
+.xp-r{padding:8px 11px;border-radius:10px;font-size:13px;line-height:1.45;border:1px solid;overflow-wrap:anywhere}
+.xp-r.r{background:rgba(255,107,129,.1);border-color:rgba(255,107,129,.4);color:#ffd4db}
+.xp-r.y{background:rgba(255,200,97,.08);border-color:rgba(255,200,97,.35);color:#ffe7b8}
+html[data-theme=light] .xp-r.r{color:#c0263c}
+html[data-theme=light] .xp-r.y{color:#8a5a00}
+.xp-r a{font-weight:700;white-space:nowrap;color:inherit;text-decoration:underline}
+.xp-cust{display:flex;flex-direction:column;gap:6px;padding:10px;margin-bottom:10px}
+.xp-cust[hidden],.xp-adm[hidden],.xp-home[hidden],.xp-host[hidden]{display:none}
+.xp-ch{display:flex;align-items:center;gap:8px;font-size:13.5px}
+.xp-ch b{flex:1 1 auto;min-width:0}
 .pca-num{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
 .pca-num .in{width:84px;padding:6px 9px}
 .pca-row.pca-plain .in{font-family:inherit;font-size:14px}
@@ -12679,7 +12702,7 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
   const ST = { new: ["Chờ duyệt", "wt"], ready: ["Sẵn sàng", "ok"], rented: ["Đang thuê", ""], maint: ["Bảo trì", "bad"] };
   const WIPE = { all: "dọn sạch cả máy", disk: "cả ổ hệ thống", system: "chỉ phân vùng Windows" };
   const COLS = "id,name,code,note,approved,status,os,os_ver,info,lan_ip,pub_ip,first_seen,last_seen,enrolled_at,reenroll_until,created_at", COLS42 = ",rent_until,renter,rent_set_at,rent_off_at";
-  const SETS = "enroll_hash,enroll_made_at,auto_approve,agent,poll_s", SETS42 = ",rent_warn_min,off_alert_min,alert_email,notify_at,notify_fail_at,notify_err";
+  const SETS = "enroll_hash,enroll_made_at,auto_approve,agent,poll_s", SETS42 = ",rent_warn_min,rent_remind_min,off_alert_min,alert_email,notify_at,notify_fail_at,notify_err";
   const ERRS = { NOT_ADMIN: "Tài khoản này không phải admin.", BUSY: "Máy đang có lệnh cài lại chưa xong — chờ xong hoặc huỷ lệnh đó trước.", BAD_OS: "Bản Windows không hợp lệ.",
     BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
     BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
@@ -12761,6 +12784,154 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
   }
   const recOf = m => { const r = O(O(m.info).rec), imgs = A(r.images, 8).map(x => S(x, 12)).filter(x => /^[a-z0-9]{2,12}$/.test(x)); return { ok: r.ok === true && imgs.length > 0, images: imgs }; };
 
+  // Khoảng báo trước THỰC TẾ của 1 máy (mili giây) — cùng công thức với hàm SQL _pc_warn_min: số nhỏ hơn giữa cài đặt chung và 1/4 thời gian thuê (ít nhất 10 phút).
+  function warnMsOf(m) {
+    const w = +(P.set && P.set.rent_warn_min) || 0, u = untilOf(m);
+    if (!(w > 0) || u === null) return 0;
+    const t0 = new Date(m.rent_set_at || m.created_at).getTime(), term = isNaN(t0) ? Infinity : (u - t0) / 60000;
+    return Math.min(w, Math.max(10, Math.floor(term * 0.25))) * 60000;
+  }
+  const rentSoon = m => { const u = untilOf(m), left = u === null ? NaN : u - Date.now(); return left > 0 && left <= warnMsOf(m); };
+  const rentOver = m => { const u = untilOf(m); return u !== null && u <= Date.now(); };
+  // ======================= 🔔 MÁY SẮP / ĐÃ HẾT HẠN =======================
+  // ADMIN: 2 ô — "VPS / Máy PC" và "ĐT đám mây" — hiện ở TRANG NGOÀI (ngay dưới thanh đầu trang) và ở đầu Bảng quản trị (mọi tab); mỗi ô bấm Ẩn / Hiện được (nhớ theo trình duyệt).
+  //        Chỉ dựng khi isAdmin(); dữ liệu chỉ tải khi là admin, đăng xuất / đổi tài khoản là xoá sạch. Phía máy chủ, tài khoản thường vốn chỉ đọc được máy của chính mình.
+  // KHÁCH: 1 dải nhắc ở trang ngoài cho máy CỦA CHÍNH KHÁCH còn ≤ 2 ngày (ĐT đám mây + máy VPS), có nút Gia hạn; bấm Ẩn thì 4 giờ sau hiện lại.
+  const XP_SOON = 2 * 864e5, XP_CUST_HIDE = 4 * 3600e3, XP_MAX = 6;
+  const XP = { vps: [], cp: [], names: {}, mine: [], at: 0, busy: false, cat: 0, cbusy: false, uid: null };
+  const me = () => { try { return typeof profile !== "undefined" && profile ? profile : null; } catch (e) { return null; } };
+  const xpT = v => { const t = typeof v === "string" ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+  const xpGrace = () => { try { return typeof CP_GRACE_MIN === "number" ? CP_GRACE_MIN : 30; } catch (e) { return 30; } };
+  const xpHidden = k => { try { return localStorage.getItem("xp_hide_" + k) === "1"; } catch (e) { return false; } };
+  const xpPcRows = () => P.loaded && P.v42 ? P.list.filter(m => rentSoon(m) || rentOver(m)) : [];
+  function xpItems() {                       // [{t: hạn, over: đã hết hạn?, html, go: tab quản trị, id, btn}] cho từng ô
+    const now = Date.now(), who = id => { const n = S(XP.names[id], 40); return n ? ` · 👤 ${esc(n)}` : ""; };
+    const A = xpPcRows().map(m => { const u = untilOf(m), over = u <= now, r = (S(m.code, 40) ? ` (№ ${esc(S(m.code, 40))})` : "") + (S(m.renter, 80) ? ` · 👤 ${esc(S(m.renter, 80))}` : "");
+      return { t: u, over, go: "pc", id: m.id, btn: "⏱ Gia hạn", html: over
+        ? `💻 Máy PC <b>${esc(m.name)}</b>${r} đã <b>HẾT HẠN thuê</b> từ ${atVN(u)} — ${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}.`
+        : `💻 Máy PC <b>${esc(m.name)}</b>${r} còn <b>${leftTxt(u - now)}</b> là hết hạn thuê (đến ${atVN(u)}).` }; });
+    XP.vps.forEach(v => { const u = xpT(v.expires_at); if (u === null || v.status !== "active" || u - now > XP_SOON) return;
+      const nm = `🖥️ VPS <b>${esc(S(v.machine_name, 60) || "?")}</b>${who(v.user_id)}`;
+      A.push({ t: u, over: u <= now, go: "vps", id: "", btn: "Mở Máy VPS", html: u <= now ? `${nm} đã <b>HẾT HẠN</b> từ ${atVN(u)}.` : `${nm} còn <b>${leftTxt(u - now)}</b> là hết hạn (đến ${atVN(u)}).` }); });
+    const B = [];
+    XP.cp.forEach(p => { const u = xpT(p.expires_at); if (u === null || p.is_free || u - now > XP_SOON) return;
+      const nm = `📱 <b>${esc(S(p.name, 60) || "?")}</b>${who(p.user_id)}`;
+      if (p.status === "expired") { const g = Math.ceil((u + xpGrace() * 60000 - now) / 60000); if (g > 0) B.push({ t: u, over: true, go: "cloud", id: "", btn: "Mở ĐT đám mây", html: `${nm} đã <b>HẾT HẠN</b> — còn <b>${g} phút</b> giữ máy.` }); }
+      else if (p.status === "active") B.push({ t: u, over: u <= now, go: "cloud", id: "", btn: "Mở ĐT đám mây", html: u <= now ? `${nm} đã <b>HẾT HẠN</b> từ ${atVN(u)}.` : `${nm} còn <b>${leftTxt(u - now)}</b> là hết hạn (đến ${atVN(u)}).` }); });
+    const ord = (x, y) => (y.over - x.over) || (x.over ? y.t - x.t : x.t - y.t);      // đã hết hạn đứng trước (mới hết trước), rồi tới máy gần hết hạn nhất
+    return { vps: A.sort(ord), cp: B.sort(ord) };
+  }
+  function xpBox(key, title, rows) {
+    if (!rows.length) return "";
+    const off = xpHidden(key);
+    return `<div class="xp-box" data-xpbox="${key}"><button type="button" class="xp-h" data-xptg="${key}" aria-expanded="${!off}"><span>${title}</span><b class="badge">${rows.length}</b><i>${off ? "Hiện ▾" : "Ẩn ▴"}</i></button>`
+      + (off ? "" : `<div class="xp-l">` + rows.slice(0, XP_MAX).map(r => `<div class="xp-r ${r.over ? "r" : "y"}">${r.html} <a href="#" data-xpgo="${r.go}" data-xpid="${esc(r.id)}">${r.btn}</a></div>`).join("")
+        + (rows.length > XP_MAX ? `<div class="xp-r y">… và <b>${rows.length - XP_MAX}</b> máy nữa — <a href="#" data-xpgo="${rows[0].go}" data-xpid="">xem tất cả</a>.</div>` : "") + `</div>`) + `</div>`;
+  }
+  function xpCust() {                        // dải nhắc cho KHÁCH (không dựng cho admin: admin đã có 2 ô ở trên)
+    const box = $i("xp-cust"); if (!box) return;
+    const u0 = me(), now = Date.now(), rows = [];
+    let hideTo = 0; try { hideTo = +localStorage.getItem("xp_cust_hide") || 0; } catch (e) {}
+    if (u0 && !isAdmin()) XP.mine.forEach(x => {
+      const u = xpT(x.at); if (u === null || x.free || x.uid !== u0.id) return;
+      const nm = `<b>${esc(S(x.name, 60) || "?")}</b>`, cd = typeof cdText === "function" ? `<b data-cd="${esc(x.at)}">${esc(cdText(x.at))}</b>` : `<b>${leftTxt(u - now)}</b>`;
+      if (x.k === "cp" && x.st === "expired") { const g = Math.ceil((u + xpGrace() * 60000 - now) / 60000);
+        if (g > 0) rows.push({ t: u, over: true, k: x.k, id: x.id, html: L(`⛔ ĐT đám mây ${nm} đã <b>hết hạn</b> — gia hạn trong <b>${g} phút</b> để giữ máy.`, `⛔ Cloud phone ${nm} has <b>expired</b> — renew within <b>${g} min</b> to keep it.`) }); }
+      else if (x.st === "active" && u > now && u - now <= XP_SOON) rows.push({ t: u, over: false, k: x.k, id: x.id, html: x.k === "cp"
+        ? L(`⏳ ĐT đám mây ${nm} còn ${cd} là <b>hết hạn</b> (đến ${atVN(u)}).`, `⏳ Cloud phone ${nm} <b>expires</b> in ${cd} (${atVN(u)}).`)
+        : L(`⏳ Máy VPS ${nm} còn ${cd} là <b>hết hạn</b> (đến ${atVN(u)}).`, `⏳ VPS ${nm} <b>expires</b> in ${cd} (${atVN(u)}).`) });
+      else if (x.k === "vps" && x.st === "active" && u <= now) rows.push({ t: u, over: true, k: x.k, id: x.id, html: L(`⛔ Máy VPS ${nm} đã <b>hết hạn</b> từ ${atVN(u)}.`, `⛔ VPS ${nm} <b>expired</b> at ${atVN(u)}.`) });
+    });
+    rows.sort((x, y) => (y.over - x.over) || (x.t - y.t));
+    const on = rows.length > 0 && now >= hideTo;
+    const html = !on ? "" : `<div class="xp-ch"><b>🔔 ${L("Máy của bạn sắp hết hạn — gia hạn để không bị gián đoạn", "Your machines are expiring soon — renew to avoid interruption")}</b><button type="button" class="btn ghost sm" data-xpcx="1">${L("Ẩn", "Hide")}</button></div>`
+      + rows.slice(0, 5).map(r => `<div class="xp-r ${r.over ? "r" : "y"}">${r.html} <a href="#" data-xpren="${r.k}" data-xpid="${esc(r.id)}">${L("Gia hạn", "Renew")}</a></div>`).join("")
+      + (rows.length > 5 ? `<div class="xp-r y">… +${rows.length - 5}</div>` : "");
+    if (box.dataset.sig !== html) { box.innerHTML = html; box.dataset.sig = html; }
+    box.hidden = !on;
+  }
+  function xpRender() {                      // trả số máy PC sắp / đã hết hạn (cho số trên nút tab 💻 Máy PC)
+    let html = "", nPc = 0;
+    if (isAdmin()) {
+      const it = xpItems(); nPc = it.vps.filter(r => r.go === "pc").length;
+      html = xpBox("vps", "🖥️ VPS / Máy PC sắp hết hạn", it.vps) + xpBox("cp", "📱 ĐT đám mây sắp hết hạn", it.cp);
+      if (html) html = `<div class="xp-top"><b>🔔 Máy sắp / đã hết hạn</b><span class="hint">chỉ tài khoản admin thấy mục này</span></div><div class="xp-grid">${html}</div>`;
+    }
+    [$i("pca-rentbar"), $i("xp-adm")].forEach(h => { if (!h) return; if (h.dataset.sig !== html) { h.innerHTML = html; h.dataset.sig = html; } h.hidden = !html; });
+    xpCust();
+    const home = $i("xp-home"); if (home) home.hidden = !!($i("xp-adm").hidden && $i("xp-cust").hidden);
+    return nPc;
+  }
+  function xpClear() { XP.vps = []; XP.cp = []; XP.mine = []; XP.names = {}; XP.at = 0; XP.cat = 0; }
+  async function xpLoad(force) {             // ADMIN: VPS + ĐT đám mây sắp hết hạn của MỌI khách (+ phần máy PC nếu chưa tải). Tối đa 1 lần / 55 giây.
+    if (!isAdmin()) return;
+    if (XP.busy || (!force && Date.now() - XP.at < 55000)) return;
+    XP.busy = true;
+    const uid = me().id;
+    try {
+      const lim = new Date(Date.now() + XP_SOON).toISOString();
+      let skipPc = false; try { skipPc = sessionStorage.getItem("pca_miss") === "1"; } catch (e) {}
+      const [v, c] = await Promise.all([
+        sb.from("vps_machines").select("id,machine_name,user_id,expires_at,status").eq("status", "active").lte("expires_at", lim).order("expires_at").limit(300),
+        sb.from("cloud_phones").select("id,name,user_id,expires_at,status,is_free").in("status", ["active", "expired"]).lte("expires_at", lim).order("expires_at").limit(500),
+        !P.loaded && !skipPc ? load(true) : null]);
+      if (!isAdmin() || me().id !== uid) return;                     // đăng xuất / đổi tài khoản trong lúc chờ → bỏ kết quả
+      XP.vps = Array.isArray(v.data) ? v.data : []; XP.cp = Array.isArray(c.data) ? c.data : [];
+      const ids = [...new Set(XP.vps.concat(XP.cp).map(x => x.user_id).filter(x => typeof x === "string" && !(x in XP.names)))].slice(0, 300);
+      if (ids.length) { const u = await sb.from("profiles").select("id,username").in("id", ids); if (isAdmin() && me().id === uid) (Array.isArray(u.data) ? u.data : []).forEach(r => { if (ids.includes(r.id)) XP.names[r.id] = r.username; }); }
+      XP.at = Date.now();
+    } catch (e) {} finally { XP.busy = false; }
+    xpRender();
+  }
+  async function xpMine(force) {             // KHÁCH: máy của chính mình. Tối đa 1 lần / 5 phút.
+    const u0 = me();
+    if (!u0 || isAdmin()) return;
+    if (XP.cbusy || (!force && Date.now() - XP.cat < 290000)) return;
+    XP.cbusy = true;
+    try {
+      const [c, v] = await Promise.all([
+        sb.from("cloud_phones").select("id,name,user_id,expires_at,status,is_free").eq("user_id", u0.id).in("status", ["active", "expired"]),
+        sb.from("vps_machines").select("id,machine_name,user_id,expires_at,status").eq("user_id", u0.id).eq("status", "active")]);
+      const cur = me(); if (!cur || cur.id !== u0.id) return;
+      XP.mine = (Array.isArray(c.data) ? c.data : []).map(p => ({ k: "cp", id: p.id, uid: p.user_id, name: p.name, at: p.expires_at, st: p.status, free: !!p.is_free }))
+        .concat((Array.isArray(v.data) ? v.data : []).map(m => ({ k: "vps", id: m.id, uid: m.user_id, name: m.machine_name, at: m.expires_at, st: m.status, free: false })));
+      XP.cat = Date.now();
+    } catch (e) {} finally { XP.cbusy = false; }
+    xpRender();
+  }
+  P.xpLoad = xpLoad;                         // cho bộ thử / gỡ rối: PCA.xpLoad(true) tải lại ngay phần VPS + ĐT đám mây
+  function xpAuth() {                        // gọi mỗi khi trạng thái đăng nhập đổi (renderUser) + lúc trang vừa tải
+    const u0 = me(), uid = u0 ? u0.id + (isAdmin() ? ":a" : ":u") : null;
+    if (uid !== XP.uid) {                                            // đăng xuất / đổi tài khoản / đổi quyền → xoá sạch dữ liệu đang giữ
+      XP.uid = uid; xpClear();
+      if (!isAdmin()) { P.list = []; P.orders = []; P.set = null; P.loaded = false; }
+      xpRender();
+      if (u0) { if (isAdmin()) xpLoad(true); else xpMine(true); }
+    }
+  }
+  function xpGo(tab, id) {                   // admin bấm 1 dòng → mở đúng tab của Bảng quản trị (máy PC: mở luôn hộp gia hạn của máy đó)
+    if (!isAdmin() || !["pc", "vps", "cloud"].includes(tab)) return;
+    setTab(tab);
+    if (tab === "pc" && id) { const open = () => { const m = mOf(id); if (m && P.v42) openRent(m); }; if (P.loaded) open(); else { const w = load(true); if (w && w.then) w.then(open); } }
+  }
+  function xpClick(e) {
+    const t = e.target && e.target.closest ? e.target : null; if (!t) return;
+    const tg = t.closest("[data-xptg]"), go = t.closest("[data-xpgo]"), cx = t.closest("[data-xpcx]"), ren = t.closest("[data-xpren]");
+    if (tg) { const k = tg.dataset.xptg; try { if (xpHidden(k)) localStorage.removeItem("xp_hide_" + k); else localStorage.setItem("xp_hide_" + k, "1"); } catch (er) {} xpRender(); return; }
+    if (cx) { try { localStorage.setItem("xp_cust_hide", String(Date.now() + XP_CUST_HIDE)); } catch (er) {} xpRender(); return; }
+    if (ren) { e.preventDefault(); const id = ren.dataset.xpid;
+      try { if (ren.dataset.xpren === "vps") openVmach(); else if (typeof myCloud !== "undefined" && Array.isArray(myCloud) && myCloud.some(p => p.id === id)) cpRenew(id); else openCloud(); } catch (er) {}
+      return; }
+    if (!go) return;
+    e.preventDefault();
+    if (!isAdmin()) return;
+    const tab = go.dataset.xpgo, id = go.dataset.xpid || "";
+    if (!$i("drawer").hidden) { xpGo(tab, id); return; }
+    if (ADMIN_PAGE) { Promise.resolve(openAdmin()).then(() => xpGo(tab, id)); return; }
+    try { sessionStorage.setItem("xp_go", tab + "|" + id); } catch (er) {}      // trang ngoài → sang /admin rồi mở đúng tab
+    location.href = "/admin";
+  }
+
   function rentCell(m) {
     if (!P.v42) return '<span class="hint">—</span>';
     const u = untilOf(m), who = S(m.renter, 80), wl = who ? `<div class="hint" style="white-space:normal;max-width:190px">👤 ${esc(who)}</div>` : "";
@@ -12768,7 +12939,7 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
     if (u === null) return '<span class="hint">chưa đặt hạn</span>' + wl + btn("Đặt hạn");
     const left = u - Date.now();
     if (left > 0) {
-      const soon = left <= Math.max(60, +(P.set && P.set.rent_warn_min) || 0) * 60000;
+      const soon = left <= warnMsOf(m);
       return `<span class="pill ${soon ? "wt" : "ok"}">${soon ? "⏳ " : ""}còn ${leftTxt(left)}</span><div class="hint">đến ${atVN(u)}</div>${wl}${btn("Gia hạn")}`;
     }
     return `<span class="pill bad">⛔ hết hạn</span><div class="hint">từ ${atVN(u)}</div><div class="hint">${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}</div>${wl}${btn("Gia hạn")}`;
@@ -12792,7 +12963,8 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
     const list = P.list.filter(m => !q || [m.name, m.code, m.note, m.lan_ip, m.pub_ip, m.os, O(m.info).host, m.renter].some(v => S(v, 500).toLowerCase().includes(q)));
     const nNew = P.list.filter(m => !m.approved).length, nBusy = P.list.filter(m => openOf(m.id).some(o => o.cmd === "reinstall")).length;
     $i("pk-total").textContent = P.list.length; $i("pk-on").textContent = P.list.filter(online).length; $i("pk-new").textContent = nNew; $i("pk-busy").textContent = nBusy;
-    const bd = $i("pc-badge"); if (bd) { bd.textContent = nNew || ""; bd.hidden = !nNew; }
+    const nRent = xpRender() || 0;            // dựng lại phần 🔔; máy PC sắp / đã hết hạn cũng tính vào số trên nút tab
+    const bd = $i("pc-badge"); if (bd) { bd.textContent = (nNew + nRent) || ""; bd.hidden = !(nNew + nRent); }
     const s = P.set;
     $i("pca-keyst").innerHTML = !P.loaded ? "—" : s && s.enroll_hash ? `<span class="pill ok">đang nhận máy mới</span> <span class="hint">mã tạo ${s.enroll_made_at ? ago(s.enroll_made_at) : ""}</span>` : '<span class="pill bad">đang đóng</span> <span class="hint">chưa có mã — máy mới không đăng ký được</span>';
     $i("pca-keyoff").hidden = !(s && s.enroll_hash);
@@ -12806,7 +12978,7 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
       return s.std === true && s.hard === true && s.lock === true ? '<div class="hint">🔒 đã khoá · khách dùng tài khoản thường</div>' : '<div class="hint">⏳ đang khoá bảo mật — chưa giao khách</div>'; };
     const row = m => {
       const i = O(m.info), on = online(m), st = stOf(m.status), rec = recOf(m), reBusy = openOf(m.id).some(o => o.cmd === "reinstall"), host = S(i.host, 40);
-      return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b>${m.code ? ` <span class="pill">${esc(m.code)}</span>` : ""}${m.note ? `<div class="hint" style="white-space:normal;max-width:220px">${esc(m.note)}</div>` : ""}${host && host !== m.name ? `<div class="hint">Windows: ${esc(host)}</div>` : ""}<div class="hint">${esc(S(m.lan_ip, 64) || "IP ?")}${S(m.pub_ip, 64) ? "<br>" + esc(S(m.pub_ip, 64)) : ""}</div></td>
+      return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b>${m.code ? ` <span class="pill" title="Số máy — hiện trên màn hình máy cho khách">№ ${esc(m.code)}</span>` : ""}${m.note ? `<div class="hint" style="white-space:normal;max-width:220px">${esc(m.note)}</div>` : ""}${host && host !== m.name ? `<div class="hint">Windows: ${esc(host)}</div>` : ""}<div class="hint">${esc(S(m.lan_ip, 64) || "IP ?")}${S(m.pub_ip, 64) ? "<br>" + esc(S(m.pub_ip, 64)) : ""}</div></td>
         <td>${on ? '<span class="pill ok">● online</span>' : `<span class="pill bad">○ offline</span><div class="hint">${m.last_seen ? ago(m.last_seen) : "chưa từng"}</div>`}<div style="margin-top:5px"><span class="pill ${st[1]}">${esc(st[0])}</span></div></td>
         <td class="pca-rent">${rentCell(m)}</td>
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
@@ -13007,7 +13179,8 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
   };
 
   // ---- 🔔 cảnh báo máy PC về mail / Telegram của admin (SQL v42 + /api/pc-notify)
-  const alFill = () => { const s = P.set || {}; $i("pca-al-mail").checked = s.alert_email !== false; $i("pca-al-warn").value = +s.rent_warn_min >= 0 ? +s.rent_warn_min : 60; $i("pca-al-off").value = +s.off_alert_min >= 0 ? +s.off_alert_min : 15; };
+  const hrs = (mins, dflt) => { const v = +mins >= 0 && mins !== null && mins !== "" ? +mins : dflt; return String(Math.round(v / 60 * 100) / 100); };     // phút → giờ (2880 → "48", 90 → "1.5")
+  const alFill = () => { const s = P.set || {}; $i("pca-al-mail").checked = s.alert_email !== false; $i("pca-al-warn").value = hrs(s.rent_warn_min, 2880); $i("pca-al-every").value = hrs(s.rent_remind_min, 240); $i("pca-al-off").value = +s.off_alert_min >= 0 ? +s.off_alert_min : 15; };
   function alState() {                       // notify_err do API ghi (chữ của máy chủ) — vẫn esc() khi in
     const s = P.set || {}, err = S(s.notify_err, 200);
     $i("pca-al-st").innerHTML = !P.v42 ? "" : s.notify_fail_at ? `<span class="pill bad">✗ lần gửi gần nhất không được</span> ${ago(s.notify_fail_at)}${err ? " — " + esc(err) : ""} · hệ thống tự thử lại sau 15 phút`
@@ -13020,9 +13193,10 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
   };
   $i("pca-al-save").onclick = async e => {
     const num = (id, max) => { const v = $i(id).value.trim(); return /^\d{1,5}$/.test(v) && +v <= max ? +v : -1; };
-    const w = num("pca-al-warn", 10080), o = num("pca-al-off", 1440);
-    if (w < 0 || o < 0) { toast("Số phút không hợp lệ: báo trước 0–10080 (7 ngày), mất kết nối 0–1440 (1 ngày).", 1); return; }
-    if (await call("pc_admin_settings", { p_patch: { alert_email: $i("pca-al-mail").checked, rent_warn_min: w, off_alert_min: o } }, "Đã lưu cài đặt cảnh báo.", e.currentTarget)) { alFill(); alState(); }
+    const hr = (id, max) => { const v = $i(id).value.trim().replace(",", "."); return /^\d{1,3}(\.\d{1,2})?$/.test(v) && +v <= max ? Math.round(+v * 60) : -1; };     // giờ (cho số lẻ: 0.5) → phút
+    const w = hr("pca-al-warn", 168), ev = hr("pca-al-every", 24), o = num("pca-al-off", 1440);
+    if (w < 0 || ev < 0 || o < 0) { toast("Số không hợp lệ: bắt đầu nhắc 0–168 giờ (7 ngày), nhắc lại mỗi 0–24 giờ, mất kết nối 0–1440 phút.", 1); return; }
+    if (await call("pc_admin_settings", { p_patch: { alert_email: $i("pca-al-mail").checked, rent_warn_min: w, rent_remind_min: ev, off_alert_min: o } }, "Đã lưu. Máy nhận cài đặt mới trong khoảng 30 giây.", e.currentTarget)) { alFill(); alState(); render(); }
   };
   $i("pca-al-test").onclick = async e => {
     const b = e.currentTarget, out = $i("pca-al-r"); b.disabled = true; out.textContent = "Đang gửi thử…";
@@ -13036,10 +13210,33 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
     } catch (er) { out.textContent = "Lỗi kết nối khi gửi thử."; } finally { b.disabled = false; }
   };
 
+  // ---- 🔔 gắn phần "máy sắp / đã hết hạn": chỗ đặt ở trang ngoài tạo bằng mã (ngay trên ô "máy của tôi"), bắt bấm, theo dõi đăng nhập
+  { const home = document.createElement("section"); home.className = "wrap xp-home"; home.id = "xp-home"; home.hidden = true;
+    home.innerHTML = '<div class="xp-cust" id="xp-cust" hidden></div><div class="xp-adm" id="xp-adm" hidden></div>';
+    const at = $i("m3-mine"); if (at && at.parentNode) at.parentNode.insertBefore(home, at); else document.body.appendChild(home);
+    home.addEventListener("click", xpClick);
+    const rb = $i("pca-rentbar"); if (rb) rb.addEventListener("click", xpClick);
+    if (typeof renderUser === "function") { const _ru = renderUser; renderUser = function () { const r = _ru.apply(this, arguments); try { xpAuth(); } catch (e) {} return r; }; }
+    try { xpAuth(); } catch (e) {} }
+
   // ---- gắn vào thanh tab của trang quản trị (cùng kiểu các mục khác: bọc setTab / openAdmin)
   { const _st = setTab; setTab = function (t) { _st(t); show("pane-pc", t === "pc"); if (t === "pc") { if (P.v42 === false) P.v42 = null; load(); } }; }
-  { const _oa = openAdmin; openAdmin = async function () { const r = await _oa.apply(this, arguments); let skip = false; try { skip = sessionStorage.getItem("pca_miss") === "1"; } catch (e) {} if (!skip) load(true); return r; }; }
-  setInterval(() => { try { if (!document.hidden && !$i("pane-pc").hidden && !$i("drawer").hidden && $i("pcadlg").hidden && $i("pcrdlg").hidden && $i("pctdlg").hidden) load(true); } catch (e) {} }, 15000);
+  { const _oa = openAdmin; openAdmin = async function () { const r = await _oa.apply(this, arguments); let skip = false; try { skip = sessionStorage.getItem("pca_miss") === "1"; } catch (e) {} if (!skip) load(true);
+      xpLoad(false);
+      try { const g = sessionStorage.getItem("xp_go"); if (g) { sessionStorage.removeItem("xp_go"); const i = g.indexOf("|"); xpGo(g.slice(0, i), g.slice(i + 1)); } } catch (e) {}      // từ trang ngoài bấm 1 dòng 🔔 → mở đúng tab
+      return r; }; }
+  let _tick = 0;
+  setInterval(() => { try {
+    _tick++;
+    if (document.hidden) return;
+    const dlgOpen = !$i("pcadlg").hidden || !$i("pcrdlg").hidden || !$i("pctdlg").hidden, inAdm = !$i("drawer").hidden;
+    if (isAdmin()) {
+      if (inAdm && !$i("pane-pc").hidden) { if (!dlgOpen) load(true); }                       // đang mở tab Máy PC: 15 giây / lần (như cũ)
+      else if (_tick % 4 === 0 && P.loaded && P.v42 && !dlgOpen) load(true);                    // tab khác / trang ngoài: 60 giây / lần
+      xpLoad(false);                                                                            // VPS + ĐT đám mây: tối đa 1 lần / 55 giây
+    } else if (me()) xpMine(false);                                                             // khách: 5 phút / lần
+    xpRender();                                                                                 // chữ "còn …" tự chạy theo đồng hồ
+  } catch (e) {} }, 15000);
 })();
 </script>
 </body>
