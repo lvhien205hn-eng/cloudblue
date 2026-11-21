@@ -1002,5 +1002,51 @@ else:
     aga.sec_now = False
     ck("máy chủ cũ (pc_poll không có cust_admin) → giữ nguyên", aga.admin_sync({"ok": True}) is False and aga.sec_now is False and cbj().get("user_admin") is False)
 
+print("24. Công tắc quyền Admin đi theo CÀI LẠI: agent ghi công tắc lên cb.json của phân vùng cứu hộ → Windows mới (khách thuê mới / đổi Windows)"
+      " biết công tắc NGAY từ lần đăng nhập đầu, khách có quyền Admin từ đầu như máy cài thường (21.11i)")
+if q("select to_regprocedure('public.pc_admin_set_flags(jsonb)') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v46.sql)")
+else:
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A)
+    fsb, netb, hostb, agb, PCB = rented_machine("ADMN0024", "CB-ADMN24")
+    agb.tick()                                                         # nhịp đầu sau khi được duyệt: hỏi máy chủ (pc_poll có cust_admin)
+    recb = next(p for d in fsb.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+    def cbjb(): return json.loads(fsb.file("C", "cloudbluepc\\cb.json") or "{}")
+    def rcj():
+        v = recb.vol.files.get("cb\\cb.json")
+        try: return json.loads(v.decode() if isinstance(v, bytes) else v)
+        except Exception: return None
+    def nrec(ag): return sum("đã ghi công tắc quyền Admin" in x for x in ag.logs)
+    ck("máy mới cài (cb.json chưa có công tắc), shop TẮT → agent ghi RÕ user_admin = false (lần đăng nhập đầu khỏi chờ); KHÔNG chạy lại pha system, không báo web",
+       cbjb().get("user_admin") is False and agb.sec_now is False and not any(e.get("k") == "admin" for e in agb.events), (cbjb().get("user_admin"), agb.sec_now, agb.events))
+    r0 = rcj()
+    ck("… ghi công tắc TẮT lên cb.json của phân vùng cứu hộ, giữ nguyên mọi mục khác (máy chủ, bản Windows), không có mã đăng ký",
+       isinstance(r0, dict) and r0.get("user_admin") is False and r0.get("images") and r0.get("sb_url") and "enroll_key" not in r0 and KEY not in json.dumps(r0), r0)
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); agb.tick()
+    ck("shop BẬT → cb.json của máy + của phân vùng cứu hộ cùng = true; chạy ngay pha system (cấp quyền cho khách đang dùng)",
+       cbjb().get("user_admin") is True and (rcj() or {}).get("user_admin") is True and agb.sec_now is True and nrec(agb) == 2, (cbjb().get("user_admin"), rcj(), nrec(agb)))
+    agb.sec_now = False; agb.tick(); agb.tick()
+    ck("các nhịp sau: công tắc không đổi → không ghi lại phân vùng cứu hộ", nrec(agb) == 2 and agb.sec_now is False)
+    oid = json.loads(q(f"select row_to_json(pc_admin_order('{PCB}', 'reinstall', '{{\"os\": \"22h2\", \"wipe\": \"all\"}}'))", **A))["id"]
+    agb.tick(); boot_pe(fsb)
+    rc = cb_pe.Installer(fsb).run(ScriptUI())
+    boot_windows(fsb)
+    ck("CÀI SẠCH cho khách thuê mới: Windows mới có cb.json user_admin = true NGAY khi bộ cài xong (trước cả khi agent chạy) → lần đăng nhập đầu khách GIỮ quyền Admin",
+       rc == 0 and cbjb().get("user_admin") is True and cbjb().get("sb_url") and "enroll_key" not in cbjb(), cbjb())
+    agb2 = agent(fsb, netb, FakeHost(fsb, "CB-ADMN24")); agb2.tick(); agb2.tick()
+    ck("agent của Windows mới: đăng ký lại bằng vé; công tắc đã khớp → không chạy lại pha system, không ghi lại phân vùng cứu hộ",
+       agb2.ident and agb2.ident["id"] == PCB and agb2.sec_now is False and nrec(agb2) == 0 and q(f"select state from pc_orders where id = {oid}") == "done", (agb2.ident, agb2.sec_now, agb2.logs[-4:]))
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A); agb2.tick()
+    ck("shop TẮT lại → máy hạ quyền khách (pha system) + phân vùng cứu hộ = false (lần cài sau khách là tài khoản thường)",
+       cbjb().get("user_admin") is False and (rcj() or {}).get("user_admin") is False and agb2.sec_now is True, (cbjb().get("user_admin"), rcj()))
+    good = recb.vol.files.get("cb\\cb.json")
+    recb.vol.put("cb\\cb.json", "{hong")
+    agb3 = agent(fsb, netb, FakeHost(fsb, "CB-ADMN24"))
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); agb3.tick()
+    ck("cb.json trên phân vùng cứu hộ hỏng / lạ → agent KHÔNG ghi đè (không làm hỏng bộ cài lại); máy vẫn nhận công tắc như 21.11h",
+       recb.vol.files.get("cb\\cb.json") in ("{hong", b"{hong") and cbjb().get("user_admin") is True and any("không đọc được" in x for x in agb3.logs), agb3.logs[-3:])
+    recb.vol.put("cb\\cb.json", good)
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A)
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
