@@ -198,6 +198,43 @@ if os.name == "nt":
         import traceback
         ck("goi tiep bo cai moi (cb/pe-next) chay duoc", False, traceback.format_exc()[-600:])
 
+# ---- 7. AGENT dat bo cai ban moi len phan vung cuu ho (cb/pe-next) bang WinSys that, qua duong dan TEN VOLUME (phan vung cuu ho khong co chu o)
+#         + bo cai that (cb_pe.next_installer) doc lai dung ban do -> sua bo cai khong can tao lai ISO (21.11e)
+if os.name == "nt":
+    import json
+    try:
+        sys.path.insert(0, os.path.join(root, "pe")); sys.path.insert(0, os.path.join(root, "agent"))
+        import cb_pe, pcagent
+        v7 = next((v for v in s.volumes() if os.path.splitdrive(tmp)[0][:1].upper() in v.letters), None)
+        ag7, rec7 = os.path.join(tmp, "agent7"), os.path.join(tmp, "rec7")
+        os.makedirs(os.path.join(rec7, "cb"))
+        files7 = {"pe/cb_pe.py": ('# bo cai thu\nPE_VER = "thu-ci"\nPE_SEQ = %d\n' % (cb_pe.PE_SEQ + 1)).encode(), "lib/cbcore.py": b"# core\n", "lib/cbrec.py": b"# rec\n", "lib/cbsys.py": b"# sys\n"}
+        for rel, data in files7.items(): put(os.path.join(ag7, *rel.split("/")), data)
+
+        class Rec7:
+            root = v7.path + os.path.splitdrive(rec7)[1].lstrip("\\") + "\\"
+            def p(self, rel): return self.root + rel
+
+        lg7 = []
+        a7 = pcagent.Agent(cbsys.WinSys(log=lambda *a: None), None, None, ag7, lg7.append)
+        seq7 = a7.pe_next(Rec7())
+        nx7 = os.path.join(rec7, "cb", "pe-next")
+        def rd7(rel): return open(os.path.join(nx7, *rel.split("/")), "rb").read()
+        ck("agent dat bo cai len phan vung cuu ho qua duong dan ten volume: du 4 tep + next.json, dung so thu tu + ma bam", seq7 == cb_pe.PE_SEQ + 1 and all(rd7(r) == d for r, d in files7.items())
+           and json.loads(rd7("next.json")) == {"seq": seq7, "ver": "thu-ci", "files": {r: hashlib.sha256(d).hexdigest() for r, d in files7.items()}}, (seq7, lg7[-2:]))
+        seen7 = cb_pe.Installer(cbsys.WinSys(log=lambda *a: None)).next_installer(Rec7())
+        ck("bo cai THAT trong WinPE doc lai ban agent vua dat: nhan ban so moi hon, du tep, dung ma bam (se goi tiep ban nay)", seen7 is not None and seen7[0] == seq7 and seen7[2] == files7, seen7 and seen7[:2])
+        st7 = os.stat(os.path.join(nx7, "next.json")).st_mtime_ns
+        a7b = pcagent.Agent(cbsys.WinSys(log=lambda *a: None), None, None, ag7, lg7.append)
+        ck("agent chay lai, ban da dat dung roi -> khong ghi lai", a7b.pe_next(Rec7()) == seq7 and os.stat(os.path.join(nx7, "next.json")).st_mtime_ns == st7)
+        put(os.path.join(ag7, "pe", "cb_pe.py"), b"# bo cai cu, chua co so thu tu\n")
+        r7 = pcagent.Agent(cbsys.WinSys(log=lambda *a: None), None, None, ag7, lg7.append).pe_next(Rec7())
+        ck("quay ve bo cai cu (chua co so thu tu) -> go next.json, bo cai trong WinPE khong goi ban nao nua", r7 is None and not os.path.exists(os.path.join(nx7, "next.json"))
+           and cb_pe.Installer(cbsys.WinSys(log=lambda *a: None)).next_installer(Rec7()) is None, (r7, lg7[-2:]))
+    except Exception:
+        import traceback
+        ck("agent dat bo cai len phan vung cuu ho (cb/pe-next) chay duoc", False, traceback.format_exc()[-600:])
+
 for d, _, fs in os.walk(tmp):
     for f in fs:
         try: os.chmod(os.path.join(d, f), stat.S_IWRITE | stat.S_IREAD)

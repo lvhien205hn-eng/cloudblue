@@ -398,7 +398,7 @@ try {
         elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
         elseif ($ln.Trim()) { Info ("? " + $ln) }
       }
-      Ck "bo thu chep tep chay het" ($nSys -ge 21) ("" + $nSys + " phep thu, " + $sysOut.Count + " dong")
+      Ck "bo thu chep tep chay het" ($nSys -ge 25) ("" + $nSys + " phep thu, " + $sysOut.Count + " dong")
     } else {
       Info ("BO QUA buoc 6: khong co cay bo cai / python (" + $cbDir + ")")
     }
