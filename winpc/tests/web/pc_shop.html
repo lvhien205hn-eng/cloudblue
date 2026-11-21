@@ -190,6 +190,7 @@
     const spec = [S(it.os_name, 40), gpu, pc.ram_gb ? Math.round(+pc.ram_gb) + "GB RAM" : ""].filter(Boolean).join(" · ");
     const acts = it.rental === null && !it.pc ? "" : [
       pc.id ? (canCtl ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(pc.id, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`) : "",
+      pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : ""
     ].join("");
@@ -214,7 +215,8 @@
   }
   // ---- cài lại / đổi Windows
   document.addEventListener("click", async e => {
-    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew]"); if (!b) return;
+    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp]"); if (!b) return;
+    if (b.dataset.pcsapp) return appOpen(b.dataset.pcsapp);
     if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
     if (b.dataset.pcsrenew) return renewOpen(b.dataset.pcsrenew);
     if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); return; }
@@ -223,6 +225,27 @@
     if (b.dataset.pcsrnew) return renewGo(b);
   });
   const itemOf = id => A(O(PC.mine).items).find(x => O(x.pc).id === id);
+  // ---- 📲 mở máy PC bằng app (app máy tính 1.127+ / app Android 1.132+ hiểu link blueroblox://pc/<máy>) hoặc ngay trên trình duyệt
+  function appOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    const pid = encodeURIComponent(S(id, 40)), ua = navigator.userAgent;
+    const isAnd = /Android/i.test(ua), isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webFirst = isIos || /Macintosh|Mac OS X/.test(ua);
+    const pcDl = typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe", apk = typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+    const lPc = "blueroblox://pc/" + pid, lAnd = "intent://pc/" + pid + "#Intent;scheme=blueroblox;package=shop.blueroblox.app;S.browser_fallback_url=" + encodeURIComponent(location.origin + apk) + ";end";
+    const sPc = `<div class="shsec"><b>💻 ${L("App máy tính (Windows)", "PC app (Windows)")}</b>
+        <a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(lPc)}" data-pcsx="1">▶ ${L("Mở bằng app máy tính", "Open with the PC app")}</a>
+        <a class="btn ghost sm" href="${esc(pcDl)}" download>⬇️ ${L("Tải app máy tính", "Download the PC app")}</a></div>`;
+    const sAnd = `<div class="shsec"><b>📱 ${L("App Android", "Android app")}</b>${isAnd
+        ? `<a class="btn" href="${esc(lAnd)}" data-pcsx="1">▶ ${L("Mở bằng app Android", "Open with the Android app")}</a><a class="btn ghost sm" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`
+        : `<a class="btn ghost" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`}</div>`;
+    const sWeb = `<div class="shsec"><b>🌐 ${L("Trình duyệt (iPhone, iPad, Mac, máy chưa cài app)", "Browser (iPhone, iPad, Mac, any device)")}</b>
+        <a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${pid}">▶ ${L("Mở ngay trên trình duyệt", "Open in the browser")}</a></div>`;
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">📲 ${L("Mở máy trong app", "Open in app")}</h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="hint">🖥️ <b>${esc(S(O(it.pc).name, 40) || "VPS GPU")}</b>${it.os_name ? " · " + esc(S(it.os_name, 40)) : ""}</div>
+      ${webFirst ? sWeb + sPc + sAnd : isAnd ? sAnd + sPc + sWeb : sPc + sAnd + sWeb}
+      <p class="hint" style="margin:0">💡 ${L("Cần app máy tính 1.127 / app Android 1.132 trở lên (app tự báo cập nhật). Đăng nhập cùng tài khoản là thấy máy ở mục <b>VPS GPU</b>.", "Needs PC app 1.127 / Android app 1.132 or newer (the app offers the update). Sign in with the same account to see the machine under <b>GPU VPS</b>.")}</p>`);
+  }
   function reOpen(id) {
     const it = itemOf(id); if (!it) return;
     const os = A(O(PC.mine).os); PC.reid = id; PC.reos = it.os && os.some(o => o.id === it.os) ? it.os : (os[0] || {}).id;

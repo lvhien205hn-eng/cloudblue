@@ -65,7 +65,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
     BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
     BAD_PATCH: "Dữ liệu gửi lên không hợp lệ.", BAD_POLL: "Chu kỳ báo sống phải từ 10 đến 600 giây.", BAD_HOURS: "Số giờ gia hạn không hợp lệ (mỗi lần tối đa 366 ngày).",
-    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ." };
+    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ.",
+    NO_USER: "Không thấy tài khoản này — gõ đúng tên đăng nhập hoặc email của khách.", MANY_USERS: "Có nhiều tài khoản trùng tên này — gõ email của khách." };
   // v42: null = chưa biết (thử đọc cột mới) · true = đã chạy cloud-pc-v42.sql · false = chưa chạy (đọc kiểu cũ, không thử lại cho tới khi bấm Tải lại / mở lại thẻ)
   const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, kickAt: 0 };
   // info / result do MÁY CHO THUÊ gửi lên (khách có quyền admin trên máy đó) → coi là dữ liệu lạ: ép kiểu, cắt ngắn, luôn esc() khi in
@@ -393,6 +394,21 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     $i("pcad-info").textContent = `${S(m.os, 20).toUpperCase() || "?"} · ${S(m.lan_ip, 64) || "?"} · đăng ký ${m.first_seen ? ago(m.first_seen) : "?"}${host ? " · tên Windows: " + host : ""}`;
     $i("pcad-name").value = m.name || ""; $i("pcad-code").value = m.code || ""; $i("pcad-note").value = m.note || ""; $i("pcad-status").value = m.status;
     $i("pcad-err").textContent = ""; show("pcadlg");
+    P.asg = null; show("pcad-v43", false); $i("pcad-user").value = ""; $i("pcad-remote").checked = true;
+    assignLoad(m);
+  }
+  // v43: gán máy cho TÀI KHOẢN khách (khách tự mở máy ở "VPS GPU của bạn" trên web / app) + bật / tắt điều khiển từ xa từng máy. Chưa chạy v43 → ẩn.
+  async function assignLoad(m) {
+    try {
+      const r = await sb.from("pc_machines").select("user_id,remote").eq("id", m.id).maybeSingle();
+      if (r.error || !r.data || P.cur !== m) return;
+      let who = "";
+      const uid = typeof r.data.user_id === "string" ? r.data.user_id : null;
+      if (uid) { const u = await sb.from("profiles").select("username,email").eq("id", uid).maybeSingle(); who = S((u.data && (u.data.username || u.data.email)) || "", 200) || uid; }
+      if (P.cur !== m) return;
+      P.asg = { id: m.id, uid, who, remote: r.data.remote !== false };
+      $i("pcad-user").value = who; $i("pcad-remote").checked = P.asg.remote; show("pcad-v43", true);
+    } catch (e) {}
   }
   $i("pcad-cancel").onclick = () => show("pcadlg", false);
   $i("pcad-save").onclick = async () => {
@@ -401,7 +417,19 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!name) { $i("pcad-err").textContent = "Nhập tên máy."; return; }
     const patch = { name, code: $i("pcad-code").value.trim(), note: $i("pcad-note").value.trim(), status: $i("pcad-status").value };
     patch.approved = patch.status !== "new";                 // "Chờ duyệt" = chưa duyệt; các trạng thái khác = đã duyệt
-    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, "Đã lưu.", $i("pcad-save"));
+    const g = P.asg && P.asg.id === m.id ? P.asg : null, ap = {};
+    if (g) {
+      const u = $i("pcad-user").value.trim();
+      if (u !== g.who) ap.user = u;
+      if ($i("pcad-remote").checked !== g.remote) ap.remote = $i("pcad-remote").checked;
+    }
+    if (Object.keys(ap).length) {                              // gán khách trước: gõ sai tên thì báo ngay, chưa lưu gì
+      const { error } = await sb.rpc("pc_admin_assign", { p_id: m.id, p_patch: ap });
+      if (error) { $i("pcad-err").textContent = em(error); return; }
+      P.asg = null;
+    }
+    const msg = "user" in ap ? (ap.user ? "Đã lưu · đã gán máy cho " + ap.user + "." : "Đã lưu · đã bỏ gán khách.") : "Đã lưu.";
+    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, msg, $i("pcad-save"));
     if (r) show("pcadlg", false);
   };
   document.querySelector("#pcadlg .amts").onclick = async e => {

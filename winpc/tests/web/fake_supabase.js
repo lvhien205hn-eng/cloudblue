@@ -1,10 +1,11 @@
 /* Supabase GIẢ cho bộ thử trang quản trị (thay file supabase.js thật).
    window.__FAKE_INIT (bộ thử bơm vào trước) = { admin: true|false|null, v41: true|false, v42: true|false, db: {bảng: [dòng]}, settings: {...} }
-   v42 = false: cơ sở dữ liệu chưa chạy cloud-pc-v42.sql (không có cột hạn thuê / hàm pc_admin_rent). */
+   v42 = false: cơ sở dữ liệu chưa chạy cloud-pc-v42.sql (không có cột hạn thuê / hàm pc_admin_rent).
+   v43 = false: chưa chạy cloud-pc-v43.sql (không có cột user_id / remote của pc_machines, hàm pc_admin_assign). */
 (function () {
   const INIT = window.__FAKE_INIT || {};
   const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
-  const F = window.__FAKE = { calls: [], v41: INIT.v41 !== false, v42: INIT.v42 !== false, db: Object.assign({}, INIT.db || {}), seq: 100, failRpc: {}, delay: 0 };
+  const F = window.__FAKE = { calls: [], v41: INIT.v41 !== false, v42: INIT.v42 !== false, v43: INIT.v43 !== false, db: Object.assign({}, INIT.db || {}), seq: 100, failRpc: {}, delay: 0 };
   const session = INIT.admin === null ? null : { access_token: "x", user: { id: ADMIN_ID, email: "admin@cb.test" } };
   if (session) F.db.profiles = [{ id: ADMIN_ID, username: "chushop", role: INIT.admin === false ? "user" : "admin", locked: false, balance: 0, created_at: new Date().toISOString() }];
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
@@ -22,6 +23,8 @@
       if (isPc(table) && !F.v41) return noTable(table);
       if (isPc(table) && !F.v42 && st.op === "select" && /\b(rent_until|renter|rent_warn_min|rent_remind_min|notify_at)\b/.test(st.cols))        // chưa chạy v42: PostgREST báo thiếu cột
         return { data: null, error: { code: "42703", message: "column " + table + "." + (table === "pc_settings" ? "rent_warn_min" : "rent_until") + " does not exist" }, count: null };
+      if (table === "pc_machines" && !F.v43 && st.op === "select" && /\b(user_id|remote)\b/.test(st.cols))
+        return { data: null, error: { code: "42703", message: "column pc_machines.user_id does not exist" }, count: null };
       if (st.op !== "select") return { data: null, error: null };
       if (table === "pc_settings" && F.v42) sets();                   // cột v42 có giá trị mặc định (NOT NULL) như cơ sở dữ liệu thật
       let rows = (F.db[table] || []).filter(r => st.eq.every(([c, v]) => String(r[c]) === String(v)));
@@ -84,6 +87,20 @@
     },
     pc_admin_order_cancel(a) { const o = ords().find(x => x.id === a.p_order && (x.state === "queued" || x.state === "sent")); if (!o) return raise("NOT_OPEN"); o.state = "cancelled"; o.done_at = new Date().toISOString(); delete o.args.ticket; return { data: clone(o), error: null }; },
     pc_admin_allow_reenroll(a) { const m = pcs().find(x => x.id === a.p_id); if (!m) return raise("NO_MACHINE"); m.reenroll_until = new Date(Date.now() + (a.p_hours || 6) * 3600e3).toISOString(); return { data: clone(m), error: null }; },
+    pc_admin_assign(a) {                                           // như hàm SQL v43: {user: tên đăng nhập | email | ""} · {remote: true|false}
+      if (!F.v43) return noFn("pc_admin_assign");
+      const m = pcs().find(x => x.id === a.p_id), p = a.p_patch; if (!p || typeof p !== "object" || Array.isArray(p)) return raise("BAD_PATCH"); if (!m) return raise("NO_MACHINE");
+      let u = m.user_id || null;
+      if ("user" in p) {
+        const who = String(p.user == null ? "" : p.user).trim().toLowerCase();
+        if (!who) u = null;
+        else { const f = (F.db.profiles || []).filter(r => String(r.username || "").toLowerCase() === who || (who.includes("@") && String(r.email || "").toLowerCase() === who));
+          if (!f.length) return raise("NO_USER"); if (f.length > 1) return raise("MANY_USERS"); u = f[0].id; }
+      }
+      if ("remote" in p && typeof p.remote !== "boolean") return raise("BAD_PATCH");
+      m.user_id = u; if ("remote" in p) m.remote = p.remote; else if (m.remote === undefined) m.remote = true;
+      return { data: clone(m), error: null };
+    },
     pc_admin_delete(a) { F.db.pc_machines = pcs().filter(x => x.id !== a.p_id); F.db.pc_orders = ords().filter(o => o.pc_id !== a.p_id); return { data: null, error: null }; },
   };
   function rpc(name, args) {
