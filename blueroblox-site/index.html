@@ -12660,6 +12660,8 @@ if (LANG === "en") { i18xScan(document.body); setTimeout(() => i18xScan(document
 #pctbl .pca-actbox{display:inline-grid;grid-template-columns:max-content;gap:5px;justify-items:stretch}      /* các nút từng máy xếp DỌC: bảng thêm cột Hạn thuê mà không phải cuộn ngang */
 #pctbl .pca-actbox .btn{margin-left:0}
 #pctbl .pca-cfg{font-size:12.5px;line-height:1.5;min-width:190px}
+#pctbl .pca-drv{color:#f5b942;font-weight:700}
+#pctbl .pca-drvn{white-space:normal;max-width:300px}
 #pctbl .pca-rent{min-width:128px}
 .pca-al{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:9px 0 6px}
 /* 🔔 máy sắp / đã hết hạn: 2 ô cho admin (trang ngoài + Bảng quản trị) và dải nhắc cho khách */
@@ -12689,7 +12691,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 @media (max-width:760px){.pca-tiles{grid-template-columns:1fr 1fr}}
 </style>
 <script>
-/* ===== 💻 MÁY PC CHO THUÊ — trang quản trị (SQL v41 + v42 · web 21/11a) =====
+/* ===== 💻 MÁY PC CHO THUÊ — trang quản trị (SQL v41 + v42 · web 21/11c) =====
    Máy cài bằng ISO CloudBlue tự đăng ký (pc_enroll) rồi báo sống (pc_poll). Ở đây admin: tạo mã đăng ký, duyệt máy, đổi tên,
    ra lệnh cài lại / đổi Windows / dọn máy / khởi động lại, công bố bản agent. Chưa chạy SQL v41 thì chỉ hiện lời nhắc.
    SQL v42: hạn thuê từng máy (hết hạn máy tự tắt) + cảnh báo về mail / Telegram. Chưa chạy v42 → phần này ẩn, phần còn lại chạy như cũ. */
@@ -12773,6 +12775,17 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     try { fetch("/api/pc-notify", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).catch(() => {}); } catch (e) {}
   }
 
+  // driver của máy (agent 21.11c trở lên gửi info.drv): máy còn THIẾU driver nào — bản Windows cũ (1511) thiếu driver card mạng thì không có mạng, thiếu VGA thì không chơi game được.
+  // Chỉ so sánh đúng chữ "miss" / "none" / "basic"; tên thiết bị máy gửi lên luôn qua esc(), tối đa 6 tên.
+  function drvLine(i) {
+    const d = O(i.drv); if (typeof d.miss !== "number" || !isFinite(d.miss)) return "";
+    const n = Math.min(999, Math.max(0, Math.round(+d.miss) || 0)), names = A(d.names, 6).map(x => S(x, 80)).filter(Boolean), bits = [];
+    if (d.net === "miss") bits.push("card mạng chưa có driver"); else if (d.net === "none") bits.push("không thấy card mạng");
+    if (d.vga === "miss" || d.vga === "basic") bits.push("VGA chưa có driver của hãng");
+    if (!n && !bits.length) return '<span class="hint">✓ đủ driver</span>';
+    return `<span class="pca-drv" title="${esc(names.join(" · "))}">⚠ thiếu driver${n ? ": " + n + " thiết bị" : ""}${bits.length ? " (" + bits.join(", ") + ")" : ""}</span>`
+      + (names.length ? `<div class="hint pca-drvn">${names.slice(0, 3).map(esc).join(" · ")}${n > 3 ? " …" : ""}</div>` : "");
+  }
   function cfgCell(m) {
     const i = O(m.info), out = [], cpu = S(i.cpu, 70).replace(/\(R\)|\(TM\)|CPU /g, "").replace(/\s+/g, " ").trim(), cores = Math.round(+i.cores) || 0, ram = Math.round(+i.ram_gb) || 0;
     const gpus = A(i.gpus, 6).map(g => S(g, 60)).filter(Boolean), disks = A(i.disks, 8).map(O);
@@ -12780,6 +12793,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (ram || S(i.board)) out.push((ram ? ram + "GB RAM" : "") + (ram && S(i.board) ? " · " : "") + esc(S(i.board, 60)));
     if (gpus.length) out.push("🎮 " + gpus.map(esc).join(", "));
     if (disks.length) out.push("💽 " + disks.map(d => (Math.round(+d.gb) || "?") + "GB" + (d.ssd === true ? " SSD" : d.ssd === false ? " HDD" : "")).join(" + "));
+    const dl = drvLine(i); if (dl) out.push(dl);
     return out.length ? out.join("<br>") : '<span class="hint">chưa có thông tin</span>';
   }
   const recOf = m => { const r = O(O(m.info).rec), imgs = A(r.images, 8).map(x => S(x, 12)).filter(x => /^[a-z0-9]{2,12}$/.test(x)); return { ok: r.ok === true && imgs.length > 0, images: imgs }; };
