@@ -1,9 +1,13 @@
 # Chụp ảnh giao diện app PC (Windows thật của GitHub Actions, đúng vỏ giao diện của app) với máy chủ GIẢ:
 #   trang chính (thẻ "VPS GPU của bạn") + trang 🖥️ VPS GPU (thẻ cấu hình, chọn Windows, chọn gói, mã giảm giá, chân trang).
-#   python shot_pc.py <thư mục pc-client> <thư mục ảnh ra>
+#   python shot_pc.py <thư mục pc-client> <thư mục ảnh ra> [vi|en]      (vi: pc-*.png · en: en-pc-*.png)
 # Không gọi mạng: Auth / Shop thay bằng lớp giả trả dữ liệu cố định (sản phẩm giống hệt sản phẩm thật trên web).
-import os, sys, tempfile, time
+import os, sys, tempfile, time, json
 os.environ["APPDATA"] = tempfile.mkdtemp()
+LANG = (sys.argv[3] if len(sys.argv) > 3 else "vi").lower()
+PFX = "" if LANG == "vi" else LANG + "-"
+_d = os.path.join(os.environ["APPDATA"], "BlueRobloxPC"); os.makedirs(_d, exist_ok=True)
+with open(os.path.join(_d, "settings.json"), "w", encoding="utf-8") as _f: json.dump({"lang": LANG}, _f)      # ngôn ngữ app (không theo Windows của máy CI)
 sys.path.insert(0, os.path.abspath(sys.argv[1]))
 OUT = os.path.abspath(sys.argv[2]); os.makedirs(OUT, exist_ok=True)
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -59,6 +63,7 @@ def pump(sec):
 def grab(name):
     app.root.lift(); app.root.attributes("-topmost", True); pump(0.6)
     x, y, w, h = app.root.winfo_rootx(), app.root.winfo_rooty(), app.root.winfo_width(), app.root.winfo_height()
+    name = PFX + name
     img = ImageGrab.grab(bbox=(x, y, x + w, y + h)); img.save(os.path.join(OUT, name))
     print("ảnh", name, img.size, flush=True)
 
@@ -80,7 +85,8 @@ scroll(0.42); grab("pc-3-vps-mid.png")
 scroll(1.0); grab("pc-4-vps-bottom.png")
 dlg.os = "1511"; dlg.days = 15; dlg.upd(); pump(1)
 scroll(0.42); grab("pc-5-vps-pick.png")
-ok = all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in os.listdir(OUT))
-print("XONG", len(os.listdir(OUT)), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
+mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
+ok = len(mine) == 5 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
