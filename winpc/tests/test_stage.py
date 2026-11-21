@@ -282,6 +282,16 @@ ck("shop TẮT lại → hạ khách về tài khoản thường, KHÔNG coi là
    and not os.path.exists(os.path.join(st["base"], "logs", "admin.granted")), (st["admins"], sec_ev0(st)))
 ck("công tắc tắt → không đặt ACE từ chối (tài khoản thường vốn không ghi được)", not any(c[0] == "icacls" and "/deny" in c for c in st["calls"]))
 
+print("5b4. 21.11j · ẩn thư mục C:\\CloudBluePC (Ẩn + Hệ thống) cho khách khỏi để ý — chỉ thư mục gốc, sau khi khoá quyền")
+pr, st = sec_env({"user": "PC", "password": ""})
+pr.lockdown()
+j = st["calls"]
+ck("khoá quyền xong thì ẩn thư mục gốc: attrib +h +s <C:\\CloudBluePC> (không /s /d — không đụng file bên trong)",
+   ["attrib", "+h", "+s", st["base"]] in j and j.index(["attrib", "+h", "+s", st["base"]]) > max(i for i, c in enumerate(j) if c[0] == "icacls")
+   and sum(1 for c in j if c[0] == "attrib") == 1 and os.path.isfile(os.path.join(st["base"], "logs", "lock.done")), [c for c in j if c[0] in ("attrib",)])
+pr, st = sec_env({"user": "PC", "password": ""}); st["calls"].clear(); pr.system()
+ck("pha system (agent chạy định kỳ) cũng ẩn lại — khách lỡ bỏ ẩn thì vài giờ sau tự ẩn lại", ["attrib", "+h", "+s", st["base"]] in st["calls"])
+
 print("5b3. 21.11i · khách thuê mới có quyền Admin NGAY từ lần đăng nhập đầu (công tắc theo cb.json cài lại) · chưa biết công tắc → chờ agent hỏi máy chủ")
 def sw_env(cfg, agent_after=None, agent_val=True):
     """sec_env + đồng hồ giả chạy theo sleep; agent_after = sau bao nhiêu giây 'agent' ghi công tắc vào cb.json (None = không bao giờ)."""
