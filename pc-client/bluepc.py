@@ -3913,7 +3913,7 @@ class RenewDlg(Dlg):
         self.bg(lambda: self.app.auth.rpc("cloudphone_renew", args), done, fail)
 
 
-# ================================================================ 🖥️ VPS GPU (máy PC thật cho thuê — SQL v43, 21/11)
+# ================================================================ 🖥 VPS GPU (máy PC thật cho thuê — SQL v43, 21/11)
 #   Mua tự động: khách chọn gói ngày + bản Windows → hệ thống tự giao máy trống đang online + tự cài đúng Windows (không có máy → đơn chờ, shop bật máy là tự giao).
 #   Khách tự cài lại / đổi Windows tối đa N lần mỗi lượt thuê (shop đặt), tự gia hạn. Điều khiển = cửa sổ máy chế độ PC (chuột / phím thật).
 #   Cơ sở dữ liệu chưa có phần này (hàm pc_* chưa có) → không hiện gì, app chạy như cũ.
@@ -3970,14 +3970,26 @@ def vps_state(x):
     return "run", L("● Sẵn sàng", "● Ready"), OK, ""
 
 
+def fitwrap(w, pad=4):
+    """Nhãn tự xuống dòng theo đúng bề ngang thật của nó (21/11f) — không bị cắt chữ khi cửa sổ hẹp / màn phóng to."""
+    def on(e):
+        n = max(120, int(e.width) - pad)
+        try:
+            if abs(int(float(str(w.cget("wraplength")) or 0)) - n) > 2: w.configure(wraplength=n)
+        except Exception: pass
+    try: w.bind("<Configure>", on, add="+")
+    except Exception: pass
+    return w
+
+
 def vps_cards(app, slot, data, more=True):
-    """Thẻ "VPS GPU của bạn" — dùng chung cho trang chính và trang 🖥️ VPS GPU. more = có nút "+ Thuê thêm"."""
+    """Thẻ "VPS GPU của bạn" — dùng chung cho trang chính và trang 🖥 VPS GPU. more = có nút "+ Thuê thêm"."""
     items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict)]
     if not items: return
     tk = app.tk; mx = int(num((data or {}).get("reinstall_max", 2)))
     os_list = [o for o in ((data or {}).get("os") or []) if isinstance(o, dict) and o.get("id")]
     hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
-    tk.Label(hd, text=L("🖥️ VPS GPU của bạn", "🖥️ Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
+    tk.Label(hd, text=L("🖥 VPS GPU của bạn", "🖥 Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
     if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
     for x in items:
         pc = x.get("pc") or {}; code, st, col, why = vps_state(x)
@@ -3989,8 +4001,8 @@ def vps_cards(app, slot, data, more=True):
         tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g] + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else [])
         tk.Label(c, text=" · ".join(s for s in spec if s), font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
-        if why: tk.Label(c, text=why, font=app.f_s, fg=BAD if code == "exp" else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
-                         wraplength=460, justify="left").pack(fill="x", padx=16, pady=(2, 0))
+        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code == "exp" else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
+                                 wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
         if x.get("state") == "active" and x.get("until") and left_secs(x["until"]) > 0:
             tk.Label(c, text="⏱ " + fmt_left(x["until"]), font=app.f_s, fg=WARN if left_secs(x["until"]) < 86400 else DIM, bg=CARD, anchor="w").pack(fill="x", padx=16, pady=(2, 0))
         if x.get("state") != "active" or not pc.get("id"):
@@ -4019,7 +4031,7 @@ def vps_icon(f):
     if "ram" in l: return "🧠"
     if re.search(r"gtx|rtx|gpu|vga|radeon|quadro|card", l): return "🎮"
     if re.search(r"ssd|nvme|hdd|disk|ổ", l): return "💾"
-    if re.search(r"xeon|core|ryzen|cpu|nhân|luồng|i[3579]-|\d{4} ?v\d", l): return "⚙️"
+    if re.search(r"xeon|core|ryzen|cpu|nhân|luồng|i[3579]-|\d{4} ?v\d", l): return "⚙"
     if re.search(r"mbps|gbps|mạng|wifi|lan|net", l): return "🌐"
     if re.search(r"win", l): return "🪟"
     return "✨"
@@ -4032,13 +4044,13 @@ def os_split(o):
 
 
 class VpsBuyDlg(Dlg):
-    """🖥️ Trang VPS GPU (21/11e) — 1 cấu hình: thẻ cấu hình nổi bật · ① chọn Windows · ② chọn thời gian · mã giảm giá · chân trang tổng tiền + Mua ngay.
+    """🖥 Trang VPS GPU (21/11e) — 1 cấu hình: thẻ cấu hình nổi bật · ① chọn Windows · ② chọn thời gian · mã giảm giá · chân trang tổng tiền + Mua ngay.
        Giá / gói ngày / tên / cấu hình / bản Windows đọc từ web (admin chỉnh trên web → app đổi theo khi mở trang); bấm mua → đọc lại giá mới nhất rồi mới hỏi."""
     VIDEO = "/video/vps-gpu.mp4"           # video hướng dẫn 3 cách điều khiển (app điện thoại · app máy tính · web)
     HERO = "#16306f"
 
     def __init__(self, app):
-        super().__init__(app, "🖥️ VPS GPU", 640, 780)
+        super().__init__(app, "🖥 VPS GPU", 640, 780)
         self.days = None; self.os = None; self.shown = -1; self.mine = None
         self.loading(L("Đang tải bảng giá…", "Loading prices…"))
         self._fetch()
@@ -4065,7 +4077,7 @@ class VpsBuyDlg(Dlg):
         pl, os_ = vps_plans(self.prod), [o for o in (self.info or {}).get("os") or [] if o.get("id")]
         if not (self.info or {}).get("on") or not self.prod or not pl or not os_:
             c = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=LINE); c.pack(fill="x", padx=18, pady=16)
-            tk.Label(c, text="🖥️ " + L("VPS GPU tạm chưa mở bán", "GPU VPS isn't on sale right now"), font=app.f_h2, fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=18, pady=(16, 2))
+            tk.Label(c, text="🖥 " + L("VPS GPU tạm chưa mở bán", "GPU VPS isn't on sale right now"), font=app.f_h2, fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=18, pady=(16, 2))
             tk.Label(c, text=L("Shop đang chuẩn bị máy — quay lại sau ít phút, hoặc xem trên web.", "Please check back soon, or visit the website."),
                      font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=18, pady=(0, 16))
             return
@@ -4079,13 +4091,13 @@ class VpsBuyDlg(Dlg):
         hb = self.HERO; edge = _mix("#7cbcff", hb, .55)
         hero = tk.Frame(self.body, bg=hb, highlightthickness=2, highlightbackground=edge, radius=22); hero.pack(fill="x", padx=18, pady=(14, 4))
         top = tk.Frame(hero, bg=hb); top.pack(fill="x", padx=20, pady=(18, 6))
-        tk.Label(top, text="🖥️", font=("Segoe UI Emoji", 30), bg=hb, fg=TXT).pack(side="left", padx=(0, 14))
-        mid = tk.Frame(top, bg=hb); mid.pack(side="left", fill="x", expand=True)
-        tk.Label(mid, text=nm, font=("Segoe UI", 19, "bold"), fg="#ffffff", bg=hb, anchor="w").pack(fill="x")
-        tk.Label(mid, text=L("Máy PC thật · 1 cấu hình · tự giao + tự cài Windows", "Real PC · one configuration · auto delivery + Windows setup"),
-                 font=app.f_s, fg="#cbdcff", bg=hb, anchor="w").pack(fill="x")
+        tk.Label(top, text="🖥", font=("Segoe UI Emoji", 30), bg=hb, fg=TXT).pack(side="left", padx=(0, 14))
         tk.Label(top, text=("⚡ " + L("Có máy sẵn", "In stock")) if ready else ("⏳ " + L("Đặt trước", "Pre-order")), font=("Segoe UI", 9, "bold"),
-                 tint=OK if ready else WARN, padx=10, pady=3).pack(side="right", anchor="n")
+                 tint=OK if ready else WARN, padx=10, pady=3).pack(side="right", anchor="n", padx=(8, 0))
+        mid = tk.Frame(top, bg=hb); mid.pack(side="left", fill="x", expand=True)
+        fitwrap(tk.Label(mid, text=nm, font=("Segoe UI", 19, "bold"), fg="#ffffff", bg=hb, anchor="w", justify="left")).pack(fill="x")
+        fitwrap(tk.Label(mid, text=L("Máy PC thật · 1 cấu hình · tự giao + tự cài Windows", "Real PC · one configuration · auto delivery + Windows setup"),
+                         font=app.f_s, fg="#cbdcff", bg=hb, anchor="w", justify="left")).pack(fill="x")
         if ft:
             chips = tk.Frame(hero, bg=hb); chips.pack(fill="x", padx=20, pady=(4, 0))
             row = None
@@ -4093,7 +4105,7 @@ class VpsBuyDlg(Dlg):
                 if i % 3 == 0: row = tk.Frame(chips, bg=hb); row.pack(fill="x", anchor="w")
                 tk.Label(row, text=vps_icon(f) + "  " + f, font=("Segoe UI", 10, "bold"), bg=_mix("#ffffff", hb, .13), fg="#ffffff", padx=11, pady=5,
                          pill=True).pack(side="left", padx=(0, 7), pady=4)
-        if ds: tk.Label(hero, text=ds, font=app.f_s, fg="#d2e2ff", bg=hb, anchor="w", justify="left", wraplength=540).pack(fill="x", padx=20, pady=(6, 0))
+        if ds: fitwrap(tk.Label(hero, text=ds, font=app.f_s, fg="#d2e2ff", bg=hb, anchor="w", justify="left", wraplength=540)).pack(fill="x", padx=20, pady=(6, 0))
         best = min(pl, key=lambda p: p[1] / p[0])
         pr = tk.Frame(hero, bg=hb); pr.pack(fill="x", padx=20, pady=(10, 18))
         tk.Label(pr, text=L("chỉ từ", "from"), font=app.f_s, fg="#cbdcff", bg=hb).pack(side="left", anchor="s", pady=(0, 4))
@@ -4130,7 +4142,7 @@ class VpsBuyDlg(Dlg):
             for w in (a1, a2, a3): w.pack()
             for w in (t, inner, a1, a2, a3): w.bind("<Button-1>", lambda _e, v=o["id"]: (setattr(self, "os", v), self.upd()))
             self.tiles.append((o, t, inner, a1, a2, a3))
-        self.os_hint = self.label(f, "", app.f_s, OK, wraplength=560); self.os_hint.pack(fill="x", pady=(6, 0))
+        self.os_hint = fitwrap(self.label(f, "", app.f_s, OK, wraplength=560)); self.os_hint.pack(fill="x", pady=(6, 0))
 
         # ---- ② thời gian thuê
         f = self.section("②  " + L("Chọn thời gian thuê", "Choose rental time"), L("hết hạn gia hạn ngay trong app", "renew anytime in the app"))
@@ -4157,9 +4169,9 @@ class VpsBuyDlg(Dlg):
         f = self.section(L("Mã giảm giá", "Discount code"))
         self.promo = PromoBox(self, f, "vps_new", lambda: {"p_product": self.prod.get("id"), "p_days": self.days, "p_qty": 1} if self.prod else None, self.upd)
         self.promo.frame.pack(fill="x")
-        self.label(self.body, L("Giá theo bảng giá shop (giảm CTV tự áp dụng). Hạn thuê tính từ lúc giao máy.",
-                                "Prices follow the shop's price list (reseller discount applied). Time starts when the machine is assigned."),
-                   app.f_s, DIM, wraplength=580).pack(fill="x", padx=18, pady=(10, 16))
+        fitwrap(self.label(self.body, L("Giá theo bảng giá shop (giảm CTV tự áp dụng). Hạn thuê tính từ lúc giao máy.",
+                                        "Prices follow the shop's price list (reseller discount applied). Time starts when the machine is assigned."),
+                           app.f_s, DIM, wraplength=580)).pack(fill="x", padx=18, pady=(10, 16))
 
         # ---- chân trang: tổng tiền + Mua ngay
         ft_ = self.foot
@@ -4169,7 +4181,7 @@ class VpsBuyDlg(Dlg):
         self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), SKY); self.tot_l.pack(fill="x")
         self.calc_l = self.label(left, "", app.f_s, DIM); self.calc_l.pack(fill="x")
         self.go = app.btn(top, L("Mua ngay", "Buy now"), self.buy, padx=20, pady=10); self.go.pack(side="right", padx=(10, 0))
-        self.err = self.label(ft_, "", app.f_s, BAD, wraplength=580); self.err.pack(fill="x", padx=16, pady=(2, 10))
+        self.err = fitwrap(self.label(ft_, "", app.f_s, BAD, wraplength=580)); self.err.pack(fill="x", padx=16, pady=(2, 10))
         self.upd()
 
     def price(self): return ctv(self.prof, next((pr for d, pr in self.pl if d == self.days), 0))
@@ -7956,7 +7968,7 @@ class Launcher:
         self.btn(hd, L("▦ Xem tất cả", "▦ View all"), self.open_wall, tint=OK, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 8))   # 17/11d
         nav = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=22)      # thanh nổi dưới cùng (giống thanh thẻ của app điện thoại)
         nav.pack(side="bottom", fill="x", padx=18, pady=(4, 14))
-        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("🖥️ VPS GPU", lambda: VpsBuyDlg(self), "primary"), ("Nạp tiền", self.open_topup, "flat"),
+        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("🖥 VPS GPU", lambda: VpsBuyDlg(self), "primary"), ("Nạp tiền", self.open_topup, "flat"),
                 ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))
         for i, (t, cmd, kind) in enumerate(navs):
             nav.grid_columnconfigure(i, weight=1, uniform="nav")
@@ -7975,7 +7987,7 @@ class Launcher:
         self._paint_wheel()
         self.offers_slot = tk.Frame(page, bg=BG); self.offers_slot.pack(fill="x", padx=8)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
         self._paint_offers()
-        self.vps_slot = tk.Frame(page, bg=BG); self.vps_slot.pack(fill="x", padx=8)         # 21/11 · 🖥️ VPS GPU của bạn (SQL v43) — trống khi chưa có
+        self.vps_slot = tk.Frame(page, bg=BG); self.vps_slot.pack(fill="x", padx=8)         # 21/11 · 🖥 VPS GPU của bạn (SQL v43) — trống khi chưa có
         self._vps_sig = None; self._paint_vps(getattr(self, "vps_last", None))
         self.list = tk.Frame(page, bg=BG); self.list.pack(fill="x", pady=(10, 0))             # các thẻ máy
         self._cards = []; self._ncol = 0; self.list.bind("<Configure>", lambda e: self._lay_cards(), add="+")
