@@ -77,17 +77,26 @@ def scroll(frac):
     pump(0.8)
 
 
+MINE["cancel"] = True                                      # SQL v45: khách tự huỷ máy → menu Khác ▾ có 🗑 Huỷ máy
+
+
+def repaint(sec=3):
+    """Đọc lại danh sách (FakeAuth trả MINE hiện tại) → vẽ lại thẻ VPS ở Máy của tôi."""
+    app._vps_sig = None; app.refresh(quiet=True); pump(sec)
+
+
 pump(4)
-grab("pc-1-main.png")
-dlg = B.VpsBuyDlg(app)
+grab("pc-1-main.png")                                      # 21.11k: Máy của tôi — thẻ VPS GPU đầy đủ (▶ Điều khiển · ⏱ Gia hạn · Khác ▾)
+dlg = B.VpsBuyDlg(app)                                     # trang 🖥 VPS GPU chỉ để MUA (+ 1 dòng "Bạn đang có … — quản lý ở Máy của tôi")
 pump(4)
 grab("pc-2-vps-top.png")
 scroll(0.42); grab("pc-3-vps-mid.png")
 scroll(1.0); grab("pc-4-vps-bottom.png")
 dlg.os = "1511"; dlg.days = 15; dlg.upd(); pump(1)
 scroll(0.42); grab("pc-5-vps-pick.png")
+dlg.close(); pump(0.5)
 
-# 21/11f · các trạng thái có thanh tiến độ đếm giờ: đang cài Windows · cài lại lỗi (📋 Báo admin) · chờ máy quá lâu (📋 Báo admin)
+# 21/11f · các trạng thái có thanh tiến độ đếm giờ: đang cài Windows · cài lại lỗi (📋 Báo admin) · chờ máy quá lâu (📋 Báo admin) · 21.11k: đã kết thúc (tự ẩn lúc …)
 AGO = lambda m: time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() - m * 60))
 PCX = lambda i, nm, **k: dict({"id": "00000000-0000-4000-8000-0000000000c" + str(i), "name": nm, "code": "A" + str(i), "os": "22h2", "online": True, "remote": True,
                               "off": False, "job": None, "last_job": None, "ram_gb": 128, "gpus": ["NVIDIA GeForce GTX 1080"]}, **k)
@@ -98,23 +107,39 @@ MINE["items"] = [
      "pc": PCX(3, "VPS-GPU-03", last_job={"state": "failed", "at": AGO(20), "msg": "Không tải được bộ cài Windows (mạng chập chờn)"})},
     {"rental": 10, "state": "waiting", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": None, "left": 2, "used": 0, "created_at": AGO(36), "pc": None},
     {"rental": 11, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": AGO(10), "grace_until": AGO(-20), "left": 2, "used": 0, "created_at": AGO(9000),
-     "pc": PCX(4, "VPS-GPU-04", lock=True)}]
-dlg.close(); pump(0.5)
-dlg = B.VpsBuyDlg(app); pump(4)
+     "pc": PCX(4, "VPS-GPU-04", lock=True)},
+    {"rental": 12, "state": "ended", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": AGO(40), "left": 2, "used": 0, "created_at": AGO(9000),
+     "end_why": "expired", "ended_at": AGO(12), "hide_at": AGO(-18), "pc": None},
+    {"rental": 13, "state": "ended", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": AGO(90), "left": 2, "used": 0, "created_at": AGO(9000),
+     "end_why": "expired", "ended_at": AGO(45), "hide_at": AGO(15), "pc": None}]          # quá giờ ẩn → không được vẽ
+repaint()
 grab("pc-6-vps-states.png")
-scroll(0.22); grab("pc-7-vps-states-2.png")
+scroll(0.5); grab("pc-7-vps-states-2.png")
+scroll(0.0)
 rep = B.VpsReportDlg(app, MINE["items"][1]); pump(2)
 grab("pc-8-report.png")
-rep.close(); dlg.close(); pump(0.5)
+rep.close(); pump(0.5)
 
 # 21/11f · admin bật bảo trì riêng VPS GPU → dòng vàng, khoá Điều khiển / Cài lại / Mua ngay (khách thường)
 B.SITE["d"] = {"pc_maint": True, "pc_maint_msg": "Nâng cấp máy chủ, khoảng 30 phút" if LANG == "vi" else "Server upgrade, about 30 minutes"}
 MINE["items"] = MINE["items"][:1] + [dict(MINE["items"][1], pc=PCX(3, "VPS-GPU-03"))]
-dlg = B.VpsBuyDlg(app); pump(4)
+repaint()
 grab("pc-9-vps-maint.png")
+dlg = B.VpsBuyDlg(app); pump(4)
 scroll(1.0); grab("pc-10-vps-maint-bottom.png")
+dlg.close(); pump(0.5)
+
+# 21.11k · 🗑 Huỷ máy: hộp xác nhận — nút Huỷ chỉ bấm được sau khi tick "Tôi hiểu"
+B.SITE["d"] = {}
+MINE["items"] = [dict(MINE["items"][1], pc=PCX(3, "VPS-GPU-03"))]
+repaint(2)
+cx = B.VpsCancelDlg(app, MINE["items"][0]); pump(2)
+grab("pc-11-cancel.png")
+cx.ok.set(True); cx._arm(); pump(0.6)
+grab("pc-12-cancel-ok.png")
+cx.close(); pump(0.5)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 10 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+ok = len(mine) == 12 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)

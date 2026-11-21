@@ -29,6 +29,7 @@ class FakeCli:
     def touch(self, *a): self.ev.append(("touch",) + a)
     def scroll(self, *a): self.ev.append(("s",) + a)
     def clip_set(self, t, p=True): self.ev.append(("clip", t))
+    def quality(self, q, fps=None, kbps=None, fpsx=None): self.ev.append(("q", q, fpsx))
 v = B.Viewer("22222222-2222-4222-8222-222222222222", None, pc=True)
 cli = FakeCli()
 v._cx = lambda: cli; v._tool_at = lambda pos: None; v._norm = lambda pos: (0.25, 0.5); v._clamp = lambda pos: (0.25, 0.5)
@@ -71,4 +72,30 @@ v2 = B.Viewer("33333333-3333-4333-8333-333333333333", None)
 cli2 = FakeCli(); v2._cx = lambda: cli2; v2._tool_at = lambda pos: None; v2._norm = lambda pos: (0.5, 0.5); v2._clamp = lambda pos: (0.5, 0.5); v2.state = ("connected", ""); v2.docked = False
 v2._input(E(type=2, pos=(1, 1), button=3), pg); v2._input(E(type=2, pos=(1, 1), button=1), pg)
 ck("điện thoại đám mây (không --pc): chuột phải vẫn là Back, chuột trái vẫn là chạm như cũ", cli2.ev[0] == ("c", "back") and cli2.ev[1][0] == "touch" and not v2.pc, cli2.ev)
+# ---- 21.11k: máy PC — Siêu nét + khách tự chọn khung hình/giây · đồng bộ chuột giữa các máy PC
+cli.ev.clear(); v.q = "auto"; v.fpsx = 0; v._say = lambda *a, **k: None
+v._tool("quality", pg); v._tool("quality", pg)
+ck("máy PC: nút Chất lượng có Siêu nét (Tự động → Siêu nét → Nét …), nhớ riêng cho máy PC", [e[1] for e in cli.ev] == ["uhd", "hd"] and B.prefs().get("pcq") == "hd"
+   and [k for k, _ in B.PC_QUALITIES] == ["auto", "uhd", "hd", "bal", "eco"], (cli.ev, B.prefs().get("pcq")))
+cli.ev.clear()
+for _ in range(4): v._tool("fps", pg)
+ck("máy PC: nút FPS → Mặc định → 30 → 60 → 120 → Mặc định, mỗi lần gửi kèm fpsx, nhớ lựa chọn", [e[2] for e in cli.ev] == [30, 60, 120, 0] and B.prefs().get("pcf") == 0
+   and "fps" in [n for n, _ in B.PC_TOOLS], cli.ev)
+v2.q = "auto"; cli2.ev.clear(); v2._tool("quality", pg)
+ck("điện thoại đám mây: nút Chất lượng như cũ (không có Siêu nét 2K, không gửi fpsx)", cli2.ev == [("q", "hd", None)] and B.prefs().get("q") == "hd", cli2.ev)
+import struct
+sl = B.SyLink.__new__(B.SyLink); sl.pc = True; sl.mdown = {}; sl.down = {}; sl.txt = {}
+c3 = FakeCli()
+sl._apply("t1", c3, B.SY_MOUSE, 0, 0, struct.pack("<HH", 32768, 16384)); sl._apply("t1", c3, B.SY_MOUSE, 1, 0, struct.pack("<HH", 32768, 16384))
+sl._apply("t1", c3, B.SY_MOUSE, 2, 0, struct.pack("<HH", 32768, 16384)); sl._apply("t1", c3, B.SY_MOUSE, 2, 1, struct.pack("<HH", 1, 1))
+sl._apply("t1", c3, B.SY_MOUSE, 1, 1, struct.pack("<HH", 0, 65535)); sl._release("t1", c3)
+ck("đồng bộ chuột máy PC: rê / nhấn / nhả theo máy bạn; nhả nút chưa nhấn thì bỏ; máy bạn rời nhóm → nhả hộ nút đang giữ",
+   c3.ev == [("m", 0, 0, 0.5, 0.25), ("m", 1, 0, 0.5, 0.25), ("m", 2, 0, 0.5, 0.25), ("m", 1, 1, 0.0, 1.0), ("m", 2, 1, 0.0, 1.0)], c3.ev)
+sl.pc = False; c4 = FakeCli(); sl._apply("t1", c4, B.SY_MOUSE, 1, 0, struct.pack("<HH", 1, 1))
+ck("cửa sổ điện thoại đám mây KHÔNG làm theo chuột máy PC", c4.ev == [], c4.ev)
+class _S:
+    def __init__(self): self.ev = []
+    def mouse(self, *a): self.ev.append(a)
+sy = _S(); c5 = FakeCli(); tee = B._SyTee(c5, sy); tee.mouse(1, 0, 0.5, 0.5)
+ck("đang đồng bộ: chuột của máy PC đang thao tác vừa gửi cho máy này vừa ghi cho các máy bạn", c5.ev == [("m", 1, 0, 0.5, 0.5)] and sy.ev == [(1, 0, 0.5, 0.5)], (c5.ev, sy.ev))
 print(f"\n{OK}/{OK + FAIL} đạt"); sys.exit(1 if FAIL else 0)
