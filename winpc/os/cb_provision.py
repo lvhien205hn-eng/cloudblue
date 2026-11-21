@@ -15,6 +15,9 @@
 #                                                                 driver VGA chưa cài được ở lần đăng nhập đầu (lúc đó chưa có mạng) thì cài nốt
 #  BẢO MẬT (mặc định, cb.json "user_admin": false): khách dùng tài khoản THƯỜNG, không còn tài khoản quản trị nào dùng được trên máy;
 #     C:\CloudBluePC + phân vùng cứu hộ chỉ SYSTEM / Administrators vào được (tài khoản thường chỉ đọc + chạy py\ và os\ để đặt ảnh nền).
+#  21.11i · shop BẬT "Cho khách quyền Admin" (cb.json "user_admin": true — agent ghi theo máy chủ, cả lên phân vùng cứu hộ để CÀI LẠI cũng mang theo):
+#     tài khoản khách GIỮ quyền Admin ngay từ lần đăng nhập đầu như máy cài thường (không hạ, không phải khởi động lại thêm); xong lần đăng nhập đầu
+#     mới chặn riêng tài khoản khách sửa / xoá phần mềm shop (guard). cb.json chưa có công tắc (cài từ USB) → lần đăng nhập đầu chờ agent hỏi máy chủ.
 #  Mọi lệnh lỗi đều được ghi nhật ký và BỎ QUA — không bao giờ làm hỏng bước cài Windows.
 #  Nhật ký: C:\CloudBluePC\logs\provision.log (phần chạy bằng tài khoản thường: %LOCALAPPDATA%\CloudBluePC\provision.log)
 # =====================================================================================================
@@ -22,7 +25,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11h"
+PROV_VER = "21.11i"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -33,6 +36,7 @@ NET_WAIT_VGA, NET_WAIT = 240, 60         # lần đăng nhập đầu chờ mạ
 DRV_SETTLE = 30                          # bước driver: sau khi bảo Windows cài lại thiết bị chưa có driver, chờ card mạng nhận driver tối đa 30 giây (5 giây xem 1 lần)
 DRV_PNPUTIL_MAX = 12                     # card mạng vẫn chưa nhận: chạy pnputil cho tối đa 12 gói driver MẠNG đang nằm trong kho driver
 DRV_KICKS = 3                            # bước driver chạy tối đa 3 lần cho 1 máy (lần đăng nhập đầu + các lần agent gọi lại khi máy vẫn chưa có card mạng chạy được)
+ADMIN_WAIT = 150                         # 21.11i · lần đăng nhập đầu: cb.json chưa có công tắc quyền Admin → chờ agent hỏi máy chủ tối đa 150 giây
 VGA_CMD_MARK = "cai driver VGA NVIDIA im lang"      # dấu của file 50-vga-nvidia.cmd do bộ tạo ISO bản cũ sinh ra (nay cb_provision tự cài → bỏ qua file đó)
 
 GHOST_SKIP_RIDS = (500, 501, 503, 504)      # Administrator · Guest · DefaultAccount · WDAGUtilityAccount có sẵn của Windows: không nhận làm tài khoản khách
@@ -720,6 +724,28 @@ class Prov:
         rc, out = self._run(["net", "localgroup", group], 60)
         return rc == 0 and any(ln.strip().lower() == user.lower() for ln in (out or "").splitlines())
 
+    def switch_wait(self, limit=ADMIN_WAIT):
+        """21.11i · cb.json CHƯA có công tắc "user_admin" (máy cài từ USB / ISO — phân vùng cứu hộ chưa được agent ghi công tắc) mà máy có máy chủ (sb_url)
+           → chờ agent (đã bật ở bước 1) hỏi máy chủ rồi ghi công tắc vào cb.json, tối đa `limit` giây (5 giây xem 1 lần) — để quyền tài khoản khách đúng
+           NGAY lần đầu (shop bật: khách giữ quyền Admin, khỏi phải khởi động lại thêm). Hết giờ → làm như cũ (khách = tài khoản thường; agent cấp lại sau).
+           Trả công tắc đọc được (True / False) hoặc None."""
+        c = self.cfg()
+        if "user_admin" in c: return bool(c.get("user_admin"))
+        if not c.get("sb_url"): return None
+        self.log("cho agent bao cong tac quyen Admin cua shop (toi da %d giay) ..." % limit)
+        t0 = self._now()
+        for _ in range(max(1, int(limit) // 5)):
+            self._sleep(5)
+            c = self.cfg()
+            if "user_admin" in c:
+                on = bool(c.get("user_admin"))
+                self.log("ok  agent da bao cong tac quyen Admin: %s (cho %d giay)" % ("BAT - khach giu quyen Admin" if on else "TAT - khach la tai khoan thuong",
+                                                                                    max(0, int(self._now() - t0))))
+                return on
+            if self._now() - t0 >= limit: break
+        self.log("LOI agent chua bao cong tac quyen Admin sau %d giay - tam de khach la tai khoan thuong (shop bat thi agent cap lai sau)" % limit)
+        return None
+
     def harden(self):
         """Chế độ khách = TÀI KHOẢN THƯỜNG (mặc định; cb.json có "user_admin": true thì bỏ qua). Cần quyền quản trị.
              · gỡ tài khoản khách khỏi nhóm Administrators (giữ trong nhóm Users) — có hiệu lực từ lần đăng nhập sau
@@ -798,12 +824,13 @@ class Prov:
         self.touch("system.first")
         self.pw_never_expires()
         self.lockdown()
-        self.guard()                                                 # 21.11h: khách có quyền Admin → vẫn chặn riêng tài khoản khách đụng vào phần mềm shop
         done, started, first = self.mark_age("firstlogon.done"), self.mark_age("firstlogon.start"), self.mark_age("system.first")
         # chỉ hạ quyền khi lần đăng nhập đầu ĐÃ xong (script riêng của chủ shop cần quyền Admin), hoặc đã quá 1 giờ mà nó không xong
         if done is not None or (started is not None and started > 3600) or (started is None and first is not None and first > 3600):
             if done is None and self.ghost_needed(late=True):       # 1 giờ rồi vẫn chưa có tài khoản khách: bản kiểu ghost mà bộ cài không nhận ra → dựng tại đây
                 return self.ghost()
+            self.guard()                                             # 21.11h: khách có quyền Admin → vẫn chặn riêng tài khoản khách đụng vào phần mềm shop
+            #   21.11i: chỉ SAU lần đăng nhập đầu — lần đăng nhập đầu chạy bằng chính tài khoản khách (còn ghi mốc / nhật ký vào C:\CloudBluePC\logs)
             changed = self.harden()
             try: self.drv_retry()                                    # máy vẫn chưa có card mạng chạy được → làm lại bước driver (tối đa DRV_KICKS lần)
             except Exception as e:
@@ -976,8 +1003,10 @@ class Prov:
         try: self.vga(waited is not None)
         except Exception as e:
             self.log("LOI buoc VGA: %r" % (e,))
+        if waited is not None: self.switch_wait()                   # 21.11i: chưa biết công tắc quyền Admin của shop → chờ agent hỏi máy chủ
         self.harden()
         self.touch("firstlogon.done"); self.touch("ghost.done")
+        self.guard()                                                 # 21.11i: khách có quyền Admin → chặn riêng tài khoản khách sửa / xoá phần mềm shop
         self.sh(["shutdown", "/r", "/t", "30", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 30 giay")
         self.log("xong ghost (tai khoan khach: %s)" % {"have": "da co san", "adopt": "nhan tai khoan cua anh", "new": "tao moi"}[how])
         return True
@@ -1033,9 +1062,13 @@ class Prov:
         self.say("    " + {"none": "khong co goi VGA nao", "skip": "may nay khong co card NVIDIA - bo qua", "done": "xong - card da nhan driver",
                            "wait": "CHUA cai (chua co mang) - se tu cai khi may co mang",
                            "fail": "da chay bo cai nhung card chua nhan driver - se kiem lai sau khi khoi dong lai"}.get(v, v))
-        self.say("[5/5] Khoa tai khoan khach (tai khoan thuong) ...")
+        if waited is not None and self.switch_wait() is None and self.cfg().get("sb_url"):          # 21.11i: chưa biết công tắc → chờ agent hỏi máy chủ
+            self.say("    (chua biet cong tac quyen Admin cua shop - tam de tai khoan thuong)")
+        adm = bool(self.cfg().get("user_admin"))
+        self.say("[5/5] %s ..." % ("Tai khoan khach GIU quyen Admin (shop bat)" if adm else "Khoa tai khoan khach (tai khoan thuong)"))
         changed = self.harden()
         self.touch("firstlogon.done")
+        if adm: self.guard()                                         # 21.11i: việc cuối (chạy bằng chính tài khoản khách): chặn riêng tài khoản khách sửa / xoá phần mềm shop
         if changed:                                                  # quyền mới (tài khoản thường) chỉ có hiệu lực ở lần đăng nhập sau → khởi động lại 1 lần
             self.sh(["shutdown", "/r", "/t", "20", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 20 giay")
             self.say(""); self.say("XONG. May tu khoi dong lai sau 20 giay.")

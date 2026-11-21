@@ -283,6 +283,14 @@ Mặc định (không dùng `-KhachAdmin`) mỗi máy cài từ ISO này:
 - Phần mềm trên máy tự kiểm lại các khoá này mỗi lần khởi động và vài giờ một lần. Lần đăng nhập đầu bị dở (mất điện) thì 1 giờ sau máy tự hạ quyền tài khoản khách.
 - Trên web, **thông tin do máy gửi lên luôn được coi là dữ liệu lạ** (chỉ in ra dạng chữ) — khách không thể qua máy thuê mà chèn mã vào trang quản trị. Mỗi máy chỉ có 1 mã riêng, lộ mã đó cũng không đụng được máy khác hay tài khoản admin.
 
+**Công tắc “Cho khách quyền Admin”** (Quản trị › Máy PC › ⚙ — cần SQL v46 + agent 21.11h; **từ 21.11i đi theo cả lần cài lại**):
+
+- **Bật** (mặc định): tài khoản khách có **full quyền Admin như máy cài Windows thường** — ngay từ lần đăng nhập đầu của mỗi lượt cài (khách thuê mới, đổi Windows, dọn máy), không phải khởi động lại thêm. Agent ghi công tắc lên cả phân vùng cứu hộ nên bộ cài mang theo; máy cài từ USB thì lần đăng nhập đầu chờ agent hỏi web tối đa 150 giây.
+- Bật công tắc lúc khách **đang dùng** máy: quyền mới chỉ có sau khi **khởi động lại 1 lần** (Windows chỉ nhận quyền lúc đăng nhập) → web › Máy PC › máy đó › 🔁 **Khởi động lại**, hoặc khách bấm Start › Restart.
+- Khách Admin vẫn **không sửa / xoá được** phần mềm CloudBlue và phân vùng cứu hộ bằng thao tác thường (dòng TỪ CHỐI riêng cho tài khoản khách). Cố tình chiếm quyền để phá thì phá được **chính máy đang thuê** → máy báo offline / việc lạ, bạn cài sạch lại từ web hoặc USB (vi phạm: khoá máy, không hoàn tiền).
+- **Trên máy không có khoá bí mật nào của web**: chỉ khoá công khai (vốn nằm trong trang web) + mã riêng của chính máy (chỉ dùng cho máy đó). Trạm phát hình không gửi phiên đăng nhập của người xem xuống máy. → Khách Admin **không lấy được tài khoản web, tài khoản admin, tiền hay máy khác**.
+- Nên **tách mạng máy cho thuê** khỏi máy chủ / máy khác (VLAN, router riêng hoặc bật “cách ly máy” trên router): khách Admin chạy được công cụ dò mạng trong LAN. Máy cho thuê chỉ cần ra Internet — điều khiển từ xa tự đi qua đường `wss://` khi không nối thẳng được trạm.
+
 Phần chỉ bạn làm được (bộ cài không làm thay):
 
 - Đặt **mật khẩu BIOS** và để máy chỉ khởi động từ ổ cứng (không cho khởi động USB) — nếu khách ngồi trực tiếp tại máy.
