@@ -448,8 +448,8 @@ def clip_put(text):
     except Exception: pass
 
 
-def spawn_viewer(pid, mode="--view"):
-    args = [sys.executable, mode, pid] if FROZEN else [sys.executable, os.path.abspath(__file__), mode, pid]
+def spawn_viewer(pid, mode="--view", *extra):
+    args = ([sys.executable, mode, pid] if FROZEN else [sys.executable, os.path.abspath(__file__), mode, pid]) + [str(x) for x in extra]
     kw = {}
     if os.name == "nt": kw["creationflags"] = 0x00000008 | 0x00000200       # DETACHED_PROCESS | NEW_PROCESS_GROUP
     subprocess.Popen(args, close_fds=True, **kw)
@@ -566,6 +566,33 @@ QUALITIES = [("auto", "Tự động"), ("hd", "Siêu nét"), ("bal", "Cân bằn
 TOOLS = [("back", "Quay lại"), ("home", "Màn chính"), ("recents", "Đa nhiệm"), ("volup", "Âm +"), ("voldown", "Âm −"),
          ("rotate", "Xoay"), ("shot", "Chụp màn"), ("paste", "Dán chữ"), ("tools", "Công cụ"), ("quality", "Chất lượng"),
          ("full", "Toàn màn"), ("hide", "Ẩn thanh"), ("info", "Thông số")]
+# 21/11 · MÁY PC THẬT (VPS GPU): thanh công cụ có phím Windows thay cho nút Android
+PC_TOOLS = [("back", "Esc"), ("win", "Windows"), ("recents", "Win+Tab"), ("alttab", "Alt+Tab"), ("taskmgr", "Task Mgr"), ("paste", "Dán chữ"),
+            ("quality", "Chất lượng"), ("full", "Toàn màn"), ("hide", "Ẩn thanh"), ("info", "Thông số")]
+
+
+def pc_keymap(pg):
+    """Phím pygame → mã phím Android (máy PC tự đổi sang phím Windows): đủ chữ / số / F1–F12 / Ctrl / Alt / Shift / phím số…
+       gửi NHẤN và NHẢ riêng như bàn phím thật (chơi game, tổ hợp phím đều được)."""
+    m = {}
+    def add(name, code):
+        k = getattr(pg, name, None)
+        if k is not None: m[k] = code
+    for i in range(26): add("K_" + chr(97 + i), 29 + i)
+    for i in range(10): add("K_%d" % i, 7 + i); add("K_KP%d" % i, 144 + i); add("K_KP_%d" % i, 144 + i)
+    for i in range(1, 13): add("K_F%d" % i, 130 + i)
+    for name, code in (("K_BACKSPACE", 67), ("K_TAB", 61), ("K_RETURN", 66), ("K_KP_ENTER", 160), ("K_ESCAPE", 111), ("K_SPACE", 62), ("K_UP", 19), ("K_DOWN", 20),
+                       ("K_LEFT", 21), ("K_RIGHT", 22), ("K_DELETE", 112), ("K_INSERT", 124), ("K_HOME", 122), ("K_END", 123), ("K_PAGEUP", 92), ("K_PAGEDOWN", 93),
+                       ("K_LSHIFT", 59), ("K_RSHIFT", 60), ("K_LCTRL", 113), ("K_RCTRL", 114), ("K_LALT", 57), ("K_RALT", 58), ("K_LGUI", 117), ("K_RGUI", 118),
+                       ("K_LMETA", 117), ("K_RMETA", 118), ("K_MENU", 82), ("K_CAPSLOCK", 115), ("K_NUMLOCK", 143), ("K_NUMLOCKCLEAR", 143), ("K_SCROLLLOCK", 116),
+                       ("K_SCROLLOCK", 116), ("K_PRINTSCREEN", 120), ("K_PRINT", 120), ("K_PAUSE", 121), ("K_BACKQUOTE", 68), ("K_MINUS", 69), ("K_EQUALS", 70),
+                       ("K_LEFTBRACKET", 71), ("K_RIGHTBRACKET", 72), ("K_BACKSLASH", 73), ("K_SEMICOLON", 74), ("K_QUOTE", 75), ("K_COMMA", 55), ("K_PERIOD", 56),
+                       ("K_SLASH", 76), ("K_KP_DIVIDE", 154), ("K_KP_MULTIPLY", 155), ("K_KP_MINUS", 156), ("K_KP_PLUS", 157), ("K_KP_PERIOD", 158)):
+        add(name, code)
+    return m
+
+
+PC_BTN = {1: 0, 3: 1, 2: 2, 6: 3, 7: 4}            # nút chuột pygame → nút của giao thức (trái · phải · giữa · 2 nút phụ)
 BAR, BAR_MIN = 72, 14              # thanh công cụ bên phải · khi ẩn còn dải mỏng (bấm để hiện lại)
 C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (7, 18, 38), (13, 29, 61), (214, 228, 250), (61, 134, 255), (232, 241, 255), (159, 180, 216), (61, 134, 255)   # 17/11c: tông "Thuỷ đêm" như danh sách máy
 
@@ -846,8 +873,10 @@ def sync_selftest():
 
 
 class Viewer:
-    def __init__(self, pid, dock=None):
+    def __init__(self, pid, dock=None, pc=False):
         self.pid = pid; self.auth = Auth()
+        self.pc = bool(pc)                                # 21/11: máy PC thật (VPS GPU) — chuột / phím thật, thanh công cụ phím Windows
+        self.pck = None; self.pc_keys = {}; self.pc_down = set(); self.pc_mt = 0.0
         self.dock = dock; self.docked = False              # 17/11d: dock = DockGuest — gắn vào ô bên phải của cửa sổ app
         self.lock = threading.Lock(); self.frame = None; self.vw = self.vh = 0
         self.state = ("connecting", "Đang kết nối…"); self.stats = {}; self.ping = 0; self.path = ""
@@ -869,17 +898,26 @@ class Viewer:
     def connect(self):
         import brstream
         g0 = self.gen                                    # trong lúc hỏi máy chủ mà khách bấm F5 → lượt nối này bỏ (lượt mới lo)
-        ep = self.auth.rpc("cloudphone_endpoint", {"p_id": self.pid}) or {}
+        ep = self.auth.rpc("pc_endpoint" if self.pc else "cloudphone_endpoint", {"p_id": self.pid}) or {}
         if g0 != self.gen: return
         self.name = ep.get("name") or self.name
-        if ep.get("status") and ep.get("status") != "active":
+        if self.pc:                                      # máy PC: chưa nối tới máy chủ phát hình (đang tắt / khởi động / cài Windows) → tự hỏi lại sau 10 giây
+            if not ep.get("online"):
+                self.state = ("connecting", L("Máy PC chưa sẵn sàng (đang tắt, khởi động hoặc cài Windows) — tự thử lại…",
+                                              "The PC isn't ready yet (off, starting or installing Windows) — retrying…")); self._post()
+                def later(g1=self.gen):
+                    time.sleep(10)
+                    if g1 == self.gen and self.cli is None: self._connect_bg()
+                threading.Thread(target=later, daemon=True).start()
+                return
+        elif ep.get("status") and ep.get("status") != "active":
             raise ApiError(0, "Máy chưa chạy (đang tạo, tạm dừng hoặc đã hết hạn).")
-        if self.cp is None: self.cp = CpClient(self.auth, self.pid); self.cp.ep = ep
+        if self.cp is None and not self.pc: self.cp = CpClient(self.auth, self.pid); self.cp.ep = ep
         pref = prefs().get("path_" + str(ep.get("node")))
         self.gen += 1; g = self.gen
         cli = brstream.StreamClient(ep, lambda force=False: self.auth.token(force), self.pid,
                                     lambda k, d, g=g: self.on_event(k, d) if g == self.gen else None, q=self.q, client="pc",
-                                    prefer=tuple(pref) if pref else None)
+                                    prefer=tuple(pref) if pref else None, kind="pc" if self.pc else "phone")
         self.node = ep.get("node")
         old, self.cli = self.cli, cli                    # luôn chỉ 1 luồng hình: luồng cũ (nếu có) đóng hẳn, không chạy ngầm đá phiên mới
         if old is not None and old is not cli: threading.Thread(target=old.close, daemon=True).start()
@@ -1233,8 +1271,9 @@ class Viewer:
 
     def _tool_rects(self, W, H):
         if not self.bar_on: return []
-        n = len(TOOLS); step = max(22, min(64, (H - 16) // n)); top = max(6, (H - step * n) // 2)
-        return [(name, label, (W - BAR + 6, top + i * step, BAR - 12, step - 6)) for i, (name, label) in enumerate(TOOLS)]
+        tl = PC_TOOLS if self.pc else TOOLS
+        n = len(tl); step = max(22, min(64, (H - 16) // n)); top = max(6, (H - step * n) // 2)
+        return [(name, label, (W - BAR + 6, top + i * step, BAR - 12, step - 6)) for i, (name, label) in enumerate(tl)]
 
     def _draw_bar(self, pygame, s, W, H):
         if not self.bar_on:                              # thanh đang ẩn: dải mỏng có mũi tên ‹ — bấm vào để hiện lại
@@ -1275,6 +1314,15 @@ class Viewer:
                 pygame.draw.rect(s, c, (cx - r, cy - r + 3, 2 * r, 2 * r - 4), 2, border_radius=3)
                 pygame.draw.rect(s, c, (cx - 4, cy - r, 8, 4), 0, border_radius=1)
                 pygame.draw.circle(s, c, (cx, cy + 1), max(3, r // 2), 2)
+            elif name == "win":                                    # ⊞ logo Windows
+                q = max(3, r - 2)
+                for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+                    pygame.draw.rect(s, c, (cx + (1 if dx > 0 else -q - 1), cy + (1 if dy > 0 else -q - 1), q, q), 0, border_radius=1)
+            elif name == "alttab":                                 # 2 cửa sổ chồng nhau
+                pygame.draw.rect(s, c, (cx - r, cy - r + 3, r + 4, r + 2), 2, border_radius=2); pygame.draw.rect(s, c, (cx - 2, cy - 1, r + 3, r + 2), 2, border_radius=2)
+            elif name == "taskmgr":                                # 3 cột biểu đồ
+                for i, hh in enumerate((r, int(r * 1.6), int(r * 1.2))):
+                    pygame.draw.rect(s, c, (cx - r + i * (r - 1), cy + r - hh, max(3, r // 2), hh), 0, border_radius=1)
             elif name == "hide":                                   # » = thu thanh sang phải
                 for off in (-4, 3):
                     pygame.draw.lines(s, c, False, [(cx + off - 3, cy - r + 2), (cx + off + 3, cy), (cx + off - 3, cy + r - 2)], 2)
@@ -1345,6 +1393,9 @@ class Viewer:
 
     def _tool(self, name, pygame):
         c = self._cx()
+        if self.pc and name in ("back", "win", "recents", "alttab", "taskmgr"):     # máy PC: Esc · phím Windows · Win+Tab · Alt+Tab · Ctrl+Shift+Esc
+            if c: c.cmd(name)
+            return
         if name in ("back", "home", "recents", "volup", "voldown") and c: c.cmd(name)
         elif name == "rotate": self._rotate()
         elif name == "shot": self._shot()
@@ -1360,6 +1411,18 @@ class Viewer:
             if self.docked and self.dock is not None: self.dock.send("tools", pid=self.pid)    # máy đang gắn trong app → trang Công cụ mở ngay bên trái
             else: spawn_tools(self.pid)
         elif name == "info": self.show_info = not self.show_info; prefs({"info": self.show_info})
+
+    def _pc_release(self, c=None):
+        """Nhả mọi phím + nút chuột còn đang giữ bên máy PC."""
+        c = c or self._cx()
+        if c:
+            for code in list(self.pc_keys.values()):
+                try: c.key(1, code, 0)
+                except Exception: pass
+            for b in list(self.pc_down):
+                try: c.mouse(2, b, 0.5, 0.5)
+                except Exception: pass
+        self.pc_keys.clear(); self.pc_down.clear()
 
     def _say(self, text, secs=3.0, action=None):
         self.notice = (str(text), time.time() + secs, action); self._post()
@@ -1449,9 +1512,15 @@ class Viewer:
         c = self._cx(); t = e.type
         if t == getattr(pygame, "WINDOWFOCUSGAINED", -2) and self.docked and self.dock is not None:   # 17/11e: máy này nhận bàn phím → app tô viền ô này
             self._act_t = time.time(); self.dock.send("act"); return False
+        if self.pc and t == getattr(pygame, "WINDOWFOCUSLOST", -3):          # rời cửa sổ giữa chừng → nhả hết phím / nút chuột đang giữ (không kẹt bên máy PC)
+            self._pc_release(c); return False
         if t == pygame.MOUSEMOTION:
             hv = self._tool_at(e.pos)
             ch = hv != self.hover; self.hover = hv
+            if self.pc:                                   # máy PC: rê chuột (không bấm) cũng tới máy — rê nhanh thì gửi ~120 lần/giây
+                p = self._norm(e.pos) if not hv else None
+                if p and c and (self.pc_down or time.time() - self.pc_mt >= 0.008): self.pc_mt = time.time(); c.mouse(0, 0, *p)
+                return ch
             if self.mouse_down and c: c.touch(2, 0, *self._clamp(e.pos))
             return ch
         if t == pygame.MOUSEBUTTONDOWN and e.button in (1, 2, 3):
@@ -1471,10 +1540,24 @@ class Viewer:
             if self.state[0] == "error" and e.button == 1 and self.err_x.get("fix") == "reboot": self._fix_click(); return True
             if self.state[0] in ("kicked", "error") and e.button == 1: self._retry(); return True
             p = self._norm(e.pos)
+            if self.pc:                                   # máy PC: nút trái / phải / giữa thật
+                b = PC_BTN.get(e.button)
+                if p and c and b is not None: self.pc_down.add(b); c.mouse(1, b, *p)
+                return False
             if p and c:
                 if e.button == 1: self.mouse_down = True; c.touch(0, 0, *p)
                 elif e.button == 3: c.cmd("back")
                 elif e.button == 2: c.cmd("home")
+            return False
+        if self.pc and t == pygame.MOUSEBUTTONDOWN and e.button in (6, 7):        # 2 nút phụ (lùi / tới) của chuột
+            p = self._norm(e.pos)
+            if p and c: self.pc_down.add(PC_BTN[e.button]); c.mouse(1, PC_BTN[e.button], *p)
+            return False
+        if self.pc and t == pygame.MOUSEBUTTONUP:
+            b = PC_BTN.get(e.button)
+            if b is not None and b in self.pc_down:
+                self.pc_down.discard(b)
+                if c: c.mouse(2, b, *self._clamp(e.pos))
             return False
         if t == pygame.MOUSEBUTTONUP and e.button == 1:
             if self.mouse_down and c: c.touch(1, 0, *self._clamp(e.pos))
@@ -1484,7 +1567,29 @@ class Viewer:
             if p: c.scroll(p[0], p[1], int(-e.x * 120), int(e.y * 120))
             return False
         if t == pygame.TEXTINPUT and c:
+            if self.pc:                                   # máy PC: phím đã gửi thật ở KEYDOWN; chỉ gửi chữ có dấu (Unikey / bộ gõ của máy mình)
+                if e.text and any(ord(ch) > 126 for ch in e.text): c.text(e.text)
+                return False
             if e.text and not (pygame.key.get_mods() & pygame.KMOD_CTRL): c.text(e.text)
+            return False
+        if self.pc and t in (pygame.KEYDOWN, pygame.KEYUP):
+            down = t == pygame.KEYDOWN; mods = pygame.key.get_mods()
+            if down and e.key == pygame.K_F11: self._toggle_full(pygame); return True                     # F11 vẫn là toàn màn hình của app
+            if down and e.key == pygame.K_r and self.state[0] in ("kicked", "error"): self._retry(); return True
+            if down and e.key == pygame.K_u and self.state[0] == "error" and must_update(): self._open_updater(); return True
+            if not c: return False
+            if mods & pygame.KMOD_CTRL and e.key == pygame.K_v and not (mods & (pygame.KMOD_ALT | pygame.KMOD_SHIFT)):   # Ctrl+V → dán chữ của máy mình sang máy PC
+                if down:
+                    txt = clip_get()
+                    if txt: c.clip_set(txt, True)
+                return False
+            if self.pck is None: self.pck = pc_keymap(pygame)
+            code = self.pck.get(e.key)
+            if code is None: return False
+            if down: self.pc_keys[e.key] = code
+            elif e.key in self.pc_keys: self.pc_keys.pop(e.key)
+            else: return False
+            c.key(0 if down else 1, code, 0)
             return False
         if t in (pygame.KEYDOWN, pygame.KEYUP):
             down = t == pygame.KEYDOWN; mods = pygame.key.get_mods(); name = pygame.key.name(e.key)
@@ -1509,10 +1614,10 @@ class Viewer:
         return False
 
 
-def run_viewer(pid, dock=None, ipc=None, tok=None):
+def run_viewer(pid, dock=None, ipc=None, tok=None, pc=False):
     try:
         g = DockGuest(dock, ipc, tok) if (dock and ipc and tok and os.name == "nt") else None
-        Viewer(pid, g).run()
+        Viewer(pid, g, pc=pc).run()
     except Exception:
         log("viewer:", traceback.format_exc())
         try:
@@ -3806,6 +3911,223 @@ class RenewDlg(Dlg):
         def fail(m):
             self.promo.fail(m); self.err.config(text=m); self.go.config(state="normal"); self.upd()
         self.bg(lambda: self.app.auth.rpc("cloudphone_renew", args), done, fail)
+
+
+# ================================================================ 🖥️ VPS GPU (máy PC thật cho thuê — SQL v43, 21/11)
+#   Mua tự động: khách chọn gói ngày + bản Windows → hệ thống tự giao máy trống đang online + tự cài đúng Windows (không có máy → đơn chờ, shop bật máy là tự giao).
+#   Khách tự cài lại / đổi Windows tối đa N lần mỗi lượt thuê (shop đặt), tự gia hạn. Điều khiển = cửa sổ máy chế độ PC (chuột / phím thật).
+#   Cơ sở dữ liệu chưa có phần này (hàm pc_* chưa có) → không hiện gì, app chạy như cũ.
+VPS = {"info": None, "prod": None, "t": 0.0}
+
+
+def vps_shop(auth, age=30.0):
+    """(thông tin bán tự động, sản phẩm có bảng giá) — đọc lại tối đa 1 lần / age giây."""
+    if VPS["info"] is not None and time.time() - VPS["t"] < age: return VPS["info"], VPS["prod"]
+    i = auth.rpc("pc_shop_info", {}) or {}
+    p = None
+    if i.get("on") and i.get("product"):
+        rows = auth.rest("product_list?id=eq." + urllib.parse.quote(str(i["product"])) + "&select=id,name,plans,price") or []
+        p = rows[0] if rows else None
+    VPS.update(info=i, prod=p, t=time.time())
+    return i, p
+
+
+def vps_plans(prod):
+    out = []
+    for x in (prod or {}).get("plans") or []:
+        try:
+            d, pr = int(x.get("days")), int(num(x.get("price")))
+            if d > 0 and pr >= 0: out.append((d, pr))
+        except Exception: pass
+    return sorted(out)
+
+
+def vps_err(m):
+    m = str(m or "")
+    for k, vi, en in (("NO_LEFT", "Máy này đã hết lượt cài lại trong lượt thuê — nhắn shop nếu cần thêm.", "No reinstalls left for this rental."),
+                      ("BUSY", "Máy đang cài Windows — chờ xong rồi thử lại.", "Windows is being installed — try again later."),
+                      ("EXPIRED", "Máy đã hết hạn — gia hạn trước.", "Expired — renew first."),
+                      ("NOT_AUTO", "Sản phẩm này chưa bật giao tự động.", "Automatic delivery is off."),
+                      ("INSUFFICIENT_BALANCE", "Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first."),
+                      ("SLOW_DOWN", "Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again later."),
+                      ("NOT_ALLOWED", "Máy này không thuộc tài khoản của bạn.", "This machine is not on your account.")):
+        if k in m: return L(vi, en)
+    return m
+
+
+def vps_state(x):
+    """(mã, chữ, màu, câu giải thích) của 1 mục VPS."""
+    pc = x.get("pc") or {}; job = pc.get("job") or None; st = x.get("state")
+    lf = left_secs(x.get("until")) if x.get("until") else None
+    if st == "waiting": return "wait", L("⏳ Đang chờ máy", "⏳ Waiting"), WARN, L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received — delivered automatically.")
+    if st == "cancelled": return "end", L("✕ Đã huỷ", "✕ Cancelled"), DIM, L("Tiền hoàn (nếu có) đã về số dư.", "Any refund went to your balance.")
+    if st == "ended": return "end", L("■ Đã kết thúc", "■ Ended"), DIM, ""
+    if job: return "inst", L("⚙ Đang cài Windows", "⚙ Installing Windows"), WARN, (L(f"Máy đang cài {str(job.get('os') or '').upper()} (15–30 phút), xong là vào được.", "Installing Windows (15–30 min).")
+                                                                               if job.get("state") == "sent" else L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…"))
+    if lf is not None and lf <= 0: return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, (L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "Renew and the shop turns it back on.")
+                                                                                   if pc.get("off") else L("Gia hạn để dùng tiếp.", "Renew to keep using it."))
+    if not pc.get("online"): return "off", L("○ Máy đang tắt / mất mạng", "○ Offline"), WARN, L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts.")
+    return "run", L("● Sẵn sàng", "● Ready"), OK, ""
+
+
+class VpsBuyDlg(Dlg):
+    """Mua VPS GPU: chọn gói ngày + bản Windows → trừ số dư (giá như web, có giảm CTV) → hệ thống tự giao máy + cài Windows."""
+    def __init__(self, app):
+        super().__init__(app, L("Mua VPS GPU", "Buy GPU VPS"), 560, 600)
+        self.days = None; self.os = None
+        self.loading(L("Đang tải bảng giá…", "Loading prices…"))
+        self.bg(lambda: (vps_shop(app.auth, 0), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, r):
+        tk = self.app.tk; (self.info, self.prod), self.prof = r; self.clear()
+        pl, os_ = vps_plans(self.prod), [o for o in (self.info or {}).get("os") or [] if o.get("id")]
+        if not (self.info or {}).get("on") or not self.prod or not pl or not os_:
+            self.label(self.body, L("VPS GPU tạm chưa bán trong app — xem trên cloudblue.vn.", "GPU VPS isn't on sale in the app right now."), self.app.f_t, DIM,
+                       wraplength=480).pack(fill="x", padx=18, pady=24)
+            return
+        self.pl, self.oss = pl, os_
+        self.days = next((d for d, _ in pl if d == 30), pl[0][0])
+        self.os = next((o["id"] for o in os_ if o.get("fast")), os_[0]["id"])
+        self.label(self.body, self.prod.get("name") or "VPS GPU", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
+        self.label(self.body, L("Máy PC thật, card đồ hoạ rời. Thanh toán xong hệ thống tự giao máy và cài đúng bản Windows bạn chọn — điều khiển ngay trong app.",
+                                "A real PC with a dedicated GPU. After payment a machine is assigned and the Windows you chose is installed — control it right in the app."),
+                   self.app.f_t, DIM, wraplength=490).pack(fill="x", padx=18)
+        f = self.section(L("Thời gian thuê", "Rental period"))
+        self.ch_d = Chips(self.app, f, [(d, f"{d} " + L("ngày", "days") + "\n" + vnd(ctv(self.prof, pr))) for d, pr in pl], lambda: self.days, lambda v: setattr(self, "days", v), self.upd, wrap=3)
+        self.ch_d.frame.pack(fill="x")
+        f = self.section(L("Bản Windows", "Windows version"))
+        self.ch_o = Chips(self.app, f, [(o["id"], o.get("name") or o["id"]) for o in os_], lambda: self.os, lambda v: setattr(self, "os", v), self.upd, wrap=2)
+        self.ch_o.frame.pack(fill="x")
+        self.hint = self.label(f, "", self.app.f_s, OK, wraplength=480); self.hint.pack(fill="x", pady=(4, 0))
+        mx = int(num((self.info or {}).get("reinstall_max", 2)))
+        self.label(self.body, L(f"✅ Được tự cài lại / đổi Windows {mx} lần mỗi lượt thuê · hạn thuê tính từ lúc giao máy.",
+                                f"✅ {mx} free reinstalls / Windows switches per rental · time starts when the machine is assigned."), self.app.f_s, DIM, wraplength=490).pack(fill="x", padx=18, pady=(10, 0))
+        ft = self.foot
+        self.sum = self.label(ft, "", self.app.f_t, TXT); self.sum.pack(fill="x", padx=16, pady=(10, 0))
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, L("Thanh toán", "Pay"), self.buy); self.go.pack(side="right")
+        self.upd()
+
+    def price(self): return ctv(self.prof, next((pr for d, pr in self.pl if d == self.days), 0))
+
+    def upd(self):
+        if not self.alive or not hasattr(self, "ch_d"): return
+        self.ch_d.paint(); self.ch_o.paint()
+        o = next((x for x in self.oss if x["id"] == self.os), {})
+        self.hint.config(text=L("⚡ Có máy sẵn — giao ngay sau khi thanh toán.", "⚡ In stock — delivered right after payment.") if o.get("fast")
+                         else L("⏳ Máy tự cài bản này cho bạn (~20 phút).", "⏳ Installed for you (~20 min).") if (self.info or {}).get("ready")
+                         else L("⏳ Shop đang chuẩn bị máy — có máy là tự giao, không cần nhắn shop.", "⏳ Preparing a machine — delivered automatically."),
+                         fg=OK if o.get("fast") else WARN)
+        tot, bal = self.price(), num(self.prof.get("balance"))
+        self.sum.config(text=L("Thanh toán: ", "Total: ") + vnd(tot) + "   ·   " + L("Số dư: ", "Balance: ") + vnd(bal))
+        self.err.config(text="" if tot <= bal else L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + vnd(tot - bal) + ".")
+        self.go.config(text=L("Thanh toán ", "Pay ") + vnd(tot) if tot <= bal else L("Nạp tiền", "Top up"))
+
+    def buy(self):
+        import tkinter.messagebox as mb
+        tot, bal = self.price(), num(self.prof.get("balance"))
+        if tot > bal: self.close(); self.app.open_topup(tot - bal); return
+        o = next((x for x in self.oss if x["id"] == self.os), {})
+        if not mb.askyesno(L("Mua VPS GPU", "Buy GPU VPS"), L(f"Thuê {self.days} ngày · {o.get('name') or self.os}, trừ {vnd(tot)} từ số dư?",
+                                                             f"Rent {self.days} days · {o.get('name') or self.os} for {vnd(tot)}?"), parent=self.win): return
+        self.go.config(state="disabled", text=L("Đang xử lý…", "Working…"))
+        args = {"p_product": self.prod["id"], "p_days": self.days, "p_os": self.os}
+        def done(r):
+            r = r or {}; VPS["t"] = 0; self.close(); self.app.refresh()
+            if r.get("state") == "active":
+                msg = (L(f"Đã giao máy {r.get('name')} — máy đang tự cài Windows (~20 phút). Theo dõi ở mục VPS GPU của bạn.", "Machine assigned — installing Windows (~20 min).")
+                       if r.get("reinstall") else L(f"Đã giao máy {r.get('name')} — bấm ▶ Điều khiển ở mục VPS GPU của bạn.", "Your machine is ready — tap ▶ Control."))
+            else: msg = L("Đã nhận đơn — shop đang chuẩn bị máy. Có máy là tự giao + cài Windows, không cần nhắn shop.", "Order received — delivered automatically.")
+            mb.showinfo("CloudBlue", msg, parent=self.app.root)
+        def fail(m): self.err.config(text=vps_err(m)); self.go.config(state="normal"); self.upd()
+        self.bg(lambda: self.app.auth.rpc("pc_buy", args), done, fail)
+
+
+class VpsReDlg(Dlg):
+    """Cài lại / đổi bản Windows (chỉ xoá ổ C:) — giới hạn số lần mỗi lượt thuê."""
+    def __init__(self, app, item, os_list, mx):
+        pc = item.get("pc") or {}
+        super().__init__(app, L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " · " + str(pc.get("name") or ""), 540, 520)
+        self.it, self.pc = item, pc; self.os = item.get("os") if any(o.get("id") == item.get("os") for o in os_list) else (os_list[0]["id"] if os_list else None)
+        tk = app.tk
+        self.label(self.body, L(f"Còn {int(num(item.get('left')))}/{mx} lượt trong lượt thuê này.", f"{int(num(item.get('left')))}/{mx} reinstalls left."), self.app.f_t, DIM).pack(fill="x", padx=18, pady=(16, 0))
+        f = self.section(L("Cài bản Windows", "Install Windows"))
+        self.ch = Chips(app, f, [(o["id"], (o.get("name") or o["id"]) + (L("\n(đang dùng)", "\n(current)") if o["id"] == item.get("os") else "")) for o in os_list],
+                        lambda: self.os, lambda v: setattr(self, "os", v), lambda: self.ch.paint(), wrap=2)
+        self.ch.frame.pack(fill="x")
+        self.label(self.body, L("⚠️ Chỉ xoá ổ C: (Windows) — ổ khác giữ nguyên. Máy khởi động lại và cài trong 15–30 phút. Dữ liệu ổ C: không lấy lại được.",
+                                "⚠️ Only drive C: (Windows) is erased — other drives are kept. Takes 15–30 minutes."), self.app.f_s, WARN, wraplength=490).pack(fill="x", padx=18, pady=(12, 0))
+        ft = self.foot
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(10, 0))
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, L("Cài lại ngay", "Reinstall now"), self.run); self.go.pack(side="right")
+
+    def run(self):
+        import tkinter.messagebox as mb
+        if not self.os: return
+        if not mb.askyesno(L("Cài lại", "Reinstall"), L(f"Cài lại máy {self.pc.get('name')} sang {str(self.os).upper()}?\n\nỔ C: bị xoá, không lấy lại được.",
+                                                        f"Reinstall {self.pc.get('name')} with {str(self.os).upper()}?\n\nDrive C: is erased."), parent=self.win): return
+        self.go.config(state="disabled")
+        def done(r):
+            self.close(); self.app.refresh()
+            mb.showinfo("CloudBlue", L(f"Đã gửi lệnh cài lại — còn {int(num((r or {}).get('left')))} lượt.", "Reinstall started."), parent=self.app.root)
+        def fail(m): self.err.config(text=vps_err(m)); self.go.config(state="normal")
+        self.bg(lambda: self.app.auth.rpc("pc_my_reinstall", {"p_pc": self.pc.get("id"), "p_os": self.os}), done, fail)
+
+
+class VpsRenewDlg(Dlg):
+    """Gia hạn VPS GPU: giá theo gói ngày của sản phẩm (như mua mới)."""
+    def __init__(self, app, item):
+        pc = item.get("pc") or {}
+        super().__init__(app, L("Gia hạn ", "Renew ") + str(pc.get("name") or "VPS GPU"), 540, 520)
+        self.it, self.pc, self.days = item, pc, None
+        self.loading(L("Đang tải bảng giá…", "Loading prices…"))
+        self.bg(lambda: (vps_shop(app.auth, 0), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, r):
+        tk = self.app.tk; (self.info, self.prod), self.prof = r; self.clear()
+        self.pl = vps_plans(self.prod)
+        if not self.pl: self.loading(L("Chưa có bảng giá gia hạn — nhắn shop.", "No renewal prices yet.")); return
+        self.days = self.pl[0][0]
+        self.label(self.body, L("Hạn hiện tại: ", "Current expiry: ") + fmt_left(self.it.get("until")), self.app.f_t, DIM).pack(fill="x", padx=18, pady=(16, 0))
+        f = self.section(L("Gia hạn thêm", "Add"))
+        self.ch = Chips(self.app, f, [(d, f"+{d} " + L("ngày", "days") + "\n" + vnd(ctv(self.prof, pr))) for d, pr in self.pl], lambda: self.days, lambda v: setattr(self, "days", v), self.upd, wrap=3)
+        self.ch.frame.pack(fill="x")
+        ft = self.foot
+        self.sum = self.label(ft, "", self.app.f_t, TXT); self.sum.pack(fill="x", padx=16, pady=(10, 0))
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, L("Gia hạn", "Renew"), self.renew); self.go.pack(side="right")
+        self.upd()
+
+    def price(self): return ctv(self.prof, next((pr for d, pr in self.pl if d == self.days), 0))
+
+    def upd(self):
+        if not self.alive or not hasattr(self, "ch"): return
+        self.ch.paint()
+        tot, bal = self.price(), num(self.prof.get("balance"))
+        exp = parse_iso(self.it.get("until")); base = max(now_utc(), exp) if exp else now_utc()
+        new = (base + datetime.timedelta(days=self.days)).astimezone().strftime("%H:%M %d/%m/%Y")
+        self.sum.config(text=L("Hạn mới: ", "New expiry: ") + new + "   ·   " + L("Thanh toán: ", "Total: ") + vnd(tot) + "   ·   " + L("Số dư: ", "Balance: ") + vnd(bal))
+        self.err.config(text="" if tot <= bal else L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + vnd(tot - bal) + ".")
+        self.go.config(text=L(f"Gia hạn {self.days} ngày", f"Renew {self.days} days") if tot <= bal else L("Nạp tiền", "Top up"))
+
+    def renew(self):
+        import tkinter.messagebox as mb
+        tot, bal = self.price(), num(self.prof.get("balance"))
+        if tot > bal: self.close(); self.app.open_topup(tot - bal); return
+        if not mb.askyesno(L("Gia hạn", "Renew"), L(f"Gia hạn {self.pc.get('name')} thêm {self.days} ngày, trừ {vnd(tot)}?", f"Renew {self.days} days for {vnd(tot)}?"), parent=self.win): return
+        self.go.config(state="disabled"); d = self.days
+        def done(r):
+            self.close(); self.app.refresh()
+            mb.showinfo("CloudBlue", L("Đã gia hạn. Máy đã tắt lúc hết hạn — shop sẽ bật lại cho bạn.", "Renewed. The shop will turn the machine back on.") if (r or {}).get("was_off")
+                        else L(f"Đã gia hạn +{d} ngày.", f"Renewed +{d} days."), parent=self.app.root)
+        def fail(m): self.err.config(text=vps_err(m)); self.go.config(state="normal"); self.upd()
+        self.bg(lambda: self.app.auth.rpc("pc_my_renew", {"p_pc": self.pc.get("id"), "p_days": d}), done, fail)
 
 
 class TopupDlg(Dlg):
@@ -7433,9 +7755,11 @@ class Launcher:
         self.btn(hd, L("▦ Xem tất cả", "▦ View all"), self.open_wall, tint=OK, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 8))   # 17/11d
         nav = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=22)      # thanh nổi dưới cùng (giống thanh thẻ của app điện thoại)
         nav.pack(side="bottom", fill="x", padx=18, pady=(4, 14))
-        for i, (t, cmd, kind) in enumerate((("+ Thuê máy", self.open_order, "primary"), ("Nạp tiền", self.open_topup, "flat"), ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))):
+        navs = (("+ Thuê máy", self.open_order, "primary"), (L("🖥️ VPS GPU", "🖥️ GPU VPS"), lambda: VpsBuyDlg(self), "flat"), ("Nạp tiền", self.open_topup, "flat"),
+                ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))
+        for i, (t, cmd, kind) in enumerate(navs):
             nav.grid_columnconfigure(i, weight=1, uniform="nav")
-            self.btn(nav, t, cmd, kind, pady=9).grid(row=0, column=i, sticky="ew", padx=(8 if i == 0 else 3, 8 if i == 2 else 3), pady=8)
+            self.btn(nav, t, cmd, kind, pady=9).grid(row=0, column=i, sticky="ew", padx=(8 if i == 0 else 3, 8 if i == len(navs) - 1 else 3), pady=8)
         # 17/11c: các ô ưu đãi + thẻ máy nằm CHUNG 1 vùng cuộn (như app điện thoại) → màn hình thấp (laptop 768) kéo xuống là thấy nhiều máy
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=(10, 5), pady=(6, 2))
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
@@ -7450,6 +7774,8 @@ class Launcher:
         self._paint_wheel()
         self.offers_slot = tk.Frame(page, bg=BG); self.offers_slot.pack(fill="x", padx=8)   # 🎬 Kiếm tiền · 🎁 Ưu đãi (SQL v35) — trống khi chưa bật
         self._paint_offers()
+        self.vps_slot = tk.Frame(page, bg=BG); self.vps_slot.pack(fill="x", padx=8)         # 21/11 · 🖥️ VPS GPU của bạn (SQL v43) — trống khi chưa có
+        self._vps_sig = None; self._paint_vps(getattr(self, "vps_last", None))
         self.list = tk.Frame(page, bg=BG); self.list.pack(fill="x", pady=(10, 0))             # các thẻ máy
         self._cards = []; self._ncol = 0; self.list.bind("<Configure>", lambda e: self._lay_cards(), add="+")
         self.list_wrap = self.list; self._paint_promo()
@@ -7476,6 +7802,8 @@ class Launcher:
                     u = fetch_update_info(force=True, timeout=10, with_min=not getattr(self, "_site_ok", False))
                     if u: self.update_info = u
                 rows = self.auth.phones()
+                try: vps = self.auth.rpc("pc_my_vps", {})                     # 21/11 · VPS GPU của tôi (cơ sở dữ liệu chưa có phần này → bỏ qua)
+                except Exception: vps = None
                 try: prof = self.shop.profile()
                 except ApiError as e:
                     if e.code == 401: raise
@@ -7489,6 +7817,7 @@ class Launcher:
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
                     self.render(rows)
+                    self.vps_last = vps; self._paint_vps(vps)
                 self.ui(show)
             except ApiError as e:
                 m = str(e)
@@ -7623,6 +7952,50 @@ class Launcher:
                       else "Bấm Cập nhật để xem cách tải bản mới.", font=self.f_s, fg=DIM, bg=C2, anchor="w", cursor="hand2", justify="left", wraplength=400)
         t1.pack(fill="x", padx=12, pady=(8, 0)); t2.pack(fill="x", padx=12, pady=(0, 8))
         for w in (b, t1, t2): w.bind("<Button-1>", lambda *_: UpdateDlg(self, u))
+
+    def open_pc(self, pid):
+        """21/11: mở cửa sổ điều khiển máy PC thật (VPS GPU) — cửa sổ riêng, chuột / phím thật."""
+        try: spawn_viewer(str(pid), "--view", "--pc")
+        except Exception: log("open pc:", traceback.format_exc())
+
+    def _paint_vps(self, data):
+        slot = getattr(self, "vps_slot", None)
+        if slot is None or not slot.winfo_exists(): return
+        items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict)]
+        sig = json.dumps(items, sort_keys=True, default=str)
+        if sig == getattr(self, "_vps_sig", None): return
+        self._vps_sig = sig
+        for w in slot.winfo_children(): w.destroy()
+        if not items: return
+        tk = self.tk; mx = int(num((data or {}).get("reinstall_max", 2)))
+        os_list = [o for o in ((data or {}).get("os") or []) if isinstance(o, dict) and o.get("id")]
+        hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
+        tk.Label(hd, text=L("🖥️ VPS GPU của bạn", "🖥️ Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
+        self.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(self), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+        for x in items:
+            pc = x.get("pc") or {}; code, st, col, why = vps_state(x)
+            c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off") else LINE, highlightthickness=1)
+            c.pack(fill="x", padx=8, pady=4)
+            row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(12, 2))
+            tk.Label(row, text=str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else ""),
+                     font=("Segoe UI", 12, "bold"), fg=TXT, bg=CARD).pack(side="left")
+            tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
+            spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g] + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else [])
+            tk.Label(c, text=" · ".join(s for s in spec if s), font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
+            if why: tk.Label(c, text=why, font=self.f_s, fg=BAD if code == "exp" else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
+                             wraplength=460, justify="left").pack(fill="x", padx=16, pady=(2, 0))
+            if x.get("state") == "active" and x.get("until") and left_secs(x["until"]) > 0:
+                tk.Label(c, text="⏱ " + fmt_left(x["until"]), font=self.f_s, fg=WARN if left_secs(x["until"]) < 86400 else DIM, bg=CARD, anchor="w").pack(fill="x", padx=16, pady=(2, 0))
+            if x.get("state") != "active" or not pc.get("id"):
+                tk.Frame(c, bg=CARD, height=10).pack(fill="x"); continue
+            bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=16, pady=(10, 13))
+            b = self.btn(bar, "▶  " + L("Điều khiển", "Control"), lambda pid=str(pc.get("id")): self.open_pc(pid), padx=18, pady=8); b.pack(side="left")
+            if code not in ("run",): b.config(state="disabled", bg=LINE)
+            if x.get("rental") is None: continue
+            left = int(num(x.get("left")))
+            rb = self.btn(bar, f"🔄 {L('Cài lại', 'Reinstall')} {left}/{mx}", lambda q=x: VpsReDlg(self, q, os_list, mx), "ghost", pady=8); rb.pack(side="left", padx=8)
+            if left < 1 or code in ("inst", "exp") or not os_list: rb.config(state="disabled")
+            self.btn(bar, L("⏱ Gia hạn", "⏱ Renew"), lambda q=x: VpsRenewDlg(self, q), "ghost", pady=8).pack(side="right")
 
     def _rows_sig(self, rows):
         """Dấu vân tay của mọi thứ đang vẽ trong danh sách máy (máy + dòng "còn … ngày" + quyền admin + cờ bắt buộc cập nhật)."""
@@ -7841,7 +8214,7 @@ def main():
         def opt(k):
             i = args.index(k) if k in args else -1
             return args[i + 1] if 0 <= i < len(args) - 1 else None
-        return run_viewer(args[1], opt("--dock"), opt("--ipc"), opt("--tok"))      # 17/11d: --dock <khung> = gắn vào ô bên phải của app
+        return run_viewer(args[1], opt("--dock"), opt("--ipc"), opt("--tok"), "--pc" in args)      # 17/11d: --dock <khung> = gắn vào ô bên phải của app · 21/11: --pc = máy PC thật
     if len(args) >= 2 and args[0] == "--tools":
         if not UUID_RE.fullmatch(args[1]) or not Auth().logged_in: return
         return Launcher(tools_for=args[1]).run()
@@ -7849,6 +8222,9 @@ def main():
     m = UUID_RE.search(link)
     open_id = m.group(0) if m else None
     register_protocol()
+    if open_id and link.lower().startswith("blueroblox://pc/"):          # 21/11: web bấm "Mở bằng app" cho máy PC (VPS GPU)
+        if Auth().logged_in: spawn_viewer(open_id, "--view", "--pc"); return
+        open_id = None                                     # chưa đăng nhập → mở app, đăng nhập xong mở máy từ danh sách VPS GPU
     if open_id and Auth().logged_in:
         spawn_viewer(open_id); return                     # bấm "Mở bằng app" trên web → mở thẳng cửa sổ máy
     Launcher(open_id, updated="--updated" in args).run()
