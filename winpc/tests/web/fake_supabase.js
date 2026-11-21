@@ -20,9 +20,10 @@
     const run = () => {
       F.calls.push({ kind: "from", table, op: st.op, eq: st.eq.slice(), cols: st.cols });
       if (isPc(table) && !F.v41) return noTable(table);
-      if (isPc(table) && !F.v42 && st.op === "select" && /\b(rent_until|renter|rent_warn_min|notify_at)\b/.test(st.cols))        // chưa chạy v42: PostgREST báo thiếu cột
+      if (isPc(table) && !F.v42 && st.op === "select" && /\b(rent_until|renter|rent_warn_min|rent_remind_min|notify_at)\b/.test(st.cols))        // chưa chạy v42: PostgREST báo thiếu cột
         return { data: null, error: { code: "42703", message: "column " + table + "." + (table === "pc_settings" ? "rent_warn_min" : "rent_until") + " does not exist" }, count: null };
       if (st.op !== "select") return { data: null, error: null };
+      if (table === "pc_settings" && F.v42) sets();                   // cột v42 có giá trị mặc định (NOT NULL) như cơ sở dữ liệu thật
       let rows = (F.db[table] || []).filter(r => st.eq.every(([c, v]) => String(r[c]) === String(v)));
       if (st.order) { const [c, asc] = st.order; rows = rows.slice().sort((a, b) => (a[c] > b[c] ? 1 : a[c] < b[c] ? -1 : 0) * (asc ? 1 : -1)); }
       if (st.limit != null) rows = rows.slice(0, st.limit);
@@ -41,14 +42,14 @@
   const pcs = () => (F.db.pc_machines = F.db.pc_machines || []);
   const ords = () => (F.db.pc_orders = F.db.pc_orders || []);
   const sets = () => { F.db.pc_settings = F.db.pc_settings || [{ id: 1, enroll_hash: null, enroll_made_at: null, auto_approve: false, agent: {}, poll_s: 30 }];
-    const s = F.db.pc_settings[0]; if (F.v42) for (const [k, v] of [["rent_warn_min", 60], ["off_alert_min", 15], ["alert_email", true], ["notify_at", null], ["notify_fail_at", null], ["notify_err", null]]) if (!(k in s)) s[k] = v;
+    const s = F.db.pc_settings[0]; if (F.v42) for (const [k, v] of [["rent_warn_min", 2880], ["rent_remind_min", 240], ["off_alert_min", 15], ["alert_email", true], ["notify_at", null], ["notify_fail_at", null], ["notify_err", null]]) if (!(k in s)) s[k] = v;
     return s; };
   const RPC = {
     pc_admin_new_key() { const k = "cbpc_" + hex(40); const s = sets(); s.enroll_hash = "h" + hex(63); s.enroll_made_at = new Date().toISOString(); return { data: k, error: null }; },
     pc_admin_key_off() { const s = sets(); s.enroll_hash = null; s.enroll_made_at = null; return { data: null, error: null }; },
     pc_admin_settings(a) { const s = sets(), p = a.p_patch || {}; if ("auto_approve" in p) s.auto_approve = !!p.auto_approve; if ("agent" in p) { if (!p.agent || typeof p.agent !== "object" || Array.isArray(p.agent)) return raise("BAD_AGENT"); s.agent = clone(p.agent); } if ("poll_s" in p) s.poll_s = +p.poll_s;
       if (F.v42) {                                                 // v41 bỏ qua các khoá lạ (đúng như hàm SQL cũ)
-        for (const [k, max] of [["rent_warn_min", 10080], ["off_alert_min", 1440]]) if (k in p) { const n = +p[k]; if (!Number.isInteger(n) || n < 0 || n > max) return raise("BAD_WARN"); s[k] = n; }
+        for (const [k, max] of [["rent_warn_min", 10080], ["rent_remind_min", 1440], ["off_alert_min", 1440]]) if (k in p) { const n = +p[k]; if (!Number.isInteger(n) || n < 0 || n > max) return raise("BAD_WARN"); s[k] = n; }
         if ("alert_email" in p) s.alert_email = !!p.alert_email;
       }
       return { data: clone(s), error: null }; },
