@@ -22,7 +22,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11c"
+PROV_VER = "21.11h"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -728,8 +728,8 @@ class Prov:
            → trên máy không còn tài khoản quản trị nào dùng được; việc quản trị đi qua agent (SYSTEM) theo lệnh từ web, hoặc cài lại.
            Trả True nếu VỪA gỡ quyền Admin của tài khoản khách (cần đăng nhập lại / khởi động lại để có hiệu lực)."""
         c = self.cfg()
-        if c.get("user_admin"):
-            self.log("tai khoan khach duoc de quyen Admin (user_admin) - khong ha quyen"); return False
+        if c.get("user_admin"):                                      # 21.11h: shop BẬT "Cho khách quyền Admin" (agent ghi theo máy chủ) → cấp quyền, không hạ
+            return self.grant()
         user = c.get("user") or "PC"
         adm, usr, bia = self.names()
         if user.lower() == bia.lower():
@@ -741,7 +741,11 @@ class Prov:
         self._run(["net", "localgroup", usr, user, "/add"], 60)                      # đã ở trong nhóm thì lệnh báo lỗi 1378 — bỏ qua
         if self.in_group(adm, user):
             changed = self.sh(["net", "localgroup", adm, user, "/delete"], "go tai khoan '%s' khoi nhom %s (thanh tai khoan thuong)" % (user, adm))
-            if was: self.sec_event("tai khoan khach '%s' co lai quyen Admin - da ha lai" % user)
+            granted = os.path.exists(self.mark("admin.granted"))      # 21.11h: shop vừa TẮT công tắc quyền Admin → hạ quyền có chủ ý, không phải việc lạ
+            if was and not granted: self.sec_event("tai khoan khach '%s' co lai quyen Admin - da ha lai" % user)
+            if granted:
+                try: os.remove(self.mark("admin.granted"))
+                except OSError: pass
         self.sh(["net", "user", user, "/passwordchg:no"], "cam tai khoan '%s' tu doi mat khau" % user)
         if not was or self.bia_off is False:                                         # lần đầu, hoặc tài khoản Administrator có sẵn bị ai đó BẬT lại
             if was: self.sec_event("tai khoan '%s' co san bi bat lai - da tat lai" % bia)
@@ -752,6 +756,41 @@ class Prov:
         self.admins_watch(adm, bia, baseline=not was)
         return changed
 
+    def grant(self):
+        """21.11h · Công tắc "Cho khách quyền Admin" của shop (cb.json "user_admin": true): tài khoản khách VÀO nhóm Administrators → app cần quyền Admin
+           (vd executor Roblox) chỉ hiện hộp Có / Không, không hỏi mật khẩu admin. Có hiệu lực từ lần đăng nhập sau → nhắn khách khởi động lại 1 lần.
+           KHÔNG tự khởi động lại (khách có thể đang chạy việc). Trả False."""
+        c = self.cfg(); user = c.get("user") or "PC"
+        adm, usr, bia = self.names()
+        if user.lower() == bia.lower():
+            self.log("tai khoan khach trung ten tai khoan Administrator co san - khong doi"); return False
+        if self._run(["net", "user", user], 60)[0] != 0:
+            self.log("chua co tai khoan '%s' (Windows chua tao xong) - de lan sau" % user); return False
+        if self.in_group(adm, user):
+            self.log("tai khoan khach '%s' da co quyen Admin (user_admin)" % user); return False
+        if self.sh(["net", "localgroup", adm, user, "/add"], "cap quyen Admin cho tai khoan khach '%s' (shop bat user_admin)" % user):
+            self.touch("admin.granted")
+            self._run(["msg", "*", "/time:900", "CloudBlue: may da duoc BAT QUYEN ADMIN. Hay khoi dong lai may 1 lan (Start > Restart) "
+                       "de chay duoc app can quyen Admin. Luu y: KHONG tat / go phan mem CloudBlue - vi pham se bi khoa may, khong hoan tien."], 30)
+        return False
+
+    def guard(self):
+        """21.11h · Khách có quyền Admin (công tắc của shop): chặn RIÊNG tài khoản khách sửa / xoá / đổi quyền thư mục phần mềm shop (C:\\CloudBluePC)
+           và gốc phân vùng cứu hộ — ACE TỪ CHỐI theo tài khoản khách (SYSTEM / agent không bị ảnh hưởng; đọc + chạy py\\, os\\ vẫn được).
+           Bấm xoá / sửa bình thường (kể cả bằng quyền Admin) sẽ bị Windows chặn; muốn phá phải cố tình chiếm quyền sở hữu. Làm lại vô hại."""
+        c = self.cfg()
+        if not c.get("user_admin"): return True
+        user = c.get("user") or "PC"
+        deny = user + ":(OI)(CI)(DE,DC,WD,AD,WEA,WA,WDAC,WO)"
+        bad = 0 if self._run(["icacls", self.base.rstrip("\\"), "/deny", deny], 900)[0] == 0 else 1
+        try: root = self._rec() or ""
+        except Exception: root = ""
+        if root:
+            r = root if root.endswith("\\") else root + "\\"
+            if self._run(["icacls", r, "/deny", deny], 900)[0] != 0: bad += 1
+        self.log("%s chan tai khoan khach '%s' sua / xoa phan mem shop + phan vung cuu ho" % ("ok " if not bad else "LOI", user))
+        return not bad
+
     def system(self):
         """Agent (SYSTEM) gọi lúc khởi động + vài giờ 1 lần. Khoá lại quyền (rẻ, làm lại vô hại) và làm nốt việc hạ quyền tài khoản khách nếu lần đăng nhập
            đầu không làm xong (mất điện giữa chừng, bản Windows tuỳ biến không chạy file trả lời…). KHÔNG khởi động lại máy."""
@@ -759,6 +798,7 @@ class Prov:
         self.touch("system.first")
         self.pw_never_expires()
         self.lockdown()
+        self.guard()                                                 # 21.11h: khách có quyền Admin → vẫn chặn riêng tài khoản khách đụng vào phần mềm shop
         done, started, first = self.mark_age("firstlogon.done"), self.mark_age("firstlogon.start"), self.mark_age("system.first")
         # chỉ hạ quyền khi lần đăng nhập đầu ĐÃ xong (script riêng của chủ shop cần quyền Admin), hoặc đã quá 1 giờ mà nó không xong
         if done is not None or (started is not None and started > 3600) or (started is None and first is not None and first > 3600):
