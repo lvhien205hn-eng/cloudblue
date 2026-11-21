@@ -4942,10 +4942,10 @@ function m3RowCloud() {
 }
 /* 21.11l: sản phẩm có gói → giá TỪNG gói + giá / ngày (so với gói ngắn nhất: −x%); gói rẻ nhất tính theo ngày có nhãn "Rẻ nhất". Bấm 1 gói = mở hộp mua chọn sẵn gói đó. */
 function m3Plans(p, pl, s) {
-  const pd = x => cv(+x.price) / Math.max(1, +x.days), base = pd(pl[0]), low = Math.min(...pl.map(pd));
-  const bi = pl.length > 1 ? pl.findIndex(x => pd(x) === low) : -1, off = s === 0 ? " disabled" : "";
-  return `<div class="m3-plans">${pl.map((x, i) => { const d = pd(x), sv = base > 0 ? Math.round((1 - d / base) * 100) : 0;
-    return `<button type="button" class="m3-plan${i === bi ? " best" : ""}" data-buy="${esc(p.id)}" data-days="${+x.days}"${off}>${i === bi ? `<i class="tag">${L("Rẻ nhất", "Best value")}</i>` : ""}`
+  const pd = x => cv(+x.price) / Math.max(1, +x.days), r2 = v => Math.round(v * 100) / 100, base = pd(pl[0]), low = Math.min(...pl.map(x => r2(pd(x))));
+  const many = pl.some(x => r2(pd(x)) !== low), off = s === 0 ? " disabled" : "";        // nhiều gói cùng rẻ nhất / ngày → gắn nhãn cả các gói đó; mọi gói bằng nhau → không gắn
+  return `<div class="m3-plans">${pl.map(x => { const d = pd(x), sv = base > 0 ? Math.round((1 - d / base) * 100) : 0, bst = many && r2(d) === low;
+    return `<button type="button" class="m3-plan${bst ? " best" : ""}" data-buy="${esc(p.id)}" data-days="${+x.days}"${off}>${bst ? `<i class="tag">${L("Rẻ nhất", "Best value")}</i>` : ""}`
       + `<b>${+x.days} ${L("ngày", "days")}</b><span class="pp">${esc(fmt(cv(+x.price)))}</span><small>${esc(fmt(d))}/${L("ngày", "day")}${sv >= 1 ? ` · <em>−${sv}%</em>` : ""}</small></button>`; }).join("")}</div>`;
 }
 function m3RowProd(p) {
@@ -13586,10 +13586,11 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     let p = null; try { p = selP(); } catch (e) {} if (!p) return;
     const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
     const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
-    const low = pl.length > 1 ? Math.min(...pl.map(x => cv(+x.price) / Math.max(1, +x.days))) : -1;       // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất"
+    const r2 = v => Math.round(v * 100) / 100, per = x => cv(+x.price) / Math.max(1, +x.days);
+    const low = Math.min(...pl.map(x => r2(per(x)))), many = pl.some(x => r2(per(x)) !== low);   // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất" (bằng nhau thì gắn cả; mọi gói như nhau thì không gắn)
     $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
       const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
-      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = pd === low;
+      const pd = per(x), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = many && r2(pd) === low;
       b.classList.toggle("best", best);
       b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${best || save >= 1 ? `<i class="sv">${best ? L("Rẻ nhất", "Best") + (save >= 1 ? " −" + save + "%" : "") : "−" + save + "%"}</i>` : ""}`);
     });
