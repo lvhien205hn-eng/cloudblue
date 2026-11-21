@@ -36,7 +36,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11g"
+AGENT_VER = "21.11h"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -338,6 +338,7 @@ class Agent:
         self.s, self.h, self.net, self.base = sysx, host, net, base.rstrip("\\")
         self._log = log or (lambda m: None)
         self.cfg = C.load_json(sysx, self.p("cb.json")) or {}
+        self.sec_now = False                                        # 21.11h: công tắc quyền Admin vừa đổi → vòng chính chạy ngay pha system của cb_provision
         self.ident = C.load_json(sysx, self.p("identity.json")) or None
         if self.ident and not (self.ident.get("id") and self.ident.get("token")): self.ident = None
         self.poll_s, self.ticks, self.fail = 30, 0, 0
@@ -1028,7 +1029,25 @@ class Agent:
         except Exception: self.log("lỗi chỉnh đồng hồ: " + traceback.format_exc())
         try: self.rent_sync(r)
         except Exception: self.log("lỗi nhận hạn thuê: " + traceback.format_exc())
+        try: self.admin_sync(r)
+        except Exception: self.log("lỗi công tắc quyền Admin: " + traceback.format_exc())
         return r
+
+    def admin_sync(self, r):
+        """21.11h · Công tắc "Cho khách quyền Admin" của shop (SQL v46: pc_poll trả cust_admin; máy chủ cũ không có trường này → giữ nguyên như cũ).
+           Đổi thì ghi cb.json "user_admin" rồi bảo vòng chính chạy NGAY pha `system` của cb_provision: bật → thêm tài khoản khách vào nhóm
+           Administrators (+ nhắn khách khởi động lại 1 lần) · tắt → hạ lại thành tài khoản thường."""
+        if not isinstance(r, dict) or "cust_admin" not in r: return False
+        want = r.get("cust_admin") is True
+        if bool(self.cfg.get("user_admin")) == want: return False
+        cfg = C.load_json(self.s, self.p("cb.json"))
+        cfg = dict(cfg if isinstance(cfg, dict) else self.cfg)
+        cfg["user_admin"] = want
+        C.save_json(self.s, self.p("cb.json"), cfg)
+        self.cfg = cfg; self.sec_now = True
+        self.log("shop %s quyền Admin cho tài khoản khách → áp dụng ngay" % ("BẬT" if want else "TẮT"))
+        self.event("admin", on=1 if want else 0)
+        return True
 
     def tick(self):
         """1 nhịp làm việc. Trả số giây nghỉ trước nhịp sau."""
@@ -1118,8 +1137,8 @@ def cmd_run(argv):
             if ag.h.restart_self(): return 0
             ag.restart = False
         since = abs(time.time() - t_sec)
-        if since > 6 * 3600 or (since > 300 and ag.ident and ag.fail == 0 and vga_pending()):     # driver VGA còn chờ mạng → máy có mạng rồi thì cài nốt
-            secure(ag, log); t_sec = time.time()
+        if since > 6 * 3600 or ag.sec_now or (since > 300 and ag.ident and ag.fail == 0 and vga_pending()):     # driver VGA còn chờ mạng → máy có mạng rồi thì cài nốt
+            ag.sec_now = False; secure(ag, log); t_sec = time.time()                   # 21.11h: shop vừa đổi công tắc quyền Admin → làm ngay
         time.sleep(max(1, min(900, nap)))
 
 
