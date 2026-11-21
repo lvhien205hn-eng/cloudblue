@@ -319,8 +319,10 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   function orderCell(m) {
     const op = openOf(m.id)[0], last = lastOf(m.id);
     if (op) {
-      const t = op.state === "queued" ? "chờ máy nhận" : "máy đã nhận";
-      return `<span class="pill wt">⏳ ${esc(cmdName(op))}</span><div class="hint">${t} · ${mins(op.sent_at || op.created_at)} phút</div><button class="btn ghost sm" type="button" data-pca="cancel" data-o="${+op.id}" style="margin-top:6px">Huỷ lệnh</button>`;
+      const t = op.state === "queued" ? "chờ máy nhận lệnh" : "máy đang làm", kind = "cmd-" + (["reinstall", "reboot", "update", "shutdown"].includes(op.cmd) ? op.cmd : "x");
+      return `<span class="pill wt">⏳ ${esc(cmdName(op))}</span><div class="hint">${t}</div>`        // 21/11f · thanh tiến độ có đếm giờ (pc_shop.html tự chạy mỗi giây)
+        + `<div class="pcs-prog" data-pk="${kind}" data-t0="${esc(S(op.sent_at || op.created_at, 40))}" data-os="${esc(S(O(op.args).os, 12))}" style="margin-top:5px;min-width:170px"><div class="pp-bar"><i></i></div><div class="pp-t"></div></div>`
+        + `<button class="btn ghost sm" type="button" data-pca="cancel" data-o="${+op.id}" style="margin-top:6px">Huỷ lệnh</button>`;
     }
     if (!last) return '<span class="hint">—</span>';
     const r = O(last.result), msg = S(r.msg, 300) || S(r.err, 300), took = +r.secs > 0 ? Math.max(1, Math.round(+r.secs / 60)) : 0;

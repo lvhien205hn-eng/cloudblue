@@ -164,6 +164,19 @@ def main():
         ck("đơn chờ máy: báo tự giao, không cần nhắn shop", "Đang chờ máy" in cards[2]["t"] and "không cần nhắn shop" in cards[2]["t"], cards[2])
         ck("máy hết hạn đã tắt: báo gia hạn để dùng tiếp, hết lượt cài lại", "Hết hạn" in cards[3]["t"] and "Gia hạn" in cards[3]["t"] and cards[3]["re"] is True, cards[3])
         ck("tên máy / GPU lạ không chạy được mã (đã esc)", s.js("() => !window.__xss") and "<img" in cards[1]["t"])
+        pg_ = s.js("""() => { const c = document.querySelectorAll('#pcs-mine-list .pcs-card')[1], p = c && c.querySelector('.pcs-prog');
+                    return p ? { k: p.dataset.pk, t: p.querySelector('.pp-t').textContent, w: p.querySelector('.pp-bar i').style.width, late: p.classList.contains('late') } : null; }""")
+        ck("máy đang cài lại: thanh tiến độ có % + đếm giờ chạy (Khởi động lại vào bộ cài · đã chạy 1:0x)",
+           pg_ and pg_["k"] == "inst" and "Khởi động lại vào bộ cài" in pg_["t"] and "đã chạy 1:0" in pg_["t"] and "%" in pg_["t"] and pg_["w"].endswith("%") and not pg_["late"], pg_)
+        s.js("() => { const p = document.querySelectorAll('#pcs-mine-list .pcs-card')[1].querySelector('.pcs-prog'); p.dataset.t0 = new Date(Date.now() - 61 * 60000).toISOString(); }")
+        s.page.wait_for_timeout(1300)
+        lt2 = s.js("() => { const p = document.querySelectorAll('#pcs-mine-list .pcs-card')[1].querySelector('.pcs-prog'); return { late: p.classList.contains('late'), t: p.querySelector('.pp-t').textContent, rep: !!p.querySelector('[data-pcsrep]') }; }")
+        ck("cài quá lâu (61 phút) → thanh vàng 'lâu hơn bình thường' + nút 📋 Báo admin", lt2["late"] and "lâu hơn bình thường" in lt2["t"] and lt2["rep"], lt2)
+        s.page.click('#pcs-mine-list .pcs-prog [data-pcsrep]'); s.page.wait_for_timeout(300)
+        rp = s.js("() => ({ open: !document.getElementById('pcsdlg').hidden, msg: (document.getElementById('pcs-repmsg') || {}).textContent || '', copy: !!document.getElementById('pcs-repcopy') })")
+        ck("Báo admin → hộp có nội dung soạn sẵn (máy, việc đang làm + thời gian, lượt thuê) + nút Copy",
+           rp["open"] and "VPS GPU CẦN HỖ TRỢ" in rp["msg"] and "Cài lại Windows 1511" in rp["msg"] and "Lượt thuê: #8" in rp["msg"] and rp["copy"], rp)
+        s.js("() => { document.getElementById('pcsdlg').hidden = true; }")
         s.page.click('#pcs-mine [data-pcsvid]'); s.page.wait_for_timeout(300)
         vd = s.js("""() => { const m = document.getElementById('pcsdlg'), v = m && m.querySelector('video.pcs-vid');
                     return { open: !!m && !m.hidden, src: v ? v.getAttribute('src') : '', poster: v ? v.getAttribute('poster') : '', ctl: !!v && v.controls, inl: !!v && v.playsInline,
@@ -210,6 +223,19 @@ def main():
         s.page.click('#pcs-vm [data-pcsrenew="%s"]' % PC1); s.page.wait_for_timeout(300)
         ck("trong hộp 'VPS của tôi': nút ⏱ Gia hạn mở hộp gia hạn (nằm trên)", s.js("() => !document.getElementById('pcsdlg').hidden && document.getElementById('pcsdlg').innerText.includes('Gia hạn')"))
         s.js("() => { document.getElementById('pcsdlg').hidden = true; document.getElementById('vmach').hidden = true; }")
+        # 🛠️ bảo trì riêng VPS GPU (settings.data.pc_maint) — khách: khoá điều khiển / app / cài lại + báo; gia hạn vẫn được
+        s.js("() => { SITE.pc_maint = true; SITE.pc_maint_msg = 'Nâng cấp máy'; }"); s.js("() => window.PCSHOP && (window.PCSHOP.mineAt = 0)")
+        s.page.evaluate("() => document.getElementById('nav-vps').click()"); s.page.wait_for_timeout(900)
+        mt = s.js("""() => { const b = document.getElementById('pcs-vm'), h = document.getElementById('pcs-mine-mt');
+                    return { bar: b ? (b.querySelector('.pcs-maint') || {}).innerText || '' : '', home: h ? h.innerText : '', ctl: !!(b && b.querySelector('a[href^=\"/play.html?pc=\"]')),
+                             app: !!(b && b.querySelector('[data-pcsapp]')), re: [...(b ? b.querySelectorAll('[data-pcsre]') : [])].every(x => x.disabled), renew: [...(b ? b.querySelectorAll('[data-pcsrenew]') : [])].some(x => !x.disabled) }; }""")
+        ck("bảo trì riêng VPS GPU: khách thấy dòng báo (kèm lời nhắn), không còn ▶ Điều khiển / 📲 App, cài lại bị khoá, gia hạn vẫn bấm được",
+           "VPS GPU đang bảo trì — Nâng cấp máy" in mt["bar"] and "VPS GPU đang bảo trì" in mt["home"] and not mt["ctl"] and not mt["app"] and mt["re"] and mt["renew"], mt)
+        s.js("() => { document.getElementById('vmach').hidden = true; }")
+        s.js("id => openBuy(id)", PROD); s.page.wait_for_timeout(400); s.page.click("#m-ok"); s.page.wait_for_timeout(500)
+        ck("bảo trì: hộp mua có dòng báo, bấm Thanh toán → báo bảo trì, KHÔNG gọi pc_buy",
+           "VPS GPU đang bảo trì" in s.js("() => document.getElementById('pcs-hero').innerText") and "bảo trì" in s.js("() => document.getElementById('m-err').textContent") and len(s.js("() => window.__SHOP.bought")) == 2, s.js("() => window.__SHOP.bought"))
+        s.js("() => { document.getElementById('modal').hidden = true; SITE.pc_maint = false; }")
         ck("không lỗi JS / console", not s.errors, s.errors)
         s.close()
         print("3. Điện thoại (màn hình hẹp)")
@@ -256,6 +282,14 @@ def main():
         ck("Cài đặt bán: chọn được sản phẩm VPS, đang chọn VPS GPU BLUE", ["", False] in opts and [PROD, True] in opts and [OTHER, False] in opts, opts)
         s.page.fill("#pcs-set-max", "3"); s.page.uncheck("#pcs-set-1511"); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
         ck("Lưu → pc_admin_sell đúng sản phẩm, chỉ 22H2, 3 lần cài lại", s.calls("pc_admin_sell") == [{"p_patch": {"product": PROD, "os": [{"id": "22h2", "name": "Windows 10 Pro 22H2"}], "reinstall_max": 3}}], s.calls("pc_admin_sell"))
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=site]').click(); subShow('site', 'maint'); }"); s.page.wait_for_timeout(300)
+        ck("Cài đặt → Bảo trì có thêm dòng 'Bảo trì riêng VPS GPU' + lời nhắn", s.js("() => !!document.getElementById('mt-pc') && !!document.getElementById('mt-pcmsg') && document.getElementById('mt-pc').closest('.mtbox').innerText.includes('Bảo trì riêng VPS GPU')"))
+        s.page.check("#mt-pc"); s.page.fill("#mt-pcmsg", "Nâng cấp máy"); s.page.click("#mt-save"); s.page.wait_for_timeout(1200)
+        sv = s.js("() => ({ on: !!SITE.pc_maint, msg: SITE.pc_maint_msg, upd: window.__FAKE.calls.some(c => c.kind === 'from' && c.table === 'settings' && c.op === 'update'), site: !!SITE.maint })")
+        ck("Lưu bảo trì → ghi settings (pc_maint = bật, lời nhắn), KHÔNG bật bảo trì toàn web", sv["on"] and sv["msg"] == "Nâng cấp máy" and sv["upd"] and not sv["site"], sv)
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=pc]').click(); }"); s.page.wait_for_timeout(500)
+        ck("khung Đơn VPS GPU (admin) hiện nhãn '🛠️ Đang bảo trì'", "Đang bảo trì" in s.js("() => document.getElementById('pcs-adm-on').textContent"), s.js("() => document.getElementById('pcs-adm-on').textContent"))
+        s.js("() => { SITE.pc_maint = false; }")
         ck("bảng máy có nút 🖥 Điều khiển mở play.html?pc= (tab mới)", s.js("() => [...document.querySelectorAll('#pctbl a[href^=\"/play.html?pc=\"]')].every(a => a.target === '_blank')"))
         ck("admin: không lỗi JS / console, không chạy mã lạ", not s.errors and s.js("() => !window.__xss"), s.errors)
         s.close()
