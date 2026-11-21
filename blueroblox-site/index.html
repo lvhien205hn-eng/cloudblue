@@ -1727,7 +1727,7 @@ html[data-theme] .shmode button.on{border-color:var(--blue);background:var(--sof
 @media (max-width:520px){.f.mtbox.prf{grid-template-columns:1fr}}
 
 </style>
-<script>/* chế độ Sáng/Tối: nhớ lựa chọn (br_theme), lần đầu theo máy khách */(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;})();</script>
+<script>/* chế độ Sáng/Tối: nhớ lựa chọn (br_theme), lần đầu theo máy khách */(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;try{if(localStorage.getItem("br_neon")==="1")document.documentElement.classList.add("neonrun")}catch(e){}})();</script>
 <script>
 /* CHẾ ĐỘ NHẸ: máy yếu / điện thoại → tắt hiệu ứng nặng (trống 3D xoay, cá koi, sao nền, ảnh 3D sản phẩm, làm mờ nền) cho mượt.
    Tự nhận: ít nhân CPU / ít RAM / tiết kiệm dữ liệu / giảm chuyển động / điện thoại. Khách tự bật/tắt ở cuối trang (lưu br_lite). */
@@ -2612,6 +2612,45 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 @media (max-width:560px){.cbc-form{grid-template-columns:1fr}.cbc-big{font-size:21px}}
 /* nút "Nhận máy dùng thử" vừa khít ô (chữ dài hơn nút thanh toán) */
 #cporderdlg .cpside .acts #cp-obuy{padding-left:6px;padding-right:6px}
+/* ===== ĐÈN NEON (22/11) =====
+   · neon thường — mọi khách: viền phát sáng dịu quanh các khung chính, KHÔNG chuyển động.
+   · 💡 Neon chạy — khách tự bật (nút cạnh Sáng / Tối + cuối trang; nhớ trên máy: br_neon): 2 vệt sáng xanh / tím chạy ĐUỔI NHAU quanh viền
+     (~6,5 giây 1 vòng) ở thẻ sản phẩm, thẻ máy, khung video, mục menu đang chọn. Hộp thoại chỉ phát sáng (không chạy) cho đỡ rối mắt.
+   · Máy tắt hoạt ảnh (prefers-reduced-motion) / chế độ nhẹ → vệt sáng đứng yên. Thẻ có màu trạng thái (máy chạy = xanh lá, sắp hết hạn = vàng) giữ màu đó. */
+html[data-theme]{--nc:64,214,255;--nc2:176,124,255;--ncw:235,255,255;--ncw2:246,236,255}
+html[data-theme=light]{--nc:37,110,240;--nc2:139,92,246;--ncw:37,110,240;--ncw2:139,92,246}
+.m3m-card.run{--nc:60,224,176}
+.m3m-card.soon{--nc:255,200,97}
+html[data-theme] :is(.m3-row,.m3-sub,.m3m-box,.m3m-card,.m3v-fig,.m3v-ch,.m3-seg,.cpappdl){box-shadow:0 0 0 1px rgba(var(--nc),.4),0 0 24px -8px rgba(var(--nc),.55)}
+html[data-theme=light] :is(.m3-row,.m3-sub,.m3m-box,.m3m-card,.m3v-fig,.m3v-ch,.m3-seg,.cpappdl){box-shadow:0 0 0 1px rgba(var(--nc),.3),0 0 18px -8px rgba(var(--nc),.45),0 18px 36px -30px rgba(15,63,179,.35)}
+html[data-theme] .dlg{box-shadow:0 0 0 1px rgba(var(--nc),.55),0 0 0 4px rgba(var(--nc),.1),0 0 44px -10px rgba(var(--nc),.6),0 30px 60px -20px rgba(0,0,0,.45)}
+html[data-theme=dark] header.top nav a.on{box-shadow:0 0 0 1px rgba(var(--nc),.6),0 0 20px -4px rgba(var(--nc),.8),inset 0 1px 0 rgba(255,255,255,.45)}
+html[data-theme=dark] .m3-sh h2,html[data-theme=dark] .m3v-bh{text-shadow:0 0 18px rgba(var(--nc),.35)}
+/* nút 💡 Neon (cạnh Sáng / Tối) */
+.neonsw{flex:none;position:relative;display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 13px 0 11px;border:0;border-radius:999px;background:var(--card);box-shadow:0 0 0 2px var(--ring);color:var(--muted);font:700 13px var(--body);cursor:pointer;transition:color .25s,box-shadow .25s}
+.neonsw svg{width:17px;height:17px;flex:none}
+.neonsw:hover{color:var(--fg)}
+.neonsw.on{color:rgb(var(--nc));box-shadow:0 0 0 2px rgba(var(--nc),.6),0 0 16px -2px rgba(var(--nc),.7)}
+.neonsw:focus-visible{outline:3px solid rgba(var(--nc),.85);outline-offset:2px}
+@media (max-width:1180px){.neonsw span{display:none}.neonsw{padding:0 11px}}
+.fxtoggle#neon-foot[aria-pressed="true"]{border-color:rgba(var(--nc),.8);color:rgb(var(--nc))}
+/* 💡 Neon chạy */
+@property --nr{syntax:"<angle>";inherits:false;initial-value:0deg}
+@keyframes nrun{to{--nr:360deg}}
+html.neonrun :is(.m3-sub,.m3m-card,header.top nav a.on){position:relative}
+html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig){box-shadow:0 0 0 1px rgba(var(--nc),.2),0 0 26px -8px rgba(var(--nc),.6)}
+html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;padding:2.5px;pointer-events:none;
+  background:conic-gradient(from var(--nr),rgba(var(--nc),0) 0deg,rgba(var(--nc),.85) 24deg,rgba(var(--ncw),.98) 38deg,rgba(var(--nc),.85) 52deg,rgba(var(--nc),0) 82deg 180deg,
+    rgba(var(--nc2),.85) 204deg,rgba(var(--ncw2),.98) 218deg,rgba(var(--nc2),.85) 232deg,rgba(var(--nc2),0) 262deg 360deg);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
+  mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
+  animation:nrun 6.5s linear infinite}
+html.neonrun header.top nav a.on::after{padding:2px;animation-duration:4.5s}
+html.neonrun .neonsw::after{padding:2px;animation-duration:3.2s}
+html.neonrun :is(.m3m-card,.m3-row):nth-child(2n)::after{animation-delay:-2.2s}
+html.neonrun :is(.m3m-card,.m3-row):nth-child(3n)::after{animation-delay:-4.3s}
+@media (prefers-reduced-motion:reduce){html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{animation:none}}
+html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{animation:none}
 </style>
 </head>
 <body>
@@ -2638,6 +2677,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
       <div class="langsw" id="lang-seg" role="group" aria-label="Language / Ngôn ngữ"><button id="lang-vi" class="on" type="button" title="Tiếng Việt"><span class="fl"><svg viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#da251d"/><path fill="#ff0" d="M15 4l1.76 5.42h5.7l-4.61 3.35 1.76 5.42L15 14.84l-4.61 3.35 1.76-5.42-4.61-3.35h5.7z"/></svg></span><span class="ln">Tiếng Việt</span><span class="ls">VI</span></button><button id="lang-en" type="button" title="English"><span class="fl"><svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="ukc"><path d="M0 0v30h60V0z"/></clipPath><clipPath id="ukt"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><g clip-path="url(#ukc)"><path d="M0 0v30h60V0z" fill="#012169"/><path d="M0 0l60 30m0-30L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30m0-30L0 30" clip-path="url(#ukt)" stroke="#C8102E" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#C8102E" stroke-width="6"/></g></svg></span><span class="ln">English</span><span class="ls">EN</span></button></div>
       <div class="cursw" hidden style="display:none" role="group" aria-label="Currency / Đơn vị tiền"><button id="cur-vnd" class="on" type="button" title="Việt Nam đồng"><span class="sy">₫</span>VND</button><button id="cur-usd" type="button" title="US dollar"><span class="sy">$</span>USD</button></div>
       <div class="thsw" id="theme-seg" role="group" aria-label="Sáng / Tối"><button type="button" data-t="light" title="Chế độ sáng" aria-label="Chế độ sáng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button><button type="button" data-t="dark" title="Chế độ tối" aria-label="Chế độ tối"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.6.6 0 0 0-.8-.7A9.6 9.6 0 1 0 21.2 15.4a.6.6 0 0 0-.7-.8Z"/></svg></button></div>
+      <button type="button" class="neonsw" id="neon-btn" aria-pressed="false" title="Đèn neon chạy" aria-label="Đèn neon chạy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.5 4.5 13.5h6.5l-1 8 8.5-11h-6.5l1-8Z"/></svg><span>Neon</span></button>
       <span id="guest-acts"><button class="btn ghost" id="btn-login" data-i18n="login">Đăng nhập</button> <button class="btn" id="btn-reg" data-i18n="signup">Đăng ký</button></span>
       <span id="user-acts" hidden style="display:flex;gap:8px;align-items:center">
         <span class="bal"><span data-i18n="balance">Số dư</span>: <b id="bal">0đ</b></span>
@@ -2760,7 +2800,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
     <div><h5 data-i18n="f_contact">Liên hệ</h5><ul><li id="ct-zalo"></li><li id="ct-email"></li><li id="ct-discord"></li><li id="ft-app" hidden><a href="/download/blueroblox-cloud.apk" download="CloudBlue.apk">📱 Tải app Android</a></li></ul></div>
   </div>
   <div class="copy">© <span id="year"></span> CloudBlue.</div>
-  <div class="wrap fxbar"><button type="button" class="fxtoggle" id="fx-toggle" aria-pressed="false">✨ Hiệu ứng: Bật</button><small id="fx-hint">Máy yếu / mạng chậm → tắt hiệu ứng cho mượt</small></div>
+  <div class="wrap fxbar"><button type="button" class="fxtoggle" id="fx-toggle" aria-pressed="false">✨ Hiệu ứng: Bật</button><button type="button" class="fxtoggle" id="neon-foot" aria-pressed="false">💡 Neon chạy: Tắt</button><small id="fx-hint">Máy yếu / mạng chậm → tắt hiệu ứng cho mượt</small></div>
 </footer>
 
 <!-- MUA -->
@@ -6872,6 +6912,28 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
     if (t - t0 < 3500 && n < 240) return requestAnimationFrame(tick);
     if (n > 20 && slow / n > 0.45) { window.BRsetLite(true, false); try { toast(L("Máy có vẻ giật → đã chuyển sang chế độ nhẹ (bật lại ở cuối trang).", "Looks laggy → switched to lite mode (turn effects back on at the bottom)."), 0); } catch (e) {} }
   }
+})();
+
+/* ===== 💡 ĐÈN NEON CHẠY (22/11): khách tự bật / tắt — nhớ trên máy (br_neon). Tắt = neon thường (viền phát sáng đứng yên). ===== */
+(function () {
+  const root = document.documentElement, b = document.getElementById("neon-btn"), f = document.getElementById("neon-foot");
+  const on = () => root.classList.contains("neonrun");
+  function paint() {
+    const v = on(), t = v ? L("Đèn neon chạy: đang BẬT — bấm để tắt", "Running neon: ON — tap to turn off") : L("Đèn neon chạy: đang tắt — bấm để bật", "Running neon: off — tap to turn on");
+    [b, f].forEach(x => { if (!x) return; x.setAttribute("aria-pressed", v ? "true" : "false"); x.title = t; x.classList.toggle("on", v); });
+    if (b) b.setAttribute("aria-label", t);
+    if (f) f.textContent = v ? L("💡 Neon chạy: Bật", "💡 Running neon: On") : L("💡 Neon chạy: Tắt", "💡 Running neon: Off");
+  }
+  window.BRsetNeon = function (v) {
+    root.classList.toggle("neonrun", !!v);
+    try { localStorage.setItem("br_neon", v ? "1" : "0"); } catch (e) {}
+    paint();
+    let still = ""; try { still = window.BR_LITE ? L("Đang ở chế độ nhẹ nên đèn neon đứng yên — bật lại ✨ Hiệu ứng ở cuối trang để đèn chạy.", "Lite mode keeps the neon still — turn ✨ Effects back on at the bottom to make it run.")
+      : matchMedia("(prefers-reduced-motion: reduce)").matches ? L("Máy đang tắt hoạt ảnh nên đèn neon đứng yên.", "Your device has animations turned off, so the neon stays still.") : ""; } catch (e) {}
+    try { toast(v ? (still || L("💡 Đã bật đèn neon chạy.", "💡 Running neon is on.")) : L("Đã tắt đèn neon chạy — giữ neon thường.", "Running neon is off — plain neon stays."), 0); } catch (e) {}
+  };
+  [b, f].forEach(x => { if (x) x.onclick = () => window.BRsetNeon(!on()); });
+  paint(); document.addEventListener("br-lang", paint);
 })();
 
 /* ===== hiệu ứng ===== */
@@ -13207,7 +13269,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
         <td class="pca-cfg">${cfgCell(m)}</td>
         <td>${orderCell(m)}</td>
-        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
+        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button>${m.approved ? `<button class="btn ghost sm" type="button" data-pca="reboot"${reBusy ? " disabled" : ""} title="Khởi động lại Windows của máy này — khách đang dùng bị ngắt 1–2 phút">🔁 Khởi động lại</button><button class="btn ghost sm" type="button" data-pca="shutdown"${reBusy ? " disabled" : ""} title="Tắt hẳn máy — muốn bật lại phải bấm nút nguồn tại máy">⏻ Tắt máy</button>` : ""}<button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
     };
     $i("pctbl").innerHTML = list.length ? list.map(m => {
       try { return row(m); }                  // 1 máy gửi thông tin lạ không được làm hỏng cả bảng
@@ -13235,7 +13297,19 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (a === "reinstall") return openRe(m);
     if (a === "handover") return openRe(m, true);
     if (a === "rent") return openRent(m);
+    if (a === "reboot" || a === "shutdown") return power(m, a, b);
   };
+
+  // ---- Khởi động lại / Tắt máy: nút ở từng dòng + trong hộp Sửa. Hỏi lại rõ ràng (máy đang có khách / đang offline) rồi gửi lệnh cho agent.
+  async function power(m, a, b) {
+    const rent = m.status === "rented" && (untilOf(m) || 0) > Date.now();
+    const q = `${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?`
+      + (a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : "")
+      + (rent ? (a === "reboot" ? "\n\nMáy đang có khách thuê — khách bị ngắt khoảng 1–2 phút rồi dùng tiếp." : "\n\nMáy đang có khách thuê — khách KHÔNG dùng được cho tới khi máy được bật lại.") : "")
+      + (online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại.");
+    if (!confirm(q)) return false;
+    return !!(await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, `Đã gửi lệnh ${a === "reboot" ? "khởi động lại" : "tắt"} máy ${m.name}.`, b));
+  }
   $i("pcq").oninput = render;
   $i("pca-reload").onclick = () => { if (P.v42 === false) P.v42 = null; load(); };
 
@@ -13288,8 +13362,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const b = e.target.closest("[data-pcact]"), m = P.cur; if (!b || !m) return;
     const a = b.dataset.pcact;
     if (a === "reboot" || a === "shutdown") {
-      if (!confirm(`${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?${a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : ""}${online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại."}`)) return;
-      if (await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, "Đã gửi lệnh.", b)) show("pcadlg", false);
+      if (await power(m, a, b)) show("pcadlg", false);
     } else if (a === "reenroll") {
       if (!confirm(`Cho máy "${m.name}" đăng ký lại KHÔNG cần mã trong 6 giờ?\n\nChỉ dùng khi máy báo "cần mã đăng ký" sau khi bạn tự cài lại Windows cho nó. Trong 6 giờ đó, máy nào khai đúng dấu phần cứng của máy này sẽ nhận được quyền của nó.`)) return;
       await call("pc_admin_allow_reenroll", { p_id: m.id, p_hours: 6 }, "Đã mở 6 giờ cho máy đăng ký lại.", b);
@@ -14301,6 +14374,24 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     if (n > 0) { b.textContent = String(n); b.hidden = false; b.dataset.pcs = "1"; }
     else if (b.dataset.pcs) { delete b.dataset.pcs; b.textContent = PC.oldSoon ? String(PC.oldSoon) : ""; b.hidden = !PC.oldSoon; }
   }
+  // 22/11: "VPS của tôi" có thẻ "Tải app" đầy đủ như "ĐT đám mây của tôi" (app máy tính · app Android · iPhone / iPad / Mac · nhiều máy)
+  //        + thẻ video hướng dẫn A → Z (thay nút "Video hướng dẫn" nhỏ). Đang ở trong app Android thì không mời tải app.
+  function appBox(items) {
+    const ua = navigator.userAgent, inApp = /BlueRobloxApp\//.test(ua);
+    const isAnd = /Android/i.test(ua), isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webFirst = isIos || /Macintosh|Mac OS X/.test(ua);
+    const pcDl = typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe", apk = typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+    const exe = typeof CP_PC_EXE !== "undefined" && !!CP_PC_EXE;
+    let v = ""; try { v = typeof APP_INFO !== "undefined" && APP_INFO && APP_INFO.version ? "v" + S(String(APP_INFO.version), 20) : ""; } catch (e) {}
+    let maint = false; try { maint = !!pcMaint(); } catch (e) {}
+    const run = maint ? [] : A(items).filter(it => it && it.state === "active" && S(O(it.pc).id, 40));   // đang bảo trì → không mời mở máy trên web
+    const pc = `<a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(pcDl)}" download>💻 ${L("Tải app máy tính (Windows)", "PC app (Windows)")}${exe ? ` <small>${L("tải về mở là dùng", "run to install")}</small>` : ""}</a>`;
+    const an = `<a class="btn${isAnd ? "" : " ghost"}" href="${esc(apk)}" download>📱 ${L("Tải app Android", "Android app")}${v ? ` <small>${esc(v)}</small>` : ""}</a>`;
+    const ios = run.length ? `<a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${encodeURIComponent(S(O(run[0].pc).id, 40))}">🍎 iPhone · iPad · Mac <small>${L("không cần cài", "no install")}</small></a>` : "";
+    const mu = run.length > 1 ? `<a class="btn ghost" href="/play.html?multi=pc">🎮 ${L("Nhiều máy · đồng bộ", "Multi-control · sync")} <small>${L("trên web", "on the web")}</small></a>` : "";
+    const box = inApp ? "" : `<div class="cpappdl pcs-appdl"><div class="t"><b>📲 ${L("Tải app", "Get the app")}</b><span>${L("Điều khiển VPS bằng app máy tính (Windows) hoặc app Android — đăng nhập cùng tài khoản là thấy VPS ở mục <b>VPS GPU</b>. iPhone, iPad, Mac (hoặc máy chưa cài app) điều khiển ngay trên trình duyệt: bấm <b>▶ Điều khiển</b> ở từng VPS.", "Control your VPS with the PC app (Windows) or the Android app — sign in with the same account and it shows under <b>GPU VPS</b>. iPhone, iPad, Mac (or any device without the app) control it right in the browser: tap <b>▶ Control</b> on a VPS.")}</span></div><div class="b">${(webFirst ? ios + pc + an : isAnd ? an + pc + ios : pc + an + ios) + mu}</div></div>`;
+    return box + `<button class="helpbtn pcs-vmhelp" type="button" data-pcsvid="1"><span class="i">🎬</span><span class="t"><b>${L("Video hướng dẫn VPS GPU từ A đến Z", "GPU VPS video guide (A to Z)")}</b><small>${L("Thuê máy · điều khiển trên web · app máy tính · app Android · gia hạn… bấm để xem", "Renting · controlling on the web · PC app · Android app · renewing… tap to watch")}</small></span><span class="go" aria-hidden="true">›</span></button>`;
+  }
   function vmPaint() {
     const m = $i("vmach"), note = $i("vm-note"), list = $i("vm-list"); if (!m || !note || !list) return;
     let b = $i("pcs-vm");
@@ -14309,8 +14400,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     const old = (typeof myMachines !== "undefined" && Array.isArray(myMachines) ? myMachines : []).filter(x => x.status !== "cancelled");
     if (!me()) { b.innerHTML = ""; return; }
     b.innerHTML = items.length
-      ? `<div class="pcs-vm-h"><b>🖥️ VPS GPU</b><span class="hint">${L("Điều khiển ngay trên web · app điện thoại · app máy tính", "Control it from the web · phone app · PC app")}</span>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}</div>
-         ${maintBar()}<div class="pcs-vm-list">${items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("")}</div>`
+      ? `<div class="pcs-vm-h"><b>🖥️ VPS GPU</b><span class="hint">${L("Điều khiển ngay trên web · app điện thoại · app máy tính", "Control it from the web · phone app · PC app")}</span></div>
+         ${appBox(items)}${maintBar()}<div class="pcs-vm-list">${items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("")}</div>`
       : on ? `<div class="pcs-vm-empty">🖥️ ${L("Chưa có VPS GPU — máy tính thật có card đồ hoạ, tự giao + tự cài Windows.", "No GPU VPS yet — a real PC with a GPU, delivered and set up automatically.")}
          <button class="btn sm" type="button" data-pcsbuy="1">${L("Thuê VPS GPU", "Rent a GPU VPS")}</button>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}</div>` : "";
     // máy VPS giao tay (kiểu cũ): có thì ghi rõ là danh sách riêng; không có mà đã có VPS GPU thì bỏ dòng "chưa có máy VPS nào"
