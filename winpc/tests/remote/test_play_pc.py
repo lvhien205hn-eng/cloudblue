@@ -129,6 +129,46 @@ try:
         page.evaluate("() => document.getElementById('menu').hidden = true")
         ck("không lỗi JS trên trang", not errs, errs)
         page.screenshot(path=os.path.join(SHOTS, "play-pc-3.png"))
+
+        # ---- web-2.2 (21.11k): độ nét Siêu nét + khách tự chọn khung hình/giây · nhiều máy PC cùng lúc + đồng bộ chuột
+        page.evaluate("() => document.getElementById('menu').hidden = false"); page.wait_for_timeout(200)
+        qv = page.evaluate("""() => ({ uhd: getComputedStyle(document.querySelector('#q-seg [data-q="uhd"]')).display, fseg: getComputedStyle(document.getElementById('f-seg')).display,
+                                        fps: [...document.querySelectorAll('#f-seg [data-f]')].map(b => b.dataset.f), multi: getComputedStyle(document.querySelector('#menu [data-a="multi"]')).display })""")
+        ck("menu máy PC: có mức Siêu nét + hàng Khung hình/giây (Mặc định · 30 · 60 · 120) + nút Nhiều máy", qv["uhd"] != "none" and qv["fseg"] != "none" and qv["fps"] == ["0", "30", "60", "120"] and qv["multi"] != "none", qv)
+        page.screenshot(path=os.path.join(SHOTS, "play-pc-4-quality.png"))
+        page.click('#q-seg [data-q="uhd"]'); page.wait_for_timeout(300); page.click('#f-seg [data-f="60"]')
+        mh = page.evaluate("() => Math.min(1920, maxH())")                    # trang xin cạnh dài ≤ màn hình của người xem (máy thử: màn 1280)
+        ok_q = wait(lambda: rm.sess is not None and rm.sess.q == "uhd" and rm.sess.fps_fix == 60 and rm.sess.fps == 60 and rm.sess.vw == mh, 12)
+        ck("chọn Siêu nét + 60 FPS → máy PC đổi ngay: mức uhd, 60 khung/giây, nét tối đa theo màn người xem; trang nhớ lựa chọn",
+           ok_q and page.evaluate("() => [localStorage.getItem('cb_pcq'), localStorage.getItem('cb_pcf'), document.querySelector('#f-seg .on').dataset.f]") == ["uhd", "60", "60"],
+           (getattr(rm.sess, "q", None), getattr(rm.sess, "fps_fix", None), getattr(rm.sess, "fps", None), getattr(rm.sess, "vw", None)))
+        page.click('#f-seg [data-f="0"]'); page.click('#q-seg [data-q="bal"]')
+        ck("về Mặc định + Cân bằng → máy PC về 30 khung/giây", wait(lambda: rm.sess is not None and rm.sess.q == "bal" and rm.sess.fps_fix == 0 and rm.sess.fps == 30, 12),
+           (getattr(rm.sess, "q", None), getattr(rm.sess, "fps_fix", None), getattr(rm.sess, "fps", None)))
+        page.evaluate("() => document.getElementById('menu').hidden = true")
+        PC2 = "33333333-3333-4333-8333-333333333333"
+        page.goto("http://localhost:%d/play.html?test=1&multi=pc&ids=%s,%s&ws=ws://127.0.0.1:%d/v2/stream" % (hs.server_address[1], PC, PC2, wsport))
+        TS = "() => { try { return { f: P.frames || 0, ovl: document.getElementById('ovl').hidden, kind: P.kind, vw: P.vw, err: P.lastErr, ws: P.ws ? P.ws.readyState : -1 }; } catch (e) { return { e: String(e) }; } }"
+        def tile_st():
+            got = {}
+            for f in list(page.frames[1:]):
+                if f.url.find("pc=" + PC) > 0 and f.url.find("tile=1") > 0:
+                    try: got = f.evaluate(TS)
+                    except Exception as e: got = {"e": str(e)[:100]}
+                    if got.get("kind") == "pc" and (got.get("vw") or 0) > 0: return got
+            return got
+        fr_ok = wait(lambda: (lambda t: t.get("kind") == "pc" and t.get("ovl") and (t.get("vw") or 0) > 0)(tile_st()), 60)            # máy vừa đóng ở trang đơn → trạm nhả phiên cũ rồi ô mới vào
+        mu = page.evaluate("() => ({ view: document.body.dataset.view, n: document.querySelectorAll('#mu-grid .mt').length, src: [...document.querySelectorAll('#mu-grid iframe')].map(f => f.getAttribute('src')), url: location.search })")
+        mu["tile"] = tile_st()
+        ck("Nhiều máy PC (?multi=pc): lưới 2 ô, mỗi ô mở play.html?pc=…&tile=1, ô máy đang bật lên hình", fr_ok and mu["view"] == "v-multi" and mu["n"] == 2 and all("pc=" in x and "tile=1" in x for x in mu["src"]) and "multi=pc" in mu["url"], mu)
+        page.screenshot(path=os.path.join(SHOTS, "play-pc-5-multi.png"))
+        io_.ev.clear()
+        page.evaluate("""() => { const f = [...document.querySelectorAll('#mu-grid iframe')].find(x => x.getAttribute('src').includes('%s'));
+                                 f.contentWindow.postMessage({ cb: 'host', k: 'sync', on: true }, location.origin);
+                                 f.contentWindow.postMessage({ cb: 'host', k: 'ev', src: '%s', e: ['m', 1, 0, 0.5, 0.5] }, location.origin);
+                                 f.contentWindow.postMessage({ cb: 'host', k: 'ev', src: '%s', e: ['m', 2, 0, 0.5, 0.5] }, location.origin); }""" % (PC, PC2, PC2))
+        ck("đồng bộ: máy PC khác trong lưới bấm chuột → máy này bấm theo (nhấn + nhả cùng chỗ)", wait(lambda: [e for e in io_.ev if e[0] == "btn"] == [("btn", 0, True), ("btn", 0, False)], 6), io_.ev[-4:])
+        ck("không lỗi JS (độ nét, FPS, nhiều máy PC)", not errs, errs)
         br.close()
     R.connect = real_connect
 finally:
