@@ -51,8 +51,22 @@ public final class Api {
         setWeb(d.optString("web", null));
         minAndroid = d.optString("min_app_android", "").trim();
         tiers = d.optJSONArray("cp_tiers");                 // 🎴 thẻ gói cấu hình (admin chỉnh trên web)
+        siteData = d;                                       // 21/11f · bảo trì riêng VPS GPU (pc_maint) + kênh liên hệ shop (linkDc / linkTg / linkZl)
         siteOk = true;
         return d;
+    }
+
+    /** 21/11f · settings.data lần đọc gần nhất (rỗng nếu chưa đọc được). */
+    public static volatile JSONObject siteData = new JSONObject();
+
+    /** 21/11f · Bảo trì riêng VPS GPU đang bật (admin bật ở web: Cài đặt → Bảo trì) → câu báo cho khách; không bảo trì → "". */
+    public static String pcMaintMsg() {
+        JSONObject d = siteData;
+        if (d == null || !d.optBoolean("pc_maint", false)) return "";
+        String m = d.optString("pc_maint_msg", "").trim();
+        if (m.length() > 200) m = m.substring(0, 200);
+        return Ui.L("🛠️ VPS GPU đang bảo trì", "🛠️ GPU VPS is under maintenance") + (m.isEmpty() ? "" : " — " + m) + ". "
+                + Ui.L("Máy và dữ liệu của bạn vẫn giữ nguyên.", "Your machine and data are kept.");
     }
 
     /** 1 lần mỗi lần mở app (nền): lấy tên miền web hiện tại. Lỗi thì bỏ qua, dùng tên miền mặc định. */

@@ -1,5 +1,6 @@
 # KIỂM THỬ app Android + app PC trên nhánh app-next (KHÔNG phát hành gì: không ký khoá thật, không đẩy CH Play, không đưa file lên web).
 # Đẩy lên main mới chạy 2 workflow phát hành (android-app.yml, pc-client.yml) như cũ.
+# App PC: chụp ảnh giao diện (máy chủ giả, Windows thật) → nhánh app-shots (chỉ chứa ảnh) để soát giao diện.
 name: Check apps (app-next)
 
 on:
@@ -8,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write          # chỉ để đẩy ảnh chụp giao diện vào nhánh app-shots
 
 concurrency:
   group: app-check
@@ -59,3 +60,21 @@ jobs:
           if (-not (Test-Path $st)) { Write-Error "exe khong chay duoc"; exit 1 }
           Get-Content $st
           if ((Get-Content $st -TotalCount 1) -ne "OK") { exit 1 }
+      - name: Chụp ảnh giao diện app PC (máy chủ giả)
+        shell: pwsh
+        working-directory: pc-client
+        run: |
+          python ..\.github\app-check\shot_pc.py . ..\shots vi
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python ..\.github\app-check\shot_pc.py . ..\shots en
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Lưu ảnh vào nhánh app-shots
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan app-shots-tmp
+          git rm -r -q --cached .
+          git add shots
+          git commit -q -m "Anh giao dien app PC ($env:GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/app-shots

@@ -58,7 +58,7 @@ import javax.net.ssl.X509TrustManager;
 public final class StreamClient {
     // ---- kiểu tin (xem STREAM-PROTOCOL.md mục 3) ----
     static final int C_HELLO = 0x01, C_TOUCH = 0x10, C_KEY = 0x11, C_TEXT = 0x12, C_SCROLL = 0x13, C_CMD = 0x14, C_PING = 0x15,
-            C_QUALITY = 0x16, C_KEYFRAME = 0x17, C_CLIP = 0x18, C_BYE = 0x19, C_ACK = 0x1A;
+            C_QUALITY = 0x16, C_KEYFRAME = 0x17, C_CLIP = 0x18, C_BYE = 0x19, C_ACK = 0x1A, C_MOUSE = 0x1B;   // C_MOUSE: chuột thật (máy PC)
     static final int S_WELCOME = 0x81, S_VIDEO = 0x82, S_SIZE = 0x83, S_CLIP = 0x84, S_PONG = 0x85, S_ERROR = 0x86, S_STATS = 0x87;
 
     public static final int TOUCH_DOWN = 0, TOUCH_UP = 1, TOUCH_MOVE = 2, TOUCH_CANCEL = 3;
@@ -242,6 +242,12 @@ public final class StreamClient {
     /** Gõ chữ (máy chủ tự chia chữ dài). */
     public void text(String t) {
         if (t != null && !t.isEmpty()) send(C_TEXT, t.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** 21/11f · Chuột thật (máy PC — kiểu "Bàn di chuột"): action 0 rê · 1 nhấn · 2 nhả; button 0 trái · 1 phải · 2 giữa; nx, ny = 0..1. */
+    public void mouse(int action, int button, float nx, float ny) {
+        int x = u16(nx), y = u16(ny);
+        send(C_MOUSE, new byte[]{(byte) action, (byte) button, (byte) (x >>> 8), (byte) x, (byte) (y >>> 8), (byte) y});
     }
 
     /** Lăn chuột: h, v theo nấc 120; v > 0 = lăn lên. */

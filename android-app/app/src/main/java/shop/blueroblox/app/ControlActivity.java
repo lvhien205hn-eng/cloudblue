@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
+import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -170,6 +171,7 @@ public class ControlActivity extends Activity {
             @Override public void onVideoSize(int w, int h) { videoSized(w, h); }
         });
         stage.addView(screen, new FrameLayout.LayoutParams(-1, -1));
+        if (pc) { screen.setInputMode(pref.getInt("pc_in", StreamView.IN_TOUCH)); pcOrient(); }      // 21/11f · kiểu chạm + xoay màn đã chọn
 
         sink = new ImeSink(this);
         sink.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -243,7 +245,7 @@ public class ControlActivity extends Activity {
         mini.addView(miniBtn("◁", pc ? "Esc" : Ui.L("Quay lại", "Back"), () -> cmd("back")));
         mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
         mini.addView(miniBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
-        mini.addView(miniBtn("🔄", Ui.L("Xoay ngang / dọc", "Rotate"), this::quickRotate));
+        mini.addView(miniBtn(pc ? "🖐" : "🔄", pc ? Ui.L("Kiểu chạm · xoay màn", "Touch & rotation") : Ui.L("Xoay ngang / dọc", "Rotate"), () -> { if (pc) pcView(); else quickRotate(); }));
         mini.addView(miniBtn("⋯", Ui.L("Công cụ", "Tools"), () -> { hideMini(); tools(); }));
         mini.addView(miniBtn("⤢", Ui.L("Hiện thanh", "Show bars"), () -> { autoFull = false; setFull(false); }));
         mini.setVisibility(View.GONE);
@@ -265,7 +267,8 @@ public class ControlActivity extends Activity {
         navBar.addView(barBtn(pc ? "Esc" : "◁", pc ? "Esc" : Ui.L("Quay lại", "Back"), v -> cmd("back")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         navBar.addView(barBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), v -> cmd(pc ? "win" : "home")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         navBar.addView(barBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), v -> cmd("recents")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
-        navBar.addView(barBtn("🔄", Ui.L("Xoay ngang / dọc", "Rotate"), v -> quickRotate()), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
+        navBar.addView(barBtn(pc ? "🖐" : "🔄", pc ? Ui.L("Kiểu chạm · xoay màn", "Touch & rotation") : Ui.L("Xoay ngang / dọc", "Rotate"),
+                v -> { if (pc) pcView(); else quickRotate(); }), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         navBar.addView(barBtn("⋯", Ui.L("Công cụ", "Tools"), v -> tools()), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         root.addView(navBar, Ui.fill());
 
@@ -273,6 +276,7 @@ public class ControlActivity extends Activity {
         setContentView(root);
         updQ();
         if (pref.getBoolean("full", false)) setFull(true);     // lần trước khách để ẩn thanh → mở lại vẫn ẩn
+        if (pc && !full && getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) { autoFull = true; setFull(true); }   // 21/11f
         if (Build.VERSION.SDK_INT >= 33) {                    // Android 16 + targetSdk 36: hệ thống KHÔNG gọi onBackPressed nữa → Back đi qua đây
             android.window.OnBackInvokedCallback cb = () -> { if (!handleBack()) finish(); };
             backCb = cb;
@@ -379,8 +383,21 @@ public class ControlActivity extends Activity {
             info.setText(Ui.L("Máy PC · Windows", "PC · Windows"));
             try { screen.setVideoSize(1920, 1080); } catch (Exception ignored) { }
             kbDead = true;                       // máy PC không có cổng "bàn phím Android đang mở" — khách tự bấm ⌨️ khi cần gõ
-            loaded = true;
-            if (resumed) connect();
+            Api.<String>bg(() -> {                 // 21/11f · bảo trì riêng VPS GPU (admin bật trên web) → khách thường chưa vào được, admin vẫn vào
+                Api.site();
+                String m = Api.pcMaintMsg();
+                if (m.isEmpty()) return "";
+                return "admin".equals(Api.profile().optString("role")) ? "" : m;
+            }, m -> {
+                if (!pid.equals(id) || isFinishing()) return;
+                if (m != null && !m.isEmpty()) { fail(m); return; }
+                loaded = true;
+                if (resumed) connect();
+            }, e -> {                              // không đọc được (mạng) → cho vào như thường; máy chủ phát hình vẫn tự kiểm quyền
+                if (!pid.equals(id) || isFinishing()) return;
+                loaded = true;
+                if (resumed) connect();
+            });
             return;
         }
         Api.bg(() -> {
@@ -504,6 +521,10 @@ public class ControlActivity extends Activity {
 
     /** Khung hình đầu tiên đã lên → ẩn màn chờ. */
     private void frameShown() {
+        if (pc && !pref.getBoolean("pc_tip", false)) {                // 21/11f · lần đầu: chỉ chỗ đổi kiểu chạm / xoay màn
+            pref.edit().putBoolean("pc_tip", true).apply();
+            Ui.toast(this, Ui.L("Mẹo: bấm 🖐 để chọn kiểu chạm (bàn di chuột, phóng to) và xoay màn.", "Tip: tap 🖐 to pick touch mode (trackpad, zoom) and rotation."));
+        }
         if (kicked || stopped || rebooting() || client == null) return;
         srvMsg = ""; probN = 0;
         veil.setVisibility(View.GONE);
@@ -854,6 +875,7 @@ public class ControlActivity extends Activity {
         final Dialog[] d = new Dialog[1];
         int w = (getResources().getDisplayMetrics().widthPixels - Ui.dp(64)) / 4;
         Object[][] items = pc ? new Object[][]{           // 21/11: máy PC thật — phím Windows thay cho công cụ Android
+                {"🖐", Ui.L("Kiểu chạm · xoay", "Touch & rotate"), (Runnable) this::pcView},
                 {"⊞", Ui.L("Nút Windows", "Windows key"), (Runnable) () -> cmd("win")},
                 {"⇄", "Alt + Tab", (Runnable) () -> cmd("alttab")},
                 {"✕", "Alt + F4", (Runnable) () -> cmd("altf4")},
@@ -1563,6 +1585,7 @@ public class ControlActivity extends Activity {
     }
 
     private void applyRotation() {
+        if (pc) { pcOrient(); return; }                              // 21/11f · máy PC: xoay theo lựa chọn của khách (🖐)
         if (!autoRot) {                                              // tắt: app xoay theo cách khách cầm điện thoại (như trước)
             setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
             if (autoFull && full) setFull(false);
@@ -1573,6 +1596,92 @@ public class ControlActivity extends Activity {
         setRequestedOrientation(streamLand ? ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_USER_PORTRAIT);
         if (streamLand && !full) { autoFull = true; setFull(true); }              // ngang: ẩn thanh → hình to hết màn, còn nút nổi
         else if (!streamLand && full && autoFull) { setFull(false); autoFull = false; }   // về dọc: trả thanh (nếu do app tự ẩn)
+    }
+
+    // ---------------- 21/11f · MÁY PC: kiểu chạm + xoay màn (như Chrome Remote Desktop) — nút 🖐 ở thanh dưới / nút nổi / Công cụ ----------------
+    private static final String[][] PC_IN = {
+            {"👆", "Chạm trực tiếp", "Direct touch", "Chạm vào đâu bấm vào đó · giữ yên = chuột phải · 2 ngón vuốt = cuộn", "Tap where you want · hold = right click · 2-finger swipe = scroll"},
+            {"🖱️", "Bàn di chuột", "Trackpad", "Kéo ngón để di con trỏ · chạm = bấm · 2 ngón chạm = chuột phải · 2 ngón kéo = cuộn · chạm 2 lần rồi giữ = kéo thả",
+                    "Drag to move the pointer · tap = click · 2-finger tap = right click · 2-finger drag = scroll · double-tap & hold = drag"},
+            {"🔍", "Chạm + 2 ngón kéo / phóng to", "Touch + 2-finger pan / zoom", "1 ngón điều khiển máy · 2 ngón kéo / phóng to hình (chỉ trên điện thoại của bạn)",
+                    "1 finger controls the PC · 2 fingers pan / zoom the picture (only on your phone)"},
+            {"🔍", "Chạm + 3 ngón kéo / phóng to", "Touch + 3-finger pan / zoom", "1–2 ngón điều khiển máy (2 ngón = cuộn) · 3 ngón kéo / phóng to hình",
+                    "1–2 fingers control the PC (2 = scroll) · 3 fingers pan / zoom the picture"}};
+    private static final String[][] PC_OR = {
+            {"auto", "🔄", "Tự xoay theo điện thoại", "Follow my phone", "Cầm ngang hay dọc, màn điều khiển xoay theo", "Rotates with how you hold the phone"},
+            {"land", "▭", "Luôn màn ngang", "Always landscape", "Hình máy PC to nhất", "Biggest picture"},
+            {"port", "▯", "Luôn màn dọc", "Always portrait", "Cầm dọc một tay", "One-handed, upright"}};
+
+    private void pcOrient() {
+        String o = pref.getString("pc_orient", "auto");
+        setRequestedOrientation("land".equals(o) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                : "port".equals(o) ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT : ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR);
+    }
+
+    @Override public void onConfigurationChanged(Configuration nc) {
+        super.onConfigurationChanged(nc);
+        if (!pc) return;                                                // máy PC: cầm ngang → ẩn thanh cho hình to hết màn (còn nút nổi); cầm dọc → hiện lại
+        boolean land = nc.orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (land && !full) { autoFull = true; setFull(true); }
+        else if (!land && full && autoFull) { autoFull = false; setFull(false); }
+    }
+
+    private LinearLayout pcOpt(String ic, String t, String d, boolean on, Runnable act) {
+        LinearLayout r = Ui.row(this, 12);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
+        r.setBackground(Ui.round(on ? (Ui.LIGHT ? Color.argb(30, 43, 110, 240) : Color.argb(50, 90, 175, 255)) : Color.TRANSPARENT, 14,
+                on ? Ui.SKY : (Ui.LIGHT ? Color.argb(40, 10, 26, 58) : Color.argb(60, 159, 180, 216))));
+        r.addView(Ui.text(this, on ? "◉" : "○", 18, on ? Ui.SKY : Ui.MUTED, true), Ui.wrap());
+        LinearLayout tx = Ui.col(this, 2);
+        tx.addView(Ui.text(this, ic + "  " + t, 15, Ui.FG, true));
+        if (d != null && !d.isEmpty()) tx.addView(Ui.text(this, d, 12.5f, Ui.MUTED, false));
+        r.addView(tx, Ui.weight(1));
+        r.setClickable(true);
+        r.setOnClickListener(v -> act.run());
+        return r;
+    }
+
+    private void pcView() {
+        if (!pc) { quickRotate(); return; }
+        final LinearLayout c = Ui.col(this, 8);
+        final Dialog[] d = new Dialog[1];
+        final Runnable[] paint = new Runnable[1];
+        paint[0] = () -> {
+            c.removeAllViews();
+            int m = screen == null ? 0 : screen.inputMode();
+            String o = pref.getString("pc_orient", "auto");
+            c.addView(Ui.text(this, Ui.L("Kiểu chạm", "Touch input"), 13, Ui.MUTED, true));
+            for (int i = 0; i < PC_IN.length; i++) {
+                final int k = i;
+                c.addView(pcOpt(PC_IN[i][0], Ui.L(PC_IN[i][1], PC_IN[i][2]), Ui.L(PC_IN[i][3], PC_IN[i][4]), m == i, () -> {
+                    pref.edit().putInt("pc_in", k).apply();
+                    if (screen != null) screen.setInputMode(k);
+                    paint[0].run();
+                }), Ui.fill());
+            }
+            if (screen != null && screen.zoomed()) {
+                Button z = Ui.button(this, "⤢  " + Ui.L("Thu hình về vừa màn", "Fit picture to screen"), Ui.GHOST);
+                z.setOnClickListener(v -> { screen.resetZoom(); paint[0].run(); });
+                c.addView(z, Ui.fill());
+            }
+            TextView h2 = Ui.text(this, Ui.L("Xoay màn hình", "Screen rotation"), 13, Ui.MUTED, true);
+            h2.setPadding(0, Ui.dp(8), 0, 0);
+            c.addView(h2);
+            for (String[] x : PC_OR) {
+                final String k = x[0];
+                c.addView(pcOpt(x[1], Ui.L(x[2], x[3]), Ui.L(x[4], x[5]), k.equals(o), () -> {
+                    pref.edit().putString("pc_orient", k).apply();
+                    pcOrient();
+                    paint[0].run();
+                }), Ui.fill());
+            }
+        };
+        paint[0].run();
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(c);
+        d[0] = Ui.sheet(this, "🖐 " + Ui.L("Kiểu chạm · xoay màn", "Touch & rotation"), sv);
+        d[0].show();
     }
 
     /** Nút 🔄: đổi sang hướng kia. */

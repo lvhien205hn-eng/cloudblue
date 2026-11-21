@@ -36,7 +36,8 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
 
-/** Màn chính: Máy của tôi · Thuê máy · Tài khoản. */
+/** Màn chính: Máy của tôi · Cloud Phone (thuê điện thoại đám mây) · VPS GPU (máy PC thật — 21/11e) · Tài khoản.
+ *  Số thứ tự tab: 0 Máy của tôi · 1 Cloud Phone · 2 Tài khoản · 3 VPS GPU (thanh dưới xếp 0 · 1 · 3 · 2). */
 public class MainActivity extends Activity {
     static final int[] RAM = {2, 4, 6, 8, 12, 16}, CPU = {2, 4, 6, 8, 12, 16, 24, 32}, DAYS = {1, 3, 7, 15, 30, 60}, FPS = {30, 60, 90, 120}, QTY = {1, 2, 3, 5, 10};
     static final String[][] RES = {{"540x960", "Nhẹ máy"}, {"720x1280", "HD"}, {"720x1600", "HD+ dài"}, {"1080x1920", "Full HD"}, {"1080x2400", "FHD+ 20:9"}, {"1280x720", "HD ngang"}};
@@ -50,7 +51,7 @@ public class MainActivity extends Activity {
     boolean bluePayRent = false;                      // khách đã bật "Trả bằng Blue" ở bảng thuê (giữ khi bảng vẽ lại)
     String rentPromo = "";                            // mã giảm giá đang gõ ở bảng thuê (giữ khi bảng vẽ lại)
     private Runnable rentUpd;                         // tính lại tổng tiền bảng thuê (Blue tải xong → cập nhật)
-    private final TextView[] nav = new TextView[3];
+    private final TextView[] nav = new TextView[4];
     private int tab = 0;
     private boolean loaded = false;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -230,8 +231,8 @@ public class MainActivity extends Activity {
         bar.setBackground(Ui.ringed(Ui.PANEL, 99));                   // 16/11c: thanh điều hướng nổi, bo tròn hẳn
         bar.setPadding(Ui.dp(6), Ui.dp(5), Ui.dp(6), Ui.dp(5));
         bar.setElevation(Ui.dp(6));
-        String[][] items = {{"📱", Ui.L("Máy của tôi", "My phones")}, {"➕", Ui.L("Thuê máy", "Rent")}, {"👤", Ui.L("Tài khoản", "Account")}};
-        for (int i = 0; i < 3; i++) {
+        String[][] items = {{"📱", Ui.L("Máy của tôi", "My devices")}, {"☁️", "Cloud Phone"}, {"👤", Ui.L("Tài khoản", "Account")}, {"🖥️", "VPS GPU"}};
+        for (int i : new int[]{0, 1, 3, 2}) {                         // 21/11e: thêm tab VPS GPU (số 3) đứng trước Tài khoản
             final int t = i;
             TextView n = Ui.text(this, items[i][0] + "\n" + items[i][1], 12, Ui.MUTED, true);
             n.setGravity(Gravity.CENTER);
@@ -240,7 +241,7 @@ public class MainActivity extends Activity {
             Ui.ripple(n, Color.TRANSPARENT, 99, 0);
             Ui.press(n);
             nav[i] = n;
-            if (!Api.SHOP && i == 1) n.setVisibility(View.GONE);  // không mua trong app → không có tab Thuê máy
+            if (!Api.SHOP && (i == 1 || i == 3)) n.setVisibility(View.GONE);  // không mua trong app → không có tab Cloud Phone / VPS GPU (máy đã thuê vẫn ở Máy của tôi)
             bar.addView(n, Ui.weight(1));
         }
         LinearLayout.LayoutParams barLp = Ui.fill();
@@ -331,6 +332,7 @@ public class MainActivity extends Activity {
                 else renderPhones();
             }
             else if (tab == 2) { if (!uiDrag) renderAccount(); }   // đang kéo thanh cỡ giao diện → khoan vẽ lại (thanh kéo biến mất dưới tay)
+            else if (tab == 3) { if (!loaded || prof.optDouble("balance", 0) != vpsBal) renderVps(); }   // VPS GPU: vẽ lại khi số dư đổi (nạp / mua xong)
             else if (!loaded) renderRent();          // lần đầu: vẽ lại bảng thuê với giá và giới hạn thật
             loaded = true;
             boolean pending = false;
@@ -398,18 +400,51 @@ public class MainActivity extends Activity {
         }
     }
 
+    private static boolean vpsAutoDone = false;
+    /** 21/11f · Khách chỉ thuê VPS GPU (chưa có cloud phone) → lần đầu mở app tự sang tab VPS GPU (1 lần mỗi lần mở app). */
+    void vpsAuto() {
+        if (vpsAutoDone || destroyed || !loaded) return;
+        vpsAutoDone = true;
+        if (Api.SHOP && tab == 0 && phones.length() == 0 && PcVps.live() > 0) show(3);
+    }
+
     void show(int t) {
-        if (!Api.SHOP && t == 1) t = 0;                 // không mua trong app → không có màn Thuê máy
+        if (!Api.SHOP && (t == 1 || t == 3)) t = 0;     // không mua trong app → không có màn Cloud Phone / VPS GPU
         if (t == 1 && tab != 1) rentPicked = false;     // vào lại trang Thuê máy → chưa chọn gói, chưa hiện tiền
         tab = t;
         try { getIntent().putExtra("tab", t); } catch (Exception ignored) { }   // 16/11: màn vẽ lại (Sáng/Tối, cỡ giao diện, xoay máy) → ở lại tab này
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < nav.length; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
             nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 99, 0) : null);
         }
         if (t != 0) { releasePreviews(); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng)
-        if (t == 0) renderPhones(); else if (t == 1) renderRent(); else renderAccount();
+        if (t == 3) PcVps.tErrAt = 0;                    // vào tab VPS GPU → đọc lại bảng giá (kể cả lần trước lỗi)
+        if (t == 0) renderPhones(); else if (t == 1) renderRent(); else if (t == 3) renderVps(); else renderAccount();
     }
+
+    // ---------------- TAB VPS GPU (21/11e) ----------------
+    private ScrollView vpsSv = null;
+    private double vpsBal = -1;
+
+    /** 🖥️ Trang mua VPS GPU (máy PC thật, 1 cấu hình) — PcVps.tab dựng nội dung, ở đây gắn trang cuộn + thanh thanh toán dưới màn hình. */
+    void renderVps() {
+        final int keepY = tab == 3 && vpsSv != null && vpsSv.getParent() != null ? vpsSv.getScrollY() : 0;
+        vpsBal = prof.optDouble("balance", 0);
+        LinearLayout body = Ui.col(this, 14);
+        View bar = PcVps.tab(this, body);
+        final ScrollView sv = page(body);
+        vpsSv = sv;
+        if (keepY > 0) sv.post(() -> sv.scrollTo(0, keepY));
+        if (bar != null) {
+            body.setPadding(body.getPaddingLeft(), body.getPaddingTop(), body.getPaddingRight(), Ui.dp(150));
+            FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+            blp.setMargins(Ui.dp(10), 0, Ui.dp(10), Ui.dp(8));
+            content.addView(bar, blp);
+        }
+    }
+
+    /** Bảng giá VPS GPU vừa tải / vừa mua xong → vẽ lại nếu đang ở tab VPS GPU. */
+    void vpsChanged() { if (!destroyed && tab == 3) renderVps(); }
 
     private ScrollView page(LinearLayout body) {
         body.setPadding(Ui.dp(16), Ui.dp(6), Ui.dp(16), Ui.dp(24));
@@ -497,7 +532,7 @@ public class MainActivity extends Activity {
         cb.setOnClickListener(v -> claim(code, cb));
         cr.addView(cb, Ui.wrap());
         body.addView(cr, Ui.fill());
-        PcVps.section(this, body);                  // 21/11 · 🖥️ VPS GPU của bạn (máy PC thật — SQL v43; chưa có thì không hiện gì)
+        PcVps.link(this, body);                     // 21/11f · VPS GPU là mục riêng (tab 🖥️ VPS GPU) — ở đây chỉ 1 dòng dẫn sang khi khách có VPS
 
         if (phones.length() == 0) {
             LinearLayout e = Ui.card(this);
@@ -1544,7 +1579,6 @@ public class MainActivity extends Activity {
         body.addView(Ui.muted(this, Ui.L("3 bước: chọn hệ điều hành → chọn gói → số ngày. Máy mới tinh, có Play Store.",
                 "3 steps: Android version → plan → days. Fresh device with Play Store.")), Ui.fill());
         promo(body, false);                         // 🎡 vòng quay may mắn — dải gọn, bấm là mở · khách ẩn / hiện được (16/11)
-        PcVps.rentCard(this, body);                 // 21/11 · 🖥️ mua VPS GPU (máy PC thật, tự giao + cài Windows) — chỉ bản có mua hàng
 
         int minR = price.optInt("min_ram", 1), minC = price.optInt("min_cpu", 1);
         final int mpu = maxPerUser(), left = mpu > 0 ? mpu - myLive() : 20;
@@ -1813,7 +1847,7 @@ public class MainActivity extends Activity {
     }
 
     /** Đầu mỗi bước: số tròn xanh bóng + tiêu đề + 1 dòng gợi ý (giống web). */
-    private View stepHead(String n, String title, String sub) {
+    View stepHead(String n, String title, String sub) {
         LinearLayout r = Ui.row(this, 10);
         r.setGravity(Gravity.CENTER_VERTICAL);
         TextView b = Ui.text(this, n, 14, Ui.LIGHT ? Color.WHITE : Color.rgb(4, 18, 46), true);
