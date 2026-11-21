@@ -96,6 +96,12 @@ class FakeHost:
         if not self.clock_ok: return False
         self.fs.clock = float(epoch); return True
     def mutex(self, name=""): return True
+    def remote_running(self): return getattr(self, "rmt_up", False)
+    def remote_start(self, script):
+        self.rmt_starts = getattr(self, "rmt_starts", []) + [script]
+        if getattr(self, "rmt_fail", None): raise OSError(self.rmt_fail)
+        self.rmt_up = True
+        return 4242, 1
     def restart_self(self): self.restarts += 1; return True
     def selfcheck(self, script): return (self.check_ok, "" if self.check_ok else "ImportError: x")
 
@@ -660,6 +666,52 @@ big = agx.info()["drv"]
 ck("máy gửi tên thiết bị lạ / rất nhiều thiết bị: chỉ 6 tên, mỗi tên ≤ 60 ký tự ASCII (web vẫn esc() lại lần nữa)", big["miss"] == 40 and len(big["names"]) == 6 and all(len(x) <= 60 and x.isascii() for x in big["names"]), big)
 with_real = pcagent.WinHost().drivers()
 ck("WinHost.drivers thật: trên máy không phải Windows trả None (không ném lỗi)", with_real is None)
+
+print("18. ĐIỀU KHIỂN TỪ XA: agent giữ pcremote.py chạy trong phiên màn hình + báo tình trạng về web (21.11d)")
+fsr = FakeSys("uefi"); H.usb(fsr, H.cfg0(), key=KEY)
+fsr.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="REMOTE018")
+assert cb_pe.Installer(fsr).run(ScriptUI()) == 0
+fsr.fdisks = [d for d in fsr.fdisks if d.index != 9]; boot_windows(fsr)
+netr, hostr = SqlNet(), FakeHost(fsr, "CB-REMOTE")
+agr = agent(fsr, netr, hostr)
+ck("bộ cài chép pcremote.py vào máy cùng agent", fsr.file("C", "cloudbluepc\\agent\\pcremote.py") is not None)
+netr.down = True; agr.tick()
+ck("máy CHƯA đăng ký: chưa mở chương trình điều khiển từ xa", agr.ident is None and not getattr(hostr, "rmt_starts", []))
+netr.down = False
+for _ in range(4):
+    if agr.ident: break
+    agr.tick()
+ck("vừa đăng ký xong → agent mở pcremote.py vào phiên màn hình (1 lần), ghi nhật ký", agr.ident is not None and hostr.rmt_starts == ["C:\\CloudBluePC\\agent\\pcremote.py"]
+   and any("đã mở chương trình điều khiển từ xa trong phiên màn hình 1 (pid 4242)" in x for x in agr.logs), (getattr(hostr, "rmt_starts", None), agr.logs[-3:]))
+agr.tick(); agr.tick()
+ck("đang chạy rồi → không mở thêm bản thứ 2", len(hostr.rmt_starts) == 1 and agr.remote_keep() == "run")
+hostr.rmt_up = False; agr.tick()
+ck("pcremote vừa thoát (người dùng đăng xuất / tự lên bản mới) mà mới mở < 1 phút → chưa mở lại vội", len(hostr.rmt_starts) == 1 and agr.remote_keep() == "wait")
+fsr.clock += 61; agr.tick()
+ck("quá 1 phút → mở lại", len(hostr.rmt_starts) == 2 and hostr.rmt_up)
+hostr.rmt_up = False; hostr.rmt_fail = "khong doi duoc phien cua the quyen (loi 1314)"; n_log = len(agr.logs)
+fsr.clock += 61; agr.tick(); fsr.clock += 61; agr.tick(); fsr.clock += 61; agr.tick()
+errs = [x for x in agr.logs[n_log:] if "chưa mở được chương trình điều khiển từ xa" in x]
+ck("mở lỗi (không phải SYSTEM…): agent KHÔNG sập, thử lại mỗi phút, nhật ký chỉ ghi lỗi 1 lần", len(hostr.rmt_starts) == 5 and len(errs) == 1 and "1314" in errs[0] and agr.fail == 0, (len(hostr.rmt_starts), errs))
+hostr.rmt_fail = None
+ck("chưa có file tình trạng → không gửi mục rmt", "rmt" not in agr.info())
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "%d 21.11d da noi may chu win4 (direct) - cho nguoi xem\n" % (fsr.clock - 30))
+ri = agr.info().get("rmt")
+ck("pcremote ghi tình trạng → agent gửi về web trong info.rmt (bản, tình trạng, mấy giây trước)", ri == {"v": "21.11d", "s": "da noi may chu win4 (direct) - cho nguoi xem", "age": 30}, ri)
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "%d 21.11d <script>alert(1)</script> chữ có dấu %s\n" % (fsr.clock, "x" * 400))
+ri = agr.info().get("rmt")
+ck("file tình trạng có chữ lạ / quá dài → cắt 120 ký tự ASCII", ri and len(ri["s"]) == 120 and ri["s"].isascii() and ri["v"] == "21.11d", ri)
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "rac khong dung dang")
+ck("file tình trạng hỏng → bỏ qua, agent vẫn chạy", "rmt" not in agr.info())
+cfgr = json.loads(fsr.file("C", "cloudbluepc\\cb.json")); cfgr["remote"] = False
+fsr.write_text("C:\\CloudBluePC\\cb.json", json.dumps(cfgr))
+hostr2 = FakeHost(fsr, "CB-REMOTE"); agr2 = agent(fsr, netr, hostr2); agr2.tick(); agr2.tick()
+ck("cb.json đặt \"remote\": false → agent KHÔNG mở pcremote; web thấy 'tắt trên máy này'", not getattr(hostr2, "rmt_starts", []) and agr2.remote_keep() is None and "tat tren may nay" in agr2.info()["rmt"]["s"])
+row = json.loads(q("select info->'rmt' from pc_machines where id = '%s'" % agr2.ident["id"]))
+ck("… web nhận info.rmt nguyên vẹn (SQL không cắt)", row and "tat tren may nay" in row["s"], row)
+import pcremote as _pr
+ck("pcagent và pcremote cùng số bản + cùng tên khoá 'đang chạy'", _pr.REMOTE_VER == pcagent.AGENT_VER and _pr.MUTEX == pcagent.REMOTE_MUTEX, (_pr.REMOTE_VER, pcagent.AGENT_VER))
+ck("bản tự cập nhật nhận file agent/pcremote.py (đúng mẫu tên file được phép)", bool(pcagent.UPDATE_REL.match("agent/pcremote.py")))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
