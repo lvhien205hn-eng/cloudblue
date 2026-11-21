@@ -10,6 +10,8 @@
 #    6. chep tep that cua bo cai: tep lon khong duoc ngon RAM (sys_check.py)
 #    7. soat ten chua khai bao trong moi file Python (lint.py) + thu tren Windows that cac ham goi thang vao Windows cua ban 21.11a:
 #       thu mang, tim card NVIDIA, provision.cmd in tien do, dat dong ho, huy hen tat may, DRIVER: doc thiet bi that + kho driver + do lai phan cung (os_check.py)
+#    8. dieu khien tu xa (ban 21.11d): tai ffmpeg + kiem ma da ghim, quay man hinh that + nen, chuot / phim / bo nho copy that, mo chuong trinh bang SYSTEM
+#       vao phien man hinh, va thu dau-cuoi may chu phat hinh (windows/bluestream.py + pcrelay.py) <-> pcremote <-> nguoi xem (remote_check.py)
 #  Khong dua gi len web, khong dung toi may that nao. Luon thoat ma 0; ket qua nam o trang tom tat cua lan chay.
 # =====================================================================================================
 param([string]$WorkRoot = "")
@@ -421,6 +423,27 @@ try {
       Ck "bo thu os_check chay het" ($nOs -ge 36) ("" + $nOs + " phep thu, " + $osOut.Count + " dong")
     } else {
       Info ("BO QUA buoc 7: khong co cay bo cai / python (" + $cbDir + ")")
+    }
+
+    Out-Line "== 8. Dieu khien tu xa (ban 21.11d): ffmpeg da ghim ma, quay man hinh that, chuot / phim that, mo bang SYSTEM vao phien man hinh, dau-cuoi (remote_check.py)"
+    if ((Test-Path $cbDir) -and (Test-Path $pyExe)) {
+      Ck "bo cai co chuong trinh dieu khien tu xa (cb\agent\pcremote.py)" (Test-Path (Join-Path $cbDir "agent\pcremote.py"))
+      $rmTmp = Join-Path $Wk "rmchk"
+      $repoRoot = Split-Path -Parent $RepoDir
+      $oldEap = $ErrorActionPreference
+      $ErrorActionPreference = "Continue"
+      $rmOut = @(& $pyExe -I -B (Join-Path $PSScriptRoot "remote_check.py") $cbDir $rmTmp $repoRoot 2>&1 | ForEach-Object { "" + $_ })
+      $ErrorActionPreference = $oldEap
+      $nRm = 0
+      foreach ($ln in $rmOut) {
+        if ($ln -match '^OK  (.*)$') { $script:Pass++; $nRm++; Out-Line ("  OK  " + $Matches[1]) }
+        elseif ($ln -match '^XX  (.*)$') { $script:FailN++; $nRm++; Out-Line ("  XX  " + $Matches[1]) }
+        elseif ($ln -match '^\.\. (.*)$') { Info $Matches[1] }
+        elseif ($ln.Trim()) { Info ("? " + $ln) }
+      }
+      Ck "bo thu remote_check chay het" (($nRm -ge 12) -and (($rmOut -join " ") -match "xong remote_check")) ("" + $nRm + " phep thu, " + $rmOut.Count + " dong")
+    } else {
+      Info ("BO QUA buoc 8: khong co cay bo cai / python (" + $cbDir + ")")
     }
   }
 } catch {
