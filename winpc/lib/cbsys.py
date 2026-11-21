@@ -514,30 +514,56 @@ def pnp_retry():
     return cr if cr != 0 else cm.CM_Reenumerate_DevNode(dev, 0x2)   # CM_REENUMERATE_RETRY_INSTALLATION
 
 
-def staged_infs(limit=600):
+def staged_infs(limit=600, how=None):
     """Gói driver BÊN THỨ BA đang nằm trong kho driver của Windows (bộ cài nạp bằng dism /Add-Driver, hoặc ai đó đã cài): [{"pub": "oem3.inf", "inf": đường dẫn
-       file .inf gốc trong kho}] — đọc HKLM\\SYSTEM\\DriverDatabase, không phụ thuộc ngôn ngữ. Đường dẫn này đưa được cho pnputil -i -a để cài ngay lên thiết bị khớp."""
+       file .inf gốc trong kho}] — đọc HKLM\\SYSTEM\\DriverDatabase, không phụ thuộc ngôn ngữ. Đường dẫn này đưa được cho pnputil -i -a để cài ngay lên thiết bị khớp.
+       Đọc theo 2 lối rồi gộp: DriverInfFiles\\oemN.inf → tên gói, và DriverPackages\\<tên gói> → oemN.inf (bản Windows khác nhau ghi đủ ở 1 trong 2 chỗ).
+       how (nếu đưa vào, kiểu dict): nhận số gói mỗi lối tìm được — để bộ thử in ra."""
     import winreg
-    root, out = os.environ.get("SystemRoot") or "C:\\Windows", []
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverInfFiles") as k:
+    root, found = os.environ.get("SystemRoot") or "C:\\Windows", {}
+    repo = os.path.join(root, "System32", "DriverStore", "FileRepository")
+
+    def add(pub, pkg, via):
+        pub, pkg = str(pub or "").lower(), str(pkg or "")
+        m = re.match(r"^(.+\.inf)_", pkg, re.I)
+        if not m or not re.fullmatch(r"oem\d+\.inf", pub) or pub in found: return
+        path = os.path.join(repo, pkg, m.group(1))
+        if os.path.isfile(path):
+            found[pub] = path
+            if how is not None: how[via] = how.get(via, 0) + 1
+
+    def subkeys(k):
         i = 0
-        while len(out) < limit:
-            try: name = winreg.EnumKey(k, i)
-            except OSError: break
+        while True:
+            try: yield winreg.EnumKey(k, i)
+            except OSError: return
             i += 1
-            if not re.fullmatch(r"oem\d+\.inf", name, re.I): continue
-            try:
-                with winreg.OpenKey(k, name) as kk:
-                    try: pkg = winreg.QueryValueEx(kk, "Active")[0]
-                    except OSError: pkg = winreg.QueryValueEx(kk, "")[0]
-            except OSError:
-                continue
-            if isinstance(pkg, (list, tuple)): pkg = pkg[0] if pkg else ""
-            m = re.match(r"^(.+\.inf)_", str(pkg or ""), re.I)
-            if not m: continue
-            path = os.path.join(root, "System32", "DriverStore", "FileRepository", str(pkg), m.group(1))
-            if os.path.isfile(path): out.append({"pub": name.lower(), "inf": path})
-    return out
+
+    def value(k, name):
+        try: v = winreg.QueryValueEx(k, name)[0]
+        except OSError: return ""
+        if isinstance(v, (list, tuple)): v = v[0] if v else ""
+        return v if isinstance(v, str) else ""
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverInfFiles") as k:
+            for name in list(subkeys(k)):
+                if not re.fullmatch(r"oem\d+\.inf", name, re.I): continue
+                try:
+                    with winreg.OpenKey(k, name) as kk:
+                        add(name, value(kk, "Active") or value(kk, ""), "inffiles")
+                except OSError: continue
+    except OSError: pass
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverPackages") as k:
+            for pkg in list(subkeys(k)):
+                try:
+                    with winreg.OpenKey(k, pkg) as kk:
+                        add(value(kk, "") or value(kk, "InfName"), pkg, "packages")
+                except OSError: continue
+    except OSError: pass
+    num = lambda pub: int(re.sub(r"\D", "", pub) or 0)
+    return [{"pub": pub, "inf": found[pub]} for pub in sorted(found, key=num)][:limit]
 
 
 # ====================================================================================== tự kiểm (chỉ đọc)
