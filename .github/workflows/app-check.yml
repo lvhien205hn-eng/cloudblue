@@ -64,7 +64,9 @@ jobs:
         shell: pwsh
         working-directory: pc-client
         run: |
-          python ..\.github\app-check\shot_pc.py . ..\shots
+          python ..\.github\app-check\shot_pc.py . ..\shots vi
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python ..\.github\app-check\shot_pc.py . ..\shots en
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - name: Lưu ảnh vào nhánh app-shots
         shell: pwsh
