@@ -2492,6 +2492,7 @@ class Shop:
         rows = self.auth.rest("settings?id=eq.1&select=data") or []
         d = (rows[0].get("data") or {}) if rows else {}
         set_web(d.get("web"))
+        if isinstance(d, dict): SITE["d"] = d                 # 21/11f · bảo trì riêng VPS GPU (pc_maint) + kênh liên hệ shop (linkDc / linkZl / linkTg)
         return d
 
     def live_count(self):
@@ -2504,6 +2505,22 @@ def set_web(u):
     global WEB
     u = str(u or "").strip().rstrip("/")
     if re.fullmatch(r"https://[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}", u, re.I): WEB = u
+
+
+SITE = {"d": {}}                                         # settings.data lần đọc gần nhất (Shop.site)
+
+
+def pc_maint_msg(prof=None):
+    """21/11f · Bảo trì riêng VPS GPU (admin bật ở web: Cài đặt → Bảo trì) → câu báo cho khách thường; không bảo trì / admin → ""."""
+    d = SITE.get("d") or {}
+    if not d.get("pc_maint") or (prof or {}).get("role") == "admin": return ""
+    m = str(d.get("pc_maint_msg") or "").strip()[:200]
+    return L("🛠 VPS GPU đang bảo trì", "🛠 GPU VPS is under maintenance") + (f" — {m}" if m else "") + ". " + L("Máy và dữ liệu của bạn vẫn giữ nguyên.", "Your machine and data are kept.")
+
+
+def mmss(sec):
+    sec = max(0, int(sec)); h, m, x = sec // 3600, sec % 3600 // 60, sec % 60
+    return f"{h}:{m:02d}:{x:02d}" if h else f"{m}:{x:02d}"
 
 
 def is_ctv(prof): return prof.get("ctv_status") == "approved" and num(prof.get("ctv_discount")) > 0
@@ -3967,6 +3984,8 @@ def vps_state(x):
     if lf is not None and lf <= 0: return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, (L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "Renew and the shop turns it back on.")
                                                                                    if pc.get("off") else L("Gia hạn để dùng tiếp.", "Renew to keep using it."))
     if not pc.get("online"): return "off", L("○ Máy đang tắt / mất mạng", "○ Offline"), WARN, L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts.")
+    if (pc.get("last_job") or {}).get("state") == "failed":
+        return "warn", L("⚠ Cài lại chưa xong", "⚠ Reinstall failed"), WARN, L("Lần cài lại vừa rồi bị lỗi — bấm 📋 Báo admin để shop xử lý.", "The last reinstall failed — click 📋 Report to the admin.")
     return "run", L("● Sẵn sàng", "● Ready"), OK, ""
 
 
@@ -3982,18 +4001,20 @@ def fitwrap(w, pad=4):
     return w
 
 
-def vps_cards(app, slot, data, more=True):
+def vps_cards(app, slot, data, more=True, prof=None):
     """Thẻ "VPS GPU của bạn" — dùng chung cho trang chính và trang 🖥 VPS GPU. more = có nút "+ Thuê thêm"."""
     items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict)]
     if not items: return
     tk = app.tk; mx = int(num((data or {}).get("reinstall_max", 2)))
     os_list = [o for o in ((data or {}).get("os") or []) if isinstance(o, dict) and o.get("id")]
+    mt = pc_maint_msg(prof if prof is not None else getattr(app, "prof", None))      # 21/11f · bảo trì riêng VPS GPU → khoá điều khiển + cài lại
     hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
     tk.Label(hd, text=L("🖥 VPS GPU của bạn", "🖥 Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
     if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+    if mt: vps_maint_bar(app, slot, mt).pack(fill="x", padx=8, pady=(2, 4))
     for x in items:
         pc = x.get("pc") or {}; code, st, col, why = vps_state(x)
-        c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off") else LINE, highlightthickness=1)
+        c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off", "warn") else LINE, highlightthickness=1)
         c.pack(fill="x", padx=8, pady=4)
         row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(12, 2))
         tk.Label(row, text=str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else ""),
@@ -4001,20 +4022,138 @@ def vps_cards(app, slot, data, more=True):
         tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g] + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else [])
         tk.Label(c, text=" · ".join(s for s in spec if s), font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
-        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code == "exp" else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
+        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code in ("exp", "warn") else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
                                  wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
+        if code == "warn":                                          # 21/11f · cài lại lỗi → lý do + 📋 Báo admin
+            jm = str((pc.get("last_job") or {}).get("msg") or "").strip()
+            if jm: fitwrap(tk.Label(c, text=jm, font=app.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
+            app.btn(c, "📋 " + L("Báo admin", "Report to the admin"), lambda q=x: VpsReportDlg(app, q), "ghost", padx=12, pady=5,
+                    font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=16, pady=(6, 0))
+        if code in ("inst", "wait"): vps_progress(app, c, x, code == "inst")      # 21/11f · thanh tiến độ có đếm giờ
         if x.get("state") == "active" and x.get("until") and left_secs(x["until"]) > 0:
             tk.Label(c, text="⏱ " + fmt_left(x["until"]), font=app.f_s, fg=WARN if left_secs(x["until"]) < 86400 else DIM, bg=CARD, anchor="w").pack(fill="x", padx=16, pady=(2, 0))
         if x.get("state") != "active" or not pc.get("id"):
             tk.Frame(c, bg=CARD, height=10).pack(fill="x"); continue
         bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=16, pady=(10, 13))
         b = app.btn(bar, "▶  " + L("Điều khiển", "Control"), lambda pid=str(pc.get("id")): app.open_pc(pid), padx=18, pady=8); b.pack(side="left")
-        if code not in ("run",): b.config(state="disabled", bg=LINE)
+        if code not in ("run", "warn") or mt: b.config(state="disabled", bg=LINE)
         if x.get("rental") is None: continue
         left = int(num(x.get("left")))
         rb = app.btn(bar, f"🔄 {L('Cài lại', 'Reinstall')} {left}/{mx}", lambda q=x: VpsReDlg(app, q, os_list, mx), "ghost", pady=8); rb.pack(side="left", padx=8)
-        if left < 1 or code in ("inst", "exp") or not os_list: rb.config(state="disabled")
+        if left < 1 or code in ("inst", "exp") or not os_list or mt: rb.config(state="disabled")
         app.btn(bar, L("⏱ Gia hạn", "⏱ Renew"), lambda q=x: VpsRenewDlg(app, q), "ghost", pady=8).pack(side="right")
+
+
+def vps_maint_bar(app, parent, msg):
+    """21/11f · Dòng vàng "VPS GPU đang bảo trì" (admin bật riêng cho VPS GPU trên web)."""
+    tk = app.tk; ac = "#ffc861"; bg = _mix(ac, BG, .14)
+    f = tk.Frame(parent, bg=bg, highlightthickness=1, highlightbackground=_mix(ac, BG, .6), radius=14)
+    fitwrap(tk.Label(f, text=msg, font=("Segoe UI", 10, "bold"), fg="#ffe3a3", bg=bg, anchor="w", justify="left", wraplength=520)).pack(fill="x", padx=14, pady=10)
+    return f
+
+
+def _bar_draw(cv, pct, col):
+    """Thanh tiến độ bo tròn (vẽ bằng 2 nét đầu tròn trên Canvas)."""
+    try:
+        w = max(12, cv.winfo_width()); h = max(4, int(float(cv.cget("height")))); r = h / 2
+        cv.delete("all")
+        cv.create_line(r, r, w - r, r, width=h, fill=LINE, capstyle="round")
+        cv.create_line(r, r, r + max(.5, (w - h) * max(0.0, min(1.0, pct))), r, width=h, fill=col, capstyle="round")
+    except Exception: pass
+
+
+def vps_progress(app, parent, x, inst):
+    """21/11f · Thanh tiến độ + đồng hồ đếm (mỗi giây) cho VPS đang cài Windows / đang chờ máy. % ước tính theo thời gian thường mất
+       (cài ~25 phút · chờ ~10 phút); lâu bất thường → vàng + nút 📋 Báo admin (như web / app điện thoại)."""
+    tk = app.tk; pc = x.get("pc") or {}; job = pc.get("job") or {}
+    t0 = parse_iso(job.get("at") if inst else x.get("created_at")) or now_utc()
+    exp = (25 if inst else 10) * 60; osu = str(job.get("os") or "").upper()
+    box = tk.Frame(parent, bg=CARD); box.pack(fill="x", padx=16, pady=(8, 0))
+    cv = tk.Canvas(box, height=max(6, tk.px(8)), bg=CARD, highlightthickness=0); cv.pack(fill="x")
+    lbl = tk.Label(box, text="", font=app.f_s, fg=DIM, bg=CARD, anchor="w", justify="left"); lbl.pack(fill="x", pady=(4, 0)); fitwrap(lbl)
+    rep = app.btn(box, "📋 " + L("Báo admin", "Report to the admin"), lambda: VpsReportDlg(app, x), "ghost", padx=12, pady=5, font=("Segoe UI", 9, "bold"))
+    st = {"late": None, "pct": 0, "col": SKY}
+    cv.bind("<Configure>", lambda e: _bar_draw(cv, st["pct"] / 100, st["col"]), add="+")
+    def tick():
+        try:
+            if not lbl.winfo_exists(): return
+        except Exception: return
+        sec = max(0, int((now_utc() - t0).total_seconds()))
+        pct = int(min(96 if inst else 90, max(2, round(100 * (1 - math.exp(-sec / (exp * .55)))))))
+        late = sec > exp * (2 if inst else 3)
+        stage = (L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically") if not inst
+                 else L("Khởi động lại vào bộ cài", "Restarting into setup") if sec < 150
+                 else L("Đang cài Windows ", "Installing Windows ") + osu if sec < 15 * 60
+                 else L("Cài driver · khởi động lần đầu", "Drivers · first boot") if sec < 26 * 60 else L("Sắp xong…", "Almost done…"))
+        st["pct"], st["col"] = pct, WARN if late else SKY
+        _bar_draw(cv, pct / 100, st["col"])
+        if st["late"] != late:
+            st["late"] = late; lbl.config(fg=WARN if late else DIM)
+            if late: rep.pack(anchor="w", pady=(6, 0))
+            else: rep.pack_forget()
+        lbl.config(text=f"{stage} · {pct}% · " + L("đã chạy ", "elapsed ") + mmss(sec)
+                   + (L(" · lâu hơn bình thường", " · taking longer than usual") if late else L(" · thường ~", " · usually ~") + str(exp // 60) + L(" phút", " min")))
+        try: lbl.after(1000, tick)
+        except Exception: pass
+    tick()
+    return box
+
+
+def vps_report_text(app, x):
+    """Nội dung soạn sẵn gửi admin: máy · việc / lỗi · Windows · tài khoản · lượt thuê · giờ."""
+    pc = x.get("pc") or {}; job = pc.get("job") or {}; lj = pc.get("last_job") or {}
+    code, st = vps_state(x)[:2]
+    def el(t):
+        d = parse_iso(t)
+        return mmss((now_utc() - d).total_seconds()) if d else "?"
+    what = ((L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (f": {lj.get('msg')}" if lj.get("msg") else "")) if code == "warn"
+            else (L("Cài lại Windows ", "Reinstall ") + str(job.get("os") or "").upper() + L(" — đã chạy ", " — running for ") + el(job.get("at")) + L(" chưa xong", "")) if code == "inst"
+            else (L("Chờ giao máy — đã chờ ", "Waiting for a machine — ") + el(x.get("created_at"))) if code == "wait"
+            else st)
+    prof = getattr(app, "prof", None) or {}
+    user = str(prof.get("username") or prof.get("email") or getattr(getattr(app, "auth", None), "email", "") or "")
+    return "\n".join([L("[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ", "[CLOUDBLUE] GPU VPS NEEDS HELP"),
+                      "• " + L("Máy: ", "Machine: ") + str(pc.get("name") or "—") + (f" (№ {pc.get('code')})" if pc.get("code") else ""),
+                      "• " + L("Việc: ", "Problem: ") + what,
+                      "• Windows: " + str(x.get("os_name") or ""),
+                      "• " + L("Tài khoản: ", "Account: ") + user,
+                      "• " + L("Lượt thuê: #", "Rental: #") + (str(x.get("rental")) if x.get("rental") is not None else "—"),
+                      "• " + L("Lúc: ", "Time: ") + datetime.datetime.now().strftime("%H:%M %d/%m/%Y")])
+
+
+class VpsReportDlg(Dlg):
+    """📋 Báo admin (21/11f): nội dung đã copy sẵn — bấm 1 kênh liên hệ của shop (admin cài trên web), dán Ctrl+V và gửi."""
+    def __init__(self, app, x):
+        super().__init__(app, "📋 " + L("Báo admin", "Report to the admin"), 560, 600)
+        tk = app.tk; self.msg = vps_report_text(app, x)
+        self._copy()
+        fitwrap(self.label(self.body, L("✓ Đã copy nội dung dưới đây. Bấm 1 kênh để mở, dán (Ctrl+V) và gửi cho admin — shop xử lý ngay.",
+                                        "✓ Copied. Open a channel, paste (Ctrl+V) and send it to the admin."), app.f_t, OK, wraplength=500)).pack(fill="x", padx=18, pady=(16, 8))
+        box = tk.Frame(self.body, bg=SUNK, highlightthickness=1, highlightbackground=LINE, radius=14); box.pack(fill="x", padx=18)
+        fitwrap(tk.Label(box, text=self.msg, font=("Consolas", 10), fg=TXT, bg=SUNK, anchor="w", justify="left", wraplength=480)).pack(fill="x", padx=14, pady=12)
+        d = SITE.get("d") or {}; n = 0
+        row = tk.Frame(self.body, bg=BG); row.pack(fill="x", padx=18, pady=(12, 0))
+        for k, t in (("linkDc", "🎮 Discord"), ("linkZl", "💬 Zalo"), ("linkTg", "✈ Telegram")):
+            u = str(d.get(k) or "").strip()
+            if not re.match(r"(?i)^https?://\S+$", u): continue
+            app.btn(row, t, lambda u=u: webbrowser.open(u), padx=16, pady=8).pack(side="left", padx=(0 if n == 0 else 8, 0)); n += 1
+        app.btn(row if n < 3 else self.body, "🌐 " + L("Mở website", "Open website"), lambda: webbrowser.open(WEB), "ghost", padx=14, pady=8).pack(side="left", padx=(8 if n else 0, 0))
+        ft = self.foot
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=12)
+        app.btn(bb, L("Đóng", "Close"), self.close, "soft").pack(side="left")
+        app.btn(bb, "📋 " + L("Copy lại", "Copy again"), self._copy, "ghost").pack(side="right")
+
+    def _copy(self):
+        try: self.app.root.clipboard_clear(); self.app.root.clipboard_append(self.msg)
+        except Exception: pass
+
+
+def vps_sig(mine):
+    """Dấu vân tay trạng thái các VPS (đổi thì vẽ lại thẻ)."""
+    it = [x for x in ((mine or {}).get("items") or []) if isinstance(x, dict)]
+    return json.dumps([[x.get("state"), x.get("rental"), x.get("until"), (x.get("pc") or {}).get("id"), (x.get("pc") or {}).get("online"),
+                        bool((x.get("pc") or {}).get("job")), ((x.get("pc") or {}).get("job") or {}).get("state"),
+                        ((x.get("pc") or {}).get("last_job") or {}).get("state"), x.get("left")] for x in it], default=str)
 
 
 def vps_texts(prod):
@@ -4057,10 +4196,33 @@ class VpsBuyDlg(Dlg):
 
     def _fetch(self):
         def job():
+            try: self.app.shop.site()                                          # 21/11f · trạng thái bảo trì VPS GPU luôn mới khi mở trang
+            except Exception: pass
             try: mine = self.app.auth.rpc("pc_my_vps", {})
             except Exception: mine = None
             return vps_shop(self.app.auth, 0), self.app.shop.profile(), mine
         self.bg(job, self._loaded, lambda m: self.loading(m))
+
+    def _arm(self):
+        """21/11f · Có máy đang chờ / đang cài → 20 giây đọc lại 1 lần; trạng thái đổi thì chỉ vẽ lại phần thẻ (không mất lựa chọn đang chọn)."""
+        busy = any(vps_state(x)[0] in ("wait", "inst") for x in ((self.mine or {}).get("items") or []) if isinstance(x, dict))
+        if busy and self.alive and getattr(self, "_poll_job", None) is None:
+            try: self._poll_job = self.body.after(20000, self._poll)
+            except Exception: pass
+
+    def _poll(self):
+        self._poll_job = None
+        if not self.alive: return
+        def ok(mine):
+            if vps_sig(mine) != vps_sig(self.mine):
+                self.mine = mine; box = getattr(self, "cards_box", None)
+                try:
+                    if box is not None and box.winfo_exists():
+                        for w in box.winfo_children(): w.destroy()
+                        vps_cards(self.app, box, mine, more=False, prof=self.prof)
+                except Exception: log("vps poll:", traceback.format_exc())
+            self._arm()
+        self.bg(lambda: self.app.auth.rpc("pc_my_vps", {}), ok, lambda m: self._arm())
 
     def _loaded(self, r):
         tk = self.app.tk; app = self.app
@@ -4071,9 +4233,12 @@ class VpsBuyDlg(Dlg):
                  font=app.f_t, fg=DIM, bg=BG, anchor="w").pack(side="left")
         app.btn(hd, "🎬 " + L("Video hướng dẫn", "Video guide"), lambda: webbrowser.open(WEB + self.VIDEO), tint=SKY, padx=11, pady=4,
                 font=("Segoe UI", 9, "bold")).pack(side="right")
+        self.mt = pc_maint_msg(self.prof)                                     # 21/11f · bảo trì riêng VPS GPU (admin vẫn mua / vào được để thử)
+        if self.mt: vps_maint_bar(app, self.body, self.mt).pack(fill="x", padx=18, pady=(10, 0))
         if self.mine and (self.mine.get("items") or []):
-            box = tk.Frame(self.body, bg=BG); box.pack(fill="x", padx=10)
-            vps_cards(app, box, self.mine, more=False)
+            self.cards_box = box = tk.Frame(self.body, bg=BG); box.pack(fill="x", padx=10)
+            vps_cards(app, box, self.mine, more=False, prof=self.prof)
+            self._arm()
         pl, os_ = vps_plans(self.prod), [o for o in (self.info or {}).get("os") or [] if o.get("id")]
         if not (self.info or {}).get("on") or not self.prod or not pl or not os_:
             c = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=LINE); c.pack(fill="x", padx=18, pady=16)
@@ -4215,8 +4380,11 @@ class VpsBuyDlg(Dlg):
                            + (f"  ·  CTV −{int(num(self.prof.get('ctv_discount')))}%" if is_ctv(self.prof) else ""))
         self.err.config(text="" if t <= bal else L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + vnd(t - bal) + ".", fg=BAD)
         self.go.config(text=L("Mua ngay", "Buy now") if t <= bal else L("Nạp tiền", "Top up"), state="normal")
+        if getattr(self, "mt", ""):                                           # 21/11f · đang bảo trì → tạm không mua mới
+            self.go.config(text="🛠 " + L("Đang bảo trì", "Maintenance"), state="disabled"); self.err.config(text=self.mt, fg=WARN)
 
     def buy(self):
+        if getattr(self, "mt", ""): self.upd(); return
         def go():
             self.go.config(state="disabled", text=L("Đang kiểm giá…", "Checking price…"))
             self.bg(lambda: (vps_shop(self.app.auth, 0), self.app.shop.profile()), self._confirm, self._fail)
@@ -8172,9 +8340,19 @@ class Launcher:
         for w in (b, t1, t2): w.bind("<Button-1>", lambda *_: UpdateDlg(self, u))
 
     def open_pc(self, pid):
-        """21/11: mở cửa sổ điều khiển máy PC thật (VPS GPU) — cửa sổ riêng, chuột / phím thật."""
-        try: spawn_viewer(str(pid), "--view", "--pc")
-        except Exception: log("open pc:", traceback.format_exc())
+        """21/11: mở cửa sổ điều khiển máy PC thật (VPS GPU) — cửa sổ riêng, chuột / phím thật.
+           21/11f: đọc lại trạng thái bảo trì trước — VPS GPU đang bảo trì thì khách thường chưa vào được (admin vẫn vào)."""
+        def go():
+            try: spawn_viewer(str(pid), "--view", "--pc")
+            except Exception: log("open pc:", traceback.format_exc())
+        def job():
+            try: self.shop.site()
+            except Exception: pass
+            m = pc_maint_msg(getattr(self, "prof", None))
+            if not m: self.ui(go); return
+            import tkinter.messagebox as mb
+            self.ui(lambda: mb.showinfo("CloudBlue", m, parent=self.root))
+        threading.Thread(target=job, daemon=True).start()
 
     def _paint_vps(self, data):
         """21/11f · Trang chính = Cloud Phone; VPS GPU là MỤC RIÊNG (trang 🖥 VPS GPU) → ở đây chỉ 1 dòng gọn dẫn sang đó khi khách có VPS."""
