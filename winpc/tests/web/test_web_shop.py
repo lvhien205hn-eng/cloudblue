@@ -66,7 +66,9 @@ HOOK = """window.__FAKE_HOOK = {
   pc_admin_sell: a => ({ product: a.p_patch.product, os: a.p_patch.os, reinstall_max: a.p_patch.reinstall_max }),
   buy_product: a => ({ id: 'o-old', status: 'pending', total: 100000 }),
   pc_admin_deliver: a => ({ state: 'active', pc: a.p_pc, name: 'May-03', code: '', reinstall: false, order: a.p_order }),
-  pc_my_cancel: a => ({ ok: true, pc: a.p_pc, rental: 61 })
+  pc_my_cancel: a => ({ ok: true, pc: a.p_pc, rental: 61 }),
+  pc_admin_flags: () => ({ cust_admin: true, agents: 1 }),
+  pc_admin_set_flags: a => ({ cust_admin: a.p_patch.cust_admin, agents: 1 })
 };"""
 
 
@@ -409,6 +411,75 @@ def main():
         s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 2", timeout=8000)
         ck("máy chủ chưa có v45 (không có cờ cancel) → không hiện nút Huỷ máy", not s.js("() => !!document.querySelector('[data-pcscxl]')"))
         s.close()
+
+        print("5f. 🔑 Công tắc 'Cho khách quyền Admin' (SQL v46)")
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=pc]').click(); }"); s.page.wait_for_timeout(700)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(500)
+        ca = s.js("() => ({ vis: !document.getElementById('pcs-ca-box').hidden, on: document.getElementById('pcs-ca').checked, t: document.getElementById('pcs-ca-box').innerText })")
+        ck("⚙ Cài đặt bán có ô '🔑 Cho khách quyền Admin' (đang BẬT) + giải thích khởi động lại 1 lần / tắt thì hạ quyền", ca["vis"] and ca["on"] and "khởi động lại máy 1 lần" in ca["t"] and "tài khoản thường" in ca["t"], ca)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-11-quyen-admin.png"))
+        n0 = len(s.calls("pc_admin_set_flags")); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(600)
+        ck("Lưu mà không đổi công tắc → không gọi pc_admin_set_flags", len(s.calls("pc_admin_set_flags")) == n0)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(200)
+        if s.js("() => document.getElementById('pcs-adm-setbox').hidden"): s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(500)
+        s.page.uncheck("#pcs-ca"); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(700)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("bỏ tick + Lưu → pc_admin_set_flags({cust_admin: false}) + báo 'Đã TẮT quyền Admin'", s.calls("pc_admin_set_flags")[-1:] == [{"p_patch": {"cust_admin": False}}] and "TẮT quyền Admin" in tt, (s.calls("pc_admin_set_flags"), tt))
+        ck("5f: không lỗi JS", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.js("""() => { window.__FAKE_HOOK.pc_admin_flags = () => ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.pc_admin_flags' } }); }""")
+        s.js("() => { document.querySelector('#adm-tabs button[data-tab=pc]').click(); }"); s.page.wait_for_timeout(700)
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(500)
+        ck("chưa chạy SQL v46 → ẩn ô quyền Admin", s.js("() => document.getElementById('pcs-ca-box').hidden"))
+        s.close()
+
+        print("5g. 💰 Thẻ VPS GPU ở trang ngoài: giá TỪNG gói + giá / ngày, gói rẻ nhất / ngày có nhãn 'Rẻ nhất'; bấm gói → mở hộp mua chọn sẵn gói đó")
+        for mob in (False, True):
+            s = Site(br, html, False, dict(shop, bought=[]), mobile=mob)
+            s.page.wait_for_function("id => !!document.querySelector('#grid .m3-plan[data-buy=\"' + id + '\"]')", arg=PROD, timeout=8000)
+            pg = s.js("""id => { const c = document.querySelector('#grid .m3-plan[data-buy="' + id + '"]').closest('.m3-row'), bs = [...c.querySelectorAll('.m3-plan')];
+                  c.scrollIntoView({ block: 'center' });
+                  return { n: bs.length, t: bs.map(b => b.innerText.replace(/\\s+/g, ' ').trim()), best: bs.map(b => b.classList.contains('best')), days: bs.map(b => +b.dataset.days),
+                           chip: !!c.querySelector('.days-chip'), over: document.documentElement.scrollWidth - innerWidth,
+                           fit: bs.every(b => b.scrollWidth <= b.clientWidth + 1 && b.getBoundingClientRect().right <= c.getBoundingClientRect().right + 1),
+                           box: c.querySelector('.m3-box').innerText.replace(/\\s+/g, ' ') }; }""", PROD)
+            tag = "điện thoại" if mob else "máy tính"
+            ck(f"{tag}: thẻ có 3 gói 7 · 15 · 30 ngày, mỗi gói ghi tổng tiền + giá / ngày; bỏ dòng 'Gói: 7 · 15 · 30 ngày' cũ",
+               pg["n"] == 3 and pg["days"] == [7, 15, 30] and not pg["chip"] and "360.000đ" in pg["t"][0] and "51.429đ/ngày" in pg["t"][0]
+               and "750.000đ" in pg["t"][1] and "50.000đ/ngày" in pg["t"][1] and "1.600.000đ" in pg["t"][2] and "53.333đ/ngày" in pg["t"][2], pg)
+            ck(f"{tag}: gói rẻ nhất tính theo NGÀY (15 ngày) có nhãn 'Rẻ nhất' + −3%; gói đắt hơn / ngày (30 ngày) không có nhãn giảm",
+               pg["best"] == [False, True, False] and "Rẻ nhất" in pg["t"][1] and "−3%" in pg["t"][1] and "−" not in pg["t"][2] and "Rẻ nhất" not in pg["t"][0] + pg["t"][2], pg)
+            ck(f"{tag}: không tràn ngang, chữ trong ô gói không bị cắt; ô bên phải vẫn 'từ 360.000đ' + Mua ngay", pg["over"] <= 0 and pg["fit"] and "360.000đ" in pg["box"] and "Mua ngay" in pg["box"], pg)
+            s.page.wait_for_timeout(300)
+            s.page.screenshot(path=os.path.join(SHOTS, "shop-12-bang-gia%s.png" % ("-mobile" if mob else "")))
+            s.page.click('#grid .m3-plan[data-days="15"][data-buy="%s"]' % PROD); s.page.wait_for_timeout(600)
+            md = s.js("""() => ({ open: !document.getElementById('modal').hidden, on: [...document.querySelectorAll('#m-plans button.on')].map(b => b.dataset.d),
+                          best: [...document.querySelectorAll('#m-plans button.best')].map(b => b.dataset.d), t: [...document.querySelectorAll('#m-plans button')].map(b => b.innerText.replace(/\\s+/g, ' ')) })""")
+            ck(f"{tag}: bấm gói 15 ngày → mở hộp mua chọn sẵn 15 ngày; trong hộp gói 15 ngày cũng có nhãn 'Rẻ nhất'",
+               md["open"] and md["on"] == ["15"] and md["best"] == ["15"] and any("Rẻ nhất" in x for x in md["t"] if x.startswith("15")), md)
+            if not mob: s.page.screenshot(path=os.path.join(SHOTS, "shop-12c-hop-mua-15-ngay.png"))
+            s.js("() => closeBuy()"); s.page.wait_for_timeout(200)
+            s.page.click('#grid [data-buy="%s"].btn' % PROD); s.page.wait_for_timeout(500)
+            ck(f"{tag}: bấm 'Mua ngay' (không chọn gói) → vẫn chọn sẵn 30 ngày như cũ", s.js("() => [...document.querySelectorAll('#m-plans button.on')].map(b => b.dataset.d)") == ["30"])
+            ck(f"5g {tag}: không lỗi JS", not s.errors, s.errors)
+            s.close()
+        one = [dict(PRODUCTS[0], plans=[{"days": 30, "price": 1500000}], price=1500000, stock=0), PRODUCTS[1]]
+        ctx = br.new_context(viewport={"width": 1360, "height": 900}, locale="vi-VN", timezone_id="Asia/Ho_Chi_Minh")
+        ctx.add_init_script("window.__FAKE_INIT = %s; window.__SHOP = %s; %s try { localStorage.setItem('br_lang', 'vi'); localStorage.setItem('br_lite', '1'); } catch (e) {}"
+                            % (json.dumps({"admin": False, "db": {"product_list": one, "products": one}}), json.dumps(dict(shop, bought=[])), HOOK))
+        pg2 = ctx.new_page()
+        pg2.route("**/*", lambda r: r.fulfill(status=200, content_type="text/html; charset=utf-8", body=html) if r.request.url in (ORIGIN + "/admin", ORIGIN + "/")
+                  else r.fulfill(status=200, content_type="application/javascript", body=read(os.path.join(HERE, "fake_supabase.js"))) if "supabase-js" in r.request.url
+                  else r.fulfill(status=204, body=""))
+        pg2.goto(ORIGIN + "/", wait_until="load"); pg2.wait_for_timeout(2600)
+        o1 = pg2.evaluate("""id => { const bs = [...document.querySelectorAll('#grid .m3-plan[data-buy="' + id + '"]')];
+                 return { n: bs.length, best: bs.filter(b => b.classList.contains('best')).length, dis: bs.every(b => b.disabled), t: bs.map(b => b.innerText.replace(/\\s+/g, ' ')) }; }""", PROD)
+        ck("chỉ 1 gói: không gắn nhãn 'Rẻ nhất'; hết hàng → ô gói bấm không được", o1["n"] == 1 and o1["best"] == 0 and o1["dis"] and "50.000đ/ngày" in o1["t"][0], o1)
+        ctx.close()
 
         print("5c. Căn lề trang quản trị: mọi khối cùng mép trái / phải ở màn rộng 2296px, laptop 1366px, điện thoại 390px")
         for vw, vh in ((2296, 985), (1366, 768), (390, 844)):
