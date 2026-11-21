@@ -497,6 +497,7 @@ public class MainActivity extends Activity {
         cb.setOnClickListener(v -> claim(code, cb));
         cr.addView(cb, Ui.wrap());
         body.addView(cr, Ui.fill());
+        PcVps.section(this, body);                  // 21/11 · 🖥️ VPS GPU của bạn (máy PC thật — SQL v43; chưa có thì không hiện gì)
 
         if (phones.length() == 0) {
             LinearLayout e = Ui.card(this);
@@ -1543,6 +1544,7 @@ public class MainActivity extends Activity {
         body.addView(Ui.muted(this, Ui.L("3 bước: chọn hệ điều hành → chọn gói → số ngày. Máy mới tinh, có Play Store.",
                 "3 steps: Android version → plan → days. Fresh device with Play Store.")), Ui.fill());
         promo(body, false);                         // 🎡 vòng quay may mắn — dải gọn, bấm là mở · khách ẩn / hiện được (16/11)
+        PcVps.rentCard(this, body);                 // 21/11 · 🖥️ mua VPS GPU (máy PC thật, tự giao + cài Windows) — chỉ bản có mua hàng
 
         int minR = price.optInt("min_ram", 1), minC = price.optInt("min_cpu", 1);
         final int mpu = maxPerUser(), left = mpu > 0 ? mpu - myLive() : 20;

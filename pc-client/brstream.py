@@ -12,6 +12,7 @@ Sự kiện gửi về on_event(kind, data):
 import base64, hashlib, json, os, random, socket, ssl, struct, threading, time, urllib.parse
 
 C_HELLO, C_TOUCH, C_KEY, C_TEXT, C_SCROLL, C_CMD, C_PING, C_QUALITY, C_KEYFRAME, C_CLIP, C_BYE, C_ACK = 0x01, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1A
+C_MOUSE = 0x1B                                     # 21/11: chuột thật (máy PC — docs/STREAM-PROTOCOL.md mục 6)
 S_WELCOME, S_VIDEO, S_SIZE, S_CLIP, S_PONG, S_ERROR, S_STATS = 0x81, 0x82, 0x83, 0x84, 0x85, 0x86, 0x87
 VERSION = "1.0.0"
 
@@ -147,8 +148,9 @@ class WSConn:
 
 # ------------------------------------------------------------------ máy khách
 class StreamClient:
-    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None, mode=None):
+    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None, mode=None, kind="phone"):
         self.ep, self.token_fn, self.phone, self.on_event = endpoint or {}, token_fn, phone_id, on_event
+        self.kind = "pc" if kind == "pc" else "phone"   # 21/11: "pc" = máy PC thật (VPS GPU) — chào máy chủ bằng "pc" thay cho "phone"
         self.q, self.client, self.fps, self.maxh = q, client, fps, maxh
         self.mode = mode                           # 17/11d: "preview" = ô xem trước (hình nhỏ, chỉ xem — máy chủ không đá phiên điều khiển đang mở)
         self.prefer = prefer                       # (kind, desc) lần trước nối được
@@ -203,7 +205,7 @@ class StreamClient:
             self._emit("state", ("connecting" if attempt == 0 else "reconnecting", f"Đang kết nối{' lại' if attempt else ''}…"))
             try:
                 self.conn = self._connect()
-                hello = {"v": 2, "token": self.token_fn(), "phone": self.phone, "client": self.client, "ver": VERSION, "q": self.q}
+                hello = {"v": 2, "token": self.token_fn(), self.kind: self.phone, "client": self.client, "ver": VERSION, "q": self.q}
                 if self.fps: hello["fps"] = int(self.fps)
                 if self.maxh: hello["maxh"] = int(self.maxh)
                 if self.mode: hello["mode"] = str(self.mode)
@@ -300,6 +302,9 @@ class StreamClient:
         self._send(C_TOUCH, struct.pack(">BBHH", action, pointer, x, y))
 
     def key(self, action, code, meta=0): self._send(C_KEY, struct.pack(">BII", action, code, meta))
+    def mouse(self, action, button, nx, ny):
+        """21/11 · chuột thật cho máy PC: action 0 rê · 1 nhấn · 2 nhả; button 0 trái · 1 phải · 2 giữa · 3 / 4 nút phụ."""
+        self._send(C_MOUSE, struct.pack(">BBHH", int(action) & 0xFF, int(button) & 0xFF, self._u16(nx), self._u16(ny)))
     def press(self, code, meta=0): self.key(0, code, meta); self.key(1, code, meta)
     def text(self, s):
         if s: self._send(C_TEXT, s.encode("utf-8"))

@@ -48,6 +48,13 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="blueroblox" android:host="phone" />
             </intent-filter>
+            <!-- 21/11: mở thẳng 1 MÁY PC THẬT (VPS GPU) bằng link blueroblox://pc/<mã máy> -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="blueroblox" android:host="pc" />
+            </intent-filter>
         </activity>
 
         <!-- 18/11 · Điều khiển NHIỀU máy cùng lúc (lưới / 1 máy to vuốt đổi máy / đồng bộ thao tác). Chỉ mở từ trong app:

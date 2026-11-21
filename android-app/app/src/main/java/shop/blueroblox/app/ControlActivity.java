@@ -79,6 +79,7 @@ public class ControlActivity extends Activity {
     private Runnable veilAct;
     private JSONObject phone = new JSONObject();
     private String id;
+    private boolean pc = false;              // 21/11: điều khiển MÁY PC THẬT (VPS GPU) — extra "pc" hoặc link blueroblox://pc/<mã>
     private String api = "";                 // stream.api của máy chủ đang giữ máy (rỗng = máy chủ mặc định)
     private String quality = "bal";
     private boolean full = false, loaded = false, resumed = false, kicked = false, stopped = false, showStats = false;
@@ -106,9 +107,11 @@ public class ControlActivity extends Activity {
         super.onCreate(b);
         Ui.init(this);
         id = phoneId(getIntent());
+        pc = isPcLink(getIntent());
         if (!Api.loggedIn()) {                   // mở từ link blueroblox://phone/… khi chưa đăng nhập → đăng nhập trước, xong tự mở lại máy này
             Intent i = new Intent(this, LoginActivity.class);
             if (id != null) i.putExtra("open_phone", id);
+            if (pc) i.putExtra("open_pc", true);
             startActivity(i);
             finish();
             return;
@@ -237,9 +240,9 @@ public class ControlActivity extends Activity {
         mini = Ui.row(this, 0);
         mini.setBackground(Ui.round(Color.argb(225, 10, 16, 30), 24, Color.argb(90, 120, 160, 255)));
         mini.setPadding(Ui.dp(4), 0, Ui.dp(4), 0);
-        mini.addView(miniBtn("◁", Ui.L("Quay lại", "Back"), () -> cmd("back")));
-        mini.addView(miniBtn("○", Ui.L("Màn chính", "Home"), () -> cmd("home")));
-        mini.addView(miniBtn("▢", Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
+        mini.addView(miniBtn("◁", pc ? "Esc" : Ui.L("Quay lại", "Back"), () -> cmd("back")));
+        mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
+        mini.addView(miniBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
         mini.addView(miniBtn("🔄", Ui.L("Xoay ngang / dọc", "Rotate"), this::quickRotate));
         mini.addView(miniBtn("⋯", Ui.L("Công cụ", "Tools"), () -> { hideMini(); tools(); }));
         mini.addView(miniBtn("⤢", Ui.L("Hiện thanh", "Show bars"), () -> { autoFull = false; setFull(false); }));
@@ -259,9 +262,9 @@ public class ControlActivity extends Activity {
         navBar = Ui.row(this, 0);
         navBar.setBackgroundColor(Ui.BG);
         navBar.setPadding(Ui.dp(6), 0, Ui.dp(6), 0);
-        navBar.addView(barBtn("◁", Ui.L("Quay lại", "Back"), v -> cmd("back")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
-        navBar.addView(barBtn("○", Ui.L("Màn chính", "Home"), v -> cmd("home")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
-        navBar.addView(barBtn("▢", Ui.L("Đa nhiệm", "Recents"), v -> cmd("recents")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
+        navBar.addView(barBtn(pc ? "Esc" : "◁", pc ? "Esc" : Ui.L("Quay lại", "Back"), v -> cmd("back")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
+        navBar.addView(barBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), v -> cmd(pc ? "win" : "home")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
+        navBar.addView(barBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), v -> cmd("recents")), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         navBar.addView(barBtn("🔄", Ui.L("Xoay ngang / dọc", "Rotate"), v -> quickRotate()), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         navBar.addView(barBtn("⋯", Ui.L("Công cụ", "Tools"), v -> tools()), new LinearLayout.LayoutParams(0, Ui.dp(44), 1));
         root.addView(navBar, Ui.fill());
@@ -303,10 +306,22 @@ public class ControlActivity extends Activity {
     private static String phoneId(Intent it) {
         if (it == null) return null;
         String s = it.getStringExtra("id");
+        if (s == null || s.isEmpty()) s = it.getStringExtra("pc");
         Uri d = it.getData();
+        if ((s == null || s.isEmpty()) && d != null && "blueroblox".equalsIgnoreCase(d.getScheme()) && "pc".equalsIgnoreCase(d.getHost()))
+            s = d.getLastPathSegment();
         if ((s == null || s.isEmpty()) && d != null && "blueroblox".equalsIgnoreCase(d.getScheme()) && "phone".equalsIgnoreCase(d.getHost()))
             s = d.getLastPathSegment();
         return cleanId(s);
+    }
+
+    /** 21/11: màn này mở MÁY PC (extra "pc" / link blueroblox://pc/<mã>)? */
+    private static boolean isPcLink(Intent it) {
+        if (it == null) return false;
+        String s = it.getStringExtra("pc");
+        if (s != null && !s.isEmpty()) return true;
+        Uri d = it.getData();
+        return d != null && "blueroblox".equalsIgnoreCase(d.getScheme()) && "pc".equalsIgnoreCase(d.getHost());
     }
 
     private static String cleanId(String s) {
@@ -357,6 +372,17 @@ public class ControlActivity extends Activity {
         fixing = false; srvMsg = ""; probN = 0;          // 16/11: đổi sang máy khác → bỏ trạng thái "đang khởi động lại" của máy trước
         showVeil(Ui.L("Đang mở máy…", "Opening phone…"), true, null, null);
         final String pid = id;
+        if (pc) {                                // 21/11: máy PC — không có dòng cloud_phones; tên lấy từ danh sách, máy chủ phát hình báo lại tên thật
+            String nm = getIntent().getStringExtra("name");
+            try { phone = new JSONObject().put("name", nm == null || nm.isEmpty() ? Ui.L("Máy PC", "PC") : nm).put("status", "active"); } catch (Exception ignored) { }
+            title.setText(phone.optString("name"));
+            info.setText(Ui.L("Máy PC · Windows", "PC · Windows"));
+            try { screen.setVideoSize(1920, 1080); } catch (Exception ignored) { }
+            kbDead = true;                       // máy PC không có cổng "bàn phím Android đang mở" — khách tự bấm ⌨️ khi cần gõ
+            loaded = true;
+            if (resumed) connect();
+            return;
+        }
         Api.bg(() -> {
             JSONArray a = (JSONArray) Api.get("cloud_phones?id=eq." + pid + "&select=*");
             if (a.length() == 0) throw new Exception(Ui.L("Không tìm thấy máy.", "Phone not found."));
@@ -388,6 +414,7 @@ public class ControlActivity extends Activity {
         srvMsg = ""; probN = 0; weakOn = false;
         if (!rebooting()) showVeil(Ui.L("Đang kết nối…", "Connecting…"), true, null, null);
         client = new StreamClient(this, id, quality, net);
+        client.setPc(pc);
         screen.attach(client);
         client.start();
     }
@@ -826,7 +853,26 @@ public class ControlActivity extends Activity {
         Ui.Wrap g = new Ui.Wrap(this, 6);
         final Dialog[] d = new Dialog[1];
         int w = (getResources().getDisplayMetrics().widthPixels - Ui.dp(64)) / 4;
-        Object[][] items = {
+        Object[][] items = pc ? new Object[][]{           // 21/11: máy PC thật — phím Windows thay cho công cụ Android
+                {"⊞", Ui.L("Nút Windows", "Windows key"), (Runnable) () -> cmd("win")},
+                {"⇄", "Alt + Tab", (Runnable) () -> cmd("alttab")},
+                {"✕", "Alt + F4", (Runnable) () -> cmd("altf4")},
+                {"📊", "Task Manager", (Runnable) () -> cmd("taskmgr")},
+                {"📁", "File Explorer", (Runnable) () -> cmd("explorer")},
+                {"🖥", Ui.L("Màn hình nền", "Desktop"), (Runnable) () -> cmd("desktop")},
+                {"↵", "Enter", (Runnable) () -> cmd("enter")},
+                {"🔇", Ui.L("Tắt tiếng", "Mute"), (Runnable) () -> cmd("mute")},
+                {"🔊", Ui.L("Tăng âm", "Vol +"), (Runnable) () -> cmd("volup")},
+                {"🔉", Ui.L("Giảm âm", "Vol −"), (Runnable) () -> cmd("voldown")},
+                {"⌨️", Ui.L("Bàn phím", "Keyboard"), (Runnable) () -> kbShow(!(kbOpen && imeUp))},
+                {"📋", Ui.L("Dán chữ vào máy", "Paste into PC"), (Runnable) this::pasteFromPhone},
+                {"📄", Ui.L("Copy từ máy", "Copy out"), (Runnable) this::copyFromPhone},
+                {"📝", Ui.L("Gõ chữ", "Type text"), (Runnable) this::typeText},
+                {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
+                {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
+                {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
+                {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
+        } : new Object[][]{
                 {"🔊", Ui.L("Tăng âm", "Vol +"), (Runnable) () -> cmd("volup")},
                 {"🔉", Ui.L("Giảm âm", "Vol −"), (Runnable) () -> cmd("voldown")},
                 {"⏻", Ui.L("Tắt/mở màn", "Power"), (Runnable) () -> cmd("power")},

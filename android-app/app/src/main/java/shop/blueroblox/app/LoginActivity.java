@@ -160,7 +160,8 @@ public class LoginActivity extends Activity {
     private void openMain() {
         Intent main = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         String pid = getIntent() != null ? getIntent().getStringExtra("open_phone") : null;   // mở từ link blueroblox://phone/… → đăng nhập xong vào thẳng máy đó
-        if (pid != null && !pid.isEmpty()) startActivities(new Intent[]{main, new Intent(this, ControlActivity.class).putExtra("id", pid)});
+        boolean pc = getIntent() != null && getIntent().getBooleanExtra("open_pc", false);    // 21/11: link blueroblox://pc/… → mở máy PC
+        if (pid != null && !pid.isEmpty()) startActivities(new Intent[]{main, new Intent(this, ControlActivity.class).putExtra(pc ? "pc" : "id", pid)});
         else startActivity(main);
         finish();
     }
