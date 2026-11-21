@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 21.11a)
+#  cloudblue-tao-iso   (ban 21.11b)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -54,7 +54,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "21.11a"
+$VER = "21.11b"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -312,6 +312,38 @@ function Get-Sha([string]$p) { return (Get-FileHash -Algorithm SHA256 -Path $p).
 
 function Clean-Path([string]$p) { return $p.Trim().Trim('"').Trim("'").Trim() }
 
+function Test-FileLocked([string]$p) {
+  # File DANG CO ma chuong trinh khac dang giu (vi du may ao Hyper-V dang gan file ISO do) -> $true. Khong co file / mo duoc binh thuong -> $false.
+  if (-not $p) { return $false }
+  if (-not (Test-Path -LiteralPath $p -PathType Leaf)) { return $false }
+  try {
+    $fs = [System.IO.File]::Open($p, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $fs.Close()
+    return $false
+  } catch {
+    $ex = $_.Exception
+    while ($ex) {
+      if ($ex -is [System.IO.IOException]) { return $true }      # dang bi giu (sharing violation). Loi khac (file chi-doc...) thi Remove-Item -Force tu lo.
+      $ex = $ex.InnerException
+    }
+    return $false
+  }
+}
+
+function Get-FreeOut([string]$p) {
+  # File ISO dich dang bi giu -> tra ten ben canh chua bi giu: <ten>-2.iso, <ten>-3.iso ... Khong bi giu -> tra nguyen $p. Het 20 ten deu bi giu -> tra chuoi rong.
+  if (-not (Test-FileLocked $p)) { return $p }
+  $dir = Split-Path -Parent $p
+  $leaf = Split-Path -Leaf $p
+  $stem = [System.IO.Path]::GetFileNameWithoutExtension($leaf)
+  $ext = [System.IO.Path]::GetExtension($leaf)
+  for ($i = 2; $i -le 21; $i++) {
+    $c = Join-Path $dir ($stem + "-" + $i + $ext)
+    if (-not (Test-FileLocked $c)) { return $c }
+  }
+  return ""
+}
+
 function Get-ImageList([string]$file) {
   # Tra danh sach ban (index) trong 1 file install.wim / .esd: Index, Name, Edition, Version, Lang, Arch
   $res = @()
@@ -490,6 +522,13 @@ try {
   if (-not $Out) { $Out = Join-Path (Split-Path -Qualifier $Work) "\CloudBlue-PC.iso" }
   $Out = Clean-Path $Out
   if ($Out -match '\s') { Stop-Build ("Duong dan ISO moi khong duoc co dau cach: " + $Out) }
+  # File ISO cu dang bi chuong trinh khac giu (thuong la MAY AO dang gan file do) -> khong ghi de duoc: bao NGAY tu dau va ghi ra ten khac, khoi lam xong het moi loi.
+  $o2 = Get-FreeOut $Out
+  if (-not $o2) { Stop-Build ("File ISO cu dang bi chuong trinh khac giu (may ao dang gan file nay?): " + $Out + "  -> tat may ao / thao file ISO khoi may ao roi chay lai, hoac dung -Out <duong dan khac>.") }
+  if ($o2 -ne $Out) {
+    Note ("File ISO cu dang bi chuong trinh khac giu (may ao dang gan file nay?): " + $Out + "  -> lan nay ghi ISO moi ra " + $o2 + " . Nho gan DUNG file moi nay vao may ao.")
+    $Out = $o2
+  }
   New-Item -ItemType Directory -Force $Work | Out-Null
   $wdrive = (Split-Path -Qualifier $Work).TrimEnd(":")
   Say ("   Thu muc lam viec: " + $Work + "   ISO moi: " + $Out) "DarkGray"
@@ -878,7 +917,10 @@ try {
       Note ("Khong lay duoc oscdimg.exe (cong cu dong ISO): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ") + ". Cay bo cai da dung xong o thu muc iso - gui khung nay cho ho tro.")
     } else {
       Say ("   oscdimg: " + $OscInfo) "DarkGray"
-      if (Test-Path $Out) { Remove-Item -Force $Out }
+      $o2 = Get-FreeOut $Out                                      # vua bi giu trong luc dang lam (may ao vua bat lai...) -> doi ten, khong de hong ca lan chay
+      if (-not $o2) { Stop-Build ("File ISO dich dang bi chuong trinh khac giu: " + $Out + "  -> tat may ao / thao file ISO roi chay lai (cay bo cai da dung xong, lan sau nhanh hon).") }
+      if ($o2 -ne $Out) { Note ("File ISO " + $Out + " dang bi chuong trinh khac giu -> ghi ISO moi ra " + $o2); $Out = $o2 }
+      if (Test-Path -LiteralPath $Out) { Remove-Item -Force -LiteralPath $Out }
       $bios = Join-Path $IsoRoot "boot\etfsboot.com"
       $efi = Join-Path $IsoRoot "efi\microsoft\boot\efisys.bin"
       if (-not (Test-Path $efi)) { Stop-Build "Bo cai goc thieu efi\microsoft\boot\efisys.bin." }
