@@ -19,6 +19,8 @@
 #      đăng xuất). pcremote tự nối RA máy chủ phát hình và chỉ quay màn hình khi có khách của máy / admin mở điều khiển. Tắt: cb.json "remote": false
 #    · (21.11e) đặt BỘ CÀI bản mới nhất lên phân vùng cứu hộ (\cb\pe-next): bộ cài cũ nằm cố định trong ảnh khởi động gọi tiếp bản này
 #      → sửa bộ cài không cần tạo lại ISO / cài lại máy bằng USB
+#    · (21.11h) công tắc "Cho khách quyền Admin" của shop (pc_poll.cust_admin) → cb.json "user_admin" + chạy ngay pha system của cb_provision
+#      (21.11i) ghi luôn công tắc lên cb.json của PHÂN VÙNG CỨU HỘ → cài lại (khách thuê mới / đổi Windows) thì khách có quyền Admin NGAY từ đầu
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -36,7 +38,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11h"
+AGENT_VER = "21.11i"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -339,6 +341,7 @@ class Agent:
         self._log = log or (lambda m: None)
         self.cfg = C.load_json(sysx, self.p("cb.json")) or {}
         self.sec_now = False                                        # 21.11h: công tắc quyền Admin vừa đổi → vòng chính chạy ngay pha system của cb_provision
+        self.rec_admin_ok = None                                    # 21.11i: công tắc đã ghi / đã khớp trên phân vùng cứu hộ (mỗi lần agent chạy kiểm 1 lần)
         self.ident = C.load_json(sysx, self.p("identity.json")) or None
         if self.ident and not (self.ident.get("id") and self.ident.get("token")): self.ident = None
         self.poll_s, self.ticks, self.fail = 30, 0, 0
@@ -1039,14 +1042,43 @@ class Agent:
            Administrators (+ nhắn khách khởi động lại 1 lần) · tắt → hạ lại thành tài khoản thường."""
         if not isinstance(r, dict) or "cust_admin" not in r: return False
         want = r.get("cust_admin") is True
-        if bool(self.cfg.get("user_admin")) == want: return False
+        try: self.rec_admin(want)
+        except Exception as e: self.log("chưa ghi được công tắc quyền Admin lên phân vùng cứu hộ: %r" % (e,))
+        cur = self.cfg.get("user_admin")
+        if cur is not None and bool(cur) == want: return False
         cfg = C.load_json(self.s, self.p("cb.json"))
         cfg = dict(cfg if isinstance(cfg, dict) else self.cfg)
         cfg["user_admin"] = want
         C.save_json(self.s, self.p("cb.json"), cfg)
-        self.cfg = cfg; self.sec_now = True
+        self.cfg = cfg
+        if cur is None and not want: return False                   # 21.11i: máy mới cài — chỉ ghi RÕ "tắt" (lần đăng nhập đầu chờ biết công tắc), không có gì đổi
+        self.sec_now = True
         self.log("shop %s quyền Admin cho tài khoản khách → áp dụng ngay" % ("BẬT" if want else "TẮT"))
         self.event("admin", on=1 if want else 0)
+        return True
+
+    def rec_admin(self, want):
+        """21.11i · Ghi công tắc quyền Admin vào cb.json trên PHÂN VÙNG CỨU HỘ: bộ cài chép file này sang Windows mới mỗi lần cài lại (khách thuê mới,
+           đổi Windows, dọn máy) → lần đăng nhập đầu đã biết công tắc: bật thì tài khoản khách giữ quyền Admin ngay từ đầu như máy cài thường,
+           không phải khởi động lại thêm. Mỗi giá trị kiểm 1 lần mỗi lần agent chạy; chỉ ghi khi khác. File lạ / không đọc được → không đụng."""
+        if self.rec_admin_ok is want: return False
+        rec = cbrec.find_recovery(self.s)
+        if not rec:
+            self.rec_admin_ok = want; return False
+        path = rec.root + "cb\\cb.json"
+        rc = C.load_json(self.s, path)
+        if not isinstance(rc, dict) or not rc.get("images"):
+            self.log("cb.json trên phân vùng cứu hộ không đọc được — không ghi công tắc quyền Admin"); self.rec_admin_ok = want; return False
+        if rc.get("user_admin") is want:
+            self.rec_admin_ok = want; return False
+        rc = dict(rc, user_admin=want)
+        C.save_json(self.s, path, rc)
+        back = C.load_json(self.s, path)
+        if not isinstance(back, dict) or back.get("user_admin") is not want or back.get("images") != rc["images"]:
+            self.log("ghi công tắc quyền Admin lên phân vùng cứu hộ chưa được — lần chạy sau thử lại"); return False
+        self.rec_admin_ok = want
+        self.log("đã ghi công tắc quyền Admin (%s) lên phân vùng cứu hộ → cài lại máy: khách %s ngay từ lần đăng nhập đầu"
+                 % ("BẬT" if want else "TẮT", "có quyền Admin" if want else "là tài khoản thường"))
         return True
 
     def tick(self):
