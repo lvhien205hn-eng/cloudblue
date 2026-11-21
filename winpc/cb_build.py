@@ -12,12 +12,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "21.11c"
+BUILD_VER = "21.11d"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
     "os": ["cb_provision.py", "provision.cmd", "cb_stage.py", "unattend.tpl.xml", "wallpaper.jpg"],
-    "agent": ["pcagent.py", "watch.cmd", "cbpc.cmd"],
+    "agent": ["pcagent.py", "pcremote.py", "watch.cmd", "cbpc.cmd"],
 }
 UPDATE_DIRS = ("agent", "lib", "os", "pe")
 
@@ -358,7 +358,7 @@ def manifest(root, base, ver):
 
 def check(out):
     need = ["sources\\boot.wim", "boot\\boot.sdi", "autounattend.xml", "CAI-DAT.cmd", "cb\\cb.json", "cb\\media.tag", "cb\\py\\python.exe",
-            "cb\\pe\\cb_pe.py", "cb\\pe\\start.cmd", "cb\\lib\\cbsys.py", "cb\\lib\\cbcore.py", "cb\\lib\\cbrec.py", "cb\\agent\\pcagent.py",
+            "cb\\pe\\cb_pe.py", "cb\\pe\\start.cmd", "cb\\lib\\cbsys.py", "cb\\lib\\cbcore.py", "cb\\lib\\cbrec.py", "cb\\agent\\pcagent.py", "cb\\agent\\pcremote.py",
             "cb\\os\\cb_provision.py", "cb\\os\\provision.cmd", "cb\\os\\unattend.tpl.xml"]
     miss = [n for n in need if not os.path.isfile(os.path.join(out, *n.split("\\")))]
     try:

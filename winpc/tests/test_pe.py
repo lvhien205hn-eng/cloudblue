@@ -54,7 +54,7 @@ ck("dữ liệu cũ trên ổ đích đã bị xoá", all("bi-mat" not in k for 
 ck("ổ đích thành GPT 4 phân vùng: EFI · MSR · cứu hộ · Windows", d0.style == "gpt" and [p.type for p in d0.slots] == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_DATA])
 esp, msr, rec, win = d0.slots
 ck("EFI 260MB FAT32", esp.size == 260 * MB and esp.vol.fs == "FAT32")
-ck("phân vùng cứu hộ 12GB, nhãn CBRECOVERY, đã ẩn (không chữ ổ, có cờ bảo vệ)", rec.size == 12 * GB and rec.vol.label == "CBRECOVERY" and rec.vol.letter is None and rec.attrs == 0x8000000000000001, (rec.size / GB, rec.vol.letter, hex(rec.attrs)))
+ck("phân vùng cứu hộ 16GB (12GB nội dung + 4GB để dành), nhãn CBRECOVERY, đã ẩn (không chữ ổ, có cờ bảo vệ)", rec.size == 16 * GB and rec.vol.label == "CBRECOVERY" and rec.vol.letter is None and rec.attrs == 0x8000000000000001, (rec.size / GB, rec.vol.letter, hex(rec.attrs)))
 ck("Windows chiếm phần còn lại", win.size > 460 * GB and win.vol.fs == "NTFS")
 ck("bung đúng bản mặc định 22H2, bản số 6", fs.file(win.vol, "windows\\cb-image.txt") == "install.wim|6")
 ck("đã ghi file khởi động (bcdboot … /f UEFI)", any(c[0].lower().endswith("bcdboot.exe") and c[-1] == "UEFI" for c in fs.cmds))
@@ -302,6 +302,37 @@ ck("thử lần 3 vẫn lỗi → dừng hẳn, giữ màn hình báo lỗi", ui
 rc, ui, inst = run(fs)
 ck("khởi động lại sau đó → không tự xoá nữa, chờ người xử lý", ui.held == 1 and len(fs.dp_scripts) == 1)
 
+print("15b. WinPE tự gán CHỮ Ổ cho phân vùng cứu hộ (máy thật 21/11: D:) → cài lại vẫn ghi được kết quả (lỗi bản ≤ 21.11c)")
+for fwx in ("uefi", "bios"):
+    fs = FakeSys(fwx); cfg = cfg0(); d, rec, win = cb_layout(fs, cfg, job0(), fw=fwx)
+    rec.vol.letter = "D"                                               # như WinPE thật: phân vùng cứu hộ đang mang chữ D:
+    rc, ui, inst = run(fs)
+    res = json.loads(rec.vol.files.get("cb\\job-result.json") or "{}")
+    ck("%s: phân vùng cứu hộ đang mang chữ D: → cài xong, mã 0, không dòng lỗi nào" % fwx, rc == 0 and not any("LOI" in l or "Khong ghi duoc" in l or "Errno" in l for l in inst.lines), [l for l in inst.lines if "LOI" in l or "Khong ghi duoc" in l or "Errno" in l][:3])
+    ck("%s: … kết quả ghi đúng vào phân vùng cứu hộ (dù chữ D: đã bị đổi sang chữ tạm rồi gỡ), lệnh được gỡ" % fwx, res.get("ok") is True and res.get("id") == 77 and res.get("pe") == cb_pe.PE_VER
+       and "cb\\job.json" not in rec.vol.files and json.loads(rec.vol.files["cb\\job.done.json"])["state"] == "done" and rec.vol.letter is None, (res, rec.vol.letter))
+    neww = max((p for p in d.slots if p.vol and p is not rec), key=lambda p: p.offset)
+    ck("%s: … Windows mới có đủ seed (số lệnh + vé) để agent báo về web" % fwx, json.loads(neww.vol.files["cloudbluepc\\seed.json"]).get("order") == 77 and json.loads(neww.vol.files["cloudbluepc\\seed.json"]).get("from") == "job")
+fs = FakeSys("uefi"); cfg = cfg0(); d, rec, win = cb_layout(fs, cfg, job0()); rec.vol.letter = "D"; fs.fail_dism = True
+rc, ui, inst = run(fs)
+ck("chữ D: + bung Windows lỗi → vẫn ghi được 'lần thử 1 lỗi' lên phân vùng cứu hộ (để lần sau làm tiếp)", rc == 10 and json.loads(rec.vol.files["cb\\job-result.json"])["ok"] is False
+   and json.loads(rec.vol.files["cb\\job.json"])["attempts"] == 1, rec.vol.files.get("cb\\job-result.json"))
+fs = FakeSys("uefi"); cfg = cfg0(); d, rec, win = cb_layout(fs, cfg, job0())
+_wt = fs.write_text
+
+
+def _wt_bad(p, s, encoding="utf-8"):
+    if p.lower().endswith("job-result.json"): raise OSError(28, "No space left on device")
+    return _wt(p, s, encoding)
+
+
+fs.write_text = _wt_bad
+rc, ui, inst = run(fs)
+neww = max((p for p in d.slots if p.vol and p is not rec), key=lambda p: p.offset)
+ck("không ghi được file kết quả (ổ cứu hộ đầy…) → Windows mới ĐÃ cài xong thì vẫn tính là xong (mã 0), chỉ ghi chú — không cài lại lần nữa",
+   rc == 0 and any("(!) Khong ghi duoc ket qua" in l for l in inst.lines) and fs.file(neww.vol, "windows\\cb-image.txt") == "1511.wim|1" and not any("!! LOI" in l for l in inst.lines), [l for l in inst.lines if "(!)" in l or "LOI" in l])
+fs.write_text = _wt
+
 print("16. Vừa có USB bộ cài vừa có phân vùng cứu hộ")
 fs = FakeSys("uefi"); cfg = cfg0(); usb(fs, cfg); d, rec, win = cb_layout(fs, cfg, job0(wipe="system", win={"offset": 0, "size": 0}))
 j = json.loads(rec.vol.files["cb\\job.json"]); j["win"] = {"offset": win.offset, "size": win.size}; rec.vol.put("cb\\job.json", json.dumps(j))
@@ -314,7 +345,11 @@ ck("không có lệnh → cài mới từ USB, xoá cả phân vùng cứu hộ 
 print("17. Phần tính toán (cbcore)")
 ck("os_id", C.os_id("10.0.19045.3803") == "22h2" and C.os_id("10.0.10586.0") == "1511" and C.os_id("10.0.99999.1") == "b99999" and C.os_id("") == "win")
 ck("clean_name", C.clean_name("máy số 1!!") == "mys1" and C.clean_name("12345") == "CB-PC" and C.clean_name("A" * 30) == "A" * 15 and C.clean_name("-x-") == "x")
-ck("recovery_bytes làm tròn GB, tối thiểu 6GB", C.recovery_bytes({"images": []}) == 6 * GB and C.recovery_bytes(cfg0()) == 13 * GB and C.recovery_bytes(cfg0(), 7) == 12 * GB, C.recovery_bytes(cfg0()) / GB)
+ck("recovery_bytes làm tròn GB, tối thiểu 6GB, có 4GB để dành", C.recovery_bytes({"images": []}) == 7 * GB and C.recovery_bytes({"images": [], "rec_spare_gb": 0}) == 6 * GB and C.recovery_bytes(cfg0()) == 17 * GB
+   and C.recovery_bytes(cfg0(), 7) == 16 * GB, C.recovery_bytes(cfg0()) / GB)
+ck('chỗ để dành đổi được bằng cb.json "rec_spare_gb" (0 = không để dành; số lạ → mặc định 4; tối đa 64)', C.recovery_bytes(cfg0(rec_spare_gb=0)) == 13 * GB and C.recovery_bytes(cfg0(rec_spare_gb=10)) == 23 * GB
+   and C.recovery_bytes(cfg0(rec_spare_gb="x")) == 17 * GB and C.recovery_bytes(cfg0(rec_spare_gb=None)) == 17 * GB and C.recovery_bytes(cfg0(rec_spare_gb=-3)) == 13 * GB and C.recovery_bytes(cfg0(rec_spare_gb=999)) == 77 * GB,
+   [C.recovery_bytes(cfg0(rec_spare_gb=v)) / GB for v in (0, 10, "x", None, -3, 999)])
 ck("pick_letters tránh chữ đang dùng + X", C.pick_letters({"W", "S"}) == ["V", "U", "R"] and C.pick_letters(set("WSRVUTQPONMLKJ")) == ["I", "H", "G"], C.pick_letters({"W", "S"}))
 try: C.pick_letters(set("WSRVUTQPONMLKJIHGFEDZ")); _full = False
 except C.Stop: _full = True
@@ -407,8 +442,8 @@ ck("dọn chỗ tạm sau khi nạp", any(c[:5] == ["cmd", "/c", "rd", "/s", "/q
 ck("nạp driver SAU khi bung Windows xong", [i for i, c in enumerate(fs.cmds) if "/Apply-Image" in c][0] < fs.cmds.index(dc), [c[:3] for c in fs.cmds])
 recv = next(p.vol for d in fs.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
 ck("driver được chép sang phân vùng cứu hộ (để cài lại từ xa cũng nạp)", recv.files.get("cb\\drivers\\lan\\rt640x64.inf") == "inf", sorted(k for k in recv.files if "drivers" in k))
-ck("cỡ phân vùng cứu hộ có tính thêm phần driver", C.recovery_bytes(cfg0(), 600 * MB, 3 * GB) == 16 * GB and C.recovery_bytes(cfg0(), 600 * MB, 0) == 13 * GB
-   and C.recovery_bytes(cfg0(), 600 * MB, None) == 13 * GB, C.recovery_bytes(cfg0(), 600 * MB, 3 * GB) / GB)
+ck("cỡ phân vùng cứu hộ có tính thêm phần driver", C.recovery_bytes(cfg0(), 600 * MB, 3 * GB) == 20 * GB and C.recovery_bytes(cfg0(), 600 * MB, 0) == 17 * GB
+   and C.recovery_bytes(cfg0(), 600 * MB, None) == 17 * GB, C.recovery_bytes(cfg0(), 600 * MB, 3 * GB) / GB)
 import cbrec as _cbrec
 ck("tree_bytes: cộng cả thư mục con, không có thư mục → 0", _cbrec.tree_bytes(fs, "E:\\cb\\drivers") == len("x") + len("inf") and _cbrec.tree_bytes(fs, "E:\\khong-co") == 0 and _cbrec.extra_bytes(fs, "E:\\") == 4)
 fs = FakeSys("uefi"); cfg = cfg0()
@@ -599,9 +634,10 @@ ck("setup_state: đọc đúng chữ reg in ra", C.setup_state(OOBE_REG) is True
    and C.setup_state("    SetupType    REG_DWORD    0x1\r\n") is True)
 
 print("24. Cài xong từ USB / ISO: hiện 1 ô cho người cài gõ SỐ MÁY (21.11b)")
-def run_code(lines, cfg_extra=None):
+def run_code(lines, cfg_extra=None, name=""):
+    """Kịch bản gõ ở 2 ô sau khi cài xong: ô TÊN MÁY nhận `name` ('' = bấm Enter bỏ qua, None = không có ô tên trong kịch bản), các ô sau nhận `lines`."""
     fs = FakeSys("uefi"); cfg = dict(cfg0(), **(cfg_extra or {})); fb_media(fs, cfg)
-    ui = ScriptUI(); ui.lines = list(lines)
+    ui = ScriptUI(); ui.lines = ([] if name is None else [name]) + list(lines)
     inst = cb_pe.Installer(fs); rc = inst.run(ui)
     win, _ = fb_vols(fs)
     return rc, ui, fs, json.loads(win.files["cloudbluepc\\seed.json"])
@@ -617,7 +653,10 @@ ck("bấm Enter trống → bỏ qua, không ghi số máy, vẫn cài xong", rc
 rc, ui, fs, seed = run_code([])
 ck("không ai gõ (hết giờ chờ) → bỏ qua, vẫn cài xong", rc == 0 and "code" not in seed)
 rc, ui, fs, seed = run_code(["9"], {"ask_code": False})
-ck('cb.json "ask_code": false → không hỏi', rc == 0 and not any(p[1].startswith("<line>") for p in ui.prompts) and "code" not in seed)
+ck('cb.json "ask_code": false → không hỏi số máy (ô tên máy vẫn hỏi)', rc == 0 and [p[1] for p in ui.prompts if p[1].startswith("<line>")] == ["<line> Ten may"] and "code" not in seed)
+rc, ui, fs, seed = run_code(["9"], {"ask_code": False, "ask_name": False}, name=None)
+ck('"ask_code": false + "ask_name": false → cài xong không hỏi gì', rc == 0 and not any(p[1].startswith("<line>") for p in ui.prompts) and "code" not in seed and "label" not in seed
+   and not any("WINDOWS DA CAI XONG" in x for x in fs.logs))
 rc, ui, fs, seed = run_code(["7"], {"code_wait": 600})
 ck("thời gian chờ đổi được bằng code_wait", (600, "<line> So may") in ui.prompts and seed.get("code") == "7")
 ck("clean_code: giữ chữ số . _ / - và dấu cách, tối đa 24 ký tự, rỗng nếu toàn ký tự lạ", C.clean_code(" khu-a_1.2/3 ") == "KHU-A_1.2/3" and C.clean_code("<>\"'") == "" and C.clean_code(None) == ""
@@ -626,20 +665,157 @@ import io as _io, contextlib as _ctx
 class KeySys:                                                      # bàn phím giả cho ô gõ thật (ConsoleUI.line): mỗi lần hỏi trả 1 phím trong danh sách, hết thì None
     def __init__(self, keys): self.keys = list(keys)
     def key_wait(self, seconds): return self.keys.pop(0) if self.keys else None
-def typed(keys, secs=5):
-    with _ctx.redirect_stdout(_io.StringIO()): return cb_pe.ConsoleUI(KeySys(keys)).line(secs, "So may")
+def typed(keys, secs=5, prompt="So may", maxlen=None):
+    with _ctx.redirect_stdout(_io.StringIO()):
+        ui = cb_pe.ConsoleUI(KeySys(keys))
+        return ui.line(secs, prompt) if maxlen is None else ui.line(secs, prompt, maxlen)
 ck("ô gõ thật: gõ 1 4 - 8 5 rồi Enter → '14-85'; Backspace xoá được; Esc = bỏ", typed(list("14-85") + ["\r"]) == "14-85" and typed(["1", "2", "\x08", "4", "\r"]) == "14" and typed(["9", "\x1b"]) == "")
 ck("ô gõ thật: không ai gõ → None sau đúng số giây chờ; gõ dở rồi bỏ đó → lấy phần đã gõ", typed([]) is None and typed(["a", "7"]) == "a7" and typed(["\r"]) == "")
 ck("ô gõ thật: không nhận quá 24 ký tự, bỏ phím điều khiển lạ", typed(list("x" * 40) + ["\r"]) == "x" * 24 and typed(["\t", "5", "\r"]) == "5")
 fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
-ui = ScriptUI(); ui.lines = ["55"]
+ui = ScriptUI(); ui.lines = ["", "55"]
 assert cb_pe.Installer(fs).run(ui) == 0
 win, rec = fb_vols(fs); fs.fdisks = [d for d in fs.fdisks if d.index != 9]
 rec.put("cb\\job.json", json.dumps(job0(win=None, wipe="all") if False else job0(wipe="all")))
 ui2 = ScriptUI(); ui2.lines = ["99"]
 rc2 = cb_pe.Installer(fs).run(ui2)
 win2, _ = fb_vols(fs)
-ck("cài lại TỪ XA (lệnh từ web, không ai ngồi máy) → KHÔNG hỏi số máy; số máy cũ do web giữ", rc2 == 0 and not any(p[1].startswith("<line>") for p in ui2.prompts) and "code" not in json.loads(win2.files["cloudbluepc\\seed.json"]), ui2.prompts[-3:])
+ck("cài lại TỪ XA (lệnh từ web, không ai ngồi máy) → KHÔNG hỏi số máy, KHÔNG hỏi tên máy; số máy + tên cũ do web giữ", rc2 == 0 and not any(p[1].startswith("<line>") for p in ui2.prompts)
+   and "code" not in json.loads(win2.files["cloudbluepc\\seed.json"]) and "label" not in json.loads(win2.files["cloudbluepc\\seed.json"]), ui2.prompts[-3:])
+
+print("25. Cài xong từ USB / ISO: thêm ô gõ TÊN MÁY — máy mang tên đó trong Windows và trên web (21.11d)")
+def run_name(lines, cfg_extra=None):
+    rc, ui, fs, seed = run_code(lines, cfg_extra, name=None)
+    win, rec = fb_vols(fs)
+    return rc, ui, fs, seed, win.files.get("windows\\panther\\unattend.xml", ""), json.loads(rec.files["cb\\identity.json"])
+def lines_of(ui): return [p for p in ui.prompts if p[1].startswith("<line>")]
+rc, ui, fs, seed, ua, idf = run_name(["May-01", "14-85"])
+ck("Windows bung xong → hỏi 'Ten may' TRƯỚC rồi mới hỏi 'So may' (cùng thời gian chờ)", rc == 0 and lines_of(ui) == [(120, "<line> Ten may"), (120, "<line> So may")], lines_of(ui))
+ck("gõ May-01 → Windows mang tên May-01 (file trả lời + seed.json + identity.json trên phân vùng cứu hộ)", seed["name"] == "May-01" and "<ComputerName>May-01</ComputerName>" in ua and idf["name"] == "May-01", (seed, idf))
+ck("tên hiển thị ghi vào seed.json (label) để agent báo về web; số máy vẫn ghi như cũ", seed.get("label") == "May-01" and seed.get("code") == "14-85", seed)
+ck("màn hình bộ cài: 'WINDOWS DA CAI XONG' chỉ in 1 lần, có dòng xác nhận tên + dòng XONG nhắc đúng tên", sum("WINDOWS DA CAI XONG" in x for x in fs.logs) == 1 and any(x.strip() == "Ten may: May-01" for x in fs.logs)
+   and any(x.startswith("XONG sau") and "ten may: May-01" in x for x in fs.logs), [x for x in fs.logs if "Ten may" in x or "XONG" in x])
+rc, ui, fs, seed, ua, idf = run_name(["Phong A 07", ""])
+ck("tên có dấu cách: web giữ nguyên 'Phong A 07', Windows lấy tên hợp lệ 'PhongA07' (bộ cài báo rõ)", seed["name"] == "PhongA07" and seed["label"] == "Phong A 07" and "<ComputerName>PhongA07</ComputerName>" in ua
+   and any("Ten may: Phong A 07" in x and "ten trong Windows: PhongA07" in x for x in fs.logs), seed)
+rc, ui, fs, seed, ua, idf = run_name(["07", ""])
+ck("tên toàn số (Windows không cho): Windows lấy CB-07, web vẫn hiện 07", seed["name"] == "CB-07" and seed["label"] == "07" and idf["name"] == "CB-07", seed)
+rc, ui, fs, seed, ua, idf = run_name(["7"], {"name_prefix": "NET"})
+ck("tên toàn số dùng đúng tiền tố name_prefix của cb.json", seed["name"] == "NET-7" and seed["label"] == "7", seed)
+rc, ui, fs, seed, ua, idf = run_name(["Day-May-So-01-Tang-2-Khu-B", ""])
+ck("tên dài: web giữ tới 40 ký tự, Windows cắt còn 15", seed["label"] == "Day-May-So-01-Tang-2-Khu-B" and seed["name"] == "Day-May-So-01-T" and len(seed["name"]) == 15, seed)
+rc, ui, fs, seed, ua, idf = run_name(["", "9"])
+ck("bấm Enter trống ở ô tên → máy tự lấy tên CB-XXXXXX như cũ, không ghi label, vẫn hỏi tiếp số máy", rc == 0 and "label" not in seed and len(seed["name"]) == 9 and seed["name"].startswith("CB-") and seed.get("code") == "9"
+   and any("Ten may: (bo qua)" in x and seed["name"] in x for x in fs.logs), seed)
+rc, ui, fs, seed, ua, idf = run_name([])
+ck("ô tên hết giờ mà không ai gõ (không có người ngồi máy) → bỏ qua LUÔN ô số máy, không chờ thêm; vẫn cài xong", rc == 0 and lines_of(ui) == [(120, "<line> Ten may")] and "label" not in seed and "code" not in seed
+   and seed["name"].startswith("CB-"), lines_of(ui))
+rc, ui, fs, seed, ua, idf = run_name(["<<>>", "!!!", "May 02", "5"])
+ck("gõ toàn ký tự lạ → báo và cho gõ lại (tối đa 3 lần), lần sau gõ đúng thì nhận", seed.get("label") == "May 02" and seed["name"] == "May02" and seed.get("code") == "5"
+   and [p[1] for p in lines_of(ui)] == ["<line> Ten may"] * 3 + ["<line> So may"] and sum("khong dung duoc" in x for x in fs.logs) == 2, (seed, lines_of(ui)))
+rc, ui, fs, seed, ua, idf = run_name(["??", "##", "@@", "6"])
+ck("gõ sai cả 3 lần → coi như bỏ qua tên (tên tự sinh), vẫn hỏi số máy", "label" not in seed and seed["name"].startswith("CB-") and seed.get("code") == "6", seed)
+rc, ui, fs, seed, ua, idf = run_name(["8"], {"ask_name": False})
+ck('cb.json "ask_name": false → không hỏi tên (tên tự sinh), vẫn hỏi số máy', rc == 0 and lines_of(ui) == [(120, "<line> So may")] and "label" not in seed and seed.get("code") == "8" and seed["name"].startswith("CB-")
+   and sum("WINDOWS DA CAI XONG" in x for x in fs.logs) == 1, lines_of(ui))
+rc, ui, fs, seed, ua, idf = run_name(["  may   <b>3</b>  ", ""], {"code_wait": 300})
+ck("tên được làm sạch (bỏ ký tự lạ, gộp dấu cách); thời gian chờ theo code_wait", seed.get("label") == "may b3/b" and seed["name"] == "mayb3b" and (300, "<line> Ten may") in ui.prompts, seed)
+ck("clean_label: giữ chữ số . _ / - và dấu cách (không đổi hoa thường), tối đa 40, phải có ít nhất 1 chữ / số", C.clean_label(" Khu-a_1.2/3 ") == "Khu-a_1.2/3" and C.clean_label("<>\"'") == "" and C.clean_label(None) == ""
+   and C.clean_label("---") == "" and C.clean_label(". /") == "" and len(C.clean_label("x" * 90)) == 40 and C.clean_label("a   b") == "a b" and C.clean_label("M\u00e1y 01") == "My 01")
+ck("win_name: tên hiển thị → tên Windows hợp lệ", C.win_name("May-01") == "May-01" and C.win_name("Phong A 07") == "PhongA07" and C.win_name("07") == "CB-07" and C.win_name("07", "NET") == "NET-07"
+   and C.win_name("", "CB", "X") == "X" and C.win_name("...", "CB", "X") == "X" and C.win_name("1234567890123456789") == "CB-123456789012" and C.win_name("9", "MOTTIENTORATDAI") == "MOTTIENTORATD-9"
+   and C.win_name("9", "!!") == "CB-9" and all(len(C.win_name(x, "ABCDEFGHIJKLMNOPQ")) <= 15 for x in ("1", "12345678", "123456789012345678")))
+ck("ô gõ thật nhận tới 40 ký tự cho tên máy (ô số máy vẫn 24)", typed(list("y" * 60) + ["\r"], 5, "Ten may", 40) == "y" * 40 and typed(list("y" * 60) + ["\r"]) == "y" * 24)
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+ui = ScriptUI(); ui.lines = ["May 05", "55"]
+assert cb_pe.Installer(fs).run(ui) == 0
+win, rec = fb_vols(fs); fs.fdisks = [d for d in fs.fdisks if d.index != 9]
+rec.put("cb\\job.json", json.dumps(dict(job0(wipe="all"), name="May 05")))
+ui2 = ScriptUI(); rc2 = cb_pe.Installer(fs).run(ui2)
+win2, _ = fb_vols(fs); seed2 = json.loads(win2.files["cloudbluepc\\seed.json"])
+ck("cài lại TỪ XA sau đó: không hỏi gì, Windows mới vẫn mang đúng tên cũ (May05) suy từ tên trên web 'May 05'", rc2 == 0 and not lines_of(ui2) and seed2["name"] == "May05" and "label" not in seed2, (seed2, lines_of(ui2)))
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+ui = ScriptUI(); ui.lines = ["07", ""]
+assert cb_pe.Installer(fs).run(ui) == 0
+win, rec = fb_vols(fs); fs.fdisks = [d for d in fs.fdisks if d.index != 9]
+rec.put("cb\\job.json", json.dumps(dict(job0(wipe="all"), name="07")))
+rc2 = cb_pe.Installer(fs).run(ScriptUI())
+win2, _ = fb_vols(fs); seed2 = json.loads(win2.files["cloudbluepc\\seed.json"])
+ck("tên trên web toàn số ('07'): cài lại từ xa vẫn ra đúng CB-07 (trước đây mỗi lần cài lại đổi 1 tên ngẫu nhiên)", rc2 == 0 and seed2["name"] == "CB-07", seed2)
+
+print("26. Bộ cài MỚI HƠN do agent đặt sẵn trên phân vùng cứu hộ (cb\\pe-next) → bộ cài trong boot.wim chạy bản đó (sửa bộ cài không cần tạo lại ISO) (21.11d)")
+import hashlib as _hl
+def put_next(recp, seq=2, files=None, ver="02.12a", bad=None, meta=None):
+    """Đặt 1 bộ cài 'mới' lên phân vùng cứu hộ. bad = tên file cố ý ghi sai nội dung sau khi tính mã băm."""
+    files = files if files is not None else {"pe/cb_pe.py": b"# bo cai moi\n", "lib/cbcore.py": b"# core moi\n", "lib/cbsys.py": b"# sys moi\n", "lib/cbrec.py": b"# rec moi\n"}
+    for rel, data in files.items(): recp.vol.put("cb\\pe-next\\" + rel.replace("/", "\\"), data + (b"X" if rel == bad else b""))
+    m = {"seq": seq, "ver": ver, "files": {rel: _hl.sha256(d).hexdigest() for rel, d in files.items()}}
+    recp.vol.put("cb\\pe-next\\next.json", json.dumps(meta if meta is not None else m))
+    return files
+def pe_job(job=True, **kw):
+    fs = FakeSys("uefi"); cfg = cfg0()
+    d, recp, winp = cb_layout(fs, cfg, job0() if job else None, **kw)
+    return fs, recp, winp
+def chained(fs): return [c for c in fs.cmds if os.path.basename(c[0].replace("\\", "/")).lower().startswith("python") or "--chained" in c]
+def applied(fs): return any(c[0] == "dism" and "/Apply-Image" in c for c in fs.cmds)
+import os
+fs, recp, winp = pe_job(); rc, ui, inst = run(fs)
+ck("không có cb\\pe-next → không gọi bộ cài nào khác, tự làm lệnh như cũ", rc == 0 and not chained(fs) and applied(fs))
+fs, recp, winp = pe_job(); files = put_next(recp); fs.chain_rc = 0
+rc, ui, inst = run(fs)
+cmd = (chained(fs) or [[]])[0]
+ck("có bản số 2 (> bản đang chạy) đủ file, đúng mã băm → chép cả bộ vào ổ tạm X:\\cb-next rồi chạy bản đó (python -I -B -u … --chained)", len(chained(fs)) == 1 and cmd[1:4] == ["-I", "-B", "-u"]
+   and cmd[4].lower() == "x:\\cb-next\\pe\\cb_pe.py" and cmd[5:] == ["--chained"] and all(fs.file("X", "cb-next\\" + rel.replace("/", "\\")) == d.decode() for rel, d in files.items()), cmd)
+ck("bản mới làm xong (mã 0) → bộ cài cũ KHÔNG đụng vào lệnh nữa (không bung Windows lần 2, lệnh để bản mới lo), trả đúng mã của bản mới", rc == 0 and not applied(fs)
+   and json.loads(recp.vol.files["cb\\job.json"])["state"] == "queued" and any("BO CAI MOI HON (ban 02.12a, so 2 > 1)" in x for x in fs.logs), (rc, fs.logs[-3:]))
+ck("biến môi trường báo cho bản mới: nó được bản số mấy gọi + thư mục bộ cài gốc", os.environ.get("CB_CHAINED") == "1" and os.environ.get("CB_CHAIN_BASE", "").replace("\\", "/").rstrip("/").endswith("winpc"), dict((k, v) for k, v in os.environ.items() if k.startswith("CB_")))
+fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 10
+rc, ui, inst = run(fs)
+ck("bản mới trả mã 10 (không có gì để làm / đã xử lý) → cũng coi là xong", rc == 10 and not applied(fs))
+for bad_rc, why in ((1, "lỗi cú pháp / Python chết"), (3, "tự dừng vì lỗi"), (127, "không chạy được"), (-1073741819, "sập")):
+    fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = bad_rc
+    rc, ui, inst = run(fs)
+    ck("bản mới hỏng (%s, mã %s) → bộ cài sẵn có trong boot.wim tự làm lệnh như thường, ghi rõ nhật ký" % (why, bad_rc), rc == 0 and len(chained(fs)) == 1 and applied(fs)
+       and json.loads(recp.vol.files["cb\\job-result.json"])["ok"] is True and any("khong lam xong (ma thoat %s)" % bad_rc in x for x in fs.logs), (rc, fs.logs[-4:]))
+fs, recp, winp = pe_job(); put_next(recp, bad="lib/cbsys.py"); rc, ui, inst = run(fs)
+ck("1 file sai mã băm (ghi dở / bị sửa) → KHÔNG chạy bản mới, không chép gì vào ổ tạm, dùng bộ cài sẵn có", rc == 0 and not chained(fs) and applied(fs) and not any(k.startswith("cb-next") for k in fs.x.files)
+   and any("lib/cbsys.py thieu / sai ma bam" in x for x in fs.logs), [x for x in fs.logs if "ma bam" in x])
+fs, recp, winp = pe_job(); put_next(recp); del recp.vol.files["cb\\pe-next\\lib\\cbrec.py"]; rc, ui, inst = run(fs)
+ck("thiếu 1 file → không chạy bản mới", rc == 0 and not chained(fs) and applied(fs))
+for seq in (1, 0, -5, "9", 2.5, True, None):
+    fs, recp, winp = pe_job(); put_next(recp, seq=seq); rc, ui, inst = run(fs)
+    ck("số thứ tự %r không lớn hơn bản đang chạy / không phải số nguyên → bỏ qua (không hạ cấp, không chạy lại chính mình)" % (seq,), rc == 0 and not chained(fs) and applied(fs))
+for label, fl in (("ngoài thư mục pe / lib", {"pe/cb_pe.py": b"a", "os/x.py": b"b"}), ("có ..", {"pe/cb_pe.py": b"a", "pe/../../evil.py": b"b"}), ("không phải .py", {"pe/cb_pe.py": b"a", "pe/run.cmd": b"b"}),
+                  ("đường tuyệt đối", {"pe/cb_pe.py": b"a", "C:/x.py": b"b"}), ("thiếu pe/cb_pe.py", {"lib/cbcore.py": b"a"}), ("quá 40 file", dict({"pe/cb_pe.py": b"a"}, **{"lib/m%d.py" % i: b"b" for i in range(41)}))):
+    fs, recp, winp = pe_job()
+    for rel, d in fl.items(): recp.vol.put("cb\\pe-next\\" + rel.replace("/", "\\"), d)
+    recp.vol.put("cb\\pe-next\\next.json", json.dumps({"seq": 5, "ver": "x", "files": {rel: _hl.sha256(d).hexdigest() for rel, d in fl.items()}}))
+    rc, ui, inst = run(fs)
+    ck("danh sách file %s → bỏ qua cả bản mới" % label, rc == 0 and not chained(fs) and applied(fs) and not any(k.startswith("cb-next") for k in fs.x.files), [x for x in fs.logs if "Bo cai moi" in x])
+for label, raw in (("không phải JSON", "{{{"), ("là danh sách", "[1, 2]"), ("files không phải bảng", json.dumps({"seq": 3, "files": ["pe/cb_pe.py"]})), ("mã băm không phải chữ", json.dumps({"seq": 3, "files": {"pe/cb_pe.py": 5}}))):
+    fs, recp, winp = pe_job(); put_next(recp); recp.vol.put("cb\\pe-next\\next.json", raw); rc, ui, inst = run(fs)
+    ck("next.json hỏng (%s) → bỏ qua, cài như thường" % label, rc == 0 and not chained(fs) and applied(fs))
+fs, recp, winp = pe_job(); put_next(recp, files={"pe/cb_pe.py": b"x" * ((2 << 20) + 1)}); rc, ui, inst = run(fs)
+ck("file quá 2 MB → bỏ qua", rc == 0 and not chained(fs) and applied(fs))
+fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 0
+inst = cb_pe.Installer(fs); inst.chained = True; rc = inst.run(ScriptUI())
+ck("bản đang chạy chính là bản được gọi tiếp (--chained) → không gọi tiếp lần nữa (không lặp vô hạn), tự làm lệnh", rc == 0 and not chained(fs) and applied(fs))
+fs, recp, winp = pe_job(job=False); put_next(recp); fs.chain_rc = 10
+rc, ui, inst = run(fs)
+ck("khởi động vào phân vùng cứu hộ mà không có lệnh: vẫn giao cho bản mới xử lý", rc == 10 and len(chained(fs)) == 1)
+fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 0; usb(fs, cfg0())
+rc, ui, inst = run(fs)
+ck("đang cắm USB / ISO cài đặt → bộ cài trên USB là bản người cài chọn: KHÔNG chạy bản trên phân vùng cứu hộ", not chained(fs), chained(fs))
+fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 0; fs.dry = True
+rc, ui, inst = run(fs)
+ck("chạy thử (dry-run) → không gọi bản khác", not chained(fs))
+fs, recp, winp = pe_job(); put_next(recp, seq=2, ver="cu"); fs.chain_rc = 0
+d2 = fs.disk(1, 240, model="O thu hai", ssd=True, style="gpt")
+rec2 = d2.add(12 * 1024, GPT_DATA, "NTFS", "CBRECOVERY", attrs=0x8000000000000001, files={"cb\\recovery.tag": "1", "cb\\cb.json": "{}"})
+put_next(rec2, seq=7, ver="moi-nhat", files={"pe/cb_pe.py": b"# ban 7\n"})
+rc, ui, inst = run(fs)
+ck("máy có 2 phân vùng cứu hộ (2 ổ từng cài) → lấy bản có số lớn nhất", len(chained(fs)) == 1 and fs.file("X", "cb-next\\pe\\cb_pe.py") == "# ban 7\n" and any("ban moi-nhat, so 7" in x for x in fs.logs), [x for x in fs.logs if "MOI HON" in x])
+ck("PE_SEQ là số nguyên dương; mã thoát cố định 0 / 3 / 10", isinstance(cb_pe.PE_SEQ, int) and cb_pe.PE_SEQ >= 1 and (cb_pe.RC_OK, cb_pe.RC_SETUP, cb_pe.RC_REBOOT) == (0, 3, 10))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

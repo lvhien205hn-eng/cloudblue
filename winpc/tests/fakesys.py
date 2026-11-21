@@ -281,6 +281,9 @@ class FakeSys:
             return 0, ""
         if exe in ("shutdown", "wpeutil"):
             self.rebooted = True; return 0, ""
+        if exe.startswith("python"):                      # bộ cài gọi tiếp 1 bộ cài mới hơn (chain): trả mã thoát theo kịch bản
+            rc = getattr(self, "chain_rc", 0)
+            return (rc() if callable(rc) else rc), ""
         return 0, ""
 
     # ---------------------------------------------------------------- diskpart

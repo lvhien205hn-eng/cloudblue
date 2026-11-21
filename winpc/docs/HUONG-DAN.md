@@ -1,9 +1,9 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11c)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11d)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
 1. **1 file ISO** (gộp các bản Windows bạn có, ví dụ 22H2 + 1511). Khởi động máy từ ISO / USB đó → máy **tự chọn ổ, đếm ngược 30 giây, xoá dữ liệu cũ, cài Windows, nạp driver bạn kèm theo, đặt ảnh nền CloudBlue**, không hỏi gì thêm.
-2. Windows lên là **tự hiện trong Bảng quản trị › 💻 Máy PC** (tên máy, cấu hình, IP, online / offline). Cài xong, màn hình bộ cài hiện **1 ô gõ SỐ MÁY** (vị trí máy trong dàn) — số này hiện trên web và trên màn hình máy để khách báo lỗi đúng máy.
+2. Windows lên là **tự hiện trong Bảng quản trị › 💻 Máy PC** (tên máy, cấu hình, IP, online / offline). Cài xong, màn hình bộ cài hiện ô gõ **TÊN MÁY** rồi ô **SỐ MÁY** (vị trí máy trong dàn) — tên hiện ở ô "Tên hiển thị" trên web, số máy hiện trên web và trên màn hình máy để khách báo lỗi đúng máy.
 3. Trên web bấm **🧹 Cài lại** / **🧼 Bàn giao**: chọn bản Windows (22H2 / 1511) + mức xoá → máy tự khởi động lại, tự dọn sạch và cài lại, **không cần USB, không cần ra máy**.
 4. Đặt **hạn thuê** cho từng máy: từ **2 ngày trước hạn** máy tự nhắc khách liên tục và **đầu Bảng quản trị luôn hiện dải báo** máy sắp hết hạn; hết hạn mà chưa gia hạn thì máy **tự tắt** (bật lại cũng tự tắt). Việc lạ trên máy hiện ở tab 🛡️ Bảo mật; gửi thêm về mail / Telegram là tuỳ chọn (mục C4)
 
@@ -110,10 +110,18 @@ Mức xoá khi cài lại:
 
 Máy offline lúc ra lệnh: lệnh chờ, máy online lại là chạy.
 
-### C2b. Số máy
-Mỗi máy có 1 **số máy** (vị trí trong dàn: `14-85`, `A07`, `KHU B 3`…) để bạn và khách cùng gọi đúng 1 máy khi có lỗi.
+### C2b. Tên máy + số máy
+**Tên máy** (từ bản 21.11d) — để nhìn bảng trên web biết ngay máy nào:
 
-- **Lúc cài bằng USB / ISO**: Windows bung xong, màn hình bộ cài hiện ô `So may:` — gõ số rồi Enter. Bỏ qua thì bấm Enter trống, hoặc để 2 phút máy tự đi tiếp.
+- **Lúc cài bằng USB / ISO**: Windows bung xong, màn hình bộ cài hiện ô `Ten may:` — gõ tên (ví dụ `May-01`, `Phong A 07`) rồi Enter. Chỉ dùng chữ **không dấu**, số, dấu cách và `. _ / -`, tối đa 40 ký tự.
+- Tên đó thành **"Tên hiển thị" trên web** và là **tên máy trong Windows**. Windows chỉ cho tên 15 ký tự gồm chữ / số / gạch nối, nên `Phong A 07` trong Windows là `PhongA07`, tên toàn số như `07` thành `CB-07` — web vẫn hiện đúng chữ bạn gõ.
+- Bỏ qua (Enter trống) → máy tự lấy tên `CB-xxxxxx` như trước. Để 2 phút không ai gõ → bộ cài hiểu là không có người ngồi máy, bỏ qua luôn cả ô số máy.
+- Đổi tên về sau: web › **Sửa** › ô Tên hiển thị. Cài lại từ xa không hỏi lại, máy giữ tên cũ.
+- Web chỉ nhận tên do máy gửi trong **24 giờ đầu** sau khi máy đăng ký (cần SQL v43) — về sau chỉ admin đổi được.
+
+**Số máy** (vị trí trong dàn: `14-85`, `A07`, `KHU B 3`…) để bạn và khách cùng gọi đúng 1 máy khi có lỗi.
+
+- **Lúc cài bằng USB / ISO**: sau ô tên máy, màn hình bộ cài hiện ô `So may:` — gõ số rồi Enter. Bỏ qua thì bấm Enter trống, hoặc để 2 phút máy tự đi tiếp.
 - **Trên web**: nút **Sửa** của máy › ô **Số máy** (đặt mới / sửa / xoá). Bảng hiện nhãn `№ 14-85` cạnh tên máy; ô tìm kiếm tìm được theo số máy.
 - **Trên máy của khách**: màn hình nền có file **`May so 14-85 (CloudBlue).txt`** (khách không xoá / sửa được), các hộp nhắc hết hạn ghi `CloudBlue PC [may so 14-85]`. Sửa số trên web → khoảng 30 giây sau máy đổi theo.
 - Cài lại từ xa (**Cài lại** / **Bàn giao**) không hỏi lại — số máy do web giữ.
@@ -218,7 +226,7 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 
 ## E. Cần biết
 
-- **Phân vùng cứu hộ**: mỗi máy có 1 phân vùng ẩn `CBRECOVERY` chứa bộ cài (cỡ ≈ tổng các bản Windows + 15% + 2GB; khung TÓM TẮT ghi dòng `CUU_HO … GB`). Nhờ nó mới cài lại từ xa được. Ổ đích phải lớn hơn **cỡ cứu hộ + 60GB**, nhỏ hơn thì bộ cài vẫn cài Windows nhưng bỏ phân vùng này. Máy không có phân vùng cứu hộ → web ghi "⚠ không có phân vùng cứu hộ" và muốn cài lại phải dùng USB.
+- **Phân vùng cứu hộ**: mỗi máy có 1 phân vùng ẩn `CBRECOVERY` chứa bộ cài (cỡ ≈ tổng các bản Windows + 15% + 2GB, **từ bản 21.11d cộng thêm 4GB để dành** cho bản hệ điều hành / bộ cài thêm về sau; khung TÓM TẮT ghi dòng `CUU_HO … GB`). Nhờ nó mới cài lại từ xa được. Ổ đích phải lớn hơn **cỡ cứu hộ + 60GB**, nhỏ hơn thì bộ cài vẫn cài Windows nhưng bỏ phân vùng này. Máy không có phân vùng cứu hộ → web ghi "⚠ không có phân vùng cứu hộ" và muốn cài lại phải dùng USB.
 - **Bản quyền Windows**: bộ cài **không kích hoạt** Windows. Khoá sản phẩm nằm sẵn trong bản Windows (nếu người làm bản đó có để) được giữ nguyên. Với bản **gốc của Microsoft** cũ hơn 1703 (như 1511), màn hình cài lần đầu sẽ đứng chờ nhập key nên bộ cài tự điền *khoá cài đặt chung* của Microsoft cho đúng phiên bản (chỉ để qua màn hình, không kích hoạt). Bản tuỳ biến (Lite…) thì không tự điền; nếu cài bản đó mà màn hình dừng hỏi key, tạo lại ISO với `-KhoaChung`. Không muốn đụng tới khoá nào: `-KhongKhoaChung`. Kích hoạt bằng key của bạn: đặt lệnh vào `firstboot.d`.
 - **Nếu bạn tạo ISO với `-KhachAdmin`** (khách có quyền Admin trên máy) thì khách phá được phân vùng cứu hộ / phần mềm CloudBlue trên máy đó. Khi đó máy báo offline hoặc cài lại lỗi → cài lại bằng USB là sạch hoàn toàn. Mã đăng ký không nằm trên máy cho thuê (chỉ nằm trên USB / ISO); mỗi máy chỉ giữ mã riêng của chính nó và mã này đổi sau mỗi lần cài lại.
 - **Giữ kỹ USB / file ISO**: trên đó có mã đăng ký. Đừng để khách cầm.
@@ -268,6 +276,7 @@ Phần chỉ bạn làm được (bộ cài không làm thay):
 | Cài bản ghost xong vẫn thấy tài khoản cũ (vd `admin`) có quyền Admin, tên máy cũ | chờ vài phút cho máy tự khởi động lại. Quá 10 phút: xem `C:\CloudBluePC\logs\provision.log` (dòng `ghost`); bộ cài bản cũ hơn 21.11b không làm bước này → tạo lại ISO |
 | Máy báo "cần mã đăng ký" sau khi bạn tự cài lại bằng cách khác | web › Sửa máy › **🔓 Cho đăng ký lại** (mở 6 giờ) |
 | Lệnh cài lại báo ✗ | xem dòng lý do ngay dưới lệnh trong bảng Máy PC |
+| Cài lại từ web: Windows mới cài xong nhưng màn hình bộ cài báo `!! LOI khi cai lai … job-result.json.tmp`, web treo "máy đã nhận" | lỗi của bộ cài **≤ 21.11c** (ghi kết quả sai chỗ khi Windows tự gán chữ ổ cho phân vùng cứu hộ). Windows mới vẫn dùng được. Sửa: **tạo lại ISO bản 21.11d** rồi cài lại máy đó bằng USB. Máy đã cài bằng ISO cũ mà chưa cài lại được: bấm **⬆ Công bố bản agent** — agent 21.11d tự nhận ra và báo lệnh đã xong, không cài lặp |
 
 Nhật ký: `C:\CloudBluePC\logs\agent.log`, `provision.log`; bộ cài: `cb\logs\pe-*.log` trên phân vùng cứu hộ (và `X:\cb-pe.log` lúc đang cài).
 
@@ -282,14 +291,17 @@ winpc/
   CAI-DAT.cmd          cài lại ngay từ trong Windows (nằm ở gốc ISO)
   boot/winpeshl.ini    móc gọi bộ cài trong boot.wim
   pe/start.cmd, cb_pe.py     bộ cài chạy trong WinPE (Python nhúng)
+                       (từ 21.11d: phân vùng cứu hộ có \cb\pe-next\next.json + bộ cài số thứ tự lớn hơn PE_SEQ → bộ cài trong boot.wim chạy bản đó
+                        → sau này sửa bộ cài qua mạng được, không phải tạo lại ISO và cài lại từng máy)
   lib/cbsys.py, cbcore.py, cbrec.py   đọc ổ đĩa · tính toán chia ổ · phân vùng cứu hộ
   os/unattend.tpl.xml, provision.cmd, cb_provision.py, cb_stage.py
   agent/pcagent.py, watch.cmd, cbpc.cmd   agent chạy bằng SYSTEM trên máy cho thuê
+  agent/pcremote.py    (21.11d) phát màn hình + nhận chuột / phím cho điều khiển từ xa — agent tự mở trong phiên màn hình của máy
   manifest.json        mã kiểm sha256 (tao-iso.ps1 kiểm khi tải; web đọc khi "Công bố bản agent")
   tests/               bộ thử (máy Windows giả) · tests/ci/ chạy trên Windows thật của GitHub Actions · tests/web/ thử trang quản trị + API
 blueroblox-site/api/pc-notify.js   gửi cảnh báo máy PC về mail + Telegram (cơ sở dữ liệu tự gọi mỗi phút khi có cảnh báo chờ)
 ```
 
-Máy cho thuê chỉ nói chuyện với Supabase bằng **khoá công khai của web** + mã riêng của máy (`pc_enroll`, `pc_poll`, `pc_allow_reenroll`); bộ tạo ISO gọi `pc_key_check`. Mọi việc quản trị đi qua các hàm `pc_admin_…` chỉ admin gọi được (`pc_admin_rent` = hạn thuê); hàng chờ cảnh báo (`pc_alerts_take` / `pc_alerts_unsend`) chỉ máy chủ web gọi được.
+Máy cho thuê chỉ nói chuyện với Supabase bằng **khoá công khai của web** + mã riêng của máy (`pc_enroll`, `pc_poll`, `pc_allow_reenroll`, từ v43 thêm `pc_label`, `pc_relay_where`); bộ tạo ISO gọi `pc_key_check`. Mọi việc quản trị đi qua các hàm `pc_admin_…` chỉ admin gọi được (`pc_admin_rent` = hạn thuê); hàng chờ cảnh báo (`pc_alerts_take` / `pc_alerts_unsend`) chỉ máy chủ web gọi được.
 Ba đường để phần mềm tự chạy trong Windows mới: file trả lời (`unattend.xml`) → `SetupComplete.cmd` → dịch vụ khởi động `CloudBluePCBoot` (bộ cài ghi thẳng vào registry của Windows vừa bung; chạy xong tự gỡ).
 Sửa bất kỳ file nào trong `winpc/` → tăng số bản trong file đó nếu là agent, chạy lại `tests/mkmanifest.py` để ghi `manifest.json`, rồi mới đưa lên GitHub.

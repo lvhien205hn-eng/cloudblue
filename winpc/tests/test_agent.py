@@ -52,6 +52,8 @@ class SqlNet:
     def rpc(self, fn, body, timeout=20):
         self.calls.append((fn, body))
         if self.down: self.last_err = "mất mạng"; return None
+        if fn in getattr(self, "missing", ()):                      # cơ sở dữ liệu chưa chạy file SQL có hàm này → PostgREST trả 404
+            self.last_err = 'HTTP 404 {"code":"PGRST202","message":"Could not find the function public.%s"}' % fn; return None
         args = ", ".join("%s := %s" % (k, lit(v)) for k, v in body.items())
         return json.loads(q("select %s(%s)" % (fn, args), role="anon", ip=self.ip))
 
@@ -96,6 +98,12 @@ class FakeHost:
         if not self.clock_ok: return False
         self.fs.clock = float(epoch); return True
     def mutex(self, name=""): return True
+    def remote_running(self): return getattr(self, "rmt_up", False)
+    def remote_start(self, script):
+        self.rmt_starts = getattr(self, "rmt_starts", []) + [script]
+        if getattr(self, "rmt_fail", None): raise OSError(self.rmt_fail)
+        self.rmt_up = True
+        return 4242, 1
     def restart_self(self): self.restarts += 1; return True
     def selfcheck(self, script): return (self.check_ok, "" if self.check_ok else "ImportError: x")
 
@@ -576,7 +584,7 @@ with _tf.TemporaryDirectory() as tb:
 print("16. SỐ MÁY: người cài gõ lúc cài xong → hiện trên web; admin sửa trên web → hiện trên màn hình máy; lời nhắc kèm số máy (21.11b)")
 fsn = FakeSys("uefi"); H.usb(fsn, H.cfg0(), key=KEY)
 fsn.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="SOMAY016")
-uin = ScriptUI(); uin.lines = ["14-85"]
+uin = ScriptUI(); uin.lines = ["", "14-85"]                         # ô tên máy: bấm Enter bỏ qua · ô số máy: 14-85
 assert cb_pe.Installer(fsn).run(uin) == 0
 fsn.fdisks = [d for d in fsn.fdisks if d.index != 9]
 boot_windows(fsn)
@@ -660,6 +668,172 @@ big = agx.info()["drv"]
 ck("máy gửi tên thiết bị lạ / rất nhiều thiết bị: chỉ 6 tên, mỗi tên ≤ 60 ký tự ASCII (web vẫn esc() lại lần nữa)", big["miss"] == 40 and len(big["names"]) == 6 and all(len(x) <= 60 and x.isascii() for x in big["names"]), big)
 with_real = pcagent.WinHost().drivers()
 ck("WinHost.drivers thật: trên máy không phải Windows trả None (không ném lỗi)", with_real is None)
+
+print("18. ĐIỀU KHIỂN TỪ XA: agent giữ pcremote.py chạy trong phiên màn hình + báo tình trạng về web (21.11d)")
+fsr = FakeSys("uefi"); H.usb(fsr, H.cfg0(), key=KEY)
+fsr.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="REMOTE018")
+assert cb_pe.Installer(fsr).run(ScriptUI()) == 0
+fsr.fdisks = [d for d in fsr.fdisks if d.index != 9]; boot_windows(fsr)
+netr, hostr = SqlNet(), FakeHost(fsr, "CB-REMOTE")
+agr = agent(fsr, netr, hostr)
+ck("bộ cài chép pcremote.py vào máy cùng agent", fsr.file("C", "cloudbluepc\\agent\\pcremote.py") is not None)
+netr.down = True; agr.tick()
+ck("máy CHƯA đăng ký: chưa mở chương trình điều khiển từ xa", agr.ident is None and not getattr(hostr, "rmt_starts", []))
+netr.down = False
+for _ in range(4):
+    if agr.ident: break
+    agr.tick()
+ck("vừa đăng ký xong → agent mở pcremote.py vào phiên màn hình (1 lần), ghi nhật ký", agr.ident is not None and hostr.rmt_starts == ["C:\\CloudBluePC\\agent\\pcremote.py"]
+   and any("đã mở chương trình điều khiển từ xa trong phiên màn hình 1 (pid 4242)" in x for x in agr.logs), (getattr(hostr, "rmt_starts", None), agr.logs[-3:]))
+agr.tick(); agr.tick()
+ck("đang chạy rồi → không mở thêm bản thứ 2", len(hostr.rmt_starts) == 1 and agr.remote_keep() == "run")
+hostr.rmt_up = False; agr.tick()
+ck("pcremote vừa thoát (người dùng đăng xuất / tự lên bản mới) mà mới mở < 1 phút → chưa mở lại vội", len(hostr.rmt_starts) == 1 and agr.remote_keep() == "wait")
+fsr.clock += 61; agr.tick()
+ck("quá 1 phút → mở lại", len(hostr.rmt_starts) == 2 and hostr.rmt_up)
+hostr.rmt_up = False; hostr.rmt_fail = "khong doi duoc phien cua the quyen (loi 1314)"; n_log = len(agr.logs)
+fsr.clock += 61; agr.tick(); fsr.clock += 61; agr.tick(); fsr.clock += 61; agr.tick()
+errs = [x for x in agr.logs[n_log:] if "chưa mở được chương trình điều khiển từ xa" in x]
+ck("mở lỗi (không phải SYSTEM…): agent KHÔNG sập, thử lại mỗi phút, nhật ký chỉ ghi lỗi 1 lần", len(hostr.rmt_starts) == 5 and len(errs) == 1 and "1314" in errs[0] and agr.fail == 0, (len(hostr.rmt_starts), errs))
+hostr.rmt_fail = None
+ck("chưa có file tình trạng → không gửi mục rmt", "rmt" not in agr.info())
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "%d 21.11d da noi may chu win4 (direct) - cho nguoi xem\n" % (fsr.clock - 30))
+ri = agr.info().get("rmt")
+ck("pcremote ghi tình trạng → agent gửi về web trong info.rmt (bản, tình trạng, mấy giây trước)", ri == {"v": "21.11d", "s": "da noi may chu win4 (direct) - cho nguoi xem", "age": 30}, ri)
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "%d 21.11d <script>alert(1)</script> chữ có dấu %s\n" % (fsr.clock, "x" * 400))
+ri = agr.info().get("rmt")
+ck("file tình trạng có chữ lạ / quá dài → cắt 120 ký tự ASCII", ri and len(ri["s"]) == 120 and ri["s"].isascii() and ri["v"] == "21.11d", ri)
+fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "rac khong dung dang")
+ck("file tình trạng hỏng → bỏ qua, agent vẫn chạy", "rmt" not in agr.info())
+cfgr = json.loads(fsr.file("C", "cloudbluepc\\cb.json")); cfgr["remote"] = False
+fsr.write_text("C:\\CloudBluePC\\cb.json", json.dumps(cfgr))
+hostr2 = FakeHost(fsr, "CB-REMOTE"); agr2 = agent(fsr, netr, hostr2); agr2.tick(); agr2.tick()
+ck("cb.json đặt \"remote\": false → agent KHÔNG mở pcremote; web thấy 'tắt trên máy này'", not getattr(hostr2, "rmt_starts", []) and agr2.remote_keep() is None and "tat tren may nay" in agr2.info()["rmt"]["s"])
+row = json.loads(q("select info->'rmt' from pc_machines where id = '%s'" % agr2.ident["id"]))
+ck("… web nhận info.rmt nguyên vẹn (SQL không cắt)", row and "tat tren may nay" in row["s"], row)
+import pcremote as _pr
+ck("pcagent và pcremote cùng số bản + cùng tên khoá 'đang chạy'", _pr.REMOTE_VER == pcagent.AGENT_VER and _pr.MUTEX == pcagent.REMOTE_MUTEX, (_pr.REMOTE_VER, pcagent.AGENT_VER))
+ck("bản tự cập nhật nhận file agent/pcremote.py (đúng mẫu tên file được phép)", bool(pcagent.UPDATE_REL.match("agent/pcremote.py")))
+
+print("19. Bộ cài cài xong nhưng KHÔNG ghi được kết quả (lỗi bộ cài ≤ 21.11c trên máy thật) → agent tự nhận ra, không cài lại lần 2 (21.11d)")
+fsj = FakeSys("uefi"); H.usb(fsj, H.cfg0(), key=KEY)
+fsj.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="JOBLOOP019")
+assert cb_pe.Installer(fsj).run(ScriptUI()) == 0
+fsj.fdisks = [d for d in fsj.fdisks if d.index != 9]; boot_windows(fsj)
+netj, hostj = SqlNet(), FakeHost(fsj, "CB-JOBLOOP")
+agj = agent(fsj, netj, hostj)
+for _ in range(4):
+    if agj.ident: break
+    agj.tick()
+PCJ = agj.ident["id"]
+q(f"select pc_admin_set('{PCJ}', '{{\"approved\": true}}')", **A)
+oidj = json.loads(q(f"select row_to_json(pc_admin_order('{PCJ}', 'reinstall', '{{\"os\": \"1511\", \"wipe\": \"all\"}}'))", **A))["id"]
+agj.tick()
+ck("agent nhận lệnh cài lại → ghi lệnh lên phân vùng cứu hộ, hẹn khởi động lại", agj.rebooting and hostj.powers and hostj.powers[-1][0] == "reboot", (agj.rebooting, hostj.powers, agj.logs[-2:]))
+boot_pe(fsj)
+recj = next(p for d in fsj.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+assert cb_pe.Installer(fsj).run(ScriptUI()) == 0
+ck("bộ cài làm xong lệnh (bình thường có file kết quả)", json.loads(recj.vol.files["cb\\job-result.json"])["ok"] is True)
+del recj.vol.files["cb\\job-result.json"]; del recj.vol.files["cb\\job.done.json"]            # giả lập đúng lỗi máy thật: 2 file này KHÔNG ghi được, job.json còn nguyên "đang chạy"
+recj.vol.put("cb\\job.json", json.dumps({"id": oidj, "os": "1511", "wipe": "all", "state": "running", "attempts": 1, "tries": 1, "ts": 1}))
+boot_windows(fsj)
+hostj2 = FakeHost(fsj, "CB-JOBLOOP"); agj2 = agent(fsj, netj, hostj2)
+for _ in range(5):
+    if agj2.ident and agj2.ident.get("token"): break
+    agj2.tick()
+ck("Windows mới (do lệnh đó cài ra) đăng ký lại được bằng vé, seed.json còn số lệnh", agj2.ident is not None and json.loads(fsj.file("C", "cloudbluepc\\seed.json")).get("order") == oidj, agj2.logs[-3:])
+n_pow = len(hostj2.powers)
+for _ in range(3): agj2.tick()
+st_o = json.loads(q(f"select row_to_json(o) from pc_orders o where id = {oidj}"))
+ck("máy chủ giao lại đúng lệnh đó (chưa ai báo xong) → agent KHÔNG cài lại lần nữa (không hẹn khởi động lại, không ghi lệnh mới)",
+   len(hostj2.powers) == n_pow and not agj2.rebooting and "cb\\job.json" not in recj.vol.files, (hostj2.powers, sorted(k for k in recj.vol.files if "job" in k)))
+ck("… và báo lệnh đã XONG về web (web hết treo lệnh, không báo 'cài lại thất bại')", st_o["state"] == "done" and "agent tự nhận ra" in json.dumps(st_o["result"], ensure_ascii=False) and st_o["result"].get("os") == "1511", st_o)
+ck("… nhật ký ghi rõ agent tự gỡ lệnh cũ", any("bộ cài đã cài xong Windows này nhưng không ghi được kết quả" in x for x in agj2.logs), agj2.logs[-4:])
+n_log = len(agj2.logs); agj2.pending_done = None
+agj2.handle({"id": oidj, "cmd": "reinstall", "args": {"os": "1511", "wipe": "all"}})                 # máy chủ vẫn giao lại đúng lệnh đó (báo xong chưa tới nơi)
+ck("lệnh đó bị giao lại lần nữa → vẫn KHÔNG cài lại: báo xong ngay (Windows đang chạy do chính lệnh đó cài ra)", not agj2.rebooting and len(hostj2.powers) == n_pow
+   and agj2.pending_done and agj2.pending_done.get("ok") is True and "cb\\job.json" not in recj.vol.files, (agj2.pending_done, agj2.logs[n_log:]))
+agj2.tick()
+oid2 = json.loads(q(f"select row_to_json(pc_admin_order('{PCJ}', 'reinstall', '{{\"os\": \"22h2\", \"wipe\": \"system\"}}'))", **A))["id"]
+agj2.tick()
+ck("lệnh cài lại MỚI (số khác) thì vẫn làm bình thường", oid2 != oidj and agj2.rebooting and json.loads(recj.vol.files["cb\\job.json"])["id"] == oid2, (oid2, agj2.rebooting))
+
+print("20. TÊN MÁY: người cài gõ ở bộ cài → Windows mang tên đó + web hiện đúng tên ở 'Tên hiển thị' (21.11d)")
+def install_named(serial, lines, fs=None):
+    """Cài 1 máy mới từ USB, người cài gõ `lines` ở các ô sau khi cài xong → (máy giả đã khởi động vào Windows, hàm đọc seed.json, phân vùng cứu hộ)."""
+    fs = FakeSys("uefi"); H.usb(fs, H.cfg0(), key=KEY)
+    fs.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial=serial)
+    ui = ScriptUI(); ui.lines = list(lines)
+    assert cb_pe.Installer(fs).run(ui) == 0
+    fs.fdisks = [d for d in fs.fdisks if d.index != 9]
+    boot_windows(fs)
+    rec = next(p for d in fs.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+    return fs, (lambda: json.loads(fs.file("C", "cloudbluepc\\seed.json") or "{}")), rec
+def web_name(pc): return q(f"select name from pc_machines where id = '{pc}'")
+def n_label(net): return sum(1 for c in net.calls if c[0] == "pc_label")
+fsl, seedl, recl = install_named("TENMAY20A", ["Phong A 07", ""])
+ck("(bộ cài) người cài gõ 'Phong A 07' → seed.json: tên Windows PhongA07 + tên hiển thị 'Phong A 07'", seedl().get("name") == "PhongA07" and seedl().get("label") == "Phong A 07", seedl())
+netl, hostl = SqlNet(), FakeHost(fsl, seedl()["name"])
+agl = agent(fsl, netl, hostl); agl.tick()
+PCL = agl.ident["id"]
+ck("máy vừa đăng ký: web tạm lấy tên máy Windows, chưa gọi pc_label khi chưa hỏi được máy chủ lần nào", web_name(PCL) == "PhongA07" and n_label(netl) == 0)
+agl.tick()
+ck("nhịp kế: agent báo tên người cài gõ → web hiện 'Phong A 07' (máy chưa cần duyệt)", web_name(PCL) == "Phong A 07" and n_label(netl) == 1
+   and netl.calls[[c[0] for c in netl.calls].index("pc_label")][1] == {"p_id": PCL, "p_token": agl.ident["token"], "p_name": "Phong A 07"}, (web_name(PCL), agl.logs[-3:]))
+ck("agent nhớ tên mới (identity.json + phân vùng cứu hộ), xoá label khỏi seed.json, ghi nhật ký", agl.name == "Phong A 07" and json.loads(fsl.file("C", "cloudbluepc\\identity.json"))["name"] == "Phong A 07"
+   and json.loads(recl.vol.files["cb\\identity.json"])["name"] == "Phong A 07" and "label" not in seedl() and seedl().get("name") == "PhongA07"
+   and any("đã báo tên máy lên web: 'Phong A 07'" in x for x in agl.logs), (seedl(), agl.logs[-3:]))
+ck("status.txt tại máy ghi đúng tên trên web", "ten tren web: Phong A 07" in fsl.file("C", "cloudbluepc\\os\\status.txt"), fsl.file("C", "cloudbluepc\\os\\status.txt"))
+for _ in range(4): fsl.clock += 700; agl.tick()
+ck("các nhịp sau không báo lại nữa", n_label(netl) == 1)
+q(f"select pc_admin_set('{PCL}', '{{\"approved\": true, \"name\": \"Máy VIP 1\"}}')", **A)
+agl.tick(); agl2 = agent(fsl, netl, hostl); agl2.tick(); fsl.clock += 700; agl2.tick()
+ck("admin đổi tên trên web sau đó → máy nhận tên admin đặt; agent chạy lại (khởi động lại máy) cũng không ghi đè bằng tên cũ", web_name(PCL) == "Máy VIP 1" and agl2.name == "Máy VIP 1" and n_label(netl) == 1 and agl2.label == "")
+fsm, seedm, recm = install_named("TENMAY20B", ["May-01", "A1"])
+netm, hostm = SqlNet(), FakeHost(fsm, seedm()["name"])
+agm = agent(fsm, netm, hostm); agm.tick(); agm.tick(); agm.tick()
+PCM = agm.ident["id"]
+ck("tên gõ dùng được luôn làm tên Windows (May-01): web đã đúng tên ngay từ lúc đăng ký → agent không cần gọi pc_label, chỉ xoá label", web_name(PCM) == "May-01" and n_label(netm) == 0 and "label" not in seedm()
+   and q(f"select code from pc_machines where id = '{PCM}'") == "A1" and any("đã đúng tên gõ lúc cài" in x for x in agm.logs), (web_name(PCM), seedm()))
+fso, seedo, reco = install_named("TENMAY20C", ["Quay 3 - May 12", ""])
+neto, hosto = SqlNet(), FakeHost(fso, seedo()["name"]); neto.missing = {"pc_label"}
+ago = agent(fso, neto, hosto); ago.tick(); ago.tick()
+PCO = ago.ident["id"]
+ck("cơ sở dữ liệu CHƯA chạy file SQL có pc_label: web giữ tên Windows, agent giữ label lại để thử sau, ghi nhật ký 1 lần", web_name(PCO) == "Quay3-May12" and seedo().get("label") == "Quay 3 - May 12" and n_label(neto) == 1
+   and sum("chưa báo được tên máy" in x and "chạy file SQL mới nhất" in x for x in ago.logs) == 1, (web_name(PCO), ago.logs[-3:]))
+for _ in range(5): ago.tick()
+ck("chưa tới 10 phút thì không gọi lại (không gọi dồn dập)", n_label(neto) == 1)
+fso.clock += 601; ago.tick()
+ck("sau 10 phút thử lại 1 lần, nhật ký không ghi lặp", n_label(neto) == 2 and sum("chưa báo được tên máy" in x for x in ago.logs) == 1)
+ago = agent(fso, neto, hosto); neto.missing = set(); ago.tick(); ago.tick()
+ck("máy khởi động lại (agent chạy lại) sau khi đã chạy file SQL → đọc lại label trong seed.json, báo được, web hiện đúng tên", web_name(PCO) == "Quay 3 - May 12" and "label" not in seedo() and ago.name == "Quay 3 - May 12", (web_name(PCO), ago.logs[-3:]))
+fsd, seedd, recd = install_named("TENMAY20D", ["Tang 2 May 5", ""])
+netd, hostd = SqlNet(), FakeHost(fsd, seedd()["name"]); netd.missing = {"pc_label"}
+agd = agent(fsd, netd, hostd); agd.tick(); agd.tick()
+PCD = agd.ident["id"]
+q(f"update pc_machines set enrolled_at = now() - interval '30 hours' where id = '{PCD}'")
+netd.missing = set(); fsd.clock += 601; agd.tick()
+ck("quá 24 giờ mới báo được → máy chủ từ chối (LATE): agent thôi không thử nữa, xoá label, nhật ký chỉ cách đặt tên trên web", web_name(PCD) == "Tang2May5" and "label" not in seedd() and agd.label == ""
+   and any("quá 24 giờ" in x and "trang quản trị" in x for x in agd.logs), (web_name(PCD), agd.logs[-2:]))
+n_d = n_label(netd); fsd.clock += 5000; agd.tick(); agd.tick()
+ck("… và không gọi pc_label thêm lần nào", n_label(netd) == n_d)
+fse, seede, rece = install_named("TENMAY20E", ["", ""])
+nete, hoste = SqlNet(), FakeHost(fse, seede()["name"])
+age = agent(fse, nete, hoste); age.tick(); age.tick()
+PCE = age.ident["id"]
+ck("người cài không gõ tên → như cũ: tên CB-XXXXXX, không có label, không gọi pc_label", web_name(PCE) == seede()["name"] and seede()["name"].startswith("CB-") and "label" not in seede() and n_label(nete) == 0, seede())
+q(f"select pc_admin_set('{PCE}', '{{\"approved\": true, \"name\": \"Ten Cu\"}}')", **A)
+fse2 = FakeSys("uefi"); H.usb(fse2, H.cfg0(), key=KEY)
+fse2.disk(0, 480, bus=17, model="Samsung 970 EVO", ssd=True, style="raw", serial="TENMAY20E")
+uie = ScriptUI(); uie.lines = ["May-09", ""]
+assert cb_pe.Installer(fse2).run(uie) == 0
+fse2.fdisks = [d for d in fse2.fdisks if d.index != 9]; boot_windows(fse2)
+hoste2 = FakeHost(fse2, "May-09"); age2 = agent(fse2, nete, hoste2); age2.tick()
+ck("CÙNG máy đó cài lại bằng USB, lần này gõ tên May-09: đăng ký lại vẫn là máy cũ, web còn tên cũ", age2.ident["id"] == PCE and web_name(PCE) == "Ten Cu", (age2.ident, web_name(PCE)))
+age2.tick()
+ck("… nhịp kế agent báo tên mới → web đổi thành May-09 (đúng tên vừa gõ lúc cài)", web_name(PCE) == "May-09" and age2.name == "May-09" and "label" not in json.loads(fse2.file("C", "cloudbluepc\\seed.json")), web_name(PCE))
+age2.label = "Ten Moi"; age2.label_at = None; nete.down = True; age2.label_sync()
+ck("mất mạng lúc báo tên → không lỗi, giữ lại để thử sau", age2.label == "Ten Moi" and age2.label_tries >= 1)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

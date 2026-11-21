@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11c):
+#  Việc làm (bản 21.11d):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -13,6 +13,8 @@
 #    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
 #    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
 #    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
+#    · ĐIỀU KHIỂN TỪ XA (đợt 2, SQL v43): giữ chương trình pcremote.py chạy trong phiên màn hình của máy (tự mở lại khi nó thoát / người dùng
+#      đăng xuất). pcremote tự nối RA máy chủ phát hình và chỉ quay màn hình khi có khách của máy / admin mở điều khiển. Tắt: cb.json "remote": false
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -30,7 +32,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11c"
+AGENT_VER = "21.11d"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -45,6 +47,8 @@ RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sa
 RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
 CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy chủ quá 2 phút → agent đặt lại theo máy chủ (cb.json "clock_fix": false để tắt)
 NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
+REMOTE_MUTEX = "Global\\CloudBluePCRemote" # khoá do pcremote.py giữ khi đang chạy
+REMOTE_RETRY_S = 60                      # pcremote chưa chạy: mở lại, tối đa 1 lần / phút
 
 
 # ====================================================================================== đọc phần cứng (không cần WMI)
@@ -213,6 +217,16 @@ class WinHost:
         try: return C.drv_summary(cbsys.pnp_devices())
         except Exception: return None
 
+    def remote_running(self):
+        """Chương trình điều khiển từ xa (pcremote.py) có đang chạy không."""
+        return cbsys.mutex_exists(REMOTE_MUTEX)
+
+    def remote_start(self, script):
+        """Mở pcremote.py bằng SYSTEM trong PHIÊN MÀN HÌNH đang hiện (agent nằm ở phiên 0 không thấy màn hình). Trả (pid, số phiên)."""
+        py = os.path.join(BASE, "py", "pythonw.exe")
+        if not os.path.isfile(py): py = sys.executable
+        return cbsys.spawn_console([py, "-I", "-B", script, "run"], cwd=BASE)
+
     def notify(self, text, secs=60):
         """Hiện hộp thông báo cho người đang dùng máy (mọi phiên đăng nhập) bằng msg.exe của Windows. Không chờ ai bấm; không có msg.exe thì thôi."""
         try:
@@ -331,6 +345,12 @@ class Agent:
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
         self.drv = None                     # tình trạng driver gần nhất (cbcore.drv_brief) — gửi về web trong info.drv, ghi vào os\status.txt
+        try: self.label = C.clean_label((C.load_json(sysx, self.p("seed.json")) or {}).get("label") or "")    # TÊN MÁY người cài gõ lúc cài xong → phải đưa lên web (ô "Tên hiển thị")
+        except Exception: self.label = ""
+        self.label_at = None                # lần gần nhất thử báo tên máy
+        self.label_tries = 0
+        self.remote_try = None              # lần gần nhất thử mở chương trình điều khiển từ xa
+        self.remote_err = ""                # lỗi mở gần nhất (ghi nhật ký 1 lần / loại lỗi)
 
     def p(self, rel): return self.base + "\\" + rel
     def log(self, m): self._log(m)
@@ -369,7 +389,40 @@ class Agent:
             i["sec"] = {"std": not self.cfg.get("user_admin"), "hard": bool(self.s.exists(self.p("logs\\harden.done"))),
                         "lock": bool(self.s.exists(self.p("logs\\lock.done")))}
         except Exception: pass
+        try:                                                        # điều khiển từ xa: bản + tình trạng do pcremote ghi (web hiện cho admin khi máy "chưa nối")
+            r = self.remote_info()
+            if r: i["rmt"] = r
+        except Exception: pass
         return i
+
+    # ------------------------------------------------------------------ điều khiển từ xa (đợt 2)
+    def remote_info(self):
+        """Tình trạng pcremote ghi ở logs\\remote.state ("<lúc ghi> <bản> <tình trạng>") → {"v", "s", "age"}; chưa có → None."""
+        if self.cfg.get("remote") is False: return {"v": "", "s": "tat tren may nay (cb.json remote = false)", "age": 0}
+        path = self.p("logs\\remote.state")
+        if not self.s.exists(path): return None
+        q = self.s.read_text(path).strip().split(" ", 2)
+        if len(q) < 3 or not q[0].isdigit(): return None
+        return {"v": re.sub(r"[^0-9A-Za-z._-]", "", q[1])[:16], "s": re.sub(r"[^ -~]", "?", q[2])[:120], "age": max(0, int(self.s.now() - int(q[0])))}
+
+    def remote_keep(self):
+        """Giữ pcremote.py chạy trong phiên màn hình: chưa chạy (vừa bật máy / người dùng đăng xuất rồi đăng nhập / nó tự thoát để lên bản mới) → mở lại.
+           Trả "run" · "start" · "wait" · "err" · None (không áp dụng). Không bao giờ ném lỗi."""
+        try:
+            if self.cfg.get("remote") is False or not self.ident: return None
+            script = self.p("agent\\pcremote.py")
+            if not self.s.exists(script): return None
+            if self.h.remote_running(): self.remote_err = ""; return "run"
+            now = self.s.now()
+            if self.remote_try is not None and now - self.remote_try < REMOTE_RETRY_S: return "wait"
+            self.remote_try = now
+            pid, sid = self.h.remote_start(script)
+            self.log("đã mở chương trình điều khiển từ xa trong phiên màn hình %s (pid %s)" % (sid, pid))
+            return "start"
+        except Exception as e:
+            if str(e) != self.remote_err:
+                self.remote_err = str(e); self.log("chưa mở được chương trình điều khiển từ xa: %s" % e)
+            return "err"
 
     def write_status(self):
         """Ghi os\\status.txt — tình trạng agent KHÔNG có bí mật, tài khoản thường đọc được (thư mục os cho đọc) để chủ shop xem tại máy
@@ -404,6 +457,47 @@ class Agent:
         txt = "du - moi thiet bi da co driver" if not n else "THIEU %d thiet bi: %s%s" % (n, "; ".join(names), " ..." if n > len(names) else "")
         if d.get("vga") == "basic": txt += " | VGA dang chay driver co ban cua Windows (chua co driver cua hang)"
         return (net, txt)
+
+    # ------------------------------------------------------------------ tên máy người cài gõ lúc cài xong → tên hiển thị trên web
+    def label_drop(self):
+        self.label = ""
+        try:
+            seed = C.load_json(self.s, self.p("seed.json")) or {}
+            if "label" in seed: C.save_json(self.s, self.p("seed.json"), {k: v for k, v in seed.items() if k != "label"})
+        except Exception: pass
+
+    def label_sync(self):
+        """Người cài gõ TÊN MÁY ở bộ cài (seed.json "label") → sau khi máy đăng ký xong, báo tên đó lên web bằng hàm pc_label (máy chủ chỉ nhận trong 24 giờ đầu sau khi đăng ký).
+           Web đã đúng tên / máy chủ đã trả lời dứt khoát → xoá khỏi seed.json. Chưa gọi được (mất mạng, cơ sở dữ liệu chưa có phần này) → thử lại: 10 phút/lần, sau 12 lần thì 1 giờ/lần."""
+        if not self.label or not self.ident: return
+        if self.label == self.name:
+            self.log("tên máy trên web đã đúng tên gõ lúc cài: '%s'" % self.name); self.label_drop(); return
+        now = self.s.now()
+        if self.label_at is not None and 0 <= now - self.label_at < (600 if self.label_tries <= 12 else 3600): return
+        self.label_at = now; self.label_tries += 1
+        r = self.net.rpc("pc_label", {"p_id": self.ident["id"], "p_token": self.ident["token"], "p_name": self.label})
+        if not isinstance(r, dict):
+            if self.label_tries in (1, 13):
+                old_db = str(self.net.last_err or "").startswith("HTTP 404")
+                self.log("chưa báo được tên máy '%s' lên web (%s) — sẽ thử lại" % (self.label, "cơ sở dữ liệu chưa có phần này: chạy file SQL mới nhất" if old_db else self.net.last_err))
+            return
+        if r.get("ok"):
+            nm = str(r.get("name") or self.label)[:40]
+            self.log("đã báo tên máy lên web: '%s'" % nm)
+            self.label_drop()
+            if nm != self.name:
+                self.name = nm
+                try:
+                    self.ident = dict(self.ident, name=nm)
+                    C.save_json(self.s, self.p("identity.json"), self.ident); cbrec.save_identity(self.s, self.ident)
+                except Exception: pass
+            return
+        err = str(r.get("err") or "")
+        if err in ("LATE", "BAD_NAME"):
+            self.log("web không nhận tên máy '%s' gõ lúc cài (%s) — đặt tên trên trang quản trị › Máy PC" % (self.label, "quá 24 giờ sau khi đăng ký" if err == "LATE" else "tên không hợp lệ"))
+            self.label_drop()
+        elif self.label_tries in (1, 13):
+            self.log("chưa báo được tên máy '%s' lên web (%s) — sẽ thử lại" % (self.label, err or "?"))
 
     # ------------------------------------------------------------------ số máy (vị trí máy trong dàn — khách báo lỗi theo số này)
     def code_sync(self, r, sent):
@@ -635,11 +729,31 @@ class Agent:
         if self.pending_done: return
         try: res = cbrec.take_result(self.s)
         except Exception: res = None
-        if not isinstance(res, dict): return
+        if not isinstance(res, dict):
+            try: self.job_orphan()
+            except Exception: pass
+            return
         if not re.fullmatch(r"[0-9]{1,18}", str(res.get("id"))):
             cbrec.take_result(self.s, clear=True); return           # lệnh gõ tại máy (không có số trên web) → không cần báo
         self.done(int(res["id"]), res.get("ok"), {k: res.get(k) for k in ("msg", "os", "secs", "pe")})
         self.result_from_rec = True
+
+    def job_orphan(self):
+        """21.11d — bộ cài đã cài xong CHÍNH Windows này theo 1 lệnh nhưng không ghi được file kết quả (bộ cài bản ≤ 21.11c trên máy thật: WinPE gán chữ ổ
+           cho phân vùng cứu hộ rồi bộ cài đổi chữ → đường dẫn cũ không còn). Dấu hiệu: lệnh còn nằm "đang chạy" trên phân vùng cứu hộ mà seed.json của
+           Windows đang chạy mang đúng số lệnh đó. → gỡ lệnh cũ (để máy không bao giờ tự cài lại theo lệnh đã xong) + báo XONG về web. Mỗi lần agent chạy xét 1 lần."""
+        if self.orphan_checked: return
+        self.orphan_checked = True
+        seed = C.load_json(self.s, self.p("seed.json")) or {}
+        job = cbrec.pending_job(self.s)
+        if not (isinstance(seed, dict) and isinstance(job, dict) and seed.get("from") == "job"): return
+        if job.get("id") is None or str(job.get("id")) != str(seed.get("order")) or job.get("state") != "running": return
+        cbrec.drop_job(self.s)
+        self.log("lệnh cài lại #%s: bộ cài đã cài xong Windows này nhưng không ghi được kết quả → agent gỡ lệnh cũ + báo đã xong" % job.get("id"))
+        if re.fullmatch(r"[0-9]{1,18}", str(job.get("id"))):
+            self.done(int(job["id"]), True, {"msg": "xong (agent tự nhận ra: bộ cài không ghi được kết quả)", "os": seed.get("os"), "pe": seed.get("pe")})
+
+    orphan_checked = False
 
     def handle(self, o):
         cmd, oid, args = o.get("cmd"), o.get("id"), o.get("args") or {}
@@ -656,6 +770,16 @@ class Agent:
             self.done(oid, bool(v), {"msg": v or "không có bản mới / tải lỗi", "agent": AGENT_VER})
             return
         if cmd == "reinstall":
+            try:                                                    # 21.11d: Windows ĐANG CHẠY chính là do lệnh này cài ra mà máy chủ lại giao lần nữa
+                seed = C.load_json(self.s, self.p("seed.json")) or {}   # = bộ cài đã cài xong nhưng không ghi được file kết quả (bộ cài bản ≤ 21.11c lỗi chữ ổ) → báo XONG, không cài lại
+                mine = isinstance(seed, dict) and seed.get("from") == "job" and oid is not None and str(seed.get("order")) == str(oid)
+            except Exception: mine, seed = False, {}
+            if mine:
+                try: cbrec.drop_job(self.s)
+                except Exception: pass
+                self.log("lệnh #%s: Windows này do chính lệnh đó cài ra (bộ cài không ghi được kết quả) → báo đã xong, KHÔNG cài lại" % oid)
+                self.done(oid, True, {"msg": "xong (agent tự nhận ra: bộ cài không ghi được kết quả)", "os": seed.get("os"), "pe": seed.get("pe")})
+                return
             try:
                 old = cbrec.pending_job(self.s)
                 tries = int((old or {}).get("tries") or 0) if (old or {}).get("id") == oid else 0
@@ -781,6 +905,7 @@ class Agent:
     def tick(self):
         """1 nhịp làm việc. Trả số giây nghỉ trước nhịp sau."""
         nap = self._tick()
+        if not self.rebooting: self.remote_keep()
         self.write_status()
         return nap
 
@@ -802,6 +927,8 @@ class Agent:
         r = self.poll(send_info=(self.ticks % 10 == 1 or self.pending_done is not None or bool(self.events) or self.code_pending))
         if r is None: return min(300, self.poll_s * (1 + min(self.fail, 9)))
         if not r.get("ok"): return 5
+        try: self.label_sync()
+        except Exception as e: self.log("lỗi phần tên máy: %r" % (e,))
         if r.get("order"):
             try: self.handle(r["order"])
             except Exception:
@@ -903,6 +1030,10 @@ def cmd_selfcheck(argv):
     i = ag.info()
     assert i.get("host") and i.get("os_ver") and len(ag.calc_hw()) == 64
     assert C.CORE_VER and cbrec.REC_VER
+    rs = os.path.join(HERE, "pcremote.py")                          # chương trình điều khiển từ xa đi kèm cũng phải tự thử đạt
+    if os.path.isfile(rs):
+        r = subprocess.run([sys.executable, "-I", "-B", rs, "selfcheck"], capture_output=True, timeout=60, creationflags=0x08000000 if WIN else 0)
+        assert r.returncode == 0, "pcremote selfcheck: %s" % ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "replace")[-300:]
     print("selfcheck ok", AGENT_VER)
     return 0
 
@@ -918,6 +1049,10 @@ def cmd_status(argv):
     print("  Cuu ho:     %s" % ("co - doi duoc sang: " + ", ".join(rec.get("images") or []) if rec.get("ok") else "KHONG CO phan vung cuu ho (cai lai phai dung USB)"))
     print("  Phan cung:  %s - %s luong - %s GB RAM - %s" % (i.get("cpu"), i.get("cores"), i.get("ram_gb"), ", ".join(i.get("gpus") or []) or "?"))
     print("  Han thue:   %s" % ag.rent_line())
+    try: rmt = ag.remote_info()
+    except Exception: rmt = None
+    print("  Tu xa:      %s" % (("%s%s%s" % (rmt["s"], (" (ban %s)" % rmt["v"]) if rmt["v"] else "", (" - ghi %d giay truoc" % rmt["age"]) if rmt["age"] > 120 else "")) if rmt
+                                 else "chua chay (agent tu mo trong vong 1 phut sau khi may dang ky xong)"))
     if ag.ident:
         r = ag.net.rpc("pc_poll", {"p_id": ag.ident["id"], "p_token": ag.ident["token"], "p_info": None, "p_done": None})
         print("  Ket noi:    %s" % ("OK - %s, %s" % ("da duyet" if r.get("approved") else "CHO ADMIN DUYET", r.get("status")) if r and r.get("ok")

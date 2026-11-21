@@ -24,7 +24,7 @@ def cfg0(**kw):
 def media_files(cfg, key="cbpc_" + "a" * 40):
     f = {"cb\\media.tag": "1", "cb\\cb.json": json.dumps(cfg), "sources\\boot.wim": b"BOOTWIM", "boot\\boot.sdi": b"SDI",
          "sources\\install.wim": b"I22", "cb\\images\\1511.wim": b"I15", "cb\\os\\unattend.tpl.xml": TPL, "cb\\os\\provision.cmd": "p",
-         "cb\\agent\\pcagent.py": "a", "cb\\lib\\cbsys.py": "l", "cb\\pe\\cb_pe.py": "pe", "cb\\py\\python.exe": b"py"}
+         "cb\\agent\\pcagent.py": "a", "cb\\agent\\pcremote.py": "r", "cb\\lib\\cbsys.py": "l", "cb\\pe\\cb_pe.py": "pe", "cb\\py\\python.exe": b"py"}
     if key: f["cb\\enroll.key"] = key + "\r\n"
     return f
 
@@ -39,7 +39,7 @@ def rec_files(cfg, job=None):
     r = C.recovery_cfg(cfg)
     f = {"cb\\recovery.tag": "1", "cb\\cb.json": json.dumps(r), "cb\\boot\\boot.wim": b"BOOTWIM", "cb\\boot\\boot.sdi": b"SDI",
          "cb\\images\\22h2.wim": b"I22", "cb\\images\\1511.wim": b"I15", "cb\\os\\unattend.tpl.xml": TPL, "cb\\os\\provision.cmd": "p",
-         "cb\\agent\\pcagent.py": "a", "cb\\lib\\cbsys.py": "l", "cb\\pe\\cb_pe.py": "pe", "cb\\py\\python.exe": b"py",
+         "cb\\agent\\pcagent.py": "a", "cb\\agent\\pcremote.py": "r", "cb\\lib\\cbsys.py": "l", "cb\\pe\\cb_pe.py": "pe", "cb\\py\\python.exe": b"py",
          "cb\\identity.json": json.dumps({"id": "11111111-1111-1111-1111-111111111111", "hw": "h" * 64, "name": "CB-OLD001"})}
     if job is not None: f["cb\\job.json"] = json.dumps(job)
     return f
