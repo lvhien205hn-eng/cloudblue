@@ -354,7 +354,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
         <td class="pca-cfg">${cfgCell(m)}</td>
         <td>${orderCell(m)}</td>
-        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button></div></td></tr>`;
+        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
     };
     $i("pctbl").innerHTML = list.length ? list.map(m => {
       try { return row(m); }                  // 1 máy gửi thông tin lạ không được làm hỏng cả bảng
@@ -513,17 +513,23 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       const x = await sb.rpc("pc_admin_rent", { p_id: m.id, p_patch: { until: null, renter: "" } });
       if (x.error) toast("Đã gửi lệnh cài lại, nhưng CHƯA xoá được hạn thuê cũ — bấm ⏱ ở cột Hạn thuê để bỏ hạn.", 1); else await load(true);
     }
+    if (P.hand && wipe === "all" && window.PCSHOP && typeof PCSHOP.releasePc === "function") {      // máy đang thuộc 1 lượt thuê VPS GPU (v43) → kết thúc lượt đó, máy về kho
+      try { await PCSHOP.releasePc(m.id); } catch (e) {}
+    }
   };
 
   // ---- mã đăng ký + lệnh tạo ISO + tự duyệt + công bố agent
   $i("pca-cmd").value = CMD;
   $i("pca-showcmd").onclick = () => { $i("pca-cmdbox").hidden = !$i("pca-cmdbox").hidden; };
   $i("pca-cmdcopy").onclick = e => copy(CMD, e.currentTarget);
-  $i("pca-keycopy").onclick = e => copy($i("pca-keyval").value, e.currentTarget);
+  // mã đăng ký chỉ hiện ngắn: copy xong 15 giây hoặc để quá 3 phút → tự xoá khỏi màn hình (khỏi lộ khi chụp màn hình / có người đứng cạnh)
+  let keyT = 0;
+  const keyHide = ms => { clearTimeout(keyT); keyT = setTimeout(() => { $i("pca-keyval").value = ""; show("pca-keybox", false); }, ms); };
+  $i("pca-keycopy").onclick = async e => { await copy($i("pca-keyval").value, e.currentTarget); toast("Đã copy mã — ô mã tự ẩn sau 15 giây."); keyHide(15000); };
   $i("pca-newkey").onclick = async e => {
     if (P.set && P.set.enroll_hash && !confirm("Tạo mã đăng ký MỚI?\n\nMã cũ hết dùng ngay: ISO / USB tạo bằng mã cũ sẽ không đăng ký được máy mới nữa (máy đã đăng ký không ảnh hưởng). Phải tạo lại ISO bằng mã mới.")) return;
     const k = await call("pc_admin_new_key", {}, "", e.currentTarget);
-    if (typeof k === "string" && k) { $i("pca-keyval").value = k; show("pca-keybox"); show("pca-cmdbox"); toast("Đã tạo mã đăng ký — copy ngay, mã chỉ hiện 1 lần."); }
+    if (typeof k === "string" && k) { $i("pca-keyval").value = k; show("pca-keybox"); show("pca-cmdbox"); keyHide(180000); toast("Đã tạo mã đăng ký — copy ngay, mã chỉ hiện 1 lần (tự ẩn sau 3 phút)."); }
   };
   $i("pca-keyoff").onclick = async e => {
     if (!confirm("TẮT mã đăng ký?\n\nMáy mới sẽ không đăng ký được cho tới khi bạn tạo mã mới. Máy đã đăng ký không ảnh hưởng.")) return;

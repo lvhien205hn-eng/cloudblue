@@ -32,8 +32,8 @@ def main(src, dst):
     if "\r\n" in s:
         raise SystemExit("File gốc dùng CRLF — dừng để khỏi trộn kiểu xuống dòng.")
     base_len = len(s)
-    pane, dlg, script = read("pc_pane.html"), read("pc_dialogs.html"), read("pc_script.html")
-    for name, t in (("pc_pane.html", pane), ("pc_dialogs.html", dlg), ("pc_script.html", script)):
+    pane, dlg, script = read("pc_pane.html"), read("pc_dialogs.html"), read("pc_script.html") + read("pc_shop.html")
+    for name, t in (("pc_pane.html", pane), ("pc_dialogs.html", dlg), ("pc_script.html", read("pc_script.html")), ("pc_shop.html", read("pc_shop.html"))):
         if "\r" in t or not t.endswith("\n"):
             raise SystemExit("%s: phải dùng LF và kết thúc bằng xuống dòng" % name)
     s = insert(s, '<button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button>',

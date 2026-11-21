@@ -376,7 +376,7 @@ def main():
         ck("chưa công bố bản agent nào", "Bản agent công bố: chưa có" in s.js("() => document.getElementById('pca-agent').textContent") and "20.11a ×2" in s.js("() => document.getElementById('pca-agent').textContent"), s.js("() => document.getElementById('pca-agent').textContent"))
         s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()
         want_agent = {"ver": MANIFEST["ver"], "base": MANIFEST["base"], "files": MANIFEST["files"]}
-        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (12 file)" % MANIFEST["ver"]) in s.dialogs[0]
+        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (%d file)" % (MANIFEST["ver"], len(MANIFEST["files"]))) in s.dialogs[0]
            and s.calls("pc_admin_settings")[-1] == {"p_patch": {"agent": want_agent}}, s.dialogs)
         ck("dòng trạng thái đổi theo", ("Bản agent công bố: " + MANIFEST["ver"]) in s.js("() => document.getElementById('pca-agent').textContent"))
         n = len(s.calls("pc_admin_settings")); s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()
@@ -433,7 +433,7 @@ def main():
             s0 = Site(br, base, init, path=path); s0.page.wait_for_timeout(1500); eb = sorted(set(s0.errors)); s0.close()
             s = Site(br, new, init, path=path); s.page.wait_for_timeout(1500)
             ck(label + ": không lỗi mới", [x for x in sorted(set(s.errors)) if x not in eb] == [], [x for x in sorted(set(s.errors)) if x not in eb])
-            ck(label + ": không đọc bảng pc_, không gọi hàm pc_", s.js("() => window.__FAKE.calls.filter(c => /^pc_/.test(c.table || c.name || '')).length") == 0)
+            ck(label + ": không đọc bảng pc_, không gọi hàm pc_ của admin (chỉ hàm cho khách: pc_shop_info / pc_my_vps)", s.js("() => window.__FAKE.calls.filter(c => /^pc_/.test(c.table || c.name || '') && !['pc_shop_info', 'pc_my_vps'].includes(c.name)).length") == 0)
             ck(label + ": phần Máy PC ẩn", s.js("() => document.getElementById('pane-pc').hidden && document.getElementById('drawer').hidden && document.getElementById('pcadlg').hidden && document.getElementById('pcrdlg').hidden"))
             s.close()
 
@@ -458,7 +458,7 @@ def main():
         db = make_rent_db(); dbm = {x["id"]: x for x in db["pc_machines"]}
         t_open = time.time()
         s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.tab("pc"); s.settle()
-        ck("bảng có cột 'Hạn thuê', không báo thiếu SQL v42", "Hạn thuê" in s.js("() => document.querySelector('#pane-pc thead').innerText") and HID("pca-miss42") and HID("pca-miss"))
+        ck("bảng có cột 'Hạn thuê', không báo thiếu SQL v42", "Hạn thuê" in s.js("() => document.querySelector('#pctbl').closest('table').querySelector('thead').innerText") and HID("pca-miss42") and HID("pca-miss"))
         rb, rc, ry, ra = row("Máy 14-85"), row("Máy khách Tèo"), row("May-Y"), row("CB-A1B2C3")
         rx = next(r for r in s.rows() if "onerror=\"window.__xss=1\"" in r)
         ck("máy còn hạn: đếm ngược + thời điểm hết hạn + tên khách + nút Gia hạn", all(k in rb for k in ["còn 2 ngày 3 giờ", "đến " + at_vn(dbm[B]["rent_until"]), "👤 anh Tèo 0909", "⏱ Gia hạn"]), rb)
