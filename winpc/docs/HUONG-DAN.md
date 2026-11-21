@@ -1,15 +1,15 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11a)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11b)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
 1. **1 file ISO** (gộp các bản Windows bạn có, ví dụ 22H2 + 1511). Khởi động máy từ ISO / USB đó → máy **tự chọn ổ, đếm ngược 30 giây, xoá dữ liệu cũ, cài Windows, nạp driver bạn kèm theo, đặt ảnh nền CloudBlue**, không hỏi gì thêm.
-2. Windows lên là **tự hiện trong Bảng quản trị › 💻 Máy PC** (tên máy, cấu hình, IP, online / offline).
+2. Windows lên là **tự hiện trong Bảng quản trị › 💻 Máy PC** (tên máy, cấu hình, IP, online / offline). Cài xong, màn hình bộ cài hiện **1 ô gõ SỐ MÁY** (vị trí máy trong dàn) — số này hiện trên web và trên màn hình máy để khách báo lỗi đúng máy.
 3. Trên web bấm **🧹 Cài lại** / **🧼 Bàn giao**: chọn bản Windows (22H2 / 1511) + mức xoá → máy tự khởi động lại, tự dọn sạch và cài lại, **không cần USB, không cần ra máy**.
-4. Đặt **hạn thuê** cho từng máy: máy tự báo trước cho khách, hết hạn mà chưa gia hạn thì **tự tắt** (bật lại cũng tự tắt). Hết hạn, máy đang thuê mất kết nối, có việc lạ trên máy → **tự báo về mail + Telegram** của bạn (mục C4).
+4. Đặt **hạn thuê** cho từng máy: từ **2 ngày trước hạn** máy tự nhắc khách liên tục và **đầu Bảng quản trị luôn hiện dải báo** máy sắp hết hạn; hết hạn mà chưa gia hạn thì máy **tự tắt** (bật lại cũng tự tắt). Việc lạ trên máy hiện ở tab 🛡️ Bảo mật; gửi thêm về mail / Telegram là tuỳ chọn (mục C4)
 
 > **Chưa có ở đợt này:** điều khiển máy bằng app PC / app điện thoại CloudBlue và bán tự động (khách mua → tự giao máy). Đó là đợt 2.
 
-> **Đã cài thật trên máy ảo (bản 22H2, ngày 21/11).** Bản 1511 và driver riêng của bạn (card mạng, VGA) chỉ thử được trên **máy thật** — máy ảo không có 2 card đó. Hãy thử trên **1 máy thật** trước khi dùng cho cả dàn.
+> **Đã cài thật trên máy ảo (bản 22H2, ngày 21/11).** Bản 1511 của shop là **bản kiểu ghost** (có sẵn tài khoản + tên máy) — từ bản 21.11b bộ cài tự xử lý kiểu này (mục E). Bản 1511 và driver riêng (card mạng, VGA) chỉ thử trọn được trên **máy thật** — hãy thử trên **1 máy thật** trước khi dùng cho cả dàn.
 
 ---
 
@@ -17,7 +17,7 @@ Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển 
 
 ### A1. Thêm phần Máy PC vào cơ sở dữ liệu
 Supabase › SQL Editor › New query › dán **toàn bộ** file `cloud-pc-v41.sql` › Run. Dòng cuối phải ra: `v41 xong | t | t | t | t`.
-Rồi làm y như vậy với file **`cloud-pc-v42.sql`** (hạn thuê + cảnh báo về mail). Dòng cuối phải ra: `v42 xong | t | t | t | t | t`.
+Rồi làm y như vậy với file **`cloud-pc-v42.sql`** (hạn thuê + nhắc hết hạn). Dòng cuối phải ra: `v42 xong | t | t | t | t | t`.
 Chạy lại nhiều lần không sao; 2 file này chỉ **thêm** bảng / cột / hàm `pc_…`, không đụng phần đang có. Chưa chạy v42 thì web vẫn dùng được, chỉ thiếu phần hạn thuê.
 
 ### A2. Tạo mã đăng ký
@@ -109,6 +109,14 @@ Mức xoá khi cài lại:
 
 Máy offline lúc ra lệnh: lệnh chờ, máy online lại là chạy.
 
+### C2b. Số máy
+Mỗi máy có 1 **số máy** (vị trí trong dàn: `14-85`, `A07`, `KHU B 3`…) để bạn và khách cùng gọi đúng 1 máy khi có lỗi.
+
+- **Lúc cài bằng USB / ISO**: Windows bung xong, màn hình bộ cài hiện ô `So may:` — gõ số rồi Enter. Bỏ qua thì bấm Enter trống, hoặc để 2 phút máy tự đi tiếp.
+- **Trên web**: nút **Sửa** của máy › ô **Số máy** (đặt mới / sửa / xoá). Bảng hiện nhãn `№ 14-85` cạnh tên máy; ô tìm kiếm tìm được theo số máy.
+- **Trên máy của khách**: màn hình nền có file **`May so 14-85 (CloudBlue).txt`** (khách không xoá / sửa được), các hộp nhắc hết hạn ghi `CloudBlue PC [may so 14-85]`. Sửa số trên web → khoảng 30 giây sau máy đổi theo.
+- Cài lại từ xa (**Cài lại** / **Bàn giao**) không hỏi lại — số máy do web giữ.
+
 ### C3. Xem tình trạng / lệnh tại máy
 Mở file **`C:\CloudBluePC\os\status.txt`** bằng Notepad (tài khoản khách cũng mở được): ghi máy đã đăng ký với hệ thống chưa, có nối được máy chủ không.
 
@@ -122,28 +130,35 @@ C:\CloudBluePC\agent\cbpc.cmd log
 
 `status` = đã đăng ký chưa, nối máy chủ được không · `reinstall <bản> all|disk|system` = cài lại ngay tại máy · `log` = nhật ký.
 
-### C4. Hạn thuê + cảnh báo về mail (cần SQL v42)
+### C4. Hạn thuê + nhắc hết hạn (cần SQL v42)
 **Đặt hạn**: cột **Hạn thuê** › **⏱ Đặt hạn / Gia hạn** › bấm `+1 giờ … +30 ngày`, hoặc gõ số khác, hoặc chọn hẳn 1 thời điểm › **Lưu**. Gia hạn thì **nối vào hạn đang có**; máy đã hết hạn / chưa đặt thì tính từ bây giờ. **Bỏ hạn** = máy không tự tắt nữa.
+
+**Nhắc hết hạn — cho cả bạn và khách, lặp lại tới khi gia hạn:**
+
+- **Bạn (web)**: máy còn trong khoảng nhắc (mặc định **2 ngày**) hoặc đã hết hạn thì **đầu Bảng quản trị luôn có dải báo** — vàng: `⏳ Máy PC … còn 1 ngày 3 giờ là hết hạn`, đỏ: `⛔ … đã HẾT HẠN` — ở mọi tab, kèm nút **⏱ Gia hạn** bấm là mở đúng máy đó. Số trên nút **💻 Máy PC** đếm cả các máy này. Gia hạn / bỏ hạn / bàn giao thì dòng đó mới mất.
+- **Khách (trên máy)**: hộp thông báo hiện khi vào khoảng nhắc, **lặp lại mỗi 4 giờ và mỗi lần bật máy**, giờ cuối nhắc ở 60 · 30 · 10 · 5 · 1 phút. Hộp nằm trên màn hình tới lần nhắc kế hoặc tới khi khách bấm OK; ghi rõ còn bao lâu + giờ hết hạn.
+- Thuê ngắn thì chỉ nhắc ở **1/4 thời gian cuối** (thuê 1 ngày → 6 giờ cuối, thuê 1 giờ → 15 phút cuối) để khỏi nhắc suốt buổi thuê.
+- Đổi 2 con số ở web › Máy PC › **🔔 Cảnh báo**: *Bắt đầu nhắc khi còn … giờ* (0 = không nhắc trước, máy vẫn báo 10 phút + 1 phút trước khi tắt) và *Nhắc khách lại mỗi … giờ* (0 = chỉ nhắc ở các mốc).
 
 Máy làm gì:
 
 - Nhận hạn mới trong khoảng 30 giây (máy đang tắt thì lúc bật lên). **Mất mạng máy vẫn tự đếm**, giờ tính theo máy chủ nên chỉnh đồng hồ trên máy không lách được.
-- Báo cho khách bằng hộp thông báo khi còn **1 ngày, 1 giờ, 10 phút, 1 phút**.
 - **Hết hạn**: báo khách, Windows đếm ngược 60 giây rồi **tắt máy**. Gia hạn kịp trong 60 giây đó thì lệnh tắt được huỷ.
-- Máy đã hết hạn mà bị **bật lại**: chờ hỏi máy chủ (tối đa 3 phút, phòng khi bạn vừa gia hạn) rồi tự tắt lại. Gia hạn lúc máy đang tắt → bật máy lên là dùng tiếp.
+- Máy đã hết hạn mà bị **bật lại**: chờ hỏi máy chủ (tối đa 3 phút, phòng khi bạn vừa gia hạn) rồi tự tắt lại. Gia hạn lúc máy đang tắt → bật máy lên là dùng tiếp, không nhắc nữa.
 - **🧼 Bàn giao** xoá luôn hạn thuê cũ; đặt hạn cho khách mới sau khi máy cài xong.
 
-Bạn nhận cảnh báo (tab 🛡️ Bảo mật + mail + Telegram) khi: sắp hết hạn (mặc định trước 60 phút) · hết hạn / máy đã tự tắt · máy hết hạn bị bật lại · máy đang thuê mất kết nối quá 15 phút · có máy mới đăng ký chờ duyệt · đồng hồ trên máy bị chỉnh lùi · bảo mật trên máy bị đổi (khách có lại quyền Admin, có tài khoản quản trị mới…) · phần cứng thay đổi (RAM, ổ cứng, CPU) · lệnh cài lại thất bại.
+Các cảnh báo khác hiện ở tab **🛡️ Bảo mật**: máy đang thuê mất kết nối quá 15 phút · có máy mới đăng ký chờ duyệt · đồng hồ trên máy bị chỉnh lùi · bảo mật trên máy bị đổi (khách có lại quyền Admin, có tài khoản quản trị mới…) · phần cứng thay đổi (RAM, ổ cứng, CPU) · lệnh cài lại thất bại.
 
-Để **mail** chạy, đặt 2 biến trên Vercel (Project › Settings › Environment Variables) rồi Redeploy:
+**Gửi thêm về mail / Telegram — không bắt buộc.** Muốn dùng thì đặt biến trên Vercel (project › **Environment Variables** › **Add Environment Variable**) rồi Deployments › `⋯` › **Redeploy**:
 
 | Biến | Giá trị |
 |---|---|
 | `ADMIN_EMAIL` | địa chỉ mail nhận cảnh báo |
-| `RESEND_API_KEY` | khoá API của dịch vụ gửi thư Resend (resend.com — gói miễn phí đủ dùng) |
-| `MAIL_FROM` *(không bắt buộc)* | người gửi, ví dụ `CloudBlue <no-reply@cloudblue.vn>` (tên miền phải được xác minh trong Resend). Chưa xác minh tên miền: đặt `CloudBlue <onboarding@resend.dev>` và `ADMIN_EMAIL` = đúng mail đăng ký Resend |
+| `RESEND_API_KEY` | khoá API của dịch vụ gửi thư Resend (resend.com › API Keys › Create API Key › quyền *Sending access*; gói miễn phí đủ dùng) |
+| `MAIL_FROM` | người gửi. Chưa xác minh tên miền trong Resend: đặt `CloudBlue <onboarding@resend.dev>` và `ADMIN_EMAIL` = **đúng mail đăng ký Resend** (Resend chỉ cho gửi tới mail đó). Đã xác minh tên miền: `CloudBlue <no-reply@cloudblue.vn>` |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | nếu muốn nhận qua Telegram (bot của bạn + mã phòng chat) |
 
-Telegram dùng bot đang có của shop (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`). Kiểm tra: web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử** — dòng kết quả ghi rõ kênh nào được, kênh nào thiếu gì. Các khoá này **tự bạn dán vào Vercel, không gửi cho ai**.
+Kiểm tra: web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử** — dòng kết quả ghi rõ kênh nào được, kênh nào thiếu gì. Các khoá này **tự bạn dán vào Vercel, không gửi cho ai**.
 
 ---
 
@@ -181,7 +196,7 @@ dism /online /export-driver /destination:D:\drv-1511
 - File **`.zip`, `.cab`**: script tự giải nén.
 - Gói **VGA NVIDIA `.exe`** (tên kiểu `466.77-notebook-win10-64bit-international-whql.exe`): đưa nguyên file. Gói này không nạp trước được, nên bộ cài **tự cài im lặng ở lần đăng nhập đầu, SAU KHI máy đã có mạng** — driver card mạng luôn xong trước (bản 1511 phải có mạng thì bộ cài NVIDIA mới chạy được). Mất 5–15 phút, màn hình nháy 1–2 lần là bình thường. Máy **không có card NVIDIA** (máy ảo, máy dùng card khác) thì tự bỏ qua. Lúc đó **chưa có mạng** thì phần mềm trên máy tự cài sau, ngay khi máy có mạng. Khung TÓM TẮT ghi dòng `VGA NVIDIA …`.
 - File **`.exe`, `.7z`, `.rar` khác** (card mạng, Wi-Fi…): script thử giải nén bằng **7-Zip** (nếu máy tạo ISO có cài) rồi bằng công cụ có sẵn của Windows. Lấy ra được file `.inf` thì dùng; **không lấy ra được thì script bỏ gói đó và báo dòng `(!) Goi driver …` ở khung TÓM TẮT** — khi đó cài 7-Zip rồi chạy lại, hoặc dùng cách xuất driver ở trên.
-- Khung TÓM TẮT ghi mỗi thư mục driver 1 dòng, ví dụ `DRIVER 1511: 12 file .inf - chi nap khi cai ban 1511`. **Không có dòng `DRIVER` nào cho bản đó** nghĩa là không driver nào được nạp.
+- Khung TÓM TẮT ghi mỗi thư mục driver 1 dòng, ví dụ `DRIVER 1511: 12 file .inf [card mang: 3 (rt640x64.inf Realtek; …) | VGA: 1 | khac: 8] - chi nap khi cai ban 1511` — phần trong ngoặc vuông cho biết gói có **driver card mạng** hay không (`card mang: 0` = không có: bản Windows đó phải tự có sẵn driver mạng, không thì máy không lên web). **Không có dòng `DRIVER` nào cho bản đó** nghĩa là không driver nào được nạp.
 - Driver mạng cho 1511 là **bắt buộc**: thiếu thì máy không có mạng, không lên web được.
 - Máy nối mạng bằng **Wi-Fi** thì ngoài driver còn phải có tên mạng + mật khẩu: bộ cài chưa tự làm việc này, hỏi hỗ trợ để thêm lệnh vào `firstboot.d`. Máy cắm dây LAN thì không cần.
 
@@ -205,7 +220,8 @@ USB ghi bằng Rufus thì bỏ thẳng file vào `cb\drivers\…` và `cb\os\fir
 - **Ổ đích** được chọn theo thứ tự: ổ gắn trong duy nhất → ổ đang có Windows cũ → ổ SSD nhỏ nhất. Không bao giờ chọn USB / thẻ nhớ / ổ ảo / ổ chứa bộ cài. Màn hình đếm ngược luôn ghi rõ ổ sẽ xoá.
 - **Mất điện giữa lúc cài lại**: bật lại máy, bộ cài tự làm tiếp (tối đa 3 lần). Quá 3 lần thì cần USB.
 - **Đồng hồ**: bộ cài đặt múi giờ Việt Nam ngay trong Windows mới (không còn cảnh bản tuỳ biến lệch 1 giờ sau khi cài); phần mềm trên máy tự chỉnh đồng hồ theo máy chủ khi lệch quá 2 phút.
-- **Bản Windows kiểu "ghost"** (khởi động thẳng vào Windows có sẵn, không qua bước cài đặt lần đầu): màn hình bộ cài ghi dòng `(!) Ban Windows nay KHONG o trang thai 'cai dat lan dau'`. Phần mềm CloudBlue vẫn tự chạy (bộ cài chèn sẵn 1 dịch vụ khởi động) và máy vẫn lên web, nhưng tài khoản khách **không được tạo / khoá** — web ghi "⏳ đang khoá bảo mật". Gặp dòng đó hãy báo hỗ trợ.
+- **Bản Windows kiểu "ghost"** (ảnh chụp từ 1 máy đã cài sẵn: khởi động thẳng vào tài khoản có sẵn, không qua bước cài đặt lần đầu — bản 1511 Lite của shop là kiểu này): màn hình bộ cài ghi `Ban Windows nay la kieu GHOST`. Ở lần khởi động đầu, phần mềm CloudBlue **tự làm thay** bước cài: **nhận tài khoản ảnh đang dùng làm tài khoản khách** (đổi tên thành `PC` — hoặc tên bạn đặt bằng `-TaiKhoan` —, giữ nguyên màn hình nền + phần mềm cài sẵn), tắt các tài khoản khác, **đổi tên máy** theo tên trên web, chạy `firstboot.d`, chờ mạng, cài VGA, hạ tài khoản khách xuống tài khoản thường rồi **tự khởi động lại 1 lần** (vài phút sau khi vào Desktop; màn hình có hộp báo `KHONG tat may`). Ảnh dùng thẳng tài khoản `Administrator` có sẵn thì bộ cài tạo tài khoản khách mới (hồ sơ mới).
+- **Mật khẩu không hết hạn**: Windows mặc định bắt đổi mật khẩu sau 42 ngày (kể cả tài khoản không mật khẩu) — bộ cài tắt hạn này trên mọi máy, không thì tới ngày đó tài khoản khách kẹt ở màn hình đăng nhập.
 
 ## F. Bảo mật — máy cho thuê được khoá thế nào
 
@@ -231,14 +247,16 @@ Phần chỉ bạn làm được (bộ cài không làm thay):
 |---|---|
 | Tạo ISO dừng ở dòng `!! DUNG:` | chụp từ dòng `== ` gần nhất tới đó, gửi hỗ trợ |
 | Khung TÓM TẮT ghi `ISO: CHUA dong` | chưa lấy được công cụ đóng ISO (`oscdimg`) của Microsoft — dòng `(!)` ghi lý do; gửi cả khung cho hỗ trợ rồi chạy lại lệnh |
+| Khung TÓM TẮT có `(!) File ISO cu dang bi chuong trinh khac giu` | máy ảo đang gắn file ISO cũ nên không ghi đè được → lần này ISO mới mang tên `…-2.iso` (dòng `ISO:` cuối khung ghi đúng tên). Gắn **file mới** đó vào máy ảo, hoặc tắt máy ảo / tháo ISO rồi chạy lại để ghi đè tên cũ |
 | Khung TÓM TẮT có `(!) Goi driver …` | gói driver đó không dùng được (xem mục D) — các phần khác vẫn bình thường |
 | Khởi động USB vào thẳng bộ cài Windows thường | chèn boot.wim không thành công hoặc USB ghi bằng công cụ sửa file — gửi khung TÓM TẮT |
 | Cài xong nhưng không lên web | cửa sổ lúc đăng nhập đầu có dòng `!! CHUA CO MANG`? Sau 2–3 phút máy cũng hiện hộp báo `CHUA CO MANG`. Tại máy: bấm `Windows + R`, gõ `notepad C:\CloudBluePC\os\status.txt` — dòng `Mang LAN:` ghi máy có địa chỉ IP chưa, dòng `Ket noi may chu:` ghi lý do. Kiểm tra dây mạng / driver card mạng; ISO có nhập mã đăng ký không (TÓM TẮT ghi `Ma dang ky: CO … con hieu luc`) |
 | **Máy ảo** cài bản 1511 (bản Lite) không có mạng | bản Lite thường không kèm driver card mạng ảo, driver bạn đưa là của máy thật → thử bản 1511 trên **máy thật**. Muốn thử tiếp trên Hyper-V: tắt máy ảo › Settings › Add Hardware › **Legacy Network Adapter** › chọn cùng Virtual Switch |
 | Máy tự tắt, bật lại vài phút lại tắt | hết hạn thuê — xem cột **Hạn thuê** trên web; **⏱ Gia hạn** rồi bật máy lên |
-| Không nhận được mail cảnh báo | web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử**; dòng dưới nút ghi lý do (thiếu `ADMIN_EMAIL` / `RESEND_API_KEY` trên Vercel…). Mọi cảnh báo vẫn nằm ở tab 🛡️ Bảo mật |
+| Không nhận được mail cảnh báo | mail là phần tuỳ chọn (mục C4): web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử**; dòng dưới nút ghi lý do (thiếu `ADMIN_EMAIL` / `RESEND_API_KEY` trên Vercel…). Không có mail thì dải báo đầu Bảng quản trị + tab 🛡️ Bảo mật vẫn đủ |
 | Driver VGA không lên dù đã kèm gói | máy phải ra được mạng thì gói mới cài; card chưa nhận driver thì phần mềm tự chạy lại gói tối đa 3 lần (sau mỗi lần khởi động). Web › cột Cấu hình ghi tên card đang nhận |
-| Máy tự khởi động lại 1 lần ngay sau khi vào Desktop lần đầu | bình thường — bước hạ tài khoản khách xuống tài khoản thường (mục F) |
+| Máy tự khởi động lại 1 lần ngay sau khi vào Desktop lần đầu | bình thường — bước hạ tài khoản khách xuống tài khoản thường (mục F). Bản kiểu ghost: khởi động lại sau vài phút, kèm đổi tên máy + tên tài khoản |
+| Cài bản ghost xong vẫn thấy tài khoản cũ (vd `admin`) có quyền Admin, tên máy cũ | chờ vài phút cho máy tự khởi động lại. Quá 10 phút: xem `C:\CloudBluePC\logs\provision.log` (dòng `ghost`); bộ cài bản cũ hơn 21.11b không làm bước này → tạo lại ISO |
 | Máy báo "cần mã đăng ký" sau khi bạn tự cài lại bằng cách khác | web › Sửa máy › **🔓 Cho đăng ký lại** (mở 6 giờ) |
 | Lệnh cài lại báo ✗ | xem dòng lý do ngay dưới lệnh trong bảng Máy PC |
 

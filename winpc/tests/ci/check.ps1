@@ -175,6 +175,26 @@ try {
   $haveBoot = ((Test-Path $bootSdi) -and (Test-Path $etfs) -and (Test-Path $efisys))
   Info ("file khoi dong DVD tren may chay thu (boot.sdi / etfsboot.com / efisys.bin): " + $haveBoot)
 
+  # file ISO dich dang bi chuong trinh khac giu (may ao Hyper-V dang gan file do) -> Test-FileLocked / Get-FreeOut
+  $lk = Join-Path $td "CloudBlue-PC.iso"
+  [IO.File]::WriteAllBytes($lk, (New-Object byte[] 64))
+  Ck "Test-FileLocked: file khong ai giu -> false ; file khong ton tai -> false ; chuoi rong -> false" ((-not (Test-FileLocked $lk)) -and (-not (Test-FileLocked ($lk + ".khong-co"))) -and (-not (Test-FileLocked "")))
+  Ck "Get-FreeOut: file khong bi giu -> giu nguyen ten" ((Get-FreeOut $lk) -eq $lk)
+  $hold = [System.IO.File]::Open($lk, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+  try {
+    Ck "Test-FileLocked: file dang bi chuong trinh khac mo (nhu may ao gan ISO) -> true" (Test-FileLocked $lk)
+    $alt = Get-FreeOut $lk
+    Ck "Get-FreeOut: file bi giu -> ten ben canh CloudBlue-PC-2.iso" ($alt -eq (Join-Path $td "CloudBlue-PC-2.iso")) $alt
+    [IO.File]::WriteAllBytes((Join-Path $td "CloudBlue-PC-2.iso"), (New-Object byte[] 8))
+    $hold2 = [System.IO.File]::Open((Join-Path $td "CloudBlue-PC-2.iso"), [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+    try { $alt3 = Get-FreeOut $lk } finally { $hold2.Close() }
+    Ck "Get-FreeOut: ca -2.iso cung bi giu -> sang -3.iso" ($alt3 -eq (Join-Path $td "CloudBlue-PC-3.iso")) $alt3
+  } finally { $hold.Close() }
+  Ck "Test-FileLocked: tha ra roi -> false" (-not (Test-FileLocked $lk))
+  Set-ItemProperty -LiteralPath $lk -Name IsReadOnly -Value $true
+  Ck "Test-FileLocked: file chi-doc (khong ai giu) -> false (Remove-Item -Force van xoa duoc)" (-not (Test-FileLocked $lk))
+  Set-ItemProperty -LiteralPath $lk -Name IsReadOnly -Value $false
+
   # ------------------------------------------------------------------------------------------- 3. chay ca tao-iso.ps1
   Out-Line "== 3. Chay ca tao-iso.ps1 voi 2 ISO Windows gia lap"
   $wim = ""
@@ -246,6 +266,9 @@ try {
     $drv = @(("1=" + $lanDir), ("2=" + $nvPack), ("2=" + $badPack), ("2=" + $zipPack))
     if ($has7) { $drv += ("2=" + $sfxPack) }
     $log1 = Join-Path $Wk "run1.log"
+    # gia lap: file ISO cua lan chay truoc DANG BI MAY AO GIU -> script phai tu ghi ra CloudBlue-PC-2.iso (khong lam xong het moi loi o buoc cuoi)
+    Set-Content -LiteralPath $outIso -Value "ISO cu dang gan trong may ao" -Encoding ASCII
+    $holdIso = [System.IO.File]::Open($outIso, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
     $a1 = @{ Iso = @($iso1, $iso2); Work = $work; Out = $outIso; Nguon = $RepoDir; MaDangKy = $key; KhongHoi = $true; GiuWork = $true; Driver = $drv; KhongKiemMa = $true }     # ma gia -> khong hoi may chu
     & $Ps1 @a1 *>&1 | ForEach-Object { $ln = "" + $_; Write-Host $ln; Add-Content -Path $log1 -Value $ln -Encoding UTF8 }
     $txt = ""
@@ -258,6 +281,10 @@ try {
       if ($inSum) { Info ("TOM TAT> " + $ln.Trim()) }
     }
     if (-not ($txt -match "TOM TAT \(chep")) { foreach ($ln in @($txt -split "`r?`n" | Select-Object -Last 40)) { Info ("CUOI LOG> " + $ln) } }
+    $holdIso.Close()
+    $outIso2 = Join-Path $Wk "out\CloudBlue-PC-2.iso"
+    Ck "file ISO cu dang bi giu (may ao gan) -> script bao ngay tu dau + ghi ISO moi ra CloudBlue-PC-2.iso, khong dung giua chung" ((Test-Path $outIso2) -and ($txt -match "dang bi chuong trinh khac giu") -and ($txt -match "CloudBlue-PC-2\.iso") -and ((Get-Item $outIso).Length -lt 100))
+    $outIso = $outIso2
     Ck "co file ISO moi" (Test-Path $outIso)
     Ck "khung tom tat: ma dang ky tu tham so + dong oscdimg + goi hong bi bo" (($txt -match "Ma dang ky: CO \(tham so\)") -and ($txt -match "oscdimg: ") -and ($txt -match "Goi driver bad.exe: khong lay ra duoc"))
     # kiem ma dang ky voi may chu: ham Test-EnrollKey (ma GIA -> may chu khong bao gio tra "ok"; may chu chua co SQL v42 thi tra rong = bo qua)

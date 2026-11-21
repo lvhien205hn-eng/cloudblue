@@ -407,5 +407,11 @@ class ScriptUI:
         if secs <= 0: raise AssertionError("bộ thử: màn hình chờ phím mãi mà kịch bản hết phím: " + prompt)
         return None
 
+    def line(self, secs, prompt, maxlen=24):
+        """Ô gõ 1 dòng (số máy): lấy trong self.lines; hết thì coi như không ai gõ (None)."""
+        self.prompts.append((secs, "<line> " + prompt))
+        lines = getattr(self, "lines", None)
+        return lines.pop(0) if lines else None
+
     def shell(self): self.prompts.append((0, "<shell>"))
     def hold(self, prompt): self.held += 1; self.prompts.append((0, "<hold> " + prompt))

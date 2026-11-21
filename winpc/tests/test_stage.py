@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Thử: cài lại từ trong Windows (CAI-DAT.cmd → cb_stage.py) + cài đặt lần đầu (cb_provision.py). Chạy: python3 tests/test_stage.py"""
-import json, os, shutil, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.join(HERE, "..")
@@ -501,6 +501,171 @@ pr, st = boot_env(admin=False)
 ck("không phải SYSTEM / quản trị gọi → không làm gì", pr.boot() is False and st["calls"] == [])
 ck("cb_provision và cbcore dùng CÙNG tên dịch vụ", cb_provision.BOOT_SVC == C.BOOT_SVC == "CloudBluePCBoot" and all(c[2].endswith("\\Services\\" + C.BOOT_SVC) for c in C.boot_service_cmds("HKLM\\X", 3))
    and C.boot_service_cmds("HKLM\\X", 3)[0][2] == "HKLM\\X\\ControlSet003\\Services\\CloudBluePCBoot")
+
+print("9. BẢN WINDOWS KIỂU GHOST (ảnh chụp máy đã cài sẵn — không chạy file trả lời): dịch vụ khởi động tự dựng tài khoản khách, đổi tên máy, khoá, khởi động lại")
+SETUP_IDLE = "\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\Setup\r\n    OsLoaderPath    REG_SZ    \\\r\n    SystemSetupInProgress    REG_DWORD    0x0\r\n    SetupType    REG_DWORD    0x0\r\n    CmdLine    REG_SZ    \r\n    OOBEInProgress    REG_DWORD    0x0\r\n"
+SETUP_BUSY = SETUP_IDLE.replace("SystemSetupInProgress    REG_DWORD    0x0", "SystemSetupInProgress    REG_DWORD    0x1").replace("CmdLine    REG_SZ    ", "CmdLine    REG_SZ    oobe\\windeploy.exe")
+def ghost_env(cfg=None, users=None, auto="admin", last=".\\admin", oobe=False, setup=SETUP_IDLE, tasks=False, blank=True, seed="CB-E3B72F", host="DESKTOP-DKDCA09"):
+    """Máy Windows giả có sẵn tài khoản (như ảnh ghost): users = [(tên, rid, đang tắt, thuộc nhóm quản trị)]."""
+    pr0, st = sec_env(cfg or {"user": "PC", "password": ""})
+    base = st["base"]
+    us = users if users is not None else [("Administrator", 500, True, True), ("Guest", 501, True, False), ("DefaultAccount", 503, True, False), ("admin", 1001, False, True)]
+    st.update(u=[{"name": n, "rid": r, "off": o} for n, r, o, _ in us], admins=[n for n, _, _, a in us if a], users=[], pw={}, slept=0, msgs=[], log=[], newname=None,
+              auto=auto, last=last, setup=setup, tasks=tasks, ps_users=True, ren_ok=True, blank=blank)
+    if oobe is not None: open(os.path.join(base, "logs", "image.json"), "w").write(json.dumps({"oobe": oobe, "control_set": 1, "boot_svc": True}))
+    open(os.path.join(base, "seed.json"), "w").write(json.dumps({"name": seed, "os": "1511"}))
+    os.environ["COMPUTERNAME"] = host
+    base_run = pr0._run
+    find = lambda n: next((x for x in st["u"] if x["name"].lower() == n.lower()), None)
+    def run(argv, timeout=300):
+        a = " ".join(argv)
+        if argv[0] == "powershell.exe" and "Win32_UserAccount -Filter 'LocalAccount=True' | ForEach-Object" in a:
+            st["calls"].append(list(argv))
+            if not st["ps_users"]: return 1, "loi WMI"
+            return 0, "".join("U=%s|S-1-5-21-1111-2222-3333-%d|%s|\r\n" % (x["name"], x["rid"], x["off"]) for x in st["u"]) + "U_END\r\n"
+        if argv[0] == "powershell.exe" and ".psbase.Rename(" in a:
+            st["calls"].append(list(argv)); m = re.search(r"WinNT://\./(.+?),user'\); \$u\.psbase\.Rename\('(.+?)'\)", a)
+            if not st["ren_ok"] or not m or not find(m.group(1)): return 1, "loi"
+            old = find(m.group(1))["name"]; find(old)["name"] = m.group(2)
+            st["admins"] = [m.group(2) if x == old else x for x in st["admins"]]; st["users"] = [m.group(2) if x == old else x for x in st["users"]]
+            return 0, "RN_OK\r\n"
+        if argv[0] == "wmic" and "useraccount" in argv: st["calls"].append(list(argv)); return 1, "loi"
+        if argv[0] == "powershell.exe" and "Rename-Computer" in a:
+            st["calls"].append(list(argv)); st["newname"] = re.search(r"-NewName '(.+?)'", a).group(1); return 0, "RC_OK\r\n"
+        if argv[:2] == ["reg", "query"] and argv[2] == "HKLM\\SYSTEM\\Setup": st["calls"].append(list(argv)); return (0, st["setup"]) if st["setup"] else (1, "")
+        if argv[:2] == ["reg", "query"] and argv[-1] == "DefaultUserName": st["calls"].append(list(argv)); return (0, "\r\n    DefaultUserName    REG_SZ    %s\r\n" % st["auto"]) if st["auto"] else (1, "")
+        if argv[:2] == ["reg", "query"] and argv[-1] == "LastLoggedOnSAMUser": st["calls"].append(list(argv)); return (0, "\r\n    LastLoggedOnSAMUser    REG_SZ    %s\r\n" % st["last"]) if st["last"] else (1, "")
+        if argv[:2] == ["schtasks", "/query"]: st["calls"].append(list(argv)); return (0, "") if st["tasks"] else (1, "")
+        if argv[:2] == ["schtasks", "/create"]: st["tasks"] = True
+        if argv[:2] == ["net", "user"] and len(argv) == 3: st["calls"].append(list(argv)); return (0, "") if find(argv[2]) else (2, "The user name could not be found.")
+        if argv[:2] == ["net", "user"] and argv[-1] == "/add":
+            st["calls"].append(list(argv))
+            if find(argv[2]): return 2, "The account already exists."
+            st["u"].append({"name": argv[2], "rid": 1000 + len(st["u"]), "off": False}); st["users"].append(argv[2]); st["pw"][argv[2]] = argv[3]; return 0, ""
+        if argv[:2] == ["net", "user"] and len(argv) == 4 and argv[3].startswith("/active:"):
+            st["calls"].append(list(argv)); x = find(argv[2])
+            if not x: return 2, ""
+            x["off"] = argv[3] == "/active:no"; return 0, ""
+        if argv[:2] == ["net", "user"] and len(argv) == 5 and argv[4] == "/active:no":       # harden(): tài khoản Administrator có sẵn — mật khẩu ngẫu nhiên + tắt
+            st["calls"].append(list(argv)); x = find(argv[2]); st["pw"][argv[2]] = argv[3]
+            if x: x["off"] = True
+            return 0, ""
+        if argv[:2] == ["net", "user"] and len(argv) == 4 and not argv[3].startswith("/"): st["calls"].append(list(argv)); st["pw"][argv[2]] = argv[3]; return 0, ""
+        if argv[0].lower().endswith("msg.exe"): st["calls"].append(list(argv)); st["msgs"].append(argv[-1]); return 0, ""
+        if argv[:2] == ["net", "localgroup"] and argv[-1] == "/delete" and argv[3] not in st["admins"]: st["calls"].append(list(argv)); return 2, "System error 1377 has occurred."
+        return base_run(argv, timeout)
+    def sleep(sec): st["slept"] += sec; st["clock"] += sec
+    pr = cb_provision.Prov(base, run, log=st["log"].append, spi=lambda path: True, admin=True, rec=lambda: "", now=lambda: st["clock"], sleep=sleep, say=lambda m: None,
+                           net=lambda h, p: True, gpu=lambda: (False, False), blank=lambda u: st["blank"])
+    st["find"] = find
+    return pr, st
+has = lambda st, n: os.path.exists(os.path.join(st["base"], "logs", n))
+names_on = lambda st: sorted(x["name"] for x in st["u"] if not x["off"])
+
+PG = cb_provision.pick_ghost_user
+U0 = [{"name": "Administrator", "rid": 500, "off": True}, {"name": "Guest", "rid": 501, "off": True}, {"name": "admin", "rid": 1001, "off": False}]
+ck("chọn tài khoản để nhận: theo tài khoản Windows đang tự đăng nhập (kể cả ghi kiểu MAY\\admin); không có gợi ý mà chỉ có 1 tài khoản thường đang bật → lấy nó",
+   PG(U0, ["admin"], "PC") == ("admin", "adopt") and PG(U0, ["", "DESKTOP-X\\admin"], "PC") == ("admin", "adopt") and PG(U0, [], "PC") == ("admin", "adopt"))
+ck("đã có tài khoản đúng tên → dùng luôn; tên muốn dùng trùng tài khoản có sẵn của Windows → từ chối", PG(U0, [], "ADMIN") == ("admin", "have") and PG(U0, [], "Administrator") == (None, "bia") and PG(U0, [], "guest") == (None, "bia"))
+U1 = U0 + [{"name": "khach", "rid": 1002, "off": False}]
+ck("nhiều tài khoản mà không biết cái nào đang dùng → tạo mới; ảnh dùng thẳng Administrator có sẵn → tạo mới (không hạ quyền được tài khoản đó)",
+   PG(U1, [], "PC") == (None, "new") and PG(U1, [".\\khach"], "PC") == ("khach", "adopt") and PG([dict(U0[0], off=False)] + U0[1:], ["Administrator"], "PC") == (None, "new")
+   and PG([dict(U0[0], off=False), U0[1], dict(U0[2], off=True)], [], "PC") == (None, "new"))
+
+pr, st = ghost_env()
+r = pr.boot(); j = J(st)
+ck("ảnh ghost (đúng như máy ảo 1511 của user: tài khoản 'admin', tên máy DESKTOP-DKDCA09) → pha boot chạy trọn, đặt mốc ghost.done + firstlogon.done", r is True and has(st, "ghost.done") and has(st, "firstlogon.done") and has(st, "ghost.start"), st["log"][-6:])
+ck("NHẬN tài khoản 'admin' có sẵn: đổi tên thành 'PC' (giữ số tài khoản → giữ hồ sơ), không tạo tài khoản mới", st["find"]("PC") and st["find"]("PC")["rid"] == 1001 and not st["find"]("admin")
+   and not any(c[:2] == ["net", "user"] and c[-1] == "/add" for c in st["calls"]) and any("NHAN tai khoan co san 'admin'" in x for x in st["log"]), [x["name"] for x in st["u"]])
+ck("tài khoản khách thành TÀI KHOẢN THƯỜNG: rời nhóm quản trị, vào nhóm Users, cấm tự đổi mật khẩu", "PC" not in st["admins"] and "PC" in st["users"] and "net user PC /passwordchg:no" in j, (st["admins"], st["users"]))
+ck("mật khẩu đang trống + cấu hình để trống → KHÔNG đặt lại mật khẩu (giữ dữ liệu đã lưu trong hồ sơ)", "PC" not in st["pw"])
+ck("tài khoản Administrator có sẵn: mật khẩu ngẫu nhiên + tắt; trên máy chỉ còn tài khoản khách đang bật", st["find"]("Administrator")["off"] and len(st["pw"].get("Administrator", "")) >= 12 and names_on(st) == ["PC"], names_on(st))
+ck("tự đăng nhập bằng 'PC' với TÊN MÁY MỚI (tên cũ sẽ mất sau khi khởi động lại)", any(c[:3] == ["reg", "add", "HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Winlogon"] and c[4] == "DefaultUserName" and c[8] == "PC" for c in st["calls"])
+   and any(c[:2] == ["reg", "add"] and c[4] == "DefaultDomainName" and c[8] == "CB-E3B72F" for c in st["calls"]) and any(c[:2] == ["reg", "add"] and c[4] == "AutoAdminLogon" and c[8] == "1" for c in st["calls"]),
+   [c for c in st["calls"] if c[:2] == ["reg", "add"] and "Winlogon" in c[2]])
+ck("đổi tên máy theo tên bộ cài đã cấp (DESKTOP-DKDCA09 → CB-E3B72F)", st["newname"] == "CB-E3B72F" and any("doi ten may DESKTOP-DKDCA09 -> CB-E3B72F" in x for x in st["log"]), st["newname"])
+ck("chạy script riêng của chủ shop + bỏ hạn mật khẩu 42 ngày + báo người ngồi tại máy 'KHONG tat may'", any(c[:2] == ["cmd.exe", "/c"] and c[2].endswith("10-driver.cmd") for c in st["calls"])
+   and "net accounts /maxpwage:unlimited" in j and len(st["msgs"]) == 1 and "KHONG tat may" in st["msgs"][0] and st["slept"] >= 25, (st["msgs"], st["slept"]))
+ren = next(i for i, c in enumerate(st["calls"]) if ".psbase.Rename(" in " ".join(c))
+ck("thứ tự: đổi tên tài khoản → script riêng → hạ quyền → hẹn khởi động lại 30 giây → gỡ dịch vụ khởi động", ren < next(i for i, x in enumerate(j) if x.endswith("10-driver.cmd"))
+   < j.index("net localgroup Administrators PC /delete") < next(i for i, x in enumerate(j) if x.startswith("shutdown /r /t 30")) < j.index("sc delete CloudBluePCBoot"), j[-8:])
+n0 = len(st["calls"]); r2 = pr.boot(); r3 = pr.system()
+ck("đã xong → lần bật máy sau / agent gọi lại KHÔNG dựng lại (không đổi tên, không khởi động lại nữa)", r2 is True and not any("Rename" in " ".join(c) or c[0] == "shutdown" for c in st["calls"][n0:]), J(st)[n0:][:6])
+
+pr, st = ghost_env(cfg={"user": "Khach", "password": "abc123"})
+pr.boot()
+ck("cấu hình có mật khẩu → đặt đúng mật khẩu đó cho tài khoản nhận về; nhật ký KHÔNG ghi mật khẩu", st["find"]("Khach") and st["pw"].get("Khach") == "abc123" and not any("abc123" in x for x in st["log"])
+   and any(c[:2] == ["reg", "add"] and c[4] == "DefaultPassword" and c[8] == "abc123" for c in st["calls"]), [x for x in st["log"] if "mat khau" in x])
+pr, st = ghost_env(blank=False)
+pr.boot()
+ck("tài khoản của ảnh đang có mật khẩu mà cấu hình để trống → đặt lại thành trống (không thì tự đăng nhập hỏng)", st["pw"].get("PC") == "" and ["net", "user", "PC", ""] in st["calls"])
+
+pr, st = ghost_env(users=[("Administrator", 500, True, True), ("Guest", 501, False, False), ("admin", 1001, False, True), ("thue2", 1002, False, True), ("cu", 1003, True, False)])
+pr.boot(); j = J(st)
+ck("ảnh có thêm tài khoản khác: tắt hết (kể cả Guest đang bật), gỡ khỏi nhóm quản trị; tài khoản vốn đã tắt thì để yên", names_on(st) == ["PC"] and "net user thue2 /active:no" in j and "net user Guest /active:no" in j
+   and "thue2" not in st["admins"] and "net user cu /active:no" not in j, (names_on(st), st["admins"]))
+
+pr, st = ghost_env(users=[("Administrator", 500, False, True), ("Guest", 501, True, False)], auto="Administrator", last=".\\Administrator")
+r = pr.boot(); j = J(st)
+ck("ảnh ghost dùng thẳng tài khoản Administrator có sẵn → TẠO tài khoản khách mới (tài khoản thường), tắt Administrator", r is True and ["net", "user", "PC", "", "/add"] in st["calls"] and names_on(st) == ["PC"]
+   and "PC" not in st["admins"] and st["find"]("Administrator")["off"], (names_on(st), j[-6:]))
+
+pr, st = ghost_env(oobe=True)
+r = pr.boot(); j = J(st)
+ck("bản cài BÌNH THƯỜNG (bộ cài ghi oobe = true) → pha boot không đụng tài khoản, không đổi tên máy, không khởi động lại", r is True and st["newname"] is None and not any(x.startswith("shutdown") or "Rename" in x for x in j)
+   and names_on(st) == ["admin"] and "sc delete CloudBluePCBoot" in j and not has(st, "ghost.start"))
+pr, st = ghost_env(oobe=None, setup=SETUP_BUSY)
+r = pr.boot()
+ck("không có image.json + Windows ĐANG ở bước cài lần đầu → không coi là ghost", r is True and not has(st, "ghost.start") and names_on(st) == ["admin"])
+pr, st = ghost_env(oobe=None)
+r = pr.boot()
+ck("không có image.json + Windows KHÔNG ở bước cài lần đầu → coi là ghost, dựng như trên", r is True and has(st, "ghost.done") and names_on(st) == ["PC"])
+pr, st = ghost_env(oobe=False, setup=SETUP_BUSY)
+r = pr.boot()
+ck("bộ cài ghi là ghost nhưng Windows đang chạy bước cài lần đầu (đọc registry thật) → tin Windows, không đụng", not has(st, "ghost.start") and names_on(st) == ["admin"])
+pr, st = ghost_env(oobe=False, setup="")
+r = pr.boot()
+ck("bộ cài ghi là ghost, registry không đọc được → vẫn dựng (theo bộ cài)", has(st, "ghost.done") and names_on(st) == ["PC"])
+
+pr, st = ghost_env(); st["ps_users"] = False
+r = pr.boot(); j = J(st)
+ck("chưa đọc được danh sách tài khoản → dừng, GIỮ dịch vụ khởi động để lần bật máy sau làm tiếp; chưa đổi gì", r is False and "sc delete CloudBluePCBoot" not in j and names_on(st) == ["admin"] and not has(st, "ghost.done")
+   and any("khong doc duoc danh sach tai khoan" in x for x in st["log"]), j[-4:])
+st["ps_users"] = True; st["clock"] += 600
+r = pr.boot()
+ck("lần bật máy sau → làm tiếp và xong", r is True and has(st, "ghost.done") and names_on(st) == ["PC"] and "sc delete CloudBluePCBoot" in J(st))
+
+pr, st = ghost_env(users=[("Administrator", 500, True, True), ("Guest", 501, True, False), ("PC", 1001, False, True)], auto="PC", last=".\\PC")
+pr.touch("ghost.start"); pr.touch("firstlogon.start")              # lần trước đã đổi tên tài khoản xong thì mất điện
+r = pr.boot()
+ck("mất điện giữa chừng (đã đổi tên tài khoản, chưa hạ quyền) → bật lại làm tiếp: hạ quyền + khởi động lại", r is True and has(st, "ghost.done") and "PC" not in st["admins"] and any(x.startswith("shutdown /r") for x in J(st))
+   and not any(".psbase.Rename(" in x for x in J(st)))
+
+pr, st = ghost_env(); st["ren_ok"] = False
+r = pr.boot()
+ck("không đổi được tên tài khoản có sẵn (ADSI lẫn wmic đều lỗi) → tạo tài khoản khách mới, tắt tài khoản cũ", r is True and ["net", "user", "PC", "", "/add"] in st["calls"] and names_on(st) == ["PC"] and st["find"]("admin")["off"], names_on(st))
+pr, st = ghost_env(cfg={"user": "Guest", "password": ""})
+r = pr.boot()
+ck("tên tài khoản khách trùng tài khoản có sẵn của Windows (Guest) → báo rõ trong nhật ký, không phá gì", r is False and names_on(st) == ["admin"] and any("trung tai khoan co san cua Windows" in x for x in st["log"]))
+
+pr, st = ghost_env(oobe=True, tasks=True)                             # bộ cài nhận nhầm là bản thường; file trả lời không chạy → 1 giờ sau agent gọi pha system
+pr.system()
+ck("lưới cuối: trong 1 giờ đầu pha system chưa đụng tài khoản", names_on(st) == ["admin"] and not has(st, "ghost.start"))
+st["clock"] += 3700
+r = pr.system()
+ck("quá 1 giờ vẫn chưa có tài khoản khách + Windows không ở bước cài → pha system tự dựng kiểu ghost", r is True and has(st, "ghost.done") and names_on(st) == ["PC"] and any(x.startswith("shutdown /r") for x in J(st)), st["log"][-5:])
+pr, st = ghost_env(oobe=True, tasks=True, setup=SETUP_BUSY); st["clock"] += 0; pr.system(); st["clock"] += 3700; pr.system()
+ck("… nhưng Windows còn đang ở bước cài lần đầu thì không", names_on(st) == ["admin"] and not has(st, "ghost.start"))
+
+pr, st = sec_env({"user": "PC", "password": ""})
+pr.specialize(); n1 = sum(c == ["net", "accounts", "/maxpwage:unlimited"] for c in st["calls"]); pr.firstlogon(); pr.system()
+ck("mọi bản Windows: bỏ hạn mật khẩu 42 ngày ngay từ bước đầu, chỉ làm 1 lần (mốc pwage.done)", n1 == 1 and sum(c == ["net", "accounts", "/maxpwage:unlimited"] for c in st["calls"]) == 1 and os.path.isfile(os.path.join(st["base"], "logs", "pwage.done")))
+pr, st = sec_env({"user": "PC", "password": ""}); st["fail"].add("net accounts")
+pr.specialize(); st["fail"].clear(); pr.system()
+ck("lệnh bỏ hạn mật khẩu lỗi ở bước đầu → pha system (agent gọi) làm lại", sum(c == ["net", "accounts", "/maxpwage:unlimited"] for c in st["calls"]) == 2 and os.path.isfile(os.path.join(st["base"], "logs", "pwage.done")))
+os.environ["COMPUTERNAME"] = "CB-THU"
+pr, st = sec_env({"user": "PC", "password": ""}); pr.autologon()
+ck("bản thường: tự đăng nhập ghi tên máy hiện tại", any(c[:2] == ["reg", "add"] and c[4] == "DefaultDomainName" and c[8] == "CB-THU" for c in st["calls"]))
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

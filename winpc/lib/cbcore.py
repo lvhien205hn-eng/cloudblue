@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "21.11a"
+CORE_VER = "21.11b"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -407,6 +407,11 @@ def boot_service_cmds(root, cs=1, base="C:\\CloudBluePC"):
     add = lambda name, typ, val: ["reg", "add", k, "/v", name, "/t", typ, "/d", str(val), "/f"]
     return [add("Type", "REG_DWORD", 16), add("Start", "REG_DWORD", 2), add("ErrorControl", "REG_DWORD", 0), add("ImagePath", "REG_EXPAND_SZ", img),
             add("ObjectName", "REG_SZ", "LocalSystem"), add("DisplayName", "REG_SZ", "CloudBlue PC boot")]
+
+
+def clean_code(text):
+    """SỐ MÁY người cài gõ (vị trí máy trong dàn: 14-85, A07, KHU B 3…): chỉ giữ chữ / số / dấu cách . _ / - , viết hoa, tối đa 24 ký tự. Không còn gì → ''."""
+    return re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ._/-]", "", str(text or ""))).strip().upper()[:24].strip()
 
 
 def setup_state(reg_text):

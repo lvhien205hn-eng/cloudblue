@@ -76,13 +76,13 @@ def at_vn(ts):
 
 
 def make_rent_db():
-    """Như make_db() + hạn thuê (SQL v42): B còn 2 ngày 3 giờ · C đã hết hạn 2 giờ (máy đã tự tắt) · Y còn ~30 phút · X hạn sai kiểu · A chưa đặt."""
+    """Như make_db() + hạn thuê (SQL v42): B còn 2 ngày 3 giờ (vừa đặt → chưa tới khoảng nhắc) · C đã hết hạn 2 giờ (máy đã tự tắt) · Y thuê 3 ngày, còn ~30 phút · X hạn sai kiểu · A chưa đặt."""
     db = make_db()
     m = {x["id"]: x for x in db["pc_machines"]}
     for x in m.values(): x.update(rent_until=None, renter=None, rent_set_at=None, rent_off_at=None)
     m[B].update(rent_until=iso(-(2 * 86400 + 3 * 3600 + 1800)), renter="anh Tèo 0909", rent_set_at=iso(600))
     m[C].update(rent_until=iso(7200), renter="<img src=x onerror=window.__xss=11>", rent_set_at=iso(90000), rent_off_at=iso(7100))
-    m[Y].update(rent_until=iso(-1790), rent_set_at=iso(60))
+    m[Y].update(rent_until=iso(-1790), rent_set_at=iso(3 * 86400))
     m[X].update(rent_until="<img src=x onerror=window.__xss=12>", renter={"a": 1}, rent_off_at="x")
     return db
 
@@ -449,7 +449,8 @@ def main():
         rx = next(r for r in s.rows() if "onerror=\"window.__xss=1\"" in r)
         ck("máy còn hạn: đếm ngược + thời điểm hết hạn + tên khách + nút Gia hạn", all(k in rb for k in ["còn 2 ngày 3 giờ", "đến " + at_vn(dbm[B]["rent_until"]), "👤 anh Tèo 0909", "⏱ Gia hạn"]), rb)
         ck("máy hết hạn: ⛔ + từ lúc nào + 'máy đã tự tắt'; tên khách chứa mã in ra dạng chữ", all(k in rc for k in ["⛔ hết hạn", "từ " + at_vn(dbm[C]["rent_until"]), "máy đã tự tắt", "👤 <img src=x onerror=window.__xss=11>", "⏱ Gia hạn"]), rc)
-        ck("máy sắp hết hạn (trong 60 phút): nhãn ⏳", re.search(r"⏳ còn (29|30) phút", ry) is not None, ry)
+        ck("máy sắp hết hạn (trong khoảng nhắc): nhãn ⏳", re.search(r"⏳ còn (29|30) phút", ry) is not None, ry)
+        ck("máy vừa đặt hạn 2 ngày (chưa tới 1/4 cuối) → chưa gắn nhãn ⏳", "⏳" not in rb, rb)
         ck("máy chưa đặt hạn → 'chưa đặt hạn' + nút Đặt hạn; hạn sai kiểu coi như chưa đặt", "chưa đặt hạn" in ra and "⏱ Đặt hạn" in ra and "chưa đặt hạn" in rx and "__xss=12" not in rx, (ra, rx))
         ck("không đoạn mã nào chạy, không thẻ lạ nào lọt vào bảng", s.js("() => window.__xss") is None and s.js("() => document.querySelectorAll('#pctbl img, #pctbl svg, #pctbl script').length") == 0, s.js("() => window.__xss"))
         s.page.fill("#pcq", "tèo 0909"); s.page.wait_for_timeout(100)
@@ -533,17 +534,20 @@ def main():
         ck("mở thẻ Máy PC: trang tự nhờ /api/pc-notify gửi cảnh báo đang chờ — không kèm mã đăng nhập, không kèm dữ liệu", len(s.api) >= 1 and all(c == {"method": "POST", "body": {}, "auth": ""} for c in s.api), s.api[:3])
         ck("… tối đa 1 lần / phút dù bảng tải lại nhiều lần", len(s.api) <= 1 + int((time.time() - t_open) // 60), (len(s.api), time.time() - t_open))
         s.page.click("#pca-showal"); s.page.wait_for_timeout(100)
-        ck("bấm 🔔: hiện khung, điền sẵn 60 phút / 15 phút / bật mail, chưa gửi lần nào", not HID("pca-albox") and s.js("() => [document.getElementById('pca-al-warn').value, document.getElementById('pca-al-off').value, document.getElementById('pca-al-mail').checked]") == ["60", "15", True]
-           and T("pca-al-st") == "Chưa có cảnh báo nào được gửi.", T("pca-al-st"))
-        s.page.fill("#pca-al-warn", "30"); s.page.fill("#pca-al-off", "0"); s.page.uncheck("#pca-al-mail"); s.page.click("#pca-al-save"); s.settle()
-        ck("Lưu → pc_admin_settings đúng 3 mục; ô giữ giá trị mới", s.calls("pc_admin_settings")[-1] == {"p_patch": {"alert_email": False, "rent_warn_min": 30, "off_alert_min": 0}} and TOAST() == "Đã lưu cài đặt cảnh báo."
-           and s.js("() => [document.getElementById('pca-al-warn').value, document.getElementById('pca-al-off').value, document.getElementById('pca-al-mail').checked]") == ["30", "0", False], s.calls("pc_admin_settings")[-1])
+        vals = lambda: s.js("() => [document.getElementById('pca-al-warn').value, document.getElementById('pca-al-every').value, document.getElementById('pca-al-off').value, document.getElementById('pca-al-mail').checked]")
+        ck("bấm 🔔: hiện khung, điền sẵn 48 giờ (2 ngày) / nhắc lại 4 giờ / 15 phút / bật mail, chưa gửi lần nào", not HID("pca-albox") and vals() == ["48", "4", "15", True]
+           and T("pca-al-st") == "Chưa có cảnh báo nào được gửi.", (vals(), T("pca-al-st")))
+        ck("khung nói rõ: báo hiện ở đầu Bảng quản trị, mail / Telegram không bắt buộc", "luôn hiện ở đầu Bảng quản trị" in TT("pca-albox") and "không bắt buộc" in TT("pca-albox") and "TELEGRAM_BOT_TOKEN" in TT("pca-albox"), TT("pca-albox")[:200])
+        s.page.fill("#pca-al-warn", "30"); s.page.fill("#pca-al-every", "1.5"); s.page.fill("#pca-al-off", "0"); s.page.uncheck("#pca-al-mail"); s.page.click("#pca-al-save"); s.settle()
+        ck("Lưu → pc_admin_settings: giờ đổi ra phút (30 giờ → 1800, 1,5 giờ → 90); ô giữ giá trị mới", s.calls("pc_admin_settings")[-1] == {"p_patch": {"alert_email": False, "rent_warn_min": 1800, "rent_remind_min": 90, "off_alert_min": 0}}
+           and TOAST() == "Đã lưu. Máy nhận cài đặt mới trong khoảng 30 giây." and vals() == ["30", "1.5", "0", False], (s.calls("pc_admin_settings")[-1], vals(), TOAST()))
         n = len(s.calls("pc_admin_settings"))
-        for bad in ("", "-5", "99999", "1.5"):
-            s.page.fill("#pca-al-warn", bad); s.page.click("#pca-al-save"); s.page.wait_for_timeout(120)
-            ck("số phút sai (%r) → báo, không lưu" % bad, "Số phút không hợp lệ" in TOAST() and len(s.calls("pc_admin_settings")) == n, TOAST())
+        for field, bad in (("warn", ""), ("warn", "-5"), ("warn", "169"), ("warn", "1.555"), ("every", "25"), ("every", "abc"), ("off", "1441")):
+            s.page.evaluate("([f, v]) => { document.getElementById('pca-al-' + f).value = v; }", [field, bad]); s.page.click("#pca-al-save"); s.page.wait_for_timeout(120)
+            ck("số sai (%s = %r) → báo, không lưu" % (field, bad), "Số không hợp lệ" in TOAST() and len(s.calls("pc_admin_settings")) == n, TOAST())
             s.js("() => { document.getElementById('toast').textContent = ''; }")
-        s.page.fill("#pca-al-warn", "30")
+            s.page.evaluate("f => { document.getElementById('pca-al-' + f).value = f === 'off' ? '0' : '2'; }", field)
+        s.page.fill("#pca-al-warn", "30"); s.page.fill("#pca-al-every", "1.5")
         s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.notify_fail_at = new Date(Date.now() - 120000).toISOString(); st.notify_err = 'mail: <img src=x onerror=window.__xss=13> chưa đặt RESEND_API_KEY trên Vercel'; }")
         s.page.click("#pca-reload"); s.settle()
         ck("lần gửi gần nhất lỗi → báo rõ + lý do in dạng chữ + hẹn thử lại", all(k in TT("pca-al-st") for k in ["lần gửi gần nhất không được", "2 phút trước", "<img src=x onerror=window.__xss=13> chưa đặt RESEND_API_KEY", "tự thử lại sau 15 phút"])
@@ -572,6 +576,7 @@ def main():
         ck("hiện lời nhắc chạy cloud-pc-v42.sql (không phải lời nhắc v41), bảng vẫn đủ 5 máy", not HID("pca-miss42") and HID("pca-miss") and "cloud-pc-v42.sql" in TT("pca-miss42") and len(s.rows()) == 5, s.rows())
         ck("cột Hạn thuê để trống, không có nút ⏱", s.js("() => document.querySelectorAll('#pctbl [data-pca=rent]').length") == 0 and s.js("() => [...document.querySelectorAll('#pctbl td.pca-rent')].map(t => t.innerText.trim()).join()") == "—,—,—,—,—")
         ck("chưa có v42 thì không nhờ /api/pc-notify", s.api == [], s.api)
+        ck("chưa có v42 thì không có dải báo hết hạn", HID("pca-rentbar") and T("pca-rentbar") == "")
         s.page.click("#pca-showal"); s.page.wait_for_timeout(100)
         ck("bấm 🔔 → báo chưa chạy SQL v42, không mở khung", "Chưa chạy SQL v42" in TOAST() and HID("pca-albox"), TOAST())
         probes = lambda: s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /rent_until|rent_warn_min/.test(c.cols || '')).length")
@@ -595,6 +600,138 @@ def main():
            and s.js("() => getComputedStyle(document.getElementById('pctd-quick')).gridTemplateColumns.split(' ').length") == 3)
         s.page.click('#pctd-quick [data-h="168"]'); s.page.wait_for_timeout(100)
         s.page.screenshot(path=os.path.join(SHOTS, "pc-rent-mobile-dialog.png"))
+        s.close()
+
+        print("19. 🔔 Máy sắp / đã hết hạn: 2 ô (VPS / Máy PC · ĐT đám mây) cho ADMIN — ở đầu Bảng quản trị, mọi tab (21.11b)")
+        ME, OTHER = "00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-0000000000ff"       # ME = tài khoản đang đăng nhập trong bộ thử
+        def xp_db():
+            """make_rent_db() + VPS / ĐT đám mây của 2 khách: V1 còn 20 giờ (của ME) · V2 hết hạn 3 giờ · V3 còn 5 ngày · V4 đã huỷ ·
+               P1 còn 30 giờ (của ME) · P2 hết hạn 10 phút (đang giữ máy) · P3 còn 9 ngày · P4 dùng thử còn 2 giờ · P5 hết hạn 2 giờ (quá hạn giữ) · P6 tên chứa mã."""
+            db = make_rent_db()
+            db["vps_machines"] = [
+                {"id": "v1", "machine_name": "VPS-HN-01", "user_id": ME, "expires_at": iso(-20 * 3600), "status": "active"},
+                {"id": "v2", "machine_name": "VPS-HN-02", "user_id": OTHER, "expires_at": iso(3 * 3600), "status": "active"},
+                {"id": "v3", "machine_name": "VPS-HN-03", "user_id": OTHER, "expires_at": iso(-5 * 86400), "status": "active"},
+                {"id": "v4", "machine_name": "VPS-HUY", "user_id": OTHER, "expires_at": iso(-3600), "status": "cancelled"}]
+            db["cloud_phones"] = [
+                {"id": "p1", "name": "Máy 8GB", "user_id": ME, "expires_at": iso(-30 * 3600), "status": "active", "is_free": False},
+                {"id": "p2", "name": "Máy treo game", "user_id": OTHER, "expires_at": iso(600), "status": "expired", "is_free": False},
+                {"id": "p3", "name": "Máy còn lâu", "user_id": OTHER, "expires_at": iso(-9 * 86400), "status": "active", "is_free": False},
+                {"id": "p4", "name": "Máy dùng thử", "user_id": OTHER, "expires_at": iso(-7200), "status": "active", "is_free": True},
+                {"id": "p5", "name": "Máy đã xoá", "user_id": OTHER, "expires_at": iso(7200), "status": "expired", "is_free": False},
+                {"id": "p6", "name": "<img src=x onerror=window.__xss=21>", "user_id": OTHER, "expires_at": iso(-3600), "status": "active", "is_free": False}]
+            return db
+        T = lambda i: s.js("i => document.getElementById(i).textContent", i)
+        TT = lambda i: s.js("i => document.getElementById(i).innerText", i)
+        HID = lambda i: s.js("i => document.getElementById(i).hidden", i)
+        box = lambda host, key: s.js("([h, k]) => { const b = document.querySelector('#' + h + ' [data-xpbox=\"' + k + '\"]'); return b ? b.innerText.replace(/\\s+/g, ' ').trim() : null; }", [host, key])
+        kinds = lambda host, key: s.js("([h, k]) => [...document.querySelectorAll('#' + h + ' [data-xpbox=\"' + k + '\"] .xp-r')].map(d => d.className.replace('xp-r ', ''))", [host, key])
+        db = xp_db(); dbm = {x["id"]: x for x in db["pc_machines"]}
+        s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.settle(); s.page.wait_for_timeout(300)
+        bv, bc = box("pca-rentbar", "vps") or "", box("pca-rentbar", "cp") or ""
+        ck("vừa mở Bảng quản trị (đang ở tab Tổng quan, chưa bấm Máy PC): phần 🔔 đã hiện, ghi rõ chỉ admin thấy", not HID("pca-rentbar") and HID("pane-pc") and "chỉ tài khoản admin thấy mục này" in TT("pca-rentbar")
+           and s.js("() => getComputedStyle(document.getElementById('pca-rentbar')).display") != "none", TT("pca-rentbar")[:200])
+        ck("chia 2 ô: 'VPS / Máy PC' và 'ĐT đám mây', mỗi ô có số máy", bv.startswith("🖥️ VPS / Máy PC sắp hết hạn 4") and bc.startswith("📱 ĐT đám mây sắp hết hạn 3"), (bv[:60], bc[:60]))
+        ck("ô VPS / Máy PC: máy đã hết hạn (đỏ) đứng trước — máy PC hết hạn + VPS hết hạn; rồi máy sắp hết hạn (vàng) theo thứ tự gần hết hạn nhất", kinds("pca-rentbar", "vps") == ["r", "r", "y", "y"]
+           and "💻 Máy PC Máy khách Tèo" in bv and "đã HẾT HẠN thuê từ " + at_vn(dbm[C]["rent_until"]) in bv and "máy đã tự tắt" in bv and "🖥️ VPS VPS-HN-02 đã HẾT HẠN từ" in bv
+           and re.search(r"💻 Máy PC May-Y còn (29|30) phút là hết hạn thuê", bv) and re.search(r"🖥️ VPS VPS-HN-01 · 👤 chushop còn (19|20) giờ( \d+ phút)? là hết hạn", bv)
+           and bv.index("May-Y") < bv.index("VPS-HN-01"), (kinds("pca-rentbar", "vps"), bv))
+        ck("không đưa vào: VPS còn 5 ngày, VPS đã huỷ, máy PC vừa đặt hạn 2 ngày / chưa đặt hạn / hạn sai kiểu", all(k not in bv for k in ("VPS-HN-03", "VPS-HUY", "Máy 14-85", "CB-A1B2C3")) and bv.count("Máy PC ") == 2 + 1, bv)
+        ck("ô ĐT đám mây: máy hết hạn đang trong thời gian giữ (đỏ, còn bao nhiêu phút) + máy còn ≤ 2 ngày; bỏ máy dùng thử, máy còn lâu, máy quá hạn giữ", kinds("pca-rentbar", "cp") == ["r", "y", "y"]
+           and re.search(r"📱 Máy treo game đã HẾT HẠN — còn (19|20|21) phút giữ máy", bc) and re.search(r"📱 Máy 8GB · 👤 chushop còn 1 ngày [56] giờ là hết hạn", bc)
+           and all(k not in bc for k in ("Máy dùng thử", "Máy còn lâu", "Máy đã xoá")), (kinds("pca-rentbar", "cp"), bc))
+        ck("tên máy / tên khách chứa mã → in ra dạng chữ, không thành thẻ", "<img src=x onerror=window.__xss=21>" in bc and "👤 <img src=x onerror=window.__xss=11>" in bv
+           and s.js("() => document.querySelectorAll('#pca-rentbar img, #xp-home img').length") == 0 and s.js("() => window.__xss") is None, bc)
+        n_new = s.js("() => window.__FAKE.db.pc_machines.filter(m => !m.approved).length")
+        ck("số trên nút 💻 Máy PC = máy chờ duyệt + máy PC sắp / đã hết hạn (không tính VPS, ĐT đám mây)", T("pc-badge") == str(n_new + 2) and not HID("pc-badge"), (T("pc-badge"), n_new))
+        s.tab("sec"); s.page.wait_for_timeout(150)
+        ck("sang tab khác (🛡️ Bảo mật): phần 🔔 vẫn hiện", not HID("pca-rentbar") and HID("pane-pc") and "May-Y" in TT("pca-rentbar"))
+        s.page.screenshot(path=os.path.join(SHOTS, "pc-rentbar.png"))
+        s.page.click('#pca-rentbar [data-xptg="cp"]'); s.page.wait_for_timeout(120)
+        ck("bấm Ẩn ở ô ĐT đám mây → ô thu lại (còn tiêu đề + số máy + chữ Hiện), ô kia giữ nguyên", box("pca-rentbar", "cp") == "📱 ĐT đám mây sắp hết hạn 3 Hiện ▾" and kinds("pca-rentbar", "cp") == [] and len(kinds("pca-rentbar", "vps")) == 4
+           and s.js("() => localStorage.getItem('xp_hide_cp')") == "1", box("pca-rentbar", "cp"))
+        s.tab("pc"); s.page.click("#pca-reload"); s.settle(); s.tab("sec")
+        ck("tải lại dữ liệu → ô đã ẩn vẫn ẩn (nhớ theo trình duyệt)", kinds("pca-rentbar", "cp") == [] and "Hiện ▾" in box("pca-rentbar", "cp"))
+        s.page.click('#pca-rentbar [data-xptg="cp"]'); s.page.wait_for_timeout(120)
+        ck("bấm Hiện → mở lại", len(kinds("pca-rentbar", "cp")) == 3 and s.js("() => localStorage.getItem('xp_hide_cp')") is None)
+        s.page.click('#pca-rentbar [data-xpgo="pc"][data-xpid="%s"]' % Y); s.page.wait_for_timeout(300)
+        ck("bấm ⏱ Gia hạn ở dòng máy PC → nhảy sang tab Máy PC + mở hộp đặt hạn của đúng máy đó", not HID("pane-pc") and not HID("pctdlg") and "May-Y" in TT("pctdlg") and s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "pc", TT("pctdlg")[:120])
+        s.page.click('#pctd-quick [data-h="720"]'); s.page.click("#pctd-save"); s.settle()
+        ck("gia hạn xong (+30 ngày) → máy đó rời khỏi ô", "May-Y" not in (box("pca-rentbar", "vps") or "") and len(kinds("pca-rentbar", "vps")) == 3 and s.calls("pc_admin_rent")[-1]["p_id"] == Y, box("pca-rentbar", "vps"))
+        s.page.click('#pca-rentbar [data-xpbox="vps"] [data-xpgo="vps"]'); s.page.wait_for_timeout(200)
+        ck("bấm 'Mở Máy VPS' → sang tab 🖥️ Máy VPS", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "vps")
+        s.page.click('#pca-rentbar [data-xpbox="cp"] [data-xpgo="cloud"]'); s.page.wait_for_timeout(200)
+        ck("bấm 'Mở ĐT đám mây' → sang tab 📱 ĐT đám mây", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "cloud")
+        s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.rent_warn_min = 0; const m = window.__FAKE.db.pc_machines.find(x => x.name === 'Máy 14-85'); m.rent_until = new Date(Date.now() + 600000).toISOString(); m.rent_set_at = new Date(Date.now() - 86400000 * 30).toISOString(); }")
+        s.tab("pc"); s.page.click("#pca-reload"); s.settle()
+        ck("admin đặt 'bắt đầu nhắc' = 0 → không báo máy PC sắp hết hạn, vẫn báo máy PC ĐÃ hết hạn", "Máy 14-85" not in box("pca-rentbar", "vps") and "Máy khách Tèo" in box("pca-rentbar", "vps"), box("pca-rentbar", "vps"))
+        s.js("""() => { const d = window.__FAKE.db, old = new Date(Date.now() - 86400000 * 30).toISOString(); d.pc_settings[0].rent_warn_min = 2880; d.vps_machines = [];
+                 d.pc_machines.forEach((m, i) => { m.rent_until = new Date(Date.now() + (i + 1) * 3600000).toISOString(); m.rent_set_at = old; m.rent_off_at = null; });
+                 for (let i = 0; i < 4; i++) d.pc_machines.push(Object.assign({}, d.pc_machines[0], { id: "00000000-0000-4000-8000-00000000000" + i, name: "CB-THEM" + i, hw: null, rent_until: new Date(Date.now() + (40 + i) * 3600000).toISOString() })); }""")
+        s.page.click("#pca-reload"); s.settle(); s.js("() => window.PCA.xpLoad(true)"); s.page.wait_for_timeout(400)
+        bv = box("pca-rentbar", "vps")
+        ck("9 máy PC sắp hết hạn → ô hiện 6 dòng (gần hết hạn nhất trước) + 1 dòng '… và 3 máy nữa'", len(kinds("pca-rentbar", "vps")) == 7 and "… và 3 máy nữa" in bv and bv.index("còn 1 giờ") < bv.index("còn 2 giờ"), bv[-220:])
+        s.page.click('#pca-rentbar [data-xpbox="vps"] [data-xpid=""][data-xpgo="pc"]'); s.page.wait_for_timeout(200)
+        ck("bấm 'xem tất cả' → sang tab Máy PC, không mở hộp nào", not HID("pane-pc") and HID("pctdlg"))
+        s.js("() => { const d = window.__FAKE.db; d.pc_machines.forEach(m => { m.rent_until = null; }); d.cloud_phones = []; }")
+        s.tab("pc"); s.page.click("#pca-reload"); s.settle(); s.js("() => window.PCA.xpLoad(true)"); s.page.wait_for_timeout(400)
+        ck("gia hạn / bỏ hạn hết → phần 🔔 tự ẩn", HID("pca-rentbar") and T("pca-rentbar") == "")
+        ck("cả lượt: không lỗi mới trong trang", [x for x in sorted(set(s.errors)) if x not in e0] == [], [x for x in sorted(set(s.errors)) if x not in e0])
+        s.close()
+        s = Site(br, new, {"admin": True, "v41": True, "db": {k: v for k, v in make_db().items()}}); s.wait_admin(); s.settle(); s.page.wait_for_timeout(300)
+        ck("cơ sở dữ liệu không có máy nào sắp / đã hết hạn → phần 🔔 ẩn hẳn (cả trong Bảng quản trị lẫn trang ngoài)", HID("pca-rentbar") and T("pca-rentbar") == "" and HID("xp-home") and T("xp-adm") == "")
+        s.close()
+
+        print("20. 🔔 ở TRANG NGOÀI: admin thấy 2 ô · khách chỉ thấy dải nhắc máy CỦA MÌNH · người chưa đăng nhập không thấy gì (21.11b)")
+        s = Site(br, new, {"admin": True, "v41": True, "db": xp_db()}, path="/"); s.page.wait_for_timeout(1500); s.settle(); s.page.wait_for_timeout(300)
+        bv, bc = box("xp-adm", "vps") or "", box("xp-adm", "cp") or ""
+        ck("admin mở trang ngoài (không mở Bảng quản trị): 2 ô hiện ngay dưới thanh đầu trang, đủ máy như trong Bảng quản trị", HID("drawer") and not HID("xp-home") and not HID("xp-adm")
+           and bv.startswith("🖥️ VPS / Máy PC sắp hết hạn 4") and bc.startswith("📱 ĐT đám mây sắp hết hạn 3") and "chỉ tài khoản admin thấy mục này" in TT("xp-adm"), (bv[:80], bc[:80]))
+        ck("vị trí: nằm trên phần nội dung trang, dưới thanh đầu trang", s.js("() => { const h = document.querySelector('header.top').getBoundingClientRect(), x = document.getElementById('xp-home').getBoundingClientRect(); return x.top >= h.bottom - 2 && x.height > 40; }"))
+        ck("admin không bị hiện thêm dải nhắc của khách (đã có 2 ô)", HID("xp-cust") and T("xp-cust") == "")
+        s.page.screenshot(path=os.path.join(SHOTS, "xp-home-admin.png"))
+        s.page.click('#xp-adm [data-xptg="vps"]'); s.page.wait_for_timeout(120)
+        ck("trang ngoài: bấm Ẩn ô VPS / Máy PC → thu lại, vẫn thấy số máy", box("xp-adm", "vps") == "🖥️ VPS / Máy PC sắp hết hạn 4 Hiện ▾" and len(kinds("xp-adm", "cp")) == 3)
+        s.page.click('#xp-adm [data-xptg="vps"]'); s.page.wait_for_timeout(120)
+        s.page.click('#xp-adm [data-xpgo="pc"][data-xpid="%s"]' % Y); s.page.wait_for_function("() => location.pathname === '/admin'", timeout=8000); s.wait_admin(); s.settle(); s.page.wait_for_timeout(400)
+        ck("trang ngoài: bấm ⏱ Gia hạn ở 1 máy PC → sang /admin, mở đúng tab Máy PC + hộp đặt hạn của máy đó", not HID("pane-pc") and not HID("pctdlg") and "May-Y" in TT("pctdlg"), TT("pctdlg")[:100])
+        ck("cả lượt: không lỗi mới trong trang", [x for x in sorted(set(s.errors)) if x not in e0] == [], [x for x in sorted(set(s.errors)) if x not in e0])
+        s.close()
+        s = Site(br, new, {"admin": True, "v41": True, "db": xp_db()}, mobile=True, path="/"); s.page.wait_for_timeout(1500); s.settle(); s.page.wait_for_timeout(300)
+        ck("điện thoại (admin, trang ngoài): 2 ô xếp dọc, trang không tràn ngang", not HID("xp-adm") and s.js("() => document.documentElement.scrollWidth <= window.innerWidth + 1")
+           and s.js("() => { const a = document.querySelector('#xp-adm [data-xpbox=vps]').getBoundingClientRect(), b = document.querySelector('#xp-adm [data-xpbox=cp]').getBoundingClientRect(); return b.top >= a.bottom - 1; }"), s.js("() => [document.documentElement.scrollWidth, window.innerWidth]"))
+        s.page.screenshot(path=os.path.join(SHOTS, "xp-home-admin-mobile.png"))
+        s.close()
+
+        e_user = None
+        s = Site(br, new, {"admin": False, "v41": True, "db": xp_db()}, path="/"); s.page.wait_for_timeout(1500); s.page.wait_for_timeout(600)
+        cu = TT("xp-cust")
+        ck("KHÁCH (tài khoản thường): KHÔNG có 2 ô của admin — vùng đó rỗng hoàn toàn, kể cả khi máy chủ giả trả về dữ liệu của mọi người", HID("xp-adm") and T("xp-adm") == "" and T("pca-rentbar") == ""
+           and s.js("() => document.querySelectorAll('[data-xpbox]').length") == 0, T("xp-adm")[:100])
+        ck("khách không tải dữ liệu máy PC / máy của người khác (không có lệnh đọc pc_machines; đọc VPS + ĐT đám mây chỉ theo user_id của mình)",
+           s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table)).length") == 0
+           and s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && (c.table === 'vps_machines' || c.table === 'cloud_phones') && /expires_at/.test(c.cols) && !c.eq.some(e => e[0] === 'user_id')).length") == 0,
+           s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^(pc_|vps_|cloud_)/.test(c.table)).map(c => [c.table, c.eq])"))
+        ck("khách thấy dải nhắc máy CỦA MÌNH còn ≤ 2 ngày: ĐT đám mây 'Máy 8GB' + máy VPS 'VPS-HN-01', có nút Gia hạn", not HID("xp-home") and not HID("xp-cust") and "Máy của bạn sắp hết hạn" in cu
+           and "⏳ ĐT đám mây Máy 8GB còn" in cu and "⏳ Máy VPS VPS-HN-01 còn" in cu and cu.count("Gia hạn") == 2 and "là hết hạn" in cu, cu)
+        ck("… và KHÔNG thấy máy của khách khác, máy PC cho thuê, tên khách khác", all(k not in s.js("() => document.body.innerText") for k in ("VPS-HN-02", "Máy treo game", "May-Y", "Máy khách Tèo", "chỉ tài khoản admin")), cu)
+        s.page.screenshot(path=os.path.join(SHOTS, "xp-home-customer.png"))
+        s.page.click('#xp-cust [data-xpren="cp"]'); s.page.wait_for_timeout(500)
+        ck("khách bấm Gia hạn ở ĐT đám mây → mở hộp 'ĐT đám mây của tôi' / hộp gia hạn", s.js("() => !document.getElementById('cpdlg').hidden || [...document.querySelectorAll('.modal')].some(m => !m.hidden)"))
+        s.page.keyboard.press("Escape"); s.js("() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; })")
+        s.page.click('#xp-cust [data-xpren="vps"]'); s.page.wait_for_timeout(500)
+        ck("khách bấm Gia hạn ở máy VPS → mở hộp 'VPS của tôi'", s.js("() => !document.getElementById('vmach').hidden"))
+        s.js("() => document.querySelectorAll('.modal').forEach(m => { m.hidden = true; })")
+        s.page.click('#xp-cust [data-xpcx]'); s.page.wait_for_timeout(150)
+        hide_to = s.js("() => +localStorage.getItem('xp_cust_hide')")
+        ck("khách bấm Ẩn → dải nhắc ẩn, hẹn hiện lại sau 4 giờ", HID("xp-cust") and HID("xp-home") and 3.9 * 3600e3 < hide_to - time.time() * 1000 < 4.1 * 3600e3, hide_to)
+        s.js("() => { localStorage.setItem('xp_cust_hide', String(Date.now() - 1000)); }"); s.page.reload(); s.page.wait_for_timeout(2000)
+        ck("hết 4 giờ (hoặc lần vào web sau đó) → dải nhắc hiện lại", not HID("xp-cust") and "Máy 8GB" in TT("xp-cust"))
+        ck("cả lượt (khách): không lỗi mới trong trang", [x for x in sorted(set(s.errors)) if x not in e0] == [], [x for x in sorted(set(s.errors)) if x not in e0])
+        s.close()
+        s = Site(br, new, {"admin": None, "v41": True, "db": xp_db()}, path="/"); s.page.wait_for_timeout(1800)
+        ck("CHƯA ĐĂNG NHẬP: không có gì — không ô admin, không dải nhắc, không đọc bảng nào trong 3 bảng", HID("xp-home") and T("xp-adm") == "" and T("xp-cust") == ""
+           and s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^(pc_|vps_machines|cloud_phones)/.test(c.table) && /expires_at|rent_until/.test(c.cols || '')).length") == 0)
         s.close()
         br.close()
     print("\n%d/%d đạt" % (OK, OK + FAIL))

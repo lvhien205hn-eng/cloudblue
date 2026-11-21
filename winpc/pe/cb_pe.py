@@ -23,7 +23,7 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "21.11a"
+PE_VER = "21.11b"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -283,8 +283,8 @@ class Installer:
             self.log("  dich vu khoi dong: loi %s - bo qua" % e); return
         self.log("  dich vu khoi dong (luoi an toan thu 3): %s" % ("da chen" if not bad else "%d lenh bao loi" % bad))
         if oobe is False:
-            self.log("  (!) Ban Windows nay KHONG o trang thai 'cai dat lan dau' (ban kieu ghost): file tra loi khong chay -> KHONG tao tai khoan khach;")
-            self.log("      phan mem CloudBlue van tu chay nho dich vu khoi dong. Nen dung ban Windows da sysprep (cai qua man hinh cai dat).")
+            self.log("  Ban Windows nay la kieu GHOST (khong qua buoc 'cai dat lan dau' -> file tra loi khong chay).")
+            self.log("  -> lan khoi dong dau CloudBlue tu lam thay: nhan tai khoan co san lam tai khoan khach, doi ten may, khoa quyen, roi TU KHOI DONG LAI 1 lan.")
         try: C.save_json(self.s, W + ":\\CloudBluePC\\logs\\image.json", {"oobe": oobe, "control_set": cs, "boot_svc": not bad})
         except Exception: pass
 
@@ -316,6 +316,20 @@ class Installer:
         for d in dirs:
             try: self.s.write_text(d + "\\pe-%s.log" % time.strftime("%Y%m%d-%H%M%S"), txt)
             except Exception: pass
+
+    def ask_code(self, ui, cfg):
+        """Cài từ USB / ISO xong: cho người cài gõ SỐ MÁY (vị trí máy trong dàn, vd 14-85) → số này hiện trên web và trên màn hình máy, khách báo lỗi đúng máy.
+           Không ai gõ trong `code_wait` giây (mặc định 120) hoặc bấm Enter trống → bỏ qua (đặt sau trên web cũng được). cb.json "ask_code": false → không hỏi."""
+        if cfg.get("ask_code") is False or self.s.dry or not hasattr(ui, "line"): return ""
+        try: secs = max(10, min(3600, int(cfg.get("code_wait", 120))))
+        except (TypeError, ValueError): secs = 120
+        for x in ("", LINE, "  WINDOWS DA CAI XONG.", "  Nhap SO MAY (vi tri may trong dan - vi du 14-85 hoac A07) roi bam Enter.",
+                  "  So nay hien tren web va tren man hinh may, de khach bao loi dung may.", "  Bo qua: bam Enter (dat sau tren web cung duoc).", LINE): self.log(x)
+        try: txt = ui.line(secs, "So may")
+        except Exception: txt = None
+        code = C.clean_code(txt)
+        self.log("  So may: %s" % (code or "(bo qua)"))
+        return code
 
     def new_name(self, cfg):
         import random
@@ -393,6 +407,8 @@ class Installer:
             if self.s.exists(src.p("cb\\enroll.key")): key = self.s.read_text(src.p("cb\\enroll.key")).strip()
         except Exception: pass
         if key: seed["enroll_key"] = key
+        code = self.ask_code(ui, cfg)                               # Windows đã bung xong → hỏi SỐ MÁY (người cài còn ngồi đó)
+        if code: seed["code"] = code
         self.inject(src, W, cfg, image, name, seed)
         if rec_bytes:
             C.save_json(self.s, R + ":\\cb\\identity.json", {"name": name})
@@ -557,6 +573,22 @@ class ConsoleUI:
         print("")
         return None
 
+    def line(self, secs, prompt, maxlen=24):
+        """Cho gõ 1 dòng: Enter = xong · Backspace = xoá · Esc = bỏ. Chưa gõ gì mà hết `secs` giây → None; đang gõ dở thì mỗi phím chờ thêm 60 giây."""
+        buf, left = "", float(secs)
+        while left > 0:
+            print("\r  > %s: %s_   (con %3d giay)   " % (prompt, buf, int(left)), end="", flush=True)
+            k = self.s.key_wait(1)
+            if k is None:
+                left -= 1; continue
+            if k in ("\r", "\n"): print(""); return buf
+            if k == "\x1b": print(""); return ""
+            if k in ("\x08", "\x7f"): buf = buf[:-1]
+            elif len(k) == 1 and k.isprintable() and len(buf) < maxlen: buf += k
+            left = max(left, 60.0)
+        print("")
+        return buf or None
+
     def shell(self):
         print("\n  Dong lenh - go  exit  de quay lai.\n", flush=True)
         try: os.system("cmd.exe")
@@ -576,6 +608,7 @@ class DryUI:
         if secs <= 0: raise C.Stop("Chay thu: buoc nay can nguoi bam phim (chua chon duoc o dich).")
         return None
 
+    def line(self, secs, prompt, maxlen=24): return None
     def shell(self): pass
     def hold(self, prompt): print("  > " + prompt, flush=True)
 

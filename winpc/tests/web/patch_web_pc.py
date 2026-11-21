@@ -6,6 +6,7 @@ import hashlib, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MARK = 'id="pane-pc"'
+RENTBAR = '\n    <div class="xp-host" id="pca-rentbar" hidden></div>'      # 🔔 2 ô máy sắp / đã hết hạn (VPS / Máy PC · ĐT đám mây) — hiện ở mọi tab của Bảng quản trị
 
 
 def read(name):
@@ -38,10 +39,11 @@ def main(src, dst):
     s = insert(s, '<button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button>',
                '<button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button>', after=True)
     s = insert(s, '    <div class="dbody" id="pane-biz" hidden>', pane)
+    s = insert(s, '<div class="admalert" id="adm-alert" hidden></div>', RENTBAR, after=True)
     s = insert(s, '<!-- ADMIN: SỬA MÁY VPS -->\n<div class="modal" id="vmdlg" hidden>', "<!-- ADMIN: MÁY PC CHO THUÊ (SQL v41) -->\n" + dlg + "\n")
     s = insert(s, "</body>", script)
     added = len('<button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button>') + len(pane) + len(dlg) + len(script) \
-        + len("<!-- ADMIN: MÁY PC CHO THUÊ (SQL v41) -->\n") + 1
+        + len("<!-- ADMIN: MÁY PC CHO THUÊ (SQL v41) -->\n") + 1 + len(RENTBAR)
     assert len(s) == base_len + added, (len(s), base_len, added)
     data = s.encode("utf-8")
     with open(dst, "wb") as f:

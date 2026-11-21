@@ -1,6 +1,6 @@
     <div class="dbody" id="pane-pc" hidden>
       <div class="note" id="pca-miss" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>Máy PC</b>. Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v41.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
-      <div class="note" id="pca-miss42" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>hạn thuê + cảnh báo về mail</b>. Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v42.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
+      <div class="note" id="pca-miss42" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>hạn thuê + nhắc hết hạn</b> (hoặc đang là bản cũ). Vào Supabase › SQL Editor, dán toàn bộ file <b>cloud-pc-v42.sql</b> rồi bấm Run, sau đó bấm “Tải lại” ở đây.</div>
       <div class="tiles pca-tiles"><div><b id="pk-total">0</b><span>Máy đã đăng ký</span></div><div><b id="pk-on">0</b><span>Đang online</span></div><div><b id="pk-new">0</b><span>Chờ duyệt</span></div><div><b id="pk-busy">0</b><span>Đang cài lại</span></div></div>
       <div class="pca-bar">
         <span class="pca-key"><b>Mã đăng ký:</b> <span id="pca-keyst">—</span></span>
@@ -23,19 +23,21 @@
         <div class="pca-row"><input class="in" id="pca-cmd" readonly aria-label="Lệnh tạo ISO"><button class="btn sm" type="button" id="pca-cmdcopy">Copy lệnh</button></div>
       </div>
       <div class="note" id="pca-albox" hidden>
-        <b>Cảnh báo máy PC về mail / Telegram của admin</b> — hết hạn thuê, sắp hết hạn, máy hết hạn bị bật lại, máy đang thuê mất kết nối, máy lạ đăng ký, đồng hồ / bảo mật / phần cứng trên máy bị đổi, cài lại thất bại. Mọi cảnh báo cũng hiện ở tab 🛡️ Bảo mật.
+        <b>Nhắc hết hạn + cảnh báo máy PC</b> — máy sắp hết hạn / đã hết hạn <b>luôn hiện ở đầu Bảng quản trị</b> cho tới khi gia hạn; trên máy, khách được nhắc lặp lại bằng hộp thông báo. Các việc khác (máy đang thuê mất kết nối, máy lạ đăng ký, đồng hồ / bảo mật / phần cứng trên máy bị đổi, cài lại thất bại) hiện ở tab 🛡️ Bảo mật.
         <div class="pca-al">
-          <label class="pca-chk"><input type="checkbox" id="pca-al-mail"> Gửi về mail admin</label>
-          <label class="pca-num">Báo trước khi hết hạn <input class="in" id="pca-al-warn" type="number" min="0" max="10080" step="5" inputmode="numeric"> phút</label>
+          <label class="pca-num">Bắt đầu nhắc khi còn <input class="in" id="pca-al-warn" type="number" min="0" max="168" step="1" inputmode="decimal"> giờ</label>
+          <label class="pca-num">Nhắc khách lại mỗi <input class="in" id="pca-al-every" type="number" min="0" max="24" step="0.5" inputmode="decimal"> giờ</label>
           <label class="pca-num">Máy đang thuê mất kết nối quá <input class="in" id="pca-al-off" type="number" min="0" max="1440" step="5" inputmode="numeric"> phút thì báo</label>
+          <label class="pca-chk"><input type="checkbox" id="pca-al-mail"> Gửi thêm về mail admin</label>
           <button class="btn sm" type="button" id="pca-al-save">Lưu</button>
           <button class="btn ghost sm" type="button" id="pca-al-test">Gửi thư thử</button>
         </div>
-        <div class="hint">Đặt 0 phút = tắt loại cảnh báo đó. Mail gửi tới địa chỉ <b>ADMIN_EMAIL</b> đặt trên Vercel (cần thêm <b>RESEND_API_KEY</b>); Telegram dùng bot đang có.</div>
+        <div class="hint">Mặc định: nhắc từ <b>48 giờ (2 ngày)</b> trước hạn, lặp lại mỗi 4 giờ và mỗi lần bật máy; giờ cuối nhắc ở 60 · 30 · 10 · 5 · 1 phút. Thuê ngắn thì chỉ nhắc ở 1/4 thời gian cuối (thuê 1 ngày → 6 giờ cuối). Đặt 0 = tắt mục đó.</div>
+        <div class="hint">Mail / Telegram là phần thêm, không bắt buộc: mail cần <b>ADMIN_EMAIL</b> + <b>RESEND_API_KEY</b>, Telegram cần <b>TELEGRAM_BOT_TOKEN</b> + <b>TELEGRAM_CHAT_ID</b> đặt trên Vercel.</div>
         <div class="hint" id="pca-al-st"></div>
         <div class="hint" id="pca-al-r"></div>
       </div>
       <input class="search" id="pcq" placeholder="Tìm theo tên máy, mã, IP, tên khách…" style="width:100%" autocomplete="off">
       <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hạn thuê</th><th>Windows</th><th>Cấu hình</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
-      <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — máy tự báo trước cho khách, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt) và bạn nhận cảnh báo. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
+      <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. <b>Số máy</b> (nhãn № cạnh tên): người cài gõ ngay sau khi cài xong, hoặc bấm <b>Sửa</b> để đặt — số này hiện trên màn hình máy (file “May so … (CloudBlue)”) và trong lời nhắc, khách báo lỗi theo số đó. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — từ 2 ngày trước hạn máy tự nhắc khách liên tục, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt); máy sắp / đã hết hạn luôn hiện ở ô 🔔 đầu trang. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
     </div>

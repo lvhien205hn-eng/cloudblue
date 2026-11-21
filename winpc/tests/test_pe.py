@@ -532,16 +532,16 @@ ck("nạp kho registry của Windows mới → ghi dịch vụ khởi động Cl
 vals = {c[4]: (c[6], c[8]) for c in adds}
 ck("dịch vụ: tự chạy lúc khởi động bằng SYSTEM, lỗi thì Windows bỏ qua, gọi đúng cb_provision.py boot", vals["Start"] == ("REG_DWORD", "2") and vals["Type"] == ("REG_DWORD", "16") and vals["ErrorControl"] == ("REG_DWORD", "0")
    and vals["ObjectName"] == ("REG_SZ", "LocalSystem") and vals["ImagePath"] == ("REG_EXPAND_SZ", '%SystemRoot%\\System32\\cmd.exe /c start "" /b "C:\\CloudBluePC\\py\\pythonw.exe" -I -B "C:\\CloudBluePC\\os\\cb_provision.py" boot'), vals)
-ck("bản Windows chuẩn (đang ở trạng thái cài đặt lần đầu): ghi nhận, không cảnh báo", image_json(fs) == {"oobe": True, "control_set": 1, "boot_svc": True} and not any("kieu ghost" in x for x in fs.logs), image_json(fs))
+ck("bản Windows chuẩn (đang ở trạng thái cài đặt lần đầu): ghi nhận, không cảnh báo", image_json(fs) == {"oobe": True, "control_set": 1, "boot_svc": True} and not any("kieu GHOST" in x for x in fs.logs), image_json(fs))
 fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg); fs.reg_off = {"Select": "    Default    REG_DWORD    0x2\r\n", "Setup": GHOST_REG}
 rc, ui, inst = run(fs)
 ck("bản Windows kiểu GHOST (không qua bước cài lần đầu): vẫn cài xong, cảnh báo rõ trên màn hình bộ cài, dịch vụ ghi đúng ControlSet đang dùng (002)",
-   rc == 0 and image_json(fs) == {"oobe": False, "control_set": 2, "boot_svc": True} and any("KHONG o trang thai 'cai dat lan dau'" in x for x in fs.logs)
+   rc == 0 and image_json(fs) == {"oobe": False, "control_set": 2, "boot_svc": True} and any("kieu GHOST" in x for x in fs.logs) and any("TU KHOI DONG LAI 1 lan" in x for x in fs.logs)
    and all(c[2] == "HKLM\\CB_OFFSYS\\ControlSet002\\Services\\CloudBluePCBoot" for c in regs(fs, "add")) and len(regs(fs, "add")) == 6, (image_json(fs), [x for x in fs.logs if "ghost" in x]))
 fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
 rc, ui, inst = run(fs)
 ck("không đọc được trạng thái (kho thiếu khoá) → coi là 'không biết', vẫn chèn dịch vụ vào ControlSet001, không cảnh báo nhầm", rc == 0 and image_json(fs) == {"oobe": None, "control_set": 1, "boot_svc": True}
-   and len(regs(fs, "add")) == 6 and not any("kieu ghost" in x for x in fs.logs), image_json(fs))
+   and len(regs(fs, "add")) == 6 and not any("kieu GHOST" in x for x in fs.logs), image_json(fs))
 fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg); fs.fail_reg_load = True; fs.fail_tz = True
 rc, ui, inst = run(fs)
 win, _ = fb_vols(fs)
@@ -553,6 +553,49 @@ rc, ui, inst = run(fs)
 ck("cài lại từ xa (từ phân vùng cứu hộ): cũng đặt múi giờ + chèn dịch vụ khởi động", rc == 0 and any(c[0] == "dism" and "/Set-TimeZone:SE Asia Standard Time" in c for c in fs.cmds) and len(regs(fs, "add")) == 6 and not fs.reg_loaded)
 ck("setup_state: đọc đúng chữ reg in ra", C.setup_state(OOBE_REG) is True and C.setup_state(GHOST_REG) is False and C.setup_state("") is None and C.setup_state("ERROR: x") is None
    and C.setup_state("    SetupType    REG_DWORD    0x1\r\n") is True)
+
+print("24. Cài xong từ USB / ISO: hiện 1 ô cho người cài gõ SỐ MÁY (21.11b)")
+def run_code(lines, cfg_extra=None):
+    fs = FakeSys("uefi"); cfg = dict(cfg0(), **(cfg_extra or {})); fb_media(fs, cfg)
+    ui = ScriptUI(); ui.lines = list(lines)
+    inst = cb_pe.Installer(fs); rc = inst.run(ui)
+    win, _ = fb_vols(fs)
+    return rc, ui, fs, json.loads(win.files["cloudbluepc\\seed.json"])
+rc, ui, fs, seed = run_code(["14-85"])
+ck("Windows bung xong → màn hình bộ cài hỏi 'So may' (chờ 120 giây), gõ 14-85 → ghi vào seed.json để máy báo về web", rc == 0 and (120, "<line> So may") in ui.prompts and seed.get("code") == "14-85"
+   and any("WINDOWS DA CAI XONG" in x for x in fs.logs) and any("So may: 14-85" in x for x in fs.logs), (ui.prompts[-3:], seed))
+ck("ô hỏi hiện SAU khi bung Windows (người cài còn ngồi đó), TRƯỚC dòng XONG", next(i for i, x in enumerate(fs.logs) if "WINDOWS DA CAI XONG" in x) > next(i for i, x in enumerate(fs.logs) if "100%" in x or "Bung" in x or "bung" in x)
+   and next(i for i, x in enumerate(fs.logs) if "So may: 14-85" in x) < next(i for i, x in enumerate(fs.logs) if x.startswith("XONG sau")), [x for x in fs.logs if "XONG" in x or "So may" in x])
+rc, ui, fs, seed = run_code(["  a07 <b>khu 2</b>  "])
+ck("số máy được làm sạch: bỏ ký tự lạ, viết hoa", seed.get("code") == "A07 BKHU 2/B", seed.get("code"))
+rc, ui, fs, seed = run_code([""])
+ck("bấm Enter trống → bỏ qua, không ghi số máy, vẫn cài xong", rc == 0 and "code" not in seed and any("So may: (bo qua)" in x for x in fs.logs))
+rc, ui, fs, seed = run_code([])
+ck("không ai gõ (hết giờ chờ) → bỏ qua, vẫn cài xong", rc == 0 and "code" not in seed)
+rc, ui, fs, seed = run_code(["9"], {"ask_code": False})
+ck('cb.json "ask_code": false → không hỏi', rc == 0 and not any(p[1].startswith("<line>") for p in ui.prompts) and "code" not in seed)
+rc, ui, fs, seed = run_code(["7"], {"code_wait": 600})
+ck("thời gian chờ đổi được bằng code_wait", (600, "<line> So may") in ui.prompts and seed.get("code") == "7")
+ck("clean_code: giữ chữ số . _ / - và dấu cách, tối đa 24 ký tự, rỗng nếu toàn ký tự lạ", C.clean_code(" khu-a_1.2/3 ") == "KHU-A_1.2/3" and C.clean_code("<>\"'") == "" and C.clean_code(None) == ""
+   and len(C.clean_code("9" * 60)) == 24 and C.clean_code("a   b") == "A B")
+import io as _io, contextlib as _ctx
+class KeySys:                                                      # bàn phím giả cho ô gõ thật (ConsoleUI.line): mỗi lần hỏi trả 1 phím trong danh sách, hết thì None
+    def __init__(self, keys): self.keys = list(keys)
+    def key_wait(self, seconds): return self.keys.pop(0) if self.keys else None
+def typed(keys, secs=5):
+    with _ctx.redirect_stdout(_io.StringIO()): return cb_pe.ConsoleUI(KeySys(keys)).line(secs, "So may")
+ck("ô gõ thật: gõ 1 4 - 8 5 rồi Enter → '14-85'; Backspace xoá được; Esc = bỏ", typed(list("14-85") + ["\r"]) == "14-85" and typed(["1", "2", "\x08", "4", "\r"]) == "14" and typed(["9", "\x1b"]) == "")
+ck("ô gõ thật: không ai gõ → None sau đúng số giây chờ; gõ dở rồi bỏ đó → lấy phần đã gõ", typed([]) is None and typed(["a", "7"]) == "a7" and typed(["\r"]) == "")
+ck("ô gõ thật: không nhận quá 24 ký tự, bỏ phím điều khiển lạ", typed(list("x" * 40) + ["\r"]) == "x" * 24 and typed(["\t", "5", "\r"]) == "5")
+fs = FakeSys("uefi"); cfg = cfg0(); fb_media(fs, cfg)
+ui = ScriptUI(); ui.lines = ["55"]
+assert cb_pe.Installer(fs).run(ui) == 0
+win, rec = fb_vols(fs); fs.fdisks = [d for d in fs.fdisks if d.index != 9]
+rec.put("cb\\job.json", json.dumps(job0(win=None, wipe="all") if False else job0(wipe="all")))
+ui2 = ScriptUI(); ui2.lines = ["99"]
+rc2 = cb_pe.Installer(fs).run(ui2)
+win2, _ = fb_vols(fs)
+ck("cài lại TỪ XA (lệnh từ web, không ai ngồi máy) → KHÔNG hỏi số máy; số máy cũ do web giữ", rc2 == 0 and not any(p[1].startswith("<line>") for p in ui2.prompts) and "code" not in json.loads(win2.files["cloudbluepc\\seed.json"]), ui2.prompts[-3:])
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "21.11a"
+BUILD_VER = "21.11b"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -121,8 +121,58 @@ def adopt_driver_drops(cb, images):
     return got
 
 
+def inf_info(path):
+    """Đọc phần [Version] của 1 file .inf → (loại driver, hãng), chữ ASCII ngắn: ("Net", "Realtek") · ("Display", "NVIDIA")… Không đọc được → ("", "").
+       File .inf có thể là UTF-16 (có / không có BOM), UTF-8 hoặc ANSI."""
+    try:
+        with open(path, "rb") as f: raw = f.read(8 << 20)
+    except OSError:
+        return "", ""
+    if raw[:2] in (b"\xff\xfe", b"\xfe\xff"): txt = raw.decode("utf-16", "replace")
+    elif raw[:3] == b"\xef\xbb\xbf": txt = raw[3:].decode("utf-8", "replace")
+    elif b"\x00" in raw[:400]: txt = raw.decode("utf-16-le", "replace")
+    else: txt = raw.decode("latin-1")
+    cls = prov = sect = ""
+    strings = {}
+    for line in txt.splitlines():
+        t = line.split(";", 1)[0].strip()
+        if not t: continue
+        if t.startswith("[") and t.endswith("]"):
+            sect = t[1:-1].strip().lower(); continue
+        if "=" not in t: continue
+        k, v = [x.strip() for x in t.split("=", 1)]
+        if sect == "version":
+            if k.lower() == "class" and not cls: cls = v
+            elif k.lower() == "provider" and not prov: prov = v
+        elif sect == "strings":
+            strings.setdefault(k.lower(), v.strip().strip('"'))
+    if len(prov) > 2 and prov.startswith("%") and prov.endswith("%"): prov = strings.get(prov[1:-1].lower(), prov[1:-1])
+    clean = lambda t, n: re.sub(r"[^A-Za-z0-9 ._+-]", "", t.strip().strip('"'))[:n].strip()
+    return clean(cls, 20), clean(prov, 22)
+
+
+def driver_kinds(d, deep=True):
+    """Tóm tắt loại driver trong 1 thư mục để nhìn khung TÓM TẮT là biết có driver card mạng không:
+       'card mang: 2 (rt640x64.inf Realtek; e1d65x64.inf Intel) | VGA: 1 | khac: 3'."""
+    net, vga, other = [], 0, 0
+    for root, dirs, files in os.walk(d):
+        dirs.sort()
+        for f in sorted(files):
+            if not f.lower().endswith(".inf"): continue
+            cls, prov = inf_info(os.path.join(root, f))
+            if cls.lower() == "net": net.append((re.sub(r"[^A-Za-z0-9._+-]", "_", f)[:28] + " " + prov).strip())
+            elif cls.lower() == "display": vga += 1
+            else: other += 1
+        if not deep: break
+    parts = ["card mang: %d%s" % (len(net), " (" + "; ".join(net[:5]) + ("; ..." if len(net) > 5 else "") + ")" if net else "")]
+    if vga: parts.append("VGA: %d" % vga)
+    if other: parts.append("khac: %d" % other)
+    return " | ".join(parts)
+
+
 def driver_report(cb):
-    """Các dòng tóm tắt driver dạng .inf sẽ được nạp lúc cài, theo từng thư mục cấp 1 của cb\\drivers (gọi SAU khi đã chuyển gói VGA đi).
+    """Các dòng tóm tắt driver dạng .inf sẽ được nạp lúc cài, theo từng thư mục cấp 1 của cb\\drivers (gọi SAU khi đã chuyển gói VGA đi). Mỗi dòng ghi kèm loại driver
+       (card mạng — kèm tên file + hãng —, VGA, khác) để chủ shop thấy ngay gói driver có phần card mạng hay không.
        Thư mục rỗng thì dọn luôn; thư mục có file mà không có .inf nào → dòng cảnh báo bắt đầu bằng (!)."""
     drv, lines = os.path.join(cb, "drivers"), []
     if not os.path.isdir(drv): return lines
@@ -131,13 +181,13 @@ def driver_report(cb):
         files = [f for _, _, fs in os.walk(d) for f in fs]
         return sum(f.lower().endswith(".inf") for f in files), len(files)
     loose = sum(f.lower().endswith(".inf") for f in os.listdir(drv) if os.path.isfile(os.path.join(drv, f)))
-    if loose: lines.append("DRIVER (file le trong drivers): %d file .inf - nap cho moi ban" % loose)
+    if loose: lines.append("DRIVER (file le trong drivers): %d file .inf [%s] - nap cho moi ban" % (loose, driver_kinds(drv, deep=False)))
     for n in sorted(os.listdir(drv)):
         d = os.path.join(drv, n)
         if not os.path.isdir(d): continue
         ninf, nall = count(d)
         who = ("chi nap khi cai ban %s" % n.lower()) if C.is_os_tag(n) else "nap cho moi ban"
-        if ninf: lines.append("DRIVER %s: %d file .inf - %s" % (n, ninf, who))
+        if ninf: lines.append("DRIVER %s: %d file .inf [%s] - %s" % (n, ninf, driver_kinds(d), who))
         elif nall: lines.append("(!) DRIVER %s: co %d file nhung KHONG co file .inf nao - khong nap duoc" % (n, nall))
         else: shutil.rmtree(d, ignore_errors=True)
     return lines

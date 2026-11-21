@@ -21,7 +21,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11a"
+PROV_VER = "21.11b"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -30,6 +30,9 @@ NVIDIA_RE = re.compile(r"^(\d{3}\.\d{2}-(notebook|desktop)-.*|nvidia-vga-.*)\.ex
 VGA_TRIES = 3                            # chạy bộ cài VGA tối đa 3 lần (lần đăng nhập đầu + các lần agent gọi lại)
 NET_WAIT_VGA, NET_WAIT = 240, 60         # lần đăng nhập đầu chờ mạng tối đa: 4 phút khi có gói VGA phải cài, 1 phút khi không
 VGA_CMD_MARK = "cai driver VGA NVIDIA im lang"      # dấu của file 50-vga-nvidia.cmd do bộ tạo ISO bản cũ sinh ra (nay cb_provision tự cài → bỏ qua file đó)
+
+GHOST_SKIP_RIDS = (500, 501, 503, 504)      # Administrator · Guest · DefaultAccount · WDAGUtilityAccount có sẵn của Windows: không nhận làm tài khoản khách
+GHOST_TELL_WAIT = 25                         # bản ghost: chờ Windows tự đăng nhập xong rồi mới hiện lời báo "đang hoàn tất cài đặt" lên màn hình
 
 TASK_XML = """<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
@@ -86,6 +89,42 @@ def spi_wallpaper(path):
     """Đặt ảnh nền cho tài khoản đang đăng nhập (SPI_SETDESKWALLPAPER, ghi vào hồ sơ + báo cho Windows). True nếu được."""
     import ctypes
     return bool(ctypes.windll.user32.SystemParametersInfoW(20, 0, path, 3))
+
+
+def pick_ghost_user(users, hints, want):
+    """Bản Windows kiểu ghost đã có sẵn tài khoản → chọn tài khoản để NHẬN làm tài khoản khách (giữ nguyên hồ sơ: màn hình nền, phần mềm cài sẵn).
+       users = [{"name", "rid", "off"}] · hints = tên tài khoản Windows đang tự đăng nhập / đăng nhập gần nhất (ưu tiên từ trái sang) · want = tên tài khoản khách.
+       Trả (tên, kiểu):  (tên, "have") đã có đúng tên đó · (tên, "adopt") nhận tài khoản này rồi đổi tên · (None, "new") phải tạo mới ·
+       (None, "bia") tên muốn dùng trùng tài khoản có sẵn của Windows (Administrator, Guest…) — không dùng được."""
+    low = {u["name"].lower(): u for u in users}
+    u = low.get((want or "").lower())
+    if u: return (None, "bia") if u["rid"] in GHOST_SKIP_RIDS else (u["name"], "have")
+    ok = [x for x in users if x["rid"] >= 1000 and not x["off"]]
+    for h in hints:
+        h = (h or "").replace("/", "\\").split("\\")[-1].strip().lower()
+        if not h: continue
+        u = low.get(h)
+        if u is not None and u in ok: return u["name"], "adopt"
+        if u is not None and u["rid"] == 500: return None, "new"      # ảnh ghost dùng thẳng tài khoản Administrator có sẵn: không hạ quyền được → tạo tài khoản mới
+    if len(ok) == 1: return ok[0]["name"], "adopt"
+    return None, "new"
+
+
+def real_blank_pw(user):
+    """Tài khoản cục bộ `user` có mật khẩu TRỐNG không? Thử đăng nhập bằng mật khẩu rỗng: được, hoặc bị từ chối vì "tài khoản mật khẩu trống chỉ đăng nhập tại máy"
+       (lỗi 1327) → True; sai mật khẩu (1326) → False; lỗi khác → None."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        a = ctypes.WinDLL("advapi32", use_last_error=True)
+        a.LogonUserW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+        h = wintypes.HANDLE()
+        if a.LogonUserW(user, ".", "", 2, 0, ctypes.byref(h)):       # LOGON32_LOGON_INTERACTIVE, LOGON32_PROVIDER_DEFAULT
+            ctypes.WinDLL("kernel32").CloseHandle(h); return True
+        err = ctypes.get_last_error()
+        return True if err == 1327 else False if err == 1326 else None
+    except Exception:
+        return None
 
 
 def real_net(host, port, timeout=4):
@@ -147,7 +186,7 @@ def real_recovery_root():
 
 
 class Prov:
-    def __init__(self, base=BASE, run=None, log=None, spi=None, admin=None, rec=None, now=None, net=None, gpu=None, sleep=None, say=None):
+    def __init__(self, base=BASE, run=None, log=None, spi=None, admin=None, rec=None, now=None, net=None, gpu=None, sleep=None, say=None, blank=None):
         self.base = base
         self._run = run or self._real_run
         self._spi = spi or spi_wallpaper
@@ -158,6 +197,7 @@ class Prov:
         self._gpu = gpu or real_nvidia_state    # () → (có card NVIDIA, card đã có driver NVIDIA)
         self._sleep = sleep or time.sleep
         self._say = say
+        self._blank = blank or real_blank_pw    # (tên tài khoản) → mật khẩu đang trống?
         self.lines = []
         self._log = log
 
@@ -232,7 +272,16 @@ class Prov:
             return {}
 
     # ------------------------------------------------------------------ các phần
+    def pw_never_expires(self):
+        """Tài khoản do file trả lời tạo có mật khẩu HẾT HẠN sau 42 ngày (mặc định của Windows) — kể cả mật khẩu trống. Tới ngày đó Windows bắt đổi mật khẩu lúc đăng nhập,
+           mà tài khoản khách bị cấm tự đổi mật khẩu → kẹt ở màn hình đăng nhập. Bỏ hạn mật khẩu cho cả máy (1 lần là đủ, làm lại vô hại)."""
+        if os.path.exists(self.mark("pwage.done")): return True
+        ok = self.sh(["net", "accounts", "/maxpwage:unlimited"], "mat khau tai khoan khong het han (mac dinh Windows: 42 ngay)")
+        if ok: self.touch("pwage.done")
+        return ok
+
     def policies(self):
+        self.pw_never_expires()
         self.reg(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\OOBE", "DisablePrivacyExperience", "REG_DWORD", 1)          # bỏ trang "quyền riêng tư" lúc đăng nhập đầu
         self.reg(r"HKLM\SOFTWARE\Policies\Microsoft\Windows\Personalization", "NoLockScreen", "REG_DWORD", 1)           # không màn hình khoá
         self.reg(r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System", "PromptOnSecureDesktop", "REG_DWORD", 0)   # hộp hỏi quyền hiện trên màn hình thường
@@ -261,13 +310,14 @@ class Prov:
         ok2 = self.sh(["schtasks", "/create", "/tn", TASK_WATCH, "/sc", "minute", "/mo", "5", "/ru", "SYSTEM", "/rl", "highest", "/tr", watch, "/f"], "tac vu canh 5 phut")
         return ok and ok2
 
-    def autologon(self):
+    def autologon(self, domain=None):
+        """Tự đăng nhập bằng tài khoản khách. domain = tên máy SẼ dùng sau lần khởi động lại (bản ghost vừa bị đổi tên máy); bỏ trống = tên máy hiện tại."""
         c = self.cfg()
         user, pw = c.get("user") or "PC", c.get("password") or ""
         wl = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
         self.reg(wl, "AutoAdminLogon", "REG_SZ", 1)
         self.reg(wl, "DefaultUserName", "REG_SZ", user)
-        self.reg(wl, "DefaultDomainName", "REG_SZ", os.environ.get("COMPUTERNAME", "."))
+        self.reg(wl, "DefaultDomainName", "REG_SZ", domain or os.environ.get("COMPUTERNAME", "."))
         self.reg(wl, "DefaultPassword", "REG_SZ", pw)
         self._run(["reg", "delete", wl, "/v", "AutoLogonCount", "/f"], 60)          # bỏ bộ đếm → tự đăng nhập mãi (không hết sau N lần)
 
@@ -439,13 +489,17 @@ class Prov:
         self.vga_mark("fail", tries); return "fail"
 
     # ------------------------------------------------------------------ bảo mật
+    def core(self):
+        lib = os.path.join(self.base, "lib")
+        if lib not in sys.path: sys.path.insert(0, lib)
+        import cbcore
+        return cbcore
+
     def lockdown(self):
         """Khoá quyền C:\\CloudBluePC (chỉ SYSTEM + Administrators; tài khoản thường chỉ đọc + chạy py\\ và os\\) và gốc phân vùng cứu hộ.
            Cần quyền quản trị. Trả True nếu mọi lệnh icacls đều xong."""
         try:
-            lib = os.path.join(self.base, "lib")
-            if lib not in sys.path: sys.path.insert(0, lib)
-            import cbcore
+            cbcore = self.core()
             cmds, vol = cbcore.acl_lock_cmds(self.base), cbcore.acl_vol_cmds
         except Exception as e:
             self.log("LOI nap cbcore de khoa quyen: %r" % (e,)); return False
@@ -563,10 +617,13 @@ class Prov:
            đầu không làm xong (mất điện giữa chừng, bản Windows tuỳ biến không chạy file trả lời…). KHÔNG khởi động lại máy."""
         if not self.is_admin(): return False
         self.touch("system.first")
+        self.pw_never_expires()
         self.lockdown()
         done, started, first = self.mark_age("firstlogon.done"), self.mark_age("firstlogon.start"), self.mark_age("system.first")
         # chỉ hạ quyền khi lần đăng nhập đầu ĐÃ xong (script riêng của chủ shop cần quyền Admin), hoặc đã quá 1 giờ mà nó không xong
         if done is not None or (started is not None and started > 3600) or (started is None and first is not None and first > 3600):
+            if done is None and self.ghost_needed(late=True):       # 1 giờ rồi vẫn chưa có tài khoản khách: bản kiểu ghost mà bộ cài không nhận ra → dựng tại đây
+                return self.ghost()
             changed = self.harden()
             try:                                                     # driver VGA còn dở (lần đăng nhập đầu chưa có mạng / card chưa nhận driver) → làm nốt
                 if self.vga_packs(): self.vga(lambda: self.net_wait(45) is not None)
@@ -591,7 +648,150 @@ class Prov:
         if not have:
             self.log("LOI boot: chua tao duoc tac vu agent - lan bat may sau thu lai"); return False
         self.start_agent()
+        if self.ghost_needed():
+            if not self.ghost(): return False                       # chưa xong → GIỮ dịch vụ, lần bật máy sau làm tiếp
         self.sh(["sc", "delete", BOOT_SVC], "go dich vu khoi dong (het viec)")
+        return True
+
+    # ------------------------------------------------------------------ bản Windows kiểu GHOST (ảnh chụp 1 máy đã cài sẵn — không chạy file trả lời)
+    def image_oobe(self):
+        """Bộ cài ghi logs\\image.json: True = bản cài bình thường (sẽ chạy file trả lời) · False = kiểu ghost · None = không rõ."""
+        try:
+            with open(self.mark("image.json"), encoding="utf-8-sig") as f: v = json.load(f).get("oobe")
+            return v if isinstance(v, bool) else None
+        except Exception:
+            return None
+
+    def setup_live(self):
+        """Windows ĐANG CHẠY có đang ở bước "cài đặt lần đầu" không (đọc registry thật): True / False / None = không đọc được."""
+        rc, out = self._run(["reg", "query", r"HKLM\SYSTEM\Setup"], 60)
+        if rc != 0: return None
+        try: return self.core().setup_state(out)
+        except Exception: return None
+
+    def ghost_needed(self, late=False):
+        """Có phải bản kiểu ghost CHƯA được dựng tài khoản khách không. late = agent gọi sau 1 giờ (lưới cuối: chỉ cần chưa có tài khoản khách + Windows không ở bước cài)."""
+        if os.path.exists(self.mark("ghost.done")) or os.path.exists(self.mark("firstlogon.done")): return False
+        resume = self.mark_age("ghost.start") is not None           # lần trước làm dở (mất điện) → làm tiếp
+        if not resume and self.mark_age("firstlogon.start") is not None and not late: return False      # lần đăng nhập đầu kiểu thường đang chạy
+        oobe = self.image_oobe()
+        if late:
+            user = self.cfg().get("user") or "PC"
+            if self._run(["net", "user", user], 60)[0] == 0 and not resume: return False               # đã có tài khoản khách → việc của harden()
+            return self.setup_live() is False
+        if oobe is True and not resume: return False                # bản cài bình thường: file trả lời lo
+        live = self.setup_live()
+        return live is False if oobe is None else live is not True
+
+    def reg_value(self, key, name):
+        rc, out = self._run(["reg", "query", key, "/v", name], 60)
+        m = re.search(r"^\s*%s\s+REG_\w+[ \t]*(.*?)\s*$" % re.escape(name), out or "", re.M | re.I) if rc == 0 else None
+        return m.group(1).strip() if m else ""
+
+    def local_users(self):
+        """Tài khoản cục bộ của máy: [{"name", "rid", "off"}] (hỏi WMI — không phụ thuộc ngôn ngữ Windows). Không hỏi được → None."""
+        ps = ("Get-WmiObject Win32_UserAccount -Filter 'LocalAccount=True' | ForEach-Object { Write-Output ('U=' + $_.Name + '|' + $_.SID + '|' + $_.Disabled + '|') }; "
+              "Write-Output 'U_END'")
+        rc, out = self._run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps], 180)
+        if rc != 0 or "U_END" not in (out or ""): return None
+        return [{"name": n.strip(), "rid": int(sid.rsplit("-", 1)[1]), "off": off == "True"}
+                for n, sid, off in re.findall(r"^U=([^|\r\n]+)\|(S-1-5-21-[0-9-]+)\|(True|False)\|", out, re.M)]
+
+    def rename_user(self, old, new):
+        """Đổi tên 1 tài khoản cục bộ (hồ sơ C:\\Users\\<tên cũ> giữ nguyên). ADSI trước, wmic dự phòng."""
+        if old.lower() == new.lower(): return True
+        q = lambda t: t.replace("'", "''")
+        ps = "$u=[ADSI]('WinNT://./%s,user'); $u.psbase.Rename('%s'); Write-Output 'RN_OK'" % (q(old), q(new))
+        rc, out = self._run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps], 180)
+        if not (rc == 0 and "RN_OK" in (out or "")):
+            self._run(["wmic", "useraccount", "where", "name='%s'" % old.replace("'", ""), "rename", new], 180)
+        return self._run(["net", "user", new], 60)[0] == 0          # kiểm lại: đã có tài khoản tên mới
+
+    def seed_name(self):
+        """Tên máy bộ cài đã cấp (seed.json) — đúng kiểu tên máy Windows thì trả, không thì ''."""
+        try:
+            with open(os.path.join(self.base, "seed.json"), encoding="utf-8-sig") as f: n = str(json.load(f).get("name") or "")
+        except Exception:
+            n = ""
+        return n if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9-]{0,14}", n) else ""
+
+    def rename_pc(self, target):
+        """Đổi tên máy (có hiệu lực sau khi khởi động lại). Trả True nếu vừa ra lệnh đổi được."""
+        cur = os.environ.get("COMPUTERNAME", "")
+        if not target or cur.lower() == target.lower(): return False
+        ps = "Rename-Computer -NewName '%s' -Force -ErrorAction Stop; Write-Output 'RC_OK'" % target
+        rc, out = self._run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", ps], 300)
+        ok = rc == 0 and "RC_OK" in (out or "")
+        if not ok and cur:
+            rc, out = self._run(["wmic", "computersystem", "where", "name='%s'" % cur, "call", "rename", "name='%s'" % target], 300)
+            ok = rc == 0 and re.search(r"ReturnValue\s*=\s*0\b", out or "") is not None
+        self.log("%s doi ten may %s -> %s (co hieu luc sau khi khoi dong lai)" % ("ok " if ok else "LOI", cur or "?", target))
+        return ok
+
+    def tell(self, text, secs=300):
+        """Hiện 1 hộp báo cho người đang ngồi tại máy (mọi phiên đăng nhập) — không có msg.exe / chưa ai đăng nhập thì thôi."""
+        try: self._run([os.path.join(os.environ.get("SystemRoot", "C:\\Windows"), "System32", "msg.exe"), "*", "/TIME:%d" % secs, text[:250]], 30)
+        except Exception: pass
+
+    def ghost_account(self, user, pw):
+        """Dựng tài khoản khách trên bản ghost. Trả "have" / "adopt" / "new"; None = chưa làm được (lần bật máy sau thử lại)."""
+        us = self.local_users()
+        if us is None:
+            self.log("LOI ghost: khong doc duoc danh sach tai khoan cua may"); return None
+        hints = [self.reg_value(r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon", "DefaultUserName"),
+                 self.reg_value(r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\LogonUI", "LastLoggedOnSAMUser")]
+        name, how = pick_ghost_user(us, hints, user)
+        if how == "bia":
+            self.log("LOI ghost: ten tai khoan khach '%s' trung tai khoan co san cua Windows - tao lai ISO voi ten khac (-TaiKhoan)" % user); return None
+        if how == "adopt":
+            if self.rename_user(name, user):
+                self.log("ok  NHAN tai khoan co san '%s' lam tai khoan khach '%s' (giu nguyen ho so: man hinh nen, phan mem cai san)" % (name, user))
+                self._run(["net", "user", user, "/fullname:" + user], 60)
+            else:
+                self.log("LOI khong doi duoc ten tai khoan '%s' -> '%s' - tao tai khoan khach moi" % (name, user)); how = "new"
+        if how == "new":
+            if not self.quiet(["net", "user", user, pw, "/add"], "tao tai khoan khach moi '%s'" % user): return None
+        else:                                                        # tài khoản có sẵn: đặt mật khẩu theo cb.json (để trống thì chỉ đặt lại khi mật khẩu cũ không trống)
+            if pw or self._blank(user) is not True:
+                self.quiet(["net", "user", user, pw], "dat mat khau tai khoan khach theo cau hinh (%s)" % ("co mat khau" if pw else "de trong"))
+        self._run(["net", "user", user, "/active:yes"], 60)
+        adm = self.names()[0]
+        for u in (self.local_users() or []):                        # tài khoản KHÁC có sẵn trong ảnh (kể cả Guest đang bật): tắt + gỡ khỏi nhóm quản trị. Administrator có sẵn: harden() lo
+            if u["name"].lower() == user.lower() or u["off"] or u["rid"] in (500, 503, 504): continue
+            self.sh(["net", "user", u["name"], "/active:no"], "tat tai khoan khac co san trong anh: '%s'" % u["name"])
+            self._run(["net", "localgroup", adm, u["name"], "/delete"], 60)
+        return how
+
+    def ghost(self):
+        """BẢN WINDOWS KIỂU GHOST: khởi động thẳng vào tài khoản có sẵn, KHÔNG chạy file trả lời → dịch vụ khởi động (SYSTEM) làm thay toàn bộ:
+             1. tài khoản khách: nhận tài khoản ảnh đang dùng (đổi tên theo cb.json, giữ hồ sơ) — không có thì tạo mới; tắt các tài khoản khác
+             2. tự đăng nhập bằng tài khoản khách + đổi tên máy theo tên bộ cài đã cấp (seed.json)
+             3. việc của "lần đăng nhập đầu": script riêng của chủ shop → chờ có mạng → driver VGA → khoá tài khoản khách (harden)
+             4. khởi động lại 1 lần (tên máy mới + quyền mới có hiệu lực)
+           Mất điện giữa chừng → lần bật máy sau làm lại (bước đã xong tự bỏ qua). Trả True khi xong."""
+        self.touch("ghost.start"); self.touch("firstlogon.start")
+        self.log("=== ghost (ban %s): ban Windows kieu ghost (khong chay file tra loi) -> tu dung tai khoan khach ===" % PROV_VER)
+        c = self.cfg()
+        user, pw = c.get("user") or "PC", c.get("password") or ""
+        self._sleep(GHOST_TELL_WAIT)
+        self.tell("CloudBlue PC: dang hoan tat cai dat may nay (vai phut). KHONG tat may - xong may se TU KHOI DONG LAI 1 lan.", 900)
+        how = self.ghost_account(user, pw)
+        if how is None:
+            self.log("LOI ghost: chua dung duoc tai khoan khach - lan bat may sau thu lai"); return False
+        target = self.seed_name()
+        self.rename_pc(target)
+        self.autologon(domain=target or None)
+        self.firstboot()                                             # script riêng của chủ shop (driver .exe…) — chạy bằng SYSTEM
+        limit = NET_WAIT_VGA if self.vga_needed() else NET_WAIT
+        waited = self.net_wait(limit)
+        self.log("ok  may da co mang (cho %d giay)" % waited if waited is not None else "LOI chua co mang sau %d giay (day mang / driver card mang?)" % limit)
+        try: self.vga(waited is not None)
+        except Exception as e:
+            self.log("LOI buoc VGA: %r" % (e,))
+        self.harden()
+        self.touch("firstlogon.done"); self.touch("ghost.done")
+        self.sh(["shutdown", "/r", "/t", "30", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 30 giay")
+        self.log("xong ghost (tai khoan khach: %s)" % {"have": "da co san", "adopt": "nhan tai khoan cua anh", "new": "tao moi"}[how])
         return True
 
     def start_agent(self):
