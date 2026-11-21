@@ -21,10 +21,10 @@ PROD = {"id": PROD_ID, "cat": "vps", "name": "VPS GPU BLUE", "price": 360000, "d
         "features": ["2686V4", "RAM 128GB", "VGA 1080-8GB", "NVME 512GB", "MẠNG 1000 MBPS"]}
 OS = [{"id": "22h2", "name": "Windows 10 Pro 22H2"}, {"id": "1511", "name": "Windows 10 Pro 1511"}]
 INFO = {"on": True, "product": PROD_ID, "ready": True, "reinstall_max": 2, "os": [dict(OS[0], fast=True), dict(OS[1], fast=False)]}
-FUT = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() + 6 * 86400 + 5 * 3600))
+FUT = time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() + 29 * 86400 + 5 * 3600 + 120))
 MINE = {"product": PROD_ID, "reinstall_max": 2, "os": OS, "items": [
-    {"rental": 7, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": FUT, "left": 2, "used": 0,
-     "pc": {"id": "00000000-0000-4000-8000-0000000000c1", "name": "May-01", "code": "A1", "os": "22h2", "online": True, "remote": True, "off": False,
+    {"rental": 7, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 30, "until": FUT, "left": 2, "used": 0,
+     "pc": {"id": "00000000-0000-4000-8000-0000000000c1", "name": "VPS-GPU-01", "code": "A1", "os": "22h2", "online": True, "remote": True, "off": False,
             "job": None, "last_job": None, "ram_gb": 128, "gpus": ["NVIDIA GeForce GTX 1080"]}}]}
 
 
