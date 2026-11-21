@@ -2917,6 +2917,10 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
     <label>Số máy (vị trí máy trong dàn — hiện trên màn hình máy để khách báo lỗi đúng máy)<input class="in" id="pcad-code" maxlength="40" placeholder="VD: 14-85 hoặc A07"></label>
     <label>Ghi chú<input class="in" id="pcad-note" maxlength="500"></label>
     <label>Trạng thái<select class="in" id="pcad-status" style="width:100%"><option value="new">Chờ duyệt</option><option value="ready">Sẵn sàng (trong kho)</option><option value="rented">Đang cho thuê</option><option value="maint">Bảo trì</option></select></label>
+    <div id="pcad-v43" hidden>
+      <label>Tài khoản khách trên web (tên đăng nhập hoặc email) — khách tự mở máy ở mục "VPS GPU của bạn" trên web / app<input class="in" id="pcad-user" maxlength="200" autocomplete="off" spellcheck="false" placeholder="để trống = máy chưa gán cho khách nào"></label>
+      <label class="pca-chk"><input type="checkbox" id="pcad-remote"> Cho điều khiển từ xa máy này (web / app)</label>
+    </div>
     <div class="amts" style="grid-template-columns:repeat(2,1fr)">
       <button type="button" data-pcact="reboot">🔁 Khởi động lại</button><button type="button" data-pcact="shutdown">⏻ Tắt máy</button>
       <button type="button" data-pcact="reenroll">🔓 Cho đăng ký lại</button><button type="button" data-pcact="delete">🗑 Xoá khỏi danh sách</button>
@@ -12709,7 +12713,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
     BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
     BAD_PATCH: "Dữ liệu gửi lên không hợp lệ.", BAD_POLL: "Chu kỳ báo sống phải từ 10 đến 600 giây.", BAD_HOURS: "Số giờ gia hạn không hợp lệ (mỗi lần tối đa 366 ngày).",
-    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ." };
+    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ.",
+    NO_USER: "Không thấy tài khoản này — gõ đúng tên đăng nhập hoặc email của khách.", MANY_USERS: "Có nhiều tài khoản trùng tên này — gõ email của khách." };
   // v42: null = chưa biết (thử đọc cột mới) · true = đã chạy cloud-pc-v42.sql · false = chưa chạy (đọc kiểu cũ, không thử lại cho tới khi bấm Tải lại / mở lại thẻ)
   const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, kickAt: 0 };
   // info / result do MÁY CHO THUÊ gửi lên (khách có quyền admin trên máy đó) → coi là dữ liệu lạ: ép kiểu, cắt ngắn, luôn esc() khi in
@@ -13037,6 +13042,21 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     $i("pcad-info").textContent = `${S(m.os, 20).toUpperCase() || "?"} · ${S(m.lan_ip, 64) || "?"} · đăng ký ${m.first_seen ? ago(m.first_seen) : "?"}${host ? " · tên Windows: " + host : ""}`;
     $i("pcad-name").value = m.name || ""; $i("pcad-code").value = m.code || ""; $i("pcad-note").value = m.note || ""; $i("pcad-status").value = m.status;
     $i("pcad-err").textContent = ""; show("pcadlg");
+    P.asg = null; show("pcad-v43", false); $i("pcad-user").value = ""; $i("pcad-remote").checked = true;
+    assignLoad(m);
+  }
+  // v43: gán máy cho TÀI KHOẢN khách (khách tự mở máy ở "VPS GPU của bạn" trên web / app) + bật / tắt điều khiển từ xa từng máy. Chưa chạy v43 → ẩn.
+  async function assignLoad(m) {
+    try {
+      const r = await sb.from("pc_machines").select("user_id,remote").eq("id", m.id).maybeSingle();
+      if (r.error || !r.data || P.cur !== m) return;
+      let who = "";
+      const uid = typeof r.data.user_id === "string" ? r.data.user_id : null;
+      if (uid) { const u = await sb.from("profiles").select("username,email").eq("id", uid).maybeSingle(); who = S((u.data && (u.data.username || u.data.email)) || "", 200) || uid; }
+      if (P.cur !== m) return;
+      P.asg = { id: m.id, uid, who, remote: r.data.remote !== false };
+      $i("pcad-user").value = who; $i("pcad-remote").checked = P.asg.remote; show("pcad-v43", true);
+    } catch (e) {}
   }
   $i("pcad-cancel").onclick = () => show("pcadlg", false);
   $i("pcad-save").onclick = async () => {
@@ -13045,7 +13065,19 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!name) { $i("pcad-err").textContent = "Nhập tên máy."; return; }
     const patch = { name, code: $i("pcad-code").value.trim(), note: $i("pcad-note").value.trim(), status: $i("pcad-status").value };
     patch.approved = patch.status !== "new";                 // "Chờ duyệt" = chưa duyệt; các trạng thái khác = đã duyệt
-    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, "Đã lưu.", $i("pcad-save"));
+    const g = P.asg && P.asg.id === m.id ? P.asg : null, ap = {};
+    if (g) {
+      const u = $i("pcad-user").value.trim();
+      if (u !== g.who) ap.user = u;
+      if ($i("pcad-remote").checked !== g.remote) ap.remote = $i("pcad-remote").checked;
+    }
+    if (Object.keys(ap).length) {                              // gán khách trước: gõ sai tên thì báo ngay, chưa lưu gì
+      const { error } = await sb.rpc("pc_admin_assign", { p_id: m.id, p_patch: ap });
+      if (error) { $i("pcad-err").textContent = em(error); return; }
+      P.asg = null;
+    }
+    const msg = "user" in ap ? (ap.user ? "Đã lưu · đã gán máy cho " + ap.user + "." : "Đã lưu · đã bỏ gán khách.") : "Đã lưu.";
+    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, msg, $i("pcad-save"));
     if (r) show("pcadlg", false);
   };
   document.querySelector("#pcadlg .amts").onclick = async e => {
@@ -13451,6 +13483,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const spec = [S(it.os_name, 40), gpu, pc.ram_gb ? Math.round(+pc.ram_gb) + "GB RAM" : ""].filter(Boolean).join(" · ");
     const acts = it.rental === null && !it.pc ? "" : [
       pc.id ? (canCtl ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(pc.id, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`) : "",
+      pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : ""
     ].join("");
@@ -13475,7 +13508,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   }
   // ---- cài lại / đổi Windows
   document.addEventListener("click", async e => {
-    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew]"); if (!b) return;
+    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp]"); if (!b) return;
+    if (b.dataset.pcsapp) return appOpen(b.dataset.pcsapp);
     if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
     if (b.dataset.pcsrenew) return renewOpen(b.dataset.pcsrenew);
     if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); return; }
@@ -13484,6 +13518,27 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (b.dataset.pcsrnew) return renewGo(b);
   });
   const itemOf = id => A(O(PC.mine).items).find(x => O(x.pc).id === id);
+  // ---- 📲 mở máy PC bằng app (app máy tính 1.127+ / app Android 1.132+ hiểu link blueroblox://pc/<máy>) hoặc ngay trên trình duyệt
+  function appOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    const pid = encodeURIComponent(S(id, 40)), ua = navigator.userAgent;
+    const isAnd = /Android/i.test(ua), isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webFirst = isIos || /Macintosh|Mac OS X/.test(ua);
+    const pcDl = typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe", apk = typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+    const lPc = "blueroblox://pc/" + pid, lAnd = "intent://pc/" + pid + "#Intent;scheme=blueroblox;package=shop.blueroblox.app;S.browser_fallback_url=" + encodeURIComponent(location.origin + apk) + ";end";
+    const sPc = `<div class="shsec"><b>💻 ${L("App máy tính (Windows)", "PC app (Windows)")}</b>
+        <a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(lPc)}" data-pcsx="1">▶ ${L("Mở bằng app máy tính", "Open with the PC app")}</a>
+        <a class="btn ghost sm" href="${esc(pcDl)}" download>⬇️ ${L("Tải app máy tính", "Download the PC app")}</a></div>`;
+    const sAnd = `<div class="shsec"><b>📱 ${L("App Android", "Android app")}</b>${isAnd
+        ? `<a class="btn" href="${esc(lAnd)}" data-pcsx="1">▶ ${L("Mở bằng app Android", "Open with the Android app")}</a><a class="btn ghost sm" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`
+        : `<a class="btn ghost" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`}</div>`;
+    const sWeb = `<div class="shsec"><b>🌐 ${L("Trình duyệt (iPhone, iPad, Mac, máy chưa cài app)", "Browser (iPhone, iPad, Mac, any device)")}</b>
+        <a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${pid}">▶ ${L("Mở ngay trên trình duyệt", "Open in the browser")}</a></div>`;
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">📲 ${L("Mở máy trong app", "Open in app")}</h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="hint">🖥️ <b>${esc(S(O(it.pc).name, 40) || "VPS GPU")}</b>${it.os_name ? " · " + esc(S(it.os_name, 40)) : ""}</div>
+      ${webFirst ? sWeb + sPc + sAnd : isAnd ? sAnd + sPc + sWeb : sPc + sAnd + sWeb}
+      <p class="hint" style="margin:0">💡 ${L("Cần app máy tính 1.127 / app Android 1.132 trở lên (app tự báo cập nhật). Đăng nhập cùng tài khoản là thấy máy ở mục <b>VPS GPU</b>.", "Needs PC app 1.127 / Android app 1.132 or newer (the app offers the update). Sign in with the same account to see the machine under <b>GPU VPS</b>.")}</p>`);
+  }
   function reOpen(id) {
     const it = itemOf(id); if (!it) return;
     const os = A(O(PC.mine).os); PC.reid = id; PC.reos = it.os && os.some(o => o.id === it.os) ? it.os : (os[0] || {}).id;
