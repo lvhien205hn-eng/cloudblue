@@ -2,6 +2,11 @@ package shop.blueroblox.app;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Canvas;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.os.SystemClock;
+import android.view.View;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -62,6 +67,17 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     private int picX, picY, picW, picH;
     private int downMask = 0;
     private final float[] lastX = new float[10], lastY = new float[10];
+
+    // ---- 21/11f · máy PC: KIỂU CHẠM (như Chrome Remote Desktop) + phóng to / kéo hình tại chỗ (chỉ trong app, máy PC không biết) ----
+    public static final int IN_TOUCH = 0, IN_PAD = 1, IN_ZOOM2 = 2, IN_ZOOM3 = 3;
+    private int inMode = IN_TOUCH;
+    private int vX, vY, vW, vH, lastW = -1, lastH = -1;     // hình đang hiện (đã phóng / kéo); không phóng = đúng khung vừa màn
+    private float zs = 1f, zSpan0 = 1f, zS0 = 1f, zU = .5f, zV = .5f;
+    private boolean zooming = false;
+    private Cursor cursor;                                   // con trỏ tại chỗ (kiểu Bàn di chuột) — hiện ngay, không chờ hình về
+    private float curX = .5f, curY = .5f, pLastX, pLastY, pDownX, pDownY, pMoved, sAcc;
+    private long pDownT, pLastTapT, mvAt;
+    private boolean pDrag, pTwo, pTwoMoved, pLong, mvPend;
 
     // ---- luồng giải mã (chỉ BRS-decode đụng vào) ----
     private Surface surface;
@@ -155,12 +171,28 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
         int w = MeasureSpec.getSize(ws), h = MeasureSpec.getSize(hs);
         setMeasuredDimension(w, h);
         fit(w, h);
-        sv.measure(MeasureSpec.makeMeasureSpec(picW, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(picH, MeasureSpec.EXACTLY));
+        view(w, h);
+        sv.measure(MeasureSpec.makeMeasureSpec(Math.max(1, vW), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(Math.max(1, vH), MeasureSpec.EXACTLY));
+        if (cursor != null) cursor.measure(MeasureSpec.makeMeasureSpec(cursor.w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(cursor.h, MeasureSpec.EXACTLY));
     }
 
     @Override protected void onLayout(boolean changed, int l, int t, int r, int b) {
-        fit(r - l, b - t);
-        sv.layout(picX, picY, picX + picW, picY + picH);
+        int w = r - l, h = b - t;
+        fit(w, h);
+        view(w, h);
+        sv.layout(vX, vY, vX + vW, vY + vH);
+        placeCursor();
+    }
+
+    /** 21/11f · khung hình đang hiện: không phóng = vừa màn (viền đen); phóng to = to hơn khung, kéo được, không lòi mép trống. */
+    private void view(int w, int h) {
+        if (w != lastW || h != lastH) { if (lastW > 0) zs = 1f; lastW = w; lastH = h; }    // xoay máy / đổi cỡ → về vừa màn
+        if (zs <= 1.001f) { zs = 1f; vX = picX; vY = picY; vW = picW; vH = picH; return; }
+        int nw = Math.round(picW * zs), nh = Math.round(picH * zs);
+        if (vW <= 0) { vX = (w - nw) / 2; vY = (h - nh) / 2; }
+        vW = nw; vH = nh;
+        vX = vW <= w ? (w - vW) / 2 : Math.max(w - vW, Math.min(0, vX));
+        vY = vH <= h ? (h - vH) / 2 : Math.max(h - vH, Math.min(0, vY));
     }
 
     @Override public boolean shouldDelayChildPressedState() { return false; }
@@ -180,6 +212,8 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
 
     @Override public boolean onTouchEvent(MotionEvent e) {
         if (preview) return false;                                       // ô xem trước: để ô cha nhận bấm
+        if (inMode == IN_PAD) return padTouch(e);                        // 21/11f · bàn di chuột
+        if ((inMode == IN_ZOOM2 || inMode == IN_ZOOM3) && zoomTouch(e)) return true;   // 21/11f · 2 / 3 ngón = phóng to / kéo hình
         StreamClient c = client;
         final Mirror mr = mirror;
         int act = e.getActionMasked();
@@ -187,13 +221,13 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
             case MotionEvent.ACTION_DOWN:
             case MotionEvent.ACTION_POINTER_DOWN: {
                 int i = e.getActionIndex(), id = e.getPointerId(i);
-                if (id < 0 || id > 9 || picW <= 0 || picH <= 0) break;
-                float x = e.getX(i) - picX, y = e.getY(i) - picY;
-                if (x < 0 || y < 0 || x > picW || y > picH) break;       // chạm vào viền đen → bỏ qua ngón này
+                if (id < 0 || id > 9 || vW <= 0 || vH <= 0) break;
+                float x = e.getX(i) - vX, y = e.getY(i) - vY;
+                if (x < 0 || y < 0 || x > vW || y > vH) break;           // chạm vào viền đen → bỏ qua ngón này
                 if (act == MotionEvent.ACTION_DOWN && events != null) events.onTouchDown();
                 downMask |= 1 << id;
-                lastX[id] = x / picW;
-                lastY[id] = y / picH;
+                lastX[id] = x / vW;
+                lastY[id] = y / vH;
                 if (c != null) c.touch(StreamClient.TOUCH_DOWN, id, lastX[id], lastY[id]);
                 if (mr != null) mr.touch(StreamClient.TOUCH_DOWN, id, lastX[id], lastY[id]);
                 break;
@@ -241,21 +275,213 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
         downMask = 0;
     }
 
-    private float nx(float x) { return picW <= 0 ? 0f : Math.max(0f, Math.min(1f, (x - picX) / picW)); }
-    private float ny(float y) { return picH <= 0 ? 0f : Math.max(0f, Math.min(1f, (y - picY) / picH)); }
+    private float nx(float x) { return vW <= 0 ? 0f : Math.max(0f, Math.min(1f, (x - vX) / vW)); }
+    private float ny(float y) { return vH <= 0 ? 0f : Math.max(0f, Math.min(1f, (y - vY) / vH)); }
+
+    // ================================================================ 21/11f · kiểu chạm cho máy PC
+
+    /** IN_TOUCH chạm trực tiếp · IN_PAD bàn di chuột · IN_ZOOM2 / IN_ZOOM3 chạm trực tiếp + 2 / 3 ngón kéo-phóng to hình (tại chỗ). */
+    public void setInputMode(int m) {
+        if (m < IN_TOUCH || m > IN_ZOOM3) m = IN_TOUCH;
+        cancelAll(client);
+        if (pDrag) { StreamClient c = client; if (c != null) c.mouse(2, 0, curX, curY); }
+        zooming = false; pDrag = false; pTwo = false;
+        removeCallbacks(longPress);
+        inMode = m;
+        if (m == IN_TOUCH || m == IN_PAD) zs = 1f;                   // 2 kiểu này không phóng to → trả hình về vừa màn
+        if (m == IN_PAD) { if (cursor == null) { cursor = new Cursor(getContext()); addView(cursor); } cursor.setVisibility(VISIBLE); }
+        else if (cursor != null) cursor.setVisibility(GONE);
+        requestLayout();
+    }
+
+    public int inputMode() { return inMode; }
+    public boolean zoomed() { return zs > 1.01f; }
+    public void resetZoom() { zs = 1f; requestLayout(); }
+
+    private float dp(float v) { return v * getResources().getDisplayMetrics().density; }
+
+    /** Tâm + độ xoè của các ngón đang chạm (bỏ ngón skip — ngón vừa nhấc). out = {x, y, xoè}. */
+    private static void spread(MotionEvent e, int skip, float[] out) {
+        float sx = 0, sy = 0; int n = 0;
+        for (int i = 0; i < e.getPointerCount(); i++) { if (i == skip) continue; sx += e.getX(i); sy += e.getY(i); n++; }
+        if (n == 0) { out[0] = e.getX(); out[1] = e.getY(); out[2] = 1; return; }
+        sx /= n; sy /= n; float d = 0;
+        for (int i = 0; i < e.getPointerCount(); i++) { if (i == skip) continue; d += (float) Math.hypot(e.getX(i) - sx, e.getY(i) - sy); }
+        out[0] = sx; out[1] = sy; out[2] = Math.max(1f, d / n);
+    }
+
+    private final float[] sp = new float[3];
+
+    private void zAnchor(MotionEvent e, int skip) {
+        spread(e, skip, sp);
+        zSpan0 = sp[2]; zS0 = zs;
+        zU = vW <= 0 ? .5f : (sp[0] - vX) / vW;
+        zV = vH <= 0 ? .5f : (sp[1] - vY) / vH;
+    }
+
+    /** true = sự kiện dùng để phóng to / kéo hình (không gửi máy PC). */
+    private boolean zoomTouch(MotionEvent e) {
+        int need = inMode == IN_ZOOM2 ? 2 : 3, act = e.getActionMasked();
+        if (!zooming) {
+            if (act == MotionEvent.ACTION_POINTER_DOWN && e.getPointerCount() >= need) {
+                cancelAll(client);                                    // các ngón đã gửi máy → huỷ (không thành bấm / kéo)
+                zooming = true;
+                zAnchor(e, -1);
+                return true;
+            }
+            return false;                                             // ít ngón hơn → chạm thẳng vào máy như thường
+        }
+        switch (act) {
+            case MotionEvent.ACTION_MOVE: {
+                spread(e, -1, sp);
+                float z = Math.max(1f, Math.min(6f, zS0 * sp[2] / Math.max(1f, zSpan0)));
+                if (e.getPointerCount() < 2) z = zs;                   // còn 1 ngón → chỉ kéo
+                zs = z;
+                int nw = Math.round(picW * zs), nh = Math.round(picH * zs);
+                vW = nw; vH = nh;
+                vX = Math.round(sp[0] - zU * nw);
+                vY = Math.round(sp[1] - zV * nh);
+                requestLayout();
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN: zAnchor(e, -1); break;
+            case MotionEvent.ACTION_POINTER_UP: zAnchor(e, e.getActionIndex()); break;
+            case MotionEvent.ACTION_UP:
+            case MotionEvent.ACTION_CANCEL: zooming = false; break;
+            default: break;
+        }
+        return true;
+    }
+
+    // ---- bàn di chuột: kéo 1 ngón = di con trỏ · chạm = bấm trái · chạm 2 lần rồi giữ kéo = kéo thả · giữ yên = bấm phải
+    //      2 ngón chạm = bấm phải · 2 ngón kéo = cuộn
+    private final Runnable longPress = () -> {
+        if (pTwo || pDrag || pMoved > dp(10)) return;
+        pLong = true;
+        click(1);
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+    };
+
+    private void click(int button) {
+        StreamClient c = client; if (c == null) return;
+        c.mouse(0, 0, curX, curY); c.mouse(1, button, curX, curY); c.mouse(2, button, curX, curY);
+    }
+
+    private final Runnable mvSend = () -> { mvPend = false; mvAt = SystemClock.uptimeMillis(); StreamClient c = client; if (c != null) c.mouse(0, 0, curX, curY); };
+
+    private void moveTo() {
+        placeCursor();
+        if (mvPend) return;
+        long wait = 12 - (SystemClock.uptimeMillis() - mvAt);
+        if (wait <= 0) mvSend.run(); else { mvPend = true; postDelayed(mvSend, wait); }
+    }
+
+    private boolean padTouch(MotionEvent e) {
+        StreamClient c = client;
+        int act = e.getActionMasked();
+        long now = SystemClock.uptimeMillis();
+        switch (act) {
+            case MotionEvent.ACTION_DOWN: {
+                if (events != null) events.onTouchDown();
+                pDownT = now; pDownX = pLastX = e.getX(); pDownY = pLastY = e.getY(); pMoved = 0; pTwo = false; pTwoMoved = false; pLong = false;
+                if (now - pLastTapT < 300) { pDrag = true; if (c != null) { c.mouse(0, 0, curX, curY); c.mouse(1, 0, curX, curY); } }   // chạm 2 lần rồi giữ → kéo thả
+                else { pDrag = false; postDelayed(longPress, 550); }
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                removeCallbacks(longPress);
+                if (e.getPointerCount() == 2 && !pDrag) { pTwo = true; pTwoMoved = false; spread(e, -1, sp); pLastX = sp[0]; pLastY = sp[1]; sAcc = 0; }
+                break;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                if (pTwo) {
+                    spread(e, -1, sp);
+                    float dy = sp[1] - pLastY, dx = sp[0] - pLastX;
+                    pLastX = sp[0]; pLastY = sp[1];
+                    if (Math.abs(dx) + Math.abs(dy) > 0) pTwoMoved |= Math.hypot(sp[0] - pDownX, sp[1] - pDownY) > dp(12);
+                    sAcc += dy;
+                    float step = dp(18);
+                    while (Math.abs(sAcc) >= step && c != null) {             // ngón đi xuống → trang đi xuống theo ngón (như điện thoại)
+                        c.scroll(curX, curY, 0, sAcc > 0 ? 120 : -120);
+                        sAcc += sAcc > 0 ? -step : step;
+                    }
+                    break;
+                }
+                float dx = e.getX() - pLastX, dy = e.getY() - pLastY;
+                pLastX = e.getX(); pLastY = e.getY();
+                pMoved += Math.abs(dx) + Math.abs(dy);
+                if (pMoved > dp(10)) removeCallbacks(longPress);
+                float v = (float) Math.hypot(dx, dy), k = 1f + Math.min(2.2f, v / dp(6)) * .55f;      // ngón đi nhanh → con trỏ đi xa hơn
+                float base = Math.max(1, Math.min(picW, picH * 16 / 9f));
+                curX = Math.max(0f, Math.min(1f, curX + dx * k * 1.15f / base));
+                curY = Math.max(0f, Math.min(1f, curY + dy * k * 1.15f / (base * (vidH / (float) Math.max(1, vidW)))));
+                moveTo();
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_UP: {
+                if (pTwo && e.getPointerCount() == 2) {
+                    if (!pTwoMoved && now - pDownT < 400) click(1);          // 2 ngón chạm nhanh = bấm phải
+                    pTwo = false;
+                    int keep = e.getActionIndex() == 0 ? 1 : 0;
+                    pLastX = e.getX(keep); pLastY = e.getY(keep); pMoved = dp(20);   // ngón còn lại kéo tiếp chỉ di con trỏ, không thành bấm
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP: {
+                removeCallbacks(longPress);
+                if (pDrag) { if (c != null) c.mouse(2, 0, curX, curY); pDrag = false; pLastTapT = 0; }
+                else if (!pTwo && !pLong && pMoved <= dp(10) && now - pDownT < 300) { click(0); pLastTapT = now; }
+                pTwo = false;
+                break;
+            }
+            case MotionEvent.ACTION_CANCEL: {
+                removeCallbacks(longPress);
+                if (pDrag && c != null) c.mouse(2, 0, curX, curY);
+                pDrag = false; pTwo = false;
+                break;
+            }
+            default: break;
+        }
+        return true;
+    }
+
+    private void placeCursor() {
+        Cursor cu = cursor; if (cu == null || cu.getVisibility() != VISIBLE) return;
+        int x = vX + Math.round(curX * vW), y = vY + Math.round(curY * vH);
+        cu.layout(x - cu.hx, y - cu.hy, x - cu.hx + cu.w, y - cu.hy + cu.h);
+    }
+
+    /** Mũi tên chuột vẽ tại chỗ (trắng viền đen). */
+    private static final class Cursor extends View {
+        final int w, h, hx, hy;
+        private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), line = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        Cursor(android.content.Context c) {
+            super(c);
+            float d = c.getResources().getDisplayMetrics().density;
+            w = Math.round(18 * d); h = Math.round(26 * d); hx = Math.round(2 * d); hy = Math.round(2 * d);
+            fill.setColor(Color.WHITE); fill.setStyle(Paint.Style.FILL);
+            line.setColor(Color.BLACK); line.setStyle(Paint.Style.STROKE); line.setStrokeWidth(1.6f * d); line.setStrokeJoin(Paint.Join.ROUND);
+            float u = d;
+            path.moveTo(2 * u, 2 * u); path.lineTo(2 * u, 21 * u); path.lineTo(7 * u, 16.5f * u); path.lineTo(10.5f * u, 24 * u);
+            path.lineTo(13.5f * u, 22.6f * u); path.lineTo(10.2f * u, 15.4f * u); path.lineTo(16.5f * u, 15 * u); path.close();
+            setElevation(6 * d);
+        }
+        @Override protected void onDraw(Canvas cv) { cv.drawPath(path, fill); cv.drawPath(path, line); }
+    }
 
     /** Lăn chuột (máy tính bảng / DeX / Chromebook). */
     @Override public boolean onGenericMotionEvent(MotionEvent e) {
         if (!preview && (e.getSource() & InputDevice.SOURCE_CLASS_POINTER) != 0 && e.getActionMasked() == MotionEvent.ACTION_SCROLL) {
             StreamClient c = client;
-            float x = e.getX() - picX, y = e.getY() - picY;
-            if (c != null && picW > 0 && picH > 0 && x >= 0 && y >= 0 && x <= picW && y <= picH) {
+            float x = e.getX() - vX, y = e.getY() - vY;
+            if (c != null && vW > 0 && vH > 0 && x >= 0 && y >= 0 && x <= vW && y <= vH) {
                 int v = Math.round(e.getAxisValue(MotionEvent.AXIS_VSCROLL) * 120f);
                 int hh = Math.round(e.getAxisValue(MotionEvent.AXIS_HSCROLL) * 120f);
                 if (v != 0 || hh != 0) {
-                    c.scroll(x / picW, y / picH, hh, v);
+                    c.scroll(x / vW, y / vH, hh, v);
                     final Mirror mr = mirror;
-                    if (mr != null) mr.scroll(x / picW, y / picH, hh, v);
+                    if (mr != null) mr.scroll(x / vW, y / vH, hh, v);
                 }
             }
             return true;
