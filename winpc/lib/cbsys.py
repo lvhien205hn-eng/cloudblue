@@ -514,56 +514,48 @@ def pnp_retry():
     return cr if cr != 0 else cm.CM_Reenumerate_DevNode(dev, 0x2)   # CM_REENUMERATE_RETRY_INSTALLATION
 
 
-def staged_infs(limit=600, how=None):
+def staged_infs(limit=600, how=None, root=None):
     """Gói driver BÊN THỨ BA đang nằm trong kho driver của Windows (bộ cài nạp bằng dism /Add-Driver, hoặc ai đó đã cài): [{"pub": "oem3.inf", "inf": đường dẫn
-       file .inf gốc trong kho}] — đọc HKLM\\SYSTEM\\DriverDatabase, không phụ thuộc ngôn ngữ. Đường dẫn này đưa được cho pnputil -i -a để cài ngay lên thiết bị khớp.
-       Đọc theo 2 lối rồi gộp: DriverInfFiles\\oemN.inf → tên gói, và DriverPackages\\<tên gói> → oemN.inf (bản Windows khác nhau ghi đủ ở 1 trong 2 chỗ).
-       how (nếu đưa vào, kiểu dict): nhận số gói mỗi lối tìm được — để bộ thử in ra."""
-    import winreg
-    root, found = os.environ.get("SystemRoot") or "C:\\Windows", {}
-    repo = os.path.join(root, "System32", "DriverStore", "FileRepository")
-
-    def add(pub, pkg, via):
-        pub, pkg = str(pub or "").lower(), str(pkg or "")
-        m = re.match(r"^(.+\.inf)_", pkg, re.I)
-        if not m or not re.fullmatch(r"oem\d+\.inf", pub) or pub in found: return
-        path = os.path.join(repo, pkg, m.group(1))
-        if os.path.isfile(path):
-            found[pub] = path
-            if how is not None: how[via] = how.get(via, 0) + 1
-
-    def subkeys(k):
-        i = 0
-        while True:
-            try: yield winreg.EnumKey(k, i)
-            except OSError: return
-            i += 1
-
-    def value(k, name):
-        try: v = winreg.QueryValueEx(k, name)[0]
-        except OSError: return ""
-        if isinstance(v, (list, tuple)): v = v[0] if v else ""
-        return v if isinstance(v, str) else ""
-
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverInfFiles") as k:
-            for name in list(subkeys(k)):
-                if not re.fullmatch(r"oem\d+\.inf", name, re.I): continue
-                try:
-                    with winreg.OpenKey(k, name) as kk:
-                        add(name, value(kk, "Active") or value(kk, ""), "inffiles")
-                except OSError: continue
-    except OSError: pass
-    try:
-        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "SYSTEM\\DriverDatabase\\DriverPackages") as k:
-            for pkg in list(subkeys(k)):
-                try:
-                    with winreg.OpenKey(k, pkg) as kk:
-                        add(value(kk, "") or value(kk, "InfName"), pkg, "packages")
-                except OSError: continue
-    except OSError: pass
+       file .inf gốc trong kho}]. Đường dẫn này đưa được cho `pnputil -i -a` để cài ngay lên thiết bị khớp.
+       Cách tìm (không phụ thuộc ngôn ngữ lẫn registry — gói mới NẠP mà chưa thiết bị nào dùng thì KHÔNG có trong HKLM\\SYSTEM\\DriverDatabase, đã thử trên Windows thật):
+       mỗi gói bên thứ ba có 1 bản chép file .inf tên oemN.inf trong %SystemRoot%\\INF → tìm trong kho (System32\\DriverStore\\FileRepository\\<tên>.inf_<máy>_<mã>\\<tên>.inf)
+       file .inf GIỐNG HỆT bản chép đó (so cỡ trước, giống cỡ mới so nội dung). Gói kiểu cũ không nằm trong kho (vài driver máy in có sẵn) thì bỏ qua.
+       how (nếu đưa vào, kiểu dict): nhận {"pub": số file oemN.inf, "repo": số gói trong kho, "match": số gói khớp} — để bộ thử in ra."""
+    root = root or os.environ.get("SystemRoot") or "C:\\Windows"
+    inf_dir, repo = os.path.join(root, "INF"), os.path.join(root, "System32", "DriverStore", "FileRepository")
     num = lambda pub: int(re.sub(r"\D", "", pub) or 0)
-    return [{"pub": pub, "inf": found[pub]} for pub in sorted(found, key=num)][:limit]
+    try: pubs = sorted(((n.lower(), n) for n in os.listdir(inf_dir) if re.fullmatch(r"oem\d+\.inf", n, re.I)), key=lambda t: num(t[0]))
+    except OSError: pubs = []
+    by_size, n_repo = {}, 0
+    try: dirs = os.listdir(repo)
+    except OSError: dirs = []
+    for d in dirs:
+        m = re.match(r"^(.+\.inf)_", d, re.I)
+        if not m: continue
+        path = os.path.join(repo, d, m.group(1))
+        try: size = os.path.getsize(path)
+        except OSError: continue
+        n_repo += 1
+        by_size.setdefault(size, []).append(path)
+    out = []
+    for pub, real in pubs:
+        if len(out) >= limit: break
+        src = os.path.join(inf_dir, real)
+        try:
+            cands = by_size.get(os.path.getsize(src)) or []
+            if not cands: continue
+            with open(src, "rb") as f: raw = f.read()
+        except OSError:
+            continue
+        for path in cands:
+            try:
+                with open(path, "rb") as f: same = f.read() == raw
+            except OSError:
+                same = False
+            if same:
+                out.append({"pub": pub, "inf": path}); break
+    if how is not None: how.update(pub=len(pubs), repo=n_repo, match=len(out))
+    return out
 
 
 # ====================================================================================== tự kiểm (chỉ đọc)
