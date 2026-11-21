@@ -12,7 +12,7 @@
 #  Chữ trên màn hình WinPE viết KHÔNG DẤU (phông chữ WinPE không vẽ được tiếng Việt có dấu).
 #  Chạy thử trên Windows thường, KHÔNG đổi gì:   python cb_pe.py --dry-run [thư mục bộ cài]
 # =====================================================================================================
-import json, os, re, sys, time, traceback
+import hashlib, json, os, re, sys, time, traceback
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 for _p in (os.path.join(HERE, "..", "lib"), HERE):
@@ -23,7 +23,9 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "21.11c"
+PE_VER = "21.11d"
+PE_SEQ = 1                                                       # số thứ tự bản bộ cài (chỉ tăng). Phân vùng cứu hộ có bản số LỚN HƠN (cb\pe-next) → chạy bản đó thay bản nằm trong boot.wim
+NEXT_DIR = "cb\\pe-next\\"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
 
@@ -82,6 +84,57 @@ class Installer:
                 self.log("Chua thay bo cai - nap thiet bi (wpeinit)...")
                 self.s.run(["wpeinit"], timeout=180, change=False)
             self.s.sleep(1.5)
+
+    # ------------------------------------------------------------------ bộ cài MỚI HƠN đặt sẵn trên phân vùng cứu hộ
+    def next_installer(self, rec):
+        """Agent (tự cập nhật qua mạng) có thể đặt sẵn 1 bộ cài MỚI HƠN lên phân vùng cứu hộ: \\cb\\pe-next\\next.json + các file .py của bản đó.
+           Nhờ vậy sửa lỗi / thêm tính năng cho bộ cài KHÔNG phải tạo lại ISO rồi đi cài lại từng máy.
+           next.json: {"seq": <số thứ tự, lớn hơn PE_SEQ>, "ver": "…", "files": {"pe/cb_pe.py": "<sha256>", "lib/cbcore.py": "<sha256>", …}}
+           Trả (seq, ver, {đường tương đối: nội dung}) khi đủ file + đúng hết mã băm; ngược lại None (dùng bộ cài này)."""
+        try: meta = C.load_json(self.s, rec.p(NEXT_DIR + "next.json"))
+        except Exception: meta = None
+        if not isinstance(meta, dict): return None
+        seq, files = meta.get("seq"), meta.get("files")
+        if not isinstance(seq, int) or isinstance(seq, bool) or seq <= PE_SEQ: return None
+        ver = re.sub(r"[^A-Za-z0-9._-]", "", str(meta.get("ver") or ""))[:16] or str(seq)
+        if not isinstance(files, dict) or not (1 <= len(files) <= 40) or "pe/cb_pe.py" not in files:
+            self.log("Bo cai moi tren phan vung cuu ho (ban %s): danh sach file khong hop le - bo qua, dung bo cai san co." % ver); return None
+        out = {}
+        for rel, sha in files.items():
+            ok = isinstance(rel, str) and isinstance(sha, str) and re.fullmatch(r"(pe|lib)/[A-Za-z0-9_]{1,40}\.py", rel)
+            data = None
+            if ok:
+                try: data = self.s.read_bytes(rec.p(NEXT_DIR + rel.replace("/", "\\")))
+                except Exception: data = None
+            if data is None or len(data) > (2 << 20) or hashlib.sha256(data).hexdigest() != sha.strip().lower():
+                self.log("Bo cai moi tren phan vung cuu ho (ban %s): file %s thieu / sai ma bam - bo qua, dung bo cai san co." % (ver, str(rel)[:60])); return None
+            out[rel] = data
+        return seq, ver, out
+
+    def chain(self, recs):
+        """Phân vùng cứu hộ có bộ cài mới hơn → chép vào ổ tạm (X:\\cb-next, không phụ thuộc chữ ổ của phân vùng cứu hộ) rồi CHẠY BẢN ĐÓ thay bản này.
+           Trả mã thoát của nó khi nó làm xong (0 / 10); None = không có bản mới / bản mới lỗi → dùng tiếp bộ cài này."""
+        if self.s.dry or getattr(self, "chained", False): return None
+        best = None
+        for r in recs:
+            try: n = self.next_installer(r)
+            except Exception: n = None
+            if n and (best is None or n[0] > best[0]): best = n
+        if not best: return None
+        seq, ver, files = best
+        root = os.environ.get("SystemDrive", "X:") + "\\cb-next\\"
+        try:
+            for rel, data in files.items(): self.s.write_bytes(root + rel.replace("/", "\\"), data)
+        except Exception as e:
+            self.log("Khong chep duoc bo cai moi (ban %s) vao o tam: %s - dung bo cai san co." % (ver, e)); return None
+        self.log("Phan vung cuu ho co BO CAI MOI HON (ban %s, so %d > %d) - chay ban do." % (ver, seq, PE_SEQ))
+        os.environ["CB_CHAINED"] = str(PE_SEQ)                       # cho bản mới biết: nó được bản số mấy gọi, thư viện gốc nằm đâu (file nào không kèm thì lấy ở đó)
+        os.environ["CB_CHAIN_BASE"] = os.path.abspath(os.path.join(HERE, ".."))
+        try: rc, _ = self.s.run([sys.executable or "python.exe", "-I", "-B", "-u", root + "pe\\cb_pe.py", "--chained"], timeout=24 * 3600, show=True)
+        except Exception as e: rc = "loi %r" % (e,)
+        if rc in (RC_OK, RC_REBOOT): return rc
+        self.log("Bo cai moi (ban %s) khong lam xong (ma thoat %s) - dung bo cai san co (ban %s)." % (ver, rc, PE_VER))
+        return None
 
     # ------------------------------------------------------------------ tiện ích
     def disk_of(self, vol, disks):
@@ -338,13 +391,47 @@ class Installer:
             try: self.s.write_text(d + "\\pe-%s.log" % time.strftime("%Y%m%d-%H%M%S"), txt)
             except Exception: pass
 
+    def ask_wait(self, cfg):
+        try: return max(10, min(3600, int(cfg.get("code_wait", 120))))
+        except (TypeError, ValueError): return 120
+
+    def ask_head(self):
+        """Dòng mở đầu của các ô hỏi sau khi cài xong — chỉ in 1 lần."""
+        if getattr(self, "asked", False): self.log(LINE); return
+        self.asked = True
+        for x in ("", LINE, "  WINDOWS DA CAI XONG."): self.log(x)
+
+    def ask_name(self, ui, cfg, auto):
+        """Cài từ USB / ISO xong: cho người cài gõ TÊN MÁY (vd May-01) → máy mang tên đó trong Windows và trên web (ô "Tên hiển thị") cho dễ quản lý.
+           Trả (tên máy Windows, tên hiển thị người cài gõ hoặc '', còn người ngồi máy không).
+           Bấm Enter trống / không ai gõ trong `code_wait` giây → giữ tên tự sinh `auto` (đổi sau trên web cũng được). cb.json "ask_name": false → không hỏi."""
+        if cfg.get("ask_name") is False or self.s.dry or not hasattr(ui, "line"): return auto, "", True
+        secs = self.ask_wait(cfg)
+        self.ask_head()
+        for x in ("  Nhap TEN MAY (vi du: May-01 hoac PhongA-07) roi bam Enter.", "  Ten nay hien tren web (o Ten hien thi) va la ten may trong Windows - de de quan ly.",
+                  "  Chi dung chu KHONG DAU, so, dau cach va . _ / -", "  Bo qua: bam Enter (may tu lay ten %s, doi sau tren web cung duoc)." % auto, LINE): self.log(x)
+        label, here = "", True
+        for _ in range(3):
+            try: txt = ui.line(secs, "Ten may", 40)
+            except Exception: txt = None
+            if txt is None: here = False; break                     # hết giờ chờ mà chưa ai gõ phím nào → không có người ngồi máy
+            label = C.clean_label(txt)
+            if label or not str(txt).strip(): break
+            self.log("  (!) Ten vua go khong dung duoc - chi dung chu khong dau, so, dau cach va . _ / -   Go lai, hoac bam Enter de bo qua.")
+        if not label:
+            self.log("  Ten may: (bo qua) -> may tu lay ten %s" % auto)
+            return auto, "", here
+        name = C.win_name(label, cfg.get("name_prefix") or "CB", auto)
+        self.log("  Ten may: %s%s" % (label, "" if name == label else "   (ten trong Windows: %s)" % name))
+        return name, label, here
+
     def ask_code(self, ui, cfg):
         """Cài từ USB / ISO xong: cho người cài gõ SỐ MÁY (vị trí máy trong dàn, vd 14-85) → số này hiện trên web và trên màn hình máy, khách báo lỗi đúng máy.
            Không ai gõ trong `code_wait` giây (mặc định 120) hoặc bấm Enter trống → bỏ qua (đặt sau trên web cũng được). cb.json "ask_code": false → không hỏi."""
         if cfg.get("ask_code") is False or self.s.dry or not hasattr(ui, "line"): return ""
-        try: secs = max(10, min(3600, int(cfg.get("code_wait", 120))))
-        except (TypeError, ValueError): secs = 120
-        for x in ("", LINE, "  WINDOWS DA CAI XONG.", "  Nhap SO MAY (vi tri may trong dan - vi du 14-85 hoac A07) roi bam Enter.",
+        secs = self.ask_wait(cfg)
+        self.ask_head()
+        for x in ("  Nhap SO MAY (vi tri may trong dan - vi du 14-85 hoac A07) roi bam Enter.",
                   "  So nay hien tren web va tren man hinh may, de khach bao loi dung may.", "  Bo qua: bam Enter (dat sau tren web cung duoc).", LINE): self.log(x)
         try: txt = ui.line(secs, "So may")
         except Exception: txt = None
@@ -421,14 +508,15 @@ class Installer:
         self.make_boot(W, S, fw, fresh_store=False)
         if rec_bytes:
             C.run_cmds(self.s, C.bcd_pe_cmds(fw, R, C.bcd_store(fw, S)), "Tao muc khoi dong cai lai")
-        name = self.new_name(cfg)
+        name, label, here = self.ask_name(ui, cfg, self.new_name(cfg))     # Windows đã bung xong → hỏi TÊN MÁY rồi SỐ MÁY (người cài còn ngồi đó)
         seed = {"name": name, "os": image["id"], "from": "media", "pe": PE_VER, "ts": int(self.s.now())}
+        if label: seed["label"] = label                             # tên hiển thị người cài gõ → agent báo về web (hàm pc_label)
         key = ""
         try:
             if self.s.exists(src.p("cb\\enroll.key")): key = self.s.read_text(src.p("cb\\enroll.key")).strip()
         except Exception: pass
         if key: seed["enroll_key"] = key
-        code = self.ask_code(ui, cfg)                               # Windows đã bung xong → hỏi SỐ MÁY (người cài còn ngồi đó)
+        code = self.ask_code(ui, cfg) if here else ""               # ô tên máy hết giờ mà không ai gõ → không có người ngồi máy → khỏi chờ thêm ô số máy
         if code: seed["code"] = code
         self.inject(src, W, cfg, image, name, seed)
         if rec_bytes:
@@ -446,19 +534,35 @@ class Installer:
 
     # ------------------------------------------------------------------ CÀI LẠI theo lệnh (phân vùng cứu hộ)
     def do_job(self, rec, ui):
-        jpath, rpath = rec.p("cb\\job.json"), rec.p("cb\\job-result.json")
+        # Các file theo dõi lệnh trên phân vùng cứu hộ đi theo TÊN VOLUME (\\?\Volume{GUID}\ — không đổi) chứ KHÔNG theo chữ ổ. WinPE có thể tự gán
+        # chữ ổ cho phân vùng cứu hộ (vd D:); lát nữa bộ cài đổi nó sang chữ tạm R: → đường "D:\cb\…" tính từ đầu không còn. Bản ≤ 21.11c dính
+        # đúng lỗi này trên máy thật: Windows mới cài xong mà bước cuối báo "No such file … D:\cb\job-result.json.tmp" (không ghi được kết quả).
+        base = [rec.vol.path if getattr(rec.vol, "path", "") else rec.root]
+
+        def recp(rel): return base[0] + rel                           # đường dẫn 1 file trên phân vùng cứu hộ (theo tên volume)
+        jpath = recp("cb\\job.json")
         job = C.load_json(self.s, jpath)
         cfg = C.load_json(self.s, rec.p("cb\\cb.json")) or {}
         fw = self.s.firmware()
         self.banner("CAI LAI WINDOWS THEO LENH")
 
         def finish(ok, msg, state):
+            """Ghi kết quả cho agent báo về web + gỡ lệnh. Không ghi được cũng KHÔNG làm hỏng việc đã xong (trả False, chỉ ghi nhật ký)."""
             job["state"] = state
             done = {k: v for k, v in job.items() if k not in ("ticket", "enroll_key")}
-            C.save_json(self.s, rpath, {"id": job.get("id"), "ok": ok, "msg": msg, "os": job.get("os"), "pe": PE_VER,
-                                        "secs": int(self.s.now() - self.t0), "ts": int(self.s.now())})
-            C.save_json(self.s, rec.p("cb\\job.done.json"), done)
-            self.s.remove(jpath)
+            res = {"id": job.get("id"), "ok": ok, "msg": msg, "os": job.get("os"), "pe": PE_VER, "secs": int(self.s.now() - self.t0), "ts": int(self.s.now())}
+            last = None
+            for root in dict.fromkeys([base[0], rec.vol.path if getattr(rec.vol, "path", "") else "", rec.root]):      # tên volume trước; không được thì thử các gốc còn lại
+                if not root: continue
+                try:
+                    C.save_json(self.s, root + "cb\\job-result.json", res)
+                    C.save_json(self.s, root + "cb\\job.done.json", done)
+                    self.s.remove(root + "cb\\job.json")
+                    return True
+                except Exception as e:
+                    last = e
+            self.log("  (!) Khong ghi duoc ket qua lenh len phan vung cuu ho (%s)." % last)
+            return False
 
         try:                                                        # ---- kiểm trước, CHƯA xoá gì: lỗi ở đây thì Windows cũ còn nguyên
             image = C.find_image(cfg, job["os"])
@@ -519,14 +623,15 @@ class Installer:
             self.make_boot(W, Sx, fw, fresh_store=not plan["sys_is_win"])
             C.run_cmds(self.s, C.bcd_pe_cmds(fw, R, C.bcd_store(fw, Sx)), "Tao muc khoi dong cai lai")
             ident = C.load_json(self.s, src.p("cb\\identity.json")) or {}
-            name = C.clean_name(job.get("name") or ident.get("name") or "", self.new_name(cfg))
+            name = C.win_name(job.get("name") or ident.get("name") or "", cfg.get("name_prefix") or "CB", self.new_name(cfg))
             seed = {"name": name, "os": image["id"], "from": "job", "order": job.get("id"), "pe": PE_VER, "ts": int(self.s.now())}
             for k in ("ticket", "enroll_key", "hw"):
                 if job.get(k): seed[k] = job[k]
             if ident.get("id"): seed["id"] = ident["id"]
             self.inject(src, W, cfg, image, name, seed)
             if others: self.wipe_others(self.s.disks(), {disk.index}, fw)
-            finish(True, "xong", "done")
+            if not finish(True, "xong", "done"):                    # Windows mới đã cài xong: thiếu file kết quả thì agent bản 21.11d tự nhận ra (seed.json có số lệnh) — KHÔNG cài lại
+                self.log("      Windows moi van dung duoc; agent se tu bao lenh nay da xong.")
             self.save_logs(R + ":\\cb\\logs", W + ":\\CloudBluePC\\logs")
             self.lock_acl(C.acl_vol_cmds(R + ":\\"), "khoa quyen phan vung cuu ho")
             try: self.hide_recovery(disk.index, rec_off, fw, R, strict=False)
@@ -538,8 +643,8 @@ class Installer:
             self.log("!! LOI khi cai lai (lan %d): %s" % (job["attempts"], e))
             if not isinstance(e, C.Stop): self.log(traceback.format_exc())
             try:
-                C.save_json(self.s, rpath, {"id": job.get("id"), "ok": False, "msg": str(e)[:300], "os": job.get("os"), "pe": PE_VER, "ts": int(self.s.now())})
-                self.save_logs(rec.p("cb\\logs"))
+                C.save_json(self.s, recp("cb\\job-result.json"), {"id": job.get("id"), "ok": False, "msg": str(e)[:300], "os": job.get("os"), "pe": PE_VER, "ts": int(self.s.now())})
+                self.save_logs(recp("cb\\logs"))
             except Exception: pass
             if job["attempts"] >= 3:
                 self.log("   Da thu 3 lan khong duoc. May can nguoi xu ly (cai lai bang USB).")
@@ -569,6 +674,9 @@ class Installer:
             if not self.s.exists(root + "cb\\cb.json"): raise C.Stop("Thu muc %s khong phai bo cai CloudBlue (thieu cb\\cb.json)." % media_dir)
             return self.do_media(Src(Vol(root, [], "NTFS", "media", 3, None), "media"), ui)
         media, recs = self.wait_sources(int(os.environ.get("CB_WAIT", "40")))
+        if not media and recs:                                      # khởi động từ phân vùng cứu hộ (không cắm USB): agent có đặt sẵn bộ cài mới hơn thì chạy bản đó
+            rc = self.chain(recs)
+            if rc is not None: return rc
         for r in recs:
             if C.job_valid(C.load_json(self.s, r.p("cb\\job.json"))): return self.do_job(r, ui)
         if media: return self.do_media(media[0], ui)
@@ -643,6 +751,7 @@ def main(argv):
     sysx.dry = dry
     log_path = None if dry else os.path.join(os.environ.get("SystemDrive", "X:") + "\\", "cb-pe.log")
     inst = Installer(sysx, log_path)
+    inst.chained = "--chained" in argv                             # bản này được bộ cài trong boot.wim gọi tiếp → không gọi tiếp lần nữa
     ui = DryUI() if dry else ConsoleUI(sysx)
     try:
         if dry:
