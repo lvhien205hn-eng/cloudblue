@@ -103,6 +103,10 @@ public final class StreamClient {
     private final Context app;
     private final SharedPreferences prefs;
     private final String phone;
+    private volatile boolean pc = false;            // 21/11: máy PC thật (VPS GPU) — hỏi pc_endpoint, chào máy chủ bằng "pc" thay cho "phone"
+    /** 21/11: phiên này điều khiển MÁY PC THẬT (gọi trước start()). */
+    public StreamClient setPc(boolean v) { pc = v; return this; }
+    public boolean isPc() { return pc; }
     private final Listener ui;
     private final Handler main = new Handler(Looper.getMainLooper());
     private volatile String q;
@@ -373,7 +377,7 @@ public final class StreamClient {
     private JSONObject endpoint() throws Exception {
         for (int t = 0; ; t++) {
             try {
-                Object o = Api.rpc("cloudphone_endpoint", new JSONObject().put("p_id", phone));
+                Object o = Api.rpc(pc ? "pc_endpoint" : "cloudphone_endpoint", new JSONObject().put("p_id", phone));
                 if (o instanceof JSONObject) return (JSONObject) o;
                 throw new Stop("NOT_FOUND", Ui.L("Không tìm thấy máy.", "Phone not found."));
             } catch (Api.ApiError e) {
@@ -382,6 +386,8 @@ public final class StreamClient {
                 if (m.contains("NOT_FOUND")) throw new Stop("NOT_FOUND", Ui.L("Không tìm thấy máy.", "Phone not found."));
                 if (m.contains("NOT_ALLOWED")) throw new Stop("NOT_ALLOWED", Ui.L("Bạn không có quyền mở máy này.", "You are not allowed to open this phone."));
                 if (e.status == 401 && t == 0) { Api.expiresAt = 0; continue; }          // mã truy cập hết hạn → làm mới rồi hỏi lại
+                if (e.status == 404 && pc && m.contains("pc_endpoint"))
+                    throw new Stop("NO_RPC", Ui.L("Hệ thống chưa bật điều khiển máy PC — báo shop cập nhật cơ sở dữ liệu (v43).", "PC remote control isn't enabled on the server yet."));
                 if (e.status == 404 && m.contains("cloudphone_endpoint"))
                     throw new Stop("NO_RPC", Ui.L("Máy chủ chưa cập nhật giao thức phát hình mới.", "The server hasn't been updated for the new stream yet."));
                 throw new Retry("NET", Ui.L("Không lấy được thông tin máy chủ: ", "Couldn't get server info: ") + Api.friendly(e), true, 0);
@@ -392,6 +398,11 @@ public final class StreamClient {
     /** Thử lần lượt: LAN trực tiếp (400 ms) → IP công khai (2 s) → WebSocket (8 s); đường nối được lần trước thử đầu tiên. */
     private Session open(JSONObject ep) throws Exception {
         String st = str(ep, "status");
+        if (pc) {                                   // máy PC: "status" là trạng thái trong kho (Đang thuê / Sẵn sàng…), máy chưa nối tới trạm → chờ
+            if (!ep.optBoolean("online", false))
+                throw new Retry("OFFLINE", Ui.L("Máy PC chưa sẵn sàng (đang tắt, đang khởi động hoặc đang cài Windows)", "The PC isn't ready yet (off, starting or installing Windows)"), true, 10000);
+            st = "";
+        }
         if (!st.isEmpty() && !"active".equals(st))
             throw new Stop("NOT_ACTIVE", Ui.L("Máy chưa chạy (đang tạo, tạm dừng hoặc đã hết hạn).", "This phone is not running."));
         node = str(ep, "node");
@@ -624,7 +635,7 @@ public final class StreamClient {
         cur = s;
         try {
             if (closed) return;
-            JSONObject hello = new JSONObject().put("v", 2).put("token", token).put("phone", phone)
+            JSONObject hello = new JSONObject().put("v", 2).put("token", token).put(pc ? "pc" : "phone", phone)
                     .put("client", "android").put("ver", Api.version).put("q", q)
                     .put("net", netTag());                       // w = wifi · c = 4G/5G → chế độ Tự động bắt đầu nhẹ hơn khi dùng 4G
             if (preview) hello.put("mode", "preview").put("maxh", previewMax);
