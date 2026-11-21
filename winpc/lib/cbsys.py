@@ -9,7 +9,7 @@
 # =====================================================================================================
 import ctypes, json, os, re, subprocess, sys, time
 
-SYS_VER = "21.11c"
+SYS_VER = "21.11d"
 WIN = os.name == "nt"
 COPY_BLOCK = 4 << 20                      # chép tệp theo khối 4MB
 COPY_SAY = 64 << 20                       # tệp từ 64MB trở lên: in tên + dung lượng để biết máy đang chép, không phải treo
@@ -556,6 +556,85 @@ def staged_infs(limit=600, how=None, root=None):
                 out.append({"pub": pub, "inf": path}); break
     if how is not None: how.update(pub=len(pubs), repo=n_repo, match=len(out))
     return out
+
+
+# ====================================================================================== phiên màn hình (điều khiển từ xa — bản 21.11d)
+def console_session():
+    """Số của PHIÊN MÀN HÌNH đang hiện (phiên của người ngồi trước máy). Chưa có phiên nào (đang đổi phiên) → None."""
+    k = ctypes.WinDLL("kernel32")
+    k.WTSGetActiveConsoleSessionId.restype = ctypes.c_uint32
+    sid = k.WTSGetActiveConsoleSessionId()
+    return None if sid == 0xFFFFFFFF else int(sid)
+
+
+def mutex_exists(name):
+    """Có chương trình nào đang giữ khoá tên này không (vd "Global\\CloudBluePCRemote" = chương trình điều khiển từ xa đang chạy)."""
+    k = ctypes.WinDLL("kernel32", use_last_error=True)
+    k.OpenMutexW.argtypes = [ctypes.c_uint32, ctypes.c_int, ctypes.c_wchar_p]; k.OpenMutexW.restype = ctypes.c_void_p
+    k.CloseHandle.argtypes = [ctypes.c_void_p]
+    h = k.OpenMutexW(0x00100000, 0, name)                             # SYNCHRONIZE
+    if not h: return False
+    k.CloseHandle(h)
+    return True
+
+
+def spawn_console(argv, cwd=None, desktop="winsta0\\default", sid=None):
+    """Chạy 1 chương trình bằng CHÍNH tài khoản đang chạy (agent = SYSTEM) nhưng nằm TRONG phiên màn hình đang hiện, không cửa sổ.
+       Chương trình chạy từ tác vụ hệ thống nằm ở phiên 0 — không thấy màn hình, không gửi được chuột / phím; muốn quay màn hình + điều khiển
+       thì phải nằm trong phiên của người ngồi máy. Cách làm chuẩn của Windows: nhân bản thẻ quyền của mình, đổi số phiên, CreateProcessAsUser.
+       Cần quyền SeTcbPrivilege (SYSTEM có sẵn) — tài khoản khác gọi sẽ lỗi 1314. Trả (pid, số phiên). Lỗi → OSError."""
+    from ctypes import wintypes as wt
+    k = ctypes.WinDLL("kernel32", use_last_error=True); a = ctypes.WinDLL("advapi32", use_last_error=True)
+
+    class LUID(ctypes.Structure):
+        _fields_ = [("LowPart", wt.DWORD), ("HighPart", wt.LONG)]
+
+    class TOKPRIV(ctypes.Structure):
+        _fields_ = [("Count", wt.DWORD), ("Luid", LUID), ("Attr", wt.DWORD)]
+
+    class STARTUPINFO(ctypes.Structure):
+        _fields_ = [("cb", wt.DWORD), ("lpReserved", wt.LPWSTR), ("lpDesktop", wt.LPWSTR), ("lpTitle", wt.LPWSTR), ("dwX", wt.DWORD), ("dwY", wt.DWORD),
+                    ("dwXSize", wt.DWORD), ("dwYSize", wt.DWORD), ("dwXCountChars", wt.DWORD), ("dwYCountChars", wt.DWORD), ("dwFillAttribute", wt.DWORD),
+                    ("dwFlags", wt.DWORD), ("wShowWindow", wt.WORD), ("cbReserved2", wt.WORD), ("lpReserved2", ctypes.c_void_p),
+                    ("hStdInput", wt.HANDLE), ("hStdOutput", wt.HANDLE), ("hStdError", wt.HANDLE)]
+
+    class PROCINFO(ctypes.Structure):
+        _fields_ = [("hProcess", wt.HANDLE), ("hThread", wt.HANDLE), ("dwProcessId", wt.DWORD), ("dwThreadId", wt.DWORD)]
+
+    k.GetCurrentProcess.restype = wt.HANDLE
+    k.CloseHandle.argtypes = [wt.HANDLE]
+    a.OpenProcessToken.argtypes = [wt.HANDLE, wt.DWORD, ctypes.POINTER(wt.HANDLE)]; a.OpenProcessToken.restype = wt.BOOL
+    a.LookupPrivilegeValueW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, ctypes.POINTER(LUID)]; a.LookupPrivilegeValueW.restype = wt.BOOL
+    a.AdjustTokenPrivileges.argtypes = [wt.HANDLE, wt.BOOL, ctypes.c_void_p, wt.DWORD, ctypes.c_void_p, ctypes.c_void_p]; a.AdjustTokenPrivileges.restype = wt.BOOL
+    a.DuplicateTokenEx.argtypes = [wt.HANDLE, wt.DWORD, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(wt.HANDLE)]; a.DuplicateTokenEx.restype = wt.BOOL
+    a.SetTokenInformation.argtypes = [wt.HANDLE, ctypes.c_int, ctypes.c_void_p, wt.DWORD]; a.SetTokenInformation.restype = wt.BOOL
+    a.CreateProcessAsUserW.argtypes = [wt.HANDLE, wt.LPCWSTR, wt.LPWSTR, ctypes.c_void_p, ctypes.c_void_p, wt.BOOL, wt.DWORD, ctypes.c_void_p, wt.LPCWSTR,
+                                       ctypes.POINTER(STARTUPINFO), ctypes.POINTER(PROCINFO)]
+    a.CreateProcessAsUserW.restype = wt.BOOL
+    if sid is None: sid = console_session()
+    if sid is None: raise OSError("chua co phien man hinh nao")
+    tok, dup = wt.HANDLE(), wt.HANDLE()
+    if not a.OpenProcessToken(k.GetCurrentProcess(), 0xF01FF, ctypes.byref(tok)): raise OSError("OpenProcessToken loi %d" % ctypes.get_last_error())
+    try:
+        for name in ("SeTcbPrivilege", "SeAssignPrimaryTokenPrivilege", "SeIncreaseQuotaPrivilege"):      # bật các quyền SYSTEM có sẵn (không có thì bước sau báo lỗi rõ)
+            tp = TOKPRIV(); tp.Count = 1; tp.Attr = 2
+            if a.LookupPrivilegeValueW(None, name, ctypes.byref(tp.Luid)): a.AdjustTokenPrivileges(tok, False, ctypes.byref(tp), 0, None, None)
+        if not a.DuplicateTokenEx(tok, 0x02000000, None, 2, 1, ctypes.byref(dup)): raise OSError("DuplicateTokenEx loi %d" % ctypes.get_last_error())
+        try:
+            n = wt.DWORD(int(sid))
+            if not a.SetTokenInformation(dup, 12, ctypes.byref(n), 4):                                    # TokenSessionId
+                raise OSError("khong doi duoc phien cua the quyen (loi %d) - chi tai khoan SYSTEM lam duoc" % ctypes.get_last_error())
+            si = STARTUPINFO(); si.cb = ctypes.sizeof(STARTUPINFO); si.lpDesktop = desktop
+            pi = PROCINFO()
+            cmd = ctypes.create_unicode_buffer(subprocess.list2cmdline([str(x) for x in argv]))
+            if not a.CreateProcessAsUserW(dup, None, cmd, None, None, False, 0x08000000, None, cwd, ctypes.byref(si), ctypes.byref(pi)):   # CREATE_NO_WINDOW
+                raise OSError("CreateProcessAsUser loi %d" % ctypes.get_last_error())
+            k.CloseHandle(pi.hThread); k.CloseHandle(pi.hProcess)
+            return int(pi.dwProcessId), int(sid)
+        finally:
+            k.CloseHandle(dup)
+    finally:
+        k.CloseHandle(tok)
 
 
 # ====================================================================================== tự kiểm (chỉ đọc)
