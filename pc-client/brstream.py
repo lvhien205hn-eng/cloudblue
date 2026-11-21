@@ -148,10 +148,11 @@ class WSConn:
 
 # ------------------------------------------------------------------ máy khách
 class StreamClient:
-    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None, mode=None, kind="phone"):
+    def __init__(self, endpoint, token_fn, phone_id, on_event, q="auto", client="pc", fps=None, maxh=None, prefer=None, mode=None, kind="phone", fpsx=None):
         self.ep, self.token_fn, self.phone, self.on_event = endpoint or {}, token_fn, phone_id, on_event
         self.kind = "pc" if kind == "pc" else "phone"   # 21/11: "pc" = máy PC thật (VPS GPU) — chào máy chủ bằng "pc" thay cho "phone"
         self.q, self.client, self.fps, self.maxh = q, client, fps, maxh
+        self.fpsx = fpsx                                   # 21.11k: máy PC — khung hình/giây khách tự chọn (agent 21.11g)
         self.mode = mode                           # 17/11d: "preview" = ô xem trước (hình nhỏ, chỉ xem — máy chủ không đá phiên điều khiển đang mở)
         self.prefer = prefer                       # (kind, desc) lần trước nối được
         self.direct_fail_t = 0.0                   # lúc đường trực tiếp vừa hỏng trong phiên này (nối lại trong 5 phút thì đi Cloudflare luôn)
@@ -208,6 +209,7 @@ class StreamClient:
                 hello = {"v": 2, "token": self.token_fn(), self.kind: self.phone, "client": self.client, "ver": VERSION, "q": self.q}
                 if self.fps: hello["fps"] = int(self.fps)
                 if self.maxh: hello["maxh"] = int(self.maxh)
+                if self.fpsx: hello["fpsx"] = int(self.fpsx)
                 if self.mode: hello["mode"] = str(self.mode)
                 self.conn.send(C_HELLO, json.dumps(hello).encode())
                 self.conn.settimeout(6)
@@ -313,10 +315,11 @@ class StreamClient:
     def rotate(self, to):
         """Xoay máy: "land" khoá ngang · "port" khoá dọc (máy chủ cũ hiểu như "rotate" đổi qua lại)."""
         self._send(C_CMD, json.dumps({"cmd": "rotate", "to": to}).encode())
-    def quality(self, q, fps=None, kbps=None):
+    def quality(self, q, fps=None, kbps=None, fpsx=None):
         self.q = q; j = {"q": q}
         if fps: j["fps"] = fps
         if kbps: j["kbps"] = kbps
+        if fpsx is not None: self.fpsx = int(fpsx) or None; j["fpsx"] = int(fpsx)      # 21.11k: 0 = về theo mức nét
         self._send(C_QUALITY, json.dumps(j).encode())
     def keyframe(self): self._send(C_KEYFRAME)
     def clip_set(self, text, paste=True): self._send(C_CLIP, bytes([1 if paste else 0]) + text.encode("utf-8"))
