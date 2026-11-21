@@ -17,7 +17,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "21.11g"
+REMOTE_VER = "21.11h"
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC

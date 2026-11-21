@@ -6,6 +6,7 @@ import android.graphics.Color;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -49,7 +50,29 @@ final class PcVps {
         return t;
     }
 
-    private static JSONArray items() { return mine == null ? new JSONArray() : mine.optJSONArray("items") == null ? new JSONArray() : mine.optJSONArray("items"); }
+    private static JSONArray items() {
+        JSONArray all = mine == null ? null : mine.optJSONArray("items"), out = new JSONArray();
+        if (all == null) return out;
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < all.length(); i++) {                 // 21.11k: thẻ "Đã kết thúc" quá giờ tự ẩn (SQL v45b: hide_at) → không hiện nữa
+            JSONObject x = all.optJSONObject(i);
+            if (x == null) continue;
+            long h = MainActivity.parseTime(x.optString("hide_at", ""));
+            if (h > 0 && h <= now) continue;
+            out.put(x);
+        }
+        return out;
+    }
+
+    /** 21.11k · mã các VPS đang thuê + máy đang bật (điều khiển được ngay) — cho nút ▦ Nhiều máy. */
+    static int controllable() {
+        JSONArray it = items(); int n = 0;
+        for (int i = 0; i < it.length(); i++) {
+            JSONObject x = it.optJSONObject(i), pc = x == null ? null : x.optJSONObject("pc");
+            if (pc != null && "active".equals(x.optString("state")) && pc.optBoolean("online") && !pc.optBoolean("lock")) n++;
+        }
+        return n;
+    }
 
     /** 21/11f · Số VPS GPU đang thuê / đang chờ máy (theo dữ liệu đã tải). */
     static int live() {
@@ -64,7 +87,7 @@ final class PcVps {
     /** 21/11f · "Máy của tôi" = cloud phone; VPS GPU là MỤC RIÊNG (tab 🖥️ VPS GPU) → ở đây chỉ 1 dòng gọn dẫn sang tab đó khi khách có VPS.
      *  Bản không bán trong app (không có tab VPS GPU) → vẫn hiện đủ thẻ VPS ở đây như cũ. */
     static void link(MainActivity a, LinearLayout body) {
-        if (!Api.SHOP) { section(a, body); return; }
+        if (true) { section(a, body); return; }               // 21.11k: Máy của tôi hiện đủ thẻ VPS GPU (▶ Điều khiển · ⏱ · ⋯) như Cloud Phone — tab VPS GPU chỉ để mua
         final LinearLayout box = Ui.col(a, 0);
         body.addView(box, Ui.fill());
         final Runnable paint = () -> {
@@ -107,6 +130,15 @@ final class PcVps {
             TextView more = Ui.pill(a, "+ " + Ui.L("Thuê thêm", "Rent more"), Ui.SKY);
             more.setOnClickListener(v -> a.show(3));
             head.addView(more, Ui.wrap());
+        }
+        if (controllable() >= 2 && maint(a).isEmpty()) {           // 21.11k: điều khiển nhiều VPS cùng lúc (lưới + 🔗 đồng bộ)
+            TextView mu = Ui.pill(a, "▦ " + Ui.L("Nhiều máy", "Multi"), Ui.OK);
+            mu.setContentDescription(Ui.L("Điều khiển nhiều máy cùng lúc", "Control several machines at once"));
+            mu.setOnClickListener(v -> {
+                try { a.startActivity(new Intent(a, MultiActivity.class).putExtra("pc", true).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)); }
+                catch (Exception e) { Ui.toast(a, Ui.L("Chưa mở được màn nhiều máy.", "Couldn't open multi-control.")); }
+            });
+            head.addView(mu, Ui.wrap());
         }
         box.addView(head, Ui.fill());
         String mt = maint(a);
@@ -186,6 +218,9 @@ final class PcVps {
         long until = MainActivity.parseTime(x.optString("until", ""));
         if ("active".equals(x.optString("state")) && until > System.currentTimeMillis())
             c.addView(Ui.text(a, MainActivity.left(until) + "  ·  " + Ui.L("hết hạn ", "expires ") + MainActivity.fdate(until), 13, Ui.FG, false));
+        long hide = MainActivity.parseTime(x.optString("hide_at", ""));
+        if ("end".equals(st[0]) && hide > 0)                                         // 21.11k: thẻ đã kết thúc tự ẩn sau 30 phút
+            c.addView(Ui.muted(a, "🕒 " + Ui.L("Thẻ này tự ẩn lúc ", "This card disappears at ") + new java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(new java.util.Date(hide))));
         if (pc != null && "active".equals(x.optString("state"))) {
             LinearLayout acts = Ui.row(a, 8);
             Button open = Ui.button(a, "▶ " + Ui.L("Điều khiển", "Control"), Ui.PRIMARY);
@@ -195,24 +230,85 @@ final class PcVps {
             open.setAlpha(ctl ? 1f : 0.5f);
             open.setOnClickListener(v -> control(a, pc.optString("id"), pc.optString("name")));
             acts.addView(open, Ui.weight(1));
-            if (!x.isNull("rental")) {
-                int left = x.optInt("left"), max = mine == null ? 2 : mine.optInt("reinstall_max", 2);
-                Button re = Ui.button(a, "🔄 " + left + "/" + max, Ui.GHOST);
-                boolean canRe = left > 0 && !"inst".equals(st[0]) && !"exp".equals(st[0]) && maint(a).isEmpty();
-                re.setEnabled(canRe);
-                re.setAlpha(canRe ? 1f : 0.5f);
-                re.setOnClickListener(v -> reinstall(a, x));
-                acts.addView(re, Ui.wrap());
-                if (Api.SHOP) {
-                    Button rn = Ui.button(a, "⏱", Ui.GHOST);
-                    rn.setContentDescription(Ui.L("Gia hạn", "Renew"));
-                    rn.setOnClickListener(v -> renew(a, x));
-                    acts.addView(rn, Ui.wrap());
-                }
+            if (!x.isNull("rental") && Api.SHOP) {
+                Button rn = Ui.button(a, "⏱ " + Ui.L("Gia hạn", "Renew"), Ui.GHOST);
+                rn.setOnClickListener(v -> renew(a, x));
+                acts.addView(rn, Ui.wrap());
             }
+            Button mo = Ui.button(a, "⋯", Ui.GHOST);                                // 21.11k: Khác — cài lại Windows · báo admin · 🗑 Huỷ máy
+            mo.setContentDescription(Ui.L("Khác", "More"));
+            mo.setOnClickListener(v -> more(a, x, st));
+            acts.addView(mo, Ui.wrap());
             c.addView(acts, Ui.fill());
         }
         return c;
+    }
+
+    /** 21.11k · "⋯" của 1 VPS: 🔄 cài lại / đổi Windows · 📋 báo admin · 🗑 Huỷ máy (trả máy, xoá sạch, không hoàn tiền). */
+    private static void more(MainActivity a, JSONObject x, String[] st) {
+        LinearLayout c = Ui.col(a, 10);
+        final Dialog[] d = new Dialog[1];
+        if (!x.isNull("rental")) {
+            int left = x.optInt("left"), max = mine == null ? 2 : mine.optInt("reinstall_max", 2);
+            Button re = Ui.button(a, "🔄 " + Ui.L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " (" + left + "/" + max + ")", Ui.GHOST);
+            boolean canRe = left > 0 && !"inst".equals(st[0]) && !"exp".equals(st[0]) && maint(a).isEmpty();
+            re.setEnabled(canRe);
+            re.setAlpha(canRe ? 1f : 0.5f);
+            re.setOnClickListener(v -> { d[0].dismiss(); reinstall(a, x); });
+            c.addView(re, Ui.fill());
+        }
+        Button rp = Ui.button(a, "📋 " + Ui.L("Báo admin (copy nội dung gửi shop)", "Report to the admin"), Ui.GHOST);
+        rp.setOnClickListener(v -> { d[0].dismiss(); report(a, x); });
+        c.addView(rp, Ui.fill());
+        if (mine != null && mine.optBoolean("cancel")) {                              // SQL v45: khách tự huỷ máy
+            Button cx = Ui.button(a, "🗑 " + Ui.L("Huỷ máy (trả máy, xoá sạch, không hoàn tiền)", "Cancel machine (wipe, no refund)"), Ui.DANGER);
+            cx.setOnClickListener(v -> { d[0].dismiss(); cancel(a, x); });
+            c.addView(cx, Ui.fill());
+        }
+        JSONObject pc = x.optJSONObject("pc");
+        d[0] = Ui.sheet(a, pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name"), c);
+        d[0].show();
+    }
+
+    /** 21.11k · 🗑 Huỷ máy: hộp xác nhận — nút Huỷ chỉ bấm được sau khi tick "Tôi hiểu" (khỏi bấm nhầm). Gỡ máy khỏi tài khoản ngay, shop thu hồi,
+     *  xoá sạch mọi ổ, về kho — KHÔNG hoàn tiền (SQL v45 pc_my_cancel). */
+    private static void cancel(MainActivity a, JSONObject x) {
+        final JSONObject pc = x.optJSONObject("pc");
+        if (pc == null) return;
+        LinearLayout c = Ui.col(a, 12);
+        long until = MainActivity.parseTime(x.optString("until", ""));
+        String rest = until > System.currentTimeMillis() ? MainActivity.left(until) : "";
+        LinearLayout warn = Ui.card(a);
+        warn.setBackground(Ui.round(Color.argb(26, 255, 107, 129), 16, Color.argb(130, 255, 107, 129)));
+        warn.addView(Ui.text(a, Ui.L("⚠️ Máy bị GỠ KHỎI TÀI KHOẢN của bạn ngay.", "⚠️ The machine is REMOVED from your account right away."), 14, Ui.FG, true));
+        warn.addView(Ui.text(a, Ui.L("Shop thu hồi máy và XOÁ SẠCH toàn bộ dữ liệu (mọi ổ đĩa) để giao khách khác.", "The shop takes it back and ERASES all data (every drive)."), 13.5f, Ui.FG, false));
+        warn.addView(Ui.text(a, "💸 " + Ui.L("KHÔNG hoàn tiền", "NO refund") + (rest.isEmpty() ? "" : Ui.L(" phần thời gian còn lại (" + rest + ")", " for the remaining time (" + rest + ")"))
+                + Ui.L(". Không hoàn tác được.", ". This cannot be undone."), 13.5f, Ui.BAD, true));
+        c.addView(warn, Ui.fill());
+        final CheckBox ok = new CheckBox(a);
+        ok.setText(Ui.L("Tôi hiểu: mất hết dữ liệu, không hoàn tiền", "I understand: all data is erased, no refund"));
+        ok.setTextColor(Ui.FG);
+        ok.setTextSize(14);
+        c.addView(ok, Ui.fill());
+        final Button go = Ui.button(a, "🗑 " + Ui.L("Huỷ máy", "Cancel machine"), Ui.DANGER);
+        go.setEnabled(false);
+        go.setAlpha(0.5f);
+        ok.setOnCheckedChangeListener((b, on) -> { go.setEnabled(on); go.setAlpha(on ? 1f : 0.5f); });
+        Button keep = Ui.button(a, Ui.L("Giữ máy", "Keep it"), Ui.GHOST);
+        c.addView(go, Ui.fill());
+        c.addView(keep, Ui.fill());
+        final Dialog d = Ui.sheet(a, "🗑 " + Ui.L("Huỷ máy ", "Cancel ") + pc.optString("name") + "?", c);
+        keep.setOnClickListener(v -> d.dismiss());
+        go.setOnClickListener(v -> {
+            if (!ok.isChecked()) return;
+            go.setEnabled(false);
+            Api.bg(() -> Api.rpc("pc_my_cancel", new JSONObject().put("p_pc", pc.optString("id"))), r -> {
+                d.dismiss();
+                Ui.toast(a, Ui.L("Đã huỷ máy — máy đang được xoá sạch và trả về shop.", "Machine cancelled — it is being wiped and returned to the shop."));
+                mineAt = 0; a.refresh();
+            }, m -> { go.setEnabled(true); Ui.toast(a, err(m)); });
+        });
+        d.show();
     }
 
     static void control(MainActivity a, String id, String name) {
@@ -228,6 +324,7 @@ final class PcVps {
         if (m.contains("NOT_AUTO")) return Ui.L("Sản phẩm này chưa bật giao tự động.", "Automatic delivery is off.");
         if (m.contains("INSUFFICIENT_BALANCE")) return Ui.L("Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first.");
         if (m.contains("SLOW_DOWN")) return Ui.L("Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again later.");
+        if (m.contains("NOT_ALLOWED")) return Ui.L("Máy này không thuộc tài khoản của bạn.", "This machine is not on your account.");
         return m;
     }
 
@@ -499,7 +596,24 @@ final class PcVps {
         body.addView(Ui.muted(a, Ui.L("Máy tính thật có card đồ hoạ rời — cả máy chỉ mình bạn dùng. Chọn Windows + thời gian thuê, hệ thống tự giao máy và cài sẵn cho bạn.",
                 "A real PC with a dedicated graphics card — the whole machine is yours. Pick Windows and a rental time; a machine is assigned and set up for you.")), Ui.fill());
         if (!maint(a).isEmpty()) body.addView(maintCard(a, maint(a)), Ui.fill());   // 21/11f · bảo trì riêng VPS GPU
-        section(a, body);                                                      // VPS GPU của bạn (nếu có) — lên đầu trang
+        int nMine = live();                                                     // 21.11k: tab này chỉ để MUA — quản lý / điều khiển ở Máy của tôi (như Cloud Phone)
+        if (nMine > 0) {
+            LinearLayout r = Ui.row(a, 12);
+            r.setGravity(Gravity.CENTER_VERTICAL);
+            r.setPadding(Ui.dp(14), Ui.dp(11), Ui.dp(12), Ui.dp(11));
+            r.setBackground(Ui.round(Ui.LIGHT ? Color.argb(24, 43, 110, 240) : Color.argb(40, 90, 175, 255), 16, Color.argb(120, 90, 175, 255)));
+            r.addView(Ui.text(a, "🖥️", 22, Ui.FG, false), Ui.wrap());
+            LinearLayout tx = Ui.col(a, 2);
+            tx.addView(Ui.text(a, Ui.L("Bạn đang có " + nMine + " VPS GPU", "You have " + nMine + " GPU VPS"), 15, Ui.FG, true));
+            tx.addView(Ui.muted(a, Ui.L("Điều khiển · gia hạn · cài lại · huỷ máy ở Máy của tôi", "Control · renew · reinstall · cancel in My machines")));
+            r.addView(tx, Ui.weight(1));
+            r.addView(Ui.text(a, "›", 26, Ui.SKY, true), Ui.wrap());
+            r.setClickable(true);
+            r.setOnClickListener(v -> a.show(0));
+            body.addView(r, Ui.fill());
+        }
+        if (mine == null || System.currentTimeMillis() - mineAt > 15000)          // số máy của khách (cho dòng trên) — tải ngầm
+            Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> { if (r instanceof JSONObject) { boolean was = mine == null; mine = (JSONObject) r; mineAt = System.currentTimeMillis(); if (was && live() > 0 && !a.isFinishing()) a.refresh(); } }, m -> { });
         boolean stale = info == null || System.currentTimeMillis() - infoAt > 45000;
         if (stale && System.currentTimeMillis() - tErrAt > 15000) loadTab(a);   // mở trang / quá 45 giây → đọc lại giá admin đặt
         if (info == null) {

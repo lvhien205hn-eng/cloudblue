@@ -107,7 +107,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
 #modal.pcauto #m-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
 #modal.pcauto #m-plans button{position:relative;display:grid;justify-items:center;gap:2px;padding:10px 6px 9px}
 #modal.pcauto #m-plans button .pd{font-style:normal;font-size:11.5px;color:var(--muted)}
-#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
+#modal.pcauto #m-plans button.best{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset}
+#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;white-space:nowrap;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
 #modal.pcauto .pcs-how{font-size:12px}
 /* hộp sau khi mua: ① đợi máy · ② nội dung gửi admin (ẩn / hiện) */
 .pcsw .big{font-size:42px}
@@ -225,10 +226,12 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     let p = null; try { p = selP(); } catch (e) {} if (!p) return;
     const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
     const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
+    const low = pl.length > 1 ? Math.min(...pl.map(x => cv(+x.price) / Math.max(1, +x.days))) : -1;       // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất"
     $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
       const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
-      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0;
-      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${save >= 1 ? `<i class="sv">−${save}%</i>` : ""}`);
+      const pd = cv(+x.price) / Math.max(1, +x.days), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = pd === low;
+      b.classList.toggle("best", best);
+      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${best || save >= 1 ? `<i class="sv">${best ? L("Rẻ nhất", "Best") + (save >= 1 ? " −" + save + "%" : "") : "−" + save + "%"}</i>` : ""}`);
     });
   }
   const _rp = window.renderPlans;
@@ -649,6 +652,11 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
             <label><input type="checkbox" id="pcs-rc-off"> Cài sạch xong tự tắt máy</label>
             <div class="hint" style="flex-basis:100%">Khách hết hạn: máy <b>khoá</b> (gia hạn trong thời gian chờ là máy tự mở lại, giữ nguyên dữ liệu) → quá thời gian chờ: lượt thuê <b>tự kết thúc</b>, máy về kho → tới mốc cài sạch: tự <b>xoá sạch mọi ổ + cài Windows</b> chọn ở trên → xong <b>tự tắt</b>. Có khách mới: bật máy lên, hệ thống tự giao trong 1 phút (hoặc bấm 🤝 Bàn giao) — giao ngay, không phải chờ cài. Đang có đơn chờ máy thì máy vừa thu hồi giao luôn cho đơn đó.</div>
           </div>
+          <div class="pcs-rc" id="pcs-ca-box" hidden>
+            <b>🔑 Quyền của khách trên máy thuê</b>
+            <label><input type="checkbox" id="pcs-ca"> Cho khách quyền <b>Admin</b> — chạy được app cần quyền Admin (vd executor Roblox: Volt, Wave…)</label>
+            <div class="hint" style="flex-basis:100%">Bật: máy tự thêm tài khoản khách vào nhóm Administrators trong ~1 phút (cần agent 21.11h), khách <b>khởi động lại máy 1 lần</b> là dùng được — app cần Admin chỉ hiện hộp Có / Không, không hỏi mật khẩu. Tắt: máy tự hạ khách về tài khoản thường (an toàn hơn: khách không gỡ được phần mềm quản lý của shop).</div>
+          </div>
           <button class="btn sm" type="button" id="pcs-set-save">Lưu</button>
           <div class="hint" style="flex-basis:100%">Bật rồi: khách mua sản phẩm này → hệ thống tự chọn máy <b>Sẵn sàng + online + chưa gán khách</b> → giao + cài đúng Windows. Ưu tiên máy vừa cài sạch đúng bản (giao ngay, không cài lại). Máy khách cũ trả: tự <b>xoá sạch mọi ổ</b> rồi cài. Không có máy → đơn chờ, dải đỏ hiện ở mọi thẻ; bật máy lên là máy tự nhận đơn trong 1 phút. Máy để <b>Bảo trì</b> không bao giờ bị giao.</div>
         </div>
@@ -707,6 +715,9 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     $i("pcs-set-max").value = +D.reinstall_max >= 0 ? +D.reinstall_max : 2;
     const ids = A(D.os).map(o => o.id); $i("pcs-set-22h2").checked = !ids.length || ids.includes("22h2"); $i("pcs-set-1511").checked = !ids.length || ids.includes("1511");
     const rc = D.reclaim && typeof D.reclaim === "object" ? D.reclaim : null; $i("pcs-rc").hidden = !rc;      // chưa chạy SQL v44 → ẩn
+    const cab = $i("pcs-ca-box");                                    // 21.11k (SQL v46): công tắc "Cho khách quyền Admin" — chưa chạy v46 thì ẩn
+    if (cab) { cab.hidden = true; Promise.resolve(sb.rpc("pc_admin_flags")).then(r => { const d = O(r && r.data); if (!r || r.error || typeof d.cust_admin !== "boolean") return;
+      $i("pcs-ca").checked = d.cust_admin; $i("pcs-ca").dataset.was = d.cust_admin ? "1" : "0"; cab.hidden = false; }).catch(() => {}); }
     if (rc) {
       $i("pcs-rc-on").checked = rc.on !== false; $i("pcs-rc-off").checked = rc.off !== false;
       $i("pcs-rc-grace").value = +rc.grace_min >= 0 ? +rc.grace_min : 30; $i("pcs-rc-clean").value = +rc.clean_min >= 0 ? +rc.clean_min : 60;
@@ -728,7 +739,14 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       const patch = { product: prod, os, reinstall_max: mx }; if (rc) patch.reclaim = rc;
       const { error } = await sb.rpc("pc_admin_sell", { p_patch: patch });
       if (error) { toast(/BAD_RECLAIM/.test(String(error.message)) ? "Tự thu hồi: số phút không hợp lệ." : em(error), 1); return; }
-      toast(prod ? "Đã bật bán VPS GPU tự động." : "Đã tắt bán tự động."); $i("pcs-adm-setbox").hidden = true; await Promise.all([adm(true), info(true)]);
+      const ca = $i("pcs-ca"), cab = $i("pcs-ca-box"); let caMsg = "";
+      if (cab && !cab.hidden && ca && (ca.checked ? "1" : "0") !== ca.dataset.was) {       // 21.11k: đổi công tắc quyền Admin của khách
+        const r2 = await sb.rpc("pc_admin_set_flags", { p_patch: { cust_admin: ca.checked } });
+        if (r2.error) { toast(em(r2.error), 1); return; }
+        ca.dataset.was = ca.checked ? "1" : "0";
+        caMsg = ca.checked ? " 🔑 Đã BẬT quyền Admin cho khách — máy tự áp dụng trong ~1 phút, khách khởi động lại máy 1 lần." : " 🔒 Đã TẮT quyền Admin của khách — máy tự hạ về tài khoản thường.";
+      }
+      toast((prod ? "Đã bật bán VPS GPU tự động." : "Đã tắt bán tự động.") + caMsg); $i("pcs-adm-setbox").hidden = true; await Promise.all([adm(true), info(true)]);
     });
   }
   async function admCall(fn, args, okMsg, btn) {

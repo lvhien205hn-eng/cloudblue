@@ -142,6 +142,8 @@ def sysbcd(fs): return fs.bcd.get("(system)", {})
 # ---------------------------------------------------------------- chuẩn bị CSDL
 q("truncate pc_orders, pc_machines, pc_rl restart identity cascade")
 q("update pc_settings set enroll_hash = null, auto_approve = false, agent = '{}'::jsonb, poll_s = 30")
+q("do $$ begin if exists (select 1 from information_schema.columns where table_name = 'pc_settings' and column_name = 'cust_admin') "
+  "then update pc_settings set cust_admin = false where id = 1; end if; end $$")         # v46: các mục cũ chạy với khách = tài khoản thường như trước
 ADMIN = q("select id from profiles where role = 'admin' limit 1")
 A = dict(role="authenticated", uid=ADMIN)
 KEY = q("select pc_admin_new_key()", **A)
@@ -981,6 +983,24 @@ else:
     agk4.tick()
     ck("tới giờ → máy nhận lệnh CÀI SẠCH (xoá mọi ổ) và khởi động lại vào bộ cài", agk4.rebooting and ("reboot", 30) in hostk.powers
        and json.loads(q(f"select args from pc_orders where pc_id = '{PCK}' and cmd = 'reinstall' order by id desc limit 1"))["wipe"] == "all", (hostk.powers, agk4.logs[-3:]))
+
+print("23. Công tắc 'Cho khách quyền Admin' (SQL v46) → cb.json user_admin + chạy NGAY pha system của cb_provision (21.11h)")
+if q("select to_regprocedure('public.pc_admin_set_flags(jsonb)') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v46.sql)")
+else:
+    fsa, neta, hosta, aga, PCA = rented_machine("ADMN0023", "CB-ADMN23")
+    def cbj(): return json.loads(fsa.file("C", "cloudbluepc\\cb.json") or "{}")
+    ck("công tắc đang TẮT (như máy cũ) → agent không đổi gì", not cbj().get("user_admin") and aga.sec_now is False, (cbj().get("user_admin"), aga.sec_now))
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); aga.events.clear(); aga.tick()
+    ck("shop BẬT → agent ghi cb.json user_admin = true (giữ nguyên sb_url / khoá), bảo vòng chính chạy ngay pha system, báo web việc 'admin'",
+       cbj().get("user_admin") is True and cbj().get("sb_url") and aga.sec_now is True and {"k": "admin", "on": 1} in aga.events, (cbj(), aga.sec_now, aga.events))
+    ck("thông tin gửi web: khách không còn là tài khoản thường (sec.std = false)", aga.info().get("sec", {}).get("std") is False, aga.info().get("sec"))
+    aga.sec_now = False; aga.tick()
+    ck("lần gọi sau (công tắc không đổi) → không làm lại", aga.sec_now is False and cbj().get("user_admin") is True)
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A); aga.tick()
+    ck("shop TẮT → cb.json user_admin = false + chạy ngay pha system (cb_provision hạ về tài khoản thường)", cbj().get("user_admin") is False and aga.sec_now is True, (cbj(), aga.sec_now))
+    aga.sec_now = False
+    ck("máy chủ cũ (pc_poll không có cust_admin) → giữ nguyên", aga.admin_sync({"ok": True}) is False and aga.sec_now is False and cbj().get("user_admin") is False)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

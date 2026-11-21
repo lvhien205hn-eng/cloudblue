@@ -61,6 +61,10 @@ import java.util.regex.Pattern;
 public class ControlActivity extends Activity {
     private static final int REQ_APK = 51;
     private static final String[][] QUAL = {{"auto", "Tự động", "Auto"}, {"eco", "Tiết kiệm", "Saver"}, {"bal", "Cân bằng", "Balanced"}, {"hd", "Siêu nét", "Ultra HD"}};
+    // 21.11k · máy PC (VPS GPU): thêm Siêu nét 2K (agent 21.11g) + khách tự chọn khung hình/giây
+    private static final String[][] PC_QUAL = {{"auto", "Tự động", "Auto"}, {"uhd", "Siêu nét (2K)", "Ultra (2K)"}, {"hd", "Nét", "Sharp"}, {"bal", "Cân bằng", "Balanced"}, {"eco", "Tiết kiệm", "Saver"}};
+    private static final int[] PC_FPS = {0, 30, 60, 120};
+    private int pcf = 0;                                   // FPS khách chọn cho máy PC (0 = theo mức nét)
     private static final Pattern UUID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     private static final int META_CTRL = 0x1000;
 
@@ -130,6 +134,13 @@ public class ControlActivity extends Activity {
         }
         quality = pref.getString("q", "auto");
         if (!"auto".equals(quality) && !"eco".equals(quality) && !"bal".equals(quality) && !"hd".equals(quality)) quality = "auto";
+        if (pc) {                                          // 21.11k: máy PC nhớ riêng mức nét + FPS
+            quality = pref.getString("pcq", "auto");
+            boolean okq = false; for (String[] q : PC_QUAL) if (q[0].equals(quality)) okq = true;
+            if (!okq) quality = "auto";
+            pcf = pref.getInt("pcf", 0);
+            if (pcf != 0 && pcf != 30 && pcf != 60 && pcf != 120) pcf = 0;
+        }
         showStats = pref.getBoolean("stats", false);
         autoRot = pref.getBoolean("auto_rot", true);
 
@@ -432,6 +443,7 @@ public class ControlActivity extends Activity {
         if (!rebooting()) showVeil(Ui.L("Đang kết nối…", "Connecting…"), true, null, null);
         client = new StreamClient(this, id, quality, net);
         client.setPc(pc);
+        if (pc) client.fpsx(pcf);
         screen.attach(client);
         client.start();
     }
@@ -890,9 +902,10 @@ public class ControlActivity extends Activity {
                 {"📋", Ui.L("Dán chữ vào máy", "Paste into PC"), (Runnable) this::pasteFromPhone},
                 {"📄", Ui.L("Copy từ máy", "Copy out"), (Runnable) this::copyFromPhone},
                 {"📝", Ui.L("Gõ chữ", "Type text"), (Runnable) this::typeText},
-                {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
+                {"✨", Ui.L("Chất lượng · FPS", "Quality · FPS"), (Runnable) this::pickQuality},
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
+                {"🎮", Ui.L("Nhiều máy", "Multi"), (Runnable) this::openMulti},
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
         } : new Object[][]{
                 {"🔊", Ui.L("Tăng âm", "Vol +"), (Runnable) () -> cmd("volup")},
@@ -1038,6 +1051,7 @@ public class ControlActivity extends Activity {
     };
 
     private void pickQuality() {
+        if (pc) { pickQualityPc(); return; }
         LinearLayout c = Ui.col(this, 10);
         final Dialog[] d = new Dialog[1];
         String[] desc = {Ui.L("Tự đo mạng, chọn độ nét + khung hình hợp lý — khuyên dùng", "Measures your network, picks sharpness + FPS — recommended"),
@@ -1060,9 +1074,51 @@ public class ControlActivity extends Activity {
         d[0].show();
     }
 
+    /** 21.11k · máy PC (VPS GPU): chọn độ nét (thêm Siêu nét 2K) + khung hình/giây (Mặc định · 30 · 60 · 120). Máy PC cần agent 21.11g. */
+    private void pickQualityPc() {
+        LinearLayout c = Ui.col(this, 10);
+        final Dialog[] d = new Dialog[1];
+        String[] desc = {Ui.L("Tự đo mạng — mạng yếu tự giảm nét cho mượt", "Adapts to your network"),
+                Ui.L("Nét nhất: 2K, 16 Mbps — cần mạng khoẻ", "Sharpest: 2K, 16 Mbps — needs a fast network"),
+                Ui.L("1080p 60 FPS — giữ nét kể cả mạng chập chờn", "1080p 60 FPS — stays sharp"),
+                Ui.L("1080p 30 FPS", "1080p 30 FPS"),
+                Ui.L("720p — mạng 4G yếu", "720p — weak 4G")};
+        c.addView(Ui.muted(this, Ui.L("Độ nét", "Sharpness")), Ui.fill());
+        for (int i = 0; i < PC_QUAL.length; i++) {
+            final String k = PC_QUAL[i][0];
+            Button b = Ui.button(this, Ui.L(PC_QUAL[i][1], PC_QUAL[i][2]) + " — " + desc[i], k.equals(quality) ? Ui.PRIMARY : Ui.GHOST);
+            b.setOnClickListener(v -> {
+                d[0].dismiss();
+                quality = k;
+                pref.edit().putString("pcq", k).apply();
+                updQ();
+                if (client != null) client.quality(k, pcf);
+            });
+            c.addView(b, Ui.fill());
+        }
+        c.addView(Ui.muted(this, Ui.L("Khung hình / giây", "Frame rate")), Ui.fill());
+        LinearLayout fr = Ui.row(this, 6);
+        for (final int f : PC_FPS) {
+            Button b = Ui.button(this, f == 0 ? Ui.L("Mặc định", "Default") : f + " FPS", f == pcf ? Ui.PRIMARY : Ui.GHOST);
+            b.setOnClickListener(v -> {
+                d[0].dismiss();
+                pcf = f;
+                pref.edit().putInt("pcf", f).apply();
+                updQ();
+                if (client != null) client.quality(quality, f);
+                Ui.toast(this, f == 0 ? Ui.L("Khung hình: theo mức nét", "Frame rate: per quality") : Ui.L("Khung hình: ", "Frame rate: ") + f + " FPS");
+            });
+            fr.addView(b, Ui.weight(1));
+        }
+        c.addView(fr, Ui.fill());
+        d[0] = Ui.sheet(this, Ui.L("Chất lượng hình · FPS", "Video quality · FPS"), c);
+        d[0].show();
+    }
+
     private void updQ() {
         View v = topBar.findViewWithTag("q");
-        for (String[] q : QUAL) if (q[0].equals(quality) && v instanceof TextView) ((TextView) v).setText("✨ " + Ui.L(q[1], q[2]));
+        for (String[] q : (pc ? PC_QUAL : QUAL)) if (q[0].equals(quality) && v instanceof TextView)
+            ((TextView) v).setText("✨ " + Ui.L(q[1], q[2]) + (pc && pcf > 0 ? " · " + pcf : ""));
     }
 
     /** 🤖 Đổi Android 9 / 12 / 15 (chỉ chủ máy, SQL v24): máy mới giữ hạn còn lại; máy mới chạy xong thì máy cũ + dữ liệu cũ tự xoá. */
@@ -1090,7 +1146,7 @@ public class ControlActivity extends Activity {
      *  (onPause); bấm Back ở màn nhiều máy là về lại đây và tự nối lại. */
     private void openMulti() {
         try {
-            startActivity(new Intent(this, MultiActivity.class).putExtra("focus", id)
+            startActivity(new Intent(this, MultiActivity.class).putExtra("focus", id).putExtra("pc", pc)      // 21.11k: cả máy PC (VPS GPU)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
         } catch (Exception e) { Ui.toast(this, Ui.L("Chưa mở được màn nhiều máy — cập nhật app rồi thử lại.", "Couldn't open multi-control — update the app and try again.")); }
     }

@@ -106,6 +106,8 @@ public final class StreamClient {
     private volatile boolean pc = false;            // 21/11: máy PC thật (VPS GPU) — hỏi pc_endpoint, chào máy chủ bằng "pc" thay cho "phone"
     /** 21/11: phiên này điều khiển MÁY PC THẬT (gọi trước start()). */
     public StreamClient setPc(boolean v) { pc = v; return this; }
+    private volatile int fpsx = 0;                   // 21.11k: máy PC — khung hình/giây khách tự chọn (0 = theo mức nét)
+    public StreamClient fpsx(int v) { fpsx = Math.max(0, Math.min(120, v)); return this; }
     public boolean isPc() { return pc; }
     private final Listener ui;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -267,6 +269,13 @@ public final class StreamClient {
     }
 
     /** Đổi chất lượng: eco · bal · hd · auto (nhớ luôn cho lần nối lại). */
+    /** 21.11k · máy PC: đổi mức nét + khung hình/giây khách chọn (0 = theo mức nét). */
+    public void quality(String nq, int fx) {
+        if (nq == null || nq.isEmpty()) return;
+        q = nq; fpsx = Math.max(0, Math.min(120, fx));
+        try { send(C_QUALITY, new JSONObject().put("q", nq).put("fpsx", fpsx).toString().getBytes(StandardCharsets.UTF_8)); } catch (Exception ignored) { }
+    }
+
     public void quality(String nq) {
         if (nq == null || nq.isEmpty()) return;
         q = nq;
@@ -648,6 +657,7 @@ public final class StreamClient {
             else { int dl = downKbps(); if (dl > 0) hello.put("dl", dl); }   // 16/11: mạng yếu → gợi ý tốc độ (máy chủ cũ bỏ qua trường lạ)
             if (!preview && tileMaxh > 0) hello.put("maxh", tileMaxh);       // 18/11: ô "nhiều máy" — hình nhỏ hơn mức chất lượng
             if (!preview && tileFps > 0) hello.put("fps", tileFps);
+            if (!preview && pc && fpsx > 0) hello.put("fpsx", fpsx);         // 21.11k: máy PC — FPS khách chọn (agent cũ bỏ qua)
             writeMsg(s, C_HELLO, hello.toString().getBytes(StandardCharsets.UTF_8));
             s.lastRx = SystemClock.uptimeMillis();
             Thread tx = new Thread(() -> writer(s), "BRS-tx");

@@ -178,6 +178,9 @@ def sec_env(cfg, admins=("Administrator", "PC"), names="ADM=Administrators|USR=U
             return 0, "Alias name     %s\r\nMembers\r\n\r\n-------\r\n%s\r\nThe command completed successfully.\r\n" % (argv[2], "\r\n".join(mem))
         if argv[:2] == ["net", "localgroup"] and argv[-1] == "/delete": st["admins"].remove(argv[3]); return 0, ""
         if argv[:2] == ["net", "localgroup"] and argv[-1] == "/add":
+            if st["names"] and argv[2] == st["names"].split("|")[0][4:]:          # 21.11h: thêm vào nhóm quản trị (cấp quyền Admin cho khách)
+                if argv[3] in st["admins"]: return 2, "System error 1378"
+                st["admins"].append(argv[3]); return 0, ""
             if argv[3] in st["users"]: return 2, "System error 1378"
             st["users"].append(argv[3]); return 0, ""
         return 0, ""
@@ -254,6 +257,30 @@ if old_la is None: os.environ.pop("LOCALAPPDATA", None)
 else: os.environ["LOCALAPPDATA"] = old_la
 cmd = open(os.path.join(REPO, "os", "provision.cmd"), "rb").read().decode("ascii")
 ck("provision.cmd: không ghi được vào logs thì chuyển nhật ký sang hồ sơ người dùng, vẫn chạy", '|| set "CBLOG=%LOCALAPPDATA%\\CloudBluePC"' in cmd and '>> "%CBLOG%\\provision.out" 2>&1' in cmd and cmd.rstrip().endswith("exit /b 0"))
+
+print("5b2. 21.11h · shop BẬT 'Cho khách quyền Admin' (cb.json user_admin = true — agent ghi theo máy chủ) → khách vào nhóm Administrators")
+def sec_ev0(st):
+    p = os.path.join(st["base"], "logs", "sec.event")
+    return open(p).read() if os.path.exists(p) else None
+pr, st = sec_env({"user": "PC", "password": ""}); pr.firstlogon()
+ck("trước khi bật: khách là tài khoản thường", st["admins"] == ["Administrator"], st["admins"])
+cfgp = os.path.join(st["base"], "cb.json"); open(cfgp, "w").write(json.dumps({"user": "PC", "password": "", "user_admin": True}))
+st["calls"].clear(); pr.system()
+ck("bật → tài khoản khách VÀO nhóm Administrators, nhắn khách khởi động lại 1 lần (kèm cảnh báo không tắt phần mềm shop), KHÔNG tự khởi động lại, không báo việc lạ",
+   "PC" in st["admins"] and any(c[0] == "msg" and "QUYEN ADMIN" in " ".join(c) and "KHONG tat" in " ".join(c) for c in st["calls"]) and not any(c[0] == "shutdown" for c in st["calls"])
+   and os.path.exists(os.path.join(st["base"], "logs", "admin.granted")) and sec_ev0(st) is None, st["calls"][-6:])
+DENY = "PC:(OI)(CI)(DE,DC,WD,AD,WEA,WA,WDAC,WO)"
+ck("khách có quyền Admin → vẫn CHẶN riêng tài khoản khách sửa / xoá / đổi quyền thư mục phần mềm shop + gốc phân vùng cứu hộ (ACE từ chối)",
+   ["icacls", st["base"], "/deny", DENY] in st["calls"] and ["icacls", "\\\\?\\Volume{abc}\\", "/deny", DENY] in st["calls"]
+   and st["calls"].index(["icacls", st["base"], "/deny", DENY]) > max(i for i, c in enumerate(st["calls"]) if c[0] == "icacls" and "/reset" in c), [c for c in st["calls"] if c[0] == "icacls"][-3:])
+st["calls"].clear(); pr.system()
+ck("lần soát sau: đã có quyền → không thêm lại, không nhắn lại, không hạ quyền", st["admins"].count("PC") == 1 and not any(c[0] == "msg" for c in st["calls"])
+   and not any(c[:2] == ["net", "localgroup"] and c[-1] in ("/add", "/delete") and "Administrators" in c for c in st["calls"]), st["calls"])
+open(cfgp, "w").write(json.dumps({"user": "PC", "password": ""}))
+st["calls"].clear(); pr.system()
+ck("shop TẮT lại → hạ khách về tài khoản thường, KHÔNG coi là việc lạ (hạ có chủ ý)", st["admins"] == ["Administrator"] and sec_ev0(st) is None
+   and not os.path.exists(os.path.join(st["base"], "logs", "admin.granted")), (st["admins"], sec_ev0(st)))
+ck("công tắc tắt → không đặt ACE từ chối (tài khoản thường vốn không ghi được)", not any(c[0] == "icacls" and "/deny" in c for c in st["calls"]))
 
 print("5c. Việc lạ về bảo mật SAU khi đã khoá xong → ghi logs\\sec.event cho agent báo về web")
 def sec_ev(st):
