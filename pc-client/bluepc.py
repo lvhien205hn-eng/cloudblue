@@ -8031,6 +8031,11 @@ class Launcher:
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
                     self.render(rows)
                     self.vps_last = vps; self._paint_vps(vps)
+                    if vps is not None and not getattr(self, "_vps_auto", False):       # 21/11f · khách chỉ thuê VPS GPU (chưa có cloud phone) → mở sẵn trang VPS GPU 1 lần
+                        self._vps_auto = True
+                        if not rows and any(isinstance(x, dict) and x.get("state") in ("active", "waiting") for x in (vps.get("items") or [])):
+                            try: VpsBuyDlg(self)
+                            except Exception: log("vps auto:", traceback.format_exc())
                 self.ui(show)
             except ApiError as e:
                 m = str(e)
@@ -8172,14 +8177,23 @@ class Launcher:
         except Exception: log("open pc:", traceback.format_exc())
 
     def _paint_vps(self, data):
+        """21/11f · Trang chính = Cloud Phone; VPS GPU là MỤC RIÊNG (trang 🖥 VPS GPU) → ở đây chỉ 1 dòng gọn dẫn sang đó khi khách có VPS."""
         slot = getattr(self, "vps_slot", None)
         if slot is None or not slot.winfo_exists(): return
-        items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict)]
-        sig = json.dumps(items, sort_keys=True, default=str)
+        items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict) and x.get("state") in ("active", "waiting")]
+        sig = json.dumps([[x.get("state"), x.get("rental")] for x in items], sort_keys=True, default=str)
         if sig == getattr(self, "_vps_sig", None): return
         self._vps_sig = sig
         for w in slot.winfo_children(): w.destroy()
-        vps_cards(self, slot, data)
+        if not items: return
+        tk = self.tk; edge = _mix("#7cbcff", CARD, .5)
+        row = tk.Frame(slot, bg=CARD, highlightthickness=1, highlightbackground=edge, cursor="hand2", radius=16); row.pack(fill="x", padx=8, pady=(10, 2))
+        ic = tk.Label(row, text="🖥", font=("Segoe UI Emoji", 18), bg=CARD, fg=TXT); ic.pack(side="left", padx=(14, 10), pady=10)
+        mid = tk.Frame(row, bg=CARD); mid.pack(side="left", fill="x", expand=True, pady=8)
+        t1 = tk.Label(mid, text=L(f"VPS GPU của bạn · {len(items)} máy", f"Your GPU VPS · {len(items)}"), font=("Segoe UI", 11, "bold"), fg=TXT, bg=CARD, anchor="w"); t1.pack(fill="x")
+        t2 = tk.Label(mid, text=L("Điều khiển · cài lại Windows · gia hạn ở mục VPS GPU", "Control · reinstall · renew in GPU VPS"), font=self.f_s, fg=DIM, bg=CARD, anchor="w"); t2.pack(fill="x")
+        go = self.btn(row, L("Mở VPS GPU  ›", "Open  ›"), lambda: VpsBuyDlg(self), tint=SKY, padx=12, pady=5, font=("Segoe UI", 9, "bold")); go.pack(side="right", padx=(8, 14))
+        for w in (row, ic, mid, t1, t2): w.bind("<Button-1>", lambda _e: VpsBuyDlg(self))
 
     def _rows_sig(self, rows):
         """Dấu vân tay của mọi thứ đang vẽ trong danh sách máy (máy + dòng "còn … ngày" + quyền admin + cờ bắt buộc cập nhật)."""
