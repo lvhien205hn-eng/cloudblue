@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11b):
+#  Việc làm (bản 21.11c):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -12,6 +12,7 @@
 #    · HẠN THUÊ (SQL v42): nhận hạn từ máy chủ, báo trước cho khách, hết hạn thì tự tắt máy (mất mạng vẫn đếm; chỉnh lùi đồng hồ không lách được)
 #    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
 #    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
+#    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -26,9 +27,10 @@ for _p in (os.path.join(HERE, "..", "lib"), HERE):
 
 import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
+import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11b"
+AGENT_VER = "21.11c"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -206,6 +208,11 @@ class WinHost:
         except Exception:
             return False
 
+    def drivers(self):
+        """Tóm tắt driver của máy (cbcore.drv_summary: thiết bị chưa có driver, card mạng đã nhận, VGA đang chạy driver cơ bản). Không đọc được → None."""
+        try: return C.drv_summary(cbsys.pnp_devices())
+        except Exception: return None
+
     def notify(self, text, secs=60):
         """Hiện hộp thông báo cho người đang dùng máy (mọi phiên đăng nhập) bằng msg.exe của Windows. Không chờ ai bấm; không có msg.exe thì thôi."""
         try:
@@ -323,6 +330,7 @@ class Agent:
         self.rent_saved = 0
         self.clock_at = None                # lần gần nhất đã (thử) chỉnh đồng hồ theo máy chủ
         self.net_told = False               # đã hiện hộp "máy chưa có mạng" trong lần chạy này chưa
+        self.drv = None                     # tình trạng driver gần nhất (cbcore.drv_brief) — gửi về web trong info.drv, ghi vào os\status.txt
 
     def p(self, rel): return self.base + "\\" + rel
     def log(self, m): self._log(m)
@@ -353,6 +361,10 @@ class Agent:
             i["err"] = str(e)[:120]
         smb = self.h.smbios()
         i["board"] = (smb.get("board") or (smb.get("vendor", "") + " " + smb.get("product", "")).strip())[:60]
+        try:                                                        # driver: thiết bị nào chưa có driver, card mạng / VGA đã nhận chưa → web hiện nhãn "thiếu driver"
+            d = self.h.drivers()
+            if d is not None: self.drv = i["drv"] = C.drv_brief(d)
+        except Exception: pass
         try:                                                        # tình trạng bảo mật trên máy (cb_provision đặt mốc): khách là tài khoản thường? đã khoá quyền?
             i["sec"] = {"std": not self.cfg.get("user_admin"), "hard": bool(self.s.exists(self.p("logs\\harden.done"))),
                         "lock": bool(self.s.exists(self.p("logs\\lock.done")))}
@@ -365,12 +377,14 @@ class Agent:
         rent = self.rent_line()
         try: lan = self.h.lan_ip() or ""
         except Exception: lan = ""
-        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "", rent, lan, self.code)
+        drv = self.drv_lines()
+        st = (bool(self.ident), self.fail == 0, self.name, (self.net.last_err if (self.net is not None and self.fail) else "") or "", rent, lan, self.code, drv)
         if st == getattr(self, "_last_status", None): return
         self._last_status = st
         lines = ["CloudBlue PC - tinh trang (ghi luc %s)" % time.strftime("%Y-%m-%d %H:%M:%S"),
                  "Phan mem agent: %s" % AGENT_VER,
                  "Mang LAN: %s" % (("co - dia chi IP %s" % lan) if lan else "KHONG CO dia chi IP - kiem tra day mang / driver card mang"),
+                 "Card mang: %s" % drv[0], "Driver: %s" % drv[1],
                  "So may: %s" % (C.clean_code(self.code) or "chua dat (dat tren web: Bang quan tri > May PC > Sua)"),
                  "Dang ky voi he thong: %s" % (("ROI - ten tren web: %s" % (self.name or "?")) if st[0] else "CHUA (dang thu dang ky)"),
                  "Ket noi may chu: %s" % ("duoc" if st[1] else ("CHUA DUOC - %s" % st[3][:200])),
@@ -378,6 +392,18 @@ class Agent:
                  "May khong hien tren web: kiem tra day mang / driver card mang; van khong duoc thi cai lai bang USB CloudBlue."]
         try: self.s.write_text(self.p("os\\status.txt"), "\r\n".join(lines) + "\r\n")
         except Exception: pass
+
+    def drv_lines(self):
+        """2 dòng (chữ không dấu) về driver cho os\\status.txt: (card mạng, các thiết bị còn thiếu driver)."""
+        d = self.drv
+        if not isinstance(d, dict): return ("chua kiem duoc", "chua kiem duoc")
+        net = {"ok": "da nhan driver", "miss": "CHUA CO DRIVER - can goi driver dung loai card (xem dong Driver)",
+               "none": "KHONG THAY card mang nao da nhan driver"}.get(d.get("net"), "?")
+        names = [str(x)[:80] for x in (d.get("names") or [])][:6]
+        n = int(d.get("miss") or 0)
+        txt = "du - moi thiet bi da co driver" if not n else "THIEU %d thiet bi: %s%s" % (n, "; ".join(names), " ..." if n > len(names) else "")
+        if d.get("vga") == "basic": txt += " | VGA dang chay driver co ban cua Windows (chua co driver cua hang)"
+        return (net, txt)
 
     # ------------------------------------------------------------------ số máy (vị trí máy trong dàn — khách báo lỗi theo số này)
     def code_sync(self, r, sent):
@@ -593,8 +619,12 @@ class Agent:
         except Exception: lan = "?"
         if lan: return
         self.net_told = True
-        self.log("máy chưa có địa chỉ IP (dây mạng / driver card mạng) → báo tại máy")
-        self.h.notify("CloudBlue PC: may nay CHUA CO MANG (chua co dia chi IP) nen chua hien tren web. Kiem tra day mang / driver card mang.", 600)
+        why = "Kiem tra day mang / driver card mang."
+        d = self.drv if isinstance(self.drv, dict) else {}
+        if d.get("net") == "miss": why = "Card mang CHUA CO DRIVER: %s. Can goi driver dung loai card nay." % "; ".join(str(x) for x in (d.get("names") or [])[:2])[:110]
+        elif d.get("net") == "none": why = "Khong thay card mang nao da nhan driver (thieu driver card mang?)."
+        self.log("máy chưa có địa chỉ IP (%s) → báo tại máy" % {"miss": "card mạng chưa có driver", "none": "không thấy card mạng nào đã nhận driver"}.get(d.get("net"), "dây mạng / driver card mạng"))
+        self.h.notify("CloudBlue PC: may nay CHUA CO MANG (chua co dia chi IP) nen chua hien tren web. " + why, 600)
 
     # ------------------------------------------------------------------ lệnh
     def done(self, oid, ok, result):
