@@ -219,8 +219,8 @@ def main():
             tl = timeline(data, w, h, P)
             mi = [sum(1 for x in fr if x[1] <= t) for t in (t_m1, t_m2, t_m3)] + [len(fr)]
             seen = {}
-            for k, (a, b), tm in (("p1", (mi[0], mi[1]), t_m1), ("p2", (mi[1], mi[2]), t_m2), ("goc", (mi[2], mi[3]), t_m3)):
-                hit = next((i for i in range(a, min(b, len(tl[k]))) if tl[k][i] >= 25), None)
+            for k, (i0, i1), tm in (("p1", (mi[0], mi[1]), t_m1), ("p2", (mi[1], mi[2]), t_m2), ("goc", (mi[2], mi[3]), t_m3)):     # (không dùng tên a: a = tham số dòng lệnh)
+                hit = next((i for i in range(i0, min(i1, len(tl[k]))) if tl[k][i] >= 25), None)
                 seen[k] = None if hit is None else round(fr[hit][1] - tm, 2)                            # giây từ lúc rê tới khung đầu có con trỏ ở đó
             out["tl"] = {"moves": mi[:3], "seen_s": seen, **{k: "".join(str(min(9, c // 25)) for c in tl[k]) for k in tl}}
             out["cursor_moved"] = all(seen[k] is not None for k in seen)
