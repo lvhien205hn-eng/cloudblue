@@ -8381,6 +8381,7 @@ class MiniStrip:
         self.app, self.slot, self.tk = app, slot, app.tk
         self.tiles = {}; self.cells = {}; self.ppm = ppm_ok(app.root); self.flash = ""; self._dirty = False
         self.alive = True; self.sig = None; self.t_vis = 0.0; self.hc = None; self.miss = {}
+        self.last = {}                                    # hình cuối của từng ô: vẽ lại dải (đổi cỡ / thêm ô) thì dán ngay, không hiện lại "Đang nối…"
         self.render()
         self.slot.after(150, self._tick)
 
@@ -8449,7 +8450,7 @@ class MiniStrip:
         self.cells = {}; self.hc = None
         want = {("pc:" if x["pc"] else "") + x["id"] for x, r in rows if not col and self._live(x, r)}
         for k in list(self.tiles):
-            if k not in want: self.tiles.pop(k).pause()
+            if k not in want: self.tiles.pop(k).pause(); self.last.pop(k, None)
         if not lst: return
         f9 = ("Segoe UI", 9, "bold")
         box = tk.Frame(self.slot, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=16); box.pack(fill="x")
@@ -8488,6 +8489,13 @@ class MiniStrip:
             c["t"].grid(row=0, column=i, sticky="n", padx=(0, 8))
             self.cells[key] = c
             if key == self.flash: flash = c
+            t = self.tiles.get(key) if live else None
+            if t is not None and t.playing and x["id"] not in docked:
+                f = self.last.get(key)                    # ô vừa dựng lại: dán hình cuối ngay + xin khung khoá (máy đứng yên vẫn có hình đúng cỡ mới)
+                if f is not None:
+                    try: self._paste(c, f)
+                    except Exception as e: log("mini img:", e)
+                self._kf(t)
         self.flash = ""
         if flash is not None:
             def _go(c=flash):
@@ -8558,20 +8566,32 @@ class MiniStrip:
         for key, t in list(self.tiles.items()):
             f = t.take(); c = self.cells.get(key)
             if f is None or c is None or not t.playing: continue
-            try:
-                if c["img"] is None:
-                    c["img"] = self.tk.PhotoImage(master=self.app.root); c["scr"].configure(image=c["img"])
-                data, fmt = rgb_image_data(f[0], f[1], f[2], self.ppm)
-                c["img"].configure(data=data, format=fmt)
-                if not c["shown"]:
-                    c["scr"].place(relx=.5, rely=.5, anchor="center"); c["scr"].tkraise(); c["shown"] = True
-                    try: c["cover"].place_forget()
-                    except Exception: pass
+            self.last[key] = f
+            try: self._paste(c, f)
             except Exception as e:
                 log("mini img:", e)
                 if self.ppm: self.ppm = False
         try: self.slot.after(110, self._tick)
         except Exception: self.close()
+
+    def _paste(self, c, f):
+        if c["img"] is None:
+            c["img"] = self.tk.PhotoImage(master=self.app.root); c["scr"].configure(image=c["img"])
+        data, fmt = rgb_image_data(f[0], f[1], f[2], self.ppm)
+        c["img"].configure(data=data, format=fmt)
+        if not c["shown"]:
+            c["scr"].place(relx=.5, rely=.5, anchor="center"); c["scr"].tkraise(); c["shown"] = True
+            try: c["cover"].place_forget()
+            except Exception: pass
+
+    @staticmethod
+    def _kf(t):
+        """Xin máy chủ 1 khung khoá (gửi ở luồng riêng, ≤ 1 lần / giây / ô)."""
+        cli = getattr(t, "cli", None)
+        if cli is None or time.time() - getattr(t, "kf_t", 0.0) < 1.0: return
+        t.kf_t = time.time()
+        try: threading.Thread(target=cli.keyframe, daemon=True).start()
+        except Exception: pass
 
     # ---------- thao tác ----------
     def open(self, x):
