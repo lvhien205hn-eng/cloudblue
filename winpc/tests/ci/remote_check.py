@@ -202,6 +202,46 @@ if WIN:
     except Exception as e:
         ck("bo nho copy chay duoc", False, repr(e))
 
+    # ---- 3b. 22.11b: o nhap chu dang duoc chon (app dien thoai tu bat ban phim) — ImeWatch: con tro chu (Win32) + UI Automation
+    try:
+        import ctypes
+        from ctypes import wintypes as wt
+        got = []
+        w = R.ImeWatch(lambda v: got.append(v), note)
+        time.sleep(1.5)
+        ck("ImeWatch: chay that tren Windows, luong theo doi song, UI Automation tao duoc", w.th.is_alive() and w.uia is not None, (w.th.is_alive(), w.uia))
+        stop_ev = threading.Event(); made = []
+
+        def edit_window():
+            u = ctypes.WinDLL("user32", use_last_error=True)
+            u.CreateWindowExW.argtypes = [wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.HWND, wt.HANDLE, wt.HANDLE, ctypes.c_void_p]
+            u.CreateWindowExW.restype = wt.HWND
+            u.SetForegroundWindow.argtypes = [wt.HWND]; u.SetFocus.argtypes = [wt.HWND]; u.DestroyWindow.argtypes = [wt.HWND]
+            h = u.CreateWindowExW(0, "EDIT", "CloudBlue thu o nhap chu", 0x10CF0000, 120, 120, 420, 180, None, None, None, None)   # WS_OVERLAPPEDWINDOW | WS_VISIBLE
+            io.key(0x12, True); io.key(0x12, False)                 # nhan Alt 1 lan: Windows cho chuong trinh nay dua cua so len truoc
+            u.SetForegroundWindow(h); u.SetFocus(h); made.append(h)
+            msg = wt.MSG()
+            while not stop_ev.is_set():
+                while u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                    u.TranslateMessage(ctypes.byref(msg)); u.DispatchMessageW(ctypes.byref(msg))
+                time.sleep(0.02)
+            u.DestroyWindow(h)
+        tw = threading.Thread(target=edit_window, daemon=True); tw.start()
+        wait(lambda: made, 5)
+        fg_ok = bool(made) and wait(lambda: ctypes.WinDLL("user32").GetForegroundWindow() == made[0], 3)
+        if desk and fg_ok:
+            ck("ImeWatch: bam vao o nhap chu (EDIT, co con tro chu) -> bao ime = 1 trong ~1 giay", wait(lambda: got and got[-1] == (1, 0), 3), got)
+            ole = ctypes.WinDLL("ole32"); ole.CoInitializeEx.argtypes = [ctypes.c_void_p, wt.DWORD]; ole.CoInitializeEx(None, 0)
+            ck("ImeWatch UI Automation: phan tu dang chon la o nhap chu (Edit, khong chi doc) -> (1, 0)", w._uia_focus() == (1, 0), w._uia_focus())
+        else:
+            note("BO QUA thu o nhap chu that: khong dua duoc cua so thu len truoc (desk=%s, fg=%s)" % (desk, fg_ok))
+            try: note("ImeWatch UI Automation (khong man hinh): %s" % (w._uia_focus(),))
+            except Exception as e: ck("ImeWatch UI Automation goi duoc", False, repr(e))
+        stop_ev.set(); tw.join(3); w.stop(); w.th.join(3)
+        ck("ImeWatch: tat duoc (luong theo doi dung)", not w.th.is_alive(), w.th.is_alive())
+    except Exception as e:
+        ck("ImeWatch chay duoc", False, repr(e))
+
     # ---- 4. quay man hinh THAT + nen + ghep khung
     if ff:
         for cap in dict.fromkeys([caps["cap"], "gdi"]):
