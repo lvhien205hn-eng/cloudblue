@@ -6060,6 +6060,23 @@ APP_NAMES = {"com.roblox.client": "Roblox", "com.facebook.katana": "Facebook", "
 def app_label(pkg): return APP_NAMES.get(pkg, pkg)
 
 
+def px_status(j):
+    """🌐 Proxy (cpapi GET <máy>/proxy) → (dòng 1, màu, dòng 2, màu) cho thẻ Proxy. Giống hộp Proxy trên web / app điện thoại."""
+    if not j.get("set"): return L("Chưa dùng proxy", "No proxy"), TXT, L("Máy đang đi mạng của máy chủ.", "The phone uses the server's network."), DIM
+    s = j.get("state") or {}
+    kind = {"socks5": "SOCKS5", "http": "HTTP"}.get(s.get("kind") or j.get("kind"), L("Tự nhận", "Auto"))
+    head = f"{j.get('show') or '?'} · {kind}"
+    if not j.get("online"): return head, TXT, L("Máy đang tắt — proxy tự bật khi máy bật.", "The phone is off — the proxy turns on when it starts."), WARN
+    if s.get("alive") and s.get("mode") == "proxy":
+        return head, TXT, L("✅ Đang chạy qua proxy", "✅ Running through the proxy") + (L(" · IP ra ", " · exit IP ") + str(s["ip"]) if s.get("ip") else "") + (f" · {s['ms']} ms" if s.get("ms") else ""), OK
+    if s.get("alive") and s.get("mode") == "direct":
+        return head, TXT, L("⚠ Proxy chưa dùng được", "⚠ The proxy doesn't work yet") + (": " + str(s["err"]) if s.get("err") else "") + \
+            L(" — máy tạm đi mạng thường, tự thử lại mỗi 15 giây.", " — the phone uses the normal network for now and retries every 15 s."), WARN
+    if s.get("mode") == "crashed":
+        return head, TXT, L("❌ Proxy đã dừng", "❌ The proxy stopped") + (": " + str(s["err"]) if s.get("err") else "") + L(" — bấm Áp dụng lại.", " — tap Re-apply."), BAD
+    return head, TXT, L("Proxy chưa chạy — bấm Áp dụng lại.", "The proxy isn't running — tap Re-apply."), WARN
+
+
 def missing(m):
     """Máy chủ chưa lên bản có chức năng này → nói rõ thay vì lỗi khó hiểu."""
     return "Máy chủ của máy này chưa có tính năng này — đang được cập nhật, thử lại sau." if "Không có chức năng" in (m or "") else m
@@ -6070,7 +6087,7 @@ class ToolsDlg(Dlg):
        Màn hình: xoay ngang / dọc, độ rộng nhỏ nhất · Cài app: file APK / file khác / link · Ứng dụng: mở, dừng, xoá dữ liệu, gỡ
        · Clone tab: chạy thêm bản 2, 3… của 1 app (VD Roblox chính thức), mỗi bản 1 hồ sơ riêng để đăng nhập acc khác
        · Khác: mở link, vị trí GPS, chụp màn, nút nguồn, root, khởi động lại. Gọi cpapi qua đường thẳng tới máy chủ (CpClient)."""
-    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("store", "Kho app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("more", "Khác")]
+    TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("store", "Kho app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("proxy", "Proxy"), ("more", "Khác")]
     SW = [320, 360, 411, 480, 540, 600, 720, 800]
 
     def __init__(self, app, phone, tab=None):
@@ -6082,10 +6099,10 @@ class ToolsDlg(Dlg):
         if tab not in names: tab = prefs().get("tools_tab")
         self.tab = tab if tab in names else "screen"
         hdr = tk.Frame(self.win, bg=BG); hdr.pack(side="top", fill="x", padx=16, pady=(12, 0), before=self.body.master.master)   # thẻ đứng yên, phần dưới cuộn
-        self.c_tab = Chips(app, hdr, self.TABS, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab)
+        self.c_tab = Chips(app, hdr, self.TABS, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab, wrap=4)   # 22/11: 8 thẻ → 2 hàng
         self.c_tab.frame.pack(fill="x")
         self.pages = {k: tk.Frame(self.body, bg=BG) for k in names}
-        self._page_screen(); self._page_install(); self._page_store(); self._page_apps(); self._page_clone(); self._page_root(); self._page_more()
+        self._page_screen(); self._page_install(); self._page_store(); self._page_apps(); self._page_clone(); self._page_root(); self._page_proxy(); self._page_more()
         bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
         self.app.btn(bb, "Làm mới", self.refresh, "soft").pack(side="left")
         self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right")
@@ -6123,6 +6140,7 @@ class ToolsDlg(Dlg):
         if self.tab == "screen": self.load_density()
         elif self.tab in ("apps", "clone"): self.loaded.update(("apps", "clone")); self.load()
         elif self.tab == "root": self.load_root()
+        elif self.tab == "proxy": self.load_proxy()
         elif self.tab == "store": self.load_store()
 
     def _bgjob(self, lbl, start, first):
@@ -6592,6 +6610,76 @@ class ToolsDlg(Dlg):
                 self.app.ui(lambda: (self.say(lbl, "✓ " + msg, OK), self.load_root()))
             except Exception as e:
                 m = str(e) or "Có lỗi."; log("root:", m); self.app.ui(lambda: self.say(lbl, "✗ " + missing(m), BAD))
+            finally:
+                self.app.ui(lambda: self.jobs_on.discard(lbl))
+        threading.Thread(target=job, daemon=True).start()
+
+    # ================= thẻ 🌐 PROXY: proxy riêng của máy (cpapi <máy>/proxy, 22/11) — CHỈ chủ máy; mật khẩu không bao giờ trả về app =================
+    def _page_proxy(self):
+        tk = self.app.tk; pg = self.pages["proxy"]
+        f = self.section("Proxy riêng của máy", parent=pg)
+        self.muted(f, "Mọi app trong máy đi Internet qua proxy của bạn. Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại.")
+        box = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); box.pack(fill="x", pady=(8, 0))
+        self.px_cur = self.label(box, "Đang đọc…", ("Segoe UI", 11, "bold"), TXT, wraplength=560); self.px_cur.pack(fill="x", padx=12, pady=(8, 0))
+        self.px_st = self.label(box, "", self.app.f_s, DIM, wraplength=560); self.px_st.pack(fill="x", padx=12, pady=(2, 8))
+        self.label(f, "Proxy mới", ("Segoe UI", 10, "bold"), DIM).pack(fill="x", pady=(12, 2))
+        self.px_ent = tk.Entry(f, font=("Consolas", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
+        self.px_ent.pack(fill="x", ipady=6); self.px_ent.bind("<Return>", lambda e: self.px_do("set"))
+        self.px_kind = "auto"; self.px_touched = False
+        def pick(v): self.px_kind = v; self.px_touched = True
+        self.px_chips = Chips(self.app, f, [("auto", "Tự nhận"), ("socks5", "SOCKS5"), ("http", "HTTP")], lambda: self.px_kind, pick, lambda: self.px_chips.paint())
+        self.px_chips.frame.pack(fill="x", pady=(6, 0))
+        self.muted(f, "Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.")
+        r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
+        self.px_save = self.app.btn(r, "Lưu & bật", lambda: self.px_do("set")); self.px_save.pack(side="left")
+        self.px_again = self.app.btn(r, "Áp dụng lại", lambda: self.px_do("again"), "soft")
+        self.px_off = self.app.btn(r, "Tắt proxy", lambda: self.px_do("off"), "danger")
+        self.app.btn(r, "Đọc lại", self.load_proxy, "soft").pack(side="right")
+        self.px_msg = self.msg(f)
+        self.muted(f, "Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.")
+        self.px_cfg = None
+
+    def load_proxy(self):
+        self.loaded.add("proxy")
+        if not self.px_cfg: self.say(self.px_cur, "Đang đọc…", TXT)
+        def fail(m):
+            self.px_cfg = None; self._px_btns(False)
+            if "Chỉ chủ máy" in m: self.say(self.px_cur, m, BAD); self.px_save.config(state="disabled"); self.px_ent.config(state="disabled")
+            elif "chưa cập nhật" in m: self.say(self.px_cur, "Máy chủ chưa có tính năng này — báo admin cập nhật.", BAD)
+            else: self.say(self.px_cur, "✗ Không đọc được: " + m, BAD)
+            self.say(self.px_st, "", DIM)
+        self.bg(lambda: self.cp.json("GET", "proxy", timeout=60), self.draw_proxy, fail)
+
+    def _px_btns(self, on):
+        for b in (self.px_again, self.px_off):
+            if on and not b.winfo_ismapped(): b.pack(side="left", padx=(8, 0))
+            elif not on: b.pack_forget()
+
+    def draw_proxy(self, j):
+        self.px_cfg = j; self.px_save.config(state="normal"); self.px_ent.config(state="normal")
+        self._px_btns(bool(j.get("set")))
+        if j.get("set") and not self.px_touched and j.get("kind") in ("auto", "socks5", "http"): self.px_kind = j["kind"]; self.px_chips.paint()
+        self.say(self.px_cur, *px_status(j)[:2]); self.say(self.px_st, *px_status(j)[2:])
+
+    def px_do(self, what):
+        import tkinter.messagebox as mb
+        lbl = self.px_msg
+        if lbl in self.jobs_on: return
+        url = self.px_ent.get().strip()
+        if what == "set":
+            if not url: self.say(lbl, "Dán proxy vào ô trước (vd 1.2.3.4:8080:user:pass).", BAD); self.px_ent.focus_set(); return
+            if not re.search(r"[:@]", url) or re.search(r"\s", url): self.say(lbl, "Proxy phải có dạng IP:Port hoặc IP:Port:User:Pass (không có dấu cách).", BAD); return
+        if what == "off" and not mb.askyesno("Proxy", "Tắt proxy? Máy quay về mạng của máy chủ.", parent=self.win): return
+        body = {"do": "set", "url": url, "kind": self.px_kind} if what == "set" else {"do": what}
+        if what == "set": self.px_ent.delete(0, "end")                 # không giữ mật khẩu proxy trong ô sau khi đã gửi
+        self.jobs_on.add(lbl); self.say(lbl, {"set": "Đang bật proxy…", "off": "Đang tắt proxy…", "again": "Đang áp dụng lại proxy…"}[what], WARN)
+        def job():
+            try:
+                j = self.cp.json("POST", "proxy", body, timeout=60)
+                msg = self.cp.wait_job(j["job"], lambda m: self.app.ui(lambda: self.say(lbl, m, WARN))) if j.get("job") else (j.get("msg") or "Đã lưu.")
+                self.app.ui(lambda: (self.say(lbl, "✓ " + msg, OK), self.load_proxy()))
+            except Exception as e:
+                m = str(e) or "Có lỗi."; log("proxy:", m); self.app.ui(lambda: (self.say(lbl, "✗ " + missing(m), BAD), self.load_proxy()))
             finally:
                 self.app.ui(lambda: self.jobs_on.discard(lbl))
         threading.Thread(target=job, daemon=True).start()
@@ -8364,7 +8452,7 @@ class Launcher:
         can_up = p.get("status") == "active" and not p.get("locked") and not p.get("is_free") and p.get("pending_ram") is None
         on = p.get("status") == "active" and (not p.get("locked") or (getattr(self, "prof", None) or {}).get("role") == "admin")
         for lab, tab in (("Xoay màn · Độ rộng nhỏ nhất…", "screen"), ("Cài app (APK / link)…", "install"), ("Ứng dụng trong máy…", "apps"),
-                         ("Clone tab…", "clone"), ("Root theo app…", "root"), ("Khác: mở link, GPS, chụp màn…", "more")):
+                         ("Clone tab…", "clone"), ("Root theo app…", "root"), ("🌐 Proxy riêng của máy…", "proxy"), ("Khác: mở link, GPS, chụp màn…", "more")):
             m.add_command(label=lab, command=lambda t=tab: ToolsDlg(self, p, t), state="normal" if on else "disabled")
         m.add_separator()
         m.add_command(label="Nâng cấp RAM / CPU", command=lambda: self.open_upgrade(p), state="normal" if can_up else "disabled")

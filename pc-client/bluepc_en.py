@@ -3118,6 +3118,64 @@ _T = None
 _S = None
 
 
+
+# ---- 22/11 · 🌐 Proxy riêng của máy (thêm tay: bộ sinh pc/i18n chưa có các câu này) ----
+EXACT.update({
+"Proxy riêng của máy": "This phone's proxy",
+"🌐 Proxy riêng của máy…": "🌐 This phone's proxy…",
+"Mọi app trong máy đi Internet qua proxy của bạn. Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại.": "Every app on the phone goes online through your proxy. If the proxy is down or the password is wrong, the phone falls back to the normal network (it never loses Internet) and switches back when the proxy works again.",
+"Proxy mới": "New proxy",
+"Tự nhận": "Auto",
+"Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.": "Paste one of: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Auto” tries SOCKS5, then HTTP.",
+"Lưu & bật": "Save",
+"Áp dụng lại": "Re-apply",
+"Tắt proxy": "Turn off",
+"Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.": "Web, apps and games over TCP go through the proxy; video calls / UDP games still use the server's network. Switching Android creates a new phone — enter the proxy again.",
+"Dán proxy vào ô trước (vd 1.2.3.4:8080:user:pass).": "Paste the proxy first (e.g. 1.2.3.4:8080:user:pass).",
+"Proxy phải có dạng IP:Port hoặc IP:Port:User:Pass (không có dấu cách).": "The proxy must look like IP:Port or IP:Port:User:Pass (no spaces).",
+"Tắt proxy? Máy quay về mạng của máy chủ.": "Turn the proxy off? The phone goes back to the server's network.",
+"Đang bật proxy…": "Turning the proxy on…",
+})
+SRV_R += [
+["Chỉ chủ máy mới xem / đặt được proxy của máy này\\.", "Only the phone's owner can view or set its proxy.", ""],
+["Máy chủ chưa cập nhật bản có Proxy — báo admin cập nhật\\.", "The server doesn't support proxies yet — ask an admin to update it.", ""],
+["Không đọc được proxy của máy, thử lại sau\\.", "Couldn't read this phone's proxy, try again later.", ""],
+["Đọc proxy bị lỗi, thử lại sau\\.", "Reading the proxy failed, try again later.", ""],
+["Thiếu việc cần làm \\(lưu / tắt / áp dụng lại\\)\\.", "Missing action (save / turn off / apply again).", ""],
+["Proxy không hợp lệ\\.", "Invalid proxy.", ""],
+["Kiểu proxy không hợp lệ\\.", "Invalid proxy type.", ""],
+["Đang áp dụng proxy cho máy này, đợi vài giây\\.", "Applying this phone's proxy, wait a few seconds.", ""],
+["Đang bật proxy \\(kiểm tra proxy \\+ gắn vào máy, ~10–30 giây\\)…", "Turning the proxy on (checking it and attaching it to the phone, ~10–30 s)…", ""],
+["Đang tắt proxy…", "Turning the proxy off…", ""],
+["Đang áp dụng lại proxy…", "Applying the proxy again…", ""],
+["Không áp dụng được proxy, thử lại sau\\.", "Couldn't apply the proxy, try again later.", ""],
+["Kiểu proxy phải là Tự nhận / SOCKS5 / HTTP\\.", "The proxy type must be Auto / SOCKS5 / HTTP.", ""],
+["Chưa nhập proxy\\.", "No proxy entered.", ""],
+["Proxy có ký tự lạ\\.", "The proxy contains invalid characters.", ""],
+["Chưa hỗ trợ proxy HTTPS \\(mã hoá tới proxy\\) — dùng HTTP hoặc SOCKS5\\.", "HTTPS proxies (encrypted to the proxy) aren't supported — use HTTP or SOCKS5.", ""],
+["Thiếu cổng — nhập dạng IP:cổng hoặc IP:cổng:user:pass\\.", "Missing port — use IP:port or IP:port:user:pass.", ""],
+["Cổng proxy phải là số \\(1–65535\\)\\.", "The proxy port must be a number (1–65535).", ""],
+["Cổng proxy phải từ 1 đến 65535\\.", "The proxy port must be between 1 and 65535.", ""],
+["Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền\\.", "IPv6 proxies aren't supported — use an IPv4 address or a domain name.", ""],
+["Địa chỉ proxy không hợp lệ \\(IP hoặc tên miền\\)\\.", "Invalid proxy address (IP or domain name).", ""],
+["Địa chỉ proxy không hợp lệ\\.", "Invalid proxy address.", ""],
+["User / mật khẩu proxy quá dài hoặc có ký tự lạ\\.", "The proxy user / password is too long or has invalid characters.", ""],
+["Máy chưa đặt proxy\\.", "This phone has no proxy set.", ""],
+["Đã tắt proxy\\.", "Proxy turned off.", ""],
+["Đã lưu — máy đang tắt, proxy tự bật khi máy bật\\.", "Saved — the phone is off; the proxy turns on when it starts.", ""],
+["Máy không dùng proxy — đang đi mạng thường\\.", "This phone isn't using a proxy — it's on the normal network.", ""],
+["Đã TẮT proxy — máy đi mạng thường\\.", "Proxy turned OFF — the phone uses the normal network.", ""],
+["Máy không cho máy chủ quyền root để tắt proxy — khởi động lại máy là proxy tự tắt\\.", "The phone didn't give the server root to turn the proxy off — restarting the phone turns it off.", ""],
+["Không tìm được IP của proxy (.+) — kiểm tra lại địa chỉ\\.", "Couldn't find the IP of proxy {1} — check the address.", ""],
+["Máy chưa có quyền root cho máy chủ \\(cần để bật proxy\\) — bấm 🔓 Root máy rồi thử lại\\.", "The phone hasn't given the server root (needed for the proxy) — tap 🔓 Root phone, then try again.", ""],
+["Máy không cho máy chủ quyền root — chưa bật được proxy\\.", "The phone didn't give the server root — the proxy isn't on yet.", ""],
+["Đã BẬT proxy — IP ra: (\\S+) · (\\d+) ms", "Proxy ON — exit IP: {1} · {2} ms", ""],
+["Đã lưu proxy nhưng proxy CHƯA dùng được \\((.+)\\) — máy đang đi mạng thường, tự thử lại mỗi 15 giây\\.", "Proxy saved, but it does NOT work yet ({1}) — the phone uses the normal network and retries every 15 s.", ""],
+["Chưa bật được proxy: (.+)", "Couldn't turn the proxy on: {1}", ""],
+["Chưa áp dụng được: (.+)", "Couldn't apply it yet: {1}", ""],
+]
+
+
 def _tpl():
     global _T
     if _T is None:
