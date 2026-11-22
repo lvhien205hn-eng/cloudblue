@@ -12981,6 +12981,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const COLS = "id,name,code,note,approved,status,os,os_ver,info,lan_ip,pub_ip,first_seen,last_seen,enrolled_at,reenroll_until,created_at", COLS42 = ",rent_until,renter,rent_set_at,rent_off_at";
   const SETS = "enroll_hash,enroll_made_at,auto_approve,agent,poll_s", SETS42 = ",rent_warn_min,rent_remind_min,off_alert_min,alert_email,notify_at,notify_fail_at,notify_err";
   const ERRS = { NOT_ADMIN: "Tài khoản này không phải admin.", BUSY: "Máy đang có lệnh cài lại chưa xong — chờ xong hoặc huỷ lệnh đó trước.", BAD_OS: "Bản Windows không hợp lệ.",
+    NO_LINUX: "Máy này chưa cài được Linux CachyOS: cần máy UEFI đã TẮT Secure Boot + agent 22.11f trở lên (⬆ Công bố bản agent rồi chờ máy báo về).",
     BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
     BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
     BAD_PATCH: "Dữ liệu gửi lên không hợp lệ.", BAD_POLL: "Chu kỳ báo sống phải từ 10 đến 600 giây.", BAD_HOURS: "Số giờ gia hạn không hợp lệ (mỗi lần tối đa 366 ngày).",
@@ -13002,7 +13003,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
   const stOf = v => Object.prototype.hasOwnProperty.call(ST, v) ? ST[v] : [S(v, 20), ""];
   const wipeName = w => Object.prototype.hasOwnProperty.call(WIPE, w) ? WIPE[w] : "?";
-  const osLabel = x => x === "cachyos" ? "CachyOS Linux (KDE) — thử nghiệm" : "Windows 10 " + String(x).toUpperCase();     // 22.11c · bộ cài có kèm CachyOS
+  const osLabel = x => x === "cachyos" ? "Linux CachyOS (KDE)" : "Windows 10 " + String(x).toUpperCase();     // 22.11c · bộ cài có kèm CachyOS
   const cmdName = o => O(o.args).why === "reclaim" ? (o.cmd === "reinstall" ? "♻️ Tự cài sạch " + S(O(o.args).os, 12).toUpperCase() : o.cmd === "shutdown" ? "💤 Tự tắt (đã cài sạch)" : S(o.cmd, 20))     // v44: tự thu hồi
     : o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
     : o.cmd === "reboot" ? "Khởi động lại" : o.cmd === "shutdown" ? "Tắt máy" : o.cmd === "update" ? "Cập nhật agent" : S(o.cmd, 20);
@@ -13080,7 +13081,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const dl = drvLine(i); if (dl) out.push(dl);
     return out.length ? out.join("<br>") : '<span class="hint">chưa có thông tin</span>';
   }
-  const recOf = m => { const r = O(O(m.info).rec), imgs = A(r.images, 8).map(x => S(x, 12)).filter(x => /^[a-z0-9]{2,12}$/.test(x)); return { ok: r.ok === true && imgs.length > 0, images: imgs }; };
+  const recOf = m => { const r = O(O(m.info).rec), imgs = A(r.images, 8).map(x => S(x, 12)).filter(x => /^[a-z0-9]{2,12}$/.test(x)); return { ok: r.ok === true && imgs.length > 0, images: imgs, lx: +r.lx >= 2 }; };
 
   // Khoảng báo trước THỰC TẾ của 1 máy (mili giây) — cùng công thức với hàm SQL _pc_warn_min: số nhỏ hơn giữa cài đặt chung và 1/4 thời gian thuê (ít nhất 10 phút).
   function warnMsOf(m) {
@@ -13463,13 +13464,14 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     P.cur = m; P.hand = !!hand; const rec = recOf(m), imgs = rec.images;
     $i("pcrd-title").textContent = (hand ? "Bàn giao khách mới — " : "Cài lại Windows — ") + m.name;
     $i("pcrd-info").textContent = (hand ? "Xoá sạch mọi ổ cứng của máy rồi cài Windows mới tinh cho khách mới" + (P.v42 && (m.rent_until || S(m.renter)) ? "; hạn thuê + tên khách cũ cũng được xoá. " : ". ") : "") + `Đang chạy ${S(m.os, 20).toUpperCase() || "?"} ${S(m.os_ver, 40)} · ${m.status === "rented" ? "ĐANG CÓ KHÁCH THUÊ" : stOf(m.status)[0]}`;
-    $i("pcrd-os").innerHTML = imgs.map(x => `<option value="${esc(x)}"${x === m.os ? " selected" : ""}>${esc(osLabel(x))}${x === m.os ? " (bản đang chạy)" : ""}</option>`).join("");
+    const linBad = x => x === "cachyos" && !rec.lx;                  // 22.11f: agent cũ báo cachyos cả khi Secure Boot bật / thiếu điều khiển từ xa
+    $i("pcrd-os").innerHTML = imgs.map(x => `<option value="${esc(x)}"${x === m.os && !linBad(x) ? " selected" : ""}${linBad(x) ? " disabled" : ""}>${esc(osLabel(x))}${x === m.os ? " (bản đang chạy)" : ""}${linBad(x) ? " — chờ agent 22.11f" : ""}</option>`).join("");
     document.querySelector(`#pcrd-wipe input[value="${hand ? "all" : m.status === "rented" ? "system" : "all"}"]`).checked = true;
     $i("pcrd-go").textContent = hand ? "Xoá sạch + cài lại" : "Cài lại";
     const w = $i("pcrd-warn"), ok = rec.ok;
     const warn = () => { const lin = $i("pcrd-os").value === "cachyos";
       w.innerHTML = !ok ? "⚠️ Máy này <b>không có phân vùng cứu hộ</b> (cài bằng bộ cài Windows thường, hoặc ổ quá nhỏ) → không cài lại từ xa được. Cài lại bằng USB / ISO CloudBlue 1 lần là có."
-        : `Máy sẽ khởi động lại sau 30 giây kể từ lúc nhận lệnh, <b>xoá dữ liệu</b> theo lựa chọn ở trên rồi ${lin ? "cài <b>CachyOS (Linux)</b> — khoảng 20–60 phút, cần Internet; chỉ máy khởi động kiểu UEFI và <b>đã tắt Secure Boot</b>. Cài lỗi 2 lần máy tự cài lại Windows mặc định. Bản Linux CHƯA có điều khiển từ xa qua app — chỉ dùng để thử" : "cài Windows mới (khoảng 15–30 phút)"}. Dữ liệu đã xoá <b>không lấy lại được</b>.${online(m) ? "" : "<br>Máy đang <b>offline</b> — lệnh sẽ chạy khi máy online lại."}`; };
+        : `Máy sẽ khởi động lại sau 30 giây kể từ lúc nhận lệnh, <b>xoá dữ liệu</b> theo lựa chọn ở trên rồi ${lin ? "cài <b>Linux CachyOS (KDE)</b> — khoảng 30–60 phút, cần Internet; máy UEFI <b>đã tắt Secure Boot</b>. Điều khiển từ xa qua web / app như máy Windows (không dùng card NVIDIA). Cài lỗi 2 lần máy tự cài lại Windows mặc định" : "cài Windows mới (khoảng 15–30 phút)"}. Dữ liệu đã xoá <b>không lấy lại được</b>.${online(m) ? "" : "<br>Máy đang <b>offline</b> — lệnh sẽ chạy khi máy online lại."}${imgs.some(linBad) ? "<br>ℹ️ Đổi sang CachyOS: cần <b>⬆ Công bố bản agent</b> 22.11f rồi chờ máy báo về (máy phải UEFI, đã tắt Secure Boot)." : ""}`; };
     warn(); $i("pcrd-os").onchange = warn;
     $i("pcrd-go").disabled = !ok; $i("pcrd-err").textContent = ""; show("pcrdlg");
   }
@@ -13638,6 +13640,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 .pcs-free{display:grid;gap:6px;max-height:320px;overflow:auto}
 .pcs-free label{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line);cursor:pointer}
 .pcs-free label:has(input:checked){border-color:var(--sky);background:rgba(61,123,255,.12)}
+.pcs-free label.off{opacity:.55;cursor:not-allowed}
 #pcsdlg{z-index:70}   /* hộp của phần VPS GPU nằm TRÊN bảng quản trị (z 60) khi admin bấm Bàn giao */
 .pcs-dlg.vid{width:min(980px,96vw);max-width:min(980px,96vw);padding:12px 12px 10px}
 .pcs-vid{display:block;width:100%;aspect-ratio:16/9;border-radius:12px;background:#000}
@@ -13741,10 +13744,12 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   const isAdm = () => { const u = me(); return !!u && u.role === "admin"; };
   const ERR = {
     NOT_AUTO: ["Sản phẩm này chưa bật giao máy tự động.", "Automatic delivery is off for this product."],
-    BAD_OS: ["Chọn bản Windows.", "Choose a Windows version."], BAD_PLAN: ["Chọn thời gian thuê.", "Choose a rental period."],
+    BAD_OS: ["Chọn hệ điều hành.", "Choose the OS."], BAD_PLAN: ["Chọn thời gian thuê.", "Choose a rental period."],
+    CANT_OS: ["Máy của bạn chưa đổi được sang bản này (Linux cần máy UEFI đã tắt Secure Boot). Nhắn shop nếu cần.", "Your machine can't switch to this edition yet. Contact the shop."],
+    NO_LINUX: ["Máy này chưa cài được Linux CachyOS: cần máy UEFI đã TẮT Secure Boot + agent 22.11f trở lên.", "This machine can't install CachyOS yet (needs UEFI, Secure Boot OFF, agent 22.11f+)."],
     SLOW_DOWN: ["Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again in a few minutes."],
     NO_LEFT: ["Máy này đã hết lượt cài lại trong lượt thuê. Nhắn shop nếu cần thêm.", "No reinstalls left for this rental. Contact the shop."],
-    BUSY: ["Máy đang cài Windows — chờ xong rồi thử lại.", "Windows is being installed — try again when it finishes."],
+    BUSY: ["Máy đang cài hệ điều hành — chờ xong rồi thử lại.", "The OS is being installed — try again when it finishes."],
     EXPIRED: ["Máy đã hết hạn — gia hạn trước.", "This machine has expired — renew first."],
     NOT_ALLOWED: ["Máy này không thuộc tài khoản của bạn.", "This machine is not on your account."],
     PC_IN_USE: ["Máy này đang có khách còn hạn.", "This machine is rented by another customer."],
@@ -13784,20 +13789,31 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     return b;
   }
   const osSplit = n => { n = S(n, 60).trim(); const i = n.lastIndexOf(" "); return i > 0 ? [n.slice(0, i), n.slice(i + 1)] : ["Windows", n]; };
+  const isLin = id => /^cachyos$/i.test(S(id, 20));                // 22.11f · Linux CachyOS (KDE): điều khiển như máy Windows, KHÔNG dùng card NVIDIA
+  const osName = id => { const o = A(O(PC.mine).os).concat(A(O(PC.info).os)).find(x => x && x.id === id);
+    return S(o && o.name, 60) || (isLin(id) ? "Linux CachyOS" : "Windows " + S(id, 12).toUpperCase()); };
+  const instTime = id => isLin(id) ? L("30–60 phút", "30–60 min") : L("15–30 phút", "15–30 min");
+  const linNote = () => L("🐧 <b>Linux CachyOS (KDE)</b>: điều khiển từ xa như máy Windows. Bản Linux <b>không dùng card đồ hoạ NVIDIA</b> và không chạy phần mềm / game Windows.",
+    "🐧 <b>Linux CachyOS (KDE)</b>: remote control just like Windows. The Linux edition <b>does not use the NVIDIA GPU</b> and can't run Windows apps / games.");
   function osPaint() {
     const b = osBox(), I = O(PC.info), os = A(I.os);
     if (!os.some(o => o.id === PC.os)) PC.os = (os.find(o => o.fast) || os[0] || {}).id || "";
     const mx = +I.reinstall_max >= 0 ? +I.reinstall_max : 2;
-    const cur = os.find(o => o.id === PC.os) || {};
-    b.innerHTML = `<div class="pcs-sec"><span>① ${L("Chọn Windows", "Choose Windows")} <b style="color:var(--gold-hi)">*</b></span><small>${L(`đổi được ${mx} lần trong lượt thuê`, `switchable ${mx}× per rental`)}</small></div>
+    const cur = os.find(o => o.id === PC.os) || {}, anyLin = os.some(o => o.linux === true || isLin(o.id));
+    const rdy = o => typeof o.ready === "boolean" ? o.ready : !!I.ready;          // v50: có máy trống cài được đúng bản này
+    b.innerHTML = `<div class="pcs-sec"><span>① ${anyLin ? L("Chọn hệ điều hành", "Choose the OS") : L("Chọn Windows", "Choose Windows")} <b style="color:var(--gold-hi)">*</b></span><small>${L(`đổi được ${mx} lần trong lượt thuê`, `switchable ${mx}× per rental`)}</small></div>
       <div class="vps-opts">${os.map(o => { const [k0, k1] = osSplit(o.name || o.id); return `<button type="button" data-pcsos="${esc(o.id)}" class="${o.id === PC.os ? "on" : ""}" aria-pressed="${o.id === PC.os}">
         <small class="k0">${o.id === PC.os ? "✓ " : ""}${esc(k0)}</small><b>${esc(k1)}</b>
-        <small class="${o.fast ? "fast" : "slow"}">${o.fast ? L("⚡ Có máy sẵn · giao ngay", "⚡ In stock · instant") : I.ready ? L("⏳ Cài theo yêu cầu · ~20 phút", "⏳ Installed on order · ~20 min") : L("⏳ Shop đang chuẩn bị máy", "⏳ Machine being prepared")}</small></button>`; }).join("")}</div>
+        <small class="${o.fast ? "fast" : "slow"}">${o.fast ? L("⚡ Có máy sẵn · giao ngay", "⚡ In stock · instant") : rdy(o) ? (isLin(o.id) ? L("⏳ Cài theo yêu cầu · ~45 phút", "⏳ Installed on order · ~45 min") : L("⏳ Cài theo yêu cầu · ~20 phút", "⏳ Installed on order · ~20 min")) : L("⏳ Shop đang chuẩn bị máy", "⏳ Machine being prepared")}</small></button>`; }).join("")}</div>
       <div class="pcs-oshint ${cur.fast ? "fast" : "slow"}">${cur.fast ? L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.")
+        : isLin(cur.id) ? L("⏳ Máy tự cài bản này cho bạn khoảng 30–60 phút (hạn thuê được cộng thêm 60 phút).", "⏳ Installed for you in ~30–60 min (60 min is added to your rental).")
         : L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm thời gian cài).", "⏳ Installed for you in ~20 min (the install time is added to your rental).")}</div>
-      <div class="pcs-how">✅ ${L("Thanh toán xong, hệ thống <b>tự giao máy</b> và cài đúng bản Windows bạn chọn.", "After payment the system <b>assigns a machine</b> and installs the Windows you chose.")}
+      ${isLin(cur.id) ? `<div class="pcs-oshint">${linNote()}</div>` : ""}
+      <div class="pcs-how">✅ ${anyLin ? L("Thanh toán xong, hệ thống <b>tự giao máy</b> và cài đúng hệ điều hành bạn chọn.", "After payment the system <b>assigns a machine</b> and installs the OS you chose.")
+        : L("Thanh toán xong, hệ thống <b>tự giao máy</b> và cài đúng bản Windows bạn chọn.", "After payment the system <b>assigns a machine</b> and installs the Windows you chose.")}
         ${L("Điều khiển ngay trên <b>web · app điện thoại · app máy tính</b>, như máy đám mây.", "Control it from the <b>web · phone app · PC app</b>, just like a cloud phone.")}
-        ${L(`Được tự <b>cài lại / đổi Windows ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / Windows switches</b> per rental.`)}<br>${vidBtn()}</div>`;
+        ${anyLin ? L(`Được tự <b>cài lại / đổi hệ điều hành ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / OS switches</b> per rental.`)
+          : L(`Được tự <b>cài lại / đổi Windows ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / Windows switches</b> per rental.`)}<br>${vidBtn()}</div>`;
   }
   // ---- 21/11f · hộp mua VPS GPU "sịn": thẻ cấu hình nổi bật (giá / cấu hình đúng như admin nhập) · ① Windows · ② thời gian thuê có giá / ngày + % tiết kiệm
   const pdTxt = v => fmt(Math.round(v)) + L(" / ngày", " / day");
@@ -13865,7 +13881,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     if (!me()) { try { closeBuy(); openAuth("login"); } catch (e) {} return; }
     const err = $i("m-err");
     if (pcMaint()) { err.textContent = pcMaintMsg(); return; }
-    if (!PC.os) { err.textContent = L("Chọn bản Windows trước khi thanh toán.", "Choose Windows before paying."); return; }
+    if (!PC.os) { err.textContent = L("Chọn hệ điều hành (bản Windows / Linux) trước khi thanh toán.", "Choose the OS before paying."); return; }
     const tot0 = unitPrice(p);
     await busy($i("m-ok"), async () => {
       if (!(await prmEnsure("buy", "m-err"))) return;
@@ -13906,7 +13922,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     const code = r.order ? "BR-" + String(r.order).replace(/-/g, "").slice(0, 8).toUpperCase() : "";
     const label = S(p && p.name, 80) + (days ? ` · ${days} ${L("ngày", "days")}` : "");
     PC.w = { rental: +r.rental || null, pc: S(r.pc, 40), name: S(r.name, 40), t0: Date.now(), label, osn, code, order: S(r.order, 60), user: S(u.username || u.email, 60),
-             tot: +tot || 0, poll: 0, late: false, st: r.state === "active" ? (r.reinstall ? "inst" : "run") : "wait" };
+             tot: +tot || 0, poll: 0, late: false, st: r.state === "active" ? (r.reinstall ? "inst" : "run") : "wait", lin: isLin(PC.os) };
     PC.w.at = dtv(new Date(PC.w.t0));
     dlg(`<div class="pcs-done pcsw">
       <div class="big" id="pcsw-ic" aria-hidden="true">⏳</div>
@@ -13938,22 +13954,23 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   }
   const wItem = () => { const w = PC.w || {}; return A(O(PC.mine).items).find(x => w.rental ? +x.rental === w.rental : !!w.pc && O(x.pc).id === w.pc) || null; };
   const wState = () => { const w = PC.w || {}, it = wItem(); return it ? stateOf(it)[0] : w.st === "run" ? "off" : w.st; };
-  const WST = k => ({ wait: L("Đang chờ máy", "Waiting for a machine"), inst: L("Đang cài Windows", "Installing Windows"), off: L("Máy đang khởi động / chưa báo về", "Machine starting / not reporting"),
+  const WST = k => ({ wait: L("Đang chờ máy", "Waiting for a machine"), inst: L("Đang cài ", "Installing ") + (S(PC.w && PC.w.osn, 40) || "Windows"), off: L("Máy đang khởi động / chưa báo về", "Machine starting / not reporting"),
                       run: L("Máy đã sẵn sàng", "Ready"), warn: L("Cài lại lỗi", "Reinstall failed"), exp: L("Hết hạn", "Expired"), end: L("Đã kết thúc", "Ended") }[k] || k);
   function wMsg() {
     const w = PC.w || {}, it = wItem(), nm = S(O(it && it.pc).name, 40) || w.name, sl = WST(wState());
     return LANG === "en"
-      ? `[CLOUDBLUE] GPU VPS NOT READY YET — PLEASE CHECK\n• Payment code: ${w.code || "(see Orders)"}\n• Product: ${w.label}\n• Windows: ${w.osn}\n• Account: ${w.user}\n• Purchased: ${w.at}\n` +
+      ? `[CLOUDBLUE] GPU VPS NOT READY YET — PLEASE CHECK\n• Payment code: ${w.code || "(see Orders)"}\n• Product: ${w.label}\n• OS: ${w.osn}\n• Account: ${w.user}\n• Purchased: ${w.at}\n` +
         `• Status: ${sl} (${agoMs(Date.now() - w.t0)})` + (nm ? `\n• Machine: ${nm}` : "") + (w.order ? `\n• Order ID: ${w.order}` : "") + (w.rental ? `\n• Rental: #${w.rental}` : "")
-      : `[CLOUDBLUE] VPS GPU LÂU CHƯA LÊN — NHỜ SHOP KIỂM TRA\n• Mã thanh toán: ${w.code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${w.label}\n• Windows: ${w.osn}\n• Tài khoản: ${w.user}\n• Thời gian mua: ${w.at}\n` +
+      : `[CLOUDBLUE] VPS GPU LÂU CHƯA LÊN — NHỜ SHOP KIỂM TRA\n• Mã thanh toán: ${w.code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${w.label}\n• Hệ điều hành: ${w.osn}\n• Tài khoản: ${w.user}\n• Thời gian mua: ${w.at}\n` +
         `• Trạng thái: ${sl} (đã chờ ${agoMs(Date.now() - w.t0)})` + (nm ? `\n• Máy: ${nm}` : "") + (w.order ? `\n• Mã đơn: ${w.order}` : "") + (w.rental ? `\n• Lượt thuê: #${w.rental}` : "");
   }
   function wPaint() {
     const w = PC.w, ic = $i("pcsw-ic"); if (!w || !ic) return;
     const it = wItem(), st = it ? stateOf(it) : [wState(), ""], k = st[0], pc = O(it && it.pc), waited = agoMs(Date.now() - w.t0);
     const T = {
-      wait: ["⏳", L("Đang chờ máy", "Waiting for a machine"), L("Có máy là hệ thống tự giao + cài Windows — thường chỉ vài phút, không cần nhắn shop.", "A machine is assigned and set up automatically as soon as one is free — usually a few minutes.")],
-      inst: ["⚙️", L(`Đang cài ${w.osn} cho bạn`, `Installing ${w.osn}`), L("Khoảng 15–30 phút, máy tự khởi động lại vài lần là bình thường. Xong là vào được ngay.", "About 15–30 min; a few automatic restarts are normal.")],
+      wait: ["⏳", L("Đang chờ máy", "Waiting for a machine"), L(`Có máy là hệ thống tự giao + cài ${S(w.osn, 40) || "Windows"} — thường chỉ vài phút, không cần nhắn shop.`, "A machine is assigned and set up automatically as soon as one is free — usually a few minutes.")],
+      inst: ["⚙️", L(`Đang cài ${w.osn} cho bạn`, `Installing ${w.osn}`), w.lin ? L("Khoảng 30–60 phút, máy tự khởi động lại vài lần là bình thường. Xong là vào được ngay.", "About 30–60 min; a few automatic restarts are normal.")
+        : L("Khoảng 15–30 phút, máy tự khởi động lại vài lần là bình thường. Xong là vào được ngay.", "About 15–30 min; a few automatic restarts are normal.")],
       off: ["🔌", L("Máy đang khởi động…", "Starting the machine…"), L("Thường 1–3 phút. Trang tự cập nhật — bạn có thể đóng hộp này.", "Usually 1–3 min. This updates by itself — you can close it.")],
       run: ["✅", L("Máy đã sẵn sàng!", "Your machine is ready!"), L("Bấm ▶ Điều khiển để vào máy ngay trên web — hoặc mở bằng app điện thoại / app máy tính.", "Tap ▶ Control to use it in the browser — or open it in the phone / PC app.")],
       warn: ["⚠️", L("Cài lại chưa xong", "Reinstall failed"), L("Gửi nội dung ở mục ② cho admin — shop sửa ngay.", "Send the message below to the admin.")],
@@ -14002,9 +14019,10 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       let stage = def[1];
       if (k === "inst" || k === "cmd-reinstall") {
         const os = S(el.dataset.os, 12).toUpperCase();
-        stage = sec < 150 ? L("Khởi động lại vào bộ cài", "Restarting into setup") : sec < 15 * 60 ? L("Đang cài Windows", "Installing Windows") + (os ? " " + os : "")
+        stage = sec < 150 ? L("Khởi động lại vào bộ cài", "Restarting into setup") : isLin(os) ? (sec < 45 * 60 ? L("Đang cài Linux CachyOS", "Installing Linux CachyOS") : L("Sắp xong…", "Almost done…"))
+          : sec < 15 * 60 ? L("Đang cài Windows", "Installing Windows") + (os ? " " + os : "")
           : sec < 26 * 60 ? L("Cài driver · khởi động lần đầu", "Drivers · first boot") : L("Sắp xong…", "Almost done…");
-      } else if (k === "wait") stage = L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically when a machine is free");
+      } else if (k === "wait") stage = L("Đang chờ máy — có máy là tự giao + tự cài", "Waiting — assigned automatically when a machine is free");
       const i = el.querySelector(".pp-bar i"), tx = el.querySelector(".pp-t");
       if (i) i.style.width = pct + "%";
       el.setAttribute("aria-valuenow", String(pct));
@@ -14019,13 +14037,13 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   // ---- 📋 báo admin: nội dung soạn sẵn (máy · việc đang làm / lỗi · tài khoản · lượt thuê · giờ) + copy + kênh liên hệ của shop
   function repMsg(it) {
     const pc = O(it.pc), st = stateOf(it), job = O(pc.job), lj = O(pc.last_job), u = me() || {};
-    const what = st[0] === "warn" ? L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (S(lj.msg, 120) ? ": " + S(lj.msg, 120) : "")
+    const what = st[0] === "warn" ? L("Cài lại hệ điều hành bị LỖI", "OS reinstall FAILED") + (S(lj.msg, 120) ? ": " + S(lj.msg, 120) : "")
       : st[0] === "inst" ? L(`Cài lại Windows ${S(job.os, 12).toUpperCase()} — đã chạy ${mmss((Date.now() - (T(job.at) || Date.now())) / 1000)} chưa xong`, `Reinstall ${S(job.os, 12).toUpperCase()} still running`)
       : st[0] === "wait" ? L(`Chờ giao máy — đã chờ ${mmss((Date.now() - (T(it.created_at) || Date.now())) / 1000)}`, "Still waiting for a machine")
       : String(st[1]).replace(/^[^\p{L}\p{N}]+/u, "");
     return LANG === "en"
-      ? `[CLOUDBLUE] GPU VPS NEEDS HELP\n• Machine: ${S(pc.name, 40) || "—"}${pc.code ? " (No. " + S(pc.code, 24) + ")" : ""}\n• Problem: ${what}\n• Windows: ${S(it.os_name, 40)}\n• Account: ${S(u.username || u.email, 60)}\n• Rental: #${it.rental || "—"}\n• Time: ${dtv(new Date())}`
-      : `[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ\n• Máy: ${S(pc.name, 40) || "—"}${pc.code ? " (№ " + S(pc.code, 24) + ")" : ""}\n• Việc: ${what}\n• Windows: ${S(it.os_name, 40)}\n• Tài khoản: ${S(u.username || u.email, 60)}\n• Lượt thuê: #${it.rental || "—"}\n• Lúc: ${dtv(new Date())}`;
+      ? `[CLOUDBLUE] GPU VPS NEEDS HELP\n• Machine: ${S(pc.name, 40) || "—"}${pc.code ? " (No. " + S(pc.code, 24) + ")" : ""}\n• Problem: ${what}\n• OS: ${S(it.os_name, 40)}\n• Account: ${S(u.username || u.email, 60)}\n• Rental: #${it.rental || "—"}\n• Time: ${dtv(new Date())}`
+      : `[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ\n• Máy: ${S(pc.name, 40) || "—"}${pc.code ? " (№ " + S(pc.code, 24) + ")" : ""}\n• Việc: ${what}\n• Hệ điều hành: ${S(it.os_name, 40)}\n• Tài khoản: ${S(u.username || u.email, 60)}\n• Lượt thuê: #${it.rental || "—"}\n• Lúc: ${dtv(new Date())}`;
   }
   function repOpen(rid) {
     const it = A(O(PC.mine).items).find(x => String(x.rental) === String(rid)); if (!it) return;
@@ -14082,10 +14100,12 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   }
   function stateOf(it) {
     const pc = O(it.pc), job = O(pc.job), ms = left(it.until);
-    if (it.state === "waiting") return ["wait", "⏳ " + L("Đang chờ máy", "Waiting for a machine"), L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received. A machine will be assigned and installed automatically.")];
+    if (it.state === "waiting") return ["wait", "⏳ " + L("Đang chờ máy", "Waiting for a machine"), L(`Shop đã nhận đơn. Có máy là tự giao + cài ${S(it.os_name, 40) || "Windows"} — không cần nhắn shop.`, "Order received. A machine will be assigned and installed automatically.")];
     if (it.state === "cancelled") return ["end", "✕ " + L("Đã huỷ", "Cancelled"), L("Đơn đã huỷ. Tiền hoàn (nếu có) đã cộng vào số dư.", "Order cancelled. Any refund went to your balance.")];
     if (it.state === "ended") return ["end", "■ " + L("Đã kết thúc", "Ended"), it.end_why === "expired" ? L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới ở mục VPS GPU.", "Expired without renewal — the machine was reclaimed and wiped. Rent a new one to continue.") : ""];
-    if (job.state) return ["inst", "⚙️ " + L("Đang cài Windows", "Installing Windows"), job.state === "sent" ? L("Máy đang cài " + S(job.os, 12).toUpperCase() + " (15–30 phút). Xong là vào được.", "Installing " + S(job.os, 12).toUpperCase() + " (15–30 min).") : L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…")];
+    if (job.state) { const jn = osName(S(job.os, 20)), jl = isLin(job.os);
+      return ["inst", "⚙️ " + L("Đang cài ", "Installing ") + (jl ? "Linux CachyOS" : "Windows"), job.state === "sent" ? L(`Máy đang cài ${jn} (${instTime(job.os)}). Xong là vào được.`, `Installing ${jn} (${instTime(job.os)}).`)
+        : L(`Máy sắp khởi động lại để cài ${jn}…`, `The machine will restart to install ${jn}…`)]; }
     const gu = T(it.grace_until);                                  // v44: hết hạn nhưng máy còn giữ cho khách tới lúc này (gia hạn là tự mở lại)
     if (ms !== null && ms <= 0 && gu !== null && gu > Date.now()) return ["exp", "⛔ " + L("Hết hạn — đang giữ máy", "Expired — on hold"),
       (pc.lock ? L("🔒 Máy đã khoá. ", "🔒 Locked. ") : pc.off ? L("Máy đã tự tắt. ", "Shut down. ") : "")
@@ -14102,12 +14122,12 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     const soon = st[0] === "run" && ms !== null && ms < 864e5;
     const mt = pcMaint(), canPow = (st[0] === "run" || st[0] === "warn") && !mt, canCtl = canPow || (st[0] === "boot" && !mt);   // đang khởi động lại: vẫn mở được (máy lên là vào)
     const pw = st[0] === "boot" || st[0] === "down" || st[0] === "offd";
-    const gpu = A(pc.gpus).map(g => S(g, 40)).filter(Boolean)[0] || "";
+    const gpu = isLin(pc.os) ? "" : A(pc.gpus).map(g => S(g, 40)).filter(Boolean)[0] || "";
     const spec = [S(it.os_name, 40), gpu, pc.ram_gb ? Math.round(+pc.ram_gb) + "GB RAM" : ""].filter(Boolean).join(" · ");
     const acts = it.rental === null && !it.pc ? "" : [
       pc.id ? (canCtl ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(pc.id, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`) : "",
       pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
-      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${mt || st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
+      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${mt || st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi hệ điều hành", "Reinstall / switch the OS"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : "",
       O(PC.mine).power && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcspow="${esc(S(pc.id, 40))}"${canPow ? "" : " disabled"} title="${esc(L("Khởi động lại / tắt máy", "Restart / shut down"))}">⏻ ${L("Nguồn", "Power")}</button>` : "",
       O(PC.mine).cancel && it.state === "active" && pc.id ? `<button class="btn danger sm pcs-cxl" type="button" data-pcscxl="${esc(S(pc.id, 40))}" title="${esc(L("Trả máy cho shop: xoá sạch dữ liệu, không hoàn tiền", "Give the machine back: all data erased, no refund"))}">🗑 ${L("Huỷ máy", "Cancel")}</button>` : ""
@@ -14151,7 +14171,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     if (b.dataset.pcscxgo) return cxlGo(b);
     if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
     if (b.dataset.pcsrenew) return renewOpen(b.dataset.pcsrenew);
-    if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); return; }
+    if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b));
+      const hw = $i("pcs-re-how"), it2 = itemOf(PC.reid); if (hw) hw.innerHTML = reHow(PC.reos, O(it2 && it2.pc).os); return; }
     if (b.dataset.pcsplan) { PC.rdays = +b.dataset.pcsplan; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); renewSum(); return; }
     if (b.dataset.pcsgo2) return reGo(b);
     if (b.dataset.pcsrnew) return renewGo(b);
@@ -14182,17 +14203,26 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   function reOpen(id) {
     const it = itemOf(id); if (!it) return;
     if (pcMaint()) { toast(pcMaintMsg(), 1); return; }
-    const os = A(O(PC.mine).os); PC.reid = id; PC.reos = it.os && os.some(o => o.id === it.os) ? it.os : (os[0] || {}).id;
-    dlg(`<h3 style="margin:0">🔄 ${L("Cài lại / đổi Windows", "Reinstall / switch Windows")}</h3>
+    const pc = O(it.pc), can = Array.isArray(pc.can) ? pc.can : null;                    // v50: máy đổi được sang bản nào
+    const os = A(O(PC.mine).os).filter(o => o && (can ? can.includes(o.id) || o.id === it.os : !isLin(o.id)));
+    PC.reid = id; PC.reos = it.os && os.some(o => o.id === it.os) ? it.os : (os[0] || {}).id;
+    const anyLin = os.some(o => isLin(o.id)) || isLin(pc.os);
+    dlg(`<h3 style="margin:0">🔄 ${anyLin ? L("Cài lại / đổi hệ điều hành", "Reinstall / switch the OS") : L("Cài lại / đổi Windows", "Reinstall / switch Windows")}</h3>
       <div class="hint">${L("Máy", "Machine")} <b>${esc(S(O(it.pc).name, 40))}</b> · ${L("còn", "")} <b>${+it.left}/${+O(PC.mine).reinstall_max || 2}</b> ${L("lượt trong lượt thuê này", "left in this rental")}</div>
       <div class="vps-opts">${os.map(o => `<button type="button" data-pcsreos="${esc(o.id)}" class="${o.id === PC.reos ? "on" : ""}"><b>${esc(S(o.name, 60))}</b><small>${o.id === it.os ? L("bản đang dùng — cài lại sạch", "current — clean reinstall") : L("đổi sang bản này", "switch to this")}</small></button>`).join("")}</div>
-      <div class="pcs-how">⚠️ ${L("Chỉ xoá <b>ổ C: (Windows)</b> — ổ khác giữ nguyên. Máy khởi động lại và cài trong <b>15–30 phút</b>, xong tự vào lại được. Dữ liệu ổ C: <b>không lấy lại được</b>.", "Only <b>drive C: (Windows)</b> is erased — other drives are kept. Takes <b>15–30 min</b>. Data on C: <b>cannot be recovered</b>.")}</div>
+      <div class="pcs-how" id="pcs-re-how">${reHow(PC.reos, pc.os)}</div>
       <div class="err" id="pcs-re-err"></div>
       <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">${L("Huỷ", "Cancel")}</button><button class="btn" type="button" data-pcsgo2="1">${L("Cài lại ngay", "Reinstall now")}</button></div>`);
   }
+  function reHow(to, cur) {                                          // lời cảnh báo theo bản đang chọn
+    const sys = isLin(cur) ? L("phần hệ điều hành <b>Linux</b>", "the <b>Linux</b> system") : L("<b>ổ C: (Windows)</b>", "<b>drive C: (Windows)</b>");
+    return `⚠️ ${L(`Chỉ xoá ${sys} — ổ khác giữ nguyên. Máy khởi động lại và cài trong <b>${instTime(to)}</b>, xong tự vào lại được. Dữ liệu đã xoá <b>không lấy lại được</b>.`,
+      `Only ${sys} is erased — other drives are kept. Takes <b>${instTime(to)}</b>. Erased data <b>cannot be recovered</b>.`)}${isLin(to) ? "<br>" + linNote() : ""}`;
+  }
   async function reGo(b) {
     const it = itemOf(PC.reid); if (!it || !PC.reos) return;
-    if (!confirm(L(`Cài lại máy ${S(O(it.pc).name, 40)} sang ${S(PC.reos, 12).toUpperCase()}?\n\nỔ C: bị xoá, không lấy lại được.`, `Reinstall ${S(O(it.pc).name, 40)} with ${S(PC.reos, 12).toUpperCase()}?\n\nDrive C: will be erased.`))) return;
+    const rn = osName(PC.reos), cl = isLin(O(it.pc).os);
+    if (!confirm(L(`Cài lại máy ${S(O(it.pc).name, 40)} sang ${rn}?\n\n${cl ? "Phần hệ điều hành Linux" : "Ổ C:"} bị xoá, không lấy lại được.`, `Reinstall ${S(O(it.pc).name, 40)} with ${rn}?\n\n${cl ? "The Linux system" : "Drive C:"} will be erased.`))) return;
     await busy(b, async () => {
       const { data, error } = await sb.rpc("pc_my_reinstall", { p_pc: PC.reid, p_os: PC.reos });
       if (error) { const x = $i("pcs-re-err"); if (x) x.textContent = em(error); return; }
@@ -14296,7 +14326,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
         <div class="pcs-set" id="pcs-adm-setbox" hidden>
           <label>Sản phẩm bán tự động <select class="in" id="pcs-set-prod"></select></label>
           <label>Khách tự cài lại / đổi Windows <input class="in" type="number" id="pcs-set-max" min="0" max="20" step="1" style="width:70px"> lần / lượt thuê</label>
-          <span>Bản Windows bán: <label><input type="checkbox" id="pcs-set-22h2"> 22H2</label> <label><input type="checkbox" id="pcs-set-1511"> 1511</label></span>
+          <span>Bản bán: <label><input type="checkbox" id="pcs-set-22h2"> 22H2</label> <label><input type="checkbox" id="pcs-set-1511"> 1511</label> <label title="Linux CachyOS (KDE): chỉ giao máy UEFI đã tắt Secure Boot + agent 22.11f (cần SQL v50)"><input type="checkbox" id="pcs-set-cachyos"> 🐧 CachyOS</label></span>
           <div class="pcs-rc" id="pcs-rc" hidden>
             <b>♻️ Tự thu hồi máy hết hạn</b>
             <label><input type="checkbox" id="pcs-rc-on"> Bật</label>
@@ -14368,6 +14398,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     $i("pcs-set-prod").innerHTML = `<option value="">— Tắt bán tự động —</option>` + prods.map(p => `<option value="${esc(p.id)}"${p.id === D.product ? " selected" : ""}>${esc(S(p.name, 60))}</option>`).join("");
     $i("pcs-set-max").value = +D.reinstall_max >= 0 ? +D.reinstall_max : 2;
     const ids = A(D.os).map(o => o.id); $i("pcs-set-22h2").checked = !ids.length || ids.includes("22h2"); $i("pcs-set-1511").checked = !ids.length || ids.includes("1511");
+    $i("pcs-set-cachyos").checked = ids.includes("cachyos");
     const rc = D.reclaim && typeof D.reclaim === "object" ? D.reclaim : null; $i("pcs-rc").hidden = !rc;      // chưa chạy SQL v44 → ẩn
     const cab = $i("pcs-ca-box");                                    // 21.11k (SQL v46): công tắc "Cho khách quyền Admin" — chưa chạy v46 thì ẩn
     if (cab) { cab.hidden = true; Promise.resolve(sb.rpc("pc_admin_flags")).then(r => { const d = O(r && r.data); if (!r || r.error || typeof d.cust_admin !== "boolean") return;
@@ -14379,8 +14410,10 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     }
   }
   async function setSave(btn) {
-    const os = [["22h2", "Windows 10 Pro 22H2"], ["1511", "Windows 10 Pro 1511"]].filter(x => $i("pcs-set-" + x[0]).checked).map(x => ({ id: x[0], name: x[1] }));
-    if (!os.length) { toast("Chọn ít nhất 1 bản Windows.", 1); return; }
+    const os = [["22h2", "Windows 10 Pro 22H2"], ["1511", "Windows 10 Pro 1511"], ["cachyos", "Linux CachyOS"]].filter(x => $i("pcs-set-" + x[0]).checked).map(x => ({ id: x[0], name: x[1] }));
+    if (!os.length) { toast("Chọn ít nhất 1 bản để bán.", 1); return; }
+    if (os.some(o => o.id === "cachyos") && !A(O(PC.adm).os).some(o => o.id === "cachyos")
+        && !confirm("BẬT bán Linux CachyOS?\n\n• Cần đã Run SQL v50 (chỉ giao máy cài được CachyOS) + đã ⬆ Công bố bản agent 22.11f.\n• Chỉ máy UEFI đã TẮT Secure Boot mới nhận đơn CachyOS — không có máy như vậy thì đơn chờ, admin được báo.\n• Bản Linux không dùng card NVIDIA.")) return;
     const prod = $i("pcs-set-prod").value || null, mx = Math.round(+$i("pcs-set-max").value);
     let rc = null;
     if (!$i("pcs-rc").hidden) {
@@ -14426,17 +14459,19 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   function handOpen(r) {
     const fr = A(O(PC.adm).free); PC.hr = r;
     const ok = m => (m.online ? "● online" : "○ offline (lệnh chờ máy bật)") + (m.cleaning ? " · 🧽 đang tự cài sạch" : T(m.reclaim_at) !== null ? " · ♻️ tự cài sạch lúc " + hm(T(m.reclaim_at)) : "");
+    const cant = m => Array.isArray(m.can) && !m.can.includes(r.os) && !(m.clean && m.os === r.os);    // v50: máy chưa cài được bản khách chọn (VD CachyOS)
+    const first = fr.find(m => !cant(m)) || null;
     dlg(`<h3 style="margin:0">${r.state === "waiting" ? "🤝 Bàn giao máy" : "↔ Đổi máy"} cho ${esc(S(O(r.user).username, 40))}</h3>
       <div class="hint">${esc(S(r.os_name, 40))} · ${+r.days} ngày. Chỉ hiện máy <b>trống</b> (Sẵn sàng, chưa gán khách, không đang cài).</div>
-      <div class="pcs-free">${fr.length ? fr.map((m, i) => `<label><input type="radio" name="pcs-hpc" value="${esc(m.id)}"${i === 0 ? " checked" : ""}><span><b>${esc(S(m.name, 40))}</b>${m.code ? " № " + esc(S(m.code, 24)) : ""}<br><small class="hint">${ok(m)} · đang chạy ${esc(S(m.os, 12).toUpperCase() || "?")} · ${m.clean ? "✓ sạch (vừa cài)" : "đã có khách dùng → sẽ xoá sạch"}${m.clean && m.os === r.os ? " · <b>giao ngay, không cần cài</b>" : ""}</small></span></label>`).join("")
+      <div class="pcs-free">${fr.length ? fr.map(m => `<label${cant(m) ? ' class="off" title="Máy này chưa cài được bản khách chọn"' : ""}><input type="radio" name="pcs-hpc" value="${esc(m.id)}"${m === first ? " checked" : ""}${cant(m) ? " disabled" : ""}><span><b>${esc(S(m.name, 40))}</b>${m.code ? " № " + esc(S(m.code, 24)) : ""}<br><small class="hint">${ok(m)} · đang chạy ${esc(S(m.os, 12).toUpperCase() || "?")} · ${m.clean ? "✓ sạch (vừa cài)" : "đã có khách dùng → sẽ xoá sạch"}${m.clean && m.os === r.os ? " · <b>giao ngay, không cần cài</b>" : ""}${cant(m) ? " · ⛔ <b>chưa cài được " + esc(S(r.os_name, 30)) + "</b> (cần UEFI, tắt Secure Boot, agent 22.11f)" : ""}</small></span></label>`).join("")
         : '<div class="hint">Không có máy trống. Đặt 1 máy về trạng thái <b>Sẵn sàng</b> (bỏ khách + hạn cũ bằng 🧼 Bàn giao ở bảng máy) rồi thử lại.</div>'}</div>
-      <label class="hint"><input type="checkbox" id="pcs-h-re"> Luôn cài lại Windows sạch (kể cả máy đã sạch đúng bản)</label>
+      <label class="hint"><input type="checkbox" id="pcs-h-re"> Luôn cài lại sạch (kể cả máy đã sạch đúng bản)</label>
       <div class="err" id="pcs-h-err"></div>
-      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">Huỷ</button><button class="btn" type="button" id="pcs-h-go"${fr.length ? "" : " disabled"}>Bàn giao</button></div>`);
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">Huỷ</button><button class="btn" type="button" id="pcs-h-go"${first ? "" : " disabled"}>Bàn giao</button></div>`);
     $i("pcs-h-go").onclick = async e => {
       const pid = (document.querySelector('input[name="pcs-hpc"]:checked') || {}).value; if (!pid) return;
       const res = await admCall("pc_admin_handover", { p_rental: +PC.hr.id, p_pc: pid, p_reinstall: $i("pcs-h-re").checked ? true : null }, "", e.currentTarget);
-      if (res) { $i("pcsdlg").hidden = true; toast(O(res).reinstall ? `Đã giao ${S(O(res).name, 40)} — máy đang tự cài ${S(PC.hr.os, 12).toUpperCase()}.` : `Đã giao ${S(O(res).name, 40)} — khách vào được ngay.`); }
+      if (res) { $i("pcsdlg").hidden = true; toast(O(res).reinstall ? `Đã giao ${S(O(res).name, 40)} — máy đang tự cài ${S(PC.hr.os_name, 40) || S(PC.hr.os, 12).toUpperCase()}.` : `Đã giao ${S(O(res).name, 40)} — khách vào được ngay.`); }
     };
   }
   // 🧼 Bàn giao ở bảng máy: máy đang thuộc 1 lượt thuê → kết thúc lượt đó
