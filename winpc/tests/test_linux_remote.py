@@ -196,6 +196,19 @@ K.subprocess.run, K.TEST_SRC = _run, _ts; K._TOOLS.clear(); K._TOOLS_T[0] = 0.0
 print("4. ĐẦU-CUỐI: máy chủ phát hình thật ⇄ cbremote (root) ⇄ cbcap (tiến trình riêng) ⇄ người xem")
 import pwd                                            # noqa: E402
 import cbremote as CR                                 # noqa: E402
+print("4a. Chuột ảo (uinput) giữ con trỏ KWin luôn hiện trên máy không cắm chuột")
+_io = CR.fcntl.ioctl; CALLS = []
+CR.fcntl.ioctl = lambda fd, req, arg=0: CALLS.append((req, arg if isinstance(arg, int) else bytes(arg)))
+_tmp = tempfile.mkstemp()[1]
+ok_ = CR.dummy_pointer(path=_tmp)
+ck("tạo thiết bị: nút trái/phải/giữa + REL_X/Y/WHEEL + tên 'CloudBlue Remote Pointer' + UI_DEV_CREATE", ok_ and [c[0] for c in CALLS] == [0x40045564, 0x40045565, 0x40045565, 0x40045565, 0x40045564, 0x40045566, 0x40045566, 0x40045566, 0x405c5503, 0x5501]
+   and CALLS[1][1] == 0x110 and CALLS[7][1] == 8 and b"CloudBlue Remote Pointer" in CALLS[8][1] and len(CALLS[8][1]) == 92, CALLS)
+n = len(CALLS); ck("gọi lại → không tạo thêm thiết bị", CR.dummy_pointer(path=_tmp) and len(CALLS) == n)
+CR.fcntl.ioctl = _io; [os.close(fd) for fd in CR._PTR]; CR._PTR.clear()
+L2 = []
+ck("không có /dev/uinput (hoặc lỗi) → bỏ qua, ghi nhật ký, không ném lỗi", CR.dummy_pointer(L2.append, path="/khong/co/uinput") is False and any("chuot ao" in m for m in L2))
+ck("thiết bị thật không cho ioctl (file thường) → đóng fd, trả False", CR.dummy_pointer(path=_tmp) is False and not CR._PTR)
+os.remove(_tmp)
 sd = os.path.join(tmp, "srv"); os.makedirs(sd)
 for f in ("bluestream.py", "pcrelay.py"): shutil.copy(os.path.join(SRV, f), os.path.join(sd, f))
 port = socket.socket(); port.bind(("127.0.0.1", 0)); PORT = port.getsockname()[1]; port.close()
