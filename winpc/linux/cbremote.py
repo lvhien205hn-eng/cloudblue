@@ -121,6 +121,45 @@ def install_kwin_access(log=lambda m: None, py="/usr/bin/python3", cap_dir=None,
         return None, False
 
 
+KWIN_ENV_FILE = "/etc/environment.d/90-cloudblue-kwin.conf"
+KWIN_ENV = ("KWIN_FORCE_SW_CURSOR=1", "KWIN_WAYLAND_NO_PERMISSION_CHECKS=1")
+
+
+def ensure_kwin_env(log=lambda m: None, path=None, etc_env="/etc/environment"):
+    """22.11g — máy cài từ bản cũ: bật cho KWin KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 (cbcap dùng thẳng zkde_screencast + fake_input, không qua
+       cổng XDG → không hộp hỏi). Có hiệu lực từ lần đăng nhập / khởi động sau. Máy cho thuê 1 khách, phiên là của khách. → vừa đổi gì không."""
+    path = path or KWIN_ENV_FILE
+    want = ("# CloudBlue: dieu khien tu xa can con tro ve bang phan mem + quay man hinh / bam phim thang qua KWin\n" + "\n".join(KWIN_ENV) + "\n").encode()
+    changed = False
+    try:
+        os.makedirs(os.path.dirname(path), mode=0o755, exist_ok=True)
+        if not _same(path, want): _put(path, want, 0o644); changed = True
+        try:
+            with open(etc_env, encoding="utf-8", errors="replace") as f: cur = f.read()
+        except OSError:
+            cur = ""
+        add = [kv for kv in KWIN_ENV if not re.search(r"(?m)^" + re.escape(kv.split("=", 1)[0]) + "=", cur)]
+        if add:
+            with open(etc_env, "a", encoding="utf-8") as f: f.write(("\n" if cur and not cur.endswith("\n") else "") + "\n".join(add) + "\n")
+            changed = True
+        if changed: log("da bat cho KWin quay man hinh / bam phim truc tiep (%s) - co hieu luc tu lan khoi dong lai may sau" % path)
+    except OSError as e:
+        log("chua ghi duoc %s: %s" % (path, e))
+    return changed
+
+
+def kwin_env_ok(user):
+    """KWin đang chạy đã có KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 chưa → True / False · None: chưa có KWin (khách chưa đăng nhập)."""
+    try: pw = pwd.getpwnam(user)
+    except KeyError: return None
+    pid = _kwin_pid(pw.pw_uid)
+    if pid is None: return None
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as f: return b"KWIN_WAYLAND_NO_PERMISSION_CHECKS=1" in f.read().split(b"\0")
+    except OSError:
+        return None
+
+
 def _kwin_pid(uid):
     """pid kwin_wayland của tài khoản khách (None nếu chưa có)."""
     for d in os.listdir("/proc"):
@@ -176,7 +215,8 @@ class Helper:
             script = install_cap()
             py, changed = install_kwin_access(self.log)                 # 22.11g: bản python riêng được KWin cấp quyền (không hộp hỏi)
             if py:
-                try: refresh_sycoca(self.user, self.log, force=changed)
+                try:
+                    if refresh_sycoca(self.user, self.log, force=changed): time.sleep(2)   # KWin chỉ dò lại ksycoca mỗi 1,5 giây
                 except Exception as e: self.log("kbuildsycoca6 loi: %r" % (e,))
             mine, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
             try:
@@ -275,6 +315,7 @@ class LinuxIO:
         self.helper = Helper(user, self.log)
         self.sz = (1920, 1080); self.sz_t = 0.0; self.clip_seen = None; self.clip_t = 0.0
         self.backend = ""; self.on_backend = None                         # 22.11g: "kwin" | "portal" — báo pcremote (thông số gửi người xem)
+        self.kwin_env = lambda: kwin_env_ok(self.user)
 
     def screen(self):
         h = self.helper
@@ -335,6 +376,9 @@ class LinuxIO:
             except Exception as e:
                 why = " ".join(str(e).split())[:230]
                 note_error(why); self.log("khong mo duoc man hinh de quay: %s" % why)
+                if "KWin chua cho" in why and self.kwin_env() is False:          # máy vừa lên 22.11g: KWin cũ chưa có quyền mới → khởi động lại 1 lần
+                    raise ViewerError(why, "Máy Linux cần KHỞI ĐỘNG LẠI 1 lần để bật cách điều khiển mới: bấm Nguồn › Khởi động lại, "
+                                           "đợi khoảng 3 phút rồi mở lại. (%s)" % why[:120])
                 raise ViewerError(why, "Máy Linux chưa mở được màn hình để quay: %s" % why)
             self.backend = str(r.get("backend") or "")
             if self.on_backend is not None:
@@ -497,6 +541,8 @@ def cmd_run(argv):
     io.on_backend = lambda b: rm.caps.__setitem__("cap", b or "portal")
     log("=== CloudBlue PC dieu khien tu xa (CachyOS) %s / pcremote %s chay - khach %s ===" % (LINUX_REMOTE_VER, R.REMOTE_VER, user))
     dummy_pointer(log)
+    ensure_kwin_env(log)
+    if kwin_env_ok(user) is False: log("KWin dang chay chua co quyen quay man hinh truc tiep -> can khoi dong lai may 1 lan (tam dung cong XDG)")
 
     def prep():
         """22.11g: cấp quyền KWin cho cbcap-py + làm mới ksycoca NGAY khi khách đăng nhập (không đợi người xem đầu tiên)."""
