@@ -13641,6 +13641,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 .pcs-free label{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line);cursor:pointer}
 .pcs-free label:has(input:checked){border-color:var(--sky);background:rgba(61,123,255,.12)}
 .pcs-free label.off{opacity:.55;cursor:not-allowed}
+.pcs-set label.off{opacity:.55;cursor:not-allowed}
+#pcs-set-cy-need{color:var(--warn);font-size:12px}
 #pcsdlg{z-index:70}   /* hộp của phần VPS GPU nằm TRÊN bảng quản trị (z 60) khi admin bấm Bàn giao */
 .pcs-dlg.vid{width:min(980px,96vw);max-width:min(980px,96vw);padding:12px 12px 10px}
 .pcs-vid{display:block;width:100%;aspect-ratio:16/9;border-radius:12px;background:#000}
@@ -14326,7 +14328,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
         <div class="pcs-set" id="pcs-adm-setbox" hidden>
           <label>Sản phẩm bán tự động <select class="in" id="pcs-set-prod"></select></label>
           <label>Khách tự cài lại / đổi Windows <input class="in" type="number" id="pcs-set-max" min="0" max="20" step="1" style="width:70px"> lần / lượt thuê</label>
-          <span>Bản bán: <label><input type="checkbox" id="pcs-set-22h2"> 22H2</label> <label><input type="checkbox" id="pcs-set-1511"> 1511</label> <label title="Linux CachyOS (KDE): chỉ giao máy UEFI đã tắt Secure Boot + agent 22.11f (cần SQL v50)"><input type="checkbox" id="pcs-set-cachyos"> 🐧 CachyOS</label></span>
+          <span>Bản bán: <label><input type="checkbox" id="pcs-set-22h2"> 22H2</label> <label><input type="checkbox" id="pcs-set-1511"> 1511</label> <label id="pcs-set-cy" title="Linux CachyOS (KDE): chỉ giao máy UEFI đã tắt Secure Boot + agent 22.11f (cần SQL v50)"><input type="checkbox" id="pcs-set-cachyos"> 🐧 CachyOS</label> <small id="pcs-set-cy-need" hidden>(chạy SQL v50 trước)</small></span>
           <div class="pcs-rc" id="pcs-rc" hidden>
             <b>♻️ Tự thu hồi máy hết hạn</b>
             <label><input type="checkbox" id="pcs-rc-on"> Bật</label>
@@ -14398,7 +14400,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     $i("pcs-set-prod").innerHTML = `<option value="">— Tắt bán tự động —</option>` + prods.map(p => `<option value="${esc(p.id)}"${p.id === D.product ? " selected" : ""}>${esc(S(p.name, 60))}</option>`).join("");
     $i("pcs-set-max").value = +D.reinstall_max >= 0 ? +D.reinstall_max : 2;
     const ids = A(D.os).map(o => o.id); $i("pcs-set-22h2").checked = !ids.length || ids.includes("22h2"); $i("pcs-set-1511").checked = !ids.length || ids.includes("1511");
-    $i("pcs-set-cachyos").checked = ids.includes("cachyos");
+    const cy = $i("pcs-set-cachyos"), v50 = D.lx === 2;              // 22.11f: pc_admin_rentals của SQL v50 trả "lx": 2 — chưa có thì chưa cho bật bán CachyOS
+    cy.checked = ids.includes("cachyos"); cy.disabled = !v50 && !cy.checked; $i("pcs-set-cy").classList.toggle("off", cy.disabled); $i("pcs-set-cy-need").hidden = v50;
     const rc = D.reclaim && typeof D.reclaim === "object" ? D.reclaim : null; $i("pcs-rc").hidden = !rc;      // chưa chạy SQL v44 → ẩn
     const cab = $i("pcs-ca-box");                                    // 21.11k (SQL v46): công tắc "Cho khách quyền Admin" — chưa chạy v46 thì ẩn
     if (cab) { cab.hidden = true; Promise.resolve(sb.rpc("pc_admin_flags")).then(r => { const d = O(r && r.data); if (!r || r.error || typeof d.cust_admin !== "boolean") return;
@@ -14412,6 +14415,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   async function setSave(btn) {
     const os = [["22h2", "Windows 10 Pro 22H2"], ["1511", "Windows 10 Pro 1511"], ["cachyos", "Linux CachyOS"]].filter(x => $i("pcs-set-" + x[0]).checked).map(x => ({ id: x[0], name: x[1] }));
     if (!os.length) { toast("Chọn ít nhất 1 bản để bán.", 1); return; }
+    if (os.some(o => o.id === "cachyos") && !A(O(PC.adm).os).some(o => o.id === "cachyos") && O(PC.adm).lx !== 2) {
+      toast("Chưa chạy SQL v50 — vào Supabase › SQL Editor › chạy SQL v50 trước rồi mới bật bán CachyOS.", 1); return; }
     if (os.some(o => o.id === "cachyos") && !A(O(PC.adm).os).some(o => o.id === "cachyos")
         && !confirm("BẬT bán Linux CachyOS?\n\n• Cần đã Run SQL v50 (chỉ giao máy cài được CachyOS) + đã ⬆ Công bố bản agent 22.11f.\n• Chỉ máy UEFI đã TẮT Secure Boot mới nhận đơn CachyOS — không có máy như vậy thì đơn chờ, admin được báo.\n• Bản Linux không dùng card NVIDIA.")) return;
     const prod = $i("pcs-set-prod").value || null, mx = Math.round(+$i("pcs-set-max").value);
