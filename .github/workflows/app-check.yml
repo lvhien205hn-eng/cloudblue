@@ -77,7 +77,7 @@ jobs:
           python -m py_compile bluepc.py brstream.py
           python ..\.github\app-check\test_pc_viewer.py .
           if ($LASTEXITCODE -ne 0) { exit 1 }
-          python ..\.github\app-check\test_pc_mini.py .
+          python ..\.github\app-check\test_pc_win.py .
           if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m PyInstaller --noconfirm --clean --windowed --name CloudBluePC --collect-submodules av bluepc.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
