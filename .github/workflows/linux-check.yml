@@ -285,6 +285,8 @@ jobs:
           OK=0; sudo grep -q CB_FIRSTBOOT_OK /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && OK=1
           AG=0; sudo grep -q "^agent=active opt=700 seed_ticket=0 identity=600" /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && AG=1
           VIRT=0; sudo grep -A4 "^--- cbcap probe (man hinh ao" /mnt/rec/cb/linux-firstboot.ok 2>/dev/null | grep -Eq "^cbcap probe: backend=kwin virtual=1 rtp=([2-9][0-9]|[0-9]{3,}) " && VIRT=1   # 22.11h: máy không cắm màn hình
+          APP=0; sudo grep -Eq "^nguoi xem CI da mo qua menu: konsole=[1-9][0-9]* firefox=[1-9]" /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && APP=1   # 23.11a: khách mở được terminal + trình duyệt qua menu KDE
+          mkdir -p linux-shots; sudo cat /mnt/rec/cb/linux-firstboot.ok > linux-shots/firstboot.txt 2>/dev/null || true
           sudo umount /mnt/rec; sudo losetup -d $LOOP
           RPC=0
           echo '### Agent CloudBlue (Linux) gọi máy chủ giả' >> $GITHUB_STEP_SUMMARY
@@ -292,8 +294,8 @@ jobs:
           RMT=0
           { echo '### Điều khiển từ xa đầu-cuối (người xem trên máy CI ⇄ trạm thật ⇄ CachyOS)'; echo '```'; cat remote.json 2>/dev/null || echo "(khong co remote.json)"; echo '```'; } >> $GITHUB_STEP_SUMMARY
           python3 -c "import json,sys; j=json.load(open('remote.json')); sys.exit(0 if j.get('ok') and j.get('cursor_moved') and j.get('click_ok') and (j.get('stats') or {}).get('cap') == 'kwin' else 1)" 2>/dev/null && RMT=1
-          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ] && [ "$RMT" = 1 ] && [ "$VIRT" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent tu dang ky bang ve -> dieu khien tu xa qua KWin truc tiep (khong hop hoi): hinh KDE that toi nguoi xem, re + bam chuot duoc; may khong cam man hinh -> man hinh ao)" >> $GITHUB_STEP_SUMMARY
-          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC, dieu khien tu xa=$RMT, man hinh ao=$VIRT)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
+          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ] && [ "$RMT" = 1 ] && [ "$VIRT" = 1 ] && [ "$APP" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent tu dang ky bang ve -> dieu khien tu xa qua KWin truc tiep (khong hop hoi): hinh KDE that toi nguoi xem, re + bam chuot duoc; may khong cam man hinh -> man hinh ao; nguoi xem mo Konsole + Firefox qua menu KDE)" >> $GITHUB_STEP_SUMMARY
+          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC, dieu khien tu xa=$RMT, man hinh ao=$VIRT, mo app qua menu=$APP)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -308,13 +310,13 @@ jobs:
       - name: Ảnh khách mở app qua menu (nhánh linux-shots)
         if: always()
         run: |
-          ls linux-shots/*.png >/dev/null 2>&1 || exit 0
-          mkdir -p /tmp/ls && cp linux-shots/*.png /tmp/ls/
+          ls linux-shots/* >/dev/null 2>&1 || exit 0
+          mkdir -p /tmp/ls && cp linux-shots/*.png linux-shots/*.txt /tmp/ls/ 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -q --orphan linux-shots-tmp
           git rm -r -q --cached . >/dev/null 2>&1 || true
-          mkdir -p /tmp/lsrepo/shots /tmp/lsrepo/blueroblox-site && cp /tmp/ls/*.png /tmp/lsrepo/shots/
+          mkdir -p /tmp/lsrepo/shots /tmp/lsrepo/blueroblox-site && cp /tmp/ls/* /tmp/lsrepo/shots/
           echo '{"git":{"deploymentEnabled":false}}' > /tmp/lsrepo/blueroblox-site/vercel.json
           git --work-tree=/tmp/lsrepo add -A shots blueroblox-site
           git --work-tree=/tmp/lsrepo commit -q -m "Anh CachyOS mo app ($GITHUB_SHA)"
