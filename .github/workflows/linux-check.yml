@@ -1,8 +1,10 @@
 # KIỂM phần CachyOS của bộ cài máy PC (winpc/linux) — KHÔNG phát hành gì, không đụng máy thật nào:
-#   1. grub:  dựng grubx64.efi (GRUB tự chứa, cấu hình nhúng = winpc/linux/grub-embed.cfg) → đẩy vào nhánh linux-bin (chỉ chứa file này)
-#   2. boot:  máy ảo QEMU (UEFI / OVMF) + ổ ảo y như máy thật sau khi WinPE giao việc: phân vùng EFI có grubx64.efi,
-#             phân vùng NTFS "CBRECOVERY" có cb/linux/cachyos.iso (ISO CachyOS THẬT) + grub.cfg + cb-install.sh + cb/job.json {"test": true}
-#             → GRUB mở thẳng file ISO → máy sống CachyOS chạy cb-install.sh → ghi cb/linux-test.ok rồi tắt máy → kiểm file đó.
+#   1. grub:    dựng grubx64.efi (GRUB tự chứa, cấu hình nhúng = winpc/linux/grub-embed.cfg) → đẩy vào nhánh linux-bin (chỉ chứa file này)
+#   2. boot:    (nhanh, ~10 phút) chế độ thử: GRUB → ISO trên NTFS → cb-install.sh chạy được, có mạng + khoá pacman → cb/linux-test.ok
+#   3. install: máy ảo QEMU (UEFI / OVMF) + ổ ảo y như máy thật sau khi WinPE giao việc cài CachyOS: EFI "Windows" có GRUB, phân vùng NTFS
+#               "CBRECOVERY" có cb/linux/cachyos.iso (ISO CachyOS THẬT) + grub.cfg + cb-install.sh + cb-post.sh + cb/job.json (mục "linux"),
+#               EFI Linux + phân vùng Linux trống → GRUB mở thẳng ISO → cb-install.sh CÀI THẬT → khởi động lại vào CachyOS vừa cài
+#               → dịch vụ thử (chỉ có ở chế độ ci) ghi cb/linux-firstboot.ok → kiểm 2 file kết quả.
 name: Check winpc Linux (CachyOS)
 
 on:
@@ -67,7 +69,7 @@ jobs:
   boot:
     needs: grub
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -135,7 +137,7 @@ jobs:
           sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
           echo "== cb/linux-test.ok =="; sudo cat /mnt/rec/cb/linux-test.ok || true
           OK=0; sudo grep -q CB_TEST_OK /mnt/rec/cb/linux-test.ok 2>/dev/null && OK=1
-          for k in net keyring installer efibootmgr rw; do v=$(sudo grep -o "$k=[^ ]*" /mnt/rec/cb/linux-test.ok 2>/dev/null | head -1); echo "- $v" >> $GITHUB_STEP_SUMMARY; done
+          for k in net keyring unsquashfs sfs efibootmgr rw; do v=$(sudo grep -o "$k=[^ ]*" /mnt/rec/cb/linux-test.ok 2>/dev/null | head -1); echo "- $v" >> $GITHUB_STEP_SUMMARY; done
           sudo ls -la /mnt/rec/cb/ /mnt/rec/cb/logs/ 2>/dev/null || true
           { echo '### Trên phân vùng cứu hộ'; echo '```'; sudo cat /mnt/rec/cb/linux-started.txt 2>/dev/null || echo "(khong co cb/linux-started.txt -> cb-install.sh KHONG chay)";
             sudo cat /mnt/rec/cb/linux-test.ok 2>/dev/null; for f in /mnt/rec/cb/logs/linux-install-*.log; do [ -f "$f" ] && sudo tail -n 40 "$f"; done; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
@@ -146,3 +148,131 @@ jobs:
         with:
           name: serial-log
           path: serial.log
+
+  install:
+    needs: grub
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: grubx64
+          path: gb
+      - name: Dọn chỗ trống trên máy CI + bật KVM
+        run: |
+          df -h / | tail -1
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost /usr/local/.ghcup 2>/dev/null || true
+          df -h / | tail -1; nproc; free -m | head -2
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+      - name: Cài QEMU + OVMF + công cụ NTFS
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf ntfs-3g dosfstools gdisk jq > /dev/null
+          ls /usr/share/OVMF/
+      - name: Tải ISO CachyOS
+        env:
+          ISO_URL: ${{ github.event.inputs.iso_url || 'https://cdn77.cachyos.org/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' }}
+        run: |
+          curl -fL --retry 5 --retry-delay 10 -o cachyos.iso "$ISO_URL"
+          ls -l cachyos.iso; sha256sum cachyos.iso
+      - name: Dựng ổ ảo như sau khi WinPE giao việc cài CachyOS (EFI Windows · CBRECOVERY · EFI Linux · Linux)
+        run: |
+          truncate -s 44G disk.img
+          sgdisk -o -n1:1M:+100M -t1:ef00 -c1:EFI -n2:0:+5G -t2:0700 -c2:CBRECOVERY -n3:0:+1G -t3:ef00 -c3:CBLINUXEFI -n4:0:0 -t4:8300 disk.img
+          sfdisk -J disk.img | tee parts.json
+          LOOP=$(sudo losetup -f --show -P disk.img); echo "LOOP=$LOOP" >> $GITHUB_ENV
+          sudo mkfs.vfat -F32 -n EFI ${LOOP}p1 > /dev/null
+          sudo mkntfs -f -q -L CBRECOVERY ${LOOP}p2
+          sudo mkfs.vfat -F32 -n CBLINUXEFI ${LOOP}p3 > /dev/null
+          sudo mkdir -p /mnt/esp /mnt/rec
+          sudo mount ${LOOP}p1 /mnt/esp
+          sudo mkdir -p /mnt/esp/EFI/BOOT /mnt/esp/EFI/cblinux && sudo cp gb/grubx64.efi /mnt/esp/EFI/BOOT/BOOTX64.EFI && sudo cp gb/grubx64.efi /mnt/esp/EFI/cblinux/grubx64.efi
+          sudo umount /mnt/esp
+          REC_UUID=$(sudo blkid -s UUID -o value ${LOOP}p2); echo "REC_UUID=$REC_UUID"
+          sudo mount -t ntfs-3g ${LOOP}p2 /mnt/rec
+          sudo mkdir -p /mnt/rec/cb/linux /mnt/rec/cb/logs
+          sudo cp cachyos.iso /mnt/rec/cb/linux/cachyos.iso && rm -f cachyos.iso
+          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh /mnt/rec/cb/linux/
+          SS=$(jq '.partitiontable.sectorsize // 512' parts.json)
+          E_OFF=$(jq ".partitiontable.partitions[2].start * $SS" parts.json); E_SZ=$(jq ".partitiontable.partitions[2].size * $SS" parts.json)
+          R_OFF=$(jq ".partitiontable.partitions[3].start * $SS" parts.json); R_SZ=$(jq ".partitiontable.partitions[3].size * $SS" parts.json)
+          jq -n --argjson eo "$E_OFF" --argjson es "$E_SZ" --argjson ro "$R_OFF" --argjson rs "$R_SZ" \
+            '{id: "ci", os: "cachyos", wipe: "all", name: "CB-CI01", ci: true, state: "running", attempts: 1, ticket: "ve-thu-ci", hw: "ci",
+              linux: {esp: {offset: $eo, size: $es}, root: {offset: $ro, size: $rs}, user: "pc", pass: "ci-pass", admin: true, autologin: true,
+                      desktop: "kde", tz: "Asia/Ho_Chi_Minh", locale: "en_US", keymap: "us"}}' | sudo tee /mnt/rec/cb/job.json
+          printf 'set cbdev=UUID=%s\nset cbextra="console=ttyS0,115200 loglevel=4 systemd.show_status=1"\n' "$REC_UUID" | sudo tee /mnt/rec/cb/linux/job.cfg
+          sudo umount /mnt/rec
+          sudo losetup -d $LOOP
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+          df -h / | tail -1
+      - name: "Lần 1: GRUB → ISO CachyOS → cb-install.sh cài thật (tối đa 150 phút)"
+        run: |
+          MEM=$(( $(free -m | awk '/^Mem:/{print $2}') - 1800 )); [ $MEM -gt 8192 ] && MEM=8192; [ $MEM -lt 3072 ] && MEM=3072
+          CPU=$(nproc); echo "may ao: ${MEM} MB RAM, $CPU CPU"
+          if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
+          set +e
+          timeout 9000 qemu-system-x86_64 $ACC -m $MEM -smp $CPU \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,unit=1,file=vars.fd \
+            -drive file=disk.img,format=raw,if=none,id=d0,cache=unsafe -device virtio-blk-pci,drive=d0 \
+            -nic user,model=virtio-net-pci -display none -serial file:serial1.log -no-reboot
+          echo "qemu thoat ma $?"
+          {
+            echo '### Lần 1 (cài) — dòng chính của nhật ký cổng nối tiếp'
+            echo '```'
+            grep -a -E "\[cloudblue|Failed to|FAILED|Power-Off|Reached target (Basic|Multi)|reboot" serial1.log | sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' | cut -c1-220 | head -150
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY || true
+          echo "== serial1.log ($(wc -l < serial1.log) dong) =="; tail -n 400 serial1.log || true
+      - name: Kiểm kết quả cài
+        run: |
+          LOOP=$(sudo losetup -f --show -P disk.img)
+          sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
+          sudo ls -la /mnt/rec/cb/ /mnt/rec/cb/linux /mnt/rec/cb/logs 2>/dev/null || true
+          { echo '### Sau lần 1'; echo '```'; for f in linux-started.txt job-result.json job.done.json job.json linux/installed.json; do echo "--- cb/$f"; sudo cat /mnt/rec/cb/$f 2>/dev/null | sed -E 's/"pass": *"[^"]*"/"pass": "***"/'; echo; done
+            for f in /mnt/rec/cb/logs/linux-install-*.log; do [ -f "$f" ] && sudo tail -n 60 "$f"; done; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          sudo grep -q '"ok": true' /mnt/rec/cb/job-result.json 2>/dev/null && echo "CAI_OK=1" >> $GITHUB_ENV || echo "CAI_OK=0" >> $GITHUB_ENV
+          sudo umount /mnt/rec
+          sudo mkdir -p /mnt/lr && sudo mount -o ro,subvol=/@ ${LOOP}p4 /mnt/lr 2>/dev/null && { sudo ls /mnt/lr/boot /mnt/lr/home 2>/dev/null; sudo cat /mnt/lr/etc/fstab; sudo umount /mnt/lr; } || true
+          sudo mkdir -p /mnt/le && sudo mount -o ro ${LOOP}p3 /mnt/le 2>/dev/null && { sudo find /mnt/le -maxdepth 3 | head -40; sudo cat /mnt/le/loader/loader.conf /mnt/le/loader/entries/*.conf; sudo umount /mnt/le; } || true
+          sudo losetup -d $LOOP
+      - name: "Lần 2: khởi động CachyOS vừa cài (tối đa 15 phút)"
+        if: env.CAI_OK == '1'
+        run: |
+          MEM=$(( $(free -m | awk '/^Mem:/{print $2}') - 1800 )); [ $MEM -gt 8192 ] && MEM=8192; [ $MEM -lt 3072 ] && MEM=3072
+          if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
+          set +e
+          timeout 900 qemu-system-x86_64 $ACC -m $MEM -smp $(nproc) \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,unit=1,file=vars.fd \
+            -drive file=disk.img,format=raw,if=none,id=d0,cache=unsafe -device virtio-blk-pci,drive=d0 \
+            -nic user,model=virtio-net-pci -display none -serial file:serial2.log -no-reboot
+          echo "qemu thoat ma $?"
+          {
+            echo '### Lần 2 (khởi động CachyOS) — dòng chính'
+            echo '```'
+            grep -a -E "systemd-boot|Linux Boot Manager|Welcome to|Reached target|Failed to|FAILED|login:|Power-Off|cloudblue|CloudBlue" serial2.log | sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' | cut -c1-200 | head -120
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY || true
+          echo "== serial2.log ($(wc -l < serial2.log) dong) =="; tail -n 300 serial2.log || true
+      - name: Kiểm máy CachyOS đã lên
+        run: |
+          LOOP=$(sudo losetup -f --show -P disk.img)
+          sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
+          { echo '### cb/linux-firstboot.ok'; echo '```'; sudo cat /mnt/rec/cb/linux-firstboot.ok 2>/dev/null || echo "(khong co - CachyOS chua khoi dong toi dich vu thu)"; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          OK=0; sudo grep -q CB_FIRSTBOOT_OK /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && OK=1
+          sudo umount /mnt/rec; sudo losetup -d $LOOP
+          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS)" >> $GITHUB_STEP_SUMMARY
+          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: serial-logs
+          path: |
+            serial1.log
+            serial2.log
+            parts.json
