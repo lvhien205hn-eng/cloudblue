@@ -4149,6 +4149,9 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
     hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
     tk.Label(hd, text=L("🖥 VPS GPU của bạn", "🖥 Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
     if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+    if hasattr(app, "open_wall") and any(isinstance(x.get("pc"), dict) and x["pc"].get("id") and x.get("state") == "active" for x in items):   # 22.11c: lưới xem trực tiếp mọi VPS GPU
+        app.btn(hd, L("▦ Xem tất cả", "▦ View all"), lambda: app.open_wall("pc"), tint=OK, padx=11, pady=4,
+                font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 6))
     if len(live) >= 2 and not mt and hasattr(app, "open_pc"):                       # mở hết các máy đang bật vào ô bên phải (mỗi máy 1 ô)
         app.btn(hd, L(f"▦ Mở tất cả ({len(live)})", f"▦ Open all ({len(live)})"), lambda ids=tuple(live): [app.open_pc(i) for i in ids], "ghost",
                 padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 6))
@@ -7249,32 +7252,96 @@ class LiveTile:
         return f
 
 
+class PcTile(LiveTile):
+    """22.11c · Ô xem trước 1 VPS GPU (máy PC thật): hình nhỏ CHỈ XEM qua trạm máy PC (máy chủ bản 22/11b) — không đá người đang điều khiển,
+       máy PC không phải cài thêm gì. Máy chủ chưa lên bản có ô xem trước → ô hiện chữ, bấm vẫn điều khiển được."""
+
+    def _start(self, g):
+        try:
+            import brstream
+            ep = self.app.auth.rpc("pc_endpoint", {"p_id": self.pid}) or {}
+            if g != self.gen or not self.playing: return
+            st = ep.get("stream") or {}
+            if not ep.get("online") or not (st.get("direct") or st.get("ws")):
+                self.err = L("Máy chưa nối máy chủ (đang tắt, khởi động hoặc mất mạng)", "Not connected (off, booting or offline)")
+                self.playing = False; self.retry_at = time.time() + 20; self.wall.dirty(); return
+            mh = max(320, min(640, int(max(self.box_wh))))
+            cli = brstream.StreamClient(ep, lambda force=False: self.app.auth.token(force), self.pid,
+                                        lambda k, d, g=g: self._ev(g, k, d), q="eco", client="pc", maxh=mh, mode="preview", kind="pc")
+            if g != self.gen or not self.playing: return
+            self.cli = cli; cli.start()
+        except TypeError:
+            self.ended = L("Cập nhật app để xem trước", "Update the app for live preview"); self.playing = False; self.wall.dirty()
+        except Exception as e:
+            log("wall pc:", self.pid, e)
+            self.err = str(e)[:120] or L("Chưa kết nối được", "Couldn't connect"); self.playing = False; self.retry_at = time.time() + 20; self.wall.dirty()
+
+    def _ev(self, g, k, d):
+        if g != self.gen: return
+        if k == "state" and d and d[0] == "error":
+            code = d[2] if len(d) > 2 else ""
+            if code == "PREVIEW_LIMIT":                    # trạm máy PC bản cũ (< 22/11b) chưa có ô xem trước
+                self.ended = L("Máy chủ chưa bật xem trước VPS GPU — bấm để điều khiển", "Live preview not enabled yet — click to control")
+                self.playing = False; self.cli = None; self.wall.dirty(); return
+            if code == "PV_FULL":                          # quá nhiều ô xem trước cùng lúc → thử lại sau
+                self.err = str(d[1]); self.retry_at = time.time() + 30; self.playing = False; self.cli = None; self.wall.dirty(); return
+        LiveTile._ev(self, g, k, d)
+
+
+def pc_live(app, x):
+    """22.11c · VPS GPU xem / điều khiển được ngay (đang thuê, máy đang chạy, không bảo trì — admin vẫn vào)."""
+    try: code = vps_state(x)[0]
+    except Exception: return False
+    return x.get("state") == "active" and bool((x.get("pc") or {}).get("id")) and code in ("run", "warn") and not pc_maint_msg(getattr(app, "prof", None))
+
+
 class WallDlg(Dlg):
-    """▦ Xem tất cả máy: lưới mọi máy (máy đang chạy phát hình trực tiếp) · bấm ô = mở máy · trang tự cập nhật theo danh sách."""
+    """▦ Xem tất cả máy: lưới mọi máy (máy đang chạy phát hình trực tiếp) · bấm ô = mở máy · trang tự cập nhật theo danh sách.
+       22.11c: có cả VPS GPU (ô ngang 16:9, xem trước qua trạm máy PC) — khách có cả 2 loại thì có chip lọc Tất cả / VPS GPU / Cloud Phone."""
     GAP, PAD = 10, 16
 
-    def __init__(self, app):
-        super().__init__(app, L("Xem tất cả máy", "All phones"), 1180, 800)
-        tk = app.tk; self.tk = tk; self.tiles = {}; self.cells = {}; self.cols = 0; self.tw = 0; self.ppm = ppm_ok(app.root)
-        self.rows = []; self.sig = None; self.t_vis = 0.0; self._dirty = False; self._wait = None
-        self.sum = self.label(self.body, "", app.f_t, DIM); self.sum.pack(fill="x", padx=self.PAD + 2, pady=(10, 2))
-        self.grid = tk.Frame(self.body, bg=BG); self.grid.pack(fill="x", padx=self.PAD, pady=(6, 16))
+    def __init__(self, app, kind="all"):
+        super().__init__(app, L("Xem tất cả máy", "All machines"), 1180, 800)
+        tk = app.tk; self.tk = tk; self.tiles = {}; self.cells = {}; self.ppm = ppm_ok(app.root)
+        self.kind = kind if kind in ("all", "pc", "phone") else "all"
+        self.rows = []; self.pcs = []; self.sig = None; self.t_vis = 0.0; self._dirty = False; self._wait = None
+        self.lay = {"pc": (0, 0), "phone": (0, 0)}         # mỗi lưới: (số cột, bề ngang ô)
+        self.chips = tk.Frame(self.body, bg=BG)
+        self.sum = self.label(self.body, "", app.f_t, DIM)
+        self.hd_pc = self.label(self.body, "🖥 VPS GPU", ("Segoe UI", 11, "bold"), TXT)
+        self.grid_pc = tk.Frame(self.body, bg=BG)
+        self.hd_ph = self.label(self.body, "📱 Cloud Phone", ("Segoe UI", 11, "bold"), TXT)
+        self.grid = tk.Frame(self.body, bg=BG)
         bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=10)
-        self.label(bb, L("Bấm vào ô để điều khiển máy · chỉ ô đang thấy mới phát hình", "Click a phone to control it · only visible tiles play"),
+        self.label(bb, L("Bấm vào ô để điều khiển máy · chỉ ô đang thấy mới phát hình", "Click a machine to control it · only visible tiles play"),
                    app.f_s, DIM).pack(side="left")
         app.btn(bb, L("⟳ Làm mới", "⟳ Refresh"), self.reload, "ghost", padx=12, pady=5, font=("Segoe UI", 9, "bold")).pack(side="right")
-        self.grid.bind("<Configure>", lambda e: self._relayout(), add="+")
+        for g in (self.grid, self.grid_pc): g.bind("<Configure>", lambda e: self._relayout(), add="+")
         self.update_rows(list(getattr(app, "rows_last", []) or []))
         self.win.after(120, self._tick)
 
     # ---------- dữ liệu ----------
+    def _pc_rows(self):
+        now_ = now_utc()
+        data = getattr(self.app, "vps_last", None) or {}
+        return [x for x in (data.get("items") or []) if isinstance(x, dict) and not vps_hidden(x, now_) and (x.get("pc") or {}).get("id")
+                and x.get("state") not in ("ended", "cancelled")]
+
     def update_rows(self, rows):
         if not self.alive: return
-        try: sig = json.dumps([[p.get(k) for k in ("id", "name", "status", "locked", "expires_at", "ram", "android")] for p in rows], default=str)
+        pcs = self._pc_rows()
+        try:
+            sig = json.dumps([self.kind, [[p.get(k) for k in ("id", "name", "status", "locked", "expires_at", "ram", "android")] for p in rows],
+                              [[(x.get("pc") or {}).get("id"), (x.get("pc") or {}).get("name"), vps_state(x)[0], x.get("until"), x.get("os_name")] for x in pcs],
+                              bool(pc_maint_msg(getattr(self.app, "prof", None)))], default=str)
         except Exception: sig = None
-        self.rows = list(rows)
+        self.rows = list(rows); self.pcs = pcs
         if sig is not None and sig == self.sig: return
         self.sig = sig; self._build()
+
+    def set_kind(self, kind):
+        if kind not in ("all", "pc", "phone") or kind == self.kind: return
+        self.kind = kind; self.sig = None; self.update_rows(self.rows)
 
     def reload(self):
         for t in self.tiles.values(): t.ended = ""; t.err = ""; t.retry_at = 0.0
@@ -7282,85 +7349,145 @@ class WallDlg(Dlg):
 
     def dirty(self): self._dirty = True                  # luồng khác báo ô đổi trạng thái → luồng giao diện vẽ lại ô
 
-    def _counts(self):
-        run = sum(1 for p in self.rows if phone_live(self.app, p)); pz = sum(1 for p in self.rows if p.get("status") == "expired")
-        oth = len(self.rows) - run - pz
-        t = L(f"{len(self.rows)} máy · ● {run} đang chạy", f"{len(self.rows)} phones · ● {run} running")
+    def _counts(self, show_ph, show_pc):
+        run_ph = sum(1 for p in self.rows if phone_live(self.app, p)) if show_ph else 0
+        run_pc = sum(1 for x in self.pcs if pc_live(self.app, x)) if show_pc else 0
+        parts = []
+        if show_pc and self.pcs: parts.append(f"{len(self.pcs)} VPS GPU")
+        if show_ph and self.rows: parts.append(f"{len(self.rows)} Cloud Phone")
+        t = " · ".join(parts) + L(f" · ● {run_ph + run_pc} đang chạy", f" · ● {run_ph + run_pc} running")
+        pz = sum(1 for p in self.rows if p.get("status") == "expired") if show_ph else 0
         if pz: t += L(f" · ⏸ {pz} tạm dừng", f" · ⏸ {pz} paused")
-        if oth: t += L(f" · {oth} khác", f" · {oth} other")
         return t
 
     # ---------- dựng lưới ----------
+    def _chips(self, both):
+        for w in self.chips.winfo_children(): w.destroy()
+        if not both: return False
+        opts = (("all", L(f"Tất cả ({len(self.pcs) + len(self.rows)})", f"All ({len(self.pcs) + len(self.rows)})")),
+                ("pc", f"🖥 VPS GPU ({len(self.pcs)})"), ("phone", f"📱 Cloud Phone ({len(self.rows)})"))
+        for k, t in opts:
+            on = k == self.kind
+            b = self.app.btn(self.chips, t, lambda k=k: self.set_kind(k), "primary" if on else "ghost", padx=12, pady=4, font=("Segoe UI", 9, "bold"))
+            b.pack(side="left", padx=(0, 6))
+        return True
+
     def _build(self):
         tk = self.tk
-        self.sum.config(text=self._counts() if self.rows else L("Bạn chưa có máy nào.", "You have no phones yet."))
-        keep = {str(p.get("id")) for p in self.rows}
+        both = bool(self.pcs) and bool(self.rows)
+        kind = self.kind if both else ("pc" if self.pcs and not self.rows else "phone" if self.rows else "all")
+        show_pc, show_ph = kind in ("all", "pc") and bool(self.pcs), kind in ("all", "phone") and bool(self.rows)
+        for w in (self.chips, self.sum, self.hd_pc, self.grid_pc, self.hd_ph, self.grid): w.pack_forget()
+        if self._chips(both): self.chips.pack(fill="x", padx=self.PAD, pady=(10, 0))
+        self.sum.config(text=self._counts(show_ph, show_pc) if (show_ph or show_pc) else L("Bạn chưa có máy nào.", "You have no machines yet."))
+        self.sum.pack(fill="x", padx=self.PAD + 2, pady=(8, 2))
+        if show_pc:
+            if show_ph: self.hd_pc.pack(fill="x", padx=self.PAD + 2, pady=(8, 0))
+            self.grid_pc.pack(fill="x", padx=self.PAD, pady=(6, 10))
+        if show_ph:
+            if show_pc: self.hd_ph.pack(fill="x", padx=self.PAD + 2, pady=(8, 0))
+            self.grid.pack(fill="x", padx=self.PAD, pady=(6, 16))
+        keep = ({str(p.get("id")) for p in self.rows} if show_ph else set()) | ({str(x["pc"]["id"]) for x in self.pcs} if show_pc else set())
         for pid in list(self.tiles):
             if pid not in keep: self.tiles.pop(pid).pause()
-        for w in self.grid.winfo_children(): w.destroy()
+        for g in (self.grid, self.grid_pc):
+            for w in g.winfo_children(): w.destroy()
         self.cells = {}
-        for p in self.rows:
-            pid = str(p.get("id")); live = phone_live(self.app, p)
-            t = self.tiles.get(pid)
-            if live and t is None: t = self.tiles[pid] = LiveTile(self, p)
-            elif not live and t is not None: self.tiles.pop(pid).pause(); t = None
-            if t is not None: t.p = p
-            self.cells[pid] = self._cell(p, live)
-        self.cols = 0; self._relayout()
+        if show_pc:
+            for x in self.pcs:
+                pid = str(x["pc"]["id"]); live = pc_live(self.app, x)
+                t = self.tiles.get(pid)
+                if live and t is None: t = self.tiles[pid] = PcTile(self, {"id": pid})
+                elif not live and t is not None: self.tiles.pop(pid).pause(); t = None
+                self.cells[pid] = self._cell_pc(x, live)
+        if show_ph:
+            for p in self.rows:
+                pid = str(p.get("id")); live = phone_live(self.app, p)
+                t = self.tiles.get(pid)
+                if live and t is None: t = self.tiles[pid] = LiveTile(self, p)
+                elif not live and t is not None: self.tiles.pop(pid).pause(); t = None
+                if t is not None: t.p = p
+                self.cells[pid] = self._cell(p, live)
+        self.lay = {"pc": (0, 0), "phone": (0, 0)}; self._relayout()
 
-    def _cell(self, p, live):
-        tk = self.tk; app = self.app; pid = str(p.get("id"))
-        cell = tk.Frame(self.grid, bg=BG)
-        st = p.get("status")
-        tone = OK if live else WARN if st in ("pending", "cancelling") else BAD
+    def _box(self, parent, live, tone, icon, txt, sub, click):
+        """Khung đen của 1 ô (hình trực tiếp nằm trên, lớp che hiện trạng thái khi chưa có hình)."""
+        tk = self.tk
         edge = _mix(tone, BG, .45 if live else .40)
-        box = tk.Frame(cell, bg="#02040c", highlightbackground=edge, highlightthickness=1, radius=12, cursor="hand2" if live else "")
+        box = tk.Frame(parent, bg="#02040c", highlightbackground=edge, highlightthickness=1, radius=12, cursor="hand2" if live else "")
         box.pack(fill="x"); box.pack_propagate(False)
         scr = tk.Label(box, bg="#02040c", bd=0, highlightthickness=0, cursor="hand2" if live else "")
         cover = tk.Frame(box, bg="#02040c", cursor="hand2" if live else "")
         inner = tk.Frame(cover, bg="#02040c"); inner.place(relx=.5, rely=.5, anchor="center")
+        ic = tk.Label(inner, text=icon, font=("Segoe UI Emoji", 22), fg="#ffffff", bg="#02040c"); ic.pack()
+        s1 = tk.Label(inner, text=txt, font=("Segoe UI", 9, "bold"), fg=tone if live or tone == WARN else _mix(BAD, "#ffffff", .8), bg="#02040c",
+                      wraplength=220, justify="center"); s1.pack(pady=(4, 0))
+        s2 = tk.Label(inner, text=sub, font=("Segoe UI", 8), fg=_mix("#ffffff", "#02040c", .7), bg="#02040c", justify="center"); s2.pack()
+        cover.place(x=0, y=0, relwidth=1, relheight=1)
+        dot = tk.Label(box, text="●" if live else "○", font=("Segoe UI", 9, "bold"), fg=tone, bg="#02040c")
+        dot.place(relx=1.0, x=-8, y=6, anchor="ne")
+        for w in (box, scr, cover, inner, ic, s1, s2, dot): w.bind("<Button-1>", click)
+        return {"box": box, "scr": scr, "cover": cover, "s1": s1, "s2": s2, "dot": dot, "img": None, "live": live, "shown": False}
+
+    def _cell(self, p, live):
+        tk = self.tk; app = self.app
+        cell = tk.Frame(self.grid, bg=BG)
+        st = p.get("status")
+        tone = OK if live else WARN if st in ("pending", "cancelling") else BAD
         lk = p.get("locked") and not (getattr(app, "prof", None) or {}).get("role") == "admin"
         txt = ("🔒 " + L("Bị khoá", "Locked")) if lk else ("● " + L("Đang chạy", "Running")) if live else \
               ("◌ " + L("Đang tạo…", "Creating…")) if st == "pending" else ("⏸ " + L("Tạm dừng — chờ gia hạn", "Paused — renew to use")) if st == "expired" \
               else ("◌ " + L("Đang huỷ…", "Cancelling…")) if st == "cancelling" else ("⚠ " + L("Lỗi", "Error"))
-        ic = tk.Label(inner, text="📱", font=("Segoe UI Emoji", 22), fg="#ffffff", bg="#02040c"); ic.pack()
-        s1 = tk.Label(inner, text=txt, font=("Segoe UI", 9, "bold"), fg=tone if live or tone == WARN else _mix(BAD, "#ffffff", .8), bg="#02040c",
-                      wraplength=150, justify="center"); s1.pack(pady=(4, 0))
-        s2 = tk.Label(inner, text=L("Bấm để điều khiển", "Click to control") if live else "", font=("Segoe UI", 8), fg=_mix("#ffffff", "#02040c", .7),
-                      bg="#02040c", justify="center"); s2.pack()
-        cover.place(x=0, y=0, relwidth=1, relheight=1)
-        dot = tk.Label(box, text="●" if live else "○", font=("Segoe UI", 9, "bold"), fg=tone, bg="#02040c")
-        dot.place(relx=1.0, x=-8, y=6, anchor="ne")
+        c = self._box(cell, live, tone, "📱", txt, L("Bấm để điều khiển", "Click to control") if live else "", lambda _e=None, p=p: self.open(p))
         nm = tk.Label(cell, text=p.get("name") or L("Máy", "Phone"), font=("Segoe UI", 10, "bold"), fg=TXT, bg=BG, anchor="w")
         nm.pack(fill="x", pady=(6, 0))
         info = f"{p.get('ram')}GB · Android {p.get('android') or '9'}"
         if p.get("expires_at"):
             lf = left_secs(p["expires_at"]); info += " · " + short_left(p["expires_at"])
         else: lf = 9e9
-        sub = tk.Label(cell, text=info, font=app.f_s, fg=BAD if lf <= 0 else WARN if lf < 86400 else DIM, bg=BG, anchor="w"); sub.pack(fill="x")
-        def click(_e=None, p=p): self.open(p)
-        for w in (box, scr, cover, inner, ic, s1, s2, dot): w.bind("<Button-1>", click)
-        return {"cell": cell, "box": box, "scr": scr, "cover": cover, "s1": s1, "s2": s2, "dot": dot, "img": None, "live": live, "shown": False}
+        tk.Label(cell, text=info, font=app.f_s, fg=BAD if lf <= 0 else WARN if lf < 86400 else DIM, bg=BG, anchor="w").pack(fill="x")
+        c.update(cell=cell, kind="phone"); return c
+
+    def _cell_pc(self, x, live):
+        """22.11c · ô 1 VPS GPU: khung ngang 16:9, tên + Windows + card + thời gian còn lại."""
+        tk = self.tk; app = self.app; pc = x.get("pc") or {}
+        cell = tk.Frame(self.grid_pc, bg=BG)
+        code, st, col, why = vps_state(x)
+        mt = pc_maint_msg(getattr(app, "prof", None))
+        tone = OK if live else WARN if code in ("wait", "inst", "off", "warn", "boot", "down", "offd") or mt else BAD if code == "exp" else DIM
+        txt = ("● " + L("Đang chạy", "Running")) if live else (L("🛠 Đang bảo trì", "🛠 Maintenance") if mt and code in ("run", "warn") else st)
+        c = self._box(cell, live, tone, "🖥", txt, L("Bấm để điều khiển", "Click to control") if live else "", lambda _e=None, q=x: self.open_pc(q))
+        nm = str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {pc.get('code')}" if pc.get("code") and str(pc.get("code")) not in str(pc.get("name") or "") else "")
+        tk.Label(cell, text=nm, font=("Segoe UI", 10, "bold"), fg=TXT, bg=BG, anchor="w").pack(fill="x", pady=(6, 0))
+        spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g]
+        lf = left_secs(x["until"]) if x.get("until") else 9e9
+        if x.get("until"): spec.append(short_left(x["until"]))
+        tk.Label(cell, text=" · ".join(q for q in spec if q), font=app.f_s, fg=BAD if lf <= 0 else WARN if lf < 86400 else DIM, bg=BG, anchor="w").pack(fill="x")
+        c.update(cell=cell, kind="pc"); return c
 
     def _relayout(self):
         if not self.alive: return
-        try: W = self.grid.winfo_width()
-        except Exception: return
-        if W < 50: return
         dp = getattr(self.tk, "dp", 1.0); gap = int(self.GAP * dp)
-        cols = max(1, min(6, int((W + gap) // (int(178 * dp) + gap))))
-        tw = (W - gap * (cols - 1)) // cols
-        if cols == self.cols and tw == self.tw: return
-        self.cols, self.tw = cols, tw
-        th = int(tw * 16 / 9)
-        for j in range(6): self.grid.grid_columnconfigure(j, weight=1 if j < cols else 0, uniform="wall" if j < cols else "")
-        for i, p in enumerate(self.rows):
-            c = self.cells.get(str(p.get("id")))
-            if c is None: continue
-            c["cell"].grid(row=i // cols, column=i % cols, sticky="new", padx=(0 if i % cols == 0 else gap // 2, 0 if i % cols == cols - 1 else gap // 2), pady=(0, gap + 4))
-            c["box"].configure(height=th)
-            t = self.tiles.get(str(p.get("id")))
-            if t is not None: t.box_wh = (max(40, tw - 8), max(60, th - 8))
+        for kind, grid, mn, mx, ratio in (("phone", self.grid, 178, 6, 16 / 9), ("pc", self.grid_pc, 300, 4, 9 / 16)):
+            try: W = grid.winfo_width()
+            except Exception: continue
+            if W < 50: continue
+            cols = max(1, min(mx, int((W + gap) // (int(mn * dp) + gap))))
+            tw = (W - gap * (cols - 1)) // cols
+            if (cols, tw) == self.lay.get(kind): continue
+            self.lay[kind] = (cols, tw)
+            th = int(tw * ratio)
+            for j in range(6): grid.grid_columnconfigure(j, weight=1 if j < cols else 0, uniform=("wall" + kind) if j < cols else "")
+            ids = [str(x["pc"]["id"]) for x in self.pcs] if kind == "pc" else [str(p.get("id")) for p in self.rows]
+            i = 0
+            for pid in ids:
+                c = self.cells.get(pid)
+                if c is None or c.get("kind") != kind: continue
+                c["cell"].grid(row=i // cols, column=i % cols, sticky="new", padx=(0 if i % cols == 0 else gap // 2, 0 if i % cols == cols - 1 else gap // 2), pady=(0, gap + 4))
+                c["box"].configure(height=th)
+                t = self.tiles.get(pid)
+                if t is not None: t.box_wh = (max(40, tw - 8), max(40, th - 8))
+                i += 1
 
     # ---------- phát hình ----------
     def _visible(self):
@@ -7428,13 +7555,21 @@ class WallDlg(Dlg):
                 try: c["scr"].place_forget(); c["cover"].place(x=0, y=0, relwidth=1, relheight=1); c["cover"].tkraise(); c["dot"].tkraise()
                 except Exception: pass
         try:
+            tw = self.lay.get(c.get("kind") or "phone", (0, 0))[1]
             c["s2"].config(text=msg if msg else L("Bấm để điều khiển", "Click to control") if not t.playing else L("Đang lấy hình…", "Loading…"),
-                           wraplength=max(80, self.tw - 24))
+                           wraplength=max(80, tw - 24))
         except Exception: pass
 
     def open(self, p):
         if phone_live(self.app, p): self.app.open_machine(str(p.get("id")))
         elif p.get("status") == "expired" and not p.get("is_free") and not p.get("shared"): self.app.open_renew(p)
+
+    def open_pc(self, x):
+        """22.11c · bấm ô VPS GPU: đang chạy → mở điều khiển (ô bên phải) · hết hạn còn giữ máy → Gia hạn."""
+        pid = str((x.get("pc") or {}).get("id") or "")
+        if not pid: return
+        if pc_live(self.app, x) and hasattr(self.app, "open_pc"): self.app.open_pc(pid)
+        elif vps_state(x)[0] == "exp" and x.get("rental") is not None: VpsRenewDlg(self.app, x)
 
     def close(self):
         for t in self.tiles.values(): t.pause()
@@ -8303,10 +8438,14 @@ class Launcher:
                 try: p.update_rows(rows)
                 except Exception: log("wall:", traceback.format_exc())
 
-    def open_wall(self):
+    def open_wall(self, kind="all"):
+        """▦ Xem tất cả: kind = "all" (nút ở Máy của tôi) · "pc" (nút ở thẻ VPS GPU của bạn — 22.11c) · "phone"."""
         w = next((p for p in self.pages if isinstance(p, WallDlg) and p.alive), None)
-        if w is not None: self.raise_page(w)
-        else: WallDlg(self)
+        if w is not None:
+            self.raise_page(w)
+            try: w.set_kind(kind)
+            except Exception: log("wall:", traceback.format_exc())
+        else: WallDlg(self, kind)
 
     def open_tools_page(self, p):
         t = next((x for x in self.pages if isinstance(x, ToolsDlg) and x.alive and str(x.p.get("id")) == str(p.get("id"))), None)
