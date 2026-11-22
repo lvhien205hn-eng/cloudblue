@@ -122,6 +122,12 @@ jobs:
             -drive file=disk.img,format=raw,if=none,id=d0 -device virtio-blk-pci,drive=d0 \
             -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot
           echo "qemu thoat ma $?"
+          {
+            echo '### Nhật ký cổng nối tiếp — dòng chính'
+            echo '```'
+            grep -a -n -E "cloudblue|Command from Kernel|kernel-command-line|Failed to|FAILED|Reached target (Basic|Multi|Graphical)|login:|Power-Off|Reached target Power|archiso|img_dev|systemd 2[0-9][0-9]" serial.log | sed -e 's/\x1b\[[0-9;?]*[A-Za-z]//g' | cut -c1-200 | head -120
+            echo '```'
+          } >> $GITHUB_STEP_SUMMARY || true
           echo "== serial.log ($(wc -l < serial.log) dong) =="; cat serial.log || true
       - name: Kiểm kết quả trên phân vùng CBRECOVERY
         run: |
@@ -130,7 +136,9 @@ jobs:
           echo "== cb/linux-test.ok =="; sudo cat /mnt/rec/cb/linux-test.ok || true
           OK=0; sudo grep -q CB_TEST_OK /mnt/rec/cb/linux-test.ok 2>/dev/null && OK=1
           for k in net keyring installer efibootmgr rw; do v=$(sudo grep -o "$k=[^ ]*" /mnt/rec/cb/linux-test.ok 2>/dev/null | head -1); echo "- $v" >> $GITHUB_STEP_SUMMARY; done
-          sudo ls -la /mnt/rec/cb/logs/ 2>/dev/null || true
+          sudo ls -la /mnt/rec/cb/ /mnt/rec/cb/logs/ 2>/dev/null || true
+          { echo '### Trên phân vùng cứu hộ'; echo '```'; sudo cat /mnt/rec/cb/linux-started.txt 2>/dev/null || echo "(khong co cb/linux-started.txt -> cb-install.sh KHONG chay)";
+            sudo cat /mnt/rec/cb/linux-test.ok 2>/dev/null; for f in /mnt/rec/cb/logs/linux-install-*.log; do [ -f "$f" ] && sudo tail -n 40 "$f"; done; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
           sudo umount /mnt/rec; sudo losetup -d $LOOP
           if [ "$OK" = 1 ]; then echo "linux check: DAT (GRUB -> ISO CachyOS tren NTFS -> cb-install.sh)" >> $GITHUB_STEP_SUMMARY; else echo "linux check: CHUA DAT" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
