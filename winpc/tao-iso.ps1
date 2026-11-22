@@ -1,15 +1,16 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 21.11d)
+#  cloudblue-tao-iso   (ban 22.11c)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
 #     - nhan 1 hoac nhieu ISO goc (vi du 22H2 + 1511)  ->  1 ISO duy nhat chua ca hai ban
+#     - (22.11c) kem them 1 ISO CachyOS (Linux) neu muon: khach / admin doi sang CachyOS tu web (cai tu USB van luon la Windows)
 #     - khoi dong may tu ISO / USB do: tu chon o, dem nguoc 30 giay, XOA va cai Windows, tao phan vung cuu ho,
 #       cai phan mem CloudBlue, may tu hien len trang quan tri
 #  Script KHONG sua file ISO goc, KHONG dung gi toi o dia cua may dang chay (chi tao thu muc lam viec + file ISO moi).
 #
 #  Tham so (deu co the bo trong - script se hoi):
-#     -Iso  "D:\Win10_22H2.iso","D:\Win10_1511.iso"     duong dan ISO goc (hoac thu muc da giai nen)
+#     -Iso  "D:\Win10_22H2.iso","D:\Win10_1511.iso"     duong dan ISO goc (hoac thu muc da giai nen); them "D:\cachyos-desktop-linux-260809.iso" = kem CachyOS
 #     -Out  "D:\CloudBlue-PC.iso"                       noi ghi ISO moi
 #     -Work "D:\cb-work"                                thu muc lam viec (can trong ~2 lan tong dung luong ISO, KHONG co dau cach)
 #     -TaiKhoan PC  -MatKhau ""                         tai khoan Windows tao san tren may cho thue. Mac dinh la tai khoan THUONG (khong co quyen Admin):
@@ -54,12 +55,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "21.11d"
+$VER = "22.11c"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
                "os/cb_provision.py", "os/provision.cmd", "os/cb_stage.py", "os/unattend.tpl.xml", "os/wallpaper.jpg",
-               "agent/pcagent.py", "agent/pcremote.py", "agent/watch.cmd", "agent/cbpc.cmd", "CAI-DAT.cmd", "cb_build.py")
+               "agent/pcagent.py", "agent/pcremote.py", "agent/watch.cmd", "agent/cbpc.cmd", "CAI-DAT.cmd", "cb_build.py",
+               "linux/grubx64.efi", "linux/grub.cfg", "linux/cb-install.sh", "linux/cb-post.sh")
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
 $Notes = New-Object System.Collections.ArrayList
@@ -457,6 +459,7 @@ try {
   if (($Iso.Count -eq 0) -and (-not $KhongHoi)) {
     Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan). Xong thi bam Enter trong." "White"
     Say "   (CHI file .iso o buoc nay - driver se duoc hoi rieng cho tung ban Windows o buoc 5.)" "DarkGray"
+    Say "   Muon kem CachyOS (Linux) de khach tu doi he dieu hanh: keo them file ISO CachyOS (vd cachyos-desktop-linux-260809.iso)." "DarkGray"
     while ($true) {
       $line = "" + (Read-Host ("   ISO thu " + ($Iso.Count + 1) + " (Enter trong = het)"))
       if (-not $line.Trim()) { break }
@@ -687,6 +690,7 @@ try {
   # ---------------------------------------------------------------- 5. mo ISO goc, doc cac ban Windows
   Step "5/8  Doc cac ban Windows trong ISO goc"
   $src = @()
+  $LinuxSrc = $null
   foreach ($p in $Iso) {
     $it = Get-Item -LiteralPath $p
     if ($it.PSIsContainer) { $root = $it.FullName.TrimEnd("\") + "\" }
@@ -698,6 +702,23 @@ try {
       if (-not $vol -or -not $vol.DriveLetter) { Start-Sleep 2; $vol = Get-DiskImage -ImagePath $it.FullName | Get-Volume }
       if (-not $vol -or -not $vol.DriveLetter) { Stop-Build ("Khong mo duoc ISO: " + $p) }
       $root = "" + $vol.DriveLetter + ":\"
+    }
+    # 22.11c - ISO CachyOS (Linux): \arch\boot\x86_64\vmlinuz-linux-cachyos* + \arch\x86_64\airootfs.sfs -> chep nguyen file ISO vao cb\linux\cachyos.iso
+    $kdir = Join-Path $root "arch\boot\x86_64"
+    $kern = @()
+    if (Test-Path -LiteralPath $kdir) { $kern = @(Get-ChildItem -LiteralPath $kdir -File -Filter "vmlinuz-linux*" -ErrorAction SilentlyContinue) }
+    if ($kern.Count -gt 0) {
+      $cachy = (@($kern | Where-Object { $_.Name -like "vmlinuz-linux-cachyos*" }).Count -gt 0)
+      $sfs = ((Test-Path (Join-Path $root "arch\x86_64\airootfs.sfs")) -or (Test-Path (Join-Path $root "arch\x86_64\airootfs.erofs")))
+      if ((-not $cachy) -or (-not $sfs)) { Stop-Build ("ISO Linux nay khong phai ISO CachyOS (can arch\boot\x86_64\vmlinuz-linux-cachyos* + arch\x86_64\airootfs.sfs): " + $p) }
+      if ($it.PSIsContainer) { Stop-Build ("CachyOS phai la FILE .iso (khong dung thu muc da giai nen): " + $p) }
+      if ($LinuxSrc) { Stop-Build ("Chi kem duoc 1 ISO CachyOS - da co: " + $LinuxSrc.Path) }
+      $lver = ""
+      if ((Split-Path -Leaf $p) -match '(\d{6})') { $lver = $Matches[1] }
+      $LinuxSrc = [pscustomobject]@{ Path = $it.FullName; Bytes = $it.Length; Kernel = ((@($kern | ForEach-Object { $_.Name })) -join ", "); Ver = $lver }
+      Say ("   " + (Split-Path -Leaf $p) + ":  ISO CachyOS (Linux) - nhan " + $LinuxSrc.Kernel + " - " + [math]::Round($it.Length / 1GB, 2) + " GB") "White"
+      Say "      -> doi sang CachyOS tu web (cai lai tu xa: may UEFI, TAT Secure Boot, co Internet). Cai tu USB van luon la Windows." "DarkGray"
+      continue
     }
     # bo cai chuan: \sources\install.wim|esd   ;   ISO 2 kien truc (x86 + x64): \x64\sources\install.wim|esd
     $img = $null
@@ -773,6 +794,7 @@ try {
     }
     $src += [pscustomobject]@{ Root = $root; Image = $img; Pick = $pick; Bytes = $bytes; Path = $p; Std = $std; Extra = ($extra -join ' ; '); Drops = $drops; Tag = $osTag }
   }
+  if ($src.Count -eq 0) { Stop-Build "Can it nhat 1 ISO WINDOWS (ISO CachyOS chi la ban kem them - cai tu USB luon la Windows)." }
   $stdSrc = @($src | Where-Object { $_.Std })
   if ($stdSrc.Count -eq 0) { Stop-Build "Khong ISO nao co du bo khoi dong chuan o goc (sources\boot.wim + boot\boot.sdi + efi\microsoft\boot\efisys.bin). ISO 2 kien truc (x86 + x64) chi dung duoc lam ban Windows phu - can them 1 ISO Windows 64-bit chuan." }
   $baseSrc = $stdSrc | Sort-Object { try { [version]$_.Pick.Version } catch { [version]"0.0" } } -Descending | Select-Object -First 1
@@ -855,6 +877,7 @@ try {
   $infoFile = Join-Path $Dl "build-info.txt"
   Remove-Item -Force $infoFile -ErrorAction SilentlyContinue
   $params = @{ out = $IsoRoot; tool = $Tool; py = $PyDir; images = $images; user = $TaiKhoan; password = $MatKhau; sb_url = $SbUrl; sb_key = $SbKey; enroll_key = $MaDangKy; generic_key = $gk; info = $infoFile; wallpaper = $wpSrc; default_index = $defIdx; user_admin = [bool]$KhachAdmin }
+  if ($LinuxSrc) { $params.linux = @{ src = $LinuxSrc.Path; name = "CachyOS Linux (KDE)"; version = $LinuxSrc.Ver } }
   $pj = Join-Path $Dl "params.json"
   [IO.File]::WriteAllText($pj, ($params | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
   $rc = Run-Exe $PyExe @("-I", "-B", (Join-Path $Tool "cb_build.py"), "layout", $pj)
@@ -940,6 +963,7 @@ try {
     Write-Host ("  ISO goc: " + (Split-Path -Leaf $s.Path) + " -> " + $s.Pick.Name + " [" + $s.Pick.Edition + " " + $s.Pick.Version + "] ban so " + $s.Pick.Index + ", " + [math]::Round($s.Bytes / 1GB, 2) + " GB")
     if ($s.Extra) { Write-Host ("     file rieng cua ISO nay (khong dung toi): " + $s.Extra) }
   }
+  if ($LinuxSrc) { Write-Host ("  ISO CachyOS: " + (Split-Path -Leaf $LinuxSrc.Path) + " -> cb\linux\cachyos.iso, " + [math]::Round($LinuxSrc.Bytes / 1GB, 2) + " GB (nhan " + $LinuxSrc.Kernel + ")") }
   if (Test-Path $infoFile) {
     Get-Content -Encoding UTF8 $infoFile | ForEach-Object { if (("" + $_) -match '^\(!\)') { Write-Host ("  " + $_) -ForegroundColor Yellow } else { Write-Host ("  " + $_) } }
   }

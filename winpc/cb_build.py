@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "21.11d"
+BUILD_VER = "22.11c"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -20,6 +20,8 @@ PAYLOAD = {                                                       # file phần 
     "agent": ["pcagent.py", "pcremote.py", "watch.cmd", "cbpc.cmd"],
 }
 UPDATE_DIRS = ("agent", "lib", "os", "pe")
+LINUX_PAYLOAD = ["grubx64.efi", "grub.cfg", "cb-install.sh", "cb-post.sh"]  # 22.11c · CachyOS: GRUB (dựng trên GitHub CI) + menu + bộ cài không người → cb\linux
+LINUX_UPDATE_RE = re.compile(r"[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)")       # file Linux agent đẩy lên phân vùng cứu hộ khi admin công bố bản mới (không gồm GRUB)
 
 PE_BLOCK = """  <settings pass="windowsPE">
 {LANG}    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
@@ -244,6 +246,28 @@ def copy_tree(src, dst):
     return n
 
 
+def add_linux(P, out, tool, out_imgs):
+    """22.11c · ISO CachyOS người dùng kéo vào cùng ISO Windows → cb\\linux\\cachyos.iso + GRUB + menu + bộ cài không người, thêm 1 mục kind=linux
+       vào CUỐI danh sách (sau mọi bản Windows). P["linux"] = {"src": file .iso, "name", "version"}. Không có → None."""
+    L = P.get("linux") or None
+    if not L: return None
+    src = str(L.get("src") or "")
+    if not src.lower().endswith(".iso") or not os.path.isfile(src): raise C.Stop("ISO CachyOS khong hop le: %s" % src)
+    d = os.path.join(out, "cb", "linux")
+    os.makedirs(d, exist_ok=True)
+    for f in LINUX_PAYLOAD:
+        p = os.path.join(tool, "linux", f)
+        if not os.path.isfile(p): raise C.Stop("Thieu file phan mem: %s" % p)
+        shutil.copyfile(p, os.path.join(d, f))
+    say("  chep ISO CachyOS (%.1f GB) vao bo cai..." % (os.path.getsize(src) / 1e9))
+    copy_big(src, os.path.join(d, "cachyos.iso"))
+    ver = re.sub(r"[^0-9A-Za-z._-]", "", str(L.get("version") or ""))[:16]
+    im = {"id": "cachyos", "name": str(L.get("name") or "CachyOS Linux (KDE)")[:60], "kind": "linux", "file": "cb\\linux\\cachyos.iso",
+          "bytes": os.path.getsize(os.path.join(d, "cachyos.iso")), "version": ver}
+    out_imgs.append(im)
+    return im
+
+
 def layout(P):
     """P: out (cây ISO đã chép từ ISO gốc), tool (thư mục winpc đã tải), py (Python nhúng đã giải nén), images [...], user, password,
        sb_url, sb_key, enroll_key."""
@@ -299,6 +323,7 @@ def layout(P):
     default = P.get("default") or (out_imgs[di]["id"] if isinstance(di, int) and not isinstance(di, bool) and 0 <= di < len(out_imgs) else None) \
         or max(out_imgs, key=lambda i: vkey(i.get("version")))["id"]
     if default not in [i["id"] for i in out_imgs]: raise C.Stop("Ban mac dinh '%s' khong co trong bo cai." % default)
+    lin = add_linux(P, out, tool, out_imgs)                         # 22.11c · CachyOS (KHÔNG bao giờ là bản mặc định: cài từ USB luôn là Windows)
     cfg = {"ver": BUILD_VER, "built": time.strftime("%Y-%m-%d %H:%M:%S"), "images": out_imgs, "default": default,
            "user": P.get("user") or "PC", "password": P.get("password") or "", "timezone": P.get("timezone") or "SE Asia Standard Time",
            "sb_url": (P.get("sb_url") or "").rstrip("/"), "sb_key": P.get("sb_key") or "", "countdown": int(P.get("countdown") or 30),
@@ -327,6 +352,9 @@ def layout(P):
     say("  ngon ngu bo cai: %s" % (lang or "(khong doc duoc lang.ini - bo cai se hoi ngon ngu neu phai chay bo cai thuong)"))
     info = []
     for im in out_imgs:
+        if C.is_linux(im):
+            info.append("ANH %s | %s | ISO %s | %.1f GB | chi cai THEO LENH tu web (may UEFI, TAT Secure Boot, can Internet)" % (im["id"], im.get("name"), im.get("version") or "?", im["bytes"] / 1e9))
+            continue
         info.append("ANH %s | %s | ban so %s | %s | %.1f GB%s%s" % (im["id"], im.get("name"), im.get("index"), im.get("version"), im["bytes"] / 1e9, " | MAC DINH" if im["id"] == default else "",
                                                                   " | dien khoa cai dat chung" if C.generic_key_for(im, cfg) else ""))
     adopt_driver_drops(cb, out_imgs)                               # _img<N> → tên bản (làm TRƯỚC khi xếp gói VGA + đếm driver)
@@ -353,7 +381,14 @@ def manifest(root, base, ver):
         for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
             if not re.fullmatch(r"[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|ini)", f): continue
             with open(os.path.join(d, f), "rb") as fh: files["%s/%s" % (sub, f)] = hashlib.sha256(fh.read()).hexdigest()
-    return {"ver": ver, "base": base.rstrip("/"), "files": files}
+    lin = {}                                                         # 22.11c · bộ cài CachyOS trên phân vùng cứu hộ (agent 22.11c+ tự thay khi admin công bố bản mới;
+    d = os.path.join(root, "linux")                                  #   tách riêng khỏi "files" để agent cũ — chưa biết thư mục linux — vẫn cập nhật được)
+    for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if not LINUX_UPDATE_RE.fullmatch(f) or f == "grub-embed.cfg": continue          # grub-embed.cfg: chỉ để dựng grubx64.efi trên CI
+        with open(os.path.join(d, f), "rb") as fh: lin["linux/%s" % f] = hashlib.sha256(fh.read()).hexdigest()
+    m = {"ver": ver, "base": base.rstrip("/"), "files": files}
+    if lin: m["linux"] = lin
+    return m
 
 
 def check(out):
@@ -365,6 +400,9 @@ def check(out):
         with open(os.path.join(out, "cb", "cb.json"), encoding="utf-8") as f: cfg = json.load(f)
         for im in cfg["images"]:
             if not os.path.isfile(os.path.join(out, *im["file"].split("\\"))): miss.append(im["file"])
+            if C.is_linux(im):
+                miss += [rel for rel in C.LINUX_FILES if not os.path.isfile(os.path.join(out, *rel.split("\\")))]
+        if cfg.get("default") not in [i["id"] for i in C.windows_images(cfg)]: miss.append("cb\\cb.json (ban mac dinh phai la ban Windows)")
     except Exception as e:
         miss.append("cb\\cb.json (%s)" % e)
     for m in miss: say("THIEU " + m)
