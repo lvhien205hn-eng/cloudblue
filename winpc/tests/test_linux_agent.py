@@ -134,7 +134,8 @@ def put(rel, data):
     with open(p, "wb" if isinstance(data, bytes) else "w") as f: f.write(data)
 put("cb\\cb.json", json.dumps(rcfg))
 for rel in ("cb\\boot\\boot.wim", "cb\\boot\\boot.sdi", "cb\\images\\22h2.wim", "cb\\images\\1511.wim", "cb\\linux\\cachyos.iso", "cb\\linux\\grubx64.efi",
-            "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh", "cb\\linux\\cbagent.py"): put(rel, b"x")
+            "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh", "cb\\linux\\cbagent.py",
+            "cb\\linux\\cbremote.py", "cb\\linux\\cbcap.py"): put(rel, b"x")
 put("cb\\job-result.json", json.dumps({"id": oid, "ok": True, "msg": "da cai CachyOS sau 9 phut (CB-LNX01, khach pc)", "os": "cachyos", "pe": "cb-install 22.11c", "secs": 540}))
 with open(os.path.join(base, "cb.json"), "w") as f: json.dump(dict(rcfg, update_base=pcagent.UPDATE_BASE), f)
 with open(os.path.join(base, "seed.json"), "w") as f: json.dump({"id": oid, "os": "cachyos", "ticket": TICKET, "hw": HW, "from": "job", "order": oid, "user": "pc"}, f)
@@ -229,19 +230,21 @@ else:
 
 print("6. Tự cập nhật theo bản kê admin công bố (mục linux + agent/lib)")
 BASEN = pcagent.UPDATE_BASE + "main/winpc"
-NEW = {"linux/cbagent.py": b"# cbagent moi\nLINUX_VER = '22.12a'\n", "agent/pcagent.py": b"# pcagent moi\n", "lib/cbcore.py": b"# core moi\n"}
+NEW = {"linux/cbagent.py": b"# cbagent moi\nLINUX_VER = '22.12a'\n", "agent/pcagent.py": b"# pcagent moi\n", "lib/cbcore.py": b"# core moi\n",
+       "agent/pcremote.py": b"# pcremote moi\n", "linux/cbremote.py": b"# cbremote moi\n"}
 for rel, d in (("agent/pcagent.py", b"# pcagent cu\n"), ("lib/cbcore.py", b"# core cu\n"), ("lib/cbrec.py", b"# rec\n"), ("lib/cbsys.py", b"# sys\n"), ("linux/cbagent.py", b"# cbagent cu\n")):
     os.makedirs(os.path.join(base, os.path.dirname(rel)), exist_ok=True); open(os.path.join(base, rel), "wb").write(d)
 sha = lambda b: hashlib.sha256(b).hexdigest()
-man = {"ver": "22.12a", "base": BASEN, "files": {"agent/pcagent.py": sha(NEW["agent/pcagent.py"]), "lib/cbcore.py": sha(NEW["lib/cbcore.py"]), "agent/pcremote.py": sha(b"x")},
-       "linux": {"linux/cbagent.py": sha(NEW["linux/cbagent.py"]), "linux/cb-install.sh": sha(b"sh")}}
+man = {"ver": "22.12a", "base": BASEN, "files": {"agent/pcagent.py": sha(NEW["agent/pcagent.py"]), "lib/cbcore.py": sha(NEW["lib/cbcore.py"]),
+       "agent/pcremote.py": sha(NEW["agent/pcremote.py"]), "os/cb_provision.py": sha(b"prov")},
+       "linux": {"linux/cbagent.py": sha(NEW["linux/cbagent.py"]), "linux/cbremote.py": sha(NEW["linux/cbremote.py"]), "linux/cb-install.sh": sha(b"sh")}}
 net.files = {BASEN + "/" + k: v for k, v in NEW.items()}
 q("select pc_admin_settings('%s')" % json.dumps({"agent": man}), **A)
 h6 = FakeHost("pc"); ag6 = cbagent.LinuxAgent(cbagent.LinuxSys(), h6, net, base, logs.append, rec=rec)
 ag6.tick()
-ck("tải + kiểm sha256 + chạy thử → thay cbagent.py, pcagent.py, cbcore.py (KHÔNG tải pcremote.py của Windows), đòi chạy lại", ag6.restart
-   and open(os.path.join(base, "linux", "cbagent.py"), "rb").read() == NEW["linux/cbagent.py"] and open(os.path.join(base, "agent", "pcagent.py"), "rb").read() == NEW["agent/pcagent.py"]
-   and not any("pcremote" in c for c in net.files if False) and not os.path.exists(os.path.join(base, "agent", "pcremote.py")), [x for x in logs[-5:]])
+ck("tải + kiểm sha256 + chạy thử → thay cbagent.py, cbremote.py, pcagent.py, pcremote.py, cbcore.py (KHÔNG tải phần riêng Windows os/…), đòi chạy lại", ag6.restart
+   and all(open(os.path.join(base, *rel.split("/")), "rb").read() == NEW[rel] for rel in NEW) and not os.path.exists(os.path.join(base, "os", "cb_provision.py")),
+   [x for x in logs[-5:]])
 ck("… bản mới cũng chép lên phân vùng cứu hộ (lần cài lại CachyOS sau dùng)", open(os.path.join(recd, "cb", "linux", "cbagent.py"), "rb").read() == NEW["linux/cbagent.py"])
 h7 = FakeHost("pc"); ag7 = cbagent.LinuxAgent(cbagent.LinuxSys(), h7, net, base, logs.append, rec=rec); ag7.tick()
 ck("chạy lại: đã đúng bản → không tải lại", not ag7.restart)

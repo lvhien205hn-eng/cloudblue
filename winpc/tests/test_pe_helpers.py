@@ -23,7 +23,8 @@ def cfg0(**kw):
 
 CACHY = {"id": "cachyos", "name": "CachyOS Linux (KDE)", "kind": "linux", "file": "cb\\linux\\cachyos.iso", "bytes": 3 * GB, "version": "260809"}
 LINUX_FILES = {"cb\\linux\\cachyos.iso": b"ISO", "cb\\linux\\grubx64.efi": b"GRUB", "cb\\linux\\grub.cfg": "cfg", "cb\\linux\\cb-install.sh": "sh",
-               "cb\\linux\\cb-post.sh": "post", "cb\\linux\\cbagent.py": "agent"}
+               "cb\\linux\\cb-post.sh": "post", "cb\\linux\\cbagent.py": "agent",
+               "cb\\linux\\cbremote.py": "remote", "cb\\linux\\cbcap.py": "cap"}
 
 
 def cfg_lin(**kw):
