@@ -41,13 +41,13 @@ File `windows/cbproxy-x86_64` tự tải từ GitHub lần đầu dùng (md5 ghi
 
 ```bash
 cd cbproxy
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -buildid=" -o cbproxy-x86_64 .   # Go 1.24.7
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -o cbproxy-x86_64 .   # Go 1.24.7
 md5sum cbproxy-x86_64      # = CBPX_FILE trong windows/phonectl.py → chép sang windows/cbproxy-x86_64
 ```
 
 ## Bộ thử
 
-- `sudo python3 cbproxy/test_cbproxy.py windows/cbproxy-x86_64` — Linux thật, iptables thật, trong 1 không gian mạng riêng
+- `sudo python3 cbproxy/test_cbproxy.py <bản cbproxy có quyền chạy>` — Linux thật, iptables thật, trong 1 không gian mạng riêng
   (`unshare -n`): SOCKS5 / HTTP có mật khẩu, proxy chết → đi thẳng → sống lại, sai mật khẩu, đích chết, iptables bị xoá tự gắn lại,
   đổi proxy, tắt sạch.
 - `python3 cbproxy/test_proxy_server.py` — phonectl (đọc chuỗi proxy, lệnh proxy, đẩy vào máy bằng adb giả, adb root của KernelSU,
