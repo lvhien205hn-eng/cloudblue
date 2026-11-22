@@ -1613,6 +1613,7 @@ img.cb-wh{object-fit:contain;padding:8px 6px;border-radius:16px;background:linea
 .dlg.cpup .row2{display:grid;grid-template-columns:1fr 1.4fr;gap:10px}
 .swwarn{border:1px solid rgba(255,107,129,.55);background:rgba(255,107,129,.09);border-radius:12px;padding:10px 12px;font-size:13.5px;line-height:1.55}
 .swwarn b{color:var(--bad)}
+.paidtag{color:var(--warn,#ffd666);cursor:help;white-space:nowrap}
 .swnote{border:1px solid rgba(233,192,99,.45);background:rgba(233,192,99,.08);border-radius:12px;padding:9px 12px;font-size:13px;line-height:1.5}
 .swok{display:flex;gap:9px;align-items:flex-start;cursor:pointer;font-size:13.5px}
 .swok input{width:18px;height:18px;margin-top:2px;flex:none}
@@ -5216,7 +5217,7 @@ function m3MineCard(p) {
   return `<div class="m3m-card${run ? " run" : ""}${soon || p.status === "expired" ? " soon" : ""}">
     <div class="m3m-top">${cpPill(p)}${p.is_free ? `<span class="pill">🎁 ${esc(cbPhoneTag(p))}</span>` : ""}${p.shared ? `<span class="pill">👥 ${L("Được chia sẻ", "Shared")}</span>` : ""}</div>
     <b class="m3m-nm">${esc(p.name || "Máy")}</b>
-    <small class="m3m-spec">Android ${esc(p.android || "9")} · ${+p.ram || "?"}GB · ${+p.cpu || "?"} ${L("nhân", "cores")}</small>
+    <small class="m3m-spec">Android ${esc(p.android || "9")} · ${+p.ram || "?"}GB · ${+p.cpu || "?"} ${L("nhân", "cores")}${cpPaidTag(p)}</small>
     ${state}
     <div class="m3m-acts">${open}${canRenew ? `<button class="btn ghost sm" type="button" data-cprenew="${esc(p.id)}">🔄 ${L("Gia hạn", "Renew")}</button>` : ""}</div></div>`;
 }
@@ -7833,7 +7834,7 @@ function renderCloud() {
     const run = p.status === "active" && !locked;          // máy đang chạy → mở được bằng app máy tính / app Android
     const lk = run && !!p.stream_url;                      // (giữ điều kiện cũ cho nút Root máy)
     const canRenew = !p.shared && !p.is_free && !locked && (p.status === "active" || (p.status === "expired" && g > 0));
-    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
+    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${cpPaidTag(p)}${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
@@ -8147,7 +8148,8 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
   prmDef("cren", { inp: "crn-promo", out: "crn-pres", scope: () => "cp_renew", upd: () => sum(),
     ctx: () => okD() ? { p_phone: p.id, p_days: days } : null });
   m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="crn-t"><h3 id="crn-t">🔄 ${L("Gia hạn máy", "Renew phone")}</h3>
-    <div class="hint">📱 <b>${esc(p.name)}</b> · Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}${p.expires_at ? ` · ${L("hết hạn", "expires")} ${new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}` : ""}</div>
+    <div class="hint">📱 <b>${esc(p.name)}</b> · Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}${cpPaidTag(p)}${p.expires_at ? ` · ${L("hết hạn", "expires")} ${new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}` : ""}</div>
+    ${cpPaidTag(p) ? (() => { const q = cpPaid(p), fa = cpFullAnd(p).map(x => "Android " + x).join(" / "); return `<div class="swnote">⚠️ ${L(`Máy đang <b>tạm chạy ${p.ram}GB · ${p.cpu} nhân</b> (đã mua ${q.ram}GB · ${q.cpu} nhân). Gia hạn bây giờ tính theo cấu hình đang chạy và <b>cấu hình đã mua hạ còn ${p.ram}GB · ${p.cpu} nhân</b>.${fa ? ` Muốn giữ ${q.ram}GB · ${q.cpu} nhân: đổi sang ${fa} trước rồi hãy gia hạn.` : ""}`, `This phone <b>temporarily runs ${p.ram}GB · ${p.cpu} cores</b> (you bought ${q.ram}GB · ${q.cpu} cores). Renewing now is priced on the running config and <b>your bought config drops to ${p.ram}GB · ${p.cpu} cores</b>.${fa ? ` To keep ${q.ram}GB · ${q.cpu} cores, switch to ${fa} first, then renew.` : ""}`)}</div>`; })() : ""}
     <label>${L("Gia hạn thêm", "Add")}</label>
     <div class="upchips">${opts.map(v => `<button type="button" class="${v === days ? "on" : ""}" data-crd="${v}">${v} ${L("ngày", "days")}</button>`).join("")}</div>
     <input class="in" id="crn-x" type="number" min="1" max="${maxD}" step="1" inputmode="numeric" placeholder="${esc(L(`Hoặc tự nhập số ngày (1–${maxD})`, `Or type the number of days (1–${maxD})`))}">
@@ -8183,13 +8185,23 @@ function cpSwNote(p) {                      // máy MỚI của lệnh đổi An
     + (p.error && /^Đổi Android:/.test(p.error) ? `<br>${esc(p.error)}` : "");
 }
 function cpSwitchingTo(p) { return p && p.switch_to ? myCloud.find(x => x.id === p.switch_to && ["pending", "creating"].includes(x.status)) || null : null; }
+/* SQL v49: máy nhớ cấu hình ĐÃ MUA (paid_ram / paid_cpu). Đổi sang bản Android trần thấp chỉ TẠM hạ, đổi về bản cao hơn thì được trả đủ. */
+function cpPaid(p) { return { ram: Math.max(+p.ram || 0, +p.paid_ram || 0), cpu: Math.max(+p.cpu || 0, +p.paid_cpu || 0) }; }
+function cpFullAnd(p) { const q = cpPaid(p); return cpAndList().filter(v => { const l = cpAndLim(v); return l.ram >= q.ram && l.cpu >= q.cpu; }); }
+function cpPaidTag(p) {                     // thẻ máy: "(đã mua 12 nhân)" khi máy đang tạm chạy thấp hơn
+  const q = cpPaid(p); if (q.ram <= +p.ram && q.cpu <= +p.cpu) return "";
+  const what = [q.ram > +p.ram ? q.ram + "GB" : "", q.cpu > +p.cpu ? q.cpu + " " + L("nhân", "cores") : ""].filter(Boolean).join(" · ");
+  const fa = cpFullAnd(p).map(v => "Android " + v).join(" / ");
+  return ` <span class="paidtag" title="${esc(fa ? L(`Bản Android này có trần thấp hơn — đổi sang ${fa} để dùng đủ cấu hình đã mua`, `This Android version has a lower cap — switch to ${fa} to use the full config you bought`) : L("Bản Android này có trần thấp hơn cấu hình đã mua", "This Android version has a lower cap than the config you bought"))}">(${L("đã mua", "bought")} ${what})</span>`;
+}
 async function cpSwitch(id) {
   const p = myCloud.find(x => x.id === id); if (!p || p.shared) return;
   if (cpSwitchingTo(p)) { toast(errMsg({ message: "SWITCHING" }), 1); return; }
   await Promise.all([cpLoadPricing(), cpLoadStatus()]);
   const cur = String(p.android || "9"), vers = cpAndList().filter(v => v !== cur);
   if (!vers.length) { toast(L("Chưa có bản Android nào khác để đổi.", "No other Android version is available."), 1); return; }
-  const cfg = v => { const l = cpAndLim(v); return { ram: Math.min(+p.ram, l.ram), cpu: Math.min(+p.cpu, l.cpu), l }; };
+  const keep = "paid_ram" in p, q = cpPaid(p);       // keep: đã chạy SQL v49 (máy nhớ cấu hình đã mua)
+  const cfg = v => { const l = cpAndLim(v); return { ram: Math.min(q.ram, l.ram), cpu: Math.min(q.cpu, l.cpu), l }; };
   const why = v => { const a = (cpAndMap() || {})[v]; if (!a) return ""; if (a.online === false) return "off"; const c = cfg(v); return +a.free_ram < c.ram || +a.free_cpu < c.cpu ? "full" : ""; };
   let v = vers.find(x => x === "12" && !why(x)) || vers.find(x => !why(x)) || vers[0], ok = false, going = false;
   let m = $("cpswdlg");
@@ -8207,13 +8219,15 @@ async function cpSwitch(id) {
     } finally { going = false; }
   };
   const draw = () => {
-    const c = cfg(v), red = c.ram < +p.ram || c.cpu < +p.cpu, w = why(v), blocked = !!w && !isAdmin();
+    const c = cfg(v), red = c.ram < q.ram || c.cpu < q.cpu, up = !red && (c.ram > +p.ram || c.cpu > +p.cpu), w = why(v), blocked = !!w && !isAdmin();
+    const fa = cpFullAnd(p).map(x => "Android " + x).join(" / ");
     m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="csw-t"><h3 id="csw-t">🤖 ${L("Đổi hệ điều hành", "Switch Android")}</h3>
-      <div class="hint">📱 <b>${esc(p.name)}</b> · ${L("đang dùng", "now on")} <b>Android ${esc(cur)}</b> · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}${expTxt ? ` · ${L("hết hạn", "expires")} ${expTxt}` : ""}</div>
+      <div class="hint">📱 <b>${esc(p.name)}</b> · ${L("đang dùng", "now on")} <b>Android ${esc(cur)}</b> · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}${cpPaidTag(p)}${expTxt ? ` · ${L("hết hạn", "expires")} ${expTxt}` : ""}</div>
       <label>${L("Đổi sang", "Switch to")}</label>
       <div class="upchips">${vers.map(x => { const wx = why(x); return `<button type="button" data-swv="${x}" class="${x === v ? "on" : ""}"${wx && !isAdmin() ? " disabled" : ""}${wx ? ` title="${esc(wx === "off" ? L("Máy chủ bản này đang bảo trì", "Server under maintenance") : L("Máy chủ bản này đang hết chỗ", "No free capacity"))}"` : ""}>Android ${x}${wx ? ` <small>${L("Hết chỗ", "Unavailable")}</small>` : ""}</button>`; }).join("")}</div>
-      ${red ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới sẽ hạ còn <b>${c.ram}GB · ${c.cpu} nhân</b>, không hoàn tiền phần chênh.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone will be reduced to <b>${c.ram}GB · ${c.cpu} cores</b>, no refund for the difference.`)}</div>`
-            : `<div class="hint">${L(`Máy mới: Android ${v} · ${c.ram}GB · ${c.cpu} nhân · ${esc(p.res || "")} · ${p.fps || 30} FPS`, `New phone: Android ${v} · ${c.ram}GB · ${c.cpu} cores · ${esc(p.res || "")} · ${p.fps || 30} FPS`)}</div>`}
+      ${red && keep ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới <b>tạm chạy ${c.ram}GB · ${c.cpu} nhân</b>. Cấu hình đã mua <b>${q.ram}GB · ${q.cpu} nhân</b> vẫn được giữ${fa ? ` — đổi sang ${fa} là trả đủ` : ""}.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone <b>temporarily runs ${c.ram}GB · ${c.cpu} cores</b>. The <b>${q.ram}GB · ${q.cpu} cores</b> you bought are kept${fa ? ` — switch to ${fa} to get them back` : ""}.`)}</div>`
+            : red ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới sẽ hạ còn <b>${c.ram}GB · ${c.cpu} nhân</b>, không hoàn tiền phần chênh.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone will be reduced to <b>${c.ram}GB · ${c.cpu} cores</b>, no refund for the difference.`)}</div>`
+            : `<div class="hint">${L(`Máy mới: Android ${v} · <b>${c.ram}GB · ${c.cpu} nhân</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${up ? " — trả đủ cấu hình đã mua" : ""}`, `New phone: Android ${v} · <b>${c.ram}GB · ${c.cpu} cores</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${up ? " — full config you bought restored" : ""}`)}</div>`}
       ${v === "15" ? `<div class="hint">${L("Lưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì nên chọn Android 12.", "Note: some users report Google / Play Store not working on Android 15 — pick Android 12 if you need Google.")}</div>` : ""}
       <div class="swwarn">${L(`⚠️ <b>Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy</b>: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.<br>Bấm Đổi là <b>máy cũ bị xoá ngay</b> (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới <b>miễn phí</b>, giữ nguyên hạn dùng${expTxt ? ` (${expTxt})` : ""}.`,
         `⚠️ <b>Switching Android ERASES ALL data on this phone</b>: apps, games, logged-in accounts, photos, files — it cannot be undone.<br>The old phone is <b>deleted right away</b> (it can't be opened any more); the new phone is created once that's done — about 2–5 minutes. It is <b>free</b> and keeps your expiry${expTxt ? ` (${expTxt})` : ""}.`)}</div>
@@ -9269,7 +9283,7 @@ function renderCpaTbl() {
     const exp = p.expires_at ? new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "—", lk = cpLocked(p);
     return `<tr${lk ? ' style="opacity:.85"' : ""}><td><input type="checkbox" data-cpsel="${p.id}"${cpaSel.has(p.id) ? " checked" : ""} aria-label="Chọn máy ${esc(p.name)}"></td>
       <td><b>${esc(p.name)}</b><div class="hint">${esc(p.container || "")}${p.port ? " · cổng " + p.port : ""}${p.node ? " · " + esc(p.node === "wait-old" ? "⏳ chờ xoá máy cũ" : ((NODES.find(x => x.id === p.node) || {}).name ? NODES.find(x => x.id === p.node).name + " · " + p.node : p.node)) : ""}</div></td>
-      <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu}${+p.disk_gb > 0 ? ` · 💾${+p.disk_gb}GB` : ""}${+p.pending_disk > 0 ? ` (→${+p.pending_disk})` : ""} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
+      <td>${cpaCustCell(p)}</td><td class="num">${p.ram}GB/${p.cpu}${+p.paid_ram > +p.ram || +p.paid_cpu > +p.cpu ? ` <span class="paidtag" title="Cấu hình khách đã mua — đang tạm hạ theo trần bản Android (SQL v49)">(mua ${Math.max(+p.paid_ram || 0, +p.ram)}/${Math.max(+p.paid_cpu || 0, +p.cpu)})</span>` : ""}${+p.disk_gb > 0 ? ` · 💾${+p.disk_gb}GB` : ""}${+p.pending_disk > 0 ? ` (→${+p.pending_disk})` : ""} · ${esc(p.res || "")} · ${p.fps || 30}fps</td>
       <td>${cpaStatus(p)}${+p.pending_renew_days > 0 ? `<div class="hint" style="color:var(--gold-hi)">⏳ chờ máy chủ cộng +${+p.pending_renew_days} ngày</div>` : ""}${lk ? `<div style="margin-top:4px"><span class="pill bad">🔒 Khoá ${p.locked_until ? "tới " + new Date(p.locked_until).toLocaleString("vi-VN") : "vĩnh viễn"}</span></div>${p.lock_reason ? `<div class="hint">${esc(p.lock_reason)}</div>` : ""}` : ""}${p.error ? `<div class="hint" style="color:var(--bad)">${esc(p.error)}</div>` : ""}</td>
       <td class="num">${exp}</td>
       <td style="text-align:right;white-space:nowrap">${p.status === "active" ? `<a class="btn ghost sm" href="/phone.html?id=${encodeURIComponent(p.id)}" target="_blank" rel="noopener">Điều khiển</a> ` : ""}${lk
