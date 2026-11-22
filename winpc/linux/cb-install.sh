@@ -8,7 +8,7 @@
 #  Thử trên GitHub CI (QEMU): job.json có "test": true → chỉ ghi cb/linux-test.ok (chứng minh đường GRUB → ISO → script) rồi tắt máy.
 # =====================================================================================================
 set -u
-CB_VER="22.11a"
+CB_VER="22.11c"
 R=/run/archiso/img_dev
 W=/tmp/cb
 mkdir -p "$W"
@@ -18,6 +18,30 @@ say() { printf '[cloudblue %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
 say "cb-install $CB_VER bat dau ($(uname -r))"
 mount -o remount,rw "$R" 2>/dev/null || mount -o remount,rw,force "$R" 2>/dev/null || say "!! khong gan lai duoc phan vung cuu ho de ghi (van tiep tuc)"
+# systemd.run= cho máy sống chỉ chạy tới basic.target + script này → bật thêm multi-user.target (KHÔNG chờ, KHÔNG isolate — script vẫn chạy tiếp):
+# NetworkManager (bộ cài tải gói qua mạng), pacman-init (khoá ký gói), logind… như máy sống khởi động bình thường (trừ màn hình đồ hoạ).
+systemctl start --no-block multi-user.target 2>/dev/null || say "!! chua bat duoc multi-user.target"
+
+net_wait() {   # net_wait <số giây> → 0 khi tới được kho gói CachyOS / Arch
+    local end=$(( $(date +%s) + $1 ))
+    while [ "$(date +%s)" -lt "$end" ]; do
+        if curl -fsS -m 8 -o /dev/null https://mirror.cachyos.org/ 2>/dev/null || curl -fsS -m 8 -o /dev/null https://geo.mirror.pkgbuild.com/ 2>/dev/null; then return 0; fi
+        sleep 5
+    done
+    return 1
+}
+keyring_wait() {   # khoá ký gói của pacman đã dựng xong (pacman-init.service của máy sống) → 0 · chờ tối đa 5 phút
+    local i
+    for i in $(seq 1 60); do
+        if systemctl cat pacman-init.service >/dev/null 2>&1; then
+            [ "$(systemctl is-active pacman-init.service 2>/dev/null)" = active ] && return 0
+        elif [ -s /etc/pacman.d/gnupg/pubring.gpg ] || [ -s /etc/pacman.d/gnupg/pubring.kbx ]; then
+            return 0
+        fi
+        sleep 5
+    done
+    return 1
+}
 JOB="$R/cb/job.json"
 RES="$R/cb/job-result.json"
 
@@ -67,13 +91,20 @@ import json, sys
 sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8-sig")).get("test") else 1)
 PYEOF
 then
+    NETOK=no; net_wait 180 && NETOK=yes
+    KEYOK=no; keyring_wait && KEYOK=yes
     {
         echo "CB_TEST_OK $CB_VER"
         echo "kernel=$(uname -r)"
-        echo "img_dev=$(findmnt -no SOURCE "$R") fstype=$(findmnt -no FSTYPE "$R")"
+        echo "img_dev=$(findmnt -no SOURCE "$R") fstype=$(findmnt -no FSTYPE "$R") rw=$(findmnt -no OPTIONS "$R" | grep -qw rw && echo yes || echo no)"
         echo "installer=$(command -v cachyos-installer || echo none)"
+        echo "efibootmgr=$(command -v efibootmgr || echo none)"
         echo "efi=$([ -d /sys/firmware/efi ] && echo yes || echo no)"
         echo "python=$(python3 -V 2>&1)"
+        echo "net=$NETOK"
+        echo "keyring=$KEYOK"
+        echo "nm=$(systemctl is-active NetworkManager.service 2>/dev/null)"
+        echo "disk=$(lsblk -no PKNAME "$(findmnt -no SOURCE "$R")" 2>/dev/null | head -1)"
     } > "$R/cb/linux-test.ok"
     sync
     say "CB_TEST_OK — da ghi cb/linux-test.ok, tat may"
@@ -115,12 +146,9 @@ PYEOF
 say "o $DISK · EFI Linux $ESP (${ESP_MB} MB) · goc $ROOT (${ROOT_MB} MB) · may $HOST · khach $USER"
 
 # ---------------------------------------------------------------- mạng (bộ cài CachyOS tải gói qua mạng)
-for i in $(seq 1 60); do
-    if curl -fsS -m 8 -o /dev/null https://mirror.cachyos.org/ 2>/dev/null || curl -fsS -m 8 -o /dev/null https://geo.mirror.pkgbuild.com/ 2>/dev/null; then NET=1; break; fi
-    sleep 5
-done
-[ "${NET:-0}" = 1 ] || back_to_pe "chua co mang sau 5 phut (bo cai CachyOS can Internet)"
+net_wait 300 || back_to_pe "chua co mang sau 5 phut (bo cai CachyOS can Internet)"
 say "co mang"
+keyring_wait || say "!! khoa ky goi pacman chua dung xong sau 5 phut (van thu cai)"
 
 # ---------------------------------------------------------------- settings.json cho cachyos-installer (chế độ không người)
 ROOTPASS=$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)
