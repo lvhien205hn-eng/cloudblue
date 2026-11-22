@@ -203,8 +203,38 @@ ck("8 nhân → -threads 4 + sliced-threads=1; còn lại giữ như bản Windo
 ck("máy 2 nhân → 2 luồng; 32 nhân → tối đa 4", CR.x264_linux(R.enc_args("x264", 30, 2000), cpus=2)[_x.index("-threads") + 1] == "2"
    and CR.x264_linux(R.enc_args("x264", 30, 2000), cpus=32)[_x.index("-threads") + 1] == "4")
 _g = " ".join(K.raw_pipeline(58, 1280, 800, 30))
-ck("GStreamer: pipewiresrc → hàng chờ bỏ khung cũ → đổi màu/thu cỡ → nhịp 30 → hàng chờ bỏ khung cũ → fdsink",
-   _g.index("pipewiresrc") < _g.index("leaky=downstream") < _g.index("videoconvert") < _g.index("videorate") < _g.rindex("leaky=downstream") < _g.index("fdsink"), _g)
+ck("GStreamer: pipewiresrc → hàng chờ bỏ khung cũ → đổi màu/thu cỡ → hàng chờ bỏ khung cũ → fdsink (nhịp đều do FramePump, không videorate)",
+   _g.index("pipewiresrc") < _g.index("leaky=downstream") < _g.index("videoconvert") < _g.rindex("leaky=downstream") < _g.index("fdsink") and "videorate" not in _g, _g)
+print("4c. Con trỏ tự vẽ + nhịp khung đều (FramePump): KWin không ra khung mới khi chỉ rê chuột → tự vẽ mũi tên, lặp khung mới nhất đều fps")
+_W, _H = 64, 48
+_b = bytearray(_W * _H * 4); K.draw_cursor(_b, _W, _H, 10, 5)
+_px = lambda b, x, y: bytes(b[(y * _W + x) * 4:(y * _W + x) * 4 + 4])
+ck("mũi tên: đầu nhọn đúng điểm chuột (viền đen), ruột trắng, ngoài mũi tên không đụng", _px(_b, 10, 5) == b"\x00\x00\x00\xff" and _px(_b, 11, 7) == b"\xff\xff\xff\xff"
+   and _px(_b, 9, 5) == b"\x00" * 4 and _px(_b, 30, 30) == b"\x00" * 4)
+_b2 = bytearray(_W * _H * 4); K.draw_cursor(_b2, _W, _H, _W - 2, _H - 3); K.draw_cursor(_b2, _W, _H, -5, -5)
+ck("sát mép phải / dưới / ngoài khung → cắt bớt, không lỗi, không tràn sang dòng khác", _px(_b2, _W - 2, _H - 3) == b"\x00\x00\x00\xff" and _px(_b2, 0, _H - 2) == b"\x00" * 4 and len(_b2) == _W * _H * 4)
+_r, _wfd = os.pipe(); _r2, _w2 = os.pipe()
+_src, _dst = os.fdopen(_r, "rb"), os.fdopen(_w2, "wb")
+_pos = [None]
+_pump = K.FramePump(_src, _dst, _W, _H, 20, lambda: _pos[0])
+_rd = os.fdopen(_r2, "rb"); _frames = []
+def _rx():
+    n = _W * _H * 4
+    while True:
+        d = _rd.read(n)
+        if not d or len(d) < n: return
+        _frames.append(d)
+threading.Thread(target=_rx, daemon=True).start()
+os.write(_wfd, bytes([7]) * (_W * _H * 4)); time.sleep(0.5)
+n1 = len(_frames)
+ck("màn hình đứng yên (bộ quay chỉ ra 1 khung) → vẫn gửi đều ~20 khung/giây (lặp khung mới nhất)", 6 <= n1 <= 14, n1)
+_pos[0] = (20, 10); time.sleep(0.25)
+ck("rê chuột (không có khung mới) → khung gửi đi có mũi tên ở chỗ mới ngay", _frames and _px(bytearray(_frames[-1]), 20, 10) == b"\x00\x00\x00\xff" and _px(bytearray(_frames[-1]), 21, 12) == b"\xff\xff\xff\xff", len(_frames))
+os.write(_wfd, bytes([9]) * (_W * _H * 4)); time.sleep(0.25)
+ck("bộ quay ra khung mới → gửi khung mới (vẫn có mũi tên)", _frames[-1][0] == 9 and _px(bytearray(_frames[-1]), 20, 10) == b"\x00\x00\x00\xff")
+os.close(_wfd); time.sleep(0.4)
+ck("bộ quay dừng (hết dữ liệu) → FramePump dừng + đóng đầu vào ffmpeg", _pump.stop_ev.is_set() and not any(t.is_alive() for t in _pump.threads), [t.is_alive() for t in _pump.threads])
+_rd.close()
 _f = K.ff_encode(1280, 800, 30, _x, 5004)
 ck("ffmpeg đọc khung thô với hàng chờ nhỏ (-thread_queue_size 2) → không dồn trễ", _f[_f.index("-thread_queue_size") + 1] == "2" and _f.index("-thread_queue_size") < _f.index("-i"), _f)
 print("4a. Chuột ảo (uinput) giữ con trỏ KWin luôn hiện trên máy không cắm chuột")
