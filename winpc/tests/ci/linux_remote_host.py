@@ -75,6 +75,23 @@ def region_diff(a, b, w, cx, cy, r=12):
     return tot / max(cnt, 1)
 
 
+def change_box(a, b, w, thr=30):
+    """Chỗ 2 khung xám khác nhau rõ (|a-b| > thr): số điểm + khung bao [x0, y0, x1, y1] (toạ độ ảnh nhỏ) — để biết con trỏ / hình đổi ở đâu."""
+    xs, ys = [], []
+    for i in range(min(len(a), len(b))):
+        if abs(a[i] - b[i]) > thr: xs.append(i % w); ys.append(i // w)
+    return {"n": len(xs), "box": [min(xs), min(ys), max(xs), max(ys)] if xs else None}
+
+
+def near(box_pts, p, r=20):
+    """Có điểm đổi nào trong bán kính r quanh p không (dò lại từ danh sách điểm đổi)."""
+    return any(abs(x - p[0]) <= r and abs(y - p[1]) <= r for x, y in box_pts)
+
+
+def change_pts(a, b, w, thr=30):
+    return [(i % w, i // w) for i in range(min(len(a), len(b))) if abs(a[i] - b[i]) > thr]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sb", type=int, default=8099); ap.add_argument("--relay", type=int, default=8189)
@@ -148,7 +165,11 @@ def main():
         p1 = (gw * 13000 // 65536, gh * 13000 // 65536); p2 = (gw * 52000 // 65536, gh * 52000 // 65536)
         d1, d2 = region_diff(A, B, gw, *p1), region_diff(A, B, gw, *p2)
         far = region_diff(A, B, gw, gw // 2, gh // 8)
-        out.update(cursor_diff_from=round(d1, 1), cursor_diff_to=round(d2, 1), diff_elsewhere=round(far, 1), cursor_moved=bool(d1 > 3 and d2 > 3))
+        pts = change_pts(A, B, gw)
+        moved = bool(d1 > 3 and d2 > 3) or (near(pts, p1) and near(pts, p2))
+        out.update(cursor_diff_from=round(d1, 1), cursor_diff_to=round(d2, 1), diff_elsewhere=round(far, 1), cursor_moved=moved,
+                   chg_ab=change_box(A, B, gw), chg_all=change_box(gray[0], gray[-1], gw), p1=list(p1), p2=list(p2), gray_size=[gw, gh],
+                   frame_ab=[ia, ib])
     v.c.send(C_BYE); time.sleep(1)
     out["ok"] = bool(out.get("frames", 0) >= 30 and out.get("decoded", 0) >= out.get("frames", 0) - 2 and out.get("key_first"))
     save(); say("KET QUA %s" % json.dumps(out, ensure_ascii=False)[:600])
