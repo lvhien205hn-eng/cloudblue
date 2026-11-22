@@ -75,6 +75,23 @@ def region_diff(a, b, w, cx, cy, r=12):
     return tot / max(cnt, 1)
 
 
+def decode_pick(h264, w, h, idx):
+    """Giải mã ĐỦ độ phân giải chỉ vài khung (số thứ tự idx) → {số: khung xám w*h}."""
+    sel = "+".join("eq(n\\,%d)" % i for i in sorted(set(idx)))
+    r = subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "h264", "-i", "pipe:0", "-vf", "select='%s',format=gray" % sel, "-fps_mode", "passthrough",
+                        "-f", "rawvideo", "pipe:1"], input=h264, capture_output=True, timeout=180)
+    n = w * h; frames = [r.stdout[i:i + n] for i in range(0, len(r.stdout) - n + 1, n)]
+    return dict(zip(sorted(set(idx)), frames))
+
+
+def crop_art(g, w, h, cx, cy, half=24, step=3):
+    """Ô vuông quanh (cx, cy) vẽ bằng chữ (sáng → '@'): nhìn được con trỏ chuột trong nhật ký CI."""
+    pal = " .:-=+*#%@"; rows = []
+    for y in range(max(0, cy - half), min(h, cy + half), step):
+        rows.append("".join(pal[min(9, g[y * w + x] * 10 // 256)] for x in range(max(0, cx - half), min(w, cx + half), step)))
+    return rows
+
+
 def change_box(a, b, w, thr=30):
     """Chỗ 2 khung xám khác nhau rõ (|a-b| > thr): số điểm + khung bao [x0, y0, x1, y1] (toạ độ ảnh nhỏ) — để biết con trỏ / hình đổi ở đâu."""
     xs, ys = [], []
@@ -148,6 +165,7 @@ def main():
     time.sleep(1.0)
     v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 52000, 52000)); time.sleep(2.5); t_b = time.time()
     time.sleep(1.0)
+    v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 1100, 64600)); time.sleep(2.5); t_c = time.time()      # góc dưới trái (nút menu trên thanh tác vụ: rê vào là sáng lên)
     v.c.send(R.C_TEXT, b"cloudblue"); time.sleep(1.5)
     st = None
     with v.lock:
@@ -170,6 +188,15 @@ def main():
         out.update(cursor_diff_from=round(d1, 1), cursor_diff_to=round(d2, 1), diff_elsewhere=round(far, 1), cursor_moved=moved,
                    chg_ab=change_box(A, B, gw), chg_all=change_box(gray[0], gray[-1], gw), p1=list(p1), p2=list(p2), gray_size=[gw, gh],
                    frame_ab=[ia, ib])
+        ic = sum(1 for x in fr if x[1] <= t_c) - 1
+        try:
+            pk = decode_pick(data, w, h, [0, ia, ib, ic, len(fr) - 1])
+            pts = {"giua": (w // 2, h // 2), "p1": (w * 13000 // 65536, h * 13000 // 65536), "p2": (w * 52000 // 65536, h * 52000 // 65536),
+                   "goc": (w * 1100 // 65536, h * 64600 // 65536)}
+            out["art"] = {"%s@%s" % (k, name): crop_art(g, w, h, *pts[name]) for k, g in (("dau", pk.get(0)), ("A", pk.get(ia)), ("B", pk.get(ib)), ("C", pk.get(ic)),
+                                                                                           ("cuoi", pk.get(len(fr) - 1))) if g for name in pts}
+        except Exception as e:
+            out["art_err"] = repr(e)[:200]
     v.c.send(C_BYE); time.sleep(1)
     out["ok"] = bool(out.get("frames", 0) >= 30 and out.get("decoded", 0) >= out.get("frames", 0) - 2 and out.get("key_first"))
     save(); say("KET QUA %s" % json.dumps(out, ensure_ascii=False)[:600])
