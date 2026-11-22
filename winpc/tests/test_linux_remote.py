@@ -196,6 +196,17 @@ K.subprocess.run, K.TEST_SRC = _run, _ts; K._TOOLS.clear(); K._TOOLS_T[0] = 0.0
 print("4. ĐẦU-CUỐI: máy chủ phát hình thật ⇄ cbremote (root) ⇄ cbcap (tiến trình riêng) ⇄ người xem")
 import pwd                                            # noqa: E402
 import cbremote as CR                                 # noqa: E402
+print("4b. Nén x264 trên Linux: chia lát 2–4 luồng (không thêm trễ) · GStreamer bỏ khung cũ khi bộ nén chậm (không dồn hình trễ)")
+_x = CR.x264_linux(R.enc_args("x264", 30, 2000), cpus=8)
+ck("8 nhân → -threads 4 + sliced-threads=1; còn lại giữ như bản Windows", _x[_x.index("-threads") + 1] == "4" and _x[_x.index("-x264-params") + 1].startswith("sliced-threads=1:keyint=30")
+   and "-b:v" in _x and "-preset" in _x, _x)
+ck("máy 2 nhân → 2 luồng; 32 nhân → tối đa 4", CR.x264_linux(R.enc_args("x264", 30, 2000), cpus=2)[_x.index("-threads") + 1] == "2"
+   and CR.x264_linux(R.enc_args("x264", 30, 2000), cpus=32)[_x.index("-threads") + 1] == "4")
+_g = " ".join(K.raw_pipeline(58, 1280, 800, 30))
+ck("GStreamer: pipewiresrc → hàng chờ bỏ khung cũ → đổi màu/thu cỡ → nhịp 30 → hàng chờ bỏ khung cũ → fdsink",
+   _g.index("pipewiresrc") < _g.index("leaky=downstream") < _g.index("videoconvert") < _g.index("videorate") < _g.rindex("leaky=downstream") < _g.index("fdsink"), _g)
+_f = K.ff_encode(1280, 800, 30, _x, 5004)
+ck("ffmpeg đọc khung thô với hàng chờ nhỏ (-thread_queue_size 2) → không dồn trễ", _f[_f.index("-thread_queue_size") + 1] == "2" and _f.index("-thread_queue_size") < _f.index("-i"), _f)
 print("4a. Chuột ảo (uinput) giữ con trỏ KWin luôn hiện trên máy không cắm chuột")
 _io = CR.fcntl.ioctl; CALLS = []
 CR.fcntl.ioctl = lambda fd, req, arg=0: CALLS.append((req, arg if isinstance(arg, int) else bytes(arg)))
