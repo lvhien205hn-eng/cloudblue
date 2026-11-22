@@ -145,6 +145,11 @@ if U:
     ck("bản clone (hồ sơ Công việc) thu nhỏ được → 3 cửa sổ", code == 200 and c and c["mode"] == "freeform" and c["vis"] and j.get("n") == 3, (code, j, c))
 else:
     info("tạo hồ sơ clone trên máy ảo (máy thật đã có sẵn)", False, o)
+n0 = len([x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")])
+open_app(3)                                                         # app 3 KHAI BÁO đổi cỡ được (app thường) — Android 9 đi đường mở thẳng
+code, j = run("mini"); c3 = task(3); shot("7b-thu-nho-app3")
+ck("app 3 (đổi cỡ được) thu nhỏ được, nằm trong màn", code == 200 and c3 and c3["mode"] == "freeform" and c3["vis"] and j.get("n") == n0 + 1
+   and c3["b"][2] <= cp.win_state(sh)["geo"]["w"] + 1, (code, j, c3))
 
 # 5. sắp xếp (dọc) — sau khi về màn chính (màn chính che hết cửa sổ)
 sh("input keyevent 3"); time.sleep(2)
@@ -157,17 +162,23 @@ ck(f"Sắp xếp tab (màn dọc): {len(ws)} cửa sổ đúng lưới, cùng hi
 sh("settings put system user_rotation 1"); time.sleep(4)
 code, j = run("tile"); gl = cp.win_state(sh)["geo"]; ws = sorted([x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")], key=lambda t: t["id"])
 shot("9-sap-xep-ngang")
-ck("xoay ngang + Sắp xếp tab: màn ngang, cửa sổ đúng lưới ngang", code == 200 and gl["w"] > gl["h"] and [x["b"] for x in ws] == cp.win_grid(gl, len(ws)),
-   (code, j, gl, [x["b"] for x in ws]))
+ck("khoá xoay ngang + Sắp xếp tab: cửa sổ đúng lưới của màn lúc đó, trong màn", code == 200 and [x["b"] for x in ws] == cp.win_grid(gl, len(ws))
+   and all(x["b"][2] <= gl["w"] and x["b"][3] <= gl["h"] for x in ws), (code, j, gl, [x["b"] for x in ws]))
+info("màn chính của máy này xoay ngang được (máy ảo Pixel: màn chính chỉ dọc)", gl["w"] > gl["h"], gl)
 sh("settings put system user_rotation 0"); time.sleep(4)
 run("tile")
 
 # 7. phóng to cửa sổ trên cùng → toàn màn; thu nhỏ lại
 top = next((x for x in tasks() if x["mode"] == "freeform" and x["vis"] and x["type"] in ("standard", "")), None)
 code, j = run("full"); tf = next((x for x in tasks() if top and x["id"] == top["id"]), None); shot("10-phong-to")
-ck("Phóng to tab → cửa sổ trên cùng về toàn màn", code == 200 and tf and tf["mode"] == "fullscreen" and tf["vis"], (code, j, tf))
+ga = cp.win_state(sh)["geo"]
+ck("Phóng to tab → cửa sổ trên cùng về toàn màn (hoặc to hết màn nếu Android không cho)", code == 200 and tf and tf["vis"]
+   and (tf["mode"] == "fullscreen" or tf["b"] == cp.win_area(ga)), (code, j, tf, cp.win_area(ga)))
+info("Phóng to = toàn màn thật", tf and tf["mode"] == "fullscreen", tf and tf["mode"])
 code, j = run("mini"); tf = next((x for x in tasks() if top and x["id"] == top["id"]), None); shot("11-thu-nho-lai")
-ck("Thu nhỏ lại tab vừa phóng to", code == 200 and tf and tf["mode"] == "freeform", (code, j, tf))
+g2 = cp.win_state(sh)["geo"]
+ck("Thu nhỏ lại tab vừa phóng to → cửa sổ nhỏ, trong màn", code == 200 and tf and tf["mode"] == "freeform" and area(tf["b"]) < 0.85 * area(cp.win_area(g2))
+   and tf["b"][2] <= g2["w"] + 1 and tf["b"][3] <= g2["h"] + 1, (code, j, tf, g2))
 code, j = run("list")
 ck("danh sách tab nhỏ đúng số", code == 200 and j.get("n") == len([x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")]), (code, j))
 sh("input keyevent 3"); time.sleep(2)

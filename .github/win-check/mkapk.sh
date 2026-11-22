@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 23/11 · 3 app THỬ "giống Roblox" cho bộ thử tab cửa sổ nhỏ: vn.cloudblue.wintest1..3 — 1 màn, ÉP MÀN NGANG, khai báo KHÔNG đổi cỡ được
-# (như game), nền màu riêng + chữ "Tab N" + cỡ cửa sổ đang có. Dựng bằng công cụ có sẵn của Android SDK trên máy GitHub (aapt2, d8, apksigner).
+# 23/11 · 3 app THỬ "giống Roblox" cho bộ thử tab cửa sổ nhỏ: vn.cloudblue.wintest1..3 — 1 màn, ÉP MÀN NGANG; app 1, 2 khai báo KHÔNG đổi cỡ
+# được (như game), app 3 đổi cỡ được (app thường), nền màu riêng + chữ "Tab N" + cỡ cửa sổ đang có. Dựng bằng công cụ có sẵn của Android SDK trên máy GitHub (aapt2, d8, apksigner).
 #   bash mkapk.sh <thư mục ra>     → <thư mục ra>/wintest1.apk … wintest3.apk
 set -euo pipefail
 OUT=${1:-/tmp/wintest}; mkdir -p "$OUT"; W=$(mktemp -d)
@@ -44,12 +44,13 @@ javac -nowarn -source 8 -target 8 -bootclasspath "$PLAT" -d "$W/cls" "$W/src/vn/
 "$BT/d8" --min-api 24 --lib "$PLAT" --output "$W/dex" $(find "$W/cls" -name '*.class')
 keytool -genkeypair -keystore "$W/k.jks" -storepass android -keypass android -alias k -keyalg RSA -keysize 2048 -validity 1000 -dname "CN=wintest" >/dev/null 2>&1
 for n in 1 2 3; do
+  RZ=false; [ "$n" = 3 ] && RZ=true                     # app 3: app thường (đổi cỡ được) · app 1, 2: như game (không đổi cỡ)
   cat > "$W/m$n.xml" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="vn.cloudblue.wintest$n">
   <application android:label="Tab $n" android:theme="@android:style/Theme.Material.NoActionBar">
     <activity android:name="vn.cloudblue.wintest.Main" android:exported="true" android:screenOrientation="sensorLandscape"
-              android:resizeableActivity="false" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
+              android:resizeableActivity="$RZ" android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
     </activity>
   </application>
