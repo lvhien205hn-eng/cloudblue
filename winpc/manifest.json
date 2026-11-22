@@ -2,8 +2,8 @@
  "base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc",
  "files": {
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "b7f529b03e0dd6af8cdee0b2eb937a4e21e869c9aa2fe3e575f16bb3807dae97",
-  "agent/pcremote.py": "97d268499d95d91a7996d5c7994b8077901ca86c752328f2dd34c364234f6932",
+  "agent/pcagent.py": "2cd36f6cdb98df9215d8c543569464b8194d415fc1c8ad97b662e2e53851a903",
+  "agent/pcremote.py": "af45e7aeed2be585919cbd2088971bfdd4c624314645fa1b86ce2b7c8c756ccc",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "lib/cbcore.py": "2e80c65e35a725efe2a89bd778c3a94420cacb5e31d24b4b636d184cac13c148",
   "lib/cbrec.py": "d1b8fe22cab0cbfea7f19d8c2efb6b4abd70be8696488883f4377b15ee2008cc",
@@ -17,17 +17,17 @@
  },
  "linux": {
   "linux/cb-install.sh": "6ee6d210a83580192f918e0ccfd297f5230d0f0f2d7c27aeea32429fa2d0ed10",
-  "linux/cb-post.sh": "4c0fa15f858c9dd21d6645cc1b7a4e405997c82eb525cce3df2a96ba1962f0bc",
-  "linux/cbagent.py": "345fad0b485cd4d58ec7c5279e846f4baca043eb93ef7206bdc220f978ac6dc6",
-  "linux/cbcap.py": "741fb65ea122740a2dc62e4ae528cd17fadde0cab0ee143ae69c85b7681c8369",
-  "linux/cbremote.py": "370658c470a2ff86b90bca57b13305910ddd0a88e95ef10e1c942dce4e4232cf",
+  "linux/cb-post.sh": "a0e6bc3c5e879fd57c27349fccfd406daf746a25a9da4f0881c2460ab01c97e8",
+  "linux/cbagent.py": "8a6b8179b5106a0055b0afe16eacdcdf1b687063e5919dde1c5895336c3b89d7",
+  "linux/cbcap.py": "db4789e89617e1f7278553551305095ec6876ec025e072b847220f321614fd80",
+  "linux/cbremote.py": "e9182f56e7372d7b757c1a27be82456cb9cd618f5cbae7dc18dc320feed7a15e",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98"
  },
  "sha256": {
   "CAI-DAT.cmd": "27c94610547e0ef1a6189dfb07eaa148f269bd125ed1f96169649f8fa18d90de",
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "b7f529b03e0dd6af8cdee0b2eb937a4e21e869c9aa2fe3e575f16bb3807dae97",
-  "agent/pcremote.py": "97d268499d95d91a7996d5c7994b8077901ca86c752328f2dd34c364234f6932",
+  "agent/pcagent.py": "2cd36f6cdb98df9215d8c543569464b8194d415fc1c8ad97b662e2e53851a903",
+  "agent/pcremote.py": "af45e7aeed2be585919cbd2088971bfdd4c624314645fa1b86ce2b7c8c756ccc",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
   "cb_build.py": "f28577edb41777e4e2421893aa4dbcafc58f975c1ef91c3f7c159b351c4172a4",
@@ -35,10 +35,10 @@
   "lib/cbrec.py": "d1b8fe22cab0cbfea7f19d8c2efb6b4abd70be8696488883f4377b15ee2008cc",
   "lib/cbsys.py": "fe70e283b63de04cd118c74fd5524b4058e42f9d36cbf493eb7c8943c149a813",
   "linux/cb-install.sh": "6ee6d210a83580192f918e0ccfd297f5230d0f0f2d7c27aeea32429fa2d0ed10",
-  "linux/cb-post.sh": "4c0fa15f858c9dd21d6645cc1b7a4e405997c82eb525cce3df2a96ba1962f0bc",
-  "linux/cbagent.py": "345fad0b485cd4d58ec7c5279e846f4baca043eb93ef7206bdc220f978ac6dc6",
-  "linux/cbcap.py": "741fb65ea122740a2dc62e4ae528cd17fadde0cab0ee143ae69c85b7681c8369",
-  "linux/cbremote.py": "370658c470a2ff86b90bca57b13305910ddd0a88e95ef10e1c942dce4e4232cf",
+  "linux/cb-post.sh": "a0e6bc3c5e879fd57c27349fccfd406daf746a25a9da4f0881c2460ab01c97e8",
+  "linux/cbagent.py": "8a6b8179b5106a0055b0afe16eacdcdf1b687063e5919dde1c5895336c3b89d7",
+  "linux/cbcap.py": "db4789e89617e1f7278553551305095ec6876ec025e072b847220f321614fd80",
+  "linux/cbremote.py": "e9182f56e7372d7b757c1a27be82456cb9cd618f5cbae7dc18dc320feed7a15e",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
@@ -50,5 +50,5 @@
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
   "tao-iso.ps1": "c32029ab71f64a2efdf9ce425b1e338917df116f948fa331566533442114d998"
  },
- "ver": "22.11f"
+ "ver": "22.11g"
 }
