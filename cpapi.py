@@ -670,6 +670,16 @@ def win_settle(sh, sleep=time.sleep, tries=4):
     return st
 
 
+def win_turned(sh, st, sleep=time.sleep, n=3):
+    """Màn còn NGANG sau khi đổi: có máy xoay về dọc (theo màn chính) chậm vài giây → chờ thêm chút; xoay thật thì trả trạng thái mới để
+       tính lại chỗ cửa sổ theo hướng mới (tính theo hướng cũ → cửa sổ ra ngoài màn). Màn dọc / vẫn ngang → None."""
+    if st["geo"]["w"] <= st["geo"]["h"]: return None
+    for _ in range(n):
+        sleep(0.5); s = win_state(sh)
+        if (s["geo"]["w"], s["geo"]["h"]) != (st["geo"]["w"], st["geo"]["h"]): return win_settle(sh, sleep)
+    return None
+
+
 def win_area(g):
     return (0, g["top"], g["w"] - g["right"], g["h"] - g["bottom"])
 
@@ -758,21 +768,27 @@ def win_run(sh, do, sleep=time.sleep):
         else:
             t = grown[0]; win_launch(sh, t, WIN_FREEFORM, sdk)          # cửa sổ đã phóng to hết màn → thu lại
         st2 = win_settle(sh, sleep)
-        others = [w["b"] for w in win_std(st2, "freeform") if w["id"] != t["id"]]
-        slot = win_slot(st2["geo"], others)
-        resize(t, slot)
+        for _ in range(2):
+            others = [w["b"] for w in win_std(st2, "freeform") if w["id"] != t["id"]]
+            slot = win_slot(st2["geo"], others)
+            resize(t, slot)
+            st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → tính lại chỗ theo hướng mới
+            if not st2: break
         n = len(others) + 1
         return 200, {"ok": True, "n": n, "id": t["id"], "b": list(slot),
                      "msg": f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}
     if do == "tile":
         if not wins: return 409, {"error": "Chưa có tab nhỏ nào — mở app rồi bấm Thu nhỏ tab trước."}
         if [t for t in win_std(st, "fullscreen") if t["vis"]]: home()          # app toàn màn (ép ngang) đang che → về màn chính để xếp theo hướng màn chính
-        st2 = win_settle(sh, sleep); g = st2["geo"]
-        wins = sorted(win_std(st2, "freeform"), key=lambda t: t["id"])      # thứ tự cố định: tab thu nhỏ trước nằm trước
-        cells = win_grid(g, len(wins))
-        for w, c in zip(wins, cells):
-            if not w["vis"] or sdk >= 31: win_launch(sh, w, WIN_FREEFORM, sdk)      # đưa lên trên (cửa sổ bị màn chính che cũng hiện lại)
-            resize(w, c)
+        st2 = win_settle(sh, sleep)
+        for k in range(2):
+            wins = sorted(win_std(st2, "freeform"), key=lambda t: t["id"])  # thứ tự cố định: tab thu nhỏ trước nằm trước
+            cells = win_grid(st2["geo"], len(wins))
+            for w, c in zip(wins, cells):
+                if not k and (not w["vis"] or sdk >= 31): win_launch(sh, w, WIN_FREEFORM, sdk)  # đưa lên trên (cửa sổ bị màn chính che cũng hiện lại)
+                resize(w, c)
+            st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → xếp lại theo hướng mới
+            if not st2: break
         cols = len({c[0] for c in cells}); rows = len({c[1] for c in cells})
         tip = " Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau." if win_overlap(cells) else ""
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã xếp {len(wins)} tab nhỏ ({cols} cột × {rows} hàng).{tip}"}
