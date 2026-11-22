@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""23/11 · 🗗 TAB CỬA SỔ NHỎ — thử THẬT trên máy Android ảo (GitHub Actions có KVM): cpapi.win_run chạy qua adb vào Android 9 / 12 / 15.
+"""23/11 · 🗗 TAB CỬA SỔ NHỎ — thử THẬT trên máy Android ảo (GitHub Actions có KVM): cpapi.win_run chạy qua adb vào Android 9 / 10 / 11 / 12 / 15.
    3 app "giống Roblox" (ép màn ngang, không đổi cỡ được — mkapk.sh) + 1 bản clone trong hồ sơ Công việc (y như Clone tab của máy thật):
    thu nhỏ → về màn chính → mở app khác → thu nhỏ (cửa sổ cũ vẫn đúng chỗ, hiện lại) → clone → kéo thanh tiêu đề (dời) + kéo góc (đổi cỡ)
    bằng chạm như khách bấm qua luồng hình → sắp xếp (dọc, ngang) → phóng to → thu nhỏ lại. Chụp ảnh từng bước.
@@ -91,8 +91,21 @@ def task(n, user=0):
     return next((t for t in tasks() if t["pkg"] == f"vn.cloudblue.wintest{n}" and t["user"] == user and t["type"] in ("standard", "")), None)
 
 
+TRACE = []
+
+
+def tsh(c, t=30):
+    """sh có ghi lại lệnh cpapi gửi (trừ lệnh đọc danh sách) + chữ máy trả → in ra để xem từng bản Android đi đường nào."""
+    o = sh(c, t)
+    if c != cp.WIN_STATE_SH and not c.startswith("am stack list"):
+        TRACE.append(f"      $ {c[:150]}" + (f"\n        ↳ {' | '.join(o.splitlines())[:240]}" if o else ""))
+    return o
+
+
 def run(do):
-    t0 = time.time(); code, j = cp.win_run(sh, do); print(f"   win_run({do}) → {code} {j} · {time.time() - t0:.1f} giây", flush=True); time.sleep(2)
+    TRACE.clear(); t0 = time.time(); code, j = cp.win_run(tsh, do)
+    print(f"   win_run({do}) → {code} {j} · {time.time() - t0:.1f} giây", flush=True)
+    print("\n".join(TRACE[:40]), flush=True); time.sleep(2)
     return code, j
 
 
