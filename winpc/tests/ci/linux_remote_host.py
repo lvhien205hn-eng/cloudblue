@@ -194,7 +194,11 @@ def main():
     # 22.11g: BẤM nút menu (chuột thật của KWin phải tới đúng chỗ — con trỏ tự vẽ không chứng minh được) → menu KDE mở = hình đổi lớn → Esc đóng
     t_k0 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, 1100, 64600)); time.sleep(0.12); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, 1100, 64600))
     time.sleep(3.0); t_k1 = time.time()
-    v.c.send(R.C_KEY, struct.pack(">BII", 1, 0x1B, 0)); time.sleep(0.1); v.c.send(R.C_KEY, struct.pack(">BII", 0, 0x1B, 0)); time.sleep(2.0); t_k2 = time.time()
+    K_ESC, K_ENTER = 111, 66            # giao thức C_KEY: (hành động 0 = nhấn · 1 = nhả, MÃ PHÍM ANDROID, meta) — như app / web gửi
+
+    def key(code):
+        v.c.send(R.C_KEY, struct.pack(">BII", 0, code, 0)); time.sleep(0.08); v.c.send(R.C_KEY, struct.pack(">BII", 1, code, 0))
+    key(K_ESC); time.sleep(2.0); t_k2 = time.time()
     v.c.send(R.C_TEXT, b"cloudblue"); time.sleep(1.5)
     # 23/11: MỞ APP NHƯ KHÁCH — bấm nút menu KDE, gõ tên app, Enter (Konsole = "cmd" của Linux · Firefox = trình duyệt) → ảnh từng bước
     t_app = {}
@@ -202,14 +206,13 @@ def main():
     def click(x, y):
         v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, x, y)); time.sleep(0.3)
         v.c.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, x, y)); time.sleep(0.12); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, x, y))
-
-    def key(vk):
-        v.c.send(R.C_KEY, struct.pack(">BII", 1, vk, 0)); time.sleep(0.08); v.c.send(R.C_KEY, struct.pack(">BII", 0, vk, 0))
-    t_app["0-truoc"] = time.time()
+    key(K_ESC); time.sleep(1.5); t_app["0-truoc"] = time.time()
     for i, (app, wait_s) in enumerate((("konsole", 8), ("firefox", 16))):
+        key(K_ESC); time.sleep(1.0)                                   # menu đang mở (nếu có) → đóng, để cú bấm sau MỞ menu
         click(1100, 64600); time.sleep(2.5); t_app["%d-%s-1-menu" % (i + 1, app)] = time.time()
         v.c.send(R.C_TEXT, app.encode()); time.sleep(2.5); t_app["%d-%s-2-go-ten" % (i + 1, app)] = time.time()
-        key(0x0D); time.sleep(wait_s); t_app["%d-%s-3-enter" % (i + 1, app)] = time.time()
+        key(K_ENTER); time.sleep(wait_s); t_app["%d-%s-3-enter" % (i + 1, app)] = time.time()
+    t_app["3-xong"] = time.time()
     st = None
     with v.lock:
         for m in v.rx:
