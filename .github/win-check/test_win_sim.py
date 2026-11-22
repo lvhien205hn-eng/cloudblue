@@ -42,7 +42,8 @@ class Droid:
         self.rot, self.lo = sdk < 31, False
 
     def _sync(self):
-        """Màn vừa đổi hướng → Android 9–11 xoay chỗ các cửa sổ nổi theo (DisplayContent.rotateBounds)."""
+        """Màn vừa đổi hướng → Android 9–11 xoay chỗ các cửa sổ nổi theo (DisplayContent.rotateBounds); Android 10/11 còn đẩy cửa sổ
+           nằm dưới thanh trạng thái (48 px) xuống → xoay về dọc thì cửa sổ sát mép phải lệch trái (đúng như máy ảo thật: 0 → -48)."""
         o = self.size()[0] > self.size()[1]
         if o != self.lo and self.rot:
             wp = min(self.W, self.H)
@@ -50,6 +51,8 @@ class Droid:
                 if t["mode"] == FF and t["b"] != (0, 0, 0, 0):
                     l, tp, r, b = t["b"]
                     t["b"] = (tp, wp - r, b, wp - l) if o else (wp - b, l, wp - tp, r)
+                    if o and self.sdk >= 29 and t["b"][1] < 48:
+                        d = 48 - t["b"][1]; t["b"] = (t["b"][0], 48, t["b"][2], t["b"][3] + d)
         self.lo = o
 
     # ---- việc của khách (không qua cpapi) ----
@@ -252,12 +255,15 @@ for sdk in (28, 29, 30, 31, 35):
     code, j = cp.win_run(d.sh, "mini"); b = d.task(R2)
     ck("về màn chính rồi mở game ngang thứ 2 → thu nhỏ: 2 cửa sổ, Roblox vẫn ĐÚNG CHỖ CŨ và hiện lại, cửa sổ mới vào chỗ trống", code == 200 and b["mode"] == FF
        and a["b"] == ab and d.visible(a) and d.visible(b) and ovl(a["b"], b["b"]) == 0 and b["b"][2] <= 720 and j["n"] == 2, (code, j, a, b, d.stack_list()))
-    a["b"] = (200, 700, 700, 1000)                        # khách tự kéo Roblox xuống dưới
+    a["b"] = DR = (200, 700, 700, 1000)                   # khách tự kéo Roblox xuống dưới (sát mép phải 20 px)
     d.open(R1, 10, land=True, resz=sdk >= 29)              # bản clone (người dùng 10) — toàn màn ngang
     code, j = cp.win_run(d.sh, "mini"); c = d.task(R1, 10)
     ck("bản clone (người dùng 10) thu nhỏ được, mở bằng --user 10, cửa sổ khách đã kéo giữ nguyên, chỗ mới trong màn dọc",
        code == 200 and c["mode"] == FF and "(bản clone)" in j["msg"] and any("--user 10 " in x for x in d.log)
-       and c["b"] not in (a["b"], b["b"]) and a["b"] == (200, 700, 700, 1000) and c["b"][2] <= 720 and c["b"][3] <= 1184, (code, j, c, a, b))
+       and c["b"] not in (a["b"], b["b"]) and c["b"][2] <= 720 and c["b"][3] <= 1184
+       and (a["b"] == DR or (29 <= sdk < 31 and a["b"] == (DR[0] - 28, DR[1], DR[2] - 28, DR[3]))), (code, j, c, a, b))
+    if 29 <= sdk < 31: ck("Android 10/11: cửa sổ khách kéo sát mép phải chỉ lệch trái ≤ 48 px (Android đẩy dưới thanh trạng thái khi màn ngang)",
+                          a["b"] == (DR[0] - 28, DR[1], DR[2] - 28, DR[3]), a["b"])
     code, j = cp.win_run(d.sh, "mini")
     ck("thu nhỏ khi không còn app toàn màn → 409 'Các tab đang là cửa sổ nhỏ rồi'", code == 409 and "cửa sổ nhỏ rồi" in j.get("error", ""), (code, j))
     d.open("vn.game.khac/.Main", land=True)                # khách mở 1 game ngang khác toàn màn rồi bấm Sắp xếp
