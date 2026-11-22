@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """Máy chủ Supabase GIẢ cho CI linux-check (chỉ chạy trên máy CI, không đụng máy chủ thật): agent CachyOS trong máy ảo QEMU gọi
    http://10.0.2.2:<cổng>/rest/v1/rpc/<hàm> (10.0.2.2 = máy CI). Mỗi lần gọi ghi 1 dòng JSON (hàm + thân) vào file nhật ký,
-   trả lời như máy chủ thật ở mức tối thiểu: pc_enroll → mã máy ci-pc-1 · pc_poll → ok.
+   trả lời như máy chủ thật ở mức tối thiểu: pc_enroll → mã máy PC_ID · pc_poll → ok · pc_relay_where → trạm phát hình thử (RELAY, khi có).
    Chạy:  python3 fake_sb.py <cổng> <file nhật ký>      ·  Kiểm:  python3 fake_sb.py --check <file nhật ký> <vé>"""
 import json, os, sys, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-PC_ID, PC_TOKEN = "ci-pc-1", "ci-token"
+PC_ID, PC_TOKEN = "33333333-3333-4333-8333-333333333333", "ci-token"
+RELAY = None                                                     # {"direct": [{"host", "port", "lan"}], "cert"} — linux_remote_host.py đặt
 
 
 class H(BaseHTTPRequestHandler):
@@ -22,6 +23,10 @@ class H(BaseHTTPRequestHandler):
             r = {"ok": True, "id": PC_ID, "token": PC_TOKEN, "name": "CB-CI01", "approved": True, "poll_s": 10}
         elif fn == "pc_poll":
             r = {"ok": True, "poll_s": 10} if (body.get("p_id"), body.get("p_token")) == (PC_ID, PC_TOKEN) else {"ok": False, "err": "BAD_TOKEN"}
+        elif fn == "pc_relay_where":
+            if (body.get("p_id"), body.get("p_token")) != (PC_ID, PC_TOKEN): r = {"ok": False, "err": "BAD_TOKEN"}
+            elif RELAY: r = {"ok": True, "on": True, "node": "citest", "stream": RELAY}
+            else: r = {"ok": True, "on": False}
         else:
             r = {"ok": False, "err": "NO_FN"}
         out = json.dumps(r).encode()
