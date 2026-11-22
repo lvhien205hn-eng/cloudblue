@@ -1,6 +1,6 @@
 # 23/11 · 🗗 TAB CỬA SỔ NHỎ (như Redfinger): thử cpapi.win_run (Thu nhỏ tab / Sắp xếp tab / Phóng to tab)
 #   1. sim: máy Android GIẢ (đọc am stack list Android 9 + 12, lưới, cổng HTTP) — vài giây.
-#   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 12 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
+#   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 10 / 11 / 12 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
 #      thu nhỏ → về màn chính → mở app khác → thu nhỏ → kéo dời / kéo đổi cỡ bằng chạm → sắp xếp dọc + ngang → phóng to.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [28, 31, 35]
+        api: [28, 29, 30, 31, 35]
     steps:
       - uses: actions/checkout@v4
       - name: Bật KVM cho máy ảo Android
