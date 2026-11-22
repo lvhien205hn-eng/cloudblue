@@ -892,7 +892,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "19/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "22/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -903,6 +903,8 @@ PCTL_SUB = "19/11a"           # 17/11e3: danh sách máy không bao giờ bị g
                               # 18/11b: BỘ NHỚ máy MỚI: MuMu "chế độ ổ nhỏ" → /data chỉ 2,9GB → nới bằng resize2fs lúc lên lần đầu
                               # 19/11a: bộ nhớ MIỄN PHÍ theo cấu hình (RAM < 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB: DISK_TIERS) ·
                               #         create --disk N · lệnh disk TÊN --gb N (khách MUA THÊM bộ nhớ) · máy cũ để nguyên
+                              # 22/11a: 🌐 PROXY RIÊNG TỪNG MÁY (khách dán IP:Port:User:Pass) — cbproxy trong máy (root, iptables) · lệnh proxy /
+                              #         proxykeep · tự bật lại sau khi máy bật / khởi động lại / mỗi 5 phút · proxy chết → máy tự đi mạng thường
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -2209,6 +2211,7 @@ def wait_boot(name, port, apps=True):
         except Exception: pass
         tune(name, port); grant_perms(name, port)
         _root_keep({"name": name}, port)
+        _proxy_keep({"name": name}, port)                # 22/11: máy có 🌐 proxy riêng → bật lại (iptables + tiến trình mất khi máy tắt)
         if EMU == "mumu" and DISK_FIX: _disk_hook(name, port)     # 19/11: máy MỚI / máy vừa mua thêm bộ nhớ (có dấu disk_new) → nới tới cỡ đích
         if sp0:                                          # 16/11k: giao diện sập giữa lúc tối ưu (PID đổi) → kiểm sổ khoá lần nữa, chờ lên lại
             sp1 = _ss_pid(port)
@@ -3006,6 +3009,7 @@ def cmd_restart(a):
     _pre_slot(p)                                              # 16/11e: xin lượt bật trước (máy còn chạy) → tắt xong bật liền
     with _cycle():
         hard, force = _restart_body(a, p)
+    if p.get("proxy"): _proxy_later(p["name"])                   # 22/11: máy có 🌐 proxy → bật lại proxy ngay khi Android lên (không chờ vòng 5 phút)
     print("✅ Đã khởi động lại (máy treo — đã tắt hẳn rồi bật)" if hard else "✅ Đã ép khởi động lại" if force else "✅ Đã khởi động lại")
 def _restart_body(a, p):
     _restart_mark(a.name); adb("disconnect", serial(p), timeout=15)
@@ -3642,6 +3646,8 @@ def cmd_rootfix(a):
     if a.all and not a.force:                                       # vòng 5 phút: máy bật root theo app mà daemon không chạy → cài lại
         for p in load()["phones"]:
             if p.get("root_on") and is_running(p["name"], p): _root_keep(p)
+        for p in load()["phones"]:                                  # 22/11: máy có 🌐 proxy mà tiến trình proxy không chạy → bật lại
+            if p.get("proxy") and is_running(p["name"], p): _proxy_keep(p)
     print(f"Root: {ok} máy có root · {setn} máy tắt đã bật sẵn · {wait} máy chờ bật lại · {bad} máy lỗi")
 
 # ---------- ROOT THEO TỪNG APP (cpsu: lệnh su riêng + daemon, chỉ app trong danh sách mới lấy được root) ----------
@@ -4038,6 +4044,259 @@ def _root_keep(p, port=None):
         ok, msg = _root_apply(p, quiet=True)
         print(f"   🔓 {p['name']}: {'bật lại root theo app' if ok else msg}", flush=True)
     except Exception as e: print(f"   ⚠ {p['name']}: root theo app lỗi: {e}", flush=True)
+
+# ---------- 🌐 PROXY RIÊNG TỪNG MÁY (22/11: khách tự điền IP:cổng:user:pass) ----------
+# Trong máy: /data/adb/cbproxy/{cbproxy, conf.json, state.json, log} — cbproxy (Go, tĩnh, mã nguồn cbproxy/main.go) chạy ROOT:
+# iptables (nat OUTPUT) bắt mọi kết nối TCP của app → proxy SOCKS5 / HTTP của khách. Proxy chết / sai → máy tự đi mạng thường,
+# lành thì quay lại. UDP 443 (QUIC) chặn để app chuyển sang TCP. Trạng thái công khai /data/local/tmp/cbproxy.json (adb thường đọc,
+# không có mật khẩu). Cấu hình (có mật khẩu) chỉ nằm ở phones.json của máy chủ + trong máy của chính khách — KHÔNG lên web.
+CBPX_FILE = ("cbproxy-x86_64", "6465b07b0fe0be54aea79c623f3e4d1e")
+CBPX_DEV = "/data/adb/cbproxy"
+CBPX_PUB = "/data/local/tmp/cbproxy.json"
+_PX_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+_PX_SAFE = re.compile(r"^[^\x00-\x1f\x7f]{0,255}$")
+
+def _px_parse(text, kind="auto"):
+    """Chuỗi khách dán → {kind, host, port, user, pass}. Nhận: IP:cổng · IP:cổng:user:pass · user:pass@IP:cổng · socks5://… · http://…
+       Lỗi → ValueError (câu báo cho khách)."""
+    s = str(text or "").strip()
+    kind = str(kind or "auto").strip().lower()
+    if kind not in ("auto", "socks5", "http"): raise ValueError("Kiểu proxy phải là Tự nhận / SOCKS5 / HTTP.")
+    if not s: raise ValueError("Chưa nhập proxy.")
+    if len(s) > 600 or any(ord(ch) < 32 for ch in s): raise ValueError("Proxy có ký tự lạ.")
+    m = re.match(r"^(socks5h?|socks|http|https)://(.*)$", s, re.I)
+    if m:
+        sc = m.group(1).lower()
+        if sc == "https": raise ValueError("Chưa hỗ trợ proxy HTTPS (mã hoá tới proxy) — dùng HTTP hoặc SOCKS5.")
+        kind = "http" if sc == "http" else "socks5"
+        s = m.group(2).rstrip("/")
+    user = pw = ""
+    if "@" in s:
+        cred, _, hp = s.rpartition("@")
+        user, _, pw = cred.partition(":")
+        s = hp
+        if s.startswith("["):                                       # [IPv6]:cổng
+            h, _, rest = s[1:].partition("]"); port = rest.lstrip(":")
+        else: h, _, port = s.rpartition(":")
+    else:
+        if s.startswith("["): raise ValueError("Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền.")
+        parts = s.split(":")
+        if len(parts) < 2: raise ValueError("Thiếu cổng — nhập dạng IP:cổng hoặc IP:cổng:user:pass.")
+        if len(parts) == 4 and not parts[1].strip().isdigit() and parts[3].strip().isdigit() and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", parts[2].strip()):
+            parts = [parts[2], parts[3], parts[0], parts[1]]           # nơi bán ghi kiểu user:pass:IP:cổng → đảo lại
+        h, port = parts[0], parts[1]
+        if len(parts) >= 3: user = parts[2]; pw = ":".join(parts[3:])
+    h = h.strip().strip("[]")
+    try: port = int(str(port).strip())
+    except ValueError: raise ValueError("Cổng proxy phải là số (1–65535).")
+    if not 1 <= port <= 65535: raise ValueError("Cổng proxy phải từ 1 đến 65535.")
+    import ipaddress
+    try: ip = ipaddress.ip_address(h)
+    except ValueError: ip = None
+    if ip is not None:
+        if ip.version == 6: raise ValueError("Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền.")
+        if ip.is_loopback or ip.is_unspecified or ip.is_multicast: raise ValueError("Địa chỉ proxy không hợp lệ.")
+    elif not _PX_HOST.match(h) or re.match(r"^[\d.]+$", h): raise ValueError("Địa chỉ proxy không hợp lệ (IP hoặc tên miền).")
+    if not (_PX_SAFE.match(user) and _PX_SAFE.match(pw)): raise ValueError("User / mật khẩu proxy quá dài hoặc có ký tự lạ.")
+    return {"kind": kind, "host": h, "port": port, "user": user, "pass": pw}
+
+def _px_mask(px):
+    if not px: return ""
+    hp = f"[{px['host']}]" if ":" in px["host"] else px["host"]
+    return f"{hp}:{px['port']}" + (f":{px['user']}:••••" if px.get("user") or px.get("pass") else "")
+
+def _px_resolve(host):
+    """IPv4 của proxy (máy chủ tự phân giải tên miền; trong máy Android không cần DNS)."""
+    import socket, ipaddress
+    try:
+        ip = ipaddress.ip_address(host)
+        return [str(ip)] if ip.version == 4 else []
+    except ValueError: pass
+    out = []
+    try:
+        for fam, _, _, _, sa in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM):
+            if sa[0] not in out: out.append(sa[0])
+    except OSError: pass
+    return out[:4]
+
+def _px_local():
+    """File cbproxy trên máy chủ (tải từ GitHub nếu thiếu / sai md5 — md5 ghim ở đây, file lạ không dùng)."""
+    import urllib.request
+    os.makedirs(CPSU_DIR, exist_ok=True)
+    fn, want = CBPX_FILE; fp = os.path.join(CPSU_DIR, fn)
+    if _fmd5(fp) == want: return fp
+    for url, hdr in ((CPSU_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                     (CPSU_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=120) as r: d = r.read()
+            if hashlib.md5(d).hexdigest() == want:
+                with open(fp + ".tmp", "wb") as f: f.write(d)
+                os.replace(fp + ".tmp", fp); return fp
+        except Exception: pass
+    raise RuntimeError(f"máy chủ chưa có file {fn} đúng bản — tải windows/{fn} lên GitHub rồi thử lại")
+
+def _px_root(p, script, files=(), timeout=120):
+    """Chạy script bằng ROOT trong máy: adb là root / su (như Root theo app); máy KernelSU (Android 15, adb không có su) → "adb root"
+       đúng 1 lần rồi "adb unroot" (như nới bộ nhớ). Script phải in PX_END ở cuối. Trả chữ in ra hoặc None (không có root)."""
+    r, _ = _root_sh(p, script, timeout=timeout, files=files)
+    o = (r.stdout or "") + (r.stderr or "")
+    if "PX_END" in o: return o
+    if not DG_ADBROOT: return None
+    s_ = serial(p); port = p["port"]; rooted = False; o = ""
+    def back_up():
+        for _ in range(10):
+            time.sleep(1.5)
+            if _adb_fresh(port): return True
+        return False
+    try:
+        rr = adb("-s", s_, "root", timeout=20); o0 = ((rr.stdout or "") + " " + (rr.stderr or "")).lower()
+        if "as root" not in o0 or "cannot" in o0: return None
+        rooted = True
+        if back_up():
+            r, _ = _root_sh(p, script, timeout=timeout, files=files); o = (r.stdout or "") + (r.stderr or "")
+    except Exception: o = ""
+    finally:
+        if rooted:
+            try: adb("-s", s_, "unroot", timeout=20); back_up()
+            except Exception: pass
+    return o if "PX_END" in o else None
+
+def _px_state(p):
+    """Trạng thái proxy trong máy (adb THƯỜNG, không cần root): {mode, ip, ms, err, kind, age…} · None = chưa từng bật / không đọc được."""
+    try: o = ashell(p["name"], f"cat {CBPX_PUB} 2>/dev/null; echo; echo NOW=$(date +%s)", port=p.get("port"), timeout=20).stdout or ""
+    except Exception: return None
+    now = re.search(r"NOW=(\d+)", o); j = None
+    for ln in o.splitlines():
+        ln = ln.strip()
+        if ln.startswith("{"):
+            try: j = json.loads(ln)
+            except ValueError: j = None
+    if not isinstance(j, dict): return None
+    age = (int(now.group(1)) - int(j.get("beat") or 0)) if now and j.get("beat") else None
+    j["age"] = age
+    j["alive"] = bool(age is not None and age < 30 and j.get("mode") in ("proxy", "direct"))
+    return {k: j.get(k) for k in ("mode", "kind", "ip", "ms", "err", "since", "ok_at", "fail_at", "via", "direct", "refused", "rules", "alive", "age", "ver")}
+
+def _px_apply(p, quiet=False):
+    """Đưa máy về đúng proxy đã lưu (p["proxy"]): có → đẩy cbproxy + cấu hình, bật; không có → tắt + gỡ iptables. Trả (ok, câu báo, trạng thái)."""
+    px = p.get("proxy")
+    if not px:
+        o = _px_root(p, f"D={CBPX_DEV}\n[ -x $D/cbproxy ] && $D/cbproxy down -d $D\nrm -f $D/conf.json {CBPX_PUB}\necho PX_END\n", timeout=60)
+        if o is None: return False, "Máy không cho máy chủ quyền root để tắt proxy — khởi động lại máy là proxy tự tắt.", None
+        return True, "Đã TẮT proxy — máy đi mạng thường.", None
+    ips = _px_resolve(px["host"])
+    if not ips: return False, f"Không tìm được IP của proxy {px['host']} — kiểm tra lại địa chỉ.", None
+    import tempfile
+    binp = _px_local()
+    conf = {"kind": px.get("kind") or "auto", "host": px["host"], "ips": ips, "port": int(px["port"]), "user": px.get("user") or "", "pass": px.get("pass") or ""}
+    fd, cf = tempfile.mkstemp(suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as f: json.dump(conf, f)
+    # 1 lần chạy root duy nhất (máy KernelSU: mỗi lần = adbd khởi động lại 2 lần) — file cbproxy luôn đẩy kèm (2,8MB qua adb nội bộ, < 1 giây),
+    # trong máy chỉ thay khi md5 khác bản ghim
+    sc = (f"D={CBPX_DEV}\nmkdir -p $D; chmod 700 $D\n"
+          f"if [ \"$(md5sum $D/cbproxy 2>/dev/null | cut -d' ' -f1)\" != \"{CBPX_FILE[1]}\" ]; then "
+          "cp $T/up_cbproxy $D/cbproxy.new && chmod 755 $D/cbproxy.new && mv -f $D/cbproxy.new $D/cbproxy; fi\n"
+          "cp $T/conf.json $D/conf.json && chmod 600 $D/conf.json\n"
+          "$D/cbproxy up -c $D/conf.json -d $D\necho PX_END\n")
+    try: o = _px_root(p, sc, files=[(binp, "up_cbproxy"), (cf, "conf.json")], timeout=120)
+    finally:
+        try: os.remove(cf)
+        except OSError: pass
+    if o is None: return False, "Máy chưa có quyền root cho máy chủ (cần để bật proxy) — bấm 🔓 Root máy rồi thử lại.", None
+    j = None
+    for ln in o.splitlines():
+        ln = ln.strip()
+        if ln.startswith("{") and '"ok"' in ln:
+            try: j = json.loads(ln)
+            except ValueError: pass
+    if not isinstance(j, dict): return False, "Chưa bật được proxy: " + (o.replace("PX_END", "").strip().splitlines() or ["máy không trả lời"])[-1][:200], None
+    stt = j.get("state") or {}
+    if not j.get("ok"): return False, "Chưa bật được proxy: " + str(j.get("err") or stt.get("err") or "lỗi lạ")[:200], stt
+    if stt.get("mode") == "proxy":
+        msg = f"Đã BẬT proxy — IP ra: {stt.get('ip') or '?'} · {int(stt.get('ms') or 0)} ms"
+    else:
+        msg = "Đã lưu proxy nhưng proxy CHƯA dùng được (" + str(stt.get("err") or "không nối được")[:160] + ") — máy đang đi mạng thường, tự thử lại mỗi 15 giây."
+    if not quiet: print(f"   🌐 {p['name']}: {msg}", flush=True)
+    return True, msg, stt
+
+def _proxy_keep(p, port=None):
+    """Máy vừa bật lại (iptables + tiến trình trong máy mất hết) / tiến trình proxy chết → bật lại. Máy không đặt proxy → bỏ qua."""
+    p = rec(p["name"]) or p
+    if not p.get("proxy"): return
+    if port: p = dict(p, port=port)
+    try:
+        s = _px_state(p)
+        if s and s.get("alive"): return
+        if s and s.get("mode") == "crashed" and (s.get("age") or 0) < 1800: return       # vừa hỏng (VD máy không có iptables) → 30 phút mới thử lại
+        ok, msg, _ = _px_apply(p, quiet=True)
+        print(f"   🌐 {p['name']}: {'bật lại proxy · ' + msg if ok else msg}", flush=True)
+    except Exception as e: print(f"   ⚠ {p['name']}: proxy lỗi: {e}", flush=True)
+
+def cmd_proxy(a):
+    """proxy TÊN --get | --set (--url "IP:cổng:user:pass" | --url-stdin) [--kind auto|socks5|http] | --off | --again — proxy riêng của máy (🌐 Proxy).
+       cpapi đưa proxy qua stdin (--url-stdin): mật khẩu proxy không nằm trên dòng lệnh."""
+    st, p = _need(a.name)
+    if a.set or a.off or a.again:
+        if a.set:
+            url = sys.stdin.buffer.readline().decode("utf-8", "replace").strip() if a.url_stdin else a.url
+            try: px = _px_parse(url, a.kind)
+            except ValueError as e: print(f"PROXY_FAIL {e}"); sys.exit(2)
+            p["proxy"] = px
+        elif a.off:
+            had = bool(p.pop("proxy", None))
+        elif not p.get("proxy"): print("PROXY_FAIL Máy chưa đặt proxy."); sys.exit(2)
+        if not a.again: save(st)                                   # lưu TRƯỚC: máy tắt / khởi động lại vẫn áp dụng đúng
+        if not is_running(p["name"], p):
+            print("PROXY_OK " + ("Đã tắt proxy." if a.off else "Đã lưu — máy đang tắt, proxy tự bật khi máy bật.")); return
+        if a.off and not had:
+            s = None
+            try: s = _px_state(p)
+            except Exception: pass
+            if not s or (s.get("mode") in ("off", "crashed") or not s.get("alive")):
+                print("PROXY_OK Máy không dùng proxy — đang đi mạng thường."); return
+        try: ok, msg, _ = _px_apply(p, quiet=True)
+        except Exception as e: ok, msg = False, f"Chưa áp dụng được: {e}"
+        print(("PROXY_OK " if ok else "PROXY_FAIL ") + msg)
+        if not ok: sys.exit(1)
+        return
+    px = p.get("proxy") or None
+    info = {"set": bool(px), "kind": (px or {}).get("kind") or "auto", "show": _px_mask(px), "host": (px or {}).get("host") or "",
+            "port": (px or {}).get("port") or 0, "user": (px or {}).get("user") or "", "has_pass": bool((px or {}).get("pass")),
+            "online": False, "state": None}
+    if is_running(p["name"], p):
+        info["online"] = True
+        try: info["state"] = _px_state(p)
+        except Exception as e: info["error"] = str(e)[:200]
+    print("PROXY " + json.dumps(info, ensure_ascii=False))
+
+def _proxy_later(name):
+    """Lệnh nền (tách khỏi lệnh đang chạy): chờ Android của máy vừa bật lại lên → bật lại proxy (proxykeep TÊN --wait)."""
+    for fl in (0x00000008 | 0x00000200 | NOWIN, 0) if os.name == "nt" else (0,):
+        try:
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "proxykeep", name, "--wait"], cwd=HOME, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=fl, close_fds=True)
+            return True
+        except OSError: continue
+    return False
+
+def cmd_proxykeep(a):
+    """proxykeep [TÊN | --all] [--wait] — bật lại proxy cho máy đang chạy mà tiến trình proxy chưa chạy (vòng canh của cloudphoned).
+       --wait (1 máy, sau khi khởi động lại): chờ Android lên (tối đa BOOT_WAIT) rồi mới kiểm."""
+    if a.wait and a.name:
+        p = rec(a.name)
+        if not p or not p.get("proxy"): return
+        t0 = time.time()
+        while time.time() - t0 < BOOT_WAIT:
+            if is_running(p["name"], p) and android_ready(p["port"], 20): break
+            time.sleep(5)
+        else: return
+        time.sleep(5)                                            # Android vừa lên: chờ dịch vụ mạng ổn định
+    v = vms(); n = 0
+    for p in load()["phones"]:
+        if not p.get("proxy") or not (a.all or p["name"] == a.name): continue
+        if not is_running(p["name"], p, v): continue
+        _proxy_keep(p); n += 1
+    print(f"PROXYKEEP {n} máy có proxy")
 
 def cmd_capacity(a):
     st = load(); tot, av = mem()
@@ -4832,6 +5091,8 @@ def _wake_one(p, boot=False):
             else: ok = _wait_android(nm, p["port"], p, wait=BOOT_WAIT - first, step=2, why=why)
         _boot_done(nm)
         if not ok: return False, f"WAKE_FAIL Android chưa lên sau {BOOT_WAIT // 60} phút"
+        try: _proxy_keep(p)                                         # 22/11: proxy riêng bật TRƯỚC khi khách vào (app khách không lộ IP máy chủ)
+        except Exception as e: print("   (proxy sau khi bật:", repr(e)[:120], ")", flush=True)
         print(f"WAKE_READY {nm} {int(time.time() - t0)}", flush=True)
         for fn in (lambda: _root_keep(p), lambda: grant_perms(nm), lambda: tune(nm, p["port"]), lambda: hide_window(nm)):
             try: fn()
@@ -5288,6 +5549,12 @@ def main():
     rc = s.add_parser("rootcfg"); rc.add_argument("name"); g_ = rc.add_mutually_exclusive_group(required=True)
     g_.add_argument("--get", action="store_true"); g_.add_argument("--set", action="store_true")
     rc.add_argument("--on", action="store_true"); rc.add_argument("--off", action="store_true"); rc.add_argument("--apps", default=""); rc.set_defaults(f=cmd_rootcfg)
+    px = s.add_parser("proxy"); px.add_argument("name"); g_ = px.add_mutually_exclusive_group(required=True)
+    for k_ in ("--get", "--set", "--off", "--again"): g_.add_argument(k_, action="store_true")
+    px.add_argument("--url", default=""); px.add_argument("--url-stdin", action="store_true")
+    px.add_argument("--kind", default="auto", choices=["auto", "socks5", "http"]); px.set_defaults(f=cmd_proxy)
+    pk = s.add_parser("proxykeep"); pk.add_argument("name", nargs="?", default=""); pk.add_argument("--all", action="store_true"); pk.add_argument("--wait", action="store_true")
+    pk.set_defaults(f=cmd_proxykeep)
     gg = s.add_parser("gfxget"); gg.add_argument("name"); gg.set_defaults(f=cmd_gfxget)
     rd = s.add_parser("render"); rd.add_argument("name"); rd.add_argument("mode", choices=["opengl", "directx"]); rd.set_defaults(f=cmd_render)
     wp = s.add_parser("wallpaper"); wp.add_argument("name", nargs="?", default=""); wp.add_argument("--all", action="store_true"); wp.add_argument("--force", action="store_true"); wp.set_defaults(f=cmd_wallpaper)
