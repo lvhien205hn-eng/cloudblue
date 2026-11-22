@@ -385,6 +385,54 @@ try: _io.awake(True); _m2 = ""
 except CR.ViewerError as e: _m2 = e.viewer_msg
 ck("KWin chưa có quyền mới (máy chưa khởi động lại sau khi lên 22.11g) → người xem được bảo KHỞI ĐỘNG LẠI 1 lần; đã có quyền mà vẫn lỗi → báo lý do",
    "KHỞI ĐỘNG LẠI 1 lần" in _m1 and "Nguồn › Khởi động lại" in _m1 and _m2.startswith("Máy Linux chưa mở được màn hình để quay: KWin:"), (_m1, _m2))
+
+
+class _H2:
+    """22.11h · ghi lại lệnh "open" root gửi cho cbcap (thời gian chờ + có cho đi cổng XDG không)."""
+    def __init__(self, ok): self.ok, self.calls = ok, []
+    def ensure(self): return True
+    def request(self, op, timeout=0, **kw):
+        self.calls.append((op, timeout, kw))
+        if not self.ok: raise RuntimeError("KWin: KWin chua cho chuong trinh nay quay man hinh / bam phim (thieu zkde_screencast, fake_input)")
+        return {"ok": True, "size": [1920, 1080], "backend": "kwin"}
+    def close(self): pass
+
+
+_io2 = CR.LinuxIO("nobody", lambda m: None); _h2 = _H2(False); _io2.helper = _h2; _io2.kwin_env = lambda: False
+_t0 = time.time()
+try: _io2.awake(True); _m3 = ""
+except CR.ViewerError as e: _m3 = e.viewer_msg
+ck("22.11h · KWin chưa có quyền mới → chỉ thử KWin (portal=False, chờ ≤ 8 giây, không hiện hộp hỏi cổng XDG) rồi báo KHỞI ĐỘNG LẠI ngay",
+   _h2.calls == [("open", CR.KWIN_ONLY_WAIT, {"portal": False})] and CR.KWIN_ONLY_WAIT <= 8 and "KHỞI ĐỘNG LẠI 1 lần" in _m3 and time.time() - _t0 < 1, (_h2.calls, _m3))
+_io3 = CR.LinuxIO("nobody", lambda m: None); _h3 = _H2(True); _io3.helper = _h3; _io3.kwin_env = lambda: False
+_io3.awake(True)
+_io4 = CR.LinuxIO("nobody", lambda m: None); _h4 = _H2(True); _io4.helper = _h4; _io4.kwin_env = lambda: True
+_io4.awake(True)
+_io5 = CR.LinuxIO("nobody", lambda m: None); _h5 = _H2(True); _io5.helper = _h5; _io5.kwin_env = lambda: None
+_io5.awake(True)
+ck("… KWin vẫn cho (bản KWin nhận tệp .desktop) → chạy tiếp bằng KWin; KWin đã có quyền / chưa rõ → mở đủ 2 đường như cũ (chờ 20 giây)",
+   _io3.backend == "kwin" and _h4.calls == [("open", CR.OPEN_WAIT, {})] and _h5.calls == [("open", CR.OPEN_WAIT, {})], (_h4.calls, _h5.calls))
+_kc = K.Cap(lambda m: None, "unix:path=/khong-co")
+_pt = []
+_old_kc, _old_pt = K.KWinCast, K.Portal
+
+
+class _KFail:
+    def __init__(self, log=None): pass
+    def start(self, pointer=1, timeout=0): raise RuntimeError("KWin chua cho chuong trinh nay quay man hinh (thieu zkde_screencast)")
+    def close(self): pass
+
+
+K.KWinCast = _KFail
+K.Portal = lambda *a, **k: _pt.append(1)
+os.environ.pop("CBCAP_NO_KWIN", None); os.environ.pop("CBCAP_NO_PORTAL", None)
+try:
+    try: _kc.open(portal=False); _ke = ""
+    except RuntimeError as e: _ke = str(e)
+finally:
+    K.KWinCast, K.Portal = _old_kc, _old_pt
+ck("cbcap open(portal=False): KWin không cho → báo lỗi KWin ngay, KHÔNG mở cổng XDG (không hộp hỏi trên màn hình máy)",
+   _ke.startswith("KWin: KWin chua cho") and not _pt, (_ke, _pt))
 _eb = os.path.join(tmp, "base"); os.makedirs(os.path.join(_eb, "logs"))
 CR.note_error("KWin: thieu zkde_screencast; cong XDG: StartTimeout", base=_eb)
 _ln = open(os.path.join(_eb, "logs", "remote.err")).read()
