@@ -15,7 +15,7 @@
 # =====================================================================================================
 import cbcore as C
 
-REC_VER = "22.11c"
+REC_VER = "22.11f"
 SUBDIRS = ("lib", "pe", "os", "agent", "py", "drivers", "linux")   # "drivers": driver chủ shop bỏ thêm — cài lại từ xa cũng nạp · "linux": CachyOS (22.11c)
 
 
@@ -54,8 +54,18 @@ def status(sysx):
     v = find_recovery(sysx)
     if not v: return {"ok": False, "images": []}
     cfg = C.load_json(sysx, v.root + "cb\\cb.json") or {}
-    imgs = [im["id"] for im in cfg.get("images") or [] if sysx.exists(v.root + im["file"])
-            and (not C.is_linux(im) or all(sysx.exists(v.root + rel) for rel in C.LINUX_FILES))]       # CachyOS: thiếu GRUB / kịch bản cài thì không cho chọn
+    lin_ok = None
+
+    def linux_ok():                                             # 22.11f · CachyOS chỉ cài được trên máy UEFI đang TẮT Secure Boot
+        try: return sysx.firmware() == "uefi" and not C.secure_boot_on(sysx)
+        except Exception: return False
+    imgs = []
+    for im in cfg.get("images") or []:
+        if not sysx.exists(v.root + im["file"]): continue
+        if C.is_linux(im):                                      # CachyOS: thiếu GRUB / kịch bản cài / agent / điều khiển từ xa → không cho chọn
+            if lin_ok is None: lin_ok = linux_ok()
+            if not lin_ok or not all(sysx.exists(v.root + rel) for rel in C.LINUX_FILES): continue
+        imgs.append(im["id"])
     ok = bool(imgs) and sysx.exists(v.root + "cb\\boot\\boot.wim") and sysx.exists(v.root + "cb\\boot\\boot.sdi")
     return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or ""}
 
