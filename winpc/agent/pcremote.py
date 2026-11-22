@@ -18,7 +18,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "22.11d"
+REMOTE_VER = "22.11e"
 IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))

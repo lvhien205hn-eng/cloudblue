@@ -5,6 +5,8 @@
 #               "CBRECOVERY" có cb/linux/cachyos.iso (ISO CachyOS THẬT) + grub.cfg + cb-install.sh + cb-post.sh + cb/job.json (mục "linux"),
 #               EFI Linux + phân vùng Linux trống → GRUB mở thẳng ISO → cb-install.sh CÀI THẬT → khởi động lại vào CachyOS vừa cài
 #               → dịch vụ thử (chỉ có ở chế độ ci) ghi cb/linux-firstboot.ok → kiểm 2 file kết quả.
+#               Lần 2 có MÁY CHỦ GIẢ (winpc/tests/ci/fake_sb.py trên máy CI, 10.0.2.2:8099): agent CloudBlue bản Linux (cloudblue.service) phải tự chạy,
+#               đăng ký bằng ĐÚNG vé của lệnh, báo os=cachyos rồi hỏi máy chủ được.
 name: Check winpc Linux (CachyOS)
 
 on:
@@ -12,6 +14,9 @@ on:
     branches: [main, "linux-*"]      # nhánh linux-…: thử trước khi gộp
     paths:
       - "winpc/linux/**"
+      - "winpc/agent/pcagent.py"
+      - "winpc/lib/**"
+      - "winpc/tests/ci/fake_sb.py"
       - ".github/workflows/linux-check.yml"
   workflow_dispatch:
     inputs:
@@ -196,7 +201,11 @@ jobs:
           sudo mount -t ntfs-3g ${LOOP}p2 /mnt/rec
           sudo mkdir -p /mnt/rec/cb/linux /mnt/rec/cb/logs
           sudo cp cachyos.iso /mnt/rec/cb/linux/cachyos.iso && rm -f cachyos.iso
-          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh /mnt/rec/cb/linux/
+          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh winpc/linux/cbagent.py /mnt/rec/cb/linux/
+          sudo mkdir -p /mnt/rec/cb/agent /mnt/rec/cb/lib
+          sudo cp winpc/agent/pcagent.py /mnt/rec/cb/agent/ && sudo cp winpc/lib/cbcore.py winpc/lib/cbrec.py winpc/lib/cbsys.py /mnt/rec/cb/lib/
+          jq -n '{ver: "ci", default: "22h2", user: "PC", sb_url: "http://10.0.2.2:8099", sb_key: "ci-khoa-cong-khai",
+                  images: [{id: "22h2", file: "cb\\images\\22h2.wim", index: 1}, {id: "cachyos", kind: "linux", file: "cb\\linux\\cachyos.iso"}]}' | sudo tee /mnt/rec/cb/cb.json
           SS=$(jq '.partitiontable.sectorsize // 512' parts.json)
           E_OFF=$(jq ".partitiontable.partitions[2].start * $SS" parts.json); E_SZ=$(jq ".partitiontable.partitions[2].size * $SS" parts.json)
           R_OFF=$(jq ".partitiontable.partitions[3].start * $SS" parts.json); R_SZ=$(jq ".partitiontable.partitions[3].size * $SS" parts.json)
@@ -245,6 +254,8 @@ jobs:
         run: |
           MEM=$(( $(free -m | awk '/^Mem:/{print $2}') - 1800 )); [ $MEM -gt 8192 ] && MEM=8192; [ $MEM -lt 3072 ] && MEM=3072
           if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
+          python3 -I winpc/tests/ci/fake_sb.py 8099 "$PWD/rpc.log" > fake_sb.out 2>&1 &
+          SBPID=$!; sleep 1
           set +e
           timeout 900 qemu-system-x86_64 $ACC -m $MEM -smp $(nproc) \
             -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
@@ -252,6 +263,7 @@ jobs:
             -drive file=disk.img,format=raw,if=none,id=d0,cache=unsafe -device virtio-blk-pci,drive=d0 \
             -nic user,model=virtio-net-pci -display none -serial file:serial2.log -no-reboot
           echo "qemu thoat ma $?"
+          kill $SBPID 2>/dev/null; tail -5 fake_sb.out 2>/dev/null
           {
             echo '### Lần 2 (khởi động CachyOS) — dòng chính'
             echo '```'
@@ -265,9 +277,13 @@ jobs:
           sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
           { echo '### cb/linux-firstboot.ok'; echo '```'; sudo cat /mnt/rec/cb/linux-firstboot.ok 2>/dev/null || echo "(khong co - CachyOS chua khoi dong toi dich vu thu)"; echo '```'; } >> $GITHUB_STEP_SUMMARY
           OK=0; sudo grep -q CB_FIRSTBOOT_OK /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && OK=1
+          AG=0; sudo grep -q "^agent=active opt=700 seed_ticket=0 identity=600" /mnt/rec/cb/linux-firstboot.ok 2>/dev/null && AG=1
           sudo umount /mnt/rec; sudo losetup -d $LOOP
-          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS)" >> $GITHUB_STEP_SUMMARY
-          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
+          RPC=0
+          echo '### Agent CloudBlue (Linux) gọi máy chủ giả' >> $GITHUB_STEP_SUMMARY
+          python3 -I winpc/tests/ci/fake_sb.py --check rpc.log ve-thu-ci >> $GITHUB_STEP_SUMMARY && RPC=1
+          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent CloudBlue tu dang ky bang ve cua lenh)" >> $GITHUB_STEP_SUMMARY
+          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -276,3 +292,4 @@ jobs:
             serial1.log
             serial2.log
             parts.json
+            rpc.log

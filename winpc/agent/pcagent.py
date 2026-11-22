@@ -28,6 +28,8 @@
 #      chạy được: 1 lần tắt thứ chiếm VT-x (Hyper-V / VBS / Memory Integrity) + báo web tình trạng ảo hoá (info.emu: VT trong BIOS, hypervisor, máy ảo)
 #    · (22.11d) đổi sang CachyOS (Linux) theo lệnh cài lại os=cachyos (bộ cài có kèm ISO CachyOS) · bản kê công bố có mục "linux" → thay bộ cài
 #      CachyOS (cb-install.sh, grub.cfg, agent Linux…) trên phân vùng cứu hộ — sửa phần Linux không cần tạo lại ISO
+#    · (22.11e) máy đã đổi sang CachyOS có agent CloudBlue bản Linux (linux/cbagent.py, dùng lại lõi này) → vẫn hiện trên web, đổi lại Windows được
+#      · mỗi lần agent chạy: bộ cài CachyOS trên phân vùng cứu hộ khớp bản kê đang công bố (lần cập nhật trước tải lỗi thì làm bù)
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -45,7 +47,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "22.11d"
+AGENT_VER = "22.11e"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -1029,7 +1031,12 @@ class Agent:
         self.pe_synced = True
         try:
             rec = cbrec.find_recovery(self.s)
-            if rec: self.pe_next(rec)
+            if rec:
+                self.pe_next(rec)
+                m = self.last_manifest if isinstance(self.last_manifest, dict) else {}
+                base = str(m.get("base") or "")
+                if base and base.startswith(self.cfg.get("update_base") or UPDATE_BASE):        # 22.11e · bộ cài CachyOS khớp bản kê đang công bố
+                    self.linux_sync(rec, base, m.get("linux"))
         except Exception as e:
             self.log("chưa đặt được bộ cài mới lên phân vùng cứu hộ: %r" % (e,))
 

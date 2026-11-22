@@ -2,10 +2,10 @@
  "base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc",
  "files": {
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "aebcbc0c97b8d5e211b8aca23201aeb08644ae801b80b09fa599bade7d9e5354",
-  "agent/pcremote.py": "6730e1836ba158b75f84674509a2e46920520e41d82e6aa8940c3ff1984a3af1",
+  "agent/pcagent.py": "128f2b9ba0f533b91a8738b29ca095f7a3b5f62eb506511d16dcd03421c3700b",
+  "agent/pcremote.py": "df8d0aa2abd81f21166188abcd4c0bab4a6116f00bab09c0f8c8a0e5d87d6be5",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
-  "lib/cbcore.py": "ee78d95cef65494af52c3cd0a4071f19764211a3858821977a9c91337a8f2ad5",
+  "lib/cbcore.py": "bd8c3205b151faae29ca976a04451f4421b768eb82718a75f87e9955e6208c4e",
   "lib/cbrec.py": "8245369ed7414eb9a08de01cda53a16e550e7d010064cd6fc9c22897a25f4a95",
   "lib/cbsys.py": "fe70e283b63de04cd118c74fd5524b4058e42f9d36cbf493eb7c8943c149a813",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
@@ -16,23 +16,25 @@
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c"
  },
  "linux": {
-  "linux/cb-install.sh": "3e385965632e7c18d00b34c8b3bbbb8d4a90564756921baefc403eba5cb63297",
-  "linux/cb-post.sh": "8125b516cbef475e9962204f2e374909192886550dac381ebe147eb79b4c8004",
+  "linux/cb-install.sh": "9c5dcce3c6164fc1c1d82177b1bc7d435adb51281c9049adb03d54d9d3a05512",
+  "linux/cb-post.sh": "61edab06b57349814bcc44939e7a59199860166cd44c9d7d46d91800d26f5ce6",
+  "linux/cbagent.py": "b9006060cb9e66f3d1a431040abcdf9a3fb81273f4c39c0f759a7ff40b63af8b",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98"
  },
  "sha256": {
   "CAI-DAT.cmd": "27c94610547e0ef1a6189dfb07eaa148f269bd125ed1f96169649f8fa18d90de",
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "aebcbc0c97b8d5e211b8aca23201aeb08644ae801b80b09fa599bade7d9e5354",
-  "agent/pcremote.py": "6730e1836ba158b75f84674509a2e46920520e41d82e6aa8940c3ff1984a3af1",
+  "agent/pcagent.py": "128f2b9ba0f533b91a8738b29ca095f7a3b5f62eb506511d16dcd03421c3700b",
+  "agent/pcremote.py": "df8d0aa2abd81f21166188abcd4c0bab4a6116f00bab09c0f8c8a0e5d87d6be5",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
-  "cb_build.py": "74f213e5a27c3e519bca9be4ba1e30d929c7f54457bbdcec6489dbc299c5d291",
-  "lib/cbcore.py": "ee78d95cef65494af52c3cd0a4071f19764211a3858821977a9c91337a8f2ad5",
+  "cb_build.py": "b88f64f48f23ea65ede9b70eb239317647710ca9eb2eed731a8f8a91223a683e",
+  "lib/cbcore.py": "bd8c3205b151faae29ca976a04451f4421b768eb82718a75f87e9955e6208c4e",
   "lib/cbrec.py": "8245369ed7414eb9a08de01cda53a16e550e7d010064cd6fc9c22897a25f4a95",
   "lib/cbsys.py": "fe70e283b63de04cd118c74fd5524b4058e42f9d36cbf493eb7c8943c149a813",
-  "linux/cb-install.sh": "3e385965632e7c18d00b34c8b3bbbb8d4a90564756921baefc403eba5cb63297",
-  "linux/cb-post.sh": "8125b516cbef475e9962204f2e374909192886550dac381ebe147eb79b4c8004",
+  "linux/cb-install.sh": "9c5dcce3c6164fc1c1d82177b1bc7d435adb51281c9049adb03d54d9d3a05512",
+  "linux/cb-post.sh": "61edab06b57349814bcc44939e7a59199860166cd44c9d7d46d91800d26f5ce6",
+  "linux/cbagent.py": "b9006060cb9e66f3d1a431040abcdf9a3fb81273f4c39c0f759a7ff40b63af8b",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
@@ -42,7 +44,7 @@
   "os/wallpaper.jpg": "292d2622e8239a4122e0c1c1ee7c4aa744aeb5c9f7150cab742edff4a39ead47",
   "pe/cb_pe.py": "47e6107157988cce7bd8614fc742540eb4e54d58fdea16150606c6bcefb30f5c",
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
-  "tao-iso.ps1": "7c7a253520275797a0377b1cd020089fb3e22f799d3d921338f504e00ec11815"
+  "tao-iso.ps1": "6509bd249f546b85699ce6fa38a7d2d7659b25277cc553fc3719265bb5208efd"
  },
- "ver": "22.11d"
+ "ver": "22.11e"
 }

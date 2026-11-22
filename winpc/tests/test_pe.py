@@ -984,13 +984,13 @@ ck("máy chạy CachyOS mà BIOS lại vào Windows Boot Manager (→ WinPE, kh�
 
 print("29. Bộ cài có CachyOS: cài từ USB vẫn chỉ cài Windows · phân vùng cứu hộ chép đủ phần Linux · agent thấy được CachyOS (22.11c)")
 fs = FakeSys("uefi"); cfg = cfg_lin(); u = usb(fs, cfg)
-for rel, data in (("cb\\linux\\cachyos.iso", b"ISO"), ("cb\\linux\\grubx64.efi", b"GRUB"), ("cb\\linux\\grub.cfg", "cfg"), ("cb\\linux\\cb-install.sh", "sh")): u.slots[0].vol.put(rel, data)
+for rel, data in (("cb\\linux\\cachyos.iso", b"ISO"), ("cb\\linux\\grubx64.efi", b"GRUB"), ("cb\\linux\\grub.cfg", "cfg"), ("cb\\linux\\cb-install.sh", "sh"), ("cb\\linux\\cbagent.py", "py")): u.slots[0].vol.put(rel, data)
 d0 = fs.disk(0, 480, ssd=True, style="gpt")
 rc, ui, inst = run(fs, ["3", "\r"])
 ck("menu chỉ liệt kê bản Windows (phím 3 không chọn được CachyOS) → cài 22H2 như thường", rc == 0 and fs.file(d0.slots[3].vol, "windows\\cb-image.txt") == "install.wim|6"
    and not any("cachyos" in x.lower() and "=" in x for x in fs.logs), [x for x in fs.logs if " = " in x])
 rv = d0.slots[2].vol
-ck("phân vùng cứu hộ có đủ phần Linux (ISO + GRUB + kịch bản), ISO chỉ chép 1 lần", all(k in rv.files for k in ("cb\\linux\\cachyos.iso", "cb\\linux\\grubx64.efi", "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh"))
+ck("phân vùng cứu hộ có đủ phần Linux (ISO + GRUB + kịch bản + agent Linux), ISO chỉ chép 1 lần", all(k in rv.files for k in ("cb\\linux\\cachyos.iso", "cb\\linux\\grubx64.efi", "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh", "cb\\linux\\cbagent.py"))
    and not any(k.startswith("cb\\images\\cachyos") for k in rv.files), sorted(k for k in rv.files if "linux" in k or "images" in k))
 rcfg = json.loads(rv.files["cb\\cb.json"])
 ck("cb.json trên phân vùng cứu hộ: CachyOS trỏ cb\\linux\\cachyos.iso", [i["file"] for i in rcfg["images"]][-1] == "cb\\linux\\cachyos.iso")
