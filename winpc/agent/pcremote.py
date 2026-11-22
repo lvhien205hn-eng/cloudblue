@@ -17,7 +17,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "21.11j"
+REMOTE_VER = "22.11a"
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
@@ -383,6 +383,66 @@ class Refused(Exception):
     def __init__(self, code, msg=""): super().__init__(msg or code); self.code = code
 
 
+class Tls:
+    """22.11a · TLS qua MemoryBIO — thay ssl.SSLSocket dùng chung nhiều luồng.
+       Máy gửi hình (luồng gửi) + PING (luồng phụ) trong lúc luồng đọc đang chờ chuột / phím của khách — CÙNG 1 kết nối.
+       ssl.SSLSocket (OpenSSL) không chịu được đọc + ghi cùng lúc từ 2 luồng: trạng thái "đang chờ đọc" bị luồng ghi đè → luồng đọc báo lỗi giả
+       (WinError 10035) hoặc ĐỨT GIẢ ("EOF occurred in violation of protocol") dù mạng vẫn tốt → máy rớt khỏi máy chủ phát hình, khách thấy
+       "Mất kết nối — đang nối lại" cứ được một lúc. Ở đây mọi thao tác trên đối tượng SSL nằm trong 1 khoá (chỉ mã hoá / giải mã trong RAM);
+       đọc / ghi socket thật nằm NGOÀI khoá; khoá ghi riêng giữ đúng thứ tự bản ghi TLS."""
+
+    def __init__(self, raw, ctx, sni):
+        self.raw = raw; self.inb = ssl.MemoryBIO(); self.outb = ssl.MemoryBIO()
+        self.obj = ctx.wrap_bio(self.inb, self.outb, server_side=False, server_hostname=sni)
+        self.sl = threading.Lock(); self.wl = threading.Lock()
+        while True:                                            # bắt tay (timeout của socket thật áp dụng)
+            try:
+                with self.sl: self.obj.do_handshake()
+                self._flush(); break
+            except ssl.SSLWantReadError:
+                self._flush()
+                x = raw.recv(65536)
+                if not x: raise ssl.SSLError("may chu dong ket noi khi bat tay TLS")
+                with self.sl: self.inb.write(x)
+
+    def _flush(self):
+        with self.wl:
+            with self.sl: out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def sendall(self, data):
+        mv = memoryview(data)
+        with self.wl:
+            with self.sl:
+                while mv:
+                    k = self.obj.write(mv); mv = mv[k:]
+                out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def recv(self, n):
+        """Như socket.recv: dữ liệu đã giải mã (≤ n byte) · b"" = bên kia đóng thật · socket.timeout / OSError như socket thường."""
+        while True:
+            with self.sl:
+                try: d = self.obj.read(n)
+                except ssl.SSLWantReadError: d = None
+                except (ssl.SSLZeroReturnError, ssl.SSLEOFError): d = b""
+                pend = self.outb.pending
+            if pend: self._flush()
+            if d is not None: return d
+            x = self.raw.recv(262144)
+            with self.sl:
+                if x: self.inb.write(x)
+                else: self.inb.write_eof()
+
+    def getpeercert(self, binary_form=False): return self.obj.getpeercert(binary_form)
+
+    def settimeout(self, t): self.raw.settimeout(t)
+
+    def shutdown(self, how): self.raw.shutdown(how)
+
+    def close(self): self.raw.close()
+
+
 class DirectConn:
     kind = "direct"
 
@@ -393,8 +453,8 @@ class DirectConn:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE     # không dựa vào CA: kiểm ĐÚNG mã chứng chỉ web báo
             ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             raw.settimeout(8)
-            s = ctx.wrap_socket(raw, server_hostname="cloudblue")
-        except Exception:
+            s = Tls(raw, ctx, "cloudblue")                     # 22.11a: TLS an toàn nhiều luồng (xem Tls)
+        except BaseException:
             raw.close(); raise
         der = s.getpeercert(binary_form=True) or b""
         if not cert_hex or hashlib.sha256(der).hexdigest().lower() != cert_hex.lower():
@@ -443,7 +503,7 @@ class WSConn:
                 if cafile and os.path.isfile(cafile):
                     try: ctx.load_verify_locations(cafile)
                     except Exception: pass
-                s = ctx.wrap_socket(raw, server_hostname=host)
+                s = Tls(raw, ctx, host)                        # 22.11a: TLS an toàn nhiều luồng (xem Tls) — vẫn kiểm chứng chỉ + tên miền
             key = base64.b64encode(os.urandom(16)).decode()
             path = (u.path or "/") + ("?" + u.query if u.query else "")
             s.sendall(("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\n"

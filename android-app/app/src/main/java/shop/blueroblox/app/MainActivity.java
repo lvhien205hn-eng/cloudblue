@@ -944,7 +944,7 @@ public class MainActivity extends Activity {
         c.addView(r1, Ui.fill());
 
         String av = p.optString("android", "").trim();
-        c.addView(Ui.muted(this, (av.isEmpty() || "null".equals(av) ? "" : "Android " + av + " · ") + p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
+        c.addView(Ui.muted(this, (av.isEmpty() || "null".equals(av) ? "" : "Android " + av + " · ") + p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + SwitchAndroid.paidTag(p) + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
 
         if (exp > 0) c.addView(expiryText(p, true, ticks), Ui.fill());
         if (lk) {
@@ -1027,7 +1027,15 @@ public class MainActivity extends Activity {
         int max = price.optInt("max_days", 365);
         final int[] days = {Math.min(30, max)};
         LinearLayout c = Ui.col(this, 12);
-        c.addView(Ui.muted(this, p.optInt("ram") + "GB · " + p.optInt("cpu") + Ui.L(" nhân · ", " cores · ") + left(parseTime(p.optString("expires_at")))));
+        c.addView(Ui.muted(this, p.optInt("ram") + "GB · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + SwitchAndroid.paidTag(p) + " · " + left(parseTime(p.optString("expires_at")))));
+        if (!SwitchAndroid.paidTag(p).isEmpty()) {          // 22/11 · SQL v49b: gia hạn lúc TẠM hạ → cấu hình đã mua hạ theo cấu hình đang chạy
+            int[] q = SwitchAndroid.paid(p);
+            String full = SwitchAndroid.fullAnd(price, p), cur = p.optInt("ram") + "GB · " + p.optInt("cpu");
+            c.addView(Ui.text(this, "⚠️ " + Ui.L("Máy đang TẠM chạy " + cur + " nhân (đã mua " + q[0] + "GB · " + q[1] + " nhân). Gia hạn bây giờ tính theo cấu hình đang chạy và cấu hình đã mua hạ còn " + cur + " nhân."
+                            + (full.isEmpty() ? "" : " Muốn giữ " + q[0] + "GB · " + q[1] + " nhân: đổi sang " + full + " trước rồi hãy gia hạn."),
+                    "This phone TEMPORARILY runs " + cur + " cores (you bought " + q[0] + "GB · " + q[1] + " cores). Renewing now is priced on the running config and your bought config drops to " + cur + " cores."
+                            + (full.isEmpty() ? "" : " To keep " + q[0] + "GB · " + q[1] + " cores, switch to " + full + " first, then renew.")), 13.5f, Ui.WAIT, false), Ui.fill());
+        }
         Ui.Wrap w = new Ui.Wrap(this, 8);
         int[] opts = {1, 3, 7, 15, 30, 60, 90};
         TextView sum = Ui.text(this, "", 14, Ui.FG, false);

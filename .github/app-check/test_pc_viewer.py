@@ -116,4 +116,27 @@ w1, w2 = B.vps_state(cases[9][1])[3], B.vps_state(cases[10][1])[3]
 ck("đã tắt: ghi ai tắt + giờ tắt (khách / shop)", ("Bạn đã tắt máy lúc" in w1 or "You shut it down at" in w1) and ("Shop đã tắt máy lúc" in w2 or "The shop shut it down at" in w2), (w1, w2))
 ck("lỗi OFFLINE / BAD_CMD có câu dễ hiểu (không hiện mã lỗi)", "OFFLINE" not in B.vps_err("P0001: OFFLINE") and "BAD_CMD" not in B.vps_err("BAD_CMD"))
 ck("dấu vân tay thẻ VPS đổi khi có lệnh nguồn (vẽ lại thẻ)", B.vps_sig({"items": [cases[0][1]]}) != B.vps_sig({"items": [cases[1][1]]}))
+# ---- 22/11 · SQL v49: đổi Android giữ cấu hình ĐÃ MUA (paid_ram / paid_cpu) — hết "rớt nhân"
+_pr = {"android_versions": "9,12,15", "android_limits": {"9": {"ram": 8, "cpu": 8}, "12": {"ram": 16, "cpu": 32}, "15": {"ram": 16, "cpu": 32}}, "max_ram": 16, "max_cpu": 32}
+_p9 = {"ram": 8, "cpu": 8, "paid_ram": 8, "paid_cpu": 12, "android": "9"}
+ck("cấu hình đã mua = lớn hơn của (đang chạy, paid) · chưa chạy v49 (không có cột) = đang chạy", B.paid_cfg(_p9) == (8, 12) and B.paid_cfg({"ram": 4, "cpu": 6}) == (4, 6))
+ck("máy tạm hạ: thẻ ghi '(đã mua 12 nhân)' · máy đủ: không ghi gì", B.paid_tag(_p9) in (" (đã mua 12 nhân)", " (bought 12 cores)")
+   and B.paid_tag({"ram": 8, "cpu": 12, "paid_ram": 8, "paid_cpu": 12}) == "" and B.paid_tag({"ram": 6, "cpu": 6}) == "", B.paid_tag(_p9))
+ck("bản Android chạy ĐỦ cấu hình đã mua: Android 12 / 15", B.full_and(_pr, _p9) == ["12", "15"], B.full_and(_pr, _p9))
+_sw = types.SimpleNamespace(pr=_pr, p=_p9)
+ck("hộp đổi Android: máy Android 9 (tạm 8 nhân) → Android 12 được trả đủ 8GB · 12 nhân; → Android 9 vẫn 8 · 8",
+   B.SwitchDlg.new_cfg(_sw, "12")[:2] == (8, 12) and B.SwitchDlg.new_cfg(_sw, "9")[:2] == (8, 8), (B.SwitchDlg.new_cfg(_sw, "12"), B.SwitchDlg.new_cfg(_sw, "9")))
+_sw2 = types.SimpleNamespace(pr=_pr, p={"ram": 16, "cpu": 16, "android": "12"})
+ck("máy 16GB · 16 nhân → Android 9 tạm 8 · 8 (cấu hình đã mua vẫn 16 · 16)", B.SwitchDlg.new_cfg(_sw2, "9")[:2] == (8, 8) and B.paid_cfg(_sw2.p) == (16, 16))
+# ---- 22/11 · "Mất kết nối — đang nối lại" trên máy PC: hết phiên thì không còn tưởng "máy đang được bật lên"
+_v = B.Viewer("44444444-4444-4444-8444-444444444444", None, pc=True)
+_v.auto_at = 0.0; _v.fixing = False; _v.stall = False; _v.slow = False
+_v.cli = types.SimpleNamespace(last_rx=time.time(), hello_t=0.0); _v.state = ("reconnecting", "Mất kết nối — đang nối lại…")
+_v._watch()
+ck("vừa mất kết nối (phiên cũ đã hết, hello_t = 0) → KHÔNG hiện 'đang chờ máy bật lên'", _v.slow is False)
+_v.cli.hello_t = time.time() - 10; _v._watch()
+ck("phiên mới chờ máy chủ cho vào > 8 giây (máy chủ vẫn giữ kết nối) → hiện câu chờ", _v.slow is True)
+import brstream as _BS
+ck("brstream: TLS an toàn nhiều luồng (Tls qua MemoryBIO) dùng cho cả đường thẳng lẫn đường vòng",
+   hasattr(_BS, "Tls") and "Tls(raw, ctx" in open(_BS.__file__, encoding="utf-8").read() and "wrap_socket" not in open(_BS.__file__, encoding="utf-8").read())
 print(f"\n{OK}/{OK + FAIL} đạt"); sys.exit(1 if FAIL else 0)

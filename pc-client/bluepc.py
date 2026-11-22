@@ -1392,7 +1392,8 @@ class Viewer:
                          else "Bấm phím K (hoặc bấm vào đây) để KHỞI ĐỘNG LẠI MÁY · phím R: thử lại." if x.get("fix") == "reboot"
                          else "Bấm phím R để thử lại."]
             elif self.slow:                                  # máy chủ đang giữ kết nối chờ máy bật lên (máy vừa tự nghỉ / đang khởi động)
-                lines = [msg, "Máy đang được bật lên (thức dậy / khởi động) — thường 1–2 phút, app tự vào khi máy lên."]
+                lines = [msg, "Đang chờ máy PC gửi hình — máy vừa chập chờn mạng hoặc đang khởi động lại; app tự vào khi máy gửi hình." if self.pc
+                         else "Máy đang được bật lên (thức dậy / khởi động) — thường 1–2 phút, app tự vào khi máy lên."]
             bw = min(aw - 40, 520); rows = []
             for i, ln in enumerate(lines):
                 f_ = self.font_b if i == 0 else self.font
@@ -2595,6 +2596,27 @@ def and_lim(pr, v):
     r0, c0 = AND_LIM.get(str(v), AND_LIM["9"])
     r, c = int(num(x.get("ram"))) or r0, int(num(x.get("cpu"))) or c0
     return (max(1, min(int(num(pr.get("max_ram"))) or r, r, CP_HARD["ram"])), max(1, min(int(num(pr.get("max_cpu"))) or c, c, CP_HARD["cpu"])))
+
+
+def paid_cfg(p):
+    """22/11 · SQL v49: cấu hình ĐÃ MUA (paid_ram / paid_cpu) → (RAM GB, nhân). Đổi sang bản Android trần thấp chỉ TẠM hạ,
+       đổi về bản cao hơn thì được trả đủ. Chưa chạy v49 (không có cột) → = cấu hình đang chạy."""
+    return (max(int(num(p.get("ram"))), int(num(p.get("paid_ram")))), max(int(num(p.get("cpu"))), int(num(p.get("paid_cpu")))))
+
+
+def paid_tag(p):
+    """" (đã mua 12 nhân)" khi máy đang tạm chạy thấp hơn cấu hình đã mua; không thì chuỗi rỗng."""
+    pr_, pc_ = paid_cfg(p); r, c = int(num(p.get("ram"))), int(num(p.get("cpu")))
+    if pr_ <= r and pc_ <= c: return ""
+    what = " · ".join(x for x in (f"{pr_}GB" if pr_ > r else "", (f"{pc_} " + L("nhân", "cores")) if pc_ > c else "") if x)
+    return f" ({L('đã mua', 'bought')} {what})"
+
+
+def full_and(pr, p):
+    """Các bản Android chạy được ĐỦ cấu hình đã mua của máy p (theo trần trong bảng giá)."""
+    q = paid_cfg(p)
+    vs = [v for v in dict.fromkeys(x.strip() for x in str((pr or {}).get("android_versions") or "9").split(",")) if v]
+    return [v for v in vs if and_lim(pr or {}, v)[0] >= q[0] and and_lim(pr or {}, v)[1] >= q[1]]
 
 
 def cp_opts(arr, lo, hi):
@@ -3903,8 +3925,14 @@ class RenewDlg(Dlg):
         tk = self.app.tk; self.pr, self.prof = r; p = self.p; self.clear()
         mx = int(num(self.pr.get("max_days"))) or 90; self.days = min(30, mx)
         self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
-        self.label(self.body, f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân · Android {p.get('android') or '9'} · {fmt_left(p.get('expires_at'))}",
+        self.label(self.body, f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân{paid_tag(p)} · Android {p.get('android') or '9'} · {fmt_left(p.get('expires_at'))}",
                    self.app.f_t, DIM, wraplength=490).pack(fill="x", padx=18)
+        if paid_tag(p):                                   # 22/11 · SQL v49b: gia hạn lúc TẠM hạ → cấu hình đã mua hạ theo cấu hình đang chạy
+            q = paid_cfg(p); fa = " / ".join("Android " + v for v in full_and(self.pr, p))
+            self.label(self.body, f"⚠ Máy đang tạm chạy {p.get('ram')}GB · {p.get('cpu')} nhân (đã mua {q[0]}GB · {q[1]} nhân). Gia hạn bây giờ tính theo "
+                                  f"cấu hình đang chạy và cấu hình đã mua hạ còn {p.get('ram')}GB · {p.get('cpu')} nhân."
+                                  + (f" Muốn giữ {q[0]}GB · {q[1]} nhân: đổi sang {fa} trước rồi hãy gia hạn." if fa else ""),
+                       self.app.f_s, WARN, wraplength=490).pack(fill="x", padx=18, pady=(6, 0))
         f = self.section("Gia hạn thêm", f"tối đa {mx} ngày")
         self.ch = Chips(self.app, f, [(d, f"{d} ngày") for d in RENEW_DAYS if d <= mx], lambda: self.days, lambda v: self._set(v, True), self.upd, wrap=4)
         self.ch.frame.pack(fill="x")
@@ -5810,7 +5838,8 @@ class UpgradeDlg(Dlg):
 
 class SwitchDlg(Dlg):
     """Đổi Android 9 / 12 / 15 (SQL v24 + v28): máy MỚI miễn phí, giữ nguyên hạn — v28: máy cũ + TOÀN BỘ dữ liệu bị xoá NGAY, xoá xong mới tạo máy mới.
-       Bản mới có trần thấp hơn (Android 9: 8GB · 8 nhân) → máy mới tự hạ, không hoàn tiền phần chênh."""
+       Bản mới có trần thấp hơn (Android 9: 8GB · 8 nhân) → máy mới TẠM hạ; 22/11 · SQL v49: máy nhớ cấu hình đã mua,
+       đổi về bản cao hơn là được trả đủ (chưa chạy v49 thì như cũ: hạ luôn, không hoàn tiền phần chênh)."""
     def __init__(self, app, phone):
         super().__init__(app, "Đổi Android — " + (phone.get("name") or "máy"), 560, 600)
         self.p = phone; self.v = None; self.vers = []
@@ -5822,7 +5851,7 @@ class SwitchDlg(Dlg):
         cur = str(p.get("android") or "9")
         self.vers = [v for v in dict.fromkeys(x.strip() for x in str(pr.get("android_versions") or "9").split(",")) if v and v != cur]
         self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
-        self.label(self.body, f"Đang dùng Android {cur} · {p.get('ram')}GB · {p.get('cpu')} nhân · {fmt_left(p.get('expires_at'))}",
+        self.label(self.body, f"Đang dùng Android {cur} · {p.get('ram')}GB · {p.get('cpu')} nhân{paid_tag(p)} · {fmt_left(p.get('expires_at'))}",
                    self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
         bb = tk.Frame(self.foot, bg=CARD)
         if not self.vers:
@@ -5848,15 +5877,24 @@ class SwitchDlg(Dlg):
         self.upd()
 
     def new_cfg(self, v):
-        mr, mc = and_lim(self.pr, v); r0, c0 = int(num(self.p.get("ram"))), int(num(self.p.get("cpu")))
+        mr, mc = and_lim(self.pr, v); r0, c0 = paid_cfg(self.p)          # 22/11 · v49: máy mới lấy theo cấu hình ĐÃ MUA, kẹp theo trần bản Android
         return min(r0, mr), min(c0, mc), mr, mc
 
     def upd(self):
         if not self.v: return
         self.cv.paint()
-        r, c, mr, mc = self.new_cfg(self.v); red = r < int(num(self.p.get("ram"))) or c < int(num(self.p.get("cpu")))
-        t = (f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới sẽ hạ còn {r}GB · {c} nhân, không hoàn tiền phần chênh." if red
-             else f"Máy mới: Android {self.v} · {r}GB · {c} nhân · {self.p.get('res') or ''} · {self.p.get('fps') or 30} FPS")
+        q = paid_cfg(self.p); keep = "paid_ram" in self.p                 # keep: đã chạy SQL v49
+        r, c, mr, mc = self.new_cfg(self.v); red = r < q[0] or c < q[1]
+        up = not red and (r > int(num(self.p.get("ram"))) or c > int(num(self.p.get("cpu"))))
+        fa = " / ".join("Android " + v for v in full_and(self.pr, self.p))
+        if red and keep:
+            t = (f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới tạm chạy {r}GB · {c} nhân. Cấu hình đã mua {q[0]}GB · {q[1]} nhân vẫn được giữ"
+                 + (f" — đổi sang {fa} là trả đủ." if fa else "."))
+        elif red:
+            t = f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới sẽ hạ còn {r}GB · {c} nhân, không hoàn tiền phần chênh."
+        else:
+            t = (f"Máy mới: Android {self.v} · {r}GB · {c} nhân · {self.p.get('res') or ''} · {self.p.get('fps') or 30} FPS"
+                 + (" — trả đủ cấu hình đã mua" if up else ""))
         if self.v == "15": t += "\nLưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì chọn Android 12."
         self.note.config(text=t, fg=WARN if red else DIM)
         on = bool(self.okv.get())
@@ -8712,7 +8750,7 @@ class Launcher:
         tk.Label(row, text=p.get("name") or "Máy", font=("Segoe UI", 13, "bold"), fg=TXT, bg=CARD).pack(side="left")
         st, col = STATUS.get(p.get("status"), (p.get("status") or "", DIM))
         tk.Label(row, text="● " + st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
-        info = f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân · {p.get('res') or ''} · {p.get('fps') or 30} FPS · Android {p.get('android') or '9'}"
+        info = f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân{paid_tag(p)} · {p.get('res') or ''} · {p.get('fps') or 30} FPS · Android {p.get('android') or '9'}"
         if p.get("shared"): info += " · được chia sẻ"
         tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
         if p.get("expires_at"):                                    # còn dưới 1 ngày → vàng · hết hạn → đỏ (nhìn là biết máy nào cần gia hạn)
