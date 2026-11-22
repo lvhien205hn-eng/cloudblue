@@ -23,8 +23,8 @@ import cbcore as C                                               # noqa: E402
 import cbrec                                                     # noqa: E402
 from cbsys import Vol, WinSys                                    # noqa: E402
 
-PE_VER = "21.11d"
-PE_SEQ = 1                                                       # số thứ tự bản bộ cài (chỉ tăng). Phân vùng cứu hộ có bản số LỚN HƠN (cb\pe-next) → chạy bản đó thay bản nằm trong boot.wim
+PE_VER = "22.11c"
+PE_SEQ = 2                                                       # số thứ tự bản bộ cài (chỉ tăng). Phân vùng cứu hộ có bản số LỚN HƠN (cb\pe-next) → chạy bản đó thay bản nằm trong boot.wim
 NEXT_DIR = "cb\\pe-next\\"
 RC_OK, RC_SETUP, RC_REBOOT = 0, 3, 10
 LINE = "=" * 72
@@ -451,14 +451,16 @@ class Installer:
         disks, vols = self.s.disks(), self.s.volumes()
         exclude = {src.vol.disk} if src.vol.disk is not None else set()
         target, why, cands = C.pick_target(disks, exclude, cfg, self.old_system_disks(vols))
-        image = C.find_image(cfg)
+        wins = C.windows_images(cfg)                                # 22.11c · cài từ USB luôn là Windows (CachyOS chỉ cài theo lệnh, sau khi đã có phân vùng cứu hộ)
+        if not wins: raise C.Stop("Bo cai khong co ban Windows nao (cb.json thieu images).")
+        image = C.find_image(dict(cfg, images=wins), cfg.get("default") if any(i["id"] == cfg.get("default") for i in wins) else wins[0]["id"])
         wipe_all = bool(cfg.get("wipe_other_disks"))
         secs, auto = max(3, int(cfg.get("countdown", 30))), True
         while True:
             self.banner("CAI WINDOWS TU DONG")
             self.log("  May khoi dong kieu: %s" % fw.upper())
             self.log("  Se cai: %s  [%s]" % (image.get("name") or image["id"], image["id"]))
-            for i, im in enumerate(cfg["images"], 1):
+            for i, im in enumerate(wins, 1):
                 self.log("      %d = %s (%s)%s" % (i, im.get("name") or im["id"], im["id"], "  <-- dang chon" if im is image else ""))
             self.log("")
             if target:
@@ -483,7 +485,7 @@ class Installer:
             elif k == "d" and cands:
                 i = cands.index(target) if target in cands else -1
                 target, why = cands[(i + 1) % len(cands)], "nguoi dung chon"
-            elif k.isdigit() and 1 <= int(k) <= len(cfg["images"]): image = cfg["images"][int(k) - 1]
+            elif k.isdigit() and 1 <= int(k) <= len(wins): image = wins[int(k) - 1]
         self.banner("BAT DAU CAI - KHONG TAT MAY")
         boot_wim = self.s.size(src.p("sources\\boot.wim")) or 600 * C.MB
         rec_bytes = C.recovery_bytes(cfg, boot_wim, cbrec.extra_bytes(self.s, src.p(""))) if cfg.get("recovery", True) else 0
@@ -506,6 +508,9 @@ class Installer:
             self.populate_recovery(src, cfg, R)
         self.apply_image(src, image, W)
         self.make_boot(W, S, fw, fresh_store=False)
+        if fw == "uefi":
+            try: C.efi_drop(self.s, C.LINUX_BOOT_DESCS)              # máy từng chạy CachyOS: bỏ mục khởi động Linux trỏ vào phần đã xoá
+            except Exception: pass
         if rec_bytes:
             C.run_cmds(self.s, C.bcd_pe_cmds(fw, R, C.bcd_store(fw, S)), "Tao muc khoi dong cai lai")
         name, label, here = self.ask_name(ui, cfg, self.new_name(cfg))     # Windows đã bung xong → hỏi TÊN MÁY rồi SỐ MÁY (người cài còn ngồi đó)
@@ -564,9 +569,30 @@ class Installer:
             self.log("  (!) Khong ghi duoc ket qua lenh len phan vung cuu ho (%s)." % last)
             return False
 
+        fallback = ""
         try:                                                        # ---- kiểm trước, CHƯA xoá gì: lỗi ở đây thì Windows cũ còn nguyên
             image = C.find_image(cfg, job["os"])
-            if not self.s.dry and not self.s.exists(rec.p(image["file"])): raise C.Stop("Phan vung cuu ho thieu file %s" % image["file"])
+            if C.is_linux(image) and max(int(job.get("linux_fail") or 0), int(job.get("attempts") or 0)) >= C.LINUX_TRIES:
+                # 22.11c · CachyOS cài mãi không xong (mạng / phần cứng / Secure Boot…) → cài lại Windows mặc định để máy không bị "mất":
+                # agent Windows lên lại, báo lỗi về web kèm lý do. Lần cài dở có thể đã xoá Windows cũ → chỗ của nó (hoặc phần Linux) thành Windows mới.
+                wins = C.windows_images(cfg)
+                if not wins: raise C.Stop("Bo cai khong co ban Windows nao de cai lai.")
+                fb = C.find_image(dict(cfg, images=wins), cfg.get("default") if any(i["id"] == cfg.get("default") for i in wins) else wins[0]["id"])
+                fallback = "CachyOS chua cai duoc sau %d lan (%s) - da cai lai Windows %s" % (
+                    max(int(job.get("linux_fail") or 0), int(job.get("attempts") or 0)), str(job.get("linux_msg") or "khong vao duoc bo cai CachyOS")[:160], fb["id"])
+                self.log("!! " + fallback)
+                job["fallback"], job["os"], image = image["id"], fb["id"], fb
+                lin = job.get("linux") if isinstance(job.get("linux"), dict) else {}
+                if job.get("wipe") == "system" and isinstance(lin.get("esp"), dict):
+                    job["win"] = {"offset": lin["esp"].get("offset"), "size": 0}     # phần Linux (hoặc khoảng trống nó để lại) → phân vùng Windows mới
+            linux = C.is_linux(image)
+            if not self.s.dry:
+                for rel in [image["file"]] + (list(C.LINUX_FILES) if linux else []):
+                    if not self.s.exists(rec.p(rel)): raise C.Stop("Phan vung cuu ho thieu file %s" % rel)
+            if linux:
+                if fw != "uefi": raise C.Stop("CachyOS chi cai tren may khoi dong kieu UEFI (may nay dang khoi dong kieu BIOS).")
+                if C.secure_boot_on(self.s):
+                    raise C.Stop("May dang BAT Secure Boot - CachyOS cua CloudBlue can TAT Secure Boot trong BIOS (Windows van chay binh thuong).")
             disks, vols = self.s.disks(), self.s.volumes()
             disk = self.disk_of(rec.vol, disks)
             if disk is None: raise C.Stop("Khong xac dinh duoc o chua phan vung cuu ho.")
@@ -581,10 +607,15 @@ class Installer:
                     for c in v.letters: used.discard(c)
             W, S, R = C.pick_letters(used)
             if wipe not in ("all", "disk", "system"): raise C.Stop("Kieu xoa '%s' khong hop le." % wipe)
-            plan = C.plan_job(disk, fw, rec_off, "all" if wipe in ("all", "disk") else "system", job.get("win"), (W, S, R))
+            if linux: plan = C.plan_linux(disk, fw, rec_off, "all" if wipe in ("all", "disk") else "system", job.get("win"))
+            else: plan = C.plan_job(disk, fw, rec_off, "all" if wipe in ("all", "disk") else "system", job.get("win"), (W, S, R))
         except (C.Stop, KeyError, ValueError) as e:
             self.log("!! KHONG LAM duoc lenh cai lai: %s" % e)
-            self.log("   Windows cu van con nguyen - khoi dong lai vao Windows.")
+            if fallback:
+                self.log("   (dang lui ve Windows sau khi CachyOS loi) - can nguoi xu ly.")
+                ui.hold("CAI LAI THAT BAI - chup man hinh nay gui ho tro. [C] dong lenh  [R] khoi dong lai")
+                return RC_REBOOT
+            self.log("   He dieu hanh cu van con nguyen - khoi dong lai.")
             finish(False, str(e), "failed")
             return RC_REBOOT
         self.log("  Lenh so: %s   Cai: %s [%s]" % (job.get("id"), image.get("name") or image["id"], image["id"]))
@@ -600,6 +631,7 @@ class Installer:
                 return RC_REBOOT
         job["attempts"] = int(job.get("attempts") or 0) + 1; job["state"] = "running"
         C.save_json(self.s, jpath, job)
+        if linux: return self.linux_go(rec, ui, job, jpath, recp, cfg, disk, rec_off, plan, fw, (W, S, R))
         try:
             self.banner("BAT DAU CAI LAI (lan %d) - KHONG TAT MAY" % job["attempts"])
             # cứu hộ + khởi động: gán chữ ổ tạm
@@ -622,6 +654,7 @@ class Installer:
             self.apply_image(src, image, W)
             self.make_boot(W, Sx, fw, fresh_store=not plan["sys_is_win"])
             C.run_cmds(self.s, C.bcd_pe_cmds(fw, R, C.bcd_store(fw, Sx)), "Tao muc khoi dong cai lai")
+            if fw == "uefi": self.forget_linux(src)
             ident = C.load_json(self.s, src.p("cb\\identity.json")) or {}
             name = C.win_name(job.get("name") or ident.get("name") or "", cfg.get("name_prefix") or "CB", self.new_name(cfg))
             seed = {"name": name, "os": image["id"], "from": "job", "order": job.get("id"), "pe": PE_VER, "ts": int(self.s.now())}
@@ -630,7 +663,7 @@ class Installer:
             if ident.get("id"): seed["id"] = ident["id"]
             self.inject(src, W, cfg, image, name, seed)
             if others: self.wipe_others(self.s.disks(), {disk.index}, fw)
-            if not finish(True, "xong", "done"):                    # Windows mới đã cài xong: thiếu file kết quả thì agent bản 21.11d tự nhận ra (seed.json có số lệnh) — KHÔNG cài lại
+            if not finish(not fallback, fallback or "xong", "done"):   # Windows mới đã cài xong: thiếu file kết quả thì agent bản 21.11d tự nhận ra (seed.json có số lệnh) — KHÔNG cài lại
                 self.log("      Windows moi van dung duoc; agent se tu bao lenh nay da xong.")
             self.save_logs(R + ":\\cb\\logs", W + ":\\CloudBluePC\\logs")
             self.lock_acl(C.acl_vol_cmds(R + ":\\"), "khoa quyen phan vung cuu ho")
@@ -654,6 +687,67 @@ class Installer:
             ui.ask(20, "Khoi dong lai sau 20 giay...")
             return RC_REBOOT
 
+    # ------------------------------------------------------------------ 22.11c · CÀI CachyOS (Linux) theo lệnh
+    def linux_go(self, rec, ui, job, jpath, recp, cfg, disk, rec_off, plan, fw, letters):
+        """Phần WinPE của việc cài CachyOS: xoá phần hệ điều hành cũ + tạo EFI Linux / phân vùng Linux (plan_linux), chép GRUB của CloudBlue vào
+           phân vùng EFI của Windows, ghi việc cho bộ cài Linux (cb\\job.json mục "linux" + cb\\linux\\job.cfg cho GRUB), đặt máy khởi động 1 LẦN
+           vào GRUB (biến UEFI BootNext). Khởi động lại: GRUB mở thẳng ISO CachyOS trên phân vùng cứu hộ → cb-install.sh cài không người.
+           Lối về luôn còn: Windows Boot Manager (mặc định = WinPE cứu hộ) → cài lỗi thì WinPE thử lại, quá C.LINUX_TRIES lần thì cài lại Windows."""
+        W, S, R = letters
+        try:
+            self.banner("BAT DAU CAI CachyOS (lan %d) - KHONG TAT MAY" % job["attempts"])
+            self.ensure_letter(disk.index, rec_off, R)
+            self.ensure_letter(disk.index, plan["sys_off"], S)
+            store = C.bcd_store(fw, S)
+            if not self.s.dry and not self.s.exists(store): raise C.Stop("Phan vung EFI khong co kho khoi dong Windows (%s) - khong co loi quay ve, dung lai." % store)
+            C.run_cmds(self.s, C.bcd_pe_cmds(fw, R, store), "Tao muc khoi dong cai lai")
+            self.s.run(["bcdedit", "/store", store, "/default", C.PE_GUID], timeout=60)      # Windows Boot Manager → WinPE cứu hộ (lối về khi Linux lỗi / bị tắt ngang)
+            self.s.run(["bcdedit", "/store", store, "/timeout", "0"], timeout=60)
+            job["linux"] = C.linux_job(cfg, plan)                                             # ghi TRƯỚC khi chia ổ: lần sau (thử lại / lùi về Windows) biết phần Linux nằm đâu
+            C.save_json(self.s, jpath, job)
+            self.log("Xoa phan he dieu hanh cu + tao 2 phan vung cho CachyOS (EFI Linux %d MB + Linux %.0f GB) ..." % (plan["esp"]["size"] // C.MB, plan["root"]["size"] / 1e9))
+            self.must(self.s.diskpart(plan["lines"]), "Chia o")
+            self.ensure_letter(disk.index, plan["sys_off"], S)                                # số phân vùng có thể đã đổi → gán lại theo vị trí
+            self.ensure_letter(disk.index, rec_off, R)
+            self.s.copy_file(R + ":\\cb\\linux\\grubx64.efi", S + ":" + C.GRUB_FILE)
+            uid = C.ntfs_uuid(self.s.read_boot_sector(R))
+            self.s.write_text(R + ":\\cb\\linux\\job.cfg", C.grub_job_cfg(uid))
+            self.log("  GRUB: %s:%s  ·  ISO CachyOS: phan vung cuu ho (UUID %s)" % (S, C.GRUB_FILE, uid or "? - tim theo nhan CBRECOVERY"))
+            sp = self.part_at(disk.index, plan["sys_off"])
+            if not sp.guid: raise C.Stop("Khong doc duoc ma GUID cua phan vung EFI.")
+            ss = self.s.sector_bytes(disk.index) or 512
+            num = C.efi_put(self.s, C.GRUB_DESC, C.efi_load_option(C.GRUB_DESC, sp.number, sp.offset // ss, sp.size // ss, sp.guid, C.GRUB_FILE))
+            if num is None or not C.efi_boot_next(self.s, num):
+                raise C.Stop("Khong ghi duoc muc khoi dong UEFI (NVRAM) cho GRUB - BIOS may nay chan ghi bien UEFI?")
+            self.log("  Muc khoi dong UEFI Boot%04X '%s' -> lan khoi dong SAU vao GRUB (BootNext)" % (num, C.GRUB_DESC))
+            self.save_logs(R + ":\\cb\\logs")
+            try: self.hide_recovery(disk.index, rec_off, fw, R, strict=False)
+            except C.Stop: pass
+            self.log("")
+            self.log("XONG phan WinPE sau %d phut. May khoi dong lai -> GRUB -> bo cai CachyOS tu chay (15-40 phut, can Internet)." % ((self.s.now() - self.t0) // 60))
+            return RC_OK
+        except Exception as e:
+            self.log("!! LOI khi chuan bi cai CachyOS (lan %d): %s" % (job["attempts"], e))
+            if not isinstance(e, C.Stop): self.log(traceback.format_exc())
+            try:
+                C.save_json(self.s, recp("cb\\job-result.json"), {"id": job.get("id"), "ok": False, "msg": str(e)[:300], "os": job.get("os"), "pe": PE_VER, "ts": int(self.s.now())})
+                self.save_logs(recp("cb\\logs"))
+            except Exception: pass
+            self.log("   Lan khoi dong sau: thu lai%s." % (" - qua %d lan thi cai lai Windows" % C.LINUX_TRIES))
+            ui.ask(20, "Khoi dong lai sau 20 giay...")
+            return RC_REBOOT
+
+    def forget_linux(self, src):
+        """Windows vừa cài đè lên máy từng chạy CachyOS: gỡ mục khởi động UEFI của Linux (systemd-boot "Linux Boot Manager", GRUB "CloudBlue Linux")
+           — máy không bao giờ khởi động nhầm vào phần Linux đã xoá — + bỏ dấu "máy đang chạy CachyOS" trên phân vùng cứu hộ. Lỗi → bỏ qua."""
+        try:
+            gone = C.efi_drop(self.s, C.LINUX_BOOT_DESCS)
+            if gone: self.log("  da go %d muc khoi dong UEFI cua Linux cu (%s)" % (len(gone), ", ".join("Boot%04X" % n for n in gone)))
+        except Exception as e:
+            self.log("  (chua go duoc muc khoi dong Linux cu: %r)" % (e,))
+        try: self.s.remove(src.p("cb\\linux\\installed.json"))
+        except Exception: pass
+
     # ------------------------------------------------------------------ phân vùng cứu hộ nhưng không có lệnh
     def idle(self, rec, ui):
         job = C.load_json(self.s, rec.p("cb\\job.json"))
@@ -662,6 +756,18 @@ class Installer:
             self.log("Lenh cai lai so %s da that bai 3 lan. May can nguoi xu ly." % job.get("id"))
             ui.hold("[C] dong lenh  [R] khoi dong lai")
             return RC_REBOOT
+        inst = C.load_json(self.s, rec.p("cb\\linux\\installed.json"))
+        if isinstance(inst, dict) and self.s.firmware() == "uefi":
+            # 22.11c · máy đang chạy CachyOS mà BIOS lại khởi động Windows Boot Manager (→ WinPE cứu hộ): đưa mục khởi động của CachyOS lên đầu + vào ngay
+            desc = str(inst.get("boot") or "Linux Boot Manager")[:60]
+            try: num = C.efi_find(self.s, desc)
+            except Exception: num = None
+            if num is not None:
+                C.efi_first(self.s, num); C.efi_boot_next(self.s, num)
+                self.log("May nay dang dung CachyOS - dat lai khoi dong vao '%s' (Boot%04X)." % (desc, num))
+                ui.ask(10, "Khoi dong lai vao CachyOS sau 10 giay...")
+                return RC_REBOOT
+            self.log("May nay tung cai CachyOS nhung khong con muc khoi dong '%s' trong BIOS." % desc)
         self.log("Khong co lenh cai lai nao dang cho. KHONG xoa gi.")
         ui.ask(15, "Khoi dong lai vao Windows sau 15 giay...")
         return RC_REBOOT
