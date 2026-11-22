@@ -4050,7 +4050,7 @@ def _root_keep(p, port=None):
 # iptables (nat OUTPUT) bắt mọi kết nối TCP của app → proxy SOCKS5 / HTTP của khách. Proxy chết / sai → máy tự đi mạng thường,
 # lành thì quay lại. UDP 443 (QUIC) chặn để app chuyển sang TCP. Trạng thái công khai /data/local/tmp/cbproxy.json (adb thường đọc,
 # không có mật khẩu). Cấu hình (có mật khẩu) chỉ nằm ở phones.json của máy chủ + trong máy của chính khách — KHÔNG lên web.
-CBPX_FILE = ("cbproxy-x86_64", "6465b07b0fe0be54aea79c623f3e4d1e")
+CBPX_FILE = ("cbproxy-x86_64", "0cc3647ff0c54ae20ced5acf5907fbca")
 CBPX_DEV = "/data/adb/cbproxy"
 CBPX_PUB = "/data/local/tmp/cbproxy.json"
 _PX_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
