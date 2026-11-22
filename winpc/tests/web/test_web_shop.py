@@ -67,6 +67,7 @@ HOOK = """window.__FAKE_HOOK = {
   buy_product: a => ({ id: 'o-old', status: 'pending', total: 100000 }),
   pc_admin_deliver: a => ({ state: 'active', pc: a.p_pc, name: 'May-03', code: '', reinstall: false, order: a.p_order }),
   pc_my_cancel: a => ({ ok: true, pc: a.p_pc, rental: 61 }),
+  pc_my_power: a => { if (window.__SHOP.powErr) throw new Error(window.__SHOP.powErr); return window.__SHOP.powRes || { ok: true, cmd: a.p_cmd }; },
   pc_admin_flags: () => ({ cust_admin: true, agents: 1 }),
   pc_admin_set_flags: a => ({ cust_admin: a.p_patch.cust_admin, agents: 1 })
 };"""
@@ -422,6 +423,75 @@ def main():
         s = Site(br, html, False, dict(shop, mine=dict(mine3, cancel=False), bought=[]))
         s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 2", timeout=8000)
         ck("máy chủ chưa có v45 (không có cờ cancel) → không hiện nút Huỷ máy", not s.js("() => !!document.querySelector('[data-pcscxl]')"))
+        s.close()
+
+        print("5h. ⏻ Nguồn máy (SQL v48): khách tự khởi động lại / tắt máy + trạng thái 'Đang khởi động lại…' / 'Đã tắt máy'")
+        P4, P5, P6, P7 = ["00000000-0000-4000-8000-0000000000c%d" % i for i in range(4, 8)]
+        def pcx(pid, nm, online, pow_=None):
+            return {"id": pid, "name": nm, "code": "", "os": "22h2", "online": online, "link": online, "remote": True, "off": False, "job": None, "last_job": None,
+                    "ram_gb": 128, "gpus": [], "pow": pow_}
+        def it(r, pc): return {"rental": r, "state": "active", "os": "22h2", "os_name": "Windows 10 Pro 22H2", "days": 7, "until": iso(3 * 86400), "left": 2, "used": 0, "pc": pc}
+        mine4 = {"product": PROD, "reinstall_max": 2, "os": MINE["os"], "cancel": True, "power": True, "items": [
+            it(71, pcx(PC1, "Nguon-01", True)),
+            it(72, pcx(PC2, "Nguon-02", True, {"cmd": "reboot", "state": "done", "at": iso(-60), "by": "customer"})),
+            it(73, pcx(PC3, "Nguon-03", False, {"cmd": "shutdown", "state": "done", "at": iso(-1200), "by": "customer"})),
+            it(74, pcx(P4, "Nguon-04", False, {"cmd": "reboot", "state": "done", "at": iso(-1200), "by": "customer"})),
+            it(75, pcx(P5, "Nguon-05", True, {"cmd": "shutdown", "state": "queued", "at": iso(-30), "by": "admin"})),
+            it(76, pcx(P6, "Nguon-06", False, {"cmd": "shutdown", "state": "done", "at": iso(-600), "by": "admin"})),
+            it(77, pcx(P7, "Nguon-07", False, {"cmd": "reboot", "state": "done", "at": iso(-300), "by": "admin"}))]}
+        s = Site(br, html, False, dict(shop, mine=mine4, bought=[]))
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 7", timeout=8000)
+        cs = s.js("""() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => { const p = c.querySelector('[data-pcspow]'), ctl = c.querySelector('.m3m-acts .btn.sm');
+                     return { t: c.innerText.replace(/\\s+/g, ' '), pow: p ? (p.disabled ? 'off' : 'on') : 'none', ctl: ctl ? (ctl.tagName === 'A' ? 'on' : 'off') : 'none' }; })""")
+        ck("máy đang bật: có nút ⏻ Nguồn bấm được, Điều khiển bấm được", "Sẵn sàng" in cs[0]["t"] and "Nguồn" in cs[0]["t"] and cs[0]["pow"] == "on" and cs[0]["ctl"] == "on", cs[0])
+        ck("vừa khởi động lại (1 phút): 'Đang khởi động lại…' + '1–3 phút'; Nguồn khoá, Điều khiển vẫn mở được",
+           "Đang khởi động lại" in cs[1]["t"] and "1–3 phút" in cs[1]["t"] and "Shop vừa" not in cs[1]["t"] and cs[1]["pow"] == "off" and cs[1]["ctl"] == "on", cs[1])
+        ck("khách đã tắt máy (máy không báo về): 'Đã tắt máy' + 'Bạn đã tắt máy lúc …' + nhắn shop bật nguồn; Nguồn + Điều khiển khoá",
+           "Đã tắt máy" in cs[2]["t"] and "Bạn đã tắt máy lúc" in cs[2]["t"] and "nhắn shop bật nguồn" in cs[2]["t"] and cs[2]["pow"] == "off" and cs[2]["ctl"] == "off", cs[2])
+        ck("khởi động lại 20 phút trước mà máy chưa báo về → về trạng thái 'Máy đang tắt / mất mạng' như cũ", "Máy đang tắt / mất mạng" in cs[3]["t"] and "khởi động lại" not in cs[3]["t"], cs[3])
+        ck("shop vừa bấm tắt (lệnh chưa tới máy): 'Đang tắt máy…' + 'Đang gửi lệnh tới máy'", "Đang tắt máy" in cs[4]["t"] and "Đang gửi lệnh tới máy" in cs[4]["t"] and cs[4]["pow"] == "off", cs[4])
+        ck("shop đã tắt máy: 'Shop đã tắt máy lúc …'", "Đã tắt máy" in cs[5]["t"] and "Shop đã tắt máy lúc" in cs[5]["t"], cs[5])
+        ck("shop khởi động lại 5 phút trước, máy chưa báo về: 'Shop vừa khởi động lại máy'", "Đang khởi động lại" in cs[6]["t"] and "Shop vừa khởi động lại máy" in cs[6]["t"], cs[6])
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-14-trang-thai-nguon.png"))
+        s.page.click('#pcs-mine-list [data-pcspow="%s"]' % PC1); s.page.wait_for_timeout(300)
+        d5 = s.js("""() => { const m = document.getElementById('pcsdlg'), g = m.querySelector('[data-pcspgo="shutdown"]'), cb = document.getElementById('pcs-pw-ok'), lb = cb.closest('label').getBoundingClientRect(), r = cb.getBoundingClientRect();
+                     return { open: !m.hidden, t: m.innerText.replace(/\\s+/g, ' '), dis: g.disabled, row: Math.abs((r.top + r.bottom) / 2 - (lb.top + lb.bottom) / 2) < 6 && lb.height < 40 }; }""")
+        ck("bấm ⏻ Nguồn → hộp 'Nguồn máy Nguon-01': 🔁 Khởi động lại (tự bật lại, 1–3 phút) + ⏻ Tắt máy (tắt hẳn, nhắn shop bật nguồn, thời gian thuê vẫn tính)",
+           d5["open"] and "Nguồn máy Nguon-01" in d5["t"] and "tự bật lại" in d5["t"] and "1–3 phút" in d5["t"] and "tắt hẳn" in d5["t"] and "nhắn shop bật nguồn" in d5["t"] and "thời gian thuê vẫn tính" in d5["t"], d5)
+        ck("nút Tắt máy khoá tới khi tick 'Tôi hiểu'; ô tick nằm cùng hàng chữ", d5["dis"] and d5["row"], d5)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-13-nguon-may.png"))
+        s.page.click('#pcsdlg [data-pcspgo="shutdown"]', force=True); s.page.wait_for_timeout(300)
+        ck("chưa tick → bấm Tắt máy không ăn, không gọi pc_my_power", not s.calls("pc_my_power"))
+        s.page.click('#pcsdlg [data-pcspgo="reboot"]'); s.page.wait_for_timeout(900)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("bấm 'Khởi động lại ngay' → pc_my_power(máy, reboot) đúng 1 lần, đóng hộp, báo 'Đã gửi lệnh khởi động lại'",
+           s.calls("pc_my_power") == [{"p_pc": PC1, "p_cmd": "reboot"}] and s.js("() => document.getElementById('pcsdlg').hidden") and "Đã gửi lệnh khởi động lại" in tt, (s.calls("pc_my_power"), tt))
+        s.page.click('#pcs-mine-list [data-pcspow="%s"]' % PC1); s.page.wait_for_timeout(300)
+        s.page.check("#pcs-pw-ok"); s.page.click('#pcsdlg [data-pcspgo="shutdown"]'); s.page.wait_for_timeout(900)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("tick + Tắt máy → pc_my_power(máy, shutdown), báo 'Đã gửi lệnh tắt máy … nhắn shop bật nguồn'",
+           s.calls("pc_my_power")[-1:] == [{"p_pc": PC1, "p_cmd": "shutdown"}] and "Đã gửi lệnh tắt máy" in tt and "nhắn shop bật nguồn" in tt, (s.calls("pc_my_power"), tt))
+        s.js("() => { window.__SHOP.powErr = 'OFFLINE'; }")
+        s.page.click('#pcs-mine-list [data-pcspow="%s"]' % PC1); s.page.wait_for_timeout(300)
+        s.page.click('#pcsdlg [data-pcspgo="reboot"]'); s.page.wait_for_timeout(700)
+        ee = s.js("() => ({ open: !document.getElementById('pcsdlg').hidden, e: document.getElementById('pcs-pw-err').textContent })")
+        ck("máy mất kết nối (OFFLINE) → báo lỗi tiếng Việt trong hộp, hộp vẫn mở", ee["open"] and "mất kết nối" in ee["e"] and "nhắn shop" in ee["e"], ee)
+        s.js("() => { window.__SHOP.powErr = ''; window.__SHOP.powRes = { ok: true, dup: true, cmd: 'reboot' }; }")
+        s.page.click('#pcsdlg [data-pcspgo="reboot"]'); s.page.wait_for_timeout(900)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("lệnh trước chưa tới máy (dup) → báo 'đang có lệnh chờ nhận'", "lệnh chờ nhận" in tt, tt)
+        ck("5h: không lỗi JS, không chèn được mã", not s.errors and document_ok(s), s.errors)
+        s.close()
+        s = Site(br, html, False, dict(shop, mine=mine4, bought=[]), mobile=True)
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 7", timeout=8000)
+        s.js("id => document.querySelector('#pcs-mine-list [data-pcspow=\"' + id + '\"]').click()", PC1); s.page.wait_for_timeout(400)
+        mo = s.js("""() => { const d = document.querySelector('#pcsdlg .dlg').getBoundingClientRect(); return { w: d.width, over: document.documentElement.scrollWidth - innerWidth, fit: d.left >= 0 && d.right <= innerWidth + 1 }; }""")
+        ck("điện thoại 390px: hộp Nguồn máy vừa màn hình, không tràn ngang", mo["fit"] and mo["over"] <= 0, mo)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-13b-nguon-may-mobile.png"))
+        s.close()
+        s = Site(br, html, False, dict(shop, mine=dict(mine4, power=False), bought=[]))
+        s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 7", timeout=8000)
+        ck("máy chủ chưa có v48 (không có cờ power) → không hiện nút ⏻ Nguồn", not s.js("() => !!document.querySelector('[data-pcspow]')"))
         s.close()
 
         print("5f. 🔑 Công tắc 'Cho khách quyền Admin' (SQL v46)")
