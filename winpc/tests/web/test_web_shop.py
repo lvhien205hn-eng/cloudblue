@@ -141,7 +141,7 @@ def main():
         s.js("() => { window.PCSHOP.w.t0 -= 46 * 60000; }"); s.page.wait_for_timeout(1300)
         lt = s.js("() => { const g = document.getElementById('pcsw-msg'); return { open: g.open, late: g.classList.contains('late'), note: !document.getElementById('pcsw-late').hidden, txt: document.getElementById('pcsw-txt').textContent }; }")
         ck("cài quá 45 phút → tự MỞ mục ② + nhắc gửi admin, nội dung ghi đúng trạng thái + số phút đã chờ",
-           lt["open"] and lt["late"] and lt["note"] and "Trạng thái: Đang cài Windows (đã chờ 46 phút" in lt["txt"], lt)
+           lt["open"] and lt["late"] and lt["note"] and "Trạng thái: Đang cài Windows 10 Pro 1511 (đã chờ 46 phút" in lt["txt"], lt)
         s.page.screenshot(path=os.path.join(SHOTS, "shop-2b-late.png"))
         s.js("() => document.getElementById('pcsdlg').hidden = true")
         s.js("() => { window.__SHOP.buyRes = { state: 'waiting', rental: 31, order: 'o2', total: 360000 }; }")
@@ -595,6 +595,98 @@ def main():
                     return { E, over: dp.scrollWidth - dp.clientWidth, n: [...dp.children].filter(c => !c.hidden && getComputedStyle(c).display !== 'none').length }; }""")
                 ck(f"{vw}px · thẻ {tb}: cảnh báo, 5 nhóm, thanh mục con, tiêu đề thẳng mép với nội dung; không tràn ngang", not al["E"] and al["over"] <= 0 and al["n"] >= 4, al)
             ctx.close()
+        print("5i. 🐧 Linux CachyOS (SQL v50): mua · VPS của tôi · đổi hệ điều hành · quản trị")
+        OS_L = [dict(o, ready=True, linux=False) for o in INFO_ON["os"]] + [{"id": "cachyos", "name": "Linux CachyOS", "fast": False, "ready": False, "linux": True}]
+        mine_l = json.loads(json.dumps(MINE)); mine_l["os"] = MINE["os"] + [{"id": "cachyos", "name": "Linux CachyOS"}]; mine_l["linux"] = True
+        mine_l["items"][0]["pc"]["can"] = ["22h2", "1511", "cachyos"]                     # May-01 đổi được sang CachyOS
+        mine_l["items"][1]["pc"]["can"] = ["22h2", "1511"]; mine_l["items"][1]["pc"]["job"] = {"state": "sent", "os": "cachyos", "at": iso(-120)}
+        mine_l["items"][3]["pc"].update(os="cachyos", gpus=["NVIDIA GeForce GTX 1080"]); mine_l["items"][3]["os"] = "cachyos"; mine_l["items"][3]["os_name"] = "Linux CachyOS"
+        adm_l = json.loads(json.dumps(ADM)); adm_l["os"] = OS_L
+        adm_l["free"][0]["can"] = ["22h2", "1511"]; adm_l["free"][1]["can"] = ["22h2", "1511", "cachyos"]
+        adm_l["rentals"][0].update(os="cachyos", os_name="Linux CachyOS")
+        s = Site(br, html, False, dict(shop, info=dict(INFO_ON, os=OS_L), mine=mine_l, bought=[], buyRes={"state": "active", "pc": PC1, "name": "May-01", "reinstall": True, "rental": 31, "order": "o2", "total": 360000}))
+        s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }")
+        s.js("id => openBuy(id)", PROD); s.page.wait_for_timeout(500)
+        hd = s.js("() => ({ h: document.querySelector('#pcs-os .pcs-sec span').innerText, os: [...document.querySelectorAll('#pcs-os [data-pcsos]')].map(b => [b.dataset.pcsos, b.innerText.replace(/\\s+/g, ' ')]), how: document.querySelector('#pcs-os .pcs-how').innerText })")
+        ck("có bản Linux → '① Chọn hệ điều hành', 3 lựa chọn; ô CachyOS ghi 'Linux / CachyOS' + 'Shop đang chuẩn bị máy' (chưa có máy cài được: ready = false)",
+           hd["h"].startswith("① Chọn hệ điều hành") and [x[0] for x in hd["os"]] == ["22h2", "1511", "cachyos"] and "Linux" in hd["os"][2][1] and "CachyOS" in hd["os"][2][1]
+           and "Shop đang chuẩn bị máy" in hd["os"][2][1] and "~20 phút" in hd["os"][1][1] and "đúng hệ điều hành bạn chọn" in hd["how"] and "đổi hệ điều hành 2 lần" in hd["how"], hd)
+        s.page.click('#pcs-os [data-pcsos="cachyos"]'); s.page.wait_for_timeout(200)
+        t = s.js("() => document.getElementById('pcs-os').innerText")
+        ck("chọn CachyOS → lưu ý: điều khiển như máy Windows, KHÔNG dùng card NVIDIA, không chạy game Windows; cài 30–60 phút (+60 phút hạn)",
+           "điều khiển từ xa như máy Windows" in t and "không dùng card đồ hoạ NVIDIA" in t and "game Windows" in t and "30–60 phút" in t, t)
+        s.page.screenshot(path=os.path.join(SHOTS, "shop-9-linux-buy.png"))
+        s.js("() => { window.__SHOP.info.os[2].ready = true; }"); s.js("() => closeBuy()"); s.js("id => openBuy(id)", PROD); s.page.wait_for_timeout(400)
+        s.page.click('#pcs-os [data-pcsos="cachyos"]'); s.page.wait_for_timeout(150)
+        ck("có máy cài được (ready) → 'Cài theo yêu cầu · ~45 phút'", "~45 phút" in s.js("() => document.querySelector('#pcs-os [data-pcsos=\"cachyos\"]').innerText"))
+        s.page.click("#m-plans button[data-d='7']"); s.page.click("#m-ok"); s.page.wait_for_timeout(700)
+        d = s.js("() => { const m = document.getElementById('pcsdlg'); return m && !m.hidden ? m.innerText : ''; }")
+        ck("mua CachyOS → pc_buy p_os = cachyos; hộp đợi máy: 'Đang cài Linux CachyOS cho bạn' · 30–60 phút",
+           s.js("() => window.__SHOP.bought")[-1:] == [{"p_product": PROD, "p_days": 7, "p_os": "cachyos"}] and "Đang cài Linux CachyOS cho bạn" in d and "30–60 phút" in d, d)
+        ck("nội dung gửi admin ghi 'Hệ điều hành: Linux CachyOS'", "Hệ điều hành: Linux CachyOS" in s.js("() => document.getElementById('pcsw-txt').textContent"))
+        s.js("() => { const m = document.getElementById('pcsdlg'); if (m) m.hidden = true; }")
+        s.js("() => PCSHOP.mine(true)") if s.js("() => typeof PCSHOP.mine === 'function'") else None
+        s.page.wait_for_timeout(600)
+        cards = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => c.innerText.replace(/\\s+/g, ' '))")
+        ck("thẻ máy đang cài CachyOS: '⚙️ Đang cài Linux CachyOS' · 'Máy đang cài Linux CachyOS (30–60 phút)'",
+           any("Đang cài Linux CachyOS" in c and "Máy đang cài Linux CachyOS (30–60 phút)" in c for c in cards), cards)
+        ck("thẻ máy chạy Linux không ghi tên card NVIDIA (Linux không dùng card)", any("Linux CachyOS" in c and "GTX 1080" not in c for c in cards) and any("GTX 1080" in c for c in cards), cards)
+        s.page.click('#pcs-mine-list [data-pcsre="%s"]' % PC1); s.page.wait_for_timeout(300)
+        rd = s.js("() => ({ h: document.querySelector('#pcsdlg h3').innerText, os: [...document.querySelectorAll('#pcsdlg [data-pcsreos]')].map(b => b.dataset.pcsreos), how: document.getElementById('pcs-re-how').innerText })")
+        ck("hộp 'Cài lại / đổi hệ điều hành' của máy đổi được (can có cachyos): 3 lựa chọn, mặc định bản đang dùng (Windows 15–30 phút)",
+           rd["h"].endswith("Cài lại / đổi hệ điều hành") and rd["os"] == ["22h2", "1511", "cachyos"] and "15–30 phút" in rd["how"] and "ổ C: (Windows)" in rd["how"], rd)
+        s.page.click('#pcsdlg [data-pcsreos="cachyos"]'); s.page.wait_for_timeout(150)
+        hw = s.js("() => document.getElementById('pcs-re-how').innerText")
+        ck("chọn CachyOS → lời cảnh báo đổi theo: 30–60 phút + lưu ý không dùng card NVIDIA", "30–60 phút" in hw and "không dùng card đồ hoạ NVIDIA" in hw, hw)
+        n0 = len(s.dialogs); s.page.click('#pcsdlg [data-pcsgo2]'); s.page.wait_for_timeout(600)
+        ck("bấm Cài lại → xác nhận ghi 'sang Linux CachyOS' → pc_my_reinstall(p_os = cachyos)",
+           s.calls("pc_my_reinstall")[-1:] == [{"p_pc": PC1, "p_os": "cachyos"}] and any("sang Linux CachyOS" in x for x in s.dialogs[n0:]), (s.calls("pc_my_reinstall"), s.dialogs[n0:]))
+        s.close()
+        mine_l2 = json.loads(json.dumps(mine_l)); mine_l2["items"][1]["pc"]["job"] = None
+        s = Site(br, html, False, dict(shop, info=dict(INFO_ON, os=OS_L), mine=mine_l2, bought=[]))
+        s.page.click('#pcs-mine-list [data-pcsre="%s"]' % PC2); s.page.wait_for_timeout(300)
+        o2 = s.js("() => [...document.querySelectorAll('#pcsdlg [data-pcsreos]')].map(b => b.dataset.pcsreos)")
+        ck("máy CHƯA đổi được sang Linux (can không có cachyos) → không hiện CachyOS", o2 == ["22h2", "1511"], o2)
+        s.js("() => { const m = document.getElementById('pcsdlg'); if (m) m.hidden = true; }")
+        cards = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => c.innerText.replace(/\\s+/g, ' '))")
+        ck("thẻ máy chạy Linux không ghi tên card NVIDIA (Linux không dùng card), máy Windows vẫn ghi", any("Linux CachyOS" in c and "GTX 1080" not in c for c in cards) and any("GTX 1080" in c for c in cards), cards)
+        ck("không lỗi JS (khách, Linux)", not s.errors, s.errors)
+        s.close()
+        mine_old = json.loads(json.dumps(mine_l2)); mine_old.pop("linux"); [x["pc"].pop("can", None) for x in mine_old["items"] if x.get("pc")]
+        s = Site(br, html, False, dict(shop, info=dict(INFO_ON, os=OS_L), mine=mine_old, bought=[]))
+        s.page.click('#pcs-mine-list [data-pcsre="%s"]' % PC1); s.page.wait_for_timeout(300)
+        o3 = s.js("() => [...document.querySelectorAll('#pcsdlg [data-pcsreos]')].map(b => b.dataset.pcsreos)")
+        ck("máy chủ chưa chạy SQL v50 (không có 'can') → ẩn CachyOS (chưa kiểm được máy)", o3 == ["22h2", "1511"], o3)
+        s.close()
+        s = Site(br, html, True, dict(shop, info=dict(INFO_ON, os=OS_L), mine=mine_l2, adm=adm_l, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.page.wait_for_function("() => document.getElementById('pcs-waitbar') && !document.getElementById('pcs-waitbar').hidden", timeout=8000)
+        s.page.click("#pcs-waitbar"); s.page.wait_for_timeout(600)
+        s.page.click('#pcs-adm-tbl tr[data-r="21"] [data-ra="hand"]'); s.page.wait_for_timeout(300)
+        hv = s.js("""() => ({ t: document.getElementById('pcsdlg').innerText, r: [...document.querySelectorAll('#pcsdlg input[name="pcs-hpc"]')].map(i => [i.value, i.disabled, i.checked]),
+                              go: document.getElementById('pcs-h-go').disabled })""")
+        ck("Bàn giao đơn CachyOS: máy chưa cài được bị khoá + ghi '⛔ chưa cài được Linux CachyOS', chọn sẵn máy cài được",
+           hv["r"] == [[PC3, True, False], [PC2, False, True]] and "chưa cài được Linux CachyOS" in hv["t"] and not hv["go"], hv)
+        s.page.click("#pcs-h-go"); s.page.wait_for_timeout(600)
+        ck("bấm Bàn giao → pc_admin_handover đúng máy cài được (May-02)", s.calls("pc_admin_handover")[-1:] == [{"p_rental": 21, "p_pc": PC2, "p_reinstall": None}], s.calls("pc_admin_handover"))
+        s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        st = s.js("() => ({ c: !!document.getElementById('pcs-set-cachyos'), on: (document.getElementById('pcs-set-cachyos') || {}).checked, lab: document.getElementById('pcs-set-cachyos').closest('span').innerText })")
+        ck("Cài đặt bán: 'Bản bán: 22H2 · 1511 · 🐧 CachyOS', đang bán CachyOS thì tích sẵn", st["c"] and st["on"] is True and "Bản bán" in st["lab"] and "CachyOS" in st["lab"], st)
+        s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
+        sv = s.calls("pc_admin_sell")
+        ck("Lưu → os gửi kèm {id: cachyos, name: Linux CachyOS} (đã bán từ trước → không hỏi lại)", sv and {"id": "cachyos", "name": "Linux CachyOS"} in sv[-1]["p_patch"]["os"], sv[-1:])
+        ck("không lỗi JS (quản trị, Linux)", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.page.wait_for_function("() => document.getElementById('pcs-waitbar') && !document.getElementById('pcs-waitbar').hidden", timeout=8000)
+        s.page.click("#pcs-waitbar"); s.page.wait_for_timeout(600); s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        s.page.check("#pcs-set-cachyos"); n0 = len(s.dialogs); s.accept = False; s.page.click("#pcs-set-save"); s.page.wait_for_timeout(400)
+        ck("BẬT bán CachyOS lần đầu → hỏi (cần SQL v50 + agent 22.11f, máy UEFI tắt Secure Boot); bấm Huỷ thì không lưu",
+           any("BẬT bán Linux CachyOS" in x and "SQL v50" in x and "Secure Boot" in x for x in s.dialogs[n0:]) and not s.calls("pc_admin_sell"), s.dialogs[n0:])
+        s.accept = True; s.page.click("#pcs-set-save"); s.page.wait_for_timeout(500)
+        ck("đồng ý → lưu có cachyos", s.calls("pc_admin_sell") and {"id": "cachyos", "name": "Linux CachyOS"} in s.calls("pc_admin_sell")[-1]["p_patch"]["os"], s.calls("pc_admin_sell"))
+        s.close()
         print("6. Khách thường không thấy phần admin")
         s = Site(br, html, False, dict(shop, bought=[]))
         ck("khách: không có dải đơn chờ, không gọi pc_admin_rentals", s.js("() => !document.getElementById('pcs-waitbar') || document.getElementById('pcs-waitbar').hidden") and not s.calls("pc_admin_rentals"))
