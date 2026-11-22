@@ -300,7 +300,7 @@ class LinuxRemote(R.Remote):
                 ok, why = cbcap.have_tools()
                 self.caps = {"enc": ["x264"] if ok else [], "cap": "portal"}; self.caps_t = time.time()
                 self.log("may nay: quay man hinh qua cong XDG cua KDE, nen x264 (CPU) - GStreamer: %s" % why)
-                if not ok: self.state = "thieu GStreamer (%s) - can cai lai CachyOS ban moi" % why
+                if not ok: self.state = "thieu cong cu quay man hinh (%s) - agent dang tu cai, xong tu chay" % why
                 return ok
             except Exception as e:
                 self.log("chuan bi bo quay loi: %r" % (e,)); return False

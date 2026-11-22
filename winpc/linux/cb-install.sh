@@ -11,7 +11,7 @@
 #    định dạng 2 phân vùng WinPE đã tạo (FAT32 + btrfs có subvolume như CachyOS) → bung airootfs.sfs → bỏ phần chỉ dành cho máy sống
 #    → nhân + initramfs → tài khoản khách, tên máy, múi giờ, tự đăng nhập → khoá pacman, gỡ gói của máy sống
 #    → KHÔNG dùng driver NVIDIA (22.11e: chủ shop chốt — Linux chỉ cần điều khiển từ xa, không cần card hình; card NVIDIA chạy driver nouveau
-#      có sẵn) · công cụ quay màn hình (GStreamer PipeWire) thiếu thì tải (cần mạng)
+#      có sẵn) · công cụ quay màn hình (gst-plugin-pipewire) thiếu thì tải ĐÚNG phiên bản PipeWire đang có (cần mạng; không có thì agent tự cài sau)
 #    → systemd-boot trên EFI Linux (mục "Linux Boot Manager" lên đầu BootOrder) → cb-post.sh (agent CloudBlue) → báo xong → khởi động lại.
 #  Lỗi → ghi lý do (cb/job-result.json + cb/job.json "linux_fail") → lần khởi động sau vào Windows Boot Manager = WinPE cứu hộ: thử lại,
 #  quá 2 lần thì WinPE cài lại Windows mặc định (máy không bao giờ "mất").
@@ -347,17 +347,34 @@ arch-chroot "$T" pacman -Qq > "$W/pkgs.txt" 2>/dev/null
 sed -i '/^[[:space:]]*blacklist[[:space:]]\+nouveau/d' "$T"/etc/modprobe.d/*.conf 2>/dev/null       # card NVIDIA dùng nouveau (không còn driver NVIDIA)
 say "   da go:$(for p in $GONE; do grep -qx -- "$p" "$W/pkgs.txt" || printf ' %s' "$p"; done)"
 gst_ok() { arch-chroot "$T" sh -c 'for e in pipewiresrc videoconvert videoscale videorate fdsink; do gst-inspect-1.0 --exists $e || exit 1; done; ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264' >/dev/null 2>&1; }
+# gst-plugin-pipewire ĐÚNG phiên bản PipeWire đang có trong máy đích: gói lấy từ kho lưu trữ Arch (pacman kiểm chữ ký), -dd = không kéo PipeWire
+# mới. (22.11f CI: "pacman -Sy gst-plugin-pipewire" đòi PipeWire mới hơn → vỡ pipewire-pulse / pipewire-jack đang cài → không cài được.)
+# Agent (cbagent.py gst_install) làm y như vậy khi máy đã cài mà vẫn thiếu.
+GST_ALA="https://archive.archlinux.org/packages/g/gst-plugin-pipewire"
+gst_pw() {
+    local ver base c tried="" url
+    ver=$(arch-chroot "$T" pacman -Q libpipewire 2>/dev/null | awk '{print $2}')
+    case "$ver" in ''|*[!0-9A-Za-z.:+_-]*) say "   khong ro phien ban PipeWire ('$ver')"; return 1;; esac
+    base=${ver%-*}
+    for c in "$ver" "$base-1" "$base-2" "$base-3"; do
+        case " $tried " in *" $c "*) continue;; esac
+        tried="$tried $c"
+        url="$GST_ALA/gst-plugin-pipewire-$c-x86_64.pkg.tar.zst"
+        say "   tai gst-plugin-pipewire $c (dung ban PipeWire $ver dang co)"
+        timeout 600 arch-chroot "$T" pacman -U --noconfirm --needed -dd "$url" >> "$W/gst.log" 2>&1 && return 0
+        tail -3 "$W/gst.log"
+    done
+    return 1
+}
 if gst_ok; then
     say "   cong cu quay man hinh (GStreamer PipeWire + ffmpeg x264): co san"
 else
     wait "$NETPID" 2>/dev/null
     if [ -f "$W/net.ok" ]; then
-        say "   thieu cong cu quay man hinh -> tai gst-plugin-pipewire gst-plugins-base ffmpeg (toi da 15 phut)"
-        cp -f /etc/pacman.d/mirrorlist "$T/etc/pacman.d/mirrorlist" 2>/dev/null
-        timeout 900 arch-chroot "$T" pacman -Sy --needed --noconfirm gst-plugin-pipewire gst-plugins-base ffmpeg > "$W/gst.log" 2>&1 || tail -5 "$W/gst.log"
-        gst_ok && say "   cong cu quay man hinh: da cai" || say "!! chua cai duoc cong cu quay man hinh - may van dung duoc, chua dieu khien tu xa duoc"
+        gst_pw
+        gst_ok && say "   cong cu quay man hinh: da cai" || say "!! chua cai duoc cong cu quay man hinh - agent se tu cai lai khi may co mang"
     else
-        say "!! thieu cong cu quay man hinh va chua co mang - may van dung duoc, chua dieu khien tu xa duoc"
+        say "!! thieu cong cu quay man hinh va chua co mang - agent se tu cai khi may co mang"
     fi
 fi
 

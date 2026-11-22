@@ -391,6 +391,8 @@ def ff_encode(w, h, fps, enc_args, port):
 
 
 _TOOLS = {}
+_TOOLS_T = [0.0]                                                  # lúc dò gần nhất
+TOOLS_RETRY_S = 60                                                # thiếu công cụ → dò lại sau chừng này giây
 TEST_SRC = os.environ.get("CBCAP_TEST_SRC") == "1"            # bộ thử: hình thử của ffmpeg thay màn hình thật (không có KDE / GStreamer)
 
 
@@ -400,17 +402,20 @@ def test_src(w, h, fps):
 
 
 def tools():
-    """Có những phần nào: các phần tử GStreamer + ffmpeg có libx264 (dò 1 lần)."""
+    """Có những phần nào: các phần tử GStreamer + ffmpeg có libx264. Đủ thì nhớ luôn; THIẾU thì dò lại sau TOOLS_RETRY_S giây
+       (agent đang tự cài gst-plugin-pipewire — cài xong là quay được, không phải chạy lại)."""
     if TEST_SRC: return {"pipewiresrc": True, "videoconvert": True, "videoscale": True, "videorate": True, "fdsink": True, "ffmpeg_x264": True}
-    if _TOOLS: return dict(_TOOLS)
+    if _TOOLS and (pick_mode(_TOOLS) or time.time() - _TOOLS_T[0] < TOOLS_RETRY_S): return dict(_TOOLS)
+    t = {}
     for el in ("pipewiresrc", "videoconvert", "videoscale", "videorate", "fdsink", "x264enc", "rtph264pay", "udpsink"):
-        try: _TOOLS[el] = subprocess.run(["gst-inspect-1.0", "--exists", el], capture_output=True, timeout=30).returncode == 0
-        except (OSError, subprocess.TimeoutExpired): _TOOLS[el] = False
+        try: t[el] = subprocess.run(["gst-inspect-1.0", "--exists", el], capture_output=True, timeout=30).returncode == 0
+        except (OSError, subprocess.TimeoutExpired): t[el] = False
     try:
         r = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, timeout=30)
-        _TOOLS["ffmpeg_x264"] = r.returncode == 0 and b"libx264" in r.stdout
+        t["ffmpeg_x264"] = r.returncode == 0 and b"libx264" in r.stdout
     except (OSError, subprocess.TimeoutExpired):
-        _TOOLS["ffmpeg_x264"] = False
+        t["ffmpeg_x264"] = False
+    _TOOLS.clear(); _TOOLS.update(t); _TOOLS_T[0] = time.time()
     return dict(_TOOLS)
 
 
@@ -435,7 +440,8 @@ def have_tools():
     """Máy đủ công cụ quay + nén không → (đủ?, chữ báo)."""
     t = tools(); m = pick_mode(t)
     if m: return True, "du (%s)" % ("GStreamer + ffmpeg x264" if m == "ff" else "GStreamer x264")
-    return False, "thieu " + ", ".join(k for k, v in sorted(t.items()) if not v)
+    need = ("pipewiresrc", "videoconvert", "videoscale", "videorate", "fdsink", "ffmpeg_x264")      # đường chính "ff" (x264enc… chỉ là đường phụ)
+    return False, "thieu " + ", ".join(k for k in need if not t.get(k))
 
 
 # ====================================================================================== phần chạy (theo lệnh của root)
