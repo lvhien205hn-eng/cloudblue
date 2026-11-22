@@ -13577,8 +13577,14 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
 .pcs-how{font-size:12.5px;line-height:1.55;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
 .pcs-how b{color:var(--fg)}
 .pcs-cx-warn{border-color:rgba(255,107,129,.45);background:rgba(255,107,129,.07)}
-.pcs-ack{display:flex;gap:8px;align-items:center;margin:12px 2px 2px;font-size:13.5px;font-weight:600;cursor:pointer}
-.pcs-ack input{width:18px;height:18px;accent-color:var(--bad)}
+.pcs-ack,.dlg label.pcs-ack{display:flex;gap:8px;align-items:center;margin:12px 2px 2px;font-size:13.5px;font-weight:600;color:var(--fg);cursor:pointer}
+.pcs-ack input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--bad)}
+/* 22/11 · ⏻ Nguồn máy (SQL v48): 🔁 khởi động lại · ⏻ tắt hẳn (tick "Tôi hiểu" mới bấm được) */
+.pcs-pow{display:grid;gap:10px}
+.pcs-pow .pcs-how{display:grid;gap:7px;font-size:13px}
+.pcs-pow .pcs-how>b{font-size:15px;color:var(--fg)}
+.pcs-pow .pcs-how .btn{justify-self:start}
+.dlg .pcs-pow label.pcs-ack{margin:2px 0 0}
 .pcs-hide{margin-top:6px}
 #modal.pcauto #m-vps,#modal.pcauto #m-more,#modal.pcauto .qty{display:none!important}
 .pcs-card .m3m-nm small{font-weight:500;color:var(--muted);margin-left:6px}
@@ -13725,7 +13731,9 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     NO_PRODUCT: ["Không có sản phẩm này.", "No such product."], BAD_MAX: ["Số lần cài lại phải từ 0 đến 20.", "Reinstalls must be 0–20."],
     NOT_FREE: ["Máy này vừa có khách / đang tự cài sạch — chọn máy khác.", "That machine is busy — pick another."], NOT_PENDING: ["Đơn này đã giao / đã huỷ.", "This order is no longer pending."],
     QTY: ["Đơn nhiều máy: giao tay bằng ô tên máy bên dưới.", "Multi-machine order: deliver manually below."], BAD_DAYS: ["Đơn không có số ngày thuê.", "The order has no rental days."],
-    HAS_RENTAL: ["Đơn này đã có máy rồi.", "This order already has a machine."], NO_ORDER: ["Không tìm thấy đơn.", "Order not found."]
+    HAS_RENTAL: ["Đơn này đã có máy rồi.", "This order already has a machine."], NO_ORDER: ["Không tìm thấy đơn.", "Order not found."],
+    OFFLINE: ["Máy đang tắt / mất kết nối nên không nhận được lệnh. Cần bật lại thì nhắn shop kèm tên máy.", "The machine is offline and can't get the command. Contact the shop to turn it back on."],
+    BAD_CMD: ["Lệnh không hợp lệ — tải lại trang rồi thử lại.", "Invalid command — reload the page and try again."]
   };
   const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
     try { return errMsg(e); } catch (x) { return m || L("Lỗi không rõ.", "Unknown error."); } };
@@ -14034,6 +14042,22 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     try { const { data, error } = await sb.rpc("pc_my_vps"); if (!error) { PC.mine = O(data); PC.mineAt = Date.now(); } else if (missing(error)) PC.mine = null; } catch (e) {}
     mineRender();
   }
+  // 22/11 · SQL v48: lệnh khởi động lại / tắt máy gần nhất (khách hoặc shop bấm) → "Đang khởi động lại…" / "Đang tắt máy…" / "Đã tắt máy".
+  //   Lệnh chưa tới máy (queued) chỉ tính khi máy đang bật; khởi động lại: 3 phút đầu luôn hiện, sau đó máy chưa báo về thì hiện tiếp tới 15 phút.
+  function powOf(pc) {
+    const p = O(pc.pow), at = T(p.at); if ((p.cmd !== "reboot" && p.cmd !== "shutdown") || at === null) return null;
+    const age = Date.now() - at, got = p.state === "sent" || p.state === "done", shop = p.by !== "customer";
+    if (p.cmd === "reboot") {
+      if (!got) return pc.online && age < 6e5 ? ["boot", "🔁 " + L("Đang khởi động lại…", "Restarting…"), L("Đang gửi lệnh tới máy — máy nhận là khởi động lại ngay.", "Sending the command — the machine restarts as soon as it gets it.")] : null;
+      return age < 18e4 || (!pc.online && age < 9e5) ? ["boot", "🔁 " + L("Đang khởi động lại…", "Restarting…"),
+        (shop ? L("Shop vừa khởi động lại máy. ", "The shop restarted the machine. ") : "") + L("Thường 1–3 phút là dùng lại được. Quá 10 phút chưa lên thì nhắn shop kèm tên máy.", "Usually back in 1–3 minutes. Not back after 10 minutes? Contact the shop with the machine name.")] : null;
+    }
+    if (!got) return pc.online && age < 6e5 ? ["down", "⏻ " + L("Đang tắt máy…", "Shutting down…"), L("Đang gửi lệnh tới máy — máy nhận là tắt ngay.", "Sending the command — the machine turns off as soon as it gets it.")] : null;
+    if (pc.online) return age < 18e4 ? ["down", "⏻ " + L("Đang tắt máy…", "Shutting down…"), L("Máy tắt sau khoảng 10 giây.", "It turns off in about 10 seconds.")] : null;
+    return ["offd", "⏻ " + L("Đã tắt máy", "Shut down"), shop
+      ? L(`Shop đã tắt máy lúc ${hm(at)}. Cần dùng thì nhắn shop bật lại.`, `The shop shut it down at ${hm(at)}. Contact the shop to turn it back on.`)
+      : L(`Bạn đã tắt máy lúc ${hm(at)} — máy tắt hẳn. Cần dùng lại thì nhắn shop bật nguồn (shop đã được báo).`, `You shut it down at ${hm(at)} — it stays off. Ask the shop to turn it back on (they have been notified).`)];
+  }
   function stateOf(it) {
     const pc = O(it.pc), job = O(pc.job), ms = left(it.until);
     if (it.state === "waiting") return ["wait", "⏳ " + L("Đang chờ máy", "Waiting for a machine"), L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received. A machine will be assigned and installed automatically.")];
@@ -14046,6 +14070,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       + L(`Gia hạn trước ${hm(gu)} để giữ máy + dữ liệu — gia hạn xong máy tự mở lại sau 1–2 phút. Quá giờ đó máy bị thu hồi và xoá sạch.`,
           `Renew before ${hm(gu)} to keep the machine and your data — it unlocks 1–2 min after renewal. After that it is reclaimed and wiped.`)];
     if (ms !== null && ms <= 0) return ["exp", "⛔ " + L("Hết hạn", "Expired"), pc.off ? L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "The machine has shut down. Renew and the shop will turn it back on.") : L("Gia hạn để dùng tiếp.", "Renew to keep using it.")];
+    const pw = powOf(pc); if (pw) return pw;
     if (!pc.online) return ["off", "○ " + L("Máy đang tắt / mất mạng", "Offline"), L("Máy chưa báo về. Nếu lâu quá 5 phút, nhắn shop kèm tên máy.", "Not reporting. If it lasts over 5 min, contact the shop with the machine name.")];
     if (O(pc.last_job).state === "failed") return ["warn", "⚠️ " + L("Cài lại chưa xong", "Reinstall failed"), L("Lần cài lại vừa rồi lỗi — nhắn shop kèm tên máy.", "The last reinstall failed — contact the shop.")];
     return ["run", "● " + L("Sẵn sàng", "Ready"), ""];
@@ -14053,7 +14078,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   function card(it) {
     const pc = O(it.pc), st = stateOf(it), ms = left(it.until), max = +O(PC.mine).reinstall_max || 2;
     const soon = st[0] === "run" && ms !== null && ms < 864e5;
-    const mt = pcMaint(), canCtl = (st[0] === "run" || st[0] === "warn") && !mt;
+    const mt = pcMaint(), canPow = (st[0] === "run" || st[0] === "warn") && !mt, canCtl = canPow || (st[0] === "boot" && !mt);   // đang khởi động lại: vẫn mở được (máy lên là vào)
+    const pw = st[0] === "boot" || st[0] === "down" || st[0] === "offd";
     const gpu = A(pc.gpus).map(g => S(g, 40)).filter(Boolean)[0] || "";
     const spec = [S(it.os_name, 40), gpu, pc.ram_gb ? Math.round(+pc.ram_gb) + "GB RAM" : ""].filter(Boolean).join(" · ");
     const acts = it.rental === null && !it.pc ? "" : [
@@ -14061,13 +14087,14 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${mt || st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
       it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : "",
+      O(PC.mine).power && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcspow="${esc(S(pc.id, 40))}"${canPow ? "" : " disabled"} title="${esc(L("Khởi động lại / tắt máy", "Restart / shut down"))}">⏻ ${L("Nguồn", "Power")}</button>` : "",
       O(PC.mine).cancel && it.state === "active" && pc.id ? `<button class="btn danger sm pcs-cxl" type="button" data-pcscxl="${esc(S(pc.id, 40))}" title="${esc(L("Trả máy cho shop: xoá sạch dữ liệu, không hoàn tiền", "Give the machine back: all data erased, no refund"))}">🗑 ${L("Huỷ máy", "Cancel")}</button>` : ""
     ].join("");
-    return `<div class="m3m-card pcs-card${st[0] === "run" ? " run" : ""}${soon || st[0] === "exp" || st[0] === "wait" ? " soon" : ""}">
+    return `<div class="m3m-card pcs-card${st[0] === "run" ? " run" : ""}${soon || st[0] === "exp" || st[0] === "wait" || pw ? " soon" : ""}">
       <div class="m3m-top"><span class="pill${st[0] === "run" ? " ok" : st[0] === "exp" || st[0] === "warn" ? " bad" : ""}">${esc(st[1])}</span>${pc.code ? `<span class="pill">№ ${esc(S(pc.code, 24))}</span>` : ""}</div>
       <b class="m3m-nm">${esc(S(pc.name, 40) || L("VPS GPU", "GPU VPS"))}${it.days ? `<small>${+it.days} ${L("ngày", "days")}</small>` : ""}</b>
       <small class="m3m-spec">${esc(spec)}</small>
-      ${st[2] ? `<div class="pcs-st${st[0] === "exp" || st[0] === "warn" ? " bad" : st[0] === "off" ? " warn" : ""}">${esc(st[2])}${st[0] === "warn" && S(O(pc.last_job).msg, 120) ? " — " + esc(S(O(pc.last_job).msg, 120)) : ""}</div>` : ""}
+      ${st[2] ? `<div class="pcs-st${st[0] === "exp" || st[0] === "warn" ? " bad" : st[0] === "off" || pw ? " warn" : ""}">${esc(st[2])}${st[0] === "warn" && S(O(pc.last_job).msg, 120) ? " — " + esc(S(O(pc.last_job).msg, 120)) : ""}</div>` : ""}
       ${st[0] === "end" && T(it.hide_at) !== null ? `<div class="hint pcs-hide">🕒 ${L("Thẻ này tự ẩn lúc", "This card disappears at")} ${hm(T(it.hide_at))}</div>` : ""}
       ${st[0] === "inst" ? progHTML("inst", O(pc.job).at, S(O(pc.job).os, 12), it) : st[0] === "wait" ? progHTML("wait", it.created_at, "", it) : ""}
       ${st[0] === "warn" ? `<button class="btn ghost sm pcs-rep" type="button" data-pcsrep="${esc(String(it.rental || ""))}">📋 ${L("Báo admin (copy nội dung gửi shop)", "Report to the admin")}</button>` : ""}
@@ -14089,13 +14116,15 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
     const mtS = $i("pcs-mine-mt"); if (mtS) mtS.innerHTML = maintBar();
     $i("pcs-mine-list").innerHTML = items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("");
     progTick();
-    const busyNow = items.some(x => x.state === "waiting" || O(O(x.pc).job).state);
+    const busyNow = items.some(x => x.state === "waiting" || O(O(x.pc).job).state || ["boot", "down"].includes(stateOf(x)[0]));
     clearTimeout(PC.mt); PC.mt = setTimeout(() => mine(true), busyNow ? 15000 : 60000);
   }
   // ---- cài lại / đổi Windows
   document.addEventListener("click", async e => {
-    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp],[data-pcscxl],[data-pcscxgo]"); if (!b) return;
+    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp],[data-pcscxl],[data-pcscxgo],[data-pcspow],[data-pcspgo]"); if (!b) return;
     if (b.dataset.pcsapp) return appOpen(b.dataset.pcsapp);
+    if (b.dataset.pcspow) return powOpen(b.dataset.pcspow);
+    if (b.dataset.pcspgo) return powGo(b);
     if (b.dataset.pcscxl) return cxlOpen(b.dataset.pcscxl);
     if (b.dataset.pcscxgo) return cxlGo(b);
     if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
@@ -14168,6 +14197,38 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
       const { error } = await sb.rpc("pc_my_cancel", { p_pc: PC.cxid });
       if (error) { const x = $i("pcs-cx-err"); if (x) x.textContent = em(error); return; }
       $i("pcsdlg").hidden = true; toast(L("Đã huỷ máy — máy đang được xoá sạch và trả về shop.", "Machine cancelled — it is being wiped and returned to the shop.")); mine(true);
+    });
+  }
+  // ---- ⏻ khách tự khởi động lại / tắt máy (SQL v48 pc_my_power) — máy phải đang bật; TẮT = tắt hẳn, shop bật nguồn lại giúp (shop được báo ngay)
+  function powOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    if (pcMaint()) { toast(pcMaintMsg(), 1); return; }
+    PC.pwid = id;
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">⏻ ${L("Nguồn máy", "Power")} <b>${esc(S(O(it.pc).name, 40))}</b></h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="pcs-pow">
+        <div class="pcs-how"><b>🔁 ${L("Khởi động lại", "Restart")}</b>
+          <span>${L("Máy tắt rồi <b>tự bật lại</b> — thường 1–3 phút là dùng tiếp được. Chương trình đang mở bị đóng, dữ liệu đã lưu giữ nguyên.", "The machine turns off and <b>back on by itself</b> — usually ready again in 1–3 minutes. Open programs are closed; saved data is kept.")}</span>
+          <button class="btn" type="button" data-pcspgo="reboot">🔁 ${L("Khởi động lại ngay", "Restart now")}</button></div>
+        <div class="pcs-how pcs-cx-warn"><b>⏻ ${L("Tắt máy", "Shut down")}</b>
+          <span>${L("Máy <b>tắt hẳn</b>, không tự bật lại. Muốn dùng lại phải <b>nhắn shop bật nguồn</b> giúp — thời gian thuê vẫn tính.", "The machine <b>stays off</b> — it does not turn back on by itself. To use it again, <b>ask the shop to power it on</b>. Rental time keeps counting.")}</span>
+          <label class="pcs-ack"><input type="checkbox" id="pcs-pw-ok"> ${L("Tôi hiểu: máy tắt hẳn, cần nhắn shop bật lại", "I understand: it stays off until the shop powers it on")}</label>
+          <button class="btn danger" type="button" data-pcspgo="shutdown" disabled>⏻ ${L("Tắt máy", "Shut down")}</button></div>
+      </div>
+      <div class="err" id="pcs-pw-err"></div>`);
+    const cb = $i("pcs-pw-ok"), go = document.querySelector('#pcsdlg [data-pcspgo="shutdown"]');
+    if (cb && go) cb.addEventListener("change", () => { go.disabled = !cb.checked; });
+  }
+  async function powGo(b) {
+    const cmd = b.dataset.pcspgo, it = itemOf(PC.pwid); if (!it || (cmd !== "reboot" && cmd !== "shutdown")) return;
+    if (cmd === "shutdown") { const cb = $i("pcs-pw-ok"); if (!cb || !cb.checked) return; }
+    await busy(b, async () => {
+      const { data, error } = await sb.rpc("pc_my_power", { p_pc: PC.pwid, p_cmd: cmd });
+      if (error) { const x = $i("pcs-pw-err"); if (x) x.textContent = em(error); return; }
+      $i("pcsdlg").hidden = true;
+      toast(O(data).dup ? L("Máy đang có lệnh chờ nhận — đợi chút là chạy.", "A command is already on its way — it runs in a moment.")
+        : cmd === "reboot" ? L("Đã gửi lệnh khởi động lại — máy lên lại sau khoảng 1–3 phút.", "Restart sent — the machine is back in about 1–3 minutes.")
+        : L("Đã gửi lệnh tắt máy — máy tắt sau khoảng 10 giây. Cần dùng lại thì nhắn shop bật nguồn.", "Shutdown sent — it turns off in about 10 seconds. Ask the shop to power it back on."));
+      mine(true);
     });
   }
   // ---- gia hạn
