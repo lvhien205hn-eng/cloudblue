@@ -35,8 +35,9 @@ class Droid:
        màn" (cả --task). App ÉP NGANG (land) đang toàn màn trên cùng → màn xoay ngang; còn lại theo màn chính. sdk < 31: màn xoay → chỗ các
        cửa sổ nổi xoay theo (giữ nguyên chỗ trên mặt kính)."""
 
-    def __init__(self, sdk, w=720, h=1280, nav=96, free=True):
+    def __init__(self, sdk, w=720, h=1280, nav=96, free=True, lag=0):
         self.sdk, self.W, self.H, self.nav, self.free = sdk, w, h, nav, free
+        self.lag, self._true, self._old, self._left = lag, None, None, 0          # lag: máy chậm — màn xoay xong mới báo hướng mới sau `lag` lần đọc
         self.z = [{"id": 1, "comp": "com.android.launcher3/.Launcher", "user": 0, "mode": FS, "type": "home", "b": (0, 0, 0, 0), "land": False, "resz": True}]
         self.nid, self.log = 10, []
         self.rot, self.lo = sdk < 31, False
@@ -71,6 +72,14 @@ class Droid:
 
     def task(self, comp, user=0):
         return next((x for x in self.z if x["comp"] == comp and x["user"] == user), None)
+
+    def shown(self):
+        """Cỡ màn máy BÁO khi đọc (máy chậm: vừa đổi hướng thì vài lần đọc đầu vẫn báo hướng cũ — như máy ảo Android 15)."""
+        cur = self.size()
+        if self._true is None: self._true = cur
+        if cur != self._true: self._old, self._true, self._left = self._true, cur, self.lag
+        if self._left > 0: self._left -= 1; return self._old
+        return cur
 
     def size(self):
         """Cỡ màn lúc này: app ép ngang đang toàn màn trên cùng → ngang."""
@@ -127,7 +136,7 @@ class Droid:
     def _sh(self, c, t=30):
         self.log.append(c)
         if c == cp.WIN_STATE_SH:
-            W, H = self.size(); land = W > H
+            W, H = self.shown(); land = W > H
             return (f"{self.sdk}\n#S\n{self.stack_list()}\n#D\n  Display: mDisplayId=0 rootTasks=4\n"
                     f"    init=720x1280 320dpi cur={W}x{H} app={W - self.nav if land else W}x{H if land else H - self.nav} rng=720x672-1232x1184\n"
                     f"  Display: mDisplayId=2 rootTasks=1\n    init=360x640 160dpi cur=360x640 app=360x640\n#W\nPhysical density: 320\n#F\n{1 if self.free else 0}")
@@ -291,6 +300,21 @@ for sdk in (28, 29, 30, 31, 35):
        and cp._area(top["b"]) < 0.85 * cp._area(cp.win_area(GP)), (code, j, top))
     code, j = cp.win_run(d.sh, "bay")
     ck("việc lạ → 400", code == 400, (code, j))
+
+print("4b. Màn xoay về dọc CHẬM sau khi thu nhỏ (thấy ở máy ảo Android 15: vài giây sau vẫn ngang)")
+for sdk in (31, 35):
+    d = Droid(sdk, lag=3); R1, R2, R3 = "com.roblox.client/.startup.ActivitySplash", "vn.game.hai/.Main", "vn.game.ba/.Main"
+    d.open(R1, land=True)
+    code, j = cp.win_run(d.sh, "mini"); a = d.task(R1)
+    ck(f"Android {sdk} xoay chậm: cửa sổ đầu vẫn tính theo màn DỌC (rộng hết màn, không theo màn ngang cũ)", code == 200 and a["b"] == (0, 48, 720, 488)
+       and tuple(j["b"]) == a["b"], (code, j, a))
+    d.home_key(); d.open(R2, land=True)
+    code, j = cp.win_run(d.sh, "mini"); b = d.task(R2)
+    ck(f"Android {sdk} xoay chậm: cửa sổ thứ 2 trong màn dọc, không đè cửa sổ 1", code == 200 and b["b"][0] >= 0 and b["b"][2] <= 720 and b["b"][3] <= 1184
+       and ovl(a["b"], b["b"]) == 0 and a["b"] == (0, 48, 720, 488), (code, j, a, b))
+    d.open(R3, land=True)
+    code, j = cp.win_run(d.sh, "tile"); ws = sorted([a, b], key=lambda t: t["id"])
+    ck(f"Android {sdk} xoay chậm: Sắp xếp khi game ngang đang toàn màn → lưới màn DỌC", code == 200 and [t["b"] for t in ws] == cp.win_grid(GP, 2), (code, j, ws))
 
 print("4. Máy chưa bật cửa sổ nổi")
 d = Droid(31, free=False); d.open("com.roblox.client/.startup.ActivitySplash")
