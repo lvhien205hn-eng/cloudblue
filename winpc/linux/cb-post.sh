@@ -125,6 +125,34 @@ sleep 10
   echo "--- cbcap probe (cong XDG, duong phu)"
   timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 CBCAP_NO_KWIN=1 \
       python3 -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
+  echo "--- app cho khach (23/11: khach bao khong co trinh duyet, khong mo duoc terminal)"
+  for p in firefox chromium konsole dolphin kate alacritty spectacle ark gwenview okular plasma-desktop plasma-workspace kactivitymanagerd kio systemsettings cachyos-hello octopi shelly; do
+    printf '%s=%s ' "\$p" "\$(pacman -Q "\$p" 2>/dev/null | cut -d' ' -f2 || true)"; done; echo
+  echo "desktop_files=\$(ls /usr/share/applications/*.desktop 2>/dev/null | wc -l) co: \$(ls /usr/share/applications 2>/dev/null | grep -i -E 'firefox|konsole|dolphin|kate|alacritty|systemsettings' | tr '\n' ' ')"
+  SP=\$(pgrep -u "\$U" -x plasmashell | head -1)
+  echo "plasmashell=\$SP kactivity=\$(pgrep -u "\$U" -c kactivitymanage) user_systemd=\$(pgrep -u "\$U" -cx systemd) krunner=\$(pgrep -u "\$U" -c krunner)"
+  if [ -n "\$SP" ]; then
+    tr '\\0' '\\n' < /proc/\$SP/environ | grep -E '^(WAYLAND_DISPLAY|DISPLAY|DBUS_SESSION_BUS_ADDRESS|XDG_RUNTIME_DIR|XDG_SESSION_TYPE|XDG_CURRENT_DESKTOP|XDG_DATA_DIRS|XDG_CONFIG_DIRS|PATH|KDE_FULL_SESSION|QT_QPA_PLATFORM|XDG_MENU_PREFIX|HOME|LANG)=' > /run/cb-senv
+    cut -c1-300 /run/cb-senv
+  fi
+  SE=\$(tr '\n' ' ' < /run/cb-senv 2>/dev/null)
+  echo "systemd_user=\$(runuser -u "\$U" -- env \$SE systemctl --user is-system-running 2>&1 | head -1) failed_user=\$(runuser -u "\$U" -- env \$SE systemctl --user --failed --no-legend 2>/dev/null | awk '{print \$2}' | tr '\n' ' ' | cut -c1-300)"
+  echo "menu_entries=\$(timeout 60 runuser -u "\$U" -- env \$SE kbuildsycoca6 --menutest 2>/dev/null | wc -l) menu_co: \$(timeout 60 runuser -u "\$U" -- env \$SE kbuildsycoca6 --menutest 2>/dev/null | grep -i -E 'firefox|konsole|dolphin' | cut -c1-80 | tr '\n' ';')"
+  echo "favorites: \$(grep -h -i -E '^favorites|^favoriteApps|preferred://' /home/\$U/.config/plasma-org.kde.plasma.desktop-appletsrc /etc/xdg/kickoffrc /usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/config/main.xml 2>/dev/null | cut -c1-200 | tr '\n' ';')"
+  echo "skel: \$(ls -A /etc/skel 2>/dev/null | tr '\n' ' ') home: \$(ls -A /home/\$U 2>/dev/null | tr '\n' ' ') config: \$(ls /home/\$U/.config 2>/dev/null | tr '\n' ' ' | cut -c1-600)"
+  for app in konsole firefox dolphin; do
+    command -v \$app >/dev/null || { echo "mo_\$app=khong_co_lenh"; continue; }
+    runuser -u "\$U" -- env \$SE \$app >/run/cb-\$app.out 2>&1 &
+    sleep 12
+    echo "mo_\$app (chay thang)=\$(pgrep -u "\$U" -c -x \$app || true) \$(pgrep -u "\$U" -c -f /usr/lib/firefox/firefox 2>/dev/null | head -1) | \$(tail -n 3 /run/cb-\$app.out 2>/dev/null | tr '\n' ' ' | cut -c1-300)"
+    pkill -u "\$U" -x \$app 2>/dev/null; pkill -u "\$U" -f /usr/lib/firefox/firefox 2>/dev/null; sleep 2
+  done
+  if [ -f /usr/share/applications/org.kde.konsole.desktop ]; then        # đường của menu KDE: KIO → systemd --user (giống bấm trong menu)
+    timeout 30 runuser -u "\$U" -- env \$SE kioclient exec /usr/share/applications/org.kde.konsole.desktop > /run/cb-kio.out 2>&1
+    sleep 8; echo "mo_konsole (qua KIO nhu menu)=\$(pgrep -u "\$U" -c -x konsole || true) units=\$(runuser -u "\$U" -- env \$SE systemctl --user list-units --no-legend 'app-*' 2>/dev/null | awk '{print \$1}' | tr '\n' ' ' | cut -c1-300) | \$(tail -n 3 /run/cb-kio.out | tr '\n' ' ' | cut -c1-300)"
+    pkill -u "\$U" -x konsole 2>/dev/null
+  fi
+  echo "journal: \$(journalctl -b _UID=1000 --no-pager -o cat 2>/dev/null | grep -i -E 'launch|kioexec|failed to start|could not|konsole|firefox' | tail -n 8 | cut -c1-200 | tr '\n' ';')"
 } > /run/cb-firstboot.txt 2>&1
 systemctl stop cloudblue.service
 { echo "--- cbagent.py status"; /usr/bin/python3 -I -B /opt/cloudblue/linux/cbagent.py status 2>&1 | tr -s ' \n' ' ' | cut -c1-1500; echo; } >> /run/cb-firstboot.txt
