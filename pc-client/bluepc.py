@@ -4011,9 +4011,42 @@ def vps_err(m):
                       ("NOT_AUTO", "Sản phẩm này chưa bật giao tự động.", "Automatic delivery is off."),
                       ("INSUFFICIENT_BALANCE", "Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first."),
                       ("SLOW_DOWN", "Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again later."),
-                      ("NOT_ALLOWED", "Máy này không thuộc tài khoản của bạn.", "This machine is not on your account.")):
+                      ("NOT_ALLOWED", "Máy này không thuộc tài khoản của bạn.", "This machine is not on your account."),
+                      ("OFFLINE", "Máy đang tắt / mất kết nối nên không nhận được lệnh. Cần bật lại thì nhắn shop kèm tên máy.",      # 22/11 · SQL v48
+                       "The machine is offline and can't get the command. Contact the shop to turn it back on."),
+                      ("BAD_CMD", "Lệnh không hợp lệ — cập nhật app rồi thử lại.", "Invalid command — update the app and try again.")):
         if k in m: return L(vi, en)
     return m
+
+
+def vps_pow(pc, now=None):
+    """22/11 · SQL v48: lệnh khởi động lại / tắt máy gần nhất (khách hoặc shop bấm) → (mã, chữ, màu, câu giải thích) hoặc None (như web):
+       boot = đang khởi động lại (3 phút đầu luôn hiện; máy chưa báo về thì hiện tiếp tới 15 phút) · down = đang tắt · offd = đã tắt hẳn.
+       Lệnh chưa tới máy (queued) chỉ tính khi máy đang bật."""
+    p = (pc or {}).get("pow") or {}
+    if not isinstance(p, dict) or p.get("cmd") not in ("reboot", "shutdown"): return None
+    at = parse_iso(p.get("at")) if p.get("at") else None
+    if not at: return None
+    age = ((now or now_utc()) - at).total_seconds(); online = bool(pc.get("online"))
+    got = p.get("state") in ("sent", "done"); shop = p.get("by") != "customer"
+    if p["cmd"] == "reboot":
+        boot = L("🔁 Đang khởi động lại…", "🔁 Restarting…")
+        if not got:
+            return ("boot", boot, WARN, L("Đang gửi lệnh tới máy — máy nhận là khởi động lại ngay.", "Sending the command — the machine restarts as soon as it gets it.")) if online and age < 600 else None
+        if age < 180 or (not online and age < 900):
+            return "boot", boot, WARN, ((L("Shop vừa khởi động lại máy. ", "The shop restarted the machine. ") if shop else "")
+                                        + L("Thường 1–3 phút là dùng lại được. Quá 10 phút chưa lên thì nhắn shop kèm tên máy.",
+                                            "Usually back in 1–3 minutes. Not back after 10 minutes? Contact the shop with the machine name."))
+        return None
+    down = L("⏻ Đang tắt máy…", "⏻ Shutting down…")
+    if not got:
+        return ("down", down, WARN, L("Đang gửi lệnh tới máy — máy nhận là tắt ngay.", "Sending the command — the machine turns off as soon as it gets it.")) if online and age < 600 else None
+    if online: return ("down", down, WARN, L("Máy tắt sau khoảng 10 giây.", "It turns off in about 10 seconds.")) if age < 180 else None
+    t = at.astimezone().strftime("%H:%M")
+    return "offd", L("⏻ Đã tắt máy", "⏻ Shut down"), WARN, (
+        L(f"Shop đã tắt máy lúc {t}. Cần dùng thì nhắn shop bật lại.", f"The shop shut it down at {t}. Contact the shop to turn it back on.") if shop
+        else L(f"Bạn đã tắt máy lúc {t} — máy tắt hẳn. Cần dùng lại thì nhắn shop bật nguồn (shop đã được báo).",
+               f"You shut it down at {t} — it stays off. Ask the shop to turn it back on (they have been notified)."))
 
 
 def vps_state(x):
@@ -4035,6 +4068,8 @@ def vps_state(x):
                 f"Renew before {t} to keep the machine and data — it unlocks 1–2 min after renewal. After that it is reclaimed and wiped."))
     if lf is not None and lf <= 0: return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, (L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "Renew and the shop turns it back on.")
                                                                                    if pc.get("off") else L("Gia hạn để dùng tiếp.", "Renew to keep using it."))
+    pw = vps_pow(pc)                                                                       # 22/11 · v48: đang khởi động lại / đang tắt / đã tắt
+    if pw: return pw
     if not pc.get("online"): return "off", L("○ Máy đang tắt / mất mạng", "○ Offline"), WARN, L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts.")
     if (pc.get("last_job") or {}).get("state") == "failed":
         return "warn", L("⚠ Cài lại chưa xong", "⚠ Reinstall failed"), WARN, L("Lần cài lại vừa rồi bị lỗi — bấm 📋 Báo admin để shop xử lý.", "The last reinstall failed — click 📋 Report to the admin.")
@@ -4079,6 +4114,7 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
     os_list = [o for o in ((data or {}).get("os") or []) if isinstance(o, dict) and o.get("id")]
     mt = pc_maint_msg(prof if prof is not None else getattr(app, "prof", None))      # 21/11f · bảo trì riêng VPS GPU → khoá điều khiển + cài lại
     can_cancel = bool((data or {}).get("cancel"))                                    # SQL v45: khách tự huỷ máy
+    can_power = bool((data or {}).get("power"))                                      # 22/11 · SQL v48: khách tự khởi động lại / tắt máy
     try: docked = app.docked_pids()
     except Exception: docked = set()
     live = vps_live(data)
@@ -4091,7 +4127,7 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
     if mt and mt_bar: vps_maint_bar(app, slot, mt).pack(fill="x", padx=8, pady=(2, 4))      # trang VPS GPU đã có dòng bảo trì ở đầu trang → không lặp
     for x in items:
         pc = x.get("pc") or {}; code, st, col, why = vps_state(x); pid = str(pc.get("id") or "")
-        c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off", "warn") else LINE, highlightthickness=1)
+        c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off", "warn", "boot", "down", "offd") else LINE, highlightthickness=1)
         c.pack(fill="x", padx=8, pady=4)
         row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(12, 2))
         tk.Label(row, text=str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else ""),
@@ -4099,7 +4135,7 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
         tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g] + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else [])
         tk.Label(c, text=" · ".join(q for q in spec if q), font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
-        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code in ("exp", "warn") else WARN if code in ("off", "inst", "wait") else DIM, bg=CARD, anchor="w",
+        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code in ("exp", "warn") else WARN if code in ("off", "inst", "wait", "boot", "down", "offd") else DIM, bg=CARD, anchor="w",
                                  wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
         if code == "warn":                                          # 21/11f · cài lại lỗi → lý do + 📋 Báo admin
             jm = str((pc.get("last_job") or {}).get("msg") or "").strip()
@@ -4120,11 +4156,15 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
         b = app.btn(bar, L("▶  Đang mở", "▶  Open now") if on else "▶  " + L("Điều khiển", "Control"), lambda i=pid: app.open_pc(i), padx=18, pady=8)
         b.pack(side="left")
         if on: b.config(bg="#2fd9a6", fg="#03261b")
-        if code not in ("run", "warn") or mt: b.config(state="disabled", bg=LINE)
+        if code not in ("run", "warn", "boot") or mt: b.config(state="disabled", bg=LINE)     # đang khởi động lại: vẫn mở được (máy lên là vào)
         mo = app.btn(bar, L("Khác ▾", "More ▾"), None, "ghost", padx=12, pady=8)
         mo.config(command=lambda q=x, w=mo: vps_more(app, q, w, os_list, mx, mt, can_cancel)); mo.pack(side="right")
         if x.get("rental") is not None:
             app.btn(bar, L("⏱ Gia hạn", "⏱ Renew"), lambda q=x: VpsRenewDlg(app, q), "ghost", pady=8).pack(side="right", padx=(0, 6))
+        if can_power:                                               # 22/11 · ⏻ Nguồn: 🔁 khởi động lại · ⏻ tắt hẳn (máy phải đang bật)
+            pb = app.btn(bar, L("⏻ Nguồn", "⏻ Power"), lambda q=x: VpsPowerDlg(app, q), "ghost", pady=8)
+            pb.pack(side="right", padx=(0, 6))
+            if code not in ("run", "warn") or mt: pb.config(state="disabled")
 
 
 def vps_more(app, x, widget, os_list, mx, mt, can_cancel):
@@ -4251,9 +4291,13 @@ class VpsReportDlg(Dlg):
 def vps_sig(mine):
     """Dấu vân tay trạng thái các VPS (đổi thì vẽ lại thẻ)."""
     it = [x for x in ((mine or {}).get("items") or []) if isinstance(x, dict)]
+    def code(x):                                                   # 22/11 · trạng thái đổi theo giờ (VD hết "Đang khởi động lại…" sau 3 phút) → vẽ lại
+        try: return vps_state(x)[0]
+        except Exception: return ""
     return json.dumps([[x.get("state"), x.get("rental"), x.get("until"), (x.get("pc") or {}).get("id"), (x.get("pc") or {}).get("online"),
                         bool((x.get("pc") or {}).get("job")), ((x.get("pc") or {}).get("job") or {}).get("state"),
-                        ((x.get("pc") or {}).get("last_job") or {}).get("state"), x.get("left")] for x in it], default=str)
+                        ((x.get("pc") or {}).get("last_job") or {}).get("state"), x.get("left"), (x.get("pc") or {}).get("pow"), code(x)] for x in it],
+                      default=str, sort_keys=True)
 
 
 def vps_texts(prod):
@@ -4607,6 +4651,76 @@ class VpsCancelDlg(Dlg):
             mb.showinfo("CloudBlue", L("Đã huỷ máy — máy đang được xoá sạch và trả về shop.", "Machine cancelled — it is being wiped and returned to the shop."), parent=self.app.root)
         def fail(m): self.err.config(text=vps_err(m)); self._arm()
         self.bg(lambda: self.app.auth.rpc("pc_my_cancel", {"p_pc": pid}), done, fail)
+
+
+class VpsPowerDlg(Dlg):
+    """22/11 · ⏻ Nguồn máy (SQL v48 pc_my_power) — như web: 🔁 Khởi động lại (máy tự bật lại sau 1–3 phút)
+       · ⏻ Tắt máy (tắt HẲN — shop bật nguồn lại giúp, shop được báo ngay; nút Tắt chỉ bấm được sau khi tick "Tôi hiểu"). Máy phải đang bật."""
+    def __init__(self, app, item):
+        pc = item.get("pc") or {}
+        super().__init__(app, L("Nguồn máy", "Power") + " · " + str(pc.get("name") or ""), 540, 560)
+        self.it, self.pc = item, pc; tk = app.tk
+
+        def box(col, mix, title, text):
+            bg = _mix(col, CARD, mix)
+            f = tk.Frame(self.body, bg=bg, highlightthickness=1, highlightbackground=_mix(col, CARD, .5), radius=14)
+            tk.Label(f, text=title, font=("Segoe UI", 12, "bold"), fg=TXT, bg=bg, anchor="w").pack(fill="x", padx=14, pady=(12, 0))
+            fitwrap(tk.Label(f, text=text, font=app.f_t, fg=TXT, bg=bg, anchor="w", justify="left", wraplength=470)).pack(fill="x", padx=14, pady=(4, 0))
+            return f, bg
+
+        rb, _ = box(SKY, .10, "🔁 " + L("Khởi động lại", "Restart"),
+                    L("Máy tắt rồi TỰ BẬT LẠI — thường 1–3 phút là dùng tiếp được. Chương trình đang mở bị đóng, dữ liệu đã lưu giữ nguyên.",
+                      "The machine turns off and BACK ON by itself — usually ready again in 1–3 minutes. Open programs are closed; saved data is kept."))
+        rb.pack(fill="x", padx=18, pady=(18, 0))
+        self.go_rb = app.btn(rb, "🔁 " + L("Khởi động lại ngay", "Restart now"), lambda: self.run("reboot"), padx=16, pady=8)
+        self.go_rb.pack(anchor="w", padx=14, pady=(10, 14))
+        sd, sbg = box(BAD, .12, "⏻ " + L("Tắt máy", "Shut down"),
+                      L("Máy TẮT HẲN, không tự bật lại. Muốn dùng lại phải nhắn shop bật nguồn giúp — thời gian thuê vẫn tính.",
+                        "The machine STAYS OFF — it does not turn back on by itself. To use it again, ask the shop to power it on. Rental time keeps counting."))
+        sd.pack(fill="x", padx=18, pady=(12, 0))
+        self.ok = tk.BooleanVar(value=False)
+        tk.Checkbutton(sd, text="  " + L("Tôi hiểu: máy tắt hẳn, cần nhắn shop bật lại", "I understand: it stays off until the shop powers it on"), variable=self.ok,
+                       command=self._arm, font=("Segoe UI", 10, "bold"), fg=TXT, bg=sbg, activebackground=sbg, activeforeground=TXT, selectcolor=CARD,
+                       anchor="w").pack(fill="x", padx=14, pady=(10, 0))
+        self.go_sd = app.btn(sd, "⏻ " + L("Tắt máy", "Shut down"), lambda: self.run("shutdown"), tint=BAD, padx=16, pady=8)
+        self.go_sd.pack(anchor="w", padx=14, pady=(8, 14))
+        ft = self.foot
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(10, 0))
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Đóng", "Close"), self.close, "soft").pack(side="left")
+        self._arm()
+
+    def _arm(self):
+        try: self.go_sd.config(state="normal" if self.ok.get() else "disabled")
+        except Exception: pass
+
+    def run(self, cmd):
+        if cmd not in ("reboot", "shutdown") or (cmd == "shutdown" and not self.ok.get()): return
+        pid = str(self.pc.get("id") or "")
+        if not pid: return
+        for b in (self.go_rb, self.go_sd):
+            try: b.config(state="disabled")
+            except Exception: pass
+        def done(r):
+            r = r if isinstance(r, dict) else {}
+            if cmd == "shutdown":
+                try:                                               # máy đang mở ở ô bên phải → đóng ô đó (máy tắt hẳn)
+                    d = getattr(self.app, "dockp", None)
+                    if d:
+                        for q in [q for q in d.live() if q.pid == pid]: d.close_one(q) if hasattr(d, "close_one") else None
+                except Exception: log("power dock:", traceback.format_exc())
+            self.close(); self.app.refresh()
+            import tkinter.messagebox as mb
+            mb.showinfo("CloudBlue", L("Máy đang có lệnh chờ nhận — đợi chút là chạy.", "A command is already on its way — it runs in a moment.") if r.get("dup")
+                        else L("Đã gửi lệnh khởi động lại — máy lên lại sau khoảng 1–3 phút.", "Restart sent — the machine is back in about 1–3 minutes.") if cmd == "reboot"
+                        else L("Đã gửi lệnh tắt máy — máy tắt sau khoảng 10 giây. Cần dùng lại thì nhắn shop bật nguồn.",
+                               "Shutdown sent — it turns off in about 10 seconds. Ask the shop to power it back on."), parent=self.app.root)
+        def fail(m):
+            self.err.config(text=vps_err(m))
+            try: self.go_rb.config(state="normal")
+            except Exception: pass
+            self._arm()
+        self.bg(lambda: self.app.auth.rpc("pc_my_power", {"p_pc": pid, "p_cmd": cmd}), done, fail)
 
 
 class VpsRenewDlg(Dlg):
@@ -8523,6 +8637,7 @@ class Launcher:
         items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict) and not vps_hidden(x, now_)]
         try:
             sig = json.dumps([vps_sig({"items": items}), sorted(self.docked_pids()), pc_maint_msg(getattr(self, "prof", None)), bool((data or {}).get("cancel")),
+                              bool((data or {}).get("power")),
                               [fmt_left(x["until"]) if x.get("until") else "" for x in items], [x.get("hide_at") for x in items]], sort_keys=True, default=str)
         except Exception: sig = None
         if sig is not None and sig == getattr(self, "_vps_sig", None): return
