@@ -1,0 +1,134 @@
+# KIỂM phần CachyOS của bộ cài máy PC (winpc/linux) — KHÔNG phát hành gì, không đụng máy thật nào:
+#   1. grub:  dựng grubx64.efi (GRUB tự chứa, cấu hình nhúng = winpc/linux/grub-embed.cfg) → đẩy vào nhánh linux-bin (chỉ chứa file này)
+#   2. boot:  máy ảo QEMU (UEFI / OVMF) + ổ ảo y như máy thật sau khi WinPE giao việc: phân vùng EFI có grubx64.efi,
+#             phân vùng NTFS "CBRECOVERY" có cb/linux/cachyos.iso (ISO CachyOS THẬT) + grub.cfg + cb-install.sh + cb/job.json {"test": true}
+#             → GRUB mở thẳng file ISO → máy sống CachyOS chạy cb-install.sh → ghi cb/linux-test.ok rồi tắt máy → kiểm file đó.
+name: Check winpc Linux (CachyOS)
+
+on:
+  push:
+    branches: [main, "linux-*"]      # nhánh linux-…: thử trước khi gộp
+    paths:
+      - "winpc/linux/**"
+      - ".github/workflows/linux-check.yml"
+  workflow_dispatch:
+    inputs:
+      iso_url:
+        description: "ISO CachyOS dùng để thử"
+        required: false
+        default: "https://cdn77.cachyos.org/ISO/desktop/260809/cachyos-desktop-linux-260809.iso"
+
+permissions:
+  contents: write          # chỉ để đẩy grubx64.efi vào nhánh linux-bin
+
+concurrency:
+  group: linux-check
+  cancel-in-progress: true
+
+jobs:
+  grub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dựng grubx64.efi
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq grub-efi-amd64-bin grub-common > /dev/null
+          MODS="part_gpt part_msdos fat ntfs ntfscomp exfat iso9660 udf loopback linux normal configfile search search_fs_file search_fs_uuid search_label test echo probe sleep reboot halt efi_gop efi_uga all_video gfxterm font regexp cat ls minicmd gzio xzio"
+          grub-mkstandalone -O x86_64-efi -o grubx64.efi --locales="" --fonts="" --themes="" --modules="$MODS" --install-modules="$MODS" \
+            "boot/grub/grub.cfg=winpc/linux/grub-embed.cfg"
+          ls -l grubx64.efi; md5sum grubx64.efi | tee grubx64.efi.md5
+          grub-mkstandalone --version | tee grub-version.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: grubx64
+          path: |
+            grubx64.efi
+            grubx64.efi.md5
+            grub-version.txt
+      - name: Đẩy vào nhánh linux-bin
+        run: |
+          mkdir /tmp/lb && cp grubx64.efi grubx64.efi.md5 grub-version.txt /tmp/lb/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan linux-bin-tmp
+          git rm -r -q --cached .
+          rm -rf ./* .github 2>/dev/null || true
+          cp /tmp/lb/* .
+          mkdir -p blueroblox-site && echo '{"git":{"deploymentEnabled":false}}' > blueroblox-site/vercel.json
+          git add grubx64.efi grubx64.efi.md5 grub-version.txt blueroblox-site/vercel.json
+          git commit -q -m "grubx64.efi ($GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/linux-bin
+
+  boot:
+    needs: grub
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: grubx64
+          path: gb
+      - name: Bật KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+      - name: Cài QEMU + OVMF + công cụ NTFS
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf ntfs-3g dosfstools gdisk > /dev/null
+          ls /usr/share/OVMF/
+      - name: Tải ISO CachyOS
+        env:
+          ISO_URL: ${{ github.event.inputs.iso_url || 'https://cdn77.cachyos.org/ISO/desktop/260809/cachyos-desktop-linux-260809.iso' }}
+        run: |
+          curl -fL --retry 5 --retry-delay 10 -o cachyos.iso "$ISO_URL"
+          ls -l cachyos.iso; sha256sum cachyos.iso
+      - name: Dựng ổ ảo (EFI + CBRECOVERY NTFS) như sau khi WinPE giao việc
+        run: |
+          truncate -s 10G disk.img
+          sgdisk -o -n1:1M:+100M -t1:ef00 -c1:EFI -n2:0:0 -t2:0700 -c2:CBRECOVERY disk.img
+          LOOP=$(sudo losetup -f --show -P disk.img); echo "LOOP=$LOOP" >> $GITHUB_ENV
+          sudo mkfs.vfat -F32 -n EFI ${LOOP}p1 > /dev/null
+          sudo mkntfs -f -q -L CBRECOVERY ${LOOP}p2
+          sudo mkdir -p /mnt/esp /mnt/rec
+          sudo mount ${LOOP}p1 /mnt/esp
+          sudo mkdir -p /mnt/esp/EFI/BOOT && sudo cp gb/grubx64.efi /mnt/esp/EFI/BOOT/BOOTX64.EFI
+          sudo umount /mnt/esp
+          sudo mount -t ntfs-3g ${LOOP}p2 /mnt/rec
+          sudo mkdir -p /mnt/rec/cb/linux /mnt/rec/cb/logs
+          sudo cp cachyos.iso /mnt/rec/cb/linux/cachyos.iso
+          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh /mnt/rec/cb/linux/
+          echo '{"id": "ci", "os": "cachyos", "test": true}' | sudo tee /mnt/rec/cb/job.json
+          printf 'set cbextra="console=ttyS0,115200 loglevel=4"\n' | sudo tee /mnt/rec/cb/linux/job.cfg
+          sudo umount /mnt/rec
+          sudo losetup -d $LOOP
+      - name: Khởi động máy ảo UEFI (tối đa 20 phút)
+        run: |
+          cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
+          ACC="-machine q35"
+          if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
+          set +e
+          timeout 1200 qemu-system-x86_64 $ACC -m 4096 -smp 2 \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
+            -drive if=pflash,format=raw,unit=1,file=vars.fd \
+            -drive file=disk.img,format=raw,if=none,id=d0 -device virtio-blk-pci,drive=d0 \
+            -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot
+          echo "qemu thoat ma $?"
+          tail -60 serial.log || true
+      - name: Kiểm kết quả trên phân vùng CBRECOVERY
+        run: |
+          LOOP=$(sudo losetup -f --show -P disk.img)
+          sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
+          echo "== cb/linux-test.ok =="; sudo cat /mnt/rec/cb/linux-test.ok || true
+          OK=0; sudo grep -q CB_TEST_OK /mnt/rec/cb/linux-test.ok 2>/dev/null && OK=1
+          sudo umount /mnt/rec; sudo losetup -d $LOOP
+          if [ "$OK" = 1 ]; then echo "linux check: DAT (GRUB -> ISO CachyOS tren NTFS -> cb-install.sh)" >> $GITHUB_STEP_SUMMARY; else echo "linux check: CHUA DAT" >> $GITHUB_STEP_SUMMARY; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: serial-log
+          path: serial.log
