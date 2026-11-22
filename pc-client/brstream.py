@@ -22,6 +22,67 @@ class Fatal(Exception):
 
 
 # ------------------------------------------------------------------ đường truyền
+class Tls:
+    """22/11 · TLS qua MemoryBIO — thay ssl.SSLSocket dùng chung nhiều luồng.
+       App có 1 luồng ĐỌC (hình) + nhiều luồng GỬI (chuột / phím / ACK / PING) trên CÙNG 1 kết nối. ssl.SSLSocket (OpenSSL) KHÔNG chịu được
+       đọc + ghi cùng lúc từ 2 luồng: trạng thái "đang chờ đọc" của SSL bị luồng ghi đè → luồng đọc báo lỗi giả (BlockingIOError / WinError 10035)
+       hoặc ĐỨT GIẢ ("EOF occurred in violation of protocol" → recv trả rỗng = "Mất kết nối") dù mạng vẫn tốt. Máy PC gửi chuột liên tục
+       (~120 gói/giây khi rê) nên đứt "cứ được tí lại". Ở đây: mọi thao tác trên đối tượng SSL nằm trong 1 khoá (chỉ mã hoá / giải mã trong RAM,
+       rất nhanh); đọc / ghi socket thật nằm NGOÀI khoá; khoá ghi riêng giữ đúng thứ tự bản ghi TLS. Socket TCP thường thì đọc + ghi 2 luồng an toàn."""
+
+    def __init__(self, raw, ctx, sni):
+        self.raw = raw; self.inb = ssl.MemoryBIO(); self.outb = ssl.MemoryBIO()
+        self.obj = ctx.wrap_bio(self.inb, self.outb, server_side=False, server_hostname=sni)
+        self.sl = threading.Lock()                         # đối tượng SSL + 2 BIO
+        self.wl = threading.Lock()                         # gửi ra socket theo đúng thứ tự
+        while True:                                        # bắt tay (timeout của socket thật áp dụng)
+            try:
+                with self.sl: self.obj.do_handshake()
+                self._flush(); break
+            except ssl.SSLWantReadError:
+                self._flush()
+                x = raw.recv(65536)
+                if not x: raise ssl.SSLError("máy chủ đóng kết nối khi bắt tay TLS")
+                with self.sl: self.inb.write(x)
+
+    def _flush(self):
+        with self.wl:
+            with self.sl: out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def sendall(self, data):
+        mv = memoryview(data)
+        with self.wl:
+            with self.sl:
+                while mv:
+                    k = self.obj.write(mv); mv = mv[k:]
+                out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def recv(self, n):
+        """Như socket.recv: dữ liệu đã giải mã (≤ n byte) · b"" = máy chủ đóng thật · socket.timeout / OSError như socket thường."""
+        while True:
+            with self.sl:
+                try: d = self.obj.read(n)
+                except ssl.SSLWantReadError: d = None
+                except (ssl.SSLZeroReturnError, ssl.SSLEOFError): d = b""
+                pend = self.outb.pending
+            if pend: self._flush()                         # TLS 1.3: phản hồi sau bắt tay (hiếm)
+            if d is not None: return d
+            x = self.raw.recv(262144)
+            with self.sl:
+                if x: self.inb.write(x)
+                else: self.inb.write_eof()
+
+    def getpeercert(self, binary_form=False): return self.obj.getpeercert(binary_form)
+
+    def settimeout(self, t): self.raw.settimeout(t)
+
+    def close(self):
+        try: self.raw.close()
+        except Exception: pass
+
+
 class DirectConn:
     kind = "direct"
 
@@ -33,8 +94,11 @@ class DirectConn:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
         ctx.minimum_version = ssl.TLSVersion.TLSv1_2
         raw.settimeout(6)
-        s = ctx.wrap_socket(raw, server_hostname="blueroblox")
-        der = s.getpeercert(binary_form=True) or b""
+        try:
+            s = Tls(raw, ctx, "blueroblox")
+            der = s.getpeercert(binary_form=True) or b""
+        except BaseException:
+            raw.close(); raise
         if not cert_hex or hashlib.sha256(der).hexdigest().lower() != cert_hex.lower():
             s.close(); raise ssl.SSLError("chứng chỉ máy chủ không khớp")
         s.settimeout(None)
@@ -72,7 +136,9 @@ class WSConn:
         host = u.hostname; port = u.port or (443 if u.scheme == "wss" else 80)
         raw = socket.create_connection((host, port), timeout=timeout)
         raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        s = ssl.create_default_context().wrap_socket(raw, server_hostname=host) if u.scheme == "wss" else raw
+        try: s = Tls(raw, ssl.create_default_context(), host) if u.scheme == "wss" else raw      # 22/11: TLS an toàn nhiều luồng (xem Tls)
+        except BaseException:
+            raw.close(); raise
         key = base64.b64encode(os.urandom(16)).decode()
         path = (u.path or "/") + ("?" + u.query if u.query else "")
         s.sendall((f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
@@ -233,6 +299,7 @@ class StreamClient:
             finally:
                 if self.conn: self.conn.close()
                 self.conn = None
+                self.hello_t = 0.0      # 22/11: hết phiên → hết "đang chờ máy chủ cho vào" (trước đây giữ giờ của phiên CŨ → app tưởng máy đang được bật lên)
             if self.stop_flag: break
             time.sleep(backoff[min(attempt, len(backoff) - 1)] * (0.8 + random.random() * 0.4)); attempt += 1
         self._emit("state", ("closed", "Đã đóng"))
@@ -261,9 +328,11 @@ class StreamClient:
         return got_video
 
     def _pinger(self, c):
+        """PING mỗi 2 giây — máy chủ thấy app im 15 giây là đóng phiên. 22/11: gửi lỗi 1 lần KHÔNG bỏ cuộc (trước đây luồng PING chết luôn →
+           hình đứng vài giây là máy chủ tưởng app đã tắt, cắt kết nối). Kết nối hỏng thật thì luồng đọc tự phát hiện và nối lại."""
         while not self.stop_flag and self.conn is c:
             try: c.send(C_PING, struct.pack(">Q", int(time.time() * 1000)))
-            except Exception: return
+            except Exception: pass
             time.sleep(2)
 
     def _ack(self):
