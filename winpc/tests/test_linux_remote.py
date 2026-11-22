@@ -201,7 +201,7 @@ class FakeKWin:
        sau CHỈ khi allow, như KWin giấu giao diện hạn chế với chương trình không có tệp .desktop), stream_output → created(node) | failed."""
     def __init__(self, path, allow=True, fail=None, outputs=None, fi_ver=6):
         self.path, self.allow, self.fail, self.fi_ver = path, allow, fail, fi_ver
-        self.outputs = outputs or [{"name": "HDMI-A-1", "x": 0, "y": 0, "w": 1920, "h": 1080, "scale": 2, "lx": 0, "ly": 0, "lw": 1280, "lh": 720}]
+        self.outputs = outputs if outputs is not None else [{"name": "HDMI-A-1", "x": 0, "y": 0, "w": 1920, "h": 1080, "scale": 2, "lx": 0, "ly": 0, "lw": 1280, "lh": 720}]
         self.ev = []; self.conns = 0
         self.srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); self.srv.bind(path); self.srv.listen(8)
         threading.Thread(target=self._accept, daemon=True).start()
@@ -219,7 +219,7 @@ class FakeKWin:
 
     def _serve(self, c):
         ids = {1: "wl_display"}; out_of = {}; buf = b""
-        names = {}
+        names = {}; rid = None
         n = 0
         for o in self.outputs: n += 1; names[n] = ("wl_output", 4, o)
         n += 1; names[n] = ("zxdg_output_manager_v1", 3, None)
@@ -261,6 +261,16 @@ class FakeKWin:
                         self.ev.append(("stream_output", out_of[oid]["name"], ptr))
                         if self.fail: c.sendall(self._msg(sid, 2, S(self.fail)))
                         else: c.sendall(self._msg(sid, 1, struct.pack("<I", 77)))
+                    elif it == "zkde_screencast_unstable_v1" and op == 3:            # 22.11h · stream_virtual_output(stream, name, w, h, scale, pointer)
+                        sid = struct.unpack_from("<I", p, 0)[0]; nm_, pos = K._wl_rstr(p, 4)
+                        vw, vh, vsc, ptr = struct.unpack_from("<iiiI", p, pos); ids[sid] = "stream"
+                        self.ev.append(("stream_virtual_output", nm_, vw, vh, vsc / 256.0, ptr))
+                        if self.fail: c.sendall(self._msg(sid, 2, S(self.fail))); continue
+                        c.sendall(self._msg(sid, 1, struct.pack("<I", 88)))                # created(node) TRƯỚC, màn hình mới báo SAU (cbcap phải chờ)
+                        x0 = sum(o["lw"] for o in self.outputs)
+                        vo = {"name": "Virtual-" + nm_, "x": x0, "y": 0, "w": vw, "h": vh, "scale": 1, "lx": x0, "ly": 0, "lw": vw, "lh": vh}
+                        n += 1; names[n] = ("wl_output", 4, vo)
+                        c.sendall(self._msg(rid, 0, struct.pack("<I", n) + S("wl_output") + struct.pack("<I", 4)))
                     elif it == "stream" and op == 0: self.ev.append(("stream_close",))
                     elif it == "org_kde_kwin_fake_input":
                         if op == 0: self.ev.append(("authenticate", K._wl_rstr(p, 0)[0]))
@@ -297,6 +307,27 @@ ck("chuột / phím qua fake_input: 0..65535 → toạ độ LOGIC (640, 180) ·
    wait(lambda: kw1.ev[:len(want)] == want, 3), kw1.ev[:len(want)])
 kc.close()
 ck("đóng: đóng luồng màn hình + bỏ fake_input", wait(lambda: ("stream_close",) in kw1.ev and ("fi_destroy",) in kw1.ev, 3), kw1.ev[-3:])
+kw5 = FakeKWin(os.path.join(wdir, "kwin-khong-man-hinh"), outputs=[]); os.environ["WAYLAND_DISPLAY"] = kw5.path
+kc5 = K.KWinCast(); node5, size5 = kc5.start(pointer=2)
+ck("22.11h · máy KHÔNG cắm màn hình (KWin không báo wl_output nào) → xin KWin tạo MÀN HÌNH ẢO 1920x1080 (stream_virtual_output, tỉ lệ 1) rồi quay nó",
+   (node5, size5, kc5.virtual, kc5.geo) == (88, (1920, 1080), True, (0, 0, 1920, 1080)) and ("stream_virtual_output", "CloudBlue", 1920, 1080, 1.0, 2) in kw5.ev
+   and kc5.out == "Virtual-CloudBlue", (node5, size5, kc5.virtual, kc5.geo, kc5.out, kw5.ev))
+del kw5.ev[:]
+kc5.motion(960, 540)
+ck("… chuột theo vùng logic của màn hình ảo (KWin báo sau khi tạo)", wait(lambda: ("abs", 960.0, 540.0) in kw5.ev, 3), kw5.ev)
+kc5.close(); kw5.close()
+os.environ["CBCAP_VIRTUAL"] = "1"
+kw6 = FakeKWin(os.path.join(wdir, "kwin-ep-ao")); os.environ["WAYLAND_DISPLAY"] = kw6.path
+kc6 = K.KWinCast(); kc6.start(pointer=1)
+os.environ.pop("CBCAP_VIRTUAL", None)
+ck("CBCAP_VIRTUAL=1 (chạy thử CI): có màn hình thật vẫn tạo màn hình ảo — nằm CẠNH màn hình thật (vùng logic x = 1280)",
+   kc6.virtual and kc6.geo == (1280, 0, 1920, 1080) and kc6.outs == 1, (kc6.geo, kc6.outs, kw6.ev))
+kc6.close(); kw6.close()
+kw7 = FakeKWin(os.path.join(wdir, "kwin-ao-loi"), outputs=[], fail="no virtual outputs"); os.environ["WAYLAND_DISPLAY"] = kw7.path
+try: K.KWinCast().start(); e7 = ""
+except K.WaylandError as e: e7 = str(e)
+ck("KWin không tạo được màn hình ảo → báo rõ lý do", e7 == "KWin khong tao duoc man hinh ao: no virtual outputs", e7)
+kw7.close()
 kw2 = FakeKWin(os.path.join(wdir, "kwin-chua-cho"), allow=False); os.environ["WAYLAND_DISPLAY"] = kw2.path
 try: K.KWinCast().start(); e2 = "mo duoc"
 except K.WaylandError as e: e2 = str(e)
@@ -385,6 +416,54 @@ try: _io.awake(True); _m2 = ""
 except CR.ViewerError as e: _m2 = e.viewer_msg
 ck("KWin chưa có quyền mới (máy chưa khởi động lại sau khi lên 22.11g) → người xem được bảo KHỞI ĐỘNG LẠI 1 lần; đã có quyền mà vẫn lỗi → báo lý do",
    "KHỞI ĐỘNG LẠI 1 lần" in _m1 and "Nguồn › Khởi động lại" in _m1 and _m2.startswith("Máy Linux chưa mở được màn hình để quay: KWin:"), (_m1, _m2))
+
+
+class _H2:
+    """22.11h · ghi lại lệnh "open" root gửi cho cbcap (thời gian chờ + có cho đi cổng XDG không)."""
+    def __init__(self, ok): self.ok, self.calls = ok, []
+    def ensure(self): return True
+    def request(self, op, timeout=0, **kw):
+        self.calls.append((op, timeout, kw))
+        if not self.ok: raise RuntimeError("KWin: KWin chua cho chuong trinh nay quay man hinh / bam phim (thieu zkde_screencast, fake_input)")
+        return {"ok": True, "size": [1920, 1080], "backend": "kwin"}
+    def close(self): pass
+
+
+_io2 = CR.LinuxIO("nobody", lambda m: None); _h2 = _H2(False); _io2.helper = _h2; _io2.kwin_env = lambda: False
+_t0 = time.time()
+try: _io2.awake(True); _m3 = ""
+except CR.ViewerError as e: _m3 = e.viewer_msg
+ck("22.11h · KWin chưa có quyền mới → chỉ thử KWin (portal=False, chờ ≤ 8 giây, không hiện hộp hỏi cổng XDG) rồi báo KHỞI ĐỘNG LẠI ngay",
+   _h2.calls == [("open", CR.KWIN_ONLY_WAIT, {"portal": False})] and CR.KWIN_ONLY_WAIT <= 8 and "KHỞI ĐỘNG LẠI 1 lần" in _m3 and time.time() - _t0 < 1, (_h2.calls, _m3))
+_io3 = CR.LinuxIO("nobody", lambda m: None); _h3 = _H2(True); _io3.helper = _h3; _io3.kwin_env = lambda: False
+_io3.awake(True)
+_io4 = CR.LinuxIO("nobody", lambda m: None); _h4 = _H2(True); _io4.helper = _h4; _io4.kwin_env = lambda: True
+_io4.awake(True)
+_io5 = CR.LinuxIO("nobody", lambda m: None); _h5 = _H2(True); _io5.helper = _h5; _io5.kwin_env = lambda: None
+_io5.awake(True)
+ck("… KWin vẫn cho (bản KWin nhận tệp .desktop) → chạy tiếp bằng KWin; KWin đã có quyền / chưa rõ → mở đủ 2 đường như cũ (chờ 20 giây)",
+   _io3.backend == "kwin" and _h4.calls == [("open", CR.OPEN_WAIT, {})] and _h5.calls == [("open", CR.OPEN_WAIT, {})], (_h4.calls, _h5.calls))
+_kc = K.Cap(lambda m: None, "unix:path=/khong-co")
+_pt = []
+_old_kc, _old_pt = K.KWinCast, K.Portal
+
+
+class _KFail:
+    def __init__(self, log=None): pass
+    def start(self, pointer=1, timeout=0): raise RuntimeError("KWin chua cho chuong trinh nay quay man hinh (thieu zkde_screencast)")
+    def close(self): pass
+
+
+K.KWinCast = _KFail
+K.Portal = lambda *a, **k: _pt.append(1)
+os.environ.pop("CBCAP_NO_KWIN", None); os.environ.pop("CBCAP_NO_PORTAL", None)
+try:
+    try: _kc.open(portal=False); _ke = ""
+    except RuntimeError as e: _ke = str(e)
+finally:
+    K.KWinCast, K.Portal = _old_kc, _old_pt
+ck("cbcap open(portal=False): KWin không cho → báo lỗi KWin ngay, KHÔNG mở cổng XDG (không hộp hỏi trên màn hình máy)",
+   _ke.startswith("KWin: KWin chua cho") and not _pt, (_ke, _pt))
 _eb = os.path.join(tmp, "base"); os.makedirs(os.path.join(_eb, "logs"))
 CR.note_error("KWin: thieu zkde_screencast; cong XDG: StartTimeout", base=_eb)
 _ln = open(os.path.join(_eb, "logs", "remote.err")).read()

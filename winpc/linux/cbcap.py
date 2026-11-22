@@ -16,11 +16,12 @@
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "22.11g"
+CAP_VER = "22.11h"
 APP_ID = "vn.cloudblue.remote"
 OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
 PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
 KWIN_WAIT_S = 3.0                                                 # KWin: chờ mỗi bước (nối / chào / tạo luồng màn hình)
+VOUT_W, VOUT_H, VOUT_NAME = 1920, 1080, "CloudBlue"               # 22.11h · máy KHÔNG cắm màn hình → KWin tạo màn hình ảo cỡ này để quay (mất khi hết người xem)
 PORTAL, PORTAL_PATH = "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"
 RD, SC = "org.freedesktop.portal.RemoteDesktop", "org.freedesktop.portal.ScreenCast"
 STORE = ("org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore", "org.freedesktop.impl.portal.PermissionStore")
@@ -696,7 +697,7 @@ class KWinCast:
     def __init__(self, log=None):
         self.log = log or (lambda m: None)
         self.wl = None; self.node = None; self.size = (0, 0); self.geo = (0, 0, 1, 1); self.fi = None; self.fi_ver = 0
-        self.sc = None; self.stream = None; self.out = ""; self.outs = 0; self.session = None
+        self.sc = None; self.stream = None; self.out = ""; self.outs = 0; self.session = None; self.virtual = False; self.xm = None
 
     @staticmethod
     def _on_output(o):
@@ -732,42 +733,87 @@ class KWinCast:
             miss = ", ".join(n for n, x in (("zkde_screencast", sc), ("fake_input", fi)) if not x)
             raise WaylandError("KWin chua cho chuong trinh nay quay man hinh / bam phim (thieu %s - tep .desktop X-KDE-Wayland-Interfaces)" % miss)
         if fi[1] < 4: raise WaylandError("fake_input cua KWin qua cu (ban %d < 4)" % fi[1])
-        outs = {}
-        for name, (iface, ver) in list(wl.globals.items()):
-            if iface == "wl_output":
-                o = {"mw": 0, "mh": 0, "scale": 1}
-                outs[wl.bind(name, "wl_output", min(ver, 4), self._on_output(o))] = o
-        if not outs: raise WaylandError("KWin khong bao man hinh nao (wl_output)")
-        xm = wl.find("zxdg_output_manager_v1")
-        if xm:
-            xid = wl.bind(xm[0], "zxdg_output_manager_v1", min(xm[1], 3))
-            for oid, o in outs.items():
-                wl.send(xid, 1, struct.pack("<II", wl.new_id(self._on_xdg(o)), oid))         # get_xdg_output(id, output)
-        wl.roundtrip(timeout); wl.roundtrip(timeout)
+        outs = self._outputs(wl, [n for n, (i, v) in list(wl.globals.items()) if i == "wl_output"], timeout)
+        if not outs or os.environ.get("CBCAP_VIRTUAL") == "1":                       # 22.11h: không cắm màn hình → màn hình ảo
+            return self._virtual(wl, sc, fi, pointer, timeout, len(outs))
         oid, o = self.pick(outs)
         self.outs = len(outs); self.out = o.get("name") or ""
         if not o.get("mw"): raise WaylandError("KWin chua bao do phan giai man hinh %s" % self.out)
         sc_n = max(1, o.get("scale", 1))
         self.geo = (o.get("lx", o.get("x", 0)), o.get("ly", o.get("y", 0)), o.get("lw") or o["mw"] // sc_n, o.get("lh") or o["mh"] // sc_n)
-        self.fi_ver = min(fi[1], 6)
-        self.fi = wl.bind(fi[0], "org_kde_kwin_fake_input", self.fi_ver)
-        wl.send(self.fi, 0, _wl_str("CloudBlue") + _wl_str("dieu khien tu xa"))             # authenticate (KWin tự cho)
+        self._fake(wl, fi)
         self.sc = wl.bind(sc[0], "zkde_screencast_unstable_v1", min(sc[1], 5))           # ≤ 5: KWin báo created(node) (bản 6 đổi sang serial)
         st = {}
-
-        def on_stream(op, p):
-            with wl.cv:
-                if op == 1: st["node"] = struct.unpack_from("<I", p, 0)[0]                 # created(node)
-                elif op == 2: st["err"] = _wl_rstr(p, 0)[0][:160]                          # failed(error)
-                elif op == 0: st["closed"] = True                                            # closed
-                wl.cv.notify_all()
-        self.stream = wl.new_id(on_stream)
+        self.stream = wl.new_id(self._on_stream(wl, st))
         wl.send(self.sc, 0, struct.pack("<III", self.stream, oid, int(pointer)))          # stream_output(stream, output, pointer)
         wl.wait(lambda: st, timeout, "KWin chua tao luong man hinh sau %d giay" % int(timeout))
         if "err" in st: raise WaylandError("KWin tu choi quay man hinh: %s" % st["err"])
         if "node" not in st: raise WaylandError("KWin dong luong man hinh ngay khi tao")
         self.node, self.size, self.session = st["node"], (o["mw"], o["mh"]), "kwin"
         self.stream_st = st
+        return self.node, self.size
+
+    def _fake(self, wl, fi):
+        self.fi_ver = min(fi[1], 6)
+        self.fi = wl.bind(fi[0], "org_kde_kwin_fake_input", self.fi_ver)
+        wl.send(self.fi, 0, _wl_str("CloudBlue") + _wl_str("dieu khien tu xa"))             # authenticate (KWin tự cho)
+
+    @staticmethod
+    def _on_stream(wl, st):
+        def h(op, p):
+            with wl.cv:
+                if op == 1: st["node"] = struct.unpack_from("<I", p, 0)[0]                 # created(node)
+                elif op == 2: st["err"] = _wl_rstr(p, 0)[0][:160]                          # failed(error)
+                elif op == 0: st["closed"] = True                                            # closed
+                wl.cv.notify_all()                                                           # (bản 6 thêm serial = sự kiện 3: bỏ qua)
+        return h
+
+    def _outputs(self, wl, names, timeout):
+        """bind các wl_output (+ zxdg_output: vùng LOGIC khi phóng to %) → {mã đối tượng: thông tin màn hình}."""
+        outs = {}
+        for name in names:
+            ver = wl.globals.get(name, ("", 4))[1]
+            o = {"mw": 0, "mh": 0, "scale": 1}
+            outs[wl.bind(name, "wl_output", min(ver, 4), self._on_output(o))] = o
+        if not outs: return outs
+        xm = wl.find("zxdg_output_manager_v1")
+        if xm:
+            if self.xm is None: self.xm = wl.bind(xm[0], "zxdg_output_manager_v1", min(xm[1], 3))
+            for oid, o in outs.items():
+                wl.send(self.xm, 1, struct.pack("<II", wl.new_id(self._on_xdg(o)), oid))     # get_xdg_output(id, output)
+        wl.roundtrip(timeout); wl.roundtrip(timeout)
+        return outs
+
+    def _virtual(self, wl, sc, fi, pointer, timeout, had=0):
+        """22.11h · máy KHÔNG cắm màn hình (KWin chỉ còn màn hình "giữ chỗ", không báo wl_output nào): xin KWin tạo MÀN HÌNH ẢO
+           VOUT_W×VOUT_H rồi quay chính nó (zkde_screencast.stream_virtual_output — có từ bản 2, cách krdp làm). Desktop của khách hiện lên
+           màn hình ảo; đóng luồng (hết người xem) → KWin bỏ màn hình ảo."""
+        if sc[1] < 2: raise WaylandError("KWin khong bao man hinh nao (wl_output) va KWin qua cu de tao man hinh ao (zkde_screencast ban %d < 2)" % sc[1])
+        self._fake(wl, fi)
+        self.sc = wl.bind(sc[0], "zkde_screencast_unstable_v1", min(sc[1], 5))
+        with wl.cv: before = {n for n, (i, v) in wl.globals.items() if i == "wl_output"}
+        st = {}
+        self.stream = wl.new_id(self._on_stream(wl, st))
+        wl.send(self.sc, 3, struct.pack("<I", self.stream) + _wl_str(VOUT_NAME) + struct.pack("<ii", VOUT_W, VOUT_H)
+                + _wl_fixed(1.0) + struct.pack("<I", int(pointer)))                          # stream_virtual_output(stream, name, w, h, scale, pointer)
+        wl.wait(lambda: st, max(timeout, 5.0), "KWin chua tao man hinh ao sau %d giay" % int(max(timeout, 5.0)))
+        if "err" in st: raise WaylandError("KWin khong tao duoc man hinh ao: %s" % st["err"])
+        if "node" not in st: raise WaylandError("KWin dong man hinh ao ngay khi tao")
+        self.geo = (0, 0, VOUT_W, VOUT_H); self.out = VOUT_NAME; self.outs = had; self.virtual = True
+        try:                                                    # màn hình ảo = 1 wl_output mới → vùng logic thật (có màn hình khác thì nó nằm cạnh)
+            new = wl.wait(lambda: [n for n, (i, v) in wl.globals.items() if i == "wl_output" and n not in before], 2.0, "khong thay wl_output moi")
+            outs = self._outputs(wl, new[:4], timeout)
+            got = [o for o in outs.values() if VOUT_NAME.lower() in str(o.get("name", "")).lower()] or list(outs.values())
+            o = got[0] if got else {}
+            if o.get("lw") or o.get("mw"):
+                sc_n = max(1, o.get("scale", 1))
+                self.geo = (o.get("lx", o.get("x", 0)), o.get("ly", o.get("y", 0)), o.get("lw") or o["mw"] // sc_n, o.get("lh") or o["mh"] // sc_n)
+                self.out = o.get("name") or VOUT_NAME
+        except WaylandError:
+            pass
+        self.node, self.size, self.session = st["node"], (VOUT_W, VOUT_H), "kwin"
+        self.stream_st = st
+        self.log("KWin: may khong cam man hinh -> man hinh ao %dx%d (%s, vung logic %s)" % (VOUT_W, VOUT_H, self.out, list(self.geo)))
         return self.node, self.size
 
     def alive(self):
@@ -814,9 +860,10 @@ class Cap:
         if self.bus is not None: self.bus.close()
         self.kw = self.portal = self.bus = self.inp = None; self.backend = None; self.node = None
 
-    def open(self):
+    def open(self, portal=True):
         """Mở luồng màn hình + đường chuột / phím: KWin trực tiếp trước (không hộp hỏi), không được thì cổng XDG (chờ tối đa PORTAL_START_S).
-           Cả 2 đều hỏng → lỗi ghi rõ từng đường (người xem thấy, root ghi nhật ký)."""
+           Cả 2 đều hỏng → lỗi ghi rõ từng đường (người xem thấy, root ghi nhật ký).
+           22.11h · portal=False: chỉ thử KWin (KWin chưa có quyền mới → cổng XDG chỉ hiện hộp hỏi trên màn hình máy, không ai bấm, tốn 10 giây)."""
         with self.lock:
             if self.inp is not None and self.node is not None and (self.kw is None or self.kw.alive()): return self.size
             self._drop()
@@ -834,7 +881,7 @@ class Cap:
                 except Exception as e:
                     k.close(); errs.append("KWin: %s" % str(e)[:170])
                     self.log("KWin truc tiep chua dung duoc -> thu cong XDG: %s" % (e,))
-            if os.environ.get("CBCAP_NO_PORTAL") == "1": raise RuntimeError("; ".join(errs) or "khong co duong quay nao")
+            if os.environ.get("CBCAP_NO_PORTAL") == "1" or not portal: raise RuntimeError("; ".join(errs) or "khong co duong quay nao")
             try:
                 left = lambda: max(2.0, OPEN_BUDGET_S - (time.time() - t0))
                 self.bus = DBus(self.bus_addr)
@@ -1012,7 +1059,7 @@ def serve(fd):
                     pid = cap.start(int(j["w"]), int(j["h"]), int(j["fps"]), int(j["kbps"]), int(j["port"]), enc)
                     if rid is not None: send({"id": rid, "ok": True, "pid": pid, "mode": cap.mode, "size": list(cap.size), "backend": cap.backend})
                 elif op == "open":
-                    sz = cap.open()
+                    sz = cap.open(portal=j.get("portal") is not False)
                     if rid is not None: send({"id": rid, "ok": True, "size": list(sz), "backend": cap.backend, "open_s": cap.first})
                 elif op == "stop": cap.stop()
                 elif op == "move": cap.move(int(j["x"]), int(j["y"]))
@@ -1052,7 +1099,7 @@ def probe(secs=4.0):
                 out["move_reply"] = str(e)[:200]
         else:
             k = cap.kw
-            out.update(output=k.out, outputs=k.outs, geo=list(k.geo), fake_input=k.fi_ver, exe=os.path.realpath("/proc/self/exe"))
+            out.update(output=k.out, outputs=k.outs, geo=list(k.geo), fake_input=k.fi_ver, virtual=k.virtual, exe=os.path.realpath("/proc/self/exe"))
             try:                                                 # KWin chưa nhận gì thì roundtrip lỗi ngay
                 k.motion(100.0, 100.0); k.wl.roundtrip(3); out["move_reply"] = "ok"
             except Exception as e:
@@ -1076,6 +1123,7 @@ def probe(secs=4.0):
     finally:
         cap.close()
     print(json.dumps(out, ensure_ascii=False), flush=True)
+    print("cbcap probe: backend=%s virtual=%d rtp=%d err=%s" % (out.get("backend"), 1 if out.get("virtual") else 0, out.get("rtp_packets", 0), str(out.get("err") or "-")[:160]), flush=True)
     return 0 if out.get("session") and (not ok or out.get("rtp_packets", 0) > 20) else 1
 
 
