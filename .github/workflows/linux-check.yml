@@ -7,6 +7,8 @@
 #               → dịch vụ thử (chỉ có ở chế độ ci) ghi cb/linux-firstboot.ok → kiểm 2 file kết quả.
 #               Lần 2 có MÁY CHỦ GIẢ (winpc/tests/ci/fake_sb.py trên máy CI, 10.0.2.2:8099): agent CloudBlue bản Linux (cloudblue.service) phải tự chạy,
 #               đăng ký bằng ĐÚNG vé của lệnh, báo os=cachyos rồi hỏi máy chủ được.
+#               + ĐIỀU KHIỂN TỪ XA đầu-cuối (winpc/tests/ci/linux_remote_host.py): máy chủ phát hình THẬT (windows/bluestream.py --selftest) trên máy CI,
+#               cbremote trong máy ảo tự nối tới, người xem mở → hình màn hình KDE thật tới, giải mã đủ; rê chuột → con trỏ trên KDE đổi chỗ.
 name: Check winpc Linux (CachyOS)
 
 on:
@@ -17,6 +19,10 @@ on:
       - "winpc/agent/pcagent.py"
       - "winpc/lib/**"
       - "winpc/tests/ci/fake_sb.py"
+      - "winpc/tests/ci/linux_remote_host.py"
+      - "winpc/agent/pcremote.py"
+      - "windows/bluestream.py"
+      - "windows/pcrelay.py"
       - ".github/workflows/linux-check.yml"
   workflow_dispatch:
     inputs:
@@ -176,7 +182,7 @@ jobs:
       - name: Cài QEMU + OVMF + công cụ NTFS
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq qemu-system-x86 ovmf ntfs-3g dosfstools gdisk jq > /dev/null
+          sudo apt-get install -y -qq qemu-system-x86 ovmf ntfs-3g dosfstools gdisk jq ffmpeg python3-cryptography > /dev/null
           ls /usr/share/OVMF/
       - name: Tải ISO CachyOS
         env:
@@ -201,9 +207,9 @@ jobs:
           sudo mount -t ntfs-3g ${LOOP}p2 /mnt/rec
           sudo mkdir -p /mnt/rec/cb/linux /mnt/rec/cb/logs
           sudo cp cachyos.iso /mnt/rec/cb/linux/cachyos.iso && rm -f cachyos.iso
-          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh winpc/linux/cbagent.py /mnt/rec/cb/linux/
+          sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh winpc/linux/cbagent.py winpc/linux/cbremote.py winpc/linux/cbcap.py /mnt/rec/cb/linux/
           sudo mkdir -p /mnt/rec/cb/agent /mnt/rec/cb/lib
-          sudo cp winpc/agent/pcagent.py /mnt/rec/cb/agent/ && sudo cp winpc/lib/cbcore.py winpc/lib/cbrec.py winpc/lib/cbsys.py /mnt/rec/cb/lib/
+          sudo cp winpc/agent/pcagent.py winpc/agent/pcremote.py /mnt/rec/cb/agent/ && sudo cp winpc/lib/cbcore.py winpc/lib/cbrec.py winpc/lib/cbsys.py /mnt/rec/cb/lib/
           jq -n '{ver: "ci", default: "22h2", user: "PC", sb_url: "http://10.0.2.2:8099", sb_key: "ci-khoa-cong-khai",
                   images: [{id: "22h2", file: "cb\\images\\22h2.wim", index: 1}, {id: "cachyos", kind: "linux", file: "cb\\linux\\cachyos.iso"}]}' | sudo tee /mnt/rec/cb/cb.json
           SS=$(jq '.partitiontable.sectorsize // 512' parts.json)
@@ -254,8 +260,8 @@ jobs:
         run: |
           MEM=$(( $(free -m | awk '/^Mem:/{print $2}') - 1800 )); [ $MEM -gt 8192 ] && MEM=8192; [ $MEM -lt 3072 ] && MEM=3072
           if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
-          python3 -I winpc/tests/ci/fake_sb.py 8099 "$PWD/rpc.log" > fake_sb.out 2>&1 &
-          SBPID=$!; sleep 1
+          python3 -u winpc/tests/ci/linux_remote_host.py --sb 8099 --relay 8189 --out "$PWD/remote.json" --log "$PWD/rpc.log" --wait 840 > fake_sb.out 2>&1 &
+          SBPID=$!; sleep 3; cat fake_sb.out
           set +e
           timeout 900 qemu-system-x86_64 $ACC -m $MEM -smp $(nproc) \
             -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
@@ -263,7 +269,7 @@ jobs:
             -drive file=disk.img,format=raw,if=none,id=d0,cache=unsafe -device virtio-blk-pci,drive=d0 \
             -nic user,model=virtio-net-pci -display none -serial file:serial2.log -no-reboot
           echo "qemu thoat ma $?"
-          kill $SBPID 2>/dev/null; tail -5 fake_sb.out 2>/dev/null
+          kill $SBPID 2>/dev/null; pkill -f "bluestream.py --selftest" 2>/dev/null; tail -12 fake_sb.out 2>/dev/null
           {
             echo '### Lần 2 (khởi động CachyOS) — dòng chính'
             echo '```'
@@ -282,8 +288,11 @@ jobs:
           RPC=0
           echo '### Agent CloudBlue (Linux) gọi máy chủ giả' >> $GITHUB_STEP_SUMMARY
           python3 -I winpc/tests/ci/fake_sb.py --check rpc.log ve-thu-ci >> $GITHUB_STEP_SUMMARY && RPC=1
-          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent CloudBlue tu dang ky bang ve cua lenh)" >> $GITHUB_STEP_SUMMARY
-          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
+          RMT=0
+          { echo '### Điều khiển từ xa đầu-cuối (người xem trên máy CI ⇄ trạm thật ⇄ CachyOS)'; echo '```'; cat remote.json 2>/dev/null || echo "(khong co remote.json)"; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          python3 -c "import json,sys; j=json.load(open('remote.json')); sys.exit(0 if j.get('ok') and j.get('cursor_moved') else 1)" 2>/dev/null && RMT=1
+          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ] && [ "$RMT" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent tu dang ky bang ve -> dieu khien tu xa: hinh KDE that toi nguoi xem, re chuot duoc)" >> $GITHUB_STEP_SUMMARY
+          else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC, dieu khien tu xa=$RMT)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -293,3 +302,5 @@ jobs:
             serial2.log
             parts.json
             rpc.log
+            remote.json
+            fake_sb.out
