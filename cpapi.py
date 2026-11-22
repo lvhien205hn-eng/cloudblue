@@ -616,10 +616,20 @@ def win_name(t):
     return n + (" (bản clone)" if t.get("user") else "")
 
 
-def win_launch(sh, t, mode, sdk):
-    """Mở lại đúng tab đó (như bấm biểu tượng: chỉ đưa lên, không mở màn mới) ở chế độ cửa sổ nhỏ / toàn màn, trên màn chính (màn 0)."""
+def win_launch(sh, t, mode, sdk, task=False):
+    """Mở lại đúng tab đó (như bấm biểu tượng: chỉ đưa lên, không mở màn mới) ở chế độ cửa sổ nhỏ / toàn màn, trên màn chính (màn 0).
+       task=True: chỉ thẳng SỐ TAB (--task, như bấm tab trong màn Gần đây) — Android 10/11 chỉ đổi chế độ tab đang chạy theo đường này."""
     wm = f"--windowingMode {mode} " if sdk >= 28 else f"--stack {2 if mode == WIN_FREEFORM else 1} "
-    return sh(f"am start --user {int(t['user'])} {'--display 0 ' if sdk >= 29 else ''}{wm}{AS_ICON} -n {shlex.quote(t['comp'])} 2>&1", 25)
+    tk = f"--task {int(t['id'])} " if task else ""
+    return sh(f"am start --user {int(t['user'])} {'--display 0 ' if sdk >= 29 else ''}{tk}{wm}{AS_ICON} -n {shlex.quote(t['comp'])} 2>&1", 25)
+
+
+def win_ways(sdk):
+    """Thứ tự cách đổi chế độ 1 tab ĐANG CHẠY (app không khởi động lại): Android 12+ mở lại tab là đổi; Android 10/11 mở lại thường chỉ đưa
+       tab lên (không đổi) → chỉ thẳng số tab; Android 7–9 mở lại thường được với app đổi cỡ được (game: chuyển khối, xem win_move_p)."""
+    if sdk >= 31: return (False, True)
+    if sdk >= 29: return (True,)
+    return (False,)
 
 
 def win_state(sh):
@@ -649,12 +659,13 @@ def win_wait(sh, tid, mode, sdk, tries=8):
 
 
 def win_settle(sh, sleep=time.sleep, tries=4):
-    """Đọc lại máy sau khi đổi: app ÉP NGANG vừa thành cửa sổ / vừa về màn chính → màn xoay về hướng của màn chính sau giây lát.
-       Phải tính chỗ đặt cửa sổ theo hướng MỚI (tính theo hướng cũ → cửa sổ ra ngoài màn)."""
+    """Đọc lại máy sau khi đổi: app ÉP NGANG vừa thành cửa sổ / vừa về màn chính → màn xoay về hướng của màn chính sau giây lát (Android 9
+       xoay luôn chỗ các cửa sổ nổi theo màn). Phải tính / trả chỗ cửa sổ theo hướng MỚI (theo hướng cũ → cửa sổ lệch / ra ngoài màn)."""
+    key = lambda s: (s["geo"]["w"], s["geo"]["h"], tuple((t["id"], t["b"]) for t in win_std(s, "freeform")))
     sleep(0.6); st = win_state(sh)
     for _ in range(tries):
         sleep(0.4); st2 = win_state(sh)
-        if (st2["geo"]["w"], st2["geo"]["h"]) == (st["geo"]["w"], st["geo"]["h"]): return st2
+        if key(st2) == key(st): return st2
         st = st2
     return st
 
@@ -664,9 +675,9 @@ def win_area(g):
 
 
 def win_move_p(sh, t, sdk, sleep=time.sleep):
-    """Android 7–9: app khai báo KHÔNG đổi cỡ (nhiều game) không mở thẳng vào cửa sổ nổi được (Android 9 chỉ xét khai báo của app, bỏ qua
-       force_resizable) → chuyển NGUYÊN TAB sang khối cửa sổ nổi (am stack move-task, app không khởi động lại). Chưa có khối cửa sổ nổi →
-       mở tạm Cài đặt ở cửa sổ nổi để Android tạo khối, chuyển xong thì đóng Cài đặt."""
+    """Android 7–10: app khai báo KHÔNG đổi cỡ (nhiều game) không mở thẳng vào cửa sổ nổi được (Android 9 chỉ xét khai báo của app, bỏ qua
+       force_resizable; Android 10 không đổi chế độ tab đang chạy) → chuyển NGUYÊN TAB sang khối cửa sổ nổi (am stack move-task, app không
+       khởi động lại). Chưa có khối cửa sổ nổi → mở tạm Cài đặt ở cửa sổ nổi để Android tạo khối, chuyển xong thì đóng Cài đặt."""
     free = lambda: next((x["sid"] for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["mode"] == "freeform" and x["disp"] == 0), None)
     sid, helper = free(), False
     if sid is None:
@@ -677,6 +688,27 @@ def win_move_p(sh, t, sdk, sleep=time.sleep):
     sh(f"am stack move-task {int(t['id'])} {int(sid)} true 2>&1", 15)
     if helper: sh("am force-stop com.android.settings", 15)
     return win_wait(sh, t["id"], "freeform", sdk, tries=6)
+
+
+def win_to(sh, t, mode, sdk, sleep=time.sleep, back=None):
+    """Đổi tab t sang cửa sổ nổi / toàn màn, app vẫn chạy (game không thoát). Thử lần lượt các cách hợp bản Android (win_ways); thu nhỏ trên
+       Android 7–10 còn cách chuyển nguyên tab sang khối cửa sổ nổi. Android 9–11 chỉ đổi được tab KHÔNG ở trên cùng mà lần thử hỏng vẫn đưa
+       t lên trên cùng → back() (về màn chính + đưa các cửa sổ khác lên lại) trước mỗi lần thử sau. Trả tab sau khi đổi, hoặc None."""
+    name, n = ("freeform" if mode == WIN_FREEFORM else "fullscreen"), [0]
+
+    def go(task):
+        if n[0] and back and sdk < 31: back()
+        n[0] += 1
+        win_launch(sh, t, mode, sdk, task)
+        return win_wait(sh, t["id"], name, sdk, tries=6)
+    for task in win_ways(sdk):
+        d = go(task)
+        if d: return d
+    if mode == WIN_FREEFORM and sdk < 30:
+        d = win_move_p(sh, t, sdk, sleep)
+        if d: return d
+    return go(True) if sdk < 29 else None                       # Android 7–9: cuối cùng thử chỉ thẳng số tab
+
 
 
 def win_run(sh, do, sleep=time.sleep):
@@ -703,12 +735,15 @@ def win_run(sh, do, sleep=time.sleep):
         if full:
             t = full[0]; done = None
             for attempt in (0, 1):
-                if sdk < 31 or attempt: home()                  # Android 9–11: app đang ở trên cùng thì am start không đổi chế độ → về màn chính trước
-                for w in reversed(wins):                        # cửa sổ thu nhỏ trước đó bị màn chính che → đưa lên lại, giữ đúng chỗ khách đã kéo
-                    win_launch(sh, w, WIN_FREEFORM, sdk); resize(w, w["b"])
-                win_launch(sh, t, WIN_FREEFORM, sdk)
-                done = win_wait(sh, t["id"], "freeform", sdk)
-                if not done and sdk < 29: done = win_move_p(sh, t, sdk, sleep)
+                cur = st
+                if sdk < 31 or attempt:                         # Android 9–11: app đang ở trên cùng thì không đổi chế độ được → về màn chính trước
+                    home(); cur = win_settle(sh, sleep)         # màn xoay về hướng màn chính (Android 9 xoay theo cả chỗ cửa sổ) → đọc lại chỗ
+                olds = [w for w in win_std(cur, "freeform") if w["id"] != t["id"]]
+
+                def up(ws=olds):                                # cửa sổ thu nhỏ trước bị màn chính che → đưa lên lại, giữ đúng chỗ khách đã kéo
+                    for w in reversed(ws): win_launch(sh, w, WIN_FREEFORM, sdk); resize(w, w["b"])
+                up()
+                done = win_to(sh, t, WIN_FREEFORM, sdk, sleep, back=lambda: (home(), win_settle(sh, sleep), up()))
                 if done or sdk < 31: break
             if not done:
                 return 409, {"error": "Máy chưa bật được cửa sổ nhỏ — bấm ⚡ Khởi động lại máy 1 lần rồi thử lại.", "reboot": True}
@@ -737,11 +772,9 @@ def win_run(sh, do, sleep=time.sleep):
         vis = [t for t in wins if t["vis"]]
         if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."}
         t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
-        done = None
-        if sdk < 31: home()                                      # Android 9–11: app đang ở trên cùng thì am start không đổi chế độ → về màn chính trước
-        win_launch(sh, t, WIN_FULLSCREEN, sdk)
-        done = win_wait(sh, t["id"], "fullscreen", sdk, tries=6)
-        if done: return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn."}
+        if sdk < 31: home()                                      # Android 9–11: app đang ở trên cùng thì không đổi chế độ được → về màn chính trước
+        if win_to(sh, t, WIN_FULLSCREEN, sdk, sleep, back=home):
+            return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn."}
         # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
         win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); resize(t, win_area(st2["geo"]))
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã phóng to {win_name(t)} hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ."}
