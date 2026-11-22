@@ -708,6 +708,18 @@ ri = agr.info().get("rmt")
 ck("file tình trạng có chữ lạ / quá dài → cắt 120 ký tự ASCII", ri and len(ri["s"]) == 120 and ri["s"].isascii() and ri["v"] == "21.11d", ri)
 fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "rac khong dung dang")
 ck("file tình trạng hỏng → bỏ qua, agent vẫn chạy", "rmt" not in agr.info())
+ck("22.11c · chưa có logs\\emu.json → không gửi mục emu", "emu" not in agr.info())
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", json.dumps({"vt": False, "hv": False, "vbs": 0, "svc": [], "vm": False, "launch": "", "rev": 1, "fixed": [],
+                                                              "reboot": False, "ready": False, "why": "VT-x / AMD-V (SVM) dang TAT trong BIOS <b>", "cpu": "Intel(R) Core(TM) i5-10400F",
+                                                              "hw": "ASUS | PRIME", "t": fsr.clock}))
+ei = agr.info().get("emu")
+ck("22.11c · cb_provision ghi tình trạng ảo hoá → agent gửi web info.emu gọn (VT trong BIOS, hypervisor, máy ảo, chạy được giả lập, lý do ASCII)",
+   ei == {"vt": False, "hv": False, "vm": False, "ok": False, "rb": False, "why": "VT-x / AMD-V (SVM) dang TAT trong BIOS <b>", "cpu": "Intel(R) Core(TM) i5-10400F"}, ei)
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", json.dumps({"vt": None, "hv": True, "ready": False, "reboot": True, "why": "", "cpu": "AMD Ryzen 5 5600"}))
+ei = agr.info().get("emu")
+ck("… đang chờ khởi động lại sau khi tắt Hyper-V: vt = None (Windows giấu), rb = true", ei and ei["vt"] is None and ei["hv"] is True and ei["rb"] is True and ei["ok"] is False, ei)
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", "{hong")
+ck("… file emu.json hỏng → bỏ qua, agent vẫn gửi phần còn lại", "emu" not in agr.info() and agr.info().get("host"))
 cfgr = json.loads(fsr.file("C", "cloudbluepc\\cb.json")); cfgr["remote"] = False
 fsr.write_text("C:\\CloudBluePC\\cb.json", json.dumps(cfgr))
 hostr2 = FakeHost(fsr, "CB-REMOTE"); agr2 = agent(fsr, netr, hostr2); agr2.tick(); agr2.tick()

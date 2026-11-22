@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        22/11b — ▦ XEM TẤT CẢ VPS GPU: trạm máy PC (pcrelay.py 22/11b) nhận Ô XEM TRƯỚC — chỉ xem, không đá người đang điều khiển. Không ai
+#                       điều khiển → máy PC phát 1 luồng nhỏ (480p, 8 khung/giây, ~350 kbps); đang có người điều khiển → ô chỉ nhận khung khoá thưa.
+#                       Máy PC KHÔNG cần cập nhật. Phát hình (bluestream) bật lại ~10 giây. Tắt ô xem trước máy PC: PC_PREVIEW=0 trong cloudphone.conf
 #        22/11a — 🌐 PROXY RIÊNG TỪNG CLOUD PHONE: khách dán IP:Port:User:Pass (web / app) → cpapi (bản 22/11a, chỉ chủ máy) → phonectl
 #                       proxy → cbproxy (Go, chạy root TRONG máy Android: iptables bắt TCP của app → proxy SOCKS5 / HTTP của khách).
 #                       Proxy chết / sai mật khẩu → máy tự đi mạng thường. phonectl tự tải windows/cbproxy-x86_64 (md5 ghim) lần đầu dùng.
@@ -94,7 +97,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "22/11a"
+VER = "22/11b"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -110,7 +113,7 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
-         ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "21/11a"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
+         ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
          ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "22/11a"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 22/11a", "cpapi")]

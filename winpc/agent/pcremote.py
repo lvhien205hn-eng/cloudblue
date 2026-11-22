@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================================
-#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 21.11f)
+#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 22.11c — số bản theo agent; ô xem trước "Xem tất cả" chạy bằng
+#  lệnh R_START chất lượng thấp của trạm 22/11b, máy PC không phải đổi gì)
 #
 #  pcagent (SYSTEM) mở chương trình này vào PHIÊN MÀN HÌNH đang hiện của máy. Việc làm:
 #    1. hỏi web (pc_relay_where, bằng mã riêng của máy) xem nối tới máy chủ phát hình nào → tự nối RA máy chủ đó (TLS, kiểm đúng
@@ -17,7 +18,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "22.11b"
+REMOTE_VER = "22.11c"
 IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))

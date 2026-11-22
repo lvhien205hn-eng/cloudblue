@@ -142,7 +142,8 @@ try:
     ck("gói giả lệnh trạm từ khách bị trạm bỏ: phiên vẫn chạy, hình vẫn tới", rm.sess is not None and v.count(R.S_VIDEO) > n0 + 10, (rm.sess, v.count(R.S_VIDEO) - n0))
     v.c.send(R.C_QUALITY, b'{"q":"bal"}')
     m = v.take(R.S_SIZE, 10)
-    ck("khách đổi chất lượng → nhận SIZE mới (1600x900: nén CPU tối đa cạnh 1600)", m is not None and json.loads(m[1]) == {"w": 1600, "h": 900}, m)
+    ck("khách đổi chất lượng → nhận SIZE mới (1920x1080: khách TỰ CHỌN độ nét → giữ độ phân giải, nén CPU tối đa cạnh 1920 — agent 21.11g)",
+       m is not None and json.loads(m[1]) == {"w": 1920, "h": 1080}, m)
 
     print("3. Người mở sau đá người mở trước · đóng phiên")
     sess1 = rm.sess
@@ -157,6 +158,48 @@ try:
     enc = wait(lambda: cur_enc(rm), 5)
     v2.c.send(C_BYE)
     ck("khách đóng → máy PC tắt ffmpeg (không ai xem thì không tốn máy)", wait(lambda: rm.sess is None and enc.exited(), 6), (rm.sess, enc.proc.poll()))
+
+    print("3b. Ô xem trước máy PC (trạm 22/11b · ▦ Xem tất cả VPS GPU) — máy PC KHÔNG cần cập nhật")
+
+    def probe(frames_, path_):
+        open(path_, "wb").write(b"".join(x[9:] for x in frames_))
+        r_ = subprocess.run([shutil.which("ffprobe") or "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
+                             "stream=width,height,nb_read_frames", "-of", "json", path_], capture_output=True, timeout=90)
+        try: return json.loads(r_.stdout)["streams"][0]
+        except Exception: return {"err": (r_.stderr or b"")[-300:]}
+    pv = View(R.DirectConn("127.0.0.1", port, fp, 3.0), {"v": 2, "token": "t", "pc": PC, "client": "pc", "ver": "e2e", "q": "eco", "mode": "preview", "maxh": 480})
+    m = pv.take(S_WELCOME, 15); wel = json.loads(m[1]) if m else {}
+    ck("ô xem trước nhận WELCOME: luồng NHỎ 480x270, preview = true", (wel.get("w"), wel.get("h")) == (480, 270) and wel.get("preview") is True and wel.get("kind") == "pc",
+       (wel, logs[-4:]))
+    s_ = rm.sess
+    ck("máy PC (pcremote bản đang chạy) bật bộ quay theo lệnh luồng nhỏ: 8 khung/giây, trần 350 kbps",
+       s_ is not None and s_.req.get("preview") is True and s_.fps == 8 and s_.rate.cap == 350 and (s_.vw, s_.vh) == (480, 270), s_ and (s_.req, s_.fps, s_.rate.cap))
+    ck("hình tới ô: ≥ 16 khung (~8 khung/giây)", wait(lambda: pv.count(R.S_VIDEO) >= 16, 12), pv.count(R.S_VIDEO))
+    fr = pv.frames(); sj = probe(fr, h264)
+    ck("… giải mã trọn vẹn đúng cỡ 480x270, khung đầu là khung khoá", sj.get("width") == 480 and sj.get("height") == 270 and int(sj.get("nb_read_frames") or 0) == len(fr)
+       and fr[0][0] & 1 == 1, (sj, len(fr)))
+    ck("ACK của ô bị trạm bỏ (máy PC không chỉnh bitrate theo ô xem trước)", s_.rate.ack_t == 0, s_.rate.ack_t)
+    v4 = View(R.DirectConn("127.0.0.1", port, fp, 3.0), {"v": 2, "token": "t", "pc": PC, "client": "web", "ver": "e2e", "q": "eco"})
+    m = v4.take(S_WELCOME, 15); wel = json.loads(m[1]) if m else {}
+    ck("khách mở điều khiển trong lúc ô đang xem → WELCOME 1280x720 bình thường", (wel.get("w"), wel.get("h")) == (1280, 720) and not wel.get("preview"), wel)
+    ck("… ô xem trước KHÔNG bị đá", pv.count(S_ERROR) == 0 and pv.alive)
+    ck("… máy PC chuyển sang phiên điều khiển (1 bộ nén duy nhất)", wait(lambda: rm.sess is not None and rm.sess is not s_ and s_.closed and rm.sess.vw == 1280, 6))
+    time.sleep(0.6)
+    with pv.lock: pv.rx[:] = [x for x in pv.rx if x[0] != R.S_VIDEO]
+    n_ctl = v4.count(R.S_VIDEO); time.sleep(4.6)
+    fr = pv.frames()
+    ck("trong lúc có người điều khiển: ô chỉ nhận khung khoá thưa (1–3 khung / 4,6 giây) còn người điều khiển nhận đủ",
+       1 <= len(fr) <= 3 and all(x[0] & 1 for x in fr) and v4.count(R.S_VIDEO) - n_ctl >= 60, (len(fr), [x[0] for x in fr], v4.count(R.S_VIDEO) - n_ctl))
+    sj = probe(fr, h264)
+    ck("… từng khung khoá giải mã được riêng (cỡ của luồng điều khiển 1280x720)", sj.get("width") == 1280 and int(sj.get("nb_read_frames") or 0) == len(fr), sj)
+    v4.c.send(C_BYE)
+    ck("người điều khiển đóng → máy PC về lại luồng nhỏ 480x270 (không tắt hẳn bộ quay)", wait(lambda: rm.sess is not None and rm.sess.vw == 480 and rm.sess.req.get("preview") is True, 8),
+       rm.sess and rm.sess.req)
+    with pv.lock: pv.rx[:] = [x for x in pv.rx if x[0] != R.S_VIDEO]
+    ck("… ô nhận lại đủ khung của luồng nhỏ", wait(lambda: pv.count(R.S_VIDEO) >= 10, 10), pv.count(R.S_VIDEO))
+    enc = wait(lambda: cur_enc(rm), 5)
+    pv.c.send(C_BYE)
+    ck("ô cuối đóng → máy PC tắt ffmpeg", wait(lambda: rm.sess is None and enc is not None and enc.exited(), 6), (rm.sess, enc and enc.proc.poll()))
 
     print("4. Máy PC đi đường vòng (WebSocket) · máy PC mất mạng giữa phiên")
     rm.stop = True
@@ -194,7 +237,8 @@ try:
     R.connect = real_connect
     time.sleep(0.5)
     out = open(os.path.join(tmp, "out.log"), errors="replace").read()
-    ck("nhật ký máy chủ: có dòng máy PC vào / rời trạm + phiên xem, không lỗi phiên, không lộ mã máy", "nối vào trạm" in out and "rời trạm" in out and "▶ PC" in out and "■ PC" in out
+    ck("nhật ký máy chủ: có dòng máy PC vào / rời trạm + phiên xem + ô xem trước, không lỗi phiên, không lộ mã máy", "nối vào trạm" in out and "rời trạm" in out and "▶ PC" in out and "■ PC" in out
+       and "mở ô xem trước" in out and "ô xem trước đóng" in out
        and "lỗi phiên" not in out and "Traceback" not in out and "tok-1" not in out, out[-1200:])
 finally:
     for x in (rm, rm2):

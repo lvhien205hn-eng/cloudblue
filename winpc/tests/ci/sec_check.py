@@ -246,6 +246,22 @@ def main():
     P.harden()
     ck("user_admin: harden() dua tai khoan khach VAO nhom Administrators + dat moc admin.granted", P.in_group(adm, "cbkhach") and os.path.isfile(os.path.join(BASE, "logs", "admin.granted")), P.lines)
     ck("user_admin: harden() lan 2 khong doi gi, khach van la Admin", P.harden() is False and P.in_group(adm, "cbkhach"), P.lines[-3:])
+    # 22.11c: khách Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền (ConsentPromptBehaviorAdmin = 0), UAC (EnableLUA) vẫn bật
+    UK = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+    def regd(name):
+        m = re.search(name + r"\s+REG_DWORD\s+(0x[0-9a-fA-F]+)", sh(["reg", "query", UK, "/v", name])[1] or "")
+        return m.group(1).lower() if m else None
+    uac0 = regd("ConsentPromptBehaviorAdmin"); info("ConsentPromptBehaviorAdmin truoc khi thu: %s · EnableLUA: %s" % (uac0, regd("EnableLUA")))
+    ok_u = P.uac()
+    ck("22.11c uac(): khach Admin -> ConsentPromptBehaviorAdmin = 0 tren Windows that (cai phan mem khong hoi quyen), EnableLUA khong bi dong vao",
+       ok_u and regd("ConsentPromptBehaviorAdmin") == "0x0" and regd("EnableLUA") in ("0x1", None), (regd("ConsentPromptBehaviorAdmin"), regd("EnableLUA"), P.lines[-2:]))
+    n0 = len(P.lines)
+    ck("22.11c uac() lan 2: gia tri da dung -> khong ghi lai registry", P.uac() is True and not any("ConsentPromptBehaviorAdmin" in l for l in P.lines[n0:]), P.lines[n0:])
+    est = P.emu_state()                                              # 22.11c: đọc thật tình trạng ảo hoá (máy CI của GitHub là máy ảo Azure → có hypervisor)
+    info("emu_state() tren may CI: %r" % (est,))
+    ck("22.11c emu_state(): lenh PowerShell / WMI + bcdedit chay duoc tren Windows that, doc ra du truong (hv, vbs, vt, vm, cpu, launch)",
+       isinstance(est, dict) and isinstance(est.get("hv"), bool) and isinstance(est.get("vbs"), int) and est.get("vt") in (True, False, None)
+       and isinstance(est.get("vm"), bool) and bool(est.get("cpu")) and isinstance(est.get("launch"), str) and (est.get("vt") is None) == bool(est.get("hv")), est)
     ok_g = P.guard()
     acl_g = sh(["icacls", BASE])[1]
     deny_l = [l.strip() for l in acl_g.splitlines() if "cbkhach" in l.lower()]
@@ -272,6 +288,9 @@ def main():
     ck("shop TAT cong tac: harden() ha khach ve tai khoan thuong, KHONG bao nham vi pham bao mat",
        P.harden() is True and not P.in_group(adm, "cbkhach") and not any("VIEC LA" in l for l in P.lines) and not os.path.isfile(os.path.join(BASE, "logs", "sec.event"))
        and not os.path.isfile(os.path.join(BASE, "logs", "admin.granted")), P.lines)
+    ck("22.11c shop TAT cong tac: uac() tra hop hoi quyen ve mac dinh Windows (ConsentPromptBehaviorAdmin = 5)", P.uac() and regd("ConsentPromptBehaviorAdmin") == "0x5",
+       regd("ConsentPromptBehaviorAdmin"))
+    if uac0: sh(["reg", "add", UK, "/v", "ConsentPromptBehaviorAdmin", "/t", "REG_DWORD", "/d", str(int(uac0, 16)), "/f"])      # trả máy thử như cũ
 
     # ---- dọn (máy thử dùng 1 lần, dọn cho gọn)
     for u in ("cbthuong", "cbkhach", "cbadm0"): sh(["net", "user", u, "/delete"])

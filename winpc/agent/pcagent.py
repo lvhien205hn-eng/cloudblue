@@ -24,6 +24,8 @@
 #    · (21.11j) thư mục C:\CloudBluePC được ẩn (Ẩn + Hệ thống) cho khách khỏi để ý — cb_provision.lockdown() ở mỗi pha system
 #    · (22.11a) pcremote: TLS an toàn nhiều luồng — hết "Mất kết nối" cứ một lúc khi khách điều khiển máy PC
 #    · (22.11b) pcremote: bấm vào ô nhập chữ trên máy PC → app điện thoại tự bật bàn phím (UI Automation + con trỏ chữ)
+#    · (22.11c) cb_provision: khách có quyền Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền / mật khẩu (UAC) · GIẢ LẬP ANDROID (MuMu, LDPlayer…)
+#      chạy được: 1 lần tắt thứ chiếm VT-x (Hyper-V / VBS / Memory Integrity) + báo web tình trạng ảo hoá (info.emu: VT trong BIOS, hypervisor, máy ảo)
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -41,7 +43,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "22.11b"
+AGENT_VER = "22.11c"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
@@ -419,7 +421,23 @@ class Agent:
             r = self.remote_info()
             if r: i["rmt"] = r
         except Exception: pass
+        try:                                                        # 22.11c · giả lập Android chạy được không (cb_provision ghi logs\emu.json)
+            e = self.emu_info()
+            if e: i["emu"] = e
+        except Exception: pass
         return i
+
+    def emu_info(self):
+        """22.11c · Tình trạng ảo hoá cho giả lập Android (cb_provision.emu() ghi logs\\emu.json) → bản gọn gửi web; chưa có → None.
+           vt: VT-x / AMD-V bật trong BIOS (None = đang có hypervisor, Windows giấu) · hv: Windows đang chạy hypervisor · vm: máy ảo · ok: chạy được giả lập
+           · rb: đã dọn, chờ khởi động lại · why: lý do không chạy được (chữ không dấu)."""
+        path = self.p("logs\\emu.json")
+        if not self.s.exists(path): return None
+        j = json.loads(self.s.read_text(path) or "{}")
+        if not isinstance(j, dict): return None
+        b = lambda v: v if isinstance(v, bool) else None
+        return {"vt": b(j.get("vt")), "hv": bool(j.get("hv")), "vm": bool(j.get("vm")), "ok": bool(j.get("ready")), "rb": bool(j.get("reboot")),
+                "why": re.sub(r"[^ -~]", "?", str(j.get("why") or ""))[:120], "cpu": re.sub(r"[^ -~]", "?", str(j.get("cpu") or ""))[:60]}
 
     # ------------------------------------------------------------------ điều khiển từ xa (đợt 2)
     def remote_info(self):

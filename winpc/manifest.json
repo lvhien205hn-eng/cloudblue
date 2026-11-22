@@ -2,13 +2,13 @@
  "base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc",
  "files": {
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "7972199ec50da34dcf891eaeb499ccefd4abe3ec628e79e8c1a32b090e0a5c89",
-  "agent/pcremote.py": "a9ae11c0bbff9157c55f7a75c837230fcd88a5b1d94a0c81d35e46c1d5251ab7",
+  "agent/pcagent.py": "0255300dff587f6f7b08d411d4ca79ca9cd770287fe2c0f886386f2c41bcc9a9",
+  "agent/pcremote.py": "2e180a7a72ceeeb61380df55fa4a11ec5bea95d71625d0ed35114816e19a2e0a",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "lib/cbcore.py": "d2b81b07fa370b1ba85e43d1f6bdf0c9d5e45be647237bb139f7630fb52cb4e9",
   "lib/cbrec.py": "1b6461803c993a1f14517fba20a32c3af6ab93f646fa1d2f78fa8882d57c9eae",
   "lib/cbsys.py": "d9468b8ffdc3f5ad8e4afc9f7b3985554427dcbc16998acac96b53271d6c3b32",
-  "os/cb_provision.py": "81389cf77591431618900d349edab8d9b8c476e6758d78e9897aaf86f8a09145",
+  "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
   "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
   "os/provision.cmd": "335e45236636e358d0ca496119c1323c8e5bce978c0dce3cfe374d82539f6dfe",
   "os/unattend.tpl.xml": "039e41249a9ad8dc733d70cc1dba8c99990cad4124f00788d861a9b2e5f18f6c",
@@ -18,15 +18,15 @@
  "sha256": {
   "CAI-DAT.cmd": "27c94610547e0ef1a6189dfb07eaa148f269bd125ed1f96169649f8fa18d90de",
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "7972199ec50da34dcf891eaeb499ccefd4abe3ec628e79e8c1a32b090e0a5c89",
-  "agent/pcremote.py": "a9ae11c0bbff9157c55f7a75c837230fcd88a5b1d94a0c81d35e46c1d5251ab7",
+  "agent/pcagent.py": "0255300dff587f6f7b08d411d4ca79ca9cd770287fe2c0f886386f2c41bcc9a9",
+  "agent/pcremote.py": "2e180a7a72ceeeb61380df55fa4a11ec5bea95d71625d0ed35114816e19a2e0a",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
   "cb_build.py": "66fb4b136a06c9babc817a7ec8643a6e9f0e972b6170cc62b6c1d819f413dcdd",
   "lib/cbcore.py": "d2b81b07fa370b1ba85e43d1f6bdf0c9d5e45be647237bb139f7630fb52cb4e9",
   "lib/cbrec.py": "1b6461803c993a1f14517fba20a32c3af6ab93f646fa1d2f78fa8882d57c9eae",
   "lib/cbsys.py": "d9468b8ffdc3f5ad8e4afc9f7b3985554427dcbc16998acac96b53271d6c3b32",
-  "os/cb_provision.py": "81389cf77591431618900d349edab8d9b8c476e6758d78e9897aaf86f8a09145",
+  "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
   "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
   "os/provision.cmd": "335e45236636e358d0ca496119c1323c8e5bce978c0dce3cfe374d82539f6dfe",
   "os/unattend.tpl.xml": "039e41249a9ad8dc733d70cc1dba8c99990cad4124f00788d861a9b2e5f18f6c",
@@ -35,5 +35,5 @@
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
   "tao-iso.ps1": "eac47aa45c33809a4339b75b178e4d10fd78b59c11d992da4fdc83e8306bea43"
  },
- "ver": "22.11b"
+ "ver": "22.11c"
 }
