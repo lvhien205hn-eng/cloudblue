@@ -93,10 +93,18 @@ ok["may dang mo ben phai -> o tam dung, che 'Dang mo'"] = not ms.tiles[P2].playi
 app.docked = set()
 for fn in ms.cells[P2]["box"].binds["<Button-1>"]: fn(None)
 ok["bam o -> mo dieu khien dung may"] = app.opened == [(P2, False)]
-w0 = ms.tiles[P1].box_wh[0]; ms.cycle()
+class Cli:
+    n = 0
+    def keyframe(self): Cli.n += 1
+    def close(self): pass
+w0 = ms.tiles[P1].box_wh[0]; ms.tiles[P1].cli = Cli(); ms.tiles[P1].kf_t = 0.0; ms.cycle()
 ok["Co: Vua -> To: o to hon"] = ms.tiles[P1].box_wh[0] > w0 and B.MiniStrip.ui()[1] == 2
+for _ in range(50):
+    if Cli.n: break
+    time.sleep(0.02)
+ok["ve lai dai: o dang phat dan ngay hinh cuoi (khong 'Dang noi') + xin khung khoa"] = ms.cells[P1]["shown"] and ms.cells[P1]["img"].data is not None and Cli.n == 1
 ms.toggle()
-ok["thu gon: tat het phien"] = not ms.tiles and not ms.cells and B.MiniStrip.ui()[0]
+ok["thu gon: tat het phien"] = not ms.tiles and not ms.cells and not ms.last and B.MiniStrip.ui()[0]
 ms.toggle()
 ok["mo lai: 3 phien"] = len(ms.tiles) == 3
 ms.remove({"id": P3, "pc": False})

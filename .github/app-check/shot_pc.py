@@ -243,7 +243,9 @@ def feed_mini(sec=2.0):
 
 feed_mini(); grab("pc-21-thu-nho.png")                     # 4 ô: 3 ô phát hình (2 Cloud Phone + 1 VPS), 1 ô máy tạm dừng
 ok_mini = len(ms.cells) == 4 and len(ms.tiles) == 3
-ms.cycle(); pump(1.0); feed_mini(1.0); grab("pc-22-thu-nho-to.png")              # cỡ To
+ms.cycle(); pump(0.5)                                                             # cỡ To: ô dán ngay hình cuối + xin khung khoá
+for _t in ms.tiles.values(): _t._fed = 0                                          # máy chủ trả khung khoá đúng cỡ mới
+feed_mini(1.0); grab("pc-22-thu-nho-to.png")
 ms.toggle(); pump(1.0); grab("pc-23-thu-nho-gon.png")                             # thu gọn: 1 dòng, tắt hình
 ok_mini = ok_mini and not ms.tiles
 ms.toggle(); B.MiniStrip.set_ui(sz=1); ms.sig = None; ms.render(); pump(0.5)
