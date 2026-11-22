@@ -886,7 +886,8 @@ agn3 = agent(fsn, netn, hostn); agn3.tick()
 ck("1 file trong cb\\pe-next bị sửa / hỏng → agent chạy lại tự đặt lại đúng", rbytes(recn, "cb\\pe-next\\lib\\cbrec.py") == LIBS["lib/cbrec.py"] and any("đã đặt bộ cài" in x for x in agn3.logs))
 
 BASEN = pcagent.UPDATE_BASE + "main/winpc"
-PE22 = b'# bo cai moi\nPE_VER = "22.01a"\nPE_SEQ = 2\n'
+SEQ_NEW = cb_pe.PE_SEQ + 1                            # bản "mới hơn" bộ cài trong boot.wim 1 bậc
+PE22 = b'# bo cai moi\nPE_VER = "22.01a"\nPE_SEQ = %d\n' % SEQ_NEW
 NEWF = {"agent/pcagent.py": b"# agent moi\nAGENT_VER = '22.01a'\n", "pe/cb_pe.py": PE22, "lib/cbcore.py": b"# core 22.01a\n", "pe/start.cmd": b"@echo off\r\n"}
 mann = {"ver": "22.01a", "base": BASEN, "files": {k: sha(v) for k, v in NEWF.items()}}
 netn.files = {BASEN + "/" + k: v for k, v in NEWF.items()}
@@ -899,14 +900,14 @@ fsn.remove = lambda p: (order.append(("rm", p)), _rm(p))[1]
 agu = agent(fsn, netn, hostn); agu.tick()
 fsn.write_bytes, fsn.write_text, fsn.remove = _wb, _wt, _rm
 m2 = nxt(recn)
-ck("admin công bố bản mới có bộ cài số 2 → agent cập nhật xong cũng đặt luôn bộ cài đó: file vừa tải (cb_pe.py, cbcore.py) + file đang dùng (cbrec.py, cbsys.py)",
-   agu.restart and m2 and m2["seq"] == 2 and m2["ver"] == "22.01a" and m2["files"] == {"pe/cb_pe.py": sha(PE22), "lib/cbcore.py": sha(NEWF["lib/cbcore.py"]),
+ck("admin công bố bản mới có bộ cài số mới hơn → agent cập nhật xong cũng đặt luôn bộ cài đó: file vừa tải (cb_pe.py, cbcore.py) + file đang dùng (cbrec.py, cbsys.py)",
+   agu.restart and m2 and m2["seq"] == SEQ_NEW and m2["ver"] == "22.01a" and m2["files"] == {"pe/cb_pe.py": sha(PE22), "lib/cbcore.py": sha(NEWF["lib/cbcore.py"]),
    "lib/cbrec.py": sha(LIBS["lib/cbrec.py"]), "lib/cbsys.py": sha(LIBS["lib/cbsys.py"])}, (m2, agu.logs[-3:]))
 pn = [(a, x.lower().split("pe-next\\")[1]) for a, x in order if "pe-next\\" in x.lower()]
 ck("thứ tự ghi an toàn: gỡ next.json cũ TRƯỚC, ghi 4 file, next.json ghi SAU CÙNG (mất điện giữa chừng → bộ cài không thấy bản dở dang)",
    pn[0] == ("rm", "next.json") and pn[-1] == ("w", "next.json") and sorted(x for a, x in pn[1:-1]) == ["lib\\cbcore.py", "lib\\cbrec.py", "lib\\cbsys.py", "pe\\cb_pe.py"], pn)
 seen = chain_sees(fsn)
-ck("bộ cài THẬT trong boot.wim (số 1) đọc phân vùng cứu hộ: nhận bản số 2, đủ file, đúng mã băm → sẽ chạy bản đó thay nó", seen is not None and seen[0] == 2 and seen[1] == "22.01a"
+ck("bộ cài THẬT trong boot.wim (số %d) đọc phân vùng cứu hộ: nhận bản số %d, đủ file, đúng mã băm → sẽ chạy bản đó thay nó" % (cb_pe.PE_SEQ, SEQ_NEW), seen is not None and seen[0] == SEQ_NEW and seen[1] == "22.01a"
    and seen[2] == {"pe/cb_pe.py": PE22, "lib/cbcore.py": NEWF["lib/cbcore.py"], "lib/cbrec.py": LIBS["lib/cbrec.py"], "lib/cbsys.py": LIBS["lib/cbsys.py"]}, seen and seen[:2])
 ck("bản trên phân vùng cứu hộ (cb\\pe\\…) cũng lên bản mới như trước", rbytes(recn, "cb\\pe\\cb_pe.py") == PE22 and rbytes(recn, "cb\\pe\\start.cmd") == NEWF["pe/start.cmd"])
 OLDPE = b"# bo cai 21.11c (chua co so thu tu)\n"
@@ -924,6 +925,36 @@ for d in fsz.fdisks:
 netz, hostz = SqlNet(), FakeHost(fsz, seedz()["name"])
 agz = agent(fsz, netz, hostz); agz.tick(); agz.tick()
 ck("máy không còn phân vùng cứu hộ → bỏ qua, không lỗi", agz.ident is not None and not any("Traceback" in x for x in agz.logs))
+
+print("21b. Bản kê có mục 'linux' → agent thay bộ cài CachyOS trên phân vùng cứu hộ (22.11d)")
+LIN = {"linux/cb-install.sh": b"#!/bin/bash\n# cb-install moi\n", "linux/grub.cfg": b"set timeout=3\n", "linux/cb-post.sh": b"#!/bin/bash\n# post\n"}
+def publish(ver, lin, extra_files=None):
+    nf = dict(NEWF, **{"agent/pcagent.py": b"# agent %s\n" % ver.encode()})
+    m = {"ver": ver, "base": BASEN, "files": {k: sha(v) for k, v in nf.items()}, "linux": {k: sha(v) for k, v in lin.items()}}
+    netn.files = {BASEN + "/" + k: v for k, v in nf.items()}
+    netn.files.update({BASEN + "/" + k: v for k, v in lin.items()}); netn.files.update(extra_files or {})
+    q("select pc_admin_settings('%s')" % json.dumps({"agent": m}), **A)
+publish("22.02a", LIN)
+agl = agent(fsn, netn, hostn); agl.tick()
+ck("máy cài từ bộ cài KHÔNG kèm CachyOS (không có cb\\linux\\cachyos.iso) → cập nhật agent như thường, KHÔNG ghi file Linux nào",
+   agl.restart and not any(k.startswith("cb\\linux") for k in recn.vol.files), [k for k in recn.vol.files if "linux" in k])
+recn.vol.put("cb\\linux\\cachyos.iso", b"ISO"); recn.vol.put("cb\\linux\\cb-install.sh", b"# ban cu\n"); recn.vol.put("cb\\linux\\grub.cfg", LIN["linux/grub.cfg"])
+publish("22.02b", dict(LIN, **{"linux/../../evil.sh": b"x"}))
+wr = []
+_wb2 = fsn.write_bytes
+fsn.write_bytes = lambda p, b: (wr.append(p.lower()), _wb2(p, b))[1]
+agl2 = agent(fsn, netn, hostn); agl2.tick()
+fsn.write_bytes = _wb2
+ck("máy có CachyOS: cb-install.sh cũ → thay bản mới (đúng mã), cb-post.sh chưa có → chép thêm", rbytes(recn, "cb\\linux\\cb-install.sh") == LIN["linux/cb-install.sh"]
+   and rbytes(recn, "cb\\linux\\cb-post.sh") == LIN["linux/cb-post.sh"], [x for x in agl2.logs if "CachyOS" in x])
+ck("… file đã đúng mã (grub.cfg) KHÔNG ghi lại; tên file lạ (../) bị bỏ, ghi nhật ký", not any(x.endswith("cb\\linux\\grub.cfg") for x in wr)
+   and not any("evil" in x for x in wr) and any("chưa thay" in x and "evil" in x for x in agl2.logs), [x for x in agl2.logs if "CachyOS" in x])
+LIN2 = dict(LIN, **{"linux/cb-install.sh": b"#!/bin/bash\n# ban 3\n"})
+publish("22.02c", LIN2, {BASEN + "/linux/cb-install.sh": b"# bi sua tren duong truyen\n"})
+agl3 = agent(fsn, netn, hostn); agl3.tick()
+ck("tải về SAI mã kiểm → giữ file cũ trên phân vùng cứu hộ, agent vẫn lên bản mới", agl3.restart and rbytes(recn, "cb\\linux\\cb-install.sh") == LIN["linux/cb-install.sh"]
+   and any("sai mã kiểm" in x for x in agl3.logs), [x for x in agl3.logs if "CachyOS" in x])
+q("select pc_admin_settings('{\"agent\": {}}')", **A)
 
 print("22. Lượt thuê TỰ THU HỒI (SQL v44): hết hạn → KHOÁ máy (không tắt) · gia hạn → tự mở lại · quá hạn → giữ khoá chờ cài sạch (21.11f)")
 if q("select to_regprocedure('public._pc_reclaim()') is not null") != "t":

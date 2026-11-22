@@ -320,6 +320,30 @@ else:
     ck("pnp_devices tren may khong phai Windows: real_devices tra None, real_pnp_retry False, real_staged [] (khong nem loi)",
        cb_provision.real_devices() is None and cb_provision.real_pnp_retry() is False and cb_provision.real_staged() == [])
 
+# ---- 10. (22.11c) bien UEFI (NVRAM) that: bo cai WinPE dung de dat khoi dong 1 lan vao GRUB (cai CachyOS) / go muc khoi dong Linux
+if WIN:
+    try:
+        sx = cbsys.WinSys(log=lambda *a: None)
+        fw = sx.firmware()
+        note("firmware may chay thu: %s" % fw)
+        if fw == "uefi":
+            api = sx._efi_api()
+            ck("bat duoc quyen SeSystemEnvironmentPrivilege (SYSTEM / Administrators) + nap duoc ham doc / ghi bien UEFI", api is True, api)
+            order = C.efi_order(sx); ents = C.efi_entries(sx)
+            note("BootOrder: %s | cac muc: %s" % (",".join("%04X" % n for n in order), "; ".join("Boot%04X %s" % (n, d) for n, d, _ in ents)[:300]))
+            ck("doc duoc BootOrder + cac muc Boot#### (co ten hien thi)", bool(order) and bool(ents) and all(isinstance(d, str) for _, d, _ in ents), (order, len(ents)))
+            sb = sx.efi_get("SecureBoot")
+            note("SecureBoot = %r -> secure_boot_on = %s" % (sb, C.secure_boot_on(sx)))
+            TG = "{cb1e0003-b10e-4c0d-9a11-c10d0b10e003}"           # nhom bien RIENG de thu (khong dung toi Boot#### cua may)
+            w1 = sx.efi_set("CloudBlueTest", b"\x01\x02cb", guid=TG); r1 = sx.efi_get("CloudBlueTest", guid=TG)
+            w2 = sx.efi_set("CloudBlueTest", b"", guid=TG); r2 = sx.efi_get("CloudBlueTest", guid=TG)
+            ck("ghi / doc lai / xoa 1 bien UEFI thu (nhom rieng) - duong ghi BootNext / Boot#### cua bo cai", w1 and r1 == b"\x01\x02cb" and w2 and r2 is None, (w1, r1, w2, r2))
+        else:
+            note("may chay thu khoi dong kieu BIOS - bo qua phan bien UEFI")
+    except Exception as e:
+        import traceback as _tb
+        ck("buoc 10 (bien UEFI) chay het khong nem loi", False, repr(e) + " :: " + _tb.format_exc()[-400:])
+
 with open(os.path.join(tmp, "logs", "vga.json"), "w") as f: f.write('{"state": "wait", "tries": 0}')
 ck("pcagent.vga_pending doc logs\\vga.json", pcagent.vga_pending(tmp) is True)
 ck("dong tien do la chu khong dau (in duoc tren moi cua so lenh)", all(isinstance(x, str) and x.isascii() for x in said), said[:3])

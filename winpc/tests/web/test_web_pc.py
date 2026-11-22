@@ -464,7 +464,8 @@ def main():
         ck("chưa công bố bản agent nào", "Bản agent công bố: chưa có" in s.js("() => document.getElementById('pca-agent').textContent") and "20.11a ×2" in s.js("() => document.getElementById('pca-agent').textContent"), s.js("() => document.getElementById('pca-agent').textContent"))
         s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()
         want_agent = {"ver": MANIFEST["ver"], "base": MANIFEST["base"], "files": MANIFEST["files"]}
-        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (%d file)" % (MANIFEST["ver"], len(MANIFEST["files"]))) in s.dialogs[0]
+        if MANIFEST.get("linux"): want_agent["linux"] = MANIFEST["linux"]       # 22.11d: kèm bộ cài CachyOS (agent thay trên phân vùng cứu hộ)
+        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (+ linux nếu có; không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (%d file)" % (MANIFEST["ver"], len(MANIFEST["files"]))) in s.dialogs[0]
            and s.calls("pc_admin_settings")[-1] == {"p_patch": {"agent": want_agent}}, s.dialogs)
         ck("dòng trạng thái đổi theo", ("Bản agent công bố: " + MANIFEST["ver"]) in s.js("() => document.getElementById('pca-agent').textContent"))
         n = len(s.calls("pc_admin_settings")); s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()

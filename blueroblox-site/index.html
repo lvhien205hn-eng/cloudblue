@@ -3071,7 +3071,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="pcrd-title">
     <h3 id="pcrd-title">Cài lại Windows</h3>
     <div class="hint" id="pcrd-info"></div>
-    <label>Bản Windows<select class="in" id="pcrd-os" style="width:100%"></select></label>
+    <label>Hệ điều hành<select class="in" id="pcrd-os" style="width:100%"></select></label>
     <div class="pca-wipe" id="pcrd-wipe">
       <label><input type="radio" name="pcrd-w" value="all" checked><span><b>Dọn sạch cả máy</b> — xoá mọi ổ cứng trong máy (dùng khi khách cũ trả máy)</span></label>
       <label><input type="radio" name="pcrd-w" value="disk"><span>Xoá cả ổ hệ thống, <b>giữ các ổ cứng khác</b></span></label>
@@ -13002,6 +13002,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
   const stOf = v => Object.prototype.hasOwnProperty.call(ST, v) ? ST[v] : [S(v, 20), ""];
   const wipeName = w => Object.prototype.hasOwnProperty.call(WIPE, w) ? WIPE[w] : "?";
+  const osLabel = x => x === "cachyos" ? "CachyOS Linux (KDE) — thử nghiệm" : "Windows 10 " + String(x).toUpperCase();     // 22.11c · bộ cài có kèm CachyOS
   const cmdName = o => O(o.args).why === "reclaim" ? (o.cmd === "reinstall" ? "♻️ Tự cài sạch " + S(O(o.args).os, 12).toUpperCase() : o.cmd === "shutdown" ? "💤 Tự tắt (đã cài sạch)" : S(o.cmd, 20))     // v44: tự thu hồi
     : o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
     : o.cmd === "reboot" ? "Khởi động lại" : o.cmd === "shutdown" ? "Tắt máy" : o.cmd === "update" ? "Cập nhật agent" : S(o.cmd, 20);
@@ -13462,12 +13463,14 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     P.cur = m; P.hand = !!hand; const rec = recOf(m), imgs = rec.images;
     $i("pcrd-title").textContent = (hand ? "Bàn giao khách mới — " : "Cài lại Windows — ") + m.name;
     $i("pcrd-info").textContent = (hand ? "Xoá sạch mọi ổ cứng của máy rồi cài Windows mới tinh cho khách mới" + (P.v42 && (m.rent_until || S(m.renter)) ? "; hạn thuê + tên khách cũ cũng được xoá. " : ". ") : "") + `Đang chạy ${S(m.os, 20).toUpperCase() || "?"} ${S(m.os_ver, 40)} · ${m.status === "rented" ? "ĐANG CÓ KHÁCH THUÊ" : stOf(m.status)[0]}`;
-    $i("pcrd-os").innerHTML = imgs.map(x => `<option value="${esc(x)}"${x === m.os ? " selected" : ""}>Windows 10 ${esc(x.toUpperCase())}${x === m.os ? " (bản đang chạy)" : ""}</option>`).join("");
+    $i("pcrd-os").innerHTML = imgs.map(x => `<option value="${esc(x)}"${x === m.os ? " selected" : ""}>${esc(osLabel(x))}${x === m.os ? " (bản đang chạy)" : ""}</option>`).join("");
     document.querySelector(`#pcrd-wipe input[value="${hand ? "all" : m.status === "rented" ? "system" : "all"}"]`).checked = true;
     $i("pcrd-go").textContent = hand ? "Xoá sạch + cài lại" : "Cài lại";
     const w = $i("pcrd-warn"), ok = rec.ok;
-    w.innerHTML = !ok ? "⚠️ Máy này <b>không có phân vùng cứu hộ</b> (cài bằng bộ cài Windows thường, hoặc ổ quá nhỏ) → không cài lại từ xa được. Cài lại bằng USB / ISO CloudBlue 1 lần là có."
-      : `Máy sẽ khởi động lại sau 30 giây kể từ lúc nhận lệnh, <b>xoá dữ liệu</b> theo lựa chọn ở trên rồi cài Windows mới (khoảng 15–30 phút). Dữ liệu đã xoá <b>không lấy lại được</b>.${online(m) ? "" : "<br>Máy đang <b>offline</b> — lệnh sẽ chạy khi máy online lại."}`;
+    const warn = () => { const lin = $i("pcrd-os").value === "cachyos";
+      w.innerHTML = !ok ? "⚠️ Máy này <b>không có phân vùng cứu hộ</b> (cài bằng bộ cài Windows thường, hoặc ổ quá nhỏ) → không cài lại từ xa được. Cài lại bằng USB / ISO CloudBlue 1 lần là có."
+        : `Máy sẽ khởi động lại sau 30 giây kể từ lúc nhận lệnh, <b>xoá dữ liệu</b> theo lựa chọn ở trên rồi ${lin ? "cài <b>CachyOS (Linux)</b> — khoảng 20–60 phút, cần Internet; chỉ máy khởi động kiểu UEFI và <b>đã tắt Secure Boot</b>. Cài lỗi 2 lần máy tự cài lại Windows mặc định. Bản Linux CHƯA có điều khiển từ xa qua app — chỉ dùng để thử" : "cài Windows mới (khoảng 15–30 phút)"}. Dữ liệu đã xoá <b>không lấy lại được</b>.${online(m) ? "" : "<br>Máy đang <b>offline</b> — lệnh sẽ chạy khi máy online lại."}`; };
+    warn(); $i("pcrd-os").onchange = warn;
     $i("pcrd-go").disabled = !ok; $i("pcrd-err").textContent = ""; show("pcrdlg");
   }
   $i("pcrd-cancel").onclick = () => show("pcrdlg", false);
@@ -13475,7 +13478,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const m = P.cur; if (!m) return;
     const os = $i("pcrd-os").value, wipe = (document.querySelector("#pcrd-wipe input:checked") || {}).value || "all";
     if (!os) { $i("pcrd-err").textContent = "Chọn bản Windows."; return; }
-    if (!confirm(`${P.hand && wipe === "all" ? "BÀN GIAO KHÁCH MỚI — xoá sạch máy" : "CÀI LẠI máy"} "${m.name}" ${P.hand && wipe === "all" ? "rồi cài" : "sang"} Windows ${os.toUpperCase()}?\n\nXoá: ${wipeName(wipe)}.\nDữ liệu bị xoá KHÔNG lấy lại được.${m.status === "rented" && wipe !== "system" ? "\n\n⚠ Máy đang có khách thuê — mọi dữ liệu của khách sẽ mất." : ""}${P.hand && wipe === "all" && P.v42 && (m.rent_until || S(m.renter)) ? "\n\nHạn thuê + tên khách cũ cũng được xoá." : ""}`)) return;
+    if (!confirm(`${P.hand && wipe === "all" ? "BÀN GIAO KHÁCH MỚI — xoá sạch máy" : "CÀI LẠI máy"} "${m.name}" ${P.hand && wipe === "all" ? "rồi cài" : "sang"} ${os === "cachyos" ? "CachyOS Linux (KDE)" : "Windows " + os.toUpperCase()}?\n\nXoá: ${wipeName(wipe)}.\nDữ liệu bị xoá KHÔNG lấy lại được.${m.status === "rented" && wipe !== "system" ? "\n\n⚠ Máy đang có khách thuê — mọi dữ liệu của khách sẽ mất." : ""}${P.hand && wipe === "all" && P.v42 && (m.rent_until || S(m.renter)) ? "\n\nHạn thuê + tên khách cũ cũng được xoá." : ""}`)) return;
     const r = await call("pc_admin_order", { p_id: m.id, p_cmd: "reinstall", p_args: { os, wipe } }, `Đã gửi lệnh cài lại ${os.toUpperCase()} cho ${m.name}.`, $i("pcrd-go"));
     if (!r) return;
     show("pcrdlg", false);
@@ -13521,7 +13524,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       const cur = S(O(P.set && P.set.agent).ver, 24), ver = String(m.ver);
       if (cur === ver) { toast("Bản " + ver + " đã được công bố rồi."); return; }
       if (!confirm(`Công bố bản agent ${ver} (${Object.keys(files).length} file)${cur ? " thay cho bản " + cur : ""}?\n\nMọi máy PC đang online sẽ tự tải, kiểm mã, chạy thử rồi chuyển sang bản này trong khoảng 1 phút. Máy offline sẽ cập nhật khi online lại.`)) return;
-      await call("pc_admin_settings", { p_patch: { agent: { ver, base: String(m.base), files } } }, "Đã công bố bản agent " + ver + ".");
+      const lin = m.linux && typeof m.linux === "object" && Object.keys(m.linux).length <= 40 && Object.keys(m.linux).every(k => /^linux\/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$/.test(k) && /^[0-9a-f]{64}$/.test(m.linux[k])) ? m.linux : null;   // 22.11d
+      await call("pc_admin_settings", { p_patch: { agent: lin ? { ver, base: String(m.base), files, linux: lin } : { ver, base: String(m.base), files } } }, "Đã công bố bản agent " + ver + ".");
     } finally { b.disabled = false; }
   };
 

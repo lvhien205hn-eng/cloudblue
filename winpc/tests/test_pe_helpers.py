@@ -6,7 +6,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import cbcore as C                                    # noqa: E402
-from cbsys import GPT_DATA, GPT_ESP, GPT_MSR          # noqa: E402
+from cbsys import GPT_DATA, GPT_ESP, GPT_LINUX, GPT_MSR   # noqa: E402
 from fakesys import GB, MB                            # noqa: E402
 
 TPL = open(os.path.join(HERE, "..", "os", "unattend.tpl.xml"), encoding="utf-8").read()
@@ -19,6 +19,18 @@ def cfg0(**kw):
                     {"id": "1511", "file": "cb\\images\\1511.wim", "index": 1, "name": "Windows 10 Pro 1511", "edition": "Professional",
                      "version": "10.0.10586.0", "lang": "en-US", "bytes": 4 * GB}]}
     c.update(kw); return c
+
+
+CACHY = {"id": "cachyos", "name": "CachyOS Linux (KDE)", "kind": "linux", "file": "cb\\linux\\cachyos.iso", "bytes": 3 * GB, "version": "260809"}
+LINUX_FILES = {"cb\\linux\\cachyos.iso": b"ISO", "cb\\linux\\grubx64.efi": b"GRUB", "cb\\linux\\grub.cfg": "cfg", "cb\\linux\\cb-install.sh": "sh",
+               "cb\\linux\\cb-post.sh": "post"}
+
+
+def cfg_lin(**kw):
+    """Bộ cài có cả CachyOS (22.11c)."""
+    c = cfg0(**kw)
+    c["images"] = c["images"] + [dict(CACHY)]
+    return c
 
 
 def media_files(cfg, key="cbpc_" + "a" * 40):
@@ -42,6 +54,7 @@ def rec_files(cfg, job=None):
          "cb\\agent\\pcagent.py": "a", "cb\\agent\\pcremote.py": "r", "cb\\lib\\cbsys.py": "l", "cb\\pe\\cb_pe.py": "pe", "cb\\py\\python.exe": b"py",
          "cb\\identity.json": json.dumps({"id": "11111111-1111-1111-1111-111111111111", "hw": "h" * 64, "name": "CB-OLD001"})}
     if job is not None: f["cb\\job.json"] = json.dumps(job)
+    if any(im.get("kind") == "linux" for im in cfg.get("images") or []): f.update(LINUX_FILES)
     return f
 
 
@@ -64,6 +77,20 @@ def cb_layout(fs, cfg, job=None, index=0, size=480, fw="uefi", extra_data=False,
         win = d.add(200 * 1024 if extra_data else 0, 0x07, "NTFS", "Windows", "C", files=dict(WINFILES))
         if extra_data: d.add(0, 0x07, "NTFS", "Data", "D", files={"game\\save.dat": "cua khach"})
     return d, rec, win
+
+
+def lin_layout(fs, cfg, job=None, index=0, size=480, extra_data=False, installed=True):
+    """Ổ hệ thống của máy ĐANG CHẠY CachyOS (cài theo lệnh 22.11c): EFI Windows · MSR · cứu hộ · EFI Linux · Linux (· Data).
+       Trả (ổ, cứu hộ, EFI Linux, phân vùng Linux)."""
+    d = fs.disk(index, size, model="Samsung SSD 870", ssd=True, style="gpt")
+    d.add(260, GPT_ESP, "FAT32", "System", files={"efi\\microsoft\\boot\\bcd": "oldbcd", "efi\\cblinux\\grubx64.efi": b"GRUB"})
+    d.add(16, GPT_MSR)
+    rec = d.add(12 * 1024, GPT_DATA, "NTFS", "CBRECOVERY", attrs=0x8000000000000001, files=rec_files(cfg, job))
+    if installed: rec.vol.put("cb\\linux\\installed.json", json.dumps({"os": "cachyos", "boot": "Linux Boot Manager"}))
+    lesp = d.add(1024, GPT_ESP, "FAT32", "CBLINUXEFI", files={"efi\\systemd\\systemd-bootx64.efi": b"sdb"})
+    lroot = d.add(200 * 1024 if extra_data else 0, GPT_LINUX, "", "")
+    if extra_data: d.add(0, GPT_DATA, "NTFS", "Data", "D", files={"game\\save.dat": "cua khach"})
+    return d, rec, lesp, lroot
 
 
 def job0(win=None, **kw):
