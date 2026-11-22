@@ -16,7 +16,7 @@
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "22.11g"
+CAP_VER = "22.11h"
 APP_ID = "vn.cloudblue.remote"
 OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
 PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
@@ -814,9 +814,10 @@ class Cap:
         if self.bus is not None: self.bus.close()
         self.kw = self.portal = self.bus = self.inp = None; self.backend = None; self.node = None
 
-    def open(self):
+    def open(self, portal=True):
         """Mở luồng màn hình + đường chuột / phím: KWin trực tiếp trước (không hộp hỏi), không được thì cổng XDG (chờ tối đa PORTAL_START_S).
-           Cả 2 đều hỏng → lỗi ghi rõ từng đường (người xem thấy, root ghi nhật ký)."""
+           Cả 2 đều hỏng → lỗi ghi rõ từng đường (người xem thấy, root ghi nhật ký).
+           22.11h · portal=False: chỉ thử KWin (KWin chưa có quyền mới → cổng XDG chỉ hiện hộp hỏi trên màn hình máy, không ai bấm, tốn 10 giây)."""
         with self.lock:
             if self.inp is not None and self.node is not None and (self.kw is None or self.kw.alive()): return self.size
             self._drop()
@@ -834,7 +835,7 @@ class Cap:
                 except Exception as e:
                     k.close(); errs.append("KWin: %s" % str(e)[:170])
                     self.log("KWin truc tiep chua dung duoc -> thu cong XDG: %s" % (e,))
-            if os.environ.get("CBCAP_NO_PORTAL") == "1": raise RuntimeError("; ".join(errs) or "khong co duong quay nao")
+            if os.environ.get("CBCAP_NO_PORTAL") == "1" or not portal: raise RuntimeError("; ".join(errs) or "khong co duong quay nao")
             try:
                 left = lambda: max(2.0, OPEN_BUDGET_S - (time.time() - t0))
                 self.bus = DBus(self.bus_addr)
@@ -1012,7 +1013,7 @@ def serve(fd):
                     pid = cap.start(int(j["w"]), int(j["h"]), int(j["fps"]), int(j["kbps"]), int(j["port"]), enc)
                     if rid is not None: send({"id": rid, "ok": True, "pid": pid, "mode": cap.mode, "size": list(cap.size), "backend": cap.backend})
                 elif op == "open":
-                    sz = cap.open()
+                    sz = cap.open(portal=j.get("portal") is not False)
                     if rid is not None: send({"id": rid, "ok": True, "size": list(sz), "backend": cap.backend, "open_s": cap.first})
                 elif op == "stop": cap.stop()
                 elif op == "move": cap.move(int(j["x"]), int(j["y"]))

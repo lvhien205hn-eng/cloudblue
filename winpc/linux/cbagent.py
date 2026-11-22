@@ -12,7 +12,7 @@
 # =====================================================================================================
 import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
 
-LINUX_VER = "22.11g"
+LINUX_VER = "22.11h"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):

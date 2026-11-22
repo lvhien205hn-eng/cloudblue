@@ -20,7 +20,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "22.11g"
+LINUX_REMOTE_VER = "22.11h"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"
@@ -29,6 +29,7 @@ LOCK = "/run/cloudblue-remote.lock"
 SIZE_TTL = 15.0
 OPEN_WAIT = 20.0                                                  # chờ cbcap mở màn hình (cbcap tự giới hạn 17 giây; trạm chờ máy PC 25 giây)
 START_WAIT = 20.0
+KWIN_ONLY_WAIT = 8.0                                              # 22.11h · KWin chưa có quyền mới: chỉ thử KWin (vài giây) rồi báo người xem khởi động lại máy
 
 
 def _load_json(path):
@@ -214,7 +215,7 @@ class Helper:
             if env is None: raise RuntimeError("khach chua dang nhap man hinh (chua co phien KDE)")
             script = install_cap()
             py, changed = install_kwin_access(self.log)                 # 22.11g: bản python riêng được KWin cấp quyền (không hộp hỏi)
-            if py:
+            if py and kwin_env_ok(self.user) is not True:              # 22.11h: KWin đã có KWIN_WAYLAND_NO_PERMISSION_CHECKS → khỏi kbuildsycoca6 (đỡ vài giây)
                 try:
                     if refresh_sycoca(self.user, self.log, force=changed): time.sleep(2)   # KWin chỉ dò lại ksycoca mỗi 1,5 giây
                 except Exception as e: self.log("kbuildsycoca6 loi: %r" % (e,))
@@ -370,13 +371,15 @@ class LinuxIO:
         """Có người xem → mở cbcap + luồng màn hình (KWin trực tiếp / cổng XDG); hết người xem → đóng.
            Không mở được → ViewerError: người xem thấy LÝ DO (trước khi trạm hết 25 giây chờ) + ghi logs/remote.err."""
         if on:
+            env = self.kwin_env()                     # False = KWin đang chạy mà CHƯA có quyền mới (máy chưa khởi động lại từ khi lên 22.11g)
             try:
                 self.helper.ensure()
-                r = self.helper.request("open", OPEN_WAIT)
+                if env is False: r = self.helper.request("open", KWIN_ONLY_WAIT, portal=False)   # 22.11h: chỉ thử KWin → báo "khởi động lại" sau vài giây
+                else: r = self.helper.request("open", OPEN_WAIT)
             except Exception as e:
                 why = " ".join(str(e).split())[:230]
                 note_error(why); self.log("khong mo duoc man hinh de quay: %s" % why)
-                if "KWin chua cho" in why and self.kwin_env() is False:          # máy vừa lên 22.11g: KWin cũ chưa có quyền mới → khởi động lại 1 lần
+                if env is False or ("KWin chua cho" in why and self.kwin_env() is False):   # máy vừa lên 22.11g: KWin cũ chưa có quyền mới → khởi động lại 1 lần
                     raise ViewerError(why, "Máy Linux cần KHỞI ĐỘNG LẠI 1 lần để bật cách điều khiển mới: bấm Nguồn › Khởi động lại, "
                                            "đợi khoảng 3 phút rồi mở lại. (%s)" % why[:120])
                 raise ViewerError(why, "Máy Linux chưa mở được màn hình để quay: %s" % why)
@@ -574,7 +577,9 @@ def cmd_run(argv):
                     log("chuong trinh vua duoc cap nhat -> thoat de chay ban moi"); os._exit(0)
                 if rm.state != last[0] or time.time() - last[1] > 60:
                     last[0], last[1] = rm.state, time.time()
-                    with open(os.path.join(BASE, "logs", "remote.state"), "w", encoding="utf-8") as f: f.write("%d %s %s\n" % (time.time(), R.REMOTE_VER, rm.state))
+                    kw = kwin_env_ok(user)                      # 22.11h: web / SQL thấy KWin đã có quyền mới chưa (chưa → máy cần khởi động lại 1 lần)
+                    note = "" if kw is None else " | kwin ok" if kw else " | kwin chua co quyen - can khoi dong lai"
+                    with open(os.path.join(BASE, "logs", "remote.state"), "w", encoding="utf-8") as f: f.write("%d %s %s%s\n" % (time.time(), R.REMOTE_VER, rm.state, note))
             except Exception:
                 pass
     threading.Thread(target=watch, daemon=True).start()
