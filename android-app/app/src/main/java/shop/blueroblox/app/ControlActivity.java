@@ -929,6 +929,7 @@ public class ControlActivity extends Activity {
                 {"🧬", "Clone tab", (Runnable) this::cloneTab},
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
                 {"🔓", "Root", (Runnable) this::root},
+                {"🌐", "Proxy", (Runnable) this::proxy},
                 {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
@@ -939,7 +940,7 @@ public class ControlActivity extends Activity {
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };
         for (Object[] it : items) {
-            if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root
+            if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]) || "Proxy".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root + Proxy (đặt proxy trên web)
             Runnable r = (Runnable) it[2];
             LinearLayout t = Ui.tool(this, (String) it[0], (String) it[1], v -> { if (d[0] != null) d[0].dismiss(); r.run(); });
             t.setLayoutParams(new FrameLayout.LayoutParams(w, -2));
@@ -1513,6 +1514,121 @@ public class ControlActivity extends Activity {
             else go.run();
         });
         d.show();
+    }
+
+    // ---------------- 🌐 PROXY RIÊNG CỦA MÁY (22/11 · cpapi <máy>/proxy → phonectl proxy → cbproxy trong máy) ----------------
+    // Chỉ chủ máy (người được chia sẻ: máy chủ trả 403). Mật khẩu proxy không bao giờ trả về app (máy chủ chỉ trả user + ••••).
+    private void proxy() {
+        Dialog[] pd = progress(Ui.L("Đang đọc proxy…", "Loading proxy…"));
+        final String base = api, pid = id;
+        Api.bg(() -> Api.cpAt(base, "GET", pid + "/proxy", null), j -> { pd[0].dismiss(); proxySheet(j); },
+                m -> { pd[0].dismiss(); Ui.toast(this, m); });
+    }
+
+    /** Trạng thái proxy → {dòng 1, dòng 2, mức: ok | warn | bad | muted} (giống hộp Proxy trên web / app máy tính). */
+    static String[] pxStatus(JSONObject j) {
+        if (!j.optBoolean("set")) return new String[]{Ui.L("Chưa dùng proxy", "No proxy"), Ui.L("Máy đang đi mạng của máy chủ.", "The phone uses the server's network."), "muted"};
+        JSONObject s = j.optJSONObject("state");
+        String k = s != null && !s.optString("kind").isEmpty() ? s.optString("kind") : j.optString("kind");
+        String head = j.optString("show", "?") + " · " + ("socks5".equals(k) ? "SOCKS5" : "http".equals(k) ? "HTTP" : Ui.L("Tự nhận", "Auto"));
+        if (!j.optBoolean("online")) return new String[]{head, Ui.L("Máy đang tắt — proxy tự bật khi máy bật.", "The phone is off — the proxy turns on when it starts."), "warn"};
+        String mode = s == null ? "" : s.optString("mode"), err = s == null ? "" : s.optString("err");
+        boolean alive = s != null && s.optBoolean("alive");
+        if (alive && "proxy".equals(mode)) {
+            String ip = s.optString("ip"); int ms = s.optInt("ms");
+            return new String[]{head, Ui.L("✅ Đang chạy qua proxy", "✅ Running through the proxy") + (ip.isEmpty() ? "" : Ui.L(" · IP ra ", " · exit IP ") + ip) + (ms > 0 ? " · " + ms + " ms" : ""), "ok"};
+        }
+        if (alive && "direct".equals(mode))
+            return new String[]{head, Ui.L("⚠ Proxy chưa dùng được", "⚠ The proxy doesn't work yet") + (err.isEmpty() ? "" : ": " + err)
+                    + Ui.L(" — máy tạm đi mạng thường, tự thử lại mỗi 15 giây.", " — the phone uses the normal network for now and retries every 15 s."), "warn"};
+        if ("crashed".equals(mode))
+            return new String[]{head, Ui.L("❌ Proxy đã dừng", "❌ The proxy stopped") + (err.isEmpty() ? "" : ": " + err) + Ui.L(" — bấm Áp dụng lại.", " — tap Re-apply."), "bad"};
+        return new String[]{head, Ui.L("Proxy chưa chạy — bấm Áp dụng lại.", "The proxy isn't running — tap Re-apply."), "warn"};
+    }
+
+    private void proxySheet(JSONObject j) {
+        final boolean set = j.optBoolean("set");
+        LinearLayout c = Ui.col(this, 10);
+        c.addView(Ui.muted(this, Ui.L("App trong máy đi Internet qua proxy của bạn.", "Apps on the phone go online through your proxy.")));
+        String[] ps = pxStatus(j);
+        LinearLayout box = Ui.col(this, 2);
+        box.setBackground(Ui.round(Ui.PANEL2, 14, Ui.LINE));
+        box.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+        TextView head = Ui.text(this, ps[0], 15, Ui.FG, true);
+        head.setTextIsSelectable(false);
+        box.addView(head);
+        box.addView(Ui.text(this, ps[1], 12.5f, "ok".equals(ps[2]) ? Ui.OK : "warn".equals(ps[2]) ? Ui.WAIT : "bad".equals(ps[2]) ? Ui.BAD : Ui.MUTED, false));
+        c.addView(box, Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Proxy mới", "New proxy"), 12, Ui.MUTED, false));
+        final EditText e = Ui.input(this, "IP:Port:User:Pass", android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        e.setSingleLine(true);
+        c.addView(e, Ui.fill());
+        final String[] kinds = {"auto", "socks5", "http"};
+        final String[] kind = {set && java.util.Arrays.asList(kinds).contains(j.optString("kind")) ? j.optString("kind") : "auto"};
+        LinearLayout seg = Ui.row(this, 8);
+        final Button[] kb = new Button[3];
+        final Runnable paintK = () -> {
+            for (int i = 0; i < 3; i++) {
+                boolean on = kinds[i].equals(kind[0]);
+                kb[i].setBackground(Ui.round(on ? Ui.BLUE : Ui.PANEL, 12, on ? Ui.BLUE : Ui.LINE));
+                kb[i].setTextColor(on ? Color.WHITE : Ui.FG);
+            }
+        };
+        String[] names = {Ui.L("Tự nhận", "Auto"), "SOCKS5", "HTTP"};
+        for (int i = 0; i < 3; i++) {
+            final int ii = i;
+            kb[i] = Ui.button(this, names[i], Ui.GHOST);
+            kb[i].setOnClickListener(v -> { kind[0] = kinds[ii]; paintK.run(); });
+            seg.addView(kb[i], Ui.weight(1));
+        }
+        paintK.run();
+        c.addView(seg, Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.",
+                "Paste one of: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Auto” tries SOCKS5, then HTTP."), 12, Ui.MUTED, false), Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại. Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.",
+                "If the proxy is down or the password is wrong, the phone falls back to the normal network (it never loses Internet) and switches back when the proxy works again. Web, apps and games over TCP go through the proxy; video calls / UDP games still use the server's network. Switching Android creates a new phone — enter the proxy again."),
+                12, Ui.MUTED, false), Ui.fill());
+        LinearLayout acts = Ui.row(this, 10);
+        Button off = Ui.button(this, Ui.L("Tắt proxy", "Turn off"), Ui.GHOST);
+        Button again = Ui.button(this, Ui.L("Áp dụng lại", "Re-apply"), Ui.GHOST);
+        Button save = Ui.button(this, Ui.L("Lưu & bật", "Save"), Ui.PRIMARY);
+        if (set) { acts.addView(off, Ui.weight(1)); acts.addView(again, Ui.weight(1)); }
+        acts.addView(save, Ui.weight(1));
+        c.addView(acts, Ui.fill());
+        Dialog d = Ui.sheet(this, "🌐 Proxy", c);
+        save.setOnClickListener(v -> {
+            String u = e.getText().toString().trim();
+            if (u.isEmpty()) { Ui.toast(this, Ui.L("Dán proxy vào ô trước (vd 1.2.3.4:8080:user:pass).", "Paste the proxy first (e.g. 1.2.3.4:8080:user:pass).")); return; }
+            if (!u.matches("(?s).*[:@].*") || u.matches("(?s).*\\s.*")) {
+                Ui.toast(this, Ui.L("Proxy phải có dạng IP:Port hoặc IP:Port:User:Pass (không có dấu cách).", "The proxy must look like IP:Port or IP:Port:User:Pass (no spaces).")); return;
+            }
+            e.setText("");                                         // không giữ mật khẩu proxy trong ô sau khi đã gửi
+            d.dismiss();
+            try { pxRun(new JSONObject().put("do", "set").put("url", u).put("kind", kind[0]), Ui.L("Đang bật proxy…", "Turning the proxy on…"), true); }
+            catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+        });
+        again.setOnClickListener(v -> {
+            d.dismiss();
+            try { pxRun(new JSONObject().put("do", "again"), Ui.L("Đang áp dụng lại proxy…", "Applying the proxy again…"), true); }
+            catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+        });
+        off.setOnClickListener(v -> Ui.confirm(this, Ui.L("Tắt proxy?", "Turn the proxy off?"), Ui.L("Máy quay về mạng của máy chủ.", "The phone goes back to the server's network."),
+                Ui.L("Tắt proxy", "Turn off"), () -> {
+                    d.dismiss();
+                    try { pxRun(new JSONObject().put("do", "off"), Ui.L("Đang tắt proxy…", "Turning the proxy off…"), false); }
+                    catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+                }));
+        d.show();
+    }
+
+    private void pxRun(JSONObject body, String wait, boolean reopen) {
+        Dialog[] pd = progress(wait);
+        final String base = api, pid = id;
+        Api.bg(() -> {
+            JSONObject r = Api.cpAt(base, "POST", pid + "/proxy", body);
+            return waitJob(base, r.optString("job"), pd);
+        }, msg -> { pd[0].dismiss(); Ui.toast(this, msg); if (reopen) proxy(); }, m -> { pd[0].dismiss(); Ui.toast(this, m); if (reopen) proxy(); });
     }
 
     private void rootRow(LinearLayout list, java.util.List<android.widget.Switch> rows, java.util.List<String> pkgs,
