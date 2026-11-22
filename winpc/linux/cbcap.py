@@ -290,13 +290,13 @@ class Portal:
         self.b.call(*STORE, "SetPermission", "sbssas", ["kde-authorized", True, "remote-desktop", self.app, ["yes"]])
         return self.app
 
-    def start(self, timeout=25.0):
+    def start(self, timeout=25.0, own_cursor=False):
         r = self._request(RD, "CreateSession", "a{sv}", [], {"session_handle_token": ("s", self._token())})
         self.session = str(r["session_handle"])
         self._request(RD, "SelectDevices", "oa{sv}", [self.session], {"types": ("u", 3)})                     # bàn phím + chuột
         try: modes = int(self.b.get_prop(PORTAL, PORTAL_PATH, SC, "AvailableCursorModes"))
         except (DBusError, TypeError, ValueError): modes = 2
-        self.cursor = (modes, 2 if modes & 2 else 1)
+        self.cursor = (modes, 1 if own_cursor and modes & 1 else 2 if modes & 2 else 1)     # tự vẽ con trỏ (FramePump) → KWin ẩn con trỏ trong hình
         self._request(SC, "SelectSources", "oa{sv}", [self.session],
                       {"types": ("u", 1), "multiple": ("b", False), "cursor_mode": ("u", self.cursor[1])})         # 1 màn hình, con trỏ vẽ sẵn
         r = self._request(RD, "Start", "osa{sv}", [self.session, ""], {}, timeout)
@@ -384,8 +384,97 @@ def gst_pipeline(node, w, h, fps, kbps, port, fd=3):
 
 
 def raw_pipeline(node, w, h, fps, fd=3):
-    """GStreamer chỉ lấy khung thô BGRx ra stdout (ffmpeg nén)."""
-    return ["gst-launch-1.0", "-q"] + gst_src(node, w, h, fps, fd, "BGRx") + ["!", "fdsink", "fd=1", "sync=false"]
+    """GStreamer chỉ lấy khung thô BGRx ra stdout — CHỈ khi màn hình đổi (+ lặp lại mỗi giây); FramePump giữ nhịp đều + vẽ con trỏ rồi đưa ffmpeg nén."""
+    return ["gst-launch-1.0", "-q", "pipewiresrc", "fd=%d" % fd, "path=%d" % node, "do-timestamp=true", "keepalive-time=1000", "always-copy=true", "!",
+            "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!",
+            "videoconvert", "!", "videoscale", "!", "video/x-raw,format=BGRx,width=%d,height=%d" % (w, h), "!",
+            "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!", "fdsink", "fd=1", "sync=false"]
+
+
+# Con trỏ tự vẽ (mũi tên 12x19): B = viền đen, W = ruột trắng, cách = trong suốt
+CURSOR = ("B", "BB", "BWB", "BWWB", "BWWWB", "BWWWWB", "BWWWWWB", "BWWWWWWB", "BWWWWWWWB", "BWWWWWWWWB", "BWWWWWWWWWB", "BWWWWWWBBBBB",
+          "BWWWBWWB", "BWWBBWWB", "BWB  BWWB", "BB   BWWB", "B     BWWB", "      BWWB", "       BB")
+_PX = {"B": b"\x00\x00\x00\xff", "W": b"\xff\xff\xff\xff"}
+
+
+def cursor_runs(rows=CURSOR):
+    """→ [(dy, dx, bytes BGRx)…]: các đoạn liền cùng màu của mũi tên (vẽ nhanh bằng gán lát cắt)."""
+    out = []
+    for dy, row in enumerate(rows):
+        dx = 0
+        while dx < len(row):
+            c = row[dx]
+            if c == " ": dx += 1; continue
+            e = dx
+            while e < len(row) and row[e] == c: e += 1
+            out.append((dy, dx, _PX[c] * (e - dx))); dx = e
+    return out
+
+
+CURSOR_RUNS = cursor_runs()
+
+
+def draw_cursor(buf, w, h, x, y, runs=CURSOR_RUNS):
+    """Vẽ mũi tên lên khung BGRx (bytearray w*h*4) tại điểm (x, y) — mũi nhọn đúng điểm chuột. Cắt phần ra ngoài khung."""
+    for dy, dx, seg in runs:
+        yy, xx = y + dy, x + dx
+        if yy < 0 or yy >= h or xx >= w: continue
+        n = len(seg) // 4
+        if xx < 0: seg = seg[-xx * 4:]; n += xx; xx = 0
+        if xx + n > w: seg = seg[:(w - xx) * 4]; n = w - xx
+        if n <= 0: continue
+        o = (yy * w + xx) * 4
+        buf[o:o + n * 4] = seg
+
+
+class FramePump:
+    """Khung thô của bộ quay (GStreamer: chỉ ra khung khi màn hình đổi) → giữ khung MỚI NHẤT → ghi sang ffmpeg ĐỀU fps khung/giây, VẼ CON TRỎ
+       ở vị trí chuột cuối cùng. KWin không sinh khung mới khi chỉ rê chuột trên vùng đứng yên (CI 22.11f: con trỏ tới chậm ~3 giây) → tự vẽ thì
+       người xem thấy chuột đi ngay; màn hình đứng yên vẫn đủ nhịp khung (khung khoá đều). Bộ nén chậm → ghi chậm lại, KHÔNG dồn (luôn lấy khung mới nhất)."""
+    def __init__(self, src, dst, w, h, fps, pos=lambda: None, log=lambda m: None):
+        self.src, self.dst, self.w, self.h, self.fps, self.pos, self.log = src, dst, w, h, max(1, int(fps)), pos, log
+        self.n = w * h * 4; self.latest = None; self.seq = 0; self.sent = 0; self.got = 0
+        self.stop_ev = threading.Event()
+        self.threads = [threading.Thread(target=self._reader, daemon=True), threading.Thread(target=self._writer, daemon=True)]
+        for t in self.threads: t.start()
+
+    def _reader(self):
+        buf = bytearray(self.n); mv = memoryview(buf)
+        try:
+            while not self.stop_ev.is_set():
+                got = 0
+                while got < self.n:
+                    k = self.src.readinto(mv[got:])
+                    if not k: self.stop_ev.set(); return
+                    got += k
+                self.latest = bytes(buf); self.seq += 1; self.got += 1
+        except (OSError, ValueError):
+            self.stop_ev.set()
+
+    def _writer(self):
+        period = 1.0 / self.fps; nxt = time.monotonic(); key = None; out = None
+        try:
+            while not self.stop_ev.is_set():
+                fr, seq, p = self.latest, self.seq, self.pos()
+                if fr is not None:
+                    if (seq, p) != key:                              # khung mới hoặc chuột đổi chỗ → dựng lại; không thì gửi lại khung trước
+                        out = bytearray(fr)
+                        if p is not None: draw_cursor(out, self.w, self.h, p[0], p[1])
+                        key = (seq, p)
+                    self.dst.write(out); self.dst.flush(); self.sent += 1
+                nxt += period
+                d = nxt - time.monotonic()
+                if d > 0: time.sleep(d)
+                elif d < -1.0: nxt = time.monotonic()                 # tụt quá 1 giây (bộ nén chậm) → bắt nhịp lại, không dồn
+        except (OSError, ValueError):
+            pass
+        finally:
+            self.stop_ev.set()
+            try: self.dst.close()
+            except (OSError, ValueError): pass
+
+    def stop(self):
+        self.stop_ev.set()
 
 
 def ff_encode(w, h, fps, enc_args, port):
@@ -455,7 +544,7 @@ class Cap:
     def __init__(self, log=None, bus_addr=None):
         self.log = log or (lambda m: None); self.bus_addr = bus_addr
         self.bus = None; self.portal = None; self.proc = None; self.src = None; self.mode = None; self.lock = threading.RLock()
-        self.acc = [0.0, 0.0]; self.wl = None
+        self.acc = [0.0, 0.0]; self.wl = None; self.pump = None; self.pt = None   # pt: chuột cuối cùng (0..65535) cho con trỏ tự vẽ
 
     def open(self):
         with self.lock:
@@ -463,7 +552,7 @@ class Cap:
             self.bus = DBus(self.bus_addr)
             self.portal = Portal(self.bus, self.log)
             self.portal.authorize()
-            self.portal.start()
+            self.portal.start(own_cursor=pick_mode() == "ff")
             self.log("phien KDE: luong man hinh %d (%dx%d), ma ung dung %r, thiet bi %s, con tro %s/%s" % (self.portal.node, self.portal.size[0], self.portal.size[1], self.portal.app,
                      self.portal.devices, self.portal.cursor[1], self.portal.cursor[0]))
             return self.portal.size
@@ -482,8 +571,10 @@ class Cap:
                 if mode == "ff":
                     src = subprocess.Popen(test_src(w, h, fps) if TEST_SRC else raw_pipeline(self.portal.node, w, h, fps, fd), stdin=subprocess.DEVNULL,
                                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, pass_fds=(fd,))
-                    enc = subprocess.Popen(ff_encode(w, h, fps, enc_args or [], port), stdin=src.stdout, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                    src.stdout.close()
+                    enc = subprocess.Popen(ff_encode(w, h, fps, enc_args or [], port), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    own = self.portal.cursor[1] == 1                     # KWin ẩn con trỏ → tự vẽ
+                    self.pump = FramePump(src.stdout, enc.stdin, w, h, fps,
+                                          (lambda: None if self.pt is None else (self.pt[0] * w // 65536, self.pt[1] * h // 65536)) if own else (lambda: None), self.log)
                     self.src, self.proc = src, enc
                     threading.Thread(target=self._errlog, args=(src, "gstreamer"), daemon=True).start()
                 else:
@@ -511,6 +602,7 @@ class Cap:
 
     def stop(self):
         with self.lock:
+            if self.pump is not None: self.pump.stop(); self.pump = None
             procs, self.proc, self.src = (self.src, self.proc), None, None
             for p in procs:
                 if p is not None and p.poll() is None:
@@ -530,6 +622,7 @@ class Cap:
         p = self.portal
         if p is None or not p.session: return
         w, h = p.size
+        self.pt = (max(0, min(65535, int(x))), max(0, min(65535, int(y))))
         p.motion(max(0, min(w - 1, x * w / 65536.0)), max(0, min(h - 1, y * h / 65536.0)))
 
     def btn(self, b, down):
