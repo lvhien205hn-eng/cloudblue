@@ -80,7 +80,7 @@ def task(n):
 
 
 def start(n):
-    sh(f"am start -W -n {pkg(n)}/{MAIN}", 40); time.sleep(3)
+    sh(f"am start -W {cp.AS_ICON} -n {pkg(n)}/{MAIN}", 40); time.sleep(3)      # như bấm biểu tượng trên màn chính
 
 
 def mini():
@@ -142,6 +142,31 @@ try:
     conf(0, 1); code, j = mini()                       # đổi cài đặt lúc game ĐANG chạy (không mở lại game)
     print("   E4 mini:", code, j.get("msg") or j.get("error"), flush=True)
     RES.append("E4 kết quả=" + str(fit(4, "E4 đổi cài đặt lúc game đang chạy · game 4"))); shot("4-doi-luc-dang-chay")
+
+    sh(f"for n in 4 5; do am force-stop vn.cloudblue.wintest$n; done; input keyevent 3"); conf(0, 1); start(5)
+    out = sh(f"am compat enable --no-kill FORCE_NON_RESIZE_APP {pkg(5)}", 40)   # bật lúc game (khai báo đổi cỡ) ĐANG chạy, không tắt game
+    note("E5 lệnh am compat --no-kill", out.replace("\n", " | ")[:200] or "(trống)")
+    p5 = pid(5); code, j = mini()
+    print("   E5 mini:", code, j.get("msg") or j.get("error"), flush=True)
+    RES.append("E5 kết quả=" + str(fit(5, "E5 am compat --no-kill lúc game đang chạy rồi thu nhỏ · game 5")) + f" · game không bị tắt={pid(5) == p5}")
+    shot("5-compat-dang-chay")
+    sh(f"am compat reset FORCE_NON_RESIZE_APP {pkg(5)}", 40)
+
+    # E6 (Android 9–12): MỞ LẠI game ngay trong cửa sổ → game dựng khung theo cỡ cửa sổ (vừa khung) — game khởi động lại
+    sh(f"for n in 4 5; do am force-stop vn.cloudblue.wintest$n; done; input keyevent 3"); conf(1, 0); start(4); code, j = mini()
+    t = task(4); b0 = t and t["b"]
+    sdk = int(sh("getprop ro.build.version.sdk") or 0)
+    sh(f"am force-stop {pkg(4)}"); time.sleep(1)
+    out = sh(f"am start --user 0 {'--display 0 ' if sdk >= 29 else ''}--windowingMode 5 {cp.AS_ICON} -n {pkg(4)}/{MAIN} 2>&1", 30)
+    t = None
+    for _ in range(10):
+        time.sleep(0.3); t = task(4)
+        if t and t["mode"] == "freeform": break
+    b1 = t and t["b"]
+    if t and b0 and b1 != b0: sh(f"am task resize {t['id']} {b0[0]} {b0[1]} {b0[2]} {b0[3]}")
+    time.sleep(4)
+    note("E6 mở lại game trong cửa sổ", f"chỗ cũ {b0} · mở lại vào {b1} ({'giữ chỗ' if b1 == b0 else 'chỗ khác → đổi cỡ ngay'})")
+    RES.append("E6 kết quả=" + str(fit(4, "E6 mở lại game trong cửa sổ · game 4"))); shot("6-mo-lai-trong-cua-so")
 except Exception as e:
     note("A lỗi", repr(e)[:300])
 
@@ -151,6 +176,8 @@ try:
     sh("for n in 1 2 3 4 5; do am force-stop vn.cloudblue.wintest$n; done; input keyevent 3", 40); time.sleep(2); conf(0, 1)
     start(4); mini(); start(3); mini()
     p0 = {n: pid(n) for n in (3, 4)}; c0 = {n: creates(n) for n in (3, 4)}
+    t3 = task(3)
+    if t3: note("B am task focus (đưa tab lên không gửi lệnh mở)", sh(f"am task focus {t3['id']} 2>&1").replace("\n", " ")[:160] or "(trống)")
     st, _ = states(); note("B0 có 2 tab nhỏ", f"trạng thái {st} · pid {p0}"); shot("b0-hai-tab-nho")
     start(1); time.sleep(15)                                # khách mở app khác (toàn màn, ép ngang) đè lên
     st, _ = states(); p1 = {n: pid(n) for n in (3, 4)}; c1 = {n: creates(n) for n in (3, 4)}
