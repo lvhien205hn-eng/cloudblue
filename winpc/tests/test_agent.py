@@ -926,7 +926,7 @@ netz, hostz = SqlNet(), FakeHost(fsz, seedz()["name"])
 agz = agent(fsz, netz, hostz); agz.tick(); agz.tick()
 ck("máy không còn phân vùng cứu hộ → bỏ qua, không lỗi", agz.ident is not None and not any("Traceback" in x for x in agz.logs))
 
-print("21b. Bản kê có mục 'linux' → agent thay bộ cài CachyOS trên phân vùng cứu hộ (22.11d)")
+print("21b. Bản kê có mục 'linux' → agent thay bộ cài CachyOS trên phân vùng cứu hộ (22.11d, làm bù mỗi lần chạy 22.11e)")
 LIN = {"linux/cb-install.sh": b"#!/bin/bash\n# cb-install moi\n", "linux/grub.cfg": b"set timeout=3\n", "linux/cb-post.sh": b"#!/bin/bash\n# post\n"}
 def publish(ver, lin, extra_files=None):
     nf = dict(NEWF, **{"agent/pcagent.py": b"# agent %s\n" % ver.encode()})
@@ -954,6 +954,13 @@ publish("22.02c", LIN2, {BASEN + "/linux/cb-install.sh": b"# bi sua tren duong t
 agl3 = agent(fsn, netn, hostn); agl3.tick()
 ck("tải về SAI mã kiểm → giữ file cũ trên phân vùng cứu hộ, agent vẫn lên bản mới", agl3.restart and rbytes(recn, "cb\\linux\\cb-install.sh") == LIN["linux/cb-install.sh"]
    and any("sai mã kiểm" in x for x in agl3.logs), [x for x in agl3.logs if "CachyOS" in x])
+netn.files[BASEN + "/linux/cb-install.sh"] = LIN2["linux/cb-install.sh"]          # đường truyền hết lỗi
+agl4 = agent(fsn, netn, hostn); agl4.tick()
+ck("22.11e · agent chạy lại (không có bản mới) → bộ cài CachyOS trên phân vùng cứu hộ tự khớp bản kê đang công bố (làm bù file lần trước tải lỗi)",
+   not agl4.restart and rbytes(recn, "cb\\linux\\cb-install.sh") == LIN2["linux/cb-install.sh"] and any("thay 1 file" in x for x in agl4.logs),
+   [x for x in agl4.logs if "CachyOS" in x or "cập nhật" in x])
+agl5 = agent(fsn, netn, hostn); agl5.tick()
+ck("… lần chạy sau: file đã đúng mã → không tải / ghi lại", not any("CachyOS" in x for x in agl5.logs), [x for x in agl5.logs if "CachyOS" in x])
 q("select pc_admin_settings('{\"agent\": {}}')", **A)
 
 print("22. Lượt thuê TỰ THU HỒI (SQL v44): hết hạn → KHOÁ máy (không tắt) · gia hạn → tự mở lại · quá hạn → giữ khoá chờ cài sạch (21.11f)")
