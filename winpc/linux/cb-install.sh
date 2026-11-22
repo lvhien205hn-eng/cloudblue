@@ -19,7 +19,7 @@
 #                              job.json "ci": true   → cài THẬT như máy thật + thêm cổng nối tiếp + dịch vụ báo "đã khởi động" (cb/linux-firstboot.ok)
 # =====================================================================================================
 set -u
-CB_VER="22.11c"
+CB_VER="22.11e"
 R=/run/archiso/img_dev
 ISO=/run/archiso/bootmnt
 W=/tmp/cb
@@ -335,6 +335,8 @@ DROP="cachyos-calamares-next cachyos-calamares cachyos-calamares-config cachyos-
 has_nvidia || DROP="$DROP linux-cachyos-lts-nvidia-open linux-cachyos-nvidia-open nvidia-utils egl-wayland"
 [ "$(systemd-detect-virt 2>/dev/null)" = none ] && DROP="$DROP virtualbox-guest-utils open-vm-tools qemu-guest-agent spice-vdagent"
 GONE=$(installed $DROP)
+KEEP=$(installed python efibootmgr pciutils ntfs-3g libnotify)          # agent CloudBlue cần → đánh dấu "cài chủ động" để pacman -Rns không gỡ theo
+[ -n "$KEEP" ] && arch-chroot "$T" pacman -D --asexplicit $KEEP >/dev/null 2>&1
 if [ -n "$GONE" ]; then
     arch-chroot "$T" pacman -Rns --noconfirm $GONE >/dev/null 2>&1 || for p in $GONE; do arch-chroot "$T" pacman -Rns --noconfirm "$p" >/dev/null 2>&1; done
 fi
