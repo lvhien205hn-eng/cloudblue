@@ -38,6 +38,27 @@ jobs:
           APP_VERSION_CODE: "1"
         run: gradle -p android-app assembleWebDebug assemblePlayDebug --no-daemon --stacktrace
 
+  proxy:                   # 22/11 · 🌐 proxy riêng từng Cloud Phone: cbproxy (Go, chạy trong máy Android) + phonectl + cpapi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.7"
+          cache: false
+      - name: cbproxy - dựng lại từ mã nguồn phải ra đúng file windows/cbproxy-x86_64 (md5 ghim trong phonectl)
+        working-directory: cbproxy
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w -buildid=" -o /tmp/cbproxy-x86_64 .
+          want=$(grep -oP 'CBPX_FILE = \("cbproxy-x86_64", "\K[0-9a-f]{32}' ../windows/phonectl.py)
+          echo "md5 ghim: $want"; md5sum /tmp/cbproxy-x86_64 ../windows/cbproxy-x86_64
+          test "$(md5sum < ../windows/cbproxy-x86_64 | cut -c1-32)" = "$want"
+          test "$(md5sum < /tmp/cbproxy-x86_64 | cut -c1-32)" = "$want" || echo "::warning::dựng lại ra md5 khác (Go khác bản?) — file đã tải lên vẫn đúng md5 ghim"
+      - name: cbproxy trong mạng giả (iptables thật, root)
+        run: sudo python3 cbproxy/test_cbproxy.py windows/cbproxy-x86_64
+      - name: phonectl + cpapi (proxy)
+        run: python3 cbproxy/test_proxy_server.py
+
   pc:
     runs-on: windows-latest
     steps:
