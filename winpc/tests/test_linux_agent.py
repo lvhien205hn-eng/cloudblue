@@ -94,7 +94,16 @@ def fake_sh(argv, timeout=60, input=None):
     if a[0] == "gpasswd":
         (GROUPS.append("wheel") if a[1] == "-a" else GROUPS.remove("wheel")) if (a[1] == "-a") != ("wheel" in GROUPS) else None
         return 0, ""
+    if a[0] == "gst-inspect-1.0": GST["calls"].append(a); return (0 if GST["have"] else 1), ""           # 22.11f: công cụ quay màn hình (giả)
+    if a[0] == "pacman":
+        GST["calls"].append(a)
+        if a[1] == "-Q": return (0, GST["pkgs"] + "\n") if GST["pkgs"] else (1, "error: package 'libpipewire' was not found")
+        if a[1] == "-U":
+            if any(f in a[-1] for f in GST["fail"]): return 1, "error: failed retrieving file '%s' from archive.archlinux.org : 404" % a[-1].rsplit("/", 1)[-1]
+            GST["have"] = True; return 0, "loading packages...\ninstalling gst-plugin-pipewire..."
+        return 1, "?"
     return _sh(argv, timeout, input)
+GST = {"have": True, "pkgs": "libpipewire 1:1.6.8-1", "fail": set(), "calls": []}
 GROUPS = ["pc", "users", "video"]
 cbagent.sh = fake_sh
 EFIV = tempfile.mkdtemp(); cbagent.EFIVARS = EFIV                   # biến UEFI giả (thư mục tạm) — KHÔNG BAO GIỜ đụng NVRAM thật của máy chạy thử
@@ -134,7 +143,8 @@ def put(rel, data):
     with open(p, "wb" if isinstance(data, bytes) else "w") as f: f.write(data)
 put("cb\\cb.json", json.dumps(rcfg))
 for rel in ("cb\\boot\\boot.wim", "cb\\boot\\boot.sdi", "cb\\images\\22h2.wim", "cb\\images\\1511.wim", "cb\\linux\\cachyos.iso", "cb\\linux\\grubx64.efi",
-            "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh", "cb\\linux\\cbagent.py"): put(rel, b"x")
+            "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh", "cb\\linux\\cbagent.py",
+            "cb\\linux\\cbremote.py", "cb\\linux\\cbcap.py"): put(rel, b"x")
 put("cb\\job-result.json", json.dumps({"id": oid, "ok": True, "msg": "da cai CachyOS sau 9 phut (CB-LNX01, khach pc)", "os": "cachyos", "pe": "cb-install 22.11c", "secs": 540}))
 with open(os.path.join(base, "cb.json"), "w") as f: json.dump(dict(rcfg, update_base=pcagent.UPDATE_BASE), f)
 with open(os.path.join(base, "seed.json"), "w") as f: json.dump({"id": oid, "os": "cachyos", "ticket": TICKET, "hw": HW, "from": "job", "order": oid, "user": "pc"}, f)
@@ -147,7 +157,7 @@ ck("đăng ký lại bằng VÉ của lệnh → GIỮ đúng máy cũ trên web
    and "ticket" not in json.load(open(os.path.join(base, "seed.json"))), (ag.ident, logs[-4:]))
 ck("web thấy máy chạy CachyOS: os=cachyos, agent bản Linux, CPU / RAM / GPU / IP", row["os"] == "cachyos" and row["info"].get("agent") == cbagent.LINUX_VER
    and row["info"].get("linux") is True and row["info"].get("gpus") == ["NVIDIA GeForce RTX 3060"] and row["lan_ip"] == "192.168.1.88", row["info"])
-ck("… phân vùng cứu hộ: đổi được sang 22h2, 1511, cachyos", row["info"].get("rec") == {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11c"}, row["info"].get("rec"))
+ck("… phân vùng cứu hộ: đổi được sang 22h2, 1511, cachyos", row["info"].get("rec") == {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11c", "lx": 2}, row["info"].get("rec"))
 o = json.loads(q(f"select row_to_json(o) from pc_orders o where id = {oid}"))
 ck("báo KẾT QUẢ lần cài CachyOS về web: lệnh #%s → done kèm lời nhắn của cb-install.sh" % oid, o["state"] == "done" and "da cai CachyOS" in (o.get("result") or {}).get("msg", ""), o)
 ck("… xoá cb/job-result.json trên phân vùng cứu hộ sau khi web đã nhận (không báo lặp)", not os.path.exists(os.path.join(recd, "cb", "job-result.json")))
@@ -229,19 +239,21 @@ else:
 
 print("6. Tự cập nhật theo bản kê admin công bố (mục linux + agent/lib)")
 BASEN = pcagent.UPDATE_BASE + "main/winpc"
-NEW = {"linux/cbagent.py": b"# cbagent moi\nLINUX_VER = '22.12a'\n", "agent/pcagent.py": b"# pcagent moi\n", "lib/cbcore.py": b"# core moi\n"}
+NEW = {"linux/cbagent.py": b"# cbagent moi\nLINUX_VER = '22.12a'\n", "agent/pcagent.py": b"# pcagent moi\n", "lib/cbcore.py": b"# core moi\n",
+       "agent/pcremote.py": b"# pcremote moi\n", "linux/cbremote.py": b"# cbremote moi\n"}
 for rel, d in (("agent/pcagent.py", b"# pcagent cu\n"), ("lib/cbcore.py", b"# core cu\n"), ("lib/cbrec.py", b"# rec\n"), ("lib/cbsys.py", b"# sys\n"), ("linux/cbagent.py", b"# cbagent cu\n")):
     os.makedirs(os.path.join(base, os.path.dirname(rel)), exist_ok=True); open(os.path.join(base, rel), "wb").write(d)
 sha = lambda b: hashlib.sha256(b).hexdigest()
-man = {"ver": "22.12a", "base": BASEN, "files": {"agent/pcagent.py": sha(NEW["agent/pcagent.py"]), "lib/cbcore.py": sha(NEW["lib/cbcore.py"]), "agent/pcremote.py": sha(b"x")},
-       "linux": {"linux/cbagent.py": sha(NEW["linux/cbagent.py"]), "linux/cb-install.sh": sha(b"sh")}}
+man = {"ver": "22.12a", "base": BASEN, "files": {"agent/pcagent.py": sha(NEW["agent/pcagent.py"]), "lib/cbcore.py": sha(NEW["lib/cbcore.py"]),
+       "agent/pcremote.py": sha(NEW["agent/pcremote.py"]), "os/cb_provision.py": sha(b"prov")},
+       "linux": {"linux/cbagent.py": sha(NEW["linux/cbagent.py"]), "linux/cbremote.py": sha(NEW["linux/cbremote.py"]), "linux/cb-install.sh": sha(b"sh")}}
 net.files = {BASEN + "/" + k: v for k, v in NEW.items()}
 q("select pc_admin_settings('%s')" % json.dumps({"agent": man}), **A)
 h6 = FakeHost("pc"); ag6 = cbagent.LinuxAgent(cbagent.LinuxSys(), h6, net, base, logs.append, rec=rec)
 ag6.tick()
-ck("tải + kiểm sha256 + chạy thử → thay cbagent.py, pcagent.py, cbcore.py (KHÔNG tải pcremote.py của Windows), đòi chạy lại", ag6.restart
-   and open(os.path.join(base, "linux", "cbagent.py"), "rb").read() == NEW["linux/cbagent.py"] and open(os.path.join(base, "agent", "pcagent.py"), "rb").read() == NEW["agent/pcagent.py"]
-   and not any("pcremote" in c for c in net.files if False) and not os.path.exists(os.path.join(base, "agent", "pcremote.py")), [x for x in logs[-5:]])
+ck("tải + kiểm sha256 + chạy thử → thay cbagent.py, cbremote.py, pcagent.py, pcremote.py, cbcore.py (KHÔNG tải phần riêng Windows os/…), đòi chạy lại", ag6.restart
+   and all(open(os.path.join(base, *rel.split("/")), "rb").read() == NEW[rel] for rel in NEW) and not os.path.exists(os.path.join(base, "os", "cb_provision.py")),
+   [x for x in logs[-5:]])
 ck("… bản mới cũng chép lên phân vùng cứu hộ (lần cài lại CachyOS sau dùng)", open(os.path.join(recd, "cb", "linux", "cbagent.py"), "rb").read() == NEW["linux/cbagent.py"])
 h7 = FakeHost("pc"); ag7 = cbagent.LinuxAgent(cbagent.LinuxSys(), h7, net, base, logs.append, rec=rec); ag7.tick()
 ck("chạy lại: đã đúng bản → không tải lại", not ag7.restart)
@@ -251,6 +263,48 @@ q("select pc_admin_settings('%s')" % json.dumps({"agent": man2}), **A)
 h8 = FakeHost("pc"); h8.check_ok = False; ag8 = cbagent.LinuxAgent(cbagent.LinuxSys(), h8, net, base, logs.append, rec=rec); ag8.tick()
 ck("bản mới chạy thử KHÔNG đạt → giữ bản cũ", not ag8.restart and open(os.path.join(base, "linux", "cbagent.py"), "rb").read() == NEW["linux/cbagent.py"])
 q("select pc_admin_settings('{\"agent\": {}}')", **A)
+
+print("6b. Thiếu gst-plugin-pipewire (cài lúc chưa có mạng / bản 22.11e) → agent tự cài ĐÚNG phiên bản PipeWire đang có")
+ck("phiên bản cần tải theo libpipewire: 1:1.6.8-1 → -1, -2, -3", cbagent.gst_candidates("1:1.6.8-1") == ["1:1.6.8-1", "1:1.6.8-2", "1:1.6.8-3"])
+ck("bản dựng lại của CachyOS (1:1.6.8-1.1) → thử đúng bản đó trước rồi bản Arch", cbagent.gst_candidates("1:1.6.8-1.1") == ["1:1.6.8-1.1", "1:1.6.8-1", "1:1.6.8-2", "1:1.6.8-3"])
+ck("chuỗi lạ (dấu cách, ;, /, ..) → không tải gì", all(cbagent.gst_candidates(x) == [] for x in ("", None, "1:1.6.8-1; rm -rf /", "../../x-1", "1.6.8", "a b-1")))
+GST.update(have=False, calls=[])
+ok_, why = cbagent.gst_install()
+u = [c for c in GST["calls"] if c[:2] == ["pacman", "-U"]]
+ck("tải gói đúng bản từ kho lưu trữ Arch, pacman -U --needed -dd (không kéo PipeWire mới), xong có pipewiresrc", ok_ and why == "1:1.6.8-1" and len(u) == 1
+   and u[0] == ["pacman", "-U", "--noconfirm", "--needed", "-dd", "https://archive.archlinux.org/packages/g/gst-plugin-pipewire/gst-plugin-pipewire-1:1.6.8-1-x86_64.pkg.tar.zst"], (ok_, why, u))
+GST.update(have=False, calls=[], fail={"-1:1.6.8-1-x86_64"})
+ok_, why = cbagent.gst_install()
+ck("bản -1 không có trên kho → thử -2", ok_ and why == "1:1.6.8-2" and len([c for c in GST["calls"] if c[:2] == ["pacman", "-U"]]) == 2, (ok_, why))
+GST.update(have=False, calls=[], fail=set(), pkgs="")
+ok_, why = cbagent.gst_install()
+ck("máy không có libpipewire → thôi, không tải gì", not ok_ and "PipeWire" in why and not [c for c in GST["calls"] if c[:2] == ["pacman", "-U"]], (ok_, why))
+GST.update(have=False, calls=[], pkgs="libpipewire 1:1.6.8-1", fail={"x86_64"})
+ok_, why = cbagent.gst_install()
+ck("kho không tới được → báo lỗi (thử 3 bản rồi thôi)", not ok_ and "404" in why and len([c for c in GST["calls"] if c[:2] == ["pacman", "-U"]]) == 3, (ok_, why))
+import threading as _th
+def gst_join():
+    for t in _th.enumerate():
+        if t.name == "gst-heal": t.join(10)
+logs9 = []
+ag9 = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logs9.append, rec=rec)
+GST.update(have=False, calls=[], fail=set())
+r1 = ag9.gst_heal(); r2 = ag9.gst_heal(); gst_join()
+ck("agent: thiếu → cài ở luồng nền (không chặn hỏi máy chủ); đang cài thì không mở thêm", r1 == "start" and r2 in ("busy", "ok") and ag9.gst_state == "ok"
+   and len([c for c in GST["calls"] if c[:2] == ["pacman", "-U"]]) == 1, (r1, r2, ag9.gst_state))
+ck("… ghi nhật ký 'đã cài gst-plugin-pipewire'", any("đã cài gst-plugin-pipewire 1:1.6.8-1" in m for m in logs9), logs9[-3:])
+n0 = len(GST["calls"])
+ck("đã đủ → không dò / không cài nữa", ag9.gst_heal() == "ok" and len(GST["calls"]) == n0)
+ag10 = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logs9.append, rec=rec)
+GST.update(have=False, calls=[], fail={"x86_64"})
+ag10.gst_heal(); gst_join()
+ck("cài lỗi → 'fail', trong 6 giờ không thử lại", ag10.gst_state == "fail" and ag10.gst_heal() == "wait", ag10.gst_state)
+ag10.gst_try -= cbagent.GST_RETRY_S + 1; GST.update(fail=set())
+ag10.gst_heal(); gst_join()
+ck("quá 6 giờ → thử lại, cài được", ag10.gst_state == "ok", ag10.gst_state)
+GST.update(have=True, calls=[])
+ag11 = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logs9.append, rec=rec)
+ck("máy có sẵn pipewiresrc → 'ok' ngay, không gọi pacman", ag11.gst_heal() == "ok" and not [c for c in GST["calls"] if c[0] == "pacman"], GST["calls"])
 
 print("7. Phần chạy được trên máy này (không cần máy CachyOS)")
 ck("đường dẫn kiểu Windows của lõi agent → Linux", cbagent.P("logs\\emu.json") == "logs/emu.json")

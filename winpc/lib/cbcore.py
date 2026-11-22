@@ -10,7 +10,7 @@ import json, re
 from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_LINUX, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "22.11e"
+CORE_VER = "22.11f"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -247,7 +247,8 @@ GRUB_FILE = GRUB_DIR + "\\grubx64.efi"
 GRUB_DESC = "CloudBlue Linux"
 LINUX_BOOT_DESCS = ("Linux Boot Manager", GRUB_DESC)             # mục khởi động UEFI của Linux (systemd-boot của CachyOS · GRUB mở bộ cài) → gỡ khi cài lại Windows
 LINUX_FILES = ("cb\\linux\\grubx64.efi", "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh",
-               "cb\\linux\\cbagent.py")   # 22.11e · agent CloudBlue bản Linux: thiếu thì máy đổi sang CachyOS sẽ mất khỏi web → không cho chọn
+               "cb\\linux\\cbagent.py",                       # 22.11e · agent CloudBlue bản Linux: thiếu thì máy đổi sang CachyOS sẽ mất khỏi web
+               "cb\\linux\\cbremote.py", "cb\\linux\\cbcap.py")   # 22.11f · điều khiển từ xa trên CachyOS: thiếu thì khách không dùng được máy → không cho chọn
 LINUX_TRIES = 2                                                   # số lần thử cài CachyOS — quá số này thì cài lại Windows mặc định (máy không bao giờ bị "mất")
 TZ_IANA = {"SE Asia Standard Time": "Asia/Ho_Chi_Minh", "China Standard Time": "Asia/Shanghai", "Singapore Standard Time": "Asia/Singapore",
            "Tokyo Standard Time": "Asia/Tokyo", "Korea Standard Time": "Asia/Seoul", "Taipei Standard Time": "Asia/Taipei", "UTC": "UTC",

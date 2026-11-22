@@ -180,19 +180,41 @@ final class PcVps {
             if (r instanceof JSONObject && box.getParent() != null) { mine = (JSONObject) r; mineAt = System.currentTimeMillis(); fill(a, box); a.vpsChanged(); } }, m -> { }); } }, 15000);
     }
 
+    /** 22.11f · bản Linux CachyOS (KDE): điều khiển như máy Windows, không dùng card NVIDIA. */
+    static boolean lin(String os) { return os != null && "cachyos".equalsIgnoreCase(os.trim()); }
+
+    static String osName(String id) {
+        JSONArray l = mine == null ? null : mine.optJSONArray("os");
+        if (l == null && info != null) l = info.optJSONArray("os");
+        JSONObject o = osOf(l, id);
+        if (o != null && !o.optString("name").isEmpty()) return o.optString("name");
+        return lin(id) ? "Linux CachyOS" : "Windows " + (id == null ? "" : id.toUpperCase());
+    }
+
+    static String instTime(String os) { return lin(os) ? Ui.L("30–60 phút", "30–60 min") : Ui.L("15–30 phút", "15–30 min"); }
+
+    static String linNote() {
+        return Ui.L("🐧 Linux CachyOS (KDE): điều khiển từ xa như máy Windows. Bản Linux không dùng card đồ hoạ NVIDIA và không chạy phần mềm / game Windows.",
+                "🐧 Linux CachyOS (KDE): remote control just like Windows. The Linux edition doesn't use the NVIDIA GPU and can't run Windows apps / games.");
+    }
+
     /** [mã trạng thái, chữ, câu giải thích] */
     static String[] state(JSONObject x) {
         JSONObject pc = x.optJSONObject("pc"), job = pc == null ? null : pc.optJSONObject("job");
         long until = MainActivity.parseTime(x.optString("until", "")), now = System.currentTimeMillis();
         String st = x.optString("state");
         if ("waiting".equals(st)) return new String[]{"wait", "⏳ " + Ui.L("Đang chờ máy", "Waiting for a machine"),
-                Ui.L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received — a machine will be assigned and installed automatically.")};
+                Ui.L("Shop đã nhận đơn. Có máy là tự giao + cài " + (x.optString("os_name").isEmpty() ? "Windows" : x.optString("os_name")) + " — không cần nhắn shop.",
+                        "Order received — a machine will be assigned and installed automatically.")};
         if ("cancelled".equals(st)) return new String[]{"end", "✕ " + Ui.L("Đã huỷ", "Cancelled"), Ui.L("Tiền hoàn (nếu có) đã về số dư.", "Any refund went to your balance.")};
         if ("ended".equals(st)) return new String[]{"end", "■ " + Ui.L("Đã kết thúc", "Ended"), "expired".equals(x.optString("end_why", ""))      // 21/11f · v44 tự thu hồi
                 ? Ui.L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới.", "Expired without renewal — the machine was reclaimed and wiped.") : ""};
-        if (job != null) return new String[]{"inst", "⚙️ " + Ui.L("Đang cài Windows", "Installing Windows"),
-                "sent".equals(job.optString("state")) ? Ui.L("Máy đang cài " + job.optString("os").toUpperCase() + " (15–30 phút), xong là vào được.", "Installing " + job.optString("os").toUpperCase() + " (15–30 min).")
-                        : Ui.L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…")};
+        if (job != null) {
+            String jo = job.optString("os"), jn = osName(jo);
+            return new String[]{"inst", "⚙️ " + (lin(jo) ? Ui.L("Đang cài Linux CachyOS", "Installing Linux CachyOS") : Ui.L("Đang cài Windows", "Installing Windows")),
+                    "sent".equals(job.optString("state")) ? Ui.L("Máy đang cài " + jn + " (" + instTime(jo) + "), xong là vào được.", "Installing " + jn + " (" + instTime(jo) + ").")
+                            : Ui.L("Máy sắp khởi động lại để cài " + jn + "…", "The machine will restart to install " + jn + "…")};
+        }
         long gu = MainActivity.parseTime(x.optString("grace_until", ""));          // 21/11f · v44: hết hạn nhưng máy còn giữ cho khách tới lúc này
         if (until > 0 && until <= now && gu > now) return new String[]{"exp", "⛔ " + Ui.L("Hết hạn — đang giữ máy", "Expired — on hold"),
                 (pc != null && pc.optBoolean("lock") ? Ui.L("🔒 Máy đã khoá. ", "🔒 Locked. ") : pc != null && pc.optBoolean("off") ? Ui.L("Máy đã tự tắt. ", "Shut down. ") : "")
@@ -260,7 +282,7 @@ final class PcVps {
         StringBuilder spec = new StringBuilder(x.optString("os_name"));
         if (pc != null) {
             JSONArray g = pc.optJSONArray("gpus");
-            if (g != null && g.length() > 0 && !g.optString(0).isEmpty()) spec.append(" · ").append(g.optString(0));
+            if (g != null && g.length() > 0 && !g.optString(0).isEmpty() && !lin(pc.optString("os"))) spec.append(" · ").append(g.optString(0));   // Linux không dùng card đồ hoạ
             if (pc.optDouble("ram_gb", 0) > 0) spec.append(" · ").append(Math.round(pc.optDouble("ram_gb"))).append("GB RAM");
         }
         c.addView(Ui.muted(a, spec.toString()));
@@ -323,7 +345,7 @@ final class PcVps {
         }
         if (!x.isNull("rental")) {
             int left = x.optInt("left"), max = mine == null ? 2 : mine.optInt("reinstall_max", 2);
-            Button re = Ui.button(a, "🔄 " + Ui.L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " (" + left + "/" + max + ")", Ui.GHOST);
+            Button re = Ui.button(a, "🔄 " + Ui.L("Cài lại / đổi hệ điều hành", "Reinstall / switch the OS") + " (" + left + "/" + max + ")", Ui.GHOST);
             boolean canRe = left > 0 && !"inst".equals(st[0]) && !"exp".equals(st[0]) && maint(a).isEmpty();
             re.setEnabled(canRe);
             re.setAlpha(canRe ? 1f : 0.5f);
@@ -437,7 +459,9 @@ final class PcVps {
     private static String err(String m) {
         if (m == null) return "";
         if (m.contains("NO_LEFT")) return Ui.L("Máy này đã hết lượt cài lại trong lượt thuê. Nhắn shop nếu cần thêm.", "No reinstalls left for this rental.");
-        if (m.contains("BUSY")) return Ui.L("Máy đang cài Windows — chờ xong rồi thử lại.", "Windows is being installed — try again later.");
+        if (m.contains("BUSY")) return Ui.L("Máy đang cài hệ điều hành — chờ xong rồi thử lại.", "The OS is being installed — try again later.");
+        if (m.contains("CANT_OS")) return Ui.L("Máy của bạn chưa đổi được sang bản này (Linux cần máy UEFI đã tắt Secure Boot). Nhắn shop nếu cần.",   // 22.11f · SQL v50
+                "Your machine can't switch to this edition yet. Contact the shop.");
         if (m.contains("EXPIRED")) return Ui.L("Máy đã hết hạn — gia hạn trước.", "Expired — renew first.");
         if (m.contains("NOT_AUTO")) return Ui.L("Sản phẩm này chưa bật giao tự động.", "Automatic delivery is off.");
         if (m.contains("INSUFFICIENT_BALANCE")) return Ui.L("Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first.");
@@ -469,15 +493,17 @@ final class PcVps {
         final Button rep = repBtn(a, x);
         rep.setVisibility(View.GONE);
         box.addView(rep, Ui.fill());
-        final long start = t0 > 0 ? t0 : System.currentTimeMillis(), exp = (inst ? 25 : 10) * 60L;
+        final boolean lx = inst && lin(os);
+        final long start = t0 > 0 ? t0 : System.currentTimeMillis(), exp = (lx ? 45 : inst ? 25 : 10) * 60L;
         final String osU = os == null ? "" : os.toUpperCase();
         final Runnable[] tick = new Runnable[1];
         tick[0] = () -> {
             long sec = Math.max(0, (System.currentTimeMillis() - start) / 1000);
             int pct = (int) Math.min(inst ? 96 : 90, Math.max(2, Math.round(100 * (1 - Math.exp(-sec / (exp * .55))))));
             boolean late = sec > exp * (inst ? 2 : 3);
-            String stage = !inst ? Ui.L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically")
+            String stage = !inst ? Ui.L("Đang chờ máy — có máy là tự giao + tự cài", "Waiting — assigned automatically")
                     : sec < 150 ? Ui.L("Khởi động lại vào bộ cài", "Restarting into setup")
+                    : lx ? (sec < 45 * 60 ? Ui.L("Đang cài Linux CachyOS", "Installing Linux CachyOS") : Ui.L("Sắp xong…", "Almost done…"))
                     : sec < 15 * 60 ? Ui.L("Đang cài Windows ", "Installing Windows ") + osU
                     : sec < 26 * 60 ? Ui.L("Cài driver · khởi động lần đầu", "Drivers · first boot") : Ui.L("Sắp xong…", "Almost done…");
             bar.setProgress(pct);
@@ -507,8 +533,8 @@ final class PcVps {
         JSONObject pc = x.optJSONObject("pc"), job = pc == null ? null : pc.optJSONObject("job"), lj = pc == null ? null : pc.optJSONObject("last_job");
         String[] st = state(x);
         long now = System.currentTimeMillis();
-        String what = "warn".equals(st[0]) ? Ui.L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (lj != null && !lj.optString("msg").isEmpty() ? ": " + lj.optString("msg") : "")
-                : "inst".equals(st[0]) && job != null ? Ui.L("Cài lại Windows ", "Reinstall ") + job.optString("os").toUpperCase()
+        String what = "warn".equals(st[0]) ? Ui.L("Cài lại hệ điều hành bị LỖI", "OS reinstall FAILED") + (lj != null && !lj.optString("msg").isEmpty() ? ": " + lj.optString("msg") : "")
+                : "inst".equals(st[0]) && job != null ? Ui.L("Cài lại ", "Reinstall ") + osName(job.optString("os"))
                         + Ui.L(" — đã chạy ", " — running for ") + mmss((now - MainActivity.parseTime(job.optString("at", ""))) / 1000) + Ui.L(" chưa xong", "")
                 : "wait".equals(st[0]) ? Ui.L("Chờ giao máy — đã chờ ", "Waiting for a machine — ") + mmss((now - MainActivity.parseTime(x.optString("created_at", ""))) / 1000)
                 : st[1];
@@ -517,7 +543,7 @@ final class PcVps {
         final String msg = Ui.L("[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ", "[CLOUDBLUE] GPU VPS NEEDS HELP")
                 + "\n• " + Ui.L("Máy: ", "Machine: ") + (pc == null ? "—" : pc.optString("name")) + (pc != null && !pc.optString("code").isEmpty() ? " (№ " + pc.optString("code") + ")" : "")
                 + "\n• " + Ui.L("Việc: ", "Problem: ") + what
-                + "\n• Windows: " + x.optString("os_name")
+                + "\n• " + Ui.L("Hệ điều hành: ", "OS: ") + x.optString("os_name")
                 + "\n• " + Ui.L("Tài khoản: ", "Account: ") + user
                 + "\n• " + Ui.L("Lượt thuê: #", "Rental: #") + (x.isNull("rental") ? "—" : x.optString("rental"))
                 + "\n• " + Ui.L("Lúc: ", "Time: ") + MainActivity.fdate(now);
@@ -555,10 +581,22 @@ final class PcVps {
     private static void reinstall(MainActivity a, JSONObject x) {
         final JSONObject pc = x.optJSONObject("pc");
         if (pc == null) return;
-        JSONArray os = mine == null ? null : mine.optJSONArray("os");
-        if (os == null || os.length() == 0) return;
-        final String[] pick = {x.optString("os")};
+        JSONArray os0 = mine == null ? null : mine.optJSONArray("os");
+        if (os0 == null || os0.length() == 0) return;
+        JSONArray can = pc.optJSONArray("can");                                    // 22.11f · SQL v50: máy đổi được sang bản nào (máy chủ cũ: ẩn Linux)
+        JSONArray os = new JSONArray();
+        boolean anyLin = lin(pc.optString("os"));
+        for (int i = 0; i < os0.length(); i++) {
+            JSONObject o = os0.optJSONObject(i);
+            if (o == null) continue;
+            String id = o.optString("id");
+            boolean ok = can == null ? !lin(id) : id.equals(x.optString("os")) || has(can, id);
+            if (ok) { os.put(o); anyLin |= lin(id); }
+        }
+        if (os.length() == 0) return;
+        final String[] pick = {osOf(os, x.optString("os")) != null ? x.optString("os") : os.optJSONObject(0).optString("id")};
         LinearLayout c = Ui.col(a, 12);
+        final TextView[] noteT = new TextView[1];
         c.addView(Ui.muted(a, Ui.L("Còn ", "") + x.optInt("left") + "/" + (mine == null ? 2 : mine.optInt("reinstall_max", 2)) + Ui.L(" lượt trong lượt thuê này", " reinstalls left in this rental")));
         Ui.Wrap w = new Ui.Wrap(a, 8);
         for (int i = 0; i < os.length(); i++) {
@@ -566,19 +604,21 @@ final class PcVps {
             if (o == null) continue;
             TextView ch = Ui.chip(a, o.optString("name"), o.optString("id").equals(pick[0]));
             ch.setTag(o.optString("id"));
-            ch.setOnClickListener(v -> { pick[0] = (String) v.getTag(); for (int k = 0; k < w.getChildCount(); k++) Ui.setChip((TextView) w.getChildAt(k), pick[0].equals(w.getChildAt(k).getTag())); });
+            ch.setOnClickListener(v -> { pick[0] = (String) v.getTag(); for (int k = 0; k < w.getChildCount(); k++) Ui.setChip((TextView) w.getChildAt(k), pick[0].equals(w.getChildAt(k).getTag()));
+                noteT[0].setText(reNote(pick[0], pc.optString("os"))); });
             w.addView(ch);
         }
         c.addView(w, Ui.fill());
         LinearLayout note = Ui.card(a);
-        note.addView(Ui.muted(a, Ui.L("⚠️ Chỉ xoá ổ C: (Windows) — ổ khác giữ nguyên. Máy khởi động lại và cài trong 15–30 phút. Dữ liệu ổ C: không lấy lại được.",
-                "⚠️ Only drive C: (Windows) is erased — other drives are kept. Takes 15–30 minutes. Data on C: cannot be recovered.")));
+        noteT[0] = Ui.muted(a, reNote(pick[0], pc.optString("os")));
+        note.addView(noteT[0]);
         c.addView(note, Ui.fill());
         Button ok = Ui.button(a, Ui.L("Cài lại ngay", "Reinstall now"), Ui.PRIMARY);
         c.addView(ok, Ui.fill());
-        Dialog d = Ui.sheet(a, "🔄 " + Ui.L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " · " + pc.optString("name"), c);
-        ok.setOnClickListener(v -> Ui.confirm(a, Ui.L("Cài lại máy?", "Reinstall?"), Ui.L("Máy " + pc.optString("name") + " sẽ cài lại " + pick[0].toUpperCase() + ". Ổ C: bị xoá.",
-                pc.optString("name") + " will be reinstalled with " + pick[0].toUpperCase() + ". Drive C: is erased."), Ui.L("Cài lại", "Reinstall"), () -> {
+        Dialog d = Ui.sheet(a, "🔄 " + (anyLin ? Ui.L("Cài lại / đổi hệ điều hành", "Reinstall / switch the OS") : Ui.L("Cài lại / đổi Windows", "Reinstall / switch Windows")) + " · " + pc.optString("name"), c);
+        final boolean curLin = lin(pc.optString("os"));
+        ok.setOnClickListener(v -> Ui.confirm(a, Ui.L("Cài lại máy?", "Reinstall?"), Ui.L("Máy " + pc.optString("name") + " sẽ cài lại " + osName(pick[0]) + ". " + (curLin ? "Phần hệ điều hành Linux" : "Ổ C:") + " bị xoá.",
+                pc.optString("name") + " will be reinstalled with " + osName(pick[0]) + ". " + (curLin ? "The Linux system" : "Drive C:") + " is erased."), Ui.L("Cài lại", "Reinstall"), () -> {
             ok.setEnabled(false);
             Api.bg(() -> Api.rpc("pc_my_reinstall", new JSONObject().put("p_pc", pc.optString("id")).put("p_os", pick[0])), r -> {
                 d.dismiss();
@@ -587,6 +627,19 @@ final class PcVps {
             }, m -> { ok.setEnabled(true); Ui.toast(a, err(m)); });
         }));
         d.show();
+    }
+
+    static boolean has(JSONArray a, String v) {
+        for (int i = 0; a != null && i < a.length(); i++) if (v.equals(a.optString(i))) return true;
+        return false;
+    }
+
+    /** Lời cảnh báo hộp đổi hệ điều hành theo bản đang chọn (xoá phần nào, cài bao lâu, lưu ý Linux). */
+    static String reNote(String to, String cur) {
+        String sys = lin(cur) ? Ui.L("phần hệ điều hành Linux", "the Linux system") : Ui.L("ổ C: (Windows)", "drive C: (Windows)");
+        return Ui.L("⚠️ Chỉ xoá " + sys + " — ổ khác giữ nguyên. Máy khởi động lại và cài trong " + instTime(to) + ". Dữ liệu đã xoá không lấy lại được.",
+                "⚠️ Only " + sys + " is erased — other drives are kept. Takes " + instTime(to) + ". Erased data cannot be recovered.")
+                + (lin(to) ? "\n" + linNote() : "");
     }
 
     // ---------------------------------------------------------------- bảng giá (sản phẩm bán tự động — admin chỉnh trên web)
@@ -831,7 +884,9 @@ final class PcVps {
 
         // ---- ① Windows
         LinearLayout s1 = Ui.card(a);
-        s1.addView(a.stepHead("1", Ui.L("Chọn Windows", "Choose Windows"), Ui.L("Đổi được trong lượt thuê (" + mx + " lần).", "Switchable during the rental (" + mx + " times).")), Ui.fill());
+        boolean anyLin = false;
+        for (int i = 0; i < os.length(); i++) { JSONObject o = os.optJSONObject(i); if (o != null && (o.optBoolean("linux") || lin(o.optString("id")))) anyLin = true; }
+        s1.addView(a.stepHead("1", anyLin ? Ui.L("Chọn hệ điều hành", "Choose the OS") : Ui.L("Chọn Windows", "Choose Windows"), Ui.L("Đổi được trong lượt thuê (" + mx + " lần).", "Switchable during the rental (" + mx + " times).")), Ui.fill());
         final LinearLayout ow = Ui.row(a, 8);
         for (int i = 0; i < os.length(); i++) {
             final JSONObject o = os.optJSONObject(i);
@@ -846,7 +901,9 @@ final class PcVps {
             t.setContentDescription(nm[0] + " " + nm[1]);
             TextView k1 = Ui.text(a, nm[0], 11.5f, Ui.MUTED, true);
             TextView k2 = Ui.text(a, nm[1], 24, Ui.FG, true);
-            TextView k3 = Ui.text(a, o.optBoolean("fast") ? "⚡ " + Ui.L("Giao ngay", "Instant") : "⏳ " + Ui.L(ready ? "Cài ~20 phút" : "Chờ máy", ready ? "~20 min setup" : "Waiting"), 11.5f, o.optBoolean("fast") ? Ui.OK : Ui.WAIT, true);
+            boolean rdy = o.has("ready") ? o.optBoolean("ready") : ready;              // SQL v50: có máy trống cài được ĐÚNG bản này
+            String inst = lin(o.optString("id")) ? Ui.L("Cài ~45 phút", "~45 min setup") : Ui.L("Cài ~20 phút", "~20 min setup");
+            TextView k3 = Ui.text(a, o.optBoolean("fast") ? "⚡ " + Ui.L("Giao ngay", "Instant") : "⏳ " + (rdy ? inst : Ui.L("Chờ máy", "Waiting")), 11.5f, o.optBoolean("fast") ? Ui.OK : Ui.WAIT, true);
             for (TextView x : new TextView[]{k1, k2, k3}) { x.setGravity(Gravity.CENTER); t.addView(x, Ui.fill()); }
             t.setOnClickListener(v -> { tOs = String.valueOf(v.getTag()); changed.run(); });
             Ui.press(t);
@@ -867,9 +924,12 @@ final class PcVps {
                 ((TextView) t.getChildAt(2)).setTextColor(on ? Color.WHITE : o != null && o.optBoolean("fast") ? Ui.OK : Ui.WAIT);
             }
             JSONObject o = osOf(os, tOs);
-            osHint.setText(o != null && o.optBoolean("fast") ? Ui.L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.")
-                    : ready ? Ui.L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm 30 phút).", "⏳ This version is installed for you in ~20 min (30 min added to your time).")
-                    : Ui.L("⏳ Shop đang chuẩn bị máy — có máy là tự giao + cài, không cần nhắn shop.", "⏳ Preparing a machine — delivered and installed automatically."));
+            boolean rdy = o != null && o.has("ready") ? o.optBoolean("ready") : ready, lx = o != null && lin(o.optString("id"));
+            osHint.setText((o != null && o.optBoolean("fast") ? Ui.L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.")
+                    : rdy && lx ? Ui.L("⏳ Máy tự cài bản này cho bạn khoảng 30–60 phút (hạn thuê được cộng thêm 60 phút).", "⏳ Installed for you in ~30–60 min (60 min added to your time).")
+                    : rdy ? Ui.L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm 30 phút).", "⏳ This version is installed for you in ~20 min (30 min added to your time).")
+                    : Ui.L("⏳ Shop đang chuẩn bị máy — có máy là tự giao + cài, không cần nhắn shop.", "⏳ Preparing a machine — delivered and installed automatically."))
+                    + (lx ? "\n" + linNote() : ""));
             osHint.setTextColor(o != null && o.optBoolean("fast") ? Ui.OK : Ui.WAIT);
         };
 
@@ -1021,7 +1081,8 @@ final class PcVps {
             buy.setEnabled(true);
             JSONObject res = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
             boolean act = "active".equals(res.optString("state"));
-            Ui.toast(a, act ? (res.optBoolean("reinstall") ? Ui.L("🎉 Đã giao máy " + res.optString("name") + " — máy đang tự cài Windows (~20 phút), xem ở đầu trang.", "🎉 Machine assigned — installing Windows (~20 min).")
+            Ui.toast(a, act ? (res.optBoolean("reinstall") ? (lin(tOs) ? Ui.L("🎉 Đã giao máy " + res.optString("name") + " — máy đang tự cài Linux CachyOS (30–60 phút), xem ở đầu trang.", "🎉 Machine assigned — installing Linux CachyOS (30–60 min).")
+                            : Ui.L("🎉 Đã giao máy " + res.optString("name") + " — máy đang tự cài Windows (~20 phút), xem ở đầu trang.", "🎉 Machine assigned — installing Windows (~20 min)."))
                             : Ui.L("🎉 Đã giao máy " + res.optString("name") + " — bấm ▶ Điều khiển ở đầu trang.", "🎉 Your machine is ready — tap ▶ Control at the top."))
                     : Ui.L("⏳ Đã nhận đơn — có máy là tự giao + cài Windows, không cần nhắn shop.", "⏳ Order received — delivered automatically."));
             tCode = ""; mineAt = 0; infoAt = 0;

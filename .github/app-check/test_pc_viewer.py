@@ -152,4 +152,18 @@ ck("máy tắt → proxy tự bật khi máy bật", "proxy" in _ps(dict(_j, onl
 ck("proxy dừng hẳn → nhắc Áp dụng lại, màu đỏ", _ps(dict(_j, state={"mode": "crashed", "err": "iptables lỗi"}))[3] == B.BAD)
 _src = open(B.__file__, encoding="utf-8").read()
 ck("ô proxy xoá ngay sau khi gửi (không giữ mật khẩu) + gửi {do:set, url, kind}", 'self.px_ent.delete(0, "end")' in _src and '{"do": "set", "url": url, "kind": self.px_kind}' in _src)
+# ---- 22.11f · SQL v50: Linux CachyOS
+ck("vps_lin: cachyos (cả chữ hoa) là Linux; 22h2 / 1511 / rỗng không", B.vps_lin("cachyos") and B.vps_lin("CachyOS") and not B.vps_lin("22h2") and not B.vps_lin(None))
+ck("tên hệ điều hành: lấy theo danh sách bán, thiếu thì 'Linux CachyOS' / 'Windows 22H2'", B.vps_os_name("cachyos", [{"id": "cachyos", "name": "Linux CachyOS"}]) == "Linux CachyOS"
+   and B.vps_os_name("cachyos") == "Linux CachyOS" and B.vps_os_name("22h2") == "Windows 22H2")
+_ji = {"rental": 1, "state": "active", "until": _iso(3 * 86400), "pc": {"id": "x", "online": True, "job": {"state": "sent", "os": "cachyos", "at": _iso(-60)}, "last_job": None}}
+_st = B.vps_state(_ji)
+ck("thẻ máy đang cài CachyOS: 'Đang cài Linux CachyOS' + 30–60 phút", _st[0] == "inst" and "Linux CachyOS" in _st[1] and ("30–60 phút" in _st[3] or "30–60 min" in _st[3]), _st)
+_jw = {"rental": 1, "state": "active", "until": _iso(3 * 86400), "pc": {"id": "x", "online": True, "job": {"state": "sent", "os": "1511", "at": _iso(-60)}, "last_job": None}}
+ck("đang cài Windows vẫn ghi 15–30 phút", "15–30" in B.vps_state(_jw)[3], B.vps_state(_jw))
+ck("lỗi CANT_OS có câu dễ hiểu", "CANT_OS" not in B.vps_err("P0001: CANT_OS") and ("Secure Boot" in B.vps_err("CANT_OS") or "edition" in B.vps_err("CANT_OS")))
+_rt = B.vps_report_text(types.SimpleNamespace(prof={"username": "khach"}), dict(_ji, os_name="Linux CachyOS"))
+ck("nội dung báo admin: 'Hệ điều hành: Linux CachyOS', việc 'Cài lại Linux CachyOS'", ("Hệ điều hành: Linux CachyOS" in _rt or "OS: Linux CachyOS" in _rt) and "Linux CachyOS — " in _rt, _rt)
+ck("hộp đổi hệ điều hành lọc theo 'can' (v50) · máy chủ cũ ẩn Linux · lời cảnh báo đổi theo bản chọn",
+   'if can is not None' in _src and 'not vps_lin(o.get("id"))' in _src and "def warn_upd(self)" in _src and "VPS_LIN_NOTE" in _src)
 print(f"\n{OK}/{OK + FAIL} đạt"); sys.exit(1 if FAIL else 0)

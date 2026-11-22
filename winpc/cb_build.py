@@ -12,7 +12,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import cbcore as C                                               # noqa: E402
 
-BUILD_VER = "22.11e"
+BUILD_VER = "22.11f"
 PAYLOAD = {                                                       # file phần mềm → vị trí trong \cb của bộ cài
     "lib": ["cbsys.py", "cbcore.py", "cbrec.py"],
     "pe": ["cb_pe.py", "start.cmd"],
@@ -20,7 +20,7 @@ PAYLOAD = {                                                       # file phần 
     "agent": ["pcagent.py", "pcremote.py", "watch.cmd", "cbpc.cmd"],
 }
 UPDATE_DIRS = ("agent", "lib", "os", "pe")
-LINUX_PAYLOAD = ["grubx64.efi", "grub.cfg", "cb-install.sh", "cb-post.sh", "cbagent.py"]  # 22.11c (+ agent Linux 22.11e) · CachyOS: GRUB (dựng trên GitHub CI) + menu + bộ cài không người → cb\linux
+LINUX_PAYLOAD = ["grubx64.efi", "grub.cfg", "cb-install.sh", "cb-post.sh", "cbagent.py", "cbremote.py", "cbcap.py"]  # 22.11c (+ agent Linux 22.11e, điều khiển từ xa 22.11f) · CachyOS: GRUB (dựng trên GitHub CI) + menu + bộ cài không người → cb\linux
 LINUX_UPDATE_RE = re.compile(r"[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)")       # file Linux agent đẩy lên phân vùng cứu hộ khi admin công bố bản mới (không gồm GRUB)
 
 PE_BLOCK = """  <settings pass="windowsPE">

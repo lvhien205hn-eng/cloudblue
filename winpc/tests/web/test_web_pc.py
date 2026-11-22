@@ -836,6 +836,32 @@ def main():
         ck("CHƯA ĐĂNG NHẬP: không có gì — không ô admin, không dải nhắc, không đọc bảng nào trong 3 bảng", HID("xp-home") and T("xp-adm") == "" and T("xp-cust") == ""
            and s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^(pc_|vps_machines|cloud_phones)/.test(c.table) && /expires_at|rent_until/.test(c.cols || '')).length") == 0)
         s.close()
+        print("21. 🐧 Cài lại sang Linux CachyOS (22.11f): chỉ chọn được khi agent đã xét Secure Boot (rec.lx ≥ 2)")
+        db = make_db()
+        for m in db["pc_machines"]:
+            if m["id"] == B: m["info"]["rec"] = {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11e"}
+            if m["id"] == A: m["info"]["rec"] = {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11e", "lx": 2}
+        s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.tab("pc"); s.settle()
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % B); s.page.wait_for_timeout(200)
+        op = s.js("() => [...document.getElementById('pcrd-os').options].map(o => [o.value, o.disabled, o.textContent])")
+        w = s.js("() => document.getElementById('pcrd-warn').innerText")
+        ck("agent 22.11e (chưa có lx): CachyOS hiện nhưng KHOÁ, ghi 'chờ agent 22.11f'; lời nhắc ⬆ Công bố bản agent",
+           [x[0] for x in op] == ["22h2", "1511", "cachyos"] and op[2][1] is True and "Linux CachyOS (KDE)" in op[2][2] and "chờ agent 22.11f" in op[2][2]
+           and not op[0][1] and "Công bố bản agent" in w, (op, w))
+        s.js("() => document.getElementById('pcrd-cancel').click()"); s.page.wait_for_timeout(150)
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % A); s.page.wait_for_timeout(200)
+        op = s.js("() => [...document.getElementById('pcrd-os').options].map(o => [o.value, o.disabled])")
+        ck("agent 22.11f (lx 2): CachyOS chọn được", op == [["22h2", False], ["1511", False], ["cachyos", False]], op)
+        s.page.select_option("#pcrd-os", "cachyos"); s.page.wait_for_timeout(100)
+        w = s.js("() => document.getElementById('pcrd-warn').innerText")
+        ck("chọn CachyOS → lưu ý: 30–60 phút, tắt Secure Boot, điều khiển qua web / app như Windows, không dùng card NVIDIA",
+           "Linux CachyOS (KDE)" in w and "30–60 phút" in w and "Secure Boot" in w and "như máy Windows" in w and "NVIDIA" in w and "CHƯA có điều khiển" not in w, w)
+        s.dialogs.clear(); s.page.click("#pcrd-go"); s.settle(); s.page.wait_for_timeout(200)
+        ck("đồng ý → lệnh cài lại os = cachyos; hộp hỏi ghi 'CachyOS Linux (KDE)'", s.calls("pc_admin_order")[-1:] == [{"p_id": A, "p_cmd": "reinstall", "p_args": {"os": "cachyos", "wipe": "all"}}]
+           and any("CachyOS Linux (KDE)" in x for x in s.dialogs), (s.calls("pc_admin_order"), s.dialogs))
+        e21 = [e for e in s.errors if "Failed to load resource" not in e]                       # 404 của file tải về / bản kê giả — không phải lỗi trang
+        ck("không lỗi JS", not e21, e21)
+        s.close()
         br.close()
     print("\n%d/%d đạt" % (OK, OK + FAIL))
     sys.exit(1 if FAIL else 0)

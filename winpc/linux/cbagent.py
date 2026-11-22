@@ -10,9 +10,9 @@
 #  /opt/cloudblue: cb.json (bản sao của phân vùng cứu hộ) · seed.json (vé 1 lần, chỉ root đọc) · identity.json · rent.json · logs/
 #  Lệnh:  cbagent.py run | status | selfcheck | reinstall <bản> [all|disk|system]
 # =====================================================================================================
-import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, time, traceback
+import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
 
-LINUX_VER = "22.11e"
+LINUX_VER = "22.11f"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
@@ -26,9 +26,12 @@ REC_MNT = "/run/cloudblue/rec"
 LOCK = "/run/cloudblue-agent.lock"
 POWER_UNIT = "cloudblue-power"
 DM_CONF = {"plasmalogin": "/etc/plasmalogin.conf.d/autologin.conf", "sddm": "/etc/sddm.conf.d/autologin.conf"}
-LIB_FILES = ("agent/pcagent.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
+LIB_FILES = ("agent/pcagent.py", "agent/pcremote.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
+REMOTE_LOCK = "/run/cloudblue-remote.lock"                        # cbremote.py giữ khoá này khi đang chạy
 SELF_REL = "linux/cbagent.py"
 LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")   # = pcagent.LINUX_REL (giữ riêng: lõi agent chép từ phân vùng cứu hộ có thể là bản cũ)
+GST_ALA = "https://archive.archlinux.org/packages/g/gst-plugin-pipewire/"   # kho lưu trữ Arch: mọi phiên bản cũ của gói
+GST_RETRY_S = 6 * 3600                                           # cài gst-plugin-pipewire lỗi → 6 giờ sau thử lại
 
 
 def P(p):
@@ -52,6 +55,40 @@ def read(p, default=""):
         with open(p, encoding="utf-8", errors="replace") as f: return f.read()
     except OSError:
         return default
+
+
+# ====================================================================================== công cụ quay màn hình (GStreamer PipeWire)
+def gst_have():
+    """Có phần tử pipewiresrc (gói gst-plugin-pipewire) chưa — điều khiển từ xa cần nó để lấy hình từ cổng XDG của KDE."""
+    return sh(["gst-inspect-1.0", "--exists", "pipewiresrc"], 30)[0] == 0
+
+
+def gst_candidates(ver):
+    """Phiên bản gst-plugin-pipewire nên tải cho libpipewire <ver> (VD "1:1.6.8-1" → ["1:1.6.8-1", "1:1.6.8-2", "1:1.6.8-3"]).
+       Chuỗi lạ → [] (không đưa chữ lạ vào đường tải)."""
+    ver = str(ver or "").strip()
+    if not re.fullmatch(r"(?:[0-9]{1,3}:)?[0-9][0-9A-Za-z.+_]{0,30}-[0-9][0-9.]{0,8}", ver): return []
+    base = ver.rsplit("-", 1)[0]
+    out = []
+    for c in (ver, base + "-1", base + "-2", base + "-3"):
+        if c not in out: out.append(c)
+    return out
+
+
+def gst_install(log=lambda m: None):
+    """Cài gst-plugin-pipewire ĐÚNG phiên bản PipeWire đang có (gói từ kho lưu trữ Arch, pacman -U kiểm chữ ký; -dd = không kéo PipeWire mới:
+       "pacman -Sy gst-plugin-pipewire" đòi PipeWire mới hơn → vỡ pipewire-pulse / pipewire-jack đang cài). → (đã cài?, chữ báo). Không ném lỗi."""
+    rc, out = sh(["pacman", "-Q", "libpipewire"], 30)
+    parts = out.split() if rc == 0 else []
+    cands = gst_candidates(parts[1] if len(parts) >= 2 and parts[0] == "libpipewire" else "")
+    if not cands: return False, "khong ro phien ban PipeWire (%s)" % out.strip()[:60]
+    last = ""
+    for c in cands:
+        log("điều khiển từ xa: thiếu gst-plugin-pipewire → tải bản %s (đúng PipeWire đang có)" % c)
+        rc, out = sh(["pacman", "-U", "--noconfirm", "--needed", "-dd", GST_ALA + "gst-plugin-pipewire-%s-x86_64.pkg.tar.zst" % c], 900)
+        if rc == 0 and gst_have(): return True, c
+        last = " ".join(out.split())[-160:]
+    return False, last or "pacman loi"
 
 
 # ====================================================================================== tệp + giờ (thay cbsys.WinSys cho lõi agent)
@@ -247,8 +284,26 @@ class LinuxHost:
             return False
 
     def drivers(self): return None
-    def remote_running(self): return False
-    def remote_start(self, script): raise OSError("dieu khien tu xa ban Linux chua co")
+
+    def remote_running(self):
+        """cbremote.py (điều khiển từ xa) đang chạy? — nó giữ khoá REMOTE_LOCK suốt lúc chạy."""
+        try: fd = os.open(REMOTE_LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError: return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return True
+        finally:
+            os.close(fd)
+
+    def remote_start(self, script):
+        """Mở cbremote.py (root) chạy nền; nhật ký riêng ở logs/remote.log (+ remote.out cho lỗi Python). → pid."""
+        d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(script))), "logs")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "remote.out"), "ab") as out:
+            p = subprocess.Popen([sys.executable, "-I", "-B", script, "run"], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
+        return p.pid
 
     def notify(self, text, secs=60):
         """Hộp báo cho khách: thông báo trên màn hình mọi phiên đồ hoạ (notify-send, mức khẩn) + wall cho cửa sổ lệnh."""
@@ -320,7 +375,7 @@ class LinuxRec:
             ok_file = lambda rel: os.path.exists(root + P(rel))
             imgs = [im["id"] for im in cfg.get("images") or [] if ok_file(im["file"]) and (not C.is_linux(im) or all(ok_file(r) for r in C.LINUX_FILES))]
             ok = bool(imgs) and ok_file("cb\\boot\\boot.wim") and ok_file("cb\\boot\\boot.sdi")
-            return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or ""}
+            return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or "", "lx": 2}     # "lx": luật xét CachyOS 22.11f (xem cbrec.status)
         finally:
             self.umount()
 
@@ -437,6 +492,8 @@ class LinuxAgent(pcagent.Agent):
         seed = C.load_json(sysx, self.p("seed.json")) or {}
         self.rec = rec or LinuxRec(seed.get("rec_uuid") or "", self.log)
         self.result_sent = False
+        self.gst_state = ""                                       # "" chưa xét · "ok" đủ · "busy" đang cài · "fail" lỗi (chờ GST_RETRY_S)
+        self.gst_try = None
 
     def p(self, rel): return os.path.join(self.base, P(rel))
 
@@ -458,7 +515,7 @@ class LinuxAgent(pcagent.Agent):
             g = sh(["id", "-nG", self.h.user], 10)[1].split() if self.h.user else []
             i["sec"] = {"std": "wheel" not in g, "hard": True, "lock": True}
         except Exception: pass
-        i["rmt"] = {"v": "", "s": "ban Linux chua co dieu khien tu xa", "age": 0}
+        i["rmt"] = self.remote_info() or {"v": "", "s": "chua chay", "age": 0}
         return i
 
     # ---- kết quả lần cài CachyOS (cb-install.sh ghi lên phân vùng cứu hộ)
@@ -474,8 +531,52 @@ class LinuxAgent(pcagent.Agent):
 
     def job_orphan(self): return None
     def pe_sync(self): return None
-    def remote_keep(self): return None
     def rec_admin(self, want): return True
+
+    def gst_heal(self):
+        """Máy thiếu pipewiresrc (cài từ ISO lúc chưa có mạng / bản cài 22.11e) → tự cài gst-plugin-pipewire ở luồng nền (tải tới 15 phút,
+           không chặn việc hỏi máy chủ). cbcap tự dò lại công cụ sau 60 giây → cài xong là điều khiển được, không phải cài lại máy.
+           → "ok" | "busy" | "wait" | "start". Không ném lỗi."""
+        try:
+            if self.gst_state in ("ok", "busy"): return self.gst_state
+            now = self.s.now()
+            if self.gst_try is not None and now - self.gst_try < GST_RETRY_S: return "wait"
+            self.gst_try = now
+            if gst_have(): self.gst_state = "ok"; return "ok"
+            self.gst_state = "busy"
+
+            def run():
+                try:
+                    ok, why = gst_install(self.log)
+                    self.gst_state = "ok" if ok else "fail"
+                    self.log("điều khiển từ xa: " + ("đã cài gst-plugin-pipewire %s — quay màn hình được" % why if ok
+                                                     else "chưa cài được gst-plugin-pipewire (%s) — %d giờ sau thử lại" % (why, GST_RETRY_S // 3600)))
+                except Exception as e:
+                    self.gst_state = "fail"; self.log("điều khiển từ xa: lỗi khi cài gst-plugin-pipewire: %r" % (e,))
+            threading.Thread(target=run, name="gst-heal", daemon=True).start()
+            return "start"
+        except Exception as e:
+            self.gst_state = "fail"; self.log("điều khiển từ xa: lỗi xét công cụ quay màn hình: %r" % (e,))
+            return "fail"
+
+    def remote_keep(self):
+        """Giữ cbremote.py (điều khiển từ xa, root) chạy: chưa chạy / tự thoát để lên bản mới → mở lại (cách nhau ≥ REMOTE_RETRY_S). Không ném lỗi."""
+        try:
+            if self.cfg.get("remote") is False or not self.ident: return None
+            self.gst_heal()
+            script = self.p("linux/cbremote.py")
+            if not os.path.isfile(script) or not os.path.isfile(self.p("agent/pcremote.py")): return None
+            if self.h.remote_running(): self.remote_err = ""; return "run"
+            now = self.s.now()
+            if self.remote_try is not None and now - self.remote_try < pcagent.REMOTE_RETRY_S: return "wait"
+            self.remote_try = now
+            pid = self.h.remote_start(script)
+            self.log("đã mở chương trình điều khiển từ xa (CachyOS, pid %s)" % pid)
+            return "start"
+        except Exception as e:
+            if str(e) != self.remote_err:
+                self.remote_err = str(e); self.log("chưa mở được chương trình điều khiển từ xa: %s" % e)
+            return "err"
 
     def poll(self, send_info=True):
         had = self.result_from_rec and self.pending_done is not None
@@ -551,14 +652,16 @@ class LinuxAgent(pcagent.Agent):
                 compile(data.decode("utf-8"), rel, "exec")
                 got[rel] = data
             stage = self.p("update/" + ver)
-            for rel in set(LIB_FILES) | {SELF_REL}:
+            for rel in set(LIB_FILES) | {SELF_REL, "linux/cbremote.py", "linux/cbcap.py"} | set(want):
                 src = got.get(rel)
                 if src is None:
                     try: src = self.s.read_bytes(self.p(rel))
                     except Exception: src = None
                 if src is not None: self.s.write_bytes(stage + "/" + rel, src)
-            ok, out = self.h.selfcheck(stage + "/" + SELF_REL)
-            if not ok: raise ValueError("bản mới chạy thử không đạt: %s" % out)
+            for rel in (SELF_REL, "linux/cbremote.py"):                     # bản mới (agent + điều khiển từ xa) chạy thử trước khi thay
+                if rel != SELF_REL and not self.s.exists(stage + "/" + rel): continue
+                ok, out = self.h.selfcheck(stage + "/" + rel)
+                if not ok: raise ValueError("bản mới chạy thử không đạt (%s): %s" % (rel, out))
             for rel, data in got.items():
                 dst = self.p(rel)
                 try:

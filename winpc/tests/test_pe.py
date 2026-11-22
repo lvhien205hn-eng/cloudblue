@@ -984,7 +984,8 @@ ck("máy chạy CachyOS mà BIOS lại vào Windows Boot Manager (→ WinPE, kh�
 
 print("29. Bộ cài có CachyOS: cài từ USB vẫn chỉ cài Windows · phân vùng cứu hộ chép đủ phần Linux · agent thấy được CachyOS (22.11c)")
 fs = FakeSys("uefi"); cfg = cfg_lin(); u = usb(fs, cfg)
-for rel, data in (("cb\\linux\\cachyos.iso", b"ISO"), ("cb\\linux\\grubx64.efi", b"GRUB"), ("cb\\linux\\grub.cfg", "cfg"), ("cb\\linux\\cb-install.sh", "sh"), ("cb\\linux\\cbagent.py", "py")): u.slots[0].vol.put(rel, data)
+for rel, data in (("cb\\linux\\cachyos.iso", b"ISO"), ("cb\\linux\\grubx64.efi", b"GRUB"), ("cb\\linux\\grub.cfg", "cfg"), ("cb\\linux\\cb-install.sh", "sh"), ("cb\\linux\\cbagent.py", "py"),
+                  ("cb\\linux\\cbremote.py", "py"), ("cb\\linux\\cbcap.py", "py")): u.slots[0].vol.put(rel, data)
 d0 = fs.disk(0, 480, ssd=True, style="gpt")
 rc, ui, inst = run(fs, ["3", "\r"])
 ck("menu chỉ liệt kê bản Windows (phím 3 không chọn được CachyOS) → cài 22H2 như thường", rc == 0 and fs.file(d0.slots[3].vol, "windows\\cb-image.txt") == "install.wim|6"
@@ -998,6 +999,15 @@ rv.letter = "R"
 st = cbrec.status(fs)
 ck("agent báo web: đổi được sang 22h2, 1511, cachyos", st["ok"] and st["images"] == ["22h2", "1511", "cachyos"], st)
 
+fs.efi["SecureBoot"] = b"\x01"
+ck("22.11f · máy đang BẬT Secure Boot → agent KHÔNG báo cachyos (GRUB / CachyOS chưa ký, cài sẽ hỏng)", cbrec.status(fs)["images"] == ["22h2", "1511"], cbrec.status(fs))
+fs.efi.pop("SecureBoot"); fs.fw = "bios"
+ck("22.11f · máy BIOS cũ (không UEFI) → agent KHÔNG báo cachyos", cbrec.status(fs)["images"] == ["22h2", "1511"], cbrec.status(fs))
+fs.fw = "uefi"
+ck("… bật lại UEFI + tắt Secure Boot → báo lại cachyos", cbrec.status(fs)["images"] == ["22h2", "1511", "cachyos"], cbrec.status(fs))
+rv.files.pop("cb\\linux\\cbcap.py")
+ck("22.11f · thiếu phần điều khiển từ xa Linux (cbcap.py) → agent KHÔNG báo cachyos (khách sẽ không dùng được máy)", cbrec.status(fs)["images"] == ["22h2", "1511"], cbrec.status(fs))
+rv.put("cb\\linux\\cbcap.py", "py")
 rv.files.pop("cb\\linux\\grubx64.efi")
 ck("thiếu GRUB → agent KHÔNG báo cachyos (không cho chọn bản không cài được)", cbrec.status(fs)["images"] == ["22h2", "1511"], cbrec.status(fs))
 rv.letter = None

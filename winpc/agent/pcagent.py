@@ -30,6 +30,7 @@
 #      CachyOS (cb-install.sh, grub.cfg, agent Linux…) trên phân vùng cứu hộ — sửa phần Linux không cần tạo lại ISO
 #    · (22.11e) máy đã đổi sang CachyOS có agent CloudBlue bản Linux (linux/cbagent.py, dùng lại lõi này) → vẫn hiện trên web, đổi lại Windows được
 #      · mỗi lần agent chạy: bộ cài CachyOS trên phân vùng cứu hộ khớp bản kê đang công bố (lần cập nhật trước tải lỗi thì làm bù)
+#    · (22.11f) CachyOS: điều khiển từ xa (linux/cbremote.py + cbcap.py — quay màn hình KDE, chuột / phím) · không dùng driver NVIDIA trên Linux
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -47,7 +48,7 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "22.11e"
+AGENT_VER = "22.11f"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này

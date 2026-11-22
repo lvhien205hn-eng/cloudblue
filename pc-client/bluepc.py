@@ -4031,10 +4031,30 @@ def vps_plans(prod):
     return sorted(out)
 
 
+def vps_lin(os_id):
+    """22.11f · bản Linux CachyOS (KDE): điều khiển như máy Windows, không dùng card NVIDIA."""
+    return str(os_id or "").strip().lower() == "cachyos"
+
+
+def vps_os_name(os_id, os_list=()):
+    for o in os_list or ():
+        if isinstance(o, dict) and o.get("id") == os_id and o.get("name"): return str(o["name"])
+    return "Linux CachyOS" if vps_lin(os_id) else "Windows " + str(os_id or "").upper()
+
+
+def vps_inst_time(os_id): return L("30–60 phút", "30–60 min") if vps_lin(os_id) else L("15–30 phút", "15–30 min")
+
+
+VPS_LIN_NOTE = ("🐧 Linux CachyOS (KDE): điều khiển từ xa như máy Windows. Bản Linux không dùng card đồ hoạ NVIDIA và không chạy phần mềm / game Windows.",
+                "🐧 Linux CachyOS (KDE): remote control just like Windows. The Linux edition doesn't use the NVIDIA GPU and can't run Windows apps / games.")
+
+
 def vps_err(m):
     m = str(m or "")
     for k, vi, en in (("NO_LEFT", "Máy này đã hết lượt cài lại trong lượt thuê — nhắn shop nếu cần thêm.", "No reinstalls left for this rental."),
-                      ("BUSY", "Máy đang cài Windows — chờ xong rồi thử lại.", "Windows is being installed — try again later."),
+                      ("BUSY", "Máy đang cài hệ điều hành — chờ xong rồi thử lại.", "The OS is being installed — try again later."),
+                      ("CANT_OS", "Máy của bạn chưa đổi được sang bản này (Linux cần máy UEFI đã tắt Secure Boot). Nhắn shop nếu cần.",   # 22.11f · SQL v50
+                       "Your machine can't switch to this edition yet. Contact the shop."),
                       ("EXPIRED", "Máy đã hết hạn — gia hạn trước.", "Expired — renew first."),
                       ("NOT_AUTO", "Sản phẩm này chưa bật giao tự động.", "Automatic delivery is off."),
                       ("INSUFFICIENT_BALANCE", "Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first."),
@@ -4081,12 +4101,15 @@ def vps_state(x):
     """(mã, chữ, màu, câu giải thích) của 1 mục VPS."""
     pc = x.get("pc") or {}; job = pc.get("job") or None; st = x.get("state")
     lf = left_secs(x.get("until")) if x.get("until") else None
-    if st == "waiting": return "wait", L("⏳ Đang chờ máy", "⏳ Waiting"), WARN, L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received — delivered automatically.")
+    if st == "waiting": return "wait", L("⏳ Đang chờ máy", "⏳ Waiting"), WARN, L(f"Shop đã nhận đơn. Có máy là tự giao + cài {x.get('os_name') or 'Windows'} — không cần nhắn shop.", "Order received — delivered automatically.")
     if st == "cancelled": return "end", L("✕ Đã huỷ", "✕ Cancelled"), DIM, L("Tiền hoàn (nếu có) đã về số dư.", "Any refund went to your balance.")
     if st == "ended": return "end", L("■ Đã kết thúc", "■ Ended"), DIM, (L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới.",
                                                                           "Expired without renewal — the machine was reclaimed and wiped.") if x.get("end_why") == "expired" else "")
-    if job: return "inst", L("⚙ Đang cài Windows", "⚙ Installing Windows"), WARN, (L(f"Máy đang cài {str(job.get('os') or '').upper()} (15–30 phút), xong là vào được.", "Installing Windows (15–30 min).")
-                                                                               if job.get("state") == "sent" else L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…"))
+    if job:
+        jn, jl = vps_os_name(job.get("os")), vps_lin(job.get("os"))
+        return "inst", (L("⚙ Đang cài Linux CachyOS", "⚙ Installing Linux CachyOS") if jl else L("⚙ Đang cài Windows", "⚙ Installing Windows")), WARN, (
+            L(f"Máy đang cài {jn} ({vps_inst_time(job.get('os'))}), xong là vào được.", f"Installing {jn} ({vps_inst_time(job.get('os'))}).")
+            if job.get("state") == "sent" else L(f"Máy sắp khởi động lại để cài {jn}…", f"The machine will restart to install {jn}…"))
     gu = parse_iso(x.get("grace_until")) if x.get("grace_until") else None                 # 21/11f · v44: hết hạn nhưng máy còn giữ cho khách tới lúc này
     if lf is not None and lf <= 0 and gu and gu > now_utc():
         t = gu.astimezone().strftime("%H:%M %d/%m")
@@ -4164,7 +4187,8 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
         tk.Label(row, text=str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else ""),
                  font=("Segoe UI", 12, "bold"), fg=TXT, bg=CARD).pack(side="left")
         tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
-        spec = [str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g] + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else [])
+        spec = ([str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g and not vps_lin(pc.get("os"))]          # Linux không dùng card đồ hoạ
+                + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else []))
         tk.Label(c, text=" · ".join(q for q in spec if q), font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
         if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code in ("exp", "warn") else WARN if code in ("off", "inst", "wait", "boot", "down", "offd") else DIM, bg=CARD, anchor="w",
                                  wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
@@ -4203,7 +4227,7 @@ def vps_more(app, x, widget, os_list, mx, mt, can_cancel):
     pc = x.get("pc") or {}; pid = str(pc.get("id") or ""); code = vps_state(x)[0]; left = int(num(x.get("left")))
     m = app.tk.Menu(app.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
     if x.get("rental") is not None:
-        m.add_command(label=L(f"🔄 Cài lại / đổi Windows ({left}/{mx} lượt)…", f"🔄 Reinstall / switch Windows ({left}/{mx})…"),
+        m.add_command(label=L(f"🔄 Cài lại / đổi hệ điều hành ({left}/{mx} lượt)…", f"🔄 Reinstall / switch the OS ({left}/{mx})…"),
                       command=lambda: VpsReDlg(app, x, os_list, mx), state="disabled" if left < 1 or code in ("inst", "exp") or not os_list or mt else "normal")
     m.add_command(label=L("⧉ Mở cửa sổ riêng", "⧉ Open in its own window"), command=lambda: spawn_viewer(pid, "--view", "--pc"),
                   state="normal" if code in ("run", "warn") and not mt else "disabled")
@@ -4238,7 +4262,8 @@ def vps_progress(app, parent, x, inst):
        (cài ~25 phút · chờ ~10 phút); lâu bất thường → vàng + nút 📋 Báo admin (như web / app điện thoại)."""
     tk = app.tk; pc = x.get("pc") or {}; job = pc.get("job") or {}
     t0 = parse_iso(job.get("at") if inst else x.get("created_at")) or now_utc()
-    exp = (25 if inst else 10) * 60; osu = str(job.get("os") or "").upper()
+    lin = inst and vps_lin(job.get("os"))
+    exp = (45 if lin else 25 if inst else 10) * 60; osu = str(job.get("os") or "").upper()
     box = tk.Frame(parent, bg=CARD); box.pack(fill="x", padx=16, pady=(8, 0))
     cv = tk.Canvas(box, height=max(6, tk.px(8)), bg=CARD, highlightthickness=0); cv.pack(fill="x")
     lbl = tk.Label(box, text="", font=app.f_s, fg=DIM, bg=CARD, anchor="w", justify="left"); lbl.pack(fill="x", pady=(4, 0)); fitwrap(lbl)
@@ -4252,8 +4277,9 @@ def vps_progress(app, parent, x, inst):
         sec = max(0, int((now_utc() - t0).total_seconds()))
         pct = int(min(96 if inst else 90, max(2, round(100 * (1 - math.exp(-sec / (exp * .55)))))))
         late = sec > exp * (2 if inst else 3)
-        stage = (L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically") if not inst
+        stage = (L("Đang chờ máy — có máy là tự giao + tự cài", "Waiting — assigned automatically") if not inst
                  else L("Khởi động lại vào bộ cài", "Restarting into setup") if sec < 150
+                 else (L("Đang cài Linux CachyOS", "Installing Linux CachyOS") if sec < 45 * 60 else L("Sắp xong…", "Almost done…")) if lin
                  else L("Đang cài Windows ", "Installing Windows ") + osu if sec < 15 * 60
                  else L("Cài driver · khởi động lần đầu", "Drivers · first boot") if sec < 26 * 60 else L("Sắp xong…", "Almost done…"))
         st["pct"], st["col"] = pct, WARN if late else SKY
@@ -4277,8 +4303,8 @@ def vps_report_text(app, x):
     def el(t):
         d = parse_iso(t)
         return mmss((now_utc() - d).total_seconds()) if d else "?"
-    what = ((L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (f": {lj.get('msg')}" if lj.get("msg") else "")) if code == "warn"
-            else (L("Cài lại Windows ", "Reinstall ") + str(job.get("os") or "").upper() + L(" — đã chạy ", " — running for ") + el(job.get("at")) + L(" chưa xong", "")) if code == "inst"
+    what = ((L("Cài lại hệ điều hành bị LỖI", "OS reinstall FAILED") + (f": {lj.get('msg')}" if lj.get("msg") else "")) if code == "warn"
+            else (L("Cài lại ", "Reinstall ") + vps_os_name(job.get("os")) + L(" — đã chạy ", " — running for ") + el(job.get("at")) + L(" chưa xong", "")) if code == "inst"
             else (L("Chờ giao máy — đã chờ ", "Waiting for a machine — ") + el(x.get("created_at"))) if code == "wait"
             else st)
     prof = getattr(app, "prof", None) or {}
@@ -4286,7 +4312,7 @@ def vps_report_text(app, x):
     return "\n".join([L("[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ", "[CLOUDBLUE] GPU VPS NEEDS HELP"),
                       "• " + L("Máy: ", "Machine: ") + str(pc.get("name") or "—") + (f" (№ {pc.get('code')})" if pc.get("code") else ""),
                       "• " + L("Việc: ", "Problem: ") + what,
-                      "• Windows: " + str(x.get("os_name") or ""),
+                      "• " + L("Hệ điều hành: ", "OS: ") + str(x.get("os_name") or ""),
                       "• " + L("Tài khoản: ", "Account: ") + user,
                       "• " + L("Lượt thuê: #", "Rental: #") + (str(x.get("rental")) if x.get("rental") is not None else "—"),
                       "• " + L("Lúc: ", "Time: ") + datetime.datetime.now().strftime("%H:%M %d/%m/%Y")])
@@ -4469,7 +4495,8 @@ class VpsBuyDlg(Dlg):
             tk.Label(tx, text=t2, font=app.f_s, fg=DIM, bg=CARD, anchor="w").pack(fill="x")
 
         # ---- ① Windows
-        f = self.section("①  " + L("Chọn Windows", "Choose Windows"), L(f"đổi được {mx} lần trong lượt thuê", f"switchable {mx}× per rental"))
+        any_lin = any(o.get("linux") is True or vps_lin(o.get("id")) for o in os_)
+        f = self.section("①  " + (L("Chọn hệ điều hành", "Choose the OS") if any_lin else L("Chọn Windows", "Choose Windows")), L(f"đổi được {mx} lần trong lượt thuê", f"switchable {mx}× per rental"))
         self.tiles = []
         grid = tk.Frame(f, bg=BG); grid.pack(fill="x", pady=(4, 0))
         for i, o in enumerate(os_):
@@ -4480,7 +4507,8 @@ class VpsBuyDlg(Dlg):
             inner = tk.Frame(t, bg=CARD); inner.place(relx=.5, rely=.5, anchor="center")
             a1 = tk.Label(inner, text=k0, font=("Segoe UI", 9, "bold"), bg=CARD, fg=DIM)
             a2 = tk.Label(inner, text=k1, font=("Segoe UI", 21, "bold"), bg=CARD, fg=TXT)
-            a3 = tk.Label(inner, text=("⚡ " + L("Giao ngay", "Instant")) if o.get("fast") else ("⏳ " + (L("Cài ~20 phút", "~20 min setup") if ready else L("Chờ máy", "Waiting"))),
+            rdy = o.get("ready") if isinstance(o.get("ready"), bool) else ready                   # SQL v50: có máy trống cài được ĐÚNG bản này
+            a3 = tk.Label(inner, text=("⚡ " + L("Giao ngay", "Instant")) if o.get("fast") else ("⏳ " + ((L("Cài ~45 phút", "~45 min setup") if vps_lin(o.get("id")) else L("Cài ~20 phút", "~20 min setup")) if rdy else L("Chờ máy", "Waiting"))),
                           font=("Segoe UI", 8, "bold"), bg=CARD, fg=OK if o.get("fast") else WARN)
             for w in (a1, a2, a3): w.pack()
             for w in (t, inner, a1, a2, a3): w.bind("<Button-1>", lambda _e, v=o["id"]: (setattr(self, "os", v), self.upd()))
@@ -4545,9 +4573,13 @@ class VpsBuyDlg(Dlg):
                 except Exception: pass
             chk.config(text="✓" if on else "○", fg="#7cbcff" if on else DIM)
         o = next((x for x in self.oss if x["id"] == self.os), {})
-        self.os_hint.config(text=L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.") if o.get("fast")
-                            else L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm 30 phút).", "⏳ Installed for you in ~20 min (30 min added to your time).") if ready
-                            else L("⏳ Shop đang chuẩn bị máy — có máy là tự giao + cài, không cần nhắn shop.", "⏳ Preparing a machine — delivered automatically."),
+        rdy = o.get("ready") if isinstance(o.get("ready"), bool) else ready
+        lin = vps_lin(o.get("id"))
+        self.os_hint.config(text=(L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.") if o.get("fast")
+                            else L("⏳ Máy tự cài bản này cho bạn khoảng 30–60 phút (hạn thuê được cộng thêm 60 phút).", "⏳ Installed for you in ~30–60 min (60 min added to your time).") if rdy and lin
+                            else L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm 30 phút).", "⏳ Installed for you in ~20 min (30 min added to your time).") if rdy
+                            else L("⏳ Shop đang chuẩn bị máy — có máy là tự giao + cài, không cần nhắn shop.", "⏳ Preparing a machine — delivered automatically."))
+                            + ("\n" + L(*VPS_LIN_NOTE) if lin else ""),
                             fg=OK if o.get("fast") else WARN)
         self.promo.order_changed()
         t0 = self.price(); t = self.promo.price(t0); bal = num(self.prof.get("balance")); self.shown = t
@@ -4592,7 +4624,8 @@ class VpsBuyDlg(Dlg):
         def done(res):
             res = res or {}; VPS["t"] = 0; self.app.refresh()
             if res.get("state") == "active":
-                msg = (L(f"Đã giao máy {res.get('name')} — máy đang tự cài Windows (~20 phút). Theo dõi ở mục VPS GPU của bạn.", "Machine assigned — installing Windows (~20 min).")
+                msg = ((L(f"Đã giao máy {res.get('name')} — máy đang tự cài Linux CachyOS (30–60 phút). Theo dõi ở mục VPS GPU của bạn.", "Machine assigned — installing Linux CachyOS (30–60 min).")
+                        if vps_lin(self.os) else L(f"Đã giao máy {res.get('name')} — máy đang tự cài Windows (~20 phút). Theo dõi ở mục VPS GPU của bạn.", "Machine assigned — installing Windows (~20 min)."))
                        if res.get("reinstall") else L(f"Đã giao máy {res.get('name')} — bấm ▶ Điều khiển ở mục VPS GPU của bạn.", "Your machine is ready — click ▶ Control."))
             else: msg = L("Đã nhận đơn — shop đang chuẩn bị máy. Có máy là tự giao + cài Windows, không cần nhắn shop.", "Order received — delivered automatically.")
             mb.showinfo("CloudBlue", msg, parent=self.app.root)
@@ -4605,30 +4638,45 @@ class VpsBuyDlg(Dlg):
 
 
 class VpsReDlg(Dlg):
-    """Cài lại / đổi bản Windows (chỉ xoá ổ C:) — giới hạn số lần mỗi lượt thuê."""
+    """Cài lại / đổi hệ điều hành (chỉ xoá phần hệ thống: ổ C: / Linux) — giới hạn số lần mỗi lượt thuê.
+       22.11f · SQL v50 trả "can" (máy đổi được sang bản nào); máy chủ cũ (không có "can") → ẩn bản Linux."""
     def __init__(self, app, item, os_list, mx):
         pc = item.get("pc") or {}
-        super().__init__(app, L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " · " + str(pc.get("name") or ""), 540, 520)
+        can = pc.get("can") if isinstance(pc.get("can"), list) else None
+        os_list = ([o for o in os_list if o.get("id") in can or o.get("id") == item.get("os")] if can is not None
+                   else [o for o in os_list if not vps_lin(o.get("id"))])
+        self.os_all = os_list
+        any_lin = any(vps_lin(o.get("id")) for o in os_list) or vps_lin(pc.get("os"))
+        super().__init__(app, (L("Cài lại / đổi hệ điều hành", "Reinstall / switch the OS") if any_lin else L("Cài lại / đổi Windows", "Reinstall / switch Windows")) + " · " + str(pc.get("name") or ""), 540, 560)
         self.it, self.pc = item, pc; self.os = item.get("os") if any(o.get("id") == item.get("os") for o in os_list) else (os_list[0]["id"] if os_list else None)
         tk = app.tk
         self.label(self.body, L(f"Còn {int(num(item.get('left')))}/{mx} lượt trong lượt thuê này.", f"{int(num(item.get('left')))}/{mx} reinstalls left."), self.app.f_t, DIM).pack(fill="x", padx=18, pady=(16, 0))
-        f = self.section(L("Cài bản Windows", "Install Windows"))
+        f = self.section(L("Cài bản", "Install") if any_lin else L("Cài bản Windows", "Install Windows"))
         self.ch = Chips(app, f, [(o["id"], (o.get("name") or o["id"]) + (L("\n(đang dùng)", "\n(current)") if o["id"] == item.get("os") else "")) for o in os_list],
-                        lambda: self.os, lambda v: setattr(self, "os", v), lambda: self.ch.paint(), wrap=2)
+                        lambda: self.os, lambda v: (setattr(self, "os", v), self.warn_upd()), lambda: self.ch.paint(), wrap=2)
         self.ch.frame.pack(fill="x")
-        self.label(self.body, L("⚠️ Chỉ xoá ổ C: (Windows) — ổ khác giữ nguyên. Máy khởi động lại và cài trong 15–30 phút. Dữ liệu ổ C: không lấy lại được.",
-                                "⚠️ Only drive C: (Windows) is erased — other drives are kept. Takes 15–30 minutes."), self.app.f_s, WARN, wraplength=490).pack(fill="x", padx=18, pady=(12, 0))
+        self.warn = self.label(self.body, "", self.app.f_s, WARN, wraplength=490); self.warn.pack(fill="x", padx=18, pady=(12, 0)); self.warn_upd()
         ft = self.foot
         self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(10, 0))
         bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
         app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
         self.go = app.btn(bb, L("Cài lại ngay", "Reinstall now"), self.run); self.go.pack(side="right")
 
+    def warn_upd(self):
+        """Lời cảnh báo theo bản đang chọn: xoá phần nào, cài bao lâu, lưu ý Linux."""
+        try:
+            cur_lin = vps_lin(self.pc.get("os")); sysx = L("phần hệ điều hành Linux", "the Linux system") if cur_lin else L("ổ C: (Windows)", "drive C: (Windows)")
+            t = L(f"⚠️ Chỉ xoá {sysx} — ổ khác giữ nguyên. Máy khởi động lại và cài trong {vps_inst_time(self.os)}. Dữ liệu đã xoá không lấy lại được.",
+                  f"⚠️ Only {sysx} is erased — other drives are kept. Takes {vps_inst_time(self.os)}.")
+            self.warn.config(text=t + ("\n" + L(*VPS_LIN_NOTE) if vps_lin(self.os) else ""))
+        except Exception: pass
+
     def run(self):
         import tkinter.messagebox as mb
         if not self.os: return
-        if not mb.askyesno(L("Cài lại", "Reinstall"), L(f"Cài lại máy {self.pc.get('name')} sang {str(self.os).upper()}?\n\nỔ C: bị xoá, không lấy lại được.",
-                                                        f"Reinstall {self.pc.get('name')} with {str(self.os).upper()}?\n\nDrive C: is erased."), parent=self.win): return
+        nm = vps_os_name(self.os, self.os_all); cl = vps_lin(self.pc.get("os"))
+        if not mb.askyesno(L("Cài lại", "Reinstall"), L(f"Cài lại máy {self.pc.get('name')} sang {nm}?\n\n{'Phần hệ điều hành Linux' if cl else 'Ổ C:'} bị xoá, không lấy lại được.",
+                                                        f"Reinstall {self.pc.get('name')} with {nm}?\n\n{'The Linux system' if cl else 'Drive C:'} is erased."), parent=self.win): return
         self.go.config(state="disabled")
         def done(r):
             self.close(); self.app.refresh()
