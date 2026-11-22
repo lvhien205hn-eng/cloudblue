@@ -107,28 +107,30 @@ jobs:
           sudo cp cachyos.iso /mnt/rec/cb/linux/cachyos.iso
           sudo cp winpc/linux/grub.cfg winpc/linux/cb-install.sh winpc/linux/cb-post.sh /mnt/rec/cb/linux/
           echo '{"id": "ci", "os": "cachyos", "test": true}' | sudo tee /mnt/rec/cb/job.json
-          printf 'set cbextra="console=ttyS0,115200 loglevel=4"\n' | sudo tee /mnt/rec/cb/linux/job.cfg
+          printf 'set cbextra="console=ttyS0,115200 loglevel=4 systemd.show_status=1 systemd.log_target=console systemd.log_level=info"\n' | sudo tee /mnt/rec/cb/linux/job.cfg
           sudo umount /mnt/rec
           sudo losetup -d $LOOP
-      - name: Khởi động máy ảo UEFI (tối đa 20 phút)
+      - name: Khởi động máy ảo UEFI (tối đa 15 phút)
         run: |
           cp /usr/share/OVMF/OVMF_VARS_4M.fd vars.fd
           ACC="-machine q35"
           if [ -w /dev/kvm ]; then ACC="-machine q35,accel=kvm -cpu host"; else ACC="-machine q35 -cpu max"; fi
           set +e
-          timeout 1200 qemu-system-x86_64 $ACC -m 4096 -smp 2 \
+          timeout 900 qemu-system-x86_64 $ACC -m 4096 -smp 2 \
             -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd \
             -drive if=pflash,format=raw,unit=1,file=vars.fd \
             -drive file=disk.img,format=raw,if=none,id=d0 -device virtio-blk-pci,drive=d0 \
             -nic user,model=virtio-net-pci -display none -serial file:serial.log -no-reboot
           echo "qemu thoat ma $?"
-          tail -60 serial.log || true
+          echo "== serial.log ($(wc -l < serial.log) dong) =="; cat serial.log || true
       - name: Kiểm kết quả trên phân vùng CBRECOVERY
         run: |
           LOOP=$(sudo losetup -f --show -P disk.img)
           sudo mount -t ntfs-3g -o ro ${LOOP}p2 /mnt/rec
           echo "== cb/linux-test.ok =="; sudo cat /mnt/rec/cb/linux-test.ok || true
           OK=0; sudo grep -q CB_TEST_OK /mnt/rec/cb/linux-test.ok 2>/dev/null && OK=1
+          for k in net keyring installer efibootmgr rw; do v=$(sudo grep -o "$k=[^ ]*" /mnt/rec/cb/linux-test.ok 2>/dev/null | head -1); echo "- $v" >> $GITHUB_STEP_SUMMARY; done
+          sudo ls -la /mnt/rec/cb/logs/ 2>/dev/null || true
           sudo umount /mnt/rec; sudo losetup -d $LOOP
           if [ "$OK" = 1 ]; then echo "linux check: DAT (GRUB -> ISO CachyOS tren NTFS -> cb-install.sh)" >> $GITHUB_STEP_SUMMARY; else echo "linux check: CHUA DAT" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
