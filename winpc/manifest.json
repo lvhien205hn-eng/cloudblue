@@ -19,7 +19,7 @@
   "linux/cb-install.sh": "6ee6d210a83580192f918e0ccfd297f5230d0f0f2d7c27aeea32429fa2d0ed10",
   "linux/cb-post.sh": "4c0fa15f858c9dd21d6645cc1b7a4e405997c82eb525cce3df2a96ba1962f0bc",
   "linux/cbagent.py": "345fad0b485cd4d58ec7c5279e846f4baca043eb93ef7206bdc220f978ac6dc6",
-  "linux/cbcap.py": "c87488bf32bc1ac398a2844677fb1d7795c875f4cc764049f49e2004492c19da",
+  "linux/cbcap.py": "741fb65ea122740a2dc62e4ae528cd17fadde0cab0ee143ae69c85b7681c8369",
   "linux/cbremote.py": "370658c470a2ff86b90bca57b13305910ddd0a88e95ef10e1c942dce4e4232cf",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98"
  },
@@ -37,7 +37,7 @@
   "linux/cb-install.sh": "6ee6d210a83580192f918e0ccfd297f5230d0f0f2d7c27aeea32429fa2d0ed10",
   "linux/cb-post.sh": "4c0fa15f858c9dd21d6645cc1b7a4e405997c82eb525cce3df2a96ba1962f0bc",
   "linux/cbagent.py": "345fad0b485cd4d58ec7c5279e846f4baca043eb93ef7206bdc220f978ac6dc6",
-  "linux/cbcap.py": "c87488bf32bc1ac398a2844677fb1d7795c875f4cc764049f49e2004492c19da",
+  "linux/cbcap.py": "741fb65ea122740a2dc62e4ae528cd17fadde0cab0ee143ae69c85b7681c8369",
   "linux/cbremote.py": "370658c470a2ff86b90bca57b13305910ddd0a88e95ef10e1c942dce4e4232cf",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
