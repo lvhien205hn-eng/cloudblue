@@ -223,8 +223,35 @@ grab("pc-20-xem-tat-ca-vps.png")                           # chỉ VPS GPU
 ok_pc = len(wall.cells) == 3 and all(c.get("kind") == "pc" for c in wall.cells.values()) and len(wall.tiles) == 2
 print("lưới Xem tất cả:", "chip + 7 ô" if ok_chips else "SAI chip / số ô", "·", "VPS 3 ô (2 ô phát hình)" if ok_pc else "SAI ô VPS", flush=True)
 wall.close(); pump(0.5)
+
+# 22/11 · ⊟ Thu nhỏ (kiểu Redfinger): dải ô nhỏ ở Máy của tôi — Cloud Phone ngang + dọc, VPS GPU, máy tạm dừng · cỡ To · thu gọn
+B.minis_set(app, [{"id": PHONES[0]["id"], "pc": 0, "n": PHONES[0]["name"], "w": 1280, "h": 720}, {"id": PHONES[1]["id"], "pc": 0, "n": PHONES[1]["name"], "w": 720, "h": 1280},
+                  {"id": MINE["items"][0]["pc"]["id"], "pc": 1, "n": "139", "w": 1920, "h": 1080}, {"id": PHONES[3]["id"], "pc": 0, "n": PHONES[3]["name"], "w": 720, "h": 1280}])
+B.MiniStrip.set_ui(col=False, sz=1)
+ms = app.minis; ms.sig = None; ms.render(); pump(1.5)
+
+
+def feed_mini(sec=2.0):
+    end = time.time() + sec
+    while time.time() < end:
+        for key, t in list(ms.tiles.items()):
+            if t.playing and t.pending is None and getattr(t, "_fed", 0) < 2:
+                w, h = t.box_wh; pc = key.startswith("pc:")
+                t.pending = fake_frame(int(w), int(h), "VPS 139" if pc else "Cloud Phone", pc); t._fed = getattr(t, "_fed", 0) + 1
+        pump(0.25)
+
+
+feed_mini(); grab("pc-21-thu-nho.png")                     # 4 ô: 3 ô phát hình (2 Cloud Phone + 1 VPS), 1 ô máy tạm dừng
+ok_mini = len(ms.cells) == 4 and len(ms.tiles) == 3
+ms.cycle(); pump(0.5)                                                             # cỡ To: ô dán ngay hình cuối + xin khung khoá
+for _t in ms.tiles.values(): _t._fed = 0                                          # máy chủ trả khung khoá đúng cỡ mới
+feed_mini(1.0); grab("pc-22-thu-nho-to.png")
+ms.toggle(); pump(1.0); grab("pc-23-thu-nho-gon.png")                             # thu gọn: 1 dòng, tắt hình
+ok_mini = ok_mini and not ms.tiles
+ms.toggle(); B.MiniStrip.set_ui(sz=1); ms.sig = None; ms.render(); pump(0.5)
+print("dải thu nhỏ:", "4 ô (3 phát hình), thu gọn tắt hình" if ok_mini else "SAI ô / tắt hình", flush=True)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 20 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc
+ok = len(mine) == 23 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_mini
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)

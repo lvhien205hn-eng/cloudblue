@@ -19,11 +19,15 @@ final class LivePreview extends FrameLayout implements StreamClient.Listener, St
     final boolean pc;
     private final StreamView screen;
     private final FrameLayout cover;
-    private final int maxh;
+    private int maxh;
     private StreamClient client;
     private boolean ended = false, released = false, frame = false;
     /** Lúc ô bắt đầu khuất khỏi màn hình (0 = đang hiện) — MainActivity tạm dừng ô khuất lâu. */
     long hiddenAt = 0;
+    /** 22/11 · ô ở dải ⊟ thu nhỏ: máy xoay ngang / dọc → báo để ô đổi hình dạng theo. */
+    interface SizeCb { void sized(LivePreview lp, int w, int h); }
+    SizeCb onSize;
+    private int vw = 0, vh = 0;
 
     LivePreview(Context c, String phoneId, int videoW, int videoH, int maxh) { this(c, phoneId, videoW, videoH, maxh, false); }
 
@@ -49,6 +53,13 @@ final class LivePreview extends FrameLayout implements StreamClient.Listener, St
     }
 
     boolean playing() { return client != null; }
+
+    /** 22/11 · cỡ hình máy chủ báo lần cuối (0 = chưa có) — ô ở dải ⊟ thu nhỏ biết máy đang ngang hay dọc. */
+    int videoW() { return vw; }
+    int videoH() { return vh; }
+
+    /** 22/11 · cạnh dài hình cho lần bật sau (ô ⊟ thu nhỏ nhỏ hơn thẻ máy → xin hình nhỏ hơn, đỡ mạng). Đang phát thì giữ tới lần nối lại. */
+    void setMaxh(int m) { maxh = m; }
 
     /** Đã dừng hẳn (máy chủ chưa hỗ trợ / bị từ chối) — không tự bật lại cho tới khi retry(). */
     boolean ended() { return ended; }
@@ -106,6 +117,14 @@ final class LivePreview extends FrameLayout implements StreamClient.Listener, St
     }
 
     @Override public void onTouchDown() { }
+
+    @Override public void onVideoSize(int w, int h) {
+        if (w <= 0 || h <= 0 || (w == vw && h == vh) || released) return;
+        vw = w;
+        vh = h;
+        SizeCb cb = onSize;
+        if (cb != null) cb.sized(this, w, h);
+    }
 
     // ---- StreamClient.Listener (luồng giao diện) ----
     @Override public void onConnecting(int attempt, String why) { }

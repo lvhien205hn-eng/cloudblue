@@ -52,6 +52,30 @@ final class PcVps {
         return out;
     }
 
+    /** 22/11 · dải ⊟ thu nhỏ: VPS của khách có máy PC mã này không (đã tải danh sách, kể cả máy hết hạn đang giữ). */
+    static boolean knows(String pcId) {
+        JSONArray it = items();
+        for (int i = 0; i < it.length(); i++) {
+            JSONObject x = it.optJSONObject(i), pc = x == null ? null : x.optJSONObject("pc");
+            if (pc != null && pcId.equals(pc.optString("id"))) return true;
+        }
+        return false;
+    }
+
+    private static long ensureAt = 0;
+
+    /** 22/11 · dải ⊟ thu nhỏ có VPS GPU mà chưa có dữ liệu mới (khách chưa mở tab nào tải) → tải ngầm, tối đa 1 lần / 15 giây. */
+    static void ensureMine(MainActivity a) {
+        long now = System.currentTimeMillis();
+        if ((mine != null && now - mineAt < 15000) || now - ensureAt < 15000) return;
+        ensureAt = now;
+        Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> {
+            if (!(r instanceof JSONObject) || a.isFinishing()) return;
+            mine = (JSONObject) r; mineAt = System.currentTimeMillis();
+            a.vpsChanged();
+        }, m -> { });
+    }
+
     /** 22.11c · VPS xem trước / điều khiển được ngay (máy sẵn sàng, không bảo trì riêng VPS GPU). */
     static boolean liveNow(MainActivity a, JSONObject x) {
         String c = state(x)[0];

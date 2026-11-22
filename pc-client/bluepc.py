@@ -7924,6 +7924,8 @@ class DockPanel:
         s.b_close.pack(side="right")                                                 # nút xếp trước → ô hẹp thì tên máy bị cắt bớt, nút vẫn đủ
         s.b_pop = a.btn(hd, "⧉", lambda s=s: self.undock(s), "ghost", padx=9, pady=4, font=bf)
         s.b_pop.pack(side="right", padx=(0, 6))
+        s.b_min = a.btn(hd, "⊟", lambda s=s: self.minimize(s), "ghost", padx=9, pady=4, font=bf)      # 22/11: ⊟ thu nhỏ máy này vào dải ở danh sách
+        s.b_min.pack(side="right", padx=(0, 6))
         s.dot = tk.Label(hd, text="●", font=("Segoe UI", 10, "bold"), fg=WARN, bg=BG); s.dot.pack(side="left")
         s.name_l = tk.Label(hd, text=s.name, font=("Segoe UI", 11, "bold"), fg=TXT, bg=BG, anchor="w"); s.name_l.pack(side="left", padx=(6, 8))
         s.st_l = tk.Label(hd, text=L("Đang mở máy…", "Opening…"), font=f_s, fg=WARN, bg=BG, anchor="w"); s.st_l.pack(side="left", fill="x", expand=True)
@@ -7944,6 +7946,7 @@ class DockPanel:
             try:
                 s.b_close.config(text=L("✕  Đóng máy", "✕  Close") if one else "✕", padx=11 if one else 9)
                 s.b_pop.config(text=L("⧉  Cửa sổ riêng", "⧉  Own window") if one else "⧉", padx=11 if one else 9)
+                if getattr(s, "b_min", None) is not None: s.b_min.config(text=L("⊟  Thu nhỏ", "⊟  Minimize") if one else "⊟", padx=11 if one else 9)
                 s.name_l.config(font=("Segoe UI", 12 if one else 11, "bold"))
                 s.hold.config(highlightbackground=ACC if (s is self.act and not one) else LINE)
             except Exception: pass
@@ -8016,6 +8019,12 @@ class DockPanel:
     def close_one(self, s):
         if s is None or s.gone: return
         self._retire(s, "close"); self._after()
+
+    def minimize(self, s):
+        """22/11 · ⊟: đóng máy ở ô này + thêm máy vào dải thu nhỏ (hình nhỏ chỉ xem, bấm là mở lại ở đây)."""
+        if s is None or s.gone: return
+        w, h = (1600, int(1600 / s.ar)) if s.ar >= 1 else (int(1600 * s.ar), 1600)
+        if self.app.minimize(s.pid, s.pc, s.name, w, h): self.close_one(s)
 
     def close_all(self):
         for s in list(self.live()): self._retire(s, "close")
@@ -8314,6 +8323,302 @@ class DockPanel:
             if p is not None: self.app.open_tools_page(p)
 
 
+# ====================================================================================== ⊟ 22/11 · DẢI THU NHỎ (kiểu Redfinger — khách xin)
+MINI_MAX = 12
+
+
+def minis_key(app):
+    try: u = str(app.auth.uid or "")
+    except Exception: u = ""
+    return "minis_" + (u or "x")
+
+
+def minis_get(app):
+    """Máy khách đã thu nhỏ (nhớ trong cài đặt của app trên máy tính này, riêng từng tài khoản): [{id, pc, n (tên), w, h (cỡ hình lần cuối)}]."""
+    out = []
+    for x in (prefs().get(minis_key(app)) or []):
+        try:
+            pid = str((x or {}).get("id") or ""); pc = bool(x.get("pc"))
+            if not re.fullmatch(r"[0-9a-fA-F-]{8,64}", pid) or any(o["id"] == pid and o["pc"] == pc for o in out): continue
+            out.append({"id": pid, "pc": pc, "n": str(x.get("n") or "")[:80], "w": max(0, int(num(x.get("w")))), "h": max(0, int(num(x.get("h"))))})
+        except Exception: continue
+    return out[:MINI_MAX]
+
+
+def minis_set(app, lst):
+    prefs({minis_key(app): [{"id": x["id"], "pc": 1 if x.get("pc") else 0, "n": x.get("n") or "", "w": int(x.get("w") or 0), "h": int(x.get("h") or 0)} for x in lst[:MINI_MAX]]})
+
+
+def minis_add(app, pid, pc=False, name="", w=0, h=0):
+    """Thu nhỏ 1 máy: chưa có → thêm cuối hàng · đã có → giữ chỗ, cập nhật tên + cỡ hình · False = đã đủ MINI_MAX máy."""
+    lst = minis_get(app); pid = str(pid)
+    x = next((o for o in lst if o["id"] == pid and o["pc"] == bool(pc)), None)
+    if x is None:
+        if len(lst) >= MINI_MAX: return False
+        x = {"id": pid, "pc": bool(pc), "n": "", "w": 0, "h": 0}; lst.append(x)
+    if name: x["n"] = str(name)[:80]
+    if w and h and w > 0 and h > 0: x["w"], x["h"] = int(w), int(h)
+    minis_set(app, lst); return True
+
+
+def res_wh(p):
+    """Độ phân giải máy đã mua ("720x1280") → (rộng, cao); lạ → 720×1280."""
+    m = re.fullmatch(r"(\d{3,4})x(\d{3,4})", str((p or {}).get("res") or "").strip().lower())
+    return (int(m.group(1)), int(m.group(2))) if m else (720, 1280)
+
+
+def minis_del(app, pid, pc=False):
+    minis_set(app, [o for o in minis_get(app) if not (o["id"] == str(pid) and o["pc"] == bool(pc))])
+
+
+class MiniStrip:
+    """⊟ DẢI THU NHỎ ở trang Máy của tôi (ngay trên thanh dưới): mỗi máy khách đã thu nhỏ = 1 ô (● tên · ⤢ phóng to · ✕ bỏ + hình máy chạy
+       trực tiếp). Hình là phiên XEM TRƯỚC của máy chủ (như ▦ Xem tất cả): hình nhỏ, 8 hình/giây, CHỈ XEM, không đá phiên điều khiển → nhẹ máy, ít
+       mạng. Bấm ô / ⤢ = điều khiển máy đó (ô bên phải như nút ▶ Điều khiển); máy đang mở bên phải thì ô tạm dừng hình. Cỡ Nhỏ · Vừa · To, thu gọn
+       được. Nút ⊟ trên ô máy đang mở (bên phải) / menu Khác ▾ = thu nhỏ máy đó."""
+
+    def __init__(self, app, slot):
+        self.app, self.slot, self.tk = app, slot, app.tk
+        self.tiles = {}; self.cells = {}; self.ppm = ppm_ok(app.root); self.flash = ""; self._dirty = False
+        self.alive = True; self.sig = None; self.t_vis = 0.0; self.hc = None; self.miss = {}
+        self.last = {}                                    # hình cuối của từng ô: vẽ lại dải (đổi cỡ / thêm ô) thì dán ngay, không hiện lại "Đang nối…"
+        self.render()
+        self.slot.after(150, self._tick)
+
+    def dirty(self): self._dirty = True                  # LiveTile (luồng mạng) báo ô đổi trạng thái
+
+    @staticmethod
+    def ui():
+        u = prefs().get("minis_ui") or {}
+        sz = u.get("sz") if u.get("sz") in (0, 1, 2) else 1
+        return bool(u.get("col")), sz
+
+    @staticmethod
+    def set_ui(**kw):
+        u = dict(prefs().get("minis_ui") or {}); u.update(kw); prefs({"minis_ui": u})
+
+    def _row(self, x):
+        if x["pc"]:
+            for it in ((getattr(self.app, "vps_last", None) or {}).get("items") or []):
+                pc = (it.get("pc") or {}) if isinstance(it, dict) else {}
+                if str(pc.get("id") or "") == x["id"] and it.get("state") not in ("ended", "cancelled"): return it
+            return None
+        return next((p for p in (getattr(self.app, "rows_last", None) or []) if str(p.get("id")) == x["id"]), None)
+
+    def _live(self, x, r):
+        if r is None: return False
+        try: return bool(pc_live(self.app, r) if x["pc"] else phone_live(self.app, r))
+        except Exception: return False
+
+    def _prune(self):
+        """Máy đã xoá / chuyển đi / hết quyền → tự bỏ khỏi dải (chỉ khi đã tải được danh sách)."""
+        rows, vps = getattr(self.app, "rows_last", None), getattr(self.app, "vps_last", None)
+        if rows is None and vps is None: return
+        ids = {str(p.get("id")) for p in (rows or [])}
+        pcs = {str(((it or {}).get("pc") or {}).get("id") or "") for it in ((vps or {}).get("items") or []) if isinstance(it, dict) and it.get("state") not in ("ended", "cancelled")}
+        lst = minis_get(self.app); now = time.time(); keep = []
+        for x in lst:
+            key = ("pc:" if x["pc"] else "") + x["id"]
+            if (x["id"] in pcs if x["pc"] else x["id"] in ids) or (vps is None if x["pc"] else rows is None):
+                self.miss.pop(key, None); keep.append(x); continue
+            t0 = self.miss.setdefault(key, now)
+            if now - t0 < 120: keep.append(x)             # vắng > 2 phút mới bỏ (lỗi mạng thoáng qua không làm mất ô)
+        if len(keep) != len(lst): minis_set(self.app, keep)
+
+    def _size(self, x, sz):
+        """Cỡ hình (điểm ảnh): máy dọc cao 150 · 200 · 260, máy ngang rộng 180 · 240 · 320 (Nhỏ · Vừa · To) — rộng tối thiểu cho thanh tên."""
+        px = getattr(self.tk, "px", lambda n: n)
+        w0, h0 = x["w"] or (1920 if x["pc"] else 720), x["h"] or (1080 if x["pc"] else 1280)
+        if w0 > h0: bw = px((180, 240, 320)[sz]); bh = int(bw * h0 / w0)
+        else: bh = px((150, 200, 260)[sz]); bw = int(bh * w0 / h0)
+        return max(px(132), int(bw)), max(px(60), int(bh))
+
+    def render(self):
+        if not self.alive: return
+        try:
+            if not self.slot.winfo_exists(): return self.close()
+        except Exception: return self.close()
+        tk, app = self.tk, self.app
+        self._prune()
+        lst = minis_get(app); col, sz = self.ui()
+        rows = [(x, self._row(x)) for x in lst]
+        sig = json.dumps([col, sz, LANG, [[x["id"], x["pc"], x["n"], x["w"] > x["h"], r is not None, self._live(x, r),
+                                           (r or {}).get("name") or (((r or {}).get("pc") or {}).get("name") if isinstance(r, dict) else "")] for x, r in rows]], default=str)
+        if sig == self.sig and not self.flash: return
+        self.sig = sig
+        for w in self.slot.winfo_children(): w.destroy()
+        self.cells = {}; self.hc = None
+        want = {("pc:" if x["pc"] else "") + x["id"] for x, r in rows if not col and self._live(x, r)}
+        for k in list(self.tiles):
+            if k not in want: self.tiles.pop(k).pause(); self.last.pop(k, None)
+        if not lst: return
+        f9 = ("Segoe UI", 9, "bold")
+        box = tk.Frame(self.slot, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=16); box.pack(fill="x")
+        hd = tk.Frame(box, bg=CARD); hd.pack(fill="x", padx=12, pady=6)
+        tk.Label(hd, text="⊟", font=("Segoe UI Symbol", 13), fg=SKY, bg=CARD).pack(side="left")
+        tt = tk.Label(hd, text=L(f"{len(lst)} máy đang thu nhỏ — bấm để mở", f"{len(lst)} minimized — click to show") if col else L(f"Thu nhỏ · {len(lst)}", f"Minimized · {len(lst)}"),
+                      font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD, cursor="hand2"); tt.pack(side="left", padx=(6, 0))
+        tt.bind("<Button-1>", lambda *_: self.toggle())
+        app.btn(hd, "▴" if col else "▾", self.toggle, "ghost", padx=10, pady=2, font=f9).pack(side="right")
+        if col: return
+        if len(lst) >= 2: app.btn(hd, "✕  " + L("Bỏ hết", "Clear"), self.clear_all, "ghost", padx=10, pady=2, font=f9).pack(side="right", padx=(0, 6))
+        app.btn(hd, L("Cỡ: ", "Size: ") + (L("Nhỏ", "S"), L("Vừa", "M"), L("To", "L"))[sz], self.cycle, "ghost", padx=10, pady=2, font=f9).pack(side="right", padx=(0, 6))
+        hc = tk.Canvas(box, bg=CARD, highlightthickness=0, bd=0); hc.pack(fill="x", padx=(10, 6), pady=(0, 8))
+        row = tk.Frame(hc, bg=CARD); hc.create_window((0, 0), window=row, anchor="nw")
+        row.bind("<Configure>", lambda e: hc.configure(scrollregion=hc.bbox("all"), height=row.winfo_reqheight()))
+        self.hc = hc
+        try:                                              # lăn chuột trên dải → cuộn ngang (bỏ khung cũ đã huỷ)
+            for k in [k for k, v in app.hscrollers.items() if not v.winfo_exists()]: app.hscrollers.pop(k, None)
+            app.hscrollers[str(hc)] = hc
+        except Exception: pass
+        try: docked = set(app.docked_pids())
+        except Exception: docked = set()
+        flash = None
+        for i, (x, r) in enumerate(rows):
+            key = ("pc:" if x["pc"] else "") + x["id"]; live = self._live(x, r)
+            bw, bh = self._size(x, sz)
+            if live:
+                t = self.tiles.get(key)
+                if t is None:
+                    t = self.tiles[key] = PcTile(self, {"id": x["id"]}) if x["pc"] else LiveTile(self, r)
+                elif not x["pc"]: t.p = r
+                t.box_wh = (bw, bh)
+            nm = (r or {}).get("name") if not x["pc"] else (((r or {}).get("pc") or {}).get("name") if isinstance(r, dict) else "")
+            if nm and nm != x["n"]: minis_add(app, x["id"], x["pc"], nm); x["n"] = nm
+            c = self._cell(row, x, r, live, x["id"] in docked, bw, bh, key)
+            c["t"].grid(row=0, column=i, sticky="n", padx=(0, 8))
+            self.cells[key] = c
+            if key == self.flash: flash = c
+            t = self.tiles.get(key) if live else None
+            if t is not None and t.playing and x["id"] not in docked:
+                f = self.last.get(key)                    # ô vừa dựng lại: dán hình cuối ngay + xin khung khoá (máy đứng yên vẫn có hình đúng cỡ mới)
+                if f is not None:
+                    try: self._paste(c, f)
+                    except Exception as e: log("mini img:", e)
+                self._kf(t)
+        self.flash = ""
+        if flash is not None:
+            def _go(c=flash):
+                try:
+                    hc.update_idletasks(); full = max(1, row.winfo_reqwidth())
+                    hc.xview_moveto(max(0.0, (c["t"].winfo_x() - 8) / full))
+                except Exception: pass
+            hc.after(60, _go)
+            hc.after(1800, lambda c=flash: c["t"].winfo_exists() and c["t"].config(highlightbackground=c["edge"]))
+        self.t_vis = 0.0
+
+    def _cell(self, parent, x, r, live, docked, bw, bh, key):
+        tk = self.tk; HB = "#0b1428"
+        tone = OK if live else (WARN if r is not None else DIM)
+        edge = _mix(tone, CARD, .45)
+        t = tk.Frame(parent, bg=HB, highlightbackground=ACC if key == self.flash else edge, highlightthickness=2, radius=12)
+        px = getattr(tk, "px", lambda n: n)
+        hd = tk.Frame(t, bg=HB, width=bw, height=px(28)); hd.pack(fill="x"); hd.pack_propagate(False)
+        tk.Label(hd, text="●", font=("Segoe UI", 8, "bold"), fg=tone, bg=HB).pack(side="left", padx=(8, 4))
+        bx = tk.Label(hd, text="✕", font=("Segoe UI", 10, "bold"), fg="#cfdcff", bg=HB, cursor="hand2", padx=7); bx.pack(side="right")
+        bm = tk.Label(hd, text="⤢", font=("Segoe UI Symbol", 10, "bold"), fg="#cfdcff", bg=HB, cursor="hand2", padx=5); bm.pack(side="right")
+        name = x["n"] or ("VPS GPU" if x["pc"] else L("Máy", "Phone"))
+        nm = tk.Label(hd, text=name, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=HB, anchor="w", cursor="hand2"); nm.pack(side="left", fill="x", expand=True)
+        box = tk.Frame(t, bg="#000000", width=bw, height=bh, cursor="hand2"); box.pack(); box.pack_propagate(False)
+        scr = tk.Label(box, bg="#000000", bd=0, highlightthickness=0, cursor="hand2")
+        msg = (L("▶ Đang mở ở ô bên phải", "▶ Open in the right panel") if docked else L("Đang nối…", "Connecting…")) if live else \
+              (L("Máy chưa chạy", "Not running") if r is not None else L("Đang tải…", "Loading…"))
+        cover = tk.Label(box, text=("🖥" if x["pc"] else "📱") + "\n" + msg, font=("Segoe UI", 8, "bold"), fg=_mix("#ffffff", "#02040c", .78), bg="#02040c",
+                         justify="center", wraplength=max(60, bw - 14), cursor="hand2")
+        cover.place(x=0, y=0, relwidth=1, relheight=1)
+        for w in (box, scr, cover, nm, bm): w.bind("<Button-1>", lambda e, x=x: self.open(x))
+        bx.bind("<Button-1>", lambda e, x=x: self.remove(x))
+        for w, tip in ((bm, L("Phóng to — điều khiển máy này", "Maximize — control this machine")), (bx, L("Bỏ khỏi dải thu nhỏ (máy vẫn chạy)", "Remove from the strip (it keeps running)"))):
+            w.bind("<Enter>", lambda e, w=w: w.config(fg="#ffffff", bg="#1a2b52"), add="+"); w.bind("<Leave>", lambda e, w=w: w.config(fg="#cfdcff", bg=HB), add="+")
+        return {"t": t, "box": box, "scr": scr, "cover": cover, "img": None, "shown": False, "live": live, "edge": edge}
+
+    def _cover(self, c, t, docked):
+        msg = L("▶ Đang mở ở ô bên phải", "▶ Open in the right panel") if docked else (t.ended or t.err or (L("Đang nối…", "Connecting…") if not c["shown"] else ""))
+        if docked or not t.playing:
+            if c["shown"]:
+                c["shown"] = False
+                try: c["scr"].place_forget(); c["cover"].place(x=0, y=0, relwidth=1, relheight=1); c["cover"].tkraise()
+                except Exception: pass
+            try:
+                cur = c["cover"].cget("text").split("\n", 1)
+                if msg and (len(cur) < 2 or cur[1] != msg): c["cover"].config(text=cur[0] + "\n" + msg)
+            except Exception: pass
+
+    def _tick(self):
+        if not self.alive: return
+        try:
+            if not self.slot.winfo_exists(): return self.close()
+        except Exception: return self.close()
+        now = time.time()
+        if now - self.t_vis > 1.0 or self._dirty:
+            self.t_vis = now; self._dirty = False
+            try: vis = bool(self.slot.winfo_viewable())
+            except Exception: vis = False
+            try: docked = set(self.app.docked_pids())
+            except Exception: docked = set()
+            for key, t in list(self.tiles.items()):
+                on = (key[3:] if key.startswith("pc:") else key) in docked
+                want = vis and not on and key in self.cells
+                if want and not t.playing and not t.ended: t.play()
+                elif t.playing and not want: t.pause()
+                c = self.cells.get(key)
+                if c is not None: self._cover(c, t, on)
+        for key, t in list(self.tiles.items()):
+            f = t.take(); c = self.cells.get(key)
+            if f is None or c is None or not t.playing: continue
+            self.last[key] = f
+            try: self._paste(c, f)
+            except Exception as e:
+                log("mini img:", e)
+                if self.ppm: self.ppm = False
+        try: self.slot.after(110, self._tick)
+        except Exception: self.close()
+
+    def _paste(self, c, f):
+        if c["img"] is None:
+            c["img"] = self.tk.PhotoImage(master=self.app.root); c["scr"].configure(image=c["img"])
+        data, fmt = rgb_image_data(f[0], f[1], f[2], self.ppm)
+        c["img"].configure(data=data, format=fmt)
+        if not c["shown"]:
+            c["scr"].place(relx=.5, rely=.5, anchor="center"); c["scr"].tkraise(); c["shown"] = True
+            try: c["cover"].place_forget()
+            except Exception: pass
+
+    @staticmethod
+    def _kf(t):
+        """Xin máy chủ 1 khung khoá (gửi ở luồng riêng, ≤ 1 lần / giây / ô)."""
+        cli = getattr(t, "cli", None)
+        if cli is None or time.time() - getattr(t, "kf_t", 0.0) < 1.0: return
+        t.kf_t = time.time()
+        try: threading.Thread(target=cli.keyframe, daemon=True).start()
+        except Exception: pass
+
+    # ---------- thao tác ----------
+    def open(self, x):
+        self.app.open_machine(x["id"], pc=x["pc"])
+
+    def remove(self, x):
+        minis_del(self.app, x["id"], x["pc"]); self.sig = None; self.render()
+
+    def toggle(self):
+        col, _ = self.ui(); self.set_ui(col=not col); self.sig = None; self.render()
+
+    def cycle(self):
+        _, sz = self.ui(); self.set_ui(sz=(sz + 1) % 3); self.sig = None; self.render()
+
+    def clear_all(self):
+        import tkinter.messagebox as mb
+        if not mb.askyesno(L("Bỏ hết máy thu nhỏ", "Clear minimized"), L("Bỏ hết các ô thu nhỏ? Các máy vẫn chạy bình thường.", "Remove all small windows? The machines keep running.")): return
+        minis_set(self.app, []); self.sig = None; self.render()
+
+    def close(self):
+        self.alive = False
+        for t in self.tiles.values():
+            try: t.pause()
+            except Exception: pass
+        self.tiles = {}; self.cells = {}
+
+
 class Launcher:
     def __init__(self, open_id=None, tools_for=None, updated=False, upd_mode=False, reopen=None):
         import tkinter as tk
@@ -8323,6 +8628,7 @@ class Launcher:
         self.upd_mode = upd_mode; self.reopen_id = reopen      # --update <máy>: tự tải bản mới, xong mở lại đúng máy đó
         if FROZEN and not tools_for: threading.Thread(target=cleanup_update_leftovers, daemon=True).start()   # dọn thư mục của lần cập nhật trước
         self.scrollers = {}; self._fast = None; self._q = queue.Queue(); self._logos = {}; self._list_sig = None
+        self.hscrollers = {}; self.minis = None                      # 22/11: ⊟ dải thu nhỏ (cuộn ngang bằng lăn chuột)
         self.root = tk.Tk(); self.root.title("CloudBlue PC"); self.root.configure(bg=BG)
         self.scale = ui_scale() / 100.0 * UI_ZOOM         # 16/11: cỡ chữ khách tự chỉnh (🎨 Giao diện) — chữ Tk tính theo điểm nên nhân hệ số là to / nhỏ theo · 17/11c: × UI_ZOOM
         if abs(self.scale - 1.0) > 0.01:
@@ -8376,6 +8682,10 @@ class Launcher:
         threading.Thread(target=job, daemon=True).start()
 
     def clear(self):
+        if self.minis is not None:
+            try: self.minis.close()
+            except Exception: pass
+            self.minis = None
         for w in self.body.winfo_children(): w.destroy()
 
     # ---------- 17/11d: trang trong cùng cửa sổ ----------
@@ -8466,6 +8776,21 @@ class Launcher:
         try: return self.dockp.pid() if self.dockp else None
         except Exception: return None
 
+    def minimize(self, pid, pc=False, name="", w=0, h=0):
+        """22/11 · ⊟ thu nhỏ máy pid: thêm vào dải thu nhỏ ở trang Máy của tôi (ô đó sáng viền). False = dải đã đủ MINI_MAX máy."""
+        if not minis_add(self, pid, pc, name, w, h):
+            try:
+                import tkinter.messagebox as mb
+                mb.showinfo(L("Thu nhỏ", "Minimize"), L(f"Dải thu nhỏ đã đủ {MINI_MAX} máy — bấm ✕ trên 1 ô để bỏ bớt.", f"The strip already has {MINI_MAX} machines — remove one first."))
+            except Exception: pass
+            return False
+        MiniStrip.set_ui(col=False)
+        if self.minis is not None:
+            self.minis.flash = ("pc:" if pc else "") + str(pid); self.minis.sig = None
+            try: self.minis.render()
+            except Exception: log("mini:", traceback.format_exc())
+        return True
+
     def docked_pids(self):
         """17/11e: mọi máy đang mở trong cửa sổ app (mở nhiều máy cùng lúc)."""
         try: return set(self.dockp.pids()) if self.dockp else set()
@@ -8476,6 +8801,8 @@ class Launcher:
         except Exception: log("vps dock:", traceback.format_exc())
         for p in self.pages:
             if isinstance(p, WallDlg) and p.alive: p.dirty()
+        if self.minis is not None:
+            self.minis.dirty(); self.minis.sig = None              # 22/11: ô thu nhỏ của máy đang mở bên phải → tạm dừng hình
         try:
             if getattr(self, "rows_last", None) is not None and hasattr(self, "list") and self.list.winfo_exists(): self.render(self.rows_last)   # thẻ máy đang mở ghi "Đang mở"
         except Exception: log("dock:", traceback.format_exc())
@@ -8523,6 +8850,15 @@ class Launcher:
         """Lăn chuột cuộn đúng cửa sổ đang trỏ vào (danh sách máy hoặc hộp thoại mua / nạp).
            17/11c: cuộn TRƯỢT ÊM (không giật từng nấc) + bàn rê cảm ứng lăn ít một cũng cuộn được."""
         cv = None; w = e.widget                         # 17/11d: tìm khung cuộn gần nhất chứa chỗ đang trỏ (trang con · danh sách máy)
+        try:                                            # 22/11: trỏ vào dải ⊟ thu nhỏ → cuộn NGANG dải
+            h = w
+            while h is not None:
+                hc = self.hscrollers.get(str(h))
+                if hc is not None:
+                    if hc.winfo_exists() and e.delta: hc.xview_scroll(int(-e.delta / 120) * 3 or (-1 if e.delta > 0 else 1), "units")
+                    return
+                h = getattr(h, "master", None)
+        except Exception: pass
         try:
             while w is not None and cv is None:
                 cv = self.scrollers.get(str(w)); w = getattr(w, "master", None)
@@ -8647,6 +8983,8 @@ class Launcher:
         for lab, tab in (("Xoay màn · Độ rộng nhỏ nhất…", "screen"), ("Cài app (APK / link)…", "install"), ("Ứng dụng trong máy…", "apps"),
                          ("Clone tab…", "clone"), ("Root theo app…", "root"), ("🌐 Proxy riêng của máy…", "proxy"), ("Khác: mở link, GPS, chụp màn…", "more")):
             m.add_command(label=lab, command=lambda t=tab: ToolsDlg(self, p, t), state="normal" if on else "disabled")
+        m.add_command(label=L("⊟ Thu nhỏ — xem máy trong ô nhỏ ở dưới", "⊟ Minimize — watch it in a small window below"),       # 22/11
+                      command=lambda: self.minimize(str(p["id"]), False, p.get("name") or "", *res_wh(p)), state="normal" if on else "disabled")
         m.add_separator()
         m.add_command(label="Nâng cấp RAM / CPU", command=lambda: self.open_upgrade(p), state="normal" if can_up else "disabled")
         sw = self.switching(p); can_sw = p.get("status") == "active" and not p.get("locked") and not sw
@@ -8738,6 +9076,9 @@ class Launcher:
         for i, (t, cmd, kind) in enumerate(navs):
             nav.grid_columnconfigure(i, weight=1, uniform="nav")
             self.btn(nav, t, cmd, kind, pady=9).grid(row=0, column=i, sticky="ew", padx=(8 if i == 0 else 3, 8 if i == len(navs) - 1 else 3), pady=8)
+        self.mini_slot = tk.Frame(self.body, bg=BG); self.mini_slot.pack(side="bottom", fill="x", padx=18, pady=(6, 2))   # 22/11: ⊟ dải thu nhỏ (trống khi chưa thu nhỏ máy nào)
+        try: self.minis = MiniStrip(self, self.mini_slot)
+        except Exception: log("mini:", traceback.format_exc()); self.minis = None
         # 17/11c: các ô ưu đãi + thẻ máy nằm CHUNG 1 vùng cuộn (như app điện thoại) → màn hình thấp (laptop 768) kéo xuống là thấy nhiều máy
         wrap = tk.Frame(self.body, bg=BG); wrap.pack(fill="both", expand=True, padx=(10, 5), pady=(6, 2))
         cv = tk.Canvas(wrap, bg=BG, highlightthickness=0); sb = tk.Scrollbar(wrap, orient="vertical", command=cv.yview)
@@ -8977,6 +9318,9 @@ class Launcher:
     def render(self, rows):
         tk = self.tk; self.rows_last = rows
         self._wall_rows(rows)                             # 17/11d: trang ▦ Xem tất cả (nếu đang mở) cập nhật theo
+        if self.minis is not None:                        # 22/11: ⊟ dải thu nhỏ — trạng thái / tên máy mới
+            try: self.minis.render()
+            except Exception: log("mini:", traceback.format_exc())
         if not self.list.winfo_exists(): return
         sig = self._rows_sig(rows)                          # 17/11c: 20 giây app tự hỏi máy chủ 1 lần — không có gì đổi thì GIỮ NGUYÊN các thẻ (hết nháy màn)
         same = sig is not None and sig == self._list_sig and bool(self.list.winfo_children())
