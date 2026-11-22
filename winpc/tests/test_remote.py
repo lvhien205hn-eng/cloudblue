@@ -299,6 +299,14 @@ else:
     logs = []; naps = []
     state = {"r": {"ok": True, "on": True, "node": "wintest", "stream": stream}}
     io_ = R.NullIO(1920, 1080)
+    imew = {"cb": None, "stopped": 0}                               # 22.11b: theo dõi ô nhập chữ giả (máy thật dùng ImeWatch)
+
+    class FakeIme:
+        def stop(self): imew["stopped"] += 1
+
+    def fake_ime_watch(cb, log=None):
+        imew["cb"] = cb; return FakeIme()
+    io_.ime_watch = fake_ime_watch
     rm = R.Remote(lambda: ident, lambda fn, body: state["r"], io_, lambda: FF, logs.append, None, caps={"enc": ["x264"], "cap": "test"})
 
     def fake_sleep(s):
@@ -333,6 +341,20 @@ else:
     st = pr.take(R.S_STATS, 5)
     sj = json.loads(st[1]) if st else {}
     ck("gửi số liệu mỗi 2 giây (khung/giây, kbps, bộ nén, cỡ hình)", sj.get("enc") == "x264" and sj.get("w") == 1280 and sj.get("fps", 0) > 5 and sj.get("kbps", 0) > 0 and sj.get("q") == "eco", sj)
+    ck("22.11b: phiên bật theo dõi ô nhập chữ; chưa biết thì số liệu KHÔNG có ô 'ime'", imew["cb"] is not None and "ime" not in sj, (imew, sj))
+
+    def stats_after(fn, timeout=1.2):
+        with pr.lock: pr.rx[:] = [m for m in pr.rx if m[0] != R.S_STATS]
+        t0 = time.time(); fn(); m = pr.take(R.S_STATS, timeout)
+        return (json.loads(m[1]) if m else {}), time.time() - t0
+    j1, dt1 = stats_after(lambda: imew["cb"]((1, 0)))
+    ck("22.11b: khách bấm vào ô nhập chữ → báo NGAY (dưới 1 giây, không chờ nhịp 2 giây) ime = 1, kèm số liệu cũ", j1.get("ime") == 1 and "pw" not in j1 and j1.get("enc") == "x264" and dt1 < 1.0, (j1, dt1))
+    j2, _ = stats_after(lambda: imew["cb"]((1, 1)))
+    ck("22.11b: ô mật khẩu → pw = 1", j2.get("ime") == 1 and j2.get("pw") == 1, j2)
+    j3, _ = stats_after(lambda: imew["cb"]((0, 0)))
+    ck("22.11b: rời ô nhập chữ → ime = 0", j3.get("ime") == 0 and "pw" not in j3, j3)
+    j4, _ = stats_after(lambda: None, 3.0)
+    ck("22.11b: số liệu định kỳ sau đó vẫn mang trạng thái ô nhập chữ", j4.get("ime") == 0 and j4.get("fps", 0) > 0, j4)
 
     io_.ev.clear()
     pr.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, 1000, 2000)); pr.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, 1000, 2000))
@@ -371,6 +393,7 @@ else:
     pr.send(R.C_KEY, struct.pack(">BII", 0, 62, 0)); pr.send(R.C_MOUSE, struct.pack(">BBHH", 1, 2, 9, 9)); time.sleep(0.4)
     pr.send(R.R_STOP)
     ck("hết người xem (R_STOP) → tắt ffmpeg, phiên đóng", wait(lambda: rm.sess is None and enc.exited(), 5), (rm.sess, enc.proc.poll()))
+    ck("22.11b: phiên đóng → tắt luôn theo dõi ô nhập chữ", imew["stopped"] >= 1, imew)
     ck("… NHẢ phím / nút chuột đang giữ, cho máy ngủ lại bình thường", ("key", 0x20, False, False) in io_.ev and ("btn", 2, False) in io_.ev and io_.ev[-1] == ("awake", False), io_.ev[-6:])
     n0 = pr.count(R.S_VIDEO); time.sleep(1.2)
     ck("… không còn gửi hình", pr.count(R.S_VIDEO) == n0)
