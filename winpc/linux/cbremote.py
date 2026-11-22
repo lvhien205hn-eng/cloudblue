@@ -3,8 +3,10 @@
 #  cbremote.py — CloudBlue PC (CachyOS): ĐIỀU KHIỂN TỪ XA, chạy bằng ROOT (cbagent mở + giữ chạy, như pcagent mở pcremote trên Windows).
 #  Dùng NGUYÊN giao thức / trạm phát hình của pcremote.py (nối ra máy chủ, phiên người xem, nén theo mạng, chuột / phím / bộ nhớ copy) — chỉ
 #  thay phần đụng hệ điều hành:
-#    · quay màn hình + bơm chuột / phím: cbcap.py chạy BẰNG TÀI KHOẢN KHÁCH trong phiên KDE (Wayland) qua cổng XDG RemoteDesktop đã cấp
-#      quyền sẵn (không hộp hỏi) → GStreamer x264 (CPU, không cần card hình) → RTP về cổng UDP nội bộ của chương trình này
+#    · quay màn hình + bơm chuột / phím: cbcap.py chạy BẰNG TÀI KHOẢN KHÁCH trong phiên KDE (Wayland) → GStreamer x264 (CPU, không cần card
+#      hình) → RTP về cổng UDP nội bộ của chương trình này. 22.11g: cbcap nói THẲNG với KWin (zkde_screencast + fake_input) bằng bản python riêng
+#      (cbcap-py) mà tệp .desktop do chương trình này cài cấp quyền → không bao giờ hiện hộp hỏi; KWin chưa cho thì mới đi cổng XDG.
+#      Mở không được → báo người xem lý do cụ thể (trước khi trạm hết 25 giây chờ) + ghi logs/remote.err (agent báo lên web).
 #    · cbcap.py không giữ bí mật nào: mã máy / mã riêng chỉ chương trình root này đọc (/opt/cloudblue, 0700)
 #  Lệnh:  cbremote.py run | selfcheck | version          Nhật ký: /opt/cloudblue/logs/remote.log
 # =====================================================================================================
@@ -18,11 +20,15 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "22.11f"
+LINUX_REMOTE_VER = "22.11g"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
+APPS_DIR = "/usr/share/applications"
+KWIN_DESKTOP = "vn.cloudblue.cbcap.desktop"                       # 22.11g: KWin cho cbcap-py dùng zkde_screencast + fake_input (không hộp hỏi)
 LOCK = "/run/cloudblue-remote.lock"
 SIZE_TTL = 15.0
+OPEN_WAIT = 20.0                                                  # chờ cbcap mở màn hình (cbcap tự giới hạn 17 giây; trạm chờ máy PC 25 giây)
+START_WAIT = 20.0
 
 
 def _load_json(path):
@@ -53,19 +59,101 @@ def user_session(user):
     return pw, env
 
 
-def install_cap():
-    """Chép cbcap.py sang chỗ tài khoản khách đọc được (chỉ khi khác bản đang có)."""
-    os.makedirs(CAP_DIR, mode=0o755, exist_ok=True)
-    dst = os.path.join(CAP_DIR, "cbcap.py")
-    with open(CAP_SRC, "rb") as f: data = f.read()
+def _same(path, data):
     try:
-        with open(dst, "rb") as f:
-            if f.read() == data: return dst
-    except OSError: pass
-    tmp = dst + ".tmp"
+        with open(path, "rb") as f: return f.read() == data
+    except OSError:
+        return False
+
+
+def _put(path, data, mode):
+    tmp = path + ".tmp"
     with open(tmp, "wb") as f: f.write(data)
-    os.chmod(tmp, 0o644); os.replace(tmp, dst)
+    os.chmod(tmp, mode); os.replace(tmp, path)
+
+
+def install_cap(cap_dir=None):
+    """Chép cbcap.py sang chỗ tài khoản khách đọc được (chỉ khi khác bản đang có)."""
+    cap_dir = cap_dir or CAP_DIR
+    os.makedirs(cap_dir, mode=0o755, exist_ok=True)
+    dst = os.path.join(cap_dir, "cbcap.py")
+    with open(CAP_SRC, "rb") as f: data = f.read()
+    if not _same(dst, data): _put(dst, data, 0o644)
     return dst
+
+
+_KW = {"py": None, "t": 0.0, "kwin": None}                         # bản python riêng đang dùng · lúc cài · KWin (pid) đã làm mới ksycoca
+
+
+def install_kwin_access(log=lambda m: None, py="/usr/bin/python3", cap_dir=None, apps=None):
+    """22.11g — cho cbcap nói thẳng với KWin (không qua cổng XDG → không hộp hỏi trên màn hình máy):
+         · cbcap-py: BẢN SAO python của máy ở đường dẫn riêng (KWin nhận chương trình theo /proc/<pid>/exe) + pyvenv.cfg (bản sao tìm thư viện python)
+         · tệp .desktop: Exec = cbcap-py, X-KDE-Wayland-Interfaces = zkde_screencast_unstable_v1, org_kde_kwin_fake_input (cách KWin cấp quyền cho
+           xdg-desktop-portal-kde / krdp). python của máy được cập nhật → chép lại.
+       → (đường dẫn cbcap-py | None, tệp .desktop vừa đổi?). Lỗi → (None, False): cbcap chạy bằng python thường (đi cổng XDG như 22.11f)."""
+    cap_dir = cap_dir or CAP_DIR
+    try:
+        real = os.path.realpath(py)
+        with open(real, "rb") as f: data = f.read()
+        os.makedirs(cap_dir, mode=0o755, exist_ok=True)
+        dst = os.path.join(cap_dir, "cbcap-py")
+        fresh = not _same(dst, data)
+        if fresh: _put(dst, data, 0o755)
+        cfg = ("home = %s\ninclude-system-site-packages = false\n" % os.path.dirname(real)).encode()
+        if not _same(os.path.join(cap_dir, "pyvenv.cfg"), cfg): _put(os.path.join(cap_dir, "pyvenv.cfg"), cfg, 0o644)
+        if fresh or _KW["py"] != dst:
+            r = _run([dst, "-I", "-B", "-c", "import json, socket, struct, threading, subprocess"], 30)
+            if r is None or r.returncode != 0:
+                log("ban python rieng cho cbcap chua chay duoc (%s) -> dung python thuong (cong XDG)" %
+                    (((r.stderr or b"")[-160:].decode("utf-8", "replace").strip() or r.returncode) if r is not None else "loi"))
+                _KW["py"] = None; return None, False
+        desk = ("[Desktop Entry]\nType=Application\nName=CloudBlue - quay man hinh\nExec=%s\nNoDisplay=true\n"
+                "X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1,org_kde_kwin_fake_input\n" % dst).encode()
+        path = os.path.join(apps or APPS_DIR, KWIN_DESKTOP)
+        changed = not _same(path, desk)
+        if changed:
+            _put(path, desk, 0o644); log("da cap quyen KWin cho cbcap-py (%s)" % path)
+        _KW["py"], _KW["t"] = dst, time.time()
+        return dst, changed
+    except OSError as e:
+        log("chua cap quyen KWin cho cbcap: %s" % e)
+        _KW["py"] = None
+        return None, False
+
+
+def _kwin_pid(uid):
+    """pid kwin_wayland của tài khoản khách (None nếu chưa có)."""
+    for d in os.listdir("/proc"):
+        if not d.isdigit(): continue
+        try:
+            with open("/proc/%s/comm" % d) as f:
+                if f.read().strip() != "kwin_wayland": continue
+            if os.stat("/proc/%s" % d).st_uid == uid: return int(d)
+        except OSError:
+            continue
+    return None
+
+
+def refresh_sycoca(user, log=lambda m: None, force=False):
+    """KWin tra tệp .desktop qua bộ đệm ksycoca của phiên → chạy kbuildsycoca6 bằng tài khoản khách với CÙNG biến môi trường của KWin
+       (tên tệp bộ đệm tính theo XDG_DATA_DIRS). Mỗi KWin (pid) chỉ làm 1 lần, trừ khi tệp .desktop vừa đổi."""
+    pw, env = user_session(user)
+    if env is None: return False
+    pid = _kwin_pid(pw.pw_uid)
+    if pid is None or (pid == _KW["kwin"] and not force): return False
+    kenv = dict(env)
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as f: raw = f.read().split(b"\0")
+        for kv in raw:
+            k, _, v = kv.decode("utf-8", "replace").partition("=")
+            if k in ("XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "LANG", "LANGUAGE", "XDG_CURRENT_DESKTOP"): kenv[k] = v
+    except OSError:
+        pass
+    r = _run(["kbuildsycoca6"], 120, user=pw.pw_uid, group=pw.pw_gid, env=kenv, cwd=pw.pw_dir)
+    ok = r is not None and r.returncode == 0
+    _KW["kwin"] = pid
+    log("lam moi danh sach ung dung cua KDE (kbuildsycoca6): %s" % ("xong" if ok else ((r.stderr or b"")[-120:].decode("utf-8", "replace").strip() if r else "khong chay duoc")))
+    return ok
 
 
 # ====================================================================================== tiến trình cbcap.py (tài khoản khách)
@@ -86,10 +174,14 @@ class Helper:
             if pw is None: raise RuntimeError("khong co tai khoan khach '%s'" % self.user)
             if env is None: raise RuntimeError("khach chua dang nhap man hinh (chua co phien KDE)")
             script = install_cap()
+            py, changed = install_kwin_access(self.log)                 # 22.11g: bản python riêng được KWin cấp quyền (không hộp hỏi)
+            if py:
+                try: refresh_sycoca(self.user, self.log, force=changed)
+                except Exception as e: self.log("kbuildsycoca6 loi: %r" % (e,))
             mine, child = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
             try:
                 groups = [g.gr_gid for g in grp.getgrall() if self.user in g.gr_mem]
-                self.proc = subprocess.Popen(["/usr/bin/python3", "-I", "-B", script, "serve", "--fd", str(child.fileno())], user=pw.pw_uid, group=pw.pw_gid,
+                self.proc = subprocess.Popen([py or "/usr/bin/python3", "-I", "-B", script, "serve", "--fd", str(child.fileno())], user=pw.pw_uid, group=pw.pw_gid,
                                              extra_groups=groups, env=env, cwd=pw.pw_dir, pass_fds=(child.fileno(),), stdin=subprocess.DEVNULL,
                                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, start_new_session=True)
             finally:
@@ -162,12 +254,27 @@ class Helper:
 
 
 # ====================================================================================== chuột / phím / màn hình cho pcremote
+class ViewerError(RuntimeError):
+    """Lỗi kèm lời báo cho người xem (pcremote gửi nguyên văn qua S_ERROR — trạm chuyển cho khách)."""
+    def __init__(self, msg, viewer_msg):
+        RuntimeError.__init__(self, msg); self.viewer_msg = viewer_msg
+
+
+def note_error(msg, base=None):
+    """Ghi lỗi mở màn hình gần nhất → cbagent gửi lên web (info.rmt.e) để admin / Claude xem được mà không cần ngồi ở máy."""
+    try:
+        with open(os.path.join(base or BASE, "logs", "remote.err"), "w", encoding="utf-8") as f: f.write("%d %s\n" % (time.time(), " ".join(str(msg).split())[:300]))
+    except OSError:
+        pass
+
+
 class LinuxIO:
     """Thay WinIO của pcremote: mọi việc đụng màn hình / chuột / phím đi qua cbcap.py (tài khoản khách)."""
     def __init__(self, user, log=None, host=None):
         self.user, self.log, self.host = user, log or (lambda m: None), host
         self.helper = Helper(user, self.log)
         self.sz = (1920, 1080); self.sz_t = 0.0; self.clip_seen = None; self.clip_t = 0.0
+        self.backend = ""; self.on_backend = None                         # 22.11g: "kwin" | "portal" — báo pcremote (thông số gửi người xem)
 
     def screen(self):
         h = self.helper
@@ -219,10 +326,20 @@ class LinuxIO:
         return s
 
     def awake(self, on):
-        """Có người xem → mở cbcap + phiên KDE (luồng màn hình); hết người xem → đóng (KDE tắt biểu tượng chia sẻ màn hình)."""
+        """Có người xem → mở cbcap + luồng màn hình (KWin trực tiếp / cổng XDG); hết người xem → đóng.
+           Không mở được → ViewerError: người xem thấy LÝ DO (trước khi trạm hết 25 giây chờ) + ghi logs/remote.err."""
         if on:
-            self.helper.ensure()
-            self.helper.request("open", 40)
+            try:
+                self.helper.ensure()
+                r = self.helper.request("open", OPEN_WAIT)
+            except Exception as e:
+                why = " ".join(str(e).split())[:230]
+                note_error(why); self.log("khong mo duoc man hinh de quay: %s" % why)
+                raise ViewerError(why, "Máy Linux chưa mở được màn hình để quay: %s" % why)
+            self.backend = str(r.get("backend") or "")
+            if self.on_backend is not None:
+                try: self.on_backend(self.backend)
+                except Exception: pass
             self.clip_seen = None
         else:
             self.helper.close()
@@ -252,12 +369,13 @@ class CapEncoder:
         self.sock.bind(("127.0.0.1", 0)); self.sock.settimeout(0.5)
         self.t0 = self.t_frame = time.time(); self.alive = True
         try:
-            r = self.helper.request("start", 40, w=self.w, h=self.h, fps=self.fps, kbps=self.kbps, port=self.sock.getsockname()[1],
+            r = self.helper.request("start", START_WAIT, w=self.w, h=self.h, fps=self.fps, kbps=self.kbps, port=self.sock.getsockname()[1],
                                     enc=x264_linux(R.enc_args("x264", self.fps, self.kbps)))
             self.pid = r.get("pid"); self.helper.cur_pid = self.pid
+            if r.get("backend"): self.cap = str(r["backend"])[:16]           # thông số người xem: "kwin" / "portal"
         except Exception as e:
             self.err = str(e)[:300]; self.failed = True
-            self.log("bo quay (%s): %s" % (self.cap, self.err))
+            self.log("bo quay (%s): %s" % (self.cap, self.err)); note_error("bo quay: " + self.err)
             return
         threading.Thread(target=self._rtp, daemon=True).start()
 
@@ -376,8 +494,21 @@ def cmd_run(argv):
     io = LinuxIO(user, log, cbagent.LinuxHost(user))
     R.Encoder = CapEncoder                                       # phiên người xem của pcremote dùng bộ quay của Linux
     rm = LinuxRemote(ident, net.rpc, io, lambda: io.helper, log, cafile if os.path.isfile(cafile) else None)
+    io.on_backend = lambda b: rm.caps.__setitem__("cap", b or "portal")
     log("=== CloudBlue PC dieu khien tu xa (CachyOS) %s / pcremote %s chay - khach %s ===" % (LINUX_REMOTE_VER, R.REMOTE_VER, user))
     dummy_pointer(log)
+
+    def prep():
+        """22.11g: cấp quyền KWin cho cbcap-py + làm mới ksycoca NGAY khi khách đăng nhập (không đợi người xem đầu tiên)."""
+        for _ in range(120):
+            try:
+                py, changed = install_kwin_access(log)
+                if py and refresh_sycoca(user, log, force=changed): return
+                if py and _KW["kwin"] is not None: return
+            except Exception as e:
+                log("chuan bi quyen KWin loi: %r" % (e,))
+            time.sleep(15)
+    threading.Thread(target=prep, name="kwin-prep", daemon=True).start()
     files = [os.path.abspath(__file__), CAP_SRC, os.path.abspath(R.__file__)]
 
     def stamp():
