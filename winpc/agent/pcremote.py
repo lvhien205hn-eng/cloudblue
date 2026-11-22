@@ -17,7 +17,8 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "22.11a"
+REMOTE_VER = "22.11b"
+IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
@@ -691,6 +692,10 @@ class Session:
         self.vw = self.vh = 0; self.fps = 30; self.sw = self.sh = 0
         self.keys = Keys(self.io); self.touch = Touch(self.io); self.ptr = Pointer(self.io)
         self.iq = queue.Queue(maxsize=4000); self.clip_last = None; self.t0 = time.time()
+        self.ime = None; self.ime_v = None; self.ime_dirty = False; self.last_st = None       # 22.11b: ô nhập chữ đang được chọn → app tự bật bàn phím
+
+    def _on_ime(self, v):
+        self.ime_v = (1 if v[0] else 0, 1 if v[1] else 0); self.ime_dirty = True
 
     # ---------- hình ----------
     def _pick(self):
@@ -846,15 +851,30 @@ class Session:
                     st = {"fps": round((self.sent - s0) / dt, 1), "kbps": int((self.bytes - b0) * 8 / dt / 1000), "drop": self.drop, "enc": e.enc if e else "",
                           "q": self.q, "w": self.vw, "h": self.vh, "lag": self.rate.lag_ms, "cap": e.cap if e else ""}
                     if self.q == "auto" and self.rate.cur < self.rate.cap * 0.6 and now - self.rate.last_cong < 900: st["weak"] = 1; st["tgt"] = int(self.rate.cur)
-                    self.conn.send(S_STATS, json.dumps(st).encode())
+                    self.last_st = dict(st); self.ime_dirty = False
+                    self.conn.send(S_STATS, json.dumps(self._ime_fields(st)).encode())
                     t_stat = now; s0, b0 = self.sent, self.bytes
+                elif self.ime_dirty:                                  # 22.11b: ô nhập chữ vừa được chọn / bỏ chọn → báo NGAY (không chờ nhịp 2 giây)
+                    self.ime_dirty = False
+                    self.conn.send(S_STATS, json.dumps(self._ime_fields(dict(self.last_st or {}))).encode())
             except Exception as ex:
                 if self.closed: return
                 self.log("loi canh phien: %r" % (ex,))
                 if isinstance(ex, (OSError, EOFError)): self.closed = True; return
 
+    def _ime_fields(self, st):
+        v = self.ime_v
+        if v is not None:
+            st["ime"] = v[0]
+            if v[1]: st["pw"] = 1
+        return st
+
     def start(self):
         self.io.awake(True)
+        mk = getattr(self.io, "ime_watch", None)
+        if mk is not None:
+            try: self.ime = mk(self._on_ime, self.log)
+            except Exception as e: self.log("ime: %r" % (e,))
         if self.req.get("admin") and not self.req.get("owner"): self.io.notify("CloudBlue: quan tri vien dang ho tro / dieu khien may nay tu xa.")
         self.th_in = threading.Thread(target=self._input, daemon=True); self.th_in.start()
         for fn in (self._sender, self._monitor): threading.Thread(target=fn, daemon=True).start()
@@ -866,6 +886,10 @@ class Session:
             self.closed = True
             e, self.enc = self.enc, None
         if e: e.stop()
+        w, self.ime = self.ime, None
+        if w is not None:
+            try: w.stop()
+            except Exception: pass
         self.sev.set()
         th = getattr(self, "th_in", None)
         if th is not None and th is not threading.current_thread(): th.join(0.5)        # luồng nhập liệu dừng hẳn rồi mới nhả (không nhả xong lại bị nhấn tiếp)
@@ -877,6 +901,133 @@ class Session:
 
 
 # ====================================================================================== VÒNG CHÍNH
+class ImeWatch:
+    """22.11b · Khách bấm vào ô nhập chữ trên máy PC → app điện thoại tự bật bàn phím (như máy Android).
+       Mỗi 0,3 giây xem chỗ đang được chọn trên màn hình Windows:
+         1. cửa sổ đang dùng có con trỏ chữ nhấp nháy (GetGUIThreadInfo) — ô nhập kiểu Win32: Notepad, hộp Run, thanh địa chỉ Explorer…
+         2. không có → UI Automation: phần tử đang được chọn là ô nhập (Edit) không chỉ đọc — Chrome / Edge / Firefox / app mới.
+       Đổi thì gọi on_change((có_ô_nhập 0/1, ô_mật_khẩu 0/1)). Chạy trên luồng RIÊNG gắn vào màn hình Default; lỗi gì cũng chỉ thôi
+       báo — không bao giờ làm hỏng phiên điều khiển. COM gọi thẳng qua bảng hàm ảo, chỉ 3 chỗ: Release (2),
+       IUIAutomation::GetFocusedElement (8), IUIAutomationElement::GetCurrentPropertyValue (10)."""
+    EDIT, COMBO, DOC = 50004, 50003, 50030                              # UIA_EditControlTypeId · ComboBox · Document
+    P_TYPE, P_PW, P_RO, P_HASVAL = 30003, 30019, 30046, 30043           # ControlType · IsPassword · ValueIsReadOnly · IsValuePatternAvailable
+    STEP = 0.3
+
+    def __init__(self, on_change, log=None):
+        self.cb, self.log = on_change, (log or (lambda m: None))
+        self.ev = threading.Event(); self.last = None; self.uia = None; self.com = False; self.err_n = 0
+        self.th = threading.Thread(target=self._run, name="ime", daemon=True); self.th.start()
+
+    def stop(self): self.ev.set()
+
+    def _run(self):
+        try: self._setup()
+        except Exception as e:
+            self.log("ime: khong bat duoc theo doi o nhap chu (%r)" % (e,)); return
+        try:
+            while not self.ev.wait(self.STEP):
+                try: v = self._poll()
+                except Exception as e:
+                    v = None; self.err_n += 1
+                    if self.err_n in (1, 100): self.log("ime: loi doc o dang chon (%r)" % (e,))
+                if v is not None and v != self.last:
+                    self.last = v
+                    try: self.cb(v)
+                    except Exception: pass
+        finally: self._teardown()
+
+    def _setup(self):
+        import ctypes, uuid
+        from ctypes import wintypes as wt
+        ct = self.ct = ctypes
+        u = self.u = ctypes.WinDLL("user32", use_last_error=True)
+        o = self.o = ctypes.WinDLL("ole32"); oa = self.oa = ctypes.WinDLL("oleaut32")
+        u.OpenDesktopW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.BOOL, wt.DWORD]; u.OpenDesktopW.restype = wt.HANDLE
+        u.SetThreadDesktop.argtypes = [wt.HANDLE]; u.SetThreadDesktop.restype = wt.BOOL
+        u.GetForegroundWindow.argtypes = []; u.GetForegroundWindow.restype = wt.HWND
+        u.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.c_void_p]; u.GetWindowThreadProcessId.restype = wt.DWORD
+
+        class GTI(ctypes.Structure):
+            _fields_ = [("cbSize", wt.DWORD), ("flags", wt.DWORD), ("hwndActive", wt.HWND), ("hwndFocus", wt.HWND), ("hwndCapture", wt.HWND),
+                        ("hwndMenuOwner", wt.HWND), ("hwndMoveSize", wt.HWND), ("hwndCaret", wt.HWND), ("rcCaret", wt.RECT)]
+
+        class GUID(ctypes.Structure): _fields_ = [("a", wt.DWORD), ("b", wt.WORD), ("c", wt.WORD), ("d", ctypes.c_ubyte * 8)]
+
+        class VARIANT(ctypes.Structure):
+            _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort), ("r3", ctypes.c_ushort), ("v", ctypes.c_ulonglong), ("v2", ctypes.c_ulonglong)]
+        self.GTI, self.VARIANT = GTI, VARIANT
+        u.GetGUIThreadInfo.argtypes = [wt.DWORD, ctypes.POINTER(GTI)]; u.GetGUIThreadInfo.restype = wt.BOOL
+        o.CoInitializeEx.argtypes = [ctypes.c_void_p, wt.DWORD]; o.CoInitializeEx.restype = ctypes.c_long
+        o.CoUninitialize.argtypes = []; o.CoUninitialize.restype = None
+        o.CoCreateInstance.argtypes = [ctypes.POINTER(GUID), ctypes.c_void_p, wt.DWORD, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
+        o.CoCreateInstance.restype = ctypes.c_long
+        oa.VariantClear.argtypes = [ctypes.POINTER(VARIANT)]; oa.VariantClear.restype = ctypes.c_long
+        self.F_REL = ctypes.WINFUNCTYPE(wt.ULONG, ctypes.c_void_p)
+        self.F_FOCUS = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))
+        self.F_PROP = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(VARIANT))
+        d = u.OpenDesktopW("Default", 0, False, 0x10000000)          # GENERIC_ALL — cửa sổ của khách nằm ở màn hình Default
+        if d: u.SetThreadDesktop(d)
+        self.com = o.CoInitializeEx(None, 0) in (0, 1)                 # COINIT_MULTITHREADED
+
+        def guid(s):
+            x = uuid.UUID(s); g = GUID(); g.a, g.b, g.c = x.fields[0], x.fields[1], x.fields[2]
+            g.d = (ctypes.c_ubyte * 8)(*x.bytes[8:]); return g
+        clsid, iid = guid("ff48dba4-60ef-4201-aa87-54103eef594e"), guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee")    # CUIAutomation · IUIAutomation
+        p = ctypes.c_void_p()
+        hr = o.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid), ctypes.byref(p))     # CLSCTX_INPROC_SERVER
+        if hr == 0 and p.value: self.uia = p
+        else: self.log("ime: khong tao duoc UI Automation (0x%08x) — chi nhan o nhap kieu Win32" % (hr & 0xFFFFFFFF))
+
+    def _vfn(self, obj, idx, proto):
+        vt = self.ct.cast(obj, self.ct.POINTER(self.ct.c_void_p))[0]           # *(void**)obj = bảng hàm ảo
+        return proto(self.ct.cast(vt, self.ct.POINTER(self.ct.c_void_p))[idx])
+
+    def _prop(self, el, pid):
+        """Thuộc tính UIA của phần tử: số (VT_I4) / đúng-sai (VT_BOOL) · None = không có / lỗi."""
+        v = self.VARIANT()
+        try:
+            if self._vfn(el, 10, self.F_PROP)(el, pid, self.ct.byref(v)) != 0: return None
+            if v.vt == 3: return self.ct.c_int32(v.v & 0xFFFFFFFF).value
+            if v.vt == 11: return bool(v.v & 0xFFFF)
+            return None
+        finally: self.oa.VariantClear(self.ct.byref(v))
+
+    def _poll(self):
+        if self._caret(): return (1, 0)
+        return self._uia_focus()
+
+    def _caret(self):
+        """Cửa sổ đang dùng có con trỏ chữ (ô nhập kiểu Win32)?"""
+        u = self.u
+        fg = u.GetForegroundWindow()
+        if not fg: return False
+        gi = self.GTI(); gi.cbSize = self.ct.sizeof(self.GTI)
+        tid = u.GetWindowThreadProcessId(fg, None)
+        return bool(tid and u.GetGUIThreadInfo(tid, self.ct.byref(gi)) and gi.hwndCaret)
+
+    def _uia_focus(self):
+        """UI Automation: phần tử đang được chọn có phải ô nhập chữ (không chỉ đọc) → (0/1, mật khẩu 0/1)."""
+        if not self.uia: return (0, 0)
+        el = self.ct.c_void_p()
+        if self._vfn(self.uia, 8, self.F_FOCUS)(self.uia, self.ct.byref(el)) != 0 or not el.value: return (0, 0)
+        try:
+            t = self._prop(el, self.P_TYPE)
+            if t == self.EDIT:
+                if self._prop(el, self.P_RO) is True: return (0, 0)
+                return (1, 1 if self._prop(el, self.P_PW) is True else 0)
+            if t in (self.COMBO, self.DOC) and self._prop(el, self.P_HASVAL) is True and self._prop(el, self.P_RO) is False: return (1, 0)
+            return (0, 0)
+        finally: self._vfn(el, 2, self.F_REL)(el)
+
+    def _teardown(self):
+        try:
+            if self.uia: self._vfn(self.uia, 2, self.F_REL)(self.uia); self.uia = None
+        except Exception: pass
+        try:
+            if self.com: self.o.CoUninitialize()
+        except Exception: pass
+
+
 class NullIO:
     """Nhập liệu giả (máy không phải Windows / bộ thử): ghi lại lệnh, không làm gì thật."""
     def __init__(self, w=1280, h=720): self.w, self.h = w, h; self.ev = []; self.clip = None
@@ -1185,6 +1336,10 @@ class WinIO:
         except Exception: return None
 
     # ---- khác ----
+    def ime_watch(self, on_change, log=None):
+        """22.11b: theo dõi ô nhập chữ đang được chọn (cho app điện thoại tự bật bàn phím). Tắt: "ime": false trong cb.json."""
+        return ImeWatch(on_change, log or self.log) if IME_ON else None
+
     def awake(self, on):
         try: self.k.SetThreadExecutionState((0x80000000 | 0x00000001 | 0x00000002) if on else 0x80000000)    # có người xem: không cho máy ngủ / tắt màn
         except Exception: pass
@@ -1314,6 +1469,8 @@ def cmd_run(argv):
     cfg = _load_json(os.path.join(BASE, "cb.json")) or {}
     if cfg.get("remote") is False:
         log("cb.json dat remote = false -> khong chay dieu khien tu xa"); return 0
+    global IME_ON
+    if cfg.get("ime") is False: IME_ON = False; log("cb.json dat ime = false -> khong theo doi o nhap chu")
     sys.path.insert(0, HERE)
     import pcagent                                                    # dùng chung phần gọi web (khoá công khai + bộ chứng chỉ kèm theo)
     net = pcagent.Net(cfg, BASE)

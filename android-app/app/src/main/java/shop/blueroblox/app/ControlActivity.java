@@ -182,7 +182,7 @@ public class ControlActivity extends Activity {
             @Override public void onVideoSize(int w, int h) { videoSized(w, h); }
         });
         stage.addView(screen, new FrameLayout.LayoutParams(-1, -1));
-        if (pc) { screen.setInputMode(pref.getInt("pc_in", StreamView.IN_TOUCH)); pcOrient(); }      // 21/11f · kiểu chạm + xoay màn đã chọn
+        if (pc) { screen.setPcInput(true); screen.setInputMode(pref.getInt("pc_in", StreamView.IN_TOUCH)); pcOrient(); }      // 21/11f · kiểu chạm + xoay màn đã chọn · 22/11 cử chỉ xử lý ngay trên điện thoại
 
         sink = new ImeSink(this);
         sink.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -475,6 +475,8 @@ public class ControlActivity extends Activity {
         }
 
         @Override public void onClipboard(String text) { phoneCopied(text); }
+
+        @Override public void onRemoteIme(boolean on, boolean pw) { if (pc) pcIme(on); }
 
         @Override public void onStats(int fps, int kbps, int ping, boolean direct, JSONObject server) {
             if (ControlActivity.this.ping != ping) { ControlActivity.this.ping = ping; paintBall(); }   // nút nổi: độ trễ mạng
@@ -1656,13 +1658,14 @@ public class ControlActivity extends Activity {
 
     // ---------------- 21/11f · MÁY PC: kiểu chạm + xoay màn (như Chrome Remote Desktop) — nút 🖐 ở thanh dưới / nút nổi / Công cụ ----------------
     private static final String[][] PC_IN = {
-            {"👆", "Chạm trực tiếp", "Direct touch", "Chạm vào đâu bấm vào đó · giữ yên = chuột phải · 2 ngón vuốt = cuộn", "Tap where you want · hold = right click · 2-finger swipe = scroll"},
+            {"👆", "Chạm trực tiếp", "Direct touch", "Chạm = bấm · vuốt = cuộn trang · giữ rồi kéo = bôi đen chữ / kéo thả · giữ yên rồi nhả = chuột phải",
+                    "Tap = click · swipe = scroll · hold then drag = select text / drag · hold and release = right click"},
             {"🖱️", "Bàn di chuột", "Trackpad", "Kéo ngón để di con trỏ · chạm = bấm · 2 ngón chạm = chuột phải · 2 ngón kéo = cuộn · chạm 2 lần rồi giữ = kéo thả",
                     "Drag to move the pointer · tap = click · 2-finger tap = right click · 2-finger drag = scroll · double-tap & hold = drag"},
-            {"🔍", "Chạm + 2 ngón kéo / phóng to", "Touch + 2-finger pan / zoom", "1 ngón điều khiển máy · 2 ngón kéo / phóng to hình (chỉ trên điện thoại của bạn)",
-                    "1 finger controls the PC · 2 fingers pan / zoom the picture (only on your phone)"},
-            {"🔍", "Chạm + 3 ngón kéo / phóng to", "Touch + 3-finger pan / zoom", "1–2 ngón điều khiển máy (2 ngón = cuộn) · 3 ngón kéo / phóng to hình",
-                    "1–2 fingers control the PC (2 = scroll) · 3 fingers pan / zoom the picture"}};
+            {"🔍", "Chạm + 2 ngón kéo / phóng to", "Touch + 2-finger pan / zoom", "1 ngón như Chạm trực tiếp (vuốt = cuộn) · 2 ngón kéo / phóng to hình (chỉ trên điện thoại của bạn)",
+                    "1 finger works like Direct touch (swipe = scroll) · 2 fingers pan / zoom the picture (only on your phone)"},
+            {"🔍", "Chạm + 3 ngón kéo / phóng to", "Touch + 3-finger pan / zoom", "1 ngón như Chạm trực tiếp · 2 ngón vuốt = cuộn, chạm = chuột phải · 3 ngón kéo / phóng to hình",
+                    "1 finger like Direct touch · 2-finger swipe = scroll, tap = right click · 3 fingers pan / zoom the picture"}};
     private static final String[][] PC_OR = {
             {"auto", "🔄", "Tự xoay theo điện thoại", "Follow my phone", "Cầm ngang hay dọc, màn điều khiển xoay theo", "Rotates with how you hold the phone"},
             {"land", "▭", "Luôn màn ngang", "Always landscape", "Hình máy PC to nhất", "Biggest picture"},
@@ -1732,6 +1735,16 @@ public class ControlActivity extends Activity {
                     paint[0].run();
                 }), Ui.fill());
             }
+            TextView h3 = Ui.text(this, Ui.L("Bàn phím", "Keyboard"), 13, Ui.MUTED, true);      // 22/11 · tự bật bàn phím khi bấm vào ô nhập chữ trên máy PC
+            h3.setPadding(0, Ui.dp(8), 0, 0);
+            c.addView(h3);
+            boolean ak = pref.getBoolean("pc_autokb", true);
+            c.addView(pcOpt("⌨️", Ui.L("Tự bật bàn phím khi bấm vào ô nhập chữ", "Show the keyboard when you tap a text box"),
+                    Ui.L("Máy PC báo đang gõ ở đâu → bàn phím điện thoại tự hiện / tự ẩn (cần máy PC bản 22.11b)",
+                            "The PC tells the app when a text box is selected → your keyboard shows / hides by itself (PC software 22.11b)"), ak, () -> {
+                pref.edit().putBoolean("pc_autokb", !pref.getBoolean("pc_autokb", true)).apply();
+                paint[0].run();
+            }), Ui.fill());
         };
         paint[0].run();
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
@@ -1739,6 +1752,17 @@ public class ControlActivity extends Activity {
         d[0] = Ui.sheet(this, "🖐 " + Ui.L("Kiểu chạm · xoay màn", "Touch & rotation"), sv);
         d[0].show();
     }
+
+    /** 22/11 · máy PC báo (ngay khi đổi) con trỏ đang đứng trong ô nhập chữ (on) / đã rời (off) → tự hiện / ẩn bàn phím như máy Android.
+     *  Rời ô: 1,5 giây sau vẫn rời mới ẩn — bấm từ ô này sang ô khác / trang web vừa tải lại thì bàn phím không nháy. */
+    private void pcIme(boolean on) {
+        if (!pref.getBoolean("pc_autokb", true)) return;
+        h.removeCallbacks(pcImeOff);
+        if (on) { kbOff = 0; if (!remoteIme || !kbOpen) kbShow(true); remoteIme = true; }
+        else { remoteIme = false; if (kbOpen) h.postDelayed(pcImeOff, 1500); }
+    }
+
+    private final Runnable pcImeOff = () -> { if (pc && !remoteIme && kbOpen && pref.getBoolean("pc_autokb", true)) kbShow(false); };
 
     /** Nút 🔄: đổi sang hướng kia. */
     private void quickRotate() { rotateTo(!streamLand); }
