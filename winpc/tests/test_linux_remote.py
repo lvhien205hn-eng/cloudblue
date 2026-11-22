@@ -358,6 +358,33 @@ bad = os.path.join(tmp, "python-hong"); open(bad, "wb").write(b"#!/bin/sh\nexit 
 py3, ch3 = CR.install_kwin_access(L3.append, py=bad, cap_dir=cd_, apps=ad_)
 ck("python chép ra không chạy được → (None): cbcap dùng python thường, đi cổng XDG", py3 is None and any("chua chay duoc" in m for m in L3), L3[-2:])
 ck("thư mục không ghi được → (None), không ném lỗi", CR.install_kwin_access(L3.append, py=sys.executable, cap_dir="/proc/khong-ghi-duoc", apps=ad_)[0] is None)
+_ef, _ee = os.path.join(tmp, "envd", "90-cloudblue-kwin.conf"), os.path.join(tmp, "environment")
+open(_ee, "w").write("LANG=en_US.UTF-8\nKWIN_FORCE_SW_CURSOR=1")
+L4 = []
+ch_a = CR.ensure_kwin_env(L4.append, path=_ef, etc_env=_ee)
+_c1, _c2 = open(_ef).read(), open(_ee).read()
+ch_b = CR.ensure_kwin_env(L4.append, path=_ef, etc_env=_ee)
+ck("máy cài bản cũ: thêm KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 (environment.d + /etc/environment, không lặp dòng có sẵn); gọi lại không đổi gì",
+   ch_a and not ch_b and "KWIN_FORCE_SW_CURSOR=1\nKWIN_WAYLAND_NO_PERMISSION_CHECKS=1\n" in _c1
+   and _c2 == "LANG=en_US.UTF-8\nKWIN_FORCE_SW_CURSOR=1\nKWIN_WAYLAND_NO_PERMISSION_CHECKS=1\n" and open(_ee).read() == _c2, (_c1, _c2))
+
+
+class _H:
+    def __init__(self, err): self.err = err
+    def ensure(self): return True
+    def request(self, op, timeout=0, **kw): raise RuntimeError(self.err)
+    def close(self): pass
+
+
+_io = CR.LinuxIO("nobody", lambda m: None); _io.helper = _H("KWin: KWin chua cho chuong trinh nay quay man hinh / bam phim (thieu zkde_screencast); cong XDG: Start: KDE chua tra loi")
+_io.kwin_env = lambda: False
+try: _io.awake(True); _m1 = ""
+except CR.ViewerError as e: _m1 = e.viewer_msg
+_io.kwin_env = lambda: True
+try: _io.awake(True); _m2 = ""
+except CR.ViewerError as e: _m2 = e.viewer_msg
+ck("KWin chưa có quyền mới (máy chưa khởi động lại sau khi lên 22.11g) → người xem được bảo KHỞI ĐỘNG LẠI 1 lần; đã có quyền mà vẫn lỗi → báo lý do",
+   "KHỞI ĐỘNG LẠI 1 lần" in _m1 and "Nguồn › Khởi động lại" in _m1 and _m2.startswith("Máy Linux chưa mở được màn hình để quay: KWin:"), (_m1, _m2))
 _eb = os.path.join(tmp, "base"); os.makedirs(os.path.join(_eb, "logs"))
 CR.note_error("KWin: thieu zkde_screencast; cong XDG: StartTimeout", base=_eb)
 _ln = open(os.path.join(_eb, "logs", "remote.err")).read()
