@@ -19,6 +19,7 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.VelocityTracker;
 import android.view.ViewGroup;
 
 import java.nio.ByteBuffer;
@@ -159,6 +160,8 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     /** Gọi ở onDestroy: dừng bộ giải mã + luồng giải mã. */
     public void release() {
         if (released) return;
+        tCancel();
+        if (tVt != null) { tVt.recycle(); tVt = null; }
         attach(null);
         released = true;
         dec.post(() -> { releaseCodec(); surface = null; });
@@ -214,6 +217,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
         if (preview) return false;                                       // ô xem trước: để ô cha nhận bấm
         if (inMode == IN_PAD) return padTouch(e);                        // 21/11f · bàn di chuột
         if ((inMode == IN_ZOOM2 || inMode == IN_ZOOM3) && zoomTouch(e)) return true;   // 21/11f · 2 / 3 ngón = phóng to / kéo hình
+        if (pcInput) return pcTouch(e);                                 // 22/11 · máy PC: vuốt = cuộn, giữ rồi kéo = bôi đen (xử lý ngay trên điện thoại)
         StreamClient c = client;
         final Mirror mr = mirror;
         int act = e.getActionMasked();
@@ -284,6 +288,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
     public void setInputMode(int m) {
         if (m < IN_TOUCH || m > IN_ZOOM3) m = IN_TOUCH;
         cancelAll(client);
+        tCancel();
         if (pDrag) { StreamClient c = client; if (c != null) c.mouse(2, 0, curX, curY); }
         zooming = false; pDrag = false; pTwo = false;
         removeCallbacks(longPress);
@@ -325,6 +330,7 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
         if (!zooming) {
             if (act == MotionEvent.ACTION_POINTER_DOWN && e.getPointerCount() >= need) {
                 cancelAll(client);                                    // các ngón đã gửi máy → huỷ (không thành bấm / kéo)
+                tCancel();
                 zooming = true;
                 zAnchor(e, -1);
                 return true;
@@ -348,6 +354,204 @@ public final class StreamView extends ViewGroup implements SurfaceHolder.Callbac
             case MotionEvent.ACTION_POINTER_UP: zAnchor(e, e.getActionIndex()); break;
             case MotionEvent.ACTION_UP:
             case MotionEvent.ACTION_CANCEL: zooming = false; break;
+            default: break;
+        }
+        return true;
+    }
+
+    // ================================================================ 22/11 · MÁY PC — CHẠM TRỰC TIẾP xử lý NGAY trên điện thoại
+    //  chạm = bấm trái · chạm 2 lần = bấm đúp · VUỐT 1 ngón = CUỘN trang (có trớn như điện thoại) · giữ yên rồi nhả = bấm phải
+    //  giữ ~0,4 giây (rung nhẹ) rồi kéo = kéo thả / BÔI ĐEN chữ / kéo cửa sổ · 2 ngón vuốt = cuộn · 2 ngón chạm = bấm phải.
+    //  Gửi máy PC chuột / lăn chuột thật (C_MOUSE / C_SCROLL). Trước đây gửi chạm thô để máy PC tự đoán: kéo 1 ngón = giữ chuột trái
+    //  kéo → vuốt trang lên xuống lại thành BÔI ĐEN chữ; giữ / bấm đúp tính theo giờ máy PC nhận gói (mạng giật là sai).
+    private boolean pcInput = false;
+
+    /** Máy PC thật (ControlActivity gọi khi mở máy PC). Máy Android vẫn gửi chạm thô như cũ. */
+    public void setPcInput(boolean on) { if (pcInput != on) { tCancel(); pcInput = on; } }
+
+    private static final int T_NONE = 0, T_PEND = 1, T_SCROLL = 2, T_ARMED = 3, T_DRAG = 4, T_TWO = 5, T_SKIP = 6;
+    private static final long T_LONG_MS = 420, T_DBL_MS = 350;
+    private int tSt = T_NONE, tAxis = 0;
+    private float tDx, tDy, tLx, tLy, tNx, tNy, tTapNx = -1f, tTapNy = -1f, tAccV, tAccH, tCx, tCy, tC0x, tC0y, tMx, tMy, flV, flH;
+    private long tDownT, tTapT, tMvAt, flT;
+    private boolean tTwoMoved, tMvPend;
+    private VelocityTracker tVt;
+
+    private final Runnable tLong = () -> {                    // giữ yên đủ lâu → sẵn sàng: nhả = chuột phải, kéo = kéo thả / bôi đen
+        if (tSt != T_PEND) return;
+        tSt = T_ARMED;
+        performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS);
+        StreamClient c = client; if (c != null) c.mouse(0, 0, tNx, tNy);
+    };
+
+    private final Runnable tMvSend = () -> { tMvPend = false; tMvAt = SystemClock.uptimeMillis(); StreamClient c = client; if (c != null) c.mouse(0, 0, tMx, tMy); };
+
+    private void tMove(float x, float y) {                    // kéo: gửi vị trí tối đa ~80 lần / giây
+        tMx = x; tMy = y;
+        if (tMvPend) return;
+        long wait = 12 - (SystemClock.uptimeMillis() - tMvAt);
+        if (wait <= 0) tMvSend.run(); else { tMvPend = true; postDelayed(tMvSend, wait); }
+    }
+
+    private void tClick(int button, float x, float y) {
+        StreamClient c = client; if (c == null) return;
+        c.mouse(0, 0, x, y); c.mouse(1, button, x, y); c.mouse(2, button, x, y);
+    }
+
+    /** Đơn vị lăn chuột cho 1 điểm ảnh ngón tay: 120 (1 nấc) ≈ 100 điểm ảnh máy PC → trang đi đúng theo ngón (kể cả lúc phóng to hình). */
+    private float wheelK() { return 1.25f * Math.max(1, vidW) / Math.max(1f, vW); }
+
+    private void tWheel(float dv, float dh) {                 // cộng dồn, đủ ~1/10 nấc mới gửi (đỡ dồn gói)
+        tAccV += dv; tAccH += dh;
+        int v = (int) tAccV, h = (int) tAccH;
+        if (Math.abs(v) < 12) v = 0;
+        if (Math.abs(h) < 12) h = 0;
+        if (v == 0 && h == 0) return;
+        v = Math.max(-30000, Math.min(30000, v)); h = Math.max(-30000, Math.min(30000, h));
+        tAccV -= v; tAccH -= h;
+        StreamClient c = client; if (c != null) c.scroll(tNx, tNy, h, v);
+        final Mirror mr = mirror; if (mr != null) mr.scroll(tNx, tNy, h, v);
+    }
+
+    private void tScroll(float dx, float dy) {                // ngón đi xuống → trang đi xuống theo ngón (lăn lên) · ngón sang phải → trang sang phải
+        if (tAxis == 1) dx = 0; else if (tAxis == 2) dy = 0;
+        float k = wheelK();
+        tWheel(dy * k, -dx * k);
+    }
+
+    private static int axisOf(float ax, float ay) { return ay > ax * 1.3f ? 1 : ax > ay * 1.3f ? 2 : 3; }
+
+    private final Runnable tFling = new Runnable() {          // vuốt nhanh rồi nhấc ngón → trang trôi tiếp, chậm dần (~1 giây)
+        @Override public void run() {
+            if (tSt != T_NONE && tSt != T_SKIP) return;               // ngón mới chạm xuống → dừng trớn (2 ngón: ngón cuối chưa nhấc vẫn trôi)
+            long now = SystemClock.uptimeMillis();
+            float dt = Math.max(0.004f, Math.min(0.05f, (now - flT) / 1000f));
+            flT = now;
+            tWheel(flV * dt, flH * dt);
+            float f = (float) Math.pow(0.004, dt);
+            flV *= f; flH *= f;
+            if (Math.abs(flV) + Math.abs(flH) > 100) postOnAnimation(this);
+        }
+    };
+
+    private void tFlingStart() {
+        if (tVt == null) return;
+        tVt.computeCurrentVelocity(1000);
+        float vx = tAxis == 1 ? 0 : tVt.getXVelocity(), vy = tAxis == 2 ? 0 : tVt.getYVelocity(), min = dp(160);
+        if (Math.abs(vx) < min) vx = 0;
+        if (Math.abs(vy) < min) vy = 0;
+        if (vx == 0 && vy == 0) return;
+        float k = wheelK();
+        flV = vy * k; flH = -vx * k; flT = SystemClock.uptimeMillis();
+        postOnAnimation(tFling);
+    }
+
+    /** Huỷ cử chỉ đang dở (đổi kiểu chạm, bắt đầu phóng to hình, hệ thống huỷ chạm): đang giữ chuột trái thì nhả ra. */
+    private void tCancel() {
+        removeCallbacks(tLong); removeCallbacks(tFling); removeCallbacks(tMvSend); tMvPend = false;
+        if (tSt == T_DRAG) { StreamClient c = client; if (c != null) c.mouse(2, 0, tMx, tMy); }
+        tSt = T_NONE; flV = flH = 0; tAccV = tAccH = 0;
+    }
+
+    private boolean pcTouch(MotionEvent e) {
+        StreamClient c = client;
+        int act = e.getActionMasked();
+        long now = SystemClock.uptimeMillis();
+        float slop = dp(9);
+        if (tVt == null) tVt = VelocityTracker.obtain();
+        switch (act) {
+            case MotionEvent.ACTION_DOWN: {
+                removeCallbacks(tFling); flV = flH = 0;               // chạm vào trang đang trôi → dừng ngay (như điện thoại)
+                float x = e.getX() - vX, y = e.getY() - vY;
+                if (vW <= 0 || vH <= 0 || x < 0 || y < 0 || x > vW || y > vH) { tSt = T_SKIP; return true; }   // chạm viền đen → bỏ
+                if (events != null) events.onTouchDown();
+                tVt.clear(); tVt.addMovement(e);
+                tSt = T_PEND; tAxis = 0; tAccV = tAccH = 0;
+                tDx = tLx = e.getX(); tDy = tLy = e.getY(); tDownT = now;
+                tNx = x / vW; tNy = y / vH; tMx = tNx; tMy = tNy;
+                postDelayed(tLong, T_LONG_MS);
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                removeCallbacks(tLong);
+                if (tSt == T_DRAG) { removeCallbacks(tMvSend); tMvPend = false; if (c != null) c.mouse(2, 0, tMx, tMy); }   // đang kéo mà thêm ngón → thả
+                if (tSt == T_SKIP || tSt == T_NONE || tSt == T_TWO) break;
+                if (e.getPointerCount() == 2) {
+                    spread(e, -1, sp);
+                    tSt = T_TWO; tTwoMoved = false; tAxis = 0; tAccV = tAccH = 0;
+                    tCx = tC0x = sp[0]; tCy = tC0y = sp[1];
+                    tVt.clear();
+                } else tSt = T_SKIP;
+                break;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                if (tSt == T_SKIP || tSt == T_NONE) break;
+                tVt.addMovement(e);
+                if (tSt == T_TWO) {
+                    spread(e, -1, sp);
+                    float dx = sp[0] - tCx, dy = sp[1] - tCy;
+                    tCx = sp[0]; tCy = sp[1];
+                    if (!tTwoMoved) {
+                        float ax = Math.abs(sp[0] - tC0x), ay = Math.abs(sp[1] - tC0y);
+                        if (Math.hypot(ax, ay) <= slop) break;
+                        tTwoMoved = true; tAxis = axisOf(ax, ay);
+                    }
+                    tScroll(dx, dy);
+                    break;
+                }
+                float x = e.getX(), y = e.getY(), dx = x - tLx, dy = y - tLy;
+                if (tSt == T_PEND) {
+                    float ax = Math.abs(x - tDx), ay = Math.abs(y - tDy);
+                    if (Math.hypot(ax, ay) <= slop) break;
+                    removeCallbacks(tLong);
+                    tSt = T_SCROLL; tAxis = axisOf(ax, ay);
+                    tLx = x; tLy = y;                                   // cuộn tính từ chỗ vừa vượt ngưỡng → không giật
+                    break;
+                }
+                tLx = x; tLy = y;
+                if (tSt == T_SCROLL) tScroll(dx, dy);
+                else if (tSt == T_ARMED) {
+                    if (Math.hypot(x - tDx, y - tDy) > slop) {
+                        tSt = T_DRAG;
+                        if (c != null) { c.mouse(0, 0, tNx, tNy); c.mouse(1, 0, tNx, tNy); }   // nhấn chuột trái ĐÚNG chỗ đã giữ rồi kéo
+                        tMove(nx(x), ny(y));
+                    }
+                } else if (tSt == T_DRAG) tMove(nx(x), ny(y));
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_UP: {
+                if (tSt == T_TWO) {
+                    if (!tTwoMoved && now - tDownT < 450) tClick(1, tNx, tNy);       // 2 ngón chạm nhanh = bấm phải
+                    else if (tTwoMoved) tFlingStart();
+                    tSt = T_SKIP;                                       // ngón còn lại: bỏ qua tới khi nhấc hết
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP: {
+                removeCallbacks(tLong);
+                if (tSt != T_SKIP && tSt != T_NONE) tVt.addMovement(e);
+                switch (tSt) {
+                    case T_PEND: {                                      // chạm nhanh = bấm trái · lần 2 gần chỗ cũ, trong 0,35 giây = bấm đúp ĐÚNG chỗ cũ
+                        float x = tNx, y = tNy;
+                        if (now - tTapT < T_DBL_MS && Math.hypot((x - tTapNx) * vW, (y - tTapNy) * vH) < dp(30)) { x = tTapNx; y = tTapNy; }
+                        tClick(0, x, y);
+                        tTapT = now; tTapNx = x; tTapNy = y;
+                        break;
+                    }
+                    case T_ARMED: tClick(1, tNx, tNy); tTapT = 0; break;                  // giữ yên rồi nhả = bấm phải
+                    case T_DRAG: {
+                        removeCallbacks(tMvSend); tMvPend = false;
+                        if (c != null) c.mouse(2, 0, nx(e.getX()), ny(e.getY()));
+                        tTapT = 0;
+                        break;
+                    }
+                    case T_SCROLL: tTapT = 0; tSt = T_NONE; tFlingStart(); break;
+                    default: break;
+                }
+                tSt = T_NONE;
+                break;
+            }
+            case MotionEvent.ACTION_CANCEL: tCancel(); break;
             default: break;
         }
         return true;
