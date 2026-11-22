@@ -67,7 +67,9 @@ def status(sysx):
             if not lin_ok or not all(sysx.exists(v.root + rel) for rel in C.LINUX_FILES): continue
         imgs.append(im["id"])
     ok = bool(imgs) and sysx.exists(v.root + "cb\\boot\\boot.wim") and sysx.exists(v.root + "cb\\boot\\boot.sdi")
-    return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or ""}
+    # "lx": 2 = agent đã xét CachyOS theo luật 22.11f (UEFI + TẮT Secure Boot + đủ phần điều khiển từ xa) → máy chủ (SQL v50) chỉ giao / đổi
+    #  sang Linux cho máy có "lx" ≥ 2 (agent 22.11e cũ báo "cachyos" cả khi Secure Boot đang bật / thiếu cbremote)
+    return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or "", "lx": 2}
 
 
 def populate(sysx, src_root, cfg, rec_root, log=None, progress=None):
