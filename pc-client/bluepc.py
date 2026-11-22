@@ -6117,11 +6117,17 @@ class ToolsDlg(Dlg):
     def say(self, lbl, text, col=TXT):
         if self.alive and lbl.winfo_exists(): lbl.config(text=text, fg=col)
 
+    @staticmethod
+    def _wrap(lb, pad=6):
+        """22/11: xuống dòng theo đúng bề rộng thật của chỗ chứa (wraplength cố định 580 bị cắt chữ khi trang hẹp hơn)."""
+        lb.bind("<Configure>", lambda e: e.width > 60 and lb.config(wraplength=e.width - pad), add="+")
+        return lb
+
     def muted(self, parent, text):
-        self.label(parent, text, self.app.f_s, DIM, wraplength=580).pack(fill="x")
+        self._wrap(self.label(parent, text, self.app.f_s, DIM, wraplength=540)).pack(fill="x")
 
     def msg(self, parent, pady=(8, 0)):
-        lb = self.label(parent, "", ("Segoe UI", 10, "bold"), TXT, wraplength=580); lb.pack(fill="x", pady=pady)
+        lb = self._wrap(self.label(parent, "", ("Segoe UI", 10, "bold"), TXT, wraplength=540)); lb.pack(fill="x", pady=pady)
         return lb
 
     def _show_tab(self):
@@ -6620,8 +6626,8 @@ class ToolsDlg(Dlg):
         f = self.section("Proxy riêng của máy", parent=pg)
         self.muted(f, "Mọi app trong máy đi Internet qua proxy của bạn. Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại.")
         box = tk.Frame(f, bg=CARD, highlightbackground=LINE, highlightthickness=1); box.pack(fill="x", pady=(8, 0))
-        self.px_cur = self.label(box, "Đang đọc…", ("Segoe UI", 11, "bold"), TXT, wraplength=560); self.px_cur.pack(fill="x", padx=12, pady=(8, 0))
-        self.px_st = self.label(box, "", self.app.f_s, DIM, wraplength=560); self.px_st.pack(fill="x", padx=12, pady=(2, 8))
+        self.px_cur = self._wrap(self.label(box, "Đang đọc…", ("Segoe UI", 11, "bold"), TXT, wraplength=500)); self.px_cur.pack(fill="x", padx=12, pady=(8, 0))
+        self.px_st = self._wrap(self.label(box, "", self.app.f_s, DIM, wraplength=500)); self.px_st.pack(fill="x", padx=12, pady=(2, 8))
         self.label(f, "Proxy mới", ("Segoe UI", 10, "bold"), DIM).pack(fill="x", pady=(12, 2))
         self.px_ent = tk.Entry(f, font=("Consolas", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
         self.px_ent.pack(fill="x", ipady=6); self.px_ent.bind("<Return>", lambda e: self.px_do("set"))
