@@ -16,8 +16,10 @@ LOG="$W/install.log"
 exec > >(tee -a "$LOG" /dev/console) 2>&1
 say() { printf '[cloudblue %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
 
-say "cb-install $CB_VER bat dau ($(uname -r))"
+say "cb-install $CB_VER bat dau ($(uname -r)) · $(findmnt -no FSTYPE,OPTIONS "$R" 2>/dev/null)"
 mount -o remount,rw "$R" 2>/dev/null || mount -o remount,rw,force "$R" 2>/dev/null || say "!! khong gan lai duoc phan vung cuu ho de ghi (van tiep tuc)"
+say "phan vung cuu ho sau khi gan lai: $(findmnt -no FSTYPE,OPTIONS "$R" 2>/dev/null)"
+date +"%s cb-install $CB_VER da chay" > "$R/cb/linux-started.txt" 2>/dev/null && sync || say "!! chua ghi duoc len phan vung cuu ho"
 # systemd.run= cho máy sống chỉ chạy tới basic.target + script này → bật thêm multi-user.target (KHÔNG chờ, KHÔNG isolate — script vẫn chạy tiếp):
 # NetworkManager (bộ cài tải gói qua mạng), pacman-init (khoá ký gói), logind… như máy sống khởi động bình thường (trừ màn hình đồ hoạ).
 systemctl start --no-block multi-user.target 2>/dev/null || say "!! chua bat duoc multi-user.target"
@@ -91,8 +93,12 @@ import json, sys
 sys.exit(0 if json.load(open(sys.argv[1], encoding="utf-8-sig")).get("test") else 1)
 PYEOF
 then
+    ( sleep 480; say "!! che do thu: qua 8 phut -> tat may"; sync; systemctl poweroff -ff ) &      # máy thử không bao giờ treo tới hết giờ CI
+    say "che do thu: cho mang (toi da 3 phut) + khoa pacman (toi da 5 phut)"
     NETOK=no; net_wait 180 && NETOK=yes
+    say "mang: $NETOK"
     KEYOK=no; keyring_wait && KEYOK=yes
+    say "khoa pacman: $KEYOK"
     {
         echo "CB_TEST_OK $CB_VER"
         echo "kernel=$(uname -r)"
@@ -108,6 +114,7 @@ then
     } > "$R/cb/linux-test.ok"
     sync
     say "CB_TEST_OK — da ghi cb/linux-test.ok, tat may"
+    save_log
     sleep 2
     systemctl poweroff
     exit 0
