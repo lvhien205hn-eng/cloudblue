@@ -152,8 +152,26 @@ grab("pc-14-power.png")
 pw.ok.set(True); pw._arm(); pump(0.6)
 grab("pc-15-power-ok.png")
 pw.close(); pump(0.5)
+# 22/11 · 🌐 Proxy riêng của máy (Cloud Phone · Công cụ › Proxy): đang chạy qua proxy · proxy lỗi (máy tự đi mạng thường)
+PXJ = {"set": True, "kind": "auto", "show": "9.8.7.6:1080:khach:••••", "online": True, "has_pass": True,
+       "state": {"mode": "proxy", "kind": "socks5", "ip": "5.6.7.8", "ms": 80, "alive": True}}
+
+
+class FakeCp:
+    def __init__(self, auth, pid): self.pid = pid
+    def json(self, method, path, body=None, ctype=None, timeout=120): return PXJ if path == "proxy" else {}
+    def wait_job(self, jid, on_msg=None, limit=1800): return "Đã BẬT proxy — IP ra: 5.6.7.8 · 80 ms"
+
+
+B.CpClient = FakeCp
+td = B.ToolsDlg(app, {"id": "00000000-0000-4000-8000-0000000000d1", "name": "Máy 1"}, "proxy"); pump(2.5)
+grab("pc-16-proxy.png")
+PXJ = dict(PXJ, kind="http", show="9.8.7.6:3128:khach:••••", state={"mode": "direct", "kind": "http", "err": "proxy báo SAI user / mật khẩu (407)", "alive": True})
+td.load_proxy(); pump(1.5)
+grab("pc-17-proxy-loi.png")
+td.close(); pump(0.5)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 15 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+ok = len(mine) == 17 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
