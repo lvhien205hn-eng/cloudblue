@@ -523,7 +523,7 @@ def win_tasks(text, sdk=99):
         if m:
             flush()
             sid = int(m.group(1))
-            blk = {"disp": int(m.group(6)), "sb": tuple(int(m.group(i)) for i in range(2, 6)), "mode": "", "type": "", "t": []}
+            blk = {"sid": sid, "disp": int(m.group(6)), "sb": tuple(int(m.group(i)) for i in range(2, 6)), "mode": "", "type": "", "t": []}
             if sdk < 28 and sid in WIN_OLD: blk["mode"], blk["type"] = WIN_OLD[sid]        # Android 7/8: chế độ theo số khối
             continue
         if blk is None: continue
@@ -540,7 +540,7 @@ def win_tasks(text, sdk=99):
                              "b": tuple(int(x.group(i)) for i in range(3, 7)), "_k": blk})
     flush()
     for t in res:
-        k = t.pop("_k"); t.update(mode=k["mode"], type=k["type"], disp=k["disp"], sb=k["sb"])
+        k = t.pop("_k"); t.update(mode=k["mode"], type=k["type"], disp=k["disp"], sb=k["sb"], sid=k["sid"])
     return res
 
 
@@ -648,6 +648,37 @@ def win_wait(sh, tid, mode, sdk, tries=8):
     return None
 
 
+def win_settle(sh, sleep=time.sleep, tries=4):
+    """Đọc lại máy sau khi đổi: app ÉP NGANG vừa thành cửa sổ / vừa về màn chính → màn xoay về hướng của màn chính sau giây lát.
+       Phải tính chỗ đặt cửa sổ theo hướng MỚI (tính theo hướng cũ → cửa sổ ra ngoài màn)."""
+    sleep(0.6); st = win_state(sh)
+    for _ in range(tries):
+        sleep(0.4); st2 = win_state(sh)
+        if (st2["geo"]["w"], st2["geo"]["h"]) == (st["geo"]["w"], st["geo"]["h"]): return st2
+        st = st2
+    return st
+
+
+def win_area(g):
+    return (0, g["top"], g["w"] - g["right"], g["h"] - g["bottom"])
+
+
+def win_move_p(sh, t, sdk, sleep=time.sleep):
+    """Android 7–9: app khai báo KHÔNG đổi cỡ (nhiều game) không mở thẳng vào cửa sổ nổi được (Android 9 chỉ xét khai báo của app, bỏ qua
+       force_resizable) → chuyển NGUYÊN TAB sang khối cửa sổ nổi (am stack move-task, app không khởi động lại). Chưa có khối cửa sổ nổi →
+       mở tạm Cài đặt ở cửa sổ nổi để Android tạo khối, chuyển xong thì đóng Cài đặt."""
+    free = lambda: next((x["sid"] for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["mode"] == "freeform" and x["disp"] == 0), None)
+    sid, helper = free(), False
+    if sid is None:
+        wm = f"--windowingMode {WIN_FREEFORM}" if sdk >= 28 else "--stack 2"
+        sh(f"am start {wm} -n com.android.settings/.Settings 2>&1", 20); sleep(1.0); helper = True
+        sid = free()
+    if sid is None: return None
+    sh(f"am stack move-task {int(t['id'])} {int(sid)} true 2>&1", 15)
+    if helper: sh("am force-stop com.android.settings", 15)
+    return win_wait(sh, t["id"], "freeform", sdk, tries=6)
+
+
 def win_run(sh, do, sleep=time.sleep):
     """Việc của nút 🗗 Thu nhỏ tab (mini) · ⊞ Sắp xếp tab (tile) · ⛶ Phóng to tab (full) · danh sách (list). sh(lệnh, giây) → chữ in ra.
        Trả (mã HTTP, dict)."""
@@ -661,52 +692,59 @@ def win_run(sh, do, sleep=time.sleep):
     if not st["free"]:
         sh("settings put global enable_freeform_support 1; settings put global force_resizable_activities 1", 15)
     home = lambda: (sh("input keyevent 3", 10), sleep(0.5))
+    resize = lambda t, b: sh(f"am task resize {int(t['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
+    big = lambda g, b: _area(b) >= 0.85 * _area(win_area(g))          # cửa sổ đã phóng to gần hết màn
     if do == "mini":
         full = [t for t in win_std(st, "fullscreen") if t["vis"]]
-        if not full:
-            return 409, {"error": "Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone trong 🧬 Clone tab) rồi bấm Thu nhỏ tab."
+        grown = [w for w in wins if w["vis"] and big(st["geo"], w["b"])]
+        if not full and not grown:
+            return 409, {"error": "Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone) rồi bấm Thu nhỏ tab."
                          if wins else "Chưa có app nào đang mở toàn màn — mở app (VD Roblox) rồi bấm Thu nhỏ tab."}
-        t = full[0]
-        slot = win_slot(st["geo"], [w["b"] for w in wins])
-        done = None
-        for attempt in (0, 1):
-            if sdk < 31 or attempt: home()                      # Android 9–11: app đang ở trên cùng thì am start không đổi chế độ → về màn chính trước
-            for w in reversed(wins):                            # cửa sổ thu nhỏ trước đó bị màn chính che → đưa lên lại, giữ đúng chỗ khách đã kéo
-                win_launch(sh, w, WIN_FREEFORM, sdk); sh(f"am task resize {w['id']} {w['b'][0]} {w['b'][1]} {w['b'][2]} {w['b'][3]} 2>&1", 15)
-            win_launch(sh, t, WIN_FREEFORM, sdk)
-            done = win_wait(sh, t["id"], "freeform", sdk)
-            if done or sdk < 31: break
-        if not done:
-            return 409, {"error": "Máy chưa bật được cửa sổ nhỏ — bấm ⚡ Khởi động lại máy 1 lần rồi thử lại (dữ liệu giữ nguyên).", "reboot": True}
-        sh(f"am task resize {t['id']} {slot[0]} {slot[1]} {slot[2]} {slot[3]} 2>&1", 15)
-        n = len(wins) + 1
+        if full:
+            t = full[0]; done = None
+            for attempt in (0, 1):
+                if sdk < 31 or attempt: home()                  # Android 9–11: app đang ở trên cùng thì am start không đổi chế độ → về màn chính trước
+                for w in reversed(wins):                        # cửa sổ thu nhỏ trước đó bị màn chính che → đưa lên lại, giữ đúng chỗ khách đã kéo
+                    win_launch(sh, w, WIN_FREEFORM, sdk); resize(w, w["b"])
+                win_launch(sh, t, WIN_FREEFORM, sdk)
+                done = win_wait(sh, t["id"], "freeform", sdk)
+                if not done and sdk < 29: done = win_move_p(sh, t, sdk, sleep)
+                if done or sdk < 31: break
+            if not done:
+                return 409, {"error": "Máy chưa bật được cửa sổ nhỏ — bấm ⚡ Khởi động lại máy 1 lần rồi thử lại.", "reboot": True}
+        else:
+            t = grown[0]; win_launch(sh, t, WIN_FREEFORM, sdk)          # cửa sổ đã phóng to hết màn → thu lại
+        st2 = win_settle(sh, sleep)
+        others = [w["b"] for w in win_std(st2, "freeform") if w["id"] != t["id"]]
+        slot = win_slot(st2["geo"], others)
+        resize(t, slot)
+        n = len(others) + 1
         return 200, {"ok": True, "n": n, "id": t["id"], "b": list(slot),
-                     "msg": f"Đã thu nhỏ {win_name(t)} thành cửa sổ nhỏ ({n} tab). Kéo thanh trên cùng của cửa sổ để dời, kéo mép để đổi cỡ. "
-                            "Mở tab khác rồi bấm Thu nhỏ tab tiếp — xong bấm Sắp xếp tab."}
+                     "msg": f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}
     if do == "tile":
         if not wins: return 409, {"error": "Chưa có tab nhỏ nào — mở app rồi bấm Thu nhỏ tab trước."}
-        wins.sort(key=lambda t: t["id"])                        # thứ tự cố định: tab thu nhỏ trước nằm trước
-        cells = win_grid(st["geo"], len(wins))
-        if sdk < 31 and [t for t in win_std(st, "fullscreen") if t["vis"]]: home()
+        if [t for t in win_std(st, "fullscreen") if t["vis"]]: home()          # app toàn màn (ép ngang) đang che → về màn chính để xếp theo hướng màn chính
+        st2 = win_settle(sh, sleep); g = st2["geo"]
+        wins = sorted(win_std(st2, "freeform"), key=lambda t: t["id"])      # thứ tự cố định: tab thu nhỏ trước nằm trước
+        cells = win_grid(g, len(wins))
         for w, c in zip(wins, cells):
-            if not w["vis"] or sdk >= 31: win_launch(sh, w, WIN_FREEFORM, sdk)      # đưa lên trên (cửa sổ bị màn chính / app toàn màn che cũng hiện lại)
-            sh(f"am task resize {w['id']} {c[0]} {c[1]} {c[2]} {c[3]} 2>&1", 15)
-        cols = len({c[0] for c in cells}); rows = len({c[1] for c in cells}); g = st["geo"]
-        tip = (" Màn máy nhỏ nên các tab xếp chồng một phần — 🔄 Xoay màn ngang hoặc 📐 Độ rộng nhỏ nhất lớn hơn để tab không đè nhau."
-               if win_overlap(cells) else " Mẹo: 🔄 Xoay màn → Khoá ngang để tab to hơn." if g["h"] > g["w"] and len(wins) > 1 else "")
+            if not w["vis"] or sdk >= 31: win_launch(sh, w, WIN_FREEFORM, sdk)      # đưa lên trên (cửa sổ bị màn chính che cũng hiện lại)
+            resize(w, c)
+        cols = len({c[0] for c in cells}); rows = len({c[1] for c in cells})
+        tip = " Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau." if win_overlap(cells) else ""
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã xếp {len(wins)} tab nhỏ ({cols} cột × {rows} hàng).{tip}"}
     if do == "full":
         vis = [t for t in wins if t["vis"]]
         if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."}
         t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
         done = None
-        for attempt in (0, 1):
-            if sdk < 31 or attempt: home()
-            win_launch(sh, t, WIN_FULLSCREEN, sdk)
-            done = win_wait(sh, t["id"], "fullscreen", sdk)
-            if done or sdk < 31: break
-        if not done: return 409, {"error": "Chưa phóng to được tab — bấm nút ⬜ trên thanh tiêu đề của cửa sổ đó."}
-        return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn. Muốn nhỏ lại thì bấm Thu nhỏ tab."}
+        if sdk < 31: home()                                      # Android 9–11: app đang ở trên cùng thì am start không đổi chế độ → về màn chính trước
+        win_launch(sh, t, WIN_FULLSCREEN, sdk)
+        done = win_wait(sh, t["id"], "fullscreen", sdk, tries=6)
+        if done: return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn."}
+        # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
+        win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); resize(t, win_area(st2["geo"]))
+        return 200, {"ok": True, "n": len(wins), "msg": f"Đã phóng to {win_name(t)} hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ."}
     return 400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to)."}
 
 
