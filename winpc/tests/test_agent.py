@@ -166,7 +166,7 @@ row = json.loads(q(f"select row_to_json(m) from pc_machines m where id = '{PC}'"
 ck("máy hiện trên web: tên Windows, 22H2, IP LAN, chờ duyệt", row["name"] == "CB-TEST01" and row["os"] == "22h2" and row["lan_ip"] == "192.168.1.77" and row["status"] == "new" and row["approved"] is False, row)
 ck("web thấy cấu hình: CPU, RAM, card, ổ đĩa, bo mạch", row["info"]["cores"] == 56 and row["info"]["ram_gb"] == 64.0 and row["info"]["gpus"] == ["NVIDIA GeForce GTX 1060 6GB"]
    and [(d["gb"], d["ssd"], d["bus"]) for d in row["info"]["disks"]] == [(515, True, "NVMe"), (2147, False, "SATA")] and row["info"]["board"] == "HUANANZHI X99-TF", row["info"])
-ck("web biết máy đổi được sang 22h2 / 1511", row["info"]["rec"] == {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a"}, row["info"].get("rec"))
+ck("web biết máy đổi được sang 22h2 / 1511", row["info"]["rec"] == {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a", "lx": 2}, row["info"].get("rec"))
 ck("sau khi đăng ký: seed.json hết mã đăng ký", KEY not in fs.file("C", "cloudbluepc\\seed.json"))
 ck("web biết tình trạng bảo mật của máy (khách là tài khoản thường; chưa có mốc khoá quyền / hạ quyền vì Windows giả chưa chạy cb_provision)", row["info"].get("sec") == {"std": True, "hard": False, "lock": False}, row["info"].get("sec"))
 stt = fs.file("C", "cloudbluepc\\os\\status.txt") or ""

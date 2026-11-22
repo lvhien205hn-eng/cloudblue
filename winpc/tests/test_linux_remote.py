@@ -171,6 +171,28 @@ ck("chữ có dấu (máy không có wl-copy) → gửi keysym Unicode", wait(la
 p.close()
 ck("đóng phiên: Session.Close + bỏ chặn khoá màn hình", wait(lambda: any(e[0] == "Close" for e in EV), 3) and wait(lambda: STATE["inhibit"] == 0, 3), (EV[-2:], STATE))
 
+print("3b. Dò công cụ quay màn hình: đủ thì nhớ, THIẾU thì dò lại sau 60 giây (agent đang tự cài gst-plugin-pipewire)")
+_run, _ts = K.subprocess.run, K.TEST_SRC
+HAVE = {"pipewiresrc": False}; NRUN = [0]
+class _R:
+    def __init__(self, rc, out=b""): self.returncode, self.stdout = rc, out
+def _fake_run(argv, **kw):
+    NRUN[0] += 1
+    if argv[0] == "gst-inspect-1.0": return _R(0 if HAVE.get(argv[-1], argv[-1] not in ("x264enc",)) else 1)
+    if argv[0] == "ffmpeg": return _R(0, b" V....D libx264  libx264 H.264 / AVC\n")
+    return _R(1)
+K.subprocess.run = _fake_run; K.TEST_SRC = False; K._TOOLS.clear(); K._TOOLS_T[0] = 0.0
+ok1, why1 = K.have_tools()
+ck("thiếu pipewiresrc → chưa quay được; chỉ báo phần CẦN (không kể x264enc — đường chính dùng ffmpeg)", not ok1 and why1 == "thieu pipewiresrc", why1)
+n1 = NRUN[0]; K.have_tools()
+ck("trong 60 giây không dò lại", NRUN[0] == n1)
+HAVE["pipewiresrc"] = True; K._TOOLS_T[0] -= K.TOOLS_RETRY_S + 1
+ok2, why2 = K.have_tools()
+ck("agent cài xong → lần dò sau thấy đủ (không phải chạy lại chương trình)", ok2 and K.pick_mode() == "ff", why2)
+n2 = NRUN[0]; K._TOOLS_T[0] -= 3600; K.have_tools()
+ck("đủ rồi thì nhớ luôn, không dò nữa", NRUN[0] == n2)
+K.subprocess.run, K.TEST_SRC = _run, _ts; K._TOOLS.clear(); K._TOOLS_T[0] = 0.0
+
 print("4. ĐẦU-CUỐI: máy chủ phát hình thật ⇄ cbremote (root) ⇄ cbcap (tiến trình riêng) ⇄ người xem")
 import pwd                                            # noqa: E402
 import cbremote as CR                                 # noqa: E402
