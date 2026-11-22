@@ -261,6 +261,7 @@ class Portal:
     def __init__(self, bus, log=None):
         self.b, self.log = bus, log or (lambda m: None)
         self.session = None; self.node = None; self.size = (0, 0); self.app = None; self.inhibit = []
+        self.devices = None; self.cursor = (0, 0)                     # thiết bị KDE cho dùng (1 phím, 2 chuột) · (kiểu con trỏ có, kiểu đã chọn)
 
     def _token(self): return "cb%d" % random.randrange(10 ** 9)
 
@@ -295,9 +296,12 @@ class Portal:
         self._request(RD, "SelectDevices", "oa{sv}", [self.session], {"types": ("u", 3)})                     # bàn phím + chuột
         try: modes = int(self.b.get_prop(PORTAL, PORTAL_PATH, SC, "AvailableCursorModes"))
         except (DBusError, TypeError, ValueError): modes = 2
+        self.cursor = (modes, 2 if modes & 2 else 1)
         self._request(SC, "SelectSources", "oa{sv}", [self.session],
-                      {"types": ("u", 1), "multiple": ("b", False), "cursor_mode": ("u", 2 if modes & 2 else 1)})         # 1 màn hình, con trỏ vẽ sẵn
+                      {"types": ("u", 1), "multiple": ("b", False), "cursor_mode": ("u", self.cursor[1])})         # 1 màn hình, con trỏ vẽ sẵn
         r = self._request(RD, "Start", "osa{sv}", [self.session, ""], {}, timeout)
+        try: self.devices = int(r.get("devices"))                    # thiếu bit 2 (chuột) → cổng XDG chặn mọi lệnh chuột
+        except (TypeError, ValueError): self.devices = None
         streams = r.get("streams") or []
         if not streams: raise PortalError("KDE khong giao luong man hinh nao")
         self.node = int(streams[0][0])
@@ -458,7 +462,8 @@ class Cap:
             self.portal = Portal(self.bus, self.log)
             self.portal.authorize()
             self.portal.start()
-            self.log("phien KDE: luong man hinh %d (%dx%d), ma ung dung %r" % (self.portal.node, self.portal.size[0], self.portal.size[1], self.portal.app))
+            self.log("phien KDE: luong man hinh %d (%dx%d), ma ung dung %r, thiet bi %s, con tro %s/%s" % (self.portal.node, self.portal.size[0], self.portal.size[1], self.portal.app,
+                     self.portal.devices, self.portal.cursor[1], self.portal.cursor[0]))
             return self.portal.size
 
     def start(self, w, h, fps, kbps, port, enc_args=None):
@@ -642,6 +647,12 @@ def probe(secs=4.0):
     try:
         t0 = time.time(); sz = cap.open()
         out.update(session=True, size=list(sz), node=cap.portal.node, app=cap.portal.app, open_s=round(time.time() - t0, 1))
+        out.update(devices=cap.portal.devices, cursor_modes=cap.portal.cursor[0], cursor_mode=cap.portal.cursor[1])
+        try:                                                     # 1 lệnh chuột CÓ chờ trả lời: cổng XDG từ chối thì biết ngay vì sao
+            cap.portal.b.call(PORTAL, PORTAL_PATH, RD, "NotifyPointerMotionAbsolute", "oa{sv}udd", [cap.portal.session, {}, cap.portal.node, 100.0, 100.0])
+            out["move_reply"] = "ok"
+        except DBusError as e:
+            out["move_reply"] = str(e)[:200]
         cap.move(32768, 32768); cap.move(40000, 20000); out["move"] = True
         if ok:
             rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); rx.bind(("127.0.0.1", 0)); rx.settimeout(0.5)
