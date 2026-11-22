@@ -21,7 +21,7 @@ def ck(name, cond, extra=""):
     else: FAIL += 1; print("  ✗", name, "→", extra)
 
 
-from test_pe_helpers import WINFILES, cb_layout, cfg0, job0, media_files, rec_files, usb   # noqa: E402
+from test_pe_helpers import WINFILES, cb_layout, cfg0, cfg_lin, job0, lin_layout, media_files, rec_files, usb   # noqa: E402
 
 
 def run(fs, keys=()):
@@ -745,8 +745,9 @@ ck("tên trên web toàn số ('07'): cài lại từ xa vẫn ra đúng CB-07 (
 
 print("26. Bộ cài MỚI HƠN do agent đặt sẵn trên phân vùng cứu hộ (cb\\pe-next) → bộ cài trong boot.wim chạy bản đó (sửa bộ cài không cần tạo lại ISO) (21.11d)")
 import hashlib as _hl
-def put_next(recp, seq=2, files=None, ver="02.12a", bad=None, meta=None):
+def put_next(recp, seq=None, files=None, ver="02.12a", bad=None, meta=None):
     """Đặt 1 bộ cài 'mới' lên phân vùng cứu hộ. bad = tên file cố ý ghi sai nội dung sau khi tính mã băm."""
+    seq = cb_pe.PE_SEQ + 1 if seq is None else seq                   # bản "mới hơn" = số thứ tự lớn hơn bản đang chạy 1 bậc
     files = files if files is not None else {"pe/cb_pe.py": b"# bo cai moi\n", "lib/cbcore.py": b"# core moi\n", "lib/cbsys.py": b"# sys moi\n", "lib/cbrec.py": b"# rec moi\n"}
     for rel, data in files.items(): recp.vol.put("cb\\pe-next\\" + rel.replace("/", "\\"), data + (b"X" if rel == bad else b""))
     m = {"seq": seq, "ver": ver, "files": {rel: _hl.sha256(d).hexdigest() for rel, d in files.items()}}
@@ -764,11 +765,12 @@ ck("không có cb\\pe-next → không gọi bộ cài nào khác, tự làm lệ
 fs, recp, winp = pe_job(); files = put_next(recp); fs.chain_rc = 0
 rc, ui, inst = run(fs)
 cmd = (chained(fs) or [[]])[0]
-ck("có bản số 2 (> bản đang chạy) đủ file, đúng mã băm → chép cả bộ vào ổ tạm X:\\cb-next rồi chạy bản đó (python -I -B -u … --chained)", len(chained(fs)) == 1 and cmd[1:4] == ["-I", "-B", "-u"]
+NS = cb_pe.PE_SEQ + 1
+ck("có bản số %d (> bản đang chạy) đủ file, đúng mã băm → chép cả bộ vào ổ tạm X:\\cb-next rồi chạy bản đó (python -I -B -u … --chained)" % NS, len(chained(fs)) == 1 and cmd[1:4] == ["-I", "-B", "-u"]
    and cmd[4].lower() == "x:\\cb-next\\pe\\cb_pe.py" and cmd[5:] == ["--chained"] and all(fs.file("X", "cb-next\\" + rel.replace("/", "\\")) == d.decode() for rel, d in files.items()), cmd)
 ck("bản mới làm xong (mã 0) → bộ cài cũ KHÔNG đụng vào lệnh nữa (không bung Windows lần 2, lệnh để bản mới lo), trả đúng mã của bản mới", rc == 0 and not applied(fs)
-   and json.loads(recp.vol.files["cb\\job.json"])["state"] == "queued" and any("BO CAI MOI HON (ban 02.12a, so 2 > 1)" in x for x in fs.logs), (rc, fs.logs[-3:]))
-ck("biến môi trường báo cho bản mới: nó được bản số mấy gọi + thư mục bộ cài gốc", os.environ.get("CB_CHAINED") == "1" and os.environ.get("CB_CHAIN_BASE", "").replace("\\", "/").rstrip("/").endswith("winpc"), dict((k, v) for k, v in os.environ.items() if k.startswith("CB_")))
+   and json.loads(recp.vol.files["cb\\job.json"])["state"] == "queued" and any("BO CAI MOI HON (ban 02.12a, so %d > %d)" % (NS, cb_pe.PE_SEQ) in x for x in fs.logs), (rc, fs.logs[-3:]))
+ck("biến môi trường báo cho bản mới: nó được bản số mấy gọi + thư mục bộ cài gốc", os.environ.get("CB_CHAINED") == str(cb_pe.PE_SEQ) and os.environ.get("CB_CHAIN_BASE", "").replace("\\", "/").rstrip("/").endswith("winpc"), dict((k, v) for k, v in os.environ.items() if k.startswith("CB_")))
 fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 10
 rc, ui, inst = run(fs)
 ck("bản mới trả mã 10 (không có gì để làm / đã xử lý) → cũng coi là xong", rc == 10 and not applied(fs))
@@ -782,7 +784,7 @@ ck("1 file sai mã băm (ghi dở / bị sửa) → KHÔNG chạy bản mới, k
    and any("lib/cbsys.py thieu / sai ma bam" in x for x in fs.logs), [x for x in fs.logs if "ma bam" in x])
 fs, recp, winp = pe_job(); put_next(recp); del recp.vol.files["cb\\pe-next\\lib\\cbrec.py"]; rc, ui, inst = run(fs)
 ck("thiếu 1 file → không chạy bản mới", rc == 0 and not chained(fs) and applied(fs))
-for seq in (1, 0, -5, "9", 2.5, True, None):
+for seq in (cb_pe.PE_SEQ, 1, 0, -5, "9", 2.5, True, "x"):
     fs, recp, winp = pe_job(); put_next(recp, seq=seq); rc, ui, inst = run(fs)
     ck("số thứ tự %r không lớn hơn bản đang chạy / không phải số nguyên → bỏ qua (không hạ cấp, không chạy lại chính mình)" % (seq,), rc == 0 and not chained(fs) and applied(fs))
 for label, fl in (("ngoài thư mục pe / lib", {"pe/cb_pe.py": b"a", "os/x.py": b"b"}), ("có ..", {"pe/cb_pe.py": b"a", "pe/../../evil.py": b"b"}), ("không phải .py", {"pe/cb_pe.py": b"a", "pe/run.cmd": b"b"}),
@@ -809,13 +811,214 @@ ck("đang cắm USB / ISO cài đặt → bộ cài trên USB là bản người
 fs, recp, winp = pe_job(); put_next(recp); fs.chain_rc = 0; fs.dry = True
 rc, ui, inst = run(fs)
 ck("chạy thử (dry-run) → không gọi bản khác", not chained(fs))
-fs, recp, winp = pe_job(); put_next(recp, seq=2, ver="cu"); fs.chain_rc = 0
+fs, recp, winp = pe_job(); put_next(recp, seq=cb_pe.PE_SEQ + 1, ver="cu"); fs.chain_rc = 0
 d2 = fs.disk(1, 240, model="O thu hai", ssd=True, style="gpt")
 rec2 = d2.add(12 * 1024, GPT_DATA, "NTFS", "CBRECOVERY", attrs=0x8000000000000001, files={"cb\\recovery.tag": "1", "cb\\cb.json": "{}"})
-put_next(rec2, seq=7, ver="moi-nhat", files={"pe/cb_pe.py": b"# ban 7\n"})
+put_next(rec2, seq=cb_pe.PE_SEQ + 5, ver="moi-nhat", files={"pe/cb_pe.py": b"# ban 7\n"})
 rc, ui, inst = run(fs)
-ck("máy có 2 phân vùng cứu hộ (2 ổ từng cài) → lấy bản có số lớn nhất", len(chained(fs)) == 1 and fs.file("X", "cb-next\\pe\\cb_pe.py") == "# ban 7\n" and any("ban moi-nhat, so 7" in x for x in fs.logs), [x for x in fs.logs if "MOI HON" in x])
+ck("máy có 2 phân vùng cứu hộ (2 ổ từng cài) → lấy bản có số lớn nhất", len(chained(fs)) == 1 and fs.file("X", "cb-next\\pe\\cb_pe.py") == "# ban 7\n" and any("ban moi-nhat, so %d" % (cb_pe.PE_SEQ + 5) in x for x in fs.logs), [x for x in fs.logs if "MOI HON" in x])
 ck("PE_SEQ là số nguyên dương; mã thoát cố định 0 / 3 / 10", isinstance(cb_pe.PE_SEQ, int) and cb_pe.PE_SEQ >= 1 and (cb_pe.RC_OK, cb_pe.RC_SETUP, cb_pe.RC_REBOOT) == (0, 3, 10))
+
+
+print("27. CÀI CachyOS (Linux) theo lệnh — WinPE chia ổ, chép GRUB, ghi việc, khởi động 1 lần vào GRUB (22.11c)")
+import struct, uuid as _uuid
+from cbsys import GPT_LINUX
+import cbrec
+
+
+def nvram(fs, linux=False):
+    """NVRAM giả: Boot0000 = Windows Boot Manager (+ Boot0001 = Linux Boot Manager của CachyOS nếu máy đang chạy Linux)."""
+    wbm = C.efi_load_option("Windows Boot Manager", 1, 2048, 532480, str(_uuid.uuid4()), "\\EFI\\Microsoft\\Boot\\bootmgfw.efi")
+    fs.efi["Boot0000"] = wbm
+    order = [0]
+    if linux:
+        fs.efi["Boot0001"] = C.efi_load_option("Linux Boot Manager", 4, 99999, 2097152, str(_uuid.uuid4()), "\\EFI\\systemd\\systemd-bootx64.efi"); order = [1, 0]
+    fs.efi["BootOrder"] = b"".join(struct.pack("<H", n) for n in order)
+
+
+def order_of(fs): return [struct.unpack("<H", fs.efi["BootOrder"][i:i + 2])[0] for i in range(0, len(fs.efi.get("BootOrder", b"")), 2)]
+
+
+def lin_job(**kw): return job0(os="cachyos", **kw)
+
+
+fs = FakeSys("uefi"); cfg = cfg_lin(user="PC", password="mk-khach", user_admin=True); nvram(fs)
+d, rec, win = cb_layout(fs, cfg, lin_job())
+esp0 = d.slots[0]
+rc, ui, inst = run(fs)
+ck("cài xong phần WinPE (mã 0, khởi động lại)", rc == 0, (rc, fs.logs[-6:]))
+ck("lần đầu vẫn cho 10 giây bấm X để huỷ", ui.prompts and ui.prompts[0][0] == 10)
+types = [p.type for p in d.slots]
+ck("ổ: EFI Windows · MSR · cứu hộ · EFI Linux 1GB (FAT32, CBLINUXEFI) · phân vùng Linux (kiểu Linux) — Windows cũ đã xoá",
+   types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_ESP, GPT_LINUX] and d.slots[3].size == 1024 * MB and d.slots[3].vol.fs == "FAT32" and d.slots[3].vol.label == "CBLINUXEFI"
+   and d.slots[4].size > 400 * GB and not any("bi-mat" in k for p in d.slots if p.vol for k in p.vol.files), [(p.type[:8], p.size // MB) for p in d.slots])
+ck("phân vùng cứu hộ còn nguyên (ISO CachyOS, bộ cài)", rec.vol.files.get("cb\\linux\\cachyos.iso") == b"ISO" and "cb\\boot\\boot.wim" in rec.vol.files)
+ck("GRUB của CloudBlue nằm trên EFI Windows: \\EFI\\cblinux\\grubx64.efi", esp0.vol.files.get("efi\\cblinux\\grubx64.efi") == b"GRUB")
+j = json.loads(rec.vol.files["cb\\job.json"])
+L = j.get("linux") or {}
+ck("cb\\job.json giữ lệnh (state running, lần 1) + mục linux trỏ ĐÚNG vị trí 2 phân vùng mới", j["state"] == "running" and j["attempts"] == 1 and j["os"] == "cachyos"
+   and L.get("esp", {}).get("offset") == d.slots[3].offset and L.get("root", {}).get("offset") == d.slots[4].offset and L["root"]["size"] == d.slots[4].size, L)
+ck("tài khoản Linux: 'pc' (chữ thường), mật khẩu như Windows, có quyền admin theo cấu hình, tự đăng nhập, múi giờ Việt Nam",
+   (L.get("user"), L.get("pass"), L.get("admin"), L.get("autologin"), L.get("tz"), L.get("desktop")) == ("pc", "mk-khach", True, True, "Asia/Ho_Chi_Minh", "kde"), L)
+ck("vé đăng ký lại (ticket) còn trong job.json cho agent Linux", j.get("ticket") == "t" * 32)
+want_uuid = C.ntfs_uuid(fs.read_boot_sector("R") if False else b"")
+rec_letter_free = rec.vol.letter is None
+bs = None
+for _, _, v in fs._allvols():
+    if v is rec.vol:
+        v.letter = "Q"; bs = fs.read_boot_sector("Q"); v.letter = None
+uid = C.ntfs_uuid(bs)
+ck("cb\\linux\\job.cfg cho GRUB: ISO nằm trên phân vùng cứu hộ (UUID = số seri NTFS 16 chữ hex)", rec.vol.files.get("cb\\linux\\job.cfg", "").count("set cbdev=UUID=%s" % uid) == 1 and len(uid) == 16, rec.vol.files.get("cb\\linux\\job.cfg"))
+ck("phân vùng cứu hộ ẩn lại (không chữ ổ)", rec_letter_free)
+grub = [n for n in range(64) if fs.efi.get("Boot%04X" % n) and C.efi_option_desc(fs.efi["Boot%04X" % n]) == C.GRUB_DESC]
+bo = fs.efi.get("Boot%04X" % grub[0], b"") if grub else b""
+ck("NVRAM: 1 mục 'CloudBlue Linux' trỏ \\EFI\\cblinux\\grubx64.efi trên ĐÚNG phân vùng EFI (GUID + LBA)", len(grub) == 1 and esp0.guid and _uuid.UUID(esp0.guid).bytes_le in bo
+   and struct.pack("<QQ", esp0.offset // 512, esp0.size // 512) in bo and "\\EFI\\cblinux\\grubx64.efi".encode("utf-16-le") in bo, grub)
+ck("BootNext = mục GRUB (khởi động 1 lần), BootOrder KHÔNG đổi (Windows Boot Manager vẫn là lối về)", grub and fs.efi.get("BootNext") == struct.pack("<H", grub[0]) and order_of(fs) == [0])
+st = fs.bcd.get("s:\\efi\\microsoft\\boot\\bcd", {})
+ck("Windows Boot Manager mặc định = WinPE cứu hộ (Linux lỗi / tắt ngang → tự vào lại bộ cài), chờ 0 giây", st.get("default") == C.PE_GUID and st.get("timeout") == "0" and C.PE_GUID in st.get("entries", {}))
+ck("không bung Windows, không bcdboot", not any(c[0] == "dism" and "/Apply-Image" in c for c in fs.cmds) and not any("bcdboot" in c[0].lower() for c in fs.cmds))
+ck("không có file kết quả (bộ cài Linux mới là bên báo xong)", "cb\\job-result.json" not in rec.vol.files)
+rc2, ui2, inst2 = run(fs)
+grub2 = [n for n in range(64) if fs.efi.get("Boot%04X" % n) and C.efi_option_desc(fs.efi["Boot%04X" % n]) == C.GRUB_DESC]
+ck("máy vào lại WinPE (Linux chưa chạy / bị tắt ngang) → làm lại lần 2, KHÔNG đẻ thêm mục khởi động", rc2 == 0 and json.loads(rec.vol.files["cb\\job.json"])["attempts"] == 2 and grub2 == grub
+   and [p.type for p in d.slots] == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_ESP, GPT_LINUX] and not ui2.prompts, (rc2, grub2, ui2.prompts))
+
+# wipe=system: chỉ thay ổ C:, giữ phân vùng dữ liệu của khách
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs)
+d, rec, win = cb_layout(fs, cfg, None, extra_data=True)
+rec.vol.put("cb\\job.json", json.dumps(lin_job(wipe="system", win=win)))
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+ck("wipe=system: ổ C: thành EFI Linux + Linux, ổ D: của khách giữ nguyên", rc == 0 and fs.file("D", "game\\save.dat") == "cua khach" and GPT_LINUX in types
+   and [p.vol.label for p in d.slots if p.vol and p.type == GPT_DATA][-1] == "Data", [(p.type[:8], p.size // GB) for p in d.slots])
+lp = next(p for p in d.slots if p.type == GPT_LINUX)
+ck("phần Linux nằm đúng chỗ ổ C: cũ (dữ liệu khác không bị dời)", next(p for p in d.slots if p.type == GPT_ESP and p is not d.slots[0]).offset == win.offset and lp.offset + lp.size == win.offset + win.size)
+
+# kiểm trước, CHƯA xoá gì
+for label, setup in (("máy bật Secure Boot", lambda fs, rec: fs.efi.__setitem__("SecureBoot", b"\x01")),
+                     ("thiếu grubx64.efi trên phân vùng cứu hộ", lambda fs, rec: rec.vol.files.pop("cb\\linux\\grubx64.efi")),
+                     ("thiếu ISO CachyOS", lambda fs, rec: rec.vol.files.pop("cb\\linux\\cachyos.iso"))):
+    fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); d, rec, win = cb_layout(fs, cfg, lin_job()); setup(fs, rec)
+    rc, ui, inst = run(fs)
+    res = json.loads(rec.vol.files.get("cb\\job-result.json", "{}"))
+    ck("%s → dừng TRƯỚC khi xoá, Windows còn nguyên, báo lỗi về web" % label, rc == 10 and not fs.dp_scripts and fs.file("C", "users\\khach\\bi-mat.txt") and res.get("ok") is False
+       and "cb\\job.json" not in rec.vol.files, (rc, res.get("msg")))
+ck("lý do Secure Boot ghi rõ cho người đọc", True)
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); fs.efi["SecureBoot"] = b"\x01"; d, rec, win = cb_layout(fs, cfg, lin_job()); run(fs)
+ck("  … 'Secure Boot' có trong thông báo lỗi", "Secure Boot" in json.loads(rec.vol.files["cb\\job-result.json"])["msg"])
+fs = FakeSys("bios"); cfg = cfg_lin(); d, rec, win = cb_layout(fs, cfg, lin_job(), fw="bios")
+rc, ui, inst = run(fs)
+ck("máy BIOS → không cài CachyOS, không xoá gì", rc == 10 and not fs.dp_scripts and "UEFI" in json.loads(rec.vol.files["cb\\job-result.json"])["msg"])
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); d, rec, win = cb_layout(fs, cfg, lin_job(), size=50)
+rc, ui, inst = run(fs)
+ck("ổ quá nhỏ (50GB) → không đủ chỗ cho CachyOS, không xoá gì", rc == 10 and not fs.dp_scripts and "khong du cai CachyOS" in json.loads(rec.vol.files["cb\\job-result.json"])["msg"])
+
+# NVRAM không ghi được → thử lại; quá 2 lần → cài lại Windows mặc định
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); fs.efi_ro = True
+d, rec, win = cb_layout(fs, cfg, lin_job())
+rc, ui, inst = run(fs)
+j = json.loads(rec.vol.files["cb\\job.json"])
+ck("BIOS chặn ghi biến UEFI → báo lỗi, giữ lệnh (lần 1) để thử lại", rc == 10 and j["attempts"] == 1 and j["state"] == "running" and json.loads(rec.vol.files["cb\\job-result.json"])["ok"] is False
+   and "NVRAM" in json.loads(rec.vol.files["cb\\job-result.json"])["msg"])
+rc, ui, inst = run(fs)
+ck("lần 2 vẫn lỗi → giữ lệnh", rc == 10 and json.loads(rec.vol.files["cb\\job.json"])["attempts"] == 2)
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+res = json.loads(rec.vol.files.get("cb\\job-result.json", "{}"))
+win_new = next(p for p in d.slots if p.vol and p.vol.label == "Windows")
+ck("lần 3: KHÔNG thử CachyOS nữa → cài lại Windows mặc định (22H2) để máy lên lại được", rc == 0 and types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_DATA]
+   and fs.file(win_new.vol, "windows\\cb-image.txt") == "22h2.wim|6", ([t[:8] for t in types], rc, fs.file(win_new.vol, "windows\\cb-image.txt")))
+ck("  … báo về web: lệnh CachyOS THẤT BẠI kèm lý do + đã cài lại Windows", res.get("ok") is False and "CachyOS chua cai duoc" in res.get("msg", "") and "22h2" in res.get("msg", ""), res)
+seed = json.loads(win_new.vol.files["cloudbluepc\\seed.json"])
+ck("  … Windows mới mang đúng số lệnh + vé để agent đăng ký lại", seed.get("order") == 77 and seed.get("ticket") == "t" * 32 and seed.get("os") == "22h2")
+
+# cb-install.sh báo lỗi 2 lần (mạng, …), khách chọn chỉ thay hệ điều hành → Windows mới nằm đúng chỗ phần Linux, ổ D: giữ nguyên
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs, linux=False)
+d, rec, lesp, lroot = lin_layout(fs, cfg, None, extra_data=True, installed=False)
+jj = lin_job(wipe="system", attempts=2, state="running", linux_fail=2, linux_msg="chua co mang sau 5 phut",
+             linux={"esp": {"offset": lesp.offset, "size": lesp.size}, "root": {"offset": lroot.offset, "size": lroot.size}})
+rec.vol.put("cb\\job.json", json.dumps(jj))
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+res = json.loads(rec.vol.files.get("cb\\job-result.json", "{}"))
+wn = next((p for p in d.slots if p.vol and p.vol.label == "Windows"), None)
+ck("CachyOS lỗi 2 lần (cb-install báo) → cài Windows vào ĐÚNG chỗ phần Linux, ổ D: giữ nguyên", rc == 0 and types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_DATA, GPT_DATA]
+   and fs.file("D", "game\\save.dat") == "cua khach" and wn is not None and wn.offset == lesp.offset and wn.size == lesp.size + lroot.size and "mang" in res.get("msg", ""),
+   ([t[:8] for t in types], res.get("msg")))
+
+print("28. Máy ĐANG CHẠY CachyOS → cài lại Windows / cài lại CachyOS / vào nhầm WinPE (22.11c)")
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs, linux=True)
+d, rec, lesp, lroot = lin_layout(fs, cfg, job0(os="22h2"))
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+ck("đổi sang Windows (wipe=all): EFI Linux + phân vùng Linux bị xoá, còn EFI Windows · MSR · cứu hộ · Windows", rc == 0 and types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_DATA]
+   and d.slots[3].vol.label == "Windows", [t[:8] for t in types])
+ck("mục khởi động 'Linux Boot Manager' trong NVRAM đã gỡ (khỏi BootOrder + xoá biến)", "Boot0001" not in fs.efi and order_of(fs) == [0], (sorted(fs.efi), order_of(fs)))
+ck("bỏ dấu 'máy đang chạy CachyOS' trên phân vùng cứu hộ", "cb\\linux\\installed.json" not in rec.vol.files)
+ck("báo XONG (Windows)", json.loads(rec.vol.files["cb\\job-result.json"])["ok"] is True)
+
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs, linux=True)
+d, rec, lesp, lroot = lin_layout(fs, cfg, None, extra_data=True)
+rec.vol.put("cb\\job.json", json.dumps(job0(os="22h2", wipe="system", win={"offset": lroot.offset, "size": lroot.size})))
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+wn = next((p for p in d.slots if p.vol and p.vol.label == "Windows"), None)
+ck("đổi sang Windows chỉ thay hệ điều hành (wipe=system, vị trí = phân vùng Linux): EFI Linux + Linux → 1 phân vùng Windows, ổ D: giữ nguyên",
+   rc == 0 and types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_DATA, GPT_DATA] and wn is not None and wn.offset == lesp.offset and wn.size == lesp.size + lroot.size
+   and fs.file("D", "game\\save.dat") == "cua khach", [(t[:8], p.size // GB) for t, p in zip(types, d.slots)])
+
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs, linux=True)
+d, rec, lesp, lroot = lin_layout(fs, cfg, lin_job())
+old_root = lroot
+rc, ui, inst = run(fs)
+types = [p.type for p in d.slots]
+ck("cài lại CachyOS trên máy đang chạy CachyOS: phần Linux cũ xoá, tạo mới (đúng 1 EFI Linux + 1 Linux)", rc == 0 and types == [GPT_ESP, GPT_MSR, GPT_DATA, GPT_ESP, GPT_LINUX]
+   and d.slots[4] is not old_root, [t[:8] for t in types])
+
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs, linux=True); fs.efi["BootOrder"] = struct.pack("<HH", 0, 1)    # BIOS tự đưa Windows Boot Manager lên đầu
+d, rec, lesp, lroot = lin_layout(fs, cfg, None)
+rc, ui, inst = run(fs)
+ck("máy chạy CachyOS mà BIOS lại vào Windows Boot Manager (→ WinPE, không lệnh): đưa 'Linux Boot Manager' lên đầu + BootNext, khởi động lại, KHÔNG xoá gì",
+   rc == 10 and order_of(fs) == [1, 0] and fs.efi.get("BootNext") == struct.pack("<H", 1) and not fs.dp_scripts, (rc, order_of(fs)))
+
+print("29. Bộ cài có CachyOS: cài từ USB vẫn chỉ cài Windows · phân vùng cứu hộ chép đủ phần Linux · agent thấy được CachyOS (22.11c)")
+fs = FakeSys("uefi"); cfg = cfg_lin(); u = usb(fs, cfg)
+for rel, data in (("cb\\linux\\cachyos.iso", b"ISO"), ("cb\\linux\\grubx64.efi", b"GRUB"), ("cb\\linux\\grub.cfg", "cfg"), ("cb\\linux\\cb-install.sh", "sh")): u.slots[0].vol.put(rel, data)
+d0 = fs.disk(0, 480, ssd=True, style="gpt")
+rc, ui, inst = run(fs, ["3", "\r"])
+ck("menu chỉ liệt kê bản Windows (phím 3 không chọn được CachyOS) → cài 22H2 như thường", rc == 0 and fs.file(d0.slots[3].vol, "windows\\cb-image.txt") == "install.wim|6"
+   and not any("cachyos" in x.lower() and "=" in x for x in fs.logs), [x for x in fs.logs if " = " in x])
+rv = d0.slots[2].vol
+ck("phân vùng cứu hộ có đủ phần Linux (ISO + GRUB + kịch bản), ISO chỉ chép 1 lần", all(k in rv.files for k in ("cb\\linux\\cachyos.iso", "cb\\linux\\grubx64.efi", "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh"))
+   and not any(k.startswith("cb\\images\\cachyos") for k in rv.files), sorted(k for k in rv.files if "linux" in k or "images" in k))
+rcfg = json.loads(rv.files["cb\\cb.json"])
+ck("cb.json trên phân vùng cứu hộ: CachyOS trỏ cb\\linux\\cachyos.iso", [i["file"] for i in rcfg["images"]][-1] == "cb\\linux\\cachyos.iso")
+rv.letter = "R"
+st = cbrec.status(fs)
+ck("agent báo web: đổi được sang 22h2, 1511, cachyos", st["ok"] and st["images"] == ["22h2", "1511", "cachyos"], st)
+
+rv.files.pop("cb\\linux\\grubx64.efi")
+ck("thiếu GRUB → agent KHÔNG báo cachyos (không cho chọn bản không cài được)", cbrec.status(fs)["images"] == ["22h2", "1511"], cbrec.status(fs))
+rv.letter = None
+
+def stage(fs, **kw):
+    try: return cbrec.stage_job(fs, dict({"id": 91, "os": "cachyos", "wipe": "all", "ticket": "t" * 32}, **kw), "CB-STAGE", 1_800_000_000)
+    except C.Stop as e: return "STOP: %s" % e
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); d, rec, win = cb_layout(fs, cfg, None)
+img = stage(fs)
+jj = json.loads(rec.vol.files.get("cb\\job.json", "{}"))
+ck("agent Windows ghi lệnh đổi sang CachyOS: job.json os=cachyos + vị trí ổ C: + đặt khởi động 1 lần vào bộ cài", isinstance(img, dict) and img.get("id") == "cachyos"
+   and jj.get("os") == "cachyos" and jj.get("state") == "queued" and jj.get("win", {}).get("offset") == win.offset and fs.bcd.get("(system)", {}).get("bootsequence") == C.PE_GUID, (img, jj))
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); fs.efi["SecureBoot"] = b"\x01"; d, rec, win = cb_layout(fs, cfg, None)
+r = stage(fs)
+ck("… máy bật Secure Boot → agent báo lỗi NGAY (không khởi động lại vào bộ cài)", isinstance(r, str) and "Secure Boot" in r and "cb\\job.json" not in rec.vol.files, r)
+fs = FakeSys("bios"); cfg = cfg_lin(); d, rec, win = cb_layout(fs, cfg, None, fw="bios")
+r = stage(fs)
+ck("… máy BIOS → báo lỗi ngay", isinstance(r, str) and "UEFI" in r, r)
+fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); d, rec, win = cb_layout(fs, cfg, None); rec.vol.files.pop("cb\\linux\\cb-install.sh")
+r = stage(fs)
+ck("… phân vùng cứu hộ thiếu cb-install.sh → báo lỗi ngay", isinstance(r, str) and "cb-install.sh" in r, r)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
