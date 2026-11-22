@@ -51,12 +51,19 @@ def boot_wait(limit=420):
 
 # ---------------- chuẩn bị máy: root (để tạo hồ sơ clone), bật cửa sổ nổi như phonectl TUNE, khởi động lại ----------------
 print(f"== Android API {API} ==", flush=True)
-print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3)
-sh("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; settings put global enable_freeform_support 1; "
-   "settings put global force_resizable_activities 1; settings put global enable_sizecompat_freeform 1; "
-   "settings put system accelerometer_rotation 0; settings put system user_rotation 0", 30)
-adb("reboot", t=60); time.sleep(10); boot_wait()
+TUNE = ("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; settings put global enable_freeform_support 1; "
+        "settings put global force_resizable_activities 1; settings put global enable_sizecompat_freeform 1; "
+        "settings put system accelerometer_rotation 0; settings put system user_rotation 0")
+FREE = "settings get global enable_freeform_support; settings get global force_resizable_activities"
 print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
+for k in range(3):                       # như phonectl TUNE mỗi lần máy bật; có lần máy ảo chưa nhận lệnh (adbd vừa đổi sang root) → kiểm, làm lại
+    sh(TUNE, 30); time.sleep(2); print("đặt cửa sổ nổi:", sh(FREE).split(), flush=True)
+    adb("reboot", t=60); time.sleep(10); boot_wait()
+    print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
+    if sh(FREE).split()[:2] == ["1", "1"]: break
+    print("   (sau khi khởi động lại chưa thấy cài đặt cửa sổ nổi → làm lại)", flush=True)
+else:
+    sh(TUNE, 30); time.sleep(3)          # Android 11+ nhận ngay không cần khởi động lại
 sh("wm size 720x1280; wm density 320", 20); time.sleep(3)                    # giống máy Cloud Phone thật (720x1280, 320 dpi)
 print("freeform:", sh("settings get global enable_freeform_support; settings get global force_resizable_activities"), "·", sh("wm size; wm density"), flush=True)
 for n in (1, 2, 3):
