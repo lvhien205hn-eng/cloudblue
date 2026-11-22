@@ -139,4 +139,17 @@ ck("phiên mới chờ máy chủ cho vào > 8 giây (máy chủ vẫn giữ k�
 import brstream as _BS
 ck("brstream: TLS an toàn nhiều luồng (Tls qua MemoryBIO) dùng cho cả đường thẳng lẫn đường vòng",
    hasattr(_BS, "Tls") and "Tls(raw, ctx" in open(_BS.__file__, encoding="utf-8").read() and "wrap_socket" not in open(_BS.__file__, encoding="utf-8").read())
+# ---- 22/11 · 🌐 Proxy riêng của máy (thẻ Proxy trong Công cụ — chỉ Cloud Phone)
+ck("Công cụ có thẻ Proxy (sau Root), 8 thẻ chia 2 hàng", [k for k, _ in B.ToolsDlg.TABS][5:7] == ["root", "proxy"] and len(B.ToolsDlg.TABS) == 8)
+_ps = lambda j: B.px_status(j)
+ck("chưa dùng proxy → 'Chưa dùng proxy'", _ps({"set": False})[0] in ("Chưa dùng proxy", "No proxy"))
+_j = {"set": True, "kind": "auto", "show": "9.8.7.6:1080:khach:••••", "online": True, "state": {"mode": "proxy", "kind": "socks5", "ip": "5.6.7.8", "ms": 80, "alive": True}}
+ck("đang qua proxy: che mật khẩu + kiểu thật SOCKS5 + IP ra + ms, màu OK",
+   _ps(_j)[0] == "9.8.7.6:1080:khach:•••• · SOCKS5" and _ps(_j)[2] in ("✅ Đang chạy qua proxy · IP ra 5.6.7.8 · 80 ms", "✅ Running through the proxy · exit IP 5.6.7.8 · 80 ms") and _ps(_j)[3] == B.OK, _ps(_j))
+_j2 = dict(_j, state={"mode": "direct", "err": "proxy báo SAI user / mật khẩu", "alive": True})
+ck("proxy lỗi → báo lý do + đang đi mạng thường, màu cảnh báo", "SAI user" in _ps(_j2)[2] and _ps(_j2)[3] == B.WARN, _ps(_j2))
+ck("máy tắt → proxy tự bật khi máy bật", "proxy" in _ps(dict(_j, online=False, state=None))[2])
+ck("proxy dừng hẳn → nhắc Áp dụng lại, màu đỏ", _ps(dict(_j, state={"mode": "crashed", "err": "iptables lỗi"}))[3] == B.BAD)
+_src = open(B.__file__, encoding="utf-8").read()
+ck("ô proxy xoá ngay sau khi gửi (không giữ mật khẩu) + gửi {do:set, url, kind}", 'self.px_ent.delete(0, "end")' in _src and '{"do": "set", "url": url, "kind": self.px_kind}' in _src)
 print(f"\n{OK}/{OK + FAIL} đạt"); sys.exit(1 if FAIL else 0)

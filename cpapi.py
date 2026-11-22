@@ -127,6 +127,7 @@ def maint_text():
 _ucache, _pcache = {}, {}
 _busy = set()          # máy đang khởi động lại / đổi cấu hình
 _rootbusy = set()      # máy đang lưu cấu hình root theo app (1 việc / máy)
+_pxbusy = set()        # máy đang áp dụng 🌐 proxy riêng (1 việc / máy)
 _REBOOT = {"t": 0}     # lúc admin bấm khởi động lại CẢ máy chủ (chặn bấm 2 lần)
 _DONSACH = {"t": 0}   # admin đang bấm 🧹 dọn máy cũ trên máy chủ này (chặn bấm chồng)
 IS_WIN = os.name == "nt"
@@ -1566,6 +1567,45 @@ class H(BaseHTTPRequestHandler):
             run_job(jid, work)
             return self.send_json(200, {"job": jid})
 
+        if act == "proxy":                                   # 🌐 PROXY RIÊNG CỦA MÁY (22/11): khách tự điền IP:cổng:user:pass — CHỈ chủ máy / admin
+            if not cont: return self.send_json(409, {"error": "Không xác định được máy."})
+            if not me["admin"] and p.get("user_id") != me["uid"]:      # người được chia sẻ không xem / đổi proxy (proxy là của chủ máy)
+                return self.send_json(403, {"error": "Chỉ chủ máy mới xem / đặt được proxy của máy này."})
+            pc_ = os.path.join(HOME, "phonectl.py")
+            old_ = lambda r: r.returncode == 2 and "proxy" in (r.stderr or "") and "invalid choice" in (r.stderr or "")
+            if self.command == "GET":
+                r = subprocess.run(["python3", pc_, "proxy", cont, "--get"], capture_output=True, text=True, timeout=60)
+                m = re.search(r"^PROXY (\{.*\})\s*$", r.stdout or "", re.M)
+                if not m:
+                    if old_(r): return self.send_json(409, {"error": "Máy chủ chưa cập nhật bản có Proxy — báo admin cập nhật.", "old": True})
+                    return self.send_json(500, {"error": "Không đọc được proxy của máy, thử lại sau."})
+                try: return self.send_json(200, json.loads(m.group(1)))
+                except ValueError: return self.send_json(500, {"error": "Đọc proxy bị lỗi, thử lại sau."})
+            if self.command != "POST": return self.send_json(405, {"error": "Chỉ GET hoặc POST."})
+            b = self.jbody(); mode = str(b.get("do") or "")
+            if mode not in ("set", "off", "again"): return self.send_json(400, {"error": "Thiếu việc cần làm (lưu / tắt / áp dụng lại)."})
+            url = str(b.get("url") or "").strip(); kind = str(b.get("kind") or "auto").strip().lower()
+            if mode == "set":
+                if not url or len(url) > 600 or any(ord(ch) < 32 for ch in url): return self.send_json(400, {"error": "Proxy không hợp lệ."})
+                if kind not in ("auto", "socks5", "http"): return self.send_json(400, {"error": "Kiểu proxy không hợp lệ."})
+            if pid in _pxbusy: return self.send_json(409, {"error": "Đang áp dụng proxy cho máy này, đợi vài giây."})
+            _pxbusy.add(pid)
+            jid = new_job(me["uid"], "Proxy")
+            def work(j):
+                try:
+                    JOBS[j]["msg"] = {"set": "Đang bật proxy (kiểm tra proxy + gắn vào máy, ~10–30 giây)…", "off": "Đang tắt proxy…",
+                                      "again": "Đang áp dụng lại proxy…"}[mode]
+                    cmd = ["python3", pc_, "proxy", cont] + {"set": ["--set", "--url-stdin", "--kind", kind], "off": ["--off"], "again": ["--again"]}[mode]
+                    # proxy (có mật khẩu) đưa qua stdin — không nằm trên dòng lệnh (danh sách tiến trình / nhật ký máy chủ)
+                    r = subprocess.run(cmd, input=(url + "\n") if mode == "set" else "", capture_output=True, text=True, timeout=PCTL_LONG)
+                    line = next((l for l in reversed((r.stdout or "").splitlines()) if l.startswith(("PROXY_OK", "PROXY_FAIL"))), "")
+                    if line.startswith("PROXY_OK"): return line.split(" ", 1)[1].strip() if " " in line else "Đã lưu."
+                    if not line and old_(r): raise RuntimeError("Máy chủ chưa cập nhật bản có Proxy — báo admin cập nhật.")
+                    raise RuntimeError(line.split(" ", 1)[1].strip() if " " in line else "Không áp dụng được proxy, thử lại sau.")
+                finally: _pxbusy.discard(pid)
+            run_job(jid, work)
+            return self.send_json(200, {"job": jid})
+
         if act == "gfx" and self.command == "GET":           # CHẾ ĐỘ HÌNH (máy MEmu): mượt (DirectX) hay hiện 3D (OpenGL)
             if not cont: return self.send_json(409, {"error": "Không xác định được máy."})
             r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "gfxget", cont], capture_output=True, timeout=60)
@@ -1759,6 +1799,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 16/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 22/11a chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()
