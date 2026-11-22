@@ -305,3 +305,17 @@ jobs:
             rpc.log
             remote.json
             fake_sb.out
+      - name: Ảnh khách mở app qua menu (nhánh linux-shots)
+        if: always()
+        run: |
+          ls linux-shots/*.png >/dev/null 2>&1 || exit 0
+          mkdir -p /tmp/ls && cp linux-shots/*.png /tmp/ls/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -q --orphan linux-shots-tmp
+          git rm -r -q --cached . >/dev/null 2>&1 || true
+          mkdir -p /tmp/lsrepo/shots /tmp/lsrepo/blueroblox-site && cp /tmp/ls/*.png /tmp/lsrepo/shots/
+          echo '{"git":{"deploymentEnabled":false}}' > /tmp/lsrepo/blueroblox-site/vercel.json
+          git --work-tree=/tmp/lsrepo add -A shots blueroblox-site
+          git --work-tree=/tmp/lsrepo commit -q -m "Anh CachyOS mo app ($GITHUB_SHA)"
+          git push -q -f origin HEAD:refs/heads/linux-shots
