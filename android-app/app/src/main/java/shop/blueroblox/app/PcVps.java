@@ -149,7 +149,8 @@ final class PcVps {
             if (x == null) continue;
             box.addView(card(a, x), Ui.fill());
             JSONObject pc = x.optJSONObject("pc");
-            if ("waiting".equals(x.optString("state")) || (pc != null && pc.optJSONObject("job") != null)) busy = true;
+            String code = state(x)[0];                                                // 22/11 · đang khởi động lại / đang tắt → đọc lại sau 15 giây
+            if ("waiting".equals(x.optString("state")) || (pc != null && pc.optJSONObject("job") != null) || "boot".equals(code) || "down".equals(code)) busy = true;
         }
         if (busy) box.postDelayed(() -> { if (box.getParent() != null && !a.isFinishing()) { mineAt = 0; Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> {
             if (r instanceof JSONObject && box.getParent() != null) { mine = (JSONObject) r; mineAt = System.currentTimeMillis(); fill(a, box); } }, m -> { }); } }, 15000);
@@ -176,6 +177,8 @@ final class PcVps {
         if (until > 0 && until <= now) return new String[]{"exp", "⛔ " + Ui.L("Hết hạn", "Expired"),
                 pc != null && pc.optBoolean("off") ? Ui.L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "The machine shut down. Renew and the shop turns it back on.")
                         : Ui.L("Gia hạn để dùng tiếp.", "Renew to keep using it.")};
+        String[] pw = pow(pc, now);                                                 // 22/11 · v48: đang khởi động lại / đang tắt / đã tắt
+        if (pw != null) return pw;
         if (pc == null || !pc.optBoolean("online")) return new String[]{"off", "○ " + Ui.L("Máy đang tắt / mất mạng", "Offline"),
                 Ui.L("Máy chưa báo về. Lâu quá 5 phút thì nhắn shop kèm tên máy.", "Not reporting — contact the shop if it lasts over 5 minutes.")};
         JSONObject lj = pc.optJSONObject("last_job");                               // 21/11f · lần cài lại gần nhất bị lỗi (như web)
@@ -184,15 +187,49 @@ final class PcVps {
         return new String[]{"run", "● " + Ui.L("Sẵn sàng", "Ready"), ""};
     }
 
+    /** 22/11 · SQL v48: lệnh khởi động lại / tắt máy gần nhất (khách hoặc shop bấm) → [mã, chữ, câu] hoặc null — giống web / app máy tính:
+     *  boot = đang khởi động lại (3 phút đầu luôn hiện; máy chưa báo về thì hiện tiếp tới 15 phút) · down = đang tắt · offd = đã tắt hẳn.
+     *  Lệnh chưa tới máy (queued) chỉ tính khi máy đang bật. */
+    private static String[] pow(JSONObject pc, long now) {
+        JSONObject p = pc == null ? null : pc.optJSONObject("pow");
+        if (p == null) return null;
+        String cmd = p.optString("cmd"), st = p.optString("state");
+        long at = MainActivity.parseTime(p.optString("at", ""));
+        if (at <= 0 || !("reboot".equals(cmd) || "shutdown".equals(cmd))) return null;
+        long age = now - at;
+        boolean online = pc.optBoolean("online"), got = "sent".equals(st) || "done".equals(st), shop = !"customer".equals(p.optString("by"));
+        if ("reboot".equals(cmd)) {
+            String t = "🔁 " + Ui.L("Đang khởi động lại…", "Restarting…");
+            if (!got) return online && age < 600_000 ? new String[]{"boot", t,
+                    Ui.L("Đang gửi lệnh tới máy — máy nhận là khởi động lại ngay.", "Sending the command — the machine restarts as soon as it gets it.")} : null;
+            if (age < 180_000 || (!online && age < 900_000)) return new String[]{"boot", t,
+                    (shop ? Ui.L("Shop vừa khởi động lại máy. ", "The shop restarted the machine. ") : "")
+                            + Ui.L("Thường 1–3 phút là dùng lại được. Quá 10 phút chưa lên thì nhắn shop kèm tên máy.",
+                            "Usually back in 1–3 minutes. Not back after 10 minutes? Contact the shop with the machine name.")};
+            return null;
+        }
+        String t = "⏻ " + Ui.L("Đang tắt máy…", "Shutting down…");
+        if (!got) return online && age < 600_000 ? new String[]{"down", t,
+                Ui.L("Đang gửi lệnh tới máy — máy nhận là tắt ngay.", "Sending the command — the machine turns off as soon as it gets it.")} : null;
+        if (online) return age < 180_000 ? new String[]{"down", t, Ui.L("Máy tắt sau khoảng 10 giây.", "It turns off in about 10 seconds.")} : null;
+        String hm = new java.text.SimpleDateFormat("HH:mm", java.util.Locale.ROOT).format(new java.util.Date(at));
+        return new String[]{"offd", "⏻ " + Ui.L("Đã tắt máy", "Shut down"), shop
+                ? Ui.L("Shop đã tắt máy lúc " + hm + ". Cần dùng thì nhắn shop bật lại.", "The shop shut it down at " + hm + ". Contact the shop to turn it back on.")
+                : Ui.L("Bạn đã tắt máy lúc " + hm + " — máy tắt hẳn. Cần dùng lại thì nhắn shop bật nguồn (shop đã được báo).",
+                "You shut it down at " + hm + " — it stays off. Ask the shop to turn it back on (they have been notified).")};
+    }
+
+    private static boolean powSt(String code) { return "boot".equals(code) || "down".equals(code) || "offd".equals(code); }
+
     private static View card(MainActivity a, JSONObject x) {
         final JSONObject pc = x.optJSONObject("pc");
         String[] st = state(x);
         LinearLayout c = Ui.card(a);
         boolean run = "run".equals(st[0]);
         if (run) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(130, 60, 224, 176)));
-        else if ("exp".equals(st[0]) || "wait".equals(st[0]) || "warn".equals(st[0])) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(150, 255, 200, 97)));
+        else if ("exp".equals(st[0]) || "wait".equals(st[0]) || "warn".equals(st[0]) || powSt(st[0])) c.setBackground(Ui.round(Ui.PANEL, 18, Color.argb(150, 255, 200, 97)));
         LinearLayout top = Ui.row(a, 8);
-        top.addView(Ui.pill(a, st[1], run ? Ui.OK : "exp".equals(st[0]) ? Ui.BAD : "warn".equals(st[0]) ? Ui.WAIT : Ui.SKY), Ui.wrap());
+        top.addView(Ui.pill(a, st[1], run ? Ui.OK : "exp".equals(st[0]) ? Ui.BAD : "warn".equals(st[0]) || powSt(st[0]) ? Ui.WAIT : Ui.SKY), Ui.wrap());
         if (pc != null && !pc.optString("code").isEmpty()) top.addView(Ui.pill(a, "№ " + pc.optString("code"), Ui.MUTED), Ui.wrap());
         c.addView(top, Ui.fill());
         c.addView(Ui.text(a, (pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name")) + (x.optInt("days") > 0 ? "  ·  " + x.optInt("days") + Ui.L(" ngày", " days") : ""), 16, Ui.FG, true));
@@ -203,7 +240,7 @@ final class PcVps {
             if (pc.optDouble("ram_gb", 0) > 0) spec.append(" · ").append(Math.round(pc.optDouble("ram_gb"))).append("GB RAM");
         }
         c.addView(Ui.muted(a, spec.toString()));
-        if (!st[2].isEmpty()) c.addView(Ui.text(a, st[2], 13, "exp".equals(st[0]) || "warn".equals(st[0]) ? Ui.BAD : "off".equals(st[0]) ? Ui.WAIT : Ui.MUTED, false));
+        if (!st[2].isEmpty()) c.addView(Ui.text(a, st[2], 13, "exp".equals(st[0]) || "warn".equals(st[0]) ? Ui.BAD : "off".equals(st[0]) || powSt(st[0]) ? Ui.WAIT : Ui.MUTED, false));
         if ("warn".equals(st[0]) && pc != null) {                                  // 21/11f · cài lại lỗi → lý do + Báo admin
             JSONObject lj = pc.optJSONObject("last_job");
             String why = lj == null ? "" : lj.optString("msg", "").trim();
@@ -225,7 +262,7 @@ final class PcVps {
             LinearLayout acts = Ui.row(a, 8);
             Button open = Ui.button(a, "▶ " + Ui.L("Điều khiển", "Control"), Ui.PRIMARY);
             final boolean mtOn = !maint(a).isEmpty();                               // 21/11f · bảo trì riêng VPS GPU → khoá điều khiển
-            final boolean ctl = (run || "warn".equals(st[0])) && !mtOn;
+            final boolean ctl = (run || "warn".equals(st[0]) || "boot".equals(st[0])) && !mtOn;   // đang khởi động lại: vẫn mở được (máy lên là vào)
             open.setEnabled(ctl);
             open.setAlpha(ctl ? 1f : 0.5f);
             open.setOnClickListener(v -> control(a, pc.optString("id"), pc.optString("name")));
@@ -235,8 +272,9 @@ final class PcVps {
                 rn.setOnClickListener(v -> renew(a, x));
                 acts.addView(rn, Ui.wrap());
             }
-            Button mo = Ui.button(a, "⋯", Ui.GHOST);                                // 21.11k: Khác — cài lại Windows · báo admin · 🗑 Huỷ máy
-            mo.setContentDescription(Ui.L("Khác", "More"));
+            Button mo = Ui.button(a, "⋯", Ui.GHOST);                                // 21.11k: Khác — (22/11: 🔁 khởi động lại · ⏻ tắt máy) · cài lại Windows · báo admin · 🗑 Huỷ máy
+            mo.setContentDescription(mine != null && mine.optBoolean("power") ? Ui.L("Khác: khởi động lại, tắt máy, cài lại, báo admin", "More: restart, shut down, reinstall, report")
+                    : Ui.L("Khác", "More"));
             mo.setOnClickListener(v -> more(a, x, st));
             acts.addView(mo, Ui.wrap());
             c.addView(acts, Ui.fill());
@@ -248,6 +286,17 @@ final class PcVps {
     private static void more(MainActivity a, JSONObject x, String[] st) {
         LinearLayout c = Ui.col(a, 10);
         final Dialog[] d = new Dialog[1];
+        if (mine != null && mine.optBoolean("power")) {                              // 22/11 · SQL v48: khách tự khởi động lại / tắt máy (máy phải đang bật)
+            boolean canPow = ("run".equals(st[0]) || "warn".equals(st[0])) && maint(a).isEmpty();
+            Button rb = Ui.button(a, "🔁 " + Ui.L("Khởi động lại máy", "Restart the machine"), Ui.GHOST);
+            Button sd = Ui.button(a, "⏻ " + Ui.L("Tắt máy", "Shut down"), Ui.GHOST);
+            for (Button b : new Button[]{rb, sd}) { b.setEnabled(canPow); b.setAlpha(canPow ? 1f : 0.5f); }
+            rb.setOnClickListener(v -> { d[0].dismiss(); power(a, x, "reboot"); });
+            sd.setOnClickListener(v -> { d[0].dismiss(); power(a, x, "shutdown"); });
+            c.addView(rb, Ui.fill());
+            c.addView(sd, Ui.fill());
+            if (!canPow) c.addView(Ui.muted(a, Ui.L("Khởi động lại / tắt máy dùng được khi máy đang bật.", "Restart / shut down works while the machine is on.")));
+        }
         if (!x.isNull("rental")) {
             int left = x.optInt("left"), max = mine == null ? 2 : mine.optInt("reinstall_max", 2);
             Button re = Ui.button(a, "🔄 " + Ui.L("Cài lại / đổi Windows", "Reinstall / switch Windows") + " (" + left + "/" + max + ")", Ui.GHOST);
@@ -311,6 +360,51 @@ final class PcVps {
         d.show();
     }
 
+    /** 22/11 · 🔁 Khởi động lại / ⏻ Tắt máy (SQL v48 pc_my_power) — giống web / app máy tính. Tắt = tắt HẲN (shop bật nguồn lại giúp, shop được báo ngay)
+     *  → nút Tắt chỉ bấm được sau khi tick "Tôi hiểu". */
+    private static void power(MainActivity a, JSONObject x, String cmd) {
+        final JSONObject pc = x.optJSONObject("pc");
+        if (pc == null) return;
+        final boolean off = "shutdown".equals(cmd);
+        LinearLayout c = Ui.col(a, 12);
+        LinearLayout box = Ui.card(a);
+        if (off) box.setBackground(Ui.round(Color.argb(26, 255, 107, 129), 16, Color.argb(130, 255, 107, 129)));
+        box.addView(Ui.text(a, off ? Ui.L("⚠️ Máy TẮT HẲN, không tự bật lại.", "⚠️ The machine STAYS OFF — it does not turn back on by itself.")
+                : Ui.L("Máy tắt rồi TỰ BẬT LẠI — thường 1–3 phút là dùng tiếp được.", "The machine turns off and BACK ON by itself — usually ready in 1–3 minutes."), 14, Ui.FG, true));
+        box.addView(Ui.text(a, off ? Ui.L("Muốn dùng lại phải nhắn shop bật nguồn giúp — thời gian thuê vẫn tính.", "To use it again, ask the shop to power it on. Rental time keeps counting.")
+                : Ui.L("Chương trình đang mở bị đóng, dữ liệu đã lưu giữ nguyên.", "Open programs are closed; saved data is kept."), 13.5f, Ui.FG, false));
+        c.addView(box, Ui.fill());
+        final CheckBox ok = new CheckBox(a);
+        final Button go = Ui.button(a, off ? "⏻ " + Ui.L("Tắt máy", "Shut down") : "🔁 " + Ui.L("Khởi động lại ngay", "Restart now"), off ? Ui.DANGER : Ui.PRIMARY);
+        if (off) {
+            ok.setText(Ui.L("Tôi hiểu: máy tắt hẳn, cần nhắn shop bật lại", "I understand: it stays off until the shop powers it on"));
+            ok.setTextColor(Ui.FG);
+            ok.setTextSize(14);
+            c.addView(ok, Ui.fill());
+            go.setEnabled(false);
+            go.setAlpha(0.5f);
+            ok.setOnCheckedChangeListener((b, on) -> { go.setEnabled(on); go.setAlpha(on ? 1f : 0.5f); });
+        }
+        Button keep = Ui.button(a, Ui.L("Để sau", "Not now"), Ui.GHOST);
+        c.addView(go, Ui.fill());
+        c.addView(keep, Ui.fill());
+        final Dialog d = Ui.sheet(a, (off ? "⏻ " + Ui.L("Tắt máy ", "Shut down ") : "🔁 " + Ui.L("Khởi động lại ", "Restart ")) + pc.optString("name") + "?", c);
+        keep.setOnClickListener(v -> d.dismiss());
+        go.setOnClickListener(v -> {
+            if (off && !ok.isChecked()) return;
+            go.setEnabled(false);
+            Api.bg(() -> Api.rpc("pc_my_power", new JSONObject().put("p_pc", pc.optString("id")).put("p_cmd", off ? "shutdown" : "reboot")), r -> {
+                d.dismiss();
+                boolean dup = r instanceof JSONObject && ((JSONObject) r).optBoolean("dup");
+                Ui.toast(a, dup ? Ui.L("Máy đang có lệnh chờ nhận — đợi chút là chạy.", "A command is already on its way — it runs in a moment.")
+                        : off ? Ui.L("Đã gửi lệnh tắt máy — máy tắt sau khoảng 10 giây. Cần dùng lại thì nhắn shop bật nguồn.", "Shutdown sent — it turns off in about 10 seconds. Ask the shop to power it back on.")
+                        : Ui.L("Đã gửi lệnh khởi động lại — máy lên lại sau khoảng 1–3 phút.", "Restart sent — the machine is back in about 1–3 minutes."));
+                mineAt = 0; a.refresh();
+            }, m -> { go.setEnabled(true); Ui.toast(a, err(m)); });
+        });
+        d.show();
+    }
+
     static void control(MainActivity a, String id, String name) {
         try { a.startActivity(new Intent(a, ControlActivity.class).putExtra("pc", id).putExtra("name", name)); }
         catch (Exception e) { Ui.toast(a, Ui.L("Chưa mở được màn điều khiển.", "Couldn't open the control screen.")); }
@@ -325,6 +419,9 @@ final class PcVps {
         if (m.contains("INSUFFICIENT_BALANCE")) return Ui.L("Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first.");
         if (m.contains("SLOW_DOWN")) return Ui.L("Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again later.");
         if (m.contains("NOT_ALLOWED")) return Ui.L("Máy này không thuộc tài khoản của bạn.", "This machine is not on your account.");
+        if (m.contains("OFFLINE")) return Ui.L("Máy đang tắt / mất kết nối nên không nhận được lệnh. Cần bật lại thì nhắn shop kèm tên máy.",   // 22/11 · SQL v48
+                "The machine is offline and can't get the command. Contact the shop to turn it back on.");
+        if (m.contains("BAD_CMD")) return Ui.L("Lệnh không hợp lệ — cập nhật app rồi thử lại.", "Invalid command — update the app and try again.");
         return m;
     }
 
