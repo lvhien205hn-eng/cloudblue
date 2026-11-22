@@ -7,7 +7,9 @@
 #                    (vé chỉ nằm ở đây, đã gỡ khỏi phân vùng cứu hộ; agent xoá vé ngay khi đăng ký xong)
 #        cb.json     cấu hình của phân vùng cứu hộ (địa chỉ máy chủ + khoá CÔNG KHAI, các bản cài…; không có mã đăng ký)
 #        agent/pcagent.py  lib/cbcore.py cbrec.py cbsys.py  linux/cbagent.py   agent CloudBlue bản Linux (dùng lại lõi agent Windows)
-#    · dịch vụ cloudblue.service (root, tự chạy lại khi thoát / cập nhật)
+#        agent/pcremote.py  linux/cbremote.py  linux/cbcap.py                  điều khiển từ xa (giao thức của máy Windows + quay màn hình KDE)
+#    · dịch vụ cloudblue.service (root, tự chạy lại khi thoát / cập nhật) — agent tự mở cbremote.py
+#    · tài khoản khách: KDE không tự khoá màn hình / không tắt màn hình / không ngủ (máy cho thuê điều khiển từ xa)
 #    · CI_MODE=1 (GitHub CI): dịch vụ báo "máy mới đã khởi động tới giao diện" + tình trạng agent (ghi cb/linux-firstboot.ok lên phân vùng cứu hộ) rồi tắt máy
 # =====================================================================================================
 set -u
@@ -37,6 +39,22 @@ N=0
 for f in agent/pcagent.py lib/cbcore.py lib/cbrec.py lib/cbsys.py linux/cbagent.py; do
     [ -f "$R/cb/$f" ] && install -m 0644 "$R/cb/$f" "$O/$f" && N=$((N + 1))
 done
+NR=0
+for f in agent/pcremote.py linux/cbremote.py linux/cbcap.py; do
+    [ -f "$R/cb/$f" ] && install -m 0644 "$R/cb/$f" "$O/$f" && NR=$((NR + 1))
+done
+[ "$NR" = 3 ] && say "da chep dieu khien tu xa (pcremote + cbremote + cbcap)" || say "!! thieu file dieu khien tu xa ($NR/3) - may chua dieu khien tu xa duoc"
+CU=$(python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('linux') or {}).get('user') or '')" "$JOB" 2>/dev/null)
+CH=$(awk -F: -v u="$CU" '$1 == u {print $6}' "$T/etc/passwd" 2>/dev/null)
+if [ -n "$CU" ] && [ -n "$CH" ] && [ -d "$T$CH" ]; then
+    install -d -m 0755 "$T$CH/.config"
+    printf '[Daemon]\nAutolock=false\nLockOnResume=false\nTimeout=0\n' > "$T$CH/.config/kscreenlockerrc"
+    printf '[AC][Display]\nDimDisplayWhenIdle=false\nTurnOffDisplayWhenIdle=false\n\n[AC][SuspendAndShutdown]\nAutoSuspendAction=0\n' > "$T$CH/.config/powerdevilrc"
+    arch-chroot "$T" chown -R "$CU:$CU" "$CH/.config" >/dev/null 2>&1
+    say "KDE cua khach $CU: khong tu khoa / tat man hinh / ngu"
+fi
+install -d -m 0755 "$T/usr/share/applications"
+printf '[Desktop Entry]\nType=Application\nName=CloudBlue - dieu khien tu xa\nExec=/usr/bin/true\nNoDisplay=true\n' > "$T/usr/share/applications/vn.cloudblue.remote.desktop"
 if [ "$N" = 5 ] && [ -f "$O/cb.json" ]; then
     printf '%s\n' '[Unit]' 'Description=CloudBlue PC agent' 'Wants=network-online.target' 'After=network-online.target' '' \
         '[Service]' 'ExecStart=/usr/bin/python3 -I -B /opt/cloudblue/linux/cbagent.py run' 'Restart=always' 'RestartSec=15' '' \
@@ -58,7 +76,8 @@ if [ "${CI_MODE:-0}" = 1 ] && [ -n "${REC_UUID:-}" ]; then
 # CloudBlue CI: máy CachyOS vừa cài đã khởi động → ghi kết quả + tình trạng agent lên phân vùng cứu hộ rồi tắt máy (chỉ có trên máy thử của GitHub CI)
 for i in \$(seq 1 90); do systemctl is-active -q display-manager.service && break; sleep 2; done
 for i in \$(seq 1 45); do grep -qs "ĐÃ ĐĂNG KÝ" /opt/cloudblue/logs/agent.log && break; sleep 2; done
-sleep 15
+for i in \$(seq 1 150); do grep -qs "het nguoi xem" /opt/cloudblue/logs/remote.log && break; sleep 2; done      # máy CI: người xem thử trên máy CI xem xong
+sleep 10
 {
   echo "CB_FIRSTBOOT_OK"
   echo "kernel=\$(uname -r)"
@@ -77,6 +96,14 @@ sleep 15
   echo "agent=\$(systemctl is-active cloudblue.service) opt=\$(stat -c %a /opt/cloudblue 2>/dev/null) seed_ticket=\$(grep -c ticket /opt/cloudblue/seed.json 2>/dev/null) identity=\$(stat -c %a /opt/cloudblue/identity.json 2>/dev/null)"
   echo "--- agent.log"
   tail -n 12 /opt/cloudblue/logs/agent.log 2>/dev/null | cut -c1-200
+  echo "--- remote.log"
+  tail -n 25 /opt/cloudblue/logs/remote.log 2>/dev/null | cut -c1-220
+  tail -n 5 /opt/cloudblue/logs/remote.out 2>/dev/null | cut -c1-220
+  echo "--- cbcap probe"
+  install -D -m 0644 /opt/cloudblue/linux/cbcap.py /usr/local/lib/cloudblue/cbcap.py
+  U=\$(getent passwd 1000 | cut -d: -f1)
+  timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 \
+      python3 -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
 } > /run/cb-firstboot.txt 2>&1
 systemctl stop cloudblue.service
 { echo "--- cbagent.py status"; /usr/bin/python3 -I -B /opt/cloudblue/linux/cbagent.py status 2>&1 | tr -s ' \n' ' ' | cut -c1-1500; echo; } >> /run/cb-firstboot.txt

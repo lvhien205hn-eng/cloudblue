@@ -9,7 +9,9 @@
 #  CÁCH CÀI (giống chế độ "offline" của bộ cài Calamares của CachyOS — KHÔNG dùng cachyos-installer: chế độ không người của nó luôn XOÁ CẢ Ổ,
 #  sẽ mất phân vùng cứu hộ đang chứa chính ISO này + EFI của Windows):
 #    định dạng 2 phân vùng WinPE đã tạo (FAT32 + btrfs có subvolume như CachyOS) → bung airootfs.sfs → bỏ phần chỉ dành cho máy sống
-#    → nhân + initramfs → tài khoản khách, tên máy, múi giờ, tự đăng nhập → khoá pacman, gỡ gói của máy sống, driver đúng card (chwd, cần mạng)
+#    → nhân + initramfs → tài khoản khách, tên máy, múi giờ, tự đăng nhập → khoá pacman, gỡ gói của máy sống
+#    → KHÔNG dùng driver NVIDIA (22.11e: chủ shop chốt — Linux chỉ cần điều khiển từ xa, không cần card hình; card NVIDIA chạy driver nouveau
+#      có sẵn) · công cụ quay màn hình (GStreamer PipeWire) thiếu thì tải (cần mạng)
 #    → systemd-boot trên EFI Linux (mục "Linux Boot Manager" lên đầu BootOrder) → cb-post.sh (agent CloudBlue) → báo xong → khởi động lại.
 #  Lỗi → ghi lý do (cb/job-result.json + cb/job.json "linux_fail") → lần khởi động sau vào Windows Boot Manager = WinPE cứu hộ: thử lại,
 #  quá 2 lần thì WinPE cài lại Windows mặc định (máy không bao giờ "mất").
@@ -19,7 +21,7 @@
 #                              job.json "ci": true   → cài THẬT như máy thật + thêm cổng nối tiếp + dịch vụ báo "đã khởi động" (cb/linux-firstboot.ok)
 # =====================================================================================================
 set -u
-CB_VER="22.11e"
+CB_VER="22.11f"
 R=/run/archiso/img_dev
 ISO=/run/archiso/bootmnt
 W=/tmp/cb
@@ -191,7 +193,7 @@ SFS=$(ls "$ISO"/arch/x86_64/airootfs.sfs 2>/dev/null | head -1)
 [ -f "$SFS" ] || back_to_pe "ISO CachyOS khong co arch/x86_64/airootfs.sfs (ban ISO nay chua ho tro)"
 command -v unsquashfs >/dev/null || back_to_pe "may song thieu unsquashfs"
 
-# mạng: KHÔNG bắt buộc để cài (hệ thống bung từ ISO) — chỉ để lấy đúng driver card đồ hoạ (chwd). Chờ song song trong lúc bung.
+# mạng: KHÔNG bắt buộc để cài (hệ thống bung từ ISO) — chỉ để tải công cụ quay màn hình nếu ISO thiếu. Chờ song song trong lúc bung.
 ( net_wait 420 && touch "$W/net.ok" ) &
 NETPID=$!
 
@@ -323,32 +325,40 @@ if [ -f "$T/etc/mkinitcpio.conf" ]; then
     sed -i 's/^HOOKS=.*/HOOKS=(base systemd autodetect microcode modconf keyboard sd-vconsole block filesystems fsck)/' "$T/etc/mkinitcpio.conf"
 fi
 
-# ---------------------------------------------------------------- 7. pacman: khoá ký gói, gỡ gói của máy sống, driver đúng card (chwd)
+# ---------------------------------------------------------------- 7. pacman: khoá ký gói, gỡ gói của máy sống + driver NVIDIA, công cụ quay màn hình
 say "7/9 khoa ky goi pacman + go goi cua may song"
 arch-chroot "$T" pacman-key --init >/dev/null 2>&1 && arch-chroot "$T" pacman-key --populate >/dev/null 2>&1 || say "!! dung khoa pacman loi (cai tiep, cap nhat sau)"
-has_nvidia() { local d; for d in /sys/bus/pci/devices/*; do [ "$(cat "$d/vendor" 2>/dev/null)" = 0x10de ] && case "$(cat "$d/class" 2>/dev/null)" in 0x03*) return 0 ;; esac; done; return 1; }
 arch-chroot "$T" pacman -Qq > "$W/pkgs.txt" 2>/dev/null
 installed() { local p out=""; for p in "$@"; do grep -qx -- "$p" "$W/pkgs.txt" && out="$out $p"; done; echo "$out"; }
 DROP="cachyos-calamares-next cachyos-calamares cachyos-calamares-config cachyos-calamares-grub cachyos-calamares-systemd cachyos-calamares-refind
       cachyos-cli-installer-new gparted grsync edk2-shell clonezilla memtest86+ memtest86+-efi mkinitcpio-archiso syslinux elinks
       doxygen expect gpart tcpdump extra-cmake-modules cmake"
-has_nvidia || DROP="$DROP linux-cachyos-lts-nvidia-open linux-cachyos-nvidia-open nvidia-utils egl-wayland"
+DROP="$DROP linux-cachyos-lts-nvidia-open linux-cachyos-nvidia-open linux-cachyos-lts-nvidia linux-cachyos-nvidia nvidia-utils lib32-nvidia-utils
+      nvidia-settings opencl-nvidia libva-nvidia-driver egl-wayland nvidia-prime"           # card NVIDIA → driver nouveau có sẵn (gỡ nvidia-utils = bỏ chặn nouveau)
 [ "$(systemd-detect-virt 2>/dev/null)" = none ] && DROP="$DROP virtualbox-guest-utils open-vm-tools qemu-guest-agent spice-vdagent"
 GONE=$(installed $DROP)
-KEEP=$(installed python efibootmgr pciutils ntfs-3g libnotify)          # agent CloudBlue cần → đánh dấu "cài chủ động" để pacman -Rns không gỡ theo
+KEEP=$(installed python efibootmgr pciutils ntfs-3g libnotify ffmpeg gstreamer gst-plugins-base gst-plugin-pipewire pipewire wireplumber \
+             xdg-desktop-portal xdg-desktop-portal-kde libkscreen)          # agent + điều khiển từ xa cần → "cài chủ động" để pacman -Rns không gỡ theo
 [ -n "$KEEP" ] && arch-chroot "$T" pacman -D --asexplicit $KEEP >/dev/null 2>&1
 if [ -n "$GONE" ]; then
     arch-chroot "$T" pacman -Rns --noconfirm $GONE >/dev/null 2>&1 || for p in $GONE; do arch-chroot "$T" pacman -Rns --noconfirm "$p" >/dev/null 2>&1; done
 fi
 arch-chroot "$T" pacman -Qq > "$W/pkgs.txt" 2>/dev/null
+sed -i '/^[[:space:]]*blacklist[[:space:]]\+nouveau/d' "$T"/etc/modprobe.d/*.conf 2>/dev/null       # card NVIDIA dùng nouveau (không còn driver NVIDIA)
 say "   da go:$(for p in $GONE; do grep -qx -- "$p" "$W/pkgs.txt" || printf ' %s' "$p"; done)"
-wait "$NETPID" 2>/dev/null
-if [ -f "$W/net.ok" ]; then
-    say "   co mang -> chwd chon driver dung card (toi da 20 phut)"
-    cp -f /etc/pacman.d/mirrorlist "$T/etc/pacman.d/mirrorlist" 2>/dev/null
-    timeout 1200 arch-chroot "$T" chwd --autoconfigure > "$W/chwd.log" 2>&1 && say "   chwd: xong" || { say "!! chwd loi (giu driver san co)"; tail -5 "$W/chwd.log"; }
+gst_ok() { arch-chroot "$T" sh -c 'for e in pipewiresrc videoconvert videoscale videorate fdsink; do gst-inspect-1.0 --exists $e || exit 1; done; ffmpeg -hide_banner -encoders 2>/dev/null | grep -q libx264' >/dev/null 2>&1; }
+if gst_ok; then
+    say "   cong cu quay man hinh (GStreamer PipeWire + ffmpeg x264): co san"
 else
-    say "!! chua co mang sau 7 phut - bo qua chwd (giu driver san co tren ISO)"
+    wait "$NETPID" 2>/dev/null
+    if [ -f "$W/net.ok" ]; then
+        say "   thieu cong cu quay man hinh -> tai gst-plugin-pipewire gst-plugins-base ffmpeg (toi da 15 phut)"
+        cp -f /etc/pacman.d/mirrorlist "$T/etc/pacman.d/mirrorlist" 2>/dev/null
+        timeout 900 arch-chroot "$T" pacman -Sy --needed --noconfirm gst-plugin-pipewire gst-plugins-base ffmpeg > "$W/gst.log" 2>&1 || tail -5 "$W/gst.log"
+        gst_ok && say "   cong cu quay man hinh: da cai" || say "!! chua cai duoc cong cu quay man hinh - may van dung duoc, chua dieu khien tu xa duoc"
+    else
+        say "!! thieu cong cu quay man hinh va chua co mang - may van dung duoc, chua dieu khien tu xa duoc"
+    fi
 fi
 
 # ---------------------------------------------------------------- 8. initramfs + systemd-boot

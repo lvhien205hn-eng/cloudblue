@@ -12,7 +12,7 @@
 # =====================================================================================================
 import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, time, traceback
 
-LINUX_VER = "22.11e"
+LINUX_VER = "22.11f"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
@@ -26,7 +26,8 @@ REC_MNT = "/run/cloudblue/rec"
 LOCK = "/run/cloudblue-agent.lock"
 POWER_UNIT = "cloudblue-power"
 DM_CONF = {"plasmalogin": "/etc/plasmalogin.conf.d/autologin.conf", "sddm": "/etc/sddm.conf.d/autologin.conf"}
-LIB_FILES = ("agent/pcagent.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
+LIB_FILES = ("agent/pcagent.py", "agent/pcremote.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
+REMOTE_LOCK = "/run/cloudblue-remote.lock"                        # cbremote.py giữ khoá này khi đang chạy
 SELF_REL = "linux/cbagent.py"
 LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")   # = pcagent.LINUX_REL (giữ riêng: lõi agent chép từ phân vùng cứu hộ có thể là bản cũ)
 
@@ -247,8 +248,26 @@ class LinuxHost:
             return False
 
     def drivers(self): return None
-    def remote_running(self): return False
-    def remote_start(self, script): raise OSError("dieu khien tu xa ban Linux chua co")
+
+    def remote_running(self):
+        """cbremote.py (điều khiển từ xa) đang chạy? — nó giữ khoá REMOTE_LOCK suốt lúc chạy."""
+        try: fd = os.open(REMOTE_LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError: return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return True
+        finally:
+            os.close(fd)
+
+    def remote_start(self, script):
+        """Mở cbremote.py (root) chạy nền; nhật ký riêng ở logs/remote.log (+ remote.out cho lỗi Python). → pid."""
+        d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(script))), "logs")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "remote.out"), "ab") as out:
+            p = subprocess.Popen([sys.executable, "-I", "-B", script, "run"], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
+        return p.pid
 
     def notify(self, text, secs=60):
         """Hộp báo cho khách: thông báo trên màn hình mọi phiên đồ hoạ (notify-send, mức khẩn) + wall cho cửa sổ lệnh."""
@@ -458,7 +477,7 @@ class LinuxAgent(pcagent.Agent):
             g = sh(["id", "-nG", self.h.user], 10)[1].split() if self.h.user else []
             i["sec"] = {"std": "wheel" not in g, "hard": True, "lock": True}
         except Exception: pass
-        i["rmt"] = {"v": "", "s": "ban Linux chua co dieu khien tu xa", "age": 0}
+        i["rmt"] = self.remote_info() or {"v": "", "s": "chua chay", "age": 0}
         return i
 
     # ---- kết quả lần cài CachyOS (cb-install.sh ghi lên phân vùng cứu hộ)
@@ -474,8 +493,25 @@ class LinuxAgent(pcagent.Agent):
 
     def job_orphan(self): return None
     def pe_sync(self): return None
-    def remote_keep(self): return None
     def rec_admin(self, want): return True
+
+    def remote_keep(self):
+        """Giữ cbremote.py (điều khiển từ xa, root) chạy: chưa chạy / tự thoát để lên bản mới → mở lại (cách nhau ≥ REMOTE_RETRY_S). Không ném lỗi."""
+        try:
+            if self.cfg.get("remote") is False or not self.ident: return None
+            script = self.p("linux/cbremote.py")
+            if not os.path.isfile(script) or not os.path.isfile(self.p("agent/pcremote.py")): return None
+            if self.h.remote_running(): self.remote_err = ""; return "run"
+            now = self.s.now()
+            if self.remote_try is not None and now - self.remote_try < pcagent.REMOTE_RETRY_S: return "wait"
+            self.remote_try = now
+            pid = self.h.remote_start(script)
+            self.log("đã mở chương trình điều khiển từ xa (CachyOS, pid %s)" % pid)
+            return "start"
+        except Exception as e:
+            if str(e) != self.remote_err:
+                self.remote_err = str(e); self.log("chưa mở được chương trình điều khiển từ xa: %s" % e)
+            return "err"
 
     def poll(self, send_info=True):
         had = self.result_from_rec and self.pending_done is not None
@@ -551,14 +587,16 @@ class LinuxAgent(pcagent.Agent):
                 compile(data.decode("utf-8"), rel, "exec")
                 got[rel] = data
             stage = self.p("update/" + ver)
-            for rel in set(LIB_FILES) | {SELF_REL}:
+            for rel in set(LIB_FILES) | {SELF_REL, "linux/cbremote.py", "linux/cbcap.py"} | set(want):
                 src = got.get(rel)
                 if src is None:
                     try: src = self.s.read_bytes(self.p(rel))
                     except Exception: src = None
                 if src is not None: self.s.write_bytes(stage + "/" + rel, src)
-            ok, out = self.h.selfcheck(stage + "/" + SELF_REL)
-            if not ok: raise ValueError("bản mới chạy thử không đạt: %s" % out)
+            for rel in (SELF_REL, "linux/cbremote.py"):                     # bản mới (agent + điều khiển từ xa) chạy thử trước khi thay
+                if rel != SELF_REL and not self.s.exists(stage + "/" + rel): continue
+                ok, out = self.h.selfcheck(stage + "/" + rel)
+                if not ok: raise ValueError("bản mới chạy thử không đạt (%s): %s" % (rel, out))
             for rel, data in got.items():
                 dst = self.p(rel)
                 try:
