@@ -75,6 +75,12 @@ sleep 15
   echo "liveuser=\$(getent passwd liveuser >/dev/null && echo CON || echo khong)"
   echo "pkgs=\$(pacman -Qq | wc -l) python=\$(pacman -Q python 2>/dev/null | cut -d' ' -f2) efibootmgr=\$(pacman -Q efibootmgr 2>/dev/null | cut -d' ' -f2)"
   echo "agent=\$(systemctl is-active cloudblue.service) opt=\$(stat -c %a /opt/cloudblue 2>/dev/null) seed_ticket=\$(grep -c ticket /opt/cloudblue/seed.json 2>/dev/null) identity=\$(stat -c %a /opt/cloudblue/identity.json 2>/dev/null)"
+  echo "xs=\$(ls /usr/share/xsessions 2>/dev/null | tr '\n' ' ') ws=\$(ls /usr/share/wayland-sessions 2>/dev/null | tr '\n' ' ')"
+  echo "stype=\$(for s in \$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print \$1}'); do loginctl show-session \$s -p Type -p Class -p Desktop --value 2>/dev/null | tr '\n' '/'; printf ' '; done)"
+  echo "pk=\$(pacman -Q plasma-x11-session xorg-server xorg-xwayland ffmpeg xdotool xclip wl-clipboard libxtst libva-mesa-driver kpipewire krdp kwin plasma-workspace 2>&1 | tr '\n' ',')"
+  echo "ff_enc=\$(ffmpeg -hide_banner -encoders 2>/dev/null | grep -Eo '(h264_nvenc|h264_vaapi|h264_qsv|h264_amf|libx264|libopenh264)' | sort -u | tr '\n' ' ') ff_dev=\$(ffmpeg -hide_banner -devices 2>/dev/null | grep -Eo '(x11grab|kmsgrab|pipewiregrab|fbdev)' | sort -u | tr '\n' ' ')"
+  echo "xorg=\$(ps -eo args 2>/dev/null | grep -E '^/usr/(lib/)?(Xorg|Xwayland|bin/X)' | head -2 | cut -c1-160 | tr '\n' '|')"
+  echo "uinput=\$(ls -l /dev/uinput 2>&1 | cut -c1-60) drm=\$(ls /dev/dri 2>/dev/null | tr '\n' ' ')"
   echo "--- agent.log"
   tail -n 12 /opt/cloudblue/logs/agent.log 2>/dev/null | cut -c1-200
 } > /run/cb-firstboot.txt 2>&1
