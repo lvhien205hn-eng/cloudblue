@@ -168,8 +168,8 @@ public class ControlActivity extends Activity {
         q.setOnClickListener(v -> pickQuality());
         q.setTag("q");
         topBar.addView(q, Ui.wrap());
-        topBar.addView(Minis.button(this, Ui.FG, Ui.L("Thu nhỏ — máy này thành ô nhỏ ở màn chính", "Minimize — keep this phone in a small window"), v -> minimize()),
-                new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));                 // 22/11 · ⊟ thu nhỏ (kiểu Redfinger)
+        if (!pc) topBar.addView(WinTab.button(this, Ui.FG, v -> winTab("mini"), v -> { winMenu(); return true; }),   // 23/11: 🗗 thu nhỏ tab (app trong máy)
+                new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         topBar.addView(barBtn("⛶", Ui.L("Ẩn thanh — hình to hết màn", "Hide bars — full screen"), v -> { autoFull = false; setFull(true); }),
                 new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         root.addView(topBar, Ui.fill());
@@ -259,8 +259,8 @@ public class ControlActivity extends Activity {
         mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
         mini.addView(miniBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
         mini.addView(miniBtn(pc ? "🖐" : "🔄", pc ? Ui.L("Kiểu chạm · xoay màn", "Touch & rotation") : Ui.L("Xoay ngang / dọc", "Rotate"), () -> { if (pc) pcView(); else quickRotate(); }));
+        if (!pc) mini.addView(miniBtn("↙", Ui.L("Thu nhỏ tab", "Minimize tab"), () -> winTab("mini")));
         mini.addView(miniBtn("⋯", Ui.L("Công cụ", "Tools"), () -> { hideMini(); tools(); }));
-        mini.addView(Minis.button(this, Color.WHITE, Ui.L("Thu nhỏ máy này", "Minimize this phone"), v -> minimize()), new LinearLayout.LayoutParams(Ui.dp(44), Ui.dp(48)));
         mini.addView(miniBtn("⤢", Ui.L("Hiện thanh", "Show bars"), () -> { autoFull = false; setFull(false); }));
         mini.setVisibility(View.GONE);
         stage.addView(mini, new FrameLayout.LayoutParams(-2, Ui.dp(48), Gravity.TOP | Gravity.START));
@@ -318,33 +318,6 @@ public class ControlActivity extends Activity {
         t.setTextColor(Color.WHITE);
         t.setLayoutParams(new LinearLayout.LayoutParams(Ui.dp(44), Ui.dp(48)));
         return t;
-    }
-
-    /** 22/11 · ⊟ THU NHỎ (kiểu Redfinger): đóng màn điều khiển, máy này thành 1 ô nhỏ (hình trực tiếp, chỉ xem — nhẹ) ở dải dưới màn chính.
-     *  Bấm ô đó là vào lại đây. Máy đã có trong dải thì giữ chỗ cũ. Dải đầy (Minis.MAX máy) → báo, vẫn ở lại màn này. */
-    private void minimize() {
-        if (id == null) return;
-        String nm = phone.optString("name", "");
-        if (nm.isEmpty() || "null".equals(nm)) nm = title.getText().toString();
-        int w = pc ? 1920 : 720, hh = pc ? 1080 : 1280;
-        if (!pc) {
-            try {
-                String[] wh = phone.optString("res", "720x1280").toLowerCase(Locale.ROOT).split("x");
-                w = Integer.parseInt(wh[0].trim());
-                hh = Integer.parseInt(wh[1].trim());
-            } catch (Exception ignored) { }
-        }
-        if (haveSize && streamLand != (w > hh)) { int t = w; w = hh; hh = t; }      // máy đang ngang / dọc khác độ phân giải đã mua (game xoay ngang)
-        if (!Minis.add(this, id, pc, nm, w, hh)) {
-            Ui.toast(this, Ui.L("Dải thu nhỏ đã đủ " + Minis.MAX + " máy — bấm ✕ bỏ bớt 1 máy ở màn chính rồi thử lại.",
-                    "You already have " + Minis.MAX + " minimized machines — remove one first."));
-            return;
-        }
-        try {
-            startActivity(new Intent(this, MainActivity.class).putExtra("mini", Minis.key(id, pc))
-                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
-        } catch (Exception ignored) { }
-        finish();
     }
 
     /** Mã máy: từ màn danh sách (extra "id") hoặc từ link blueroblox://phone/<uuid>. */
@@ -957,6 +930,9 @@ public class ControlActivity extends Activity {
                 {"🛍", Ui.L("Kho app", "App store"), (Runnable) this::store},
                 {"▦", Ui.L("Ứng dụng", "Apps"), (Runnable) this::apps},
                 {"🧬", "Clone tab", (Runnable) this::cloneTab},
+                {"↙️", Ui.L("Thu nhỏ tab", "Minimize tab"), (Runnable) () -> winTab("mini")},
+                {"🔲", Ui.L("Sắp xếp tab", "Arrange tabs"), (Runnable) () -> winTab("tile")},
+                {"↗️", Ui.L("Phóng to tab", "Maximize tab"), (Runnable) () -> winTab("full")},
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
                 {"🔓", "Root", (Runnable) this::root},
                 {"🌐", "Proxy", (Runnable) this::proxy},
@@ -980,6 +956,11 @@ public class ControlActivity extends Activity {
         d[0] = Ui.sheet(this, Ui.L("Công cụ", "Tools"), g);
         d[0].show();
     }
+
+    // ---------------- 🗗 Tab cửa sổ nhỏ (23/11): app trong máy thành cửa sổ nhỏ / sắp xếp / phóng to — xem WinTab ----------------
+    private void winTab(String what) { if (!pc && id != null) WinTab.run(this, api, id, what); }
+
+    private void winMenu() { if (!pc && id != null) WinTab.menu(this, api, id); }
 
     private void toggleStats() {
         showStats = !showStats;

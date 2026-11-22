@@ -66,13 +66,6 @@ public class MainActivity extends Activity {
     private final java.util.LinkedHashMap<String, LivePreview> previews = new java.util.LinkedHashMap<>();
     private final Runnable vis = this::checkPreviews;
     private final Rect vr = new Rect();
-    // ⊟ 22/11 · DẢI THU NHỎ (kiểu Redfinger, khách xin): máy khách bấm "Thu nhỏ" → 1 ô nhỏ (● tên · ⤢ · ✕ + hình trực tiếp, chỉ xem)
-    // xếp hàng ngay trên thanh điều hướng, hiện ở mọi tab. Hình của máy đang ở dải nằm ở dải (thẻ máy hiện ô tĩnh) → mỗi máy chỉ 1 phiên xem trước.
-    private LinearLayout trayV;                         // khung dải (ẩn khi chưa thu nhỏ máy nào)
-    private android.widget.HorizontalScrollView traySv;
-    private String traySig = null, trayFlash = null;    // dấu vân tay lần vẽ trước · máy vừa thu nhỏ (viền sáng + cuộn tới)
-    private final java.util.HashSet<String> trayOwn = new java.util.HashSet<>();                 // máy đang có ô (mở rộng) ở dải
-    private final java.util.HashMap<String, FrameLayout> trayBody = new java.util.HashMap<>();   // ô hình của từng máy (đổi cỡ tại chỗ khi máy xoay)
     // Chữ "Còn … ngày" tự cập nhật mỗi lần tải lại, không vẽ lại cả trang (vẽ lại = ô xem trước nháy + mất vị trí cuộn)
     private final java.util.ArrayList<Runnable> ticks = new java.util.ArrayList<>(), gridTicks = new java.util.ArrayList<>();
     private String phonesSig = null;
@@ -233,13 +226,6 @@ public class MainActivity extends Activity {
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
 
-        // ⊟ 22/11 · dải máy thu nhỏ (ẩn khi trống) — nằm trên thanh điều hướng, giữ nguyên khi đổi tab
-        trayV = Ui.col(this, 6);
-        trayV.setVisibility(View.GONE);
-        LinearLayout.LayoutParams trLp = Ui.fill();
-        trLp.setMargins(Ui.dp(10), Ui.dp(2), Ui.dp(10), 0);
-        root.addView(trayV, trLp);
-
         // Thanh điều hướng dưới
         LinearLayout bar = Ui.row(this, 0);
         bar.setBackground(Ui.ringed(Ui.PANEL, 99));                   // 16/11c: thanh điều hướng nổi, bo tròn hẳn
@@ -266,23 +252,8 @@ public class MainActivity extends Activity {
 
         askNotifyPermission();
         Updater.check(this, false);                 // có bản app mới → hiện thông báo cập nhật ngay trong app
-        trayFlash = getIntent().getStringExtra("mini");
-        if (trayFlash != null) { Minis.setCollapsed(this, false); getIntent().removeExtra("mini"); }
-        renderTray();                               // ⊟ dải thu nhỏ vẽ trước danh sách (biết máy nào hình nằm ở dải)
         show(getIntent().getIntExtra("tab", 0));
         refresh();
-    }
-
-    /** ⊟ 22/11 · màn điều khiển vừa bấm "Thu nhỏ" (màn này đang mở sẵn bên dưới) → mở dải, ô máy đó sáng viền + cuộn tới. */
-    @Override protected void onNewIntent(Intent i) {
-        super.onNewIntent(i);
-        String k = i == null ? null : i.getStringExtra("mini");
-        if (k == null || destroyed) return;
-        Minis.setCollapsed(this, false);
-        trayFlash = k;
-        traySig = null;
-        renderTray();
-        if (tab == 0) { phonesSig = null; renderPhones(); }      // thẻ máy đó nhường hình cho dải
     }
 
     private final Reboots.Watch rbWatch = (pid, done, ok, msg) -> {      // 16/11c: máy bắt đầu / xong khởi động lại → vẽ lại thẻ máy
@@ -364,7 +335,6 @@ public class MainActivity extends Activity {
             else if (tab == 3) { if (!loaded || prof.optDouble("balance", 0) != vpsBal) renderVps(); }   // VPS GPU: vẽ lại khi số dư đổi (nạp / mua xong)
             else if (!loaded) renderRent();          // lần đầu: vẽ lại bảng thuê với giá và giới hạn thật
             loaded = true;
-            renderTray();                            // ⊟ dải thu nhỏ: trạng thái / tên máy mới (không đổi gì thì không vẽ lại)
             boolean pending = false;
             for (int i = 0; i < phones.length(); i++) if ("pending".equals(phones.optJSONObject(i).optString("status"))) pending = true;
             if (resumed) h.postDelayed(poll, pending ? 8000 : 30000);    // đang ở màn khác → thôi tự tải lại (quay về onResume tải ngay)
@@ -447,7 +417,7 @@ public class MainActivity extends Activity {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
             nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 99, 0) : null);
         }
-        if (t != 0) { releasePreviews(trayOwn); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng) — trừ ô ở dải ⊟ thu nhỏ
+        if (t != 0) { releasePreviews(); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng)
         if (t == 3) PcVps.tErrAt = 0;                    // vào tab VPS GPU → đọc lại bảng giá (kể cả lần trước lỗi)
         if (t == 0) renderPhones(); else if (t == 1) renderRent(); else if (t == 3) renderVps(); else renderAccount();
     }
@@ -474,7 +444,7 @@ public class MainActivity extends Activity {
     }
 
     /** Bảng giá VPS GPU vừa tải / vừa mua xong → vẽ lại nếu đang ở tab VPS GPU. */
-    void vpsChanged() { if (!destroyed && tab == 3) renderVps(); vpsGrid(); renderTray(); }      // 22.11c: + lưới "Xem tất cả" (ô VPS GPU) · 22/11: + dải ⊟ thu nhỏ
+    void vpsChanged() { if (!destroyed && tab == 3) renderVps(); vpsGrid(); }      // 22.11c: + lưới "Xem tất cả" (ô VPS GPU)
 
     private ScrollView page(LinearLayout body) {
         body.setPadding(Ui.dp(16), Ui.dp(6), Ui.dp(16), Ui.dp(24));
@@ -522,7 +492,7 @@ public class MainActivity extends Activity {
         if (destroyed) return;
         final int keepY = phonesSv != null && phonesSv.getParent() != null ? phonesSv.getScrollY() : 0;   // vẽ lại giữ nguyên chỗ đang cuộn
         ticks.clear();
-        parkPreviews(trayOwn);                      // sắp chuyển mọi ô xem trước sang thẻ mới → dừng bộ giải mã trước, song song (ô ở dải ⊟ chạy tiếp)
+        parkPreviews();                             // sắp chuyển mọi ô xem trước sang thẻ mới → dừng bộ giải mã trước, song song
         LinearLayout body = Ui.col(this, 14);
         if (status.optBoolean("maint", false)) {
             LinearLayout m = Ui.card(this);
@@ -710,21 +680,14 @@ public class MainActivity extends Activity {
 
     // ---------------- Ô xem trước trực tiếp ----------------
     /** Ô xem trước của máy p: lấy lại ô cũ (gỡ khỏi chỗ cũ, hình chạy tiếp) hoặc tạo mới; ô tĩnh vẽ theo trạng thái hiện tại. */
-    private LivePreview livePreview(JSONObject p, float iconSp) { return livePreview(p, iconSp, cardMaxh()); }
-
-    /** Cạnh dài hình ô xem trước ở thẻ máy / "Xem tất cả": 4G/5G → nhỏ hơn, đỡ tốn dữ liệu. */
-    private int cardMaxh() { return "c".equals(StreamClient.netTag(this)) ? 320 : 480; }
-
-    private LivePreview livePreview(JSONObject p, float iconSp, int maxh) {
+    private LivePreview livePreview(JSONObject p, float iconSp) {
         String id = p.optString("id");
         LivePreview lp = previews.get(id);
         if (lp == null) {
             int[] wh = resWH(p);
-            lp = new LivePreview(this, id, wh[0], wh[1], maxh);
+            lp = new LivePreview(this, id, wh[0], wh[1], "c".equals(StreamClient.netTag(this)) ? 320 : 480);   // 4G/5G → ô nhỏ hơn, đỡ tốn dữ liệu
             previews.put(id, lp);
         }
-        lp.setMaxh(maxh);
-        lp.onSize = null;                           // ô ở dải ⊟ thu nhỏ tự gắn lại sau
         lp.setCover(phoneTile(p, iconSp));
         ViewParent vp = lp.getParent();
         if (vp instanceof ViewGroup) ((ViewGroup) vp).removeView(lp);
@@ -751,22 +714,6 @@ public class MainActivity extends Activity {
         dropAll(all);
     }
 
-    /** Bỏ hết ô xem trước TRỪ các máy trong keep (ô ở dải ⊟ thu nhỏ vẫn phát khi khách sang tab khác). */
-    private void releasePreviews(java.util.Set<String> keep) {
-        if (keep == null || keep.isEmpty()) { releasePreviews(); return; }
-        java.util.ArrayList<LivePreview> gone = new java.util.ArrayList<>();
-        java.util.Iterator<java.util.Map.Entry<String, LivePreview>> it = previews.entrySet().iterator();
-        while (it.hasNext()) {
-            java.util.Map.Entry<String, LivePreview> e = it.next();
-            if (keep.contains(e.getKey())) continue;
-            gone.add(e.getValue());
-            it.remove();
-        }
-        dropAll(gone);
-        h.removeCallbacks(vis);
-        if (resumed && !previews.isEmpty()) h.postDelayed(vis, 300);
-    }
-
     /** Bỏ hẳn các ô: tắt hết (bộ giải mã các ô dừng song song) → gỡ khỏi màn hình (Surface huỷ khi đã thôi vẽ) → giải phóng luồng giải mã. */
     private static void dropAll(java.util.List<LivePreview> l) {
         for (LivePreview lp : l) lp.pause();
@@ -780,10 +727,6 @@ public class MainActivity extends Activity {
     /** Trước khi chuyển hàng loạt ô (vẽ lại danh sách, mở / đóng "Xem tất cả"): dừng bộ giải mã mọi ô cùng lúc. */
     private void parkPreviews() {
         for (LivePreview lp : previews.values()) lp.park();
-    }
-
-    private void parkPreviews(java.util.Set<String> skip) {
-        for (java.util.Map.Entry<String, LivePreview> e : previews.entrySet()) if (!skip.contains(e.getKey())) e.getValue().park();
     }
 
     /** Mỗi giây (khi đang mở màn này): bật ô đang hiện trên màn hình, tạm dừng ô khuất quá 5 giây; tối đa MAX_LIVE ô phát cùng lúc. */
@@ -880,304 +823,18 @@ public class MainActivity extends Activity {
     }
 
     /** 22.11c · ô xem trước của 1 VPS GPU (khoá "pc:" + mã máy — không lẫn với Cloud Phone), lấy lại ô cũ nếu có. */
-    private LivePreview vpsPreview(JSONObject x, float iconSp) { return vpsPreview(x, iconSp, cardMaxh()); }
-
-    private LivePreview vpsPreview(JSONObject x, float iconSp, int maxh) {
+    private LivePreview vpsPreview(JSONObject x, float iconSp) {
         String id = x.optJSONObject("pc").optString("id"), key = "pc:" + id;
         LivePreview lp = previews.get(key);
         if (lp == null) {
-            lp = new LivePreview(this, id, 1920, 1080, maxh, true);    // máy PC: màn ngang 16:9
+            lp = new LivePreview(this, id, 1920, 1080, "c".equals(StreamClient.netTag(this)) ? 320 : 480, true);    // máy PC: màn ngang 16:9
             previews.put(key, lp);
         }
-        lp.setMaxh(maxh);
-        lp.onSize = null;
         lp.setCover(vpsTile(x, iconSp));
         ViewParent vp = lp.getParent();
         if (vp instanceof ViewGroup) ((ViewGroup) vp).removeView(lp);
         lp.hiddenAt = 0;
         return lp;
-    }
-
-    // ---------------- ⊟ 22/11 · DẢI THU NHỎ (kiểu Redfinger — khách xin) ----------------
-    private static final int C_MINI = Color.rgb(11, 20, 40);
-    private final java.util.HashSet<String> trayAll = new java.util.HashSet<>();     // mọi máy trong dải (kể cả lúc thu gọn) — nút ⊟ trên thẻ máy sáng lên
-    private final java.util.HashMap<String, Long> trayGone = new java.util.HashMap<>(); // máy vắng khỏi danh sách từ lúc nào (vắng > 2 phút mới bỏ khỏi dải)
-
-    /** Cloud Phone theo mã trong danh sách đã tải (null = không có / chưa tải). */
-    private JSONObject phoneById(String id) {
-        for (int i = 0; i < phones.length(); i++) {
-            JSONObject p = phones.optJSONObject(i);
-            if (p != null && id.equals(p.optString("id"))) return p;
-        }
-        return null;
-    }
-
-    /** VPS GPU (đang thuê, đã giao máy) theo mã máy PC — null nếu không có / chưa tải. */
-    private static JSONObject vpsById(String id) {
-        for (JSONObject x : PcVps.gridItems()) {
-            JSONObject pc = x.optJSONObject("pc");
-            if (pc != null && id.equals(pc.optString("id"))) return x;
-        }
-        return null;
-    }
-
-    /** Vẽ (lại) dải máy thu nhỏ. Không đổi gì (máy, trạng thái, tên, cỡ, mở / thu gọn) → giữ nguyên: hình chạy liền, không nháy. */
-    void renderTray() {
-        if (destroyed || trayV == null) return;
-        java.util.List<Minis.Item> items = Minis.list(this);
-        if (loaded && !items.isEmpty()) {                       // máy đã xoá / chuyển đi / hết quyền (vắng > 2 phút, tránh lỗi mạng thoáng qua) → tự bỏ khỏi dải
-            java.util.HashSet<String> alive = new java.util.HashSet<>();
-            for (int i = 0; i < phones.length(); i++) { JSONObject p = phones.optJSONObject(i); if (p != null) alive.add(p.optString("id")); }
-            boolean pcKnown = PcVps.mine != null;
-            long now = SystemClock.elapsedRealtime();
-            for (Minis.Item it : items) {
-                if (it.pc && pcKnown && PcVps.knows(it.id)) alive.add(it.key());
-                boolean known = it.pc ? pcKnown : true;
-                if (!known || alive.contains(it.key())) { trayGone.remove(it.key()); continue; }
-                Long t0 = trayGone.get(it.key());
-                if (t0 == null) trayGone.put(it.key(), now);
-                else if (now - t0 < 120_000L) alive.add(it.key());      // mới vắng → giữ thêm
-            }
-            for (Minis.Item it : items) if (!trayGone.containsKey(it.key())) alive.add(it.key());
-            if (Minis.retain(this, alive, true, pcKnown)) items = Minis.list(this);
-        }
-        final boolean col = Minis.collapsed(this);
-        final int sz = Minis.size(this);
-        boolean anyPc = false;
-        StringBuilder sb = new StringBuilder(160).append(col).append('|').append(sz).append('|').append(gridOpen()).append('|')
-                .append(maintBlocks()).append('|').append(isAdmin()).append('|').append(loaded).append('|').append(PcVps.mine != null);
-        for (Minis.Item it : items) {
-            sb.append('\n').append(it.key()).append('|').append(it.name);
-            if (it.pc) {
-                anyPc = true;
-                JSONObject x = vpsById(it.id);
-                sb.append('|').append(x == null ? "-" : PcVps.liveNow(this, x) + "|" + x.optJSONObject("pc").optString("name") + "|" + PcVps.state(x)[0]);
-            } else {
-                JSONObject p = phoneById(it.id);
-                sb.append('|').append(p == null ? "-" : canCtl(p) + "|" + p.optString("name") + "|" + p.optString("status") + "|" + locked(p));
-            }
-        }
-        if (anyPc) PcVps.ensureMine(this);                       // dải có VPS GPU mà chưa tải danh sách VPS → tải ngầm
-        trayAll.clear();
-        for (Minis.Item it : items) trayAll.add(it.key());
-        String sig = sb.toString();
-        if (sig.equals(traySig) && trayFlash == null) return;
-        traySig = sig;
-
-        final int keepX = traySv != null ? traySv.getScrollX() : 0;
-        for (String k : trayOwn) { LivePreview lp = previews.get(k); if (lp != null) lp.park(); }   // sắp gỡ ô → dừng bộ giải mã trước (song song)
-        trayV.removeAllViews();
-        trayBody.clear();
-        trayOwn.clear();
-        traySv = null;
-        if (items.isEmpty()) { trayV.setVisibility(View.GONE); trayFlash = null; return; }
-        if (!col) for (Minis.Item it : items) trayOwn.add(it.key());
-        trayV.setVisibility(View.VISIBLE);
-        trayV.setBackground(Ui.round(Ui.PANEL, 18, Ui.LINE));
-        trayV.setPadding(Ui.dp(10), Ui.dp(4), Ui.dp(4), col ? Ui.dp(4) : Ui.dp(8));
-
-        // thanh đầu dải: [⊟] Thu nhỏ · n   [Cỡ: Vừa] [✕ Bỏ hết]  ▾
-        LinearLayout hd = Ui.row(this, 6);
-        hd.setGravity(Gravity.CENTER_VERTICAL);
-        android.widget.ImageView ic = new android.widget.ImageView(this);
-        ic.setImageDrawable(Minis.icon(Ui.SKY));
-        ic.setScaleType(android.widget.ImageView.ScaleType.CENTER);
-        hd.addView(ic, new LinearLayout.LayoutParams(Ui.dp(24), Ui.dp(30)));
-        TextView tt = Ui.text(this, col ? Ui.L(items.size() + " máy đang thu nhỏ — bấm để mở", items.size() + " minimized — tap to show")
-                : Ui.L("Thu nhỏ", "Minimized") + " · " + items.size(), 13.5f, Ui.FG, true);
-        tt.setSingleLine(true);
-        tt.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        hd.addView(tt, Ui.weight(1));
-        if (!col) {
-            TextView szb = Ui.pill(this, Ui.L("Cỡ: ", "Size: ") + Minis.sizeName(sz), Ui.SKY);
-            szb.setSingleLine(true);
-            szb.setContentDescription(Ui.L("Đổi cỡ ô thu nhỏ (Nhỏ · Vừa · To)", "Change window size (S · M · L)"));
-            szb.setOnClickListener(v -> { Minis.setSize(this, (Minis.size(this) + 1) % 3); traySig = null; renderTray(); });
-            hd.addView(szb, Ui.wrap());
-            if (items.size() >= 2) {
-                TextView clr = Ui.pill(this, "✕ " + Ui.L("Bỏ hết", "Clear"), Ui.SKY);
-                clr.setSingleLine(true);
-                clr.setOnClickListener(v -> Ui.confirm(this, Ui.L("Bỏ hết máy thu nhỏ?", "Clear all minimized?"),
-                        Ui.L("Các máy vẫn chạy bình thường — chỉ bỏ ô nhỏ khỏi dải.", "The machines keep running — only the small windows are removed."),
-                        Ui.L("Bỏ hết", "Clear"), () -> { Minis.clear(this); afterTrayChange(); }));
-                hd.addView(clr, Ui.wrap());
-            }
-        }
-        TextView tg = Ui.text(this, col ? "▴" : "▾", 18, Ui.MUTED, true);
-        tg.setGravity(Gravity.CENTER);
-        tg.setContentDescription(col ? Ui.L("Mở dải thu nhỏ", "Show minimized") : Ui.L("Thu gọn dải", "Collapse"));
-        Ui.ripple(tg, Color.TRANSPARENT, 99, 0);
-        hd.addView(tg, new LinearLayout.LayoutParams(Ui.dp(36), Ui.dp(32)));
-        View.OnClickListener tog = v -> { Minis.setCollapsed(this, !Minis.collapsed(this)); afterTrayChange(); };
-        tg.setOnClickListener(tog);
-        tt.setOnClickListener(tog);
-        ic.setOnClickListener(tog);
-        trayV.addView(hd, Ui.fill());
-        if (col) { trayFlash = null; h.removeCallbacks(vis); if (resumed) h.postDelayed(vis, 300); return; }
-
-        final android.widget.HorizontalScrollView sv = new android.widget.HorizontalScrollView(this);
-        sv.setHorizontalScrollBarEnabled(false);
-        sv.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        LinearLayout row = Ui.row(this, 8);
-        row.setGravity(Gravity.TOP);
-        row.setPadding(0, 0, Ui.dp(6), 0);
-        View flashV = null;
-        for (Minis.Item it : items) {
-            View t = trayTile(it, sz);
-            row.addView(t, Ui.wrap());
-            if (it.key().equals(trayFlash)) flashV = t;
-        }
-        sv.addView(row);
-        trayV.addView(sv, Ui.fill());
-        traySv = sv;
-        final View fv = flashV;
-        if (fv != null) {
-            sv.post(() -> sv.smoothScrollTo(Math.max(0, fv.getLeft() - Ui.dp(8)), 0));
-            h.postDelayed(() -> { if (fv.getParent() != null) fv.setBackground(Ui.round(C_MINI, 10, fv.getTag() instanceof Integer ? (Integer) fv.getTag() : Color.argb(110, 61, 220, 132))); }, 1800);   // viền sáng 1,8 giây
-        } else if (keepX > 0) sv.post(() -> sv.scrollTo(keepX, 0));
-        trayFlash = null;
-        h.removeCallbacks(vis);
-        if (resumed) h.postDelayed(vis, 300);
-    }
-
-    /** Cỡ ô hình (px): máy dọc cao 140 · 190 · 250 dp, máy ngang rộng 160 · 210 · 280 dp (Nhỏ · Vừa · To); không quá 70 % rộng / 36 % cao màn hình.
-     *  Rộng tối thiểu 112 dp cho thanh tên (● tên · ⤢ · ✕) — hình hẹp hơn thì có viền đen 2 bên. */
-    private int[] traySize(Minis.Item it, int sz) {
-        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
-        float w, hh;
-        if (it.land()) { w = Ui.dp(new int[]{160, 210, 280}[sz]); hh = w * it.h / it.w; }
-        else { hh = Ui.dp(new int[]{140, 190, 250}[sz]); w = hh * it.w / it.h; }
-        float k = Math.min(1f, Math.min(dm.widthPixels * 0.7f / w, dm.heightPixels * 0.36f / hh));
-        return new int[]{Math.max(Ui.dp(112), Math.round(w * k)), Math.max(Ui.dp(56), Math.round(hh * k))};
-    }
-
-    /** 1 ô của dải: thanh tên (● tên · ⤢ phóng to · ✕ bỏ) + hình (máy đang chạy: phát trực tiếp, chỉ xem; không chạy: ô tĩnh + trạng thái). */
-    private View trayTile(Minis.Item it, int sz) {
-        final String key = it.key();
-        final JSONObject p = it.pc ? null : phoneById(it.id), x = it.pc ? vpsById(it.id) : null;
-        final boolean live = it.pc ? x != null && PcVps.liveNow(this, x) : p != null && canCtl(p);
-        String nm = p != null ? p.optString("name", "") : x != null ? x.optJSONObject("pc").optString("name", "") : "";
-        if (nm.isEmpty() || "null".equals(nm)) nm = it.name;
-        else if (!nm.equals(it.name)) Minis.rename(this, key, nm);
-        if (nm == null || nm.isEmpty()) nm = it.pc ? "VPS GPU" : Ui.L("Máy", "Phone");
-        final String name = nm;
-
-        LivePreview lp = null;
-        if (live && !gridOpen()) {
-            lp = it.pc ? vpsPreview(x, 16, Minis.PREVIEW_MAXH) : livePreview(p, 16, Minis.PREVIEW_MAXH);
-            int vw = lp.videoW(), vh = lp.videoH();
-            if (vw > 0 && vh > 0 && (vw > vh) != it.land()) { Minis.setWH(this, key, vw, vh); it.w = vw; it.h = vh; }   // máy đang ngang / dọc khác lần trước
-            lp.onSize = (l, w, hh) -> trayResize(key, w, hh);
-        }
-        int[] bs = traySize(it, sz);
-        LinearLayout t = Ui.col(this, 0);
-        final int ring = live ? Color.argb(110, 61, 220, 132) : Color.argb(90, 255, 93, 108);
-        t.setBackground(Ui.round(C_MINI, 10, key.equals(trayFlash) ? Ui.SKY : ring));
-        t.setTag(ring);
-        int bz = Ui.dp(2);
-        t.setPadding(bz, bz, bz, bz);
-
-        LinearLayout hd = Ui.row(this, 0);
-        hd.setGravity(Gravity.CENTER_VERTICAL);
-        hd.setPadding(Ui.dp(6), 0, 0, 0);
-        TextView dot = Ui.text(this, "●", 9, live ? Ui.OK : (p == null && x == null) ? Ui.MUTED : Ui.BAD, false);
-        hd.addView(dot, Ui.wrap());
-        TextView lb = Ui.text(this, " " + name, 11.5f, Color.WHITE, true);
-        lb.setSingleLine(true);
-        lb.setEllipsize(android.text.TextUtils.TruncateAt.END);
-        hd.addView(lb, Ui.weight(1));
-        hd.addView(miniHeadBtn("⤢", Ui.L("Phóng to — điều khiển máy này", "Maximize — control this machine"), v -> openMini(it)), new LinearLayout.LayoutParams(Ui.dp(28), -1));
-        hd.addView(miniHeadBtn("✕", Ui.L("Bỏ khỏi dải thu nhỏ (máy vẫn chạy)", "Remove from the strip (it keeps running)"), v -> unMini(key)), new LinearLayout.LayoutParams(Ui.dp(28), -1));
-        hd.setOnClickListener(v -> openMini(it));
-        t.addView(hd, new LinearLayout.LayoutParams(-1, Ui.dp(26)));
-
-        FrameLayout box = new FrameLayout(this);
-        box.setBackgroundColor(Color.BLACK);
-        View v = lp != null ? lp : p != null ? phoneTile(p, 16) : x != null ? vpsTile(x, 16) : goneTile(it);
-        box.addView(v, new FrameLayout.LayoutParams(-1, -1));
-        box.setOnClickListener(vv -> openMini(it));
-        box.setContentDescription(name + " — " + Ui.L("bấm để điều khiển", "tap to control"));
-        trayBody.put(key, box);
-        t.addView(box, new LinearLayout.LayoutParams(bs[0], bs[1]));
-        return t;
-    }
-
-    private TextView miniHeadBtn(String icon, String desc, View.OnClickListener on) {
-        TextView b = Ui.text(this, icon, 14, Color.WHITE, true);
-        b.setGravity(Gravity.CENTER);
-        b.setContentDescription(desc);
-        if (Build.VERSION.SDK_INT >= 26) b.setTooltipText(desc);
-        Ui.ripple(b, Color.TRANSPARENT, 8, 0);
-        b.setOnClickListener(on);
-        return b;
-    }
-
-    /** Ô tĩnh khi chưa biết máy (đang tải danh sách) / máy không còn chạy. */
-    private View goneTile(Minis.Item it) {
-        LinearLayout t = Ui.col(this, 2);
-        t.setGravity(Gravity.CENTER);
-        TextView ic = Ui.text(this, it.pc ? "🖥️" : "📱", 16, Color.WHITE, false);
-        ic.setGravity(Gravity.CENTER);
-        t.addView(ic, Ui.fill());
-        boolean known = it.pc ? PcVps.mine != null : loaded;
-        TextView tx = Ui.text(this, known ? Ui.L("Máy chưa chạy", "Not running") : Ui.L("Đang tải…", "Loading…"), 11, Color.argb(200, 255, 255, 255), true);
-        tx.setGravity(Gravity.CENTER);
-        t.addView(tx, Ui.fill());
-        return t;
-    }
-
-    /** Máy ở dải vừa xoay ngang / dọc → nhớ + đổi cỡ ô ngay tại chỗ (không vẽ lại cả dải → hình chạy liền). */
-    private void trayResize(String key, int w, int hh) {
-        if (destroyed) return;
-        Minis.setWH(this, key, w, hh);
-        Minis.Item it = Minis.find(Minis.list(this), key);
-        FrameLayout box = trayBody.get(key);
-        if (it == null || box == null || box.getParent() == null) return;
-        int[] bs = traySize(it, Minis.size(this));
-        ViewGroup.LayoutParams lp = box.getLayoutParams();
-        if (lp != null && (lp.width != bs[0] || lp.height != bs[1])) { lp.width = bs[0]; lp.height = bs[1]; box.setLayoutParams(lp); }
-    }
-
-    /** Bấm ô / ⤢ ở dải: vào điều khiển máy đó (máy chưa chạy → báo). */
-    private void openMini(Minis.Item it) {
-        if (it.pc) {
-            JSONObject x = vpsById(it.id);
-            if (x != null && !PcVps.liveNow(this, x)) { Ui.toast(this, PcVps.state(x)[1]); return; }
-            if (x == null && PcVps.mine != null) { Ui.toast(this, Ui.L("VPS này chưa chạy — xem ở tab VPS GPU.", "This VPS isn't running — see the GPU VPS tab.")); return; }
-            PcVps.control(this, it.id, x != null ? x.optJSONObject("pc").optString("name", it.name) : it.name);
-            return;
-        }
-        JSONObject p = phoneById(it.id);
-        if (p != null && !canCtl(p)) {
-            Ui.toast(this, Ui.L("Máy chưa chạy — xem trạng thái ở Máy của tôi.", "This phone isn't running — check My devices."));
-            if (tab != 0) show(0);
-            return;
-        }
-        if (p == null && loaded) { Ui.toast(this, Ui.L("Không còn máy này trong tài khoản.", "This phone is no longer on your account.")); return; }
-        startActivity(new Intent(this, ControlActivity.class).putExtra("id", it.id));
-    }
-
-    private void unMini(String key) { Minis.remove(this, key); afterTrayChange(); }
-
-    /** ⊟ nút trên thẻ máy: thu nhỏ máy vào dải (đang ở dải → bỏ ra, hình về lại thẻ). */
-    private void miniToggle(String id, boolean pc, String name, int[] wh) {
-        String key = Minis.key(id, pc);
-        if (Minis.has(this, key)) { unMini(key); return; }
-        if (!Minis.add(this, id, pc, name, wh[0], wh[1])) {
-            Ui.toast(this, Ui.L("Dải thu nhỏ đã đủ " + Minis.MAX + " máy — bấm ✕ bỏ bớt 1 máy.", "The strip already has " + Minis.MAX + " machines — remove one first."));
-            return;
-        }
-        Minis.setCollapsed(this, false);
-        trayFlash = key;
-        afterTrayChange();
-    }
-
-    /** Dải đổi (thêm / bỏ máy, mở / thu gọn): vẽ lại dải rồi danh sách (hình về đúng chỗ); đang ở tab khác → tắt hình không còn ai hiện. */
-    private void afterTrayChange() {
-        traySig = null;
-        renderTray();
-        if (tab == 0) { phonesSig = null; renderPhones(); }
-        else releasePreviews(trayOwn);
     }
 
     // ---------------- XEM TẤT CẢ MÁY: lưới mọi máy phát hình trực tiếp + trạng thái (khách có nhiều máy theo dõi 1 lần) ----------------
@@ -1199,8 +856,6 @@ public class MainActivity extends Activity {
             gridRoot = null;
             gridSv = null;
             gridTicks.clear();
-            traySig = null;
-            if (!isFinishing()) renderTray();                    // ⊟ ô ở dải thu nhỏ lấy lại hình
             if (!isFinishing() && tab == 0) renderPhones();     // ô xem trước về lại thẻ máy trong danh sách
         });
         gridDlg = d;
@@ -1410,28 +1065,11 @@ public class MainActivity extends Activity {
         boolean canCtl = canCtl(p);
         if (canCtl) {                                    // màn hình máy phát TRỰC TIẾP (hình nhỏ, chỉ xem) — bấm vào để điều khiển
             final String pid = p.optString("id");
-            final boolean inTray = trayOwn.contains(pid) && !gridOpen(), isMini = trayAll.contains(pid);
             FrameLayout box = new FrameLayout(this);
             box.setBackground(Ui.round(Color.rgb(2, 4, 12), 10, Color.argb(60, 120, 160, 255)));
             int bz = Ui.dp(4);
             box.setPadding(bz, bz, bz, bz);              // viền bo góc bao quanh hình (góc hình vuông nằm gọn trong viền)
-            box.addView(gridOpen() || inTray ? phoneTile(p, 30) : livePreview(p, 30), new FrameLayout.LayoutParams(-1, -1));   // đang mở "Xem tất cả" / máy ở dải ⊟ → hình nằm bên đó
-            if (inTray) {                                // ⊟ 22/11: hình của máy này đang chạy ở dải thu nhỏ (mỗi máy chỉ 1 phiên xem trước)
-                TextView nt = Ui.text(this, Ui.L("Hình đang ở dải thu nhỏ bên dưới", "Live view is in the minimized strip below"), 11, Color.WHITE, true);
-                nt.setGravity(Gravity.CENTER);
-                nt.setBackground(Ui.round(Color.argb(190, 10, 22, 46), 8, 0));
-                nt.setPadding(Ui.dp(8), Ui.dp(3), Ui.dp(8), Ui.dp(4));
-                FrameLayout.LayoutParams nl = new FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
-                nl.setMargins(Ui.dp(6), 0, Ui.dp(6), Ui.dp(6));
-                box.addView(nt, nl);
-            }
-            final String pnm = p.optString("name", "");
-            android.widget.ImageView mb = Minis.button(this, Color.WHITE, isMini ? Ui.L("Bỏ khỏi dải thu nhỏ", "Remove from the minimized strip")
-                    : Ui.L("Thu nhỏ — xem máy này ở dải dưới màn hình", "Minimize — watch this phone in the bottom strip"), v -> miniToggle(pid, false, pnm, resWH(p)));
-            Ui.ripple(mb, isMini ? Color.argb(235, 43, 110, 240) : Color.argb(175, 10, 22, 46), 99, Color.argb(110, 255, 255, 255));
-            FrameLayout.LayoutParams ml = new FrameLayout.LayoutParams(Ui.dp(36), Ui.dp(36), Gravity.TOP | Gravity.END);
-            ml.setMargins(0, Ui.dp(6), Ui.dp(6), 0);
-            box.addView(mb, ml);
+            box.addView(gridOpen() ? phoneTile(p, 30) : livePreview(p, 30), new FrameLayout.LayoutParams(-1, -1));   // đang mở "Xem tất cả" → hình nằm bên đó
             box.setOnClickListener(v -> startActivity(new Intent(this, ControlActivity.class).putExtra("id", pid)));
             int[] wh = resWH(p);
             int bw, bh, maxW = getResources().getDisplayMetrics().widthPixels - Ui.dp(80);
