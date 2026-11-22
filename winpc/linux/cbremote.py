@@ -8,6 +8,9 @@
 #      (cbcap-py) mà tệp .desktop do chương trình này cài cấp quyền → không bao giờ hiện hộp hỏi; KWin chưa cho thì mới đi cổng XDG.
 #      Mở không được → báo người xem lý do cụ thể (trước khi trạm hết 25 giây chờ) + ghi logs/remote.err (agent báo lên web).
 #    · cbcap.py không giữ bí mật nào: mã máy / mã riêng chỉ chương trình root này đọc (/opt/cloudblue, 0700)
+#    · 23.11a: dựng lại danh sách app của KDE (ksycoca) bằng ĐÚNG môi trường phiên Plasma (có XDG_MENU_PREFIX=plasma-) — bản cũ thiếu biến
+#      này nên bộ đệm KHÔNG CÒN APP NÀO (thanh tác vụ 3 ô trắng, menu / tìm kiếm trống: khách tưởng không có Firefox, không mở được terminal);
+#      + lối tắt Firefox · Konsole · Dolphin trên màn hình nền (1 lần / tài khoản)
 #  Lệnh:  cbremote.py run | selfcheck | version          Nhật ký: /opt/cloudblue/logs/remote.log
 # =====================================================================================================
 import fcntl, grp, json, os, pwd, re, socket, subprocess, sys, threading, time
@@ -20,7 +23,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "22.11h"
+LINUX_REMOTE_VER = "23.11a"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"
@@ -30,6 +33,9 @@ SIZE_TTL = 15.0
 OPEN_WAIT = 20.0                                                  # chờ cbcap mở màn hình (cbcap tự giới hạn 17 giây; trạm chờ máy PC 25 giây)
 START_WAIT = 20.0
 KWIN_ONLY_WAIT = 8.0                                              # 22.11h · KWin chưa có quyền mới: chỉ thử KWin (vài giây) rồi báo người xem khởi động lại máy
+SYCOCA_KEYS = ("XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "XDG_MENU_PREFIX", "XDG_CURRENT_DESKTOP",
+               "LANG", "LANGUAGE", "LC_ALL", "LC_MESSAGES", "KDE_FULL_SESSION", "KDE_SESSION_VERSION")   # 23.11a · tên + nội dung bộ đệm ksycoca theo các biến này
+DESK_APPS = ("firefox.desktop", "org.kde.konsole.desktop", "org.kde.dolphin.desktop")     # 23.11a · lối tắt màn hình nền: trình duyệt · cửa sổ lệnh · thư mục
 
 
 def _load_json(path):
@@ -161,17 +167,60 @@ def kwin_env_ok(user):
         return None
 
 
-def _kwin_pid(uid):
-    """pid kwin_wayland của tài khoản khách (None nếu chưa có)."""
+def _user_pid(uid, comm):
+    """pid tiến trình tên `comm` của tài khoản khách (None nếu chưa có)."""
     for d in os.listdir("/proc"):
         if not d.isdigit(): continue
         try:
             with open("/proc/%s/comm" % d) as f:
-                if f.read().strip() != "kwin_wayland": continue
+                if f.read().strip() != comm: continue
             if os.stat("/proc/%s" % d).st_uid == uid: return int(d)
         except OSError:
             continue
     return None
+
+
+def _kwin_pid(uid):
+    """pid kwin_wayland của tài khoản khách (None nếu chưa có)."""
+    return _user_pid(uid, "kwin_wayland")
+
+
+def _proc_env(pid):
+    """Biến môi trường của 1 tiến trình ({} nếu không đọc được)."""
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as f: raw = f.read().split(b"\0")
+    except (OSError, TypeError):
+        return {}
+    out = {}
+    for kv in raw:
+        k, _, v = kv.decode("utf-8", "replace").partition("=")
+        if k: out[k] = v
+    return out
+
+
+def session_env(uid):
+    """Môi trường phiên Plasma của khách: plasmashell (có đủ XDG_MENU_PREFIX…) → không có thì KWin → {}."""
+    for comm in ("plasmashell", "kwin_wayland"):
+        pid = _user_pid(uid, comm)
+        if pid is not None:
+            e = _proc_env(pid)
+            if e: return e
+    return {}
+
+
+def sycoca_env(env, sess, exists=os.path.isfile):
+    """23.11a — môi trường chạy kbuildsycoca6 GIỐNG phiên Plasma. Thiếu XDG_MENU_PREFIX thì kbuildsycoca6 tìm 'applications.menu' (Arch / CachyOS
+       không có, chỉ có plasma-applications.menu) → không nạp thư mục app nào → bộ đệm rỗng: thanh tác vụ hiện ô trắng, menu và ô tìm kiếm không
+       ra app. Phiên không có biến này (KWin bật sớm…) → tự chọn tiền tố có tệp menu thật (plasma- trước)."""
+    kenv = dict(env)
+    for k in SYCOCA_KEYS:
+        if sess.get(k): kenv[k] = sess[k]
+    if not kenv.get("XDG_MENU_PREFIX"):
+        dirs = [d for d in (kenv.get("XDG_CONFIG_DIRS") or "").split(":") if d.startswith("/")] + ["/etc/xdg"]
+        if not any(exists(os.path.join(d, "menus", "applications.menu")) for d in dirs):
+            pre = next((p for p in ("plasma-", "arch-", "kf6-", "kde-") if any(exists(os.path.join(d, "menus", p + "applications.menu")) for d in dirs)), None)
+            if pre: kenv["XDG_MENU_PREFIX"] = pre
+    return kenv
 
 
 def refresh_sycoca(user, log=lambda m: None, force=False):
@@ -181,19 +230,39 @@ def refresh_sycoca(user, log=lambda m: None, force=False):
     if env is None: return False
     pid = _kwin_pid(pw.pw_uid)
     if pid is None or (pid == _KW["kwin"] and not force): return False
-    kenv = dict(env)
-    try:
-        with open("/proc/%d/environ" % pid, "rb") as f: raw = f.read().split(b"\0")
-        for kv in raw:
-            k, _, v = kv.decode("utf-8", "replace").partition("=")
-            if k in ("XDG_DATA_DIRS", "XDG_CONFIG_DIRS", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "LANG", "LANGUAGE", "XDG_CURRENT_DESKTOP"): kenv[k] = v
-    except OSError:
-        pass
+    kenv = sycoca_env(env, session_env(pw.pw_uid) or _proc_env(pid))      # 23.11a: CÙNG môi trường phiên Plasma (có XDG_MENU_PREFIX)
     r = _run(["kbuildsycoca6"], 120, user=pw.pw_uid, group=pw.pw_gid, env=kenv, cwd=pw.pw_dir)
     ok = r is not None and r.returncode == 0
     _KW["kwin"] = pid
-    log("lam moi danh sach ung dung cua KDE (kbuildsycoca6): %s" % ("xong" if ok else ((r.stderr or b"")[-120:].decode("utf-8", "replace").strip() if r else "khong chay duoc")))
+    log("lam moi danh sach ung dung cua KDE (kbuildsycoca6, menu %s): %s" % (kenv.get("XDG_MENU_PREFIX") or "-",
+        "xong" if ok else ((r.stderr or b"")[-120:].decode("utf-8", "replace").strip() if r else "khong chay duoc")))
     return ok
+
+
+def desktop_shortcuts(user, log=lambda m: None, mark_dir=None, apps_dir=APPS_DIR, names=DESK_APPS, home=None):
+    """23.11a (khách: 'không có trình duyệt, không mở được cmd') — lối tắt Firefox · Konsole · Dolphin lên màn hình nền, 1 LẦN cho mỗi tài khoản
+       (khách xoá thì thôi, không tạo lại). Lối tắt = liên kết tới tệp .desktop của hệ thống (KDE coi là app tin cậy, bấm là mở). Chạy BẰNG TÀI KHOẢN
+       KHÁCH (root không ghi vào thư mục của khách). → True khi đã xong (hoặc đã làm từ trước)."""
+    try: pw = pwd.getpwnam(user)
+    except KeyError: return False
+    mark = os.path.join(mark_dir or BASE, "desktop-shortcuts.%s.done" % user)
+    if os.path.exists(mark): return True
+    srcs = [os.path.join(apps_dir, n) for n in names if os.path.isfile(os.path.join(apps_dir, n))]
+    if not srcs: return False
+    home = home or pw.pw_dir
+    sh = ('d=$(xdg-user-dir DESKTOP 2>/dev/null); case "$d" in ""|"$HOME"|"$HOME/") d="$HOME/Desktop";; esac; mkdir -p "$d" || exit 3; n=0; '
+          'for f in "$@"; do b=${f##*/}; if [ ! -e "$d/$b" ] && [ ! -L "$d/$b" ]; then ln -s "$f" "$d/$b" && n=$((n+1)); fi; done; echo "$n $d"')
+    env = {"HOME": home, "USER": user, "LOGNAME": user, "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}
+    r = _run(["/bin/sh", "-c", sh, "sh"] + srcs, 20, user=pw.pw_uid, group=pw.pw_gid, env=env, cwd=home)
+    if r is None or r.returncode != 0:
+        log("chua tao duoc loi tat man hinh nen: %s" % ((r.stderr or b"")[-120:].decode("utf-8", "replace").strip() if r else "khong chay duoc"))
+        return False
+    try:
+        with open(mark, "w", encoding="utf-8") as f: f.write("%s %s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(names)))
+    except OSError:
+        pass
+    log("loi tat man hinh nen (Firefox / Konsole / Dolphin) cho khach %s: %s" % (user, r.stdout.decode("utf-8", "replace").strip()[:200]))
+    return True
 
 
 # ====================================================================================== tiến trình cbcap.py (tài khoản khách)
@@ -548,12 +617,14 @@ def cmd_run(argv):
     if kwin_env_ok(user) is False: log("KWin dang chay chua co quyen quay man hinh truc tiep -> can khoi dong lai may 1 lan (tam dung cong XDG)")
 
     def prep():
-        """22.11g: cấp quyền KWin cho cbcap-py + làm mới ksycoca NGAY khi khách đăng nhập (không đợi người xem đầu tiên)."""
+        """22.11g: cấp quyền KWin cho cbcap-py + làm mới ksycoca NGAY khi khách đăng nhập (không đợi người xem đầu tiên).
+           23.11a: + lối tắt app trên màn hình nền (1 lần)."""
         for _ in range(120):
             try:
                 py, changed = install_kwin_access(log)
-                if py and refresh_sycoca(user, log, force=changed): return
-                if py and _KW["kwin"] is not None: return
+                if refresh_sycoca(user, log, force=changed) or _KW["kwin"] is not None:    # 23.11a: luôn dựng lại ĐÚNG (sửa bộ đệm rỗng của bản cũ)
+                    desktop_shortcuts(user, log)
+                    return
             except Exception as e:
                 log("chuan bi quyen KWin loi: %r" % (e,))
             time.sleep(15)

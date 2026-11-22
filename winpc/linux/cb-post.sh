@@ -112,7 +112,7 @@ sleep 10
   tail -n 5 /opt/cloudblue/logs/remote.out 2>/dev/null | cut -c1-220
   echo "--- quyen KWin (22.11g)"
   echo "desktop=\$(grep -c '^X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1,org_kde_kwin_fake_input' /usr/share/applications/vn.cloudblue.cbcap.desktop 2>/dev/null) cbcap_py=\$(stat -c %a /usr/local/lib/cloudblue/cbcap-py 2>/dev/null) venv=\$(cat /usr/local/lib/cloudblue/pyvenv.cfg 2>/dev/null | head -1)"
-  grep -a -E "KWin|kbuildsycoca|cbcap-py|cong XDG|mo duoc man hinh" /opt/cloudblue/logs/remote.log 2>/dev/null | tail -n 8 | cut -c1-260
+  grep -a -E "KWin|kbuildsycoca|cbcap-py|cong XDG|mo duoc man hinh|loi tat" /opt/cloudblue/logs/remote.log 2>/dev/null | tail -n 9 | cut -c1-260
   echo "--- cbcap probe (KWin truc tiep, cbcap-py)"
   install -D -m 0644 /opt/cloudblue/linux/cbcap.py /usr/local/lib/cloudblue/cbcap.py
   U=\$(getent passwd 1000 | cut -d: -f1)
@@ -139,6 +139,9 @@ sleep 10
   SE=\$(tr '\n' ' ' < /run/cb-senv 2>/dev/null)
   echo "systemd_user=\$(runuser -u "\$U" -- env \$SE systemctl --user is-system-running 2>&1 | head -1) failed_user=\$(runuser -u "\$U" -- env \$SE systemctl --user --failed --no-legend 2>/dev/null | awk '{print \$2}' | tr '\n' ' ' | cut -c1-300)"
   echo "menu_entries=\$(timeout 60 runuser -u "\$U" -- env \$SE kbuildsycoca6 --menutest 2>/dev/null | wc -l) menu_co: \$(timeout 60 runuser -u "\$U" -- env \$SE kbuildsycoca6 --menutest 2>/dev/null | grep -i -E 'firefox|konsole|dolphin' | cut -c1-80 | tr '\n' ';')"
+  echo "menus=\$(ls /etc/xdg/menus 2>/dev/null | tr '\n' ' ') menu_khong_prefix=\$(timeout 60 runuser -u "\$U" -- env \$(echo "\$SE" | sed 's/XDG_MENU_PREFIX=[^ ]*//') kbuildsycoca6 --menutest 2>/dev/null | wc -l)"
+  echo "ksycoca=\$(ls -l --time-style=+%H:%M:%S /home/\$U/.cache/ksycoca6_* 2>/dev/null | awk '{print \$5"B@"\$6}' | tr '\n' ' ')"
+  echo "man_hinh_nen=\$(ls -l /home/\$U/Desktop 2>/dev/null | awk 'NR>1{print \$9\$10\$11}' | tr '\n' ' ') danh_dau=\$(ls /opt/cloudblue/ 2>/dev/null | grep -c desktop-shortcuts)"
   echo "favorites: \$(grep -h -i -E '^favorites|^favoriteApps|preferred://' /home/\$U/.config/plasma-org.kde.plasma.desktop-appletsrc /etc/xdg/kickoffrc /usr/share/plasma/plasmoids/org.kde.plasma.kickoff/contents/config/main.xml 2>/dev/null | cut -c1-200 | tr '\n' ';')"
   echo "skel: \$(ls -A /etc/skel 2>/dev/null | tr '\n' ' ') home: \$(ls -A /home/\$U 2>/dev/null | tr '\n' ' ') config: \$(ls /home/\$U/.config 2>/dev/null | tr '\n' ' ' | cut -c1-600)"
   for app in konsole firefox dolphin; do
