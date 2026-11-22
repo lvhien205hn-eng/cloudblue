@@ -6,6 +6,8 @@ import os, sys, json, tempfile, time
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 except Exception: pass
 d = tempfile.mkdtemp(); os.environ["APPDATA"] = d; os.environ["HOME"] = d
+os.makedirs(os.path.join(d, "BlueRobloxPC"), exist_ok=True)
+with open(os.path.join(d, "BlueRobloxPC", "settings.json"), "w", encoding="utf-8") as _f: json.dump({"lang": "vi"}, _f)   # chữ tiếng Việt (máy CI Windows tiếng Anh)
 sys.path.insert(0, sys.argv[1])
 import bluepc as B
 
