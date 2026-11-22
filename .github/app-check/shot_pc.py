@@ -170,8 +170,61 @@ PXJ = dict(PXJ, kind="http", show="9.8.7.6:3128:khach:••••", state={"mod
 td.load_proxy(); pump(1.5)
 grab("pc-17-proxy-loi.png")
 td.close(); pump(0.5)
+
+# 22.11c · ▦ Xem tất cả: VPS GPU (ô ngang 16:9, xem trước trực tiếp qua trạm máy PC) + Cloud Phone (ô dọc) · chip lọc khi có cả 2 loại
+from PIL import Image, ImageDraw
+B.LiveTile._start = lambda self, g: None                   # không nối mạng — hình giả được bơm thẳng vào ô
+B.PcTile._start = lambda self, g: None
+
+
+def fake_frame(w, h, title, pc):
+    im = Image.new("RGB", (max(16, w), max(16, h)), (8, 20, 48)); d = ImageDraw.Draw(im)
+    for y in range(h): d.line([(0, y), (w, y)], fill=(10 + y * 40 // max(1, h), 40 + y * 60 // max(1, h), 110 + y * 80 // max(1, h)))
+    if pc:
+        d.rectangle([w * .18, h * .16, w * .78, h * .74], fill=(235, 240, 250), outline=(90, 140, 230))
+        d.rectangle([w * .18, h * .16, w * .78, h * .24], fill=(40, 90, 200))
+        d.rectangle([0, h - max(6, h // 14), w, h], fill=(16, 18, 26))
+        for i in range(4): d.rectangle([6, 8 + i * h // 7, 6 + w // 18, 8 + i * h // 7 + w // 18], fill=(200, 210, 240))
+    else:
+        d.rectangle([w * .08, h * .1, w * .92, h * .22], fill=(255, 255, 255))
+        for i in range(8): d.ellipse([w * (.1 + (i % 4) * .21), h * (.34 + (i // 4) * .14), w * (.1 + (i % 4) * .21) + w * .14, h * (.34 + (i // 4) * .14) + w * .14],
+                                     fill=(60 + i * 20, 160, 255 - i * 15))
+    d.text((8, h // 2 if pc else h - 24), title, fill=(255, 255, 255))
+    return im.width, im.height, im.tobytes()
+
+
+MINE["items"] = [dict(base, rental=31, pc=PCX(1, "139", code="139")), dict(base, rental=32, pc=PCX(2, "140", code="140")),
+                 dict(base, rental=33, pc=PCX(3, "141", code="141", online=False))]
+MINE.pop("power", None)
+LEFT = lambda h: time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() + h * 3600))
+PHONES = [{"id": "00000000-0000-4000-8000-0000000000e%d" % i, "name": "Máy %dGB" % r, "status": st, "ram": r, "android": a, "expires_at": LEFT(hl), "locked": False}
+          for i, (r, a, st, hl) in enumerate(((8, "12", "active", 55), (6, "9", "active", 20), (12, "15", "active", 150), (4, "9", "expired", -2)), 1)]
+FakeAuth.phones = lambda self: list(PHONES)
+app.root.geometry("1280x820+0+0"); repaint(3)
+grab("pc-18-main-vps-xem-tat-ca.png")                     # thẻ VPS GPU của bạn: nút ▦ Xem tất cả
+app.open_wall("all"); pump(2.5)
+wall = next(p for p in app.pages if isinstance(p, B.WallDlg) and p.alive)
+
+
+def feed(sec=2.0):
+    end = time.time() + sec
+    while time.time() < end:
+        for pid, t in list(wall.tiles.items()):
+            if t.playing and t.pending is None and getattr(t, "_fed", 0) < 2:
+                w, h = t.box_wh; nm = next((str(x["pc"]["name"]) for x in wall.pcs if str(x["pc"]["id"]) == pid), None)
+                t.pending = fake_frame(int(w), int(h), ("VPS " + nm) if nm else "Cloud Phone", nm is not None); t._fed = getattr(t, "_fed", 0) + 1
+        pump(0.25)
+
+
+feed(); grab("pc-19-xem-tat-ca.png")                        # Tất cả: VPS GPU (3) + Cloud Phone (4), chip lọc
+ok_chips = len(wall.chips.winfo_children()) == 3 and len(wall.cells) == 7
+wall.set_kind("pc"); pump(1.5); feed()
+grab("pc-20-xem-tat-ca-vps.png")                           # chỉ VPS GPU
+ok_pc = len(wall.cells) == 3 and all(c.get("kind") == "pc" for c in wall.cells.values()) and len(wall.tiles) == 2
+print("lưới Xem tất cả:", "chip + 7 ô" if ok_chips else "SAI chip / số ô", "·", "VPS 3 ô (2 ô phát hình)" if ok_pc else "SAI ô VPS", flush=True)
+wall.close(); pump(0.5)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 17 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+ok = len(mine) == 20 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
