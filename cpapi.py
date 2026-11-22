@@ -674,6 +674,14 @@ def win_area(g):
     return (0, g["top"], g["w"] - g["right"], g["h"] - g["bottom"])
 
 
+def win_fit(g, b):
+    """Dời cửa sổ (giữ cỡ) vào vùng dùng được của màn. Android 10/11: game ngang toàn màn làm màn xoay → cửa sổ sát mép bị đẩy xuống dưới
+       thanh trạng thái → xoay về dọc thì lệch ra ngoài mép trái (VD -48), mà am task resize không nhận số âm."""
+    a = win_area(g); w, h = b[2] - b[0], b[3] - b[1]
+    x = max(a[0], min(b[0], a[2] - w)); y = max(a[1], min(b[1], a[3] - h))
+    return (x, y, x + w, y + h)
+
+
 def win_move_p(sh, t, sdk, sleep=time.sleep):
     """Android 7–10: app khai báo KHÔNG đổi cỡ (nhiều game) không mở thẳng vào cửa sổ nổi được (Android 9 chỉ xét khai báo của app, bỏ qua
        force_resizable; Android 10 không đổi chế độ tab đang chạy) → chuyển NGUYÊN TAB sang khối cửa sổ nổi (am stack move-task, app không
@@ -735,10 +743,10 @@ def win_run(sh, do, sleep=time.sleep):
         if full:
             t = full[0]; done = None
             for attempt in (0, 1):
-                cur = st
-                if sdk < 31 or attempt:                         # Android 9–11: app đang ở trên cùng thì không đổi chế độ được → về màn chính trước
+                cur, fit = st, sdk < 31 or attempt
+                if fit:                                         # Android 9–11: app đang ở trên cùng thì không đổi chế độ được → về màn chính trước
                     home(); cur = win_settle(sh, sleep)         # màn xoay về hướng màn chính (Android 9 xoay theo cả chỗ cửa sổ) → đọc lại chỗ
-                olds = [w for w in win_std(cur, "freeform") if w["id"] != t["id"]]
+                olds = [dict(w, b=win_fit(cur["geo"], w["b"])) if fit else w for w in win_std(cur, "freeform") if w["id"] != t["id"]]
 
                 def up(ws=olds):                                # cửa sổ thu nhỏ trước bị màn chính che → đưa lên lại, giữ đúng chỗ khách đã kéo
                     for w in reversed(ws): win_launch(sh, w, WIN_FREEFORM, sdk); resize(w, w["b"])
