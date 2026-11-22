@@ -9,7 +9,7 @@
 # =====================================================================================================
 import ctypes, json, os, re, subprocess, sys, time
 
-SYS_VER = "21.11d"
+SYS_VER = "22.11c"
 WIN = os.name == "nt"
 COPY_BLOCK = 4 << 20                      # chép tệp theo khối 4MB
 COPY_SAY = 64 << 20                       # tệp từ 64MB trở lên: in tên + dung lượng để biết máy đang chép, không phải treo
@@ -23,11 +23,13 @@ GPT_ESP = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 GPT_MSR = "e3c9e316-0b5c-4db8-817d-f92df00215ae"
 GPT_DATA = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
 GPT_WINRE = "de94bba4-06d1-4d40-a16a-bfd50179d6ac"
+GPT_LINUX = "0fc63daf-8483-4772-8e79-3d69d8477de4"          # 22.11c · phân vùng Linux (CachyOS)
 GPT_ATTR_REQUIRED = 0x0000000000000001
 GPT_ATTR_NO_LETTER = 0x8000000000000000
 GPT_ATTR_HIDDEN = 0x4000000000000000
 MBR_HIDDEN_NTFS = 0x27                    # phân vùng khôi phục (không gán chữ ổ)
 MBR_EXTENDED = (0x05, 0x0F)
+EFI_GLOBAL = "{8BE4DF61-93CA-11D2-AA0D-00E098032B8C}"     # nhóm biến UEFI chung (Boot####, BootOrder, BootNext, SecureBoot)
 
 
 class Part:
@@ -203,6 +205,56 @@ class WinSys:
                 return "uefi" if int(winreg.QueryValueEx(k, "PEFirmwareType")[0]) == 2 else "bios"
         except Exception: pass
         return "uefi" if os.path.isdir(os.path.join(os.environ.get("SystemRoot", r"X:\Windows"), "Boot", "EFI")) and not os.environ.get("CB_FORCE_BIOS") else "bios"
+
+    # ------------------------------------------------------------------ 22.11c · biến UEFI (NVRAM): mục khởi động, khởi động 1 lần (BootNext)
+    def _efi_api(self):
+        """Nạp 2 hàm đọc / ghi biến UEFI + bật quyền SeSystemEnvironmentPrivilege (SYSTEM / Administrators có sẵn nhưng đang tắt). False = máy không làm được."""
+        if getattr(self, "_efi_ok", None) is not None: return self._efi_ok
+        self._efi_ok = False
+        if not WIN: return False
+        wt, k = self.wt, self.k32
+        try:
+            k.GetFirmwareEnvironmentVariableExW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, ctypes.c_void_p, wt.DWORD, ctypes.POINTER(wt.DWORD)]
+            k.GetFirmwareEnvironmentVariableExW.restype = wt.DWORD
+            k.SetFirmwareEnvironmentVariableExW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, ctypes.c_void_p, wt.DWORD, wt.DWORD]
+            k.SetFirmwareEnvironmentVariableExW.restype = wt.BOOL
+        except AttributeError:
+            return False
+        self._efi_ok = enable_privilege("SeSystemEnvironmentPrivilege")
+        return self._efi_ok
+
+    def efi_get(self, name, guid=EFI_GLOBAL):
+        """Đọc 1 biến UEFI (Boot0001, BootOrder, SecureBoot…). Không có / không đọc được → None."""
+        if not self._efi_api(): return None
+        buf, attr = ctypes.create_string_buffer(8192), self.wt.DWORD(0)
+        n = self.k32.GetFirmwareEnvironmentVariableExW(name, guid, buf, 8192, ctypes.byref(attr))
+        return buf.raw[:n] if n else None
+
+    def efi_set(self, name, data, guid=EFI_GLOBAL, attrs=7):
+        """Ghi 1 biến UEFI (thuộc tính 7 = lưu NVRAM + đọc được lúc khởi động + lúc chạy); data = b'' → xoá biến. Trả True / False."""
+        data = bytes(data or b"")
+        if self.dry: self.log("  [thu] ghi bien UEFI %s (%d byte)" % (name, len(data))); return True
+        if not self._efi_api(): return False
+        b = ctypes.create_string_buffer(data, len(data)) if data else None
+        return bool(self.k32.SetFirmwareEnvironmentVariableExW(name, guid, b, len(data), attrs))
+
+    def sector_bytes(self, disk_index):
+        """Cỡ 1 sector (LBA) của ổ — 512 (hầu hết) hoặc 4096 (ổ 4Kn). Không đọc được → 512."""
+        h = self._open(r"\\.\PhysicalDrive%d" % disk_index)
+        if h is None: return 512
+        try:
+            b = self._ioctl(h, 0x000700A0, b"", 256)                                  # IOCTL_DISK_GET_DRIVE_GEOMETRY_EX
+            n = _u32(b, 20) if b and len(b) >= 24 else 0
+            return n if n in (512, 1024, 2048, 4096) else 512
+        finally:
+            self.k32.CloseHandle(h)
+
+    def read_boot_sector(self, letter):
+        """512 byte đầu của 1 ổ (đọc thô ổ R: theo đường \\\\.\\R:) — lấy số seri NTFS (Linux dùng làm UUID). Lỗi → b''."""
+        try:
+            with open(r"\\.\%s:" % str(letter)[0], "rb", buffering=0) as f: return f.read(512)
+        except OSError:
+            return b""
 
     def disks(self):
         out = []
@@ -556,6 +608,35 @@ def staged_infs(limit=600, how=None, root=None):
                 out.append({"pub": pub, "inf": path}); break
     if how is not None: how.update(pub=len(pubs), repo=n_repo, match=len(out))
     return out
+
+
+def enable_privilege(name):
+    """Bật 1 quyền (privilege) có sẵn trong thẻ quyền của tiến trình này (vd SeSystemEnvironmentPrivilege để ghi biến UEFI). True = đã bật."""
+    if not WIN: return False
+    from ctypes import wintypes as wt
+    k = ctypes.WinDLL("kernel32", use_last_error=True); a = ctypes.WinDLL("advapi32", use_last_error=True)
+
+    class LUID(ctypes.Structure):
+        _fields_ = [("LowPart", wt.DWORD), ("HighPart", wt.LONG)]
+
+    class TOKPRIV(ctypes.Structure):
+        _fields_ = [("Count", wt.DWORD), ("Luid", LUID), ("Attr", wt.DWORD)]
+
+    k.GetCurrentProcess.restype = wt.HANDLE
+    k.CloseHandle.argtypes = [wt.HANDLE]
+    a.OpenProcessToken.argtypes = [wt.HANDLE, wt.DWORD, ctypes.POINTER(wt.HANDLE)]; a.OpenProcessToken.restype = wt.BOOL
+    a.LookupPrivilegeValueW.argtypes = [wt.LPCWSTR, wt.LPCWSTR, ctypes.POINTER(LUID)]; a.LookupPrivilegeValueW.restype = wt.BOOL
+    a.AdjustTokenPrivileges.argtypes = [wt.HANDLE, wt.BOOL, ctypes.c_void_p, wt.DWORD, ctypes.c_void_p, ctypes.c_void_p]; a.AdjustTokenPrivileges.restype = wt.BOOL
+    tok = wt.HANDLE()
+    if not a.OpenProcessToken(k.GetCurrentProcess(), 0x0020 | 0x0008, ctypes.byref(tok)): return False      # TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY
+    try:
+        tp = TOKPRIV(); tp.Count = 1; tp.Attr = 2                                                          # SE_PRIVILEGE_ENABLED
+        if not a.LookupPrivilegeValueW(None, name, ctypes.byref(tp.Luid)): return False
+        ctypes.set_last_error(0)
+        if not a.AdjustTokenPrivileges(tok, False, ctypes.byref(tp), 0, None, None): return False
+        return ctypes.get_last_error() != 1300                                                            # ERROR_NOT_ALL_ASSIGNED: thẻ quyền không có quyền này
+    finally:
+        k.CloseHandle(tok)
 
 
 # ====================================================================================== phiên màn hình (điều khiển từ xa — bản 21.11d)

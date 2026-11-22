@@ -7,10 +7,10 @@
 # =====================================================================================================
 import json, re
 
-from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_MSR,
+from cbsys import (BUS_EXTERNAL, BUS_NOT_REAL, GPT_ATTR_NO_LETTER, GPT_ATTR_REQUIRED, GPT_DATA, GPT_ESP, GPT_LINUX, GPT_MSR,
                    MBR_HIDDEN_NTFS)
 
-CORE_VER = "21.11d"
+CORE_VER = "22.11c"
 PE_GUID = "{cb1e0001-b10e-4c0d-9a11-c10d0b10e001}"        # mục khởi động "CloudBlue cài lại Windows" (nạp boot.wim vào RAM)
 RD_GUID = "{cb1e0002-b10e-4c0d-9a11-c10d0b10e002}"        # tuỳ chọn ramdisk của mục đó (boot.sdi)
 REC_LABEL = "CBRECOVERY"
@@ -180,7 +180,7 @@ def plan_job(disk, fw, rec_off, wipe, win_hint, letters):
     if rec is None: raise Stop("Khong thay phan vung cuu ho tren o %d." % disk.index)
     if fw == "uefi":
         if disk.style != "gpt": raise Stop("May khoi dong kieu UEFI nhung o %d khong phai GPT - can cai moi tu USB." % disk.index)
-        sysp = next((p for p in parts if p.type == GPT_ESP), None)
+        sysp = next((p for p in sorted(parts, key=lambda p: p.offset) if p.type == GPT_ESP and p.number != rec.number), None)    # EFI của Windows = EFI đầu ổ
         if sysp is None: raise Stop("O %d khong co phan vung EFI - can cai moi tu USB." % disk.index)
     else:
         if disk.style != "mbr": raise Stop("May khoi dong kieu BIOS nhung o %d khong phai MBR - can cai moi tu USB." % disk.index)
@@ -189,11 +189,26 @@ def plan_job(disk, fw, rec_off, wipe, win_hint, letters):
     if sysp.number == rec.number: raise Stop("Phan vung cuu ho dang bi danh dau khoi dong - can cai moi tu USB.")
     L = ["select disk %d" % disk.index]
     deleted, sys_is_win = [], False
+    lin = _linux_bits(parts, sysp) if fw == "uefi" else []          # 22.11c · máy đang chạy CachyOS: EFI Linux + phân vùng Linux
     if wipe == "system":
         if not win_hint: raise Stop("Lenh cai lai kieu 'system' thieu vi tri phan vung Windows cu.")
         try: woff = int(win_hint.get("offset", -1))
         except (TypeError, ValueError, AttributeError): woff = -1
         win = next((p for p in parts if p.offset == woff), None)
+        if fw == "uefi" and (win is None or win in lin):
+            # 22.11c · đổi CachyOS → Windows, chỉ thay phần hệ điều hành: xoá phần Linux (EFI Linux + gốc), tạo 1 phân vùng Windows đúng chỗ đó
+            # (win_hint chỉ vào phân vùng Linux, hoặc vào khoảng trống mà lần cài CachyOS dở dang để lại). CHỈ xoá phần Linux — phân vùng dữ liệu
+            # khác của khách giữ nguyên; vị trí không rơi vào phần Linux / khoảng trống nào → dừng như cũ.
+            keep = [p for p in parts if p not in lin]
+            gap = next((g for g in _free_gaps(disk, keep) if g[0] <= woff < g[0] + g[1]), None)
+            if gap is None: raise Stop("Khong tim thay dung phan vung Windows cu (vi tri da doi) - dung lai de khong xoa nham.")
+            s, n = gap
+            if n < 25 * GB: raise Stop("Cho trong cua he dieu hanh cu chi %.0f GB - khong du cai Windows." % (n / 1e9))
+            for p in sorted(lin, key=lambda p: -p.number):
+                L += ["select partition %d" % p.number, "delete partition override"]
+                deleted.append(p.number)
+            L += ["create partition primary offset=%d size=%d" % (s // 1024, n // MB), 'format quick fs=ntfs label="Windows"', "assign letter=%s" % W]
+            return {"lines": L, "sys_off": sysp.offset, "sys_is_win": False, "win_new": True, "deleted": deleted}
         if win is None or win.number == rec.number or (fw == "uefi" and win.type in (GPT_ESP, GPT_MSR)):
             raise Stop("Khong tim thay dung phan vung Windows cu (vi tri da doi) - dung lai de khong xoa nham.")
         if win.size < 25 * GB: raise Stop("Phan vung Windows cu qua nho (%.0f GB)." % (win.size / 1e9))
@@ -202,7 +217,7 @@ def plan_job(disk, fw, rec_off, wipe, win_hint, letters):
         if sys_is_win: L.append("active")
         win_new = False
     elif wipe == "all":
-        keep = [p for p in parts if p.number == rec.number or (fw == "uefi" and p.type in (GPT_ESP, GPT_MSR))
+        keep = [p for p in parts if p.number == rec.number or (fw == "uefi" and (p.number == sysp.number or p.type == GPT_MSR))   # 22.11c: EFI riêng của CachyOS bị xoá
                 or (fw != "uefi" and p.number == sysp.number and p.size <= 2 * GB)]          # BIOS: giữ phân vùng khởi động NHỎ riêng
         sys_is_win = sysp not in keep                              # phân vùng active chính là phân vùng Windows cũ → tạo lại + active
         gaps = _free_gaps(disk, keep)
@@ -221,6 +236,202 @@ def plan_job(disk, fw, rec_off, wipe, win_hint, letters):
     else:
         raise Stop("Kieu xoa '%s' khong hop le." % wipe)
     return {"lines": L, "sys_off": sysp.offset, "sys_is_win": sys_is_win, "win_new": win_new, "deleted": deleted}
+
+
+# ====================================================================================== 22.11c · CachyOS (Linux) trên cùng ổ
+LINUX_ESP_MB = 1024                                               # phân vùng EFI RIÊNG của Linux (systemd-boot + nhân + initramfs của CachyOS)
+LINUX_MIN = 40 * GB                                               # phân vùng Linux nhỏ nhất
+LINUX_ESP_LABEL = "CBLINUXEFI"
+GRUB_DIR = "\\EFI\\cblinux"                                       # grubx64.efi của CloudBlue trên phân vùng EFI của Windows (mở ISO CachyOS trên phân vùng cứu hộ)
+GRUB_FILE = GRUB_DIR + "\\grubx64.efi"
+GRUB_DESC = "CloudBlue Linux"
+LINUX_BOOT_DESCS = ("Linux Boot Manager", GRUB_DESC)             # mục khởi động UEFI của Linux (systemd-boot của CachyOS · GRUB mở bộ cài) → gỡ khi cài lại Windows
+LINUX_FILES = ("cb\\linux\\grubx64.efi", "cb\\linux\\grub.cfg", "cb\\linux\\cb-install.sh")
+LINUX_TRIES = 2                                                   # số lần thử cài CachyOS — quá số này thì cài lại Windows mặc định (máy không bao giờ bị "mất")
+TZ_IANA = {"SE Asia Standard Time": "Asia/Ho_Chi_Minh", "China Standard Time": "Asia/Shanghai", "Singapore Standard Time": "Asia/Singapore",
+           "Tokyo Standard Time": "Asia/Tokyo", "Korea Standard Time": "Asia/Seoul", "Taipei Standard Time": "Asia/Taipei", "UTC": "UTC",
+           "GMT Standard Time": "Europe/London", "W. Europe Standard Time": "Europe/Berlin", "Eastern Standard Time": "America/New_York",
+           "Pacific Standard Time": "America/Los_Angeles"}
+LINUX_SYS_USERS = {"root", "bin", "daemon", "mail", "ftp", "http", "nobody", "dbus", "polkitd", "rtkit", "uuidd", "avahi", "git", "sddm", "plasmalogin",
+                   "colord", "cups", "geoclue", "nm-openvpn", "usbmux", "tss", "alpm", "liveuser", "adm", "wheel", "sys", "users", "games", "lp"}
+
+
+def is_linux(image):
+    """Bản trong cb.json là hệ điều hành Linux (CachyOS) — cài bằng GRUB + bộ cài không người, không phải bung .wim."""
+    return isinstance(image, dict) and str(image.get("kind") or "") == "linux"
+
+
+def windows_images(cfg):
+    return [im for im in cfg.get("images") or [] if not is_linux(im)]
+
+
+def linux_user(name):
+    """Tên tài khoản Windows của khách ('PC') → tên hợp lệ trên Linux: chữ thường a-z 0-9 _ -, bắt đầu bằng chữ, tối đa 32 ký tự.
+       Rỗng / trùng tên hệ thống → 'khach'."""
+    n = re.sub(r"[^a-z0-9_-]", "", str(name or "").lower())
+    n = re.sub(r"^[^a-z_]+", "", n)[:32]
+    return "khach" if not n or n in LINUX_SYS_USERS or n.startswith("systemd-") else n
+
+
+def _part_at(parts, off):
+    try: off = int(off)
+    except (TypeError, ValueError): return None
+    return next((p for p in parts if p.offset == off), None)
+
+
+def _linux_bits(parts, sysp):
+    """Phần Linux cũ trên ổ: phân vùng kiểu Linux + phân vùng EFI KHÁC phân vùng EFI của Windows (EFI riêng của CachyOS)."""
+    return [p for p in parts if p.type == GPT_LINUX or (p.type == GPT_ESP and sysp is not None and p.number != sysp.number)]
+
+
+def plan_linux(disk, fw, rec_off, wipe="all", win_hint=None):
+    """Chia ổ cho CachyOS trên ổ ĐÃ có phân vùng cứu hộ (cài theo lệnh từ xa): GIỮ phân vùng EFI của Windows (Windows Boot Manager → mục cài lại
+       = WinPE cứu hộ: lối quay về Windows), MSR và phân vùng cứu hộ; tạo EFI Linux 1GB (FAT32, nhãn CBLINUXEFI) + phân vùng Linux (thô, kiểu
+       Linux filesystem — cb-install.sh tự định dạng btrfs) ở khoảng trống lớn nhất. CHỈ UEFI + GPT.
+         wipe 'all' / 'disk' → xoá MỌI phân vùng khác trên ổ hệ thống.
+         wipe 'system'       → chỉ xoá phân vùng hệ điều hành đang dùng (win_hint = {"offset"}: ổ C: của Windows / phân vùng gốc của CachyOS)
+                               + phần Linux cũ (EFI Linux, phân vùng Linux); phân vùng dữ liệu khác của khách giữ nguyên.
+       Trả {"lines", "sys_off", "esp": {"offset","size"}, "root": {"offset","size"}, "deleted"}."""
+    if fw != "uefi": raise Stop("CachyOS chi cai tren may khoi dong kieu UEFI (may nay dang khoi dong kieu BIOS).")
+    if disk.style != "gpt": raise Stop("O %d khong phai GPT - can cai moi tu USB." % disk.index)
+    parts = sorted(disk.parts, key=lambda p: p.offset)
+    rec = _part_at(parts, rec_off)
+    if rec is None: raise Stop("Khong thay phan vung cuu ho tren o %d." % disk.index)
+    sysp = next((p for p in parts if p.type == GPT_ESP and p.number != rec.number), None)
+    if sysp is None: raise Stop("O %d khong co phan vung EFI - can cai moi tu USB." % disk.index)
+    base = [p for p in parts if p.number in (rec.number, sysp.number) or p.type == GPT_MSR]
+    target = None
+    if wipe in ("all", "disk"):
+        keep = base
+    elif wipe == "system":
+        target = _part_at(parts, (win_hint or {}).get("offset") if isinstance(win_hint, dict) else None)
+        if target is None or target in base:
+            raise Stop("Khong tim thay dung phan vung he dieu hanh cu (vi tri da doi) - dung lai de khong xoa nham.")
+        drop = {target.number} | {p.number for p in _linux_bits(parts, sysp)}
+        keep = [p for p in parts if p.number not in drop]
+    else:
+        raise Stop("Kieu xoa '%s' khong hop le." % wipe)
+    gaps = _free_gaps(disk, keep)
+    if target is not None:                                         # cài đúng vào chỗ của hệ điều hành cũ (dữ liệu khác của khách không bị dời)
+        gaps = [g for g in gaps if g[0] <= target.offset < g[0] + g[1]] or gaps
+    if not gaps: raise Stop("O %d khong con cho trong de cai CachyOS." % disk.index)
+    s, n = max(gaps, key=lambda g: g[1])
+    esp = LINUX_ESP_MB * MB
+    if n < esp + LINUX_MIN:
+        raise Stop("Khoang trong tren o %d chi %.0f GB - khong du cai CachyOS (can %.0f GB)." % (disk.index, n / 1e9, (esp + LINUX_MIN) / 1e9))
+    L = ["select disk %d" % disk.index]
+    deleted = []
+    for p in sorted(parts, key=lambda p: -p.number):               # số lớn trước → số của các phân vùng còn lại không đổi giữa chừng
+        if p in keep: continue
+        L += ["select partition %d" % p.number, "delete partition override"]
+        deleted.append(p.number)
+    L += ["create partition efi offset=%d size=%d" % (s // 1024, LINUX_ESP_MB), 'format quick fs=fat32 label="%s"' % LINUX_ESP_LABEL,
+          "create partition primary offset=%d size=%d" % ((s + esp) // 1024, (n - esp) // MB), "set id=%s override" % GPT_LINUX]
+    return {"lines": L, "sys_off": sysp.offset, "esp": {"offset": s, "size": esp}, "root": {"offset": s + esp, "size": n - esp}, "deleted": deleted}
+
+
+def linux_job(cfg, plan):
+    """Phần "linux" của cb\\job.json cho cb-install.sh: vị trí 2 phân vùng Linux + tài khoản khách (cùng tên / mật khẩu với Windows) + múi giờ."""
+    return {"esp": dict(plan["esp"]), "root": dict(plan["root"]), "user": linux_user(cfg.get("user") or "PC"), "pass": str(cfg.get("password") or ""),
+            "admin": cfg.get("user_admin") is True, "autologin": True, "desktop": "kde",
+            "tz": TZ_IANA.get(str(cfg.get("timezone") or "SE Asia Standard Time"), "Asia/Ho_Chi_Minh"), "locale": "en_US", "keymap": "us"}
+
+
+def ntfs_uuid(boot_sector):
+    """512 byte đầu của 1 phân vùng NTFS → UUID mà Linux dùng cho phân vùng đó (blkid, /dev/disk/by-uuid): số seri 64 bit, 16 chữ hex HOA.
+       Không phải NTFS → ''."""
+    b = bytes(boot_sector or b"")
+    if len(b) < 0x50 or b[3:11] != b"NTFS    ": return ""
+    return "%016X" % int.from_bytes(b[0x48:0x50], "little")
+
+
+def grub_job_cfg(rec_uuid="", extra=""):
+    """cb\\linux\\job.cfg — grub.cfg đọc để biết ISO CachyOS nằm trên phân vùng nào (img_dev=UUID=…; không có thì tìm theo nhãn CBRECOVERY)."""
+    L = ["# CloudBlue PC - WinPE ghi luc giao viec cai CachyOS (grub.cfg doc file nay)"]
+    if re.fullmatch(r"[0-9A-F]{16}", str(rec_uuid or "")): L.append("set cbdev=UUID=%s" % rec_uuid)
+    extra = re.sub(r'[^ -~]|["$\\]', "", str(extra or ""))[:300]
+    if extra: L.append('set cbextra="%s"' % extra)
+    return "\n".join(L) + "\n"
+
+
+def efi_load_option(desc, part_num, start_lba, size_lba, part_guid, path):
+    """Bản ghi Boot#### của UEFI (EFI_LOAD_OPTION, giống efibootmgr tạo): LOAD_OPTION_ACTIVE + đường thiết bị
+       [HD(số phân vùng, LBA đầu, số LBA, GUID phân vùng GPT) / File(path) / End]. part_guid = chuỗi GUID riêng của phân vùng (PartitionId)."""
+    import struct, uuid
+    hd = struct.pack("<BBH", 4, 1, 42) + struct.pack("<IQQ", int(part_num), int(start_lba), int(size_lba)) + uuid.UUID(str(part_guid)).bytes_le + bytes([2, 2])
+    fp_ = (str(path).replace("/", "\\") + "\0").encode("utf-16-le")
+    fp = struct.pack("<BBH", 4, 4, 4 + len(fp_)) + fp_
+    dp = hd + fp + struct.pack("<BBH", 0x7F, 0xFF, 4)
+    return struct.pack("<IH", 1, len(dp)) + (str(desc) + "\0").encode("utf-16-le") + dp
+
+
+def efi_option_desc(data):
+    """Tên hiển thị của 1 bản ghi Boot#### (đọc lại để tìm mục của CloudBlue) — hỏng → ""."""
+    try:
+        if not data or len(data) < 8: return ""
+        b = bytes(data[6:])
+        for i in range(0, len(b) - 1, 2):
+            if b[i] == 0 and b[i + 1] == 0: return b[:i].decode("utf-16-le", "replace")
+    except Exception: pass
+    return ""
+
+
+def efi_order(sysx):
+    b = sysx.efi_get("BootOrder") or b""
+    return [int.from_bytes(b[i:i + 2], "little") for i in range(0, len(b) - 1, 2)]
+
+
+def efi_entries(sysx, scan=0x40):
+    """[(số, tên, bản ghi)] các mục Boot#### đang có trong NVRAM (theo BootOrder + dò thêm Boot0000…Boot003F)."""
+    out = []
+    for n in dict.fromkeys(efi_order(sysx) + list(range(scan))):
+        d = sysx.efi_get("Boot%04X" % n)
+        if d: out.append((n, efi_option_desc(d), d))
+    return out
+
+
+def efi_put(sysx, desc, data):
+    """Ghi mục khởi động `desc` (đè lên mục cùng tên đã có — chạy lại không đẻ thêm mục; chưa có thì lấy số trống nhỏ nhất).
+       KHÔNG thêm vào BootOrder (chỉ dùng 1 lần qua BootNext). Trả số mục / None."""
+    ents = efi_entries(sysx)
+    num = next((n for n, d, _ in ents if d == desc), None)
+    if num is None:
+        used = {n for n, _, _ in ents} | set(efi_order(sysx))
+        num = next((n for n in range(0x1000) if n not in used), None)
+    if num is None or not sysx.efi_set("Boot%04X" % num, data): return None
+    return num
+
+
+def efi_boot_next(sysx, num):
+    """Lần khởi động SAU (1 lần) vào mục `num` (biến BootNext)."""
+    return bool(sysx.efi_set("BootNext", int(num).to_bytes(2, "little")))
+
+
+def efi_first(sysx, num):
+    """Đưa mục `num` lên đầu BootOrder (các mục khác giữ thứ tự)."""
+    order = [num] + [n for n in efi_order(sysx) if n != num]
+    return bool(sysx.efi_set("BootOrder", b"".join(int(n).to_bytes(2, "little") for n in order)))
+
+
+def efi_find(sysx, desc):
+    return next((n for n, d, _ in efi_entries(sysx) if d == desc), None)
+
+
+def efi_drop(sysx, descs):
+    """Gỡ mọi mục khởi động có tên trong `descs` (khỏi BootOrder rồi xoá hẳn). Trả danh sách số mục đã gỡ."""
+    gone = [n for n, d, _ in efi_entries(sysx) if d in tuple(descs)]
+    if not gone: return []
+    order = efi_order(sysx)
+    if any(n in order for n in gone):
+        sysx.efi_set("BootOrder", b"".join(int(n).to_bytes(2, "little") for n in order if n not in gone))
+    for n in gone: sysx.efi_set("Boot%04X" % n, b"")
+    return gone
+
+
+def secure_boot_on(sysx):
+    """Máy đang bật Secure Boot? (GRUB của CloudBlue + CachyOS chưa ký → máy bật Secure Boot sẽ không chạy được)."""
+    b = sysx.efi_get("SecureBoot")
+    return bool(b) and b[:1] == b"\x01"
 
 
 # ====================================================================================== BCD
@@ -387,7 +598,9 @@ def recovery_cfg(cfg):
     imgs = []
     for im in cfg.get("images") or []:
         ext = "." + str(im["file"]).rsplit(".", 1)[-1].lower()
-        j = dict(im); j["file"] = "cb\\images\\%s%s" % (im["id"], ext)
+        j = dict(im)
+        if is_linux(im): j["file"] = "cb\\linux\\%s" % str(im["file"]).replace("/", "\\").split("\\")[-1]    # 22.11c · ISO CachyOS: cb\linux\cachyos.iso
+        else: j["file"] = "cb\\images\\%s%s" % (im["id"], ext)
         imgs.append(j)
     out["images"] = imgs
     return out
