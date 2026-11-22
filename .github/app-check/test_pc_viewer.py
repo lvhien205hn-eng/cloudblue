@@ -98,4 +98,22 @@ class _S:
     def mouse(self, *a): self.ev.append(a)
 sy = _S(); c5 = FakeCli(); tee = B._SyTee(c5, sy); tee.mouse(1, 0, 0.5, 0.5)
 ck("đang đồng bộ: chuột của máy PC đang thao tác vừa gửi cho máy này vừa ghi cho các máy bạn", c5.ev == [("m", 1, 0, 0.5, 0.5)] and sy.ev == [(1, 0, 0.5, 0.5)], (c5.ev, sy.ev))
+# ---- 22/11 · SQL v48: ⏻ Nguồn máy — trạng thái theo lệnh khởi động lại / tắt máy gần nhất (giống web)
+import datetime
+_now = B.now_utc()
+_iso = lambda s: (_now + datetime.timedelta(seconds=s)).isoformat()
+def _it(online, p, until=3 * 86400): return {"rental": 1, "state": "active", "until": _iso(until), "pc": {"id": "x", "online": online, "job": None, "last_job": None, "pow": p}}
+_P = lambda cmd, st, ago, by="customer": {"cmd": cmd, "state": st, "at": _iso(-ago), "by": by}
+cases = [("run", _it(True, None)), ("boot", _it(True, _P("reboot", "done", 60))), ("run", _it(True, _P("reboot", "done", 200))),
+         ("boot", _it(False, _P("reboot", "done", 300, "admin"))), ("off", _it(False, _P("reboot", "done", 1200))), ("boot", _it(True, _P("reboot", "queued", 30))),
+         ("off", _it(False, _P("reboot", "queued", 30, "admin"))), ("down", _it(True, _P("shutdown", "done", 20))), ("run", _it(True, _P("shutdown", "done", 400))),
+         ("offd", _it(False, _P("shutdown", "done", 1200))), ("offd", _it(False, _P("shutdown", "sent", 90, "admin"))), ("down", _it(True, _P("shutdown", "queued", 30, "admin"))),
+         ("exp", _it(False, _P("shutdown", "done", 1200), until=-60)), ("run", _it(True, {"cmd": "x", "at": _iso(-5)})), ("run", _it(True, "la"))]
+got = [B.vps_state(x)[0] for _, x in cases]
+ck("⏻ Nguồn máy (v48): đang khởi động lại (3 phút đầu; máy chưa báo về thì tới 15 phút) · đang tắt · đã tắt hẳn · lệnh chưa tới máy đang tắt thì bỏ · hết hạn vẫn ưu tiên",
+   got == [w for w, _ in cases], got)
+w1, w2 = B.vps_state(cases[9][1])[3], B.vps_state(cases[10][1])[3]
+ck("đã tắt: ghi ai tắt + giờ tắt (khách / shop)", ("Bạn đã tắt máy lúc" in w1 or "You shut it down at" in w1) and ("Shop đã tắt máy lúc" in w2 or "The shop shut it down at" in w2), (w1, w2))
+ck("lỗi OFFLINE / BAD_CMD có câu dễ hiểu (không hiện mã lỗi)", "OFFLINE" not in B.vps_err("P0001: OFFLINE") and "BAD_CMD" not in B.vps_err("BAD_CMD"))
+ck("dấu vân tay thẻ VPS đổi khi có lệnh nguồn (vẽ lại thẻ)", B.vps_sig({"items": [cases[0][1]]}) != B.vps_sig({"items": [cases[1][1]]}))
 print(f"\n{OK}/{OK + FAIL} đạt"); sys.exit(1 if FAIL else 0)

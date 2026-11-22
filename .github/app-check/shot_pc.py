@@ -138,8 +138,22 @@ grab("pc-11-cancel.png")
 cx.ok.set(True); cx._arm(); pump(0.6)
 grab("pc-12-cancel-ok.png")
 cx.close(); pump(0.5)
+
+# 22/11 · ⏻ Nguồn máy (SQL v48): thẻ có nút ⏻ Nguồn + trạng thái "Đang khởi động lại…" / "Đã tắt máy" · hộp Nguồn máy (Tắt máy chỉ bấm được sau khi tick)
+MINE["power"] = True
+base = dict(MINE["items"][0], left=2, used=0)
+MINE["items"] = [dict(base, rental=21, pc=PCX(3, "VPS-GPU-03")),
+                 dict(base, rental=22, pc=PCX(5, "VPS-GPU-05", pow={"cmd": "reboot", "state": "done", "at": AGO(1), "by": "customer"})),
+                 dict(base, rental=23, pc=PCX(6, "VPS-GPU-06", online=False, pow={"cmd": "shutdown", "state": "done", "at": AGO(20), "by": "customer"}))]
+repaint()
+grab("pc-13-power-states.png")
+pw = B.VpsPowerDlg(app, MINE["items"][0]); pump(2)
+grab("pc-14-power.png")
+pw.ok.set(True); pw._arm(); pump(0.6)
+grab("pc-15-power-ok.png")
+pw.close(); pump(0.5)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 12 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
+ok = len(mine) == 15 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine)
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
