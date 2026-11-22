@@ -361,11 +361,14 @@ for _i, (_d, _s) in enumerate(zip("0123456789", ")!@#$%^&*(")):
 
 
 def gst_src(node, w, h, fps, fd=3, fmt="BGRx"):
-    """Phần đầu GStreamer: màn hình (PipeWire của KDE) → nhịp khung đều (lặp khung khi màn hình đứng yên) → thu cỡ → fmt.
+    """Phần đầu GStreamer: màn hình (PipeWire của KDE) → đổi màu + thu cỡ (chỉ khung THẬT) → nhịp khung đều (lặp khung khi màn hình đứng yên)
+       → hàng chờ BỎ KHUNG CŨ (bộ nén chậm hơn nhịp khung thì bỏ bớt, KHÔNG dồn: dồn thì người xem thấy hình trễ dần — CI 22.11f: con trỏ trễ > 2,5 giây).
        Khung thô đưa sang ffmpeg dùng BGRx (4 byte/điểm: mỗi dòng không có byte đệm, ffmpeg đọc đúng với mọi chiều rộng)."""
     return ["pipewiresrc", "fd=%d" % fd, "path=%d" % node, "do-timestamp=true", "keepalive-time=250", "always-copy=true", "!",
+            "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!",
+            "videoconvert", "!", "videoscale", "!", "video/x-raw,format=%s,width=%d,height=%d" % (fmt, w, h), "!",
             "videorate", "drop-only=false", "!", "video/x-raw,framerate=%d/1" % fps, "!",
-            "videoconvert", "!", "videoscale", "!", "video/x-raw,format=%s,width=%d,height=%d,framerate=%d/1" % (fmt, w, h, fps)]
+            "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream"]
 
 
 def gst_pipeline(node, w, h, fps, kbps, port, fd=3):
@@ -373,8 +376,7 @@ def gst_pipeline(node, w, h, fps, kbps, port, fd=3):
     gop = max(int(fps * (2 if kbps < 450 else 1)), 10)
     vbv = max(200, min(1000, int(6000 // max(fps, 1))))
     return ["gst-launch-1.0", "-q"] + gst_src(node, w, h, fps, fd, "I420") + [
-            "!", "queue", "max-size-buffers=2", "leaky=downstream", "!",
-            "x264enc", "tune=zerolatency", "speed-preset=superfast", "bitrate=%d" % kbps, "vbv-buf-capacity=%d" % vbv, "key-int-max=%d" % gop,
+            "!", "x264enc", "tune=zerolatency", "speed-preset=superfast", "bitrate=%d" % kbps, "vbv-buf-capacity=%d" % vbv, "key-int-max=%d" % gop,
             "bframes=0", "threads=2", "sliced-threads=false", "!",
             "video/x-h264,profile=constrained-baseline", "!",
             "rtph264pay", "config-interval=-1", "mtu=1300", "pt=96", "!",
@@ -389,7 +391,7 @@ def raw_pipeline(node, w, h, fps, fd=3):
 def ff_encode(w, h, fps, enc_args, port):
     """ffmpeg đọc khung thô từ stdin → nén theo enc_args (của pcremote, root đưa sang) → RTP về 127.0.0.1:port (như máy Windows)."""
     safe = [str(a) for a in enc_args if isinstance(a, (str, int)) and len(str(a)) < 200][:60]
-    return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "bgr0", "-video_size", "%dx%d" % (w, h),
+    return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-thread_queue_size", "2", "-f", "rawvideo", "-pix_fmt", "bgr0", "-video_size", "%dx%d" % (w, h),
              "-framerate", str(fps), "-i", "pipe:0", "-vf", "format=yuv420p"] + safe +
             ["-an", "-bsf:v", "dump_extra=freq=keyframe", "-f", "rtp", "-rtpflags", "skip_rtcp", "-payload_type", "96", "rtp://127.0.0.1:%d?pkt_size=1300" % port])
 

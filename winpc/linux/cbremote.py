@@ -253,7 +253,7 @@ class CapEncoder:
         self.t0 = self.t_frame = time.time(); self.alive = True
         try:
             r = self.helper.request("start", 40, w=self.w, h=self.h, fps=self.fps, kbps=self.kbps, port=self.sock.getsockname()[1],
-                                    enc=R.enc_args("x264", self.fps, self.kbps))
+                                    enc=x264_linux(R.enc_args("x264", self.fps, self.kbps)))
             self.pid = r.get("pid"); self.helper.cur_pid = self.pid
         except Exception as e:
             self.err = str(e)[:300]; self.failed = True
@@ -304,6 +304,17 @@ class LinuxRemote(R.Remote):
                 return ok
             except Exception as e:
                 self.log("chuan bi bo quay loi: %r" % (e,)); return False
+
+
+def x264_linux(args, cpus=None):
+    """Máy Linux không dùng card đồ hoạ → luôn nén x264 bằng CPU: chia lát (sliced-threads, không thêm trễ) cho 2–4 luồng thay vì 1 luồng
+       của bản Windows (ở Windows x264 chỉ là đường phụ) — 1 luồng nén 1280x800 30 khung/giây không kịp → hình trễ dần."""
+    n = max(2, min(4, (cpus or os.cpu_count() or 2) // 2))
+    out = [str(a) for a in args]
+    for i, a in enumerate(out[:-1]):
+        if a == "-threads": out[i + 1] = str(n)
+        elif a == "-x264-params": out[i + 1] = out[i + 1].replace("sliced-threads=0", "sliced-threads=1")
+    return out
 
 
 # ====================================================================================== chuột ảo giữ con trỏ hiện
