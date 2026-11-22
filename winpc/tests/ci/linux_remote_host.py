@@ -84,6 +84,31 @@ def decode_pick(h264, w, h, idx):
     return dict(zip(sorted(set(idx)), frames))
 
 
+def timeline(h264, w, h, pts, half=24, thr=40):
+    """Giải mã ĐỦ độ phân giải từng khung (đọc dần, không giữ cả luồng) → mỗi vùng quanh pts: số điểm khác hẳn khung ĐẦU (con trỏ tới / đi)."""
+    p = subprocess.Popen(["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "h264", "-i", "pipe:0", "-vf", "format=gray", "-f", "rawvideo", "pipe:1"],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+
+    def feed():
+        try: p.stdin.write(h264); p.stdin.close()
+        except OSError: pass
+    threading.Thread(target=feed, daemon=True).start()
+    n = w * h; first = None; out = {k: [] for k in pts}
+    while True:
+        buf = p.stdout.read(n)
+        if not buf or len(buf) < n: break
+        if first is None: first = buf
+        for k, (cx, cy) in pts.items():
+            c = 0
+            x0, x1 = max(0, cx - half), min(w, cx + half)
+            for y in range(max(0, cy - half), min(h, cy + half)):
+                a, b = buf[y * w + x0:y * w + x1], first[y * w + x0:y * w + x1]
+                c += sum(1 for i in range(len(a)) if abs(a[i] - b[i]) > thr)
+            out[k].append(c)
+    p.wait(30)
+    return out
+
+
 def crop_art(g, w, h, cx, cy, half=24, step=3):
     """Ô vuông quanh (cx, cy) vẽ bằng chữ (sáng → '@'): nhìn được con trỏ chuột trong nhật ký CI."""
     pal = " .:-=+*#%@"; rows = []
@@ -161,11 +186,11 @@ def main():
     say("WELCOME %s" % wel)
     time.sleep(6)
     n0 = len(v.frames())
-    v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 13000, 13000)); time.sleep(2.5); t_a = time.time()
+    t_m1 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 13000, 13000)); time.sleep(2.5); t_a = time.time()
     time.sleep(1.0)
-    v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 52000, 52000)); time.sleep(2.5); t_b = time.time()
+    t_m2 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 52000, 52000)); time.sleep(2.5); t_b = time.time()
     time.sleep(1.0)
-    v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 1100, 64600)); time.sleep(2.5); t_c = time.time()      # góc dưới trái (nút menu trên thanh tác vụ: rê vào là sáng lên)
+    t_m3 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 1100, 64600)); time.sleep(2.5); t_c = time.time()      # góc dưới trái (nút menu trên thanh tác vụ)
     v.c.send(R.C_TEXT, b"cloudblue"); time.sleep(1.5)
     st = None
     with v.lock:
@@ -189,6 +214,19 @@ def main():
                    chg_ab=change_box(A, B, gw), chg_all=change_box(gray[0], gray[-1], gw), p1=list(p1), p2=list(p2), gray_size=[gw, gh],
                    frame_ab=[ia, ib])
         ic = sum(1 for x in fr if x[1] <= t_c) - 1
+        try:                                                     # dòng thời gian từng khung: con trỏ có tới đúng chỗ sau mỗi lần rê không (trễ bao nhiêu khung)
+            P = {"p1": (w * 13000 // 65536, h * 13000 // 65536), "p2": (w * 52000 // 65536, h * 52000 // 65536), "goc": (w * 1100 // 65536, h * 64600 // 65536)}
+            tl = timeline(data, w, h, P)
+            mi = [sum(1 for x in fr if x[1] <= t) for t in (t_m1, t_m2, t_m3)] + [len(fr)]
+            seen = {}
+            for k, (a, b), tm in (("p1", (mi[0], mi[1]), t_m1), ("p2", (mi[1], mi[2]), t_m2), ("goc", (mi[2], mi[3]), t_m3)):
+                hit = next((i for i in range(a, min(b, len(tl[k]))) if tl[k][i] >= 25), None)
+                seen[k] = None if hit is None else round(fr[hit][1] - tm, 2)                            # giây từ lúc rê tới khung đầu có con trỏ ở đó
+            out["tl"] = {"moves": mi[:3], "seen_s": seen, **{k: "".join(str(min(9, c // 25)) for c in tl[k]) for k in tl}}
+            out["cursor_moved"] = all(seen[k] is not None for k in seen)
+            out["cursor_lag_s"] = max(seen.values()) if out["cursor_moved"] else None
+        except Exception as e:
+            out["tl_err"] = repr(e)[:200]
         try:
             pk = decode_pick(data, w, h, [0, ia, ib, ic, len(fr) - 1])
             pts = {"giua": (w // 2, h // 2), "p1": (w * 13000 // 65536, h * 13000 // 65536), "p2": (w * 52000 // 65536, h * 52000 // 65536),
