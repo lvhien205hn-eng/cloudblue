@@ -36,8 +36,26 @@ final class PcVps {
                 if (!(r instanceof JSONObject) || a.isFinishing()) return;
                 mine = (JSONObject) r; mineAt = System.currentTimeMillis();
                 if (box.getParent() != null) fill(a, box);
+                a.vpsChanged();                                   // 22.11c: đang mở "Xem tất cả" → ô VPS vẽ theo dữ liệu mới
             }, m -> { });
         }
+    }
+
+    /** 22.11c · các VPS hiện trong lưới "Xem tất cả" (đang thuê, đã giao máy). */
+    static java.util.List<JSONObject> gridItems() {
+        java.util.ArrayList<JSONObject> out = new java.util.ArrayList<>();
+        JSONArray it = items();
+        for (int i = 0; i < it.length(); i++) {
+            JSONObject x = it.optJSONObject(i), pc = x == null ? null : x.optJSONObject("pc");
+            if (pc != null && !pc.optString("id").isEmpty() && "active".equals(x.optString("state"))) out.add(x);
+        }
+        return out;
+    }
+
+    /** 22.11c · VPS xem trước / điều khiển được ngay (máy sẵn sàng, không bảo trì riêng VPS GPU). */
+    static boolean liveNow(MainActivity a, JSONObject x) {
+        String c = state(x)[0];
+        return ("run".equals(c) || "warn".equals(c)) && maint(a).isEmpty();
     }
 
     /** 21/11f · bảo trì riêng VPS GPU (khách thường) → câu báo; không bảo trì / admin → "". */
@@ -131,6 +149,12 @@ final class PcVps {
             more.setOnClickListener(v -> a.show(3));
             head.addView(more, Ui.wrap());
         }
+        if (!gridItems().isEmpty()) {                               // 22.11c: lưới XEM trực tiếp mọi VPS GPU (+ Cloud Phone) — như "Xem tất cả" của Cloud Phone
+            TextView all = Ui.pill(a, "▦ " + Ui.L("Xem tất cả", "View all"), Ui.OK);
+            all.setContentDescription(Ui.L("Xem trực tiếp màn hình mọi máy", "Watch every machine's screen live"));
+            all.setOnClickListener(v -> a.openGrid());
+            head.addView(all, Ui.wrap());
+        }
         if (controllable() >= 2 && maint(a).isEmpty()) {           // 21.11k: điều khiển nhiều VPS cùng lúc (lưới + 🔗 đồng bộ)
             TextView mu = Ui.pill(a, "▦ " + Ui.L("Nhiều máy", "Multi"), Ui.OK);
             mu.setContentDescription(Ui.L("Điều khiển nhiều máy cùng lúc", "Control several machines at once"));
@@ -153,11 +177,11 @@ final class PcVps {
             if ("waiting".equals(x.optString("state")) || (pc != null && pc.optJSONObject("job") != null) || "boot".equals(code) || "down".equals(code)) busy = true;
         }
         if (busy) box.postDelayed(() -> { if (box.getParent() != null && !a.isFinishing()) { mineAt = 0; Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> {
-            if (r instanceof JSONObject && box.getParent() != null) { mine = (JSONObject) r; mineAt = System.currentTimeMillis(); fill(a, box); } }, m -> { }); } }, 15000);
+            if (r instanceof JSONObject && box.getParent() != null) { mine = (JSONObject) r; mineAt = System.currentTimeMillis(); fill(a, box); a.vpsChanged(); } }, m -> { }); } }, 15000);
     }
 
     /** [mã trạng thái, chữ, câu giải thích] */
-    private static String[] state(JSONObject x) {
+    static String[] state(JSONObject x) {
         JSONObject pc = x.optJSONObject("pc"), job = pc == null ? null : pc.optJSONObject("job");
         long until = MainActivity.parseTime(x.optString("until", "")), now = System.currentTimeMillis();
         String st = x.optString("state");

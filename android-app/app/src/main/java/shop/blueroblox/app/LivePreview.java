@@ -12,9 +12,11 @@ import org.json.JSONObject;
  * chỉ xem — bấm vào ô (ô cha nhận bấm) là mở màn điều khiển. Không đá phiên điều khiển đang mở ở nơi khác.
  * Chưa có hình / tạm dừng / máy chủ chưa hỗ trợ → ô tĩnh (biểu tượng + trạng thái) phủ lên trên.
  * Cùng 1 ô được chuyển qua lại giữa danh sách và "Xem tất cả" (không phải nối lại). MainActivity bật / tạm dừng theo ô có đang hiện trên màn hình không.
+ * 22.11c: pc = ô của 1 VPS GPU (máy PC thật) — xem trước qua trạm máy PC (máy chủ bản 22/11b), chỉ xem, không đá người đang điều khiển.
  */
 final class LivePreview extends FrameLayout implements StreamClient.Listener, StreamView.Events {
     final String id;
+    final boolean pc;
     private final StreamView screen;
     private final FrameLayout cover;
     private final int maxh;
@@ -23,9 +25,12 @@ final class LivePreview extends FrameLayout implements StreamClient.Listener, St
     /** Lúc ô bắt đầu khuất khỏi màn hình (0 = đang hiện) — MainActivity tạm dừng ô khuất lâu. */
     long hiddenAt = 0;
 
-    LivePreview(Context c, String phoneId, int videoW, int videoH, int maxh) {
+    LivePreview(Context c, String phoneId, int videoW, int videoH, int maxh) { this(c, phoneId, videoW, videoH, maxh, false); }
+
+    LivePreview(Context c, String phoneId, int videoW, int videoH, int maxh, boolean pcMachine) {
         super(c);
         id = phoneId;
+        pc = pcMachine;
         this.maxh = maxh;
         setBackgroundColor(Color.BLACK);
         screen = new StreamView(c, true);
@@ -51,7 +56,7 @@ final class LivePreview extends FrameLayout implements StreamClient.Listener, St
     /** Bật hình (đang bật / đã dừng hẳn → bỏ qua). */
     void play() {
         if (client != null || ended || released) return;
-        client = new StreamClient(getContext(), id, "eco", this).preview(maxh);
+        client = new StreamClient(getContext(), id, "eco", this).setPc(pc).preview(maxh);
         screen.attach(client);
         client.start();
     }

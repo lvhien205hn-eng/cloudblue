@@ -444,7 +444,7 @@ public class MainActivity extends Activity {
     }
 
     /** Bảng giá VPS GPU vừa tải / vừa mua xong → vẽ lại nếu đang ở tab VPS GPU. */
-    void vpsChanged() { if (!destroyed && tab == 3) renderVps(); }
+    void vpsChanged() { if (!destroyed && tab == 3) renderVps(); vpsGrid(); }      // 22.11c: + lưới "Xem tất cả" (ô VPS GPU)
 
     private ScrollView page(LinearLayout body) {
         body.setPadding(Ui.dp(16), Ui.dp(6), Ui.dp(16), Ui.dp(24));
@@ -507,7 +507,7 @@ public class MainActivity extends Activity {
         }
         LinearLayout head = Ui.row(this, 10);
         head.addView(Ui.h1(this, Ui.L("Máy của tôi", "My phones")), Ui.weight(1));
-        if (phones.length() > 0) {
+        if (phones.length() > 0 || !PcVps.gridItems().isEmpty()) {     // 22.11c: cả VPS GPU
             TextView all = Ui.pill(this, "▦ " + Ui.L("Xem tất cả", "View all"), Ui.OK);
             all.setOnClickListener(v -> openGrid());
             head.addView(all, Ui.wrap());
@@ -562,6 +562,8 @@ public class MainActivity extends Activity {
             if (canCtl(p)) live.add(p.optString("id"));
             body.addView(phoneCard(p), Ui.fill());
         }
+        for (JSONObject x : PcVps.gridItems())                 // 22.11c: ô xem trước VPS GPU (trong "Xem tất cả") được giữ khi vẽ lại
+            if (PcVps.liveNow(this, x)) live.add("pc:" + x.optJSONObject("pc").optString("id"));
         final ScrollView sv = page(body);
         phonesSv = sv;
         if (keepY > 0) sv.post(() -> sv.scrollTo(0, keepY));
@@ -789,6 +791,52 @@ public class MainActivity extends Activity {
         return t;
     }
 
+    /** 22.11c · dữ liệu VPS GPU vừa tải lại → đang mở "Xem tất cả" thì vẽ lại lưới (ô xem trước chạy tiếp). */
+    private void vpsGrid() {
+        if (destroyed || isFinishing()) return;
+        if (gridOpen()) fillGrid();
+        h.removeCallbacks(vis);
+        if (resumed) h.postDelayed(vis, 300);
+    }
+
+    /** 22.11c · ô tĩnh của 1 VPS GPU: biểu tượng máy tính + trạng thái (máy không chạy, hoặc phủ trên ô xem trước lúc chưa có hình). */
+    private View vpsTile(JSONObject x, float iconSp) {
+        String[] st = PcVps.state(x);
+        boolean live = PcVps.liveNow(this, x), mt = !PcVps.maint(this).isEmpty();
+        LinearLayout t = Ui.col(this, 4);
+        t.setGravity(Gravity.CENTER);
+        t.setPadding(Ui.dp(8), Ui.dp(6), Ui.dp(8), Ui.dp(6));
+        TextView ic = Ui.text(this, "🖥️", iconSp, Color.WHITE, false);
+        ic.setGravity(Gravity.CENTER);
+        t.addView(ic, Ui.fill());
+        String s = live ? "● " + Ui.L("Đang chạy", "Running") : mt && ("run".equals(st[0]) || "warn".equals(st[0])) ? "🛠 " + Ui.L("Đang bảo trì", "Maintenance") : st[1];
+        TextView tx = Ui.text(this, s, 12, live ? Color.rgb(60, 224, 176) : "exp".equals(st[0]) ? Color.rgb(255, 120, 140) : Color.rgb(255, 200, 97), true);
+        tx.setGravity(Gravity.CENTER);
+        tx.setSingleLine(true);
+        t.addView(tx, Ui.fill());
+        if (live) {
+            TextView hint = Ui.text(this, Ui.L("Bấm để điều khiển", "Tap to control"), 11, Color.argb(190, 255, 255, 255), false);
+            hint.setGravity(Gravity.CENTER);
+            t.addView(hint, Ui.fill());
+        }
+        return t;
+    }
+
+    /** 22.11c · ô xem trước của 1 VPS GPU (khoá "pc:" + mã máy — không lẫn với Cloud Phone), lấy lại ô cũ nếu có. */
+    private LivePreview vpsPreview(JSONObject x, float iconSp) {
+        String id = x.optJSONObject("pc").optString("id"), key = "pc:" + id;
+        LivePreview lp = previews.get(key);
+        if (lp == null) {
+            lp = new LivePreview(this, id, 1920, 1080, "c".equals(StreamClient.netTag(this)) ? 320 : 480, true);    // máy PC: màn ngang 16:9
+            previews.put(key, lp);
+        }
+        lp.setCover(vpsTile(x, iconSp));
+        ViewParent vp = lp.getParent();
+        if (vp instanceof ViewGroup) ((ViewGroup) vp).removeView(lp);
+        lp.hiddenAt = 0;
+        return lp;
+    }
+
     // ---------------- XEM TẤT CẢ MÁY: lưới mọi máy phát hình trực tiếp + trạng thái (khách có nhiều máy theo dõi 1 lần) ----------------
     void openGrid() {
         if (destroyed) return;
@@ -839,10 +887,12 @@ public class MainActivity extends Activity {
             String st = phones.optJSONObject(i).optString("status");
             if ("active".equals(st) && !locked(phones.optJSONObject(i))) run++; else if ("expired".equals(st)) pause++; else other++;
         }
+        final java.util.List<JSONObject> vps = PcVps.gridItems();       // 22.11c: VPS GPU (ô ngang 16:9) nằm trên Cloud Phone
+        for (JSONObject x : vps) if (PcVps.liveNow(this, x)) run++; else other++;
         LinearLayout tt = Ui.col(this, 2);
-        tt.addView(Ui.h2(this, Ui.L("Tất cả máy (", "All phones (") + phones.length() + ")"));
+        tt.addView(Ui.h2(this, Ui.L("Tất cả máy (", "All machines (") + (phones.length() + vps.size()) + ")"));
         tt.addView(Ui.muted(this, "● " + run + Ui.L(" đang chạy", " running") + (pause > 0 ? " · ⏸ " + pause + Ui.L(" tạm dừng", " paused") : "")
-                + (other > 0 ? " · " + other + Ui.L(" khác", " other") : "") + Ui.L(" · bấm ô: điều khiển", " · tap a phone to control")));
+                + (other > 0 ? " · " + other + Ui.L(" khác", " other") : "") + Ui.L(" · bấm ô: điều khiển", " · tap a machine to control")));
         top.addView(tt, Ui.weight(1));
         if (ctlCount() >= 2) {                                           // 18/11: từ lưới xem → sang lưới ĐIỀU KHIỂN nhiều máy
             TextView mc = Ui.pill(this, "🎮 " + Ui.L("Điều khiển", "Control"), Ui.OK);
@@ -855,6 +905,41 @@ public class MainActivity extends Activity {
 
         LinearLayout grid = Ui.col(this, gap);
         LinearLayout row = null;
+        if (!vps.isEmpty()) {
+            final int vc = wdp >= 900 ? 4 : wdp >= 600 ? 3 : 2;
+            int vw = (dm.widthPixels - pad * 2 - gap * (vc - 1)) / vc, vh = vw * 9 / 16 + Ui.dp(7);
+            if (phones.length() > 0) grid.addView(Ui.text(this, "🖥️ VPS GPU (" + vps.size() + ")", 15, Ui.FG, true), Ui.fill());
+            for (int i = 0; i < vps.size(); i++) {
+                final JSONObject x = vps.get(i), pc = x.optJSONObject("pc");
+                if (i % vc == 0) { row = Ui.row(this, gap); grid.addView(row, Ui.fill()); }
+                boolean live = PcVps.liveNow(this, x);
+                String code = PcVps.state(x)[0];
+                LinearLayout cell = Ui.col(this, 4);
+                FrameLayout box = new FrameLayout(this);
+                box.setBackground(Ui.round(Color.rgb(2, 4, 12), 8, live ? Color.argb(90, 61, 220, 132) : "exp".equals(code) ? Color.argb(70, 255, 93, 108) : Color.argb(80, 255, 200, 97)));
+                int bz = Ui.dp(3.5f);
+                box.setPadding(bz, bz, bz, bz);
+                box.addView(live ? vpsPreview(x, 22) : vpsTile(x, 22), new FrameLayout.LayoutParams(-1, -1));
+                TextView dot = Ui.text(this, live ? "●" : "○", 12, live ? Ui.OK : "exp".equals(code) ? Ui.BAD : Ui.WAIT, true);
+                dot.setShadowLayer(3, 0, 0, Color.BLACK);
+                FrameLayout.LayoutParams dlp = new FrameLayout.LayoutParams(-2, -2, Gravity.TOP | Gravity.END);
+                dlp.setMargins(0, Ui.dp(4), Ui.dp(6), 0);
+                box.addView(dot, dlp);
+                if (live) box.setOnClickListener(v -> PcVps.control(this, pc.optString("id"), pc.optString("name")));   // bấm: vào điều khiển máy PC
+                cell.addView(box, new LinearLayout.LayoutParams(-1, vh));
+                TextView nm = Ui.text(this, pc.optString("name", "VPS GPU") + (pc.optString("code").isEmpty() || pc.optString("name").contains(pc.optString("code")) ? "" : " · " + pc.optString("code")), 12, Ui.FG, true);
+                nm.setSingleLine(true); nm.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                cell.addView(nm, Ui.fill());
+                long until = parseTime(x.optString("until", ""));
+                TextView sub = Ui.text(this, x.optString("os_name") + (until > 0 ? " · ⏱ " + left(until) : ""), 11, until > 0 && until - System.currentTimeMillis() < 86400000L ? Ui.WAIT : Ui.MUTED, false);
+                sub.setSingleLine(true); sub.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                cell.addView(sub, Ui.fill());
+                row.addView(cell, new LinearLayout.LayoutParams(0, -2, 1f));
+            }
+            for (int k = vps.size() % vc; k > 0 && k < vc; k++) row.addView(new View(this), new LinearLayout.LayoutParams(0, 1, 1f));
+            row = null;
+            if (phones.length() > 0) grid.addView(Ui.text(this, "📱 Cloud Phone (" + phones.length() + ")", 15, Ui.FG, true), Ui.fill());
+        }
         for (int i = 0; i < phones.length(); i++) {
             final JSONObject p = phones.optJSONObject(i);
             if (i % cols == 0) { row = Ui.row(this, gap); grid.addView(row, Ui.fill()); }
