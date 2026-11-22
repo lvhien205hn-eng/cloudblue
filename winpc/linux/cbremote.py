@@ -306,6 +306,38 @@ class LinuxRemote(R.Remote):
                 self.log("chuan bi bo quay loi: %r" % (e,)); return False
 
 
+# ====================================================================================== chuột ảo giữ con trỏ hiện
+UINPUT = "/dev/uinput"
+_PTR = []                                                        # giữ fd thiết bị (đóng = thiết bị biến mất)
+
+
+def dummy_pointer(log=lambda m: None, path=None):
+    """Máy cho thuê thường KHÔNG cắm chuột → KWin (Wayland) ẩn hẳn con trỏ (không có thiết bị trỏ) → người xem không thấy chuột ở đâu.
+       Tạo 1 chuột ảo (uinput, không bao giờ gửi gì) để KWin luôn coi là có chuột → con trỏ hiện + vẽ vào hình. Lỗi → thôi (không ảnh hưởng gì khác).
+       → True khi đã có thiết bị."""
+    if _PTR: return True
+    import struct
+    UI_SET_EVBIT, UI_SET_KEYBIT, UI_SET_RELBIT, UI_DEV_SETUP, UI_DEV_CREATE = 0x40045564, 0x40045565, 0x40045566, 0x405c5503, 0x5501
+    fd = None
+    try:
+        fd = os.open(path or UINPUT, os.O_WRONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+        fcntl.ioctl(fd, UI_SET_EVBIT, 1)                         # EV_KEY: nút chuột
+        for b in (0x110, 0x111, 0x112): fcntl.ioctl(fd, UI_SET_KEYBIT, b)
+        fcntl.ioctl(fd, UI_SET_EVBIT, 2)                         # EV_REL: REL_X, REL_Y, REL_WHEEL
+        for r in (0, 1, 8): fcntl.ioctl(fd, UI_SET_RELBIT, r)
+        fcntl.ioctl(fd, UI_DEV_SETUP, struct.pack("HHHH80sI", 0x06, 0x0cb1, 0x0001, 1, b"CloudBlue Remote Pointer", 0))
+        fcntl.ioctl(fd, UI_DEV_CREATE)
+        _PTR.append(fd)
+        log("da tao chuot ao (uinput) de KWin luon hien con tro")
+        return True
+    except OSError as e:
+        if fd is not None:
+            try: os.close(fd)
+            except OSError: pass
+        log("chua tao duoc chuot ao (uinput): %s" % (e,))
+        return False
+
+
 # ====================================================================================== chạy thật
 def make_logger(base=BASE):
     return R.make_logger(base, "remote.log")
@@ -334,6 +366,7 @@ def cmd_run(argv):
     R.Encoder = CapEncoder                                       # phiên người xem của pcremote dùng bộ quay của Linux
     rm = LinuxRemote(ident, net.rpc, io, lambda: io.helper, log, cafile if os.path.isfile(cafile) else None)
     log("=== CloudBlue PC dieu khien tu xa (CachyOS) %s / pcremote %s chay - khach %s ===" % (LINUX_REMOTE_VER, R.REMOTE_VER, user))
+    dummy_pointer(log)
     files = [os.path.abspath(__file__), CAP_SRC, os.path.abspath(R.__file__)]
 
     def stamp():
