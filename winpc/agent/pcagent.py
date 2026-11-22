@@ -26,6 +26,8 @@
 #    · (22.11b) pcremote: bấm vào ô nhập chữ trên máy PC → app điện thoại tự bật bàn phím (UI Automation + con trỏ chữ)
 #    · (22.11c) cb_provision: khách có quyền Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền / mật khẩu (UAC) · GIẢ LẬP ANDROID (MuMu, LDPlayer…)
 #      chạy được: 1 lần tắt thứ chiếm VT-x (Hyper-V / VBS / Memory Integrity) + báo web tình trạng ảo hoá (info.emu: VT trong BIOS, hypervisor, máy ảo)
+#    · (22.11d) đổi sang CachyOS (Linux) theo lệnh cài lại os=cachyos (bộ cài có kèm ISO CachyOS) · bản kê công bố có mục "linux" → thay bộ cài
+#      CachyOS (cb-install.sh, grub.cfg, agent Linux…) trên phân vùng cứu hộ — sửa phần Linux không cần tạo lại ISO
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -43,10 +45,11 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "22.11c"
+AGENT_VER = "22.11d"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
+LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")        # 22.11d · bộ cài CachyOS trên phân vùng cứu hộ (mục "linux" của bản kê)
 RENT_WARN_S = 2 * 86400                  # bắt đầu NHẮC khách từ khi hạn thuê còn 2 ngày (máy chủ gửi rent.warn_min thì theo máy chủ — thuê ngắn thì khoảng này ngắn theo)
 RENT_EVERY_S = 4 * 3600                  # trong khoảng nhắc: nhắc lại mỗi 4 giờ + mỗi lần bật máy (máy chủ gửi rent.every_min thì theo máy chủ; 0 = chỉ nhắc ở các mốc)
 RENT_MARKS = (3600, 1800, 600, 300, 60)  # giờ cuối luôn nhắc ở các mốc: còn 60 · 30 · 10 · 5 · 1 phút
@@ -896,7 +899,8 @@ class Agent:
                 self.done(oid, False, {"msg": "lỗi chuẩn bị cài lại: %s" % str(e)[:200]}); self.log(traceback.format_exc()); return
             self.log("đã ghi lệnh cài lại %s (%s) → khởi động lại vào bộ cài sau 30 giây" % (img["id"], job["wipe"]))
             self.rebooting = True
-            self.h.power(reboot=True, delay=30, msg="CloudBlue: may se CAI LAI WINDOWS sau 30 giay. Du lieu tren may se bi xoa.")
+            what = "CAI CachyOS (Linux)" if C.is_linux(img) else "CAI LAI WINDOWS"
+            self.h.power(reboot=True, delay=30, msg="CloudBlue: may se %s sau 30 giay. Du lieu tren may se bi xoa." % what)
             return
         self.done(oid, False, {"msg": "agent bản %s không biết lệnh '%s'" % (AGENT_VER, cmd)})
 
@@ -944,6 +948,7 @@ class Agent:
                 if rec:
                     for rel, data in got.items(): self.s.write_bytes(rec.root + "cb\\" + rel.replace("/", "\\"), data)
                     self.pe_next(rec, got)
+                    self.linux_sync(rec, base, m.get("linux"))
             except Exception as e:
                 self.log("chưa cập nhật được phân vùng cứu hộ: %s" % e)
             self.s.write_text(self.p("update\\applied.txt"), ver)
@@ -953,6 +958,27 @@ class Agent:
         except Exception as e:
             self.log("cập nhật bản %s lỗi: %s" % (ver, e)); self.bad_update = ver
             return None
+
+    def linux_sync(self, rec, base, lin):
+        """22.11d · Bản kê có mục "linux" ({"linux/cb-install.sh": sha256, …}) → thay các file đó trong cb\\linux của PHÂN VÙNG CỨU HỘ (chỉ máy cài
+           từ bộ cài có kèm CachyOS: đã có cb\\linux\\cachyos.iso). File đã đúng mã thì thôi; tải lỗi / sai mã → giữ file cũ, ghi nhật ký. Trả số file đã thay."""
+        if not isinstance(lin, dict) or not lin: return 0
+        if not self.s.exists(rec.root + "cb\\linux\\cachyos.iso"): return 0
+        n, bad = 0, []
+        for rel, sha in sorted(lin.items())[:40]:
+            if not LINUX_REL.match(str(rel)) or not re.fullmatch(r"[0-9a-f]{64}", str(sha)): bad.append(str(rel)[:40]); continue
+            dst = rec.root + "cb\\" + rel.replace("/", "\\")
+            try:
+                if self.s.exists(dst) and hashlib.sha256(self.s.read_bytes(dst)).hexdigest() == sha: continue
+            except Exception: pass
+            try:
+                data = self.net.get(base.rstrip("/") + "/" + rel, limit=4 << 20)
+                if hashlib.sha256(data).hexdigest() != sha: raise ValueError("sai mã kiểm")
+                self.s.write_bytes(dst, data); n += 1
+            except Exception as e:
+                bad.append("%s (%s)" % (rel, str(e)[:60]))
+        if n or bad: self.log("bộ cài CachyOS trên phân vùng cứu hộ: thay %d file%s" % (n, ("; chưa thay: " + ", ".join(bad[:5])) if bad else ""))
+        return n
 
     restart = False
     pe_synced = False
