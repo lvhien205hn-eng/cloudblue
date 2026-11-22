@@ -729,6 +729,18 @@ def win_to(sh, t, mode, sdk, sleep=time.sleep, back=None):
 
 
 
+WIN_KEEP_SH = ("cmd deviceidle whitelist +{p} >/dev/null 2>&1; am set-standby-bucket --user {u} {p} active >/dev/null 2>&1; "
+               "cmd appops set --user {u} {p} RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1; cmd appops set --user {u} {p} RUN_IN_BACKGROUND allow >/dev/null 2>&1; "
+               "am set-inactive --user {u} {p} false >/dev/null 2>&1")
+
+
+def win_keep(sh, tabs):
+    """Tab nhỏ CHẠY NỀN ỔN ĐỊNH: khách mở app khác đè lên thì tab nhỏ nằm dưới (Android dừng vẽ) — app của tab không bị Android xếp vào nhóm
+       hạn chế / tiết kiệm pin / cắt chạy nền (miễn tối ưu pin, nhóm "đang dùng"). Áp cho từng app (cả bản clone) mỗi lần thu nhỏ / sắp xếp."""
+    cmds = [WIN_KEEP_SH.format(p=p, u=u) for p, u in sorted({(t["pkg"], int(t["user"])) for t in tabs}) if re.fullmatch(r"[A-Za-z0-9._]+", p)]
+    if cmds: sh("; ".join(cmds), 30)
+
+
 def win_run(sh, do, sleep=time.sleep):
     """Việc của nút 🗗 Thu nhỏ tab (mini) · ⊞ Sắp xếp tab (tile) · ⛶ Phóng to tab (full) · danh sách (list). sh(lệnh, giây) → chữ in ra.
        Trả (mã HTTP, dict)."""
@@ -775,6 +787,7 @@ def win_run(sh, do, sleep=time.sleep):
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → tính lại chỗ theo hướng mới
             if not st2: break
         n = len(others) + 1
+        win_keep(sh, [t])
         return 200, {"ok": True, "n": n, "id": t["id"], "b": list(slot),
                      "msg": f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}
     if do == "tile":
@@ -789,6 +802,7 @@ def win_run(sh, do, sleep=time.sleep):
                 resize(w, c)
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → xếp lại theo hướng mới
             if not st2: break
+        win_keep(sh, wins)
         cols = len({c[0] for c in cells}); rows = len({c[1] for c in cells})
         tip = " Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau." if win_overlap(cells) else ""
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã xếp {len(wins)} tab nhỏ ({cols} cột × {rows} hàng).{tip}"}
