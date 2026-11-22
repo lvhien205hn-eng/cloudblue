@@ -3,8 +3,12 @@
 #  cbcap.py — CloudBlue PC (CachyOS): QUAY MÀN HÌNH + CHUỘT / PHÍM, chạy BẰNG TÀI KHOẢN KHÁCH trong phiên KDE (Wayland).
 #  cbremote.py (root) mở chương trình này khi có người xem; 2 bên nói chuyện qua 1 ổ cắm (socketpair) truyền sẵn (--fd N).
 #  KHÔNG giữ bí mật nào (mã máy, khoá… nằm ở /opt/cloudblue — chỉ root đọc được).
-#    · cổng XDG "RemoteDesktop" của KDE: mã ứng dụng vn.cloudblue.remote đã được CẤP QUYỀN SẴN (bảng kde-authorized, có từ
-#      Plasma 6.3) → không hiện hộp hỏi "Cho phép điều khiển?" → luồng PipeWire của màn hình + đường bơm chuột / phím
+#    · 22.11g — ĐƯỜNG CHÍNH: nói thẳng với KWin (như krdp / xdg-desktop-portal-kde làm bên trong): zkde_screencast_unstable_v1 → luồng PipeWire
+#      của màn hình, org_kde_kwin_fake_input → chuột / phím. KWin chỉ cho chương trình có tệp .desktop ghi X-KDE-Wayland-Interfaces trỏ đúng
+#      tệp đang chạy → root cài sẵn bản python riêng (cbcap-py) + tệp .desktop đó → KHÔNG BAO GIỜ hiện hộp hỏi, không cần người ngồi ở máy
+#      (máy thật 139: cổng XDG hiện hộp hỏi trên màn hình máy dù đã cấp quyền sẵn → khách chờ mãi "bộ quay màn hình chưa chạy").
+#    · ĐƯỜNG PHỤ (KWin chưa cho): cổng XDG "RemoteDesktop" của KDE, mã ứng dụng vn.cloudblue.remote đã được CẤP QUYỀN SẴN (bảng kde-authorized,
+#      có từ Plasma 6.3); chờ tối đa PORTAL_START_S giây rồi ĐÓNG phiên (KDE gỡ hộp hỏi đang treo) + báo lỗi rõ cho người xem
 #    · GStreamer pipewiresrc → thu cỡ → khung thô I420 → ffmpeg (x264, CÙNG tham số nén với máy Windows do root đưa sang) → RTP → UDP
 #      127.0.0.1:<cổng root mở>. Không có ffmpeg/libx264 thì nén luôn bằng GStreamer (x264enc → rtph264pay → udpsink).
 #  Lệnh (1 gói JSON / lần, root → đây): start / stop / move / btn / wheel / key / text / clip_set / clip_get / size / bye
@@ -12,8 +16,11 @@
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "22.11f"
+CAP_VER = "22.11g"
 APP_ID = "vn.cloudblue.remote"
+OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
+PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
+KWIN_WAIT_S = 3.0                                                 # KWin: chờ mỗi bước (nối / chào / tạo luồng màn hình)
 PORTAL, PORTAL_PATH = "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop"
 RD, SC = "org.freedesktop.portal.RemoteDesktop", "org.freedesktop.portal.ScreenCast"
 STORE = ("org.freedesktop.impl.portal.PermissionStore", "/org/freedesktop/impl/portal/PermissionStore", "org.freedesktop.impl.portal.PermissionStore")
@@ -262,10 +269,12 @@ class Portal:
         self.b, self.log = bus, log or (lambda m: None)
         self.session = None; self.node = None; self.size = (0, 0); self.app = None; self.inhibit = []
         self.devices = None; self.cursor = (0, 0)                     # thiết bị KDE cho dùng (1 phím, 2 chuột) · (kiểu con trỏ có, kiểu đã chọn)
+        self.deadline = None                                          # 22.11g: cả phiên mở có hạn chót (trạm chỉ chờ máy PC 25 giây)
 
     def _token(self): return "cb%d" % random.randrange(10 ** 9)
 
     def _request(self, iface, member, sig, head, options, timeout=20.0):
+        if self.deadline is not None: timeout = max(0.5, min(timeout, self.deadline - time.time()))
         tok = self._token()
         path = "%s/request/%s/%s" % (PORTAL_PATH, self.b.name.lstrip(":").replace(".", "_"), tok)
         self.b.add_match("type='signal',interface='org.freedesktop.portal.Request',member='Response',path='%s'" % path)
@@ -274,23 +283,26 @@ class Portal:
         try:
             m = self.b.take(lambda m: m["type"] == 4 and m["path"] == path and m["member"] == "Response", timeout)
         except DBusError:
-            raise PortalError("%s.%s: KDE chua tra loi sau %d giay (dang hien hop hoi quyen?)" % (iface.rsplit(".", 1)[-1], member, timeout))
+            try: self.b.call(PORTAL, path, "org.freedesktop.portal.Request", "Close", timeout=2)        # gỡ hộp hỏi đang treo trên màn hình máy
+            except Exception: pass
+            raise PortalError("%s.%s: KDE chua tra loi sau %d giay (dang hien hop hoi quyen tren man hinh may?)" % (iface.rsplit(".", 1)[-1], member, int(timeout)))
         code, results = m["body"]
         if code != 0: raise PortalError("%s.%s bi tu choi (ma %d)" % (iface.rsplit(".", 1)[-1], member, code))
         return results
 
-    def authorize(self):
+    def authorize(self, timeout=15.0):
         """Cấp quyền sẵn: đăng ký mã ứng dụng (xdg-desktop-portal ≥ 1.19) + ghi vào bảng kde-authorized (Plasma ≥ 6.3)."""
         try:
-            self.b.call(PORTAL, PORTAL_PATH, "org.freedesktop.host.portal.Registry", "Register", "sa{sv}", [APP_ID, {}])
+            self.b.call(PORTAL, PORTAL_PATH, "org.freedesktop.host.portal.Registry", "Register", "sa{sv}", [APP_ID, {}], timeout=timeout)
             self.app = APP_ID
         except DBusError as e:
             self.app = ""
             self.log("cong XDG chua co Registry (%s) -> cap quyen cho ung dung khong ma" % str(e)[:80])
-        self.b.call(*STORE, "SetPermission", "sbssas", ["kde-authorized", True, "remote-desktop", self.app, ["yes"]])
+        self.b.call(*STORE, "SetPermission", "sbssas", ["kde-authorized", True, "remote-desktop", self.app, ["yes"]], timeout=timeout)
         return self.app
 
     def start(self, timeout=25.0, own_cursor=False):
+        self.deadline = time.time() + timeout
         r = self._request(RD, "CreateSession", "a{sv}", [], {"session_handle_token": ("s", self._token())})
         self.session = str(r["session_handle"])
         self._request(RD, "SelectDevices", "oa{sv}", [self.session], {"types": ("u", 3)})                     # bàn phím + chuột
@@ -360,11 +372,16 @@ for _i, (_d, _s) in enumerate(zip("0123456789", ")!@#$%^&*(")):
     US[_d] = (VK2EV[0x30 + _i], 0); US[_s] = (VK2EV[0x30 + _i], 1)
 
 
+def pw_src(node, fd):
+    """pipewiresrc: qua cổng XDG thì dùng ổ PipeWire riêng cổng đưa (fd); qua KWin trực tiếp thì nối PipeWire của phiên (fd = None)."""
+    return ["pipewiresrc"] + ([] if fd is None else ["fd=%d" % fd]) + ["path=%d" % node]
+
+
 def gst_src(node, w, h, fps, fd=3, fmt="BGRx"):
     """Phần đầu GStreamer: màn hình (PipeWire của KDE) → đổi màu + thu cỡ (chỉ khung THẬT) → nhịp khung đều (lặp khung khi màn hình đứng yên)
        → hàng chờ BỎ KHUNG CŨ (bộ nén chậm hơn nhịp khung thì bỏ bớt, KHÔNG dồn: dồn thì người xem thấy hình trễ dần — CI 22.11f: con trỏ trễ > 2,5 giây).
        Khung thô đưa sang ffmpeg dùng BGRx (4 byte/điểm: mỗi dòng không có byte đệm, ffmpeg đọc đúng với mọi chiều rộng)."""
-    return ["pipewiresrc", "fd=%d" % fd, "path=%d" % node, "do-timestamp=true", "keepalive-time=250", "always-copy=true", "!",
+    return pw_src(node, fd) + ["do-timestamp=true", "keepalive-time=250", "always-copy=true", "!",
             "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!",
             "videoconvert", "!", "videoscale", "!", "video/x-raw,format=%s,width=%d,height=%d" % (fmt, w, h), "!",
             "videorate", "drop-only=false", "!", "video/x-raw,framerate=%d/1" % fps, "!",
@@ -385,7 +402,7 @@ def gst_pipeline(node, w, h, fps, kbps, port, fd=3):
 
 def raw_pipeline(node, w, h, fps, fd=3):
     """GStreamer chỉ lấy khung thô BGRx ra stdout — CHỈ khi màn hình đổi (+ lặp lại mỗi giây); FramePump giữ nhịp đều + vẽ con trỏ rồi đưa ffmpeg nén."""
-    return ["gst-launch-1.0", "-q", "pipewiresrc", "fd=%d" % fd, "path=%d" % node, "do-timestamp=true", "keepalive-time=1000", "always-copy=true", "!",
+    return ["gst-launch-1.0", "-q"] + pw_src(node, fd) + ["do-timestamp=true", "keepalive-time=1000", "always-copy=true", "!",
             "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!",
             "videoconvert", "!", "videoscale", "!", "video/x-raw,format=BGRx,width=%d,height=%d" % (w, h), "!",
             "queue", "max-size-buffers=2", "max-size-bytes=0", "max-size-time=0", "leaky=downstream", "!", "fdsink", "fd=1", "sync=false"]
@@ -539,23 +556,302 @@ def have_tools():
     return False, "thieu " + ", ".join(k for k in need if not t.get(k))
 
 
+# ====================================================================================== KWin trực tiếp (22.11g): Wayland tối thiểu, không thư viện ngoài
+class WaylandError(Exception):
+    pass
+
+
+def _wl_str(s):
+    b = str(s).encode("utf-8") + b"\0"
+    return struct.pack("<I", len(b)) + b + b"\0" * ((-len(b)) % 4)
+
+
+def _wl_rstr(p, pos):
+    """Đọc 1 chuỗi Wayland ở vị trí pos → (chuỗi, vị trí kế tiếp)."""
+    n = struct.unpack_from("<I", p, pos)[0]; pos += 4
+    return (p[pos:pos + n - 1].decode("utf-8", "replace") if n else ""), pos + ((n + 3) & ~3)
+
+
+def _wl_fixed(v): return struct.pack("<i", int(round(float(v) * 256.0)))
+
+
+class Wayland:
+    """Nói chuyện với KWin qua ổ cắm Wayland của phiên (WAYLAND_DISPLAY): registry, sync, bind, gửi yêu cầu; 1 luồng đọc sự kiện
+       (luôn đọc để KWin không bị đầy bộ đệm rồi cắt kết nối). Chỉ đủ cho wl_output / zxdg_output / zkde_screencast / fake_input."""
+    def __init__(self, path=None, timeout=KWIN_WAIT_S, log=None):
+        self.log = log or (lambda m: None)
+        if path is None:
+            disp = os.environ.get("WAYLAND_DISPLAY") or "wayland-0"
+            path = disp if disp.startswith("/") else os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid(), disp)
+        self.s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.s.settimeout(timeout)
+        try: self.s.connect(path)
+        except OSError as e:
+            self.s.close(); raise WaylandError("khong noi duoc KWin (%s): %s" % (path, e))
+        self.s.settimeout(None)
+        self.wlock = threading.Lock(); self.cv = threading.Condition()
+        self.nid = 1; self.handlers = {1: self._on_display}; self.globals = {}; self.err = None; self.closed = False
+        self.registry = self.new_id(self._on_registry)
+        self.send(1, 1, struct.pack("<I", self.registry))                        # wl_display.get_registry
+        threading.Thread(target=self._reader, name="wayland", daemon=True).start()
+        self.roundtrip(timeout)
+
+    def new_id(self, handler=None):
+        with self.cv:
+            self.nid += 1
+            if handler is not None: self.handlers[self.nid] = handler
+            return self.nid
+
+    def send(self, obj, op, payload=b""):
+        msg = struct.pack("<II", obj, ((8 + len(payload)) << 16) | op) + payload
+        with self.wlock:
+            try: self.s.sendall(msg)
+            except OSError as e: raise WaylandError("mat ket noi KWin: %s" % e)
+
+    def _reader(self):
+        buf = b""
+        try:
+            while True:
+                d = self.s.recv(65536)
+                if not d: break
+                buf += d
+                while len(buf) >= 8:
+                    obj, so = struct.unpack_from("<II", buf, 0)
+                    size, op = so >> 16, so & 0xFFFF
+                    if size < 8: raise WaylandError("goi Wayland hong")
+                    if len(buf) < size: break
+                    payload, buf = buf[8:size], buf[size:]
+                    h = self.handlers.get(obj)
+                    if h is None: continue
+                    try: h(op, payload)
+                    except Exception as e: self.log("wayland: loi doc su kien %d/%d: %r" % (obj, op, e))
+        except (OSError, WaylandError):
+            pass
+        finally:
+            with self.cv:
+                self.closed = True; self.cv.notify_all()
+
+    def _on_display(self, op, p):
+        if op == 0:                                                              # error(object, code, message)
+            oid, code = struct.unpack_from("<II", p, 0)
+            with self.cv:
+                self.err = "KWin bao loi Wayland (doi tuong %d, ma %d): %s" % (oid, code, _wl_rstr(p, 8)[0][:160]); self.cv.notify_all()
+
+    def _on_registry(self, op, p):
+        name = struct.unpack_from("<I", p, 0)[0]
+        with self.cv:
+            if op == 0:                                                          # global(name, interface, version)
+                iface, pos = _wl_rstr(p, 4)
+                self.globals[name] = (iface, struct.unpack_from("<I", p, pos)[0])
+            elif op == 1: self.globals.pop(name, None)                           # global_remove(name)
+            self.cv.notify_all()
+
+    def wait(self, pred, timeout, what):
+        end = time.time() + timeout
+        with self.cv:
+            while True:
+                if self.err: raise WaylandError(self.err)
+                r = pred()
+                if r: return r
+                if self.closed: raise WaylandError("KWin dong ket noi Wayland")
+                left = end - time.time()
+                if left <= 0: raise WaylandError(what)
+                self.cv.wait(left)
+
+    def roundtrip(self, timeout=KWIN_WAIT_S):
+        done = []
+
+        def h(op, p):
+            with self.cv: done.append(1); self.cv.notify_all()
+        cb = self.new_id(h)
+        self.send(1, 0, struct.pack("<I", cb))                                  # wl_display.sync
+        self.wait(lambda: done, timeout, "KWin khong tra loi sau %d giay" % int(timeout))
+        self.handlers.pop(cb, None)
+
+    def find(self, iface):
+        with self.cv:
+            for name, (i, v) in self.globals.items():
+                if i == iface: return name, v
+        return None
+
+    def bind(self, name, iface, ver, handler=None):
+        oid = self.new_id(handler)
+        self.send(self.registry, 0, struct.pack("<I", name) + _wl_str(iface) + struct.pack("<II", ver, oid))
+        return oid
+
+    def close(self):
+        try: self.s.shutdown(socket.SHUT_RDWR)
+        except OSError: pass
+        try: self.s.close()
+        except OSError: pass
+
+
+KWIN_IFACES = ("zkde_screencast_unstable_v1", "org_kde_kwin_fake_input")
+
+
+class KWinCast:
+    """1 luồng màn hình (zkde_screencast_unstable_v1.stream_output → mã nút PipeWire) + chuột / phím (org_kde_kwin_fake_input, KWin tự cấp quyền
+       khi authenticate — không hộp hỏi). Toạ độ chuột: 0..65535 trên màn hình đang quay → toạ độ LOGIC chung của KWin (zxdg_output: đúng cả khi
+       phóng to 125 / 150 %). Cùng cách gọi với Portal (motion / button / axis / keycode / keysym / close)."""
+    def __init__(self, log=None):
+        self.log = log or (lambda m: None)
+        self.wl = None; self.node = None; self.size = (0, 0); self.geo = (0, 0, 1, 1); self.fi = None; self.fi_ver = 0
+        self.sc = None; self.stream = None; self.out = ""; self.outs = 0; self.session = None
+
+    @staticmethod
+    def _on_output(o):
+        def h(op, p):
+            if op == 0: o["x"], o["y"] = struct.unpack_from("<ii", p, 0)                          # geometry(x, y, …)
+            elif op == 1:                                                                        # mode(flags, w, h, refresh)
+                fl, w, hh = struct.unpack_from("<Iii", p, 0)
+                if fl & 1: o["mw"], o["mh"] = w, hh
+            elif op == 3: o["scale"] = max(1, struct.unpack_from("<i", p, 0)[0])               # scale(factor)
+            elif op == 4: o["name"] = _wl_rstr(p, 0)[0][:40]                                    # name(name)
+        return h
+
+    @staticmethod
+    def _on_xdg(o):
+        def h(op, p):
+            if op == 0: o["lx"], o["ly"] = struct.unpack_from("<ii", p, 0)                      # logical_position
+            elif op == 1: o["lw"], o["lh"] = struct.unpack_from("<ii", p, 0)                    # logical_size
+        return h
+
+    @staticmethod
+    def pick(outs):
+        """Màn hình để quay: cái ở góc (0, 0) (màn hình chính), không có thì cái lớn nhất."""
+        items = [(k, o) for k, o in outs.items() if o.get("mw", 0) > 0] or list(outs.items())
+        for k, o in items:
+            if o.get("lx", o.get("x", 0)) == 0 and o.get("ly", o.get("y", 0)) == 0: return k, o
+        return max(items, key=lambda it: it[1].get("mw", 0) * it[1].get("mh", 0))
+
+    def start(self, pointer=1, timeout=KWIN_WAIT_S):
+        """pointer: 1 ẩn con trỏ (FramePump tự vẽ), 2 KWin vẽ con trỏ vào hình."""
+        wl = self.wl = Wayland(timeout=timeout, log=self.log)
+        sc, fi = wl.find("zkde_screencast_unstable_v1"), wl.find("org_kde_kwin_fake_input")
+        if not sc or not fi:
+            miss = ", ".join(n for n, x in (("zkde_screencast", sc), ("fake_input", fi)) if not x)
+            raise WaylandError("KWin chua cho chuong trinh nay quay man hinh / bam phim (thieu %s - tep .desktop X-KDE-Wayland-Interfaces)" % miss)
+        if fi[1] < 4: raise WaylandError("fake_input cua KWin qua cu (ban %d < 4)" % fi[1])
+        outs = {}
+        for name, (iface, ver) in list(wl.globals.items()):
+            if iface == "wl_output":
+                o = {"mw": 0, "mh": 0, "scale": 1}
+                outs[wl.bind(name, "wl_output", min(ver, 4), self._on_output(o))] = o
+        if not outs: raise WaylandError("KWin khong bao man hinh nao (wl_output)")
+        xm = wl.find("zxdg_output_manager_v1")
+        if xm:
+            xid = wl.bind(xm[0], "zxdg_output_manager_v1", min(xm[1], 3))
+            for oid, o in outs.items():
+                wl.send(xid, 1, struct.pack("<II", wl.new_id(self._on_xdg(o)), oid))         # get_xdg_output(id, output)
+        wl.roundtrip(timeout); wl.roundtrip(timeout)
+        oid, o = self.pick(outs)
+        self.outs = len(outs); self.out = o.get("name") or ""
+        if not o.get("mw"): raise WaylandError("KWin chua bao do phan giai man hinh %s" % self.out)
+        sc_n = max(1, o.get("scale", 1))
+        self.geo = (o.get("lx", o.get("x", 0)), o.get("ly", o.get("y", 0)), o.get("lw") or o["mw"] // sc_n, o.get("lh") or o["mh"] // sc_n)
+        self.fi_ver = min(fi[1], 6)
+        self.fi = wl.bind(fi[0], "org_kde_kwin_fake_input", self.fi_ver)
+        wl.send(self.fi, 0, _wl_str("CloudBlue") + _wl_str("dieu khien tu xa"))             # authenticate (KWin tự cho)
+        self.sc = wl.bind(sc[0], "zkde_screencast_unstable_v1", min(sc[1], 5))           # ≤ 5: KWin báo created(node) (bản 6 đổi sang serial)
+        st = {}
+
+        def on_stream(op, p):
+            with wl.cv:
+                if op == 1: st["node"] = struct.unpack_from("<I", p, 0)[0]                 # created(node)
+                elif op == 2: st["err"] = _wl_rstr(p, 0)[0][:160]                          # failed(error)
+                elif op == 0: st["closed"] = True                                            # closed
+                wl.cv.notify_all()
+        self.stream = wl.new_id(on_stream)
+        wl.send(self.sc, 0, struct.pack("<III", self.stream, oid, int(pointer)))          # stream_output(stream, output, pointer)
+        wl.wait(lambda: st, timeout, "KWin chua tao luong man hinh sau %d giay" % int(timeout))
+        if "err" in st: raise WaylandError("KWin tu choi quay man hinh: %s" % st["err"])
+        if "node" not in st: raise WaylandError("KWin dong luong man hinh ngay khi tao")
+        self.node, self.size, self.session = st["node"], (o["mw"], o["mh"]), "kwin"
+        self.stream_st = st
+        return self.node, self.size
+
+    def alive(self):
+        return self.wl is not None and not self.wl.closed and not getattr(self, "stream_st", {}).get("closed")
+
+    # ---- chuột / phím (cùng tên với Portal) ----
+    def motion(self, x, y):
+        """x, y: điểm ảnh trên luồng màn hình (0..size) → toạ độ logic chung của KWin."""
+        gx, gy, gw, gh = self.geo
+        sw, sh = self.size
+        X = gx + max(0.0, min(gw - 0.01, x * gw / float(max(1, sw)))); Y = gy + max(0.0, min(gh - 0.01, y * gh / float(max(1, sh))))
+        self.wl.send(self.fi, 9, _wl_fixed(X) + _wl_fixed(Y))                             # pointer_motion_absolute
+    def button(self, code, down): self.wl.send(self.fi, 2, struct.pack("<II", int(code), 1 if down else 0))
+    def axis(self, axis, steps): self.wl.send(self.fi, 3, struct.pack("<I", int(axis)) + _wl_fixed(15.0 * steps))     # 15 = 1 nấc lăn
+    def keycode(self, code, down): self.wl.send(self.fi, 10, struct.pack("<II", int(code), 1 if down else 0))
+
+    def keysym(self, sym, down):
+        if self.fi_ver < 6: return False                                                   # keyboard_keysym có từ bản 6
+        self.wl.send(self.fi, 12, struct.pack("<II", int(sym), 1 if down else 0)); return True
+
+    def close(self):
+        wl, self.wl = self.wl, None
+        if wl is None: return
+        for obj, op in ((self.stream, 0), (self.sc, 2), (self.fi, 11 if self.fi_ver >= 5 else None)):
+            if obj and op is not None:
+                try: wl.send(obj, op)
+                except Exception: pass
+        wl.close()
+        self.node = None; self.session = None
+
+
 # ====================================================================================== phần chạy (theo lệnh của root)
 class Cap:
     def __init__(self, log=None, bus_addr=None):
         self.log = log or (lambda m: None); self.bus_addr = bus_addr
         self.bus = None; self.portal = None; self.proc = None; self.src = None; self.mode = None; self.lock = threading.RLock()
         self.acc = [0.0, 0.0]; self.wl = None; self.pump = None; self.pt = None   # pt: chuột cuối cùng (0..65535) cho con trỏ tự vẽ
+        self.kw = None; self.inp = None; self.backend = None; self.node = None; self.size = (0, 0); self.own = False; self.why = ""
+        self.first = None                                             # thời gian mở lần đầu (giây) — ghi nhật ký / chạy thử
+
+    def _drop(self):
+        if self.kw is not None: self.kw.close()
+        if self.portal is not None: self.portal.close()                # đóng phiên → KDE gỡ hộp hỏi còn treo (nếu có)
+        if self.bus is not None: self.bus.close()
+        self.kw = self.portal = self.bus = self.inp = None; self.backend = None; self.node = None
 
     def open(self):
+        """Mở luồng màn hình + đường chuột / phím: KWin trực tiếp trước (không hộp hỏi), không được thì cổng XDG (chờ tối đa PORTAL_START_S).
+           Cả 2 đều hỏng → lỗi ghi rõ từng đường (người xem thấy, root ghi nhật ký)."""
         with self.lock:
-            if self.portal is not None and self.portal.session: return self.portal.size
-            self.bus = DBus(self.bus_addr)
-            self.portal = Portal(self.bus, self.log)
-            self.portal.authorize()
-            self.portal.start(own_cursor=pick_mode() == "ff")
-            self.log("phien KDE: luong man hinh %d (%dx%d), ma ung dung %r, thiet bi %s, con tro %s/%s" % (self.portal.node, self.portal.size[0], self.portal.size[1], self.portal.app,
-                     self.portal.devices, self.portal.cursor[1], self.portal.cursor[0]))
-            return self.portal.size
+            if self.inp is not None and self.node is not None and (self.kw is None or self.kw.alive()): return self.size
+            self._drop()
+            t0 = time.time(); errs = []
+            own = pick_mode() == "ff"
+            if os.environ.get("CBCAP_NO_KWIN") != "1":
+                k = KWinCast(self.log)
+                try:
+                    k.start(pointer=1 if own else 2)
+                    self.kw = self.inp = k; self.node, self.size, self.backend, self.own = k.node, k.size, "kwin", own
+                    self.first = round(time.time() - t0, 2)
+                    self.log("KWin truc tiep: luong man hinh %d (%dx%d) man hinh %s/%d, vung logic %s, fake_input v%d, %.1f giay" % (
+                        k.node, k.size[0], k.size[1], k.out or "?", k.outs, list(k.geo), k.fi_ver, self.first))
+                    return self.size
+                except Exception as e:
+                    k.close(); errs.append("KWin: %s" % str(e)[:170])
+                    self.log("KWin truc tiep chua dung duoc -> thu cong XDG: %s" % (e,))
+            if os.environ.get("CBCAP_NO_PORTAL") == "1": raise RuntimeError("; ".join(errs) or "khong co duong quay nao")
+            try:
+                left = lambda: max(2.0, OPEN_BUDGET_S - (time.time() - t0))
+                self.bus = DBus(self.bus_addr)
+                self.portal = Portal(self.bus, self.log)
+                self.portal.authorize(timeout=min(4.0, left()))
+                self.portal.start(timeout=min(PORTAL_START_S, left()), own_cursor=own)
+                self.inp, self.node, self.size, self.backend = self.portal, self.portal.node, self.portal.size, "portal"
+                self.own = self.portal.cursor[1] == 1                    # KWin ẩn con trỏ → tự vẽ
+                self.first = round(time.time() - t0, 2)
+                self.log("phien KDE: luong man hinh %d (%dx%d), ma ung dung %r, thiet bi %s, con tro %s/%s" % (self.portal.node, self.portal.size[0], self.portal.size[1], self.portal.app,
+                         self.portal.devices, self.portal.cursor[1], self.portal.cursor[0]))
+                return self.size
+            except Exception as e:
+                errs.append("cong XDG: %s" % str(e)[:170])
+                self._drop()
+                self.why = "; ".join(errs)
+                raise RuntimeError(self.why)
 
     def start(self, w, h, fps, kbps, port, enc_args=None):
         """Bật bộ quay + nén. → pid tiến trình theo dõi (ffmpeg hoặc gst-launch); chết = báo root bật lại."""
@@ -565,24 +861,25 @@ class Cap:
             mode = pick_mode()
             if mode is None: raise RuntimeError("may thieu cong cu quay man hinh: %s" % have_tools()[1])
             if mode == "ff" and not enc_args: mode = "gst" if pick_mode(dict(tools(), ffmpeg_x264=False)) else "ff"
-            fd = self.portal.pw_fd()
+            fd = self.portal.pw_fd() if self.backend == "portal" else None      # KWin trực tiếp: nối PipeWire của phiên, không cần ổ riêng
+            fds = () if fd is None else (fd,)
             try:
-                os.set_inheritable(fd, True)
+                if fd is not None: os.set_inheritable(fd, True)
                 if mode == "ff":
-                    src = subprocess.Popen(test_src(w, h, fps) if TEST_SRC else raw_pipeline(self.portal.node, w, h, fps, fd), stdin=subprocess.DEVNULL,
-                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, pass_fds=(fd,))
+                    src = subprocess.Popen(test_src(w, h, fps) if TEST_SRC else raw_pipeline(self.node, w, h, fps, fd), stdin=subprocess.DEVNULL,
+                                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, pass_fds=fds)
                     enc = subprocess.Popen(ff_encode(w, h, fps, enc_args or [], port), stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                    own = self.portal.cursor[1] == 1                     # KWin ẩn con trỏ → tự vẽ
+                    own = self.own
                     self.pump = FramePump(src.stdout, enc.stdin, w, h, fps,
                                           (lambda: None if self.pt is None else (self.pt[0] * w // 65536, self.pt[1] * h // 65536)) if own else (lambda: None), self.log)
                     self.src, self.proc = src, enc
                     threading.Thread(target=self._errlog, args=(src, "gstreamer"), daemon=True).start()
                 else:
                     self.src = None
-                    self.proc = subprocess.Popen(gst_pipeline(self.portal.node, w, h, fps, kbps, port, fd), stdin=subprocess.DEVNULL,
-                                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, pass_fds=(fd,))
+                    self.proc = subprocess.Popen(gst_pipeline(self.node, w, h, fps, kbps, port, fd), stdin=subprocess.DEVNULL,
+                                                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, pass_fds=fds)
             finally:
-                os.close(fd)
+                if fd is not None: os.close(fd)
             self.mode = mode
             threading.Thread(target=self._errlog, args=(self.proc, "ffmpeg" if mode == "ff" else "gstreamer"), daemon=True).start()
             return self.proc.pid
@@ -613,39 +910,41 @@ class Cap:
     def close(self):
         with self.lock:
             self.stop()
-            if self.portal is not None: self.portal.close()
-            if self.bus is not None: self.bus.close()
-            self.portal = self.bus = None
+            self._drop()
 
-    # ---- chuột / phím: toạ độ người xem 0..65535 trên cả màn hình ----
+    # ---- chuột / phím: toạ độ người xem 0..65535 trên cả màn hình (đi qua KWin trực tiếp hoặc cổng XDG — cùng tên hàm) ----
+    def _in(self):
+        p = self.inp
+        return p if p is not None and p.session else None
+
     def move(self, x, y):
-        p = self.portal
-        if p is None or not p.session: return
+        p = self._in()
+        if p is None: return
         w, h = p.size
         self.pt = (max(0, min(65535, int(x))), max(0, min(65535, int(y))))
         p.motion(max(0, min(w - 1, x * w / 65536.0)), max(0, min(h - 1, y * h / 65536.0)))
 
     def btn(self, b, down):
-        p = self.portal
-        if p is not None and p.session and 0 <= b < len(BTN): p.button(BTN[b], down)
+        p = self._in()
+        if p is not None and 0 <= b < len(BTN): p.button(BTN[b], down)
 
     def wheel(self, v, horiz):
-        """Lăn kiểu Windows (120 = 1 nấc, dương = lên / phải) → số nấc của cổng XDG (dương = xuống / phải). Cộng dồn phần lẻ."""
-        p = self.portal
-        if p is None or not p.session: return
+        """Lăn kiểu Windows (120 = 1 nấc, dương = lên / phải) → số nấc (dương = xuống / phải). Cộng dồn phần lẻ."""
+        p = self._in()
+        if p is None: return
         i = 1 if horiz else 0
         self.acc[i] += (v if horiz else -v) / 120.0
         n = int(self.acc[i])
         if n: self.acc[i] -= n; p.axis(i, n)
 
     def key(self, vk, down, ext=False):
-        p = self.portal
+        p = self._in()
         code = (EXT_EV.get(vk) if ext else None) or VK2EV.get(vk)
-        if p is not None and p.session and code: p.keycode(code, down)
+        if p is not None and code: p.keycode(code, down)
 
     def text(self, s):
-        p = self.portal
-        if p is None or not p.session: return
+        p = self._in()
+        if p is None: return
         if any(ch not in US for ch in s) and self.clip_set(s):           # chữ có dấu / ký tự lạ: dán qua bộ nhớ copy (Ctrl+V)
             time.sleep(0.05)
             for c, d in ((29, 1), (47, 1), (47, 0), (29, 0)): p.keycode(c, d)
@@ -653,7 +952,9 @@ class Cap:
         for ch in s:
             m = US.get(ch)
             if m is None:
-                sym = 0x01000000 + ord(ch); p.keysym(sym, True); p.keysym(sym, False); continue
+                sym = 0x01000000 + ord(ch)
+                if p.keysym(sym, True) is not False: p.keysym(sym, False)
+                continue
             code, shift = m
             if shift: p.keycode(42, True)
             p.keycode(code, True); p.keycode(code, False)
@@ -709,10 +1010,10 @@ def serve(fd):
                 if op == "start":
                     enc = j.get("enc") if isinstance(j.get("enc"), list) else None
                     pid = cap.start(int(j["w"]), int(j["h"]), int(j["fps"]), int(j["kbps"]), int(j["port"]), enc)
-                    if rid is not None: send({"id": rid, "ok": True, "pid": pid, "mode": cap.mode, "size": list(cap.portal.size)})
+                    if rid is not None: send({"id": rid, "ok": True, "pid": pid, "mode": cap.mode, "size": list(cap.size), "backend": cap.backend})
                 elif op == "open":
                     sz = cap.open()
-                    if rid is not None: send({"id": rid, "ok": True, "size": list(sz)})
+                    if rid is not None: send({"id": rid, "ok": True, "size": list(sz), "backend": cap.backend, "open_s": cap.first})
                 elif op == "stop": cap.stop()
                 elif op == "move": cap.move(int(j["x"]), int(j["y"]))
                 elif op == "btn": cap.btn(int(j["b"]), bool(j["d"]))
@@ -721,7 +1022,7 @@ def serve(fd):
                 elif op == "text": cap.text(str(j.get("s") or ""))
                 elif op == "clip_set": cap.clip_set(str(j.get("s") or ""))
                 elif op == "clip_get": send({"id": rid, "ok": True, "s": cap.clip_get()})
-                elif op == "size": send({"id": rid, "ok": True, "size": list(cap.portal.size) if cap.portal else None})
+                elif op == "size": send({"id": rid, "ok": True, "size": list(cap.size) if cap.node is not None else None, "backend": cap.backend})
                 elif op == "bye": break
             except Exception as e:
                 if rid is not None: send({"id": rid, "ok": False, "err": "%s: %s" % (type(e).__name__, str(e)[:300])})
@@ -741,13 +1042,21 @@ def probe(secs=4.0):
     cap = Cap(lambda m: out.setdefault("log", []).append(str(m)[:200]))
     try:
         t0 = time.time(); sz = cap.open()
-        out.update(session=True, size=list(sz), node=cap.portal.node, app=cap.portal.app, open_s=round(time.time() - t0, 1))
-        out.update(devices=cap.portal.devices, cursor_modes=cap.portal.cursor[0], cursor_mode=cap.portal.cursor[1])
-        try:                                                     # 1 lệnh chuột CÓ chờ trả lời: cổng XDG từ chối thì biết ngay vì sao
-            cap.portal.b.call(PORTAL, PORTAL_PATH, RD, "NotifyPointerMotionAbsolute", "oa{sv}udd", [cap.portal.session, {}, cap.portal.node, 100.0, 100.0])
-            out["move_reply"] = "ok"
-        except DBusError as e:
-            out["move_reply"] = str(e)[:200]
+        out.update(session=True, backend=cap.backend, size=list(sz), node=cap.node, open_s=round(time.time() - t0, 1))
+        if cap.backend == "portal":
+            out.update(app=cap.portal.app, devices=cap.portal.devices, cursor_modes=cap.portal.cursor[0], cursor_mode=cap.portal.cursor[1])
+            try:                                                 # 1 lệnh chuột CÓ chờ trả lời: cổng XDG từ chối thì biết ngay vì sao
+                cap.portal.b.call(PORTAL, PORTAL_PATH, RD, "NotifyPointerMotionAbsolute", "oa{sv}udd", [cap.portal.session, {}, cap.portal.node, 100.0, 100.0])
+                out["move_reply"] = "ok"
+            except DBusError as e:
+                out["move_reply"] = str(e)[:200]
+        else:
+            k = cap.kw
+            out.update(output=k.out, outputs=k.outs, geo=list(k.geo), fake_input=k.fi_ver, exe=os.path.realpath("/proc/self/exe"))
+            try:                                                 # KWin chưa nhận gì thì roundtrip lỗi ngay
+                k.motion(100.0, 100.0); k.wl.roundtrip(3); out["move_reply"] = "ok"
+            except Exception as e:
+                out["move_reply"] = str(e)[:200]
         cap.move(32768, 32768); cap.move(40000, 20000); out["move"] = True
         if ok:
             rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); rx.bind(("127.0.0.1", 0)); rx.settimeout(0.5)

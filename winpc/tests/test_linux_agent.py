@@ -2,7 +2,7 @@
 """Thử agent CachyOS (linux/cbagent.py) NỐI CHUỖI với SQL thật (Postgres, như test_agent.py): máy Windows đổi sang CachyOS bằng lệnh cài lại
    → agent Linux đăng ký lại bằng vé của lệnh, báo kết quả lần cài, nhận lệnh cài lại về Windows (ghi job.json lên phân vùng cứu hộ giả + BootNext),
    hạn thuê, công tắc quyền Admin, tự cập nhật.  Chạy: python3 tests/test_linux_agent.py"""
-import hashlib, json, os, shutil, subprocess, sys, tempfile
+import hashlib, json, os, shutil, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WINPC = os.path.join(HERE, "..")
@@ -305,6 +305,16 @@ ck("quá 6 giờ → thử lại, cài được", ag10.gst_state == "ok", ag10.g
 GST.update(have=True, calls=[])
 ag11 = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logs9.append, rec=rec)
 ck("máy có sẵn pipewiresrc → 'ok' ngay, không gọi pacman", ag11.gst_heal() == "ok" and not [c for c in GST["calls"] if c[0] == "pacman"], GST["calls"])
+
+print("6c. 22.11g: lỗi mở màn hình gần nhất (cbremote ghi logs/remote.err) → info.rmt.e (xem được trên web / SQL, không cần ngồi ở máy)")
+os.makedirs(os.path.join(base, "logs"), exist_ok=True)
+with open(os.path.join(base, "logs", "remote.err"), "w") as f: f.write("%d KWin: thieu zkde_screencast; cong XDG: Start: KDE chua tra loi sau 10 giay\n" % (time.time() - 180))
+_i = ag11.info()
+ck("có lỗi mới (3 phút trước) → rmt.e = '3p: …'", _i["rmt"].get("e", "").startswith("3p: KWin: thieu zkde_screencast; cong XDG: Start"), _i["rmt"])
+with open(os.path.join(base, "logs", "remote.err"), "w") as f: f.write("%d loi cu\n" % (time.time() - 2 * 86400))
+ck("lỗi cũ hơn 1 ngày → không báo", "e" not in ag11.info()["rmt"], ag11.info()["rmt"])
+os.remove(os.path.join(base, "logs", "remote.err"))
+ck("không có tệp lỗi → không báo, không lỗi", "e" not in ag11.info()["rmt"])
 
 print("7. Phần chạy được trên máy này (không cần máy CachyOS)")
 ck("đường dẫn kiểu Windows của lõi agent → Linux", cbagent.P("logs\\emu.json") == "logs/emu.json")

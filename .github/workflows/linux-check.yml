@@ -290,8 +290,8 @@ jobs:
           python3 -I winpc/tests/ci/fake_sb.py --check rpc.log ve-thu-ci >> $GITHUB_STEP_SUMMARY && RPC=1
           RMT=0
           { echo '### Điều khiển từ xa đầu-cuối (người xem trên máy CI ⇄ trạm thật ⇄ CachyOS)'; echo '```'; cat remote.json 2>/dev/null || echo "(khong co remote.json)"; echo '```'; } >> $GITHUB_STEP_SUMMARY
-          python3 -c "import json,sys; j=json.load(open('remote.json')); sys.exit(0 if j.get('ok') and j.get('cursor_moved') else 1)" 2>/dev/null && RMT=1
-          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ] && [ "$RMT" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent tu dang ky bang ve -> dieu khien tu xa: hinh KDE that toi nguoi xem, re chuot duoc)" >> $GITHUB_STEP_SUMMARY
+          python3 -c "import json,sys; j=json.load(open('remote.json')); sys.exit(0 if j.get('ok') and j.get('cursor_moved') and j.get('click_ok') and (j.get('stats') or {}).get('cap') == 'kwin' else 1)" 2>/dev/null && RMT=1
+          if [ "$CAI_OK" = 1 ] && [ "$OK" = 1 ] && [ "$AG" = 1 ] && [ "$RPC" = 1 ] && [ "$RMT" = 1 ]; then echo "linux check: DAT (WinPE giao viec -> GRUB -> ISO -> cb-install.sh cai CachyOS -> khoi dong vao CachyOS -> agent tu dang ky bang ve -> dieu khien tu xa qua KWin truc tiep (khong hop hoi): hinh KDE that toi nguoi xem, re + bam chuot duoc)" >> $GITHUB_STEP_SUMMARY
           else echo "linux check: CHUA DAT (cai=$CAI_OK, khoi dong=$OK, dich vu agent=$AG, agent goi may chu=$RPC, dieu khien tu xa=$RMT)" >> $GITHUB_STEP_SUMMARY; exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()

@@ -191,6 +191,10 @@ def main():
     t_m2 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 52000, 52000)); time.sleep(2.5); t_b = time.time()
     time.sleep(1.0)
     t_m3 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 1100, 64600)); time.sleep(2.5); t_c = time.time()      # góc dưới trái (nút menu trên thanh tác vụ)
+    # 22.11g: BẤM nút menu (chuột thật của KWin phải tới đúng chỗ — con trỏ tự vẽ không chứng minh được) → menu KDE mở = hình đổi lớn → Esc đóng
+    t_k0 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, 1100, 64600)); time.sleep(0.12); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, 1100, 64600))
+    time.sleep(3.0); t_k1 = time.time()
+    v.c.send(R.C_KEY, struct.pack(">BII", 1, 0x1B, 0)); time.sleep(0.1); v.c.send(R.C_KEY, struct.pack(">BII", 0, 0x1B, 0)); time.sleep(2.0); t_k2 = time.time()
     v.c.send(R.C_TEXT, b"cloudblue"); time.sleep(1.5)
     st = None
     with v.lock:
@@ -217,7 +221,7 @@ def main():
         try:                                                     # dòng thời gian từng khung: con trỏ có tới đúng chỗ sau mỗi lần rê không (trễ bao nhiêu khung)
             P = {"p1": (w * 13000 // 65536, h * 13000 // 65536), "p2": (w * 52000 // 65536, h * 52000 // 65536), "goc": (w * 1100 // 65536, h * 64600 // 65536)}
             tl = timeline(data, w, h, P)
-            mi = [sum(1 for x in fr if x[1] <= t) for t in (t_m1, t_m2, t_m3)] + [len(fr)]
+            mi = [sum(1 for x in fr if x[1] <= t) for t in (t_m1, t_m2, t_m3, t_k0)]
             seen = {}
             for k, (i0, i1), tm in (("p1", (mi[0], mi[1]), t_m1), ("p2", (mi[1], mi[2]), t_m2), ("goc", (mi[2], mi[3]), t_m3)):     # (không dùng tên a: a = tham số dòng lệnh)
                 hit = next((i for i in range(i0, min(i1, len(tl[k]))) if tl[k][i] >= 25), None)
@@ -235,6 +239,20 @@ def main():
                                                                                            ("cuoi", pk.get(len(fr) - 1))) if g for name in pts}
         except Exception as e:
             out["art_err"] = repr(e)[:200]
+        try:                                                     # bấm nút menu → menu KDE mở (hình đổi lớn), Esc → đóng
+            k0, k1, k2 = (sum(1 for x in fr if x[1] <= t) - 1 for t in (t_k0, t_k1, t_k2))
+            if 0 <= k0 < len(gray) and 0 <= k1 < len(gray) and 0 <= k2 < len(gray):
+                c1, c2 = change_box(gray[k0], gray[k1], gw), change_box(gray[k0], gray[k2], gw)
+                tot = float(gw * gh)
+                out["click"] = {"frames": [k0, k1, k2], "open": round(c1["n"] / tot, 3), "open_box": c1["box"], "after_esc": round(c2["n"] / tot, 3)}
+                out["click_ok"] = c1["n"] / tot > 0.03
+        except Exception as e:
+            out["click_err"] = repr(e)[:200]
+        try:
+            pk2 = decode_pick(data, w, h, [k0, k1])
+            out["art_click"] = {"%s@goc" % k: crop_art(g, w, h, w * 9000 // 65536, h * 52000 // 65536, half=60, step=6) for k, g in (("truoc", pk2.get(k0)), ("sau", pk2.get(k1))) if g}
+        except Exception as e:
+            out["art_click_err"] = repr(e)[:200]
     v.c.send(C_BYE); time.sleep(1)
     out["ok"] = bool(out.get("frames", 0) >= 30 and out.get("decoded", 0) >= out.get("frames", 0) - 2 and out.get("key_first"))
     save(); say("KET QUA %s" % json.dumps(out, ensure_ascii=False)[:600])

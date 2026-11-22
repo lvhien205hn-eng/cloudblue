@@ -56,9 +56,12 @@ fi
 # Con trỏ chuột VẼ BẰNG PHẦN MỀM: KWin dùng lớp con trỏ phần cứng thì rê chuột KHÔNG sinh khung hình mới cho luồng quay màn hình
 # (người xem thấy con trỏ đứng yên tới khi màn hình đổi chỗ khác — CI 22.11f thấy rõ) · máy ảo QEMU còn mất hẳn con trỏ (KDE bug 482362).
 install -d -m 0755 "$T/etc/environment.d"
-printf '# CloudBlue: dieu khien tu xa can con tro ve bang phan mem\nKWIN_FORCE_SW_CURSOR=1\n' > "$T/etc/environment.d/90-cloudblue-kwin.conf"
+# 22.11g: KWin cho chương trình điều khiển từ xa dùng THẲNG zkde_screencast + fake_input (không qua cổng XDG → không hộp hỏi trên màn hình máy;
+# máy thật 139: cổng XDG treo chờ người bấm). Máy cho thuê 1 khách, phiên là của khách → tắt kiểm quyền giao diện hạn chế của KWin.
+printf '# CloudBlue: dieu khien tu xa can con tro ve bang phan mem + quay man hinh / bam phim thang qua KWin\nKWIN_FORCE_SW_CURSOR=1\nKWIN_WAYLAND_NO_PERMISSION_CHECKS=1\n' > "$T/etc/environment.d/90-cloudblue-kwin.conf"
 grep -q '^KWIN_FORCE_SW_CURSOR=' "$T/etc/environment" 2>/dev/null || echo 'KWIN_FORCE_SW_CURSOR=1' >> "$T/etc/environment"
-say "con tro chuot ve bang phan mem (KWIN_FORCE_SW_CURSOR=1) de nguoi xem thay chuot di chuyen"
+grep -q '^KWIN_WAYLAND_NO_PERMISSION_CHECKS=' "$T/etc/environment" 2>/dev/null || echo 'KWIN_WAYLAND_NO_PERMISSION_CHECKS=1' >> "$T/etc/environment"
+say "con tro chuot ve bang phan mem + KWin cho quay man hinh / bam phim truc tiep (khong hop hoi)"
 install -d -m 0755 "$T/usr/share/applications"
 printf '[Desktop Entry]\nType=Application\nName=CloudBlue - dieu khien tu xa\nExec=/usr/bin/true\nNoDisplay=true\n' > "$T/usr/share/applications/vn.cloudblue.remote.desktop"
 if [ "$N" = 5 ] && [ -f "$O/cb.json" ]; then
@@ -103,14 +106,21 @@ sleep 10
   echo "--- agent.log"
   tail -n 12 /opt/cloudblue/logs/agent.log 2>/dev/null | cut -c1-200
   echo "input=\$(grep '^N: Name=' /proc/bus/input/devices 2>/dev/null | cut -d'"' -f2 | tr '\n' ',' | cut -c1-400)"
-  echo "kwin_sw_cursor=\$(tr '\\0' '\\n' < /proc/\$(pidof kwin_wayland | cut -d' ' -f1)/environ 2>/dev/null | grep -c '^KWIN_FORCE_SW_CURSOR=1')"
+  echo "kwin_sw_cursor=\$(tr '\\0' '\\n' < /proc/\$(pidof kwin_wayland | cut -d' ' -f1)/environ 2>/dev/null | grep -c '^KWIN_FORCE_SW_CURSOR=1') kwin_noperm=\$(tr '\\0' '\\n' < /proc/\$(pidof kwin_wayland | cut -d' ' -f1)/environ 2>/dev/null | grep -c '^KWIN_WAYLAND_NO_PERMISSION_CHECKS=1')"
   echo "--- remote.log"
   tail -n 25 /opt/cloudblue/logs/remote.log 2>/dev/null | cut -c1-220
   tail -n 5 /opt/cloudblue/logs/remote.out 2>/dev/null | cut -c1-220
-  echo "--- cbcap probe"
+  echo "--- quyen KWin (22.11g)"
+  echo "desktop=\$(grep -c '^X-KDE-Wayland-Interfaces=zkde_screencast_unstable_v1,org_kde_kwin_fake_input' /usr/share/applications/vn.cloudblue.cbcap.desktop 2>/dev/null) cbcap_py=\$(stat -c %a /usr/local/lib/cloudblue/cbcap-py 2>/dev/null) venv=\$(cat /usr/local/lib/cloudblue/pyvenv.cfg 2>/dev/null | head -1)"
+  grep -a -E "KWin|kbuildsycoca|cbcap-py|cong XDG|mo duoc man hinh" /opt/cloudblue/logs/remote.log 2>/dev/null | tail -n 8 | cut -c1-260
+  echo "--- cbcap probe (KWin truc tiep, cbcap-py)"
   install -D -m 0644 /opt/cloudblue/linux/cbcap.py /usr/local/lib/cloudblue/cbcap.py
   U=\$(getent passwd 1000 | cut -d: -f1)
+  PY=/usr/local/lib/cloudblue/cbcap-py; [ -x "\$PY" ] || PY=python3
   timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 \
+      "\$PY" -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
+  echo "--- cbcap probe (cong XDG, duong phu)"
+  timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 CBCAP_NO_KWIN=1 \
       python3 -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
 } > /run/cb-firstboot.txt 2>&1
 systemctl stop cloudblue.service

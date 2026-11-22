@@ -12,7 +12,7 @@
 # =====================================================================================================
 import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
 
-LINUX_VER = "22.11f"
+LINUX_VER = "22.11g"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
@@ -516,7 +516,19 @@ class LinuxAgent(pcagent.Agent):
             i["sec"] = {"std": "wheel" not in g, "hard": True, "lock": True}
         except Exception: pass
         i["rmt"] = self.remote_info() or {"v": "", "s": "chua chay", "age": 0}
+        e = self.remote_open_err()
+        if e: i["rmt"]["e"] = e                                       # 22.11g: lỗi mở màn hình gần nhất (≤ 1 ngày) — xem được trên web / SQL
         return i
+
+    def remote_open_err(self, max_age=86400):
+        """logs/remote.err (cbremote ghi khi không mở được màn hình để quay) → "<cách đây n phút>: <lỗi>" hoặc ""."""
+        try:
+            q = self.s.read_text(self.p("logs/remote.err")).strip().split(" ", 1)
+            age = int(self.s.now() - int(q[0]))
+            if len(q) < 2 or age > max_age: return ""
+            return ("%dp: " % (age // 60)) + re.sub(r"[^ -~]", "?", q[1])[:200]
+        except Exception:
+            return ""
 
     # ---- kết quả lần cài CachyOS (cb-install.sh ghi lên phân vùng cứu hộ)
     def check_result(self):

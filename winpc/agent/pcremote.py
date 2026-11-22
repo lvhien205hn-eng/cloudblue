@@ -18,7 +18,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "22.11f"
+REMOTE_VER = "22.11g"
 IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -1159,7 +1159,8 @@ class Remote:
         try: s.start()
         except Exception as e:
             self.log("khong bat duoc bo quay: %r" % (e,)); self._stop()
-            try: conn.send(S_ERROR, json.dumps({"code": "OFFLINE", "msg": "Máy PC chưa bật được bộ quay màn hình — thử lại sau ít phút."}, ensure_ascii=False).encode())
+            msg = str(getattr(e, "viewer_msg", "") or "")[:280] or "Máy PC chưa bật được bộ quay màn hình — thử lại sau ít phút."   # 22.11g: máy Linux báo lý do
+            try: conn.send(S_ERROR, json.dumps({"code": "OFFLINE", "msg": msg}, ensure_ascii=False).encode())
             except Exception: pass
 
     def _stop(self):
