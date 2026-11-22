@@ -601,7 +601,7 @@ def main():
         mine_l["items"][0]["pc"]["can"] = ["22h2", "1511", "cachyos"]                     # May-01 đổi được sang CachyOS
         mine_l["items"][1]["pc"]["can"] = ["22h2", "1511"]; mine_l["items"][1]["pc"]["job"] = {"state": "sent", "os": "cachyos", "at": iso(-120)}
         mine_l["items"][3]["pc"].update(os="cachyos", gpus=["NVIDIA GeForce GTX 1080"]); mine_l["items"][3]["os"] = "cachyos"; mine_l["items"][3]["os_name"] = "Linux CachyOS"
-        adm_l = json.loads(json.dumps(ADM)); adm_l["os"] = OS_L
+        adm_l = json.loads(json.dumps(ADM)); adm_l["os"] = OS_L; adm_l["lx"] = 2                  # SQL v50: pc_admin_rentals trả "lx": 2
         adm_l["free"][0]["can"] = ["22h2", "1511"]; adm_l["free"][1]["can"] = ["22h2", "1511", "cachyos"]
         adm_l["rentals"][0].update(os="cachyos", os_name="Linux CachyOS")
         s = Site(br, html, False, dict(shop, info=dict(INFO_ON, os=OS_L), mine=mine_l, bought=[], buyRes={"state": "active", "pc": PC1, "name": "May-01", "reinstall": True, "rental": 31, "order": "o2", "total": 360000}))
@@ -677,10 +677,27 @@ def main():
         ck("Lưu → os gửi kèm {id: cachyos, name: Linux CachyOS} (đã bán từ trước → không hỏi lại)", sv and {"id": "cachyos", "name": "Linux CachyOS"} in sv[-1]["p_patch"]["os"], sv[-1:])
         ck("không lỗi JS (quản trị, Linux)", not s.errors, s.errors)
         s.close()
-        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")
+        s = Site(br, html, True, dict(shop, bought=[]), path="/admin")                        # máy chủ CHƯA chạy SQL v50 (không có "lx")
         s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
         s.page.wait_for_function("() => document.getElementById('pcs-waitbar') && !document.getElementById('pcs-waitbar').hidden", timeout=8000)
         s.page.click("#pcs-waitbar"); s.page.wait_for_timeout(600); s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        st = s.js("""() => { const c = document.getElementById('pcs-set-cachyos'), n = document.getElementById('pcs-set-cy-need');
+                             return { dis: c.disabled, on: c.checked, off: document.getElementById('pcs-set-cy').classList.contains('off'), need: n.hidden ? '' : n.innerText,
+                                      w: [document.getElementById('pcs-set-22h2').disabled, document.getElementById('pcs-set-1511').disabled] }; }""")
+        ck("CHƯA chạy SQL v50: ô 🐧 CachyOS bị khoá + ghi '(chạy SQL v50 trước)'; 22H2 / 1511 vẫn chọn được",
+           st["dis"] is True and st["on"] is False and st["off"] and "SQL v50" in st["need"] and st["w"] == [False, False], st)
+        s.js("() => { const c = document.getElementById('pcs-set-cachyos'); c.disabled = false; c.checked = true; }")   # cố mở khoá bằng tay
+        n0 = len(s.dialogs); s.page.click("#pcs-set-save"); s.page.wait_for_timeout(400)
+        tt = s.js("() => [...document.querySelectorAll('.toast, #toast')].map(x => x.innerText).join(' | ')")
+        ck("cố bật CachyOS khi chưa có v50 → báo 'Chưa chạy SQL v50', không hỏi, không lưu",
+           "Chưa chạy SQL v50" in tt and not s.calls("pc_admin_sell") and len(s.dialogs) == n0, (tt, s.calls("pc_admin_sell"), s.dialogs[n0:]))
+        s.close()
+        s = Site(br, html, True, dict(shop, adm=dict(ADM, lx=2), bought=[]), path="/admin")   # đã chạy SQL v50
+        s.page.wait_for_function("() => !document.getElementById('drawer').hidden", timeout=15000)
+        s.page.wait_for_function("() => document.getElementById('pcs-waitbar') && !document.getElementById('pcs-waitbar').hidden", timeout=8000)
+        s.page.click("#pcs-waitbar"); s.page.wait_for_timeout(600); s.page.click("#pcs-adm-set"); s.page.wait_for_timeout(300)
+        st = s.js("() => ({ dis: document.getElementById('pcs-set-cachyos').disabled, need: document.getElementById('pcs-set-cy-need').hidden })")
+        ck("đã chạy SQL v50 (lx 2): ô 🐧 CachyOS mở, không còn dòng nhắc", st == {"dis": False, "need": True}, st)
         s.page.check("#pcs-set-cachyos"); n0 = len(s.dialogs); s.accept = False; s.page.click("#pcs-set-save"); s.page.wait_for_timeout(400)
         ck("BẬT bán CachyOS lần đầu → hỏi (cần SQL v50 + agent 22.11f, máy UEFI tắt Secure Boot); bấm Huỷ thì không lưu",
            any("BẬT bán Linux CachyOS" in x and "SQL v50" in x and "Secure Boot" in x for x in s.dialogs[n0:]) and not s.calls("pc_admin_sell"), s.dialogs[n0:])
