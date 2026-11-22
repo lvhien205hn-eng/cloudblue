@@ -34,7 +34,11 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq grub-efi-amd64-bin grub-common > /dev/null
-          MODS="part_gpt part_msdos fat ntfs ntfscomp exfat iso9660 udf loopback linux normal configfile search search_fs_file search_fs_uuid search_label test echo probe sleep reboot halt efi_gop efi_uga all_video gfxterm font regexp cat ls minicmd gzio xzio"
+          MODS=""
+          for m in part_gpt part_msdos fat ntfs ntfscomp exfat iso9660 udf loopback linux normal configfile search search_fs_file search_fs_uuid \
+                   search_label test echo probe sleep reboot halt efi_gop efi_uga all_video gfxterm font regexp cat ls minicmd gzio xzio; do
+            if [ -f /usr/lib/grub/x86_64-efi/$m.mod ]; then MODS="$MODS $m"; else echo "(GRUB bản này không có $m - bỏ)"; fi
+          done
           grub-mkstandalone -O x86_64-efi -o grubx64.efi --locales="" --fonts="" --themes="" --modules="$MODS" --install-modules="$MODS" \
             "boot/grub/grub.cfg=winpc/linux/grub-embed.cfg"
           ls -l grubx64.efi; md5sum grubx64.efi | tee grubx64.efi.md5
