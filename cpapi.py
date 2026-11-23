@@ -548,6 +548,10 @@ def push_obb(port, path, jid=None):
 #       – máy chưa bật cửa sổ nổi (win_run vừa bật) → bật lại luôn trước khi thu nhỏ;
 #       – máy đã bật sẵn → sau khi đặt chỗ, ĐỌC CHỖ THẬT của hình (dumpsys input: khung nhận chạm = nơi hình được vẽ) — lệch khỏi khung tab
 #         thì mới bật lại (mỗi lần mở máy tối đa 1 lần — WIN_UI_KEY), máy đúng sẵn thì không đụng gì.
+#   · Máy ảo thật (GitHub): Android 12 (sdk 31) lõi Android vẫn tự đặt chỗ → không lỗi; Android 12L (sdk 32 = máy MuMu "Android 12") lỗi y như máy
+#     thật; Android 13+ (sdk 35 = máy MuMu Android 15) lõi đặt chỗ đúng nhưng THANH TIÊU ĐỀ của cửa sổ là do giao diện hệ thống vẽ → nó chạy
+#     từ trước thì cửa sổ nhỏ KHÔNG CÓ thanh tiêu đề (không kéo, không đóng / phóng to được). Nhận biết: bộ vẽ màn hình có lớp hình của tab
+#     ("Task=N#…") mà không có lớp "Decor container of Task=N" / "Caption … of Task=N" → cũng bật lại giao diện hệ thống 1 lần.
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
 WIN_UI_SDK = 31                   # từ Android 12: giao diện hệ thống đặt chỗ hình của cửa sổ nổi
 WIN_UI_KEY = "cb_win_ui"          # cài đặt Android (global): mã lần mở máy (boot_id) mà máy chủ đã bật lại giao diện hệ thống
@@ -558,8 +562,11 @@ WIN_UI_KILL_SH = ("B=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null); P=$(pid
                   "else settings put global " + WIN_UI_KEY + " \"${B:-0}\"; "
                   "kill $P 2>/dev/null || su -c \"kill $P\" 2>/dev/null || su 0 kill $P 2>/dev/null || am force-stop com.android.systemui 2>/dev/null; "
                   "echo \"#kill $P\"; fi")
-WIN_FRAME_SH = "dumpsys input 2>/dev/null | grep -E \"^ *[0-9]+: name='[0-9a-f]+ ({p})/\""
-WIN_FRAME_RX = re.compile(r"name='[0-9a-f]+ ([A-Za-z0-9._]+)/.*?\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
+WIN_FRAME_SH = "dumpsys input 2>/dev/null | grep -E \"name='?[0-9a-f]+ ({p})/\""
+WIN_FRAME_RX = re.compile(r"name='?[0-9a-f]+ ([A-Za-z0-9._]+)/.*?\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
+WIN_DECOR_SDK = 33                # từ Android 13: thanh tiêu đề cửa sổ nổi do giao diện hệ thống vẽ (lớp hình "Decor container of Task=N")
+WIN_DECOR_SH = "dumpsys SurfaceFlinger --list 2>/dev/null | grep -E 'Task=[0-9]+'"
+WIN_DECOR_RX = re.compile(r"^\s*(?:(Decor container|Caption container|Caption) of )?Task=(\d+)(?:#\d+)?\s*$")
 WIN_SCM_SDK = 33                  # từ bản Android này: Android thu nhỏ CẢ HÌNH app không đổi cỡ (size compat) — máy MuMu Android 15 thật: đúng chỗ, không phải
                                   # mở lại app. Android 12L trở xuống: ép đổi cỡ + mở lại app kiểu cũ (máy MuMu Android 12 thật vẽ kiểu size compat lệch chỗ)
 WIN_SCM_KEEP = True               # Android 13+: app khai báo không đổi cỡ → để Android thu hình, KHÔNG tự mở lại (bộ thử đặt False để thử đường mở lại)
@@ -969,6 +976,23 @@ def win_seen(sh, tabs, sleep=time.sleep, tries=5):
     return False if seen else None
 
 
+def win_decor(sh, tabs, sleep=time.sleep, tries=5):
+    """Android 13+: các tab (cửa sổ nổi) đã có THANH TIÊU ĐỀ do giao diện hệ thống vẽ chưa — đọc tên lớp hình ở bộ vẽ màn hình
+       (dumpsys SurfaceFlinger --list): "Task=N#…" là hình của tab, "Decor container of Task=N" / "Caption … of Task=N" là thanh tiêu đề.
+       True: có tab đã có thanh tiêu đề (giao diện hệ thống đang lo cửa sổ nổi) · False: thấy hình của tab mà KHÔNG tab nào có thanh tiêu đề
+       (chờ ~2 giây vẫn vậy) · None: máy không cho đọc / không thấy hình của tab nào → không kết luận."""
+    ids = {int(t["id"]) for t, _ in tabs}; seen = None
+    for i in range(tries):
+        have, dec = set(), set()
+        for line in (sh(WIN_DECOR_SH, 20) or "").splitlines():
+            m = WIN_DECOR_RX.match(line)
+            if m and int(m.group(2)) in ids: (dec if m.group(1) else have).add(int(m.group(2)))
+        if dec: return True
+        seen = bool(have)
+        if i < tries - 1: sleep(0.4)
+    return False if seen else None
+
+
 def win_ui_restart(sh, sleep=time.sleep, force=False):
     """Bật lại GIAO DIỆN HỆ THỐNG (SystemUI) của máy: tắt tiến trình, Android tự bật lại sau vài giây — app / game đang chạy KHÔNG tắt, chỉ thanh
        trạng thái + ảnh nền chớp. Mỗi lần mở máy tối đa 1 lần (WIN_UI_KEY nhớ mã lần mở máy) trừ khi force. Trả True nếu đã bật lại + đã lên."""
@@ -985,13 +1009,14 @@ def win_ui_restart(sh, sleep=time.sleep, force=False):
 
 
 def win_ui_fix(sh, sdk, tabs, sleep=time.sleep, tries=5):
-    """23/11e · Android 12+: hình của tab không nằm ở khung tab (giao diện hệ thống chạy từ trước khi máy bật cửa sổ nổi → không ai đặt chỗ
-       hình) → bật lại giao diện hệ thống 1 lần rồi chờ hình về đúng chỗ. Trả True nếu vừa bật lại. tries: số lần đọc trước khi kết luận lệch
+    """23/11e · Android 12+: giao diện hệ thống chạy từ trước khi máy bật cửa sổ nổi → Android 12L: hình của tab không nằm ở khung tab ·
+       Android 13+: cửa sổ không có thanh tiêu đề → bật lại giao diện hệ thống 1 lần rồi chờ nó nhận lại các cửa sổ. Trả True nếu vừa bật lại. tries: số lần đọc trước khi kết luận lệch
        (giao diện hệ thống vừa được bật lại trong chính lượt này thì chờ lâu hơn — nó còn đang nhận lại danh sách tab)."""
     tabs = [(t, tuple(b)) for t, b in tabs if t and b]
-    if sdk < WIN_UI_SDK or not tabs or win_seen(sh, tabs, sleep, tries) is not False: return False
+    look = win_decor if sdk >= WIN_DECOR_SDK else win_seen      # Android 13+: thiếu thanh tiêu đề · Android 12 / 12L: hình lệch khung
+    if sdk < WIN_UI_SDK or not tabs or look(sh, tabs, sleep, tries) is not False: return False
     if not win_ui_restart(sh, sleep): return False
-    win_seen(sh, tabs, sleep, tries=25)                         # chờ giao diện hệ thống đặt lại chỗ các cửa sổ (tới ~10 giây)
+    look(sh, tabs, sleep, tries=25)                             # chờ giao diện hệ thống nhận lại các cửa sổ: đặt chỗ / vẽ thanh tiêu đề (tới ~10 giây)
     return True
 
 
