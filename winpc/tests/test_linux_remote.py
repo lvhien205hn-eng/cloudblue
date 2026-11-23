@@ -5,7 +5,7 @@
    · ĐẦU-CUỐI: máy chủ phát hình thật (windows/bluestream.py --selftest + pcrelay.py, TLS thật) ⇄ cbremote (root) ⇄ cbcap (tiến trình
      riêng, hình thử của ffmpeg thay màn hình KDE) ⇄ người xem: hình tới, giải mã đủ; chuột / phím / chữ tới đúng cổng XDG
    Chạy: python3 tests/test_linux_remote.py   (cần dbus-daemon + ffmpeg + thư viện cryptography)"""
-import hashlib, json, os, shutil, socket, ssl, struct, subprocess, sys, tempfile, threading, time
+import hashlib, json, os, pwd, shutil, socket, ssl, struct, subprocess, sys, tempfile, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WINPC = os.path.join(HERE, "..")
@@ -398,6 +398,39 @@ ch_b = CR.ensure_kwin_env(L4.append, path=_ef, etc_env=_ee)
 ck("máy cài bản cũ: thêm KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 (environment.d + /etc/environment, không lặp dòng có sẵn); gọi lại không đổi gì",
    ch_a and not ch_b and "KWIN_FORCE_SW_CURSOR=1\nKWIN_WAYLAND_NO_PERMISSION_CHECKS=1\n" in _c1
    and _c2 == "LANG=en_US.UTF-8\nKWIN_FORCE_SW_CURSOR=1\nKWIN_WAYLAND_NO_PERMISSION_CHECKS=1\n" and open(_ee).read() == _c2, (_c1, _c2))
+print("3e-b. 23.11a · danh sách app của KDE (ksycoca) dựng bằng ĐÚNG môi trường phiên Plasma + lối tắt app trên màn hình nền")
+_base = {"HOME": "/home/pc", "LANG": "C.UTF-8", "XDG_CURRENT_DESKTOP": "KDE"}
+_sess = {"XDG_MENU_PREFIX": "plasma-", "XDG_CONFIG_DIRS": "/home/pc/.config/kdedefaults:/etc/xdg", "LANG": "en_US.UTF-8", "PATH": "/x", "SECRET": "y"}
+_e1 = CR.sycoca_env(_base, _sess, exists=lambda f: False)
+ck("chép từ phiên Plasma: XDG_MENU_PREFIX=plasma- + XDG_CONFIG_DIRS + LANG (tên bộ đệm theo ngôn ngữ); KHÔNG chép biến lạ (PATH, …)",
+   _e1.get("XDG_MENU_PREFIX") == "plasma-" and _e1.get("XDG_CONFIG_DIRS") == _sess["XDG_CONFIG_DIRS"] and _e1.get("LANG") == "en_US.UTF-8"
+   and "SECRET" not in _e1 and "PATH" not in _e1 and _e1["HOME"] == "/home/pc", _e1)
+_have = {"/etc/xdg/menus/plasma-applications.menu"}
+_e2 = CR.sycoca_env(_base, {"LANG": "en_US.UTF-8"}, exists=lambda f: f in _have)
+ck("phiên THIẾU XDG_MENU_PREFIX (lỗi cũ: bộ đệm rỗng, menu trống) + máy chỉ có plasma-applications.menu → tự đặt plasma-", _e2.get("XDG_MENU_PREFIX") == "plasma-", _e2)
+_e3 = CR.sycoca_env(_base, {}, exists=lambda f: f in {"/etc/xdg/menus/applications.menu", "/etc/xdg/menus/plasma-applications.menu"})
+ck("máy CÓ applications.menu thường → để nguyên (không ép tiền tố)", "XDG_MENU_PREFIX" not in _e3, _e3)
+_e4 = CR.sycoca_env(_base, {"XDG_CONFIG_DIRS": "/opt/kde/xdg"}, exists=lambda f: f == "/opt/kde/xdg/menus/plasma-applications.menu")
+ck("tìm tệp menu theo cả XDG_CONFIG_DIRS của phiên", _e4.get("XDG_MENU_PREFIX") == "plasma-", _e4)
+_me = pwd.getpwuid(os.getuid()).pw_name
+_apps = os.path.join(tmp, "apps-sys"); os.makedirs(_apps)
+for _n in ("firefox.desktop", "org.kde.konsole.desktop"):
+    open(os.path.join(_apps, _n), "w").write("[Desktop Entry]\nType=Application\nName=%s\nExec=true\n" % _n)
+_home, _mk = os.path.join(tmp, "home-khach"), os.path.join(tmp, "mark"); os.makedirs(_home); os.makedirs(_mk)
+L5 = []
+_ok1 = CR.desktop_shortcuts(_me, L5.append, mark_dir=_mk, apps_dir=_apps, home=_home)
+_dk = os.path.join(_home, "Desktop")
+_ls1 = sorted(os.listdir(_dk)) if os.path.isdir(_dk) else []
+ck("lối tắt Firefox + Konsole lên màn hình nền (liên kết tới tệp .desktop hệ thống; app không có trên máy → bỏ qua) + ghi đã làm",
+   _ok1 and _ls1 == ["firefox.desktop", "org.kde.konsole.desktop"] and all(os.readlink(os.path.join(_dk, f)) == os.path.join(_apps, f) for f in _ls1)
+   and os.path.exists(os.path.join(_mk, "desktop-shortcuts.%s.done" % _me)), (_ok1, _ls1, L5))
+os.remove(os.path.join(_dk, "firefox.desktop"))
+_ok2 = CR.desktop_shortcuts(_me, L5.append, mark_dir=_mk, apps_dir=_apps, home=_home)
+ck("khách xoá lối tắt → KHÔNG tạo lại (chỉ làm 1 lần)", _ok2 and sorted(os.listdir(_dk)) == ["org.kde.konsole.desktop"], sorted(os.listdir(_dk)))
+os.remove(os.path.join(_mk, "desktop-shortcuts.%s.done" % _me)); open(os.path.join(_dk, "firefox.desktop"), "w").write("cua khach")
+_ok3 = CR.desktop_shortcuts(_me, L5.append, mark_dir=_mk, apps_dir=_apps, home=_home)
+ck("tệp trùng tên khách tự đặt → giữ nguyên, không ghi đè", _ok3 and open(os.path.join(_dk, "firefox.desktop")).read() == "cua khach", L5[-1:])
+ck("tài khoản không có → False, không ném lỗi", CR.desktop_shortcuts("khong-co-tai-khoan-nay", L5.append, mark_dir=_mk, apps_dir=_apps) is False)
 
 
 class _H:

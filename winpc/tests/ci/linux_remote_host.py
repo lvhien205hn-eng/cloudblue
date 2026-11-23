@@ -194,8 +194,25 @@ def main():
     # 22.11g: BẤM nút menu (chuột thật của KWin phải tới đúng chỗ — con trỏ tự vẽ không chứng minh được) → menu KDE mở = hình đổi lớn → Esc đóng
     t_k0 = time.time(); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, 1100, 64600)); time.sleep(0.12); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, 1100, 64600))
     time.sleep(3.0); t_k1 = time.time()
-    v.c.send(R.C_KEY, struct.pack(">BII", 1, 0x1B, 0)); time.sleep(0.1); v.c.send(R.C_KEY, struct.pack(">BII", 0, 0x1B, 0)); time.sleep(2.0); t_k2 = time.time()
+    K_ESC, K_ENTER = 111, 66            # giao thức C_KEY: (hành động 0 = nhấn · 1 = nhả, MÃ PHÍM ANDROID, meta) — như app / web gửi
+
+    def key(code):
+        v.c.send(R.C_KEY, struct.pack(">BII", 0, code, 0)); time.sleep(0.08); v.c.send(R.C_KEY, struct.pack(">BII", 1, code, 0))
+    key(K_ESC); time.sleep(2.0); t_k2 = time.time()
     v.c.send(R.C_TEXT, b"cloudblue"); time.sleep(1.5)
+    # 23/11: MỞ APP NHƯ KHÁCH — bấm nút menu KDE, gõ tên app, Enter (Konsole = "cmd" của Linux · Firefox = trình duyệt) → ảnh từng bước
+    t_app = {}
+
+    def click(x, y):
+        v.c.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, x, y)); time.sleep(0.3)
+        v.c.send(R.C_MOUSE, struct.pack(">BBHH", 1, 0, x, y)); time.sleep(0.12); v.c.send(R.C_MOUSE, struct.pack(">BBHH", 2, 0, x, y))
+    key(K_ESC); time.sleep(1.5); t_app["0-truoc"] = time.time()
+    for i, (app, wait_s) in enumerate((("konsole", 8), ("firefox", 16))):
+        key(K_ESC); time.sleep(1.0)                                   # menu đang mở (nếu có) → đóng, để cú bấm sau MỞ menu
+        click(1100, 64600); time.sleep(2.5); t_app["%d-%s-1-menu" % (i + 1, app)] = time.time()
+        v.c.send(R.C_TEXT, app.encode()); time.sleep(2.5); t_app["%d-%s-2-go-ten" % (i + 1, app)] = time.time()
+        key(K_ENTER); time.sleep(wait_s); t_app["%d-%s-3-enter" % (i + 1, app)] = time.time()
+    t_app["3-xong"] = time.time()
     st = None
     with v.lock:
         for m in v.rx:
@@ -253,6 +270,17 @@ def main():
             out["art_click"] = {"%s@goc" % k: crop_art(g, w, h, w * 9000 // 65536, h * 52000 // 65536, half=60, step=6) for k, g in (("truoc", pk2.get(k0)), ("sau", pk2.get(k1))) if g}
         except Exception as e:
             out["art_click_err"] = repr(e)[:200]
+    try:                                                         # ảnh màu từng bước mở app → thư mục linux-shots (CI đẩy lên nhánh linux-shots)
+        shots = os.path.join(os.path.dirname(os.path.abspath(a.out)), "linux-shots"); os.makedirs(shots, exist_ok=True)
+        raw = os.path.join(shots, "stream.h264"); open(raw, "wb").write(data)
+        for name, tm in sorted(t_app.items(), key=lambda x: x[1]):
+            idx = sum(1 for x in fr if x[1] <= tm) - 1
+            if idx >= 0:
+                subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", raw, "-vf", "select=eq(n\\,%d)" % idx, "-vsync", "0", "-frames:v", "1",
+                                os.path.join(shots, name + ".png")], timeout=180)
+        out["app_shots"] = sorted(f for f in os.listdir(shots) if f.endswith(".png"))
+    except Exception as e:
+        out["app_shots_err"] = repr(e)[:200]
     v.c.send(C_BYE); time.sleep(1)
     out["ok"] = bool(out.get("frames", 0) >= 30 and out.get("decoded", 0) >= out.get("frames", 0) - 2 and out.get("key_first"))
     save(); say("KET QUA %s" % json.dumps(out, ensure_ascii=False)[:600])
