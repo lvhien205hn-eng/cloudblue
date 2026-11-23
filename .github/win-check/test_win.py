@@ -56,9 +56,12 @@ open(os.path.join(home, "cloudphone.conf"), "w").write("SUPABASE_URL=http://127.
 os.environ["HOME"] = home
 spec = importlib.util.spec_from_file_location("cpapi_w", os.path.join(ROOT, "cpapi.py"))
 cp = importlib.util.module_from_spec(spec); spec.loader.exec_module(cp)
-# 23/11b: cài đặt cửa sổ nổi THEO BẢN ANDROID như máy chủ (phonectl TUNE = cpapi.win_conf_sh): Android 15 không ép đổi cỡ → thu nhỏ hình game
+# cài đặt cửa sổ nổi như máy chủ (phonectl TUNE = cpapi.win_conf_sh). 23/11d: mọi bản Android ÉP đổi cỡ (bỏ kiểu size compat của 23/11b–c);
+# máy thật từng chạy 23/11c còn giữ enable_sizecompat_freeform=1 + (Android 12L+) enable_non_resizable_multi_window=1 → đặt y vậy cho giống.
 TUNE = ("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; " + cp.win_conf_sh(API) + "; "
-        "settings put global enable_sizecompat_freeform 1; settings put system accelerometer_rotation 0; settings put system user_rotation 0")
+        "settings put global enable_sizecompat_freeform 1; " + ("settings put global enable_non_resizable_multi_window 1; " if API >= 32 else "")
+        + "settings put system accelerometer_rotation 0; settings put system user_rotation 0")
+CAPFIX = cp.WIN_CAPFIX_SDK[0] <= API <= cp.WIN_CAPFIX_SDK[1]      # Android 10–12L: mở lại lúc cửa sổ thấp hơn 1 thanh tiêu đề → khung game phải KHÍT phần app thấy
 FREE = "settings get global enable_freeform_support; settings get global force_resizable_activities"
 WANT = ["1", "0" if API >= cp.WIN_SCM_SDK else "1"]
 print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
@@ -174,7 +177,8 @@ if NEW and j.get("fit") != "ok":
     print("--- CHẨN ĐOÁN: app không tắt nền được. 4 giây sau khi về màn chính: ---\n" + sh("am stack list | grep -E 'taskId=.*wintest'")[:400] + "\n"
           + sh("dumpsys activity activities | grep -E 'Hist +#|state=|mVisibleRequested|visible=' | grep -A3 wintest1", 40)[:900] + "\n"
           + sh("dumpsys activity oom 2>/dev/null | grep -B1 -A2 wintest1", 40)[:900] + "\n"
-          + sh("dumpsys activity services vn.cloudblue.wintest1 2>/dev/null | head -n 12", 40)[:600], flush=True)
+          + sh("dumpsys activity services vn.cloudblue.wintest1 2>/dev/null | head -n 12", 40)[:600] + "\n--- id / nhật ký tắt app ---\n"
+          + sh("id | cut -c1-60; logcat -d -t 600 2>/dev/null | grep -iE 'am_kill|Killing [0-9]+:vn.cloudblue|Invalid packageName|killBackground' | tail -n 12", 40)[:1500], flush=True)
     time.sleep(8)
     print("--- 12 giây sau: ---\n" + sh("dumpsys activity activities | grep -E 'Hist +#|state=|mVisibleRequested|visible=' | grep -A3 wintest1", 40)[:900] + "\n"
           + sh("dumpsys activity oom 2>/dev/null | grep -B1 -A2 wintest1", 40)[:900] + "\n" + sh("am kill --user 0 vn.cloudblue.wintest1; sleep 1; ps -A -o USER,PID,NAME | grep wintest1")[:300], flush=True)
@@ -314,7 +318,8 @@ if NEW:
     ck(f"… game cũ TỰ được mở lại ngay trong cửa sổ lúc thu nhỏ → dựng khung theo cỡ CỬA SỔ (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]} · cửa sổ {g4 and g4['b']}",
        j.get("fit") == "ok" and bool(s1) and abs(s1[0] - s1[2]) <= 4 and -4 <= s1[3] - s1[1] <= capr + 8 and g4 and fitted(s1[:2], g4["b"], g8) and creates(4) == 2,
        (j, s1, g4 and g4["b"], creates(4), scm[:1]))
-    info(f"… khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}", bool(s1) and abs(s1[1] - s1[3]) <= 4, s1)
+    (ck if CAPFIX else info)(f"… khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}", bool(s1) and abs(s1[1] - s1[3]) <= 4, s1)
+    info(f"… không còn kiểu Android thu nhỏ hình (size compat): {scm[:1]}", not scm, scm[:2])
 else:
     info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}" + (f" · Android thu nhỏ hình: {scm[:1]}" if scm else ""),
          bool(s1) and (s1[0] >= s1[2] - 2 and s1[1] >= s1[3] - 2), s1)
@@ -330,15 +335,18 @@ if g4:
         ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), game KHÔNG bị tắt / mở lại", code == 409 and "Android 9" in j.get("error", "")
            and g5 and g5["mode"] == "freeform" and g5["id"] == g4["id"], (code, j, g5))
     else:
-        ck(f"🖼 Vừa khung → game mở lại ngay trong ĐÚNG TAB + đúng chỗ + cỡ cửa sổ đang có (không đổi cỡ cửa sổ), đúng 1 lần · {time.time() - t0:.1f} giây",
-           code == 200 and g5 and g5["mode"] == "freeform" and tuple(g5["b"]) == tuple(gb) == tuple(j.get("b") or ()) and g5["vis"] and g5["id"] == g4["id"]
+        capg = int(round(cp.WIN_CAP_DP * ga0["dpi"] / 160.0))       # Android 10–12L, cửa sổ thấp sát mức Android cho → được kéo cao thêm đúng 1 thanh tiêu đề
+        same = bool(g5) and tuple(g5["b"]) == tuple(j.get("b") or ()) and tuple(g5["b"][:3]) == tuple(gb[:3]) \
+            and (g5["b"][3] == gb[3] or (CAPFIX and g5["b"][3] - gb[3] == capg))
+        ck(f"🖼 Vừa khung → game mở lại ngay trong ĐÚNG TAB + đúng chỗ + cỡ cửa sổ đang có (Android 10–12L: có thể cao thêm 1 thanh tiêu đề), đúng 1 lần · {time.time() - t0:.1f} giây",
+           code == 200 and g5 and g5["mode"] == "freeform" and same and g5["vis"] and g5["id"] == g4["id"]
            and creates(4) == c4 + 1, (code, j, gb, g5, creates(4), c4))
         gs = cp.win_state(sh)["geo"]
         ck("… màn vẫn đúng hướng như trước khi mở lại (game ngang không làm màn kẹt ngang)", (gs["w"] > gs["h"]) == (ga0["w"] > ga0["h"]), (ga0, gs))
         capr = int(round(cp.WIN_CAP_DP * gs["dpi"] / 160.0))
         ck(f"… game dựng khung theo cỡ CỬA SỔ mới (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]} · cửa sổ {g5 and g5['b']}",
            bool(s2) and abs(s2[0] - s2[2]) <= 4 and -4 <= s2[3] - s2[1] <= capr + 8 and g5 and fitted(s2[:2], g5["b"], gs), (s2, g5 and g5["b"], gs))
-        info(f"… khung game KHÍT phần app thấy sau Vừa khung: app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", bool(s2) and abs(s2[1] - s2[3]) <= 4, s2)
+        (ck if CAPFIX else info)(f"… khung game KHÍT phần app thấy sau Vừa khung: app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", bool(s2) and abs(s2[1] - s2[3]) <= 4, s2)
 # 9. 23/11c · khách tự cho cửa sổ TO / NHỎ hơn · 🖥 Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ
 def ffs(): return [x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")]
 def inside(g, ws): return all(x["b"][0] >= 0 and x["b"][1] >= 0 and x["b"][2] <= g["w"] + 1 and x["b"][3] <= g["h"] + 1 for x in ws)
