@@ -35,14 +35,15 @@ class Droid:
        màn" (cả --task). App ÉP NGANG (land) đang toàn màn trên cùng → màn xoay ngang; còn lại theo màn chính. sdk < 31: màn xoay → chỗ các
        cửa sổ nổi xoay theo (giữ nguyên chỗ trên mặt kính)."""
 
-    def __init__(self, sdk, w=720, h=1280, nav=96, free=True, lag=0):
+    def __init__(self, sdk, w=720, h=1280, nav=96, free=True, lag=0, stick=False):
         self.sdk, self.W, self.H, self.nav, self.free = sdk, w, h, nav, free
         self.lag, self._true, self._old, self._left = lag, None, None, 0          # lag: máy chậm — màn xoay xong mới báo hướng mới sau `lag` lần đọc
         self.z = [{"id": 1, "comp": "com.android.launcher3/.Launcher", "user": 0, "mode": FS, "type": "home", "b": (0, 0, 0, 0), "land": False, "resz": True}]
         self.nid, self.log = 10, []
         self.rot, self.lo = sdk < 31, False
-        self.sticky = False                                   # máy ảo 33–35 thật: game ngang mở lại TOÀN MÀN bằng `am start -W` rồi thành cửa sổ
-                                                              # → màn KẸT NGANG (không tự xoay về dọc) tới khi về màn chính / mở app khác
+        self.sticky, self.stick, self.pend = False, stick, 0      # máy ảo 33–35 thật: game ngang vừa mở lại TOÀN MÀN (`am start -W`, mở nguội) — màn
+        # còn đang xoay ngang (pend lần đọc nữa mới xong) mà đã thu game vào cửa sổ → màn xoay ngang MUỘN rồi KẸT NGANG tới khi về màn chính
+        # / mở app khác. stick=True: máy kẹt ngang cả khi đã chờ xoay xong (để thử đường về màn chính).
         self.force, self.nonres, self.apps = ("1" if free else "null"), "null", {}
 
     def _sync(self):
@@ -65,11 +66,11 @@ class Droid:
         self.apps[(comp, user)] = (land, resz)
         if t is None: self.nid += 1; t = {"id": self.nid, "comp": comp, "user": user, "mode": FS, "type": "standard", "b": (0, 0, 0, 0), "land": land, "resz": resz}
         else: self.z.remove(t)
-        t["mode"] = FS; t["w"] = False; self.sticky = False
+        t["mode"] = FS; t["cold"] = False; self.sticky = False; self.pend = 0
         self.z.insert(0, t); self._sync(); return t
 
     def home_key(self):
-        h = next(x for x in self.z if x["type"] == "home"); self.z.remove(h); self.z.insert(0, h); self.sticky = False; self._sync()
+        h = next(x for x in self.z if x["type"] == "home"); self.z.remove(h); self.z.insert(0, h); self.sticky = False; self.pend = 0; self._sync()
 
     def rotate(self):                                       # khách khoá màn ngang (màn chính xoay được)
         self.W, self.H = self.H, self.W; self._sync()
@@ -88,6 +89,7 @@ class Droid:
     def size(self):
         """Cỡ màn lúc này: app ép ngang đang toàn màn trên cùng → ngang (máy 33–35 kẹt ngang: vẫn ngang)."""
         if self.sticky: return max(self.W, self.H), min(self.W, self.H)
+        if self.pend > 0: return self.W, self.H                   # game ngang vừa mở nguội: màn chưa xoay xong
         top = next((x for x in self.z if x["mode"] == FS), None)
         if top is not None and top["land"]: return max(self.W, self.H), min(self.W, self.H)
         return self.W, self.H
@@ -141,6 +143,7 @@ class Droid:
     def _sh(self, c, t=30):
         self.log.append(c)
         if c == cp.WIN_STATE_SH:
+            if self.pend > 0: self.pend -= 1
             W, H = self.shown(); land = W > H
             return (f"{self.sdk}\n#S\n{self.stack_list()}\n#D\n  Display: mDisplayId=0 rootTasks=4\n"
                     f"    init=720x1280 320dpi cur={W}x{H} app={W - self.nav if land else W}x{H if land else H - self.nav} rng=720x672-1232x1184\n"
@@ -188,7 +191,10 @@ class Droid:
             tk = self.task(comp, u)
             if tk is None and (comp, u) in self.apps and tid is None:      # app đã tắt (force-stop) → mở lại = tab mới toàn màn
                 tk = self.open(comp, u, *self.apps[(comp, u)])
-                if mode == FS: tk["w"] = "-W " in c; return "Status: ok"
+                if mode == FS:
+                    tk["cold"] = "-W " in c
+                    if tk["cold"] and tk["land"] and self.sdk >= 33: self.pend = 2
+                    return "Status: ok"
             if tk is None: return "Error: Activity class does not exist."
             if tid is not None and int(tid) != tk["id"]: return "Error: task khác app"
             if ("--display 0 " in c) != (self.sdk >= 29): return "Error: lệnh sai bản Android"
@@ -203,7 +209,8 @@ class Droid:
             ok = ok and (self.free or mode == FS)
             if ok:
                 if tk["mode"] != mode and mode == FF and tk["b"] == (0, 0, 0, 0): tk["b"] = (90, 300, 630, 700)    # cỡ mặc định của Android
-                if self.sdk >= 33 and mode == FF and tk["mode"] == FS and tk.get("w") and tk["land"] and self.z[0] is tk: self.sticky = True
+                if self.sdk >= 33 and mode == FF and tk["mode"] == FS and tk["land"] and (self.pend > 0 or (self.stick and tk.get("cold"))):
+                    self.sticky = True; self.pend = 0
                 tk["mode"] = mode
             self.z.remove(tk); self.z.insert(0, tk)
             return "Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] }"
@@ -375,10 +382,10 @@ for sdk in (28, 29, 31, 32, 33, 35):
        code == 200 and a2 and a2["mode"] == FF and a2["b"] == want and tuple(j["b"]) == want and "khởi động lại" in j["msg"]
        and any(x == "am force-stop --user 0 com.roblox.client 2>&1" for x in d.log) and d.visible(a2), (code, j, a2, d.log[-6:]))
     bb = d.task(R2)
-    ck(f"Android {sdk}: sau Mở lại vừa khung màn vẫn DỌC, cửa sổ khác (tab 2) vẫn hiện đúng chỗ"
-       + (" — máy 33–35 kẹt ngang → về màn chính 1 lần rồi đưa các cửa sổ lên lại" if sdk >= 33 else " — không bấm về màn chính"),
+    ck(f"Android {sdk}: sau Mở lại vừa khung màn vẫn DỌC, cửa sổ khác (tab 2) vẫn hiện đúng chỗ, game trên cùng"
+       + (" — chờ màn xoay ngang xong mới thu vào cửa sổ (không kẹt ngang, không phải về màn chính)" if sdk >= 33 else ""),
        d.size()[0] < d.size()[1] and bb and bb["mode"] == FF and d.visible(bb) and bb["b"] == b["b"]
-       and (("input keyevent 3" in d.log) == (sdk >= 33)) and d.z[0] is a2, (d.size(), bb, b["b"], [x for x in d.log if "keyevent" in x or "focus" in x]))
+       and "input keyevent 3" not in d.log and d.z[0] is a2, (d.size(), bb, b["b"], [x for x in d.log if "keyevent" in x or "focus" in x]))
     scr = next((x for x in d.log if x.startswith("C=")), "")
     if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk}: mở lại TOÀN MÀN (chờ game vẽ khung đầu) rồi đưa vào cửa sổ cũ — Android thu nhỏ cả hình vừa khung",
                                  not scr and any(x.startswith("timeout 25 am start -W --user 0 --display 0 --windowingMode 1 ") for x in d.log)
@@ -386,6 +393,13 @@ for sdk in (28, 29, 31, 32, 33, 35):
     else: ck(f"Android {sdk}: mở lại thẳng vào cửa sổ đúng chỗ + cỡ, chờ game vẽ khung đầu (gfxinfo) rồi kéo cao thêm 42 dp — lần vẽ đầu chưa có thanh tiêu đề",
              "am task resize $id 40 600 600 920 " in scr and any(x.startswith("dumpsys gfxinfo com.roblox.client") for x in d.log)
              and d.log[-2].startswith(f"am task resize {a2['id']} 40 600 600 1004") if len(d.log) > 1 else False, (scr[-160:], d.log[-4:]))
+d = Droid(35, stick=True); d.open(R1, land=True); cp.win_run(d.sh, "mini"); a = d.task(R1)
+d.home_key(); d.open(R2, land=True); cp.win_run(d.sh, "mini"); b = d.task(R2)
+d.z.remove(a); d.z.insert(0, a); d.log.clear(); ab = a["b"]
+code, j = cp.win_run(d.sh, "refit"); a2 = d.task(R1); bb = d.task(R2)
+ck("máy kẹt ngang cả khi đã chờ xoay xong → về màn chính 1 lần rồi đưa các cửa sổ lên lại: màn DỌC, game trên cùng đúng chỗ, tab 2 vẫn hiện đúng chỗ",
+   code == 200 and "input keyevent 3" in d.log and d.size()[0] < d.size()[1] and a2 and a2["b"] == ab and d.z[0] is a2
+   and bb and d.visible(bb) and bb["b"] == b["b"], (code, j, d.size(), a2, bb, [x for x in d.log if "keyevent" in x or "focus" in x]))
 d = Droid(31); d.open(R1, land=True)
 code, j = cp.win_run(d.sh, "refit")
 ck("chưa có tab nhỏ nào → 409 dễ hiểu (thu nhỏ trước)", code == 409 and "thu nhỏ app" in j.get("error", ""), (code, j))
