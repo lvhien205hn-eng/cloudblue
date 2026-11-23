@@ -11,6 +11,8 @@
 #    · 23.11a: dựng lại danh sách app của KDE (ksycoca) bằng ĐÚNG môi trường phiên Plasma (có XDG_MENU_PREFIX=plasma-) — bản cũ thiếu biến
 #      này nên bộ đệm KHÔNG CÒN APP NÀO (thanh tác vụ 3 ô trắng, menu / tìm kiếm trống: khách tưởng không có Firefox, không mở được terminal);
 #      + lối tắt Firefox · Konsole · Dolphin trên màn hình nền (1 lần / tài khoản)
+#    · 23.11b: DÁN — khách bấm Dán / Ctrl+V mà chữ không vào Konsole: cbcap đặt bộ nhớ copy (wl-copy, không có thì Klipper) rồi hỏi KWin cửa
+#      sổ đang chọn → dòng lệnh dán bằng Ctrl+Shift+V, app thường Ctrl+V (LinuxIO.paste)
 #  Lệnh:  cbremote.py run | selfcheck | version          Nhật ký: /opt/cloudblue/logs/remote.log
 # =====================================================================================================
 import fcntl, grp, json, os, pwd, re, socket, subprocess, sys, threading, time
@@ -23,7 +25,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "23.11a"
+LINUX_REMOTE_VER = "23.11b"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"
@@ -423,6 +425,10 @@ class LinuxIO:
     def clip_set(self, s):
         self.clip_seen = s
         self.helper.send("clip_set", s=str(s))
+
+    def paste(self, mode=1):
+        """23.11b: dán bộ nhớ copy vào cửa sổ đang chọn — cbcap hỏi KWin cửa sổ gì rồi bấm đúng phím dán (Konsole: Ctrl+Shift+V…)."""
+        self.helper.send("paste", m=int(mode))
 
     def clip_poll(self):
         """Chữ khách copy trên máy (đổi so với lần trước) → gửi người xem. Lần đầu chỉ ghi nhớ (không đẩy bộ nhớ copy cũ ra)."""
