@@ -252,6 +252,28 @@ if g4:
         else:
             fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and s2[3] <= s2[1] + 24 and s2[3] >= 0.7 * s2[1]   # đủ ngang, KHÔNG mất phần dưới (dư dải đen nhỏ được)
             ck(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung, không mất phần nào): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
+# 9. 23/11c · khách tự cho cửa sổ TO / NHỎ hơn · 🖥 Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ
+def ffs(): return [x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")]
+def dens(): return [int(v) for v in re.findall(r"density:\s*(\d+)", sh("wm density"))][-1:]
+def inside(g, ws): return all(x["b"][0] >= 0 and x["b"][1] >= 0 and x["b"][2] <= g["w"] + 1 and x["b"][3] <= g["h"] + 1 for x in ws)
+top = next((x for x in ffs() if x["vis"]), None)
+if top:
+    g9 = cp.win_state(sh)["geo"]; b0 = top["b"]
+    code, j = run("grow"); t1 = next((x for x in tasks() if x["id"] == top["id"]), None); shot("14-cua-so-to-hon")
+    ck("Cửa sổ to hơn → cửa sổ trên cùng to ra (đúng cỡ máy chủ báo), vẫn trong màn", code == 200 and t1 and tuple(t1["b"]) == tuple(j.get("b") or ())
+       and area(t1["b"]) > area(b0) and inside(g9, [t1]) and t1["vis"], (code, j, b0, t1))
+    code, j = run("shrink"); t2 = next((x for x in tasks() if x["id"] == top["id"]), None); shot("15-cua-so-nho-hon")
+    ck("Cửa sổ nhỏ hơn → cửa sổ đó nhỏ lại (đúng cỡ máy chủ báo)", code == 200 and t1 and t2 and tuple(t2["b"]) == tuple(j.get("b") or ())
+       and area(t2["b"]) < area(t1["b"]), (code, j, t1 and t1["b"], t2))
+n9 = len(ffs())
+code, j = run("wide"); time.sleep(3); gw = cp.win_state(sh)["geo"]; ws = ffs(); shot("16-man-ngang-rong")
+ck(f"🖥 Màn ngang rộng → độ rộng nhỏ nhất 600 dp (mật độ 192) + khoá ngang, {n9} tab vẫn đủ và nằm trong màn", code == 200 and j.get("sw") == 600 and dens() == [192]
+   and sh("settings get system user_rotation").strip() == "1" and len(ws) == n9 and inside(gw, ws), (code, j, dens(), gw, [x["b"] for x in ws]))
+info("màn chính xoay ngang khi bật Màn ngang rộng (màn chính kiểu máy tính bảng)", gw["w"] > gw["h"] and bool(j.get("turned")), (gw, j))
+code, j = run("narrow"); time.sleep(3); gn = cp.win_state(sh)["geo"]; ws = ffs(); shot("17-man-doc-nhu-cu")
+ck(f"Màn dọc như cũ → trả mật độ mặc định (320) + khoá dọc, màn dọc, {n9} tab nằm trong màn", code == 200 and dens() == [320]
+   and sh("settings get system user_rotation").strip() == "0" and gn["h"] > gn["w"] and len(ws) == n9 and inside(gn, ws), (code, j, dens(), gn, [x["b"] for x in ws]))
+sh("wm density 320; settings put system user_rotation 0", 20); time.sleep(2)          # trả máy như cũ cho test_fit.py chạy sau
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "".join("XX " + f + "\n" for f in FAILS)
