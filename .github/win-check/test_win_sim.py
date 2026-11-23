@@ -157,8 +157,9 @@ class Droid:
         m = re.match(r"am force-stop --user (\d+) ([\w.]+) 2>&1$", c)
         if m:
             self.z = [x for x in self.z if not (x["comp"].split("/")[0] == m.group(2) and x["user"] == int(m.group(1)))]; return ""
-        m = re.match(r"C=(\S+); U=(\d+); timeout 25 am start -W --user \$U (--display 0 )?--windowingMode 5 .* -n \$C .*?(am stack move-task \$id (\d+) true .*?)?"
-                     r"r=\$\(am task resize \$id (-?\d+) (-?\d+) (-?\d+) (-?\d+) 2>&1\).*wait \$P 2>/dev/null; echo DRAWN$", c)
+        if c.startswith("dumpsys gfxinfo "): return "Total frames rendered: 7"
+        m = re.match(r"C=(\S+); U=(\d+); am start --user \$U (--display 0 )?--windowingMode 5 .* -n \$C .*?(am stack move-task \$id (\d+) true .*?)?"
+                     r"r=\$\(am task resize \$id (-?\d+) (-?\d+) (-?\d+) (-?\d+) 2>&1\)", c)
         if m:                                                   # 🔄 mở lại vừa khung: vòng lặp trên máy (mở lại → thấy tab → đặt cỡ ngay)
             comp, u = m.group(1).strip("'"), int(m.group(2))
             if bool(m.group(3)) != (self.sdk >= 29): return "Error: lệnh sai bản Android"
@@ -166,8 +167,8 @@ class Droid:
             tk = self.open(comp, u, land, resz)
             if self.free and (self.sdk >= 29 or resz): tk["mode"] = FF
             elif m.group(4) and self.sdk < 30 and any(x["mode"] == FF and x is not tk for x in self.z) and int(m.group(5)) == 2: tk["mode"] = FF
-            if tk["mode"] != FF: return "DRAWN"
-            tk["b"] = tuple(int(m.group(i)) for i in range(6, 10)); return f"REFIT {tk['id']} 0\nDRAWN"
+            if tk["mode"] != FF: return ""
+            tk["b"] = tuple(int(m.group(i)) for i in range(6, 10)); return f"REFIT {tk['id']} 0"
         if c.startswith("input keyevent 3"): self.home_key(); return ""
         if c.startswith("am force-stop com.android.settings"):
             self.z = [x for x in self.z if not x["comp"].startswith("com.android.settings/")]; return ""
@@ -365,16 +366,17 @@ for sdk in (28, 29, 31, 32, 35):
         ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), KHÔNG tắt game", code == 409 and "Android 9" in j.get("error", "")
            and not any("force-stop" in x for x in d.log) and a2 is a and a2["b"] == ab, (code, j, d.log))
         continue
-    ck(f"Android {sdk}: 🖼 Mở lại vừa khung → tắt app, mở lại NGAY TRONG cửa sổ cũ (đúng chỗ + cỡ khách kéo), báo game khởi động lại",
-       code == 200 and a2 and a2["mode"] == FF and a2["b"] == ab and tuple(j["b"]) == ab and "khởi động lại" in j["msg"]
+    want = ab if sdk >= cp.WIN_SCM_SDK else (ab[0], ab[1], ab[2], ab[3] + 84)       # Android 10–12: cửa sổ cao thêm 42 dp (thanh tiêu đề)
+    ck(f"Android {sdk}: 🖼 Mở lại vừa khung → tắt app, mở lại NGAY TRONG cửa sổ cũ (đúng chỗ khách kéo{', cao thêm 42 dp' if sdk < cp.WIN_SCM_SDK else ''}), báo game khởi động lại",
+       code == 200 and a2 and a2["mode"] == FF and a2["b"] == want and tuple(j["b"]) == want and "khởi động lại" in j["msg"]
        and any(x == "am force-stop --user 0 com.roblox.client 2>&1" for x in d.log) and d.visible(a2), (code, j, a2, d.log[-6:]))
     scr = next((x for x in d.log if x.startswith("C=")), "")
     if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk}: mở lại TOÀN MÀN (chờ game vẽ khung đầu) rồi đưa vào cửa sổ cũ — Android thu nhỏ cả hình vừa khung",
                                  not scr and any(x.startswith("timeout 25 am start -W --user 0 --display 0 --windowingMode 1 ") for x in d.log)
                                  and any(x.startswith(f"am task resize {a2['id']} 40 600 600 920") for x in d.log), d.log[-8:])
-    else: ck(f"Android {sdk}: mở lại thẳng vào cửa sổ THẤP HƠN 42 dp (84 px), game vẽ khung đầu xong (DRAWN) mới kéo về đủ cỡ — lần dựng khung đầu chưa có thanh tiêu đề",
-             f"am task resize $id 40 600 600 {920 - 84} " in scr and "wait $P" in scr
-             and any(x.startswith(f"am task resize {a2['id']} 40 600 600 920") for x in d.log), (scr[-160:], d.log[-3:]))
+    else: ck(f"Android {sdk}: mở lại thẳng vào cửa sổ đúng chỗ + cỡ, chờ game vẽ khung đầu (gfxinfo) rồi kéo cao thêm 42 dp — lần vẽ đầu chưa có thanh tiêu đề",
+             "am task resize $id 40 600 600 920 " in scr and any(x.startswith("dumpsys gfxinfo com.roblox.client") for x in d.log)
+             and d.log[-2].startswith(f"am task resize {a2['id']} 40 600 600 1004") if len(d.log) > 1 else False, (scr[-160:], d.log[-4:]))
 d = Droid(31); d.open(R1, land=True)
 code, j = cp.win_run(d.sh, "refit")
 ck("chưa có tab nhỏ nào → 409 dễ hiểu (thu nhỏ trước)", code == 409 and "thu nhỏ app" in j.get("error", ""), (code, j))
