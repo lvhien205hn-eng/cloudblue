@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        23/11e — 🗗 TAB CỬA SỔ NHỎ đợt 5 — CỬA SỔ NHỎ NẰM ĐÚNG CHỖ trên Android 12+ (đo trên máy MuMu Android 12 thật sau bản 23/11d: tab thứ 2
+#                 bị vẽ đè lên tab đầu, kéo thanh tiêu đề hình không chạy theo). Gốc: từ Android 12 bên đặt chỗ hình của cửa sổ nổi là giao diện
+#                 hệ thống, mà nó chỉ làm việc đó nếu cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG — máy bật cài đặt sau khi đã mở máy thì không ai đặt
+#                 chỗ. cpapi tự đọc chỗ thật của hình, lệch khung tab thì bật lại giao diện hệ thống 1 lần (app / game không tắt). Cập nhật cpapi.
 #        23/11d — 🗗 TAB CỬA SỔ NHỎ đợt 4 — GAME VỪA KHUNG THẬT + XOAY MÀN THẬT (đo trên máy MuMu Android 12 thật): game kiểu cũ được MỞ LẠI
 #                 NGAY TRONG tab của nó sau khi cửa sổ đã đúng chỗ + cỡ (am kill giữ tab → mở sạch vào đúng tab) → vẽ vừa cửa sổ; lần đầu thu nhỏ
 #                 trên màn 360 dp tự bật màn rộng 600 dp; cửa sổ đúng tỉ lệ hình game 16:9. Nút Xoay / Màn ngang rộng: máy bỏ qua khoá xoay
@@ -117,7 +121,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "23/11d"
+VER = "23/11e"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -136,9 +140,9 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloud
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
          ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11d"', None),
-         ("cpapi.py", "cpapi.py", "cpapi bản 23/11d", "cpapi")]
+         ("cpapi.py", "cpapi.py", "cpapi bản 23/11e", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11d"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11e"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
