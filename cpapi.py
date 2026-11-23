@@ -537,7 +537,29 @@ def push_obb(port, path, jid=None):
 #     Giới hạn của Android 11–12L (không sửa từ ngoài được): với app TOÀN MÀN (game), thanh tiêu đề nằm ĐÈ lên mép trên của hình (42 dp) và
 #     để 1 dải trống cùng cỡ ở đáy cửa sổ. Kiểu cửa sổ không thanh tiêu đề (multi-window) hình đẹp nhưng NUỐT mọi cú chạm ngoài cửa sổ → không dùng.
 #   · `am kill` không ăn (máy ảo Android 12L: 10 giây vẫn sống dù màn đã dừng) → tắt thẳng tiến trình (kill -9, y như am kill làm) — tab vẫn giữ.
+# 23/11e · CỬA SỔ NHỎ NẰM ĐÚNG CHỖ (Android 12+) — đo trên máy MuMu Android 12 THẬT sau bản 23/11d: tab thứ 2 bị vẽ ĐÈ lên tab đầu (hình nằm
+#   ở góc trên trái màn trong khi Android ghi khung tab ở ô dưới), kéo thanh tiêu đề thì khung đổi mà hình đứng yên, bấm trượt.
+#   · Gốc: từ Android 12, bên ĐẶT CHỖ hình của cửa sổ nổi là GIAO DIỆN HỆ THỐNG (SystemUI · WM Shell, FreeformTaskListener) chứ không phải lõi
+#     Android. Phần đó chỉ được bật nếu enable_freeform_support = 1 NGAY LÚC giao diện hệ thống khởi động. Máy bật cài đặt đó sau (lần Thu nhỏ
+#     tab đầu tiên, hoặc phonectl TUNE sau khi máy đã mở) → lõi Android nhận cửa sổ nổi ngay nhưng không ai đặt chỗ hình: hình đứng nguyên chỗ
+#     cũ (chỗ lúc còn toàn màn) cho tới lần khởi động lại máy kế tiếp. (Bản 23/11d tưởng do kiểu size compat — thật ra là lỗi này.)
+#   · Sửa: BẬT LẠI GIAO DIỆN HỆ THỐNG 1 lần (tắt tiến trình com.android.systemui, Android tự bật lại sau ~5 giây; app / game KHÔNG tắt, chỉ
+#     thanh trạng thái + ảnh nền chớp) — đo máy thật: các tab về đúng ô ngay, kéo thanh tiêu đề hình chạy theo.
+#       – máy chưa bật cửa sổ nổi (win_run vừa bật) → bật lại luôn trước khi thu nhỏ;
+#       – máy đã bật sẵn → sau khi đặt chỗ, ĐỌC CHỖ THẬT của hình (dumpsys input: khung nhận chạm = nơi hình được vẽ) — lệch khỏi khung tab
+#         thì mới bật lại (mỗi lần mở máy tối đa 1 lần — WIN_UI_KEY), máy đúng sẵn thì không đụng gì.
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
+WIN_UI_SDK = 31                   # từ Android 12: giao diện hệ thống đặt chỗ hình của cửa sổ nổi
+WIN_UI_KEY = "cb_win_ui"          # cài đặt Android (global): mã lần mở máy (boot_id) mà máy chủ đã bật lại giao diện hệ thống
+WIN_UI_PID_SH = "pidof com.android.systemui 2>/dev/null"
+WIN_UI_KILL_SH = ("B=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null); P=$(pidof com.android.systemui 2>/dev/null); "
+                  "if [ @F@ != 1 ] && [ -n \"$B\" ] && [ \"$(settings get global " + WIN_UI_KEY + " 2>/dev/null)\" = \"$B\" ]; then echo '#done'; "
+                  "elif [ -z \"$P\" ]; then echo '#none'; "
+                  "else settings put global " + WIN_UI_KEY + " \"${B:-0}\"; "
+                  "kill $P 2>/dev/null || su -c \"kill $P\" 2>/dev/null || su 0 kill $P 2>/dev/null || am force-stop com.android.systemui 2>/dev/null; "
+                  "echo \"#kill $P\"; fi")
+WIN_FRAME_SH = "dumpsys input 2>/dev/null | grep -E \"^ *[0-9]+: name='[0-9a-f]+ ({p})/\""
+WIN_FRAME_RX = re.compile(r"name='[0-9a-f]+ ([A-Za-z0-9._]+)/.*?\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 WIN_SCM_SDK = 33                  # từ bản Android này: Android thu nhỏ CẢ HÌNH app không đổi cỡ (size compat) — máy MuMu Android 15 thật: đúng chỗ, không phải
                                   # mở lại app. Android 12L trở xuống: ép đổi cỡ + mở lại app kiểu cũ (máy MuMu Android 12 thật vẽ kiểu size compat lệch chỗ)
 WIN_SCM_KEEP = True               # Android 13+: app khai báo không đổi cỡ → để Android thu hình, KHÔNG tự mở lại (bộ thử đặt False để thử đường mở lại)
@@ -914,6 +936,63 @@ def win_to(sh, t, mode, sdk, sleep=time.sleep, back=None):
 
 
 
+def win_frames(sh, pkgs):
+    """{tên gói: [khung THẬT trên màn của các cửa sổ ĐANG HIỆN của app đó]} — đọc ở dumpsys input: khung Android nhận chạm = nơi hình đang
+       được vẽ (Android 12+ lấy từ bộ vẽ màn hình, không phải từ sổ ghi khung tab). Máy không cho đọc / không có cửa sổ → không có trong kết quả."""
+    pk = sorted({p for p in pkgs if re.fullmatch(r"[A-Za-z0-9._]+", p or "")})
+    if not pk: return {}
+    res = {}
+    for line in (sh(WIN_FRAME_SH.format(p="|".join(x.replace(".", "\\.") for x in pk)), 20) or "").splitlines():
+        if "visible=false" in line or "NOT_VISIBLE" in line: continue
+        m = WIN_FRAME_RX.search(line)
+        if m: res.setdefault(m.group(1), []).append(tuple(int(v) for v in m.groups()[1:]))
+    return res
+
+
+def win_seen(sh, tabs, sleep=time.sleep, tries=5):
+    """Hình của các tab đã nằm ĐÚNG khung chưa. tabs = [(tab, khung)…]. True: mọi tab đọc được đều đúng chỗ · False: có tab mà hình nằm ngoài
+       khung của nó (chờ ~2 giây vẫn vậy) · None: máy không cho đọc tab nào → không kết luận. "Đúng chỗ" = góc trên trái của hình nằm trong
+       khung tab (app được Android thu hình / chừa viền thì hình nằm lọt trong khung, không tính là lệch)."""
+    ok = lambda f, b: b[0] - 4 <= f[0] < b[2] and b[1] - 4 <= f[1] < b[3]
+    seen = None
+    for i in range(tries):
+        fr = win_frames(sh, [t["pkg"] for t, _ in tabs]); bad = False; seen = None
+        for t, b in tabs:
+            f = fr.get(t["pkg"])
+            if not f: continue
+            seen = True
+            if not any(ok(x, b) for x in f): bad = True
+        if seen and not bad: return True
+        if i < tries - 1: sleep(0.4)
+    return False if seen else None
+
+
+def win_ui_restart(sh, sleep=time.sleep, force=False):
+    """Bật lại GIAO DIỆN HỆ THỐNG (SystemUI) của máy: tắt tiến trình, Android tự bật lại sau vài giây — app / game đang chạy KHÔNG tắt, chỉ thanh
+       trạng thái + ảnh nền chớp. Mỗi lần mở máy tối đa 1 lần (WIN_UI_KEY nhớ mã lần mở máy) trừ khi force. Trả True nếu đã bật lại + đã lên."""
+    m = re.search(r"#kill((?: \d+)+)", sh(WIN_UI_KILL_SH.replace("@F@", "1" if force else "0"), 25) or "")
+    if not m: return False
+    old = set(m.group(1).split())
+    for i in range(40):                                         # tới ~20 giây
+        sleep(0.5); now = (sh(WIN_UI_PID_SH, 10) or "").split()
+        if now and all(x.isdigit() for x in now) and not (set(now) & old): break
+        if i in (14, 28) and not now: sh("am startservice --user 0 -n com.android.systemui/.SystemUIService >/dev/null 2>&1", 15)
+    else: return False
+    sleep(2.0)                                                  # giao diện hệ thống đăng ký lại với Android + nhận danh sách tab
+    return True
+
+
+def win_ui_fix(sh, sdk, tabs, sleep=time.sleep, tries=5):
+    """23/11e · Android 12+: hình của tab không nằm ở khung tab (giao diện hệ thống chạy từ trước khi máy bật cửa sổ nổi → không ai đặt chỗ
+       hình) → bật lại giao diện hệ thống 1 lần rồi chờ hình về đúng chỗ. Trả True nếu vừa bật lại. tries: số lần đọc trước khi kết luận lệch
+       (giao diện hệ thống vừa được bật lại trong chính lượt này thì chờ lâu hơn — nó còn đang nhận lại danh sách tab)."""
+    tabs = [(t, tuple(b)) for t, b in tabs if t and b]
+    if sdk < WIN_UI_SDK or not tabs or win_seen(sh, tabs, sleep, tries) is not False: return False
+    if not win_ui_restart(sh, sleep): return False
+    win_seen(sh, tabs, sleep, tries=25)                         # chờ giao diện hệ thống đặt lại chỗ các cửa sổ (tới ~10 giây)
+    return True
+
+
 WIN_KEEP_SH = ("cmd deviceidle whitelist +{p} >/dev/null 2>&1; am set-standby-bucket --user {u} {p} active >/dev/null 2>&1; "
                "cmd appops set --user {u} {p} RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1; cmd appops set --user {u} {p} RUN_IN_BACKGROUND allow >/dev/null 2>&1; "
                "am set-inactive --user {u} {p} false >/dev/null 2>&1")
@@ -1246,7 +1325,12 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
     if do == "list":
         return 200, {"n": len(wins), "sdk": sdk, "free": st["free"], "screen": [st["geo"]["w"], st["geo"]["h"]],
                      "tabs": [{"id": t["id"], "pkg": t["pkg"], "user": t["user"], "b": list(t["b"]), "vis": t["vis"]} for t in wins]}
-    if not win_conf_ok(st): sh(win_conf_sh(sdk), 15)                   # đặt đúng kiểu của bản Android (≤ 12L: ép đổi cỡ · 13+: Android thu nhỏ hình)
+    ui_new = False
+    if not win_conf_ok(st):
+        sh(win_conf_sh(sdk), 15)                                       # đặt đúng kiểu của bản Android (≤ 12L: ép đổi cỡ · 13+: Android thu nhỏ hình)
+        if sdk >= WIN_UI_SDK and not st["free"]: ui_new = win_ui_restart(sh, sleep, force=True)   # 23/11e: máy VỪA bật cửa sổ nổi → giao diện hệ
+                                                                       # thống đang chạy chưa biết đặt chỗ cửa sổ → bật lại 1 lần (app không tắt)
+    fixui = lambda tabs: win_ui_fix(sh, sdk, tabs, sleep, 25 if ui_new else 5)      # hình của tab chưa về đúng khung (Android 12+) → bật lại giao diện hệ thống 1 lần
     home = lambda: (sh("input keyevent 3", 10), sleep(0.5))
     resize = lambda t, b: sh(f"am task resize {int(t['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
     big = lambda g, b: _area(b) >= 0.85 * _area(win_area(g))          # cửa sổ đã phóng to gần hết màn
@@ -1288,6 +1372,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → tính lại chỗ theo hướng mới
             if not st2: break
         n = len(others) + 1
+        fixui([(t, slot)])                                      # 23/11e (trước khi mở lại app kiểu cũ: app mở lại trong cửa sổ đã đúng chỗ)
         fit, sw = None, None
         if k and k["old"]:                                      # 23/11d: app kiểu cũ → mở lại NGAY TRONG cửa sổ (đã đúng chỗ + cỡ) → game vẽ vừa cửa sổ
             order = [dict(w, b=slot) if w["id"] == t["id"] else w for w in win_std(win_state(sh), "freeform")]
@@ -1324,6 +1409,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
                 resize(w, cell[w["id"]])
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → xếp lại theo hướng mới
             if not st2: break
+        fixui([(w, cell[w["id"]]) for w in wins if w["id"] in cell])     # 23/11e
         redo = [dict(w, b=cell[w["id"]]) for w in wins if kd.get(w["id"], {}).get("old")
                 and (w["id"] not in before or max(abs(a - b) for a, b in zip(before[w["id"]], size(cell[w["id"]]))) > 8)]
         nre = 0
@@ -1358,7 +1444,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
         # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
         win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); area = win_area(st2["geo"])
         if k and k["old"]: area = win_shape(st2["geo"], area, k["fixed"])       # game kiểu cũ: to hết bề ngang, phần hình đúng tỉ lệ game
-        resize(t, area)
+        resize(t, area); fixui([(t, area)])
         if k and k["old"]:
             order = [dict(w, b=area) if w["id"] == t["id"] else w for w in win_std(win_state(sh), "freeform")]
             win_recreate(sh, [dict(t, b=area)], sdk, sleep, order, WIN_FREEFORM)
@@ -1372,7 +1458,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
         if abs((nb[2] - nb[0]) - ow) < 8 and abs((nb[3] - nb[1]) - oh) < 8:
             return 409, {"error": "Cửa sổ đã to nhất rồi (hết màn) — muốn to nữa bấm Phóng to tab." if do == "grow"
                          else "Cửa sổ đã nhỏ nhất rồi (Android không cho nhỏ hơn) — muốn xếp nhiều tab hơn bấm 🖥 Màn ngang rộng."}
-        resize(t, nb); win_keep(sh, [t])
+        resize(t, nb); fixui([(t, nb)]); win_keep(sh, [t])
         return 200, {"ok": True, "id": t["id"], "b": list(nb), "fit": ask(kinds().get(t["id"])),      # game: chỉnh cỡ xong bấm Vừa khung 1 lần
                      "msg": f"Cửa sổ {win_name(t)} đã {'to' if do == 'grow' else 'nhỏ'} hơn ({nb[2] - nb[0]}×{nb[3] - nb[1]}). Bấm tiếp để {'to' if do == 'grow' else 'nhỏ'} nữa."}
     if do in ("wide", "narrow"):                                # 23/11c: 🖥 màn NGANG RỘNG (độ rộng nhỏ nhất ≥ 600 dp + màn ngang) → màn chính nằm ngang
@@ -1424,7 +1510,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
         d = win_recreate(sh, [t], sdk, sleep, wins, WIN_FREEFORM).get(t["id"]) \
             or win_refit(sh, t, sdk, sleep, st["geo"].get("dpi") or 320, st["geo"])      # app không tắt nền được → cách cũ: tắt hẳn rồi mở lại vào cửa sổ
         if not d: return 409, {"error": f"Chưa mở lại được {win_name(t)} trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab."}
-        win_keep(sh, [d])
+        win_keep(sh, [d]); fixui([(d, d["b"])])
         c = win_screen(sh)
         tip = " Hình vẫn bị cắt thì bấm Màn ngang rộng cho cửa sổ đủ chỗ." if c and c["sw"] < WIN_WIDE_SW else ""
         return 200, {"ok": True, "id": d["id"], "b": list(d["b"]),
@@ -2752,6 +2838,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 23/11d chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 23/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()
