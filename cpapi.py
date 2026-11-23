@@ -524,10 +524,20 @@ def push_obb(port, path, jid=None):
 #     = tự bật); phóng to tab nhỏ cuối cùng → tự trả mật độ cũ. Khách tự bấm Màn ngang rộng thì không tự trả.
 #   · MuMu bỏ qua khoá xoay (mSupportAutoRotation=false; wm fixed-to-user-rotation cũng không xoay) — màn chỉ xoay khi CÓ CỬA SỔ yêu cầu hướng
 #     → app trợ giúp vn.cloudblue.xoay (ROT_*, cài từ chính file này) đặt 1 cửa sổ phủ 1×1 trong suốt yêu cầu màn NGANG → cả màn chính nằm ngang.
+#   · BỎ HẲN kiểu "không ép đổi cỡ để Android thu nhỏ cả hình" (size compat, bản 23/11b–c đặt cho Android 12L+): máy MuMu thật vẽ cửa sổ kiểu đó
+#     LỆCH lên góc trên trái màn (khung tab một nơi, hình một nẻo) và không thu hình → khách thấy "game không vừa khung". Mọi bản Android giờ
+#     ÉP MỌI APP đổi cỡ được (force_resizable_activities=1, Android 11+ nhận ngay) + mở lại app kiểu cũ ngay trong tab — đo máy thật: đúng chỗ, đúng cỡ.
+#   · Android 10–12L: thanh tiêu đề cửa sổ do CHÍNH APP vẽ, lần dựng hình đầu CHƯA trừ thanh (42 dp) → mở lại app lúc cửa sổ thấp hơn 42 dp, app
+#     vẽ khung đầu xong mới kéo cửa sổ về đủ cỡ → phần hình app thấy = đúng lúc dựng (game dựng khung 1 lần không mất phần dưới).
+#     Giới hạn của Android 11–12L (không sửa từ ngoài được): với app TOÀN MÀN (game), thanh tiêu đề nằm ĐÈ lên mép trên của hình (42 dp) và
+#     để 1 dải trống cùng cỡ ở đáy cửa sổ. Kiểu cửa sổ không thanh tiêu đề (multi-window) hình đẹp nhưng NUỐT mọi cú chạm ngoài cửa sổ → không dùng.
+#   · `am kill` không ăn (máy ảo Android 12L: 10 giây vẫn sống dù màn đã dừng) → tắt thẳng tiến trình (kill -9, y như am kill làm) — tab vẫn giữ.
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
-WIN_SCM_SDK = 32                  # từ bản Android này: thu nhỏ hình game không đổi cỡ (size compat trong cửa sổ nổi) — Android 12 (31) thì không
+WIN_SCM_SDK = 10 ** 6             # 23/11d: TẮT kiểu thu nhỏ hình game (size compat) ở mọi bản Android — máy MuMu thật vẽ cửa sổ kiểu đó lệch chỗ (trước: 32)
+WIN_CAPFIX_SDK = (29, 32)         # 23/11d: Android 10–12L — mở lại app lúc cửa sổ thấp hơn 1 thanh tiêu đề, app vẽ khung đầu xong mới kéo về đủ cỡ
+WIN_KILL9_SH = "kill -9 {p} 2>/dev/null || su -c 'kill -9 {p}' 2>/dev/null"      # `am kill` không ăn → tắt thẳng tiến trình (adb thường không đủ quyền → su)
 WIN_REFIT_SDK = 29                # Android 9: game ép ngang làm màn xoay khi mở lại → cửa sổ lệch, không vừa khung
-WIN_CAP_DP = 42                   # Android 10–12: lần vẽ đầu cửa sổ chưa có thanh tiêu đề (42 dp) → game vẽ xong thì kéo cửa sổ cao thêm 42 dp
+WIN_CAP_DP = 42                   # thanh tiêu đề cửa sổ nổi cao 42 dp (nút 32 dp + lề 5 dp trên dưới) — đo máy ảo 31 / 35 + máy MuMu Android 12 thật
 WIN_STACK_RX = re.compile(r"^\s*(?:Stack|RootTask) id=(-?\d+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] displayId=(-?\d+)")
 WIN_TASK_RX = re.compile(r"^\s*taskId=(\d+): (\S+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] userId=(\d+) visible=(\w+)")
 WIN_OLD = {0: ("fullscreen", "home"), 1: ("fullscreen", "standard"), 2: ("freeform", "standard"), 3: ("split-screen-primary", "standard"), 4: ("pinned", "standard")}
@@ -593,7 +603,7 @@ def win_geo(dsec, wsec, tasks):
     bottom = H - AH if (AH and AH < H and (not AW or AW >= W)) else 0
     right = W - AW if (AW and AW < W and (not AH or AH >= H)) else 0
     # Android không cho cửa sổ nổi nhỏ hơn 220 dp mỗi chiều (default_minimal_size_resizable_task) → tính trước để các ô không đè nhau ngoài ý muốn
-    return {"w": W, "h": H, "top": dp(24), "bottom": max(0, bottom), "right": max(0, right), "cap": dp(32), "dpi": dpi, "min": dp(220)}
+    return {"w": W, "h": H, "top": dp(24), "bottom": max(0, bottom), "right": max(0, right), "cap": dp(WIN_CAP_DP), "dpi": dpi, "min": dp(220)}
 
 
 def win_grid(g, n):
@@ -789,18 +799,13 @@ def win_state(sh):
 
 
 def win_conf_sh(sdk):
-    """Cài đặt cửa sổ nổi theo bản Android (như phonectl TUNE). Android 12L+: không ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → game không
-       đổi cỡ được Android thu nhỏ CẢ HÌNH vừa cửa sổ. Bản cũ hơn: ép đổi cỡ (Android 9 cần mới mở được game vào cửa sổ)."""
-    if sdk >= WIN_SCM_SDK:
-        return ("settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
-                "settings put global force_resizable_activities 0; settings put global enable_non_resizable_multi_window 1")
+    """Cài đặt cửa sổ nổi (như phonectl TUNE): bật cửa sổ nổi + ÉP MỌI APP đổi cỡ được, ở mọi bản Android. 23/11d: bỏ kiểu "không ép đổi cỡ
+       để Android thu nhỏ cả hình" (size compat) của bản 23/11b–c — máy MuMu Android 12 thật vẽ cửa sổ kiểu đó lệch lên góc trên trái màn."""
     return "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1"
 
 
 def win_conf_ok(st):
-    if not st["free"]: return False
-    if st["sdk"] >= WIN_SCM_SDK: return st.get("force") == "0" and st.get("nonres") == "1"
-    return True
+    return bool(st["free"]) and st.get("force") == "1"
 
 
 def win_front(sh, t, sdk):
@@ -931,14 +936,28 @@ def win_recreate(sh, tabs, sdk, sleep=time.sleep, order=(), mode=WIN_FREEFORM, m
             stuck += fg; alive = [t for t in alive if not any(t is x for x in fg)]
         if not alive: break
         sleep(0.5)
+    if alive:                                                   # màn của app đã dừng ~10 giây mà `am kill` vẫn không ăn (máy ảo Android 12L) → tắt thẳng
+        for t in alive:                                         # tiến trình, y như am kill làm; Android vẫn giữ tab + khung vì màn đã lưu trạng thái
+            pids = win_pids(sh, t["pkg"], t["user"])
+            if pids: sh(WIN_KILL9_SH.format(p=" ".join(str(int(x)) for x in pids)), 15)
+        sleep(0.6); alive = [t for t in alive if win_pids(sh, t["pkg"], t["user"])]
     live = {t["id"] for t in alive + stuck}
     dead = [t for t in tabs if t["id"] not in live]
     moved = (mid(dead) if (mid and dead) else None) or {}
+    cap = mn = 0; low, tall = set(), {}
+    if dead and mode == WIN_FREEFORM and WIN_CAPFIX_SDK[0] <= sdk <= WIN_CAPFIX_SDK[1]:
+        c = win_screen(sh)                                      # đọc SAU mid (mid có thể vừa đổi mật độ): thanh tiêu đề 42 dp + cửa sổ nhỏ nhất 220 dp
+        if c: cap, mn = int(round(WIN_CAP_DP * c["density"] / 160.0)), int(round(220 * c["density"] / 160.0))
     order = list(order); extra = [t for t in tabs if t["id"] not in {w["id"] for w in order}]; busy = False
     for w in list(reversed(order)) + list(reversed(extra)):     # từ dưới lên: cái đưa lên sau nằm trên
         t = next((x for x in tabs if x["id"] == w["id"]), None)
         if t is not None and t["id"] not in live:               # app đã tắt → đặt khung (tab vẫn còn) rồi mở lại sạch vào đúng tab
-            if mode == WIN_FREEFORM: resize(t, tuple(moved.get(t["id"]) or t["b"]))
+            if mode == WIN_FREEFORM:
+                b = tuple(moved.get(t["id"]) or t["b"])
+                if cap and b[3] - b[1] - cap >= mn:              # Android 10–12L: lần dựng hình đầu chưa trừ thanh tiêu đề → mở lúc cửa sổ thấp hơn 1 thanh
+                    b = (b[0], b[1], b[2], b[3] - cap); low.add(t["id"])
+                elif cap: low.add(t["id"]); tall[t["id"]] = b    # cửa sổ đã thấp sát mức Android cho (220 dp) → mở đúng cỡ, vẽ xong kéo CAO THÊM 1 thanh
+                resize(t, b)
             if busy: sleep(0.6); busy = False                   # vừa đưa cửa sổ khác lên → chờ giao diện hệ thống xử lý xong rồi mới mở app (Android 13+ vẽ
             sh(f"am start --user {int(t['user'])} --display 0 --windowingMode {mode} {WIN_FRESH} -n {shlex.quote(t['comp'])} 2>&1", 25)      # thanh tiêu đề ở đó)
         elif t is not None and mode != WIN_FREEFORM: win_launch(sh, t, mode, sdk)      # không tắt được → đưa lên lại như cũ
@@ -951,11 +970,23 @@ def win_recreate(sh, tabs, sdk, sleep=time.sleep, order=(), mode=WIN_FREEFORM, m
             if t["id"] in res: continue
             d = next((x for x in now if x["comp"] == t["comp"] and x["user"] == t["user"] and x["disp"] == 0), None)
             if d and win_pids(sh, t["pkg"], t["user"]): res[t["id"]] = d
+    for t in dead:                                              # chờ app vẽ khung ĐẦU (tối đa ~8 giây) rồi mới kéo cửa sổ về đủ cỡ ở dưới
+        if t["id"] not in low or t["id"] not in res: continue
+        for _ in range(16):
+            m = re.search(r"Total frames rendered:\s*(\d+)", sh(WIN_DRAWN_SH.format(p=t["pkg"]), 15) or "")
+            if m and int(m.group(1)) > 0: break
+            sleep(0.5)
+        sleep(0.6)
+    if [i for i in tall if i in res]:                           # kéo cao thêm: xuống dưới nếu còn chỗ, không thì dời lên, không nữa thì tới mép vùng dùng được
+        a = win_area(win_state(sh)["geo"])
+        for i, b in list(tall.items()):
+            tall[i] = (b[0], b[1], b[2], b[3] + cap) if b[3] + cap <= a[3] else (b[0], max(a[1], b[1] - cap), b[2], b[3]) \
+                if b[1] - cap >= a[1] else (b[0], b[1], b[2], min(a[3], b[3] + cap))
     if mode == WIN_FREEFORM:
         for t in dead:
             d = res.get(t["id"])
             if not d: continue
-            b = tuple(moved.get(t["id"]) or t["b"])
+            b = tuple(tall.get(t["id"]) or moved.get(t["id"]) or t["b"])
             if d["mode"] != "freeform": d = win_to(sh, d, WIN_FREEFORM, sdk, sleep)       # hiếm: Android mở lại thành toàn màn → đưa về cửa sổ
             if not d: res.pop(t["id"]); continue
             if tuple(d["b"]) != b: resize(d, b)
