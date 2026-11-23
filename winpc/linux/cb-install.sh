@@ -377,6 +377,27 @@ else
         say "!! thieu cong cu quay man hinh va chua co mang - agent se tu cai khi may co mang"
     fi
 fi
+# 23.11c: danh sách gói của pacman (/var/lib/pacman/sync/*.db). ISO CachyOS (archiso) xoá sẵn → máy cài từ ISO mà thiếu thì khách chạy
+# "pacman -S gói" (vd bộ cài AccountOps: pacman -S xz 7zip) báo "database file for 'core' does not exist" + "target not found";
+# máy cài bằng trình cài gốc thì có. Tải ngay lúc cài: -Sy CHỈ tải danh sách (KHÔNG nâng cấp gói nào) + khoá ký gói mới (gói mới ký bằng
+# khoá mới hơn ISO). Chưa có mạng → agent (cbagent.py pac_heal) tự tải khi máy có mạng.
+MLIST="$T/etc/pacman.d/mirrorlist"
+if [ -f "$MLIST" ] && ! grep -Eq '^[[:space:]]*Server[[:space:]]*=' "$MLIST"; then
+    printf '\n# CloudBlue: may chu goi chinh thuc cua Arch (tu chon gan nhat)\nServer = https://geo.mirror.pkgbuild.com/$repo/os/$arch\n' >> "$MLIST"
+    say "   mirrorlist Arch chua co may chu nao -> them geo.mirror.pkgbuild.com"
+fi
+wait "$NETPID" 2>/dev/null
+if [ -f "$W/net.ok" ]; then
+    if timeout 300 arch-chroot "$T" pacman -Sy --noconfirm > "$W/pacsync.log" 2>&1; then
+        KR=""; for k in archlinux-keyring cachyos-keyring; do grep -qx -- "$k" "$W/pkgs.txt" && KR="$KR $k"; done
+        [ -n "$KR" ] && { timeout 300 arch-chroot "$T" pacman -S --needed --noconfirm $KR >> "$W/pacsync.log" 2>&1 || say "!! chua cap nhat duoc khoa ky goi:$KR"; }
+        say "   danh sach goi pacman: da tai ($(ls "$T"/var/lib/pacman/sync/*.db 2>/dev/null | wc -l) kho) · khoa ky goi:${KR:- khong co}"
+    else
+        tail -3 "$W/pacsync.log"; say "!! chua tai duoc danh sach goi pacman - agent se tu tai khi may co mang"
+    fi
+else
+    say "   chua co mang - agent se tu tai danh sach goi pacman khi may co mang"
+fi
 
 # ---------------------------------------------------------------- 8. initramfs + systemd-boot
 say "8/9 initramfs + systemd-boot"

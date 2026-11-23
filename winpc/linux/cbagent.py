@@ -12,7 +12,7 @@
 # =====================================================================================================
 import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
 
-LINUX_VER = "23.11b"
+LINUX_VER = "23.11c"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
@@ -32,6 +32,12 @@ SELF_REL = "linux/cbagent.py"
 LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")   # = pcagent.LINUX_REL (giữ riêng: lõi agent chép từ phân vùng cứu hộ có thể là bản cũ)
 GST_ALA = "https://archive.archlinux.org/packages/g/gst-plugin-pipewire/"   # kho lưu trữ Arch: mọi phiên bản cũ của gói
 GST_RETRY_S = 6 * 3600                                           # cài gst-plugin-pipewire lỗi → 6 giờ sau thử lại
+PACDB = "/var/lib/pacman/sync"                                   # 23.11c: danh sách gói của pacman (core.db, extra.db…)
+PACDB_LOCK = "/var/lib/pacman/db.lck"
+PACDB_MAX_AGE_S = 7 * 86400                                      # danh sách cũ hơn 7 ngày → tải lại (gói đổi bản → danh sách cũ báo 404)
+PACDB_RETRY_S = 3600                                             # chưa tải được (chưa có mạng / khách đang chạy pacman) → 1 giờ sau thử lại
+ARCH_MIRRORLIST = "/etc/pacman.d/mirrorlist"
+ARCH_GEO = "Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch"   # máy chủ gói chính thức của Arch (tự chọn nơi gần nhất)
 
 
 def P(p):
@@ -89,6 +95,50 @@ def gst_install(log=lambda m: None):
         if rc == 0 and gst_have(): return True, c
         last = " ".join(out.split())[-160:]
     return False, last or "pacman loi"
+
+
+def pacdb_count(d=None):
+    try: return sum(1 for n in os.listdir(d or PACDB) if n.endswith(".db"))
+    except OSError: return 0
+
+
+def pacdb_age(d=None, now=None):
+    """Tuổi (giây) của danh sách gói pacman mới nhất · None = chưa có danh sách nào: máy cài từ ISO CachyOS (archiso xoá sẵn
+       /var/lib/pacman/sync/*.db) → khách chạy "pacman -S gói" (vd bộ cài AccountOps) báo "database file for 'core' does not exist"
+       + "target not found"; máy cài bằng trình cài gốc thì có sẵn."""
+    best, d = None, d or PACDB
+    try: names = os.listdir(d)
+    except OSError: names = []
+    for n in names:
+        if not n.endswith(".db"): continue
+        try: m = os.path.getmtime(os.path.join(d, n))
+        except OSError: continue
+        if best is None or m > best: best = m
+    return None if best is None else max(0.0, (time.time() if now is None else now) - best)
+
+
+def pac_mirror_fix(path=None):
+    """mirrorlist của Arch (kho core / extra / multilib) không có dòng "Server =" nào đang bật → thêm máy chủ gói chính thức của Arch.
+       → True nếu đã thêm. Không có file → không đụng."""
+    path = path or ARCH_MIRRORLIST
+    txt = read(path, None)
+    if txt is None or re.search(r"(?m)^[ \t]*Server[ \t]*=", txt): return False
+    try:
+        with open(path, "a", encoding="utf-8") as f: f.write("\n# CloudBlue: may chu goi chinh thuc cua Arch (tu chon gan nhat)\n" + ARCH_GEO + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def pacdb_sync(log=lambda m: None):
+    """Tải danh sách gói: "pacman -Sy" — CHỈ tải danh sách, KHÔNG nâng cấp / cài gói nào. → (được?, chữ báo). Không ném lỗi.
+       Đang có pacman khác chạy (khoá db.lck: khách / agent đang cài gói) → để lần sau, không đụng khoá."""
+    if os.path.exists(PACDB_LOCK): return False, "pacman dang chay (db.lck)"
+    if pac_mirror_fix(): log("pacman: mirrorlist Arch chưa có máy chủ nào → thêm geo.mirror.pkgbuild.com")
+    rc, out = sh(["pacman", "-Sy", "--noconfirm"], 600)
+    n = pacdb_count()
+    if rc == 0 and n: return True, "%d kho" % n
+    return False, (" ".join(out.split())[-160:] or "pacman loi") + (" (%d kho)" % n if n else "")
 
 
 # ====================================================================================== tệp + giờ (thay cbsys.WinSys cho lõi agent)
@@ -494,6 +544,9 @@ class LinuxAgent(pcagent.Agent):
         self.result_sent = False
         self.gst_state = ""                                       # "" chưa xét · "ok" đủ · "busy" đang cài · "fail" lỗi (chờ GST_RETRY_S)
         self.gst_try = None
+        self.pac_state = ""                                       # 23.11c danh sách gói pacman: "" chưa xét · "ok" · "busy" đang tải · "fail"
+        self.pac_try = None
+        self.pac_ok_at = None
 
     def p(self, rel): return os.path.join(self.base, P(rel))
 
@@ -570,6 +623,40 @@ class LinuxAgent(pcagent.Agent):
         except Exception as e:
             self.gst_state = "fail"; self.log("điều khiển từ xa: lỗi xét công cụ quay màn hình: %r" % (e,))
             return "fail"
+
+    def pac_heal(self):
+        """23.11c: danh sách gói pacman thiếu (máy cài từ ISO CachyOS) hoặc cũ hơn 7 ngày → tải lại ở luồng nền ("pacman -Sy": chỉ tải danh
+           sách, không nâng cấp gói nào) → khách chạy lệnh cài phần mềm (pacman -S …) như máy cài bằng trình cài gốc. Chưa tải được → 1 giờ
+           sau thử lại. → "ok" | "busy" | "wait" | "start" | "fail". Không ném lỗi."""
+        try:
+            if self.pac_state == "busy": return "busy"
+            now = self.s.now()
+            age = pacdb_age(now=now)
+            if age is not None and (age < PACDB_MAX_AGE_S or (self.pac_ok_at is not None and now - self.pac_ok_at < PACDB_MAX_AGE_S)):
+                self.pac_state = "ok"; return "ok"
+            if self.pac_try is not None and now - self.pac_try < PACDB_RETRY_S: return "wait"
+            self.pac_try = now
+            self.pac_state = "busy"
+
+            def run():
+                try:
+                    ok, why = pacdb_sync(self.log)
+                    if ok: self.pac_ok_at = self.s.now()
+                    self.pac_state = "ok" if ok else "fail"
+                    self.log("pacman: " + ("đã tải danh sách gói (%s) — khách cài phần mềm bằng pacman -S được" % why if ok
+                                           else "chưa tải được danh sách gói (%s) — %d phút sau thử lại" % (why, PACDB_RETRY_S // 60)))
+                except Exception as e:
+                    self.pac_state = "fail"; self.log("pacman: lỗi khi tải danh sách gói: %r" % (e,))
+            threading.Thread(target=run, name="pac-heal", daemon=True).start()
+            return "start"
+        except Exception as e:
+            self.pac_state = "fail"; self.log("pacman: lỗi xét danh sách gói: %r" % (e,))
+            return "fail"
+
+    def tick(self):
+        nap = super().tick()
+        if not self.rebooting: self.pac_heal()
+        return nap
 
     def remote_keep(self):
         """Giữ cbremote.py (điều khiển từ xa, root) chạy: chưa chạy / tự thoát để lên bản mới → mở lại (cách nhau ≥ REMOTE_RETRY_S). Không ném lỗi."""
