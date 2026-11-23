@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 23.11g)
+#  cloudblue-tao-iso   (ban 23.11h)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -41,6 +41,8 @@
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
 #     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11h - SUA: khoa Supabase kieu moi (sb_secret_...) bi bao "may chu TU CHOI" du khoa dung - PowerShell mac dinh tu xung la trinh duyet
+#     ("Mozilla/5.0 ..."), Supabase chan khoa bi mat gui tu trinh duyet. Gio moi yeu cau web gui ten chuong trinh rieng (cloudblue-tao-iso/<ban>).
 #  23.11g - DUNG LINK thay cho tep: moi cho nhan tep (-Iso, -Driver "1=...", -BoCai, va cac o keo tha) deu nhan LINK tai
 #     (link chia se Google Drive, hoac link tai thang http / https). Script tu tai ve <thu muc lam viec>\dl\tai (lan sau dung lai, khong tai lai).
 # =====================================================================================================
@@ -71,7 +73,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "23.11g"
+$VER = "23.11h"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -80,6 +82,8 @@ $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "
                "linux/grubx64.efi", "linux/grub.cfg", "linux/cb-install.sh", "linux/cb-post.sh", "linux/cbagent.py", "linux/cbremote.py", "linux/cbcap.py",
                "maychu/may-chu-iso.ps1", "maychu/firstboot.ps1")
 $CFAPI = "https://api.cloudflare.com/client/v4"
+$UA = "cloudblue-tao-iso/" + $VER          # ten chuong trinh gui kem moi yeu cau web (khong de mac dinh "Mozilla/5.0" cua PowerShell)
+$SbWhy = ""
 $LinkRoot = ""
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
@@ -120,7 +124,7 @@ function Test-EnrollKey([string]$url, [string]$anon, [string]$key) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $h = @{ apikey = $anon; Authorization = ("Bearer " + $anon) }
     $body = '{"p_key":"' + $key + '"}'
-    $r = Invoke-RestMethod -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_key_check") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 20
+    $r = Invoke-RestMethod -UserAgent $UA -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_key_check") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 20
     if ($r.ok -eq $true) { return "ok" }
     if (("" + $r.err) -eq "BAD_KEY") { return "bad" }
     if (("" + $r.err) -eq "NO_KEY") { return "nokey" }
@@ -664,16 +668,38 @@ function Test-SbKeyShape([string]$key) {
 
 function Test-SbService([string]$url, [string]$key) {
   # Hoi may chu: khoa nay doc duoc bang may chu khong?  "ok" | "bad" (401 / 403) | "" (khong hoi duoc)
+  # Ly do may chu tu choi (da che khoa) nam o $script:SbWhy.
+  # PHAI gui ten chuong trinh rieng (-UserAgent): PowerShell mac dinh tu xung la "Mozilla/5.0 ..." -> Supabase coi la TRINH DUYET
+  # va tu choi moi khoa sb_secret_... bang ma 401 du khoa dung.
+  $script:SbWhy = ""
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $h = @{ apikey = $key; Authorization = ("Bearer " + $key) }
-    $r = Invoke-WebRequest -UseBasicParsing -Method Get -Uri ($url.TrimEnd("/") + "/rest/v1/cloud_nodes?select=id&limit=1") -Headers $h -TimeoutSec 20
+    $r = Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Method Get -Uri ($url.TrimEnd("/") + "/rest/v1/cloud_nodes?select=id&limit=1") -Headers $h -TimeoutSec 20
     if ([int]$r.StatusCode -eq 200) { return "ok" }
     return ""
   } catch {
+    $er = $_
     $code = 0
-    try { $code = [int]$_.Exception.Response.StatusCode } catch { $code = 0 }
-    if (($code -eq 401) -or ($code -eq 403)) { return "bad" }
+    try { $code = [int]$er.Exception.Response.StatusCode } catch { $code = 0 }
+    if (($code -eq 401) -or ($code -eq 403)) {
+      $txt = ""
+      try { if ($er.ErrorDetails -and $er.ErrorDetails.Message) { $txt = "" + $er.ErrorDetails.Message } } catch { $txt = "" }
+      if (-not $txt) {
+        try {
+          $rs = $er.Exception.Response.GetResponseStream()
+          try { $rs.Position = 0 } catch { }
+          $sr = New-Object IO.StreamReader($rs)
+          $txt = $sr.ReadToEnd()
+          $sr.Close()
+        } catch { $txt = "" }
+      }
+      $txt = (("" + $txt) -replace '\s+', ' ')
+      if ($key) { $txt = $txt.Replace($key, "***") }
+      if ($txt.Length -gt 160) { $txt = $txt.Substring(0, 160) }
+      $script:SbWhy = ("HTTP " + $code + " " + $txt).Trim()
+      return "bad"
+    }
     return ""
   }
 }
@@ -684,13 +710,13 @@ function Test-CfToken([string]$tok, [string]$domain) {
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $h = @{ Authorization = ("Bearer " + $tok) }
-    $z = Invoke-RestMethod -Method Get -Uri ($CFAPI + "/zones?name=" + $domain) -Headers $h -TimeoutSec 20
+    $z = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/zones?name=" + $domain) -Headers $h -TimeoutSec 20
     $zr = @($z.result)
     if (($z.success -eq $true) -and ($zr.Count -gt 0) -and $zr[0]) {
       $res.zone = $true
       $acc = "" + $zr[0].account.id
       try {
-        $t = Invoke-RestMethod -Method Get -Uri ($CFAPI + "/accounts/" + $acc + "/cfd_tunnel?per_page=1") -Headers $h -TimeoutSec 20
+        $t = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/accounts/" + $acc + "/cfd_tunnel?per_page=1") -Headers $h -TimeoutSec 20
         if ($t.success -eq $true) { $res.tunnel = $true }
       } catch { $res.tunnel = $false }
     } else { $res.err = "ma khong thay ten mien " + $domain }
@@ -1023,7 +1049,7 @@ try {
           $kWhy = Test-SbKeyShape $kIn
           if (-not $kWhy) {
             $kSt = Test-SbService $SbUrl $kIn
-            if ($kSt -eq "bad") { $kWhy = "may chu Supabase TU CHOI khoa nay (khoa cu / sai du an)" }
+            if ($kSt -eq "bad") { $kWhy = "may chu Supabase TU CHOI khoa nay (khoa cu / sai du an)"; if ($SbWhy) { $kWhy += " - may chu tra loi: " + $SbWhy } }
             elseif ($kSt -eq "ok") { Say "   khoa Supabase: may chu xac nhan DUNG DUOC" "Green" }
             else { Say "   (chua hoi duoc may chu ve khoa - van dung khoa nay)" "DarkGray" }
           }
