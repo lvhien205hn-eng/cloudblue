@@ -159,8 +159,20 @@ sh("setprop fw.max_users 8")
 o = sh("pm create-user --profileOf 0 --managed CloneTab", 60); m = re.search(r"created user id (\d+)", o)
 U = int(m.group(1)) if m else None
 print("hồ sơ clone:", o[-160:], flush=True)
+def settle_system(limit=120):
+    """Tạo / mở hồ sơ clone có lúc làm Android (máy ảo 10) khởi động lại giao diện → chờ đọc được danh sách tab lại + đặt lại cỡ màn."""
+    end = time.time() + limit
+    while time.time() < end:
+        try:
+            if sh("getprop sys.boot_completed", 15).strip() == "1" and cp.win_state(sh)["ok"]: break
+        except Exception: pass
+        time.sleep(3)
+    if "720x1280" not in sh("wm size"): sh("wm size 720x1280; wm density 320", 20); time.sleep(3); print("   (đặt lại cỡ màn sau khi Android khởi động lại giao diện)", flush=True)
+
+
 if U:
     print(sh(f"am start-user {U}; pm install-existing --user {U} vn.cloudblue.wintest1", 60)[-200:], flush=True)
+    time.sleep(3); settle_system()
     sh("input keyevent 3"); time.sleep(2)                          # như khách: về màn chính rồi bấm biểu tượng bản clone (đang ở trong cửa sổ thì
     open_app(1, U)                                                 # Android 12 có lúc mở bản clone luôn thành cửa sổ → "Các tab đang là cửa sổ nhỏ rồi")
     if (task(1, U) or {}).get("mode") == "freeform": open_app(1, U)
@@ -222,11 +234,15 @@ info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 an
      bool(s1) and (s1[0] >= s1[2] - 2 and s1[1] >= s1[3] - 2), s1)
 if g4:
     gb = g4["b"]; sh("logcat -c"); t0 = time.time()
-    code, j = run("refit"); g5 = task(4); time.sleep(4); s2 = game_size(); shot("13-mo-lai-vua-khung")
-    ck(f"🔄 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ) · {time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform"
-       and g5["b"] == gb and g5["vis"], (code, j, gb, g5))
-    fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and abs(s2[1] - s2[3]) <= 24 and s2[0] <= gb[2] - gb[0] + 2
-    (ck if API >= 29 else info)(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
+    code, j = run("refit"); time.sleep(4); g5 = task(4); s2 = game_size(); shot("13-mo-lai-vua-khung")
+    if API < cp.WIN_REFIT_SDK:
+        ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), game KHÔNG bị tắt / mở lại", code == 409 and "Android 9" in j.get("error", "")
+           and g5 and g5["mode"] == "freeform" and g5["id"] == g4["id"], (code, j, g5))
+    else:
+        ck(f"🖼 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ + cỡ) · {time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform"
+           and g5["b"] == gb and g5["vis"], (code, j, gb, g5))
+        fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and abs(s2[1] - s2[3]) <= 24          # khung game = phần app thấy (Android 12L+ còn thu nhỏ cả hình)
+        ck(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "\n".join(("OK " if c else "NO ") + n for n, c in INFO))

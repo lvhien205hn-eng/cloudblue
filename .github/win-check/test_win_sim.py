@@ -342,38 +342,44 @@ for sdk in (31, 35):
     code, j = cp.win_run(d.sh, "tile"); ws = sorted([a, b], key=lambda t: t["id"])
     ck(f"Android {sdk} xoay chậm: Sắp xếp khi game ngang đang toàn màn → lưới màn DỌC", code == 200 and [t["b"] for t in ws] == cp.win_grid(GP, 2), (code, j, ws))
 
-print("4c. 23/11b · 🔄 Mở lại vừa khung · đưa tab lên bằng am task focus · Android 15 thu nhỏ hình game (size compat)")
+print("4c. 23/11b · 🖼 Mở lại vừa khung · đưa tab lên bằng am task focus · Android 12L+ thu nhỏ hình game (size compat)")
 R1, R2 = "com.roblox.client/.startup.ActivitySplash", "vn.game.hai/.Main"
-for sdk in (28, 29, 31, 35):
+for sdk in (28, 29, 31, 32, 35):
     d = Droid(sdk); d.open(R1, land=True, resz=sdk >= 29); cp.win_run(d.sh, "mini"); a = d.task(R1)
     conf = [x for x in d.log if x.startswith("settings put global enable_freeform_support 1")]
-    if sdk >= 35: ck("Android 15: KHÔNG ép đổi cỡ + cho app không đổi cỡ vào cửa sổ (Android thu nhỏ hình game vừa khung)",
-                     conf and "force_resizable_activities 0" in conf[-1] and "enable_non_resizable_multi_window 1" in conf[-1]
-                     and (d.force, d.nonres) == ("0", "1"), (conf, d.force, d.nonres))
+    if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk}: KHÔNG ép đổi cỡ + cho app không đổi cỡ vào cửa sổ (Android thu nhỏ hình game vừa khung)",
+                                 conf and "force_resizable_activities 0" in conf[-1] and "enable_non_resizable_multi_window 1" in conf[-1]
+                                 and (d.force, d.nonres) == ("0", "1"), (conf, d.force, d.nonres))
     else: ck(f"Android {sdk}: giữ ép đổi cỡ như cũ (không đổi cài đặt máy đang chạy tốt)", not conf and d.force == "1", (conf, d.force))
     d.log.clear(); d.home_key(); d.open(R2, land=True, resz=sdk >= 29); code, j = cp.win_run(d.sh, "mini"); b = d.task(R2)
     ck(f"Android {sdk}: cửa sổ cũ đưa lên lại bằng `am task focus` (không gửi lệnh mở cho app)", code == 200 and d.visible(a) and d.visible(b)
        and any(x == f"am task focus {a['id']} 2>&1" for x in d.log) and not any(f"-n {R1}" in x and "--task" not in x for x in d.log), d.log[-10:])
-    if sdk >= 35: ck("Android 15 đã đúng cài đặt → lần sau không đặt lại", not any(x.startswith("settings put") for x in d.log), d.log[:4])
+    if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk} đã đúng cài đặt → lần sau không đặt lại", not any(x.startswith("settings put") for x in d.log), d.log[:4])
     ab = a["b"] = (40, 600, 600, 920)                    # khách kéo cửa sổ Roblox; Roblox nằm dưới → bấm vào cho lên trên
     d.z.remove(a); d.z.insert(0, a); d.log.clear()
     code, j = cp.win_run(d.sh, "refit"); a2 = d.task(R1)
-    ck(f"Android {sdk}: 🔄 Mở lại vừa khung → tắt app, mở lại NGAY TRONG cửa sổ cũ (đúng chỗ + cỡ khách kéo), báo game khởi động lại",
+    if sdk < 29:
+        ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), KHÔNG tắt game", code == 409 and "Android 9" in j.get("error", "")
+           and not any("force-stop" in x for x in d.log) and a2 is a and a2["b"] == ab, (code, j, d.log))
+        continue
+    ck(f"Android {sdk}: 🖼 Mở lại vừa khung → tắt app, mở lại NGAY TRONG cửa sổ cũ (đúng chỗ + cỡ khách kéo), báo game khởi động lại",
        code == 200 and a2 and a2["mode"] == FF and a2["b"] == ab and tuple(j["b"]) == ab and "khởi động lại" in j["msg"]
        and any(x == "am force-stop --user 0 com.roblox.client 2>&1" for x in d.log) and d.visible(a2), (code, j, a2, d.log[-6:]))
-    if sdk < 29: ck("Android 9: game không đổi cỡ → trong vòng lặp chuyển nguyên tab sang khối cửa sổ nổi (am stack move-task) rồi đặt cỡ",
-                    any("am stack move-task $id 2 true" in x for x in d.log), d.log[-6:])
-    d.z = [x for x in d.z if x["mode"] != FF or x["comp"] != R2]
-    if sdk < 29:                                           # chỉ còn 1 cửa sổ → khối cửa sổ nổi sẽ mất khi tắt app → giữ khối bằng Cài đặt
-        d.log.clear(); code, j = cp.win_run(d.sh, "refit"); a3 = d.task(R1)
-        ck("Android 9 + chỉ 1 cửa sổ: mở tạm Cài đặt ở cửa sổ (giữ khối cửa sổ nổi), mở lại vừa khung xong thì đóng Cài đặt",
-           code == 200 and a3["mode"] == FF and a3["b"] == ab and any("com.android.settings/.Settings" in x for x in d.log)
-           and any("force-stop com.android.settings" in x for x in d.log) and d.task("com.android.settings/.Settings") is None, (code, j, d.log[-8:]))
+    scr = next((x for x in d.log if x.startswith("C=")), "")
+    if sdk == 31: ck("Android 12: mở lại THẤP HƠN 42 dp (84 px) rồi kéo về đủ cỡ — lần dựng khung đầu chưa có thanh tiêu đề",
+                     f"am task resize $id 40 600 600 {920 - 84} " in scr and d.log[-2].startswith(f"am task resize {a2['id']} 40 600 600 920"), (scr[-160:], d.log[-3:]))
+    else: ck(f"Android {sdk}: mở lại đúng cỡ luôn (không cần kéo lại)", "am task resize $id 40 600 600 920 " in scr, scr[-160:])
 d = Droid(31); d.open(R1, land=True)
 code, j = cp.win_run(d.sh, "refit")
 ck("chưa có tab nhỏ nào → 409 dễ hiểu (thu nhỏ trước)", code == 409 and "thu nhỏ app" in j.get("error", ""), (code, j))
 t_bad = {"id": 9, "comp": "com.x/.A;reboot", "pkg": "com.x", "user": 0, "b": (0, 0, 10, 10)}
 ck("tên app lạ (chèn lệnh) → không chạy gì", cp.win_refit(lambda c, t=0: (_ for _ in ()).throw(AssertionError(c)), t_bad, 31, lambda s: None) is None)
+d = Droid(28); d.open(R1, land=True, resz=False); cp.win_run(d.sh, "mini"); d.log.clear()
+ta = next(x for x in cp.win_tasks(d.stack_list(), 28) if x["comp"] == R1)
+d2 = cp.win_refit(d.sh, ta, 28, lambda s: None)
+ck("(đường riêng Android 9 của win_refit, khi gọi thẳng) chỉ 1 cửa sổ → giữ khối cửa sổ nổi bằng Cài đặt, chuyển tab vào khối, đóng Cài đặt",
+   d2 and d.task(R1)["mode"] == FF and any("am stack move-task $id 2 true" in x for x in d.log) and any("force-stop com.android.settings" in x for x in d.log)
+   and d.task("com.android.settings/.Settings") is None, d.log[-8:])
 
 print("4. Máy chưa bật cửa sổ nổi")
 d = Droid(31, free=False); d.open("com.roblox.client/.startup.ActivitySplash")
