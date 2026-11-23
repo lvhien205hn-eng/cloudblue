@@ -405,7 +405,7 @@ a.btn{text-decoration:none}
 @media (max-width:1240px){ .who #who-name{display:none} }
 .notice div{display:block;position:relative;padding-left:28px}
 .notice div::before{position:absolute;left:13px;top:16px;transform:none}
-#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg,#secdlg{z-index:70}
+#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg,#nmgdlg,#secdlg{z-index:70}
 .dpanel{width:min(1060px,100%)}
 .tbl td:last-child{white-space:nowrap;text-align:right}
 @media (max-width:1520px){ nav a svg.ic{display:none} nav a{padding:8px 11px} .who #who-name{display:none} nav a[href="#policy"]{display:none} }
@@ -616,6 +616,12 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .srv-st b{display:block;font-size:14px;color:var(--fg);margin-top:2px}
 .srv-any{display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;color:var(--bad);cursor:pointer}.srv-any input{margin-top:3px;flex:none}
 .srv-go{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.srv-go .in{flex:1 1 160px;min-width:0}.srv-go .btn{flex:none}
+.nmg-h{margin:14px 0 6px;font-weight:700;font-size:13px;color:var(--muted)}
+.dlg label.nmg-auto{display:flex;flex-direction:row;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;line-height:1.9;cursor:pointer;color:var(--fg)}
+.dlg label.nmg-auto input[type=checkbox]{margin:7px 0 0;flex:none;width:auto}.dlg label.nmg-auto>span{flex:1;min-width:0}
+.dlg label.nmg-auto .in{width:74px;display:inline-block;padding:4px 6px;margin:0 2px}
+.nmg-out{max-height:min(40vh,300px);overflow:auto;background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.45 ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word;margin:10px 0 0}
+#nmgdlg .amts button:disabled{opacity:.45;cursor:not-allowed}
 .nrb-one{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}.nrb-one summary{cursor:pointer;font-weight:600;font-size:14px}.nrb-one #nrb-q{margin-top:10px}
 .nr{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:12.5px}
 .nr span{color:var(--muted)}
@@ -3975,6 +3981,35 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
       <div class="hint" style="margin-top:6px">Máy được tắt hẳn (treo thì tắt cưỡng bức) rồi bật lại, 1–3 phút, dữ liệu giữ nguyên. Máy đang khoá không ép được (mở khoá trước).</div>
     </details>
     <div class="acts"><button class="btn ghost" type="button" id="nrb-close">Đóng</button></div>
+  </div>
+</div>
+<!-- ADMIN: 🛠 QUẢN LÝ MÁY CHỦ (23/11f) — các nút của bảng CloudBlue trên máy chủ, gọi /cpapi/admin/node của ĐÚNG máy chủ đó -->
+<div class="modal" id="nmgdlg" hidden>
+  <div class="dlg nrbdlg" role="dialog" aria-modal="true" aria-labelledby="nmg-title" style="max-width:680px">
+    <h3 id="nmg-title">🛠 Quản lý máy chủ</h3>
+    <div class="hint" id="nmg-who"></div>
+    <div class="srv-st" id="nmg-st"></div>
+    <div class="nmg-h">Cập nhật</div>
+    <div class="amts" style="grid-template-columns:repeat(2,1fr)">
+      <button type="button" data-nmg="update" title="Tải bản mới nhất từ GitHub rồi cài — giống chạy lệnh A trên máy chủ (không kiểm / sửa máy khách)">⬆ Cập nhật máy chủ</button><button type="button" data-nmg="refresh">🔄 Xem lại</button>
+    </div>
+    <label class="nmg-auto"><input type="checkbox" id="nmg-auto"><span>Các máy chủ khác <b>tự cập nhật theo</b> khi bản mới đã chạy ổn ở 1 máy chủ được <input class="in" id="nmg-soak" type="number" min="5" max="1440" step="5" inputmode="numeric" aria-label="Số phút bản mới phải chạy ổn"> phút <span class="hint">(áp dụng cho mọi máy chủ)</span></span></label>
+    <div class="nmg-h">Máy khách · Windows</div>
+    <div class="amts" style="grid-template-columns:repeat(2,1fr)">
+      <button type="button" data-nmg="list">📋 Danh sách máy</button><button type="button" data-nmg="wallpaper">🖼 Ảnh nền cho máy</button>
+      <button type="button" data-nmg="hide">🙈 Ẩn cửa sổ giả lập</button><button type="button" data-nmg="test">🧪 Tạo máy thử</button>
+      <button type="button" data-nmg="remake-list">♻ Máy cần làm mới</button><button type="button" data-nmg="optimize">⚡ Tối ưu Windows</button>
+    </div>
+    <div class="nmg-h">Việc lớn — gõ mã máy chủ để mở nút</div>
+    <div class="srv-go"><input class="in" id="nmg-confirm" autocomplete="off" spellcheck="false" aria-label="Gõ mã máy chủ để xác nhận"></div>
+    <div class="amts" style="grid-template-columns:repeat(2,1fr);margin-top:8px">
+      <button type="button" data-nmg="restart" data-sure="1">⚡ Khởi động lại máy chủ</button><button type="button" data-nmg="shutdown" data-sure="1">⏻ Tắt máy chủ</button>
+      <button type="button" data-nmg="remake" data-sure="1">♻ Làm mới máy khách</button><button type="button" data-nmg="cleanup" data-sure="1">🧹 Dọn giả lập thừa</button>
+    </div>
+    <div class="nrb-st" id="nmg-msg"></div>
+    <pre class="nmg-out" id="nmg-out" hidden></pre>
+    <div class="hint" style="margin-top:10px">Các nút cần khoá bí mật hoặc phải ngồi tại máy — 🚀 Tự động A→Z, ① Cài đặt, ② Dán khoá Supabase, ③ Nối Cloudflare, 🎛 Chọn giả lập, 🛣 Đường thẳng, 🔑 Tự đăng nhập — chỉ làm ở bảng CloudBlue trên máy chủ.</div>
+    <div class="acts"><button class="btn ghost" type="button" id="nmg-close">Đóng</button></div>
   </div>
 </div>
 <div class="modal" id="appnews" hidden>
@@ -9107,10 +9142,26 @@ function nodeEmu(n, m) {
   return `<div class="nr"><span>Giả lập · Android</span><em>${esc([e ? NODE_ENGINE[e.toLowerCase()] || e : "", av.length ? "Android " + av.join(", ") : none ? "KHÔNG bán bản nào" : ""].filter(Boolean).join(" · "))}</em></div>`
     + (miss.length ? `<div class="nr" style="color:var(--bad)" title="Tạo máy trong giả lập đúng bản Android, đặt đúng tên, để TẮT — máy chủ tự bán lại sau khoảng 2 phút"><span>⚠ Thiếu máy mẫu</span><em>${esc(miss.join(", "))}</em></div>` : "");
 }
+/* 23/11f: bản phần mềm máy chủ đang chạy (metrics.sw do cloudphoned báo) — máy chủ nào chưa lên bản mới nhất trong dàn thì ghi rõ */
+function nodeSwNewest() {
+  let best = null;
+  for (const n of NODES) { const s = n.metrics && n.metrics.sw; if (s && s.ver && s.upd && s.at && nAge(n) <= 3 && (!best || +s.at > +best.at)) best = s; }
+  return best;
+}
+function nodeSw(m, newest) {
+  const s = m && m.sw; if (!s || typeof s !== "object") return "";
+  const dt = s.at ? new Date(s.at * 1000) : null, p2 = x => String(x).padStart(2, "0");
+  const at = dt ? `${p2(dt.getDate())}/${p2(dt.getMonth() + 1)} ${p2(dt.getHours())}:${p2(dt.getMinutes())}` : "";
+  const last = s.last || {}, bad = !!last.ver && last.upd === false, behind = !!(newest && newest.ver && s.ver !== newest.ver);
+  const txt = (s.ver ? "bản " + s.ver : "chưa ghi bản") + (at ? " · cài " + at : "")
+    + (s.run ? " · ⏳ đang cập nhật" : bad ? ` · ⚠ lượt cập nhật ${last.ver} chưa xong` : behind ? ` · ⬆ chưa lên bản ${newest.ver}` : "")
+    + (s.follow === false ? " · tự theo: tắt ở máy này" : "");
+  return `<div class="nr"${bad ? ' style="color:var(--bad)"' : behind ? ' style="color:var(--gold-hi)"' : ""}><span>Phần mềm máy chủ</span><em>${esc(txt)}</em></div>`;
+}
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
   if (!NODES.length) { box.innerHTML = `<div class="empty">Chưa có máy chủ nào gửi báo cáo. Cập nhật cloudphoned.py trên server rồi khởi động lại dịch vụ.</div>`; $("cpa-nodesum").textContent = ""; return; }
-  let tr = 0, ar = 0, tc = 0, ac = 0, ph = 0;
+  let tr = 0, ar = 0, tc = 0, ac = 0, ph = 0; const swNew = nodeSwNewest();
   box.innerHTML = NODES.map(n => {
     const m = n.metrics || {}, age = nAge(n), off = age > 3, lim = n.limit_pct || 85;
     const capC = m.cap_cpu_full != null && +m.cap_cpu_full > 0 ? +m.cap_cpu_full : 0;   // trần bán nhân THẬT (máy chủ bản 13/11 trở đi báo) — đạt là ngừng nhận
@@ -9124,7 +9175,7 @@ function renderNodes() {
     return `<div class="node${full ? " full" : ""}${off ? " off" : ""}">
       <div class="nh"><b>${esc(n.name)}</b><span class="hint">${esc(n.id)}</span>
         <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-      ${nodePauseRow(n)}${nodeEmu(n, m)}
+      ${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew)}
       ${nRow("CPU đang dùng thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct)}
       ${m.cpu_over ? nRow("CPU thật TB 5 phút (ngừng nhận khi ≥ " + (m.cpu_busy_pct || 85) + "%)", (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, m.cpu_busy_pct || 85) : ""}
       ${capC ? nRow("CPU đã cấp (đạt trần là ngừng nhận)", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100)
@@ -9141,6 +9192,7 @@ function renderNodes() {
         <span class="acts"><button class="btn ghost sm" data-nrename="${esc(n.id)}">✏️ Đổi tên</button>
           <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${esc(n.id)}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
           ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${esc(n.id)}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
+          ${!off ? `<button class="btn ghost sm" data-nmanage="${esc(n.id)}" title="Bản đang chạy, cập nhật, các nút của bảng CloudBlue trên máy chủ">🛠 Quản lý</button>` : ""}
           ${!off ? `<button class="btn danger sm" data-nreboot="${esc(n.id)}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
           ${n.phones ? `<button class="btn danger sm" data-nwipe="${esc(n.id)}">🧹 Xoá sạch máy</button>` : ""}
           ${off ? `<button class="btn danger sm" data-ndel="${esc(n.id)}">Xoá</button>` : ""}</span></div>
@@ -9593,6 +9645,133 @@ $("nrb-q") && ($("nrb-q").oninput = nrbRender);
 $("nrb-close") && ($("nrb-close").onclick = () => show("nrbdlg", false));
 $("nrb-list") && ($("nrb-list").onclick = e => { const b = e.target.closest("[data-nrbgo]"); if (b && !b.disabled) nrbGo(b.dataset.nrbgo); });
 $("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => { const b = e.target.closest("[data-nreboot]"); if (b) nrbOpen(b.dataset.nreboot); });
+
+
+/* ---- Admin: 🛠 QUẢN LÝ MÁY CHỦ (23/11f). Gọi /cpapi/admin/node của ĐÚNG máy chủ đó (metrics.base): GET = bản đang chạy + nhật ký lượt cập nhật ·
+        POST {do} = 1 việc ghi sẵn ở máy chủ (cập nhật = lệnh A chạy tự động; việc lớn phải gõ mã máy chủ). Công tắc "tự cập nhật theo" lưu ở
+        settings.data.node_update {auto, soak_min} — mọi máy chủ đọc. ---- */
+let nmgNode = null, NMG = null, NMG_BUSY = "", nmgT = null, nmgSeen = 0;
+const NMG_NAME = { update: "Cập nhật máy chủ", list: "Danh sách máy", wallpaper: "Đặt ảnh nền cho máy", hide: "Ẩn cửa sổ giả lập", test: "Tạo máy thử test1", "remake-list": "Xem máy cần làm mới",
+  optimize: "Tối ưu Windows", restart: "Khởi động lại máy chủ", shutdown: "Tắt máy chủ", remake: "Làm mới máy khách", cleanup: "Dọn giả lập thừa" };
+const NMG_ASK = {
+  update: n => `Cập nhật máy chủ ${n.name} (${n.id}) lên bản mới nhất trên GitHub?\n\nGiống chạy lệnh A: thay file + bật lại dịch vụ (công cụ máy ngắt ~2 giây, phát hình có thể ngắt ~10 giây). Máy khách KHÔNG tắt.`,
+  test: n => `Tạo máy thử "test1" (4GB RAM · 4 nhân) trên ${n.name}? Mất 1–3 phút.`,
+  optimize: n => `Tối ưu Windows của ${n.name}: chế độ hiệu năng cao, không cho máy ngủ, Defender bỏ qua thư mục giả lập / CloudBlue, tắt quay màn hình Xbox?`,
+  restart: n => `KHỞI ĐỘNG LẠI CẢ MÁY CHỦ ${n.name} (${n.id})?\n\nMáy khách đang chạy sẽ tắt êm, khoảng 3–8 phút sau tự bật lại.`,
+  shutdown: n => `TẮT HẲN MÁY CHỦ ${n.name} (${n.id})?\n\nMáy khách tắt êm rồi Windows tắt. Phải có người BẤM NÚT NGUỒN thì máy chủ mới chạy lại — web không bật lại được.`,
+  remake: n => `Làm mới (TẠO LẠI) các máy khách cần làm mới trên ${n.name}?\n\nGiữ chủ máy, cấu hình, hạn dùng — app / dữ liệu cũ của các máy đó MẤT. Nên bấm "♻ Máy cần làm mới" xem trước.`,
+  cleanup: n => `XOÁ mọi giả lập trên ${n.name} KHÔNG thuộc danh sách CloudBlue (giả lập cũ, tạo dở, bị kẹt)?\n\nMáy khách đang thuê và máy test1 được giữ nguyên.`,
+};
+function nmgSay(t, kind) { const m = $("nmg-msg"); if (!m) return; m.style.color = kind === "bad" ? "var(--bad)" : kind === "ok" ? "var(--ok)" : "var(--warn, #ffd666)"; m.textContent = t || ""; }
+function nmgOut(t) { const o = $("nmg-out"); if (!o) return; o.hidden = !t; if (t) { const stick = o.scrollTop + o.clientHeight >= o.scrollHeight - 8; o.textContent = t; if (stick) o.scrollTop = o.scrollHeight; } }
+function nmgRender() {
+  const n = NODES.find(x => x.id === nmgNode), box = $("nmg-st"); if (!n || !box) return;
+  const d = NMG, s = (d && d.sw) || {}, last = s.last || {}, f = t => t ? new Date(t * 1000).toLocaleString("vi-VN") : "—";
+  box.innerHTML = !d ? `<div style="grid-column:1/-1">Đang đọc máy chủ…</div>`
+    : d.error ? `<div style="grid-column:1/-1;color:var(--bad)">❌ ${esc(d.error)}</div>`
+    : `<div>Bản đang chạy<b>${esc(s.ver || "chưa ghi (chưa cập nhật lần nào từ bản 23/11f)")}</b></div><div>Cài lúc<b>${f(s.at)}</b></div>`
+      + `<div>Công cụ máy (cpapi)<b>${esc(d.cpapi || "?")}</b></div>`
+      + `<div>Lượt cập nhật gần nhất<b style="color:${last.upd === false ? "var(--bad)" : last.ver ? "var(--ok)" : "var(--fg)"}">${last.ver ? esc(last.ver) + (last.upd === false ? " — CHƯA xong" : " — xong") + (last.auto ? " (tự động)" : "") : "—"}</b></div>`
+      + (d.updating ? `<div style="grid-column:1/-1;color:var(--warn, #ffd666)">⏳ Máy chủ đang cập nhật — tiến độ ở khung bên dưới.</div>` : "")
+      + (!d.updating && (s.probs || []).length ? `<div style="grid-column:1/-1">Lượt gần nhất còn ${s.probs.length} dòng ✗:<b style="font-size:12.5px;font-weight:500">${s.probs.map(esc).join("<br>")}</b></div>` : "")
+      + (d.win === false ? `<div style="grid-column:1/-1">Máy chủ Linux — chỉ xem, không bấm được việc từ web.</div>` : "");
+  const typed = ($("nmg-confirm").value || "").trim().toLowerCase() === String(n.id).toLowerCase(), dead = !d || !!d.error;
+  document.querySelectorAll("#nmgdlg [data-nmg]").forEach(b => { const a = b.dataset.nmg;
+    b.disabled = a === "refresh" ? !!NMG_BUSY : (dead || d.win === false || !!NMG_BUSY || !!d.updating || !!d.busy || (!!b.dataset.sure && !typed)); });
+  const nu = (SITE && SITE.node_update) || {};
+  if (document.activeElement !== $("nmg-soak")) $("nmg-soak").value = +nu.soak_min >= 5 ? +nu.soak_min : 20;
+  $("nmg-auto").checked = nu.auto !== false;
+}
+async function nmgLoad(quiet) {
+  const n = NODES.find(x => x.id === nmgNode); if (!n) return null;
+  const base = nrbNodeBase(n);
+  if (!base) { NMG = { error: "Chưa biết địa chỉ của máy chủ này — đợi máy chủ gửi báo cáo (thẻ 'Cập nhật vừa xong') rồi mở lại." }; nmgRender(); return null; }
+  let r;
+  try { r = await cpapiCall("admin/node", { base }); }
+  catch (e) { if (quiet) return null; r = { error: e.status === 404 ? "Máy chủ này chưa có bản 23/11f — chạy lệnh A trên máy chủ 1 lần (sau đó cập nhật được từ web)." : (e.message || String(e)) }; }
+  if (nmgNode !== n.id) return null;
+  NMG = r; nmgRender(); return r;
+}
+function nmgWatch() {                      // đang cập nhật: 4 giây đọc lại 1 lần (cpapi tự bật lại giữa chừng → vài lần đọc hỏng là bình thường), tối đa 15 phút
+  clearTimeout(nmgT); const id = nmgNode, t0 = Date.now(); let gone = 0;
+  const tick = async () => {
+    if (nmgNode !== id || $("nmgdlg").hidden) return;
+    const r = await nmgLoad(true);
+    if (r && !r.error) {
+      gone = 0; if (r.log) nmgOut(r.log);
+      const last = (r.sw && r.sw.last) || {};
+      if (!r.updating && +last.at > nmgSeen) {
+        NMG_BUSY = ""; nmgRender();
+        nmgSay(last.upd === false ? `⚠ Lượt cập nhật ${last.ver} CHƯA xong — xem các dòng ✗ trong khung dưới.` : `✅ Máy chủ đã chạy bản ${last.ver}.`, last.upd === false ? "bad" : "ok");
+        toast(last.upd === false ? `⚠ ${id}: cập nhật chưa xong` : `✅ ${id}: đã cập nhật bản ${last.ver}`, last.upd === false ? 1 : 0);
+        try { refreshNodes(); } catch (e) {}
+        return;
+      }
+    } else if (++gone === 3) nmgSay("⏳ Công cụ máy đang bật lại bản mới…");
+    if (Date.now() - t0 > 15 * 60000) { NMG_BUSY = ""; nmgRender(); return nmgSay("Quá 15 phút chưa thấy xong — bấm 🔄 Xem lại, hoặc vào máy chủ chạy lệnh A.", "bad"); }
+    nmgT = setTimeout(tick, 4000);
+  };
+  nmgT = setTimeout(tick, 2500);
+}
+async function nmgJob(base, body) {         // chạy 1 việc ở máy chủ → { msg, out }
+  const j = await cpapiCall("admin/node", { method: "POST", json: body, base }); const t0 = Date.now();
+  while (Date.now() - t0 < 2 * 3600 * 1000) {
+    await new Promise(r => setTimeout(r, 2000));
+    let s; try { s = await cpapiCall("job?id=" + encodeURIComponent(j.job), { base }); } catch (e) { if (e.status === 404) throw new Error("Mất theo dõi (công cụ máy vừa bật lại) — bấm lại."); continue; }
+    if (s.msg && s.state === "running") nmgSay("⏳ " + s.msg);
+    if (s.state === "done") return s;
+    if (s.state === "error") throw new Error(s.msg);
+  }
+  throw new Error("Quá lâu chưa xong.");
+}
+async function nmgDo(act) {
+  const n = NODES.find(x => x.id === nmgNode), base = n && nrbNodeBase(n); if (!n || NMG_BUSY) return;
+  if (act === "refresh") { nmgSay(""); NMG = null; nmgRender(); const r = await nmgLoad(); if (r && r.log && (r.updating || $("nmg-out").hidden === false)) nmgOut(r.log); if (r && r.updating) { NMG_BUSY = "update"; nmgRender(); nmgWatch(); } return; }
+  if (!base || !NMG || NMG.error) return;
+  if (NMG_ASK[act] && !confirm(NMG_ASK[act](n))) return;
+  const name = NMG_NAME[act] || act, body = { do: act, confirm: $("nmg-confirm").value.trim() };
+  NMG_BUSY = act; nmgRender(); nmgSay("⏳ " + name + "…"); nmgOut("");
+  try {
+    if (act === "update") {
+      nmgSeen = +(((NMG.sw || {}).last || {}).at) || 0;
+      const r = await cpapiCall("admin/node", { method: "POST", json: body, base });
+      nmgSay("⏳ " + (r.msg || "Đang cập nhật…")); NMG.updating = true; nmgRender(); nmgWatch(); return;
+    }
+    let s;
+    try { s = await nmgJob(base, body); }
+    catch (e) {
+      if (act !== "restart" || !/^NO_AUTOLOGON/.test(String(e.message))) throw e;
+      if (!confirm("Windows của máy chủ này CHƯA bật tự đăng nhập — khởi động lại xong phải có người tới đăng nhập thì máy khách mới chạy.\n\nVẫn khởi động lại?")) throw new Error("Chưa khởi động lại (Windows chưa bật tự đăng nhập: bảng CloudBlue → 🔑).");
+      s = await nmgJob(base, { ...body, anyway: true });
+    }
+    nmgSay("✅ " + (s.msg || name + ": xong."), "ok"); nmgOut(s.out || ""); toast(`✅ ${n.name}: ${name} xong`);
+    if (act === "restart" || act === "shutdown") $("nmg-confirm").value = "";
+  } catch (e) {
+    const m = String((e && e.message) || e).replace(/^NO_AUTOLOGON:\s*/, "");
+    nmgSay("❌ " + m, "bad"); toast(`❌ ${n.name}: ${m}`, 1);
+  }
+  NMG_BUSY = ""; nmgRender();
+}
+async function nmgOpen(id) {
+  const n = NODES.find(x => x.id === id); if (!n) return;
+  clearTimeout(nmgT); nmgNode = id; NMG = null; NMG_BUSY = "";
+  $("nmg-who").textContent = `${n.name} (${n.id})`;
+  $("nmg-confirm").value = ""; $("nmg-confirm").placeholder = `Gõ ${n.id} để mở 4 nút dưới`; nmgSay(""); nmgOut("");
+  show("nmgdlg"); nmgRender();
+  const r = await nmgLoad();
+  if (r && r.updating) { NMG_BUSY = "update"; nmgRender(); if (r.log) nmgOut(r.log); nmgSay("⏳ Máy chủ đang cập nhật…"); nmgWatch(); }
+}
+function nmgSaveAuto() {
+  const soak = Math.max(5, Math.min(1440, Math.round(+$("nmg-soak").value || 20))), auto = !!$("nmg-auto").checked;
+  $("nmg-soak").value = soak;
+  saveSettings({ node_update: { auto, soak_min: soak } }, $("nmg-auto"), auto ? `Đã bật: các máy chủ tự cập nhật theo sau ${soak} phút bản mới chạy ổn.` : "Đã tắt tự cập nhật theo — mỗi máy chủ phải bấm Cập nhật / chạy lệnh A riêng.");
+}
+$("nmg-confirm") && ($("nmg-confirm").oninput = nmgRender);
+$("nmg-auto") && ($("nmg-auto").onchange = nmgSaveAuto);
+$("nmg-soak") && ($("nmg-soak").onchange = nmgSaveAuto);
+$("nmg-close") && ($("nmg-close").onclick = () => { clearTimeout(nmgT); show("nmgdlg", false); });
+$("nmgdlg") && $("nmgdlg").addEventListener("click", e => { const b = e.target.closest("[data-nmg]"); if (b && !b.disabled) nmgDo(b.dataset.nmg); });
+$("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => { const b = e.target.closest("[data-nmanage]"); if (b) nmgOpen(b.dataset.nmanage); });
 
 
 /* ===================== THÔNG BÁO + NỘI QUY KHI MỞ WEB ===================== */

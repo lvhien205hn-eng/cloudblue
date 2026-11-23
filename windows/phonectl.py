@@ -892,7 +892,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "23/11d"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "23/11f"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -4421,10 +4421,12 @@ def cmd_tatem(a):
     print(("✓ Đã tắt êm hết " + str(n0) + " máy" if not left else f"⚠ còn {left} máy chưa tắt hẳn") + " — giờ khởi động lại / tắt Windows được, dữ liệu khách an toàn."
           " Windows lên lại → máy tự bật. KHÔNG khởi động lại trong 15 phút → máy cũng tự bật lại.", flush=True)
     print(f"TATEM {json.dumps({'held': len(names), 'running': nrun, 'left': left})}")
-def cmd_rebootserver(a):
+def cmd_rebootserver(a, off=False):
     """Admin ép KHỞI ĐỘNG LẠI CẢ MÁY CHỦ: giữ các máy khách đang chạy (bảng không tự bật lại giữa chừng) → tắt êm hết → shutdown /r /f.
-       Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên)."""
+       Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên).
+       off=True (23/11f · shutdownserver): TẮT HẲN máy chủ (shutdown /s) — có người bấm nút nguồn bật lại thì máy khách tự bật như trên."""
     if os.name != "nt": print("❌ Chỉ dùng cho máy chủ Windows."); sys.exit(2)
+    if off: return _shutdown_server(a)
     if not _autologon() and not a.anyway:
         print("NO_AUTOLOGON Windows chưa bật tự đăng nhập (bảng CloudBlue → 🔑 Tự đăng nhập + tự chạy) — khởi động lại sẽ dừng ở màn hình mật khẩu, máy khách tắt tới khi có người đăng nhập.")
         sys.exit(7)
@@ -4439,6 +4441,21 @@ def cmd_rebootserver(a):
         print("❌ Windows không cho khởi động lại: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:] + " — đã trả lại máy khách (bảng tự bật lại trong ~1 phút).")
         sys.exit(8)
     print(f"REBOOT_OK Windows khởi động lại sau {a.delay} giây · {nrun} máy khách tự bật lại khi Windows lên (khoảng 3–8 phút).")
+
+def _shutdown_server(a):
+    names, nrun = _reboot_hold()
+    print(f"1/3 Tắt êm {nrun} máy khách đang chạy — Android ghi xong dữ liệu rồi mới tắt (bảng không tự bật lại trong lúc này)…", flush=True)
+    n0, left = _soft_off_all(wait=a.wait)
+    print("   ✓ đã tắt hết" if not left else f"   ⚠ còn {left} máy chưa tắt hẳn — Windows sẽ tắt nốt", flush=True)
+    print(f"2/3 Tắt Windows sau {a.delay} giây…", flush=True)
+    r = run(["shutdown", "/s", "/f", "/t", str(a.delay), "/c", "CloudBlue: admin tat may chu"], 60)
+    if r.returncode not in (0, None):
+        _reboot_release(force=True)
+        print("❌ Windows không cho tắt máy: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:] + " — đã trả lại máy khách (bảng tự bật lại trong ~1 phút).")
+        sys.exit(8)
+    print(f"SHUTDOWN_OK Windows tắt sau {a.delay} giây · bấm nút nguồn bật máy chủ lại thì {nrun} máy khách tự bật lại"
+          + ("" if _autologon() else " — ⚠ Windows CHƯA bật tự đăng nhập: bật máy xong phải đăng nhập Windows thì máy khách mới chạy") + ".")
+def cmd_shutdownserver(a): cmd_rebootserver(a, off=True)
 
 BOOTALL_F = os.path.join(HOME, "redroid", "bootall.json")     # đợt bật hàng loạt đang chạy: phát hình đọc để báo khách "máy chủ vừa khởi động lại"
 BOOT1_MAX = 1800                                               # 1 lệnh con chạy quá 30 phút → thôi theo dõi (tính là lỗi)
@@ -5595,6 +5612,8 @@ def main():
     si = s.add_parser("serverinfo"); si.set_defaults(f=cmd_serverinfo)
     rs = s.add_parser("rebootserver"); rs.add_argument("--anyway", action="store_true"); rs.add_argument("--wait", type=int, default=120)
     rs.add_argument("--delay", type=int, default=15); rs.set_defaults(f=cmd_rebootserver)
+    rs = s.add_parser("shutdownserver"); rs.add_argument("--wait", type=int, default=120)      # 23/11f: web admin → ⏻ Tắt máy chủ
+    rs.add_argument("--delay", type=int, default=15); rs.set_defaults(f=cmd_shutdownserver)
     for nm, fn in (("connect-all", cmd_connect_all), ("reap", cmd_reap), ("perms", cmd_perms), ("capacity", cmd_capacity), ("list", cmd_list),
                    ("memfix", cmd_noop), ("boost", cmd_noop), ("gpuinfo", cmd_noop)):
         s.add_parser(nm).set_defaults(f=fn)
