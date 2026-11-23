@@ -1239,7 +1239,7 @@ function scroll(x, y, h, v) {
   send(T.SCROLL, b);
   syOut(["s", c01(x), c01(y), i16(h), i16(v)]);
 }
-function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); if (paste) syOut(["p", text]); }
+function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste === 2 ? 2 : paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); if (paste) syOut(["p", text]); }   // 2 = khách bấm Ctrl+Shift+V
 
 /* ---------- nhận ---------- */
 function json(p) { try { return JSON.parse(dec8.decode(p)); } catch { return {}; } }
@@ -1765,7 +1765,8 @@ document.addEventListener("keydown", e => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && (e.key === "v" || e.key === "V") && !inKb) {           // Ctrl/⌘+V → dán chữ trong máy tính vào máy
     e.preventDefault();
-    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(t => { if (t) setClip(t, true); }).catch(() => openDlg("paste"));
+    const pm = P.kind === "pc" && e.shiftKey ? 2 : true;              // 23/11b máy PC: Ctrl+Shift+V (Konsole của máy Linux…) → máy bấm đúng Ctrl+Shift+V
+    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(t => { if (t) setClip(t, pm); }).catch(() => openDlg("paste"));
     else openDlg("paste");
     return;
   }
@@ -2543,7 +2544,7 @@ function pcMouse(e, kind) {                                            // kind: 
 }
 function pcKey(e, up) {                                                // true = đã gửi (trang không xử lý thêm)
   if (e.target === kb) return false;                                   // ô gõ của điện thoại (bàn phím ảo, gõ tiếng Việt) → đường gửi chữ như cũ
-  if (!up && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V") && !e.altKey && !e.shiftKey) return false;   // Ctrl+V → dán chữ của máy mình sang máy PC
+  if (!up && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V") && !e.altKey) return false;   // Ctrl+V / Ctrl+Shift+V → dán chữ của máy mình sang máy PC
   const code = PC_KEYS[e.code]; if (code === undefined) return false;
   e.preventDefault();
   if (!up) { if (PCK.down.has(e.code) && e.repeat) { keyAct(0, code, 0); return true; } PCK.down.set(e.code, code); keyAct(0, code, 0); }
