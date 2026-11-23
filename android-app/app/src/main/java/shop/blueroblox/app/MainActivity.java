@@ -2392,6 +2392,17 @@ public class MainActivity extends Activity {
             web.setOnClickListener(v -> openWeb(Api.WEB));
             l.addView(web, Ui.fill());
         }
+        // 23/11 · link NHÓM Zalo + server Discord của shop (admin nhập trên web: Cài đặt › Nội dung trang) → bấm là mở
+        final JSONObject sd = Api.siteData;
+        final String[][] grp = {{"joinZl", "💬 " + Ui.L("Tham gia nhóm Zalo CloudBlue", "Join the CloudBlue Zalo group")},
+                {"joinDc", "🎮 " + Ui.L("Tham gia Discord CloudBlue", "Join the CloudBlue Discord")}};
+        for (String[] k : grp) {
+            final String u = sd == null ? "" : sd.optString(k[0], "").trim();
+            if (u.length() > 200 || !u.matches("(?i)https?://[^\\s\"'<>]+")) continue;
+            Button g = Ui.button(this, k[1], Ui.PRIMARY);
+            g.setOnClickListener(v -> openWeb(u));
+            l.addView(g, Ui.fill());
+        }
         Button pol = Ui.button(this, "📄 " + Ui.L("Chính sách & điều khoản", "Policy & terms"), Ui.GHOST);
         pol.setOnClickListener(v -> openWeb(Api.policyUrl()));
         l.addView(pol, Ui.fill());

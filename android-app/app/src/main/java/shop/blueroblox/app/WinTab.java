@@ -41,12 +41,18 @@ final class WinTab {
         JSONObject b = new JSONObject();
         try { b.put("do", what); } catch (Exception ignored) { }
         Api.bg(() -> Api.cpAt(base, "POST", pid + "/win", b),
-                j -> Ui.toast(a, Ui.srvJob(j.optString("msg", Ui.L("Xong.", "Done.")), "mini".equals(what)
-                        ? "The app is now a small window. Drag its top bar to move it, drag an edge to resize. Open another tab and tap Minimize tab again — then tap Arrange tabs."
-                        : "tile".equals(what) ? "Small tabs arranged." : "refit".equals(what) ? "The game was reopened inside its window and now fits."
-                        : "grow".equals(what) ? "The window is bigger." : "shrink".equals(what) ? "The window is smaller."
-                        : "wide".equals(what) ? "Wide landscape is on." : "narrow".equals(what) ? "Back to the normal portrait screen."
-                        : "The tab is full screen again.")),
+                j -> {
+                    String msg = Ui.srvJob(j.optString("msg", Ui.L("Xong.", "Done.")), "mini".equals(what)
+                            ? "The app is now a small window. Drag its top bar to move it, drag an edge to resize. Open another tab and tap Minimize tab again — then tap Arrange tabs."
+                            : "tile".equals(what) ? "Small tabs arranged." : "refit".equals(what) ? "The game was reopened inside its window and now fits."
+                            : "grow".equals(what) ? "The window is bigger." : "shrink".equals(what) ? "The window is smaller."
+                            : "wide".equals(what) ? "Wide landscape is on." : "narrow".equals(what) ? "Back to the normal portrait screen."
+                            : "The tab is full screen again.");
+                    // 23/11d: game chưa chắc vẽ lại theo cỡ cửa sổ (máy chủ báo fit = "ask") → nút Vừa khung ngay trong thông báo (game mở lại đúng cỡ cửa sổ)
+                    if ("ask".equals(j.optString("fit")) && !"refit".equals(what))
+                        Ui.snack(a, msg, "🖼 " + Ui.L("Vừa khung", "Refit"), () -> run(a, base, pid, "refit"), 10000);
+                    else Ui.toast(a, msg);
+                },
                 m -> Ui.toast(a, missing(m)));
     }
 
