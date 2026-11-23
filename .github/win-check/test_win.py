@@ -10,6 +10,14 @@ API, APKS, OUT = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 os.makedirs(OUT, exist_ok=True)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 OK, INFO, FAILS = [0, 0], [], []
+_LOG = open(os.path.join(OUT, f"win-{API}-nhatky.txt"), "w", encoding="utf-8")
+_print = print
+
+
+def print(*a, **k):                                           # in ra màn + chép vào shots/win-<api>-nhatky.txt (lưu ở nhánh win-shots cùng ảnh)
+    _print(*a, **k)
+    try: _LOG.write(" ".join(str(x) for x in a) + "\n"); _LOG.flush()
+    except Exception: pass
 
 
 def ck(name, cond, extra=""):
@@ -172,9 +180,43 @@ def pic_at(b, g):
     return [amber(px(b[0] + 8, my)), amber(px(b[2] - 9, my)), amber(px(mx, b[3] - 9))]
 
 
+def pic_solid(b, g, rgb=(184, 134, 11), cap=None):
+    """App 3 (nền 1 màu 0xffb8860b): màu nền có ở sát mép trái / phải / đáy BÊN TRONG khung b và KHÔNG có ngay dưới đáy khung (hình nằm đúng
+       khung, không lệch / không tràn). Trả [trái, phải, đáy, ngoài-đáy-không-có] hoặc None."""
+    s_ = raw_shot()
+    if not s_: return None
+    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    def px(x, y):
+        x, y = int(x * sx), int(y * sy)
+        return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
+    near = lambda c: len(c) == 3 and all(abs(c[i] - rgb[i]) <= 28 for i in range(3))
+    my, mx = (b[1] + b[3]) // 2 + 40, (b[0] + b[2]) // 2
+    return [near(px(b[0] + 14, my)), near(px(b[2] - 15, my)), near(px(mx, b[3] - 15)), not near(px(mx, b[3] + 14))]
+
+
+def pic_game(b, g):
+    """App "game" (viền vàng quanh hình, dựng 1 lần theo cỡ lúc mở): viền vàng ở mép TRÁI khung b + ở mép TRÊN phần hình (ngay dưới thanh tiêu đề,
+       hoặc sát mép trên khung khi cửa sổ không có thanh tiêu đề). Trả [trái, trên] hoặc None."""
+    s_ = raw_shot()
+    if not s_: return None
+    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    def px(x, y):
+        x, y = int(x * sx), int(y * sy)
+        return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
+    amber = lambda c: len(c) == 3 and c[0] > 200 and 140 < c[1] < 240 and c[2] < 100
+    my, mx = (b[1] + b[3]) // 2 + 40, (b[0] + b[2]) // 2
+    return [amber(px(b[0] + 8, my)), amber(px(mx, b[1] + g["cap"] + 8)) or amber(px(mx, b[1] + 8))]
+
+
 def seen(t):
     """cpapi đọc chỗ THẬT của hình tab t (dumpsys input) so với khung tab: True / False / None."""
     return cp.win_seen(sh, [(t, t["b"])], time.sleep, tries=8) if t else None
+
+
+def capped(n, t, g):
+    """Cửa sổ của app n có THANH TIÊU ĐỀ: app thấy vùng vẽ thấp hơn cửa sổ đúng bằng thanh tiêu đề (app 3 ghi cỡ vùng vẽ vào nhật ký)."""
+    sz = last_size(n)
+    return bool(sz) and bool(t) and abs((t["b"][3] - t["b"][1]) - sz[1] - g["cap"]) <= 14
 
 
 st0 = cp.win_state(sh); g0 = st0["geo"]
@@ -197,7 +239,11 @@ if NEW:
        a and cp.win_kinds(sh).get(a["id"]) == {"old": True, "fixed": "land"} and len(cp.win_pids(sh, "vn.cloudblue.wintest1", 0)) == 1,
        (cp.win_kinds(sh), cp.win_pids(sh, "vn.cloudblue.wintest1", 0)))
 id1 = a["id"] if a else None
-code, j = run("mini"); time.sleep(2); a = task(1); shot("2-thu-nho-app1")
+code, j = run("mini"); time.sleep(2); a = task(1)
+for _ in range(16):                                          # máy ảo chậm: vừa đổi mật độ, thanh trạng thái chưa dựng lại → Android tạm đẩy cửa sổ xuống dưới
+    if not a or tuple(j.get("b") or ()) == a["b"]: break     # thanh trạng thái cũ (48 px), dựng lại xong (vài giây) thì cửa sổ về đúng khung đã đặt
+    time.sleep(0.5); a = task(1)
+shot("2-thu-nho-app1")
 ck("Thu nhỏ tab → app 1 thành cửa sổ nổi đúng ô đã tính", code == 200 and a and a["mode"] == "freeform" and a["vis"] and tuple(j.get("b") or ()) == a["b"], (code, j, a))
 b1 = a["b"] if a else None
 if NEW and j.get("fit") != "ok":
@@ -445,9 +491,9 @@ if API >= cp.WIN_SCM_SDK:
     ck(f"… bấm 🖼 Vừa khung → mở lại đúng 1 lần ngay trong tab, hình theo cỡ cửa sổ: app thấy {sz2} · cửa sổ {t2b and t2b['b']}",
        code == 200 and bool(t2b) and t2b["mode"] == "freeform" and creates(2) == 2 and fitted(sz2, t2b["b"], cp.win_state(sh)["geo"]), (code, j, t2b, creates(2), sz2))
     sh(f"am force-stop vn.cloudblue.wintest2; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
-# 12. 23/11e · Android 12+: HÌNH của cửa sổ nhỏ nằm ĐÚNG KHUNG TAB. Từ Android 12 bên đặt chỗ hình của cửa sổ nổi là giao diện hệ thống, và nó
-#     chỉ làm việc đó nếu cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG. Máy thật bật cài đặt sau khi đã mở máy → tab thứ 2 bị vẽ đè lên tab đầu (đo
-#     trên MuMu Android 12). Làm lại đúng 2 cảnh đó trên máy ảo: (a) máy chưa bật cửa sổ nổi · (b) đã bật nhưng giao diện hệ thống chạy từ trước.
+# 12. 23/11e · Android 12+: cửa sổ nhỏ ĐÚNG CHỖ + CÓ THANH TIÊU ĐỀ. Từ Android 12L giao diện hệ thống (SystemUI) lo cửa sổ nổi — đặt chỗ hình
+#     (12L) / vẽ thanh tiêu đề (13+) — nhưng chỉ khi cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG. Máy thật bật cài đặt sau khi đã mở máy → đo trên MuMu
+#     Android 12: tab thứ 2 bị vẽ đè lên tab đầu. Làm lại đúng 2 cảnh đó: (a) máy chưa bật cửa sổ nổi · (b) đã bật nhưng giao diện hệ thống chạy từ trước.
 if API >= cp.WIN_UI_SDK:
     cp.WIN_SCM_KEEP = True
     def ui_pid(): return sh("pidof com.android.systemui").split()
@@ -463,49 +509,50 @@ if API >= cp.WIN_UI_SDK:
         time.sleep(8)
         if on: sh(cp.win_conf_sh(API), 20); time.sleep(2)
         print(f"   (giao diện hệ thống bật lại lúc cửa sổ nổi TẮT: {old} → {ui_pid()} · cài đặt bây giờ: {sh(FREE).split()})", flush=True)
+    def diag(tag):
+        print(f"   [{tag}] dumpsys input:", sh("dumpsys input 2>/dev/null | grep -m3 -E 'wintest[35]/'")[:700].replace("\n", " ¦ "), flush=True)
+        print(f"   [{tag}] lớp hình:", " ¦ ".join(l.strip() for l in sh(cp.WIN_DECOR_SH).splitlines() if re.search(r"Task=(\d+)", l))[:900], flush=True)
+        print(f"   [{tag}] cpapi đọc:", cp.win_frames(sh, ["vn.cloudblue.wintest3", "vn.cloudblue.wintest5"]), flush=True)
     r5 = adb("install", "-r", "-t", os.path.join(APKS, "wintest5.apk"), t=180)
     print("cài wintest5:", (r5.stdout + r5.stderr).decode(errors="ignore").strip()[-120:], flush=True)
     sh(f"wm density {D0}; settings put system user_rotation 0", 20); time.sleep(2)
     # (a) máy chưa bật cửa sổ nổi
-    ui_cold(False); p0 = ui_pid()
+    ui_cold(False); p0 = ui_pid(); sh("logcat -c")
     open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); g12 = cp.win_state(sh)["geo"]; shot("21-vua-bat-cua-so-noi")
-    pic = pic_at(t3["b"], g12) if t3 else None
-    def frames(): return cp.win_frames(sh, ["vn.cloudblue.wintest3", "vn.cloudblue.wintest5"])
-    print("   chỗ thật của hình (dumpsys input):", frames(), "· dòng gốc:", sh(cp.WIN_FRAME_SH.format(p="vn\\.cloudblue\\.wintest3"))[:420], flush=True)
+    pic = pic_solid(t3["b"], g12) if t3 else None; diag("a")
     ck("máy CHƯA bật cửa sổ nổi → Thu nhỏ tab: tự bật cài đặt + bật lại giao diện hệ thống (tiến trình mới) rồi thu nhỏ được",
-       code == 200 and bool(t3) and t3["mode"] == "freeform" and tuple(t3["b"]) == tuple(j.get("b") or ()) and bool(p1) and p1 != p0
+       code == 200 and bool(t3) and t3["mode"] == "freeform" and tuple(t3["b"]) == tuple(j.get("b") or ()) and bool(p1) and not (set(p1) & set(p0))
        and sh(f"settings get global {cp.WIN_UI_KEY}").strip() not in ("", "null"), (code, j, t3, p0, p1, "\n".join(TRACE[:14])))
-    ck(f"… HÌNH của tab nằm đúng khung tab — chỗ Android nhận chạm (dumpsys input) + viền vàng trên ảnh chụp màn {pic}", seen(t3) is True and bool(pic) and all(pic),
-       (seen(t3), pic, t3 and t3["b"], sh(cp.WIN_FRAME_SH.format(p="vn\\.cloudblue\\.wintest3"))[:600]))
+    ck(f"… HÌNH của tab nằm đúng khung tab trên ẢNH CHỤP MÀN (nền app sát mép trái / phải / đáy khung, không tràn xuống dưới) {pic} + cửa sổ có thanh tiêu đề",
+       bool(pic) and all(pic) and capped(3, t3, g12), (pic, t3 and t3["b"], last_size(3), g12["cap"]))
+    if API < cp.WIN_DECOR_SDK: ck("… chỗ Android nhận chạm (dumpsys input) trùng khung tab", seen(t3) is True, (seen(t3), t3 and t3["b"]))
     # (b) cài đặt đã bật, giao diện hệ thống chạy từ TRƯỚC đó (máy thật đang chạy lúc cập nhật): tab đầu + tab thứ 2
-    ui_cold(True); p0 = ui_pid()
+    ui_cold(True); p0 = ui_pid(); sh("logcat -c")
     open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); shot("22-giao-dien-cu-tab-1")
-    pic = pic_at(t3["b"], g12) if t3 else None
-    print("   chỗ thật của hình (dumpsys input):", frames(), "· khung tab:", t3 and t3["b"], flush=True)
-    info(f"… máy ảo này CÓ lỗi như máy thật (hình lệch khung cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: {p0} → {p1}", p1 != p0, (p0, p1))
-    ck(f"giao diện hệ thống chạy từ trước khi bật cửa sổ nổi → thu nhỏ tab đầu: HÌNH vẫn đúng khung (cpapi tự kiểm + sửa) {pic}",
-       code == 200 and bool(t3) and t3["mode"] == "freeform" and seen(t3) is True and bool(pic) and all(pic),
-       (code, j, t3, seen(t3), pic, p0, p1, "\n".join(TRACE[:16])))
+    pic = pic_solid(t3["b"], g12) if t3 else None; diag("b1"); again = bool(p1) and not (set(p1) & set(p0))
+    info(f"… máy ảo này CÓ lỗi như máy thật (hình lệch khung / thiếu thanh tiêu đề cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: {p0} → {p1}", again, (p0, p1))
+    if API >= 32: ck("… Android 12L trở lên: cpapi tự thấy lỗi và bật lại giao diện hệ thống đúng 1 lần", again, (p0, p1, "\n".join(TRACE[:16])))
+    ck(f"giao diện hệ thống chạy từ trước khi bật cửa sổ nổi → thu nhỏ tab đầu: HÌNH đúng khung trên ảnh chụp màn {pic} + cửa sổ có thanh tiêu đề",
+       code == 200 and bool(t3) and t3["mode"] == "freeform" and bool(pic) and all(pic) and capped(3, t3, g12),
+       (code, j, t3, pic, last_size(3), g12["cap"], p0, p1, "\n".join(TRACE[:16])))
     sh("input keyevent 3"); time.sleep(2); open_app(5); time.sleep(2); p1 = ui_pid()
     code, j = run("mini"); time.sleep(3); t3, t5 = task(3), task(5); p2 = ui_pid(); shot("23-giao-dien-cu-tab-2")
-    pic3, pic5 = (pic_at(t3["b"], g12) if t3 else None), (pic_at(t5["b"], g12) if t5 else None)
-    print("   chỗ thật của hình (dumpsys input):", frames(), "· khung tab:", t3 and t3["b"], t5 and t5["b"], flush=True)
+    pic3, pic5 = (pic_solid(t3["b"], g12) if t3 else None), (pic_game(t5["b"], g12) if t5 else None); diag("b2")
     ck(f"… thu nhỏ tab thứ 2: hình tab 2 nằm đúng Ô CỦA NÓ (không đè tab đầu), tab đầu vẫn đúng chỗ, không bật lại giao diện hệ thống lần nữa · tab đầu {pic3} · tab 2 {pic5}",
        code == 200 and bool(t3) and bool(t5) and t5["mode"] == "freeform" and area((max(t3["b"][0], t5["b"][0]), max(t3["b"][1], t5["b"][1]), min(t3["b"][2], t5["b"][2]), min(t3["b"][3], t5["b"][3]))) == 0
-       and seen(t5) is True and seen(t3) is True and bool(pic3) and all(pic3) and bool(pic5) and all(pic5) and p2 == p1,
-       (code, j, t3, t5, seen(t3), seen(t5), pic3, pic5, p1, p2, "\n".join(TRACE[:16])))
+       and bool(pic3) and all(pic3) and bool(pic5) and all(pic5) and p2 == p1,
+       (code, j, t3, t5, pic3, pic5, p1, p2, "\n".join(TRACE[:16])))
     # kéo thanh tiêu đề như khách: hình phải chạy theo khung
     if t5:
-        capy = t5["b"][1] + int(round(cp.WIN_CAP_DP * g12["dpi"] / 160.0)) // 2; cx = (t5["b"][0] + t5["b"][2]) // 2
-        sh(f"input swipe {cx} {capy} {cx} {capy + 90} 1500", 30); time.sleep(2); t5b = task(5); shot("24-keo-tab-2")
-        moved = bool(t5b) and t5b["b"][1] - t5["b"][1] >= 40
-        picm = pic_at(t5b["b"], g12) if t5b else None
-        info(f"… kéo thanh tiêu đề tab 2 xuống: khung đổi {t5['b']} → {t5b and t5b['b']}", moved, (t5, t5b))
-        if moved: ck(f"… kéo thanh tiêu đề: HÌNH chạy theo khung (không đứng yên chỗ cũ) {picm}", seen(t5b) is True and bool(picm) and all(picm), (seen(t5b), picm, t5b))
+        capy = t5["b"][1] + g12["cap"] // 2; cx = (t5["b"][0] + t5["b"][2]) // 2
+        sh(f"input swipe {cx} {capy} {cx} {capy - 110} 1500", 30); time.sleep(2); t5b = task(5); shot("24-keo-tab-2")
+        moved = bool(t5b) and t5["b"][1] - t5b["b"][1] >= 40
+        picm = pic_game(t5b["b"], g12) if t5b else None
+        info(f"… kéo thanh tiêu đề tab 2 lên: khung đổi {t5['b']} → {t5b and t5b['b']}", moved, (t5, t5b))
+        if moved: ck(f"… kéo thanh tiêu đề: HÌNH chạy theo khung (không đứng yên chỗ cũ) {picm}", bool(picm) and all(picm), (picm, t5b))
     code, j = run("tile"); time.sleep(3); t3, t5 = task(3), task(5); shot("25-sap-xep-sau-khi-sua")
-    pic3, pic5 = (pic_at(t3["b"], g12) if t3 else None), (pic_at(t5["b"], g12) if t5 else None)
-    ck(f"… Sắp xếp tab: hình cả 2 tab đúng ô · {pic3} · {pic5}", code == 200 and seen(t3) is True and seen(t5) is True and bool(pic3) and all(pic3) and bool(pic5) and all(pic5),
-       (code, j, t3, t5, pic3, pic5))
+    pic3, pic5 = (pic_solid(t3["b"], g12) if t3 else None), (pic_game(t5["b"], g12) if t5 else None)
+    ck(f"… Sắp xếp tab: hình cả 2 tab đúng ô · {pic3} · {pic5}", code == 200 and bool(pic3) and all(pic3) and bool(pic5) and all(pic5), (code, j, t3, t5, pic3, pic5))
     sh("; ".join(f"am force-stop vn.cloudblue.wintest{n}" for n in (3, 5)) + f"; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
