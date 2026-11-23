@@ -227,6 +227,27 @@ ck("bộ cài CachyOS (linux/…) nằm RIÊNG ở mục 'linux' (agent cũ khô
    not any(k.startswith("linux/") for k in m["files"]) and set(m.get("linux") or {}) >= {"linux/cb-install.sh", "linux/cb-post.sh", "linux/grub.cfg"}
    and "linux/grubx64.efi" not in (m.get("linux") or {}) and m["linux"]["linux/cb-install.sh"] == hashlib.sha256(open(os.path.join(REPO, "linux", "cb-install.sh"), "rb").read()).hexdigest(), m.get("linux"))
 ck("ngôn ngữ bộ cài: đọc được nhiều kiểu lang.ini", (lambda d: (w(os.path.join(d, "sources", "lang.ini"), "[Available UI Languages]\nvi-VN = 2\nen-US = 3\n[Fallback Languages]\n"), B.setup_lang(d))[1])(tempfile.mkdtemp()) == "vi-VN" and B.setup_lang(tmp) == "")
+
+print("4. ISO máy chủ Cloud Phone (23.11g · tao-iso.ps1 -MayChu)")
+inf = os.path.join(tmp, "info-mc.txt")
+ps = dict(json.loads(json.dumps(P)), enroll_key="", user_admin=True, role="server", ask_code=False, name_prefix="win", code_wait=900, info=inf)
+cfgs = B.layout(ps)
+cs = json.load(open(os.path.join(out, "cb", "cb.json")))
+ck("cb.json máy chủ: role = server, không hỏi số máy, tên tự sinh kiểu win-…, chờ gõ tên 15 phút, tài khoản giữ quyền Admin",
+   cs.get("role") == "server" and cs.get("ask_code") is False and cs.get("name_prefix") == "win" and cs.get("code_wait") == 900 and cs.get("user_admin") is True, cs)
+ck("máy chủ KHÔNG mang mã đăng ký máy PC (không vào danh sách máy PC cho thuê)", not os.path.exists(os.path.join(out, "cb", "enroll.key"))
+   and "enroll_key" not in json.load(open(os.path.join(out, "sources", "$OEM$", "$1", "CloudBluePC", "seed.json"))))
+ck("cấu hình trên máy đã cài / phân vùng cứu hộ cũng mang role = server", C.recovery_cfg(cfgs).get("role") == "server" and C.recovery_cfg(cfgs).get("ask_code") is False)
+il = open(inf, encoding="utf-8").read()
+ck("khung tóm tắt: dòng MAY CHU Cloud Phone (không còn dòng KHACH)", "MAY CHU Cloud Phone | tai khoan 'PC' quyen Admin + tu dang nhap" in il and "KHACH tai khoan" not in il, il)
+ck("thư mục os\\firstboot.d\\maychu (script cài máy chủ + cấu hình) được chép vào MỌI bản Windows — tên không phải tên bản", C.folder_applies("maychu", "22h2") and C.folder_applies("maychu", "1511")
+   and not C.is_os_tag("maychu"))
+ck("tên người cài gõ: 'win9' giữ nguyên; '9' → tên Windows win-9; không gõ → win-XXXXXX", C.win_name(C.clean_label("win9"), "win", "x") == "win9"
+   and C.win_name(C.clean_label("9"), "win", "x") == "win-9" and C.clean_name("%s-%06X" % ("win", 0x3FA2C1)) == "win-3FA2C1")
+ck("kiểm cây ISO máy chủ: đạt", B.check(out) == 0)
+cfg = B.layout(json.loads(json.dumps(P)))
+cn = json.load(open(os.path.join(out, "cb", "cb.json")))
+ck("ISO máy PC thường: KHÔNG có các mục của máy chủ (role / ask_code / name_prefix / code_wait)", not any(k in cn for k in ("role", "ask_code", "name_prefix", "code_wait")), cn)
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
