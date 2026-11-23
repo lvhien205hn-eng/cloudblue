@@ -101,9 +101,20 @@ def fake_sh(argv, timeout=60, input=None):
         if a[1] == "-U":
             if any(f in a[-1] for f in GST["fail"]): return 1, "error: failed retrieving file '%s' from archive.archlinux.org : 404" % a[-1].rsplit("/", 1)[-1]
             GST["have"] = True; return 0, "loading packages...\ninstalling gst-plugin-pipewire..."
+        if a[1] == "-Sy":                                                                                   # 23.11c: tải danh sách gói (giả)
+            PAC["calls"].append(a)
+            if PAC["fail"]: return 1, "error: failed retrieving file 'core.db' from geo.mirror.pkgbuild.com : Could not resolve host"
+            for r in ("cachyos", "core", "extra", "multilib"):
+                fp = os.path.join(cbagent.PACDB, r + ".db"); open(fp, "wb").close()
+                if PAC["old"]: os.utime(fp, (time.time() - 8 * 86400,) * 2)                               # máy chủ gói chưa có bản mới
+            return 0, ":: Synchronizing package databases..."
         return 1, "?"
     return _sh(argv, timeout, input)
 GST = {"have": True, "pkgs": "libpipewire 1:1.6.8-1", "fail": set(), "calls": []}
+PAC = {"fail": False, "old": False, "calls": []}
+PACT = tempfile.mkdtemp()                                           # 23.11c: thư mục pacman giả — KHÔNG đụng pacman thật của máy chạy thử
+cbagent.PACDB = os.path.join(PACT, "sync"); os.makedirs(cbagent.PACDB)
+cbagent.PACDB_LOCK = os.path.join(PACT, "db.lck"); cbagent.ARCH_MIRRORLIST = os.path.join(PACT, "mirrorlist")
 GROUPS = ["pc", "users", "video"]
 cbagent.sh = fake_sh
 EFIV = tempfile.mkdtemp(); cbagent.EFIVARS = EFIV                   # biến UEFI giả (thư mục tạm) — KHÔNG BAO GIỜ đụng NVRAM thật của máy chạy thử
@@ -306,6 +317,52 @@ GST.update(have=True, calls=[])
 ag11 = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logs9.append, rec=rec)
 ck("máy có sẵn pipewiresrc → 'ok' ngay, không gọi pacman", ag11.gst_heal() == "ok" and not [c for c in GST["calls"] if c[0] == "pacman"], GST["calls"])
 
+print("6d. 23.11c: máy cài từ ISO thiếu danh sách gói pacman (khách 'pacman -S xz 7zip' báo target not found) → agent tự tải")
+def pac_join():
+    for t in _th.enumerate():
+        if t.name == "pac-heal": t.join(10)
+pac_join()                                                          # các agent ở phần trên (tick) đã tự tải danh sách giả → làm lại từ đầu
+shutil.rmtree(cbagent.PACDB); os.makedirs(cbagent.PACDB); PAC.update(fail=False, old=False, calls=[])
+ck("chưa có danh sách nào → tuổi None, 0 kho", cbagent.pacdb_age() is None and cbagent.pacdb_count() == 0)
+with open(cbagent.ARCH_MIRRORLIST, "w") as f: f.write("## Arch Linux repository mirrorlist\n#Server = https://a.example/$repo/os/$arch\n")
+ck("mirrorlist Arch toàn dòng tắt → thêm máy chủ chính thức (1 lần)", cbagent.pac_mirror_fix() is True and cbagent.pac_mirror_fix() is False
+   and open(cbagent.ARCH_MIRRORLIST).read().count("Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch") == 1)
+with open(cbagent.ARCH_MIRRORLIST, "w") as f: f.write("Server = https://mirror.example/archlinux/$repo/os/$arch\n")
+ck("mirrorlist có máy chủ → không đụng", cbagent.pac_mirror_fix() is False and "geo.mirror" not in open(cbagent.ARCH_MIRRORLIST).read())
+ck("không có mirrorlist → không tạo", cbagent.pac_mirror_fix(os.path.join(PACT, "khong-co")) is False and not os.path.exists(os.path.join(PACT, "khong-co")))
+open(cbagent.PACDB_LOCK, "w").close()
+ok_, why = cbagent.pacdb_sync()
+ck("khách đang chạy pacman (db.lck) → không chạy, không xoá khoá", not ok_ and "db.lck" in why and not PAC["calls"] and os.path.exists(cbagent.PACDB_LOCK), (ok_, why))
+os.remove(cbagent.PACDB_LOCK)
+logsP = []
+agP = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logsP.append, rec=rec)
+r1 = agP.pac_heal(); r2 = agP.pac_heal(); pac_join()
+ck("thiếu → tải ở luồng nền đúng lệnh 'pacman -Sy --noconfirm' (không -u: không nâng cấp gói); đang tải thì không mở thêm",
+   r1 == "start" and r2 in ("busy", "ok") and agP.pac_state == "ok" and PAC["calls"] == [["pacman", "-Sy", "--noconfirm"]], (r1, r2, agP.pac_state, PAC["calls"]))
+ck("… có 4 kho, ghi nhật ký 'đã tải danh sách gói'", cbagent.pacdb_count() == 4 and any("đã tải danh sách gói (4 kho)" in m for m in logsP), logsP[-2:])
+ck("danh sách mới → 'ok', không tải nữa", agP.pac_heal() == "ok" and len(PAC["calls"]) == 1)
+for n in os.listdir(cbagent.PACDB): os.utime(os.path.join(cbagent.PACDB, n), (time.time() - 8 * 86400,) * 2)
+PAC.update(old=True)
+agP.pac_try -= cbagent.PACDB_RETRY_S + 1; agP.pac_ok_at -= cbagent.PACDB_MAX_AGE_S + 1          # 8 ngày sau
+r3 = agP.pac_heal(); pac_join()
+ck("cũ hơn 7 ngày → tải lại", r3 == "start" and len(PAC["calls"]) == 2 and agP.pac_state == "ok", (r3, PAC["calls"]))
+agP.pac_try -= cbagent.PACDB_RETRY_S + 1
+ck("máy chủ gói chưa có bản mới (tải xong vẫn cũ) → 7 ngày sau mới tải lại, không tải mỗi giờ", agP.pac_heal() == "ok" and len(PAC["calls"]) == 2)
+shutil.rmtree(cbagent.PACDB); os.makedirs(cbagent.PACDB); PAC.update(fail=True, old=False, calls=[])
+agQ = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logsP.append, rec=rec)
+agQ.pac_heal(); pac_join()
+ck("chưa có mạng → 'fail', trong 1 giờ không thử lại", agQ.pac_state == "fail" and agQ.pac_heal() == "wait" and len(PAC["calls"]) == 1
+   and any("chưa tải được danh sách gói" in m and "60 phút sau thử lại" in m for m in logsP), (agQ.pac_state, logsP[-1:]))
+agQ.pac_try -= cbagent.PACDB_RETRY_S + 1; PAC.update(fail=False)
+agQ.pac_heal(); pac_join()
+ck("quá 1 giờ, có mạng → tải được", agQ.pac_state == "ok" and cbagent.pacdb_count() == 4, agQ.pac_state)
+_tk = pcagent.Agent.tick; seen = []
+pcagent.Agent.tick = lambda self: 7
+agQ.pac_heal = lambda: seen.append("pac")
+try: rt = agQ.tick(); agQ.rebooting = True; agQ.tick()
+finally: pcagent.Agent.tick = _tk
+ck("mỗi nhịp agent xét danh sách gói (trừ lúc đang khởi động lại / cài lại)", rt == 7 and seen == ["pac"], (rt, seen))
+
 print("6c. 22.11g: lỗi mở màn hình gần nhất (cbremote ghi logs/remote.err) → info.rmt.e (xem được trên web / SQL, không cần ngồi ở máy)")
 os.makedirs(os.path.join(base, "logs"), exist_ok=True)
 with open(os.path.join(base, "logs", "remote.err"), "w") as f: f.write("%d KWin: thieu zkde_screencast; cong XDG: Start: KDE chua tra loi sau 10 giay\n" % (time.time() - 180))
@@ -321,6 +378,6 @@ ck("đường dẫn kiểu Windows của lõi agent → Linux", cbagent.P("logs\
 ck("selfcheck", cbagent.main(["selfcheck"]) == 0)
 ck("tên khách trên Linux từ tài khoản Windows 'PC' → 'pc'", C.linux_user("PC") == "pc")
 
-shutil.rmtree(tmp, ignore_errors=True); shutil.rmtree(EFIV, ignore_errors=True)
+shutil.rmtree(tmp, ignore_errors=True); shutil.rmtree(EFIV, ignore_errors=True); shutil.rmtree(PACT, ignore_errors=True)
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
