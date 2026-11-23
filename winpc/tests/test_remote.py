@@ -111,6 +111,25 @@ k.key(0, 59, 0); k.key(0, 47, 0x1); k.key(0, 22, 0x1003); io_.ev.clear(); k.rele
 ck("đóng phiên: NHẢ HẾT phím đang giữ (kể cả phím bổ trợ tự nhấn kèm)", sorted(e[1] for e in io_.ev) == sorted([0xA0, 0x53, 0x27, 0xA4, 0xA2]) and all(e[2] is False for e in io_.ev) and not k.down and not k.auto_held, io_.ev)
 io_.ev.clear(); k.tap(*R.CMDS["taskmgr"])
 ck("lệnh nút bấm: Trình quản lý tác vụ = Ctrl+Shift+Esc (nhấn theo thứ tự, nhả ngược lại)", [e[1] for e in io_.ev] == [0xA2, 0xA0, 0x1B, 0x1B, 0xA0, 0xA2] and [e[2] for e in io_.ev] == [True] * 3 + [False] * 3, io_.ev)
+class _S:
+    pass
+
+
+class _LIO(R.NullIO):
+    def paste(self, mode): self.ev.append(("paste", mode))
+
+
+s_ = _S(); s_.io = R.NullIO(); s_.keys = R.Keys(s_.io)
+s_.keys.key(0, 113, 0); s_.io.ev.clear(); R.Session._paste(s_, 1)                 # khách bấm Ctrl+V: Ctrl đã gửi sang máy, V thì không (app / web đổi thành gói Dán)
+ck("23.11b dán lúc khách còn giữ Ctrl: nhả Ctrl → Ctrl+V sạch → nhấn lại Ctrl (máy khớp phím khách đang giữ, bấm tiếp Ctrl+C vẫn là copy)",
+   s_.io.ev == [("key", 0xA2, False, False), ("key", 0xA2, True, False), ("key", 0x56, True, False), ("key", 0x56, False, False), ("key", 0xA2, False, False),
+                ("key", 0xA2, True, False)], s_.io.ev)
+s_.keys.key(0, 59, 0); s_.io.ev.clear(); R.Session._paste(s_, 2)
+ck("23.11b khách bấm Ctrl+Shift+V (gói dán kiểu 2) → máy Windows bấm đúng Ctrl+Shift+V, rồi nhấn lại Ctrl + Shift đang giữ",
+   [e[1:3] for e in s_.io.ev] == [(0xA0, False), (0xA2, False), (0xA2, True), (0xA0, True), (0x56, True), (0x56, False), (0xA0, False), (0xA2, False), (0xA0, True), (0xA2, True)],
+   s_.io.ev)
+s2_ = _S(); s2_.io = _LIO(); s2_.keys = R.Keys(s2_.io); R.Session._paste(s2_, 1); R.Session._paste(s2_, 2)
+ck("23.11b máy Linux (io có paste): không tự bấm Ctrl+V — để cbcap chọn phím dán theo cửa sổ (Konsole: Ctrl+Shift+V…)", s2_.io.ev == [("paste", 1), ("paste", 2)], s2_.io.ev)
 ck("bảng phím đủ: chữ, số, F1–F12, bàn phím số, dấu câu, phím bổ trợ", len(R.VK) >= 110 and all(c in R.VK for c in list(range(29, 55)) + list(range(7, 17)) + list(range(131, 143)) + list(range(144, 154)) + [55, 56, 68, 69, 70, 71, 72, 73, 74, 75, 76, 57, 58, 59, 60, 113, 114, 117]))
 
 # ------------------------------------------------------------------ 5. chạm → chuột
@@ -364,8 +383,10 @@ else:
     pr.send(R.C_TOUCH, struct.pack(">BBHH", 0, 0, 40000, 40000))
     want = [("move", 1000, 2000), ("btn", 0, True), ("move", 1000, 2000), ("btn", 0, False), ("key", 0xA0, True, False), ("key", 0x41, True, False), ("text", "xin chào"),
             ("move", 5, 6), ("wheel", -120, False), ("key", 0x5B, True, True), ("key", 0x44, True, False), ("key", 0x44, False, False), ("key", 0x5B, False, True),
-            ("clip", "dan vao"), ("key", 0xA2, True, False), ("key", 0x56, True, False), ("key", 0x56, False, False), ("key", 0xA2, False, False), ("move", 40000, 40000)]
-    ck("chuột / phím / chữ / cuộn / lệnh / dán của người xem được làm đúng thứ tự; lệnh lạ + gói hỏng bị bỏ", wait(lambda: io_.ev == want, 4), io_.ev)
+            ("clip", "dan vao"), ("key", 0xA0, False, False), ("key", 0xA2, True, False), ("key", 0x56, True, False), ("key", 0x56, False, False),
+            ("key", 0xA2, False, False), ("key", 0xA0, True, False), ("move", 40000, 40000)]
+    ck("chuột / phím / chữ / cuộn / lệnh / dán của người xem được làm đúng thứ tự (dán lúc khách giữ Shift: nhả Shift → Ctrl+V → nhấn lại Shift); "
+       "lệnh lạ + gói hỏng bị bỏ", wait(lambda: io_.ev == want, 4), io_.ev)
     ck("giữ yên 0,55 giây sau khi chạm → bấm phải (đồng hồ của luồng nhập liệu)", wait(lambda: io_.ev[-2:] == [("btn", 1, True), ("btn", 1, False)], 3), io_.ev[-3:])
 
     pr.send(R.C_QUALITY, b'{"q":"bal","fps":20}')
