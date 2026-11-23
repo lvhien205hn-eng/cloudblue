@@ -227,6 +227,14 @@ function Get-NodeRows([string]$sbUrl, [string]$key) {
   return @{ ok = $true; rows = @($r.data | Where-Object { $_ -and $_.id }); code = $r.code; err = '' }
 }
 
+function Get-NodePhones([string]$sbUrl, [string]$key, [int]$num) {
+  # So may khach DANG THUE o may chu win<num> tren web (dang tao / dang chay / tam dung cho gia han / dang huy). Khong hoi duoc -> -1.
+  $q = '/rest/v1/cloud_phones?node=eq.win' + $num + '&status=in.(pending,active,expired,cancelling)&select=status'
+  $r = Invoke-Api 'GET' ($sbUrl.TrimEnd('/') + $q) (Sb-Headers $key)
+  if (-not $r.ok) { return -1 }
+  return @($r.data | Where-Object { $_ -and $_.status }).Count
+}
+
 # ----------------------------------------------------------------------------------------------------- Cloudflare (duong ham + ten mien)
 function Cf-Call([string]$method, [string]$path, [string]$tok, $body = $null) {
   $r = Invoke-Api $method ($CFAPI + $path) @{ Authorization = ('Bearer ' + $tok) } $body
@@ -347,10 +355,37 @@ function Stop-EmuUi {
   Get-Process adb -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
+function Get-SetupKind([string]$exe) {
+  # Doan cong cu da dong goi bo cai (de biet tham so cai im lang): 'inno' (Inno Setup) | 'nsis' (Nullsoft) | '' (khong ro). Chi doc 8 MB dau tep.
+  try {
+    $fs = [IO.File]::OpenRead($exe)
+    try {
+      $len = [int][Math]::Min($fs.Length, 8MB)
+      $buf = New-Object byte[] $len
+      $got = 0
+      while ($got -lt $len) { $r = $fs.Read($buf, $got, $len - $got); if ($r -le 0) { break }; $got += $r }
+    } finally { $fs.Close() }
+    $t = [Text.Encoding]::GetEncoding(28591).GetString($buf, 0, $got)
+    if ($t.Contains('JR.Inno.Setup') -or $t.Contains('Inno Setup Setup Data')) { return 'inno' }
+    if ($t.Contains('Nullsoft.NSIS') -or $t.Contains('NullsoftInst')) { return 'nsis' }
+  } catch {}
+  return ''
+}
+
+function Get-SetupArgs([string]$kind, [string]$exe) {
+  # Tham so cai im lang: theo kieu dong goi doan duoc (ban dong goi lai cung dung duoc); khong ro thi theo bo cai chinh hang cua tung gia lap.
+  $sk = Get-SetupKind $exe
+  if ($sk -eq 'inno') { return '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' }
+  if ($sk -eq 'nsis') { return '/S' }
+  if ($kind -eq 'ld') { return '-silence -language=en -path="C:\LDPlayer\LDPlayer9\"' }
+  return '/S'
+}
+
 function Install-Emu([string]$kind, [string]$exe) {
   # Chay bo cai kem trong ISO kieu im lang. Bo cai khong ho tro im lang thi cua so bo cai hien len -> nguoi cai bam; script tu lam tiep khi thay gia lap.
-  $name = 'MuMu Player'; $silent = '/S'
-  if ($kind -eq 'ld') { $name = 'LDPlayer 9'; $silent = '-silence -language=en -path="C:\LDPlayer\LDPlayer9\"' }
+  $name = 'MuMu Player'
+  if ($kind -eq 'ld') { $name = 'LDPlayer 9' }
+  $silent = Get-SetupArgs $kind $exe
   Say ('   Dang cai ' + $name + ' (3 den 15 phut, dung tat may).') 'White'
   Say ('   >>> Neu CUA SO BO CAI hien len: bam Cai dat / Install (de thu muc mac dinh). Khong hien gi thi cu cho.') 'Yellow'
   $p = $null; $again = $false; $gone = $null; $cnt = 0
@@ -534,7 +569,11 @@ function Main {
   Step '1/11 Cho bo cai Windows lam xong + cho mang'
   $t0 = Get-Date
   while ((Test-Path (Join-Path $PROV 'firstlogon.start')) -and (-not (Test-Path (Join-Path $PROV 'firstlogon.done'))) -and (((Get-Date) - $t0).TotalMinutes -lt 45)) { Start-Sleep 10 }
-  if (((Get-Date) - $t0).TotalSeconds -gt 15) { Start-Sleep 40 }          # bo cai Windows hen khoi dong lai sau 20 giay -> de no khoi dong lai truoc
+  $fd = Join-Path $PROV 'firstlogon.done'
+  if (Test-Path -LiteralPath $fd) {                                       # bo cai Windows vua xong co the hen khoi dong lai sau 20 giay -> de no khoi dong lai truoc
+    $age = ((Get-Date) - (Get-Item -LiteralPath $fd).LastWriteTime).TotalSeconds
+    if (($age -ge 0) -and ($age -lt 100)) { Say '   Bo cai Windows vua xong - cho 1-2 phut (may co the tu khoi dong lai 1 lan)...' 'DarkGray'; Start-Sleep ([int](105 - $age)) }
+  }
   $cnt = 0
   while (-not (Test-Net)) {
     if (($cnt % 12) -eq 0) { Say '   Chua co mang - cam day mang LAN (kiem driver card mang). Script tu lam tiep khi co mang.' 'Yellow' }
@@ -574,7 +613,14 @@ function Main {
         }
       }
       if ($want -ge 2 -and $want -le 99) {
+        $busy = 0
+        if ($rowsOk) { $busy = Get-NodePhones $sbUrl $sbKey $want }
         if ($rowsOk -and (Test-NodeLive $rows $want)) { Say ('   (!) win' + $want + ' DANG CHAY o 1 may chu khac (vua bao ve web) - khong dung trung ten duoc.') 'Red' }
+        elseif ($busy -gt 0) {
+          Say ('   (!) Web con ' + $busy + ' may khach dang thue o win' + $want + ' - KHONG dung ten nay cho may moi cai (may khach do se mat).') 'Red'
+          Say ('       Muon cai lai DUNG may chu win' + $want + ': chuyen / huy het may khach cua no tren web truoc.') 'Yellow'
+        }
+        elseif ($busy -lt 0) { Say ('   (chua kiem duoc may khach cua win' + $want + ' tren web - thu lai)') 'DarkGray'; Start-Sleep $POLL; continue }
         else { $Num = $want; Say ('   Ten may chu: win' + $Num + ' (' + $from + ')') 'Green'; break }
       } elseif ($want -eq 1) { Say '   (!) win1 la may chu CHINH - may cai tu ISO dung so tu 2 tro len.' 'Yellow' }
       $sug = 0
@@ -751,6 +797,13 @@ function Main {
     if (Test-Path -LiteralPath $p) { foreach ($k in 'SUPABASE_SERVICE_KEY', 'CF_API_TOKEN', 'CF_DNS_TOKEN') { try { Set-KV $p $k '' } catch {} } }
   }
   $st.done = 1; Save-State $st
+  # May cai tu ISO may chu (cb.json role = server): tat 2 tac vu cua phan mem "may PC cho thue" - may chu khong bao gio duoc vao danh sach may PC cho thue.
+  $isSrv = $false
+  try { $isSrv = (("" + (Get-Content -Raw -LiteralPath (Join-Path $CBPC 'cb.json') -ErrorAction Stop | ConvertFrom-Json).role) -eq 'server') } catch {}
+  if ($isSrv) {
+    foreach ($tn in 'CloudBluePC Agent', 'CloudBluePC Watch') { try { Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null } catch {} }
+    Say '   Da tat phan mem quan ly "may PC cho thue" tren may chu nay (may chu khong vao danh sach may PC).' 'DarkGray'
+  }
   try { Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue } catch {}
   Remove-Item (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\CloudBlue-cai-may-chu.lnk') -Force -ErrorAction SilentlyContinue
   $script:RC = 0
