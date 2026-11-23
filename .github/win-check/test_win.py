@@ -51,32 +51,33 @@ def boot_wait(limit=420):
 
 # ---------------- chuẩn bị máy: root (để tạo hồ sơ clone), bật cửa sổ nổi như phonectl TUNE, khởi động lại ----------------
 print(f"== Android API {API} ==", flush=True)
-TUNE = ("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; settings put global enable_freeform_support 1; "
-        "settings put global force_resizable_activities 1; settings put global enable_sizecompat_freeform 1; "
-        "settings put system accelerometer_rotation 0; settings put system user_rotation 0")
-FREE = "settings get global enable_freeform_support; settings get global force_resizable_activities"
-print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
-for k in range(3):                       # như phonectl TUNE mỗi lần máy bật; có lần máy ảo chưa nhận lệnh (adbd vừa đổi sang root) → kiểm, làm lại
-    sh(TUNE, 30); time.sleep(2); print("đặt cửa sổ nổi:", sh(FREE).split(), flush=True)
-    adb("reboot", t=60); time.sleep(10); boot_wait()
-    print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
-    if sh(FREE).split()[:2] == ["1", "1"]: break
-    print("   (sau khi khởi động lại chưa thấy cài đặt cửa sổ nổi → làm lại)", flush=True)
-else:
-    sh(TUNE, 30); time.sleep(3)          # Android 11+ nhận ngay không cần khởi động lại
-sh("wm size 720x1280; wm density 320", 20); time.sleep(3)                    # giống máy Cloud Phone thật (720x1280, 320 dpi)
-print("freeform:", sh("settings get global enable_freeform_support; settings get global force_resizable_activities"), "·", sh("wm size; wm density"), flush=True)
-for n in (1, 2, 3):
-    r = adb("install", "-r", "-t", os.path.join(APKS, f"wintest{n}.apk"), t=180)
-    print(f"cài wintest{n}:", (r.stdout + r.stderr).decode(errors="ignore").strip()[-120:], flush=True)
-print("--- am stack list (lúc đầu) ---\n" + sh("am stack list")[:3000], flush=True)
-print("--- dumpsys window displays ---\n" + "\n".join(l for l in sh("dumpsys window displays").splitlines() if re.search(r"mDisplayId=|cur=", l))[:1500], flush=True)
-
 home = tempfile.mkdtemp(prefix="cpapi_win_")
 open(os.path.join(home, "cloudphone.conf"), "w").write("SUPABASE_URL=http://127.0.0.1:9\nSUPABASE_SERVICE_KEY=x\nPUBLIC_BASE=https://phone.test\n")
 os.environ["HOME"] = home
 spec = importlib.util.spec_from_file_location("cpapi_w", os.path.join(ROOT, "cpapi.py"))
 cp = importlib.util.module_from_spec(spec); spec.loader.exec_module(cp)
+# 23/11b: cài đặt cửa sổ nổi THEO BẢN ANDROID như máy chủ (phonectl TUNE = cpapi.win_conf_sh): Android 15 không ép đổi cỡ → thu nhỏ hình game
+TUNE = ("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; " + cp.win_conf_sh(API) + "; "
+        "settings put global enable_sizecompat_freeform 1; settings put system accelerometer_rotation 0; settings put system user_rotation 0")
+FREE = "settings get global enable_freeform_support; settings get global force_resizable_activities"
+WANT = ["1", "0" if API >= cp.WIN_SCM_SDK else "1"]
+print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
+for k in range(3):                       # như phonectl TUNE mỗi lần máy bật; có lần máy ảo chưa nhận lệnh (adbd vừa đổi sang root) → kiểm, làm lại
+    sh(TUNE, 30); time.sleep(2); print("đặt cửa sổ nổi:", sh(FREE).split(), flush=True)
+    adb("reboot", t=60); time.sleep(10); boot_wait()
+    print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
+    if sh(FREE).split()[:2] == WANT: break
+    print("   (sau khi khởi động lại chưa thấy cài đặt cửa sổ nổi → làm lại)", flush=True)
+else:
+    sh(TUNE, 30); time.sleep(3)          # Android 11+ nhận ngay không cần khởi động lại
+sh("wm size 720x1280; wm density 320", 20); time.sleep(3)                    # giống máy Cloud Phone thật (720x1280, 320 dpi)
+print("freeform:", sh("settings get global enable_freeform_support; settings get global force_resizable_activities"), "·", sh("wm size; wm density"), flush=True)
+for n in (1, 2, 3, 4):
+    r = adb("install", "-r", "-t", os.path.join(APKS, f"wintest{n}.apk"), t=180)
+    print(f"cài wintest{n}:", (r.stdout + r.stderr).decode(errors="ignore").strip()[-120:], flush=True)
+print("--- am stack list (lúc đầu) ---\n" + sh("am stack list")[:3000], flush=True)
+print("--- dumpsys window displays ---\n" + "\n".join(l for l in sh("dumpsys window displays").splitlines() if re.search(r"mDisplayId=|cur=", l))[:1500], flush=True)
+
 MAIN = "vn.cloudblue.wintest.Main"
 
 
@@ -160,7 +161,9 @@ U = int(m.group(1)) if m else None
 print("hồ sơ clone:", o[-160:], flush=True)
 if U:
     print(sh(f"am start-user {U}; pm install-existing --user {U} vn.cloudblue.wintest1", 60)[-200:], flush=True)
-    open_app(1, U)
+    sh("input keyevent 3"); time.sleep(2)                          # như khách: về màn chính rồi bấm biểu tượng bản clone (đang ở trong cửa sổ thì
+    open_app(1, U)                                                 # Android 12 có lúc mở bản clone luôn thành cửa sổ → "Các tab đang là cửa sổ nhỏ rồi")
+    if (task(1, U) or {}).get("mode") == "freeform": open_app(1, U)
     code, j = run("mini"); c = task(1, U); shot("7-thu-nho-clone")
     ck("bản clone (hồ sơ Công việc) thu nhỏ được → 3 cửa sổ", code == 200 and c and c["mode"] == "freeform" and c["vis"] and j.get("n") == 3, (code, j, c))
 else:
@@ -204,6 +207,26 @@ ck("danh sách tab nhỏ đúng số", code == 200 and j.get("n") == len([x for 
 sh("input keyevent 3"); time.sleep(2)
 code, j = run("mini")
 ck("ở màn chính bấm Thu nhỏ tab → báo 'Các tab đang là cửa sổ nhỏ rồi'", code == 409 and "cửa sổ nhỏ rồi" in j.get("error", ""), (code, j))
+# 8. 23/11b · GAME "CŨ" (dựng khung 1 lần theo cỡ lúc mở — app 4) thu nhỏ → 🔄 Mở lại vừa khung → game vẽ đúng cỡ cửa sổ
+def game_size():
+    m = [re.search(r"n=4 size=(\d+)x(\d+) frame=(\d+)x(\d+)", l) for l in sh("logcat -d -s wintest:I", 40).splitlines()]
+    m = [x for x in m if x]
+    return tuple(int(v) for v in m[-1].groups()) if m else None
+
+
+sh("input keyevent 3"); time.sleep(2); sh("logcat -c")
+open_app(4); code, j = run("mini"); g4 = task(4); time.sleep(2); s1 = game_size(); shot("12-game-cu-thu-nho")
+ck("game cũ (app 4) thu nhỏ được", code == 200 and g4 and g4["mode"] == "freeform", (code, j, g4))
+scm = [l.strip()[:200] for l in sh("dumpsys activity activities", 60).splitlines() if "mSizeCompatScale" in l or "inSizeCompatMode=true" in l]
+info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}" + (f" · Android thu nhỏ hình: {scm[:1]}" if scm else ""),
+     bool(s1) and (s1[0] >= s1[2] - 2 and s1[1] >= s1[3] - 2), s1)
+if g4:
+    gb = g4["b"]; sh("logcat -c"); t0 = time.time()
+    code, j = run("refit"); g5 = task(4); time.sleep(4); s2 = game_size(); shot("13-mo-lai-vua-khung")
+    ck(f"🔄 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ) · {time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform"
+       and g5["b"] == gb and g5["vis"], (code, j, gb, g5))
+    fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and abs(s2[1] - s2[3]) <= 24 and s2[0] <= gb[2] - gb[0] + 2
+    (ck if API >= 29 else info)(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "\n".join(("OK " if c else "NO ") + n for n, c in INFO))
