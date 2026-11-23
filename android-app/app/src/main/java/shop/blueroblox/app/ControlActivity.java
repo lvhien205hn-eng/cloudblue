@@ -933,6 +933,7 @@ public class ControlActivity extends Activity {
                 {"↙️", Ui.L("Thu nhỏ tab", "Minimize tab"), (Runnable) () -> winTab("mini")},
                 {"🔲", Ui.L("Sắp xếp tab", "Arrange tabs"), (Runnable) () -> winTab("tile")},
                 {"↗️", Ui.L("Phóng to tab", "Maximize tab"), (Runnable) () -> winTab("full")},
+                {"🖼️", Ui.L("Vừa khung", "Refit"), (Runnable) () -> { if (!pc && id != null) WinTab.refit(this, api, id); }},   // 23/11b
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
                 {"🔓", "Root", (Runnable) this::root},
                 {"🌐", "Proxy", (Runnable) this::proxy},

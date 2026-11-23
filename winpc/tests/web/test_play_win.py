@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """THỬ bằng TRÌNH DUYỆT THẬT: 🗗 TAB CỬA SỔ NHỎ trong play.html (trang điều khiển Cloud Phone trên web, 23/11 — như Redfinger):
-   nút trên thanh dưới (bấm = Thu nhỏ tab, giữ = mở ⋯ ở mục Tab cửa sổ nhỏ), mục ⋯ có 3 nút (Thu nhỏ / Sắp xếp / Phóng to tab),
+   nút trên thanh dưới (bấm = Thu nhỏ tab, giữ = mở ⋯ ở mục Tab cửa sổ nhỏ), mục ⋯ có 4 nút (Thu nhỏ / Sắp xếp / Phóng to tab / 23/11b Mở lại vừa khung),
    gửi đúng POST /cpapi/<máy>/win {do}, hiện câu của máy chủ (English: câu dịch), máy chủ cũ (404) → câu dễ hiểu, máy PC → ẩn hết.
    cpapi giả chạy ở cổng khác (như phone.cloudblue.vn thật → có CORS).
    Chạy:  python3 winpc/tests/web/test_play_win.py [play.html] [thư mục ảnh]"""
@@ -24,7 +24,8 @@ def ck(name, cond, extra=""):
 S = {"posts": [], "old": False}
 MSG = {"mini": (200, {"ok": True, "n": 1, "msg": "Đã thu nhỏ Roblox (1 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}),
        "tile": (200, {"ok": True, "n": 3, "msg": "Đã xếp 3 tab nhỏ (1 cột × 3 hàng). Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau."}),
-       "full": (409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."})}
+       "full": (409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."}),
+       "refit": (200, {"ok": True, "id": 7, "b": [0, 48, 720, 488], "msg": "Đã mở lại Roblox ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần)."})}
 
 
 class Api(http.server.BaseHTTPRequestHandler):
@@ -103,9 +104,11 @@ with sync_playwright() as pw:
         page.evaluate("document.getElementById('menu').hidden = false"); page.wait_for_timeout(200)
         page.eval_on_selector("#win-sec", "x => x.scrollIntoView()"); page.wait_for_timeout(150)
         btns = page.eval_on_selector_all("#win-grid button", "bs => bs.map(b => [b.dataset.a, b.innerText.trim()])")
-        ck("⋯ có mục Tab cửa sổ nhỏ: 3 nút Thu nhỏ / Sắp xếp / Phóng to tab + lời chỉ cách kéo",
-           [b[0] for b in btns] == ["winmini", "wintile", "winfull"] and [b[1] for b in btns] == [T("Thu nhỏ tab", "Minimize tab"), T("Sắp xếp tab", "Arrange tabs"), T("Phóng to tab", "Maximize tab")]
-           and page.inner_text("#win-sec") == T("Tab cửa sổ nhỏ", "Small tab windows") and T("Kéo thanh trên cùng", "Drag a window") in page.inner_text("#win-d"), btns)
+        ck("⋯ có mục Tab cửa sổ nhỏ: 4 nút Thu nhỏ / Sắp xếp / Phóng to tab / Mở lại vừa khung + lời chỉ cách kéo + cách sửa game tràn viền",
+           [b[0] for b in btns] == ["winmini", "wintile", "winfull", "winrefit"] and [b[1] for b in btns] == [T("Thu nhỏ tab", "Minimize tab"), T("Sắp xếp tab", "Arrange tabs"),
+                                                                                    T("Phóng to tab", "Maximize tab"), T("Mở lại vừa khung", "Refit to window")]
+           and page.inner_text("#win-sec") == T("Tab cửa sổ nhỏ", "Small tab windows") and T("Kéo thanh trên cùng", "Drag a window") in page.inner_text("#win-d")
+           and T("Mở lại vừa khung (game khởi động lại", "Refit to window (the game restarts") in page.inner_text("#win-d"), (btns, page.inner_text("#win-d")))
         page.screenshot(path=os.path.join(SHOTS, f"{lang}-win-2-menu.png"))
         page.click('#win-grid [data-a="wintile"]')
         t = toast(T("Đã xếp 3 tab", "Arranged 3 small tabs"))
@@ -114,6 +117,19 @@ with sync_playwright() as pw:
         page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winfull"]')
         t = toast(T("Chưa có tab nhỏ nào", "No small tab"))
         ck("Phóng to tab khi chưa có cửa sổ → báo lỗi máy chủ (dịch đúng)", S["posts"][-1] == "full" and T("Chưa có tab nhỏ nào đang hiện trên màn hình.", "No small tab is on the screen.") in t, t)
+
+        dlg = []
+        def on_dialog(d, keep=dlg): keep.append(d.message); d.dismiss() if len(keep) == 1 else d.accept()
+        page.on("dialog", on_dialog)
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winrefit"]'); page.wait_for_timeout(400)
+        ck("Mở lại vừa khung → hỏi trước (game sẽ khởi động lại); bấm Huỷ → không gửi gì", len(dlg) == 1 and S["posts"][-1] == "full"
+           and T("Game sẽ khởi động lại", "The game restarts") in dlg[0], (dlg, S["posts"]))
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winrefit"]')
+        t = toast(T("Đã mở lại Roblox", "Reopened Roblox"))
+        ck("đồng ý → POST {do: refit} + câu máy chủ (dịch đúng)", len(dlg) == 2 and S["posts"][-1] == "refit"
+           and T("ngay trong cửa sổ — game vẽ vừa khung", "inside its window — the game now fits") in t, (dlg, S["posts"], t))
+        page.remove_listener("dialog", on_dialog)
+        page.screenshot(path=os.path.join(SHOTS, f"{lang}-win-2b-mo-lai-vua-khung.png"))
 
         n0 = len(S["posts"])
         page.dispatch_event("#win-btn", "pointerdown"); page.wait_for_timeout(750); page.dispatch_event("#win-btn", "pointerup")

@@ -22,7 +22,8 @@ import org.json.JSONObject;
  * 🗗 TAB CỬA SỔ NHỎ (23/11, như Redfinger): app đang mở trong Cloud Phone (VD Roblox, bản clone) → cửa sổ nhỏ NGAY TRÊN MÀN HÌNH MÁY,
  * vẫn chạy + điều khiển được; mở tab khác rồi thu nhỏ tiếp; kéo thanh trên cùng của cửa sổ để dời, kéo mép để đổi cỡ (Android trong máy lo).
  * Máy chủ (cpapi 23/11a, /cpapi/&lt;máy&gt;/win): "mini" thu nhỏ app đang mở toàn màn · "tile" xếp mọi cửa sổ thành lưới · "full" phóng to
- * cửa sổ trên cùng. Nút ở thanh trên màn điều khiển (bấm = thu nhỏ, giữ = bảng 3 nút) + 3 ô trong Công cụ.
+ * cửa sổ trên cùng · (cpapi 23/11b) "refit" mở lại game của cửa sổ trên cùng NGAY TRONG cửa sổ cho game vẽ vừa khung (game khởi động lại).
+ * Nút ở thanh trên màn điều khiển (bấm = thu nhỏ, giữ = bảng 4 nút) + 4 ô trong Công cụ.
  */
 final class WinTab {
     private WinTab() { }
@@ -30,14 +31,24 @@ final class WinTab {
     /** Làm 1 việc với tab của máy (mini · tile · full) rồi báo kết quả bằng câu của máy chủ. */
     static void run(Activity a, String base, String pid, String what) {
         Ui.toast(a, "mini".equals(what) ? Ui.L("Đang thu nhỏ tab…", "Minimizing the tab…")
-                : "tile".equals(what) ? Ui.L("Đang sắp xếp tab…", "Arranging tabs…") : Ui.L("Đang phóng to tab…", "Maximizing the tab…"));
+                : "tile".equals(what) ? Ui.L("Đang sắp xếp tab…", "Arranging tabs…")
+                : "refit".equals(what) ? Ui.L("Đang mở lại game trong cửa sổ…", "Reopening the game in its window…") : Ui.L("Đang phóng to tab…", "Maximizing the tab…"));
         JSONObject b = new JSONObject();
         try { b.put("do", what); } catch (Exception ignored) { }
         Api.bg(() -> Api.cpAt(base, "POST", pid + "/win", b),
                 j -> Ui.toast(a, Ui.srvJob(j.optString("msg", Ui.L("Xong.", "Done.")), "mini".equals(what)
                         ? "The app is now a small window. Drag its top bar to move it, drag an edge to resize. Open another tab and tap Minimize tab again — then tap Arrange tabs."
-                        : "tile".equals(what) ? "Small tabs arranged." : "The tab is full screen again.")),
+                        : "tile".equals(what) ? "Small tabs arranged." : "refit".equals(what) ? "The game was reopened inside its window and now fits."
+                        : "The tab is full screen again.")),
                 m -> Ui.toast(a, missing(m)));
+    }
+
+    /** 🖼️ Mở lại vừa khung (23/11b): game "cũ" dựng khung 1 lần → thu nhỏ bị tràn viền → mở lại game ngay trong cửa sổ. Hỏi trước vì game khởi động lại. */
+    static void refit(Activity a, String base, String pid) {
+        Ui.confirm(a, "🖼️ " + Ui.L("Mở lại vừa khung", "Refit to window"),
+                Ui.L("Mở lại game của cửa sổ trên cùng (cửa sổ bạn vừa bấm vào) ngay trong cửa sổ đó cho vừa khung? Game sẽ khởi động lại — vào lại trận nếu cần.",
+                        "Reopen the game in the top window (the one you last tapped) inside that window so it fits? The game restarts — rejoin your match if needed."),
+                Ui.L("Mở lại", "Reopen"), () -> run(a, base, pid, "refit"));
     }
 
     /** Máy chủ chưa lên bản có tab cửa sổ nhỏ → nói rõ. */
@@ -52,17 +63,23 @@ final class WinTab {
         LinearLayout c = Ui.col(a, 10);
         c.addView(Ui.muted(a, Ui.L("Mở app (VD Roblox) → bấm Thu nhỏ tab: app thành cửa sổ nhỏ ngay trên màn hình máy, vẫn chạy và bấm được. "
                         + "Mở tab khác (VD bản clone trong 🧬 Clone tab) rồi thu nhỏ tiếp. Kéo thanh trên cùng của cửa sổ để dời, kéo mép để đổi cỡ. "
-                        + "Sắp xếp tab: xếp mọi cửa sổ gọn thành lưới. Màn ngang (🔄 Xoay màn) xếp được nhiều tab to hơn.",
+                        + "Sắp xếp tab: xếp mọi cửa sổ gọn thành lưới. Màn ngang (🔄 Xoay màn) xếp được nhiều tab to hơn. "
+                        + "Game bị tràn viền trong cửa sổ: bấm vào cửa sổ đó rồi bấm Mở lại vừa khung (game khởi động lại, vẽ đúng cỡ cửa sổ).",
                 "Open an app (e.g. Roblox) → tap Minimize tab: it becomes a small window right on the phone's screen, still running and tappable. "
                         + "Open another tab (e.g. a clone from 🧬 Clone tab) and minimize it too. Drag a window's top bar to move it, drag an edge to resize. "
-                        + "Arrange tabs: lays all windows out in a neat grid. Landscape (🔄 Rotate) fits more, bigger tabs.")));
+                        + "Arrange tabs: lays all windows out in a neat grid. Landscape (🔄 Rotate) fits more, bigger tabs. "
+                        + "A game spills out of its window? Tap that window, then Refit to window (the game restarts and draws at the window's size).")));
         final Dialog[] d = new Dialog[1];
         String[][] acts = {{"mini", "↙️  " + Ui.L("Thu nhỏ tab đang mở", "Minimize the open tab")},
                 {"tile", "🔲  " + Ui.L("Sắp xếp tab", "Arrange tabs")},
-                {"full", "↗️  " + Ui.L("Phóng to tab trên cùng", "Maximize the top tab")}};
+                {"full", "↗️  " + Ui.L("Phóng to tab trên cùng", "Maximize the top tab")},
+                {"refit", "🖼️  " + Ui.L("Mở lại vừa khung (game tràn viền)", "Refit to window (game spills out)")}};
         for (String[] it : acts) {
             Button bt = Ui.button(a, it[1], "mini".equals(it[0]) ? Ui.PRIMARY : Ui.GHOST);
-            bt.setOnClickListener(v -> { if (d[0] != null) d[0].dismiss(); run(a, base, pid, it[0]); });
+            bt.setOnClickListener(v -> {
+                if (d[0] != null) d[0].dismiss();
+                if ("refit".equals(it[0])) refit(a, base, pid); else run(a, base, pid, it[0]);
+            });
             c.addView(bt, Ui.fill());
         }
         d[0] = Ui.sheet(a, "↙️ " + Ui.L("Tab cửa sổ nhỏ", "Small tab windows"), c);
@@ -74,7 +91,7 @@ final class WinTab {
         ImageView v = new ImageView(a);
         v.setImageDrawable(new Icon(color));
         v.setScaleType(ImageView.ScaleType.CENTER);
-        String desc = Ui.L("Thu nhỏ tab (giữ: sắp xếp / phóng to)", "Minimize tab (hold: arrange / maximize)");
+        String desc = Ui.L("Thu nhỏ tab (giữ: sắp xếp / phóng to / vừa khung)", "Minimize tab (hold: arrange / maximize / refit)");
         v.setContentDescription(desc);
         v.setClickable(true);
         v.setFocusable(true);
