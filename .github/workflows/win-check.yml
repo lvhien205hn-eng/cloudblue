@@ -4,6 +4,8 @@
 #      thu nhỏ → về màn chính → mở app khác → thu nhỏ → kéo dời / kéo đổi cỡ bằng chạm → sắp xếp dọc + ngang → phóng to.
 #      + 23/11b: game cũ (dựng khung 1 lần) thu nhỏ → 🔄 Mở lại vừa khung → game vẽ đúng cỡ cửa sổ.
 #      + 23/11c: Cửa sổ to hơn / nhỏ hơn · Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ.
+#      + 23/11d: game kiểu cũ được MỞ LẠI NGAY TRONG tab (vừa cửa sổ) · màn rộng tự bật · cửa sổ đúng tỉ lệ game · app trợ giúp xoay màn
+#        vn.cloudblue.xoay (cửa sổ phủ ép màn ngang — máy bỏ qua khoá xoay như MuMu). File cbxoay.apk dựng ở máy API 32 → nhánh win-shots.
 #      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
@@ -51,7 +53,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - name: 5 app thử (giống Roblox ép ngang, không đổi cỡ · 2 "game cũ" dựng khung 1 lần)
+      - name: 5 app thử (giống Roblox ép ngang, không đổi cỡ · 2 "game cũ" dựng khung 1 lần) + app trợ giúp xoay màn
         run: bash .github/win-check/mkapk.sh /tmp/wintest
       - name: Android API ${{ matrix.api }} — thu nhỏ / sắp xếp / phóng to thật
         uses: reactivecircus/android-emulator-runner@v2
@@ -64,6 +66,11 @@ jobs:
           disable-animations: true
           script: |
             python3 .github/win-check/test_win.py ${{ matrix.api }} /tmp/wintest shots; r=$?; python3 .github/win-check/test_fit.py ${{ matrix.api }} /tmp/wintest shots; exit $r
+      - name: Giữ file app trợ giúp xoay màn (bản dựng ở máy API 32 → nhánh win-shots/shots/cbxoay.apk)
+        if: always() && matrix.api == 32
+        run: |
+          mkdir -p shots
+          cp /tmp/wintest/cbxoay.apk shots/cbxoay.apk && ls -la shots/cbxoay.apk && sha256sum shots/cbxoay.apk
       - name: Giữ ảnh
         if: always()
         uses: actions/upload-artifact@v4
