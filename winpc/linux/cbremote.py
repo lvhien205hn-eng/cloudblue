@@ -25,7 +25,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "23.11b"
+LINUX_REMOTE_VER = "23.11c"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"

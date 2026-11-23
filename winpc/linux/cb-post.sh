@@ -160,6 +160,26 @@ sleep 10
     pkill -u "\$U" -x konsole 2>/dev/null
   fi
   echo "journal: \$(journalctl -b _UID=1000 --no-pager -o cat 2>/dev/null | grep -i -E 'launch|kioexec|failed to start|could not|konsole|firefox' | tail -n 8 | cut -c1-200 | tr '\n' ';')"
+  echo "--- pacman (23.11c: khach chay 'pacman -S xz 7zip' bao target not found - may cai tu ISO thieu danh sach goi)"
+  PD=\$(ls /var/lib/pacman/sync/*.db 2>/dev/null | wc -l)
+  rm -f /var/lib/pacman/sync/*.db                                  # nhu may da cai truoc 23.11c (CB-139) -> agent phai tu tai lai
+  systemctl restart cloudblue.service
+  for i in \$(seq 1 90); do [ -s /var/lib/pacman/sync/core.db ] && break; sleep 2; done
+  sleep 3
+  AT=\$(ls /var/lib/pacman/sync/*.db 2>/dev/null | wc -l)
+  timeout 300 pacman -S --noconfirm --needed xz 7zip > /run/cb-pac.out 2>&1; PR=\$?
+  echo "pacman: sau_cai=\$PD agent_tu_tai=\$AT cai=\$([ \$PR = 0 ] && pacman -Q 7zip >/dev/null 2>&1 && echo 7zip-ok || echo LOI-\$PR) mirror=\$(grep -c '^Server' /etc/pacman.d/mirrorlist 2>/dev/null) repos=\$(grep -o '^\[[a-z0-9-]*\]' /etc/pacman.conf | tr -d '[]' | tr '\n' ',')"
+  tail -n 3 /run/cb-pac.out | cut -c1-200
+  grep -a "pacman:" /opt/cloudblue/logs/agent.log 2>/dev/null | tail -n 3 | cut -c1-200
+  echo "--- grub (23.11c: bo cai cua khach doi tham so nhan kieu GRUB - may khoi dong bang systemd-boot)"
+  sed -i -E 's/^(GRUB_CMDLINE_LINUX_DEFAULT=["'"'"']?)(.*[^"'"'"'])(["'"'"']?)\$/\1\2 mitigations=off zswap.enabled=0\3/' /etc/default/grub
+  timeout 180 grub-mkconfig -o /boot/grub/grub.cfg > /run/cb-grub.out 2>&1; GR=\$?
+  for i in \$(seq 1 60); do grep -qs "mitigations=off" /boot/loader/entries/linux-cachyos.conf && break; sleep 2; done
+  echo "grub: mkconfig=\$GR sdboot=\$(grep -h '^options' /boot/loader/entries/*.conf | grep -c 'mitigations=off') muc=\$(ls /boot/loader/entries/*.conf | wc -l) root=\$(grep -h '^options' /boot/loader/entries/*.conf | grep -c 'root=UUID=') grubdir=\$([ -d /boot/grub ] && echo co || echo khong)"
+  grep -h '^GRUB_CMDLINE_LINUX_DEFAULT' /etc/default/grub | cut -c1-200
+  grep -h '^options' /boot/loader/entries/*.conf | head -2 | cut -c1-300
+  tail -n 2 /run/cb-grub.out | cut -c1-200
+  grep -a "tham số nhân" /opt/cloudblue/logs/agent.log 2>/dev/null | tail -n 3 | cut -c1-260
 } > /run/cb-firstboot.txt 2>&1
 systemctl stop cloudblue.service
 { echo "--- cbagent.py status"; /usr/bin/python3 -I -B /opt/cloudblue/linux/cbagent.py status 2>&1 | tr -s ' \n' ' ' | cut -c1-1500; echo; } >> /run/cb-firstboot.txt
