@@ -57,7 +57,12 @@ class H(BaseHTTPRequestHandler):
         if not p.startswith("/client/v4/"): return self.out(404, {"error": "?"})
         tok = (self.headers.get("Authorization") or "").replace("Bearer ", "")
         S["calls"].append(method + " " + p)
-        if tok not in ("tok-ok", "tok-notunnel"): return self.cf_err(403, "Invalid API Token")
+        if tok not in ("tok-ok", "tok-notunnel"):                                 # như Cloudflare thật: mã sai dạng → 400 (6003 / 6111) · mã đúng dạng nhưng không tồn tại → 401 (1000)
+            import re
+            if not re.match(r"^[A-Za-z0-9_-]{40}$", tok):
+                return self.out(400, {"success": False, "errors": [{"code": 6003, "message": "Invalid request headers",
+                                      "error_chain": [{"code": 6111, "message": "Invalid format for Authorization header"}]}], "result": None})
+            return self.out(401, {"success": False, "errors": [{"code": 1000, "message": "Invalid API Token"}], "result": None})
         p = p[len("/client/v4"):]
         if p == "/zones":
             return self.out(200, {"success": True, "result": [{"id": "z1", "name": DOMAIN, "account": {"id": "acc1"}}] if q.get("name") == DOMAIN else []})

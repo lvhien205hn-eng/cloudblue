@@ -278,6 +278,32 @@ try {
       Ck "Test-SbService: khoa sai -> bad, kem cau tra loi cua may chu, KHONG lo khoa" (($ts2 -eq "bad") -and ($why2 -match "Invalid API key") -and (-not $why2.Contains("sb_secret_sai_"))) ($ts2 + " | " + $why2)
       $st0 = Invoke-RestMethod -Uri ("http://127.0.0.1:" + $sbPort + "/_state") -TimeoutSec 5
       Ck "khong yeu cau nao bi may chu coi la trinh duyet" (-not $st0.browser_block) ("" + $st0.browser_block)
+      # ma Cloudflare (23.11i): dung / thieu quyen duong ham / sai -> noi ro vi sao, khong lo ma
+      $cfKeep = $CFAPI
+      $CFAPI = "http://127.0.0.1:" + $sbPort + "/client/v4"
+      try {
+        $c1 = Test-CfToken "tok-ok" "example.test"
+        $c2 = Test-CfToken "tok-notunnel" "example.test"
+        $c3 = Test-CfToken "tok-ok" "khac.test"
+        $badTok = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-Ab"
+        $c4 = Test-CfToken $badTok "example.test"
+        $c5 = Test-CfToken "0a1b2c3d-4e5f-6789-abcd-ef0123456789" "example.test"
+        $c6 = Test-CfToken ("a1" * 18 + "f") "example.test"
+        $c7 = Test-CfToken "eyJhIjoiYWJjIn0" "example.test"
+        Ck "Test-CfToken: ma du quyen -> zone + tunnel ; ma thieu quyen duong ham -> zone, khong tunnel" ($c1.zone -and $c1.tunnel -and $c2.zone -and (-not $c2.tunnel) -and ($c1.err -eq ""))
+        Ck "Test-CfToken: ma khong thay ten mien -> noi ro KHONG THAY ten mien" ((-not $c3.zone) -and ($c3.err -match "KHONG THAY ten mien khac.test")) $c3.err
+        Ck "Test-CfToken: ma dung dang nhung Cloudflare khong nhan -> kem cau tra loi cua Cloudflare (HTTP 401 ... Invalid API Token), KHONG lo ma" ((-not $c4.zone) -and ($c4.err -match "HTTP 401") -and ($c4.err -match "Invalid API Token") -and (-not $c4.err.Contains($badTok))) $c4.err
+        Ck "Test-CfToken: dan nham ma so (ID) / Global API Key / ma chay duong ham -> noi dung thu vua dan la gi" (($c5.err -match "MA SO") -and ($c6.err -match "Global API Key") -and ($c7.err -match "MA CHAY DUONG HAM")) (@($c5.err, $c6.err, $c7.err) -join " | ")
+        $w1 = Get-CfWhy "tok co dau cach" 0 ""
+        $w2 = Get-CfWhy $badTok 0 ""
+        $w3 = Get-CfWhy $badTok 403 '{"success":false,"errors":[{"code":9109,"message":"Unauthorized to access requested resource"}]}'
+        Ck "Get-CfWhy: ky tu la / khong toi duoc Cloudflare / thieu quyen (403 kem ma loi cua Cloudflare)" (($w1 -match "ky tu la") -and ($w2 -match "khong goi duoc Cloudflare") -and ($w3 -match "THIEU QUYEN") -and ($w3 -match "9109")) (@($w1, $w2, $w3) -join " | ")
+      } finally { $CFAPI = $cfKeep }
+      $mcF = Join-Path $td "mc-luu.dpapi"
+      $okS = Save-McConf $mcF @{ key = "sb_secret_thu_luu"; cf = "ma-cf-thu"; agree = "1"; emu = "ld" }
+      $rawS = Get-Content -LiteralPath $mcF -Raw
+      $backS = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $rawS.Trim()))) | ConvertFrom-Json
+      Ck "Save-McConf: luu ma hoa (tep khong chua khoa dang chu), doc lai du 4 muc" ($okS -and (-not $rawS.Contains("sb_secret_thu_luu")) -and ($backS.key -eq "sb_secret_thu_luu") -and ($backS.cf -eq "ma-cf-thu") -and ($backS.agree -eq "1") -and ($backS.emu -eq "ld"))
     } finally { try { Stop-Process -Id $sbSrv.Id -Force -ErrorAction SilentlyContinue } catch {} }
   } else { Info "BO QUA: may nay khong co python - khong thu duoc Test-SbService voi may chu gia" }
   $oldCf = $CFAPI
