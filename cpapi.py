@@ -705,7 +705,8 @@ def win_kinds(sh, scm=False):
     """{số tab: {"old": app KIỂU CŨ?, "fixed": app ép hướng màn — "land" (ngang) | "port" (dọc) | ""}} theo màn GỐC của mỗi tab (dumpsys
        activity). App kiểu cũ = khai báo không đổi cỡ (UNRESIZEABLE) hoặc targetSdk < 24 (FORCE_RESIZABLE_* — Android "coi như đổi cỡ được")
        → phải MỞ LẠI trong cửa sổ mới vẽ vừa. scm=True (Android 13+ đang để Android thu nhỏ cả hình): app UNRESIZEABLE được Android thu hình
-       vừa cửa sổ → KHÔNG tính là kiểu cũ (không tự mở lại). App khai báo đổi cỡ được (RESIZEABLE…: Roblox, app thường) tự vẽ lại theo cỡ mới. Tab không
+       vừa cửa sổ → KHÔNG tính là kiểu cũ (không tự mở lại) nhưng có thêm "scm": True (23/11e: cửa sổ vẫn phải đúng tỉ lệ hình game — win_shape —
+       không thì Android chừa dải ĐEN quanh hình). App khai báo đổi cỡ được (RESIZEABLE…: Roblox, app thường) tự vẽ lại theo cỡ mới. Tab không
        đọc được → không có trong kết quả. Hướng: Android 12 ghi "mOrientation=SCREEN_ORIENTATION_LANDSCAPE", bản cũ ghi số (0 / 6 / 8 / 11 = ngang),
        Android 14+ đổi tên dòng (overrideOrientation= / requestedOrientation=) → nhận mọi dòng "…rientation=" nằm giữa dòng Hist và resizeMode."""
     best, cur = {}, None
@@ -720,7 +721,8 @@ def win_kinds(sh, scm=False):
         if m:
             tid, hist, fixed = cur; cur = None; v = m.group(1)
             old = True if v.startswith("FORCE_RESIZ") else (not scm) if v.startswith("UNRESIZ") else False if v.startswith("RESIZ") else None
-            if old is not None and (tid not in best or hist < best[tid][0]): best[tid] = (hist, {"old": old, "fixed": fixed})
+            if old is not None and (tid not in best or hist < best[tid][0]):
+                best[tid] = (hist, dict({"old": old, "fixed": fixed}, **({"scm": True} if scm and v.startswith("UNRESIZ") else {})))
     return {k: v[1] for k, v in best.items()}
 
 
@@ -1336,6 +1338,8 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
     big = lambda g, b: _area(b) >= 0.85 * _area(win_area(g))          # cửa sổ đã phóng to gần hết màn
     kinds = lambda: win_kinds(sh, sdk >= WIN_SCM_SDK and WIN_SCM_KEEP) if sdk >= WIN_REFIT_SDK else {}     # 23/11d: Android 10+ mở lại app kiểu cũ ngay trong tab
     size = lambda b: (b[2] - b[0], b[3] - b[1])
+    shp = lambda k: bool(k) and bool(k["old"] or k.get("scm"))         # 23/11e: cửa sổ theo tỉ lệ hình game (16:9 / 9:16) — app kiểu cũ (mở lại theo cỡ cửa sổ)
+                                                                       # và app được Android thu hình (cửa sổ khác tỉ lệ → dải đen; đo máy MuMu Android 15 thật)
     ask = lambda k: "ask" if k and (k["old"] or k["fixed"]) else None  # game (ép hướng / kiểu cũ) → web hiện nút 🖼 Vừa khung ngay trong thông báo
     if do == "mini":
         full = [t for t in win_std(st, "fullscreen") if t["vis"]]
@@ -1367,7 +1371,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
             geo = st2["geo"]; slot = win_slot(geo, others)
             if k and not k["fixed"] and full and st["geo"]["w"] > st["geo"]["h"] and geo["w"] < geo["h"]:
                 k = dict(k, fixed="land")                       # máy không ghi hướng của app: app toàn màn làm màn NGANG, thành cửa sổ thì màn về dọc → app ép ngang
-            if k and k["old"]: slot = win_shape(geo, slot, k["fixed"])     # 23/11d: game kiểu cũ → phần hình đúng tỉ lệ game (16:9 / 9:16); game cũ ép
+            if shp(k): slot = win_shape(geo, slot, k["fixed"])             # 23/11d: game kiểu cũ → phần hình đúng tỉ lệ game (16:9 / 9:16); game cũ ép
             resize(t, slot)                                     # ngang (FORCE_RESIZABLE_LANDSCAPE_ONLY) Android còn KHÔNG cho đặt khung dọc
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → tính lại chỗ theo hướng mới
             if not st2: break
@@ -1405,7 +1409,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
             for w, c in zip(wins, cells):
                 if not k and (not w["vis"] or sdk >= 31): win_front(sh, w, sdk)  # đưa lên trên (cửa sổ bị màn chính che cũng hiện lại)
                 kw = kd.get(w["id"])                             # 23/11d: game kiểu cũ → cửa sổ đúng tỉ lệ hình game trong ô (win_shape)
-                cell[w["id"]] = win_shape(st2["geo"], c, kw["fixed"]) if kw and kw["old"] else c
+                cell[w["id"]] = win_shape(st2["geo"], c, kw["fixed"]) if shp(kw) else c
                 resize(w, cell[w["id"]])
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → xếp lại theo hướng mới
             if not st2: break
@@ -1443,7 +1447,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
             return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn.{note}"}
         # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
         win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); area = win_area(st2["geo"])
-        if k and k["old"]: area = win_shape(st2["geo"], area, k["fixed"])       # game kiểu cũ: to hết bề ngang, phần hình đúng tỉ lệ game
+        if shp(k): area = win_shape(st2["geo"], area, k["fixed"])               # game kiểu cũ / được thu hình: to hết bề ngang, phần hình đúng tỉ lệ game
         resize(t, area); fixui([(t, area)])
         if k and k["old"]:
             order = [dict(w, b=area) if w["id"] == t["id"] else w for w in win_std(win_state(sh), "freeform")]
