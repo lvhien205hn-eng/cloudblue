@@ -40,6 +40,8 @@
 #     Script hoi (chi nhap vao cua so, KHONG gui ai): khoa Supabase service_role, ma Cloudflare (tuy chon), gia lap + bo cai gia lap (keo tha).
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11g - DUNG LINK thay cho tep: moi cho nhan tep (-Iso, -Driver "1=...", -BoCai, va cac o keo tha) deu nhan LINK tai
+#     (link chia se Google Drive, hoac link tai thang http / https). Script tu tai ve <thu muc lam viec>\dl\tai (lan sau dung lai, khong tai lai).
 # =====================================================================================================
 param(
   [string[]]$Iso = @(),
@@ -77,6 +79,7 @@ $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "
                "linux/grubx64.efi", "linux/grub.cfg", "linux/cb-install.sh", "linux/cb-post.sh", "linux/cbagent.py", "linux/cbremote.py", "linux/cbcap.py",
                "maychu/may-chu-iso.ps1", "maychu/firstboot.ps1")
 $CFAPI = "https://api.cloudflare.com/client/v4"
+$LinkRoot = ""
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
 $Notes = New-Object System.Collections.ArrayList
@@ -458,6 +461,174 @@ function Find-Oscdimg([string]$dl, [string[]]$near) {
   return ""
 }
 
+# ----------------------------------------------------------------------------------------------------- link thay cho tep (23.11g)
+function Test-Link([string]$t) { return [bool]((("" + $t).Trim().Trim('"')) -match '^(https?|file)://') }
+
+function ConvertTo-DirectUrl([string]$u) {
+  # Link chia se Google Drive -> link tai thang ; link khac giu nguyen
+  $t = ("" + $u).Trim().Trim('"')
+  if ($t -match 'drive\.google\.com/file/d/([A-Za-z0-9_-]{20,})') { return ("https://drive.usercontent.google.com/download?id=" + $Matches[1] + "&export=download&confirm=t") }
+  if ($t -match 'drive\.google\.com/.*[?&]id=([A-Za-z0-9_-]{20,})') { return ("https://drive.usercontent.google.com/download?id=" + $Matches[1] + "&export=download&confirm=t") }
+  return $t
+}
+
+function Get-DefaultWork {
+  # Thu muc lam viec khi nguoi dung khong chi dinh: o cung con trong nhieu nhat; uu tien cho lan chay truoc da dung (con giu phan da tai).
+  $vols = @(Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending)
+  if ($vols.Count -eq 0) { return "" }
+  $w = "" + $vols[0].DriveLetter + ":\cb-work"
+  foreach ($v in $vols) {
+    $prev = "" + $v.DriveLetter + ":\cb-work"
+    if (Test-Path -LiteralPath (Join-Path $prev "dl")) { $w = $prev; break }
+  }
+  return $w
+}
+
+function Get-LinkName([string]$hdrFile, [string]$url) {
+  # Ten tep cua 1 link: may chu bao (Content-Disposition) -> khong co thi lay doan cuoi cua link ; bo ky tu khong dung duoc trong ten tep
+  $name = ""
+  if (Test-Path -LiteralPath $hdrFile) {
+    foreach ($ln in @(Get-Content -LiteralPath $hdrFile)) {
+      $l = "" + $ln
+      if ($l -match '^\s*content-disposition\s*:') {
+        if ($l -match "filename\*\s*=\s*[A-Za-z0-9-]*''([^;]+)") { try { $name = [uri]::UnescapeDataString($Matches[1].Trim()) } catch { $name = "" } }
+        elseif ($l -match 'filename\s*=\s*"([^"]+)"') { $name = $Matches[1] }
+        elseif ($l -match 'filename\s*=\s*([^;]+)') { $name = $Matches[1].Trim() }
+      }
+    }
+  }
+  if (-not $name) {
+    $path = (("" + $url) -split '[?#]')[0].TrimEnd("/")
+    try { $name = [uri]::UnescapeDataString(($path -split '/')[-1]) } catch { $name = "" }
+    if ($url -match 'drive\.(usercontent\.)?google\.com') { $name = "" }
+  }
+  $name = (("" + $name) -replace '[\\/:*?"<>|]', "_").Trim().Trim(".")
+  if (-not $name) { $name = "tai-ve.bin" }
+  return $name
+}
+
+function Get-DriveFormUrl([string]$htmlFile, [string]$fromUrl) {
+  # Tep lon tren Google Drive: thay vi tep, may chu tra ve trang "khong quet duoc virus - van tai?" co form id="download-form".
+  # Ham nay lay link tai that tu form do (dia chi action + moi o an: id, export, confirm, uuid...). Khong phai trang do, hoac form
+  # tro sang may chu la (khong phai Google, khong cung may chu voi link dang tai) -> "".
+  $t = ""
+  try {
+    if ((Get-Item -LiteralPath $htmlFile).Length -gt 2MB) { return "" }
+    $t = [IO.File]::ReadAllText($htmlFile)
+  } catch { return "" }
+  $fm = [regex]::Match($t, '<form\b[^>]*\bid\s*=\s*"download-form"[^>]*>', "IgnoreCase")
+  if (-not $fm.Success) { return "" }
+  $am = [regex]::Match($fm.Value, '\baction\s*=\s*"([^"]+)"', "IgnoreCase")
+  if (-not $am.Success) { return "" }
+  $act = $am.Groups[1].Value.Replace("&amp;", "&")
+  if (-not ($act -match '^https://([a-z0-9-]+\.)*(google\.com|googleusercontent\.com)/')) {
+    $o1 = [regex]::Match(("" + $fromUrl), '^[a-z]+://[^/?#]*', "IgnoreCase").Value
+    $o2 = [regex]::Match($act, '^[a-z]+://[^/?#]*', "IgnoreCase").Value
+    if ((-not $o1) -or ($o1 -ne $o2)) { return "" }
+  }
+  $body = $t.Substring($fm.Index)
+  $endAt = $body.IndexOf("</form", [StringComparison]::OrdinalIgnoreCase)
+  if ($endAt -gt 0) { $body = $body.Substring(0, $endAt) }
+  $pairs = New-Object System.Collections.ArrayList
+  foreach ($im in [regex]::Matches($body, '<input\b[^>]*>', "IgnoreCase")) {
+    $tag = "" + $im.Value
+    if (-not ($tag -match 'type\s*=\s*"hidden"')) { continue }
+    $nm = [regex]::Match($tag, '\bname\s*=\s*"([^"]+)"', "IgnoreCase")
+    if (-not $nm.Success) { continue }
+    $vm = [regex]::Match($tag, '\bvalue\s*=\s*"([^"]*)"', "IgnoreCase")
+    $val = ""
+    if ($vm.Success) { $val = $vm.Groups[1].Value.Replace("&amp;", "&") }
+    [void]$pairs.Add(([uri]::EscapeDataString($nm.Groups[1].Value) + "=" + [uri]::EscapeDataString($val)))
+  }
+  if ($pairs.Count -eq 0) { return "" }
+  $sep = "?"
+  if ($act.Contains("?")) { $sep = "&" }
+  return ($act + $sep + ($pairs -join "&"))
+}
+
+function Get-LinkFile([string]$url, [string]$dir) {
+  # Tai 1 tep tu link vao $dir. Tra @{ path ; why } - why khac rong = khong tai duoc (ly do). Khong nem loi.
+  # Google Drive voi tep lon: lan dau co the nhan ve trang hoi xac nhan -> tu lay link that trong trang do roi tai lai (1 lan).
+  $res = @{ path = ""; why = "" }
+  $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+  if (-not (Test-Path -LiteralPath $curl)) { $res.why = "may nay khong co curl.exe (Windows qua cu)"; return $res }
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $tmp = Join-Path $dir "tai-ve.tmp"
+  $hdr = Join-Path $dir "tai-ve.hdr"
+  $jar = Join-Path $dir "tai-ve.jar"
+  Remove-Item -Force -LiteralPath $tmp, $hdr, $jar -ErrorAction SilentlyContinue
+  $direct = ConvertTo-DirectUrl $url
+  $quiet = $true
+  try { $quiet = [Console]::IsErrorRedirected } catch { $quiet = $true }
+  $len = 0
+  $got = 0
+  $head = New-Object byte[] 256
+  foreach ($lan in 1..2) {
+    Remove-Item -Force -LiteralPath $tmp, $hdr -ErrorAction SilentlyContinue
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $rc = 9009
+    try {
+      if ($quiet) { & $curl -L --fail --retry 2 --connect-timeout 30 -sS -b $jar -c $jar -D $hdr -o $tmp $direct 2>&1 | ForEach-Object { Write-Host ("   " + $_) } }
+      else { & $curl -L --fail --retry 2 --connect-timeout 30 -b $jar -c $jar "-#" -D $hdr -o $tmp $direct }           # cua so that: de curl ve thanh tien do
+      $rc = $LASTEXITCODE
+    } catch { Write-Host ("   " + $_) }
+    $ErrorActionPreference = $old
+    if (($rc -ne 0) -or (-not (Test-Path -LiteralPath $tmp))) {
+      Remove-Item -Force -LiteralPath $tmp, $jar -ErrorAction SilentlyContinue
+      $res.why = "curl ma " + $rc + " (link sai / chua chia se cong khai / mat mang)"; return $res
+    }
+    $len = (Get-Item -LiteralPath $tmp).Length
+    $fs = [IO.File]::OpenRead($tmp)
+    try { $got = $fs.Read($head, 0, 256) } finally { $fs.Close() }
+    $htxt = [Text.Encoding]::ASCII.GetString($head, 0, $got).TrimStart().ToLower()
+    if (-not ($htxt.StartsWith("<!doctype html") -or $htxt.StartsWith("<html"))) { break }
+    $next = ""
+    if ($lan -eq 1) { $next = Get-DriveFormUrl $tmp $direct }
+    if (-not $next) {
+      Remove-Item -Force -LiteralPath $tmp, $jar -ErrorAction SilentlyContinue
+      $res.why = "link tra ve TRANG WEB chu khong phai tep (Google Drive: tep chua chia se 'Bat ky ai co link', hoac dang het luot tai)"; return $res
+    }
+    Say "   (Google Drive hoi xac nhan vi tep lon - tu xac nhan roi tai tiep)" "DarkGray"
+    $direct = $next
+  }
+  Remove-Item -Force -LiteralPath $jar -ErrorAction SilentlyContinue
+  $name = Get-LinkName $hdr $url
+  $ext = [IO.Path]::GetExtension($name).ToLower()
+  if (($ext -eq ".exe") -and (($got -lt 2) -or ($head[0] -ne 0x4D) -or ($head[1] -ne 0x5A))) { Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue; $res.why = "tep tai ve khong phai tep .exe that (" + $name + ")"; return $res }
+  if (($ext -eq ".iso") -and ($len -lt 50MB)) { Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue; $res.why = "tep ISO tai ve qua nho (" + [math]::Round($len / 1MB) + " MB) - link hong?"; return $res }
+  $dst = Join-Path $dir $name
+  if (Test-Path -LiteralPath $dst) { Remove-Item -Force -LiteralPath $dst }
+  Move-Item -LiteralPath $tmp -Destination $dst -Force
+  Remove-Item -Force -LiteralPath $hdr -ErrorAction SilentlyContinue
+  $res.path = $dst
+  return $res
+}
+
+function Resolve-Link([string]$url) {
+  # Link -> duong dan tep da tai (trong <thu muc lam viec>\dl\tai\<ma link>). Da tai lan truoc thi dung lai. Khong tai duoc -> dung, noi ro.
+  $u = ("" + $url).Trim().Trim('"')
+  if (-not $script:LinkRoot) {
+    if (-not $script:Work) { $script:Work = Get-DefaultWork }
+    if (-not $script:Work) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
+    $script:LinkRoot = Join-Path (Clean-Path $script:Work) "dl\tai"
+  }
+  $sha = [BitConverter]::ToString((New-Object Security.Cryptography.SHA1Managed).ComputeHash([Text.Encoding]::UTF8.GetBytes($u))).Replace("-", "").Substring(0, 12).ToLower()
+  $dir = Join-Path $script:LinkRoot $sha
+  $have = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^tai-ve\.(tmp|hdr|jar)$' })
+  if ($have.Count -gt 0) {
+    Say ("   link da tai lan truoc -> dung lai: " + $have[0].Name + " (" + [math]::Round($have[0].Length / 1MB) + " MB)") "DarkGray"
+    return $have[0].FullName
+  }
+  $short = $u
+  if ($short.Length -gt 70) { $short = $short.Substring(0, 67) + "..." }
+  Say ("   dang tai tu link: " + $short + "  (tep lon co the mat nhieu phut)") "White"
+  $r = Get-LinkFile $u $dir
+  if ($r.why) { Stop-Build ("Khong tai duoc tu link - " + $r.why + ". Tai tep bang trinh duyet roi keo tha tep vao cua so (hoac dua duong dan tep).  Link: " + $short) }
+  Say ("   da tai: " + (Split-Path -Leaf $r.path) + " (" + [math]::Round((Get-Item -LiteralPath $r.path).Length / 1MB) + " MB)") "Green"
+  return $r.path
+}
+
 # ----------------------------------------------------------------------------------------------------- ISO may chu Cloud Phone (23.11g)
 function Read-Secret([string]$q) {
   # Hoi 1 chuoi bi mat (khong hien khi go / dan).
@@ -569,20 +740,22 @@ try {
   # ---------------------------------------------------------------- 1. ISO goc
   Step "1/8  File ISO Windows goc"
   if (($Iso.Count -eq 0) -and (-not $KhongHoi)) {
-    Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan). Xong thi bam Enter trong." "White"
+    Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan / LINK tai Google Drive). Xong thi bam Enter trong." "White"
     Say "   (CHI file .iso o buoc nay - driver se duoc hoi rieng cho tung ban Windows o buoc 5.)" "DarkGray"
     Say "   Muon kem CachyOS (Linux) de khach tu doi he dieu hanh: keo them file ISO CachyOS (vd cachyos-desktop-linux-260809.iso)." "DarkGray"
     while ($true) {
       $line = "" + (Read-Host ("   ISO thu " + ($Iso.Count + 1) + " (Enter trong = het)"))
       if (-not $line.Trim()) { break }
-      foreach ($p in @(Split-Paths $line)) {
+      $cand = @()
+      if (Test-Link $line) { $cand = @(Resolve-Link $line) } else { $cand = @(Split-Paths $line) }
+      foreach ($p in $cand) {
         if (-not (Test-There $p)) { Say ("   khong thay: " + $p) "Yellow"; continue }
         if (-not (Test-IsoPath $p)) { Say ("   day KHONG phai file .iso (driver se duoc hoi rieng o buoc 5): " + $p) "Yellow"; continue }
         $Iso += $p
       }
     }
   }
-  $Iso = @($Iso | ForEach-Object { Clean-Path $_ } | Where-Object { $_ })
+  $Iso = @($Iso | ForEach-Object { if (Test-Link $_) { Resolve-Link $_ } else { Clean-Path $_ } } | Where-Object { $_ })
   if ($Iso.Count -eq 0) { Stop-Build "Chua co file ISO nao." }
   foreach ($p in $Iso) {
     if (-not (Test-There $p)) { Stop-Build ("Khong thay: " + $p) }
@@ -612,6 +785,7 @@ try {
     if (-not (("" + $d) -match '^\s*(\d+)\s*=\s*(.+)$')) { Stop-Build ("-Driver phai co dang  <so thu tu ISO>=<duong dan>  (vi du  2=D:\drv\lan.zip): " + $d) }
     $dk = [int]$Matches[1]
     $dv = Clean-Path $Matches[2]
+    if (Test-Link $dv) { $dv = Resolve-Link $dv }
     if (($dk -lt 1) -or ($dk -gt $Iso.Count)) { Stop-Build ("-Driver: khong co ISO thu " + $dk + " (chi co " + $Iso.Count + " ISO).") }
     $why = Test-DriverDrop $dv
     if ($why) { Stop-Build ("-Driver: " + $why) }
@@ -623,14 +797,9 @@ try {
   $totalIso = 0
   foreach ($p in $Iso) { $it = Get-Item -LiteralPath $p; if (-not $it.PSIsContainer) { $totalIso += $it.Length } else { $totalIso += 6GB } }
   if (-not $Work) {
-    $vols = @(Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending)
-    if ($vols.Count -eq 0) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
-    $Work = "" + $vols[0].DriveLetter + ":\cb-work"
-    # uu tien thu muc lam viec cua lan chay truoc (con giu phan da tai + ma dang ky; cay bo cai cu se duoc don di)
-    foreach ($v in $vols) {
-      $prev = "" + $v.DriveLetter + ":\cb-work"
-      if (Test-Path -LiteralPath (Join-Path $prev "dl")) { $Work = $prev; break }
-    }
+    # o cung con trong nhieu nhat; uu tien thu muc lam viec cua lan chay truoc (con giu phan da tai + ma dang ky; cay bo cai cu se duoc don di)
+    $Work = Get-DefaultWork
+    if (-not $Work) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
   }
   $Work = Clean-Path $Work
   if ($Work -match '\s') { Stop-Build ("Thu muc lam viec khong duoc co dau cach: " + $Work + "  (vi du dung -Work D:\cb-work)") }
@@ -887,14 +1056,16 @@ try {
       if ($eIn -eq "2") { $Mc.emu = "ld" } else { $Mc.emu = "mumu" }
     }
     if ($Mc.emu -ne "ld") { $Mc.emu = "mumu" }
-    $bcList = @($BoCai | ForEach-Object { Clean-Path $_ } | Where-Object { $_ })
+    $bcList = @($BoCai | ForEach-Object { if (Test-Link $_) { Resolve-Link $_ } else { Clean-Path $_ } } | Where-Object { $_ })
     if (-not $KhongHoi) {
-      Say "   BO CAI GIA LAP kem vao ISO (may chu tu chay bo cai nay): keo tha file .exe tai tu mumuplayer.com / ldplayer.net vao cua so roi Enter." "White"
+      Say "   BO CAI GIA LAP kem vao ISO (may chu tu chay bo cai nay): keo tha file .exe tai tu mumuplayer.com / ldplayer.net vao cua so roi Enter (hoac dan LINK tai)." "White"
       Say "   Them duoc tep may mau MuMu (tpl_a12.mumudata / tpl_a15.mumudata - xuat tu may chu dang chay). Enter trong = het / khong kem." "DarkGray"
       while ($true) {
         $lineB = "" + (Read-Host ("   Tep thu " + ($bcList.Count + 1) + " (Enter trong = het)"))
         if (-not $lineB.Trim()) { break }
-        foreach ($bp in @(Split-Paths $lineB)) { if ($bcList -notcontains $bp) { $bcList += $bp } }
+        $bcand = @()
+        if (Test-Link $lineB) { $bcand = @(Resolve-Link $lineB) } else { $bcand = @(Split-Paths $lineB) }
+        foreach ($bp in $bcand) { if ($bcList -notcontains $bp) { $bcList += $bp } }
       }
     }
     foreach ($bp in $bcList) {
@@ -993,12 +1164,14 @@ try {
     if ($DrvArg.ContainsKey($isoNo)) { $drops += $DrvArg[$isoNo] }
     if (-not $KhongHoi) {
       Say ("   DRIVER rieng cho ban WINDOWS " + $osTag + " nay (" + (Split-Path -Leaf $p) + ") - vi du card mang, VGA:") "White"
-      Say "      keo tha FILE driver (.exe .zip) hoac THU MUC driver vao cua so nay roi Enter; con cai nua thi keo tiep." "White"
+      Say "      keo tha FILE driver (.exe .zip) hoac THU MUC driver vao cua so nay roi Enter (hoac dan LINK tai); con cai nua thi keo tiep." "White"
       Say "      Ban nay khong can driver rieng / da keo het thi bam Enter trong." "White"
       while ($true) {
         $line = "" + (Read-Host ("   Driver thu " + ($drops.Count + 1) + " cho ban " + $osTag + " (Enter trong = het)"))
         if (-not $line.Trim()) { break }
-        foreach ($dp in @(Split-Paths $line)) {
+        $dcand = @()
+        if (Test-Link $line) { $dcand = @(Resolve-Link $line) } else { $dcand = @(Split-Paths $line) }
+        foreach ($dp in $dcand) {
           $why = Test-DriverDrop $dp
           if ($why) { Say ("      KHONG nhan: " + $why) "Yellow"; continue }
           if ($drops -contains $dp) { continue }
@@ -1048,7 +1221,7 @@ try {
     }
     if (($nThem -eq 0) -and (-not $wpSrc)) { Note ("Thu muc them khong co drivers\ , firstboot.d\ hay wallpaper.jpg nao: " + $Them) } else { Say ("   them " + $nThem + " file tu " + $Them + " (drivers / firstboot.d)") "DarkGray" }
   }
-  # 23.11g - ISO may chu: lenh chay lan dau + thu muc maychu (script cai may chu, cau hinh co khoa, bo cai gia lap, may mau, curl.exe cho Windows cu)
+  # 23.11g - ISO may chu: lenh chay lan dau + thu muc maychu (script cai may chu, cau hinh co khoa, bo cai gia lap, may mau)
   if ($MayChu) {
     $fbd = Join-Path $IsoRoot "cb\os\firstboot.d"
     $mcd = Join-Path $fbd "maychu"
@@ -1062,8 +1235,6 @@ try {
       Say ("   chep " + $mf.name + " vao bo cai...") "DarkGray"
       Copy-Item -LiteralPath $mf.src -Destination (Join-Path $mcd $mf.name) -Force
     }
-    $curlSys = Join-Path $env:SystemRoot "System32\curl.exe"
-    if (Test-Path -LiteralPath $curlSys) { Copy-Item -LiteralPath $curlSys -Destination (Join-Path $mcd "curl.exe") -Force }
     Say ("   bo cai may chu Cloud Phone: " + @(Get-ChildItem -LiteralPath $mcd -File).Count + " tep trong cb\os\firstboot.d\maychu") "DarkGray"
   }
   # driver nguoi dung dua rieng cho tung ban Windows -> cb\drivers\_img<so thu tu ISO> ; cb_build.py doi thanh ten ban (1511, 22h2...)
