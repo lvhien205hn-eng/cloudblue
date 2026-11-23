@@ -3,6 +3,7 @@
 #   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 10 / 11 / 12 / 12L / 13 / 14 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
 #      thu nhỏ → về màn chính → mở app khác → thu nhỏ → kéo dời / kéo đổi cỡ bằng chạm → sắp xếp dọc + ngang → phóng to.
 #      + 23/11b: game cũ (dựng khung 1 lần) thu nhỏ → 🔄 Mở lại vừa khung → game vẽ đúng cỡ cửa sổ.
+#      + 23/11c: Cửa sổ to hơn / nhỏ hơn · Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ.
 #      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
