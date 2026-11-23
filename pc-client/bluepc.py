@@ -6243,10 +6243,12 @@ class ToolsDlg(Dlg):
         f = self.section("Tab cửa sổ nhỏ", parent=pg)                     # 23/11 · 🗗 như Redfinger
         self.muted(f, "Mở app (VD Roblox) rồi bấm Thu nhỏ tab: app thành cửa sổ nhỏ ngay trên màn hình máy, vẫn chạy và bấm được. "
                       "Mở tab khác (VD bản clone) rồi thu nhỏ tiếp. Kéo thanh trên cùng của cửa sổ để dời, kéo mép để đổi cỡ.")
+        self.muted(f, "Game bị tràn viền trong cửa sổ: bấm vào cửa sổ đó rồi bấm Mở lại vừa khung (game khởi động lại, vẽ đúng cỡ cửa sổ).")
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))
         self.app.btn(r, "Thu nhỏ tab", lambda: self.win("mini")).pack(side="left")
         self.app.btn(r, "Sắp xếp tab", lambda: self.win("tile"), "soft").pack(side="left", padx=(8, 0))
         self.app.btn(r, "Phóng to tab", lambda: self.win("full"), "soft").pack(side="left", padx=(8, 0))
+        self.app.btn(r, "Mở lại vừa khung", self.win_refit, "soft").pack(side="left", padx=(8, 0))      # 23/11b
         self.win_msg = self.msg(f)
         f = self.section("Xoay màn", parent=pg)
         self.muted(f, "Khoá màn máy NGANG hoặc DỌC (giữ luôn cả khi tắt app). Game chỉ chạy màn ngang vẫn tự xoay ngang. "
@@ -6270,10 +6272,18 @@ class ToolsDlg(Dlg):
         self.dens_msg = self.msg(f)
 
     def win(self, what):
-        """🗗 Tab cửa sổ nhỏ: thu nhỏ app đang mở / sắp xếp / phóng to (cpapi /win)."""
-        self.say(self.win_msg, {"mini": "Đang thu nhỏ tab…", "tile": "Đang sắp xếp tab…"}.get(what, "Đang phóng to tab…"), WARN)
+        """🗗 Tab cửa sổ nhỏ: thu nhỏ app đang mở / sắp xếp / phóng to / mở lại vừa khung (cpapi /win)."""
+        self.say(self.win_msg, {"mini": "Đang thu nhỏ tab…", "tile": "Đang sắp xếp tab…", "refit": "Đang mở lại game trong cửa sổ…"}.get(what, "Đang phóng to tab…"), WARN)
         self.bg(lambda: self.cp.json("POST", "win", {"do": what}, timeout=45), lambda j: self.say(self.win_msg, "✓ " + (j.get("msg") or "Xong."), OK),
                 lambda m: self.say(self.win_msg, "✗ " + missing(m), BAD))
+
+    def win_refit(self):
+        """23/11b · 🖼 Mở lại vừa khung: game "cũ" dựng khung 1 lần → thu nhỏ bị tràn viền → máy chủ mở lại game NGAY TRONG cửa sổ trên cùng
+           cho game vẽ đúng cỡ cửa sổ. Game khởi động lại → hỏi trước."""
+        import tkinter.messagebox as mb
+        if not mb.askyesno("Mở lại vừa khung", "Mở lại game của cửa sổ trên cùng (cửa sổ bạn vừa bấm vào) ngay trong cửa sổ đó cho vừa khung?\n\n"
+                                               "Game sẽ khởi động lại — vào lại trận nếu cần.", parent=self.win_msg.winfo_toplevel()): return
+        self.win("refit")
 
     def rotate(self, to):
         land = to == "land"; self.say(self.rot_msg, "Đang xoay ngang…" if land else "Đang xoay dọc…", WARN)
