@@ -892,7 +892,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "23/11b"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "23/11d"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -1535,11 +1535,10 @@ TUNE = (# CLONE TAB cần Android cho phép nhiều người dùng (máy ảo m�
         # và app bấm vào chỉ phóng to icon rồi KHÔNG MỞ — lỗi khách báo 09/11)
         "settings put global window_animation_scale 0.5; settings put global transition_animation_scale 0.5; "
         "settings put global animator_duration_scale 0.5; settings put global package_verifier_enable 0; "
-        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). 23/11b: Android 12L+ KHÔNG ép đổi cỡ + cho
-        # app không đổi cỡ vào cửa sổ → game (không đổi cỡ) thu nhỏ thì Android thu nhỏ CẢ HÌNH vừa cửa sổ, không tràn viền (cpapi.WIN_SCM_SDK)
-        "settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
-        "if [ \"$(getprop ro.build.version.sdk)\" -ge 32 ] 2>/dev/null; then settings put global force_resizable_activities 0; "
-        "settings put global enable_non_resizable_multi_window 1; else settings put global force_resizable_activities 1; fi; "
+        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). 23/11d: MỌI bản Android ép app đổi cỡ được —
+        # bỏ kiểu "không ép đổi cỡ để Android thu nhỏ cả hình" của bản 23/11b (máy MuMu Android 12 thật vẽ cửa sổ kiểu đó lệch lên góc trên
+        # trái màn, không thu hình); game kiểu cũ thì cpapi mở lại ngay trong tab cho vừa khung (cpapi.win_conf_sh đặt y như đây).
+        "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
         # treo game qua đêm: không ngủ đông (doze), không xếp app vào nhóm hạn chế, không đóng băng app chạy nền
         "dumpsys deviceidle disable >/dev/null 2>&1; settings put global app_standby_enabled 0; "
         "settings put global adaptive_battery_management_enabled 0; settings put global always_finish_activities 0; "

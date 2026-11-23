@@ -4,7 +4,9 @@
 #        23/11d — 🗗 TAB CỬA SỔ NHỎ đợt 4 — GAME VỪA KHUNG THẬT + XOAY MÀN THẬT (đo trên máy MuMu Android 12 thật): game kiểu cũ được MỞ LẠI
 #                 NGAY TRONG tab của nó sau khi cửa sổ đã đúng chỗ + cỡ (am kill giữ tab → mở sạch vào đúng tab) → vẽ vừa cửa sổ; lần đầu thu nhỏ
 #                 trên màn 360 dp tự bật màn rộng 600 dp; cửa sổ đúng tỉ lệ hình game 16:9. Nút Xoay / Màn ngang rộng: máy bỏ qua khoá xoay
-#                 (MuMu) → cpapi cài app trợ giúp vn.cloudblue.xoay (nằm sẵn trong cpapi.py) đặt cửa sổ phủ ép màn ngang. Chỉ đổi cpapi.py.
+#                 (MuMu) → cpapi cài app trợ giúp vn.cloudblue.xoay (nằm sẵn trong cpapi.py) đặt cửa sổ phủ ép màn ngang.
+#                 BỎ kiểu "Android tự thu nhỏ hình" của bản 23/11b–c (máy MuMu thật vẽ cửa sổ kiểu đó lệch lên góc trên trái): mọi bản Android
+#                 ép app đổi cỡ được + mở lại game ngay trong tab; Android 10–12L bù thanh tiêu đề lúc mở lại. Cập nhật cpapi + phonectl.
 #        23/11c — 🗗 TAB CỬA SỔ NHỎ đợt 3 (khách clone nhiều tab): nút Cửa sổ to hơn / nhỏ hơn (cửa sổ trên cùng to / nhỏ 25 %, giữ tỉ lệ) +
 #                       🖥 Màn ngang rộng (độ rộng nhỏ nhất 600 dp + khoá ngang → màn chính nằm ngang, xếp được nhiều tab) / Màn dọc như cũ.
 #                       Chỉ cập nhật cpapi (bật lại ~2 giây); máy khách KHÔNG tắt.
@@ -132,7 +134,7 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloud
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11b"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11d"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11d", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
 MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11d"}   # dòng khởi động của bản mới (trong nhật ký)
