@@ -87,10 +87,16 @@ ck("Công cụ › Màn hình: mục 'Tab cửa sổ nhỏ' + 3 nút Thu nhỏ /
 ck("menu Khác ▾ mở thẳng thẻ Màn hình có Tab cửa sổ nhỏ", '("Tab cửa sổ nhỏ · Xoay màn · Độ rộng nhỏ nhất…", "screen")' in src)
 ck("23/11b · nút Mở lại vừa khung: hỏi trước (game khởi động lại) rồi gửi win {do: refit}", 'self.app.btn(r, "Mở lại vừa khung", self.win_refit' in src
    and 'mb.askyesno("Mở lại vừa khung"' in src and 'self.win("refit")' in src and '"refit": "Đang mở lại game trong cửa sổ…"' in src)
+ck("23/11c · nút Cửa sổ to hơn / nhỏ hơn (gửi win grow / shrink) + Màn ngang rộng (hỏi trước, gửi wide) + Màn dọc như cũ (narrow)",
+   all(f'self.app.btn(r, "{t}", lambda: self.win("{w}"), "soft")' in src for t, w in (("Cửa sổ to hơn", "grow"), ("Cửa sổ nhỏ hơn", "shrink"), ("Màn dọc như cũ", "narrow")))
+   and 'self.app.btn(r, "Màn ngang rộng", self.win_wide, "soft")' in src and 'mb.askyesno("Màn ngang rộng"' in src and 'self.win("wide")' in src
+   and '"grow": "Đang cho cửa sổ to hơn…"' in src and '"wide": "Đang bật màn ngang rộng…"' in src)
 
 # ---------------- 4. tiếng Anh ----------------
 for vi, en in (("Thu nhỏ tab", "Minimize tab"), ("Sắp xếp tab", "Arrange tabs"), ("Phóng to tab", "Maximize tab"), ("Tab cửa sổ nhỏ", "Small tab windows"),
-               ("Đang thu nhỏ tab…", "Minimizing the tab…"), ("Mở lại vừa khung", "Refit to window"), ("Đang mở lại game trong cửa sổ…", "Reopening the game in its window…")):
+               ("Đang thu nhỏ tab…", "Minimizing the tab…"), ("Mở lại vừa khung", "Refit to window"), ("Đang mở lại game trong cửa sổ…", "Reopening the game in its window…"),
+               ("Cửa sổ to hơn", "Bigger window"), ("Cửa sổ nhỏ hơn", "Smaller window"), ("Màn ngang rộng", "Wide landscape"), ("Màn dọc như cũ", "Normal portrait"),
+               ("Đang cho cửa sổ to hơn…", "Making the window bigger…"), ("Đang bật màn ngang rộng…", "Turning on the wide landscape screen…")):
     ck(f"English: '{vi}' → '{en}'", EN.tr(vi) == en, EN.tr(vi))
 for vi, want in (("Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.", "Minimized Roblox (2 small tabs)."),
                  ("Đã thu nhỏ Roblox (bản clone) (3 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.", "Minimized Roblox (clone) (3 small tabs)."),
@@ -98,7 +104,15 @@ for vi, want in (("Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng �
                  ("Đã phóng to Roblox hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ.", "Roblox now fills the screen."),
                  ("Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone) rồi bấm Thu nhỏ tab.", "Your tabs are already small windows"),
                  ("Đã mở lại Roblox ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần).", "Reopened Roblox inside its window — the game now fits"),
-                 ("Chưa mở lại được Roblox trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab.", "Couldn't reopen Roblox in its window")):
+                 ("Chưa mở lại được Roblox trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab.", "Couldn't reopen Roblox in its window"),
+                 ("Cửa sổ Roblox (bản clone) đã to hơn (720×495). Bấm tiếp để to nữa.", "window is bigger (720×495)"),
+                 ("Cửa sổ Roblox đã nhỏ hơn (474×553). Bấm tiếp để nhỏ nữa.", "The Roblox window is smaller (474×553)"),
+                 ("Cửa sổ đã to nhất rồi (hết màn) — muốn to nữa bấm Phóng to tab.", "The window already fills the screen"),
+                 ("Cửa sổ đã nhỏ nhất rồi (Android không cho nhỏ hơn) — muốn xếp nhiều tab hơn bấm 🖥 Màn ngang rộng.", "as small as Android allows"),
+                 ("Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Cửa sổ to hơn / nhỏ hơn.", "then click Bigger / Smaller window"),
+                 ("Đã bật màn NGANG RỘNG (600 dp) — màn chính nằm ngang, chứa được nhiều tab hơn. Đã xếp 2 tab nhỏ (2 cột × 1 hàng).", "Wide landscape is on (600 dp)"),
+                 ("Đã đặt màn rộng (600 dp) + khoá ngang — màn chính của máy này không xoay ngang, app / game ngang vẫn hiện ngang.", "Wide screen set (600 dp)"),
+                 ("Đã trả màn DỌC như cũ (360 dp). Đã xếp 2 tab nhỏ (1 cột × 2 hàng).", "Back to the normal portrait screen (360 dp)")):
     got = EN.tr(vi)
     ck(f"English câu máy chủ: …{want[:40]}", want in got and not EN.has_vi(got), got)
 print("%d/%d dat" % (OK[0], OK[1])); sys.exit(0 if OK[0] == OK[1] else 1)
