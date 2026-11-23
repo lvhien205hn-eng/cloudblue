@@ -503,12 +503,15 @@ def push_obb(port, path, jid=None):
 # trả cửa sổ trên cùng về toàn màn. Dùng cửa sổ nổi (freeform) của Android: phonectl đặt enable_freeform_support + force_resizable_activities
 # mỗi lần máy bật (Android 11+ nhận ngay, Android 9/10 nhận sau 1 lần khởi động lại).
 # 23/11b · GAME VỪA KHUNG: game "cũ" dựng khung 1 lần theo cỡ lúc mở → cửa sổ nhỏ bị TRÀN VIỀN nếu Android ép game đổi cỡ.
-#   Android 15+ (WIN_SCM_SDK): KHÔNG ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → Android THU NHỎ CẢ HÌNH game vừa cửa sổ (size compat,
-#   viền đen 2 bên) — game mở sau khi đặt là tự vừa, game đang chạy từ trước thì 🔄 Mở lại vừa khung 1 lần. Android 9–12 không thu hình được →
-#   🔄 Mở lại vừa khung (do=refit): mở lại game NGAY TRONG cửa sổ (giữ chỗ + cỡ) → game vẽ đúng cỡ cửa sổ (game khởi động lại).
+#   Android 12L+ (WIN_SCM_SDK, máy ảo thật 32/33/34/35 đều thu được): KHÔNG ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → Android THU NHỎ CẢ
+#   HÌNH game vừa cửa sổ (size compat, viền đen) — game mở sau khi đặt là tự vừa, game đang chạy từ trước thì Mở lại vừa khung 1 lần.
+#   Android 10–12 không thu hình được → 🖼 Mở lại vừa khung (do=refit): mở lại game NGAY TRONG cửa sổ (giữ chỗ + cỡ) → game vẽ đúng cỡ cửa
+#   sổ (game khởi động lại). Android 9: game ép ngang làm màn xoay theo → không mở lại vừa khung được (báo rõ, không tắt game).
 #   Tab nhỏ đưa lên lại bằng `am task focus` (chỉ đưa lên, không gửi lệnh mở → app không nhận lệnh lạ / không mở thêm màn).
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
-WIN_SCM_SDK = 35                  # từ bản Android này: thu nhỏ hình game không đổi cỡ (size compat trong cửa sổ nổi) — đã thử thật Android 15
+WIN_SCM_SDK = 32                  # từ bản Android này: thu nhỏ hình game không đổi cỡ (size compat trong cửa sổ nổi) — Android 12 (31) thì không
+WIN_REFIT_SDK = 29                # Android 9: game ép ngang làm màn xoay khi mở lại → cửa sổ lệch, không vừa khung
+WIN_CAP_DP = 42                   # Android 12 (31): lần dựng khung đầu chưa có thanh tiêu đề cửa sổ (42 dp) → mở lại thấp hơn 42 dp rồi kéo về đủ cỡ
 WIN_STACK_RX = re.compile(r"^\s*(?:Stack|RootTask) id=(-?\d+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] displayId=(-?\d+)")
 WIN_TASK_RX = re.compile(r"^\s*taskId=(\d+): (\S+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] userId=(\d+) visible=(\w+)")
 WIN_OLD = {0: ("fullscreen", "home"), 1: ("fullscreen", "standard"), 2: ("freeform", "standard"), 3: ("split-screen-primary", "standard"), 4: ("pinned", "standard")}
@@ -655,7 +658,7 @@ def win_state(sh):
 
 
 def win_conf_sh(sdk):
-    """Cài đặt cửa sổ nổi theo bản Android (như phonectl TUNE). Android 15+: không ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → game không
+    """Cài đặt cửa sổ nổi theo bản Android (như phonectl TUNE). Android 12L+: không ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → game không
        đổi cỡ được Android thu nhỏ CẢ HÌNH vừa cửa sổ. Bản cũ hơn: ép đổi cỡ (Android 9 cần mới mở được game vào cửa sổ)."""
     if sdk >= WIN_SCM_SDK:
         return ("settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
@@ -780,13 +783,15 @@ WIN_REFIT_SH = ("C={c}; U={u}; am start --user $U {d}--windowingMode 5 " + AS_IC
                 "i=$((i+1)); sleep 0.05; done")
 
 
-def win_refit(sh, t, sdk, sleep=time.sleep):
+def win_refit(sh, t, sdk, sleep=time.sleep, dpi=320):
     """🔄 Mở lại vừa khung: tắt app của tab rồi mở lại NGAY VÀO cửa sổ nổi, đặt ĐÚNG chỗ + cỡ cũ càng sớm càng tốt (vòng lặp chạy trên máy,
        không chờ qua mạng) → game dựng khung theo cỡ cửa sổ → vừa khung. Game KHỞI ĐỘNG LẠI. Android 9 không mở thẳng game (không đổi cỡ) vào
        cửa sổ → vừa thấy tab là chuyển nguyên tab sang khối cửa sổ nổi (giữ 1 khối bằng Cài đặt nếu tab này là cửa sổ duy nhất). Trả tab sau
        khi mở lại (cửa sổ nổi, đúng chỗ cũ), hoặc None."""
-    b, u, pkg = t["b"], int(t["user"]), t["pkg"]
+    b, u, pkg = tuple(t["b"]), int(t["user"]), t["pkg"]
     if not re.fullmatch(r"[A-Za-z0-9._]+", pkg) or not re.fullmatch(r"[A-Za-z0-9._]+/[A-Za-z0-9._$]+", t["comp"]): return None
+    cap = int(round(WIN_CAP_DP * dpi / 160.0)) if 31 <= sdk < WIN_SCM_SDK and b[3] - b[1] > 2 * WIN_CAP_DP * dpi / 160.0 else 0
+    b0 = (b[0], b[1], b[2], b[3] - cap)                 # Android 12: mở lại thấp hơn thanh tiêu đề → khung game = phần hiện sau khi kéo về đủ cỡ
     mv, helper = "", False
     if sdk < 29:
         if not [w for w in win_tasks(sh("am stack list 2>&1", 15), sdk) if w["mode"] == "freeform" and w["disp"] == 0 and w["id"] != t["id"]]:
@@ -794,14 +799,15 @@ def win_refit(sh, t, sdk, sleep=time.sleep):
         sid = next((w["sid"] for w in win_tasks(sh("am stack list 2>&1", 15), sdk) if w["mode"] == "freeform" and w["disp"] == 0 and w["id"] != t["id"]), None)
         if sid is not None: mv = f"am stack move-task $id {int(sid)} true >/dev/null 2>&1; "
     sh(f"am force-stop --user {u} {pkg} 2>&1", 15); sleep(0.4)
-    o = sh(WIN_REFIT_SH.format(c=shlex.quote(t["comp"]), u=u, d="--display 0 " if sdk >= 29 else "", mv=mv, b=" ".join(str(int(v)) for v in b)), 40)
+    o = sh(WIN_REFIT_SH.format(c=shlex.quote(t["comp"]), u=u, d="--display 0 " if sdk >= 29 else "", mv=mv, b=" ".join(str(int(v)) for v in b0)), 40)
     try:
         for _ in range(6):
             sleep(0.5)
             d = next((x for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["comp"] == t["comp"] and x["user"] == u and x["disp"] == 0), None)
             if d and d["mode"] == "freeform":
-                if d["b"] != tuple(b): sh(f"am task resize {int(d['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
-                return dict(d, b=tuple(b))
+                if cap: sleep(2.0)                                  # đợi game dựng khung ở cỡ thấp rồi mới kéo cửa sổ về đủ cỡ
+                if d["b"] != b or cap: sh(f"am task resize {int(d['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
+                return dict(d, b=b)
             if d and d["mode"] == "fullscreen" and "REFIT" not in (o or ""):         # vẫn toàn màn → chuyển sang cửa sổ như Thu nhỏ tab + đặt cỡ
                 if sdk < 31: sh("input keyevent 3", 10); sleep(0.5)
                 d2 = win_to(sh, d, WIN_FREEFORM, sdk, sleep)
@@ -890,7 +896,10 @@ def win_run(sh, do, sleep=time.sleep):
         vis = [t for t in wins if t["vis"]]
         if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Mở lại vừa khung."}
         t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
-        d = win_refit(sh, t, sdk, sleep)
+        if sdk < WIN_REFIT_SDK:
+            return 409, {"error": "Máy Android 9 chưa mở lại vừa khung được (Android 9 xoay màn theo game nên cửa sổ bị lệch) — game vẫn chạy, "
+                                  "chưa tắt gì. Bấm Phóng to tab để chơi toàn màn, hoặc dùng máy Android 12 / 15 (game tự vừa khung)."}
+        d = win_refit(sh, t, sdk, sleep, st["geo"].get("dpi") or 320)
         if not d: return 409, {"error": f"Chưa mở lại được {win_name(t)} trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab."}
         win_keep(sh, [d])
         return 200, {"ok": True, "id": d["id"], "b": list(d["b"]),
