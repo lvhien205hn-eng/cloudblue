@@ -56,12 +56,12 @@ open(os.path.join(home, "cloudphone.conf"), "w").write("SUPABASE_URL=http://127.
 os.environ["HOME"] = home
 spec = importlib.util.spec_from_file_location("cpapi_w", os.path.join(ROOT, "cpapi.py"))
 cp = importlib.util.module_from_spec(spec); spec.loader.exec_module(cp)
+cp.WIN_SCM_KEEP = False       # các phần 1–10 thử đường MỞ LẠI app kiểu cũ trên mọi bản Android; phần 11 bật lại để thử kiểu chạy thật của Android 13+
 # cài đặt cửa sổ nổi như máy chủ (phonectl TUNE = cpapi.win_conf_sh). 23/11d: mọi bản Android ÉP đổi cỡ (bỏ kiểu size compat của 23/11b–c);
 # máy thật từng chạy 23/11c còn giữ enable_sizecompat_freeform=1 + (Android 12L+) enable_non_resizable_multi_window=1 → đặt y vậy cho giống.
 TUNE = ("locksettings set-disabled true; settings put system screen_off_timeout 2147483647; " + cp.win_conf_sh(API) + "; "
         "settings put global enable_sizecompat_freeform 1; " + ("settings put global enable_non_resizable_multi_window 1; " if API >= 32 else "")
         + "settings put system accelerometer_rotation 0; settings put system user_rotation 0")
-CAPFIX = cp.WIN_CAPFIX_SDK[0] <= API <= cp.WIN_CAPFIX_SDK[1]      # Android 10–12L: mở lại lúc cửa sổ thấp hơn 1 thanh tiêu đề → khung game phải KHÍT phần app thấy
 FREE = "settings get global enable_freeform_support; settings get global force_resizable_activities"
 WANT = ["1", "0" if API >= cp.WIN_SCM_SDK else "1"]
 print(adb("root").stdout.decode(errors="ignore").strip()); adb("wait-for-device", t=120); time.sleep(3); boot_wait(120)
@@ -318,7 +318,7 @@ if NEW:
     ck(f"… game cũ TỰ được mở lại ngay trong cửa sổ lúc thu nhỏ → dựng khung theo cỡ CỬA SỔ (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]} · cửa sổ {g4 and g4['b']}",
        j.get("fit") == "ok" and bool(s1) and abs(s1[0] - s1[2]) <= 4 and -4 <= s1[3] - s1[1] <= capr + 8 and g4 and fitted(s1[:2], g4["b"], g8) and creates(4) == 2,
        (j, s1, g4 and g4["b"], creates(4), scm[:1]))
-    (ck if CAPFIX else info)(f"… khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}", bool(s1) and abs(s1[1] - s1[3]) <= 4, s1)
+    info(f"… khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}", bool(s1) and abs(s1[1] - s1[3]) <= 4, s1)
     info(f"… không còn kiểu Android thu nhỏ hình (size compat): {scm[:1]}", not scm, scm[:2])
 else:
     info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}" + (f" · Android thu nhỏ hình: {scm[:1]}" if scm else ""),
@@ -335,18 +335,15 @@ if g4:
         ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), game KHÔNG bị tắt / mở lại", code == 409 and "Android 9" in j.get("error", "")
            and g5 and g5["mode"] == "freeform" and g5["id"] == g4["id"], (code, j, g5))
     else:
-        capg = int(round(cp.WIN_CAP_DP * ga0["dpi"] / 160.0))       # Android 10–12L, cửa sổ thấp sát mức Android cho → được kéo cao thêm đúng 1 thanh tiêu đề
-        same = bool(g5) and tuple(g5["b"]) == tuple(j.get("b") or ()) and tuple(g5["b"][:3]) == tuple(gb[:3]) \
-            and (g5["b"][3] == gb[3] or (CAPFIX and g5["b"][3] - gb[3] == capg))
-        ck(f"🖼 Vừa khung → game mở lại ngay trong ĐÚNG TAB + đúng chỗ + cỡ cửa sổ đang có (Android 10–12L: có thể cao thêm 1 thanh tiêu đề), đúng 1 lần · {time.time() - t0:.1f} giây",
-           code == 200 and g5 and g5["mode"] == "freeform" and same and g5["vis"] and g5["id"] == g4["id"]
+        ck(f"🖼 Vừa khung → game mở lại ngay trong ĐÚNG TAB + đúng chỗ + cỡ cửa sổ đang có (không đổi cỡ cửa sổ), đúng 1 lần · {time.time() - t0:.1f} giây",
+           code == 200 and g5 and g5["mode"] == "freeform" and tuple(g5["b"]) == tuple(gb) == tuple(j.get("b") or ()) and g5["vis"] and g5["id"] == g4["id"]
            and creates(4) == c4 + 1, (code, j, gb, g5, creates(4), c4))
         gs = cp.win_state(sh)["geo"]
         ck("… màn vẫn đúng hướng như trước khi mở lại (game ngang không làm màn kẹt ngang)", (gs["w"] > gs["h"]) == (ga0["w"] > ga0["h"]), (ga0, gs))
         capr = int(round(cp.WIN_CAP_DP * gs["dpi"] / 160.0))
         ck(f"… game dựng khung theo cỡ CỬA SỔ mới (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]} · cửa sổ {g5 and g5['b']}",
            bool(s2) and abs(s2[0] - s2[2]) <= 4 and -4 <= s2[3] - s2[1] <= capr + 8 and g5 and fitted(s2[:2], g5["b"], gs), (s2, g5 and g5["b"], gs))
-        (ck if CAPFIX else info)(f"… khung game KHÍT phần app thấy sau Vừa khung: app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", bool(s2) and abs(s2[1] - s2[3]) <= 4, s2)
+        info(f"… khung game KHÍT phần app thấy sau Vừa khung: app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", bool(s2) and abs(s2[1] - s2[3]) <= 4, s2)
 # 9. 23/11c · khách tự cho cửa sổ TO / NHỎ hơn · 🖥 Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ
 def ffs(): return [x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")]
 def inside(g, ws): return all(x["b"][0] >= 0 and x["b"][1] >= 0 and x["b"][2] <= g["w"] + 1 and x["b"][3] <= g["h"] + 1 for x in ws)
@@ -403,6 +400,23 @@ stR, goodR = cp.win_rot(tsh, 0, time.sleep, inst); t4 = wait_land(False)
 nwin = (sh("dumpsys window windows 2>/dev/null | grep -c cbxoay").strip().splitlines() or ["?"])[-1]
 ck("win_rot(dọc) → màn chính DỌC, cửa sổ phủ đã tắt (không còn cửa sổ của app trợ giúp)", t4 and nwin == "0", (goodR, t4, nwin, cp.win_state(sh)["geo"]))
 sh(f"wm density {D0}; settings put system user_rotation 0; settings delete global {cp.WIN_PREV_KEY}; am force-stop {cp.ROT_PKG}", 20); time.sleep(2)   # trả máy như cũ cho test_fit.py chạy sau
+# 11. 23/11d · Android 13+, kiểu chạy THẬT trên máy chủ (WIN_SCM_KEEP = True): app KHAI BÁO không đổi cỡ → Android thu nhỏ cả hình, KHÔNG mở lại
+#     (máy MuMu Android 15 thật: hình đúng chỗ, đúng cỡ); khách bấm 🖼 Vừa khung mới mở lại.
+if API >= cp.WIN_SCM_SDK:
+    cp.WIN_SCM_KEEP = True
+    sh("input keyevent 3"); time.sleep(2)
+    sh("; ".join(f"am force-stop vn.cloudblue.wintest{n}" for n in (1, 2, 3, 4)) + "; am force-stop --user 10 vn.cloudblue.wintest1", 30); time.sleep(4)
+    sh("logcat -c"); open_app(2); time.sleep(2)
+    code, j = run("mini"); time.sleep(3); t2 = task(2); sz = last_size(2); shot("19-android-thu-hinh")
+    scm2 = [l.strip()[:160] for l in sh("dumpsys activity activities", 60).splitlines() if "inSizeCompatMode=true" in l or "mSizeCompatScale=" in l]
+    ck("Android 13+ kiểu chạy thật: app khai báo không đổi cỡ thu nhỏ → KHÔNG mở lại, không đổi mật độ (Android thu nhỏ cả hình), web hiện nút Vừa khung (fit=ask)",
+       code == 200 and j.get("fit") == "ask" and not j.get("sw") and bool(t2) and t2["mode"] == "freeform" and creates(2) == 1, (code, j, t2, creates(2), "\n".join(TRACE[-12:])))
+    info(f"… Android đang thu hình app đó (size compat): app thấy {sz} · cửa sổ {t2 and t2['b']} · {scm2[:1]}",
+         bool(scm2) or bool(sz and t2 and sz[0] > t2["b"][2] - t2["b"][0] + 8), (sz, scm2[:2]))
+    code, j = run("refit"); time.sleep(4); t2b = task(2); sz2 = last_size(2); shot("20-android-13-vua-khung")
+    ck(f"… bấm 🖼 Vừa khung → mở lại đúng 1 lần ngay trong tab, hình theo cỡ cửa sổ: app thấy {sz2} · cửa sổ {t2b and t2b['b']}",
+       code == 200 and bool(t2b) and t2b["mode"] == "freeform" and creates(2) == 2 and fitted(sz2, t2b["b"], cp.win_state(sh)["geo"]), (code, j, t2b, creates(2), sz2))
+    sh(f"am force-stop vn.cloudblue.wintest2; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "".join("XX " + f + "\n" for f in FAILS)

@@ -96,18 +96,13 @@ class Droid:
         if t["mode"] == FF: return (t["b"][2] - t["b"][0], t["b"][3] - t["b"][1])
         return self.size()
 
-    def _cap(self):
-        return int(round(42 * (self.od or self.pd) / 160.0))
-
-    def _view(self, t):
-        """Cỡ PHẦN HÌNH app đang có. Android 10–12L (đo máy ảo 31 + máy MuMu Android 12 thật): thanh tiêu đề cửa sổ nổi do chính app vẽ — lần
-           dựng hình ĐẦU app thấy cả cửa sổ (_born ghi theo _box), ngay sau đó phần hình = cửa sổ trừ thanh tiêu đề 42 dp."""
-        w, h = self._box(t)
-        return (w, h - self._cap()) if (t["mode"] == FF and 29 <= self.sdk <= 32) else (w, h)
-
     def _born(self, t):
         """App (màn của tab) vừa được dựng lại: tiến trình mới + dựng hình theo cỡ / mật độ lúc này."""
         self.npid += 1; t["pid"] = self.npid; t["made"] = self._box(t) + ((self.od or self.pd),); t["starts"] = t.get("starts", 0) + 1
+
+    def scaled(self, t):
+        """Android 13+ ở kiểu không ép đổi cỡ: app KHAI BÁO không đổi cỡ (không phải app targetSdk < 24) được Android thu nhỏ cả hình vừa cửa sổ."""
+        return self.sdk >= 33 and (self.force, self.nonres) == ("0", "1") and not t.get("resz", True) and not t.get("legacy")
 
     def oldkind(self, t):
         return (not t.get("resz", True)) or bool(t.get("legacy"))
@@ -115,7 +110,8 @@ class Droid:
     def fits(self, t):
         """Hình app có VỪA vùng đang có không: app kiểu cũ chỉ vừa khi được dựng đúng cỡ + mật độ đang có; app đổi cỡ thật luôn vừa."""
         if not self.oldkind(t): return True
-        return t.get("pid") is not None and t.get("made") == self._view(t) + ((self.od or self.pd),)
+        if self.scaled(t): return True
+        return t.get("pid") is not None and t.get("made") == self._box(t) + ((self.od or self.pd),)
 
     def install_helper(self):
         if self.noinst: return False
@@ -517,7 +513,10 @@ R1, R2 = "com.roblox.client/.startup.ActivitySplash", "vn.game.hai/.Main"
 for sdk in (28, 29, 31, 32, 33, 35):
     d = Droid(sdk); d.open(R1, land=True, resz=sdk >= 29); cp.win_run(d.sh, "mini"); a = d.task(R1)
     conf = [x for x in d.log if x.startswith("settings put global enable_freeform_support 1")]
-    ck(f"Android {sdk}: giữ ép đổi cỡ (không đổi cài đặt máy đang chạy tốt)", not conf and d.force == "1", (conf, d.force))
+    if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk}: KHÔNG ép đổi cỡ + cho app không đổi cỡ vào cửa sổ (Android thu nhỏ cả hình — máy MuMu Android 15 thật: đúng chỗ)",
+                                 conf and "force_resizable_activities 0" in conf[-1] and "enable_non_resizable_multi_window 1" in conf[-1]
+                                 and (d.force, d.nonres) == ("0", "1"), (conf, d.force, d.nonres))
+    else: ck(f"Android {sdk}: giữ ép đổi cỡ (không đổi cài đặt máy đang chạy tốt)", not conf and d.force == "1", (conf, d.force))
     d.log.clear(); d.home_key(); d.open(R2, land=True, resz=sdk >= 29); code, j = cp.win_run(d.sh, "mini"); b = d.task(R2)
     ck(f"Android {sdk}: cửa sổ cũ đưa lên lại bằng `am task focus` (không gửi lệnh mở cho app)", code == 200 and d.visible(a) and d.visible(b)
        and any(x == f"am task focus {a['id']} 2>&1" for x in d.log) and not any(f"-n {R1}" in x and "--task" not in x for x in d.log), d.log[-10:])
@@ -534,10 +533,8 @@ for sdk in (28, 29, 31, 32, 33, 35):
     code, j = cp.win_run(d.sh, "refit"); a2 = d.task(R1); bb = d.task(R2)
     kill = next((k for k, x in enumerate(d.log) if x.startswith("am kill --user 0 com.roblox.client")), -1)
     start = next((k for k, x in enumerate(d.log) if "-f 0x10008000 -n com.roblox.client/" in x), -1)
-    ab2 = (ab[0], ab[1], ab[2], ab[3] + 84) if 29 <= sdk <= 32 else ab      # Android 10–12L: vẽ khung đầu xong kéo cửa sổ cao thêm thanh tiêu đề 42 dp
-    ck(f"Android {sdk}: 🖼 Vừa khung → về màn chính, am kill (app nền), mở lại SẠCH vào ĐÚNG TAB cũ: giữ số tab + đúng chỗ khách kéo + cỡ"
-       f"{' (cao thêm 42 dp bằng thanh tiêu đề)' if ab2 != ab else ''}, game mở lại đúng 1 lần",
-       code == 200 and a2 is a and a2["id"] == id0 and a2["mode"] == FF and a2["b"] == ab2 and tuple(j["b"]) == ab2 and "khởi động lại" in j["msg"]
+    ck(f"Android {sdk}: 🖼 Vừa khung → về màn chính, am kill (app nền), mở lại SẠCH vào ĐÚNG TAB cũ: giữ số tab + đúng chỗ khách kéo + cỡ, game mở lại đúng 1 lần",
+       code == 200 and a2 is a and a2["id"] == id0 and a2["mode"] == FF and a2["b"] == ab and tuple(j["b"]) == ab and "khởi động lại" in j["msg"]
        and 0 <= d.log.index("input keyevent 3") < kill < start and not any("force-stop" in x for x in d.log) and a2["starts"] == n0 + 1
        and not a2.get("dirty") and d.fits(a2), (code, j, a2, [x[:70] for x in d.log]))
     ck(f"Android {sdk}: sau Vừa khung màn vẫn DỌC, cửa sổ khác (tab 2) hiện lại đúng chỗ (không bị mở lại), game trên cùng",
@@ -565,6 +562,13 @@ for sdk in (28, 29, 31, 32, 33, 35):
     else: ck(f"Android {sdk}: (cách cũ) mở lại thẳng vào cửa sổ đúng chỗ + cỡ, chờ game vẽ khung đầu (gfxinfo) rồi kéo cao thêm 42 dp — lần vẽ đầu chưa có thanh tiêu đề",
              "am task resize $id 40 600 600 920 " in scr and any(x.startswith("dumpsys gfxinfo com.roblox.client") for x in d.log)
              and any(x.startswith(f"am task resize {a2['id']} 40 600 600 1004") for x in d.log), (scr[-160:], d.log[-6:]))
+d = Droid(35, stick=True); d.open(R1, land=True, fgsvc=True); cp.win_run(d.sh, "mini"); a = d.task(R1)
+d.home_key(); d.open(R2, land=True, fgsvc=True); cp.win_run(d.sh, "mini"); b = d.task(R2)
+d.z.remove(a); d.z.insert(0, a); d.log.clear(); ab = a["b"]
+code, j = cp.win_run(d.sh, "refit"); a2 = d.task(R1); bb = d.task(R2)
+ck("(cách cũ) máy kẹt ngang cả khi đã chờ xoay xong → về màn chính rồi đưa các cửa sổ lên lại: màn DỌC, game trên cùng đúng chỗ, tab 2 vẫn hiện đúng chỗ",
+   code == 200 and "input keyevent 3" in d.log and d.size()[0] < d.size()[1] and a2 and a2["b"] == ab and d.z[0] is a2
+   and bb and d.visible(bb) and bb["b"] == b["b"], (code, j, d.size(), a2, bb, [x for x in d.log if "keyevent" in x or "focus" in x]))
 d = Droid(31)
 code, j = cp.win_run(d.sh, "refit")
 ck("chưa mở app nào → Vừa khung báo 409 dễ hiểu (thu nhỏ trước)", code == 409 and "thu nhỏ app" in j.get("error", ""), (code, j))
@@ -796,24 +800,30 @@ d = mumu(); d.force, d.nonres = "0", "1"; a = d.open(G1, land=True, resz=False);
 ck("máy đang ở kiểu cũ của bản 23/11c (không ép đổi cỡ) → lần bấm đầu đặt lại ÉP ĐỔI CỠ (bỏ kiểu Android thu nhỏ hình — MuMu vẽ lệch chỗ), game vẫn mở lại vừa cửa sổ",
    code == 200 and d.force == "1" and j["fit"] == "ok" and d.fits(a)
    and any(x == "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1" for x in d.log), (code, j, d.force, d.log[:3]))
-for sdk in (29, 31, 32):
+for sdk in (29, 31, 32, 33, 35):
     d = Droid(sdk); d.od = 192; a = d.open(G1, land=True, legacy=True); n0 = a["starts"]; code, j = cp.win_run(d.sh, "mini"); fb = tuple(j.get("b") or ())
-    low = at(d, f"am task resize {a['id']} {fb[0]} {fb[1]} {fb[2]} {fb[3] - 50} 2>&1") if fb else -1
-    st, gx = at(d, "-f 0x10008000 -n com.replica.replicaisland/"), at(d, "dumpsys gfxinfo com.replica.replicaisland")
-    end = max([k for k, x in enumerate(d.log) if fb and x == f"am task resize {a['id']} {fb[0]} {fb[1]} {fb[2]} {fb[3]} 2>&1"] or [-1])
-    ck(f"Android {sdk}: mở lại lúc cửa sổ THẤP HƠN 1 thanh tiêu đề (50 px ở 192 dpi) → chờ app vẽ khung đầu (gfxinfo) → kéo về đủ cỡ: phần hình app thấy = đúng lúc dựng",
-       code == 200 and j["fit"] == "ok" and 0 <= low < st < gx < end and a["b"] == fb and d.fits(a) and a["starts"] == n0 + 1 and a["made"][:2] == (fb[2] - fb[0], fb[3] - fb[1] - 50),
-       (code, j, a, low, st, gx, end))
+    st = at(d, "-f 0x10008000 -n com.replica.replicaisland/")
+    late = [x for k, x in enumerate(d.log) if k > st >= 0 and x.startswith(f"am task resize {a['id']} ") and x != f"am task resize {a['id']} {fb[0]} {fb[1]} {fb[2]} {fb[3]} 2>&1"]
+    ck(f"Android {sdk}: mở lại THẲNG đúng cỡ cửa sổ — sau khi mở không đổi cỡ thêm lần nào (game kiểu cũ không chịu được đổi cỡ muộn), không chờ gfxinfo",
+       code == 200 and j["fit"] == "ok" and st >= 0 and not late and at(d, "dumpsys gfxinfo") < 0 and a["b"] == fb and d.fits(a) and a["starts"] == n0 + 1
+       and at(d, f"am task resize {a['id']} {fb[0]} {fb[1]} {fb[2]} {fb[3]} 2>&1") < st, (code, j, a, late))
 for sdk in (33, 35):
-    d = Droid(sdk); d.od = 192; a = d.open(G1, land=True, legacy=True); code, j = cp.win_run(d.sh, "mini"); fb = tuple(j.get("b") or ())
-    ck(f"Android {sdk} (thanh tiêu đề do hệ thống vẽ): mở lại thẳng đúng cỡ, không hạ cửa sổ, không chờ gfxinfo",
-       code == 200 and j["fit"] == "ok" and d.fits(a) and a["b"] == fb and at(d, "dumpsys gfxinfo") < 0
-       and not any(x.startswith(f"am task resize {a['id']} ") and x != f"am task resize {a['id']} {fb[0]} {fb[1]} {fb[2]} {fb[3]} 2>&1" and at(d, x) > at(d, "am kill") for x in d.log),
-       (code, j, a))
-d = Droid(32); a = d.open(RB, land=True); cp.win_run(d.sh, "mini"); d.home_key(); g = d.open(G1, land=True, legacy=True); code, j = cp.win_run(d.sh, "mini"); fb = tuple(j.get("b") or ())
-ck("Android 12, màn 360 dp, đã có tab khác (không tự bật màn rộng): cửa sổ game thấp sát mức Android cho (220 dp) → mở đúng cỡ, vẽ khung đầu xong kéo CAO THÊM 1 thanh tiêu đề (84 px) → vẫn vừa",
-   code == 200 and j["fit"] == "ok" and d.od is None and d.fits(g) and g["b"] == fb and g["made"][:2] == (fb[2] - fb[0], fb[3] - fb[1] - 84)
-   and at(d, "dumpsys gfxinfo com.replica.replicaisland") > at(d, "-f 0x10008000 -n com.replica.replicaisland/") >= 0, (code, j, g))
+    d = mumu(sdk); a = d.open(G2, land=True, resz=False); n0 = a["starts"]; code, j = cp.win_run(d.sh, "mini")
+    kd = cp.win_kinds(d.sh, True).get(a["id"]); kd0 = cp.win_kinds(d.sh).get(a["id"])
+    ck(f"Android {sdk} (máy MuMu Android 15 thật thu hình đúng chỗ): game KHAI BÁO không đổi cỡ → để Android thu nhỏ cả hình: KHÔNG mở lại, không đổi mật độ, không tắt app; web vẫn hiện nút Vừa khung (fit=ask)",
+       code == 200 and j["fit"] == "ask" and a["starts"] == n0 and a["mode"] == FF and d.od is None and (d.force, d.nonres) == ("0", "1") and d.fits(a)
+       and not any("am kill" in x or "-f 0x10008000" in x for x in d.log) and kd == {"old": False, "fixed": "land"} and kd0 == {"old": True, "fixed": "land"},
+       (code, j, a, kd, kd0))
+    d.log.clear(); code, j = cp.win_run(d.sh, "refit")
+    ck(f"Android {sdk}: … khách bấm 🖼 Vừa khung → mở lại đúng 1 lần ngay trong tab (hình nét theo cỡ cửa sổ)",
+       code == 200 and a["starts"] == n0 + 1 and a["mode"] == FF and not a.get("dirty") and at(d, "am kill --user 0 vn.teamobi.knight") >= 0, (code, j, a))
+    d = mumu(sdk); g = d.open(G1, land=True, legacy=True); n0 = g["starts"]; code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}: game targetSdk < 24 (Android coi là đổi cỡ được, KHÔNG thu hình) → vẫn tự mở lại ngay trong tab, vừa cửa sổ",
+       code == 200 and j["fit"] == "ok" and g["starts"] == n0 + 1 and d.fits(g), (code, j, g))
+cp.WIN_SCM_KEEP = False
+d = mumu(35); a = d.open(G2, land=True, resz=False); n0 = a["starts"]; code, j = cp.win_run(d.sh, "mini")
+ck("WIN_SCM_KEEP = False (bộ thử máy ảo thật dùng): Android 15 cũng tự mở lại app khai báo không đổi cỡ", code == 200 and j["fit"] == "ok" and a["starts"] == n0 + 1, (code, j, a))
+cp.WIN_SCM_KEEP = True
 d = mumu(); d.nokill = True; a = d.open(G1, land=True, legacy=True); n0 = a["starts"]; code, j = cp.win_run(d.sh, "mini")
 nk = len([x for x in d.log if x.startswith("am kill --user")]); k9 = [x for x in d.log if x.startswith("kill -9 ")]
 ck("`am kill` không bao giờ ăn (máy ảo Android 12L thật) → thử đủ số lần rồi tắt THẲNG tiến trình (kill -9, có đường su) → tab vẫn giữ, game mở lại đúng 1 lần, vừa cửa sổ",
@@ -827,7 +837,7 @@ d = mumu(35); d.ofmt = "o"; a = d.open(G1, land=True, resz=False); c = d.open(SE
 kd = cp.win_kinds(d.sh)
 ck("Android 14+ ghi hướng ở dòng overrideOrientation= / requestedOrientation= → vẫn nhận app ép NGANG; app không ép hướng (UNSPECIFIED) → rỗng",
    kd.get(a["id"]) == {"old": True, "fixed": "land"} and kd.get(c["id"]) == {"old": False, "fixed": ""}, kd)
-d = mumu(35); d.ofmt = ""; a = d.open(G1, land=True, resz=False)
+d = mumu(35); d.ofmt = ""; a = d.open(G1, land=True, legacy=True)
 ck("máy KHÔNG ghi hướng của app → loại app đọc được, hướng rỗng", cp.win_kinds(d.sh).get(a["id"]) == {"old": True, "fixed": ""}, cp.win_kinds(d.sh))
 code, j = cp.win_run(d.sh, "mini"); gq2 = cp.win_state(d.sh)["geo"]
 ck("… thu nhỏ: app toàn màn làm màn NGANG rồi thành cửa sổ thì màn về dọc → coi là app ép ngang: cửa sổ vẫn đúng tỉ lệ hình game, game mở lại vừa cửa sổ",
