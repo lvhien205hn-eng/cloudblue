@@ -525,6 +525,122 @@ ck("lỗi có lời báo cho người xem → gửi nguyên văn (code OFFLINE),
 _IO.awake = lambda self, on: (_ for _ in ()).throw(RuntimeError("loi la")) if on else None
 _c2 = _Conn(); _rm._start(_c2, json.dumps({"sid": 2}).encode())
 ck("lỗi thường (máy Windows) → câu báo cũ như trước", [json.loads(p)["msg"] for t, p in _c2.sent if t == R.S_ERROR] == ["Máy PC chưa bật được bộ quay màn hình — thử lại sau ít phút."], _c2.sent)
+
+print("3g. 23.11b · DÁN: bộ nhớ copy nhờ Klipper (máy không có wl-copy) + hỏi KWin cửa sổ đang chọn → đúng phím dán (Konsole: Ctrl+Shift+V)")
+for _info, _k in (("org.kde.konsole\nkonsole\norg.kde.konsole", "term"), ("org.kde.yakuake", "term"), ("Alacritty\nAlacritty\n", "term"), ("org.gnome.Terminal", "term"),
+                  ("io.elementary.terminal", "term"), ("com.mitchellh.ghostty", "term"), ("org.kde.konsole.desktop", "term"), ("XTerm\nxterm\n", "sel"),
+                  ("firefox\nfirefox\nfirefox", "app"), ("org.kde.kate\nkate\norg.kde.kate", "app"), ("steam_app_730\nsteam_app_730\n", "app"), ("", None), ("\n\n", None)):
+    if K.app_kind(_info) != _k: ck("app_kind(%r) = %r" % (_info, _k), False, K.app_kind(_info)); break
+else:
+    ck("nhận ra cửa sổ dòng lệnh (Konsole, Yakuake, Alacritty, GNOME…) · xterm (Shift+Insert dán vùng chọn) · app thường · không có cửa sổ", True)
+_JS = K.ACTIVE_JS % (json.dumps(":1.99"), K.ACT_PATH, K.ACT_IFACE, json.dumps("7"))
+_node = shutil.which("node")
+if _node:
+    _out = []
+    for _ws in ('{activeWindow: {resourceClass: "org.kde.konsole", resourceName: "konsole", desktopFileName: "org.kde.konsole"}}',
+                '{activeClient: {resourceClass: "firefox", resourceName: "firefox"}}', '{activeWindow: null}'):
+        _r = subprocess.run([_node, "-e", "var c = []; function callDBus() { c.push([].slice.call(arguments)); } var workspace = %s;\n%s\nconsole.log(JSON.stringify(c));" % (_ws, _JS)],
+                            capture_output=True, timeout=60)
+        _out.append(json.loads(_r.stdout or b"null") if _r.returncode == 0 else _r.stderr[-200:])
+    ck("script KWin chạy được (JavaScript thật): Plasma 6 activeWindow · Plasma 5 activeClient · không có cửa sổ → gọi ngược đúng tên bus + số lần hỏi",
+       _out == [[[":1.99", K.ACT_PATH, K.ACT_IFACE, "Active", "7\norg.kde.konsole\nkonsole\norg.kde.konsole"]],
+                [[":1.99", K.ACT_PATH, K.ACT_IFACE, "Active", "7\nfirefox\nfirefox\n"]], [[":1.99", K.ACT_PATH, K.ACT_IFACE, "Active", "7\n"]]], _out)
+KL = {"clip": None, "down": False}; KWS = {"info": "org.kde.konsole\nkonsole\norg.kde.konsole", "loaded": {}, "calls": [], "mute": False}
+
+
+def kde_service():
+    """Klipper + KWin (phần script) GIẢ trên dbus-daemon thật: script nạp vào thì đọc tệp, gọi ngược Active(<số lần hỏi>\\n<tên cửa sổ>) như KWin thật."""
+    import re as _re
+    srv = K.DBus(ADDR)
+    for nm in ("org.kde.klipper", "org.kde.KWin"):
+        srv.call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName", "su", [nm, 4])
+
+    def reply(m, sig="", args=()):
+        srv.send(2, {5: ("u", m["serial"]), 6: ("s", m["sender"])}, sig, args)
+
+    def err(m, name="org.freedesktop.DBus.Error.UnknownMethod"):
+        srv.send(3, {4: ("s", name), 5: ("u", m["serial"]), 6: ("s", m["sender"])}, "s", [m["member"]])
+    nid = [0]
+    while True:
+        try: m = srv.take(lambda m: m["type"] == 1, 3600)
+        except Exception: return
+        mem, body = m["member"], m["body"]
+        KWS["calls"].append(mem)
+        if mem in ("setClipboardContents", "getClipboardContents") and KL["down"]: err(m, "org.freedesktop.DBus.Error.ServiceUnknown")
+        elif mem == "setClipboardContents": KL["clip"] = body[0]; reply(m)
+        elif mem == "getClipboardContents": reply(m, "s", [KL["clip"] or ""])
+        elif mem == "loadScript":
+            if body[1] in KWS["loaded"]: reply(m, "i", [-1]); continue
+            nid[0] += 1; KWS["loaded"][body[1]] = (nid[0], open(body[0]).read()); KWS.setdefault("modes", []).append(oct(os.stat(body[0]).st_mode & 0o777))
+            reply(m, "i", [nid[0]])
+        elif mem == "unloadScript": reply(m, "b", [KWS["loaded"].pop(body[0], None) is not None])
+        elif mem == "run" and m["path"].startswith("/Scripting/Script"):
+            js = next((v[1] for v in KWS["loaded"].values() if "/Scripting/Script%d" % v[0] == m["path"]), None)
+            reply(m)
+            g = _re.search(r'callDBus\(("[^"]+"), "([^"]+)", "([^"]+)", "Active", ("[^"]+") \+', js or "")
+            if g and not KWS["mute"]:
+                srv.send(1, {1: ("o", g.group(2)), 2: ("s", g.group(3)), 3: ("s", "Active"), 6: ("s", json.loads(g.group(1)))}, "s",
+                         [json.loads(g.group(4)) + "\n" + KWS["info"]])
+        else: err(m)
+
+
+threading.Thread(target=kde_service, daemon=True).start()
+time.sleep(0.3)
+EVK = []
+
+
+class _Inp:
+    session = True
+    def keycode(self, c, d): EVK.append((c, 1 if d else 0))
+    def keysym(self, s, d): EVK.append(("sym", s, 1 if d else 0)); return True
+
+
+_rt = os.path.join(tmp, "run-user"); os.makedirs(_rt, mode=0o700)
+_old_rt = os.environ.get("XDG_RUNTIME_DIR"); os.environ["XDG_RUNTIME_DIR"] = _rt
+CTRL_SHIFT_V = [(29, 1), (42, 1), (47, 1), (47, 0), (42, 0), (29, 0)]; CTRL_V = [(29, 1), (47, 1), (47, 0), (29, 0)]; SHIFT_INS = [(42, 1), (110, 1), (110, 0), (42, 0)]
+try:
+    cp = K.Cap(lambda m: KWS.setdefault("log", []).append(m), bus_addr=ADDR); cp.inp = _Inp(); cp.wl = False          # máy KHÔNG có wl-copy
+    ok_set = cp.clip_set("chữ từ người xem · 1")
+    ck("máy không có wl-copy → đặt bộ nhớ copy nhờ Klipper (D-Bus) · đọc lại cũng qua Klipper", ok_set and KL["clip"] == "chữ từ người xem · 1"
+       and cp.clip_get() == "chữ từ người xem · 1", (ok_set, KL, cp.clip_get()))
+    k1 = cp.paste(1)
+    ck("Konsole đang chọn → hỏi KWin (script gọi ngược) → dán bằng Ctrl+Shift+V (Ctrl+V của Konsole là ^V, không dán)", k1 == "term" and EVK == CTRL_SHIFT_V, (k1, EVK, KWS))
+    ck("script KWin: tệp riêng (chỉ khách đọc được) trong thư mục riêng, nạp → chạy → GỠ khỏi KWin + xoá tệp sau khi hỏi",
+       not KWS["loaded"] and not os.listdir(_rt) and KWS["calls"][-4:] == ["unloadScript", "loadScript", "run", "unloadScript"]
+       and KWS.get("modes") == ["0o600"], (KWS["calls"][-5:], os.listdir(_rt), KWS.get("modes")))
+    n_load = KWS["calls"].count("loadScript"); del EVK[:]; cp.paste(1)
+    ck("hỏi lại trong 1 giây (gõ chữ có dấu từng chữ) → dùng kết quả vừa hỏi, không nạp script lần nữa", EVK == CTRL_SHIFT_V and KWS["calls"].count("loadScript") == n_load, KWS["calls"][-3:])
+    KWS["info"] = "firefox\nfirefox\nfirefox"; cp.act_t = 0.0; del EVK[:]
+    ck("Firefox (app thường) → Ctrl+V", cp.paste(1) == "app" and EVK == CTRL_V, EVK)
+    KWS["info"] = "XTerm\nxterm\n"; cp.act_t = 0.0; del EVK[:]
+    ck("xterm → Shift+Insert (dán vùng chọn — Klipper đặt cả vùng chọn)", cp.paste(1) == "sel" and EVK == SHIFT_INS, EVK)
+    KWS["info"] = ""; cp.act_t = 0.0; del EVK[:]
+    ck("không có cửa sổ nào đang chọn → Shift+Insert", cp.paste(1) is None and EVK == SHIFT_INS, EVK)
+    n_load = KWS["calls"].count("loadScript"); KWS["info"] = "firefox"; cp.act_t = 0.0; del EVK[:]
+    ck("khách tự bấm Ctrl+Shift+V (gói dán kiểu 2) → bấm đúng Ctrl+Shift+V, không cần hỏi KWin", cp.paste(2) == "term" and EVK == CTRL_SHIFT_V
+       and KWS["calls"].count("loadScript") == n_load, (EVK, KWS["calls"][-3:]))
+    KWS["info"] = "org.kde.konsole"; cp.act_t = 0.0; del EVK[:]; KL["clip"] = None
+    cp.text("echo 'Tiếng Việt'")
+    ck("gõ chữ có dấu vào Konsole → đặt bộ nhớ copy (Klipper) + dán Ctrl+Shift+V (trước đây Ctrl+V: Konsole không nhận)", KL["clip"] == "echo 'Tiếng Việt'"
+       and EVK == CTRL_SHIFT_V, (KL, EVK))
+    del EVK[:]; cp.text("ls -la")
+    ck("chữ không dấu → vẫn gõ từng phím như cũ (không đụng bộ nhớ copy)", KL["clip"] == "echo 'Tiếng Việt'" and EVK[:2] == [(38, 1), (38, 0)] and len(EVK) == 12, EVK)
+    KWS["mute"] = True; cp.act_t = 0.0; del EVK[:]; t0 = time.time()
+    k_m = cp.paste(1)
+    ck("KWin không gọi ngược (bản KWin lạ) → chờ tối đa ~1,5 giây rồi dán bằng Shift+Insert, ghi nhật ký", k_m is None and EVK == SHIFT_INS and time.time() - t0 < 4
+       and any("chua hoi duoc KWin" in x for x in KWS.get("log", [])), (k_m, EVK, round(time.time() - t0, 2), KWS.get("log", [])[-2:]))
+    cp.paste(1); cp.paste(1); n_load = KWS["calls"].count("loadScript"); del EVK[:]; t0 = time.time(); cp.paste(1)
+    ck("hỏng 3 lần liền → thôi hỏi KWin (dán ngay bằng Shift+Insert, không chờ)", EVK == SHIFT_INS and KWS["calls"].count("loadScript") == n_load and time.time() - t0 < 0.5,
+       (EVK, time.time() - t0))
+    KL["down"] = True; KL["clip"] = None; del EVK[:]
+    cp2 = K.Cap(lambda m: None, bus_addr=ADDR); cp2.inp = _Inp(); cp2.wl = False
+    cp2.text("ă")
+    ck("không có wl-copy, Klipper cũng không nhận → chữ có dấu gửi keysym Unicode như cũ", ("sym", 0x01000103, 1) in EVK and KL["clip"] is None, EVK)
+    cp.close(); cp2.close()
+    ck("đóng cbcap → đóng luôn bus riêng", cp.sb is None and cp2.sb is None)
+finally:
+    if _old_rt is None: os.environ.pop("XDG_RUNTIME_DIR", None)
+    else: os.environ["XDG_RUNTIME_DIR"] = _old_rt
 print("4. ĐẦU-CUỐI: máy chủ phát hình thật ⇄ cbremote (root) ⇄ cbcap (tiến trình riêng) ⇄ người xem")
 import pwd                                            # noqa: E402
 import cbremote as CR                                 # noqa: E402

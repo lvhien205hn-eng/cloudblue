@@ -213,6 +213,26 @@ def main():
         v.c.send(R.C_TEXT, app.encode()); time.sleep(2.5); t_app["%d-%s-2-go-ten" % (i + 1, app)] = time.time()
         key(K_ENTER); time.sleep(wait_s); t_app["%d-%s-3-enter" % (i + 1, app)] = time.time()
     t_app["3-xong"] = time.time()
+    # 23/11b: DÁN như khách — app / web: khách GIỮ Ctrl (phím Ctrl đã gửi sang máy) rồi bấm V → gói Dán (chữ của máy khách) thay cho phím V.
+    #         Firefox (ô địa chỉ, Ctrl+L) · Konsole MỚI qua menu: dán lệnh → Enter (lệnh chạy = chữ đã vào; cb-post.sh đọc tệp ~/cb-dan*.txt) ·
+    #         gõ chữ có dấu (đi qua bộ nhớ copy) · Ctrl+Shift+V (gói dán kiểu 2)
+    K_CTRL, K_SHIFT, K_L = 113, 59, 40
+
+    def paste(s, mode=1):
+        mods = (K_CTRL, K_SHIFT) if mode == 2 else (K_CTRL,)
+        for k in mods: v.c.send(R.C_KEY, struct.pack(">BII", 0, k, 0)); time.sleep(0.08)
+        v.c.send(R.C_CLIP, bytes([mode]) + s.encode("utf-8")); time.sleep(1.5)
+        for k in reversed(mods): v.c.send(R.C_KEY, struct.pack(">BII", 1, k, 0)); time.sleep(0.08)
+        time.sleep(0.5)
+    v.c.send(R.C_KEY, struct.pack(">BII", 0, K_L, 0x1000)); time.sleep(0.08); v.c.send(R.C_KEY, struct.pack(">BII", 1, K_L, 0x1000)); time.sleep(1.2)
+    paste("cloudblue dan vao Firefox OK"); time.sleep(1.0); t_app["4-dan-firefox"] = time.time()
+    key(K_ESC); time.sleep(0.5); key(K_ESC); time.sleep(1.0)
+    click(1100, 64600); time.sleep(2.5); v.c.send(R.C_TEXT, b"konsole"); time.sleep(2.5); key(K_ENTER); time.sleep(8)
+    t_app["5-konsole-moi"] = time.time()
+    paste("echo CB-DAN-OK > ~/cb-dan.txt"); key(K_ENTER); time.sleep(1.5)
+    v.c.send(R.C_TEXT, "echo 'Tiếng Việt OK' > ~/cb-viet.txt".encode("utf-8")); time.sleep(2.0); key(K_ENTER); time.sleep(1.5)
+    paste("echo CB-DAN2-OK > ~/cb-dan2.txt", mode=2); key(K_ENTER); time.sleep(2.0)
+    t_app["6-konsole-dan"] = time.time()
     st = None
     with v.lock:
         for m in v.rx:

@@ -11,12 +11,15 @@
 #      có từ Plasma 6.3); chờ tối đa PORTAL_START_S giây rồi ĐÓNG phiên (KDE gỡ hộp hỏi đang treo) + báo lỗi rõ cho người xem
 #    · GStreamer pipewiresrc → thu cỡ → khung thô I420 → ffmpeg (x264, CÙNG tham số nén với máy Windows do root đưa sang) → RTP → UDP
 #      127.0.0.1:<cổng root mở>. Không có ffmpeg/libx264 thì nén luôn bằng GStreamer (x264enc → rtph264pay → udpsink).
-#  Lệnh (1 gói JSON / lần, root → đây): start / stop / move / btn / wheel / key / text / clip_set / clip_get / size / bye
+#    · 23.11b — DÁN: khách bấm Dán / Ctrl+V mà chữ không vào Konsole (cửa sổ dòng lệnh không dán bằng Ctrl+V; máy không có wl-copy thì bộ
+#      nhớ copy còn không đặt được). Giờ: đặt bộ nhớ copy bằng wl-copy, không có thì nhờ Klipper (bộ nhớ copy của Plasma, D-Bus); hỏi KWin
+#      cửa sổ đang chọn là gì → dòng lệnh dán Ctrl+Shift+V, app thường Ctrl+V, không hỏi được thì Shift+Insert (cả 2 loại đều nhận).
+#  Lệnh (1 gói JSON / lần, root → đây): start / stop / move / btn / wheel / key / text / clip_set / clip_get / paste / size / bye
 #  Chạy thử:  python3 cbcap.py probe [giây]   → in từng bước dạng JSON (CI)
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "23.11a"
+CAP_VER = "23.11b"
 APP_ID = "vn.cloudblue.remote"
 OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
 PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
@@ -238,7 +241,7 @@ class DBus:
             while True:
                 m = self._read(deadline)
                 if pred(m): return m
-                if m["type"] in (2, 3, 4):
+                if m["type"] in (1, 2, 3, 4):                     # 1 = có chương trình khác GỌI vào đây (script KWin báo cửa sổ đang chọn)
                     self.pending.append(m); del self.pending[:-200]
 
     def call(self, dest, path, iface, member, sig="", args=(), timeout=15.0, with_fds=False):
@@ -371,6 +374,42 @@ for _i, _ch in enumerate("abcdefghijklmnopqrstuvwxyz"):
     US[_ch] = (VK2EV[0x41 + _i], 0); US[_ch.upper()] = (VK2EV[0x41 + _i], 1)
 for _i, (_d, _s) in enumerate(zip("0123456789", ")!@#$%^&*(")):
     US[_d] = (VK2EV[0x30 + _i], 0); US[_s] = (VK2EV[0x30 + _i], 1)
+
+# ---- 23.11b · DÁN. Konsole / cửa sổ dòng lệnh: Ctrl+V là ^V của bash (không dán) → phải Ctrl+Shift+V. xterm / urxvt: Shift+Insert dán VÙNG CHỌN
+#      (Klipper đặt cả bộ nhớ copy lẫn vùng chọn). Không biết cửa sổ gì: Shift+Insert — Konsole, Firefox, Chrome / Electron, app KDE / GTK,
+#      LibreOffice, ô nhập chữ của Wine đều coi là Dán.
+TERM_APPS = frozenset(("konsole", "yakuake", "alacritty", "kitty", "foot", "footclient", "wezterm", "wezterm-gui", "ghostty", "gnome-terminal",
+                       "gnome-terminal-server", "terminal", "console", "kgx", "ptyxis", "tilix", "terminator", "xfce4-terminal", "qterminal",
+                       "lxterminal", "mate-terminal", "terminology", "sakura", "guake", "tilda", "cool-retro-term", "deepin-terminal", "rio",
+                       "contour", "blackbox", "warp", "termite", "cosmic-term", "wave", "tabby", "hyper"))
+SEL_APPS = frozenset(("xterm", "uxterm", "urxvt", "rxvt", "urxvt256c", "urxvtc", "st", "st-256color"))
+PASTE_KEYS = {"term": (29, 42, 47), "app": (29, 47), "sel": (42, 110), None: (42, 110)}           # Ctrl+Shift+V · Ctrl+V · Shift+Insert
+PASTE_NAME = {"term": "Ctrl+Shift+V", "app": "Ctrl+V", "sel": "Shift+Insert", None: "Shift+Insert"}
+KLIPPER = ("org.kde.klipper", "/klipper", "org.kde.klipper.klipper")
+KWIN_SCRIPTING = ("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting")
+ACT_PATH, ACT_IFACE = "/vn/cloudblue/cap", "vn.cloudblue.Cap"
+ACT_TTL_S = 1.0                                               # nhớ loại cửa sổ chừng này giây (gõ chữ có dấu từng chữ không phải hỏi KWin mỗi chữ)
+# Script KWin (Plasma 6: workspace.activeWindow · Plasma 5: activeClient): đọc tên cửa sổ đang chọn rồi GỌI NGƯỢC về cbcap (tên bus riêng) qua D-Bus.
+ACTIVE_JS = ('(function () {\n'
+             '    var w = workspace.activeWindow || workspace.activeClient, r = "";\n'
+             '    if (w) r = [w.resourceClass, w.resourceName, w.desktopFileName].map(function (x) { return x ? String(x) : ""; }).join("\\n");\n'
+             '    callDBus(%s, "%s", "%s", "Active", %s + "\\n" + r);\n'
+             '})();\n')
+
+
+def app_kind(info):
+    """Tên cửa sổ KWin báo (resourceClass / resourceName / desktopFileName, mỗi dòng 1 cái) → "term" (dòng lệnh) · "sel" (xterm…) · "app" ·
+       None (không có cửa sổ nào đang chọn)."""
+    names = set()
+    for x in str(info or "").lower().split("\n"):
+        x = x.strip()
+        if x.endswith(".desktop"): x = x[:-8]
+        if not x: continue
+        names.update((x, x.rsplit(".", 1)[-1], x.rsplit("/", 1)[-1]))
+    if not names: return None
+    if names & SEL_APPS: return "sel"
+    if names & TERM_APPS or any(n.endswith("-terminal") or n.endswith(".terminal") for n in names): return "term"
+    return "app"
 
 
 def pw_src(node, fd):
@@ -853,6 +892,8 @@ class Cap:
         self.acc = [0.0, 0.0]; self.wl = None; self.pump = None; self.pt = None   # pt: chuột cuối cùng (0..65535) cho con trỏ tự vẽ
         self.kw = None; self.inp = None; self.backend = None; self.node = None; self.size = (0, 0); self.own = False; self.why = ""
         self.first = None                                             # thời gian mở lần đầu (giây) — ghi nhật ký / chạy thử
+        self.sb = None; self.act_n = 0; self.act_fail = 0; self.act_t = 0.0; self.act_kind = None; self.act_info = ""   # 23.11b: dán (bus riêng + KWin)
+        self.paste_last = False; self.klip_told = False
 
     def _drop(self):
         if self.kw is not None: self.kw.close()
@@ -958,6 +999,7 @@ class Cap:
         with self.lock:
             self.stop()
             self._drop()
+            self._sbus_drop()
 
     # ---- chuột / phím: toạ độ người xem 0..65535 trên cả màn hình (đi qua KWin trực tiếp hoặc cổng XDG — cùng tên hàm) ----
     def _in(self):
@@ -992,9 +1034,9 @@ class Cap:
     def text(self, s):
         p = self._in()
         if p is None: return
-        if any(ch not in US for ch in s) and self.clip_set(s):           # chữ có dấu / ký tự lạ: dán qua bộ nhớ copy (Ctrl+V)
+        if any(ch not in US for ch in s) and self.clip_set(s):           # chữ có dấu / ký tự lạ: dán qua bộ nhớ copy (đúng phím dán của cửa sổ đang chọn)
             time.sleep(0.05)
-            for c, d in ((29, 1), (47, 1), (47, 0), (29, 0)): p.keycode(c, d)
+            self.paste(1)
             return
         for ch in s:
             m = US.get(ch)
@@ -1012,17 +1054,105 @@ class Cap:
             self.wl = all(subprocess.run(["sh", "-c", "command -v " + t], capture_output=True).returncode == 0 for t in ("wl-copy", "wl-paste"))
         return self.wl
 
+    # ---- bus phiên RIÊNG cho bộ nhớ copy (Klipper) + hỏi KWin cửa sổ đang chọn (không đụng bus cổng XDG đang chở chuột / phím)
+    def _sbus(self):
+        if self.sb is None: self.sb = DBus(self.bus_addr, timeout=3.0)
+        return self.sb
+
+    def _sbus_drop(self):
+        b, self.sb = self.sb, None
+        if b is not None: b.close()
+
+    def _scall(self, dest, path, iface, member, sig="", args=(), timeout=2.0):
+        """Gọi hàm trên bus riêng. Bus đứt / quá giờ → bỏ kết nối (lần sau nối lại). Chương trình kia trả lỗi → DBusError (giữ kết nối)."""
+        try: return self._sbus().call(dest, path, iface, member, sig, args, timeout=timeout)
+        except (OSError, DBusError) as e:
+            if isinstance(e, OSError) or "qua thoi gian" in str(e) or "dong ket noi" in str(e) or "dia chi bus" in str(e): self._sbus_drop()
+            raise
+
     def clip_set(self, s):
-        if not self._wl(): return False
-        try: return subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"], input=s.encode("utf-8"), timeout=5).returncode == 0
-        except (OSError, subprocess.TimeoutExpired): return False
+        """Đặt chữ vào bộ nhớ copy của phiên KDE: wl-copy (gói wl-clipboard) nếu máy có, không thì nhờ Klipper (bộ nhớ copy của Plasma, D-Bus —
+           đặt cả vùng chọn). → True nếu đặt được."""
+        if self._wl():
+            try:
+                if subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"], input=s.encode("utf-8"), timeout=5).returncode == 0: return True
+            except (OSError, subprocess.TimeoutExpired): pass
+        if not s: return False
+        try:
+            self._scall(*KLIPPER, "setClipboardContents", "s", [s], timeout=3.0)
+            time.sleep(0.08)                                          # Klipper đặt xong bên Wayland ngay sau khi trả lời → chờ chút mới dán
+            return True
+        except Exception as e:
+            if not self.klip_told: self.klip_told = True; self.log("bo nho copy: may khong co wl-copy, Klipper cung khong nhan (%s)" % str(e)[:160])
+            return False
 
     def clip_get(self):
-        if not self._wl(): return None
+        if self._wl():
+            try:
+                r = subprocess.run(["wl-paste", "--no-newline", "--type", "text"], capture_output=True, timeout=3)
+                return r.stdout.decode("utf-8", "replace") if r.returncode == 0 else None
+            except (OSError, subprocess.TimeoutExpired): return None
+        try: return str(self._scall(*KLIPPER, "getClipboardContents", timeout=2.0)[0])
+        except Exception: return None
+
+    def active(self):
+        """Loại cửa sổ đang chọn trên máy ("term" / "sel" / "app", xem app_kind) — nạp 1 đoạn script vào KWin, script gọi ngược về đây qua D-Bus.
+           None = không hỏi được. Nhớ ACT_TTL_S giây; hỏng 3 lần liền thì thôi hỏi (dán bằng Shift+Insert)."""
+        now = time.time()
+        if now - self.act_t < ACT_TTL_S: return self.act_kind
+        if self.act_fail >= 3: return None
+        self.act_n += 1; n = str(self.act_n); name = "cloudblue_active_%d" % os.getpid(); path = None
         try:
-            r = subprocess.run(["wl-paste", "--no-newline", "--type", "text"], capture_output=True, timeout=3)
-            return r.stdout.decode("utf-8", "replace") if r.returncode == 0 else None
-        except (OSError, subprocess.TimeoutExpired): return None
+            rt = os.environ.get("XDG_RUNTIME_DIR") or "/run/user/%d" % os.getuid()             # thư mục riêng của khách (không dùng /tmp chung)
+            if not os.path.isdir(rt) or os.stat(rt).st_uid != os.getuid(): raise DBusError("khong co thu muc rieng %s" % rt)
+            b = self._sbus()
+            path = os.path.join(rt, "cloudblue-active-%d.js" % os.getpid())
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(ACTIVE_JS % (json.dumps(b.name), ACT_PATH, ACT_IFACE, json.dumps(n)))
+            try: self._scall(*KWIN_SCRIPTING, "unloadScript", "s", [name])        # lần trước hỏng giữa chừng còn nằm trong KWin
+            except DBusError: pass
+            sid = int(self._scall(*KWIN_SCRIPTING, "loadScript", "ss", [path, name])[0])
+            if sid < 0: raise DBusError("KWin khong nap script (%d)" % sid)
+            for p in ("/Scripting/Script%d" % sid, "/%d" % sid, None):        # chạy: Plasma 6 · Plasma 5 · (cuối) chạy mọi script đã nạp
+                try:
+                    if p is None: self._scall(*KWIN_SCRIPTING, "start")
+                    else: self._scall("org.kde.KWin", p, "org.kde.kwin.Script", "run")
+                    break
+                except DBusError:
+                    if p is None or self.sb is not b: raise
+            m = b.take(lambda m: m["type"] == 1 and m["member"] == "Active" and m["path"] == ACT_PATH and m["body"]
+                       and str(m["body"][0]).split("\n", 1)[0] == n, 1.5)
+            if not m["flags"] & 1: b.send(2, {5: ("u", m["serial"]), 6: ("s", m["sender"])})   # trả lời (KWin khỏi chờ)
+            info = str(m["body"][0]).split("\n", 1)[1] if "\n" in str(m["body"][0]) else ""
+            self.act_fail = 0; self.act_t = time.time(); self.act_kind = app_kind(info)
+            self.act_info = " / ".join(x for x in info.split("\n") if x)[:120] or "(khong co cua so nao)"
+            return self.act_kind
+        except Exception as e:
+            self.act_fail += 1; self.act_t = 0.0
+            if "qua thoi gian" in str(e): self._sbus_drop()
+            self.log("dan: chua hoi duoc KWin cua so dang chon (lan %d: %s) -> dan bang Shift+Insert" % (self.act_fail, str(e)[:160]))
+            return None
+        finally:
+            if path is not None:
+                if self.sb is not None:
+                    try: self._scall(*KWIN_SCRIPTING, "unloadScript", "s", [name])
+                    except Exception: pass
+                try: os.unlink(path)
+                except OSError: pass
+
+    def paste(self, mode=1):
+        """Dán bộ nhớ copy vào cửa sổ đang chọn. mode 2 = khách tự bấm Ctrl+Shift+V (bấm đúng tổ hợp đó); còn lại chọn phím theo loại cửa sổ
+           (PASTE_KEYS: dòng lệnh Ctrl+Shift+V · app thường Ctrl+V · xterm / không biết Shift+Insert). → loại cửa sổ đã dùng."""
+        p = self._in()
+        if p is None: return None
+        kind = "term" if int(mode or 1) == 2 else self.active()
+        keys = PASTE_KEYS.get(kind, PASTE_KEYS[None])
+        for c in keys: p.keycode(c, True)
+        for c in reversed(keys): p.keycode(c, False)
+        if kind != self.paste_last:
+            self.paste_last = kind
+            self.log("dan vao %s bang %s" % ("cua so khach chon (Ctrl+Shift+V)" if int(mode or 1) == 2 else self.act_info or "?", PASTE_NAME.get(kind, "Shift+Insert")))
+        return kind
 
 
 def serve(fd):
@@ -1068,6 +1198,9 @@ def serve(fd):
                 elif op == "key": cap.key(int(j["vk"]), bool(j["d"]), bool(j.get("ext")))
                 elif op == "text": cap.text(str(j.get("s") or ""))
                 elif op == "clip_set": cap.clip_set(str(j.get("s") or ""))
+                elif op == "paste":
+                    k = cap.paste(int(j.get("m") or 1))
+                    if rid is not None: send({"id": rid, "ok": True, "kind": k})
                 elif op == "clip_get": send({"id": rid, "ok": True, "s": cap.clip_get()})
                 elif op == "size": send({"id": rid, "ok": True, "size": list(cap.size) if cap.node is not None else None, "backend": cap.backend})
                 elif op == "bye": break
@@ -1105,6 +1238,15 @@ def probe(secs=4.0):
             except Exception as e:
                 out["move_reply"] = str(e)[:200]
         cap.move(32768, 32768); cap.move(40000, 20000); out["move"] = True
+        if os.environ.get("CBCAP_PROBE_CLIP") == "1":                    # 23.11b (CI): bộ nhớ copy + hỏi KWin cửa sổ đang chọn — ĐỔI bộ nhớ copy của máy
+            try:
+                t1 = "cloudblue-probe-%d" % random.randrange(10 ** 6)
+                out["clip"] = {"wl": cap._wl(), "set": cap.clip_set(t1)}
+                time.sleep(0.3); out["clip"]["get_ok"] = cap.clip_get() == t1
+                t0 = time.time(); k = cap.active()
+                out["active"] = {"kind": k, "win": cap.act_info, "s": round(time.time() - t0, 2)}
+            except Exception as e:
+                out["clip_err"] = "%s: %s" % (type(e).__name__, str(e)[:200])
         if ok:
             rx = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); rx.bind(("127.0.0.1", 0)); rx.settimeout(0.5)
             w = min(1280, sz[0] or 1280) // 2 * 2; h = (w * (sz[1] or 720) // (sz[0] or 1280)) // 2 * 2
@@ -1123,7 +1265,8 @@ def probe(secs=4.0):
     finally:
         cap.close()
     print(json.dumps(out, ensure_ascii=False), flush=True)
-    print("cbcap probe: backend=%s virtual=%d rtp=%d err=%s" % (out.get("backend"), 1 if out.get("virtual") else 0, out.get("rtp_packets", 0), str(out.get("err") or "-")[:160]), flush=True)
+    print("cbcap probe: backend=%s virtual=%d rtp=%d err=%s%s" % (out.get("backend"), 1 if out.get("virtual") else 0, out.get("rtp_packets", 0), str(out.get("err") or "-")[:160],
+          (" clip=%s active=%s" % (json.dumps(out.get("clip") or out.get("clip_err")), json.dumps(out.get("active"), ensure_ascii=False))) if "clip" in out or "clip_err" in out else ""), flush=True)
     return 0 if out.get("session") and (not ok or out.get("rtp_packets", 0) > 20) else 1
 
 

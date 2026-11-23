@@ -391,7 +391,9 @@ class StreamClient:
         if fpsx is not None: self.fpsx = int(fpsx) or None; j["fpsx"] = int(fpsx)      # 21.11k: 0 = về theo mức nét
         self._send(C_QUALITY, json.dumps(j).encode())
     def keyframe(self): self._send(C_KEYFRAME)
-    def clip_set(self, text, paste=True): self._send(C_CLIP, bytes([1 if paste else 0]) + text.encode("utf-8"))
+    def clip_set(self, text, paste=True):
+        """paste: False = chỉ đặt bộ nhớ copy · True = dán ngay (máy tự chọn phím dán) · 2 = khách bấm Ctrl+Shift+V (máy bấm đúng tổ hợp đó)."""
+        self._send(C_CLIP, bytes([2 if paste == 2 else 1 if paste else 0]) + text.encode("utf-8"))
 
     def close(self):
         self.stop_flag = True

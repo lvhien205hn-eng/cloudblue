@@ -117,8 +117,8 @@ sleep 10
   install -D -m 0644 /opt/cloudblue/linux/cbcap.py /usr/local/lib/cloudblue/cbcap.py
   U=\$(getent passwd 1000 | cut -d: -f1)
   PY=/usr/local/lib/cloudblue/cbcap-py; [ -x "\$PY" ] || PY=python3
-  timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 \
-      "\$PY" -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
+  timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 CBCAP_PROBE_CLIP=1 \
+      "\$PY" -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1800
   echo "--- cbcap probe (man hinh ao: may khong cam man hinh, 22.11h)"
   timeout 120 runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0 CBCAP_VIRTUAL=1 \
       "\$PY" -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
@@ -127,6 +127,9 @@ sleep 10
       python3 -I -B /usr/local/lib/cloudblue/cbcap.py probe 4 2>&1 | tail -n 3 | cut -c1-1500
   echo "--- app cho khach (23/11: khach bao khong co trinh duyet, khong mo duoc terminal)"
   echo "nguoi xem CI da mo qua menu: konsole=\$(pgrep -u "\$U" -c -x konsole || true) firefox=\$(pgrep -u "\$U" -c -f /usr/lib/firefox/firefox || true) units=\$(runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus systemctl --user list-units --no-legend 'app-*konsole*' 'app-*firefox*' 2>/dev/null | awk '{print \$1}' | tr '\n' ' ' | cut -c1-300)"
+  echo "--- dan chu (23/11b: khach dan vao Konsole khong duoc)"
+  echo "dan: konsole=\$(cat /home/\$U/cb-dan.txt 2>/dev/null || echo khong) viet=\$(cat /home/\$U/cb-viet.txt 2>/dev/null || echo khong) ctrl_shift_v=\$(cat /home/\$U/cb-dan2.txt 2>/dev/null || echo khong) wl_copy=\$(command -v wl-copy >/dev/null 2>&1 && echo co || echo khong) klipper=\$(runuser -u "\$U" -- env XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus busctl --user list --no-legend 2>/dev/null | grep -c '^org.kde.klipper ')"
+  grep -a -E "dan vao|dan:|bo nho copy" /opt/cloudblue/logs/remote.log 2>/dev/null | tail -n 6 | cut -c1-220
   for p in firefox chromium konsole dolphin kate alacritty spectacle ark gwenview okular plasma-desktop plasma-workspace kactivitymanagerd kio systemsettings cachyos-hello octopi shelly; do
     printf '%s=%s ' "\$p" "\$(pacman -Q "\$p" 2>/dev/null | cut -d' ' -f2 || true)"; done; echo
   echo "desktop_files=\$(ls /usr/share/applications/*.desktop 2>/dev/null | wc -l) co: \$(ls /usr/share/applications 2>/dev/null | grep -i -E 'firefox|konsole|dolphin|kate|alacritty|systemsettings' | tr '\n' ' ')"
