@@ -39,6 +39,7 @@
 #     Tai khoan Windows giu quyen Admin + tu dang nhap; KHONG dung ma dang ky may PC (may chu khong vao danh sach may PC cho thue).
 #     Script hoi (chi nhap vao cua so, KHONG gui ai): khoa Supabase service_role, ma Cloudflare (tuy chon), gia lap + bo cai gia lap (keo tha).
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
+#     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
 #  23.11g - DUNG LINK thay cho tep: moi cho nhan tep (-Iso, -Driver "1=...", -BoCai, va cac o keo tha) deu nhan LINK tai
 #     (link chia se Google Drive, hoac link tai thang http / https). Script tu tai ve <thu muc lam viec>\dl\tai (lan sau dung lai, khong tai lai).
@@ -804,7 +805,13 @@ try {
   $Work = Clean-Path $Work
   if ($Work -match '\s') { Stop-Build ("Thu muc lam viec khong duoc co dau cach: " + $Work + "  (vi du dung -Work D:\cb-work)") }
   $outName = "\CloudBlue-PC.iso"
-  if ($MayChu) { $outName = "\CloudBlue-MayChu.iso" }
+  if ($MayChu) {
+    # ISO may chu: ten theo gia lap (khi da chon bang -GiaLap) de 2 ban MuMu / LDPlayer khong ghi de len nhau
+    $outName = "\CloudBlue-MayChu.iso"
+    $glName = ("" + $GiaLap).Trim().ToLower()
+    if ($glName -eq "ld") { $outName = "\CloudBlue-MayChu-LD.iso" }
+    elseif ($glName -eq "mumu") { $outName = "\CloudBlue-MayChu-MuMu.iso" }
+  }
   if (-not $Out) { $Out = Join-Path (Split-Path -Qualifier $Work) $outName }
   $Out = Clean-Path $Out
   if ($Out -match '\s') { Stop-Build ("Duong dan ISO moi khong duoc co dau cach: " + $Out) }
