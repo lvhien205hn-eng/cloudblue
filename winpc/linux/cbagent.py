@@ -38,6 +38,11 @@ PACDB_MAX_AGE_S = 7 * 86400                                      # danh sách c�
 PACDB_RETRY_S = 3600                                             # chưa tải được (chưa có mạng / khách đang chạy pacman) → 1 giờ sau thử lại
 ARCH_MIRRORLIST = "/etc/pacman.d/mirrorlist"
 ARCH_GEO = "Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch"   # máy chủ gói chính thức của Arch (tự chọn nơi gần nhất)
+GRUB_DEFAULT = "/etc/default/grub"                                # 23.11c: phần mềm khách đổi tham số nhân kiểu máy GRUB (VD AccountOps)
+SDBOOT_DIR = "/boot/loader/entries"                               # máy CloudBlue khởi động bằng systemd-boot (cb-install)
+GRUB_DIR = "/boot/grub"
+CB_RELEASE = "/etc/cloudblue-release"                             # cb-post.sh ghi lúc cài máy = mốc giờ cài
+CMDLINE_OWN = re.compile(r"^(root|rootflags|rootfstype|BOOT_IMAGE|initrd)=|^(rw|ro)$")   # phần CloudBlue giữ, không lấy từ file grub
 
 
 def P(p):
@@ -139,6 +144,82 @@ def pacdb_sync(log=lambda m: None):
     n = pacdb_count()
     if rc == 0 and n: return True, "%d kho" % n
     return False, (" ".join(out.split())[-160:] or "pacman loi") + (" (%d kho)" % n if n else "")
+
+
+def grub_cmdline_tokens(path=None):
+    """Tham số nhân trong /etc/default/grub (GRUB_CMDLINE_LINUX + GRUB_CMDLINE_LINUX_DEFAULT, dòng gán sau cùng thắng). Chỉ ĐỌC chữ, không chạy
+       file. Không có file → None."""
+    txt = read(path or GRUB_DEFAULT, None)
+    if txt is None: return None
+    val = {}
+    for line in txt.splitlines():
+        m = re.match(r"""^\s*(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)=(?:"([^"]*)"|'([^']*)'|([^\s"'#]*))\s*(?:#.*)?$""", line)
+        if m: val[m.group(1)] = next(g for g in m.groups()[1:] if g is not None)
+    return [t for t in (val.get("GRUB_CMDLINE_LINUX", "") + " " + val.get("GRUB_CMDLINE_LINUX_DEFAULT", "")).split() if not t.startswith("$")]
+
+
+def cmdline_merge(base, extra):
+    """Dòng options của mục systemd-boot = phần của CloudBlue (root=…, rw, quiet…) + tham số trong /etc/default/grub (trùng tên → lấy bản grub)."""
+    key = lambda t: t.split("=", 1)[0]
+    ex = list(dict.fromkeys(t for t in extra if t and not CMDLINE_OWN.match(t)))
+    keys = {key(t) for t in ex}
+    return [t for t in base if CMDLINE_OWN.match(t) or key(t) not in keys] + ex
+
+
+def grub_dir_fix(entries=None, gdir=None):
+    """Máy khởi động bằng systemd-boot vẫn có gói grub: phần mềm khách chạy "grub-mkconfig -o /boot/grub/grub.cfg" báo lỗi vì thiếu /boot/grub
+       ("grub-mkconfig failed; old cmdline stays") → tạo thư mục (grub.cfg chỉ để công cụ chạy xong; máy vẫn khởi động bằng systemd-boot).
+       → True nếu vừa tạo."""
+    entries, gdir = entries or SDBOOT_DIR, gdir or GRUB_DIR
+    if os.path.isdir(entries) and not os.path.isdir(gdir) and shutil.which("grub-mkconfig"):
+        os.makedirs(gdir, exist_ok=True); return True
+    return False
+
+
+def sdboot_sync(state_path, grub=None, entries=None, marker=None):
+    """23.11c: phần mềm khách (VD AccountOps: mitigations=off zswap.enabled=0) đổi tham số nhân kiểu máy GRUB (sửa /etc/default/grub rồi
+       grub-mkconfig) — máy CloudBlue khởi động bằng systemd-boot nên không ăn → chép tham số trong /etc/default/grub sang các mục
+       /boot/loader/entries/*.conf (khởi động lại là có hiệu lực, như máy cài bằng trình cài gốc). Chỉ làm khi file grub đổi SAU lúc cài máy;
+       phần của CloudBlue (root=, rootflags=, rw…) giữ nguyên. → chữ báo (đã chép / lỗi) | None. Không ném lỗi."""
+    grub, entries, marker = grub or GRUB_DEFAULT, entries or SDBOOT_DIR, marker or CB_RELEASE
+    try:
+        if not os.path.isdir(entries) or not os.path.isfile(grub): return None
+        m = os.path.getmtime(grub)
+        try:
+            with open(state_path, encoding="utf-8") as f: st = json.load(f)
+        except (OSError, ValueError): st = {}
+        if not isinstance(st, dict): st = {}
+        if st.get("mtime") == m: return None
+        base = st.get("base") if isinstance(st.get("base"), dict) else {}
+        names = sorted(n for n in os.listdir(entries) if n.endswith(".conf") and re.fullmatch(r"[A-Za-z0-9._@+-]{1,80}", n))
+        cur = {}
+        for n in names:
+            mo = re.search(r"(?m)^options[ \t]+(.*)$", read(os.path.join(entries, n), ""))
+            cur[n] = mo.group(1).split() if mo else []
+            if not isinstance(base.get(n), list): base[n] = cur[n]
+
+        def save():
+            tmp = state_path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f: json.dump({"mtime": m, "base": base}, f)
+            os.replace(tmp, state_path)
+        try: inst = os.path.getmtime(marker)
+        except OSError: inst = 0
+        if not st and m <= inst + 2: save(); return None             # file grub chưa đổi từ lúc cài → chỉ ghi phần gốc của từng mục
+        extra = grub_cmdline_tokens(grub) or []
+        done = []
+        for n in names:
+            new = cmdline_merge(base[n], extra)
+            if new == cur[n]: continue
+            p = os.path.join(entries, n); txt = read(p, ""); line = "options " + " ".join(new)
+            txt = re.sub(r"(?m)^options[ \t]+.*$", lambda _: line, txt, count=1) if re.search(r"(?m)^options[ \t]", txt) else txt.rstrip("\n") + "\n" + line + "\n"
+            with open(p + ".cbtmp", "w", encoding="utf-8") as f: f.write(txt)
+            os.replace(p + ".cbtmp", p); done.append(n)
+        save()
+        if done: return "đã chép tham số nhân từ /etc/default/grub sang %d mục khởi động (%s) — khởi động lại máy là có hiệu lực" % (len(done), " ".join(extra)[:200])
+        return None
+    except Exception as e:
+        return "lỗi chép tham số nhân: %r" % (e,)
 
 
 # ====================================================================================== tệp + giờ (thay cbsys.WinSys cho lõi agent)
@@ -547,6 +628,7 @@ class LinuxAgent(pcagent.Agent):
         self.pac_state = ""                                       # 23.11c danh sách gói pacman: "" chưa xét · "ok" · "busy" đang tải · "fail"
         self.pac_try = None
         self.pac_ok_at = None
+        self.grub_dir_done = False
 
     def p(self, rel): return os.path.join(self.base, P(rel))
 
@@ -653,9 +735,21 @@ class LinuxAgent(pcagent.Agent):
             self.pac_state = "fail"; self.log("pacman: lỗi xét danh sách gói: %r" % (e,))
             return "fail"
 
+    def boot_heal(self):
+        """23.11c: phần mềm khách đổi tham số nhân kiểu GRUB → tạo /boot/grub (grub-mkconfig chạy được) + chép tham số sang systemd-boot."""
+        try:
+            if not self.grub_dir_done:
+                self.grub_dir_done = True
+                if grub_dir_fix(): self.log("tham số nhân: tạo /boot/grub — phần mềm khách chạy grub-mkconfig được (máy vẫn khởi động bằng systemd-boot)")
+            r = sdboot_sync(self.p("cmdline.json"))
+            if r: self.log("tham số nhân: " + r)
+            return r
+        except Exception as e:
+            self.log("tham số nhân: lỗi %r" % (e,)); return None
+
     def tick(self):
         nap = super().tick()
-        if not self.rebooting: self.pac_heal()
+        if not self.rebooting: self.pac_heal(); self.boot_heal()
         return nap
 
     def remote_keep(self):

@@ -424,6 +424,9 @@ if ! efibootmgr 2>/dev/null | grep -q "Linux Boot Manager"; then                
         || back_to_pe "khong tao duoc muc khoi dong UEFI cho CachyOS"
 fi
 say "   nhan:$KERNELS · mac dinh $DEF · $(efibootmgr 2>/dev/null | grep -m1 '^BootOrder' || echo 'BootOrder ?')"
+# 23.11c: phần mềm khách đổi tham số nhân kiểu máy GRUB (sửa /etc/default/grub rồi "grub-mkconfig -o /boot/grub/grub.cfg" — VD AccountOps)
+# → có /boot/grub thì grub-mkconfig chạy xong (máy vẫn khởi động bằng systemd-boot); agent chép tham số trong /etc/default/grub sang các mục ở trên.
+[ -x "$T/usr/bin/grub-mkconfig" ] && install -d "$T/boot/grub"
 
 # ---------------------------------------------------------------- 9. phần CloudBlue (agent) + dấu "máy đang chạy CachyOS"
 say "9/9 phan mem CloudBlue"
