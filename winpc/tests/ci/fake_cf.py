@@ -39,7 +39,13 @@ class H(BaseHTTPRequestHandler):
         if p == "/_state": return self.out(200, S)
         if p == "/_reset": reset(); return self.out(200, {"ok": True})
         if p == "/_nodes": S["nodes"] = body if isinstance(body, list) else S["nodes"]; return self.out(200, {"ok": True})     # đổi danh sách máy chủ "đang báo về web"
-        if p.startswith("/rest/v1/cloud_nodes"):                                  # ---- Supabase giả
+        if p.startswith("/rest/v1/"):                                             # ---- Supabase giả
+            # Giống Supabase thật: khoá sb_secret_… gửi từ thứ tự xưng là TRÌNH DUYỆT (User-Agent "Mozilla/…" — mặc định của PowerShell) → 401 dù khoá đúng
+            if (self.headers.get("apikey") or "").startswith("sb_secret_") and (self.headers.get("User-Agent") or "").lower().startswith("mozilla/"):
+                S["browser_block"] = S.get("browser_block", 0) + 1
+                return self.out(401, {"message": "Forbidden use of secret API key in browser",
+                                      "hint": "Secret API keys can only be used in a protected environment and should never be used in a browser. Delete this secret API key immediately!"})
+        if p.startswith("/rest/v1/cloud_nodes"):
             if self.headers.get("apikey") != SBKEY or self.headers.get("Authorization") != "Bearer " + SBKEY: return self.out(401, {"message": "Invalid API key"})
             now = time.time()
             return self.out(200, [{"id": n["id"], "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - n["age"]))} for n in S["nodes"]])
