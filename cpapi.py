@@ -799,13 +799,25 @@ def win_refit(sh, t, sdk, sleep=time.sleep, dpi=320, geo=None):
     find = lambda: next((x for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["comp"] == comp and x["user"] == u and x["disp"] == 0), None)
     resize = lambda d, r=b: sh(f"am task resize {int(d['id'])} {r[0]} {r[1]} {r[2]} {r[3]} 2>&1", 15)
     if sdk >= WIN_SCM_SDK:
+        others = [w for w in win_tasks(sh("am stack list 2>&1", 15), sdk)
+                  if w["mode"] == "freeform" and w["disp"] == 0 and w["vis"] and w["id"] != t["id"] and w["type"] in ("standard", "")]
         sh(f"am force-stop --user {u} {pkg} 2>&1", 15); sleep(0.4)
         sh(f"timeout 25 am start -W --user {u} --display 0 --windowingMode {WIN_FULLSCREEN} {AS_ICON} -n {shlex.quote(comp)} 2>&1", 40); sleep(1.0)
         d = find()
         if not d: return None
         if d["mode"] != "freeform": d = win_to(sh, d, WIN_FREEFORM, sdk, sleep)
         if not d: return None
-        resize(d); win_settle(sh, sleep); resize(d)                # màn xoay về dọc sau khi game ngang thành cửa sổ → đặt lại đúng chỗ
+        resize(d); st2 = win_settle(sh, sleep)                     # màn xoay về dọc sau khi game ngang thành cửa sổ → đặt lại đúng chỗ
+        if geo and geo["w"] <= geo["h"] and st2["geo"]["w"] > st2["geo"]["h"] and not win_turned(sh, st2, sleep):
+            # máy ảo 33–35: game ép ngang mở toàn màn rồi thành cửa sổ mà màn KHÔNG tự xoay về dọc (cửa sổ lệch xuống dưới màn) → về màn
+            # chính (màn xoay về dọc) rồi đưa các cửa sổ lên lại: cửa sổ khác giữ đúng chỗ, game lên trên cùng ở chỗ cũ
+            sh("input keyevent 3", 10)
+            for _ in range(10):
+                sleep(0.5); g = win_state(sh)["geo"]
+                if g["w"] <= g["h"]: break
+            for w in reversed(others): win_front(sh, w, sdk); resize(w, w["b"])
+            win_front(sh, d, sdk)
+        resize(d); win_settle(sh, sleep); resize(d)
         return dict(d, b=b)
     mv, helper = "", False
     if sdk < 29:
