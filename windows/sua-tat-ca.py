@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
-#        23/11b — 🗗 TAB CỬA SỔ NHỎ đợt 2: GAME VỪA KHUNG + TAB NỀN ỔN ĐỊNH. Máy Android 15: không ép game đổi cỡ nữa → thu nhỏ tab thì Android
-#                       thu nhỏ CẢ HÌNH game vừa cửa sổ (không tràn viền; game mở sau khi đặt là vừa ngay). Mọi bản Android: nút mới
-#                       🔄 "Mở lại vừa khung" (cpapi do=refit) mở lại game ngay trong cửa sổ cho game vẽ đúng cỡ (game khởi động lại). Tab nhỏ
+#        23/11b — 🗗 TAB CỬA SỔ NHỎ đợt 2: GAME VỪA KHUNG + TAB NỀN ỔN ĐỊNH. Máy Android 12L / 13 / 14 / 15: không ép game đổi cỡ nữa → thu
+#                       nhỏ tab thì Android thu nhỏ CẢ HÌNH game vừa cửa sổ (không tràn viền; game mở sau khi đặt là vừa ngay). Android 10–15:
+#                       nút mới 🖼 "Mở lại vừa khung" (cpapi do=refit) mở lại game ngay trong cửa sổ cho game vẽ đúng cỡ (game khởi động lại;
+#                       Android 9 báo chưa hỗ trợ, không tắt game). Tab nhỏ
 #                       bị app khác che: miễn tối ưu pin / nhóm đang dùng / cho chạy nền, đưa lên lại bằng `am task focus` (không gửi lệnh
 #                       mở cho game), phonectl giữ tới 64 app chạy nền. Cập nhật cpapi (bật lại ~2 giây) + phonectl; máy khách KHÔNG tắt.
 #        23/11a — 🗗 TAB CỬA SỔ NHỎ (như Redfinger): cpapi bản 23/11a có /cpapi/<máy>/win — khách bấm "Thu nhỏ tab" (web / app) → app đang

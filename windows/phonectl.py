@@ -905,7 +905,7 @@ PCTL_SUB = "23/11b"           # 17/11e3: danh sách máy không bao giờ bị g
                               #         create --disk N · lệnh disk TÊN --gb N (khách MUA THÊM bộ nhớ) · máy cũ để nguyên
                               # 22/11a: 🌐 PROXY RIÊNG TỪNG MÁY (khách dán IP:Port:User:Pass) — cbproxy trong máy (root, iptables) · lệnh proxy /
                               #         proxykeep · tự bật lại sau khi máy bật / khởi động lại / mỗi 5 phút · proxy chết → máy tự đi mạng thường
-                              # 23/11b: 🗗 tab cửa sổ nhỏ — Android 15+ không ép đổi cỡ (game thu nhỏ thì Android thu nhỏ cả hình vừa cửa sổ) ·
+                              # 23/11b: 🗗 tab cửa sổ nhỏ — Android 12L+ không ép đổi cỡ (game thu nhỏ thì Android thu nhỏ cả hình vừa cửa sổ) ·
                               #         giữ tới 64 app chạy nền (tab nhỏ bị app khác che không bị Android tắt sớm)
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
@@ -1535,10 +1535,10 @@ TUNE = (# CLONE TAB cần Android cho phép nhiều người dùng (máy ảo m�
         # và app bấm vào chỉ phóng to icon rồi KHÔNG MỞ — lỗi khách báo 09/11)
         "settings put global window_animation_scale 0.5; settings put global transition_animation_scale 0.5; "
         "settings put global animator_duration_scale 0.5; settings put global package_verifier_enable 0; "
-        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). 23/11b: Android 15+ KHÔNG ép đổi cỡ + cho
+        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). 23/11b: Android 12L+ KHÔNG ép đổi cỡ + cho
         # app không đổi cỡ vào cửa sổ → game (không đổi cỡ) thu nhỏ thì Android thu nhỏ CẢ HÌNH vừa cửa sổ, không tràn viền (cpapi.WIN_SCM_SDK)
         "settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
-        "if [ \"$(getprop ro.build.version.sdk)\" -ge 35 ] 2>/dev/null; then settings put global force_resizable_activities 0; "
+        "if [ \"$(getprop ro.build.version.sdk)\" -ge 32 ] 2>/dev/null; then settings put global force_resizable_activities 0; "
         "settings put global enable_non_resizable_multi_window 1; else settings put global force_resizable_activities 1; fi; "
         # treo game qua đêm: không ngủ đông (doze), không xếp app vào nhóm hạn chế, không đóng băng app chạy nền
         "dumpsys deviceidle disable >/dev/null 2>&1; settings put global app_standby_enabled 0; "
