@@ -3226,7 +3226,33 @@ SRV_R += [
 ["Đã lưu proxy nhưng proxy CHƯA dùng được \\((.+)\\) — máy đang đi mạng thường, tự thử lại mỗi 15 giây\\.", "Proxy saved, but it does NOT work yet ({1}) — the phone uses the normal network and retries every 15 s.", ""],
 ["Chưa bật được proxy: (.+)", "Couldn't turn the proxy on: {1}", ""],
 ["Chưa áp dụng được: (.+)", "Couldn't apply it yet: {1}", ""],
+# ---- 23/11d–e · game vừa khung thật (mở lại ngay trong tab) · xoay màn thật — cùng bảng với web (play.html) ----
+["Đã thu nhỏ (.+) \\(bản clone\\) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\. Máy chuyển sang màn rộng (\\d+) dp.*", "Minimized {1} (clone) ({2} small tabs) — the game reopened so it fits its window. The phone switched to a wide {3} dp screen so tabs have room — click Normal portrait to undo.", ""],
+["Đã thu nhỏ (.+) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\. Máy chuyển sang màn rộng (\\d+) dp.*", "Minimized {1} ({2} small tabs) — the game reopened so it fits its window. The phone switched to a wide {3} dp screen so tabs have room — click Normal portrait to undo.", ""],
+["Đã thu nhỏ (.+) \\(bản clone\\) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\.", "Minimized {1} (clone) ({2} small tabs) — the game reopened so it fits its window.", ""],
+["Đã thu nhỏ (.+) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\.", "Minimized {1} ({2} small tabs) — the game reopened so it fits its window.", ""],
+["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\. (\\d+) game đã mở lại để vẽ vừa ô mới\\. Màn nhỏ nên.*", "Arranged {1} small tabs ({2} × {3}). {4} game(s) reopened to fit the new size. The screen is small, so they overlap — raise 📐 Smallest width (e.g. 600 dp) so they don't.", ""],
+["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\. (\\d+) game đã mở lại để vẽ vừa ô mới\\.", "Arranged {1} small tabs ({2} × {3}). {4} game(s) reopened to fit the new size.", ""],
+["Đã phóng to (.+) \\(bản clone\\) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\. Máy đã về mật độ cũ \\((\\d+) dp\\)\\.", "{1} (clone) is full screen again — the game reopened to fill the screen. The phone is back to its previous screen density ({2} dp).", ""],
+["Đã phóng to (.+) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\. Máy đã về mật độ cũ \\((\\d+) dp\\)\\.", "{1} is full screen again — the game reopened to fill the screen. The phone is back to its previous screen density ({2} dp).", ""],
+["Đã phóng to (.+) \\(bản clone\\) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\.", "{1} (clone) is full screen again — the game reopened to fill the screen.", ""],
+["Đã phóng to (.+) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\.", "{1} is full screen again — the game reopened to fill the screen.", ""],
+["Đã phóng to (.+) ra toàn màn\\. Hình chưa đủ màn thì bấm Vừa khung\\.", "{1} is full screen again. If the picture doesn't fill the screen, click Refit to window.", ""],
+["Đã mở lại (.+) ngay trong cửa sổ — game vẽ vừa khung \\(game vừa khởi động lại, vào lại trận nếu cần\\)\\. Hình vẫn bị cắt.*", "Reopened {1} inside its window — the game now fits (it just restarted; rejoin your match if needed). Still cut off? Click Wide landscape so the window has room.", ""],
+["Đã mở lại (.+) toàn màn — game vẽ đủ màn \\(game vừa khởi động lại, vào lại trận nếu cần\\)\\.", "Reopened {1} full screen — the game now fills the screen (it just restarted; rejoin your match if needed).", ""],
+["Chưa mở lại được (.+) — tắt app rồi mở lại từ màn chính\\.", "Couldn't reopen {1} — close the app and open it again from the home screen.", ""],
+["Đã xoay màn NGANG\\.", "The screen is now landscape.", ""],
+["Máy này chưa xoay ngang được màn chính — .*", "This phone's home screen can't turn landscape yet — apps / games that need landscape still show landscape.", ""],
+["Đã về màn DỌC — .*", "Back to portrait — the open app / game needs landscape, so it still shows landscape.", ""],
+["Đã về màn DỌC\\.", "The screen is back to portrait.", ""],
+["Đã khoá màn NGANG\\.", "Locked to landscape.", ""],
+["Đã khoá màn DỌC\\.", "Locked to portrait.", ""],
+["Chưa phóng to được tab — .*", "Couldn't maximize the tab — click the ⬜ button on that window's title bar.", ""],
+["Thiếu việc cần làm \\(thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng\\)\\.", "Missing action.", ""],
 ]
+EXACT.update({
+"💬 Nhóm Zalo ↗": "💬 Zalo group ↗",
+})
 
 
 def _tpl():
