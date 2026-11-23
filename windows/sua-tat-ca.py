@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        23/11c — 🗗 TAB CỬA SỔ NHỎ đợt 3 (khách clone nhiều tab): nút Cửa sổ to hơn / nhỏ hơn (cửa sổ trên cùng to / nhỏ 25 %, giữ tỉ lệ) +
+#                       🖥 Màn ngang rộng (độ rộng nhỏ nhất 600 dp + khoá ngang → màn chính nằm ngang, xếp được nhiều tab) / Màn dọc như cũ.
+#                       Chỉ cập nhật cpapi (bật lại ~2 giây); máy khách KHÔNG tắt.
 #        23/11b — 🗗 TAB CỬA SỔ NHỎ đợt 2: GAME VỪA KHUNG + TAB NỀN ỔN ĐỊNH. Máy Android 12L / 13 / 14 / 15: không ép game đổi cỡ nữa → thu
 #                       nhỏ tab thì Android thu nhỏ CẢ HÌNH game vừa cửa sổ (không tràn viền; game mở sau khi đặt là vừa ngay). Android 10–15:
 #                       nút mới 🖼 "Mở lại vừa khung" (cpapi do=refit) mở lại game ngay trong cửa sổ cho game vẽ đúng cỡ (game khởi động lại;
@@ -107,7 +110,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "23/11b"
+VER = "23/11c"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -126,9 +129,9 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloud
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
          ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11b"', None),
-         ("cpapi.py", "cpapi.py", "cpapi bản 23/11b", "cpapi")]
+         ("cpapi.py", "cpapi.py", "cpapi bản 23/11c", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11b"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11c"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}

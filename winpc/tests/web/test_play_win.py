@@ -25,7 +25,12 @@ S = {"posts": [], "old": False}
 MSG = {"mini": (200, {"ok": True, "n": 1, "msg": "Đã thu nhỏ Roblox (1 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}),
        "tile": (200, {"ok": True, "n": 3, "msg": "Đã xếp 3 tab nhỏ (1 cột × 3 hàng). Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau."}),
        "full": (409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."}),
-       "refit": (200, {"ok": True, "id": 7, "b": [0, 48, 720, 488], "msg": "Đã mở lại Roblox ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần)."})}
+       "refit": (200, {"ok": True, "id": 7, "b": [0, 48, 720, 488], "msg": "Đã mở lại Roblox ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần)."}),
+       "grow": (200, {"ok": True, "id": 7, "b": [0, 48, 720, 543], "msg": "Cửa sổ Roblox đã to hơn (720×495). Bấm tiếp để to nữa."}),
+       "shrink": (409, {"error": "Cửa sổ đã nhỏ nhất rồi (Android không cho nhỏ hơn) — muốn xếp nhiều tab hơn bấm 🖥 Màn ngang rộng."}),
+       "wide": (200, {"ok": True, "wide": True, "sw": 600, "turned": True, "n": 2,
+                      "msg": "Đã bật màn NGANG RỘNG (600 dp) — màn chính nằm ngang, chứa được nhiều tab hơn. Đã xếp 2 tab nhỏ (2 cột × 1 hàng)."}),
+       "narrow": (200, {"ok": True, "wide": False, "sw": 360, "turned": True, "n": 2, "msg": "Đã trả màn DỌC như cũ (360 dp). Đã xếp 2 tab nhỏ (1 cột × 2 hàng)."})}
 
 
 class Api(http.server.BaseHTTPRequestHandler):
@@ -104,9 +109,12 @@ with sync_playwright() as pw:
         page.evaluate("document.getElementById('menu').hidden = false"); page.wait_for_timeout(200)
         page.eval_on_selector("#win-sec", "x => x.scrollIntoView()"); page.wait_for_timeout(150)
         btns = page.eval_on_selector_all("#win-grid button", "bs => bs.map(b => [b.dataset.a, b.innerText.trim()])")
-        ck("⋯ có mục Tab cửa sổ nhỏ: 4 nút Thu nhỏ / Sắp xếp / Phóng to tab / Mở lại vừa khung + lời chỉ cách kéo + cách sửa game tràn viền",
-           [b[0] for b in btns] == ["winmini", "wintile", "winfull", "winrefit"] and [b[1] for b in btns] == [T("Thu nhỏ tab", "Minimize tab"), T("Sắp xếp tab", "Arrange tabs"),
-                                                                                    T("Phóng to tab", "Maximize tab"), T("Mở lại vừa khung", "Refit to window")]
+        ck("⋯ có mục Tab cửa sổ nhỏ: 8 nút (Thu nhỏ / Sắp xếp / Phóng to tab / Mở lại vừa khung / 23/11c Cửa sổ to hơn / nhỏ hơn / Màn ngang rộng / Màn dọc) + lời chỉ cách dùng",
+           [b[0] for b in btns] == ["winmini", "wintile", "winfull", "winrefit", "wingrow", "winshrink", "winwide", "winnarrow"]
+           and [b[1] for b in btns] == [T("Thu nhỏ tab", "Minimize tab"), T("Sắp xếp tab", "Arrange tabs"), T("Phóng to tab", "Maximize tab"),
+                                        T("Mở lại vừa khung", "Refit to window"), T("Cửa sổ to hơn", "Bigger window"), T("Cửa sổ nhỏ hơn", "Smaller window"),
+                                        T("Màn ngang rộng", "Wide landscape"), T("Màn dọc như cũ", "Normal portrait")]
+           and T("Cửa sổ to hơn / nhỏ hơn để đổi cỡ", "Bigger / Smaller window to resize") in page.inner_text("#win-d")
            and page.inner_text("#win-sec") == T("Tab cửa sổ nhỏ", "Small tab windows") and T("Kéo thanh trên cùng", "Drag a window") in page.inner_text("#win-d")
            and T("Mở lại vừa khung (game khởi động lại", "Refit to window (the game restarts") in page.inner_text("#win-d"), (btns, page.inner_text("#win-d")))
         page.screenshot(path=os.path.join(SHOTS, f"{lang}-win-2-menu.png"))
@@ -130,6 +138,30 @@ with sync_playwright() as pw:
            and T("ngay trong cửa sổ — game vẽ vừa khung", "inside its window — the game now fits") in t, (dlg, S["posts"], t))
         page.remove_listener("dialog", on_dialog)
         page.screenshot(path=os.path.join(SHOTS, f"{lang}-win-2b-mo-lai-vua-khung.png"))
+
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="wingrow"]')     # 23/11c
+        t = toast(T("Cửa sổ Roblox đã to hơn", "The Roblox window is bigger"))
+        ck("Cửa sổ to hơn → POST {do: grow} (không hỏi) + câu máy chủ (dịch đúng)", S["posts"][-1] == "grow"
+           and T("đã to hơn (720×495). Bấm tiếp để to nữa.", "is bigger (720×495). Tap again to grow it more.") in t, (S["posts"], t))
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winshrink"]')
+        t = toast(T("Cửa sổ đã nhỏ nhất", "already as small"))
+        ck("Cửa sổ nhỏ hơn khi đã nhỏ nhất → báo lỗi máy chủ (dịch đúng, gợi ý Màn ngang rộng)", S["posts"][-1] == "shrink"
+           and T("Màn ngang rộng", "Wide landscape") in t, (S["posts"], t))
+        dlg2 = []
+        def on_dialog2(d, keep=dlg2): keep.append(d.message); d.dismiss() if len(keep) == 1 else d.accept()
+        page.on("dialog", on_dialog2)
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winwide"]'); page.wait_for_timeout(400)
+        ck("Màn ngang rộng → hỏi trước (chữ nhỏ lại, app có thể tải lại); bấm Huỷ → không gửi gì", len(dlg2) == 1 and S["posts"][-1] == "shrink"
+           and T("Màn dọc như cũ để trả lại", "Normal portrait to undo") in dlg2[0], (dlg2, S["posts"]))
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winwide"]')
+        t = toast(T("Đã bật màn NGANG RỘNG", "Wide landscape is on"))
+        ck("đồng ý → POST {do: wide} + câu máy chủ (dịch đúng)", len(dlg2) == 2 and S["posts"][-1] == "wide"
+           and T("(600 dp) — màn chính nằm ngang", "(600 dp) — the home screen is landscape") in t, (dlg2, S["posts"], t))
+        page.remove_listener("dialog", on_dialog2)
+        page.evaluate("document.getElementById('menu').hidden = false"); page.click('#win-grid [data-a="winnarrow"]')
+        t = toast(T("Đã trả màn DỌC", "Back to the normal portrait"))
+        ck("Màn dọc như cũ → POST {do: narrow} (không hỏi) + câu máy chủ", S["posts"][-1] == "narrow" and T("(360 dp)", "(360 dp)") in t, (S["posts"], t))
+        page.screenshot(path=os.path.join(SHOTS, f"{lang}-win-2c-to-nho-man-rong.png"))
 
         n0 = len(S["posts"])
         page.dispatch_event("#win-btn", "pointerdown"); page.wait_for_timeout(750); page.dispatch_event("#win-btn", "pointerup")

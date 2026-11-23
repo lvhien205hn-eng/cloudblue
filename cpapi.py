@@ -509,6 +509,10 @@ def push_obb(port, path, jid=None):
 #   sổ (game khởi động lại; cửa sổ cao thêm 42 dp bằng thanh tiêu đề). Android 9: game ép ngang làm màn xoay theo → không mở lại vừa khung
 #   được (báo rõ, không tắt game).
 #   Tab nhỏ đưa lên lại bằng `am task focus` (chỉ đưa lên, không gửi lệnh mở → app không nhận lệnh lạ / không mở thêm màn).
+# 23/11c · KHÁCH TỰ CHỈNH CỠ + MÀN NGANG RỘNG (khách clone nhiều tab): do=grow / shrink — cửa sổ trên cùng to / nhỏ hơn 25 % (giữ tỉ lệ, trong
+#   màn, không nhỏ hơn 220 dp) vì kéo mép cửa sổ qua luồng hình khó trúng. do=wide — độ rộng nhỏ nhất ≥ 600 dp + khoá ngang: màn chính Android
+#   nằm ngang như máy tính bảng, chữ nhỏ lại → xếp được nhiều tab clone; do=narrow — trả mật độ TRƯỚC KHI bật (nhớ trong cài đặt Android
+#   cb_win_prev_density) + khoá dọc. Cả hai xếp lại các tab. Đổi mật độ xong mới khoá xoay + đọc lại khoá (Android 15 tự trả khoá — win_rot_lock).
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
 WIN_SCM_SDK = 32                  # từ bản Android này: thu nhỏ hình game không đổi cỡ (size compat trong cửa sổ nổi) — Android 12 (31) thì không
 WIN_REFIT_SDK = 29                # Android 9: game ép ngang làm màn xoay khi mở lại → cửa sổ lệch, không vừa khung
@@ -620,6 +624,54 @@ def win_slot(g, others):
             if best is None or ov < best[0]: best = (ov, c)
             if ov == 0: return c
     return best[1]
+
+
+WIN_STEP = 1.25                   # 23/11c: Cửa sổ to hơn / nhỏ hơn — mỗi lần bấm to / nhỏ đi 25 %
+WIN_WIDE_SW = 600                 # 23/11c: 🖥 Màn ngang rộng — độ rộng nhỏ nhất 600 dp (màn chính Android xoay ngang được như máy tính bảng)
+WIN_SCREEN_SH = "wm size; wm density"
+WIN_ROT_SH = "settings get system user_rotation 2>/dev/null"
+WIN_PREV_KEY = "cb_win_prev_density"   # cài đặt Android (global): "<mật độ trước khi bật Màn ngang rộng>:<cạnh ngắn>" → Màn dọc như cũ trả ĐÚNG mật độ đó
+
+
+def win_scale(g, b, f):
+    """Cửa sổ to hơn (f > 1) / nhỏ hơn (f < 1): mỗi chiều to / nhỏ theo f, kẹp trong [cỡ nhỏ nhất Android cho (220 dp), vùng dùng được của
+       màn] — chiều nào chạm mức thì đứng ở mức đó, chiều kia vẫn đổi tiếp. Giữ góc trên trái rồi dời vào màn nếu lòi ra."""
+    a = win_area(g); w, h = b[2] - b[0], b[3] - b[1]
+    if w <= 0 or h <= 0: return tuple(b)
+    aw, ah = a[2] - a[0], a[3] - a[1]; mn = g.get("min", 0)
+    nw = max(min(mn, aw), min(aw, int(round(w * f)))); nh = max(min(mn, ah), min(ah, int(round(h * f))))
+    return win_fit(g, (b[0], b[1], b[0] + nw, b[1] + nh))
+
+
+def win_screen(sh):
+    """Cỡ màn + mật độ (như ô 📐 Độ rộng nhỏ nhất): {w, h, density, default, size_override, sw}. default = mật độ khi "Trả về mặc định"
+       (máy đã đổi độ phân giải bằng phonectl liveres → mật độ theo cỡ mới, KHÔNG phải mật độ lúc tạo máy). Không đọc được → None."""
+    o = sh(WIN_SCREEN_SH, 15) or ""
+    size = {k: (int(a), int(b)) for k, a, b in re.findall(r"(Physical|Override) size:\s*(\d+)x(\d+)", o)}
+    den = {k: int(v) for k, v in re.findall(r"(Physical|Override) density:\s*(\d+)", o)}
+    w, h = size.get("Override") or size.get("Physical") or (0, 0)
+    pd = den.get("Physical") or 0; d = den.get("Override") or pd; short = min(w, h)
+    if not d or not short: return None
+    dd = max(160, min(640, round(short / 2.25))) if "Override" in size else pd
+    return {"w": w, "h": h, "density": d, "physical": pd, "default": dd, "size_override": "Override" in size, "sw": short * 160 // d}
+
+
+def win_rot_lock(sh, rot, sleep=time.sleep, tries=12, limit=7.0):
+    """Khoá hướng màn (0 dọc · 1 ngang) rồi chờ màn xoay xong. Vừa đổi mật độ thì giao diện hệ thống của Android dựng lại thanh điều hướng và
+       có bản (Android 15 thật) TỰ đặt khoá xoay về hướng màn ĐANG hiện → mất khoá vừa đặt, màn chính không bao giờ xoay → đọc lại khoá mỗi
+       nhịp, bị trả thì khoá lại (tối đa 3 lần). Đúng hướng 2 nhịp liền mới coi là xong. Trả (trạng thái máy, màn đã đúng hướng chưa)."""
+    cmd = (f"settings put system accelerometer_rotation 0; settings put system user_rotation {rot}; "
+           f"wm user-rotation lock {rot} >/dev/null 2>&1; true")
+    ok = lambda s: bool(s) and s["ok"] and (s["geo"]["w"] > s["geo"]["h"]) == (rot == 1)
+    sh(cmd, 20); st, good, again, t0 = None, 0, 0, time.time()
+    for _ in range(tries):
+        sleep(0.5); st = win_state(sh)
+        v = (sh(WIN_ROT_SH, 10) or "").strip()
+        if v in ("0", "1", "2", "3") and v != str(rot) and again < 3:
+            again += 1; good = 0; sh(cmd, 20); continue
+        good = good + 1 if ok(st) else 0
+        if good >= 2 or time.time() - t0 > limit: break
+    return st, ok(st)
 
 
 def win_name(t):
@@ -938,6 +990,56 @@ def win_run(sh, do, sleep=time.sleep):
         # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
         win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); resize(t, win_area(st2["geo"]))
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã phóng to {win_name(t)} hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ."}
+    if do in ("grow", "shrink"):                                # 23/11c: khách tự cho cửa sổ to / nhỏ (kéo mép qua luồng hình khó trúng)
+        vis = [t for t in wins if t["vis"]]
+        if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Cửa sổ to hơn / nhỏ hơn."}
+        t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
+        nb = win_scale(st["geo"], t["b"], WIN_STEP if do == "grow" else 1 / WIN_STEP)
+        ow, oh = t["b"][2] - t["b"][0], t["b"][3] - t["b"][1]
+        if abs((nb[2] - nb[0]) - ow) < 8 and abs((nb[3] - nb[1]) - oh) < 8:
+            return 409, {"error": "Cửa sổ đã to nhất rồi (hết màn) — muốn to nữa bấm Phóng to tab." if do == "grow"
+                         else "Cửa sổ đã nhỏ nhất rồi (Android không cho nhỏ hơn) — muốn xếp nhiều tab hơn bấm 🖥 Màn ngang rộng."}
+        resize(t, nb); win_keep(sh, [t])
+        return 200, {"ok": True, "id": t["id"], "b": list(nb),
+                     "msg": f"Cửa sổ {win_name(t)} đã {'to' if do == 'grow' else 'nhỏ'} hơn ({nb[2] - nb[0]}×{nb[3] - nb[1]}). Bấm tiếp để {'to' if do == 'grow' else 'nhỏ'} nữa."}
+    if do in ("wide", "narrow"):                                # 23/11c: 🖥 màn NGANG RỘNG (độ rộng nhỏ nhất ≥ 600 dp + khoá ngang) → màn chính xoay ngang
+        wide = do == "wide"; rot = 1 if wide else 0             # như máy tính bảng, chứa nhiều tab clone; Màn dọc như cũ = trả mật độ TRƯỚC ĐÓ + khoá dọc
+        c = win_screen(sh)
+        if not c: return 409, {"error": "Chưa đọc được màn hình máy — thử lại sau giây lát."}
+        short = min(c["w"], c["h"]); dc = ""
+        if wide:
+            dens = max(72, min(640, short * 160 // WIN_WIDE_SW))    # làm tròn XUỐNG → luôn ≥ 600 dp (làm tròn gần nhất: màn 640 ra 599 dp)
+            if c["density"] > dens:                                 # máy đã đặt rộng hơn 600 dp → giữ nguyên mật độ khách chọn
+                dc = f"settings put global {WIN_PREV_KEY} {c['density']}:{short}; wm density {dens}"
+        else:
+            m = re.match(r"(\d+):(\d+)$", (sh(f"settings get global {WIN_PREV_KEY} 2>/dev/null", 10) or "").strip())
+            if m:                                                   # chưa từng bật Màn ngang rộng → không đụng mật độ khách tự chọn ở 📐
+                dens = int(m.group(1)); dc = f"settings delete global {WIN_PREV_KEY} >/dev/null 2>&1; true"
+                if int(m.group(2)) == short and 72 <= dens <= 640 and dens != c["density"]:      # máy đổi độ phân giải sau đó → mật độ cũ hết đúng
+                    dc = ("wm density reset" if dens == c["physical"] and not c["size_override"] else f"wm density {dens}") + "; " + dc
+        if dc:
+            sh(dc, 20)
+            if "wm density" in dc: sleep(1.5)                       # giao diện hệ thống + màn chính dựng lại theo mật độ mới rồi mới khoá xoay
+        st2, turned = win_rot_lock(sh, rot, sleep)
+        n = len(win_std(st2, "freeform"))
+
+        def tile():
+            code, j = win_run(sh, "tile", sleep)
+            return " " + j.get("msg", "") if code == 200 else ""
+        tip = tile() if n else ""
+        v = (sh(WIN_ROT_SH, 10) or "").strip()
+        if v in ("0", "1", "2", "3") and v != str(rot):             # máy chậm: giao diện hệ thống dựng lại MUỘN rồi trả khoá xoay → khoá lại + xếp lại
+            st2, turned = win_rot_lock(sh, rot, sleep, 8, 4.5)
+            if n: tip = tile() or tip
+        c2 = win_screen(sh) or c
+        if wide:
+            msg = (f"Đã bật màn NGANG RỘNG ({c2['sw']} dp) — màn chính nằm ngang, chứa được nhiều tab hơn." if turned
+                   else f"Đã đặt màn rộng ({c2['sw']} dp) + khoá ngang — màn chính của máy này không xoay ngang, app / game ngang vẫn hiện ngang.")
+            k = tip.find(" Màn nhỏ nên")                            # đã rộng ≥ 600 dp mà vẫn chồng → gợi ý mức cao hơn (không nhắc lại 600 dp)
+            if k >= 0: tip = tip[:k] + f" Nhiều tab nên vẫn chồng nhau một phần — tăng 📐 Độ rộng nhỏ nhất (VD {min(1600, (c2['sw'] // 200 + 1) * 200)} dp) để chứa thêm."
+        else:
+            msg = f"Đã trả màn DỌC như cũ ({c2['sw']} dp)."
+        return 200, {"ok": True, "wide": wide, "sw": c2["sw"], "turned": turned, "n": n, "msg": msg + tip}
     if do == "refit":
         vis = [t for t in wins if t["vis"]]
         if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Mở lại vừa khung."}
@@ -950,7 +1052,7 @@ def win_run(sh, do, sleep=time.sleep):
         win_keep(sh, [d])
         return 200, {"ok": True, "id": d["id"], "b": list(d["b"]),
                      "msg": f"Đã mở lại {win_name(t)} ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần)."}
-    return 400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung)."}
+    return 400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."}
 
 
 # ---------------- Admin: cài 1 APK vào nhiều máy cùng lúc ----------------
@@ -1889,7 +1991,8 @@ class H(BaseHTTPRequestHandler):
 
         if act == "win":                                       # 🗗 TAB CỬA SỔ NHỎ (23/11): thu nhỏ app đang mở / sắp xếp / phóng to (xem win_run)
             do = "list" if self.command == "GET" else str(self.jbody().get("do") or "")
-            if do not in ("list", "mini", "tile", "full", "refit"): return self.send_json(400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung)."})
+            if do not in ("list", "mini", "tile", "full", "refit", "grow", "shrink", "wide", "narrow"):
+                return self.send_json(400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."})
             with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
             if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
             try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do)
@@ -2264,6 +2367,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 23/11b chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 23/11c chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()
