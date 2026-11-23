@@ -805,18 +805,27 @@ def win_refit(sh, t, sdk, sleep=time.sleep, dpi=320, geo=None):
         sh(f"timeout 25 am start -W --user {u} --display 0 --windowingMode {WIN_FULLSCREEN} {AS_ICON} -n {shlex.quote(comp)} 2>&1", 40); sleep(1.0)
         d = find()
         if not d: return None
+        port = bool(geo) and geo["w"] <= geo["h"]
+        if port:                                                    # game ép ngang: chờ màn xoay ngang XONG rồi mới thu vào cửa sổ — máy ảo 33–35
+            for _ in range(8):                                      # thu lúc màn đang xoay dở thì màn xoay ngang MUỘN rồi kẹt ngang (cửa sổ lệch)
+                g = win_state(sh)["geo"]
+                if g["w"] > g["h"]: break
+                sleep(0.5)
+            sleep(0.5)
+
+        def up():                                               # như Thu nhỏ tab: đưa các cửa sổ khác lên lại đúng chỗ
+            for w in reversed(others): win_front(sh, w, sdk); resize(w, w["b"])
+        up()
         if d["mode"] != "freeform": d = win_to(sh, d, WIN_FREEFORM, sdk, sleep)
         if not d: return None
         resize(d); st2 = win_settle(sh, sleep)                     # màn xoay về dọc sau khi game ngang thành cửa sổ → đặt lại đúng chỗ
-        if geo and geo["w"] <= geo["h"] and st2["geo"]["w"] > st2["geo"]["h"] and not win_turned(sh, st2, sleep):
-            # máy ảo 33–35: game ép ngang mở toàn màn rồi thành cửa sổ mà màn KHÔNG tự xoay về dọc (cửa sổ lệch xuống dưới màn) → về màn
-            # chính (màn xoay về dọc) rồi đưa các cửa sổ lên lại: cửa sổ khác giữ đúng chỗ, game lên trên cùng ở chỗ cũ
+        if port and st2["geo"]["w"] > st2["geo"]["h"] and not win_turned(sh, st2, sleep, n=6):
+            # vẫn kẹt ngang → về màn chính (màn xoay về dọc) rồi đưa các cửa sổ lên lại: cửa sổ khác giữ đúng chỗ, game lên trên cùng ở chỗ cũ
             sh("input keyevent 3", 10)
             for _ in range(10):
                 sleep(0.5); g = win_state(sh)["geo"]
                 if g["w"] <= g["h"]: break
-            for w in reversed(others): win_front(sh, w, sdk); resize(w, w["b"])
-            win_front(sh, d, sdk)
+            up(); win_front(sh, d, sdk)
         resize(d); win_settle(sh, sleep); resize(d)
         return dict(d, b=b)
     mv, helper = "", False
