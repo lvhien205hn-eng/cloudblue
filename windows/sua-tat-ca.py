@@ -1,6 +1,13 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        23/11f — 🛠 QUẢN LÝ MÁY CHỦ TỪ WEB + TỰ CẬP NHẬT. Lệnh này ghi kết quả vào logs/cap-nhat.json (bản đang chạy, cập nhật sạch không);
+#                 cloudphoned báo lên web → thẻ máy chủ hiện bản đang chạy. Web admin › thẻ máy chủ › 🛠 Quản lý: ⬆ Cập nhật (chạy chính lệnh
+#                 này kiểu `--tu-dong`: chỉ thay file + bật lại dịch vụ, KHÔNG kiểm / sửa máy khách), 📋 Danh sách máy, 🖼 Ảnh nền, 🙈 Ẩn cửa sổ,
+#                 🧪 Tạo máy thử, ⚡ Tối ưu Windows, ⚡ Khởi động lại / ⏻ Tắt máy chủ, ♻ Làm mới máy, 🧹 Dọn giả lập (việc lớn phải gõ mã máy
+#                 chủ). TỰ THEO: 1 máy chủ chạy ổn bản mới đủ lâu (web đặt, mặc định 20 phút) → các máy chủ khác tự cập nhật, chỉ khi bản
+#                 trên GitHub đúng là bản đó; tắt riêng 1 máy: TU_CAP_NHAT=0 trong cloudphone.conf. phonectl có thêm lệnh shutdownserver.
+#                 Cập nhật cloudphoned + cpapi + phonectl (máy khách KHÔNG tắt).
 #        23/11e — 🗗 TAB CỬA SỔ NHỎ đợt 5 — CỬA SỔ NHỎ NẰM ĐÚNG CHỖ trên Android 12+ (đo trên máy MuMu Android 12 thật sau bản 23/11d: tab thứ 2
 #                 bị vẽ đè lên tab đầu, kéo thanh tiêu đề hình không chạy theo). Gốc: từ Android 12 bên đặt chỗ hình của cửa sổ nổi là giao diện
 #                 hệ thống, mà nó chỉ làm việc đó nếu cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG — máy bật cài đặt sau khi đã mở máy thì không ai đặt
@@ -116,12 +123,13 @@
 #   6. Máy chưa lên / mất adb / đen ở màn hình chính → ép khởi động lại. Máy đen mà đang mở app/game → KHÔNG đụng, chỉ báo
 #      (game treo máy hay tắt hình cho nhẹ). Máy khách tắt ngoài ý muốn → bật lại.
 #   Chạy:  python sua-tat-ca.py            · chỉ kiểm, không thay / không bật lại gì:  python sua-tat-ca.py --chi-kiem
+#          tự cập nhật (cloudphoned / web admin gọi — không có người xem, không đụng máy khách):  python sua-tat-ca.py --tu-dong
 import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "23/11e"
+VER = "23/11f"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -132,17 +140,21 @@ ONLY_CHECK = "--chi-kiem" in sys.argv
 REMAKE = "--lam-moi-may-ma" in sys.argv          # tạo lại máy MỚI cho khách có máy "ma" (web còn thuê, máy chủ mất hẳn máy)
 REMAKE_BROKEN = "--lam-moi-may-hong" in sys.argv  # máy ép khởi động lại rồi vẫn KHÔNG lên → xoá máy hỏng + tạo lại máy mới (mất dữ liệu)
 NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
+AUTO = "--tu-dong" in sys.argv                    # 23/11f: máy chủ TỰ chạy (web admin bấm Cập nhật / cloudphoned tự theo máy chủ khác) — không có
+                                                  # người xem: chỉ thay bản mới + bật lại dịch vụ + kiểm tự chạy / mạng, KHÔNG kiểm / sửa máy khách
+STATE_F = os.path.join(LOGS, "cap-nhat.json")     # 23/11f: kết quả lần cập nhật gần nhất — cloudphoned báo lên web (thẻ máy chủ), máy chủ khác nhìn để tự theo
+RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 23/11f", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11d"', None),
-         ("cpapi.py", "cpapi.py", "cpapi bản 23/11e", "cpapi")]
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11f"', None),
+         ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 23/11f", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -209,6 +221,59 @@ def py_cmdlines():
     return ps("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' } | ForEach-Object { $_.CommandLine }", 60)
 
 def kill(pid): return run(["taskkill", "/PID", str(pid), "/F"], 30)       # CHỈ tắt đúng chương trình đó (không /T: giữ giả lập / adb)
+
+# ------------------------------------------------------------------ 0. sổ ghi lần cập nhật (23/11f)
+def state_read():
+    try:
+        d = json.load(open(STATE_F, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def state_write(d):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(STATE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)
+        os.replace(STATE_F + ".tmp", STATE_F)
+    except Exception:
+        pass
+
+def pid_alive(pid):
+    try: return str(int(pid)) in run(["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"], 30)
+    except Exception: return False
+
+def state_begin():
+    """Ghi "đang cập nhật". Trả False khi lần chạy TỰ ĐỘNG này phải thôi vì đang có lần cập nhật khác chạy dở (dưới 30 phút, tiến trình còn sống)."""
+    if NO_UPDATE: return True
+    st = state_read(); r = st.get("running") or {}
+    if AUTO and r.get("pid") and r.get("pid") != os.getpid() and time.time() - float(r.get("start") or 0) < 1800 and pid_alive(r["pid"]): return False
+    st["running"] = {"ver": VER, "start": int(time.time()), "auto": AUTO, "pid": os.getpid()}
+    state_write(st); return True
+
+def files_new():
+    """{tên file: đã là bản mới (có dấu của bản này)} cho các file máy chủ này có."""
+    res = {}
+    for gp, local, mark, svc in FILES:
+        lp = os.path.join(B, local)
+        if not os.path.isfile(lp): continue
+        try: res[local] = mark.encode("utf-8") in open(lp, "rb").read()
+        except OSError: res[local] = False
+    return res
+
+def state_end():
+    """Ghi kết quả. upd = phần CẬP NHẬT xong sạch (mọi file là bản mới + dịch vụ đã chạy bản mới). Sổ giữ:
+       ver / at = bản máy chủ này đang chạy + lúc cài xong bản đó (chạy lại lệnh A cùng bản KHÔNG đổi "at" — máy chủ khác tính thời gian chạy ổn
+       từ đó) · last = lượt gần nhất (kể cả lượt hỏng) · ok = lượt gần nhất không còn dòng ✗ nào."""
+    if NO_UPDATE: return
+    fn = files_new(); now = int(time.time())
+    upd = bool(RUN["done"]) and not RUN["p_upd"] and not RUN["p_rst"] and bool(fn) and all(fn.values())
+    d = state_read(); d.pop("running", None)
+    if upd:
+        if d.get("ver") != VER or not d.get("upd") or not d.get("at"): d["at"] = now
+        d["ver"], d["upd"] = VER, True
+    d.update(ok=bool(RUN["done"]) and not RUN["probs"], auto=AUTO, changed=sorted(set(RUN["changed"])), probs=[str(x)[:200] for x in RUN["probs"]][:8],
+             files=fn, last={"ver": VER, "at": now, "upd": upd, "auto": AUTO})
+    state_write(d)
 
 # ------------------------------------------------------------------ 1. cập nhật file
 def gh_get(path):
@@ -1141,12 +1206,15 @@ def main():
         say("   ✗✗ DỪNG: " + g)
         say(f"== TÓM TẮT {node} ==")
         say("   ✗ chưa làm gì — xem dòng DỪNG ở trên (lệnh A phải chạy CÙNG quyền với bảng CloudBlue: PowerShell (Admin))")
+        RUN["probs"] = ["dừng: " + g]
         return
     if g: say("   ⚠ " + g)
     changed, p = update_files(); probs += p
+    RUN["changed"], RUN["p_upd"] = list(changed), list(p)
     probs += ld_fix(c, changed)
-    probs += restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
-                                        and mark.encode() in open(os.path.join(B, local), "rb").read()})
+    p = restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
+                                   and mark.encode() in open(os.path.join(B, local), "rb").read()})
+    probs += p; RUN["p_rst"] = list(p)
     probs += fix_autostart()
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
@@ -1160,6 +1228,9 @@ def main():
             "    10 phút nữa chạy lại lệnh này để kiểm từng máy.")
         res, extra, done, final = [], {}, [], []
         probs.append("vừa mở lại bảng — 10 phút nữa chạy lại lệnh để kiểm máy khách")
+    elif AUTO:
+        say("5/6 · 6/6 Bỏ qua kiểm / sửa máy khách — đây là lượt TỰ CẬP NHẬT (chỉ thay bản mới + bật lại dịch vụ). Cần kiểm từng máy: chạy lệnh A bằng tay.")
+        res, extra, done, final = [], {}, [], []
     else:
         probs += priv_fix()                                 # 17/11e: máy chạy sai quyền → bật lại đúng quyền TRƯỚC khi kiểm từng máy
         res, extra, p = check_phones(c); probs += p
@@ -1169,7 +1240,7 @@ def main():
     recent_report(c, res)
     probs += switch_report(c)
     log_report()
-    probs += ks_report()
+    if not AUTO: probs += ks_report()
     web_report()
     try: wake_report()
     except Exception as e_: say(f"   (báo cáo mở máy lỗi: {e_})")
@@ -1213,7 +1284,11 @@ def main():
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     for x in pw: say("   ⚠ " + x)
+    RUN["probs"] = list(probs) + [f"{n}: sửa rồi vẫn {dict(final).get(n)}" for n in still]; RUN["done"] = True
     say("   → XONG, máy chủ ổn." if not probs and not still else "   → Còn dòng ✗ ở trên: chụp phần TÓM TẮT gửi Claude.")
 
 if __name__ == "__main__":
-    main()
+    if not state_begin():
+        say(f"== CloudBlue · sửa tất cả ({VER}) · tự cập nhật: đang có lượt cập nhật khác chạy dở — thôi =="); sys.exit(0)
+    try: main()
+    finally: state_end()
