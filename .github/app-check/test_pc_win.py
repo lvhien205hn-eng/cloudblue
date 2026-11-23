@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """23/11 · 🗗 TAB CỬA SỔ NHỎ trong app PC (bluepc.py) — thử bằng pygame / Tk GIẢ (chạy được cả máy không có màn hình / tkinter):
    thanh công cụ cửa sổ máy có Thu nhỏ tab + Sắp xếp tab (máy PC thì không), bấm → POST /cpapi/<máy>/win {do}, hiện câu máy chủ,
-   máy chủ cũ (404) → câu dễ hiểu, vẽ được biểu tượng mới, thẻ Màn hình của Công cụ có mục Tab cửa sổ nhỏ (3 nút), bản tiếng Anh dịch đủ.
+   máy chủ cũ (404) → câu dễ hiểu, vẽ được biểu tượng mới, thẻ Màn hình của Công cụ có mục Tab cửa sổ nhỏ (4 nút: + 23/11b Mở lại vừa khung), bản tiếng Anh dịch đủ.
    Chạy:  python test_pc_win.py <thư mục pc-client>"""
 import json, os, sys, tempfile, threading, time, types
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -85,16 +85,20 @@ ck("Công cụ › Màn hình: mục 'Tab cửa sổ nhỏ' + 3 nút Thu nhỏ /
    and all(f'self.app.btn(r, "{t}", lambda: self.win("{w}")' in src for t, w in (("Thu nhỏ tab", "mini"), ("Sắp xếp tab", "tile"), ("Phóng to tab", "full")))
    and 'self.cp.json("POST", "win", {"do": what}' in src)
 ck("menu Khác ▾ mở thẳng thẻ Màn hình có Tab cửa sổ nhỏ", '("Tab cửa sổ nhỏ · Xoay màn · Độ rộng nhỏ nhất…", "screen")' in src)
+ck("23/11b · nút Mở lại vừa khung: hỏi trước (game khởi động lại) rồi gửi win {do: refit}", 'self.app.btn(r, "Mở lại vừa khung", self.win_refit' in src
+   and 'mb.askyesno("Mở lại vừa khung"' in src and 'self.win("refit")' in src and '"refit": "Đang mở lại game trong cửa sổ…"' in src)
 
 # ---------------- 4. tiếng Anh ----------------
 for vi, en in (("Thu nhỏ tab", "Minimize tab"), ("Sắp xếp tab", "Arrange tabs"), ("Phóng to tab", "Maximize tab"), ("Tab cửa sổ nhỏ", "Small tab windows"),
-               ("Đang thu nhỏ tab…", "Minimizing the tab…")):
+               ("Đang thu nhỏ tab…", "Minimizing the tab…"), ("Mở lại vừa khung", "Refit to window"), ("Đang mở lại game trong cửa sổ…", "Reopening the game in its window…")):
     ck(f"English: '{vi}' → '{en}'", EN.tr(vi) == en, EN.tr(vi))
 for vi, want in (("Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.", "Minimized Roblox (2 small tabs)."),
                  ("Đã thu nhỏ Roblox (bản clone) (3 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.", "Minimized Roblox (clone) (3 small tabs)."),
                  ("Đã xếp 4 tab nhỏ (1 cột × 4 hàng). Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau.", "Arranged 4 small tabs (1 × 4)."),
                  ("Đã phóng to Roblox hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ.", "Roblox now fills the screen."),
-                 ("Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone) rồi bấm Thu nhỏ tab.", "Your tabs are already small windows")):
+                 ("Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone) rồi bấm Thu nhỏ tab.", "Your tabs are already small windows"),
+                 ("Đã mở lại Roblox ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần).", "Reopened Roblox inside its window — the game now fits"),
+                 ("Chưa mở lại được Roblox trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab.", "Couldn't reopen Roblox in its window")):
     got = EN.tr(vi)
     ck(f"English câu máy chủ: …{want[:40]}", want in got and not EN.has_vi(got), got)
 print("%d/%d dat" % (OK[0], OK[1])); sys.exit(0 if OK[0] == OK[1] else 1)
