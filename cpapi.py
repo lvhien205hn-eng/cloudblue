@@ -552,6 +552,13 @@ def push_obb(port, path, jid=None):
 #     thật; Android 13+ (sdk 35 = máy MuMu Android 15) lõi đặt chỗ đúng nhưng THANH TIÊU ĐỀ của cửa sổ là do giao diện hệ thống vẽ → nó chạy
 #     từ trước thì cửa sổ nhỏ KHÔNG CÓ thanh tiêu đề (không kéo, không đóng / phóng to được). Nhận biết: bộ vẽ màn hình có lớp hình của tab
 #     ("Task=N#…") mà không có lớp "Decor container of Task=N" / "Caption … of Task=N" → cũng bật lại giao diện hệ thống 1 lần.
+#     Android 14 / 15 in tên lớp hình kiểu "RequestedLayerState{Decor container of Task=16#1385 …}" → đọc bằng tìm trong dòng (WIN_DECOR_RX).
+#     Android 13+ chỉ vẽ thanh tiêu đề lúc tab "đổi" (mở / lên trên / đổi khung) → sau khi bật lại, tab nào còn thiếu thì dời 1 px rồi trả lại
+#     (win_nudge: đổi chỗ, không đổi cỡ → app không dựng lại); vẫn thiếu → về màn chính rồi đưa các cửa sổ nổi lên lại. Tab đang bị app toàn màn
+#     che thì Android không vẽ thanh tiêu đề → không xét. Máy không bao giờ vẽ (bản Android khác kiểu) → nhớ 30 phút, không thử lại mỗi lần bấm.
+#   · Vừa HẠ MẬT ĐỘ (máy tự bật màn rộng lúc thu nhỏ game kiểu cũ): thanh trạng thái chưa kịp dựng lại, Android đẩy cửa sổ xuống dưới thanh CŨ
+#     và nhớ khung đã yêu cầu — đặt lại y hệt thì bị bỏ qua (máy ảo 12L: lệch 22 px, 8 giây sau vẫn lệch) → win_put: dời 1 px rồi đặt lại tới
+#     khi khung thật = khung muốn (≤ 7 lượt).
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
 WIN_UI_SDK = 31                   # từ Android 12: giao diện hệ thống đặt chỗ hình của cửa sổ nổi
 WIN_UI_KEY = "cb_win_ui"          # cài đặt Android (global): mã lần mở máy (boot_id) mà máy chủ đã bật lại giao diện hệ thống
@@ -566,7 +573,8 @@ WIN_FRAME_SH = "dumpsys input 2>/dev/null | grep -E \"name='?[0-9a-f]+ ({p})/\""
 WIN_FRAME_RX = re.compile(r"name='?[0-9a-f]+ ([A-Za-z0-9._]+)/.*?\bframe=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
 WIN_DECOR_SDK = 33                # từ Android 13: thanh tiêu đề cửa sổ nổi do giao diện hệ thống vẽ (lớp hình "Decor container of Task=N")
 WIN_DECOR_SH = "dumpsys SurfaceFlinger --list 2>/dev/null | grep -E 'Task=[0-9]+'"
-WIN_DECOR_RX = re.compile(r"^\s*(?:(Decor container|Caption container|Caption) of )?Task=(\d+)(?:#\d+)?\s*$")
+WIN_DECOR_RX = re.compile(r"(?:(Decor container|Caption container|Caption) of )?(?<![A-Za-z])Task=(\d+)(?!\d)")   # dạng Android 13: "Task=16#0" ·
+                                  # Android 14 / 15 (đo máy ảo 35): "RequestedLayerState{Decor container of Task=16#1385 parentId=1343 z=20000}"
 WIN_SCM_SDK = 33                  # từ bản Android này: Android thu nhỏ CẢ HÌNH app không đổi cỡ (size compat) — máy MuMu Android 15 thật: đúng chỗ, không phải
                                   # mở lại app. Android 12L trở xuống: ép đổi cỡ + mở lại app kiểu cũ (máy MuMu Android 12 thật vẽ kiểu size compat lệch chỗ)
 WIN_SCM_KEEP = True               # Android 13+: app khai báo không đổi cỡ → để Android thu hình, KHÔNG tự mở lại (bộ thử đặt False để thử đường mở lại)
@@ -581,6 +589,7 @@ WIN_STATE_SH = ("getprop ro.build.version.sdk; echo '#S'; am stack list 2>&1; ec
                 "echo '#R'; settings get global force_resizable_activities 2>/dev/null; settings get global enable_non_resizable_multi_window 2>/dev/null")
 WIN_NAMES = {"com.roblox.client": "Roblox"}
 WIN_LOCKS, WIN_LOCKS_L = {}, threading.Lock()
+WIN_MEMO, WIN_MEMO_OFF = {}, 1800  # {cổng adb của máy: dict nhớ tạm của win_ui_fix} · máy không vẽ thanh tiêu đề: nghỉ thử 30 phút
 
 
 def win_tasks(text, sdk=99):
@@ -983,21 +992,53 @@ def win_decor(sh, tabs, sleep=time.sleep, tries=5):
        (chờ ~2 giây vẫn vậy) · None: máy không cho đọc / không thấy hình của tab nào → không kết luận."""
     ids = {int(t["id"]) for t, _ in tabs}; seen = None
     for i in range(tries):
-        have, dec = set(), set()
-        for line in (sh(WIN_DECOR_SH, 20) or "").splitlines():
-            m = WIN_DECOR_RX.match(line)
-            if m and int(m.group(2)) in ids: (dec if m.group(1) else have).add(int(m.group(2)))
+        have, dec = win_decor_ids(sh, ids)
         if dec: return True
         seen = bool(have)
         if i < tries - 1: sleep(0.4)
     return False if seen else None
 
 
+def win_decor_ids(sh, ids):
+    """(các tab thấy hình, các tab đã có thanh tiêu đề) trong số ids — theo tên lớp hình của bộ vẽ màn hình."""
+    have, dec = set(), set()
+    for line in (sh(WIN_DECOR_SH, 20) or "").splitlines():
+        for m in WIN_DECOR_RX.finditer(line):
+            if int(m.group(2)) in ids: (dec if m.group(1) else have).add(int(m.group(2)))
+    return have, dec
+
+
+def win_nudge(sh, tabs):
+    """Dời từng tab 1 px rồi trả lại đúng khung (chỉ đổi CHỖ, không đổi cỡ → app không bị dựng lại). Dùng khi: · Android 13+ vừa bật lại giao
+       diện hệ thống — nó chỉ vẽ thanh tiêu đề cho tab lúc tab "đổi" (mở / lên trên / đổi khung) · Android nhớ khung đã YÊU CẦU, yêu cầu lại đúng
+       khung đó thì bỏ qua → muốn Android tính lại chỗ thì phải yêu cầu 1 khung khác trước. tabs = [(tab, khung)…]."""
+    for t, b in tabs:
+        i = int(t["id"])
+        sh(f"am task resize {i} {b[0]} {b[1] + 1} {b[2]} {b[3] + 1} 2>&1", 15)
+        sh(f"am task resize {i} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
+
+
+def win_put(sh, tabs, sdk, sleep=time.sleep, tries=7):
+    """Các tab (b = khung MUỐN) đã nằm ĐÚNG khung chưa — chưa thì dời 1 px rồi đặt lại, tới khi đúng (tối đa ~5 giây). Việc này cần ngay sau khi
+       ĐỔI MẬT ĐỘ (đo máy ảo Android 12L): thanh trạng thái chưa kịp dựng lại theo mật độ mới, Android đẩy cửa sổ xuống dưới thanh CŨ (cao hơn)
+       rồi giữ luôn chỗ lệch đó — đặt lại đúng khung cũ thì Android bỏ qua vì "đã yêu cầu rồi". Chỉ sửa khi khung thật lệch CHỖ mà đúng CỠ."""
+    size = lambda b: (b[2] - b[0], b[3] - b[1])
+    for i in range(tries):
+        now = {x["id"]: tuple(x["b"]) for x in win_tasks(sh("am stack list 2>&1", 15), sdk)}
+        off = [(t, tuple(t["b"])) for t in tabs if t["id"] in now and now[t["id"]] != tuple(t["b"]) and size(now[t["id"]]) == size(t["b"])]
+        if not off: return True
+        if i: sleep(0.6)
+        win_nudge(sh, off)
+    return False
+
+
 def win_ui_restart(sh, sleep=time.sleep, force=False):
     """Bật lại GIAO DIỆN HỆ THỐNG (SystemUI) của máy: tắt tiến trình, Android tự bật lại sau vài giây — app / game đang chạy KHÔNG tắt, chỉ thanh
-       trạng thái + ảnh nền chớp. Mỗi lần mở máy tối đa 1 lần (WIN_UI_KEY nhớ mã lần mở máy) trừ khi force. Trả True nếu đã bật lại + đã lên."""
-    m = re.search(r"#kill((?: \d+)+)", sh(WIN_UI_KILL_SH.replace("@F@", "1" if force else "0"), 25) or "")
-    if not m: return False
+       trạng thái + ảnh nền chớp. Mỗi lần mở máy tối đa 1 lần (WIN_UI_KEY nhớ mã lần mở máy) trừ khi force. Trả True: đã bật lại + đã lên ·
+       None: lần mở máy này đã bật lại rồi (không làm nữa) · False: máy không có / không bật lại được."""
+    o = sh(WIN_UI_KILL_SH.replace("@F@", "1" if force else "0"), 25) or ""
+    m = re.search(r"#kill((?: \d+)+)", o)
+    if not m: return None if "#done" in o else False
     old = set(m.group(1).split())
     for i in range(40):                                         # tới ~20 giây
         sleep(0.5); now = (sh(WIN_UI_PID_SH, 10) or "").split()
@@ -1008,16 +1049,45 @@ def win_ui_restart(sh, sleep=time.sleep, force=False):
     return True
 
 
-def win_ui_fix(sh, sdk, tabs, sleep=time.sleep, tries=5):
+def win_ui_fix(sh, sdk, tabs, sleep=time.sleep, tries=5, memo=None):
     """23/11e · Android 12+: giao diện hệ thống chạy từ trước khi máy bật cửa sổ nổi → Android 12L: hình của tab không nằm ở khung tab ·
-       Android 13+: cửa sổ không có thanh tiêu đề → bật lại giao diện hệ thống 1 lần rồi chờ nó nhận lại các cửa sổ. Trả True nếu vừa bật lại. tries: số lần đọc trước khi kết luận lệch
-       (giao diện hệ thống vừa được bật lại trong chính lượt này thì chờ lâu hơn — nó còn đang nhận lại danh sách tab)."""
+       Android 13+: cửa sổ không có thanh tiêu đề → bật lại giao diện hệ thống 1 lần (mỗi lần mở máy) rồi chờ nó nhận lại các cửa sổ. Android 13+
+       chỉ vẽ thanh tiêu đề lúc tab "đổi" → sau khi bật lại (hoặc đã bật lại từ trước mà tab này vẫn thiếu) thì dời từng tab 1 px rồi trả lại;
+       vẫn chưa có thì về màn chính rồi đưa các cửa sổ nổi lên lại (đúng thứ tự + chỗ cũ).
+       Trả True nếu vừa bật lại. tries: số lần đọc trước khi kết luận lệch (giao diện hệ thống vừa được bật lại trong chính lượt này thì chờ lâu
+       hơn — nó còn đang nhận lại danh sách tab). memo: dict của máy này (cpapi giữ trong bộ nhớ) — máy mà bật lại + dời rồi VẪN không có thanh
+       tiêu đề (bản Android không vẽ) thì ghi giờ vào "off": 30 phút tới các lượt sau không chờ / không dời nữa."""
     tabs = [(t, tuple(b)) for t, b in tabs if t and b]
-    look = win_decor if sdk >= WIN_DECOR_SDK else win_seen      # Android 13+: thiếu thanh tiêu đề · Android 12 / 12L: hình lệch khung
-    if sdk < WIN_UI_SDK or not tabs or look(sh, tabs, sleep, tries) is not False: return False
-    if not win_ui_restart(sh, sleep): return False
-    look(sh, tabs, sleep, tries=25)                             # chờ giao diện hệ thống nhận lại các cửa sổ: đặt chỗ / vẽ thanh tiêu đề (tới ~10 giây)
-    return True
+    if sdk < WIN_UI_SDK or not tabs: return False
+    if sdk < WIN_DECOR_SDK:                                     # Android 12 / 12L: hình lệch khung
+        if win_seen(sh, tabs, sleep, tries) is not False or not win_ui_restart(sh, sleep): return False
+        win_seen(sh, tabs, sleep, tries=25)                     # chờ giao diện hệ thống nhận lại + đặt chỗ các cửa sổ (tới ~10 giây)
+        return True
+    if memo is not None and time.time() - (memo.get("off") or 0) < WIN_MEMO_OFF: return False       # Android 13+: thiếu thanh tiêu đề
+    if win_decor(sh, tabs, sleep, tries) is not False: return False
+    vis = {x["id"] for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["vis"] and x["mode"] == "freeform"}
+    tabs = [(t, b) for t, b in tabs if t["id"] in vis]          # tab đang bị app toàn màn che thì Android không vẽ thanh tiêu đề cho nó → không xét
+    if not tabs or win_decor(sh, tabs, sleep, 2) is not False: return False
+    r = win_ui_restart(sh, sleep)
+    if r is False: return False
+    if r and win_decor(sh, tabs, sleep, tries=8) is not False: return True
+    ids = {int(t["id"]) for t, _ in tabs}; ok = False
+    for rnd in range(2):                                        # tab nào chưa có thanh tiêu đề → cho tab "đổi" để giao diện hệ thống vẽ:
+        have, dec = win_decor_ids(sh, ids)
+        todo = [(t, b) for t, b in tabs if int(t["id"]) in have and int(t["id"]) not in dec]
+        if not todo: ok = True; break
+        if rnd == 0: win_nudge(sh, todo)                        # lượt 1: dời 1 px rồi trả lại (đổi khung)
+        else:                                                   # lượt 2: về màn chính rồi đưa MỌI cửa sổ nổi đang hiện lên lại từ dưới lên, đúng chỗ cũ (tab lên trên)
+            ws = [x for x in win_tasks(sh("am stack list 2>&1", 15), sdk) if x["disp"] == 0 and x["mode"] == "freeform" and x["type"] in ("standard", "") and x["vis"]]
+            sh("input keyevent 3", 10); sleep(0.6)
+            for w in reversed(ws):
+                win_front(sh, w, sdk); sh(f"am task resize {int(w['id'])} {w['b'][0]} {w['b'][1]} {w['b'][2]} {w['b'][3]} 2>&1", 15)
+        for _i in range(12):                                    # tới ~5 giây
+            sleep(0.4); have, dec = win_decor_ids(sh, ids)
+            if not [1 for t, _b in todo if int(t["id"]) not in dec]: ok = True; break
+        if ok: break
+    if not ok and memo is not None: memo["off"] = time.time()   # bật lại + 2 cách trên vẫn không có → máy này không vẽ thanh tiêu đề: nghỉ 30 phút
+    return bool(r)
 
 
 WIN_KEEP_SH = ("cmd deviceidle whitelist +{p} >/dev/null 2>&1; am set-standby-bucket --user {u} {p} active >/dev/null 2>&1; "
@@ -1089,6 +1159,8 @@ def win_recreate(sh, tabs, sdk, sleep=time.sleep, order=(), mode=WIN_FREEFORM, m
             if not d: res.pop(t["id"]); continue
             if tuple(d["b"]) != b: resize(d, b)
             res[t["id"]] = dict(d, b=b)
+        hot = [res[t["id"]] for t in dead if t["id"] in res and moved.get(t["id"])]
+        if hot: win_put(sh, hot, sdk, sleep)                    # 23/11e: mid vừa đổi mật độ → Android còn tính theo thanh trạng thái cũ, đẩy cửa sổ lệch → đặt lại tới khi đúng
     return res
 
 
@@ -1341,7 +1413,7 @@ def win_refit(sh, t, sdk, sleep=time.sleep, dpi=320, geo=None):
         if helper: sh("am force-stop com.android.settings", 15)
 
 
-def win_run(sh, do, sleep=time.sleep, inst=None):
+def win_run(sh, do, sleep=time.sleep, inst=None, memo=None):
     """Việc của nút 🗗 Thu nhỏ tab (mini) · ⊞ Sắp xếp tab (tile) · ⛶ Phóng to tab (full) · 🖼 Vừa khung (refit) · Cửa sổ to / nhỏ hơn (grow /
        shrink) · 🖥 Màn ngang rộng / Màn dọc như cũ (wide / narrow) · danh sách (list). sh(lệnh, giây) → chữ in ra; inst() cài app trợ giúp
        xoay màn vào máy (trả True khi cài xong). Trả (mã HTTP, dict)."""
@@ -1357,7 +1429,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
         sh(win_conf_sh(sdk), 15)                                       # đặt đúng kiểu của bản Android (≤ 12L: ép đổi cỡ · 13+: Android thu nhỏ hình)
         if sdk >= WIN_UI_SDK and not st["free"]: ui_new = win_ui_restart(sh, sleep, force=True)   # 23/11e: máy VỪA bật cửa sổ nổi → giao diện hệ
                                                                        # thống đang chạy chưa biết đặt chỗ cửa sổ → bật lại 1 lần (app không tắt)
-    fixui = lambda tabs: win_ui_fix(sh, sdk, tabs, sleep, 25 if ui_new else 5)      # hình của tab chưa về đúng khung (Android 12+) → bật lại giao diện hệ thống 1 lần
+    fixui = lambda tabs: win_ui_fix(sh, sdk, tabs, sleep, 25 if ui_new else 5, memo)      # hình của tab chưa về đúng khung (Android 12+) → bật lại giao diện hệ thống 1 lần
     home = lambda: (sh("input keyevent 3", 10), sleep(0.5))
     resize = lambda t, b: sh(f"am task resize {int(t['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
     big = lambda g, b: _area(b) >= 0.85 * _area(win_area(g))          # cửa sổ đã phóng to gần hết màn
@@ -1506,7 +1578,7 @@ def win_run(sh, do, sleep=time.sleep, inst=None):
         n = len(win_std(st2, "freeform"))
 
         def tile():                                             # xếp lại theo màn mới (app kiểu cũ có ô đổi cỡ được mở lại ngay trong ô)
-            code, j = win_run(sh, "tile", sleep, inst)
+            code, j = win_run(sh, "tile", sleep, inst, memo)
             return " " + j.get("msg", "") if code == 200 else ""
         tip = tile() if n else ""
         v = (sh(WIN_ROT_SH, 10) or "").strip()
@@ -2495,7 +2567,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."})
             with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
             if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
-            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do, inst=lambda: rot_install(port))
+            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do, inst=lambda: rot_install(port), memo=WIN_MEMO.setdefault(int(port), {}))
             finally: lk.release()
             return self.send_json(code, j)
 
