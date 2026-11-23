@@ -6,6 +6,7 @@
 #      + 23/11c: Cửa sổ to hơn / nhỏ hơn · Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ.
 #      + 23/11d: game kiểu cũ được MỞ LẠI NGAY TRONG tab (vừa cửa sổ) · màn rộng tự bật · cửa sổ đúng tỉ lệ game · app trợ giúp xoay màn
 #        vn.cloudblue.xoay (cửa sổ phủ ép màn ngang — máy bỏ qua khoá xoay như MuMu). File cbxoay.apk dựng ở máy API 32 → nhánh win-shots.
+#      + 23/11f: test_node.py — /cpapi/admin/node (quản lý máy chủ từ web), cloudphoned tự cập nhật theo máy chủ khác, sổ cập nhật của sua-tat-ca.py.
 #      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
@@ -15,6 +16,9 @@ on:
     branches: ["appwin-*"]
     paths:
       - "cpapi.py"
+      - "cloudphoned.py"
+      - "windows/sua-tat-ca.py"
+      - "windows/phonectl.py"
       - ".github/win-check/**"
       - ".github/workflows/win-check.yml"
   workflow_dispatch:
@@ -33,6 +37,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: cpapi tab cửa sổ nhỏ (máy Android giả)
         run: python3 .github/win-check/test_win_sim.py
+      - name: Quản lý máy chủ từ web + tự cập nhật theo máy chủ khác (23/11f)
+        run: python3 .github/win-check/test_node.py
 
   emu:
     needs: sim
