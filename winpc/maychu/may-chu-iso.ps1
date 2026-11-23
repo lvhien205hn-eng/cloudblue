@@ -77,7 +77,7 @@ function Set-KV([string]$path, [string]$key, [string]$val) {
 }
 
 function Find-Payload([string]$name) {
-  # Tep kem trong ISO (bo cai gia lap, may mau, curl.exe): C:\blue\iso truoc, roi thu muc bo cai Windows da chep vao may. Khong co -> ''.
+  # Tep kem trong ISO (bo cai gia lap, may mau): C:\blue\iso truoc, roi thu muc bo cai Windows da chep vao may. Khong co -> ''.
   foreach ($d in @($ISO, $SRC)) { if ($d) { $c = Join-Path $d $name; if (Test-Path -LiteralPath $c) { return $c } } }
   return ''
 }
@@ -580,10 +580,7 @@ function Main {
     $cnt++; Start-Sleep 10
   }
   Say '   OK - da co mang' 'Green'
-  $cu = Find-Payload 'curl.exe'
-  if ($cu -and (-not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\curl.exe')))) {
-    try { Copy-Item -LiteralPath $cu -Destination (Join-Path $env:SystemRoot 'System32\curl.exe') -Force; Say '   Windows ban cu chua co curl.exe -> da chep tu bo cai' 'DarkGray' } catch {}
-  }
+  if (-not (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'System32\curl.exe'))) { Say '   (Windows ban cu khong co curl.exe - tai bang PowerShell, khong sao)' 'DarkGray' }
   if ($PSCommandPath -and (Update-Self $PSCommandPath)) {
     Say '   Co ban moi cua script cai may chu tren GitHub -> chay ban moi.' 'DarkGray'
     $script:RC = 9; return
