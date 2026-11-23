@@ -50,6 +50,9 @@ class Droid:
         # HẠ mật độ thì thanh trạng thái còn cao như cũ thêm N lệnh — Android đẩy cửa sổ nổi xuống dưới thanh cũ; và Android NHỚ khung đã yêu cầu:
         # yêu cầu lại đúng khung đó thì bỏ qua (khung thật giữ nguyên chỗ lệch). Máy ảo 12L thật: lệch 22 px, 8 giây sau vẫn lệch.
         self.decor_move, self.decor_never, self.insetlag, self._stale = False, False, 0, None
+        # decor_ghost (đo máy ảo Android 15, lượt 3): giao diện hệ thống vừa bật lại thì bộ vẽ màn hình ĐÃ có đủ lớp thanh tiêu đề của cửa sổ đang
+        # có, nhưng thanh chưa hiện / app chưa được chừa chỗ (nodecor) tới khi tab được đưa lên lại → tên lớp hình không cho biết.
+        self.decor_ghost = False
         self.lag, self._true, self._old, self._left = lag, None, None, 0          # lag: máy chậm — màn xoay xong mới báo hướng mới sau `lag` lần đọc
         self.z = [{"id": 1, "comp": "com.android.launcher3/.Launcher", "user": 0, "mode": FS, "type": "home", "b": (0, 0, 0, 0), "land": False, "resz": True}]
         self.nid, self.log = 10, []
@@ -473,7 +476,8 @@ class Droid:
             o = [wrap("Bounds for - Task=99", 1), wrap("Dim layer of Task=98", 2)]
             for tk in self.z:
                 i = tk["id"]; o.append(wrap(f"Task={i}", i * 3))
-                if tk["mode"] == FF and tk["type"] == "standard" and self.sdk >= 33 and self.decorated(tk) and self.visible(tk):     # tab bị che: Android gỡ thanh tiêu đề
+                if tk["mode"] == FF and tk["type"] == "standard" and self.sdk >= 33 and self.visible(tk) and (     # tab bị che: Android gỡ thanh tiêu đề
+                        self.decorated(tk) or (self.decor_ghost and self.ui and not self.decor_never)):
                     o += [wrap(f"Decor container of Task={i}", i * 3 + 1), wrap(f"Caption container of Task={i}", i * 3 + 2)]
                     if new: o += [f"RequestedLayerState{{TaskInputSink of Surface(name=Decor container of Task={i})/@0x8ca0b65#{i * 3 + 5} parentId={i * 3 + 1} z=-2}}",
                                   f"RequestedLayerState{{Caption of Task={i}Leash#{i * 3 + 6} parentId={i * 3 + 2}}}"]
@@ -1121,18 +1125,17 @@ ck("… bản in lúc giao diện hệ thống chạy từ trước khi bật c�
    and cp.win_decor(lambda c, t=0: A15_BAD, [({"id": 3}, (0, 0, 1, 1))], nosl, 2) is None, cp.win_decor_ids(lambda c, t=0: A15_BAD, {23, 2, 3}))
 nudges = lambda d, t: len([x for x in d.log if re.match(rf"am task resize {t['id']} ", x)])
 for sdk in (33, 35):
-    d = Droid(sdk, ui=False); d.decor_move = True; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
-    k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
-    after = [x for x in d.log[k_kill + 1:] if x.startswith(f"am task resize {a['id']} ")]
-    ck(f"Android {sdk}: bật lại giao diện hệ thống xong, cửa sổ đang có CHƯA được vẽ thanh tiêu đề (chỉ vẽ lúc tab đổi) → dời tab 1 px rồi trả lại → có thanh tiêu đề, khung đúng như đã báo",
-       code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and tuple(a["b"]) == tuple(j["b"]) and len(after) == 2
-       and after[1] == "am task resize %d %d %d %d %d 2>&1" % ((a["id"],) + tuple(j["b"])), (code, j, a, after, d.ui_kills))
-    b = d.open(RZ2); code, j = cp.win_run(d.sh, "mini"); n_a = nudges(d, a)
-    ck(f"Android {sdk}: tab thứ 2 → không bật lại, không dời thừa tab đầu, cả 2 có thanh tiêu đề", code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and d.drawn_ok(b), (code, j, d.ui_kills))
-    d = Droid(sdk, ui=False); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
-    k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
-    ck(f"Android {sdk}: máy tự vẽ lại thanh tiêu đề ngay khi giao diện hệ thống lên → KHÔNG dời tab thừa",
-       code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and not [x for x in d.log[k_kill + 1:] if x.startswith(f"am task resize {a['id']} ")], (code, j))
+    for mode, ghost, why in ((True, False, "chỉ vẽ lúc tab đổi khung / lên trên"), ("front", True, "ĐO MÁY ẢO ANDROID 15: lớp hình có đủ nhưng thanh chưa hiện tới khi tab được đưa lên lại"),
+                             (False, False, "máy tự vẽ lại ngay")):
+        d = Droid(sdk, ui=False); d.decor_move, d.decor_ghost = mode, ghost; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+        k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
+        after = [x for x in d.log[k_kill + 1:] if x.startswith(("input keyevent 3", "am task focus", f"am task resize {a['id']} "))]
+        ck(f"Android {sdk} ({why}): VỪA bật lại giao diện hệ thống → về màn chính rồi đưa cửa sổ lên lại đúng khung → thanh tiêu đề hiện thật, khung đúng như đã báo, không dời 1 px thừa",
+           code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and d.visible(a) and tuple(a["b"]) == tuple(j["b"])
+           and after == ["input keyevent 3", f"am task focus {a['id']} 2>&1", "am task resize %d %d %d %d %d 2>&1" % ((a["id"],) + tuple(j["b"]))], (code, j, a, after, d.ui_kills))
+        b = d.open(RZ2); code, j = cp.win_run(d.sh, "mini"); h1 = len([x for x in d.log[k_kill + 1:] if x.startswith("input keyevent 3")])
+        ck(f"Android {sdk} ({why}): tab thứ 2 → không bật lại, không về màn chính lần nữa, cả 2 có thanh tiêu đề", code == 200 and d.ui_kills == 1 and h1 == 1 and d.drawn_ok(a) and d.drawn_ok(b),
+           (code, j, d.ui_kills, h1))
     d = Droid(sdk, ui=False); d.decor_move = "front"; a = d.open(RZ1); cp.win_run(d.sh, "mini"); b = d.open(RZ2); cp.win_run(d.sh, "mini")
     d.ui = False; d.ui_key = None; n0 = len(d.log); z0 = [x["id"] for x in d.z]; ba, bb = tuple(a["b"]), tuple(b["b"]); code, j = cp.win_run(d.sh, "tile")
     homes = [k for k, x in enumerate(d.log) if k >= n0 and x.startswith("input keyevent 3")]
@@ -1140,10 +1143,16 @@ for sdk in (33, 35):
        "đúng thứ tự trên dưới + đúng ô đã xếp",
        code == 200 and d.ui_kills == 2 and len(homes) == 1 and d.drawn_ok(a) and d.drawn_ok(b) and [x["id"] for x in d.z if x["mode"] == FF] == [i for i in z0 if i in (a["id"], b["id"])]
        and d.visible(a) and d.visible(b) and ovl(a["b"], b["b"]) == 0, (code, j, d.ui_kills, homes, [x["id"] for x in d.z], z0, a["b"], b["b"]))
-    d = Droid(sdk); d.decor_move = True; a = d.open(RZ1); cp.win_run(d.sh, "mini"); d.ui_key = d.boot; a["nodecor"] = True; n0 = nudges(d, a)
-    code, j = cp.win_run(d.sh, "grow"); 
-    ck(f"Android {sdk}: lần mở máy này ĐÃ bật lại giao diện hệ thống mà tab vẫn thiếu thanh tiêu đề → không bật lại nữa, chỉ dời tab → có thanh tiêu đề",
-       code == 200 and d.ui_kills == 0 and d.drawn_ok(a) and tuple(a["b"]) == tuple(j["b"]), (code, j, a, d.ui_kills))
+    d = Droid(sdk); d.decor_move = True; a = d.open(RZ1); cp.win_run(d.sh, "mini"); d.ui_key = d.boot; a["nodecor"] = True; n0 = len(d.log); ba = tuple(a["b"])
+    r = cp.win_ui_fix(d.sh, sdk, [(dict(a, pkg="com.roblox.client"), ba)], nosl)
+    ck(f"Android {sdk}: lần mở máy này ĐÃ bật lại giao diện hệ thống mà tab vẫn thiếu thanh tiêu đề → không bật lại nữa, chỉ dời tab 1 px rồi trả lại → có thanh tiêu đề, không về màn chính",
+       r is False and d.ui_kills == 0 and d.drawn_ok(a) and tuple(a["b"]) == ba and not [x for x in d.log[n0:] if x.startswith("input keyevent 3")]
+       and [x for x in d.log[n0:] if x.startswith("am task resize")] == ["am task resize %d %d %d %d %d 2>&1" % (a["id"], ba[0], ba[1] + 1, ba[2], ba[3] + 1),
+                                                                          "am task resize %d %d %d %d %d 2>&1" % ((a["id"],) + ba)], (r, a, d.ui_kills, d.log[n0:]))
+    d = Droid(sdk); d.decor_move = "front"; a = d.open(RZ1); cp.win_run(d.sh, "mini"); d.ui_key = d.boot; a["nodecor"] = True; n0 = len(d.log); ba = tuple(a["b"])
+    r = cp.win_ui_fix(d.sh, sdk, [(dict(a, pkg="com.roblox.client"), ba)], nosl)
+    ck(f"Android {sdk}: … máy mà dời 1 px không ăn → về màn chính rồi đưa cửa sổ lên lại → có thanh tiêu đề (vẫn không bật lại giao diện hệ thống)",
+       r is False and d.ui_kills == 0 and d.drawn_ok(a) and d.visible(a) and tuple(a["b"]) == ba and len([x for x in d.log[n0:] if x.startswith("input keyevent 3")]) == 1, (r, a, d.log[n0:]))
     d = Droid(sdk); a = d.open(RZ1); cp.win_run(d.sh, "mini"); b = d.open(RZ2, land=True)        # app toàn màn che tab nhỏ → Android gỡ thanh tiêu đề của tab bị che
     r = cp.win_ui_fix(d.sh, sdk, [(dict(a, pkg="com.roblox.client"), a["b"])], nosl)
     ck(f"Android {sdk}: tab nhỏ đang bị app toàn màn che (Android không vẽ thanh tiêu đề cho tab bị che) → không coi là lỗi, không bật lại", r is False and d.ui_kills == 0 and kills(d) == 0, (r, d.ui_kills))
