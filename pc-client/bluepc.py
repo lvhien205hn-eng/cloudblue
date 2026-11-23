@@ -1488,10 +1488,17 @@ class Viewer:
         to = to or ("port" if self.vw > self.vh else "land"); land = to == "land"
         self._say("Đang xoay ngang…" if land else "Đang xoay dọc…", 4)
         def job():
-            try: self._cp().json("POST", "rotate", {"to": to, "dir": 1 if land else 0}, timeout=20)
+            j = None
+            try: j = self._cp().json("POST", "rotate", {"to": to, "dir": 1 if land else 0}, timeout=75)
             except Exception as e:
                 log("rotate:", e)
                 if self.cli: self.cli.rotate(to)
+            if isinstance(j, dict) and "turned" in j:      # 23/11d: máy chủ mới XOAY THẬT (máy bỏ qua khoá xoay → cửa sổ phủ ép màn ngang) + báo kết quả
+                if j.get("turned"):
+                    n = self.notice
+                    if n and n[0].startswith("Đang xoay"): self.notice = None; self._post()
+                else: self._say(T(j.get("msg") or "Xong."), 7)
+                return
             time.sleep(3.5)                              # 3,5 giây sau hình vẫn chưa đổi hướng → app đang mở chỉ chạy 1 hướng: nói rõ (khỏi tưởng nút hỏng)
             if ((self.vw or 0) > (self.vh or 0)) != land:
                 self._say("Đã khoá màn NGANG. App đang mở chỉ chạy màn dọc nên chưa xoay — mở game / app hỗ trợ ngang là tự ngang." if land
@@ -1508,8 +1515,11 @@ class Viewer:
         self._say({"mini": L("Đang thu nhỏ tab…", "Minimizing the tab…"), "tile": L("Đang sắp xếp tab…", "Arranging tabs…")}.get(what, L("Đang phóng to tab…", "Maximizing the tab…")), 8)
         def job():
             try:
-                j = self._cp().json("POST", "win", {"do": what}, timeout=45)
-                self._say(T(j.get("msg") or "Xong."), 8)
+                j = self._cp().json("POST", "win", {"do": what}, timeout=100)      # 23/11e: lần đầu máy chủ có thể bật lại giao diện hệ thống của máy (~10 giây)
+                m = T(j.get("msg") or "Xong.")
+                if j.get("fit") == "ask":                    # 23/11d: game chưa chắc vẽ lại theo cỡ cửa sổ → chỉ chỗ bấm Vừa khung
+                    m += L(" Hình game chưa vừa cửa sổ? Mở 🧰 Công cụ › Màn hình › Mở lại vừa khung.", " Game doesn't fit its window? Open 🧰 Tools › Screen › Refit to window.")
+                self._say(m, 11 if j.get("fit") == "ask" else 8)
             except Exception as e:
                 log("win:", e); self._say(T(missing(str(e) or "Có lỗi, thử lại.")), 8)
         threading.Thread(target=job, daemon=True).start()
@@ -2575,6 +2585,12 @@ def set_web(u):
 
 
 SITE = {"d": {}}                                         # settings.data lần đọc gần nhất (Shop.site)
+
+
+def zalo_group_url():
+    """23/11 · Link nhóm Zalo của shop (settings.data.joinZl — admin nhập trên web). Chỉ nhận link http(s) không có khoảng trắng; không có → ""."""
+    u = str((SITE.get("d") or {}).get("joinZl") or "").strip()
+    return u if re.match(r"(?i)^https?://[^\s\"'<>]+$", u) and len(u) <= 200 else ""
 
 
 def pc_maint_msg(prof=None):
@@ -6286,8 +6302,12 @@ class ToolsDlg(Dlg):
         self.say(self.win_msg, {"mini": "Đang thu nhỏ tab…", "tile": "Đang sắp xếp tab…", "refit": "Đang mở lại game trong cửa sổ…",
                                 "grow": "Đang cho cửa sổ to hơn…", "shrink": "Đang cho cửa sổ nhỏ hơn…", "wide": "Đang bật màn ngang rộng…",
                                 "narrow": "Đang trả màn dọc như cũ…"}.get(what, "Đang phóng to tab…"), WARN)
-        self.bg(lambda: self.cp.json("POST", "win", {"do": what}, timeout=45), lambda j: self.say(self.win_msg, "✓ " + (j.get("msg") or "Xong."), OK),
-                lambda m: self.say(self.win_msg, "✗ " + missing(m), BAD))
+        def ok(j):
+            m = T(j.get("msg") or "Xong.")
+            if j.get("fit") == "ask" and what != "refit":    # 23/11d: game chưa chắc vẽ lại theo cỡ cửa sổ → nhắc nút Mở lại vừa khung ngay bên dưới
+                m += L(" Hình game chưa vừa cửa sổ thì bấm Mở lại vừa khung.", " If the game doesn't fit its window, click Refit to window.")
+            self.say(self.win_msg, "✓ " + m, OK)
+        self.bg(lambda: self.cp.json("POST", "win", {"do": what}, timeout=100), ok, lambda m: self.say(self.win_msg, "✗ " + missing(m), BAD))
 
     def win_refit(self):
         """23/11b · 🖼 Mở lại vừa khung: game "cũ" dựng khung 1 lần → thu nhỏ bị tràn viền → máy chủ mở lại game NGAY TRONG cửa sổ trên cùng
@@ -6308,8 +6328,9 @@ class ToolsDlg(Dlg):
         land = to == "land"; self.say(self.rot_msg, "Đang xoay ngang…" if land else "Đang xoay dọc…", WARN)
         def ok(j):
             m = j.get("msg") or ("Đã khoá màn NGANG." if land else "Đã khoá màn DỌC.")
+            if "turned" in j: self.say(self.rot_msg, "✓ " + m, OK); return      # 23/11d: máy chủ mới xoay thật + tự nói rõ kết quả
             self.say(self.rot_msg, "✓ " + m + (" App / game hỗ trợ ngang sẽ hiện ngang; app chỉ chạy màn dọc thì vẫn dọc." if land else ""), OK)
-        self.bg(lambda: self.cp.json("POST", "rotate", {"to": to, "dir": 1 if land else 0}, timeout=30), ok,
+        self.bg(lambda: self.cp.json("POST", "rotate", {"to": to, "dir": 1 if land else 0}, timeout=75), ok,
                 lambda m: self.say(self.rot_msg, "✗ " + missing(m), BAD))
 
     def _paint_density(self):
@@ -8788,6 +8809,9 @@ class Launcher:
         lk.bind("<Button-1>", lambda *_: webbrowser.open(WEB))
         lg = tk.Label(sub, text="🌐 English" if LANG == "vi" else "🌐 Tiếng Việt", font=self.f_s, fg=DIM, bg=BG, cursor="hand2"); lg.pack(side="right", padx=(0, 14))
         lg.bind("<Button-1>", lambda *_: self.set_lang("en" if LANG == "vi" else "vi"))          # 16/11c
+        self.zl_lbl = tk.Label(sub, text=L("💬 Nhóm Zalo ↗", "💬 Zalo group ↗"), font=self.f_s, fg=ACC, bg=BG, cursor="hand2"); self._zl_on = False   # 23/11 · link nhóm Zalo
+        self.zl_lbl.bind("<Button-1>", lambda *_: webbrowser.open(self._zl_url) if getattr(self, "_zl_url", "") else None)
+        self._paint_site()
         self.tick_slot = tk.Frame(self.body, bg=BG); self.tick_slot.pack(fill="x")         # 📣 dòng chữ chạy ưu đãi (SQL v35) — trống khi chưa bật
         self.ticker = Ticker(self, self.tick_slot); self._offers_sig = None
         self.upd_slot = tk.Frame(self.body, bg=BG); self.upd_slot.pack(fill="x", padx=18)    # báo có bản app mới (nếu có)
@@ -8826,6 +8850,16 @@ class Launcher:
         self.refresh()
         self._tick()
 
+    def _paint_site(self):
+        """23/11 · Link NHÓM Zalo admin đặt trên web (Cài đặt › Nội dung trang › Nhóm Zalo) → chữ bấm được cạnh "Mở web ↗". Không có link → ẩn."""
+        lb = getattr(self, "zl_lbl", None)
+        try:
+            if lb is None or not lb.winfo_exists(): return
+            u = zalo_group_url(); self._zl_url = u
+            if u and not self._zl_on: lb.pack(side="right", padx=(0, 12)); self._zl_on = True
+            elif not u and self._zl_on: lb.pack_forget(); self._zl_on = False
+        except Exception as e: log("paint_site:", e)
+
     def _tick(self):
         if hasattr(self, "list") and self.list.winfo_exists():
             self.refresh(quiet=True)
@@ -8855,7 +8889,7 @@ class Launcher:
                 if time.time() - WHEEL["t"] > 60: wheel_load(self.auth)        # 🎡 vòng quay may mắn (tối đa 1 lần / phút)
                 if time.time() - OFFERS["t"] > 120: offers_load(self.auth)     # 🎁 ưu đãi + Kiếm tiền (tối đa 1 lần / 2 phút)
                 def show():
-                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._paint_offers(); self._paint_promo(); self._auto_update()
+                    self._paint_update(); self._paint_blue(); self._paint_wheel(); self._paint_offers(); self._paint_promo(); self._paint_site(); self._auto_update()
                     if prof is not None: self.prof = prof
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))

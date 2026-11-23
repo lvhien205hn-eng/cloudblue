@@ -1905,7 +1905,15 @@ public class ControlActivity extends Activity {
         final String base = api, pid = id, to = land ? "land" : "port";
         final JSONObject b = new JSONObject();
         try { b.put("to", to).put("dir", land ? 1 : 0); } catch (Exception ignored) { }
-        Api.bg(() -> Api.cpAt(base, "POST", pid + "/rotate", b), r -> checkRotated(land), m -> {
+        Api.bg(() -> Api.cpAt(base, "POST", pid + "/rotate", b), r -> {
+            if (r != null && r.has("turned")) {           // 23/11d: máy chủ mới XOAY THẬT (máy bỏ qua khoá xoay → cửa sổ phủ ép màn ngang) + tự báo kết quả
+                if (!r.optBoolean("turned")) Ui.toast(this, Ui.srvJob(r.optString("msg"), land
+                        ? "This phone's home screen can't turn landscape yet — apps / games that need landscape still show landscape."
+                        : "Back to portrait — the open app / game needs landscape, so it still shows landscape."));
+                return;
+            }
+            checkRotated(land);
+        }, m -> {
             if (client != null && client.isLive()) { client.rotate(to); checkRotated(land); }
             else Ui.toast(this, m);
         });

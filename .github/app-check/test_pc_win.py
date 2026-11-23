@@ -28,6 +28,12 @@ class Cp:
         self.calls.append((method, path, body))
         if self.mode == "old": raise B.ApiError(404, "Không có chức năng này.")
         if self.mode == "err": raise B.ApiError(409, "Chưa có app nào đang mở toàn màn — mở app (VD Roblox) rồi bấm Thu nhỏ tab.")
+        if path == "rotate":                              # 23/11d: máy chủ mới trả "turned" + câu kết quả; máy chủ cũ ("rot_old") chỉ trả ok
+            if self.mode == "rot_old": return {"ok": True}
+            return {"ok": True, "to": body.get("to"), "turned": self.mode != "rot_no",
+                    "msg": ("Đã xoay màn NGANG." if self.mode != "rot_no" else "Máy này chưa xoay ngang được màn chính — app / game cần màn ngang vẫn tự hiện ngang.")
+                    if body.get("to") == "land" else "Đã về màn DỌC."}
+        if self.mode == "ask": return {"ok": True, "n": 1, "fit": "ask", "msg": "Đã thu nhỏ knight (1 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}
         return {"ok": True, "n": 2, "msg": {"mini": "Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.",
                                             "tile": "Đã xếp 2 tab nhỏ (1 cột × 2 hàng).", "full": "Đã phóng to Roblox ra toàn màn."}[body["do"]]}
 
@@ -58,6 +64,31 @@ said.clear(); cp.mode = "old"; v._tool("winmini", pg)
 ck("máy chủ cũ (404) → 'Máy chủ của máy này chưa có tính năng này'", wait(lambda: len(said) >= 2) and "chưa có tính năng này" in said[-1], said)
 said.clear(); cp.mode = "err"; v._tool("winmini", pg)
 ck("lỗi máy chủ (409) → hiện đúng câu", wait(lambda: len(said) >= 2) and said[-1].startswith("Chưa có app nào đang mở toàn màn"), said)
+# 23/11d–e: máy chủ báo fit = ask → nhắc chỗ bấm Vừa khung · Xoay dùng câu của máy chủ mới · chờ máy chủ đủ lâu
+said.clear(); cp.mode = "ask"; cp.calls.clear(); v._tool("winmini", pg)
+ck("23/11d · máy chủ báo fit=ask (game chưa chắc vừa cửa sổ) → câu máy chủ + chỉ chỗ bấm Mở lại vừa khung", wait(lambda: len(said) >= 2)
+   and said[-1].startswith("Đã thu nhỏ knight (1 tab nhỏ)") and "Mở lại vừa khung" in said[-1], said)
+src0 = open(os.path.join(sys.argv[1], "bluepc.py"), encoding="utf-8").read()
+ck("23/11e · chờ máy chủ đủ lâu: win ≥ 100 giây (lần đầu máy chủ bật lại giao diện hệ thống của máy), rotate ≥ 75 giây (lần đầu cài app trợ giúp xoay)",
+   src0.count('self._cp().json("POST", "win", {"do": what}, timeout=100)') == 1 and src0.count('self.cp.json("POST", "win", {"do": what}, timeout=100)') == 1
+   and src0.count('timeout=75') == 2 and 'timeout=45' not in src0.split("def _win(self, what):")[1][:900])
+v.state = ["connected"]; v.vw, v.vh = 720, 1280; v.notice = None; v._post = lambda: None; v.cli = None
+said.clear(); cp.mode = "ok"; cp.calls.clear(); v._rotate()
+ck("23/11d · bấm Xoay (hình đang dọc) → POST rotate {to: land}; máy chủ mới báo đã xoay → không hiện câu 'app chỉ chạy màn dọc'", wait(lambda: len(cp.calls) >= 1)
+   and cp.calls[-1][:2] == ("POST", "rotate") and cp.calls[-1][2]["to"] == "land" and (time.sleep(0.3) or True) and said == ["Đang xoay ngang…"], (cp.calls, said))
+said.clear(); cp.mode = "rot_no"; v._rotate("land")
+ck("23/11d · máy chủ báo chưa xoay ngang được màn chính → hiện đúng câu của máy chủ (không chờ 3,5 giây)", wait(lambda: len(said) >= 2, 2.0)
+   and said[-1].startswith("Máy này chưa xoay ngang được màn chính"), said)
+said.clear(); cp.mode = "rot_old"; v._rotate("land")
+ck("máy chủ cũ (không có 'turned') → cách cũ: 3,5 giây sau hình chưa đổi hướng thì nói rõ", wait(lambda: len(said) >= 2, 6.0) and said[-1].startswith("Đã khoá màn NGANG"), said)
+cp.mode = "ok"
+B.SITE["d"] = {"joinZl": " https://zalo.me/g/abcxyz123 "}; z1 = B.zalo_group_url()
+B.SITE["d"] = {"joinZl": "javascript:alert(1)"}; z2 = B.zalo_group_url()
+B.SITE["d"] = {"joinZl": "https://zalo.me/g/a b"}; z3 = B.zalo_group_url()
+B.SITE["d"] = {}; z4 = B.zalo_group_url()
+ck("23/11 · link nhóm Zalo (settings.data.joinZl): nhận link http(s) hợp lệ, bỏ link lạ / có khoảng trắng / trống", (z1, z2, z3, z4) == ("https://zalo.me/g/abcxyz123", "", "", ""), (z1, z2, z3, z4))
+ck("23/11 · app PC hiện chữ '💬 Nhóm Zalo ↗' cạnh 'Mở web ↗' khi admin đã đặt link (vẽ lại mỗi lần đọc cài đặt web)",
+   'self.zl_lbl = tk.Label(sub, text=L("💬 Nhóm Zalo ↗", "💬 Zalo group ↗")' in src0 and "self._paint_site(); self._auto_update()" in src0 and "def _paint_site(self):" in src0)
 vp = B.Viewer("44444444-4444-4444-8444-444444444444", None, pc=True); cpp = Cp(); vp._cp = lambda: cpp; vp._say = lambda *a, **k: None
 vp._win("mini"); time.sleep(0.2)
 ck("máy PC: _win không gửi gì", not cpp.calls, cpp.calls)
@@ -112,7 +143,19 @@ for vi, want in (("Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng �
                  ("Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Cửa sổ to hơn / nhỏ hơn.", "then click Bigger / Smaller window"),
                  ("Đã bật màn NGANG RỘNG (600 dp) — màn chính nằm ngang, chứa được nhiều tab hơn. Đã xếp 2 tab nhỏ (2 cột × 1 hàng).", "Wide landscape is on (600 dp)"),
                  ("Đã đặt màn rộng (600 dp) + khoá ngang — màn chính của máy này không xoay ngang, app / game ngang vẫn hiện ngang.", "Wide screen set (600 dp)"),
-                 ("Đã trả màn DỌC như cũ (360 dp). Đã xếp 2 tab nhỏ (1 cột × 2 hàng).", "Back to the normal portrait screen (360 dp)")):
+                 ("Đã trả màn DỌC như cũ (360 dp). Đã xếp 2 tab nhỏ (1 cột × 2 hàng).", "Back to the normal portrait screen (360 dp)"),
+                 # 23/11d–e
+                 ("Đã thu nhỏ knight (1 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ. Máy chuyển sang màn rộng 600 dp cho tab đủ chỗ — bấm Màn dọc như cũ để trả lại.", "The phone switched to a wide 600 dp screen"),
+                 ("Đã thu nhỏ Roblox (bản clone) (2 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ.", "Minimized Roblox (clone) (2 small tabs) — the game reopened"),
+                 ("Đã xếp 3 tab nhỏ (1 cột × 3 hàng). 2 game đã mở lại để vẽ vừa ô mới.", "2 game(s) reopened to fit the new size"),
+                 ("Đã phóng to knight ra toàn màn. Game đã mở lại để vẽ đủ toàn màn. Máy đã về mật độ cũ (360 dp).", "back to its previous screen density (360 dp)"),
+                 ("Đã phóng to knight ra toàn màn. Hình chưa đủ màn thì bấm Vừa khung.", "click Refit to window"),
+                 ("Đã mở lại knight toàn màn — game vẽ đủ màn (game vừa khởi động lại, vào lại trận nếu cần).", "Reopened knight full screen"),
+                 ("Đã mở lại knight ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần). Hình vẫn bị cắt thì bấm Màn ngang rộng cho cửa sổ đủ chỗ.", "Still cut off?"),
+                 ("Đã xoay màn NGANG.", "The screen is now landscape."),
+                 ("Máy này chưa xoay ngang được màn chính — app / game cần màn ngang vẫn tự hiện ngang.", "home screen can't turn landscape yet"),
+                 ("Đã về màn DỌC.", "The screen is back to portrait."),
+                 ("Đã về màn DỌC — app / game đang mở cần màn ngang nên vẫn hiện ngang.", "Back to portrait — the open app / game needs landscape")):
     got = EN.tr(vi)
     ck(f"English câu máy chủ: …{want[:40]}", want in got and not EN.has_vi(got), got)
 print("%d/%d dat" % (OK[0], OK[1])); sys.exit(0 if OK[0] == OK[1] else 1)

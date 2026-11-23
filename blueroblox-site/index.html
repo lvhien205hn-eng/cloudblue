@@ -119,15 +119,17 @@ h1 em{display:block;font-style:normal;background:linear-gradient(180deg,var(--go
   -webkit-mask:radial-gradient(circle,#000 0 99%,transparent 100%);mask:radial-gradient(circle,#000 0 99%,transparent 100%);animation:cw0 6s linear infinite}
 .stage .fx{position:absolute;inset:-8%;width:116%;height:116%;pointer-events:none}
 
-/* ===== Discord ===== */
-#join-band{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:var(--r);text-decoration:none;color:#fff;
+/* ===== Discord + nhóm Zalo (2 băng "Tham gia", cùng kiểu) ===== */
+#join-band[hidden],#join-zl[hidden]{display:none!important}
+#join-band:not([hidden])+#join-zl{margin-top:10px}
+#join-band,#join-zl{display:flex;align-items:center;gap:16px;padding:16px 20px;border-radius:var(--r);text-decoration:none;color:#fff;
   background:linear-gradient(100deg,#4752e8,#7c84ff);border:1px solid rgba(255,255,255,.18);box-shadow:0 12px 34px -14px rgba(88,101,242,.8);transition:transform .2s,filter .2s;position:relative;overflow:hidden}
-#join-band:hover{transform:translateY(-2px);filter:brightness(1.07)}
-#join-band .jd-ico{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:24px;flex:none}
-#join-band .jd-txt{display:flex;flex-direction:column;min-width:0}
-#join-band .jd-txt b{font-size:17px}
-#join-band .jd-txt small{opacity:.85;font-size:13px}
-#join-band .jd-btn{margin-left:auto;background:#fff;color:#4650d8;font-weight:700;padding:9px 18px;border-radius:999px;white-space:nowrap;flex:none}
+#join-band:hover,#join-zl:hover{transform:translateY(-2px);filter:brightness(1.07)}
+#join-band .jd-ico,#join-zl .jd-ico{width:46px;height:46px;border-radius:12px;background:rgba(255,255,255,.2);display:grid;place-items:center;font-size:24px;flex:none}
+#join-band .jd-txt,#join-zl .jd-txt{display:flex;flex-direction:column;min-width:0}
+#join-band .jd-txt b,#join-zl .jd-txt b{font-size:17px}
+#join-band .jd-txt small,#join-zl .jd-txt small{opacity:.85;font-size:13px}
+#join-band .jd-btn,#join-zl .jd-btn{margin-left:auto;background:#fff;color:#4650d8;font-weight:700;padding:9px 18px;border-radius:999px;white-space:nowrap;flex:none}
 
 /* ===== cửa hàng ===== */
 .shop{display:grid;grid-template-columns:230px 1fr;gap:22px;padding-block:18px 44px;scroll-margin-top:80px}
@@ -387,7 +389,7 @@ code{font-family:var(--mono);font-size:.92em;color:var(--sky)}
   .card .btn{padding:9px 10px;font-size:13.5px}
   .dlg{padding:20px 16px;border-radius:18px}
   .modal{align-items:end;padding:10px}
-  #join-band{flex-wrap:wrap}#join-band .jd-btn{margin-left:0;width:100%;text-align:center}
+  #join-band,#join-zl{flex-wrap:wrap}#join-band .jd-btn,#join-zl .jd-btn{margin-left:0;width:100%;text-align:center}
   .tiles{grid-template-columns:1fr}
 }
 
@@ -1563,11 +1565,11 @@ html[data-theme] .cats button.on small{background:rgba(255,255,255,.25);color:#f
   .cb-rail .nc .na svg{width:14px;height:14px;margin:0}
   /* băng Discord → thẻ gọn */
   .cb-rail #join-wrap{padding:0!important;margin:0;width:auto;max-width:none}
-  .cb-rail #join-band{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;padding:12px;border-radius:18px;text-decoration:none}
-  .cb-rail #join-band .jd-ico{width:34px;height:34px;font-size:18px}
-  .cb-rail #join-band .jd-txt b{font-size:13.5px;line-height:1.25}
-  .cb-rail #join-band .jd-txt small{display:none}
-  .cb-rail #join-band .jd-btn{grid-column:1/-1;text-align:center;justify-content:center;padding:8px 10px;font-size:13px;margin:4px 0 0}
+  .cb-rail #join-band,.cb-rail #join-zl{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;padding:12px;border-radius:18px;text-decoration:none}
+  .cb-rail #join-band .jd-ico,.cb-rail #join-zl .jd-ico{width:34px;height:34px;font-size:18px}
+  .cb-rail #join-band .jd-txt b,.cb-rail #join-zl .jd-txt b{font-size:13.5px;line-height:1.25}
+  .cb-rail #join-band .jd-txt small,.cb-rail #join-zl .jd-txt small{display:none}
+  .cb-rail #join-band .jd-btn,.cb-rail #join-zl .jd-btn{grid-column:1/-1;text-align:center;justify-content:center;padding:8px 10px;font-size:13px;margin:4px 0 0}
   /* phần giữa: bỏ hàng thông báo → sản phẩm lên sát dưới phần giới thiệu */
   html.has-rail .hero{padding-bottom:0}
 }
@@ -1880,11 +1882,11 @@ body.past-hero .cbl *,body.past-hero .cbl *::before{animation-play-state:paused!
   body:not(.admin-page) .cb-rail .nc .ni{width:30px;height:30px;border-radius:9px}
   body:not(.admin-page) .cb-rail .nc .nt b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   html[data-theme] body:not(.admin-page) .cb-rail .nc .na{width:20px;height:20px;background:transparent!important;color:var(--muted)!important}
-  html[data-theme] body:not(.admin-page) .cb-rail #join-band{grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:10px 12px;border-radius:14px;box-shadow:none}
-  body:not(.admin-page) .cb-rail #join-band .jd-ico{width:30px;height:30px;font-size:16px;border-radius:9px}
-  body:not(.admin-page) .cb-rail #join-band .jd-txt b{font-size:13px;line-height:1.3}
-  body:not(.admin-page) .cb-rail #join-band .jd-btn{display:none}
-  body:not(.admin-page) .cb-rail #join-band::after{content:"›";font-size:22px;font-weight:700;line-height:1;opacity:.9}
+  html[data-theme] body:not(.admin-page) .cb-rail #join-band,html[data-theme] body:not(.admin-page) .cb-rail #join-zl{grid-template-columns:auto minmax(0,1fr) auto;gap:10px;padding:10px 12px;border-radius:14px;box-shadow:none}
+  body:not(.admin-page) .cb-rail #join-band .jd-ico,body:not(.admin-page) .cb-rail #join-zl .jd-ico{width:30px;height:30px;font-size:16px;border-radius:9px}
+  body:not(.admin-page) .cb-rail #join-band .jd-txt b,body:not(.admin-page) .cb-rail #join-zl .jd-txt b{font-size:13px;line-height:1.3}
+  body:not(.admin-page) .cb-rail #join-band .jd-btn,body:not(.admin-page) .cb-rail #join-zl .jd-btn{display:none}
+  body:not(.admin-page) .cb-rail #join-band::after,body:not(.admin-page) .cb-rail #join-zl::after{content:"›";font-size:22px;font-weight:700;line-height:1;opacity:.9}
   /* thanh tài khoản trên cùng: thưa hơn một chút */
   html[data-theme] body:not(.admin-page) header.top .acct{gap:8px}
 }
@@ -2009,8 +2011,8 @@ html[data-theme] .hero.m3h>.notice{grid-column:1/-1}
 html[data-theme] .nc-pol,html[data-theme] .nc-dc,html[data-theme] .nc-zl,html[data-theme] .nc-info{--c:#5aa6ff!important}
 html[data-theme] .nc .ni{color:#fff;background:linear-gradient(160deg,#5aa6ff,#2b6ef0)}
 html[data-theme] .nc .na{color:#fff;background:#2b6ef0}
-html[data-theme] #join-band{background:linear-gradient(100deg,#2b6ef0,#4f95ff);box-shadow:0 12px 30px -16px rgba(43,110,240,.8)}
-html[data-theme] #join-band .jd-btn{color:#1f5fe0}
+html[data-theme] #join-band,html[data-theme] #join-zl{background:linear-gradient(100deg,#2b6ef0,#4f95ff);box-shadow:0 12px 30px -16px rgba(43,110,240,.8)}
+html[data-theme] #join-band .jd-btn,html[data-theme] #join-zl .jd-btn{color:#1f5fe0}
 
 /* ---------- sản phẩm ---------- */
 html[data-theme] .shop.m3s{display:block;padding-block:30px 10px}
@@ -2734,6 +2736,11 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     <span class="jd-txt"><b data-i18n="dc_t">Tham gia Discord CloudBlue</b><small data-i18n="dc_s">Nhận thông báo hàng mới, giveaway, cập nhật kho và hỗ trợ nhanh</small></span>
     <span class="jd-btn" data-i18n="dc_b">Tham gia ngay</span>
   </a>
+  <a id="join-zl" href="#" target="_blank" rel="noopener" hidden>
+    <span class="jd-ico">💬</span>
+    <span class="jd-txt"><b data-i18n="zg_t">Tham gia nhóm Zalo CloudBlue</b><small data-i18n="zg_s">Hỏi đáp nhanh, nhận tin khuyến mãi và hỗ trợ ngay trong nhóm</small></span>
+    <span class="jd-btn" data-i18n="zg_b">Vào nhóm</span>
+  </a>
 </section>
 
 <section class="wrap shop m3s" id="shop">
@@ -2798,7 +2805,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
   <div class="wrap">
     <div><a class="logo" href="/" aria-label="CloudBlue"><span class="mark"></span><span class="wm"><b>Cloud<em>Blue</em></b><small>Cloud Phone &amp; VPS GPU</small></span></a><p id="ft-about"></p></div>
     <div><h5 data-i18n="f_links">Liên kết</h5><ul><li><a href="#policy" data-i18n="policy">Chính sách</a></li><li><a href="#shop" data-i18n="nav_shop">Sản phẩm</a></li></ul></div>
-    <div><h5 data-i18n="f_contact">Liên hệ</h5><ul><li id="ct-zalo"></li><li id="ct-email"></li><li id="ct-discord"></li><li id="ft-app" hidden><a href="/download/blueroblox-cloud.apk" download="CloudBlue.apk">📱 Tải app Android</a></li></ul></div>
+    <div><h5 data-i18n="f_contact">Liên hệ</h5><ul><li id="ct-zalo"></li><li id="ct-email"></li><li id="ct-discord"></li><li id="ct-zalog"></li><li id="ft-app" hidden><a href="/download/blueroblox-cloud.apk" download="CloudBlue.apk">📱 Tải app Android</a></li></ul></div>
   </div>
   <div class="copy">© <span id="year"></span> CloudBlue.</div>
   <div class="wrap fxbar"><button type="button" class="fxtoggle" id="fx-toggle" aria-pressed="false">✨ Hiệu ứng: Bật</button><button type="button" class="fxtoggle" id="neon-foot" aria-pressed="false">💡 Neon chạy: Tắt</button><small id="fx-hint">Máy yếu / mạng chậm → tắt hiệu ứng cho mượt</small></div>
@@ -3745,6 +3752,9 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
         <label class="full">Link Zalo (vd https://zalo.me/0912345678)<input id="sf-linkZl" maxlength="200" placeholder="https://zalo.me/..."></label>
         <h3>Discord ở trang chính</h3>
         <label class="full">Link server Discord hiện ở trang chủ<input id="sf-joinDc" maxlength="200" placeholder="https://discord.gg/..."></label>
+        <h3>Nhóm Zalo ở trang chính</h3>
+        <label class="full">Link nhóm Zalo hiện cho khách (vd https://zalo.me/g/abcxyz) — để trống thì ẩn<input id="sf-joinZl" maxlength="200" placeholder="https://zalo.me/g/..."></label>
+        <div class="hint full">Có link thì khách thấy dòng <b>Nhóm Zalo</b> trong khung Hỗ trợ 24/7 + nút <b>Tham gia nhóm Zalo</b> (web, app Android, app máy tính). Lấy link: mở nhóm Zalo › ⋯ › Link tham gia nhóm › Sao chép.</div>
         <label class="full">Giới thiệu ở chân trang<textarea id="sf-about" maxlength="300"></textarea></label>
         <h3>Bản tiếng Anh (khách chọn EN sẽ thấy)</h3>
         <label class="full">Dòng nhỏ phía trên (EN)<input id="sf-eyebrow_en" maxlength="80"></label>
@@ -4633,7 +4643,7 @@ const DEF_SITE = {
   n1: "ĐỌC CHÍNH SÁCH trước khi mua để biết điều kiện bảo hành và hoàn tiền.",
   n2: "DISCORD: nhận thông báo hàng mới, giveaway và cập nhật kho.",
   n3: "LIÊN HỆ: Zalo / Facebook / Email ở cuối trang.",
-  zalo: "", email: "", discord: "", rate: 25000, linkDc: "", linkTg: "", linkZl: "", afterBuy: true, joinDc: "",
+  zalo: "", email: "", discord: "", rate: 25000, linkDc: "", linkTg: "", linkZl: "", afterBuy: true, joinDc: "", joinZl: "",
   about: "CloudBlue — điện thoại đám mây, VPS GPU và clone giá rẻ, giao tự động, hỗ trợ 24/7.",
   policy: "Bảo hành đăng nhập trong 24 giờ kể từ lúc mua. Lỗi do shop sẽ được đổi hàng hoặc hoàn tiền vào số dư.\nTài khoản bị khoá do người mua vi phạm điều khoản của game không được bảo hành.",
   bankBin: "970422", bankAcc: "", bankName: "", prefix: "BR", minTop: 10000, ref_on: true, ref_pct: 5,
@@ -4754,7 +4764,7 @@ const EN = {
   view_orders:"View orders", orders_title:"Your orders & transactions",
   buy_now:"Buy now", sold_out:"Sold out", left:"Left", from:"from", plan:"Plan", days:"days",
   login_to_buy:"Log in to buy", topup:"Top up", pay:"Pay", not_logged:"Not logged in",
-  pw:"Password", pw8:"Password (at least 8 characters)", pw2:"Repeat password", fg_title:"Reset password", fg_email:"Registered email", fg_send:"Send reset email", fg_sent:"A password reset email was sent to", fg_spam:"Open the email and tap “Reset password” — CloudBlue opens so you can set a new password. No email? Check Spam. If the email has a code, you can enter it below. The link / code works for 1 hour.", fg_code:"Verification code", pw_new8:"New password (at least 8 characters)", fg_ok:"Reset password", fg_back:"Back to log in", np_title:"Set a new password", np_save:"Save password", kv_bank:"Bank", kv_acc:"Account number", kv_name:"Account holder", kv_amt:"Amount", kv_memo:"Transfer note (required)", copy_btn:"Copy", bank_note:"Transfer the <b>exact amount</b> with the <b>exact note</b> to be credited automatically in 1–2 minutes. Wrong note? Contact support with a screenshot.", vps_how:"How to receive your VPS", vps_v5_s:"Enter a PIN so the shop can connect", vps_sync_s:"Message the shop · send UltraViewer", vps_pin:"FarmV5 PIN (required)", vps_pin_ph:"Enter your FarmV5 PIN", ltc_s:"From $1 · automatic", dc_t:"Join the CloudBlue Discord", dc_s:"New stock alerts, giveaways, restocks and fast support", dc_b:"Join now",
+  pw:"Password", pw8:"Password (at least 8 characters)", pw2:"Repeat password", fg_title:"Reset password", fg_email:"Registered email", fg_send:"Send reset email", fg_sent:"A password reset email was sent to", fg_spam:"Open the email and tap “Reset password” — CloudBlue opens so you can set a new password. No email? Check Spam. If the email has a code, you can enter it below. The link / code works for 1 hour.", fg_code:"Verification code", pw_new8:"New password (at least 8 characters)", fg_ok:"Reset password", fg_back:"Back to log in", np_title:"Set a new password", np_save:"Save password", kv_bank:"Bank", kv_acc:"Account number", kv_name:"Account holder", kv_amt:"Amount", kv_memo:"Transfer note (required)", copy_btn:"Copy", bank_note:"Transfer the <b>exact amount</b> with the <b>exact note</b> to be credited automatically in 1–2 minutes. Wrong note? Contact support with a screenshot.", vps_how:"How to receive your VPS", vps_v5_s:"Enter a PIN so the shop can connect", vps_sync_s:"Message the shop · send UltraViewer", vps_pin:"FarmV5 PIN (required)", vps_pin_ph:"Enter your FarmV5 PIN", ltc_s:"From $1 · automatic", dc_t:"Join the CloudBlue Discord", dc_s:"New stock alerts, giveaways, restocks and fast support", dc_b:"Join now", zg_t:"Join the CloudBlue Zalo group", zg_s:"Quick answers, promo news and support right in the group", zg_b:"Join group",
   nav_vps:"My VPS", nav_cloud:"My cloud phones", vps_mine:"My VPS machines", vps_note:"The VPS machines you are renting. Near expiry, tap Renew to add time; tap Cancel if you no longer need it.", renew_title:"Renew VPS", new_expiry:"New expiry", renew:"Renew", vps_cancel:"Cancel", vps_expired:"Expired", vps_left:"left", vps_day:"d",
   promo_ph:"Discount code (optional)", promo_apply:"Apply",
   cat_all:"All", thanks_ok:"Success!", order_ok:"Order placed!", m_bank:"🏦 Bank", m_usdt:"🪙 Crypto", cr_type:"Type", cr_coin:"Coin type", cr_network:"Network", will_credit:"will be credited", cr_send:"USDT to send", cr_addr:"Wallet address", pay_crypto_s:"Auto TRC20", make_usdt:"Create USDT payment", min_amt:"Minimum is ", cr_wait:"Waiting for blockchain confirmation…", received:"Received ", credited:"Balance credited.", topup_ok:"Top-up success +", cr_note:"Send the <b>exact USDT amount</b> on the <b>TRC20 network</b> to the address above. Credited automatically after network confirmation (a few minutes). Wrong network may lose funds."
@@ -4955,6 +4965,7 @@ const NICON = {
   pol: '<svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6l8-3z"/><path d="M9 12l2 2 4-4"/></svg>',
   dc: '<svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>',
   zl: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 005 5L15 13l5 2v4a2 2 0 01-2 2A16 16 0 013 6a2 2 0 012-2"/></svg>',
+  zg: '<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 19a6 6 0 0112 0"/><path d="M16 5.3a3.2 3.2 0 010 5.4M17.6 14.4A6 6 0 0121 19"/></svg>',
   info: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>' };
 /* Ô thông báo ở đầu trang: tự nhận ra Discord / Zalo / Chính sách để thành nút bấm được */
 function noticeCard(n, vi) {
@@ -4978,11 +4989,15 @@ function renderSite() {
   $("h-title").innerHTML = esc(ST("h1a")) + " <em>" + esc(ST("h1b")) + "</em>";
   $("h-desc").textContent = ST("desc");
   $("st-a").textContent = SITE.sta; $("st-b").textContent = SITE.stb;
-  const cards = ["n1", "n2", "n3"].filter(k => ST(k)).map(k => noticeCard(ST(k), SITE[k] || "")).join("");
+  const jz = !!SITE.joinZl && /^https?:\/\/[^\s"'<>]+$/i.test(SITE.joinZl);      // 23/11 · link NHÓM Zalo (admin nhập ở Cài đặt) → dòng bấm được như dòng Discord
+  const cards = ["n1", "n2", "n3"].filter(k => ST(k)).map(k => noticeCard(ST(k), SITE[k] || "")).join("")
+    + (jz ? `<a class="nc nc-zl" href="${esc(SITE.joinZl)}" target="_blank" rel="noopener"><span class="ni">${NICON.zg}</span><span class="nt"><b>${L("Nhóm Zalo", "Zalo group")}</b><small>${esc(SITE.joinZl.replace(/^https?:\/\//i, ""))}</small></span><span class="na">${L("Vào nhóm", "Join")}<svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></span></a>` : "");
   $("notices").innerHTML = cards ? `<p class="nh"><i></i><span>${L("Hỗ trợ 24/7 · liên hệ nhanh", "24/7 support · reach us fast")}</span></p>` + cards : "";
   $("ft-about").textContent = ST("about"); $("policy-text").textContent = ST("policy");
   $("ct-zalo").textContent = SITE.zalo ? "Zalo: " + SITE.zalo : ""; $("ct-email").textContent = SITE.email ? "Email: " + SITE.email : ""; $("ct-discord").textContent = SITE.discord ? "Discord: " + SITE.discord : "";
-  const jd = SITE.joinDc && /^https?:\/\//i.test(SITE.joinDc); $("join-wrap").hidden = !jd; if (jd) $("join-band").href = SITE.joinDc;
+  const jd = !!SITE.joinDc && /^https?:\/\//i.test(SITE.joinDc); $("join-wrap").hidden = !(jd || jz); $("join-band").hidden = !jd; if (jd) $("join-band").href = SITE.joinDc;
+  const zb = $("join-zl"), zf = $("ct-zalog"); if (zb) { zb.hidden = !jz; if (jz) zb.href = SITE.joinZl; }
+  if (zf) { zf.textContent = ""; if (jz) { const a = document.createElement("a"); a.href = SITE.joinZl; a.target = "_blank"; a.rel = "noopener"; a.textContent = L("Nhóm Zalo", "Zalo group"); zf.appendChild(a); } }
   $("year").textContent = new Date().getFullYear();
   try { m3Facts(); } catch (e) {}
 }
