@@ -267,6 +267,113 @@ def out(r):
     return ((r.stdout or b"") + (r.stderr or b"")).decode(errors="ignore").strip()
 
 
+# ---------------- 23/11f · QUẢN LÝ MÁY CHỦ TỪ WEB (admin): bản đang chạy · cập nhật · các nút của bảng CloudBlue ----------------
+# Web admin (thẻ máy chủ → 🛠 Quản lý) gọi /cpapi/admin/node của ĐÚNG máy chủ đó:
+#   GET  → bản đang chạy (sổ logs/cap-nhat.json do sua-tat-ca.py ghi), đang cập nhật không, mấy chục dòng cuối của lượt cập nhật gần nhất
+#   POST {do: "update"} → tải sua-tat-ca.py mới nhất từ GitHub rồi chạy `--tu-dong` TÁCH RỜI (nó sẽ tắt + bật lại chính cpapi) — y như lệnh A
+#   POST {do: <việc>}   → chỉ các việc ghi sẵn trong NODE_ACTS (không nhận lệnh tự gõ); việc mất dữ liệu / tắt máy phải gõ đúng mã máy chủ.
+# Các nút cần khoá bí mật (Supabase, Cloudflare, mật khẩu Windows) KHÔNG có ở đây — chỉ làm tại bảng CloudBlue trên máy chủ.
+CPAPI_VER = "23/11f"
+NODE_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
+NODE_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
+SUA_FILE = os.path.join(HOME, "sua-tat-ca.py")
+SUA_URLS = (("https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents/windows/sua-tat-ca.py?ref=main", {"Accept": "application/vnd.github.raw"}),
+            ("https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/windows/sua-tat-ca.py", {}))
+_NODEJOB = {"t": 0, "do": ""}  # việc quản lý máy chủ đang chạy (1 việc / lúc)
+# việc: (tên hiện cho admin, lệnh — chạy bằng python của máy chủ trong thư mục CloudBlue, số giây tối đa, phải gõ mã máy chủ?)
+NODE_ACTS = {
+    "list": ("Danh sách máy", ["phonectl.py", "list"], 180, False),
+    "wallpaper": ("Đặt ảnh nền CloudBlue cho các máy đang chạy (máy chưa có)", ["phonectl.py", "wallpaper", "--all"], 1800, False),
+    "hide": ("Cho cửa sổ giả lập chạy ngầm", ["phonectl.py", "hide"], 300, False),
+    "test": ("Tạo máy thử test1 (4GB RAM · 4 nhân)", ["phonectl.py", "create", "test1", "--ram", "4", "--cpu", "4"], 1800, False),
+    "remake-list": ("Máy khách cần làm mới", ["run.py", "remake.py", "list"], 600, False),
+    "remake": ("Làm mới máy khách (tạo lại — app / dữ liệu cũ MẤT)", ["run.py", "remake.py", "all"], 7200, True),
+    "cleanup": ("Dọn giả lập thừa (xoá giả lập không thuộc danh sách CloudBlue)", ["phonectl.py", "cleanup"], 1800, True),
+}
+NODE_OPTIMIZE_PS = r"""
+powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null | Out-Null
+$u = (powercfg -list | Select-String 'Ultimate|Hiệu năng tối đa' | Select-Object -First 1)
+if ($u) { powercfg -setactive (($u -split '\s+')[3]) } else { powercfg -setactive SCHEME_MIN }
+powercfg /change standby-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /hibernate off
+Write-Host '[OK] Che do hieu nang cao, khong ngu'
+$M = @('C:\Program Files\Microvirt', 'D:\Program Files\Microvirt', 'C:\blue') | Where-Object { Test-Path $_ }
+foreach ($d in $M) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue }
+foreach ($x in 'MEmuHeadless.exe','MEmu.exe','MEmuConsole.exe','memuc.exe','adb.exe','node.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
+Write-Host '[OK] Defender bo qua thu muc gia lap + CloudBlue'
+reg add HKCU\System\GameConfigStore /v GameDVR_Enabled /t REG_DWORD /d 0 /f | Out-Null
+reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR /v AllowGameDVR /t REG_DWORD /d 0 /f | Out-Null
+Write-Host '[OK] Tat Xbox Game DVR'
+"""
+
+
+def node_state():
+    try:
+        d = json.load(open(NODE_STATE_F, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def node_updating(st=None):
+    """Đang có lượt cập nhật chạy dở (sổ ghi "running" dưới 30 phút)."""
+    r = (node_state() if st is None else st).get("running") or {}
+    try: return bool(r) and time.time() - float(r.get("start") or 0) < 1800
+    except (TypeError, ValueError): return False
+
+
+def node_tail(path, n=60, nb=60000):
+    try:
+        with open(path, "rb") as fh:
+            fh.seek(0, 2); z = fh.tell(); fh.seek(max(0, z - nb))
+            return "\n".join(fh.read().decode("utf-8", "replace").splitlines()[-n:])
+    except Exception:
+        return ""
+
+
+def sua_fetch(get=None):
+    """Tải sua-tat-ca.py mới nhất từ GitHub (như lệnh A) → (nội dung, bản). Không tải được / file lạ → báo lỗi, KHÔNG chạy gì."""
+    def _get(url, h):
+        req = urllib.request.Request(url, headers=dict({"User-Agent": "cloudblue-sua-tat-ca", "Cache-Control": "no-cache"}, **h))
+        with urllib.request.urlopen(req, timeout=60) as r: return r.read()
+    for url, h in SUA_URLS:
+        try: data = (get or _get)(url, h)
+        except Exception: continue
+        m = re.search(rb'^VER = "([0-9a-z/]{3,12})"', data or b"", re.M)
+        if data and len(data) > 20000 and b"cloudblue-sua-tat-ca" in data and m:
+            try: compile(data.decode("utf-8"), "sua-tat-ca.py", "exec")
+            except Exception: continue
+            return data, m.group(1).decode()
+    raise RuntimeError("Chưa tải được bản cập nhật từ GitHub — thử lại sau 1 phút.")
+
+
+def node_update_start(data=None, spawn=None):
+    """Chạy lượt cập nhật trên máy chủ này, TÁCH RỜI khỏi cpapi (lượt đó tắt rồi bật lại chính cpapi). Trả bản sẽ cài."""
+    if node_updating(): raise RuntimeError("Máy chủ này đang cập nhật rồi — chờ vài phút rồi xem lại.")
+    ver = None
+    if data is None: data, ver = sua_fetch()
+    with open(SUA_FILE + ".new", "wb") as f: f.write(data)
+    os.replace(SUA_FILE + ".new", SUA_FILE)
+    os.makedirs(os.path.dirname(NODE_LOG_F), exist_ok=True)
+    cmd = [sys.executable, "-u", SUA_FILE, "--tu-dong"]
+    if spawn: spawn(cmd); return ver
+    lf = open(NODE_LOG_F, "wb")
+    try:
+        kw = {"creationflags": 0x08000000 | 0x00000200} if IS_WIN else {"start_new_session": True}     # không cửa sổ + nhóm tiến trình riêng
+        subprocess.Popen(cmd, cwd=HOME, stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kw)
+    finally:
+        lf.close()
+    return ver
+
+
+def node_run(key, say=None):
+    """Chạy 1 việc trong NODE_ACTS → chữ in ra (tối đa 12000 ký tự cuối). Lỗi chạy → ném RuntimeError kèm mấy dòng cuối."""
+    title, cmd, tmo, _ = NODE_ACTS[key]
+    r = subprocess.run([sys.executable] + [os.path.join(HOME, cmd[0])] + cmd[1:], cwd=HOME, capture_output=True, timeout=tmo, stdin=subprocess.DEVNULL)
+    o = out(r)
+    if r.returncode not in (0, None) and not o.strip(): raise RuntimeError(f"{title}: lệnh trả mã {r.returncode}, không in gì.")
+    return o[-12000:]
+
+
 # ---------------- Việc chạy nền (cài APK, tải link, khởi động lại) ----------------
 JOBS, JLOCK = {}, threading.Lock()
 VIEWERS, VLOCK = {}, threading.Lock()      # cổng máy → nơi đang xem (mã trang cpv)
@@ -2124,7 +2231,7 @@ class H(BaseHTTPRequestHandler):
         if parts and parts[0] == "job":
             j = JOBS.get(q.get("id", ""))
             if not j or (j["owner"] != me["uid"] and not me["admin"]): return self.send_json(404, {"error": "Không có việc này."})
-            return self.send_json(200, {k: j[k] for k in ("state", "msg", "title", "file", "done", "total", "fails") if k in j})
+            return self.send_json(200, {k: j[k] for k in ("state", "msg", "title", "file", "done", "total", "fails", "out") if k in j})
 
         if parts and parts[0] == "admin":
             if not me["admin"]: return self.send_json(403, {"error": "Chỉ admin."})
@@ -2227,6 +2334,65 @@ class H(BaseHTTPRequestHandler):
                         return m.group(1).strip() if m else "Máy chủ đang khởi động lại."
                     except Exception:
                         _REBOOT["t"] = 0; raise
+                run_job(jid, work)
+                return self.send_json(200, {"job": jid})
+            if act == "node" and self.command == "GET":             # 23/11f · 🛠 quản lý máy chủ: bản đang chạy + lượt cập nhật gần nhất
+                st = node_state()
+                return self.send_json(200, {"node": NODE_ID, "win": IS_WIN, "cpapi": CPAPI_VER, "updating": node_updating(st),
+                                            "sw": {k: st.get(k) for k in ("ver", "at", "upd", "ok", "auto", "changed", "probs", "files", "last", "running")},
+                                            "log": node_tail(NODE_LOG_F), "busy": _NODEJOB["do"] if time.time() - _NODEJOB["t"] < 7200 else "",
+                                            "acts": sorted(NODE_ACTS) + ["update", "optimize", "restart", "shutdown"]})
+            if act == "node" and self.command == "POST":
+                b = self.jbody(); do = str(b.get("do") or "")
+                if not IS_WIN: return self.send_json(400, {"error": "Chỉ quản lý được máy chủ Windows từ web."})
+                sure = str(b.get("confirm") or "").strip().lower() == str(NODE_ID).strip().lower()
+                if do == "update":
+                    try: ver = node_update_start()
+                    except Exception as e: return self.send_json(409, {"error": str(e)[:300]})
+                    log("admin bấm cập nhật máy chủ:", me["uid"], "→ bản", ver)
+                    return self.send_json(200, {"ok": True, "ver": ver, "msg": f"Đang cập nhật máy chủ {NODE_ID} lên bản {ver} (1–3 phút). Công cụ máy sẽ tự bật lại — tiến độ hiện ở khung bên dưới."})
+                if do in ("restart", "shutdown"):
+                    if not sure: return self.send_json(400, {"error": f"Gõ đúng mã máy chủ ({NODE_ID}) để xác nhận."})
+                    if _REBOOT.get("t") and time.time() - _REBOOT["t"] < 600: return self.send_json(409, {"error": "Máy chủ này đang khởi động lại / tắt rồi."})
+                    _REBOOT["t"] = time.time()
+                    jid = new_job(me["uid"], ("Khởi động lại máy chủ " if do == "restart" else "Tắt máy chủ ") + NODE_ID)
+                    log("admin", "khởi động lại" if do == "restart" else "TẮT", "máy chủ:", me["uid"])
+                    def work(j):
+                        try:
+                            JOBS[j]["msg"] = "Đang tắt êm các máy khách (tối đa ~2 phút)…"
+                            r = subprocess.run(["python3", os.path.join(HOME, "phonectl.py"), "rebootserver" if do == "restart" else "shutdownserver"]
+                                               + (["--anyway"] if do == "restart" and b.get("anyway") else []), capture_output=True, timeout=420)
+                            o = out(r)
+                            if r.returncode == 7: raise RuntimeError("NO_AUTOLOGON: Windows của máy chủ chưa bật tự đăng nhập (bảng CloudBlue → 🔑 Tự đăng nhập + tự chạy). Khởi động lại sẽ dừng ở màn hình mật khẩu.")
+                            if r.returncode == 2 and "shutdownserver" in o: raise RuntimeError("Máy chủ chưa có phonectl.py bản mới — bấm Cập nhật máy chủ trước.")
+                            if r.returncode: raise RuntimeError("Chưa làm được: " + o[-300:])
+                            m = re.search(r"(?:REBOOT_OK|SHUTDOWN_OK) (.*)", o)
+                            return m.group(1).strip() if m else "Máy chủ đang " + ("khởi động lại." if do == "restart" else "tắt.")
+                        except Exception:
+                            _REBOOT["t"] = 0; raise
+                    run_job(jid, work)
+                    return self.send_json(200, {"job": jid})
+                if do != "optimize" and do not in NODE_ACTS: return self.send_json(400, {"error": "Việc này không làm được từ web."})
+                if do in NODE_ACTS and NODE_ACTS[do][3] and not sure: return self.send_json(400, {"error": f"Gõ đúng mã máy chủ ({NODE_ID}) để xác nhận."})
+                if node_updating(): return self.send_json(409, {"error": "Máy chủ đang cập nhật — chờ xong rồi bấm lại."})
+                with JLOCK:
+                    if _NODEJOB["do"] and time.time() - _NODEJOB["t"] < 7200: return self.send_json(409, {"error": "Máy chủ này đang làm việc khác (" + _NODEJOB["do"] + ") — chờ xong."})
+                    _NODEJOB.update(t=time.time(), do=do)
+                title = "Tối ưu Windows" if do == "optimize" else NODE_ACTS[do][0]
+                jid = new_job(me["uid"], title + " · " + NODE_ID)
+                log("admin quản lý máy chủ:", do, me["uid"])
+                def work(j):
+                    try:
+                        JOBS[j]["msg"] = "Đang chạy: " + title + "…"
+                        if do == "optimize":
+                            r = subprocess.run(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", NODE_OPTIMIZE_PS], capture_output=True, timeout=300, stdin=subprocess.DEVNULL)
+                            o = out(r)[-6000:]
+                        else:
+                            o = node_run(do)
+                        JOBS[j]["out"] = o
+                        return "Xong: " + title
+                    finally:
+                        _NODEJOB.update(t=0, do="")
                 run_job(jid, work)
                 return self.send_json(200, {"job": jid})
             if act == "gputest" and self.command == "GET":          # máy thử GPU: trạng thái
@@ -2956,6 +3122,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 23/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 23/11f chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()

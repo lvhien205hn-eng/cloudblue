@@ -5,7 +5,7 @@
 #   SUPABASE_SERVICE_KEY=eyJ...            (service_role key — bí mật)
 #   PUBLIC_BASE=https://xxxx.trycloudflare.com   (link ws-scrcpy ra internet)
 # Chạy:  python3 ~/cloudphoned.py           (vòng lặp mỗi 15s)
-import json, os, re, sys, time, subprocess, tempfile, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading
+import json, os, re, sys, time, subprocess, tempfile, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading, random
 GRACE_MIN = 30          # hết hạn quá 30 phút không gia hạn → xoá máy + dữ liệu
 
 HOME = os.path.expanduser("~")
@@ -1163,6 +1163,145 @@ def _bg_apps():
         phonectl(["perms"])
     except Exception as e: print("lỗi cài app sẵn / mở quyền APK:", e)
 
+# ---------------- 23/11f · BẢN ĐANG CHẠY + TỰ CẬP NHẬT THEO MÁY CHỦ KHÁC ----------------
+# Mỗi máy chủ ghi kết quả lần cập nhật gần nhất vào ~/logs/cap-nhat.json (sua-tat-ca.py ghi) và báo lên web trong metrics.sw.
+# TỰ THEO: admin cập nhật 1 máy chủ (lệnh A hoặc nút Cập nhật trên web). Bản đó chạy ỔN ở máy chủ ấy đủ lâu (mặc định 20 phút: cập nhật
+# sạch + dịch vụ còn sống, vẫn báo cáo đều) thì các máy chủ khác TỰ tải sua-tat-ca.py từ GitHub và chạy `--tu-dong` — chỉ khi bản trên GitHub
+# ĐÚNG LÀ bản đã chạy ổn đó (không bao giờ tự cài bản chưa máy chủ nào chạy thử; chỉ cài đúng bản đang ở GitHub). Mỗi bản tự thử tối đa 2 lần; lệch
+# giờ ngẫu nhiên tới 10 phút để các máy chủ không cập nhật cùng lúc. Lượt tự cập nhật KHÔNG đụng máy khách (chỉ thay file + bật lại dịch vụ).
+# Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
+CPD_VER = "23/11f"
+SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
+SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
+SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
+SUA_FILE = os.path.join(HOME, "sua-tat-ca.py")
+SUA_URLS = (("https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents/windows/sua-tat-ca.py?ref=main", {"Accept": "application/vnd.github.raw"}),
+            ("https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/windows/sua-tat-ca.py", {}))
+FOLLOW_ON = (CFG.get("TU_CAP_NHAT", "1") or "1").strip() != "0"
+FOLLOW_JITTER = _f("TU_CAP_NHAT_LECH_S", 600)     # lệch giờ ngẫu nhiên (giây) giữa các máy chủ
+FOLLOW_TRIES = 2
+FOLLOW_SKIP_S = 1800                              # GitHub chưa có đúng bản đó → 30 phút sau mới đối chiếu lại (không hỏi GitHub mỗi 5 phút)
+_follow = {"due": 0.0, "for": None, "said": None, "skip": None, "skip_t": 0.0}
+
+def sw_state():
+    try:
+        d = json.load(open(SW_STATE_F, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def sw_running(st=None):
+    r = (sw_state() if st is None else st).get("running") or {}
+    try: return bool(r) and time.time() - float(r.get("start") or 0) < 1800
+    except (TypeError, ValueError): return False
+
+def sw_info():
+    """Phần báo lên web (metrics.sw): bản đang chạy, lúc cài, cập nhật sạch không, đang cập nhật không."""
+    st = sw_state(); last = st.get("last") if isinstance(st.get("last"), dict) else None
+    return {"ver": st.get("ver"), "at": st.get("at"), "upd": bool(st.get("upd")), "ok": bool(st.get("ok")), "auto": bool(st.get("auto")),
+            "run": sw_running(st), "last": last, "cpd": CPD_VER, "follow": FOLLOW_ON}
+
+def follow_conf(site=None):
+    """(đang bật tự theo?, số phút bản mới phải chạy ổn) — web admin đặt ở settings.data.node_update; chưa đặt: bật, 20 phút."""
+    if site is None: site = ((sb("GET", "settings?id=eq.1&select=data") or [{}])[0].get("data") or {})
+    nu = site.get("node_update") if isinstance(site.get("node_update"), dict) else {}
+    try: soak = max(5.0, min(1440.0, float(nu.get("soak_min", 20))))
+    except (TypeError, ValueError): soak = 20.0
+    return nu.get("auto", True) is not False, soak
+
+def follow_cands(me_ver, rows, t_now, soak_min, me=None):
+    """Các bản (khác bản của mình) đang chạy ỔN ở máy chủ KHÁC còn sống: báo cáo trong 3 phút gần nhất, cập nhật sạch (upd), không đang cập
+       nhật dở, đã cài được ≥ soak_min phút. rows = các dòng cloud_nodes (id, metrics, updated_at)."""
+    out = set(); me = NODE_ID if me is None else me
+    for r in rows or []:
+        try:
+            if r.get("id") == me: continue
+            if (now() - parse_dt(r.get("updated_at"))).total_seconds() > 180: continue
+            sw = (r.get("metrics") or {}).get("sw") or {}
+            v, at = sw.get("ver"), sw.get("at")
+            if not v or not isinstance(v, str) or v == me_ver or not sw.get("upd") or sw.get("run") or not at: continue
+            if t_now - float(at) < soak_min * 60: continue
+            out.add(v)
+        except Exception:
+            continue
+    return out
+
+def sua_fetch(get=None):
+    """Tải sua-tat-ca.py mới nhất từ GitHub (như lệnh A) → (nội dung, bản). Không tải được / file lạ → ném lỗi."""
+    def _get(url, h):
+        req = urllib.request.Request(url, headers=dict({"User-Agent": "cloudblue-sua-tat-ca", "Cache-Control": "no-cache"}, **h))
+        with urllib.request.urlopen(req, timeout=60) as r: return r.read()
+    for url, h in SUA_URLS:
+        try: data = (get or _get)(url, h)
+        except Exception: continue
+        m = re.search(rb'^VER = "([0-9a-z/]{3,12})"', data or b"", re.M)
+        if data and len(data) > 20000 and b"cloudblue-sua-tat-ca" in data and m:
+            try: compile(data.decode("utf-8"), "sua-tat-ca.py", "exec")
+            except Exception: continue
+            return data, m.group(1).decode()
+    raise RuntimeError("chưa tải được sua-tat-ca.py từ GitHub")
+
+def _tries_load():
+    try:
+        d = json.load(open(SW_TRIES_F, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def follow_step(t_now=None, get=None, spawn=None, rows=None, site=None, rnd=random.uniform):
+    """1 nhịp tự theo (gọi ~5 phút / lần). Trả chữ cho biết đã làm gì: "off" · "run" · "none" · "wait" · "nomatch" · "tries" · "go <bản>"."""
+    t_now = time.time() if t_now is None else t_now
+    if not FOLLOW_ON: return "off"
+    st = sw_state(); me_ver = st.get("ver")
+    if sw_running(st): return "run"
+    auto, soak = follow_conf(site)
+    if not auto: _follow["due"] = 0.0; return "off"
+    if rows is None: rows = sb("GET", "cloud_nodes?select=id,metrics,updated_at") or []
+    cands = follow_cands(me_ver, rows, t_now, soak)
+    if not cands: _follow["due"] = 0.0; _follow["for"] = None; return "none"
+    key = ",".join(sorted(cands))
+    if _follow["skip"] == (key, me_ver) and t_now < _follow["skip_t"]: return "nomatch"      # vừa đối chiếu: GitHub không phải bản đó → chưa hỏi lại
+    if not _follow["due"] or _follow["for"] != key:           # vừa thấy bản khác chạy ổn ở máy chủ khác → hẹn giờ lệch ngẫu nhiên rồi đối chiếu GitHub
+        _follow["due"] = t_now + rnd(0, max(0.0, FOLLOW_JITTER)); _follow["for"] = key
+        print(f"[tự cập nhật] máy chủ khác đang chạy ổn bản {key} (máy này: {me_ver or '?'}) → ~{max(0, _follow['due'] - t_now) / 60:.0f} phút nữa đối chiếu với GitHub, đúng bản đó thì tự cập nhật")
+    if t_now < _follow["due"]: return "wait"
+    data, ver = sua_fetch(get)
+    if ver == me_ver or ver not in cands:                       # GitHub chưa có / không phải bản đã chạy ổn đó → không làm gì
+        _follow["due"] = 0.0; _follow["skip"] = (key, me_ver); _follow["skip_t"] = t_now + FOLLOW_SKIP_S
+        print(f"[tự cập nhật] GitHub đang là bản {ver}" + (" = bản máy này đang chạy" if ver == me_ver else " — chưa máy chủ nào chạy ổn bản đó") + " → không làm gì")
+        return "nomatch"
+    tries = _tries_load(); n = int(tries.get(ver) or 0)
+    if n >= FOLLOW_TRIES:
+        if _follow["said"] != ver:
+            _follow["said"] = ver
+            print(f"[tự cập nhật] đã tự thử bản {ver} {n} lần mà chưa xong — thôi tự thử, chạy lệnh A bằng tay ở máy chủ này")
+            try: notify(f"⚠️ <b>{NODE_ID}</b>: tự cập nhật lên bản {ver} {n} lần chưa xong — vào máy chủ chạy lệnh A (hoặc bấm 🛠 Quản lý › Cập nhật trên web).")
+            except Exception: pass
+        return "tries"
+    tries[ver] = n + 1
+    try:
+        os.makedirs(os.path.dirname(SW_TRIES_F), exist_ok=True)
+        with open(SW_TRIES_F, "w", encoding="utf-8") as f: json.dump({k: v for k, v in list(tries.items())[-20:]}, f)
+    except Exception as e: print("lỗi ghi sổ tự cập nhật:", e)
+    with open(SUA_FILE + ".new", "wb") as f: f.write(data)
+    os.replace(SUA_FILE + ".new", SUA_FILE)
+    cmd = [sys.executable, "-u", SUA_FILE, "--tu-dong"]
+    print(f"[tự cập nhật] bản {ver} đã chạy ổn ở máy chủ khác ≥ {soak:g} phút → tự cập nhật máy chủ này (lần {n + 1}/{FOLLOW_TRIES}); nhật ký: logs/cap-nhat.log")
+    if spawn: spawn(cmd)
+    else:
+        lf = open(SW_LOG_F, "wb")
+        try:
+            kw = {"creationflags": 0x08000000 | 0x00000200} if WIN else {"start_new_session": True}      # tách rời: lượt này sẽ tắt + bật lại chính cloudphoned
+            subprocess.Popen(cmd, cwd=HOME, stdout=lf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, **kw)
+        finally:
+            lf.close()
+    _follow["due"] = 0.0; _follow["for"] = None
+    return "go " + ver
+
+def _bg_follow():
+    try: follow_step()
+    except Exception as e: print("lỗi tự cập nhật:", e)
+
 # ---------------- Bảo trì ----------------
 _maint = {"t": 0, "on": False, "off_at": None}
 def maint_state():
@@ -1287,6 +1426,8 @@ def heartbeat():
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
     metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
+    try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
+    except Exception as e: print("lỗi đọc sổ cập nhật:", e)
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -1545,7 +1686,9 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 19/11a chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 23/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
+                                                              "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
           + ("" if phonectl_disk() else " — ⚠ phonectl máy này CHƯA có lệnh disk (chạy lệnh A)"))
     if WIN: print("Tự dọn máy khách web đã HUỶ còn sót trên máy chủ (kể cả máy mất tên): ~1 phút sau khi bật, rồi 10 phút / lần (17/11f: tự dọn máy đã huỷ)")
@@ -1605,6 +1748,8 @@ if __name__ == "__main__":
                                             # là cả máy chủ không nhận đơn
         if WIN and (n == 4 or n % 40 == 20): # 17/11f: tự dọn máy đã huỷ — ~1 phút sau khi bật (máy chủ vừa khởi động lại: máy khách huỷ lúc
             bg_job("dondep", _bg_dondep)    #   máy chủ tắt được xoá ngay) rồi ~10 phút / lần (trước 30 phút): xoá hẳn máy web đã huỷ còn sót
+        if WIN and FOLLOW_ON and n % 20 == 17:   # 23/11f · ~5 phút: máy chủ khác đã chạy ổn bản mới → tự cập nhật theo (luồng riêng)
+            bg_job("follow", _bg_follow)
         if n % 20 == 12:                    # ~5 phút: máy nào chưa root → tự root (chạy nền, không chặn việc nhận đơn)
             try:
                 if _rootjob[0] is None or _rootjob[0].poll() is not None:
