@@ -330,6 +330,8 @@ def layout(P):
            "wipe_other_disks": bool(P.get("wipe_other_disks")), "recovery": True, "generic_key": C.key_mode({"generic_key": P.get("generic_key", "auto")}),
            "user_admin": P.get("user_admin") is True,             # False (mặc định) = khách dùng TÀI KHOẢN THƯỜNG; True = để khách quyền Admin
            "update_base": P.get("update_base") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"}
+    for k in ("role", "ask_code", "ask_name", "name_prefix", "code_wait"):      # 23.11g · ISO máy chủ Cloud Phone (tao-iso.ps1 -MayChu): bộ cài chỉ hỏi TÊN MÁY,
+        if P.get(k) is not None: cfg[k] = P[k]                                  #   tên tự sinh kiểu win-XXXXXX, chờ gõ tên lâu hơn — cb_pe.py đọc các mục này trong cb.json
     with open(os.path.join(cb, "cb.json"), "w", encoding="utf-8", newline="") as f: json.dump(cfg, f, ensure_ascii=True, indent=1)
     with open(os.path.join(cb, "media.tag"), "w", encoding="ascii", newline="") as f: f.write("CloudBlue PC %s\r\n" % BUILD_VER)
     key = (P.get("enroll_key") or "").strip()
@@ -363,8 +365,12 @@ def layout(P):
     info.append("CUU_HO %.0f GB | khoa cai dat chung: %s%s | anh nen: %s" % (C.recovery_bytes(cfg, os.path.getsize(os.path.join(out, "sources", "boot.wim")), drv) / C.GB, cfg["generic_key"],
                                                                             (" | driver kem theo: %.0f MB" % (drv / 1e6)) if drv > 4096 else "",
                                                                             "rieng" if wp else "CloudBlue"))
-    info.append("KHACH tai khoan '%s' | %s" % (cfg["user"], "quyen ADMIN (khach tu cai duoc moi thu, nhung cung pha duoc phan mem quan ly tren may do)" if cfg["user_admin"]
-                                              else "tai khoan THUONG, khong co quyen Admin - thu muc CloudBluePC + phan vung cuu ho khoa quyen"))
+    if cfg.get("role") == "server":
+        info.append("MAY CHU Cloud Phone | tai khoan '%s' quyen Admin + tu dang nhap | bo cai chi hoi TEN MAY (win9 / 9)%s" % (
+            cfg["user"], "" if cfg["user_admin"] else " | (!) THIEU quyen Admin - may chu se khong tu cai duoc"))
+    else:
+        info.append("KHACH tai khoan '%s' | %s" % (cfg["user"], "quyen ADMIN (khach tu cai duoc moi thu, nhung cung pha duoc phan mem quan ly tren may do)" if cfg["user_admin"]
+                                                  else "tai khoan THUONG, khong co quyen Admin - thu muc CloudBluePC + phan vung cuu ho khoa quyen"))
     info += vga_notes + driver_report(cb)
     for ln in info: say(ln)
     if P.get("info"):                                              # tao-iso.ps1 in lại các dòng này trong khung TÓM TẮT

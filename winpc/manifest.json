@@ -30,7 +30,7 @@
   "agent/pcremote.py": "1d8ddf247c2658c197d790a07a993c34bb8ec1874e5857e9e84c32fe5352d017",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
-  "cb_build.py": "f28577edb41777e4e2421893aa4dbcafc58f975c1ef91c3f7c159b351c4172a4",
+  "cb_build.py": "d5d215728a1382ffe97e79ca8924ce623355f545005622df9993ab00a159a1be",
   "lib/cbcore.py": "2e80c65e35a725efe2a89bd778c3a94420cacb5e31d24b4b636d184cac13c148",
   "lib/cbrec.py": "d1b8fe22cab0cbfea7f19d8c2efb6b4abd70be8696488883f4377b15ee2008cc",
   "lib/cbsys.py": "fe70e283b63de04cd118c74fd5524b4058e42f9d36cbf493eb7c8943c149a813",
@@ -41,6 +41,8 @@
   "linux/cbremote.py": "c27c88167dd68f2780c5f5207af222440f85fec5dfac2843f876c4d175d0da04",
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
+  "maychu/firstboot.ps1": "3c01ddc059c4975fa456d578cc5f59ff83f6641d14f213803d1aff123f13a50c",
+  "maychu/may-chu-iso.ps1": "a6a7937f474fa67386f2debc2da0ff6ed570935e0cf363a713cbb906fbdfdcde",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
   "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
   "os/provision.cmd": "335e45236636e358d0ca496119c1323c8e5bce978c0dce3cfe374d82539f6dfe",
@@ -48,7 +50,7 @@
   "os/wallpaper.jpg": "292d2622e8239a4122e0c1c1ee7c4aa744aeb5c9f7150cab742edff4a39ead47",
   "pe/cb_pe.py": "47e6107157988cce7bd8614fc742540eb4e54d58fdea16150606c6bcefb30f5c",
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
-  "tao-iso.ps1": "c32029ab71f64a2efdf9ce425b1e338917df116f948fa331566533442114d998"
+  "tao-iso.ps1": "5bbc9c0f51ccd3d508075e92e07e38e25b87ba90bf6f3bc3176f3552510eb108"
  },
  "ver": "23.11c"
 }

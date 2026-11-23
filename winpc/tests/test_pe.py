@@ -1030,5 +1030,28 @@ fs = FakeSys("uefi"); cfg = cfg_lin(); nvram(fs); d, rec, win = cb_layout(fs, cf
 r = stage(fs)
 ck("… phân vùng cứu hộ thiếu cb-install.sh → báo lỗi ngay", isinstance(r, str) and "cb-install.sh" in r, r)
 
+print("ISO máy chủ Cloud Phone (23.11g · tao-iso.ps1 -MayChu): cb.json role = server → bộ cài CHỈ hỏi TÊN MÁY, chờ 15 phút, tên tự sinh win-…")
+import re as _re
+SV = {"role": "server", "ask_code": False, "name_prefix": "win", "code_wait": 900, "user_admin": True}
+rc, ui, fs, seed, ua, idf = run_name(["win9"], SV)
+ck("gõ win9 → chỉ 1 ô hỏi (Ten may, chờ 900 giây), KHÔNG hỏi số máy; seed.json label = name = win9; Windows mang tên win9",
+   rc == 0 and lines_of(ui) == [(900, "<line> Ten may")] and seed.get("label") == "win9" and seed["name"] == "win9" and "code" not in seed and "<ComputerName>win9</ComputerName>" in ua, (lines_of(ui), seed))
+rc, ui, fs, seed, ua, idf = run_name(["9"], SV)
+ck("gõ 9 → label 9 (script cài máy chủ đọc ra win9), Windows mang tên hợp lệ win-9", rc == 0 and seed.get("label") == "9" and seed["name"] == "win-9" and idf["name"] == "win-9", seed)
+rc, ui, fs, seed, ua, idf = run_name([""], SV)
+ck("bỏ trống → tên tự sinh win-XXXXXX, không có label (script cài máy chủ sẽ tự lấy số kế tiếp)", rc == 0 and "label" not in seed and _re.fullmatch(r"win-[0-9A-F]{6}", seed["name"]) is not None, seed)
+win, rec = fb_vols(fs)
+cj = json.loads(win.files["cloudbluepc\\cb.json"])
+ck("cấu hình trên máy đã cài: role = server, tài khoản giữ quyền Admin; cb.json không chứa mã đăng ký", cj.get("role") == "server" and cj.get("user_admin") is True and "enroll_key" not in cj, cj)
+fs = FakeSys("uefi"); cfg = dict(cfg0(), **SV); u = usb(fs, cfg); v = u.slots[0].vol
+MCF = ["90-cloudblue-may-chu.ps1", "maychu\\may-chu-iso.ps1", "maychu\\may-chu.conf", "maychu\\mumu-setup.exe", "maychu\\tpl_a15.mumudata"]
+for k in MCF: v.put("cb\\os\\firstboot.d\\" + k, "x")
+fs.disk(0, 240, bus=11, model="Kingston A400", ssd=True, style="gpt")
+ui = ScriptUI(); ui.lines = ["win12"]
+rc = cb_pe.Installer(fs).run(ui)
+win, rec = fb_vols(fs)
+ck("lệnh chạy lần đầu + cả thư mục maychu (script, cấu hình, bộ cài giả lập, máy mẫu) được chép vào ổ C: và phân vùng cứu hộ",
+   rc == 0 and fb_on(win, "cloudbluepc\\os\\firstboot.d\\") == sorted(MCF) and all(("cb\\os\\firstboot.d\\" + k) in rec.files for k in MCF), fb_on(win, "cloudbluepc\\os\\firstboot.d\\"))
+
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

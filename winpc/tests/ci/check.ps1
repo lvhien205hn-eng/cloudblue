@@ -12,9 +12,11 @@
 #       thu mang, tim card NVIDIA, provision.cmd in tien do, dat dong ho, huy hen tat may, DRIVER: doc thiet bi that + kho driver + do lai phan cung (os_check.py)
 #    8. dieu khien tu xa (ban 21.11d): tai ffmpeg + kiem ma da ghim, quay man hinh that + nen, chuot / phim / bo nho copy that, mo chuong trinh bang SYSTEM
 #       vao phien man hinh, va thu dau-cuoi may chu phat hinh (windows/bluestream.py + pcrelay.py) <-> pcremote <-> nguoi xem (remote_check.py)
+#    3b. (23.11g) ISO MAY CHU CLOUD PHONE: chay tao-iso.ps1 -MayChu voi tep cau hinh + bo cai gia lap gia, mo ISO ra kiem
+#  -ChiIso : chi thu phan tao ISO (buoc 1-4) - dung khi thu tren nhanh rieng cho nhanh.   -KetQua <tep> : ghi them ket qua ra tep.
 #  Khong dua gi len web, khong dung toi may that nao. Luon thoat ma 0; ket qua nam o trang tom tat cua lan chay.
 # =====================================================================================================
-param([string]$WorkRoot = "")
+param([string]$WorkRoot = "", [switch]$ChiIso, [string]$KetQua = "")
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 $RepoDir = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -40,6 +42,7 @@ function Write-Summary {
     $md = @(("### " + $head), "", '```') + @($Lines) + @('```')
     Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value $md -Encoding UTF8
   }
+  if ($KetQua) { try { Set-Content -Path $KetQua -Value (@($head) + @($Lines)) -Encoding UTF8 } catch { Write-Host ("khong ghi duoc tep ket qua: " + $_) } }
 }
 
 try {
@@ -64,7 +67,7 @@ try {
   # nap cac ham + vai bien dau file cua tao-iso.ps1 vao phien nay (KHONG chay phan than)
   $fdefs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
   foreach ($fd in $fdefs) { . ([scriptblock]::Create($fd.Extent.Text)) }
-  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER')
+  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER', '$CFAPI', '$LinkRoot')
   foreach ($st in $ast.EndBlock.Statements) {
     if ($st -is [System.Management.Automation.Language.AssignmentStatementAst]) {
       if ($wantVars -contains ("" + $st.Left.Extent.Text)) { . ([scriptblock]::Create($st.Extent.Text)) }
@@ -196,6 +199,84 @@ try {
   Set-ItemProperty -LiteralPath $lk -Name IsReadOnly -Value $true
   Ck "Test-FileLocked: file chi-doc (khong ai giu) -> false (Remove-Item -Force van xoa duoc)" (-not (Test-FileLocked $lk))
   Set-ItemProperty -LiteralPath $lk -Name IsReadOnly -Value $false
+
+  # link thay cho tep (23.11g)
+  $gid = "1AbCdEfGhIjKlMnOpQrStUvWxYz012345"
+  $du1 = ConvertTo-DirectUrl ("https://drive.google.com/file/d/" + $gid + "/view?usp=sharing")
+  $du2 = ConvertTo-DirectUrl ("https://drive.google.com/open?id=" + $gid)
+  $du3 = ConvertTo-DirectUrl "https://example.com/a/b.exe?x=1"
+  Ck "ConvertTo-DirectUrl: link chia se Google Drive (2 kieu) -> link tai thang; link khac giu nguyen" (($du1 -eq ("https://drive.usercontent.google.com/download?id=" + $gid + "&export=download&confirm=t")) -and ($du2 -eq $du1) -and ($du3 -eq "https://example.com/a/b.exe?x=1")) ($du1 + " | " + $du2)
+  Ck "Test-Link: http / https / file la link; duong dan tep thi khong" ((Test-Link " https://a.b/c ") -and (Test-Link ($q + "http://a.b/c" + $q)) -and (Test-Link "file:///D:/x.iso") -and (-not (Test-Link "D:\x\y.iso")) -and (-not (Test-Link "")))
+  $hf = Join-Path $td "h1.hdr"
+  Set-Content -Path $hf -Value @("HTTP/1.1 303 See Other", "location: x", "", "HTTP/1.1 200 OK", ("Content-Disposition: attachment; filename=" + $q + "Win10x64 Lite.iso" + $q + "; filename*=UTF-8''Win10x64%20Lite%201511.iso"), "content-length: 5") -Encoding ASCII
+  $ln1 = Get-LinkName $hf "https://drive.google.com/file/d/x/view"
+  Set-Content -Path $hf -Value @("HTTP/1.1 200 OK", ("content-disposition: attachment; filename=" + $q + "Driver WLAN.exe" + $q)) -Encoding ASCII
+  $ln2 = Get-LinkName $hf "https://x.y/z"
+  $ln3 = Get-LinkName (Join-Path $td "khong-co.hdr") "https://x.y/tai/MuMu%20Installer_3.1.exe?token=abc#top"
+  $ln4 = Get-LinkName (Join-Path $td "khong-co.hdr") ("https://drive.usercontent.google.com/download?id=" + $gid)
+  Set-Content -Path $hf -Value @(("content-disposition: attachment; filename=" + $q + "a/b:c*d.exe" + $q)) -Encoding ASCII
+  $ln5 = Get-LinkName $hf "https://x.y/z"
+  Ck "Get-LinkName: ten may chu bao (filename* truoc, roi filename) -> khong co thi lay tu link; Google Drive khong bao ten -> tai-ve.bin; bo ky tu cam" (($ln1 -eq "Win10x64 Lite 1511.iso") -and ($ln2 -eq "Driver WLAN.exe") -and ($ln3 -eq "MuMu Installer_3.1.exe") -and ($ln4 -eq "tai-ve.bin") -and ($ln5 -eq "a_b_c_d.exe")) (@($ln1, $ln2, $ln3, $ln4, $ln5) -join " | ")
+  $lkSrc = New-Dir (Join-Path $td "lk nguon")
+  $mz = New-Object byte[] 3000
+  $mz[0] = 0x4D; $mz[1] = 0x5A
+  [IO.File]::WriteAllBytes((Join-Path $lkSrc "MuMu Installer gia.exe"), $mz)
+  [IO.File]::WriteAllBytes((Join-Path $lkSrc "khong-phai.exe"), (New-Object byte[] 3000))
+  Set-Content -Path (Join-Path $lkSrc "trang.exe") -Value "<!DOCTYPE html><html><body>Google Drive - Quota exceeded</body></html>" -Encoding ASCII
+  $fu = "file:///" + (($lkSrc -replace "\\", "/") -replace " ", "%20") + "/"
+  $lkDir = Join-Path $td "lk tai"
+  $g1 = Get-LinkFile ($fu + "MuMu%20Installer%20gia.exe") (Join-Path $lkDir "1")
+  $g2 = Get-LinkFile ($fu + "khong-phai.exe") (Join-Path $lkDir "2")
+  $g3 = Get-LinkFile ($fu + "trang.exe") (Join-Path $lkDir "3")
+  $g4 = Get-LinkFile ($fu + "khong-co.exe") (Join-Path $lkDir "4")
+  Ck "Get-LinkFile: tai duoc tep .exe that, giu dung ten (co dau cach)" (($g1.why -eq "") -and ((Split-Path -Leaf $g1.path) -eq "MuMu Installer gia.exe") -and ((Get-Item -LiteralPath $g1.path).Length -eq 3000)) ("" + $g1.why + " | " + $g1.path)
+  Ck "Get-LinkFile: tep .exe gia / link tra ve trang web (Drive het luot) / link hong -> noi ro ly do, khong de lai tep rac, khong nem loi" (($g2.why -match "khong phai tep .exe that") -and ($g3.why -match "TRANG WEB") -and ($g4.why -match "curl ma") -and (-not $g2.path) -and (-not $g3.path) -and (@(Get-ChildItem -LiteralPath (Join-Path $lkDir "3") -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "tai-ve.hdr" }).Count -eq 0)) (@($g2.why, $g3.why, $g4.why) -join " | ")
+  # Google Drive hoi xac nhan khi tep lon (trang web co form download-form) -> tu lay link that roi tai lai
+  $gdPage = Join-Path $td "gd-xac-nhan.html"
+  Set-Content -Path $gdPage -Value ('<!DOCTYPE html><html><head><title>Google Drive - Virus scan warning</title></head><body><p class="uc-warning-caption">Google Drive cannot scan this file for viruses.</p><form id="download-form" action="https://drive.usercontent.google.com/download" method="get"><input type="submit" id="uc-download-link" value="Download anyway"/><input type="hidden" name="id" value="' + $gid + '"><input type="hidden" name="export" value="download"><input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="0a1b2c3d-4e5f-6789-abcd-ef0123456789"></form></body></html>') -Encoding ASCII
+  $gf1 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid + "&export=download&confirm=t")
+  Set-Content -Path $gdPage -Value '<!DOCTYPE html><html><body><form id="download-form" action="https://evil.example/download" method="get"><input type="hidden" name="id" value="x"></form></body></html>' -Encoding ASCII
+  $gf2 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid)
+  Set-Content -Path $gdPage -Value '<!DOCTYPE html><html><body>Sorry, you cannot view or download this file at this time. Too many users have viewed or downloaded this file recently.</body></html>' -Encoding ASCII
+  $gf3 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid)
+  Ck "Get-DriveFormUrl: trang Google Drive hoi xac nhan tep lon -> link tai that (du id, export, confirm, uuid); form tro sang may chu la / trang het luot tai -> rong" (($gf1 -eq ("https://drive.usercontent.google.com/download?id=" + $gid + "&export=download&confirm=t&uuid=0a1b2c3d-4e5f-6789-abcd-ef0123456789")) -and ($gf2 -eq "") -and ($gf3 -eq "")) ($gf1 + " | " + $gf2 + " | " + $gf3)
+  Set-Content -Path (Join-Path $lkSrc "xac-nhan.exe") -Value ('<!DOCTYPE html><html><body><form id="download-form" action="' + $fu + 'MuMu%20Installer%20gia.exe" method="get"><input type="hidden" name="id" value="abc"><input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="u-1"></form></body></html>') -Encoding ASCII
+  $g5 = Get-LinkFile ($fu + "xac-nhan.exe") (Join-Path $lkDir "5")
+  Ck "Get-LinkFile: lan dau nhan trang hoi xac nhan (tep lon tren Google Drive) -> tu theo form tai lai, ra dung tep that, khong de lai tep rac" (($g5.why -eq "") -and $g5.path -and ((Split-Path -Leaf $g5.path) -eq "xac-nhan.exe") -and ((Get-Item -LiteralPath $g5.path).Length -eq 3000) -and (@(Get-ChildItem -LiteralPath (Join-Path $lkDir "5") -File).Count -eq 1)) ("" + $g5.why + " | " + $g5.path)
+  $LinkRoot = Join-Path $td "lk goc"
+  $rl1 = Resolve-Link ($fu + "MuMu%20Installer%20gia.exe")
+  Remove-Item -Force -LiteralPath (Join-Path $lkSrc "MuMu Installer gia.exe")
+  $rl2 = Resolve-Link ($q + $fu + "MuMu%20Installer%20gia.exe" + $q)
+  Ck "Resolve-Link: tai ve <thu muc lam viec>\dl\tai\<ma link>; goi lai cung link -> dung lai tep da tai (khong tai lai)" (($rl1 -eq $rl2) -and (Test-Path -LiteralPath $rl1) -and ($rl1.StartsWith($LinkRoot))) ($rl1 + " | " + $rl2)
+  $rl3 = ""
+  try { [void](Resolve-Link ($fu + "khong-co-2.exe")) } catch { $rl3 = "" + $_.Exception.Message }
+  Ck "Resolve-Link: link khong tai duoc -> DUNG (khong di tiep voi tep thieu)" ($rl3 -eq "cb-stop")
+  $LinkRoot = ""
+
+  # ham cua ISO may chu Cloud Phone (23.11g)
+  function ConvertTo-B64Url([string]$t) { return ([Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($t))).TrimEnd("=").Replace("+", "-").Replace("/", "_") }
+  $jwtSvc = "eyJhbGciOiJIUzI1NiJ9." + (ConvertTo-B64Url '{"iss":"supabase","ref":"abc","role":"service_role","iat":1}') + ".chu-ky-gia"
+  $jwtAnon = "eyJhbGciOiJIUzI1NiJ9." + (ConvertTo-B64Url '{"iss":"supabase","ref":"abc","role":"anon","iat":1}') + ".chu-ky-gia"
+  Ck "Get-JwtRole: doc muc role cua khoa eyJ..." (((Get-JwtRole $jwtSvc) -eq "service_role") -and ((Get-JwtRole $jwtAnon) -eq "anon") -and ((Get-JwtRole "rac") -eq "")) ((Get-JwtRole $jwtSvc) + " / " + (Get-JwtRole $jwtAnon))
+  Ck "Test-SbKeyShape: nhan khoa service_role (eyJ... / sb_secret_...), tu choi khoa anon / publishable / chuoi ngan" (((Test-SbKeyShape $jwtSvc) -eq "") -and ((Test-SbKeyShape ("sb_secret_" + ("a" * 30))) -eq "") -and ((Test-SbKeyShape $jwtAnon) -match "anon") -and ((Test-SbKeyShape ("sb_publishable_" + ("a" * 30))) -match "CONG KHAI") -and ((Test-SbKeyShape "abc") -ne "") -and ((Test-SbKeyShape ("x" * 40)) -ne ""))
+  Ck "Test-SbService: may chu khong toi duoc -> rong (khong nem loi)" ((Test-SbService "https://127.0.0.1:9" ("sb_secret_" + ("a" * 30))) -eq "")
+  $oldCf = $CFAPI
+  $CFAPI = "https://127.0.0.1:9/client/v4"
+  $ctx = Test-CfToken "ma-gia" "example.test"
+  $CFAPI = $oldCf
+  Ck "Test-CfToken: khong goi duoc Cloudflare -> zone = false, co ly do, khong nem loi" ((-not $ctx.zone) -and (-not $ctx.tunnel) -and ($ctx.err -ne ""))
+  $gd1 = Get-EmuDrop "D:\tai ve\MuMuInstaller_3.1.7.0_gw-overseas12_all_1699.exe"
+  $gd2 = Get-EmuDrop "D:\LDPlayer9_ens_1001_ld.exe"
+  $gd3 = Get-EmuDrop "D:\x\tpl_a15.mumudata"
+  $gd4 = Get-EmuDrop "D:\x\Android 12 mau.mumudata"
+  $gd5 = Get-EmuDrop "D:\x\may-mau.mumudata"
+  $gd6 = Get-EmuDrop "D:\x\chrome_setup.exe"
+  $gd7 = Get-EmuDrop "D:\x\ghi-chu.txt"
+  Ck "Get-EmuDrop: nhan bo cai MuMu / LDPlayer + tep may mau (12 / 15); tep la thi noi ro ly do" (($gd1.name -eq "mumu-setup.exe") -and ($gd2.name -eq "ld-setup.exe") -and ($gd3.name -eq "tpl_a15.mumudata") -and ($gd4.name -eq "tpl_a12.mumudata") -and ($gd5.why -match "so ban Android") -and ($gd6.why -match "khong nhan ra bo cai") -and ($gd7.why -ne "")) (@($gd1.name, $gd2.name, $gd3.name, $gd4.name, $gd5.why, $gd6.why) -join " | ")
+  $cfT = Join-Path $td "mc.conf"
+  @("# ghi chu", "SUPABASE_SERVICE_KEY=abc=def", " EMU = ld ", "", "DOMAIN=example.test") | Set-Content -Path $cfT -Encoding UTF8
+  $rcf = Read-ConfFile $cfT
+  Ck "Read-ConfFile: tep KHOA=gia tri (co BOM, ghi chu, gia tri co dau =)" (($rcf["SUPABASE_SERVICE_KEY"] -eq "abc=def") -and ($rcf["EMU"] -eq "ld") -and ($rcf["DOMAIN"] -eq "example.test") -and ($rcf.Count -eq 3))
 
   # ------------------------------------------------------------------------------------------- 3. chay ca tao-iso.ps1
   Out-Line "== 3. Chay ca tao-iso.ps1 voi 2 ISO Windows gia lap"
@@ -337,6 +418,64 @@ try {
       }
     }
 
+    # ---------------------------------------------------------------------------------------- 3b. ISO may chu Cloud Phone (23.11g)
+    Out-Line "== 3b. ISO MAY CHU CLOUD PHONE: tao-iso.ps1 -MayChu (tep cau hinh + bo cai gia lap gia + may mau gia)"
+    $mcDir = New-Dir (Join-Path $Wk "mc")
+    $mcKey = "sb_secret_ci_" + ("m" * 32)
+    $mcTok = "cf_ci_token_" + ("t" * 32)
+    $mcConf = Join-Path $mcDir "may-chu.conf"
+    @("# cau hinh thu", "DOMAIN=example.test", ("SUPABASE_SERVICE_KEY=" + $mcKey), ("CF_API_TOKEN=" + $mcTok), "LE_AGREE=1", "EMU=mumu") | Set-Content -Path $mcConf -Encoding ASCII
+    $mcSetup = Join-Path $mcDir "MuMuInstaller_gia.exe"
+    $mcTpl = Join-Path $mcDir "tpl_a15.mumudata"
+    $mcBytes = New-Object byte[] 4096
+    $mcBytes[0] = 0x4D; $mcBytes[1] = 0x5A
+    [IO.File]::WriteAllBytes($mcSetup, $mcBytes)
+    [IO.File]::WriteAllBytes($mcTpl, (New-Object byte[] 2048))
+    # dua bang LINK (nhu link Google Drive): script tu tai ve roi dung
+    $mcSetupUrl = "file:///" + (($mcSetup -replace "\\", "/") -replace " ", "%20")
+    $isoUrl1 = "file:///" + (($iso1 -replace "\\", "/") -replace " ", "%20")
+    $zipUrl = "file:///" + (($zipPack -replace "\\", "/") -replace " ", "%20")
+    $workM = Join-Path $Wk "wm"
+    $outM = Join-Path $Wk "out\CloudBlue-MayChu.iso"
+    $logM = Join-Path $Wk "run-mc.log"
+    $aM = @{ Iso = @($isoUrl1, $iso2); Work = $workM; Out = $outM; Nguon = $RepoDir; KhongHoi = $true; MayChu = $true; MayChuConf = $mcConf; BoCai = @($mcSetupUrl, $mcTpl); MaDangKy = $key; KhongKiemMa = $true; Driver = @("1=" + $zipUrl) }
+    & $Ps1 @aM *>&1 | ForEach-Object { $ln = "" + $_; Write-Host $ln; Add-Content -Path $logM -Value $ln -Encoding UTF8 }
+    $txtM = ""
+    if (Test-Path $logM) { $txtM = Get-Content -Raw -Path $logM }
+    Ck "ISO may chu: chay toi khung TOM TAT, khong dung giua chung" (($txtM -match "TOM TAT") -and (-not ($txtM -match "!! DUNG")) -and (-not ($txtM -match "!! LOI"))) (($txtM -split "`n" | Where-Object { $_ -match "!! " }) -join " | ")
+    Ck "ISO may chu: tom tat ghi ro may chu + canh bao ISO chua khoa bi mat; KHONG in khoa ra man hinh; khong dung ma dang ky may PC (du co dua -MaDangKy)" (($txtM -match "MAY CHU CLOUD PHONE: gia lap mumu") -and ($txtM -match "mumu-setup.exe, tpl_a15.mumudata") -and ($txtM -match "ISO NAY CHUA KHOA BI MAT") -and ($txtM -match "khoa Supabase: CO") -and ($txtM -match "Ma dang ky: KHONG") -and (-not $txtM.Contains($mcKey)) -and (-not $txtM.Contains($mcTok)))
+    Ck "ISO may chu: buoc ke nhac go TEN MAY (win9 / 9)" ($txtM -match "bo cai hoi TEN MAY")
+    $dlM = @(Get-ChildItem -LiteralPath (Join-Path $workM "dl\tai") -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
+    Ck "ISO may chu: ISO Windows + driver + bo cai gia lap dua bang LINK -> script tu tai ve thu muc lam viec roi dung nhu tep thuong" ((@([regex]::Matches($txtM, "dang tai tu link: file:///")).Count -eq 3) -and ($dlM -contains "Win10 gia 1.iso") -and ($dlM -contains "MuMuInstaller_gia.exe") -and ($dlM -contains "pack one.zip")) (($dlM -join ", ") + " // " + (($txtM -split "`n" | Where-Object { $_ -match "tai tu link|da tai" }) -join " | "))
+    if (Test-Path $outM) {
+      $miM = Mount-DiskImage -ImagePath $outM -PassThru
+      Start-Sleep -Seconds 2
+      $drM = "" + ($miM | Get-Volume).DriveLetter + ":\"
+      try {
+        $cfgM = Get-Content -Raw (Join-Path $drM "cb\cb.json") | ConvertFrom-Json
+        Ck "ISO may chu: cb.json role = server, tai khoan giu quyen Admin, bo cai chi hoi ten may (khong hoi so may), ten tu sinh win-..., cho go ten 15 phut" (($cfgM.role -eq "server") -and ($cfgM.user_admin -eq $true) -and ($cfgM.ask_code -eq $false) -and ($cfgM.name_prefix -eq "win") -and ($cfgM.code_wait -eq 900))
+        Ck "ISO may chu: KHONG co cb\enroll.key (may chu khong vao danh sach may PC cho thue)" (-not (Test-Path (Join-Path $drM "cb\enroll.key")))
+        $fbM = Join-Path $drM "cb\os\firstboot.d"
+        $mcM = Join-Path $fbM "maychu"
+        Ck "ISO may chu: lenh chay lan dau 90-cloudblue-may-chu.ps1 + script cai may chu dung ban trong kho" (((Get-FileHash (Join-Path $fbM "90-cloudblue-may-chu.ps1")).Hash -eq (Get-FileHash (Join-Path $RepoDir "maychu\firstboot.ps1")).Hash) -and ((Get-FileHash (Join-Path $mcM "may-chu-iso.ps1")).Hash -eq (Get-FileHash (Join-Path $RepoDir "maychu\may-chu-iso.ps1")).Hash))
+        $kvM = Read-ConfFile (Join-Path $mcM "may-chu.conf")
+        Ck "ISO may chu: may-chu.conf du khoa (ten mien, dia chi Supabase, khoa service_role, ma Cloudflare, dong y Let's Encrypt, gia lap)" (($kvM["DOMAIN"] -eq "example.test") -and ($kvM["SUPABASE_URL"] -match '^https://[a-z0-9]+\.supabase\.co$') -and ($kvM["SUPABASE_SERVICE_KEY"] -eq $mcKey) -and ($kvM["CF_API_TOKEN"] -eq $mcTok) -and ($kvM["LE_AGREE"] -eq "1") -and ($kvM["EMU"] -eq "mumu")) (($kvM.Keys | Where-Object { $_ -notmatch "KEY|TOKEN" } | ForEach-Object { $_ + "=" + $kvM[$_] }) -join " | ")
+        Ck "ISO may chu: bo cai gia lap + may mau nam trong cb\os\firstboot.d\maychu (khong kem tep nao khac)" (((Get-Item (Join-Path $mcM "mumu-setup.exe")).Length -eq 4096) -and ((Get-Item (Join-Path $mcM "tpl_a15.mumudata")).Length -eq 2048) -and (@(Get-ChildItem $mcM -File).Count -eq 4) -and (Test-Path (Join-Path $mcM "may-chu.conf")) -and (Test-Path (Join-Path $mcM "may-chu-iso.ps1"))) ((Get-ChildItem $mcM | ForEach-Object { $_.Name }) -join ", ")
+        Ck "ISO may chu: van du bo cai Windows nhu ISO thuong (2 ban, file tra loi, CAI-DAT.cmd)" ((@($cfgM.images).Count -eq 2) -and (Test-Path (Join-Path $drM "autounattend.xml")) -and (Test-Path (Join-Path $drM "CAI-DAT.cmd")) -and (Test-Path (Join-Path $drM "sources\install.wim")))
+        $idsM = @($cfgM.images | ForEach-Object { "" + $_.id })
+        Ck "ISO may chu: driver dua bang LINK (goi .zip) cho ban Windows thu 1 -> da giai nen vao cb\drivers\<ban 1>" (Test-Path (Join-Path $drM ("cb\drivers\" + $idsM[0] + "\pack_one\Net Driver\netx.inf"))) ((Get-ChildItem (Join-Path $drM "cb\drivers") -Recurse -File | ForEach-Object { $_.FullName }) -join " ; ")
+      } catch {
+        Ck "kiem noi dung ISO may chu" $false ($_.Exception.Message + " (dong " + $_.InvocationInfo.ScriptLineNumber + ")")
+      } finally {
+        Dismount-DiskImage -ImagePath $outM | Out-Null
+      }
+    } else { Ck "co file ISO may chu" $false ("khong thay " + $outM) }
+    $tM2 = (& $Ps1 -Iso $iso1 -Work $workM -Nguon $RepoDir -KhongHoi -KhongIso -MayChu -BoCai $cfT *>&1 | Out-String)
+    Ck "ISO may chu: tep kem khong phai bo cai gia lap / may mau -> dung som, noi ro" (($tM2 -match "!! DUNG") -and ($tM2 -match "Tep kem cho may chu"))
+    $tM3 = (& $Ps1 -Iso $iso1 -Work $workM -Nguon $RepoDir -KhongHoi -KhongIso -MayChu -GiaLap ld *>&1 | Out-String)
+    Ck "ISO may chu khong kem khoa / bo cai (-KhongHoi): van dung duoc cay bo cai, ghi chu ro cac viec se phai lam tay" (($tM3 -match "TOM TAT") -and ($tM3 -match "KHONG kem khoa Supabase") -and ($tM3 -match "KHONG kem bo cai ld") -and ($tM3 -match "KHONG kem ma Cloudflare") -and ($tM3 -match "gia lap ld"))
+    Remove-Item -Recurse -Force $workM -ErrorAction SilentlyContinue
+
     # ---------------------------------------------------------------------------------------- 4. chay lai: dung lai ma dang ky, cac loi nhap
     Out-Line "== 4. Chay lai khong dua ma dang ky + cac kieu nhap sai"
     $log2 = Join-Path $Wk "run2.log"
@@ -361,6 +500,8 @@ try {
     Ck "dua file .exe vao cho ISO -> dung som, noi ro" (($t4 -match "!! DUNG") -and ($t4 -match "khong phai file .iso"))
     $t5 = (& $Ps1 -Iso $iso1 -Work $work -Nguon $RepoDir -KhongHoi -KhongIso -Driver ("3=" + $zipPack) *>&1 | Out-String)
     Ck "-Driver sai so thu tu ISO -> dung som" (($t5 -match "!! DUNG") -and ($t5 -match "khong co ISO thu 3"))
+
+    if ($ChiIso) { Info "-ChiIso: bo qua buoc 5-8 (bao mat, chep tep, he dieu hanh, dieu khien tu xa)"; throw "cb-xong-som" }
 
     # ---------------------------------------------------------------------------------------- 5. bao mat tren may cho thue
     Out-Line "== 5. Bao mat tren may cho thue: khoa quyen that bang icacls + thu bang 1 tai khoan thuong that"
@@ -447,8 +588,10 @@ try {
     }
   }
 } catch {
-  $script:FailN++
-  Out-Line ("  XX  LOI KHI CHAY THU: " + $_.Exception.Message + "   (dong " + $_.InvocationInfo.ScriptLineNumber + ": " + ("" + $_.InvocationInfo.Line).Trim() + ")")
+  if (("" + $_.Exception.Message) -ne "cb-xong-som") {
+    $script:FailN++
+    Out-Line ("  XX  LOI KHI CHAY THU: " + $_.Exception.Message + "   (dong " + $_.InvocationInfo.ScriptLineNumber + ": " + ("" + $_.InvocationInfo.Line).Trim() + ")")
+  }
 } finally {
   try { Write-Summary } catch { Write-Host ("khong ghi duoc tom tat: " + $_) }
 }
