@@ -28,7 +28,7 @@ class FakeCli:
     def cmd(self, n): self.ev.append(("c", n))
     def touch(self, *a): self.ev.append(("touch",) + a)
     def scroll(self, *a): self.ev.append(("s",) + a)
-    def clip_set(self, t, p=True): self.ev.append(("clip", t))
+    def clip_set(self, t, p=True): self.ev.append(("clip", t) if p is True else ("clip", t, p))
     def quality(self, q, fps=None, kbps=None, fpsx=None): self.ev.append(("q", q, fpsx))
 v = B.Viewer("22222222-2222-4222-8222-222222222222", None, pc=True)
 cli = FakeCli()
@@ -59,6 +59,10 @@ mods[0] = pg.KMOD_CTRL
 B.clip_get = lambda: "chu dan"
 v._input(E(type=6, key=pg.K_v), pg); mods[0] = 0
 ck("Ctrl+V → dán chữ của máy mình sang máy PC", cli.ev == [("clip", "chu dan")], cli.ev)
+cli.ev.clear()
+mods[0] = pg.KMOD_CTRL | pg.KMOD_SHIFT
+v._input(E(type=6, key=pg.K_v), pg); v._input(E(type=7, key=pg.K_v), pg); mods[0] = 0
+ck("23/11b Ctrl+Shift+V (Konsole máy Linux…) → cũng dán chữ của máy mình, kiểu 2 (máy bấm đúng Ctrl+Shift+V), không gửi phím V", cli.ev == [("clip", "chu dan", 2)], cli.ev)
 cli.ev.clear()
 v._input(E(type=6, key=pg.K_LSHIFT), pg); v._input(E(type=2, pos=(1, 1), button=1), pg)
 v._input(E(type=9), pg)
