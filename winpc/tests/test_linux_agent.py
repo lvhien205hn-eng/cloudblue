@@ -2,7 +2,7 @@
 """Thử agent CachyOS (linux/cbagent.py) NỐI CHUỖI với SQL thật (Postgres, như test_agent.py): máy Windows đổi sang CachyOS bằng lệnh cài lại
    → agent Linux đăng ký lại bằng vé của lệnh, báo kết quả lần cài, nhận lệnh cài lại về Windows (ghi job.json lên phân vùng cứu hộ giả + BootNext),
    hạn thuê, công tắc quyền Admin, tự cập nhật.  Chạy: python3 tests/test_linux_agent.py"""
-import hashlib, json, os, shutil, subprocess, sys, tempfile, time
+import hashlib, json, os, re, shutil, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WINPC = os.path.join(HERE, "..")
@@ -115,6 +115,8 @@ PAC = {"fail": False, "old": False, "calls": []}
 PACT = tempfile.mkdtemp()                                           # 23.11c: thư mục pacman giả — KHÔNG đụng pacman thật của máy chạy thử
 cbagent.PACDB = os.path.join(PACT, "sync"); os.makedirs(cbagent.PACDB)
 cbagent.PACDB_LOCK = os.path.join(PACT, "db.lck"); cbagent.ARCH_MIRRORLIST = os.path.join(PACT, "mirrorlist")
+cbagent.GRUB_DEFAULT = os.path.join(PACT, "grub"); cbagent.SDBOOT_DIR = os.path.join(PACT, "entries")       # 23.11c: GRUB / systemd-boot giả
+cbagent.GRUB_DIR = os.path.join(PACT, "boot-grub"); cbagent.CB_RELEASE = os.path.join(PACT, "cloudblue-release")
 GROUPS = ["pc", "users", "video"]
 cbagent.sh = fake_sh
 EFIV = tempfile.mkdtemp(); cbagent.EFIVARS = EFIV                   # biến UEFI giả (thư mục tạm) — KHÔNG BAO GIỜ đụng NVRAM thật của máy chạy thử
@@ -362,6 +364,57 @@ agQ.pac_heal = lambda: seen.append("pac")
 try: rt = agQ.tick(); agQ.rebooting = True; agQ.tick()
 finally: pcagent.Agent.tick = _tk
 ck("mỗi nhịp agent xét danh sách gói (trừ lúc đang khởi động lại / cài lại)", rt == 7 and seen == ["pac"], (rt, seen))
+
+print("6e. 23.11c: phần mềm khách đổi tham số nhân kiểu GRUB (AccountOps: mitigations=off zswap.enabled=0) → chép sang systemd-boot")
+G0 = "GRUB_DEFAULT=0\nGRUB_TIMEOUT=5\nGRUB_CMDLINE_LINUX_DEFAULT='nowatchdog nvme_load=YES zswap.enabled=0 splash loglevel=3'\nGRUB_CMDLINE_LINUX=\"\"\n# GRUB_CMDLINE_LINUX_DEFAULT=\"cu\"\n"
+G1 = G0.replace("'nowatchdog nvme_load=YES zswap.enabled=0 splash loglevel=3'", '"nowatchdog nvme_load=YES zswap.enabled=0 splash loglevel=3 mitigations=off"')
+with open(cbagent.GRUB_DEFAULT, "w") as f: f.write(G0)
+ck("đọc tham số trong /etc/default/grub (nháy đơn / kép, bỏ dòng chú thích, KHÔNG chạy file)",
+   cbagent.grub_cmdline_tokens() == ["nowatchdog", "nvme_load=YES", "zswap.enabled=0", "splash", "loglevel=3"], cbagent.grub_cmdline_tokens())
+ck("không có file grub → None", cbagent.grub_cmdline_tokens(os.path.join(PACT, "khong-co")) is None)
+B = ["root=UUID=abc", "rootflags=subvol=/@", "rw", "quiet", "nowatchdog", "loglevel=4"]
+ck("gộp: giữ root= / rootflags= / rw của CloudBlue, trùng tên lấy bản grub, bỏ root= / rw trong file grub",
+   cbagent.cmdline_merge(B, ["nowatchdog", "loglevel=3", "mitigations=off", "root=/dev/sda1", "rw", "mitigations=off"])
+   == ["root=UUID=abc", "rootflags=subvol=/@", "rw", "quiet", "nowatchdog", "loglevel=3", "mitigations=off"])
+os.makedirs(cbagent.SDBOOT_DIR)
+E = "title   CachyOS\nlinux   /vmlinuz-linux-cachyos\ninitrd  /initramfs-linux-cachyos.img\noptions root=UUID=abc rootflags=subvol=/@ rw quiet nowatchdog\n"
+for n in ("linux-cachyos.conf", "linux-cachyos-fallback.conf"):
+    with open(os.path.join(cbagent.SDBOOT_DIR, n), "w") as f: f.write(E.replace("initramfs-linux-cachyos", "initramfs-linux-cachyos-fallback" if "fallback" in n else "initramfs-linux-cachyos"))
+open(cbagent.CB_RELEASE, "w").close(); now = time.time()
+os.utime(cbagent.GRUB_DEFAULT, (now - 3600, now - 3600)); os.utime(cbagent.CB_RELEASE, (now - 600, now - 600))
+STP = os.path.join(PACT, "cmdline.json")
+opts = lambda n="linux-cachyos.conf": re.search(r"(?m)^options (.*)$", open(os.path.join(cbagent.SDBOOT_DIR, n)).read()).group(1)
+r = cbagent.sdboot_sync(STP)
+ck("file grub chưa đổi từ lúc cài → không đụng mục khởi động, chỉ ghi phần gốc", r is None and opts() == "root=UUID=abc rootflags=subvol=/@ rw quiet nowatchdog"
+   and json.load(open(STP))["base"]["linux-cachyos.conf"][0] == "root=UUID=abc", (r, opts()))
+with open(cbagent.GRUB_DEFAULT, "w") as f: f.write(G1)
+r = cbagent.sdboot_sync(STP)
+ck("bộ cài khách sửa file grub (thêm mitigations=off) → chép sang CẢ 2 mục (thường + fallback), giữ root= / dòng linux / initrd",
+   r and "2 mục" in r and opts() == "root=UUID=abc rootflags=subvol=/@ rw quiet nowatchdog nvme_load=YES zswap.enabled=0 splash loglevel=3 mitigations=off"
+   and opts("linux-cachyos-fallback.conf") == opts() and "initrd  /initramfs-linux-cachyos-fallback.img" in open(os.path.join(cbagent.SDBOOT_DIR, "linux-cachyos-fallback.conf")).read(), (r, opts()))
+ck("chưa đổi gì thêm → không ghi lại", cbagent.sdboot_sync(STP) is None)
+with open(cbagent.GRUB_DEFAULT, "w") as f: f.write(G0)
+os.utime(cbagent.GRUB_DEFAULT, (now + 5, now + 5))
+r = cbagent.sdboot_sync(STP)
+ck("khách bỏ tham số (sửa lại file grub) → mục khởi động bỏ theo", r and "mitigations=off" not in opts() and opts().startswith("root=UUID=abc rootflags=subvol=/@ rw quiet"), (r, opts()))
+os.remove(STP)
+with open(cbagent.GRUB_DEFAULT, "w") as f: f.write(G1)
+for n in os.listdir(cbagent.SDBOOT_DIR):
+    with open(os.path.join(cbagent.SDBOOT_DIR, n), "w") as f: f.write(E)
+r = cbagent.sdboot_sync(STP)
+ck("máy đang chạy (agent cũ) đã lỡ sửa file grub SAU lúc cài (như CB-139) → lần đầu agent mới chạy là chép luôn", r and "mitigations=off" in opts(), (r, opts()))
+ck("máy không khởi động bằng systemd-boot (không có /boot/loader/entries) → không làm gì",
+   cbagent.sdboot_sync(STP, entries=os.path.join(PACT, "khong-co")) is None)
+_which = cbagent.shutil.which; cbagent.shutil.which = lambda n: "/usr/bin/" + n
+try: g1 = cbagent.grub_dir_fix(); g2 = cbagent.grub_dir_fix()
+finally: cbagent.shutil.which = _which
+ck("có gói grub mà thiếu /boot/grub → tạo (grub-mkconfig của phần mềm khách chạy xong), có rồi thì thôi", g1 is True and g2 is False and os.path.isdir(cbagent.GRUB_DIR), (g1, g2))
+logsG = []
+agG = cbagent.LinuxAgent(cbagent.LinuxSys(), FakeHost("pc"), net, base, logsG.append, rec=rec)
+with open(cbagent.GRUB_DEFAULT, "w") as f: f.write(G1.replace("mitigations=off", "mitigations=off threadirqs"))
+os.utime(cbagent.GRUB_DEFAULT, (now + 9, now + 9))
+agG.boot_heal()
+ck("agent (mỗi nhịp) chép tham số mới + ghi nhật ký", "threadirqs" in opts() and any("đã chép tham số nhân" in m for m in logsG), logsG[-2:])
 
 print("6c. 22.11g: lỗi mở màn hình gần nhất (cbremote ghi logs/remote.err) → info.rmt.e (xem được trên web / SQL, không cần ngồi ở máy)")
 os.makedirs(os.path.join(base, "logs"), exist_ok=True)
