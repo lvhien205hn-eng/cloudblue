@@ -1645,10 +1645,10 @@ class Viewer:
             if down and e.key == pygame.K_r and self.state[0] in ("kicked", "error"): self._retry(); return True
             if down and e.key == pygame.K_u and self.state[0] == "error" and must_update(): self._open_updater(); return True
             if not c: return False
-            if mods & pygame.KMOD_CTRL and e.key == pygame.K_v and not (mods & (pygame.KMOD_ALT | pygame.KMOD_SHIFT)):   # Ctrl+V → dán chữ của máy mình sang máy PC
-                if down:
+            if mods & pygame.KMOD_CTRL and e.key == pygame.K_v and not (mods & pygame.KMOD_ALT):   # Ctrl+V → dán chữ của máy mình sang máy PC
+                if down:                                                                     # 23/11b: Ctrl+Shift+V (Konsole…) → máy bấm đúng Ctrl+Shift+V
                     txt = clip_get()
-                    if txt: c.clip_set(txt, True)
+                    if txt: c.clip_set(txt, 2 if mods & pygame.KMOD_SHIFT else True)
                 return False
             if self.pck is None: self.pck = pc_keymap(pygame)
             code = self.pck.get(e.key)
