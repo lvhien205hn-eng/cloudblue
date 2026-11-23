@@ -1,7 +1,8 @@
 # 23/11 · 🗗 TAB CỬA SỔ NHỎ (như Redfinger): thử cpapi.win_run (Thu nhỏ tab / Sắp xếp tab / Phóng to tab)
 #   1. sim: máy Android GIẢ (đọc am stack list Android 9 + 12, lưới, cổng HTTP) — vài giây.
-#   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 10 / 11 / 12 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
+#   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 10 / 11 / 12 / 12L / 13 / 14 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
 #      thu nhỏ → về màn chính → mở app khác → thu nhỏ → kéo dời / kéo đổi cỡ bằng chạm → sắp xếp dọc + ngang → phóng to.
+#      + 23/11b: game cũ (dựng khung 1 lần) thu nhỏ → 🔄 Mở lại vừa khung → game vẽ đúng cỡ cửa sổ.
 #      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
@@ -37,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [28, 29, 30, 31, 35]
+        api: [28, 29, 30, 31, 32, 33, 34, 35]     # 32–34: xem Android có thu nhỏ hình game không đổi cỡ (size compat) như Android 15 không
     steps:
       - uses: actions/checkout@v4
       - name: Bật KVM cho máy ảo Android
@@ -61,8 +62,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
           disable-animations: true
           script: |
-            python3 .github/win-check/test_win.py ${{ matrix.api }} /tmp/wintest shots
-            python3 .github/win-check/test_fit.py ${{ matrix.api }} /tmp/wintest shots
+            python3 .github/win-check/test_win.py ${{ matrix.api }} /tmp/wintest shots; r=$?; python3 .github/win-check/test_fit.py ${{ matrix.api }} /tmp/wintest shots; exit $r
       - name: Giữ ảnh
         if: always()
         uses: actions/upload-artifact@v4
