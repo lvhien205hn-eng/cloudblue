@@ -11,7 +11,7 @@
 #  (bảng CloudBlue chạy bộ cài không kèm tham số); -Node khác NODE_ID trong conf → dừng, không đụng gì.
 # =====================================================================
 param([string]$Node = "win1", [string]$PubHost = "phone.cloudblue.vn")
-$SETUP_VER = "2026-11-10a"
+$SETUP_VER = "2026-11-23a"
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # Windows PowerShell 5.1: thanh tiến độ làm Invoke-WebRequest / Expand-Archive chậm gấp nhiều lần
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # Windows cũ mặc định TLS 1.0 → GitHub/Google từ chối
@@ -22,15 +22,20 @@ function Warn($m) { Write-Host "  [!] $m" -ForegroundColor Yellow }
 function Step($m) { Write-Host "`n== $m ==" -ForegroundColor Cyan }
 function Get($url, $out) {
   $ErrorActionPreference = "Continue"   # bảng CloudBlue chạy bộ cài kèm *>&1 → dòng lỗi của curl không được làm dừng cả bộ cài (throw dưới vẫn dừng)
+  $cu = [bool](Get-Command curl.exe -ErrorAction SilentlyContinue)   # 23/11: Windows 10 bản cũ (1511…) chưa có curl.exe → tải bằng PowerShell; curl lỗi cũng thử lại bằng PowerShell
   # File của BlueRoblox: lấy qua api.github.com TRƯỚC (luôn là bản mới nhất — raw.githubusercontent hay trả bản cũ vài phút),
   # api hết lượt (60 lần/giờ) thì dùng raw.githubusercontent
   if ($url -like "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/*") {
     $api = $url -replace "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main", "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents"
-    & curl.exe -fsL -H "Accept: application/vnd.github.raw" -H "User-Agent: BlueRoblox-setup" -o $out $api   # hết lượt (403) → im lặng, lấy raw
-    if ($LASTEXITCODE -eq 0) { return }
+    if ($cu) {
+      & curl.exe -fsL -H "Accept: application/vnd.github.raw" -H "User-Agent: BlueRoblox-setup" -o $out $api   # hết lượt (403) → im lặng, lấy raw
+      if ($LASTEXITCODE -eq 0) { return } }
+    else { try { Invoke-WebRequest -UseBasicParsing -UserAgent "BlueRoblox-setup" -Headers @{ Accept = "application/vnd.github.raw" } -Uri $api -OutFile $out -ErrorAction Stop; return } catch {} }
     $url = $url + "?t=" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
-  & curl.exe -fsSL -H "Cache-Control: no-cache" -o $out $url
-  if ($LASTEXITCODE -ne 0) { throw "Tải lỗi: $url" } }
+  if ($cu) {
+    & curl.exe -fsSL -H "Cache-Control: no-cache" -o $out $url
+    if ($LASTEXITCODE -eq 0) { return } }
+  try { Invoke-WebRequest -UseBasicParsing -UserAgent "BlueRoblox-setup" -Uri $url -OutFile $out -ErrorAction Stop } catch { throw "Tải lỗi: $url" } }
 
 Write-Host "CloudBlue setup $SETUP_VER" -ForegroundColor DarkGray
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
