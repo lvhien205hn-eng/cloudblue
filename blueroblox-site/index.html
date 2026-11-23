@@ -4651,6 +4651,7 @@ const ERR = {
   WHEEL_NO_BUY: "Hiện không bán thêm lượt quay.", WHEEL_PRICE_CHANGED: "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.", WHEEL_NEED_TOPUP: "Nạp từ 100.000đ trong chương trình để được quay thêm.",
   WHEEL_TERMS_CHANGED: "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.", WHEEL_NO_LUCKY: "Hiện không bán vé may mắn.",
   WHEEL_BUY_LIMIT: "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.",
+  WHEEL_DAY_MAX: "Hôm nay bạn đã quay đủ số lượt miễn phí tối đa — mai quay tiếp, lượt còn lại vẫn giữ nguyên.",
   // v23 — mã khuyến mãi / ép cập nhật app (errMsg chọn mã DÀI NHẤT khớp → PROMO_TOO_MANY không bị nhầm thành TOO_MANY, PROMO_EMPTY ≠ EMPTY)
   PROMO_INVALID: "Mã không đúng hoặc đã bị tắt.", PROMO_EXPIRED: "Mã đã hết hạn.", PROMO_NOT_STARTED: "Mã chưa đến ngày sử dụng.", PROMO_USED_UP: "Mã đã hết lượt sử dụng.",
   PROMO_USER_LIMIT: "Bạn đã dùng hết số lượt của mã này.", PROMO_SCOPE: "Mã này không áp dụng cho loại đơn này.", PROMO_MIN_ORDER: "Đơn chưa đạt giá trị tối thiểu để dùng mã này.",
@@ -4674,6 +4675,7 @@ const ERR_EN = {
   WHEEL_NO_BUY: "Extra spins aren't on sale right now.", WHEEL_PRICE_CHANGED: "The extra-spin price just changed — check it and try again.", WHEEL_NEED_TOPUP: "Top up 100,000đ during the event to buy extra spins.",
   WHEEL_TERMS_CHANGED: "The spin / ticket terms just changed — check them and try again.", WHEEL_NO_LUCKY: "Lucky tickets aren't on sale right now.",
   WHEEL_BUY_LIMIT: "You've reached today's extra-spin limit — come back tomorrow.",
+  WHEEL_DAY_MAX: "You've used today's free spins — come back tomorrow, your remaining spins are kept.",
   PROMO_INVALID: "Wrong or disabled code.", PROMO_EXPIRED: "This code has expired.", PROMO_NOT_STARTED: "This code isn't active yet.", PROMO_USED_UP: "This code has no uses left.",
   PROMO_USER_LIMIT: "You've already used this code the maximum number of times.", PROMO_SCOPE: "This code doesn't apply to this kind of order.", PROMO_MIN_ORDER: "Your order is below this code's minimum.",
   PROMO_TOO_MANY: "Too many wrong codes — try again in 10 minutes.", PROMO_IS_GIFT: "This is a gift-phone code — enter it in the \"Enter code\" box under Cloud phones.",
@@ -5838,12 +5840,13 @@ function lwBtns() {
   else if (w.state === "ended") { txt = L("Chương trình đã kết thúc", "This event has ended"); dis = true; }
   else if (w.state === "soon") { txt = L(`Bắt đầu lúc ${lwWhen(w.starts_at)}`, `Starts ${lwWhen(w.starts_at)}`); dis = true; }
   else if (!profile) { txt = L("🔑 Đăng nhập để quay", "🔑 Log in to spin"); act = "login"; }
-  else if (left > 0) txt = L(`Quay ngay · còn ${left} lượt`, `Spin now · ${left} left`);
+  else if (left > 0 && w.day_left === 0) { txt = L(`Hôm nay đã quay đủ ${+w.day_max} lượt · mai quay tiếp (còn ${left} lượt)`, `Daily limit of ${+w.day_max} spins reached · back tomorrow (${left} left)`); dis = true; }
+  else if (left > 0) txt = L(`Quay ngay · còn ${left} lượt`, `Spin now · ${left} left`) + (w.day_left != null && +w.day_left < left ? L(` (hôm nay ${+w.day_left})`, ` (${+w.day_left} today)`) : "");
   else if (w.can_buy) { txt = +w.earned > 0 ? L(`➕ Quay thêm · ${vnd(w.price)}/lượt`, `➕ Extra spin · ${vnd(w.price)}`) : L(`➕ Mua lượt quay · ${vnd(w.price)}`, `➕ Buy a spin · ${vnd(w.price)}`); act = "buy"; cls = " buy"; }
   else if (+w.price > 0 && w.qualified && w.buy_left === 0) { txt = L("Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "Daily extra-spin limit reached — top up for more"); act = "top"; cls = " ghost"; }
   else { txt = L(`💳 Nạp ${vnd(fa)} để nhận ${fn} lượt quay`, `💳 Top up ${vnd(fa)} to get ${fn} spins`); act = "top"; cls = " ghost"; }
   go.textContent = txt; go.disabled = dis; go.dataset.act = act; go.className = "btn lwgo" + cls;
-  hub.disabled = lwBusy || lwLuck || !(w && w.state === "on" && (!profile || left > 0 || w.can_buy));
+  hub.disabled = lwBusy || lwLuck || !(w && w.state === "on" && (!profile || (left > 0 && w.day_left !== 0) || w.can_buy));
   hub.classList.toggle("live", !hub.disabled);
 }
 function lwMine() {
@@ -5901,7 +5904,9 @@ function lwRender() {
   $("lw-close").textContent = L("Đóng", "Close"); $("lw-hub").textContent = L("QUAY", "SPIN");
   if (!$("lw-rim").innerHTML) $("lw-rim").innerHTML = lwRim();
   const left = w ? +w.left || 0 : 0, [fa, fn] = lwFirst();
-  $("lw-left").textContent = L(`${left} lượt`, `${left} spin${left === 1 ? "" : "s"}`); $("lw-left").classList.toggle("has", !!(w && w.state === "on" && left > 0));
+  const dl = w && w.day_left != null && +w.day_left < left ? +w.day_left : null;
+  $("lw-left").textContent = L(`${left} lượt`, `${left} spin${left === 1 ? "" : "s"}`) + (dl == null ? "" : L(` · hôm nay ${dl}`, ` · ${dl} today`));
+  $("lw-left").classList.toggle("has", !!(w && w.state === "on" && left > 0 && dl !== 0));
   $("lw-sub").textContent = !w ? L("Vòng quay đang tạm tắt.", "The lucky wheel is currently off.")
     : w.state === "soon" ? L(`Bắt đầu ${lwWhen(w.starts_at)}. Nạp ${vnd(fa)} = ${fn} lượt quay.`, `Starts ${lwWhen(w.starts_at)}. Top up ${vnd(fa)} = ${fn} spins.`)
     : w.state === "on" ? L(`Nạp ${vnd(fa)} = ${fn} lượt · lượt nào cũng trúng mã giảm giá · số dư ${vnd(lwBal())}`, `Top up ${vnd(fa)} = ${fn} spins · every spin wins a code · balance ${vnd(lwBal())}`)
@@ -5999,6 +6004,7 @@ async function lwSpin(pay, lucky) {
   const left = +w.left || 0, lk = lucky ? lwLuckyInfo() : null;
   if (lucky && !lk) return;
   if (!lucky && left <= 0 && !pay) { if (w.can_buy) lwAsk(); else lwBtns(); return; }
+  if (!lucky && !pay && left > 0 && w.day_left === 0) { $("lw-err").textContent = errMsg("WHEEL_DAY_MAX"); lwBtns(); return; }
   lwLuckyMode(!!lucky); if (lwSig === "") lwRender();
   lwBusy = true; lwLast = null; $("lw-err").textContent = ""; $("lw-ask").hidden = true; lwRevClose();
   const disc = $("lw-disc"), rim = $("lw-rim");
@@ -6024,6 +6030,7 @@ async function lwSpin(pay, lucky) {
   rim.classList.remove("spin");
   lwBusy = false; lwLast = r; lwRevPend = true;
   if (LW) { LW.left = Math.max(0, +r.left || 0); if (r.buy_left !== undefined) LW.buy_left = r.buy_left; if (+r.paid > 0) LW.balance = +r.balance;
+            if (r.day_left != null) LW.day_left = +r.day_left;
             if (LW.buy_left === 0) { LW.can_buy = false; LW.can_lucky = false; } }
   r.lucky = !!lucky;
   const el = disc.querySelector(`.real [data-pct="${+r.pct}"]`); if (el) el.classList.add("win");
