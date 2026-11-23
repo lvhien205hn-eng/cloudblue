@@ -45,6 +45,11 @@ class Droid:
         self.ui_pid, self.ui_kills, self.ui_wait, self.ui_key, self.boot = 900, 0, 0, None, "b00t-1"
         self.ui_root, self.ui_heal, self.in_ok, self.ghost = True, True, True, None   # tắt được tiến trình · bật lại thì khỏi · đọc được dumpsys input · dòng cửa sổ ẩn
         self.sf_ok = True                                         # đọc được tên lớp hình (dumpsys SurfaceFlinger --list)
+        # 23/11e lượt 3 (đo máy ảo thật): · decor_move: Android 13+ vừa bật lại giao diện hệ thống thì cửa sổ nổi ĐANG CÓ chưa được vẽ thanh tiêu đề, tới
+        # khi tab đó "đổi" (đổi khung / lên trên / hiện ra / đổi chế độ; decor_move = "front": chỉ khi lên trên / hiện ra) · decor_never: bản Android không bao giờ vẽ thanh tiêu đề · insetlag: vừa
+        # HẠ mật độ thì thanh trạng thái còn cao như cũ thêm N lệnh — Android đẩy cửa sổ nổi xuống dưới thanh cũ; và Android NHỚ khung đã yêu cầu:
+        # yêu cầu lại đúng khung đó thì bỏ qua (khung thật giữ nguyên chỗ lệch). Máy ảo 12L thật: lệch 22 px, 8 giây sau vẫn lệch.
+        self.decor_move, self.decor_never, self.insetlag, self._stale = False, False, 0, None
         self.lag, self._true, self._old, self._left = lag, None, None, 0          # lag: máy chậm — màn xoay xong mới báo hướng mới sau `lag` lần đọc
         self.z = [{"id": 1, "comp": "com.android.launcher3/.Launcher", "user": 0, "mode": FS, "type": "home", "b": (0, 0, 0, 0), "land": False, "resz": True}]
         self.nid, self.log = 10, []
@@ -160,6 +165,8 @@ class Droid:
     def _dens(self, v):
         if self.quirk: self._hsw = self.sw(); self._nav = self.navlag if not self.navwhen else -1
         ch = (v or self.pd) != (self.od or self.pd)
+        if self.insetlag and (v or self.pd) < (self.od or self.pd):       # hạ mật độ: thanh trạng thái cũ (24 dp ở mật độ CŨ) còn đó thêm insetlag lệnh
+            self._stale = [int(round(24 * (self.od or self.pd) / 160.0)), self.insetlag + 1]
         self.od = v
         if ch:
             for t in self.z:                                      # Android mở lại màn của app (không tự xử lý đổi mật độ) theo cỡ ĐANG CÓ lúc này
@@ -214,7 +221,15 @@ class Droid:
     # ---- lệnh adb shell ----
     def sh(self, c, t=30):
         vis = {x["id"]: self.visible(x) for x in self.z}
-        o = self._sh(c, t); self._sync(); self._place(vis); return o
+        pre = {x["id"]: (x["mode"], tuple(x["b"]), vis[x["id"]]) for x in self.z}; top0 = self.z[0]["id"] if self.z else None
+        o = self._sh(c, t); self._sync(); self._place(vis)
+        if self.ui:                                               # tab vừa "đổi" lúc giao diện hệ thống đang lo cửa sổ nổi → được vẽ thanh tiêu đề
+            for x in self.z:
+                if not x.get("nodecor"): continue
+                was = pre.get(x["id"]) or (None, None, False)
+                up_ = (self.visible(x) and not was[2]) or (self.z[0] is x and top0 != x["id"])        # vừa hiện ra / vừa lên trên cùng
+                if up_ or (self.decor_move != "front" and was[:2] != (x["mode"], tuple(x["b"]))): x["nodecor"] = False
+        return o
 
     def _want(self, t):
         W, H = self.size()
@@ -234,10 +249,13 @@ class Droid:
 
     def decorated(self, t):
         """Android 13+: cửa sổ nổi có thanh tiêu đề (do giao diện hệ thống vẽ) không. Bản khác / tab toàn màn: không xét."""
-        return self.ui if (self.sdk >= 33 and t["mode"] == FF) else True
+        return (self.ui and not t.get("nodecor") and not self.decor_never) if (self.sdk >= 33 and t["mode"] == FF) else True
 
     def _sh(self, c, t=30):
         self.log.append(c)
+        if self._stale:
+            self._stale[1] -= 1
+            if self._stale[1] <= 0: self._stale = None
         if self._nav > 0:
             self._nav -= 1
             if self._nav == 0: self._navbar()
@@ -341,7 +359,13 @@ class Droid:
         if m:
             tk = next((x for x in self.z if x["id"] == int(m.group(1))), None)
             if tk is None or tk["mode"] != FF: return "java.lang.IllegalArgumentException: resizeTask not allowed on task"
-            tk["b"] = tuple(int(m.group(i)) for i in range(2, 6)); return ""
+            req = tuple(int(m.group(i)) for i in range(2, 6))
+            if self.insetlag:
+                if tk.get("req") == req: return ""               # Android: trùng khung ĐÃ YÊU CẦU → bỏ qua, khung thật giữ nguyên (kể cả đang lệch)
+                tk["req"] = req
+                top = self._stale[0] if self._stale else 0
+                if req[1] < top: req = (req[0], top, req[2], req[3] + top - req[1])      # đẩy xuống dưới thanh trạng thái (cũ)
+            tk["b"] = req; return ""
         # ---- 23/11d: loại app (dumpsys activity) · tiến trình (ps) · am kill · mở lại sạch vào đúng tab · app trợ giúp xoay màn ----
         if c == cp.WIN_KIND_SH:
             o = []
@@ -413,6 +437,9 @@ class Droid:
             if self.ui_root:                                        # tiến trình tắt → Android tự bật lại (2 lần hỏi sau mới thấy tiến trình mới)
                 self.ui_pid += 1; self.ui_wait = 2; self.ui_kills += 1
                 if self.ui_heal: self.ui = self.free
+                if self.decor_move:                                 # thanh tiêu đề do tiến trình cũ vẽ mất theo nó; cửa sổ nổi đang có phải "đổi" mới được vẽ lại
+                    for x in self.z:
+                        if x["mode"] == FF and x["type"] == "standard": x["nodecor"] = True
             return f"#kill {old}"
         if c.startswith("dumpsys input 2>/dev/null | grep -E "):
             if not self.in_ok: return ""
@@ -441,11 +468,15 @@ class Droid:
         if c.startswith("am startservice --user 0 -n com.android.systemui/"): self.ui_wait = 0; return ""
         if c == cp.WIN_DECOR_SH:                                # tên lớp hình: hình của tab + (Android 13+, giao diện hệ thống lo cửa sổ nổi) thanh tiêu đề
             if not self.sf_ok: return ""
-            o = ["Bounds for - Task=99#1", "Dim layer of Task=98#2"]
+            new = self.sdk >= 34                                  # Android 14 / 15 (đo máy ảo 35): mỗi dòng bọc trong RequestedLayerState{…}
+            wrap = (lambda n, k: f"RequestedLayerState{{{n}#{k} parentId={k + 40} z=1}}") if new else (lambda n, k: f"{n}#{k}")
+            o = [wrap("Bounds for - Task=99", 1), wrap("Dim layer of Task=98", 2)]
             for tk in self.z:
-                o.append(f"Task={tk['id']}#{tk['id'] * 3}")
-                if tk["mode"] == FF and tk["type"] == "standard" and self.sdk >= 33 and self.ui:
-                    o += [f"Decor container of Task={tk['id']}#{tk['id'] * 3 + 1}", f"Caption container of Task={tk['id']}#{tk['id'] * 3 + 2}"]
+                i = tk["id"]; o.append(wrap(f"Task={i}", i * 3))
+                if tk["mode"] == FF and tk["type"] == "standard" and self.sdk >= 33 and self.decorated(tk) and self.visible(tk):     # tab bị che: Android gỡ thanh tiêu đề
+                    o += [wrap(f"Decor container of Task={i}", i * 3 + 1), wrap(f"Caption container of Task={i}", i * 3 + 2)]
+                    if new: o += [f"RequestedLayerState{{TaskInputSink of Surface(name=Decor container of Task={i})/@0x8ca0b65#{i * 3 + 5} parentId={i * 3 + 1} z=-2}}",
+                                  f"RequestedLayerState{{Caption of Task={i}Leash#{i * 3 + 6} parentId={i * 3 + 2}}}"]
             return "\n".join(o)
         return "UNKNOWN " + c
 
@@ -503,7 +534,7 @@ ck("lệnh mở lại tab: Android 12 có --display 0 + --windowingMode 5, Andro
 # ============================================================== 3. luồng của khách
 cp.time.sleep = lambda s: None                       # máy giả: không chờ thật
 _win_run = cp.win_run                                # … kể cả các nhịp chờ win_run nhận qua tham số sleep (mặc định là time.sleep THẬT, gắn lúc nạp cpapi)
-cp.win_run = lambda sh, do, sleep=(lambda s: None), inst=None: _win_run(sh, do, sleep, inst)
+cp.win_run = lambda sh, do, sleep=(lambda s: None), inst=None, memo=None: _win_run(sh, do, sleep, inst, memo)
 GP = cp.win_geo("Display: mDisplayId=0\n cur=720x1280 app=720x1184", "Physical density: 320", [])
 for sdk in (28, 29, 30, 31, 35):
     print(f"3. Android {sdk}: thu nhỏ → về màn chính → mở app khác → thu nhỏ → clone → sắp xếp → phóng to")
@@ -1072,6 +1103,81 @@ ck("đọc chỗ thật của hình (chạy thật grep trên bản in của má
 ck("… bản in đó = đúng lỗi đo trên máy thật: Termux khung [0,446][720,863] mà hình ở góc màn → lệch; wintest4 đúng chỗ",
    cp.win_seen(real_sh, [({"pkg": "com.termux"}, (0, 446, 720, 863))], lambda s_: None, tries=1) is False
    and cp.win_seen(real_sh, [({"pkg": "vn.cloudblue.wintest4"}, (0, 29, 652, 445))], lambda s_: None, tries=1) is True, fr)
+
+print("4b'. 23/11e lượt 3 · bản in lớp hình của Android 15 thật · thanh tiêu đề chỉ được vẽ khi tab đổi khung · vừa hạ mật độ thì cửa sổ bị đẩy lệch")
+A15_OK = ("RequestedLayerState{Task=15#1281 z=1}\nRequestedLayerState{Task=6#71 parentId=1339}\nRequestedLayerState{Task=16#1343 parentId=1344 z=2}\n"
+          "RequestedLayerState{Task=1#1339 parentId=1344}\nRequestedLayerState{Task=16#1319 z=2}\nRequestedLayerState{Task=17#1347 parentId=1344 z=1}\n"
+          "RequestedLayerState{TaskInputSink of Surface(name=Decor container of Task=16)/@0x8ca0b65#1389 parentId=1385 z=-2}\nRequestedLayerState{Caption of Task=16#1388 parentId=1387}\n"
+          "RequestedLayerState{Decor container of Task=16#1385 parentId=1343 z=20000}\nRequestedLayerState{Caption container of Task=16#1386 parentId=1385 z=-1}\n"
+          "RequestedLayerState{Caption of Task=16Leash#1387 parentId=1386}\n")
+A15_BAD = ("RequestedLayerState{Task=6#71 parentId=1397}\nRequestedLayerState{Task=1#1397 parentId=1401}\nRequestedLayerState{Task=20#1404 parentId=1401 z=1}\n"
+           "RequestedLayerState{Task=21#1405 parentId=1404}\nRequestedLayerState{Task=22#1406 parentId=1404 z=1}\nRequestedLayerState{Task=23#1440 parentId=1401 z=2}\n")
+nosl = lambda s_: None
+ck("bản in THẬT của máy ảo Android 15 (RequestedLayerState{…}): cửa sổ có thanh tiêu đề → đọc ra đúng tab 16; tab 1 / 6 không bị nhận nhầm",
+   cp.win_decor_ids(lambda c, t=0: A15_OK, {16, 1, 6}) == ({16, 1, 6}, {16}) and cp.win_decor(lambda c, t=0: A15_OK, [({"id": 16}, (0, 0, 1, 1))], nosl, 1) is True
+   and cp.win_decor(lambda c, t=0: A15_OK, [({"id": 1}, (0, 0, 1, 1))], nosl, 1) is False, cp.win_decor_ids(lambda c, t=0: A15_OK, {16, 1, 6}))
+ck("… bản in lúc giao diện hệ thống chạy từ trước khi bật cửa sổ nổi (tab 23 không có lớp thanh tiêu đề) → False; tab không có trong bản in → None",
+   cp.win_decor(lambda c, t=0: A15_BAD, [({"id": 23}, (0, 0, 1, 1))], nosl, 2) is False and cp.win_decor(lambda c, t=0: A15_BAD, [({"id": 2}, (0, 0, 1, 1))], nosl, 2) is None
+   and cp.win_decor(lambda c, t=0: A15_BAD, [({"id": 3}, (0, 0, 1, 1))], nosl, 2) is None, cp.win_decor_ids(lambda c, t=0: A15_BAD, {23, 2, 3}))
+nudges = lambda d, t: len([x for x in d.log if re.match(rf"am task resize {t['id']} ", x)])
+for sdk in (33, 35):
+    d = Droid(sdk, ui=False); d.decor_move = True; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+    k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
+    after = [x for x in d.log[k_kill + 1:] if x.startswith(f"am task resize {a['id']} ")]
+    ck(f"Android {sdk}: bật lại giao diện hệ thống xong, cửa sổ đang có CHƯA được vẽ thanh tiêu đề (chỉ vẽ lúc tab đổi) → dời tab 1 px rồi trả lại → có thanh tiêu đề, khung đúng như đã báo",
+       code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and tuple(a["b"]) == tuple(j["b"]) and len(after) == 2
+       and after[1] == "am task resize %d %d %d %d %d 2>&1" % ((a["id"],) + tuple(j["b"])), (code, j, a, after, d.ui_kills))
+    b = d.open(RZ2); code, j = cp.win_run(d.sh, "mini"); n_a = nudges(d, a)
+    ck(f"Android {sdk}: tab thứ 2 → không bật lại, không dời thừa tab đầu, cả 2 có thanh tiêu đề", code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and d.drawn_ok(b), (code, j, d.ui_kills))
+    d = Droid(sdk, ui=False); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+    k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
+    ck(f"Android {sdk}: máy tự vẽ lại thanh tiêu đề ngay khi giao diện hệ thống lên → KHÔNG dời tab thừa",
+       code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and not [x for x in d.log[k_kill + 1:] if x.startswith(f"am task resize {a['id']} ")], (code, j))
+    d = Droid(sdk, ui=False); d.decor_move = "front"; a = d.open(RZ1); cp.win_run(d.sh, "mini"); b = d.open(RZ2); cp.win_run(d.sh, "mini")
+    d.ui = False; d.ui_key = None; n0 = len(d.log); z0 = [x["id"] for x in d.z]; ba, bb = tuple(a["b"]), tuple(b["b"]); code, j = cp.win_run(d.sh, "tile")
+    homes = [k for k, x in enumerate(d.log) if k >= n0 and x.startswith("input keyevent 3")]
+    ck(f"Android {sdk}: máy chỉ vẽ thanh tiêu đề lúc tab LÊN TRÊN (dời 1 px không ăn) → về màn chính rồi đưa các cửa sổ nổi lên lại: đủ thanh tiêu đề, "
+       "đúng thứ tự trên dưới + đúng ô đã xếp",
+       code == 200 and d.ui_kills == 2 and len(homes) == 1 and d.drawn_ok(a) and d.drawn_ok(b) and [x["id"] for x in d.z if x["mode"] == FF] == [i for i in z0 if i in (a["id"], b["id"])]
+       and d.visible(a) and d.visible(b) and ovl(a["b"], b["b"]) == 0, (code, j, d.ui_kills, homes, [x["id"] for x in d.z], z0, a["b"], b["b"]))
+    d = Droid(sdk); d.decor_move = True; a = d.open(RZ1); cp.win_run(d.sh, "mini"); d.ui_key = d.boot; a["nodecor"] = True; n0 = nudges(d, a)
+    code, j = cp.win_run(d.sh, "grow"); 
+    ck(f"Android {sdk}: lần mở máy này ĐÃ bật lại giao diện hệ thống mà tab vẫn thiếu thanh tiêu đề → không bật lại nữa, chỉ dời tab → có thanh tiêu đề",
+       code == 200 and d.ui_kills == 0 and d.drawn_ok(a) and tuple(a["b"]) == tuple(j["b"]), (code, j, a, d.ui_kills))
+    d = Droid(sdk); a = d.open(RZ1); cp.win_run(d.sh, "mini"); b = d.open(RZ2, land=True)        # app toàn màn che tab nhỏ → Android gỡ thanh tiêu đề của tab bị che
+    r = cp.win_ui_fix(d.sh, sdk, [(dict(a, pkg="com.roblox.client"), a["b"])], nosl)
+    ck(f"Android {sdk}: tab nhỏ đang bị app toàn màn che (Android không vẽ thanh tiêu đề cho tab bị che) → không coi là lỗi, không bật lại", r is False and d.ui_kills == 0 and kills(d) == 0, (r, d.ui_kills))
+    d = Droid(sdk, ui=False); d.decor_never = True; memo = {}; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini", memo=memo); l1, k1 = layers(d), d.ui_kills
+    b = d.open(RZ2); c2, j2 = cp.win_run(d.sh, "mini", memo=memo); l2 = layers(d); c3, j3 = cp.win_run(d.sh, "tile", memo=memo)
+    ck(f"Android {sdk}: bản Android KHÔNG vẽ thanh tiêu đề (bật lại + dời vẫn không có) → bật lại đúng 1 lần, ghi nhớ; các lượt sau không đọc lớp hình / không dời / không chờ nữa",
+       code == 200 and c2 == 200 and c3 == 200 and k1 == 1 and d.ui_kills == 1 and bool(memo.get("off")) and l2 == l1 and layers(d) == l1, (code, c2, c3, k1, d.ui_kills, memo, l1, l2, layers(d)))
+    memo["off"] = time.time() - cp.WIN_MEMO_OFF - 5; c4, j4 = cp.win_run(d.sh, "tile", memo=memo)
+    ck(f"Android {sdk}: … hết 30 phút → thử lại (đọc lớp hình), vẫn không bật lại giao diện hệ thống lần 2 trong cùng lần mở máy", c4 == 200 and layers(d) > l1 and d.ui_kills == 1, (c4, layers(d), l1, d.ui_kills))
+# vừa hạ mật độ: thanh trạng thái cũ còn đó → cửa sổ bị đẩy lệch và Android bỏ qua lệnh đặt lại y hệt
+for sdk in (31, 32):
+    d = Droid(sdk); d.insetlag = 14; a = d.open(OLD1, land=True, resz=False); code, j = cp.win_run(d.sh, "mini")
+    k_d = next((k for k, x in enumerate(d.log) if re.search(r"wm density \d+(;|$)", x)), -1)
+    ck(f"Android {sdk}: game kiểu cũ → máy tự bật màn rộng (hạ mật độ) → cửa sổ bị Android đẩy xuống dưới thanh trạng thái CŨ; cpapi dời 1 px rồi đặt lại tới khi "
+       f"khung THẬT = khung đã báo ({j.get('b')}), game chỉ được mở lại 1 lần, vừa khung",
+       code == 200 and j.get("fit") == "ok" and j.get("sw") and k_d > 0 and tuple(a["b"]) == tuple(j["b"]) and a["starts"] == 2 and d.fits(a) and d._stale is None
+       and any(x == "am task resize %d %d %d %d %d 2>&1" % (a["id"], j["b"][0], j["b"][1] + 1, j["b"][2], j["b"][3] + 1) for x in d.log), (code, j, a, d._stale))
+    d = Droid(sdk); d.insetlag = 500; a = d.open(OLD1, land=True, resz=False); n0 = len(d.log); code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}: thanh trạng thái KHÔNG bao giờ dựng lại (máy lạ) → thử có hạn (≤ 7 lượt dời) rồi thôi, việc vẫn xong, game vẫn vừa khung",
+       code == 200 and j.get("fit") == "ok" and d.fits(a) and tuple(a["b"])[1] > j["b"][1] and (a["b"][2] - a["b"][0], a["b"][3] - a["b"][1]) == (j["b"][2] - j["b"][0], j["b"][3] - j["b"][1])
+       and len([x for x in d.log if re.fullmatch(rf"am task resize {a['id']} \d+ \d+ \d+ \d+ 2>&1", x)
+                and x.split()[5] == str(j["b"][1] + 1)]) == 7, (code, j, a, len(d.log) - n0))
+d = Droid(32); a = d.open(OLD1, land=True, resz=False); code, j = cp.win_run(d.sh, "mini")
+ck("máy không lệch (khung thật = khung muốn ngay): không có lệnh dời 1 px nào", code == 200 and tuple(a["b"]) == tuple(j["b"])
+   and not any(x == "am task resize %d %d %d %d %d 2>&1" % (a["id"], j["b"][0], j["b"][1] + 1, j["b"][2], j["b"][3] + 1) for x in d.log), (code, j, a))
+tk = {"id": 5, "b": (0, 26, 640, 431)}
+fake = lambda bb: (lambda c, t=0: (LOGP.append(c) or "") if c.startswith("am task resize") else
+                   f"RootTask id=5 bounds=[{bb[0]},{bb[1]}][{bb[2]},{bb[3]}] displayId=0 userId=0\n configuration={{ mWindowingMode=freeform mActivityType=standard}}\n"
+                   f"  taskId=5: a.b/a.b.M bounds=[{bb[0]},{bb[1]}][{bb[2]},{bb[3]}] userId=0 visible=true")
+LOGP = []; r1 = cp.win_put(fake((0, 26, 640, 431)), [tk], 32, nosl); n1 = len(LOGP)
+LOGP = []; r2 = cp.win_put(fake((0, 48, 640, 488)), [tk], 32, nosl); n2 = len(LOGP)           # Android ép cỡ khác (không phải lệch chỗ) → không dời
+LOGP = []; r3 = cp.win_put(fake((0, 48, 640, 453)), [tk], 32, nosl, tries=3); n3 = len(LOGP)  # lệch chỗ, đúng cỡ, không bao giờ về → 3 lượt × 2 lệnh rồi thôi
+ck("win_put: đúng khung → True, không lệnh nào · lệch CỠ → không dời (không phải lỗi này) · lệch chỗ mãi → dời có hạn rồi trả False",
+   (r1, n1) == (True, 0) and (r2, n2) == (True, 0) and (r3, n3) == (False, 6), (r1, n1, r2, n2, r3, n3))
 
 # ============================================================== 5. cổng HTTP
 print("5. Cổng /cpapi/<máy>/win")

@@ -166,12 +166,18 @@ def raw_shot():
     return (w, h, r, off) if (0 < w < 5000 and 0 < h < 5000 and 8 <= off <= 64) else None
 
 
+def shot_scale(w, h, g):
+    """Tỉ lệ ảnh chụp / toạ độ khung. Màn vừa xoay (ảnh ngang mà cỡ màn đọc lúc trước là dọc, hoặc ngược lại) → đổi chỗ rộng / cao của cỡ màn."""
+    gw, gh = (g["w"], g["h"]) if (w > h) == (g["w"] > g["h"]) else (g["h"], g["w"])
+    return w / float(gw), h / float(gh)
+
+
 def pic_at(b, g):
     """VIỀN VÀNG app thử vẽ quanh mép hình (16 px) có nằm đúng mép khung b trên ẢNH CHỤP MÀN không — mép trái, mép phải, mép dưới. Đây là thứ
        khách thấy (sổ ghi khung tab của Android có thể đúng mà hình nằm chỗ khác — lỗi đo trên máy MuMu Android 12 thật). Trả [đúng?, đúng?, đúng?]."""
     s_ = raw_shot()
     if not s_: return None
-    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    w, h, r, off = s_; sx, sy = shot_scale(w, h, g)
     def px(x, y):
         x, y = int(x * sx), int(y * sy)
         return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
@@ -185,7 +191,7 @@ def pic_solid(b, g, rgb=(184, 134, 11), cap=None):
        khung, không lệch / không tràn). Trả [trái, phải, đáy, ngoài-đáy-không-có] hoặc None."""
     s_ = raw_shot()
     if not s_: return None
-    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    w, h, r, off = s_; sx, sy = shot_scale(w, h, g)
     def px(x, y):
         x, y = int(x * sx), int(y * sy)
         return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
@@ -199,7 +205,7 @@ def pic_game(b, g):
        hoặc sát mép trên khung khi cửa sổ không có thanh tiêu đề). Trả [trái, trên] hoặc None."""
     s_ = raw_shot()
     if not s_: return None
-    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    w, h, r, off = s_; sx, sy = shot_scale(w, h, g)
     def px(x, y):
         x, y = int(x * sx), int(y * sy)
         return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
@@ -513,31 +519,54 @@ if API >= cp.WIN_UI_SDK:
         print(f"   [{tag}] dumpsys input:", sh("dumpsys input 2>/dev/null | grep -m3 -E 'wintest[35]/'")[:700].replace("\n", " ¦ "), flush=True)
         print(f"   [{tag}] lớp hình:", " ¦ ".join(l.strip() for l in sh(cp.WIN_DECOR_SH).splitlines() if re.search(r"Task=(\d+)", l))[:900], flush=True)
         print(f"   [{tag}] cpapi đọc:", cp.win_frames(sh, ["vn.cloudblue.wintest3", "vn.cloudblue.wintest5"]), flush=True)
+    def geo(): return cp.win_state(sh)["geo"]
+    def look3(tries=8):
+        """Hình app 3 (nền 1 màu) đúng khung tab của nó trên ảnh chụp màn — đọc lại khung + cỡ màn mỗi lần, chờ tới khi đúng."""
+        pic = None
+        for _ in range(tries):
+            t = task(3); pic = pic_solid(t["b"], geo()) if t else None
+            if pic and all(pic): break
+            time.sleep(0.8)
+        return pic
+    def look5(tries=8):
+        pic = None
+        for _ in range(tries):
+            t = task(5); pic = pic_game(t["b"], geo()) if t else None
+            if pic and all(pic): break
+            time.sleep(0.8)
+        return pic
+    def cap3(tries=8):
+        """Cửa sổ app 3 có thanh tiêu đề (app thấy vùng vẽ thấp hơn cửa sổ đúng bằng thanh tiêu đề) — chờ app nhận cỡ mới."""
+        for _ in range(tries):
+            t = task(3)
+            if t and capped(3, t, geo()): return True
+            time.sleep(0.8)
+        return False
     r5 = adb("install", "-r", "-t", os.path.join(APKS, "wintest5.apk"), t=180)
     print("cài wintest5:", (r5.stdout + r5.stderr).decode(errors="ignore").strip()[-120:], flush=True)
     sh(f"wm density {D0}; settings put system user_rotation 0", 20); time.sleep(2)
     # (a) máy chưa bật cửa sổ nổi
     ui_cold(False); p0 = ui_pid(); sh("logcat -c")
-    open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); g12 = cp.win_state(sh)["geo"]; shot("21-vua-bat-cua-so-noi")
-    pic = pic_solid(t3["b"], g12) if t3 else None; diag("a")
+    open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); g12 = geo(); shot("21-vua-bat-cua-so-noi")
+    pic = look3(); c3 = cap3(); diag("a")
     ck("máy CHƯA bật cửa sổ nổi → Thu nhỏ tab: tự bật cài đặt + bật lại giao diện hệ thống (tiến trình mới) rồi thu nhỏ được",
        code == 200 and bool(t3) and t3["mode"] == "freeform" and tuple(t3["b"]) == tuple(j.get("b") or ()) and bool(p1) and not (set(p1) & set(p0))
        and sh(f"settings get global {cp.WIN_UI_KEY}").strip() not in ("", "null"), (code, j, t3, p0, p1, "\n".join(TRACE[:14])))
     ck(f"… HÌNH của tab nằm đúng khung tab trên ẢNH CHỤP MÀN (nền app sát mép trái / phải / đáy khung, không tràn xuống dưới) {pic} + cửa sổ có thanh tiêu đề",
-       bool(pic) and all(pic) and capped(3, t3, g12), (pic, t3 and t3["b"], last_size(3), g12["cap"]))
+       bool(pic) and all(pic) and c3, (pic, t3 and t3["b"], task(3), last_size(3), g12["cap"]))
     if API < cp.WIN_DECOR_SDK: ck("… chỗ Android nhận chạm (dumpsys input) trùng khung tab", seen(t3) is True, (seen(t3), t3 and t3["b"]))
     # (b) cài đặt đã bật, giao diện hệ thống chạy từ TRƯỚC đó (máy thật đang chạy lúc cập nhật): tab đầu + tab thứ 2
     ui_cold(True); p0 = ui_pid(); sh("logcat -c")
     open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); shot("22-giao-dien-cu-tab-1")
-    pic = pic_solid(t3["b"], g12) if t3 else None; diag("b1"); again = bool(p1) and not (set(p1) & set(p0))
+    pic = look3(); c3 = cap3(); diag("b1"); again = bool(p1) and not (set(p1) & set(p0))
     info(f"… máy ảo này CÓ lỗi như máy thật (hình lệch khung / thiếu thanh tiêu đề cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: {p0} → {p1}", again, (p0, p1))
     if API >= 32: ck("… Android 12L trở lên: cpapi tự thấy lỗi và bật lại giao diện hệ thống đúng 1 lần", again, (p0, p1, "\n".join(TRACE[:16])))
     ck(f"giao diện hệ thống chạy từ trước khi bật cửa sổ nổi → thu nhỏ tab đầu: HÌNH đúng khung trên ảnh chụp màn {pic} + cửa sổ có thanh tiêu đề",
-       code == 200 and bool(t3) and t3["mode"] == "freeform" and bool(pic) and all(pic) and capped(3, t3, g12),
-       (code, j, t3, pic, last_size(3), g12["cap"], p0, p1, "\n".join(TRACE[:16])))
+       code == 200 and bool(t3) and t3["mode"] == "freeform" and bool(pic) and all(pic) and c3,
+       (code, j, t3, task(3), pic, last_size(3), g12["cap"], p0, p1, "\n".join(TRACE[:40])))
     sh("input keyevent 3"); time.sleep(2); open_app(5); time.sleep(2); p1 = ui_pid()
-    code, j = run("mini"); time.sleep(3); t3, t5 = task(3), task(5); p2 = ui_pid(); shot("23-giao-dien-cu-tab-2")
-    pic3, pic5 = (pic_solid(t3["b"], g12) if t3 else None), (pic_game(t5["b"], g12) if t5 else None); diag("b2")
+    code, j = run("mini"); time.sleep(3); p2 = ui_pid(); shot("23-giao-dien-cu-tab-2")
+    pic3, pic5 = look3(), look5(); t3, t5 = task(3), task(5); diag("b2")
     ck(f"… thu nhỏ tab thứ 2: hình tab 2 nằm đúng Ô CỦA NÓ (không đè tab đầu), tab đầu vẫn đúng chỗ, không bật lại giao diện hệ thống lần nữa · tab đầu {pic3} · tab 2 {pic5}",
        code == 200 and bool(t3) and bool(t5) and t5["mode"] == "freeform" and area((max(t3["b"][0], t5["b"][0]), max(t3["b"][1], t5["b"][1]), min(t3["b"][2], t5["b"][2]), min(t3["b"][3], t5["b"][3]))) == 0
        and bool(pic3) and all(pic3) and bool(pic5) and all(pic5) and p2 == p1,
@@ -547,11 +576,11 @@ if API >= cp.WIN_UI_SDK:
         capy = t5["b"][1] + g12["cap"] // 2; cx = (t5["b"][0] + t5["b"][2]) // 2
         sh(f"input swipe {cx} {capy} {cx} {capy - 110} 1500", 30); time.sleep(2); t5b = task(5); shot("24-keo-tab-2")
         moved = bool(t5b) and t5["b"][1] - t5b["b"][1] >= 40
-        picm = pic_game(t5b["b"], g12) if t5b else None
+        picm = look5() if t5b else None; t5b = task(5) or t5b
         info(f"… kéo thanh tiêu đề tab 2 lên: khung đổi {t5['b']} → {t5b and t5b['b']}", moved, (t5, t5b))
         if moved: ck(f"… kéo thanh tiêu đề: HÌNH chạy theo khung (không đứng yên chỗ cũ) {picm}", bool(picm) and all(picm), (picm, t5b))
-    code, j = run("tile"); time.sleep(3); t3, t5 = task(3), task(5); shot("25-sap-xep-sau-khi-sua")
-    pic3, pic5 = (pic_solid(t3["b"], g12) if t3 else None), (pic_game(t5["b"], g12) if t5 else None)
+    code, j = run("tile"); time.sleep(3); shot("25-sap-xep-sau-khi-sua")
+    pic3, pic5 = look3(), look5(); t3, t5 = task(3), task(5)
     ck(f"… Sắp xếp tab: hình cả 2 tab đúng ô · {pic3} · {pic5}", code == 200 and bool(pic3) and all(pic3) and bool(pic5) and all(pic5), (code, j, t3, t5, pic3, pic5))
     sh("; ".join(f"am force-stop vn.cloudblue.wintest{n}" for n in (3, 5)) + f"; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
