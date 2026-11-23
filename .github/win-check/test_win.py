@@ -9,13 +9,13 @@ import importlib.util, os, re, subprocess, sys, tempfile, time
 API, APKS, OUT = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 os.makedirs(OUT, exist_ok=True)
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-OK, INFO = [0, 0], []
+OK, INFO, FAILS = [0, 0], [], []
 
 
 def ck(name, cond, extra=""):
     OK[1] += 1
     if cond: OK[0] += 1; print("  ✓", name, flush=True)
-    else: print("  ✗", name, "→", str(extra)[:1500], flush=True)
+    else: print("  ✗", name, "→", str(extra)[:1500], flush=True); FAILS.append(name + " → " + str(extra)[:400])
 
 
 def info(name, cond, extra=""):
@@ -233,14 +233,19 @@ scm = [l.strip()[:200] for l in sh("dumpsys activity activities", 60).splitlines
 info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}" + (f" · Android thu nhỏ hình: {scm[:1]}" if scm else ""),
      bool(s1) and (s1[0] >= s1[2] - 2 and s1[1] >= s1[3] - 2), s1)
 if g4:
-    gb = g4["b"]; sh("logcat -c"); t0 = time.time()
+    gb = g4["b"]; sh("logcat -c"); t0 = time.time(); ga0 = cp.win_state(sh)["geo"]
     code, j = run("refit"); time.sleep(4); g5 = task(4); s2 = game_size(); shot("13-mo-lai-vua-khung")
     if API < cp.WIN_REFIT_SDK:
         ck("Android 9: Mở lại vừa khung → báo chưa hỗ trợ (màn xoay theo game), game KHÔNG bị tắt / mở lại", code == 409 and "Android 9" in j.get("error", "")
            and g5 and g5["mode"] == "freeform" and g5["id"] == g4["id"], (code, j, g5))
     else:
-        ck(f"🖼 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ + cỡ) · {time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform"
-           and g5["b"] == gb and g5["vis"], (code, j, gb, g5))
+        want = tuple(j.get("b") or ()) if code == 200 else ()           # Android 10–12: cửa sổ cao thêm thanh tiêu đề (42 dp), giữ trái / phải
+        same = len(want) == 4 and want[0] == gb[0] and want[2] == gb[2] and want[3] - want[1] >= gb[3] - gb[1] and (want[1] == gb[1] or want[3] == gb[3]) \
+            and (API < cp.WIN_SCM_SDK or want == tuple(gb))
+        ck(f"🖼 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ + cỡ{'' if API >= cp.WIN_SCM_SDK else ', cao thêm thanh tiêu đề'}) · "
+           f"{time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform" and same and tuple(g5["b"]) == want and g5["vis"], (code, j, gb, g5))
+        gs = cp.win_state(sh)["geo"]
+        ck("… màn vẫn đúng hướng như trước khi mở lại (game ngang không làm màn kẹt ngang)", (gs["w"] > gs["h"]) == (ga0["w"] > ga0["h"]), (ga0, gs))
         if API >= cp.WIN_SCM_SDK:                       # Android 12L+: game dựng khung TOÀN MÀN, Android thu nhỏ cả hình — app thấy đủ bề ngang khung game
             fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and s2[1] >= 0.75 * s2[3]
             ck(f"… Android thu nhỏ CẢ HÌNH game vào cửa sổ (đủ bề ngang, ≥ 3/4 bề cao): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
@@ -249,5 +254,6 @@ if g4:
             ck(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung, không mất phần nào): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
-open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "\n".join(("OK " if c else "NO ") + n for n, c in INFO))
+open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "".join("XX " + f + "\n" for f in FAILS)
+                                                                         + "\n".join(("OK " if c else "NO ") + n for n, c in INFO))
 sys.exit(0 if OK[0] == OK[1] else 1)
