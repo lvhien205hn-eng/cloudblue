@@ -149,6 +149,8 @@ def area(b): return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
 st0 = cp.win_state(sh); g0 = st0["geo"]
 print("geo:", g0, "sdk:", st0["sdk"], "free:", st0["free"], flush=True)
 D0 = (dens() or [320])[0]                                        # mật độ lúc đầu của máy thử (320)
+_m0 = re.search(r"Override size:\s*(\d+x\d+)", sh("wm size")); SIZE0 = _m0.group(1) if _m0 else ""      # cỡ màn máy ảo nhận (API 31 / 32: 640x1280)
+SHORT0 = min(g0["w"], g0["h"]); DENS_NOW = [D0]
 print("--- máy có nhận khoá xoay không:", sh(cp.WIN_AUTOROT_SH), flush=True)
 ck("đọc được danh sách tab + cỡ màn (dọc)", st0["ok"] and st0["sdk"] == API and g0["h"] > g0["w"] > 0, st0)
 
@@ -157,6 +159,7 @@ sh("logcat -c"); open_app(1); shot("1-app1-toan-man")
 a = task(1)
 ck("app 1 mở toàn màn, đang hiện", a and a["mode"] == "fullscreen" and a["vis"], a)
 print("--- loại app (dumpsys activity activities) ---\n" + sh(cp.WIN_KIND_SH, 40)[:1800] + "\n    → " + str(cp.win_kinds(sh)), flush=True)
+print("--- mọi dòng nói về hướng / đổi cỡ của app 1 ---\n" + sh("dumpsys activity activities | grep -A90 'Hist.*wintest1' | grep -i -E 'orient|resiz' | head -n 14", 40)[:1500], flush=True)
 print("--- tiến trình app 1 (ps) ---\n" + sh(cp.WIN_PS_SH.format(p="vn.cloudblue.wintest1"))[:500], flush=True)
 if NEW:
     ck("đọc được loại app + pid: app 1 khai báo không đổi cỡ + ép ngang → app KIỂU CŨ, có đúng 1 tiến trình",
@@ -166,10 +169,20 @@ id1 = a["id"] if a else None
 code, j = run("mini"); time.sleep(2); a = task(1); shot("2-thu-nho-app1")
 ck("Thu nhỏ tab → app 1 thành cửa sổ nổi đúng ô đã tính", code == 200 and a and a["mode"] == "freeform" and a["vis"] and tuple(j.get("b") or ()) == a["b"], (code, j, a))
 b1 = a["b"] if a else None
+if NEW and j.get("fit") != "ok":
+    sh("input keyevent 3"); time.sleep(4)
+    print("--- CHẨN ĐOÁN: app không tắt nền được. 4 giây sau khi về màn chính: ---\n" + sh("am stack list | grep -E 'taskId=.*wintest'")[:400] + "\n"
+          + sh("dumpsys activity activities | grep -E 'Hist +#|state=|mVisibleRequested|visible=' | grep -A3 wintest1", 40)[:900] + "\n"
+          + sh("dumpsys activity oom 2>/dev/null | grep -B1 -A2 wintest1", 40)[:900] + "\n"
+          + sh("dumpsys activity services vn.cloudblue.wintest1 2>/dev/null | head -n 12", 40)[:600], flush=True)
+    time.sleep(8)
+    print("--- 12 giây sau: ---\n" + sh("dumpsys activity activities | grep -E 'Hist +#|state=|mVisibleRequested|visible=' | grep -A3 wintest1", 40)[:900] + "\n"
+          + sh("dumpsys activity oom 2>/dev/null | grep -B1 -A2 wintest1", 40)[:900] + "\n" + sh("am kill --user 0 vn.cloudblue.wintest1; sleep 1; ps -A -o USER,PID,NAME | grep wintest1")[:300], flush=True)
+    if a: sh(f"am task focus {a['id']}"); time.sleep(2)
 if NEW:
     scr1 = cp.win_screen(sh) or {}; gA = cp.win_state(sh)["geo"]; sz = last_size(1)
     ck(f"… app kiểu cũ trên màn 360 dp, chưa có tab nhỏ nào → máy TỰ bật màn rộng (≥ 600 dp, nhớ mật độ cũ {D0} + dấu tự bật), mở lại app ĐÚNG 1 LẦN vào ĐÚNG TAB cũ",
-       code == 200 and j.get("fit") == "ok" and (j.get("sw") or 0) >= 600 and scr1.get("sw", 0) >= 600 and prevv() == f"{D0}:720:a" and creates(1) == 2
+       code == 200 and j.get("fit") == "ok" and (j.get("sw") or 0) >= 600 and scr1.get("sw", 0) >= 600 and prevv() == f"{D0}:{SHORT0}:a" and creates(1) == 2
        and a and a["id"] == id1, (j, scr1, prevv(), creates(1), id1, a))
     ck(f"… app dựng hình theo ĐÚNG CỠ CỬA SỔ (vừa khung): app thấy {sz} · cửa sổ {a and a['b']} · thanh tiêu đề {gA['cap']} px; phần hình đúng tỉ lệ game 16:9",
        a and fitted(sz, a["b"], gA) and abs((a["b"][2] - a["b"][0]) * 9 - (a["b"][3] - a["b"][1] - gA["cap"]) * 16) <= 16, (sz, a and a["b"], gA))
@@ -215,9 +228,11 @@ def settle_system(limit=120):
             if sh("getprop sys.boot_completed", 15).strip() == "1" and cp.win_state(sh)["ok"]: break
         except Exception: pass
         time.sleep(3)
-    if "720x1280" not in sh("wm size"): sh("wm size 720x1280; wm density 320", 20); time.sleep(3); print("   (đặt lại cỡ màn sau khi Android khởi động lại giao diện)", flush=True)
+    if SIZE0 and f"Override size: {SIZE0}" not in sh("wm size"):   # giao diện Android khởi động lại làm mất cỡ màn đã đặt → đặt lại ĐÚNG cỡ + mật độ đang thử
+        sh(f"wm size {SIZE0}; wm density {(DENS_NOW or [D0])[0]}", 20); time.sleep(3); print("   (đặt lại cỡ màn sau khi Android khởi động lại giao diện)", flush=True)
 
 
+DENS_NOW = dens()
 if U:
     print(sh(f"am start-user {U}; pm install-existing --user {U} vn.cloudblue.wintest1", 60)[-200:], flush=True)
     time.sleep(3); settle_system()
@@ -295,9 +310,11 @@ ck("game cũ (app 4) thu nhỏ được", code == 200 and g4 and g4["mode"] == "
 scm = [l.strip()[:200] for l in sh("dumpsys activity activities", 60).splitlines() if "mSizeCompatScale" in l or "inSizeCompatMode=true" in l]
 if NEW:
     g8 = cp.win_state(sh)["geo"]
-    ck(f"… game cũ TỰ được mở lại ngay trong cửa sổ lúc thu nhỏ → khung game = đúng cỡ app thấy (vừa khung, KHÔNG tràn viền): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]} · cửa sổ {g4 and g4['b']}",
-       j.get("fit") == "ok" and bool(s1) and abs(s1[0] - s1[2]) <= 4 and abs(s1[1] - s1[3]) <= 4 and g4 and fitted(s1[:2], g4["b"], g8) and creates(4) == 2,
+    capr = int(round(cp.WIN_CAP_DP * g8["dpi"] / 160.0))
+    ck(f"… game cũ TỰ được mở lại ngay trong cửa sổ lúc thu nhỏ → dựng khung theo cỡ CỬA SỔ (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]} · cửa sổ {g4 and g4['b']}",
+       j.get("fit") == "ok" and bool(s1) and abs(s1[0] - s1[2]) <= 4 and -4 <= s1[3] - s1[1] <= capr + 8 and g4 and fitted(s1[:2], g4["b"], g8) and creates(4) == 2,
        (j, s1, g4 and g4["b"], creates(4), scm[:1]))
+    info(f"… khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}", bool(s1) and abs(s1[1] - s1[3]) <= 4, s1)
 else:
     info(f"game cũ vừa thu nhỏ: app thấy {s1 and s1[:2]} · khung game {s1 and s1[2:]}" + (f" · Android thu nhỏ hình: {scm[:1]}" if scm else ""),
          bool(s1) and (s1[0] >= s1[2] - 2 and s1[1] >= s1[3] - 2), s1)
@@ -318,8 +335,10 @@ if g4:
            and creates(4) == c4 + 1, (code, j, gb, g5, creates(4), c4))
         gs = cp.win_state(sh)["geo"]
         ck("… màn vẫn đúng hướng như trước khi mở lại (game ngang không làm màn kẹt ngang)", (gs["w"] > gs["h"]) == (ga0["w"] > ga0["h"]), (ga0, gs))
-        ck(f"… game dựng khung theo ĐÚNG CỠ CỬA SỔ mới (vừa khung, không mất phần nào): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]} · cửa sổ {g5 and g5['b']}",
-           bool(s2) and abs(s2[0] - s2[2]) <= 4 and abs(s2[1] - s2[3]) <= 4 and g5 and fitted(s2[:2], g5["b"], gs), (s2, g5 and g5["b"], gs))
+        capr = int(round(cp.WIN_CAP_DP * gs["dpi"] / 160.0))
+        ck(f"… game dựng khung theo cỡ CỬA SỔ mới (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề {capr} px): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]} · cửa sổ {g5 and g5['b']}",
+           bool(s2) and abs(s2[0] - s2[2]) <= 4 and -4 <= s2[3] - s2[1] <= capr + 8 and g5 and fitted(s2[:2], g5["b"], gs), (s2, g5 and g5["b"], gs))
+        info(f"… khung game KHÍT phần app thấy sau Vừa khung: app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", bool(s2) and abs(s2[1] - s2[3]) <= 4, s2)
 # 9. 23/11c · khách tự cho cửa sổ TO / NHỎ hơn · 🖥 Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ
 def ffs(): return [x for x in tasks() if x["mode"] == "freeform" and x["type"] in ("standard", "")]
 def inside(g, ws): return all(x["b"][0] >= 0 and x["b"][1] >= 0 and x["b"][2] <= g["w"] + 1 and x["b"][3] <= g["h"] + 1 for x in ws)

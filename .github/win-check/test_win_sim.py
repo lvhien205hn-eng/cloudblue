@@ -56,6 +56,9 @@ class Droid:
         # app dựng hình; tiến trình (pid) tắt bằng `am kill` chỉ khi app đang ở nền. autorot=False: máy bỏ qua khoá xoay như MuMu
         # (mSupportAutoRotation=false) — màn chỉ xoay khi có cửa sổ yêu cầu hướng (app ép ngang toàn màn / cửa sổ phủ của app trợ giúp).
         self.autorot, self.helper, self.ovl, self.noinst, self.npid = True, 0, False, False, 4000
+        # stoplag: máy chậm — sau khi về màn chính, màn của app còn "đang dừng" thêm N lần `am kill` nữa mới tắt được (máy ảo 12L: ~10 giây)
+        # ofmt: cách máy ghi hướng của app trong dumpsys — "m" (Android ≤ 13: mOrientation=) · "o" (Android 14+: overrideOrientation=) · "" (không ghi)
+        self.stoplag, self._lag, self.ofmt = 0, 0, "m"
 
     def _sync(self):
         """Màn vừa đổi hướng → Android 9–11 xoay chỗ các cửa sổ nổi theo (DisplayContent.rotateBounds); Android 10/11 còn đẩy cửa sổ
@@ -109,6 +112,7 @@ class Droid:
 
     def home_key(self):
         h = next(x for x in self.z if x["type"] == "home"); self.z.remove(h); self.z.insert(0, h); self.sticky = False; self.pend = 0; self._sync()
+        self._lag = self.stoplag
 
     def rotate(self):                                       # khách khoá màn ngang (màn chính xoay được)
         self.W, self.H = self.H, self.W; self._sync()
@@ -311,7 +315,11 @@ class Droid:
                 if tk.get("legacy"):                              # app nhiều màn: màn trên cùng (Hist #1) khai báo khác màn GỐC (Hist #0) → phải lấy màn gốc
                     o += [f"    * Hist  #1: ActivityRecord{{9a1b2c3 u{tk['user']} {tk['comp'].split('/')[0]}/.Game t{tk['id']}}}", "      resizeMode=RESIZE_MODE_RESIZEABLE"]
                 o.append(f"    * Hist  #0: ActivityRecord{{223dfd3 u{tk['user']} {tk['comp']} t{tk['id']}}}")
-                if tk["land"]: o.append("      mOrientation=SCREEN_ORIENTATION_LANDSCAPE" if self.sdk >= 31 else "      mOccludesParent=true mOrientation=0")
+                if tk["land"] and self.ofmt == "o":
+                    o += ["      mOccludesParent=true overrideOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE", "      requestedOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE"]
+                elif tk["land"] and self.ofmt == "m":
+                    o.append("      mOrientation=SCREEN_ORIENTATION_LANDSCAPE" if self.sdk >= 31 else "      mOccludesParent=true mOrientation=0")
+                elif self.ofmt == "o": o.append("      mOccludesParent=true overrideOrientation=SCREEN_ORIENTATION_UNSPECIFIED")
                 o.append("      resizeMode=RESIZE_MODE_" + ("FORCE_RESIZABLE_LANDSCAPE_ONLY" if tk.get("legacy") else "RESIZEABLE" if tk["resz"] else "UNRESIZEABLE"))
             return "\n".join(o)
         m = re.match(r"ps -A -o USER,PID,NAME 2>/dev/null \| grep -F ' ([\w.]+)'$", c)
@@ -320,6 +328,7 @@ class Droid:
                  if tk["type"] == "standard" and tk.get("pid") and tk["comp"].split("/")[0].startswith(m.group(1))]
             return "\n".join(o + [f"u0_a999          77 {m.group(1)}:push", f"u0_a998          78 {m.group(1)}.khac"])     # tiến trình phụ / app khác trùng đầu tên: không tính
         if c.startswith("am kill --user "):
+            if self._lag > 0: self._lag -= 1; return ""             # màn của app chưa dừng hẳn → chưa tắt được
             for u, pkg in re.findall(r"am kill --user (\d+) ([\w.]+)", c):
                 for tk in self.z:                                 # `am kill` chỉ tắt app đang ở NỀN, không giữ dịch vụ chạy nổi; tab + khung vẫn còn
                     if tk["comp"].split("/")[0] == pkg and tk["user"] == int(u) and tk.get("pid") and not self.visible(tk) and not tk.get("fgsvc"): tk["pid"] = None
@@ -342,7 +351,10 @@ class Droid:
         if c == f"pm path {cp.ROT_PKG} 2>/dev/null": return f"package:/data/app/~~x/{cp.ROT_PKG}-1/base.apk" if self.helper else ""
         if c == f"am force-stop {cp.ROT_PKG}": self.ovl = False; return ""
         if c == f"dumpsys package {cp.ROT_PKG} 2>/dev/null | grep -m1 versionCode": return f"    versionCode={self.helper} minSdk=24 targetSdk=30" if self.helper else ""
-        if c.startswith(f"appops set {cp.ROT_PKG} SYSTEM_ALERT_WINDOW allow"):
+        m = re.match(r"dumpsys activity services ([\w.]+) 2>/dev/null \| grep -m1 isForeground=true$", c)
+        if m: return "      isForeground=true foregroundId=7 foregroundNoti=Notification(channel=x)" if any(
+            tk.get("fgsvc") and tk["comp"].split("/")[0] == m.group(1) for tk in self.z) else ""
+        if c.startswith(f"cmd appops set {cp.ROT_PKG} SYSTEM_ALERT_WINDOW allow"):
             if not self.helper: return "Error: Not found; no service started."
             self.ovl = "--es o land" in c; return "Starting service: Intent { cmp=vn.cloudblue.xoay/.Svc (has extras) }"
         if c == cp.WIN_AUTOROT_SH: return f"    mSupportAutoRotation={'true' if self.autorot else 'false'}"
@@ -767,6 +779,24 @@ ck("máy có khoá xoay nhưng màn chính không chịu nằm ngang → cửa s
 d = Droid(35); r = d.open(RB, land=True); cp.win_run(d.sh, "mini")
 code, j = cp.win_run(d.sh, "wide", inst=d.install_helper)
 ck("máy xoay ngang được bằng khoá xoay (màn chính kiểu máy tính bảng) → KHÔNG cần app trợ giúp", code == 200 and j["turned"] and not d.ovl and d.helper == 0, (code, j, d.helper))
+# --- máy ghi hướng app kiểu khác / không ghi · máy chậm · app giữ dịch vụ chạy nổi
+d = mumu(35); d.ofmt = "o"; a = d.open(G1, land=True, resz=False); c = d.open(SETT)
+kd = cp.win_kinds(d.sh)
+ck("Android 14+ ghi hướng ở dòng overrideOrientation= / requestedOrientation= → vẫn nhận app ép NGANG; app không ép hướng (UNSPECIFIED) → rỗng",
+   kd.get(a["id"]) == {"old": True, "fixed": "land"} and kd.get(c["id"]) == {"old": False, "fixed": ""}, kd)
+d = mumu(35); d.ofmt = ""; a = d.open(G1, land=True, resz=False)
+ck("máy KHÔNG ghi hướng của app → loại app đọc được, hướng rỗng", cp.win_kinds(d.sh).get(a["id"]) == {"old": True, "fixed": ""}, cp.win_kinds(d.sh))
+code, j = cp.win_run(d.sh, "mini"); gq2 = cp.win_state(d.sh)["geo"]
+ck("… thu nhỏ: app toàn màn làm màn NGANG rồi thành cửa sổ thì màn về dọc → coi là app ép ngang: cửa sổ vẫn đúng tỉ lệ hình game, game mở lại vừa cửa sổ",
+   code == 200 and j["fit"] == "ok" and a["b"] == cp.win_shape(gq2, cp.win_slot(gq2, []), "land") and d.fits(a), (code, j, a["b"]))
+d = mumu(); d.stoplag = 8; a = d.open(G1, land=True, legacy=True); n0 = a["starts"]
+code, j = cp.win_run(d.sh, "mini"); nk = len([x for x in d.log if x.startswith("am kill --user")])
+ck("máy CHẬM (màn của app dừng hẳn sau ~7 giây): kiên nhẫn thử `am kill` tới khi tắt được rồi mở lại — vẫn vừa cửa sổ, đúng 1 lần mở lại",
+   code == 200 and j["fit"] == "ok" and nk == 9 and a["starts"] == n0 + 1 and d.fits(a), (code, j, nk, a))
+d = mumu(); a = d.open(G1, land=True, legacy=True, fgsvc=True)
+code, j = cp.win_run(d.sh, "mini"); nk = len([x for x in d.log if x.startswith("am kill --user")])
+ck("app giữ dịch vụ chạy nổi: thử 3 lần rồi thôi (không chờ đủ 10 giây), không mở lại", code == 200 and j["fit"] == "ask" and nk == 3 and a["starts"] == 1
+   and any("isForeground=true" in x for x in d.log), (code, j, nk))
 st0, ok0 = cp.win_rot(mumu().sh, 1, lambda s_: None, None)
 ck("win_rot không có cách cài app trợ giúp → trả 'chưa xoay được' (không treo, không lỗi)", ok0 is False, ok0)
 
