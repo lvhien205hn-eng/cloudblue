@@ -513,10 +513,37 @@ def push_obb(port, path, jid=None):
 #   màn, không nhỏ hơn 220 dp) vì kéo mép cửa sổ qua luồng hình khó trúng. do=wide — độ rộng nhỏ nhất ≥ 600 dp + khoá ngang: màn chính Android
 #   nằm ngang như máy tính bảng, chữ nhỏ lại → xếp được nhiều tab clone; do=narrow — trả mật độ TRƯỚC KHI bật (nhớ trong cài đặt Android
 #   cb_win_prev_density) + khoá dọc. Cả hai xếp lại các tab. Đổi mật độ xong mới khoá xoay + đọc lại khoá (Android 15 tự trả khoá — win_rot_lock).
+# 23/11d · GAME VỪA KHUNG THẬT + XOAY MÀN THẬT — đo trên máy MuMu Android 12 THẬT (sdk 32, 720x1280 @ 320):
+#   · MuMu KHÔNG thu nhỏ hình game kiểu size compat (Android báo tỉ lệ 0.56 mà hình vẫn to → tràn viền); game cũ (targetSdk < 24) Android coi là
+#     "đổi cỡ được" nên chỉ cắt cửa sổ; giao diện game đặt theo dp → cửa sổ 360 × 220 dp không bao giờ chứa nổi.
+#   · Cách chắc trên mọi máy: MỞ LẠI app NGAY TRONG tab của nó SAU KHI cửa sổ đã đúng chỗ + cỡ (win_recreate: về màn chính → am kill — tắt
+#     tiến trình, Android GIỮ tab + khung — → mở lại sạch vào đúng tab) → game dựng hình theo đúng cỡ cửa sổ. Tự làm cho app "kiểu cũ"
+#     (khai báo không đổi cỡ / targetSdk < 24 — win_kinds đọc resizeMode) khi Thu nhỏ tab · Sắp xếp tab (ô đổi cỡ) · Phóng to tab · Màn ngang
+#     rộng. App đổi cỡ thật (Roblox…) KHÔNG bị mở lại; 🖼 Vừa khung mở lại app trên cùng theo cỡ đang có (cửa sổ nhỏ hoặc toàn màn).
+#   · Lần đầu thu nhỏ app kiểu cũ trên màn < 600 dp (chưa có tab nhỏ nào): tự bật màn rộng 600 dp TRƯỚC khi mở lại (nhớ mật độ cũ + dấu ":a"
+#     = tự bật); phóng to tab nhỏ cuối cùng → tự trả mật độ cũ. Khách tự bấm Màn ngang rộng thì không tự trả.
+#   · MuMu bỏ qua khoá xoay (mSupportAutoRotation=false; wm fixed-to-user-rotation cũng không xoay) — màn chỉ xoay khi CÓ CỬA SỔ yêu cầu hướng
+#     → app trợ giúp vn.cloudblue.xoay (ROT_*, cài từ chính file này) đặt 1 cửa sổ phủ 1×1 trong suốt yêu cầu màn NGANG → cả màn chính nằm ngang.
+#   · Kiểu "không ép đổi cỡ để Android thu nhỏ cả hình" (size compat, bản 23/11b–c đặt cho Android 12L+) — đo 2 máy MuMu thật:
+#     Android 12 (sdk 32): cửa sổ kiểu đó bị vẽ LỆCH lên góc trên trái màn (khung tab một nơi, hình một nẻo), không thu hình → khách thấy
+#       "game không vừa khung" → BỎ: Android ≤ 12L ÉP MỌI APP đổi cỡ được (force_resizable_activities=1, Android 11+ nhận ngay) + mở lại app
+#       kiểu cũ ngay trong tab — đo máy thật: đúng chỗ, đúng cỡ.
+#     Android 15 (sdk 35): thu hình ĐÚNG chỗ, đúng cỡ, kéo cửa sổ hình đi theo, game KHÔNG phải mở lại → GIỮ cho Android 13+ (WIN_SCM_SDK = 33):
+#       app khai báo không đổi cỡ thì để Android thu hình (không tự mở lại — khách muốn nét hơn thì bấm 🖼 Vừa khung); chỉ app targetSdk < 24
+#       (Android coi là đổi cỡ được, không thu hình) mới tự mở lại.
+#   · Android 10–12L: thanh tiêu đề cửa sổ do CHÍNH APP vẽ; lần dựng hình ĐẦU app thấy cả cửa sổ, vài mili giây sau mới trừ thanh (42 dp) —
+#     trước khi game kịp khởi động bộ vẽ, nên mở lại THẲNG đúng cỡ là game dựng đúng. (Đã thử mẹo "mở lúc cửa sổ thấp hơn 1 thanh rồi kéo về đủ
+#     cỡ": tạo thêm 1 lần đổi cỡ MUỘN — đúng thứ game kiểu cũ không chịu được — và làm cửa sổ lệch ô khi Sắp xếp → không dùng.)
+#     Giới hạn của Android 11–12L (không sửa từ ngoài được): với app TOÀN MÀN (game), thanh tiêu đề nằm ĐÈ lên mép trên của hình (42 dp) và
+#     để 1 dải trống cùng cỡ ở đáy cửa sổ. Kiểu cửa sổ không thanh tiêu đề (multi-window) hình đẹp nhưng NUỐT mọi cú chạm ngoài cửa sổ → không dùng.
+#   · `am kill` không ăn (máy ảo Android 12L: 10 giây vẫn sống dù màn đã dừng) → tắt thẳng tiến trình (kill -9, y như am kill làm) — tab vẫn giữ.
 WIN_FREEFORM, WIN_FULLSCREEN = 5, 1
-WIN_SCM_SDK = 32                  # từ bản Android này: thu nhỏ hình game không đổi cỡ (size compat trong cửa sổ nổi) — Android 12 (31) thì không
+WIN_SCM_SDK = 33                  # từ bản Android này: Android thu nhỏ CẢ HÌNH app không đổi cỡ (size compat) — máy MuMu Android 15 thật: đúng chỗ, không phải
+                                  # mở lại app. Android 12L trở xuống: ép đổi cỡ + mở lại app kiểu cũ (máy MuMu Android 12 thật vẽ kiểu size compat lệch chỗ)
+WIN_SCM_KEEP = True               # Android 13+: app khai báo không đổi cỡ → để Android thu hình, KHÔNG tự mở lại (bộ thử đặt False để thử đường mở lại)
+WIN_KILL9_SH = "kill -9 {p} 2>/dev/null || su -c 'kill -9 {p}' 2>/dev/null"      # `am kill` không ăn → tắt thẳng tiến trình (adb thường không đủ quyền → su)
 WIN_REFIT_SDK = 29                # Android 9: game ép ngang làm màn xoay khi mở lại → cửa sổ lệch, không vừa khung
-WIN_CAP_DP = 42                   # Android 10–12: lần vẽ đầu cửa sổ chưa có thanh tiêu đề (42 dp) → game vẽ xong thì kéo cửa sổ cao thêm 42 dp
+WIN_CAP_DP = 42                   # thanh tiêu đề cửa sổ nổi cao 42 dp (nút 32 dp + lề 5 dp trên dưới) — đo máy ảo 31 / 35 + máy MuMu Android 12 thật
 WIN_STACK_RX = re.compile(r"^\s*(?:Stack|RootTask) id=(-?\d+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] displayId=(-?\d+)")
 WIN_TASK_RX = re.compile(r"^\s*taskId=(\d+): (\S+) bounds=\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\] userId=(\d+) visible=(\w+)")
 WIN_OLD = {0: ("fullscreen", "home"), 1: ("fullscreen", "standard"), 2: ("freeform", "standard"), 3: ("split-screen-primary", "standard"), 4: ("pinned", "standard")}
@@ -582,7 +609,7 @@ def win_geo(dsec, wsec, tasks):
     bottom = H - AH if (AH and AH < H and (not AW or AW >= W)) else 0
     right = W - AW if (AW and AW < W and (not AH or AH >= H)) else 0
     # Android không cho cửa sổ nổi nhỏ hơn 220 dp mỗi chiều (default_minimal_size_resizable_task) → tính trước để các ô không đè nhau ngoài ý muốn
-    return {"w": W, "h": H, "top": dp(24), "bottom": max(0, bottom), "right": max(0, right), "cap": dp(32), "dpi": dpi, "min": dp(220)}
+    return {"w": W, "h": H, "top": dp(24), "bottom": max(0, bottom), "right": max(0, right), "cap": dp(WIN_CAP_DP), "dpi": dpi, "min": dp(220)}
 
 
 def win_grid(g, n):
@@ -615,10 +642,11 @@ def _area(a): return max(0, a[2] - a[0]) * max(0, a[3] - a[1])
 
 
 def win_slot(g, others):
-    """Chỗ cho cửa sổ vừa thu nhỏ: ô (của cách xếp 4 tab, hoặc đủ cho số cửa sổ đang có) ít đè lên cửa sổ khách đã kéo nhất — ô trống thì
-       lấy ô trống đầu tiên. KHÔNG dời cửa sổ cũ."""
+    """Chỗ cho cửa sổ vừa thu nhỏ: ô (của cách xếp 3 tab, hoặc đủ cho số cửa sổ đang có) ít đè lên cửa sổ khách đã kéo nhất — ô trống thì
+       lấy ô trống đầu tiên. KHÔNG dời cửa sổ cũ. (23/11d: lưới 3 thay lưới 4 — cửa sổ đầu to hơn: game mở lại theo đúng cỡ cửa sổ nên cửa
+       sổ bé thì hình game bé; màn dọc xếp được 3 tab, màn ngang rộng 4 tab không đè nhau.)"""
     k = len(others); best = None
-    for n in sorted({max(4, k + 1), k + 4}):
+    for n in sorted({max(3, k + 1), k + 3}):
         for c in win_grid(g, n):
             ov = sum(_ovl(c, o) for o in others)
             if best is None or ov < best[0]: best = (ov, c)
@@ -626,11 +654,78 @@ def win_slot(g, others):
     return best[1]
 
 
+def win_shape(g, c, fixed):
+    """23/11d · Cửa sổ cho game KIỂU CŨ (mở lại theo đúng cỡ cửa sổ → cửa sổ méo thì hình game méo): to nhất trong ô c mà PHẦN HÌNH (cửa sổ trừ
+       thanh tiêu đề) đúng tỉ lệ 16:9 (game ép ngang) / 9:16 (ép dọc), nằm ở góc trên trái của ô, không nhỏ hơn mức Android cho. App không
+       ép hướng → nguyên ô."""
+    if fixed not in ("land", "port"): return tuple(c)
+    w, h, cap, mn = c[2] - c[0], c[3] - c[1], g["cap"], g.get("min", 0)
+    if fixed == "land": cw = min(w, max(1, h - cap) * 16 // 9); ch = cw * 9 // 16
+    else: ch = min(max(1, h - cap), w * 16 // 9); cw = ch * 9 // 16
+    nw, nh = min(w, max(mn, cw)), min(h, max(mn, ch + cap))
+    return (c[0], c[1], c[0] + nw, c[1] + nh)
+
+
 WIN_STEP = 1.25                   # 23/11c: Cửa sổ to hơn / nhỏ hơn — mỗi lần bấm to / nhỏ đi 25 %
 WIN_WIDE_SW = 600                 # 23/11c: 🖥 Màn ngang rộng — độ rộng nhỏ nhất 600 dp (màn chính Android xoay ngang được như máy tính bảng)
 WIN_SCREEN_SH = "wm size; wm density"
 WIN_ROT_SH = "settings get system user_rotation 2>/dev/null"
-WIN_PREV_KEY = "cb_win_prev_density"   # cài đặt Android (global): "<mật độ trước khi bật Màn ngang rộng>:<cạnh ngắn>" → Màn dọc như cũ trả ĐÚNG mật độ đó
+WIN_PREV_KEY = "cb_win_prev_density"   # cài đặt Android (global): "<mật độ trước khi bật Màn ngang rộng>:<cạnh ngắn>[:a]" → Màn dọc như cũ trả ĐÚNG mật độ đó (":a" = máy tự bật lúc Thu nhỏ tab)
+WIN_KIND_SH = "dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='"
+WIN_KIND_RX = re.compile(r"Hist\s+#(\d+): ActivityRecord\{\S+ u(\d+) (\S+) t(\d+)\}")
+WIN_FRESH = "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000"      # NEW_TASK | CLEAR_TASK: mở lại SẠCH vào đúng tab đang có
+WIN_PS_SH = "ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' {p}'"
+WIN_AUTOROT_SH = "dumpsys window displays 2>/dev/null | grep -m1 mSupportAutoRotation"
+WIN_KILL_TRIES = 12               # số lần thử `am kill` (mỗi lần ~0,8 giây) trước khi coi là app không tắt nền được
+
+
+def win_kinds(sh, scm=False):
+    """{số tab: {"old": app KIỂU CŨ?, "fixed": app ép hướng màn — "land" (ngang) | "port" (dọc) | ""}} theo màn GỐC của mỗi tab (dumpsys
+       activity). App kiểu cũ = khai báo không đổi cỡ (UNRESIZEABLE) hoặc targetSdk < 24 (FORCE_RESIZABLE_* — Android "coi như đổi cỡ được")
+       → phải MỞ LẠI trong cửa sổ mới vẽ vừa. scm=True (Android 13+ đang để Android thu nhỏ cả hình): app UNRESIZEABLE được Android thu hình
+       vừa cửa sổ → KHÔNG tính là kiểu cũ (không tự mở lại). App khai báo đổi cỡ được (RESIZEABLE…: Roblox, app thường) tự vẽ lại theo cỡ mới. Tab không
+       đọc được → không có trong kết quả. Hướng: Android 12 ghi "mOrientation=SCREEN_ORIENTATION_LANDSCAPE", bản cũ ghi số (0 / 6 / 8 / 11 = ngang),
+       Android 14+ đổi tên dòng (overrideOrientation= / requestedOrientation=) → nhận mọi dòng "…rientation=" nằm giữa dòng Hist và resizeMode."""
+    best, cur = {}, None
+    for line in (sh(WIN_KIND_SH, 25) or "").splitlines():
+        m = WIN_KIND_RX.search(line)
+        if m: cur = [int(m.group(4)), int(m.group(1)), ""]; continue
+        if cur is None: continue
+        for v in re.findall(r"[A-Za-z]*[oO]rientation=(\S+)", line):
+            f = "land" if ("LANDSCAPE" in v or v in ("0", "6", "8", "11")) else "port" if ("PORTRAIT" in v or v in ("1", "7", "9", "12")) else ""
+            if f and not cur[2]: cur[2] = f
+        m = re.search(r"\bresizeMode=(?:RESIZE_MODE_)?(\w+)", line)
+        if m:
+            tid, hist, fixed = cur; cur = None; v = m.group(1)
+            old = True if v.startswith("FORCE_RESIZ") else (not scm) if v.startswith("UNRESIZ") else False if v.startswith("RESIZ") else None
+            if old is not None and (tid not in best or hist < best[tid][0]): best[tid] = (hist, {"old": old, "fixed": fixed})
+    return {k: v[1] for k, v in best.items()}
+
+
+def win_pids(sh, pkg, user):
+    """pid tiến trình CHÍNH của app (đúng người dùng: bản clone chạy ở người dùng khác, cùng tên gói)."""
+    o = sh(WIN_PS_SH.format(p=pkg), 15) or ""
+    return [int(m.group(1)) for m in re.finditer(rf"(?m)^\s*u{int(user)}_a\d+\s+(\d+)\s+{re.escape(pkg)}\s*$", o)]
+
+
+def win_wide_on(sh, c, auto=False):
+    """Đặt mật độ cho màn RỘNG ≥ 600 dp, nhớ mật độ cũ (để trả lại). c = win_screen. Máy đã rộng sẵn → không đụng. Trả True nếu vừa đổi mật độ."""
+    short = min(c["w"], c["h"]); dens = max(72, min(640, short * 160 // WIN_WIDE_SW))    # làm tròn XUỐNG → luôn ≥ 600 dp (làm tròn gần nhất: màn 640 ra 599 dp)
+    if c["density"] <= dens: return False                       # máy đã đặt rộng hơn 600 dp → giữ nguyên mật độ khách chọn
+    sh(f"settings put global {WIN_PREV_KEY} {c['density']}:{short}{':a' if auto else ''}; wm density {dens}", 20)
+    return True
+
+
+def win_wide_off(sh, c, only_auto=False):
+    """Trả mật độ đã nhớ lúc bật màn rộng + xoá dấu nhớ. Chưa từng bật → không đụng mật độ khách tự chọn ở 📐. only_auto: chỉ trả khi màn
+       rộng do MÁY tự bật (dấu ":a"). Trả True nếu vừa đổi mật độ."""
+    m = re.match(r"(\d+):(\d+)(:a)?$", (sh(f"settings get global {WIN_PREV_KEY} 2>/dev/null", 10) or "").strip())
+    if not m or (only_auto and not m.group(3)): return False
+    dens = int(m.group(1)); dc = f"settings delete global {WIN_PREV_KEY} >/dev/null 2>&1; true"
+    ch = int(m.group(2)) == min(c["w"], c["h"]) and 72 <= dens <= 640 and dens != c["density"]      # máy đổi độ phân giải sau đó → mật độ cũ hết đúng
+    if ch: dc = ("wm density reset" if dens == c["physical"] and not c["size_override"] else f"wm density {dens}") + "; " + dc
+    sh(dc, 20)
+    return ch
 
 
 def win_scale(g, b, f):
@@ -711,8 +806,9 @@ def win_state(sh):
 
 
 def win_conf_sh(sdk):
-    """Cài đặt cửa sổ nổi theo bản Android (như phonectl TUNE). Android 12L+: không ép đổi cỡ + cho app không đổi cỡ vào cửa sổ → game không
-       đổi cỡ được Android thu nhỏ CẢ HÌNH vừa cửa sổ. Bản cũ hơn: ép đổi cỡ (Android 9 cần mới mở được game vào cửa sổ)."""
+    """Cài đặt cửa sổ nổi theo bản Android (như phonectl TUNE). Android 13+ (WIN_SCM_SDK): không ép đổi cỡ + cho app không đổi cỡ vào cửa sổ →
+       Android thu nhỏ CẢ HÌNH app đó vừa cửa sổ (máy MuMu Android 15 thật: đúng chỗ, app không phải mở lại). Android 12L trở xuống: ÉP MỌI
+       APP đổi cỡ được — 23/11d: máy MuMu Android 12 thật vẽ cửa sổ kiểu size compat lệch lên góc trên trái màn (bản 23/11b–c đặt cho 12L)."""
     if sdk >= WIN_SCM_SDK:
         return ("settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
                 "settings put global force_resizable_activities 0; settings put global enable_non_resizable_multi_window 1")
@@ -722,7 +818,7 @@ def win_conf_sh(sdk):
 def win_conf_ok(st):
     if not st["free"]: return False
     if st["sdk"] >= WIN_SCM_SDK: return st.get("force") == "0" and st.get("nonres") == "1"
-    return True
+    return st.get("force") == "1"
 
 
 def win_front(sh, t, sdk):
@@ -830,6 +926,229 @@ def win_keep(sh, tabs):
     if cmds: sh("; ".join(cmds), 30)
 
 
+def win_recreate(sh, tabs, sdk, sleep=time.sleep, order=(), mode=WIN_FREEFORM, mid=None):
+    """23/11d · MỞ LẠI app của các tab NGAY TRONG tab của nó (giữ chỗ + cỡ cửa sổ) → app dựng hình theo đúng cỡ đang có (đo trên MuMu thật:
+       tab giữ nguyên số + khung, game hiện đủ trong cửa sổ). Về màn chính (`am kill` chỉ tắt được app nền) → `am kill` từng app (tắt tiến
+       trình; Android GIỮ tab + khung) → mid(các tab đã tắt): việc làm lúc app đã tắt (đổi mật độ…), trả {số tab: khung mới} nếu cần đổi chỗ
+       → đưa các cửa sổ lên lại TỪ DƯỚI LÊN (thứ tự trên → dưới như cũ): tab đã tắt thì đặt khung rồi mở SẠCH vào đúng tab (CLEAR_TASK),
+       tab khác / tab không tắt được thì chỉ đưa lên đúng chỗ cũ.
+       tabs: các tab cần mở lại · order: MỌI cửa sổ nổi theo thứ tự trên → dưới (tab cần mở lại không có trong đó → lên trên cùng) · mode: cửa
+       sổ nổi / toàn màn. Trả {số tab cũ: tab sau khi mở lại} — tab không có trong kết quả = app KHÔNG tắt nền được (đang giữ dịch vụ chạy
+       nổi…, app đó chưa bị đụng) hoặc chưa lên lại."""
+    okn = lambda t: bool(re.fullmatch(r"[A-Za-z0-9._]+", t["pkg"]) and re.fullmatch(r"[A-Za-z0-9._]+/[A-Za-z0-9._$]+", t["comp"]))
+    tabs = [t for t in tabs if okn(t)]
+    if not tabs: return {}
+    resize = lambda t, r: sh(f"am task resize {int(t['id'])} {r[0]} {r[1]} {r[2]} {r[3]} 2>&1", 15)
+    sh("input keyevent 3", 10); sleep(0.8)
+    alive, stuck = list(tabs), []
+    for i in range(WIN_KILL_TRIES):                             # `am kill` chỉ tắt được khi màn của app đã DỪNG hẳn — máy nhanh ~1 giây sau khi về màn
+        sh("; ".join(f"am kill --user {int(t['user'])} {t['pkg']}" for t in alive) + " 2>&1", 20); sleep(0.3)      # chính, máy chậm tới ~10 giây
+        alive = [t for t in alive if win_pids(sh, t["pkg"], t["user"])]
+        if i == 2:                                              # app đang giữ dịch vụ chạy nổi (nhạc, tải…) thì không bao giờ tắt nền được → thôi chờ app đó
+            fg = [t for t in alive if "isForeground=true" in (sh(f"dumpsys activity services {t['pkg']} 2>/dev/null | grep -m1 isForeground=true", 20) or "")]
+            stuck += fg; alive = [t for t in alive if not any(t is x for x in fg)]
+        if not alive: break
+        sleep(0.5)
+    if alive:                                                   # màn của app đã dừng ~10 giây mà `am kill` vẫn không ăn (máy ảo Android 12L) → tắt thẳng
+        for t in alive:                                         # tiến trình, y như am kill làm; Android vẫn giữ tab + khung vì màn đã lưu trạng thái
+            pids = win_pids(sh, t["pkg"], t["user"])
+            if pids: sh(WIN_KILL9_SH.format(p=" ".join(str(int(x)) for x in pids)), 15)
+        sleep(0.6); alive = [t for t in alive if win_pids(sh, t["pkg"], t["user"])]
+    live = {t["id"] for t in alive + stuck}
+    dead = [t for t in tabs if t["id"] not in live]
+    moved = (mid(dead) if (mid and dead) else None) or {}
+    order = list(order); extra = [t for t in tabs if t["id"] not in {w["id"] for w in order}]; busy = False
+    for w in list(reversed(order)) + list(reversed(extra)):     # từ dưới lên: cái đưa lên sau nằm trên
+        t = next((x for x in tabs if x["id"] == w["id"]), None)
+        if t is not None and t["id"] not in live:               # app đã tắt → đặt khung (tab vẫn còn) rồi mở lại sạch vào đúng tab
+            if mode == WIN_FREEFORM: resize(t, tuple(moved.get(t["id"]) or t["b"]))
+            if busy: sleep(0.6); busy = False                   # vừa đưa cửa sổ khác lên → chờ giao diện hệ thống xử lý xong rồi mới mở app (Android 13+ vẽ
+            sh(f"am start --user {int(t['user'])} --display 0 --windowingMode {mode} {WIN_FRESH} -n {shlex.quote(t['comp'])} 2>&1", 25)      # thanh tiêu đề ở đó)
+        elif t is not None and mode != WIN_FREEFORM: win_launch(sh, t, mode, sdk)      # không tắt được → đưa lên lại như cũ
+        else: win_front(sh, w, sdk); resize(w, w["b"]); busy = True
+    res = {}
+    for _ in range(14):
+        if len(res) == len(dead): break
+        sleep(0.5); now = win_tasks(sh("am stack list 2>&1", 15), sdk)
+        for t in dead:
+            if t["id"] in res: continue
+            d = next((x for x in now if x["comp"] == t["comp"] and x["user"] == t["user"] and x["disp"] == 0), None)
+            if d and win_pids(sh, t["pkg"], t["user"]): res[t["id"]] = d
+    if mode == WIN_FREEFORM:
+        for t in dead:
+            d = res.get(t["id"])
+            if not d: continue
+            b = tuple(moved.get(t["id"]) or t["b"])
+            if d["mode"] != "freeform": d = win_to(sh, d, WIN_FREEFORM, sdk, sleep)       # hiếm: Android mở lại thành toàn màn → đưa về cửa sổ
+            if not d: res.pop(t["id"]); continue
+            if tuple(d["b"]) != b: resize(d, b)
+            res[t["id"]] = dict(d, b=b)
+    return res
+
+
+# ---- 23/11d · XOAY MÀN THẬT: app trợ giúp đặt 1 cửa sổ phủ 1×1 trong suốt YÊU CẦU màn ngang (máy MuMu bỏ qua khoá xoay của Android) ----
+ROT_PKG, ROT_SVC, ROT_VER = "vn.cloudblue.xoay", "vn.cloudblue.xoay/.Svc", 1
+ROT_APK_FILE = os.path.join(HOME, "cbxoay.apk")
+ROT_APK_B64 = (                  # cbxoay.apk 12701 byte · sha256 9d94259381a5b035… — dựng bằng .github/win-check/mkapk.sh (lượt CI #37), đã thử trên máy ảo 9 / 12 / 12L / 15 + máy MuMu Android 12 thật
+    "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"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD4DwAAAAAAAGIFAAAAAAAAGocJcVoFAABWBQAAGAMAACwAAAAoAAAAAwEA"
+    "ACAAAACEb9YtLd2oCBfWPcYtjNMK1/omdfENAFpQZhpa/06Z8dACAADMAgAAMIICyDCCAbCgAwIBAgIJAIt0ztNptGPkMA0GCSqGSIb3DQEBCwUAMBIxEDAOBgNVBAMTB3dpbnRlc3QwHhcNMjYxMTIzMDczMDU3WhcNMjkwODE5MDczMDU3"
+    "WjASMRAwDgYDVQQDEwd3aW50ZXN0MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA8JUMWChrVCVcuu52kd9BonpriDxEvC62Fs6cyq4bXLVkYA6YVDbHMZ+V1tb0C880JOHiPnG763r0noXtOsJgF3CQEGPeBHgj/PxhxgngSGnR"
+    "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"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA+A8AAAAAAABBUEsgU2lnIEJsb2Nr"
+    "IDQyUEsBAgAAAAAAAAgAAAAhAI39exhjAwAA4AkAABMAAAAAAAAAAAAAAAAAAAAAAEFuZHJvaWRNYW5pZmVzdC54bWxQSwECAAAAAAAAAAAAACEAC1A2EygAAAAoAAAADgAAAAAAAAAAAAAAAACUAwAAcmVzb3VyY2VzLmFyc2NQSwECHgMU"
+    "AAAACADkO3ddVZu0r0MJAAAkEQAACwAYAAAAAAAAAAAApIHwAwAAY2xhc3Nlcy5kZXhVVAUAA7vrA2t1eAsAAQTpAwAABOkDAABQSwECFAAUAAAICADkO3ddCcCHhCoBAACcAQAADQAAAAAAAAAAAAAAAAB4DQAATUVUQS1JTkYvSy5TRlBL"
+    "AQIUABQAAAgIAOQ7d104dJnREAQAAFYEAAAOAAAAAAAAAAAAAAAAAM0OAABNRVRBLUlORi9LLlJTQVBLAQIUABQAAAgIAOQ7d104sfBj2wAAAB0BAAAUAAAAAAAAAAAAAAAAAAkTAABNRVRBLUlORi9NQU5JRkVTVC5NRlBLBQYAAAAABgAG"
+    "AIcBAAAAMAAAAAA="
+)
+
+
+def rot_apk():
+    """Đường dẫn file app trợ giúp trên máy chủ (ghi ra từ ROT_APK_B64 nếu chưa có / khác bản). Không có → None."""
+    if ROT_APK_B64:
+        try:
+            data = base64.b64decode(ROT_APK_B64)
+            if not os.path.isfile(ROT_APK_FILE) or open(ROT_APK_FILE, "rb").read() != data:
+                with open(ROT_APK_FILE + ".part", "wb") as f: f.write(data)
+                os.replace(ROT_APK_FILE + ".part", ROT_APK_FILE)
+        except Exception as e:
+            log("ghi file app xoay màn lỗi:", e); return None
+    return ROT_APK_FILE if os.path.isfile(ROT_APK_FILE) else None
+
+
+def rot_install(port):
+    """Cài app trợ giúp xoay màn vào máy (người dùng chính; khác chữ ký với bản cũ → gỡ rồi cài lại). Trả True nếu cài được."""
+    apk = rot_apk()
+    if not apk: return False
+    tmp = "/tmp/cbxoay_" + secrets.token_hex(4) + ".apk"
+    try:
+        r = subprocess.run(["docker", "cp", apk, f"{WSNAME}:{tmp}"], capture_output=True, timeout=120)
+        if r.returncode: log("chép app xoay màn lỗi:", out(r)[-200:]); return False
+        o = out(adb(port, ["install", "-r", "--user", "0", tmp], timeout=180))
+        if "Success" not in o and "UPDATE_INCOMPATIBLE" in o:
+            shell(port, f"pm uninstall {ROT_PKG}", 60); o = out(adb(port, ["install", "-r", "--user", "0", tmp], timeout=180))
+        if "Success" not in o: log("cài app xoay màn lỗi:", o[-200:])
+        return "Success" in o
+    except Exception as e:
+        log("cài app xoay màn lỗi:", e); return False
+    finally:
+        try: subprocess.run(["docker", "exec", WSNAME, "rm", "-f", tmp], capture_output=True, timeout=30)
+        except Exception: pass
+
+
+def rot_helper(sh, inst, land):
+    """Cửa sổ phủ yêu cầu màn NGANG của app trợ giúp: bật (chưa có / bản cũ → inst() cài, trả True khi cài xong) hoặc tắt. Trả True nếu
+       lệnh được máy nhận."""
+    if not land:
+        if "package:" in (sh(f"pm path {ROT_PKG} 2>/dev/null", 15) or ""): sh(f"am force-stop {ROT_PKG}", 15)
+        return True
+    v = re.search(r"versionCode=(\d+)", sh(f"dumpsys package {ROT_PKG} 2>/dev/null | grep -m1 versionCode", 20) or "")
+    if (not v or int(v.group(1)) < ROT_VER) and not (inst and inst()): return False
+    # `cmd appops` (máy MuMu không có lệnh `appops` rời — đo trên máy thật: "appops: inaccessible or not found")
+    o = sh(f"cmd appops set {ROT_PKG} SYSTEM_ALERT_WINDOW allow >/dev/null 2>&1; am start-foreground-service --user 0 -n {ROT_SVC} --es o land 2>&1", 25) or ""
+    return not re.search(r"(?i)error|exception|not found|unable|denied", o)
+
+
+def win_rot(sh, rot, sleep=time.sleep, inst=None, tries=12, limit=7.0):
+    """XOAY MÀN: rot 1 = NGANG · 0 = DỌC. Khoá xoay của Android trước (win_rot_lock); màn vẫn chưa ngang (MuMu bỏ qua khoá xoay — không chờ;
+       màn chính kiểu điện thoại không chịu nằm ngang) → bật cửa sổ phủ yêu cầu màn ngang (rot_helper). Về dọc: tắt cửa sổ phủ trước.
+       Trả (trạng thái máy, màn đã đúng hướng chưa)."""
+    if not rot: rot_helper(sh, None, False)
+    auto = "=false" not in (sh(WIN_AUTOROT_SH, 15) or "")
+    st, good = win_rot_lock(sh, rot, sleep, tries if (auto or not rot) else 2, limit)
+    if rot and not good and rot_helper(sh, inst, True):
+        for _ in range(12):
+            sleep(0.5); st = win_state(sh)
+            if st["ok"] and st["geo"]["w"] > st["geo"]["h"]: good = True; break
+        if good: st = win_settle(sh, sleep)
+    return st, good
+
+
 WIN_REFIT_SH = ("C={c}; U={u}; am start --user $U {d}--windowingMode 5 " + AS_ICON + " -n $C >/dev/null 2>&1; i=0; "
                 "while [ $i -lt 60 ]; do id=$(am stack list 2>/dev/null | grep -F \": $C \" | grep -F \"userId=$U \" | head -n 1 | sed 's/.*taskId=\\([0-9]*\\):.*/\\1/'); "
                 "if [ -n \"$id\" ]; then {mv}r=$(am task resize $id {b} 2>&1); case \"$r\" in *xception*|*rror*|*llowed*|*nvalid*) ;; *) echo \"REFIT $id $i\"; break;; esac; fi; "
@@ -916,9 +1235,10 @@ def win_refit(sh, t, sdk, sleep=time.sleep, dpi=320, geo=None):
         if helper: sh("am force-stop com.android.settings", 15)
 
 
-def win_run(sh, do, sleep=time.sleep):
-    """Việc của nút 🗗 Thu nhỏ tab (mini) · ⊞ Sắp xếp tab (tile) · ⛶ Phóng to tab (full) · danh sách (list). sh(lệnh, giây) → chữ in ra.
-       Trả (mã HTTP, dict)."""
+def win_run(sh, do, sleep=time.sleep, inst=None):
+    """Việc của nút 🗗 Thu nhỏ tab (mini) · ⊞ Sắp xếp tab (tile) · ⛶ Phóng to tab (full) · 🖼 Vừa khung (refit) · Cửa sổ to / nhỏ hơn (grow /
+       shrink) · 🖥 Màn ngang rộng / Màn dọc như cũ (wide / narrow) · danh sách (list). sh(lệnh, giây) → chữ in ra; inst() cài app trợ giúp
+       xoay màn vào máy (trả True khi cài xong). Trả (mã HTTP, dict)."""
     st = win_state(sh); sdk = st["sdk"]
     if sdk and sdk < 24: return 409, {"error": "Android của máy này quá cũ, chưa có cửa sổ nhỏ."}
     if not st["ok"]: return 409, {"error": "Android của máy này chưa đọc được danh sách tab — thử lại sau giây lát."}
@@ -926,10 +1246,13 @@ def win_run(sh, do, sleep=time.sleep):
     if do == "list":
         return 200, {"n": len(wins), "sdk": sdk, "free": st["free"], "screen": [st["geo"]["w"], st["geo"]["h"]],
                      "tabs": [{"id": t["id"], "pkg": t["pkg"], "user": t["user"], "b": list(t["b"]), "vis": t["vis"]} for t in wins]}
-    if not win_conf_ok(st): sh(win_conf_sh(sdk), 15)                   # Android 15+: chuyển sang cách thu nhỏ hình game (vừa khung)
+    if not win_conf_ok(st): sh(win_conf_sh(sdk), 15)                   # đặt đúng kiểu của bản Android (≤ 12L: ép đổi cỡ · 13+: Android thu nhỏ hình)
     home = lambda: (sh("input keyevent 3", 10), sleep(0.5))
     resize = lambda t, b: sh(f"am task resize {int(t['id'])} {b[0]} {b[1]} {b[2]} {b[3]} 2>&1", 15)
     big = lambda g, b: _area(b) >= 0.85 * _area(win_area(g))          # cửa sổ đã phóng to gần hết màn
+    kinds = lambda: win_kinds(sh, sdk >= WIN_SCM_SDK and WIN_SCM_KEEP) if sdk >= WIN_REFIT_SDK else {}     # 23/11d: Android 10+ mở lại app kiểu cũ ngay trong tab
+    size = lambda b: (b[2] - b[0], b[3] - b[1])
+    ask = lambda k: "ask" if k and (k["old"] or k["fixed"]) else None  # game (ép hướng / kiểu cũ) → web hiện nút 🖼 Vừa khung ngay trong thông báo
     if do == "mini":
         full = [t for t in win_std(st, "fullscreen") if t["vis"]]
         grown = [w for w in wins if w["vis"] and big(st["geo"], w["b"])]
@@ -954,41 +1277,91 @@ def win_run(sh, do, sleep=time.sleep):
         else:
             t = grown[0]; win_launch(sh, t, WIN_FREEFORM, sdk)          # cửa sổ đã phóng to hết màn → thu lại
         st2 = win_settle(sh, sleep)
+        k = kinds().get(t["id"])
         for _ in range(2):
             others = [w["b"] for w in win_std(st2, "freeform") if w["id"] != t["id"]]
-            slot = win_slot(st2["geo"], others)
-            resize(t, slot)
+            geo = st2["geo"]; slot = win_slot(geo, others)
+            if k and not k["fixed"] and full and st["geo"]["w"] > st["geo"]["h"] and geo["w"] < geo["h"]:
+                k = dict(k, fixed="land")                       # máy không ghi hướng của app: app toàn màn làm màn NGANG, thành cửa sổ thì màn về dọc → app ép ngang
+            if k and k["old"]: slot = win_shape(geo, slot, k["fixed"])     # 23/11d: game kiểu cũ → phần hình đúng tỉ lệ game (16:9 / 9:16); game cũ ép
+            resize(t, slot)                                     # ngang (FORCE_RESIZABLE_LANDSCAPE_ONLY) Android còn KHÔNG cho đặt khung dọc
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → tính lại chỗ theo hướng mới
             if not st2: break
         n = len(others) + 1
+        fit, sw = None, None
+        if k and k["old"]:                                      # 23/11d: app kiểu cũ → mở lại NGAY TRONG cửa sổ (đã đúng chỗ + cỡ) → game vẽ vừa cửa sổ
+            order = [dict(w, b=slot) if w["id"] == t["id"] else w for w in win_std(win_state(sh), "freeform")]
+            alone = not [w for w in order if w["id"] != t["id"]]; box = {}
+
+            def mid(dead):                                      # app đã tắt, chưa có tab nhỏ nào khác, màn < 600 dp → bật màn rộng TRƯỚC khi mở lại
+                c = win_screen(sh)                              # (cửa sổ ít dp quá thì giao diện game không bao giờ vừa); không đụng app nào đang chạy
+                if not alone or not c or not win_wide_on(sh, c, auto=True): return None
+                sleep(1.5); s3 = win_settle(sh, sleep); box["sw"] = (win_screen(sh) or c)["sw"]
+                return {t["id"]: win_shape(s3["geo"], win_slot(s3["geo"], []), k["fixed"])}
+            got = win_recreate(sh, [dict(t, b=slot)], sdk, sleep, order, WIN_FREEFORM, mid).get(t["id"])
+            if got: slot, fit, sw = tuple(got["b"]), "ok", box.get("sw")
+            else: fit = "ask"                                   # app không tắt nền được → để nguyên, khách bấm Vừa khung nếu hình chưa vừa
+        elif k: fit = ask(k)
         win_keep(sh, [t])
-        return 200, {"ok": True, "n": n, "id": t["id"], "b": list(slot),
-                     "msg": f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."}
+        msg = f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ."
+        if fit == "ok":
+            msg = f"Đã thu nhỏ {win_name(t)} ({n} tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ." \
+                  + (f" Máy chuyển sang màn rộng {sw} dp cho tab đủ chỗ — bấm Màn dọc như cũ để trả lại." if sw else "")
+        return 200, {"ok": True, "n": n, "id": t["id"], "b": list(slot), "fit": fit, "sw": sw, "msg": msg}
     if do == "tile":
         if not wins: return 409, {"error": "Chưa có tab nhỏ nào — mở app rồi bấm Thu nhỏ tab trước."}
         if [t for t in win_std(st, "fullscreen") if t["vis"]]: home()          # app toàn màn (ép ngang) đang che → về màn chính để xếp theo hướng màn chính
+        before = {w["id"]: size(w["b"]) for w in wins}
+        kd = kinds()
         st2 = win_settle(sh, sleep)
         for k in range(2):
             wins = sorted(win_std(st2, "freeform"), key=lambda t: t["id"])  # thứ tự cố định: tab thu nhỏ trước nằm trước
-            cells = win_grid(st2["geo"], len(wins))
+            cells = win_grid(st2["geo"], len(wins)); cell = {}
             for w, c in zip(wins, cells):
                 if not k and (not w["vis"] or sdk >= 31): win_front(sh, w, sdk)  # đưa lên trên (cửa sổ bị màn chính che cũng hiện lại)
-                resize(w, c)
+                kw = kd.get(w["id"])                             # 23/11d: game kiểu cũ → cửa sổ đúng tỉ lệ hình game trong ô (win_shape)
+                cell[w["id"]] = win_shape(st2["geo"], c, kw["fixed"]) if kw and kw["old"] else c
+                resize(w, cell[w["id"]])
             st2 = win_turned(sh, st2, sleep)                    # màn xoay muộn → xếp lại theo hướng mới
             if not st2: break
+        redo = [dict(w, b=cell[w["id"]]) for w in wins if kd.get(w["id"], {}).get("old")
+                and (w["id"] not in before or max(abs(a - b) for a, b in zip(before[w["id"]], size(cell[w["id"]]))) > 8)]
+        nre = 0
+        if redo:                                                # 23/11d: app kiểu cũ có ô ĐỔI CỠ → mở lại ngay trong ô mới (không thì hình tràn / hụt ô)
+            order = [dict(w, b=cell.get(w["id"], w["b"])) for w in win_std(win_state(sh), "freeform")]
+            nre = len(win_recreate(sh, redo, sdk, sleep, order, WIN_FREEFORM))
         win_keep(sh, wins)
         cols = len({c[0] for c in cells}); rows = len({c[1] for c in cells})
         tip = " Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau." if win_overlap(cells) else ""
-        return 200, {"ok": True, "n": len(wins), "msg": f"Đã xếp {len(wins)} tab nhỏ ({cols} cột × {rows} hàng).{tip}"}
+        note = f" {nre} game đã mở lại để vẽ vừa ô mới." if nre else ""
+        return 200, {"ok": True, "n": len(wins), "re": nre, "msg": f"Đã xếp {len(wins)} tab nhỏ ({cols} cột × {rows} hàng).{note}{tip}"}
     if do == "full":
         vis = [t for t in wins if t["vis"]]
         if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện trên màn hình."}
         t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
+        k = kinds().get(t["id"])
         if sdk < 31: home()                                      # Android 9–11: app đang ở trên cùng thì không đổi chế độ được → về màn chính trước
         if win_to(sh, t, WIN_FULLSCREEN, sdk, sleep, back=home):
-            return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn."}
+            note = ""
+            if k and k["old"]:                                  # 23/11d: app kiểu cũ đã dựng hình theo cỡ CỬA SỔ → mở lại để vẽ đủ toàn màn
+                last = len(wins) == 1; box = {}
+
+                def mid(dead):                                  # tab nhỏ cuối cùng + màn rộng do MÁY tự bật lúc thu nhỏ → trả mật độ cũ (app đang tắt)
+                    c = win_screen(sh)
+                    if last and c and win_wide_off(sh, c, only_auto=True):
+                        sleep(1.5); win_settle(sh, sleep); box["sw"] = (win_screen(sh) or c)["sw"]
+                    return None
+                got = win_recreate(sh, [t], sdk, sleep, (), WIN_FULLSCREEN, mid).get(t["id"])
+                note = (" Game đã mở lại để vẽ đủ toàn màn." if got else " Hình chưa đủ màn thì bấm Vừa khung.") \
+                       + (f" Máy đã về mật độ cũ ({box['sw']} dp)." if box.get("sw") else "")
+            return 200, {"ok": True, "n": len(wins) - 1, "msg": f"Đã phóng to {win_name(t)} ra toàn màn.{note}"}
         # Android 12+: lệnh không đưa cửa sổ về toàn màn được → phóng cửa sổ to hết màn (vẫn là cửa sổ; nút ▭ trên thanh tiêu đề = toàn màn thật)
-        win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); resize(t, win_area(st2["geo"]))
+        win_launch(sh, t, WIN_FREEFORM, sdk); st2 = win_settle(sh, sleep); area = win_area(st2["geo"])
+        if k and k["old"]: area = win_shape(st2["geo"], area, k["fixed"])       # game kiểu cũ: to hết bề ngang, phần hình đúng tỉ lệ game
+        resize(t, area)
+        if k and k["old"]:
+            order = [dict(w, b=area) if w["id"] == t["id"] else w for w in win_std(win_state(sh), "freeform")]
+            win_recreate(sh, [dict(t, b=area)], sdk, sleep, order, WIN_FREEFORM)
         return 200, {"ok": True, "n": len(wins), "msg": f"Đã phóng to {win_name(t)} hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ."}
     if do in ("grow", "shrink"):                                # 23/11c: khách tự cho cửa sổ to / nhỏ (kéo mép qua luồng hình khó trúng)
         vis = [t for t in wins if t["vis"]]
@@ -1000,31 +1373,25 @@ def win_run(sh, do, sleep=time.sleep):
             return 409, {"error": "Cửa sổ đã to nhất rồi (hết màn) — muốn to nữa bấm Phóng to tab." if do == "grow"
                          else "Cửa sổ đã nhỏ nhất rồi (Android không cho nhỏ hơn) — muốn xếp nhiều tab hơn bấm 🖥 Màn ngang rộng."}
         resize(t, nb); win_keep(sh, [t])
-        return 200, {"ok": True, "id": t["id"], "b": list(nb),
+        return 200, {"ok": True, "id": t["id"], "b": list(nb), "fit": ask(kinds().get(t["id"])),      # game: chỉnh cỡ xong bấm Vừa khung 1 lần
                      "msg": f"Cửa sổ {win_name(t)} đã {'to' if do == 'grow' else 'nhỏ'} hơn ({nb[2] - nb[0]}×{nb[3] - nb[1]}). Bấm tiếp để {'to' if do == 'grow' else 'nhỏ'} nữa."}
-    if do in ("wide", "narrow"):                                # 23/11c: 🖥 màn NGANG RỘNG (độ rộng nhỏ nhất ≥ 600 dp + khoá ngang) → màn chính xoay ngang
-        wide = do == "wide"; rot = 1 if wide else 0             # như máy tính bảng, chứa nhiều tab clone; Màn dọc như cũ = trả mật độ TRƯỚC ĐÓ + khoá dọc
+    if do in ("wide", "narrow"):                                # 23/11c: 🖥 màn NGANG RỘNG (độ rộng nhỏ nhất ≥ 600 dp + màn ngang) → màn chính nằm ngang
+        wide = do == "wide"; rot = 1 if wide else 0             # như máy tính bảng, chứa nhiều tab clone; Màn dọc như cũ = trả mật độ TRƯỚC ĐÓ + màn dọc
         c = win_screen(sh)
         if not c: return 409, {"error": "Chưa đọc được màn hình máy — thử lại sau giây lát."}
-        short = min(c["w"], c["h"]); dc = ""
         if wide:
-            dens = max(72, min(640, short * 160 // WIN_WIDE_SW))    # làm tròn XUỐNG → luôn ≥ 600 dp (làm tròn gần nhất: màn 640 ra 599 dp)
-            if c["density"] > dens:                                 # máy đã đặt rộng hơn 600 dp → giữ nguyên mật độ khách chọn
-                dc = f"settings put global {WIN_PREV_KEY} {c['density']}:{short}; wm density {dens}"
+            ch = win_wide_on(sh, c)
+            if not ch:                                          # màn đã rộng sẵn (VD máy tự bật lúc thu nhỏ) mà khách tự bấm → bỏ dấu "tự bật":
+                v = (sh(f"settings get global {WIN_PREV_KEY} 2>/dev/null", 10) or "").strip()      # phóng to tab cuối không tự trả mật độ nữa
+                if re.match(r"\d+:\d+:a$", v): sh(f"settings put global {WIN_PREV_KEY} {v[:-2]}", 10)
         else:
-            m = re.match(r"(\d+):(\d+)$", (sh(f"settings get global {WIN_PREV_KEY} 2>/dev/null", 10) or "").strip())
-            if m:                                                   # chưa từng bật Màn ngang rộng → không đụng mật độ khách tự chọn ở 📐
-                dens = int(m.group(1)); dc = f"settings delete global {WIN_PREV_KEY} >/dev/null 2>&1; true"
-                if int(m.group(2)) == short and 72 <= dens <= 640 and dens != c["density"]:      # máy đổi độ phân giải sau đó → mật độ cũ hết đúng
-                    dc = ("wm density reset" if dens == c["physical"] and not c["size_override"] else f"wm density {dens}") + "; " + dc
-        if dc:
-            sh(dc, 20)
-            if "wm density" in dc: sleep(1.5)                       # giao diện hệ thống + màn chính dựng lại theo mật độ mới rồi mới khoá xoay
-        st2, turned = win_rot_lock(sh, rot, sleep)
+            ch = win_wide_off(sh, c)
+        if ch: sleep(1.5)                                       # giao diện hệ thống + màn chính dựng lại theo mật độ mới rồi mới xoay
+        st2, turned = win_rot(sh, rot, sleep, inst)
         n = len(win_std(st2, "freeform"))
 
-        def tile():
-            code, j = win_run(sh, "tile", sleep)
+        def tile():                                             # xếp lại theo màn mới (app kiểu cũ có ô đổi cỡ được mở lại ngay trong ô)
+            code, j = win_run(sh, "tile", sleep, inst)
             return " " + j.get("msg", "") if code == 200 else ""
         tip = tile() if n else ""
         v = (sh(WIN_ROT_SH, 10) or "").strip()
@@ -1040,18 +1407,28 @@ def win_run(sh, do, sleep=time.sleep):
         else:
             msg = f"Đã trả màn DỌC như cũ ({c2['sw']} dp)."
         return 200, {"ok": True, "wide": wide, "sw": c2["sw"], "turned": turned, "n": n, "msg": msg + tip}
-    if do == "refit":
+    if do == "refit":                                           # 🖼 Vừa khung: mở lại app trên cùng theo đúng cỡ đang có (cửa sổ nhỏ, hoặc app toàn màn)
         vis = [t for t in wins if t["vis"]]
-        if not vis: return 409, {"error": "Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Mở lại vừa khung."}
-        t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
+        fulls = [t for t in win_std(st, "fullscreen") if t["vis"]]
+        if not vis and not fulls:
+            return 409, {"error": "Chưa có tab nhỏ nào đang hiện — thu nhỏ app (VD Roblox) trước rồi bấm Mở lại vừa khung."}
         if sdk < WIN_REFIT_SDK:
             return 409, {"error": "Máy Android 9 chưa mở lại vừa khung được (Android 9 xoay màn theo game nên cửa sổ bị lệch) — game vẫn chạy, "
                                   "chưa tắt gì. Bấm Phóng to tab để chơi toàn màn, hoặc dùng máy Android 12 / 15 (game tự vừa khung)."}
-        d = win_refit(sh, t, sdk, sleep, st["geo"].get("dpi") or 320, st["geo"])
+        if not vis:                                             # không có tab nhỏ đang hiện → app toàn màn trên cùng (VD vừa bấm ▭ trên thanh tiêu đề)
+            t = fulls[0]
+            got = win_recreate(sh, [t], sdk, sleep, (), WIN_FULLSCREEN).get(t["id"])
+            if not got: return 409, {"error": f"Chưa mở lại được {win_name(t)} — tắt app rồi mở lại từ màn chính."}
+            return 200, {"ok": True, "id": got["id"], "msg": f"Đã mở lại {win_name(t)} toàn màn — game vẽ đủ màn (game vừa khởi động lại, vào lại trận nếu cần)."}
+        t = vis[0]                                              # cửa sổ trên cùng = cửa sổ khách vừa bấm vào
+        d = win_recreate(sh, [t], sdk, sleep, wins, WIN_FREEFORM).get(t["id"]) \
+            or win_refit(sh, t, sdk, sleep, st["geo"].get("dpi") or 320, st["geo"])      # app không tắt nền được → cách cũ: tắt hẳn rồi mở lại vào cửa sổ
         if not d: return 409, {"error": f"Chưa mở lại được {win_name(t)} trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab."}
         win_keep(sh, [d])
+        c = win_screen(sh)
+        tip = " Hình vẫn bị cắt thì bấm Màn ngang rộng cho cửa sổ đủ chỗ." if c and c["sw"] < WIN_WIDE_SW else ""
         return 200, {"ok": True, "id": d["id"], "b": list(d["b"]),
-                     "msg": f"Đã mở lại {win_name(t)} ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần)."}
+                     "msg": f"Đã mở lại {win_name(t)} ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần).{tip}"}
     return 400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."}
 
 
@@ -1737,14 +2114,22 @@ class H(BaseHTTPRequestHandler):
             r = shell(port, MAIN_SH + "am start $D -a android.intent.action.VIEW -d " + shlex.quote(link), 20)
             return self.send_json(200, {"ok": True, "out": out(r)[-200:]})
 
-        if act == "rotate" and self.command == "POST":       # XOAY MÀN: khoá ngang / dọc (tắt tự xoay của Android + đặt hướng). Game cần màn ngang vẫn tự xoay.
-            b = self.jbody(); to = str(b.get("to") or "")
-            d = 1 if to == "land" or (to != "port" and b.get("dir")) else 0
-            r = shell(port, f"settings put system accelerometer_rotation 0 && settings put system user_rotation {d} && echo ROT_OK; "
-                            f"wm user-rotation lock {d} >/dev/null 2>&1; true", 15)      # wm user-rotation: Android 10+ (máy cũ báo lỗi → bỏ qua)
-            if "ROT_OK" not in out(r): return self.send_json(500, {"error": "Chưa xoay được — máy chưa sẵn sàng, thử lại sau giây lát."})
-            return self.send_json(200, {"ok": True, "to": "land" if d else "port",
-                                        "msg": "Đã khoá màn NGANG." if d else "Đã khoá màn DỌC."})
+        if act == "rotate" and self.command == "POST":       # XOAY MÀN: ngang / dọc. Game cần màn ngang vẫn tự xoay khi đang để dọc.
+            b = self.jbody(); to = str(b.get("to") or "")       # 23/11d: máy bỏ qua khoá xoay (MuMu) → cửa sổ phủ yêu cầu màn ngang (win_rot)
+            sh_ = lambda c, t=30: out(shell(port, c, t))
+            with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
+            if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
+            try:
+                st = win_state(sh_)
+                if not st["ok"]: return self.send_json(500, {"error": "Chưa xoay được — máy chưa sẵn sàng, thử lại sau giây lát."})
+                land = st["geo"]["w"] > st["geo"]["h"]
+                d = 1 if to == "land" or (to != "port" and (b.get("dir") or (not to and not land))) else 0
+                st2, turned = win_rot(sh_, d, time.sleep, lambda: rot_install(port))
+                land2 = bool(st2) and st2["ok"] and st2["geo"]["w"] > st2["geo"]["h"]
+            finally: lk.release()
+            msg = ("Đã xoay màn NGANG." if turned else "Máy này chưa xoay ngang được màn chính — app / game cần màn ngang vẫn tự hiện ngang.") if d \
+                else ("Đã về màn DỌC." if not land2 else "Đã về màn DỌC — app / game đang mở cần màn ngang nên vẫn hiện ngang.")
+            return self.send_json(200, {"ok": True, "to": "land" if d else "port", "turned": bool(turned), "msg": msg})
 
         if act == "density":                                  # ĐỘ RỘNG NHỎ NHẤT (Smallest width): số dp càng lớn → chữ / biểu tượng càng nhỏ, màn chứa được nhiều hơn
             def screen_now():
@@ -1995,7 +2380,7 @@ class H(BaseHTTPRequestHandler):
                 return self.send_json(400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."})
             with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
             if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
-            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do)
+            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do, inst=lambda: rot_install(port))
             finally: lk.release()
             return self.send_json(code, j)
 
@@ -2367,6 +2752,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 23/11c chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 23/11d chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()

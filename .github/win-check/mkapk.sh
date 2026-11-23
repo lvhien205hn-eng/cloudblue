@@ -5,7 +5,7 @@
 #            khung vàng + chữ TRÁI / PHẢI sát 2 mép. app 4 khai báo không đổi cỡ, app 5 khai báo đổi cỡ được.
 #   Mọi app ghi nhật ký (logcat thẻ wintest): mở (create + pid), cỡ khung, resume / pause / stop — để kiểm app có bị tắt / tải lại khi chạy nền.
 #   Dựng bằng công cụ có sẵn của Android SDK trên máy GitHub (aapt2, d8, apksigner).
-#   bash mkapk.sh <thư mục ra>     → <thư mục ra>/wintest1.apk … wintest5.apk
+#   bash mkapk.sh <thư mục ra>     → <thư mục ra>/wintest1.apk … wintest5.apk + cbxoay.apk (app trợ giúp xoay màn — cuối file)
 set -euo pipefail
 OUT=${1:-/tmp/wintest}; mkdir -p "$OUT"; W=$(mktemp -d)
 SDK=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}
@@ -75,6 +75,7 @@ public class Main extends Activity {
         tv.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
             @Override public void onLayoutChange(View v, int l, int t, int r, int bo, int ol, int ot, int or, int ob) {
                 tv.setText("Tab " + n + (user != 0 ? " (clone)" : "") + "\n" + (r - l) + " x " + (bo - t));
+                log("size=" + (r - l) + "x" + (bo - t));
             }
         });
     }
@@ -101,4 +102,117 @@ EOF
   "$BT/zipalign" -f 4 "$W/b$n.apk" "$W/a$n.apk"
   "$BT/apksigner" sign --ks "$W/k.jks" --ks-pass pass:android --key-pass pass:android --out "$OUT/wintest$n.apk" "$W/a$n.apk"
 done
+
+# ---------------- 23/11d · APP TRỢ GIÚP XOAY MÀN vn.cloudblue.xoay (cbxoay.apk) ----------------
+#   Máy MuMu bỏ qua khoá xoay của Android (mSupportAutoRotation=false) — màn chỉ xoay khi CÓ CỬA SỔ yêu cầu hướng. App này (không có biểu
+#   tượng) chạy 1 dịch vụ đặt 1 cửa sổ phủ 1×1 trong suốt, không nhận chạm, yêu cầu màn NGANG → cả màn chính nằm ngang.
+#   Bật:  appops set vn.cloudblue.xoay SYSTEM_ALERT_WINDOW allow; am start-foreground-service -n vn.cloudblue.xoay/.Svc --es o land
+#   Tắt:  am force-stop vn.cloudblue.xoay          (máy khởi động lại lúc đang bật → tự bật lại: Boot)
+#   Chỉ shell / hệ thống gọi được dịch vụ (quyền DUMP). cpapi cài file này từ ROT_APK_B64 (cpapi.py).
+X="$W/xoay"; mkdir -p "$X/src/vn/cloudblue/xoay" "$X/cls" "$X/dex"
+cat > "$X/src/vn/cloudblue/xoay/Svc.java" <<'EOF'
+package vn.cloudblue.xoay;
+
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.Service;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.ActivityInfo;
+import android.graphics.PixelFormat;
+import android.os.Build;
+import android.os.IBinder;
+import android.util.Log;
+import android.view.Gravity;
+import android.view.View;
+import android.view.WindowManager;
+
+public class Svc extends Service {
+    static final String TAG = "cbxoay";
+    View v;
+
+    @Override public IBinder onBind(Intent i) { return null; }
+
+    @Override public int onStartCommand(Intent i, int flags, int id) {
+        SharedPreferences sp = getSharedPreferences("xoay", MODE_PRIVATE);
+        String o = i != null ? i.getStringExtra("o") : null;
+        if (o == null) o = sp.getString("o", "off");
+        sp.edit().putString("o", o).commit();
+        fg();
+        apply(o);
+        if (v == null) { stopForeground(true); stopSelf(); return START_NOT_STICKY; }
+        return START_STICKY;
+    }
+
+    void fg() {
+        Notification.Builder b;
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.createNotificationChannel(new NotificationChannel("xoay", "Xoay man", NotificationManager.IMPORTANCE_MIN));
+            b = new Notification.Builder(this, "xoay");
+        } else b = new Notification.Builder(this);
+        b.setSmallIcon(android.R.drawable.ic_menu_rotate).setContentTitle("CloudBlue").setContentText("Man ngang").setOngoing(true);
+        startForeground(1, b.build());
+    }
+
+    void apply(String o) {
+        WindowManager wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+        if (v != null) { try { wm.removeView(v); } catch (Exception e) { } v = null; }
+        if (!"land".equals(o) && !"port".equals(o)) { Log.i(TAG, "off"); return; }
+        WindowManager.LayoutParams lp = new WindowManager.LayoutParams(1, 1,
+                Build.VERSION.SDK_INT >= 26 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY : WindowManager.LayoutParams.TYPE_SYSTEM_ALERT,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT);
+        lp.gravity = Gravity.TOP | Gravity.LEFT;
+        lp.screenOrientation = "land".equals(o) ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT;
+        lp.setTitle("cbxoay");
+        View nv = new View(this);
+        try { wm.addView(nv, lp); v = nv; Log.i(TAG, "on " + o); }
+        catch (Exception e) { Log.e(TAG, "addView: " + e); }
+    }
+
+    @Override public void onDestroy() {
+        if (v != null) { try { ((WindowManager) getSystemService(WINDOW_SERVICE)).removeView(v); } catch (Exception e) { } v = null; }
+        super.onDestroy();
+    }
+}
+EOF
+cat > "$X/src/vn/cloudblue/xoay/Boot.java" <<'EOF'
+package vn.cloudblue.xoay;
+
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.os.Build;
+
+public class Boot extends BroadcastReceiver {
+    @Override public void onReceive(Context c, Intent i) {
+        String o = c.getSharedPreferences("xoay", Context.MODE_PRIVATE).getString("o", "off");
+        if ("off".equals(o)) return;
+        Intent s = new Intent(c, Svc.class);
+        try { if (Build.VERSION.SDK_INT >= 26) c.startForegroundService(s); else c.startService(s); } catch (Exception e) { }
+    }
+}
+EOF
+cat > "$X/m.xml" <<'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="vn.cloudblue.xoay" android:versionCode="1" android:versionName="1.0">
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+  <application android:label="CloudBlue Xoay" android:allowBackup="false" android:hasCode="true">
+    <service android:name=".Svc" android:exported="true" android:permission="android.permission.DUMP"/>
+    <receiver android:name=".Boot" android:exported="true">
+      <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED"/></intent-filter>
+    </receiver>
+  </application>
+</manifest>
+EOF
+javac -nowarn -encoding UTF-8 -source 8 -target 8 -bootclasspath "$PLAT" -d "$X/cls" "$X"/src/vn/cloudblue/xoay/*.java 2>&1 | grep -v "^warning" || true
+"$BT/d8" --min-api 24 --lib "$PLAT" --output "$X/dex" $(find "$X/cls" -name '*.class')
+"$BT/aapt2" link -o "$X/b.apk" -I "$PLAT" --manifest "$X/m.xml" --min-sdk-version 24 --target-sdk-version 30
+(cd "$X/dex" && zip -q "$X/b.apk" classes.dex)
+"$BT/zipalign" -f 4 "$X/b.apk" "$X/a.apk"
+"$BT/apksigner" sign --ks "$W/k.jks" --ks-pass pass:android --key-pass pass:android --out "$OUT/cbxoay.apk" "$X/a.apk"
 ls -la "$OUT"
