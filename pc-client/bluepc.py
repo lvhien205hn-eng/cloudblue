@@ -1645,10 +1645,10 @@ class Viewer:
             if down and e.key == pygame.K_r and self.state[0] in ("kicked", "error"): self._retry(); return True
             if down and e.key == pygame.K_u and self.state[0] == "error" and must_update(): self._open_updater(); return True
             if not c: return False
-            if mods & pygame.KMOD_CTRL and e.key == pygame.K_v and not (mods & (pygame.KMOD_ALT | pygame.KMOD_SHIFT)):   # Ctrl+V → dán chữ của máy mình sang máy PC
-                if down:
+            if mods & pygame.KMOD_CTRL and e.key == pygame.K_v and not (mods & pygame.KMOD_ALT):   # Ctrl+V → dán chữ của máy mình sang máy PC
+                if down:                                                                     # 23/11b: Ctrl+Shift+V (Konsole…) → máy bấm đúng Ctrl+Shift+V
                     txt = clip_get()
-                    if txt: c.clip_set(txt, True)
+                    if txt: c.clip_set(txt, 2 if mods & pygame.KMOD_SHIFT else True)
                 return False
             if self.pck is None: self.pck = pc_keymap(pygame)
             code = self.pck.get(e.key)
@@ -5053,6 +5053,7 @@ ERRORS.update({                                                  # 🎡 vòng qu
     "WHEEL_NO_BUY": "Hiện không bán thêm lượt quay.", "WHEEL_PRICE_CHANGED": "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.",
     "WHEEL_NEED_TOPUP": "Nạp từ 100.000đ trong chương trình để được quay thêm.",
     "WHEEL_BUY_LIMIT": "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.",
+    "WHEEL_DAY_MAX": "Hôm nay bạn đã quay đủ số lượt miễn phí tối đa — mai quay tiếp, lượt còn lại vẫn giữ nguyên.",   # SQL v51: tối đa 20 lượt miễn phí / ngày
     "WHEEL_TERMS_CHANGED": "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.", "WHEEL_NO_LUCKY": "Hiện không bán vé may mắn.",   # SQL v34d
 })
 

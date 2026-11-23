@@ -376,6 +376,7 @@ EXACT = {
 "Giá quay thêm vừa thay đổi — xem lại giá rồi bấm lại.": "The extra-spin price just changed — check it and click again.",
 "Nạp từ 100.000đ trong chương trình để được quay thêm.": "Top up from 100,000đ during the event to buy extra spins.",
 "Hôm nay bạn đã mua đủ số lượt quay thêm — mai quay tiếp nhé.": "You've bought today's limit of extra spins — spin again tomorrow.",
+"Hôm nay bạn đã quay đủ số lượt miễn phí tối đa — mai quay tiếp, lượt còn lại vẫn giữ nguyên.": "You've used today's free spins — come back tomorrow, your remaining spins are kept.",
 "Điều kiện mua lượt / vé vừa đổi — xem lại rồi bấm lại.": "The conditions for buying spins / tickets just changed — check them and click again.",
 "Hiện không bán vé may mắn.": "Lucky tickets aren't on sale right now.",
 "Xem giải": "See prizes",
