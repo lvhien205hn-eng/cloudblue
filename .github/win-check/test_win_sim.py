@@ -157,8 +157,8 @@ class Droid:
         m = re.match(r"am force-stop --user (\d+) ([\w.]+) 2>&1$", c)
         if m:
             self.z = [x for x in self.z if not (x["comp"].split("/")[0] == m.group(2) and x["user"] == int(m.group(1)))]; return ""
-        m = re.match(r"C=(\S+); U=(\d+); am start --user \$U (--display 0 )?--windowingMode 5 .* -n \$C .*?(am stack move-task \$id (\d+) true .*?)?"
-                     r"r=\$\(am task resize \$id (-?\d+) (-?\d+) (-?\d+) (-?\d+) 2>&1\)", c)
+        m = re.match(r"C=(\S+); U=(\d+); timeout 25 am start -W --user \$U (--display 0 )?--windowingMode 5 .* -n \$C .*?(am stack move-task \$id (\d+) true .*?)?"
+                     r"r=\$\(am task resize \$id (-?\d+) (-?\d+) (-?\d+) (-?\d+) 2>&1\).*wait \$P 2>/dev/null; echo DRAWN$", c)
         if m:                                                   # 🔄 mở lại vừa khung: vòng lặp trên máy (mở lại → thấy tab → đặt cỡ ngay)
             comp, u = m.group(1).strip("'"), int(m.group(2))
             if bool(m.group(3)) != (self.sdk >= 29): return "Error: lệnh sai bản Android"
@@ -166,8 +166,8 @@ class Droid:
             tk = self.open(comp, u, land, resz)
             if self.free and (self.sdk >= 29 or resz): tk["mode"] = FF
             elif m.group(4) and self.sdk < 30 and any(x["mode"] == FF and x is not tk for x in self.z) and int(m.group(5)) == 2: tk["mode"] = FF
-            if tk["mode"] != FF: return ""
-            tk["b"] = tuple(int(m.group(i)) for i in range(6, 10)); return f"REFIT {tk['id']} 0"
+            if tk["mode"] != FF: return "DRAWN"
+            tk["b"] = tuple(int(m.group(i)) for i in range(6, 10)); return f"REFIT {tk['id']} 0\nDRAWN"
         if c.startswith("input keyevent 3"): self.home_key(); return ""
         if c.startswith("am force-stop com.android.settings"):
             self.z = [x for x in self.z if not x["comp"].startswith("com.android.settings/")]; return ""
@@ -176,12 +176,15 @@ class Droid:
             tk = self.task("com.android.settings/.Settings") or self.open("com.android.settings/.Settings")
             if self.free: tk["mode"], tk["b"] = FF, (90, 300, 630, 700)           # chưa bật cửa sổ nổi → Cài đặt mở toàn màn
             self.z.remove(tk); self.z.insert(0, tk); return "Starting: Intent { cmp=com.android.settings/.Settings }"
-        m = re.match(r"am start --user (\d+) (?:--display 0 )?(?:--task (\d+) )?(?:--windowingMode (\d) |--stack (\d) )-a android\.intent\.action\.MAIN "
+        m = re.match(r"(?:timeout \d+ )?am start (?:-W )?--user (\d+) (?:--display 0 )?(?:--task (\d+) )?(?:--windowingMode (\d) |--stack (\d) )-a android\.intent\.action\.MAIN "
                      r"-c android\.intent\.category\.LAUNCHER -f 0x10200000 -n (\S+) 2>&1$", c)
         if m:
             u, tid, comp = int(m.group(1)), m.group(2), m.group(5).strip("'")
             mode = FF if (m.group(3) or m.group(4)) in ("5", "2") else FS
             tk = self.task(comp, u)
+            if tk is None and (comp, u) in self.apps and tid is None:      # app đã tắt (force-stop) → mở lại = tab mới toàn màn
+                tk = self.open(comp, u, *self.apps[(comp, u)])
+                if mode == FS: return "Status: ok"
             if tk is None: return "Error: Activity class does not exist."
             if tid is not None and int(tid) != tk["id"]: return "Error: task khác app"
             if ("--display 0 " in c) != (self.sdk >= 29): return "Error: lệnh sai bản Android"
@@ -366,9 +369,12 @@ for sdk in (28, 29, 31, 32, 35):
        code == 200 and a2 and a2["mode"] == FF and a2["b"] == ab and tuple(j["b"]) == ab and "khởi động lại" in j["msg"]
        and any(x == "am force-stop --user 0 com.roblox.client 2>&1" for x in d.log) and d.visible(a2), (code, j, a2, d.log[-6:]))
     scr = next((x for x in d.log if x.startswith("C=")), "")
-    if sdk == 31: ck("Android 12: mở lại THẤP HƠN 42 dp (84 px) rồi kéo về đủ cỡ — lần dựng khung đầu chưa có thanh tiêu đề",
-                     f"am task resize $id 40 600 600 {920 - 84} " in scr and d.log[-2].startswith(f"am task resize {a2['id']} 40 600 600 920"), (scr[-160:], d.log[-3:]))
-    else: ck(f"Android {sdk}: mở lại đúng cỡ luôn (không cần kéo lại)", "am task resize $id 40 600 600 920 " in scr, scr[-160:])
+    if sdk >= cp.WIN_SCM_SDK: ck(f"Android {sdk}: mở lại TOÀN MÀN (chờ game vẽ khung đầu) rồi đưa vào cửa sổ cũ — Android thu nhỏ cả hình vừa khung",
+                                 not scr and any(x.startswith("timeout 25 am start -W --user 0 --display 0 --windowingMode 1 ") for x in d.log)
+                                 and any(x.startswith(f"am task resize {a2['id']} 40 600 600 920") for x in d.log), d.log[-8:])
+    else: ck(f"Android {sdk}: mở lại thẳng vào cửa sổ THẤP HƠN 42 dp (84 px), game vẽ khung đầu xong (DRAWN) mới kéo về đủ cỡ — lần dựng khung đầu chưa có thanh tiêu đề",
+             f"am task resize $id 40 600 600 {920 - 84} " in scr and "wait $P" in scr
+             and any(x.startswith(f"am task resize {a2['id']} 40 600 600 920") for x in d.log), (scr[-160:], d.log[-3:]))
 d = Droid(31); d.open(R1, land=True)
 code, j = cp.win_run(d.sh, "refit")
 ck("chưa có tab nhỏ nào → 409 dễ hiểu (thu nhỏ trước)", code == 409 and "thu nhỏ app" in j.get("error", ""), (code, j))

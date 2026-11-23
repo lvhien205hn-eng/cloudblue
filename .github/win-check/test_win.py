@@ -241,8 +241,12 @@ if g4:
     else:
         ck(f"🖼 Mở lại vừa khung → game mở lại ngay trong cửa sổ cũ (đúng chỗ + cỡ) · {time.time() - t0:.1f} giây", code == 200 and g5 and g5["mode"] == "freeform"
            and g5["b"] == gb and g5["vis"], (code, j, gb, g5))
-        fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and abs(s2[1] - s2[3]) <= 24          # khung game = phần app thấy (Android 12L+ còn thu nhỏ cả hình)
-        ck(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
+        if API >= cp.WIN_SCM_SDK:                       # Android 12L+: game dựng khung TOÀN MÀN, Android thu nhỏ cả hình — app thấy đủ bề ngang khung game
+            fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and s2[1] >= 0.75 * s2[3]
+            ck(f"… Android thu nhỏ CẢ HÌNH game vào cửa sổ (đủ bề ngang, ≥ 3/4 bề cao): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
+        else:
+            fit = bool(s2) and abs(s2[0] - s2[2]) <= 24 and s2[3] <= s2[1] + 24 and s2[3] >= 0.7 * s2[1]   # đủ ngang, KHÔNG mất phần dưới (dư dải đen nhỏ được)
+            ck(f"… game dựng khung theo cỡ CỬA SỔ (vừa khung, không mất phần nào): app thấy {s2 and s2[:2]} · khung game {s2 and s2[2:]}", fit, s2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "\n".join(("OK " if c else "NO ") + n for n, c in INFO))

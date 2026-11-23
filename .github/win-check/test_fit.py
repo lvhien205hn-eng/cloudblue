@@ -171,34 +171,44 @@ except Exception as e:
     note("A lỗi", repr(e)[:300])
 
 # ---------------- B. mở app khác đè lên: tab nhỏ có sao không ----------------
-print("B. Mở app khác đè lên tab nhỏ", flush=True)
-try:
-    sh("for n in 1 2 3 4 5; do am force-stop vn.cloudblue.wintest$n; done; input keyevent 3", 40); time.sleep(2); conf(0, 1)
-    start(4); mini(); start(3); mini()
-    p0 = {n: pid(n) for n in (3, 4)}; c0 = {n: creates(n) for n in (3, 4)}
-    t3 = task(3)
-    if t3: note("B am task focus (đưa tab lên không gửi lệnh mở)", sh(f"am task focus {t3['id']} 2>&1").replace("\n", " ")[:160] or "(trống)")
-    st, _ = states(); note("B0 có 2 tab nhỏ", f"trạng thái {st} · pid {p0}"); shot("b0-hai-tab-nho")
-    start(1); time.sleep(15)                                # khách mở app khác (toàn màn, ép ngang) đè lên
-    st, _ = states(); p1 = {n: pid(n) for n in (3, 4)}; c1 = {n: creates(n) for n in (3, 4)}
-    note("B1 mở app 1 toàn màn đè lên 15 giây", f"trạng thái {st} · pid giữ nguyên={p1 == p0} · tải lại={c1 != c0} ({c0}→{c1})"); shot("b1-mo-app-de-len")
-    oom = sh("for n in 3 4; do p=$(pidof vn.cloudblue.wintest$n); [ -n \"$p\" ] && echo \"$n:$(cat /proc/$p/oom_score_adj)\"; done")
-    note("B1 oom_score_adj (càng cao càng dễ bị Android tắt khi thiếu RAM)", oom.replace("\n", " "))
-    t1 = task(1)                                             # cách giữ tab nhỏ vẫn hiện: app mới thành cửa sổ TO (gần hết màn)
-    if t1:
-        sh("input keyevent 3"); time.sleep(1)
-        d = cp.win_to(sh, t1, cp.WIN_FREEFORM, int(sh("getprop ro.build.version.sdk") or 0), time.sleep)
-        if d:
-            g = cp.win_settle(sh)["geo"]; a = cp.win_area(g); sh(f"am task resize {d['id']} {a[0]} {a[1]} {a[2]} {a[3]}"); time.sleep(4)
-        st, _ = states(); oom = sh("for n in 3 4; do p=$(pidof vn.cloudblue.wintest$n); [ -n \"$p\" ] && echo \"$n:$(cat /proc/$p/oom_score_adj)\"; done")
-        note("B2 app mới thành cửa sổ to (đổi={})".format(bool(d)), f"trạng thái {st} · oom {oom.replace(chr(10), ' ')}"); shot("b2-app-moi-cua-so-to")
-    code, j = cp.win_run(sh, "tile"); time.sleep(3)
-    st, _ = states(); p3 = {n: pid(n) for n in (3, 4)}; c3 = {n: creates(n) for n in (3, 4)}
-    note("B3 Sắp xếp tab", f"{code} {j.get('msg') or j.get('error')} · trạng thái {st} · pid giữ nguyên={p3 == p0} · tải lại={c3 != c0}"); shot("b3-sap-xep")
-    life = [l.split("wintest:")[-1].strip() for l in logs() if re.search(r"n=[34] u=0 (pause|stop|resume|start|create)", l)]
-    note("B nhật ký app 3/4", " · ".join(life[-14:]))
-except Exception as e:
-    note("B lỗi", repr(e)[:300])
+def run_b(tag, force, nonres):
+    """Mục B với 1 kiểu cài đặt: tag "B" = cách máy chủ đang dùng cho bản Android này (cpapi.win_conf_sh), "Bép" = ép đổi cỡ (cách cũ) để so."""
+    print(f"{tag}. Mở app khác đè lên tab nhỏ (force_resizable={force}, non_resizable_multi_window={nonres})", flush=True)
+    try:
+        sh("for n in 1 2 3 4 5; do am force-stop vn.cloudblue.wintest$n; done; input keyevent 3", 40); time.sleep(2); conf(force, nonres); sh("logcat -c")
+        start(4); mini(); start(3); mini()
+        p0 = {n: pid(n) for n in (3, 4)}; c0 = {n: creates(n) for n in (3, 4)}
+        t3 = task(3)
+        if t3: note(f"{tag} am task focus (đưa tab lên không gửi lệnh mở)", sh(f"am task focus {t3['id']} 2>&1").replace("\n", " ")[:160] or "(trống)")
+        st, _ = states(); note(f"{tag}0 có 2 tab nhỏ", f"trạng thái {st} · pid {p0}"); shot(f"{tag.lower()}0-hai-tab-nho")
+        start(1); time.sleep(15)                                # khách mở app khác (toàn màn, ép ngang) đè lên
+        st, _ = states(); p1 = {n: pid(n) for n in (3, 4)}; c1 = {n: creates(n) for n in (3, 4)}
+        note(f"{tag}1 mở app 1 toàn màn đè lên 15 giây", f"trạng thái {st} · pid giữ nguyên={p1 == p0} · tải lại={c1 != c0} ({c0}→{c1})"); shot(f"{tag.lower()}1-mo-app-de-len")
+        oom = sh("for n in 3 4; do p=$(pidof vn.cloudblue.wintest$n); [ -n \"$p\" ] && echo \"$n:$(cat /proc/$p/oom_score_adj)\"; done")
+        note(f"{tag}1 oom_score_adj (càng cao càng dễ bị Android tắt khi thiếu RAM)", oom.replace("\n", " "))
+        t1 = task(1)                                             # cách giữ tab nhỏ vẫn hiện: app mới thành cửa sổ TO (gần hết màn)
+        if t1:
+            sh("input keyevent 3"); time.sleep(1)
+            d = cp.win_to(sh, t1, cp.WIN_FREEFORM, int(sh("getprop ro.build.version.sdk") or 0), time.sleep)
+            if d:
+                g = cp.win_settle(sh)["geo"]; a = cp.win_area(g); sh(f"am task resize {d['id']} {a[0]} {a[1]} {a[2]} {a[3]}"); time.sleep(4)
+            st, _ = states(); c2 = {n: creates(n) for n in (3, 4)}
+            oom = sh("for n in 3 4; do p=$(pidof vn.cloudblue.wintest$n); [ -n \"$p\" ] && echo \"$n:$(cat /proc/$p/oom_score_adj)\"; done")
+            note(f"{tag}2 app mới thành cửa sổ to (đổi={bool(d)})", f"trạng thái {st} · tải lại={c2 != c0} ({c2}) · oom {oom.replace(chr(10), ' ')}"); shot(f"{tag.lower()}2-app-moi-cua-so-to")
+        c2b = {n: creates(n) for n in (3, 4)}
+        code, j = cp.win_run(sh, "tile"); time.sleep(3)
+        st, _ = states(); p3 = {n: pid(n) for n in (3, 4)}; c3 = {n: creates(n) for n in (3, 4)}
+        note(f"{tag}3 Sắp xếp tab", f"{code} {j.get('msg') or j.get('error')} · trạng thái {st} · pid giữ nguyên={p3 == p0} · tải lại={c3 != c0} "
+             f"(trước Sắp xếp {c2b} → sau {c3})"); shot(f"{tag.lower()}3-sap-xep")
+        life = [l.split("wintest:")[-1].strip() for l in logs() if re.search(r"n=[34] u=0 (pause|stop|resume|start|create|size)", l)]
+        note(f"{tag} nhật ký app 3/4", " · ".join(life[-18:]))
+    except Exception as e:
+        note(f"{tag} lỗi", repr(e)[:300])
+
+
+if API in (31, 32, 33): run_b("Bep", 1, 0)                   # 12 / 12L / 13: so với cách cũ (ép đổi cỡ) — xem tải lại do cài đặt hay do bản Android
+_c = cp.win_conf_sh(API)
+run_b("B", 0 if "force_resizable_activities 0" in _c else 1, 1 if "enable_non_resizable_multi_window 1" in _c else 0)
 
 open(os.path.join(OUT, f"fit-{API}-ketqua.txt"), "w", encoding="utf-8").write("\n".join(RES) + "\n")
 print("\n".join(RES), flush=True)
