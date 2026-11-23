@@ -12,7 +12,8 @@ S = {}
 def reset():
     S.clear()
     S.update(tunnels=[], configs={}, dns=[], calls=[], seq=0,
-             nodes=[{"id": "win1", "age": 20}, {"id": "win5", "age": 99999}, {"id": "win8", "age": 15}])     # age = giây từ lần báo gần nhất
+             nodes=[{"id": "win1", "age": 20}, {"id": "win5", "age": 99999}, {"id": "win8", "age": 15}],     # age = giây từ lần báo gần nhất
+             phones=[{"node": "win5", "status": "active"}, {"node": "win5", "status": "expired"}, {"node": "win5", "status": "cancelled"}, {"node": "win8", "status": "active"}])
 
 
 reset()
@@ -42,6 +43,11 @@ class H(BaseHTTPRequestHandler):
             if self.headers.get("apikey") != SBKEY or self.headers.get("Authorization") != "Bearer " + SBKEY: return self.out(401, {"message": "Invalid API key"})
             now = time.time()
             return self.out(200, [{"id": n["id"], "updated_at": time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(now - n["age"]))} for n in S["nodes"]])
+        if p.startswith("/rest/v1/cloud_phones"):                                 # ---- máy khách theo máy chủ (node=eq.winN&status=in.(…))
+            if self.headers.get("apikey") != SBKEY: return self.out(401, {"message": "Invalid API key"})
+            node = (q.get("node") or "").replace("eq.", "")
+            want = (q.get("status") or "").replace("in.(", "").rstrip(")").split(",")
+            return self.out(200, [{"status": x["status"]} for x in S["phones"] if x["node"] == node and x["status"] in want])
         if not p.startswith("/client/v4/"): return self.out(404, {"error": "?"})
         tok = (self.headers.get("Authorization") or "").replace("Bearer ", "")
         S["calls"].append(method + " " + p)

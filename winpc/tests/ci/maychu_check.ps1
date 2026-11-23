@@ -4,7 +4,7 @@
 #    1. cu phap may-chu-iso.ps1 + firstboot.ps1 bang chinh Windows PowerShell
 #    2. tung ham cua may-chu-iso.ps1: ten may chu, tep KHOA=gia tri, che khoa bi mat, doc ban phim khi khong co ai
 #    3. goi API that qua 1 may chu GIA (fake_cf.py): bang cloud_nodes cua Supabase, tao duong ham Cloudflare + dia chi + ban ghi ten mien
-#    4. chay CA luong cai may chu (Main) voi bo cai gia lap gia, setup.ps1 gia, phonectl gia: ten tu luc cai Windows, trung ten, can khoi dong lai
+#    4. chay CA luong cai may chu (Main) voi bo cai gia lap gia, setup.ps1 gia, phonectl gia: ten tu luc cai Windows, trung ten, ten con may khach, can khoi dong lai
 #    5. firstboot.ps1 that: chep tep, dung tac vu tu chay quyen Admin (roi go ngay)
 #  Khong dung toi may that nao, khong khoi dong lai may chay thu. Luon thoat ma 0; ket qua o trang tom tat + tep ketqua.
 # =====================================================================================================
@@ -144,6 +144,15 @@ try {
   $stt.reboots = 4
   $rn2 = Restart-Now $stt "thu"
   Ck "Restart-Now: da khoi dong lai 4 lan -> thoi, de luong cai di tiep" (@($rn2)[-1] -eq $false)
+
+  $fi = Join-Path $Wk "inno.exe"
+  $fn = Join-Path $Wk "nsis.exe"
+  $fx = Join-Path $Wk "la.exe"
+  [IO.File]::WriteAllBytes($fi, ([byte[]](1..200) + [Text.Encoding]::ASCII.GetBytes('<assemblyIdentity name="JR.Inno.Setup" type="win32"/>') + (New-Object byte[] 5000)))
+  [IO.File]::WriteAllBytes($fn, ((New-Object byte[] 70000) + [Text.Encoding]::ASCII.GetBytes('xx Nullsoft.NSIS.exehead yy')))
+  [IO.File]::WriteAllBytes($fx, (New-Object byte[] 3000))
+  Ck "Get-SetupKind: nhan bo cai dong goi bang Inno Setup / NSIS theo dau trong tep; tep la / khong co tep -> rong" (((Get-SetupKind $fi) -eq "inno") -and ((Get-SetupKind $fn) -eq "nsis") -and ((Get-SetupKind $fx) -eq "") -and ((Get-SetupKind (Join-Path $Wk "khong-co.exe")) -eq ""))
+  Ck "Get-SetupArgs: Inno -> /VERYSILENT ..., NSIS -> /S (ke ca ban LDPlayer dong goi lai); khong ro: LDPlayer chinh hang -silence, MuMu /S" (((Get-SetupArgs "ld" $fi) -match '^/VERYSILENT ') -and ((Get-SetupArgs "ld" $fn) -eq "/S") -and ((Get-SetupArgs "ld" $fx) -match '^-silence .*-path="C:\\LDPlayer\\LDPlayer9\\"$') -and ((Get-SetupArgs "mumu" $fx) -eq "/S") -and ((Get-SetupArgs "mumu" $fi) -match '^/VERYSILENT '))
 
   # ------------------------------------------------------------------------------------------- 3. API qua may chu gia
   Out-Line "== 3. Supabase + Cloudflare (may chu gia fake_cf.py)"
@@ -318,7 +327,14 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   New-Case "a" "win9" $true
   $WantNode = "win9"
   $Conf = ""
+  Set-Content -Path (Join-Path $CBPC "cb.json") -Value '{"user": "PC", "role": "server", "user_admin": true}' -Encoding ASCII
+  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) {            # 2 tac vu gia cua phan mem may PC cho thue (bo cai Windows dung)
+    $ta = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c exit 0"
+    $tt = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddDays(30))
+    Register-ScheduledTask -TaskName $tn -Action $ta -Trigger $tt -Force | Out-Null
+  }
   Main | Out-Null
+  $pcT = @(@("CloudBluePC Agent", "CloudBluePC Watch") | ForEach-Object { "" + (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue).State })
   $cA = Read-KV (Join-Path $B "cloudphone.conf")
   $logA = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
   $msA = Get-Mock "/_state"
@@ -347,10 +363,16 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   Ck "A: xong thi xoa khoa bi mat khoi tep cau hinh ISO (ca ban trong thu muc bo cai); so ghi done" (($kA["SUPABASE_SERVICE_KEY"] -eq "") -and ($kA["CF_API_TOKEN"] -eq "") -and ($kS["SUPABASE_SERVICE_KEY"] -eq "") -and ($kS["CF_API_TOKEN"] -eq "") -and ($stA.done -eq 1) -and ($stA.n -eq 9) -and ($stA.emu_new -eq 0))
   Ck "A: nhat ky KHONG chua khoa Supabase / ma Cloudflare / ma chay duong ham" ((-not $logA.Contains($SbGood)) -and (-not $logA.Contains($CfTok)) -and (-not ($logA -match 'T0KEN')))
 
+  Ck "A: may cai tu ISO may chu (cb.json role = server) -> tat 2 tac vu cua phan mem may PC cho thue" (($pcT -join ",") -eq "Disabled,Disabled") ($pcT -join ",")
+
   # ---- B. ten go trung may chu dang chay (win8) + khong ai tra loi -> tu lay so ke tiep
   New-Case "b" "win8" $true
   $WantNode = "win9"
+  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { Enable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null }
   Main | Out-Null
+  $pcT2 = @(@("CloudBluePC Agent", "CloudBluePC Watch") | ForEach-Object { "" + (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue).State })
+  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { try { Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue } catch { } }
+  Ck "B: may KHONG phai cai tu ISO may chu (khong co role) -> khong dung toi tac vu cua phan mem may PC" (($pcT2 -join ",") -eq "Ready,Ready") ($pcT2 -join ",")
   $cB = Read-KV (Join-Path $B "cloudphone.conf")
   $logB = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
   Ck "B: win8 dang chay o may khac -> KHONG dung trung; khong ai go -> tu lay so ke tiep win9; gia lap da co thi khong cai lai" (($RC -eq 0) -and ($cB["NODE_ID"] -eq "win9") -and ($logB -match "win8 DANG CHAY o 1 may chu khac") -and ($logB -match "so ke tiep - tu chon") -and (-not ($logB -match "Dang cai MuMu"))) ("RC=" + $RC + " node=" + $cB["NODE_ID"])
@@ -365,6 +387,16 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   $logC = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
   Ck "C: go 12 -> win12; setup bao KHOI DONG LAI -> goi khoi dong lai 1 lan, ma tra ve 3, chua dung toi Cloudflare" (($RC -eq 3) -and ($Reboots -eq 1) -and ($logC -match "Ten may chu: win12") -and (-not ($logC -match "7/11 Duong ham"))) ("RC=" + $RC + " reboots=" + $Reboots)
   Ck "C: setup.ps1 khong nhan ra MuMu -> tu ghi cau hinh nhu may-moi.ps1 (win12, phone12 / stream12, cong 8200, thu muc MuMu)" (($cC["NODE_ID"] -eq "win12") -and ($cC["PUBLIC_BASE"] -eq "https://phone12.example.test") -and ($cC["STREAM_WS"] -eq "wss://stream12.example.test/v2/stream") -and ($cC["STREAM_PORT"] -eq "8200") -and ($cC["MUMU_DIR"] -eq $EmuDir) -and ($cC["EMU"] -eq "mumu") -and ($cC["ANDROIDS"] -eq "12,15")) (($cC.Keys | ForEach-Object { $_ + "=" + $cC[$_] }) -join " | ")
+
+  # ---- E. ten go la may chu DANG TAT nhung web con may khach dang thue o do (win5) -> khong cho dung ten do
+  New-Case "e" "5" $true
+  $WantNode = "win9"
+  Main | Out-Null
+  $cE = Read-KV (Join-Path $B "cloudphone.conf")
+  $logE = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
+  Ck "E: go 5 ma web con 2 may khach dang thue o win5 (may chu do dang tat) -> KHONG dung ten do; khong ai go -> so ke tiep win9" (($RC -eq 0) -and ($cE["NODE_ID"] -eq "win9") -and ($logE -match "Web con 2 may khach dang thue o win5") -and ($logE -match "so ke tiep - tu chon")) ("RC=" + $RC + " node=" + $cE["NODE_ID"])
+  $np = @((Get-NodePhones $MockUrl $SbGood 5), (Get-NodePhones $MockUrl $SbGood 8), (Get-NodePhones $MockUrl $SbGood 9), (Get-NodePhones $MockUrl "khoa-sai-000000000000000000000000" 5))
+  Ck "Get-NodePhones: dem may khach dang thue theo may chu (khong tinh may da huy); khoa sai -> -1" (($np -join ",") -eq "2,1,0,-1") ($np -join ",")
 
   # ---- D. ISO khong kem khoa + khong ai go ten -> khong tu chon bua; cho nguoi go (thu: het gio thi dung o do)
   New-Case "d" "" $false
