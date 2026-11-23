@@ -67,7 +67,7 @@ try {
   # nap cac ham + vai bien dau file cua tao-iso.ps1 vao phien nay (KHONG chay phan than)
   $fdefs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
   foreach ($fd in $fdefs) { . ([scriptblock]::Create($fd.Extent.Text)) }
-  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER', '$CFAPI', '$LinkRoot')
+  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER', '$CFAPI', '$LinkRoot', '$UA', '$SbWhy')
   foreach ($st in $ast.EndBlock.Statements) {
     if ($st -is [System.Management.Automation.Language.AssignmentStatementAst]) {
       if ($wantVars -contains ("" + $st.Left.Extent.Text)) { . ([scriptblock]::Create($st.Extent.Text)) }
@@ -260,6 +260,26 @@ try {
   Ck "Get-JwtRole: doc muc role cua khoa eyJ..." (((Get-JwtRole $jwtSvc) -eq "service_role") -and ((Get-JwtRole $jwtAnon) -eq "anon") -and ((Get-JwtRole "rac") -eq "")) ((Get-JwtRole $jwtSvc) + " / " + (Get-JwtRole $jwtAnon))
   Ck "Test-SbKeyShape: nhan khoa service_role (eyJ... / sb_secret_...), tu choi khoa anon / publishable / chuoi ngan" (((Test-SbKeyShape $jwtSvc) -eq "") -and ((Test-SbKeyShape ("sb_secret_" + ("a" * 30))) -eq "") -and ((Test-SbKeyShape $jwtAnon) -match "anon") -and ((Test-SbKeyShape ("sb_publishable_" + ("a" * 30))) -match "CONG KHAI") -and ((Test-SbKeyShape "abc") -ne "") -and ((Test-SbKeyShape ("x" * 40)) -ne ""))
   Ck "Test-SbService: may chu khong toi duoc -> rong (khong nem loi)" ((Test-SbService "https://127.0.0.1:9" ("sb_secret_" + ("a" * 30))) -eq "")
+  # Supabase that tu choi khoa sb_secret_... khi yeu cau tu xung la trinh duyet ("Mozilla/5.0 ..." - mac dinh cua PowerShell) -> thu voi may chu gia cung luat do
+  $pyC = Get-Command python -ErrorAction SilentlyContinue
+  if ($pyC) {
+    $sbPort = Get-Random -Minimum 20000 -Maximum 40000
+    $sbKey = "sb_secret_ci_" + ("k" * 30)
+    $sbSrv = Start-Process -FilePath $pyC.Source -ArgumentList @((Join-Path $PSScriptRoot "fake_cf.py"), ("" + $sbPort), "example.test", $sbKey) -PassThru -WindowStyle Hidden
+    try {
+      $sbUp = $false
+      for ($i = 0; ($i -lt 40) -and (-not $sbUp); $i++) { try { [void](Invoke-RestMethod -Uri ("http://127.0.0.1:" + $sbPort + "/_state") -TimeoutSec 3); $sbUp = $true } catch { Start-Sleep -Milliseconds 300 } }
+      Ck "may chu Supabase gia chay duoc" $sbUp
+      $ts1 = Test-SbService ("http://127.0.0.1:" + $sbPort) $sbKey
+      $why1 = "" + $SbWhy
+      $ts2 = Test-SbService ("http://127.0.0.1:" + $sbPort) ("sb_secret_sai_" + ("x" * 30))
+      $why2 = "" + $SbWhy
+      Ck "Test-SbService: khoa sb_secret_ DUNG -> ok (yeu cau khong tu xung la trinh duyet; neu khong Supabase tra 401 du khoa dung)" ($ts1 -eq "ok") ($ts1 + " | " + $why1)
+      Ck "Test-SbService: khoa sai -> bad, kem cau tra loi cua may chu, KHONG lo khoa" (($ts2 -eq "bad") -and ($why2 -match "Invalid API key") -and (-not $why2.Contains("sb_secret_sai_"))) ($ts2 + " | " + $why2)
+      $st0 = Invoke-RestMethod -Uri ("http://127.0.0.1:" + $sbPort + "/_state") -TimeoutSec 5
+      Ck "khong yeu cau nao bi may chu coi la trinh duyet" (-not $st0.browser_block) ("" + $st0.browser_block)
+    } finally { try { Stop-Process -Id $sbSrv.Id -Force -ErrorAction SilentlyContinue } catch {} }
+  } else { Info "BO QUA: may nay khong co python - khong thu duoc Test-SbService voi may chu gia" }
   $oldCf = $CFAPI
   $CFAPI = "https://127.0.0.1:9/client/v4"
   $ctx = Test-CfToken "ma-gia" "example.test"

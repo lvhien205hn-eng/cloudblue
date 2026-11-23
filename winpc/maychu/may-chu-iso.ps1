@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11g)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11h)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -15,7 +15,7 @@
 #  -Lib : chi nap cac ham (de kiem thu), khong chay.
 # =====================================================================================================
 param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11g'
+$MC_VER = '23.11h'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -163,7 +163,8 @@ function Invoke-Api([string]$method, [string]$url, $headers, $body = $null, [int
   # Tra @{ ok; code; data; err } - khong nem loi. err da che khoa bi mat.
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
   try {
-    $p = @{ Method = $method; Uri = $url; Headers = $headers; TimeoutSec = $timeout; UseBasicParsing = $true; ErrorAction = 'Stop' }
+    # UserAgent rieng: PowerShell mac dinh tu xung "Mozilla/5.0 ..." -> Supabase coi la trinh duyet, tu choi khoa sb_secret_... (401) du khoa dung
+    $p = @{ Method = $method; Uri = $url; Headers = $headers; TimeoutSec = $timeout; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = ('cloudblue-may-chu/' + $MC_VER) }
     if ($null -ne $body) { $p.Body = [Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 8 -Compress)); $p.ContentType = 'application/json' }
     $r = Invoke-WebRequest @p
     $d = $null
@@ -198,7 +199,7 @@ function Get-Url([string]$url, [string]$dst) {
   $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
   if (Test-Path -LiteralPath $curl) { & $curl -fsSL --retry 2 --connect-timeout 20 -o $dst $url 2>$null | Out-Null }
   if (-not (Test-Path -LiteralPath $dst) -or ((Get-Item -LiteralPath $dst).Length -lt 1)) {
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $dst -TimeoutSec 180 -ErrorAction Stop } catch {}
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -UserAgent ('cloudblue-may-chu/' + $MC_VER) -Uri $url -OutFile $dst -TimeoutSec 180 -ErrorAction Stop } catch {}
   }
   return ((Test-Path -LiteralPath $dst) -and ((Get-Item -LiteralPath $dst).Length -gt 0))
 }
