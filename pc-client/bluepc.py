@@ -6248,7 +6248,8 @@ class ToolsDlg(Dlg):
         self.app.btn(r, "Thu nhỏ tab", lambda: self.win("mini")).pack(side="left")
         self.app.btn(r, "Sắp xếp tab", lambda: self.win("tile"), "soft").pack(side="left", padx=(8, 0))
         self.app.btn(r, "Phóng to tab", lambda: self.win("full"), "soft").pack(side="left", padx=(8, 0))
-        self.app.btn(r, "Mở lại vừa khung", self.win_refit, "soft").pack(side="left", padx=(8, 0))      # 23/11b
+        r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(8, 0))                                      # 23/11b · hàng riêng (chữ dài)
+        self.app.btn(r, "Mở lại vừa khung", self.win_refit, "soft").pack(side="left")
         self.win_msg = self.msg(f)
         f = self.section("Xoay màn", parent=pg)
         self.muted(f, "Khoá màn máy NGANG hoặc DỌC (giữ luôn cả khi tắt app). Game chỉ chạy màn ngang vẫn tự xoay ngang. "
