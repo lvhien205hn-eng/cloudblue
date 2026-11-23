@@ -18,7 +18,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "23.11a"
+REMOTE_VER = "23.11b"
 IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -801,7 +801,19 @@ class Session:
         elif t == C_CLIP and len(p) >= 1:
             s = p[1:1 + CLIP_MAX].decode("utf-8", "replace")
             self.clip_last = s; self.io.clip_set(s)
-            if p[0]: time.sleep(0.05); self.keys.tap(0xA2, 0x56)        # dán ngay: Ctrl+V
+            if p[0]: self._paste(p[0])                                   # dán ngay (1 = Ctrl+V / nút Dán · 2 = khách bấm Ctrl+Shift+V)
+
+    def _paste(self, mode):
+        """23.11b: dán ngay sau khi đặt bộ nhớ copy. Phím bổ trợ khách ĐANG GIỮ (Ctrl của Ctrl+V…) nhả ra trước, dán, rồi nhấn lại → tổ hợp dán
+           sạch (không thành Ctrl+Shift+Insert / Ctrl+Ctrl+V lẫn lộn) và máy vẫn khớp phím khách đang giữ (bấm tiếp Ctrl+C vẫn là copy).
+           Máy Linux (io.paste): cbcap tự chọn phím theo cửa sổ (Konsole Ctrl+Shift+V…). Windows: Ctrl+V (mode 2: Ctrl+Shift+V)."""
+        held = [vk for vk in sorted(self.keys.down | self.keys.auto_held) if vk in MOD_VKS]
+        for vk in held: self.io.key(vk, False, vk in EXT_VKS)
+        time.sleep(0.05)
+        fn = getattr(self.io, "paste", None)
+        if fn is not None: fn(mode)
+        else: self.keys.tap(*((0xA2, 0xA0, 0x56) if mode == 2 else (0xA2, 0x56)))
+        for vk in held: self.io.key(vk, True, vk in EXT_VKS)
 
     def _input(self):
         while not self.closed:
