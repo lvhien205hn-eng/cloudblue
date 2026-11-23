@@ -1535,10 +1535,13 @@ TUNE = (# CLONE TAB cần Android cho phép nhiều người dùng (máy ảo m�
         # và app bấm vào chỉ phóng to icon rồi KHÔNG MỞ — lỗi khách báo 09/11)
         "settings put global window_animation_scale 0.5; settings put global transition_animation_scale 0.5; "
         "settings put global animator_duration_scale 0.5; settings put global package_verifier_enable 0; "
-        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). 23/11d: MỌI bản Android ép app đổi cỡ được —
-        # bỏ kiểu "không ép đổi cỡ để Android thu nhỏ cả hình" của bản 23/11b (máy MuMu Android 12 thật vẽ cửa sổ kiểu đó lệch lên góc trên
-        # trái màn, không thu hình); game kiểu cũ thì cpapi mở lại ngay trong tab cho vừa khung (cpapi.win_conf_sh đặt y như đây).
-        "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
+        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). Android 13+ KHÔNG ép đổi cỡ + cho app không
+        # đổi cỡ vào cửa sổ → Android thu nhỏ CẢ HÌNH game vừa cửa sổ (máy MuMu Android 15 thật: đúng chỗ, game không phải mở lại). 23/11d:
+        # Android 12L trở xuống ÉP app đổi cỡ được — máy MuMu Android 12 thật vẽ cửa sổ kiểu thu hình lệch lên góc trên trái màn (bản 23/11b đặt
+        # kiểu đó từ 12L); game kiểu cũ thì cpapi mở lại ngay trong tab cho vừa khung. Giống cpapi.win_conf_sh (WIN_SCM_SDK = 33).
+        "settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
+        "if [ \"$(getprop ro.build.version.sdk)\" -ge 33 ] 2>/dev/null; then settings put global force_resizable_activities 0; "
+        "settings put global enable_non_resizable_multi_window 1; else settings put global force_resizable_activities 1; fi; "
         # treo game qua đêm: không ngủ đông (doze), không xếp app vào nhóm hạn chế, không đóng băng app chạy nền
         "dumpsys deviceidle disable >/dev/null 2>&1; settings put global app_standby_enabled 0; "
         "settings put global adaptive_battery_management_enabled 0; settings put global always_finish_activities 0; "

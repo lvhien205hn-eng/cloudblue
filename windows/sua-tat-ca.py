@@ -5,8 +5,9 @@
 #                 NGAY TRONG tab của nó sau khi cửa sổ đã đúng chỗ + cỡ (am kill giữ tab → mở sạch vào đúng tab) → vẽ vừa cửa sổ; lần đầu thu nhỏ
 #                 trên màn 360 dp tự bật màn rộng 600 dp; cửa sổ đúng tỉ lệ hình game 16:9. Nút Xoay / Màn ngang rộng: máy bỏ qua khoá xoay
 #                 (MuMu) → cpapi cài app trợ giúp vn.cloudblue.xoay (nằm sẵn trong cpapi.py) đặt cửa sổ phủ ép màn ngang.
-#                 BỎ kiểu "Android tự thu nhỏ hình" của bản 23/11b–c (máy MuMu thật vẽ cửa sổ kiểu đó lệch lên góc trên trái): mọi bản Android
-#                 ép app đổi cỡ được + mở lại game ngay trong tab; Android 10–12L bù thanh tiêu đề lúc mở lại. Cập nhật cpapi + phonectl.
+#                 Kiểu "Android tự thu nhỏ hình" của bản 23/11b–c: máy MuMu Android 12 thật vẽ cửa sổ kiểu đó lệch lên góc trên trái → Android
+#                 12L trở xuống ép app đổi cỡ được + mở lại game ngay trong tab (bù thanh tiêu đề lúc mở lại); Android 13+ (máy MuMu Android 15
+#                 thật thu hình đúng chỗ) giữ kiểu thu hình, game không phải mở lại. Cập nhật cpapi + phonectl.
 #        23/11c — 🗗 TAB CỬA SỔ NHỎ đợt 3 (khách clone nhiều tab): nút Cửa sổ to hơn / nhỏ hơn (cửa sổ trên cùng to / nhỏ 25 %, giữ tỉ lệ) +
 #                       🖥 Màn ngang rộng (độ rộng nhỏ nhất 600 dp + khoá ngang → màn chính nằm ngang, xếp được nhiều tab) / Màn dọc như cũ.
 #                       Chỉ cập nhật cpapi (bật lại ~2 giây); máy khách KHÔNG tắt.
