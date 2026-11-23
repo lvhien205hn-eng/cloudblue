@@ -265,15 +265,22 @@ if top:
     code, j = run("shrink"); t2 = next((x for x in tasks() if x["id"] == top["id"]), None); shot("15-cua-so-nho-hon")
     ck("Cửa sổ nhỏ hơn → cửa sổ đó nhỏ lại (đúng cỡ máy chủ báo)", code == 200 and t1 and t2 and tuple(t2["b"]) == tuple(j.get("b") or ())
        and area(t2["b"]) < area(t1["b"]), (code, j, t1 and t1["b"], t2))
-n9 = len(ffs())
+n9 = len(ffs()); d0 = dens(); scr = cp.win_screen(sh) or {"w": 720, "h": 1280}; dw = min(scr["w"], scr["h"]) * 160 // 600
+def rotv(): return sh("settings get system user_rotation").strip()
+def prevv(): return sh(f"settings get global {cp.WIN_PREV_KEY}").strip()
+print("   màn trước khi bật Màn ngang rộng:", scr, "mật độ", d0, "→ cần", dw, flush=True)
 code, j = run("wide"); time.sleep(3); gw = cp.win_state(sh)["geo"]; ws = ffs(); shot("16-man-ngang-rong")
-ck(f"🖥 Màn ngang rộng → độ rộng nhỏ nhất 600 dp (mật độ 192) + khoá ngang, {n9} tab vẫn đủ và nằm trong màn", code == 200 and j.get("sw") == 600 and dens() == [192]
-   and sh("settings get system user_rotation").strip() == "1" and len(ws) == n9 and inside(gw, ws), (code, j, dens(), gw, [x["b"] for x in ws]))
-info("màn chính xoay ngang khi bật Màn ngang rộng (màn chính kiểu máy tính bảng)", gw["w"] > gw["h"] and bool(j.get("turned")), (gw, j))
+p9 = {"mã": code, "sw": j.get("sw"), "mật độ": dens(), "cần": dw, "khoá": rotv(), "tab": (len(ws), n9), "trong màn": inside(gw, ws), "nhớ": prevv(), "xoay": j.get("turned")}
+ck(f"🖥 Màn ngang rộng → độ rộng nhỏ nhất ≥ 600 dp + khoá ngang (giữ được khoá), nhớ mật độ cũ, {n9} tab vẫn đủ và nằm trong màn",
+   code == 200 and (j.get("sw") or 0) >= 600 and p9["mật độ"] == [dw] and p9["khoá"] == "1" and len(ws) == n9 and p9["trong màn"]
+   and p9["nhớ"].startswith(f"{d0[0]}:"), (p9, (gw["w"], gw["h"]), [x["b"] for x in ws], j.get("msg")))
+info("màn chính xoay ngang khi bật Màn ngang rộng (màn chính kiểu máy tính bảng)", gw["w"] > gw["h"] and bool(j.get("turned")), (p9, (gw["w"], gw["h"])))
 code, j = run("narrow"); time.sleep(3); gn = cp.win_state(sh)["geo"]; ws = ffs(); shot("17-man-doc-nhu-cu")
-ck(f"Màn dọc như cũ → trả mật độ mặc định (320) + khoá dọc, màn dọc, {n9} tab nằm trong màn", code == 200 and dens() == [320]
-   and sh("settings get system user_rotation").strip() == "0" and gn["h"] > gn["w"] and len(ws) == n9 and inside(gn, ws), (code, j, dens(), gn, [x["b"] for x in ws]))
-sh("wm density 320; settings put system user_rotation 0", 20); time.sleep(2)          # trả máy như cũ cho test_fit.py chạy sau
+p9 = {"mã": code, "sw": j.get("sw"), "mật độ": dens(), "cần": d0, "khoá": rotv(), "tab": (len(ws), n9), "trong màn": inside(gn, ws), "nhớ": prevv(), "màn": (gn["w"], gn["h"])}
+ck(f"Màn dọc như cũ → trả ĐÚNG mật độ trước đó ({d0[0]}) + khoá dọc, màn dọc, xoá dấu nhớ, {n9} tab nằm trong màn",
+   code == 200 and p9["mật độ"] == d0 and p9["khoá"] == "0" and gn["h"] > gn["w"] and len(ws) == n9 and p9["trong màn"]
+   and p9["nhớ"] in ("null", ""), (p9, [x["b"] for x in ws], j.get("msg")))
+sh(f"wm density {d0[0]}; settings put system user_rotation 0; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)   # trả máy như cũ cho test_fit.py chạy sau
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "".join("XX " + f + "\n" for f in FAILS)

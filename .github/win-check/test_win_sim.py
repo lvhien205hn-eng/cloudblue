@@ -46,6 +46,12 @@ class Droid:
         # / mở app khác. stick=True: máy kẹt ngang cả khi đã chờ xoay xong (để thử đường về màn chính).
         self.force, self.nonres, self.apps = ("1" if free else "null"), "null", {}
         self.pd, self.od, self.urot, self.home_rot = 320, None, 0, True   # 23/11c: mật độ (Physical / Override) · khoá xoay · màn chính xoay được khi ≥ 600 dp
+        self.prev = None                                          # cài đặt global cb_win_prev_density (mật độ trước khi bật Màn ngang rộng)
+        self.psize = None                                         # (rộng, cao) vật lý khi máy đã đổi độ phân giải (wm size) — như máy ảo CI 320x640 → 640x1280
+        # tật của Android 15 THẬT (máy ảo Pixel, lượt chạy 23/11): đổi mật độ → vài nhịp sau giao diện hệ thống dựng lại thanh điều hướng và TỰ
+        # đặt khoá xoay về hướng màn ĐANG hiện; màn chính cũng tới lúc đó mới dựng lại theo mật độ mới (thành kiểu máy tính bảng, xoay được).
+        # quirk=True: bật tật · navlag: số lệnh sau khi đổi mật độ · navwhen: (thay navlag) dựng lại đúng lúc gặp lệnh có chữ này
+        self.quirk, self.navlag, self.navwhen, self._nav, self._hsw = False, 3, None, 0, None
 
     def _sync(self):
         """Màn vừa đổi hướng → Android 9–11 xoay chỗ các cửa sổ nổi theo (DisplayContent.rotateBounds); Android 10/11 còn đẩy cửa sổ
@@ -93,12 +99,21 @@ class Droid:
         if self.pend > 0: return self.W, self.H                   # game ngang vừa mở nguội: màn chưa xoay xong
         top = next((x for x in self.z if x["mode"] == FS), None)
         if top is not None and top["land"]: return max(self.W, self.H), min(self.W, self.H)
-        if self.urot == 1 and (top is None or top["type"] != "home" or (self.home_rot and self.sw() >= 600)):   # khoá ngang: màn chính chỉ xoay
+        hsw = self.sw() if self._hsw is None else self._hsw       # màn chính còn chưa dựng lại → vẫn theo mật độ cũ
+        if self.urot == 1 and (top is None or top["type"] != "home" or (self.home_rot and hsw >= 600)):   # khoá ngang: màn chính chỉ xoay
             return max(self.W, self.H), min(self.W, self.H)                                                       # khi máy như máy tính bảng
         return self.W, self.H
 
     def sw(self):
-        return round(min(self.W, self.H) * 160 / (self.od or self.pd))
+        return min(self.W, self.H) * 160 // (self.od or self.pd)
+
+    def _dens(self, v):
+        if self.quirk: self._hsw = self.sw(); self._nav = self.navlag if not self.navwhen else -1
+        self.od = v
+
+    def _navbar(self):
+        """Giao diện hệ thống dựng lại xong: đang khoá xoay → đặt khoá về hướng màn đang hiện; màn chính dựng lại theo mật độ mới."""
+        W, H = self.size(); self.urot = 1 if W > H else 0; self._hsw = None; self._nav = 0
 
     # ---- hiển thị ----
     def _p_stacks(self):
@@ -148,6 +163,10 @@ class Droid:
 
     def _sh(self, c, t=30):
         self.log.append(c)
+        if self._nav > 0:
+            self._nav -= 1
+            if self._nav == 0: self._navbar()
+        elif self._nav < 0 and self.navwhen and self.navwhen in c: self._navbar()
         if c == cp.WIN_STATE_SH:
             if self.pend > 0: self.pend -= 1
             W, H = self.shown(); land = W > H
@@ -158,12 +177,21 @@ class Droid:
                     f"\n#R\n{self.force}\n{self.nonres}")
         if c.startswith("am stack list"): return self.stack_list()
         if c == cp.WIN_SCREEN_SH:
-            return f"Physical size: {min(self.W, self.H)}x{max(self.W, self.H)}\nPhysical density: {self.pd}" + (f"\nOverride density: {self.od}" if self.od else "")
-        if "settings put system user_rotation" in c:          # 23/11c: 🖥 màn ngang rộng / màn dọc như cũ
-            m = re.search(r"wm density (\d+);", c)
-            if m: self.od = int(m.group(1))
-            if "wm density reset;" in c: self.od = None
-            self.urot = int(re.search(r"user_rotation (\d)", c).group(1)); return ""
+            sz = (f"Physical size: {self.psize[0]}x{self.psize[1]}\nOverride size: {min(self.W, self.H)}x{max(self.W, self.H)}" if self.psize
+                  else f"Physical size: {min(self.W, self.H)}x{max(self.W, self.H)}")
+            return sz + f"\nPhysical density: {self.pd}" + (f"\nOverride density: {self.od}" if self.od else "")
+        if c == cp.WIN_ROT_SH: return str(self.urot)          # 23/11c: 🖥 màn ngang rộng / màn dọc như cũ
+        if c.startswith(f"settings get global {cp.WIN_PREV_KEY}"): return self.prev or "null"
+        if "settings put system user_rotation" in c or "wm density" in c or cp.WIN_PREV_KEY in c:
+            m = re.search(rf"settings put global {cp.WIN_PREV_KEY} (\S+);", c)
+            if m: self.prev = m.group(1)
+            if f"settings delete global {cp.WIN_PREV_KEY}" in c: self.prev = None
+            m = re.search(r"wm density (\d+)", c)
+            if m: self._dens(int(m.group(1)))
+            if "wm density reset" in c: self._dens(None)
+            m = re.search(r"settings put system user_rotation (\d)", c)
+            if m: self.urot = int(m.group(1))
+            return ""
         if c.startswith("settings put global enable_freeform_support 1"):
             self.free = True
             m = re.search(r"force_resizable_activities (\d)", c); self.force = m.group(1) if m else self.force
@@ -294,6 +322,8 @@ ck("lệnh mở lại tab: Android 12 có --display 0 + --windowingMode 5, Andro
 
 # ============================================================== 3. luồng của khách
 cp.time.sleep = lambda s: None                       # máy giả: không chờ thật
+_win_run = cp.win_run                                # … kể cả các nhịp chờ win_run nhận qua tham số sleep (mặc định là time.sleep THẬT, gắn lúc nạp cpapi)
+cp.win_run = lambda sh, do, sleep=(lambda s: None): _win_run(sh, do, sleep)
 GP = cp.win_geo("Display: mDisplayId=0\n cur=720x1280 app=720x1184", "Physical density: 320", [])
 for sdk in (28, 29, 30, 31, 35):
     print(f"3. Android {sdk}: thu nhỏ → về màn chính → mở app khác → thu nhỏ → clone → sắp xếp → phóng to")
@@ -467,6 +497,44 @@ ck("màn chính của máy không xoay ngang → vẫn đặt 600 dp + khoá nga
 d = Droid(35); d.od = 160
 code, j = cp.win_run(d.sh, "wide")
 ck("máy đã đặt rộng hơn 600 dp (720 dp) → giữ nguyên mật độ khách chọn, chỉ khoá ngang", code == 200 and d.od == 160 and j["sw"] == 720 and j["n"] == 0, (code, j, d.od))
+# máy thử thật 23/11 (lượt #32): màn 640×1280 (đã đổi độ phân giải) ra 599 dp + Màn dọc như cũ trả 284 thay vì 320 · Android 15 tự trả khoá xoay
+d = Droid(31, w=640, h=1280); d.psize, d.pd, d.od = (320, 640), 160, 320; d.open(R1, land=True); cp.win_run(d.sh, "mini")
+code, j = cp.win_run(d.sh, "wide")
+ck("màn 640×1280 (đã đổi độ phân giải): Màn ngang rộng làm tròn XUỐNG → 602 dp (không phải 599), nhớ mật độ cũ 320", code == 200 and d.od == 170 and j["sw"] == 602
+   and d.prev == "320:640" and j["turned"], (code, j, d.od, d.prev))
+code, j = cp.win_run(d.sh, "narrow")
+ck("… Màn dọc như cũ → trả ĐÚNG mật độ trước đó (320, không phải 284 'mặc định theo cỡ'), xoá dấu nhớ", code == 200 and d.od == 320 and d.prev is None and j["sw"] == 320
+   and d.urot == 0 and not any("wm density reset" in x for x in d.log), (code, j, d.od, d.prev))
+d = Droid(35); d.od = 240; d.open(R1, land=True); cp.win_run(d.sh, "mini")
+code, j = cp.win_run(d.sh, "wide"); code2, j2 = cp.win_run(d.sh, "wide")
+ck("khách đã tự chọn 480 dp ở 📐 → Màn ngang rộng 600 dp, bấm 2 lần vẫn nhớ mật độ khách chọn (240)", code == 200 and code2 == 200 and d.od == 192 and d.prev == "240:720", (code, j, code2, d.od, d.prev))
+code, j = cp.win_run(d.sh, "narrow")
+ck("… Màn dọc như cũ → về lại 480 dp khách chọn (không ép về mặc định)", code == 200 and d.od == 240 and j["sw"] == 480 and d.prev is None, (code, j, d.od))
+d = Droid(35); d.od = 240; d.open(R1, land=True); cp.win_run(d.sh, "mini"); d.log.clear()
+code, j = cp.win_run(d.sh, "narrow")
+ck("chưa bật Màn ngang rộng mà bấm Màn dọc như cũ → chỉ khoá dọc, KHÔNG đụng mật độ khách chọn", code == 200 and d.od == 240 and d.urot == 0
+   and not any(re.search(r"wm density (\d+(;|$)|reset)", x) for x in d.log), (code, j, d.od, [x for x in d.log if re.search(r"wm density (\d+(;|$)|reset)", x)]))
+d = Droid(35); d.open(R1, land=True); cp.win_run(d.sh, "mini"); cp.win_run(d.sh, "wide"); d.W, d.H = 1080, 1920       # khách đổi độ phân giải sau đó
+code, j = cp.win_run(d.sh, "narrow")
+ck("bật Màn ngang rộng rồi máy đổi độ phân giải → Màn dọc như cũ không đặt mật độ cũ (hết đúng), chỉ xoá dấu nhớ + khoá dọc", code == 200 and d.od == 192 and d.prev is None and d.urot == 0, (code, j, d.od, d.prev))
+for nm, kw in (("sớm (vài nhịp sau khi đổi mật độ)", {"navlag": 3}), ("muộn (lúc đang xếp lại tab)", {"navwhen": "am task resize"})):
+    d = Droid(35); d.quirk = True
+    for k, v in kw.items(): setattr(d, k, v)
+    d.open(R1, land=True); cp.win_run(d.sh, "mini"); d.open(R2, land=True); cp.win_run(d.sh, "mini")
+    code, j = cp.win_run(d.sh, "wide")
+    W, H = d.size(); gl = cp.win_state(d.sh)["geo"]; ws = sorted([x for x in d.z if x["mode"] == FF], key=lambda t: t["id"])
+    ck(f"Android 15 thật — giao diện hệ thống dựng lại {nm} rồi TỰ trả khoá xoay về dọc → khoá lại, màn chính vẫn nằm ngang, tab theo lưới ngang",
+       code == 200 and j["turned"] and d.urot == 1 and (W, H) == (1280, 720) and d.od == 192 and [x["b"] for x in ws] == cp.win_grid(gl, len(ws))
+       and "NGANG RỘNG" in j["msg"], (code, j, d.urot, (W, H), [x["b"] for x in ws]))
+    code, j = cp.win_run(d.sh, "narrow")
+    W, H = d.size(); gp3 = cp.win_state(d.sh)["geo"]; ws = sorted([x for x in d.z if x["mode"] == FF], key=lambda t: t["id"])
+    ck(f"… ({nm}) Màn dọc như cũ → màn dọc, khoá dọc, mật độ cũ, tab theo lưới dọc", code == 200 and d.urot == 0 and (W, H) == (720, 1280) and d.od is None
+       and [x["b"] for x in ws] == cp.win_grid(gp3, len(ws)), (code, j, d.urot, (W, H), d.od))
+d = Droid(35); d.home_rot = False
+for i in range(9): d.open(f"vn.game.t{i}/.Main", land=True); cp.win_run(d.sh, "mini")
+code, j = cp.win_run(d.sh, "wide")
+ck("màn chính không xoay + nhiều tab vẫn chồng → gợi ý mức CAO HƠN (800 dp), không nhắc lại 600 dp đang dùng", code == 200 and not j["turned"] and "VD 800 dp" in j["msg"]
+   and "VD 600 dp" not in j["msg"] and "Màn nhỏ nên" not in j["msg"] and "Đã xếp 9 tab" in j["msg"], (code, j))
 d = Droid(35); d.open(R1, land=True)
 code, j = cp.win_run(d.sh, "grow")
 ck("chưa có tab nhỏ nào → Cửa sổ to hơn báo dễ hiểu", code == 409 and "Chưa có tab nhỏ" in j["error"], (code, j))
