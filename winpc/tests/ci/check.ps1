@@ -231,6 +231,18 @@ try {
   $g4 = Get-LinkFile ($fu + "khong-co.exe") (Join-Path $lkDir "4")
   Ck "Get-LinkFile: tai duoc tep .exe that, giu dung ten (co dau cach)" (($g1.why -eq "") -and ((Split-Path -Leaf $g1.path) -eq "MuMu Installer gia.exe") -and ((Get-Item -LiteralPath $g1.path).Length -eq 3000)) ("" + $g1.why + " | " + $g1.path)
   Ck "Get-LinkFile: tep .exe gia / link tra ve trang web (Drive het luot) / link hong -> noi ro ly do, khong de lai tep rac, khong nem loi" (($g2.why -match "khong phai tep .exe that") -and ($g3.why -match "TRANG WEB") -and ($g4.why -match "curl ma") -and (-not $g2.path) -and (-not $g3.path) -and (@(Get-ChildItem -LiteralPath (Join-Path $lkDir "3") -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "tai-ve.hdr" }).Count -eq 0)) (@($g2.why, $g3.why, $g4.why) -join " | ")
+  # Google Drive hoi xac nhan khi tep lon (trang web co form download-form) -> tu lay link that roi tai lai
+  $gdPage = Join-Path $td "gd-xac-nhan.html"
+  Set-Content -Path $gdPage -Value ('<!DOCTYPE html><html><head><title>Google Drive - Virus scan warning</title></head><body><p class="uc-warning-caption">Google Drive cannot scan this file for viruses.</p><form id="download-form" action="https://drive.usercontent.google.com/download" method="get"><input type="submit" id="uc-download-link" value="Download anyway"/><input type="hidden" name="id" value="' + $gid + '"><input type="hidden" name="export" value="download"><input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="0a1b2c3d-4e5f-6789-abcd-ef0123456789"></form></body></html>') -Encoding ASCII
+  $gf1 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid + "&export=download&confirm=t")
+  Set-Content -Path $gdPage -Value '<!DOCTYPE html><html><body><form id="download-form" action="https://evil.example/download" method="get"><input type="hidden" name="id" value="x"></form></body></html>' -Encoding ASCII
+  $gf2 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid)
+  Set-Content -Path $gdPage -Value '<!DOCTYPE html><html><body>Sorry, you cannot view or download this file at this time. Too many users have viewed or downloaded this file recently.</body></html>' -Encoding ASCII
+  $gf3 = Get-DriveFormUrl $gdPage ("https://drive.usercontent.google.com/download?id=" + $gid)
+  Ck "Get-DriveFormUrl: trang Google Drive hoi xac nhan tep lon -> link tai that (du id, export, confirm, uuid); form tro sang may chu la / trang het luot tai -> rong" (($gf1 -eq ("https://drive.usercontent.google.com/download?id=" + $gid + "&export=download&confirm=t&uuid=0a1b2c3d-4e5f-6789-abcd-ef0123456789")) -and ($gf2 -eq "") -and ($gf3 -eq "")) ($gf1 + " | " + $gf2 + " | " + $gf3)
+  Set-Content -Path (Join-Path $lkSrc "xac-nhan.exe") -Value ('<!DOCTYPE html><html><body><form id="download-form" action="' + $fu + 'MuMu%20Installer%20gia.exe" method="get"><input type="hidden" name="id" value="abc"><input type="hidden" name="confirm" value="t"><input type="hidden" name="uuid" value="u-1"></form></body></html>') -Encoding ASCII
+  $g5 = Get-LinkFile ($fu + "xac-nhan.exe") (Join-Path $lkDir "5")
+  Ck "Get-LinkFile: lan dau nhan trang hoi xac nhan (tep lon tren Google Drive) -> tu theo form tai lai, ra dung tep that, khong de lai tep rac" (($g5.why -eq "") -and $g5.path -and ((Split-Path -Leaf $g5.path) -eq "xac-nhan.exe") -and ((Get-Item -LiteralPath $g5.path).Length -eq 3000) -and (@(Get-ChildItem -LiteralPath (Join-Path $lkDir "5") -File).Count -eq 1)) ("" + $g5.why + " | " + $g5.path)
   $LinkRoot = Join-Path $td "lk goc"
   $rl1 = Resolve-Link ($fu + "MuMu%20Installer%20gia.exe")
   Remove-Item -Force -LiteralPath (Join-Path $lkSrc "MuMu Installer gia.exe")
