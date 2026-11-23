@@ -389,6 +389,84 @@ else:
             subprocess.run(["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value 'copy tren may PC'"], capture_output=True, timeout=60)
             m = take(R.S_CLIP, 8)
             ck("dau-cuoi: copy chu tren may PC -> nguoi xem nhan duoc", m is not None and m[1] == b"copy tren may PC", m)
+            # ---- 23.11b: DAN nhu khach that (app / web: khach GIU Ctrl -> phim Ctrl sang may, phim V doi thanh goi Dan): o EDIT · CMD · PowerShell
+            try:
+                import ctypes
+                from ctypes import wintypes as wt
+                u32 = ctypes.WinDLL("user32", use_last_error=True)
+                u32.SetForegroundWindow.argtypes = [wt.HWND]; u32.GetForegroundWindow.restype = wt.HWND
+                u32.SendMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, ctypes.c_void_p]; u32.SendMessageW.restype = ctypes.c_ssize_t
+                u32.GetAsyncKeyState.argtypes = [ctypes.c_int]; u32.GetAsyncKeyState.restype = ctypes.c_short
+                u32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]; u32.IsWindowVisible.argtypes = [wt.HWND]
+                ENUM = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+                def find_title(sub):
+                    hit = []
+
+                    def cb(h, _):
+                        b = ctypes.create_unicode_buffer(512); u32.GetWindowTextW(h, b, 512)
+                        if sub in b.value and u32.IsWindowVisible(h): hit.append(h)
+                        return True
+                    u32.EnumWindows(ENUM(cb), 0)
+                    return hit[0] if hit else None
+
+                def front(h):
+                    for _ in range(4):
+                        io.key(0x12, True); io.key(0x12, False)          # Alt 1 lan: Windows cho chuong trinh nay dua cua so len truoc
+                        u32.SetForegroundWindow(h)
+                        if wait(lambda: u32.GetForegroundWindow() == h, 2): return True
+                    return False
+
+                def guest_paste(s, mode=1):
+                    vc.send(R.C_KEY, struct.pack(">BII", 0, 113, 0)); time.sleep(0.15)          # khach giu Ctrl (Ctrl trai)
+                    vc.send(R.C_CLIP, bytes([mode]) + s.encode("utf-8")); time.sleep(1.2)
+                    vc.send(R.C_KEY, struct.pack(">BII", 1, 113, 0)); time.sleep(0.5)
+
+                def enter():
+                    vc.send(R.C_KEY, struct.pack(">BII", 0, 66, 0)); time.sleep(0.08); vc.send(R.C_KEY, struct.pack(">BII", 1, 66, 0))
+                stop2 = threading.Event(); eh = []
+
+                def edit_win():
+                    u = ctypes.WinDLL("user32", use_last_error=True)
+                    u.CreateWindowExW.argtypes = [wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.HWND, wt.HANDLE, wt.HANDLE, ctypes.c_void_p]
+                    u.CreateWindowExW.restype = wt.HWND; u.SetFocus.argtypes = [wt.HWND]; u.DestroyWindow.argtypes = [wt.HWND]
+                    h = u.CreateWindowExW(0, "EDIT", "", 0x10CF0004, 140, 140, 560, 240, None, None, None, None)   # WS_OVERLAPPEDWINDOW | WS_VISIBLE | ES_MULTILINE
+                    eh.append(h); msg = wt.MSG()
+                    while not stop2.is_set():
+                        while u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                            u.TranslateMessage(ctypes.byref(msg)); u.DispatchMessageW(ctypes.byref(msg))
+                        time.sleep(0.02)
+                    u.DestroyWindow(h)
+                threading.Thread(target=edit_win, daemon=True).start()
+                if wait(lambda: eh, 5) and front(eh[0]):
+                    txt = "dán vào ô chữ · Tiếng Việt 23.11b"
+                    guest_paste(txt)
+                    buf = ctypes.create_unicode_buffer(4096); u32.SendMessageW(eh[0], 0x000D, 4096, ctypes.cast(buf, ctypes.c_void_p))
+                    ck("23.11b dau-cuoi: khach giu Ctrl + Dan -> chu (co dau) vao o EDIT dung 1 lan", buf.value == txt, buf.value)
+                    ck("23.11b dau-cuoi: dan xong + khach nha Ctrl -> may khong ket phim Ctrl", not (u32.GetAsyncKeyState(0x11) & 0x8000))
+                else:
+                    note("BO QUA thu dan vao o EDIT: khong dua duoc cua so thu len truoc")
+                stop2.set()
+                for name, argv, title, cmd, want in (
+                        ("CMD (conhost)", ["cmd.exe", "/k", "title CBDANCMD"], "CBDANCMD", 'echo CB-DAN-CMD> "%s"', "CB-DAN-CMD"),
+                        ("PowerShell (PSReadLine)", ["powershell.exe", "-NoLogo", "-NoProfile", "-NoExit", "-Command", "$Host.UI.RawUI.WindowTitle = 'CBDANPS'"], "CBDANPS",
+                         "Set-Content -LiteralPath '%s' -Value 'CB-DAN-PS Tiếng Việt' -Encoding UTF8", "CB-DAN-PS Tiếng Việt")):
+                    fout = os.path.join(tmp, "cbdan-%s.txt" % title.lower())
+                    pr = subprocess.Popen(argv, creationflags=0x10)                     # CREATE_NEW_CONSOLE: cua so dong lenh that
+                    try:
+                        h = wait(lambda: find_title(title), 20)
+                        time.sleep(2.0)
+                        if h and front(h):
+                            guest_paste(cmd % fout); enter()
+                            got = wait(lambda: os.path.isfile(fout) and open(fout, "rb").read(), 10)
+                            val = got.decode("utf-8-sig", "replace").strip() if got else None
+                            ck("23.11b dau-cuoi: khach dan lenh vao %s (giu Ctrl + Dan) + Enter -> lenh chay dung chu" % name, val == want, (val, plog[-3:]))
+                        else:
+                            note("BO QUA thu dan vao %s: khong thay / khong dua duoc cua so len truoc (%s)" % (name, h))
+                    finally:
+                        pr.kill()
+            except Exception as e:
+                ck("23.11b dau-cuoi: thu dan chay duoc", False, repr(e))
         enc = wait(lambda: (rm.sess.enc if rm.sess is not None else None), 3)
         vc.send(C_BYE)
         ck("dau-cuoi: nguoi xem dong -> may PC tat ffmpeg (khong ai xem thi khong ton may)", wait(lambda: rm.sess is None and (enc is None or enc.exited()), 8), (rm.sess, plog[-3:]))
