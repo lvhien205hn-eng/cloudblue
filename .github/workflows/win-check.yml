@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [28, 29, 30, 31, 32, 33, 34, 35]     # 32–34: xem Android có thu nhỏ hình game không đổi cỡ (size compat) như Android 15 không
+        api: [28, 31, 32, 35]     # bản đang bán: Android 9 · 12 (máy ảo báo 31 hoặc 32 tuỳ bản) · 15 — 10 / 11 / 13 / 14 không bán
     steps:
       - uses: actions/checkout@v4
       - name: Bật KVM cho máy ảo Android
