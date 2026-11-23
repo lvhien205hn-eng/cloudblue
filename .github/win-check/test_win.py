@@ -4,7 +4,7 @@
    thu nhỏ → về màn chính → mở app khác → thu nhỏ (cửa sổ cũ vẫn đúng chỗ, hiện lại) → clone → kéo thanh tiêu đề (dời) + kéo góc (đổi cỡ)
    bằng chạm như khách bấm qua luồng hình → sắp xếp (dọc, ngang) → phóng to → thu nhỏ lại. Chụp ảnh từng bước.
    Chạy (máy ảo đã bật):  python3 test_win.py <api> <thư mục apk> <thư mục ảnh>"""
-import importlib.util, os, re, subprocess, sys, tempfile, time
+import importlib.util, os, re, struct, subprocess, sys, tempfile, time
 
 API, APKS, OUT = int(sys.argv[1]), sys.argv[2], sys.argv[3]
 os.makedirs(OUT, exist_ok=True)
@@ -147,6 +147,34 @@ def fitted(sz, b, g):
 
 
 def area(b): return max(0, b[2] - b[0]) * max(0, b[3] - b[1])
+
+
+def raw_shot():
+    """Ảnh chụp màn dạng thô (không nén): (rộng, cao, dữ liệu RGBA, chỗ bắt đầu điểm ảnh)."""
+    try: r = adb("exec-out", "screencap", t=40).stdout or b""
+    except Exception: return None
+    if len(r) < 16: return None
+    w, h = struct.unpack("<II", r[:8]); off = len(r) - w * h * 4
+    return (w, h, r, off) if (0 < w < 5000 and 0 < h < 5000 and 8 <= off <= 64) else None
+
+
+def pic_at(b, g):
+    """VIỀN VÀNG app thử vẽ quanh mép hình (16 px) có nằm đúng mép khung b trên ẢNH CHỤP MÀN không — mép trái, mép phải, mép dưới. Đây là thứ
+       khách thấy (sổ ghi khung tab của Android có thể đúng mà hình nằm chỗ khác — lỗi đo trên máy MuMu Android 12 thật). Trả [đúng?, đúng?, đúng?]."""
+    s_ = raw_shot()
+    if not s_: return None
+    w, h, r, off = s_; sx, sy = w / float(g["w"]), h / float(g["h"])
+    def px(x, y):
+        x, y = int(x * sx), int(y * sy)
+        return r[off + (y * w + x) * 4: off + (y * w + x) * 4 + 3] if 0 <= x < w and 0 <= y < h else b"\0\0\0"
+    amber = lambda c: len(c) == 3 and c[0] > 200 and 140 < c[1] < 240 and c[2] < 100
+    my, mx = (b[1] + b[3]) // 2 + 30, (b[0] + b[2]) // 2
+    return [amber(px(b[0] + 8, my)), amber(px(b[2] - 9, my)), amber(px(mx, b[3] - 9))]
+
+
+def seen(t):
+    """cpapi đọc chỗ THẬT của hình tab t (dumpsys input) so với khung tab: True / False / None."""
+    return cp.win_seen(sh, [(t, t["b"])], time.sleep, tries=8) if t else None
 
 
 st0 = cp.win_state(sh); g0 = st0["geo"]
@@ -417,6 +445,68 @@ if API >= cp.WIN_SCM_SDK:
     ck(f"… bấm 🖼 Vừa khung → mở lại đúng 1 lần ngay trong tab, hình theo cỡ cửa sổ: app thấy {sz2} · cửa sổ {t2b and t2b['b']}",
        code == 200 and bool(t2b) and t2b["mode"] == "freeform" and creates(2) == 2 and fitted(sz2, t2b["b"], cp.win_state(sh)["geo"]), (code, j, t2b, creates(2), sz2))
     sh(f"am force-stop vn.cloudblue.wintest2; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
+# 12. 23/11e · Android 12+: HÌNH của cửa sổ nhỏ nằm ĐÚNG KHUNG TAB. Từ Android 12 bên đặt chỗ hình của cửa sổ nổi là giao diện hệ thống, và nó
+#     chỉ làm việc đó nếu cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG. Máy thật bật cài đặt sau khi đã mở máy → tab thứ 2 bị vẽ đè lên tab đầu (đo
+#     trên MuMu Android 12). Làm lại đúng 2 cảnh đó trên máy ảo: (a) máy chưa bật cửa sổ nổi · (b) đã bật nhưng giao diện hệ thống chạy từ trước.
+if API >= cp.WIN_UI_SDK:
+    cp.WIN_SCM_KEEP = True
+    def ui_pid(): return sh("pidof com.android.systemui").split()
+    def ui_cold(on):
+        """Tắt hết app thử → tắt cửa sổ nổi → bật lại giao diện hệ thống (nó khởi động lúc cài đặt đang TẮT) → on: bật lại cài đặt như máy thật."""
+        sh("input keyevent 3"); time.sleep(1)
+        sh("; ".join(f"am force-stop vn.cloudblue.wintest{n}" for n in (1, 2, 3, 4, 5)) + "; am force-stop --user 10 vn.cloudblue.wintest1", 30); time.sleep(3)
+        old = ui_pid()
+        sh(f"settings put global enable_freeform_support 0; settings delete global {cp.WIN_UI_KEY}; sleep 1; kill {' '.join(old)}", 30)
+        for _ in range(60):
+            time.sleep(1); now = ui_pid()
+            if now and not (set(now) & set(old)): break
+        time.sleep(8)
+        if on: sh(cp.win_conf_sh(API), 20); time.sleep(2)
+        print(f"   (giao diện hệ thống bật lại lúc cửa sổ nổi TẮT: {old} → {ui_pid()} · cài đặt bây giờ: {sh(FREE).split()})", flush=True)
+    r5 = adb("install", "-r", "-t", os.path.join(APKS, "wintest5.apk"), t=180)
+    print("cài wintest5:", (r5.stdout + r5.stderr).decode(errors="ignore").strip()[-120:], flush=True)
+    sh(f"wm density {D0}; settings put system user_rotation 0", 20); time.sleep(2)
+    # (a) máy chưa bật cửa sổ nổi
+    ui_cold(False); p0 = ui_pid()
+    open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); g12 = cp.win_state(sh)["geo"]; shot("21-vua-bat-cua-so-noi")
+    pic = pic_at(t3["b"], g12) if t3 else None
+    def frames(): return cp.win_frames(sh, ["vn.cloudblue.wintest3", "vn.cloudblue.wintest5"])
+    print("   chỗ thật của hình (dumpsys input):", frames(), "· dòng gốc:", sh(cp.WIN_FRAME_SH.format(p="vn\\.cloudblue\\.wintest3"))[:420], flush=True)
+    ck("máy CHƯA bật cửa sổ nổi → Thu nhỏ tab: tự bật cài đặt + bật lại giao diện hệ thống (tiến trình mới) rồi thu nhỏ được",
+       code == 200 and bool(t3) and t3["mode"] == "freeform" and tuple(t3["b"]) == tuple(j.get("b") or ()) and bool(p1) and p1 != p0
+       and sh(f"settings get global {cp.WIN_UI_KEY}").strip() not in ("", "null"), (code, j, t3, p0, p1, "\n".join(TRACE[:14])))
+    ck(f"… HÌNH của tab nằm đúng khung tab — chỗ Android nhận chạm (dumpsys input) + viền vàng trên ảnh chụp màn {pic}", seen(t3) is True and bool(pic) and all(pic),
+       (seen(t3), pic, t3 and t3["b"], sh(cp.WIN_FRAME_SH.format(p="vn\\.cloudblue\\.wintest3"))[:600]))
+    # (b) cài đặt đã bật, giao diện hệ thống chạy từ TRƯỚC đó (máy thật đang chạy lúc cập nhật): tab đầu + tab thứ 2
+    ui_cold(True); p0 = ui_pid()
+    open_app(3); time.sleep(2); code, j = run("mini"); time.sleep(3); t3 = task(3); p1 = ui_pid(); shot("22-giao-dien-cu-tab-1")
+    pic = pic_at(t3["b"], g12) if t3 else None
+    print("   chỗ thật của hình (dumpsys input):", frames(), "· khung tab:", t3 and t3["b"], flush=True)
+    info(f"… máy ảo này CÓ lỗi như máy thật (hình lệch khung cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: {p0} → {p1}", p1 != p0, (p0, p1))
+    ck(f"giao diện hệ thống chạy từ trước khi bật cửa sổ nổi → thu nhỏ tab đầu: HÌNH vẫn đúng khung (cpapi tự kiểm + sửa) {pic}",
+       code == 200 and bool(t3) and t3["mode"] == "freeform" and seen(t3) is True and bool(pic) and all(pic),
+       (code, j, t3, seen(t3), pic, p0, p1, "\n".join(TRACE[:16])))
+    sh("input keyevent 3"); time.sleep(2); open_app(5); time.sleep(2); p1 = ui_pid()
+    code, j = run("mini"); time.sleep(3); t3, t5 = task(3), task(5); p2 = ui_pid(); shot("23-giao-dien-cu-tab-2")
+    pic3, pic5 = (pic_at(t3["b"], g12) if t3 else None), (pic_at(t5["b"], g12) if t5 else None)
+    print("   chỗ thật của hình (dumpsys input):", frames(), "· khung tab:", t3 and t3["b"], t5 and t5["b"], flush=True)
+    ck(f"… thu nhỏ tab thứ 2: hình tab 2 nằm đúng Ô CỦA NÓ (không đè tab đầu), tab đầu vẫn đúng chỗ, không bật lại giao diện hệ thống lần nữa · tab đầu {pic3} · tab 2 {pic5}",
+       code == 200 and bool(t3) and bool(t5) and t5["mode"] == "freeform" and area((max(t3["b"][0], t5["b"][0]), max(t3["b"][1], t5["b"][1]), min(t3["b"][2], t5["b"][2]), min(t3["b"][3], t5["b"][3]))) == 0
+       and seen(t5) is True and seen(t3) is True and bool(pic3) and all(pic3) and bool(pic5) and all(pic5) and p2 == p1,
+       (code, j, t3, t5, seen(t3), seen(t5), pic3, pic5, p1, p2, "\n".join(TRACE[:16])))
+    # kéo thanh tiêu đề như khách: hình phải chạy theo khung
+    if t5:
+        capy = t5["b"][1] + int(round(cp.WIN_CAP_DP * g12["dpi"] / 160.0)) // 2; cx = (t5["b"][0] + t5["b"][2]) // 2
+        sh(f"input swipe {cx} {capy} {cx} {capy + 90} 1500", 30); time.sleep(2); t5b = task(5); shot("24-keo-tab-2")
+        moved = bool(t5b) and t5b["b"][1] - t5["b"][1] >= 40
+        picm = pic_at(t5b["b"], g12) if t5b else None
+        info(f"… kéo thanh tiêu đề tab 2 xuống: khung đổi {t5['b']} → {t5b and t5b['b']}", moved, (t5, t5b))
+        if moved: ck(f"… kéo thanh tiêu đề: HÌNH chạy theo khung (không đứng yên chỗ cũ) {picm}", seen(t5b) is True and bool(picm) and all(picm), (seen(t5b), picm, t5b))
+    code, j = run("tile"); time.sleep(3); t3, t5 = task(3), task(5); shot("25-sap-xep-sau-khi-sua")
+    pic3, pic5 = (pic_at(t3["b"], g12) if t3 else None), (pic_at(t5["b"], g12) if t5 else None)
+    ck(f"… Sắp xếp tab: hình cả 2 tab đúng ô · {pic3} · {pic5}", code == 200 and seen(t3) is True and seen(t5) is True and bool(pic3) and all(pic3) and bool(pic5) and all(pic5),
+       (code, j, t3, t5, pic3, pic5))
+    sh("; ".join(f"am force-stop vn.cloudblue.wintest{n}" for n in (3, 5)) + f"; wm density {D0}; settings delete global {cp.WIN_PREV_KEY}", 20); time.sleep(2)
 print("--- am stack list (cuối) ---\n" + sh("am stack list")[:2500], flush=True)
 print(f"API {API}: %d/%d dat · thông tin: %s" % (OK[0], OK[1], ", ".join(("✓ " if c else "✗ ") + n for n, c in INFO)), flush=True)
 open(os.path.join(OUT, f"win-{API}-ketqua.txt"), "w", encoding="utf-8").write(f"{OK[0]}/{OK[1]}\n" + "".join("XX " + f + "\n" for f in FAILS)

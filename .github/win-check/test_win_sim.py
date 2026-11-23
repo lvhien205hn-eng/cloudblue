@@ -35,8 +35,14 @@ class Droid:
        màn" (cả --task). App ÉP NGANG (land) đang toàn màn trên cùng → màn xoay ngang; còn lại theo màn chính. sdk < 31: màn xoay → chỗ các
        cửa sổ nổi xoay theo (giữ nguyên chỗ trên mặt kính)."""
 
-    def __init__(self, sdk, w=720, h=1280, nav=96, free=True, lag=0, stick=False):
+    def __init__(self, sdk, w=720, h=1280, nav=96, free=True, lag=0, stick=False, ui=None):
         self.sdk, self.W, self.H, self.nav, self.free = sdk, w, h, nav, free
+        # 23/11e (đo trên MuMu Android 12 thật): từ Android 12, GIAO DIỆN HỆ THỐNG đặt chỗ hình của cửa sổ nổi — chỉ khi nó khởi động LÚC máy đã
+        # bật cửa sổ nổi (ui = True). ui = False: hình của tab ("at") đứng nguyên chỗ cũ dù khung tab ("b") đã đổi; chỉ về đúng chỗ khi tab vừa
+        # được đưa từ chỗ bị che lên / vừa mở mới, hoặc sau khi giao diện hệ thống được bật lại lúc cửa sổ nổi đã bật.
+        self.ui = (free if ui is None else ui) if sdk >= 31 else True
+        self.ui_pid, self.ui_kills, self.ui_wait, self.ui_key, self.boot = 900, 0, 0, None, "b00t-1"
+        self.ui_root, self.ui_heal, self.in_ok, self.ghost = True, True, True, None   # tắt được tiến trình · bật lại thì khỏi · đọc được dumpsys input · dòng cửa sổ ẩn
         self.lag, self._true, self._old, self._left = lag, None, None, 0          # lag: máy chậm — màn xoay xong mới báo hướng mới sau `lag` lần đọc
         self.z = [{"id": 1, "comp": "com.android.launcher3/.Launcher", "user": 0, "mode": FS, "type": "home", "b": (0, 0, 0, 0), "land": False, "resz": True}]
         self.nid, self.log = 10, []
@@ -205,7 +211,24 @@ class Droid:
 
     # ---- lệnh adb shell ----
     def sh(self, c, t=30):
-        o = self._sh(c, t); self._sync(); return o
+        vis = {x["id"]: self.visible(x) for x in self.z}
+        o = self._sh(c, t); self._sync(); self._place(vis); return o
+
+    def _want(self, t):
+        W, H = self.size()
+        return tuple(t["b"]) if t["mode"] == FF else (0, 0, W, H)
+
+    def _place(self, vis=None):
+        """Chỗ THẬT của hình mỗi tab ("at"): giao diện hệ thống đặt chỗ được (ui) / Android ≤ 11 → theo khung; không thì cỡ theo khung nhưng
+           GÓC đứng nguyên chỗ cũ, trừ tab mới, tab toàn màn, tab vừa được đưa từ chỗ bị che lên (Android đặt lại chỗ khi chạy hiệu ứng mở tab)."""
+        for t in self.z:
+            w = self._want(t); old = t.get("at")
+            if self.ui or old is None or t["mode"] != FF or (vis is not None and not vis.get(t["id"], False) and self.visible(t)): t["at"] = w
+            else: t["at"] = (old[0], old[1], old[0] + w[2] - w[0], old[1] + w[3] - w[1])
+
+    def drawn_ok(self, t):
+        """Hình của tab nằm đúng khung tab (thứ khách thấy)."""
+        self._place({x["id"]: self.visible(x) for x in self.z}); return t.get("at") == self._want(t)
 
     def _sh(self, c, t=30):
         self.log.append(c)
@@ -374,6 +397,41 @@ class Droid:
             if not self.helper: return "Error: Not found; no service started."
             self.ovl = "--es o land" in c; return "Starting service: Intent { cmp=vn.cloudblue.xoay/.Svc (has extras) }"
         if c == cp.WIN_AUTOROT_SH: return f"    mSupportAutoRotation={'true' if self.autorot else 'false'}"
+        # ---- 23/11e: giao diện hệ thống (SystemUI) + chỗ thật của hình (dumpsys input) ----
+        if c == cp.WIN_UI_PID_SH:
+            if self.ui_wait > 0: self.ui_wait -= 1; return ""       # đang bật lại, chưa có tiến trình mới
+            return str(self.ui_pid)
+        if c in (cp.WIN_UI_KILL_SH.replace("@F@", "0"), cp.WIN_UI_KILL_SH.replace("@F@", "1")):
+            if c == cp.WIN_UI_KILL_SH.replace("@F@", "0") and self.ui_key == self.boot: return "#done"
+            self.ui_key = self.boot; old = self.ui_pid
+            if self.ui_root:                                        # tiến trình tắt → Android tự bật lại (2 lần hỏi sau mới thấy tiến trình mới)
+                self.ui_pid += 1; self.ui_wait = 2; self.ui_kills += 1
+                if self.ui_heal: self.ui = self.free
+            return f"#kill {old}"
+        if c.startswith("dumpsys input 2>/dev/null | grep -E "):
+            if not self.in_ok: return ""
+            m = re.search(r"name='\[0-9a-f\]\+ \((.*?)\)/", c); pk = set(m.group(1).replace("\\.", ".").split("|")) if m else set()
+            self._place(); o = []
+            for k, tk in enumerate(self.z):
+                pkg = tk["comp"].split("/")[0]
+                if pkg not in pk or tk["type"] != "standard": continue
+                l, tp, r, b = tk["at"]; shown = self.visible(tk)
+                cls = tk["comp"].replace("/.", "/" + pkg + ".")
+                if self.sdk >= 33:
+                    o.append(f"      {k}: name='5f0c{k}a1 {cls}', id={300 + k}, displayId=0, inputConfig={'0x0' if shown else 'NOT_VISIBLE'}, alpha=1.00, "
+                             f"frame=[{l},{tp}][{r},{b}], globalScale=1.000000, applicationInfo.name=, touchableRegion=[{l - 36},{tp - 36}][{r + 36},{b + 36}]")
+                else:
+                    o.append(f"      {k}: name='5f0c{k}a1 {cls}', id={300 + k}, displayId=0, portalToDisplayId=-1, paused=false, focusable=true, hasWallpaper=false, "
+                             f"visible={'true' if shown else 'false'}, alpha=1.00, flags=NOT_TOUCH_MODAL, type=BASE_APPLICATION, frame=[{l},{tp}][{r},{b}], "
+                             f"globalScale=1.000000, touchableRegion=[{l - 36},{tp - 36}][{r + 36},{b + 36}]")
+            if self.ghost and self.ghost[0] in pk:                  # máy thật còn giữ dòng của cửa sổ ĐÃ ẨN (khung cũ) → không được tính
+                g = self.ghost[1]
+                o.append(f"      9: name='23304ae {self.ghost[0]}/{self.ghost[0]}.Main', id=77, displayId=0, " + (
+                    f"inputConfig=NOT_VISIBLE | NOT_FOCUSABLE, alpha=1.00, " if self.sdk >= 33 else
+                    f"portalToDisplayId=-1, paused=false, focusable=false, hasWallpaper=false, visible=false, alpha=1.00, flags=0, type=BASE_APPLICATION, ")
+                    + f"frame=[{g[0]},{g[1]}][{g[2]},{g[3]}], globalScale=1.000000")
+            return "\n".join(o)
+        if c.startswith("am startservice --user 0 -n com.android.systemui/"): self.ui_wait = 0; return ""
         return "UNKNOWN " + c
 
 
@@ -812,8 +870,15 @@ for sdk in (33, 35):
     kd = cp.win_kinds(d.sh, True).get(a["id"]); kd0 = cp.win_kinds(d.sh).get(a["id"])
     ck(f"Android {sdk} (máy MuMu Android 15 thật thu hình đúng chỗ): game KHAI BÁO không đổi cỡ → để Android thu nhỏ cả hình: KHÔNG mở lại, không đổi mật độ, không tắt app; web vẫn hiện nút Vừa khung (fit=ask)",
        code == 200 and j["fit"] == "ask" and a["starts"] == n0 and a["mode"] == FF and d.od is None and (d.force, d.nonres) == ("0", "1") and d.fits(a)
-       and not any("am kill" in x or "-f 0x10008000" in x for x in d.log) and kd == {"old": False, "fixed": "land"} and kd0 == {"old": True, "fixed": "land"},
+       and not any("am kill" in x or "-f 0x10008000" in x for x in d.log) and kd == {"old": False, "fixed": "land", "scm": True} and kd0 == {"old": True, "fixed": "land"},
        (code, j, a, kd, kd0))
+    gq = cp.win_state(d.sh)["geo"]; cq = cp.win_slot(gq, []); wq = (a["b"][2] - a["b"][0], a["b"][3] - a["b"][1] - gq["cap"])
+    ck(f"Android {sdk}: 23/11e — cửa sổ của game được Android THU HÌNH cũng đúng tỉ lệ hình game 16:9 (không thì Android chừa dải đen quanh hình — đo máy MuMu Android 15 thật)",
+       a["b"] == cp.win_shape(gq, cq, "land") and a["b"] != cq and abs(wq[0] * 9 - wq[1] * 16) <= 16, (a["b"], cq, wq))
+    code, j = cp.win_run(d.sh, "tile"); c1 = cp.win_grid(gq, 1)[0]; wq = (a["b"][2] - a["b"][0], a["b"][3] - a["b"][1] - gq["cap"])
+    ck(f"Android {sdk}: … Sắp xếp khi chỉ có 1 tab: cửa sổ rộng hết màn nhưng CAO đúng tỉ lệ game (không phủ đen cả màn), game không bị mở lại",
+       code == 200 and a["b"] == cp.win_shape(gq, c1, "land") and a["b"][3] - a["b"][1] < (c1[3] - c1[1]) // 2 and abs(wq[0] * 9 - wq[1] * 16) <= 16 and a["starts"] == n0,
+       (code, j, a["b"], c1, wq))
     d.log.clear(); code, j = cp.win_run(d.sh, "refit")
     ck(f"Android {sdk}: … khách bấm 🖼 Vừa khung → mở lại đúng 1 lần ngay trong tab (hình nét theo cỡ cửa sổ)",
        code == 200 and a["starts"] == n0 + 1 and a["mode"] == FF and not a.get("dirty") and at(d, "am kill --user 0 vn.teamobi.knight") >= 0, (code, j, a))
@@ -866,6 +931,108 @@ code, j = cp.win_run(d.sh, "mini")
 ck("Android 9 chưa nhận cửa sổ nổi → 409 bảo Khởi động lại máy 1 lần (reboot=true)", code == 409 and j.get("reboot") and "Khởi động lại" in j["error"], (code, j))
 code, j = cp.win_run(lambda c, t=30: "25\n#S\nError: unknown command 'stack'\n#D\n#W\n#F\n1", "mini")
 ck("Android không đọc được danh sách tab → 409 dễ hiểu", code == 409 and "chưa đọc được danh sách tab" in j["error"], (code, j))
+
+# ============================================================== 4b. 23/11e — hình của cửa sổ nhỏ nằm đúng chỗ (Android 12+)
+print("4b. 23/11e · Android 12+: giao diện hệ thống đặt chỗ cửa sổ nhỏ — bật cửa sổ nổi sau khi mở máy thì phải bật lại giao diện hệ thống 1 lần")
+RZ1, RZ2, OLD1 = "com.roblox.client/.startup.ActivitySplash", "com.termux/.app.TermuxActivity", "vn.game.cu/.Main"
+kills = lambda d: len([x for x in d.log if x.startswith("B=$(cat /proc/sys/kernel/random/boot_id") and "#kill" in x])
+reads = lambda d: len([x for x in d.log if x.startswith("dumpsys input")])
+for sdk in (31, 32, 35):
+    d = Droid(sdk, ui=False); a = d.open(RZ1)                # máy THẬT đang chạy: cửa sổ nổi đã bật, nhưng giao diện hệ thống chạy từ trước đó
+    code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}, giao diện hệ thống chạy từ trước khi bật cửa sổ nổi: thu nhỏ tab đầu → thấy hình lệch khung → bật lại giao diện hệ thống ĐÚNG 1 lần → hình đúng ô",
+       code == 200 and a["mode"] == FF and d.ui_kills == 1 and d.ui and d.drawn_ok(a) and a["at"] == tuple(j["b"]) and d.ui_key == d.boot, (code, j, a, d.ui_kills))
+    b = d.open(RZ2); code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}: thu nhỏ tab thứ 2 → KHÔNG bật lại nữa, hình tab 2 nằm đúng ô của nó, không đè tab đầu",
+       code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and d.drawn_ok(b) and ovl(a["at"], b["at"]) == 0, (code, j, a, b, d.ui_kills))
+    code, j = cp.win_run(d.sh, "tile")
+    ck(f"Android {sdk}: Sắp xếp tab → hình mọi tab đúng ô, không bật lại giao diện hệ thống", code == 200 and d.ui_kills == 1 and d.drawn_ok(a) and d.drawn_ok(b), (code, j, a, b))
+d = Droid(32, ui=False); a = d.open(RZ1); cp._win_seen_dbg = None
+d0 = Droid(32, ui=False); a0 = d0.open(RZ1); d0.in_ok = False; code, j = cp.win_run(d0.sh, "mini")
+ck("máy giả: không bật lại thì hình tab đầu nằm ở GÓC MÀN (chỗ lúc còn toàn màn) dù khung tab đã ở ô — đúng lỗi đo trên máy thật",
+   code == 200 and a0["b"][1] > 0 and a0["at"][:2] == (0, 0) and not d0.drawn_ok(a0), (a0, j))
+ck("máy không cho đọc chỗ thật của hình (dumpsys input trống) → KHÔNG bật lại bừa", d0.ui_kills == 0 and kills(d0) == 0 and reads(d0) >= 1, (d0.ui_kills, reads(d0)))
+d = Droid(32); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini"); b = d.open(RZ2); cp.win_run(d.sh, "mini"); cp.win_run(d.sh, "tile")
+ck("máy đúng sẵn (giao diện hệ thống khởi động lúc cửa sổ nổi đã bật): thu nhỏ 2 tab + sắp xếp → không bật lại lần nào, có đọc chỗ thật để kiểm",
+   code == 200 and d.ui_kills == 0 and kills(d) == 0 and reads(d) >= 3 and d.drawn_ok(a) and d.drawn_ok(b), (d.ui_kills, reads(d)))
+for sdk in (32, 35):
+    d = Droid(sdk, ui=False); d.ghost = ("com.roblox.client", cp.win_slot(GP, [])); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}: dòng cửa sổ ĐÃ ẨN còn sót trong dumpsys input (nằm đúng ô) không che được lỗi — hình đang hiện lệch thì vẫn bật lại",
+       code == 200 and d.ui_kills == 1 and d.drawn_ok(a), (code, j, d.ui_kills, a))
+    d = Droid(sdk); d.ghost = ("com.roblox.client", (0, 0, 720, 417)); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+    ck(f"Android {sdk}: máy đúng sẵn + dòng cửa sổ ẩn ở góc màn → không bật lại", code == 200 and d.ui_kills == 0, (code, j, d.ui_kills))
+for sdk in (31, 32, 35):
+    d = Droid(sdk, free=False); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+    k_set = next((k for k, x in enumerate(d.log) if x.startswith("settings put global enable_freeform_support 1")), -1)
+    k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1)
+    k_start = next((k for k, x in enumerate(d.log) if "--windowingMode 5 " in x), -1)
+    ck(f"Android {sdk} CHƯA bật cửa sổ nổi: bật cài đặt → bật lại giao diện hệ thống NGAY (trước khi thu nhỏ) → thu nhỏ, hình đúng ô, chỉ 1 lần bật lại",
+       code == 200 and 0 <= k_set < k_kill < k_start and d.ui_kills == 1 and d.drawn_ok(a) and a["mode"] == FF, (code, j, k_set, k_kill, k_start, d.ui_kills))
+    ck(f"Android {sdk}: lệnh bật lại lúc vừa bật cửa sổ nổi là lệnh ÉP (không xét dấu đã bật lại)", cp.WIN_UI_KILL_SH.replace("@F@", "1") in d.log, d.log[:6])
+d = Droid(30, ui=False); a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+ck("Android 11 trở xuống (lõi Android tự đặt chỗ): không đọc dumpsys input, không đụng giao diện hệ thống", code == 200 and reads(d) == 0 and kills(d) == 0, (reads(d), kills(d)))
+d = Droid(28, free=False); a = d.open(RZ1, resz=True); code, j = cp.win_run(d.sh, "mini")
+ck("Android 9 chưa bật cửa sổ nổi: không bật lại giao diện hệ thống", kills(d) == 0 and d.ui_kills == 0, (code, j))
+d = Droid(32, ui=False); d.ui_heal = False; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini"); b = d.open(RZ2); c2, j2 = cp.win_run(d.sh, "mini"); cp.win_run(d.sh, "tile")
+ck("máy bật lại rồi mà hình VẪN lệch (lỗi khác): chỉ bật lại 1 lần cho mỗi lần mở máy, các lần bấm sau không bật lại nữa, việc vẫn xong",
+   code == 200 and c2 == 200 and d.ui_kills == 1 and kills(d) >= 2 and d.ui_key == d.boot, (code, c2, d.ui_kills, kills(d)))
+d.boot = "b00t-2"; d.ui_heal = True; c3, j3 = cp.win_run(d.sh, "tile")
+ck("… máy khởi động lại (mã lần mở máy mới) mà hình còn lệch → được bật lại 1 lần nữa", c3 == 200 and d.ui_kills == 2 and d.drawn_ok(a) and d.drawn_ok(b), (c3, d.ui_kills))
+d = Droid(32, ui=False); d.ui_root = False; a = d.open(RZ1); code, j = cp.win_run(d.sh, "mini")
+ck("không tắt được tiến trình giao diện hệ thống (máy khoá quyền): không treo, thu nhỏ vẫn trả kết quả", code == 200 and a["mode"] == FF and d.ui_kills == 0, (code, j))
+d = Droid(32, ui=False); a = d.open(OLD1, land=True, resz=False); code, j = cp.win_run(d.sh, "mini")
+k_kill = next((k for k, x in enumerate(d.log) if "#kill" in x and x.startswith("B=$(cat")), -1); k_amkill = next((k for k, x in enumerate(d.log) if x.startswith("am kill ")), -1)
+ck("game KIỂU CŨ trên máy lệch chỗ: bật lại giao diện hệ thống TRƯỚC khi mở lại game → game mở lại đúng cỡ, hình đúng ô, fit = ok",
+   code == 200 and j.get("fit") == "ok" and 0 <= k_kill < k_amkill and d.ui_kills == 1 and d.fits(a) and d.drawn_ok(a), (code, j, k_kill, k_amkill, a))
+d = Droid(32, ui=False); a = d.open(RZ1); cp.win_run(d.sh, "mini"); d.ui = False; a["at"] = (0, 0, a["b"][2] - a["b"][0], a["b"][3] - a["b"][1]); d.ui_key = None
+code, j = cp.win_run(d.sh, "grow")
+ck("Cửa sổ to hơn trên máy lệch chỗ → cũng kiểm + bật lại 1 lần, hình về đúng khung mới", code == 200 and d.ui_kills == 2 and d.drawn_ok(a) and a["at"] == tuple(j["b"]), (code, j, a))
+ck("win_seen: hình nằm lọt TRONG khung (app được Android thu hình / chừa viền) không tính là lệch; nằm ngoài khung thì tính",
+   cp.win_seen(lambda c, t=0: "  1: name='ab12 com.a/com.a.M', id=1, visible=true, frame=[40,120][600,435], x", [({"pkg": "com.a"}, (0, 100, 652, 516))], lambda s_: None) is True
+   and cp.win_seen(lambda c, t=0: "  1: name='ab12 com.a/com.a.M', id=1, visible=true, frame=[0,0][652,416], x", [({"pkg": "com.a"}, (0, 100, 652, 516))], lambda s_: None) is False
+   and cp.win_seen(lambda c, t=0: "", [({"pkg": "com.a"}, (0, 100, 652, 516))], lambda s_: None) is None
+   and cp.win_seen(lambda c, t=0: "x", [({"pkg": "com.a; rm -rf /"}, (0, 100, 652, 516))], lambda s_: None) is None)
+
+import subprocess
+def ui_sh(force, boot="B1", key="", pid="900", kill_ok=True, su_ok=False):
+    lg = os.path.join(home, "ui-log.txt"); open(lg, "w").close()      # ghi việc ra file: đoạn lệnh thật bỏ chữ báo lỗi (2>/dev/null)
+    stub = ('L="%s"\ncat() { echo "%s"; }\npidof() { [ -n "%s" ] && echo "%s"; }\n'
+            'settings() { if [ "$1" = get ]; then echo "%s"; else echo "PUT $3 $4" >> "$L"; fi; }\n'
+            'kill() { echo "KILL $*" >> "$L"; return %d; }\nsu() { echo "SU $*" >> "$L"; return %d; }\nam() { echo "AM $*" >> "$L"; return 0; }\n'
+            % (lg, boot, pid, pid, key, 0 if kill_ok else 1, 0 if su_ok else 1))
+    r = subprocess.run(["sh", "-c", stub + cp.WIN_UI_KILL_SH.replace("@F@", "1" if force else "0")], capture_output=True, text=True, timeout=20)
+    return r.stdout.strip(), open(lg).read() + r.stderr
+o, e = ui_sh(False, key="B1")
+ck("đoạn lệnh bật lại (chạy thật bằng sh): lần mở máy này đã bật lại rồi → '#done', không tắt gì", o == "#done" and "KILL" not in e and "PUT" not in e, (o, e))
+o, e = ui_sh(False, key="B0")
+ck("… dấu của lần mở máy TRƯỚC → ghi dấu mới + tắt tiến trình → '#kill <pid>'", o == "#kill 900" and "PUT cb_win_ui B1" in e and "KILL 900" in e and "SU" not in e, (o, e))
+o, e = ui_sh(False, key="null")
+ck("… chưa có dấu (settings trả null) → tắt", o == "#kill 900" and "PUT cb_win_ui B1" in e, (o, e))
+o, e = ui_sh(True, key="B1")
+ck("… lệnh ÉP: đã có dấu vẫn tắt", o == "#kill 900" and "KILL 900" in e, (o, e))
+o, e = ui_sh(False, pid="")
+ck("… không thấy tiến trình giao diện hệ thống → '#none', không ghi dấu", o == "#none" and "PUT" not in e and "KILL" not in e, (o, e))
+o, e = ui_sh(False, kill_ok=False, su_ok=True)
+ck("… adb không đủ quyền tắt → dùng su -c (máy MuMu)", o == "#kill 900" and "SU -c kill 900" in e and "AM" not in e, (o, e))
+o, e = ui_sh(False, kill_ok=False, su_ok=False)
+ck("… không có su → thử su 0 rồi am force-stop", o == "#kill 900" and "SU 0 kill 900" in e and "AM force-stop com.android.systemui" in e, (o, e))
+o, e = ui_sh(False, boot="", key="")
+ck("… máy không cho đọc mã lần mở máy → vẫn tắt, ghi dấu '0'", o == "#kill 900" and "PUT cb_win_ui 0" in e, (o, e))
+SAMPLE = ("    Windows:\n      0: name='e1 StatusBar', id=1, visible=true, frame=[0,0][720,29], x\n"
+          "      4: name='d17d71d com.termux/com.termux.app.TermuxActivity', id=1133, displayId=0, portalToDisplayId=-1, paused=false, focusable=true, "
+          "hasWallpaper=false, visible=true, alpha=1.00, flags=NOT_TOUCH_MODAL, type=BASE_APPLICATION, frame=[0,0][720,417], globalScale=1.0, touchableRegion=[-36,-36][756,453]\n"
+          "      5: name='f61d20c vn.cloudblue.wintest4/vn.cloudblue.wintest.Main', id=1140, visible=true, alpha=1.00, frame=[0,29][652,445], globalScale=1.0\n"
+          "      6: name='23304ae com.termux/com.termux.app.TermuxActivity', id=1100, visible=false, alpha=1.00, frame=[0,493][720,910], globalScale=1.0\n"
+          "      7: name='aa01 com.termuxx/com.termuxx.Main', id=1, visible=true, frame=[5,5][9,9], x\n")
+def real_sh(c, t=0):
+    f = os.path.join(home, "input.txt"); open(f, "w").write(SAMPLE)
+    return subprocess.run(["sh", "-c", 'dumpsys() { cat "%s"; }\n' % f + c], capture_output=True, text=True, timeout=20).stdout
+fr = cp.win_frames(real_sh, ["com.termux", "vn.cloudblue.wintest4", "bad pkg; id"])
+ck("đọc chỗ thật của hình (chạy thật grep trên bản in của máy MuMu Android 12): đúng cửa sổ đang hiện của từng app, bỏ cửa sổ ẩn, bỏ app trùng đầu tên",
+   fr == {"com.termux": [(0, 0, 720, 417)], "vn.cloudblue.wintest4": [(0, 29, 652, 445)]}, fr)
+ck("… bản in đó = đúng lỗi đo trên máy thật: Termux khung [0,446][720,863] mà hình ở góc màn → lệch; wintest4 đúng chỗ",
+   cp.win_seen(real_sh, [({"pkg": "com.termux"}, (0, 446, 720, 863))], lambda s_: None, tries=1) is False
+   and cp.win_seen(real_sh, [({"pkg": "vn.cloudblue.wintest4"}, (0, 29, 652, 445))], lambda s_: None, tries=1) is True, fr)
 
 # ============================================================== 5. cổng HTTP
 print("5. Cổng /cpapi/<máy>/win")
