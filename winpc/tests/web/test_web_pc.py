@@ -183,10 +183,11 @@ def main():
     base, new = read(BASE_HTML), read(NEW_HTML)
     with sync_playwright() as pw:
         br = pw.chromium.launch(executable_path="/usr/bin/google-chrome", headless=True, args=["--no-sandbox", "--disable-gpu"])
-        TABS = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vps", "biz", "promo", "site"]
+        TABS0 = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vps", "biz", "promo", "site"]       # trang gốc (trước 24/11)
+        TABS = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vm", "promo", "site"]              # 24/11: bỏ Máy VPS + Dàn máy nội bộ, thêm 🧩 VPS ảo hoá
 
         print("1. Trang gốc và trang đã gắn: không thêm lỗi nào")
-        s0 = Site(br, base, {"admin": True, "v41": True, "db": make_db()}); e0 = tour(s0, TABS); u0 = set(s0.unrouted); s0.close()
+        s0 = Site(br, base, {"admin": True, "v41": True, "db": make_db()}); e0 = tour(s0, TABS0); u0 = set(s0.unrouted); s0.close()
         s = Site(br, new, {"admin": True, "v41": True, "db": make_db()}); e1 = tour(s, TABS + ["pc"] + TABS[:3] + ["pc"])
         ck("trang gốc mở được bảng quản trị (bộ thử chạy đúng)", True)
         ck("trang đã gắn: không có lỗi mới so với trang gốc", [x for x in e1 if x not in e0] == [], [x for x in e1 if x not in e0])
@@ -197,8 +198,8 @@ def main():
         s.tab("pc"); s.settle()
         ck("bấm thẻ → hiện pane-pc, nút thẻ sáng", s.js("() => !document.getElementById('pane-pc').hidden && document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on')"))
         ck("các pane khác đều ẩn", s.js("() => [...document.querySelectorAll('#drawer .dbody')].filter(p => !p.hidden).map(p => p.id)") == ["pane-pc"])
-        s.tab("vps")
-        ck("sang thẻ khác → pane-pc ẩn, thẻ PC tắt sáng", s.js("() => document.getElementById('pane-pc').hidden && !document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on') && !document.getElementById('pane-vps').hidden"))
+        s.tab("vm")
+        ck("sang thẻ khác → pane-pc ẩn, thẻ PC tắt sáng", s.js("() => document.getElementById('pane-pc').hidden && !document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on') && !document.getElementById('pane-vm').hidden"))
         s.tab("sec")
         ck("thẻ Bảo mật vẫn chạy đúng", s.js("() => !document.getElementById('pane-sec').hidden && document.getElementById('pane-pc').hidden"))
         s.tab("pc"); s.settle()
@@ -210,10 +211,10 @@ def main():
         sub = {g[0]: g[2] for g in gr}
         ck("mỗi nhóm ghi sẵn các mục bên trong (mở lên là biết có gì)",
            sub.get("sell") == "Đơn hàng · Sản phẩm · Khuyến mãi" and sub.get("cust") == "Khách hàng · Nạp tiền · Bảo mật"
-           and sub.get("mach") == "ĐT đám mây · Máy VPS · Máy PC · Dàn máy nội bộ" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
+           and sub.get("mach") == "ĐT đám mây · Máy PC · VPS ảo hoá" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
         vis = lambda: s.js("() => getComputedStyle(document.getElementById('adm-tabs')).display === 'none' ? [] : [...document.querySelectorAll('#adm-tabs button[data-tab]')].filter(b => getComputedStyle(b).display !== 'none').map(b => b.dataset.tab)")
-        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 4 mục: ĐT đám mây · Máy VPS · Máy PC · Dàn máy nội bộ",
-           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "vps", "pc", "biz"], vis())
+        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 3 mục: ĐT đám mây · Máy PC · VPS ảo hoá (24/11: bỏ Máy VPS + Dàn máy nội bộ)",
+           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "pc", "vm"], vis())
         s.tab("stats")
         ck("Tổng quan (1 mục) → ẩn hàng mục con", vis() == [] and not s.js("() => document.getElementById('pane-stats').hidden"), vis())
         s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(300)
@@ -483,7 +484,7 @@ def main():
         print("11. Tự tải lại 15 giây khi đang mở thẻ")
         n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
         ck("đang mở thẻ Máy PC → tự tải lại", n1 > n0, (n0, n1))
-        s.tab("vps"); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
+        s.tab("vm"); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
         ck("sang thẻ khác → không tải nữa", n1 == n0, (n0, n1))
         s.tab("pc"); s.settle()
         s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
@@ -512,7 +513,8 @@ def main():
         ck("bấm tạo mã → báo chưa chạy SQL, không hiện khung mã", "Chưa chạy SQL v41" in s.js("() => document.getElementById('toast').textContent") and s.js("() => document.getElementById('pca-keybox').hidden"))
         n = s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table)).length")
         s.page.goto(ORIGIN + "/admin", wait_until="load"); s.wait_admin(); s.page.wait_for_timeout(500)
-        ck("mở lại bảng quản trị trong cùng phiên → không gọi bảng pc_ khi chưa bấm thẻ", s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table)).length") == 0)
+        ck("mở lại bảng quản trị trong cùng phiên → không gọi bảng pc_ khi chưa bấm thẻ (trừ danh sách MÁY CHỦ Cloud Phone srv của ĐT đám mây, có từ v53)",
+           s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table) && !(c.table === 'pc_machines' && c.eq.some(e => e[0] === 'srv'))).length") == 0)
         s.js("() => { window.__FAKE.v41 = true; }"); s.tab("pc"); s.settle()
         ck("chạy SQL xong, bấm thẻ → hết lời nhắc, bảng báo chưa có máy", s.js("() => document.getElementById('pca-miss').hidden && sessionStorage.getItem('pca_miss') === null") and s.rows()[0].startswith("Chưa có máy nào."), s.rows())
         s.close()
@@ -761,8 +763,8 @@ def main():
         ck("bấm ⏱ Gia hạn ở dòng máy PC → nhảy sang tab Máy PC + mở hộp đặt hạn của đúng máy đó", not HID("pane-pc") and not HID("pctdlg") and "May-Y" in TT("pctdlg") and s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "pc", TT("pctdlg")[:120])
         s.page.click('#pctd-quick [data-h="720"]'); s.page.click("#pctd-save"); s.settle()
         ck("gia hạn xong (+30 ngày) → máy đó rời khỏi ô", "May-Y" not in (box("pca-rentbar", "vps") or "") and len(kinds("pca-rentbar", "vps")) == 3 and s.calls("pc_admin_rent")[-1]["p_id"] == Y, box("pca-rentbar", "vps"))
-        s.page.click('#pca-rentbar [data-xpbox="vps"] [data-xpgo="vps"]'); s.page.wait_for_timeout(200)
-        ck("bấm 'Mở Máy VPS' → sang tab 🖥️ Máy VPS", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "vps")
+        ck("dòng máy VPS kiểu cũ (nhập tay): không còn nút 'Mở Máy VPS' (24/11: đã bỏ thẻ Máy VPS)", not s.js("() => !!document.querySelector('#pca-rentbar [data-xpgo=\"vps\"]')")
+           and "VPS-HN-01" in (box("pca-rentbar", "vps") or ""), box("pca-rentbar", "vps"))
         s.page.click('#pca-rentbar [data-xpbox="cp"] [data-xpgo="cloud"]'); s.page.wait_for_timeout(200)
         ck("bấm 'Mở ĐT đám mây' → sang tab 📱 ĐT đám mây", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "cloud")
         s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.rent_warn_min = 0; const m = window.__FAKE.db.pc_machines.find(x => x.name === 'Máy 14-85'); m.rent_until = new Date(Date.now() + 600000).toISOString(); m.rent_set_at = new Date(Date.now() - 86400000 * 30).toISOString(); }")
