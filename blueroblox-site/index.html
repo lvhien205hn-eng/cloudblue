@@ -611,6 +611,10 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .node .nr.nrev em{color:var(--gold-hi, #ffd666);font-weight:600}
 .node>.nacts .nrevs,.nbulk .nrevs{display:block;width:100%;margin:0 0 6px;font-size:12px;line-height:1.5;color:var(--muted)}
 .node>.nacts .nrevs b,.nbulk .nrevs b{color:var(--gold-hi, #ffd666)}
+.nrevs .nrevk{display:block;font-size:11px;opacity:.8}
+#pca-rev{margin:8px 0;line-height:1.6;white-space:normal}
+#pca-rev b,.pcrev b{color:var(--gold-hi, #ffd666)}
+#pca-rev details summary{cursor:pointer}
 .node.srvm.off{border-color:var(--line2)}
 .node>.nhd{grid-area:hd;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 8px;align-content:start;min-width:0}
 .node>.nhd .nmeta{grid-column:1/-1;display:grid;gap:3px}
@@ -3403,6 +3407,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
         <div class="hint" id="pca-al-st"></div>
         <div class="hint" id="pca-al-r"></div>
       </div>
+      <div class="hint" id="pca-rev" hidden></div>
       <input class="search" id="pcq" placeholder="Tìm theo tên máy, mã, IP, tên khách…" style="width:100%" autocomplete="off">
       <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hạn thuê</th><th>Windows</th><th>Cấu hình</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
       <div class="hint" id="pca-srvnote" hidden></div>
@@ -4039,7 +4044,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     <div class="amts" style="grid-template-columns:repeat(2,1fr)">
       <button type="button" data-nmg="update" title="Tải bản mới nhất từ GitHub rồi cài — giống chạy lệnh A trên máy chủ (không kiểm / sửa máy khách)">⬆ Cập nhật máy chủ</button><button type="button" data-nmg="refresh">🔄 Xem lại</button>
     </div>
-    <label class="nmg-auto"><input type="checkbox" id="nmg-auto"><span>Các máy chủ khác <b>tự cập nhật theo</b> khi bản mới đã chạy ổn ở 1 máy chủ được <input class="in" id="nmg-soak" type="number" min="5" max="1440" step="5" inputmode="numeric" aria-label="Số phút bản mới phải chạy ổn"> phút <span class="hint">(áp dụng cho mọi máy chủ)</span></span></label>
+    <label class="nmg-auto"><input type="checkbox" id="nmg-auto"><span><b>Tự cập nhật</b>: bản mới trên GitHub tự cài thử ở 1 máy chủ ít khách nhất, chạy ổn <input class="in" id="nmg-soak" type="number" min="5" max="1440" step="5" inputmode="numeric" aria-label="Số phút bản mới phải chạy ổn"> phút thì các máy chủ khác tự theo <span class="hint">(áp dụng cho mọi máy chủ · cần bản 24/11b)</span></span></label>
     <div class="nmg-h">Máy khách · Windows</div>
     <div class="amts" style="grid-template-columns:repeat(2,1fr)">
       <button type="button" data-nmg="list">📋 Danh sách máy</button><button type="button" data-nmg="wallpaper">🖼 Ảnh nền cho máy</button>
@@ -9315,17 +9320,29 @@ function revAmt(m, ids) {                               // tổng doanh thu củ
   for (const r of (m && Array.isArray(m.rows) ? m.rows : [])) if (r && (!ids || ids.has(String(r.node)))) t += +r.amount || 0;
   return Math.round(t);
 }
+function revCash(m, ids) {                              // 💵 tiền khách THỰC TRẢ trong tháng m (SQL v55) cho các máy chủ ids ; ids null = tất cả (kể cả "chưa vào máy chủ") ; null = chưa chạy v55
+  if (!m || m.cash_total == null) return null;
+  if (!ids) return Math.round(+m.cash_total || 0);
+  let t = 0;
+  for (const r of (Array.isArray(m.rows) ? m.rows : [])) if (r && ids.has(String(r.node))) t += +r.cash || 0;
+  return Math.round(t);
+}
 function revRow(n) {
   const m = revMon(0); if (!m) return "";
   const v = revAmt(m, new Set([n.id])), r = (m.rows || []).find(x => x && x.node === n.id), ph = r ? +r.phones || 0 : 0;
-  return `<div class="nr nrev" title="Tiền khách trả cho máy chạy trên máy chủ này trong ${esc(revLabel(m))} (tính tới giờ, rải đều theo thời gian máy chạy${m.est ? "; phần trước lúc bật tính doanh thu là ước tính" : ""}) — ⚙ Cài đặt xem các tháng trước"><span>💰 Doanh thu ${esc(revLabel(m))}${ph ? " · " + ph + " máy trả tiền" : ""}</span><em>${vnd(v)}</em></div>`;
+  const c = revCash(m, new Set([n.id])), pays = r ? +r.pays || 0 : 0, rf = r ? Math.round(+r.refunds || 0) : 0;
+  return `<div class="nr nrev" title="Tiền khách trả cho máy chạy trên máy chủ này trong ${esc(revLabel(m))} (tính tới giờ, rải đều theo thời gian máy chạy${m.est ? "; phần trước lúc bật tính doanh thu là ước tính" : ""}) — ⚙ Cài đặt xem các tháng trước"><span>💰 Doanh thu ${esc(revLabel(m))}${ph ? " · " + ph + " máy trả tiền" : ""}</span><em>${vnd(v)}</em></div>`
+    + (c == null ? "" : `<div class="nr nrev" title="Tiền khách THỰC TRẢ trong ${esc(revLabel(m))} cho máy chạy trên máy chủ này lúc trả tiền (thuê mới · gia hạn · nâng cấp; mua mới tính cho máy chủ đầu tiên nhận máy)${rf ? " — đã trừ " + vnd(rf) + " hoàn tiền" : ", đã trừ tiền hoàn"}. Không tính Blue, máy miễn phí, quà."><span>💵 Đã thu ${esc(revLabel(m))}${pays ? " · " + pays + " lần trả" : ""}</span><em>${vnd(c)}</em></div>`);
 }
-function revLine(ids, lead) {                           // "💰 T11 (đang tính): … · T10 (đã chốt): …" — các tháng có số
+function revLine(ids, lead) {                           // "💰 T11 (đang tính): … 💵 … · T10 (đã chốt): …" — các tháng có số
   const ms = (NREV && Array.isArray(NREV.months) ? NREV.months : []).filter(m => m && typeof m === "object");
   if (!ms.length) return NREV_OFF ? `<span class="nrevs">💰 Doanh thu: chưa bật — chạy SQL v54 trên Supabase.</span>` : "";
-  const parts = ms.map((m, i) => ({ m, i, v: revAmt(m, ids) })).filter(x => x.i === 0 || x.v > 0)
-    .map(x => `${esc(revLabel(x.m))} ${x.i === 0 ? "(đang tính)" : "(đã chốt)"}${x.m.est ? "*" : ""}: <b>${vnd(x.v)}</b>`);
-  return `<span class="nrevs">💰 ${lead ? esc(lead) + " — " : ""}${parts.join(" · ")}${ms.some(m => m.est) ? ` <span title="Phần trước lúc bật tính doanh thu: coi máy khách nằm ở máy chủ hiện tại từ lúc tạo tới lúc huỷ">(* có phần ước tính)</span>` : ""}</span>`;
+  const cashOn = ms.some(m => m.cash_total != null);
+  const parts = ms.map((m, i) => ({ m, i, v: revAmt(m, ids), c: revCash(m, ids) })).filter(x => x.i === 0 || x.v > 0 || x.c > 0)
+    .map(x => `${esc(revLabel(x.m))} ${x.i === 0 ? "(đang tính)" : "(đã chốt)"}${x.m.est ? "*" : ""}: ${cashOn ? "💰 " : ""}<b>${vnd(x.v)}</b>`
+      + (x.c != null ? ` · 💵 <b>${vnd(x.c)}</b>` + (!ids && +x.m.cash_none > 0 ? ` <span title="Máy chưa từng vào máy chủ nào (VD tạo lỗi rồi hoàn tiền) — có trong tổng, không thuộc máy chủ nào">(gồm ${vnd(Math.round(+x.m.cash_none))} chưa vào máy chủ)</span>` : "") : ""));
+  return `<span class="nrevs">💰 ${lead ? esc(lead) + " — " : ""}${parts.join(" · ")}${ms.some(m => m.est) ? ` <span title="Phần trước lúc bật tính doanh thu: coi máy khách nằm ở máy chủ hiện tại từ lúc tạo tới lúc huỷ">(* có phần ước tính)</span>` : ""}`
+    + (cashOn ? `<span class="nrevk">💰 doanh thu = tiền khách trả rải đều theo ngày máy chạy · 💵 đã thu = tiền khách thực trả trong tháng (trừ hoàn tiền)</span>` : "") + `</span>`;
 }
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
@@ -9390,7 +9407,7 @@ function renderNodes() {
   }).join("") + SL.rest.map(srvRow).join("");
   const m0 = revMon(0);
   $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách` + (SL.rest.length ? ` · ${SL.rest.length} máy chủ mới đang cài` : "")
-    + (m0 ? ` · 💰 ${revLabel(m0)}: ${vnd(revAmt(m0, null))}` : NREV_OFF ? " · 💰 doanh thu: chạy SQL v54 để bật" : "");
+    + (m0 ? ` · 💰 ${revLabel(m0)}: ${vnd(revAmt(m0, null))}` + (revCash(m0, null) != null ? ` · 💵 đã thu: ${vnd(revCash(m0, null))}` : "") : NREV_OFF ? " · 💰 doanh thu: chạy SQL v54 để bật" : "");
   nodeBulkBar();
 }
 /* thanh trên đầu danh sách: chọn tất cả + ô "⚙ Cài đặt cho N máy đã chọn" */
@@ -10074,7 +10091,7 @@ async function nmgOpen(id) {
 function nmgSaveAuto() {
   const soak = Math.max(5, Math.min(1440, Math.round(+$("nmg-soak").value || 20))), auto = !!$("nmg-auto").checked;
   $("nmg-soak").value = soak;
-  saveSettings({ node_update: { auto, soak_min: soak } }, $("nmg-auto"), auto ? `Đã bật: các máy chủ tự cập nhật theo sau ${soak} phút bản mới chạy ổn.` : "Đã tắt tự cập nhật theo — mỗi máy chủ phải bấm Cập nhật / chạy lệnh A riêng.");
+  saveSettings({ node_update: { auto, soak_min: soak } }, $("nmg-auto"), auto ? `Đã bật: bản mới tự cài thử ở máy chủ ít khách nhất, chạy ổn ${soak} phút thì các máy chủ khác tự theo.` : "Đã tắt tự cập nhật — mỗi máy chủ phải bấm Cập nhật / chạy lệnh A riêng.");
 }
 $("nmg-confirm") && ($("nmg-confirm").oninput = nmgRender);
 $("nmg-auto") && ($("nmg-auto").onchange = nmgSaveAuto);
@@ -13527,6 +13544,41 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const copy = async (text, btn) => { try { await navigator.clipboard.writeText(text); } catch (e) { const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t); t.select(); try { document.execCommand("copy"); } catch (e2) {} t.remove(); }
     if (btn) { const o = btn.textContent; btn.textContent = "Đã copy ✓"; setTimeout(() => { btn.textContent = o; }, 1500); } };
 
+  // 24/11 · DOANH THU VPS GPU TỪNG MÁY (SQL v55 · admin_pc_revenue): 💰 tiền khách trả rải đều theo thời gian lượt thuê chạy trên máy
+  // (đổi máy → phần sau tính cho máy mới; huỷ / hết lượt → ngừng tính) · 💵 tiền khách trả trong tháng (thuê mới → máy đầu tiên được giao,
+  // gia hạn → máy lúc gia hạn; đơn hoàn tiền không tính). Tháng theo giờ VN, hết tháng tự chốt. Đọc lại tối đa 1 phút / lần.
+  const PR = { d: null, at: 0, off: false, busy: false };
+  async function revLoad(force) {
+    if (PR.off || PR.busy || (!force && PR.d && Date.now() - PR.at < 60000)) return;
+    PR.busy = true;
+    try {
+      const { data, error } = await sb.rpc("admin_pc_revenue", { p_months: 6 });
+      if (error) { if (error.code === "PGRST202" || /Could not find the function|admin_pc_revenue/i.test(String(error.message || ""))) { PR.off = true; revSum(); } }
+      else if (data && Array.isArray(data.months)) { PR.d = data; PR.at = Date.now(); render(); }
+    } catch (e) {} finally { PR.busy = false; }
+  }
+  const revMonth = i => { const x = PR.d && Array.isArray(PR.d.months) ? PR.d.months[i] : null; return x && typeof x === "object" ? x : null; };
+  const revTag = x => { const k = /^(\d{4})-(\d{2})$/.exec(S(x && x.month, 10)); return k ? "T" + (+k[2]) + (+k[1] !== new Date().getFullYear() ? "/" + k[1].slice(2) : "") : "?"; };
+  const money = v => vnd(Math.round(+v || 0));
+  function revCell(m) {                     // dòng nhỏ dưới tên máy: 💰 doanh thu · 💵 đã thu (tháng này)
+    const mo = revMonth(0); if (!mo) return "";
+    const r = A(mo.rows, 500).find(x => x && x.pc === m.id); if (!r || (!(+r.amount) && !(+r.cash))) return "";
+    return `<div class="hint pcrev" title="${esc(revTag(mo))}, tính tới giờ — 💰 doanh thu: tiền khách trả rải đều theo thời gian lượt thuê chạy trên máy này · 💵 đã thu: tiền khách trả trong tháng (thuê mới tính cho máy đầu tiên được giao, gia hạn tính cho máy lúc gia hạn)">💰 ${esc(revTag(mo))}: <b>${money(r.amount)}</b> · 💵 <b>${money(r.cash)}</b></div>`;
+  }
+  function revSum() {                       // ô trên bảng: tổng tháng này + các tháng trước (đã chốt, từng máy)
+    const box = $i("pca-rev"); if (!box) return;
+    const ms = (PR.d && Array.isArray(PR.d.months) ? PR.d.months : []).filter(x => x && typeof x === "object");
+    if (!ms.length) { box.hidden = !PR.off; box.innerHTML = PR.off ? "📊 Doanh thu VPS GPU từng máy: chưa bật — chạy SQL v55 trên Supabase." : ""; return; }
+    box.hidden = false;
+    const line = (mo, i) => `${esc(revTag(mo))} ${i === 0 ? "(đang tính)" : "(đã chốt)"}${mo.est ? "*" : ""}: 💰 <b>${money(mo.amount_total)}</b> · 💵 <b>${money(mo.cash_total)}</b>`
+      + (+mo.cash_none > 0 ? ` <span title="Đơn VPS GPU bán tay / chưa giao máy — có trong tổng đã thu, không thuộc máy nào">(gồm ${money(mo.cash_none)} bán tay / chưa gắn máy)</span>` : "");
+    const per = mo => A(mo.rows, 200).filter(r => r && (+r.amount || +r.cash)).map(r => `${esc(S(r.name, 40) || "?")}: 💰 ${money(r.amount)} · 💵 ${money(r.cash)}`).join(" · ");
+    const old = ms.slice(1).filter(mo => +mo.amount_total > 0 || +mo.cash_total > 0);
+    box.innerHTML = `📊 <b>Doanh thu VPS GPU</b> — ${line(ms[0], 0)}`
+      + (old.length ? `<details><summary>Các tháng trước (${old.length})</summary>${old.map(mo => `<div>${line(mo, 1)}${per(mo) ? `<div class="hint">${per(mo)}</div>` : ""}</div>`).join("")}</details>` : "")
+      + `<div class="hint">💰 doanh thu = tiền khách trả rải đều theo thời gian máy được thuê · 💵 đã thu = tiền khách trả trong tháng${ms.some(mo => mo.est) ? " · * có phần ước tính (trước lúc bật tính doanh thu)" : ""}. Hết tháng tự chốt, sang tháng tính lại từ 0. Từng máy: dòng 💰 dưới tên máy.</div>`;
+  }
+
   function load(quiet) {                    // đang tải dở mà có yêu cầu mới → tải thêm 1 lượt nữa khi xong (không bỏ sót thay đổi vừa lưu)
     if (!isAdmin()) return Promise.resolve();
     if (P.busy) { P.again = true; return P.wait; }
@@ -13567,7 +13619,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     } catch (e) {} }
     if (!o.error) P.orders = (o.data || []).map(x => { const a = Object.assign({}, O(x.args)); delete a.ticket; return Object.assign({}, x, { args: a }); });    // vé cài lại không giữ trong trang
     if (!st.error) P.set = st.data || null;
-    render(); kick();
+    render(); kick(); revLoad();
   }
   // Nhờ /api/pc-notify gửi các cảnh báo máy PC đang chờ về mail + Telegram của admin — tối đa 1 lần / phút khi bảng quản trị đang mở.
   // Cơ sở dữ liệu cũng tự gọi địa chỉ này mỗi phút (pg_cron + pg_net); đây là đường dự phòng. Không gửi kèm gì, không cần đọc trả lời.
@@ -13802,7 +13854,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       return s.std === true && s.hard === true && s.lock === true ? '<div class="hint">🔒 đã khoá · khách dùng tài khoản thường</div>' : '<div class="hint">⏳ đang khoá bảo mật — chưa giao khách</div>'; };
     const row = m => {
       const i = O(m.info), on = online(m), st = stOf(m.status), rec = recOf(m), reBusy = openOf(m.id).some(o => o.cmd === "reinstall"), host = S(i.host, 40);
-      return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b>${m.code ? ` <span class="pill" title="Số máy — hiện trên màn hình máy cho khách">№ ${esc(m.code)}</span>` : ""}${m.note ? `<div class="hint" style="white-space:normal;max-width:220px">${esc(m.note)}</div>` : ""}${host && host !== m.name ? `<div class="hint">Windows: ${esc(host)}</div>` : ""}<div class="hint">${esc(S(m.lan_ip, 64) || "IP ?")}${S(m.pub_ip, 64) ? "<br>" + esc(S(m.pub_ip, 64)) : ""}</div></td>
+      return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b>${m.code ? ` <span class="pill" title="Số máy — hiện trên màn hình máy cho khách">№ ${esc(m.code)}</span>` : ""}${m.note ? `<div class="hint" style="white-space:normal;max-width:220px">${esc(m.note)}</div>` : ""}${host && host !== m.name ? `<div class="hint">Windows: ${esc(host)}</div>` : ""}<div class="hint">${esc(S(m.lan_ip, 64) || "IP ?")}${S(m.pub_ip, 64) ? "<br>" + esc(S(m.pub_ip, 64)) : ""}</div>${revCell(m)}</td>
         <td>${on ? '<span class="pill ok">● online</span>' : `<span class="pill bad">○ offline</span><div class="hint">${m.last_seen ? ago(m.last_seen) : "chưa từng"}</div>`}<div style="margin-top:5px"><span class="pill ${st[1]}">${esc(st[0])}</span></div></td>
         <td class="pca-rent">${rentCell(m)}</td>
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
@@ -13815,6 +13867,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       catch (e) { return `<tr data-pc="${esc(m.id)}"><td><b>${esc(m.name)}</b></td><td colspan="5" class="hint">Máy này gửi thông tin không đọc được.</td><td class="pca-acts"><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button></td></tr>`; }
     }).join("") : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">${P.miss ? "Chưa chạy SQL v41." : P.list.length ? "Không có máy nào khớp." : "Chưa có máy nào. Tạo mã đăng ký → tạo ISO → cài 1 máy thử, máy sẽ tự hiện ở đây."}</td></tr>`;
     if (!$i("pca-albox").hidden) alState();
+    revSum();
   }
 
   async function call(fn, args, okMsg, btn) {
