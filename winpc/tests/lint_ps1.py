@@ -2,7 +2,7 @@
 """Soát tĩnh file .ps1 / .cmd (không có PowerShell ở đây): chỉ ASCII, CRLF, ngoặc { } ( ) [ ] cân ngoài chuỗi + chú thích,
    chuỗi đóng đủ, không biến trùng tên khác hoa/thường, không dùng biến tự động làm biến thường."""
 import os, re, sys
-root = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+root = os.path.abspath(sys.argv[1]) if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")   # 24.11 · đối số = thư mục khác (vd proxmox)
 bad = 0
 
 
