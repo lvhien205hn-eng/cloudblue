@@ -119,6 +119,9 @@
 #        24/11a — phonectl: MuMu tạo máy mẫu ĐÚNG bản Android bằng lệnh (create --version 12/15 --mini; trước đây tạo mới luôn ra
 #                       Android 15 → không tạo được tpl_a12) · lệnh A: máy chủ MuMu còn thiếu máy mẫu tpl_a12 / tpl_a15 → TỰ TẠO (tự đặt
 #                       tên, để TẮT) · cloudphoned báo tên máy Windows (web nối máy chủ với điều khiển từ xa)
+#        24/11b — BẢN MỚI TỰ CÀI, không cần bấm: GitHub có bản mới chưa máy chủ nào chạy → máy chủ ÍT KHÁCH NHẤT tự cài thử trước
+#                       (hỏi GitHub 15 phút / lần), chạy ổn đủ thời gian chờ (web: 🛠 Quản lý, mặc định 20 phút) → các máy chủ khác tự
+#                       theo · vừa tạo máy mẫu → cloudphoned đọc lại NGAY, web bán thêm bản Android đó sau ≤ 30 giây (trước: tới 10 phút)
 #   2. Bật lại đúng dịch vụ vừa thay / đang chạy bản cũ (bảng CloudBlue tự bật lại sau 5 giây) — không đụng máy khách
 #   3. Tự chạy khi Windows khởi động lại: tác vụ / lối tắt phải có --auto · bảng mở mà chưa chạy gì → mở lại bảng kiểu tự bật
 #   4. Kiểm cổng phát hình, đường hầm Cloudflare
@@ -132,7 +135,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "24/11a"
+VER = "24/11b"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -150,14 +153,14 @@ RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 23/11f", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 24/11b", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "24/11a"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "24/11b"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 23/11f", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 24/11b", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -407,6 +410,12 @@ def ld_fix(c, changed):
 
 # ------------------------------------------------------------------ 1c. máy chủ MuMu: máy mẫu (24/11a)
 MUMU_TPL_VERS = ("12", "15")                             # bản Android MuMu tạo được bằng lệnh (create --version)
+ENG_POKE_F = os.path.join(LOGS, "doc-lai-may-mau.txt")  # 24/11b: cloudphoned thấy file này mới hơn lần đọc trước → đọc lại máy mẫu ngay
+def eng_poke():
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(ENG_POKE_F, "w", encoding="utf-8") as f: f.write(str(int(time.time())))
+    except Exception: pass
 def mumu_tpl(c):
     """Máy chủ MuMu phải có máy MẪU cho mỗi bản Android bán (tpl_a12 = Android 12, tpl_a15 = Android 15): máy khách nhân bản từ đó.
        Thiếu → TỰ TẠO bằng phonectl mktpl (MuMu: create --version N --mini, tự đặt tên, để TẮT) — khỏi mở MuMu bấm tay.
@@ -430,6 +439,7 @@ def mumu_tpl(c):
     rc, out = pctl("mktpl", ",".join(miss), t=1800)
     for ln in (out or "").splitlines():
         if ln.strip(): say("      " + ln.strip()[:300])
+    eng_poke()                                           # 24/11b: cloudphoned đọc lại máy mẫu NGAY (không chờ tới 10 phút)
     rc2, out2 = pctl("vmlist", t=180)
     names2 = {ln.split(",")[1].strip() for ln in (out2 or "").splitlines() if re.match(r"^\d+,[^,]+,", ln.strip())}
     left = [v for v in miss if f"tpl_a{v}" not in names2] if names2 else miss
@@ -437,7 +447,7 @@ def mumu_tpl(c):
         probs.append("chưa tạo được máy mẫu " + ", ".join(f"tpl_a{v}" for v in left)
                      + " — mở MuMu: + New → đúng bản Android → đổi tên tpl_aNN → để TẮT (2 phút sau web tự bán)")
     else:
-        say("   ✓ đã tạo máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " — khoảng 2 phút nữa web tự bán thêm các bản này ở máy chủ này")
+        say("   ✓ đã tạo máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " — khoảng 30 giây nữa web tự bán thêm các bản này ở máy chủ này")
     return probs
 
 # ------------------------------------------------------------------ 2. bật lại dịch vụ
