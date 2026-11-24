@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11j)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11k)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -11,11 +11,14 @@
 #     6. may mau MuMu (tpl_a12 / tpl_a15)                 7. duong ham Cloudflare phoneN + streamN (tu tao bang API neu co CF_API_TOKEN)
 #     8. bang CloudBlue tu chay quyen Admin, khong ngu, toi uu Windows        9. mo bang -> bat dich vu
 #    10. duong thang web (neu co ma) + lenh A + kiem RAM + cong modem        11. kiem may chu da len web
+#  DIEU KHIEN TU XA (23.11k): phan mem CloudBlue PC co san tren may (C:\CloudBluePC, chay ngam tu luc Windows len) tu dang ky may nay bang MA MAY CHU
+#     trong ISO -> may hien o web > May cho thue > May VPS, admin bam "Dieu khien" la vao man hinh may (web chot: may chu khong bao gio cho thue).
+#     Script nay chi bao tinh trang + lam bu viec bao ma len web (ISO tao luc web chua chay SQL v53); cai xong van GIU phan mem do chay.
 #  KHONG in khoa bi mat nao ra man hinh / nhat ky. Nhat ky: C:\blue\logs\iso-cai.log
 #  -Lib : chi nap cac ham (de kiem thu), khong chay.
 # =====================================================================================================
 param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11j'
+$MC_VER = '23.11k'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -556,6 +559,42 @@ function Set-AutoStart([switch]$Remove) {
   return $ways
 }
 
+function Get-TextSha([string]$text) {
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try { return ((@($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))) | ForEach-Object { $_.ToString('x2') }) -join '') } finally { $hasher.Dispose() }
+}
+
+function Get-RemoteState([string]$sbUrl, [string]$sbKey) {
+  # DIEU KHIEN TU XA: may nay da hien o web (May cho thue > May VPS) chua?  Tra:
+  #   'on'      phan mem CloudBlue PC da dang ky xong (co ma rieng cua may)
+  #   'wait'    ISO co ma may chu, web da nhan dau bam cua ma -> phan mem tren may tu dang ky trong vai phut
+  #   'nosql'   web chua chay SQL v53      'err' chua bao duoc ma len web (mang / khoa)      'nokey' khong co khoa Supabase de bao ma
+  #   'none'    ISO ban cu khong kem ma may chu      'noagent' may khong co phan mem CloudBlue PC
+  # Chi DOC tep cua phan mem do + bao DAU BAM cua ma len web (ham pc_srv_key); khong ghi gi vao C:\CloudBluePC.
+  if (-not (Test-Path -LiteralPath (Join-Path $CBPC 'agent\pcagent.py'))) { return 'noagent' }
+  try {
+    $idj = Get-Content -Raw -LiteralPath (Join-Path $CBPC 'identity.json') -ErrorAction Stop | ConvertFrom-Json
+    if (("" + $idj.token).Length -ge 20) { return 'on' }
+  } catch {}
+  $sk = ''
+  try { $sk = "" + (Get-Content -Raw -LiteralPath (Join-Path $CBPC 'seed.json') -ErrorAction Stop | ConvertFrom-Json).enroll_key } catch { return 'err' }      # khong doc duoc: KHONG ket luan la ISO cu
+  if (-not ($sk -match '^cbsv_[0-9a-f]{40}$')) { return 'none' }
+  if ($SECRETS -notcontains $sk) { [void]$SECRETS.Add($sk) }
+  if ($sbKey.Length -lt 30) { return 'nokey' }
+  $r = Invoke-Api 'Post' ($sbUrl + '/rest/v1/rpc/pc_srv_key') (Sb-Headers $sbKey) @{ p_hash = (Get-TextSha $sk); p_note = ('may-chu-iso ' + $MC_VER + ' ' + $env:COMPUTERNAME) } 25
+  if ($r.ok -and $r.data -and ($r.data.ok -eq $true)) { return 'wait' }
+  if ($r.code -eq 404) { return 'nosql' }
+  return 'err'
+}
+
+function Show-Remote([string]$state) {
+  if ($state -eq 'on') { Say '   OK - DIEU KHIEN TU XA: may nay da hien o web > Bang quan tri > May cho thue > May VPS (bam Dieu khien de vao man hinh may).' 'Green' }
+  elseif ($state -eq 'wait') { Say '   Dieu khien tu xa: da bao ma may chu len web - may tu hien o May cho thue > May VPS trong vai phut.' 'DarkGray' }
+  elseif ($state -eq 'nosql') { Say '   (!) Dieu khien tu xa CHUA bat: web chua chay SQL v53 (Supabase > SQL Editor > CloudBlue PC v53 > Run). Chay xong may tu hien, khong phai cai lai.' 'Yellow' }
+  elseif ($state -eq 'none') { Say '   (ISO nay ban cu, khong kem ma may chu -> khong co dieu khien tu xa. Tao lai ISO ban 23.11k tro len de co.)' 'DarkGray' }
+  elseif ($state -eq 'err') { Say '   (dieu khien tu xa: chua bao duoc ma may chu len web - lan chay sau thu lai)' 'DarkGray' }
+}
+
 function Update-Self([string]$self) {
   # Lay ban moi nhat cua script nay tren GitHub (sua loi ma khong phai tao lai ISO). Tra ve true khi da thay tep (can chay lai).
   if ($env:CB_ISO_SELF -eq '1') { return $false }
@@ -625,6 +664,10 @@ function Main {
     Say '   Co ban moi cua script cai may chu tren GitHub -> chay ban moi.' 'DarkGray'
     $script:RC = 9; return
   }
+
+  $rmt = 'err'
+  try { $rmt = Get-RemoteState $sbUrl $sbKey } catch { $rmt = 'err' }
+  Show-Remote $rmt
 
   # ------------------------------------------------------------------ 2. ten may chu
   Step '2/11 Ten may chu'
@@ -834,13 +877,17 @@ function Main {
     if (Test-Path -LiteralPath $p) { foreach ($k in 'SUPABASE_SERVICE_KEY', 'CF_API_TOKEN', 'CF_DNS_TOKEN') { try { Set-KV $p $k '' } catch {} } }
   }
   $st.done = 1; Save-State $st
-  # May cai tu ISO may chu (cb.json role = server): tat 2 tac vu cua phan mem "may PC cho thue" - may chu khong bao gio duoc vao danh sach may PC cho thue.
+  # Phan mem CloudBlue PC tren may (cb.json role = server):
+  #   ISO co ma may chu (23.11k) -> GIU chay: admin dieu khien may chu tu xa tren web (web chot: may chu khong bao gio vao kho cho thue).
+  #   ISO ban cu khong kem ma    -> tat 2 tac vu nhu truoc (phan mem do khong dang ky duoc, khong co viec gi de lam).
   $isSrv = $false
   try { $isSrv = (("" + (Get-Content -Raw -LiteralPath (Join-Path $CBPC 'cb.json') -ErrorAction Stop | ConvertFrom-Json).role) -eq 'server') } catch {}
-  if ($isSrv) {
+  $rmtEnd = 'err'
+  try { $rmtEnd = Get-RemoteState $sbUrl $sbKey } catch { $rmtEnd = 'err' }
+  if ($isSrv -and ($rmtEnd -eq 'none')) {
     foreach ($tn in 'CloudBluePC Agent', 'CloudBluePC Watch') { try { Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null } catch {} }
-    Say '   Da tat phan mem quan ly "may PC cho thue" tren may chu nay (may chu khong vao danh sach may PC).' 'DarkGray'
-  }
+    Say '   Da tat phan mem quan ly "may PC cho thue" tren may chu nay (ISO ban cu, khong co dieu khien tu xa).' 'DarkGray'
+  } else { Show-Remote $rmtEnd }
   [void](Set-AutoStart -Remove)
   $script:RC = 0
 }

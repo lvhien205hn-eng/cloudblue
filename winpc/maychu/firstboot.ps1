@@ -23,7 +23,13 @@ Note-Line ('firstboot may chu: tai khoan chay = ' + $env:USERNAME + ' | ten may 
 foreach ($f in @(Get-ChildItem -LiteralPath $from -File -ErrorAction SilentlyContinue | Where-Object { $_.Length -lt 20MB })) {
   try { Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $to $f.Name) -Force -ErrorAction Stop } catch { Note-Line ('(!) chua chep duoc ' + $f.Name) }
 }
-try { Copy-Item -LiteralPath 'C:\CloudBluePC\seed.json' -Destination (Join-Path $to 'seed.json') -Force -ErrorAction Stop } catch {}
+# seed.json: chi giu TEN MAY nguoi cai da go - KHONG chep ma may chu / ve dang ky (enroll_key, ticket) sang C:\blue\iso
+try {
+  $sj = Get-Content -Raw -LiteralPath 'C:\CloudBluePC\seed.json' -ErrorAction Stop | ConvertFrom-Json
+  $keep = @{}
+  foreach ($pp in $sj.PSObject.Properties) { if (@('enroll_key', 'ticket') -notcontains $pp.Name) { $keep[$pp.Name] = $pp.Value } }
+  [IO.File]::WriteAllText((Join-Path $to 'seed.json'), ($keep | ConvertTo-Json -Compress), (New-Object Text.UTF8Encoding($false)))
+} catch {}
 $run = Join-Path $to 'may-chu-iso.ps1'
 if (-not (Test-Path -LiteralPath $run)) { Note-Line '(!) ISO thieu may-chu-iso.ps1 - khong dat duoc duong tu chay'; exit 1 }
 $argLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $run + '"'
