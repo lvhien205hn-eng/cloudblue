@@ -8673,6 +8673,20 @@ class Launcher:
         t = p.get("switch_to")
         return bool(t) and any(str(r.get("id")) == str(t) and r.get("status") in ("pending", "creating") for r in getattr(self, "rows_last", []) or [])
 
+    def rename(self, p):
+        """24/11 · khách đổi tên ĐT đám mây của mình (như nút ✏️ Đổi tên trên web / app điện thoại) — tên mới hiện ở mọi nơi."""
+        import tkinter.messagebox as mb, tkinter.simpledialog as sd
+        n = sd.askstring("Đổi tên máy", "Tên mới cho máy:", initialvalue=p.get("name") or "", parent=self.root)
+        if n is None or not n.strip() or n.strip() == (p.get("name") or ""): return
+        n = n.strip()
+        def job():
+            try:
+                self.auth.rpc("cloudphone_rename", {"p_id": p["id"], "p_name": n})
+                self.ui(self.refresh)
+            except Exception as e:
+                m = str(e); self.ui(lambda m=m: mb.showerror("CloudBlue", m, parent=self.root))
+        threading.Thread(target=job, daemon=True).start()
+
     def cancel(self, p):
         import tkinter.messagebox as mb
         if not mb.askyesno("Huỷ máy", f"Huỷ máy “{p.get('name')}”?\n\nMáy và TOÀN BỘ dữ liệu trong máy sẽ bị XOÁ vĩnh viễn, không hoàn tiền.",
@@ -8728,6 +8742,8 @@ class Launcher:
     def more(self, p, widget):
         """Menu "Khác" của 1 máy: công cụ (xoay màn, độ rộng, cài app, ứng dụng, clone tab…), nâng cấp RAM/CPU, huỷ máy."""
         m = self.tk.Menu(self.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
+        m.add_command(label="✏️ Đổi tên máy…", command=lambda: self.rename(p))       # 24/11: khách tự đổi tên ĐT đám mây (máy chia sẻ không có menu này)
+        m.add_separator()
         can_up = p.get("status") == "active" and not p.get("locked") and not p.get("is_free") and p.get("pending_ram") is None
         on = p.get("status") == "active" and (not p.get("locked") or (getattr(self, "prof", None) or {}).get("role") == "admin")
         for lab, tab in (("Tab cửa sổ nhỏ · Xoay màn · Độ rộng nhỏ nhất…", "screen"), ("Cài app (APK / link)…", "install"), ("Ứng dụng trong máy…", "apps"),
