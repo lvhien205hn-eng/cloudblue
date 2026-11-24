@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11k)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11l)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -18,7 +18,7 @@
 #  -Lib : chi nap cac ham (de kiem thu), khong chay.
 # =====================================================================================================
 param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11k'
+$MC_VER = '23.11l'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -318,29 +318,40 @@ function Install-CfService([string]$token) {
 }
 
 # ----------------------------------------------------------------------------------------------------- gia lap
+# Cac cho hay cai gia lap. May chu 1 o cung KHONG co o D: -> KHONG dung Join-Path voi duong dan chua chac co
+# (Join-Path bao "Cannot find drive" roi tra rong -> Test-Path nem loi, script dung o buoc 3 - ban 23.11k). Ghep chuoi + Test-Path la du.
+$MUMU_DIRS = @('C:\Program Files\Netease\MuMuPlayer', 'D:\Program Files\Netease\MuMuPlayer', 'C:\Program Files\Netease\MuMuPlayer-12.0', 'D:\Program Files\Netease\MuMuPlayer-12.0',
+               'C:\Program Files\Netease\MuMuPlayerGlobal-12.0', 'C:\Program Files\MuMuPlayerGlobal-12.0', 'D:\Program Files\MuMuPlayerGlobal-12.0')
+$LD_DIRS = @('C:\LDPlayer\LDPlayer9', 'D:\LDPlayer\LDPlayer9', 'C:\Program Files\LDPlayer\LDPlayer9', 'C:\leidian\LDPlayer9', 'D:\leidian\LDPlayer9')
+function Get-In([string]$dir, [string]$rel) {
+  # Duong dan day du cua $rel trong thu muc $dir neu tep do CO; khong co (ke ca o dia khong ton tai) -> ''. Khong nem loi.
+  $dd = ("" + $dir).Trim().TrimEnd('\')
+  if (-not $dd) { return '' }
+  $full = $dd + '\' + $rel
+  try { if (Test-Path -LiteralPath $full -PathType Leaf -ErrorAction Stop) { return $full } } catch {}
+  return ''
+}
+
 function Find-Mumu {
-  $cand = @('C:\Program Files\Netease\MuMuPlayer', 'D:\Program Files\Netease\MuMuPlayer', 'C:\Program Files\Netease\MuMuPlayer-12.0', 'D:\Program Files\Netease\MuMuPlayer-12.0',
-            'C:\Program Files\Netease\MuMuPlayerGlobal-12.0', 'C:\Program Files\MuMuPlayerGlobal-12.0', 'D:\Program Files\MuMuPlayerGlobal-12.0')
+  $cand = @($MUMU_DIRS)
   try {
     $cand += @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue |
                Where-Object { "$($_.DisplayName)" -match 'mumu' } | ForEach-Object { "$($_.InstallLocation)".TrimEnd('\') })
   } catch {}
   foreach ($d in $cand) {
     if (-not $d) { continue }
-    foreach ($r in 'nx_main\mumu-cli.exe', 'nx_main\MuMuManager.exe', 'shell\MuMuManager.exe') { if (Test-Path -LiteralPath (Join-Path $d $r)) { return $d } }
+    foreach ($r in 'nx_main\mumu-cli.exe', 'nx_main\MuMuManager.exe', 'shell\MuMuManager.exe') { if (Get-In $d $r) { return ("" + $d).Trim().TrimEnd('\') } }
   }
   return ''
 }
 
 function Get-MumuCli([string]$d) {
-  foreach ($r in 'nx_main\mumu-cli.exe', 'nx_main\MuMuManager.exe', 'shell\MuMuManager.exe') { if ($d -and (Test-Path -LiteralPath (Join-Path $d $r))) { return (Join-Path $d $r) } }
+  foreach ($r in 'nx_main\mumu-cli.exe', 'nx_main\MuMuManager.exe', 'shell\MuMuManager.exe') { $f = Get-In $d $r; if ($f) { return $f } }
   return ''
 }
 
 function Find-Ld {
-  foreach ($d in 'C:\LDPlayer\LDPlayer9', 'D:\LDPlayer\LDPlayer9', 'C:\Program Files\LDPlayer\LDPlayer9', 'C:\leidian\LDPlayer9', 'D:\leidian\LDPlayer9') {
-    if (Test-Path -LiteralPath (Join-Path $d 'ldconsole.exe')) { return $d }
-  }
+  foreach ($d in @($LD_DIRS)) { if (Get-In $d 'ldconsole.exe') { return ("" + $d).Trim().TrimEnd('\') } }
   return ''
 }
 

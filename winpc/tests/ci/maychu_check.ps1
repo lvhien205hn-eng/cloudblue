@@ -104,6 +104,27 @@ try {
   $s5 = Get-SeedNum $sj
   $s6 = Get-SeedNum (Join-Path $Wk "khong-co.json")
   Ck "Get-SeedNum: ten nguoi cai go (label) -> so may chu; ten tu sinh win-XXXXXX thi KHONG lay; khong co tep -> 0" ((@($s1, $s2, $s3, $s4, $s5, $s6) -join ",") -eq "9,9,0,0,12,0") (@($s1, $s2, $s3, $s4, $s5, $s6) -join ",")
+  # 23.11l - may chu 1 o cung KHONG co o D: (ban 23.11k: Join-Path voi o khong ton tai -> script dung o buoc 3, cu 1 phut bao loi 1 lan)
+  $noDrv = "" + (@(68..90 | ForEach-Object { [string][char]$_ }) | Where-Object { -not (Test-Path -LiteralPath ($_ + ":\")) } | Select-Object -First 1)
+  $ldReal = New-Dir (Join-Path $Wk "ldreal\LDPlayer9")
+  Set-Content -Path (Join-Path $ldReal "ldconsole.exe") -Value "x" -Encoding ASCII
+  $muReal = New-Dir (Join-Path $Wk "mureal\MuMuPlayer")
+  New-Dir (Join-Path $muReal "nx_main") | Out-Null
+  Set-Content -Path (Join-Path $muReal "nx_main\mumu-cli.exe") -Value "x" -Encoding ASCII
+  $keepLd = $LD_DIRS
+  $keepMu = $MUMU_DIRS
+  $dOk = (@($keepLd) -contains "D:\LDPlayer\LDPlayer9") -and (@($keepMu) -contains "D:\Program Files\Netease\MuMuPlayer")
+  $LD_DIRS = @(($noDrv + ":\LDPlayer\LDPlayer9"), ($noDrv + ":\leidian\LDPlayer9"))
+  $MUMU_DIRS = @(($noDrv + ":\Program Files\Netease\MuMuPlayer"))
+  $nd = "chua chay"
+  try { $nd = @((Find-Ld), (Find-Mumu), (Get-MumuCli ($noDrv + ":\x")), (Get-In ($noDrv + ":\a") "b.exe"), (Get-In "" "b.exe"), (Find-Emu).kind) -join "|" } catch { $nd = "NEM LOI: " + $_.Exception.Message }
+  Ck "do gia lap o O DIA KHONG TON TAI (may chu 1 o cung khong co o D:) -> tra rong, KHONG nem loi" (($noDrv.Length -eq 1) -and ($nd -eq "|||||") -and $dOk) ("o thu: " + $noDrv + " -> " + $nd)
+  $LD_DIRS = @(($noDrv + ":\LDPlayer\LDPlayer9"), $ldReal)
+  $MUMU_DIRS = @(($noDrv + ":\Program Files\Netease\MuMuPlayer"), ($muReal + "\"))
+  $fe = Find-Emu
+  Ck "gia lap o thu muc co that (dung sau 1 o khong ton tai): Find-Ld / Find-Mumu tra dung thu muc, Get-MumuCli tra tep lenh, Find-Emu uu tien LDPlayer" (((Find-Ld) -eq $ldReal) -and ((Find-Mumu) -eq $muReal) -and ((Get-MumuCli $muReal) -eq (Join-Path $muReal "nx_main\mumu-cli.exe")) -and ($fe.kind -eq "ld") -and ($fe.dir -eq $ldReal)) ((Find-Ld) + " | " + (Find-Mumu) + " | " + (Get-MumuCli $muReal))
+  $LD_DIRS = $keepLd
+  $MUMU_DIRS = $keepMu
   $now = [DateTimeOffset]::UtcNow
   $rows = @([pscustomobject]@{ id = "win1"; updated_at = $now.AddSeconds(-20).ToString("o") }, [pscustomobject]@{ id = "win5"; updated_at = $now.AddHours(-30).ToString("o") },
             [pscustomobject]@{ id = "win8"; updated_at = $now.AddSeconds(-15).ToString("o") }, [pscustomobject]@{ id = "may-khac"; updated_at = $now.ToString("o") })
