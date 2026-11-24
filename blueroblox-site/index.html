@@ -607,6 +607,8 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .node.full{border-color:rgba(255,107,129,.55)}
 .node.off{opacity:.75;border-style:dashed}
 .node.sel{border-color:var(--sky);box-shadow:inset 0 0 0 1px var(--sky)}
+.node.srvm{border-style:dashed;border-color:rgba(255,214,102,.55)}
+.node.srvm.off{border-color:var(--line2)}
 .node>.nhd{grid-area:hd;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 8px;align-content:start;min-width:0}
 .node>.nhd .nmeta{grid-column:1/-1;display:grid;gap:3px}
 .node>.nc{display:grid;gap:5px;align-content:start;min-width:0}
@@ -3400,6 +3402,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
       </div>
       <input class="search" id="pcq" placeholder="Tìm theo tên máy, mã, IP, tên khách…" style="width:100%" autocomplete="off">
       <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hạn thuê</th><th>Windows</th><th>Cấu hình</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
+      <div class="hint" id="pca-srvnote" hidden></div>
       <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. <b>Số máy</b> (nhãn № cạnh tên): người cài gõ ngay sau khi cài xong, hoặc bấm <b>Sửa</b> để đặt — số này hiện trên màn hình máy (file “May so … (CloudBlue)”) và trong lời nhắc, khách báo lỗi theo số đó. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — từ 2 ngày trước hạn máy tự nhắc khách liên tục, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt); máy sắp / đã hết hạn luôn hiện ở ô 🔔 đầu trang. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
     </div>
     <div class="dbody" id="pane-biz" hidden>
@@ -9156,7 +9159,7 @@ function renderAlerts() {
 }
 async function loadNodes() {
   if (!isAdmin()) return [];
-  const { data, error } = await sb.from("cloud_nodes").select("*").order("created_at");
+  const [{ data, error }] = await Promise.all([sb.from("cloud_nodes").select("*").order("created_at"), loadSrvMachines()]);
   if (error) { if ($("cpa-nodes")) $("cpa-nodes").innerHTML = `<div class="empty">${/cloud_nodes/.test(error.message || "") ? "Chưa chạy file SQL cloud-phones-v5.sql trên Supabase." : esc(errMsg(error))}</div>`; return []; }
   NODES = data || []; return NODES;
 }
@@ -9203,12 +9206,92 @@ function nodeSw(m, newest) {
 const NSEL = new Set(), NOPEN = new Set(), NJOB = new Map();          // NJOB: mã máy chủ → { st: "run" | "ok" | "err", msg, at } — việc "chỉnh nhiều máy" vừa làm
 let NBULK_OPEN = false, NBULK_BUSY = false;
 function nodeJobRow(j) { return `<div class="njob" style="color:${j.st === "err" ? "var(--bad)" : j.st === "ok" ? "var(--ok)" : "var(--warn, #ffd666)"}">${esc(j.msg)}</div>`; }
+/* 24/11 · MÁY CHỦ cài bằng ISO máy chủ (SQL v53: pc_machines.srv) có phần mềm CloudBlue PC → admin vào thẳng màn hình Windows (play.html?pc=).
+   Nối máy đó với dòng máy chủ: cùng tên máy Windows (cloudphoned báo metrics.host · agent báo info.host); máy chủ chưa báo tên máy → cùng SỐ winN
+   (số trong tên gõ lúc cài, vd "54 cp" → win54). Chưa nối được (đang tự cài phần mềm, chưa có dòng máy chủ) → 1 thanh riêng ở cuối danh sách.
+   Dữ liệu do máy gửi lên → ép kiểu, cắt ngắn, luôn esc() khi in. */
+let SRVM = [], SRV53 = null;
+const srvO = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+const srvS = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
+function srvNum(v) {                                    // "win54" / "54" / "54 cp" / "CP54" / "may 7 hn" → 54 / 54 / 54 / 54 / 7 ; "CB-102" / "" → 0
+  const t = srvS(v, 80), a = /^\s*(?:win|may\s*chu|maychu|server|sv|may)?[\s\-_.]*0*(\d{1,2})\s*$/i.exec(t);
+  if (a) return +a[1];
+  const b = /(?:^|\D)0*(\d{1,2})(?!\d)/.exec(t);
+  return b ? +b[1] : 0;
+}
+const srvOn = m => { const ps = Math.max(10, +((window.PCA && window.PCA.set && window.PCA.set.poll_s) || 30)); return !!m.last_seen && Date.now() - new Date(m.last_seen).getTime() < Math.max(90, 3 * ps) * 1000; };
+const srvAlertTxt = t => String(t || "").replace("đã hiện ở Máy cho thuê › Máy VPS — bấm 🖥 Điều khiển", "đã hiện ở ĐT đám mây › 🖥️ Máy chủ — bấm ⚙ Cài đặt › 🖥 Điều khiển");
+async function loadSrvMachines() {
+  if (SRV53 === false) return SRVM;
+  try {
+    const { data, error } = await sb.from("pc_machines").select("id,name,os,info,lan_ip,pub_ip,last_seen,approved,created_at").eq("srv", true).order("created_at");
+    if (error) { if (error.code === "42703" || error.code === "PGRST205" || /column .* does not exist|schema cache/i.test(String(error.message || ""))) { SRV53 = false; SRVM = []; } return SRVM; }
+    SRV53 = true; SRVM = Array.isArray(data) ? data.filter(m => m && m.id) : [];
+  } catch (e) {}
+  return SRVM;
+}
+function srvLink() {
+  const used = new Set(), link = new Map(), hostOf = m => srvS(srvO(m.info).host, 64).trim().toLowerCase();
+  for (const n of NODES) {                              // 1. cùng tên máy Windows
+    const h = srvS(srvO(n.metrics).host, 64).trim().toLowerCase(); if (!h) continue;
+    const c = SRVM.filter(m => !used.has(m.id) && hostOf(m) === h);
+    if (c.length === 1) { link.set(n.id, c[0]); used.add(c[0].id); }
+  }
+  for (const n of NODES) {                              // 2. máy chủ chưa báo tên máy Windows → cùng số winN (chỉ khi đúng 1 máy khớp)
+    if (link.has(n.id) || srvS(srvO(n.metrics).host)) continue;
+    const k = /^win0*(\d{1,2})$/i.exec(String(n.id || "")); if (!k) continue;
+    const c = SRVM.filter(m => !used.has(m.id) && (srvNum(m.name) || srvNum(srvO(m.info).host)) === +k[1]);
+    if (c.length === 1) { link.set(n.id, c[0]); used.add(c[0].id); }
+  }
+  return { link, rest: SRVM.filter(m => !used.has(m.id)) };
+}
+function srvCtlBtn(m) {
+  return `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(srvS(m.id, 64))}" target="_blank" rel="noopener" data-srvctl="${esc(srvS(m.id, 64))}" title="Mở màn hình Windows của máy chủ này trên trình duyệt (phần mềm CloudBlue PC trên máy chủ)${srvOn(m) ? "" : " — máy đang chưa báo về, có thể chưa vào được"}">🖥 Điều khiển</a>`;
+}
+function srvCtlRow(m) {
+  const on = srvOn(m), h = srvS(srvO(m.info).host, 40);
+  return `<div class="nr" title="Phần mềm CloudBlue PC trên máy chủ — ⚙ Cài đặt › 🖥 Điều khiển để vào màn hình Windows"><span>Điều khiển từ xa</span><em${on ? "" : ' style="color:var(--bad)"'}>${on ? "● sẵn sàng" : "○ chưa báo về" + (m.last_seen ? " · " + ago(m.last_seen) : "")}${h ? " · " + esc(h) : ""}</em></div>`;
+}
+function srvRow(m) {
+  const i = srvO(m.info), on = srvOn(m), key = "srv:" + srvS(m.id, 64), open = NOPEN.has(key);
+  const gp = (Array.isArray(i.gpus) ? i.gpus : []).slice(0, 3).map(g => srvS(g && typeof g === "object" ? g.name : g, 60).replace("NVIDIA GeForce ", "")).filter(Boolean).join(" · ");
+  const dk = (Array.isArray(i.disks) ? i.disks : []).slice(0, 4).map(d => { const x = srvO(d); return (srvS(x.model, 30) || "Ổ") + " " + (+x.gb > 0 ? Math.round(+x.gb) : "?") + " GB" + (x.ssd === true ? " SSD" : ""); }).join(" · ");
+  const win = [srvS(i.host, 40), srvS(i.os_name, 40) || srvS(m.os, 20).toUpperCase()].filter(Boolean).join(" · ");
+  const ip = srvS(m.lan_ip, 64) || srvS(i.lan_ip, 64), pub = srvS(m.pub_ip, 64);
+  return `<div class="node srvm${on ? "" : " off"}${open ? " open" : ""}" data-srvm="${esc(srvS(m.id, 64))}">
+      <div class="nhd">
+        <span class="nsel" aria-hidden="true"></span>
+        <div class="nh"><b>${esc(srvS(m.name, 40) || "Máy chủ mới")}</b><span class="hint">🖧 máy chủ mới</span>
+          <span class="pill ${on ? "wt" : "bad"}">${on ? "Đang tự cài phần mềm máy chủ" : "Mất kết nối" + (m.last_seen ? " · " + ago(m.last_seen) : "")}</span></div>
+        <div class="nmeta"><div class="nr"><span>Trạng thái</span><em>Windows đã cài xong · chưa nhận máy khách — cài xong tự thành 1 dòng máy chủ ở trên</em></div>
+          <div class="nr"><span>Windows</span><em>${esc(win || "?")}</em></div>
+          ${srvS(i.agent) ? `<div class="nr"><span>Phần mềm</span><em>CloudBlue PC ${esc(srvS(i.agent, 24))}</em></div>` : ""}
+          ${srvCtlRow(m)}</div>
+      </div>
+      <div class="nc cpu"><div class="nr"><span>CPU</span><em>${esc(srvS(i.cpu, 60) || "?")}${+i.cores > 0 ? " · " + Math.round(+i.cores) + " luồng" : ""}</em></div></div>
+      <div class="nc ram"><div class="nr"><span>RAM</span><em>${+i.ram_gb > 0 ? Math.round(+i.ram_gb) + " GB" : "?"}</em></div></div>
+      <div class="nc gpu"><div class="nr"><span>Card đồ hoạ</span><em>${esc(gp || "?")}</em></div></div>
+      <div class="nc dsk"><div class="nr"><span>Ổ cứng</span><em>${esc(dk || "?")}</em></div>
+        <div class="nf"><span>${esc(ip || "IP ?")}</span>${pub ? `<span>${esc(pub)}</span>` : ""}<span>Báo về ${m.last_seen ? ago(m.last_seen) : "chưa từng"}</span></div></div>
+      <button class="btn ghost sm nset" type="button" data-nset="${esc(key)}" aria-expanded="${open}" aria-controls="nact-${esc(key)}" title="Điều khiển máy chủ từ xa">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
+      <div class="nacts" id="nact-${esc(key)}"${open ? "" : " hidden"}>
+        ${srvCtlBtn(m)}
+      </div>
+    </div>`;
+}
+document.addEventListener("click", e => {             // "ĐT đám mây › Máy chủ" trong lời nhắc ở Máy cho thuê → mở thẳng mục đó
+  const a = e.target.closest && e.target.closest("[data-gosrv]"); if (!a) return;
+  e.preventDefault();
+  const t = document.querySelector('[data-tab="cloud"]'); if (t) t.click();
+  const b = document.querySelector('#pane-cloud .subtabs button[data-sub="servers"]'); if (b) b.click();
+});
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
-  const have = new Set(NODES.map(n => n.id));
+  const SL = srvLink(), have = new Set(NODES.map(n => n.id));
+  SRVM.forEach(m => have.add("srv:" + srvS(m.id, 64)));
   for (const set of [NSEL, NOPEN]) for (const id of [...set]) if (!have.has(id)) set.delete(id);
   for (const [id, j] of [...NJOB]) if (!have.has(id) || (j.st !== "run" && Date.now() - j.at > 15 * 60000)) NJOB.delete(id);
-  if (!NODES.length) { box.innerHTML = `<div class="empty">Chưa có máy chủ nào gửi báo cáo. Cập nhật cloudphoned.py trên server rồi khởi động lại dịch vụ.</div>`; $("cpa-nodesum").textContent = ""; nodeBulkBar(); return; }
+  if (!NODES.length && !SL.rest.length) { box.innerHTML = `<div class="empty">Chưa có máy chủ nào gửi báo cáo. Cập nhật cloudphoned.py trên server rồi khởi động lại dịch vụ.</div>`; $("cpa-nodesum").textContent = ""; nodeBulkBar(); return; }
   let tr = 0, ar = 0, tc = 0, ac = 0, ph = 0; const swNew = nodeSwNewest();
   box.innerHTML = NODES.map(n => {
     const m = n.metrics || {}, age = nAge(n), off = age > 3, lim = n.limit_pct || 85;
@@ -9219,14 +9302,14 @@ function renderNodes() {
     const g = (m.gpus || []).map(x => nRow(esc(x.name).replace("NVIDIA GeForce ", ""),
       `${x.util ?? "?"}% · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.util, 0, "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ")).join("")
       || `<div class="nr"><span>Card đồ hoạ</span><em>không đọc được</em></div>`;
-    const d = m.disk_data, nid = esc(n.id), sel = NSEL.has(n.id), open = NOPEN.has(n.id), job = NJOB.get(n.id);
+    const d = m.disk_data, nid = esc(n.id), sel = NSEL.has(n.id), open = NOPEN.has(n.id), job = NJOB.get(n.id), L = SL.link.get(n.id);
     const cpuStop = m.cpu_busy_pct || 85, ramStop = m.ram_busy_pct || 85, dskStop = m.disk_busy_pct || 90;
     return `<div class="node${full ? " full" : ""}${off ? " off" : ""}${sel ? " sel" : ""}${open ? " open" : ""}" data-node="${nid}">
       <div class="nhd">
         <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
         <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
           <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${job ? nodeJobRow(job) : ""}</div>
+        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}</div>
       </div>
       <div class="nc cpu">
         ${nRow("CPU thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, "CPU đang dùng thật")}
@@ -9249,8 +9332,9 @@ function renderNodes() {
           ${m.cpu_temp ? `<span>🌡️ CPU ${Math.round(m.cpu_temp)}°C</span>` : ""}${m.load ? `<span>Tải ${m.load[0]}</span>` : ""}${m.uptime_h != null ? `<span>Bật ${m.uptime_h >= 48 ? Math.round(m.uptime_h / 24) + " ngày" : m.uptime_h + " giờ"}</span>` : ""}
           <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span></div>
       </div>
-      <button class="btn ghost sm nset" type="button" data-nset="${nid}" aria-expanded="${open}" aria-controls="nact-${nid}" title="Đổi tên, ngừng / nhận máy, quản lý, khởi động lại, xoá sạch máy">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
+      <button class="btn ghost sm nset" type="button" data-nset="${nid}" aria-expanded="${open}" aria-controls="nact-${nid}" title="${L ? "Điều khiển từ xa, đ" : "Đ"}ổi tên, ngừng / nhận máy, quản lý, khởi động lại, xoá sạch máy">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
       <div class="nacts" id="nact-${nid}"${open ? "" : " hidden"}>
+        ${L ? srvCtlBtn(L) : ""}
         <button class="btn ghost sm" data-nrename="${nid}">✏️ Đổi tên</button>
         <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${nid}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
         ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${nid}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
@@ -9260,8 +9344,8 @@ function renderNodes() {
         ${off ? `<button class="btn danger sm" data-ndel="${nid}">Xoá</button>` : ""}
       </div>
     </div>`;
-  }).join("");
-  $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách`;
+  }).join("") + SL.rest.map(srvRow).join("");
+  $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách` + (SL.rest.length ? ` · ${SL.rest.length} máy chủ mới đang cài` : "");
   nodeBulkBar();
 }
 /* thanh trên đầu danh sách: chọn tất cả + ô "⚙ Cài đặt cho N máy đã chọn" */
@@ -11212,7 +11296,7 @@ async function secAlertsLoad() {
   if (error || !data) { tb.innerHTML = `<tr><td colspan="4" class="hint" style="padding:14px">${V29_MISS(error) ? V29_TXT : esc(errMsg(error))}</td></tr>`; return; }
   secBadge(data.unseen);
   const rows = data.rows || [];
-  tb.innerHTML = rows.length ? rows.map(r => `<tr data-bkid="${+r.id}" data-bku="${esc([r.user_id].concat(r.data && Array.isArray(r.data.users) ? r.data.users : []).filter(Boolean).join(","))}"${r.seen ? ' style="opacity:.62"' : ""}><td>${bwhen(r.at)}</td><td>${secLv(r.level)}</td><td style="white-space:normal">${esc(r.msg)}${r.user ? `<div class="hint">Khách: <a href="#" data-sa="audit" data-id="${esc(r.user_id)}" data-n="${esc(r.user)}">${esc(r.user)}</a></div>` : ""}</td>
+  tb.innerHTML = rows.length ? rows.map(r => `<tr data-bkid="${+r.id}" data-bku="${esc([r.user_id].concat(r.data && Array.isArray(r.data.users) ? r.data.users : []).filter(Boolean).join(","))}"${r.seen ? ' style="opacity:.62"' : ""}><td>${bwhen(r.at)}</td><td>${secLv(r.level)}</td><td style="white-space:normal">${esc(r.kind === "pc_srv_new" ? srvAlertTxt(r.msg) : r.msg)}${r.user ? `<div class="hint">Khách: <a href="#" data-sa="audit" data-id="${esc(r.user_id)}" data-n="${esc(r.user)}">${esc(r.user)}</a></div>` : ""}</td>
       <td style="text-align:right">${r.kind === "pw_forgot" && r.user_id ? `<button class="btn sm" data-pwset="${esc(r.user_id)}" data-n="${esc(r.user || "")}">🔑 Mật khẩu tạm</button> ` : ""}${r.user_id ? secActs(r.user_id, r.user || "") : (r.data && Array.isArray(r.data.users) ? `<span class="hint">${r.data.users.length} tài khoản</span>` : "")}</td></tr>`).join("")
     : `<tr><td colspan="4" style="color:var(--muted);text-align:center;padding:18px">✓ Chưa có cảnh báo nào. Bot vẫn đang gác.</td></tr>`;
 }
@@ -13411,6 +13495,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       sb.from("pc_settings").select(SETS + (v2 ? SETS42 : "")).eq("id", 1).maybeSingle()]);
     let v2 = P.v42 !== false;
     const x44 = v2 && P.v44 !== false ? sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at") : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
+    const x53 = P.v53 !== false ? sb.from("pc_machines").select("id").eq("srv", true) : null;      // SQL v53: MÁY CHỦ Cloud Phone — không cho thuê, nằm ở ĐT đám mây › Máy chủ
     let [[m, st], o] = await Promise.all([get(v2), sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300)]);
     if (v2 && (noCol(m.error) || noCol(st.error))) { v2 = false; [m, st] = await get(false); }      // chưa chạy SQL v42: đọc kiểu cũ, phần hạn thuê tạm ẩn
     if (m.error) {
@@ -13424,6 +13509,11 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     P.miss = false; P.loaded = true; P.v42 = v2; show("pca-miss", false); show("pca-miss42", !v2);
     if ((o.error || st.error) && !quiet) toast(em(o.error || st.error), 1);
     P.list = Array.isArray(m.data) ? m.data : [];
+    P.srvN = 0;
+    if (x53) { try { const r53 = await x53;
+      if (r53.error) { if (noCol(r53.error)) P.v53 = false; }
+      else { P.v53 = true; const sv = new Set((r53.data || []).map(x => x && x.id)); P.list = P.list.filter(x => !sv.has(x.id)); P.srvN = sv.size; }
+    } catch (e) {} }
     if (x44) { try { const r44 = await x44;
       if (r44.error) { if (noCol(r44.error)) P.v44 = false; }
       else { P.v44 = true; const mp = {}; (r44.data || []).forEach(x => { if (x && x.id) mp[x.id] = x; });
@@ -13648,6 +13738,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const q = ($i("pcq").value || "").trim().toLowerCase();
     const list = P.list.filter(m => !q || [m.name, m.code, m.note, m.lan_ip, m.pub_ip, m.os, O(m.info).host, m.renter].some(v => S(v, 500).toLowerCase().includes(q)));
     const nNew = P.list.filter(m => !m.approved).length, nBusy = P.list.filter(m => openOf(m.id).some(o => o.cmd === "reinstall")).length;
+    const srvNote = $i("pca-srvnote");
+    if (srvNote) { srvNote.hidden = !P.srvN; srvNote.innerHTML = P.srvN ? `🖧 <b>${P.srvN} máy chủ Cloud Phone</b> (cài bằng ISO máy chủ) không nằm ở bảng này — xem ở <a href="#" data-gosrv>ĐT đám mây › 🖥️ Máy chủ</a>, bấm ⚙ Cài đặt › 🖥 Điều khiển để vào máy.` : ""; }
     $i("pk-total").textContent = P.list.length; $i("pk-on").textContent = P.list.filter(online).length; $i("pk-new").textContent = nNew; $i("pk-busy").textContent = nBusy;
     const nRent = xpRender() || 0;            // dựng lại phần 🔔; máy PC sắp / đã hết hạn cũng tính vào số trên nút tab
     const bd = $i("pc-badge"); if (bd) { bd.textContent = (nNew + nRent) || ""; bd.hidden = !(nNew + nRent); }
