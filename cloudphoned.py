@@ -1428,6 +1428,8 @@ def heartbeat():
     metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
+    try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
+    except Exception: pass
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
