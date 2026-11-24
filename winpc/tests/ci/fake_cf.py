@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 """Máy chủ GIẢ cho bộ thử ISO máy chủ Cloud Phone (maychu_check.ps1): giả API Cloudflare (đường hầm + tên miền) và bảng cloud_nodes của Supabase.
    Chạy: python fake_cf.py <cổng> <tên miền> <khoá supabase đúng>      Mã Cloudflare: 'tok-ok' (đủ quyền) · 'tok-notunnel' (không có quyền đường hầm).
-   GET /_state → toàn bộ trạng thái (để bộ thử soát) · POST /_reset → về trạng thái đầu · POST /_nodes [{"id", "age"}] → đổi danh sách máy chủ."""
+   GET /_state → toàn bộ trạng thái (để bộ thử soát) · POST /_reset → về trạng thái đầu · POST /_nodes [{"id", "age"}] → đổi danh sách máy chủ.
+   Hàm pc_srv_key (SQL v53 — báo dấu băm MÃ MÁY CHỦ để điều khiển từ xa): POST /_sql53 {"on": false} = web CHƯA chạy SQL v53 (404 như PostgREST thật)
+   · POST /_srvfull {"on": true} = web đã giữ quá nhiều mã (TOO_MANY)."""
 import json, sys, time, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -11,7 +13,7 @@ S = {}
 
 def reset():
     S.clear()
-    S.update(tunnels=[], configs={}, dns=[], calls=[], seq=0,
+    S.update(tunnels=[], configs={}, dns=[], calls=[], seq=0, srv_keys=[], sql53=True, srv_full=False,
              nodes=[{"id": "win1", "age": 20}, {"id": "win5", "age": 99999}, {"id": "win8", "age": 15}],     # age = giây từ lần báo gần nhất
              phones=[{"node": "win5", "status": "active"}, {"node": "win5", "status": "expired"}, {"node": "win5", "status": "cancelled"}, {"node": "win8", "status": "active"}])
 
@@ -45,6 +47,19 @@ class H(BaseHTTPRequestHandler):
                 S["browser_block"] = S.get("browser_block", 0) + 1
                 return self.out(401, {"message": "Forbidden use of secret API key in browser",
                                       "hint": "Secret API keys can only be used in a protected environment and should never be used in a browser. Delete this secret API key immediately!"})
+        if p == "/_sql53": S["sql53"] = bool(body.get("on")); return self.out(200, {"ok": True})
+        if p == "/_srvfull": S["srv_full"] = bool(body.get("on")); return self.out(200, {"ok": True})
+        if p == "/rest/v1/rpc/pc_srv_key":                                        # ---- báo dấu băm mã máy chủ (chỉ khoá dịch vụ)
+            if self.headers.get("apikey") != SBKEY or self.headers.get("Authorization") != "Bearer " + SBKEY: return self.out(401, {"message": "Invalid API key"})
+            if not S["sql53"]:
+                return self.out(404, {"code": "PGRST202", "details": "Searched for the function public.pc_srv_key with parameters p_hash, p_note",
+                                      "message": "Could not find the function public.pc_srv_key(p_hash, p_note) in the schema cache"})
+            import re
+            h = str(body.get("p_hash") or "")
+            if not re.match(r"^[0-9a-f]{64}$", h): return self.out(200, {"ok": False, "err": "BAD_HASH"})
+            if S["srv_full"] and not any(k["hash"] == h for k in S["srv_keys"]): return self.out(200, {"ok": False, "err": "TOO_MANY"})
+            if not any(k["hash"] == h for k in S["srv_keys"]): S["srv_keys"].append({"hash": h, "note": str(body.get("p_note") or "")[:120]})
+            return self.out(200, {"ok": True, "keys": len(S["srv_keys"]), "v": 53})
         if p.startswith("/rest/v1/cloud_nodes"):
             if self.headers.get("apikey") != SBKEY or self.headers.get("Authorization") != "Bearer " + SBKEY: return self.out(401, {"message": "Invalid API key"})
             now = time.time()

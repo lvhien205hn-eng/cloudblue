@@ -67,7 +67,7 @@ try {
   # nap cac ham + vai bien dau file cua tao-iso.ps1 vao phien nay (KHONG chay phan than)
   $fdefs = $ast.FindAll({ param($n) $n -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $false)
   foreach ($fd in $fdefs) { . ([scriptblock]::Create($fd.Extent.Text)) }
-  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER', '$CFAPI', '$LinkRoot', '$UA', '$SbWhy')
+  $wantVars = @('$OSC_SHA', '$PACKEXT', '$Notes', '$OscInfo', '$OscWhy', '$GetFileErr', '$VER', '$CFAPI', '$LinkRoot', '$UA', '$SbWhy', '$SrvWhy')
   foreach ($st in $ast.EndBlock.Statements) {
     if ($st -is [System.Management.Automation.Language.AssignmentStatementAst]) {
       if ($wantVars -contains ("" + $st.Left.Extent.Text)) { . ([scriptblock]::Create($st.Extent.Text)) }
@@ -299,11 +299,38 @@ try {
         $w3 = Get-CfWhy $badTok 403 '{"success":false,"errors":[{"code":9109,"message":"Unauthorized to access requested resource"}]}'
         Ck "Get-CfWhy: ky tu la / khong toi duoc Cloudflare / thieu quyen (403 kem ma loi cua Cloudflare)" (($w1 -match "ky tu la") -and ($w2 -match "khong goi duoc Cloudflare") -and ($w3 -match "THIEU QUYEN") -and ($w3 -match "9109")) (@($w1, $w2, $w3) -join " | ")
       } finally { $CFAPI = $cfKeep }
+      # 23.11k - DIEU KHIEN TU XA: ma may chu + bao dau bam len web (ham pc_srv_key cua SQL v53)
+      $sbBase = "http://127.0.0.1:" + $sbPort
+      $kA = New-SrvKey
+      $kB = New-SrvKey
+      Ck "New-SrvKey: cbsv_ + 40 ky tu hex, moi lan 1 ma khac" (($kA -match '^cbsv_[0-9a-f]{40}$') -and ($kB -match '^cbsv_[0-9a-f]{40}$') -and ($kA -ne $kB)) ($kA.Length.ToString() + " / " + $kB.Length)
+      Ck "Get-TextSha: dung sha256 chuan" ((Get-TextSha "abc") -eq "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") (Get-TextSha "abc")
+      $rg1 = Register-SrvKey $sbBase $sbKey $kA "tao-iso thu"
+      $stK = Invoke-RestMethod -Uri ($sbBase + "/_state") -TimeoutSec 5
+      $stKtxt = $stK | ConvertTo-Json -Depth 6 -Compress
+      Ck "Register-SrvKey: khoa dung -> ok ; web chi nhan DAU BAM (khong nhan ma), kem ghi chu ; yeu cau khong bi coi la trinh duyet" (($rg1 -eq "ok") -and (@($stK.srv_keys).Count -eq 1) -and ($stK.srv_keys[0].hash -eq (Get-TextSha $kA)) -and ($stK.srv_keys[0].note -eq "tao-iso thu") -and (-not $stKtxt.Contains($kA)) -and (-not $stK.browser_block)) ($rg1 + " | " + $SrvWhy)
+      $rg2 = Register-SrvKey $sbBase ("sb_secret_sai_" + ("x" * 30)) $kA "x"
+      $whyR2 = "" + $SrvWhy
+      Ck "Register-SrvKey: khoa Supabase sai -> bad, ly do KHONG lo khoa / ma" (($rg2 -eq "bad") -and ($whyR2 -match "HTTP 401") -and (-not $whyR2.Contains("sb_secret_sai_")) -and (-not $whyR2.Contains($kA))) ($rg2 + " | " + $whyR2)
+      [void](Invoke-RestMethod -Method Post -Uri ($sbBase + "/_sql53") -ContentType "application/json" -Body '{"on": false}' -TimeoutSec 5)
+      $rg3 = Register-SrvKey $sbBase $sbKey $kB "x"
+      $sv3 = Set-SrvRemote $sbBase $sbKey $kB $true 6>&1 | Out-String
+      $sv3s = Set-SrvRemote $sbBase $sbKey $kB $true 6>$null
+      Ck "web CHUA chay SQL v53 -> nosql ; Set-SrvRemote noi ro phai chay SQL v53, khong hoi (che do -KhongHoi), khong nem loi" (($rg3 -eq "nosql") -and ($sv3s -eq "nosql") -and ($sv3 -match "SQL v53")) ($rg3 + " | " + $sv3s + " | " + ($sv3 -replace '\s+', ' '))
+      [void](Invoke-RestMethod -Method Post -Uri ($sbBase + "/_sql53") -ContentType "application/json" -Body '{"on": true}' -TimeoutSec 5)
+      $sv4 = Set-SrvRemote $sbBase $sbKey $kB $true 6>$null
+      $stK2 = Invoke-RestMethod -Uri ($sbBase + "/_state") -TimeoutSec 5
+      Ck "chay SQL xong goi lai -> Set-SrvRemote ok, web giu 2 dau bam (2 ma khac nhau)" (($sv4 -eq "ok") -and (@($stK2.srv_keys).Count -eq 2)) ("" + $sv4 + " | " + @($stK2.srv_keys).Count)
+      [void](Invoke-RestMethod -Method Post -Uri ($sbBase + "/_srvfull") -ContentType "application/json" -Body '{"on": true}' -TimeoutSec 5)
+      $sv5 = Set-SrvRemote $sbBase $sbKey (New-SrvKey) $true 6>$null
+      $sv6 = Set-SrvRemote "http://127.0.0.1:9" $sbKey $kA $true 6>$null
+      $sv7 = Set-SrvRemote $sbBase ("sb_secret_sai_" + ("x" * 30)) $kA $true 6>$null
+      Ck "Set-SrvRemote: web day ma -> full ; khong toi duoc web -> chua ; khoa sai -> bad (deu khong nem loi)" (($sv5 -eq "full") -and ($sv6 -eq "chua") -and ($sv7 -eq "bad")) (@($sv5, $sv6, $sv7) -join " | ")
       $mcF = Join-Path $td "mc-luu.dpapi"
-      $okS = Save-McConf $mcF @{ key = "sb_secret_thu_luu"; cf = "ma-cf-thu"; agree = "1"; emu = "ld" }
+      $okS = Save-McConf $mcF @{ key = "sb_secret_thu_luu"; cf = "ma-cf-thu"; agree = "1"; emu = "ld"; srv = $kA }
       $rawS = Get-Content -LiteralPath $mcF -Raw
       $backS = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR((ConvertTo-SecureString $rawS.Trim()))) | ConvertFrom-Json
-      Ck "Save-McConf: luu ma hoa (tep khong chua khoa dang chu), doc lai du 4 muc" ($okS -and (-not $rawS.Contains("sb_secret_thu_luu")) -and ($backS.key -eq "sb_secret_thu_luu") -and ($backS.cf -eq "ma-cf-thu") -and ($backS.agree -eq "1") -and ($backS.emu -eq "ld"))
+      Ck "Save-McConf: luu ma hoa (tep khong chua khoa / ma may chu dang chu), doc lai du 5 muc" ($okS -and (-not $rawS.Contains("sb_secret_thu_luu")) -and (-not $rawS.Contains($kA)) -and ($backS.key -eq "sb_secret_thu_luu") -and ($backS.cf -eq "ma-cf-thu") -and ($backS.agree -eq "1") -and ($backS.emu -eq "ld") -and ($backS.srv -eq $kA))
     } finally { try { Stop-Process -Id $sbSrv.Id -Force -ErrorAction SilentlyContinue } catch {} }
   } else { Info "BO QUA: may nay khong co python - khong thu duoc Test-SbService voi may chu gia" }
   $oldCf = $CFAPI
@@ -489,7 +516,7 @@ try {
     $txtM = ""
     if (Test-Path $logM) { $txtM = Get-Content -Raw -Path $logM }
     Ck "ISO may chu: chay toi khung TOM TAT, khong dung giua chung" (($txtM -match "TOM TAT") -and (-not ($txtM -match "!! DUNG")) -and (-not ($txtM -match "!! LOI"))) (($txtM -split "`n" | Where-Object { $_ -match "!! " }) -join " | ")
-    Ck "ISO may chu: tom tat ghi ro may chu + canh bao ISO chua khoa bi mat; KHONG in khoa ra man hinh; khong dung ma dang ky may PC (du co dua -MaDangKy)" (($txtM -match "MAY CHU CLOUD PHONE: gia lap mumu") -and ($txtM -match "mumu-setup.exe, tpl_a15.mumudata") -and ($txtM -match "ISO NAY CHUA KHOA BI MAT") -and ($txtM -match "khoa Supabase: CO") -and ($txtM -match "Ma dang ky: KHONG") -and (-not $txtM.Contains($mcKey)) -and (-not $txtM.Contains($mcTok)))
+    Ck "ISO may chu: tom tat ghi ro may chu + canh bao ISO chua khoa bi mat; KHONG in khoa ra man hinh; khong dung ma dang ky may PC (du co dua -MaDangKy)" (($txtM -match "MAY CHU CLOUD PHONE: gia lap mumu") -and ($txtM -match "mumu-setup.exe, tpl_a15.mumudata") -and ($txtM -match "ISO NAY CHUA KHOA BI MAT") -and ($txtM -match "khoa Supabase: CO") -and (-not $txtM.Contains("  Ma dang ky: ")) -and (-not $txtM.Contains($mcKey)) -and (-not $txtM.Contains($mcTok)) -and (-not $txtM.Contains($key)))
     Ck "ISO may chu: buoc ke nhac go TEN MAY (win9 / 9)" ($txtM -match "bo cai hoi TEN MAY")
     $dlM = @(Get-ChildItem -LiteralPath (Join-Path $workM "dl\tai") -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name })
     Ck "ISO may chu: ISO Windows + driver + bo cai gia lap dua bang LINK -> script tu tai ve thu muc lam viec roi dung nhu tep thuong" ((@([regex]::Matches($txtM, "dang tai tu link: file:///")).Count -eq 3) -and ($dlM -contains "Win10 gia 1.iso") -and ($dlM -contains "MuMuInstaller_gia.exe") -and ($dlM -contains "pack one.zip")) (($dlM -join ", ") + " // " + (($txtM -split "`n" | Where-Object { $_ -match "tai tu link|da tai" }) -join " | "))
@@ -500,7 +527,11 @@ try {
       try {
         $cfgM = Get-Content -Raw (Join-Path $drM "cb\cb.json") | ConvertFrom-Json
         Ck "ISO may chu: cb.json role = server, tai khoan giu quyen Admin, bo cai chi hoi ten may (khong hoi so may), ten tu sinh win-..., cho go ten 15 phut" (($cfgM.role -eq "server") -and ($cfgM.user_admin -eq $true) -and ($cfgM.ask_code -eq $false) -and ($cfgM.name_prefix -eq "win") -and ($cfgM.code_wait -eq 900))
-        Ck "ISO may chu: KHONG co cb\enroll.key (may chu khong vao danh sach may PC cho thue)" (-not (Test-Path (Join-Path $drM "cb\enroll.key")))
+        $srvK = ""
+        if (Test-Path (Join-Path $drM "cb\enroll.key")) { $srvK = ("" + (Get-Content (Join-Path $drM "cb\enroll.key") -TotalCount 1)).Trim() }
+        $seedM = Get-Content -Raw (Join-Path $drM "sources\`$OEM`$\`$1\CloudBluePC\seed.json") | ConvertFrom-Json
+        Ck "ISO may chu (23.11k): cb\enroll.key la MA MAY CHU tu sinh (cbsv_ + 40 hex) - KHONG phai ma dang ky may PC du co dua -MaDangKy ; seed.json cua bo cai thuong cung ma do" (($srvK -match '^cbsv_[0-9a-f]{40}$') -and ($srvK -ne $key) -and (("" + $seedM.enroll_key) -eq $srvK)) ($srvK.Length.ToString() + " ky tu")
+        Ck "ISO may chu: KHONG in ma may chu ra man hinh ; -KhongKiemMa -> noi ro CHUA bao ma len web (khong goi web that khi chay thu)" (($srvK.Length -gt 10) -and (-not $txtM.Contains($srvK)) -and ($txtM -match "dieu khien tu xa: ISO co ma may chu, nhung CHUA bao duoc len web") -and ($txtM -match "CHUA bao len web \(-KhongKiemMa\)")) (($txtM -split "`n" | Where-Object { $_ -match "dieu khien tu xa" }) -join " | ")
         $fbM = Join-Path $drM "cb\os\firstboot.d"
         $mcM = Join-Path $fbM "maychu"
         Ck "ISO may chu: lenh chay lan dau 90-cloudblue-may-chu.ps1 + script cai may chu dung ban trong kho" (((Get-FileHash (Join-Path $fbM "90-cloudblue-may-chu.ps1")).Hash -eq (Get-FileHash (Join-Path $RepoDir "maychu\firstboot.ps1")).Hash) -and ((Get-FileHash (Join-Path $mcM "may-chu-iso.ps1")).Hash -eq (Get-FileHash (Join-Path $RepoDir "maychu\may-chu-iso.ps1")).Hash))
@@ -519,7 +550,7 @@ try {
     $tM2 = (& $Ps1 -Iso $iso1 -Work $workM -Nguon $RepoDir -KhongHoi -KhongIso -MayChu -BoCai $cfT *>&1 | Out-String)
     Ck "ISO may chu: tep kem khong phai bo cai gia lap / may mau -> dung som, noi ro" (($tM2 -match "!! DUNG") -and ($tM2 -match "Tep kem cho may chu"))
     $tM3 = (& $Ps1 -Iso $iso1 -Work $workM -Nguon $RepoDir -KhongHoi -KhongIso -MayChu -GiaLap ld *>&1 | Out-String)
-    Ck "ISO may chu khong kem khoa / bo cai (-KhongHoi): van dung duoc cay bo cai, ghi chu ro cac viec se phai lam tay" (($tM3 -match "TOM TAT") -and ($tM3 -match "KHONG kem khoa Supabase") -and ($tM3 -match "KHONG kem bo cai ld") -and ($tM3 -match "KHONG kem ma Cloudflare") -and ($tM3 -match "gia lap ld"))
+    Ck "ISO may chu khong kem khoa / bo cai (-KhongHoi): van dung duoc cay bo cai, ghi chu ro cac viec se phai lam tay" (($tM3 -match "TOM TAT") -and ($tM3 -match "KHONG kem khoa Supabase") -and ($tM3 -match "KHONG kem bo cai ld") -and ($tM3 -match "KHONG kem ma Cloudflare") -and ($tM3 -match "gia lap ld") -and ($tM3 -match "KHONG co dieu khien tu xa") -and ($tM3 -match "dieu khien tu xa: KHONG") -and (-not (Test-Path (Join-Path $workM "iso\cb\enroll.key"))))
     Remove-Item -Recurse -Force $workM -ErrorAction SilentlyContinue
 
     # ---------------------------------------------------------------------------------------- 4. chay lai: dung lai ma dang ky, cac loi nhap

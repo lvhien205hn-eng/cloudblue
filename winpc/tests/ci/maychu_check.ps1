@@ -197,6 +197,37 @@ try {
   $tn6 = New-CfTunnel "tok-sai-0000000000" "example.test" "phone9" "stream9"
   Ck "ten mien khong thuoc ma / ma sai -> bao loi, khong nem loi" ((-not $tn5.ok) -and ($tn5.err -match "khong thay ten mien") -and (-not $tn6.ok)) ("" + $tn5.err + " / " + $tn6.err)
 
+  # ---- 23.11k: DIEU KHIEN TU XA - may nay da hien o web chua (phan mem CloudBlue PC tren may tu dang ky bang ma may chu trong ISO)
+  [void](Send-Mock "/_reset" $null)
+  $SECRETS.Clear()
+  $rmKey = "cbsv_" + ("0123456789abcdef" * 3).Substring(0, 40)
+  $rs0 = Get-RemoteState $MockUrl $SbGood
+  New-Dir (Join-Path $CBPC "agent") | Out-Null
+  Set-Content -Path (Join-Path $CBPC "agent\pcagent.py") -Value "# gia" -Encoding ASCII
+  $rs1 = Get-RemoteState $MockUrl $SbGood                                              # chua co seed.json -> khong ket luan
+  Set-Content -Path (Join-Path $CBPC "seed.json") -Value "day khong phai json {" -Encoding ASCII
+  $rs2 = Get-RemoteState $MockUrl $SbGood
+  Set-Content -Path (Join-Path $CBPC "seed.json") -Value '{"name": "win9", "label": "win9"}' -Encoding ASCII
+  $rs3 = Get-RemoteState $MockUrl $SbGood
+  Ck "Get-RemoteState: may khong co phan mem CloudBlue PC -> noagent ; khong doc duoc seed.json -> err (KHONG ket luan la ISO cu) ; ISO cu khong kem ma -> none" (($rs0 -eq "noagent") -and ($rs1 -eq "err") -and ($rs2 -eq "err") -and ($rs3 -eq "none")) (@($rs0, $rs1, $rs2, $rs3) -join ",")
+  Set-Content -Path (Join-Path $CBPC "seed.json") -Value ('{"name": "win9", "label": "win9", "enroll_key": "' + $rmKey + '"}') -Encoding ASCII
+  $rs4 = Get-RemoteState $MockUrl ""
+  $rs5 = Get-RemoteState $MockUrl "sb_secret_sai_khoa_0000000000000000"
+  [void](Send-Mock "/_sql53" @{ on = $false })
+  $rs6 = Get-RemoteState $MockUrl $SbGood
+  [void](Send-Mock "/_sql53" @{ on = $true })
+  $rs7 = Get-RemoteState $MockUrl $SbGood
+  $msR = Get-Mock "/_state"
+  $msRtxt = $msR | ConvertTo-Json -Depth 6 -Compress
+  Ck "Get-RemoteState: ISO co ma may chu -> khong khoa: nokey ; khoa sai: err ; web chua chay SQL v53: nosql ; binh thuong: wait" (($rs4 -eq "nokey") -and ($rs5 -eq "err") -and ($rs6 -eq "nosql") -and ($rs7 -eq "wait")) (@($rs4, $rs5, $rs6, $rs7) -join ",")
+  Ck "... web chi nhan DAU BAM cua ma (sha256), khong nhan ma ; ma duoc dua vao danh sach che" ((@($msR.srv_keys).Count -eq 1) -and ($msR.srv_keys[0].hash -eq (Get-TextSha $rmKey)) -and (-not $msRtxt.Contains($rmKey)) -and ($SECRETS -contains $rmKey) -and ((Hide-Secret ("x " + $rmKey)) -notmatch "0123456789abcdef0123")) ($msRtxt)
+  Set-Content -Path (Join-Path $CBPC "identity.json") -Value '{"id": "11111111-2222-3333-4444-555555555555", "token": "0123456789abcdef0123456789abcdef", "name": "win9"}' -Encoding ASCII
+  [void](Send-Mock "/_reset" $null)
+  $rs8 = Get-RemoteState $MockUrl $SbGood
+  $msR2 = Get-Mock "/_state"
+  Ck "Get-RemoteState: phan mem da dang ky xong (identity.json co ma rieng) -> on, khong goi web nua" (($rs8 -eq "on") -and (@($msR2.srv_keys).Count -eq 0)) ($rs8)
+  Ck "Get-TextSha: dung sha256 chuan" ((Get-TextSha "abc") -eq "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+
   # ------------------------------------------------------------------------------------------- 4. ca luong cai may chu
   Out-Line "== 4. Ca luong cai may chu (Main) voi bo cai gia lap gia, setup.ps1 gia, phonectl gia"
   New-Dir (Join-Path $Wk "emu") | Out-Null
@@ -328,6 +359,10 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   $WantNode = "win9"
   $Conf = ""
   Set-Content -Path (Join-Path $CBPC "cb.json") -Value '{"user": "PC", "role": "server", "user_admin": true}' -Encoding ASCII
+  $srvA = "cbsv_" + ("fedcba9876543210" * 3).Substring(0, 40)                # ISO 23.11k: bo cai Windows ghi ma may chu vao seed.json cua phan mem CloudBlue PC
+  New-Dir (Join-Path $CBPC "agent") | Out-Null
+  Set-Content -Path (Join-Path $CBPC "agent\pcagent.py") -Value "# gia" -Encoding ASCII
+  Set-Content -Path (Join-Path $CBPC "seed.json") -Value ('{"name": "x", "label": "win9", "enroll_key": "' + $srvA + '"}') -Encoding ASCII
   foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) {            # 2 tac vu gia cua phan mem may PC cho thue (bo cai Windows dung)
     $ta = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c exit 0"
     $tt = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddDays(30))
@@ -363,7 +398,7 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   Ck "A: xong thi xoa khoa bi mat khoi tep cau hinh ISO (ca ban trong thu muc bo cai); so ghi done" (($kA["SUPABASE_SERVICE_KEY"] -eq "") -and ($kA["CF_API_TOKEN"] -eq "") -and ($kS["SUPABASE_SERVICE_KEY"] -eq "") -and ($kS["CF_API_TOKEN"] -eq "") -and ($stA.done -eq 1) -and ($stA.n -eq 9) -and ($stA.emu_new -eq 0))
   Ck "A: nhat ky KHONG chua khoa Supabase / ma Cloudflare / ma chay duong ham" ((-not $logA.Contains($SbGood)) -and (-not $logA.Contains($CfTok)) -and (-not ($logA -match 'T0KEN')))
 
-  Ck "A: may cai tu ISO may chu (cb.json role = server) -> tat 2 tac vu cua phan mem may PC cho thue" (($pcT -join ",") -eq "Disabled,Disabled") ($pcT -join ",")
+  Ck "A (23.11k): ISO co ma may chu -> GIU 2 tac vu cua phan mem CloudBlue PC (de dieu khien may chu tu xa), bao dau bam cua ma len web, nhat ky khong lo ma" ((($pcT -join ",") -eq "Ready,Ready") -and (@($msA.srv_keys).Count -eq 1) -and ($msA.srv_keys[0].hash -eq (Get-TextSha $srvA)) -and ($logA -match "da bao ma may chu len web") -and (-not $logA.Contains($srvA))) (($pcT -join ",") + " | khoa web: " + @($msA.srv_keys).Count)
 
   # ---- B. ten go trung may chu dang chay (win8) + khong ai tra loi -> tu lay so ke tiep
   New-Case "b" "win8" $true
@@ -371,7 +406,6 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { Enable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null }
   Main | Out-Null
   $pcT2 = @(@("CloudBluePC Agent", "CloudBluePC Watch") | ForEach-Object { "" + (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue).State })
-  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { try { Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue } catch { } }
   Ck "B: may KHONG phai cai tu ISO may chu (khong co role) -> khong dung toi tac vu cua phan mem may PC" (($pcT2 -join ",") -eq "Ready,Ready") ($pcT2 -join ",")
   $cB = Read-KV (Join-Path $B "cloudphone.conf")
   $logB = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
@@ -391,9 +425,19 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   # ---- E. ten go la may chu DANG TAT nhung web con may khach dang thue o do (win5) -> khong cho dung ten do
   New-Case "e" "5" $true
   $WantNode = "win9"
+  # ISO may chu BAN CU (truoc 23.11k): co phan mem CloudBlue PC nhung seed.json KHONG kem ma may chu -> cai xong tat 2 tac vu nhu truoc
+  Set-Content -Path (Join-Path $CBPC "cb.json") -Value '{"user": "PC", "role": "server", "user_admin": true}' -Encoding ASCII
+  New-Dir (Join-Path $CBPC "agent") | Out-Null
+  Set-Content -Path (Join-Path $CBPC "agent\pcagent.py") -Value "# gia" -Encoding ASCII
+  Set-Content -Path (Join-Path $CBPC "seed.json") -Value '{"name": "x", "label": "5"}' -Encoding ASCII
+  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { Enable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null }
   Main | Out-Null
+  $pcT3 = @(@("CloudBluePC Agent", "CloudBluePC Watch") | ForEach-Object { "" + (Get-ScheduledTask -TaskName $_ -ErrorAction SilentlyContinue).State })
+  foreach ($tn in @("CloudBluePC Agent", "CloudBluePC Watch")) { try { Unregister-ScheduledTask -TaskName $tn -Confirm:$false -ErrorAction SilentlyContinue } catch { } }
   $cE = Read-KV (Join-Path $B "cloudphone.conf")
   $logE = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
+  $msE = Get-Mock "/_state"
+  Ck "E: ISO may chu ban cu (khong kem ma may chu) -> noi ro khong co dieu khien tu xa, cai xong tat 2 tac vu cua phan mem may PC nhu truoc, khong bao gi len web" ((($pcT3 -join ",") -eq "Disabled,Disabled") -and ($logE -match "ISO nay ban cu, khong kem ma may chu") -and ($logE -match "ISO ban cu, khong co dieu khien tu xa") -and (@($msE.srv_keys).Count -eq 0)) (($pcT3 -join ",") + " | " + @($msE.srv_keys).Count)
   Ck "E: go 5 ma web con 2 may khach dang thue o win5 (may chu do dang tat) -> KHONG dung ten do; khong ai go -> so ke tiep win9" (($RC -eq 0) -and ($cE["NODE_ID"] -eq "win9") -and ($logE -match "Web con 2 may khach dang thue o win5") -and ($logE -match "so ke tiep - tu chon")) ("RC=" + $RC + " node=" + $cE["NODE_ID"])
   $np = @((Get-NodePhones $MockUrl $SbGood 5), (Get-NodePhones $MockUrl $SbGood 8), (Get-NodePhones $MockUrl $SbGood 9), (Get-NodePhones $MockUrl "khoa-sai-000000000000000000000000" 5))
   Ck "Get-NodePhones: dem may khach dang thue theo may chu (khong tinh may da huy); khoa sai -> -1" (($np -join ",") -eq "2,1,0,-1") ($np -join ",")
@@ -422,7 +466,7 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   $hadBlue = Test-Path "C:\blue"
   New-Dir "C:\CloudBluePC" | Out-Null
   Set-Content -Path "C:\CloudBluePC\cb.json" -Value ('{"user": "' + $env:USERNAME + '", "role": "server"}') -Encoding ASCII
-  Set-Content -Path "C:\CloudBluePC\seed.json" -Value '{"name": "win9", "label": "win9"}' -Encoding ASCII
+  Set-Content -Path "C:\CloudBluePC\seed.json" -Value '{"name": "win9", "label": "win9", "os": "1511", "enroll_key": "cbsv_0123456789abcdef0123456789abcdef01234567", "ticket": "ve-bi-mat-0123456789"}' -Encoding ASCII
   $fbOut = ""
   $fbRc = -1
   try {
@@ -454,6 +498,10 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   Ck "Set-AutoStart: dat du 2 duong tu chay (khoa Run + tac vu nhom Administrators) ; -Remove go sach ca 2" (($as1 -eq 2) -and $asT -and ($asGrp -match "Administrators|S-1-5-32-544") -and ($asR -match "may-chu-iso\.ps1") -and (-not $asT2) -and (-not $asR2)) ("ways=" + $as1 + " grp=" + $asGrp + " run=" + $asR + " sau: " + [bool]$asT2 + "/" + $asR2)
   $num5 = Get-SeedNum "C:\blue\iso\seed.json"
   Ck "ten may nguoi cai go (win9) doc lai duoc tu ban chep" ($num5 -eq 9)
+  $seed5 = ""
+  try { $seed5 = "" + (Get-Content -Raw -LiteralPath "C:\blue\iso\seed.json" -ErrorAction Stop) } catch { $seed5 = "" }
+  $seed5src = "" + (Get-Content -Raw -LiteralPath "C:\CloudBluePC\seed.json")
+  Ck "ban chep seed.json sang C:\blue\iso KHONG mang ma may chu / ve dang ky (enroll_key, ticket) ; ban goc cua phan mem CloudBlue PC giu nguyen" (($seed5 -match '"label"') -and ($seed5 -match '"os"') -and (-not ($seed5 -match "cbsv_")) -and (-not ($seed5 -match "enroll_key")) -and (-not ($seed5 -match "ve-bi-mat")) -and ($seed5src -match "cbsv_0123456789abcdef")) ($seed5)
   try { Unregister-ScheduledTask -TaskName "BlueRoblox" -Confirm:$false -ErrorAction SilentlyContinue } catch { }
   if (-not $hadPc) { Remove-Item -Recurse -Force "C:\CloudBluePC" -ErrorAction SilentlyContinue }
   if (-not $hadBlue) { Remove-Item -Recurse -Force "C:\blue" -ErrorAction SilentlyContinue }
