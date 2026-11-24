@@ -42,7 +42,7 @@
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
   "maychu/firstboot.ps1": "7324ef4a04f3800edc77f398951a4eb7a7ea0c982f82531d616b72b5304c7a32",
-  "maychu/may-chu-iso.ps1": "0c5a4e25217b0b60a467424379ebc2ec269cccc080be4a48d9e89b0d810ce4aa",
+  "maychu/may-chu-iso.ps1": "b52afc197aa8f193ebb49586708d1eba376cb2bdeb94530aa84f0d191e6b1457",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
   "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
   "os/provision.cmd": "335e45236636e358d0ca496119c1323c8e5bce978c0dce3cfe374d82539f6dfe",
