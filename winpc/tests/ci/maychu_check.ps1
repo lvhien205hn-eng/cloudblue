@@ -376,6 +376,7 @@ public class FakeSetup { public static int Main(string[] a) {
   $StubSua = Join-Path $Wk "stub-sua.py"
   @('# cloudblue-sua-tat-ca (ban gia de kiem thu)', 'print("== TOM TAT gia ==")', 'print("-> XONG, may chu on.")', ('# ' + ("x" * 21000))) | Set-Content -Path $StubSua -Encoding ASCII
   $phonectl = @'
+# phonectl gia (kiem thu) - co _mumu_create_variants: biet tao may mau dung ban Android
 import os, sys
 st = os.environ["CB_FAKE_VMS"]
 def load():
@@ -385,13 +386,19 @@ a = sys.argv[1:]
 vms = load()
 if a[:1] == ["engine"]:
     names = dict((v[1], v[2]) for v in vms)
-    miss = [] if names.get("tpl_a15") == "15" else ["tpl_a15"]
+    d0 = vms[0][2] if vms else ""
+    ok = [v for v in ("12", "15") if names.get("tpl_a" + v) == v or v == d0]
     import json
-    print(json.dumps({"emu": "mumu", "androids": ["12"] + ([] if miss else ["15"]), "default": "12", "found": True, "missing_tpl": miss}))
+    print(json.dumps({"emu": "mumu", "androids": ok, "default": "12", "found": True, "missing_tpl": ["tpl_a" + v for v in ("12", "15") if v not in ok]}))
 elif a[:1] == ["vmlist"]:
     for v in vms: print("%s,%s,0,2" % (v[0], v[1]))
 elif a[:1] == ["mktpl"]:
-    print("LOI: ban gia khong tao duoc may mau"); sys.exit(1)
+    open(st + ".phc.log", "a").write(" ".join(a) + "\n")
+    if os.environ.get("CB_FAKE_MKTPL_FAIL") == "1": print("LOI: ban gia khong tao duoc may mau"); sys.exit(1)
+    for v in (["12", "15"] if a[1:2] == ["all"] else a[1:2]):
+        if any(x[1] == "tpl_a" + v for x in vms): print("da co tpl_a" + v); continue
+        vms.append((str(max([int(x[0]) for x in vms] + [-1]) + 1), "tpl_a" + v, v)); print("da tao may mau tpl_a" + v)
+    open(st, "w").write("".join("|".join(x) + "\n" for x in vms))
 elif a[:1] == ["hide"]:
     print("da an")
 '@
@@ -410,6 +417,7 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   function Find-Ld { return "" }
   function Find-Mumu { if (Test-Path -LiteralPath (Join-Path $EmuDir "nx_main\mumu-cli.exe")) { return $EmuDir }; return "" }
   function Get-Url([string]$url, [string]$dst) {
+    if ($url -match 'windows/phonectl\.py') { $script:PhcGets++; if ($script:PhcSrc) { Copy-Item -LiteralPath $script:PhcSrc -Destination $dst -Force; return $true }; return $false }
     if ($url -match 'setup\.ps1') { Copy-Item -LiteralPath $StubSetup -Destination $dst -Force; return $true }
     if ($url -match 'sua-tat-ca\.py') { Copy-Item -LiteralPath $StubSua -Destination $dst -Force; return $true }
     return $false
@@ -457,6 +465,30 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
     [void](Send-Mock "/_reset" $null)
   }
 
+  # ---- 23.11o: may mau MuMu - phonectl tren may con cu (chua biet tao dung ban Android) -> lay ban moi; can du tpl_a12 + tpl_a15
+  $B = New-Dir (Join-Path $Wk "phc-up")
+  $phcF = Join-Path $B "phonectl.py"
+  Set-Content -Path $phcF -Value "# phonectl cu" -Encoding ASCII
+  $script:PhcSrc = Join-Path $Wk "phc-moi.py"
+  $script:PhcGets = 0
+  $pad = @(1..120 | ForEach-Object { "# " + ("x" * 60) })
+  Set-Content -Path $script:PhcSrc -Value (@("# _mumu_create_variants", "print('moi')") + $pad) -Encoding ASCII
+  $u1 = Update-Phonectl
+  $c1 = Get-Content -Raw $phcF
+  $u2 = Update-Phonectl
+  $g2 = $script:PhcGets
+  Set-Content -Path $phcF -Value "# phonectl cu 2" -Encoding ASCII
+  Set-Content -Path $script:PhcSrc -Value (@("# _mumu_create_variants", "def x(:") + $pad) -Encoding ASCII
+  $u3 = Update-Phonectl
+  $c3 = Get-Content -Raw $phcF
+  Ck "Update-Phonectl (23.11o): phonectl cu -> lay ban moi (giu ban cu .truoc-mktpl) ; da moi -> khong tai lai ; ban tai ve loi cu phap -> giu ban dang co" ($u1 -and ($c1 -match "print\('moi'\)") -and (Test-Path ($phcF + ".truoc-mktpl")) -and $u2 -and ($g2 -eq 1) -and (-not $u3) -and ($c3 -match "phonectl cu 2") -and (-not (Test-Path (Join-Path $B "phonectl.moi")))) ("" + $u1 + "," + $u2 + "," + $g2 + "," + $u3)
+  $script:PhcSrc = ""
+  Set-Content -Path (Join-Path $B "cloudphone.conf") -Value "EMU=mumu" -Encoding ASCII
+  $w1 = (@(Get-WantTpl) -join ",")
+  Set-Content -Path (Join-Path $B "cloudphone.conf") -Value "EMU=mumu`r`nANDROIDS=12, 15 ,x" -Encoding ASCII
+  $w2 = (@(Get-WantTpl) -join ",")
+  Ck "Get-WantTpl: chua khai ANDROIDS -> tpl_a12,tpl_a15 ; khai '12, 15 ,x' -> tpl_a12,tpl_a15" (($w1 -eq "tpl_a12,tpl_a15") -and ($w2 -eq "tpl_a12,tpl_a15")) ($w1 + " | " + $w2)
+
   # ---- A. ten go luc cai Windows = win9, ISO kem du khoa + bo cai + may mau
   if (Test-Path $EmuDir) { Remove-Item -Recurse -Force $EmuDir }
   New-Case "a" "win9" $true
@@ -487,6 +519,9 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   $vmA = @(Get-Content $env:CB_FAKE_VMS)
   $cliA = Get-Content -Raw ($env:CB_FAKE_VMS + ".log")
   Ck "A: may mau tpl_a15 nhap tu tep kem trong ISO (import -> rename), khong con thieu may mau" (($vmA -contains "1|tpl_a15|15") -and ($cliA -match 'import --path ') -and ($cliA -match 'rename --vmindex 1 --name tpl_a15') -and ($logA -match "OK - du may mau")) (($vmA -join " ; ") + " // " + ($cliA -replace '\s+', ' '))
+  $phcA = ""
+  if (Test-Path ($env:CB_FAKE_VMS + ".phc.log")) { $phcA = Get-Content -Raw ($env:CB_FAKE_VMS + ".phc.log") }
+  Ck "A (23.11o): ISO khong kem tep tpl_a12 -> TU TAO bang lenh (phonectl mktpl 12): tpl_a12 = Android 12, du 2 may mau, khong tao trung tpl_a15" (($vmA -contains "2|tpl_a12|12") -and ($phcA -match 'mktpl 12') -and (-not ($phcA -match 'mktpl 15')) -and ($logA -match "Tao may mau tpl_a12 = Android 12") -and ($logA -match "OK - du may mau")) (($vmA -join ";") + " | " + $phcA)
   Ck "A: tu tao duong ham phone9 + 2 dia chi + 2 ban ghi, cai dich vu cloudflared bang ma chay" ((@($msA.tunnels).Count -eq 1) -and ($msA.tunnels[0].name -eq "phone9") -and (@($msA.dns).Count -eq 2) -and ($CfTok -match '^eyJ') -and ($logA -match "da tao / noi duong ham phone9"))
   $tk = Get-ScheduledTask -TaskName "BlueRoblox" -ErrorAction SilentlyContinue
   $tkArg = ""
@@ -529,6 +564,7 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   # ---- E. ten go la may chu DANG TAT nhung web con may khach dang thue o do (win5) -> khong cho dung ten do
   New-Case "e" "5" $true
   $WantNode = "win9"
+  $env:CB_FAKE_MKTPL_FAIL = "1"
   # ISO may chu BAN CU (truoc 23.11k): co phan mem CloudBlue PC nhung seed.json KHONG kem ma may chu -> cai xong tat 2 tac vu nhu truoc
   Set-Content -Path (Join-Path $CBPC "cb.json") -Value '{"user": "PC", "role": "server", "user_admin": true}' -Encoding ASCII
   New-Dir (Join-Path $CBPC "agent") | Out-Null
@@ -543,6 +579,8 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
   $msE = Get-Mock "/_state"
   Ck "E: ISO may chu ban cu (khong kem ma may chu) -> noi ro khong co dieu khien tu xa, cai xong tat 2 tac vu cua phan mem may PC nhu truoc, khong bao gi len web" ((($pcT3 -join ",") -eq "Disabled,Disabled") -and ($logE -match "ISO nay ban cu, khong kem ma may chu") -and ($logE -match "ISO ban cu, khong co dieu khien tu xa") -and (@($msE.srv_keys).Count -eq 0)) (($pcT3 -join ",") + " | " + @($msE.srv_keys).Count)
   Ck "E: go 5 ma web con 2 may khach dang thue o win5 (may chu do dang tat) -> KHONG dung ten do; khong ai go -> so ke tiep win9" (($RC -eq 0) -and ($cE["NODE_ID"] -eq "win9") -and ($logE -match "Web con 2 may khach dang thue o win5") -and ($logE -match "so ke tiep - tu chon")) ("RC=" + $RC + " node=" + $cE["NODE_ID"])
+  $env:CB_FAKE_MKTPL_FAIL = ""
+  Ck "E (23.11o): MuMu khong tao duoc may mau tpl_a12 -> bao ro con thieu + cach tao lai (phonectl mktpl all), van cai xong" (($RC -eq 0) -and ($logE -match "Con thieu may mau: tpl_a12") -and ($logE -match "phonectl.py mktpl all")) ("RC=" + $RC)
   $np = @((Get-NodePhones $MockUrl $SbGood 5), (Get-NodePhones $MockUrl $SbGood 8), (Get-NodePhones $MockUrl $SbGood 9), (Get-NodePhones $MockUrl "khoa-sai-000000000000000000000000" 5))
   Ck "Get-NodePhones: dem may khach dang thue theo may chu (khong tinh may da huy); khoa sai -> -1" (($np -join ",") -eq "2,1,0,-1") ($np -join ",")
 
