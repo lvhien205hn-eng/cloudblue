@@ -598,10 +598,49 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .sw input:checked+i{background:var(--bad);border-color:var(--bad)}
 .sw input:checked+i::after{transform:translateX(18px);background:#fff}
 .sw input:focus-visible+i{outline:2px solid var(--sky);outline-offset:2px}
-.nodes{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
-.node{border:1px solid var(--line2);border-radius:14px;padding:14px;background:rgba(6,10,28,.45);display:flex;flex-direction:column;gap:9px}
+/* 24/11 · máy chủ NẰM NGANG: mỗi máy 1 thanh (tên · CPU · RAM · VGA · ổ cứng + máy khách · ⚙ Cài đặt); hẹp dần thì tự xuống hàng */
+.nodes{display:flex;flex-direction:column;gap:8px;container-type:inline-size}
+.node{border:1px solid var(--line2);border-radius:14px;padding:9px 14px;background:rgba(6,10,28,.45);display:grid;gap:8px 18px;align-items:start;
+  grid-template-columns:minmax(240px,1.4fr) minmax(168px,1fr) minmax(190px,1.15fr) minmax(190px,1.15fr) minmax(160px,.95fr) auto;
+  grid-template-areas:"hd cpu ram gpu dsk act"}
+.node.open{grid-template-areas:"hd cpu ram gpu dsk act" "set set set set set set"}
 .node.full{border-color:rgba(255,107,129,.55)}
 .node.off{opacity:.75;border-style:dashed}
+.node.sel{border-color:var(--sky);box-shadow:inset 0 0 0 1px var(--sky)}
+.node>.nhd{grid-area:hd;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 8px;align-content:start;min-width:0}
+.node>.nhd .nmeta{grid-column:1/-1;display:grid;gap:3px}
+.node>.nc{display:grid;gap:5px;align-content:start;min-width:0}
+.node>.nc.cpu{grid-area:cpu}.node>.nc.ram{grid-area:ram}.node>.nc.gpu{grid-area:gpu}.node>.nc.dsk{grid-area:dsk}
+.node>.nset{grid-area:act;justify-self:end}
+.nset i{font-style:normal;font-size:11px;line-height:1;transition:transform .15s}
+.nset[aria-expanded=true] i{transform:rotate(180deg)}
+.nacts{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.nacts[hidden]{display:none}
+.node>.nacts{grid-area:set;padding-top:8px;border-top:1px solid var(--line)}
+.node .nr{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:2px 8px;font-size:12px;line-height:1.35}
+.node .nr span{min-width:0}
+.node .nr em{margin-left:auto;text-align:right;font-size:11.5px}
+.node .nbar{flex:0 0 100%;height:5px}
+.node .nr.npause{display:block}
+.node .nr.npause em{margin-left:6px;white-space:nowrap}
+.node .nf{border-top:0;padding-top:0;gap:2px 12px}
+.node .njob{font-size:12px;line-height:1.4}
+.nsel{display:flex;align-items:center;justify-content:center;width:22px;height:24px;margin:0;cursor:pointer}
+.nsel input,.nbulk label input{width:16px;height:16px;margin:0;accent-color:var(--blue);cursor:pointer}
+.nbulk{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;margin:0 0 8px;font-size:13px}
+.nbulk[hidden]{display:none}
+.nbulk label{display:inline-flex;align-items:center;gap:7px;margin:0;font-weight:600;cursor:pointer}
+.nbulk>.nacts{flex:0 0 100%;padding:10px 12px;border:1px solid var(--line2);border-radius:12px;background:rgba(6,10,28,.45)}
+.nbulk>.nacts .hint{flex:0 0 100%;margin:2px 0 0}
+html[data-theme] .nbulk>.nacts{background:var(--sunk)}
+@media (max-width:1240px){.node{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"hd hd hd act" "cpu ram gpu dsk"}.node.open{grid-template-areas:"hd hd hd act" "set set set set" "cpu ram gpu dsk"}
+  .node>.nacts{padding-top:0;border-top:0}.node>.nhd .nmeta .nr{justify-content:flex-start}.node>.nhd .nmeta .nr em{margin-left:0}}
+@media (max-width:760px){.node{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;grid-template-areas:"hd hd" "act act" "cpu ram" "gpu dsk"}.node.open{grid-template-areas:"hd hd" "act act" "set set" "cpu ram" "gpu dsk"}.node>.nset{justify-self:stretch}}
+@media (max-width:440px){.node{grid-template-columns:minmax(0,1fr);grid-template-areas:"hd" "act" "cpu" "ram" "gpu" "dsk"}.node.open{grid-template-areas:"hd" "act" "set" "cpu" "ram" "gpu" "dsk"}}
+@container (max-width:1180px){.node{grid-template-columns:repeat(4,minmax(0,1fr));grid-template-areas:"hd hd hd act" "cpu ram gpu dsk"}.node.open{grid-template-areas:"hd hd hd act" "set set set set" "cpu ram gpu dsk"}
+  .node>.nacts{padding-top:0;border-top:0}.node>.nhd .nmeta .nr{justify-content:flex-start}.node>.nhd .nmeta .nr em{margin-left:0}}
+@container (max-width:700px){.node{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 14px;grid-template-areas:"hd hd" "act act" "cpu ram" "gpu dsk"}.node.open{grid-template-areas:"hd hd" "act act" "set set" "cpu ram" "gpu dsk"}.node>.nset{justify-self:stretch}}
+@container (max-width:400px){.node{grid-template-columns:minmax(0,1fr);grid-template-areas:"hd" "act" "cpu" "ram" "gpu" "dsk"}.node.open{grid-template-areas:"hd" "act" "set" "cpu" "ram" "gpu" "dsk"}}
 .nh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .nh b{font-size:16px}
 .nh .hint{font-family:var(--mono);font-size:11.5px}
@@ -3454,6 +3493,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
       <div class="subpane" data-sub="servers" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">🖥️ Máy chủ</h3><span class="hint" id="cpa-nodesum"></span><button class="btn ghost sm" type="button" id="cpa-nodes-reload" style="margin-left:auto">Làm mới</button></div>
       <div class="note" id="nres-box" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0"><b>⏯ Máy chủ đang “Ngừng nhận máy” tự nhận máy lại</b><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">khi đang dùng ≤ <input id="nres-pct" class="in" type="number" min="0" max="95" step="5" inputmode="numeric" style="width:72px" placeholder="50">%</label><label class="hint" style="margin:0;display:flex;gap:6px;align-items:center">· đã ngừng ít nhất <input id="nres-min" class="in" type="number" min="1" max="1440" step="1" inputmode="numeric" style="width:72px" placeholder="10"> phút</label><button class="btn sm" type="button" id="nres-save">Lưu</button><span class="hint" id="nres-msg" style="margin:0"></span><span class="hint" style="flex-basis:100%;margin:0">Chỉ tự bật khi máy chủ khoẻ: đang kết nối, có máy mẫu, CPU / RAM / ổ cứng không quá tải. 0% = tắt tự bật. Máy chủ đang sửa / bảo trì → bấm <b>⛔ Ngừng hẳn</b> (không tự bật lại). Cần SQL v39.</span></div>
+      <div class="nbulk" id="cpa-nbulk" hidden></div>
       <div class="nodes" id="cpa-nodes"><div class="empty">Đang tải…</div></div>
       </div>
       <div class="subpane" data-sub="price" hidden>
@@ -9128,9 +9168,9 @@ async function checkNodeAlerts(force) {
   const red = al.filter(x => x[0] === "r");
   if (red.length && !nodeToastShown) { nodeToastShown = true; toast("⚠️ Máy chủ cần chú ý — mở Bảng quản trị › ĐT đám mây", 1); }
 }
-function nRow(label, val, pct, mark) {
+function nRow(label, val, pct, mark, tip) {
   const p = Math.max(0, Math.min(100, pct || 0)), cls = p >= (mark || 85) ? "r" : p >= 70 ? "y" : "";
-  return `<div class="nr"><span>${label}</span><em>${val}</em><div class="nbar"><i class="${cls}" style="width:${p}%"></i>${mark ? `<b style="left:${mark}%" title="Ngưỡng ${mark}%"></b>` : ""}</div></div>`;
+  return `<div class="nr"${tip ? ` title="${esc(tip)}"` : ""}><span>${label}</span><em>${val}</em><div class="nbar"><i class="${cls}" style="width:${p}%"></i>${mark ? `<b style="left:${mark}%" title="Ngưỡng ${mark}%"></b>` : ""}</div></div>`;
 }
 /* Giả lập + bản Android của server (cột engine / androids của cloud_nodes, hoặc trong metrics) — chỉ để xem */
 const NODE_ENGINE = { ld: "LDPlayer 9", mumu: "MuMu", memu: "MEmu" };
@@ -9158,9 +9198,17 @@ function nodeSw(m, newest) {
     + (s.follow === false ? " · tự theo: tắt ở máy này" : "");
   return `<div class="nr"${bad ? ' style="color:var(--bad)"' : behind ? ' style="color:var(--gold-hi)"' : ""}><span>Phần mềm máy chủ</span><em>${esc(txt)}</em></div>`;
 }
+/* 24/11 · MÁY CHỦ NẰM NGANG: mỗi máy chủ 1 thanh, đủ số liệu như thẻ cũ. Các nút gom vào ô "⚙ Cài đặt" (bấm mới sổ ra). Ô tick ở đầu thanh:
+   chọn nhiều máy chủ rồi chỉnh cùng lúc (nodeBulk). Trang tự vẽ lại 15 giây / lần → ô đã tick (NSEL) + ô đang mở (NOPEN) phải nhớ ở ngoài. */
+const NSEL = new Set(), NOPEN = new Set(), NJOB = new Map();          // NJOB: mã máy chủ → { st: "run" | "ok" | "err", msg, at } — việc "chỉnh nhiều máy" vừa làm
+let NBULK_OPEN = false, NBULK_BUSY = false;
+function nodeJobRow(j) { return `<div class="njob" style="color:${j.st === "err" ? "var(--bad)" : j.st === "ok" ? "var(--ok)" : "var(--warn, #ffd666)"}">${esc(j.msg)}</div>`; }
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
-  if (!NODES.length) { box.innerHTML = `<div class="empty">Chưa có máy chủ nào gửi báo cáo. Cập nhật cloudphoned.py trên server rồi khởi động lại dịch vụ.</div>`; $("cpa-nodesum").textContent = ""; return; }
+  const have = new Set(NODES.map(n => n.id));
+  for (const set of [NSEL, NOPEN]) for (const id of [...set]) if (!have.has(id)) set.delete(id);
+  for (const [id, j] of [...NJOB]) if (!have.has(id) || (j.st !== "run" && Date.now() - j.at > 15 * 60000)) NJOB.delete(id);
+  if (!NODES.length) { box.innerHTML = `<div class="empty">Chưa có máy chủ nào gửi báo cáo. Cập nhật cloudphoned.py trên server rồi khởi động lại dịch vụ.</div>`; $("cpa-nodesum").textContent = ""; nodeBulkBar(); return; }
   let tr = 0, ar = 0, tc = 0, ac = 0, ph = 0; const swNew = nodeSwNewest();
   box.innerHTML = NODES.map(n => {
     const m = n.metrics || {}, age = nAge(n), off = age > 3, lim = n.limit_pct || 85;
@@ -9168,40 +9216,172 @@ function renderNodes() {
     const capR = m.cap_ram_full != null ? +m.cap_ram_full : +n.cap_ram, stopR = m.full_pct != null && +m.full_pct < 100 ? +m.full_pct : 0;   // SQL v33: sức chứa thật · mức ngừng
     const full = +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1;
     if (!off && n.enabled) { tr += +n.ram_total; ar += +n.alloc_ram; tc += +n.cpu_total; ac += +n.alloc_cpu; ph += +n.phones || 0; }
-    const g = (m.gpus || []).map(x => nRow("Card " + esc(x.name).replace("NVIDIA GeForce ", ""),
-      `${x.util ?? "?"}% · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.util)).join("")
+    const g = (m.gpus || []).map(x => nRow(esc(x.name).replace("NVIDIA GeForce ", ""),
+      `${x.util ?? "?"}% · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.util, 0, "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ")).join("")
       || `<div class="nr"><span>Card đồ hoạ</span><em>không đọc được</em></div>`;
-    const d = m.disk_data;
-    return `<div class="node${full ? " full" : ""}${off ? " off" : ""}">
-      <div class="nh"><b>${esc(n.name)}</b><span class="hint">${esc(n.id)}</span>
-        <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-      ${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew)}
-      ${nRow("CPU đang dùng thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct)}
-      ${m.cpu_over ? nRow("CPU thật TB 5 phút (ngừng nhận khi ≥ " + (m.cpu_busy_pct || 85) + "%)", (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, m.cpu_busy_pct || 85) : ""}
-      ${capC ? nRow("CPU đã cấp (đạt trần là ngừng nhận)", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100)
-      : nRow(m.cpu_over ? `CPU đã cấp (dùng chung ×${m.cpu_over})` : "CPU đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim)}
-      ${nRow("RAM đang dùng thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100)}
-      ${nRow(m.ram_over ? `RAM đã cấp (dùng chung ×${m.ram_over} · ngừng nhận khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${m.ram_busy_pct || 85}%)` : "RAM đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(capR)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, capR) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? stopR || 100 : lim)}
-      ${m.sleeping > 0 && m.sleep_gb != null ? `<div class="nr" title="Khách mở máy ngủ là máy bật lại → phần RAM này không bán cho máy mới. Giữ bằng RAM thật 1 máy đang chạy dùng${m.ram_over > 1 ? " ÷ " + m.ram_over + " (dùng chung)" : ""}."><span>💤 ${m.sleeping} máy ngủ giữ chỗ (${m.sleep_pct}% RAM cấp)</span><em>${m.sleep_gb}/${m.sleep_full_gb} GB</em></div>` : ""}
-      ${g}
-      ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`VGA TB 5 phút (${m.gpu_busy_pct ? "ngừng nhận khi ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""})`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0) : ""}
-      ${d ? nRow(`Ổ cứng (dùng chung · ngừng nhận khi ≥ ${m.disk_busy_pct || 90}%)`, `${d.used}/${d.total} GB`, d.used / d.total * 100, m.disk_busy_pct || 90) : ""}
-      <div class="nf"><span>📱 ${n.phones || 0} máy${m.running != null ? " (" + m.running + " đang chạy)" : ""}</span>
-        ${m.cpu_temp ? `<span>🌡️ CPU ${Math.round(m.cpu_temp)}°C</span>` : ""}${m.load ? `<span>Tải ${m.load[0]}</span>` : ""}${m.uptime_h != null ? `<span>Bật ${m.uptime_h >= 48 ? Math.round(m.uptime_h / 24) + " ngày" : m.uptime_h + " giờ"}</span>` : ""}
-        <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span>
-        <span class="acts"><button class="btn ghost sm" data-nrename="${esc(n.id)}">✏️ Đổi tên</button>
-          <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${esc(n.id)}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
-          ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${esc(n.id)}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
-          ${!off ? `<button class="btn ghost sm" data-nmanage="${esc(n.id)}" title="Bản đang chạy, cập nhật, các nút của bảng CloudBlue trên máy chủ">🛠 Quản lý</button>` : ""}
-          ${!off ? `<button class="btn danger sm" data-nreboot="${esc(n.id)}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
-          ${n.phones ? `<button class="btn danger sm" data-nwipe="${esc(n.id)}">🧹 Xoá sạch máy</button>` : ""}
-          ${off ? `<button class="btn danger sm" data-ndel="${esc(n.id)}">Xoá</button>` : ""}</span></div>
+    const d = m.disk_data, nid = esc(n.id), sel = NSEL.has(n.id), open = NOPEN.has(n.id), job = NJOB.get(n.id);
+    const cpuStop = m.cpu_busy_pct || 85, ramStop = m.ram_busy_pct || 85, dskStop = m.disk_busy_pct || 90;
+    return `<div class="node${full ? " full" : ""}${off ? " off" : ""}${sel ? " sel" : ""}${open ? " open" : ""}" data-node="${nid}">
+      <div class="nhd">
+        <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
+        <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
+          <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
+        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${job ? nodeJobRow(job) : ""}</div>
+      </div>
+      <div class="nc cpu">
+        ${nRow("CPU thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, "CPU đang dùng thật")}
+        ${m.cpu_over ? nRow(`TB 5 phút · ngừng nhận ≥ ${cpuStop}%`, (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, cpuStop, `CPU thật trung bình 5 phút — ngừng nhận máy mới khi ≥ ${cpuStop}%`) : ""}
+        ${capC ? nRow("Đã cấp · đạt trần là ngừng", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100, "CPU đã cấp cho máy khách — đạt trần là ngừng nhận máy mới")
+        : nRow(m.cpu_over ? `Đã cấp · dùng chung ×${m.cpu_over}` : "Đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim, "CPU đã cấp cho máy khách")}
+      </div>
+      <div class="nc ram">
+        ${nRow("RAM thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100, 0, "RAM đang dùng thật")}
+        ${nRow(m.ram_over ? `Đã cấp chung ×${m.ram_over} · ngừng khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${ramStop}%` : "Đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(capR)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, capR) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? stopR || 100 : lim, "RAM đã cấp cho máy khách" + (m.ram_over ? ` (dùng chung ×${m.ram_over})` : ""))}
+        ${m.sleeping > 0 && m.sleep_gb != null ? `<div class="nr" title="Khách mở máy ngủ là máy bật lại → phần RAM này không bán cho máy mới. Giữ bằng RAM thật 1 máy đang chạy dùng${m.ram_over > 1 ? " ÷ " + m.ram_over + " (dùng chung)" : ""}."><span>💤 ${m.sleeping} máy ngủ giữ chỗ (${m.sleep_pct}% RAM cấp)</span><em>${m.sleep_gb}/${m.sleep_full_gb} GB</em></div>` : ""}
+      </div>
+      <div class="nc gpu">
+        ${g}
+        ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`TB 5 phút · ${m.gpu_busy_pct ? "ngừng nhận ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""}`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0, "Card đồ hoạ trung bình 5 phút — ngưỡng ngừng nhận máy mới") : ""}
+      </div>
+      <div class="nc dsk">
+        ${d ? nRow(`Ổ cứng chung · ngừng nhận ≥ ${dskStop}%`, `${d.used}/${d.total} GB`, d.used / d.total * 100, dskStop, `Ổ cứng dùng chung cho mọi máy khách — ngừng nhận máy mới khi ≥ ${dskStop}%`) : ""}
+        <div class="nf"><span>📱 ${n.phones || 0} máy${m.running != null ? " (" + m.running + " đang chạy)" : ""}</span>
+          ${m.cpu_temp ? `<span>🌡️ CPU ${Math.round(m.cpu_temp)}°C</span>` : ""}${m.load ? `<span>Tải ${m.load[0]}</span>` : ""}${m.uptime_h != null ? `<span>Bật ${m.uptime_h >= 48 ? Math.round(m.uptime_h / 24) + " ngày" : m.uptime_h + " giờ"}</span>` : ""}
+          <span>Cập nhật ${age < 1 ? "vừa xong" : Math.round(age) + " phút trước"}</span></div>
+      </div>
+      <button class="btn ghost sm nset" type="button" data-nset="${nid}" aria-expanded="${open}" aria-controls="nact-${nid}" title="Đổi tên, ngừng / nhận máy, quản lý, khởi động lại, xoá sạch máy">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
+      <div class="nacts" id="nact-${nid}"${open ? "" : " hidden"}>
+        <button class="btn ghost sm" data-nrename="${nid}">✏️ Đổi tên</button>
+        <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${nid}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
+        ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${nid}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
+        ${!off ? `<button class="btn ghost sm" data-nmanage="${nid}" title="Bản đang chạy, cập nhật, các nút của bảng CloudBlue trên máy chủ">🛠 Quản lý</button>` : ""}
+        ${!off ? `<button class="btn danger sm" data-nreboot="${nid}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
+        ${n.phones ? `<button class="btn danger sm" data-nwipe="${nid}">🧹 Xoá sạch máy</button>` : ""}
+        ${off ? `<button class="btn danger sm" data-ndel="${nid}">Xoá</button>` : ""}
+      </div>
     </div>`;
   }).join("");
   $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách`;
+  nodeBulkBar();
+}
+/* thanh trên đầu danh sách: chọn tất cả + ô "⚙ Cài đặt cho N máy đã chọn" */
+function nodeBulkBar() {
+  const bar = $("cpa-nbulk"); if (!bar) return;
+  const list = NODES.filter(n => NSEL.has(n.id)), k = list.length, all = k > 0 && k === NODES.length, dis = NBULK_BUSY ? " disabled" : "";
+  bar.hidden = !NODES.length;
+  if (!k) NBULK_OPEN = false;
+  bar.innerHTML = `<label><input type="checkbox" id="nbulk-all"${all ? " checked" : ""}> Chọn tất cả</label>`
+    + (k ? `<span><b>Đã chọn ${k} máy chủ</b>: ${esc(list.map(n => n.name).join(", "))}</span>
+      <button class="btn sm nset" type="button" id="nbulk-set" aria-expanded="${NBULK_OPEN}" aria-controls="nbulk-acts">⚙ Cài đặt cho ${k} máy đã chọn <i aria-hidden="true">▾</i></button>
+      <button class="btn ghost sm" type="button" id="nbulk-none">Bỏ chọn</button>
+      <div class="nacts" id="nbulk-acts"${NBULK_OPEN ? "" : " hidden"}>
+        <button class="btn ghost sm" type="button" data-nbulk="pause"${dis}>Ngừng nhận máy</button>
+        <button class="btn sm" type="button" data-nbulk="resume"${dis}>Nhận máy lại</button>
+        <button class="btn danger sm" type="button" data-nbulk="hard"${dis} title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>
+        <button class="btn ghost sm" type="button" data-nbulk="update"${dis} title="Tải bản mới nhất từ GitHub rồi cài — giống chạy lệnh A trên từng máy chủ">⬆ Cập nhật máy chủ</button>
+        <button class="btn ghost sm" type="button" data-nbulk="optimize"${dis}>⚡ Tối ưu Windows</button>
+        <button class="btn ghost sm" type="button" data-nbulk="hide"${dis}>🙈 Ẩn cửa sổ giả lập</button>
+        <button class="btn ghost sm" type="button" data-nbulk="wallpaper"${dis}>🖼 Ảnh nền cho máy</button>
+        <button class="btn danger sm" type="button" data-nbulk="restart"${dis} title="Khởi động lại Windows của các máy chủ đã chọn: tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>
+        <span class="hint">Kết quả hiện ngay dưới tên từng máy chủ. Đổi tên · Tắt máy chủ · Làm mới máy khách · Dọn giả lập · Xoá sạch máy: làm từng máy trong ⚙ Cài đặt của máy đó.</span>
+      </div>`
+      : `<span class="hint" style="margin:0">Tick ô ở đầu mỗi máy chủ để chỉnh nhiều máy cùng lúc.</span>`);
+  const a = $("nbulk-all"); if (a) a.indeterminate = k > 0 && !all;
+}
+const NBULK_NAME = { pause: "Ngừng nhận máy", resume: "Nhận máy lại", hard: "Ngừng hẳn", update: "Cập nhật máy chủ", optimize: "Tối ưu Windows", hide: "Ẩn cửa sổ giả lập",
+  wallpaper: "Đặt ảnh nền cho máy", restart: "Khởi động lại máy chủ" };
+function nodeJobSet(id, st, msg) { NJOB.set(id, { st, msg: String(msg).slice(0, 300), at: Date.now() }); }
+async function nodeApiJob(base, body, onMsg) {           // 1 việc ở máy chủ (như nmgJob) nhưng không đụng tới hộp 🛠 Quản lý
+  const j = await cpapiCall("admin/node", { method: "POST", json: body, base }); const t0 = Date.now();
+  while (Date.now() - t0 < 2 * 3600 * 1000) {
+    await new Promise(r => setTimeout(r, 2000));
+    let st; try { st = await cpapiCall("job?id=" + encodeURIComponent(j.job), { base }); } catch (e) { if (e.status === 404) throw new Error("Mất theo dõi (công cụ máy vừa bật lại) — xem lại trong 🛠 Quản lý."); continue; }
+    if (st.msg && st.state === "running" && onMsg) onMsg(st.msg);
+    if (st.state === "done") return st;
+    if (st.state === "error") throw new Error(st.msg);
+  }
+  throw new Error("Quá lâu chưa xong.");
+}
+/* làm 1 việc cho MỌI máy chủ đang tick. Chỉ gồm việc an toàn khi làm hàng loạt; việc xoá dữ liệu / tắt hẳn máy chủ vẫn làm từng máy. */
+async function nodeBulk(act) {
+  const name = NBULK_NAME[act]; if (!name || NBULK_BUSY) return;
+  const list = NODES.filter(n => NSEL.has(n.id)); if (!list.length) return;
+  const flag = act === "pause" || act === "resume" || act === "hard", skip = [];
+  const todo = list.filter(n => {
+    const why = act === "pause" ? (n.enabled ? "" : "đang ngừng sẵn") : act === "resume" ? (n.enabled ? "đang nhận máy sẵn" : "") : act === "hard" ? (!n.enabled && n.pause_hard ? "đang ngừng hẳn sẵn" : "")
+      : nAge(n) > 3 ? "đang mất kết nối" : !nrbNodeBase(n) ? "chưa biết địa chỉ máy chủ" : "";
+    if (why) skip.push(`${n.name} (${why})`);
+    return !why;
+  });
+  if (!todo.length) return toast(`${name}: không có máy chủ nào cần làm — ${skip.join(", ")}.`, 1);
+  const names = todo.map(n => `• ${n.name} (${n.id})`).join("\n") + (skip.length ? `\n\nBỏ qua: ${skip.join(", ")}.` : "");
+  const ask = {
+    pause: `Ngừng nhận máy mới trên ${todo.length} máy chủ?\n${names}\n\nMáy đang chạy không bị ảnh hưởng.\n⏯ Các máy chủ này sẽ TỰ NHẬN MÁY LẠI khi đang dùng ≤ ${nresPct()}% (sau ${nresMin()} phút). Đang sửa máy / bảo trì thì dùng ⛔ Ngừng hẳn.`,
+    resume: `Nhận máy lại trên ${todo.length} máy chủ?\n${names}`,
+    hard: `⛔ Ngừng hẳn ${todo.length} máy chủ?\n${names}\n\nKhông nhận máy mới và KHÔNG tự bật lại cho tới khi bấm “Nhận máy lại”. Máy khách đang chạy không bị ảnh hưởng.`,
+    update: `Cập nhật ${todo.length} máy chủ lên bản mới nhất trên GitHub?\n${names}\n\nGiống chạy lệnh A: thay file + bật lại dịch vụ (công cụ máy ngắt ~2 giây, phát hình có thể ngắt ~10 giây). Máy khách KHÔNG tắt.`,
+    optimize: `Tối ưu Windows của ${todo.length} máy chủ?\n${names}\n\nChế độ hiệu năng cao, không cho máy ngủ, Defender bỏ qua thư mục giả lập / CloudBlue, tắt quay màn hình Xbox.`,
+    hide: `Cho cửa sổ giả lập chạy ngầm trên ${todo.length} máy chủ?\n${names}`,
+    wallpaper: `Đặt ảnh nền CloudBlue cho các máy đang chạy (máy chưa có) trên ${todo.length} máy chủ?\n${names}\n\nMỗi máy chủ có thể mất vài phút.`,
+  }[act];
+  if (act === "restart") {
+    const typed = prompt(`KHỞI ĐỘNG LẠI ${todo.length} MÁY CHỦ CÙNG LÚC?\n${names}\n\nMáy khách đang chạy trên các máy chủ này sẽ tắt êm, khoảng 3–8 phút sau tự bật lại.\nMáy chủ nào Windows chưa bật tự đăng nhập sẽ KHÔNG khởi động lại (làm riêng trong ⚙ Cài đặt của máy đó).\n\nGõ KHOI DONG LAI để xác nhận:`);
+    if ((typed || "").replace(/\s+/g, "").toUpperCase() !== "KHOIDONGLAI") return typed !== null && toast("Chưa xác nhận — không khởi động lại máy chủ nào.", 1);
+  } else if (!confirm(ask)) return;
+  NBULK_BUSY = true;
+  for (const n of todo) nodeJobSet(n.id, "run", `⏳ ${name}…`);
+  renderNodes();
+  const one = async n => {
+    try {
+      if (flag) {
+        const { error } = await sb.from("cloud_nodes").update(act === "pause" ? { enabled: false } : act === "resume" ? { enabled: true } : { enabled: false, pause_hard: true }).eq("id", n.id);
+        if (error) throw new Error(/pause_hard/.test(error.message || "") ? "Cần chạy SQL v39 trong Supabase trước." : errMsg(error));
+        nodeJobSet(n.id, "ok", `✅ ${name}: xong`);
+      } else if (act === "update") {
+        const r = await cpapiCall("admin/node", { method: "POST", json: { do: "update" }, base: nrbNodeBase(n) });
+        nodeJobSet(n.id, "ok", `✅ Đã ra lệnh cập nhật${r && r.ver ? " lên bản " + r.ver : ""} (1–3 phút) — theo dõi ở dòng “Phần mềm máy chủ”`);
+      } else {
+        const r = await nodeApiJob(nrbNodeBase(n), { do: act, confirm: act === "restart" ? n.id : "" }, t => { nodeJobSet(n.id, "run", "⏳ " + t); renderNodes(); });
+        nodeJobSet(n.id, "ok", "✅ " + ((r && r.msg) || name + ": xong"));
+      }
+      return true;
+    } catch (e) {
+      const t = String((e && e.message) || e);
+      nodeJobSet(n.id, "err", `❌ ${name}: ` + (/^NO_AUTOLOGON/.test(t) ? "Windows của máy chủ chưa bật tự đăng nhập — chưa khởi động lại (làm riêng trong ⚙ Cài đặt › ⚡ Khởi động lại máy chủ)." : t));
+      return false;
+    } finally { renderNodes(); }
+  };
+  let res = [];
+  try { res = await Promise.all(todo.map(one)); } finally { NBULK_BUSY = false; }
+  const okN = res.filter(Boolean).length;
+  toast(okN === res.length ? `✅ ${name}: xong ${okN} máy chủ` : `⚠ ${name}: ${okN}/${res.length} máy chủ xong — xem dòng báo dưới tên từng máy`, okN === res.length ? 0 : 1);
+  try { await refreshNodes(); } catch (e) { renderNodes(); }
 }
 async function refreshNodes() { await loadNodes(); renderNodes(); renderAlerts(); }
 $("cpa-nodes-reload") && ($("cpa-nodes-reload").onclick = () => busy($("cpa-nodes-reload"), refreshNodes));
+$("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => {          // ⚙ Cài đặt của 1 máy chủ: sổ ra / thu lại
+  const b = e.target.closest("[data-nset]"); if (!b) return;
+  const id = b.dataset.nset, open = !NOPEN.has(id);
+  if (open) NOPEN.add(id); else NOPEN.delete(id);
+  b.setAttribute("aria-expanded", String(open)); b.parentElement.classList.toggle("open", open);
+  const p = b.parentElement.querySelector(".nacts"); if (p) p.hidden = !open;
+});
+$("cpa-nodes") && $("cpa-nodes").addEventListener("change", e => {         // tick 1 máy chủ
+  const c = e.target.closest("[data-nsel]"); if (!c) return;
+  if (c.checked) NSEL.add(c.dataset.nsel); else NSEL.delete(c.dataset.nsel);
+  const row = c.closest(".node"); if (row) row.classList.toggle("sel", c.checked);
+  nodeBulkBar();
+});
+$("cpa-nbulk") && ($("cpa-nbulk").onclick = e => {
+  if (e.target.closest("#nbulk-set")) { NBULK_OPEN = !NBULK_OPEN; nodeBulkBar(); const b = $("nbulk-set"); if (b) b.focus(); return; }
+  if (e.target.closest("#nbulk-none")) { NSEL.clear(); renderNodes(); return; }
+  const b = e.target.closest("[data-nbulk]"); if (b && !b.disabled) nodeBulk(b.dataset.nbulk);
+});
+$("cpa-nbulk") && $("cpa-nbulk").addEventListener("change", e => {         // Chọn tất cả / bỏ chọn tất cả
+  if (!e.target.closest("#nbulk-all")) return;
+  const on = e.target.checked; NSEL.clear(); if (on) NODES.forEach(n => NSEL.add(n.id));
+  renderNodes(); const a = $("nbulk-all"); if (a) a.focus();
+});
 $("cpa-nodes") && ($("cpa-nodes").onclick = async e => {
   const rn = e.target.closest("[data-nrename]"), en = e.target.closest("[data-nenable]"), dl = e.target.closest("[data-ndel]");
   if (rn) {
@@ -12744,9 +12924,9 @@ function nresMin() { const v = String(SITE.node_resume_min ?? "").trim(); return
 function nodePauseRow(n) {
   if (!n.enabled) {
     const t = n.pause_hard ? "⛔ Ngừng hẳn — không tự nhận máy lại" : nresPct() > 0 ? `⏸ Đang ngừng — tự nhận máy lại khi dùng ≤ ${nresPct()}% (sau ${nresMin()} phút)` : "⏸ Đang ngừng (đã tắt tự nhận máy lại)";
-    return `<div class="nr"><span>${t}</span><em>${n.paused_at ? "từ " + esc(lwWhen(n.paused_at)) : ""}</em></div>`;
+    return `<div class="nr npause"><span>${t}</span><em>${n.paused_at ? "từ " + esc(lwWhen(n.paused_at)) : ""}</em></div>`;
   }
-  if (n.auto_on_at && Date.now() - Date.parse(n.auto_on_at) < 6 * 3600e3) return `<div class="nr"><span>⏯ Tự nhận máy lại lúc ${esc(lwWhen(n.auto_on_at))}</span><em></em></div>`;
+  if (n.auto_on_at && Date.now() - Date.parse(n.auto_on_at) < 6 * 3600e3) return `<div class="nr npause"><span>⏯ Tự nhận máy lại lúc ${esc(lwWhen(n.auto_on_at))}</span><em></em></div>`;
   return "";
 }
 document.addEventListener("click", async e => {
