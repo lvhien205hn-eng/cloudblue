@@ -104,6 +104,15 @@ try {
   $s5 = Get-SeedNum $sj
   $s6 = Get-SeedNum (Join-Path $Wk "khong-co.json")
   Ck "Get-SeedNum: ten nguoi cai go (label) -> so may chu; ten tu sinh win-XXXXXX thi KHONG lay; khong co tep -> 0" ((@($s1, $s2, $s3, $s4, $s5, $s6) -join ",") -eq "9,9,0,0,12,0") (@($s1, $s2, $s3, $s4, $s5, $s6) -join ",")
+  $gn = @((Get-NameNum "54 cp"), (Get-NameNum "CP54"), (Get-NameNum "may 7 hn"), (Get-NameNum "win54"), (Get-NameNum " 054 "), (Get-NameNum "CB-102"), (Get-NameNum "abc"), (Get-NameNum ""), (Get-NameNum "00"))
+  Ck "Get-NameNum (23.11m): so trong ten go luc cai: 54 cp / CP54 / may 7 hn / win54 / 054 -> 54,54,7,54,54 ; CB-102 / abc / rong / 00 -> 0" (($gn -join ",") -eq "54,54,7,54,54,0,0,0,0") ($gn -join ",")
+  Set-Content -Path $sj -Value '{"name": "54CP", "label": "54 cp", "os": "22h2"}' -Encoding ASCII
+  $t1 = Get-SeedNum $sj
+  Set-Content -Path $sj -Value '{"name": "54CP"}' -Encoding ASCII
+  $t2 = Get-SeedNum $sj
+  Set-Content -Path $sj -Value '{"name": "CB-3FA2C1", "label": "may moi"}' -Encoding ASCII
+  $t3 = Get-SeedNum $sj
+  Ck "Get-SeedNum (23.11m): label '54 cp' -> 54 ; da mat label (agent bao len web roi xoa) nhung ten Windows 54CP -> 54 ; 'may moi' + ten tu sinh -> 0" ((@($t1, $t2, $t3) -join ",") -eq "54,54,0") (@($t1, $t2, $t3) -join ",")
   # 23.11l - may chu 1 o cung KHONG co o D: (ban 23.11k: Join-Path voi o khong ton tai -> script dung o buoc 3, cu 1 phut bao loi 1 lan)
   $noDrv = "" + (@(68..90 | ForEach-Object { [string][char]$_ }) | Where-Object { -not (Test-Path -LiteralPath ($_ + ":\")) } | Select-Object -First 1)
   $ldReal = New-Dir (Join-Path $Wk "ldreal\LDPlayer9")
@@ -195,6 +204,59 @@ try {
   Ck "danh sach that: win8 dang chay, win5 khong, so ke tiep 9" ((Test-NodeLive $r1.rows 8) -and (-not (Test-NodeLive $r1.rows 5)) -and ((Get-FreeNum $r1.rows) -eq 9))
   $r3 = Invoke-Api "GET" "http://127.0.0.1:9/khong-co" @{} $null 5
   Ck "Invoke-Api: may chu khong toi duoc -> ok = false, khong nem loi" ((-not $r3.ok) -and ($r3.code -eq 0))
+
+  # ---- 23.11m: Windows cu (1511) PowerShell loi TLS -> goi web / tai tep bang Python (OpenSSL)
+  $PY = $PyReal
+  $NET_PS = $false                                                                       # gia lap: PowerShell khong goi duoc mang
+  $SECRETS.Clear(); [void]$SECRETS.Add($SbGood)
+  $q1 = Get-NodeRows $MockUrl $SbGood
+  $q2 = Get-NodeRows $MockUrl "sb_secret_sai_khoa_0000000000000000"
+  $q3 = Invoke-Api "GET" "http://127.0.0.1:9/khong-co" @{} $null 5
+  Ck "Python: doc danh sach may chu (3 may) ; khoa sai -> 401 ; khong toi duoc -> ma 0, khong nem loi" ($q1.ok -and (@($q1.rows).Count -eq 3) -and (-not $q2.ok) -and ($q2.code -eq 401) -and (-not $q3.ok) -and ($q3.code -eq 0)) ("" + $q1.err + " / " + $q2.code + " / " + $q3.code + " " + $q3.err)
+  [void](Send-Mock "/_reset" $null)
+  $q4 = Invoke-Api "POST" ($CFAPI + "/zones/z1/dns_records") @{ Authorization = "Bearer tok-ok" } @{ type = "A"; name = "py9.example.test"; content = "1.2.3.4"; proxied = $false }
+  $msq = Get-Mock "/_state"
+  Ck "Python: POST kem ma + noi dung JSON toi Cloudflare (gia) -> tao ban ghi py9" ($q4.ok -and (@($msq.dns | Where-Object { $_.name -eq "py9.example.test" -and $_.content -eq "1.2.3.4" }).Count -eq 1)) ("" + $q4.code + " " + $q4.err)
+  $pdst = Join-Path $Wk "py-tai.json"
+  $q5 = Get-Url ($MockUrl + "/_state") $pdst
+  Ck "Python: Get-Url tai tep khi PowerShell loi (vd tu cap nhat script)" ($q5 -and (Test-Path $pdst) -and ((Get-Content -Raw $pdst) -match '"dns"'))
+  $hpf = Join-Path $ISO "cbhttp.py"
+  Ck "Python: khoa khong nam tren dia (tep cbhttp.py) / bien moi truong da xoa sau khi goi" ((Test-Path $hpf) -and (-not (Get-Content -Raw $hpf).Contains($SbGood)) -and ($null -eq [Environment]::GetEnvironmentVariable("CB_HTTP_REQ", "Process")))
+  $NET_PS = $true
+  $q6 = Get-NodeRows $MockUrl $SbGood
+  Ck "PowerShell goi duoc thi van dung PowerShell nhu cu" ($q6.ok -and (@($q6.rows).Count -eq 3))
+  $SECRETS.Clear()
+  [void](Send-Mock "/_reset" $null)
+
+  # ---- 23.11m: so may chu KHONG hoi - lay so trong ten go luc cai ; khong co so -> so ke tiep ngay
+  $tSel = Get-Date
+  Set-Content -Path (Join-Path $ISO "seed.json") -Value '{"name": "54CP", "label": "54 cp"}' -Encoding ASCII
+  $n54 = Select-NodeNum @{} $MockUrl $SbGood
+  Set-Content -Path (Join-Path $ISO "seed.json") -Value '{"name": "CB-3FA2C1", "label": "may moi"}' -Encoding ASCII
+  $nmm = Select-NodeNum @{} $MockUrl $SbGood
+  Set-Content -Path (Join-Path $ISO "seed.json") -Value '{"name": "CB-3FA2C1", "label": "May-01"}' -Encoding ASCII
+  $nw1 = Select-NodeNum @{} $MockUrl $SbGood
+  Remove-Item -LiteralPath (Join-Path $ISO "seed.json") -Force
+  $logS = Get-Content -Raw (Join-Path $B "logs\iso-cai.log")
+  $secSel = ((Get-Date) - $tSel).TotalSeconds
+  Ck "Select-NodeNum: '54 cp' -> win54 ; 'may moi' -> so ke tiep win9 ; 'May-01' (win1 = may chu chinh) -> win9 ; KHONG hoi / khong cho (3 lan < 15 giay)" (($n54 -eq 54) -and ($nmm -eq 9) -and ($nw1 -eq 9) -and ($secSel -lt 15) -and ($logS -match "Ten may chu: win54 \(ten go luc cai Windows\)") -and ($logS -match "win9 \(so ke tiep - tu chon\)") -and (-not ($logS -match "Chua doc duoc danh sach may chu"))) ("" + $n54 + "," + $nmm + "," + $nw1 + " ; " + [int]$secSel + " giay")
+
+  # ---- 24/11: windows/setup.ps1 (bo cai phan mem may chu) - tai tep bang Python khi PowerShell loi TLS
+  $SetupPs1 = Join-Path (Split-Path -Parent $RepoDir) "windows\setup.ps1"
+  $tokS = $null
+  $perrS = $null
+  $astS = [System.Management.Automation.Language.Parser]::ParseFile($SetupPs1, [ref]$tokS, [ref]$perrS)
+  Ck "windows/setup.ps1 khong co loi cu phap" (@($perrS).Count -eq 0) ((@($perrS) | ForEach-Object { "dong " + $_.Extent.StartLineNumber + ": " + $_.Message }) -join " | ")
+  $fdS = @($astS.FindAll({ param($n) ($n -is [System.Management.Automation.Language.FunctionDefinitionAst]) -and ($n.Name -eq "PyGet") }, $true))
+  $okPg = $false
+  if ($fdS.Count -eq 1) {
+    $ftS = $fdS[0].Extent.Text.Replace('"C:\CloudBluePC\py\python.exe"', ('"' + $PyReal + '"'))
+    . ([ScriptBlock]::Create($ftS))
+    $pgDst = Join-Path $Wk "pyget.json"
+    $okPg = (PyGet ($MockUrl + "/_state") $pgDst) -and ((Get-Content -Raw $pgDst) -match '"dns"')
+    $okPg = $okPg -and (-not (PyGet "http://127.0.0.1:9/khong-co" (Join-Path $Wk "pyget2.json")))
+  }
+  Ck "setup.ps1 PyGet: tai duoc bang Python ; dia chi hong -> false, khong nem loi" $okPg
   $tn = New-CfTunnel "tok-ok" "example.test" "phone9" "stream9"
   $ms = Get-Mock "/_state"
   $ing = @($ms.configs."t-1".ingress)
