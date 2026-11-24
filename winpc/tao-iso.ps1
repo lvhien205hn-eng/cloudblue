@@ -36,11 +36,15 @@
 #  23.11g - ISO MAY CHU CLOUD PHONE:  -MayChu
 #     Cai Windows nhu tren, roi may TU thanh may chu Cloud Phone: cai gia lap (MuMu / LDPlayer 9), phan mem CloudBlue, khoa Supabase,
 #     duong ham Cloudflare phoneN + streamN, tu chay khi bat may, lenh A -> may chu hien tren web quan tri. Nguoi cai CHI go TEN MAY (win9 hoac 9).
-#     Tai khoan Windows giu quyen Admin + tu dang nhap; KHONG dung ma dang ky may PC (may chu khong vao danh sach may PC cho thue).
+#     Tai khoan Windows giu quyen Admin + tu dang nhap; KHONG dung ma dang ky may PC (may chu khong bao gio vao kho may PC cho thue).
 #     Script hoi (chi nhap vao cua so, KHONG gui ai): khoa Supabase service_role, ma Cloudflare (tuy chon), gia lap + bo cai gia lap (keo tha).
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
 #     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11k - ISO may chu: DIEU KHIEN TU XA nhu may cho thue. ISO kem 1 MA MAY CHU (script tu sinh, tu bao dau bam len web bang khoa Supabase);
+#     Windows vua len la may TU HIEN o web > Bang quan tri > May cho thue > May VPS (nhan "Bao tri" + ghi chu MAY CHU) -> bam "Dieu khien" la
+#     vao man hinh may, KE CA khi phan cai may chu chua chay / dang loi. May chu KHONG BAO GIO vao kho cho thue (web chot - can SQL v53).
+#     Web chua chay SQL v53 thi ISO van tao duoc, may chi chua hien; chay SQL xong chay lai lenh nay la may da cai tu hien (khong phai cai lai).
 #  23.11j - SUA (ISO may chu): cai Windows xong may DUNG o man hinh nen, khong tu cai tiep - tac vu tu chay gan theo "TENMAY\taikhoan"
 #     khong chay lai sau khi bo cai doi ten may. Gio dat 2 duong tu chay khong phu thuoc ten may (khoa Run + tac vu theo nhom Administrators),
 #     va script cai may chu tu dat lai moi lan chay.
@@ -78,7 +82,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "23.11j"
+$VER = "23.11k"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -89,6 +93,7 @@ $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "
 $CFAPI = "https://api.cloudflare.com/client/v4"
 $UA = "cloudblue-tao-iso/" + $VER          # ten chuong trinh gui kem moi yeu cau web (khong de mac dinh "Mozilla/5.0" cua PowerShell)
 $SbWhy = ""
+$SrvWhy = ""
 $LinkRoot = ""
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
@@ -764,10 +769,76 @@ function Test-CfToken([string]$tok, [string]$domain) {
   return $res
 }
 
-function Save-McConf([string]$path, $conf) {
-  # Luu cau hinh may chu (khoa Supabase, ma Cloudflare...) ma hoa DPAPI: chi tai khoan Windows nay tren may nay mo lai duoc.
+function New-SrvKey {
+  # MA MAY CHU (23.11k): cbsv_ + 40 ky tu ngau nhien. Nam trong ISO may chu; may cai xong tu dang ky bang ma nay de hien o web
+  # (May cho thue > May VPS) cho admin dieu khien tu xa. Web chi giu DAU BAM cua ma.
+  $buf = New-Object byte[] 20
+  $gen = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $gen.GetBytes($buf) } finally { $gen.Dispose() }
+  return ("cbsv_" + ((@($buf) | ForEach-Object { $_.ToString("x2") }) -join ""))
+}
+function Get-TextSha([string]$text) {
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try { return ((@($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))) | ForEach-Object { $_.ToString("x2") }) -join "") } finally { $hasher.Dispose() }
+}
+function Register-SrvKey([string]$url, [string]$svcKey, [string]$srvKey, [string]$memo) {
+  # Bao DAU BAM cua ma may chu len web (ham pc_srv_key cua SQL v53 - chi khoa service_role goi duoc). Ma that KHONG gui di.
+  #   "ok" | "nosql" (web chua chay SQL v53) | "bad" (khoa Supabase bi tu choi) | "full" (web da giu qua nhieu ma) | "" (khong goi duoc)
+  # Ly do (da che khoa) nam o $script:SrvWhy.
+  $script:SrvWhy = ""
   try {
-    $blob = (@{ key = "" + $conf.key; cf = "" + $conf.cf; agree = "" + $conf.agree; emu = "" + $conf.emu } | ConvertTo-Json -Compress)
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $h = @{ apikey = $svcKey; Authorization = ("Bearer " + $svcKey) }
+    $body = (@{ p_hash = (Get-TextSha $srvKey); p_note = $memo } | ConvertTo-Json -Compress)
+    $r = Invoke-RestMethod -UserAgent $UA -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_srv_key") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 25
+    if ($r -and ($r.ok -eq $true)) { return "ok" }
+    if ($r -and (("" + $r.err) -eq "TOO_MANY")) { return "full" }
+    $script:SrvWhy = "web tra loi la"
+    return ""
+  } catch {
+    $we = Get-WebErr $_
+    $txt = "" + $we.text
+    if ($svcKey) { $txt = $txt.Replace($svcKey, "***") }
+    if ($srvKey) { $txt = $txt.Replace($srvKey, "***") }
+    if ($txt.Length -gt 160) { $txt = $txt.Substring(0, 160) }
+    $script:SrvWhy = ("HTTP " + $we.code + " " + $txt).Trim()
+    if ($we.code -eq 404) { return "nosql" }
+    if (($we.code -eq 401) -or ($we.code -eq 403)) { return "bad" }
+    return ""
+  }
+}
+function Set-SrvRemote([string]$url, [string]$svcKey, [string]$srvKey, [bool]$quiet) {
+  # Bat DIEU KHIEN TU XA cho ISO may chu: bao ma may chu len web, noi ro ket qua.  Tra "ok" | "nosql" | "bad" | "full" | "chua".
+  # Web chua chay SQL v53 (nosql): cho nguoi dung bam Run roi Enter de kiem lai tai cho ($quiet = khong hoi).
+  $state = "chua"
+  $memo = "tao-iso " + $VER + " " + $env:COMPUTERNAME
+  for ($sn = 1; $sn -le 6; $sn++) {
+    $sr = Register-SrvKey $url $svcKey $srvKey $memo
+    if ($sr -eq "ok") {
+      Say "   dieu khien tu xa: DA BAT - Windows vua len la may hien o web > May cho thue > May VPS (chi admin dieu khien, khong cho thue)" "Green"
+      return "ok"
+    }
+    if ($sr -eq "nosql") {
+      $state = "nosql"
+      Say "   (!) DIEU KHIEN TU XA chua bat duoc: web CHUA chay SQL v53 (Supabase > SQL Editor > 'CloudBlue PC v53 - bam Run' > Run)." "Yellow"
+      if ($quiet) { break }
+      $ansS = ("" + (Read-Host "       Bam Run xong thi Enter = kiem lai ; go B roi Enter = bo qua (ISO van tao duoc, may chi chua tu hien de dieu khien)")).Trim().ToLower()
+      if ($ansS -eq "b") { break }
+      continue
+    }
+    if ($sr -eq "bad") { Say ("   (!) dieu khien tu xa: web tu choi khoa Supabase khi bao ma may chu (" + $SrvWhy + ")") "Yellow"; return "bad" }
+    if ($sr -eq "full") { Say "   (!) dieu khien tu xa: web dang giu qua nhieu ma may chu - bao ho tro don bot." "Yellow"; return "full" }
+    $state = "chua"
+    Say ("   (chua bao duoc ma may chu len web: " + $SrvWhy + ")") "DarkGray"
+    if ($quiet -or ($sn -ge 2)) { break }
+    Start-Sleep -Seconds 3
+  }
+  return $state
+}
+function Save-McConf([string]$path, $conf) {
+  # Luu cau hinh may chu (khoa Supabase, ma Cloudflare, ma may chu...) ma hoa DPAPI: chi tai khoan Windows nay tren may nay mo lai duoc.
+  try {
+    $blob = (@{ key = "" + $conf.key; cf = "" + $conf.cf; agree = "" + $conf.agree; emu = "" + $conf.emu; srv = "" + $conf.srv } | ConvertTo-Json -Compress)
     $encM = ConvertTo-SecureString $blob -AsPlainText -Force | ConvertFrom-SecureString
     [IO.File]::WriteAllText($path, ("" + $encM), [Text.Encoding]::ASCII)
     return $true
@@ -1055,7 +1126,8 @@ try {
   } elseif (-not $MayChu) { Note "Khong co ma dang ky: may cai tu ISO nay se khong tu hien len web." }
 
   # ---------------------------------------------------------------- 4b. cau hinh may chu Cloud Phone (23.11g)
-  $Mc = @{ key = ""; cf = ""; agree = ""; emu = ""; tunnel = $false; from = "" }
+  $Mc = @{ key = ""; cf = ""; agree = ""; emu = ""; tunnel = $false; from = ""; srv = "" }
+  $SrvState = "khong"
   $McFiles = @()
   if ($MayChu) {
     Step "4b/8  CAU HINH MAY CHU CLOUD PHONE (khoa bi mat: chi nhap vao cua so nay - KHONG gui ai)"
@@ -1068,6 +1140,7 @@ try {
       if (-not (Test-There $MayChuConf)) { Stop-Build ("Khong thay tep -MayChuConf: " + $MayChuConf) }
       $cf0 = Read-ConfFile $MayChuConf
       $Mc.key = "" + $cf0["SUPABASE_SERVICE_KEY"]; $Mc.cf = "" + $cf0["CF_API_TOKEN"]; $Mc.agree = "" + $cf0["LE_AGREE"]; $Mc.emu = ("" + $cf0["EMU"]).ToLower()
+      $Mc.srv = "" + $cf0["SRV_KEY"]
       if ($cf0["DOMAIN"]) { $TenMien = ("" + $cf0["DOMAIN"]).Trim().ToLower() }
       $Mc.from = "tep -MayChuConf"
     } else {
@@ -1090,7 +1163,7 @@ try {
         }
       }
       if ($reuse) {
-        $Mc.key = "" + $oldMc.key; $Mc.cf = "" + $oldMc.cf; $Mc.agree = "" + $oldMc.agree; $Mc.emu = "" + $oldMc.emu
+        $Mc.key = "" + $oldMc.key; $Mc.cf = "" + $oldMc.cf; $Mc.agree = "" + $oldMc.agree; $Mc.emu = "" + $oldMc.emu; $Mc.srv = "" + $oldMc.srv
         $Mc.from = "dung lai cua lan chay truoc"
       } elseif (-not $KhongHoi) {
         Say "   KHOA SUPABASE service_role: Supabase > Project Settings > API Keys > service_role / secret > Reveal > Copy, roi dan vao day." "White"
@@ -1112,6 +1185,8 @@ try {
         $Mc.from = "moi nhap"
         if ($Mc.key) { [void](Save-McConf $McSave $Mc) }       # luu ngay: lo dung o cau hoi sau thi chay lai khong phai dan lai khoa
       }
+      # ma may chu (dieu khien tu xa) giu cung cau hinh: chay lai dung lai dung ma do -> ISO cu / may da cai van dung duoc
+      if ($Mc.key -and (-not ($Mc.srv -match '^cbsv_[0-9a-f]{40}$'))) { $Mc.srv = New-SrvKey; [void](Save-McConf $McSave $Mc) }
       # Ma Cloudflare: hoi khi chua co (ke ca khi dung lai cau hinh cu ma lan truoc chua nhap duoc ma)
       if ((-not $Mc.cf) -and (-not $KhongHoi)) {
         Say "   MA CLOUDFLARE (API Token) de may chu TU tao duong ham phoneN + streamN va chung chi duong thang web. CACH TAO:" "White"
@@ -1152,6 +1227,16 @@ try {
       }
     }
     if ($Mc.cf -and (-not $Mc.tunnel) -and ($Mc.from -ne "moi nhap")) { $ct2 = Test-CfToken $Mc.cf $TenMien; $Mc.tunnel = [bool]$ct2.tunnel }
+    # 23.11k - DIEU KHIEN TU XA: ISO kem MA MAY CHU; bao dau bam cua ma len web de may cai xong tu hien o May cho thue > May VPS
+    if (-not $Mc.key) { $Mc.srv = "" }
+    elseif (-not ($Mc.srv -match '^cbsv_[0-9a-f]{40}$')) { $Mc.srv = New-SrvKey }
+    if ($Mc.srv) {
+      $SrvState = "chua"
+      if ($KhongKiemMa) { Say "   dieu khien tu xa: ISO co kem ma may chu - CHUA bao len web (-KhongKiemMa)" "DarkGray" }
+      else { $SrvState = Set-SrvRemote $SbUrl $Mc.key $Mc.srv ([bool]$KhongHoi) }
+      if ($SrvState -eq "nosql") { Note "Dieu khien tu xa CHUA bat: web chua chay SQL v53. Chay SQL do roi CHAY LAI lenh nay (Enter = dung lai cau hinh) - may da cai tu ISO nay se tu hien, khong phai cai lai." }
+      elseif ($SrvState -ne "ok") { Note "Dieu khien tu xa: chua bao duoc ma may chu len web. Chay lai lenh nay khi mang on - may da cai tu ISO nay se tu hien, khong phai cai lai." }
+    } else { Note "ISO may chu KHONG co dieu khien tu xa (can khoa Supabase de bao ma may chu len web)." }
     if ($GiaLap) { $Mc.emu = $GiaLap.Trim().ToLower() }
     if ((-not $Mc.emu) -and (-not $KhongHoi)) {
       Say "   GIA LAP cua may chu:  1 = MuMu (Android 12 + 15 - de xuat)   2 = LDPlayer 9 (Android 9)" "White"
@@ -1394,7 +1479,7 @@ try {
   Remove-Item -Force $infoFile -ErrorAction SilentlyContinue
   $params = @{ out = $IsoRoot; tool = $Tool; py = $PyDir; images = $images; user = $TaiKhoan; password = $MatKhau; sb_url = $SbUrl; sb_key = $SbKey; enroll_key = $MaDangKy; generic_key = $gk; info = $infoFile; wallpaper = $wpSrc; default_index = $defIdx; user_admin = [bool]$KhachAdmin }
   if ($LinuxSrc) { $params.linux = @{ src = $LinuxSrc.Path; name = "CachyOS Linux (KDE)"; version = $LinuxSrc.Ver } }
-  if ($MayChu) { $params.role = "server"; $params.ask_code = $false; $params.name_prefix = "win"; $params.code_wait = 900 }      # bo cai chi hoi TEN MAY (cho 15 phut), khong hoi so may
+  if ($MayChu) { $params.role = "server"; $params.ask_code = $false; $params.name_prefix = "win"; $params.code_wait = 900; $params.enroll_key = "" + $Mc.srv }      # bo cai chi hoi TEN MAY (cho 15 phut), khong hoi so may
   $pj = Join-Path $Dl "params.json"
   [IO.File]::WriteAllText($pj, ($params | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
   $rc = Run-Exe $PyExe @("-I", "-B", (Join-Path $Tool "cb_build.py"), "layout", $pj)
@@ -1491,9 +1576,16 @@ try {
     if (-not $mcNames) { $mcNames = "KHONG" }
     Write-Host ("  MAY CHU CLOUD PHONE: gia lap " + $Mc.emu + " | tep kem: " + $mcNames + " | ten mien " + $TenMien) -ForegroundColor Green
     Write-Host ("     khoa Supabase: " + $(if ($Mc.key) { "CO (" + $Mc.from + ")" } else { "KHONG" }) + " | ma Cloudflare: " + $(if ($Mc.cf) { "CO" + $(if ($Mc.tunnel) { " - tu tao duong ham" } else { " - KHONG co quyen duong ham" }) } else { "KHONG" }) + " | Let's Encrypt: " + $(if ($Mc.agree -eq "1") { "da dong y" } else { "chua" }))
+    $srvTxt = "KHONG (ISO khong kem khoa Supabase)"
+    if ($Mc.srv) {
+      $srvTxt = "ISO co ma may chu, nhung CHUA bao duoc len web - chay lai lenh nay khi mang on"
+      if ($SrvState -eq "ok") { $srvTxt = "CO - Windows vua len la may hien o web > May cho thue > May VPS, bam Dieu khien" }
+      elseif ($SrvState -eq "nosql") { $srvTxt = "CHUA - web chua chay SQL v53 (chay SQL roi chay lai lenh nay)" }
+    }
+    Write-Host ("     dieu khien tu xa: " + $srvTxt) -ForegroundColor $(if ($SrvState -eq "ok") { "Green" } else { "Yellow" })
     Write-Host "     (!) ISO NAY CHUA KHOA BI MAT - KHONG gui ai, KHONG dua len mang." -ForegroundColor Yellow
   }
-  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" + $(if ($KeyState -eq "ok") { " - may chu xac nhan con hieu luc" } else { " - CHUA kiem duoc voi may chu" }) } else { "KHONG" }))
+  if (-not $MayChu) { Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" + $(if ($KeyState -eq "ok") { " - may chu xac nhan con hieu luc" } else { " - CHUA kiem duoc voi may chu" }) } else { "KHONG" })) }
   if ($OscInfo) { Write-Host ("  oscdimg: " + $OscInfo) }
   if (@($OscWhy).Count -gt 0) { Write-Host ("  oscdimg (cach thu khong duoc): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ")) }
   if ($isoDone) { Write-Host ("  ISO: " + $Out + "  (" + [math]::Round((Get-Item $Out).Length / 1GB, 2) + " GB)") -ForegroundColor Green }
@@ -1507,6 +1599,7 @@ try {
     Write-Host "    - man hinh dem nguoc 30 giay ghi ro o nao se bi xoa; bam X de huy"
     if ($MayChu) {
       Write-Host "    - Windows bung xong, bo cai hoi TEN MAY: go  win9  (hoac 9) roi Enter = may chu so 9. Bo trong = may tu lay so ke tiep." -ForegroundColor White
+      if ($SrvState -eq "ok") { Write-Host "    - Windows vua len 1-2 phut: may hien o web > Bang quan tri > May cho thue > May VPS (nhan Bao tri, ghi chu MAY CHU) - bam Dieu khien de xem / go may tu xa." -ForegroundColor White }
       Write-Host "    - sau do KHONG can lam gi: may tu khoi dong lai vai lan, tu cai gia lap + CloudBlue (30-45 phut) roi hien o web > Bang quan tri > May chu."
       Write-Host "    - viec tay duy nhat con lai: mo cong modem TCP 8188 + so may chu (man hinh may chu + tep CloudBlue-may-chu.txt tren Desktop ghi ro)."
     }
