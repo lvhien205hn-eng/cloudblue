@@ -281,6 +281,90 @@ reset(); mine(None)
 r = step([node("win-b", "24/11a", 1500), node("win-c", "24/11a", 4000)])
 ck("máy chủ MỚI CÀI (chưa có sổ — VD cài từ ISO bản cũ) → tự lên bản đang chạy ổn ở các máy chủ khác", r == "go 24/11a" and len(SP) == 1, (r, SP))
 
+# ---- 24/11b: BẢN MỚI TỰ CÀI — máy chủ ít khách nhất thử trước, không cần ai bấm
+print("2b. cloudphoned · bản mới trên GitHub tự cài thử ở máy chủ ÍT KHÁCH NHẤT (first_step) + đọc lại máy mẫu ngay (eng_due)")
+NEWB = SUA_SRC.replace(b'VER = "' + VER_NOW.encode() + b'"', b'VER = "24/11b"')
+def fnode(i, ver, phones, first=True, win=True, follow=True, run=False, seen_ago=20, last=None, at_ago=90000):
+    sw = {"ver": ver, "at": T0 - at_ago, "upd": True, "run": run, "follow": follow, "cpd": "x"}
+    if first: sw.update(first=True, win=win)
+    if last: sw["last"] = last
+    return {"id": i, "phones": phones, "updated_at": iso(seen_ago), "metrics": {"sw": sw}}
+def freset():
+    reset(); cpd._first["t"] = 0.0; del GETS[:]; del SP[:]
+def fget(url, h): GETS.append(url); return NEWB
+ME = cpd.NODE_ID
+ck("sw_info báo thêm: biết thử trước + là máy chủ Windows hay không", (lambda s: s.get("first") is True and "win" in s)(cpd.sw_info()), cpd.sw_info())
+ck("first_pick: máy chủ ÍT KHÁCH NHẤT · bằng nhau → mã nhỏ hơn",
+   cpd.first_pick([fnode("win-b", "24/11a", 10), fnode("win-c", "24/11a", 3)]) == "win-c"
+   and cpd.first_pick([fnode("win-c", "24/11a", 3), fnode("win-b", "24/11a", 3)]) == "win-b")
+ck("first_pick bỏ qua: máy chủ cloudphoned cũ (chưa biết thử trước) · Linux · tắt tự cập nhật (TU_CAP_NHAT=0) · mất báo cáo > 3 phút",
+   cpd.first_pick([fnode("old", "23/11f", 0, first=False), fnode("lnx", "24/11a", 0, win=False), fnode("off", "24/11a", 0, follow=False),
+                   fnode("dead", "24/11a", 0, seen_ago=400), fnode("win-z", "24/11a", 30)]) == "win-z")
+ck("first_pick: không có máy chủ nào hợp lệ / dòng hỏng → None, không lỗi", cpd.first_pick([{"id": "x"}, {"id": "y", "updated_at": "abc"}, None]) is None)
+freset(); mine("24/11a")
+rows = [fnode(ME, "24/11a", 3), fnode("win-b", "24/11a", 10), fnode("win-c", "24/11a", 20)]
+r = step(rows, get=fget)
+ck("GitHub có bản mới 24/11b chưa máy chủ nào chạy, máy này ít khách nhất → TỰ CÀI THỬ TRƯỚC (không cần ai bấm), ghi sổ lần 1",
+   r == "first 24/11b" and len(GETS) == 1 and SP == [[sys.executable, "-u", cpd.SUA_FILE, "--tu-dong"]] and open(cpd.SUA_FILE, "rb").read() == NEWB
+   and json.load(open(cpd.SW_TRIES_F)) == {"24/11b": 1}, (r, GETS, SP))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 12), fnode("win-b", "24/11a", 4)], get=fget)
+ck("máy chủ KHÁC ít khách hơn → máy này không hỏi GitHub, không cài (để máy kia thử)", r == "none" and not GETS and not SP, (r, GETS, SP))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 12), fnode("old", "23/11f", 1, first=False, at_ago=600)], get=fget)
+ck("máy chủ ít khách hơn nhưng chạy cloudphoned cũ (không biết thử trước) → không tính, máy này thử", r == "first 24/11b" and len(SP) == 1, (r, SP))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "24/11b", 10, at_ago=300)], get=fget)
+ck("máy chủ khác ĐÃ chạy bản 24/11b (chưa đủ thời gian chờ) → không thử thêm, chờ luật tự theo", r == "none" and not SP and len(GETS) == 1, (r, SP, GETS))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "24/11a", 10, last={"ver": "24/11b", "upd": False, "at": T0 - 100})], get=fget)
+ck("máy chủ khác đã THỬ HỎNG bản 24/11b → không thử tiếp ở máy này (bản hỏng không lan sang máy chủ khác)", r == "none" and not SP, (r, SP))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "24/11a", 10, run=True)], get=fget)
+ck("máy chủ khác đang cập nhật dở → chờ, không hỏi GitHub", r == "none" and not GETS and not SP, (r, GETS))
+freset(); mine("24/11b")
+r1 = step([fnode(ME, "24/11b", 3), fnode("win-b", "24/11b", 10)], get=fget, t=T0)
+r2 = step([fnode(ME, "24/11b", 3), fnode("win-b", "24/11b", 10)], get=fget, t=T0 + 300)
+r3 = step([fnode(ME, "24/11b", 3), fnode("win-b", "24/11b", 10)], get=fget, t=T0 + cpd.FIRST_CHECK_S + 10)
+ck("GitHub = bản máy này đang chạy → không làm gì; hỏi GitHub 15 phút / lần (không phải 5 phút / lần)",
+   (r1, r2, r3) == ("none", "none", "none") and len(GETS) == 2 and not SP, (r1, r2, r3, GETS))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "23/11f", 10, at_ago=90000)], get=fget)
+ck("máy chủ khác còn bản CŨ chạy ổn (đang chờ tự theo) → máy thử trước vẫn cài bản mới trên GitHub", r == "first 24/11b" and len(SP) == 1, (r, SP))
+freset(); mine("24/11a")
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "24/11a", 10)], site={"node_update": {"auto": False}}, get=fget)
+ck("web admin TẮT tự cập nhật → máy thử trước cũng không làm gì", r == "off" and not GETS and not SP, (r, GETS))
+freset(); mine("24/11a"); json.dump({"24/11b": 2}, open(cpd.SW_TRIES_F, "w")); del NOTES[:]
+r = step([fnode(ME, "24/11a", 3), fnode("win-b", "24/11a", 10)], get=fget)
+ck("máy thử trước đã thử bản 24/11b 2 lần chưa xong → thôi, báo admin (Telegram), máy khác không theo", r == "tries" and not SP and len(NOTES) == 1, (r, SP, NOTES))
+freset(); mine("24/11a")
+def nonet2(url, h): GETS.append(url); raise OSError("mất mạng")
+try: r = step([fnode(ME, "24/11a", 3)], get=nonet2)
+except RuntimeError as e: r = "lỗi"
+r2 = step([fnode(ME, "24/11a", 3)], get=fget, t=T0 + 60)
+ck("máy thử trước không tải được GitHub → báo lỗi (nhật ký), 15 phút sau mới hỏi lại, không cài gì", r == "lỗi" and r2 == "none" and not SP, (r, r2, SP))
+# đọc lại máy mẫu
+cpd._eng.update(emu="mumu", androids=["15"], none=False, missing=["tpl_a12"], t=T0 - 30)
+try: os.remove(cpd.ENG_POKE_F)
+except OSError: pass
+a1 = cpd.eng_due(T0)
+cpd._eng.update(t=T0 - 130); a2 = cpd.eng_due(T0)
+cpd._eng.update(missing=[], t=T0 - 130); a3 = cpd.eng_due(T0)
+cpd._eng.update(t=T0 - 610); a4 = cpd.eng_due(T0)
+cpd._eng.update(t=time.time() - 5); os.makedirs(os.path.dirname(cpd.ENG_POKE_F), exist_ok=True)
+open(cpd.ENG_POKE_F, "w").write("1"); os.utime(cpd.ENG_POKE_F, (time.time(), time.time())); a5 = cpd.eng_due()
+cpd._eng.update(t=time.time() + 1); a6 = cpd.eng_due()
+ck("eng_due: thiếu máy mẫu → đọc lại 2 phút / lần · đủ → 10 phút / lần · vừa tạo máy mẫu (file doc-lai-may-mau.txt mới) → đọc NGAY, đọc xong thôi",
+   (a1, a2, a3, a4, a5, a6) == (False, True, False, True, True, False), (a1, a2, a3, a4, a5, a6))
+src = open(os.path.join(ROOT, "cloudphoned.py"), encoding="utf-8").read()
+ck("báo cáo 30 giây / lần dùng eng_due (không còn chờ cố định 10 phút)", "if eng_due(): _engine_read()" in src and "> (120 if _eng.get(\"none\") else 600)" not in src)
+pc = open(os.path.join(ROOT, "windows", "phonectl.py"), encoding="utf-8").read()
+ck("phonectl mktpl + lệnh A ghi CÙNG file báo đọc lại (logs/doc-lai-may-mau.txt) với cloudphoned",
+   'os.path.join(HOME, "logs", "doc-lai-may-mau.txt")' in pc and "if bad < len(vers): eng_poke()" in pc
+   and 'os.path.join(LOGS, "doc-lai-may-mau.txt")' in SUA_SRC.decode("utf-8") and "eng_poke()" in SUA_SRC.decode("utf-8")
+   and cpd.ENG_POKE_F == os.path.join(cpd.HOME, "logs", "doc-lai-may-mau.txt"))
+ck("follow_step đọc cloud_nodes có cột phones (để chọn máy ít khách)", 'cloud_nodes?select=id,metrics,updated_at,phones' in src)
+
 # ============================================================== 3. sua-tat-ca.py: sổ cập nhật + dấu của các file
 print("3. sua-tat-ca.py · sổ logs/cap-nhat.json + dấu bản của từng file")
 sua = load("sua_n", "windows/sua-tat-ca.py")
