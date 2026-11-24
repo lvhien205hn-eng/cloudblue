@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11h)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11j)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -15,7 +15,7 @@
 #  -Lib : chi nap cac ham (de kiem thu), khong chay.
 # =====================================================================================================
 param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11h'
+$MC_VER = '23.11j'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -517,6 +517,45 @@ function Restart-Now($st, [string]$why) {
   return $true
 }
 
+function Set-AutoStart([switch]$Remove) {
+  # Tu chay lai script nay moi lan co nguoi dang nhap, cho toi khi cai xong (-Remove = go het khi xong).
+  # 2 duong, KHONG gan voi ten may / ten tai khoan (may doi ten giua chung thi tac vu gan kieu "TENMAY\taikhoan" khong chay lai):
+  #   khoa Run cua may  +  tac vu theo NHOM Administrators. Goi lai nhieu lan khong sao.
+  $runKey = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+  $lnkOld = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\CloudBlue-cai-may-chu.lnk'
+  if ($Remove) {
+    try { Remove-ItemProperty -Path $runKey -Name 'CloudBlueMayChu' -ErrorAction SilentlyContinue } catch {}
+    try { Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue } catch {}
+    Remove-Item -LiteralPath $lnkOld -Force -ErrorAction SilentlyContinue
+    return 0
+  }
+  $selfPath = Join-Path $ISO 'may-chu-iso.ps1'
+  if ((-not (Test-Path -LiteralPath $selfPath)) -and $PSCommandPath) { $selfPath = $PSCommandPath }
+  $argLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $selfPath + '"'
+  $ways = 0
+  try {
+    New-ItemProperty -Path $runKey -Name 'CloudBlueMayChu' -Value ('powershell.exe ' + $argLine) -PropertyType String -Force -ErrorAction Stop | Out-Null
+    $ways++
+  } catch {}
+  try {
+    $a = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argLine -WorkingDirectory $B
+    $t = New-ScheduledTaskTrigger -AtLogOn
+    $st = New-ScheduledTaskSettingsSet -ExecutionTimeLimit ([TimeSpan]::Zero) -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew
+    $made = $false
+    foreach ($grp in @('S-1-5-32-544', 'BUILTIN\Administrators')) {
+      if ($made) { break }
+      try {
+        $pr = New-ScheduledTaskPrincipal -GroupId $grp -RunLevel Highest
+        Register-ScheduledTask -TaskName $TASK -Action $a -Trigger $t -Principal $pr -Settings $st -Force -ErrorAction Stop | Out-Null
+        $made = $true
+      } catch { $made = $false }
+    }
+    if ($made) { $ways++ }
+  } catch {}
+  Remove-Item -LiteralPath $lnkOld -Force -ErrorAction SilentlyContinue
+  return $ways
+}
+
 function Update-Self([string]$self) {
   # Lay ban moi nhat cua script nay tren GitHub (sua loi ma khong phai tao lai ISO). Tra ve true khi da thay tep (can chay lai).
   if ($env:CB_ISO_SELF -eq '1') { return $false }
@@ -802,8 +841,7 @@ function Main {
     foreach ($tn in 'CloudBluePC Agent', 'CloudBluePC Watch') { try { Disable-ScheduledTask -TaskName $tn -ErrorAction SilentlyContinue | Out-Null } catch {} }
     Say '   Da tat phan mem quan ly "may PC cho thue" tren may chu nay (may chu khong vao danh sach may PC).' 'DarkGray'
   }
-  try { Unregister-ScheduledTask -TaskName $TASK -Confirm:$false -ErrorAction SilentlyContinue } catch {}
-  Remove-Item (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp\CloudBlue-cai-may-chu.lnk') -Force -ErrorAction SilentlyContinue
+  [void](Set-AutoStart -Remove)
   $script:RC = 0
 }
 
@@ -817,6 +855,7 @@ if (-not $Lib) {
   $created = $false
   $mx = New-Object Threading.Mutex($true, 'Global\CloudBlueMayChuIso', [ref]$created)
   if (-not $created) { exit 0 }                                # dang co 1 ban khac chay
+  $autoWays = Set-AutoStart                                    # moi lan chay deu dat lai duong tu chay (may vua doi ten / tac vu cu hong van tu chay lai sau khi khoi dong lai)
   try { $Host.UI.RawUI.WindowTitle = 'CloudBlue - tu cai may chu (dung dong cua so nay)' } catch {}
   try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch {}
   $env:PYTHONUTF8 = '1'; $env:PYTHONIOENCODING = 'utf-8'
