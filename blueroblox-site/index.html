@@ -608,6 +608,9 @@ h1 em::after{background:linear-gradient(90deg,rgba(143,208,255,0),#8fd0ff 15%,#f
 .node.off{opacity:.75;border-style:dashed}
 .node.sel{border-color:var(--sky);box-shadow:inset 0 0 0 1px var(--sky)}
 .node.srvm{border-style:dashed;border-color:rgba(255,214,102,.55)}
+.node .nr.nrev em{color:var(--gold-hi, #ffd666);font-weight:600}
+.node>.nacts .nrevs,.nbulk .nrevs{display:block;width:100%;margin:0 0 6px;font-size:12px;line-height:1.5;color:var(--muted)}
+.node>.nacts .nrevs b,.nbulk .nrevs b{color:var(--gold-hi, #ffd666)}
 .node.srvm.off{border-color:var(--line2)}
 .node>.nhd{grid-area:hd;display:grid;grid-template-columns:auto minmax(0,1fr);gap:5px 8px;align-content:start;min-width:0}
 .node>.nhd .nmeta{grid-column:1/-1;display:grid;gap:3px}
@@ -9159,7 +9162,7 @@ function renderAlerts() {
 }
 async function loadNodes() {
   if (!isAdmin()) return [];
-  const [{ data, error }] = await Promise.all([sb.from("cloud_nodes").select("*").order("created_at"), loadSrvMachines()]);
+  const [{ data, error }] = await Promise.all([sb.from("cloud_nodes").select("*").order("created_at"), loadSrvMachines(), loadNodeRevenue()]);
   if (error) { if ($("cpa-nodes")) $("cpa-nodes").innerHTML = `<div class="empty">${/cloud_nodes/.test(error.message || "") ? "Chưa chạy file SQL cloud-phones-v5.sql trên Supabase." : esc(errMsg(error))}</div>`; return []; }
   NODES = data || []; return NODES;
 }
@@ -9285,6 +9288,45 @@ document.addEventListener("click", e => {             // "ĐT đám mây › Má
   const t = document.querySelector('[data-tab="cloud"]'); if (t) t.click();
   const b = document.querySelector('#pane-cloud .subtabs button[data-sub="servers"]'); if (b) b.click();
 });
+/* 24/11 · DOANH THU TỪNG MÁY CHỦ (SQL v54 · admin_node_revenue): tiền khách thật sự trả, rải đều theo thời gian máy khách chạy trên máy chủ đó
+   (đổi máy chủ → phần sau tính cho máy chủ mới; hết hạn / huỷ / xoá → ngừng tính). Tháng theo giờ VN, hết tháng tự chốt. Đọc lại tối đa 1 phút / lần. */
+let NREV = null, NREV_AT = 0, NREV_OFF = false, NREV_BUSY = null;
+async function loadNodeRevenue(force) {
+  if (NREV_OFF) return NREV;
+  if (!force && NREV && Date.now() - NREV_AT < 60000) return NREV;
+  if (NREV_BUSY) return NREV_BUSY;
+  NREV_BUSY = (async () => {
+    try {
+      const { data, error } = await sb.rpc("admin_node_revenue", { p_months: 6 });
+      if (error) { if (error.code === "PGRST202" || /Could not find the function|admin_node_revenue/i.test(String(error.message || ""))) NREV_OFF = true; return NREV; }
+      if (data && Array.isArray(data.months)) { NREV = data; NREV_AT = Date.now(); }
+    } catch (e) {}
+    return NREV;
+  })();
+  try { return await NREV_BUSY; } finally { NREV_BUSY = null; }
+}
+const revMon = i => { const m = NREV && NREV.months && NREV.months[i]; return m && typeof m === "object" ? m : null; };
+function revLabel(m) {
+  const k = /^(\d{4})-(\d{2})$/.exec(String((m && m.month) || "")); if (!k) return "?";
+  return "T" + (+k[2]) + (+k[1] !== new Date().getFullYear() ? "/" + k[1].slice(2) : "");
+}
+function revAmt(m, ids) {                               // tổng doanh thu của các máy chủ ids (Set) trong tháng m ; ids null = tất cả
+  let t = 0;
+  for (const r of (m && Array.isArray(m.rows) ? m.rows : [])) if (r && (!ids || ids.has(String(r.node)))) t += +r.amount || 0;
+  return Math.round(t);
+}
+function revRow(n) {
+  const m = revMon(0); if (!m) return "";
+  const v = revAmt(m, new Set([n.id])), r = (m.rows || []).find(x => x && x.node === n.id), ph = r ? +r.phones || 0 : 0;
+  return `<div class="nr nrev" title="Tiền khách trả cho máy chạy trên máy chủ này trong ${esc(revLabel(m))} (tính tới giờ, rải đều theo thời gian máy chạy${m.est ? "; phần trước lúc bật tính doanh thu là ước tính" : ""}) — ⚙ Cài đặt xem các tháng trước"><span>💰 Doanh thu ${esc(revLabel(m))}${ph ? " · " + ph + " máy trả tiền" : ""}</span><em>${vnd(v)}</em></div>`;
+}
+function revLine(ids, lead) {                           // "💰 T11 (đang tính): … · T10 (đã chốt): …" — các tháng có số
+  const ms = (NREV && Array.isArray(NREV.months) ? NREV.months : []).filter(m => m && typeof m === "object");
+  if (!ms.length) return NREV_OFF ? `<span class="nrevs">💰 Doanh thu: chưa bật — chạy SQL v54 trên Supabase.</span>` : "";
+  const parts = ms.map((m, i) => ({ m, i, v: revAmt(m, ids) })).filter(x => x.i === 0 || x.v > 0)
+    .map(x => `${esc(revLabel(x.m))} ${x.i === 0 ? "(đang tính)" : "(đã chốt)"}${x.m.est ? "*" : ""}: <b>${vnd(x.v)}</b>`);
+  return `<span class="nrevs">💰 ${lead ? esc(lead) + " — " : ""}${parts.join(" · ")}${ms.some(m => m.est) ? ` <span title="Phần trước lúc bật tính doanh thu: coi máy khách nằm ở máy chủ hiện tại từ lúc tạo tới lúc huỷ">(* có phần ước tính)</span>` : ""}</span>`;
+}
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
   const SL = srvLink(), have = new Set(NODES.map(n => n.id));
@@ -9309,7 +9351,7 @@ function renderNodes() {
         <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
         <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
           <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}</div>
+        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}</div>
       </div>
       <div class="nc cpu">
         ${nRow("CPU thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, "CPU đang dùng thật")}
@@ -9334,6 +9376,7 @@ function renderNodes() {
       </div>
       <button class="btn ghost sm nset" type="button" data-nset="${nid}" aria-expanded="${open}" aria-controls="nact-${nid}" title="${L ? "Điều khiển từ xa, đ" : "Đ"}ổi tên, ngừng / nhận máy, quản lý, khởi động lại, xoá sạch máy">⚙ Cài đặt <i aria-hidden="true">▾</i></button>
       <div class="nacts" id="nact-${nid}"${open ? "" : " hidden"}>
+        ${revLine(new Set([n.id]), "Doanh thu máy chủ này")}
         ${L ? srvCtlBtn(L) : ""}
         <button class="btn ghost sm" data-nrename="${nid}">✏️ Đổi tên</button>
         <button class="btn ${n.enabled ? "ghost" : ""} sm" data-nenable="${nid}">${n.enabled ? "Ngừng nhận máy" : "Nhận máy lại"}</button>
@@ -9345,7 +9388,9 @@ function renderNodes() {
       </div>
     </div>`;
   }).join("") + SL.rest.map(srvRow).join("");
-  $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách` + (SL.rest.length ? ` · ${SL.rest.length} máy chủ mới đang cài` : "");
+  const m0 = revMon(0);
+  $("cpa-nodesum").textContent = `${NODES.length} server · cấp RAM ${ar}/${Math.round(tr)}GB · CPU ${ac}/${tc} luồng · ${ph} máy khách` + (SL.rest.length ? ` · ${SL.rest.length} máy chủ mới đang cài` : "")
+    + (m0 ? ` · 💰 ${revLabel(m0)}: ${vnd(revAmt(m0, null))}` : NREV_OFF ? " · 💰 doanh thu: chạy SQL v54 để bật" : "");
   nodeBulkBar();
 }
 /* thanh trên đầu danh sách: chọn tất cả + ô "⚙ Cài đặt cho N máy đã chọn" */
@@ -9356,6 +9401,7 @@ function nodeBulkBar() {
   if (!k) NBULK_OPEN = false;
   bar.innerHTML = `<label><input type="checkbox" id="nbulk-all"${all ? " checked" : ""}> Chọn tất cả</label>`
     + (k ? `<span><b>Đã chọn ${k} máy chủ</b>: ${esc(list.map(n => n.name).join(", "))}</span>
+      ${revLine(all ? null : new Set(list.map(n => n.id)), all ? "Tổng doanh thu tất cả máy chủ" : "Doanh thu " + k + " máy đã chọn")}
       <button class="btn sm nset" type="button" id="nbulk-set" aria-expanded="${NBULK_OPEN}" aria-controls="nbulk-acts">⚙ Cài đặt cho ${k} máy đã chọn <i aria-hidden="true">▾</i></button>
       <button class="btn ghost sm" type="button" id="nbulk-none">Bỏ chọn</button>
       <div class="nacts" id="nbulk-acts"${NBULK_OPEN ? "" : " hidden"}>
