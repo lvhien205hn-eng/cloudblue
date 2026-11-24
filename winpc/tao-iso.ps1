@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 23.11h)
+#  cloudblue-tao-iso   (ban 23.11j)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
@@ -41,6 +41,11 @@
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
 #     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11j - SUA (ISO may chu): cai Windows xong may DUNG o man hinh nen, khong tu cai tiep - tac vu tu chay gan theo "TENMAY\taikhoan"
+#     khong chay lai sau khi bo cai doi ten may. Gio dat 2 duong tu chay khong phu thuoc ten may (khoa Run + tac vu theo nhom Administrators),
+#     va script cai may chu tu dat lai moi lan chay.
+#  23.11i - Ma Cloudflare: huong dan tao tung buoc, dan SAI thi noi ro vi sao + cho dan lai ngay (khong phai chay lai lenh);
+#     khoa Supabase da nhap dung duoc luu ngay (ma hoa) - chay lai khong phai dan lai.
 #  23.11h - SUA: khoa Supabase kieu moi (sb_secret_...) bi bao "may chu TU CHOI" du khoa dung - PowerShell mac dinh tu xung la trinh duyet
 #     ("Mozilla/5.0 ..."), Supabase chan khoa bi mat gui tu trinh duyet. Gio moi yeu cau web gui ten chuong trinh rieng (cloudblue-tao-iso/<ban>).
 #  23.11g - DUNG LINK thay cho tep: moi cho nhan tep (-Iso, -Driver "1=...", -BoCai, va cac o keo tha) deu nhan LINK tai
@@ -73,7 +78,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "23.11h"
+$VER = "23.11j"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -666,6 +671,26 @@ function Test-SbKeyShape([string]$key) {
   return "khoa service_role bat dau bang eyJ... hoac sb_secret_..."
 }
 
+function Get-WebErr($er) {
+  # Loi cua Invoke-RestMethod / Invoke-WebRequest -> @{ code ; text }  (text = noi dung may chu tra ve, gon 1 dong). May chu khong tra loi -> code 0.
+  $code = 0
+  $txt = ""
+  try { $code = [int]$er.Exception.Response.StatusCode } catch { $code = 0 }
+  try { if ($er.ErrorDetails -and $er.ErrorDetails.Message) { $txt = "" + $er.ErrorDetails.Message } } catch { $txt = "" }
+  if ((-not $txt) -and ($code -gt 0)) {
+    try {
+      $rs = $er.Exception.Response.GetResponseStream()
+      try { $rs.Position = 0 } catch { }
+      $sr = New-Object IO.StreamReader($rs)
+      $txt = $sr.ReadToEnd()
+      $sr.Close()
+    } catch { $txt = "" }
+  }
+  $txt = (("" + $txt) -replace '\s+', ' ').Trim()
+  if ($txt.Length -gt 300) { $txt = $txt.Substring(0, 300) }
+  return @{ code = $code; text = $txt }
+}
+
 function Test-SbService([string]$url, [string]$key) {
   # Hoi may chu: khoa nay doc duoc bang may chu khong?  "ok" | "bad" (401 / 403) | "" (khong hoi duoc)
   # Ly do may chu tu choi (da che khoa) nam o $script:SbWhy.
@@ -679,49 +704,74 @@ function Test-SbService([string]$url, [string]$key) {
     if ([int]$r.StatusCode -eq 200) { return "ok" }
     return ""
   } catch {
-    $er = $_
-    $code = 0
-    try { $code = [int]$er.Exception.Response.StatusCode } catch { $code = 0 }
-    if (($code -eq 401) -or ($code -eq 403)) {
-      $txt = ""
-      try { if ($er.ErrorDetails -and $er.ErrorDetails.Message) { $txt = "" + $er.ErrorDetails.Message } } catch { $txt = "" }
-      if (-not $txt) {
-        try {
-          $rs = $er.Exception.Response.GetResponseStream()
-          try { $rs.Position = 0 } catch { }
-          $sr = New-Object IO.StreamReader($rs)
-          $txt = $sr.ReadToEnd()
-          $sr.Close()
-        } catch { $txt = "" }
-      }
-      $txt = (("" + $txt) -replace '\s+', ' ')
+    $we = Get-WebErr $_
+    if (($we.code -eq 401) -or ($we.code -eq 403)) {
+      $txt = "" + $we.text
       if ($key) { $txt = $txt.Replace($key, "***") }
       if ($txt.Length -gt 160) { $txt = $txt.Substring(0, 160) }
-      $script:SbWhy = ("HTTP " + $code + " " + $txt).Trim()
+      $script:SbWhy = ("HTTP " + $we.code + " " + $txt).Trim()
       return "bad"
     }
     return ""
   }
 }
 
+function Get-CfWhy([string]$tok, [int]$code, [string]$text) {
+  # Vi sao Cloudflare khong nhan ma nay - 1 cau cho nguoi dung (khong in ma ra).
+  $t = ("" + $tok).Trim()
+  if ($t -match '^eyJ') { return "day la MA CHAY DUONG HAM (eyJ...), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{37}$') { return "day la Global API Key (37 ky tu), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { return "day la MA SO (ID dang xxxxxxxx-xxxx-...) cua duong ham / tai khoan, khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{32}$') { return "day la MA SO tai khoan / ten mien (32 ky tu), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if (-not ($t -match '^[A-Za-z0-9_.-]+$')) { return "ma co ky tu la (dan thieu / dan nham thu khac?) - Copy lai ma o trang Cloudflare" }
+  if ($code -eq 0) { return "khong goi duoc Cloudflare (mat mang / bi chan?)" }
+  $msg = ""
+  try {
+    $j = $text | ConvertFrom-Json
+    $msg = (@($j.errors | ForEach-Object { ("" + $_.code + " " + $_.message).Trim() }) -join "; ")
+  } catch { $msg = "" }
+  if (-not $msg) { $msg = "" + $text }
+  if ($msg.Length -gt 160) { $msg = $msg.Substring(0, 160) }
+  if (($code -eq 400) -or ($code -eq 401)) { return ("ma SAI hoac da bi xoa / het han - Cloudflare tra loi HTTP " + $code + ": " + $msg) }
+  if ($code -eq 403) { return ("ma SAI hoac THIEU QUYEN (can du 3 quyen: Zone - Zone - Read, Zone - DNS - Edit, Account - Cloudflare Tunnel - Edit) - Cloudflare tra loi HTTP 403: " + $msg) }
+  return ("Cloudflare tra loi HTTP " + $code + ": " + $msg)
+}
+
 function Test-CfToken([string]$tok, [string]$domain) {
-  # Ma Cloudflare: thay ten mien khong (zone) + co quyen duong ham khong (tunnel). Khong nem loi.
+  # Ma Cloudflare: thay ten mien khong (zone) + co quyen duong ham khong (tunnel). Khong nem loi. err = ly do (khong chua ma).
   $res = @{ zone = $false; tunnel = $false; err = "" }
+  $h = @{ Authorization = ("Bearer " + ("" + $tok).Trim()) }
+  $z = $null
   try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    $h = @{ Authorization = ("Bearer " + $tok) }
     $z = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/zones?name=" + $domain) -Headers $h -TimeoutSec 20
-    $zr = @($z.result)
-    if (($z.success -eq $true) -and ($zr.Count -gt 0) -and $zr[0]) {
-      $res.zone = $true
-      $acc = "" + $zr[0].account.id
-      try {
-        $t = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/accounts/" + $acc + "/cfd_tunnel?per_page=1") -Headers $h -TimeoutSec 20
-        if ($t.success -eq $true) { $res.tunnel = $true }
-      } catch { $res.tunnel = $false }
-    } else { $res.err = "ma khong thay ten mien " + $domain }
-  } catch { $res.err = "khong goi duoc Cloudflare (ma sai / het han / mat mang)" }
+  } catch {
+    $we = Get-WebErr $_
+    $res.err = Get-CfWhy $tok $we.code $we.text
+    return $res
+  }
+  $zr = @($z.result)
+  if (($z.success -eq $true) -and ($zr.Count -gt 0) -and $zr[0]) {
+    $res.zone = $true
+    $acc = "" + $zr[0].account.id
+    try {
+      $t = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/accounts/" + $acc + "/cfd_tunnel?per_page=1") -Headers $h -TimeoutSec 20
+      if ($t.success -eq $true) { $res.tunnel = $true }
+    } catch { $res.tunnel = $false }
+  } else {
+    $res.err = "ma nay KHONG THAY ten mien " + $domain + " (o Zone Resources chua chon dung ten mien nay, hoac thieu quyen Zone - Zone - Read)"
+  }
   return $res
+}
+
+function Save-McConf([string]$path, $conf) {
+  # Luu cau hinh may chu (khoa Supabase, ma Cloudflare...) ma hoa DPAPI: chi tai khoan Windows nay tren may nay mo lai duoc.
+  try {
+    $blob = (@{ key = "" + $conf.key; cf = "" + $conf.cf; agree = "" + $conf.agree; emu = "" + $conf.emu } | ConvertTo-Json -Compress)
+    $encM = ConvertTo-SecureString $blob -AsPlainText -Force | ConvertFrom-SecureString
+    [IO.File]::WriteAllText($path, ("" + $encM), [Text.Encoding]::ASCII)
+    return $true
+  } catch { return $false }
 }
 
 function Get-EmuDrop([string]$p) {
@@ -1032,7 +1082,9 @@ try {
       if ($oldMc -and (("" + $oldMc.key).Length -ge 30)) {
         $reuse = $true
         if (-not $KhongHoi) {
-          Say "   May nay con giu CAU HINH MAY CHU cua lan chay truoc (khoa Supabase + ma Cloudflare, da ma hoa)." "White"
+          $oldHas = "khoa Supabase"
+          if (("" + $oldMc.cf).Length -ge 20) { $oldHas += " + ma Cloudflare" } else { $oldHas += " (CHUA co ma Cloudflare - se hoi tiep)" }
+          Say ("   May nay con giu CAU HINH MAY CHU cua lan chay truoc: " + $oldHas + " - da ma hoa.") "White"
           $ansM = ("" + (Read-Host "   Enter = DUNG LAI ; go M roi Enter = nhap moi")).Trim().ToLower()
           if ($ansM -eq "m") { $reuse = $false }
         }
@@ -1057,28 +1109,46 @@ try {
           Say ("   !! " + $kWhy) "Red"
           if ($kt -ge 3) { Stop-Build ("Khoa Supabase khong dung duoc: " + $kWhy) }
         }
-        Say "   MA CLOUDFLARE (API Token) de may chu TU tao duong ham phoneN + streamN va chung chi duong thang web:" "White"
-        Say ("   dash.cloudflare.com > My Profile > API Tokens > Create Token > Custom: Account - Cloudflare Tunnel - Edit ; Zone - DNS - Edit ; Zone - Zone - Read (ten mien " + $TenMien + ")") "DarkGray"
-        Say "   (Enter trong = bo qua: cai xong phai noi Cloudflare bang tay trong bang CloudBlue nhu truoc gio)" "DarkGray"
-        $cIn = Read-Secret "   Ma Cloudflare"
-        if ($cIn) {
+        $Mc.from = "moi nhap"
+        if ($Mc.key) { [void](Save-McConf $McSave $Mc) }       # luu ngay: lo dung o cau hoi sau thi chay lai khong phai dan lai khoa
+      }
+      # Ma Cloudflare: hoi khi chua co (ke ca khi dung lai cau hinh cu ma lan truoc chua nhap duoc ma)
+      if ((-not $Mc.cf) -and (-not $KhongHoi)) {
+        Say "   MA CLOUDFLARE (API Token) de may chu TU tao duong ham phoneN + streamN va chung chi duong thang web. CACH TAO:" "White"
+        Say "     1. Mo  https://dash.cloudflare.com/profile/api-tokens  >  Create Token  (Token name: cloudblue-may-chu)" "Gray"
+        Say "     2. Policies > Start from scratch > 'Start with an Account policy':  de nguyen Include - All accounts;" "Gray"
+        Say "        o 'Search for permission groups' go  Tunnel  >  tick  Cloudflare Tunnel  >  muc Edit (hoac Write)" "Gray"
+        Say ("     3. '+ Add new policy' > 'Start with a Zone policy':  Include - " + $TenMien + ";  go DNS > tick DNS > Edit ;  go Zone > tick Zone > Read") "Gray"
+        Say "        (giao dien cu: Custom token > Permissions 3 dong:  Account - Cloudflare Tunnel - Edit | Zone - DNS - Edit | Zone - Zone - Read)" "DarkGray"
+        Say "     4. Token expiration: No expiration  >  Continue to summary  >  Create Token  >  Copy  (ma chi hien 1 lan)" "Gray"
+        Say "     KHONG dung: Global API Key, ma chay duong ham (eyJ...), ma so (ID), ma chi co quyen DNS." "DarkGray"
+        Say "   (chuot phai = dan; ma KHONG hien khi dan. Enter trong = bo qua: cai xong phai noi Cloudflare bang tay trong bang CloudBlue nhu truoc gio)" "DarkGray"
+        for ($ctn = 1; $ctn -le 6; $ctn++) {
+          $cIn = Read-Secret "   Ma Cloudflare"
+          if (-not $cIn) { break }
           $ct = Test-CfToken $cIn $TenMien
-          if (-not $ct.zone) { Stop-Build ("Ma Cloudflare khong dung duoc cho " + $TenMien + ": " + $ct.err + ". Tao lai ma roi chay lai lenh.") }
-          $Mc.cf = $cIn; $Mc.tunnel = [bool]$ct.tunnel
-          if ($ct.tunnel) { Say "   ma Cloudflare: DUNG DUOC (ten mien + duong ham)" "Green" }
-          else { Note "Ma Cloudflare KHONG co quyen 'Cloudflare Tunnel - Edit': may chu se KHONG tu tao duong ham (noi Cloudflare bang tay); ma van dung cho duong thang web." }
+          if ($ct.zone -and $ct.tunnel) {
+            $Mc.cf = $cIn; $Mc.tunnel = $true
+            Say "   ma Cloudflare: DUNG DUOC (ten mien + duong ham)" "Green"
+            break
+          }
+          if ($ct.zone) {
+            Say "   !! Ma nay thay ten mien nhung KHONG co quyen  Account - Cloudflare Tunnel - Edit  -> may chu se khong tu tao duong ham duoc." "Yellow"
+            $ansT = ("" + (Read-Host "      Enter = dan ma KHAC (da them quyen do) ; go D roi Enter = van DUNG ma nay (tu noi Cloudflare bang tay; ma chi dung cho duong thang web)")).Trim().ToLower()
+            if ($ansT -eq "d") { $Mc.cf = $cIn; $Mc.tunnel = $false; break }
+            continue
+          }
+          Say ("   !! Ma Cloudflare chua dung duoc: " + $ct.err) "Red"
+          Say "      Dan lai ma dung (hoac Enter trong = bo qua ma Cloudflare)." "Yellow"
+        }
+        if ($Mc.cf) {
           Say "   Chung chi HTTPS mien phi (duong thang web) do Let's Encrypt cap. Dieu khoan: https://letsencrypt.org/repository/" "White"
           $aIn = ("" + (Read-Host "   Go  dong y  roi Enter neu ban dong y (Enter trong = bo qua duong thang web)")).Trim().ToLower()
-          if (@("dong y", "dongy") -contains $aIn) { $Mc.agree = "1" }
+          if (@("dong y", "dongy") -contains $aIn) { $Mc.agree = "1" } else { $Mc.agree = "" }
+          if ($Mc.key) { [void](Save-McConf $McSave $Mc) }
+        } else {
+          Note "Chua co ma Cloudflare: may chu cai xong se CHO ban noi Cloudflare bang tay (nut 3 trong bang CloudBlue). Muon tu dong: chay lai lenh nay va dan ma."
         }
-        $Mc.from = "moi nhap"
-      }
-      if ($Mc.key -and ($Mc.from -eq "moi nhap")) {
-        try {
-          $blob = (@{ key = $Mc.key; cf = $Mc.cf; agree = $Mc.agree; emu = $Mc.emu } | ConvertTo-Json -Compress)
-          $encM = ConvertTo-SecureString $blob -AsPlainText -Force | ConvertFrom-SecureString
-          [IO.File]::WriteAllText($McSave, ("" + $encM), [Text.Encoding]::ASCII)
-        } catch { Say "   (khong luu duoc cau hinh cho lan sau - khong sao)" "DarkGray" }
       }
     }
     if ($Mc.cf -and (-not $Mc.tunnel) -and ($Mc.from -ne "moi nhap")) { $ct2 = Test-CfToken $Mc.cf $TenMien; $Mc.tunnel = [bool]$ct2.tunnel }
