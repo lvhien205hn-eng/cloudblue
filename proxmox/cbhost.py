@@ -1,0 +1,504 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# cbhost.py — CloudBlue · phần mềm chạy trên MÁY CHỦ PROXMOX VE cho "VPS ảo hoá" (SQL v56).
+#   · Tự lên web (vm_host_hello) → hiện ở Quản trị › VPS ảo hoá › Máy chủ dạng "chờ duyệt" → admin bấm Duyệt.
+#   · 10 giây / lần hỏi việc (vm_host_poll) bằng khoá CÔNG KHAI của web + mã riêng của máy này (sinh 1 lần, chỉ nằm trên máy, 0600).
+#   · Mỗi VPS = 1 máy ảo nhân bản từ MÁY MẪU Windows (tên đặt ở web, vd tpl-win10-22h2) có sẵn phần mềm CloudBlue PC (chưa đăng ký):
+#       tạo: qm clone → đặt CPU / RAM / ổ → bật → sinh VÉ 1 lần, báo dấu băm của vé lên web (web mở cửa đăng ký đúng dòng máy) →
+#            ghi C:\CloudBluePC\seed.json {hw, ticket} vào máy ảo qua QEMU guest agent → agent trong máy tự đăng ký (pc_enroll)
+#            → khách thấy máy trong web / app CloudBlue, bấm là vào màn hình (không IP, không mở cổng).
+#       tắt / bật / khởi động cứng / cài lại (xoá máy ảo, nhân bản lại) / xoá — theo đúng trạng thái web muốn.
+#   · KHÔNG chạy lệnh nào do web gửi xuống: chỉ các việc ghi sẵn ở đây, số / tên đều kiểm kỹ.
+#   · TỰ CẬP NHẬT (chạy bằng dịch vụ cloudblue-cbhost): 1 giờ / lần xem bản trên GitHub của CloudBlue — khác bản đang chạy → kiểm biên dịch
+#     được → thay file → thoát để dịch vụ tự bật lại bản mới (chỉ lúc không có máy ảo nào đang dựng / xoá). Tắt: "auto_update": false.
+#   Lệnh:  python3 cbhost.py run | status | once | update | version
+#   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
+#             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update
+CBHOST_VER = "24/11a"
+
+import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, urllib.error, urllib.request
+
+CONF_F = os.environ.get("CBHOST_CONF") or "/etc/cloudblue/cbhost.conf"
+SECRET_F = os.environ.get("CBHOST_SECRET") or "/etc/cloudblue/cbhost.secret"
+STATE_F = os.environ.get("CBHOST_STATE") or "/var/lib/cloudblue/cbhost-state.json"
+QM = os.environ.get("CBHOST_QM") or "qm"
+PVESH = os.environ.get("CBHOST_PVESH") or "pvesh"
+DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze",
+            "storage": "", "full_clone": True, "vmid_base": 100000, "seed_path": "C:\\CloudBluePC\\seed.json", "max_builds": 2, "auto_update": True}
+UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
+UPD_EVERY_S = 3600
+RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
+RX_HW = re.compile(r"^[0-9a-f]{64}$")
+RX_STORE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,40}$")
+RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
+
+
+def log(*a):
+    print(time.strftime("%d/%m %H:%M:%S"), *a, flush=True)
+
+
+def load_json(p, dflt=None):
+    try:
+        with open(p, encoding="utf-8") as f: d = json.load(f)
+        return d if isinstance(d, dict) else (dflt if dflt is not None else {})
+    except Exception:
+        return dflt if dflt is not None else {}
+
+
+def save_json(p, d, mode=0o600):
+    os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)
+    os.chmod(tmp, mode); os.replace(tmp, p)
+
+
+def conf():
+    c = dict(DEFAULTS); c.update({k: v for k, v in load_json(CONF_F).items() if k in DEFAULTS})
+    if not isinstance(c.get("storage"), str) or (c["storage"] and not RX_STORE.match(c["storage"])): c["storage"] = ""
+    try: c["vmid_base"] = max(1000, min(900000000, int(c.get("vmid_base") or 100000)))
+    except (TypeError, ValueError): c["vmid_base"] = 100000
+    try: c["max_builds"] = max(1, min(8, int(c.get("max_builds") or 2)))
+    except (TypeError, ValueError): c["max_builds"] = 2
+    c["full_clone"] = c.get("full_clone") is not False
+    c["auto_update"] = c.get("auto_update") is not False
+    return c
+
+
+def secret():
+    """Mã riêng của máy chủ này: sinh 1 lần, chỉ nằm ở /etc/cloudblue/cbhost.secret (0600). Web chỉ giữ dấu băm.
+       2 tiến trình cùng sinh lần đầu (dịch vụ + lệnh status) → chỉ 1 mã được ghi, cả 2 cùng dùng mã đó."""
+    os.makedirs(os.path.dirname(SECRET_F) or ".", exist_ok=True)
+    for _ in range(5):
+        try:
+            s = open(SECRET_F, encoding="utf-8").read().strip()
+            if re.fullmatch(r"[0-9a-f]{64}", s): return s
+            bad = True                                              # file hỏng → thay
+        except FileNotFoundError:
+            bad = False
+        tmp = "%s.%d.tmp" % (SECRET_F, os.getpid())
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f: f.write(secrets.token_hex(32))
+        try:
+            if bad: os.replace(tmp, SECRET_F)
+            else: os.link(tmp, SECRET_F)                            # chưa có → tạo; đã có (tiến trình kia vừa tạo) → lỗi, đọc lại
+        except FileExistsError:
+            pass
+        finally:
+            try: os.remove(tmp)
+            except OSError: pass
+    raise RuntimeError("không ghi được mã riêng của máy chủ: " + SECRET_F)
+
+
+def run(cmd, timeout=900):
+    """Chạy 1 lệnh Proxmox (danh sách tham số, KHÔNG qua shell) → (mã thoát, chữ in ra)."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, ((r.stdout or "") + (r.stderr or "")).strip()
+    except subprocess.TimeoutExpired:
+        return 124, "quá giờ chờ: " + " ".join(cmd[:3])
+    except OSError as e:
+        return 127, str(e)
+
+
+# ---------------------------------------------------------------- gọi web (Supabase RPC, khoá công khai)
+class Web:
+    def __init__(self, c):
+        self.url, self.key, self.err = c["sb_url"].rstrip("/"), c["sb_key"], ""
+
+    def rpc(self, fn, body, timeout=25):
+        req = urllib.request.Request(self.url + "/rest/v1/rpc/" + fn, data=json.dumps(body).encode("utf-8"), method="POST",
+                                     headers={"apikey": self.key, "Authorization": "Bearer " + self.key, "Content-Type": "application/json",
+                                              "User-Agent": "CloudBlue-cbhost/" + CBHOST_VER})
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r: d = json.loads(r.read().decode("utf-8") or "null")
+            self.err = ""
+            return d
+        except urllib.error.HTTPError as e:
+            try: self.err = "HTTP %s: %s" % (e.code, e.read().decode("utf-8", "replace")[:200])
+            except Exception: self.err = "HTTP %s" % e.code
+        except Exception as e:
+            self.err = str(e)[:200]
+        return None
+
+
+# ---------------------------------------------------------------- Proxmox
+class Pve:
+    def __init__(self, c):
+        self.c, self.node = c, socket.gethostname().split(".")[0]
+
+    def vms(self):
+        """{vmid: {name, status, template}} của node này (pvesh /cluster/resources — 1 lần gọi, JSON)."""
+        rc, out = run([PVESH, "get", "/cluster/resources", "--type", "vm", "--output-format", "json"], 60)
+        if rc != 0: raise RuntimeError("không đọc được danh sách máy ảo: " + out[-200:])
+        res = {}
+        for x in json.loads(out or "[]"):
+            if not isinstance(x, dict) or x.get("type") != "qemu" or (x.get("node") and x.get("node") != self.node): continue
+            try: vid = int(x.get("vmid"))
+            except (TypeError, ValueError): continue
+            res[vid] = {"name": str(x.get("name") or ""), "status": str(x.get("status") or ""), "template": bool(x.get("template"))}
+        return res
+
+    def config(self, vmid):
+        rc, out = run([QM, "config", str(int(vmid))], 60)
+        return out if rc == 0 else ""
+
+    def boot_disk(self, vmid):
+        """(tên ổ, cỡ GB) ổ hệ thống của máy ảo (bootdisk / boot order / ổ đầu tiên)."""
+        cfg = self.config(vmid); disks = {}; order = []
+        for ln in cfg.splitlines():
+            m = re.match(r"^((?:scsi|virtio|sata|ide)\d+):\s*([^,\s]+)(.*)$", ln.strip())
+            if m and "media=cdrom" not in m.group(3):
+                sz = re.search(r"size=(\d+(?:\.\d+)?)([KMGT])", m.group(3))
+                gb = 0.0
+                if sz: gb = float(sz.group(1)) * {"K": 1 / 1048576, "M": 1 / 1024, "G": 1, "T": 1024}[sz.group(2)]
+                disks[m.group(1)] = gb
+            m2 = re.match(r"^boot:\s*order=(.+)$", ln.strip()) or re.match(r"^bootdisk:\s*(\S+)$", ln.strip())
+            if m2: order = [x for x in re.split(r"[;,]", m2.group(1)) if x]
+        for k in order:
+            if k in disks: return k, disks[k]
+        return (sorted(disks)[0], disks[sorted(disks)[0]]) if disks else (None, 0.0)
+
+    def clone(self, tpl_id, vmid, name):
+        base = [QM, "clone", str(int(tpl_id)), str(int(vmid)), "--name", name]
+        if self.c["full_clone"]:
+            cmd = base + ["--full", "1"] + (["--storage", self.c["storage"]] if self.c["storage"] else [])
+            return run(cmd, 3600)
+        rc, out = run(base + ["--full", "0"], 600)                 # liên kết: vài giây; ổ không hỗ trợ → nhân bản đầy đủ
+        if rc == 0: return rc, out
+        log("nhân bản liên kết không được (%s) → nhân bản đầy đủ" % out[-120:])
+        return run(base + ["--full", "1"] + (["--storage", self.c["storage"]] if self.c["storage"] else []), 3600)
+
+    def setup(self, vmid, cores, ram_mb, disk_gb, hw):
+        uu = hw[:8] + "-" + hw[8:12] + "-4" + hw[13:16] + "-a" + hw[17:20] + "-" + hw[20:32]      # mã máy (SMBIOS) riêng cho từng VPS
+        rc, out = run([QM, "set", str(vmid), "--cores", str(cores), "--sockets", "1", "--memory", str(ram_mb), "--balloon", "0",
+                       "--onboot", "1", "--agent", "enabled=1", "--tags", "cloudblue", "--smbios1", "uuid=" + uu], 120)
+        if rc != 0: return rc, out
+        dk, gb = self.boot_disk(vmid)
+        if dk and disk_gb > gb + 0.5:
+            rc, out = run([QM, "resize", str(vmid), dk, "%dG" % int(disk_gb)], 600)
+            if rc != 0: return rc, "nới ổ lỗi: " + out
+        return 0, ""
+
+    def start(self, vmid): return run([QM, "start", str(vmid)], 180)
+    def stop(self, vmid): return run([QM, "stop", str(vmid)], 180)
+    def shutdown(self, vmid): return run([QM, "shutdown", str(vmid), "--timeout", "90", "--forceStop", "1"], 240)
+    def reset(self, vmid): return run([QM, "reset", str(vmid)], 120)
+    def destroy(self, vmid): return run([QM, "destroy", str(vmid), "--purge", "1", "--destroy-unreferenced-disks", "1"], 900)
+    def ga_ping(self, vmid): return run([QM, "guest", "cmd", str(vmid), "ping"], 30)[0] == 0
+
+    def ga_read(self, vmid, path):
+        """Đọc 1 file trong máy ảo qua guest agent → nội dung (None = không có file / không đọc được)."""
+        rc, out = run([PVESH, "get", "/nodes/%s/qemu/%d/agent/file-read" % (self.node, int(vmid)), "--file", path, "--output-format", "json"], 60)
+        if rc != 0: return None
+        try: return str((json.loads(out or "{}") or {}).get("content") or "")
+        except Exception: return None
+
+    def ga_write(self, vmid, path, content):
+        return run([PVESH, "create", "/nodes/%s/qemu/%d/agent/file-write" % (self.node, int(vmid)), "--file", path, "--content", content], 60)
+
+    def info(self):
+        def first(cmd, rx, dflt=""):
+            rc, out = run(cmd, 30)
+            m = re.search(rx, out or "", re.M) if rc == 0 else None
+            return m.group(1).strip() if m else dflt
+        mem = meminfo()
+        return {"host": self.node, "pve": first(["pveversion"], r"pve-manager/([0-9.]+)"), "cpu": first(["lscpu"], r"^Model name:\s*(.+)$")[:80],
+                "threads": os.cpu_count() or 1, "ram_mb": int(mem.get("MemTotal", 0) / 1024), "disk_gb": self.disk_total(),
+                "kvm": os.path.exists("/dev/kvm"), "ver": CBHOST_VER, "lan_ip": lan_ip()}
+
+    def disk_total(self):
+        """Tổng GB các ổ chứa máy ảo (images) đang chạy — hoặc riêng ổ đặt ở cấu hình."""
+        rc, out = run([PVESH, "get", "/nodes/%s/storage" % self.node, "--output-format", "json"], 60)
+        tot = 0.0
+        try:
+            for s in json.loads(out or "[]") if rc == 0 else []:
+                if not isinstance(s, dict) or not s.get("active") or "images" not in str(s.get("content") or ""): continue
+                if self.c["storage"] and s.get("storage") != self.c["storage"]: continue
+                tot += float(s.get("total") or 0) / 1073741824
+        except Exception:
+            pass
+        return int(tot)
+
+
+def meminfo():
+    d = {}
+    try:
+        for ln in open("/proc/meminfo"):
+            k, v = ln.split(":", 1); d[k] = float(v.split()[0])
+    except Exception:
+        pass
+    return d
+
+
+def lan_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("1.1.1.1", 53)); ip = s.getsockname()[0]; s.close(); return ip
+    except Exception:
+        return ""
+
+
+_cpu = {"t": None}
+def cpu_pct():
+    try:
+        v = [float(x) for x in open("/proc/stat").readline().split()[1:]]
+        idle, tot = v[3] + (v[4] if len(v) > 4 else 0), sum(v)
+        prev, _cpu["t"] = _cpu["t"], (idle, tot)
+        if not prev or tot <= prev[1]: return 0.0
+        return round(100 * (1 - (idle - prev[0]) / (tot - prev[1])), 1)
+    except Exception:
+        return 0.0
+
+
+# ---------------------------------------------------------------- 1 VPS: kiểm dữ liệu web gửi xuống
+def item_ok(it):
+    try:
+        return (isinstance(it, dict) and re.fullmatch(r"[0-9]{1,12}", str(it.get("id"))) and it.get("want") in ("running", "stopped", "deleted")
+                and 1 <= int(it.get("cores")) <= 64 and 512 <= int(it.get("ram_mb")) <= 262144 and 10 <= int(it.get("disk_gb")) <= 4000
+                and 1 <= int(it.get("inst")) and 0 <= int(it.get("boot")) and RX_TPL.match(str(it.get("tpl") or "")) and RX_HW.match(str(it.get("hw") or "")))
+    except (TypeError, ValueError):
+        return False
+
+
+class Host:
+    def __init__(self, c=None, web=None, pve=None):
+        self.c = c or conf(); self.web = web or Web(self.c); self.pve = pve or Pve(self.c)
+        self.sec = secret(); self.st = load_json(STATE_F, {}); self.status = "?"; self.name = ""
+        self.lock = threading.Lock(); self.busy = {}; self.poll_s = 10; self.want = []; self.tpl_need = []
+        self.info_t = 0.0; self.hello_ok = False
+
+    def save(self):
+        with self.lock: save_json(STATE_F, self.st)
+
+    def vmid(self, vid): return self.c["vmid_base"] + int(vid)
+
+    # ---- việc chạy lâu (nhân bản, xoá) ở luồng riêng: vẫn hỏi web đều 10 giây / lần
+    def bg(self, vid, fn, *a):
+        if vid in self.busy or len(self.busy) >= self.c["max_builds"]: return
+        def go():
+            try: fn(*a)
+            except Exception as e:
+                self.fail(vid, "lỗi: %s" % e)
+            finally:
+                self.busy.pop(vid, None)
+        th = threading.Thread(target=go, daemon=True); self.busy[vid] = th; th.start()
+
+    def fail(self, vid, msg):
+        with self.lock:
+            s = self.st.setdefault(str(vid), {}); s["err"] = str(msg)[:280]; s["t_err"] = time.time()
+        log("VPS-%s: %s" % (vid, msg)); self.save()
+
+    def build(self, it, tpl_id):
+        vid, vmid = int(it["id"]), self.vmid(it["id"])
+        log("VPS-%s: tạo máy ảo %d từ máy mẫu %s (bản cài %s)" % (vid, vmid, it["tpl"], it["inst"]))
+        if vmid in self.pve.vms():
+            rc, out = self.pve.destroy(vmid)
+            if rc != 0: return self.fail(vid, "xoá máy ảo cũ lỗi: " + out[-200:])
+        rc, out = self.pve.clone(tpl_id, vmid, "vps-%d" % vid)
+        if rc != 0: return self.fail(vid, "nhân bản lỗi: " + out[-200:])
+        rc, out = self.pve.setup(vmid, int(it["cores"]), int(it["ram_mb"]), int(it["disk_gb"]), it["hw"])
+        if rc != 0: return self.fail(vid, "đặt cấu hình lỗi: " + out[-200:])
+        with self.lock:
+            self.st[str(vid)] = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": secrets.token_hex(24), "sent": False, "seeded": False,
+                                 "t_build": time.time()}
+        self.save()
+        if it["want"] == "running":
+            rc, out = self.pve.start(vmid)
+            if rc != 0: return self.fail(vid, "bật máy lỗi: " + out[-200:])
+        log("VPS-%s: tạo xong, chờ Windows lên để đưa vé đăng ký" % vid)
+
+    def remove(self, vid):
+        vmid = self.vmid(vid)
+        if vmid in self.pve.vms():
+            log("VPS-%s: xoá máy ảo %d" % (vid, vmid))
+            rc, out = self.pve.destroy(vmid)
+            if rc != 0: return self.fail(vid, "xoá máy ảo lỗi: " + out[-200:])
+        with self.lock: self.st.pop(str(vid), None)
+        self.save()
+
+    def seed(self, vid, it):
+        """Windows đã lên (guest agent trả lời) + web đã nhận dấu băm của vé → ghi seed.json {hw, ticket} vào máy ảo."""
+        s = self.st.get(str(vid)) or {}
+        vmid = self.vmid(vid)
+        if not s.get("ticket") or not s.get("sent") or s.get("seeded") or not self.pve.ga_ping(vmid): return
+        idf = self.c["seed_path"].rsplit("\\", 1)[0] + "\\identity.json"
+        if (self.pve.ga_read(vmid, idf) or "").strip():           # máy mẫu lỡ ĐÃ ĐĂNG KÝ → mọi bản nhân ra sẽ mang chung 1 mã máy → dừng, báo làm lại máy mẫu
+            return self.fail(vid, "máy mẫu %s đã đăng ký CloudBlue (có %s) — làm lại máy mẫu theo hướng dẫn (cài CloudBlue PC KHÔNG nhập mã)" % (it["tpl"], idf))
+        rc, out = self.pve.ga_write(vmid, self.c["seed_path"], json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
+        if rc != 0: return self.fail(vid, "ghi vé vào máy ảo lỗi (QEMU guest agent): " + out[-200:])
+        with self.lock: s["seeded"] = True; s["t_seed"] = time.time(); s.pop("err", None)
+        log("VPS-%s: đã đưa vé vào máy ảo → agent CloudBlue tự đăng ký" % vid); self.save()
+
+    # ---- 1 vòng: so trạng thái web muốn với máy ảo thật
+    def reconcile(self, vms, tpls):
+        rep = []
+        for it in self.want:
+            if not item_ok(it): continue
+            vid = int(it["id"]); vmid = self.vmid(vid); vm = vms.get(vmid); s = self.st.get(str(vid))
+            if vid in self.busy: rep.append({"id": vid, "state": "creating", "inst": (s or {}).get("inst") or 0}); continue
+            if it["want"] == "deleted":
+                if vm: self.bg(vid, self.remove, vid); rep.append({"id": vid, "state": "stopped", "inst": (s or {}).get("inst") or 0})
+                else:
+                    if s is not None:
+                        with self.lock: self.st.pop(str(vid), None)
+                        self.save()
+                    rep.append({"id": vid, "state": "missing", "inst": int(it["inst"])})
+                continue
+            if s and s.get("err") and time.time() - float(s.get("t_err") or 0) < RETRY_S:
+                rep.append({"id": vid, "state": "error", "inst": s.get("inst") or 0, "err": s["err"]}); continue
+            if vm and s is None:                                    # máy ảo có sẵn mà mất sổ (cài lại cbhost) → nhận lại, không tạo lại
+                s = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": None, "sent": False, "seeded": False}
+                with self.lock: self.st[str(vid)] = s
+                self.save()
+            if not vm or int(s.get("inst") or 0) != int(it["inst"]):
+                tid = tpls.get(it["tpl"])
+                if tid is None:
+                    rep.append({"id": vid, "state": "error", "inst": (s or {}).get("inst") or 0, "err": "máy chủ thiếu máy mẫu " + it["tpl"]}); continue
+                self.bg(vid, self.build, dict(it), tid)
+                rep.append({"id": vid, "state": "creating", "inst": (s or {}).get("inst") or 0}); continue
+            if s.get("err"):
+                with self.lock: s.pop("err", None)
+            running = vm["status"] == "running"
+            if it["want"] == "running" and not running:
+                rc, out = self.pve.start(vmid)
+                if rc != 0: self.fail(vid, "bật máy lỗi: " + out[-200:])
+                else: running = True; log("VPS-%s: bật máy ảo" % vid)
+            elif it["want"] == "stopped" and running:
+                rc, out = self.pve.shutdown(vmid)
+                if rc != 0: self.fail(vid, "tắt máy lỗi: " + out[-200:])
+                else: running = False; log("VPS-%s: tắt máy ảo" % vid)
+            if int(it["boot"]) != int(s.get("boot") or 0):
+                if running:
+                    rc, out = self.pve.reset(vmid)
+                    if rc != 0: self.fail(vid, "khởi động cứng lỗi: " + out[-200:])
+                    else: log("VPS-%s: khởi động cứng" % vid)
+                with self.lock: s["boot"] = int(it["boot"])
+                self.save()
+            r = {"id": vid, "state": "running" if running else "stopped", "inst": int(s.get("inst") or 0), "boot": int(s.get("boot") or 0)}
+            if it.get("enrolled") is True:
+                if s.get("ticket"):
+                    with self.lock: s["ticket"] = None; s["sent"] = False; s["seeded"] = False
+                    self.save()
+            else:
+                if not s.get("ticket"):
+                    with self.lock: s["ticket"] = secrets.token_hex(24); s["sent"] = False; s["seeded"] = False
+                    self.save()
+                r["ticket_hash"] = hashlib.sha256(s["ticket"].encode()).hexdigest()
+                if running and s.get("sent") and not s.get("seeded"): self.seed(vid, it)
+            rep.append(r)
+        return rep
+
+    def poll_once(self, act=True):
+        if not self.hello_ok:
+            r = self.web.rpc("vm_host_hello", {"p_secret": self.sec, "p_info": self.pve.info()})
+            if not r or not r.get("ok"):
+                log("chưa lên web được: %s" % ((r or {}).get("err") or self.web.err)); return False
+            self.hello_ok, self.status, self.name, self.info_t = True, r.get("status"), r.get("name"), time.time()
+            log("đã lên web: máy chủ %s (%s)%s" % (self.name, r.get("id"), " — CHỜ admin duyệt ở Quản trị › VPS ảo hoá" if self.status == "new" else ""))
+        vms = self.pve.vms()
+        tpls = {}
+        for vid_, v in vms.items():
+            if v["template"] and RX_TPL.match(v["name"]): tpls.setdefault(v["name"], vid_)
+        rep = self.reconcile(vms, tpls) if act and self.status != "new" else []
+        mem = meminfo()
+        metrics = {"cpu": cpu_pct(), "ram_used_mb": int((mem.get("MemTotal", 0) - mem.get("MemAvailable", 0)) / 1024),
+                   "running": sum(1 for x in vms.values() if x["status"] == "running" and not x["template"]),
+                   "tpl": sorted(t for t in tpls if t in self.tpl_need or not self.tpl_need), "ver": CBHOST_VER}
+        body = {"p_secret": self.sec, "p_metrics": metrics, "p_vps": rep, "p_info": None}
+        if time.time() - self.info_t > 600: body["p_info"] = self.pve.info(); self.info_t = time.time()
+        r = self.web.rpc("vm_host_poll", body)
+        if not r or not r.get("ok"):
+            if r and r.get("err") == "BAD_SECRET": self.hello_ok = False
+            log("hỏi việc lỗi: %s" % ((r or {}).get("err") or self.web.err)); return False
+        for x in rep if act else []:                               # web đã nhận dấu băm vé → giờ mới được đưa vé vào máy ảo
+            if x.get("ticket_hash"):
+                s = self.st.get(str(x["id"]))
+                if s and s.get("ticket") and hashlib.sha256(s["ticket"].encode()).hexdigest() == x["ticket_hash"] and not s.get("sent"):
+                    with self.lock: s["sent"] = True
+                    self.save()
+        self.status, self.name = r.get("status") or self.status, r.get("name") or self.name
+        self.want = r.get("vps") if isinstance(r.get("vps"), list) else []
+        self.tpl_need = [t for t in (r.get("tpl") or []) if isinstance(t, str) and RX_TPL.match(t)]
+        try: self.poll_s = max(5, min(120, int(r.get("poll_s") or 10)))
+        except (TypeError, ValueError): self.poll_s = 10
+        return True
+
+
+# ---------------------------------------------------------------- tự cập nhật
+def fetch_update(url=None):
+    """Bản cbhost.py trên GitHub → (bản, nội dung) nếu KHÁC bản đang chạy và biên dịch được; không thì None."""
+    req = urllib.request.Request((url or UPD_URL) + ("" if (url or UPD_URL).startswith("file:") else "?t=%d" % int(time.time())),
+                                 headers={"User-Agent": "CloudBlue-cbhost/" + CBHOST_VER, "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=60) as r: raw = r.read(2_000_001)
+    if not 2000 <= len(raw) <= 2_000_000: return None
+    txt = raw.decode("utf-8")
+    m = re.search(r'^CBHOST_VER = "([0-9A-Za-z/._-]{1,20})"$', txt, re.M)
+    if not m or m.group(1) == CBHOST_VER or "def poll_once" not in txt: return None
+    compile(txt, "cbhost.py", "exec")                               # lỗi cú pháp → ném lỗi, giữ bản cũ
+    return m.group(1), txt
+
+
+def apply_update(ver, txt, path=None):
+    path = path or os.path.abspath(__file__)
+    tmp = path + ".new"
+    with open(tmp, "w", encoding="utf-8") as f: f.write(txt)
+    os.chmod(tmp, 0o755); os.replace(tmp, path)
+    log("đã cập nhật cbhost %s → %s" % (CBHOST_VER, ver))
+
+
+def update_due(h, t_now, last):
+    """Đến lúc xem bản mới chưa: dịch vụ systemd (có INVOCATION_ID), bật tự cập nhật, 1 giờ / lần, không có máy ảo nào đang dựng / xoá."""
+    return (h.c.get("auto_update") and bool(os.environ.get("INVOCATION_ID")) and t_now - last >= UPD_EVERY_S and not h.busy)
+
+
+def cmd_run():
+    h = Host()
+    log("cbhost %s chạy — node %s, gọi %s mỗi ~10 giây" % (CBHOST_VER, h.pve.node, h.web.url))
+    last_upd = time.time() - UPD_EVERY_S + 120                     # bật lên 2 phút sau mới xem bản mới lần đầu
+    while True:
+        try: h.poll_once()
+        except Exception as e: log("lỗi vòng:", e)
+        if update_due(h, time.time(), last_upd):
+            last_upd = time.time()
+            try:
+                u = fetch_update()
+                if u:
+                    apply_update(*u)
+                    return 0                                        # dịch vụ (Restart=always) tự bật lại bằng bản mới
+            except Exception as e:
+                log("xem bản mới lỗi (giữ bản đang chạy): %s" % str(e)[:160])
+        time.sleep(h.poll_s)
+
+
+def cmd_update():
+    try: u = fetch_update()
+    except Exception as e:
+        print("không lấy được bản mới: %s" % str(e)[:200]); return 1
+    if not u: print("đang là bản mới nhất (%s)" % CBHOST_VER); return 0
+    apply_update(*u)
+    print("đã cập nhật %s → %s — bật lại dịch vụ: systemctl restart cloudblue-cbhost" % (CBHOST_VER, u[0])); return 0
+
+
+def cmd_status():
+    h = Host(); ok = h.poll_once(act=False)                       # chỉ xem: không tạo / xoá gì (dịch vụ đang chạy lo việc đó)
+    vms = h.pve.vms()
+    tp = sorted(v["name"] for v in vms.values() if v["template"])
+    print("cbhost %s · máy chủ: %s · trạng thái web: %s" % (CBHOST_VER, h.name or "?", {"new": "CHỜ DUYỆT (Quản trị › VPS ảo hoá › Máy chủ)", "ready": "đang nhận VPS",
+          "maint": "bảo trì (không nhận VPS mới)", "off": "tắt"}.get(h.status, h.status) if ok else "chưa gọi được web (%s)" % h.web.err))
+    print("máy mẫu trên Proxmox: %s" % (", ".join(tp) or "CHƯA CÓ — xem hướng dẫn dựng máy mẫu Windows"))
+    if h.tpl_need: print("web cần máy mẫu: %s" % ", ".join(("%s ✓" if t in tp else "%s ✗ (thiếu)") % t for t in h.tpl_need))
+    print("VPS web giao cho máy chủ này: %d" % len(h.want))
+    return 0 if ok else 1
+
+
+def main(argv):
+    cmd = argv[0] if argv else "run"
+    if cmd == "run": return cmd_run()
+    if cmd == "status": return cmd_status()
+    if cmd == "once": return 0 if Host().poll_once() else 1
+    if cmd == "update": return cmd_update()
+    if cmd in ("-v", "--version", "version"): print(CBHOST_VER); return 0
+    print("Lệnh: run | status | once | update | version"); return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
