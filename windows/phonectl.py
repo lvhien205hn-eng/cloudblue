@@ -677,6 +677,15 @@ def _mumu_perf(idx, fps=None):
             print(f"   (máy #{idx}: khung/giây trong máy {cur.get(fk)} → {int(fps)} theo lựa chọn của khách)", flush=True)
     if want: _MUMU_KEYS.pop(str(idx), None); _mumu_set(str(idx), want)
     return len(want)
+def _mumu_create_variants(ver):
+    """24/11 · Các cách gọi lệnh TẠO MÁY MỚI của MuMu, thử lần lượt (cách trước MuMu không nhận thì cách sau):
+       MuMu 6 (mumu-cli / MuMuManager) tạo mới MẶC ĐỊNH là Android 15 → muốn Android 12 phải nói rõ: create --version 12.
+       --mini = "ổ nhỏ" giống máy mẫu tạo bằng tay trong MuMu → bộ nhớ máy khách nới đúng theo cấu hình (DISK_TIERS), không lấy hết ổ.
+       Cuối cùng: create trống (MuMu bản cũ) — tạo ra sai bản thì phần gọi xoá đúng máy đó, không giao nhầm bản cho khách."""
+    v = str(ver or "").split(".")[0].strip()
+    out = []
+    if v.isdigit(): out += [["create", "--number", "1", "--version", v, "--mini"], ["create", "--number", "1", "--version", v]]
+    return out + [["create"]]
 def _mumu(a, timeout):
     """Dịch lệnh memuc → MuMu. Trả kết quả GIỐNG memuc để phần còn lại của tool dùng y nguyên."""
     a = [str(x) for x in a]; c = a[0]
@@ -702,7 +711,17 @@ def _mumu(a, timeout):
             if tpl is not None and L0[tpl].get("running"):   # máy mẫu đang BẬT thì MuMu không nhân bản được → tắt máy mẫu trước
                 print(f"   (máy mẫu {tpl_name(ver)} đang bật → tắt rồi mới nhân bản)", flush=True)
                 _mumu_stop(tpl, 120, locked=True)
-            def go(): return _mumurun(["clone", "-v", tpl], max(int(timeout), MUMU_CLONE_T)) if tpl is not None else _mumurun(["create"], timeout)
+            def go():
+                if tpl is not None: return _mumurun(["clone", "-v", tpl], max(int(timeout), MUMU_CLONE_T))
+                r = None
+                for args in _mumu_create_variants(ver):          # 24/11: chọn ĐÚNG bản Android khi tạo mới; MuMu bản cũ không nhận → bỏ dần tuỳ chọn
+                    r = _mumurun(args, timeout)
+                    if r.returncode == 124 or _mumu_main_bad(r) or _mumu_out_new(r): return r        # đang chép / MuMu kẹt / đã tạo → phần dưới lo
+                    time.sleep(2); L1 = _mumu_list(); d1 = vnow()
+                    if (L1 and fresh(L1)) or (d0 is not None and d1 is not None and (d1 - d0)): return r   # đã có máy mới (hoặc đang chép) → dùng
+                    if r.returncode == 0 and not _mumu_out_err(r): return r                            # MuMu nhận lệnh, máy có thể hiện trễ → chờ ở dưới
+                    print(f"   (MuMu không nhận lệnh '{' '.join(args)}': {(_mumu_out_err(r) or (r.stderr or r.stdout or '').strip())[:120]} → thử cách khác)", flush=True)
+                return r
             vdir = os.path.join(MUMU or "", "vms")       # mỗi máy MuMu là 1 thư mục con ở đây → có thư mục MỚI = MuMu đang / đã chép máy mới
             def vnow():
                 try: return {x for x in os.listdir(vdir) if os.path.isdir(os.path.join(vdir, x))}
@@ -892,7 +911,8 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "23/11f"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "24/11a"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15
+                              # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -5445,31 +5465,51 @@ def cmd_hide(a):
         if not a.name or p["name"] == a.name: n += hide_window(p["name"])
     print(f"Đã cho {n} cửa sổ {EMU_NAME} chạy ngầm.")
 
-def cmd_mktpl(a):
-    """mktpl 15 : MuMu — tạo máy mẫu tpl_a15 bằng lệnh (khỏi mở giao diện MuMu). MuMu tạo máy mới = bản Android MẶC ĐỊNH của
-       MuMu; ra đúng bản thì đổi tên thành máy mẫu (để TẮT), sai bản thì xoá ĐÚNG máy vừa tạo và báo tạo bằng tay."""
-    ver = str(a.android or "").split(".")[0].strip()
-    if EMU != "mumu" or not MEMU: print("LỖI: lệnh này chỉ dùng cho máy chủ MuMu (EMU=mumu)."); sys.exit(1)
-    if not ver.isdigit(): print("LỖI: cách dùng: phonectl.py mktpl 15"); sys.exit(1)
+def _mktpl_one(ver):
+    """Tạo 1 máy mẫu MuMu tpl_a<ver> (đúng bản Android, để TẮT). Trả (ok, chữ báo)."""
     tn = tpl_name(ver); cur = vms_sure()
-    if not cur: print("LỖI: không đọc được danh sách máy MuMu — thử lại sau."); sys.exit(1)
+    if not cur: return False, "không đọc được danh sách máy MuMu — thử lại sau."
     have = [i for i, x in cur.items() if x["name"] == tn]
     if have:
         got = _mumu_major(_mumu_info().get(have[0]))
-        print(f"Đã có máy mẫu {tn} (#{have[0]}, Android {got or '?'}) — không tạo thêm."); return
-    print(f"Đang tạo máy Android mới trong MuMu (1–3 phút)…", flush=True)
-    r = memuc("create", ver, timeout=600)                     # _mumu: không có máy mẫu → MuMu tạo mới; sai bản → xoá đúng máy đó
+        if got and got != str(ver):
+            return False, (f"máy {tn} (#{have[0]}) đang là Android {got}, không phải Android {ver} — đổi tên máy đó (vd {tn}_sai) "
+                           f"rồi chạy lại: phonectl mktpl {ver}")
+        return True, f"đã có máy mẫu {tn} (#{have[0]}, Android {got or '?'}) — không tạo thêm."
+    print(f"Đang tạo máy mẫu {tn} — Android {ver} trong MuMu (1–3 phút)…", flush=True)
+    r = memuc("create", ver, timeout=600)                     # _mumu: không có máy mẫu → MuMu tạo mới đúng bản (create --version); sai bản → xoá đúng máy đó
     m = re.search(r"index\D*(\d+)", r.stdout or "")
     if r.returncode not in (0, None) or not m:
-        print("LỖI: " + ((r.stdout or "") + " " + (r.stderr or "")).strip()[-400:])
-        print(f"→ Tạo bằng tay: trong trình quản lý nhiều máy của MuMu tạo 1 máy Android {ver}, đổi tên thành {tn}, để TẮT."); sys.exit(1)
+        return False, ("tạo máy lỗi: " + ((r.stdout or "") + " " + (r.stderr or "")).strip()[-300:]
+                       + f" → tạo bằng tay: trình quản lý nhiều máy của MuMu → + New → Android {ver} → đổi tên thành {tn}, để TẮT.")
     idx = m.group(1)
     memuc("rename", "-i", idx, tn, timeout=120)
     after = vms()
     if (after.get(int(idx)) or {}).get("name") != tn:
-        print(f"LỖI: đã tạo máy #{idx} (Android {ver}) nhưng chưa đổi được tên thành {tn} — đổi tên bằng tay trong MuMu."); sys.exit(1)
+        return False, f"đã tạo máy #{idx} (Android {ver}) nhưng chưa đổi được tên thành {tn} — đổi tên bằng tay trong MuMu."
     if (after.get(int(idx)) or {}).get("running"): memuc("stop", "-i", idx, timeout=120)
-    print(f"✓ Đã tạo máy mẫu {tn} (#{idx}, Android {ver}). Máy mẫu để TẮT — đơn Android {ver} sẽ nhân bản máy này.")
+    mini = str((_mumu_all(idx) or {}).get("mini_disk", "")).strip().lower()
+    note = "" if mini in ("", "true", "1") else " · ⚠ ổ KHÔNG ở chế độ nhỏ (MuMu bản này không nhận --mini) — máy khách nhân bản ra có bộ nhớ lớn sẵn"
+    return True, f"✓ đã tạo máy mẫu {tn} (#{idx}, Android {ver}) — để TẮT; đơn Android {ver} sẽ nhân bản máy này{note}."
+
+def cmd_mktpl(a):
+    """mktpl 12 | mktpl 15 | mktpl all : MuMu — tạo máy mẫu tpl_a<bản> bằng lệnh (khỏi mở giao diện MuMu).
+       24/11: MuMu 6 tạo mới mặc định Android 15 → dùng create --version <bản> --mini (đúng bản, ổ nhỏ như máy mẫu tạo tay).
+       "all" = mọi bản trong ANDROIDS của cloudphone.conf (máy chủ MuMu: 12,15). Đã có thì thôi. Sai bản → xoá ĐÚNG máy vừa tạo + báo."""
+    raw = str(a.android or "").strip().lower()
+    if EMU != "mumu" or not MEMU: print("LỖI: lệnh này chỉ dùng cho máy chủ MuMu (EMU=mumu)."); sys.exit(1)
+    if raw in ("all", "tat-ca", "tatca", "*"): vers = [v for v in ANDROIDS if v.isdigit()]
+    else: vers = [x.split(".")[0].strip() for x in raw.replace(";", ",").split(",") if x.strip()]
+    if not vers or not all(v.isdigit() for v in vers): print("LỖI: cách dùng: phonectl.py mktpl 15   |   phonectl.py mktpl all"); sys.exit(1)
+    bad = 0
+    for v in vers:
+        ok, msg = _mktpl_one(v)
+        print(("" if ok else "LỖI: ") + f"[Android {v}] " + msg, flush=True)
+        bad += 0 if ok else 1
+    if len(vers) > 1:
+        e = {x["name"] for x in vms().values()}
+        print("Máy mẫu: " + " · ".join(f"{tpl_name(v)} {'✓' if tpl_name(v) in e else '✗'}" for v in vers))
+    if bad: sys.exit(1)
 
 def cmd_engine(a):
     """Cho cloudphoned biết máy chủ này chạy giả lập gì + bán bản Android nào (JSON 1 dòng).

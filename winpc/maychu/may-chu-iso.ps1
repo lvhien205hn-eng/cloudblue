@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11n)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11o)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -9,7 +9,7 @@
 #                                                           khong co so / so dang bi dung -> tu lay so ke tiep. KHONG hoi (23.11m).
 #     3. gia lap (MuMu / LDPlayer 9: chay bo cai kem trong ISO - im lang neu bo cai ho tro, khong thi hien bo cai de bam)
 #     4. setup.ps1 (Python, Node, adb, cloudflared, chuong trinh CloudBlue, cloudphone.conf)      5. khoa Supabase -> cloudphone.conf
-#     6. may mau MuMu (tpl_a12 / tpl_a15)                 7. duong ham Cloudflare phoneN + streamN (tu tao bang API neu co CF_API_TOKEN)
+#     6. may mau MuMu: TU TAO tpl_a12 (Android 12) + tpl_a15 (Android 15) (23.11o)      7. duong ham Cloudflare phoneN + streamN (tu tao bang API neu co CF_API_TOKEN)
 #     8. bang CloudBlue tu chay quyen Admin, khong ngu, toi uu Windows        9. mo bang -> bat dich vu
 #    10. duong thang web (neu co ma) + lenh A + kiem RAM + cong modem        11. kiem may chu da len web
 #  DIEU KHIEN TU XA (23.11k): phan mem CloudBlue PC co san tren may (C:\CloudBluePC, chay ngam tu luc Windows len) tu dang ky may nay bang MA MAY CHU
@@ -25,7 +25,7 @@
 param([switch]$Lib)
 $Conf = ''                     # -Conf <tep>: doc tay (ban 23.11k-m goi lai chinh no bang "-Conf" khong gia tri -> khong duoc bao loi tham so)
 for ($ai = 0; $ai -lt $args.Count; $ai++) { if ((("" + $args[$ai]) -eq '-Conf') -and (($ai + 1) -lt $args.Count)) { $Conf = "" + $args[$ai + 1] } }
-$MC_VER = '23.11n'
+$MC_VER = '23.11o'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -596,11 +596,53 @@ function Get-VmRows {
   return $rows
 }
 
-function Add-Templates([string]$mumuDir) {
-  # May mau MuMu con thieu: (1) nhap tep tpl_aNN.mumudata kem trong ISO  (2) phonectl mktpl NN. Khong duoc thi BAO va di tiep (may chu van ban cac ban da co).
+function Get-WantTpl {
+  # May mau can co tren may chu MuMu: tpl_a<ban> cho MOI ban Android may chu ban (ANDROIDS trong cloudphone.conf; mac dinh 12,15).
+  $av = ("" + (Read-KV (Join-Path $B 'cloudphone.conf'))['ANDROIDS']).Trim()
+  if (-not $av) { $av = '12,15' }
+  return @(@($av -split ',') | ForEach-Object { ("" + $_).Trim() } | Where-Object { $_ -match '^[0-9]{1,2}$' } | ForEach-Object { 'tpl_a' + $_ })
+}
+
+function Get-MissTpl {
+  # May mau con thieu = phonectl engine bao thieu + ten may mau chua co trong danh sach may MuMu. (engine coi ban Android cua may #0
+  # la "ban mac dinh, khong can may mau" - nhung may mau rieng van can: may khach nhan ban tu no, o nho dung cau hinh.)
+  # Doc danh sach may that bai -> chi theo engine (khong tao trung).
   $e = Get-Engine
-  $miss = @(); if ($e) { $miss = @($e.missing_tpl | Where-Object { $_ }) }
+  $miss = @()
+  if ($e) { $miss = @(@($e.missing_tpl) | Where-Object { $_ } | ForEach-Object { "" + $_ }) }
+  $names = @(Get-VmRows | ForEach-Object { "" + $_.Name })
+  if ($names.Count) { foreach ($t in @(Get-WantTpl)) { if (($names -notcontains $t) -and ($miss -notcontains $t)) { $miss += $t } } }
+  return $miss
+}
+
+function Update-Phonectl {
+  # phonectl.py tren may chua biet tao may MuMu DUNG BAN Android (ban truoc 24/11: tao moi luon ra Android 15 -> khong tao duoc tpl_a12)
+  # -> lay ban moi tren GitHub. Tra $true khi phonectl dung duoc (da co san hoac vua thay). Tai hong / file la -> giu ban dang co.
+  $f = Join-Path $B 'phonectl.py'
+  if ((Test-Path -LiteralPath $f) -and (Select-String -LiteralPath $f -Pattern '_mumu_create_variants' -SimpleMatch -Quiet)) { return $true }
+  $new = Join-Path $B 'phonectl.moi'
+  if (-not (Get-Url ($RAWB + '/windows/phonectl.py?t=' + (Get-Random)) $new)) { Say '   (chua tai duoc phonectl.py moi - dung ban dang co)' 'DarkGray'; return $false }
+  $okNew = $false
+  if (Test-Marker $new '_mumu_create_variants' 5000) {
+    $chk = "import sys; compile(open(sys.argv[1], encoding='utf-8').read(), 'phonectl.py', 'exec'); print('OK')"
+    try { $o = & $PY -c $chk $new 2>$null; $okNew = ((@($o) -join '').Trim() -eq 'OK') } catch { $okNew = $false }
+  }
+  if (-not $okNew) { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue; Say '   (phonectl.py tai ve khong dung - dung ban dang co)' 'DarkGray'; return $false }
+  try {
+    if ((Test-Path -LiteralPath $f) -and (-not (Test-Path -LiteralPath ($f + '.truoc-mktpl')))) { Copy-Item -LiteralPath $f -Destination ($f + '.truoc-mktpl') -Force }
+    Move-Item -LiteralPath $new -Destination $f -Force -ErrorAction Stop
+    Say '   Da lay phonectl.py moi (tao may mau dung ban Android).' 'DarkGray'
+    return $true
+  } catch { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue; return $false }
+}
+
+function Add-Templates([string]$mumuDir) {
+  # 23.11o: TU TAO du may mau cho moi ban Android may chu ban (MuMu: tpl_a12 = Android 12, tpl_a15 = Android 15), khong phai mo MuMu bam tay:
+  #   (1) nhap tep tpl_aNN.mumudata kem trong ISO (neu co)   (2) phonectl mktpl NN - MuMu 6: create --version NN --mini (dung ban, o nho),
+  #   tu dat ten, de TAT. Khong duoc thi BAO va di tiep (may chu van ban cac ban da co).
+  $miss = @(Get-MissTpl)
   if (-not $miss.Count) { return @() }
+  [void](Update-Phonectl)
   $cli = Get-MumuCli $mumuDir
   foreach ($t in $miss) {
     $v = ("" + $t) -replace '\D', ''
@@ -615,15 +657,12 @@ function Add-Templates([string]$mumuDir) {
         try { $ps = Start-Process -FilePath $cli -ArgumentList ('control --vmindex ' + $new[0].Idx + ' shutdown') -PassThru -WindowStyle Hidden -ErrorAction Stop; [void]$ps.WaitForExit(120000) } catch {}
       }
     }
-    $e2 = Get-Engine
-    if ($e2 -and (@($e2.missing_tpl) -contains $t)) {
-      Say ('   Thu tao may mau ' + $t + ' bang lenh (phonectl mktpl ' + $v + ')...') 'White'
+    if (@(Get-MissTpl) -contains $t) {
+      Say ('   Tao may mau ' + $t + ' = Android ' + $v + ' bang lenh MuMu (1-3 phut, tu dat ten, de TAT)...') 'White'
       & $PY -u (Join-Path $B 'phonectl.py') mktpl $v 2>&1 | ForEach-Object { Say ('      ' + $_) 'DarkGray' }
     }
   }
-  $e3 = Get-Engine
-  if ($e3) { return @($e3.missing_tpl | Where-Object { $_ }) }
-  return $miss
+  return @(Get-MissTpl)
 }
 
 # ----------------------------------------------------------------------------------------------------- bang CloudBlue + dich vu
@@ -917,11 +956,11 @@ function Main {
   # ------------------------------------------------------------------ 6. may mau MuMu
   $missTpl = @()
   if ($em.kind -eq 'mumu') {
-    Step '6/11 May mau MuMu (tpl_a12 / tpl_a15)'
+    Step '6/11 May mau MuMu (tu tao tpl_a12 = Android 12 + tpl_a15 = Android 15)'
     $missTpl = @(Add-Templates $em.dir)
     if ($missTpl.Count) {
       Say ('   (!) Con thieu may mau: ' + ($missTpl -join ', ') + ' -> may chu VAN chay va ban cac ban Android da co.') 'Yellow'
-      Say '       Tao sau (2 phut): MuMu > Multi-instance > tao may dung ban Android > doi ten thanh ten may mau > de TAT. 2 phut sau web tu ban them.' 'Yellow'
+      Say '       Tao lai sau: PowerShell (Admin) > cd C:\blue > python phonectl.py mktpl all   (hoac MuMu > + New > dung ban Android > doi ten > de TAT). 2 phut sau web tu ban them.' 'Yellow'
     } else { Say '   OK - du may mau' 'Green' }
     if ($st.emu_new -eq 1) { Stop-EmuUi; $st.emu_new = 0; Save-State $st }
   } else { Step '6/11 May mau: LDPlayer khong can'; if ($st.emu_new -eq 1) { $st.emu_new = 0; Save-State $st } }

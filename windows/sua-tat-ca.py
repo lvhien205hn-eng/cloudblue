@@ -116,6 +116,9 @@
 #                       Admin → MuMu "Unable to start the Android Device … administrator privileges", không bật được máy nào) → không
 #                       bật máy từ cửa sổ khác quyền + lệnh `quyen --sua` bật lại đúng máy chạy sai quyền. Lệnh A: phải chạy CÙNG quyền
 #                       với bảng (thường là Admin), khác quyền thì dừng ngay từ đầu, không đụng gì
+#        24/11a — phonectl: MuMu tạo máy mẫu ĐÚNG bản Android bằng lệnh (create --version 12/15 --mini; trước đây tạo mới luôn ra
+#                       Android 15 → không tạo được tpl_a12) · lệnh A: máy chủ MuMu còn thiếu máy mẫu tpl_a12 / tpl_a15 → TỰ TẠO (tự đặt
+#                       tên, để TẮT) · cloudphoned báo tên máy Windows (web nối máy chủ với điều khiển từ xa)
 #   2. Bật lại đúng dịch vụ vừa thay / đang chạy bản cũ (bảng CloudBlue tự bật lại sau 5 giây) — không đụng máy khách
 #   3. Tự chạy khi Windows khởi động lại: tác vụ / lối tắt phải có --auto · bảng mở mà chưa chạy gì → mở lại bảng kiểu tự bật
 #   4. Kiểm cổng phát hình, đường hầm Cloudflare
@@ -129,7 +132,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "23/11f"
+VER = "24/11a"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -151,7 +154,7 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 23/11f", "cloud
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "23/11f"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "24/11a"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
 MARK_RUN = {"cloudphoned": "cloudphoned bản 23/11f", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
@@ -400,6 +403,41 @@ def ld_fix(c, changed):
     elif last.startswith("LDBASE loi"):
         say("   ✗ LDPlayer không đọc được danh sách máy (" + last[10:].strip()[:120] + ") → mở LDPlayer 1 lần, thấy có máy trong danh sách rồi chạy lại lệnh")
         probs.append("LDPlayer không đọc được danh sách máy — mở LDPlayer 1 lần rồi chạy lại lệnh A")
+    return probs
+
+# ------------------------------------------------------------------ 1c. máy chủ MuMu: máy mẫu (24/11a)
+MUMU_TPL_VERS = ("12", "15")                             # bản Android MuMu tạo được bằng lệnh (create --version)
+def mumu_tpl(c):
+    """Máy chủ MuMu phải có máy MẪU cho mỗi bản Android bán (tpl_a12 = Android 12, tpl_a15 = Android 15): máy khách nhân bản từ đó.
+       Thiếu → TỰ TẠO bằng phonectl mktpl (MuMu: create --version N --mini, tự đặt tên, để TẮT) — khỏi mở MuMu bấm tay.
+       Đọc danh sách máy lỗi → không tạo gì (không tạo trùng). --chi-kiem: chỉ báo. Máy chủ LDPlayer / MEmu: không làm gì.
+       Trả [dòng cho phần TÓM TẮT]."""
+    probs = []
+    if (c.get("EMU") or "").strip().lower() != "mumu": return probs
+    want = [v.strip() for v in (c.get("ANDROIDS") or "12,15").split(",") if v.strip() in MUMU_TPL_VERS]
+    if not want: return probs
+    rc, out = pctl("vmlist", t=180)
+    names = {ln.split(",")[1].strip() for ln in (out or "").splitlines() if re.match(r"^\d+,[^,]+,", ln.strip())}
+    if rc != 0 or not names:
+        say("   (máy mẫu MuMu: chưa đọc được danh sách máy — lần sau kiểm lại)"); return probs
+    miss = [v for v in want if f"tpl_a{v}" not in names]
+    if not miss:
+        say("   ✓ máy mẫu MuMu đủ: " + ", ".join(f"tpl_a{v}" for v in want)); return probs
+    if ONLY_CHECK:
+        say("   ✗ máy chủ MuMu THIẾU máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " → web không bán bản đó ở máy chủ này (chạy lệnh A không kèm --chi-kiem để tự tạo)")
+        return [f"thiếu máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss)]
+    say("   Máy chủ MuMu thiếu máy mẫu " + ", ".join(f"tpl_a{v} (Android {v})" for v in miss) + " → tự tạo bằng lệnh (mỗi máy 1–3 phút)…")
+    rc, out = pctl("mktpl", ",".join(miss), t=1800)
+    for ln in (out or "").splitlines():
+        if ln.strip(): say("      " + ln.strip()[:300])
+    rc2, out2 = pctl("vmlist", t=180)
+    names2 = {ln.split(",")[1].strip() for ln in (out2 or "").splitlines() if re.match(r"^\d+,[^,]+,", ln.strip())}
+    left = [v for v in miss if f"tpl_a{v}" not in names2] if names2 else miss
+    if left:
+        probs.append("chưa tạo được máy mẫu " + ", ".join(f"tpl_a{v}" for v in left)
+                     + " — mở MuMu: + New → đúng bản Android → đổi tên tpl_aNN → để TẮT (2 phút sau web tự bán)")
+    else:
+        say("   ✓ đã tạo máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " — khoảng 2 phút nữa web tự bán thêm các bản này ở máy chủ này")
     return probs
 
 # ------------------------------------------------------------------ 2. bật lại dịch vụ
@@ -1219,6 +1257,9 @@ def main():
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
     probs += check_net(c)
+    if e != "LAUNCHED":                                     # bảng vừa mở lại đang bật máy khách → để lượt sau (không chen lệnh vào giả lập)
+        try: probs += mumu_tpl(c)
+        except Exception as e_: say(f"   (kiểm máy mẫu MuMu lỗi: {e_})")
     hm = ""
     if e != "LAUNCHED":                                     # bảng vừa mở lại đang bật máy khách → không gọi thêm lệnh nào (chống kẹt tự tắt tiếng sau ≤ 10 phút)
         try: hm = mute_host(c)
