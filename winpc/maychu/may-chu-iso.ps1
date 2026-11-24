@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11m)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11n)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -18,10 +18,14 @@
 #  MANG (23.11m): Windows ban cu (1511...) PowerShell hay loi TLS "Could not create SSL/TLS secure channel" -> goi web / tai tep that bai thi
 #     tu lam lai bang Python co san cua CloudBlue PC (OpenSSL + cacert.pem). Khoa di qua bien moi truong cua tien trinh con, khong ghi ra dia.
 #  KHONG in khoa bi mat nao ra man hinh / nhat ky. Nhat ky: C:\blue\logs\iso-cai.log
-#  -Lib : chi nap cac ham (de kiem thu), khong chay.
+#  -Lib : chi nap cac ham (de kiem thu), khong chay.   -Conf <tep> : cau hinh khac C:\blue\iso\may-chu.conf.
+#  23.11n: tu cap nhat xong chay lai ban moi KHONG con truyen "-Conf" rong (PowerShell 5 bo chuoi rong -> "-Conf" thieu gia tri
+#     -> ban moi bao loi tham so, cua so tat, may dung - da gap tren win54); -Conf doc tay tu $args nen ban cu goi kieu do van chay.
 # =====================================================================================================
-param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11m'
+param([switch]$Lib)
+$Conf = ''                     # -Conf <tep>: doc tay (ban 23.11k-m goi lai chinh no bang "-Conf" khong gia tri -> khong duoc bao loi tham so)
+for ($ai = 0; $ai -lt $args.Count; $ai++) { if ((("" + $args[$ai]) -eq '-Conf') -and (($ai + 1) -lt $args.Count)) { $Conf = "" + $args[$ai + 1] } }
+$MC_VER = '23.11n'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -757,6 +761,14 @@ function Show-Remote([string]$state) {
   elseif ($state -eq 'err') { Say '   (dieu khien tu xa: chua bao duoc ma may chu len web - lan chay sau thu lai)' 'DarkGray' }
 }
 
+function Get-SelfArgs([string]$path) {
+  # Tham so de chay ban moi cua script nay (sau khi tu cap nhat). -Conf rong thi KHONG truyen: PowerShell 5 bo chuoi rong khi goi
+  # chuong trinh ngoai -> "-Conf" thieu gia tri -> ban moi bao loi tham so, cua so tat (23.11k-m).
+  $rl = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $path)
+  if ($Conf) { $rl += @('-Conf', $Conf) }
+  return $rl
+}
+
 function Update-Self([string]$self) {
   # Lay ban moi nhat cua script nay tren GitHub (sua loi ma khong phai tao lai ISO). Tra ve true khi da thay tep (can chay lai).
   if ($env:CB_ISO_SELF -eq '1') { return $false }
@@ -1035,7 +1047,8 @@ if (-not $Lib) {
   try { $mx.Close() } catch {}
   if ($script:RC -eq 9) {
     $env:CB_ISO_SELF = '1'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -Conf $Conf
+    $rl = Get-SelfArgs $PSCommandPath
+    & powershell.exe @rl                                       # khong hung ket qua -> ban moi ghi thang ra cua so nay (mau, ban phim nhu cu)
     exit $LASTEXITCODE
   }
   if ($script:RC -eq 0) { Write-Host ''; Write-Host 'Co the dong cua so nay (tu dong sau 15 phut).' -ForegroundColor DarkGray; Start-Sleep 900 }
