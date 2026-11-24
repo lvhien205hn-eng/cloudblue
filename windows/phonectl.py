@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "24/11a"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15
+PCTL_SUB = "24/11b"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -5465,6 +5465,13 @@ def cmd_hide(a):
         if not a.name or p["name"] == a.name: n += hide_window(p["name"])
     print(f"Đã cho {n} cửa sổ {EMU_NAME} chạy ngầm.")
 
+ENG_POKE_F = os.path.join(HOME, "logs", "doc-lai-may-mau.txt")   # 24/11b: cloudphoned thấy file này mới hơn lần đọc trước → đọc lại máy mẫu ngay
+def eng_poke():
+    try:
+        os.makedirs(os.path.dirname(ENG_POKE_F), exist_ok=True)
+        with open(ENG_POKE_F, "w", encoding="utf-8") as f: f.write(str(int(time.time())))
+    except Exception: pass
+
 def _mktpl_one(ver):
     """Tạo 1 máy mẫu MuMu tpl_a<ver> (đúng bản Android, để TẮT). Trả (ok, chữ báo)."""
     tn = tpl_name(ver); cur = vms_sure()
@@ -5506,6 +5513,7 @@ def cmd_mktpl(a):
         ok, msg = _mktpl_one(v)
         print(("" if ok else "LỖI: ") + f"[Android {v}] " + msg, flush=True)
         bad += 0 if ok else 1
+    if bad < len(vers): eng_poke()                       # 24/11b: có máy mẫu dùng được → cloudphoned đọc lại NGAY, web bán thêm bản đó sau ≤ 30 giây
     if len(vers) > 1:
         e = {x["name"] for x in vms().values()}
         print("Máy mẫu: " + " · ".join(f"{tpl_name(v)} {'✓' if tpl_name(v) in e else '✗'}" for v in vers))
