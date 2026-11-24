@@ -429,14 +429,29 @@ if "--netcheck" in sys.argv: print("netcheck gia: IP LAN 192.168.1.50"); sys.exi
     $fbOut = (& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $fbRoot "90-cloudblue-may-chu.ps1") 2>&1 | Out-String)
     $fbRc = $LASTEXITCODE
     $t5 = Get-ScheduledTask -TaskName "CloudBlue cai may chu" -ErrorAction SilentlyContinue
-    $t5Arg = ""; $t5Trig = 0; $t5Run = ""; $t5Logon = ""
-    if ($t5) { $t5Arg = "" + $t5.Actions[0].Arguments; $t5Trig = @($t5.Triggers).Count; $t5Run = "" + $t5.Principal.RunLevel; $t5Logon = "" + $t5.Principal.LogonType }
+    $t5Arg = ""; $t5Trig = 0; $t5Run = ""; $t5Grp = ""; $t5Usr = ""
+    if ($t5) { $t5Arg = "" + $t5.Actions[0].Arguments; $t5Trig = @($t5.Triggers).Count; $t5Run = "" + $t5.Principal.RunLevel; $t5Grp = "" + $t5.Principal.GroupId; $t5Usr = "" + $t5.Principal.UserId + "|" + (@($t5.Triggers | ForEach-Object { "" + $_.UserId }) -join ",") }
+    $run5 = "" + (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "CloudBlueMayChu" -ErrorAction SilentlyContinue).CloudBlueMayChu
+    $fbLog = ""
+    try { $fbLog = "" + (Get-Content -Raw -LiteralPath "C:\blue\logs\iso-firstboot.log" -ErrorAction Stop) } catch { $fbLog = "" }
   } finally {
     try { Unregister-ScheduledTask -TaskName "CloudBlue cai may chu" -Confirm:$false -ErrorAction SilentlyContinue } catch { }
+    try { Remove-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "CloudBlueMayChu" -ErrorAction SilentlyContinue } catch { }
   }
   Ck "firstboot.ps1 chay xong ma 0" ($fbRc -eq 0) ("ma " + $fbRc + " : " + ($fbOut -replace '\s+', ' '))
   Ck "chep script + cau hinh + ten may nguoi cai go sang C:\blue\iso; tep lon (bo cai gia lap) KHONG chep" ((Test-Path "C:\blue\iso\may-chu-iso.ps1") -and (Test-Path "C:\blue\iso\may-chu.conf") -and (Test-Path "C:\blue\iso\seed.json") -and (-not (Test-Path "C:\blue\iso\mumu-setup.exe")))
-  Ck "tac vu 'CloudBlue cai may chu': quyen cao nhat, chay trong phien man hinh, 2 moc (luc dang nhap + 3 phut nua), goi may-chu-iso.ps1" (($t5Run -eq "Highest") -and ($t5Logon -eq "Interactive") -and ($t5Trig -eq 2) -and ($t5Arg -match '-File "C:\\blue\\iso\\may-chu-iso\.ps1"')) ("run=" + $t5Run + " logon=" + $t5Logon + " trig=" + $t5Trig + " arg=" + $t5Arg)
+  Ck "tac vu 'CloudBlue cai may chu': quyen cao nhat, theo NHOM Administrators (khong gan ten may / ten tai khoan), 2 moc (luc dang nhap + 3 phut nua), goi may-chu-iso.ps1" (($t5Run -eq "Highest") -and ($t5Grp -match "Administrators|S-1-5-32-544") -and ($t5Trig -eq 2) -and ($t5Arg -match '-File "C:\\blue\\iso\\may-chu-iso\.ps1"') -and (-not $t5Usr.Contains($env:COMPUTERNAME))) ("run=" + $t5Run + " grp=" + $t5Grp + " trig=" + $t5Trig + " usr=" + $t5Usr + " arg=" + $t5Arg)
+  Ck "khoa Run cua may (duong tu chay thu 2, moi tai khoan): goi may-chu-iso.ps1 ; co nhat ky iso-firstboot.log" (($run5 -match 'powershell\.exe -NoProfile -ExecutionPolicy Bypass -File "C:\\blue\\iso\\may-chu-iso\.ps1"') -and ($fbLog -match "OK - khoa Run") -and ($fbLog -match "OK - tac vu")) ("run=" + $run5 + " | log=" + ($fbLog -replace '\s+', ' '))
+  # Set-AutoStart cua may-chu-iso.ps1: dat lai 2 duong tu chay ; -Remove go sach
+  $as1 = Set-AutoStart
+  $asT = Get-ScheduledTask -TaskName "CloudBlue cai may chu" -ErrorAction SilentlyContinue
+  $asR = "" + (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "CloudBlueMayChu" -ErrorAction SilentlyContinue).CloudBlueMayChu
+  $asGrp = ""
+  if ($asT) { $asGrp = "" + $asT.Principal.GroupId }
+  [void](Set-AutoStart -Remove)
+  $asT2 = Get-ScheduledTask -TaskName "CloudBlue cai may chu" -ErrorAction SilentlyContinue
+  $asR2 = "" + (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run" -Name "CloudBlueMayChu" -ErrorAction SilentlyContinue).CloudBlueMayChu
+  Ck "Set-AutoStart: dat du 2 duong tu chay (khoa Run + tac vu nhom Administrators) ; -Remove go sach ca 2" (($as1 -eq 2) -and $asT -and ($asGrp -match "Administrators|S-1-5-32-544") -and ($asR -match "may-chu-iso\.ps1") -and (-not $asT2) -and (-not $asR2)) ("ways=" + $as1 + " grp=" + $asGrp + " run=" + $asR + " sau: " + [bool]$asT2 + "/" + $asR2)
   $num5 = Get-SeedNum "C:\blue\iso\seed.json"
   Ck "ten may nguoi cai go (win9) doc lai duoc tu ban chep" ($num5 -eq 9)
   try { Unregister-ScheduledTask -TaskName "BlueRoblox" -Confirm:$false -ErrorAction SilentlyContinue } catch { }
