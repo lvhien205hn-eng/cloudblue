@@ -81,6 +81,27 @@ try {
   $ErrorActionPreference = "Continue"                          # nhu luc chay that (script cai may chu dat Continue)
   Ck "nap duoc cac ham (-Lib khong chay phan than)" ((Get-Command Get-NodeNum -ErrorAction SilentlyContinue) -and (Get-Command New-CfTunnel -ErrorAction SilentlyContinue) -and (Get-Command Main -ErrorAction SilentlyContinue) -and ($MC_VER -match '^\d\d\.\d\d'))
   Info ("ban may-chu-iso: " + $MC_VER)
+  # ---- 23.11n: tu cap nhat xong chay lai ban moi - ban 23.11k-m goi "-Conf" KHONG gia tri (PowerShell 5 bo chuoi rong) -> ban moi phai van chay
+  $pa1 = Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ('"' + $McPs1 + '"'), "-Lib", "-Conf") -Wait -PassThru -WindowStyle Hidden
+  $cmdA = ". '" + $McPs1 + "' -Lib -Conf 'D:\x\may-chu.conf'; " + 'Write-Output (''CONF='' + $Conf)'
+  $cmdB = ". '" + $McPs1 + "' -Lib; " + 'Write-Output (''CONF='' + $Conf)'
+  $cfA = & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $cmdA
+  $cfB = & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $cmdB
+  Ck "23.11n: ban cu goi lai bang '-Conf' khong gia tri -> ban moi VAN chay (ma 0) ; -Conf <tep> van doc duoc ; khong co -> rong" (($pa1.ExitCode -eq 0) -and ((@($cfA) -join "") -eq "CONF=D:\x\may-chu.conf") -and ((@($cfB) -join "") -eq "CONF=")) ("ma " + $pa1.ExitCode + " | " + (@($cfA) -join "") + " | " + (@($cfB) -join ""))
+  $stubS = Join-Path $Wk "tu-goi-lai.ps1"
+  $stubO = Join-Path $Wk "tu-goi-lai.txt"
+  Set-Content -Path $stubS -Value ('Set-Content -Path "' + $stubO + '" -Value ("ARGS=" + ($args -join "|")) ; exit 7') -Encoding ASCII
+  $Conf = ""
+  $sa1 = Get-SelfArgs $stubS
+  & powershell.exe @sa1
+  $ex1 = $LASTEXITCODE
+  $o1 = (Get-Content -Raw $stubO).Trim()
+  $Conf = "D:\x y\may-chu.conf"
+  $sa2 = Get-SelfArgs $stubS
+  & powershell.exe @sa2
+  $o2 = (Get-Content -Raw $stubO).Trim()
+  $Conf = ""
+  Ck "Get-SelfArgs: cau hinh rong -> KHONG truyen -Conf ; co tep (ke ca co dau cach) -> truyen dung ; ma thoat cua ban moi duoc giu" (($ex1 -eq 7) -and ($o1 -eq "ARGS=") -and ($o2 -eq "ARGS=-Conf|D:\x y\may-chu.conf") -and (-not (@($sa1) -contains "-Conf"))) ("ma " + $ex1 + " | " + $o1 + " | " + $o2)
   $B = New-Dir (Join-Path $Wk "blue0")
   $ISO = New-Dir (Join-Path $B "iso")
   $CBPC = New-Dir (Join-Path $Wk "pc0")
