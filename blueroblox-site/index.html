@@ -1975,6 +1975,8 @@ html[data-theme=light] .m3m-box{background:linear-gradient(100deg,#e3efff,#f6f9f
 .m3m-card.soon{box-shadow:0 0 0 1px rgba(255,200,97,.7)}
 .m3m-top{display:flex;gap:6px;flex-wrap:wrap}
 .m3m-nm{font-size:16px;font-weight:800;letter-spacing:-.01em;overflow-wrap:anywhere}
+.m3m-nm .m3m-ren{background:none;border:0;padding:0 2px;margin-left:2px;font-size:13px;line-height:1;cursor:pointer;opacity:.7;vertical-align:1px}
+.m3m-nm .m3m-ren:hover,.m3m-nm .m3m-ren:focus-visible{opacity:1}
 .m3m-spec{font-size:12.5px;color:var(--muted)}
 .m3m-exp{font-size:13px;color:var(--muted)}
 .m3m-exp b{color:var(--fg);font-family:var(--mono,monospace);font-variant-numeric:tabular-nums}
@@ -3237,11 +3239,11 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><b style="font-size:14px">📱 ĐT đám mây của khách</b><span class="hint" id="cd-cp-n"></span>
       <button class="btn danger sm" type="button" id="cd-cp-wipe" style="margin-left:auto">🧹 Xoá hết máy của khách</button></div>
-    <div style="margin-top:6px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div style="display:none">
       <b style="font-size:14px">🖥 Máy VPS của khách</b><span class="hint" id="cd-vps-n"></span>
       <button class="btn ghost sm" type="button" id="cd-vps-add" style="margin-left:auto">➕ Tạo máy cho khách này</button>
     </div>
-    <div id="cd-vps" style="display:grid;gap:8px;max-height:230px;overflow:auto"></div>
+    <div id="cd-vps" style="display:none"></div>
     <div class="err" id="cd-err"></div>
     <div class="acts" style="flex-wrap:wrap;gap:8px"><button class="btn danger" id="cd-delete">Xoá khách</button><button class="btn ghost" id="cd-lock">Khoá tài khoản</button><button class="btn ghost" id="cd-cancel">Đóng</button><button class="btn" id="cd-save">Lưu thay đổi</button></div>
   </div>
@@ -3254,7 +3256,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="xp-host" id="pca-rentbar" hidden></div>
     <div class="tabs" id="adm-tabs">
-      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="vps">🖥️ Máy VPS <span class="badge" id="vps-badge" hidden></span></button><button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button><button data-tab="biz">🏭 Dàn máy nội bộ</button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
+      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button><button data-tab="vm">🧩 VPS ảo hoá <span class="badge" id="vm-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
@@ -3412,6 +3414,18 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
       <div class="tbl"><table><thead><tr><th>Máy</th><th>Trạng thái</th><th>Hạn thuê</th><th>Windows</th><th>Cấu hình</th><th>Lệnh gần nhất</th><th></th></tr></thead><tbody id="pctbl"></tbody></table></div>
       <div class="hint" id="pca-srvnote" hidden></div>
       <div class="hint">Máy cài bằng ISO CloudBlue tự hiện ở đây sau lần khởi động đầu. <b>Số máy</b> (nhãn № cạnh tên): người cài gõ ngay sau khi cài xong, hoặc bấm <b>Sửa</b> để đặt — số này hiện trên màn hình máy (file “May so … (CloudBlue)”) và trong lời nhắc, khách báo lỗi theo số đó. Cột <b>Hạn thuê</b>: bấm ⏱ để đặt / gia hạn — từ 2 ngày trước hạn máy tự nhắc khách liên tục, hết hạn mà chưa gia hạn thì <b>tự tắt</b> (bật lại cũng tự tắt); máy sắp / đã hết hạn luôn hiện ở ô 🔔 đầu trang. <b>Cài lại</b> = máy tự khởi động lại vào bộ cài trên phân vùng cứu hộ, xoá và cài Windows mới (khoảng 15–30 phút), không cần USB. Điều khiển máy qua app và bán tự động sẽ có ở đợt sau.</div>
+    </div>
+    <div class="dbody" id="pane-vm" hidden>
+      <div class="note" id="vma-miss" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>VPS ảo hoá</b>. Vào Supabase › SQL Editor › mở <b>CloudBlue v56 VPS ao hoa - bam Run</b> › bấm <b>Run</b>, rồi tải lại trang.</div>
+      <div class="vma-top" id="vma-top"><div><span>Đang tải…</span></div></div>
+      <div class="subtabs" role="tablist" aria-label="Mục VPS ảo hoá"><button type="button" role="tab" data-sub="hosts" class="on" aria-selected="true">🖥 Máy chủ</button><button type="button" role="tab" data-sub="vps" aria-selected="false">🧩 VPS</button><button type="button" role="tab" data-sub="plans" aria-selected="false">💲 Gói &amp; giá</button><button type="button" role="tab" data-sub="images" aria-selected="false">🪟 Bản Windows</button><button type="button" role="tab" data-sub="set" aria-selected="false">⚙ Cài đặt</button><button type="button" id="vma-reload" style="margin-left:auto" title="Tải lại dữ liệu VPS ảo hoá">⟳ Tải lại</button></div>
+      <div class="subpane" data-sub="hosts"><div id="vma-hosts"></div></div>
+      <div class="subpane" data-sub="vps" hidden>
+        <div class="vma-bar"><input class="search" id="vma-q" placeholder="Tìm: VPS-số, tên khách, gói, bản Windows, máy chủ…" autocomplete="off"><select class="in" id="vma-f" style="width:auto"><option value="live">Đang có</option><option value="running">Đang chạy</option><option value="creating">Đang tạo</option><option value="stopped">Đã tắt</option><option value="error">Lỗi</option><option value="">Tất cả (kể cả mới xoá)</option></select></div>
+        <div class="vma-list" id="vma-vps"></div></div>
+      <div class="subpane" data-sub="plans" hidden><div class="vma-bar"><span class="hint">8 cấu hình có sẵn (giống vpsgame) — bấm ✏️ Sửa để nhập giá theo số ngày (mức 30 ngày = giá / tháng trên ô bán). Gói chưa có giá thì khách không thấy.</span><button class="btn sm" type="button" id="vma-p-new" style="margin-left:auto">➕ Thêm gói</button></div><div id="vma-plans"></div></div>
+      <div class="subpane" data-sub="images" hidden><div class="vma-bar"><span class="hint">Mỗi bản Windows = 1 máy mẫu trên máy chủ Proxmox, đặt ĐÚNG tên ở cột "Tên máy mẫu". Máy chủ chưa có máy mẫu bản nào thì khách chưa chọn được bản đó.</span><button class="btn sm" type="button" id="vma-i-new" style="margin-left:auto">➕ Thêm bản</button></div><div id="vma-images"></div></div>
+      <div class="subpane" data-sub="set" hidden><div id="vma-set"></div></div>
     </div>
     <div class="dbody" id="pane-biz" hidden>
       <div class="note">Dùng chung dữ liệu với phần mềm desktop (cùng cloud). Nhập ở đây hiện bên phần mềm & ngược lại. <b>Chỉ admin thấy.</b></div>
@@ -5019,7 +5033,7 @@ function vietqr(bin, acc, amount, memo) {
 
 /* ---------- tải dữ liệu ---------- */
 async function loadSettings() { const { data, error } = await sb.from("settings").select("data").eq("id", 1).maybeSingle(); if (sysDownErr(error)) { sysDownOn(); return; } SITE = { ...DEF_SITE, ...((data && data.data) || {}) }; window.__siteLoaded = true; renderSite(); renderGrid(); try { renderFreeBar(); } catch (e) {} }
-async function loadProducts() { const { data, error } = await sb.from("product_list").select("*").order("sort"); if (sysDownErr(error)) sysDownOn(); if (error) { $("grid").innerHTML = `<div class="empty">${L("Không tải được sản phẩm. Tải lại trang để thử lại.", "Could not load products. Reload the page to try again.")}</div>`; return; } P = data || []; renderCats(); renderGrid(); if (isAdmin()) renderTable(); }
+async function loadProducts() { const { data, error } = await sb.from("product_list").select("*").order("sort"); if (sysDownErr(error)) sysDownOn(); if (error) { $("grid").innerHTML = `<div class="empty">${L("Không tải được sản phẩm. Tải lại trang để thử lại.", "Could not load products. Reload the page to try again.")}</div>`; return; } P = (data || []).filter(p => p && p.cat !== "vm"); renderCats(); renderGrid(); if (isAdmin()) renderTable(); }
 async function loadProfile() { if (!session) { profile = null; mfaState(); return; } const { data } = await sb.from("profiles").select("*").eq("id", session.user.id).maybeSingle(); profile = data || null; await mfaState(); }
 /* đọc ngay trong phiên (không gọi mạng): đã bật 2 bước chưa (mã đã xác nhận), phiên này đã nhập mã chưa */
 async function mfaState() {
@@ -5319,7 +5333,7 @@ function m3MineCard(p) {
     : `<button class="btn sm" type="button" disabled>${locked ? "🔒" : p.status === "pending" ? L("Đang tạo…", "Creating…") : p.status === "expired" ? L("Tạm dừng", "Paused") : L("Chưa sẵn sàng", "Not ready")}</button>`;
   return `<div class="m3m-card${run ? " run" : ""}${soon || p.status === "expired" ? " soon" : ""}">
     <div class="m3m-top">${cpPill(p)}${p.is_free ? `<span class="pill">🎁 ${esc(cbPhoneTag(p))}</span>` : ""}${p.shared ? `<span class="pill">👥 ${L("Được chia sẻ", "Shared")}</span>` : ""}</div>
-    <b class="m3m-nm">${esc(p.name || "Máy")}</b>
+    <b class="m3m-nm">${esc(p.name || "Máy")}${!p.shared && !["cancelled", "cancelling"].includes(p.status) ? ` <button type="button" class="m3m-ren" data-cprename="${esc(p.id)}" title="${esc(L("Đổi tên máy", "Rename phone"))}" aria-label="${esc(L("Đổi tên máy", "Rename phone"))}">✏️</button>` : ""}</b>
     <small class="m3m-spec">Android ${esc(p.android || "9")} · ${+p.ram || "?"}GB · ${+p.cpu || "?"} ${L("nhân", "cores")}${cpPaidTag(p)}</small>
     ${state}
     <div class="m3m-acts">${open}${canRenew ? `<button class="btn ghost sm" type="button" data-cprenew="${esc(p.id)}">🔄 ${L("Gia hạn", "Renew")}</button>` : ""}</div></div>`;
@@ -8909,9 +8923,11 @@ $("cp-code") && $("cp-code").addEventListener("keydown", e => { if (e.key === "E
 
 async function cpRename(id) {
   const p = myCloud.find(x => x.id === id); if (!p) return;
-  const n = prompt("Tên mới cho máy:", p.name); if (n === null) return;
+  const n = prompt(L("Tên mới cho máy:", "New name for this phone:"), p.name); if (n === null) return;
   const { error } = await sb.rpc("cloudphone_rename", { p_id: id, p_name: n });
-  if (error) { toast(errMsg(error), 1); return; } openCloud();
+  if (error) { toast(errMsg(error), 1); return; }
+  toast(L("Đã đổi tên máy.", "Phone renamed."));
+  if ($("cpdlg") && !$("cpdlg").hidden) openCloud(); else { try { await m3MineLoad(true); } catch (e) {} }
 }
 async function cpCancel(id) {
   if (!confirm(L("Huỷ máy này? Máy và toàn bộ dữ liệu sẽ bị XOÁ, không hoàn tiền.", "Cancel this phone? It will be deleted."))) return;
@@ -13593,7 +13609,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       sb.from("pc_settings").select(SETS + (v2 ? SETS42 : "")).eq("id", 1).maybeSingle()]);
     let v2 = P.v42 !== false;
     const x44 = v2 && P.v44 !== false ? sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at") : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
-    const x53 = P.v53 !== false ? sb.from("pc_machines").select("id").eq("srv", true) : null;      // SQL v53: MÁY CHỦ Cloud Phone — không cho thuê, nằm ở ĐT đám mây › Máy chủ
+    const x53 = P.v53 !== false ? sb.from("pc_machines").select("id").eq("srv", true) : null;
+    const x56 = P.v56 !== false ? sb.from("pc_machines").select("id,vm") : null;      // SQL v56: máy ảo VPS ảo hoá (cột vm) — quản lý ở thẻ 🧩 VPS ảo hoá      // SQL v53: MÁY CHỦ Cloud Phone — không cho thuê, nằm ở ĐT đám mây › Máy chủ
     let [[m, st], o] = await Promise.all([get(v2), sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300)]);
     if (v2 && (noCol(m.error) || noCol(st.error))) { v2 = false; [m, st] = await get(false); }      // chưa chạy SQL v42: đọc kiểu cũ, phần hạn thuê tạm ẩn
     if (m.error) {
@@ -13611,6 +13628,10 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (x53) { try { const r53 = await x53;
       if (r53.error) { if (noCol(r53.error)) P.v53 = false; }
       else { P.v53 = true; const sv = new Set((r53.data || []).map(x => x && x.id)); P.list = P.list.filter(x => !sv.has(x.id)); P.srvN = sv.size; }
+    } catch (e) {} }
+    if (x56) { try { const r56 = await x56;
+      if (r56.error) { if (noCol(r56.error)) P.v56 = false; }
+      else { P.v56 = true; const vs = new Set((r56.data || []).filter(x => x && x.vm != null).map(x => x.id)); if (vs.size) P.list = P.list.filter(x => !vs.has(x.id)); P.vmN = vs.size; }
     } catch (e) {} }
     if (x44) { try { const r44 = await x44;
       if (r44.error) { if (noCol(r44.error)) P.v44 = false; }
@@ -13693,8 +13714,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!rows.length) return "";
     const off = xpHidden(key);
     return `<div class="xp-box" data-xpbox="${key}"><button type="button" class="xp-h" data-xptg="${key}" aria-expanded="${!off}"><span>${title}</span><b class="badge">${rows.length}</b><i>${off ? "Hiện ▾" : "Ẩn ▴"}</i></button>`
-      + (off ? "" : `<div class="xp-l">` + rows.slice(0, XP_MAX).map(r => `<div class="xp-r ${r.over ? "r" : "y"}">${r.html} <a href="#" data-xpgo="${r.go}" data-xpid="${esc(r.id)}">${r.btn}</a></div>`).join("")
-        + (rows.length > XP_MAX ? `<div class="xp-r y">… và <b>${rows.length - XP_MAX}</b> máy nữa — <a href="#" data-xpgo="${rows[0].go}" data-xpid="">xem tất cả</a>.</div>` : "") + `</div>`) + `</div>`;
+      + (off ? "" : `<div class="xp-l">` + rows.slice(0, XP_MAX).map(r => `<div class="xp-r ${r.over ? "r" : "y"}">${r.html}${r.go === "vps" ? "" : ` <a href="#" data-xpgo="${r.go}" data-xpid="${esc(r.id)}">${r.btn}</a>`}</div>`).join("")
+        + (rows.length > XP_MAX ? `<div class="xp-r y">… và <b>${rows.length - XP_MAX}</b> máy nữa — <a href="#" data-xpgo="${rows.some(r => r.go === "pc") ? "pc" : rows[0].go === "vps" ? "pc" : rows[0].go}" data-xpid="">xem tất cả</a>.</div>` : "") + `</div>`) + `</div>`;
   }
   function xpCust() {                        // dải nhắc cho KHÁCH (không dựng cho admin: admin đã có 2 ô ở trên)
     const box = $i("xp-cust"); if (!box) return;
@@ -13778,7 +13799,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     }
   }
   function xpGo(tab, id) {                   // admin bấm 1 dòng → mở đúng tab của Bảng quản trị (máy PC: mở luôn hộp gia hạn của máy đó)
-    if (!isAdmin() || !["pc", "vps", "cloud"].includes(tab)) return;
+    if (!isAdmin() || !["pc", "cloud"].includes(tab)) return;
     setTab(tab);
     if (tab === "pc" && id) { const open = () => { const m = mOf(id); if (m && P.v42) openRent(m); }; if (P.loaded) open(); else { const w = load(true); if (w && w.then) w.then(open); } }
   }
@@ -14346,6 +14367,8 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   const maintBar = () => pcMaint() ? `<div class="pcs-maint">${esc(pcMaintMsg())}</div>` : "";
   const left = iso => { const t = T(iso); return t === null ? null : t - Date.now(); };
   const PC = window.PCSHOP = { info: null, infoAt: 0, mine: null, mineAt: 0, adm: null, os: "", busy: false, dlg: null };
+  const vmPc = x => { try { const id = S(O(x && x.pc).id, 40); return !!id && window.VMPCS instanceof Set && window.VMPCS.has(id); } catch (e) { return false; } };   // 24/11 · VPS ảo hoá (v56)
+  PC.render = () => mineRender();
 
   // ---------------------------------------------------------------- thông tin bán (ai cũng xem được)
   async function info(force) {
@@ -14721,7 +14744,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   function mineRender() {
     try { navPaint(); vmPaint(); } catch (e) {}
     const s = mineBox(); if (!s) return;
-    const now = Date.now(), items = A(O(PC.mine).items).filter(x => !(T(x.hide_at) !== null && T(x.hide_at) <= now));
+    const now = Date.now(), items = A(O(PC.mine).items).filter(x => !(T(x.hide_at) !== null && T(x.hide_at) <= now) && !vmPc(x));
     const nextHide = Math.min(...items.map(x => T(x.hide_at)).filter(t => t !== null && t > now), Infinity);
     clearTimeout(PC.ht); if (nextHide < Infinity) PC.ht = setTimeout(mineRender, Math.min(nextHide - now + 500, 2147483000));
     s.hidden = !me() || !items.length; if (s.hidden) return;
@@ -15061,7 +15084,7 @@ html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-g
   };
 
   // ---------------------------------------------------------------- "VPS của tôi" (menu bên): VPS GPU ở đầu hộp + số máy trên menu
-  const liveItems = () => me() ? A(O(PC.mine).items).filter(x => x.state === "active" || x.state === "waiting") : [];
+  const liveItems = () => me() ? A(O(PC.mine).items).filter(x => (x.state === "active" || x.state === "waiting") && !vmPc(x)) : [];
   function navPaint() {
     const a = $i("nav-vps"), b = $i("vps-nav-badge"); if (!a || !b) return;
     const n = liveItems().length;
@@ -15298,6 +15321,748 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 /* điện thoại: tiêu đề 1 dòng riêng, 3 nút (Tải lại · Đăng xuất · Đóng) chung 1 dòng bên dưới — không còn nút "Đóng" lẻ loi */
 @media (max-width:520px){#drawer .dhead h2{flex-basis:100%}#drawer .dhead{row-gap:10px}}
 </style>
+<style>
+/* ===== 24/11 · 🧩 VPS ẢO HOÁ (SQL v56) — ô bán gói có sẵn · VPS của tôi · Quản trị › Máy cho thuê › 🧩 VPS ảo hoá ===== */
+#vzdlg{z-index:70}
+.vms-sec{margin-top:18px}
+.vms-head h2{margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:-.02em}
+.vms-head h2 small{display:block;margin-top:3px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0}
+.vms-head .hint{margin:0 0 12px}
+.vms-adm{color:var(--gold-hi)}
+.vms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}
+.vms-plan{display:flex;flex-direction:column;gap:9px;padding:15px 15px 14px;border-radius:16px;background:var(--card,var(--panel));box-shadow:0 0 0 1px var(--line2)}
+.vms-plan.out{opacity:.62}
+.vms-nm{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.vms-price{display:flex;align-items:baseline;gap:4px}
+.vms-price b{font-size:24px;font-weight:800;color:var(--gold-hi);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.vms-price small{color:var(--muted);font-size:13px}
+.vms-spec{list-style:none;margin:0;padding:0;display:grid;gap:5px;font-size:13.5px;color:var(--fg)}
+.vms-spec li{line-height:1.35}
+.vms-spec li.os{color:var(--muted);font-size:12.5px}
+.vms-plan .btn{margin-top:auto;justify-content:center}
+.dlg.vms-dlg{width:min(560px,100%);gap:12px}
+.vms-chips{display:flex;flex-wrap:wrap;gap:6px}
+.vms-chips span{font-size:12.5px;padding:4px 10px;border-radius:999px;background:var(--soft,rgba(143,208,255,.08));border:1px solid var(--line2)}
+.vms-lbl{font-size:13px;font-weight:800;color:var(--muted);margin-top:2px}
+.vms-dlg .vps-opts button:disabled{opacity:.45;cursor:not-allowed}
+.vms-sum{font-size:14px}
+.vms-sum b{color:var(--gold-hi);font-size:17px}
+.vms-ack{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;color:var(--fg)!important;cursor:pointer}
+.vms-ack input{width:auto}
+.vms-rows{display:grid;gap:6px}
+.vms-rows .vms-row{display:grid;grid-template-columns:1fr 1.4fr auto;gap:6px;align-items:center}
+.vms-dlg .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.vms-dlg .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.vma-top{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:12px}
+.vma-top>div{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:3px;min-width:0}
+.vma-top b{font-size:21px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.vma-top span{font-size:12.5px;color:var(--muted)}
+.vma-top .btn{justify-self:start;margin-top:4px}
+.vma-list{display:grid;gap:10px;margin-top:10px}
+.vma-host,.vma-vps{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:7px;min-width:0}
+.vma-host.new{border-color:rgba(255,200,97,.7)}
+.vma-host .hd,.vma-vps .hd{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.vma-host .hd b,.vma-vps .hd b{font-size:15.5px}
+.vma-kv{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:13px;color:var(--muted)}
+.vma-kv b{color:var(--fg);font-weight:700}
+.vma-tpl{display:flex;flex-wrap:wrap;gap:6px}
+.vma-tpl span{font-size:12px;padding:2px 8px;border-radius:999px;border:1px solid var(--line2)}
+.vma-tpl span.ok{color:var(--ok);border-color:rgba(60,224,176,.5)}
+.vma-tpl span.no{color:var(--bad);border-color:rgba(255,107,129,.5)}
+.vma-acts{display:flex;flex-wrap:wrap;gap:6px}
+.vma-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--bad)}
+.vma-dot.on{background:var(--ok)}
+.vma-bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0}
+.vma-bar .search{flex:1;min-width:180px}
+.vma-rev{font-size:13px}
+.vma-rev b{color:var(--gold-hi)}
+.vma-cmd{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+.vma-cmd code{flex:1;min-width:240px;font:12.5px/1.5 var(--mono,monospace);padding:9px 11px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid var(--line);word-break:break-all}
+.vma-sec{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;margin-top:12px}
+.vma-sec h4{margin:0;font-size:15px}
+.vma-set{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.vma-set label{display:grid;gap:5px;font-size:13px;color:var(--muted)}
+.vma-set label.chk{display:flex;align-items:center;gap:8px;color:var(--fg)}
+.vma-set label.chk input{width:auto}
+.vms-card .m3m-nm small{font-weight:500;color:var(--muted);margin-left:6px}
+.vms-card .pcs-st,.vma-vps .pcs-st{font-size:12.5px;line-height:1.45;color:var(--muted)}
+.vms-card .pcs-st.warn{color:var(--warn)}
+.vms-card .pcs-st.bad,.vma-vps .pcs-st.bad{color:var(--bad)}
+.vms-card .m3m-acts{flex-wrap:wrap}
+.vms-dlg .vps-opts{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.vms-dlg .vps-opts button.on{border-color:var(--sky);background:rgba(61,123,255,.18)}
+@media (max-width:760px){.vma-top{grid-template-columns:1fr 1fr}.vms-dlg .grid3{grid-template-columns:1fr 1fr}}
+@media (max-width:560px){.vms-grid{grid-template-columns:1fr 1fr;gap:9px}.vms-plan{padding:12px 11px;gap:7px}.vms-price b{font-size:19px}.vms-nm{font-size:15px}
+  .vms-spec{font-size:12.5px;gap:3px}.vms-spec li.ctl{display:none}.vms-plan .btn{padding:9px 8px;font-size:13.5px}}
+</style>
+<script>
+/* ===== 24/11 · 🧩 VPS ẢO HOÁ (SQL v56): máy ảo Windows trên máy chủ Proxmox (cbhost) — bán theo gói có sẵn (giống vpsgame).
+   · Khách: ô "🧩 VPS ảo hoá" ngay trên mục Sản phẩm (chỉ hiện khi admin BẬT BÁN; admin luôn thấy để xem trước) · "VPS ảo hoá của bạn" dưới VPS GPU.
+     VPS cũng là 1 "máy PC" của khách → điều khiển bằng play.html?pc=… như VPS GPU (web · app điện thoại · app máy tính).
+   · Admin: Máy cho thuê › 🧩 VPS ảo hoá — máy chủ (duyệt, trạng thái, máy mẫu, doanh thu), VPS (điều khiển, bật / tắt, cài lại, gia hạn, xoá, hoàn tiền),
+     gói & giá, bản Windows, cài đặt (bật bán, lệnh cài cbhost, tạo VPS cho tài khoản).
+   · Chưa chạy SQL v56 → khách không thấy gì; tab quản trị báo cần chạy file. Không dùng hộp thoại của trình duyệt (alert / confirm / prompt). ===== */
+(() => {
+  const $i = id => document.getElementById(id);
+  const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
+  const A = v => Array.isArray(v) ? v : [];
+  const O = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const T = v => { const t = typeof v === "string" ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+  const N = v => { const x = +v; return isFinite(x) ? x : 0; };
+  const me = () => { try { return typeof profile !== "undefined" && profile ? profile : null; } catch (e) { return null; } };
+  const isAdm = () => { try { return typeof isAdmin === "function" && !!isAdmin(); } catch (e) { return false; } };
+  const money = v => { try { return fmt(N(v)); } catch (e) { return Math.round(N(v)).toLocaleString("vi-VN") + "đ"; } };
+  const vndS = v => Math.round(N(v)).toLocaleString("vi-VN") + "đ";
+  const gb = mb => { const g = N(mb) / 1024; return (Math.round(g * 10) / 10).toLocaleString("vi-VN") + " GB"; };
+  const shortOs = n => S(n, 60).replace(/^Windows\s+/i, "");
+  const left = iso => { const t = T(iso); return t === null ? null : t - Date.now(); };
+  const pad2 = n => String(n).padStart(2, "0");
+  const dt = iso => { const t = T(iso); if (t === null) return "—"; const d = new Date(t); return `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`; };
+  const ago = iso => { const t = T(iso); if (t === null) return L("chưa bao giờ", "never"); const s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    return s < 90 ? L(`${s} giây trước`, `${s}s ago`) : s < 5400 ? L(`${Math.round(s / 60)} phút trước`, `${Math.round(s / 60)} min ago`) : s < 172800 ? L(`${Math.round(s / 3600)} giờ trước`, `${Math.round(s / 3600)} h ago`) : dt(iso); };
+  const daysLeft = iso => { const ms = left(iso); if (ms === null) return "—"; if (ms <= 0) return L("đã hết hạn", "expired"); const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5);
+    return d ? L(`còn ${d} ngày ${h} giờ`, `${d}d ${h}h left`) : L(`còn ${h} giờ`, `${h}h left`); };
+  const missing = e => /does not exist|schema cache|Could not find|PGRST202|PGRST205/i.test(String((e && (e.message || e.code)) || ""));
+  const ERR = {
+    NOT_LOGGED_IN: ["Đăng nhập trước đã.", "Please log in first."], NOT_OPEN: ["VPS ảo hoá chưa mở bán.", "Virtual VPS is not on sale yet."],
+    BAD_PLAN: ["Gói / số ngày không hợp lệ — tải lại trang rồi thử lại.", "Invalid plan or duration — reload and try again."],
+    BAD_OS: ["Bản Windows này không dùng được cho gói này.", "That Windows image can't be used with this plan."],
+    NO_CAPACITY: ["Máy chủ đang hết chỗ cho cấu hình / bản Windows này — chọn gói khác hoặc nhắn shop.", "No capacity for this plan / image right now — pick another or contact the shop."],
+    SLOW_DOWN: ["Thao tác hơi nhiều — chờ ít phút rồi thử lại.", "Too many attempts — wait a few minutes."],
+    EXPIRED: ["VPS đã hết hạn — gia hạn trước.", "This VPS has expired — renew first."], BUSY: ["VPS đang được tạo / cài lại — chờ xong rồi thử lại.", "The VPS is being set up — try again when it finishes."],
+    NO_REINSTALL_LEFT: ["Đã hết lượt cài lại. Nhắn shop nếu cần thêm.", "No reinstalls left. Contact the shop."], NOT_ALLOWED: ["VPS này không thuộc tài khoản của bạn.", "This VPS is not on your account."],
+    NOT_AUTO: ["Gói này chưa có bảng giá — nhắn shop.", "This plan has no price list — contact the shop."], BAD_CMD: ["Lệnh không hợp lệ.", "Invalid command."],
+    NOT_ADMIN: ["Cần quyền admin.", "Admin only."], BAD_PATCH: ["Dữ liệu nhập chưa đúng — xem lại các ô.", "Check the fields."], NO_HOST: ["Không thấy máy chủ.", "Host not found."],
+    HOST_HAS_VPS: ["Máy chủ còn VPS — xoá / chuyển hết VPS trước.", "The host still has VPS — remove them first."], PLAN_IN_USE: ["Gói đang có VPS dùng — tắt bán thay vì xoá.", "Plan in use — disable it instead."],
+    IMAGE_IN_USE: ["Bản Windows đang có VPS dùng — tắt thay vì xoá.", "Image in use — disable it instead."], NO_PRODUCT: ["Không thấy sản phẩm.", "Product not found."],
+    NO_VPS: ["Không thấy VPS.", "VPS not found."], NO_USER: ["Không thấy tài khoản (gõ tên đăng nhập hoặc email).", "No such account."]
+  };
+  const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
+    try { return errMsg(e); } catch (x) { return m || L("Lỗi không rõ.", "Unknown error."); } };
+  const VM = window.VMSHOP = { info: null, infoAt: 0, mine: null, mineAt: 0, adm: null, rev: null, revAt: 0, miss: false, uid: undefined, b: null };
+  window.VMPCS = window.VMPCS || new Set();
+  const rpc = (fn, args) => sb.rpc(fn, args || {});
+
+  // ---------------------------------------------------------------- hộp thoại riêng (không dùng hộp thoại của trình duyệt)
+  function dlg(html, cls) {
+    let m = $i("vzdlg");
+    if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "vzdlg"; m.hidden = true; document.body.appendChild(m);
+      m.addEventListener("click", e => { if (e.target === m || (e.target.closest && e.target.closest("[data-vmx]"))) m.hidden = true; }); }
+    m.innerHTML = `<div class="dlg vms-dlg${cls ? " " + cls : ""}" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false;
+    const f = m.querySelector("input:not([type=checkbox]),select"); if (f) setTimeout(() => { try { f.focus(); } catch (e) {} }, 30);
+    return m;
+  }
+  const closeDlg = () => { const m = $i("vzdlg"); if (m) m.hidden = true; };
+  const acts = (ok, okCls, id) => `<div class="err" id="vzd-err"></div><div class="acts"><button class="btn ghost" type="button" data-vmx="1">${L("Huỷ", "Cancel")}</button><button class="btn${okCls ? " " + okCls : ""}" type="button" id="${id || "vzd-ok"}">${ok}</button></div>`;
+  const dErr = t => { const e = $i("vzd-err"); if (e) e.textContent = t || ""; };
+
+  // ================================================================ KHÁCH: ô bán gói
+  async function info(force) {
+    if (!force && VM.info && Date.now() - VM.infoAt < 30000) return VM.info;
+    try { const { data, error } = await rpc("vm_shop_info"); VM.info = error ? { sell: false, miss: missing(error) } : O(data); }
+    catch (e) { VM.info = { sell: false }; }
+    VM.infoAt = Date.now(); return VM.info;
+  }
+  const p30 = p => { const pr = A(p.prices); return pr.find(x => N(x.days) === 30) || pr[pr.length - 1] || null; };
+  const osFor = (imgs, ram, disk) => A(imgs).filter(i => N(i.min_ram) <= N(ram) && N(i.min_disk) <= N(disk));
+  function shopBox() {
+    let s = $i("vm-shop");
+    if (!s) {
+      const shop = $i("shop"); if (!shop) return null;
+      s = document.createElement("section"); s.className = "wrap vms-sec"; s.id = "vm-shop"; s.hidden = true; s.setAttribute("aria-labelledby", "vms-h");
+      s.innerHTML = `<div class="vms-head"><h2 id="vms-h">🧩 ${L("VPS ảo hoá", "Virtual VPS")}<small>${L("Cấu hình có sẵn · Windows riêng của bạn · tự tạo trong vài phút", "Ready-made plans · your own Windows · ready in minutes")}</small></h2>
+        <p class="hint" id="vms-lead"></p></div><div class="vms-grid" id="vms-grid"></div>`;
+      shop.before(s);
+    }
+    return s;
+  }
+  function planCard(p, imgs) {
+    const pr = p30(p), os = osFor(imgs, p.ram_mb, p.disk_gb);
+    return `<div class="vms-plan${p.free ? "" : " out"}">
+      <b class="vms-nm">${esc(S(p.name, 40))}</b>
+      ${pr ? `<div class="vms-price"><b>${money(pr.price)}</b><small>/ ${N(pr.days) === 30 ? L("tháng", "month") : N(pr.days) + " " + L("ngày", "days")}</small></div>` : ""}
+      <ul class="vms-spec"><li>⚙️ <b>${N(p.cores)}</b> vCPU</li><li>🧠 <b>${gb(p.ram_mb)}</b> RAM</li><li>💾 <b>${N(p.disk_gb)} GB</b> SSD NVMe</li>
+        <li class="ctl">🖥 ${L("Điều khiển trên web · app ĐT · app PC", "Control from web · phone · PC app")}</li>
+        ${os.length ? `<li class="os">🪟 ${esc(os.map(i => shortOs(i.name)).join(" · "))}</li>` : ""}</ul>
+      ${S(p.note, 200) ? `<small class="hint">${esc(S(p.note, 200))}</small>` : ""}
+      <button class="btn" type="button" data-vmbuy="${esc(S(p.id, 30))}"${p.free ? "" : " disabled"}>${p.free ? "🛒 " + L("Mua ngay", "Buy now") : L("Tạm hết chỗ", "Sold out")}</button></div>`;
+  }
+  function shopRender() {
+    const s = shopBox(); if (!s) return;
+    const I = O(VM.info), plans = A(I.plans).filter(p => A(p.prices).length);
+    s.hidden = !(I.sell === true || (I.admin === true && isAdm())) || !plans.length;
+    if (s.hidden) return;
+    $i("vms-lead").innerHTML = (I.sell === true ? "" : `<b class="vms-adm">👁 ${L("Chỉ admin thấy — chưa bật bán (Quản trị › VPS ảo hoá › Cài đặt)", "Admin preview — selling is off")}</b><br>`)
+      + L("Máy ảo Windows riêng: bấm là vào màn hình trên web, app điện thoại, app máy tính — không cần IP, không cần cài gì. Hạn tính từ lúc VPS lên.",
+          "Your own Windows VM: open it from the web, phone app or PC app — no IP, nothing to install. Time starts when the VPS is up.");
+    $i("vms-grid").innerHTML = plans.map(p => planCard(p, I.images)).join("");
+  }
+  function buyOpen(id) {
+    if (!me()) { try { openAuth("login"); } catch (e) {} return; }
+    const I = O(VM.info), p = A(I.plans).find(x => x.id === id); if (!p) return;
+    const os = osFor(I.images, p.ram_mb, p.disk_gb), pr = p30(p);
+    VM.b = { plan: p.id, image: S((os.find(i => i.ready) || {}).id, 30), days: pr ? N(pr.days) : 0 };
+    dlg(`<h3>🧩 ${L("Mua", "Buy")} ${esc(S(p.name, 40))}</h3>
+      <div class="vms-chips"><span>⚙️ ${N(p.cores)} vCPU</span><span>🧠 ${gb(p.ram_mb)} RAM</span><span>💾 ${N(p.disk_gb)} GB SSD NVMe</span></div>
+      <div class="vms-lbl">① ${L("Chọn Windows", "Choose Windows")}</div><div class="vps-opts" id="vms-os"></div>
+      <div class="vms-lbl">② ${L("Thời gian", "Duration")}</div><div class="vps-opts" id="vms-days"></div>
+      <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="vms-sum" id="vms-sum"></div>
+      <div class="hint">✅ ${L("Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở <b>VPS ảo hoá của bạn</b>. Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
+        "After payment the VPS is created automatically (usually 3–10 min) — see <b>Your virtual VPS</b>. Time starts when it is up. No capacity → no charge.")}</div>
+      ${acts("💳 " + L("Thanh toán", "Pay"), "", "vms-pay")}`);
+    buyPaint();
+  }
+  function buyPaint() {
+    const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
+    const os = osFor(I.images, p.ram_mb, p.disk_gb);
+    $i("vms-os").innerHTML = os.length ? os.map(i => `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="${i.id === VM.b.image ? "on" : ""}" aria-pressed="${i.id === VM.b.image}"${i.ready ? "" : " disabled"}>
+        <b>${i.id === VM.b.image ? "✓ " : ""}${esc(shortOs(i.name))}</b><small>${i.ready ? L("có sẵn", "available") : L("chưa có máy mẫu", "not available yet")}</small></button>`).join("")
+      : `<div class="hint">${L("Chưa có bản Windows nào cho gói này — nhắn shop.", "No Windows image for this plan yet — contact the shop.")}</div>`;
+    $i("vms-days").innerHTML = A(p.prices).map(x => `<button type="button" data-vmdays="${N(x.days)}" class="${N(x.days) === VM.b.days ? "on" : ""}" aria-pressed="${N(x.days) === VM.b.days}">
+        <b>${N(x.days)} ${L("ngày", "days")}</b><small>${money(x.price)}</small></button>`).join("");
+    const pr = A(p.prices).find(x => N(x.days) === VM.b.days), u = me();
+    $i("vms-sum").innerHTML = pr ? `${L("Tổng", "Total")}: <b>${money(pr.price)}</b>${u ? ` <span class="hint">· ${L("số dư", "balance")} ${money(u.balance)}</span>` : ""}` : "";
+  }
+  async function pay(btn) {
+    const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
+    dErr("");
+    if (!VM.b.image) return dErr(L("Chọn bản Windows trước.", "Choose Windows first."));
+    const pr = A(p.prices).find(x => N(x.days) === VM.b.days); if (!pr) return dErr(L("Chọn thời gian.", "Choose a duration."));
+    const code = S($i("vms-promo") && $i("vms-promo").value, 40).trim(), u = me();
+    if (!code && u && N(u.balance) < N(pr.price)) {
+      closeDlg(); try { openTopup(Math.max(N(SITE && SITE.minTop) || 10000, Math.ceil((N(pr.price) - N(u.balance)) / 1000) * 1000)); } catch (e) { toast(L("Số dư không đủ — nạp thêm tiền.", "Insufficient balance."), 1); } return;
+    }
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_buy", Object.assign({ p_plan: p.id, p_image: VM.b.image, p_days: VM.b.days }, code ? { p_promo: code } : {}));
+      if (error) return dErr(em(error));
+      closeDlg();
+      toast(L(`Đã mua VPS-${N(O(data).id)} — máy chủ đang tạo, thường 3–10 phút.`, `VPS-${N(O(data).id)} purchased — it is being created (3–10 min).`));
+      await Promise.all([typeof loadProfile === "function" ? loadProfile() : null, mine(true), info(true)]).catch(() => {});
+      try { renderUser(); } catch (e) {}
+      shopRender();
+      const s = $i("vm-mine"); if (s && !s.hidden) try { s.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {}
+    });
+  }
+
+  // ================================================================ KHÁCH: VPS ảo hoá của bạn
+  function mineBox() {
+    let s = $i("vm-mine");
+    const after = $i("pcs-mine") || $i("m3-mine");
+    if (!s) {
+      if (!after) return null;
+      s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "vm-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "vm-mine-h");
+      s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="vm-mine-h"><span aria-hidden="true">🧩</span> <span>${L("VPS ảo hoá của bạn", "Your virtual VPS")}</span><small id="vm-mine-n"></small></h2>
+        <div class="m3m-hacts"><button class="btn ghost sm" type="button" id="vm-mine-new">➕ ${L("Mua thêm", "Buy more")}</button></div></div>
+        <div class="m3m-list" id="vm-mine-list"></div></div>`;
+      after.after(s);
+      $i("vm-mine-new").onclick = () => { const x = $i("vm-shop"); if (x && !x.hidden) { try { x.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {} } else location.hash = "#shop"; };
+    } else if (after && after.id === "pcs-mine" && after.nextElementSibling !== s) after.after(s);       // luôn ngay dưới "VPS GPU của bạn"
+    return s;
+  }
+  async function mine(force) {
+    if (!me()) { VM.mine = null; setPcs(new Set()); mineRender(); return; }
+    if (!force && VM.mine && Date.now() - VM.mineAt < 20000) { mineRender(); return; }
+    try { const { data, error } = await rpc("vm_my"); if (!error) { VM.mine = O(data); VM.mineAt = Date.now(); } else if (missing(error)) VM.mine = null; } catch (e) {}
+    setPcs(new Set(A(O(VM.mine).items).map(x => S(x.pc, 40)).filter(Boolean)));
+    mineRender();
+  }
+  function setPcs(s) {                                                // máy ảo cũng nằm trong "VPS GPU của bạn" (pc_my_vps) → trang web ẩn ở đó, hiện ở đây
+    const chg = [...s].sort().join() !== [...window.VMPCS].sort().join(); window.VMPCS = s;
+    if (chg) try { if (window.PCSHOP && typeof PCSHOP.render === "function") PCSHOP.render(); } catch (e) {}
+  }
+  function stOf(v) {
+    if (v.expired) return ["exp", "⛔ " + L("Hết hạn", "Expired"), T(v.delete_at) !== null ? L(`Gia hạn trước ${dt(v.delete_at)} để giữ VPS + dữ liệu — quá giờ đó VPS bị xoá.`, `Renew before ${dt(v.delete_at)} to keep the VPS and its data.`) : L("Gia hạn để dùng tiếp.", "Renew to keep using it.")];
+    if (v.err) return ["warn", "⚠️ " + L("Đang lỗi", "Error"), L("Máy chủ báo lỗi khi tạo / chạy VPS — shop đã được báo. Lâu quá thì nhắn shop kèm tên VPS.", "The host reported an error — the shop has been notified.")];
+    if (v.busy || v.status === "creating") return ["inst", "⚙️ " + L("Đang tạo / cài Windows", "Setting up"), L("Máy chủ đang dựng VPS (thường 3–10 phút). Xong là bấm Điều khiển được.", "The VPS is being prepared (usually 3–10 min).")];
+    if (v.want === "stopped" || v.status === "stopped") return ["off", "⏻ " + L("Đã tắt", "Stopped"), L("Bấm Bật để chạy lại.", "Press Start to run it again.")];
+    if (!v.online) return ["boot", "○ " + L("Đang khởi động…", "Starting…"), L("Windows đang lên (1–2 phút).", "Windows is starting (1–2 min).")];
+    return ["run", "● " + L("Đang chạy", "Running"), ""];
+  }
+  function card(v) {
+    const st = stOf(v), k = st[0], ms = left(v.until), soon = k === "run" && ms !== null && ms < 2 * 864e5, id = N(v.id), pc = S(v.pc, 40);
+    const on = k === "run" || k === "boot";
+    const spec = [S(v.plan_name, 30), N(v.cores) + " vCPU", gb(v.ram_mb) + " RAM", N(v.disk_gb) + " GB", shortOs(v.image_name)].filter(Boolean).join(" · ");
+    const b = [
+      pc && on ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(pc)}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`,
+      k === "off" ? `<button class="btn ghost sm" type="button" data-vmpow="start" data-vmid="${id}">⏻ ${L("Bật", "Start")}</button>`
+        : `<button class="btn ghost sm" type="button" data-vmpow="stop" data-vmid="${id}"${on ? "" : " disabled"}>⏻ ${L("Tắt", "Stop")}</button>`,
+      `<button class="btn ghost sm" type="button" data-vmpow="reset" data-vmid="${id}"${on ? "" : " disabled"} title="${esc(L("Khởi động cứng khi Windows bị treo", "Hard reset when Windows hangs"))}">🔁 ${L("Khởi động lại", "Reset")}</button>`,
+      `<button class="btn ghost sm" type="button" data-vmre="${id}"${k === "inst" || k === "exp" || N(v.left) < 1 ? " disabled" : ""}>💿 ${L("Cài lại", "Reinstall")} (${N(v.left)})</button>`,
+      `<button class="btn ghost sm" type="button" data-vmrenew="${id}"${T(v.until) === null || !A(v.prices).length ? " disabled" : ""}>⏱ ${L("Gia hạn", "Renew")}</button>`,
+      `<button class="btn danger sm" type="button" data-vmdel="${id}">🗑 ${L("Xoá VPS", "Delete")}</button>`].join("");
+    return `<div class="m3m-card vms-card${k === "run" ? " run" : ""}${soon || k === "exp" ? " soon" : ""}" data-vm="${id}">
+      <div class="m3m-top"><span class="pill${k === "run" ? " ok" : k === "exp" || k === "warn" ? " bad" : ""}">${esc(st[1])}</span></div>
+      <b class="m3m-nm">${esc(S(v.label, 40) || S(v.name, 40))}${S(v.label, 40) ? `<small>${esc(S(v.name, 20))}</small>` : ""}</b>
+      <small class="m3m-spec">${esc(spec)}</small>
+      ${st[2] ? `<div class="pcs-st${k === "exp" || k === "warn" ? " bad" : k === "off" ? " warn" : ""}">${esc(st[2])}</div>` : ""}
+      ${ms !== null && ms > 0 ? `<div class="m3m-exp${soon ? " warn" : ""}">${L("Còn", "")} <b data-cd="${esc(S(v.until, 40))}">${typeof cdText === "function" ? cdText(v.until) : daysLeft(v.until)}</b>${L("", " left")}</div>` : ""}
+      <div class="m3m-acts">${b}</div></div>`;
+  }
+  function mineRender() {
+    const s = mineBox(); if (!s) return;
+    const items = A(O(VM.mine).items);
+    s.hidden = !me() || !items.length;
+    clearTimeout(VM.mt);
+    if (s.hidden) { if (me() && VM.mine) VM.mt = setTimeout(() => mine(true), 120000); return; }
+    const run = items.filter(v => stOf(v)[0] === "run").length;
+    $i("vm-mine-n").textContent = L(`${items.length} VPS · ${run} đang chạy`, `${items.length} VPS · ${run} running`);
+    $i("vm-mine-list").innerHTML = items.map(v => { try { return card(v); } catch (e) { return ""; } }).join("");
+    const busyNow = items.some(v => ["inst", "boot"].includes(stOf(v)[0]));
+    VM.mt = setTimeout(() => mine(true), busyNow ? 15000 : 60000);
+  }
+  const vOf = id => A(O(VM.mine).items).find(x => N(x.id) === N(id));
+  async function pow(btn, id, act) {
+    await busy(btn, async () => {
+      const { error } = await rpc("vm_my_power", { p_id: N(id), p_act: act });
+      if (error) return toast(em(error), 1);
+      toast(act === "stop" ? L("Đang tắt VPS (khoảng 1 phút).", "Stopping the VPS (about 1 min).") : act === "start" ? L("Đang bật VPS (1–2 phút).", "Starting the VPS (1–2 min).") : L("Đang khởi động lại VPS.", "Resetting the VPS."));
+      await mine(true);
+    });
+  }
+  function reOpen(id) {
+    const v = vOf(id); if (!v) return;
+    const os = osFor(O(VM.mine).images, v.ram_mb, v.disk_gb);
+    VM.r = { id: N(id), image: S(v.image, 30) };
+    dlg(`<h3>💿 ${L("Cài lại / đổi Windows", "Reinstall / switch Windows")}</h3>
+      <div class="hint">${esc(S(v.label, 40) || S(v.name, 40))} · ${L(`còn ${N(v.left)} lần cài lại`, `${N(v.left)} reinstalls left`)}</div>
+      <div class="vps-opts" id="vms-reos">${os.map(i => `<button type="button" data-vmreos="${esc(S(i.id, 30))}" class="${i.id === VM.r.image ? "on" : ""}" aria-pressed="${i.id === VM.r.image}"><b>${esc(shortOs(i.name))}</b><small>${i.id === v.image ? L("đang dùng", "current") : "&nbsp;"}</small></button>`).join("")}</div>
+      <div class="note">⚠️ ${L("Cài lại = <b>XOÁ SẠCH</b> ổ của VPS rồi dựng lại Windows mới (vài phút). Dữ liệu trong VPS mất hết, hạn giữ nguyên.", "Reinstall = the VPS disk is <b>wiped</b> and Windows is set up again (a few minutes). All data is lost; your time is kept.")}</div>
+      <label class="vms-ack"><input type="checkbox" id="vms-re-ok"> ${L("Tôi hiểu: mất hết dữ liệu trong VPS", "I understand: all data in the VPS is lost")}</label>
+      ${acts("💿 " + L("Cài lại", "Reinstall"), "danger", "vms-re-go")}`);
+  }
+  async function reGo(btn) {
+    if (!$i("vms-re-ok").checked) return dErr(L("Tick ô xác nhận trước.", "Tick the confirmation box first."));
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_my_reinstall", { p_id: VM.r.id, p_image: VM.r.image });
+      if (error) return dErr(em(error));
+      closeDlg(); toast(L(`Đang cài lại — xong trong vài phút (còn ${N(O(data).left)} lần).`, `Reinstalling — ready in a few minutes (${N(O(data).left)} left).`)); await mine(true);
+    });
+  }
+  function renewOpen(id) {
+    const v = vOf(id); if (!v) return;
+    const pr = A(v.prices); VM.n = { id: N(id), days: N((pr.find(x => N(x.days) === 30) || pr[0] || {}).days) };
+    dlg(`<h3>⏱ ${L("Gia hạn", "Renew")} ${esc(S(v.label, 40) || S(v.name, 40))}</h3>
+      <div class="hint">${L("Hết hạn hiện tại", "Current expiry")}: <b>${dt(v.until)}</b> (${esc(daysLeft(v.until))})</div>
+      <div class="vps-opts" id="vms-rn-days"></div>
+      <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-rn-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="vms-sum" id="vms-rn-sum"></div>
+      ${acts("💳 " + L("Gia hạn", "Renew"), "", "vms-rn-go")}`);
+    renewPaint();
+  }
+  function renewPaint() {
+    const v = vOf(VM.n.id); if (!v) return;
+    $i("vms-rn-days").innerHTML = A(v.prices).map(x => `<button type="button" data-vmrndays="${N(x.days)}" class="${N(x.days) === VM.n.days ? "on" : ""}" aria-pressed="${N(x.days) === VM.n.days}"><b>+${N(x.days)} ${L("ngày", "days")}</b><small>${money(x.price)}</small></button>`).join("");
+    const pr = A(v.prices).find(x => N(x.days) === VM.n.days), u = me();
+    const base = Math.max(T(v.until) || Date.now(), Date.now()), to = pr ? new Date(base + N(pr.days) * 864e5).toISOString() : null;
+    $i("vms-rn-sum").innerHTML = pr ? `${L("Tổng", "Total")}: <b>${money(pr.price)}</b> · ${L("hạn mới", "new expiry")} ${dt(to)}${u ? ` <span class="hint">· ${L("số dư", "balance")} ${money(u.balance)}</span>` : ""}` : "";
+  }
+  async function renewGo(btn) {
+    const v = vOf(VM.n.id); if (!v) return;
+    const pr = A(v.prices).find(x => N(x.days) === VM.n.days); if (!pr) return dErr(L("Chọn số ngày.", "Choose the days."));
+    const code = S($i("vms-rn-promo").value, 40).trim(), u = me();
+    if (!code && u && N(u.balance) < N(pr.price)) { closeDlg(); try { openTopup(Math.max(N(SITE && SITE.minTop) || 10000, Math.ceil((N(pr.price) - N(u.balance)) / 1000) * 1000)); } catch (e) {} return; }
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_my_renew", Object.assign({ p_id: VM.n.id, p_days: VM.n.days }, code ? { p_promo: code } : {}));
+      if (error) return dErr(em(error));
+      closeDlg(); toast(L(`Đã gia hạn tới ${dt(O(data).until)}.`, `Renewed until ${dt(O(data).until)}.`));
+      await Promise.all([typeof loadProfile === "function" ? loadProfile() : null, mine(true)]).catch(() => {}); try { renderUser(); } catch (e) {}
+    });
+  }
+  function labelOpen(id) {
+    const v = vOf(id); if (!v) return; VM.l = N(id);
+    dlg(`<h3>✏️ ${L("Đặt tên cho", "Rename")} ${esc(S(v.name, 20))}</h3>
+      <label>${L("Tên hiển thị (để trống = bỏ tên)", "Display name (empty = none)")}<input class="in" id="vms-lb" maxlength="40" value="${esc(S(v.label, 40))}"></label>
+      ${acts(L("Lưu", "Save"), "", "vms-lb-go")}`);
+  }
+  async function labelGo(btn) {
+    await busy(btn, async () => {
+      const { error } = await rpc("vm_my_label", { p_id: VM.l, p_label: S($i("vms-lb").value, 40) });
+      if (error) return dErr(em(error)); closeDlg(); await mine(true);
+    });
+  }
+  function delOpen(id) {
+    const v = vOf(id); if (!v) return; VM.d = N(id);
+    dlg(`<h3>🗑 ${L("Xoá", "Delete")} ${esc(S(v.label, 40) || S(v.name, 40))}?</h3>
+      <div class="note">⚠️ ${L("VPS bị xoá hẳn khỏi máy chủ, dữ liệu mất hết, <b>không hoàn tiền</b> phần hạn còn lại.", "The VPS is removed from the host, all data is lost, and the remaining time is <b>not refunded</b>.")}</div>
+      <label class="vms-ack"><input type="checkbox" id="vms-del-ok"> ${L("Tôi hiểu: xoá hẳn, không hoàn tiền", "I understand: permanent, no refund")}</label>
+      ${acts("🗑 " + L("Xoá VPS", "Delete VPS"), "danger", "vms-del-go")}`);
+  }
+  async function delGo(btn) {
+    if (!$i("vms-del-ok").checked) return dErr(L("Tick ô xác nhận trước.", "Tick the confirmation box first."));
+    await busy(btn, async () => {
+      const { error } = await rpc("vm_my_cancel", { p_id: VM.d });
+      if (error) return dErr(em(error)); closeDlg(); toast(L("Đã xoá VPS.", "VPS deleted.")); await mine(true);
+    });
+  }
+
+  // ================================================================ ADMIN: Máy cho thuê › 🧩 VPS ảo hoá
+  const CMD = "bash <(curl -fsSL https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cai-cbhost.sh)";
+  const HST = { new: ["wt", "⏳ Chờ duyệt"], ready: ["ok", "Đang nhận VPS"], maint: ["wt", "Bảo trì (không nhận VPS mới)"], off: ["bad", "Tắt (VPS tạm dừng)"] };
+  const VST = { creating: "⚙️ Đang tạo", running: "● Đang chạy", stopped: "⏻ Đã tắt", error: "⚠️ Lỗi", deleted: "🗑 Đã xoá" };
+  async function admLoad(quiet) {
+    if (!isAdm()) return null;
+    if (VM.al) return VM.al;
+    VM.al = (async () => {
+      try {
+        const needRev = Date.now() - VM.revAt > 60000;
+        const [a, r] = await Promise.all([rpc("vm_admin_state"), needRev ? rpc("vm_admin_revenue", { p_months: 6 }) : null]);
+        if (a.error) { VM.miss = missing(a.error); VM.adm = null; if (!VM.miss && !quiet) toast(em(a.error), 1); }
+        else { VM.miss = false; VM.adm = O(a.data); }
+        if (r && !r.error) { VM.rev = O(r.data); VM.revAt = Date.now(); }
+      } catch (e) { if (!quiet) toast(em(e), 1); }
+      finally { VM.al = null; }
+      admRender(); badge();
+    })();
+    return VM.al;
+  }
+  function badge() {
+    const b = $i("vm-badge"); if (!b) return;
+    const d = O(VM.adm), n = A(d.hosts).filter(h => h.status === "new").length + A(d.vps).filter(v => v.status === "error").length;
+    b.textContent = n ? String(n) : ""; b.hidden = !n;
+  }
+  const hostOf = id => A(O(VM.adm).hosts).find(h => h.id === id);
+  const revM = i => A(O(VM.rev).months)[i] || null;
+  const revRow = (m, host) => A(O(m).rows).find(r => r.host === host) || null;
+  const mLbl = m => { const s = S(O(m).month, 7); return s ? "T" + (+s.slice(5)) + "/" + s.slice(0, 4) : ""; };
+  function admRender() {
+    const pane = $i("pane-vm"); if (!pane) return;
+    show("vma-miss", !!VM.miss);
+    const d = O(VM.adm), ok = !!VM.adm;
+    pane.querySelectorAll(":scope > .subtabs, :scope > .subpane, #vma-top").forEach(x => { x.style.display = ok ? "" : "none"; });
+    if (!ok) return;
+    admTop(d); admHosts(d); admVps(d); admPlans(d); admImages(d); admSet(d);
+  }
+  function admTop(d) {
+    const hs = A(d.hosts), vs = A(d.vps).filter(v => v.status !== "deleted"), m0 = revM(0), st = O(d.settings);
+    const on = hs.filter(h => h.online).length, nw = hs.filter(h => h.status === "new").length, priced = A(d.plans).filter(p => p.enabled && A(p.prices).length).length;
+    $i("vma-top").innerHTML = `
+      <div><span>🖥 ${L("Máy chủ Proxmox", "Proxmox hosts")}</span><b>${on}/${hs.length}</b><span>${L("đang liên lạc", "online")}${nw ? ` · <b style="font-size:13px;color:var(--gold-hi)">${nw} ${L("chờ duyệt", "pending")}</b>` : ""}</span></div>
+      <div><span>🧩 VPS</span><b>${vs.filter(v => v.status === "running").length}/${vs.length}</b><span>${L("đang chạy", "running")} · ${vs.filter(v => v.status === "creating").length} ${L("đang tạo", "creating")} · ${vs.filter(v => v.status === "error").length} ${L("lỗi", "errors")}</span></div>
+      <div><span>💰 ${L("Doanh thu", "Revenue")} ${mLbl(m0) || L("tháng này", "this month")}</span><b>${vndS(O(m0).amount_total)}</b><span>💵 ${L("đã thu", "collected")} ${vndS(O(m0).cash_total)}</span></div>
+      <div><span>🛒 ${L("Bán cho khách", "Selling")}</span><b style="color:${st.sell ? "var(--ok)" : "var(--muted)"}">${st.sell ? L("ĐANG BÁN", "ON") : L("CHƯA BÁN", "OFF")}</b>
+        ${priced ? `<span>${priced} ${L("gói có giá", "priced plans")}</span>` : `<span style="color:var(--bad)">⚠️ ${L("chưa nhập giá gói nào — khách chưa thấy gì (💲 Gói & giá › ✏️ Sửa)", "no plan has a price yet")}</span>`}
+        <button class="btn ${st.sell ? "ghost" : "okb"} sm" type="button" data-vmaset="sell" data-v="${st.sell ? "0" : "1"}">${st.sell ? L("Tắt bán", "Stop selling") : L("Bật bán", "Start selling")}</button></div>`;
+  }
+  function admHosts(d) {
+    const st = O(d.settings), imgs = A(d.images).filter(i => i.enabled), m0 = revM(0), m1 = revM(1);
+    const hs = A(d.hosts);
+    const revAll = A(O(VM.rev).months).filter(m => A(m.rows).length || N(m.cash_total));
+    $i("vma-hosts").innerHTML = `
+      <div class="hint">${L("Máy chủ Proxmox chạy cbhost tự hiện ở đây (chờ duyệt). Lệnh cài: tab ⚙ Cài đặt. Mỗi VPS là 1 máy ảo nhân bản từ máy mẫu Windows (tên tpl-…).", "Hosts running cbhost appear here (pending approval). Install command: ⚙ Settings tab.")}</div>
+      ${hs.length ? "" : `<div class="note">${L("Chưa có máy chủ nào. Cài Proxmox VE lên 1 máy riêng → mở Shell của Proxmox → dán lệnh cài ở tab ⚙ Cài đặt → máy hiện ở đây → bấm Duyệt.", "No hosts yet. Install Proxmox VE, run the install command from ⚙ Settings, then approve the host here.")}</div>`}
+      <div class="vma-list">${hs.map(h => {
+        const i = O(h.info), mt = O(h.metrics), u = O(h.used), hs0 = HST[h.status] || ["", h.status], tp = A(mt.tpl);
+        const capC = Math.floor(N(i.threads) * N(st.cpu_over || 3)), capR = Math.max(0, N(i.ram_mb) - N(st.ram_reserve_mb)), capD = Math.floor(N(i.disk_gb) * N(st.disk_over || 1.5));
+        const r0 = revRow(m0, h.id), r1 = revRow(m1, h.id), lan = S(i.lan_ip, 64);
+        return `<div class="vma-host${h.status === "new" ? " new" : ""}" data-vmhost="${esc(S(h.id, 40))}">
+          <div class="hd"><span class="vma-dot${h.online ? " on" : ""}" title="${esc(h.online ? L("đang liên lạc", "online") : L("mất liên lạc", "offline"))}"></span><b>${esc(S(h.name, 40))}</b>
+            <span class="pill ${hs0[0]}">${esc(hs0[1])}</span><span class="hint">${esc(L("báo về", "seen") + " " + ago(h.last_seen))} · cbhost ${esc(S(i.ver || mt.ver, 20) || "?")}${S(i.pve, 12) ? " · Proxmox " + esc(S(i.pve, 12)) : ""}</span></div>
+          <div class="vma-kv"><span>CPU <b>${esc(S(i.cpu, 60) || "?")}</b> · ${N(i.threads)} ${L("luồng", "threads")} · ${L("đang dùng", "load")} <b>${N(mt.cpu)}%</b></span>
+            <span>RAM <b>${gb(mt.ram_used_mb)}</b> / ${gb(i.ram_mb)}</span><span>${L("Ổ máy ảo", "VM storage")} <b>${N(i.disk_gb)} GB</b></span>${i.kvm === false ? `<span style="color:var(--bad)">⚠️ ${L("không có KVM (chưa bật ảo hoá trong BIOS)", "no KVM")}</span>` : ""}</div>
+          <div class="vma-kv"><span>VPS <b>${N(u.n)}</b> / ${N(h.slots)} ${L("chỗ", "slots")}</span><span>vCPU ${L("đã bán", "sold")} <b>${N(u.cores)}</b> / ${capC}</span><span>RAM ${L("đã bán", "sold")} <b>${gb(u.ram_mb)}</b> / ${gb(capR)}</span><span>${L("Ổ đã bán", "Disk sold")} <b>${N(u.disk_gb)}</b> / ${capD} GB</span><span>${L("máy ảo đang bật", "VMs on")}: <b>${N(mt.running)}</b></span></div>
+          <div class="vma-tpl"><span class="hint" style="border:0;padding:0">${L("Máy mẫu", "Templates")}:</span>${imgs.map(x => `<span class="${tp.includes(x.tpl) ? "ok" : "no"}" title="${esc(S(x.name, 60))}">${tp.includes(x.tpl) ? "✓" : "✗"} ${esc(S(x.tpl, 42))}</span>`).join("") || `<span>${L("chưa khai bản Windows", "no images")}</span>`}</div>
+          <div class="vma-kv"><span>IP ${L("công khai", "public")} <b>${esc(S(h.pub_ip, 64) || "?")}</b></span>${lan ? `<span>LAN <b>${esc(lan)}</b></span>` : ""}${S(h.note, 300) ? `<span>📝 ${esc(S(h.note, 300))}</span>` : ""}</div>
+          <div class="vma-rev">💰 ${mLbl(m0)}: <b>${vndS(O(r0).amount)}</b> · 💵 ${L("đã thu", "collected")} <b>${vndS(O(r0).cash)}</b> (${N(O(r0).pays)} ${L("lần trả", "payments")})${m1 ? ` <span class="hint">· ${mLbl(m1)}: ${vndS(O(r1).amount)}</span>` : ""}</div>
+          <div class="vma-acts">
+            ${h.status === "new" ? `<button class="btn okb sm" type="button" data-vmah="approve">✅ ${L("Duyệt máy này", "Approve")}</button>` : ""}
+            ${h.status !== "new" && h.status !== "ready" ? `<button class="btn ghost sm" type="button" data-vmah="ready">▶ ${L("Nhận VPS", "Accept VPS")}</button>` : ""}
+            ${h.status === "ready" ? `<button class="btn ghost sm" type="button" data-vmah="maint">⏸ ${L("Bảo trì", "Maintenance")}</button>` : ""}
+            ${h.status !== "new" && h.status !== "off" ? `<button class="btn ghost sm" type="button" data-vmah="off" title="${esc(L("Tắt mọi VPS trên máy này (giữ dữ liệu)", "Stop every VPS on this host (data kept)"))}">⏻ ${L("Tắt", "Off")}</button>` : ""}
+            ${lan ? `<a class="btn ghost sm" href="https://${esc(lan)}:8006" target="_blank" rel="noopener" title="${esc(L("Trang quản lý Proxmox — mở được khi máy bạn cùng mạng LAN với máy chủ (hoặc mở từ trong 1 VPS trên máy đó)", "Proxmox web UI — reachable from the same LAN"))}">🔧 ${L("Trang Proxmox", "Proxmox UI")}</a>` : ""}
+            <button class="btn ghost sm" type="button" data-vmah="edit">✏️ ${L("Tên · chỗ · ghi chú", "Name · slots · note")}</button>
+            <button class="btn danger sm" type="button" data-vmah="del"${N(u.n) ? " disabled title=\"" + esc(L("còn VPS trên máy này", "host still has VPS")) + "\"" : ""}>🗑 ${L("Xoá", "Delete")}</button></div></div>`; }).join("")}</div>
+      ${revAll.length ? `<details class="vma-sec"><summary><b>📈 ${L("Doanh thu VPS ảo hoá theo tháng", "Monthly revenue")}</b> <span class="hint">${L("💰 = tiền khách trả rải đều theo thời gian VPS chạy trên từng máy chủ · 💵 = tiền khách trả trong tháng", "💰 accrued · 💵 collected")}</span></summary>
+        <div class="tbl"><table><thead><tr><th>${L("Tháng", "Month")}</th><th>💰</th><th>💵</th><th>${L("Từng máy chủ", "Per host")}</th></tr></thead><tbody>${revAll.map(m => `<tr><td>${mLbl(m)}${m.closed ? "" : " " + L("(đang tính)", "(running)")}</td><td class="num">${vndS(m.amount_total)}</td><td class="num">${vndS(m.cash_total)}</td>
+          <td>${A(m.rows).map(r => `${esc(S(r.name, 40))}: ${vndS(r.amount)} / ${vndS(r.cash)}`).join(" · ") || "—"}</td></tr>`).join("")}</tbody></table></div></details>` : ""}`;
+  }
+  function vpsRow(v, hs) {
+    const h = hs.find(x => x.id === v.host), live = v.status !== "deleted", on = v.status === "running", ms = left(v.until);
+    const busyNow = v.inst_done < v.inst_gen || v.status === "creating";
+    return `<div class="vma-vps" data-vmv="${N(v.id)}">
+      <div class="hd"><b>VPS-${N(v.id)}</b>${S(v.label, 40) ? `<span class="hint">“${esc(S(v.label, 40))}”</span>` : ""}<span class="pill${on ? " ok" : v.status === "error" ? " bad" : v.status === "creating" ? " wt" : ""}">${esc(VST[v.status] || v.status)}${v.want === "stopped" && v.status !== "stopped" ? " → " + L("tắt", "stop") : ""}</span>
+        ${on ? `<span class="hint">${v.online ? "🟢 agent " + L("đang báo về", "online") : "○ agent " + L("chưa báo về", "offline")}</span>` : ""}<span class="hint">👤 <b>${esc(S(v.user, 40))}</b></span></div>
+      <div class="vma-kv"><span>${esc(S(v.plan, 24))} · <b>${N(v.cores)}</b> vCPU · <b>${gb(v.ram_mb)}</b> · <b>${N(v.disk_gb)} GB</b></span><span>🪟 ${esc(S(v.image, 24))}</span>
+        <span>🖥 ${esc(h ? S(h.name, 40) : "?")} · ${L("chỗ", "slot")} ${N(v.slot)}</span><span>⏱ ${T(v.until) === null ? L("chưa bắt đầu (tính từ lúc VPS lên)", "not started") : esc(daysLeft(v.until)) + " (" + dt(v.until) + ")"}</span>
+        <span>${L("cài lại còn", "reinstalls")} ${N(v.left)}</span><span>${L("tạo", "created")} ${dt(v.created_at)}</span>${S(v.end_why, 20) ? `<span>${L("lý do dừng", "ended")}: ${esc(S(v.end_why, 20))}</span>` : ""}</div>
+      ${S(v.err, 300) ? `<div class="pcs-st bad">${esc(S(v.err, 300))}</div>` : ""}
+      ${live ? `<div class="vma-acts">
+        ${S(v.pc, 40) ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(v.pc, 40))}" target="_blank" rel="noopener">▶ ${L("Điều khiển", "Control")}</a>` : ""}
+        ${v.want === "stopped" ? `<button class="btn ghost sm" type="button" data-vmav="start">⏻ ${L("Bật", "Start")}</button>` : `<button class="btn ghost sm" type="button" data-vmav="stop">⏻ ${L("Tắt", "Stop")}</button>`}
+        <button class="btn ghost sm" type="button" data-vmav="reset"${on ? "" : " disabled"}>🔁 Reset</button>
+        <button class="btn ghost sm" type="button" data-vmav="reinstall"${busyNow ? " disabled" : ""}>💿 ${L("Cài lại", "Reinstall")}</button>
+        ${v.status === "error" || busyNow ? `<button class="btn ghost sm" type="button" data-vmav="retry">⟳ ${L("Tạo lại", "Rebuild")}</button>` : ""}
+        <button class="btn ghost sm" type="button" data-vmav="extend">⏱ ${L("Cộng / trừ ngày", "± days")}</button>
+        <button class="btn danger sm" type="button" data-vmav="delete">🗑 ${L("Xoá", "Delete")}</button>
+        ${S(v.order, 40) ? `<button class="btn danger sm" type="button" data-vmav="refund">↩ ${L("Hoàn tiền + xoá", "Refund + delete")}</button>` : ""}</div>` : ""}</div>`;
+  }
+  function admVps(d) {
+    const q = S($i("vma-q") && $i("vma-q").value, 60).trim().toLowerCase(), f = S($i("vma-f") && $i("vma-f").value, 20), hs = A(d.hosts);
+    let vs = A(d.vps);
+    if (f === "live") vs = vs.filter(v => v.status !== "deleted"); else if (f) vs = vs.filter(v => v.status === f);
+    if (q) vs = vs.filter(v => [("vps-" + v.id), v.label, v.user, v.plan, v.image, (hs.find(h => h.id === v.host) || {}).name].map(x => S(x, 60).toLowerCase()).join(" ").includes(q));
+    $i("vma-vps").innerHTML = vs.length ? vs.map(v => { try { return vpsRow(v, hs); } catch (e) { return ""; } }).join("") : `<div class="hint">${L("Chưa có VPS nào khớp.", "No VPS match.")}</div>`;
+  }
+  function admPlans(d) {
+    const ps = A(d.plans);
+    $i("vma-plans").innerHTML = `<div class="tbl"><table><thead><tr><th>${L("Gói", "Plan")}</th><th>vCPU</th><th>RAM</th><th>${L("Ổ", "Disk")}</th><th>${L("Giá", "Prices")}</th><th>${L("Bán", "On")}</th><th></th></tr></thead><tbody>
+      ${ps.map(p => `<tr><td><b>${esc(S(p.name, 40))}</b><div class="hint">${esc(S(p.id, 24))}${S(p.note, 80) ? " · " + esc(S(p.note, 80)) : ""}</div></td><td class="num">${N(p.cores)}</td><td class="num">${gb(p.ram_mb)}</td><td class="num">${N(p.disk_gb)} GB</td>
+        <td class="num">${A(p.prices).map(x => `${N(x.days)}n: ${vndS(x.price)}`).join("<br>") || `<span style="color:var(--bad)">${L("chưa có giá — khách chưa thấy", "no price — hidden")}</span>`}</td>
+        <td>${p.enabled ? '<span class="pill ok">' + L("bán", "on") + "</span>" : '<span class="pill">' + L("ẩn", "off") + "</span>"}</td>
+        <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmap="${esc(S(p.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`).join("")}</tbody></table></div>`;
+  }
+  function admImages(d) {
+    const is = A(d.images), hs = A(d.hosts);
+    $i("vma-images").innerHTML = `<div class="tbl"><table><thead><tr><th>${L("Bản Windows", "Image")}</th><th>${L("Tên máy mẫu trên Proxmox", "Template name")}</th><th>${L("Tối thiểu", "Minimum")}</th><th>${L("Máy chủ có mẫu", "Hosts with it")}</th><th>${L("Bán", "On")}</th><th></th></tr></thead><tbody>
+      ${is.map(i => { const have = hs.filter(h => A(O(h.metrics).tpl).includes(i.tpl)).map(h => S(h.name, 30));
+        return `<tr><td><b>${esc(S(i.name, 60))}</b><div class="hint">${esc(S(i.id, 24))}</div></td><td><code>${esc(S(i.tpl, 42))}</code></td><td class="num">${gb(i.min_ram)} RAM<br>${N(i.min_disk)} GB</td>
+          <td>${have.length ? esc(have.join(", ")) : `<span style="color:var(--bad)">${L("chưa máy nào", "none")}</span>`}</td><td>${i.enabled ? '<span class="pill ok">' + L("bán", "on") + "</span>" : '<span class="pill">' + L("ẩn", "off") + "</span>"}</td>
+          <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmai="${esc(S(i.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`; }).join("")}</tbody></table></div>`;
+  }
+  function admSet(d) {
+    const st = O(d.settings), box = $i("vma-set"); if (!box || box.dataset.dirty === "1") return;
+    const ps = A(d.plans).filter(p => p.enabled), is = A(d.images).filter(i => i.enabled);
+    box.innerHTML = `
+      <div class="vma-sec"><h4>🛒 ${L("Bán hàng", "Selling")}</h4><div class="vma-set">
+        <label class="chk"><input type="checkbox" id="vma-s-sell"${st.sell ? " checked" : ""}> ${L("Bật bán cho khách (tắt: chỉ admin thấy ô VPS ảo hoá)", "Sell to customers")}</label>
+        <label class="chk"><input type="checkbox" id="vma-s-auto"${st.auto_approve ? " checked" : ""}> ${L("Máy chủ Proxmox mới tự được duyệt", "Auto-approve new hosts")}</label>
+        <label>${L("Hết hạn: giữ dữ liệu (ngày) rồi xoá", "Keep data after expiry (days)")}<input class="in" type="number" id="vma-s-grace" min="0" max="60" step="1" value="${N(st.grace_days)}"></label>
+        <label>${L("Khách tự cài lại tối đa (lần / VPS)", "Customer reinstalls per VPS")}<input class="in" type="number" id="vma-s-rmax" min="0" max="50" step="1" value="${N(st.reinstall_max)}"></label>
+        <label>${L("Báo admin khi tạo quá (phút)", "Alert when creation exceeds (min)")}<input class="in" type="number" id="vma-s-cmin" min="10" max="600" step="5" value="${N(st.create_min)}"></label></div></div>
+      <div class="vma-sec"><h4>⚖️ ${L("Chia tài nguyên máy chủ", "Host overcommit")}</h4><div class="vma-set">
+        <label>${L("CPU: vCPU bán được = số luồng ×", "vCPU per thread ×")}<input class="in" type="number" id="vma-s-cpu" min="1" max="16" step="0.5" value="${N(st.cpu_over)}"></label>
+        <label>${L("RAM chừa lại cho máy chủ (GB)", "RAM reserved for the host (GB)")}<input class="in" type="number" id="vma-s-ram" min="0" max="64" step="1" value="${Math.round(N(st.ram_reserve_mb) / 1024)}"></label>
+        <label>${L("Ổ: dung lượng bán được = ổ thật ×", "Disk ×")}<input class="in" type="number" id="vma-s-disk" min="1" max="10" step="0.1" value="${N(st.disk_over)}"></label></div>
+        <button class="btn sm" type="button" id="vma-s-save" style="justify-self:start">💾 ${L("Lưu cài đặt", "Save settings")}</button></div>
+      <div class="vma-sec"><h4>🖥 ${L("Thêm máy chủ Proxmox", "Add a Proxmox host")}</h4>
+        <div class="hint">${L("Trên máy đã cài Proxmox VE: mở <b>Shell</b> (trang Proxmox › tên máy › Shell, hoặc đăng nhập root) → dán lệnh dưới → Enter. Khoảng 1 phút sau máy hiện ở tab 🖥 Máy chủ → bấm Duyệt. Không cần nhập khoá bí mật nào.", "On the Proxmox host open a Shell, paste this command, then approve the host in the Hosts tab.")}</div>
+        <div class="vma-cmd"><code id="vma-cmd">${esc(CMD)}</code><button class="btn ghost sm" type="button" id="vma-cmd-copy">📋 Copy</button></div></div>
+      <div class="vma-sec"><h4>🎁 ${L("Tạo VPS cho 1 tài khoản (không trừ tiền — thử máy / tặng / VPS quản trị của bạn)", "Create a VPS for an account (free)")}</h4><div class="vma-set">
+        <label>${L("Tên đăng nhập / email", "Username / email")}<input class="in" id="vma-g-user" maxlength="80" autocomplete="off" value="${esc(S(O(me()).username, 60))}"></label>
+        <label>${L("Gói", "Plan")}<select class="in" id="vma-g-plan">${ps.map(p => `<option value="${esc(S(p.id, 24))}">${esc(S(p.name, 40))} — ${N(p.cores)} vCPU · ${gb(p.ram_mb)} · ${N(p.disk_gb)} GB</option>`).join("")}</select></label>
+        <label>${L("Windows", "Windows")}<select class="in" id="vma-g-img">${is.map(i => `<option value="${esc(S(i.id, 24))}">${esc(S(i.name, 60))}</option>`).join("")}</select></label>
+        <label>${L("Số ngày", "Days")}<input class="in" type="number" id="vma-g-days" min="1" max="3650" step="1" value="30"></label></div>
+        <div class="hint">${L("Mẹo: tạo 1 VPS cho chính bạn trên mỗi máy chủ → vào VPS đó mở trang Proxmox (https://IP-LAN:8006) là quản lý được máy chính từ bất cứ đâu.", "Tip: a VPS of your own on each host lets you open the Proxmox UI from anywhere.")}</div>
+        <button class="btn sm" type="button" id="vma-g-go" style="justify-self:start">➕ ${L("Tạo VPS", "Create VPS")}</button><div class="err" id="vma-g-err"></div></div>`;
+  }
+  async function admCall(btn, fn, args, okMsg) {
+    let out = null;
+    await busy(btn, async () => {
+      const { data, error } = await rpc(fn, args);
+      if (error) { toast(em(error), 1); return; }
+      out = data === null ? {} : data; if (okMsg) toast(okMsg);
+    });
+    if (out !== null) { VM.revAt = 0; await admLoad(true); }
+    return out;
+  }
+  function hostEdit(h) {
+    VM.h = h.id;
+    dlg(`<h3>✏️ ${L("Máy chủ", "Host")} ${esc(S(h.name, 40))}</h3>
+      <div class="grid2"><label>${L("Tên", "Name")}<input class="in" id="vma-h-name" maxlength="40" value="${esc(S(h.name, 40))}"></label>
+        <label>${L("Số VPS tối đa (chỗ)", "Max VPS (slots)")}<input class="in" type="number" id="vma-h-slots" min="1" max="500" step="1" value="${N(h.slots)}"></label></div>
+      <label>${L("Ghi chú (chỉ admin thấy)", "Note (admin only)")}<input class="in" id="vma-h-note" maxlength="300" value="${esc(S(h.note, 300))}"></label>
+      ${acts(L("Lưu", "Save"), "", "vma-h-go")}`);
+  }
+  function hostDel(h) {
+    VM.h = h.id;
+    dlg(`<h3>🗑 ${L("Xoá máy chủ", "Delete host")} ${esc(S(h.name, 40))}?</h3>
+      <div class="note">${L("Chỉ xoá khỏi danh sách trên web (máy chủ không còn VPS). Muốn dùng lại: chạy lại lệnh cài trên máy đó rồi duyệt lại.", "Removes it from the web list only. Re-run the install command to add it again.")}</div>
+      ${acts("🗑 " + L("Xoá", "Delete"), "danger", "vma-hdel-go")}`);
+  }
+  function planEdit(p) {
+    const nw = !p; p = p || { id: "", name: "", cores: 2, ram_mb: 2048, disk_gb: 20, prices: [{ days: 30, price: 0 }], enabled: true, sort: 9, note: "" };
+    VM.p = nw ? null : p.id;
+    const rows = A(p.prices).length ? A(p.prices) : [{ days: 30, price: 0 }];
+    dlg(`<h3>${nw ? "➕ " + L("Thêm gói", "New plan") : "✏️ " + L("Gói", "Plan") + " " + esc(S(p.name, 40))}</h3>
+      ${nw ? `<label>${L("Mã gói (chữ thường, số, gạch nối — vd vps6-12)", "Plan id (e.g. vps6-12)")}<input class="in" id="vma-p-id" maxlength="24" spellcheck="false" placeholder="vps6-12"></label>` : ""}
+      <div class="grid2"><label>${L("Tên hiển thị", "Name")}<input class="in" id="vma-p-name" maxlength="40" value="${esc(S(p.name, 40))}" placeholder="VPS 6-12"></label>
+        <label>${L("Thứ tự", "Sort")}<input class="in" type="number" id="vma-p-sort" min="0" max="999" step="1" value="${N(p.sort)}"></label></div>
+      <div class="grid3"><label>vCPU<input class="in" type="number" id="vma-p-cores" min="1" max="64" step="1" value="${N(p.cores)}"></label>
+        <label>RAM (GB)<input class="in" type="number" id="vma-p-ram" min="0.5" max="256" step="0.5" value="${N(p.ram_mb) / 1024}"></label>
+        <label>${L("Ổ (GB)", "Disk (GB)")}<input class="in" type="number" id="vma-p-disk" min="10" max="4000" step="1" value="${N(p.disk_gb)}"></label></div>
+      <div class="vms-lbl">${L("Bảng giá (số ngày → giá, đồng)", "Prices (days → VND)")}</div>
+      <div class="vms-rows" id="vma-p-rows">${rows.map(x => priceRow(x.days, x.price)).join("")}</div>
+      <button class="btn ghost sm" type="button" id="vma-p-add" style="justify-self:start">➕ ${L("Thêm mức giá", "Add a price")}</button>
+      <label>${L("Ghi chú hiện cho khách (tuỳ chọn)", "Note shown to customers (optional)")}<input class="in" id="vma-p-note" maxlength="200" value="${esc(S(p.note, 200))}"></label>
+      <label class="vms-ack"><input type="checkbox" id="vma-p-on"${p.enabled ? " checked" : ""}> ${L("Đang bán gói này", "Plan on sale")}</label>
+      ${nw ? "" : `<div class="hint">${L("Đổi CPU / RAM / ổ chỉ áp dụng cho VPS mua SAU khi lưu. Gói chưa có VPS nào dùng thì xoá được.", "Spec changes apply to new VPS only.")}</div>`}
+      ${acts("💾 " + L("Lưu", "Save"), "", "vma-p-go")}${nw ? "" : `<button class="btn ghost sm" type="button" id="vma-p-del">🗑 ${L("Xoá gói này", "Delete this plan")}</button>`}`);
+  }
+  const priceRow = (d, p) => `<div class="vms-row"><input class="in" type="number" min="1" max="3650" step="1" value="${N(d) || ""}" placeholder="${L("số ngày", "days")}" data-pr="d">
+    <input class="in" type="number" min="0" max="9999999999" step="1000" value="${N(p) || ""}" placeholder="${L("giá (đ)", "price")}" data-pr="p"><button class="btn ghost sm" type="button" data-prdel="1" title="${esc(L("Bỏ mức giá này", "Remove"))}">✕</button></div>`;
+  function planCollect() {
+    const prices = [...document.querySelectorAll("#vma-p-rows .vms-row")].map(r => ({ days: Math.round(N(r.querySelector('[data-pr="d"]').value)), price: Math.round(N(r.querySelector('[data-pr="p"]').value)) }))
+      .filter(x => x.days > 0 && x.days <= 9999 && x.price >= 0 && x.price <= 9999999999);
+    const seen = new Set(), uniq = prices.filter(x => !seen.has(x.days) && seen.add(x.days));
+    return { name: S($i("vma-p-name").value, 40).trim(), cores: Math.round(N($i("vma-p-cores").value)), ram_mb: Math.round(N($i("vma-p-ram").value) * 1024),
+             disk_gb: Math.round(N($i("vma-p-disk").value)), sort: Math.round(N($i("vma-p-sort").value)), note: S($i("vma-p-note").value, 200).trim(), enabled: !!$i("vma-p-on").checked, prices: uniq };
+  }
+  async function planSave(btn) {
+    const id = VM.p || S($i("vma-p-id") && $i("vma-p-id").value, 24).trim().toLowerCase(), patch = planCollect();
+    if (!/^[a-z0-9][a-z0-9-]{1,23}$/.test(id)) return dErr(L("Mã gói chỉ gồm chữ thường, số, gạch nối (2–24 ký tự), vd vps6-12.", "Plan id: lowercase letters, digits, dashes."));
+    if (!patch.prices.length) return dErr(L("Cần ít nhất 1 mức giá (số ngày + giá).", "Add at least one price."));
+    if (patch.prices.length > 12) return dErr(L("Tối đa 12 mức giá.", "At most 12 prices."));
+    if (patch.cores < 1 || patch.ram_mb < 512 || patch.disk_gb < 10) return dErr(L("CPU ≥ 1, RAM ≥ 0,5 GB, ổ ≥ 10 GB.", "CPU ≥ 1, RAM ≥ 0.5 GB, disk ≥ 10 GB."));
+    if (!patch.name) delete patch.name;
+    await busy(btn, async () => {
+      const { error } = await rpc("vm_admin_plan", { p_id: id, p_patch: patch });
+      if (error) return dErr(em(error)); closeDlg(); toast(L("Đã lưu gói.", "Plan saved.")); await admLoad(true);
+    });
+  }
+  function imgEdit(i) {
+    const nw = !i; i = i || { id: "", name: "", tpl: "tpl-", min_ram: 2048, min_disk: 20, enabled: true, sort: 9 };
+    VM.i = nw ? null : i.id;
+    dlg(`<h3>${nw ? "➕ " + L("Thêm bản Windows", "New image") : "✏️ " + esc(S(i.name, 60))}</h3>
+      ${nw ? `<label>${L("Mã (chữ thường, số, gạch nối — vd win11)", "Id (e.g. win11)")}<input class="in" id="vma-i-id" maxlength="24" spellcheck="false" placeholder="win11"></label>` : ""}
+      <label>${L("Tên hiện cho khách", "Name")}<input class="in" id="vma-i-name" maxlength="60" value="${esc(S(i.name, 60))}" placeholder="Windows 11 LTSC"></label>
+      <label>${L("Tên máy mẫu trên Proxmox (đặt ĐÚNG tên này cho máy mẫu)", "Template name on Proxmox")}<input class="in" id="vma-i-tpl" maxlength="42" spellcheck="false" value="${esc(S(i.tpl, 42))}"></label>
+      <div class="grid3"><label>${L("RAM tối thiểu (GB)", "Min RAM (GB)")}<input class="in" type="number" id="vma-i-ram" min="0.5" max="256" step="0.5" value="${N(i.min_ram) / 1024}"></label>
+        <label>${L("Ổ tối thiểu (GB)", "Min disk (GB)")}<input class="in" type="number" id="vma-i-disk" min="10" max="4000" step="1" value="${N(i.min_disk)}"></label>
+        <label>${L("Thứ tự", "Sort")}<input class="in" type="number" id="vma-i-sort" min="0" max="999" step="1" value="${N(i.sort)}"></label></div>
+      <label class="vms-ack"><input type="checkbox" id="vma-i-on"${i.enabled ? " checked" : ""}> ${L("Cho khách chọn bản này", "Offer this image")}</label>
+      ${acts("💾 " + L("Lưu", "Save"), "", "vma-i-go")}${nw ? "" : `<button class="btn ghost sm" type="button" id="vma-i-del">🗑 ${L("Xoá bản này", "Delete this image")}</button>`}`);
+  }
+  async function imgSave(btn) {
+    const id = VM.i || S($i("vma-i-id") && $i("vma-i-id").value, 24).trim().toLowerCase(), tpl = S($i("vma-i-tpl").value, 42).trim();
+    if (!/^[a-z0-9][a-z0-9-]{1,23}$/.test(id)) return dErr(L("Mã chỉ gồm chữ thường, số, gạch nối (2–24 ký tự).", "Id: lowercase letters, digits, dashes."));
+    if (!/^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$/.test(tpl)) return dErr(L("Tên máy mẫu chỉ gồm chữ, số, dấu chấm, gạch nối (vd tpl-win2012r2).", "Template name: letters, digits, dots, dashes."));
+    const patch = { name: S($i("vma-i-name").value, 60).trim(), tpl, min_ram: Math.round(N($i("vma-i-ram").value) * 1024), min_disk: Math.round(N($i("vma-i-disk").value)),
+                    sort: Math.round(N($i("vma-i-sort").value)), enabled: !!$i("vma-i-on").checked };
+    if (!patch.name) delete patch.name;
+    await busy(btn, async () => {
+      const { error } = await rpc("vm_admin_image", { p_id: id, p_patch: patch });
+      if (error) return dErr(em(error)); closeDlg(); toast(L("Đã lưu bản Windows.", "Image saved.")); await admLoad(true);
+    });
+  }
+  function vpsAct(v, act) {
+    VM.v = { id: N(v.id), act };
+    const nm = "VPS-" + N(v.id) + (S(v.label, 40) ? " “" + S(v.label, 40) + "”" : "");
+    if (act === "reinstall") {
+      const is = A(O(VM.adm).images).filter(i => N(i.min_ram) <= N(v.ram_mb) && N(i.min_disk) <= N(v.disk_gb));
+      return dlg(`<h3>💿 ${L("Cài lại", "Reinstall")} ${esc(nm)}</h3><label>${L("Bản Windows", "Windows")}<select class="in" id="vma-v-img">${is.map(i => `<option value="${esc(S(i.id, 24))}"${i.id === v.image ? " selected" : ""}>${esc(S(i.name, 60))}</option>`).join("")}</select></label>
+        <div class="note">⚠️ ${L("Xoá sạch ổ VPS rồi dựng lại từ máy mẫu. Không trừ lượt cài lại của khách. Hạn giữ nguyên.", "Wipes the VPS and rebuilds it. Customer reinstall count unchanged.")}</div>${acts("💿 " + L("Cài lại", "Reinstall"), "danger", "vma-v-go")}`);
+    }
+    if (act === "extend") return dlg(`<h3>⏱ ${L("Cộng / trừ ngày", "Add / remove days")} — ${esc(nm)}</h3>
+      <label>${L("Số ngày (số âm = trừ)", "Days (negative = remove)")}<input class="in" type="number" id="vma-v-days" min="-3650" max="3650" step="1" value="1"></label>
+      <div class="hint">${L("Hạn hiện tại", "Current expiry")}: ${T(v.until) === null ? L("chưa bắt đầu", "not started") : dt(v.until)}. ${L("Không trừ / cộng tiền của khách.", "No charge.")}</div>${acts(L("Lưu", "Save"), "", "vma-v-go")}`);
+    const txt = { start: [L("Bật", "Start"), ""], stop: [L("Tắt", "Stop"), L("Windows được tắt (giữ dữ liệu).", "Shuts Windows down (data kept).")], reset: ["Reset", L("Khởi động cứng máy ảo (như rút điện).", "Hard reset.")],
+                  retry: [L("Tạo lại", "Rebuild"), L("Xoá máy ảo đang dở / lỗi rồi nhân bản lại từ máy mẫu (dữ liệu trong VPS mất).", "Deletes the broken VM and clones it again (data lost).")],
+                  delete: [L("Xoá", "Delete"), L("Xoá hẳn VPS khỏi máy chủ, KHÔNG hoàn tiền.", "Deletes the VPS, no refund.")],
+                  refund: [L("Hoàn tiền + xoá", "Refund + delete"), L("Hoàn tiền đơn mua vào số dư của khách rồi xoá VPS.", "Refunds the purchase order to the customer balance, then deletes the VPS.")] }[act] || [act, ""];
+    dlg(`<h3>${esc(txt[0])} ${esc(nm)}?</h3>${txt[1] ? `<div class="note">${esc(txt[1])}</div>` : ""}${acts(esc(txt[0]), ["delete", "refund", "retry"].includes(act) ? "danger" : "", "vma-v-go")}`);
+  }
+  async function vpsGo(btn) {
+    const { id, act } = VM.v; let arg = {};
+    if (act === "reinstall") arg = { image: S($i("vma-v-img").value, 24) };
+    if (act === "extend") { const d = Math.round(N($i("vma-v-days").value)); if (!d) return dErr(L("Nhập số ngày khác 0.", "Enter a non-zero number.")); arg = { days: d }; }
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_admin_vps", { p_id: id, p_act: act, p_arg: arg });
+      if (error) return dErr(em(error));
+      closeDlg(); toast(act === "refund" ? (O(data).refunded ? L("Đã hoàn tiền + xoá VPS.", "Refunded and deleted.") : L("Đã xoá VPS (đơn không hoàn được — đã hoàn / không có đơn).", "Deleted (order not refundable).")) : L("Đã gửi lệnh tới máy chủ.", "Sent to the host."));
+      VM.revAt = 0; await admLoad(true);
+    });
+  }
+  async function setSave(btn) {
+    const patch = { sell: !!$i("vma-s-sell").checked, auto_approve: !!$i("vma-s-auto").checked, grace_days: Math.round(N($i("vma-s-grace").value)), reinstall_max: Math.round(N($i("vma-s-rmax").value)),
+                    create_min: Math.round(N($i("vma-s-cmin").value)), cpu_over: N($i("vma-s-cpu").value), ram_reserve_mb: Math.round(N($i("vma-s-ram").value) * 1024), disk_over: N($i("vma-s-disk").value) };
+    const r = await admCall(btn, "vm_admin_settings", { p_patch: patch }, L("Đã lưu cài đặt VPS ảo hoá.", "Settings saved."));
+    if (r !== null) { $i("vma-set").dataset.dirty = ""; admSet(O(VM.adm)); info(true).then(shopRender); }
+  }
+  async function giveGo(btn) {
+    const e = $i("vma-g-err"); e.textContent = "";
+    const u = S($i("vma-g-user").value, 80).trim(), d = Math.round(N($i("vma-g-days").value));
+    if (!u) { e.textContent = L("Nhập tên đăng nhập / email.", "Enter a username / email."); return; }
+    if (d < 1) { e.textContent = L("Số ngày ≥ 1.", "Days ≥ 1."); return; }
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_admin_give", { p_user: u, p_plan: S($i("vma-g-plan").value, 24), p_image: S($i("vma-g-img").value, 24), p_days: d });
+      if (error) { e.textContent = em(error); return; }
+      toast(L(`Đã tạo VPS-${N(O(data).id)} — máy chủ đang dựng.`, `VPS-${N(O(data).id)} created.`)); await admLoad(true);
+    });
+  }
+
+  // ---------------------------------------------------------------- bấm nút (1 chỗ cho cả trang)
+  document.addEventListener("click", e => {
+    const t = e.target && e.target.closest ? e.target : null; if (!t) return;
+    const b = t.closest("[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
+      + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload");
+    if (!b || b.disabled) return;
+    const dt_ = b.dataset;
+    if (dt_.vmbuy) return buyOpen(dt_.vmbuy);
+    if (dt_.vmos && VM.b) { VM.b.image = dt_.vmos; return buyPaint(); }
+    if (dt_.vmdays && VM.b) { VM.b.days = N(dt_.vmdays); return buyPaint(); }
+    if (b.id === "vms-pay") return pay(b);
+    if (dt_.vmpow) return pow(b, dt_.vmid, dt_.vmpow);
+    if (dt_.vmre) return reOpen(dt_.vmre);
+    if (dt_.vmreos && VM.r) { VM.r.image = dt_.vmreos; document.querySelectorAll("#vms-reos [data-vmreos]").forEach(x => { const on = x.dataset.vmreos === VM.r.image; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); }); return; }
+    if (b.id === "vms-re-go") return reGo(b);
+    if (dt_.vmrenew) return renewOpen(dt_.vmrenew);
+    if (dt_.vmrndays && VM.n) { VM.n.days = N(dt_.vmrndays); return renewPaint(); }
+    if (b.id === "vms-rn-go") return renewGo(b);
+    if (dt_.vmlabel) return labelOpen(dt_.vmlabel);
+    if (b.id === "vms-lb-go") return labelGo(b);
+    if (dt_.vmdel) return delOpen(dt_.vmdel);
+    if (b.id === "vms-del-go") return delGo(b);
+    if (!isAdm()) return;
+    if (b.id === "vma-reload") { VM.revAt = 0; return busy(b, () => admLoad(false)); }
+    if (dt_.vmaset === "sell") return admCall(b, "vm_admin_settings", { p_patch: { sell: dt_.v === "1" } }, dt_.v === "1" ? L("Đã BẬT bán VPS ảo hoá.", "Selling is ON.") : L("Đã tắt bán VPS ảo hoá.", "Selling is OFF.")).then(() => info(true).then(shopRender));
+    if (dt_.vmah) {
+      const h = hostOf(S(t.closest("[data-vmhost]") && t.closest("[data-vmhost]").dataset.vmhost, 40)); if (!h) return;
+      if (dt_.vmah === "edit") return hostEdit(h);
+      if (dt_.vmah === "del") return hostDel(h);
+      const patch = dt_.vmah === "approve" ? { approve: true } : { status: dt_.vmah };
+      return admCall(b, "vm_admin_host", { p_id: h.id, p_patch: patch }, dt_.vmah === "approve" ? L("Đã duyệt máy chủ — máy bắt đầu nhận VPS.", "Host approved.") : L("Đã đổi trạng thái máy chủ.", "Host updated."));
+    }
+    if (b.id === "vma-h-go") return busy(b, async () => {
+      const patch = { name: S($i("vma-h-name").value, 40).trim(), slots: String(Math.max(1, Math.min(500, Math.round(N($i("vma-h-slots").value))))), note: S($i("vma-h-note").value, 300) };
+      if (!patch.name) delete patch.name;
+      const { error } = await rpc("vm_admin_host", { p_id: VM.h, p_patch: patch }); if (error) return dErr(em(error)); closeDlg(); await admLoad(true);
+    });
+    if (b.id === "vma-hdel-go") return busy(b, async () => { const { error } = await rpc("vm_admin_host", { p_id: VM.h, p_patch: { delete: true } }); if (error) return dErr(em(error)); closeDlg(); toast(L("Đã xoá máy chủ khỏi danh sách.", "Host removed.")); await admLoad(true); });
+    if (dt_.vmav) { const v = A(O(VM.adm).vps).find(x => N(x.id) === N(t.closest("[data-vmv]") && t.closest("[data-vmv]").dataset.vmv)); if (v) vpsAct(v, dt_.vmav); return; }
+    if (b.id === "vma-v-go") return vpsGo(b);
+    if (dt_.vmap) return planEdit(A(O(VM.adm).plans).find(p => p.id === dt_.vmap) || null);
+    if (b.id === "vma-p-new") return planEdit(null);
+    if (b.id === "vma-p-add") { const r = $i("vma-p-rows"); if (r && r.children.length < 12) r.insertAdjacentHTML("beforeend", priceRow(0, 0)); return; }
+    if (dt_.prdel) { const r = b.closest(".vms-row"); if (r && r.parentElement.children.length > 1) r.remove(); return; }
+    if (b.id === "vma-p-go") return planSave(b);
+    if (b.id === "vma-p-del") return busy(b, async () => { const { error } = await rpc("vm_admin_plan", { p_id: VM.p, p_patch: { delete: true } }); if (error) return dErr(em(error)); closeDlg(); toast(L("Đã xoá gói.", "Plan deleted.")); await admLoad(true); });
+    if (dt_.vmai) return imgEdit(A(O(VM.adm).images).find(i => i.id === dt_.vmai) || null);
+    if (b.id === "vma-i-new") return imgEdit(null);
+    if (b.id === "vma-i-go") return imgSave(b);
+    if (b.id === "vma-i-del") return busy(b, async () => { const { error } = await rpc("vm_admin_image", { p_id: VM.i, p_patch: { delete: true } }); if (error) return dErr(em(error)); closeDlg(); toast(L("Đã xoá bản Windows.", "Image deleted.")); await admLoad(true); });
+    if (b.id === "vma-s-save") return setSave(b);
+    if (b.id === "vma-g-go") return giveGo(b);
+    if (b.id === "vma-cmd-copy") { try { navigator.clipboard.writeText(CMD).then(() => toast(L("Đã copy lệnh cài cbhost.", "Copied.")), () => toast(L("Không copy được — bôi đen lệnh rồi copy tay.", "Copy failed — select it manually."), 1)); } catch (x) { toast(L("Không copy được — bôi đen lệnh rồi copy tay.", "Copy failed."), 1); } return; }
+  });
+  document.addEventListener("input", e => {
+    const t = e.target; if (!t) return;
+    if (t.id === "vma-q" || t.id === "vma-f") { try { admVps(O(VM.adm)); } catch (x) {} return; }
+    if (t.closest && t.closest("#vma-set")) { const s = $i("vma-set"); if (s) s.dataset.dirty = "1"; }       // đang sửa ô cài đặt → lần tải lại tự động không ghi đè
+  });
+  document.addEventListener("change", e => { const t = e.target; if (t && t.id === "vma-f") { try { admVps(O(VM.adm)); } catch (x) {} } });
+
+  // ---------------------------------------------------------------- gắn vào trang: tab quản trị · đăng nhập / đăng xuất · tải lần đầu
+  if (typeof setTab === "function") { const _st = setTab; setTab = function (t) { _st(t); try { show("pane-vm", t === "vm"); if (t === "vm") admLoad(false); } catch (e) {} }; }
+  try { SUB_HOOK["vm:hosts"] = () => admLoad(true); } catch (e) {}
+  function auth() {
+    const u = me(), uid = u ? u.id + (isAdm() ? ":a" : ":u") : null;
+    if (uid === VM.uid) return;
+    VM.uid = uid; VM.mine = null; VM.adm = null; VM.b = null; closeDlg();
+    info(true).then(shopRender);
+    mine(true);
+    if (isAdm()) admLoad(true); else { const b = $i("vm-badge"); if (b) b.hidden = true; }
+  }
+  if (typeof renderUser === "function") { const _ru = renderUser; renderUser = function () { const r = _ru.apply(this, arguments); try { auth(); } catch (e) {} return r; }; }
+  setInterval(() => {                                                 // admin: tab đang mở → 15 giây / lần; không mở → 2 phút / lần (số trên tab: máy chờ duyệt + VPS lỗi)
+    if (!isAdm() || document.hidden) return;
+    const on = (() => { try { return typeof paneOn === "function" ? paneOn("pane-vm") : !$i("pane-vm").hidden; } catch (e) { return false; } })();
+    if (on || Date.now() - (VM.admAt || 0) > 120000) { VM.admAt = Date.now(); admLoad(true); }
+  }, 15000);
+  setInterval(() => { if (!document.hidden) info(true).then(shopRender); }, 120000);
+  VM.load = admLoad; VM.mineLoad = mine; VM.shop = () => info(true).then(shopRender);
+  setTimeout(() => { try { auth(); } catch (e) {} }, 0);
+})();
+</script>
 <script>
 /* Gộp thẻ bảng quản trị theo nhóm. Không đổi gì bên trong các thẻ: nút thẻ cũ (#adm-tabs button[data-tab]) vẫn là nút thật —
    bấm nhóm = bấm nút thẻ cũ (mục dùng gần nhất của nhóm); hàng #adm-tabs chỉ còn các mục của nhóm đang mở.
@@ -15308,7 +16073,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     { id: "home", ic: "📊", t: "Tổng quan", ac: "#3d86ff", m: ["stats"], d: "Doanh thu · đơn · sản phẩm bán chạy" },
     { id: "sell", ic: "🛒", t: "Bán hàng", ac: "#f59e0b", m: ["ord", "prod", "promo"] },
     { id: "cust", ic: "👥", t: "Khách & tiền", ac: "#10b981", m: ["cust", "tx", "sec"] },
-    { id: "mach", ic: "🖥️", t: "Máy cho thuê", ac: "#8b5cf6", m: ["cloud", "vps", "pc", "biz"] },
+    { id: "mach", ic: "🖥️", t: "Máy cho thuê", ac: "#8b5cf6", m: ["cloud", "pc", "vm"] },
     { id: "set", ic: "⚙️", t: "Cài đặt", ac: "#06b6d4", m: ["site", "bank"] }
   ];
   const btnOf = t => tabs.querySelector('button[data-tab="' + t + '"]');
