@@ -41,8 +41,11 @@
 #     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
 #     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
 #     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11m - ISO may chu: may cai xong KHONG hoi so may chu nua (lay SO trong ten go luc cai: "54 cp" -> win54; khong co so -> so ke tiep);
+#     dieu khien tu xa nam o web > DT dam may > May chu (o Cai dat > Dieu khien), khong con o May cho thue; Windows ban cu loi TLS
+#     (PowerShell "Could not create SSL/TLS secure channel") -> script cai may chu tu goi web / tai tep bang Python.
 #  23.11k - ISO may chu: DIEU KHIEN TU XA nhu may cho thue. ISO kem 1 MA MAY CHU (script tu sinh, tu bao dau bam len web bang khoa Supabase);
-#     Windows vua len la may TU HIEN o web > Bang quan tri > May cho thue > May VPS (nhan "Bao tri" + ghi chu MAY CHU) -> bam "Dieu khien" la
+#     Windows vua len la may TU HIEN o web > Bang quan tri > DT dam may > May chu (23.11m; truoc la May cho thue) -> Cai dat > "Dieu khien" la
 #     vao man hinh may, KE CA khi phan cai may chu chua chay / dang loi. May chu KHONG BAO GIO vao kho cho thue (web chot - can SQL v53).
 #     Web chua chay SQL v53 thi ISO van tao duoc, may chi chua hien; chay SQL xong chay lai lenh nay la may da cai tu hien (khong phai cai lai).
 #  23.11j - SUA (ISO may chu): cai Windows xong may DUNG o man hinh nen, khong tu cai tiep - tac vu tu chay gan theo "TENMAY\taikhoan"
@@ -82,7 +85,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "23.11k"
+$VER = "23.11m"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
@@ -771,7 +774,7 @@ function Test-CfToken([string]$tok, [string]$domain) {
 
 function New-SrvKey {
   # MA MAY CHU (23.11k): cbsv_ + 40 ky tu ngau nhien. Nam trong ISO may chu; may cai xong tu dang ky bang ma nay de hien o web
-  # (May cho thue > May VPS) cho admin dieu khien tu xa. Web chi giu DAU BAM cua ma.
+  # (DT dam may > May chu) cho admin dieu khien tu xa. Web chi giu DAU BAM cua ma.
   $buf = New-Object byte[] 20
   $gen = [Security.Cryptography.RandomNumberGenerator]::Create()
   try { $gen.GetBytes($buf) } finally { $gen.Dispose() }
@@ -815,7 +818,7 @@ function Set-SrvRemote([string]$url, [string]$svcKey, [string]$srvKey, [bool]$qu
   for ($sn = 1; $sn -le 6; $sn++) {
     $sr = Register-SrvKey $url $svcKey $srvKey $memo
     if ($sr -eq "ok") {
-      Say "   dieu khien tu xa: DA BAT - Windows vua len la may hien o web > May cho thue > May VPS (chi admin dieu khien, khong cho thue)" "Green"
+      Say "   dieu khien tu xa: DA BAT - Windows vua len la may hien o web > DT dam may > May chu (Cai dat > Dieu khien; khong cho thue)" "Green"
       return "ok"
     }
     if ($sr -eq "nosql") {
@@ -1227,7 +1230,7 @@ try {
       }
     }
     if ($Mc.cf -and (-not $Mc.tunnel) -and ($Mc.from -ne "moi nhap")) { $ct2 = Test-CfToken $Mc.cf $TenMien; $Mc.tunnel = [bool]$ct2.tunnel }
-    # 23.11k - DIEU KHIEN TU XA: ISO kem MA MAY CHU; bao dau bam cua ma len web de may cai xong tu hien o May cho thue > May VPS
+    # 23.11k - DIEU KHIEN TU XA: ISO kem MA MAY CHU; bao dau bam cua ma len web de may cai xong tu hien o DT dam may > May chu
     if (-not $Mc.key) { $Mc.srv = "" }
     elseif (-not ($Mc.srv -match '^cbsv_[0-9a-f]{40}$')) { $Mc.srv = New-SrvKey }
     if ($Mc.srv) {
@@ -1579,7 +1582,7 @@ try {
     $srvTxt = "KHONG (ISO khong kem khoa Supabase)"
     if ($Mc.srv) {
       $srvTxt = "ISO co ma may chu, nhung CHUA bao duoc len web - chay lai lenh nay khi mang on"
-      if ($SrvState -eq "ok") { $srvTxt = "CO - Windows vua len la may hien o web > May cho thue > May VPS, bam Dieu khien" }
+      if ($SrvState -eq "ok") { $srvTxt = "CO - Windows vua len la may hien o web > DT dam may > May chu, bam Cai dat > Dieu khien" }
       elseif ($SrvState -eq "nosql") { $srvTxt = "CHUA - web chua chay SQL v53 (chay SQL roi chay lai lenh nay)" }
     }
     Write-Host ("     dieu khien tu xa: " + $srvTxt) -ForegroundColor $(if ($SrvState -eq "ok") { "Green" } else { "Yellow" })
@@ -1598,8 +1601,8 @@ try {
     Write-Host "    - ghi ISO ra USB bang Rufus (hoac chep vao USB Ventoy), cam vao may, khoi dong tu USB"
     Write-Host "    - man hinh dem nguoc 30 giay ghi ro o nao se bi xoa; bam X de huy"
     if ($MayChu) {
-      Write-Host "    - Windows bung xong, bo cai hoi TEN MAY: go  win9  (hoac 9) roi Enter = may chu so 9. Bo trong = may tu lay so ke tiep." -ForegroundColor White
-      if ($SrvState -eq "ok") { Write-Host "    - Windows vua len 1-2 phut: may hien o web > Bang quan tri > May cho thue > May VPS (nhan Bao tri, ghi chu MAY CHU) - bam Dieu khien de xem / go may tu xa." -ForegroundColor White }
+      Write-Host "    - Windows bung xong, bo cai hoi TEN MAY: go SO may chu (vd 54, win54 hoac 54 cp) roi Enter = may chu win54. Bo trong = tu lay so ke tiep. Sau do KHONG hoi gi nua." -ForegroundColor White
+      if ($SrvState -eq "ok") { Write-Host "    - Windows vua len 1-2 phut: may hien o web > Bang quan tri > DT dam may > May chu - bam Cai dat > Dieu khien de xem / go may tu xa." -ForegroundColor White }
       Write-Host "    - sau do KHONG can lam gi: may tu khoi dong lai vai lan, tu cai gia lap + CloudBlue (30-45 phut) roi hien o web > Bang quan tri > May chu."
       Write-Host "    - viec tay duy nhat con lai: mo cong modem TCP 8188 + so may chu (man hinh may chu + tep CloudBlue-may-chu.txt tren Desktop ghi ro)."
     }
