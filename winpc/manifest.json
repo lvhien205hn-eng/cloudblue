@@ -42,7 +42,7 @@
   "linux/grub.cfg": "9bc7d842c0b3786e3520bb8c7b6dda06067958326b7e6adfe06a7153b4f0cb98",
   "linux/grubx64.efi": "592b81aa17ca51f611049bc6694c721e9f10ee75664c5ca4317eb4eeebb9ef3c",
   "maychu/firstboot.ps1": "7324ef4a04f3800edc77f398951a4eb7a7ea0c982f82531d616b72b5304c7a32",
-  "maychu/may-chu-iso.ps1": "d866c5d2e45f3e2709b0692857fab80eb476b19e6f5befdab4317ad3bc766751",
+  "maychu/may-chu-iso.ps1": "0c5a4e25217b0b60a467424379ebc2ec269cccc080be4a48d9e89b0d810ce4aa",
   "os/cb_provision.py": "bcdd0486c5a57e9e3023e7fdbd6ac008b7ae002221992f44a4edc719ba4c65d9",
   "os/cb_stage.py": "0ab5956f46cf44d6e344a5912868ec381d9acb82cecb96ba2788dd2046ac9bfa",
   "os/provision.cmd": "335e45236636e358d0ca496119c1323c8e5bce978c0dce3cfe374d82539f6dfe",
@@ -50,7 +50,7 @@
   "os/wallpaper.jpg": "292d2622e8239a4122e0c1c1ee7c4aa744aeb5c9f7150cab742edff4a39ead47",
   "pe/cb_pe.py": "47e6107157988cce7bd8614fc742540eb4e54d58fdea16150606c6bcefb30f5c",
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
-  "tao-iso.ps1": "70443472dde6678790dea75b6dbd0822bda16ec4bf8509489a1f954065a5233a"
+  "tao-iso.ps1": "9aeddea5c8e8e202c73c053bad0c63f10b95c14a6845c796660a962dbc5feabb"
  },
  "ver": "23.11c"
 }

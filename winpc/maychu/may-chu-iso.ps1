@@ -1,24 +1,27 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11l)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11m)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
 #  Lam lan luot (phan nao xong roi thi tu bo qua):
-#     1. cho bo cai Windows lam xong + cho mang          2. TEN MAY CHU (ten go luc cai Windows: win9 hoac 9; khong co thi hoi, goi y so ke tiep)
+#     1. cho bo cai Windows lam xong + cho mang          2. TEN MAY CHU = SO trong ten go luc cai Windows (54 / win54 / "54 cp" -> win54);
+#                                                           khong co so / so dang bi dung -> tu lay so ke tiep. KHONG hoi (23.11m).
 #     3. gia lap (MuMu / LDPlayer 9: chay bo cai kem trong ISO - im lang neu bo cai ho tro, khong thi hien bo cai de bam)
 #     4. setup.ps1 (Python, Node, adb, cloudflared, chuong trinh CloudBlue, cloudphone.conf)      5. khoa Supabase -> cloudphone.conf
 #     6. may mau MuMu (tpl_a12 / tpl_a15)                 7. duong ham Cloudflare phoneN + streamN (tu tao bang API neu co CF_API_TOKEN)
 #     8. bang CloudBlue tu chay quyen Admin, khong ngu, toi uu Windows        9. mo bang -> bat dich vu
 #    10. duong thang web (neu co ma) + lenh A + kiem RAM + cong modem        11. kiem may chu da len web
 #  DIEU KHIEN TU XA (23.11k): phan mem CloudBlue PC co san tren may (C:\CloudBluePC, chay ngam tu luc Windows len) tu dang ky may nay bang MA MAY CHU
-#     trong ISO -> may hien o web > May cho thue > May VPS, admin bam "Dieu khien" la vao man hinh may (web chot: may chu khong bao gio cho thue).
+#     trong ISO -> may hien o web > DT dam may > May chu (o Cai dat > Dieu khien) la vao man hinh may (web chot: may chu khong bao gio cho thue).
 #     Script nay chi bao tinh trang + lam bu viec bao ma len web (ISO tao luc web chua chay SQL v53); cai xong van GIU phan mem do chay.
+#  MANG (23.11m): Windows ban cu (1511...) PowerShell hay loi TLS "Could not create SSL/TLS secure channel" -> goi web / tai tep that bai thi
+#     tu lam lai bang Python co san cua CloudBlue PC (OpenSSL + cacert.pem). Khoa di qua bien moi truong cua tien trinh con, khong ghi ra dia.
 #  KHONG in khoa bi mat nao ra man hinh / nhat ky. Nhat ky: C:\blue\logs\iso-cai.log
 #  -Lib : chi nap cac ham (de kiem thu), khong chay.
 # =====================================================================================================
 param([string]$Conf = '', [switch]$Lib)
-$MC_VER = '23.11l'
+$MC_VER = '23.11m'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -33,7 +36,7 @@ $RAWB = 'https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main'
 $CFAPI = 'https://api.cloudflare.com/client/v4'
 $SELF_REL = 'winpc/maychu/may-chu-iso.ps1'
 $SECRETS = New-Object System.Collections.ArrayList
-$WAIT_NAME = 300
+$NET_PS = $true                 # false = bo qua PowerShell, goi mang thang bang Python (kiem thu)
 $MAX_REBOOT = 4
 $POLL = 20                     # giay giua 2 lan kiem khi dang cho (kiem thu dat nho lai)
 $SETTLE = 120                  # giay cho gia lap vua cai tu mo lan dau roi moi dong
@@ -109,14 +112,24 @@ function Get-NodeNum([string]$s) {
   return 0
 }
 
+function Get-NameNum([string]$s) {
+  # SO MAY CHU nam trong ten go luc cai Windows: '54' / 'win54' / '54 cp' / 'CP54' / 'may 7 hn' -> 54 / 54 / 54 / 54 / 7
+  # (so 1-2 chu so dau tien) ; 'CB-102' / 'abc' -> 0
+  $n = Get-NodeNum $s
+  if ($n -gt 0) { return $n }
+  if (("" + $s) -match '(?<![0-9])0*([0-9]{1,2})(?![0-9])') { return [int]$Matches[1] }
+  return 0
+}
+
 function Get-SeedNum([string]$seedPath) {
-  # Ten go o bo cai Windows nam trong seed.json ("label"); ten tu sinh (CB-3FA2C1) thi KHONG lay.
+  # Ten go o bo cai Windows nam trong seed.json ("label"; vd '54 cp' -> 54) ; ten may trong Windows ("name", vd 54CP) cung duoc,
+  # tru ten tu sinh (CB-3FA2C1 / win-3FA2C1).
   try {
     $j = Get-Content -Raw -LiteralPath $seedPath -ErrorAction Stop | ConvertFrom-Json
-    $n = Get-NodeNum ("" + $j.label)
+    $n = Get-NameNum ("" + $j.label)
     if ($n -gt 0) { return $n }
     $nm = "" + $j.name
-    if ($nm -and ($nm -notmatch '-[0-9A-Fa-f]{6}$')) { return (Get-NodeNum $nm) }
+    if ($nm -and ($nm -notmatch '-[0-9A-Fa-f]{6}$')) { return (Get-NameNum $nm) }
   } catch {}
   return 0
 }
@@ -140,6 +153,57 @@ function Test-NodeLive($rows, [int]$n, [int]$secs = 300) {
   return $false
 }
 
+function Select-NodeNum($cfg, [string]$sbUrl, [string]$sbKey) {
+  # 23.11m: KHONG hoi nua. So may chu = so trong ten go luc cai Windows ('54 cp' -> 54); ten khong co so, so dang chay o may khac,
+  # hoac web con may khach o so do -> tu lay so ke tiep tren web. Chi khi KHONG doc duoc danh sach may chu tren web ma ten khong co so
+  # moi cho (thu lai moi $POLL giay; ai muon thi go so).
+  $want = Get-NodeNum ("" + $cfg['NODE'])
+  $from = 'cau hinh ISO'
+  if (-not $want) { $want = Get-SeedNum (Join-Path $ISO 'seed.json'); $from = 'ten go luc cai Windows' }
+  if (-not $want) { $want = Get-SeedNum (Join-Path $CBPC 'seed.json') }
+  if (-not $want) { Say '   (ten go luc cai Windows khong co so may chu)' 'DarkGray' }
+  $skip = New-Object 'System.Collections.Generic.HashSet[int]'
+  $warned = $false; $told = $false
+  while ($true) {
+    $rows = @(); $rowsOk = $false
+    if ($sbKey.Length -ge 30) {
+      $nr = Get-NodeRows $sbUrl $sbKey
+      if ($nr.ok) { $rows = $nr.rows; $rowsOk = $true }
+      elseif (-not $warned) {
+        $warned = $true
+        if ($nr.code -eq 401 -or $nr.code -eq 403) { Say '   (!) Khoa Supabase trong ISO KHONG con dung duoc - se phai dan khoa moi trong bang CloudBlue (nut 2).' 'Red' }
+        else { Say ('   (chua doc duoc danh sach may chu tren web: ' + $nr.err + ')') 'DarkGray' }
+      }
+    }
+    if ($want -ge 2 -and $want -le 99) {
+      $busy = 0
+      if ($rowsOk) { $busy = Get-NodePhones $sbUrl $sbKey $want }
+      if ($rowsOk -and (Test-NodeLive $rows $want)) { Say ('   (!) win' + $want + ' DANG CHAY o 1 may chu khac (vua bao ve web) - khong dung trung ten duoc -> tu lay so ke tiep.') 'Red'; [void]$skip.Add($want); $want = 0 }
+      elseif ($busy -gt 0) {
+        Say ('   (!) Web con ' + $busy + ' may khach dang thue o win' + $want + ' - KHONG dung ten nay cho may moi cai (may khach do se mat) -> tu lay so ke tiep.') 'Red'
+        Say ('       Muon cai lai DUNG may chu win' + $want + ': chuyen / huy het may khach cua no tren web truoc roi cai lai.') 'Yellow'
+        [void]$skip.Add($want); $want = 0
+      }
+      elseif ($busy -lt 0) { Say ('   (chua kiem duoc may khach cua win' + $want + ' tren web - thu lai)') 'DarkGray'; Start-Sleep $POLL; continue }
+      else { Say ('   Ten may chu: win' + $want + ' (' + $from + ')') 'Green'; return $want }
+    } elseif ($want -eq 1) { Say '   (!) win1 la may chu CHINH - may cai tu ISO dung so tu 2 tro len -> tu lay so ke tiep.' 'Yellow'; [void]$skip.Add(1); $want = 0 }
+    if ($rowsOk) {
+      $f = Get-FreeNum $rows
+      while ($skip.Contains($f)) { $f++ }
+      if ($f -le 99) { $want = $f; $from = 'so ke tiep - tu chon'; continue }
+      Say '   (!) Da dung het so may chu 2-99 tren web - go SO MAY CHU (so cua may chu cu da bo) roi Enter.' 'Yellow'
+    } elseif (-not $told) {
+      $told = $true
+      Say ('   Chua doc duoc danh sach may chu tren web -> chua biet so ke tiep. Tu thu lai moi ' + $POLL + ' giay; muon dat ngay: go SO MAY CHU roi Enter (vi du 9 = win9).') 'Yellow'
+    }
+    $ans = Read-LineWait '   So may chu' $POLL
+    if (($null -ne $ans) -and ("" + $ans).Trim()) {
+      $want = Get-NodeNum $ans; $from = 'vua go'
+      if (-not $want) { Say '   (!) Chi go so tu 2 den 99 (hoac win9).' 'Yellow' }
+    }
+  }
+}
+
 function Read-LineWait([string]$prompt, [int]$secs) {
   # Doc 1 dong tu ban phim, het $secs giay ma chua ai go phim nao -> $null. Khong co ban phim (chay tu dong) -> $null.
   Write-Host ($prompt + ': ') -NoNewline -ForegroundColor White
@@ -161,14 +225,87 @@ function Read-LineWait([string]$prompt, [int]$secs) {
   } catch { Write-Host ''; return $null }
 }
 
+# ----------------------------------------------------------------------------------------------------- HTTPS bang Python (Windows cu loi TLS)
+$PYHTTP = @'
+# cloudblue-http (may-chu-iso.ps1): HTTPS bang OpenSSL cua Python - dung khi PowerShell cua Windows cu loi TLS
+import json, os, ssl, sys, urllib.request, urllib.error
+def main():
+    q = json.loads(os.environ.get("CB_HTTP_REQ") or "{}")
+    ca = q.get("ca") or None
+    ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+    body = q.get("body")
+    data = body.encode("utf-8") if isinstance(body, str) else None
+    req = urllib.request.Request(q["url"], data=data, method=q.get("method") or "GET")
+    for k, v in (q.get("headers") or {}).items():
+        req.add_header(str(k), str(v))
+    code, raw, err = 0, b"", ""
+    try:
+        with urllib.request.urlopen(req, timeout=float(q.get("timeout") or 30), context=ctx) as r:
+            code, raw = r.status, r.read()
+    except urllib.error.HTTPError as e:
+        code = e.code
+        try:
+            raw = e.read() or b""
+        except Exception:
+            raw = b""
+    except Exception as e:
+        err = (type(e).__name__ + ": " + str(e))[:300]
+    out = q.get("out")
+    if out and 200 <= code < 300:
+        with open(out, "wb") as f:
+            f.write(raw)
+        raw = b""
+    sys.stdout.write(json.dumps({"code": code, "body": raw.decode("utf-8", "replace"), "err": err}))
+main()
+'@
+
+function Get-PyExe {
+  # Python de goi mang khi PowerShell loi TLS: ban kem phan mem CloudBlue PC (co tu luc cai Windows) -> Python 3.12 cua setup.ps1
+  foreach ($p in @((Join-Path $CBPC 'py\python.exe'), $PY)) { if ($p -and (Test-Path -LiteralPath $p -PathType Leaf)) { return $p } }
+  return ''
+}
+
+function Invoke-Py($method, $url, $headers, $bodyJson = $null, $out = '', [int]$timeout = 30) {
+  # Goi 1 dia chi bang Python. Tra @{ code; body; err } (code 0 = khong toi duoc) ; khong co Python -> $null. Khong nem loi.
+  $exe = Get-PyExe
+  if (-not $exe) { return $null }
+  $hp = Join-Path $ISO 'cbhttp.py'
+  try {
+    $cur = ''
+    if (Test-Path -LiteralPath $hp) { $cur = [IO.File]::ReadAllText($hp) }
+    if ($cur -ne $PYHTTP) { New-Item -ItemType Directory -Force $ISO | Out-Null; [IO.File]::WriteAllText($hp, $PYHTTP, (New-Object Text.UTF8Encoding($false))) }
+  } catch { return $null }
+  $hd = @{ 'User-Agent' = ('cloudblue-may-chu/' + $MC_VER) }
+  if ($headers) { foreach ($k in @($headers.Keys)) { $hd[("" + $k)] = ("" + $headers[$k]) } }
+  $q = @{ method = ("" + $method).ToUpper(); url = ("" + $url); timeout = $timeout; headers = $hd }
+  if ($null -ne $bodyJson) { $q.body = ("" + $bodyJson); if (-not $hd.ContainsKey('Content-Type')) { $hd['Content-Type'] = 'application/json' } }
+  if ($out) { $q.out = ("" + $out) }
+  $ca = Join-Path $CBPC 'os\cacert.pem'
+  if (Test-Path -LiteralPath $ca) { $q.ca = $ca }
+  $txt = ''
+  try {
+    [Environment]::SetEnvironmentVariable('CB_HTTP_REQ', ($q | ConvertTo-Json -Depth 5 -Compress), 'Process')
+    $txt = ((& $exe -I $hp 2>$null) | Out-String)
+  } catch { $txt = '' }
+  finally { [Environment]::SetEnvironmentVariable('CB_HTTP_REQ', $null, 'Process') }
+  try { $r = $txt.Trim() | ConvertFrom-Json } catch { return @{ code = 0; body = ''; err = 'python: khong doc duoc ket qua' } }
+  if ($null -eq $r) { return @{ code = 0; body = ''; err = 'python: khong co ket qua' } }
+  return @{ code = [int]$r.code; body = ("" + $r.body); err = (Hide-Secret ("" + $r.err)) }
+}
+
 # ----------------------------------------------------------------------------------------------------- mang / API
 function Invoke-Api([string]$method, [string]$url, $headers, $body = $null, [int]$timeout = 30) {
   # Tra @{ ok; code; data; err } - khong nem loi. err da che khoa bi mat.
+  # PowerShell khong nhan duoc tra loi nao (loi TLS cua Windows cu / mat mang) -> lam lai bang Python (OpenSSL).
   try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+  $bj = $null
+  if ($null -ne $body) { $bj = ($body | ConvertTo-Json -Depth 8 -Compress) }
+  $res = $null
   try {
+    if (-not $NET_PS) { throw 'PowerShell: bo qua (kiem thu duong Python)' }
     # UserAgent rieng: PowerShell mac dinh tu xung "Mozilla/5.0 ..." -> Supabase coi la trinh duyet, tu choi khoa sb_secret_... (401) du khoa dung
     $p = @{ Method = $method; Uri = $url; Headers = $headers; TimeoutSec = $timeout; UseBasicParsing = $true; ErrorAction = 'Stop'; UserAgent = ('cloudblue-may-chu/' + $MC_VER) }
-    if ($null -ne $body) { $p.Body = [Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 8 -Compress)); $p.ContentType = 'application/json' }
+    if ($null -ne $bj) { $p.Body = [Text.Encoding]::UTF8.GetBytes($bj); $p.ContentType = 'application/json' }
     $r = Invoke-WebRequest @p
     $d = $null
     if ($r.Content) { try { $d = ("" + $r.Content) | ConvertFrom-Json } catch { $d = "" + $r.Content } }
@@ -180,8 +317,18 @@ function Invoke-Api([string]$method, [string]$url, $headers, $body = $null, [int
     if (-not $txt) { $txt = "" + $_.Exception.Message }
     $txt = ($txt -replace '\s+', ' ')
     if ($txt.Length -gt 240) { $txt = $txt.Substring(0, 240) }
-    return @{ ok = $false; code = $code; data = $null; err = (Hide-Secret ('HTTP ' + $code + ' ' + $txt)) }
+    $res = @{ ok = $false; code = $code; data = $null; err = (Hide-Secret ('HTTP ' + $code + ' ' + $txt)) }
   }
+  if ($res.code -ne 0) { return $res }
+  $pr = Invoke-Py $method $url $headers $bj '' $timeout
+  if ($null -eq $pr) { return $res }
+  if ($pr.code -eq 0) { $e2 = $res.err + ' | python: ' + $pr.err; if ($e2.Length -gt 400) { $e2 = $e2.Substring(0, 400) }; $res.err = (Hide-Secret $e2); return $res }
+  $d = $null
+  if ($pr.body) { try { $d = $pr.body | ConvertFrom-Json } catch { $d = $pr.body } }
+  if (($pr.code -ge 200) -and ($pr.code -lt 300)) { return @{ ok = $true; code = $pr.code; data = $d; err = '' } }
+  $t2 = ($pr.body -replace '\s+', ' ')
+  if ($t2.Length -gt 240) { $t2 = $t2.Substring(0, 240) }
+  return @{ ok = $false; code = $pr.code; data = $null; err = (Hide-Secret ('HTTP ' + $pr.code + ' ' + $t2)) }
 }
 
 function Test-Net {
@@ -200,9 +347,13 @@ function Test-Net {
 function Get-Url([string]$url, [string]$dst) {
   Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
   $curl = Join-Path $env:SystemRoot 'System32\curl.exe'
-  if (Test-Path -LiteralPath $curl) { & $curl -fsSL --retry 2 --connect-timeout 20 -o $dst $url 2>$null | Out-Null }
+  if ($NET_PS -and (Test-Path -LiteralPath $curl)) { & $curl -fsSL --retry 2 --connect-timeout 20 -o $dst $url 2>$null | Out-Null }
   if (-not (Test-Path -LiteralPath $dst) -or ((Get-Item -LiteralPath $dst).Length -lt 1)) {
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -UserAgent ('cloudblue-may-chu/' + $MC_VER) -Uri $url -OutFile $dst -TimeoutSec 180 -ErrorAction Stop } catch {}
+    if ($NET_PS) { try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -UserAgent ('cloudblue-may-chu/' + $MC_VER) -Uri $url -OutFile $dst -TimeoutSec 180 -ErrorAction Stop } catch {} }
+  }
+  if (-not (Test-Path -LiteralPath $dst) -or ((Get-Item -LiteralPath $dst).Length -lt 1)) {      # Windows cu loi TLS -> tai bang Python
+    Remove-Item -LiteralPath $dst -Force -ErrorAction SilentlyContinue
+    [void](Invoke-Py 'GET' $url @{} $null $dst 180)
   }
   return ((Test-Path -LiteralPath $dst) -and ((Get-Item -LiteralPath $dst).Length -gt 0))
 }
@@ -576,7 +727,7 @@ function Get-TextSha([string]$text) {
 }
 
 function Get-RemoteState([string]$sbUrl, [string]$sbKey) {
-  # DIEU KHIEN TU XA: may nay da hien o web (May cho thue > May VPS) chua?  Tra:
+  # DIEU KHIEN TU XA: may nay da hien o web (DT dam may > May chu) chua?  Tra:
   #   'on'      phan mem CloudBlue PC da dang ky xong (co ma rieng cua may)
   #   'wait'    ISO co ma may chu, web da nhan dau bam cua ma -> phan mem tren may tu dang ky trong vai phut
   #   'nosql'   web chua chay SQL v53      'err' chua bao duoc ma len web (mang / khoa)      'nokey' khong co khoa Supabase de bao ma
@@ -599,8 +750,8 @@ function Get-RemoteState([string]$sbUrl, [string]$sbKey) {
 }
 
 function Show-Remote([string]$state) {
-  if ($state -eq 'on') { Say '   OK - DIEU KHIEN TU XA: may nay da hien o web > Bang quan tri > May cho thue > May VPS (bam Dieu khien de vao man hinh may).' 'Green' }
-  elseif ($state -eq 'wait') { Say '   Dieu khien tu xa: da bao ma may chu len web - may tu hien o May cho thue > May VPS trong vai phut.' 'DarkGray' }
+  if ($state -eq 'on') { Say '   OK - DIEU KHIEN TU XA: may nay da hien o web > Bang quan tri > DT dam may > May chu (bam Cai dat > Dieu khien de vao man hinh may).' 'Green' }
+  elseif ($state -eq 'wait') { Say '   Dieu khien tu xa: da bao ma may chu len web - may tu hien o DT dam may > May chu trong vai phut.' 'DarkGray' }
   elseif ($state -eq 'nosql') { Say '   (!) Dieu khien tu xa CHUA bat: web chua chay SQL v53 (Supabase > SQL Editor > CloudBlue PC v53 > Run). Chay xong may tu hien, khong phai cai lai.' 'Yellow' }
   elseif ($state -eq 'none') { Say '   (ISO nay ban cu, khong kem ma may chu -> khong co dieu khien tu xa. Tao lai ISO ban 23.11k tro len de co.)' 'DarkGray' }
   elseif ($state -eq 'err') { Say '   (dieu khien tu xa: chua bao duoc ma may chu len web - lan chay sau thu lai)' 'DarkGray' }
@@ -687,50 +838,7 @@ function Main {
   if ($cur) { $Num = Get-NodeNum $cur; if ($Num) { Say ('   May nay da la win' + $Num + ' (cloudphone.conf)') 'Green' } }
   if (-not $Num -and $st.n) { $Num = [int]$st.n }
   if (-not $Num) {
-    $want = Get-NodeNum ("" + $cfg['NODE'])
-    $from = 'cau hinh ISO'
-    if (-not $want) { $want = Get-SeedNum (Join-Path $ISO 'seed.json'); $from = 'ten go luc cai Windows' }
-    if (-not $want) { $want = Get-SeedNum (Join-Path $CBPC 'seed.json') }
-    $warned = $false
-    while (-not $Num) {
-      $rows = @(); $rowsOk = $false
-      if ($sbKey.Length -ge 30) {
-        $nr = Get-NodeRows $sbUrl $sbKey
-        if ($nr.ok) { $rows = $nr.rows; $rowsOk = $true }
-        elseif (-not $warned) {
-          $warned = $true
-          if ($nr.code -eq 401 -or $nr.code -eq 403) { Say '   (!) Khoa Supabase trong ISO KHONG con dung duoc - se phai dan khoa moi trong bang CloudBlue (nut 2).' 'Red' }
-          else { Say ('   (chua doc duoc danh sach may chu tren web: ' + $nr.err + ')') 'DarkGray' }
-        }
-      }
-      if ($want -ge 2 -and $want -le 99) {
-        $busy = 0
-        if ($rowsOk) { $busy = Get-NodePhones $sbUrl $sbKey $want }
-        if ($rowsOk -and (Test-NodeLive $rows $want)) { Say ('   (!) win' + $want + ' DANG CHAY o 1 may chu khac (vua bao ve web) - khong dung trung ten duoc.') 'Red' }
-        elseif ($busy -gt 0) {
-          Say ('   (!) Web con ' + $busy + ' may khach dang thue o win' + $want + ' - KHONG dung ten nay cho may moi cai (may khach do se mat).') 'Red'
-          Say ('       Muon cai lai DUNG may chu win' + $want + ': chuyen / huy het may khach cua no tren web truoc.') 'Yellow'
-        }
-        elseif ($busy -lt 0) { Say ('   (chua kiem duoc may khach cua win' + $want + ' tren web - thu lai)') 'DarkGray'; Start-Sleep $POLL; continue }
-        else { $Num = $want; Say ('   Ten may chu: win' + $Num + ' (' + $from + ')') 'Green'; break }
-      } elseif ($want -eq 1) { Say '   (!) win1 la may chu CHINH - may cai tu ISO dung so tu 2 tro len.' 'Yellow' }
-      $sug = 0
-      if ($rowsOk) { $sug = Get-FreeNum $rows }
-      if ($sug) {
-        Say ('   Go SO MAY CHU roi Enter (vi du 9 = win9). Enter trong / cho ' + [int]($WAIT_NAME / 60) + ' phut = lay so ke tiep: ' + $sug) 'White'
-        $ans = Read-LineWait '   So may chu' $WAIT_NAME
-      } else {
-        Say '   Go SO MAY CHU roi Enter (vi du 9 = win9).' 'White'
-        $ans = Read-LineWait '   So may chu' 600
-      }
-      $from = 'vua go'
-      if (($null -eq $ans) -or (-not ("" + $ans).Trim())) {
-        if ($sug) { $want = $sug; $from = 'so ke tiep - tu chon' } else { $want = 0; Start-Sleep $POLL }
-      } else {
-        $want = Get-NodeNum $ans
-        if (-not $want) { Say '   (!) Chi go so tu 2 den 99 (hoac win9).' 'Yellow' }
-      }
-    }
+    $Num = Select-NodeNum $cfg $sbUrl $sbKey
     $st.n = $Num; Save-State $st
   }
   $sub = 'phone' + $Num; $ssub = 'stream' + $Num; $port = 8188 + $Num
