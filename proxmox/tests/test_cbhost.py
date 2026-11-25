@@ -366,6 +366,11 @@ n0 = len(pve()["log"]); hn.poll_once(); wait_idle(hn)
 ck("dựng lại vẫn lỗi → sau %d lần thì THÔI (không thử mãi), ghi lỗi để xem" % cb.AUTO_TRIES, s19.get("off") is True and int(s19.get("tries") or 0) == cb.AUTO_TRIES
    and not [x for x in pve()["log"][n0:] if x[0] == "qm" and x[1] == "create"], s19)
 cb.AUTO_WAIT_S = 3 * 3600; cb.RETRY_S = 60
+hn.iso_list = [{"volid": "local:iso/" + ("x" * 110) + "-%03d.iso" % i, "size": 5 * 2**30} for i in range(120)]; hn.iso_t = time.time()
+hn.poll_once()
+pm = last_poll(wn)["p_metrics"]
+ck("gói số đo gửi web luôn dưới 12 KB (web bỏ cả gói nếu quá 16 KB): danh sách ISO quá dài thì cắt bớt, số đo chính (tpl, ver) vẫn đủ",
+   len(json.dumps(pm)) <= 12000 and 0 < len(pm["iso"]) < 120 and "tpl" in pm and pm["ver"] == cb.CBHOST_VER, len(json.dumps(pm)))
 
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)

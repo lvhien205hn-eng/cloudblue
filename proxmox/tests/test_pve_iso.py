@@ -291,8 +291,28 @@ for n in ("proxmox-ve_9.2-1.iso", "proxmox-ve_9.3-1.iso", "proxmox-ve_8.4-1.iso"
           "CloudBlue-MayMau-win2019.iso.part", "virtio-win-0.1.271.iso"): big(os.path.join(d1, n))
 open(os.path.join(d1, "CloudBlue-MayMau-nho.iso"), "wb").write(b"x")
 fp, fm = pi.find_inputs([d1, os.path.join(d1, "con")])
-ck("tự tìm: ISO Proxmox bản MỚI NHẤT (9.10 > 9.3; bỏ bản 8) + mọi ISO máy mẫu đủ cỡ (bỏ .part, bỏ file tí hon, bỏ ISO khác)", fp.endswith("proxmox-ve_9.10-1.iso")
-   and sorted(fm) == ["win2012r2", "win2016"], (fp, fm))
+ck("tự tìm: các ISO Proxmox VE ≥ 9, bản mới trước (9.10 > 9.3 > 9.2; bỏ bản 8) + mọi ISO máy mẫu đủ cỡ (bỏ .part, bỏ file tí hon, bỏ ISO khác)",
+   [v for v, _ in fp] == ["9.10-1", "9.3-1", "9.2-1"] and fp[0][1].endswith("proxmox-ve_9.10-1.iso") and sorted(fm) == ["win2012r2", "win2016"], (fp, fm))
+ck("chọn ISO Proxmox: ưu tiên bản ĐÃ THỬ cài thật (9.3-1) dù trên máy có bản mới hơn chưa thử", next((p for v, p in fp if v in pi.KNOWN), "").endswith("proxmox-ve_9.3-1.iso"))
+d2 = os.path.join(tmp, "may2"); os.makedirs(d2); w2 = os.path.join(tmp, "work2")
+mk_iso(os.path.join(d2, "proxmox-ve_9.9-1.iso"), release="9.9"); mk_iso(os.path.join(tmp, "tai-ve.iso"), release="9.8")
+pi.MIN_ISO = 1000; pi.look_dirs = lambda: [d2]; os.environ["CB_PVE_PW_HASH"] = HASH; said = []
+pi.say = lambda *a: said.append(" ".join(str(x) for x in a))
+def dl_ok(url, dst): shutil.copy(os.path.join(tmp, "tai-ve.iso"), dst)
+def dl_fail(url, dst): raise OSError("mat mang")
+pi.download = dl_ok
+rc = pi.main(["--work", w2, "--khong-hoi", "--khong-mau", "--out", os.path.join(tmp, "o1.iso")])
+ck("trên máy chỉ có bản Proxmox CHƯA THỬ → tự tải bản đã thử từ máy chủ chính thức của Proxmox rồi dùng bản tải về", rc == 0 and any("chua duoc CloudBlue cai thu -> dung ban da thu" in x for x in said)
+   and b"RELEASE='9.8'" in pi.Iso(open(os.path.join(tmp, "o1.iso"), "rb")).read_file(".cd-info") and os.path.isfile(os.path.join(w2, "dl", "proxmox-ve_%s.iso" % pi.PVE_DEFAULT)), said[-8:])
+os.remove(os.path.join(w2, "dl", "proxmox-ve_%s.iso" % pi.PVE_DEFAULT)); pi.download = dl_fail; said.clear()
+rc = pi.main(["--work", w2, "--khong-hoi", "--khong-mau", "--out", os.path.join(tmp, "o2.iso")])
+ck("không tải được (mất mạng) → dùng tạm bản đang có trên máy, có ghi chú 'chưa thử'", rc == 0 and b"RELEASE='9.9'" in pi.Iso(open(os.path.join(tmp, "o2.iso"), "rb")).read_file(".cd-info")
+   and any("dung tam ban 9.9-1" in x for x in said) and any("chua duoc CloudBlue cai thu (da thu" in x for x in said), said[-8:])
+os.remove(os.path.join(d2, "proxmox-ve_9.9-1.iso")); said.clear()
+try: pi.main(["--work", w2, "--khong-hoi", "--khong-mau", "--out", os.path.join(tmp, "o3.iso")]); r3 = None
+except pi.Loi as e: r3 = str(e)
+ck("không có ISO Proxmox nào + không tải được → dừng, chỉ rõ link tải bằng Chrome", r3 and "Tai bang Chrome: https://enterprise.proxmox.com/iso/proxmox-ve_" in r3 and not os.path.exists(os.path.join(tmp, "o3.iso")), r3)
+pi.say = lambda *a: None
 env = dict(os.environ, CB_PVE_PW_HASH=HASH)
 outc = os.path.join(tmp, "cli.iso")
 src99 = os.path.join(tmp, "proxmox-ve_9.9-1.iso"); mk_iso(src99, release="9.9")
