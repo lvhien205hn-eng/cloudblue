@@ -764,7 +764,10 @@ class Host:
         metrics = {"cpu": cpu_pct(), "ram_used_mb": int((mem.get("MemTotal", 0) - mem.get("MemAvailable", 0)) / 1024),
                    "running": sum(1 for x in vms.values() if x["status"] == "running" and not x["template"]),
                    "tpl": sorted(t for t in tpls if t in self.tpl_need or not self.tpl_need), "iso": self.iso_list, "ver": CBHOST_VER}
-        if self.auto: metrics["tpl_auto"] = self.auto[:12]
+        if self.auto: metrics["tpl_auto"] = self.auto[:8]
+        while len(json.dumps(metrics)) > 12000 and (metrics.get("tpl_auto") or metrics["iso"]):      # web bỏ CẢ gói số đo nếu quá 16 KB → cắt bớt phần phụ
+            if metrics.get("tpl_auto"): metrics.pop("tpl_auto")
+            else: metrics["iso"] = metrics["iso"][:len(metrics["iso"]) // 2]
         body = {"p_secret": self.sec, "p_metrics": metrics, "p_vps": rep, "p_info": None}
         if self.jobs_ok: body["p_tpl"] = trep                     # web cũ (chưa chạy v57) không có tham số này
         if time.time() - self.info_t > 600: body["p_info"] = self.pve.info(); self.info_t = time.time()
