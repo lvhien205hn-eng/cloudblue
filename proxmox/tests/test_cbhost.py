@@ -304,5 +304,68 @@ ck("việc máy mẫu lạ từ web (đường dẫn ISO lạ / tên lạ / số
    all("cbmau-6" not in " ".join(x) and "rm -rf" not in " ".join(x) for x in pve()["log"][n0:]), pve()["log"][n0:])
 wj.jobs = None
 
+
+print("10. Tự dựng máy mẫu từ ISO (auto_tpl — đặt sẵn bởi ISO CloudBlue-Proxmox): không cần web, không cần bấm")
+ISO16 = "local:iso/CloudBlue-MayMau-win2016.iso"; ISO19 = "local:iso/CloudBlue-MayMau-win2019.iso"
+class DeadWeb:
+    def __init__(self): self.calls, self.err, self.url = [], "mất mạng", "x"
+    def rpc(self, fn, body, timeout=25): self.calls.append((fn, body)); return None
+SF = os.environ["CBHOST_STATE"]
+pve_set(lambda d: d.update(isos=[ISO, ISO16, "local:iso/virtio-win-0.1.240.iso"], guest_after=1))
+h0 = cb.Host(web=DeadWeb()); h0.poll_once(); wait_idle(h0)
+ck("auto_tpl tắt (máy chủ cài bằng lệnh thường) → có ISO máy mẫu cũng KHÔNG tự dựng", not any(x["name"].startswith("cbmau-win") for x in pve()["vms"].values()))
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm", "auto_tpl": True, "host_name": "vps-ab12"}))
+cb.AUTO_CHK_S = 0
+ha = cb.Host(web=DeadWeb())
+ck("cấu hình: auto_tpl bật · tên riêng của máy chủ (host_name) báo lên web thay tên node", ha.c["auto_tpl"] is True and ha.pve.info()["host"] == "vps-ab12", ha.pve.info())
+r = ha.poll_once(); wait_idle(ha)
+va = next(((k, x) for k, x in pve()["vms"].items() if x["name"] == "cbmau-win2016"), (None, None))
+c = (va[1] or {}).get("cfg") or {}
+ck("chưa gọi được web (mất mạng) vẫn TỰ tạo máy ảo cbmau-win2016 từ ISO: số 99500 · win10 · 2 nhân · 2 GB · ổ 20 GB · gắn ISO · đã bật",
+   r is False and va[0] == "99500" and c.get("ostype") == "win10" and c.get("cores") == "2" and c.get("memory") == "2048" and va[1]["disks"] == {"scsi0": 20}
+   and va[1]["cdrom"] == {"ide2": ISO16} and va[1]["status"] == "running", va)
+ck("bản đã có máy mẫu (tpl-win2012r2) → không dựng lại", not any(x["name"] == "cbmau-win2012r2" for x in pve()["vms"].values()))
+ha.poll_once(); wait_idle(ha); ha.poll_once(); wait_idle(ha)
+v = pve()["vms"]["99500"]
+ck("Windows chưa cài xong (chưa có maymau.done) → chờ: không tắt, không đổi tên, không tạo thêm máy", v["name"] == "cbmau-win2016" and not v.get("template") and v["status"] == "running"
+   and not v.get("execs") and sum(1 for x in pve()["vms"].values() if x["name"] == "cbmau-win2016") == 1, v)
+pve_set(lambda d: d["vms"]["99500"].setdefault("files", {}).update({"C:\\CloudBluePC\\vm\\maymau.done": "ok 24.11a"}))
+ha.poll_once(); wait_idle(ha, 30)
+v = pve()["vms"]["99500"]
+ck("máy mẫu báo cài xong (maymau.done) → TỰ dừng agent, tắt, gỡ ISO, đặt tên tpl-win2016, chuyển thành máy mẫu",
+   v["name"] == "tpl-win2016" and v.get("template") and v["cdrom"] == {"ide2": "none"} and v.get("execs") == [["taskkill", "/f", "/im", "pythonw.exe"]]
+   and json.load(open(SF))["awin2016"].get("done") is True, (v, json.load(open(SF)).get("awin2016")))
+n0 = len(pve()["log"]); ha.poll_once(); wait_idle(ha); ha.poll_once(); wait_idle(ha)
+ck("xong rồi → các vòng sau không tạo / đổi gì nữa", not [x for x in pve()["log"][n0:] if x[0] == "qm" and x[1] in ("create", "set", "template", "destroy", "shutdown")], pve()["log"][n0:])
+pve_set(lambda d: d["vms"].pop("99500")); ha.poll_once(); wait_idle(ha); ha.poll_once(); wait_idle(ha)
+ck("máy mẫu bị xoá tay sau khi đã dựng xong → KHÔNG tự dựng lại (tránh làm trái ý admin)", not any(x["name"] == "cbmau-win2016" for x in pve()["vms"].values()))
+
+wn = FakeWeb(); hn = cb.Host(web=wn)                           # máy chủ vừa lên web, CHỜ DUYỆT
+pve_set(lambda d: d.update(isos=[ISO, ISO16, ISO19]))
+hn.iso_t = 0; hn.jobs = [job(id=11, iso=ISO19, tpl="tpl-win2019")]
+hn.poll_once(); wait_idle(hn)
+ck("admin đang dựng đúng bản đó bằng bảng điều khiển trên web → nhường, không tự dựng trùng", not any(x["name"] == "cbmau-win2019" for x in pve()["vms"].values()))
+hn.jobs = []
+hn.poll_once(); wait_idle(hn); hn.poll_once()
+v19 = next(((k, x) for k, x in pve()["vms"].items() if x["name"] == "cbmau-win2019"), (None, None))
+ta = last_poll(wn)["p_metrics"].get("tpl_auto") or []
+ck("máy chủ CHỜ DUYỆT vẫn tự dựng máy mẫu (xong sớm, duyệt là bán được) + báo tiến độ lên web (tpl_auto)", wn.status == "new" and v19[0] is not None
+   and v19[1]["status"] == "running" and any(x.get("tag") == "win2019" and x.get("state") in ("installing", "creating", "working") for x in ta), (v19, ta))
+st19 = json.load(open(SF))["awin2019"]
+pve_set(lambda d: d["vms"][v19[0]].update(status="stopped"))
+hn.poll_once(); wait_idle(hn)
+ck("máy mẫu đang cài bị tắt giữa chừng (mất điện …) → bật lại cho cài tiếp", pve()["vms"][v19[0]]["status"] == "running")
+cb.AUTO_WAIT_S = 0; cb.RETRY_S = 0
+with hn.lock: hn.st["awin2019"]["t_build"] = time.time() - 600
+hn.poll_once(); wait_idle(hn)
+ck("quá giờ mà Windows chưa cài xong → xoá máy ảo dựng dở", v19[0] not in pve()["vms"], list(pve()["vms"]))
+pve_set(lambda d: d.update(isos=[ISO, ISO16]))                  # ISO biến mất khỏi kho nhưng máy chủ còn nhớ danh sách cũ → tạo lại sẽ lỗi
+for _ in range(4): hn.poll_once(); wait_idle(hn)
+s19 = json.load(open(SF))["awin2019"]
+n0 = len(pve()["log"]); hn.poll_once(); wait_idle(hn)
+ck("dựng lại vẫn lỗi → sau %d lần thì THÔI (không thử mãi), ghi lỗi để xem" % cb.AUTO_TRIES, s19.get("off") is True and int(s19.get("tries") or 0) == cb.AUTO_TRIES
+   and not [x for x in pve()["log"][n0:] if x[0] == "qm" and x[1] == "create"], s19)
+cb.AUTO_WAIT_S = 3 * 3600; cb.RETRY_S = 60
+
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
