@@ -128,7 +128,15 @@ HOOK = """(() => { const V = window.__VM; const c = v => JSON.parse(JSON.stringi
     vm_admin_vps: a => { const v = V.adm.vps.find(x => x.id === a.p_id); if (!v) return raise('NO_VPS');
       if (a.p_act === 'stop') v.want = 'stopped'; if (a.p_act === 'start') v.want = 'running'; if (a.p_act === 'delete' || a.p_act === 'refund') v.status = 'deleted';
       return { ok: true, act: a.p_act, refunded: a.p_act === 'refund' }; },
-    vm_admin_give: a => V.giveErr ? raise(V.giveErr) : ({ ok: true, id: 16, pc: 'pc-16', host: '%s', slot: 4 })
+    vm_admin_give: a => V.giveErr ? raise(V.giveErr) : ({ ok: true, id: 16, pc: 'pc-16', host: '%s', slot: 4 }),
+    vm_tpl_state: () => V.tpl === null ? miss('vm_tpl_state') : c(V.tpl),
+    vm_tpl_new: a => { if (V.tplErr) return raise(V.tplErr); const h = V.tpl.hosts.find(x => x.id === a.p_host), i = V.tpl.images.find(x => x.id === a.p_image);
+      const j = { id: 40 + V.tpl.jobs.length, host: a.p_host, host_name: h.name, image: a.p_image, image_name: i.name, tpl: i.tpl, src: a.p_src, iso: a.p_iso || '',
+        cores: 2, ram_mb: 2048, disk_gb: 20, pc: null, want: 'running', status: 'creating', err: '', enrolled: false, online: false };
+      V.tpl.jobs.unshift(j); return c(j); },
+    vm_tpl_act: a => { const j = V.tpl.jobs.find(x => x.id === a.p_id); if (!j) return raise('NOT_FOUND');
+      if (a.p_act === 'save') { j.want = 'save'; j.status = 'saving'; } else if (a.p_act === 'cancel') j.want = 'cancel'; else if (a.p_act === 'retry') { j.status = 'creating'; j.err = ''; }
+      return c(j); }
   }); })();""" % H1
 
 
@@ -171,8 +179,28 @@ class Site:
     def close(self): self.ctx.close()
 
 
+TPC = "00000000-0000-4000-8000-00000000b001"
+ISO = "local:iso/CloudBlue-MayMau-win2012r2.iso"
+def tpl_state(err=False):
+    d = {"hosts": [{"id": H1, "name": "pve1", "status": "ready", "online": True, "tpl": ["tpl-win10ltsc", "tpl-win2012r2"], "ver": "26/11a",
+                       "iso": [{"volid": ISO, "size": 4500000000}, {"volid": "local:iso/virtio-win-0.1.240.iso", "size": 627000000}]}],
+            "images": [{"id": i[0], "name": i[1], "tpl": i[2], "min_ram": i[3], "enabled": True} for i in IMAGES],
+            "jobs": [{"id": 31, "host": H1, "host_name": "pve1", "image": "win2022", "image_name": "Windows Server 2022", "tpl": "tpl-win2022", "src": "iso",
+                      "iso": "local:iso/CloudBlue-MayMau-win2022.iso", "cores": 2, "ram_mb": 2048, "disk_gb": 20, "pc": TPC, "want": "running", "status": "ready", "err": "",
+                      "enrolled": True, "online": True, "created_at": iso(-3600)},
+                     {"id": 30, "host": H1, "host_name": "pve1", "image": "win2016", "image_name": "Windows Server 2016", "tpl": "tpl-win2016", "src": "iso",
+                      "iso": "local:iso/x.iso", "cores": 2, "ram_mb": 2048, "disk_gb": 20, "pc": None, "want": "running", "status": "error", "err": "tạo máy ảo lỗi: volume does not exist",
+                      "enrolled": False, "online": False, "created_at": iso(-7200)},
+                     {"id": 29, "host": H1, "host_name": "pve1", "image": "win10ltsc", "image_name": "Windows 10 LTSC", "tpl": "tpl-win10ltsc", "src": "tpl", "iso": "",
+                      "cores": 2, "ram_mb": 2048, "disk_gb": 20, "pc": None, "want": "save", "status": "saved", "err": "", "enrolled": False, "online": False,
+                      "created_at": iso(-90000), "done_at": iso(-86000)}]}
+    if not err: d["jobs"] = [j for j in d["jobs"] if j["status"] != "error"]
+    return d
+
+
 def vm_data(**kw):
-    d = {"shop": json.loads(json.dumps(SHOP)), "my": json.loads(json.dumps(MY)), "gpu": json.loads(json.dumps(GPU_MINE)), "adm": adm_state(), "rev": REV, "miss": False}
+    d = {"shop": json.loads(json.dumps(SHOP)), "my": json.loads(json.dumps(MY)), "gpu": json.loads(json.dumps(GPU_MINE)), "adm": adm_state(), "rev": REV, "miss": False,
+         "tpl": tpl_state()}
     d.update(kw)
     return d
 
@@ -287,6 +315,63 @@ def main():
         ck("Tạo VPS cho tài khoản (không trừ tiền) → vm_admin_give", s.calls("vm_admin_give") == [{"p_user": "khachA", "p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 3}], s.calls("vm_admin_give"))
         s.shot("vm-4-set.png")
         ck("không lỗi trang / không hộp thoại trình duyệt (quản trị)", not s.errors, s.errors)
+        s.close()
+
+        print("3a. 🧰 Bảng điều khiển máy mẫu (SQL v57)")
+        s = Site(br, html, True, vm_data(tpl=tpl_state(err=True)), path="/admin", vp=(1600, 1000))
+        admin_open(s, "images")
+        box = s.txt("#vma-images .vma-sec") or ""
+        ck("thẻ Bản Windows có bảng máy mẫu: máy mẫu đang dựng (Server 2022 sẵn sàng, Server 2016 lỗi) + lịch sử (10 LTSC đã lưu)",
+           "Bảng điều khiển máy mẫu" in box and "tpl-win2022" in box and "Sẵn sàng" in box and "volume does not exist" in box and "✅ tpl-win10ltsc" in box, box)
+        ck("máy mẫu sẵn sàng: ▶ Điều khiển mở play.html?pc=<máy mẫu> (tab mới) + nút 💾 Lưu bật; máy lỗi: Lưu tắt, có ↻ Thử lại",
+           s.js("() => { const a = document.querySelector('[data-vmtj=\"31\"] a.btn'); return a && a.getAttribute('href'); }") == "/play.html?pc=" + TPC
+           and s.js("() => !document.querySelector('[data-vmtj=\"31\"] [data-vmt=\"save\"]').disabled")
+           and s.js("() => document.querySelector('[data-vmtj=\"30\"] [data-vmt=\"save\"]').disabled")
+           and s.js("() => !!document.querySelector('[data-vmtj=\"30\"] [data-vmt=\"retry\"]')"))
+        ck("số trên thẻ VPS ảo hoá cộng thêm máy mẫu lỗi (2 + 1 = 3)", s.js("() => document.getElementById('vm-badge').textContent") == "3")
+        s.js("() => document.querySelector('#vma-images .vma-sec').scrollIntoView()"); s.page.wait_for_timeout(200)
+        s.shot("vm-10-tpl-panel.png")
+        s.page.click('[data-vmtj="30"] [data-vmt="retry"]'); s.page.wait_for_timeout(500)
+        ck("↻ Thử lại → vm_tpl_act retry", s.calls("vm_tpl_act")[-1:] == [{"p_id": 30, "p_act": "retry"}], s.calls("vm_tpl_act"))
+        s.page.click('[data-vmtj="31"] [data-vmt="save"]'); s.page.wait_for_timeout(300)
+        d1 = s.dlg()
+        ck("💾 Lưu → hộp xác nhận nói rõ: xoá mã máy, tắt, gỡ ISO, máy mẫu cũ thành tpl-win2022-cu, VPS đang chạy giữ nguyên",
+           "tpl-win2022-cu" in d1 and "xoá mã máy" in d1 and "VPS đang chạy giữ nguyên" in d1, d1)
+        s.shot("vm-11-tpl-save.png")
+        s.page.click("#vma-tj-go"); s.page.wait_for_timeout(600)
+        ck("xác nhận → vm_tpl_act save, đóng hộp, thẻ chuyển 'Đang lưu'", s.calls("vm_tpl_act")[-1] == {"p_id": 31, "p_act": "save"} and not s.vis("#vzdlg")
+           and "Đang lưu" in (s.txt('[data-vmtj="31"]') or ""), s.calls("vm_tpl_act"))
+        s.page.click("#vma-t-new"); s.page.wait_for_timeout(300)
+        d2 = s.dlg()
+        ck("➕ Dựng / sửa máy mẫu: chọn máy chủ + bản Windows; dựng từ ISO tự chọn đúng file ISO máy mẫu của bản đó (2012 R2)",
+           "Dựng mới từ ISO" in d2 and s.js("() => document.getElementById('vma-t-iso').value") == ISO
+           and s.js("() => document.getElementById('vma-t-img').value") == "win2012r2", d2)
+        s.page.select_option("#vma-t-img", "win2019"); s.page.wait_for_timeout(200)
+        ck("bản máy chủ chưa có mẫu (2019) → nút 'Sửa máy mẫu đang có' bị khoá", s.js("() => document.querySelector('[data-vmtsrc=\"tpl\"]').disabled"))
+        s.page.select_option("#vma-t-img", "win2012r2"); s.page.wait_for_timeout(200)
+        s.shot("vm-12-tpl-new.png")
+        s.page.click("#vma-t-go"); s.page.wait_for_timeout(700)
+        ck("Bắt đầu → vm_tpl_new {máy chủ, win2012r2, iso, đúng file ISO}; việc mới hiện 'Đang tạo máy ảo'",
+           s.calls("vm_tpl_new") == [{"p_host": H1, "p_image": "win2012r2", "p_src": "iso", "p_iso": ISO}] and "Đang tạo máy ảo" in (s.txt("#vma-images .vma-sec") or ""), s.calls("vm_tpl_new"))
+        s.page.click("#vma-t-new"); s.page.wait_for_timeout(300)
+        s.page.click('[data-vmtsrc="tpl"]'); s.page.wait_for_timeout(200)
+        s.js("() => { window.__VM.tplErr = 'BUSY'; }")
+        s.page.click("#vma-t-go"); s.page.wait_for_timeout(500)
+        ck("sửa máy mẫu đang có → vm_tpl_new src tpl (không ISO); máy chủ báo bận → báo lỗi trong hộp, không đóng",
+           s.calls("vm_tpl_new")[-1] == {"p_host": H1, "p_image": "win2012r2", "p_src": "tpl", "p_iso": None} and s.vis("#vzdlg") and (s.txt("#vzd-err") or ""), s.calls("vm_tpl_new"))
+        s.js("() => { window.__VM.tplErr = null; }"); s.page.click("#vzdlg [data-vmx]"); s.page.wait_for_timeout(200)
+        s.page.click('[data-vmtj="31"] [data-vmt="cancel"]'); s.page.wait_for_timeout(300)
+        ck("✖ Huỷ → hộp xác nhận xoá máy ảo tạm (máy mẫu đang dùng giữ nguyên)", "Máy mẫu đang dùng giữ nguyên" in s.dlg(), s.dlg())
+        s.page.click("#vma-tj-go"); s.page.wait_for_timeout(500)
+        ck("xác nhận huỷ → vm_tpl_act cancel", s.calls("vm_tpl_act")[-1] == {"p_id": 31, "p_act": "cancel"}, s.calls("vm_tpl_act"))
+        ck("nút 📋 chép lệnh ghép ISO máy mẫu có (lệnh tải tao-iso-may-mau.ps1)", s.vis("#vma-t-cmd")
+           and "tao-iso-may-mau.ps1" in s.js("() => { let t = ''; const o = navigator.clipboard; return 'x'; }") + open(HTML, encoding="utf-8").read()[:0] + s.page.content())
+        ck("không lỗi trang / không hộp thoại trình duyệt (máy mẫu)", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, vm_data(tpl=None), path="/admin", vp=(1600, 1000))
+        admin_open(s, "images")
+        ck("chưa chạy SQL v57 → bảng máy mẫu báo 'Cần chạy SQL v57', phần còn lại vẫn chạy, không lỗi", "Cần chạy SQL v57" in (s.txt("#vma-images") or "")
+           and "tpl-win2012r2" in (s.txt("#vma-images") or "") and not s.errors, (s.txt("#vma-images"), s.errors))
         s.close()
 
         print("3b. Mới chạy SQL: 8 cấu hình CHƯA có giá")
