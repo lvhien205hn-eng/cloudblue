@@ -1,0 +1,68 @@
+# 26/11 · ISO PROXMOX TỰ CÀI (proxmox/tao-iso-proxmox.ps1 + proxmox/vm/pve_*.py): thử trên nhánh appvm-pve-* TRƯỚC khi gộp vào main.
+#   Tải ISO Proxmox VE chính thức, ghép bằng công cụ của CloudBlue, đối chiếu với công cụ chính thức của Proxmox,
+#   rồi cài thật trong máy ảo QEMU (BIOS + UEFI). Kết quả → nhánh pve-shots. Không đụng máy thật nào, không gọi web thật.
+name: Check ISO Proxmox tu cai
+
+on:
+  push:
+    branches: ["appvm-pve-*"]
+    paths:
+      - "proxmox/**"
+      - ".github/workflows/pve-iso-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy kết quả vào nhánh pve-shots
+
+concurrency:
+  group: pve-iso-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc
+        run: sudo mkdir -p /mnt/w && sudo chown "$(id -u)" /mnt/w
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /mnt/w/pve.iso
+            /mnt/w/pve.ver
+          key: pve-iso-v1
+      - name: Tải ISO Proxmox VE
+        run: bash proxmox/tests/ci/pve_ci.sh tai
+      - name: Chạy thử
+        shell: bash
+        run: |
+          set +e
+          mkdir -p kq
+          for buoc in $(cat proxmox/tests/ci/pve_buoc.txt); do
+            echo "::group::$buoc"
+            bash proxmox/tests/ci/pve_ci.sh "$buoc" > /tmp/buoc.log 2>&1; rc=$?
+            tail -n 300 /tmp/buoc.log
+            cp /tmp/buoc.log "kq/pve-log-$buoc.txt"
+            [ $rc -eq 0 ] || echo "XX  buoc $buoc ma $rc" | tee -a kq/pve-ketqua.txt
+            echo "::endgroup::"
+          done
+          exit 0
+      - name: Lưu kết quả vào nhánh pve-shots
+        if: always()
+        run: |
+          ls -la kq || exit 0
+          mkdir -p shots && cp -r kq/. shots/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan pve-shots-tmp
+          git rm -r -q --cached .
+          mkdir -p blueroblox-site
+          echo '{"git":{"deploymentEnabled":false}}' > blueroblox-site/vercel.json
+          git add shots blueroblox-site/vercel.json
+          git commit -q -m "Ket qua thu ISO Proxmox tu cai ($GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/pve-shots
+      - name: Đạt / không đạt
+        run: |
+          cat kq/pve-ketqua.txt 2>/dev/null || true
+          ! grep -q '^XX' kq/pve-ketqua.txt 2>/dev/null
