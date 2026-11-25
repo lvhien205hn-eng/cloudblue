@@ -1,6 +1,8 @@
-# 26/11 · ISO PROXMOX TỰ CÀI (proxmox/tao-iso-proxmox.ps1 + proxmox/vm/pve_*.py): thử trên nhánh appvm-pve-* TRƯỚC khi gộp vào main.
-#   Tải ISO Proxmox VE chính thức, ghép bằng công cụ của CloudBlue, đối chiếu với công cụ chính thức của Proxmox,
-#   rồi cài thật trong máy ảo QEMU (BIOS + UEFI). Kết quả → nhánh pve-shots. Không đụng máy thật nào, không gọi web thật.
+# 26/11 · ISO PROXMOX TỰ CÀI (proxmox/tao-iso-proxmox.ps1 + proxmox/vm/pve_iso.py, cb_nap.py, pve_firstboot.sh): thử trên nhánh appvm-pve-* TRƯỚC khi gộp vào main.
+#   pve (Ubuntu, có KVM): tải ISO Proxmox VE chính thức → ghép bằng công cụ của CloudBlue → soát bằng xorriso + mount + công cụ chính thức của Proxmox
+#                         → CÀI THẬT trong máy ảo QEMU (BIOS + USB, UEFI + CD) → bật lại, kiểm trong máy qua SSH · máy "đang có Windows" không bị tự cài.
+#   win (Windows Server 2022, PowerShell 5.1): chạy thật lệnh tao-iso-proxmox.ps1 (tự tải Python + ISO Proxmox) → file ra phải giống từng byte file ghép trên Linux.
+#   Kết quả → nhánh pve-shots. Không đụng máy thật nào, không gọi web thật (cbhost trong máy thử gọi web giả trên máy CI).
 name: Check ISO Proxmox tu cai
 
 on:
@@ -21,7 +23,7 @@ concurrency:
 jobs:
   pve:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v4
       - name: Chỗ làm việc
@@ -48,11 +50,53 @@ jobs:
             echo "::endgroup::"
           done
           exit 0
-      - name: Lưu kết quả vào nhánh pve-shots
+      - uses: actions/upload-artifact@v4
         if: always()
+        with:
+          name: pve-kq-linux
+          path: kq
+          if-no-files-found: ignore
+
+  win:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      # giữ nguyên từng byte như trên GitHub (không đổi xuống dòng) để file ghép giống hệt bên Linux
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Chạy tao-iso-proxmox.ps1 (pve_win_check.ps1)
+        shell: cmd
         run: |
-          ls -la kq || exit 0
-          mkdir -p shots && cp -r kq/. shots/
+          mkdir "%RUNNER_TEMP%\kq"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File proxmox\tests\ci\pve_win_check.ps1 -KetQua "%RUNNER_TEMP%\kq\pve-ketqua-win.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pve-kq-win
+          path: ${{ runner.temp }}/kq
+          if-no-files-found: ignore
+
+  ket-qua:
+    needs: [pve, win]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pve-kq-*
+          path: shots
+          merge-multiple: true
+      - name: So file ghép trên Windows với file ghép trên Linux + lưu kết quả vào nhánh pve-shots
+        shell: bash
+        run: |
+          ls -la shots || exit 0
+          a=$(cat shots/pve-sha-linux.txt 2>/dev/null | tr -d '\r\n'); b=$(cat shots/pve-sha-win.txt 2>/dev/null | tr -d '\r\n')
+          if [ -n "$a" ] && [ "$a" = "$b" ]; then echo "OK  ISO ghép trên Windows (PowerShell 5.1 + Python nhúng) GIỐNG TỪNG BYTE ISO ghép trên Linux (bản đã cài thật trong máy ảo): $a" >> shots/pve-ketqua.txt
+          else echo "XX  ISO ghép trên Windows KHÁC ISO ghép trên Linux: linux=[$a] win=[$b]" >> shots/pve-ketqua.txt; fi
+          sed 's/^\xEF\xBB\xBF//' shots/pve-ketqua-win.txt 2>/dev/null | tr -d '\r' | grep -E '^(OK|XX|\.\.)' >> shots/pve-ketqua.txt || echo "XX  job win không có kết quả" >> shots/pve-ketqua.txt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan pve-shots-tmp
@@ -64,5 +108,5 @@ jobs:
           git push -f origin HEAD:refs/heads/pve-shots
       - name: Đạt / không đạt
         run: |
-          cat kq/pve-ketqua.txt 2>/dev/null || true
-          ! grep -q '^XX' kq/pve-ketqua.txt 2>/dev/null
+          cat shots/pve-ketqua.txt 2>/dev/null || true
+          test -s shots/pve-ketqua.txt && ! grep -q '^XX' shots/pve-ketqua.txt
