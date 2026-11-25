@@ -252,7 +252,8 @@ ck("maymau.ps1: cài phần mềm bằng đúng 2 pha của cb_provision (specia
    'Prov "specialize"' in mm and 'Prov "system"' in mm and 'Touch-Mark "firstlogon.done"' in mm and mm.index('Prov "specialize"') < mm.index('Touch-Mark "firstlogon.done"') < mm.index('Prov "system"'))
 ck("maymau.ps1: khoá MỌI tài khoản khác (mật khẩu ngẫu nhiên + tắt) — VPS nhân ra không chung mật khẩu quản trị", "Lock-Others" in mm and "SetPassword($pw)" in mm and "/active:no" in mm)
 ck("maymau.ps1: Python chưa chạy (vừa cài bản vá UCRT) → khởi động lại, tối đa 3 lần; không in mật khẩu", "reboot.n" in mm and "-lt 3" in mm and not re.search(r"Log[^\n]*\$pw", mm))
-ck("maymau.ps1: kiểm cuối — máy mẫu KHÔNG được mang identity.json", "identity.json" in mm and "DA DANG KY" in mm)
+ck("maymau.ps1: KHÔNG xoá seed.json / identity.json (bảng điều khiển máy mẫu: máy chủ đưa vé vào để admin điều khiển; lúc lưu mẫu máy chủ tự xoá mã máy)",
+   not re.search(r'Remove-Item[^\n]*(seed|identity)\.json', mm) and "seed.json" in mm)
 ck("maymau.ps1: không bao giờ tự tắt máy mẫu khi xong (để điều khiển / chỉnh tiếp)", not re.search(r'shutdown\.exe"\s*@\("/s"', mm) and 'shutdown.exe" @("/r"' in mm)
 
 shutil.rmtree(tmp, ignore_errors=True)
