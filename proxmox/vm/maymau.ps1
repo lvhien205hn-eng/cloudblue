@@ -316,8 +316,6 @@ function Check-All {
   elseif (-not (Test-Member (Get-GroupName "S-1-5-32-544" "Administrators") $User)) { $bad += ("tai khoan " + $User + " chua co quyen Admin") }
   $wl = Get-ItemProperty -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -ErrorAction SilentlyContinue
   if ((-not $wl) -or (("" + $wl.AutoAdminLogon) -ne "1") -or (("" + $wl.DefaultUserName) -ne $User)) { $bad += "chua dat tu dang nhap" }
-  $idf = Join-Path $Base "identity.json"
-  if ((Test-Path -LiteralPath $idf) -and (("" + (Get-Content -Raw -LiteralPath $idf -ErrorAction SilentlyContinue)).Trim())) { $bad += "may mau DA DANG KY (co identity.json) - moi VPS nhan ra se chung 1 ma may" }
   return $bad
 }
 
@@ -327,7 +325,8 @@ function Clean-Up {
     Remove-Item -LiteralPath $p -Force -ErrorAction SilentlyContinue
   }
   foreach ($n in @("ucrt.msu", "qemu-ga-x86_64.msi", "drivers", "reboot.at", "maymau.loi")) { Remove-Item -LiteralPath (Join-Path $VmDir $n) -Recurse -Force -ErrorAction SilentlyContinue }
-  foreach ($n in @("seed.json", "identity.json")) { Remove-Item -LiteralPath (Join-Path $Base $n) -Force -ErrorAction SilentlyContinue }
+  # KHONG xoa seed.json / identity.json: dung bang bang dieu khien may mau tren web thi may chu dua ve dang ky vao day (agent dang ky de admin dieu khien);
+  # luc "Luu thanh may mau" may chu tu xoa ma may truoc khi chuyen thanh mau.
   Log "ok  don file cai dat (file tra loi, goi cai, driver da nap)"
 }
 
