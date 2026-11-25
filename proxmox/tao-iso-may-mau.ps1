@@ -433,7 +433,9 @@ try {
   if ($why -match "HashMismatch") { Stop-Build ("qemu-ga-x86_64.msi bi sua (chu ky so khong khop) - tai lai ISO virtio-win.") }
   if ($why) { Note ("qemu-ga-x86_64.msi: " + $why) }
   Say ("   virtio-win " + $VVer + " - driver " + $S.os + " du (o dia VirtIO SCSI / Block, mang VirtIO, cong noi QEMU agent) + QEMU guest agent") "DarkGray"
-  if ($VVer -eq "0.1.285") { Note "virtio-win 0.1.285 hay loi o dia / mang (Server 2016 - 2025) - nen dung 0.1.271." }
+  if ($VVer -and ($VVer -ne $want)) {
+    Note ("Dang dung virtio-win " + $VVer + " - CloudBlue chi kiem ky ban " + $want + " cho " + $S.os + " (0.1.285 loi o dia / mang; 0.1.302 loi sao luu VSS cua QEMU agent). Nen tao lai ISO, o buoc 4 bam Enter de tu tai ban " + $want + ".")
+  }
 
   # ---------------------------------------------------------------- 5. ffmpeg + ban va
   Step "5/7  ffmpeg (dieu khien tu xa) + ban va Windows can them"
