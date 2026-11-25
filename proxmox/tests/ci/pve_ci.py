@@ -49,14 +49,20 @@ def ppm_to_png(ppm, png):
 
 
 class Qmp:
-    def __init__(self, path):
-        for _ in range(100):
+    def __init__(self, path, proc=None):
+        self.s = None
+        for _ in range(150):
             try:
-                self.s = socket.socket(socket.AF_UNIX)
-                self.s.connect(path)
+                s = socket.socket(socket.AF_UNIX)
+                s.connect(path)
+                self.s = s
                 break
             except OSError:
+                if proc is not None and proc.poll() is not None:
+                    break
                 time.sleep(0.2)
+        if self.s is None:
+            raise RuntimeError("QEMU không chạy được (không có cổng QMP)")
         self.f = self.s.makefile("rw")
         self.f.readline()
         self.cmd("qmp_capabilities")
@@ -75,7 +81,7 @@ class Qmp:
 
 class Vm:
     """1 máy ảo QEMU. iso_as: usb (ISO ghi kiểu DD ra USB) | cd. disk: scsi | nvme | sata."""
-    def __init__(self, name, mode, disk, disk_kind, iso_as, iso_first, no_reboot=False, port=2222, disk_fmt="qcow2"):
+    def __init__(self, name, mode, disk, disk_kind, iso_as, iso_first, no_reboot=False, port=2222, disk_fmt="qcow2", usb2=None):
         self.name, self.port = name, port
         self.serial = os.path.join(KQ, "pve-serial-%s.txt" % name)
         self.qmp_p = os.path.join(W, "qmp-%s.sock" % name)
@@ -95,18 +101,25 @@ class Vm:
         if iso_as == "usb":
             a += ["-device", "qemu-xhci,id=xhci", "-drive", "if=none,id=stick,format=raw,readonly=on,file=" + ISO, "-device", "usb-storage,bus=xhci.0,drive=stick,bootindex=%d" % bi_iso]
         elif iso_as == "cd":
-            a += ["-drive", "if=none,id=cd,media=cdrom,format=raw,readonly=on,file=" + ISO, "-device", "ide-cd,drive=cd,bootindex=%d" % bi_iso]
+            a += ["-drive", "if=none,id=cd,media=cdrom,format=raw,readonly=on,file=" + ISO, "-device", "ide-cd,bus=ide.0,drive=cd,bootindex=%d" % bi_iso]
+        if usb2:
+            a += ["-device", "qemu-xhci,id=xhci2", "-drive", "if=none,id=stick2,format=raw,file=" + usb2, "-device", "usb-storage,bus=xhci2.0,drive=stick2"]
         a += ["-drive", "if=none,id=hd0,format=%s,file=%s%s" % (disk_fmt, disk, ",discard=unmap" if disk_fmt == "qcow2" else "")]
         if disk_kind == "scsi":
             a += ["-device", "virtio-scsi-pci,id=sc0", "-device", "scsi-hd,bus=sc0.0,drive=hd0,bootindex=%d" % bi_hd]
         elif disk_kind == "nvme":
             a += ["-device", "nvme,drive=hd0,serial=cbci0001,bootindex=%d" % bi_hd]
         else:
-            a += ["-device", "ide-hd,drive=hd0,bootindex=%d" % bi_hd]
+            a += ["-device", "ide-hd,bus=ide.1,drive=hd0,bootindex=%d" % bi_hd]
         if no_reboot:
             a.append("-no-reboot")
-        self.p = subprocess.Popen(a, stdout=open(os.path.join(KQ, "pve-qemu-%s.txt" % name), "w"), stderr=subprocess.STDOUT)
-        self.q = Qmp(self.qmp_p)
+        self.qlog = os.path.join(KQ, "pve-qemu-%s.txt" % name)
+        self.p = subprocess.Popen(a, stdout=open(self.qlog, "w"), stderr=subprocess.STDOUT)
+        try:
+            self.q = Qmp(self.qmp_p, self.p)
+        except RuntimeError as e:
+            self.kill()
+            raise RuntimeError("%s: %s | lệnh: %s" % (e, open(self.qlog).read()[-400:].replace("\n", " | "), " ".join(a)[:900]))
         self.t0 = time.time()
 
     def shot(self, tag):
@@ -179,11 +192,14 @@ def ghep():
               rc == 0 and os.path.exists(ISO) and "bao ve may da co Proxmox / Windows: CO" in out and "chua duoc CloudBlue cai thu" not in out, out[-500:]):
         return 1
     src = os.path.join(W, "pve.iso")
-    pick = lambda t: "\n".join(x for x in t.splitlines() if re.match(r"^(El Torito|MBR|GPT|APM|System area|Boot record|Volume id)", x))
+    # (dòng "Boot record" / "System area" / "MBR heads" của xorriso là suy đoán theo cỡ file — ISO do công cụ chính thức của Proxmox tạo cũng đổi y như vậy)
+    pick = lambda t: "\n".join(x for x in t.splitlines() if re.match(r"^(El Torito|MBR partition|GPT|APM|Volume id)", x))
     a = pick(sh("xorriso -indev %s -report_el_torito plain -report_system_area plain 2>&1" % src)[1])
     b = pick(sh("xorriso -indev %s -report_el_torito plain -report_system_area plain 2>&1" % ISO)[1])
     ok("xorriso: bản ghi khởi động (El Torito BIOS + UEFI, MBR, GPT, APM) của ISO ghép Y HỆT ISO gốc", a == b and "El Torito boot img :   2  UEFI" in a,
        "\n".join(x for x in b.splitlines() if x not in a.splitlines())[:400])
+    rc, cm = sh("cmp -n %d %s %s && cmp -i %d -n %d %s %s" % (16 * 2048, src, ISO, 17 * 2048, 2 * 2048, src, ISO))
+    ok("32 KiB đầu (MBR, GPT, APM, mã khởi động) + bản ghi El Torito của ISO ghép giống từng byte ISO gốc", rc == 0, cm[-200:])
     rc, ls = sh("xorriso -indev %s -lsl / 2>&1" % ISO)
     ok("xorriso đọc được cây thư mục, thấy 3 file mới đúng tên", all(("'%s'" % n) in ls for n in ("auto-installer-mode.toml", "answer.toml", "proxmox-first-boot")) and "'pve-installer.squashfs'" in ls, ls[-600:])
     sh("sudo mkdir -p /mnt/a /mnt/b; sudo umount /mnt/a /mnt/b 2>/dev/null; sudo mount -o loop,ro %s /mnt/a && sudo mount -o loop,ro %s /mnt/b" % (src, ISO))
@@ -195,9 +211,13 @@ def ghep():
        and moi == ["./answer.toml", "./auto-installer-mode.toml", "./boot/grub/grub.cfg", "./proxmox-first-boot"] and sorted(x.split("  ", 1)[1] for x in la - lb) == ["./boot/grub/grub.cfg"], (moi, len(la), len(lb)))
     g = open("/mnt/b/boot/grub/grub.cfg").read()
     go = open("/mnt/a/boot/grub/grub.cfg").read()
-    m = re.search(r"# ---- CloudBlue: khong tu cai.*?# ---- het doan CloudBlue ----\n\n", g, re.S)
-    ok("grub.cfg trong ISO ghép = bản gốc + đúng 1 đoạn CloudBlue chèn ngay trước khối tự cài", bool(m) and g[:m.start()] + g[m.end():] == go
-       and g[m.end():].startswith("if [ -f auto-installer-mode.toml ]; then"), g[:200])
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("pve_iso", os.path.join(REPO, "proxmox", "vm", "pve_iso.py"))
+    pi = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pi)
+    i0, i1 = g.find(pi.GUARD_MARK), g.find(pi.GUARD_END)
+    ok("grub.cfg trong ISO ghép = bản gốc + đoạn CloudBlue chèn ngay trước khối tự cài + 'máy có Windows thì không đếm ngược'", 0 < i0 < i1 and g.count(pi.GUARD_TMO) == 1
+       and (g[:i0] + g[i1 + len(pi.GUARD_END):]).replace(pi.GUARD_TMO, "") == go and g[i1 + len(pi.GUARD_END):].startswith("if [ -f auto-installer-mode.toml ]; then"), g[:200])
     shutil.copy("/mnt/b/answer.toml", os.path.join(W, "answer.toml"))
     shutil.copy("/mnt/b/proxmox-first-boot", os.path.join(W, "fb.sh"))
     aim = open("/mnt/b/auto-installer-mode.toml").read()
@@ -215,6 +235,15 @@ def ghep():
     ok("công cụ chính thức của Proxmox (proxmox-auto-install-assistant): answer.toml của CloudBlue hợp lệ", "The answer file was parsed successfully, no errors found!" in out, out[-400:])
     ref = open(os.path.join(W, "ref-aim.toml")).read() if os.path.exists(os.path.join(W, "ref-aim.toml")) else None
     ok("auto-installer-mode.toml của CloudBlue giống từng byte file do công cụ chính thức tạo", ref is not None and ref == aim, (ref, aim))
+    # Bản "cố định" (ISO máy mẫu giả nội dung cố định, mã kho cố định): job Windows ghép cùng đầu vào → 2 file phải giống nhau từng byte
+    sh([sys.executable, os.path.join(HERE, "pve_det.py"), os.path.join(W, "det")])
+    det = os.path.join(W, "det.iso")
+    envd = dict(os.environ, CB_PVE_PW_HASH=PW_HASH, CB_PVE_KHO_ID="0123456789abcdef01234567")
+    rc, out = sh([sys.executable, os.path.join(REPO, "proxmox", "vm", "pve_iso.py"), "--iso", src, "--mau", "%s/det/CloudBlue-MayMau-det1.iso,%s/det/CloudBlue-MayMau-det2.iso" % (W, W),
+                  "--out", det, "--khong-hoi", "--ten", "cbvps"], 1200, env=envd)
+    if ok("Linux: ghép bản 'cố định' để so với Windows", rc == 0 and os.path.exists(det), out[-300:]):
+        open(os.path.join(KQ, "pve-sha-linux.txt"), "w").write("%s %d\n" % (sha(det), os.path.getsize(det)))
+        os.remove(det)
     return 0
 
 
@@ -238,7 +267,12 @@ def win():
         return 1
     for mode, iso_as in (("bios", "usb"), ("uefi", "cd")):
         h0 = sha(img)
-        vm = Vm("win-" + mode, mode, img, "sata", iso_as, True, disk_fmt="raw")
+        try:
+            vm = Vm("win-" + mode, mode, img, "sata", iso_as, True, disk_fmt="raw")
+        except RuntimeError as e:
+            ok("máy đang có Windows (%s): chạy được máy thử" % mode.upper(), False, e)
+            res = 1
+            continue
         vm.wait_exit(18)
         vm.shot("menu")
         vm.wait_exit(75)
@@ -247,7 +281,8 @@ def win():
         vm.kill()
         s = vm.serial_txt()
         ok("máy đang có Windows (%s, ISO dạng %s): menu có dòng 'dang co WINDOWS - KHONG tu cai', sau 70 giây vẫn KHÔNG tự cài (không nạp kernel cài đặt), ổ Windows không bị ghi 1 byte" % (mode.upper(), iso_as.upper()),
-           "dang co WINDOWS" in s and "Loading Proxmox VE Automatic Installer" not in s and "Install Proxmox VE (Automated)" in s and alive and sha(img) == h0,
+           "dang co WINDOWS" in s and "Loading Proxmox VE Automatic Installer" not in s and "Install Proxmox VE (Automated)" in s and alive and sha(img) == h0
+           and "Failed to boot" not in s,
            (alive, sha(img) == h0, s[-300:])) or (res := 1)
     return res
 
@@ -255,9 +290,9 @@ def win():
 REMOTE = r"""
 echo "#cmdline $(cat /proc/cmdline)"
 echo "#host $(hostname) | $(pveversion 2>&1 | head -1)"
+for i in $(seq 1 90); do [ -f /var/lib/cloudblue/nap-xong.json ] && break; sleep 4; done
 echo "#fb"; cat /var/log/cloudblue-firstboot.log 2>&1
 echo "#pending"; ls /var/lib/proxmox-first-boot/ 2>&1
-for i in $(seq 1 90); do [ -f /var/lib/cloudblue/nap-xong.json ] && break; sleep 4; done
 echo "#nap"; cat /var/lib/cloudblue/nap-xong.json 2>&1; echo; journalctl -u cloudblue-nap --no-pager 2>&1 | tail -15
 echo "#iso"; ls -l /var/lib/vz/template/iso/ 2>&1; sha256sum /var/lib/vz/template/iso/*.iso 2>&1
 echo "#conf"; cat /etc/cloudblue/cbhost.conf 2>&1; echo; cat /etc/cloudblue/nap.json; echo; stat -c '%a %n' /etc/cloudblue /etc/cloudblue/cbhost.conf /etc/cloudblue/cbhost.secret 2>&1
@@ -339,12 +374,44 @@ def cai(mode, iso_as, disk_kind):
         ok("ổ cài đúng ổ cứng của máy (%s), không phải USB cài đặt; mạng: IP tĩnh lấy từ DHCP lúc cài, có cầu vmbr0" % ("nvme0n1" if disk_kind == "nvme" else "sdX"),
            re.search(r"(nvme0n1|sd[a-z])\d+ .*LVM2_member|pve-root", dk) and ("nvme0n1p3" in dk if disk_kind == "nvme" else True) and "iface vmbr0 inet static" in sec("net") and "10.0.2.15/24" in sec("net"),
            (dk[-400:], sec("net")[-300:])) or (res := 1)
+        if mode == "bios":
+            vm.ssh("systemctl disable --now cloudblue-cbhost; qm stop 99501; rm -f /var/lib/cloudblue/nap-xong.json /var/lib/vz/template/iso/CloudBlue-MayMau-thu2.iso; sync", 120)
         vm.ssh("poweroff", 30)
         vm.wait_exit(time.time() - vm.t0 + 120)
         vm.kill()
+        if mode == "bios":
+            res |= ventoy(disk, disk_kind, want)
     finally:
         web.terminate()
     return res
+
+
+def ventoy(disk, disk_kind, want):
+    """USB chứa file ISO (kiểu Ventoy: phân vùng FAT có CloudBlue-Proxmox.iso), không ghi kiểu DD → dịch vụ nạp phải tự gắn phân vùng, đọc kho trong file."""
+    img = os.path.join(W, "vt.img")
+    sh("rm -f %s; truncate -s 3G %s && parted -s %s mklabel msdos mkpart primary fat32 1MiB 100%%" % (img, img, img))
+    rc, lo = sh("sudo losetup -fP --show " + img)
+    lo = lo.strip().splitlines()[-1] if rc == 0 else ""
+    rc, out = sh("sudo mkfs.vfat -F 32 %sp1 && sudo mkdir -p /mnt/x && sudo mount %sp1 /mnt/x && sudo mkdir /mnt/x/iso && sudo cp %s /mnt/x/iso/CloudBlue-Proxmox.iso && sudo umount /mnt/x; sudo losetup -d %s"
+                 % (lo, lo, ISO, lo), 900)
+    if not ok("dựng USB kiểu Ventoy (phân vùng FAT32 chứa file CloudBlue-Proxmox.iso)", rc == 0 and lo, out[-300:]):
+        return 1
+    try:
+        vm = Vm("bios-file", "bios", disk, disk_kind, "none", False, usb2=img)
+    except RuntimeError as e:
+        ok("USB kiểu Ventoy: chạy được máy thử", False, e)
+        return 1
+    up = vm.wait_ssh(420)
+    rc, out = vm.ssh("for i in $(seq 1 60); do [ -f /var/lib/cloudblue/nap-xong.json ] && break; sleep 4; done; cat /var/lib/cloudblue/nap-xong.json; journalctl -u cloudblue-nap -b --no-pager | tail -12; "
+                     "sha256sum /var/lib/vz/template/iso/*.iso; lsblk -o NAME,TRAN,RM,FSTYPE,MOUNTPOINT; mount | grep -c cloudblue-nap", 600) if up else (1, "không vào được SSH")
+    open(os.path.join(KQ, "pve-may-bios-file.txt"), "w").write(out)
+    r = ok("USB kiểu Ventoy (ISO là 1 FILE trên phân vùng FAT của USB): dịch vụ nạp tự gắn phân vùng (chỉ đọc), thấy kho trong file, chép lại ISO bị thiếu, SHA-256 khớp, gỡ gắn xong",
+           up and "trong file /run/cloudblue-nap/m/iso/CloudBlue-Proxmox.iso" in out and ("%s  /var/lib/vz/template/iso/CloudBlue-MayMau-thu2.iso" % want["CloudBlue-MayMau-thu2.iso"]) in out
+           and '"note"' in out and out.strip().splitlines()[-1] == "0", out[-700:])
+    vm.ssh("poweroff", 30)
+    vm.wait_exit(time.time() - vm.t0 + 120)
+    vm.kill()
+    return 0 if r else 1
 
 
 def main():
