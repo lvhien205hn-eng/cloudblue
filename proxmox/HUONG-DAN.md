@@ -21,8 +21,8 @@ Mỗi VPS là 1 máy ảo Windows trên máy chủ Proxmox, có sẵn phần m�
 | Windows Server 2012 R2 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-server-2012-r2 | nhẹ nhất, chạy được gói 1 GB RAM |
 | Windows 10 Enterprise LTSC 2021 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-10-enterprise | chọn bản **ISO – Enterprise LTSC** |
 | Windows Server 2016 / 2019 / 2022 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-server-2016 · …-2019 · …-2022 | |
-| Driver VirtIO (mọi bản trừ 2012 R2) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso | ổ đĩa + card mạng + QEMU guest agent |
 | Driver VirtIO cho **2012 R2** | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/ › thư mục **virtio-win-0.1.240-1** › `virtio-win-0.1.240.iso` | 0.1.240 là bản cuối còn hỗ trợ 2012 / 2012 R2 |
+| Driver VirtIO cho **Win10 LTSC / 2016 / 2019 / 2022** | cùng chỗ › thư mục **virtio-win-0.1.271-1** › `virtio-win-0.1.271.iso` | bản ổn định (0.1.285 lỗi ổ đĩa + mạng; 0.1.302 còn mới) |
 
 Bản dùng thử (Evaluation) của Microsoft có hạn dùng (Server: 180 ngày). Giấy phép Windows cho VPS bán cho khách là việc chủ shop tự lo.
 Linux (Ubuntu / Debian …): làm ở bản sau.
@@ -65,13 +65,29 @@ Mỗi bản Windows bán cho khách = 1 **máy mẫu** (template) trên Proxmox,
 | Windows 10 LTSC 2021 | `tpl-win10ltsc` | 2 GB |
 | Windows Server 2016 / 2019 / 2022 | `tpl-win2016` · `tpl-win2019` · `tpl-win2022` | 2 GB |
 
-Dựng 1 máy mẫu:
-1. **Create VM**: VM ID dưới 100000 (vd 9001), Name = tên máy mẫu ở bảng trên. OS: ISO Windows, Type *Microsoft Windows*. System: *Qemu Agent* ✓. Disk: **SCSI**, controller *VirtIO SCSI single*, **20 GB**, *Discard* ✓. CPU: 2 core, type *host*. RAM: 2048. Network: **VirtIO**.
-2. Hardware › **Add › CD/DVD Drive** → ISO driver VirtIO (2012 R2 dùng bản 0.1.240).
-3. Cài Windows: tới bước chọn ổ bấm **Load driver** → ổ VirtIO › `vioscsi\<bản>\amd64` (2k12R2 / w10 / 2k16 / 2k19 / 2k22).
-4. Vào Windows: chạy `virtio-win-guest-tools.exe` trên ổ VirtIO (2012 R2: `virtio-win-gt-x64.msi` + `guest-agent\qemu-ga-x86_64.msi`) — cài driver mạng + **QEMU guest agent** (bắt buộc: máy chủ đưa vé đăng ký vào máy ảo qua đường này).
-5. Cài phần mềm CloudBlue PC cho máy mẫu (**không** nhập mã đăng ký): lệnh 1 dòng đang hoàn thiện — có lệnh sẽ ghi vào đây.
-6. Tắt máy mẫu → chuột phải › **Convert to template**.
+Dựng 1 máy mẫu = **ghép 1 file ISO rồi cài** (tự làm hết, như ISO CloudBlue PC):
+
+**a. Ghép ISO máy mẫu** — trên máy Windows 10 / 11 có file ISO Windows, mở **Windows PowerShell (Admin)**, dán lệnh, Enter:
+
+```
+$d = "$env:TEMP\cb-iso-may-mau.ps1"; Remove-Item $d -Force -ErrorAction SilentlyContinue; curl.exe -fsSL -o $d "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/tao-iso-may-mau.ps1?t=$(Get-Random)"; if (-not ((Test-Path $d) -and (Select-String -Path $d -Pattern 'cloudblue-iso-may-mau' -SimpleMatch -Quiet))) { Write-Host 'Chua tai duoc - thu lai sau 1 phut' -ForegroundColor Red } else { Set-ExecutionPolicy -Scope Process Bypass -Force; & $d }
+```
+
+- Kéo thả file **ISO Windows** vào cửa sổ → Enter. Kéo thả **ISO virtio-win** (2012 R2: 0.1.240 · bản khác: 0.1.271) → Enter — hoặc bấm Enter luôn để lệnh tự tải đúng bản.
+- ISO có nhiều bản (Standard / Datacenter / Core…): lệnh tự chọn bản **Standard có giao diện**, muốn bản khác thì gõ số.
+- 10–20 phút → ra `CloudBlue-MayMau-win2012r2.iso` (ở gốc ổ còn nhiều chỗ nhất). Không chứa khoá bí mật nào.
+- ISO này **xoá sạch ổ đĩa** máy cài nó — chỉ gắn vào máy ảo mẫu mới tạo.
+
+**b. Cài máy mẫu trên Proxmox**
+1. Đưa ISO lên: **local › ISO Images › Upload**.
+2. **Create VM**: VM ID dưới 100000 (vd 9001), Name = tên máy mẫu ở bảng trên. OS: chọn ISO vừa ghép, Type *Microsoft Windows* đúng bản. System: *Qemu Agent* ✓ (BIOS để mặc định). Disk: **SCSI**, controller *VirtIO SCSI single*, **20 GB**, *Discard* ✓. CPU: 2 core, type *host*. RAM: 2048. Network: **VirtIO**. Không cần gắn thêm ổ CD driver.
+3. **Start** → mở Console xem: máy tự chia ổ, cài Windows, tự khởi động lại 1–2 lần, tự đăng nhập tài khoản **VPS**; 20–40 phút sau hiện hộp **MAY MAU DA XONG**. (Máy UEFI/OVMF: thấy *Press any key to boot from CD* thì bấm 1 phím.)
+4. Muốn thì cài thêm phần mềm / chỉnh tuỳ ý trong máy mẫu.
+5. **Shutdown** → Hardware › CD/DVD Drive › *Do not use any media* → chuột phải › **Convert to template**.
+
+Máy mẫu tự làm: driver VirtIO (ổ đĩa, mạng, cổng QEMU agent — **không cài VGA**), QEMU guest agent, bản vá Universal C Runtime (2012 R2), tài khoản **VPS** (Admin, không mật khẩu, tự đăng nhập), giờ Việt Nam, phần mềm CloudBlue PC (**chưa đăng ký**), khoá mọi tài khoản khác (mật khẩu ngẫu nhiên + tắt) để các VPS không chung mật khẩu quản trị. Nhật ký: `C:\CloudBluePC\logs\maymau.log`.
+
+Sắp có: **bảng điều khiển máy mẫu** trên web (🪟 Bản Windows) — dựng máy mẫu từ ISO, ▶ điều khiển, 💾 lưu thành mẫu, ✏️ sửa mẫu, không cần mở trang Proxmox.
 
 Máy mẫu không bao giờ tự lên web (chưa có mã đăng ký). Mỗi VPS nhân ra nhận 1 vé đăng ký riêng → tự hiện trong "VPS ảo hoá của bạn" của đúng khách.
 Thử: ⚙ Cài đặt › **Tạo VPS cho 1 tài khoản** (không trừ tiền) → cho chính bạn → vào ▶ Điều khiển xem có lên màn hình không.
