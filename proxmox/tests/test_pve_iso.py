@@ -148,7 +148,9 @@ ck("từ chối: tên máy lạ, ổ lạ, IP thiếu mục / sai, mã băm lạ
 print("2. Đoạn bảo vệ trong grub.cfg")
 g = pi.grub_guard(GRUB)
 i_g, i_a = g.index(pi.GUARD_MARK), g.index("if [ -f auto-installer-mode.toml ]; then")
-ck("chèn TRƯỚC khối tự cài, phần còn lại của grub.cfg giữ nguyên từng ký tự", i_g < i_a and g[:i_g] + g[g.index("# ---- het doan CloudBlue ----\n\n") + len("# ---- het doan CloudBlue ----\n\n"):] == GRUB, (i_g, i_a))
+ck("chèn TRƯỚC khối tự cài (+ 1 đoạn 'máy có Windows thì không đếm ngược' ngay sau 'set timeout=10'), phần còn lại của grub.cfg giữ nguyên từng ký tự",
+   i_g < i_a and (g[:i_g] + g[g.index(pi.GUARD_END) + len(pi.GUARD_END):]).replace(pi.GUARD_TMO, "") == GRUB and g.count(pi.GUARD_TMO) == 1
+   and "    set timeout=10\n" + pi.GUARD_TMO in g, (i_g, i_a))
 ck("máy đã có Proxmox (LVM pve) → mục đầu = khởi động từ ổ cứng (đúng lệnh Rescue Boot của Proxmox); máy có Windows → mục đầu chỉ báo, không cài",
    "if test -e (lvm/pve-root)/boot/pve/vmlinuz; then\n    set cb_co=pve" in g and "linux (lvm/pve-root)/boot/pve/vmlinuz ro ramdisk_size=16777216 root=/dev/mapper/pve-root quiet" in g
    and "search --no-floppy --file /Windows/System32/ntoskrnl.exe --set cb_win" in g and "KHONG tu cai" in g and "proxmox-start-auto-installer" not in g[i_g:i_a])
@@ -270,6 +272,14 @@ hb = pi.MAGIC + json.dumps(mh).encode() + b"\n"; evil[res["off"]:res["off"] + pi
 ck("đầu mục kho bị sửa tên file (đường dẫn lạ / tên không phải ISO máy mẫu) → bỏ qua các mục đó", nap.header(hong, conf["off"], conf["id"]) == [])
 os.makedirs(os.environ["CBNAP_SYSBLOCK"]); [open(os.path.join(os.environ["CBNAP_SYSBLOCK"], n), "w").close() for n in ("sda", "nvme0n1", "loop0", "dm-1", "sr0", "zram0")]
 ck("thiết bị dò: ổ đĩa / USB / ổ CD — bỏ loop, dm, zram", nap.raw_devices() == ["/dev/nvme0n1", "/dev/sda", "/dev/sr0"])
+nap.lsblk = lambda: [
+    {"name": "sda", "type": "disk", "tran": "sata", "rm": False, "path": "/dev/sda", "children": [{"name": "sda3", "fstype": "LVM2_member", "path": "/dev/sda3"}]},
+    {"name": "sdb", "type": "disk", "tran": "sata", "rm": False, "path": "/dev/sdb", "children": [{"name": "sdb1", "fstype": "ext4", "path": "/dev/sdb1"}]},
+    {"name": "sdc", "type": "disk", "tran": "usb", "rm": True, "path": "/dev/sdc", "children": [{"name": "sdc1", "fstype": "exfat", "path": "/dev/sdc1"}, {"name": "sdc2", "fstype": "vfat", "path": "/dev/sdc2"}]},
+    {"name": "sdd", "type": "disk", "tran": "usb", "rm": False, "path": "/dev/sdd", "children": [{"name": "sdd1", "fstype": "ntfs", "path": "/dev/sdd1", "mountpoint": "/mnt/x"}]},
+    {"name": "sde", "type": "disk", "tran": "usb", "rm": False, "path": "/dev/sde", "children": [{"name": "sde1", "fstype": "ext4", "path": "/dev/sde1"}, {"name": "sde2", "fstype": "xfs", "path": "/dev/sde2"}]}]
+ck("ISO chép dạng FILE vào USB (Ventoy …): chỉ dò phân vùng của ổ USB / tháo rời chưa gắn — KHÔNG đụng ổ gắn trong, ổ hệ thống, ổ đang gắn; ext4 gắn 'ro,noload' (không ghi nhật ký)",
+   nap.fs_parts() == [("/dev/sdc1", "exfat", "ro"), ("/dev/sdc2", "vfat", "ro"), ("/dev/sde1", "ext4", "ro,noload")], nap.fs_parts())
 open(os.environ["CBNAP_CONF"], "w").write(json.dumps({"id": "x", "off": 0, "size": 1, "n": 0}))
 ck("bản cài không kèm kho → dịch vụ ghi dấu xong rồi thôi (không chờ mãi)", nap.cmd_run() == 0 and os.path.exists(os.environ["CBNAP_DONE"]))
 
