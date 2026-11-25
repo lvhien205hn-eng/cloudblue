@@ -25,6 +25,7 @@ SECT = 2048
 MAGIC = b"CBKHO1\n"
 HDR_LEN = 16384                       # đầu mục kho (JSON) — 8 sector
 FB_MAX = 1024 * 1024                  # Proxmox: script lần bật đầu tối đa 1 MiB
+MIN_ISO = 500 * 1024 * 1024           # file nhỏ hơn thế này không phải ISO Proxmox / ISO máy mẫu thật (bỏ qua khi tự tìm)
 PVE_URL = "https://enterprise.proxmox.com/iso/proxmox-ve_%s.iso"
 PVE_DEFAULT = "9.3-1"
 # Bản ISO Proxmox VE đã thử cài thật (CI): mã SHA-256 của file chính thức. Bản khác: vẫn ghép (kiểm cấu trúc), có ghi chú "chưa thử".
@@ -599,8 +600,8 @@ def look_dirs():
 
 
 def find_inputs(dirs):
-    """→ (ISO Proxmox mới nhất hoặc None, {tag: đường dẫn ISO máy mẫu mới nhất})"""
-    pve, mau = None, {}
+    """→ ([(bản, đường dẫn) ISO Proxmox VE ≥ 9, mới nhất trước], {tag: đường dẫn ISO máy mẫu mới nhất})"""
+    pve, mau = {}, {}
     for d in dirs:
         try:
             ents = list(os.scandir(d))
@@ -611,17 +612,17 @@ def find_inputs(dirs):
                 if not e.is_file() or e.name.endswith(".part"):
                     continue
                 m = RX_PVE.match(e.name)
-                if m and e.stat().st_size > 500 * 1024 * 1024:
+                if m and e.stat().st_size > MIN_ISO:
                     v = tuple(int(x) for x in m.groups())
-                    if v[0] >= 9 and (pve is None or v > pve[0]):
-                        pve = (v, e.path)
+                    if v[0] >= 9 and (v not in pve or e.stat().st_mtime > pve[v][0]):
+                        pve[v] = (e.stat().st_mtime, e.path)
                 m = RX_MAU.match(e.name)
-                if m and e.stat().st_size > 500 * 1024 * 1024:
+                if m and e.stat().st_size > MIN_ISO:
                     if m.group(1) not in mau or e.stat().st_mtime > mau[m.group(1)][0]:
                         mau[m.group(1)] = (e.stat().st_mtime, e.path)
             except OSError:
                 continue
-    return (pve[1] if pve else None), {k: v[1] for k, v in sorted(mau.items())}
+    return [("%d.%d-%d" % v, pve[v][1]) for v in sorted(pve, reverse=True)], {k: v[1] for k, v in sorted(mau.items())}
 
 
 def download(url, dst):
@@ -685,17 +686,29 @@ def main(argv):
     dirs = look_dirs() + ([os.path.join(a.work, "dl")] if a.work else [])
     f_pve, f_mau = find_inputs(dirs)
     say("== 1/4  File ISO Proxmox VE goc")
-    iso = a.iso.strip().strip('"') or f_pve
+    iso = a.iso.strip().strip('"')
     if not iso:
-        if not a.work:
+        iso = next((p for v, p in f_pve if v in KNOWN), "")                 # ưu tiên bản ĐÃ THỬ cài thật
+        la = f_pve[0] if f_pve else None
+        if not iso and a.work:
+            dl = os.path.join(a.work, "dl", "proxmox-ve_%s.iso" % PVE_DEFAULT)
+            os.makedirs(os.path.dirname(dl), exist_ok=True)
+            if la:
+                say("   thay %s nhung ban %s chua duoc CloudBlue cai thu -> dung ban da thu %s" % (la[1], la[0], PVE_DEFAULT))
+            else:
+                say("   khong thay file proxmox-ve_*.iso tren may")
+            say("   -> tu tai ban %s (1,8 GB) tu may chu chinh thuc cua Proxmox" % PVE_DEFAULT)
+            try:
+                download(PVE_URL % PVE_DEFAULT, dl)
+                iso = dl
+            except Exception as e:
+                if not la:
+                    raise Loi("khong tu tai duoc ISO Proxmox (%s). Tai bang Chrome: %s  -> de trong Downloads roi chay lai lenh." % (str(e)[:120], PVE_URL % PVE_DEFAULT))
+                say("   (!) khong tai duoc (%s) -> dung tam ban %s dang co" % (str(e)[:100], la[0]))
+        if not iso and la:
+            iso = la[1]
+        if not iso:
             raise Loi("khong thay file proxmox-ve_*.iso - tai tu https://www.proxmox.com/en/downloads roi chay lai (hoac dung --iso)")
-        iso = os.path.join(a.work, "dl", "proxmox-ve_%s.iso" % PVE_DEFAULT)
-        os.makedirs(os.path.dirname(iso), exist_ok=True)
-        say("   khong thay file proxmox-ve_*.iso tren may -> tu tai ban %s (1,8 GB) tu may chu chinh thuc cua Proxmox" % PVE_DEFAULT)
-        try:
-            download(PVE_URL % PVE_DEFAULT, iso)
-        except Exception as e:
-            raise Loi("khong tu tai duoc ISO Proxmox (%s). Tai bang Chrome: %s  -> de trong Downloads roi chay lai lenh." % (str(e)[:120], PVE_URL % PVE_DEFAULT))
     if not os.path.isfile(iso):
         raise Loi("khong thay file: " + iso)
     say("   " + iso)
