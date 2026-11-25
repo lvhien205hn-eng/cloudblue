@@ -20,9 +20,13 @@ Mỗi VPS là 1 máy ảo Windows trên máy chủ Proxmox, có sẵn phần m�
 | Proxmox VE (ISO) | https://www.proxmox.com/en/downloads | ghi USB bằng Rufus (chọn **DD image**) hoặc chép vào USB Ventoy |
 | Windows Server 2012 R2 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-server-2012-r2 | nhẹ nhất, chạy được gói 1 GB RAM |
 | Windows 10 Enterprise LTSC 2021 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-10-enterprise | chọn bản **ISO – Enterprise LTSC** |
-| Windows Server 2016 / 2019 / 2022 (dùng thử) | https://www.microsoft.com/en-us/evalcenter/download-windows-server-2016 · …-2019 · …-2022 | |
-| Driver VirtIO cho **2012 R2** | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/ › thư mục **virtio-win-0.1.240-1** › `virtio-win-0.1.240.iso` | 0.1.240 là bản cuối còn hỗ trợ 2012 / 2012 R2 |
-| Driver VirtIO cho **Win10 LTSC / 2016 / 2019 / 2022** | cùng chỗ › thư mục **virtio-win-0.1.271-1** › `virtio-win-0.1.271.iso` | bản ổn định (0.1.285 lỗi ổ đĩa + mạng; 0.1.302 còn mới) |
+| Windows Server 2016 (dùng thử, tải thẳng ISO tiếng Anh) | https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US | trang gốc: https://www.microsoft.com/en-us/evalcenter/download-windows-server-2016 |
+| Windows Server 2019 (dùng thử, tải thẳng ISO) | https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US | trang gốc: …/download-windows-server-2019 |
+| Windows Server 2022 (dùng thử, tải thẳng ISO) | https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US | trang gốc: …/download-windows-server-2022 |
+| Driver VirtIO cho **2012 R2** (tải thẳng) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.240-1/virtio-win-0.1.240.iso | 0.1.240 là bản cuối còn hỗ trợ 2012 / 2012 R2 |
+| Driver VirtIO cho **Win10 LTSC / 2016 / 2019 / 2022** (tải thẳng) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso | bản ổn định — **đừng dùng 0.1.285** (lỗi ổ đĩa + mạng) **và 0.1.302** (lỗi sao lưu VSS của QEMU agent, Proxmox chưa khuyên dùng) |
+
+Không cần tải gì thêm: lệnh ghép ISO tự tải + tự kiểm chữ ký Python, ffmpeg, bản vá UCRT (2012 R2), oscdimg — thiếu / sai là **DỪNG** và báo rõ thiếu gì. ISO virtio cũng có thể bỏ trống (bấm Enter) để lệnh tự tải đúng bản.
 
 Bản dùng thử (Evaluation) của Microsoft có hạn dùng (Server: 180 ngày). Giấy phép Windows cho VPS bán cho khách là việc chủ shop tự lo.
 Linux (Ubuntu / Debian …): làm ở bản sau.
@@ -87,7 +91,11 @@ $d = "$env:TEMP\cb-iso-may-mau.ps1"; Remove-Item $d -Force -ErrorAction Silently
 
 Máy mẫu tự làm: driver VirtIO (ổ đĩa, mạng, cổng QEMU agent — **không cài VGA**), QEMU guest agent, bản vá Universal C Runtime (2012 R2), tài khoản **VPS** (Admin, không mật khẩu, tự đăng nhập), giờ Việt Nam, phần mềm CloudBlue PC (**chưa đăng ký**), khoá mọi tài khoản khác (mật khẩu ngẫu nhiên + tắt) để các VPS không chung mật khẩu quản trị. Nhật ký: `C:\CloudBluePC\logs\maymau.log`.
 
-Sắp có: **bảng điều khiển máy mẫu** trên web (🪟 Bản Windows) — dựng máy mẫu từ ISO, ▶ điều khiển, 💾 lưu thành mẫu, ✏️ sửa mẫu, không cần mở trang Proxmox.
+**Cách nhanh hơn — bảng điều khiển máy mẫu trên web** (SQL v57): chỉ cần làm bước **a** + đưa ISO lên Proxmox (local › ISO Images › Upload), rồi vào web › Quản trị › 🧩 VPS ảo hoá › 🪟 Bản Windows › **🧰 Bảng điều khiển máy mẫu**:
+1. **➕ Dựng / sửa máy mẫu** → chọn máy chủ + bản Windows + file ISO → **Bắt đầu**: máy chủ tự tạo máy ảo tạm `cbmau-<số>` (số từ 99000), Windows tự cài (20–40 phút).
+2. Xong hiện **Sẵn sàng** → **▶ Điều khiển** vào màn hình máy mẫu, cài thêm phần mềm / chỉnh tuỳ ý.
+3. **💾 Lưu thành máy mẫu**: máy chủ tự xoá mã máy trong máy, tắt, gỡ ISO, đổi máy mẫu cũ thành `<tên>-cu` (giữ 1 bản dự phòng), đặt tên + chuyển thành máy mẫu. VPS đang chạy không bị ảnh hưởng.
+4. Sau này muốn sửa: **➕ Dựng / sửa máy mẫu** → **✏️ Sửa máy mẫu đang có** (nhân bản máy mẫu ra máy ảo tạm) → chỉnh → Lưu. **✖ Huỷ** = xoá máy ảo tạm, máy mẫu cũ giữ nguyên.
 
 Máy mẫu không bao giờ tự lên web (chưa có mã đăng ký). Mỗi VPS nhân ra nhận 1 vé đăng ký riêng → tự hiện trong "VPS ảo hoá của bạn" của đúng khách.
 Thử: ⚙ Cài đặt › **Tạo VPS cho 1 tài khoản** (không trừ tiền) → cho chính bạn → vào ▶ Điều khiển xem có lên màn hình không.

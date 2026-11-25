@@ -45,6 +45,7 @@ class FakeWeb:
     def __init__(self):
         self.calls, self.status, self.vps, self.tickets, self.err = [], "new", [], {}, ""
         self.secret_hash = None
+        self.jobs = None; self.jtickets = {}               # None = web cũ (chưa v57): không trả tpl_jobs
 
     def rpc(self, fn, body, timeout=25):
         self.calls.append((fn, json.loads(json.dumps(body))))
@@ -55,8 +56,12 @@ class FakeWeb:
             if hashlib.sha256(body["p_secret"].encode()).hexdigest() != self.secret_hash: return {"ok": False, "err": "BAD_SECRET"}
             for x in body.get("p_vps") or []:
                 if x.get("ticket_hash"): self.tickets[x["id"]] = x["ticket_hash"]
-            return {"ok": True, "status": self.status, "name": "pve-thu", "vps": json.loads(json.dumps(self.vps)) if self.status != "new" else [],
-                    "tpl": ["tpl-win10-22h2"], "poll_s": 10}
+            for x in body.get("p_tpl") or []:
+                if x.get("ticket_hash"): self.jtickets[x["id"]] = x["ticket_hash"]
+            r = {"ok": True, "status": self.status, "name": "pve-thu", "vps": json.loads(json.dumps(self.vps)) if self.status != "new" else [],
+                 "tpl": ["tpl-win10-22h2"], "poll_s": 10}
+            if self.jobs is not None: r["tpl_jobs"] = json.loads(json.dumps(self.jobs))
+            return r
         return None
 
 
@@ -221,6 +226,83 @@ soon = cb.update_due(hu, time.time(), time.time() - 600)
 hu.c["auto_update"] = False; off = cb.update_due(hu, time.time(), 0)
 ck("dịch vụ: tới giờ → xem bản mới; đang dựng máy ảo / chưa đủ 1 giờ / tắt auto_update → chờ", due and not busy and not soon and not off, (due, busy, soon, off))
 os.environ.pop("INVOCATION_ID", None)
+
+print("9. Bảng điều khiển máy mẫu: dựng từ ISO → đưa vé → lưu thành mẫu · sửa · huỷ")
+ISO = "local:iso/CloudBlue-MayMau-win2012r2.iso"
+pve_set(lambda d: d.update(isos=[ISO, "local:iso/virtio-win-0.1.240.iso"], guest_after=1))
+wj = FakeWeb(); wj.status = "ready"; hj = cb.Host(web=wj)
+hj.poll_once()
+pt = last_poll(wj)
+ck("web cũ (chưa v57) → không gửi p_tpl (tránh lỗi gọi hàm), vẫn báo file ISO trên máy chủ (bỏ đường dẫn lạ)", "p_tpl" not in pt
+   and [x["volid"] for x in pt["p_metrics"]["iso"]] == [ISO, "local:iso/virtio-win-0.1.240.iso"], pt["p_metrics"].get("iso"))
+JHW = hashlib.sha256(b"mau-3").hexdigest()
+def job(**kw):
+    d = {"id": 3, "src": "iso", "iso": ISO, "tpl": "tpl-win2012r2", "cores": 2, "ram_mb": 2048, "disk_gb": 20, "hw": JHW, "want": "running", "enrolled": False}
+    d.update(kw); return d
+wj.jobs = [job()]
+hj.poll_once(); hj.poll_once(); wait_idle(hj)
+v = next(((k, x) for k, x in pve()["vms"].items() if x["name"] == "cbmau-3"), (None, None))
+c = (v[1] or {}).get("cfg") or {}
+ck("dựng từ ISO: máy ảo cbmau-3 số 99000 · ổ SCSI 20GB local-lvm · gắn ISO · SeaBIOS · VirtIO SCSI · mạng VirtIO vmbr0 · QEMU agent · không tự bật cùng máy chủ · mã SMBIOS riêng · đã bật",
+   v[0] == "99000" and v[1]["disks"] == {"scsi0": 20} and v[1]["cdrom"] == {"ide2": ISO} and c.get("bios") == "seabios" and c.get("ostype") == "win8"
+   and c.get("scsihw") == "virtio-scsi-single" and c.get("net0") == "virtio,bridge=vmbr0" and c.get("agent") == "enabled=1" and c.get("onboot") == "0"
+   and c.get("vga") == "std" and c.get("smbios1", "").startswith("uuid=" + JHW[:8]) and v[1]["status"] == "running", v)
+hj.poll_once()
+tr = {x["id"]: x for x in last_poll(wj).get("p_tpl") or []}.get(3) or {}
+sj = json.load(open(os.environ["CBHOST_STATE"]))["t3"]
+ck("máy chạy → báo 'running' + dấu băm vé (web v57)", tr.get("state") == "running" and tr.get("ticket_hash") == hashlib.sha256(sj["ticket"].encode()).hexdigest(), tr)
+hj.poll_once(); hj.poll_once()
+f = pve()["vms"]["99000"].get("files") or {}
+ck("web nhận dấu băm → ghi seed.json {hw, ticket} vào máy mẫu qua guest agent", json.loads(f.get("C:\\CloudBluePC\\seed.json") or "{}") == {"hw": JHW, "ticket": sj["ticket"]}, f)
+pve_set(lambda d: d["vms"]["99000"]["files"].update({"C:\\CloudBluePC\\identity.json": json.dumps({"id": "pc-mau", "token": "t0k"})}))
+wj.jobs = [job(enrolled=True)]
+hj.poll_once(); hj.poll_once()
+ck("agent đã đăng ký → thôi đưa vé (không còn dấu băm)", "ticket_hash" not in ({x["id"]: x for x in last_poll(wj)["p_tpl"]}.get(3) or {}) and not json.load(open(os.environ["CBHOST_STATE"]))["t3"].get("ticket"))
+pve_set(lambda d: d["vms"].update({"9100": {"name": "tpl-win2012r2", "status": "stopped", "template": True, "disks": {"scsi0": 20}},
+                                   "9101": {"name": "tpl-win2012r2-cu", "status": "stopped", "template": True, "disks": {"scsi0": 20}}}))
+wj.jobs = [job(want="save", enrolled=True)]
+hj.poll_once(); hj.poll_once(); wait_idle(hj, 30)
+vm = pve()["vms"]
+f = vm["99000"].get("files") or {}
+ck("LƯU: dừng agent (taskkill pythonw) → xoá mã máy / vé / hạn thuê trong máy ({}) → tắt → gỡ ISO",
+   vm["99000"].get("execs") == [["taskkill", "/f", "/im", "pythonw.exe"]] and all(f.get("C:\\CloudBluePC\\" + n) == "{}" for n in ("identity.json", "seed.json", "rent.json"))
+   and vm["99000"]["cdrom"] == {"ide2": "none"}, (vm["99000"].get("execs"), f, vm["99000"].get("cdrom")))
+ck("LƯU: máy mẫu cũ tpl-win2012r2 → tpl-win2012r2-cu (bản dự phòng cũ hơn bị xoá) · máy ảo tạm đổi tên tpl-win2012r2 + thành máy mẫu",
+   vm["99000"]["name"] == "tpl-win2012r2" and vm["99000"].get("template") and vm["9100"]["name"] == "tpl-win2012r2-cu" and "9101" not in vm, {k: (x["name"], x.get("template")) for k, x in vm.items()})
+hj.poll_once()
+ck("báo web 'saved'", ({x["id"]: x for x in last_poll(wj)["p_tpl"]}.get(3) or {}).get("state") == "saved")
+wj.jobs = []
+hj.poll_once()
+ck("web ghi nhận xong (thôi gửi việc) → máy chủ quên sổ việc này", "t3" not in json.load(open(os.environ["CBHOST_STATE"])))
+d0 = pve()
+hv = cb.Host(web=FakeWeb()); hv.want = [dict(item(id=55, tpl="tpl-win2012r2"))]; hv.status = "ready"
+hv.st["55"] = {"inst": 1, "boot": 0, "ticket": "abc", "sent": True, "seeded": False}
+pve_set(lambda d: d["vms"].update({"100055": {"name": "vps-55", "status": "running", "template": False, "disks": {"scsi0": 20}, "ga": 5,
+                                              "files": {"C:\\CloudBluePC\\identity.json": "{}"}}}))
+hv.seed(55, hv.want[0])
+ck("VPS nhân từ máy mẫu vừa lưu (identity.json = {}) → vẫn đưa vé bình thường (không báo 'máy mẫu đã đăng ký')",
+   json.loads((pve()["vms"]["100055"].get("files") or {}).get("C:\\CloudBluePC\\seed.json") or "{}").get("ticket") == "abc" and not hv.st["55"].get("err"), hv.st["55"])
+
+wj.jobs = [job(id=4, src="tpl", iso="", hw=hashlib.sha256(b"mau-4").hexdigest())]
+hj.poll_once(); hj.poll_once(); wait_idle(hj)
+v4 = next(((k, x) for k, x in pve()["vms"].items() if x["name"] == "cbmau-4"), (None, None))
+ck("SỬA máy mẫu: nhân bản tpl-win2012r2 (máy 99000) ra máy ảo tạm cbmau-4 (số tiếp theo), đặt cấu hình, bật", v4[0] == "99001" and v4[1]["from"] == "99000"
+   and v4[1]["cfg"].get("agent") == "enabled=1" and v4[1]["cfg"].get("onboot") == "0" and v4[1]["status"] == "running", v4)
+wj.jobs = [job(id=4, src="tpl", iso="", hw=hashlib.sha256(b"mau-4").hexdigest(), want="cancel")]
+hj.poll_once(); hj.poll_once(); wait_idle(hj); hj.poll_once()
+ck("HUỶ: xoá máy ảo tạm cbmau-4, máy mẫu giữ nguyên, báo 'cancelled'", "99001" not in pve()["vms"] and pve()["vms"]["99000"].get("template")
+   and ({x["id"]: x for x in last_poll(wj)["p_tpl"]}.get(4) or {}).get("state") == "cancelled")
+wj.jobs = [job(id=5, iso="local:iso/khong-co.iso", hw=hashlib.sha256(b"mau-5").hexdigest())]
+hj.poll_once(); hj.poll_once(); wait_idle(hj); hj.poll_once()
+tr = {x["id"]: x for x in last_poll(wj)["p_tpl"]}.get(5) or {}
+ck("ISO không có trên máy chủ → báo lỗi rõ (không tạo máy ảo dở)", tr.get("state") == "error" and "tạo máy ảo lỗi" in tr.get("err", "")
+   and not any(x["name"] == "cbmau-5" for x in pve()["vms"].values()), tr)
+n0 = len(pve()["log"])
+wj.jobs = [job(id=6, iso="local:iso/../../etc/x.iso"), job(id=7, tpl="tpl;rm -rf /"), job(id=8, cores=999), job(id=9, want="xoa"), "x"]
+hj.poll_once(); hj.poll_once(); wait_idle(hj)
+ck("việc máy mẫu lạ từ web (đường dẫn ISO lạ / tên lạ / số lạ / lệnh lạ) → bỏ qua, không thành lệnh", not qmlog(r"^qm (create|clone)") or
+   all("cbmau-6" not in " ".join(x) and "rm -rf" not in " ".join(x) for x in pve()["log"][n0:]), pve()["log"][n0:])
+wj.jobs = None
 
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
