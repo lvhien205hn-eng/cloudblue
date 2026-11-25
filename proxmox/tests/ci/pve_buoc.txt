@@ -1,1 +1,4 @@
-explore
+ghep
+win
+bios
+uefi
