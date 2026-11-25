@@ -37,6 +37,8 @@ RX_CIDR = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})/(\d{1,2})$")
 RX_IP = re.compile(r"^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$")
 NEW_FILES = ("auto-installer-mode.toml", "answer.toml", "proxmox-first-boot")
 GUARD_MARK = "# ---- CloudBlue: khong tu cai de len may da co Proxmox / Windows ----"
+GUARD_END = "# ---- het doan CloudBlue ----\n\n"
+GUARD_TMO = '    # CloudBlue: may dang co Windows -> khong dem nguoc, cho nguoi chon\n    if [ "$cb_co" = "win" ]; then\n        set timeout=-1\n    fi\n'
 
 
 class Loi(Exception):
@@ -44,7 +46,11 @@ class Loi(Exception):
 
 
 def say(*a):
-    print(*a, flush=True)
+    s = " ".join(str(x) for x in a)
+    try:
+        print(s, flush=True)
+    except UnicodeEncodeError:                 # đường dẫn có dấu trên cửa sổ PowerShell 5 (cp1252 / cp437)
+        print(s.encode("ascii", "replace").decode("ascii"), flush=True)
 
 
 def b32(n):
@@ -295,11 +301,15 @@ if [ "$cb_co" = "win" ]; then
         sleep --interruptible 30
     }
 fi
-# ---- het doan CloudBlue ----
-
 """
+    blk += GUARD_END
     i = cfg.index("\n" + key) + 1
-    return cfg[:i] + blk + cfg[i:]
+    rest = cfg[i:]
+    tmo = "\n    set timeout=10\n"
+    if cfg.count(tmo) == 1 and tmo in rest[:200]:                       # ngay trong khối tự cài: máy có Windows thì không đếm ngược
+        j = rest.index(tmo) + len(tmo)
+        rest = rest[:j] + GUARD_TMO + rest[j:]
+    return cfg[:i] + blk + rest
 
 
 def answer_toml(pw_hash, host="cbvps", disk="", cidr="", gw="", dns="", ssh_keys=(), reboot="reboot"):
@@ -435,7 +445,9 @@ def build(iso_path, out_path, answer, fb_make, payload=(), guard=True, known=Non
         files.append({"name": name, "off": pos, "size": sz})
         pos += sectors(sz) * SECT
     total = pos if payload else (lba_fb + sectors(FB_MAX)) * SECT
-    kho_id = secrets.token_hex(12)
+    kho_id = os.environ.get("CB_PVE_KHO_ID") or ""                     # chỉ CI đặt (để 2 máy ghép ra file giống nhau từng byte)
+    if not re.match(r"^[0-9a-f]{24}$", kho_id):
+        kho_id = secrets.token_hex(12)
     nap_conf = {"id": kho_id, "off": off_kho, "size": total, "n": len(files)}
     fb = fb_make(nap_conf)
     if len(fb) > FB_MAX:

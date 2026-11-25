@@ -25,7 +25,7 @@ MNT = os.environ.get("CBNAP_MNT") or "/run/cloudblue-nap"
 SYS_BLOCK = os.environ.get("CBNAP_SYSBLOCK") or "/sys/block"
 RX_MAU = re.compile(r"^CloudBlue-MayMau-[a-z0-9]{3,24}\.iso$")
 RX_SHA = re.compile(r"^[0-9a-f]{64}$")
-FS_OK = {"exfat": "exfat", "vfat": "vfat", "ntfs": "ntfs3", "ext4": "ext4", "ext3": "ext3", "ext2": "ext2"}
+FS_OK = {"exfat": ("exfat", "ro"), "vfat": ("vfat", "ro"), "ntfs": ("ntfs3", "ro"), "ext4": ("ext4", "ro,noload"), "ext3": ("ext3", "ro,noload"), "ext2": ("ext2", "ro")}
 
 
 def log(*a):
@@ -149,7 +149,7 @@ def import_all(src, files, dest_dir):
 
 def lsblk():
     try:
-        out = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,TYPE,FSTYPE,MOUNTPOINT,PATH"], capture_output=True, text=True, timeout=30).stdout
+        out = subprocess.run(["lsblk", "-J", "-b", "-o", "NAME,TYPE,FSTYPE,MOUNTPOINT,PATH,TRAN,RM"], capture_output=True, text=True, timeout=30).stdout
         return json.loads(out).get("blockdevices") or []
     except Exception:
         return []
@@ -163,24 +163,27 @@ def flat(node):
 
 
 def fs_parts():
-    """Phân vùng có hệ tệp đọc được trên các ổ KHÔNG phải ổ hệ thống (ổ hệ thống = có phần đang gắn / LVM / ZFS / RAID) → [(thiết bị, kiểu mount)]"""
+    """Phân vùng có hệ tệp đọc được trên các ổ USB / ổ tháo rời (KHÔNG đụng ổ gắn trong, ổ hệ thống, ổ có LVM / ZFS / RAID / phần đang gắn)
+    → [(thiết bị, kiểu mount, tuỳ chọn mount)]"""
     res = []
     for disk in lsblk():
         nodes = list(flat(disk))
-        if disk.get("type") not in ("disk",) or any(n.get("mountpoint") or (n.get("fstype") or "") in ("LVM2_member", "zfs_member", "linux_raid_member", "swap") for n in nodes):
+        if disk.get("type") != "disk" or not (disk.get("tran") == "usb" or disk.get("rm") in (True, 1, "1")):
+            continue
+        if any(n.get("mountpoint") or (n.get("fstype") or "") in ("LVM2_member", "zfs_member", "linux_raid_member", "swap") for n in nodes):
             continue
         for n in nodes:
             if (n.get("fstype") or "") in FS_OK and n.get("path"):
-                res.append((n["path"], FS_OK[n["fstype"]]))
+                res.append((n["path"],) + FS_OK[n["fstype"]])
     return res
 
 
 def find_in_fs(conf):
     """ISO CloudBlue-Proxmox nằm dạng FILE trên 1 phân vùng (Ventoy …) → generator (đường dẫn file); tự gắn / gỡ."""
     mp = os.path.join(MNT, "m")
-    for dev, fst in fs_parts():
+    for dev, fst, opt in fs_parts():
         os.makedirs(mp, exist_ok=True)
-        if subprocess.run(["mount", "-t", fst, "-o", "ro,nosuid,nodev,noexec", dev, mp], capture_output=True, timeout=60).returncode != 0:
+        if subprocess.run(["mount", "-t", fst, "-o", opt + ",nosuid,nodev,noexec", dev, mp], capture_output=True, timeout=60).returncode != 0:
             continue
         try:
             for base, dirs, names in os.walk(mp):
