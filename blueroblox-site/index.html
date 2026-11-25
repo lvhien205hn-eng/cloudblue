@@ -15380,6 +15380,18 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .vma-cmd code{flex:1;min-width:240px;font:12.5px/1.5 var(--mono,monospace);padding:9px 11px;border-radius:10px;background:rgba(0,0,0,.25);border:1px solid var(--line);word-break:break-all}
 .vma-sec{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:10px;margin-top:12px}
 .vma-sec h4{margin:0;font-size:15px}
+.vma-job{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px;display:grid;gap:7px;min-width:0}
+.vma-job.err{border-color:rgba(255,107,129,.6)}
+.vma-job.ready{border-color:rgba(60,224,176,.55)}
+.vma-job .hd{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.vma-job .hd b{font-size:15.5px}
+.vma-steps{display:flex;flex-wrap:wrap;gap:6px;font-size:12px}
+.vma-steps span{padding:2px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--muted)}
+.vma-steps span.on{color:var(--fg);border-color:var(--gold-hi)}
+.vma-steps span.ok{color:var(--ok);border-color:rgba(60,224,176,.5)}
+.vma-old{font-size:12.5px;color:var(--muted);display:grid;gap:3px}
+.vma-src{display:flex;gap:6px;flex-wrap:wrap;margin:2px 0 6px}
+.vma-src button.on{outline:2px solid var(--gold-hi)}
 .vma-set{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
 .vma-set label{display:grid;gap:5px;font-size:13px;color:var(--muted)}
 .vma-set label.chk{display:flex;align-items:center;gap:8px;color:var(--fg)}
@@ -15435,6 +15447,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     NOT_ADMIN: ["Cần quyền admin.", "Admin only."], BAD_PATCH: ["Dữ liệu nhập chưa đúng — xem lại các ô.", "Check the fields."], NO_HOST: ["Không thấy máy chủ.", "Host not found."],
     HOST_HAS_VPS: ["Máy chủ còn VPS — xoá / chuyển hết VPS trước.", "The host still has VPS — remove them first."], PLAN_IN_USE: ["Gói đang có VPS dùng — tắt bán thay vì xoá.", "Plan in use — disable it instead."],
     IMAGE_IN_USE: ["Bản Windows đang có VPS dùng — tắt thay vì xoá.", "Image in use — disable it instead."], NO_PRODUCT: ["Không thấy sản phẩm.", "Product not found."],
+    BAD_ISO: ["Đường dẫn file ISO không hợp lệ.", "Invalid ISO path."], NO_ISO: ["Máy chủ không có file ISO này — đưa ISO lên Proxmox (local › ISO Images › Upload) rồi chọn lại.", "That ISO is not on the host — upload it first."],
+    NO_TPL: ["Máy chủ chưa có máy mẫu này để sửa — dựng từ ISO trước.", "The host has no such template yet — build it from an ISO first."], BAD_HOST: ["Máy chủ chưa duyệt / không có.", "Host not approved / not found."],
+    BAD_IMAGE: ["Không thấy bản Windows.", "Image not found."], NOT_READY: ["Chờ máy mẫu cài xong (dòng hiện ✓ Agent đã lên) rồi mới lưu.", "Wait until the template finishes installing (agent online) before saving."],
+    NOT_FOUND: ["Việc này đã xong / không còn — tải lại.", "This job is finished — reload."], NOT_ERROR: ["Việc không lỗi — không cần thử lại.", "Nothing to retry."],
     NO_VPS: ["Không thấy VPS.", "VPS not found."], NO_USER: ["Không thấy tài khoản (gõ tên đăng nhập hoặc email).", "No such account."]
   };
   const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
@@ -15697,6 +15713,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
 
   // ================================================================ ADMIN: Máy cho thuê › 🧩 VPS ảo hoá
+  const ISOCMD = `$d = "$env:TEMP\\cb-iso-may-mau.ps1"; Remove-Item $d -Force -ErrorAction SilentlyContinue; curl.exe -fsSL -o $d "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/tao-iso-may-mau.ps1?t=$(Get-Random)"; if (-not ((Test-Path $d) -and (Select-String -Path $d -Pattern 'cloudblue-iso-may-mau' -SimpleMatch -Quiet))) { Write-Host 'Chua tai duoc - thu lai sau 1 phut' -ForegroundColor Red } else { Set-ExecutionPolicy -Scope Process Bypass -Force; & $d }`;
   const CMD = "bash <(curl -fsSL https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cai-cbhost.sh)";
   const HST = { new: ["wt", "⏳ Chờ duyệt"], ready: ["ok", "Đang nhận VPS"], maint: ["wt", "Bảo trì (không nhận VPS mới)"], off: ["bad", "Tắt (VPS tạm dừng)"] };
   const VST = { creating: "⚙️ Đang tạo", running: "● Đang chạy", stopped: "⏻ Đã tắt", error: "⚠️ Lỗi", deleted: "🗑 Đã xoá" };
@@ -15706,7 +15723,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     VM.al = (async () => {
       try {
         const needRev = Date.now() - VM.revAt > 60000;
-        const [a, r] = await Promise.all([rpc("vm_admin_state"), needRev ? rpc("vm_admin_revenue", { p_months: 6 }) : null]);
+        const [a, r, tp] = await Promise.all([rpc("vm_admin_state"), needRev ? rpc("vm_admin_revenue", { p_months: 6 }) : null, rpc("vm_tpl_state").catch(e => ({ error: e }))]);
+        if (tp && tp.error) { VM.tplMiss = missing(tp.error); if (!VM.tplMiss) VM.tpl = null; } else if (tp) { VM.tplMiss = false; VM.tpl = O(tp.data); }
         if (a.error) { VM.miss = missing(a.error); VM.adm = null; if (!VM.miss && !quiet) toast(em(a.error), 1); }
         else { VM.miss = false; VM.adm = O(a.data); }
         if (r && !r.error) { VM.rev = O(r.data); VM.revAt = Date.now(); }
@@ -15718,7 +15736,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   function badge() {
     const b = $i("vm-badge"); if (!b) return;
-    const d = O(VM.adm), n = A(d.hosts).filter(h => h.status === "new").length + A(d.vps).filter(v => v.status === "error").length;
+    const d = O(VM.adm), n = A(d.hosts).filter(h => h.status === "new").length + A(d.vps).filter(v => v.status === "error").length
+      + A(O(VM.tpl).jobs).filter(j => j.status === "error").length;
     b.textContent = n ? String(n) : ""; b.hidden = !n;
   }
   const hostOf = id => A(O(VM.adm).hosts).find(h => h.id === id);
@@ -15811,13 +15830,84 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <td>${p.enabled ? '<span class="pill ok">' + L("bán", "on") + "</span>" : '<span class="pill">' + L("ẩn", "off") + "</span>"}</td>
         <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmap="${esc(S(p.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`).join("")}</tbody></table></div>`;
   }
+  // ---------------------------------------------------------------- BẢNG ĐIỀU KHIỂN MÁY MẪU (SQL v57)
+  const TST = { creating: ["Đang tạo máy ảo", "Creating VM"], installing: ["Đang cài Windows + CloudBlue (20–40 phút)", "Installing Windows + CloudBlue (20–40 min)"],
+    ready: ["Sẵn sàng — ▶ điều khiển để chỉnh, xong bấm 💾 Lưu", "Ready — ▶ control to adjust, then 💾 Save"], saving: ["Đang lưu thành máy mẫu…", "Saving as template…"],
+    saved: ["Đã lưu thành máy mẫu", "Saved as template"], cancelled: ["Đã huỷ", "Cancelled"], error: ["Lỗi", "Error"] };
+  const tJob = id => A(O(VM.tpl).jobs).find(j => N(j.id) === N(id));
+  const tHost = id => A(O(VM.tpl).hosts).find(h => h.id === id);
+  const isoName = v => S(v, 200).replace(/^[^:]*:iso\//, "");
+  function tplBox() {
+    if (VM.tplMiss) return `<div class="vma-sec"><h4>🧰 ${L("Bảng điều khiển máy mẫu", "Template control panel")}</h4><div class="hint">${L("Cần chạy SQL v57 trên Supabase để bật bảng này.", "Run SQL v57 on Supabase to enable this panel.")}</div></div>`;
+    if (!VM.tpl) return "";
+    const t = O(VM.tpl), live = A(t.jobs).filter(j => !["saved", "cancelled"].includes(j.status)), old = A(t.jobs).filter(j => ["saved", "cancelled"].includes(j.status)).slice(0, 6);
+    const stepOn = j => { const o = ["creating", "installing", "ready", "saving"], i = o.indexOf(j.status); return o.map((k, n) => `<span class="${n < i ? "ok" : n === i ? "on" : ""}">${n < i ? "✓ " : ""}${L(["Tạo máy ảo", "Cài Windows", "Điều khiển / chỉnh", "Lưu mẫu"][n], ["Create VM", "Install", "Control / adjust", "Save"][n])}</span>`).join(""); };
+    const card = j => {
+      const st = TST[j.status] || [j.status, j.status], pc = S(j.pc, 40), rd = j.status === "ready";
+      return `<div class="vma-job${j.status === "error" ? " err" : rd ? " ready" : ""}" data-vmtj="${N(j.id)}">
+        <div class="hd"><b>${esc(S(j.image_name || j.image, 60))}</b><code>${esc(S(j.tpl, 42))}</code><span class="pill">${esc(S(j.host_name, 30))}</span>
+          <span class="pill">${j.src === "iso" ? "💿 " + esc(S(isoName(j.iso), 60)) : "✏️ " + L("sửa máy mẫu đang có", "editing current template")}</span></div>
+        <div class="vma-steps">${stepOn(j)}</div>
+        <div class="vma-kv"><span>${L("Trạng thái", "Status")} <b style="color:${j.status === "error" ? "var(--bad)" : rd ? "var(--ok)" : "var(--fg)"}">${esc(L(st[0], st[1]))}</b></span>
+          <span><span class="vma-dot${j.online ? " on" : ""}"></span> Agent ${j.enrolled ? (j.online ? L("đã lên", "online") : L("mất liên lạc", "offline")) : L("chưa lên", "not yet")}</span>
+          <span>${N(j.cores)} vCPU · ${gb(j.ram_mb)} RAM · ${N(j.disk_gb)} GB</span></div>
+        ${j.err ? `<div class="err">${esc(S(j.err, 300))}</div>` : ""}
+        <div class="vma-acts">
+          ${pc && j.enrolled ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(pc)}" target="_blank" rel="noopener">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`}
+          <button class="btn sm" type="button" data-vmt="save" ${rd && j.want === "running" ? "" : "disabled"}>💾 ${L("Lưu thành máy mẫu", "Save as template")}</button>
+          ${j.status === "error" ? `<button class="btn ghost sm" type="button" data-vmt="retry">↻ ${L("Thử lại", "Retry")}</button>` : ""}
+          ${j.want !== "cancel" ? `<button class="btn ghost sm" type="button" data-vmt="cancel">✖ ${L("Huỷ", "Cancel")}</button>` : `<span class="hint">${L("đang xoá máy ảo tạm…", "removing temporary VM…")}</span>`}</div></div>`;
+    };
+    return `<div class="vma-sec"><h4>🧰 ${L("Bảng điều khiển máy mẫu", "Template control panel")}</h4>
+      <div class="hint">${L("Dựng / sửa máy mẫu ngay trên web, không cần mở trang Proxmox: máy chủ tự tạo máy ảo tạm → Windows tự cài từ ISO máy mẫu → ▶ Điều khiển để cài thêm phần mềm, chỉnh tuỳ ý → 💾 Lưu thành máy mẫu (tự xoá mã máy, tắt, chuyển thành mẫu; máy mẫu cũ giữ 1 bản dự phòng tên …-cu). VPS đang chạy không bị ảnh hưởng.",
+        "Build / edit templates from the web: the host creates a temporary VM → Windows installs from the template ISO → ▶ Control to add software → 💾 Save as template (identity wiped, VM converted; the old template is kept as …-cu). Running VPS are not affected.")}</div>
+      <div class="vma-acts"><button class="btn sm" type="button" id="vma-t-new">➕ ${L("Dựng / sửa máy mẫu", "Build / edit template")}</button><button class="btn ghost sm" type="button" id="vma-t-cmd">📋 ${L("Chép lệnh ghép ISO máy mẫu", "Copy template-ISO command")}</button></div>
+      <div class="hint">${L("Chưa có ISO máy mẫu? Trên máy Windows có file ISO Windows: mở PowerShell (Admin), dán lệnh vừa chép → kéo thả ISO Windows + ISO virtio-win → ra file CloudBlue-MayMau-….iso → đưa lên Proxmox: local › ISO Images › Upload.",
+        "No template ISO yet? On a Windows PC: PowerShell (Admin), paste the copied command, drop the Windows ISO + virtio-win ISO → upload the CloudBlue-MayMau-….iso to Proxmox (local › ISO Images › Upload).")}</div>
+      ${live.length ? `<div class="vma-list">${live.map(card).join("")}</div>` : `<div class="hint">${L("Chưa có máy mẫu nào đang dựng / sửa.", "No template is being built.")}</div>`}
+      ${old.length ? `<div class="vma-old">${old.map(j => `<span>${j.status === "saved" ? "✅" : "✖"} ${esc(S(j.tpl, 42))} · ${esc(S(j.host_name, 30))} · ${esc(L((TST[j.status] || [j.status])[0], (TST[j.status] || [j.status, j.status])[1]))}${j.done_at ? " · " + esc(fmtT(j.done_at)) : ""}</span>`).join("")}</div>` : ""}
+    </div>`;
+  }
+  const fmtT = iso => { try { const d = new Date(iso); return isNaN(d) ? "" : d.toLocaleString(L("vi-VN", "en-GB"), { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }); } catch (e) { return ""; } };
+  function tplNew() {
+    const t = O(VM.tpl), hs = A(t.hosts).filter(h => h.status !== "new"), is = A(t.images);
+    if (!hs.length) return toast(L("Chưa có máy chủ Proxmox nào được duyệt.", "No approved Proxmox host yet."), 1);
+    VM.t = { host: (hs.find(h => h.online) || hs[0]).id, image: S(O(is.find(i => i.enabled) || is[0]).id, 24), src: "iso", iso: "" };
+    dlg(`<h3>🧰 ${L("Dựng / sửa máy mẫu", "Build / edit a template")}</h3><div id="vma-t-body"></div>
+      ${acts(L("Bắt đầu", "Start"), "", "vma-t-go")}`);
+    tplPaint();
+  }
+  function tplPaint() {
+    const t = O(VM.tpl), s = VM.t, box = $i("vma-t-body"); if (!s || !box) return;
+    const hs = A(t.hosts).filter(h => h.status !== "new"), is = A(t.images), h = tHost(s.host) || {}, img = is.find(i => i.id === s.image) || {};
+    const isos = A(h.iso).map(x => typeof x === "string" ? x : S(O(x).volid, 200)).filter(Boolean), has = A(h.tpl).includes(img.tpl);
+    if (s.src === "iso" && !isos.includes(s.iso)) s.iso = isos.find(v => /maymau|may-mau/i.test(v) && v.toLowerCase().includes(S(img.id, 24).replace(/^win/, ""))) || isos.find(v => /maymau|may-mau/i.test(v)) || isos[0] || "";
+    box.innerHTML = `<div class="grid2"><label>${L("Máy chủ", "Host")}<select class="in" id="vma-t-host">${hs.map(x => `<option value="${esc(x.id)}"${x.id === s.host ? " selected" : ""}>${esc(S(x.name, 30))}${x.online ? "" : " — " + L("mất liên lạc", "offline")}</option>`).join("")}</select></label>
+        <label>${L("Bản Windows (máy mẫu)", "Windows image (template)")}<select class="in" id="vma-t-img">${is.map(i => `<option value="${esc(S(i.id, 24))}"${i.id === s.image ? " selected" : ""}>${esc(S(i.name, 60))} — ${esc(S(i.tpl, 42))}</option>`).join("")}</select></label></div>
+      <div class="vma-src"><button class="btn sm${s.src === "iso" ? " on" : " ghost"}" type="button" data-vmtsrc="iso">💿 ${L("Dựng mới từ ISO máy mẫu", "Build from template ISO")}</button>
+        <button class="btn sm${s.src === "tpl" ? " on" : " ghost"}" type="button" data-vmtsrc="tpl" ${has ? "" : "disabled"}>✏️ ${L("Sửa máy mẫu đang có", "Edit current template")}${has ? "" : " (" + L("máy chủ chưa có", "not on host") + ")"}</button></div>
+      ${s.src === "iso" ? (isos.length ? `<label>${L("File ISO trên máy chủ", "ISO on the host")}<select class="in" id="vma-t-iso">${isos.map(v => `<option value="${esc(v)}"${v === s.iso ? " selected" : ""}>${esc(isoName(v))} (${esc(S(v.split(":")[0], 40))})</option>`).join("")}</select></label>`
+        : `<div class="err">${L("Máy chủ này chưa có file ISO nào — đưa ISO máy mẫu lên Proxmox (local › ISO Images › Upload), chờ 1 phút rồi mở lại.", "No ISO on this host yet — upload one (local › ISO Images › Upload), wait a minute and reopen.")}</div>`)
+        : `<div class="hint">${L("Máy chủ nhân bản máy mẫu", "The host clones template")} <code>${esc(S(img.tpl, 42))}</code> ${L("ra 1 máy ảo tạm để bạn chỉnh; lưu xong sẽ thay máy mẫu cũ (giữ 1 bản dự phòng).", "into a temporary VM; saving replaces the old template (one backup kept).")}</div>`}
+      <div class="hint">${L("Máy ảo tạm: 2 vCPU · 2–4 GB RAM · ổ bằng gói nhỏ nhất (thường 20 GB). Cài từ ISO sẽ XOÁ SẠCH ổ của máy ảo tạm đó — không đụng VPS khách.", "Temporary VM: 2 vCPU · 2–4 GB RAM · disk = smallest plan (usually 20 GB). Installing from the ISO wipes only that temporary VM's disk.")}</div>`;
+    const go = $i("vma-t-go"); if (go) go.disabled = s.src === "iso" ? !s.iso : !has;
+  }
+  function tplAsk(j, act) {
+    VM.tj = { id: N(j.id), act };
+    const save = act === "save";
+    dlg(`<h3>${save ? "💾 " + L("Lưu thành máy mẫu", "Save as template") : "✖ " + L("Huỷ máy mẫu đang dựng", "Cancel this template build")} <code>${esc(S(j.tpl, 42))}</code></h3>
+      <div class="hint">${save ? L(`Máy chủ ${esc(S(j.host_name, 30))} sẽ: xoá mã máy trong máy mẫu → tắt máy → gỡ ISO → đổi máy mẫu cũ thành ${esc(S(j.tpl, 40))}-cu (dự phòng) → chuyển máy này thành máy mẫu ${esc(S(j.tpl, 42))}. VPS tạo mới / cài lại từ giờ dùng bản này; VPS đang chạy giữ nguyên.`,
+        `The host wipes the identity, shuts the VM down, removes the ISO, renames the old template to ${esc(S(j.tpl, 40))}-cu and converts this VM into ${esc(S(j.tpl, 42))}. New / reinstalled VPS use it from now on.`)
+        : L("Xoá máy ảo tạm này (mọi thứ đã chỉnh trong đó mất). Máy mẫu đang dùng giữ nguyên.", "Delete the temporary VM (changes inside are lost). The current template stays.")}</div>
+      ${acts(save ? L("💾 Lưu", "💾 Save") : L("✖ Huỷ máy ảo tạm", "✖ Delete temporary VM"), save ? "" : "danger", "vma-tj-go")}`);
+  }
   function admImages(d) {
     const is = A(d.images), hs = A(d.hosts);
     $i("vma-images").innerHTML = `<div class="tbl"><table><thead><tr><th>${L("Bản Windows", "Image")}</th><th>${L("Tên máy mẫu trên Proxmox", "Template name")}</th><th>${L("Tối thiểu", "Minimum")}</th><th>${L("Máy chủ có mẫu", "Hosts with it")}</th><th>${L("Bán", "On")}</th><th></th></tr></thead><tbody>
       ${is.map(i => { const have = hs.filter(h => A(O(h.metrics).tpl).includes(i.tpl)).map(h => S(h.name, 30));
         return `<tr><td><b>${esc(S(i.name, 60))}</b><div class="hint">${esc(S(i.id, 24))}</div></td><td><code>${esc(S(i.tpl, 42))}</code></td><td class="num">${gb(i.min_ram)} RAM<br>${N(i.min_disk)} GB</td>
           <td>${have.length ? esc(have.join(", ")) : `<span style="color:var(--bad)">${L("chưa máy nào", "none")}</span>`}</td><td>${i.enabled ? '<span class="pill ok">' + L("bán", "on") + "</span>" : '<span class="pill">' + L("ẩn", "off") + "</span>"}</td>
-          <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmai="${esc(S(i.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`; }).join("")}</tbody></table></div>`;
+          <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmai="${esc(S(i.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`; }).join("")}</tbody></table></div>${tplBox()}`;
   }
   function admSet(d) {
     const st = O(d.settings), box = $i("vma-set"); if (!box || box.dataset.dirty === "1") return;
@@ -15984,7 +16074,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   document.addEventListener("click", e => {
     const t = e.target && e.target.closest ? e.target : null; if (!t) return;
     const b = t.closest("[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
-      + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload");
+      + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload,#vma-t-new,#vma-t-cmd,#vma-t-go,[data-vmtsrc],[data-vmt],#vma-tj-go");
     if (!b || b.disabled) return;
     const dt_ = b.dataset;
     if (dt_.vmbuy) return buyOpen(dt_.vmbuy);
@@ -16032,6 +16122,25 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (b.id === "vma-i-del") return busy(b, async () => { const { error } = await rpc("vm_admin_image", { p_id: VM.i, p_patch: { delete: true } }); if (error) return dErr(em(error)); closeDlg(); toast(L("Đã xoá bản Windows.", "Image deleted.")); await admLoad(true); });
     if (b.id === "vma-s-save") return setSave(b);
     if (b.id === "vma-g-go") return giveGo(b);
+    if (b.id === "vma-t-new") return tplNew();
+    if (dt_.vmtsrc && VM.t) { VM.t.src = dt_.vmtsrc; return tplPaint(); }
+    if (b.id === "vma-t-go") return busy(b, async () => {
+      const s = VM.t; if (!s) return;
+      const { error } = await rpc("vm_tpl_new", { p_host: s.host, p_image: s.image, p_src: s.src, p_iso: s.src === "iso" ? s.iso : null });
+      if (error) return dErr(em(error)); closeDlg();
+      toast(s.src === "iso" ? L("Đã giao máy chủ dựng máy mẫu — Windows tự cài 20–40 phút, xong bấm ▶ Điều khiển.", "Build started — Windows installs in 20–40 min.") : L("Đã giao máy chủ mở bản sao máy mẫu để sửa.", "Edit copy is being created."));
+      await admLoad(true);
+    });
+    if (dt_.vmt) { const j = tJob(t.closest("[data-vmtj]") && t.closest("[data-vmtj]").dataset.vmtj); if (!j) return;
+      if (dt_.vmt === "retry") return admCall(b, "vm_tpl_act", { p_id: N(j.id), p_act: "retry" }, L("Đã cho máy chủ thử lại.", "Retrying."));
+      return tplAsk(j, dt_.vmt); }
+    if (b.id === "vma-tj-go") return busy(b, async () => {
+      const x = VM.tj; if (!x) return;
+      const { error } = await rpc("vm_tpl_act", { p_id: x.id, p_act: x.act }); if (error) return dErr(em(error)); closeDlg();
+      toast(x.act === "save" ? L("Đang lưu thành máy mẫu — vài phút.", "Saving as template — a few minutes.") : L("Đang xoá máy ảo tạm.", "Removing the temporary VM."));
+      await admLoad(true);
+    });
+    if (b.id === "vma-t-cmd") { try { navigator.clipboard.writeText(ISOCMD).then(() => toast(L("Đã copy lệnh ghép ISO máy mẫu — dán vào PowerShell (Admin).", "Copied — paste into PowerShell (Admin).")), () => toast(L("Không copy được — xem lệnh ở proxmox/HUONG-DAN.md bước 5.", "Copy failed."), 1)); } catch (x) { toast(L("Không copy được.", "Copy failed."), 1); } return; }
     if (b.id === "vma-cmd-copy") { try { navigator.clipboard.writeText(CMD).then(() => toast(L("Đã copy lệnh cài cbhost.", "Copied.")), () => toast(L("Không copy được — bôi đen lệnh rồi copy tay.", "Copy failed — select it manually."), 1)); } catch (x) { toast(L("Không copy được — bôi đen lệnh rồi copy tay.", "Copy failed."), 1); } return; }
   });
   document.addEventListener("input", e => {
@@ -16039,7 +16148,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (t.id === "vma-q" || t.id === "vma-f") { try { admVps(O(VM.adm)); } catch (x) {} return; }
     if (t.closest && t.closest("#vma-set")) { const s = $i("vma-set"); if (s) s.dataset.dirty = "1"; }       // đang sửa ô cài đặt → lần tải lại tự động không ghi đè
   });
-  document.addEventListener("change", e => { const t = e.target; if (t && t.id === "vma-f") { try { admVps(O(VM.adm)); } catch (x) {} } });
+  document.addEventListener("change", e => { const t = e.target; if (t && t.id === "vma-f") { try { admVps(O(VM.adm)); } catch (x) {} }
+    if (t && VM.t && ["vma-t-host", "vma-t-img", "vma-t-iso"].includes(t.id)) { const k = { "vma-t-host": "host", "vma-t-img": "image", "vma-t-iso": "iso" }[t.id]; VM.t[k] = t.value;
+      if (k !== "iso" && VM.t.src === "tpl" && !A(O(tHost(VM.t.host)).tpl).includes(S(O(A(O(VM.tpl).images).find(i => i.id === VM.t.image)).tpl, 42))) VM.t.src = "iso";
+      try { tplPaint(); } catch (x) {} } });
 
   // ---------------------------------------------------------------- gắn vào trang: tab quản trị · đăng nhập / đăng xuất · tải lần đầu
   if (typeof setTab === "function") { const _st = setTab; setTab = function (t) { _st(t); try { show("pane-vm", t === "vm"); if (t === "vm") admLoad(false); } catch (e) {} }; }
