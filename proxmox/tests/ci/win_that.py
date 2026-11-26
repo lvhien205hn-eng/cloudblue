@@ -407,8 +407,10 @@ def diag(vm):
     vm.type_line("cls & copy /y X:\\Windows\\Panther\\setupact.log W:\\cb-setupact.log & copy /y X:\\Windows\\Panther\\setuperr.log W:\\cb-setuperr.log & copy /y X:\\cbvm-pe.log W:\\cbvm-pe.log", 5)
     vm.type_line("dir W:\\ & dir X:\\Windows\\Panther", 3)
     vm.shot("chan-doan-4-chep")
-    vm.type_line("cls & findstr /i /c:\"error\" /c:\"fail\" /c:\"cannot\" X:\\Windows\\Panther\\setupact.log", 4)
+    vm.type_line("cls & find /i \"error\" X:\\Windows\\Panther\\setupact.log", 4)          # (WinPE của 2012 R2 không có findstr)
     vm.shot("chan-doan-5-setupact")
+    vm.type_line("cls & find \"!!!\" X:\\Windows\\inf\\setupapi.dev.log", 4)                # driver nạp lỗi (chữ ký số, thiết bị không khởi động …)
+    vm.shot("chan-doan-6-driver")
 
 
 def install():
