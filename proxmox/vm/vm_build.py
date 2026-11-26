@@ -18,9 +18,23 @@ USER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,19}$")
 # driver virtio cho VPS (KHÔNG có driver màn hình: VPS không cần VGA). Bắt buộc: ổ đĩa + mạng + cổng nối QEMU guest agent.
 DRV_NEED = ("vioscsi", "viostor", "NetKVM", "vioserial")
 DRV_MORE = ("Balloon", "pvpanic", "viorng", "vioinput", "fwcfg")
-VIRTIO_FOR = {"2k12R2": "0.1.240"}             # 0.1.240 = bản cuối còn driver 2012 R2 · bản khác: 0.1.271 (0.1.285 lỗi ổ đĩa / mạng)
+# 2012 R2: driver ổ đĩa từ virtio-win 0.1.217 trở lên ký bằng chứng thư mới — Windows Server 2012 R2 / 8.1 KHÔNG nhận (26/11 thử cài thật với 0.1.240:
+# drvload báo "Successfully loaded" nhưng không có ổ đĩa nào → bộ cài dừng "disk (0) does not exist"). Bản cuối cài được = 0.1.215 (Proxmox cũng khuyên bản này).
+VIRTIO_FOR = {"2k12R2": "0.1.215"}             # bản khác: 0.1.271 (0.1.285 lỗi ổ đĩa / mạng)
+VIRTIO_MAX = {"2k12R2": "0.1.215"}             # bản CAO NHẤT dùng được cho từng bản Windows (cao hơn → dừng, không ghép ISO hỏng)
 VIRTIO_DEFAULT = "0.1.271"
-VIRTIO_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-{v}-1/virtio-win-{v}.iso"
+VIRTIO_REL = {"0.1.215": "2"}                  # số phát hành trong tên thư mục tải (mặc định 1)
+VIRTIO_URL = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-{v}-{r}/virtio-win-{v}.iso"
+
+
+def virtio_url(v):
+    return VIRTIO_URL.format(v=v, r=VIRTIO_REL.get(v, "1"))
+
+
+def virtio_too_new(osdir, ver):
+    """Bản virtio-win <ver> có quá mới cho bản Windows <osdir> không (không đọc được số bản → coi như không)."""
+    mx = VIRTIO_MAX.get(osdir)
+    return bool(mx and re.fullmatch(r"\d+\.\d+\.\d+", str(ver or "")) and vtuple(ver) > vtuple(mx))
 COMPUTER = "CLOUDBLUE-VPS"
 # phần mềm CloudBlue PC chép vào C:\CloudBluePC (giống bộ cài PC: winpc/cb_build.py PAYLOAD, bỏ phần bộ cài PE)
 PAYLOAD = {"lib": ("cbsys.py", "cbcore.py", "cbrec.py"),
@@ -83,6 +97,8 @@ def pick(images):
     for im in images:
         r = dict(im); r.update(classify(im)); r["index"] = int(im.get("index") or 0)
         r["virtio"] = VIRTIO_FOR.get(r["os"], VIRTIO_DEFAULT) if r["ok"] else ""
+        r["virtio_url"] = virtio_url(r["virtio"]) if r["ok"] else ""
+        r["virtio_max"] = VIRTIO_MAX.get(r["os"], "") if r["ok"] else ""
         rows.append(r)
     ok = [r for r in rows if r["ok"]]
 
@@ -231,7 +247,10 @@ def layout(P):
     if not os.path.isfile(os.path.join(root, "sources", "boot.wim")): raise ValueError("cay ISO thieu sources\\boot.wim")
     drv = driver_dirs(P["virtio_root"], osdir)
     miss = [d for d in DRV_NEED if d not in drv]
-    if miss: raise ValueError("ISO virtio thieu driver %s cho %s (%s) - 2012 R2 dung virtio 0.1.240" % (", ".join(miss), osdir, P["tag"]))
+    if miss: raise ValueError("ISO virtio thieu driver %s cho %s (%s) - 2012 R2 dung virtio %s" % (", ".join(miss), osdir, P["tag"], VIRTIO_FOR["2k12R2"]))
+    if virtio_too_new(osdir, P.get("virtio_ver")):
+        raise ValueError("virtio-win %s QUA MOI cho %s (%s): Windows nay khong nhan chu ky so cua driver o dia ban do -> bo cai se khong thay o dia. Dung virtio-win %s: %s"
+                         % (P.get("virtio_ver"), osdir, P["tag"], VIRTIO_MAX[osdir], virtio_url(VIRTIO_MAX[osdir])))
     ga = P["ga_msi"]
     if not os.path.isfile(ga): raise ValueError("thieu bo cai QEMU guest agent: %s" % ga)
     P = dict(P)
