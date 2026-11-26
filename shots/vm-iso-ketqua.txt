@@ -1,0 +1,84 @@
+﻿== 1. Cu phap PowerShell
+  OK  cu phap proxmox\tao-iso-may-mau.ps1
+  OK  cu phap proxmox\vm\maymau.ps1
+== 2. ISO nguon
+  OK  tai oscdimg.exe (khop ma kiem da ghim)
+  ..  anh chup: Windows Server CI SERVERDATACENTER | 10.0.20348.5870 | loai Server | ServerDatacenter | kien truc 9
+  OK  anh Windows gia: 64-bit, loai Server (co giao dien)
+  OK  dong ISO Windows gia
+  OK  tai ISO virtio-win 0.1.271 that
+== 3. Chay tao-iso-may-mau.ps1
+  ..  tao ISO mat 0.2 phut
+  OK  tao-iso-may-mau.ps1 chay het, ra file ISO
+  OK  khong co DUNG / LOI KHONG NGO
+  OK  chu in ra sach: khong co dong 'RemoteException' (dong trong tren kenh loi cua oscdimg), van thay tien do dong ISO
+  OK  buoc tiep: chi duong TU DONG (ghep vao ISO Proxmox tu cai) truoc cach lam tay
+  OK  chon dung ban Server co giao dien -> may mau tpl-win2022, driver 2k22
+  OK  python.exe kiem chu ky Python Software Foundation
+  OK  ffmpeg kem san (dung ma kiem agent doi)
+  ..  ISO may mau mo o E:\ (223 MB)
+  OK  ISO: autounattend.xml doc duoc (XML)
+  OK  ISO: $WinPEDriver$ co vioscsi / viostor / NetKVM / vioserial, KHONG co driver man hinh
+  OK  ISO: vioscsi la driver cho 2k22 (file .inf + .sys + .cat)
+  OK  ISO co cbvm\pe.cmd
+  OK  ISO co cbvm\bios.txt
+  OK  ISO co cbvm\uefi.txt
+  OK  ISO co sources\$OEM$\$$\Setup\Scripts\SetupComplete.cmd
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\py\python.exe
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\vm\maymau.ps1
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\vm\qemu-ga-x86_64.msi
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\agent\pcagent.py
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\bin\ffmpeg.exe
+  OK  ISO co sources\$OEM$\$1\CloudBluePC\os\cacert.pem
+  OK  ISO: cb.json (VPS, mat khau trong, giu quyen Admin, khong cuu ho, vai tro vm)
+  OK  ISO: KHONG co identity.json / seed.json / enroll.key
+== 4. Chay maymau.ps1 tren may CI (gia lap may mau vua cai Windows xong)
+  OK  buoc 1: xong (moc maymau.buoc1)
+  OK  buoc 1: tac vu 'CloudBlue May Mau' (SYSTEM) da dung
+  ..  QEMU guest agent tren may CI (khong co cong virtio-serial): da cai, trang thai Running
+  OK  buoc 1: tai khoan VPS co, thuoc nhom Administrators
+  OK  buoc 1: tu dang nhap tai khoan VPS (mat khau trong)
+  OK  buoc 1: Server khong tu mo Server Manager
+  OK  buoc 2: XONG may mau (maymau.done)
+  OK  buoc 2: Python nhung chay duoc
+  OK  buoc 2: tac vu CloudBluePC Agent
+  OK  buoc 2: tac vu CloudBluePC Watch
+  OK  buoc 2: cb_provision da khoa quyen thu muc (lock.done) + dat moc firstlogon
+  OK  buoc 2: thu muc C:\CloudBluePC an
+  OK  buoc 2: don goi cai (msi, driver) + go tac vu may mau
+  OK  buoc 2: KHONG co identity.json (may mau chua dang ky)
+  OK  che do thu: tai khoan dang chay CI (runneradmin) KHONG bi khoa
+  OK  chay lai buoc 2 khi da xong -> chi go tac vu, khong lam lai
+  -- maymau.log (40 dong cuoi):
+      | 2026-11-26 21:53:35 [1] === buoc 1 (ban 26.11a) - may mau win2022, tai khoan khach VPS
+      | 2026-11-26 21:53:36 [1] ok  driver Balloon\balloon.inf
+      | 2026-11-26 21:53:36 [1] ok  driver fwcfg\fwcfg.inf
+      | 2026-11-26 21:53:36 [1] ok  driver NetKVM\netkvm.inf
+      | 2026-11-26 21:53:37 [1] ok  driver pvpanic\pvpanic-pci.inf
+      | 2026-11-26 21:53:37 [1] ok  driver pvpanic\pvpanic.inf
+      | 2026-11-26 21:53:37 [1] ok  driver vioinput\vioinput.inf
+      | 2026-11-26 21:53:37 [1] ok  driver viorng\viorng.inf
+      | 2026-11-26 21:53:38 [1] ok  driver vioscsi\vioscsi.inf
+      | 2026-11-26 21:53:38 [1] ok  driver vioserial\vioser.inf
+      | 2026-11-26 21:53:38 [1] ok  driver viostor\viostor.inf
+      | 2026-11-26 21:53:44 [1] ok  cai QEMU guest agent
+      | 2026-11-26 21:53:44 [1] ok  QEMU guest agent dang chay
+      | 2026-11-26 21:53:45 [1] ok  tat luat mat khau phuc tap / do dai toi thieu (Server)
+      | 2026-11-26 21:53:45 [1] ok  tao tai khoan khach VPS (khong mat khau)
+      | 2026-11-26 21:53:45 [1] ok  cho VPS vao nhom Administrators
+      | 2026-11-26 21:53:50 [1] ok  mat khau tai khoan VPS khong het han
+      | 2026-11-26 21:53:50 [1] ok  tu dang nhap tai khoan VPS
+      | 2026-11-26 21:53:50 [1] ok  mui gio UTC+7 (SE Asia Standard Time)
+      | 2026-11-26 21:53:50 [1] ok  Server: khong tu mo Server Manager, tat IE ESC, tat hop hoi ly do tat may
+      | 2026-11-26 21:53:50 [1] ok  tac vu 'CloudBlue May Mau' (buoc 2: luc dang nhap / bat may / 4 phut sau)
+      | 2026-11-26 21:53:50 [1] xong buoc 1 - cho tai khoan khach tu dang nhap (buoc 2)
+      | 2026-11-27 04:54:17 [2] === buoc 2 (ban 26.11a) - may mau win2022
+      | 2026-11-27 04:54:17 [2] ok  Python chay duoc
+      | 2026-11-27 04:54:17 [2] cb_provision specialize ... (chi tiet: C:\CloudBluePC\logs\provision.log)
+      | 2026-11-27 04:54:18 [2] cb_provision system ... (chi tiet: C:\CloudBluePC\logs\provision.log)
+      | 2026-11-27 04:54:39 [2] (che do thu) KHONG khoa tai khoan khac
+      | 2026-11-27 04:54:39 [2] ok  don file cai dat (file tra loi, goi cai, driver da nap)
+      | 2026-11-27 04:54:39 [2] XONG may mau win2022
+      | 2026-11-27 04:54:39 [2] may mau da xong tu truoc - go tac vu
+
+KET QUA: 43 dat, 0 loi

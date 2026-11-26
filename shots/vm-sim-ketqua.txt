@@ -1,0 +1,3 @@
+OK  proxmox/tests/test_vm_build.py: 57/57 đạt
+OK  proxmox/tests/test_cbhost.py: 150/150 đạt
+OK  soát .ps1/.cmd của proxmox/
