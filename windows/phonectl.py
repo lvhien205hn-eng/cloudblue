@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11a"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11b"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -4990,8 +4990,9 @@ GF_CLS = {0: 2, 1: 1, 2: 0}                    # bậc → lớp ưu tiên card 
 GF_PERF = r"\GPU Engine(*)\Utilization Percentage"
 
 
-def gpu_by_pid(samples=3):
-    """{pid: % card 3D} của mọi tiến trình (cộng các nhân 3D) — trung bình các lần đo sau lần đầu. Windows không có bộ đếm → None."""
+def gpu_by_pid(samples=3, eng=None):
+    """{pid: % card 3D} của mọi tiến trình (cộng các nhân 3D) — trung bình các lần đo sau lần đầu. Windows không có bộ đếm → None.
+       eng = {} → điền thêm {pid: {loại nhân: %}} mọi loại nhân (3D, Compute, Copy, Video…) để tìm tiến trình KHÔNG phải máy khách ăn card."""
     import csv, io
     try:
         r = subprocess.run(["typeperf", GF_PERF, "-sc", str(int(samples)), "-si", "1"], capture_output=True, text=True, timeout=90, creationflags=NOWIN)
@@ -5003,14 +5004,27 @@ def gpu_by_pid(samples=3):
     data = data[1:] if len(data) > 1 else data                   # lần đo đầu của bộ đếm tỉ lệ thường = 0
     out = {}
     for j, h in enumerate(head[1:], 1):
-        m = re.search(r"pid_(\d+)_.*engtype_3D", h, re.I)
+        m = re.search(r"pid_(\d+)_.*engtype_([A-Za-z0-9_]+)", h, re.I)
         if not m: continue
         vals = []
         for row in data:
             try: vals.append(float(row[j]))
             except (ValueError, IndexError): pass
-        if vals: out[int(m.group(1))] = out.get(int(m.group(1)), 0.0) + sum(vals) / len(vals)
+        if not vals: continue
+        pid, et, v = int(m.group(1)), m.group(2), sum(vals) / len(vals)
+        if et.lower() == "3d": out[pid] = out.get(pid, 0.0) + v
+        if eng is not None: d = eng.setdefault(pid, {}); d[et] = d.get(et, 0.0) + v
     return out
+
+
+def _proc_names(pids):
+    """{pid: tên tiến trình} (tasklist) — chỉ để báo admin tiến trình nào ăn card."""
+    import csv
+    try:
+        r = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=30, creationflags=NOWIN)
+        return {int(x[1]): x[0] for x in csv.reader((r.stdout or "").splitlines()) if len(x) > 1 and x[1].isdigit() and int(x[1]) in pids}
+    except Exception:
+        return {}
 
 
 def _gpu_prio(pid, cls):
@@ -5047,13 +5061,27 @@ def _phone_pids():
     return out
 
 
+def gpu_eff(util, clk, cmax):
+    """27/11b · % card THẬT (giống cloudphoned): xung < 50% tối đa (card đang nghỉ) → nhân theo tỉ lệ xung."""
+    if util is None or not clk or not cmax: return util
+    r = clk / cmax
+    return util if r >= 0.5 else round(util * r, 1)
+
+
 def _nv_util():
-    try:
-        r = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, creationflags=NOWIN)
-        u = [float(x) for x in (r.stdout or "").split() if x.replace(".", "", 1).isdigit()]
-        return max(u) if u else None
-    except Exception:
-        return None
+    num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
+    for q in ("utilization.gpu,clocks.sm,clocks.max.sm", "utilization.gpu"):
+        try:
+            r = subprocess.run(["nvidia-smi", "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, creationflags=NOWIN)
+            us = []
+            for line in (r.stdout or "").strip().splitlines():
+                f = [num(x.strip()) for x in line.split(",")]
+                if len(f) != q.count(",") + 1: raise ValueError(line)
+                if f[0] is not None: us.append(gpu_eff(f[0], f[1], f[2]) if len(f) == 3 else f[0])
+            if us: return max(us)
+        except Exception:
+            continue
+    return None
 
 
 def gpufair_plan(use, total, old, t, names=None):
@@ -5083,7 +5111,7 @@ def gpufair_plan(use, total, old, t, names=None):
 def cmd_gpufair(a):
     if not GF_ON: print("GPUFAIR " + json.dumps({"ok": False, "why": "off"})); return
     pids = _phone_pids()
-    use_pid = gpu_by_pid()
+    eng = {}; use_pid = gpu_by_pid(eng=eng)
     if use_pid is None: print("GPUFAIR " + json.dumps({"ok": False, "why": "khong co bo dem GPU Engine (Windows cu hon 10 1709)"})); return
     st = load(); mine = {p["name"] for p in st["phones"] if str(p.get("name", "")).startswith("cp_")}
     use = {nm: sum(use_pid.get(pid, 0.0) for pid in ps) for nm, ps in pids.items() if nm in mine}
@@ -5122,7 +5150,11 @@ def cmd_gpufair(a):
             if (new.get(nm) or {}).get("starve"): acts[-1] += " — hạ thì máy bị ĐÓI card (card vẫn bận) → trả lại, %d phút không hạ máy này" % (GF_NS_S // 60)
             if ok and not any(ok): acts[-1] += " — KHÔNG đặt được (cần quyền Admin)"
     top = [{"n": nm, "p": round(pct, 1), "lv": int((new.get(nm) or {}).get("lv") or 0)} for nm, pct in sorted(use.items(), key=lambda kv: -kv[1])[:5] if pct >= 1]
-    res = {"ok": True, "t": int(t), "total": total, "fair": fair, "hog": hog_min, "n": len(use), "top": top,
+    mine_p = {pid for ps in pids.values() for pid in ps}             # 27/11b: tiến trình KHÔNG phải máy khách mà ăn card (vd máy ảo mồ côi) → báo admin
+    oth = sorted(((max(d.values()), pid, max(d, key=d.get)) for pid, d in eng.items() if pid not in mine_p and d and max(d.values()) >= 5), reverse=True)[:3]
+    nm_o = _proc_names({x[1] for x in oth}) if oth else {}
+    other = [{"n": nm_o.get(pid, "pid %d" % pid), "pid": pid, "e": et, "p": round(p, 1)} for p, pid, et in oth]
+    res = {"ok": True, "t": int(t), "total": total, "fair": fair, "hog": hog_min, "n": len(use), "top": top, "other": other,
            "held": round(sum(use.get(nm, 0.0) for nm, x in new.items() if x.get("lv")), 1)}
     if not a.dry:
         try:
