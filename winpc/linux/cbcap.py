@@ -14,12 +14,14 @@
 #    · 23.11b — DÁN: khách bấm Dán / Ctrl+V mà chữ không vào Konsole (cửa sổ dòng lệnh không dán bằng Ctrl+V; máy không có wl-copy thì bộ
 #      nhớ copy còn không đặt được). Giờ: đặt bộ nhớ copy bằng wl-copy, không có thì nhờ Klipper (bộ nhớ copy của Plasma, D-Bus); hỏi KWin
 #      cửa sổ đang chọn là gì → dòng lệnh dán Ctrl+Shift+V, app thường Ctrl+V, không hỏi được thì Shift+Insert (cả 2 loại đều nhận).
+#    · 27.11a — máy ảo VPS NVMe Linux (Ubuntu + XFCE, phiên X11): quay bằng ffmpeg x11grab, chuột / phím qua XTEST (python3-xlib),
+#      bộ nhớ copy qua xclip, cửa sổ đang chọn qua _NET_ACTIVE_WINDOW. Phiên Wayland (KDE) giữ nguyên đường cũ.
 #  Lệnh (1 gói JSON / lần, root → đây): start / stop / move / btn / wheel / key / text / clip_set / clip_get / paste / size / bye
 #  Chạy thử:  python3 cbcap.py probe [giây]   → in từng bước dạng JSON (CI)
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "23.11b"
+CAP_VER = "27.11a"
 APP_ID = "vn.cloudblue.remote"
 OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
 PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
@@ -565,8 +567,10 @@ def tools():
     try:
         r = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"], capture_output=True, timeout=30)
         t["ffmpeg_x264"] = r.returncode == 0 and b"libx264" in r.stdout
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-devices"], capture_output=True, timeout=30)
+        t["x11grab"] = r.returncode == 0 and b"x11grab" in r.stdout
     except (OSError, subprocess.TimeoutExpired):
-        t["ffmpeg_x264"] = False
+        t["ffmpeg_x264"] = t.get("ffmpeg_x264", False); t["x11grab"] = False
     _TOOLS.clear(); _TOOLS.update(t); _TOOLS_T[0] = time.time()
     return dict(_TOOLS)
 
@@ -574,6 +578,7 @@ def tools():
 def pick_mode(t=None):
     """"ff" (GStreamer lấy hình + ffmpeg nén) · "gst" (chỉ GStreamer) · None (thiếu)."""
     t = t or tools()
+    if x11_session(): return "x11" if t.get("ffmpeg_x264") and t.get("x11grab") else None        # 27.11a: phiên X11 → ffmpeg x11grab
     base = all(t.get(k) for k in ("pipewiresrc", "videoconvert", "videoscale", "videorate"))
     if base and t.get("fdsink") and t.get("ffmpeg_x264"): return "ff"
     if base and all(t.get(k) for k in ("x264enc", "rtph264pay", "udpsink")): return "gst"
@@ -591,9 +596,72 @@ def X264_ARGS(fps, kbps):
 def have_tools():
     """Máy đủ công cụ quay + nén không → (đủ?, chữ báo)."""
     t = tools(); m = pick_mode(t)
-    if m: return True, "du (%s)" % ("GStreamer + ffmpeg x264" if m == "ff" else "GStreamer x264")
+    if m: return True, "du (%s)" % ("ffmpeg x11grab + x264" if m == "x11" else "GStreamer + ffmpeg x264" if m == "ff" else "GStreamer x264")
+    if x11_session(): return False, "thieu " + ", ".join(k for k in ("ffmpeg_x264", "x11grab") if not t.get(k))
     need = ("pipewiresrc", "videoconvert", "videoscale", "videorate", "fdsink", "ffmpeg_x264")      # đường chính "ff" (x264enc… chỉ là đường phụ)
     return False, "thieu " + ", ".join(k for k in need if not t.get(k))
+
+
+# ====================================================================================== 27.11a · phiên X11 (máy ảo VPS NVMe: Ubuntu + XFCE)
+def x11_session():
+    """Đang ở phiên X11 (có DISPLAY, không có Wayland) → True."""
+    return bool(os.environ.get("DISPLAY")) and not os.environ.get("WAYLAND_DISPLAY")
+
+
+def x11_encode(disp, sw, sh, w, h, fps, enc_args, port):
+    """ffmpeg quay thẳng màn hình X (x11grab, vẽ cả con trỏ) → thu cỡ → nén theo enc_args (của pcremote) → RTP về 127.0.0.1:port."""
+    safe = [str(a) for a in enc_args if isinstance(a, (str, int)) and len(str(a)) < 200][:60]
+    return (["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "x11grab", "-draw_mouse", "1", "-framerate", str(fps),
+             "-video_size", "%dx%d" % (sw, sh), "-i", "%s+0,0" % disp, "-vf", "scale=%d:%d,format=yuv420p" % (w, h)] + safe +
+            ["-an", "-bsf:v", "dump_extra=freq=keyframe", "-f", "rtp", "-rtpflags", "skip_rtcp", "-payload_type", "96", "rtp://127.0.0.1:%d?pkt_size=1300" % port])
+
+
+class X11Cast:
+    """Chuột / phím qua XTEST, cỡ màn hình + cửa sổ đang chọn qua Xlib (gói python3-xlib). Cùng tên hàm với KWinCast / Portal."""
+    XBTN = {0x110: 1, 0x111: 3, 0x112: 2, 0x113: 8, 0x114: 9}
+
+    def __init__(self, log=lambda m: None):
+        from Xlib import X, display                                  # noqa: (python3-xlib)
+        from Xlib.ext import xtest
+        self.X, self.xtest, self.log = X, xtest, log
+        self.lock = threading.Lock()
+        self.d = display.Display()
+        if not self.d.has_extension("XTEST"): raise RuntimeError("may X khong co XTEST")
+        scr = self.d.screen()
+        self.size = (int(scr.width_in_pixels), int(scr.height_in_pixels))
+        self.session = True; self.node = 0
+
+    def _fi(self, *a, **k):
+        with self.lock:
+            self.xtest.fake_input(self.d, *a, **k); self.d.sync()
+
+    def alive(self): return True
+    def motion(self, x, y): self._fi(self.X.MotionNotify, x=int(x), y=int(y))
+
+    def button(self, code, down):
+        b = self.XBTN.get(code)
+        if b: self._fi(self.X.ButtonPress if down else self.X.ButtonRelease, b)
+
+    def axis(self, i, n):
+        b = (5 if n > 0 else 4) if i == 0 else (7 if n > 0 else 6)
+        for _ in range(min(abs(int(n)), 20)):
+            self._fi(self.X.ButtonPress, b); self._fi(self.X.ButtonRelease, b)
+
+    def keycode(self, code, down): self._fi(self.X.KeyPress if down else self.X.KeyRelease, int(code) + 8)     # mã X = mã evdev + 8
+    def keysym(self, sym, down): return False                    # ký tự lạ: Cap.text dán qua bộ nhớ copy
+
+    def active_info(self):
+        with self.lock:
+            root = self.d.screen().root
+            p = root.get_full_property(self.d.intern_atom("_NET_ACTIVE_WINDOW"), self.X.AnyPropertyType)
+            wid = int(p.value[0]) if p is not None and len(p.value) else 0
+            if not wid: return ""
+            cls = self.d.create_resource_object("window", wid).get_wm_class() or ()
+            return "\n".join(str(c) for c in cls)
+
+    def close(self):
+        try: self.d.close()
+        except Exception: pass
 
 
 # ====================================================================================== KWin trực tiếp (22.11g): Wayland tối thiểu, không thư viện ngoài
@@ -893,13 +961,14 @@ class Cap:
         self.kw = None; self.inp = None; self.backend = None; self.node = None; self.size = (0, 0); self.own = False; self.why = ""
         self.first = None                                             # thời gian mở lần đầu (giây) — ghi nhật ký / chạy thử
         self.sb = None; self.act_n = 0; self.act_fail = 0; self.act_t = 0.0; self.act_kind = None; self.act_info = ""   # 23.11b: dán (bus riêng + KWin)
-        self.paste_last = False; self.klip_told = False
+        self.paste_last = False; self.klip_told = False; self.x11 = None
 
     def _drop(self):
         if self.kw is not None: self.kw.close()
         if self.portal is not None: self.portal.close()                # đóng phiên → KDE gỡ hộp hỏi còn treo (nếu có)
         if self.bus is not None: self.bus.close()
-        self.kw = self.portal = self.bus = self.inp = None; self.backend = None; self.node = None
+        if self.x11 is not None: self.x11.close()
+        self.kw = self.portal = self.bus = self.inp = self.x11 = None; self.backend = None; self.node = None
 
     def open(self, portal=True):
         """Mở luồng màn hình + đường chuột / phím: KWin trực tiếp trước (không hộp hỏi), không được thì cổng XDG (chờ tối đa PORTAL_START_S).
@@ -909,6 +978,12 @@ class Cap:
             if self.inp is not None and self.node is not None and (self.kw is None or self.kw.alive()): return self.size
             self._drop()
             t0 = time.time(); errs = []
+            if x11_session():                                             # 27.11a: phiên X11 (máy ảo Ubuntu + XFCE)
+                x = X11Cast(self.log)
+                self.x11 = self.inp = x; self.node, self.size, self.backend, self.own = 0, x.size, "x11", False
+                self.first = round(time.time() - t0, 2)
+                self.log("X11 %s: man hinh %dx%d (XTEST)" % (os.environ.get("DISPLAY"), x.size[0], x.size[1]))
+                return self.size
             own = pick_mode() == "ff"
             if os.environ.get("CBCAP_NO_KWIN") != "1":
                 k = KWinCast(self.log)
@@ -947,6 +1022,15 @@ class Cap:
             self.stop()
             self.open()
             mode = pick_mode()
+            if self.backend == "x11":
+                if mode != "x11": raise RuntimeError("may thieu cong cu quay man hinh: %s" % have_tools()[1])
+                enc = enc_args or X264_ARGS(fps, kbps)
+                self.src = None
+                self.proc = subprocess.Popen(x11_encode(os.environ.get("DISPLAY") or ":0", self.size[0], self.size[1], w, h, fps, enc, port),
+                                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                self.mode = "x11"
+                threading.Thread(target=self._errlog, args=(self.proc, "ffmpeg"), daemon=True).start()
+                return self.proc.pid
             if mode is None: raise RuntimeError("may thieu cong cu quay man hinh: %s" % have_tools()[1])
             if mode == "ff" and not enc_args: mode = "gst" if pick_mode(dict(tools(), ffmpeg_x264=False)) else "ff"
             fd = self.portal.pw_fd() if self.backend == "portal" else None      # KWin trực tiếp: nối PipeWire của phiên, không cần ổ riêng
@@ -1073,6 +1157,9 @@ class Cap:
     def clip_set(self, s):
         """Đặt chữ vào bộ nhớ copy của phiên KDE: wl-copy (gói wl-clipboard) nếu máy có, không thì nhờ Klipper (bộ nhớ copy của Plasma, D-Bus —
            đặt cả vùng chọn). → True nếu đặt được."""
+        if x11_session():                                             # 27.11a: phiên X11 → xclip
+            try: return subprocess.run(["xclip", "-selection", "clipboard", "-i"], input=s.encode("utf-8"), timeout=5).returncode == 0
+            except (OSError, subprocess.TimeoutExpired): return False
         if self._wl():
             try:
                 if subprocess.run(["wl-copy", "--type", "text/plain;charset=utf-8"], input=s.encode("utf-8"), timeout=5).returncode == 0: return True
@@ -1087,6 +1174,11 @@ class Cap:
             return False
 
     def clip_get(self):
+        if x11_session():
+            try:
+                r = subprocess.run(["xclip", "-selection", "clipboard", "-o"], capture_output=True, timeout=3)
+                return r.stdout.decode("utf-8", "replace") if r.returncode == 0 else None
+            except (OSError, subprocess.TimeoutExpired): return None
         if self._wl():
             try:
                 r = subprocess.run(["wl-paste", "--no-newline", "--type", "text"], capture_output=True, timeout=3)
@@ -1100,6 +1192,14 @@ class Cap:
            None = không hỏi được. Nhớ ACT_TTL_S giây; hỏng 3 lần liền thì thôi hỏi (dán bằng Shift+Insert)."""
         now = time.time()
         if now - self.act_t < ACT_TTL_S: return self.act_kind
+        if self.x11 is not None:                                      # 27.11a: X11 hỏi thẳng _NET_ACTIVE_WINDOW
+            try:
+                info = self.x11.active_info()
+                self.act_t, self.act_kind = time.time(), app_kind(info)
+                self.act_info = " / ".join(x for x in info.split("\n") if x)[:120] or "(khong co cua so nao)"
+                return self.act_kind
+            except Exception as e:
+                self.log("dan: chua hoi duoc cua so dang chon (X11: %s)" % str(e)[:120]); return None
         if self.act_fail >= 3: return None
         self.act_n += 1; n = str(self.act_n); name = "cloudblue_active_%d" % os.getpid(); path = None
         try:
@@ -1230,6 +1330,8 @@ def probe(secs=4.0):
                 out["move_reply"] = "ok"
             except DBusError as e:
                 out["move_reply"] = str(e)[:200]
+        elif cap.backend == "x11":
+            cap.x11.motion(100, 100); out["move_reply"] = "ok"; out["display"] = os.environ.get("DISPLAY")
         else:
             k = cap.kw
             out.update(output=k.out, outputs=k.outs, geo=list(k.geo), fake_input=k.fi_ver, virtual=k.virtual, exe=os.path.realpath("/proc/self/exe"))

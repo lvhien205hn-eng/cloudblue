@@ -15801,9 +15801,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const ics = (cores, ramMb, disk) => `<span class="vms-ics"><span class="vms-ic"><i>⚙️</i>${N(cores)} vCPU</span><span class="vms-ic"><i>🧠</i>${gb(ramMb)} RAM</span><span class="vms-ic"><i>💾</i>SSD NVMe ${N(disk)} GB</span></span>`;
   function rowBits() {
     const I = O(VM.info), ps = plansOk(), low = lowDay(), free = ps.some(p => p.free);
-    const os = [...new Set(A(I.images).filter(i => i.ready).map(i => shortOs(i.name)))].slice(0, 4);
+    const rdy = A(I.images).filter(i => i.ready), lin = rdy.some(i => !/^Windows/i.test(S(i.name, 60)));        // 27/11: có bản Linux (Ubuntu + OpenClaw)
+    const os = [...new Set(rdy.map(i => lin ? (/^Windows/i.test(S(i.name, 60)) ? "Win " + shortOs(i.name) : S(i.name, 40).replace(/\s*\+.*$/, "")) : shortOs(i.name)))].slice(0, 5);
     const feats = !ps.length ? [] : [span(ps.map(p => N(p.cores))) + " vCPU", span(ps.map(p => Math.round(N(p.ram_mb) / 102.4) / 10)) + " GB RAM", "SSD NVMe " + span(ps.map(p => N(p.disk_gb))) + " GB"]
-      .concat(os.length ? ["Windows " + os.join(" · ")] : []).concat(custOn() ? [L("Tự chọn cấu hình", "Custom specs")] : []);
+      .concat(os.length ? [(lin ? "" : "Windows ") + os.join(" · ")] : []).concat(custOn() ? [L("Tự chọn cấu hình", "Custom specs")] : []);
     const mt = vmMaint();
     return { I, low, free: free && !mt, feats, can: (free || isAdm()) && !mt, mt };
   }
@@ -15813,8 +15814,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     <div class="thumb"><canvas data-id="vps-nvme" data-c="nvme" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
     <div class="info"><span class="cat">${esc(VMN)}</span><h3>${esc(VMN)} BLUE</h3>
       ${I.sell === true ? "" : `<small class="vms-adm">👁 ${L("Chỉ admin thấy — chưa bật bán (Quản trị › VPS ảo hoá › Cài đặt)", "Admin preview — selling is off")}</small>`}
-      <p class="pdesc">${esc(L("Máy ảo Windows riêng chạy 24/7 — bấm là vào màn hình trên web, app điện thoại, app máy tính. Không cần IP, không cần cài gì. Hạn tính từ lúc VPS lên.",
-        "Your own Windows VM, on 24/7 — open it from the web, phone app or PC app. No IP, nothing to install. Time starts when the VPS is up."))}</p>
+      <p class="pdesc">${esc(L("Máy ảo Windows / Linux riêng chạy 24/7 — bấm là vào màn hình trên web, app điện thoại, app máy tính. Không cần IP, không cần cài gì. Hạn tính từ lúc VPS lên.",
+        "Your own Windows / Linux VM, on 24/7 — open it from the web, phone app or PC app. No IP, nothing to install. Time starts when the VPS is up."))}</p>
       <div class="feats spec"><b class="fl">${L("Cấu hình", "Specs")}</b>${feats.map(f => `<span>${esc(f)}</span>`).join("")}</div></div>
     <div class="m3-box"><div class="m3p"><small>${L("từ", "from")}</small><span class="price">${low ? esc(money(low)) : "…"}</span><small>/${L("ngày", "day")}</small></div>
       <span class="stock ${free ? "ok" : "out"}">${mt ? "🛠️ " + L("Đang bảo trì", "Maintenance") : free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>
@@ -15841,7 +15842,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const bn = [["⚡", L("Tự tạo 3–10 phút", "Ready in 3–10 min")], ["🖥", L("Web · app ĐT · app máy tính", "Web · phone · PC app")],
       I.upgrade === true ? ["⬆", L("Nâng cấp sau khi thuê", "Upgrade anytime")] : mx > 0 ? ["🔁", L(`Cài lại ${mx} lần`, `${mx} reinstalls`)] : null, ["🔒", L("Máy riêng của bạn", "Your own VM")]].filter(Boolean);
     return `<div class="pcs-hero vmb-hero"><div class="ph-top"><div class="ph-ic" aria-hidden="true">⚡</div><div class="ph-t"><b>${esc(VMN)} BLUE</b>
-        <small>${L("Máy ảo Windows riêng · SSD NVMe · chạy 24/7", "Your own Windows VM · NVMe SSD · on 24/7")}</small></div>
+        <small>${L("Máy ảo Windows / Linux riêng · SSD NVMe · chạy 24/7", "Your own Windows / Linux VM · NVMe SSD · on 24/7")}</small></div>
         <div class="vmb-hp"><span class="ph-pill ${mt || !free ? "wt" : "ok"}">${mt ? "🛠️ " + L("Bảo trì", "Maintenance") : free ? "⚡ " + L("Còn chỗ", "Available") : "⏳ " + L("Tạm hết chỗ", "Sold out")}</span>
         ${low ? `<div class="ph-price"><small>${L("chỉ từ", "from")}</small><b>${esc(money(low))} / ${L("ngày", "day")}</b></div>` : ""}</div></div>
       <div class="ph-chips">${chips.map(c => `<span>${c[0]} ${esc(c[1])}</span>`).join("")}</div>
@@ -15931,7 +15932,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     $i("vms-os").innerHTML = osR.length ? osR.map(i => { const on = i.id === VM.b.image, k = osKey(i.name);
       return `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="vmb-o${on ? " on" : ""}" aria-pressed="${on}">
         <small class="k">${on ? "✓ " : ""}${esc(k[0])}</small><b>${esc(k[1])}</b><small class="ok">⚡ ${L("có sẵn", "available")}</small></button>`; }).join("")
-      : `<div class="hint">${L("Chưa có bản Windows nào sẵn sàng cho cấu hình này — chọn cấu hình khác hoặc nhắn shop.", "No Windows image is ready for this configuration yet.")}</div>`;
+      : `<div class="hint">${L("Chưa có hệ điều hành nào sẵn sàng cho cấu hình này — chọn cấu hình khác hoặc nhắn shop.", "No OS image is ready for this configuration yet.")}</div>`;
     // 26/11: bản máy chủ ĐÃ có nhưng gói này thiếu RAM / ổ → hiện mờ kèm lý do (trước đây biến mất → tưởng shop chưa có bản đó)
     $i("vms-os").insertAdjacentHTML("beforeend", A(I.images).filter(i => i.ready && !os.some(o => o.id === i.id)).map(i => { const k = osKey(i.name);
       return `<button type="button" class="vmb-o" disabled data-vmneed="${esc(S(i.id, 30))}"><small class="k">${esc(k[0])}</small><b>${esc(k[1])}</b>
@@ -15955,7 +15956,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
     dErr("");
     if (vmMaint()) return dErr(em("MAINT"));
-    if (!VM.b.image) return dErr(L("Chọn bản Windows trước.", "Choose Windows first."));
+    if (!VM.b.image) return dErr(L("Chọn hệ điều hành trước.", "Choose an operating system first."));
     const cu = VM.b.cust && custOn(), price = cu ? custPrice(VM.b.days) : planPrice(p, VM.b.days);
     if (price === null) return dErr(L("Chọn thời gian.", "Choose a duration."));
     const pr = { price };
@@ -16042,8 +16043,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   function mgrPaint() {
     const m = $i("vmmgr"); if (!m || m.hidden) return;
     const items = A(O(VM.mine).items), gd = N(O(VM.info).grace_days);
-    $i("vmm-note").innerHTML = L(`Máy ảo Windows riêng chạy 24/7 trên ổ SSD NVMe. Bấm <b>▶ Điều khiển</b> để mở ngay trên trình duyệt, hoặc <b>📲 App</b> để mở bằng app máy tính / app Android. Hạn tính từ lúc VPS lên. Hết hạn VPS tự tắt — gia hạn${gd ? ` trong <b>${gd} ngày</b>` : ""} để giữ dữ liệu, quá thời gian đó VPS bị xoá.`,
-      `Your own Windows VM on an NVMe SSD, running 24/7. Press <b>▶ Control</b> to open it in the browser, or <b>📲 App</b> for the PC / Android app. Time starts when the VPS is up. When it expires the VPS stops — renew${gd ? ` within <b>${gd} days</b>` : ""} to keep your data.`);
+    $i("vmm-note").innerHTML = L(`Máy ảo Windows / Linux riêng chạy 24/7 trên ổ SSD NVMe. Bấm <b>▶ Điều khiển</b> để mở ngay trên trình duyệt, hoặc <b>📲 App</b> để mở bằng app máy tính / app Android. Hạn tính từ lúc VPS lên. Hết hạn VPS tự tắt — gia hạn${gd ? ` trong <b>${gd} ngày</b>` : ""} để giữ dữ liệu, quá thời gian đó VPS bị xoá.`,
+      `Your own Windows / Linux VM on an NVMe SSD, running 24/7. Press <b>▶ Control</b> to open it in the browser, or <b>📲 App</b> for the PC / Android app. Time starts when the VPS is up. When it expires the VPS stops — renew${gd ? ` within <b>${gd} days</b>` : ""} to keep your data.`);
     const ap = $i("vmm-app"); if (ap && !ap.dataset.on) { ap.dataset.on = "1"; ap.innerHTML = appBox(); }
     const mt = $i("vmm-mt"), on = O(VM.mine).maint === true && !isAdm();
     if (mt) { mt.hidden = !on; mt.innerHTML = on ? "🛠️ " + esc(L(VMN + " đang bảo trì — tạm chưa nâng cấp / cài lại được. VPS vẫn chạy, điều khiển và gia hạn bình thường.", VMN + " is under maintenance — upgrades and reinstalls are paused.")) + (vmMaintMsg() ? "<br><b>" + esc(vmMaintMsg()) + "</b>" : "") : ""; }
@@ -16069,9 +16070,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (v.expired) return ["exp", "⛔ " + L("Hết hạn", "Expired"), T(v.delete_at) !== null ? L(`Gia hạn trước ${dt(v.delete_at)} để giữ VPS + dữ liệu — quá giờ đó VPS bị xoá.`, `Renew before ${dt(v.delete_at)} to keep the VPS and its data.`) : L("Gia hạn để dùng tiếp.", "Renew to keep using it.")];
     if (v.err) return ["warn", "⚠️ " + L("Đang lỗi", "Error"), L("Máy chủ báo lỗi khi tạo / chạy VPS — shop đã được báo. Lâu quá thì nhắn shop kèm tên VPS.", "The host reported an error — the shop has been notified.")];
     if (v.cfg_busy) return ["cfg", "⚙️ " + L("Đang đổi cấu hình", "Applying new specs"), L("Máy chủ đang đặt cấu hình mới — VPS tự khởi động lại khoảng 1–2 phút, dữ liệu giữ nguyên.", "The host is applying the new specs — the VPS restarts in about 1–2 min, data kept.")];
-    if (v.busy || v.status === "creating") return ["inst", "⚙️ " + L("Đang tạo / cài Windows", "Setting up"), L("Máy chủ đang dựng VPS (thường 3–10 phút). Xong là bấm Điều khiển được.", "The VPS is being prepared (usually 3–10 min).")];
+    if (v.busy || v.status === "creating") return ["inst", "⚙️ " + L("Đang tạo / cài hệ điều hành", "Setting up"), L("Máy chủ đang dựng VPS (thường 3–10 phút). Xong là bấm Điều khiển được.", "The VPS is being prepared (usually 3–10 min).")];
     if (v.want === "stopped" || v.status === "stopped") return ["off", "⏻ " + L("Đã tắt", "Stopped"), L("Bấm Bật để chạy lại.", "Press Start to run it again.")];
-    if (!v.online) return ["boot", "○ " + L("Đang khởi động…", "Starting…"), L("Windows đang lên (1–2 phút).", "Windows is starting (1–2 min).")];
+    if (!v.online) return ["boot", "○ " + L("Đang khởi động…", "Starting…"), L("Hệ điều hành đang lên (1–2 phút).", "The OS is starting (1–2 min).")];
     return ["run", "● " + L("Đang chạy", "Running"), ""];
   }
   const nmHtml = v => `<b class="m3m-nm">${esc(S(v.label, 40) || S(v.name, 40))}<button type="button" class="m3m-ren" data-vmlabel="${N(v.id)}" title="${esc(L("Đổi tên VPS", "Rename VPS"))}" aria-label="${esc(L("Đổi tên VPS", "Rename VPS"))}">✏️</button>${S(v.label, 40) ? `<small>${esc(S(v.name, 20))}</small>` : ""}</b>`;
@@ -16357,7 +16358,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <button class="btn ${st.sell ? "ghost" : "okb"} sm" type="button" data-vmaset="sell" data-v="${st.sell ? "0" : "1"}">${st.sell ? L("Tắt bán", "Stop selling") : L("Bật bán", "Start selling")}</button></div>`;
   }
   /* 26/11: máy chủ cài bằng ISO CloudBlue-Proxmox tự dựng máy mẫu từ ISO máy mẫu (cbhost báo metrics.tpl_auto) */
-  const autoSt = x => x.state === "installing" ? L(`đang cài Windows (${N(x.min)} phút)`, `installing Windows (${N(x.min)} min)`)
+  const autoSt = x => x.state === "installing" ? (/^(ubuntu|debian|alma|rocky|linux)/.test(S(x.tag, 24)) ? L(`đang cài Ubuntu + giao diện + OpenClaw (${N(x.min)} phút)`, `installing Ubuntu + desktop + OpenClaw (${N(x.min)} min)`)
+      : L(`đang cài Windows (${N(x.min)} phút)`, `installing Windows (${N(x.min)} min)`))
     : x.state === "creating" ? L("đang tạo máy ảo", "creating the VM") : x.state === "saving" ? L("cài xong, đang chuyển thành máy mẫu", "converting to a template")
     : x.state === "error" ? "⚠️ " + L("lỗi", "error") + (S(x.err, 120) ? ": " + S(x.err, 120) : "") : L("đang xử lý", "working");
   /* 26/11d: cbhost báo metrics.usb = {s: copy | done | err, msg, t} khi chép ISO máy mẫu từ USB cắm vào máy chủ đang chạy */
