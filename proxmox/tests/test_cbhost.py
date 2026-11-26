@@ -394,19 +394,22 @@ source /etc/network/interfaces.d/*
 """
 IF4 = IF6.replace("inet6 manual", "inet manual").replace("iface vmbr0 inet6 static", "iface vmbr0 inet static").replace("2405:4803:ff84:ac60:2034:4dff:fe09:6697/64", "192.168.1.50/24").replace("fe80::1", "192.168.1.1")
 netd = os.path.join(tmp, "net"); os.makedirs(netd)
-cb.RESOLV_F, cb.IFACES_F = os.path.join(netd, "resolv.conf"), os.path.join(netd, "interfaces")
-NET = {"v4": False, "v6": True, "lease": True, "cmds": [], "have": {"dhclient", "ifreload"}, "dns_ok": False}
+cb.RESOLV_F, cb.IFACES_F, cb.DHCP_UNIT_F, cb.DHCP_WAIT_S = os.path.join(netd, "resolv.conf"), os.path.join(netd, "interfaces"), os.path.join(netd, "cloudblue-dhcp4.service"), 0
+NET = {"v4": False, "v6": True, "lease": True, "cmds": [], "have": {"dhclient", "systemctl"}, "dns_ok": False, "active": False}
 _run0, _which0, _res0 = cb.run, cb.shutil.which, cb.can_resolve
 
 
 def fake_run(cmd, timeout=900):
     if cmd[0] == "ip":
-        NET["cmds"].append(" ".join(cmd))
         on = NET["v4"] if cmd[1] == "-4" else NET["v6"]
         return 0, ("default via %s dev vmbr0 proto kernel onlink" % ("192.168.1.1" if cmd[1] == "-4" else "fe80::1")) if on else ""
-    if cmd[0] == "ifreload":
+    if cmd[0] == "systemctl":
         NET["cmds"].append(" ".join(cmd))
-        if NET["lease"] and re.search(r"^iface vmbr0 inet dhcp$", open(cb.IFACES_F).read(), re.M): NET["v4"] = True     # mạng có DHCP → có IPv4
+        if cmd[1] == "is-active": return (0, "active") if NET["active"] else (3, "inactive")
+        if cmd[1:3] == ["enable", "--now"]:
+            NET["active"] = True
+            if NET["lease"]: NET["v4"] = True                       # mạng có DHCP → dhclient lấy được IPv4
+        if cmd[1:3] == ["disable", "--now"]: NET["active"] = False
         return 0, ""
     return _run0(cmd, timeout)
 
@@ -414,7 +417,10 @@ def fake_run(cmd, timeout=900):
 def net_reset(ifaces=IF6, resolv="search lan\nnameserver 192.168.100.1\n", **kw):
     for f in os.listdir(netd): os.remove(os.path.join(netd, f))
     open(cb.IFACES_F, "w").write(ifaces); open(cb.RESOLV_F, "w").write(resolv)
-    NET.update(v4=False, v6=True, lease=True, cmds=[], have={"dhclient", "ifreload"}, dns_ok=False); NET.update(kw)
+    NET.update(v4=False, v6=True, lease=True, cmds=[], have={"dhclient", "systemctl"}, dns_ok=False, active=False); NET.update(kw)
+
+
+def sysc(pat): return [x for x in NET["cmds"] if re.search(pat, x)]
 
 
 cb.run = fake_run
@@ -423,47 +429,55 @@ cb.can_resolve = lambda host, secs=8: NET["dns_ok"]
 C6 = dict(cb.DEFAULTS, bridge="vmbr0", net_heal=True, sb_url="https://web.cloudblue.thu")
 try:
     net_reset()
-    ck("đọc đường ra: máy chỉ có IPv6 → (IPv4 không, IPv6 có), ip6_only = True", cb.default_routes() == (False, True) and cb.ip6_only() is True, cb.default_routes())
+    ck("đọc đường ra: máy chỉ có IPv6 → (IPv4 không, IPv6 có), ip6_only = True; cấu hình cầu vmbr0: chỉ IPv6", cb.default_routes() == (False, True) and cb.ip6_only() is True and cb.bridge_ipv4("vmbr0") == "v6", cb.default_routes())
     did = cb.net_heal(C6, 1)
-    it = open(cb.IFACES_F).read()
-    ck("máy chỉ có IPv6, mạng CÓ DHCP: thêm đúng 1 đoạn 'iface vmbr0 inet dhcp' vào CUỐI file (phần cũ còn nguyên từng byte), chạy ifreload -a, lưu bản gốc .cb-goc",
-       it.startswith(IF6.rstrip("\n")) and it.count("\niface vmbr0 inet dhcp\n") == 1 and it.endswith("iface vmbr0 inet dhcp\n") and "ifreload -a" in NET["cmds"]
-       and open(cb.IFACES_F + ".cb-goc").read() == IF6 and any("inet dhcp" in x for x in did), (did, it[-200:]))
+    ut = open(cb.DHCP_UNIT_F).read() if os.path.exists(cb.DHCP_UNIT_F) else ""
+    ck("máy chỉ có IPv6, mạng CÓ DHCP: bật dịch vụ cloudblue-dhcp4 (dhclient -4 -d … vmbr0, tự chạy lại, tự bật cùng máy) → có IPv4; KHÔNG sửa 1 byte nào của /etc/network/interfaces",
+       "ExecStart=/usr/sbin/dhclient -4 -d -pf /run/dhclient.vmbr0.pid -lf /var/lib/dhcp/dhclient.vmbr0.leases vmbr0\n" in ut and "Restart=always" in ut and "WantedBy=multi-user.target" in ut
+       and sysc(r"^systemctl daemon-reload$") and sysc(r"^systemctl enable --now cloudblue-dhcp4\.service$") and open(cb.IFACES_F).read() == IF6 and not os.path.exists(cb.IFACES_F + ".cb-goc")
+       and any("ĐÃ có IPv4" in x for x in did) and cb.default_routes()[0], (did, ut))
     rs = open(cb.RESOLV_F).read()
     ck("… DNS 192.168.100.1 (bộ cài tự điền) không phân giải được → đặt lại: có IPv4 + IPv6 thì 8.8.8.8, 2001:4860:4860::8888, 1.1.1.1; giữ dòng search; lưu bản gốc",
        cb.resolv_servers(rs) == ["8.8.8.8", "2001:4860:4860::8888", "1.1.1.1"] and "search lan" in rs and "192.168.100.1" not in rs
        and open(cb.RESOLV_F + ".cb-goc").read() == "search lan\nnameserver 192.168.100.1\n" and any("DNS" in x for x in did), (did, rs))
-    n_cmd = len([x for x in NET["cmds"] if x.startswith("ifreload")])
+    n_en = len(sysc("enable --now"))
     did2 = cb.net_heal(C6, 2); did3 = cb.net_heal(C6, 5)
-    ck("gọi lại nhiều lần: KHÔNG thêm đoạn thứ hai, không chạy lại ifreload, không ghi lại DNS, bản gốc không bị đè",
-       did2 == [] and did3 == [] and open(cb.IFACES_F).read() == it and open(cb.RESOLV_F).read() == rs and len([x for x in NET["cmds"] if x.startswith("ifreload")]) == n_cmd
-       and open(cb.IFACES_F + ".cb-goc").read() == IF6, (did2, did3))
+    ck("gọi lại nhiều lần: dịch vụ đang chạy thì KHÔNG bật lại, không ghi lại DNS, bản gốc không bị đè",
+       did2 == [] and did3 == [] and len(sysc("enable --now")) == n_en and open(cb.RESOLV_F).read() == rs and open(cb.DHCP_UNIT_F).read() == ut, (did2, did3))
     net_reset(lease=False)
     did = cb.net_heal(C6, 1)
     rs = open(cb.RESOLV_F).read()
-    ck("máy chỉ có IPv6, mạng KHÔNG có DHCP: vẫn thêm 'inet dhcp' (dhclient tự thử lại về sau) và đặt DNS IPv6 công cộng (2001:4860:4860::8888, 2606:4700:4700::1111) → chạy được chỉ bằng IPv6",
-       "\niface vmbr0 inet dhcp\n" in open(cb.IFACES_F).read() and cb.resolv_servers(rs) == ["2001:4860:4860::8888", "2606:4700:4700::1111"] and len(did) == 2, (did, rs))
+    ck("máy chỉ có IPv6, mạng KHÔNG có DHCP: vẫn bật dịch vụ (dhclient tự thử lại mãi) và đặt DNS IPv6 công cộng (2001:4860:4860::8888, 2606:4700:4700::1111) → chạy được chỉ bằng IPv6",
+       os.path.exists(cb.DHCP_UNIT_F) and any("mạng chưa cấp IPv4" in x for x in did) and cb.resolv_servers(rs) == ["2001:4860:4860::8888", "2606:4700:4700::1111"] and len(did) == 2, (did, rs))
+    n_en = len(sysc("enable --now"))
+    ck("… lượt sau: dịch vụ vẫn đang chạy → không bật lại, không ghi gì thêm", cb.net_heal(C6, 2) == [] and len(sysc("enable --now")) == n_en)
+    NET["active"] = False
+    ck("… dịch vụ bị tắt (ai đó dừng) → lượt sau bật lại", any("cloudblue-dhcp4" in x for x in cb.net_heal(C6, 3)) and len(sysc("enable --now")) == n_en + 1)
+    open(cb.IFACES_F, "w").write(IF4); NET.update(v4=True, dns_ok=True)
+    did = cb.net_heal(C6, 4)
+    ck("admin đã đặt IPv4 tĩnh cho vmbr0 (trang Proxmox) → gỡ dịch vụ xin DHCP tạm: disable --now + xoá file dịch vụ", len(did) == 1 and "gỡ dịch vụ" in did[0] and sysc(r"disable --now cloudblue-dhcp4\.service")
+       and not os.path.exists(cb.DHCP_UNIT_F), did)
     net_reset(ifaces=IF4, v4=True, v6=False, resolv="nameserver 192.168.1.1\n")
     did = cb.net_heal(C6, 1)
-    ck("máy cài bình thường (IPv4 tĩnh, DNS của mạng): mất mạng tạm thời → KHÔNG đụng file nào ở lượt đầu", did == [] and open(cb.IFACES_F).read() == IF4 and open(cb.RESOLV_F).read() == "nameserver 192.168.1.1\n"
-       and not os.path.exists(cb.IFACES_F + ".cb-goc") and not [x for x in NET["cmds"] if x.startswith("ifreload")], did)
+    ck("máy cài bình thường (IPv4 tĩnh, DNS của mạng): mất mạng tạm thời → KHÔNG đụng gì ở lượt đầu (không dịch vụ, không DNS)", did == [] and not os.path.exists(cb.DHCP_UNIT_F) and open(cb.RESOLV_F).read() == "nameserver 192.168.1.1\n"
+       and not sysc("enable|disable"), did)
     did = cb.net_heal(C6, 3)
-    ck("… hỏng tên miền nhiều lượt liền (lượt 3) → mới đặt DNS công cộng IPv4 (8.8.8.8, 1.1.1.1), file mạng vẫn nguyên; bản gốc lưu ở .cb-goc",
-       cb.resolv_servers(open(cb.RESOLV_F).read()) == ["8.8.8.8", "1.1.1.1"] and open(cb.IFACES_F).read() == IF4 and open(cb.RESOLV_F + ".cb-goc").read() == "nameserver 192.168.1.1\n", did)
+    ck("… hỏng tên miền nhiều lượt liền (lượt 3) → mới đặt DNS công cộng IPv4 (8.8.8.8, 1.1.1.1); bản gốc lưu ở .cb-goc",
+       cb.resolv_servers(open(cb.RESOLV_F).read()) == ["8.8.8.8", "1.1.1.1"] and open(cb.RESOLV_F + ".cb-goc").read() == "nameserver 192.168.1.1\n" and not os.path.exists(cb.DHCP_UNIT_F), did)
     net_reset(ifaces=IF4, v4=False, v6=False)
-    ck("cầu mạng đã có cấu hình IPv4 (tĩnh) mà không có đường ra nào: không thêm DHCP, không ghi DNS (không biết đường nào dùng được)", cb.net_heal(C6, 5) == [] and open(cb.IFACES_F).read() == IF4
+    ck("cầu mạng đã có cấu hình IPv4 (tĩnh) mà không có đường ra nào: không bật DHCP, không ghi DNS (không biết đường nào dùng được)", cb.net_heal(C6, 5) == [] and not os.path.exists(cb.DHCP_UNIT_F)
        and open(cb.RESOLV_F).read() == "search lan\nnameserver 192.168.100.1\n")
-    net_reset(have={"ifreload"})
+    net_reset(have={"systemctl"})
     did = cb.net_heal(C6, 1)
-    ck("máy không có dhclient (ifupdown2 của Proxmox chỉ xin DHCP bằng dhclient): KHÔNG sửa file mạng; vẫn sửa DNS", open(cb.IFACES_F).read() == IF6 and len(did) == 1 and "DNS" in did[0], did)
+    ck("máy không có dhclient: không bật dịch vụ; vẫn sửa DNS", not os.path.exists(cb.DHCP_UNIT_F) and len(did) == 1 and "DNS" in did[0], did)
     net_reset(ifaces=IF6.replace("vmbr0", "vmbr9"))
     cb.net_heal(C6, 1)
-    ck("file mạng không có cầu vmbr0 → không thêm gì", "inet dhcp" not in open(cb.IFACES_F).read())
+    ck("file mạng không có cầu vmbr0 → không bật dịch vụ nào", not os.path.exists(cb.DHCP_UNIT_F) and not sysc("enable"))
     net_reset(resolv="nameserver 192.168.100.1\n")
     did = cb.net_heal(dict(C6, sb_url="http://10.0.2.2:8765"), 1)
-    ck("web gọi bằng địa chỉ số (bộ thử): không cần tên miền → không đụng DNS, vẫn xin DHCP", open(cb.RESOLV_F).read() == "nameserver 192.168.100.1\n" and len(did) == 1 and "inet dhcp" in did[0], did)
+    ck("web gọi bằng địa chỉ số (bộ thử): không cần tên miền → không đụng DNS, vẫn xin DHCP", open(cb.RESOLV_F).read() == "nameserver 192.168.100.1\n" and len(did) == 1 and "cloudblue-dhcp4" in did[0], did)
     net_reset(dns_ok=True, v4=True)
-    ck("mạng đủ cả (có IPv4, phân giải được): không làm gì", cb.net_heal(C6, 9) == [] and open(cb.IFACES_F).read() == IF6)
+    ck("mạng đủ cả (có IPv4, phân giải được): không làm gì", cb.net_heal(C6, 9) == [] and open(cb.IFACES_F).read() == IF6 and not os.path.exists(cb.DHCP_UNIT_F))
     # NetWatch: khi nào thì gọi tự sửa
     T = [1000.0]; calls = []
     nw = cb.NetWatch(C6, heal=lambda c, n: calls.append(n) or ["x%d" % n], now=lambda: T[0])
@@ -509,7 +523,7 @@ try:
     for _ in range(20): scr.step(False, H0)
     T2[0] += 301; scr.step(False, H0)
     ck("… vẫn chưa được: 5 phút mới nhắc lại 1 lần (không tràn màn hình)", len(said) == 2, len(said))
-    scr.healed(1, "thêm 'iface vmbr0 inet dhcp'")
+    scr.healed(1, "bật dịch vụ xin IPv4 qua DHCP cho vmbr0")
     scr.step(True, H0); scr.step(True, H0)
     ck("… lên web được → in ĐÚNG 1 lần 'DA LEN WEB: may chu cbvps-6697 - CHO DUYET …'; dòng tự sửa mạng cũng in ra", len(said) == 4 and "tu sua mang (luot 1)" in said[2]
        and said[3].startswith("DA LEN WEB: may chu 'cbvps-6697' - CHO DUYET") and "bam DUYET" in said[3], said[2:])
