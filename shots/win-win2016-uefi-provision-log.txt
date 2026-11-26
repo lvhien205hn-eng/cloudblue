@@ -1,0 +1,29 @@
+2026-11-26 01:39:02 === specialize (ban 22.11c) ===
+2026-11-26 01:39:02 ok  mat khau tai khoan khong het han (mac dinh Windows: 42 ngay)
+2026-11-26 01:39:02 ok  reg OOBE\DisablePrivacyExperience=1
+2026-11-26 01:39:02 ok  reg Personalization\NoLockScreen=1
+2026-11-26 01:39:02 ok  reg System\PromptOnSecureDesktop=0
+2026-11-26 01:39:02 ok  reg Run\CloudBluePC="C:\CloudBluePC\py\pythonw.exe" -I -B "C:\CloudBluePC\os\cb_provision.py" logon
+2026-11-26 01:39:02 ok  tat ngu dong
+2026-11-26 01:39:02 ok  dien nang standby-timeout-ac=0
+2026-11-26 01:39:02 ok  dien nang standby-timeout-dc=0
+2026-11-26 01:39:02 ok  dien nang hibernate-timeout-ac=0
+2026-11-26 01:39:03 ok  dien nang hibernate-timeout-dc=0
+2026-11-26 01:39:03 ok  dien nang monitor-timeout-ac=0
+2026-11-26 01:39:03 ok  dien nang disk-timeout-ac=0
+2026-11-26 01:39:03 ok  tac vu agent (XML)
+2026-11-26 01:39:03 ok  tac vu canh 5 phut
+2026-11-26 01:39:03 ok  khoa quyen thu muc C:\CloudBluePC
+2026-11-26 01:39:03 ok  an thu muc C:\CloudBluePC (thuoc tinh An + He thong)
+2026-11-26 01:39:04 ok  khoa quyen thu muc C:\CloudBluePC
+2026-11-26 01:39:04 ok  an thu muc C:\CloudBluePC (thuoc tinh An + He thong)
+2026-11-26 01:39:04 ok  chan tai khoan khach 'VPS' sua / xoa phan mem shop + phan vung cuu ho
+2026-11-26 01:39:06 tai khoan khach 'VPS' da co quyen Admin (user_admin)
+2026-11-26 01:39:06 ok  reg System\ConsentPromptBehaviorAdmin=0
+2026-11-26 01:39:10 ok  tat hypervisor luc khoi dong (Hyper-V / VBS chiem VT-x -> gia lap Android khong chay)
+2026-11-26 01:39:11 gia lap: VT ? · hypervisor CO · VBS 0 · vua tat: hypervisor (can khoi dong lai 1 lan)
+2026-11-26 01:39:14 ok  khoa quyen thu muc C:\CloudBluePC
+2026-11-26 01:39:15 ok  an thu muc C:\CloudBluePC (thuoc tinh An + He thong)
+2026-11-26 01:39:15 ok  chan tai khoan khach 'VPS' sua / xoa phan mem shop + phan vung cuu ho
+2026-11-26 01:39:17 tai khoan khach 'VPS' da co quyen Admin (user_admin)
+2026-11-26 01:39:20 gia lap: VT ? · hypervisor CO · VBS 0

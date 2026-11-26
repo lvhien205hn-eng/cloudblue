@@ -1,0 +1,7 @@
+2026-11-26 01:39:14 === CloudBlue PC agent 23.11c chạy · máy CLOUDBLUE-VPS · chưa đăng ký ===
+2026-11-26 01:39:20 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 11001] getaddrinfo failed>)
+2026-11-26 01:39:50 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 11001] getaddrinfo failed>)
+2026-11-26 01:40:47 === CloudBlue PC agent 23.11c chạy · máy CLOUDBLUE-VPS · chưa đăng ký ===
+2026-11-26 01:40:55 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 11001] getaddrinfo failed>)
+2026-11-26 01:41:25 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 11001] getaddrinfo failed>)
+2026-11-26 01:41:55 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 11001] getaddrinfo failed>)

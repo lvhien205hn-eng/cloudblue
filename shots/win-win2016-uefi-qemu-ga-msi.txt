@@ -1,0 +1,249 @@
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={35EE3558-D34B-4F0A-B8BD-430FF0775246},KeyPath=C:\Program Files\Qemu-ga\iconv.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={ADD4D07D-4515-4AB6-AF3E-C904961B4BB0},KeyPath=C:\Program Files\Qemu-ga\libgcc_s_seh-1.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={D31BFD83-2773-4B65-B45A-E0D2ADA58679},KeyPath=C:\Program Files\Qemu-ga\libglib-2.0-0.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={A641BC2D-A907-4A94-9149-F30ED430878F},KeyPath=C:\Program Files\Qemu-ga\libintl-8.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={7880087B-02B4-4EF6-A5D3-D18F8E3D90E1},KeyPath=C:\Program Files\Qemu-ga\libssp-0.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={6C117C78-0F47-4B07-8F34-6BEE11643829},KeyPath=C:\Program Files\Qemu-ga\libwinpthread-1.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ComponentRegister(ComponentId={F92A3804-B59C-419D-8F29-99A30352C156},KeyPath=C:\Program Files\Qemu-ga\libpcre2-8-0.dll,State=3,,Disk=1,SharedDllRefCount=0,BinaryType=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ActionStart(Name=StopServices,Description=Stopping services,Template=Service: [1])
+MSI (s) (28:24) [01:38:37:166]: Executing op: ProgressTotal(Total=1,Type=1,ByteEquivalent=1300000)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ServiceControl(,Name=QEMU-GA,Action=2,Wait=1,)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ActionStart(Name=InstallFiles,Description=Copying new files,Template=File: [1],  Directory: [9],  Size: [6])
+MSI (s) (28:24) [01:38:37:166]: Executing op: ProgressTotal(Total=34573950,Type=0,ByteEquivalent=1)
+MSI (s) (28:24) [01:38:37:166]: Executing op: SetTargetFolder(Folder=C:\Program Files\Qemu-ga\)
+MSI (s) (28:24) [01:38:37:166]: Executing op: SetSourceFolder(Folder=1\QEMU Guest Agent\Qemu-ga\)
+MSI (s) (28:24) [01:38:37:166]: Executing op: ChangeMedia(,MediaPrompt=Please insert the disk: ,MediaCabinet=qemu_ga.109.1.0.cab,BytesPerTick=65536,CopierType=2,ModuleFileName=C:\Windows\Installer\4cf7.msi,,,,,IsFirstPhysicalMedia=1)
+MSI (s) (28:24) [01:38:37:182]: Executing op: FileCopy(SourceName=qemu-ga.exe,SourceCabKey=qemu_ga.exe,DestName=qemu-ga.exe,Attributes=512,FileSize=4552681,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=-1850787421,HashPart2=947335018,HashPart3=686418453,HashPart4=1263868223,,)
+MSI (s) (28:24) [01:38:37:182]: File: C:\Program Files\Qemu-ga\qemu-ga.exe;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:182]: Source for file 'qemu_ga.exe' is compressed
+MSI (s) (28:24) [01:38:37:197]: Executing op: FileCopy(SourceName=libstdc++-6.dll,SourceCabKey=libstdc++-6.lib,DestName=libstdc++-6.dll,Attributes=512,FileSize=25978360,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=701895654,HashPart2=-2034325392,HashPart3=-730058626,HashPart4=-924116723,,)
+MSI (s) (28:24) [01:38:37:197]: File: C:\Program Files\Qemu-ga\libstdc++-6.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:197]: Source for file 'libstdc++-6.lib' is compressed
+MSI (s) (28:24) [01:38:37:322]: Executing op: FileCopy(SourceName=qga-vss.dll,SourceCabKey=qga_vss.dll,DestName=qga-vss.dll,Attributes=512,FileSize=454158,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=-723745969,HashPart2=23563446,HashPart3=820544677,HashPart4=992069478,,)
+MSI (s) (28:24) [01:38:37:322]: File: C:\Program Files\Qemu-ga\qga-vss.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:322]: Source for file 'qga_vss.dll' is compressed
+MSI (s) (28:24) [01:38:37:322]: Executing op: FileCopy(SourceName=qga-vss.tlb,SourceCabKey=qga_vss.tlb,DestName=qga-vss.tlb,Attributes=512,FileSize=2380,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=469666605,HashPart2=-459900250,HashPart3=632805496,HashPart4=-1064447087,,)
+MSI (s) (28:24) [01:38:37:322]: File: C:\Program Files\Qemu-ga\qga-vss.tlb;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:322]: Source for file 'qga_vss.tlb' is compressed
+MSI (s) (28:24) [01:38:37:338]: Executing op: FileCopy(SourceName=gspawn-win64-helper-console.exe,SourceCabKey=gspawn-win64-helper-console.exe,DestName=gspawn-win64-helper-console.exe,Attributes=512,FileSize=26496,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=590291051,HashPart2=1450023771,HashPart3=1349557878,HashPart4=101402316,,)
+MSI (s) (28:24) [01:38:37:338]: File: C:\Program Files\Qemu-ga\gspawn-win64-helper-console.exe;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:338]: Source for file 'gspawn-win64-helper-console.exe' is compressed
+MSI (s) (28:24) [01:38:37:338]: Executing op: FileCopy(SourceName=gspawn-win64-helper.exe,SourceCabKey=gspawn-win64-helper.exe,DestName=gspawn-win64-helper.exe,Attributes=512,FileSize=26496,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=590291051,HashPart2=1450023771,HashPart3=1349557878,HashPart4=101402316,,)
+MSI (s) (28:24) [01:38:37:338]: File: C:\Program Files\Qemu-ga\gspawn-win64-helper.exe;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:338]: Source for file 'gspawn-win64-helper.exe' is compressed
+MSI (s) (28:24) [01:38:37:338]: Executing op: FileCopy(SourceName=iconv.dll,SourceCabKey=iconv.dll,DestName=iconv.dll,Attributes=512,FileSize=39092,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=1277543496,HashPart2=-1079556025,HashPart3=583965698,HashPart4=1728586632,,)
+MSI (s) (28:24) [01:38:37:338]: File: C:\Program Files\Qemu-ga\iconv.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:338]: Source for file 'iconv.dll' is compressed
+MSI (s) (28:24) [01:38:37:338]: Executing op: FileCopy(SourceName=libgcc_s_seh-1.dll,SourceCabKey=libgcc_arch_lib,DestName=libgcc_s_seh-1.dll,Attributes=512,FileSize=928166,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=692313409,HashPart2=566888850,HashPart3=-1182103979,HashPart4=1175032611,,)
+MSI (s) (28:24) [01:38:37:338]: File: C:\Program Files\Qemu-ga\libgcc_s_seh-1.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:338]: Source for file 'libgcc_arch_lib' is compressed
+MSI (s) (28:24) [01:38:37:338]: Executing op: FileCopy(SourceName=libglib-2.0-0.dll,SourceCabKey=libglib_2.0_0.dll,DestName=libglib-2.0-0.dll,Attributes=512,FileSize=1540354,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=634571757,HashPart2=1185427389,HashPart3=336306807,HashPart4=377057770,,)
+MSI (s) (28:24) [01:38:37:338]: File: C:\Program Files\Qemu-ga\libglib-2.0-0.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:338]: Source for file 'libglib_2.0_0.dll' is compressed
+MSI (s) (28:24) [01:38:37:354]: Executing op: FileCopy(SourceName=libintl-8.dll,SourceCabKey=libintl_8.dll,DestName=libintl-8.dll,Attributes=512,FileSize=213101,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=824335945,HashPart2=-1306057129,HashPart3=1635463596,HashPart4=1579936135,,)
+MSI (s) (28:24) [01:38:37:354]: File: C:\Program Files\Qemu-ga\libintl-8.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:354]: Source for file 'libintl_8.dll' is compressed
+MSI (s) (28:24) [01:38:37:354]: Executing op: FileCopy(SourceName=libssp-0.dll,SourceCabKey=libssp_0.dll,DestName=libssp-0.dll,Attributes=512,FileSize=87019,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=760207636,HashPart2=-398449836,HashPart3=-361978863,HashPart4=1670300307,,)
+MSI (s) (28:24) [01:38:37:354]: File: C:\Program Files\Qemu-ga\libssp-0.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:354]: Source for file 'libssp_0.dll' is compressed
+MSI (s) (28:24) [01:38:37:354]: Executing op: FileCopy(SourceName=libwinpthread-1.dll,SourceCabKey=libwinpthread_1.dll,DestName=libwinpthread-1.dll,Attributes=512,FileSize=68679,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=-578611036,HashPart2=-1366828168,HashPart3=-335990818,HashPart4=-66304231,,)
+MSI (s) (28:24) [01:38:37:354]: File: C:\Program Files\Qemu-ga\libwinpthread-1.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:354]: Source for file 'libwinpthread_1.dll' is compressed
+MSI (s) (28:24) [01:38:37:354]: Executing op: FileCopy(SourceName=libpcre2-8-0.dll,SourceCabKey=libpcre2_8_0.dll,DestName=libpcre2-8-0.dll,Attributes=512,FileSize=656968,PerTick=65536,,VerifyMedia=1,,,,,CheckCRC=0,,,InstallMode=62914560,HashOptions=0,HashPart1=-1455723448,HashPart2=-260433928,HashPart3=-207374164,HashPart4=928172163,,)
+MSI (s) (28:24) [01:38:37:354]: File: C:\Program Files\Qemu-ga\libpcre2-8-0.dll;	To be installed;	Won't patch;	No existing file
+MSI (s) (28:24) [01:38:37:354]: Source for file 'libpcre2_8_0.dll' is compressed
+MSI (s) (28:24) [01:38:37:354]: Executing op: CacheSizeFlush(,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: ActionStart(Name=WriteRegistryValues,Description=Writing system registry values,Template=Key: [1], Name: [2], Value: [3])
+MSI (s) (28:24) [01:38:37:354]: Executing op: ProgressTotal(Total=5,Type=1,ByteEquivalent=13200)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegOpenKey(Root=-2147483646,Key=Software\RedHat\RHEL\Tools\QemuGA\,,BinaryType=1,,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegAddValue(Name=ProductID,Value=fb0a0d66-c7fb-4e2e-a16b-c4a3bfe8d13b,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegAddValue(Name=Version,Value=109.1.0,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegOpenKey(Root=-2147483646,Key=System\CurrentControlSet\Services\EventLog\Application\qemu-ga\,,BinaryType=1,,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegAddValue(Name=TypesSupported,Value=#7,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegAddValue(Name=EventMessageFile,Value=C:\Program Files\Qemu-ga\qemu-ga.exe,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegOpenKey(Root=-2147483646,Key=System\CurrentControlSet\Services\QEMU Guest Agent VSS Provider\,,BinaryType=1,,)
+MSI (s) (28:24) [01:38:37:354]: Executing op: RegAddValue(Name=VssOption,Value=#1,)
+MSI (s) (28:24) [01:38:37:369]: Executing op: ActionStart(Name=InstallServices,Description=Installing new services,Template=Service: [2])
+MSI (s) (28:24) [01:38:37:369]: Executing op: ProgressTotal(Total=1,Type=1,ByteEquivalent=1300000)
+MSI (s) (28:24) [01:38:37:369]: Executing op: ServiceInstall(Name=QEMU-GA,DisplayName=QEMU Guest Agent,ImagePath="C:\Program Files\Qemu-ga\qemu-ga.exe" -d --retry-path,ServiceType=16,StartType=2,ErrorControl=0,,Dependencies=[~],,StartName=LocalSystem,Password=**********,Description=QEMU Guest Agent,,)
+MSI (s) (28:24) [01:38:37:369]: Executing op: ActionStart(Name=RegisterCom,,)
+MSI (s) (28:24) [01:38:37:369]: Executing op: CustomActionSchedule(Action=RegisterCom,ActionType=3122,Source=rundll32.exe,Target="C:\Program Files\Qemu-ga\qga-vss.dll",DLLCOMRegister,)
+MSI (s) (28:24) [01:38:38:041]: Executing op: ActionStart(Name=StartServices,Description=Starting services,Template=Service: [1])
+MSI (s) (28:24) [01:38:38:041]: Executing op: ProgressTotal(Total=1,Type=1,ByteEquivalent=1300000)
+MSI (s) (28:24) [01:38:38:041]: Executing op: ServiceControl(,Name=QEMU-GA,Action=1,Wait=1,)
+MSI (s) (28:24) [01:38:39:104]: Executing op: ActionStart(Name=RegisterProduct,Description=Registering product,Template=[1])
+MSI (s) (28:24) [01:38:39:104]: Executing op: ChangeMedia(,MediaPrompt=Please insert the disk: ,MediaCabinet=qemu_ga.109.1.0.cab,BytesPerTick=0,CopierType=2,ModuleFileName=C:\Windows\Installer\4cf7.msi,,,,,IsFirstPhysicalMedia=1)
+MSI (s) (28:24) [01:38:39:104]: Executing op: DatabaseCopy(DatabasePath=C:\Windows\Installer\4cf7.msi,ProductCode={A86CF81E-C180-4F13-A14F-63743F285999},,,)
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Products\E18FC68A081C31F41AF43647F3829599\InstallProperties 3: 2 
+MSI (s) (28:24) [01:38:39:104]: File will have security applied from OpCode.
+MSI (s) (28:24) [01:38:39:104]: Executing op: ProductRegister(UpgradeCode={EB6B8302-C06E-4BEC-ADAC-932C68A3A98D},VersionString=109.1.0,,,,InstallSource=C:\CloudBluePC\vm\,Publisher=RedHat,,,,NoModify=1,,,,,,,,EstimatedSize=33773,,,,)
+MSI (s) (28:24) [01:38:39:104]: Executing op: ProductCPDisplayInfoRegister()
+MSI (s) (28:24) [01:38:39:104]: Executing op: ActionStart(Name=PublishFeatures,Description=Publishing Product Features,Template=Feature: [1])
+MSI (s) (28:24) [01:38:39:104]: Executing op: FeaturePublish(Feature=QEMUFeature,,Absent=2,Component=O-mNVE&k~@o_r)^Uo)BtIgu~k5ibh(`6tq&lY@%GRCk[C84Pm?m{8NWf4JGM{8Q?j,FvC@`yPKMx0)EecaacnKRi]Aot{lKJ5sWKxnjuZ!xs_?^e3k&)pHwFwO0RlzeB2A-~6X_D2c!D*ECD5KXEJAF'$v'$P-[=Nfsr`)2'$@5rhU$&y.aaC=?qltQe7@@Cvjl}2z'OOryL^cAO{?Z?Lm'DM%.VO)xfNzi-HAXM~6Vg60RqE(BgJ}}a,@FaD^uTq*91.Fv)yYLW*9tXCY]@b'tC)
+MSI (s) (28:24) [01:38:39:104]: Executing op: ActionStart(Name=PublishProduct,Description=Publishing product information,)
+MSI (s) (28:24) [01:38:39:104]: Executing op: CleanupConfigData()
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\UserData\S-1-5-18\Products\E18FC68A081C31F41AF43647F3829599\Patches 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Executing op: RegisterPatchOrder(Continue=0,SequenceType=1,Remove=0)
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Products\E18FC68A081C31F41AF43647F3829599\Patches 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Executing op: ProductPublish(PackageKey={4D4AF14E-AC35-4152-A5AC-6C64A64B6BE3})
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Executing op: UpgradeCodePublish(UpgradeCode={EB6B8302-C06E-4BEC-ADAC-932C68A3A98D})
+MSI (s) (28:24) [01:38:39:104]: Executing op: SourceListPublish(,,,,NumberOfDisks=1)
+MSI (s) (28:24) [01:38:39:104]: Note: 1: 1402 2: UNKNOWN\Installer\Products\E18FC68A081C31F41AF43647F3829599\SourceList 3: 2 
+MSI (s) (28:24) [01:38:39:104]: Executing op: ProductPublishClient(,,)
+MSI (s) (28:24) [01:38:39:104]: Executing op: SourceListRegisterLastUsed(SourceProduct={A86CF81E-C180-4F13-A14F-63743F285999},LastUsedSource=C:\CloudBluePC\vm\)
+MSI (s) (28:24) [01:38:39:104]: Entering CMsiConfigurationManager::SetLastUsedSource.
+MSI (s) (28:24) [01:38:39:119]: Specifed source is already in a list.
+MSI (s) (28:24) [01:38:39:119]: User policy value 'SearchOrder' is 'nmu'
+MSI (s) (28:24) [01:38:39:119]: Adding new sources is allowed.
+MSI (s) (28:24) [01:38:39:119]: Set LastUsedSource to: C:\CloudBluePC\vm\.
+MSI (s) (28:24) [01:38:39:119]: Set LastUsedType to: n.
+MSI (s) (28:24) [01:38:39:119]: Set LastUsedIndex to: 1.
+MSI (s) (28:24) [01:38:39:119]: Executing op: End(Checksum=0,ProgressTotalHDWord=0,ProgressTotalLDWord=50646318)
+MSI (s) (28:24) [01:38:39:119]: Note: 1: 2265 2:  3: -2147287035 
+MSI (s) (28:24) [01:38:39:119]: User policy value 'DisableRollback' is 0
+MSI (s) (28:24) [01:38:39:119]: Machine policy value 'DisableRollback' is 0
+MSI (s) (28:24) [01:38:39:119]: Note: 1: 2265 2:  3: -2147287035 
+MSI (s) (28:24) [01:38:39:119]: Note: 1: 2318 2:  
+MSI (s) (28:24) [01:38:39:119]: No System Restore sequence number for this installation.
+MSI (s) (28:24) [01:38:39:119]: Unlocking Server
+MSI (s) (28:24) [01:38:39:119]: PROPERTY CHANGE: Deleting UpdateStarted property. Its current value is '1'.
+Action ended 1:38:39: InstallFinalize. Return value 1.
+Action ended 1:38:39: INSTALL. Return value 1.
+Property(S): UpgradeCode = {EB6B8302-C06E-4BEC-ADAC-932C68A3A98D}
+Property(S): VersionNT = 603
+Property(S): System64Folder = C:\Windows\system32\
+Property(S): qemu_ga_directory = C:\Program Files\Qemu-ga\
+Property(S): ProgramFiles64Folder = C:\Program Files\
+Property(S): TARGETDIR = C:\
+Property(S): SourceDir = C:\CloudBluePC\vm\
+Property(S): ALLUSERS = 1
+Property(S): ARPNOMODIFY = yes
+Property(S): rundll = rundll32.exe
+Property(S): REINSTALLMODE = amus
+Property(S): Manufacturer = RedHat
+Property(S): ProductLanguage = 1033
+Property(S): ProductCode = {A86CF81E-C180-4F13-A14F-63743F285999}
+Property(S): ProductName = QEMU guest agent
+Property(S): ProductVersion = 109.1.0
+Property(S): SecureCustomProperties = WIX_DOWNGRADE_DETECTED;WIX_UPGRADE_DETECTED
+Property(S): WindowsVolume = C:\
+Property(S): WindowsFolder = C:\Windows\
+Property(S): MsiNTProductType = 3
+Property(S): ServicePackLevelMinor = 0
+Property(S): ServicePackLevel = 0
+Property(S): WindowsBuild = 9600
+Property(S): VersionNT64 = 603
+Property(S): VersionMsi = 5.00
+Property(S): VersionDatabase = 200
+Property(S): CLIENTPROCESSID = 1036
+Property(S): CLIENTUILEVEL = 3
+Property(S): CURRENTDIRECTORY = C:\Windows\system32
+Property(S): REBOOT = ReallySuppress
+Property(S): PackagecodeChanging = 1
+Property(S): ProductState = -1
+Property(S): PackageCode = {4D4AF14E-AC35-4152-A5AC-6C64A64B6BE3}
+Property(S): MsiLogFileLocation = C:\CloudBluePC\logs\qemu-ga-msi.log
+Property(S): SystemFolder = C:\Windows\SysWOW64\
+Property(S): RemoteAdminTS = 1
+Property(S): TempFolder = C:\Windows\TEMP\
+Property(S): ProgramFilesFolder = C:\Program Files (x86)\
+Property(S): CommonFilesFolder = C:\Program Files (x86)\Common Files\
+Property(S): CommonFiles64Folder = C:\Program Files\Common Files\
+Property(S): AppDataFolder = C:\Windows\system32\config\systemprofile\AppData\Roaming\
+Property(S): FavoritesFolder = C:\Windows\system32\config\systemprofile\Favorites\
+Property(S): NetHoodFolder = C:\Windows\system32\config\systemprofile\AppData\Roaming\Microsoft\Windows\Network Shortcuts\
+Property(S): PersonalFolder = C:\Windows\system32\config\systemprofile\Documents\
+Property(S): PrintHoodFolder = C:\Windows\system32\config\systemprofile\AppData\Roaming\Microsoft\Windows\Printer Shortcuts\
+Property(S): RecentFolder = C:\Windows\system32\config\systemprofile\AppData\Roaming\Microsoft\Windows\Recent\
+Property(S): SendToFolder = C:\Windows\system32\config\systemprofile\AppData\Roaming\Microsoft\Windows\SendTo\
+Property(S): TemplateFolder = C:\ProgramData\Microsoft\Windows\Templates\
+Property(S): CommonAppDataFolder = C:\ProgramData\
+Property(S): LocalAppDataFolder = C:\Windows\system32\config\systemprofile\AppData\Local\
+Property(S): MyPicturesFolder = C:\Windows\system32\config\systemprofile\Pictures\
+Property(S): AdminToolsFolder = C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Administrative Tools\
+Property(S): StartupFolder = C:\ProgramData\Microsoft\Windows\Start Menu\Programs\Startup\
+Property(S): ProgramMenuFolder = C:\ProgramData\Microsoft\Windows\Start Menu\Programs\
+Property(S): StartMenuFolder = C:\ProgramData\Microsoft\Windows\Start Menu\
+Property(S): DesktopFolder = C:\Users\Public\Desktop\
+Property(S): FontsFolder = C:\Windows\Fonts\
+Property(S): GPTSupport = 1
+Property(S): OLEAdvtSupport = 1
+Property(S): ShellAdvtSupport = 1
+Property(S): MsiAMD64 = 25
+Property(S): Msix64 = 25
+Property(S): Intel = 25
+Property(S): PhysicalMemory = 2042
+Property(S): VirtualMemory = 2498
+Property(S): AdminUser = 1
+Property(S): MsiTrueAdminUser = 1
+Property(S): LogonUser = SYSTEM
+Property(S): UserSID = S-1-5-18
+Property(S): UserLanguageID = 1033
+Property(S): ComputerName = CLOUDBLUE-VPS
+Property(S): SystemLanguageID = 1033
+Property(S): ScreenX = 1024
+Property(S): ScreenY = 768
+Property(S): CaptionHeight = 23
+Property(S): BorderTop = 1
+Property(S): BorderSide = 1
+Property(S): TextHeight = 16
+Property(S): TextInternalLeading = 3
+Property(S): ColorBits = 32
+Property(S): TTCSupport = 1
+Property(S): Time = 1:38:39
+Property(S): Date = 11/26/2026
+Property(S): MsiNetAssemblySupport = 4.6.1586.0
+Property(S): MsiWin32AssemblySupport = 6.3.14393.0
+Property(S): RedirectedDllSupport = 2
+Property(S): MsiRunningElevated = 1
+Property(S): Privileged = 1
+Property(S): USERNAME = CloudBlue
+Property(S): COMPANYNAME = CloudBlue
+Property(S): DATABASE = C:\Windows\Installer\4cf7.msi
+Property(S): OriginalDatabase = C:\CloudBluePC\vm\qemu-ga-x86_64.msi
+Property(S): UILevel = 2
+Property(S): ACTION = INSTALL
+Property(S): ROOTDRIVE = C:\
+Property(S): CostingComplete = 1
+Property(S): OutOfDiskSpace = 0
+Property(S): OutOfNoRbDiskSpace = 0
+Property(S): PrimaryVolumeSpaceAvailable = 0
+Property(S): PrimaryVolumeSpaceRequired = 0
+Property(S): PrimaryVolumeSpaceRemaining = 0
+Property(S): INSTALLLEVEL = 1
+Property(S): SOURCEDIR = C:\CloudBluePC\vm\
+Property(S): SourcedirProduct = {A86CF81E-C180-4F13-A14F-63743F285999}
+Property(S): ProductToBeRegistered = 1
+MSI (s) (28:24) [01:38:39:135]: Note: 1: 1707 
+MSI (s) (28:24) [01:38:39:135]: Note: 1: 2262 2: Error 3: -2147287038 
+MSI (s) (28:24) [01:38:39:135]: Note: 1: 2262 2: Error 3: -2147287038 
+MSI (s) (28:24) [01:38:39:135]: Product: QEMU guest agent -- Installation completed successfully.
+
+MSI (s) (28:24) [01:38:39:135]: Windows Installer installed the product. Product Name: QEMU guest agent. Product Version: 109.1.0. Product Language: 1033. Manufacturer: RedHat. Installation success or error status: 0.
+
+MSI (s) (28:24) [01:38:39:135]: Deferring clean up of packages/files, if any exist
+MSI (s) (28:24) [01:38:39:135]: MainEngineThread is returning 0
+MSI (s) (28:84) [01:38:39:151]: RESTART MANAGER: Session closed.
+MSI (s) (28:84) [01:38:39:151]: No System Restore sequence number for this installation.
+=== Logging stopped: 11/26/2026  1:38:39 ===
+MSI (s) (28:84) [01:38:39:151]: User policy value 'DisableRollback' is 0
+MSI (s) (28:84) [01:38:39:151]: Machine policy value 'DisableRollback' is 0
+MSI (s) (28:84) [01:38:39:151]: Incrementing counter to disable shutdown. Counter after increment: 0
+MSI (s) (28:84) [01:38:39:151]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+MSI (s) (28:84) [01:38:39:151]: Note: 1: 2265 2:  3: -2147287035 
+MSI (s) (28:84) [01:38:39:151]: Note: 1: 1402 2: HKEY_LOCAL_MACHINE\Software\Microsoft\Windows\CurrentVersion\Installer\Rollback\Scripts 3: 2 
+MSI (s) (28:84) [01:38:39:151]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+MSI (c) (0C:54) [01:38:39:151]: Decrementing counter to disable shutdown. If counter >= 0, shutdown will be denied.  Counter after decrement: -1
+MSI (c) (0C:54) [01:38:39:151]: MainEngineThread is returning 0
+=== Verbose logging stopped: 11/26/2026  1:38:39 ===

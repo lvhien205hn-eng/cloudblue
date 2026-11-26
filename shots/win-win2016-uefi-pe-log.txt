@@ -1,0 +1,69 @@
+CloudBlue may mau (pe.cmd 26.11a): nap driver o dia VirtIO + chia o dia 0 
+DrvLoad: Successfully loaded D:\$WinPEDriver$\vioscsi\vioscsi.inf.
+DrvLoad: Successfully loaded D:\$WinPEDriver$\viostor\viostor.inf.
+cho o dia 0: 0 lan 
+
+Microsoft DiskPart version 10.0.14393.0
+
+Copyright (C) 1999-2013 Microsoft Corporation.
+On computer: MININT-LL0VGUF
+
+Please wait while DiskPart scans your configuration...
+
+DiskPart has finished scanning your configuration.
+
+  Disk ###  Status         Size     Free     Dyn  Gpt
+  --------  -------------  -------  -------  ---  ---
+  Disk 0    Online           20 GB    20 GB         
+
+The command completed successfully.
+firmware 0x2 - diskpart /s D:\cbvm\uefi.txt - lan 1 
+
+Microsoft DiskPart version 10.0.14393.0
+
+Copyright (C) 1999-2013 Microsoft Corporation.
+On computer: MININT-LL0VGUF
+
+Disk 0 is now the selected disk.
+
+DiskPart succeeded in cleaning the disk.
+
+DiskPart successfully converted the selected disk to GPT format.
+
+DiskPart succeeded in creating the specified partition.
+
+    0 percent completed  100 percent completed
+
+DiskPart successfully formatted the volume.
+
+DiskPart succeeded in creating the specified partition.
+
+    0 percent completed  100 percent completed
+
+DiskPart successfully formatted the volume.
+
+DiskPart successfully assigned the drive letter or mount point.
+
+Leaving DiskPart...
+
+Microsoft DiskPart version 10.0.14393.0
+
+Copyright (C) 1999-2013 Microsoft Corporation.
+On computer: MININT-LL0VGUF
+
+  Disk ###  Status         Size     Free     Dyn  Gpt
+  --------  -------------  -------  -------  ---  ---
+  Disk 0    Online           20 GB      0 B        *
+
+  Volume ###  Ltr  Label        Fs     Type        Size     Status     Info
+  ----------  ---  -----------  -----  ----------  -------  ---------  --------
+  Volume 0     D   CB_MAYMAU_W  UDF    CD-ROM      6797 MB  Healthy            
+  Volume 1     W   Windows      NTFS   Partition     19 GB  Healthy            
+  Volume 2         SYSTEM       FAT32  Partition    100 MB  Healthy    Hidden  
+
+Disk 0 is now the selected disk.
+
+  Partition ###  Type              Size     Offset
+  -------------  ----------------  -------  -------
+  Partition 1    System             100 MB  1024 KB
+  Partition 2    Primary             19 GB   101 MB
