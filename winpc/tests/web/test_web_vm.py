@@ -290,7 +290,10 @@ def main():
         s.page.click("#vma-v-go"); s.page.wait_for_timeout(500)
         ck("xác nhận → vm_admin_vps {12, stop}", s.calls("vm_admin_vps") == [{"p_id": 12, "p_act": "stop", "p_arg": {}}], s.calls("vm_admin_vps"))
         s.page.click('[data-vmv="12"] [data-vmav="extend"]'); s.page.wait_for_timeout(200); s.page.fill("#vma-v-days", "-2"); s.page.click("#vma-v-go"); s.page.wait_for_timeout(400)
-        s.page.click('[data-vmv="12"] [data-vmav="reinstall"]'); s.page.wait_for_timeout(200); s.page.select_option("#vma-v-img", "win2012r2"); s.page.click("#vma-v-go"); s.page.wait_for_timeout(400)
+        s.page.click('[data-vmv="12"] [data-vmav="reinstall"]'); s.page.wait_for_timeout(200)
+        ck("admin › Cài lại VPS-12: chỉ liệt kê bản có máy mẫu trên máy chủ của VPS (2012 R2, 10 LTSC)", s.js("() => [...document.querySelectorAll('#vma-v-img option')].map(o => o.value)") == ["win2012r2", "win10ltsc"],
+           s.js("() => [...document.querySelectorAll('#vma-v-img option')].map(o => o.value)"))
+        s.page.select_option("#vma-v-img", "win2012r2"); s.page.click("#vma-v-go"); s.page.wait_for_timeout(400)
         s.page.click('[data-vmv="13"] [data-vmav="refund"]'); s.page.wait_for_timeout(200); s.page.click("#vma-v-go"); s.page.wait_for_timeout(400)
         c = s.calls("vm_admin_vps")
         ck("trừ 2 ngày · cài lại Server 2012 R2 · hoàn tiền + xoá VPS-13 → đúng lệnh", c[1:] == [{"p_id": 12, "p_act": "extend", "p_arg": {"days": -2}},
@@ -357,6 +360,9 @@ def main():
         ck("Lưu cài đặt → vm_admin_settings (bật bán, giữ 5 ngày, RAM chừa 4 GB = 4096 MB)", st and st[-1]["p_patch"]["sell"] is True and st[-1]["p_patch"]["grace_days"] == 5
            and st[-1]["p_patch"]["ram_reserve_mb"] == 4096 and st[-1]["p_patch"]["cpu_over"] == 3, st)
         ck("đầu khung đổi sang ĐANG BÁN", "ĐANG BÁN" in s.txt("#vma-top"), s.txt("#vma-top"))
+        gimg = s.js("() => [[...document.querySelectorAll('#vma-g-img option')].map(o => o.value), (document.getElementById('vma-g-img').closest('label').querySelector('small') || {}).innerText || '']")
+        ck("🎁 Tạo VPS cho tài khoản: ô Windows CHỈ có bản đã có máy mẫu trên máy chủ (2012 R2, 10 LTSC); bản chưa có ẩn tạm + ghi 'Đang ẩn (chưa có máy mẫu): Server 2016, …'",
+           gimg[0] == ["win2012r2", "win10ltsc"] and "Đang ẩn (chưa có máy mẫu)" in gimg[1] and "Server 2022" in gimg[1], gimg)
         s.page.fill("#vma-g-user", "khachA"); s.page.select_option("#vma-g-plan", "vps2-2"); s.page.select_option("#vma-g-img", "win10ltsc"); s.page.fill("#vma-g-days", "3")
         s.page.click("#vma-g-go"); s.page.wait_for_timeout(500)
         ck("Tạo VPS cho tài khoản (không trừ tiền) → vm_admin_give", s.calls("vm_admin_give") == [{"p_user": "khachA", "p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 3}], s.calls("vm_admin_give"))
@@ -476,10 +482,11 @@ def main():
            and [t[0] for t in tiles if t[1]] == ["vps1-1"] and [t[0] for t in tiles if t[2]] == ["vps8-16"] and "tạm hết chỗ" in tiles[-1][3]
            and "⚙️ 1 vCPU" in tiles[0][3] and "🧠 1 GB RAM" in tiles[0][3] and "💾 SSD NVMe 20 GB" in tiles[0][3] and "100.000đ / tháng" in tiles[0][3] and "100.000đ" in (s.txt("#vms-sum") or ""), (d, tiles))
         s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
-        ck("chọn VPS 2-2: ô gói đổi dấu ✓, tổng tiền 30 ngày 170.000đ; Windows có máy mẫu chọn sẵn; bản chưa có máy mẫu bị khoá",
+        ck("chọn VPS 2-2: ô gói đổi dấu ✓, tổng tiền 30 ngày 170.000đ; Windows có máy mẫu chọn sẵn; bản CHƯA có máy mẫu (2016 / 2019 / 2022) ẨN hẳn, chỉ hiện 2 bản có sẵn",
            s.js("() => [...document.querySelectorAll('#vms-plan .on')].map(b => b.dataset.vmplan)") == ["vps2-2"] and "170.000đ" in (s.txt("#vms-sum") or "")
            and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2012r2\"]').classList.contains('on')")
-           and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2022\"]').disabled"), (s.dlg(), s.txt("#vms-sum")))
+           and s.js("() => !document.querySelector('#vms-os [data-vmos=\"win2022\"]') && !document.querySelector('#vms-os [data-vmos=\"win2016\"]')")
+           and s.js("() => [...document.querySelectorAll('#vms-os [data-vmos]')].map(b => b.dataset.vmos)") == ["win2012r2", "win10ltsc"] and "chưa có máy mẫu" not in s.dlg(), (s.dlg(), s.txt("#vms-sum")))
         s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.wait_for_timeout(100)
         s.shot("vm-6-buy.png")
         s.page.click("#vms-pay"); s.page.wait_for_timeout(700)
