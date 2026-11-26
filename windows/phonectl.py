@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "24/11b"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11a"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -4972,6 +4972,168 @@ def _sleep_one(p, why="", check_view=True, view_s=120):
     set_hold(nm, False)
     return False, f"{EMU_NAME} chưa tắt được máy — để máy chạy tiếp"
 
+
+# ====================================================================== 27/11a · CHIA ĐỀU CARD ĐỒ HOẠ (VGA)
+# Khách thuê cấu hình thấp vẫn dùng được TOÀN BỘ card (card không chia theo gói): 1 máy chạy game nặng / FPS cao làm card 98% → mọi máy
+# khác trên máy chủ giật. cloudphoned gọi "phonectl gpufair" ~1 phút / lần: đo % card (3D) TỪNG MÁY bằng bộ đếm "GPU Engine" của Windows
+# (Windows 10 1709+), card bận ≥ GPU_FAIR_PCT mà 1 máy dùng ≥ max(GPU_FAIR_HOG, 2 × phần chia đều) → HẠ ƯU TIÊN CARD của máy đó (bộ lập lịch
+# card của Windows: D3DKMTSetProcessSchedulingPriorityClass — cách OBS giữ hình mượt khi game ăn hết card): máy khác được card trước, máy đó
+# chỉ dùng phần còn thừa. Không tắt, không đổi FPS, không mất dữ liệu của khách. 10 phút vẫn ăn quá phần → hạ thêm 1 bậc; hết ăn quá phần
+# 10 phút → trả lại như cũ. Kết quả: redroid/gpufair.json + 1 dòng "GPUFAIR {json}" (cloudphoned báo web: máy nào ăn card).
+GF_F = os.path.join(HOME, "redroid", "gpufair.json")
+GF_ON = _cfn("GPU_FAIR", 1) > 0
+GF_TOTAL = _cfn("GPU_FAIR_PCT", 85)            # card bận ≥ chừng này % mới xét máy ăn quá phần
+GF_HOG = _cfn("GPU_FAIR_HOG", 25)              # máy dùng ≥ chừng này % card (và ≥ 2 lần phần chia đều) = ăn quá phần
+GF_HOLD_S = _cfn("GPU_FAIR_HOLD_S", 600)       # giữ mỗi bậc ít nhất chừng này giây
+GF_STARVE = _cfn("GPU_FAIR_STARVE", 3); GF_NS_S = _cfn("GPU_FAIR_NOSTARVE_S", 1800); GF_CHECK_S = 4
+GF_CLS = {0: 2, 1: 1, 2: 0}                    # bậc → lớp ưu tiên card (D3DKMT: 0 IDLE · 1 BELOW_NORMAL · 2 NORMAL)
+GF_PERF = r"\GPU Engine(*)\Utilization Percentage"
+
+
+def gpu_by_pid(samples=3):
+    """{pid: % card 3D} của mọi tiến trình (cộng các nhân 3D) — trung bình các lần đo sau lần đầu. Windows không có bộ đếm → None."""
+    import csv, io
+    try:
+        r = subprocess.run(["typeperf", GF_PERF, "-sc", str(int(samples)), "-si", "1"], capture_output=True, text=True, timeout=90, creationflags=NOWIN)
+    except Exception:
+        return None
+    rows = [x for x in csv.reader(io.StringIO(r.stdout or "")) if len(x) > 1]
+    if len(rows) < 2 or "GPU Engine" not in ",".join(rows[0]): return None
+    head, data = rows[0], rows[1:]
+    data = data[1:] if len(data) > 1 else data                   # lần đo đầu của bộ đếm tỉ lệ thường = 0
+    out = {}
+    for j, h in enumerate(head[1:], 1):
+        m = re.search(r"pid_(\d+)_.*engtype_3D", h, re.I)
+        if not m: continue
+        vals = []
+        for row in data:
+            try: vals.append(float(row[j]))
+            except (ValueError, IndexError): pass
+        if vals: out[int(m.group(1))] = out.get(int(m.group(1)), 0.0) + sum(vals) / len(vals)
+    return out
+
+
+def _gpu_prio(pid, cls):
+    """Đặt lớp ưu tiên CARD (bộ lập lịch đồ hoạ của Windows) cho 1 tiến trình. → True nếu được."""
+    try:
+        k, g = ctypes.windll.kernel32, ctypes.windll.gdi32
+        h = k.OpenProcess(0x0200 | 0x0400, False, int(pid))         # PROCESS_SET_INFORMATION | PROCESS_QUERY_INFORMATION
+        if not h: return False
+        try:
+            f = g.D3DKMTSetProcessSchedulingPriorityClass
+            f.argtypes = [ctypes.c_void_p, ctypes.c_int]; f.restype = ctypes.c_long
+            return f(h, int(cls)) == 0
+        finally: k.CloseHandle(h)
+    except Exception:
+        return False
+
+
+def _phone_pids():
+    """{tên máy: [pid máy ảo chạy ngầm, pid cửa sổ]} của mọi máy đang chạy (MuMu: info · LDPlayer: list2) — 1 lần gọi giả lập."""
+    out = {}
+    try:
+        if EMU == "mumu":
+            for v in _mumu_info().values():
+                ps = [int(x) for x in (v.get("headless_pid"), v.get("pid")) if str(x).strip().isdigit() and int(x) > 0]
+                if ps and v.get("name"): out[str(v["name"])] = ps
+        elif EMU == "ld":
+            for ln in (_ldrun(["list2"], 60).stdout or "").splitlines():
+                q = ln.strip().split(",")
+                if len(q) >= 7 and q[0].strip().isdigit():
+                    ps = [int(x) for x in (q[6], q[5]) if x.strip().isdigit() and int(x) > 0]
+                    if ps: out[q[1].strip()] = ps
+    except Exception:
+        pass
+    return out
+
+
+def _nv_util():
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, creationflags=NOWIN)
+        u = [float(x) for x in (r.stdout or "").split() if x.replace(".", "", 1).isdigit()]
+        return max(u) if u else None
+    except Exception:
+        return None
+
+
+def gpufair_plan(use, total, old, t, names=None):
+    """Quyết định bậc hạ ưu tiên cho từng máy (hàm thuần — bộ thử gọi thẳng). use = {tên: %}, old = sổ lần trước.
+       → (sổ mới {tên: {lv, t, last, pct}}, máy chia đều được bao nhiêu %, ngưỡng ăn quá phần)."""
+    n = max(1, len(use)); fair = 100.0 / n; hog_min = max(GF_HOG, 2 * fair)
+    busy = total is not None and total >= GF_TOTAL
+    new = {}
+    for name, pct in sorted(use.items(), key=lambda kv: -kv[1]):
+        o = old.get(name) or {}; lv = int(o.get("lv") or 0); ns = float(o.get("ns") or 0)
+        if ns <= t: ns = 0
+        if lv and busy and pct < GF_STARVE:       # đã hạ mà card vẫn bận, máy gần như không được chạy card (đói) → trả lại NGAY, GF_NS_S không hạ máy này
+            new[name] = {"lv": 0, "t": t, "last": t, "pct": round(pct, 1), "ns": t + GF_NS_S, "starve": 1}; continue
+        hog = busy and pct >= hog_min and not ns
+        if hog:
+            if lv == 0: lv, since = 1, t
+            elif lv == 1 and t - float(o.get("t") or t) >= GF_HOLD_S: lv, since = 2, t
+            else: since = float(o.get("t") or t)
+            new[name] = {"lv": lv, "t": since, "last": t, "pct": round(pct, 1)}
+        elif lv and t - float(o.get("last") or 0) < GF_HOLD_S:
+            new[name] = dict(o, pct=round(pct, 1)); new[name].pop("starve", None)   # vừa hết ăn quá phần → giữ bậc thêm GF_HOLD_S
+        elif ns:
+            new[name] = {"lv": 0, "pct": round(pct, 1), "ns": ns}   # nhớ: máy này đang trong thời gian không hạ
+    return new, round(fair, 1), round(hog_min, 1)
+
+
+def cmd_gpufair(a):
+    if not GF_ON: print("GPUFAIR " + json.dumps({"ok": False, "why": "off"})); return
+    pids = _phone_pids()
+    use_pid = gpu_by_pid()
+    if use_pid is None: print("GPUFAIR " + json.dumps({"ok": False, "why": "khong co bo dem GPU Engine (Windows cu hon 10 1709)"})); return
+    st = load(); mine = {p["name"] for p in st["phones"] if str(p.get("name", "")).startswith("cp_")}
+    use = {nm: sum(use_pid.get(pid, 0.0) for pid in ps) for nm, ps in pids.items() if nm in mine}
+    total = _nv_util()
+    if total is None: total = min(100.0, sum(use_pid.values()))
+    t = time.time()
+    try: old = json.load(open(GF_F, encoding="utf-8")) or {}
+    except Exception: old = {}
+    old_ph = old.get("phones") if isinstance(old.get("phones"), dict) else {}
+    new, fair, hog_min = gpufair_plan(use, total, old_ph, t)
+    acts = []
+    olv = lambda nm: int((old_ph.get(nm) or {}).get("lv") or 0)
+    newly = [nm for nm in new if int(new[nm].get("lv") or 0) > olv(nm)]
+    if newly and not a.dry:                       # vừa hạ máy nào → đặt ưu tiên, đo lại ngay: card vẫn bận mà máy đó ~0% (bị đói) → trả lại bậc cũ
+        for nm in newly:
+            for pid in pids.get(nm, []): _gpu_prio(pid, GF_CLS[int(new[nm]["lv"])])
+        time.sleep(GF_CHECK_S)
+        u2 = gpu_by_pid(); tot2 = _nv_util()
+        if u2 is not None:
+            if tot2 is None: tot2 = min(100.0, sum(u2.values()))
+            for nm in newly:
+                p2 = sum(u2.get(pid, 0.0) for pid in pids.get(nm, []))
+                if tot2 >= GF_TOTAL and p2 < GF_STARVE:
+                    pv = olv(nm)
+                    for pid in pids.get(nm, []): _gpu_prio(pid, GF_CLS[pv])
+                    acts.append("%s: hạ thì máy bị ĐÓI card (card vẫn bận, máy còn %.0f%%) → trả lại %s, %d phút không hạ máy này"
+                                % (nm, p2, "bậc %d" % pv if pv else "bình thường", GF_NS_S // 60))
+                    new[nm] = dict(old_ph.get(nm) or {"t": t, "last": t}, lv=pv, pct=round(p2, 1), ns=t + GF_NS_S, starve=1)
+                    if not pv: new[nm] = {"lv": 0, "t": t, "last": t, "pct": round(p2, 1), "ns": t + GF_NS_S, "starve": 1}
+    for nm in set(old_ph) | set(new):
+        lv = int((new.get(nm) or {}).get("lv") or 0)
+        if lv == int((old_ph.get(nm) or {}).get("lv") or 0) and lv == 0: continue
+        ok = [_gpu_prio(pid, GF_CLS[lv]) for pid in pids.get(nm, [])] if not a.dry else []
+        if lv != int((old_ph.get(nm) or {}).get("lv") or 0):
+            acts.append("%s: %s (%.0f%% card)" % (nm, "trả lại ưu tiên card bình thường" if lv == 0 else "HẠ ưu tiên card bậc %d" % lv, (new.get(nm) or {}).get("pct", use.get(nm, 0))))
+            if (new.get(nm) or {}).get("starve"): acts[-1] += " — hạ thì máy bị ĐÓI card (card vẫn bận) → trả lại, %d phút không hạ máy này" % (GF_NS_S // 60)
+            if ok and not any(ok): acts[-1] += " — KHÔNG đặt được (cần quyền Admin)"
+    top = [{"n": nm, "p": round(pct, 1), "lv": int((new.get(nm) or {}).get("lv") or 0)} for nm, pct in sorted(use.items(), key=lambda kv: -kv[1])[:5] if pct >= 1]
+    res = {"ok": True, "t": int(t), "total": total, "fair": fair, "hog": hog_min, "n": len(use), "top": top,
+           "held": round(sum(use.get(nm, 0.0) for nm, x in new.items() if x.get("lv")), 1)}
+    if not a.dry:
+        try:
+            os.makedirs(os.path.dirname(GF_F), exist_ok=True)
+            with open(GF_F + ".tmp", "w", encoding="utf-8") as f: json.dump({"t": t, "phones": new, "res": res}, f)
+            os.replace(GF_F + ".tmp", GF_F)
+        except Exception as e: print("không ghi được %s: %r" % (GF_F, e))
+    for x in acts: print("GPUFAIR_ACT " + x)
+    print("GPUFAIR " + json.dumps(res, ensure_ascii=False))
+
+
 def cmd_idle(a):
     """Gọi định kỳ (cloudphoned ~2 phút/lần). 18/11a: máy chỉ NGỦ khi IDLE_STOP_H giờ (18) liền không ai mở máy + không thấy máy có việc,
        và IDLE_STOP_MIN phút (30) gần nhất lượt đo nào cũng thấy máy đứng yên. --dry: chỉ in, không tắt máy nào, không ghi mốc."""
@@ -5634,6 +5796,7 @@ def main():
     tp = s.add_parser("template"); tp.add_argument("name", nargs="?", default=""); tp.add_argument("--apply", action="store_true"); tp.set_defaults(f=cmd_template)
     hd = s.add_parser("hide"); hd.add_argument("name", nargs="?", default=""); hd.set_defaults(f=cmd_hide)
     he = s.add_parser("heal"); he.add_argument("--orphans", action="store_true"); he.set_defaults(f=cmd_heal)
+    gf = s.add_parser("gpufair"); gf.add_argument("--dry", action="store_true"); gf.set_defaults(f=cmd_gpufair)      # 27/11a: chia đều card đồ hoạ
     il = s.add_parser("idle"); il.add_argument("--min", type=float, default=None); il.add_argument("--dry", action="store_true")
     il.add_argument("--gio", type=float, default=None)          # 18/11a: số giờ không ai mở máy + không có việc (mặc định IDLE_STOP_H = 18)
     il.add_argument("--verbose", "-v", action="store_true"); il.set_defaults(f=cmd_idle)
