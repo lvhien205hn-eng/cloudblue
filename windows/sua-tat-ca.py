@@ -4,7 +4,9 @@
 #        27/11e — ANDROID 9 (LDPlayer 9) MƯỢT NHƯ 12 / 15: bộ nén trong máy LD9 không có khung khoá định kỳ (đo trên máy ảo Android 9
 #                 thật) → lỡ bỏ 1 khung là đứng hình tới khi bật lại bộ nén (2–3 giây). bluestream: hình Android 9 ≤ 960 (+40–50% khung/giây,
 #                 trừ mức Nét), khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan, không dumpsys sau mỗi cú bấm; Thông số
-#                 hiện "bộ nén Android ra … khung/s" + bỏ khung vì đâu. Chỉ cập nhật bluestream (phát hình bật lại ~10 giây). MuMu không đổi.
+#                 hiện "bộ nén Android ra … khung/s" + bỏ khung vì đâu. Phát hình bật lại ~10 giây; máy MuMu phần hình không đổi.
+#                 phonectl: máy MuMu gộp đủ 2 tiến trình MuMuVMMHeadless mỗi máy khi tính % card đồ hoạ (hết báo nhầm "Ngoài máy khách:
+#                 MuMuVMMHeadless.exe …" trên web, chia đều card tính đúng từng máy).
 #        23/11f — 🛠 QUẢN LÝ MÁY CHỦ TỪ WEB + TỰ CẬP NHẬT. Lệnh này ghi kết quả vào logs/cap-nhat.json (bản đang chạy, cập nhật sạch không);
 #                 cloudphoned báo lên web → thẻ máy chủ hiện bản đang chạy. Web admin › thẻ máy chủ › 🛠 Quản lý: ⬆ Cập nhật (chạy chính lệnh
 #                 này kiểu `--tu-dong`: chỉ thay file + bật lại dịch vụ, KHÔNG kiểm / sửa máy khách), 📋 Danh sách máy, 🖼 Ảnh nền, 🙈 Ẩn cửa sổ,
@@ -161,7 +163,7 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11b", "cloud
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "27/11e"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11b"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11e"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
 MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11b", "bluestream": "bản 27/11e: Android 9 mượt", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
