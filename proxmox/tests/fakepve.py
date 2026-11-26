@@ -131,7 +131,8 @@ def main():
         elif cmd == "reset":
             v["resets"] = v.get("resets", 0) + 1; v["ga"] = 0
         elif cmd == "destroy":
-            vms.pop(vid)
+            if v["status"] == "running": rc, out = 2, "VM %s is running - destroy failed" % vid      # như Proxmox thật (27/11c)
+            else: vms.pop(vid)
         else:
             rc, out = 2, "qm giả: không hỗ trợ " + " ".join(a)
     save(d)
