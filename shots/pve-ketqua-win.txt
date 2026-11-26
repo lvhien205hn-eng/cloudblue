@@ -1,0 +1,5 @@
+﻿OK  Windows: cu phap proxmox\tao-iso-proxmox.ps1
+OK  Windows: tao-iso-proxmox.ps1 chay het (0.7 phut): tu tai Python nhung + ISO Proxmox VE chinh thuc, ghep ra file ISO, khong DUNG / LOI
+OK  Windows: python.exe nhung co chu ky Python Software Foundation; ISO Proxmox tai ve khop ma kiem ban da thu (khong ghi chu 'chua thu')
+OK  Windows: chu in ra chi co ASCII, khong in ma bam mat khau
+..  Windows: det.iso 1814403072 byte, sha256 50202dd9e76ffecf3eb2bb9e95db3b0f2bfd54db288ff14f6ef2e2707cb6fad5

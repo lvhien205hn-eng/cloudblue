@@ -1,0 +1,9 @@
+OK  mạng CHỈ CÓ IPv6 lúc cài (không DHCP IPv4 — như máy chủ thật 26/11): vẫn TỰ CÀI xong sau 3.2 phút
+OK  bộ cài Proxmox khi đó CHỈ đặt IPv6 cho cầu vmbr0 (đúng lỗi của máy thật): có 'iface vmbr0 inet6 static', KHÔNG có dòng IPv4 nào cho vmbr0 · DNS bộ cài ghi: 192.168.100.1
+OK  máy cài bằng ISO có sẵn dhclient (cbhost dùng để xin IPv4)
+OK  BẬT LẠI ở mạng có DHCP: không ai gõ gì, sau 102 giây máy đã TỰ có IPv4 (10.0.2.15 trên vmbr0, vào được SSH qua IPv4)
+OK  cbhost tự sửa mà KHÔNG sửa file mạng của Proxmox (interfaces giống hệt bản bộ cài viết); dịch vụ cloudblue-dhcp4 đang chạy + tự bật cùng máy (dhclient -4 -d … vmbr0); địa chỉ IPv6 tĩnh 2001:db8:cb:0:5054:ff:fe12:3456 vẫn còn
+XX  nhật ký cbhost: 'chưa lên web được' → 'TỰ SỬA MẠNG … cloudblue-dhcp4 … ĐÃ có IPv4' → 'đã lên web'; dhclient đang chạy cho vmbr0: ("1]: VM 99500 qga command failed - VM 99500 qga command 'guest-ping' failed - got timeout\nNov 26 13:38:21 cbvps qm[1593]: VM 99501 qga command failed - VM 99501 qga command 'guest-ping' failed - got timeout\nNov 26 13:38:25 cbvps python3[1255]: 26/11 13:38:25 chưa lên web được: <urlopen error [Errno 101] Network is unreachable>\nNov 26 13:38:45 cbvps python3[1255]: 26/11 13:38:45 chưa lên web được: <urlopen error [Errno 101] Network is unreachable>\nNov 26 13:38:49 cbvps python3[1255]: 26/11 13:38:49 TỰ SỬA MẠNG (lượt 1): bật dịch vụ xin IPv4 qua DHCP cho vmbr0 (cloudblue-dhcp4, mã 0): ĐÃ có
+OK  web (giả của CI) nhận vm_host_hello của máy này sau khi nó tự sửa mạng (bản cbhost 26/11d); lệnh status báo 'IPv4 có'
+OK  DNS bị đặt 192.168.100.1 (không phân giải được) → 'cbhost.py net' đặt lại máy chủ tên công cộng, giữ dòng search, lưu bản gốc; ngay sau đó máy phân giải được tên miền thật
+OK  KHỞI ĐỘNG LẠI: máy tự có IPv4 ngay từ lúc bật (dịch vụ cloudblue-dhcp4 tự chạy), IPv6 tĩnh vẫn còn, cbhost lên web mà không phải sửa gì nữa; file mạng vẫn nguyên như bộ cài viết

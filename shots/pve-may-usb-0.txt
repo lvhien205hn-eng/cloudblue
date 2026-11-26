@@ -1,0 +1,21 @@
+#iso
+total 0
+#nap
+{"t": 1795676828, "note": "kh\u00f4ng c\u00f3 kho", "ver": "26.11a"}
+#qm
+#blk
+NAME               TRAN RM FSTYPE       SIZE MOUNTPOINT
+fd0                      1                4K 
+sda                      0               48G 
+├─sda1                   0             1007K 
+├─sda2                   0 vfat         512M 
+└─sda3                   0 LVM2_member 47.5G 
+  ├─pve-swap             0 swap         5.8G [SWAP]
+  ├─pve-root             0 ext4        20.9G /
+  ├─pve-data_tmeta       0                1G 
+  │ └─pve-data           0               13G 
+  └─pve-data_tdata       0               13G 
+    └─pve-data           0               13G 
+#mnt 0
+#log
+#het

@@ -1,0 +1,32 @@
+#iso
+total 348160
+-rw-r--r-- 1 root root  41943040 Nov 26 14:08 CloudBlue-MayMau-thu1.iso
+-rw-r--r-- 1 root root 314572800 Nov 26 14:08 CloudBlue-MayMau-thu2.iso
+5e232067adba1b33d07eca8d5528c8f7e34cc38bcd99f3ee700202daf62b9be4  /var/lib/vz/template/iso/CloudBlue-MayMau-thu1.iso
+8d2fa299ce174c18893132eab10478c94d2271c4e626401ea77e297f5b8e10fd  /var/lib/vz/template/iso/CloudBlue-MayMau-thu2.iso
+#nap
+{"t": 1795676828, "note": "kh\u00f4ng c\u00f3 kho", "ver": "26.11a"}
+#qm
+#blk
+NAME               TRAN RM FSTYPE       SIZE MOUNTPOINT
+fd0                      1                4K 
+sda                      0               48G 
+├─sda1                   0             1007K 
+├─sda2                   0 vfat         512M 
+└─sda3                   0 LVM2_member 47.5G 
+  ├─pve-swap             0 swap         5.8G [SWAP]
+  ├─pve-root             0 ext4        20.9G /
+  ├─pve-data_tmeta       0                1G 
+  │ └─pve-data           0               13G 
+  └─pve-data_tdata       0               13G 
+    └─pve-data           0               13G 
+sdb                usb   0 iso9660        2G 
+├─sdb1                   0              286K 
+├─sdb2                   0 vfat           8M 
+├─sdb3                   0 hfsplus      1.7G 
+└─sdb4                   0              300K 
+#mnt 0
+#log
+Nov 26 14:08:03 cbvps python3[1242]: 26/11 14:08:03 USB máy mẫu: thấy 2 ISO máy mẫu trên USB cài đặt — đang chép 2 file (0.3 GB) vào máy chủ, ĐỪNG rút USB
+Nov 26 14:08:06 cbvps python3[1242]: 26/11 14:08:06 USB máy mẫu: đã chép xong 2 ISO máy mẫu — máy chủ tự dựng máy mẫu (mỗi bản 20-40 phút), có thể rút USB
+#het

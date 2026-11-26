@@ -1,0 +1,11 @@
+OK  TỰ CÀI (UEFI, ISO dạng CD, ổ NVME): menu có dòng tự cài, không cần bấm phím nào, cài xong tự khởi động lại sau 2.9 phút, ổ cứng đã có dữ liệu (5.1 GB)
+OK  BẬT LẠI với CD còn cắm và đứng ĐẦU thứ tự khởi động (UEFI): menu báo 'may nay DA CO Proxmox', KHÔNG cài lại, máy lên, vào được SSH bằng khoá thử
+OK  máy vừa bật là hệ đã cài trên ổ cứng, khởi động qua mục bảo vệ của ISO (kernel của hệ đã cài, root=/dev/mapper/pve-root)
+OK  Proxmox VE đã cài: tên máy cbvps, có pve-manager
+OK  script lần bật đầu đã chạy xong, không lỗi, Proxmox đã gỡ dấu 'chờ chạy lần đầu'
+OK  kho ISO máy mẫu đã được chép từ ổ CD (/dev/sr0) vào /var/lib/vz/template/iso, SHA-256 khớp cả 2 file, dịch vụ nạp ghi dấu xong
+OK  cấu hình cbhost: tự dựng máy mẫu BẬT, tên riêng cbvps-<4 số MAC>; thư mục / file cấu hình + mã riêng của máy chỉ root đọc
+OK  dịch vụ cloudblue-cbhost đang chạy + tự chạy khi bật máy
+OK  cbhost TỰ dựng máy mẫu trên Proxmox thật: lệnh qm create được Proxmox 9.3-1 nhận — máy ảo cbmau-thu1 / thu2 (số 99500, 99501), gắn đúng ISO, ổ SCSI VirtIO 20 GB, mạng VirtIO vmbr0, có QEMU agent
+OK  máy chủ tự gọi web (web giả của CI): vm_host_hello với tên cbvps-xxxx, bản cbhost 26/11d, rồi hỏi việc đều (vm_host_poll) kèm danh sách ISO + tiến độ tự dựng máy mẫu
+OK  ổ cài đúng ổ cứng của máy (nvme0n1), không phải USB cài đặt; mạng: IP tĩnh lấy từ DHCP lúc cài, có cầu vmbr0

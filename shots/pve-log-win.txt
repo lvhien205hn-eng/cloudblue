@@ -1,0 +1,3 @@
+OK  dựng ổ 'Windows' giả (NTFS có \Windows\System32\ntoskrnl.exe)
+OK  máy đang có Windows (BIOS, ISO dạng USB): menu có dòng 'dang co WINDOWS - KHONG tu cai', sau 70 giây vẫn KHÔNG tự cài (không nạp kernel cài đặt), ổ Windows không bị ghi 1 byte
+OK  máy đang có Windows (UEFI, ISO dạng CD): menu có dòng 'dang co WINDOWS - KHONG tu cai', sau 70 giây vẫn KHÔNG tự cài (không nạp kernel cài đặt), ổ Windows không bị ghi 1 byte

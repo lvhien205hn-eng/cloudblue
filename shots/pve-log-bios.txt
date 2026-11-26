@@ -1,0 +1,13 @@
+OK  TỰ CÀI (BIOS, ISO dạng USB, ổ SCSI): menu có dòng tự cài, không cần bấm phím nào, cài xong tự khởi động lại sau 3.3 phút, ổ cứng đã có dữ liệu (5.1 GB)
+OK  BẬT LẠI với USB còn cắm và đứng ĐẦU thứ tự khởi động (BIOS): menu báo 'may nay DA CO Proxmox', KHÔNG cài lại, máy lên, vào được SSH bằng khoá thử
+OK  máy vừa bật là hệ đã cài trên ổ cứng, khởi động qua mục bảo vệ của ISO (kernel của hệ đã cài, root=/dev/mapper/pve-root)
+OK  Proxmox VE đã cài: tên máy cbvps, có pve-manager
+OK  script lần bật đầu đã chạy xong, không lỗi, Proxmox đã gỡ dấu 'chờ chạy lần đầu'
+OK  kho ISO máy mẫu đã được chép từ USB (đọc thẳng thiết bị) vào /var/lib/vz/template/iso, SHA-256 khớp cả 2 file, dịch vụ nạp ghi dấu xong
+OK  cấu hình cbhost: tự dựng máy mẫu BẬT, tên riêng cbvps-<4 số MAC>; thư mục / file cấu hình + mã riêng của máy chỉ root đọc
+OK  dịch vụ cloudblue-cbhost đang chạy + tự chạy khi bật máy
+OK  cbhost TỰ dựng máy mẫu trên Proxmox thật: lệnh qm create được Proxmox 9.3-1 nhận — máy ảo cbmau-thu1 / thu2 (số 99500, 99501), gắn đúng ISO, ổ SCSI VirtIO 20 GB, mạng VirtIO vmbr0, có QEMU agent
+OK  máy chủ tự gọi web (web giả của CI): vm_host_hello với tên cbvps-xxxx, bản cbhost 26/11d, rồi hỏi việc đều (vm_host_poll) kèm danh sách ISO + tiến độ tự dựng máy mẫu
+OK  ổ cài đúng ổ cứng của máy (sdX), không phải USB cài đặt; mạng: IP tĩnh lấy từ DHCP lúc cài, có cầu vmbr0
+OK  dựng USB kiểu Ventoy (phân vùng FAT32 chứa file CloudBlue-Proxmox.iso)
+OK  USB kiểu Ventoy (ISO là 1 FILE trên phân vùng FAT của USB): dịch vụ nạp tự gắn phân vùng (chỉ đọc), thấy kho trong file, chép lại ISO bị thiếu, SHA-256 khớp, gỡ gắn xong

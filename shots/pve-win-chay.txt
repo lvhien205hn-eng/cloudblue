@@ -1,0 +1,57 @@
+﻿
+  CloudBlue - TAO ISO PROXMOX TU CAI cho may chu VPS ao hoa (ban 26.11c)
+  1 file ISO: Proxmox VE + CloudBlue + ISO may mau Windows. Khoi dong may chu tu no la tu cai, tu len web, tu dung may mau.
+  ======================================================
+
+== A  Thu muc lam viec + cong cu
+   Thu muc lam viec: D:\a\_temp\cbw
+   bo ghep ISO Proxmox 26.11c + cbhost 26/11d (tu sua mang: CO, tu chep ISO tu USB: CO) - nguon D:\a\cloudblue\cloudblue
+   tai Python nhung 3.12 (python.org, ~11 MB) ...
+   python.exe: chu ky Python Software Foundation hop le
+
+  CloudBlue - GHEP ISO PROXMOX TU CAI (ban 26.11c)
+== 1/4  File ISO Proxmox VE goc
+   khong thay file proxmox-ve_*.iso tren may
+   -> tu tai ban 9.3-1 (1,8 GB) tu may chu chinh thuc cua Proxmox
+   tai https://enterprise.proxmox.com/iso/proxmox-ve_9.3-1.iso ...
+      ISO Proxmox: 10% (176 MB / 1724 MB, 2 giay)
+      ISO Proxmox: 20% (348 MB / 1724 MB, 4 giay)
+      ISO Proxmox: 30% (520 MB / 1724 MB, 7 giay)
+      ISO Proxmox: 40% (692 MB / 1724 MB, 9 giay)
+      ISO Proxmox: 50% (864 MB / 1724 MB, 11 giay)
+      ISO Proxmox: 60% (1036 MB / 1724 MB, 14 giay)
+      ISO Proxmox: 70% (1208 MB / 1724 MB, 16 giay)
+      ISO Proxmox: 80% (1380 MB / 1724 MB, 19 giay)
+      ISO Proxmox: 90% (1552 MB / 1724 MB, 21 giay)
+      ISO Proxmox: 100% (1724 MB / 1724 MB, 23 giay)
+   D:\a\_temp\cbw\dl\proxmox-ve_9.3-1.iso
+== 2/4  ISO may mau Windows (kem vao de may chu TU dung may mau)
+   + D:\a\_temp\cbw\mau\CloudBlue-MayMau-det1.iso  (0.00 GB)
+   + D:\a\_temp\cbw\mau\CloudBlue-MayMau-det2.iso  (0.00 GB)
+== 3/4  Mat khau root + cau hinh
+   ten may chu: cbvps | mang: tu nhan (DHCP) | o cai: o dia dau tien (khong tinh USB) | may mau kem: 2
+== 4/4  Ghep -> D:\a\_temp\cbw\det.iso
+   chep ISO Proxmox VE 9.3-1 (1724 MB) ...
+      ISO Proxmox: 10% (176 MB / 1724 MB, 0 giay)
+      ISO Proxmox: 20% (348 MB / 1724 MB, 0 giay)
+      ISO Proxmox: 30% (520 MB / 1724 MB, 0 giay)
+      ISO Proxmox: 40% (692 MB / 1724 MB, 0 giay)
+      ISO Proxmox: 50% (864 MB / 1724 MB, 0 giay)
+      ISO Proxmox: 60% (1036 MB / 1724 MB, 1 giay)
+      ISO Proxmox: 70% (1208 MB / 1724 MB, 1 giay)
+      ISO Proxmox: 80% (1380 MB / 1724 MB, 1 giay)
+      ISO Proxmox: 90% (1552 MB / 1724 MB, 1 giay)
+      ISO Proxmox: 100% (1724 MB / 1724 MB, 1 giay)
+   them ISO may mau CloudBlue-MayMau-det1.iso (0.00 GB) ...
+   them ISO may mau CloudBlue-MayMau-det2.iso (0.00 GB) ...
+
+  ======================================================
+  XONG (0.1 phut): D:\a\_temp\cbw\det.iso  (1.69 GB)
+  Proxmox VE 9.3-1 | may chu 'cbvps' | bao ve may da co Proxmox / Windows: CO | may mau kem: det1, det2
+  ======================================================
+  Buoc tiep:
+   1. Ghi file ISO nay ra USB (tu 8 GB tro len) bang Rufus: chon file -> START -> hoi thi chon 'Write in DD Image mode'.
+   2. Cam USB vao MAY CHU (da bat Virtualization trong BIOS, co cap mang), khoi dong tu USB. Sau 10 giay may TU CAI Proxmox (5-15 phut),
+      tu khoi dong lai. DE NGUYEN USB den khi web bao may mau da co (may chu chep ISO may mau tu USB).
+   3. Web CloudBlue > Quan tri > VPS ao hoa > May chu: bam DUYET may moi. May chu tu dung may mau (moi ban 20-40 phut).
+   ISO nay XOA SACH o dia dau tien cua may khoi dong tu no (tru may dang co Windows / da co Proxmox: khong tu cai). Giu USB can than.

@@ -1,0 +1,16 @@
+#truoc 
+#net
+mạng: IPv4 có · IPv6 có · địa chỉ 10.0.2.15 · máy chủ tên (DNS) 192.168.100.1 · phân giải tên web: KHÔNG ĐƯỢC · tự sửa mạng: bật
+đã sửa: đặt lại máy chủ tên (DNS): 8.8.8.8, 2001:4860:4860::8888, 1.1.1.1
+mạng: IPv4 có · IPv6 có · địa chỉ 10.0.2.15 · máy chủ tên (DNS) 8.8.8.8, 2001:4860:4860::8888, 1.1.1.1 · phân giải tên web: được · tự sửa mạng: bật
+#rs
+# CloudBlue (cbhost): may chu ten (DNS) cu khong dung duoc -> dat may chu ten cong cong. Ban goc: /etc/resolv.conf.cb-goc
+search lan
+nameserver 8.8.8.8
+nameserver 2001:4860:4860::8888
+nameserver 1.1.1.1
+#sau 140.82.112.4    github.com
+#goc
+search lan
+nameserver 192.168.100.1
+#het

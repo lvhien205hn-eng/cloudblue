@@ -1,0 +1,9 @@
+OK  ghép 1 ISO KHÔNG kèm máy mẫu (-KhongMau) để dựng lại đúng tình huống máy thật
+OK  lệnh ghép KHÔNG tìm thấy ISO máy mẫu mà không ghi -KhongMau → DỪNG (mã 1), không ra file ISO thiếu máy mẫu
+OK  cài Proxmox bằng USB THIẾU máy mẫu: tự cài xong sau 3.2 phút
+OK  đúng tình huống máy thật: máy lên, cbhost chạy, kho ISO TRỐNG, dịch vụ nạp ghi 'không có kho', chưa có máy ảo nào
+OK  CẮM USB cài đặt bản ĐỦ vào máy ĐANG CHẠY (không cài lại, không gõ gì): sau 22 giây cbhost đã tự chép 2 ISO máy mẫu vào kho ISO, SHA-256 khớp cả 2, đã gỡ gắn USB
+OK  nhật ký cbhost: 'thấy 2 ISO máy mẫu trên USB cài đặt — đang chép' rồi 'đã chép xong 2 ISO máy mẫu'
+OK  có ISO rồi thì TỰ dựng máy mẫu (sau 13 giây đã có máy ảo cbmau-thu1 + cbmau-thu2 trên Proxmox thật); web giả nhận trạng thái USB + danh sách ISO
+OK  dựng USB thường (FAT32) có file may-mau/CloudBlue-MayMau-thu3.iso
+OK  CẮM USB THƯỜNG có file CloudBlue-MayMau-thu3.iso (thư mục con): sau 32 giây cbhost tự chép vào kho ISO, SHA-256 khớp, gỡ gắn xong; 2 file cũ còn nguyên

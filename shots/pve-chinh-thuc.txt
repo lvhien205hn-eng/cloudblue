@@ -1,0 +1,11 @@
+Unable to find image 'debian:trixie' locally
+trixie: Pulling from library/debian
+133e21d3e00f: Pulling fs layer
+06a605073e75: Download complete
+133e21d3e00f: Download complete
+133e21d3e00f: Pull complete
+Digest: sha256:3cda3ca472ce45507a5109c6a3907093e24d9ae67d55954c9a07a45665dafba2
+Status: Downloaded newer image for debian:trixie
+== validate
+The answer file was parsed successfully, no errors found!
+== prepare

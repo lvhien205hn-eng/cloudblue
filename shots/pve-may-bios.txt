@@ -1,0 +1,156 @@
+#cmdline BOOT_IMAGE=(lvm/pve-root)/boot/pve/vmlinuz ro ramdisk_size=16777216 root=/dev/mapper/pve-root quiet
+#host cbvps | pve-manager/9.3.1/4cbab754a7da645d (running kernel: 7.0.14-30-pve)
+#fb
+== 2026-11-26 13:50:56 CloudBlue first-boot ban 26.11c (fully-up)
+cau hinh cbhost: {"auto_tpl": true, "auto_update": false, "sb_url": "http://10.0.2.2:8765", "host_name": "cbvps-3456"}
+Created symlink '/etc/systemd/system/multi-user.target.wants/cloudblue-cbhost.service' → '/etc/systemd/system/cloudblue-cbhost.service'.
+Created symlink '/etc/systemd/system/multi-user.target.wants/cloudblue-nap.service' → '/etc/systemd/system/cloudblue-nap.service'.
+== 2026-11-26 13:50:57 xong first-boot: cbhost 26/11d | cb_nap 26.11a
+#pending
+proxmox-first-boot
+#nap
+{"t": 1795675860, "note": "\u0111\u1ee7", "ver": "26.11a"}
+Nov 26 13:50:57 cbvps systemd[1]: Started cloudblue-nap.service - CloudBlue - nap kho ISO may mau tu USB cai dat.
+Nov 26 13:50:57 cbvps python3[1284]: 2026-11-26 13:50:57 cb_nap 26.11a: chờ USB cài đặt CloudBlue-Proxmox để chép 2 ISO máy mẫu vào /var/lib/vz/template/iso
+Nov 26 13:50:57 cbvps python3[1284]: 2026-11-26 13:50:57 thấy kho ISO máy mẫu trên /dev/sdb (2 file)
+Nov 26 13:50:57 cbvps python3[1284]: 2026-11-26 13:50:57    CloudBlue-MayMau-thu1.iso: đã chép (0.04 GB, 0 giây), mã kiểm khớp
+Nov 26 13:50:57 cbvps python3[1284]: 2026-11-26 13:50:57    CloudBlue-MayMau-thu2.iso: 25%
+Nov 26 13:50:58 cbvps python3[1284]: 2026-11-26 13:50:58    CloudBlue-MayMau-thu2.iso: 50%
+Nov 26 13:50:58 cbvps python3[1284]: 2026-11-26 13:50:58    CloudBlue-MayMau-thu2.iso: 76%
+Nov 26 13:50:58 cbvps python3[1284]: 2026-11-26 13:50:58    CloudBlue-MayMau-thu2.iso: 100%
+Nov 26 13:51:00 cbvps python3[1284]: 2026-11-26 13:51:00    CloudBlue-MayMau-thu2.iso: đã chép (0.29 GB, 2 giây), mã kiểm khớp
+Nov 26 13:51:00 cbvps python3[1284]: 2026-11-26 13:51:00 XONG: đã nạp đủ ISO máy mẫu vào kho ISO. cbhost sẽ tự dựng máy mẫu. Có thể rút USB.
+Nov 26 13:51:00 cbvps systemd[1]: cloudblue-nap.service: Deactivated successfully.
+Nov 26 13:51:00 cbvps systemd[1]: cloudblue-nap.service: Consumed 411ms CPU time, 664.6M memory peak.
+#iso
+total 348160
+-rw-r--r-- 1 root root  41943040 Nov 26 13:50 CloudBlue-MayMau-thu1.iso
+-rw-r--r-- 1 root root 314572800 Nov 26 13:50 CloudBlue-MayMau-thu2.iso
+5e232067adba1b33d07eca8d5528c8f7e34cc38bcd99f3ee700202daf62b9be4  /var/lib/vz/template/iso/CloudBlue-MayMau-thu1.iso
+8d2fa299ce174c18893132eab10478c94d2271c4e626401ea77e297f5b8e10fd  /var/lib/vz/template/iso/CloudBlue-MayMau-thu2.iso
+#conf
+{"auto_tpl": true, "auto_update": false, "sb_url": "http://10.0.2.2:8765", "host_name": "cbvps-3456"}
+{"id": "d5c39289624db3e041410d66", "n": 2, "off": 1809135616, "size": 2165667840}
+700 /etc/cloudblue
+600 /etc/cloudblue/cbhost.conf
+600 /etc/cloudblue/cbhost.secret
+#units active enabled enabled
+#qm
+      VMID NAME                 STATUS     MEM(MiB)   BOOTDISK(GiB) PID       
+     99500 cbmau-thu1           running    2048              20.00 1498      
+     99501 cbmau-thu2           running    2048              20.00 1865      
+--99500
+agent: enabled=1
+balloon: 0
+bios: seabios
+boot: order=scsi0;ide2
+cores: 2
+cpu: host
+ide2: local:iso/CloudBlue-MayMau-thu1.iso,media=cdrom,size=40M
+machine: pc-i440fx-11.1
+memory: 2048
+meta: creation-qemu=11.1.3,ctime=1795675862,rtime=1795675862901,uid=6tv7xjndslnecgpdzhum
+name: cbmau-thu1
+net0: virtio=BC:24:11:3F:44:33,bridge=vmbr0
+onboot: 0
+ostype: win10
+scsi0: local-lvm:vm-99500-disk-0,discard=on,iothread=1,size=20G
+scsihw: virtio-scsi-single
+smbios1: uuid=99fb36e2-4b78-4172-a0ae-ea8b4038d3e6
+sockets: 1
+tags: cloudblue-mau
+vga: std
+vmgenid: 5a2fc13d-8256-4e69-b6b3-eb43e52e0354
+--99501
+agent: enabled=1
+balloon: 0
+bios: seabios
+boot: order=scsi0;ide2
+cores: 2
+#cbhost 26/11d
+Nov 26 13:50:57 cbvps systemd[1]: Started cloudblue-cbhost.service - CloudBlue cbhost - VPS ao hoa (Proxmox).
+Nov 26 13:50:57 cbvps python3[1287]: 26/11 13:50:57 cbhost 26/11d chạy — node cbvps, gọi http://10.0.2.2:8765 mỗi ~10 giây
+Nov 26 13:51:02 cbvps python3[1287]: 26/11 13:51:02 MẪU-thu1: TỰ DỰNG — tạo máy ảo 99500 từ ISO local:iso/CloudBlue-MayMau-thu1.iso
+Nov 26 13:51:02 cbvps python3[1287]: 26/11 13:51:02 đã lên web: máy chủ cbvps-3456 (ci-1) — CHỜ admin duyệt ở Quản trị › VPS ảo hoá
+Nov 26 13:51:02 cbvps qm[1399]: <root@pam> starting task UPID:cbvps:00000579:00000815:6B07D6D6:qmcreate:99500:root@pam:
+Nov 26 13:51:04 cbvps qm[1399]: <root@pam> end task UPID:cbvps:00000579:00000815:6B07D6D6:qmcreate:99500:root@pam: OK
+Nov 26 13:51:04 cbvps qm[1484]: start VM 99500: UPID:cbvps:000005CC:000008E5:6B07D6D8:qmstart:99500:root@pam:
+Nov 26 13:51:04 cbvps qm[1483]: <root@pam> starting task UPID:cbvps:000005CC:000008E5:6B07D6D8:qmstart:99500:root@pam:
+Nov 26 13:51:05 cbvps qm[1484]: VM 99500 started with PID 1498 using pve-qemu-kvm_11.1.3-4.
+Nov 26 13:51:05 cbvps qm[1483]: <root@pam> end task UPID:cbvps:000005CC:000008E5:6B07D6D8:qmstart:99500:root@pam: OK
+Nov 26 13:51:06 cbvps python3[1287]: 26/11 13:51:06 MẪU-thu1: đã bật — Windows tự cài từ ISO (20–40 phút), xong sẽ tự thành máy mẫu tpl-thu1
+Nov 26 13:51:19 cbvps qm[1571]: VM 99500 qga command failed - VM 99500 qga command 'guest-ping' failed - got timeout
+Nov 26 13:52:14 cbvps qm[1783]: VM 99500 qga command failed - VM 99500 qga command 'guest-ping' failed - got timeout
+Nov 26 13:52:20 cbvps python3[1287]: 26/11 13:52:20 MẪU-thu2: TỰ DỰNG — tạo máy ảo 99501 từ ISO local:iso/CloudBlue-MayMau-thu2.iso
+Nov 26 13:52:20 cbvps qm[1824]: <root@pam> starting task UPID:cbvps:00000721:00002690:6B07D724:qmcreate:99501:root@pam:
+Nov 26 13:52:21 cbvps qm[1824]: <root@pam> end task UPID:cbvps:00000721:00002690:6B07D724:qmcreate:99501:root@pam: OK
+Nov 26 13:52:21 cbvps qm[1848]: <root@pam> starting task UPID:cbvps:00000739:000026F3:6B07D725:qmstart:99501:root@pam:
+Nov 26 13:52:21 cbvps qm[1849]: start VM 99501: UPID:cbvps:00000739:000026F3:6B07D725:qmstart:99501:root@pam:
+Nov 26 13:52:24 cbvps qm[1849]: VM 99501 started with PID 1865 using pve-qemu-kvm_11.1.3-4.
+Nov 26 13:52:24 cbvps qm[1848]: <root@pam> end task UPID:cbvps:00000739:000026F3:6B07D725:qmstart:99501:root@pam: OK
+Nov 26 13:52:24 cbvps python3[1287]: 26/11 13:52:24 MẪU-thu2: đã bật — Windows tự cài từ ISO (20–40 phút), xong sẽ tự thành máy mẫu tpl-thu2
+Nov 26 13:52:37 cbvps qm[1931]: VM 99501 qga command failed - VM 99501 qga command 'guest-ping' failed - got timeout
+#status
+26/11 13:52:55 đã lên web: máy chủ cbvps-3456 (ci-1) — CHỜ admin duyệt ở Quản trị › VPS ảo hoá
+cbhost 26/11d · máy chủ: ci · trạng thái web: CHỜ DUYỆT (Quản trị › VPS ảo hoá › Máy chủ)
+mạng: IPv4 có · IPv6 không · địa chỉ 10.0.2.15 · máy chủ tên (DNS) 10.0.2.3 · phân giải tên web: địa chỉ số · tự sửa mạng: bật
+máy mẫu trên Proxmox: CHƯA CÓ — xem hướng dẫn dựng máy mẫu Windows
+VPS web giao cho máy chủ này: 0
+tự dựng máy mẫu từ ISO: BẬT · thu1: đang cài Windows (máy ảo 99500) · thu2: đang cài Windows (máy ảo 99501)
+#disk
+NAME                            SIZE TYPE FSTYPE      MOUNTPOINT
+fd0                               4K disk             
+sda                              48G disk             
+├─sda1                         1007K part             
+├─sda2                          512M part vfat        
+└─sda3                         47.5G part LVM2_member 
+  ├─pve-swap                    5.8G lvm  swap        [SWAP]
+  ├─pve-root                   20.9G lvm  ext4        /
+  ├─pve-data_tmeta                1G lvm              
+  │ └─pve-data-tpool             13G lvm              
+  │   ├─pve-data                 13G lvm              
+  │   ├─pve-vm--99500--disk--0   20G lvm              
+  │   └─pve-vm--99501--disk--0   20G lvm              
+  └─pve-data_tdata               13G lvm              
+    └─pve-data-tpool             13G lvm              
+      ├─pve-data                 13G lvm              
+      ├─pve-vm--99500--disk--0   20G lvm              
+      └─pve-vm--99501--disk--0   20G lvm              
+sdb                               2G disk iso9660     
+├─sdb1                          286K part             
+├─sdb2                            8M part vfat        
+├─sdb3                          1.7G part hfsplus     
+└─sdb4                          300K part             
+Filesystem            Size  Used Avail Use% Mounted on
+/dev/mapper/pve-root   21G  4.7G   15G  25% /
+/dev/mapper/pve-root   21G  4.7G   15G  25% /
+#net
+# network interface settings; autogenerated
+# Please do NOT modify this file directly, unless you know what
+# you're doing.
+#
+# If you want to manage parts of the network configuration manually,
+# please utilize the 'source' or 'source-directory' directives to do
+# so.
+# PVE will preserve these directives, but will NOT read its network
+# configuration from sourced files, so do not attempt to move any of
+# the PVE managed interfaces into external files!
+
+auto lo
+iface lo inet loopback
+
+iface ens3 inet manual
+
+auto vmbr0
+iface vmbr0 inet static
+	address 10.0.2.15/24
+	gateway 10.0.2.2
+	bridge-ports ens3
+	bridge-stp off
+	bridge-fd 0
+
+source /etc/network/interfaces.d/*
+1: lo    inet 127.0.0.1/8 scope host lo\       valid_lft forever preferred_lft forever
+3: vmbr0    inet 10.0.2.15/24 scope global vmbr0\       valid_lft forever preferred_lft forever
+#kvm /dev/kvm
+#het

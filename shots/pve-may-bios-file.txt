@@ -1,0 +1,30 @@
+{"t": 1795676130, "note": "\u0111\u1ee7", "ver": "26.11a"}Nov 26 13:55:26 cbvps systemd[1]: Started cloudblue-nap.service - CloudBlue - nap kho ISO may mau tu USB cai dat.
+Nov 26 13:55:26 cbvps python3[853]: 2026-11-26 13:55:26 cb_nap 26.11a: chờ USB cài đặt CloudBlue-Proxmox để chép 2 ISO máy mẫu vào /var/lib/vz/template/iso
+Nov 26 13:55:27 cbvps python3[853]: 2026-11-26 13:55:27 thấy kho ISO máy mẫu trong file /run/cloudblue-nap/m/iso/CloudBlue-Proxmox.iso (2 file)
+Nov 26 13:55:28 cbvps python3[853]: 2026-11-26 13:55:28    CloudBlue-MayMau-thu2.iso: 25%
+Nov 26 13:55:28 cbvps python3[853]: 2026-11-26 13:55:28    CloudBlue-MayMau-thu2.iso: 50%
+Nov 26 13:55:29 cbvps python3[853]: 2026-11-26 13:55:29    CloudBlue-MayMau-thu2.iso: 76%
+Nov 26 13:55:29 cbvps python3[853]: 2026-11-26 13:55:29    CloudBlue-MayMau-thu2.iso: 100%
+Nov 26 13:55:30 cbvps python3[853]: 2026-11-26 13:55:30    CloudBlue-MayMau-thu2.iso: đã chép (0.29 GB, 2 giây), mã kiểm khớp
+Nov 26 13:55:30 cbvps python3[853]: 2026-11-26 13:55:30 XONG: đã nạp đủ ISO máy mẫu vào kho ISO. cbhost sẽ tự dựng máy mẫu. Có thể rút USB.
+Nov 26 13:55:30 cbvps systemd[1]: cloudblue-nap.service: Deactivated successfully.
+Nov 26 13:55:30 cbvps systemd[1]: cloudblue-nap.service: Consumed 818ms CPU time, 666.8M memory peak.
+5e232067adba1b33d07eca8d5528c8f7e34cc38bcd99f3ee700202daf62b9be4  /var/lib/vz/template/iso/CloudBlue-MayMau-thu1.iso
+8d2fa299ce174c18893132eab10478c94d2271c4e626401ea77e297f5b8e10fd  /var/lib/vz/template/iso/CloudBlue-MayMau-thu2.iso
+NAME                 TRAN RM FSTYPE      MOUNTPOINT
+fd0                        1             
+sda                        0             
+├─sda1                     0             
+├─sda2                     0 vfat        
+└─sda3                     0 LVM2_member 
+  ├─pve-swap               0 swap        [SWAP]
+  ├─pve-root               0 ext4        /
+  ├─pve-data_tmeta         0             
+  │ └─pve-data-tpool       0             
+  │   └─pve-data           0             
+  └─pve-data_tdata         0             
+    └─pve-data-tpool       0             
+      └─pve-data           0             
+sdb                  usb   0             
+└─sdb1                     0 vfat        
+0

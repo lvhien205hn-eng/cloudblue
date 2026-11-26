@@ -1,0 +1,11 @@
+OK  bộ thử test_pve_iso.py: 54/54 đạt
+OK  bộ thử test_cbhost.py: 116/116 đạt
+OK  ghép ISO từ ISO Proxmox VE thật (9.3-1): mã 0, 16 giây, có đoạn bảo vệ, bản đã thử (khớp mã kiểm chính thức)
+OK  xorriso: bản ghi khởi động (El Torito BIOS + UEFI, MBR, GPT, APM) của ISO ghép Y HỆT ISO gốc
+OK  32 KiB đầu (MBR, GPT, APM, mã khởi động) + bản ghi El Torito của ISO ghép giống từng byte ISO gốc
+OK  xorriso đọc được cây thư mục, thấy 3 file mới đúng tên
+OK  Linux mount: 1459 file của ISO gốc còn nguyên (so SHA-256 từng file); khác biệt chỉ gồm 3 file mới + grub.cfg
+OK  grub.cfg trong ISO ghép = bản gốc + đoạn CloudBlue chèn ngay trước khối tự cài + 'máy có Windows thì không đếm ngược'
+OK  công cụ chính thức của Proxmox (proxmox-auto-install-assistant): answer.toml của CloudBlue hợp lệ
+OK  auto-installer-mode.toml của CloudBlue giống từng byte file do công cụ chính thức tạo
+OK  Linux: ghép bản 'cố định' để so với Windows
