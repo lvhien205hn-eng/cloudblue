@@ -3417,6 +3417,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     </div>
     <div class="dbody" id="pane-vm" hidden>
       <div class="note" id="vma-miss" hidden>⚠️ Cơ sở dữ liệu chưa có phần <b>VPS ảo hoá</b>. Vào Supabase › SQL Editor › mở <b>CloudBlue v56 VPS ao hoa - bam Run</b> › bấm <b>Run</b>, rồi tải lại trang.</div>
+      <div class="note" id="vma-err" hidden></div>
       <div class="vma-top" id="vma-top"><div><span>Đang tải…</span></div></div>
       <div class="subtabs" role="tablist" aria-label="Mục VPS ảo hoá"><button type="button" role="tab" data-sub="hosts" class="on" aria-selected="true">🖥 Máy chủ</button><button type="button" role="tab" data-sub="vps" aria-selected="false">🧩 VPS</button><button type="button" role="tab" data-sub="plans" aria-selected="false">💲 Gói &amp; giá</button><button type="button" role="tab" data-sub="images" aria-selected="false">🪟 Bản Windows</button><button type="button" role="tab" data-sub="set" aria-selected="false">⚙ Cài đặt</button><button type="button" id="vma-reload" style="margin-left:auto" title="Tải lại dữ liệu VPS ảo hoá">⟳ Tải lại</button></div>
       <div class="subpane" data-sub="hosts"><div id="vma-hosts"></div></div>
@@ -15723,12 +15724,12 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     VM.al = (async () => {
       try {
         const needRev = Date.now() - VM.revAt > 60000;
-        const [a, r, tp] = await Promise.all([rpc("vm_admin_state"), needRev ? rpc("vm_admin_revenue", { p_months: 6 }) : null, rpc("vm_tpl_state").catch(e => ({ error: e }))]);
+        const [a, r, tp] = await Promise.all([rpc("vm_admin_state"), needRev ? rpc("vm_admin_revenue", { p_months: 6 }) : null, rpc("vm_tpl_state").then(x => x, e => ({ error: e }))]);
         if (tp && tp.error) { VM.tplMiss = missing(tp.error); if (!VM.tplMiss) VM.tpl = null; } else if (tp) { VM.tplMiss = false; VM.tpl = O(tp.data); }
-        if (a.error) { VM.miss = missing(a.error); VM.adm = null; if (!VM.miss && !quiet) toast(em(a.error), 1); }
-        else { VM.miss = false; VM.adm = O(a.data); }
+        if (a.error) { VM.miss = missing(a.error); if (VM.miss) VM.adm = null; VM.err = VM.miss ? "" : (em(a.error) || "?"); if (!VM.miss && !quiet) toast(em(a.error), 1); }
+        else { VM.miss = false; VM.adm = O(a.data); VM.err = ""; }
         if (r && !r.error) { VM.rev = O(r.data); VM.revAt = Date.now(); }
-      } catch (e) { if (!quiet) toast(em(e), 1); }
+      } catch (e) { VM.err = em(e) || "?"; if (!quiet) toast(em(e), 1); }
       finally { VM.al = null; }
       admRender(); badge();
     })();
@@ -15748,6 +15749,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const pane = $i("pane-vm"); if (!pane) return;
     show("vma-miss", !!VM.miss);
     const d = O(VM.adm), ok = !!VM.adm;
+    const er = $i("vma-err");                                          // 26/11: tải lỗi thì BÁO RÕ + nút thử lại (trước đây cả ô để trắng)
+    if (er) { er.hidden = !VM.err || !!VM.miss; er.innerHTML = er.hidden ? "" : `⚠️ ${esc(L("Không tải được dữ liệu VPS ảo hoá", "Could not load the virtual VPS data"))}: <b>${esc(S(VM.err, 300))}</b>${ok ? " — " + esc(L("đang hiện dữ liệu của lần tải trước", "showing the previous data")) : ""} <button class="btn sm" type="button" id="vma-retry">⟳ ${esc(L("Thử lại", "Retry"))}</button>`; }
     pane.querySelectorAll(":scope > .subtabs, :scope > .subpane, #vma-top").forEach(x => { x.style.display = ok ? "" : "none"; });
     if (!ok) return;
     admTop(d); admHosts(d); admVps(d); admPlans(d); admImages(d); admSet(d);
@@ -15793,7 +15796,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
             ${h.status !== "new" && h.status !== "ready" ? `<button class="btn ghost sm" type="button" data-vmah="ready">▶ ${L("Nhận VPS", "Accept VPS")}</button>` : ""}
             ${h.status === "ready" ? `<button class="btn ghost sm" type="button" data-vmah="maint">⏸ ${L("Bảo trì", "Maintenance")}</button>` : ""}
             ${h.status !== "new" && h.status !== "off" ? `<button class="btn ghost sm" type="button" data-vmah="off" title="${esc(L("Tắt mọi VPS trên máy này (giữ dữ liệu)", "Stop every VPS on this host (data kept)"))}">⏻ ${L("Tắt", "Off")}</button>` : ""}
-            ${lan ? `<a class="btn ghost sm" href="https://${esc(lan)}:8006" target="_blank" rel="noopener" title="${esc(L("Trang quản lý Proxmox — mở được khi máy bạn cùng mạng LAN với máy chủ (hoặc mở từ trong 1 VPS trên máy đó)", "Proxmox web UI — reachable from the same LAN"))}">🔧 ${L("Trang Proxmox", "Proxmox UI")}</a>` : ""}
+            ${lan ? `<a class="btn ghost sm" href="https://${esc(lan.includes(":") ? "[" + lan + "]" : lan)}:8006" target="_blank" rel="noopener" title="${esc(L("Trang quản lý Proxmox — mở được khi máy bạn cùng mạng LAN với máy chủ (hoặc mở từ trong 1 VPS trên máy đó)", "Proxmox web UI — reachable from the same LAN"))}">🔧 ${L("Trang Proxmox", "Proxmox UI")}</a>` : ""}
             <button class="btn ghost sm" type="button" data-vmah="edit">✏️ ${L("Tên · chỗ · ghi chú", "Name · slots · note")}</button>
             <button class="btn danger sm" type="button" data-vmah="del"${N(u.n) ? " disabled title=\"" + esc(L("còn VPS trên máy này", "host still has VPS")) + "\"" : ""}>🗑 ${L("Xoá", "Delete")}</button></div></div>`; }).join("")}</div>
       ${revAll.length ? `<details class="vma-sec"><summary><b>📈 ${L("Doanh thu VPS ảo hoá theo tháng", "Monthly revenue")}</b> <span class="hint">${L("💰 = tiền khách trả rải đều theo thời gian VPS chạy trên từng máy chủ · 💵 = tiền khách trả trong tháng", "💰 accrued · 💵 collected")}</span></summary>
@@ -16079,7 +16082,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   document.addEventListener("click", e => {
     const t = e.target && e.target.closest ? e.target : null; if (!t) return;
     const b = t.closest("[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
-      + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload,#vma-t-new,#vma-t-cmd,#vma-t-go,[data-vmtsrc],[data-vmt],#vma-tj-go");
+      + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload,#vma-retry,#vma-t-new,#vma-t-cmd,#vma-t-go,[data-vmtsrc],[data-vmt],#vma-tj-go");
     if (!b || b.disabled) return;
     const dt_ = b.dataset;
     if (dt_.vmbuy) return buyOpen(dt_.vmbuy);
@@ -16098,7 +16101,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (dt_.vmdel) return delOpen(dt_.vmdel);
     if (b.id === "vms-del-go") return delGo(b);
     if (!isAdm()) return;
-    if (b.id === "vma-reload") { VM.revAt = 0; return busy(b, () => admLoad(false)); }
+    if (b.id === "vma-reload" || b.id === "vma-retry") { VM.revAt = 0; return busy(b, () => admLoad(false)); }
     if (dt_.vmaset === "sell") return admCall(b, "vm_admin_settings", { p_patch: { sell: dt_.v === "1" } }, dt_.v === "1" ? L("Đã BẬT bán VPS ảo hoá.", "Selling is ON.") : L("Đã tắt bán VPS ảo hoá.", "Selling is OFF.")).then(() => info(true).then(shopRender));
     if (dt_.vmah) {
       const h = hostOf(S(t.closest("[data-vmhost]") && t.closest("[data-vmhost]").dataset.vmhost, 40)); if (!h) return;
