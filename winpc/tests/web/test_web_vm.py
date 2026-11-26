@@ -298,6 +298,30 @@ def main():
         pc = s.calls("vm_admin_plan")
         ck("thêm gói VPS 6-12 (6 vCPU · 12 GB · 20 GB · 600.000đ / 30 ngày)", pc[-1]["p_id"] == "vps6-12" and pc[-1]["p_patch"]["ram_mb"] == 12288 and pc[-1]["p_patch"]["cores"] == 6
            and pc[-1]["p_patch"]["prices"] == [{"days": 30, "price": 600000}] and s.js("() => document.querySelectorAll('#vma-plans tbody tr').length") == 9, pc[-1])
+        # 26/11 · ⚡ tự tính giá theo đơn giá
+        ck("⚡ tự tính giá: chưa nhập đơn giá → 2 nút khoá, có lời nhắc", s.vis("#vma-calc") and s.js("() => document.getElementById('vma-c-go').disabled && document.getElementById('vma-c-miss').disabled")
+           and "Nhập ít nhất 1 đơn giá" in (s.txt("#vma-c-prev") or ""), s.txt("#vma-c-prev"))
+        s.page.fill("#vma-c-cpu", "30000"); s.page.fill("#vma-c-ram", "20000"); s.page.fill("#vma-c-disk", "1000"); s.page.fill("#vma-c-days", "30, 7,1"); s.page.fill("#vma-c-up", "20"); s.page.wait_for_timeout(150)
+        pv = s.txt("#vma-c-prev") or ""
+        ck("xem trước: VPS 1-1 (1 vCPU · 1 GB · 20 GB) = 30n 70.000đ · 7n 20.000đ · 1n 3.000đ; VPS 8-16 = 30n 580.000đ · 7n 162.000đ (dưới 30 ngày +20%, làm tròn nghìn)",
+           "VPS 1-1 1n 3.000đ · 7n 20.000đ · 30n 70.000đ" in pv and "VPS 8-16 1n 23.000đ · 7n 162.000đ · 30n 580.000đ" in pv and not s.js("() => document.getElementById('vma-c-go').disabled"), pv)
+        n0 = len(s.calls("vm_admin_plan"))
+        s.page.click("#vma-c-miss"); s.page.wait_for_timeout(600)
+        pc = s.calls("vm_admin_plan")[n0:]
+        ck("'Chỉ điền gói chưa có giá' → chỉ gọi vm_admin_plan cho gói 4-8 (4 vCPU · 8 GB): 1n 12.000đ · 7n 84.000đ · 30n 300.000đ; không đụng gói khác",
+           len(pc) == 1 and pc[0] == {"p_id": "vps4-8", "p_patch": {"prices": [{"days": 1, "price": 12000}, {"days": 7, "price": 84000}, {"days": 30, "price": 300000}]}}
+           and "30n: 300.000đ" in (s.txt("#vma-plans") or ""), pc)
+        n0 = len(s.calls("vm_admin_plan"))
+        s.page.click("#vma-c-go"); s.page.wait_for_timeout(250)
+        d = s.dlg()
+        ck("'Áp dụng cho tất cả gói' khi đã có gói có giá → hỏi trước 'Ghi đè giá đang có?' (hộp của trang), chưa gọi máy chủ", "Ghi đè giá đang có" in d and "9 gói đã có giá" in d and len(s.calls("vm_admin_plan")) == n0, d)
+        s.page.click("#vma-c-ok"); s.page.wait_for_timeout(1200)
+        pc = s.calls("vm_admin_plan")[n0:]
+        ck("bấm Ghi đè → gọi vm_admin_plan cho cả 9 gói, chỉ gửi bảng giá (không đổi cấu hình); bảng hiện giá mới; nhớ đơn giá trên máy",
+           len(pc) == 9 and all(list(x["p_patch"].keys()) == ["prices"] for x in pc) and pc[0] == {"p_id": "vps1-1", "p_patch": {"prices": [{"days": 1, "price": 3000}, {"days": 7, "price": 20000}, {"days": 30, "price": 70000}]}}
+           and "30n: 70.000đ" in (s.txt("#vma-plans") or "") and "30n: 580.000đ" in (s.txt("#vma-plans") or "") and not s.vis("#vzdlg")
+           and s.js("() => JSON.parse(localStorage.getItem('cb_vm_unit') || '{}').c") == 30000, (len(pc), pc[:1], s.txt("#vma-plans")))
+        s.shot("vm-3b-tinh-gia.png")
         admin_open(s, "images")
         it = s.txt("#vma-images")
         ck("bản Windows: 5 bản, tên máy mẫu tpl-…, máy chủ đã có mẫu (pve1) / chưa máy nào", s.js("() => document.querySelectorAll('#vma-images tbody tr').length") == 5
@@ -423,7 +447,11 @@ def main():
         ck("Thanh toán → vm_buy {vps2-2, win10ltsc, 30 ngày}, đóng hộp, tải lại VPS của tôi", s.calls("vm_buy") == [{"p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 30}]
            and not s.vis("#vzdlg") and len(s.calls("vm_my")) >= 2, s.calls("vm_buy"))
         s.js("() => { window.__VM.buyErr = 'NO_CAPACITY'; }")
-        s.page.click('[data-vmbuy="vps1-1"]'); s.page.wait_for_timeout(200); s.page.click("#vms-pay"); s.page.wait_for_timeout(500)
+        s.page.click('[data-vmbuy="vps1-1"]'); s.page.wait_for_timeout(200)
+        need = s.js("() => [...document.querySelectorAll('#vms-os button')].map(b => [b.dataset.vmos || '', b.dataset.vmneed || '', b.disabled, b.innerText.replace(/\\s+/g, ' ').trim()])")
+        ck("26/11 · hộp mua gói 1 GB RAM: Server 2012 R2 chọn được; bản máy chủ có sẵn nhưng cần 2 GB (10 LTSC) hiện MỜ kèm 'cần gói từ 2 GB RAM'; bản chưa có máy mẫu không hiện",
+           len(need) == 2 and need[0][0] == "win2012r2" and need[0][2] is False and need[1][1] == "win10ltsc" and need[1][2] is True and "cần gói từ 2 GB RAM" in need[1][3], need)
+        s.page.click("#vms-pay"); s.page.wait_for_timeout(500)
         ck("hết chỗ lúc mua → báo rõ trong hộp (không trừ tiền)", "hết chỗ" in s.dlg(), s.dlg())
         s.page.click('#vzdlg [data-vmx]'); s.page.wait_for_timeout(100)
 
@@ -438,6 +466,14 @@ def main():
         ck("VPS-13 đang tạo: chưa cho điều khiển / gia hạn; VPS-14 hết hạn: báo hạn xoá, tên lạ không chạy mã", "Đang tạo" in cards[1]
            and s.js("() => document.querySelector('[data-vm=\"13\"] .btn.sm').disabled && document.querySelector('[data-vm=\"13\"] [data-vmrenew]').disabled")
            and "Hết hạn" in cards[2] and "Gia hạn trước" in cards[2] and not s.js("() => !!window.__xss"), cards)
+        nav = s.js("""() => { const g = document.getElementById('nav-vps'), v = document.getElementById('nav-vm'), t = e => e ? e.innerText.replace(/\\s+/g, ' ').trim() : null;
+          return {gpu: t(g), vm: t(v), vmHidden: v ? v.hidden : null, has: v ? v.classList.contains('has') : null, after: v && g ? g.nextElementSibling === v : null}; }""")
+        ck("26/11 · menu bên tách 2 mục: 'VPS GPU của tôi' và ngay dưới là 'VPS NVMe của tôi' kèm số VPS (3)", nav["gpu"].startswith("VPS GPU của tôi") and nav["vm"] == "VPS NVMe của tôi 3"
+           and nav["vmHidden"] is False and nav["has"] and nav["after"], nav)
+        s.js("() => window.scrollTo(0, document.body.scrollHeight)"); s.page.wait_for_timeout(150)
+        s.page.click("#nav-vm"); s.page.wait_for_timeout(900)
+        top = s.js("() => Math.round(document.getElementById('vm-mine').getBoundingClientRect().top)")
+        ck("bấm 'VPS NVMe của tôi' → cuộn tới khung 'VPS NVMe của bạn'", -40 <= top <= 360, top)
         s.shot("vm-7-mine.png")
         s.page.click('[data-vm="12"] [data-vmpow="stop"]'); s.page.wait_for_timeout(400)
         ck("bấm Tắt → vm_my_power {12, stop}", s.calls("vm_my_power") == [{"p_id": 12, "p_act": "stop"}], s.calls("vm_my_power"))
@@ -467,6 +503,8 @@ def main():
         print("7. Khách khi chưa bật bán / chưa chạy SQL · điện thoại")
         s = Site(br, html, False, vm_data(shop=dict(SHOP, sell=False, admin=False)))
         ck("chưa bật bán → khách không thấy ô VPS ảo hoá", not s.vis("#vm-shop"))
+        s.js("() => { window.__VM.my = { items: [], images: [] }; return VMSHOP.mineLoad(true); }"); s.page.wait_for_timeout(400)
+        ck("chưa bật bán + khách chưa có VPS NVMe nào → menu bên KHÔNG hiện mục 'VPS NVMe của tôi'", s.js("() => document.getElementById('nav-vm').hidden") is True)
         s.close()
         s = Site(br, html, False, vm_data(miss=True))
         ck("chưa chạy SQL v56 → không thấy gì, không lỗi trang", not s.vis("#vm-shop") and not s.vis("#vm-mine") and not s.errors, s.errors)
