@@ -500,11 +500,14 @@ def checks(vm, label):
     ok("%s: card mạng VirtIO có driver, nhận địa chỉ DHCP" % label, any(x.startswith("10.0.2.") for x in ip), (t3 or "")[-300:])
     rc, t4 = ga.run("wmic.exe", ["path", "Win32_PnPEntity", "where", "ConfigManagerErrorCode<>0", "get", "Name,PNPDeviceID,ConfigManagerErrorCode", "/format:list"], 180)
     devs = [dict(re.findall(r"(?m)^(\w+)=(.*)$", blk)) for blk in re.split(r"\n\s*\n", (t4 or "").replace("&amp;", "&")) if "PNPDeviceID=" in blk]
-    # ACPI\ACPI0010 "HID Button over Interrupt Driver": lỗi có sẵn của Windows 10 1607 / Server 2016 trên máy ảo KVM (không dính driver VirtIO, không ảnh hưởng gì)
-    known = [d for d in devs if d.get("PNPDeviceID", "").upper().startswith("ACPI\\ACPI0010")]
+    # Thiết bị báo lỗi nhưng vô hại, không dính ổ đĩa / mạng / cổng agent:
+    #   ACPI\ACPI0010 "HID Button over Interrupt Driver" — lỗi có sẵn của Windows 10 1607 / Server 2016 trên máy ảo KVM
+    #   ACPI\QEMU0002 "QEMU FwCfg Device" — thiết bị chỉ để ghi thông tin lúc máy ảo sập; driver bản 0.1.215 không khởi động trên 2012 R2
+    why = {"ACPI\\ACPI0010": "lỗi vô hại có sẵn của Windows Server 2016 trên KVM", "ACPI\\QEMU0002": "thiết bị chỉ ghi thông tin lúc máy ảo sập — vô hại"}
+    known = [d for d in devs if d.get("PNPDeviceID", "").upper()[:13] in why]
     bad = ["%s [%s] mã %s" % (d.get("Name"), d.get("PNPDeviceID"), d.get("ConfigManagerErrorCode")) for d in devs if d not in known]
-    if known:
-        info("%s: bỏ qua thiết bị '%s' (lỗi vô hại có sẵn của Windows Server 2016 trên KVM)" % (label, known[0].get("Name")))
+    for d in known:
+        info("%s: bỏ qua thiết bị '%s' mã %s (%s)" % (label, d.get("Name"), d.get("ConfigManagerErrorCode"), why[d["PNPDeviceID"].upper()[:13]]))
     ok("%s: không còn thiết bị nào thiếu driver (ổ đĩa, mạng, cổng agent …)" % label, rc == 0 and not bad, " ; ".join(bad)[:500] or (t4 or "")[-200:])
     rc, t5 = ga.cmd("net user Administrator")
     act = re.search(r"(?im)^Account active\s+(\S+)", t5 or "")
