@@ -3439,7 +3439,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
           <div class="vma-set">
             <label>Giá 1 vCPU / 30 ngày (đ)<input class="in" type="number" id="vma-c-cpu" min="0" max="99999999" step="1000" placeholder="vd 30000" inputmode="numeric"></label>
             <label>Giá 1 GB RAM / 30 ngày (đ)<input class="in" type="number" id="vma-c-ram" min="0" max="99999999" step="1000" placeholder="vd 25000" inputmode="numeric"></label>
-            <label><span>Giá 1 GB ổ THÊM / 30 ngày (đ) <small class="vma-free">— chỉ tính phần vượt <b id="vma-c-free">20</b> GB miễn phí của mỗi VPS</small></span><input class="in" type="number" id="vma-c-disk" min="0" max="99999999" step="100" placeholder="vd 1000" inputmode="numeric"></label>
+            <label><span>Giá 1 GB ổ THÊM / 30 ngày (đ) <small class="vma-free">— chỉ tính phần vượt mức miễn phí của gói (gói để trống ô "Ổ miễn phí": <b id="vma-c-free">20</b> GB)</small></span><input class="in" type="number" id="vma-c-disk" min="0" max="99999999" step="100" placeholder="vd 1000" inputmode="numeric"></label>
             <label>Các mức ngày bán (cách nhau dấu phẩy)<input class="in" id="vma-c-days" maxlength="80" value="1, 3, 7, 30" spellcheck="false" autocomplete="off"></label>
             <label>Thuê dưới 30 ngày: cộng thêm (%)<input class="in" type="number" id="vma-c-up" min="0" max="300" step="5" value="0" inputmode="numeric"></label></div>
           <div class="vma-calc-prev" id="vma-c-prev"></div>
@@ -15779,6 +15779,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const custOn = () => { const c = CU(); return c.on === true && N(c.unit_cpu) > 0 && N(c.unit_ram) > 0; };
   const diskOn = src => N(CU(src).unit_disk) > 0;
   const freeGb = src => { const c = CU(src); return "disk_free_gb" in c ? N(c.disk_free_gb) : 20; };
+  const planInc = p => Math.max(N(O(p).disk_gb), "free_gb" in O(p) ? N(p.free_gb) : 0);   // SQL v61: ổ TỚI mức này không tính thêm tiền (≥ ổ của gói · chưa chạy v61 = ổ của gói)
   const vmMaint = () => { let m = false; try { m = !!(O(VM.info).maint === true || (typeof SITE !== "undefined" && SITE && SITE.vm_maint)); } catch (e) {} return m && !isAdm(); };
   const vmMaintMsg = () => { let m = ""; try { m = S(SITE.vm_maint_msg, 200).trim(); } catch (e) {} return m; };
   const maintNote = () => `<div class="note vms-maint">🛠️ ${esc(L(VMN + " đang bảo trì — tạm chưa thuê mới được. VPS đang chạy vẫn dùng + gia hạn bình thường.", VMN + " is under maintenance — new rentals are paused. Running VPS keep working."))}${vmMaintMsg() ? "<br><b>" + esc(vmMaintMsg()) + "</b>" : ""}</div>`;
@@ -15789,9 +15790,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const ex = Math.max(0, N(VM.b.cd) - freeGb()); if (ex > 0 && !diskOn()) return null;
     return tierOf(c, monthOf(c, VM.b.cc, VM.b.cr, ex), N(days)) || null;
   }
-  function planPrice(p, days) {                                      // gói có sẵn: giá gói + phần ổ thêm so với ổ của gói
+  function planPrice(p, days) {                                      // gói có sẵn: giá gói + phần ổ VƯỢT mức miễn phí của gói (v61; trước đó = ổ của gói)
     const x = A(p.prices).find(y => N(y.days) === N(days)); if (!x) return null;
-    const ex = N(VM.b.disk) - N(p.disk_gb); if (ex <= 0) return N(x.price); if (!diskOn()) return null;
+    const ex = N(VM.b.disk) - planInc(p); if (ex <= 0) return N(x.price); if (!diskOn()) return null;
     return N(x.price) + tierOf(CU(), ex * N(CU().unit_disk), N(days));
   }
   const curDays = p => (VM.b.cust ? A(CU().days).map(N).filter(d => custPrice(d) !== null) : A(p.prices).map(x => N(x.days)).filter(d => planPrice(p, d) !== null)).sort((a, b) => a - b);
@@ -15835,7 +15836,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const I = O(VM.info), ps = plansOk(), low = lowDay(), free = ps.some(p => p.free), mt = vmMaint(), mx = N(I.reinstall_max);
     const os = [...new Set(A(I.images).filter(i => i.ready).map(i => shortOs(i.name)))].slice(0, 4);
     const chips = !ps.length ? [] : [["⚙️", span(ps.map(p => N(p.cores))) + " vCPU"], ["🧠", span(ps.map(p => Math.round(N(p.ram_mb) / 102.4) / 10)) + " GB RAM"],
-      ["💾", "custom" in I ? L(`SSD NVMe ${freeGb()} GB miễn phí`, `${freeGb()} GB NVMe SSD free`) : "SSD NVMe " + span(ps.map(p => N(p.disk_gb))) + " GB"]];
+      ["💾", "custom" in I ? (fr => L(`SSD NVMe ${fr} GB miễn phí`, `${fr} GB NVMe SSD free`))(span([...(custOn() ? [freeGb()] : []), ...ps.map(planInc)])) : "SSD NVMe " + span(ps.map(p => N(p.disk_gb))) + " GB"]];
     const bn = [["⚡", L("Tự tạo 3–10 phút", "Ready in 3–10 min")], ["🖥", L("Web · app ĐT · app máy tính", "Web · phone · PC app")],
       I.upgrade === true ? ["⬆", L("Nâng cấp sau khi thuê", "Upgrade anytime")] : mx > 0 ? ["🔁", L(`Cài lại ${mx} lần`, `${mx} reinstalls`)] : null, ["🔒", L("Máy riêng của bạn", "Your own VM")]].filter(Boolean);
     return `<div class="pcs-hero vmb-hero"><div class="ph-top"><div class="ph-ic" aria-hidden="true">⚡</div><div class="ph-t"><b>${esc(VMN)} BLUE</b>
@@ -15850,7 +15851,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const ps = plansOk();
     const p = ps.find(x => x.id === id) || ps.filter(x => x.free).sort((a, b) => N(O(p30(a)).price) - N(O(p30(b)).price))[0] || ps[0]; if (!p) return;
     const lim = custLim();
-    VM.b = { plan: p.id, image: "", days: 0, disk: N(p.disk_gb), cust: false, cc: Math.min(2, lim.cores), cr: Math.min(4, lim.ram), cd: Math.max(20, freeGb()), mode: null };
+    VM.b = { plan: p.id, image: "", days: 0, disk: planInc(p), cust: false, cc: Math.min(2, lim.cores), cr: Math.min(4, lim.ram), cd: Math.max(20, freeGb()), mode: null };
     mgrClose();
     // 27/11: 2 cột (máy tính) — trái: thẻ nổi bật + ① cấu hình · phải: ② hệ điều hành · ③ thời gian · mã giảm giá · tổng tiền + Thanh toán → mở là thấy hết, không phải kéo
     dlg(`<div class="vmb-hd"><h3>⚡ ${L("Thuê", "Rent")} ${esc(VMN)}</h3><button class="vmb-x" type="button" data-vmx="1" aria-label="${esc(L("Đóng", "Close"))}">✕</button></div>
@@ -15875,27 +15876,28 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (!VM.b) return;
     if (pid === "custom") { if (!custOn()) return; VM.b.cust = true; return buyPaint(); }
     const p = plansOk().find(x => x.id === pid); if (!p) return;
-    if (VM.b.plan !== p.id) VM.b.disk = N(p.disk_gb);
+    if (VM.b.plan !== p.id) VM.b.disk = planInc(p);                  // v61: mặc định lấy hết phần ổ miễn phí của gói
     VM.b.cust = false; VM.b.plan = p.id; VM.b.disk = Math.max(N(p.disk_gb), N(VM.b.disk));
     buyPaint();
   }
   function cfgPaint(p) {                                               // ô tự chọn cấu hình / ô thêm ổ cho gói có sẵn (chỉ vẽ lại khi đổi kiểu — đang gõ không mất chỗ con trỏ)
     const box = $i("vms-cfg"); if (!box) return;
-    const c = CU(), cu = VM.b.cust, key = cu ? "c" : diskOn() ? "d:" + p.id : "";
+    const c = CU(), cu = VM.b.cust, inc = planInc(p), key = cu ? "c" : diskOn() || inc > N(p.disk_gb) ? "d:" + p.id : "";
     box.hidden = !key;
     if (key === VM.b.mode) return;
     VM.b.mode = key;
     const lim = custLim(), fr = freeGb();
     const row = (k, lb, sub, v, lo, hi, step) => `<div class="row"><span class="lb">${lb}<small>${sub}</small></span><span class="vms-step">
-      <button type="button" data-vmstep="${k}" data-d="-${step}" aria-label="−">−</button><input class="in" type="number" inputmode="numeric" id="vms-c-${k}" data-vmcfg="${k}" min="${lo}" max="${hi}" step="${step}" value="${v}">
-      <button type="button" data-vmstep="${k}" data-d="${step}" aria-label="+">+</button></span></div>`;
-    box.innerHTML = !key ? "" : `<div class="vms-cfg-t">${cu ? "🛠 " + L("Cấu hình tự chọn", "Your custom specs") : "💾 " + L("Thêm ổ (không bắt buộc)", "Extra disk (optional)")}</div>` + (cu
+      <button type="button" data-vmstep="${k}" data-d="-${step}" aria-label="−"${N(v) <= lo ? " disabled" : ""}>−</button><input class="in" type="number" inputmode="numeric" id="vms-c-${k}" data-vmcfg="${k}" min="${lo}" max="${hi}" step="${step}" value="${v}">
+      <button type="button" data-vmstep="${k}" data-d="${step}" aria-label="+"${N(v) >= hi ? " disabled" : ""}>+</button></span></div>`;
+    box.innerHTML = !key ? "" : `<div class="vms-cfg-t">${cu ? "🛠 " + L("Cấu hình tự chọn", "Your custom specs") : "💾 " + (inc > N(p.disk_gb) ? L(`Ổ SSD NVMe — miễn phí tới ${inc} GB`, `SSD NVMe disk — free up to ${inc} GB`) : L("Thêm ổ (không bắt buộc)", "Extra disk (optional)"))}</div>` + (cu
       ? row("cores", "⚙️ vCPU", esc(money(c.unit_cpu)) + " / vCPU / " + L("tháng", "month") + ` · ${L("tối đa", "max")} ${lim.cores}`, VM.b.cc, 1, lim.cores, 1)
         + row("ram", "🧠 RAM (GB)", esc(money(c.unit_ram)) + " / GB / " + L("tháng", "month") + ` · ${L("tối đa", "max")} ${lim.ram} GB`, VM.b.cr, 1, lim.ram, 1)
         + row("disk", "💾 SSD NVMe (GB)", L(`${fr} GB đầu miễn phí`, `first ${fr} GB free`) + (diskOn() ? ` · ${L("thêm", "extra")} ${esc(money(c.unit_disk))} / GB / ${L("tháng", "month")}` : ` · ${L("chưa bán ổ thêm", "no extra disk yet")}`),
               VM.b.cd, 20, diskOn() ? lim.disk : Math.max(20, fr), 10)
-      : row("pdisk", "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), L(`gói có sẵn ${N(p.disk_gb)} GB · thêm ${money(c.unit_disk)} / GB / tháng`, `plan includes ${N(p.disk_gb)} GB · extra ${money(c.unit_disk)} / GB / month`),
-              Math.max(N(p.disk_gb), N(VM.b.disk)), N(p.disk_gb), Math.max(N(p.disk_gb), lim.disk), 10));
+      : row("pdisk", "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), inc > N(p.disk_gb) ? (diskOn() ? L(`vượt ${inc} GB: thêm ${money(c.unit_disk)} / GB / tháng`, `above ${inc} GB: ${money(c.unit_disk)} / GB / month`) : L(`tối đa ${inc} GB`, `up to ${inc} GB`))
+                : L(`gói có sẵn ${N(p.disk_gb)} GB`, `plan includes ${N(p.disk_gb)} GB`) + (diskOn() ? L(` · thêm ${money(c.unit_disk)} / GB / tháng`, ` · extra ${money(c.unit_disk)} / GB / month`) : ""),
+              Math.max(N(p.disk_gb), N(VM.b.disk)), N(p.disk_gb), diskOn() ? Math.max(inc, lim.disk) : inc, 10));
   }
   function cfgSet(k, v, write) {                                       // − / + / gõ số: kẹp trong [min, max] của ô
     const el = $i(k.charAt(0) === "u" ? "vms-u-" + k.slice(1) : "vms-c-" + k); if (!el) return;
@@ -15914,11 +15916,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     VM.b.cust = cu;
     const os = osFor(I.images, ram, disk);
     if (!os.some(i => i.id === VM.b.image && i.ready)) VM.b.image = S((os.find(i => i.ready) || {}).id, 30);
-    const all = plansOk(), dks = [...new Set(all.map(x => N(x.disk_gb)))], one = dks.length === 1;   // mọi gói cùng ổ → ghi 1 lần ở đầu mục, thẻ gọn hơn
-    const sub = $i("vms-plan-sub"); if (sub) sub.textContent = one ? L(`mọi gói có SSD NVMe ${dks[0]} GB${"custom" in I && dks[0] <= freeGb() ? " miễn phí" : ""}`, `every plan has a ${dks[0]} GB NVMe SSD`) : "";
+    const all = plansOk(), dks = [...new Set(all.map(planInc))], one = dks.length === 1;   // mọi gói cùng ổ → ghi 1 lần ở đầu mục, thẻ gọn hơn
+    const sub = $i("vms-plan-sub"); if (sub) sub.textContent = one ? L(`mọi gói có SSD NVMe ${dks[0]} GB${("custom" in I && dks[0] <= freeGb()) || all.some(x => "free_gb" in x) ? " miễn phí" : ""}`, `every plan has a ${dks[0]} GB NVMe SSD`) : "";
     $i("vms-plan").innerHTML = all.map(x => { const q = p30(x), on = !cu && x.id === p.id;
       return `<button type="button" data-vmplan="${esc(S(x.id, 30))}" class="vmb-pl${on ? " on" : ""}" aria-pressed="${on}"${x.free || on ? "" : " disabled"}>
-        <b class="nm">${on ? "✓ " : ""}${esc(S(x.name, 40))}</b>${ics2(x.cores, x.ram_mb, one ? 0 : x.disk_gb)}
+        <b class="nm">${on ? "✓ " : ""}${esc(S(x.name, 40))}</b>${ics2(x.cores, x.ram_mb, one ? 0 : planInc(x))}
         <span class="pr">${x.free ? (q ? `<b>${esc(money(q.price))}</b><small>/${esc(perOf(q))}</small>` : "") : `<small>${L("tạm hết chỗ", "sold out")}</small>`}</span></button>`; }).join("")
       + (custOn() ? `<button type="button" data-vmplan="custom" class="vmb-pl cust${cu ? " on" : ""}" aria-pressed="${cu}"><b class="nm">${cu ? "✓ " : ""}🛠 ${L("Tự chọn cấu hình", "Custom specs")}</b>
         <span class="vms-ics"><span class="vms-ic"><i>⚙️</i>${cu ? N(VM.b.cc) + " vCPU" : L("vCPU tuỳ ý", "any vCPU")}</span><span class="vms-ic"><i>🧠</i>${cu ? N(VM.b.cr) + " GB RAM" : L("RAM tuỳ ý", "any RAM")}</span><span class="vms-ic"><i>💾</i>${cu ? "SSD NVMe " + N(VM.b.cd) + " GB" : L("ổ tuỳ ý", "any disk")}</span></span>
@@ -15939,7 +15941,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       return `<button type="button" data-vmdays="${N(x.days)}" class="vmb-d${on ? " on" : ""}" aria-pressed="${on}">
         <b>${on ? "✓ " : ""}${N(x.days)} ${L("ngày", "days")}</b><span>${money(x.price)}</span>${prs.length > 1 ? `<small class="pd">${money(pd(x))}/${L("ngày", "day")}</small>` : ""}${sv >= 1 ? `<i class="sv">−${sv}%</i>` : ""}</button>`; }).join("");
     const pr = prs.find(x => N(x.days) === VM.b.days), u = me(), img = os.find(i => i.id === VM.b.image);
-    const spec = cu ? `🛠 ${N(VM.b.cc)} vCPU · ${N(VM.b.cr)} GB RAM · SSD NVMe ${N(VM.b.cd)} GB` : `${esc(S(p.name, 40))}${disk > N(p.disk_gb) ? ` + ${disk - N(p.disk_gb)} GB ${L("ổ", "disk")} (SSD NVMe ${disk} GB)` : ""}`;
+    const spec = cu ? `🛠 ${N(VM.b.cc)} vCPU · ${N(VM.b.cr)} GB RAM · SSD NVMe ${N(VM.b.cd)} GB` : `${esc(S(p.name, 40))}${disk > N(p.disk_gb) ? ` + ${disk - N(p.disk_gb)} GB ${L("ổ", "disk")} (SSD NVMe ${disk} GB${disk <= planInc(p) ? " · " + L("miễn phí", "free")
+        : planInc(p) > N(p.disk_gb) ? ` · ${L("tính tiền", "charged")} ${disk - planInc(p)} GB` : ""})` : ""}`;
     const lack = u && pr ? N(pr.price) - N(u.balance) : 0;
     $i("vms-sum").innerHTML = pr ? `<div class="vmb-line">${spec}${img ? " · " + esc(shortOs(img.name)) : ""} · ${N(pr.days)} ${L("ngày", "days")}</div>
         <div class="vmb-tot"><span>${L("Tổng", "Total")}</span><b>${money(pr.price)}</b></div>
@@ -16217,9 +16220,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const v = vOf(id); if (!v) return;
     if (O(VM.mine).maint === true && !isAdm()) return toast(em("MAINT"), 1);
     const c = CU(VM.mine), cur = { cores: N(v.cores), ram: Math.ceil(N(v.ram_mb) / 1024), disk: N(v.disk_gb) };
-    const hi = { cores: Math.max(cur.cores, N(c.max_cores) || 16), ram: Math.max(cur.ram, N(c.max_ram_gb) || 32), disk: Math.max(cur.disk, N(c.max_disk_gb) || 200) };
+    const fr = N(v.free_gb), dOn = N(c.unit_disk) > 0;                // v61: ổ tới mức này không tính tiền
+    const hi = { cores: Math.max(cur.cores, N(c.max_cores) || 16), ram: Math.max(cur.ram, N(c.max_ram_gb) || 32), disk: dOn ? Math.max(cur.disk, N(c.max_disk_gb) || 200, fr) : Math.max(cur.disk, fr) };
     VM.u = { id: N(id), cur, cc: cur.cores, cr: cur.ram, cd: cur.disk, seq: 0, price: null };
-    const can = { cores: N(c.unit_cpu) > 0, ram: N(c.unit_ram) > 0, disk: N(c.unit_disk) > 0 };
+    const can = { cores: N(c.unit_cpu) > 0, ram: N(c.unit_ram) > 0, disk: dOn || fr > cur.disk };
     const row = (k, lb, sub, v0, top, step, ok) => `<div class="row"><span class="lb">${lb}<small>${sub}</small></span><span class="vms-step">
       <button type="button" data-vmstep="u${k}" data-d="-${step}" aria-label="−" disabled>−</button><input class="in" type="number" inputmode="numeric" id="vms-u-${k}" data-vmcfg="u${k}" min="${v0}" max="${ok ? top : v0}" step="${step}" value="${v0}"${ok ? "" : " disabled"}>
       <button type="button" data-vmstep="u${k}" data-d="${step}" aria-label="+"${ok && top > v0 ? "" : " disabled"}>+</button></span></div>`;
@@ -16228,7 +16232,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       <div class="vms-cfg" id="vms-up">
         ${row("cores", "⚙️ vCPU", can.cores ? esc(money(c.unit_cpu)) + " / vCPU / " + L("tháng", "month") : L("shop chưa bán thêm vCPU", "not for sale"), cur.cores, hi.cores, 1, can.cores)}
         ${row("ram", "🧠 RAM (GB)", can.ram ? esc(money(c.unit_ram)) + " / GB / " + L("tháng", "month") : L("shop chưa bán thêm RAM", "not for sale"), cur.ram, hi.ram, 1, can.ram)}
-        ${row("disk", "💾 SSD NVMe (GB)", can.disk ? esc(money(c.unit_disk)) + " / GB / " + L("tháng", "month") : L("shop chưa bán thêm ổ", "not for sale"), cur.disk, hi.disk, 10, can.disk)}</div>
+        ${row("disk", "💾 SSD NVMe (GB)", [fr > cur.disk ? L(`miễn phí tới ${fr} GB`, `free up to ${fr} GB`) : "", dOn ? esc(money(c.unit_disk)) + " / GB / " + L("tháng", "month") : fr > cur.disk ? "" : L("shop chưa bán thêm ổ", "not for sale")].filter(Boolean).join(" · "), cur.disk, hi.disk, 10, can.disk)}</div>
       <div class="hint">${L("Chỉ tăng được. Tiền = phần chênh giá tháng × số ngày còn lại / 30. Tăng vCPU / RAM: VPS tự khởi động lại ~1–2 phút. Chỉ thêm ổ: không cần khởi động lại, ổ C tự nới. Dữ liệu giữ nguyên.",
         "Increase only. Price = monthly difference × days left / 30. More vCPU / RAM: the VPS restarts (~1–2 min). Disk only: no restart, drive C grows automatically. Data is kept.")}</div>
       <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-up-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
@@ -16250,7 +16254,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       if (!r || r.error) { sm.innerHTML = ""; return dErr(em(r && r.error)); }
       const d = O(r.data), me_ = me(); u.price = N(d.price);
       sm.innerHTML = `<span class="hint">${u.cc} vCPU · ${u.cr} GB RAM · SSD NVMe ${u.cd} GB · ${L(`tính cho ${N(d.days_left)} ngày còn lại`, `for the ${N(d.days_left)} days left`)}${d.restart ? " · " + L("VPS tự khởi động lại ~1–2 phút", "the VPS restarts (~1–2 min)") : " · " + L("không cần khởi động lại", "no restart")}</span><br>
-        ${L("Phải trả", "To pay")}: <b>${money(u.price)}</b>${me_ ? ` <span class="hint">· ${L("số dư", "balance")} ${money(me_.balance)}</span>` : ""}`;
+        ${L("Phải trả", "To pay")}: <b>${u.price > 0 ? money(u.price) : L("0đ — miễn phí", "free")}</b>${me_ ? ` <span class="hint">· ${L("số dư", "balance")} ${money(me_.balance)}</span>` : ""}`;
       if (go) go.disabled = false;
     }, 280);
   }
@@ -16425,7 +16429,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   function admPlans(d) {
     const ps = A(d.plans);
     $i("vma-plans").innerHTML = `<div class="tbl"><table><thead><tr><th>${L("Gói", "Plan")}</th><th>vCPU</th><th>RAM</th><th>${L("Ổ", "Disk")}</th><th>${L("Giá", "Prices")}</th><th>${L("Bán", "On")}</th><th></th></tr></thead><tbody>
-      ${ps.map(p => `<tr><td><b>${esc(S(p.name, 40))}</b><div class="hint">${esc(S(p.id, 24))}${S(p.note, 80) ? " · " + esc(S(p.note, 80)) : ""}</div></td><td class="num">${N(p.cores)}</td><td class="num">${gb(p.ram_mb)}</td><td class="num">${N(p.disk_gb)} GB</td>
+      ${ps.map(p => `<tr><td><b>${esc(S(p.name, 40))}</b><div class="hint">${esc(S(p.id, 24))}${S(p.note, 80) ? " · " + esc(S(p.note, 80)) : ""}</div></td><td class="num">${N(p.cores)}</td><td class="num">${gb(p.ram_mb)}</td><td class="num">${N(p.disk_gb)} GB${"disk_free_gb" in p ? `<div class="hint">🆓 ${planFree(p)} GB${p.disk_free_gb === null ? " · " + L("chung", "default") : ""}</div>` : ""}</td>
         <td class="num">${A(p.prices).map(x => `${N(x.days)}n: ${vndS(x.price)}`).join("<br>") || `<span style="color:var(--bad)">${L("chưa có giá — khách chưa thấy", "no price — hidden")}</span>`}</td>
         <td>${p.enabled ? '<span class="pill ok">' + L("bán", "on") + "</span>" : '<span class="pill">' + L("ẩn", "off") + "</span>"}</td>
         <td style="white-space:nowrap;text-align:right"><button class="btn ghost sm" type="button" data-vmap="${esc(S(p.id, 24))}">✏️ ${L("Sửa", "Edit")}</button></td></tr>`).join("")}</tbody></table></div>`;    try { calcLoad(); calcPaint(); } catch (e) {}
@@ -16437,9 +16441,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const days = [...new Set(S($i("vma-c-days").value, 80).split(/[^0-9]+/).map(x => Math.round(N(x))).filter(x => x >= 1 && x <= 3650))].sort((x, y) => x - y).slice(0, 12);
     return { c: Math.max(0, N($i("vma-c-cpu").value)), r: Math.max(0, N($i("vma-c-ram").value)), d: Math.max(0, N($i("vma-c-disk").value)), up: Math.min(300, Math.max(0, N($i("vma-c-up").value))), days };
   }
-  const calcFree = () => { const st = O(O(VM.adm).settings); return "disk_free_gb" in st ? N(st.disk_free_gb) : 20; };    // ổ chỉ tính phần VƯỢT mức miễn phí (chưa chạy v59: 20 GB như khách thấy)
+  const calcFree = () => { const st = O(O(VM.adm).settings); return "disk_free_gb" in st ? N(st.disk_free_gb) : 20; };
+  const planFree = p => { const v = O(p).disk_free_gb; return v === null || v === undefined || v === "" ? calcFree() : N(v); };   // SQL v61: ô "Ổ miễn phí" riêng của gói (trống = mức chung)
+  const v61 = () => A(O(VM.adm).plans).some(x => "disk_free_gb" in O(x));    // ổ chỉ tính phần VƯỢT mức miễn phí (chưa chạy v59: 20 GB như khách thấy)
   function calcPrices(u, p) {                               // → [{days, price}]: dưới 30 ngày chia theo ngày rồi cộng thêm up %, từ 30 ngày theo đúng tỉ lệ
-    const m = r1000(N(p.cores) * u.c + N(p.ram_mb) / 1024 * u.r + Math.max(0, N(p.disk_gb) - calcFree()) * u.d);
+    const m = r1000(N(p.cores) * u.c + N(p.ram_mb) / 1024 * u.r + Math.max(0, N(p.disk_gb) - planFree(p)) * u.d);
     return u.days.map(n => ({ days: n, price: Math.max(1000, r1000(m * n / 30 * (n < 30 ? 1 + u.up / 100 : 1))) }));
   }
   function calcPaint() {
@@ -16447,7 +16453,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const u = calcRead(), ps = A(O(VM.adm).plans), ok = u.c + u.r + u.d > 0 && u.days.length > 0;
     $i("vma-c-go").disabled = !ok || !ps.length; $i("vma-c-miss").disabled = !ok || !ps.some(p => !A(p.prices).length);
     box.innerHTML = !ok ? esc(L("Nhập ít nhất 1 đơn giá và 1 mức ngày để xem trước giá từng gói.", "Enter a unit price and at least one duration to preview."))
-      : ps.map(p => { const ex = Math.max(0, N(p.disk_gb) - calcFree());
+      : ps.map(p => { const ex = Math.max(0, N(p.disk_gb) - planFree(p));
           return `<span><b>${esc(S(p.name, 40))}</b> <i class="vma-dk">💾 ${ex ? L(`+${ex} GB tính tiền`, `+${ex} GB charged`) : L(`${N(p.disk_gb)} GB miễn phí`, `${N(p.disk_gb)} GB free`)}</i> ${calcPrices(u, p).map(x => `${x.days}n ${vndS(x.price)}`).join(" · ")}</span>`; }).join("");
     const fr = $i("vma-c-free"); if (fr) fr.textContent = String(calcFree());
   }
@@ -16674,6 +16680,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       <div class="grid3"><label>vCPU<input class="in" type="number" id="vma-p-cores" min="1" max="64" step="1" value="${N(p.cores)}"></label>
         <label>RAM (GB)<input class="in" type="number" id="vma-p-ram" min="0.5" max="256" step="0.5" value="${N(p.ram_mb) / 1024}"></label>
         <label>${L("Ổ (GB)", "Disk (GB)")}<input class="in" type="number" id="vma-p-disk" min="10" max="4000" step="1" value="${N(p.disk_gb)}"></label></div>
+      ${v61() ? `<div class="grid2 vma-free-row" style="align-items:start"><label>🆓 ${L("Ổ miễn phí (GB)", "Free disk (GB)")}<input class="in" type="number" id="vma-p-free" min="0" max="4000" step="1" inputmode="numeric"
+          value="${p.disk_free_gb === null || p.disk_free_gb === undefined ? "" : N(p.disk_free_gb)}" placeholder="${esc(L(`trống = ${calcFree()} GB (chung)`, `empty = ${calcFree()} GB (default)`))}"></label>
+        <div class="hint">${L(`Ổ tới mức này KHÔNG tính tiền: khách chọn ổ tới đây vẫn đúng giá gói, chỉ phần vượt mới tính giá ổ thêm. Bảng ⚡ Tự tính giá cũng bỏ phần này. Để trống = theo ⚙ Cài đặt (${calcFree()} GB).`,
+          `Disk up to this size is free: customers pay the plan price up to here, only extra GB are charged. Empty = default (${calcFree()} GB).`)}</div></div>`
+        : `<div class="hint">🆓 ${L("Ô \"Ổ miễn phí\" riêng cho gói: cần chạy SQL v61 trước.", "Per-plan free disk needs SQL v61.")}</div>`}
       <div class="vms-lbl">${L("Bảng giá (số ngày → giá, đồng)", "Prices (days → VND)")}</div>
       <div class="vms-rows" id="vma-p-rows">${rows.map(x => priceRow(x.days, x.price)).join("")}</div>
       <button class="btn ghost sm" type="button" id="vma-p-add" style="justify-self:start">➕ ${L("Thêm mức giá", "Add a price")}</button>
@@ -16688,8 +16699,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const prices = [...document.querySelectorAll("#vma-p-rows .vms-row")].map(r => ({ days: Math.round(N(r.querySelector('[data-pr="d"]').value)), price: Math.round(N(r.querySelector('[data-pr="p"]').value)) }))
       .filter(x => x.days > 0 && x.days <= 9999 && x.price >= 0 && x.price <= 9999999999);
     const seen = new Set(), uniq = prices.filter(x => !seen.has(x.days) && seen.add(x.days));
-    return { name: S($i("vma-p-name").value, 40).trim(), cores: Math.round(N($i("vma-p-cores").value)), ram_mb: Math.round(N($i("vma-p-ram").value) * 1024),
+    const out = { name: S($i("vma-p-name").value, 40).trim(), cores: Math.round(N($i("vma-p-cores").value)), ram_mb: Math.round(N($i("vma-p-ram").value) * 1024),
              disk_gb: Math.round(N($i("vma-p-disk").value)), sort: Math.round(N($i("vma-p-sort").value)), note: S($i("vma-p-note").value, 200).trim(), enabled: !!$i("vma-p-on").checked, prices: uniq };
+    const fe = $i("vma-p-free");                                       // v61: trống = theo mức chung (null)
+    if (fe) out.disk_free_gb = S(fe.value, 8).trim() === "" ? null : Math.max(0, Math.min(4000, Math.round(N(fe.value))));
+    return out;
   }
   async function planSave(btn) {
     const id = VM.p || S($i("vma-p-id") && $i("vma-p-id").value, 24).trim().toLowerCase(), patch = planCollect();

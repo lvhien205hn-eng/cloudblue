@@ -219,6 +219,21 @@ def v59(d, maint=False):
     return d
 
 
+FREE61 = {"vps2-2": 50, "vps2-4": 40}
+
+
+def v61(d, free=None, unit_disk=1000):
+    """Dữ liệu sau khi đã chạy SQL v61 (ổ miễn phí riêng từng gói): gói có 'free_gb' · VPS có 'free_gb' · admin thấy 'disk_free_gb' (None = theo mức chung 20 GB)."""
+    free = FREE61 if free is None else free
+    v59(d)
+    for k in ("shop", "my"): d[k]["v"] = 61; d[k]["custom"]["unit_disk"] = unit_disk
+    d["adm"]["settings"]["unit_disk"] = unit_disk
+    for x in d["shop"]["plans"]: x["free_gb"] = max(x["disk_gb"], free.get(x["id"], 20))
+    for x in d["my"]["items"]: x["free_gb"] = max(x["disk_gb"], free.get(x["plan"], 20))
+    for x in d["adm"]["plans"]: x["disk_free_gb"] = free.get(x["id"])
+    return d
+
+
 def vm_data(**kw):
     d = {"shop": json.loads(json.dumps(SHOP)), "my": json.loads(json.dumps(MY)), "gpu": json.loads(json.dumps(GPU_MINE)), "adm": adm_state(), "rev": REV, "miss": False,
          "tpl": tpl_state()}
@@ -734,6 +749,90 @@ def main():
         admin_open(s, "set")
         ck("web mới + máy chủ CHƯA chạy SQL v59 → tab Cài đặt chỉ nhắc chạy 'CloudBlue v59 VPS NVMe cau hinh - bam Run', không có ô đơn giá; hộp Thuê không có ô Tự chọn / ổ thêm",
            "CloudBlue v59 VPS NVMe cau hinh" in (s.txt("#vma-set") or "") and not s.js("() => !!document.getElementById('vma-s-ucpu')"), s.txt("#vma-set"))
+        s.close()
+
+        print("6e. SQL v61: ổ miễn phí riêng từng gói (ô 'Ổ miễn phí (GB)' trong ✏️ Gói)")
+        s = Site(br, html, False, v61(vm_data()), products=prods)
+        s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }"); s.page.wait_for_timeout(300)
+        s.page.click('#grid .m3-row.vm .m3-box button[data-vmbuy]'); s.page.wait_for_timeout(300)
+        tl = s.js("() => Object.fromEntries([...document.querySelectorAll('#vms-plan [data-vmplan]')].map(b => [b.dataset.vmplan, b.innerText.replace(/\\s+/g, ' ').trim()]))")
+        ck("thẻ nổi bật ghi 'SSD NVMe 20–50 GB miễn phí'; gói khác mức → mỗi thẻ gói ghi ổ được dùng không thêm tiền (2-2: 50 GB · 2-4: 40 GB · 1-1: 20 GB)",
+           "SSD NVMe 20–50 GB miễn phí" in s.dlg() and "SSD NVMe 50 GB" in tl.get("vps2-2", "") and "SSD NVMe 40 GB" in tl.get("vps2-4", "") and "SSD NVMe 20 GB" in tl.get("vps1-1", ""), (s.dlg()[:200], tl))
+        s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
+        cfg = s.txt("#vms-cfg") or ""; sm = s.txt("#vms-sum") or ""
+        ck("chọn gói 2-2 (ổ 20 GB · miễn phí tới 50 GB) → ô ổ ghi 'miễn phí tới 50 GB', MẶC ĐỊNH 50 GB, tổng vẫn đúng giá gói 170.000đ, dòng tổng ghi '(SSD NVMe 50 GB · miễn phí)'",
+           "miễn phí tới 50 GB" in cfg and s.js("() => [document.getElementById('vms-c-pdisk').value, document.getElementById('vms-c-pdisk').min]") == ["50", "20"]
+           and "170.000đ" in sm and "VPS 2-2 + 30 GB ổ (SSD NVMe 50 GB · miễn phí)" in sm, (cfg, sm))
+        s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.wait_for_timeout(150)
+        sm = s.txt("#vms-sum") or ""
+        ck("bấm + → 60 GB: chỉ tính phần VƯỢT 50 GB → 170.000 + 10 × 1.000 = 180.000đ, ghi 'tính tiền 10 GB'", "180.000đ" in sm and "tính tiền 10 GB" in sm, sm)
+        s.page.click('[data-vmstep="pdisk"][data-d="-10"]'); s.page.click('[data-vmstep="pdisk"][data-d="-10"]'); s.page.wait_for_timeout(150)
+        ck("bớt về 40 GB (vẫn trong mức miễn phí) → 170.000đ", "170.000đ" in (s.txt("#vms-sum") or "") and "SSD NVMe 40 GB · miễn phí" in (s.txt("#vms-sum") or ""), s.txt("#vms-sum"))
+        s.page.click('#vms-plan [data-vmplan="vps1-1"]'); s.page.wait_for_timeout(150)
+        ck("đổi sang gói 1-1 (mức chung 20 GB = ổ của gói) → ô ổ về 20 GB, ghi như cũ 'gói có sẵn 20 GB · thêm 1.000đ / GB / tháng'",
+           s.js("() => document.getElementById('vms-c-pdisk').value") == "20" and "gói có sẵn 20 GB · thêm 1.000đ / GB / tháng" in (s.txt("#vms-cfg") or ""), s.txt("#vms-cfg"))
+        s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(150)
+        s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.wait_for_timeout(100)
+        s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.shot("vm-6e-o-mien-phi.png"); s.page.click("#vms-pay"); s.page.wait_for_timeout(600)
+        ck("Thanh toán → vm_buy {vps2-2, win10ltsc, 30 ngày, p_disk_gb 60}", (s.calls("vm_buy") or [None])[-1] == {"p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 30, "p_disk_gb": 60}, s.calls("vm_buy"))
+        s.js("""() => { const o = window.__FAKE_HOOK.vm_my_upgrade; window.__FAKE_HOOK.vm_my_upgrade = a => a.p_dry && a.p_cores === 2 && a.p_ram_gb === 4 && a.p_disk_gb <= 40
+                  ? ({ ok: true, dry: true, price: 0, days_left: 20, restart: false }) : o(a); }""")
+        s.page.click('#vmm-list [data-vmup="12"]'); s.page.wait_for_timeout(300)
+        ck("hộp Nâng cấp VPS-12 (gói 2-4 miễn phí tới 40 GB, đang 20 GB): dòng ổ ghi 'miễn phí tới 40 GB · 1.000đ / GB / tháng'", "miễn phí tới 40 GB · 1.000đ / GB / tháng" in (s.txt("#vms-up") or ""), s.txt("#vms-up"))
+        s.page.click('[data-vmstep="udisk"][data-d="10"]'); s.page.click('[data-vmstep="udisk"][data-d="10"]'); s.page.wait_for_timeout(800)
+        ck("thêm ổ 20 → 40 GB → máy chủ báo 0đ → hiện 'Phải trả: 0đ — miễn phí', nút Nâng cấp mở", "0đ — miễn phí" in (s.txt("#vms-up-sum") or "")
+           and not s.js("() => document.getElementById('vms-up-go').disabled") and s.calls("vm_my_upgrade")[-1]["p_disk_gb"] == 40, (s.txt("#vms-up-sum"), s.calls("vm_my_upgrade")[-1:]))
+        ck("không lỗi trang (khách v61)", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, False, v61(vm_data(), unit_disk=0), products=prods)
+        s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }"); s.page.wait_for_timeout(300)
+        s.page.click('#grid .m3-row.vm .m3-box button[data-vmbuy]'); s.page.wait_for_timeout(300)
+        s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
+        st = s.js("() => { const i = document.getElementById('vms-c-pdisk'); return i ? [i.value, i.max, document.querySelector('[data-vmstep=\"pdisk\"][data-d=\"10\"]').disabled] : null; }")
+        ck("shop KHÔNG bán ổ thêm (giá 0đ): gói 2-2 vẫn có ô ổ, chọn được tới 50 GB miễn phí (tối đa 50, nút + khoá), không ghi giá ổ thêm; tổng 170.000đ",
+           st == ["50", "50", True] and "thêm" not in (s.txt("#vms-cfg") or "").replace("Thêm", "") and "170.000đ" in (s.txt("#vms-sum") or ""), (st, s.txt("#vms-cfg")))
+        s.page.click('#vms-plan [data-vmplan="vps1-1"]'); s.page.wait_for_timeout(150)
+        ck("… gói 1-1 (không có ổ miễn phí thêm) → không hiện ô ổ", not s.vis("#vms-cfg"))
+        s.page.click('#vzdlg [data-vmx]'); s.page.wait_for_timeout(150)
+        s.page.click('#vm-mine-list [data-vmmgr="12"]'); s.page.wait_for_timeout(400); s.page.click('#vmm-list [data-vmup="12"]'); s.page.wait_for_timeout(300)
+        ud = s.js("() => { const i = document.getElementById('vms-u-disk'); return [i.disabled, i.max]; }")
+        ck("… nâng cấp VPS-12: ô ổ vẫn mở tới 40 GB (phần miễn phí), ghi 'miễn phí tới 40 GB'", ud == [False, "40"] and "miễn phí tới 40 GB" in (s.txt("#vms-up") or ""), (ud, s.txt("#vms-up")))
+        s.close()
+
+        ad = v61(vm_data())
+        for x in ad["adm"]["plans"]:
+            if x["id"] == "vps8-16": x.update(disk_gb=100, disk_free_gb=60)
+            if x["id"] == "vps4-4": x.update(disk_gb=100)
+        s = Site(br, html, True, ad, path="/admin", vp=(1600, 1000))
+        admin_open(s, "plans")
+        rows = s.js("() => Object.fromEntries([...document.querySelectorAll('#vma-plans tbody tr')].map(r => [r.querySelector('[data-vmap]').dataset.vmap, r.innerText.replace(/\\s+/g, ' ')]))")
+        ck("bảng gói: cột Ổ ghi mức miễn phí — 2-2 '🆓 50 GB' · 1-1 '🆓 20 GB · chung' (trống = theo cài đặt)", "🆓 50 GB" in rows.get("vps2-2", "") and "🆓 20 GB · chung" in rows.get("vps1-1", ""), rows.get("vps2-2"))
+        pv = s.txt("#vma-c-prev") or ""
+        ck("⚡ Tự tính giá dùng mức RIÊNG của gói: 8-16 ổ 100 GB miễn phí 60 → '+40 GB tính tiền' = 8×8.000 + 16×12.000 + 40×1.000 = 296.000đ; 4-4 ổ 100 GB trống ô (20) → '+80 GB' = 32.000 + 48.000 + 80.000 = 160.000đ",
+           "VPS 8-16 💾 +40 GB tính tiền" in pv and "30n 296.000đ" in pv and "VPS 4-4 💾 +80 GB tính tiền" in pv and "30n 160.000đ" in pv, pv)
+        s.page.click('[data-vmap="vps2-2"]'); s.page.wait_for_timeout(200)
+        d = s.dlg()
+        ck("✏️ Gói 2-2: có ô '🆓 Ổ miễn phí (GB)' = 50 + lời giải thích (ổ tới mức này KHÔNG tính tiền; để trống = theo ⚙ Cài đặt 20 GB)", s.js("() => document.getElementById('vma-p-free').value") == "50"
+           and "Ổ miễn phí (GB)" in d and "KHÔNG tính tiền" in d and "theo ⚙ Cài đặt (20 GB)" in d, d)
+        s.shot("vm-6e-sua-goi.png")
+        s.page.fill("#vma-p-free", ""); s.page.click("#vma-p-go"); s.page.wait_for_timeout(500)
+        pc = (s.calls("vm_admin_plan") or [{}])[-1]
+        ck("xoá trống ô → Lưu gửi disk_free_gb = null (về mức chung), giữ nguyên cấu hình + bảng giá", pc.get("p_id") == "vps2-2" and "disk_free_gb" in pc["p_patch"] and pc["p_patch"]["disk_free_gb"] is None
+           and pc["p_patch"]["disk_gb"] == 20 and pc["p_patch"]["prices"], pc)
+        s.page.click('[data-vmap="vps1-1"]'); s.page.wait_for_timeout(200)
+        ph = s.js("() => [document.getElementById('vma-p-free').value, document.getElementById('vma-p-free').placeholder]")
+        s.page.fill("#vma-p-free", "35"); s.page.click("#vma-p-go"); s.page.wait_for_timeout(500)
+        pc = (s.calls("vm_admin_plan") or [{}])[-1]
+        ck("gói 1-1 đang trống ô (gợi ý 'trống = 20 GB (chung)') → nhập 35 → Lưu gửi disk_free_gb 35", ph == ["", "trống = 20 GB (chung)"] and pc.get("p_id") == "vps1-1" and pc["p_patch"].get("disk_free_gb") == 35, (ph, pc))
+        ck("không lỗi trang (quản trị v61)", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, v59(vm_data()), path="/admin", vp=(1600, 1000))
+        admin_open(s, "plans")
+        s.page.click('[data-vmap="vps2-2"]'); s.page.wait_for_timeout(200)
+        nf = [s.js("() => !!document.getElementById('vma-p-free')"), "cần chạy SQL v61" in s.dlg()]
+        s.page.click("#vma-p-go"); s.page.wait_for_timeout(500)
+        pc = (s.calls("vm_admin_plan") or [{}])[-1]
+        ck("máy chủ CHƯA chạy v61 → hộp sửa gói không có ô (chỉ nhắc 'cần chạy SQL v61'); Lưu không gửi disk_free_gb", nf == [False, True] and "disk_free_gb" not in pc.get("p_patch", {"disk_free_gb": 1}), (nf, pc))
         s.close()
 
         print("7. Khách khi chưa bật bán / hết chỗ / chưa chạy SQL · admin xem trước · điện thoại")
