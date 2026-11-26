@@ -310,7 +310,11 @@ class Pve:
             if rc != 0: return rc, "nới ổ lỗi: " + out
         return 0, ""
 
-    def start(self, vmid): return run([QM, "start", str(vmid)], 180)
+    def start(self, vmid):
+        """Bật máy ảo. Máy ĐÃ đang chạy (vd vừa có lượt khác bật) = được, không báo lỗi (27/11a: khách mua VPS thấy 'bật máy lỗi: … already running')."""
+        rc, out = run([QM, "start", str(vmid)], 180)
+        if rc != 0 and "already running" in (out or ""): return 0, out
+        return rc, out
     def stop(self, vmid): return run([QM, "stop", str(vmid)], 180)
     def shutdown(self, vmid): return run([QM, "shutdown", str(vmid), "--timeout", "90", "--forceStop", "1"], 240)
     def reset(self, vmid): return run([QM, "reset", str(vmid)], 120)
