@@ -37,7 +37,7 @@ import java.util.Date;
 import java.util.Locale;
 
 /** Màn chính: Máy của tôi · Cloud Phone (thuê điện thoại đám mây) · VPS GPU (máy PC thật — 21/11e) · Tài khoản.
- *  Số thứ tự tab: 0 Máy của tôi · 1 Cloud Phone · 2 Tài khoản · 3 VPS GPU (thanh dưới xếp 0 · 1 · 3 · 2). */
+ *  Số thứ tự tab: 0 Máy của tôi · 1 Cloud Phone · 2 Tài khoản · 3 VPS GPU · 4 VPS NVMe (27/11) — thanh dưới xếp 0 · 1 · 3 · 4 · 2. */
 public class MainActivity extends Activity {
     static final int[] RAM = {2, 4, 6, 8, 12, 16}, CPU = {2, 4, 6, 8, 12, 16, 24, 32}, DAYS = {1, 3, 7, 15, 30, 60}, FPS = {30, 60, 90, 120}, QTY = {1, 2, 3, 5, 10};
     static final String[][] RES = {{"540x960", "Nhẹ máy"}, {"720x1280", "HD"}, {"720x1600", "HD+ dài"}, {"1080x1920", "Full HD"}, {"1080x2400", "FHD+ 20:9"}, {"1280x720", "HD ngang"}};
@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
     boolean bluePayRent = false;                      // khách đã bật "Trả bằng Blue" ở bảng thuê (giữ khi bảng vẽ lại)
     String rentPromo = "";                            // mã giảm giá đang gõ ở bảng thuê (giữ khi bảng vẽ lại)
     private Runnable rentUpd;                         // tính lại tổng tiền bảng thuê (Blue tải xong → cập nhật)
-    private final TextView[] nav = new TextView[4];
+    private final TextView[] nav = new TextView[5];
     private int tab = 0;
     private boolean loaded = false;
     private final Handler h = new Handler(Looper.getMainLooper());
@@ -231,17 +231,19 @@ public class MainActivity extends Activity {
         bar.setBackground(Ui.ringed(Ui.PANEL, 99));                   // 16/11c: thanh điều hướng nổi, bo tròn hẳn
         bar.setPadding(Ui.dp(6), Ui.dp(5), Ui.dp(6), Ui.dp(5));
         bar.setElevation(Ui.dp(6));
-        String[][] items = {{"📱", Ui.L("Máy của tôi", "My devices")}, {"☁️", "Cloud Phone"}, {"👤", Ui.L("Tài khoản", "Account")}, {"🖥️", "VPS GPU"}};
-        for (int i : new int[]{0, 1, 3, 2}) {                         // 21/11e: thêm tab VPS GPU (số 3) đứng trước Tài khoản
+        String[][] items = {{"📱", Ui.L("Máy của tôi", "My devices")}, {"☁️", "Cloud Phone"}, {"👤", Ui.L("Tài khoản", "Account")}, {"🖥️", "VPS GPU"}, {"⚡", "VPS NVMe"}};
+        for (int i : new int[]{0, 1, 3, 4, 2}) {                      // 21/11e: tab VPS GPU (số 3) · 27/11: tab VPS NVMe (số 4) — đứng trước Tài khoản
             final int t = i;
-            TextView n = Ui.text(this, items[i][0] + "\n" + items[i][1], 12, Ui.MUTED, true);
+            TextView n = Ui.text(this, items[i][0] + "\n" + items[i][1], Api.SHOP ? 10 : 12, Ui.MUTED, true);   // 5 tab → chữ nhỏ hơn chút cho vừa màn hẹp
+            n.setMaxLines(2);
+            n.setEllipsize(android.text.TextUtils.TruncateAt.END);
             n.setGravity(Gravity.CENTER);
             n.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
             n.setOnClickListener(v -> show(t));
             Ui.ripple(n, Color.TRANSPARENT, 99, 0);
             Ui.press(n);
             nav[i] = n;
-            if (!Api.SHOP && (i == 1 || i == 3)) n.setVisibility(View.GONE);  // không mua trong app → không có tab Cloud Phone / VPS GPU (máy đã thuê vẫn ở Máy của tôi)
+            if (!Api.SHOP && (i == 1 || i == 3 || i == 4)) n.setVisibility(View.GONE);  // không mua trong app → không có tab Cloud Phone / VPS GPU / VPS NVMe (máy đã thuê vẫn ở Máy của tôi)
             bar.addView(n, Ui.weight(1));
         }
         LinearLayout.LayoutParams barLp = Ui.fill();
@@ -333,6 +335,7 @@ public class MainActivity extends Activity {
             }
             else if (tab == 2) { if (!uiDrag) renderAccount(); }   // đang kéo thanh cỡ giao diện → khoan vẽ lại (thanh kéo biến mất dưới tay)
             else if (tab == 3) { if (!loaded || prof.optDouble("balance", 0) != vpsBal) renderVps(); }   // VPS GPU: vẽ lại khi số dư đổi (nạp / mua xong)
+            else if (tab == 4) { if (!loaded || prof.optDouble("balance", 0) != vmBal) renderVm(); }     // VPS NVMe: như trên
             else if (!loaded) renderRent();          // lần đầu: vẽ lại bảng thuê với giá và giới hạn thật
             loaded = true;
             boolean pending = false;
@@ -409,7 +412,7 @@ public class MainActivity extends Activity {
     }
 
     void show(int t) {
-        if (!Api.SHOP && (t == 1 || t == 3)) t = 0;     // không mua trong app → không có màn Cloud Phone / VPS GPU
+        if (!Api.SHOP && (t == 1 || t == 3 || t == 4)) t = 0;     // không mua trong app → không có màn Cloud Phone / VPS GPU / VPS NVMe
         if (t == 1 && tab != 1) rentPicked = false;     // vào lại trang Thuê máy → chưa chọn gói, chưa hiện tiền
         tab = t;
         try { getIntent().putExtra("tab", t); } catch (Exception ignored) { }   // 16/11: màn vẽ lại (Sáng/Tối, cỡ giao diện, xoay máy) → ở lại tab này
@@ -419,7 +422,8 @@ public class MainActivity extends Activity {
         }
         if (t != 0) { releasePreviews(); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng)
         if (t == 3) PcVps.tErrAt = 0;                    // vào tab VPS GPU → đọc lại bảng giá (kể cả lần trước lỗi)
-        if (t == 0) renderPhones(); else if (t == 1) renderRent(); else if (t == 3) renderVps(); else renderAccount();
+        if (t == 4) VmNvme.infoErrAt = 0;                // vào tab VPS NVMe → như trên
+        if (t == 0) renderPhones(); else if (t == 1) renderRent(); else if (t == 3) renderVps(); else if (t == 4) renderVm(); else renderAccount();
     }
 
     // ---------------- TAB VPS GPU (21/11e) ----------------
@@ -445,6 +449,35 @@ public class MainActivity extends Activity {
 
     /** Bảng giá VPS GPU vừa tải / vừa mua xong → vẽ lại nếu đang ở tab VPS GPU. */
     void vpsChanged() { if (!destroyed && tab == 3) renderVps(); vpsGrid(); }      // 22.11c: + lưới "Xem tất cả" (ô VPS GPU)
+
+    // ---------------- TAB VPS NVMe (27/11) — VmNvme.tab dựng nội dung (như tab VPS GPU) ----------------
+    private ScrollView vmSv = null;
+    private double vmBal = -1;
+
+    void renderVm() {
+        final int keepY = tab == 4 && vmSv != null && vmSv.getParent() != null ? vmSv.getScrollY() : 0;
+        vmBal = prof.optDouble("balance", 0);
+        LinearLayout body = Ui.col(this, 14);
+        View bar = VmNvme.tab(this, body);
+        final ScrollView sv = page(body);
+        vmSv = sv;
+        if (keepY > 0) sv.post(() -> sv.scrollTo(0, keepY));
+        if (bar != null) {
+            body.setPadding(body.getPaddingLeft(), body.getPaddingTop(), body.getPaddingRight(), Ui.dp(150));
+            FrameLayout.LayoutParams blp = new FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM);
+            blp.setMargins(Ui.dp(10), 0, Ui.dp(10), Ui.dp(8));
+            content.addView(bar, blp);
+        }
+    }
+
+    /** Bảng giá / lựa chọn VPS NVMe vừa đổi → vẽ lại nếu đang ở tab VPS NVMe. */
+    void vmChanged() { if (!destroyed && tab == 4) renderVm(); }
+
+    /** "VPS NVMe của tôi" vừa tải lại sau 1 thao tác (gia hạn, nâng cấp, đổi tên…) → vẽ lại trang đang mở. */
+    void vmMineChanged() {
+        if (destroyed) return;
+        if (tab == 0) { phonesSig = null; renderPhones(); } else if (tab == 4) renderVm();
+    }
 
     private ScrollView page(LinearLayout body) {
         body.setPadding(Ui.dp(16), Ui.dp(6), Ui.dp(16), Ui.dp(24));
@@ -533,6 +566,7 @@ public class MainActivity extends Activity {
         cr.addView(cb, Ui.wrap());
         body.addView(cr, Ui.fill());
         PcVps.link(this, body);                     // 21/11f · VPS GPU là mục riêng (tab 🖥️ VPS GPU) — ở đây chỉ 1 dòng dẫn sang khi khách có VPS
+        VmNvme.section(this, body);                 // 27/11 · ⚡ VPS NVMe của bạn (Ẩn / Hiện) — ngay dưới VPS GPU
 
         if (phones.length() == 0) {
             LinearLayout e = Ui.card(this);
