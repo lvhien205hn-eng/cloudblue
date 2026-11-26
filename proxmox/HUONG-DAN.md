@@ -53,7 +53,7 @@ Các mục 2, 3, 5 dưới đây là cách làm tay (vẫn dùng được, kết
 | Windows Server 2016 (dùng thử, tải thẳng ISO tiếng Anh) | https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US | trang gốc: https://www.microsoft.com/en-us/evalcenter/download-windows-server-2016 |
 | Windows Server 2019 (dùng thử, tải thẳng ISO) | https://go.microsoft.com/fwlink/p/?LinkID=2195167&clcid=0x409&culture=en-us&country=US | trang gốc: …/download-windows-server-2019 |
 | Windows Server 2022 (dùng thử, tải thẳng ISO) | https://go.microsoft.com/fwlink/p/?LinkID=2195280&clcid=0x409&culture=en-us&country=US | trang gốc: …/download-windows-server-2022 |
-| Driver VirtIO cho **2012 R2** (tải thẳng) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.240-1/virtio-win-0.1.240.iso | 0.1.240 là bản cuối còn hỗ trợ 2012 / 2012 R2 |
+| Driver VirtIO cho **2012 R2** (tải thẳng) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.215-2/virtio-win-0.1.215.iso | **phải là 0.1.215** — từ 0.1.217 (kể cả 0.1.240) Windows 2012 R2 không nhận chữ ký số của driver ổ đĩa, bộ cài báo không thấy ổ (đã thử cài thật) |
 | Driver VirtIO cho **Win10 LTSC / 2016 / 2019 / 2022** (tải thẳng) | https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso | bản ổn định — **đừng dùng 0.1.285** (lỗi ổ đĩa + mạng) **và 0.1.302** (lỗi sao lưu VSS của QEMU agent, Proxmox chưa khuyên dùng) |
 
 Không cần tải gì thêm: lệnh ghép ISO tự tải + tự kiểm chữ ký Python, ffmpeg, bản vá UCRT (2012 R2), oscdimg — thiếu / sai là **DỪNG** và báo rõ thiếu gì. ISO virtio cũng có thể bỏ trống (bấm Enter) để lệnh tự tải đúng bản.
@@ -107,7 +107,7 @@ Dựng 1 máy mẫu = **ghép 1 file ISO rồi cài** (tự làm hết, như ISO
 $d = "$env:TEMP\cb-iso-may-mau.ps1"; Remove-Item $d -Force -ErrorAction SilentlyContinue; curl.exe -fsSL -o $d "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/tao-iso-may-mau.ps1?t=$(Get-Random)"; if (-not ((Test-Path $d) -and (Select-String -Path $d -Pattern 'cloudblue-iso-may-mau' -SimpleMatch -Quiet))) { Write-Host 'Chua tai duoc - thu lai sau 1 phut' -ForegroundColor Red } else { Set-ExecutionPolicy -Scope Process Bypass -Force; & $d }
 ```
 
-- Kéo thả file **ISO Windows** vào cửa sổ → Enter. Kéo thả **ISO virtio-win** (2012 R2: 0.1.240 · bản khác: 0.1.271) → Enter — hoặc bấm Enter luôn để lệnh tự tải đúng bản.
+- Kéo thả file **ISO Windows** vào cửa sổ → Enter. Kéo thả **ISO virtio-win** (2012 R2: 0.1.215 · bản khác: 0.1.271) → Enter — hoặc bấm Enter luôn để lệnh tự tải đúng bản.
 - ISO có nhiều bản (Standard / Datacenter / Core…): lệnh tự chọn bản **Standard có giao diện**, muốn bản khác thì gõ số.
 - 10–20 phút → ra `CloudBlue-MayMau-win2012r2.iso` (ở gốc ổ còn nhiều chỗ nhất). Không chứa khoá bí mật nào.
 - ISO này **xoá sạch ổ đĩa** máy cài nó — chỉ gắn vào máy ảo mẫu mới tạo.

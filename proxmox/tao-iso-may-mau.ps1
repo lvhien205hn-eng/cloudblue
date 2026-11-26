@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-iso-may-mau   (ban 24.11a)
+#  cloudblue-iso-may-mau   (ban 26.11a)
 #  TAO 1 FILE ISO "MAY MAU" cho VPS ao hoa (Proxmox): Windows goc + driver VirtIO + QEMU guest agent + phan mem CloudBlue PC.
 #  Cai ISO nay len 1 may ao moi tren Proxmox la TU DONG HET: chia o, cai Windows, driver, QEMU guest agent, tai khoan khach VPS
 #  (Admin, khong mat khau, tu dang nhap), phan mem CloudBlue (CHUA dang ky). Xong may de chay cho -> bang dieu khien may mau tren web
@@ -7,7 +7,7 @@
 #
 #  Chay trong Windows PowerShell (Admin) tren may Windows 10 / 11 co file ISO Windows goc:
 #     -Iso    "D:\Win2012R2.iso"        ISO Windows goc (Server 2012 R2 / 2016 / 2019 / 2022, Windows 10 LTSC) - duong dan hoac link tai thang
-#     -Virtio "D:\virtio-win-0.1.240.iso"   ISO driver virtio-win (bo trong = tu tai dung ban: 2012 R2 -> 0.1.240, ban khac -> 0.1.271)
+#     -Virtio "D:\virtio-win-0.1.215.iso"   ISO driver virtio-win (bo trong = tu tai dung ban: 2012 R2 -> 0.1.215, ban khac -> 0.1.271)
 #     -Ban 2                            so thu tu ban Windows trong ISO (bo trong = tu chon ban Server co giao dien / Win10 LTSC)
 #     -Out "D:\CloudBlue-MayMau-win2012r2.iso"   -Work "D:\cb-maymau"   -TaiKhoan VPS   -Key XXXXX-...(ISO khong phai ban dung thu)
 #     -KhongHoi  -GiuWork  -KhongFfmpeg  -Nhanh main  -Nguon <thu muc kho cloudblue tai san>
@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "24.11a"
+$VER = "26.11a"
 $OwnerRepo = "lvhien205hn-eng/cloudblue"
 $RawBase = "https://raw.githubusercontent.com/" + $OwnerRepo
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
@@ -239,13 +239,16 @@ function Get-Input([string]$what, [string]$hint) {
   return $line
 }
 
-function Get-LinkFile([string]$url, [string]$name) {
-  # Link tai thang (http / https) -> <work>\dl\<ten>. Da tai roi (cung link) thi dung lai.
+function Get-LinkFile([string]$url, [string]$name, [string]$alt = "") {
+  # Link tai thang (http / https) -> <work>\dl\<ten>. Da tai roi (cung link) thi dung lai. $alt = link du phong (cung file, ten khac).
   $sha = [BitConverter]::ToString((New-Object Security.Cryptography.SHA256Managed).ComputeHash([Text.Encoding]::UTF8.GetBytes($url))).Replace("-", "").Substring(0, 12).ToLower()
   $dst = Join-Path $script:Dl ($name + "-" + $sha + ".iso")
   if ((Test-There $dst) -and ((Get-Item -LiteralPath $dst).Length -gt 100MB)) { Say ("   da tai link nay lan truoc: " + $dst) "DarkGray"; return $dst }
   Say ("   dang tai tu link (file lon, co the vai chuc phut): " + $url) "DarkGray"
-  if (-not (Get-File $url ($dst + ".part") $UA)) { Stop-Build ("Tai link loi: " + $script:GetFileErr) }
+  if (-not (Get-File $url ($dst + ".part") $UA)) {
+    $e1 = $script:GetFileErr
+    if ((-not $alt) -or (-not (Get-File $alt ($dst + ".part") $UA))) { Stop-Build ("Tai link loi: " + $e1 + ". Tai file do bang Chrome roi chay lai lenh: " + $url) }
+  }
   Move-Item -LiteralPath ($dst + ".part") -Destination $dst -Force
   return $dst
 }
@@ -409,11 +412,13 @@ try {
     $Virtio = Get-Input "ISO virtio-win (Enter = tu tai)" ("Keo tha file ISO virtio-win vao day roi Enter - hoac bam Enter de TU TAI ban " + $want + " (" + $S.os + ", ~600 MB).")
   }
   $Virtio = Clean-Path $Virtio
-  if (-not $Virtio) { $Virtio = $VIRTIOURL -f $want }
+  if (-not $Virtio) { if ("" + $S.virtio_url) { $Virtio = "" + $S.virtio_url } else { $Virtio = $VIRTIOURL -f $want } }
   if (Test-Link $Virtio) {
     $vname = "virtio-win"
     if ($Virtio -match 'virtio-win-(\d+\.\d+\.\d+)\.iso') { $vname = "virtio-win-" + $Matches[1] }
-    $Virtio = Get-LinkFile $Virtio $vname
+    $valt = ""
+    if ($Virtio -match '^(https://fedorapeople\.org/.+/archive-virtio/virtio-win-[0-9.]+-\d+/)virtio-win-[0-9.]+\.iso$') { $valt = $Matches[1] + "virtio-win.iso" }
+    $Virtio = Get-LinkFile $Virtio $vname $valt
   }
   if (-not (Test-There $Virtio)) { Stop-Build ("Khong thay file ISO virtio-win: " + $Virtio) }
   $VRoot = Mount-Iso $Virtio
@@ -425,7 +430,12 @@ try {
     if (-not (@(Get-ChildItem -LiteralPath $dd -Filter "*.inf" -ErrorAction SilentlyContinue).Count -gt 0)) { $miss += $d }
   }
   if ($miss.Count -gt 0) {
-    Stop-Build ("ISO virtio-win " + $VVer + " khong co driver " + ($miss -join ", ") + " cho " + $S.os + ". " + $(if ($S.os -eq "2k12R2") { "Windows Server 2012 R2 phai dung virtio-win 0.1.240." } else { "Dung virtio-win " + $want + "." }))
+    Stop-Build ("ISO virtio-win " + $VVer + " khong co driver " + ($miss -join ", ") + " cho " + $S.os + ". Dung virtio-win " + $want + ".")
+  }
+  # ban virtio QUA MOI cho ban Windows nay (2012 R2: tu 0.1.217 Windows khong nhan chu ky so cua driver o dia -> bo cai khong thay o dia) -> dung, khong ghep ISO hong
+  $vmax = "" + $S.virtio_max
+  if ($vmax -and ($VVer -match '^\d+\.\d+\.\d+$') -and ([version]$VVer -gt [version]$vmax)) {
+    Stop-Build ("virtio-win " + $VVer + " QUA MOI cho " + $S.name + ": Windows nay khong nhan chu ky so cua driver o dia ban do, bo cai se bao khong thay o dia. Dung virtio-win " + $vmax + " - tai bang Chrome: " + $S.virtio_url + " roi chay lai lenh (hoac bo -Virtio de lenh tu tai).")
   }
   $GaMsi = Join-Path $VRoot "guest-agent\qemu-ga-x86_64.msi"
   if (-not (Test-There $GaMsi)) { Stop-Build "ISO virtio-win thieu guest-agent\qemu-ga-x86_64.msi (QEMU guest agent)." }
