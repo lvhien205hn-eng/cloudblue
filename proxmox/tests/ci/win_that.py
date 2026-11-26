@@ -13,16 +13,19 @@
 
    Kết quả: kq/win-<tag>-ketqua.txt (dòng OK / XX / ..), ảnh màn hình kq/win-<tag>-*.png, nhật ký trong máy kq/win-<tag>-*.txt.
    Cứ 5 phút đẩy kết quả dở lên nhánh win-shots-<tag> (win_that_push.sh) để theo dõi được lúc đang chạy."""
-import base64, json, os, random, re, shutil, socket, struct, subprocess, sys, time, zlib
+import base64, hashlib, json, os, random, re, shutil, socket, struct, subprocess, sys, time, zlib
 
-TAG = os.environ.get("TAG", "win2016")
+TAG = os.environ.get("TAG", "win2016")                          # nhãn kết quả (win2016, win2012r2, win2016-uefi)
+BAN = os.environ.get("BAN") or TAG.replace("-uefi", "")         # bản Windows = tên ISO máy mẫu
+UEFI = TAG.endswith("-uefi")                                    # máy ảo OVMF (admin tự tạo máy kiểu UEFI) — cbhost thì luôn tạo SeaBIOS
 W = os.environ.get("W", "/mnt/w")
 KQ = os.environ.get("KQ", os.path.join(os.getcwd(), "kq"))
 HERE = os.path.dirname(os.path.abspath(__file__))
-ISO = os.path.join(W, "iso", "CloudBlue-MayMau-%s.iso" % TAG)
+ISO = os.path.join(W, "iso", "CloudBlue-MayMau-%s.iso" % BAN)
 DISK = os.path.join(W, "mau-%s.qcow2" % TAG)
 RES = os.path.join(KQ, "win-%s-ketqua.txt" % TAG)
-T_INSTALL = int(os.environ.get("T_INSTALL", "110")) * 60          # cbhost cho 3 giờ; máy CI lồng 2 tầng ảo hoá chậm hơn máy thật
+T_INSTALL = int(os.environ.get("T_INSTALL", "50")) * 60           # cbhost cho 3 giờ; trên máy CI bản 2016 cài hết 4 phút
+T_STALL = 6                                                      # màn hình đứng yên từng ấy phút mà guest agent chưa lên → coi là kẹt: chẩn đoán rồi dừng
 BASE = "C:\\CloudBluePC"
 DONE_F = BASE + "\\vm\\maymau.done"
 FAIL_F = BASE + "\\vm\\maymau.loi"
@@ -211,13 +214,14 @@ class Qga:
 
 
 class Vm:
-    def __init__(self, name, disk, iso=None, cpu=CPUS[0], uuid="5a1b3c4d-0000-4000-8000-00000000cb01", mac="BC:24:11:CB:00:01"):
+    def __init__(self, name, disk, iso=None, cpu=CPUS[0], uuid="5a1b3c4d-0000-4000-8000-00000000cb01", mac="BC:24:11:CB:00:01", vars_from=None):
         self.name = name
         self.qmp_p = os.path.join(W, "qmp-%s.sock" % name)
         self.qga_p = os.path.join(W, "qga-%s.sock" % name)
         for p in (self.qmp_p, self.qga_p):
             if os.path.exists(p):
                 os.remove(p)
+        self.same, self.last_hash = 0, None
         a = ["qemu-system-x86_64", "-enable-kvm", "-name", name, "-machine", "pc,hpet=off", "-cpu", cpu, "-smp", "2,sockets=1,cores=2,maxcpus=2", "-m", "2048",
              "-nodefaults", "-display", "none", "-boot", "menu=on,strict=on,reboot-timeout=1000", "-smbios", "type=1,uuid=" + uuid,
              "-qmp", "unix:%s,server,nowait" % self.qmp_p,
@@ -234,6 +238,11 @@ class Vm:
              "-rtc", "driftfix=slew,base=localtime", "-global", "kvm-pit.lost_tick_policy=discard"]
         if iso:
             a += ["-drive", "file=%s,if=none,id=drive-ide2,media=cdrom,readonly=on,format=raw" % iso, "-device", "ide-cd,bus=ide.1,unit=0,drive=drive-ide2,id=ide2,bootindex=101"]
+        if UEFI:
+            vars_f = os.path.join(W, "vars-%s.fd" % name)
+            if not os.path.exists(vars_f):
+                shutil.copy(vars_from or "/usr/share/OVMF/OVMF_VARS_4M.fd", vars_f)
+            a += ["-drive", "if=pflash,unit=0,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd", "-drive", "if=pflash,unit=1,format=raw,file=" + vars_f]
         self.cmdline = " ".join(a)
         self.qlog = os.path.join(KQ, "win-%s-qemu-%s.txt" % (TAG, name))
         self.p = subprocess.Popen(a, stdout=open(self.qlog, "w"), stderr=subprocess.STDOUT)
@@ -250,20 +259,46 @@ class Vm:
         return self.p.poll() is None
 
     def shot(self, tag):
+        """Chụp màn hình → kq/win-<tag>-<máy>-<tên>.png; trả mã băm của ảnh (để biết màn hình có đổi không)."""
         ppm = os.path.join(W, "s-%s.ppm" % self.name)
         try:
             self.q.cmd("screendump", filename=ppm)
             time.sleep(0.5)
             ppm_to_png(ppm, os.path.join(KQ, "win-%s-%s-%s.png" % (TAG, self.name, tag)))
+            return hashlib.sha256(open(ppm, "rb").read()).hexdigest()
         except Exception as e:
             print("   (không chụp được màn hình: %s)" % e, flush=True)
+            return None
+
+    def key(self, *codes):
+        self.q.cmd("send-key", keys=[{"type": "qcode", "data": c} for c in codes], **{"hold-time": 70})
+        time.sleep(0.16)
+
+    def type_line(self, text, wait=3):
+        """Gõ 1 dòng lệnh + Enter (bàn phím en-US) — để hỏi bộ cài Windows qua cửa sổ lệnh Shift+F10 khi nó kẹt."""
+        plain = {" ": "spc", "\\": "backslash", ".": "dot", "-": "minus", "/": "slash", "=": "equal", ",": "comma", ";": "semicolon", "'": "apostrophe"}
+        shift = {":": "semicolon", "_": "minus", "|": "backslash", ">": "dot", "<": "comma", "*": "8", "$": "4", "~": "grave_accent", '"': "apostrophe",
+                 "(": "9", ")": "0", "&": "7", "%": "5", "+": "equal", "?": "slash", "!": "1"}
+        for ch in text:
+            if ch.isascii() and ch.isalpha():
+                self.key(*((["shift"] if ch.isupper() else []) + [ch.lower()]))
+            elif ch.isdigit():
+                self.key(ch)
+            elif ch in plain:
+                self.key(plain[ch])
+            elif ch in shift:
+                self.key("shift", shift[ch])
+        self.key("ret")
+        time.sleep(wait)
 
     def tick(self, every=300):
         """Gọi đều trong lúc chờ: 1 phút chụp đè ảnh 'moi-nhat', mỗi <every> giây giữ thêm 1 ảnh đánh số phút + đẩy kết quả dở."""
         el = time.time() - self.t0
         if el >= self.n * 60:
             self.n = int(el // 60) + 1
-            self.shot("moi-nhat")
+            h = self.shot("moi-nhat")
+            self.same = self.same + 1 if (h and h == self.last_hash) else 0
+            self.last_hash = h
             if int(el // 60) % (every // 60) == 0 and el >= 60:
                 self.shot("p%03d" % int(el // 60))
             push("dang chay: %s phut %d" % (self.name, int(el // 60)))
@@ -318,6 +353,7 @@ def collect(vm, why):
         info("%s: guest agent không trả lời → không lấy được nhật ký trong máy qua agent" % why)
         return
     for name, path in (("maymau-log", BASE + "\\logs\\maymau.log"), ("maymau-out", BASE + "\\logs\\maymau.out"), ("provision-log", BASE + "\\logs\\provision.log"),
+                       ("pe-log", BASE + "\\logs\\cbvm-pe.log"), ("pe-log-c", "C:\\cbvm-pe.log"),
                        ("maymau-loi", FAIL_F), ("setuperr", "C:\\Windows\\Panther\\setuperr.log"), ("setupact", "C:\\Windows\\Panther\\setupact.log"),
                        ("unattendgc", "C:\\Windows\\Panther\\UnattendGC\\setupact.log"), ("qemu-ga-msi", BASE + "\\logs\\qemu-ga-msi.log")):
         save_txt(name, vm.ga.read(path), 250 if name in ("setupact", "unattendgc", "qemu-ga-msi") else 400)
@@ -338,7 +374,8 @@ def autopsy(disk):
             continue
         rc, ls = sh("ls %s | head -30" % mnt)
         info("ổ %s: %s" % (part, ls.replace("\n", " ")))
-        for name, rel in (("x-setupact-bt", "$WINDOWS.~BT/Sources/Panther/setupact.log"), ("x-setuperr-bt", "$WINDOWS.~BT/Sources/Panther/setuperr.log"),
+        for name, rel in (("x-pe-log", "cbvm-pe.log"), ("x-pe-setuperr", "cb-setuperr.log"), ("x-pe-setupact", "cb-setupact.log"),
+                          ("x-setupact-bt", "$WINDOWS.~BT/Sources/Panther/setupact.log"), ("x-setuperr-bt", "$WINDOWS.~BT/Sources/Panther/setuperr.log"),
                           ("x-setupact", "Windows/Panther/setupact.log"), ("x-setuperr", "Windows/Panther/setuperr.log"),
                           ("x-unattendgc", "Windows/Panther/UnattendGC/setupact.log"), ("x-maymau-log", "CloudBluePC/logs/maymau.log"),
                           ("x-maymau-out", "CloudBluePC/logs/maymau.out"), ("x-provision-log", "CloudBluePC/logs/provision.log")):
@@ -354,6 +391,26 @@ def autopsy(disk):
         info("mổ ổ: không đọc được nhật ký nào (ổ chưa chia / chưa có file)")
 
 
+def diag(vm):
+    """Bộ cài kẹt (màn hình đứng yên, guest agent chưa lên): mở cửa sổ lệnh của bộ cài (Shift+F10), in nhật ký ra màn hình rồi chụp,
+    chép nhật ký của bộ cài sang ổ Windows mới (W:) để bước mổ ổ đọc được."""
+    vm.shot("ket-o-day")
+    vm.key("shift", "f10")
+    time.sleep(5)
+    vm.type_line("mode con cols=125 lines=50", 2)
+    vm.type_line("type X:\\Windows\\Panther\\setuperr.log", 3)
+    vm.shot("chan-doan-1-setuperr")
+    vm.type_line("cls & type X:\\cbvm-pe.log", 3)
+    vm.shot("chan-doan-2-pe")
+    vm.type_line("cls & echo list disk> X:\\q.txt & echo list volume>> X:\\q.txt & diskpart /s X:\\q.txt", 8)
+    vm.shot("chan-doan-3-o-dia")
+    vm.type_line("cls & copy /y X:\\Windows\\Panther\\setupact.log W:\\cb-setupact.log & copy /y X:\\Windows\\Panther\\setuperr.log W:\\cb-setuperr.log & copy /y X:\\cbvm-pe.log W:\\cbvm-pe.log", 5)
+    vm.type_line("dir W:\\ & dir X:\\Windows\\Panther", 3)
+    vm.shot("chan-doan-4-chep")
+    vm.type_line("cls & findstr /i /c:\"error\" /c:\"fail\" /c:\"cannot\" X:\\Windows\\Panther\\setupact.log", 4)
+    vm.shot("chan-doan-5-setupact")
+
+
 def install():
     if not os.path.isfile(ISO):
         ok("có file ISO máy mẫu do job Windows ghép (%s)" % os.path.basename(ISO), False, "không thấy %s — xem phần ghép ở trên" % ISO)
@@ -365,10 +422,19 @@ def install():
     vm = start_vm("cai", DISK, ISO)
     info("lệnh QEMU (như máy cbhost tạo trên Proxmox): " + vm.cmdline[:880])
     ga_at, done_at, fail_txt = None, None, None
+    stalled = False
     while time.time() - vm.t0 < T_INSTALL and vm.alive():
         vm.tick()
         time.sleep(20)
         if not vm.ga.ping():
+            if ga_at is None and vm.same >= T_STALL:
+                stalled = True
+                info("phút %.0f: màn hình đứng yên %d phút, guest agent chưa lên → bộ cài KẸT (xem ảnh ket-o-day + chan-doan-*)" % ((time.time() - vm.t0) / 60, vm.same))
+                try:
+                    diag(vm)
+                except Exception as e:
+                    info("chẩn đoán lỗi: %s" % e)
+                break
             continue
         if ga_at is None:
             ga_at = time.time() - vm.t0
@@ -387,7 +453,8 @@ def install():
         ok("máy ảo cài Windows không tự tắt giữa chừng", False, "QEMU thoát ở phút %.0f: %s" % (mins, open(vm.qlog).read()[-300:]))
     good = ok("Windows TỰ CÀI từ ISO máy mẫu tới hết (không bấm gì): guest agent trả lời + có maymau.done — như cbhost chờ"
               + (" — %.0f phút trên máy CI" % (done_at / 60) if done_at else ""), done_at is not None,
-              ("maymau.ps1 báo lỗi: " + fail_txt) if fail_txt else ("quá %d phút chưa xong (agent %s)" % (mins, "đã trả lời từ phút %.0f" % (ga_at / 60) if ga_at else "CHƯA trả lời — xem ảnh màn hình")))
+              ("maymau.ps1 báo lỗi: " + fail_txt) if fail_txt else ("bộ cài Windows KẸT ở phút %d — xem ảnh ket-o-day / chan-doan-*" % mins) if stalled
+              else ("quá %d phút chưa xong (agent %s)" % (mins, "đã trả lời từ phút %.0f" % (ga_at / 60) if ga_at else "CHƯA trả lời — xem ảnh màn hình")))
     collect(vm, "sau khi cài")
     if not good:
         vm.kill()
@@ -409,8 +476,13 @@ def checks(vm, label):
     o = ga.call("guest-info")
     if o and "return" in o:
         info("%s: QEMU guest agent bản %s" % (label, o["return"].get("version")))
-    rc, t = ga.run("tasklist.exe", ["/fo", "csv", "/nh"])
-    procs = sorted(set(x.split('","')[0].strip('"').lower() for x in (t or "").splitlines() if x.startswith('"')))
+    procs, t0 = [], time.time()
+    while time.time() - t0 < 300:                       # lần đăng nhập đầu Windows còn dựng hồ sơ người dùng vài chục giây rồi mới hiện màn hình nền
+        rc, t = ga.run("tasklist.exe", ["/fo", "csv", "/nh"])
+        procs = sorted(set(x.split('","')[0].strip('"').lower() for x in (t or "").splitlines() if x.startswith('"')))
+        if "explorer.exe" in procs:
+            break
+        time.sleep(10)
     rc, qu = ga.cmd("query user 2>&1")
     o = ga.call("guest-get-users")
     users = [str(u.get("user")) for u in (o or {}).get("return", [])] if isinstance((o or {}).get("return"), list) else []
@@ -425,7 +497,12 @@ def checks(vm, label):
     ip = re.findall(r"IPv4[^:]*:\s*([0-9.]+)", t3 or "")
     ok("%s: card mạng VirtIO có driver, nhận địa chỉ DHCP" % label, any(x.startswith("10.0.2.") for x in ip), (t3 or "")[-300:])
     rc, t4 = ga.run("wmic.exe", ["path", "Win32_PnPEntity", "where", "ConfigManagerErrorCode<>0", "get", "Name,PNPDeviceID,ConfigManagerErrorCode", "/format:list"], 180)
-    bad = [x.strip() for x in (t4 or "").splitlines() if x.strip().startswith(("Name=", "PNPDeviceID="))]
+    devs = [dict(re.findall(r"(?m)^(\w+)=(.*)$", blk)) for blk in re.split(r"\n\s*\n", (t4 or "").replace("&amp;", "&")) if "PNPDeviceID=" in blk]
+    # ACPI\ACPI0010 "HID Button over Interrupt Driver": lỗi có sẵn của Windows 10 1607 / Server 2016 trên máy ảo KVM (không dính driver VirtIO, không ảnh hưởng gì)
+    known = [d for d in devs if d.get("PNPDeviceID", "").upper().startswith("ACPI\\ACPI0010")]
+    bad = ["%s [%s] mã %s" % (d.get("Name"), d.get("PNPDeviceID"), d.get("ConfigManagerErrorCode")) for d in devs if d not in known]
+    if known:
+        info("%s: bỏ qua thiết bị '%s' (lỗi vô hại có sẵn của Windows Server 2016 trên KVM)" % (label, known[0].get("Name")))
     ok("%s: không còn thiết bị nào thiếu driver (ổ đĩa, mạng, cổng agent …)" % label, rc == 0 and not bad, " ; ".join(bad)[:500] or (t4 or "")[-200:])
     rc, t5 = ga.cmd("net user Administrator")
     act = re.search(r"(?im)^Account active\s+(\S+)", t5 or "")
@@ -461,7 +538,7 @@ def vps():
     if os.path.exists(disk):
         os.remove(disk)
     rc, out = sh(["qemu-img", "create", "-f", "qcow2", "-b", DISK, "-F", "qcow2", disk])
-    vm = start_vm("vps", disk, None, uuid="5a1b3c4d-0000-4000-8000-00000000cb02", mac="BC:24:11:CB:00:02")
+    vm = start_vm("vps", disk, None, uuid="5a1b3c4d-0000-4000-8000-00000000cb02", mac="BC:24:11:CB:00:02", vars_from=os.path.join(W, "vars-cai.fd") if UEFI else None)
     up = None
     while time.time() - vm.t0 < 900 and vm.alive():
         vm.tick()
@@ -496,7 +573,7 @@ def vps():
 
 
 def main():
-    line("== Windows tự cài từ ISO máy mẫu — %s (commit %s)" % (TAG, os.environ.get("GITHUB_SHA", "?")[:12]))
+    line("== Windows tự cài từ ISO máy mẫu — %s, máy ảo %s (commit %s)" % (BAN, "UEFI (OVMF)" if UEFI else "BIOS (SeaBIOS) như cbhost tạo", os.environ.get("GITHUB_SHA", "?")[:12]))
     rc, out = sh("ls -l /dev/kvm; nproc; free -m | sed -n 2p; df -h %s | tail -1; qemu-system-x86_64 --version | head -1" % W)
     info("máy CI: " + out)
     try:

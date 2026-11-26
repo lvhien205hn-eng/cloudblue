@@ -4,7 +4,8 @@
 #   win_that.sh chay      -> gom ket qua job ghep (Windows) + chay win_that.py; ket qua trong kq/ va nhanh win-shots-<tag>
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
-TAG=${TAG:-win2016}
+TAG=${TAG:-win2016}            # nhan ket qua: win2016 | win2012r2 | win2016-uefi
+BAN=${BAN:-${TAG%-uefi}}       # ban Windows = ten ISO may mau
 KQ=${KQ:-$PWD/kq}
 mkdir -p "$KQ"
 
@@ -26,21 +27,21 @@ chuanbi() {
   echo "   cho lam viec: $w"
   [ -n "${GITHUB_ENV:-}" ] && echo "W=$w" >> "$GITHUB_ENV"
   sudo apt-get update -q >/dev/null 2>&1
-  sudo apt-get install -y -q qemu-system-x86 qemu-utils ntfs-3g parted >/dev/null 2>&1
+  sudo apt-get install -y -q qemu-system-x86 qemu-utils ovmf ntfs-3g parted >/dev/null 2>&1
   [ -w /dev/kvm ] || sudo chmod 666 /dev/kvm
-  ls -l /dev/kvm; qemu-system-x86_64 --version | head -1
+  ls -l /dev/kvm; qemu-system-x86_64 --version | head -1; ls /usr/share/OVMF/ 2>/dev/null | tr '\n' ' '; echo
 }
 
 chay() {
   local res="$KQ/win-$TAG-ketqua.txt"
   : > "$res"
   # ket qua job ghep tren Windows (file do win_that_build.ps1 ghi, da loc)
-  for f in "$KQ"/win-"$TAG"-ghep.txt; do
+  for f in "$KQ"/win-"$BAN"-ghep.txt; do
     [ -s "$f" ] && { sed 's/^\xEF\xBB\xBF//' "$f" | tr -d '\r' | grep -E '^(OK|XX|\.\.|==)' >> "$res"; }
   done
   [ -s "$res" ] || echo "XX  job ghep ISO tren Windows khong de lai ket qua" >> "$res"
   bash "$HERE/win_that_push.sh" "$TAG" "$KQ" "bat dau cai" || true
-  W=${W:-/mnt/w} KQ="$KQ" TAG="$TAG" python3 "$HERE/win_that.py"
+  W=${W:-/mnt/w} KQ="$KQ" TAG="$TAG" BAN="$BAN" python3 "$HERE/win_that.py"
   local rc=$?
   ls -la "$KQ"
   return $rc
