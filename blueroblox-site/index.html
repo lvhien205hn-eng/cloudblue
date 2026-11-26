@@ -9475,6 +9475,7 @@ function renderNodes() {
       <div class="nc gpu">
         ${g}
         ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`TB 5 phút · ${m.gpu_busy_pct ? "ngừng nhận ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""}`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0, "Card đồ hoạ trung bình 5 phút — ngưỡng ngừng nhận máy mới") : ""}
+        ${(m.gpu_top || []).length ? `<div class="nr" title="Máy khách ăn card đồ hoạ nhiều nhất (đo ~1 phút/lần). ⬇ = ăn quá phần chia đều lúc card bận → máy chủ đã hạ ưu tiên card của máy đó để các máy khác chạy mượt; hết ăn quá phần 10 phút thì tự trả lại.${m.gpu_held ? " Phần đã hạ không tính là card quá tải." : ""}"><span>🎮 ${m.gpu_top.slice(0, 3).map(x => esc(x.n) + " " + Math.round(+x.p || 0) + "%" + (x.lv ? " ⬇" : "")).join(" · ")}</span><em>${m.gpu_held ? "đã hạ " + Math.round(m.gpu_held) + "%" : m.gpu_fair ? "chia đều ~" + Math.round(m.gpu_fair) + "%/máy" : ""}</em></div>` : ""}
       </div>
       <div class="nc dsk">
         ${d ? nRow(`Ổ cứng chung · ngừng nhận ≥ ${dskStop}%`, `${d.used}/${d.total} GB`, d.used / d.total * 100, dskStop, `Ổ cứng dùng chung cho mọi máy khách — ngừng nhận máy mới khi ≥ ${dskStop}%`) : ""}
