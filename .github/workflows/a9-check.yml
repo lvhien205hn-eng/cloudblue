@@ -1,0 +1,52 @@
+# 27/11e · ANDROID 9 (LDPlayer 9) PHÁT HÌNH — đo bộ nén trong máy (Android 9: OMX.google.h264.encoder, giống LD9) qua scrcpy-server 2.4:
+#   khung I định kỳ có cờ "khoá" / có phải IDR không · màn đứng yên có lặp khung không · khung/giây theo cỡ hình 1280 / 960 / 800 ·
+#   thời gian bật lại bộ nén. So với Android 12 (Codec2, giống MuMu). Chỉ đo — không phát hành, không đụng máy chủ thật nào.
+#   Kết quả: bảng trong trang tóm tắt của lượt chạy (Summary).
+name: Check Android 9 stream
+
+on:
+  push:
+    branches: ["appa9-*"]
+    paths:
+      - "windows/bluestream.py"
+      - ".github/a9-check/**"
+      - ".github/workflows/a9-check.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: a9-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  emu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 31]     # 28 = Android 9 (như LDPlayer 9) · 31 = Android 12 (như MuMu)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bật KVM cho máy ảo Android
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android API ${{ matrix.api }} — đo phát hình scrcpy
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          cores: 4
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: false
+          script: python3 .github/a9-check/test_a9stream.py ${{ matrix.api }}
+      - name: Giữ số đo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a9stream-${{ matrix.api }}
+          path: a9stream-*.json
+          if-no-files-found: ignore
