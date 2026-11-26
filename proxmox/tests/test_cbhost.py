@@ -46,6 +46,7 @@ class FakeWeb:
         self.calls, self.status, self.vps, self.tickets, self.err = [], "new", [], {}, ""
         self.secret_hash = None
         self.jobs = None; self.jtickets = {}               # None = web cũ (chưa v57): không trả tpl_jobs
+        self.tpl = ["tpl-win10-22h2"]                      # máy mẫu web cần (vm_images đang bán)
 
     def rpc(self, fn, body, timeout=25):
         self.calls.append((fn, json.loads(json.dumps(body))))
@@ -59,7 +60,7 @@ class FakeWeb:
             for x in body.get("p_tpl") or []:
                 if x.get("ticket_hash"): self.jtickets[x["id"]] = x["ticket_hash"]
             r = {"ok": True, "status": self.status, "name": "pve-thu", "vps": json.loads(json.dumps(self.vps)) if self.status != "new" else [],
-                 "tpl": ["tpl-win10-22h2"], "poll_s": 10}
+                 "tpl": list(self.tpl), "poll_s": 10}
             if self.jobs is not None: r["tpl_jobs"] = json.loads(json.dumps(self.jobs))
             return r
         return None
@@ -777,6 +778,12 @@ open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "stor
 ck("cấu hình: máy cài bằng ISO (auto_tpl) mặc định tự dựng tpl-ubuntu2404; máy cài tay thì không; 'linux_tpl': [] tắt; tên lạ bỏ qua",
    cb.conf()["linux_tpl"] == ["ubuntu2404"] and (open(os.environ["CBHOST_CONF"], "w").write(json.dumps({})) and cb.conf()["linux_tpl"] == [])
    and (open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"auto_tpl": True, "linux_tpl": ["x; rm", "ubuntu2404"]})) and cb.conf()["linux_tpl"] == ["ubuntu2404"]))
+hw_ = cb.Host.__new__(cb.Host); hw_.tpl_need = ["tpl-win2016", "tpl-ubuntu2404"]
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({})); hw_.c = cb.conf(); a1 = hw_.linux_tags()
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"linux_tpl": []})); hw_.c = cb.conf(); a2 = hw_.linux_tags()
+hw_.tpl_need = ["tpl-win2016"]; open(os.environ["CBHOST_CONF"], "w").write(json.dumps({})); hw_.c = cb.conf(); a3 = hw_.linux_tags()
+ck("27/11b: máy cài TAY + web đang bán bản Ubuntu (tpl-ubuntu2404) → tự dựng; ghi rõ 'linux_tpl': [] → không; web không bán → không",
+   a1 == ["ubuntu2404"] and a2 == [] and a3 == [], (a1, a2, a3))
 open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm", "auto_tpl": True}))
 try: os.remove(os.environ["CBHOST_STATE"])
 except OSError: pass
