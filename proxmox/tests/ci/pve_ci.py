@@ -5,8 +5,8 @@
    win   : máy "đang có Windows" (ổ NTFS có \\Windows\\System32\\ntoskrnl.exe) khởi động từ ISO → KHÔNG tự cài, ổ không bị ghi
    bios  : máy BIOS, ISO ghi kiểu USB (DD), ổ SCSI  → tự cài → bật lại (USB vẫn cắm, USB đứng đầu thứ tự khởi động) → kiểm trong máy qua SSH
    uefi  : máy UEFI, ISO dạng ổ CD, ổ NVMe          → như trên
-   mang  : lúc cài mạng KHÔNG cấp IPv4 (chỉ có IPv6 — như máy chủ thật ngày 26/11) → cài xong bật lại ở mạng có DHCP: máy phải TỰ xin IPv4,
-           tự lên web (cbhost tự sửa mạng); phá DNS → lệnh "cbhost.py net" tự đặt lại; khởi động lại vẫn còn mạng
+   mang  : lúc cài mạng KHÔNG cấp IPv4 (chỉ có IPv6 — như máy chủ thật ngày 26/11) → cài xong bật lại ở mạng có DHCP: máy phải TỰ xin IPv4
+           (cbhost bật dịch vụ cloudblue-dhcp4), tự lên web; phá DNS → lệnh "cbhost.py net" tự đặt lại; khởi động lại vẫn còn mạng
 Kết quả: kq/pve-ketqua.txt (dòng OK / XX), ảnh màn hình kq/*.png, nhật ký kq/*.txt."""
 import hashlib, json, os, re, shutil, socket, struct, subprocess, sys, time, zlib
 
@@ -91,7 +91,7 @@ class Vm:
             if os.path.exists(p):
                 os.remove(p)
         a = ["qemu-system-x86_64", "-enable-kvm", "-cpu", "host", "-m", "6144", "-smp", "2", "-display", "none", "-vga", "std", "-serial", "file:" + self.serial,
-             "-qmp", "unix:%s,server,nowait" % self.qmp_p, "-netdev", ("user,id=n0,ipv4=off,ipv6=on" if net == "v6only" else "user,id=n0,hostfwd=tcp:127.0.0.1:%d-:22" % port),
+             "-qmp", "unix:%s,server,nowait" % self.qmp_p, "-netdev", ("user,id=n0,ipv4=off,ipv6=on,ipv6-prefix=2001:db8:cb::,ipv6-prefixlen=64" if net == "v6only" else "user,id=n0,hostfwd=tcp:127.0.0.1:%d-:22" % port),
              "-device", "virtio-net-pci,netdev=n0"]                 # net="v6only": mạng KHÔNG có DHCP IPv4, chỉ có IPv6 (quảng bá bộ định tuyến)
         if mode == "uefi":
             vars_f = os.path.join(W, "vars-%s.fd" % name.split("-")[0])
@@ -416,8 +416,9 @@ echo "#goc"; cat /etc/network/interfaces.cb-goc 2>&1
 echo "#ip4"; ip -4 -o a 2>&1; ip -4 route 2>&1
 echo "#ip6"; ip -6 -o a 2>&1 | grep -v ' lo ' ; ip -6 route show default 2>&1
 echo "#rs"; cat /etc/resolv.conf 2>&1
-echo "#bin $(command -v dhclient) $(command -v ifreload) | $(pgrep -a dhclient | head -2 | tr '
+echo "#bin $(command -v dhclient) | $(pgrep -a dhclient | head -2 | tr '
 ' ' ')"
+echo "#unit $(systemctl is-active cloudblue-dhcp4 2>&1) $(systemctl is-enabled cloudblue-dhcp4 2>&1) | $(grep ExecStart /etc/systemd/system/cloudblue-dhcp4.service 2>&1)"
 echo "#log"; journalctl -b -u cloudblue-cbhost --no-pager 2>&1 | tail -40
 echo "#status"; python3 /opt/cloudblue/cbhost.py status 2>&1 | head -8
 echo "#het"
@@ -425,7 +426,7 @@ echo "#het"
 
 
 def mang():
-    """Như máy chủ thật 26/11: lúc cài mạng không cấp IPv4 → bộ cài Proxmox chỉ đặt IPv6. Bật lại ở mạng có DHCP: cbhost phải TỰ sửa (thêm inet dhcp), tự lên web."""
+    """Như máy chủ thật 26/11: lúc cài mạng không cấp IPv4 → bộ cài Proxmox chỉ đặt IPv6. Bật lại ở mạng có DHCP: cbhost phải TỰ sửa (bật dịch vụ xin DHCP), tự lên web."""
     res = 0
     disk = os.path.join(W, "d-mang.qcow2")
     if os.path.exists(disk):
@@ -448,7 +449,8 @@ def mang():
         rs0 = (re.search(r"#file /etc/resolv.conf\n(.*?)#file ", mo, re.S) or [None, ""])[1]
         ok("bộ cài Proxmox khi đó CHỈ đặt IPv6 cho cầu vmbr0 (đúng lỗi của máy thật): có 'iface vmbr0 inet6 static', KHÔNG có dòng IPv4 nào cho vmbr0 · DNS bộ cài ghi: %s"
            % (", ".join(re.findall(r"nameserver\s+(\S+)", rs0)) or "?"), "iface vmbr0 inet6 static" in fi and not re.search(r"^iface vmbr0 inet\s", fi, re.M), fi[-400:]) or (res := 1)
-        ok("máy cài bằng ISO có sẵn dhclient + ifreload (ifupdown2 của Proxmox xin DHCP bằng dhclient)", "/usr/sbin/dhclient" in sec(mo, "dhclient") and "/usr/sbin/ifreload" in sec(mo, "dhclient"), sec(mo, "dhclient")) or (res := 1)
+        ok("máy cài bằng ISO có sẵn dhclient (cbhost dùng để xin IPv4)", "/usr/sbin/dhclient" in sec(mo, "dhclient"), sec(mo, "dhclient")) or (res := 1)
+        ip6 = (re.search(r"^\s*address\s+([0-9a-f:]+)/\d+", fi, re.M) or [None, "?"])[1]
         vm = Vm("mang-bat", "bios", disk, "scsi", "usb", True)                     # mạng lần này có DHCP IPv4; SSH của bộ thử đi qua IPv4 → chỉ vào được khi máy TỰ xin được IPv4
         up = vm.wait_ssh(600)
         t_up = time.time() - vm.t0
@@ -465,9 +467,11 @@ def mang():
         fi2, goc, lg = sec(out, "if"), sec(out, "goc"), sec(out, "log")
         ok("BẬT LẠI ở mạng có DHCP: không ai gõ gì, sau %.0f giây máy đã TỰ có IPv4 (10.0.2.15 trên vmbr0, vào được SSH qua IPv4)" % t_up, "10.0.2.15/24" in sec(out, "ip4") and "vmbr0" in sec(out, "ip4")
            and re.search(r"^default via 10\.0\.2\.2", sec(out, "ip4"), re.M), sec(out, "ip4")) or (res := 1)
-        ok("cbhost tự sửa: file mạng giữ nguyên phần bộ cài viết + thêm đúng 1 đoạn 'iface vmbr0 inet dhcp' ở cuối; bản gốc lưu ở interfaces.cb-goc (không có dòng dhcp)",
-           fi2.count("\niface vmbr0 inet dhcp\n") == 1 and "iface vmbr0 inet6 static" in fi2 and goc.strip() == fi.strip() and "inet dhcp" not in goc and fi2.strip().startswith(fi.strip()), (fi2[-300:], goc[-200:])) or (res := 1)
-        ok("nhật ký cbhost: 'chưa lên web được' → 'TỰ SỬA MẠNG … inet dhcp … ifreload mã 0' → 'đã lên web'; dhclient đang chạy cho vmbr0", "TỰ SỬA MẠNG" in lg and "ifreload mã 0" in lg and "đã lên web" in lg
+        un = sec(out, "unit")
+        ok("cbhost tự sửa mà KHÔNG sửa file mạng của Proxmox (interfaces giống hệt bản bộ cài viết); dịch vụ cloudblue-dhcp4 đang chạy + tự bật cùng máy (dhclient -4 -d … vmbr0); địa chỉ IPv6 tĩnh %s vẫn còn" % ip6,
+           fi2.strip() == fi.strip() and "No such file" in goc and un.strip().startswith("active enabled") and re.search(r"ExecStart=/usr/sbin/dhclient -4 -d .* vmbr0", un) and ip6 != "?" and ip6 in sec(out, "ip6"),
+           (fi2[-300:], un, sec(out, "ip6")[-300:])) or (res := 1)
+        ok("nhật ký cbhost: 'chưa lên web được' → 'TỰ SỬA MẠNG … cloudblue-dhcp4 … ĐÃ có IPv4' → 'đã lên web'; dhclient đang chạy cho vmbr0", "TỰ SỬA MẠNG" in lg and "cloudblue-dhcp4" in lg and "ĐÃ có IPv4" in lg and "đã lên web" in lg
            and lg.index("TỰ SỬA MẠNG") < lg.rindex("đã lên web") and "dhclient" in sec(out, "bin") and "vmbr0" in sec(out, "bin"), (lg[-600:], sec(out, "bin"))) or (res := 1)
         wl = open(weblog).read() if os.path.exists(weblog) else ""
         ok("web (giả của CI) nhận vm_host_hello của máy này sau khi nó tự sửa mạng (bản cbhost %s); lệnh status báo 'IPv4 có'" % cb_ver(), "vm_host_hello" in wl and ('"ver": "%s"' % cb_ver()) in wl
@@ -501,9 +505,9 @@ def mang():
             time.sleep(50)                                                  # cho cbhost kịp gọi web
         rc, out3 = vm.ssh(REMOTE_NET, 300) if up2 else (1, "không vào được SSH sau khi khởi động lại")
         open(os.path.join(KQ, "pve-may-mang-2.txt"), "w").write(out3)
-        ok("KHỞI ĐỘNG LẠI: máy tự có IPv4 ngay từ lúc bật (dòng 'inet dhcp' đã nằm trong cấu hình), cbhost lên web mà không phải sửa gì nữa; file mạng không bị thêm lần hai",
-           up2 and "10.0.2.15/24" in sec(out3, "ip4") and "đã lên web" in sec(out3, "log") and "TỰ SỬA MẠNG" not in sec(out3, "log") and sec(out3, "if").count("iface vmbr0 inet dhcp") == 1,
-           (up2, sec(out3, "ip4")[-200:], sec(out3, "log")[-400:])) or (res := 1)
+        ok("KHỞI ĐỘNG LẠI: máy tự có IPv4 ngay từ lúc bật (dịch vụ cloudblue-dhcp4 tự chạy), IPv6 tĩnh vẫn còn, cbhost lên web mà không phải sửa gì nữa; file mạng vẫn nguyên như bộ cài viết",
+           up2 and "10.0.2.15/24" in sec(out3, "ip4") and "đã lên web" in sec(out3, "log") and "TỰ SỬA MẠNG" not in sec(out3, "log") and sec(out3, "if").strip() == fi.strip()
+           and sec(out3, "unit").strip().startswith("active enabled") and ip6 in sec(out3, "ip6"), (up2, sec(out3, "ip4")[-200:], sec(out3, "unit"), sec(out3, "log")[-400:])) or (res := 1)
         vm.ssh("poweroff", 30)
         vm.wait_exit(time.time() - vm.t0 + 120)
         vm.kill()
