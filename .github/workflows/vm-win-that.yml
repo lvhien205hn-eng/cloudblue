@@ -53,7 +53,7 @@ jobs:
     needs: ghep-2016
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 200
+    timeout-minutes: 120
     env:
       TAG: win2016
       GH_TOKEN: ${{ github.token }}
@@ -77,6 +77,39 @@ jobs:
         if: always()
         with:
           name: kq-cai-win2016
+          path: kq
+          if-no-files-found: ignore
+
+  # máy ảo kiểu UEFI (OVMF) — cbhost không tạo kiểu này, nhưng admin tự tạo máy mẫu bằng tay thì có thể chọn
+  cai-2016-uefi:
+    needs: ghep-2016
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG: win2016-uefi
+      BAN: win2016
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc + QEMU
+        run: bash proxmox/tests/ci/win_that.sh chuanbi
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kq-ghep-win2016
+          path: kq
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: maymau-win2016
+          path: ${{ env.W }}/iso
+      - name: Windows tự cài trong máy ảo UEFI
+        run: bash proxmox/tests/ci/win_that.sh chay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-cai-win2016-uefi
           path: kq
           if-no-files-found: ignore
 
@@ -114,7 +147,7 @@ jobs:
     needs: ghep-2012r2
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 200
+    timeout-minutes: 120
     env:
       TAG: win2012r2
       GH_TOKEN: ${{ github.token }}
