@@ -3,10 +3,13 @@ package shop.blueroblox.app;
 import android.app.Dialog;
 import android.content.Intent;
 import android.graphics.Color;
+import android.text.InputFilter;
+import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -24,12 +27,20 @@ final class PcVps {
 
     static JSONObject mine = null, info = null, prod = null;
     static long mineAt = 0, infoAt = 0;
+    private static java.lang.ref.WeakReference<LinearLayout> box0 = null;      // hộp "VPS GPU của bạn" đang hiện (vẽ lại tại chỗ)
+
+    /** 27/11 · danh sách máy ảo VPS NVMe vừa đổi → vẽ lại hộp VPS GPU (máy ảo có mục riêng, không vẽ lặp ở đây). */
+    static void refill(MainActivity a) {
+        LinearLayout b = box0 == null ? null : box0.get();
+        if (b != null && b.getParent() != null && mine != null && !a.isFinishing()) fill(a, b);
+    }
 
     // ---------------------------------------------------------------- "Máy của tôi": khung VPS GPU
     /** Thêm 1 hộp vào trang "Máy của tôi"; có dữ liệu cũ thì vẽ ngay, rồi tải mới ngầm (tối đa 1 lần / 15 giây) và vẽ lại. */
     static void section(MainActivity a, LinearLayout body) {
         final LinearLayout box = Ui.col(a, 10);
         body.addView(box, Ui.fill());
+        box0 = new java.lang.ref.WeakReference<>(box);
         if (mine != null) fill(a, box);
         if (mine == null || System.currentTimeMillis() - mineAt > 15000) {
             Api.bg(() -> Api.rpc("pc_my_vps", new JSONObject()), r -> {
@@ -72,9 +83,12 @@ final class PcVps {
         JSONArray all = mine == null ? null : mine.optJSONArray("items"), out = new JSONArray();
         if (all == null) return out;
         long now = System.currentTimeMillis();
+        java.util.Set<String> vm = VmNvme.pcIds();                 // 27/11: máy ảo VPS NVMe có mục riêng (⚡ VPS NVMe của bạn) → không vẽ lặp ở VPS GPU
         for (int i = 0; i < all.length(); i++) {                 // 21.11k: thẻ "Đã kết thúc" quá giờ tự ẩn (SQL v45b: hide_at) → không hiện nữa
             JSONObject x = all.optJSONObject(i);
             if (x == null) continue;
+            JSONObject xp = x.optJSONObject("pc");
+            if (xp != null && vm.contains(xp.optString("id"))) continue;
             long h = MainActivity.parseTime(x.optString("hide_at", ""));
             if (h > 0 && h <= now) continue;
             out.put(x);
@@ -278,7 +292,10 @@ final class PcVps {
         top.addView(Ui.pill(a, st[1], run ? Ui.OK : "exp".equals(st[0]) ? Ui.BAD : "warn".equals(st[0]) || powSt(st[0]) ? Ui.WAIT : Ui.SKY), Ui.wrap());
         if (pc != null && !pc.optString("code").isEmpty()) top.addView(Ui.pill(a, "№ " + pc.optString("code"), Ui.MUTED), Ui.wrap());
         c.addView(top, Ui.fill());
-        c.addView(Ui.text(a, (pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name")) + (x.optInt("days") > 0 ? "  ·  " + x.optInt("days") + Ui.L(" ngày", " days") : ""), 16, Ui.FG, true));
+        String lb = x.optString("label", "").trim();                                // 27/11 · SQL v60: tên riêng khách đặt (chỉ khách thấy)
+        boolean hasLb = !lb.isEmpty() && !"null".equals(lb);
+        c.addView(Ui.text(a, (hasLb ? lb : pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name")) + (x.optInt("days") > 0 ? "  ·  " + x.optInt("days") + Ui.L(" ngày", " days") : ""), 16, Ui.FG, true));
+        if (hasLb && pc != null) c.addView(Ui.text(a, pc.optString("name"), 11.5f, Ui.MUTED, false));
         StringBuilder spec = new StringBuilder(x.optString("os_name"));
         if (pc != null) {
             JSONArray g = pc.optJSONArray("gpus");
@@ -352,6 +369,11 @@ final class PcVps {
             re.setOnClickListener(v -> { d[0].dismiss(); reinstall(a, x); });
             c.addView(re, Ui.fill());
         }
+        if (mine != null && mine.optBoolean("rename") && x.optJSONObject("pc") != null) {   // 27/11 · SQL v60: khách đặt tên riêng cho máy
+            Button rn = Ui.button(a, "✏️ " + Ui.L("Đổi tên máy", "Rename machine"), Ui.GHOST);
+            rn.setOnClickListener(v -> { d[0].dismiss(); rename(a, x); });
+            c.addView(rn, Ui.fill());
+        }
         Button rp = Ui.button(a, "📋 " + Ui.L("Báo admin (copy nội dung gửi shop)", "Report to the admin"), Ui.GHOST);
         rp.setOnClickListener(v -> { d[0].dismiss(); report(a, x); });
         c.addView(rp, Ui.fill());
@@ -363,6 +385,36 @@ final class PcVps {
         JSONObject pc = x.optJSONObject("pc");
         d[0] = Ui.sheet(a, pc == null ? Ui.L("VPS GPU", "GPU VPS") : pc.optString("name"), c);
         d[0].show();
+    }
+
+    /** 27/11 · ✏️ Đổi tên máy (SQL v60 pc_my_rename): tên riêng ≤ 32 ký tự chỉ khách thấy; tên gốc của shop giữ nguyên để báo shop. Để trống = bỏ tên riêng. */
+    private static void rename(MainActivity a, JSONObject x) {
+        final JSONObject pc = x.optJSONObject("pc");
+        if (pc == null) return;
+        LinearLayout c = Ui.col(a, 12);
+        final EditText in = Ui.input(a, Ui.L("Tên mới (VD: Máy chính)", "New name (e.g. Main PC)"), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
+        in.setFilters(new InputFilter[]{new InputFilter.LengthFilter(32)});
+        String lb = x.optString("label", "").trim();
+        if (!lb.isEmpty() && !"null".equals(lb)) in.setText(lb);
+        c.addView(in, Ui.fill());
+        c.addView(Ui.muted(a, Ui.L("Chỉ bạn thấy tên này — tên gốc " + pc.optString("name") + " vẫn giữ để báo shop. Để trống = bỏ tên riêng.",
+                "Only you see this name — the original name " + pc.optString("name") + " is kept for support. Empty = remove it.")));
+        final Button ok = Ui.button(a, "💾 " + Ui.L("Lưu tên", "Save"), Ui.PRIMARY);
+        c.addView(ok, Ui.fill());
+        final Dialog d = Ui.sheet(a, "✏️ " + Ui.L("Đổi tên ", "Rename ") + pc.optString("name"), c);
+        ok.setOnClickListener(v -> {
+            ok.setEnabled(false);
+            final String n = in.getText().toString().trim();
+            Api.bg(() -> {
+                Api.rpc("pc_my_rename", new JSONObject().put("p_pc", pc.optString("id")).put("p_name", n));
+                return Api.rpc("pc_my_vps", new JSONObject());
+            }, r -> {
+                d.dismiss();
+                Ui.toast(a, Ui.L("Đã đổi tên.", "Renamed."));
+                if (r instanceof JSONObject) { mine = (JSONObject) r; mineAt = System.currentTimeMillis(); refill(a); a.vpsChanged(); }
+            }, m -> { ok.setEnabled(true); Ui.toast(a, err(m)); });
+        });
+        d.show();
     }
 
     /** 21.11k · 🗑 Huỷ máy: hộp xác nhận — nút Huỷ chỉ bấm được sau khi tick "Tôi hiểu" (khỏi bấm nhầm). Gỡ máy khỏi tài khoản ngay, shop thu hồi,
