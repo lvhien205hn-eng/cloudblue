@@ -1,4 +1,4 @@
-# 27/11e · ANDROID 9 (LDPlayer 9) PHÁT HÌNH — đo bộ nén trong máy (Android 9: OMX.google.h264.encoder, giống LD9) qua scrcpy-server 2.4:
+# 27/11e · ANDROID 9 (LDPlayer 9) PHÁT HÌNH — (1) logic mới của bluestream (test_a9logic.py, không cần máy Android) · (2) đo bộ nén trong máy (Android 9: OMX.google.h264.encoder, giống LD9) qua scrcpy-server 2.4:
 #   khung I định kỳ có cờ "khoá" / có phải IDR không · màn đứng yên có lặp khung không · khung/giây theo cỡ hình 1280 / 960 / 800 ·
 #   thời gian bật lại bộ nén. So với Android 12 (Codec2, giống MuMu). Chỉ đo — không phát hành, không đụng máy chủ thật nào.
 #   Kết quả: bảng trong trang tóm tắt của lượt chạy (Summary).
@@ -18,6 +18,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  logic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Logic phát hình Android 9 (27/11e) — cỡ hình, khung I, ngưỡng bỏ khung, bật lại bộ nén, thông số
+        run: python3 .github/a9-check/test_a9logic.py
+
   emu:
     runs-on: ubuntu-latest
     timeout-minutes: 30
