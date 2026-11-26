@@ -113,7 +113,9 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "21/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "27/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+                                          # · 27/11e ANDROID 9 MƯỢT: hình ≤ 960, khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan,
+                                          #   không dumpsys sau mỗi cú bấm; Thông số có "bộ nén Android ra … khung/s" + bỏ khung vì đâu (máy MuMu không đổi)
                                           # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
                                           # · 17/11f không gửi khung thiếu lát (hình vỡ) + máy chủ vừa khởi động lại: khách mở máy nào máy đó lên trước
                                           # · 17/11g máy thức dậy lâu: báo thật cho khách + bật lỗi thì tự "khám máy" ghi vào nhật ký (phần hình không đổi)
@@ -139,12 +141,25 @@ else: PCRELAY_ERR = "PC_RELAY=0"
 # Android 9 (LDPlayer 9) lấy hình bằng scrcpy: bộ nén trong máy là PHẦN MỀM (OMX.google.h264.encoder) và KHÔNG lặp khung khi màn đứng
 # yên → "khung khoá mỗi 1 giây" thật ra là mỗi 60 khung (scrcpy đặt KEY_FRAME_RATE 60): lúc vuốt chỉ ~15–20 khung/giây → 3–4 giây mới
 # có 1 khung khoá, màn đứng yên thì KHÔNG bao giờ có. Lỡ bỏ 1 khung (mạng chậm, app báo nhận chậm) là đứng hình tới khung khoá kế →
-# khách thấy "vuốt xong 3–4 giây mới lên" (13/11, win1). Android 9: khung khoá mỗi 0,25 giây (= 15 khung) + chờ khung khoá quá 1,2 giây
-# thì bật lại bộ nén (khung đầu luôn là khung khoá, hình đúng màn hiện tại). Máy MuMu (Android 12/15) giữ như cũ (đổi bằng conf nếu cần).
+# khách thấy "vuốt xong 3–4 giây mới lên" (13/11, win1). 13/11a: Android 9 khung khoá mỗi 0,25 giây (= 15 khung) + chờ khung khoá quá
+# 1,2 giây thì bật lại bộ nén (khung đầu luôn là khung khoá, hình đúng màn hiện tại) — 27/11e thay bằng cách dưới (khung I đó không phải khoá).
+# 27/11e — ANDROID 9 MƯỢT NHƯ 12 / 15. Đo trên máy ảo Android THẬT trong CI (.github/a9-check, scrcpy-server 2.4 + ScrcpyVideo này):
+#   Android 9  (OMX.google.h264.encoder — bộ nén duy nhất của LDPlayer 9): khoảng khoá 0,25 lúc cuộn → 6 khung I, chỉ 1 IDR (khung đầu),
+#              chỉ 1 có cờ khoá → khung I định kỳ KHÔNG phải khung khoá (AOSP SoftAVCEnc: IDR mặc định mỗi 1000 khung); khung I ~3× khung P.
+#              Khung/giây khi cuộn: cỡ 1280 → 10,6–10,9 · cỡ 960 → 14–16,5 · cỡ 800 → 15. Bật lại bộ nén → khung đầu sau ~0,4–0,5 giây.
+#   Android 12 (c2.android.avc.encoder — như MuMu): 11 khung I = 11 IDR = 11 có cờ khoá → chờ khung khoá là đúng.
+# → Máy Android 9 lỡ bỏ 1 khung (mạng giật, nghẽn) là đứng hình tới khi bật lại bộ nén (cũ: chờ 1,2 giây + khởi động scrcpy) = khách
+#   thấy "nhấp xong 2–3 giây mới lên"; khung I dày (0,25) không giúp gì mà làm khung to dồn dập (dễ nghẽn → lại bỏ khung).
+# Nay Android 9: khung I thưa (SCRCPY_IFRAME_S_A9 = 5) · bỏ khung → bật lại bộ nén ngay (SCRCPY_KEY_WAIT_S_A9 = 0,2) · khó bỏ khung hơn
+# (ngưỡng "app chậm" × STREAM_A9_LAG_MUL = 2, hàng chờ STREAM_A9_QWAIT_S = 0,5 giây) · hình tối đa STREAM_A9_MAXH = 960 (trừ mức Nét;
+# 0 = như cũ) → +40–50% khung/giây, khung nhỏ hơn. Máy MuMu (Android 12/15) KHÔNG đổi.
 SCR_IFRAME = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S", 1.0)))
-SCR_IFRAME_A9 = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S_A9", 0.25)))
+SCR_IFRAME_A9 = max(0.1, min(5.0, _float_conf("SCRCPY_IFRAME_S_A9", 5.0)))
 KEY_WAIT_S = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S", 0.0))           # 0 = tắt
-KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 1.2))
+KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 0.2))
+A9_MAXH = max(0, _int_conf("STREAM_A9_MAXH", 960))                      # cạnh dài tối đa của hình Android 9 (trừ mức Nét) · 0 = theo mức chất lượng
+A9_LAG_MUL = max(1.0, min(4.0, _float_conf("STREAM_A9_LAG_MUL", 2.0)))  # Android 9: ngưỡng "app chậm" (bỏ khung) gấp mấy lần máy khác
+A9_QWAIT = max(0.15, min(2.0, _float_conf("STREAM_A9_QWAIT_S", 0.5)))   # Android 9: khung chờ gửi quá chừng này giây mới nhảy cóc (máy khác 0,15)
 # 16/11 — MẠNG YẾU VẪN MƯỢT. Máy lấy hình bằng scrcpy (Android 12/15): scrcpy 2.4 đặt KEY_FRAME_RATE = 60 nên bộ nén trong máy ĐẾM KHUNG
 # — "khung khoá mỗi 1 giây" thật ra là mỗi 60 khung: phát 30 khung/giây → 2 giây, 20 khung/giây (mạng yếu) → 3 giây, màn đứng yên
 # (lặp 10 khung/giây) → 6 giây. Mạng khách giật 1 nhịp = máy chủ bỏ khung tới khung khoá kế = ĐỨNG HÌNH 2–6 giây. Nay khoảng khung khoá
@@ -1551,8 +1566,10 @@ def fix_displays(serial):
 class Control:
     """Chạm / phím / chữ → máy Android qua scrcpy-server 2.4 (chỉ điều khiển). Mọi lệnh đi qua 1 hàng đợi + 1 luồng gửi
        (không bao giờ chặn vòng chính), giữ đúng thứ tự; chữ có dấu dán qua bộ nhớ copy và chờ máy dán xong rồi mới gửi tiếp."""
-    def __init__(self, serial, on_clip):
-        self.serial, self.on_clip = serial, on_clip
+    dfix = True                                             # 27/11e: canh "app mở nhầm màn ảo" (Android 9 không có lỗi này → tắt, đỡ dumpsys nặng sau mỗi cú bấm)
+
+    def __init__(self, serial, on_clip, dfix=True):
+        self.serial, self.on_clip, self.dfix = serial, on_clip, bool(dfix)
         self.sock = None; self.proc = None; self.fport = None; self.ready = threading.Event(); self.dead = False
         self.q = queue.Queue(maxsize=4000); self.lock = threading.Lock()
         self.nat = None; self.vw = self.vh = 0; self.mode = "scrcpy"; self.down = {}
@@ -1568,7 +1585,7 @@ class Control:
         threading.Thread(target=self._writer, daemon=True).start()
         if SELFTEST:
             self.mode = "none"; self.ready.set(); return
-        if DISPLAY_FIX: threading.Thread(target=self._dfix_loop, daemon=True).start()
+        if DISPLAY_FIX and self.dfix: threading.Thread(target=self._dfix_loop, daemon=True).start()
         try:
             adb_ready(self.serial, 12)                      # máy vừa "offline" (đang cài app sẵn / adb vừa nối lại) → chờ, đừng hỏng ngay
             self.nat = device_size(self.serial); self.nat_t = time.time()
@@ -1840,7 +1857,7 @@ class Control:
 
     def _dfix_soon(self):
         """Sau cú bấm: 1,2 giây sau xem app vừa mở có nằm nhầm màn ảo không (tối đa 1 lần / 2 giây)."""
-        if not DISPLAY_FIX or SELFTEST or self.dead or self.dfix_busy or time.time() - self.dfix_at < 2: return
+        if not DISPLAY_FIX or not self.dfix or SELFTEST or self.dead or self.dfix_busy or time.time() - self.dfix_at < 2: return
         self.dfix_busy = True
         threading.Thread(target=self._dfix_run, args=(1.2,), daemon=True).start()
 
@@ -2250,6 +2267,7 @@ class Session:
     fps_over = 1.0; _fw = None                     # 16/11c: Android gửi nhiều khung hơn đã xin bao nhiêu lần · cửa sổ đo
     dl = 0; net = ""; ceil_kbps = 0; ceil_until = 0.0; ceil_s = 0.0; t_rate0 = 0.0; prodlog = None      # 16/11 (như trên)
     kf_legacy = False; kf_probe = False; vid_ok_t = 0.0
+    n_in = 0; n_restart = 0; dr = None             # 27/11e: số khung bộ nén ra · số lần bật lại bộ nén · bỏ khung vì đâu (thông số cho app / web)
 
     def __init__(self, link, me, phone, hello, t_hello):
         self.link, self.me, self.phone, self.hello, self.t_hello = link, me, phone, hello, t_hello
@@ -2375,6 +2393,7 @@ class Session:
 
     def _dims(self):
         maxh, fps, kbps = PRESETS[self.cur_q]
+        if self.a9 and A9_MAXH and self.cur_q != "hd": maxh = min(maxh, max(480, A9_MAXH))   # 27/11e: Android 9 nén phần mềm → hình ≤ 960
         if self.maxh_req: maxh = min(maxh, max(320, self.maxh_req))
         if self.fps_req: fps = max(10, min(fps, self.fps_req))
         try: fps = max(10, min(fps, int(self.phone.get("fps") or 60)))         # không vượt FPS khách đã mua
@@ -2403,12 +2422,20 @@ class Session:
         try: self.loop.call_soon_threadsafe(self._enqueue, (gen, data, key, cfg, pts, t))
         except RuntimeError: pass
 
+    def _dropx(self, why, n=1):
+        """27/11e: đếm khung bỏ theo lý do — lag: app báo nhận chậm · q: khung chờ gửi quá lâu (nghẽn) · wk: đang chờ khung khoá ·
+           full: hàng chờ đầy · cut: bộ nén gửi khung thiếu lát. Hiện ở Thông số của web / app."""
+        d = self.__dict__.get("dr")
+        if d is None: d = self.dr = {}
+        d[why] = d.get(why, 0) + n
+
     def _enqueue(self, it):
         pl = self.prodlog
         if pl is not None and it[1] is not None:               # 16/11: bộ nén ra bao nhiêu (kể cả khung sẽ bị bỏ) → so với sức đường truyền
             now = time.time(); pl.append((now, len(it[1])))
             while pl and now - pl[0][0] > 6: pl.popleft()
-        if self.aq.qsize() > 240: self.drop += 1; self.wait_key = True; return     # app không đọc nữa → đừng tích hình vô hạn
+        if it[1] is not None: self.n_in += 1
+        if self.aq.qsize() > 240: self.drop += 1; self._dropx("full"); self.wait_key = True; return     # app không đọc nữa → đừng tích hình vô hạn
         self.aq.put_nowait(it)
 
     def _iframe(self, fps, kbps=0):
@@ -2513,7 +2540,7 @@ class Session:
     async def restart_video(self, size_msg=False, cpu=False):
         async with self.vlock:
             if self.closed: return
-            self.wait_key = True
+            self.wait_key = True; self.n_restart += 1
             old = (self.vw, self.vh)
             try: w, h = await asyncio.to_thread(self._start_video, cpu)
             finally: self.last_restart = time.time(); self.t_rate0 = time.time()
@@ -2540,7 +2567,7 @@ class Session:
         if WAKE_ON_OPEN:
             try: await asyncio.wait_for(asyncio.to_thread(self._wake), 15)
             except Exception: pass
-        self.ctl = Control(self.serial, self._on_clip)
+        self.ctl = Control(self.serial, self._on_clip, dfix=not self.a9)
         threading.Thread(target=self.ctl.start, daemon=True).start()
         try:
             w, h = await self._first_video()
@@ -2637,7 +2664,7 @@ class Session:
         s = f"127.0.0.1:{self.phone['port']}"
         if s == self.serial: return
         self.serial = s
-        old, self.ctl = self.ctl, Control(self.serial, self._on_clip)
+        old, self.ctl = self.ctl, Control(self.serial, self._on_clip, dfix=not getattr(self, "a9", False))
         threading.Thread(target=self.ctl.start, daemon=True).start()
         if old: threading.Thread(target=old.stop, daemon=True).start()
         if self.src:
@@ -2668,11 +2695,12 @@ class Session:
                 while not self.aq.empty(): items.append(self.aq.get_nowait())
                 items = [x for x in items if x[0] == self.gen]
                 if not items: continue
-                if time.monotonic() - items[0][5] > 0.15:
+                if time.monotonic() - items[0][5] > (A9_QWAIT if self.a9 else 0.15):     # 27/11e: Android 9 bỏ khung rất đắt → chịu lâu hơn
                     ki = max((i for i, x in enumerate(items) if x[2] and x[1] is not None), default=None)
                     if ki is None:
-                        self.drop += len(items); self.wait_key = True; self._congested(hard=True); continue
+                        self.drop += len(items); self._dropx("q", len(items)); self.wait_key = True; self._congested(hard=True); continue
                     self.drop += ki; items = items[ki:]; self.wait_key = False
+                    if ki: self._dropx("q", ki)
                 for x in items: await self._consider(x)
                 continue
             await self._consider(it)
@@ -2680,15 +2708,16 @@ class Session:
     async def _consider(self, it):
         gen, data, key, cfg, pts, tp = it
         if gen != self.gen: return
-        if data is None: self.wait_key = True; return          # mất khung → chờ khung khoá (tối đa ~1 giây), không hiện hình vỡ
+        if data is None: self._dropx("cut"); self.wait_key = True; return          # mất khung → chờ khung khoá (tối đa ~1 giây), không hiện hình vỡ
         lim = 1500 if time.time() < self.key_grace else LAG_DROP_MS.get(getattr(self.link, "kind", ""), 350)
         if self.net == "c" and lim < CELL_LAG_MS: lim = CELL_LAG_MS           # 16/11: khách dùng 4G/5G (hay giật ngắn) → bớt bỏ khung oan
+        if self.a9 and time.time() >= self.key_grace: lim = int(lim * A9_LAG_MUL)   # 27/11e: Android 9 bỏ 1 khung = bật lại bộ nén → chỉ bỏ khi chậm thật
         if self._behind_ms() > lim:                            # app chậm quá ngưỡng (thẳng 0,35 s · vòng 0,7 s) → bỏ khung cho kịp (không để trễ dồn)
             if not self.wait_key: self._congested()
-            self.drop += 1; self.wait_key = True
+            self.drop += 1; self._dropx("lag"); self.wait_key = True
             return
         if self.wait_key and not key:
-            self.drop += 1; return
+            self.drop += 1; self._dropx("wk"); return
         self.wait_key = False
         await self._send_au(it)
 
@@ -2854,7 +2883,7 @@ class Session:
                 pass
 
     async def _monitor(self):
-        t_stat = time.time(); s0 = b0 = 0
+        t_stat = time.time(); s0 = b0 = 0; i0 = self.n_in
         while not self.closed:
             await asyncio.sleep(0.25)
             if time.time() - self.last_rx > 15: self.why = self.why or "15 giây app không gửi gì"; return
@@ -2942,8 +2971,12 @@ class Session:
                 if (getattr(self, "q", "") == "auto" and kc and kc < getattr(self, "kbps_cap", 0) * 0.6
                         and time.time() - getattr(self, "last_cong", 0.0) < 900):
                     st["weak"] = 1; st["tgt"] = int(kc)                 # app mới: hiện "mạng yếu — đã giảm nét để mượt"
+                st["efps"] = round((self.n_in - i0) / dt, 1)           # 27/11e: bộ nén ra bao nhiêu khung/giây (kể cả khung bị bỏ)
+                st["rs"] = self.n_restart; st["rk"] = self.n_keyfix   # số lần bật lại bộ nén · trong đó vì chờ khung khoá
+                if self.dr: st["dr"] = dict(self.dr)                  # bỏ khung vì đâu (lag / q / wk / full / cut)
+                if self.a9: st["a9"] = 1
                 self.link.send_nowait(S_STATS, json.dumps(st).encode())
-                t_stat = time.time(); s0, b0 = self.sent, self.bytes
+                t_stat = time.time(); s0, b0, i0 = self.sent, self.bytes, self.n_in
 
     def _on_clip(self, text):                                  # luồng điều khiển → vòng chính
         if not self.closed:
@@ -4702,6 +4735,8 @@ async def main():
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
     log(f"bản 17/11e: dán vào Termux bằng Ctrl+Alt+V {'BẬT' if PASTE_TERMUX else 'TẮT (PASTE_TERMUX=0)'} · mạng yếu: mức nhớ cũ hơn "
         f"{RATE_FRESH_S / 60:g} phút → bắt đầu ≥ {RATE_FRESH_KBPS} kbps, khách tự chọn chất lượng → dò lại, yên {CEIL_CALM_S / 60:g} phút → bỏ trần cũ")
+    log(f"bản 27/11e: Android 9 mượt — hình ≤ {A9_MAXH or 'theo mức'} (trừ mức Nét), khung I mỗi {SCR_IFRAME_A9:g} giây, bỏ khung → bật lại bộ nén "
+        f"sau {KEY_WAIT_S_A9:g} giây, ngưỡng app chậm ×{A9_LAG_MUL:g}, hàng chờ {A9_QWAIT:g} giây, không dumpsys sau cú bấm · máy MuMu không đổi")
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi "
         + (f"{SCR_KEY_S:g} giây THẬT theo khung/giây đang phát (SCRCPY_KEY_EVERY_S)" if SCR_KEY_S > 0 else f"{SCR_IFRAME:g} giây ở 60 khung/giây (kiểu cũ)")
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))

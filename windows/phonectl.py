@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11b"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11e"           # 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -5047,9 +5047,23 @@ def _phone_pids():
     out = {}
     try:
         if EMU == "mumu":
-            for v in _mumu_info().values():
+            byidx = {}
+            for i, v in _mumu_info().items():
                 ps = [int(x) for x in (v.get("headless_pid"), v.get("pid")) if str(x).strip().isdigit() and int(x) > 0]
-                if ps and v.get("name"): out[str(v["name"])] = ps
+                if ps and v.get("name"):
+                    out[str(v["name"])] = ps
+                    if str(i).isdigit(): byidx[int(i)] = str(v["name"])
+            # 27/11e: MuMu chạy 2 tiến trình MuMuVMMHeadless / máy (vỏ + máy ảo thật, cùng dòng lệnh), info chỉ báo 1 pid — card đồ hoạ
+            # lại do tiến trình máy thật dùng → trước đây máy khách MuMu không được tính % card (web báo nhầm "Ngoài máy khách:
+            # MuMuVMMHeadless.exe …"). Gộp các MuMuVMMHeadless còn lại vào đúng máy: theo số máy trong dòng lệnh, không có thì theo pid cha.
+            known = {p for ps in out.values() for p in ps}
+            extra = {p for p in _img_pids({"mumuvmmheadless.exe"}) if p not in known}
+            if extra and out:
+                owner = {p: nm for nm, ps in out.items() for p in ps}
+                for pid, (ix, ppid) in sorted(_hl_info(extra).items()):
+                    nm = byidx.get(ix) if ix >= 0 else None
+                    nm = nm or owner.get(ppid)
+                    if nm and pid not in out[nm]: out[nm].append(pid)
         elif EMU == "ld":
             for ln in (_ldrun(["list2"], 60).stdout or "").splitlines():
                 q = ln.strip().split(",")
