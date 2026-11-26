@@ -7120,9 +7120,9 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
 
   function scan() {
     document.querySelectorAll(".thumb canvas[data-id]").forEach(c => {
-      if (c._fx) return; c._fx = 1; c._seed = seedOf(c.dataset.id); c._kind = (c.dataset.id === "cloudphone" || c.dataset.c === "phone") ? "phone" : c.dataset.c === "vps" ? "vps" : "clone";
+      if (c._fx) return; c._fx = 1; c._seed = seedOf(c.dataset.id); c._kind = (c.dataset.id === "cloudphone" || c.dataset.c === "phone") ? "phone" : c.dataset.c === "vps" ? "vps" : c.dataset.c === "nvme" ? "nvme" : "clone";
       c._static = c.dataset.static === "1"; c._sc = c.dataset.big === "1" && (window.devicePixelRatio || 1) > 1.25 && (navigator.hardwareConcurrency || 8) > 4 ? 2 : 1;
-      c._card = c.closest(".card,.m3-row,.m3-li"); if (io) io.observe(c); else vis.add(c); draw(c, performance.now());
+      c._card = c.closest(".card,.m3-row,.m3-li,.vms-head"); if (io) io.observe(c); else vis.add(c); draw(c, performance.now());
     });
     for (const c of vis) if (!c.isConnected) vis.delete(c);
   }
@@ -7301,13 +7301,49 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
     x.fillStyle = "#fff"; x.font = "900 16px 'Be Vietnam Pro',system-ui,sans-serif"; x.textAlign = "center"; x.fillText("GPU", cx, Y + h / 2 + 6);
     x.save(); rr(x, X, Y, w, h, 18); x.clip(); const gl = x.createLinearGradient(X, Y, X + w * .6, Y + h); gl.addColorStop(0, "rgba(255,255,255,.45)"); gl.addColorStop(.4, "rgba(255,255,255,0)"); x.fillStyle = gl; x.fillRect(X, Y, w, h); x.restore();
   }
+  /* VPS NVMe (VPS ảo hoá): thanh SSD M.2 bóng — chân cắm vàng, chip điều khiển + chip nhớ, đèn dữ liệu chạy dọc thân */
+  function nvme(x, cx, cy, T) {
+    const w = 292, h = 98, X = cx - w / 2 + 7, Y = cy - h / 2 - 8, my = Y + h / 2;
+    shadow(x, cx + 4, cy + h / 2 + 30, 150);
+    x.save(); x.translate(cx, cy); x.rotate(-.075); x.translate(-cx, -cy + Math.sin(T * .002) * 3);
+    x.save(); x.lineCap = "round";                                                   // vệt tốc độ phía sau đầu cắm
+    for (let i = 0; i < 3; i++) { const ph = (T * .0011 + i * .37) % 1, len = 26 + i * 9, sx = X - 34 - ph * 46, sy = Y + 20 + i * 29;
+      x.globalAlpha = .75 * Math.sin(ph * Math.PI); x.strokeStyle = "#5fb2ff"; x.lineWidth = 5; x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx - len, sy); x.stroke();
+      x.strokeStyle = "#fff"; x.lineWidth = 2; x.beginPath(); x.moveTo(sx, sy); x.lineTo(sx - len * .7, sy); x.stroke(); }
+    x.restore();
+    const kh = Math.round(h * .5);                                                   // chân cắm vàng: 2 mảng, giữa là khe (khoá M)
+    x.fillStyle = "#e9b949"; rr(x, X - 22, Y + 9, 30, kh, 3); x.fill(); rr(x, X - 22, Y + 9 + kh + 8, 30, h - 18 - kh - 8, 3); x.fill();
+    x.fillStyle = "rgba(122,78,0,.42)"; for (let yy = Y + 13; yy < Y + h - 12; yy += 6.5) { if (yy > Y + 5 + kh && yy < Y + 19 + kh) continue; x.fillRect(X - 19, yy, 12, 2.4); }
+    x.save(); x.shadowColor = "rgba(70,165,255,.75)"; x.shadowBlur = 22; rr(x, X - 5, Y - 5, w + 10, h + 10, 21); x.fillStyle = "#fff"; x.fill(); x.restore();
+    rr(x, X, Y, w, h, 17); const bg = x.createLinearGradient(X, Y, X, Y + h); bg.addColorStop(0, "#6aa6ff"); bg.addColorStop(.55, "#2b6ef0"); bg.addColorStop(1, "#1747c4"); x.fillStyle = bg; x.fill();
+    x.save(); rr(x, X, Y, w, h, 17); x.clip(); x.fillStyle = "rgba(255,255,255,.10)"; for (let yy = Y + 10; yy < Y + h; yy += 16) for (let xx = X + 10; xx < X + w; xx += 16) circ(x, xx, yy, 4.5); x.restore();
+    const part = (px, py, pw, ph2, pr) => { rr(x, px, py, pw, ph2, pr); const g = x.createLinearGradient(px, py, px, py + ph2); g.addColorStop(0, "#1a4fc9"); g.addColorStop(1, "#0b2f8f"); x.fillStyle = g; x.fill();
+      x.strokeStyle = "rgba(255,255,255,.85)"; x.lineWidth = 2.6; x.stroke(); };
+    part(X + 20, my - 23, 46, 46, 9);                                               // chip điều khiển (trái)
+    x.fillStyle = "rgba(255,255,255,.22)"; for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) circ(x, X + 31 + i * 12, my - 12 + j * 12, 2.4);
+    const led = .35 + .65 * Math.abs(Math.sin(T * .006)); x.save(); x.shadowColor = "#9ff3ff"; x.shadowBlur = 10 * led; x.fillStyle = `rgba(190,250,255,${led})`; circ(x, X + 43, my, 4.2); x.restore();
+    part(X + w - 104, my - 23, 60, 46, 9);                                          // chip nhớ (phải)
+    x.fillStyle = "rgba(255,255,255,.26)"; for (let i = 0; i < 3; i++) { rr(x, X + w - 95, my - 13 + i * 10.5, 42, 4.6, 2.3); x.fill(); }
+    const sx = X + w - 22, sg = x.createRadialGradient(sx - 3, my - 3, 1, sx, my, 12);   // vít giữ cuối thanh
+    sg.addColorStop(0, "#fff"); sg.addColorStop(1, "#9fc4ff"); x.fillStyle = "#0f3fb3"; circ(x, sx, my, 14); x.fillStyle = sg; circ(x, sx, my, 10.5);
+    x.strokeStyle = "rgba(15,63,179,.75)"; x.lineWidth = 2.4; x.lineCap = "round"; x.beginPath(); x.moveTo(sx - 5, my - 5); x.lineTo(sx + 5, my + 5); x.moveTo(sx + 5, my - 5); x.lineTo(sx - 5, my + 5); x.stroke();
+    x.save(); rr(x, X, Y, w, h, 17); x.clip();                                       // 2 đường mạch + xung dữ liệu chạy ngược chiều nhau
+    for (let k = 0; k < 2; k++) { const ty = k ? Y + h - 11 : Y + 11, x0 = X + 16, x1 = X + w - 40, L = x1 - x0;
+      x.strokeStyle = "rgba(255,255,255,.26)"; x.lineWidth = 1.6; x.beginPath(); x.moveTo(x0, ty); x.lineTo(x1, ty); x.stroke();
+      for (let i = 0; i < 3; i++) { const ph = (T * .00045 + i / 3 + k * .17) % 1, px = k ? x1 - ph * L : x0 + ph * L, a = Math.sin(ph * Math.PI);
+        x.fillStyle = `rgba(160,245,255,${.3 * a})`; circ(x, px, ty, 6.5); x.fillStyle = `rgba(232,252,255,${.35 + .65 * a})`; circ(x, px, ty, 2.7); } }
+    x.restore();
+    x.fillStyle = "#fff"; x.font = "900 30px 'Be Vietnam Pro',system-ui,sans-serif"; x.textAlign = "center"; x.fillText("NVMe", X + 127, my + 11);
+    x.save(); rr(x, X, Y, w, h, 17); x.clip(); const gl = x.createLinearGradient(X, Y, X + w * .6, Y + h); gl.addColorStop(0, "rgba(255,255,255,.45)"); gl.addColorStop(.4, "rgba(255,255,255,0)"); x.fillStyle = gl; x.fillRect(X, Y, w, h); x.restore();
+    x.restore();
+  }
   function draw(c, t) {
     const x = c.getContext("2d"), S = c._sc || 1; if (c.width !== W * S) { c.width = W * S; c.height = H * S; } x.setTransform(S, 0, 0, S, 0, 0);
     const k = c._seed, fast = !!(c._card && c._card.matches(":hover"));
     c._t = (c._t || 0) + (c._last ? (t - c._last) * (fast ? 2.4 : 1) : 0); c._last = t; const T = c._t + (k % 5000);
     x.drawImage(bgOf(THEME()), 0, 0);
     x.save(); x.translate(W / 2, H / 2 + 16); x.scale(.84, .84); x.translate(-W / 2, -H / 2);   // chừa chỗ cho nhãn ở góc trên
-    if (c._kind === "phone") phone(x, W / 2, H / 2, T); else if (c._kind === "vps") gpu(x, W / 2, H / 2, T); else clone(x, W / 2, H / 2 - 18, T);
+    if (c._kind === "phone") phone(x, W / 2, H / 2, T); else if (c._kind === "vps") gpu(x, W / 2, H / 2, T); else if (c._kind === "nvme") nvme(x, W / 2, H / 2, T); else clone(x, W / 2, H / 2 - 18, T);
     x.restore();
     for (let i = 0; i < 6; i++) { const sx = 30 + ((k >> (i % 13)) * 37 + i * 97) % (W - 60), sy = 20 + ((k >> (i % 11)) * 53 + i * 61) % (H - 40);
       star(x, sx, sy, 5 + (i % 3) * 2, .45 + .55 * Math.abs(Math.sin(T * .0018 + i * 1.7))); }
@@ -7318,6 +7354,7 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
   const grid = document.getElementById("grid");
   if (grid) new MutationObserver(() => setTimeout(scan, 0)).observe(grid, { childList: true });
   scan();
+  window.BRthumbScan = scan;                              // ô thêm ảnh sau khi trang đã chạy (VPS NVMe) thì gọi lại để ảnh được vẽ
   if (reduce) return;
   let last = 0;
   const CARD_MS = (innerWidth < 760 || (navigator.hardwareConcurrency || 8) <= 4) ? 160 : 80;   // điện thoại / máy yếu: ảnh sản phẩm vẽ thưa hơn
@@ -15336,9 +15373,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 /* ===== 24/11 · 🧩 VPS ẢO HOÁ (SQL v56) — ô bán gói có sẵn · VPS của tôi · Quản trị › Máy cho thuê › 🧩 VPS ảo hoá ===== */
 #vzdlg{z-index:70}
 .vms-sec{margin-top:18px}
+.vms-head{display:grid;grid-template-columns:minmax(0,286px) minmax(0,1fr);gap:18px;align-items:center;margin-bottom:14px}
+.vms-art{border-radius:16px;box-shadow:0 0 0 1px var(--line2),0 10px 26px -14px rgba(20,60,160,.55)}
 .vms-head h2{margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:-.02em}
 .vms-head h2 small{display:block;margin-top:3px;font-size:13px;font-weight:600;color:var(--muted);letter-spacing:0}
-.vms-head .hint{margin:0 0 12px}
+.vms-head .hint{margin:0}
 .vms-adm{color:var(--gold-hi)}
 .vms-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(205px,1fr));gap:12px}
 .vms-plan{display:flex;flex-direction:column;gap:9px;padding:15px 15px 14px;border-radius:16px;background:var(--card,var(--panel));box-shadow:0 0 0 1px var(--line2)}
@@ -15415,7 +15454,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .vms-dlg .vps-opts{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
 .vms-dlg .vps-opts button.on{border-color:var(--sky);background:rgba(61,123,255,.18)}
 @media (max-width:760px){.vma-top{grid-template-columns:1fr 1fr}.vms-dlg .grid3{grid-template-columns:1fr 1fr}}
-@media (max-width:560px){.vms-grid{grid-template-columns:1fr 1fr;gap:9px}.vms-plan{padding:12px 11px;gap:7px}.vms-price b{font-size:19px}.vms-nm{font-size:15px}
+@media (max-width:560px){.vms-head{grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:11px;margin-bottom:10px}.vms-art{border-radius:12px}.vms-art .hot{top:5px;right:5px;font-size:9.5px;padding:2px 7px}
+  .vms-head h2{font-size:19px}.vms-head h2 small{font-size:12px}.vms-head .hint{grid-column:1/-1;font-size:12.5px}.vms-ttl{display:contents}
+  .vms-grid{grid-template-columns:1fr 1fr;gap:9px}.vms-plan{padding:12px 11px;gap:7px}.vms-price b{font-size:19px}.vms-nm{font-size:15px}
   .vms-spec{font-size:12.5px;gap:3px}.vms-spec li.ctl{display:none}.vms-plan .btn{padding:9px 8px;font-size:13.5px}}
 </style>
 <script>
@@ -15446,8 +15487,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const daysLeft = iso => { const ms = left(iso); if (ms === null) return "—"; if (ms <= 0) return L("đã hết hạn", "expired"); const d = Math.floor(ms / 864e5), h = Math.floor(ms % 864e5 / 36e5);
     return d ? L(`còn ${d} ngày ${h} giờ`, `${d}d ${h}h left`) : L(`còn ${h} giờ`, `${h}h left`); };
   const missing = e => /does not exist|schema cache|Could not find|PGRST202|PGRST205/i.test(String((e && (e.message || e.code)) || ""));
+  const VMN = "VPS NVMe";                                // 26/11: tên KHÁCH thấy (Quản trị vẫn gọi là VPS ảo hoá). Ảnh riêng = thanh SSD M.2: hàm nvme() ở phần "ảnh sản phẩm động"
   const ERR = {
-    NOT_LOGGED_IN: ["Đăng nhập trước đã.", "Please log in first."], NOT_OPEN: ["VPS ảo hoá chưa mở bán.", "Virtual VPS is not on sale yet."],
+    NOT_LOGGED_IN: ["Đăng nhập trước đã.", "Please log in first."], NOT_OPEN: [VMN + " chưa mở bán.", VMN + " is not on sale yet."],
     BAD_PLAN: ["Gói / số ngày không hợp lệ — tải lại trang rồi thử lại.", "Invalid plan or duration — reload and try again."],
     BAD_OS: ["Bản Windows này không dùng được cho gói này.", "That Windows image can't be used with this plan."],
     NO_CAPACITY: ["Máy chủ đang hết chỗ cho cấu hình / bản Windows này — chọn gói khác hoặc nhắn shop.", "No capacity for this plan / image right now — pick another or contact the shop."],
@@ -15497,9 +15539,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (!s) {
       const shop = $i("shop"); if (!shop) return null;
       s = document.createElement("section"); s.className = "wrap vms-sec"; s.id = "vm-shop"; s.hidden = true; s.setAttribute("aria-labelledby", "vms-h");
-      s.innerHTML = `<div class="vms-head"><h2 id="vms-h">🧩 ${L("VPS ảo hoá", "Virtual VPS")}<small>${L("Cấu hình có sẵn · Windows riêng của bạn · tự tạo trong vài phút", "Ready-made plans · your own Windows · ready in minutes")}</small></h2>
-        <p class="hint" id="vms-lead"></p></div><div class="vms-grid" id="vms-grid"></div>`;
+      s.innerHTML = `<div class="vms-head"><div class="thumb vms-art" aria-hidden="true"><canvas data-id="vps-nvme" data-c="nvme" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
+        <div class="vms-ttl"><h2 id="vms-h">${esc(VMN)}<small>${L("Ổ SSD NVMe · Windows riêng của bạn · tự tạo trong vài phút", "NVMe SSD · your own Windows · ready in minutes")}</small></h2>
+        <p class="hint" id="vms-lead"></p></div></div><div class="vms-grid" id="vms-grid"></div>`;
       shop.before(s);
+      try { if (typeof window.BRthumbScan === "function") window.BRthumbScan(); } catch (e) {}
     }
     return s;
   }
@@ -15529,14 +15573,14 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const I = O(VM.info), p = A(I.plans).find(x => x.id === id); if (!p) return;
     const os = osFor(I.images, p.ram_mb, p.disk_gb), pr = p30(p);
     VM.b = { plan: p.id, image: S((os.find(i => i.ready) || {}).id, 30), days: pr ? N(pr.days) : 0 };
-    dlg(`<h3>🧩 ${L("Mua", "Buy")} ${esc(S(p.name, 40))}</h3>
+    dlg(`<h3>⚡ ${L("Mua", "Buy")} ${esc(S(p.name, 40))}</h3>
       <div class="vms-chips"><span>⚙️ ${N(p.cores)} vCPU</span><span>🧠 ${gb(p.ram_mb)} RAM</span><span>💾 ${N(p.disk_gb)} GB SSD NVMe</span></div>
       <div class="vms-lbl">① ${L("Chọn Windows", "Choose Windows")}</div><div class="vps-opts" id="vms-os"></div>
       <div class="vms-lbl">② ${L("Thời gian", "Duration")}</div><div class="vps-opts" id="vms-days"></div>
       <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
       <div class="vms-sum" id="vms-sum"></div>
-      <div class="hint">✅ ${L("Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở <b>VPS ảo hoá của bạn</b>. Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
-        "After payment the VPS is created automatically (usually 3–10 min) — see <b>Your virtual VPS</b>. Time starts when it is up. No capacity → no charge.")}</div>
+      <div class="hint">✅ ${L("Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở <b>" + VMN + " của bạn</b>. Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
+        "After payment the VPS is created automatically (usually 3–10 min) — see <b>Your " + VMN + "</b>. Time starts when it is up. No capacity → no charge.")}</div>
       ${acts("💳 " + L("Thanh toán", "Pay"), "", "vms-pay")}`);
     buyPaint();
   }
@@ -15579,7 +15623,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (!s) {
       if (!after) return null;
       s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "vm-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "vm-mine-h");
-      s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="vm-mine-h"><span aria-hidden="true">🧩</span> <span>${L("VPS ảo hoá của bạn", "Your virtual VPS")}</span><small id="vm-mine-n"></small></h2>
+      s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="vm-mine-h"><span aria-hidden="true">⚡</span> <span>${L(VMN + " của bạn", "Your " + VMN)}</span><small id="vm-mine-n"></small></h2>
         <div class="m3m-hacts"><button class="btn ghost sm" type="button" id="vm-mine-new">➕ ${L("Mua thêm", "Buy more")}</button></div></div>
         <div class="m3m-list" id="vm-mine-list"></div></div>`;
       after.after(s);
@@ -15937,7 +15981,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const ps = A(d.plans).filter(p => p.enabled), is = A(d.images).filter(i => i.enabled);
     box.innerHTML = `
       <div class="vma-sec"><h4>🛒 ${L("Bán hàng", "Selling")}</h4><div class="vma-set">
-        <label class="chk"><input type="checkbox" id="vma-s-sell"${st.sell ? " checked" : ""}> ${L("Bật bán cho khách (tắt: chỉ admin thấy ô VPS ảo hoá)", "Sell to customers")}</label>
+        <label class="chk"><input type="checkbox" id="vma-s-sell"${st.sell ? " checked" : ""}> ${L("Bật bán cho khách — khách thấy ô “" + VMN + "” (tắt: chỉ admin thấy)", "Sell to customers")}</label>
         <label class="chk"><input type="checkbox" id="vma-s-auto"${st.auto_approve ? " checked" : ""}> ${L("Máy chủ Proxmox mới tự được duyệt", "Auto-approve new hosts")}</label>
         <label>${L("Hết hạn: giữ dữ liệu (ngày) rồi xoá", "Keep data after expiry (days)")}<input class="in" type="number" id="vma-s-grace" min="0" max="60" step="1" value="${N(st.grace_days)}"></label>
         <label>${L("Khách tự cài lại tối đa (lần / VPS)", "Customer reinstalls per VPS")}<input class="in" type="number" id="vma-s-rmax" min="0" max="50" step="1" value="${N(st.reinstall_max)}"></label>
