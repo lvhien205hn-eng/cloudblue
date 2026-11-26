@@ -403,6 +403,14 @@ def main():
            and "1 GB RAM" in c1 and "20 GB SSD NVMe" in c1 and "Server 2012 R2" in c1 and "LTSC" not in c1, c1)
         ck("gói hết chỗ (8-16) → nút 'Tạm hết chỗ' bị khoá", "Tạm hết chỗ" in c8 and s.js("() => document.querySelector('#vms-grid .vms-plan:nth-child(7) button').disabled"), c8)
         ck("sản phẩm ẩn chuyên mục 'vm' KHÔNG hiện trong lưới sản phẩm", "VPS ảo hoá · VPS 1-1" not in (s.txt("#grid") or "") and "Clone Roblox" in (s.txt("#grid") or ""), s.txt("#grid"))
+        hd = s.txt("#vms-h") or ""
+        ck("26/11 · khách thấy tên 'VPS NVMe' (không còn chữ 'ảo hoá' / hình 🧩 ở ô bán)", hd.startswith("VPS NVMe") and "ảo hoá" not in (s.txt("#vm-shop .vms-head") or "") and "🧩" not in (s.txt("#vm-shop") or ""), hd)
+        art = s.js("""() => { const c = document.querySelector('#vm-shop .vms-art canvas[data-c="nvme"]'); if (!c) return null; const r = c.getBoundingClientRect(), x = c.getContext('2d');
+          const at = (px, py) => [...x.getImageData(Math.round(px * c.width), Math.round(py * c.height), 1, 1).data];
+          return {kind: c._kind, w: Math.round(r.width), h: Math.round(r.height), mid: at(.56, .5), corner: at(.5, .12), hot: (document.querySelector('#vm-shop .vms-art .hot') || {}).innerText || ''}; }""")
+        ck("ảnh riêng của VPS NVMe (thanh SSD M.2) đã vẽ: giữa ảnh là thân xanh của thanh SSD, mép trên là nền bảng sáng; có nhãn MỚI; ảnh tỉ lệ 16:9",
+           art and art["kind"] == "nvme" and art["w"] >= 200 and abs(art["w"] * 9 / 16 - art["h"]) <= 2 and art["mid"][2] > 150 and art["mid"][2] > art["mid"][0] + 60
+           and min(art["corner"][:3]) > 170 and art["hot"] == "MỚI", art)
         s.shot("vm-5-shop.png")
         s.page.click('[data-vmbuy="vps2-2"]'); s.page.wait_for_timeout(300)
         d = s.dlg()
@@ -420,8 +428,8 @@ def main():
         s.page.click('#vzdlg [data-vmx]'); s.page.wait_for_timeout(100)
 
         print("6. Khách: VPS ảo hoá của bạn")
-        ck("khung 'VPS ảo hoá của bạn' nằm ngay dưới 'VPS GPU của bạn', 3 VPS", s.vis("#vm-mine") and s.js("() => document.getElementById('vm-mine').previousElementSibling.id") == "pcs-mine"
-           and s.js("() => document.querySelectorAll('#vm-mine-list .vms-card').length") == 3)
+        ck("khung 'VPS NVMe của bạn' nằm ngay dưới 'VPS GPU của bạn', 3 VPS", s.vis("#vm-mine") and s.js("() => document.getElementById('vm-mine').previousElementSibling.id") == "pcs-mine"
+           and s.js("() => document.querySelectorAll('#vm-mine-list .vms-card').length") == 3 and "VPS NVMe của bạn" in (s.txt("#vm-mine-h") or ""), s.txt("#vm-mine-h"))
         gpu = s.js("() => [...document.querySelectorAll('#pcs-mine-list .pcs-card')].map(c => c.innerText.replace(/\\s+/g, ' '))")
         ck("VPS GPU của bạn KHÔNG lặp máy ảo VPS-12 (chỉ còn máy GPU thật)", len(gpu) == 1 and "May-GPU-01" in gpu[0], gpu)
         cards = s.js("() => [...document.querySelectorAll('#vm-mine-list .vms-card')].map(c => c.innerText.replace(/\\s+/g, ' '))")
@@ -468,6 +476,9 @@ def main():
         s.js("() => document.getElementById('vm-shop').scrollIntoView()"); s.page.wait_for_timeout(200)
         ow = s.js("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         ck("điện thoại (390px): ô bán không tràn ngang", ow <= 1, ow)
+        ph = s.js("""() => { const a = document.querySelector('#vm-shop .vms-art').getBoundingClientRect(), h = document.getElementById('vms-h').getBoundingClientRect(), l = document.getElementById('vms-lead').getBoundingClientRect();
+          return {aw: Math.round(a.width), side: h.left >= a.right - 1 && h.top < a.bottom, below: l.top >= a.bottom - 1 && l.left <= a.left + 2}; }""")
+        ck("điện thoại: ảnh VPS NVMe nhỏ nằm cạnh tên, lời dẫn xuống dòng dưới (đủ rộng)", ph["aw"] >= 120 and ph["aw"] <= 170 and ph["side"] and ph["below"], ph)
         s.shot("vm-8-phone.png")
         s.page.click('[data-vmbuy="vps2-4"]'); s.page.wait_for_timeout(300)
         s.shot("vm-9-phone-buy.png")
