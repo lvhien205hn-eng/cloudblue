@@ -238,6 +238,109 @@ ans["r"] = {"ok": True, "on": True, "node": "win4", "stream": {"direct": [], "ce
 ck("có máy chủ → trả đường nối, nhớ tên máy chủ", rm.where() == ({"direct": [], "cert": "", "ws": None}, 0) and rm.node == "win4")
 
 # ------------------------------------------------------------------ 9. nối máy chủ phát hình giả (TLS thật) + 1 phiên xem
+# ------------------------------------------------------------------ 8b. 26.11a — máy chỉ nén bằng CPU (VPS NVMe): phần thuần
+print("8b. 26.11a · máy chỉ nén bằng CPU: kiểu nén theo số nhân, gộp lệnh rê chuột, bitrate không bị bóp oan, 1920×1080 lần đầu")
+ck("kiểu nén theo số nhân: 1 nhân → ultrafast 15 khung · 2 nhân → ultrafast 20 khung · 4 nhân → 24 khung · 8 nhân → superfast 30 khung; số lạ không làm lỗi",
+   R.cpu_tune(1) == ("ultrafast", "partitions=i4x4", 15) and R.cpu_tune(2)[2] == 20 and R.cpu_tune(4)[2] == 24 and R.cpu_tune(8) == ("superfast", "", 30)
+   and R.cpu_tune(None)[2] == 15 and R.cpu_tune("x")[2] == 15, [R.cpu_tune(n) for n in (1, 2, 4, 8)])
+ck("máy nén bằng CPU kiểu mới: Tự động giữ NGUYÊN cỡ màn hình 1920×1080 (không thu về 1600), khung/giây theo số nhân; khách tự chọn 60 khung thì tối đa 30",
+   R.plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True, cpu_fps=20, cpu_side=1920, fps_max=30)[:3] == (1920, 1080, 20)
+   and R.plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True, fps_fix=60, cpu_fps=20, cpu_side=1920, fps_max=30)[2] == 30
+   and R.plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True)[:3] == (1600, 900, 30), R.plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True, cpu_fps=20, cpu_side=1920, fps_max=30))
+a = R.enc_args("x264", 20, 4500, x264_preset="ultrafast", x264_extra="partitions=i4x4", crf=22, key_s=8)
+ck("x264 kiểu mới: nén theo CHẤT LƯỢNG (crf 22, không -b:v), bitrate chỉ là trần, 1 khung không quá ~150 KB (bufsize 1200k), khung khoá ép theo giây thật (8 giây), không khung khoá định kỳ theo số khung",
+   "-crf" in a and a[a.index("-crf") + 1] == "22" and "-b:v" not in a and a[a.index("-maxrate") + 1] == "4500k" and a[a.index("-bufsize") + 1] == "1200k"
+   and a[a.index("-force_key_frames") + 1] == "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+8))" and "keyint=100000" in a[a.index("-x264-params") + 1]
+   and "partitions=i4x4" in a[a.index("-x264-params") + 1] and a[a.index("-preset") + 1] == "ultrafast" and a[a.index("-threads") + 1] == "1", a)
+ck("… bitrate bị hạ (mạng yếu) thì cỡ 1 khung cũng nhỏ theo; bộ nén cũ (không crf) + card nén GIỮ NGUYÊN tham số",
+   R.enc_args("x264", 20, 600, crf=22)[-1] == "180k" and "-b:v" in R.enc_args("x264", 30, 4000) and "keyint=30" in " ".join(R.enc_args("x264", 30, 4000))
+   and "-crf" not in R.enc_args("nvenc", 60, 9000, crf=22), (R.enc_args("x264", 20, 600, crf=22)[-4:], R.enc_args("nvenc", 60, 9000, crf=22)[:6]))
+c = R.ff_cmd("ffmpeg", "pipe", "x264", 1920, 1080, 1920, 1080, 20, 4500, 5004, {"x264_preset": "ultrafast", "crf": 22, "key_s": 8})
+ck("lệnh ffmpeg cách quay 'pipe': nhận khung BGR0 qua ống (không gdigrab / ddagrab), đồng hồ thật + passthrough (không tự nhân đôi khung), KHÔNG -fflags nobuffer (nuốt khung đầu), cùng cỡ thì không thu phóng",
+   c[c.index("-i") + 1] == "pipe:0" and c[c.index("-pix_fmt") + 1] == "bgr0" and c[c.index("-video_size") + 1] == "1920x1080" and "gdigrab" not in c and "ddagrab" not in " ".join(c)
+   and c[c.index("-use_wallclock_as_timestamps") + 1] == "1" and c[c.index("-fps_mode") + 1] == "passthrough" and "nobuffer" not in " ".join(c)
+   and c[c.index("-vf") + 1] == "format=yuv420p" and c[-1] == "rtp://127.0.0.1:5004?pkt_size=1300", c)
+c = R.ff_cmd("ffmpeg", "pipe", "x264", 1920, 1080, 852, 480, 8, 350, 5004, {"crf": 22, "key_s": 2})
+ck("… khác cỡ (ô xem trước 480) → thu nhỏ kiểu nhanh (fast_bilinear); ô xem trước: khung khoá 2 giây / lần", c[c.index("-vf") + 1] == "scale=852:480:flags=fast_bilinear,format=yuv420p"
+   and "prev_forced_t+2)" in c[c.index("-force_key_frames") + 1], c)
+mk = R.move_key
+ck("lệnh CHỈ rê (chuột không đổi nút / ngón tay đang kéo) mới được gộp; bấm, nhả, chạm xuống, phím thì không", mk(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 5, 6)) == ("m",)
+   and mk(R.C_MOUSE, struct.pack(">BBHH", 1, 0, 5, 6)) is None and mk(R.C_MOUSE, struct.pack(">BBHH", 2, 0, 5, 6)) is None and mk(R.C_TOUCH, struct.pack(">BBHH", 2, 1, 5, 6)) == ("t", 1)
+   and mk(R.C_TOUCH, struct.pack(">BBHH", 0, 1, 5, 6)) is None and mk(R.C_KEY, struct.pack(">BII", 0, 29, 0)) is None and mk(R.C_MOUSE, b"\x00") is None)
+
+
+class _R0: pass
+
+
+class _C0:
+    def __init__(self): self.out = []
+    def send(self, t, p=b""): self.out.append((t, p))
+
+
+def _sess(io=None):
+    r = _R0(); r.log = lambda m: None; r.io = io or R.NullIO(); r.caps = {"enc": ["x264"], "cap": "test"}; r.bad = {}; r.ff = None; r.ncpu = 2
+    return R.Session(r, _C0(), {"sid": 1})
+
+
+s_ = _sess()
+for i in range(60): s_.iq.put((R.C_MOUSE, struct.pack(">BBHH", 0, 0, 100 + i, 200 + i)))        # máy bận: 60 lệnh rê dồn lại
+s_.iq.put((R.C_MOUSE, struct.pack(">BBHH", 1, 0, 500, 600)))                                     # rồi bấm
+for i in range(5): s_.iq.put((R.C_MOUSE, struct.pack(">BBHH", 0, 0, 700 + i, 800 + i)))          # giữ nút, kéo
+s_.iq.put((R.C_MOUSE, struct.pack(">BBHH", 2, 0, 710, 810)))                                     # nhả
+s_.iq.put((R.C_KEY, struct.pack(">BII", 0, 29, 0))); s_.iq.put((R.C_KEY, struct.pack(">BII", 1, 29, 0)))
+for i in range(8): s_.iq.put((R.C_MOUSE, struct.pack(">BBHH", 0, 0, 900 + i, 900 + i)))
+th_ = threading.Thread(target=s_._input, daemon=True); th_.start()
+wait(lambda: s_.iq.empty() and len(s_.io.ev) >= 9, 3); time.sleep(0.15); s_.closed = True; th_.join(1)
+ck("80 lệnh chuột dồn lại → rê thẳng tới điểm MỚI NHẤT của từng đoạn (không chiếu lại đường đi cũ), bấm / kéo / nhả / phím vẫn đủ và đúng thứ tự",
+   s_.io.ev == [("move", 159, 259), ("move", 500, 600), ("btn", 0, True), ("move", 704, 804), ("move", 710, 810), ("btn", 0, False),
+                ("key", 0x41, True, False), ("key", 0x41, False, False), ("move", 907, 907)] and s_.skip == 59 + 4 + 7, (s_.io.ev, s_.skip))
+s_ = _sess()
+for i in range(10): s_.iq.put((R.C_TOUCH, struct.pack(">BBHH", 2, 0, 100 + i, 100))); s_.iq.put((R.C_TOUCH, struct.pack(">BBHH", 2, 1, 300 + i, 300)))
+got_ = []; s_._apply = lambda t, p: got_.append(struct.unpack(">BBHH", p[:6]))
+th_ = threading.Thread(target=s_._input, daemon=True); th_.start(); wait(lambda: s_.iq.empty(), 2); time.sleep(0.1); s_.closed = True; th_.join(1)
+ck("2 ngón tay kéo xen kẽ (cuộn): KHÔNG gộp lệnh của ngón này vào ngón kia — đủ 20 lệnh, đúng thứ tự", len(got_) == 20 and got_[0] == (2, 0, 100, 100) and got_[-1] == (2, 1, 309, 300), got_[:4])
+
+r_ = R.Rate(4500, 4500); t_ = 1000.0
+for i in range(30): r_.sent(i, 1250, t_ + i * 0.1); r_.ack(i, t_ + i * 0.1 + 0.02)              # màn hình ít đổi: chỉ ~100 kbps, người xem nhận đủ
+t_ += 3.0
+x_ = [r_.congested(t_), r_.congested(t_ + 0.5), r_.congested(t_ + 1.0)]
+ck("nén theo chất lượng: đang phát ~100 kbps (màn hình ít đổi) mà nghẽn 3 lần → hạ trần ×0,7 (3150), KHÔNG bóp xuống theo 100 kbps đang nhận",
+   x_[:2] == [None, None] and x_[2] == 3150 and r_.cur == 3150 and 50 < r_.outrate(1002.9) < 200, (x_, r_.outrate(1002.9)))
+r_ = R.Rate(4500, 4500); t_ = 2000.0
+for i in range(30):
+    r_.sent(i, 56250, t_ + i * 0.1)                                                               # đang phát đúng trần 4500 kbps
+    if i % 2 == 0: r_.ack(i, t_ + i * 0.1 + 0.02)
+r_.delivered.clear(); r_.delivered.extend((t_ + 1.0 + k * 0.1, 25000) for k in range(20))         # người xem thật sự chỉ nhận ~2000 kbps
+t_ += 3.0; r_.ack_t = t_
+x_ = [r_.congested(t_), r_.congested(t_ + 0.5), r_.congested(t_ + 1.0)]
+ck("… còn đang phát sát trần mà người xem nhận chậm → vẫn hạ theo tốc độ nhận thật như trước (≤ 0,8 × tốc độ nhận)", x_[2] is not None and x_[2] < 2000, (x_, r_.goodput(t_ + 1.0)))
+
+
+class _M0:
+    def __init__(self, cur, ok): self.cur, self.ok, self.done = cur, set(ok), []
+    def modes(self): return self.cur, self.ok
+    def set_mode(self, w, h): self.done.append((w, h)); self.cur = (w, h); return True
+
+
+d_ = tempfile.mkdtemp(prefix="cbmode-"); lg_ = []
+m_ = _M0((1024, 768), [(800, 600), (1024, 768), (1920, 1080)])
+ck("máy ảo mới giao đang 1024×768 → đặt 1920×1080", R.vm_default_mode(m_, "pc-1", d_, lg_.append, qemu=True) == "set" and m_.done == [(1920, 1080)], (m_.done, lg_))
+m_.cur = (1280, 720)
+ck("… đúng 1 LẦN cho mỗi mã máy: khách tự đổi cỡ khác rồi thì lần chạy sau giữ theo khách", R.vm_default_mode(m_, "pc-1", d_, qemu=True) == "da dat truoc" and m_.done == [(1920, 1080)], m_.done)
+m_ = _M0((1024, 768), [(1024, 768), (1920, 1080)])
+ck("máy ảo khác nhân ra từ cùng máy mẫu (mã máy khác, thư mục có sẵn dấu của máy mẫu) → vẫn được đặt", R.vm_default_mode(m_, "pc-2", d_, qemu=True) == "set" and m_.done == [(1920, 1080)], m_.done)
+m_ = _M0((1024, 768), [(1024, 768), (1920, 1080)]); d2_ = tempfile.mkdtemp(prefix="cbmode-")
+ck("máy PC THẬT (không phải máy ảo) → không đụng cỡ màn hình, không ghi dấu", R.vm_default_mode(m_, "pc-3", d2_, qemu=False) == "khong phai may ao" and m_.done == []
+   and not os.path.exists(os.path.join(d2_, "logs", "mode.done")), m_.done)
+m_ = _M0((1600, 900), [(1600, 900), (1920, 1080)])
+ck("máy ảo đang ở cỡ ≥ 1280 (đã có người chỉnh) → giữ nguyên; máy không có cỡ 1920×1080 → báo, không lỗi; chưa có mã máy → chờ",
+   R.vm_default_mode(m_, "pc-4", d2_, qemu=True) == "giu nguyen" and m_.done == [] and R.vm_default_mode(_M0((1024, 768), [(1024, 768)]), "pc-5", d2_, qemu=True) == "khong co co nay"
+   and R.vm_default_mode(m_, None, d2_, qemu=True) == "chua co ma may", m_.done)
+shutil.rmtree(d_, ignore_errors=True); shutil.rmtree(d2_, ignore_errors=True)
+g_ = R.FakeGrab(R.NullIO(64, 32)); b1_, c1_ = g_.grab(); b2_, c2_ = g_.grab(); g_.io.tick = 3; b3_, c3_ = g_.grab()
+ck("bộ chụp giả của bộ thử: khung đầu 'đổi', chụp lại không đổi, đổi io.tick → đổi; đúng cỡ BGR0", c1_ and not c2_ and c3_ and len(b1_) == 64 * 32 * 4 and b1_ is b2_ and b3_ != b1_)
+
+# ------------------------------------------------------------------ 9. nối máy chủ + phiên (cần ffmpeg + cryptography)
 print("9. Nối máy chủ (TLS, kiểm mã chứng chỉ) + phiên có người xem")
 try:
     from cryptography import x509
@@ -440,6 +543,87 @@ else:
     rm.WHERE_S = 0.5; rm.t_where = 0; state["r"] = {"ok": True, "on": False}
     ck("đang rảnh, hỏi lại web thấy admin TẮT điều khiển từ xa → tự ngắt kết nối", wait(lambda: not pr4.alive, 6), rm.state)
     rm.stop = True
+
+    print("10. 26.11a · máy CHỈ nén bằng CPU: tự chụp màn hình, chỉ nén khung ĐỔI (ffmpeg thật nhận khung qua ống)")
+    io3 = R.NullIO(640, 360); io3.tick = 0; au = []
+    e3 = R.Encoder(FF, "pipe", "x264", 640, 360, 640, 360, 20, 2000, lambda d, k, c, pts: au.append((time.time(), len(d) if d else -1, bool(k))), grab_fn=io3.grabber,
+                   tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": 22, "key_s": 2})
+    e3.start()
+    ck("bộ nén kiểu 'pipe' chạy: khung đầu là khung khoá", wait(lambda: au and au[0][2], 8), au[:2])
+    time.sleep(1.0); n0 = len(au); g0 = e3.grabs; time.sleep(3.0)
+    idle = au[n0:]; gr = e3.grabs - g0
+    ck("màn hình ĐỨNG YÊN 3 giây: chỉ ~1 khung / giây giữ nhịp + vài khung quanh khung khoá định kỳ (2–8 khung, không phải 60) và chỉ xem lại màn hình ~3 lần / giây (7–12 lần, không phải 60)",
+       2 <= len(idle) <= 8 and 7 <= gr <= 12, (len(idle), gr))
+    ck("… khung giữ nhịp chỉ vài chục byte (trừ khung khoá định kỳ 2 giây / lần của ô xem trước) — đứng yên gần như không tốn mạng",
+       all(x[1] < 300 for x in idle if not x[2]) and any(x[2] for x in au[1:]), [(x[1], x[2]) for x in idle])
+    time.sleep(0.4); n0 = len(au); io3.tick = 1; t0 = time.time()
+    ck("màn hình tự đổi (không ai thao tác) → khung mới tới trong ≤ 0,6 giây", wait(lambda: len(au) > n0, 1.0, 0.005) and au[n0][0] - t0 <= 0.6, (len(au) - n0, au[n0][0] - t0 if len(au) > n0 else None))
+    time.sleep(1.3); burst = au[n0:]
+    ck("… sau khung đổi gửi lại khung đó vài lần cho bộ nén làm nét (không chụp lại; hình đã nét — 2 khung liền chỉ vài chục byte — thì thôi, tối đa %d lần), rồi lại im: 3–%d khung trong 1,3 giây"
+       % (R.PIPE_SETTLE, R.PIPE_SETTLE + 5), 3 <= len(burst) <= R.PIPE_SETTLE + 5, [x[1] for x in burst])
+    lat = []
+    for k in range(2, 8):
+        time.sleep(0.45); n0 = len(au); e3.kick(); io3.tick = k; t0 = time.time()          # người xem vừa thao tác → màn hình đổi
+        if wait(lambda: len(au) > n0, 1.0, 0.003): lat.append(au[n0][0] - t0)
+    ck("người xem thao tác (kick) → chụp NGAY, khung mới tới sau ≤ 0,15 giây (6 lần thử, không lần nào phải chờ nhịp đứng yên 0,33 giây)", len(lat) == 6 and max(lat) <= 0.15, [round(x, 3) for x in lat])
+    n0 = len(au); g0 = e3.grabs; t0 = time.time()
+    while time.time() - t0 < 2.0: io3.tick += 1; e3.kick(); time.sleep(0.02)
+    time.sleep(0.2); mov = len(au) - n0
+    ck("màn hình đổi liên tục 2 giây: chạy đủ nhịp ~20 khung / giây (30–46 khung), không vượt nhịp đã chọn", 30 <= mov <= 46 and e3.grabs - g0 <= 46, (mov, e3.grabs - g0))
+    io3.grab_fail = True; e3.kick()
+    ck("bộ chụp lỗi giữa chừng → dừng ffmpeg + ghi lý do (luồng canh phiên sẽ đổi sang cách quay cũ)", wait(lambda: e3.exited() and "chup man hinh" in e3.err, 4), (e3.exited(), e3.err))
+    e3.stop()
+
+    time.sleep(0.3); known = list(peers)
+    io2 = R.NullIO(1280, 720); io2.tick = 0; logs2 = []
+    rm2 = R.Remote(lambda: ident, lambda fn, body: {"ok": True, "on": True, "node": "wintest", "stream": stream}, io2, lambda: FF, logs2.append, None, caps={"enc": ["x264"], "cap": "gdi"})
+    rm2.sleep = lambda s: time.sleep(0.05); rm2.ncpu = 2
+    threading.Thread(target=rm2.run, daemon=True).start()
+    q = wait(lambda: next((p for p in peers if p not in known and p.count(R.P_HELLO)), None), 6)
+    q.take(R.P_HELLO); q.send(R.R_OK, {"ok": True, "ping_s": 2}); wait(lambda: "cho nguoi xem" in rm2.state, 3)
+    q.send(R.R_START, {"sid": 21, "q": "auto", "link": "direct", "net": "w", "admin": False, "owner": True})
+    m = q.take(R.P_INFO, 8); info = json.loads(m[1]) if m else {}
+    ck("phiên trên máy CHỈ có bộ nén CPU, 2 nhân: cách quay 'pipe', GIỮ nguyên cỡ màn hình 1280×720, 20 khung / giây, trần 4500 kbps",
+       (info.get("cap"), info.get("w"), info.get("h"), info.get("fps"), info.get("kbps"), info.get("enc")) == ("pipe", 1280, 720, 20, 4500, "x264"), info)
+    s2 = rm2.sess; e2 = s2.enc; cl = " ".join(e2.proc.args)
+    ck("… ffmpeg nhận khung qua ống, nén theo chất lượng kiểu nhẹ nhất (ultrafast), khung khoá định kỳ 4 giây / lần (theo giây thật)", "pipe:0" in cl and "-crf 22" in cl and "ultrafast" in cl and "prev_forced_t+%d)" % R.PIPE_KEY_S in cl and s2.long_gop, cl[-400:])
+    v1 = q.take(R.S_VIDEO, 10)
+    ck("… khung đầu là khung khoá có SPS/PPS", v1 is not None and v1[1][0] & 3 == 3, v1 and v1[1][:10])
+    time.sleep(2.2)                                                # qua đoạn mở đầu (1 giây chụp đủ nhịp + mấy khung làm nét)
+    with q.lock: q.rx[:] = [m for m in q.rx if m[0] not in (R.S_VIDEO, R.S_STATS)]
+    time.sleep(3.0); nv = q.count(R.S_VIDEO)
+    wait(lambda: q.count(R.S_STATS) >= 2, 3)
+    with q.lock: sts = [json.loads(m[1]) for m in q.rx if m[0] == R.S_STATS]
+    sj = sts[-1] if sts else {}
+    ck("đứng yên 3 giây: người xem chỉ nhận ~1–2 khung / giây (2–7 khung, không phải 60); số liệu ghi rõ kiểu tiết kiệm (eco = 1, số lần chụp ~3 / giây)", 2 <= nv <= 7 and sj.get("eco") == 1 and sj.get("cap") == "pipe"
+       and 1 <= sj.get("grab", 0) <= 5, (nv, sj))
+    with q.lock: q.rx[:] = [m for m in q.rx if m[0] != R.S_VIDEO]
+    io2.ev.clear(); q.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 3000, 4000)); io2.tick = 5; t0 = time.time()
+    ck("người xem rê chuột → máy rê + chụp ngay: khung mới về tới người xem sau ≤ 0,25 giây", wait(lambda: q.count(R.S_VIDEO) >= 1, 1.0, 0.005) and time.time() - t0 <= 0.25 and ("move", 3000, 4000) in io2.ev,
+       (time.time() - t0, io2.ev[:2]))
+    k0 = s2.t_key; e_old = s2.enc
+    s2.wait_key = True; s2.t_key = time.time() - 3                 # vừa phải bỏ khung (người xem chậm) → đang chờ khung khoá, mà khung khoá định kỳ còn xa
+    ck("đang chờ khung khoá → tự bật lại bộ nén lấy khung khoá ngay (không chờ khung khoá định kỳ): có bộ nén mới + khung khoá mới trong ≤ 3 giây",
+       wait(lambda: rm2.sess is s2 and s2.enc is not None and s2.enc is not e_old and not s2.wait_key and s2.t_key > time.time() - 2.5, 4), (s2.wait_key, s2.enc is e_old))
+    q.send(R.R_SLOW, b'{"buf": 300, "n": 1}')
+    ck("trạm báo người xem nhận chậm → 5 giây tới bảo đảm có khung khoá dày hơn (key_until)", wait(lambda: s2.key_until > time.time() + 3, 2), s2.key_until - time.time())
+    q.send(R.R_START, {"sid": 22, "q": "eco", "fps": 8, "maxh": 480, "kbps": 350, "client": "preview", "link": "direct", "admin": False, "owner": True, "preview": True})
+    info, end = {}, time.time() + 8
+    while time.time() < end and info.get("sid") != 22:              # bỏ qua các P_INFO của phiên 21 (mỗi lần bật lại bộ nén báo 1 lần)
+        m = q.take(R.P_INFO, 1.0); info = json.loads(m[1]) if m else info
+    cl = " ".join(rm2.sess.enc.proc.args) if rm2.sess and rm2.sess.enc else ""
+    ck("ô xem trước (luồng nhỏ của trạm): vẫn cách quay 'pipe', thu nhỏ 480, 8 khung / giây, khung khoá 2 giây / lần (ô mới mở có hình nhanh)",
+       (info.get("sid"), info.get("cap"), max(info.get("w", 0), info.get("h", 0)), info.get("fps")) == (22, "pipe", 480, 8) and "prev_forced_t+2)" in cl and "fast_bilinear" in cl, (info, cl[-300:]))
+    io2.grab_fail = True
+    m = None; end = time.time() + 14
+    while time.time() < end:
+        m = q.take(R.P_INFO, 1.0)
+        if m and json.loads(m[1]).get("cap") != "pipe": break
+    info = json.loads(m[1]) if m else {}
+    ck("máy không tự chụp được (bộ chụp lỗi) → tự về cách quay CŨ (ffmpeg tự quay), phiên không chết; 30 phút sau mới thử lại kiểu mới",
+       info.get("cap") in ("gdi", "test") and rm2.bad.get("pipe", 0) > time.time() + 1000, (info, rm2.bad))
+    q.send(R.R_STOP); wait(lambda: rm2.sess is None, 4)
+    rm2.stop = True; q.s.close()
     lsock.close()
     ck("nhật ký không ghi mã riêng của máy", not any("tok-1" in x for x in logs), [x for x in logs if "tok-1" in x][:2])
     shutil.rmtree(tmp, ignore_errors=True)
