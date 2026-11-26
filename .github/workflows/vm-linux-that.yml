@@ -1,0 +1,43 @@
+# 27/11 · THỬ THẬT MÁY MẪU VPS NVMe LINUX (Ubuntu 24.04 + XFCE + CloudBlue + OpenClaw) trong máy ảo KVM — như cbhost dựng trên Proxmox.
+#   proxmox/tests/ci/linux_that.py · kết quả → nhánh win-shots-linux-ubuntu2404 (shots/*-ketqua.txt + ảnh màn hình), đẩy 5 phút / lần.
+#   Chỉ chạy khi đẩy lên nhánh thulinux-* hoặc bấm tay (Actions › Run workflow).
+name: Thu that VPS Linux
+
+on:
+  push:
+    branches: ["thulinux-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy kết quả vào nhánh win-shots-linux-*
+
+concurrency:
+  group: vm-linux-that-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu2404:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    env:
+      TAG: linux-ubuntu2404
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc + QEMU
+        run: |
+          sudo mkdir -p /mnt/w && sudo chown "$(id -u)" /mnt/w && echo "W=/mnt/w" >> "$GITHUB_ENV"
+          sudo apt-get update -q >/dev/null 2>&1
+          sudo apt-get install -y -q qemu-system-x86 qemu-utils genisoimage >/dev/null 2>&1
+          [ -w /dev/kvm ] || sudo chmod 666 /dev/kvm
+          ls -l /dev/kvm; qemu-system-x86_64 --version | head -1; df -h /mnt | tail -1
+      - name: Bộ thử cbhost (Proxmox giả)
+        run: python3 proxmox/tests/test_cbhost.py > /tmp/u.txt 2>&1; rc=$?; tail -3 /tmp/u.txt; grep "✗" /tmp/u.txt | head -5; exit $rc
+      - name: Máy mẫu Linux dựng thật + VPS nhân bản
+        run: KQ=$PWD/kq python3 proxmox/tests/ci/linux_that.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-linux-ubuntu2404
+          path: kq
+          if-no-files-found: ignore
