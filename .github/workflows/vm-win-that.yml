@@ -15,7 +15,7 @@ permissions:
   contents: write          # chỉ để đẩy kết quả vào nhánh win-shots-*
 
 concurrency:
-  group: vm-win-that-${{ github.ref }}
+  group: vm-win-that-b-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -51,7 +51,7 @@ jobs:
 
   cai-2016:
     needs: ghep-2016
-    if: always()
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -83,7 +83,7 @@ jobs:
   # máy ảo kiểu UEFI (OVMF) — cbhost không tạo kiểu này, nhưng admin tự tạo máy mẫu bằng tay thì có thể chọn
   cai-2016-uefi:
     needs: ghep-2016
-    if: always()
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -145,7 +145,7 @@ jobs:
 
   cai-2012r2:
     needs: ghep-2012r2
-    if: always()
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
