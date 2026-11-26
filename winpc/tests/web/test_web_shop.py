@@ -31,7 +31,7 @@ def read(p):
 
 PRODUCTS = [{"id": PROD, "cat": "vps", "name": "VPS GPU BLUE", "price": 360000, "plans": [{"days": 7, "price": 360000}, {"days": 15, "price": 750000}, {"days": 30, "price": 1600000}],
              "features": ["2686V4", "RAM 128GB"], "hot": True, "sort": 1, "manual": True, "stock": 300, "manual_stock": 300},
-            {"id": OTHER, "cat": "vps", "name": "VPS THƯỜNG", "price": 100000, "plans": [{"days": 7, "price": 100000}], "features": [], "hot": False, "sort": 2, "manual": True, "stock": 5, "manual_stock": 5}]
+            {"id": OTHER, "cat": "vps", "name": "VPS THƯỜNG", "price": 100000, "plans": [{"days": 7, "price": 100000}], "features": ["Xeon E5", "RAM 64GB"], "hot": False, "sort": 2, "manual": True, "stock": 5, "manual_stock": 5}]
 INFO_ON = {"on": True, "product": PROD, "ready": True, "reinstall_max": 2,
            "os": [{"id": "22h2", "name": "Windows 10 Pro 22H2", "fast": True}, {"id": "1511", "name": "Windows 10 Pro 1511", "fast": False}]}
 MINE = {"product": PROD, "reinstall_max": 2, "os": [{"id": "22h2", "name": "Windows 10 Pro 22H2"}, {"id": "1511", "name": "Windows 10 Pro 1511"}], "items": [
@@ -122,6 +122,7 @@ def main():
                              plans: [...document.querySelectorAll('#m-plans button')].map(b => b.innerText.replace(/\\s+/g, ' ')), lab: document.querySelector('#m-plans-box > span').textContent }; }""")
         ck("hộp mua VPS GPU 'sịn': thẻ cấu hình đầu hộp (tên, cấu hình admin nhập, chỉ từ 50.000đ / ngày, Có máy sẵn), ẩn tiêu đề cũ",
            hz["vis"] and hz["first"] == "pcs-hero" and "VPS GPU BLUE" in hz["t"] and hz["chips"] == 2 and "2686V4" in hz["t"] and "chỉ từ 50.000" in hz["t"] and "Có máy sẵn" in hz["t"] and hz["title"] == "none", hz)
+        ck("26/11 · hộp thuê VPS GPU tự động đã có thẻ cấu hình ở đầu hộp → không lặp thêm dải cấu hình", s.js("() => getComputedStyle(document.getElementById('m-feats')).display") == "none")
         ck("① Chọn Windows rồi ② Chọn thời gian thuê; gói ghi giá / ngày, gói rẻ hơn có nhãn −%",
            hz["order"] == ["pcs-hero", "pcs-os", "m-plans-box"] and hz["lab"].startswith("②") and any("50.000" in x and "/ ngày" in x and "−3%" in x for x in hz["plans"])
            and not any("−" in x for x in hz["plans"] if x.startswith("30")), hz)
@@ -159,6 +160,10 @@ def main():
         st = s.js("() => ({ auto: document.getElementById('modal').classList.contains('pcauto'), os: !!document.getElementById('pcs-os') && !document.getElementById('pcs-os').hidden, vps: getComputedStyle(document.getElementById('m-vps')).display })")
         ck("sản phẩm VPS khác (không bật tự động) → hộp mua kiểu cũ nhưng KHÔNG còn FarmV5 / FarmSync (21.11j), không có ô Windows tự động", not st["auto"] and not st["os"] and st["vps"] == "none", st)
         ck("sản phẩm khác: không có thẻ cấu hình VPS GPU, tiêu đề + nhãn gói như cũ", s.js("() => { const h = document.getElementById('pcs-hero'); return (!h || h.hidden) && getComputedStyle(document.getElementById('m-title')).display !== 'none' && !document.querySelector('#m-plans-box > span').textContent.startsWith('②'); }"))
+        mf = s.js("""() => { const f = document.getElementById('m-feats'); return { title: document.getElementById('m-title').innerText.trim(), hid: f.hidden, disp: getComputedStyle(f).display,
+                    chips: [...f.querySelectorAll('span')].map(e => e.innerText), fl: (f.querySelector('.fl') || {}).innerText || '' }; }""")
+        ck("26/11 · hộp thuê VPS (kiểu cũ): tiêu đề 'Thuê VPS GPU' (không còn 'Mua sản phẩm') + nhắc lại CẤU HÌNH ngay trong hộp",
+           mf["title"] == "Thuê VPS GPU" and not mf["hid"] and mf["disp"] != "none" and mf["chips"] == ["Xeon E5", "RAM 64GB"] and mf["fl"] == "Cấu hình", mf)
         print("2. VPS GPU của bạn (trang chủ)")
         s.js("() => window.PCSHOP && document.getElementById('modal') && (document.getElementById('modal').hidden = true)")
         s.page.wait_for_function("() => document.querySelectorAll('#pcs-mine-list .pcs-card').length === 4", timeout=8000)
@@ -535,7 +540,11 @@ def main():
                and "750.000đ" in pg["t"][1] and "50.000đ/ngày" in pg["t"][1] and "1.600.000đ" in pg["t"][2] and "53.333đ/ngày" in pg["t"][2], pg)
             ck(f"{tag}: gói rẻ nhất tính theo NGÀY (15 ngày) có nhãn 'Rẻ nhất' + −3%; gói đắt hơn / ngày (30 ngày) không có nhãn giảm",
                pg["best"] == [False, True, False] and "Rẻ nhất" in pg["t"][1] and "−3%" in pg["t"][1] and "−" not in pg["t"][2] and "Rẻ nhất" not in pg["t"][0] + pg["t"][2], pg)
-            ck(f"{tag}: không tràn ngang, chữ trong ô gói không bị cắt; ô bên phải vẫn 'từ 360.000đ' + Mua ngay", pg["over"] <= 0 and pg["fit"] and "360.000đ" in pg["box"] and "Mua ngay" in pg["box"], pg)
+            ck(f"{tag}: không tràn ngang, chữ trong ô gói không bị cắt; ô bên phải ghi giá mồi 'từ 50.000đ /ngày' (26/11: mức rẻ nhất tính theo ngày = gói 15 ngày, không còn 'từ 360.000đ') + nút 'Thuê ngay' (hàng cho thuê, không ghi 'Mua ngay')",
+               pg["over"] <= 0 and pg["fit"] and "50.000đ" in pg["box"] and "/ngày" in pg["box"] and "360.000đ" not in pg["box"] and "Thuê ngay" in pg["box"] and "Mua ngay" not in pg["box"], pg)
+            sp = s.js("""id => { const c = document.querySelector('#grid .m3-plan[data-buy="' + id + '"]').closest('.m3-row'), f = c.querySelector('.feats.spec'), x = f && f.querySelector('span');
+                  return f ? { fl: (f.querySelector('.fl') || {}).innerText || '', chips: [...f.querySelectorAll('span')].map(e => e.innerText), fs: parseFloat(getComputedStyle(x).fontSize), fw: +getComputedStyle(x).fontWeight } : null; }""", PROD)
+            ck(f"{tag}: 26/11 · chữ CẤU HÌNH của VPS GPU nổi bật (nhãn 'Cấu hình', chữ đậm 800, cỡ ≥ 12,5px)", sp and sp["fl"] == "Cấu hình" and sp["chips"] == ["2686V4", "RAM 128GB"] and sp["fs"] >= 12.5 and sp["fw"] >= 800, sp)
             s.page.wait_for_timeout(300)
             s.page.screenshot(path=os.path.join(SHOTS, "shop-12-bang-gia%s.png" % ("-mobile" if mob else "")))
             s.page.click('#grid .m3-plan[data-days="15"][data-buy="%s"]' % PROD); s.page.wait_for_timeout(600)
@@ -546,7 +555,7 @@ def main():
             if not mob: s.page.screenshot(path=os.path.join(SHOTS, "shop-12c-hop-mua-15-ngay.png"))
             s.js("() => closeBuy()"); s.page.wait_for_timeout(200)
             s.page.click('#grid [data-buy="%s"].btn' % PROD); s.page.wait_for_timeout(500)
-            ck(f"{tag}: bấm 'Mua ngay' (không chọn gói) → vẫn chọn sẵn 30 ngày như cũ", s.js("() => [...document.querySelectorAll('#m-plans button.on')].map(b => b.dataset.d)") == ["30"])
+            ck(f"{tag}: bấm 'Thuê ngay' (không chọn gói) → vẫn chọn sẵn 30 ngày như cũ", s.js("() => [...document.querySelectorAll('#m-plans button.on')].map(b => b.dataset.d)") == ["30"])
             ck(f"5g {tag}: không lỗi JS", not s.errors, s.errors)
             s.close()
         def grid_plans(prods):

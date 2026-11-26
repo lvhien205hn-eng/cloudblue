@@ -408,7 +408,7 @@ def main():
         admin_open(s)
         ck("chưa nhập giá gói nào → đầu khung báo đỏ 'chưa nhập giá gói nào — khách chưa thấy gì'", "chưa nhập giá gói nào" in s.txt("#vma-top"), s.txt("#vma-top"))
         s.page.goto(ORIGIN + "/", wait_until="load"); s.page.wait_for_timeout(2000)
-        ck("… và ô bán ngoài trang ẩn hẳn (không có gói nào có giá, kể cả với admin)", not s.vis("#vm-shop"))
+        ck("… và dòng VPS NVMe ngoài trang ẩn hẳn (không có gói nào có giá, kể cả với admin)", not s.js("() => !!document.querySelector('#grid [data-vmbuy], #grid .m3-row.vm, #vm-shop')"))
         s.close()
 
         print("4. Quản trị khi CHƯA chạy SQL v56")
@@ -417,43 +417,74 @@ def main():
         ck("báo cần chạy SQL v56, không vẽ phần dưới, không báo lỗi đỏ", s.vis("#vma-miss") and not s.vis("#pane-vm .subtabs") and not s.errors, s.errors)
         s.close()
 
-        print("5. Khách: ô bán gói + mua")
+        print("5. Khách: VPS NVMe là 1 DÒNG sản phẩm (như Cloud Phone) + hộp Thuê ngay sổ bảng cấu hình")
         s = Site(br, html, False, vm_data(), products=prods)
         s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }"); s.page.wait_for_timeout(300)
-        ck("ô 🧩 VPS ảo hoá hiện ngay trên mục Sản phẩm, 7 gói (gói 4-8 chưa có giá → ẩn)", s.vis("#vm-shop") and s.js("() => document.getElementById('vm-shop').nextElementSibling.id") == "shop"
-           and s.js("() => document.querySelectorAll('#vms-grid .vms-plan').length") == 7 and "VPS 4-8" not in s.txt("#vms-grid"))
-        c1 = s.txt("#vms-grid .vms-plan:nth-child(1)"); c8 = s.txt("#vms-grid .vms-plan:nth-child(7)")
-        ck("gói 1-1: 100.000đ / tháng · 1 vCPU · 1 GB RAM · 20 GB SSD NVMe · chỉ Server 2012 R2 (bản khác cần 2 GB)", "100.000đ" in c1 and "/ tháng" in c1 and "1 vCPU" in c1
-           and "1 GB RAM" in c1 and "20 GB SSD NVMe" in c1 and "Server 2012 R2" in c1 and "LTSC" not in c1, c1)
-        ck("gói hết chỗ (8-16) → nút 'Tạm hết chỗ' bị khoá", "Tạm hết chỗ" in c8 and s.js("() => document.querySelector('#vms-grid .vms-plan:nth-child(7) button').disabled"), c8)
+        row = s.js("""() => { const r = document.querySelector('#grid article.m3-row.vm'); if (!r) return null; const t = e => e ? e.innerText.replace(/\\s+/g, ' ').trim() : '';
+          const rows = [...document.querySelectorAll('#grid > article.m3-row')], b = r.querySelector('.m3-box button');
+          return {i: rows.indexOf(r), n: rows.length, first: t(rows[0].querySelector('h3')), h3: t(r.querySelector('h3')), cat: t(r.querySelector('.cat')), fl: t(r.querySelector('.feats.spec .fl')),
+                  feats: [...r.querySelectorAll('.feats.spec span')].map(t), box: t(r.querySelector('.m3-box')), btn: t(b), dis: b.disabled, txt: t(r), old: !!document.getElementById('vm-shop')}; }""")
+        ck("VPS NVMe là 1 DÒNG trong danh sách Sản phẩm (không còn khối riêng #vm-shop): tên 'VPS NVMe BLUE', nút 'Thuê ngay'",
+           row and not row["old"] and row["h3"] == "VPS NVMe BLUE" and row["cat"] == "VPS NVMe" and row["btn"] == "Thuê ngay" and row["dis"] is False, row)
+        ck("dòng VPS NVMe: chữ CẤU HÌNH nổi bật gom mọi gói có giá — 1–8 vCPU · 1–16 GB RAM · SSD NVMe 20 GB · Windows đã có máy mẫu; giá mồi = mức rẻ nhất tính theo NGÀY 'từ 3.333đ /ngày' (100.000đ / 30 ngày); 'Còn chỗ'",
+           row and row["fl"] == "Cấu hình" and row["feats"][:3] == ["1–8 vCPU", "1–16 GB RAM", "SSD NVMe 20 GB"] and len(row["feats"]) == 4 and "Server 2012 R2" in row["feats"][3]
+           and "10 LTSC" in row["feats"][3] and "2022" not in row["feats"][3] and "3.333đ" in row["box"] and "/ngày" in row["box"] and "tháng" not in row["box"] and "Còn chỗ" in row["box"], row)
+        ck("thứ tự: dòng VPS NVMe nằm ngay sau Cloud Phone, trước các sản phẩm khác", row and row["i"] == 1 and "Cloud Phone" in row["first"], row)
         ck("sản phẩm ẩn chuyên mục 'vm' KHÔNG hiện trong lưới sản phẩm", "VPS ảo hoá · VPS 1-1" not in (s.txt("#grid") or "") and "Clone Roblox" in (s.txt("#grid") or ""), s.txt("#grid"))
-        hd = s.txt("#vms-h") or ""
-        ck("26/11 · khách thấy tên 'VPS NVMe' (không còn chữ 'ảo hoá' / hình 🧩 ở ô bán)", hd.startswith("VPS NVMe") and "ảo hoá" not in (s.txt("#vm-shop .vms-head") or "") and "🧩" not in (s.txt("#vm-shop") or ""), hd)
-        art = s.js("""() => { const c = document.querySelector('#vm-shop .vms-art canvas[data-c="nvme"]'); if (!c) return null; const r = c.getBoundingClientRect(), x = c.getContext('2d');
+        ck("26/11 · khách thấy tên 'VPS NVMe' (không còn chữ 'ảo hoá' / hình 🧩; không có dòng 'chỉ admin thấy')", row and "ảo hoá" not in row["txt"] and "🧩" not in row["txt"] and "admin" not in row["txt"], row)
+        cats = s.js("() => [...document.querySelectorAll('#cats button')].map(b => b.innerText.replace(/\\s+/g, ' ').trim())")
+        ck("thanh chuyên mục có nút 'VPS NVMe'; bấm → chỉ còn dòng VPS NVMe", any(c.startswith("VPS NVMe") for c in cats), cats)
+        s.js("() => { const b = [...document.querySelectorAll('#cats button')].find(b => b.innerText.trim().startsWith('VPS NVMe')); if (b) b.click(); }"); s.page.wait_for_timeout(250)
+        only = s.js("() => [...document.querySelectorAll('#grid > article.m3-row, #grid .m3-li')].map(r => (r.querySelector('h3, .nm b') || {}).innerText)")
+        ck("… lọc theo 'VPS NVMe' → lưới chỉ còn VPS NVMe BLUE", only == ["VPS NVMe BLUE"], only)
+        s.js("() => { const b = document.querySelector('#cats button'); if (b) b.click(); }"); s.page.wait_for_timeout(250)
+        s.page.fill("#q", "nvme"); s.page.wait_for_timeout(300)
+        found = s.js("() => [...document.querySelectorAll('#grid > article.m3-row, #grid .m3-li')].map(r => (r.querySelector('h3, .nm b') || {}).innerText)")
+        s.page.fill("#q", ""); s.page.wait_for_timeout(300)
+        ck("ô tìm: gõ 'nvme' → ra VPS NVMe BLUE", found == ["VPS NVMe BLUE"], found)
+        art = s.js("""() => { const c = document.querySelector('#grid .m3-row.vm .thumb canvas[data-c="nvme"]'); if (!c) return null; const r = c.getBoundingClientRect(), x = c.getContext('2d');
           const at = (px, py) => [...x.getImageData(Math.round(px * c.width), Math.round(py * c.height), 1, 1).data];
-          return {kind: c._kind, w: Math.round(r.width), h: Math.round(r.height), mid: at(.56, .5), corner: at(.5, .12), hot: (document.querySelector('#vm-shop .vms-art .hot') || {}).innerText || ''}; }""")
-        ck("ảnh riêng của VPS NVMe (thanh SSD M.2) đã vẽ: giữa ảnh là thân xanh của thanh SSD, mép trên là nền bảng sáng; có nhãn MỚI; ảnh tỉ lệ 16:9",
-           art and art["kind"] == "nvme" and art["w"] >= 200 and abs(art["w"] * 9 / 16 - art["h"]) <= 2 and art["mid"][2] > 150 and art["mid"][2] > art["mid"][0] + 60
-           and min(art["corner"][:3]) > 170 and art["hot"] == "MỚI", art)
+          return {kind: c._kind, w: Math.round(r.width), h: Math.round(r.height), mid: at(.56, .5), corner: at(.5, .12), hot: (document.querySelector('#grid .m3-row.vm .thumb .hot') || {}).innerText || ''}; }""")
+        ck("ảnh riêng của VPS NVMe (thanh SSD M.2) vẽ trong ô ảnh của dòng: giữa ảnh là thân xanh của thanh SSD, mép trên là nền bảng sáng; có nhãn MỚI",
+           art and art["kind"] == "nvme" and art["w"] >= 200 and art["mid"][2] > 150 and art["mid"][2] > art["mid"][0] + 60 and min(art["corner"][:3]) > 170 and art["hot"] == "MỚI", art)
+        s.js("() => document.querySelector('#grid .m3-row.vm').scrollIntoView({block: 'center'})"); s.page.wait_for_timeout(250)
         s.shot("vm-5-shop.png")
-        s.page.click('[data-vmbuy="vps2-2"]'); s.page.wait_for_timeout(300)
+        s.page.click('#grid .m3-row.vm .m3-box button[data-vmbuy]'); s.page.wait_for_timeout(300)
         d = s.dlg()
-        ck("hộp mua VPS 2-2: chọn sẵn Windows có máy mẫu; bản chưa có máy mẫu bị khoá; 30 ngày 170.000đ",
-           "Mua VPS 2-2" in d and "170.000đ" in d and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2012r2\"]').classList.contains('on')")
-           and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2022\"]').disabled"), d)
+        tiles = s.js("() => [...document.querySelectorAll('#vms-plan [data-vmplan]')].map(b => [b.dataset.vmplan, b.classList.contains('on'), b.disabled, b.innerText.replace(/\\s+/g, ' ').trim()])")
+        ck("bấm Thuê ngay → hộp '⚡ Thuê VPS NVMe' sổ bảng cấu hình: 7 gói có giá (4-8 chưa có giá → không hiện), chọn sẵn gói rẻ nhất còn chỗ (VPS 1-1), gói hết chỗ (8-16) bị khoá + ghi 'tạm hết chỗ'",
+           "Thuê VPS NVMe" in d and "Chọn cấu hình" in d and "Chọn hệ điều hành" in d and [t[0] for t in tiles] == ["vps1-1", "vps1-2", "vps2-2", "vps2-4", "vps3-3", "vps4-4", "vps8-16"]
+           and [t[0] for t in tiles if t[1]] == ["vps1-1"] and [t[0] for t in tiles if t[2]] == ["vps8-16"] and "tạm hết chỗ" in tiles[-1][3]
+           and "1 vCPU · 1 GB RAM" in tiles[0][3] and "SSD NVMe 20 GB" in tiles[0][3] and "100.000đ / tháng" in tiles[0][3] and "100.000đ" in (s.txt("#vms-sum") or ""), (d, tiles))
+        s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
+        ck("chọn VPS 2-2: ô gói đổi dấu ✓, tổng tiền 30 ngày 170.000đ; Windows có máy mẫu chọn sẵn; bản chưa có máy mẫu bị khoá",
+           s.js("() => [...document.querySelectorAll('#vms-plan .on')].map(b => b.dataset.vmplan)") == ["vps2-2"] and "170.000đ" in (s.txt("#vms-sum") or "")
+           and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2012r2\"]').classList.contains('on')")
+           and s.js("() => document.querySelector('#vms-os [data-vmos=\"win2022\"]').disabled"), (s.dlg(), s.txt("#vms-sum")))
         s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.wait_for_timeout(100)
         s.shot("vm-6-buy.png")
         s.page.click("#vms-pay"); s.page.wait_for_timeout(700)
-        ck("Thanh toán → vm_buy {vps2-2, win10ltsc, 30 ngày}, đóng hộp, tải lại VPS của tôi", s.calls("vm_buy") == [{"p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 30}]
-           and not s.vis("#vzdlg") and len(s.calls("vm_my")) >= 2, s.calls("vm_buy"))
+        ck("Thanh toán → vm_buy {vps2-2, win10ltsc, 30 ngày}, đóng hộp, báo 'Đã thuê VPS-15', tải lại VPS của tôi", s.calls("vm_buy") == [{"p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 30}]
+           and not s.vis("#vzdlg") and len(s.calls("vm_my")) >= 2 and "Đã thuê VPS-15" in (s.txt("#toast") or ""), (s.calls("vm_buy"), s.txt("#toast")))
+        ck("mua xong: dòng VPS NVMe vẫn còn trong danh sách (vẽ lại lưới không làm mất)", s.js("() => document.querySelectorAll('#grid article.m3-row.vm').length") == 1)
         s.js("() => { window.__VM.buyErr = 'NO_CAPACITY'; }")
-        s.page.click('[data-vmbuy="vps1-1"]'); s.page.wait_for_timeout(200)
+        s.page.click('#grid .m3-row.vm h3'); s.page.wait_for_timeout(250)
         need = s.js("() => [...document.querySelectorAll('#vms-os button')].map(b => [b.dataset.vmos || '', b.dataset.vmneed || '', b.disabled, b.innerText.replace(/\\s+/g, ' ').trim()])")
-        ck("26/11 · hộp mua gói 1 GB RAM: Server 2012 R2 chọn được; bản máy chủ có sẵn nhưng cần 2 GB (10 LTSC) hiện MỜ kèm 'cần gói từ 2 GB RAM'; bản chưa có máy mẫu không hiện",
-           len(need) == 2 and need[0][0] == "win2012r2" and need[0][2] is False and need[1][1] == "win10ltsc" and need[1][2] is True and "cần gói từ 2 GB RAM" in need[1][3], need)
+        ck("bấm vào DÒNG (không cần đúng nút) cũng mở hộp; gói 1 GB RAM: Server 2012 R2 chọn được; bản máy chủ có sẵn nhưng cần 2 GB (10 LTSC) hiện MỜ kèm 'cần gói từ 2 GB RAM'; bản chưa có máy mẫu không hiện",
+           "Thuê VPS NVMe" in s.dlg() and len(need) == 2 and need[0][0] == "win2012r2" and need[0][2] is False and need[1][1] == "win10ltsc" and need[1][2] is True and "cần gói từ 2 GB RAM" in need[1][3], need)
+        s.page.click('#vms-plan [data-vmplan="vps2-4"]'); s.page.wait_for_timeout(120); s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.wait_for_timeout(120)
+        s.page.click('#vms-plan [data-vmplan="vps3-3"]'); s.page.wait_for_timeout(120)
+        keep = s.js("() => [[...document.querySelectorAll('#vms-os .on')].map(b => b.dataset.vmos), document.getElementById('vms-sum').innerText]")
+        s.page.click('#vms-plan [data-vmplan="vps1-1"]'); s.page.wait_for_timeout(120)
+        back = s.js("() => [[...document.querySelectorAll('#vms-os .on')].map(b => b.dataset.vmos), document.getElementById('vms-sum').innerText]")
+        ck("đổi gói: hệ điều hành đang chọn còn hợp thì GIỮ (2-4 → 3-3 vẫn 10 LTSC, tổng 270.000đ); không hợp nữa (về gói 1 GB) thì tự về bản dùng được (2012 R2, tổng 100.000đ)",
+           keep[0] == ["win10ltsc"] and "270.000đ" in keep[1] and back[0] == ["win2012r2"] and "100.000đ" in back[1], (keep, back))
+        hit = s.js("() => { const b = document.querySelector('#vms-plan [data-vmplan=\"vps8-16\"]'); b.click(); return [...document.querySelectorAll('#vms-plan .on')].map(x => x.dataset.vmplan); }")
+        ck("gói hết chỗ trong bảng cấu hình: bấm không chọn được", hit == ["vps1-1"], hit)
         s.page.click("#vms-pay"); s.page.wait_for_timeout(500)
         ck("hết chỗ lúc mua → báo rõ trong hộp (không trừ tiền)", "hết chỗ" in s.dlg(), s.dlg())
         s.page.click('#vzdlg [data-vmx]'); s.page.wait_for_timeout(100)
+        s.js("() => { window.__VM.buyErr = null; }")
 
         print("6. Khách: VPS ảo hoá của bạn")
         ck("khung 'VPS NVMe của bạn' nằm ngay dưới 'VPS GPU của bạn', 3 VPS", s.vis("#vm-mine") and s.js("() => document.getElementById('vm-mine').previousElementSibling.id") == "pcs-mine"
@@ -475,6 +506,9 @@ def main():
         top = s.js("() => Math.round(document.getElementById('vm-mine').getBoundingClientRect().top)")
         ck("bấm 'VPS NVMe của tôi' → cuộn tới khung 'VPS NVMe của bạn'", -40 <= top <= 360, top)
         s.shot("vm-7-mine.png")
+        s.page.click("#vm-mine-new"); s.page.wait_for_timeout(300)
+        ck("nút ➕ ở khung 'VPS NVMe của bạn' → mở thẳng hộp Thuê VPS NVMe (không phải cuộn đi tìm)", "Thuê VPS NVMe" in s.dlg() and s.js("() => document.querySelectorAll('#vms-plan [data-vmplan]').length") == 7, s.dlg())
+        s.page.click('#vzdlg [data-vmx]'); s.page.wait_for_timeout(150)
         s.page.click('[data-vm="12"] [data-vmpow="stop"]'); s.page.wait_for_timeout(400)
         ck("bấm Tắt → vm_my_power {12, stop}", s.calls("vm_my_power") == [{"p_id": 12, "p_act": "stop"}], s.calls("vm_my_power"))
         s.page.click('[data-vm="12"] [data-vmre]'); s.page.wait_for_timeout(200); s.page.click('#vms-reos [data-vmreos="win2012r2"]'); s.page.click("#vms-re-go"); s.page.wait_for_timeout(200)
@@ -500,26 +534,46 @@ def main():
         ck("không lỗi trang / không hộp thoại trình duyệt ngoài ý muốn (khách)", not s.errors, s.errors)
         s.close()
 
-        print("7. Khách khi chưa bật bán / chưa chạy SQL · điện thoại")
+        print("7. Khách khi chưa bật bán / hết chỗ / chưa chạy SQL · admin xem trước · điện thoại")
+        NOROW = "() => !!document.querySelector('#grid [data-vmbuy], #grid .m3-row.vm, #vm-shop')"
         s = Site(br, html, False, vm_data(shop=dict(SHOP, sell=False, admin=False)))
-        ck("chưa bật bán → khách không thấy ô VPS ảo hoá", not s.vis("#vm-shop"))
+        ck("chưa bật bán → khách không thấy dòng VPS NVMe", not s.js(NOROW))
         s.js("() => { window.__VM.my = { items: [], images: [] }; return VMSHOP.mineLoad(true); }"); s.page.wait_for_timeout(400)
         ck("chưa bật bán + khách chưa có VPS NVMe nào → menu bên KHÔNG hiện mục 'VPS NVMe của tôi'", s.js("() => document.getElementById('nav-vm').hidden") is True)
         s.close()
+        s = Site(br, html, True, vm_data(shop=dict(SHOP, sell=False, admin=True)))
+        adm = s.js("""() => { const r = document.querySelector('#grid article.m3-row.vm'); return r ? {note: (r.querySelector('.vms-adm') || {}).innerText || '', btn: r.querySelector('.m3-box button').innerText.trim(), dis: r.querySelector('.m3-box button').disabled} : null; }""")
+        ck("chưa bật bán nhưng là ADMIN → vẫn thấy dòng VPS NVMe để xem trước, có ghi chú 'Chỉ admin thấy — chưa bật bán'", adm and "Chỉ admin thấy" in adm["note"] and adm["btn"] == "Thuê ngay" and not adm["dis"], adm)
+        s.close()
+        full = json.loads(json.dumps(SHOP)); [p.__setitem__("free", False) for p in full["plans"]]
+        s = Site(br, html, False, vm_data(shop=full))
+        so = s.js("""() => { const r = document.querySelector('#grid article.m3-row.vm'); if (!r) return null; const b = r.querySelector('.m3-box button');
+          r.querySelector('h3').click(); return {btn: b.innerText.trim(), dis: b.disabled, box: r.querySelector('.m3-box').innerText.replace(/\\s+/g, ' '), dlg: !!document.getElementById('vzdlg') && !document.getElementById('vzdlg').hidden}; }""")
+        ck("mọi gói đều hết chỗ → dòng vẫn hiện nhưng nút 'Tạm hết chỗ' bị khoá, bấm vào dòng không mở hộp", so and so["btn"] == "Tạm hết chỗ" and so["dis"] and "Tạm hết chỗ" in so["box"] and not so["dlg"], so)
+        s.close()
         s = Site(br, html, False, vm_data(miss=True))
-        ck("chưa chạy SQL v56 → không thấy gì, không lỗi trang", not s.vis("#vm-shop") and not s.vis("#vm-mine") and not s.errors, s.errors)
+        ck("chưa chạy SQL v56 → không thấy gì, không lỗi trang", not s.js(NOROW) and not s.vis("#vm-mine") and not s.errors, s.errors)
         s.close()
         s = Site(br, html, False, vm_data(), vp=(390, 844), products=prods)
         s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }"); s.page.wait_for_timeout(300)
-        s.js("() => document.getElementById('vm-shop').scrollIntoView()"); s.page.wait_for_timeout(200)
+        s.js("() => document.querySelector('#grid .m3-row.vm').scrollIntoView({block: 'center'})"); s.page.wait_for_timeout(250)
         ow = s.js("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
-        ck("điện thoại (390px): ô bán không tràn ngang", ow <= 1, ow)
-        ph = s.js("""() => { const a = document.querySelector('#vm-shop .vms-art').getBoundingClientRect(), h = document.getElementById('vms-h').getBoundingClientRect(), l = document.getElementById('vms-lead').getBoundingClientRect();
-          return {aw: Math.round(a.width), side: h.left >= a.right - 1 && h.top < a.bottom, below: l.top >= a.bottom - 1 && l.left <= a.left + 2}; }""")
-        ck("điện thoại: ảnh VPS NVMe nhỏ nằm cạnh tên, lời dẫn xuống dòng dưới (đủ rộng)", ph["aw"] >= 120 and ph["aw"] <= 170 and ph["side"] and ph["below"], ph)
+        ck("điện thoại (390px): dòng VPS NVMe không tràn ngang", ow <= 1, ow)
+        ph = s.js("""() => { const r = document.querySelector('#grid .m3-row.vm'), b = r.getBoundingClientRect(), c = r.querySelector('.thumb canvas').getBoundingClientRect(), k = r.querySelector('.m3-box button').getBoundingClientRect();
+          const sp = [...r.querySelectorAll('.feats.spec span')].map(e => e.getBoundingClientRect());
+          return {w: Math.round(b.width), cw: Math.round(c.width), kin: k.left >= b.left - 1 && k.right <= b.right + 1 && k.width >= 120, spin: sp.every(q => q.left >= b.left - 1 && q.right <= b.right + 1 && q.width > 20)}; }""")
+        ck("điện thoại: ảnh, chữ cấu hình và nút Thuê ngay nằm gọn trong dòng", ph["w"] <= 390 and ph["cw"] >= 120 and ph["kin"] and ph["spin"], ph)
         s.shot("vm-8-phone.png")
-        s.page.click('[data-vmbuy="vps2-4"]'); s.page.wait_for_timeout(300)
+        s.page.click('#grid .m3-row.vm .m3-box button[data-vmbuy]'); s.page.wait_for_timeout(300)
+        s.page.click('#vms-plan [data-vmplan="vps2-4"]'); s.page.wait_for_timeout(200)
+        pd = s.js("""() => { const d = document.querySelector('#vzdlg .dlg').getBoundingClientRect(), l = document.getElementById('vms-plan'), pay = document.getElementById('vms-pay');
+          pay.scrollIntoView({block: 'center'}); const k = pay.getBoundingClientRect();
+          return {dw: Math.round(d.width), over: document.documentElement.scrollWidth - document.documentElement.clientWidth, scroll: l.scrollHeight > l.clientHeight + 1 || l.clientHeight < 400,
+                  tiles: [...l.querySelectorAll('button')].every(b => b.scrollWidth <= b.clientWidth + 1), pay: k.top >= 0 && k.bottom <= innerHeight + 1 && k.width > 80}; }""")
+        ck("điện thoại: hộp Thuê vừa màn hình, bảng cấu hình cuộn riêng, chữ trong ô gói không bị cắt, kéo xuống bấm được nút Thanh toán", pd["dw"] <= 390 and pd["over"] <= 1 and pd["scroll"] and pd["tiles"] and pd["pay"], pd)
+        s.js("() => document.getElementById('vms-plan').scrollIntoView({block: 'start'})"); s.page.wait_for_timeout(150)
         s.shot("vm-9-phone-buy.png")
+        ck("không lỗi trang (điện thoại)", not s.errors, s.errors)
         s.close()
 
         print("8. Quản trị: tải dữ liệu LỖI → báo rõ + nút Thử lại (26/11: web thật từng để trắng cả ô vì rpc(...).catch — supabase-js thật không có .catch)")
