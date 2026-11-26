@@ -9450,7 +9450,7 @@ function renderNodes() {
     const full = +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1;
     if (!off && n.enabled) { tr += +n.ram_total; ar += +n.alloc_ram; tc += +n.cpu_total; ac += +n.alloc_cpu; ph += +n.phones || 0; }
     const g = (m.gpus || []).map(x => nRow(esc(x.name).replace("NVIDIA GeForce ", ""),
-      `${x.util ?? "?"}% · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.util, 0, "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ")).join("")
+      `${x.util ?? "?"}%${x.eff != null && x.util != null && x.eff < x.util - 5 ? " (thật ~" + Math.round(x.eff) + "%)" : ""} · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.eff ?? x.util, 0, "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ" + (x.clk && x.clk_max ? ` · xung ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz (xung thấp = card đang nghỉ: % báo cao nhưng còn dư nhiều — "thật" = % tính theo xung)` : "") + (x.pwr != null && x.pwr_max ? ` · điện ${Math.round(x.pwr)}/${Math.round(x.pwr_max)} W` : ""))).join("")
       || `<div class="nr"><span>Card đồ hoạ</span><em>không đọc được</em></div>`;
     const d = m.disk_data, nid = esc(n.id), sel = NSEL.has(n.id), open = NOPEN.has(n.id), job = NJOB.get(n.id), L = SL.link.get(n.id);
     const cpuStop = m.cpu_busy_pct || 85, ramStop = m.ram_busy_pct || 85, dskStop = m.disk_busy_pct || 90;
@@ -9475,6 +9475,7 @@ function renderNodes() {
       <div class="nc gpu">
         ${g}
         ${"gpu_busy_pct" in m && (m.gpus || []).length ? nRow(`TB 5 phút · ${m.gpu_busy_pct ? "ngừng nhận ≥ " + m.gpu_busy_pct + "%" : "không chặn"}${m.vram_busy_pct ? " · VRAM ≥ " + m.vram_busy_pct + "%" : ""}`, `${m.gpu_avg5 ?? "?"}% · VRAM ${m.vram_avg5 ?? "?"}%`, m.gpu_avg5, m.gpu_busy_pct || 0, "Card đồ hoạ trung bình 5 phút — ngưỡng ngừng nhận máy mới") : ""}
+        ${(m.gpu_other || []).length ? `<div class="nr" title="Tiến trình KHÔNG phải máy khách đang dùng card (đo ~1 phút/lần) — vd máy ảo mồ côi / phần mềm lạ. Kiểm tra trên máy chủ nếu không rõ."><span>⚠ Ngoài máy khách: ${m.gpu_other.slice(0, 3).map(x => esc(x.n) + " " + Math.round(+x.p || 0) + "%").join(" · ")}</span><em></em></div>` : ""}
         ${(m.gpu_top || []).length ? `<div class="nr" title="Máy khách ăn card đồ hoạ nhiều nhất (đo ~1 phút/lần). ⬇ = ăn quá phần chia đều lúc card bận → máy chủ đã hạ ưu tiên card của máy đó để các máy khác chạy mượt; hết ăn quá phần 10 phút thì tự trả lại.${m.gpu_held ? " Phần đã hạ không tính là card quá tải." : ""}"><span>🎮 ${m.gpu_top.slice(0, 3).map(x => esc(x.n) + " " + Math.round(+x.p || 0) + "%" + (x.lv ? " ⬇" : "")).join(" · ")}</span><em>${m.gpu_held ? "đã hạ " + Math.round(m.gpu_held) + "%" : m.gpu_fair ? "chia đều ~" + Math.round(m.gpu_fair) + "%/máy" : ""}</em></div>` : ""}
       </div>
       <div class="nc dsk">

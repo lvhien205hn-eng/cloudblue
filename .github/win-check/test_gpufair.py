@@ -32,7 +32,11 @@ def fake_run(args, **kw):
     if args[0] == "typeperf":
         o = TP["seq"].pop(0) if TP["seq"] else TP["out"]
         return R(o if o is not None else "Error: No valid counters.\n", 0 if o else 1)
-    if args[0] == "nvidia-smi": return R(TP["nv"])
+    if args[0] == "nvidia-smi":
+        if "clocks" in args[1] and TP.get("nvclk") is not None: return R(TP["nvclk"])
+        if "clocks" in args[1]: return R("Field \"clocks.sm\" is not a valid field to query.\n", 2)
+        return R(TP["nv"])
+    if args[0] == "tasklist": return R('"System","4","Services","0","148 K"\r\n"MuMuVMMHeadless.exe","999","Console","1","2,000,000 K"\r\n')
     raise OSError("không có " + args[0])
 G["subprocess"] = type("S", (), {"run": staticmethod(fake_run), "TimeoutExpired": subprocess.TimeoutExpired})
 PIDS = {"cp_a": [100, 101], "cp_b": [200], "cp_c": [300], "spare_1": [400]}
@@ -99,6 +103,20 @@ TP["seq"] = [HOG, HOG]; PRIO.clear(); NOW[0] += 1900; out, j = run()
 ck("hết 30 phút → hạ lại được (đo lại thấy máy vẫn chạy → giữ bậc 1)", sorted(set(PRIO)) == [(100, 1), (101, 1)] and j["top"][0]["lv"] == 1, (PRIO, j))
 TP["seq"] = [typeperf_out([["t0", "0", "0", "0", "0", "0"], ["t1", "1", "0", "0", "60", "37"], ["t2", "1", "0", "0", "60", "37"]])]; PRIO.clear(); NOW[0] += 60; out, j = run()
 ck("đang bị hạ mà về sau bị đói (card vẫn bận, máy 1%) → trả lại ngay, không chờ 10 phút", sorted(set(PRIO)) == [(100, 2), (101, 2)] and "ĐÓI card" in out, (PRIO, out))
+print("7. 27/11b · % card THẬT theo xung nhịp + tiến trình NGOÀI máy khách ăn card")
+ck("card ở xung nghỉ (139/1911 MHz) mà nvidia-smi báo 98% → thật ~7% (không coi là quá tải); xung cao (1800/1911) → giữ 98%; thiếu xung → giữ",
+   G["gpu_eff"](98.0, 139.0, 1911.0) == 7.1 and G["gpu_eff"](98.0, 1800.0, 1911.0) == 98.0 and G["gpu_eff"](98.0, None, 1911.0) == 98.0, G["gpu_eff"](98.0, 139.0, 1911.0))
+TP["nvclk"] = "98, 139, 1911\n"; u_ = G["_nv_util"](); TP["nvclk"] = None; u2_ = G["_nv_util"]()
+ck("_nv_util: hỏi kèm xung → % thật; driver cũ không có trường xung → hỏi lại chỉ % (98)", u_ == 7.1 and u2_ == 98.0, (u_, u2_))
+os.remove(os.path.join(d, "redroid", "gpufair.json"))
+HDR.append(r'\\WIN3\GPU Engine(pid_999_luid_0x0_0x1_phys_0_eng_0_engtype_3D)\Utilization Percentage')
+TP["seq"] = [typeperf_out([["t0", "0", "0", "0", "0", "0", "0"], ["t1", "2", "0", "0", "3", "2", "91"], ["t2", "2", "0", "0", "3", "2", "93"]])]
+TP["nvclk"] = "98, 1800, 1911\n"; PRIO.clear(); NOW[0] += 60; out, j = run()
+ck("tiến trình 999 không thuộc máy khách nào ăn 92% card → báo web (tên từ tasklist, loại nhân 3D), KHÔNG hạ ưu tiên ai",
+   j["other"] == [{"n": "MuMuVMMHeadless.exe", "pid": 999, "e": "3D", "p": 92.0}] and PRIO == [], (j.get("other"), PRIO))
+src_cp = open(os.path.join(os.path.dirname(PHC), "..", "cloudphoned.py"), encoding="utf-8").read()
+ck("cloudphoned: hỏi nvidia-smi kèm xung (có đường lùi), card bận tính bằng % THẬT, gửi web gpu_other",
+   "clocks.sm,clocks.max.sm" in src_cp and 'g["eff"] if g.get("eff") is not None else g["util"]' in src_cp and "gpu_other=" in src_cp)
 ck("lệnh gpufair có trong phonectl (argparse) + cloudphoned gọi ~1 phút / lần, gửi web gpu_top, phần đã hạ không tính là card quá tải",
    "gf = s.add_parser(\"gpufair\")" in open(PHC, encoding="utf-8").read()
    and all(k in open(os.path.join(os.path.dirname(PHC), "..", "cloudphoned.py"), encoding="utf-8").read() for k in ('"gpufair"]', "gpu_top=", "g_eff")))

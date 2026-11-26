@@ -1184,7 +1184,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "27/11a"
+CPD_VER = "27/11b"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1399,18 +1399,32 @@ def meminfo():
         k, v = line.split(":", 1); m[k] = int(v.split()[0])
     return m.get("MemTotal", 0) / 1048576, m.get("MemAvailable", 0) / 1048576
 
+def gpu_eff(util, clk, cmax):
+    """27/11b · % card THẬT: card đang ở xung nhịp thấp (< 50% xung tối đa — chế độ nghỉ) mà nvidia-smi báo % cao = việc lặt vặt
+       chạy liên tục, card còn dư rất nhiều → nhân theo tỉ lệ xung. Card chạy nặng thật luôn lên xung cao → giữ nguyên %."""
+    if util is None or not clk or not cmax: return util
+    r = clk / cmax
+    return util if r >= 0.5 else round(util * r, 1)
+
 def gpus():
-    try:
-        r = subprocess.run(["nvidia-smi", "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu",
-                            "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
-        out = []
-        for line in r.stdout.strip().splitlines():
-            n, u, mu, mt, tp = [x.strip() for x in line.split(",")]
-            num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
-            out.append({"name": n, "util": num(u), "mem_used": num(mu), "mem_total": num(mt), "temp": num(tp)})
-        return out
-    except Exception:
-        return []
+    num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
+    for q in ("name,utilization.gpu,memory.used,memory.total,temperature.gpu,clocks.sm,clocks.max.sm,power.draw,power.limit",
+              "name,utilization.gpu,memory.used,memory.total,temperature.gpu"):
+        try:
+            r = subprocess.run(["nvidia-smi", "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
+            out = []
+            for line in r.stdout.strip().splitlines():
+                f = [x.strip() for x in line.split(",")]
+                if len(f) != q.count(",") + 1: raise ValueError(line)
+                g = {"name": f[0], "util": num(f[1]), "mem_used": num(f[2]), "mem_total": num(f[3]), "temp": num(f[4])}
+                if len(f) > 5:
+                    g.update(clk=num(f[5]), clk_max=num(f[6]), pwr=num(f[7]), pwr_max=num(f[8]))
+                    g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"])
+                out.append(g)
+            if out or r.returncode == 0: return out
+        except Exception:
+            continue
+    return []
 
 def disk(path):
     try:
@@ -1470,7 +1484,7 @@ def heartbeat():
     disk_busy = disk_full()
     if disk_busy: c_ram = a_ram                         # ổ cứng ≥ 90% → báo hết chỗ
     g_list = gpus(); gf = gf_fresh(); held = float((gf or {}).get("held") or 0)
-    g_eff = [dict(g, util=max(0.0, g["util"] - held)) if held and g.get("util") is not None else g for g in g_list]   # 27/11a: máy đã hạ ưu tiên card nhường máy khác → không chặn nhận máy mới
+    g_eff = [dict(g, util=max(0.0, (g["eff"] if g.get("eff") is not None else g["util"]) - held)) if g.get("util") is not None else g for g in g_list]   # 27/11b: % THẬT (theo xung)   # 27/11a: máy đã hạ ưu tiên card nhường máy khác → không chặn nhận máy mới
     g_avg, v_avg = gpu_avg5(g_eff); g_why = gpu_busy()
     if g_why: c_ram, c_cpu = a_ram, a_cpu               # card đồ hoạ / VRAM quá tải → báo hết chỗ, đơn mới sang máy chủ khác
     zz, zz_full, nz = 0.0, 0.0, 0
@@ -1493,7 +1507,7 @@ def heartbeat():
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
     metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
-    if gf: metrics.update(gpu_top=gf.get("top") or [], gpu_held=held, gpu_fair=gf.get("fair"), gpu_hog=gf.get("hog"))   # 27/11a: máy nào ăn card
+    if gf: metrics.update(gpu_top=gf.get("top") or [], gpu_held=held, gpu_fair=gf.get("fair"), gpu_hog=gf.get("hog"), gpu_other=gf.get("other") or [])   # 27/11a: máy nào ăn card
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
     try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
@@ -1781,7 +1795,7 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 27/11a chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 27/11b chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
