@@ -128,8 +128,13 @@ def checks(vm, label):
         if rc == 0: break
         time.sleep(10)
     ok("%s: tài khoản khách vps TỰ đăng nhập giao diện XFCE (LightDM)" % label, rc == 0, t)
-    rc, t = vm.sh("systemctl is-active cloudblue.service lightdm.service qemu-guest-agent.service | tr '\\n' ' '")
-    ok("%s: dịch vụ cloudblue (agent) · lightdm · qemu-guest-agent đang chạy" % label, (t or "").split() == ["active"] * 3, t)
+    if rc != 0:
+        for f in ("/var/log/lightdm/lightdm.log", "/var/log/lightdm/x-0.log", "/var/log/Xorg.0.log"):
+            save("%s-%s" % ("mau" if "mẫu" in label else "vps", os.path.basename(f).replace(".log", "")), vm.ga.read(f))
+    want = "is-enabled" if "mẫu" in label else "is-active"      # máy mẫu: agent chỉ BẬT SẴN (chạy khi thành VPS)
+    rc2, t = vm.sh("systemctl %s cloudblue.service | tr -d '\\n'; echo -n ' '; systemctl is-active lightdm.service qemu-guest-agent.service | tr '\\n' ' '" % want)
+    ok("%s: dịch vụ cloudblue (agent %s) · lightdm · qemu-guest-agent đang chạy" % (label, "bật sẵn" if want == "is-enabled" else "chạy"),
+       (t or "").split() == ["enabled" if want == "is-enabled" else "active", "active", "active"], t)
     return rc
 
 
