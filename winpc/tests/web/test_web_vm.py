@@ -114,6 +114,9 @@ HOOK = """(() => { const V = window.__VM; const c = v => JSON.parse(JSON.stringi
     vm_my_reinstall: a => ({ ok: true, left: 2, image: a.p_image }),
     vm_my_renew: a => ({ ok: true, until: new Date(Date.now() + 50 * 864e5).toISOString(), order: 'o-r', total: 240000 }),
     vm_my_label: a => ({ ok: true, label: a.p_label }),
+    vm_buy_custom: a => V.buyErr ? raise(V.buyErr) : ({ ok: true, id: 17, pc: 'pc-17', order: 'o-17', total: 112000 }),
+    vm_my_upgrade: a => V.upErr ? raise(V.upErr) : a.p_dry ? ({ ok: true, dry: true, price: (a.p_cores - 2) * 8000 * 2 / 3 + (a.p_disk_gb - 20) * 1000 * 2 / 3 || 1000, days_left: 20, restart: a.p_cores !== 2 || a.p_ram_gb !== 4 })
+      : ({ ok: true, price: 5000, order: 'o-u', restart: a.p_cores !== 2 || a.p_ram_gb !== 4, days_left: 20 }),
     vm_my_cancel: a => ({ ok: true }),
     vm_admin_state: () => V.admErr ? raise(V.admErr) : V.miss ? miss('vm_admin_state') : c(V.adm),
     vm_admin_revenue: () => V.miss ? miss('vm_admin_revenue') : c(V.rev),
@@ -128,6 +131,7 @@ HOOK = """(() => { const V = window.__VM; const c = v => JSON.parse(JSON.stringi
     vm_admin_image: a => { let i = V.adm.images.find(x => x.id === a.p_id); if (!i) { i = { id: a.p_id }; V.adm.images.push(i); } Object.assign(i, a.p_patch); return c(i); },
     vm_admin_vps: a => { const v = V.adm.vps.find(x => x.id === a.p_id); if (!v) return raise('NO_VPS');
       if (a.p_act === 'stop') v.want = 'stopped'; if (a.p_act === 'start') v.want = 'running'; if (a.p_act === 'delete' || a.p_act === 'refund') v.status = 'deleted';
+      if (a.p_act === 'config') { v.cores = a.p_arg.cores; v.ram_mb = a.p_arg.ram_mb; v.disk_gb = a.p_arg.disk_gb; v.cfg_gen = (v.cfg_gen || 0) + 1; }
       return { ok: true, act: a.p_act, refunded: a.p_act === 'refund' }; },
     vm_admin_give: a => V.giveErr ? raise(V.giveErr) : ({ ok: true, id: 16, pc: 'pc-16', host: '%s', slot: 4 }),
     vm_tpl_state: () => V.tpl === null ? miss('vm_tpl_state') : c(V.tpl),
@@ -196,6 +200,21 @@ def tpl_state(err=False):
                       "cores": 2, "ram_mb": 2048, "disk_gb": 20, "pc": None, "want": "save", "status": "saved", "err": "", "enrolled": False, "online": False,
                       "created_at": iso(-90000), "done_at": iso(-86000)}]}
     if not err: d["jobs"] = [j for j in d["jobs"] if j["status"] != "error"]
+    return d
+
+
+CUST = {"on": True, "unit_cpu": 8000, "unit_ram": 12000, "unit_disk": 1000, "disk_free_gb": 20, "short_up": 0, "days": [1, 3, 7, 30], "max_cores": 16, "max_ram_gb": 32,
+        "max_disk_gb": 200, "room": {"cores": 40, "ram_gb": 100, "disk_gb": 500}}
+
+
+def v59(d, maint=False):
+    """Dữ liệu trả về sau khi đã chạy SQL v59: khối custom (đơn giá) · bảo trì · nâng cấp · lần đổi cấu hình."""
+    d["shop"].update(custom=json.loads(json.dumps(CUST)), upgrade=True, maint=maint, v=59)
+    d["my"].update(custom=json.loads(json.dumps(CUST)), upgrade=True, maint=maint, v=59)
+    for x in d["my"]["items"]: x["cfg_busy"] = False
+    d["adm"]["settings"].update(unit_cpu=8000, unit_ram=12000, unit_disk=1000, disk_free_gb=20, short_up=0, day_tiers=[1, 3, 7, 30], custom_on=True, upgrade_on=True,
+                                max_cores=16, max_ram_gb=32, max_disk_gb=200)
+    for v in d["adm"]["vps"]: v.update(cfg_gen=0, cfg_done=0)
     return d
 
 
@@ -455,7 +474,7 @@ def main():
         ck("bấm Thuê ngay → hộp '⚡ Thuê VPS NVMe' sổ bảng cấu hình: 7 gói có giá (4-8 chưa có giá → không hiện), chọn sẵn gói rẻ nhất còn chỗ (VPS 1-1), gói hết chỗ (8-16) bị khoá + ghi 'tạm hết chỗ'",
            "Thuê VPS NVMe" in d and "Chọn cấu hình" in d and "Chọn hệ điều hành" in d and [t[0] for t in tiles] == ["vps1-1", "vps1-2", "vps2-2", "vps2-4", "vps3-3", "vps4-4", "vps8-16"]
            and [t[0] for t in tiles if t[1]] == ["vps1-1"] and [t[0] for t in tiles if t[2]] == ["vps8-16"] and "tạm hết chỗ" in tiles[-1][3]
-           and "1 vCPU · 1 GB RAM" in tiles[0][3] and "SSD NVMe 20 GB" in tiles[0][3] and "100.000đ / tháng" in tiles[0][3] and "100.000đ" in (s.txt("#vms-sum") or ""), (d, tiles))
+           and "⚙️ 1 vCPU" in tiles[0][3] and "🧠 1 GB RAM" in tiles[0][3] and "💾 SSD NVMe 20 GB" in tiles[0][3] and "100.000đ / tháng" in tiles[0][3] and "100.000đ" in (s.txt("#vms-sum") or ""), (d, tiles))
         s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
         ck("chọn VPS 2-2: ô gói đổi dấu ✓, tổng tiền 30 ngày 170.000đ; Windows có máy mẫu chọn sẵn; bản chưa có máy mẫu bị khoá",
            s.js("() => [...document.querySelectorAll('#vms-plan .on')].map(b => b.dataset.vmplan)") == ["vps2-2"] and "170.000đ" in (s.txt("#vms-sum") or "")
@@ -532,6 +551,120 @@ def main():
            and s.js("() => document.getElementById('cpdlg').hidden") and s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && c.table === 'cloud_phones').length") > n0,
            (s.calls("cloudphone_rename"), s.txt("#toast")))
         ck("không lỗi trang / không hộp thoại trình duyệt ngoài ý muốn (khách)", not s.errors, s.errors)
+        s.close()
+
+        print("6c. SQL v59: tự chọn cấu hình · ổ thêm · nâng cấp · bảo trì")
+        s = Site(br, html, False, v59(vm_data()), products=prods)
+        s.js("() => { window.__FAKE.db.profiles[0].balance = 5000000; profile.balance = 5000000; renderUser(); }"); s.page.wait_for_timeout(300)
+        row = s.txt("#grid article.m3-row.vm") or ""
+        ck("dòng VPS NVMe ghi thêm 'Tự chọn cấu hình' trong phần Cấu hình", "Tự chọn cấu hình" in row, row)
+        s.page.click('#grid .m3-row.vm .m3-box button[data-vmbuy]'); s.page.wait_for_timeout(300)
+        d = s.dlg(); cust = s.txt('#vms-plan [data-vmplan="custom"]') or ""
+        ck("hộp Thuê: có dòng '20 GB ổ đầu miễn phí'; cuối bảng gói có ô '🛠 Tự chọn cấu hình' giá 'từ 20.000đ / tháng' (1 vCPU 8.000 + 1 GB 12.000)",
+           "20 GB ổ đầu miễn phí" in d and "Tự chọn cấu hình" in cust and "từ 20.000đ / tháng" in cust, (d, cust))
+        s.page.click('#vms-plan [data-vmplan="vps2-2"]'); s.page.wait_for_timeout(200)
+        ck("gói có sẵn + shop bán ổ thêm → hiện ô '💾 Ổ SSD NVMe' (gói có sẵn 20 GB · thêm 1.000đ / GB / tháng), mặc định 20 GB, tổng 170.000đ",
+           s.vis("#vms-cfg") and "gói có sẵn 20 GB" in (s.txt("#vms-cfg") or "") and s.js("() => document.getElementById('vms-c-pdisk').value") == "20" and "170.000đ" in (s.txt("#vms-sum") or ""), (s.txt("#vms-cfg"), s.txt("#vms-sum")))
+        s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.wait_for_timeout(150)
+        sm = s.txt("#vms-sum") or ""
+        ck("bấm + 2 lần → ổ 40 GB: tổng 170.000 + 20 × 1.000 = 190.000đ, ghi 'VPS 2-2 + 20 GB ổ (SSD NVMe 40 GB)'", "190.000đ" in sm and "VPS 2-2 + 20 GB ổ" in sm, sm)
+        ck("ổ không xuống dưới ổ của gói: nút − bị khoá khi về 20 GB", s.js("() => { const b = document.querySelector('[data-vmstep=\"pdisk\"][data-d=\"-10\"]'); b.click(); b.click(); b.click(); return [document.getElementById('vms-c-pdisk').value, b.disabled]; }") == ["20", True])
+        s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.click('[data-vmstep="pdisk"][data-d="10"]'); s.page.wait_for_timeout(100)
+        s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.click("#vms-pay"); s.page.wait_for_timeout(600)
+        ck("Thanh toán gói + ổ thêm → vm_buy {vps2-2, win10ltsc, 30 ngày, p_disk_gb 40}", s.calls("vm_buy") == [{"p_plan": "vps2-2", "p_image": "win10ltsc", "p_days": 30, "p_disk_gb": 40}], s.calls("vm_buy"))
+        s.page.click("#vm-mine-new"); s.page.wait_for_timeout(300)
+        s.page.click('#vms-plan [data-vmplan="custom"]'); s.page.wait_for_timeout(200)
+        cfg = s.txt("#vms-cfg") or ""
+        ck("bấm ô Tự chọn → 3 ô vCPU · RAM · SSD NVMe kèm đơn giá (8.000đ / vCPU / tháng · 12.000đ / GB · 20 GB đầu miễn phí · thêm 1.000đ / GB); mặc định 2 vCPU · 4 GB · 20 GB = 64.000đ / 30 ngày",
+           all(x in cfg for x in ("vCPU", "RAM (GB)", "SSD NVMe (GB)", "8.000đ / vCPU / tháng", "12.000đ / GB / tháng", "20 GB đầu miễn phí", "1.000đ / GB / tháng"))
+           and s.js("() => ['cores','ram','disk'].map(k => document.getElementById('vms-c-' + k).value)") == ["2", "4", "20"] and "64.000đ" in (s.txt("#vms-sum") or ""), (cfg, s.txt("#vms-sum")))
+        days = s.js("() => [...document.querySelectorAll('#vms-days [data-vmdays]')].map(b => b.innerText.replace(/\\s+/g, ' ').trim())")
+        ck("tự chọn: kỳ hạn theo cài đặt máy chủ 1 · 3 · 7 · 30 ngày, giá theo đơn giá (1 ngày 2.000đ · 7 ngày 15.000đ · 30 ngày 64.000đ)",
+           len(days) == 4 and "2.000đ" in days[0] and "15.000đ" in days[2] and "64.000đ" in days[3], days)
+        s.page.fill("#vms-c-cores", "3"); s.page.wait_for_timeout(120); s.page.fill("#vms-c-disk", "60"); s.page.wait_for_timeout(120)
+        sm = s.txt("#vms-sum") or ""
+        ck("gõ 3 vCPU + ổ 60 GB → 3×8.000 + 4×12.000 + 40×1.000 = 112.000đ; ô Tự chọn hiện đúng cấu hình đang chọn", "112.000đ" in sm and "3 vCPU · 4 GB RAM · SSD NVMe 60 GB" in sm
+           and "3 vCPU" in (s.txt('#vms-plan [data-vmplan="custom"]') or "") and "112.000đ / tháng" in (s.txt('#vms-plan [data-vmplan="custom"]') or ""), (sm, s.txt('#vms-plan [data-vmplan="custom"]')))
+        s.page.fill("#vms-c-cores", "99"); s.page.wait_for_timeout(100); s.page.dispatch_event("#vms-c-cores", "change"); s.page.wait_for_timeout(100)
+        ck("gõ quá giới hạn (99 vCPU) → tự kẹp về 16 (tối đa của shop)", s.js("() => document.getElementById('vms-c-cores').value") == "16" and "16 vCPU" in (s.txt("#vms-sum") or ""), s.txt("#vms-sum"))
+        s.page.fill("#vms-c-cores", "3"); s.page.dispatch_event("#vms-c-cores", "change"); s.page.wait_for_timeout(100)
+        s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.fill("#vms-c-ram", "1"); s.page.wait_for_timeout(150)
+        osx = s.js("() => [[...document.querySelectorAll('#vms-os .on')].map(b => b.dataset.vmos), [...document.querySelectorAll('#vms-os [data-vmneed]')].map(b => b.dataset.vmneed)]")
+        ck("RAM 1 GB → bản cần 2 GB (10 LTSC) tự mờ, tự về bản dùng được (2012 R2)", osx == [["win2012r2"], ["win10ltsc"]], osx)
+        s.page.fill("#vms-c-ram", "4"); s.page.wait_for_timeout(100); s.page.click('#vms-os [data-vmos="win10ltsc"]'); s.page.wait_for_timeout(100)
+        s.shot("vm-6c-custom.png")
+        s.page.click("#vms-pay"); s.page.wait_for_timeout(600)
+        ck("Thanh toán tự chọn → vm_buy_custom {3 vCPU, 4 GB, 60 GB, win10ltsc, 30 ngày}, báo 'Đã thuê VPS-17'",
+           s.calls("vm_buy_custom") == [{"p_cores": 3, "p_ram_gb": 4, "p_disk_gb": 60, "p_image": "win10ltsc", "p_days": 30}] and "Đã thuê VPS-17" in (s.txt("#toast") or ""), (s.calls("vm_buy_custom"), s.txt("#toast")))
+        ups = s.js("() => [...document.querySelectorAll('#vm-mine-list [data-vmup]')].map(b => [b.dataset.vmup, b.disabled])")
+        ck("VPS của bạn: nút ⬆ Nâng cấp — VPS-12 (đang chạy) bấm được; VPS-13 (đang tạo) / VPS-14 (hết hạn) bị khoá", ups == [["12", False], ["13", True], ["14", True]], ups)
+        s.page.click('[data-vmup="12"]'); s.page.wait_for_timeout(300)
+        d = s.dlg()
+        ck("hộp Nâng cấp: ghi cấu hình hiện tại (2 vCPU · 4 GB RAM · SSD NVMe 20 GB); chưa tăng gì thì nút Nâng cấp khoá, không hỏi giá",
+           "Hiện tại: 2 vCPU · 4 GB RAM · SSD NVMe 20 GB" in d and s.js("() => document.getElementById('vms-up-go').disabled") and not s.calls("vm_my_upgrade")
+           and s.js("() => document.querySelector('[data-vmstep=\"ucores\"][data-d=\"-1\"]').disabled"), d)
+        s.page.click('[data-vmstep="ucores"][data-d="1"]'); s.page.wait_for_timeout(700)
+        ck("bấm + vCPU → hỏi giá máy chủ (vm_my_upgrade p_dry) {12, 3 vCPU, 4 GB, 20 GB}; hiện số phải trả + 'tự khởi động lại'; nút Nâng cấp mở",
+           s.calls("vm_my_upgrade")[-1:] == [{"p_id": 12, "p_cores": 3, "p_ram_gb": 4, "p_disk_gb": 20, "p_dry": True}] and "Phải trả" in (s.txt("#vms-up-sum") or "")
+           and "khởi động lại" in (s.txt("#vms-up-sum") or "") and not s.js("() => document.getElementById('vms-up-go').disabled"), (s.calls("vm_my_upgrade"), s.txt("#vms-up-sum")))
+        s.page.click("#vms-up-go"); s.page.wait_for_timeout(600)
+        ck("bấm Nâng cấp → vm_my_upgrade {12, 3, 4, 20} (không p_dry), đóng hộp, báo 'Đã nâng cấp'", s.calls("vm_my_upgrade")[-1] == {"p_id": 12, "p_cores": 3, "p_ram_gb": 4, "p_disk_gb": 20}
+           and not s.vis("#vzdlg") and "Đã nâng cấp" in (s.txt("#toast") or ""), (s.calls("vm_my_upgrade"), s.txt("#toast")))
+        apps = s.txt("#vm-mine-app") or ""
+        ck("khung 'VPS NVMe của bạn' có dải tải app như VPS GPU: 💻 App máy tính (Windows) · 📱 App Android", "App máy tính (Windows)" in apps and "App Android" in apps
+           and s.js("() => !!document.querySelector('#vm-mine-app a[href*=\"CloudBluePC\"], #vm-mine-app a[href$=\".exe\"], #vm-mine-app a[download]')"), apps)
+        s.page.click('[data-vmapp="12"]'); s.page.wait_for_timeout(250)
+        ck("nút 📲 App trên VPS-12 → hộp mở bằng app máy tính (blueroblox://pc/<máy ảo>) / Android / trình duyệt", "Mở VPS trong app" in s.dlg()
+           and s.js("p => !!document.querySelector('#vzdlg a[href=\"blueroblox://pc/' + p + '\"]') && !!document.querySelector('#vzdlg a[href=\"/play.html?pc=' + p + '\"]')", VPC1), s.dlg())
+        s.page.click('#vzdlg .acts [data-vmx]'); s.page.wait_for_timeout(150)
+        ck("VPS chưa chạy (VPS-13 đang tạo) không có nút 📲 App", not s.js("() => !!document.querySelector('[data-vmapp=\"13\"]')"))
+        s.js("() => { window.__VM.my.items[0].cfg_busy = true; return VMSHOP.mineLoad(true); }"); s.page.wait_for_timeout(500)
+        c12 = s.txt('[data-vm="12"]') or ""
+        ck("máy chủ đang đặt cấu hình mới → thẻ VPS-12 hiện '⚙️ Đang đổi cấu hình' (tự khởi động lại 1–2 phút), vẫn ▶ Điều khiển được, nút Nâng cấp tạm khoá",
+           "Đang đổi cấu hình" in c12 and s.js("() => !!document.querySelector('[data-vm=\"12\"] a[href^=\"/play.html\"]')") and s.js("() => document.querySelector('[data-vmup=\"12\"]').disabled"), c12)
+        ck("không lỗi trang (v59)", not s.errors, s.errors)
+        s.close()
+
+        s = Site(br, html, False, v59(vm_data(), maint=True), products=prods)
+        mt = s.js("() => { const r = document.querySelector('#grid article.m3-row.vm'); const b = r.querySelector('.m3-box button'); return [r.querySelector('.m3-box').innerText.replace(/\\s+/g, ' '), b.disabled]; }")
+        ck("BẢO TRÌ riêng VPS NVMe → dòng sản phẩm ghi '🛠️ Đang bảo trì', nút khoá", "Đang bảo trì" in mt[0] and mt[1] is True, mt)
+        ck("… khung 'VPS NVMe của bạn' có dòng báo bảo trì; nút Nâng cấp bấm vào chỉ báo, không mở hộp", s.vis("#vm-mine-mt") and "bảo trì" in (s.txt("#vm-mine-mt") or "")
+           and (s.page.click('[data-vmup="12"]') or s.page.wait_for_timeout(200) or True) and not s.vis("#vzdlg"), s.txt("#vm-mine-mt"))
+        s.page.click("#vm-mine-new"); s.page.wait_for_timeout(300)
+        ck("… mở hộp Thuê (nút ➕) → có ghi chú bảo trì, nút Thanh toán khoá", "đang bảo trì" in s.dlg() and s.js("() => document.getElementById('vms-pay').disabled"), s.dlg())
+        s.close()
+
+        print("6d. Quản trị v59: đơn giá · đổi cấu hình 1 VPS · bảo trì riêng VPS NVMe")
+        s = Site(br, html, True, v59(vm_data()), path="/admin", vp=(1600, 1000))
+        admin_open(s, "set")
+        st = s.txt("#vma-set") or ""
+        ck("tab ⚙ Cài đặt có khung '🛠 Tự chọn cấu hình · ổ thêm · nâng cấp': bật tự chọn / nâng cấp, đơn giá, ổ miễn phí, %, kỳ hạn, giới hạn + bảng xem trước",
+           "Tự chọn cấu hình · ổ thêm · nâng cấp" in st and s.js("() => ['vma-s-cust','vma-s-up','vma-s-ucpu','vma-s-uram','vma-s-udisk','vma-s-free','vma-s-short','vma-s-tiers','vma-s-mc','vma-s-mr','vma-s-md'].every(i => !!document.getElementById(i))")
+           and "2 vCPU · 4 GB · 40 GB" in (s.txt("#vma-s-prev") or "") and "84.000đ" in (s.txt("#vma-s-prev") or ""), (st[:300], s.txt("#vma-s-prev")))
+        s.page.fill("#vma-s-ucpu", "9000"); s.page.fill("#vma-s-tiers", "30, 7, 7, 90"); s.page.uncheck("#vma-s-cust"); s.page.wait_for_timeout(100)
+        ck("gõ đơn giá → bảng xem trước tính lại ngay (2 vCPU · 4 GB · 40 GB: 30 ngày 86.000đ)", "86.000đ" in (s.txt("#vma-s-prev") or ""), s.txt("#vma-s-prev"))
+        s.page.click("#vma-s-save"); s.page.wait_for_timeout(600)
+        pt = (s.calls("vm_admin_settings") or [{}])[-1].get("p_patch", {})
+        ck("Lưu → vm_admin_settings kèm unit_cpu 9000 · custom_on false · upgrade_on true · day_tiers [7, 30, 90] · ổ miễn phí 20 · giới hạn 16 / 32 / 200",
+           pt.get("unit_cpu") == 9000 and pt.get("custom_on") is False and pt.get("upgrade_on") is True and pt.get("day_tiers") == [7, 30, 90] and pt.get("disk_free_gb") == 20
+           and (pt.get("max_cores"), pt.get("max_ram_gb"), pt.get("max_disk_gb")) == (16, 32, 200), pt)
+        admin_open(s, "plans")
+        ck("⚡ Tự tính giá lấy đơn giá từ máy chủ (9.000đ / vCPU vừa lưu); ổ chỉ tính phần vượt 20 GB miễn phí → VPS 2-2 = 2×9.000 + 2×12.000 = 42.000đ / 30 ngày",
+           s.js("() => document.getElementById('vma-c-cpu').value") == "9000" and "30n 42.000đ" in (s.txt("#vma-c-prev") or ""), (s.js("() => document.getElementById('vma-c-cpu').value"), (s.txt("#vma-c-prev") or "")[:400]))
+        admin_open(s, "vps")
+        s.page.click('[data-vmv="12"] [data-vmav="config"]'); s.page.wait_for_timeout(250)
+        s.page.fill("#vma-v-cores", "4"); s.page.fill("#vma-v-ram", "8"); s.page.fill("#vma-v-disk", "60"); s.page.click("#vma-v-go"); s.page.wait_for_timeout(600)
+        ck("VPS-12 › 🔧 Đổi cấu hình (không tính tiền khách) → vm_admin_vps {12, config, 4 vCPU · 8192 MB · 60 GB}; dòng VPS hiện 'Đang đổi cấu hình (lần 1)'",
+           (s.calls("vm_admin_vps") or [{}])[-1] == {"p_id": 12, "p_act": "config", "p_arg": {"cores": 4, "ram_mb": 8192, "disk_gb": 60}} and "Đang đổi cấu hình (lần 1)" in (s.txt('[data-vmv="12"]') or ""),
+           (s.calls("vm_admin_vps"), s.txt('[data-vmv="12"]')))
+        ok_mt = s.js("() => !!document.getElementById('mt-vm') && !!document.getElementById('mt-vmmsg') && document.getElementById('mt-vm').closest('label').previousElementSibling.querySelector('#mt-pcmsg') !== null")
+        ck("Cài đặt → Bảo trì có thêm dòng 'Bảo trì riêng VPS NVMe' + lời nhắn (ngay dưới dòng VPS GPU)", ok_mt and "Bảo trì riêng VPS NVMe" in (s.js("() => document.getElementById('mt-vm').closest('label').innerText") or ""))
+        ck("không lỗi trang (quản trị v59)", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, vm_data(), path="/admin", vp=(1600, 1000))
+        admin_open(s, "set")
+        ck("web mới + máy chủ CHƯA chạy SQL v59 → tab Cài đặt chỉ nhắc chạy 'CloudBlue v59 VPS NVMe cau hinh - bam Run', không có ô đơn giá; hộp Thuê không có ô Tự chọn / ổ thêm",
+           "CloudBlue v59 VPS NVMe cau hinh" in (s.txt("#vma-set") or "") and not s.js("() => !!document.getElementById('vma-s-ucpu')"), s.txt("#vma-set"))
         s.close()
 
         print("7. Khách khi chưa bật bán / hết chỗ / chưa chạy SQL · admin xem trước · điện thoại")
