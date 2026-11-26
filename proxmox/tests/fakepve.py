@@ -27,10 +27,15 @@ def main():
     d = load(); d["log"].append([tool] + a); node = socket.gethostname().split(".")[0]
     vms = d["vms"]
     out, rc = "", 0
-    if tool == "pvesh":
+    if tool == "pvesm":                                                # 27/11a · pvesm set local --content …
+        if a[:2] == ["set", "local"] and "--content" in a: d["local_content"] = opt(a, "--content")
+        else: rc, out = 2, "pvesm giả: không hỗ trợ " + " ".join(a)
+    elif tool == "pvesh":
         if a[:2] == ["get", "/cluster/resources"]:
             out = json.dumps([{"type": "qemu", "node": node, "vmid": int(k), "name": v["name"], "status": v["status"], "template": 1 if v.get("template") else 0}
                               for k, v in vms.items()] + [{"type": "qemu", "node": "khac", "vmid": 999, "name": "may-node-khac", "status": "running", "template": 0}])
+        elif a[:2] == ["get", "/storage/local"]:
+            out = json.dumps({"storage": "local", "content": d.get("local_content", "iso,vztmpl,backup")})
         elif a[:1] == ["get"] and re.fullmatch(r"/nodes/[^/]+/storage", a[1]):
             sts = [{"storage": "local-lvm", "active": 1, "content": "images,rootdir", "total": 1000 * 1073741824},
                    {"storage": "local", "active": 1, "content": "iso,vztmpl,backup", "total": 100 * 1073741824}]
@@ -90,9 +95,9 @@ def main():
             else:
                 m = re.match(r"^([^:]+):(\d+)", opt(a, "--scsi0", "") or "")
                 iso = (opt(a, "--ide2", "") or "").split(",")[0]
-                if not m: rc, out = 2, "thiếu ổ scsi0"
-                elif iso not in d.get("isos", []): rc, out = 2, "volume '%s' does not exist" % iso
-                else: vms[vid] = {"name": opt(a, "--name", "vm"), "status": "stopped", "disks": {"scsi0": int(m.group(2))}, "cdrom": {"ide2": iso},
+                if not m and "--scsi0" in a: rc, out = 2, "thiếu ổ scsi0"
+                elif "--ide2" in a and iso not in d.get("isos", []): rc, out = 2, "volume '%s' does not exist" % iso
+                else: vms[vid] = {"name": opt(a, "--name", "vm"), "status": "stopped", "disks": {"scsi0": int(m.group(2))} if m else {}, "cdrom": {"ide2": iso} if iso else {},
                                   "cfg": {k[2:]: opt(a, k) for k in a if k.startswith("--")}, "files": {}}
         elif cmd == "clone":
             src, dst = a[1], a[2]
@@ -110,6 +115,7 @@ def main():
                     if k in ("--cores", "--memory") and v["status"] == "running": v.setdefault("pending", {})[k[2:]] = opt(a, k)   # máy đang chạy: chờ lần bật nguội kế
                     else: v.setdefault("cfg", {})[k[2:]] = opt(a, k)
             if "--name" in a: v["name"] = opt(a, "--name")
+            if "import-from=" in (opt(a, "--scsi0") or ""): v["disks"]["scsi0"] = 3            # 27/11a · ổ nhập từ ảnh cloud (~3 GB)
             for k in [x for x in a if re.fullmatch(r"--(ide|sata)\d+", x)]:
                 if (opt(a, k) or "").startswith("none"): v.setdefault("cdrom", {})[k[2:]] = "none"
         elif cmd == "template":

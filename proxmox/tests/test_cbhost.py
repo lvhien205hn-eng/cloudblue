@@ -16,12 +16,12 @@ def ck(name, cond, extra=""):
 
 tmp = tempfile.mkdtemp(prefix="cbhost_")
 bind = os.path.join(tmp, "bin"); os.makedirs(bind)
-for tool in ("qm", "pvesh"):
+for tool in ("qm", "pvesh", "pvesm"):
     p = os.path.join(bind, tool)
     open(p, "w").write("#!/bin/sh\nexec %s %s %s \"$@\"\n" % (sys.executable, os.path.join(HERE, "fakepve.py"), tool))
     os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC)
 STATE = os.path.join(tmp, "pve.json")
-os.environ.update(FAKE_PVE_STATE=STATE, CBHOST_QM=os.path.join(bind, "qm"), CBHOST_PVESH=os.path.join(bind, "pvesh"),
+os.environ.update(FAKE_PVE_STATE=STATE, CBHOST_QM=os.path.join(bind, "qm"), CBHOST_PVESH=os.path.join(bind, "pvesh"), CBHOST_PVESM=os.path.join(bind, "pvesm"),
                   CBHOST_CONF=os.path.join(tmp, "cbhost.conf"), CBHOST_SECRET=os.path.join(tmp, "cbhost.secret"), CBHOST_STATE=os.path.join(tmp, "state.json"))
 NODE = socket.gethostname().split(".")[0]
 
@@ -765,5 +765,62 @@ w13.vps = [it50(enrolled=True, cfg="1; reboot")]; n0 = len(pve()["log"]); sync(h
 ck("'cfg' lạ từ web (chữ) → bỏ qua cả mục, không gọi qm", not [x for x in pve()["log"][n0:] if x[0] == "qm" and x[1] in ("set", "resize", "shutdown")] and rep_of(w13, 50) is None)
 ck("lệnh nới ổ C là lệnh CỐ ĐỊNH trong cbhost.py (không ghép chữ từ web)", "GROW_PS = (" in open(os.path.join(ROOT, "cbhost.py")).read() and "{" not in cb.GROW_ARGS[-1])
 
+
+print("14. VPS NVMe LINUX (27/11a): tự dựng máy mẫu Ubuntu 24.04 + XFCE + CloudBlue + OpenClaw từ ảnh cloud chính chủ")
+import base64 as _b64
+IMGD = b"anh-ubuntu-gia" * 1000; IMGSHA = hashlib.sha256(IMGD).hexdigest(); FN = cb.LINUX_TPLS["ubuntu2404"]["file"]
+cb.IMG_DIR = os.path.join(tmp, "img"); cb.SNIP_DIR = os.path.join(tmp, "snippets")
+got_urls = []
+cb.http_get = lambda url, limit=0: (got_urls.append(url), ("%s *%s\nffff *khac.img\n" % (IMGSHA, FN)).encode())[1]
+cb.http_save = lambda url, dst: (got_urls.append(url), open(dst, "wb").write(IMGD))
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm", "auto_tpl": True}))
+ck("cấu hình: máy cài bằng ISO (auto_tpl) mặc định tự dựng tpl-ubuntu2404; máy cài tay thì không; 'linux_tpl': [] tắt; tên lạ bỏ qua",
+   cb.conf()["linux_tpl"] == ["ubuntu2404"] and (open(os.environ["CBHOST_CONF"], "w").write(json.dumps({})) and cb.conf()["linux_tpl"] == [])
+   and (open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"auto_tpl": True, "linux_tpl": ["x; rm", "ubuntu2404"]})) and cb.conf()["linux_tpl"] == ["ubuntu2404"]))
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm", "auto_tpl": True}))
+try: os.remove(os.environ["CBHOST_STATE"])
+except OSError: pass
+pve_set(lambda d: d.update(vms={"9000": {"name": "tpl-win10-22h2", "status": "stopped", "template": True, "disks": {"scsi0": 32}}}, isos=[], guest_after=1, log=[]))
+cb.AUTO_CHK_S = 0; cb.RETRY_S = 60
+w14 = FakeWeb(); w14.status = "ready"; h14 = cb.Host(web=w14)
+h14.poll_once(); wait_idle(h14, 30)
+v = pve()["vms"].get("99600") or {}; c = v.get("cfg") or {}
+sn = open(os.path.join(cb.SNIP_DIR, "cloudblue-ubuntu2404.yaml"), encoding="utf-8").read()
+cbj = json.loads(_b64.b64decode(re.search(r"content: (\S+)", sn).group(1)))
+ck("tải ảnh Ubuntu chính chủ (cloud-images.ubuntu.com) + kiểm SHA256SUMS rồi mới dùng", got_urls[:2] == [cb.LINUX_TPLS["ubuntu2404"]["base"] + "SHA256SUMS", cb.LINUX_TPLS["ubuntu2404"]["base"] + FN]
+   and got_urls[0].startswith("https://cloud-images.ubuntu.com/") and open(os.path.join(cb.IMG_DIR, FN), "rb").read() == IMGD, got_urls)
+ck("máy ảo 99600 cbmau-ubuntu2404: Linux (l26) · 4 nhân 4 GB · ổ = ảnh vừa tải (import-from) nới 20 GB · ổ cloud-init + file riêng · đã bật",
+   v.get("name") == "cbmau-ubuntu2404" and c.get("ostype") == "l26" and c.get("cores") == "4" and c.get("agent") == "enabled=1" and v["status"] == "running"
+   and qmlog(r"^qm set 99600 --scsi0 local-lvm:0,import-from=%s" % re.escape(os.path.join(cb.IMG_DIR, FN))) and qmlog(r"^qm resize 99600 scsi0 20G$")
+   and qmlog(r"^qm set 99600 --ide2 local-lvm:cloudinit --boot order=scsi0 --cicustom user=local:snippets/cloudblue-ubuntu2404\.yaml"), (v, pve()["log"][-6:]))
+ck("ổ local bật thêm loại snippets (giữ loại cũ) · cloud-init ghi cb.json (web + khoá CÔNG KHAI, chưa có mã đăng ký) rồi chạy linux-vm.sh từ kho CloudBlue",
+   pve().get("local_content") == "iso,vztmpl,backup,snippets" and cbj.get("sb_url") == cb.DEFAULTS["sb_url"] and cbj.get("role") == "vm" and cbj.get("user") == "vps"
+   and "ticket" not in sn and "enroll" not in sn and cb.LIN_BOOT_URL in sn and sn.startswith("#cloud-config"), (pve().get("local_content"), cbj))
+try: bad = None; cb.http_save = lambda url, dst: open(dst, "wb").write(b"anh-bi-sua"); h14.linux_image.__func__(h14, "ubuntu2404") if False else None
+except Exception as e: bad = e
+os.remove(os.path.join(cb.IMG_DIR, FN))
+try: h14.linux_image("ubuntu2404"); bad = None
+except Exception as e: bad = str(e)
+ck("ảnh tải về SAI mã kiểm → bỏ, không dùng", bad and "SAI mã kiểm" in bad and not os.path.exists(os.path.join(cb.IMG_DIR, FN)), bad)
+h14.poll_once(); wait_idle(h14)
+ck("chưa xong (chưa có /var/lib/cloudblue/maymau.done) → chờ, báo web 'installing'", any(x.get("tag") == "ubuntu2404" and x.get("state") == "installing" for x in last_poll(w14)["p_metrics"].get("tpl_auto") or []),
+   last_poll(w14)["p_metrics"].get("tpl_auto"))
+pve_set(lambda d: d["vms"]["99600"].setdefault("files", {}).update({cb.LIN_DONE_F: "ok 27.11a"}))
+h14.poll_once(); wait_idle(h14, 30)
+v = pve()["vms"]["99600"]; f = v.get("files") or {}
+ck("xong → dừng agent (systemctl) · {} vào /opt/cloudblue/identity · seed · rent · tắt cloud-init + xoá machine-id · gỡ ổ cloud-init · thành máy mẫu tpl-ubuntu2404",
+   v["name"] == "tpl-ubuntu2404" and v.get("template") and v.get("execs") == [["systemctl", "stop", "cloudblue.service"], ["sh", "-c", cb.LIN_SEAL_SH]]
+   and all(f.get("/opt/cloudblue/" + n) == "{}" for n in ("identity.json", "seed.json", "rent.json")) and qmlog(r"^qm set 99600 --delete ide2,cicustom,ipconfig0$")
+   and json.load(open(os.environ["CBHOST_STATE"]))["lubuntu2404"].get("done"), (v.get("execs"), f))
+w14.vps = [item(id=60, tpl="tpl-ubuntu2404", hw=hashlib.sha256(b"60").hexdigest(), disk_gb=40)]
+for _ in range(4): h14.poll_once(); wait_idle(h14, 30)
+v60 = pve()["vms"].get("100060") or {}; s60 = json.load(open(os.environ["CBHOST_STATE"])).get("60") or {}
+ck("VPS Linux nhân từ tpl-ubuntu2404: vé đăng ký ghi vào /opt/cloudblue/seed.json (không phải đường dẫn Windows)",
+   json.loads((v60.get("files") or {}).get("/opt/cloudblue/seed.json") or "{}").get("ticket") == s60.get("ticket") and s60.get("lin") is True, (s60, list((v60.get("files") or {}))))
+cb.GROW_EVERY_S = 0; cb.GROW_TRIES = 1
+w14.vps = [item(id=60, tpl="tpl-ubuntu2404", hw=hashlib.sha256(b"60").hexdigest(), disk_gb=40, enrolled=True)]
+for _ in range(3): h14.poll_once(); wait_idle(h14, 30)
+ck("ổ VPS lớn hơn máy mẫu (40 > 20 GB) → nới ổ / trong Linux bằng lệnh cố định growpart + resize2fs (không phải lệnh PowerShell)",
+   ["sh", "-c", cb.GROW_LIN_SH] in (pve()["vms"]["100060"].get("execs") or []), pve()["vms"]["100060"].get("execs"))
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
