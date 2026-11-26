@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-iso-may-mau   (ban 26.11a)
+#  cloudblue-iso-may-mau   (ban 26.11b)
 #  TAO 1 FILE ISO "MAY MAU" cho VPS ao hoa (Proxmox): Windows goc + driver VirtIO + QEMU guest agent + phan mem CloudBlue PC.
 #  Cai ISO nay len 1 may ao moi tren Proxmox la TU DONG HET: chia o, cai Windows, driver, QEMU guest agent, tai khoan khach VPS
 #  (Admin, khong mat khau, tu dang nhap), phan mem CloudBlue (CHUA dang ky). Xong may de chay cho -> bang dieu khien may mau tren web
@@ -30,7 +30,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "26.11a"
+$VER = "26.11b"
 $OwnerRepo = "lvhien205hn-eng/cloudblue"
 $RawBase = "https://raw.githubusercontent.com/" + $OwnerRepo
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
@@ -64,7 +64,15 @@ function Run-Exe([string]$exe, [string[]]$a) {
   $old = $ErrorActionPreference
   $ErrorActionPreference = "Continue"
   $rc = 9009
-  try { & $exe @a 2>&1 | ForEach-Object { Write-Host ("   " + $_) }; $rc = $LASTEXITCODE } catch { Write-Host ("   " + $_) }
+  try {
+    & $exe @a 2>&1 | ForEach-Object {
+      # dong chu tren kenh loi cua chuong trinh ngoai (oscdimg in tien do o do): lay dung noi dung; dong trong thi bo (khong in "...RemoteException")
+      $t = ""
+      if ($_ -is [System.Management.Automation.ErrorRecord]) { if ($_.Exception) { $t = "" + $_.Exception.Message } } else { $t = "" + $_ }
+      if ($t.Trim() -and ($t -notmatch '^System\.Management\.Automation\.RemoteException$')) { Write-Host ("   " + $t) }
+    }
+    $rc = $LASTEXITCODE
+  } catch { Write-Host ("   " + $_) }
   $ErrorActionPreference = $old
   return $rc
 }
@@ -441,7 +449,8 @@ try {
   if (-not (Test-There $GaMsi)) { Stop-Build "ISO virtio-win thieu guest-agent\qemu-ga-x86_64.msi (QEMU guest agent)." }
   $why = Test-Signed $GaMsi "Red Hat"
   if ($why -match "HashMismatch") { Stop-Build ("qemu-ga-x86_64.msi bi sua (chu ky so khong khop) - tai lai ISO virtio-win.") }
-  if ($why) { Note ("qemu-ga-x86_64.msi: " + $why) }
+  if ($why -match "NotSigned") { Say "   qemu-ga-x86_64.msi khong co chu ky so (binh thuong voi ISO virtio-win)" "DarkGray" }
+  elseif ($why) { Note ("qemu-ga-x86_64.msi: " + $why) }
   Say ("   virtio-win " + $VVer + " - driver " + $S.os + " du (o dia VirtIO SCSI / Block, mang VirtIO, cong noi QEMU agent) + QEMU guest agent") "DarkGray"
   if ($VVer -and ($VVer -ne $want)) {
     Note ("Dang dung virtio-win " + $VVer + " - CloudBlue chi kiem ky ban " + $want + " cho " + $S.os + " (0.1.285 loi o dia / mang; 0.1.302 loi sao luu VSS cua QEMU agent). Nen tao lai ISO, o buoc 4 bam Enter de tu tai ban " + $want + ".")
@@ -520,11 +529,13 @@ try {
   Write-Host ("  XONG (" + $mins + " phut): " + $Out + "  (" + $gb + " GB)") -ForegroundColor Green
   Write-Host ("  May mau: tpl-" + $S.tag + " | " + $S.name + " | tai khoan khach " + $TaiKhoan + " (Admin, khong mat khau, tu dang nhap) | virtio " + $VVer) -ForegroundColor Green
   Write-Host "  ======================================================" -ForegroundColor Green
-  Say "  Buoc tiep:" "White"
-  Say "   1. Dua file ISO nay len Proxmox: trang Proxmox > Datacenter > ten may > local > ISO Images > Upload." "White"
-  Say ("   2. Create VM: Name tpl-" + $S.tag + ", OS: chon ISO nay, System: Qemu Agent (tich), Disk: SCSI 20 GB (VirtIO SCSI single, Discard), CPU 2 (type host), RAM 2048, Network: VirtIO.") "White"
-  Say "   3. Start: may TU cai het (20-40 phut, tu khoi dong lai 1-2 lan). Xong man hinh hien 'MAY MAU DA XONG'." "White"
-  Say "   4. Chinh them tuy y (cai phan mem...) roi: Shutdown > Hardware > CD/DVD Drive > Do not use any media > chuot phai > Convert to template." "White"
+  Say "  Buoc tiep (TU DONG): chay lenh ghep ISO Proxmox tu cai (tao-iso-proxmox.ps1 - HUONG-DAN muc 0). Lenh do tu lay file nay;" "White"
+  Say "   may chu cai tu ISO do se TU cai Proxmox, tu len web va TU dung may mau - khong phai lam 4 buoc tay ben duoi." "White"
+  Say "  Chi khi may chu Proxmox da cai san tu truoc moi lam tay:" "DarkGray"
+  Say "   1. Dua file ISO nay len Proxmox: trang Proxmox > Datacenter > ten may > local > ISO Images > Upload." "DarkGray"
+  Say ("   2. Create VM: Name tpl-" + $S.tag + ", OS: chon ISO nay, System: Qemu Agent (tich), Disk: SCSI 20 GB (VirtIO SCSI single, Discard), CPU 2 (type host), RAM 2048, Network: VirtIO.") "DarkGray"
+  Say "   3. Start: may TU cai het (20-40 phut, tu khoi dong lai 1-2 lan). Xong man hinh hien 'MAY MAU DA XONG'." "DarkGray"
+  Say "   4. Chinh them tuy y (cai phan mem...) roi: Shutdown > Hardware > CD/DVD Drive > Do not use any media > chuot phai > Convert to template." "DarkGray"
   Say "   ISO nay XOA SACH o dia 0 cua may cai no - chi gan vao may ao mau moi tao. Khong chua khoa bi mat nao." "Yellow"
   foreach ($n in $Notes) { Say ("   (!) " + $n) "Yellow" }
 } catch {
