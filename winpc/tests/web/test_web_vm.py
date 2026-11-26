@@ -2,7 +2,7 @@
 """Thử phần 🧩 VPS ẢO HOÁ trên web (SQL v56) + bỏ 2 thẻ quản trị (Máy VPS · Dàn máy nội bộ).
    Chrome thật (Playwright) + Supabase giả (fake_supabase.js của kho) + hàm vm_* giả trong trang; không gọi ra ngoài.
    python3 winpc/tests/web/test_web_vm.py [blueroblox-site/index.html] [thư mục ảnh]"""
-import datetime, json, os, sys, tempfile
+import datetime, json, os, sys, tempfile, time
 from playwright.sync_api import sync_playwright
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -506,6 +506,28 @@ def main():
         ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2405:4803:ff84:ac60::10]:8006", href)
         cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
         ck("máy chủ chỉ có IPv6 (cbhost báo ip6_only): thẻ máy đó có dòng ⚠️ 'chỉ có IPv6 — mạng chưa cấp IPv4'; máy khác không có", "chỉ có IPv6 — mạng chưa cấp IPv4" in cards[0] and "chỉ có IPv6" not in cards[1], cards)
+        s.close()
+        # 26/11d: máy chủ chưa có ISO máy mẫu nào → web chỉ cách (cắm USB bản đủ, không cài lại); cbhost đang chép từ USB → hiện tiến độ
+        adm7 = adm_state()
+        adm7["hosts"][0]["metrics"] = {"cpu": 0.2, "ram_used_mb": 2700, "running": 0, "tpl": [], "iso": [], "ver": "26/11d"}
+        adm7["hosts"][1]["metrics"] = {"cpu": 1, "ram_used_mb": 4096, "running": 0, "tpl": [], "iso": [], "ver": "26/11d",
+                                       "usb": {"s": "copy", "msg": "thấy 2 ISO máy mẫu trên USB cài đặt — đang chép 2 file (10.5 GB) vào máy chủ, ĐỪNG rút USB <b>x</b>", "t": int(time.time()) - 30}}
+        s = Site(br, html, True, vm_data(adm=adm7), path="/admin")
+        admin_open(s)
+        cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
+        ck("máy chủ đã lên web nhưng CHƯA có file ISO máy mẫu nào (USB ghép thiếu máy mẫu): thẻ máy chủ nói rõ + chỉ cách 'cắm USB … KHÔNG cần cài lại'",
+           "CHƯA có file ISO máy mẫu nào" in cards[0] and "KHÔNG cần cài lại" in cards[0], cards[0][-400:])
+        ck("máy chủ đang chép ISO từ USB (cbhost báo metrics.usb): thẻ hiện '💾 USB: … đang chép … ĐỪNG rút USB', không hiện dòng 'chưa có ISO'; chữ máy chủ gửi lên không chạy thành mã",
+           "💾 USB: thấy 2 ISO máy mẫu" in cards[1] and "ĐỪNG rút USB <b>x</b>" in cards[1] and "CHƯA có file ISO máy mẫu nào" not in cards[1] and not s.errors, (cards[1][-400:], s.errors))
+        s.close()
+        adm8 = adm_state()
+        adm8["hosts"][0]["metrics"]["usb"] = {"s": "done", "msg": "đã chép xong 2 ISO máy mẫu", "t": int(time.time()) - 7200}
+        adm8["hosts"][1]["metrics"]["usb"] = {"s": "err", "msg": "chép ISO máy mẫu từ USB CHƯA được", "t": int(time.time()) - 5}
+        s = Site(br, html, True, vm_data(adm=adm8), path="/admin")
+        admin_open(s)
+        cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
+        ck("dòng USB 'đã chép xong' tự ẩn sau 1 giờ; máy đã có máy mẫu / bản cbhost cũ (không báo danh sách ISO) không hiện dòng 'chưa có ISO'; lỗi chép thì hiện",
+           "💾 USB" not in cards[0] and "CHƯA có file ISO máy mẫu nào" not in cards[0] and "💾 USB: chép ISO máy mẫu từ USB CHƯA được" in cards[1] and not s.errors, cards)
         s.close()
         br.close()
     print("\nKẾT QUẢ: %d đạt, %d lỗi" % (OK, FAIL))
