@@ -11,7 +11,8 @@
 import hashlib, json, os, re, secrets, shutil, string, sys, zipfile
 from xml.sax.saxutils import escape as xml_esc
 
-VER = "24.11a"
+VER = "26.11a"
+WIN_PART = 2                        # số phân vùng Windows sau khi pe.cmd chia ổ (BIOS: System + Windows · UEFI: EFI + Windows)
 TZ = "SE Asia Standard Time"
 USER_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,19}$")
 # driver virtio cho VPS (KHÔNG có driver màn hình: VPS không cần VGA). Bắt buộc: ổ đĩa + mạng + cổng nối QEMU guest agent.
@@ -133,7 +134,10 @@ def unattend(p):
              "              <Value>%d</Value>\n"
              "            </MetaData>\n"
              "          </InstallFrom>\n"
-             "          <InstallToAvailablePartition>true</InstallToAvailablePartition>\n"
+             "          <InstallTo>\n"
+             "            <DiskID>0</DiskID>\n"
+             "            <PartitionID>%d</PartitionID>\n"
+             "          </InstallTo>\n"
              "          <WillShowUI>OnError</WillShowUI>\n"
              "        </OSImage>\n"
              "      </ImageInstall>\n"
@@ -142,7 +146,7 @@ def unattend(p):
              "        <FullName>CloudBlue</FullName>\n"
              "        <Organization>CloudBlue</Organization>\n"
              "%s"
-             "      </UserData>\n") % (idx, ("        <ProductKey>\n          <Key>%s</Key>\n          <WillShowUI>OnError</WillShowUI>\n        </ProductKey>\n" % key) if key else "")
+             "      </UserData>\n") % (idx, WIN_PART, ("        <ProductKey>\n          <Key>%s</Key>\n          <WillShowUI>OnError</WillShowUI>\n        </ProductKey>\n" % key) if key else "")
     spec = "      <ComputerName>%s</ComputerName>\n      <TimeZone>%s</TimeZone>\n" % (COMPUTER, TZ)
     dep = ("      <RunSynchronous>\n"
            "        <RunSynchronousCommand wcm:action=\"add\">\n"
@@ -184,9 +188,13 @@ def unattend(p):
 
 
 # ====================================================================================== diskpart trong WinPE
-BIOS_TXT = "select disk 0\r\nclean\r\ncreate partition primary\r\nformat quick fs=ntfs label=Windows\r\nactive\r\nexit\r\n"
+# Cả 2 kiểu: phân vùng 1 = khởi động (100 MB), phân vùng 2 = Windows (WIN_PART — file trả lời cài thẳng vào Ổ 0 · PHÂN VÙNG 2), gán chữ W để pe.cmd
+# chép nhật ký sang. Phân vùng Windows nằm CUỐI ổ (sau này nới ổ cho gói lớn được). 26/11: bỏ "cài vào phân vùng trống đầu tiên"
+# (InstallToAvailablePartition) — bộ cài Windows Server 2012 R2 báo "cannot locate the disk and partition" khi thử cài thật.
+BIOS_TXT = ("select disk 0\r\nclean\r\ncreate partition primary size=100\r\nformat quick fs=ntfs label=System\r\nactive\r\n"
+            "create partition primary\r\nformat quick fs=ntfs label=Windows\r\nassign letter=W\r\nexit\r\n")
 UEFI_TXT = ("select disk 0\r\nclean\r\nconvert gpt\r\ncreate partition efi size=100\r\nformat quick fs=fat32 label=System\r\n"
-            "create partition msr size=16\r\ncreate partition primary\r\nformat quick fs=ntfs label=Windows\r\nexit\r\n")
+            "create partition primary\r\nformat quick fs=ntfs label=Windows\r\nassign letter=W\r\nexit\r\n")
 
 
 # ====================================================================================== cb.json

@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-may-mau  (ban 24.11a) - chay TRONG may mau VPS ao hoa (Windows Server 2012 R2 / 2016 / 2019 / 2022, Windows 10 LTSC).
+#  cloudblue-may-mau  (ban 26.11a) - chay TRONG may mau VPS ao hoa (Windows Server 2012 R2 / 2016 / 2019 / 2022, Windows 10 LTSC).
 #  ISO may mau (proxmox/tao-iso-may-mau.ps1) chep file nay vao C:\CloudBluePC\vm\ . Windows PowerShell 4.0 tro len.
 #
 #  Buoc 1 - SetupComplete.cmd goi (SYSTEM, Windows vua cai xong, truoc man hinh dang nhap):
@@ -14,7 +14,7 @@
 param([int]$Buoc = 1, [switch]$Thu)      # -Thu: chay thu tren may CI (khong khoa tai khoan khac, khong bat agent, khong hop bao)
 
 $ErrorActionPreference = "Continue"
-$VER = "24.11a"
+$VER = "26.11a"
 $Base = "C:\CloudBluePC"
 $VmDir = Join-Path $Base "vm"
 $LogDir = Join-Path $Base "logs"
@@ -125,7 +125,12 @@ function Get-Tag { if ($script:Info -and $script:Info.tag) { return ("" + $scrip
 function Install-Drivers {
   $infs = @(Get-ChildItem -Path (Join-Path $VmDir "drivers") -Recurse -Filter "*.inf" -ErrorAction SilentlyContinue)
   if ($infs.Count -eq 0) { Log 'khong co driver virtio kem theo (bo cai da nap tu $WinPEDriver$)'; return }
-  foreach ($f in $infs) { [void](Run "pnputil.exe" @("-i", "-a", $f.FullName) ("driver " + $f.Directory.Name + "\" + $f.Name)) }
+  foreach ($f in $infs) {
+    # ma 259 = may nay khong co thiet bi nao can driver do / thiet bi da co driver (bo cai nap tu $WinPEDriver$) - khong phai loi
+    $what = "driver " + $f.Directory.Name + "\" + $f.Name
+    $rc = Run-Quiet "pnputil.exe" @("-i", "-a", $f.FullName)
+    if ($rc -eq 0) { Log ("ok  " + $what) } elseif ($rc -eq 259) { Log ("--  " + $what + " (da co / may nay khong co thiet bi do)") } else { Log ("LOI(" + $rc + ") " + $what) }
+  }
 }
 
 function Install-Ga {
@@ -193,6 +198,8 @@ function Set-AutoLogon {
 
 function Set-Tweaks {
   [void](Set-Reg "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System" "DisableCAD" 1 "DWord")
+  # khong hien bang "Networks - Do you want to allow your PC to be discoverable" moi lan VPS gap mang moi (moi VPS nhan ban co card mang moi)
+  try { if (-not (Test-Path -LiteralPath "HKLM:\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff")) { New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Network\NewNetworkWindowOff" -Force | Out-Null } } catch { Log "LOI tat bang hoi mang moi" }
   if (-not (Is-Server)) { return }
   [void](Set-Reg "HKLM:\SOFTWARE\Microsoft\ServerManager" "DoNotOpenServerManagerAtLogon" 1 "DWord")
   [void](Set-Reg "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Server\ServerManager" "DoNotOpenAtLogon" 1 "DWord")
@@ -246,6 +253,8 @@ function Register-Step2 {
 
 function Do-Buoc1 {
   Log ("=== buoc 1 (ban " + $VER + ") - may mau " + (Get-Tag) + ", tai khoan khach " + $User)
+  # nhat ky chia o dia luc cai (pe.cmd chep vao goc o Windows) -> gom ve thu muc nhat ky
+  try { if (Test-Path -LiteralPath "C:\cbvm-pe.log") { Move-Item -LiteralPath "C:\cbvm-pe.log" -Destination (Join-Path $LogDir "cbvm-pe.log") -Force } } catch { }
   Install-Drivers
   Install-Ga
   Install-Ucrt
