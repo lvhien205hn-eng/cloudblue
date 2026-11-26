@@ -39,6 +39,8 @@ jobs:
         run: python3 .github/win-check/test_win_sim.py
       - name: Quản lý máy chủ từ web + tự cập nhật theo máy chủ khác (23/11f)
         run: python3 .github/win-check/test_node.py
+      - name: Chia đều card đồ hoạ giữa các máy khách (27/11a gpufair)
+        run: python3 .github/win-check/test_gpufair.py
 
   emu:
     needs: sim
