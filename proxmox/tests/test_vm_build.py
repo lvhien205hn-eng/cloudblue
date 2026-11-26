@@ -70,8 +70,10 @@ paths = [txt(e) for e in els(ds, "Path")]
 ck("windowsPE: tìm ổ có \\cbvm\\pe.cmd rồi chạy (chia ổ theo BIOS / UEFI) — không đụng bộ cài PC (\\cb\\pe\\start.cmd)",
    len(paths) == 1 and "\\cbvm\\pe.cmd" in paths[0] and "%a:" in paths[0] and "start.cmd" not in xs, paths)
 md = els(ds, "MetaData")[0]
-ck("cài đúng bản số 2 (/IMAGE/INDEX) vào phân vùng trống đầu tiên", txt(els(md, "Key")[0]) == "/IMAGE/INDEX" and txt(els(md, "Value")[0]) == "2"
-   and txt(els(ds, "InstallToAvailablePartition")[0]) == "true", xs)
+it = els(ds, "InstallTo")
+ck("cài đúng bản số 2 (/IMAGE/INDEX) vào Ổ 0 · PHÂN VÙNG 2 (không dùng 'phân vùng trống đầu tiên' — bộ cài 2012 R2 không tìm ra)",
+   txt(els(md, "Key")[0]) == "/IMAGE/INDEX" and txt(els(md, "Value")[0]) == "2" and len(it) == 1 and txt(els(it[0], "DiskID")[0]) == "0"
+   and txt(els(it[0], "PartitionID")[0]) == "2" == str(vb.WIN_PART) and not els(ds, "InstallToAvailablePartition") and not els(ds, "DiskConfiguration"), xs)
 ap = els(ds, "AdministratorPassword")
 ck("Server: mật khẩu Administrator ngẫu nhiên (ký tự đặc biệt được thoát đúng), KHÔNG tạo tài khoản / tự đăng nhập trong file trả lời",
    len(ap) == 1 and txt(els(ap[0], "Value")[0]) == base["admin_pw"] and not els(ds, "LocalAccounts") and not els(ds, "AutoLogon"), xs)
@@ -163,12 +165,19 @@ ck("maymau.json: tpl / bản driver / Server / tài khoản / bản Windows", (m
 ux = open(os.path.join(iso, "autounattend.xml"), "rb").read()
 ck("autounattend.xml ở gốc ISO, xuống dòng CRLF, có mật khẩu Administrator ngẫu nhiên (không in ra)", b"\r\n" in ux and not re.search(rb"(?<!\r)\n", ux) and b"<AdministratorPassword>" in ux)
 bt, ut = (open(os.path.join(iso, "cbvm", n), "rb").read() for n in ("bios.txt", "uefi.txt"))
-ck("diskpart: BIOS 1 phân vùng active · UEFI GPT + EFI + MSR + Windows (cùng xoá sạch ổ 0)",
-   b"active" in bt and b"convert gpt" not in bt and b"convert gpt" in ut and b"create partition efi" in ut and b"create partition msr" in ut
-   and bt.startswith(b"select disk 0\r\nclean\r\n") and ut.startswith(b"select disk 0\r\nclean\r\n"))
+nparts = lambda t: [x for x in t.split(b"\r\n") if x.startswith(b"create partition")]
+ck("diskpart: BIOS = System 100 MB (active) + Windows · UEFI = GPT, EFI 100 MB + Windows — cả 2 kiểu Windows là PHÂN VÙNG 2, nằm cuối ổ, gán chữ W (cùng xoá sạch ổ 0)",
+   bt.startswith(b"select disk 0\r\nclean\r\n") and ut.startswith(b"select disk 0\r\nclean\r\n") and b"convert gpt" not in bt and b"convert gpt" in ut
+   and nparts(bt) == [b"create partition primary size=100", b"create partition primary"] and nparts(ut) == [b"create partition efi size=100", b"create partition primary"]
+   and bt.index(b"active") < bt.index(b"create partition primary\r\n") and all(t.rstrip().endswith(b"label=Windows\r\nassign letter=W\r\nexit") for t in (bt, ut))
+   and len(nparts(bt)) == len(nparts(ut)) == vb.WIN_PART, (bt, ut))
 pe = open(os.path.join(iso, "cbvm", "pe.cmd"), encoding="ascii").read()
 ck("pe.cmd: nạp driver ổ VirtIO trước (drvload) → đọc kiểu firmware → chọn bios.txt / uefi.txt",
    "drvload" in pe and "$WinPEDriver$\\vioscsi" in pe and "PEFirmwareType" in pe and "cbvm\\uefi.txt" in pe and "cbvm\\bios.txt" in pe and pe.index("drvload") < pe.index("diskpart"))
+ck("pe.cmd: CHỜ ổ đĩa 0 hiện ra (driver vừa nạp) rồi mới chia; diskpart lỗi thì thử lại; chép nhật ký sang ổ Windows mới (W:); luôn thoát mã 0",
+   pe.index("drvload") < pe.index('find /i "Disk 0"') < pe.index('diskpart /s "%DP%"') and "goto cho" in pe and "goto chia" in pe and "if not errorlevel 1 goto xong" in pe
+   and "W:\\cbvm-pe.log" in pe and pe.count("exit /b 0") == 2 and "timeout" not in pe.lower().replace("khong co timeout.exe", "") and "\r\n" in open(os.path.join(iso, "cbvm", "pe.cmd"), "rb").read().decode("ascii")
+   and not re.search(r"(?<!\r)\n", open(os.path.join(iso, "cbvm", "pe.cmd"), "rb").read().decode("ascii")))
 os.remove(os.path.join(cbd, "vm", "ucrt.msu"))
 ck("check: 2012 R2 thiếu bản vá UCRT → báo thiếu", vb.check(iso) == 1)
 mk(os.path.join(cbd, "vm", "ucrt.msu")); mk(os.path.join(cbd, "identity.json"), b'{"id":"x"}')
