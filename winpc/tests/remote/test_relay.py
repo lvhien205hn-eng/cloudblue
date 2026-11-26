@@ -2,7 +2,7 @@
 """Thử trạm trung chuyển máy PC (windows/pcrelay.py) + móc trong windows/bluestream.py — chạy ngay trong 1 tiến trình, không cần Windows.
    Supabase được thay bằng bản giả trong bộ nhớ (H.sb / H.whoami). Chạy:  python3 winpc/tests/remote/test_relay.py
 """
-import asyncio, base64, hashlib, importlib, io, json, os, shutil, struct, sys, tempfile, time, urllib.error
+import asyncio, base64, hashlib, importlib, io, json, os, re, shutil, struct, sys, tempfile, time, urllib.error
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -172,7 +172,9 @@ async def main():
     tmp = tempfile.mkdtemp(prefix="cbrelay-")
     H = load(tmp, conf="NODE_ID=wintest\nSUPABASE_URL=http://x\nSUPABASE_SERVICE_KEY=k\n")
     R = H.PCRELAY
-    ck("bluestream nạp được pcrelay (trạm BẬT), bản phụ 21/11a", R is not None and H.BS_SUB == "21/11a" and R.P_HELLO == 0x02 and H.NODE_ID == "wintest", H.PCRELAY_ERR)
+    bs_sub = tuple(int(x) for x in re.findall(r"\d+", str(H.BS_SUB))[:2][::-1]) if re.match(r"\d+/\d+", str(H.BS_SUB)) else (0, 0)
+    ck("bluestream nạp được pcrelay (trạm BẬT), bản phụ từ 21/11a trở đi", R is not None and bs_sub >= (11, 21) and R.P_HELLO == 0x02 and H.NODE_ID == "wintest",
+       (H.BS_SUB, H.PCRELAY_ERR))
     db = FakeSB(); H.sb, H.whoami = db.sb, db.whoami; H.SELFTEST = False
     R.SRC_WAIT_NEW, R.SRC_WAIT_BACK, R.INFO_WAIT_S, R.REAUTH_S, R.BEAT_S = 0.8, 1.2, 1.5, 0.6, 0.4
     srv = await asyncio.start_server(H.on_direct, "127.0.0.1", 0, limit=1 << 20)
