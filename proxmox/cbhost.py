@@ -22,11 +22,15 @@
 #     (ifupdown2 không cho 1 cầu vừa "inet dhcp" vừa "inet6 static"); cầu đã được đặt IPv4 thì dịch vụ tự gỡ. Tắt: "net_heal": false.
 #     Máy cài bằng ISO còn BÁO RA MÀN HÌNH gắn vào máy chủ (tty1, chữ không dấu): "DA LEN WEB …" / "CHUA goi duoc web … IPv4 … IPv6 … DNS …"
 #     → người ở chỗ máy chỉ cần chụp màn hình, không phải đăng nhập gõ lệnh.
+#   · VPS NVMe LINUX (27/11a): máy mẫu tpl-ubuntu2404 = Ubuntu 24.04 + XFCE + CloudBlue (điều khiển trong web / app như Windows) + OpenClaw.
+#     TỰ DỰNG (auto_tpl): tải ảnh Ubuntu cloud CHÍNH CHỦ (kiểm SHA256SUMS) → máy ảo cbmau-ubuntu2404 + cloud-init (ghi cb.json, chạy
+#     proxmox/vm/linux-vm.sh) → xong (/var/lib/cloudblue/maymau.done) → dừng agent, xoá mã máy, tắt cloud-init, xoá machine-id → máy mẫu.
+#     VPS Linux: vé đăng ký ghi vào /opt/cloudblue/seed.json; nới ổ / bằng growpart + resize2fs. Tắt: "linux_tpl": [].
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "26/11e"
+CBHOST_VER = "27/11a"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -35,9 +39,10 @@ SECRET_F = os.environ.get("CBHOST_SECRET") or "/etc/cloudblue/cbhost.secret"
 STATE_F = os.environ.get("CBHOST_STATE") or "/var/lib/cloudblue/cbhost-state.json"
 QM = os.environ.get("CBHOST_QM") or "qm"
 PVESH = os.environ.get("CBHOST_PVESH") or "pvesh"
+PVESM = os.environ.get("CBHOST_PVESM") or "pvesm"
 DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze",
             "storage": "", "full_clone": True, "vmid_base": 100000, "seed_path": "C:\\CloudBluePC\\seed.json", "max_builds": 2, "auto_update": True,
-            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None}
+            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None}
 UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
 UPD_EVERY_S = 3600
 RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
@@ -61,6 +66,43 @@ GROW_ARGS = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolic
 GROW_EVERY_S = 20               # nới ổ C trong Windows: thử lại 20 giây / lần (Windows chưa lên xong thì chưa trả lời)
 GROW_TRIES = 6                  # lệnh chạy được mà ổ C vẫn chưa đủ cỡ: thử tối đa 6 lần rồi thôi (khách tự nới bằng Disk Management)
 GROW_MAX_S = 30 * 60            # Windows mãi không trả lời (không có QEMU guest agent): 30 phút thì thôi
+# 27/11a · VPS NVMe LINUX — máy mẫu tự dựng từ ảnh cloud chính chủ (chỉ tải đúng file có trong SHA256SUMS của nhà phát hành)
+LINUX_TPLS = {"ubuntu2404": {"name": "Ubuntu 24.04 + OpenClaw", "base": "https://cloud-images.ubuntu.com/releases/noble/release/",
+                             "file": "ubuntu-24.04-server-cloudimg-amd64.img"}}
+IMG_DIR = os.environ.get("CBHOST_IMG_DIR") or "/var/lib/cloudblue/img"
+SNIP_DIR = os.environ.get("CBHOST_SNIP_DIR") or "/var/lib/vz/snippets"            # ổ "local" của Proxmox, loại nội dung snippets
+LIN_BOOT_URL = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/vm/linux-vm.sh"
+LIN_BASE = "/opt/cloudblue"
+LIN_DONE_F = "/var/lib/cloudblue/maymau.done"
+LIN_FAIL_F = "/var/lib/cloudblue/maymau.loi"
+LIN_WAIT_S = 2 * 3600           # dựng máy mẫu Linux (cài XFCE + OpenClaw, có mạng): tối đa 2 giờ
+LIN_SEAL_SH = ("systemctl stop cloudblue.service; touch /etc/cloud/cloud-init.disabled; cloud-init clean --logs >/dev/null 2>&1; "
+               "truncate -s 0 /etc/machine-id; rm -f /var/lib/dbus/machine-id /var/lib/cloudblue/maymau.done /opt/cloudblue/logs/*; sync")
+GROW_LIN_SH = ('R=$(findmnt -no SOURCE /); P=$(cat /sys/class/block/${R#/dev/}/partition); K=/dev/$(lsblk -no PKNAME "$R" | head -1); '
+               'growpart "$K" "$P" >/dev/null 2>&1; resize2fs "$R" >/dev/null 2>&1 || xfs_growfs / >/dev/null 2>&1; df -BG --output=size / | tail -1 | tr -dc 0-9')
+GROW_LIN_ARGS = ["sh", "-c", GROW_LIN_SH]
+
+
+def is_linux_tpl(tpl):
+    """Máy mẫu Linux (tên tpl-ubuntu… / tpl-debian… …) — đường dẫn trong máy, cách dừng agent, cách nới ổ khác Windows."""
+    return str(tpl or "")[4:].startswith(("ubuntu", "debian", "alma", "rocky", "linux"))
+
+
+def http_get(url, limit=4 << 20):
+    req = urllib.request.Request(url, headers={"User-Agent": "CloudBlue-cbhost/" + CBHOST_VER})
+    with urllib.request.urlopen(req, timeout=60) as r: return r.read(limit)
+
+
+def http_save(url, dst):
+    req = urllib.request.Request(url, headers={"User-Agent": "CloudBlue-cbhost/" + CBHOST_VER})
+    with urllib.request.urlopen(req, timeout=120) as r, open(dst, "wb") as f: shutil.copyfileobj(r, f, 1 << 20)
+
+
+def sha256_file(p):
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+    return h.hexdigest()
 USB_MNT = os.environ.get("CBHOST_USB_MNT") or "/run/cloudblue-usb"            # chỗ gắn tạm (chỉ đọc) USB có ISO máy mẫu
 ISO_DIR = os.environ.get("CBHOST_ISO_DIR") or "/var/lib/vz/template/iso"      # kho ISO "local" của Proxmox
 NAP_PY = os.environ.get("CBHOST_NAP_PY") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "cb_nap.py")
@@ -131,6 +173,8 @@ def conf():
     except (TypeError, ValueError): c["tpl_vmid_from"] = 99000
     c["auto_tpl"] = c.get("auto_tpl") is True
     c["net_heal"] = c["auto_tpl"] if c.get("net_heal") is None else c.get("net_heal") is True      # mặc định: bật trên máy cài bằng ISO CloudBlue-Proxmox
+    lt = c.get("linux_tpl")                                                                       # 27/11a · máy mẫu Linux tự dựng (mặc định: máy cài bằng ISO)
+    c["linux_tpl"] = (["ubuntu2404"] if c["auto_tpl"] else []) if lt is None else [t for t in lt if t in LINUX_TPLS] if isinstance(lt, list) else []
     if not isinstance(c.get("host_name"), str) or not RX_HOSTNAME.match(c["host_name"]): c["host_name"] = ""
     return c
 
@@ -342,6 +386,29 @@ class Pve:
         return res
 
     def set_name(self, vmid, name): return run([QM, "set", str(int(vmid)), "--name", name], 120)
+    def drop_ci(self, vmid): return run([QM, "set", str(int(vmid)), "--delete", "ide2,cicustom,ipconfig0"], 120)   # 27/11a · gỡ ổ cloud-init của máy mẫu Linux
+
+    def snippets_ready(self):
+        """Ổ "local" nhận loại nội dung snippets (file cloud-init riêng) — chưa thì bật thêm (giữ các loại đang có)."""
+        rc, out = run([PVESH, "get", "/storage/local", "--output-format", "json"], 60)
+        try: cur = [x for x in str((json.loads(out or "{}") or {}).get("content") or "").split(",") if x] if rc == 0 else []
+        except ValueError: cur = []
+        if "snippets" in cur: return 0, ""
+        return run([PVESM, "set", "local", "--content", ",".join(cur + ["snippets"])], 60)
+
+    def create_lin_vm(self, vmid, name, storage, img, hw, snip):
+        """27/11a · máy ảo dựng máy mẫu Linux: ổ = ảnh cloud vừa tải (import-from), nới 20 GB, ổ cloud-init + file cloud-init riêng (snippets),
+        4 nhân / 4 GB cho cài nhanh (VPS nhân ra đặt lại theo gói), có QEMU agent, màn hình thường."""
+        steps = [[QM, "create", str(int(vmid)), "--name", name, "--ostype", "l26", "--machine", "pc", "--bios", "seabios", "--scsihw", "virtio-scsi-single",
+                  "--net0", "virtio,bridge=%s" % self.c["bridge"], "--cores", "4", "--sockets", "1", "--cpu", "host", "--memory", "4096", "--balloon", "0",
+                  "--agent", "enabled=1", "--onboot", "0", "--vga", "std", "--serial0", "socket", "--tags", "cloudblue-mau", "--smbios1", "uuid=" + hw_uuid(hw)],
+                 [QM, "set", str(int(vmid)), "--scsi0", "%s:0,import-from=%s,discard=on,iothread=1" % (storage, img)],
+                 [QM, "resize", str(int(vmid)), "scsi0", "20G"],
+                 [QM, "set", str(int(vmid)), "--ide2", "%s:cloudinit" % storage, "--boot", "order=scsi0", "--cicustom", "user=local:snippets/" + snip, "--ipconfig0", "ip=dhcp"]]
+        for st in steps:
+            rc, out = run(st, 1800)
+            if rc != 0: return rc, out
+        return 0, ""
     def eject(self, vmid, dev): return run([QM, "set", str(int(vmid)), "--" + dev, "none,media=cdrom"], 120)
     def make_template(self, vmid): return run([QM, "template", str(int(vmid))], 600)
 
@@ -637,6 +704,10 @@ class Host:
 
     def vmid(self, vid): return self.c["vmid_base"] + int(vid)
 
+    def gpath(self, tpl, name):
+        """Đường dẫn file của CloudBlue trong máy ảo theo loại máy mẫu: Linux /opt/cloudblue/<tên> · Windows C:\\CloudBluePC\\<tên>."""
+        return LIN_BASE + "/" + name if is_linux_tpl(tpl) else self.c["seed_path"].rsplit("\\", 1)[0] + "\\" + name
+
     # ---- việc chạy lâu (nhân bản, xoá) ở luồng riêng: vẫn hỏi web đều 10 giây / lần
     def bg(self, vid, fn, *a, soft=False):
         if vid in self.busy or len(self.busy) >= self.c["max_builds"]: return False
@@ -653,7 +724,7 @@ class Host:
     def fail(self, vid, msg):
         with self.lock:
             s = self.st.setdefault(str(vid), {}); s["err"] = str(msg)[:280]; s["t_err"] = time.time()
-        log("%s: %s" % (("MẪU-" + str(vid)[1:]) if str(vid).startswith("t") else ("VPS-%s" % vid), msg)); self.save()
+        log("%s: %s" % (("MẪU-" + str(vid)[1:]) if str(vid)[:1] in ("t", "a", "l") else ("VPS-%s" % vid), msg)); self.save()
 
     def build(self, it, tpl_id):
         vid, vmid = int(it["id"]), self.vmid(it["id"])
@@ -668,7 +739,7 @@ class Host:
         if rc != 0: return self.fail(vid, "đặt cấu hình lỗi: " + out[-200:])
         with self.lock:
             self.st[str(vid)] = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": secrets.token_hex(24), "sent": False, "seeded": False,
-                                 "t_build": time.time(), "cfg": int(it.get("cfg") or 0)}
+                                 "t_build": time.time(), "cfg": int(it.get("cfg") or 0), "lin": is_linux_tpl(it["tpl"])}
             if int(it["disk_gb"]) > gb0 + 0.5:                      # ổ lớn hơn máy mẫu → Windows lên xong phải nới ổ C (26/11e)
                 self.st[str(vid)]["grow"] = {"gb": int(it["disk_gb"]), "n": 0, "t": 0, "t0": time.time()}
         self.save()
@@ -709,7 +780,7 @@ class Host:
         if not self.pve.ga_ping(vmid):
             if time.time() - float(g.get("t0") or 0) > GROW_MAX_S: why = "Windows không trả lời (QEMU guest agent) suốt %d phút" % (GROW_MAX_S // 60)
         else:
-            rc, out = self.pve.ga_exec(vmid, GROW_ARGS, 60)
+            rc, out = self.pve.ga_exec(vmid, GROW_LIN_ARGS if s.get("lin") else GROW_ARGS, 60)
             gb = None
             try:
                 j = json.loads(out or "{}")
@@ -744,10 +815,10 @@ class Host:
         s = self.st.get(str(vid)) or {}
         vmid = self.vmid(vid)
         if not s.get("ticket") or not s.get("sent") or s.get("seeded") or not self.pve.ga_ping(vmid): return
-        idf = self.c["seed_path"].rsplit("\\", 1)[0] + "\\identity.json"
+        idf = self.gpath(it["tpl"], "identity.json")
         if has_identity(self.pve.ga_read(vmid, idf)):             # máy mẫu lỡ ĐÃ ĐĂNG KÝ → mọi bản nhân ra sẽ mang chung 1 mã máy → dừng, báo làm lại máy mẫu
             return self.fail(vid, "máy mẫu %s đã đăng ký CloudBlue (có %s) — làm lại máy mẫu theo hướng dẫn (cài CloudBlue PC KHÔNG nhập mã)" % (it["tpl"], idf))
-        rc, out = self.pve.ga_write(vmid, self.c["seed_path"], json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
+        rc, out = self.pve.ga_write(vmid, self.gpath(it["tpl"], "seed.json"), json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
         if rc != 0: return self.fail(vid, "ghi vé vào máy ảo lỗi (QEMU guest agent): " + out[-200:])
         with self.lock: s["seeded"] = True; s["t_seed"] = time.time(); s.pop("err", None)
         log("VPS-%s: đã đưa vé vào máy ảo → agent CloudBlue tự đăng ký" % vid); self.save()
@@ -765,7 +836,7 @@ class Host:
         vms = self.pve.vms()
         with self.lock:                                                # chọn số máy ảo + ghi sổ trong 1 lần khoá: 2 việc cùng lúc không trùng số
             vmid = self.c["tpl_vmid_from"]
-            while vmid in vms or vmid in [int((x or {}).get("vmid") or 0) for k, x in self.st.items() if k[:1] in ("t", "a") and k != key]: vmid += 1
+            while vmid in vms or vmid in [int((x or {}).get("vmid") or 0) for k, x in self.st.items() if k[:1] in ("t", "a", "l") and k != key]: vmid += 1
             self.st[key] = {"vmid": vmid, "made": False, "ticket": secrets.token_hex(24), "sent": False, "seeded": False, "t_build": time.time()}
         self.save()
         if it["src"] == "iso":
@@ -804,19 +875,26 @@ class Host:
             if rc != 0: return self.fail(key, "bật máy để xoá mã máy lỗi: " + out[-200:])
         if not self.job_wait(vmid, lambda: self.pve.ga_ping(vmid), 600):
             return self.fail(key, "QEMU guest agent trong máy mẫu không trả lời — chưa xoá được mã máy, chưa lưu")
-        self.pve.ga_exec(vmid, ["taskkill", "/f", "/im", "pythonw.exe"])            # dừng agent CloudBlue (để nó không ghi lại mã máy)
-        base = self.c["seed_path"].rsplit("\\", 1)[0]
+        lin = is_linux_tpl(tpl)
+        if lin: self.pve.ga_exec(vmid, ["systemctl", "stop", "cloudblue.service"], 60)     # 27/11a · máy mẫu Linux
+        else: self.pve.ga_exec(vmid, ["taskkill", "/f", "/im", "pythonw.exe"])            # dừng agent CloudBlue (để nó không ghi lại mã máy)
         for fn in ("identity.json", "seed.json", "rent.json"):
-            rc, out = self.pve.ga_write(vmid, base + "\\" + fn, "{}")
+            rc, out = self.pve.ga_write(vmid, self.gpath(tpl, fn), "{}")
             if rc != 0 and fn == "identity.json": return self.fail(key, "xoá mã máy trong máy mẫu lỗi: " + out[-200:])
-        if has_identity(self.pve.ga_read(vmid, base + "\\identity.json")):
+        if has_identity(self.pve.ga_read(vmid, self.gpath(tpl, "identity.json"))):
             return self.fail(key, "máy mẫu vẫn còn mã máy sau khi xoá — chưa lưu")
+        if lin:                                                                   # tắt cloud-init (VPS nhân ra không chạy lại), xoá machine-id (mỗi VPS tự sinh mã riêng)
+            rc, out = self.pve.ga_exec(vmid, ["sh", "-c", LIN_SEAL_SH], 120)
+            if rc != 0: return self.fail(key, "dọn máy mẫu Linux lỗi: " + out[-200:])
         log("%s: đã xoá mã máy trong máy, tắt máy" % lab)
         rc, out = self.pve.shutdown(vmid)
         if not self.job_wait(vmid, lambda: (self.pve.vms().get(vmid) or {}).get("status") == "stopped", 300):
             rc, out = self.pve.stop(vmid)
             if not self.job_wait(vmid, lambda: (self.pve.vms().get(vmid) or {}).get("status") == "stopped", 60):
                 return self.fail(key, "không tắt được máy mẫu: " + out[-200:])
+        if lin:
+            rc, out = self.pve.drop_ci(vmid)
+            if rc != 0: return self.fail(key, "gỡ ổ cloud-init lỗi: " + out[-200:])
         for dev in self.pve.cdroms(vmid):
             rc, out = self.pve.eject(vmid, dev)
             if rc != 0: return self.fail(key, "gỡ ISO lỗi: " + out[-200:])
@@ -858,9 +936,8 @@ class Host:
     def job_seed(self, key, vmid, it):
         s = self.st.get(key) or {}
         if not s.get("ticket") or not s.get("sent") or s.get("seeded") or not self.pve.ga_ping(vmid): return
-        base = self.c["seed_path"].rsplit("\\", 1)[0]
-        if has_identity(self.pve.ga_read(vmid, base + "\\identity.json")): return     # agent đã có mã máy (đăng ký rồi) → thôi
-        rc, out = self.pve.ga_write(vmid, self.c["seed_path"], json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
+        if has_identity(self.pve.ga_read(vmid, self.gpath(it["tpl"], "identity.json"))): return     # agent đã có mã máy (đăng ký rồi) → thôi
+        rc, out = self.pve.ga_write(vmid, self.gpath(it["tpl"], "seed.json"), json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
         if rc != 0: return                                                                # Windows còn đang cài (agent chưa có) → lần sau
         with self.lock: s["seeded"] = True; s["t_seed"] = time.time()
         log("MẪU-%s: đã đưa vé vào máy mẫu → agent CloudBlue tự đăng ký" % key[1:]); self.save()
@@ -923,7 +1000,7 @@ class Host:
         vms = self.pve.vms()
         with self.lock:                                                # chọn số máy ảo + ghi sổ trong 1 lần khoá: 2 bản dựng cùng lúc không trùng số
             vmid = self.c["tpl_vmid_from"] + 500
-            used = [int((x or {}).get("vmid") or 0) for k, x in self.st.items() if k[:1] in ("t", "a") and k != key]
+            used = [int((x or {}).get("vmid") or 0) for k, x in self.st.items() if k[:1] in ("t", "a", "l") and k != key]
             while vmid in vms or vmid in used: vmid += 1
             s = self.st.setdefault(key, {}); s.pop("err", None)
             s.update({"vmid": vmid, "made": False, "t_build": time.time(), "tries": int(s.get("tries") or 0) + 1})
@@ -999,6 +1076,125 @@ class Host:
                     self.bg(key, self.auto_save, tag, vmid); res.append({"tag": tag, "state": "saving"}); continue
                 if mins * 60 > AUTO_WAIT_S:
                     self.bg(key, self.auto_drop, tag, vmid); res.append({"tag": tag, "state": "working"}); continue
+            res.append({"tag": tag, "state": "installing", "min": mins})
+        return res
+
+    # ---- 27/11a · TỰ DỰNG máy mẫu LINUX (Ubuntu 24.04 + XFCE + CloudBlue + OpenClaw) từ ảnh cloud chính chủ — không cần ISO, không cần web
+    def linux_image(self, tag):
+        """Tải ảnh cloud vào IMG_DIR, kiểm SHA-256 theo SHA256SUMS của nhà phát hành (đã có đúng file thì thôi). → đường dẫn. Lỗi → ném lỗi."""
+        L = LINUX_TPLS[tag]
+        os.makedirs(IMG_DIR, exist_ok=True)
+        dst = os.path.join(IMG_DIR, L["file"])
+        sums = http_get(L["base"] + "SHA256SUMS", 1 << 20).decode("utf-8", "replace")
+        m = re.search(r"^([0-9a-f]{64}) [ *]?" + re.escape(L["file"]) + r"\s*$", sums, re.M)
+        if not m: raise RuntimeError("SHA256SUMS không có %s" % L["file"])
+        if os.path.isfile(dst) and sha256_file(dst) == m.group(1): return dst
+        log("MẪU-%s: tải ảnh %s (%s) …" % (tag, L["file"], L["base"]))
+        http_save(L["base"] + L["file"], dst + ".part")
+        if sha256_file(dst + ".part") != m.group(1):
+            os.remove(dst + ".part"); raise RuntimeError("ảnh %s tải về SAI mã kiểm SHA-256 — bỏ" % L["file"])
+        os.replace(dst + ".part", dst)
+        return dst
+
+    def linux_userdata(self, tag):
+        """cloud-init (file riêng, snippets): ghi /opt/cloudblue/cb.json (địa chỉ web + khoá CÔNG KHAI, chưa có mã đăng ký) rồi chạy linux-vm.sh."""
+        cbj = {"ver": "vm-linux-" + CBHOST_VER, "role": "vm", "user": "vps", "sb_url": self.c["sb_url"], "sb_key": self.c["sb_key"], "password": "",
+               "timezone": "SE Asia Standard Time", "update_base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/", "remote": True}
+        b64 = base64.b64encode(json.dumps(cbj).encode()).decode()
+        return ("#cloud-config\n# CloudBlue - dung may mau VPS NVMe Linux %s (cbhost %s)\nhostname: cloudblue-vps\ntimezone: Asia/Ho_Chi_Minh\nusers: []\n"
+                "write_files:\n  - path: /opt/cloudblue/cb.json\n    permissions: '0600'\n    encoding: b64\n    content: %s\n"
+                "runcmd:\n  - [bash, -c, \"curl -fsSL --retry 5 %s -o /root/cb-linux-vm.sh && bash /root/cb-linux-vm.sh\"]\n") % (tag, CBHOST_VER, b64, LIN_BOOT_URL)
+
+    def linux_create(self, tag):
+        key = "l" + tag
+        vms = self.pve.vms()
+        with self.lock:
+            vmid = self.c["tpl_vmid_from"] + 600
+            used = [int((x or {}).get("vmid") or 0) for k, x in self.st.items() if k[:1] in ("t", "a", "l") and k != key]
+            while vmid in vms or vmid in used: vmid += 1
+            s = self.st.setdefault(key, {}); s.pop("err", None)
+            s.update({"vmid": vmid, "made": False, "t_build": time.time(), "tries": int(s.get("tries") or 0) + 1})
+        self.save()
+        stg = self.pve.image_storage()
+        if not stg: return self.fail(key, "máy chủ không có ổ chứa máy ảo (images)")
+        try: img = self.linux_image(tag)
+        except Exception as e: return self.fail(key, "tải ảnh Ubuntu lỗi: %s" % str(e)[:200])
+        rc, out = self.pve.snippets_ready()
+        if rc != 0: return self.fail(key, "bật loại nội dung snippets cho ổ local lỗi: " + out[-200:])
+        snip = "cloudblue-%s.yaml" % tag
+        try:
+            os.makedirs(SNIP_DIR, exist_ok=True)
+            with open(os.path.join(SNIP_DIR, snip), "w", encoding="utf-8") as f: f.write(self.linux_userdata(tag))
+        except OSError as e: return self.fail(key, "ghi file cloud-init lỗi: %s" % e)
+        log("MẪU-%s: TỰ DỰNG — máy ảo %d từ ảnh %s (cloud-init: XFCE + CloudBlue + OpenClaw)" % (tag, vmid, os.path.basename(img)))
+        rc, out = self.pve.create_lin_vm(vmid, "cbmau-" + tag, stg, img, hashlib.sha256(("cblin|%s|%s" % (tag, self.sec)).encode()).hexdigest(), snip)
+        if rc != 0: return self.fail(key, "tạo máy ảo lỗi: " + out[-200:])
+        with self.lock: self.st[key]["made"] = True
+        self.save()
+        rc, out = self.pve.start(vmid)
+        if rc != 0: return self.fail(key, "bật máy lỗi: " + out[-200:])
+        log("MẪU-%s: đã bật — tự cài giao diện + CloudBlue + OpenClaw (10–30 phút), xong tự thành máy mẫu tpl-%s" % (tag, tag))
+
+    def linux_save(self, tag, vmid):
+        key = "l" + tag
+        if not self._seal(key, "MẪU-" + tag, vmid, "tpl-" + tag, tag): return
+        with self.lock: self.st[key] = {"vmid": vmid, "made": True, "done": True, "t_done": time.time()}
+        self.save()
+        log("MẪU-%s: ĐÃ TỰ DỰNG XONG máy mẫu Linux tpl-%s (máy ảo %d)" % (tag, tag, vmid))
+
+    def linux_drop(self, tag, vmid, why):
+        key = "l" + tag
+        log("MẪU-%s: %s — xoá máy ảo %d để dựng lại" % (tag, why, vmid))
+        self.pve.stop(vmid)
+        rc, out = self.pve.destroy(vmid)
+        if rc != 0: return self.fail(key, "xoá máy ảo dựng dở lỗi: " + out[-200:])
+        with self.lock: s = self.st.setdefault(key, {}); s["made"] = False; s.pop("vmid", None)
+        self.save()
+
+    def reconcile_linux(self, vms, tpls):
+        res = []
+        for tag in self.c["linux_tpl"]:
+            tpl = "tpl-" + tag; key = "l" + tag; s = self.st.get(key) or {}
+            if key in self.busy: res.append({"tag": tag, "state": "working"}); continue
+            if tpl in tpls or any(v["name"] == tpl for v in vms.values()):
+                if s and not s.get("done"):
+                    with self.lock: self.st[key] = {"vmid": s.get("vmid"), "made": True, "done": True}
+                    self.save()
+                continue
+            if s.get("done") or s.get("off"):
+                if s.get("off"): res.append({"tag": tag, "state": "error", "err": str(s.get("err") or "")[:120]})
+                continue
+            if any(job_ok(j) and j.get("tpl") == tpl and j.get("want") != "cancel" for j in self.jobs): continue
+            if s.get("err") and time.time() - float(s.get("t_err") or 0) < RETRY_S:
+                res.append({"tag": tag, "state": "error", "err": str(s["err"])[:120]}); continue
+            vmid = s.get("vmid") if s.get("vmid") in vms else next((k for k, v in vms.items() if v["name"] == "cbmau-" + tag and not v["template"]), None)
+            vm = vms.get(vmid) if vmid else None
+            if not vm:
+                if int(s.get("tries") or 0) >= AUTO_TRIES:
+                    with self.lock: self.st.setdefault(key, {})["off"] = True
+                    self.save(); log("MẪU-%s: tự dựng %d lần chưa được — thôi." % (tag, AUTO_TRIES)); continue
+                self.bg(key, self.linux_create, tag); res.append({"tag": tag, "state": "creating"}); continue
+            if not s.get("vmid") or not s.get("made"):
+                with self.lock:
+                    s = self.st.setdefault(key, {}); s.update({"vmid": vmid, "made": True}); s.setdefault("t_build", time.time()); s.setdefault("tries", 1)
+                self.save()
+            if s.get("err"):
+                with self.lock: s.pop("err", None)
+            if vm["status"] != "running":
+                rc, out = self.pve.start(vmid)
+                if rc != 0: self.fail(key, "bật máy lỗi: " + out[-200:]); res.append({"tag": tag, "state": "error", "err": "bật máy lỗi"}); continue
+            mins = int((time.time() - float(s.get("t_build") or time.time())) / 60)
+            if time.time() - float(s.get("t_chk") or 0) >= AUTO_CHK_S:
+                with self.lock: s["t_chk"] = time.time()
+                if self.pve.ga_ping(vmid):
+                    if self.pve.ga_read(vmid, LIN_DONE_F) is not None:
+                        self.bg(key, self.linux_save, tag, vmid); res.append({"tag": tag, "state": "saving"}); continue
+                    bad = self.pve.ga_read(vmid, LIN_FAIL_F)
+                    if bad:
+                        self.fail(key, "cài máy mẫu Linux lỗi: " + bad.strip()[:200])
+                        self.bg(key, self.linux_drop, tag, vmid, "cài lỗi"); res.append({"tag": tag, "state": "error", "err": bad.strip()[:120]}); continue
+                if mins * 60 > LIN_WAIT_S:
+                    self.bg(key, self.linux_drop, tag, vmid, "quá %d giờ chưa xong" % (LIN_WAIT_S // 3600)); res.append({"tag": tag, "state": "working"}); continue
             res.append({"tag": tag, "state": "installing", "min": mins})
         return res
 
@@ -1086,6 +1282,7 @@ class Host:
             except Exception as e: log("đọc danh sách ISO lỗi: %s" % e)
             self.iso_t = time.time()
         self.auto = self.reconcile_auto(vms, tpls) if act else []    # tự dựng máy mẫu: không phụ thuộc web
+        if act: self.auto += self.reconcile_linux(vms, tpls)          # 27/11a · máy mẫu Linux (Ubuntu + OpenClaw)
         if not self.hello_ok:
             r = self.web.rpc("vm_host_hello", {"p_secret": self.sec, "p_info": self.pve.info()})
             if not r or not r.get("ok"):
