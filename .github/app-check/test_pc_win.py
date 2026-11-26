@@ -165,6 +165,11 @@ ck("VPS NVMe: giá tháng 2 vCPU · 4 GB · ổ miễn phí = 64.000đ; 1/3/7/30
 ck("tự chọn 3 vCPU · 4 GB · 60 GB (40 GB vượt mức miễn phí) = 112.000đ / 30 ngày; thuê dưới 30 ngày cộng short_up %",
    B.vm_tier(C, B.vm_month(C, 3, 4, 40), 30) == 112000 and B.vm_tier(dict(C, short_up=20), 64000, 7) == 18000)
 ck("ổ miễn phí mặc định 20 GB khi máy chủ chưa báo", B.vm_free_gb({}) == 20 and B.vm_free_gb({"custom": {"disk_free_gb": 30}}) == 30)
+ck("SQL v61: ổ miễn phí riêng từng gói — gói ổ 20 GB miễn phí tới 50 GB → 50; mức gói nhỏ hơn ổ của gói → ổ của gói; máy chủ chưa chạy v61 → ổ của gói",
+   B.vm_inc({"disk_gb": 20, "free_gb": 50}) == 50 and B.vm_inc({"disk_gb": 30, "free_gb": 20}) == 30 and B.vm_inc({"disk_gb": 20}) == 20 and B.vm_inc(None) == 0)
+ck("hộp Thuê / Nâng cấp dùng mức miễn phí của gói (chỉ phần vượt mới tính tiền; nâng cấp trong mức miễn phí ghi '0đ — miễn phí')",
+   'ex = b["disk"] - vm_inc(p)' in src0 and 'self.b["disk"] = vm_inc(p)' in src0 and 'fr = int(num(v.get("free_gb")))' in src0 and '"0đ — miễn phí"' in src0
+   and "def flow_box(tk, parent, bg" in src0)
 V = {"id": 12, "name": "VPS-12", "label": "", "status": "running", "want": "running", "online": True, "until": "2099-01-01T00:00:00Z"}
 ck("trạng thái VPS NVMe: chạy · đã tắt · đang tạo · đổi cấu hình · hết hạn · lỗi", [B.vm_state(x)[0] for x in (V, dict(V, want="stopped"), dict(V, status="creating", busy=True),
    dict(V, cfg_busy=True), dict(V, expired=True), dict(V, err="x"))] == ["run", "off", "inst", "cfg", "exp", "warn"])

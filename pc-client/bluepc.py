@@ -5001,6 +5001,32 @@ def vm_cust_on(info):
 def vm_disk_on(src): return num(vm_cu(src).get("unit_disk")) > 0
 
 
+def vm_inc(p):
+    """SQL v61: ổ TỚI mức này không tính thêm tiền cho gói p (≥ ổ của gói; máy chủ chưa chạy v61 = ổ của gói)."""
+    p = p if isinstance(p, dict) else {}
+    d = int(num(p.get("disk_gb")))
+    return max(d, int(num(p.get("free_gb")))) if "free_gb" in p else d
+
+
+def flow_box(tk, parent, bg, gap=6, vgap=4):
+    """Khung xếp các chip từ trái sang phải, hết chỗ thì tự xuống dòng (27/11 — hàng quyền lợi tiếng Việt dài không bị cắt chữ)."""
+    box = tk.Frame(parent, bg=bg, height=1)
+    def lay(_e=None):
+        try:
+            W = box.winfo_width()
+            if W <= 1: return
+            x = y = rowh = 0
+            for w in box.winfo_children():
+                rw, rh = w.winfo_reqwidth(), w.winfo_reqheight()
+                if x > 0 and x + rw > W: x = 0; y += rowh + vgap; rowh = 0
+                w.place(x=x, y=y); x += rw + gap; rowh = max(rowh, rh)
+            h = max(1, y + rowh)
+            if int(float(str(box.cget("height")))) != h: box.configure(height=h)
+        except Exception: pass
+    box.bind("<Configure>", lay, add="+")
+    return box
+
+
 def vm_plans(info):
     return [p for p in ((info or {}).get("plans") or []) if isinstance(p, dict) and p.get("id") and (p.get("prices") or [])]
 
@@ -5116,8 +5142,9 @@ def vm_hero(app, parent, info):
         lo, hi = min(a), max(a)
         f = lambda z: (str(int(z)) if abs(z - round(z)) < 1e-9 else f"{z:.1f}")
         return f(lo) if lo == hi else f(lo) + "–" + f(hi)
+    frs = ([vm_free_gb(info)] if vm_cust_on(info) else []) + [vm_inc(p) for p in ps]          # v61: mỗi gói 1 mức ổ miễn phí
     chips = ([("⚙", span([num(p.get("cores")) for p in ps]) + " vCPU"), ("🧠", span([round(num(p.get("ram_mb")) / 102.4) / 10 for p in ps]) + " GB RAM"),
-              ("💾", (L(f"SSD NVMe {vm_free_gb(info)} GB miễn phí", f"{vm_free_gb(info)} GB NVMe SSD free") if "custom" in (info or {})
+              ("💾", (L(f"SSD NVMe {span(frs)} GB miễn phí", f"{span(frs)} GB NVMe SSD free") if "custom" in (info or {})
                       else "SSD NVMe " + span([num(p.get("disk_gb")) for p in ps]) + " GB"))] if ps else [])
     mx = int(num((info or {}).get("reinstall_max")))
     perks = [("⚡", L("Tự tạo 3–10 phút", "Ready in 3–10 min")), ("🖥", L("Web · app ĐT · app máy tính", "Web · phone · PC app")),
@@ -5125,10 +5152,10 @@ def vm_hero(app, parent, info):
              ("🔒", L("Máy riêng của bạn", "Your own VM"))]
     for grp, big in ((chips, True), ([p for p in perks if p], False)):
         if not grp: continue
-        row = tk.Frame(hero, bg=hb); row.pack(fill="x", padx=18, pady=(4, 0))
+        row = flow_box(tk, hero, hb); row.pack(fill="x", padx=18, pady=(6, 0))
         for ic, t in grp:
             tk.Label(row, text=ic + "  " + t, font=("Segoe UI", 10 if big else 9, "bold"), bg=_mix("#ffffff", hb, .13 if big else .07), fg="#ffffff" if big else "#d9e6ff",
-                     padx=10 if big else 8, pady=4 if big else 2, pill=True).pack(side="left", padx=(0, 6), pady=2)
+                     padx=10 if big else 8, pady=4 if big else 2, pill=True)
     tk.Frame(hero, bg=hb, height=12).pack(fill="x")
     return hero
 
@@ -5216,12 +5243,12 @@ class VmBuyDlg(Dlg):
         if b["cust"] and not vm_cust_on(info): b["cust"] = False
         b["cc"], b["cr"] = min(max(1, b["cc"]), lim[0]), min(max(1, b["cr"]), lim[1]); b["cd"] = max(20, vm_free_gb(info), min(b["cd"], lim[2]))
         p = self.plan()
-        if p and not b["disk"]: b["disk"] = int(num(p.get("disk_gb")))
+        if p and not b["disk"]: b["disk"] = vm_inc(p)                     # v61: mặc định lấy hết phần ổ miễn phí của gói
         vm_hero(app, self.body, info).pack(fill="x", padx=18, pady=(12, 4))
         if self.mt: vps_maint_bar(app, self.body, self.mt).pack(fill="x", padx=18, pady=(8, 0))
-        dks = sorted({int(num(x.get("disk_gb"))) for x in ps}); self.one_disk = len(dks) == 1
+        dks = sorted({vm_inc(x) for x in ps}); self.one_disk = len(dks) == 1
         f = self.section("①  " + L("Chọn cấu hình", "Choose a plan"),
-                         (L(f"mọi gói có SSD NVMe {dks[0]} GB", f"every plan has a {dks[0]} GB NVMe SSD") + (L(" miễn phí", " free") if "custom" in info and dks[0] <= vm_free_gb(info) else "")) if self.one_disk else "")
+                         (L(f"mọi gói có SSD NVMe {dks[0]} GB", f"every plan has a {dks[0]} GB NVMe SSD") + (L(" miễn phí", " free") if ("custom" in info and dks[0] <= vm_free_gb(info)) or any("free_gb" in x for x in ps) else "")) if self.one_disk else "")
         grid = tk.Frame(f, bg=BG); grid.pack(fill="x", pady=(4, 0)); self.tiles = []
         cols = 4
         for i in range(cols): grid.grid_columnconfigure(i, weight=1, uniform="vmp")
@@ -5231,7 +5258,7 @@ class VmBuyDlg(Dlg):
             q = vm_p30(x); free = bool(x.get("free"))
             ws = [t]
             a1 = tk.Label(t, text=str(x.get("name") or x["id"])[:24], font=("Segoe UI", 11, "bold"), fg=TXT if free else DIM, bg=CARD, anchor="w"); a1.pack(fill="x", padx=10, pady=(8, 0))
-            a2 = tk.Label(t, text=f"⚙ {int(num(x.get('cores')))} vCPU\n🧠 {vm_gb(x.get('ram_mb'))} RAM" + ("" if self.one_disk else f"\n💾 SSD NVMe {int(num(x.get('disk_gb')))} GB"),
+            a2 = tk.Label(t, text=f"⚙ {int(num(x.get('cores')))} vCPU\n🧠 {vm_gb(x.get('ram_mb'))} RAM" + ("" if self.one_disk else f"\n💾 SSD NVMe {vm_inc(x)} GB"),
                           font=app.f_s, fg=DIM, bg=CARD, anchor="w", justify="left"); a2.pack(fill="x", padx=10)
             a3 = tk.Label(t, text=(vnd(q[1]) + ("/" + L("tháng", "month") if q[0] == 30 else f"/{q[0]} " + L("ngày", "days"))) if free and q else L("tạm hết chỗ", "sold out"),
                           font=("Segoe UI", 10, "bold"), fg=SKY if free else DIM, bg=CARD, anchor="w"); a3.pack(fill="x", padx=10, pady=(2, 8))
@@ -5298,7 +5325,7 @@ class VmBuyDlg(Dlg):
         p = self.plan()
         x = next((pr for d, pr in vm_prices(p) if d == int(days)), None)
         if x is None: return None
-        ex = b["disk"] - int(num((p or {}).get("disk_gb")))
+        ex = b["disk"] - vm_inc(p)                                         # v61: chỉ phần VƯỢT mức miễn phí của gói mới tính tiền
         if ex <= 0: return x
         if not vm_disk_on(self.info): return None
         return x + vm_tier(c, ex * num(c.get("unit_disk")), days)
@@ -5315,7 +5342,7 @@ class VmBuyDlg(Dlg):
         else:
             p = next((x for x in self.ps if x["id"] == v), None)
             if not p or not p.get("free"): return
-            if self.b["plan"] != v: self.b["disk"] = int(num(p.get("disk_gb")))
+            if self.b["plan"] != v: self.b["disk"] = vm_inc(p)
             self.b.update(cust=False, plan=v); self.b["disk"] = max(int(num(p.get("disk_gb"))), self.b["disk"])
         self.upd()
 
@@ -5323,14 +5350,16 @@ class VmBuyDlg(Dlg):
     def paint_cfg(self):
         b, c, info = self.b, vm_cu(self.info), self.info
         p = self.plan() or {}
-        key = "c" if b["cust"] else ("d:" + str(p.get("id")) if vm_disk_on(info) else "")
+        inc, d0 = vm_inc(p), int(num(p.get("disk_gb")))
+        key = "c" if b["cust"] else ("d:" + str(p.get("id")) if vm_disk_on(info) or inc > d0 else "")
         if key == self.cfg_key: return
         self.cfg_key = key
         for w in self.cfg.winfo_children(): w.destroy()
         if not key: return
         tk = self.app.tk; lim = self._lim(); fr = vm_free_gb(info)
         box = tk.Frame(self.cfg, bg=CARD, highlightthickness=1, highlightbackground=LINE, radius=14); box.pack(fill="x", pady=(8, 0))
-        tk.Label(box, text=("🛠  " + L("Cấu hình tự chọn", "Your custom specs")) if b["cust"] else ("💾  " + L("Thêm ổ (không bắt buộc)", "Extra disk (optional)")),
+        tk.Label(box, text=("🛠  " + L("Cấu hình tự chọn", "Your custom specs")) if b["cust"] else ("💾  " + (L(f"Ổ SSD NVMe — miễn phí tới {inc} GB", f"SSD NVMe disk — free up to {inc} GB")
+                                                                                                         if inc > d0 else L("Thêm ổ (không bắt buộc)", "Extra disk (optional)"))),
                  font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(10, 2))
         def put(st): st.frame.pack(fill="x", padx=14, pady=(4, 4))
         if b["cust"]:
@@ -5339,9 +5368,11 @@ class VmBuyDlg(Dlg):
             self.st_d = VmStep(self, box, "💾 SSD NVMe (GB)", L(f"{fr} GB đầu miễn phí", f"first {fr} GB free") + (f" · {L('thêm', 'extra')} {vnd(c.get('unit_disk'))} / GB / {L('tháng', 'month')}" if vm_disk_on(info) else " · " + L("chưa bán ổ thêm", "no extra disk yet")),
                                b["cd"], 20, lim[2] if vm_disk_on(info) else max(20, fr), 10, lambda: self._cfg_set("cd", self.st_d.v)); put(self.st_d)
         else:
-            d0 = int(num(p.get("disk_gb")))
-            self.st_p = VmStep(self, box, "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), L(f"gói có sẵn {d0} GB · thêm {vnd(c.get('unit_disk'))} / GB / tháng", f"plan includes {d0} GB · extra {vnd(c.get('unit_disk'))} / GB / month"),
-                               max(d0, b["disk"]), d0, max(d0, lim[2]), 10, lambda: self._cfg_set("disk", self.st_p.v)); put(self.st_p)
+            on = vm_disk_on(info)
+            sub = ((L(f"vượt {inc} GB: thêm {vnd(c.get('unit_disk'))} / GB / tháng", f"above {inc} GB: {vnd(c.get('unit_disk'))} / GB / month") if on else L(f"tối đa {inc} GB", f"up to {inc} GB"))
+                   if inc > d0 else L(f"gói có sẵn {d0} GB · thêm {vnd(c.get('unit_disk'))} / GB / tháng", f"plan includes {d0} GB · extra {vnd(c.get('unit_disk'))} / GB / month"))
+            self.st_p = VmStep(self, box, "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), sub,
+                               max(d0, b["disk"]), d0, max(inc, lim[2]) if on else inc, 10, lambda: self._cfg_set("disk", self.st_p.v)); put(self.st_p)
         tk.Frame(box, bg=CARD, height=6).pack(fill="x")
 
     def _cfg_set(self, k, v):
@@ -5413,7 +5444,9 @@ class VmBuyDlg(Dlg):
         pr = self.price_for(b["days"]) if b["days"] else None; bal = num((self.prof or {}).get("balance"))
         p = self.plan() or {}; img = next((i for i in ok if i["id"] == b["image"]), None)
         spec = (f"🛠 {b['cc']} vCPU · {b['cr']} GB RAM · SSD NVMe {b['cd']} GB" if b["cust"]
-                else str(p.get("name") or "") + (f" + {b['disk'] - int(num(p.get('disk_gb')))} GB " + L("ổ", "disk") + f" (SSD NVMe {b['disk']} GB)" if b["disk"] > int(num(p.get("disk_gb"))) else ""))
+                else str(p.get("name") or "") + (f" + {b['disk'] - int(num(p.get('disk_gb')))} GB " + L("ổ", "disk") + f" (SSD NVMe {b['disk']} GB"
+                                                 + (" · " + L("miễn phí", "free") if b["disk"] <= vm_inc(p) else (f" · {L('tính tiền', 'charged')} {b['disk'] - vm_inc(p)} GB" if vm_inc(p) > int(num(p.get("disk_gb"))) else "")) + ")"
+                                                 if b["disk"] > int(num(p.get("disk_gb"))) else ""))
         self.sum_l.config(text=spec + (" · " + vm_short_os(img.get("name")) if img else "") + (f" · {b['days']} " + L("ngày", "days") if b["days"] else ""))
         self.tot_l.config(text=vnd(pr) if pr is not None else "—")
         self.calc_l.config(text=L("Số dư: ", "Balance: ") + vnd(bal) + ((L("  ·  thiếu ", "  ·  short by ") + vnd(pr - bal)) if pr is not None and pr > bal else ""))
@@ -5524,13 +5557,17 @@ class VmUpDlg(Dlg):
         self.v = v; self.data = data or {}; self.seq = 0; self.price = None; tk = app.tk
         c = vm_cu(self.data); cur = (int(num(v.get("cores"))), int(-(-num(v.get("ram_mb")) // 1024)), int(num(v.get("disk_gb"))))
         self.cur = cur
-        hi = (max(cur[0], int(num(c.get("max_cores"))) or 16), max(cur[1], int(num(c.get("max_ram_gb"))) or 32), max(cur[2], int(num(c.get("max_disk_gb"))) or 200))
+        fr = int(num(v.get("free_gb"))); d_on = num(c.get("unit_disk")) > 0         # v61: ổ tới mức fr không tính tiền
+        hi = (max(cur[0], int(num(c.get("max_cores"))) or 16), max(cur[1], int(num(c.get("max_ram_gb"))) or 32),
+              max(cur[2], int(num(c.get("max_disk_gb"))) or 200, fr) if d_on else max(cur[2], fr))
         self.label(self.body, L("Hiện tại: ", "Now: ") + f"{cur[0]} vCPU · {vm_gb(v.get('ram_mb'))} RAM · SSD NVMe {cur[2]} GB", app.f_t, TXT).pack(fill="x", padx=18, pady=(16, 0))
         box = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=LINE, radius=14); box.pack(fill="x", padx=18, pady=(10, 0))
         mo = L("tháng", "month")
         self.s1 = VmStep(self, box, "⚙ vCPU", (vnd(c.get("unit_cpu")) + " / vCPU / " + mo) if num(c.get("unit_cpu")) > 0 else L("shop chưa bán thêm vCPU", "not for sale"), cur[0], cur[0], hi[0], 1, self.quote, num(c.get("unit_cpu")) > 0)
         self.s2 = VmStep(self, box, "🧠 RAM (GB)", (vnd(c.get("unit_ram")) + " / GB / " + mo) if num(c.get("unit_ram")) > 0 else L("shop chưa bán thêm RAM", "not for sale"), cur[1], cur[1], hi[1], 1, self.quote, num(c.get("unit_ram")) > 0)
-        self.s3 = VmStep(self, box, "💾 SSD NVMe (GB)", (vnd(c.get("unit_disk")) + " / GB / " + mo) if num(c.get("unit_disk")) > 0 else L("shop chưa bán thêm ổ", "not for sale"), cur[2], cur[2], hi[2], 10, self.quote, num(c.get("unit_disk")) > 0)
+        sub3 = " · ".join(x for x in ((L(f"miễn phí tới {fr} GB", f"free up to {fr} GB") if fr > cur[2] else ""),
+                                       (vnd(c.get("unit_disk")) + " / GB / " + mo) if d_on else ("" if fr > cur[2] else L("shop chưa bán thêm ổ", "not for sale"))) if x)
+        self.s3 = VmStep(self, box, "💾 SSD NVMe (GB)", sub3, cur[2], cur[2], hi[2], 10, self.quote, d_on or fr > cur[2])
         for s in (self.s1, self.s2, self.s3): s.frame.pack(fill="x", padx=14, pady=6)
         fitwrap(self.label(self.body, L("Chỉ tăng được. Tiền = phần chênh giá tháng × số ngày còn lại / 30. Tăng vCPU / RAM: VPS tự khởi động lại ~1–2 phút. Chỉ thêm ổ: không cần khởi động lại, ổ C tự nới. Dữ liệu giữ nguyên.",
                                         "Increase only. Price = monthly difference × days left / 30. More vCPU / RAM restarts the VPS (~1–2 min). Disk only: no restart. Data is kept."),
@@ -5557,7 +5594,7 @@ class VmUpDlg(Dlg):
             if s != self.seq: return
             r = r if isinstance(r, dict) else {}
             self.price = int(num(r.get("price")))
-            self.sum.config(text=L("Phải trả: ", "To pay: ") + vnd(self.price) + L(f" (còn {int(num(r.get('days_left')))} ngày)", f" ({int(num(r.get('days_left')))} days left)")
+            self.sum.config(text=L("Phải trả: ", "To pay: ") + (vnd(self.price) if self.price > 0 else L("0đ — miễn phí", "free")) + L(f" (còn {int(num(r.get('days_left')))} ngày)", f" ({int(num(r.get('days_left')))} days left)")
                             + ("  ·  " + (L("VPS tự khởi động lại ~1–2 phút", "the VPS restarts (~1–2 min)") if r.get("restart") else L("không cần khởi động lại", "no restart"))), fg=TXT)
             self.go.config(state="normal")
         def fail(m):
@@ -5571,7 +5608,7 @@ class VmUpDlg(Dlg):
         w = self.want(); bal = num((getattr(self.app, "prof", None) or {}).get("balance"))
         code = re.sub(r"[^A-Za-z0-9_-]", "", self.promo.get().strip())[:40]
         if not code and self.price > bal: self.close(); self.app.open_topup(self.price - bal); return
-        if not mb.askyesno(L("Nâng cấp", "Upgrade"), f"{vm_name(self.v)}: {w[0]} vCPU · {w[1]} GB RAM · SSD NVMe {w[2]} GB\n" + L("Trừ ", "Charge ") + vnd(self.price) + L(" từ số dư?", " from your balance?")
+        if not mb.askyesno(L("Nâng cấp", "Upgrade"), f"{vm_name(self.v)}: {w[0]} vCPU · {w[1]} GB RAM · SSD NVMe {w[2]} GB\n" + (L("Trừ ", "Charge ") + vnd(self.price) + L(" từ số dư?", " from your balance?") if self.price > 0 else L("Miễn phí (0đ) — nâng cấp ngay?", "Free (0đ) — upgrade now?"))
                            + (f"\n🏷️ {code}" if code else ""), parent=self.win): return
         self.go.config(state="disabled"); args = {"p_id": int(num(self.v.get("id"))), "p_cores": w[0], "p_ram_gb": w[1], "p_disk_gb": w[2]}
         if code: args["p_promo"] = code
