@@ -16,9 +16,10 @@
 #   · TỰ CẬP NHẬT (chạy bằng dịch vụ cloudblue-cbhost): 1 giờ / lần xem bản trên GitHub của CloudBlue — khác bản đang chạy → kiểm biên dịch
 #     được → thay file → thoát để dịch vụ tự bật lại bản mới (chỉ lúc không có máy ảo nào đang dựng / xoá). Tắt: "auto_update": false.
 #   · TỰ SỬA MẠNG (26/11c, máy cài bằng ISO CloudBlue-Proxmox): lúc cài mà mạng không cấp IPv4 (DHCP không trả lời) thì bộ cài Proxmox chỉ đặt
-#     IPv6 + DNS mặc định 192.168.100.1 (không có thật) → máy lên nhưng không gọi được web. Khi KHÔNG gọi được web, cbhost tự: thêm
-#     "iface vmbr0 inet dhcp" (xin IPv4 ngay + mỗi lần bật máy, dhclient tự thử lại mãi) và đặt lại máy chủ tên (DNS) công cộng hợp với
-#     đường ra đang có (IPv4 / IPv6). Luôn lưu bản gốc (*.cb-goc), không đụng cấu hình IPv4 đã có. Tắt: "net_heal": false.
+#     IPv6 + DNS mặc định 192.168.100.1 (không có thật) → máy lên nhưng không gọi được web. Khi KHÔNG gọi được web, cbhost tự: bật dịch vụ
+#     cloudblue-dhcp4 (dhclient xin IPv4 cho vmbr0 — ngay, mỗi lần bật máy, mạng chưa cấp thì tự thử lại mãi) và đặt lại máy chủ tên (DNS)
+#     công cộng hợp với đường ra đang có (IPv4 / IPv6; lưu bản gốc resolv.conf.cb-goc). KHÔNG sửa /etc/network/interfaces của Proxmox
+#     (ifupdown2 không cho 1 cầu vừa "inet dhcp" vừa "inet6 static"); cầu đã được đặt IPv4 thì dịch vụ tự gỡ. Tắt: "net_heal": false.
 #     Máy cài bằng ISO còn BÁO RA MÀN HÌNH gắn vào máy chủ (tty1, chữ không dấu): "DA LEN WEB …" / "CHUA goi duoc web … IPv4 … IPv6 … DNS …"
 #     → người ở chỗ máy chỉ cần chụp màn hình, không phải đăng nhập gõ lệnh.
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
@@ -55,10 +56,26 @@ RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
 RESOLV_F = os.environ.get("CBHOST_RESOLV") or "/etc/resolv.conf"
 IFACES_F = os.environ.get("CBHOST_IFACES") or "/etc/network/interfaces"
 TTY_F = os.environ.get("CBHOST_TTY") or "/dev/tty1"            # màn hình gắn vào máy chủ
+DHCP_UNIT = "cloudblue-dhcp4.service"
+DHCP_UNIT_F = os.environ.get("CBHOST_DHCP_UNIT") or "/etc/systemd/system/" + DHCP_UNIT
+DHCP_UNIT_TXT = """[Unit]
+Description=CloudBlue - xin IPv4 qua DHCP cho %(br)s (luc cai Proxmox, mang khong cap IPv4)
+After=network.target networking.service
+ConditionPathExists=/sys/class/net/%(br)s
+
+[Service]
+ExecStart=%(dh)s -4 -d -pf /run/dhclient.%(br)s.pid -lf /var/lib/dhcp/dhclient.%(br)s.leases %(br)s
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
+"""
 DNS4, DNS6 = ("8.8.8.8", "1.1.1.1"), ("2001:4860:4860::8888", "2606:4700:4700::1111")
 DNS_BOGUS = ("192.168.100.1",)  # DNS mặc định bộ cài Proxmox tự điền khi lúc cài không xin được gì từ mạng
 NET_FAILS = 3                   # gọi web lỗi MẠNG liên tiếp bấy nhiêu vòng (≈ 30 giây) → thử tự sửa mạng
 NET_EVERY_S = (120, 900)        # tự sửa mạng: 2 phút / lần trong 10 lần đầu, sau đó 15 phút / lần
+DHCP_WAIT_S = 2                 # sau khi bật dịch vụ xin DHCP: 2 giây xem 1 lần (tối đa 15 lần) đã có IPv4 chưa
 
 
 def log(*a):
@@ -406,23 +423,46 @@ def fix_dns(v4, v6, force=False):
     return True
 
 
-def ensure_dhcp4(bridge):
-    """Cầu mạng của máy chủ CHƯA có cấu hình IPv4 nào (bộ cài chỉ đặt IPv6) → thêm "iface <cầu> inet dhcp" + nạp lại mạng (ifreload):
-       máy xin IPv4 ngay và mỗi lần bật máy; mạng chưa cấp thì dhclient tự thử lại. Đã có cấu hình IPv4 (tĩnh / dhcp / manual) → KHÔNG đụng.
-       → chữ mô tả việc đã làm ("" = không làm gì)."""
-    if not RX_BRIDGE.match(bridge or "") or not shutil.which("dhclient") or not shutil.which("ifreload"): return ""      # ifupdown2 của Proxmox xin DHCP bằng dhclient
-    try: old = open(IFACES_F, encoding="utf-8", errors="replace").read()
+def bridge_ipv4(bridge):
+    """Cấu hình mạng của Proxmox (/etc/network/interfaces) về cầu này: 'v6' = bộ cài chỉ đặt IPv6 · 'v4' = đã có dòng IPv4 · '' = không có cầu / không đọc được."""
+    try: txt = open(IFACES_F, encoding="utf-8", errors="replace").read()
     except OSError: return ""
     b = re.escape(bridge)
-    if not re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet6[ \t]" % b, old, re.M): return ""      # không phải máy "chỉ có IPv6" do bộ cài đặt → không đụng
-    if re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet[ \t]" % b, old, re.M): return ""
-    keep_once(IFACES_F, old)
-    new = old.rstrip("\n") + "\n\n# CloudBlue (cbhost): luc cai, mang khong cap IPv4 -> tu xin IPv4 qua DHCP (ban goc: %s.cb-goc)\niface %s inet dhcp\n" % (IFACES_F, bridge)
-    tmp = IFACES_F + ".cb-tmp"
-    with open(tmp, "w", encoding="utf-8") as f: f.write(new)
-    os.chmod(tmp, 0o644); os.replace(tmp, IFACES_F)
-    rc, out = run(["ifreload", "-a"], 240)
-    return "thêm 'iface %s inet dhcp' + nạp lại mạng (ifreload mã %d%s)" % (bridge, rc, "" if rc == 0 else ": " + (out or "")[-160:].replace("\n", " | "))
+    if re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet[ \t]" % b, txt, re.M): return "v4"
+    return "v6" if re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet6[ \t]" % b, txt, re.M) else ""
+
+
+def ensure_dhcp4(bridge):
+    """Cầu mạng của máy chủ CHƯA có cấu hình IPv4 nào (bộ cài chỉ đặt IPv6) → bật dịch vụ cloudblue-dhcp4: dhclient xin IPv4 cho cầu đó ngay,
+       mỗi lần bật máy, mạng chưa cấp thì tự thử lại mãi. KHÔNG sửa /etc/network/interfaces. Cầu đã có IPv4 trong cấu hình → không làm (và gỡ
+       dịch vụ nếu trước đây đã bật). → chữ mô tả việc vừa làm ("" = không làm gì mới)."""
+    dh = shutil.which("dhclient")
+    if not RX_BRIDGE.match(bridge or "") or not dh or not shutil.which("systemctl"): return ""
+    kind = bridge_ipv4(bridge)
+    if kind == "v4":
+        if os.path.exists(DHCP_UNIT_F):                            # admin đã đặt IPv4 cho cầu (trang Proxmox) → không xin DHCP song song nữa
+            run(["systemctl", "disable", "--now", DHCP_UNIT], 60)
+            try: os.remove(DHCP_UNIT_F)
+            except OSError: pass
+            run(["systemctl", "daemon-reload"], 60)
+            return "cầu %s đã được đặt IPv4 trong cấu hình Proxmox → gỡ dịch vụ xin DHCP tạm (cloudblue-dhcp4)" % bridge
+        return ""
+    if kind != "v6": return ""
+    want = DHCP_UNIT_TXT % {"br": bridge, "dh": dh}
+    try: have = open(DHCP_UNIT_F, encoding="utf-8").read()
+    except OSError: have = ""
+    if have == want and run(["systemctl", "is-active", DHCP_UNIT], 30)[0] == 0: return ""      # đang chạy rồi (mạng chưa cấp thì dhclient tự thử lại)
+    tmp = DHCP_UNIT_F + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f: f.write(want)
+    os.chmod(tmp, 0o644); os.replace(tmp, DHCP_UNIT_F)
+    run(["systemctl", "daemon-reload"], 60)
+    rc, out = run(["systemctl", "enable", "--now", DHCP_UNIT], 90)
+    got = False
+    for _ in range(15):                                             # chờ tối đa ~30 giây xem mạng có cấp IPv4 không
+        if default_routes()[0]: got = True; break
+        time.sleep(DHCP_WAIT_S)
+    return "bật dịch vụ xin IPv4 qua DHCP cho %s (cloudblue-dhcp4, mã %d%s): %s" % (
+        bridge, rc, "" if rc == 0 else " " + (out or "")[-120:].replace("\n", " | "), "ĐÃ có IPv4" if got else "mạng chưa cấp IPv4 — dịch vụ tự thử lại mãi")
 
 
 def web_host(c):
@@ -441,7 +481,7 @@ def net_heal(c, n=1):
     """1 lượt tự sửa mạng (gọi khi KHÔNG tới được web). n = lượt thứ mấy. → danh sách việc đã làm."""
     did = []
     v4, v6 = default_routes()
-    if not v4:
+    if not v4 or os.path.exists(DHCP_UNIT_F):
         r = ensure_dhcp4(c["bridge"])
         if r:
             did.append(r)
@@ -1012,6 +1052,10 @@ def cmd_run():
     log("cbhost %s chạy — node %s, gọi %s mỗi ~10 giây" % (CBHOST_VER, h.pve.node, h.web.url))
     last_upd = time.time() - UPD_EVERY_S + 120                     # bật lên 2 phút sau mới xem bản mới lần đầu
     nw, scr = NetWatch(h.c), Screen(h.c)
+    try:
+        if h.c["net_heal"] and os.path.exists(DHCP_UNIT_F) and bridge_ipv4(h.c["bridge"]) == "v4":      # admin đã đặt IPv4 cho cầu → gỡ dịch vụ xin DHCP tạm
+            log("mạng: " + ensure_dhcp4(h.c["bridge"]))
+    except Exception as e: log("xem dịch vụ cloudblue-dhcp4 lỗi: %s" % str(e)[:120])
     while True:
         ok = None
         try: ok = h.poll_once()
