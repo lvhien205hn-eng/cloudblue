@@ -829,6 +829,29 @@ w14.vps = [item(id=60, tpl="tpl-ubuntu2404", hw=hashlib.sha256(b"60").hexdigest(
 for _ in range(3): h14.poll_once(); wait_idle(h14, 30)
 ck("ổ VPS lớn hơn máy mẫu (40 > 20 GB) → nới ổ / trong Linux bằng lệnh cố định growpart + resize2fs (không phải lệnh PowerShell)",
    ["sh", "-c", cb.GROW_LIN_SH] in (pve()["vms"]["100060"].get("execs") or []), pve()["vms"]["100060"].get("execs"))
+ck("27/11c: VPS Linux — đặt mạng DHCP không gắn MAC máy mẫu (lệnh cố định NET_LIN_ARGS qua guest agent) trước khi đưa vé",
+   cb.NET_LIN_ARGS in (pve()["vms"]["100060"].get("execs") or []) and "macaddress" in cb.NET_LIN_SH and "60-cloudblue.yaml" in cb.LIN_SEAL_SH,
+   pve()["vms"]["100060"].get("execs"))
 ck("bật máy ảo đang chạy sẵn ('already running') → coi là được, không báo lỗi cho web", h14.pve.start(100060)[0] == 0 and "already running" in h14.pve.start(100060)[1])
+
+
+print("15. 27/11c · VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi xoá (Proxmox không xoá máy đang chạy); xoá không làm VPS mới đứng 'Đang tạo'")
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm"}))
+try: os.remove(os.environ["CBHOST_STATE"])
+except OSError: pass
+pve_set(lambda d: d.update(vms={"9000": {"name": "tpl-win10-22h2", "status": "stopped", "template": True, "disks": {"scsi0": 32}},
+                                 "100061": {"name": "vps-61", "status": "running", "template": False, "disks": {"scsi0": 40}},
+                                 "100062": {"name": "vps-62", "status": "running", "template": False, "disks": {"scsi0": 40}}}, isos=[], log=[]))
+w15 = FakeWeb(); w15.status = "ready"; h15 = cb.Host(web=w15)
+w15.vps = [item(id=61, want="deleted", name="vps-61"), item(id=62, want="deleted", name="vps-62"), item(id=63, name="vps-63")]
+sync(h15, 4)
+v15 = pve()["vms"]
+ck("2 VPS đã huỷ (máy ảo đang chạy) → qm stop rồi qm destroy, không còn trên máy chủ",
+   "100061" not in v15 and "100062" not in v15 and qmlog(r"^qm stop 100061") and qmlog(r"^qm destroy 100061"), sorted(v15))
+ck("VPS mới mua (63) vẫn được nhân bản + bật trong lúc đang xoá máy khác (việc xoá không chiếm chỗ max_builds)",
+   (v15.get("100063") or {}).get("status") == "running", v15.get("100063"))
+ck("việc xoá là việc NHẸ: bg(..., light=True) không bị chặn bởi max_builds, máy đang dựng vẫn tính đủ",
+   "light=True" in open(os.path.join(ROOT, "cbhost.py"), encoding="utf-8").read())
+
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
