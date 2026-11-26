@@ -770,5 +770,27 @@ finally:
         if rm.conn is not None: rm.conn.close()
     relay.kill(); dbusd.kill()
     shutil.rmtree(tmp, ignore_errors=True)
+
+print("\n27.11a · máy ảo VPS NVMe Linux (Ubuntu + XFCE, phiên X11)")
+_env0 = dict(os.environ)
+os.environ.pop("WAYLAND_DISPLAY", None); os.environ["DISPLAY"] = ":0"
+ck("phiên X11 (DISPLAY, không Wayland) → cbcap đi đường x11: cần ffmpeg x264 + x11grab", K.x11_session() and K.pick_mode({"ffmpeg_x264": True, "x11grab": True}) == "x11"
+      and K.pick_mode({"ffmpeg_x264": True, "x11grab": False}) is None)
+cmd = K.x11_encode(":0", 1920, 1080, 1280, 720, 30, ["-c:v", "libx264", "-b:v", "2000k"], 40123)
+ck("ffmpeg x11grab: quay :0 cỡ 1920x1080 (có con trỏ) → thu 1280x720 → x264 của pcremote → RTP 127.0.0.1:40123", cmd[cmd.index("-f") + 1] == "x11grab"
+      and cmd[cmd.index("-video_size") + 1] == "1920x1080" and cmd[cmd.index("-i") + 1] == ":0+0,0" and "scale=1280:720,format=yuv420p" in cmd
+      and "libx264" in cmd and cmd[-1] == "rtp://127.0.0.1:40123?pkt_size=1300" and cmd[cmd.index("-draw_mouse") + 1] == "1", cmd)
+class _FX:
+    X = type("X", (), {"MotionNotify": 6, "ButtonPress": 4, "ButtonRelease": 5, "KeyPress": 2, "KeyRelease": 3})
+    def __init__(self): self.ev = []
+_fx = _FX(); _x = K.X11Cast.__new__(K.X11Cast); _x.X = _FX.X; _x.lock = threading.Lock(); _x.size = (1920, 1080); _x.session = True
+_x._fi = lambda *a, **k: _fx.ev.append((a, k))
+_c = K.Cap(); _c.x11 = _c.inp = _x; _c.node, _c.size, _c.backend = 0, (1920, 1080), "x11"
+_c.move(32768, 16384); _c.btn(0, True); _c.btn(0, False); _c.btn(1, True); _c.wheel(-240, False); _c.key(0x41, True); _c.key(0x41, False)
+ck("XTEST: chuột (toạ độ 0..65535 → điểm ảnh), nút trái / phải (1 / 3), lăn xuống 2 nấc (nút 5), phím A = mã evdev 30 + 8",
+      _fx.ev[0] == ((6,), {"x": 960, "y": 270}) and _fx.ev[1] == ((4, 1), {}) and _fx.ev[2] == ((5, 1), {}) and _fx.ev[3] == ((4, 3), {})
+      and _fx.ev[4:8] == [((4, 5), {}), ((5, 5), {}), ((4, 5), {}), ((5, 5), {})] and _fx.ev[8] == ((2, 38), {}) and _fx.ev[9] == ((3, 38), {}), _fx.ev)
+ck("cửa sổ dòng lệnh XFCE (xfce4-terminal) → dán bằng Ctrl+Shift+V", K.app_kind("xfce4-terminal\nXfce4-terminal") == "term")
+os.environ.clear(); os.environ.update(_env0)
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
