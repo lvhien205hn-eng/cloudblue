@@ -1,0 +1,30 @@
+2026-11-26 01:34:07 [1] === buoc 1 (ban 26.11a) - may mau win2016, tai khoan khach VPS
+2026-11-26 01:34:07 [1] ok  driver Balloon\balloon.inf
+2026-11-26 01:34:07 [1] --  driver fwcfg\fwcfg.inf (da co / may nay khong co thiet bi do)
+2026-11-26 01:34:07 [1] --  driver NetKVM\netkvm.inf (da co / may nay khong co thiet bi do)
+2026-11-26 01:34:08 [1] ok  driver pvpanic\pvpanic-pci.inf
+2026-11-26 01:34:08 [1] ok  driver pvpanic\pvpanic.inf
+2026-11-26 01:34:08 [1] ok  driver vioinput\vioinput.inf
+2026-11-26 01:34:08 [1] ok  driver viorng\viorng.inf
+2026-11-26 01:34:08 [1] --  driver vioscsi\vioscsi.inf (da co / may nay khong co thiet bi do)
+2026-11-26 01:34:08 [1] --  driver vioserial\vioser.inf (da co / may nay khong co thiet bi do)
+2026-11-26 01:34:08 [1] ok  driver viostor\viostor.inf
+2026-11-26 01:34:11 [1] ok  cai QEMU guest agent
+2026-11-26 01:34:11 [1] ok  QEMU guest agent dang chay
+2026-11-26 01:34:16 [1] ok  tat luat mat khau phuc tap / do dai toi thieu (Server)
+2026-11-26 01:34:16 [1] ok  tao tai khoan khach VPS (khong mat khau)
+2026-11-26 01:34:16 [1] ok  cho VPS vao nhom Administrators
+2026-11-26 01:34:18 [1] ok  mat khau tai khoan VPS khong het han
+2026-11-26 01:34:18 [1] ok  tu dang nhap tai khoan VPS
+2026-11-26 01:34:18 [1] ok  mui gio UTC+7 (SE Asia Standard Time)
+2026-11-26 01:34:18 [1] ok  Server: khong tu mo Server Manager, tat IE ESC, tat hop hoi ly do tat may
+2026-11-26 01:34:18 [1] ok  tac vu 'CloudBlue May Mau' (buoc 2: luc dang nhap / bat may / 4 phut sau)
+2026-11-26 01:34:18 [1] xong buoc 1 - cho tai khoan khach tu dang nhap (buoc 2)
+2026-11-26 01:34:29 [2] === buoc 2 (ban 26.11a) - may mau win2016
+2026-11-26 01:34:30 [2] ok  Python chay duoc
+2026-11-26 01:34:30 [2] cb_provision specialize ... (chi tiet: C:\CloudBluePC\logs\provision.log)
+2026-11-26 01:34:31 [2] cb_provision system ... (chi tiet: C:\CloudBluePC\logs\provision.log)
+2026-11-26 01:34:41 [2] ok  tai khoan 'Administrator': mat khau ngau nhien (khong luu o dau) + tat
+2026-11-26 01:34:41 [2] ok  don file cai dat (file tra loi, goi cai, driver da nap)
+2026-11-26 01:34:41 [2] ok  bat agent CloudBlue (chua dang ky - cho may chu dua ve dang ky)
+2026-11-26 01:34:41 [2] XONG may mau win2016

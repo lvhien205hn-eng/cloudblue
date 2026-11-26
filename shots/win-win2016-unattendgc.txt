@@ -1,0 +1,250 @@
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created wizard page ProtectPcSettings3.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created wizard page ProxyConfiguration.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Unable to create wizard page RecommendedSettings. Skipping page.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Unable to create wizard page UpgradeApps. Skipping page.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Unable to create wizard page UpgradePassword. Skipping page.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created wizard page Wireless.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section Account.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Account: could not find page ConnectedUser. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Account: could not find page LocalUser. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] No pages were found for section Account.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section Account.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section Connect.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Connect: successfully added page Wireless
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section Connect.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section End.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section End: could not find page Cortana. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section End: could not find page UpgradeApps. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section End: could not find page EnterpriseProvisioningStatus. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section End: successfully added page End
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section End.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section Localization.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Localization: successfully added page Localization
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section Localization.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section PreOOBE.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section PreOOBE: could not find page HidMousePairing. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section PreOOBE: could not find page HidKeyboardPairing. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] No pages were found for section PreOOBE.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section PreOOBE.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section Registration.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Registration: could not find page EnterpriseProvisioning. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Registration: successfully added page PID
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Registration: could not find page Eula. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Registration: could not find page HidAccessoryPairing. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Registration: could not find page OEMRegistration. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section Registration.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section Server.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Server: successfully added page Localization
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Server: successfully added page PID
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Server: could not find page Eula. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section Server: could not find page LocalUser. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section Server.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section SetItUp.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section SetItUp: could not find page RecommendedSettings. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section SetItUp: successfully added page ProtectPcSettings1
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section SetItUp: successfully added page ProtectPcSettings2
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section SetItUp: successfully added page ProtectPcSettings3
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section SetItUp.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating section UpgradeWelcome.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Section UpgradeWelcome: could not find page UpgradePassword. Moving on.
+2026-11-26 01:33:58, Info                         [msoobe.exe] No pages were found for section UpgradeWelcome.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully created section UpgradeWelcome.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully added section Server to main flow.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Successfully added section End to main flow.
+2026-11-26 01:33:58, Info                         [msoobe.exe] Display mode is set to 1024x768x32 [64Hz]
+2026-11-26 01:33:58, Info                         [msoobe.exe] TASK: Begin running task CreateDirectoryJunctions...
+2026-11-26 01:33:58, Info                         [msoobe.exe] Creating directory junctions
+2026-11-26 01:33:58, Info                         [msoobe.exe] TASK: End successfully running task CreateDirectoryJunctions
+2026-11-26 01:33:58, Info                         [msoobe.exe] Beginning wait for service Themes (initial state SERVICE_RUNNING, desired state SERVICE_RUNNING)
+2026-11-26 01:33:58, Info                         [msoobe.exe] Service Themes successfully reports in state SERVICE_RUNNING
+2026-11-26 01:33:58, Info                         [msoobe.exe] Beginning wait for service Schedule (initial state SERVICE_START_PENDING, desired state SERVICE_RUNNING)
+2026-11-26 01:33:58, Info                         [msoobe.exe] Installed product key ((null))
+2026-11-26 01:33:58, Info                         [msoobe.exe] Posted cache change notification for setting PRODUCTKEYSTATUS.
+2026-11-26 01:33:58, Info                         [msoobe.exe] TASK: End successfully running task InstallPid
+2026-11-26 01:33:58, Info                         [msoobe.exe] Beginning wait for service netprofm (initial state SERVICE_START_PENDING, desired state SERVICE_RUNNING)
+2026-11-26 01:33:59, Info                         [svchost.exe] Enter WinReIsWimBootEnabled
+2026-11-26 01:33:59, Info                         [svchost.exe] Parameters: pszWinDir: NULL
+2026-11-26 01:33:59, Info                         [svchost.exe] Exit WinReIsWimBootEnabled returns 0 with last error: 0x0
+2026-11-26 01:33:59, Info                         [msoobe.exe] Service netprofm successfully reports in state SERVICE_RUNNING
+2026-11-26 01:33:59, Info                         [msoobe.exe] TASK: End successfully running task WaitForService
+2026-11-26 01:34:01, Info                         [msoobe.exe] Service Schedule successfully reports in state SERVICE_RUNNING
+2026-11-26 01:34:01, Info                         [msoobe.exe] Running OOBE wizard...
+2026-11-26 01:34:01, Info                         [msoobe.exe] Adjusting margins for [landscape] at 1024x768 with scale factor 1.000000
+2026-11-26 01:34:01, Info                         [msoobe.exe] Using layout options 0.
+2026-11-26 01:34:01, Info                         [msoobe.exe] SETACTIVE: wizard page for page End
+2026-11-26 01:34:01, Info                         [msoobe.exe] Optional plugin zdp is requested but not present.
+2026-11-26 01:34:01, Info                         [msoobe.exe] Adjusting margins for [landscape] at 1024x768 with scale factor 1.000000
+2026-11-26 01:34:01, Info                         [msoobe.exe] Using layout options 1.
+2026-11-26 01:34:01, Info                         [msoobe.exe] Running utilman.exe
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting GLOBALIZATIONCOMMITTED.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting COMPUTERNAME.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting PRODUCTKEYSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting PRODUCTKEYSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting TIMESYNCSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting PRODUCTKEYSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] TASK: Begin running task WindowsRecoveryEnvironment...
+2026-11-26 01:34:02, Info                         [msoobe.exe] Installing Windows Recovery Environment
+2026-11-26 01:34:02, Info                         [msoobe.exe] TASK: Begin running task RemoveAdminProfile...
+2026-11-26 01:34:02, Info                         [msoobe.exe] Removing Administrator Profile
+2026-11-26 01:34:02, Info                         [msoobe.exe] TASK: Begin running task QueueArsSystemTasksTask...
+2026-11-26 01:34:02, Info                         [msoobe.exe] Enter WinReOobeInstall
+2026-11-26 01:34:02, Info                         [msoobe.exe] winreSetRecoveryDirectorySecurity: Checking for recovery dir [C:\Recovery]
+2026-11-26 01:34:02, Info                         [msoobe.exe] winreSetRecoveryDirectorySecurity: Recovery dir already exists, nothing to do
+2026-11-26 01:34:02, Info                         [msoobe.exe] Service profsvc is already running without invoking StartService()
+2026-11-26 01:34:02, Info                         [msoobe.exe] Beginning wait for service profsvc (initial state SERVICE_RUNNING, desired state SERVICE_RUNNING)
+2026-11-26 01:34:02, Info                         [msoobe.exe] Service profsvc successfully reports in state SERVICE_RUNNING
+2026-11-26 01:34:02, Info                         [msoobe.exe] CheckRegKey Reg get value (PushButtonReset) failed. with error 0x2
+2026-11-26 01:34:02, Info                         [msoobe.exe] CheckRegKey Reg get value (Upgrade) failed. with error 0x2
+2026-11-26 01:34:02, Info                         [msoobe.exe] WinReOobeInstall Skipping auxiliary data collection
+2026-11-26 01:34:02, Info                         [msoobe.exe] WinReOobeInstall Checking if install is needed
+2026-11-26 01:34:02, Info                         [msoobe.exe] --Install on target OS step 1: collect info like partition list, loading reagent.xml, source winre.wim and partition
+2026-11-26 01:34:02, Info                         [msoobe.exe] Admin profile S-1-5-21-3353018299-2856199919-4107679969-500 was not found.
+2026-11-26 01:34:02, Info                         [msoobe.exe] TASK: End successfully running task RemoveAdminProfile
+2026-11-26 01:34:02, Info                         [msoobe.exe] Enumerate and log all fixed partitions:
+2026-11-26 01:34:02, Info                         [msoobe.exe] --Partition info--
+2026-11-26 01:34:02, Info                         [msoobe.exe] VolumeName: \\?\Volume{fdb98667-0000-0000-0000-500600000000}, PartitionName: \\?\GLOBALROOT\device\harddisk0\partition2
+2026-11-26 01:34:02, Info                         [msoobe.exe] Partition number: 2, offset: 105906176, free space: 10184310784, total space: 21367877632
+2026-11-26 01:34:02, Info                         [msoobe.exe] DiskNumber:0, DiskSignature:-38173081, NTFS:1, Mbr:1, Active:0, Boot:1, BitlockerEnabled:0
+2026-11-26 01:34:02, Info                         [msoobe.exe] MBR partition id: 0x7
+2026-11-26 01:34:02, Info                         [msoobe.exe] DiskId: {00000000-0000-0000-0000-000000000000} 
+2026-11-26 01:34:02, Info                         [msoobe.exe] --Partition info--
+2026-11-26 01:34:02, Info                         [msoobe.exe] VolumeName: \\?\Volume{fdb98667-0000-0000-0000-100000000000}, PartitionName: \\?\GLOBALROOT\device\harddisk0\partition1
+2026-11-26 01:34:02, Info                         [msoobe.exe] Partition number: 1, offset: 1048576, free space: 71032832, total space: 104853504
+2026-11-26 01:34:02, Info                         [msoobe.exe] DiskNumber:0, DiskSignature:-38173081, NTFS:1, Mbr:1, Active:1, Boot:0, BitlockerEnabled:0
+2026-11-26 01:34:02, Info                         [msoobe.exe] MBR partition id: 0x7
+2026-11-26 01:34:02, Info                         [msoobe.exe] DiskId: {00000000-0000-0000-0000-000000000000} 
+2026-11-26 01:34:02, Info                         [msoobe.exe] Get downlevel ReAgent config
+2026-11-26 01:34:02, Info                         [msoobe.exe]  Downlevel config file path: \Recovery\ReAgentOld.xml
+2026-11-26 01:34:02, Info                         [msoobe.exe]  Checking for downlevel WinRE installation.
+2026-11-26 01:34:02, Warning                      [msoobe.exe] read xml file (\Recovery\ReAgentOld.xml) failed: 0x2
+2026-11-26 01:34:02, Warning                      [msoobe.exe] ReAgentXMLParser::ParseConfigFile failed to read config xml file (0x2) in file base\diagnosis\srt\reagent2\reinfo\parser_2.0.cpp line 764
+2026-11-26 01:34:02, Warning                      [msoobe.exe] ReAgentXMLParser::ParseConfigFile (xml file: \Recovery\ReAgentOld.xml) returning 0x2
+2026-11-26 01:34:02, Info                         [msoobe.exe] ReAgentConfig::ParseConfigFile ReAgent.XML was not found or could not be parsed, creating a new config xml Err=2
+2026-11-26 01:34:02, Info                         [msoobe.exe] First round search
+2026-11-26 01:34:02, Info                         [msoobe.exe] Get ReAgent config
+2026-11-26 01:34:02, Info                         [msoobe.exe] GetReAgentConfig Config file path: C:\Windows\system32\Recovery\ReAgent.xml
+2026-11-26 01:34:02, Info                         [msoobe.exe] CheckRegKey test hook (SystemSetupInProgress) present and disabled
+2026-11-26 01:34:02, Info                         [msoobe.exe] Update enhanced config info is enabled.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Posted cache change notification for setting NETWORKSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] Connectivity changed: Local network detected
+2026-11-26 01:34:02, Info                         [msoobe.exe] Successfully created Internet listener
+2026-11-26 01:34:02, Info                         [msoobe.exe] Processing cache change notification for setting NETWORKSTATUS.
+2026-11-26 01:34:02, Info                         [msoobe.exe] WinRE is installed
+2026-11-26 01:34:02, Info                         [msoobe.exe] --Install on target OS step 2: detect and fix if there is any issue for winre settings
+2026-11-26 01:34:02, Info                         [msoobe.exe] DetectAndFixWinReIssues (WinRE)WinRE is already installed, setting BCD entry (winre location \\?\GLOBALROOT\device\harddisk0\partition2\Recovery\WindowsRE)
+2026-11-26 01:34:02, Info                         [msoobe.exe] Current WinRE is ready. No need to make any further changes
+2026-11-26 01:34:02, Info                         [msoobe.exe] WinReOobeInstall WinRE install succeeded
+2026-11-26 01:34:02, Info                         [msoobe.exe] Update enhanced config info is enabled.
+2026-11-26 01:34:02, Info                         [msoobe.exe] WinRE is installed
+2026-11-26 01:34:02, Info                         [msoobe.exe] Loading boot index 1
+2026-11-26 01:34:02, Info                         [msoobe.exe] AppReadinessService QueueSystemTasks result [hr=0x00000000]
+2026-11-26 01:34:02, Info                         [msoobe.exe] TASK: End successfully running task QueueArsSystemTasksTask
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully notified UI language change
+2026-11-26 01:34:03, Info                         [msoobe.exe] Posted cache change notification for setting NOTIFYLANGUAGEDONE.
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: End successfully running task NotifyUILanguageChange
+2026-11-26 01:34:03, Info                         [msoobe.exe] Processing cache change notification for setting NOTIFYLANGUAGEDONE.
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinReValidateRecoveryWimInternal took 578 ms.
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinReOobeInstall Resetting WinRE recovery action
+2026-11-26 01:34:03, Warning                      [msoobe.exe] RegOpenKeyEx(GP) failed: 0x2
+2026-11-26 01:34:03, Warning                      [msoobe.exe] WinReGetGroupPolicies failed with error code 0x2
+2026-11-26 01:34:03, Warning                      [msoobe.exe] NOTE: overwrite error code 0x2 because it is not critical
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinRE config file path: C:\Windows\system32\Recovery\ReAgent.xml
+2026-11-26 01:34:03, Info                         [msoobe.exe] Update enhanced config info is enabled.
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinRE is installed
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinRE is installed at: \\?\GLOBALROOT\device\harddisk0\partition2\Recovery\WindowsRE
+2026-11-26 01:34:03, Info                         [msoobe.exe] System is WimBoot: FALSE
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinRE image validated
+2026-11-26 01:34:03, Info                         [msoobe.exe] Update enhanced config info is enabled.
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinRE is installed
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinReOobeInstall Resealing volume if necessary
+2026-11-26 01:34:03, Info                         [msoobe.exe] WinReOobeInstall WinRE installation in OOBE completed
+2026-11-26 01:34:03, Info                         [msoobe.exe] Exit WinReOobeInstall return value: 1
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully installed Windows Recovery Environment
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: End successfully running task WindowsRecoveryEnvironment
+2026-11-26 01:34:03, Info                         [msoobe.exe] Next button was clicked
+2026-11-26 01:34:03, Info                         [msoobe.exe] UPDATE: running for end
+2026-11-26 01:34:03, Info                         [msoobe.exe] UPDATE: not implemented for plugin end
+2026-11-26 01:34:03, Info                         [msoobe.exe] Plugin zdp was not found for update
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin Wireless Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin Wireless Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin Proxy Configuration Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin Proxy Configuration Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin Language Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin Language Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin Region Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Skipping commit region - no pending region to set.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Skipping commit locale - no pending locale to set.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Skipping commit keyboard - no pending keyboard to set.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Posted cache change notification for setting GLOBALIZATIONCOMMITTED.
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: succeeded for plugin Region Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin ComputerName Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin ComputerName Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin PID Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin PID Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin ProtectPC Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Plugin did not find SelectedSettings value in global cache
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: Begin running task CommitProtectPCSettings...
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting Enabled value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting SensorPermissionState value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting Status value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - Leaving default state in place for LocationSyncEnabled value
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - Leaving default state in place for AcceptedPrivacyPolicy value
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting Enabled value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - Leaving default state in place for WiFiSenseOpen value
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - Leaving default state in place for PaidWifi value
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting Enabledv9 value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting Enabledv9 value for Wow64
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting SmartScreenEnabled value to enabled (Off)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting EnableWebContentEvaluation value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting FPEnabled value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting FPEnabled value for Wow64
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting AllowTelemetry value to enabled (1)
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - Leaving default state in place for Skype-UserConsentAccepted value
+2026-11-26 01:34:03, Info                         [msoobe.exe] ProtectPC Task - setting OptInOOBE value to enabled (0)
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: End successfully running task CommitProtectPCSettings
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: succeeded for plugin ProtectPC Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin TimeDate Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Set time zone to [SE Asia Standard Time]
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: succeeded for plugin TimeDate Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin Misc Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin Misc Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: running for plugin End Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] COMMIT: not implemented for plugin End Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin Wireless Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin Proxy Configuration Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin Language Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Region Plugin successfully set default Dvd region
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin Region Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] ExecuteFinalMandatoryTasks not implemented for plugin ComputerName Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Processing cache change notification for setting GLOBALIZATIONCOMMITTED.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin PID Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] ExecuteFinalMandatoryTasks not implemented for plugin ProtectPC Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin TimeDate Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: Begin running task ResetNotificationTimerTask...
+2026-11-26 01:34:03, Info                         [msoobe.exe] TASK: End successfully running task ResetNotificationTimerTask
+2026-11-26 01:34:03, Info                         [msoobe.exe] Successfully executed final mandatory task for plugin Misc Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] ExecuteFinalMandatoryTasks not implemented for plugin End Plugin
+2026-11-26 01:34:03, Info                         [msoobe.exe] KILLACTIVE: wizard page for page End
+2026-11-26 01:34:03, Info                         [msoobe.exe] OOBE wizard finishing - preparing final UX before destroying wizard.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Triggering fade to black to end OOBE UI
+2026-11-26 01:34:03, Info                         [msoobe.exe] Posting Quit message after Fade To Black Transition Complete
+2026-11-26 01:34:03, Info                         [msoobe.exe] Main Wizard message loop finished
+2026-11-26 01:34:03, Info                         [msoobe.exe] Finished running wizard with hr=0x00000000
+2026-11-26 01:34:03, Info                         [msoobe.exe] Ensuring netprofm task is complete.
+2026-11-26 01:34:03, Info                         [msoobe.exe] Wrote End-of-OOBE Timestamp to Registry
+2026-11-26 01:34:03, Info                         [msoobe.exe] Host returned successfully
+2026-11-26 01:34:03, Info                         [msoobe.exe] Ending OOBE
+2026-11-26 01:34:03, Info                         [msoobe.exe] ----------------------------------------------------------
+2026-11-26 01:34:03, Info                         [oobeldr.exe] OrchestrateUpdateImageState: Updating image state from [IMAGE_STATE_UNDEPLOYABLE] --> [IMAGE_STATE_COMPLETE]
+2026-11-26 01:34:03, Info                         [oobeldr.exe] OOBELdr.exe exiting with code [0x0]...
+2026-11-26 01:34:03, Info                         [windeploy.exe] Process exited with exit code [0x0]
+2026-11-26 01:34:03, Info                         [windeploy.exe] Windeploy: Executing PostOOBE commands
+2026-11-26 01:34:03, Info                         [windeploy.exe] Publishing WNF notification to indicate OOBE completion
+2026-11-26 01:34:03, Info                         [windeploy.exe] OrchestrateWnfPublishOobeCompletion: Publishing WNF event for OOBE completion; OOBE completion flag = TRUE
+2026-11-26 01:34:03, Info                         [windeploy.exe] Client OS detected: 0
+2026-11-26 01:34:03, Info                         [windeploy.exe] OEM Licensing detected: 0
+2026-11-26 01:34:03, Info                         [windeploy.exe] EnterpriseS or Enterprise or EnterpriseSN or EnterpriseN edition detected: 0
+2026-11-26 01:34:03, Info                         [windeploy.exe] RunUserProvidedScript: Found script at [C:\Windows\Setup\Scripts\SetupComplete.cmd]; executing with UI hidden...
+2026-11-26 01:34:18, Info                         [windeploy.exe] RunUserProvidedScript: Successfully executed script; (returned with exit code 0x0)
+2026-11-26 01:34:18, Info                         [windeploy.exe] Windeploy: Executing move/cleanup commands
+2026-11-26 01:34:18, Info                         [windeploy.exe] WinDeploy.exe exiting with code [0x0]

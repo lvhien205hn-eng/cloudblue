@@ -1,0 +1,22 @@
+﻿== Ghep ISO may mau tu ISO Windows that - win2016
+..  may CI: o trong C: 78 GB, D: 220 GB
+OK  tai ISO Windows chinh chu (ban dung thu) tu link trong HUONG-DAN: 6.49 GB, 1.1 phut
+..  lenh ghep: == 1/7  File ISO Windows goc
+..  lenh ghep: == 2/7  Tai phan mem CloudBlue + Python nhung 3.12
+..  lenh ghep: == 3/7  Doc cac ban Windows trong ISO
+..  lenh ghep: -> ban so 2: Windows Server 2016 Standard Evaluation (Desktop Experience) (10.0.14393.0) -> may mau tpl-win2016
+..  lenh ghep: == 4/7  Driver VirtIO (ISO virtio-win)
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+..  lenh ghep: == 5/7  ffmpeg (dieu khien tu xa) + ban va Windows can them
+..  lenh ghep: ffmpeg: 78 MB, dung ma kiem
+..  lenh ghep: == 6/7  Chep bo cai Windows + ghep phan mem CloudBlue
+..  lenh ghep: ban Windows: Windows Server 2016 Standard Evaluation (Desktop Experience) (so 2) | win2016 | tai khoan khach VPS (Admin, khong mat khau)
+..  lenh ghep: driver virtio 0.1.271 (2k16): Balloon NetKVM fwcfg pvpanic vioinput viorng vioscsi vioserial viostor + QEMU guest agent
+..  lenh ghep: ffmpeg (dieu khien tu xa): kem san
+..  lenh ghep: == 7/7  Dong file ISO
+..  lenh ghep: XONG (2.3 phut): C:\cbw\out\CloudBlue-MayMau-win2016.iso  (6.64 GB)
+..  lenh ghep: May mau: tpl-win2016 | Windows Server 2016 Standard Evaluation (Desktop Experience) | tai khoan khach VPS (Admin, khong mat khau, tu dang nhap) | virtio 0.1.271
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+OK  tao-iso-may-mau.ps1 -KhongHoi ghep xong ISO may mau win2016: 6.64 GB, 2.4 phut
+OK  lenh ghep nhan dung ban Windows: may mau tpl-win2016
+..  sha256 ISO may mau: 580fc5df863e0477d16c0ee0df3c3215e45acb0553063c195f91e40ae79087c0

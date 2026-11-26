@@ -1,0 +1,58 @@
+== Ghep ISO may mau tu ISO Windows that - win2016
+..  may CI: o trong C: 78 GB, D: 220 GB
+OK  tai ISO Windows chinh chu (ban dung thu) tu link trong HUONG-DAN: 6.49 GB, 1.1 phut
+..  lenh ghep: == 1/7  File ISO Windows goc
+..  lenh ghep: == 2/7  Tai phan mem CloudBlue + Python nhung 3.12
+..  lenh ghep: == 3/7  Doc cac ban Windows trong ISO
+..  lenh ghep: -> ban so 2: Windows Server 2016 Standard Evaluation (Desktop Experience) (10.0.14393.0) -> may mau tpl-win2016
+..  lenh ghep: == 4/7  Driver VirtIO (ISO virtio-win)
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+..  lenh ghep: == 5/7  ffmpeg (dieu khien tu xa) + ban va Windows can them
+..  lenh ghep: ffmpeg: 78 MB, dung ma kiem
+..  lenh ghep: == 6/7  Chep bo cai Windows + ghep phan mem CloudBlue
+..  lenh ghep: ban Windows: Windows Server 2016 Standard Evaluation (Desktop Experience) (so 2) | win2016 | tai khoan khach VPS (Admin, khong mat khau)
+..  lenh ghep: driver virtio 0.1.271 (2k16): Balloon NetKVM fwcfg pvpanic vioinput viorng vioscsi vioserial viostor + QEMU guest agent
+..  lenh ghep: ffmpeg (dieu khien tu xa): kem san
+..  lenh ghep: == 7/7  Dong file ISO
+..  lenh ghep: XONG (2.3 phut): C:\cbw\out\CloudBlue-MayMau-win2016.iso  (6.64 GB)
+..  lenh ghep: May mau: tpl-win2016 | Windows Server 2016 Standard Evaluation (Desktop Experience) | tai khoan khach VPS (Admin, khong mat khau, tu dang nhap) | virtio 0.1.271
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+OK  tao-iso-may-mau.ps1 -KhongHoi ghep xong ISO may mau win2016: 6.64 GB, 2.4 phut
+OK  lenh ghep nhan dung ban Windows: may mau tpl-win2016
+..  sha256 ISO may mau: 580fc5df863e0477d16c0ee0df3c3215e45acb0553063c195f91e40ae79087c0
+== Windows tự cài từ ISO máy mẫu — win2016, máy ảo BIOS (SeaBIOS) như cbhost tạo (commit b44d52c3cb2c)
+..  máy CI: crw-rw-rw- 1 root kvm 10, 232 Nov 26 01:26 /dev/kvm | 4 | Mem:           15700        1129        6315          46        8637       14570 | /dev/mapper/cow-root  145G   61G   84G  43% / | QEMU emulator version 10.2.1 (Debian 1:10.2.1+ds-1ubuntu3.3) | 
+..  ISO máy mẫu: 6.64 GB
+..  máy cai: CPU [host,hv_ipi,hv_relaxed,hv_reset,hv_runtime,hv_spinlocks=0x1fff,hv_stimer,hv_synic,hv_time,hv_vapic,hv_vpindex,+kvm_pv_eoi,+kvm_pv_unhalt]
+..  lệnh QEMU (như máy cbhost tạo trên Proxmox): qemu-system-x86_64 -enable-kvm -name cai -machine pc,hpet=off -cpu host,hv_ipi,hv_relaxed,hv_reset,hv_runtime,hv_spinlocks=0x1fff,hv_stimer,hv_synic,hv_time,hv_vapic,hv_vpindex,+kvm_pv_eoi,+kvm_pv_unhalt -smp 2,sockets=1,cores=2,maxcpus=2 -m 2048 -nodefaults -display none -boot menu=on,strict=on,reboot-timeout=1000 -smbios type=1,uuid=5a1b3c4d-0000-4000-8000-00000000cb01 -qmp unix:/home/runner/w/qmp-cai.sock,server,nowait -device pci-bridge,id=pci.3,chassis_nr=3,bus=pci.0,addr=0x5 -device piix3-usb-uhci,id=uhci,bus=pci.0,addr=0x1.0x2 -device usb-tablet,id=tablet,bus=uhci.0,port=1 -chardev socket,path=/home/runner/w/qga-cai.sock,server=on,wait=off,id=qga0 -device virtio-serial,id=qga0,bus=pci.0,addr=0x8 -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 -device VGA,id=vga,bus=pci.0,addr=0x2,edid=off -object iothread,id=iothread-vir
+..  phút 4: QEMU guest agent trong máy đã trả lời (Windows cài xong, SetupComplete.cmd đã chạy bước 1)
+OK  Windows TỰ CÀI từ ISO máy mẫu tới hết (không bấm gì): guest agent trả lời + có maymau.done — như cbhost chờ — 5 phút trên máy CI
+..  máy mẫu: Windows Server 2016 Standard Evaluation | Microsoft Windows Server 2016 | bản 10.0
+..  máy mẫu: QEMU guest agent bản 109.1.0
+OK  máy mẫu: tài khoản khách VPS TỰ đăng nhập vào màn hình nền (không mật khẩu)
+OK  máy mẫu: có 2 tác vụ CloudBluePC Agent + Watch
+OK  máy mẫu: dịch vụ QEMU-GA đang chạy, tự chạy khi bật máy
+OK  máy mẫu: card mạng VirtIO có driver, nhận địa chỉ DHCP
+..  máy mẫu: bỏ qua thiết bị 'HID Button over Interrupt Driver' mã 31 (lỗi vô hại có sẵn của Windows Server 2016 trên KVM)
+OK  máy mẫu: không còn thiết bị nào thiếu driver (ổ đĩa, mạng, cổng agent …)
+OK  máy mẫu: tài khoản Administrator có sẵn đã bị tắt (mật khẩu ngẫu nhiên, không ai biết)
+OK  máy mẫu: tài khoản khách VPS có quyền Admin
+OK  máy mẫu: agent CloudBlue (pythonw.exe) đang chạy sau khi cài xong (chưa đăng ký — chờ vé)
+OK  lưu máy mẫu (như cbhost): dừng agent, ghi {} vào identity / seed / rent qua guest agent, đọc lại đúng
+OK  lưu máy mẫu: Windows tắt được bằng guest agent (≤ 5 phút)
+..  máy vps: CPU [host,hv_ipi,hv_relaxed,hv_reset,hv_runtime,hv_spinlocks=0x1fff,hv_stimer,hv_synic,hv_time,hv_vapic,hv_vpindex,+kvm_pv_eoi,+kvm_pv_unhalt]
+OK  VPS nhân bản từ máy mẫu: bật lên, guest agent trả lời sau 14 giây
+..  VPS: Windows Server 2016 Standard Evaluation | Microsoft Windows Server 2016 | bản 10.0
+..  VPS: QEMU guest agent bản 109.1.0
+OK  VPS: tài khoản khách VPS TỰ đăng nhập vào màn hình nền (không mật khẩu)
+OK  VPS: có 2 tác vụ CloudBluePC Agent + Watch
+OK  VPS: dịch vụ QEMU-GA đang chạy, tự chạy khi bật máy
+OK  VPS: card mạng VirtIO có driver, nhận địa chỉ DHCP
+..  VPS: bỏ qua thiết bị 'HID Button over Interrupt Driver' mã 31 (lỗi vô hại có sẵn của Windows Server 2016 trên KVM)
+OK  VPS: không còn thiết bị nào thiếu driver (ổ đĩa, mạng, cổng agent …)
+OK  VPS: tài khoản Administrator có sẵn đã bị tắt (mật khẩu ngẫu nhiên, không ai biết)
+OK  VPS: tài khoản khách VPS có quyền Admin
+OK  VPS: agent CloudBlue (pythonw.exe) tự chạy sau khi bật
+OK  VPS: chưa mang mã máy nào (identity.json = {}) → mỗi VPS đăng ký riêng
+OK  VPS: cbhost đưa được vé đăng ký vào C:\CloudBluePC\seed.json qua guest agent
+== hết (8 phút)
