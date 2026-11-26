@@ -792,5 +792,17 @@ ck("XTEST: chuột (toạ độ 0..65535 → điểm ảnh), nút trái / phải
       and _fx.ev[4:8] == [((4, 5), {}), ((5, 5), {}), ((4, 5), {}), ((5, 5), {})] and _fx.ev[8] == ((2, 38), {}) and _fx.ev[9] == ((3, 38), {}), _fx.ev)
 ck("cửa sổ dòng lệnh XFCE (xfce4-terminal) → dán bằng Ctrl+Shift+V", K.app_kind("xfce4-terminal\nXfce4-terminal") == "term")
 os.environ.clear(); os.environ.update(_env0)
+print("\n27.11b · agent (root, KHÔNG có DISPLAY) phải xét theo PHIÊN KHÁCH: XFCE/X11 → đủ công cụ (x11), không bị coi là KDE thiếu pipewiresrc")
+os.environ.pop("DISPLAY", None); os.environ.pop("WAYLAND_DISPLAY", None)
+_t0 = K.tools; K.tools = lambda: {"ffmpeg_x264": True, "x11grab": True}
+ok_root = K.have_tools(); ok_x11 = K.have_tools({"DISPLAY": ":0", "XAUTHORITY": "/home/vps/.Xauthority"})
+ck("không truyền môi trường phiên (như bản cũ) → thiếu pipewiresrc; truyền môi trường phiên X11 của khách → đủ (ffmpeg x11grab + x264)",
+   ok_root[0] is False and "pipewiresrc" in ok_root[1] and ok_x11 == (True, "du (ffmpeg x11grab + x264)"), (ok_root, ok_x11))
+ck("phiên Wayland (KDE) vẫn đi đường cũ", K.x11_session({"DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"}) is False and K.x11_session({"DISPLAY": ":1"}) is True)
+K.tools = _t0
+src_r = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "linux", "cbremote.py"), encoding="utf-8").read()
+ck("LinuxRemote.prepare xét công cụ theo phiên khách (user_session) chứ không theo môi trường root",
+   "cbcap.have_tools(env)" in src_r and "env = user_session(u)[1]" in src_r)
+os.environ.clear(); os.environ.update(_env0)
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)
