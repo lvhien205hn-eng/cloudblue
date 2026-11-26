@@ -294,6 +294,20 @@ fp, fm = pi.find_inputs([d1, os.path.join(d1, "con")])
 ck("tự tìm: các ISO Proxmox VE ≥ 9, bản mới trước (9.10 > 9.3 > 9.2; bỏ bản 8) + mọi ISO máy mẫu đủ cỡ (bỏ .part, bỏ file tí hon, bỏ ISO khác)",
    [v for v, _ in fp] == ["9.10-1", "9.3-1", "9.2-1"] and fp[0][1].endswith("proxmox-ve_9.10-1.iso") and sorted(fm) == ["win2012r2", "win2016"], (fp, fm))
 ck("chọn ISO Proxmox: ưu tiên bản ĐÃ THỬ cài thật (9.3-1) dù trên máy có bản mới hơn chưa thử", next((p for v, p in fp if v in pi.KNOWN), "").endswith("proxmox-ve_9.3-1.iso"))
+# 26.11c: tìm sâu 3 cấp (trước chỉ 1 cấp → file để sâu hơn là ghép ra ISO THIẾU máy mẫu mà không ai hay)
+nha = os.path.join(tmp, "nha"); sau = os.path.join(nha, "Downloads", "a", "b", "c")
+os.makedirs(os.path.join(sau, "d")); os.makedirs(os.path.join(nha, "Downloads", "node_modules", "x")); os.makedirs(os.path.join(nha, "Desktop", "$RECYCLE.BIN"))
+for n in ("Downloads/a/b/c/CloudBlue-MayMau-win2016.iso", "Downloads/a/b/c/d/CloudBlue-MayMau-win2019.iso", "Downloads/node_modules/x/CloudBlue-MayMau-win2022.iso",
+          "Desktop/$RECYCLE.BIN/CloudBlue-MayMau-win2012r2.iso", "Desktop/CloudBlue-MayMau-win10ltsc.iso"): big(os.path.join(nha, n))
+_home, _cwd = os.environ.get("HOME"), os.getcwd()
+os.environ["HOME"] = nha; os.chdir(tmp_cwd := tempfile.mkdtemp(prefix="cbcwd_"))
+try: ld = pi.look_dirs(); fp3, fm3 = pi.find_inputs(ld)
+finally:
+    os.chdir(_cwd); shutil.rmtree(tmp_cwd, ignore_errors=True)
+    if _home is None: os.environ.pop("HOME", None)
+    else: os.environ["HOME"] = _home
+ck("tìm ISO máy mẫu SÂU 3 cấp thư mục (Downloads/a/b/c), gần trước xa sau; bỏ cấp 4, thư mục rác (node_modules, $RECYCLE.BIN)",
+   sorted(fm3) == ["win10ltsc", "win2016"] and ld[0].endswith("Downloads") and sau in ld and os.path.join(sau, "d") not in ld, (sorted(fm3), len(ld)))
 d2 = os.path.join(tmp, "may2"); os.makedirs(d2); w2 = os.path.join(tmp, "work2")
 mk_iso(os.path.join(d2, "proxmox-ve_9.9-1.iso"), release="9.9"); mk_iso(os.path.join(tmp, "tai-ve.iso"), release="9.8")
 pi.MIN_ISO = 1000; pi.look_dirs = lambda: [d2]; os.environ["CB_PVE_PW_HASH"] = HASH; said = []
@@ -312,6 +326,23 @@ os.remove(os.path.join(d2, "proxmox-ve_9.9-1.iso")); said.clear()
 try: pi.main(["--work", w2, "--khong-hoi", "--khong-mau", "--out", os.path.join(tmp, "o3.iso")]); r3 = None
 except pi.Loi as e: r3 = str(e)
 ck("không có ISO Proxmox nào + không tải được → dừng, chỉ rõ link tải bằng Chrome", r3 and "Tai bang Chrome: https://enterprise.proxmox.com/iso/proxmox-ve_" in r3 and not os.path.exists(os.path.join(tmp, "o3.iso")), r3)
+# 26.11c: không thấy ISO máy mẫu → DỪNG (không lặng lẽ ghép bản thiếu như lần 26/11 12:20); tự tìm thấy thì kèm vào
+d3 = os.path.join(tmp, "may3"); os.makedirs(d3); mk_iso(os.path.join(d3, "proxmox-ve_9.9-1.iso"), release="9.9")
+pi.look_dirs = lambda: [d3]; pi.download = dl_fail; said.clear()
+try: pi.main(["--work", os.path.join(tmp, "work3"), "--khong-hoi", "--out", os.path.join(tmp, "o4.iso")]); r4 = None
+except pi.Loi as e: r4 = str(e)
+ck("máy KHÔNG có file ISO máy mẫu nào (và không ghi -KhongMau) → DỪNG, nói rõ cách sửa, KHÔNG ra file ISO thiếu máy mẫu",
+   r4 and "KHONG THAY file ISO may mau nao" in r4 and "-MayMau" in r4 and "-KhongMau" in r4 and all(ord(c) < 128 for c in r4) and not os.path.exists(os.path.join(tmp, "o4.iso")), r4)
+dm = os.path.join(d3, "kho", "may-mau"); os.makedirs(dm); shutil.copy(m1, dm); shutil.copy(m2, dm)
+pi.look_dirs = lambda: [d3, os.path.join(d3, "kho"), dm]; said.clear()
+rc = pi.main(["--work", os.path.join(tmp, "work3"), "--khong-hoi", "--out", os.path.join(tmp, "o5.iso")])
+k5 = pi.kho_of(os.path.join(tmp, "o5.iso")) if hasattr(pi, "kho_of") else None
+ck("có file ISO máy mẫu trên máy (tự tìm thấy) → ghép kèm đủ 2 bản, dòng tổng kết ghi 'may mau kem: win2012r2, win2016'",
+   rc == 0 and any("may mau kem: win2012r2, win2016" in x for x in said) and sum(1 for x in said if x.strip().startswith("+ ")) == 2, said[-12:])
+said.clear()
+rc = pi.main(["--work", os.path.join(tmp, "work3"), "--khong-hoi", "--khong-mau", "--out", os.path.join(tmp, "o6.iso")])
+ck("ghi rõ -KhongMau → vẫn ghép được bản không kèm máy mẫu, có dòng nhắc 'cam USB co file CloudBlue-MayMau-*.iso vao may chu'",
+   rc == 0 and any("may mau kem: khong" in x for x in said) and any("cam USB co file CloudBlue-MayMau" in x for x in said), said[-12:])
 pi.say = lambda *a: None
 env = dict(os.environ, CB_PVE_PW_HASH=HASH)
 outc = os.path.join(tmp, "cli.iso")
