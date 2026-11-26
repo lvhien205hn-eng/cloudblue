@@ -83,7 +83,7 @@ class Qmp:
 
 class Vm:
     """1 máy ảo QEMU. iso_as: usb (ISO ghi kiểu DD ra USB) | cd. disk: scsi | nvme | sata."""
-    def __init__(self, name, mode, disk, disk_kind, iso_as, iso_first, no_reboot=False, port=2222, disk_fmt="qcow2", usb2=None, net="v4"):
+    def __init__(self, name, mode, disk, disk_kind, iso_as, iso_first, no_reboot=False, port=2222, disk_fmt="qcow2", usb2=None, net="v4", iso=None, hub=False):
         self.name, self.port = name, port
         self.serial = os.path.join(KQ, "pve-serial-%s.txt" % name)
         self.qmp_p = os.path.join(W, "qmp-%s.sock" % name)
@@ -102,9 +102,11 @@ class Vm:
             a += ["-machine", "pc"]
         bi_iso, bi_hd = (1, 2) if iso_first else (2, 1)
         if iso_as == "usb":
-            a += ["-device", "qemu-xhci,id=xhci", "-drive", "if=none,id=stick,format=raw,readonly=on,file=" + ISO, "-device", "usb-storage,bus=xhci.0,drive=stick,bootindex=%d" % bi_iso]
+            a += ["-device", "qemu-xhci,id=xhci", "-drive", "if=none,id=stick,format=raw,readonly=on,file=" + (iso or ISO), "-device", "usb-storage,bus=xhci.0,drive=stick,bootindex=%d" % bi_iso]
         elif iso_as == "cd":
-            a += ["-drive", "if=none,id=cd,media=cdrom,format=raw,readonly=on,file=" + ISO, "-device", "ide-cd,bus=ide.0,drive=cd,bootindex=%d" % bi_iso]
+            a += ["-drive", "if=none,id=cd,media=cdrom,format=raw,readonly=on,file=" + (iso or ISO), "-device", "ide-cd,bus=ide.0,drive=cd,bootindex=%d" % bi_iso]
+        elif hub:
+            a += ["-device", "qemu-xhci,id=xhci"]                    # cổng USB trống: bước thử cắm USB lúc máy ĐANG CHẠY (plug)
         if usb2:
             a += ["-device", "qemu-xhci,id=xhci2", "-drive", "if=none,id=stick2,format=raw,file=" + usb2, "-device", "usb-storage,bus=xhci2.0,drive=stick2"]
         a += ["-drive", "if=none,id=hd0,format=%s,file=%s%s" % (disk_fmt, disk, ",discard=unmap" if disk_fmt == "qcow2" else "")]
@@ -163,6 +165,19 @@ class Vm:
                 pass
             time.sleep(5)
         return False
+
+    def plug(self, tag, path):
+        """Cắm 1 USB (file ảnh, chỉ đọc) vào máy ĐANG CHẠY. → lỗi (chữ) hoặc ''"""
+        r = self.q.cmd("blockdev-add", **{"node-name": "n" + tag, "driver": "raw", "read-only": True, "file": {"driver": "file", "filename": path, "read-only": True}})
+        if not r or "error" in r:
+            return "blockdev-add: %s" % r
+        r = self.q.cmd("device_add", driver="usb-storage", bus="xhci.0", drive="n" + tag, id="u" + tag)
+        return "" if r and "error" not in r else "device_add: %s" % r
+
+    def unplug(self, tag):
+        self.q.cmd("device_del", id="u" + tag)
+        time.sleep(4)
+        self.q.cmd("blockdev-del", **{"node-name": "n" + tag})
 
     def kill(self):
         if self.p.poll() is None:
@@ -516,6 +531,113 @@ def mang():
     return res
 
 
+def usb():
+    """Như máy chủ thật 26/11 lần 2: cài bằng USB ghép THIẾU máy mẫu → máy lên web nhưng không có ISO nào. Cắm USB bản ĐỦ (rồi USB thường có file ISO) vào máy ĐANG CHẠY:
+    cbhost phải tự chép vào kho ISO và tự dựng máy mẫu — KHÔNG cài lại."""
+    res = 0
+    disk = os.path.join(W, "d-usb.qcow2")
+    if os.path.exists(disk):
+        os.remove(disk)
+    sh(["qemu-img", "create", "-f", "qcow2", disk, "48G"])
+    iso0 = os.path.join(W, "cb-khong-mau.iso")
+    rc, out = sh([sys.executable, os.path.join(REPO, "proxmox", "vm", "pve_iso.py"), "--iso", os.path.join(W, "pve.iso"), "--khong-mau", "--out", iso0, "--khong-hoi",
+                  "--ssh-key", open(os.path.join(W, "id.pub")).read().strip(), "--conf", json.dumps({"sb_url": "http://10.0.2.2:%d" % PORT_WEB, "auto_update": False})],
+                 1200, env=dict(os.environ, CB_PVE_PW_HASH=PW_HASH))
+    if not ok("ghép 1 ISO KHÔNG kèm máy mẫu (-KhongMau) để dựng lại đúng tình huống máy thật", rc == 0 and os.path.exists(iso0) and "may mau kem: khong" in out, out[-400:]):
+        return 1
+    rc, out = sh([sys.executable, os.path.join(REPO, "proxmox", "vm", "pve_iso.py"), "--iso", os.path.join(W, "pve.iso"), "--out", iso0 + ".x", "--khong-hoi", "--work", os.path.join(W, "trong"),
+                  "--ssh-key", open(os.path.join(W, "id.pub")).read().strip()], 600, env=dict(os.environ, CB_PVE_PW_HASH=PW_HASH, HOME=os.path.join(W, "nha-trong")), cwd=KQ)
+    ok("lệnh ghép KHÔNG tìm thấy ISO máy mẫu mà không ghi -KhongMau → DỪNG (mã 1), không ra file ISO thiếu máy mẫu",
+       rc == 1 and "KHONG THAY file ISO may mau nao" in out and not os.path.exists(iso0 + ".x"), out[-400:]) or (res := 1)
+    web, weblog = fake_web("usb")
+    sec = lambda out, k: (re.search(r"^#%s(.*?)(?=^#[a-z0-9]+)" % k, out, re.S | re.M) or [None, ""])[1]
+    XEM = r"""echo "#iso"; ls -l /var/lib/vz/template/iso/ 2>&1; sha256sum /var/lib/vz/template/iso/*.iso 2>/dev/null
+echo "#nap"; cat /var/lib/cloudblue/nap-xong.json 2>&1; echo
+echo "#qm"; qm list 2>&1
+echo "#blk"; lsblk -o NAME,TRAN,RM,FSTYPE,SIZE,MOUNTPOINT 2>&1
+echo "#mnt $(mount | grep -c cloudblue-usb)"
+echo "#log"; journalctl -b -u cloudblue-cbhost --no-pager 2>&1 | grep -i "usb" | tail -20
+echo "#het"
+"""
+    try:
+        vm = Vm("usb-cai", "bios", disk, "scsi", "usb", True, no_reboot=True, iso=iso0)
+        done = vm.wait_exit(1800, [(240, "4-phut")])
+        mins = (time.time() - vm.t0) / 60
+        if not done:
+            vm.shot("TREO")
+        vm.kill()
+        if not ok("cài Proxmox bằng USB THIẾU máy mẫu: tự cài xong sau %.1f phút" % mins, done and "Loading Proxmox VE Automatic Installer" in vm.serial_txt(), vm.serial_txt()[-300:]):
+            return 1
+        vm = Vm("usb-bat", "bios", disk, "scsi", "none", False, hub=True)        # rút USB cài đặt ra; máy có 1 cổng USB trống
+        up = vm.wait_ssh(480)
+        if not up:
+            vm.shot("KHONG-LEN")
+            ok("máy cài bằng USB thiếu máy mẫu: lên, vào được SSH", False, vm.serial_txt()[-300:])
+            return 1
+        time.sleep(45)
+        rc, o0 = vm.ssh(XEM, 120)
+        open(os.path.join(KQ, "pve-may-usb-0.txt"), "w").write(o0)
+        ok("đúng tình huống máy thật: máy lên, cbhost chạy, kho ISO TRỐNG, dịch vụ nạp ghi 'không có kho', chưa có máy ảo nào", "total 0" in sec(o0, "iso") and "kho" in sec(o0, "nap") and '"note"' in sec(o0, "nap") and "ISO" not in sec(o0, "iso")
+           and "cbmau-" not in sec(o0, "qm"), (sec(o0, "iso"), sec(o0, "nap"), sec(o0, "qm"))) or (res := 1)
+        # ---- cắm USB cài đặt bản ĐỦ vào máy đang chạy
+        e = vm.plug("du", ISO)
+        want = {n: sha(os.path.join(W, n)) for n in ("CloudBlue-MayMau-thu1.iso", "CloudBlue-MayMau-thu2.iso")}
+        t1, o1 = time.time(), ""
+        while time.time() - t1 < 300:
+            time.sleep(10)
+            rc, o1 = vm.ssh(XEM, 120)
+            if all(("%s  /var/lib/vz/template/iso/%s" % (h, n)) in o1 for n, h in want.items()):
+                break
+        t_copy = time.time() - t1
+        open(os.path.join(KQ, "pve-may-usb-1.txt"), "w").write(o1)
+        ok("CẮM USB cài đặt bản ĐỦ vào máy ĐANG CHẠY (không cài lại, không gõ gì): sau %.0f giây cbhost đã tự chép 2 ISO máy mẫu vào kho ISO, SHA-256 khớp cả 2, đã gỡ gắn USB" % t_copy,
+           not e and all(("%s  /var/lib/vz/template/iso/%s" % (h, n)) in o1 for n, h in want.items()) and sec(o1, "mnt").strip() == "0" and ".part" not in sec(o1, "iso"),
+           (e, sec(o1, "iso")[-400:], sec(o1, "blk")[-300:], sec(o1, "log")[-500:])) or (res := 1)
+        ok("nhật ký cbhost: 'thấy 2 ISO máy mẫu trên USB cài đặt — đang chép' rồi 'đã chép xong 2 ISO máy mẫu'", "thấy 2 ISO máy mẫu trên USB cài đặt" in sec(o1, "log")
+           and "đã chép xong 2 ISO máy mẫu" in sec(o1, "log"), sec(o1, "log")[-500:]) or (res := 1)
+        vm.shot("man-hinh")                                                        # màn hình máy chủ: [CloudBlue …] USB: … dang chep … / da chep xong …
+        t2, o2 = time.time(), ""
+        while time.time() - t2 < 240:
+            time.sleep(10)
+            rc, o2 = vm.ssh(XEM, 120)
+            if "cbmau-thu1" in sec(o2, "qm") and "cbmau-thu2" in sec(o2, "qm"):
+                break
+        open(os.path.join(KQ, "pve-may-usb-2.txt"), "w").write(o2)
+        wl = open(weblog).read() if os.path.exists(weblog) else ""
+        ok("có ISO rồi thì TỰ dựng máy mẫu (sau %.0f giây đã có máy ảo cbmau-thu1 + cbmau-thu2 trên Proxmox thật); web giả nhận trạng thái USB + danh sách ISO" % (time.time() - t2),
+           "cbmau-thu1" in sec(o2, "qm") and "cbmau-thu2" in sec(o2, "qm") and '"usb"' in wl and "CloudBlue-MayMau-thu1.iso" in wl, (sec(o2, "qm"), wl[-300:])) or (res := 1)
+        # ---- rút ra, cắm USB THƯỜNG (FAT32) có 1 file ISO máy mẫu khác
+        vm.unplug("du")
+        img = os.path.join(W, "usb-thuong.img")
+        sh("head -c 301M /dev/urandom > %s/CloudBlue-MayMau-thu3.iso" % W)
+        sh("rm -f %s; truncate -s 1G %s && parted -s %s mklabel msdos mkpart primary fat32 1MiB 100%%" % (img, img, img))
+        rc, lo = sh("sudo losetup -fP --show " + img)
+        lo = lo.strip().splitlines()[-1] if rc == 0 else ""
+        rc, out = sh("sudo mkfs.vfat -F 32 %sp1 && sudo mkdir -p /mnt/y && sudo mount %sp1 /mnt/y && sudo mkdir /mnt/y/may-mau && sudo cp %s/CloudBlue-MayMau-thu3.iso /mnt/y/may-mau/ && sudo umount /mnt/y; sudo losetup -d %s"
+                     % (lo, lo, W, lo), 900)
+        if ok("dựng USB thường (FAT32) có file may-mau/CloudBlue-MayMau-thu3.iso", rc == 0 and lo, out[-300:]):
+            e = vm.plug("th", img)
+            h3 = sha(os.path.join(W, "CloudBlue-MayMau-thu3.iso"))
+            t3, o3 = time.time(), ""
+            while time.time() - t3 < 240:
+                time.sleep(10)
+                rc, o3 = vm.ssh(XEM, 120)
+                if ("%s  /var/lib/vz/template/iso/CloudBlue-MayMau-thu3.iso" % h3) in o3:
+                    break
+            open(os.path.join(KQ, "pve-may-usb-3.txt"), "w").write(o3)
+            ok("CẮM USB THƯỜNG có file CloudBlue-MayMau-thu3.iso (thư mục con): sau %.0f giây cbhost tự chép vào kho ISO, SHA-256 khớp, gỡ gắn xong; 2 file cũ còn nguyên" % (time.time() - t3),
+               not e and ("%s  /var/lib/vz/template/iso/CloudBlue-MayMau-thu3.iso" % h3) in o3 and sec(o3, "mnt").strip() == "0"
+               and all(("%s  /var/lib/vz/template/iso/%s" % (h, n)) in o3 for n, h in want.items()), (e, sec(o3, "iso")[-400:], sec(o3, "blk")[-300:], sec(o3, "log")[-400:])) or (res := 1)
+        else:
+            res = 1
+        vm.ssh("qm stop 99500 >/dev/null 2>&1; qm stop 99501 >/dev/null 2>&1; qm stop 99502 >/dev/null 2>&1; poweroff", 120)
+        vm.wait_exit(time.time() - vm.t0 + 120)
+        vm.kill()
+    finally:
+        web.terminate()
+    return res
+
+
 def ventoy(disk, disk_kind, want):
     """USB chứa file ISO (kiểu Ventoy: phân vùng FAT có CloudBlue-Proxmox.iso), không ghi kiểu DD → dịch vụ nạp phải tự gắn phân vùng, đọc kho trong file."""
     img = os.path.join(W, "vt.img")
@@ -560,7 +682,9 @@ def main():
         return cai("uefi", "cd", "nvme")
     if cmd == "mang":
         return mang()
-    print("dùng: pve_ci.py ghep|win|bios|uefi|mang")
+    if cmd == "usb":
+        return usb()
+    print("dùng: pve_ci.py ghep|win|bios|uefi|mang|usb")
     return 2
 
 

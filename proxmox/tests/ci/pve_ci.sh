@@ -101,12 +101,12 @@ EOF
 case "${1:-}" in
   tai) tai ;;
   explore) explore ;;
-  ghep|win|bios|uefi|mang)
+  ghep|win|bios|uefi|mang|usb)
     if [ ! -e /tmp/pve-apt-xong ]; then
       sudo apt-get update -q >/dev/null 2>&1
       sudo apt-get install -y -q xorriso genisoimage mtools qemu-system-x86 qemu-utils ovmf ntfs-3g parted openssh-client >/dev/null 2>&1
       touch /tmp/pve-apt-xong
     fi
     python3 "$HERE/pve_ci.py" "$1" ;;
-  *) echo "dung: pve_ci.sh tai|explore|ghep|win|bios|uefi|mang"; exit 2 ;;
+  *) echo "dung: pve_ci.sh tai|explore|ghep|win|bios|uefi|mang|usb"; exit 2 ;;
 esac

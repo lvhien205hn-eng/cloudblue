@@ -3,3 +3,4 @@ mang
 win
 bios
 uefi
+usb
