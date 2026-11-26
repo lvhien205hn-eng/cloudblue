@@ -397,7 +397,7 @@ def cb_ver():
 def mo_o(disk, tag):
     """Mổ ổ của máy thử (máy đang TẮT): gắn chỉ đọc phân vùng gốc (LVM pve/root) → chép cấu hình mạng + nhật ký ra kq/pve-mo-<tag>.txt. → chữ đọc được."""
     sh("sudo apt-get install -y -q lvm2 >/dev/null 2>&1; sudo modprobe nbd max_part=16", 300)
-    out = sh("""sudo qemu-nbd -d /dev/nbd0 >/dev/null 2>&1; sudo qemu-nbd -r -c /dev/nbd0 %s && sleep 2 && sudo partprobe /dev/nbd0; sleep 2; sudo vgscan >/dev/null 2>&1; sudo vgchange -ay pve >/dev/null 2>&1; sleep 1
+    out = sh("""sudo qemu-nbd -d /dev/nbd0 >/dev/null 2>&1; sudo qemu-nbd -r -c /dev/nbd0 @DISK@ && sleep 2 && sudo partprobe /dev/nbd0; sleep 2; sudo vgscan >/dev/null 2>&1; sudo vgchange -ay pve >/dev/null 2>&1; sleep 1
       sudo mkdir -p /mnt/r && sudo mount -o ro,noload /dev/pve/root /mnt/r && {
         for f in /etc/network/interfaces /etc/network/interfaces.cb-goc /etc/resolv.conf /etc/resolv.conf.cb-goc /etc/hosts; do echo "#file $f"; sudo cat /mnt/r$f 2>&1; done
         echo "#dhclient $(for b in /usr/sbin/dhclient /usr/sbin/ifreload /usr/sbin/dhcpcd /usr/bin/busybox; do [ -e /mnt/r$b ] && printf '%s ' $b; done)"
@@ -405,7 +405,7 @@ def mo_o(disk, tag):
         echo "#journal"; sudo journalctl --directory=/mnt/r/var/log/journal --no-pager -u cloudblue-cbhost -u networking 2>&1 | tail -80
         echo "#het"
       }
-      sudo umount /mnt/r 2>/dev/null; sudo vgchange -an pve >/dev/null 2>&1; sudo qemu-nbd -d /dev/nbd0 >/dev/null 2>&1""" % disk, 300)[1]
+      sudo umount /mnt/r 2>/dev/null; sudo vgchange -an pve >/dev/null 2>&1; sudo qemu-nbd -d /dev/nbd0 >/dev/null 2>&1""".replace("@DISK@", disk), 300)[1]
     open(os.path.join(KQ, "pve-mo-%s.txt" % tag), "w").write(out)
     return out
 
