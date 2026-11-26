@@ -822,5 +822,6 @@ w14.vps = [item(id=60, tpl="tpl-ubuntu2404", hw=hashlib.sha256(b"60").hexdigest(
 for _ in range(3): h14.poll_once(); wait_idle(h14, 30)
 ck("ổ VPS lớn hơn máy mẫu (40 > 20 GB) → nới ổ / trong Linux bằng lệnh cố định growpart + resize2fs (không phải lệnh PowerShell)",
    ["sh", "-c", cb.GROW_LIN_SH] in (pve()["vms"]["100060"].get("execs") or []), pve()["vms"]["100060"].get("execs"))
+ck("bật máy ảo đang chạy sẵn ('already running') → coi là được, không báo lỗi cho web", h14.pve.start(100060)[0] == 0 and "already running" in h14.pve.start(100060)[1])
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
