@@ -705,5 +705,65 @@ try:
 finally:
     cb.run = _run12
 
+print("13. Đổi cấu hình (26/11e · web v59: khách nâng cấp / admin sửa) + nới ổ C trong Windows")
+pve_set(lambda d: (d.__setitem__("guest_after", 1), d.__setitem__("grow_ok", True)))
+os.environ.pop("INVOCATION_ID", None)
+for k in list(pve()["vms"]):
+    if k.startswith("1000"): pve_set(lambda d, k=k: d["vms"].pop(k, None))
+try: os.remove(os.environ["CBHOST_STATE"])
+except OSError: pass
+cb.GROW_EVERY_S = 0
+w13 = FakeWeb(); w13.status = "ready"; h13 = cb.Host(web=w13); h13.hello_ok = True; h13.status = "ready"
+H50 = hashlib.sha256(b"50").hexdigest()
+it50 = lambda **kw: item(**{"id": 50, "hw": H50, "disk_gb": 20, "cores": 2, "ram_mb": 2048, "cfg": 0, **kw})
+w13.vps = [it50()]; h13.want = w13.vps; sync(h13, 2)
+v = pve()["vms"]["100050"]
+ck("VPS mới cấu hình 2 vCPU · 2 GB · ổ 20 GB (nhỏ hơn máy mẫu 32 GB → giữ 32), chạy; báo 'cfg' 0 cho web", v["status"] == "running" and v["cfg"].get("cores") == "2"
+   and (rep_of(w13, 50) or {}).get("cfg") == 0 and not json.load(open(os.environ["CBHOST_STATE"]))["50"].get("grow"), (v, rep_of(w13, 50)))
+w13.vps = [it50(enrolled=True)]; sync(h13, 2); n_sd = len(qmlog(r"^qm shutdown 100050")); b0 = pve()["vms"]["100050"].get("boots", 0)
+w13.vps = [it50(enrolled=True, cores=4, ram_mb=4096, disk_gb=60, cfg=1)]
+h13.poll_once(); h13.poll_once(); r1 = rep_of(w13, 50); wait_idle(h13)          # vòng 1 nhận danh sách mới, vòng 2 bắt đầu làm
+v = pve()["vms"]["100050"]
+ck("web đổi cấu hình lần 1 → 4 vCPU · 4 GB · 60 GB: lúc đang làm vẫn báo máy 'running' (không phải 'đang tạo'), CHƯA báo cfg 1",
+   r1 and r1["state"] == "running" and r1.get("cfg") is None, r1)
+ck("… đặt vCPU / RAM, nới ổ Proxmox 32 → 60 GB, máy đang chạy → TẮT HẲN rồi bật lại (1 lần) để nhận vCPU / RAM mới; không cài lại, không xoá (dữ liệu giữ)",
+   v["cfg"].get("cores") == "4" and v["cfg"].get("memory") == "4096" and not v.get("pending") and v["disks"]["scsi0"] == 60 and v["status"] == "running"
+   and len(qmlog(r"^qm shutdown 100050")) == n_sd + 1 and v.get("boots", 0) == b0 + 1 and len(qmlog(r"^qm clone \d+ 100050")) == 1, v)
+h13.poll_once(); wait_idle(h13); h13.poll_once(); wait_idle(h13); h13.poll_once()
+v = pve()["vms"]["100050"]; ps = [x for x in v.get("execs", []) if x and x[0] == "powershell"]
+ck("… Windows lên → chạy lệnh CỐ ĐỊNH nới ổ C (Resize-Partition lên cỡ tối đa) qua guest agent; ổ C = 59 GB → xong, báo web cfg 1",
+   ps and "Resize-Partition -DriveLetter C" in ps[-1][1] and v.get("part_gb") == 59 and (rep_of(w13, 50) or {}).get("cfg") == 1
+   and not json.load(open(os.environ["CBHOST_STATE"]))["50"].get("grow"), (rep_of(w13, 50), v.get("part_gb"), len(ps)))
+n_sd = len(qmlog(r"^qm shutdown 100050")); n_rs = len(qmlog(r"^qm resize 100050"))
+sync(h13, 3)
+ck("vòng sau không làm lại gì (không tắt / nới thêm)", len(qmlog(r"^qm shutdown 100050")) == n_sd and len(qmlog(r"^qm resize 100050")) == n_rs)
+w13.vps = [it50(enrolled=True, cores=4, ram_mb=4096, disk_gb=100, cfg=2)]; sync(h13, 4)
+v = pve()["vms"]["100050"]
+ck("chỉ thêm ổ (60 → 100 GB): nới ổ Proxmox + ổ C, KHÔNG tắt máy; báo cfg 2", v["disks"]["scsi0"] == 100 and v.get("part_gb") == 99 and len(qmlog(r"^qm shutdown 100050")) == n_sd
+   and (rep_of(w13, 50) or {}).get("cfg") == 2, (v, rep_of(w13, 50)))
+w13.vps = [it50(enrolled=True, cores=4, ram_mb=4096, disk_gb=50, cfg=3)]; sync(h13, 3)
+ck("web lỡ gửi ổ NHỎ hơn (50 < 100 GB) → không bao giờ thu nhỏ ổ (mất dữ liệu)", pve()["vms"]["100050"]["disks"]["scsi0"] == 100 and (rep_of(w13, 50) or {}).get("cfg") == 3)
+w13.vps = [it50(enrolled=True, want="stopped", cores=4, ram_mb=4096, disk_gb=100, cfg=3)]; sync(h13, 2)
+n_st = len(qmlog(r"^qm start 100050"))
+w13.vps = [it50(enrolled=True, want="stopped", cores=6, ram_mb=8192, disk_gb=100, cfg=4)]; sync(h13, 3)
+v = pve()["vms"]["100050"]
+ck("máy đang TẮT (khách tắt): đặt cấu hình mới, KHÔNG tự bật máy lên; báo cfg 4", v["status"] == "stopped" and v["cfg"].get("cores") == "6" and len(qmlog(r"^qm start 100050")) == n_st
+   and (rep_of(w13, 50) or {}).get("cfg") == 4, (v["status"], v["cfg"], rep_of(w13, 50)))
+w13.vps = [it50(enrolled=True, cores=6, ram_mb=8192, disk_gb=100, cfg=4)]; sync(h13, 2)
+pve_set(lambda d: d.__setitem__("set_fail", True))
+w13.vps = [it50(enrolled=True, cores=8, ram_mb=8192, disk_gb=100, cfg=5)]; sync(h13, 3)
+r = rep_of(w13, 50)
+ck("đặt vCPU lỗi (Proxmox khoá file) → báo lỗi cho web, KHÔNG báo cfg 5 (web còn chờ, quá 15 phút báo admin)", r and r["state"] == "error" and "vCPU" in r.get("err", "") and r.get("cfg") is None, r)
+pve_set(lambda d: d.__setitem__("set_fail", False)); time.sleep(0.01)
+h13.st["50"]["t_err"] = 0; sync(h13, 3)
+ck("… hết lỗi → lần sau tự làm lại được, báo cfg 5", (rep_of(w13, 50) or {}).get("cfg") == 5 and pve()["vms"]["100050"]["cfg"].get("cores") == "8", rep_of(w13, 50))
+pve_set(lambda d: d.__setitem__("grow_ok", False)); cb.GROW_TRIES = 2
+w13.vps = [it50(enrolled=True, cores=8, ram_mb=8192, disk_gb=120, cfg=6)]; sync(h13, 6)
+ck("Windows không nới được ổ C (vd ổ C không nằm cuối ổ) → thử vài lần rồi THÔI, vẫn báo cfg 6 (ổ Proxmox đã đủ, khách tự Extend Volume) — không treo",
+   (rep_of(w13, 50) or {}).get("cfg") == 6 and pve()["vms"]["100050"]["disks"]["scsi0"] == 120 and not json.load(open(os.environ["CBHOST_STATE"]))["50"].get("grow"), rep_of(w13, 50))
+w13.vps = [it50(enrolled=True, cfg="1; reboot")]; n0 = len(pve()["log"]); sync(h13, 2)
+ck("'cfg' lạ từ web (chữ) → bỏ qua cả mục, không gọi qm", not [x for x in pve()["log"][n0:] if x[0] == "qm" and x[1] in ("set", "resize", "shutdown")] and rep_of(w13, 50) is None)
+ck("lệnh nới ổ C là lệnh CỐ ĐỊNH trong cbhost.py (không ghép chữ từ web)", "GROW_PS = (" in open(os.path.join(ROOT, "cbhost.py")).read() and "{" not in cb.GROW_ARGS[-1])
+
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)

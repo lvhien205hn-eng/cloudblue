@@ -57,8 +57,19 @@ def main():
         v = vms.get(vid)
         if cmd == "guest" and len(a) >= 3 and a[1] == "exec":       # qm guest exec <vmid> --timeout N -- lệnh…
             vv = vms.get(a[2])
+            ex = a[a.index("--") + 1:] if "--" in a else []
             if not vv or vv["status"] != "running": rc, out = 2, "VM not running"
-            else: vv.setdefault("execs", []).append(a[a.index("--") + 1:] if "--" in a else [])
+            elif "-EncodedCommand" in ex:                           # lệnh PowerShell cố định của cbhost (nới ổ C): cần Windows đã lên (guest agent trả lời)
+                import base64
+                ps = base64.b64decode(ex[ex.index("-EncodedCommand") + 1]).decode("utf-16-le")
+                vv.setdefault("execs", []).append(["powershell", ps])
+                if vv.get("ga", 0) < d.get("guest_after", 1): rc, out = 2, "QEMU guest agent is not running"
+                elif "Resize-Partition -DriveLetter C" in ps:
+                    boot = sorted(vv["disks"])[0]
+                    if d.get("grow_ok", True): vv["part_gb"] = vv["disks"][boot] - 1
+                    out = json.dumps({"exitcode": 0, "exited": 1, "out-data": "%d\r\n" % vv.get("part_gb", 19)})
+                else: out = json.dumps({"exitcode": 1, "exited": 1, "err-data": "lenh la"})
+            else: vv.setdefault("execs", []).append(ex)
         elif cmd == "guest":                                        # qm guest cmd <vmid> ping
             vv = vms.get(a[2]) if len(a) >= 4 and a[1] == "cmd" and a[3] == "ping" else None
             if not vv or vv["status"] != "running": rc, out = 2, "VM not running"
@@ -67,7 +78,11 @@ def main():
                 if vv["ga"] < d.get("guest_after", 1): rc, out = 2, "QEMU guest agent is not running"
         elif cmd == "config":
             if not v: rc, out = 2, "VM %s không có" % vid
-            else: out = "\n".join(["name: " + v["name"]] + ["%s: local-lvm:vm-%s-disk-%d,size=%dG" % (k, vid, i, g) for i, (k, g) in enumerate(sorted(v["disks"].items()))]
+            else:
+                hw = dict(v.get("cfg") or {})
+                if not ("--current" in a and opt(a, "--current") == "1"): hw.update(v.get("pending") or {})      # mặc định qm config hiện cả phần đổi còn chờ
+                out = "\n".join(["name: " + v["name"]] + ["%s: %s" % (k, hw[k]) for k in ("cores", "memory") if hw.get(k) is not None]
+                                  + ["%s: local-lvm:vm-%s-disk-%d,size=%dG" % (k, vid, i, g) for i, (k, g) in enumerate(sorted(v["disks"].items()))]
                                   + ["%s: %s,media=cdrom" % (k, x) for k, x in sorted((v.get("cdrom") or {}).items())]
                                   + ["boot: order=" + ";".join(sorted(v["disks"]))] + (["template: 1"] if v.get("template") else []))
         elif cmd == "create":
@@ -89,8 +104,11 @@ def main():
         elif not v:
             rc, out = 2, "VM %s không có" % vid
         elif cmd == "set":
+            if d.get("set_fail") and "--cores" in a: rc, out = 2, "can't lock file"
             for k in ("--cores", "--memory", "--balloon", "--onboot", "--agent", "--tags", "--smbios1", "--sockets"):
-                if k in a: v["cfg"][k[2:]] = opt(a, k)
+                if k in a and rc == 0:
+                    if k in ("--cores", "--memory") and v["status"] == "running": v.setdefault("pending", {})[k[2:]] = opt(a, k)   # máy đang chạy: chờ lần bật nguội kế
+                    else: v.setdefault("cfg", {})[k[2:]] = opt(a, k)
             if "--name" in a: v["name"] = opt(a, "--name")
             for k in [x for x in a if re.fullmatch(r"--(ide|sata)\d+", x)]:
                 if (opt(a, k) or "").startswith("none"): v.setdefault("cdrom", {})[k[2:]] = "none"
@@ -101,7 +119,7 @@ def main():
             v["disks"][a[2]] = int(a[3].rstrip("G"))
         elif cmd == "start":
             if v["status"] == "running": rc, out = 2, "already running"
-            else: v["status"], v["ga"] = "running", 0
+            else: v["status"], v["ga"] = "running", 0; v.setdefault("cfg", {}).update(v.pop("pending", None) or {}); v["boots"] = v.get("boots", 0) + 1
         elif cmd in ("stop", "shutdown"):
             v["status"] = "stopped"
         elif cmd == "reset":

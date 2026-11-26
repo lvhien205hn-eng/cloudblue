@@ -26,7 +26,7 @@
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "26/11d"
+CBHOST_VER = "26/11e"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -53,6 +53,14 @@ AUTO_WAIT_S = 3 * 3600          # tự dựng máy mẫu: Windows tự cài tố
 AUTO_TRIES = 2                  # tự dựng máy mẫu: thử tối đa 2 lần / bản
 AUTO_CHK_S = 45                 # tự dựng máy mẫu: hỏi máy ảo "cài xong chưa" 45 giây / lần
 RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
+# 26/11e · web v59: khách nâng cấp vCPU / RAM / ổ (hoặc mua kèm ổ lớn hơn máy mẫu). Nới ổ ở Proxmox xong còn phải NỚI Ổ C TRONG WINDOWS — lệnh cố định dưới đây,
+# chạy qua QEMU guest agent (viết dạng -EncodedCommand để không vướng dấu nháy). In ra cỡ ổ C (GB) sau khi nới.
+GROW_PS = ("$ErrorActionPreference='Stop'; Update-HostStorageCache; $m=(Get-PartitionSupportedSize -DriveLetter C).SizeMax; $p=(Get-Partition -DriveLetter C).Size; "
+           "if($m-$p -gt 104857600){Resize-Partition -DriveLetter C -Size $m}; [math]::Floor((Get-Partition -DriveLetter C).Size/1073741824)")
+GROW_ARGS = ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", base64.b64encode(GROW_PS.encode("utf-16-le")).decode("ascii")]
+GROW_EVERY_S = 20               # nới ổ C trong Windows: thử lại 20 giây / lần (Windows chưa lên xong thì chưa trả lời)
+GROW_TRIES = 6                  # lệnh chạy được mà ổ C vẫn chưa đủ cỡ: thử tối đa 6 lần rồi thôi (khách tự nới bằng Disk Management)
+GROW_MAX_S = 30 * 60            # Windows mãi không trả lời (không có QEMU guest agent): 30 phút thì thôi
 USB_MNT = os.environ.get("CBHOST_USB_MNT") or "/run/cloudblue-usb"            # chỗ gắn tạm (chỉ đọc) USB có ISO máy mẫu
 ISO_DIR = os.environ.get("CBHOST_ISO_DIR") or "/var/lib/vz/template/iso"      # kho ISO "local" của Proxmox
 NAP_PY = os.environ.get("CBHOST_NAP_PY") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "cb_nap.py")
@@ -231,6 +239,23 @@ class Pve:
         log("nhân bản liên kết không được (%s) → nhân bản đầy đủ" % out[-120:])
         return run(base + ["--full", "1"] + (["--storage", self.c["storage"]] if self.c["storage"] else []), 3600)
 
+    def hw_now(self, vmid):
+        """(vCPU, RAM MB) máy ảo ĐANG CHẠY với (qm config --current: không tính phần đổi còn chờ lần bật nguội kế). Không đọc được → (None, None)."""
+        rc, out = run([QM, "config", str(int(vmid)), "--current", "1"], 60)
+        if rc != 0: return None, None
+        c = re.search(r"^cores:\s*(\d+)\s*$", out, re.M); m = re.search(r"^memory:\s*(?:current=)?(\d+)", out, re.M)
+        return (int(c.group(1)) if c else None), (int(m.group(1)) if m else None)
+
+    def set_hw(self, vmid, cores, ram_mb):
+        return run([QM, "set", str(int(vmid)), "--cores", str(int(cores)), "--sockets", "1", "--memory", str(int(ram_mb)), "--balloon", "0"], 120)
+
+    def grow_disk(self, vmid, disk_gb):
+        """Nới ổ hệ thống lên disk_gb (không bao giờ thu nhỏ) → (mã lỗi, lời báo, có nới không)."""
+        dk, gb = self.boot_disk(vmid)
+        if not dk or disk_gb <= gb + 0.5: return 0, "", False
+        rc, out = run([QM, "resize", str(int(vmid)), dk, "%dG" % int(disk_gb)], 600)
+        return rc, out, rc == 0
+
     def setup(self, vmid, cores, ram_mb, disk_gb, hw):
         rc, out = run([QM, "set", str(vmid), "--cores", str(cores), "--sockets", "1", "--memory", str(ram_mb), "--balloon", "0",
                        "--onboot", "1", "--agent", "enabled=1", "--tags", "cloudblue", "--smbios1", "uuid=" + hw_uuid(hw)], 120)
@@ -258,9 +283,9 @@ class Pve:
     def ga_write(self, vmid, path, content):
         return run([PVESH, "create", "/nodes/%s/qemu/%d/agent/file-write" % (self.node, int(vmid)), "--file", path, "--content", content], 60)
 
-    def ga_exec(self, vmid, args):
+    def ga_exec(self, vmid, args, timeout=30):
         """Chạy 1 lệnh CỐ ĐỊNH (ghi sẵn trong file này) trong máy ảo qua guest agent."""
-        return run([QM, "guest", "exec", str(int(vmid)), "--timeout", "30", "--"] + list(args), 90)
+        return run([QM, "guest", "exec", str(int(vmid)), "--timeout", str(int(timeout)), "--"] + list(args), int(timeout) + 60)
 
     # ---- máy mẫu
     def isos(self):
@@ -591,7 +616,8 @@ def item_ok(it):
     try:
         return (isinstance(it, dict) and re.fullmatch(r"[0-9]{1,12}", str(it.get("id"))) and it.get("want") in ("running", "stopped", "deleted")
                 and 1 <= int(it.get("cores")) <= 64 and 512 <= int(it.get("ram_mb")) <= 262144 and 10 <= int(it.get("disk_gb")) <= 4000
-                and 1 <= int(it.get("inst")) and 0 <= int(it.get("boot")) and RX_TPL.match(str(it.get("tpl") or "")) and RX_HW.match(str(it.get("hw") or "")))
+                and 1 <= int(it.get("inst")) and 0 <= int(it.get("boot")) and RX_TPL.match(str(it.get("tpl") or "")) and RX_HW.match(str(it.get("hw") or ""))
+                and (it.get("cfg") is None or (not isinstance(it.get("cfg"), bool) and 0 <= int(it.get("cfg")) <= 999999)))
     except (TypeError, ValueError):
         return False
 
@@ -601,6 +627,7 @@ class Host:
         self.c = c or conf(); self.web = web or Web(self.c); self.pve = pve or Pve(self.c)
         self.sec = secret(); self.st = load_json(STATE_F, {}); self.status = "?"; self.name = ""
         self.lock = threading.Lock(); self.busy = {}; self.poll_s = 10; self.want = []; self.tpl_need = []
+        self.soft = set()                                           # việc nền KHÔNG phải tạo / xoá máy (đổi cấu hình, nới ổ C): vẫn báo web máy đang chạy / tắt như thường
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
         self.usb = None                                                                                  # luồng nạp ISO máy mẫu từ USB (cmd_run bật)
@@ -611,15 +638,17 @@ class Host:
     def vmid(self, vid): return self.c["vmid_base"] + int(vid)
 
     # ---- việc chạy lâu (nhân bản, xoá) ở luồng riêng: vẫn hỏi web đều 10 giây / lần
-    def bg(self, vid, fn, *a):
-        if vid in self.busy or len(self.busy) >= self.c["max_builds"]: return
+    def bg(self, vid, fn, *a, soft=False):
+        if vid in self.busy or len(self.busy) >= self.c["max_builds"]: return False
         def go():
             try: fn(*a)
             except Exception as e:
                 self.fail(vid, "lỗi: %s" % e)
             finally:
-                self.busy.pop(vid, None)
+                self.busy.pop(vid, None); self.soft.discard(vid)
+        if soft: self.soft.add(vid)
         th = threading.Thread(target=go, daemon=True); self.busy[vid] = th; th.start()
+        return True
 
     def fail(self, vid, msg):
         with self.lock:
@@ -634,16 +663,72 @@ class Host:
             if rc != 0: return self.fail(vid, "xoá máy ảo cũ lỗi: " + out[-200:])
         rc, out = self.pve.clone(tpl_id, vmid, "vps-%d" % vid)
         if rc != 0: return self.fail(vid, "nhân bản lỗi: " + out[-200:])
+        gb0 = self.pve.boot_disk(vmid)[1]                          # cỡ ổ của máy mẫu
         rc, out = self.pve.setup(vmid, int(it["cores"]), int(it["ram_mb"]), int(it["disk_gb"]), it["hw"])
         if rc != 0: return self.fail(vid, "đặt cấu hình lỗi: " + out[-200:])
         with self.lock:
             self.st[str(vid)] = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": secrets.token_hex(24), "sent": False, "seeded": False,
-                                 "t_build": time.time()}
+                                 "t_build": time.time(), "cfg": int(it.get("cfg") or 0)}
+            if int(it["disk_gb"]) > gb0 + 0.5:                      # ổ lớn hơn máy mẫu → Windows lên xong phải nới ổ C (26/11e)
+                self.st[str(vid)]["grow"] = {"gb": int(it["disk_gb"]), "n": 0, "t": 0, "t0": time.time()}
         self.save()
         if it["want"] == "running":
             rc, out = self.pve.start(vmid)
             if rc != 0: return self.fail(vid, "bật máy lỗi: " + out[-200:])
         log("VPS-%s: tạo xong, chờ Windows lên để đưa vé đăng ký" % vid)
+
+    def recfg(self, it):
+        """26/11e · web đổi cấu hình (khách nâng cấp / admin sửa): đặt vCPU + RAM, nới ổ. Máy đang chạy mà vCPU / RAM khác → TẮT HẲN rồi bật lại
+           (Proxmox chỉ nhận vCPU / RAM mới khi bật nguội; khởi động lại từ trong Windows không đủ). Dữ liệu trong ổ giữ nguyên. Chạy lại bao nhiêu lần cũng được."""
+        vid, vmid = int(it["id"]), self.vmid(it["id"]); cores, ram, disk, cfg = int(it["cores"]), int(it["ram_mb"]), int(it["disk_gb"]), int(it["cfg"])
+        c0, m0 = self.pve.hw_now(vmid)
+        log("VPS-%s: đổi cấu hình lần %d → %d vCPU · %d MB RAM · %d GB (đang chạy với %s vCPU · %s MB)" % (vid, cfg, cores, ram, disk, c0, m0))
+        rc, out = self.pve.set_hw(vmid, cores, ram)
+        if rc != 0: return self.fail(vid, "đặt vCPU / RAM lỗi: " + out[-200:])
+        rc, out, grew = self.pve.grow_disk(vmid, disk)
+        if rc != 0: return self.fail(vid, "nới ổ lỗi: " + out[-200:])
+        vm = self.pve.vms().get(vmid)
+        if vm and vm["status"] == "running" and (c0, m0) != (cores, ram):
+            rc, out = self.pve.shutdown(vmid)
+            if rc != 0: return self.fail(vid, "tắt máy để nhận cấu hình mới lỗi: " + out[-200:])
+            if it["want"] == "running":
+                rc, out = self.pve.start(vmid)
+                if rc != 0: return self.fail(vid, "bật lại máy sau khi đổi cấu hình lỗi: " + out[-200:])
+            log("VPS-%s: đã tắt hẳn + bật lại để nhận cấu hình mới" % vid)
+        with self.lock:
+            s = self.st.setdefault(str(vid), {}); s["cfg"] = cfg; s.pop("err", None)
+            if grew: s["grow"] = {"gb": disk, "n": 0, "t": 0, "t0": time.time()}
+        self.save()
+
+    def grow(self, vid):
+        """Nới ổ C trong Windows cho bằng ổ vừa nới ở Proxmox (lệnh cố định GROW_PS qua QEMU guest agent). Windows chưa lên → lần sau thử lại."""
+        s = self.st.get(str(vid)) or {}; g = s.get("grow"); vmid = self.vmid(vid)
+        if not g: return
+        with self.lock: g["t"] = time.time()
+        done = why = None
+        if not self.pve.ga_ping(vmid):
+            if time.time() - float(g.get("t0") or 0) > GROW_MAX_S: why = "Windows không trả lời (QEMU guest agent) suốt %d phút" % (GROW_MAX_S // 60)
+        else:
+            rc, out = self.pve.ga_exec(vmid, GROW_ARGS, 60)
+            gb = None
+            try:
+                j = json.loads(out or "{}")
+                if rc == 0 and isinstance(j, dict) and j.get("exited") and int(j.get("exitcode") or 0) == 0:
+                    m = re.findall(r"\d+", str(j.get("out-data") or "")); gb = int(m[-1]) if m else None
+            except Exception: gb = None
+            if gb is not None and gb >= int(g["gb"]) - 2: done = gb
+            else:
+                with self.lock: g["n"] = int(g.get("n") or 0) + 1
+                if g["n"] >= GROW_TRIES: why = "lệnh nới ổ trong Windows không được (%s)" % (str(out or "")[-120:].replace("\n", " "))
+        if done is not None or why:
+            with self.lock: s.pop("grow", None)
+            log(("VPS-%s: ổ C trong Windows đã nới lên %d GB" % (vid, done)) if done is not None
+                else ("VPS-%s: KHÔNG tự nới được ổ C (%s) — ổ ở Proxmox đã đủ %s GB, khách tự nới bằng Disk Management › Extend Volume" % (vid, why, g["gb"])))
+        self.save()
+
+    def rep_now(self, vid, vm, s):
+        """Dòng báo cáo khi đang có việc nền nhẹ (đổi cấu hình / nới ổ): máy đang chạy hay tắt thì báo vậy — không báo 'đang tạo'."""
+        return {"id": vid, "state": "running" if (vm and vm["status"] == "running") else "stopped", "inst": int((s or {}).get("inst") or 0), "boot": int((s or {}).get("boot") or 0)}
 
     def remove(self, vid):
         vmid = self.vmid(vid)
@@ -923,7 +1008,14 @@ class Host:
         for it in self.want:
             if not item_ok(it): continue
             vid = int(it["id"]); vmid = self.vmid(vid); vm = vms.get(vmid); s = self.st.get(str(vid))
-            if vid in self.busy: rep.append({"id": vid, "state": "creating", "inst": (s or {}).get("inst") or 0}); continue
+            if vid in self.busy:
+                if vid in self.soft and vm and s:                   # đổi cấu hình / nới ổ C đang chạy nền: máy vẫn dùng bình thường
+                    if it.get("enrolled") is True and s.get("ticket"):
+                        with self.lock: s["ticket"] = None; s["sent"] = False; s["seeded"] = False
+                        self.save()
+                    rep.append(self.rep_now(vid, vm, s))
+                else: rep.append({"id": vid, "state": "creating", "inst": (s or {}).get("inst") or 0})
+                continue
             if it["want"] == "deleted":
                 if vm: self.bg(vid, self.remove, vid); rep.append({"id": vid, "state": "stopped", "inst": (s or {}).get("inst") or 0})
                 else:
@@ -935,7 +1027,7 @@ class Host:
             if s and s.get("err") and time.time() - float(s.get("t_err") or 0) < RETRY_S:
                 rep.append({"id": vid, "state": "error", "inst": s.get("inst") or 0, "err": s["err"]}); continue
             if vm and s is None:                                    # máy ảo có sẵn mà mất sổ (cài lại cbhost) → nhận lại, không tạo lại
-                s = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": None, "sent": False, "seeded": False}
+                s = {"inst": int(it["inst"]), "boot": int(it["boot"]), "ticket": None, "sent": False, "seeded": False}   # (không ghi "cfg": web có lần đổi cấu hình thì đặt lại cho chắc — không đổi gì thì không tắt máy)
                 with self.lock: self.st[str(vid)] = s
                 self.save()
             if not vm or int(s.get("inst") or 0) != int(it["inst"]):
@@ -962,7 +1054,15 @@ class Host:
                     else: log("VPS-%s: khởi động cứng" % vid)
                 with self.lock: s["boot"] = int(it["boot"])
                 self.save()
+            cfg_w = int(it.get("cfg") or 0)
+            if cfg_w > int(s.get("cfg") or 0):                      # 26/11e: web vừa đổi cấu hình (nâng cấp) → đặt ở luồng riêng; xong mới báo "cfg"
+                self.bg(vid, self.recfg, dict(it), soft=True)
+                rep.append(self.rep_now(vid, vm, s)); continue
+            g = s.get("grow")
+            if g and running and (it.get("enrolled") is True or s.get("seeded")) and time.time() - float(g.get("t") or 0) >= GROW_EVERY_S:
+                self.bg(vid, self.grow, vid, soft=True)             # (máy mới tạo: đưa vé đăng ký xong mới nới ổ C)
             r = {"id": vid, "state": "running" if running else "stopped", "inst": int(s.get("inst") or 0), "boot": int(s.get("boot") or 0)}
+            if not (g and running): r["cfg"] = int(s.get("cfg") or 0)       # ổ C còn đang nới trong Windows → chưa báo xong (web còn hiện "đang đổi cấu hình")
             if it.get("enrolled") is True:
                 if s.get("ticket"):
                     with self.lock: s["ticket"] = None; s["sent"] = False; s["seeded"] = False
