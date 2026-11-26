@@ -56,7 +56,8 @@ ENCODERS = ("nvenc", "qsv", "amf", "x264")
 PIPE_IDLE_FPS = 3                         # đứng yên, không ai thao tác: xem lại màn hình 3 lần / giây
 PIPE_BEAT_S = 1.0                         # không có gì đổi vẫn gửi 1 khung / giây (người xem + trạm biết máy còn sống)
 PIPE_ACT_S, PIPE_CHG_S = 1.0, 0.3         # sau thao tác cuối của người xem / khi màn hình đổi LIÊN TỤC: chụp đủ nhịp thêm bấy nhiêu giây
-PIPE_SETTLE = 6                           # sau khung đổi cuối: gửi lại khung đó thêm mấy lần (bộ nén làm nét dần khung vừa bị ép cỡ) — không chụp lại
+PIPE_SETTLE = 10                          # sau khung đổi cuối: gửi lại khung đó TỐI ĐA mấy lần cho bộ nén làm nét dần khung vừa bị ép cỡ (không chụp lại) — khung nén ra chỉ còn vài chục byte thì thôi ngay
+PIPE_SMALL, PIPE_FINE, PIPE_QUIET_S = 300, 2000, 0.25   # khung nén < 300 byte = không còn gì để làm nét; khung đổi nhỏ < 2000 byte sau ≥ 0,25 giây yên (con trỏ chữ nháy, đồng hồ) = đã nét sẵn, khỏi gửi lại
 PIPE_KEY_S, PIPE_KEY_PV_S = 4, 2          # khung khoá định kỳ theo GIÂY THẬT (phiên điều khiển / ô xem trước — ô đang xem máy có người điều khiển chỉ nhận khung khoá); cần sớm hơn thì bật lại bộ nén
 PIPE_CRF = 22                             # mức chất lượng x264 (càng nhỏ càng nét); bitrate của phiên là TRẦN, không phải mức phải đạt
 PIPE_BUF_K = 1200                         # 1 khung không vượt ~150 KB (trạm bỏ khung khi bộ đệm tới người xem quá 192 KB)
@@ -659,7 +660,7 @@ class Encoder:
         self.on_au, self.log = on_au, log or (lambda m: None)
         self.proc = None; self.sock = None; self.alive = False; self.stopped = False; self.frames = 0; self.t0 = 0.0; self.t_frame = 0.0; self.err = ""
         self.grab_fn, self.tune = grab_fn, tune                       # 26.11a: cách quay "pipe"
-        self.kick_ev = threading.Event(); self.t_act = 0.0; self.grabs = 0; self.fed = 0; self.settle_req = False; self.small = 0
+        self.kick_ev = threading.Event(); self.t_act = 0.0; self.grabs = 0; self.fed = 0; self.settle_req = False; self.small = 0; self.au_sz = 0; self.au_key = False
 
     def start(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -685,37 +686,42 @@ class Encoder:
 
     def _feed(self):
         """26.11a · Luồng chụp (cách quay "pipe"): chụp màn hình → khung KHÁC khung trước mới ghi vào ống cho ffmpeg nén. Đang thao tác / màn hình đổi liên tục →
-           chụp đủ nhịp; đứng yên → PIPE_IDLE_FPS lần / giây. Sau khung đổi cuối gửi lại chính khung đó PIPE_SETTLE lần (không chụp lại) cho bộ nén làm nét;
+           chụp đủ nhịp; đứng yên → PIPE_IDLE_FPS lần / giây. Sau khung đổi cuối gửi lại chính khung đó (không chụp lại) cho bộ nén làm nét, tới khi khung nén ra chỉ còn vài chục byte;
            không có gì thì PIPE_BEAT_S giây gửi 1 khung giữ nhịp. ffmpeg nén không kịp → lệnh ghi tự chờ (không dồn khung cũ, không cộng dồn trễ)."""
         g = None; f = self.proc.stdin
         try:
             g = self.grab_fn()
             if (g.w, g.h) != (self.sw, self.sh): raise RuntimeError("man hinh %dx%d khac luc bat bo nen %dx%d" % (g.w, g.h, self.sw, self.sh))
             dt = 1.0 / max(1, self.fps); dt_idle = max(dt, 1.0 / PIPE_IDLE_FPS)
-            t_cap = t_out = 0.0; last = None; settle = 0; run = 0
+            t_cap = t_out = 0.0; last = None; settle = 0; run = 0; fresh = quiet = False
             while self.alive:
                 now = time.monotonic()
-                if self.settle_req: self.settle_req = False; settle = max(settle, PIPE_SETTLE)
-                due = t_cap + (dt if now < self.t_act else dt_idle)
-                if settle and last is not None: due = min(due, t_out + dt)
-                if due > now:
-                    self.kick_ev.wait(due - now); self.kick_ev.clear(); continue
+                if self.settle_req: self.settle_req = False; settle = max(settle, PIPE_SETTLE); fresh = False      # vừa ra khung khoá (bị ép cỡ) → gửi lại cho nét
+                cap_due = t_cap + (dt if now < self.t_act else dt_idle); again = False
+                if settle and last is not None:
+                    # 26.11a-2 · VÒNG KÍN: chỉ gửi lại khi khung vừa ghi đã nén xong VÀ còn nặng (bộ nén còn đang làm nét). Trước đó gửi mù 6 khung sau MỖI lần đổi →
+                    # con trỏ chữ nháy cũng tốn ~13 khung / giây.
+                    out = self.frames >= self.fed
+                    if out and not self.au_key and (self.au_sz < PIPE_SMALL or (fresh and quiet and self.au_sz < PIPE_FINE)): settle = 0
+                    elif (out or now - t_out > 0.25) and now >= t_out + dt: again = True
+                if not again and cap_due > now:
+                    w = cap_due - now
+                    if settle and last is not None: w = min(w, 0.008 if (self.frames < self.fed and now - t_out <= 0.25) else max(0.001, t_out + dt - now))
+                    self.kick_ev.wait(w); self.kick_ev.clear(); continue
                 buf = None
-                if now >= t_cap + (dt if now < self.t_act else dt_idle):
+                if now >= cap_due:
                     t_cap = now; buf, changed = g.grab(); self.grabs += 1
                     if buf is None: continue                              # chưa chụp được (màn hình đang khoá / đổi) → nhịp sau thử lại
                     if changed:
-                        run += 1; last = buf; settle = PIPE_SETTLE
+                        run += 1; last = buf; settle = PIPE_SETTLE; fresh = True; quiet = now - t_out >= PIPE_QUIET_S
                         self.t_act = max(self.t_act, now + (PIPE_CHG_S if run >= 2 else dt * 1.5))      # đổi 2 nhịp liền = đang chạy hình → chụp đủ nhịp; đổi lẻ (con trỏ chữ nháy) → chỉ xem lại 1 nhịp
                     else:
                         run = 0
-                        if settle and self.small >= 2: settle = 0
-                        if not settle and now - t_out < PIPE_BEAT_S: continue
-                        if settle: settle -= 1
+                        if again: settle -= 1; fresh = False
+                        elif now - t_out < PIPE_BEAT_S: continue
                         last = buf
-                elif settle and last is not None:
-                    if self.small >= 2: settle = 0; continue              # 2 khung gửi lại liền đều "không còn gì để làm nét" → thôi
-                    settle -= 1; buf = last
+                elif again:
+                    settle -= 1; fresh = False; buf = last
                 else: continue
                 mv = memoryview(buf); n = 0; size = len(mv)
                 while n < size:
@@ -758,8 +764,9 @@ class Encoder:
             r = asm.feed(pkt)
             if r is None: continue
             if r[0] is not None:
+                self.au_sz = len(r[0]); self.au_key = bool(r[1])                                # (đặt TRƯỚC khi tăng frames: luồng chụp đọc cỡ khung vừa nén xong)
                 self.frames += 1; self.t_frame = time.time()
-                self.small = self.small + 1 if (not r[1] and len(r[0]) < 300) else 0            # mấy khung liền chỉ vài chục byte = hình đã nét hẳn, không cần gửi lại nữa
+                self.small = self.small + 1 if (not r[1] and len(r[0]) < PIPE_SMALL) else 0
                 if r[1] and self.cap == "pipe": self.settle_req = True; self.kick_ev.set()      # 26.11a: vừa ra khung khoá (bị ép cỡ ≤ ~150 KB) → gửi lại khung đó vài lần cho nét hẳn
             try: self.on_au(r[0], r[1], r[2], int(time.monotonic() * 1e6))
             except Exception: pass
@@ -1225,6 +1232,10 @@ class FakeGrab:
         k = int(getattr(self.io, "tick", 0)); self.n += 1
         if getattr(self.io, "grab_fail", False): raise OSError("thu: chup loi")
         if k == self.last and self.buf is not None: return self.buf, False
+        if getattr(self.io, "noise", False):                                # hình nhiễu kín màn = khung nặng nhất có thể (thử đoạn "gửi lại cho nét")
+            import random
+            self.buf = random.Random(k).randbytes(self.w * self.h * 4); self.last = k
+            return self.buf, True
         b = bytearray(b"\x30\x60\x90\x00" * (self.w * self.h))
         y0 = (k * 7) % max(1, self.h - 24); x0 = (k * 13) % max(1, self.w - 64)
         for y in range(y0, y0 + 16):
