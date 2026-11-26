@@ -1,0 +1,22 @@
+﻿== Ghep ISO may mau tu ISO Windows that - win2012r2
+..  may CI: o trong C: 81 GB, D: 147 GB
+OK  tai ISO Windows chinh chu (ban dung thu) tu link trong HUONG-DAN: 4.23 GB, 0.9 phut
+..  lenh ghep: == 1/7  File ISO Windows goc
+..  lenh ghep: == 2/7  Tai phan mem CloudBlue + Python nhung 3.12
+..  lenh ghep: == 3/7  Doc cac ban Windows trong ISO
+..  lenh ghep: -> ban so 2: Windows Server 2012 R2 Standard Evaluation (Server with a GUI) (6.3.9600.17031) -> may mau tpl-win2012r2
+..  lenh ghep: == 4/7  Driver VirtIO (ISO virtio-win)
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+..  lenh ghep: == 5/7  ffmpeg (dieu khien tu xa) + ban va Windows can them
+..  lenh ghep: ffmpeg: 78 MB, dung ma kiem
+..  lenh ghep: == 6/7  Chep bo cai Windows + ghep phan mem CloudBlue
+..  lenh ghep: ban Windows: Windows Server 2012 R2 Standard Evaluation (Server with a GUI) (so 2) | win2012r2 | tai khoan khach VPS (Admin, khong mat khau)
+..  lenh ghep: driver virtio 0.1.240 (2k12R2): Balloon NetKVM fwcfg pvpanic vioinput viorng vioscsi vioserial viostor + QEMU guest agent + ban va Universal C Runtime
+..  lenh ghep: ffmpeg (dieu khien tu xa): kem san
+..  lenh ghep: == 7/7  Dong file ISO
+..  lenh ghep: XONG (1.5 phut): C:\cbw\out\CloudBlue-MayMau-win2012r2.iso  (4.37 GB)
+..  lenh ghep: May mau: tpl-win2012r2 | Windows Server 2012 R2 Standard Evaluation (Server with a GUI) | tai khoan khach VPS (Admin, khong mat khau, tu dang nhap) | virtio 0.1.240
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+OK  tao-iso-may-mau.ps1 -KhongHoi ghep xong ISO may mau win2012r2: 4.37 GB, 1.6 phut
+OK  lenh ghep nhan dung ban Windows: may mau tpl-win2012r2
+..  sha256 ISO may mau: 88937af1d576ae592248a5ad7d82d5ae8f0e59129582d3804e2f93ed70a2a1c7

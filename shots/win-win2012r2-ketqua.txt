@@ -1,0 +1,32 @@
+== Ghep ISO may mau tu ISO Windows that - win2012r2
+..  may CI: o trong C: 81 GB, D: 147 GB
+OK  tai ISO Windows chinh chu (ban dung thu) tu link trong HUONG-DAN: 4.23 GB, 0.9 phut
+..  lenh ghep: == 1/7  File ISO Windows goc
+..  lenh ghep: == 2/7  Tai phan mem CloudBlue + Python nhung 3.12
+..  lenh ghep: == 3/7  Doc cac ban Windows trong ISO
+..  lenh ghep: -> ban so 2: Windows Server 2012 R2 Standard Evaluation (Server with a GUI) (6.3.9600.17031) -> may mau tpl-win2012r2
+..  lenh ghep: == 4/7  Driver VirtIO (ISO virtio-win)
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+..  lenh ghep: == 5/7  ffmpeg (dieu khien tu xa) + ban va Windows can them
+..  lenh ghep: ffmpeg: 78 MB, dung ma kiem
+..  lenh ghep: == 6/7  Chep bo cai Windows + ghep phan mem CloudBlue
+..  lenh ghep: ban Windows: Windows Server 2012 R2 Standard Evaluation (Server with a GUI) (so 2) | win2012r2 | tai khoan khach VPS (Admin, khong mat khau)
+..  lenh ghep: driver virtio 0.1.240 (2k12R2): Balloon NetKVM fwcfg pvpanic vioinput viorng vioscsi vioserial viostor + QEMU guest agent + ban va Universal C Runtime
+..  lenh ghep: ffmpeg (dieu khien tu xa): kem san
+..  lenh ghep: == 7/7  Dong file ISO
+..  lenh ghep: XONG (1.5 phut): C:\cbw\out\CloudBlue-MayMau-win2012r2.iso  (4.37 GB)
+..  lenh ghep: May mau: tpl-win2012r2 | Windows Server 2012 R2 Standard Evaluation (Server with a GUI) | tai khoan khach VPS (Admin, khong mat khau, tu dang nhap) | virtio 0.1.240
+..  lenh ghep: (!) qemu-ga-x86_64.msi: chu ky so: NotSigned
+OK  tao-iso-may-mau.ps1 -KhongHoi ghep xong ISO may mau win2012r2: 4.37 GB, 1.6 phut
+OK  lenh ghep nhan dung ban Windows: may mau tpl-win2012r2
+..  sha256 ISO may mau: 88937af1d576ae592248a5ad7d82d5ae8f0e59129582d3804e2f93ed70a2a1c7
+== Windows tự cài từ ISO máy mẫu — win2012r2 (commit 46f8b4fc355c)
+..  máy CI: crw-rw-rw- 1 root kvm 10, 232 Nov 26 00:11 /dev/kvm | 4 | Mem:           15983        1188        8876          45        6309       14794 | /dev/root       145G   63G   83G  43% / | QEMU emulator version 10.2.1 (Debian 1:10.2.1+ds-1ubuntu3.3) | 
+..  ISO máy mẫu: 4.37 GB
+..  máy cai: CPU [host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,+kvm_pv_eoi,+kvm_pv_unhalt]
+..  lệnh QEMU (như máy cbhost tạo trên Proxmox): qemu-system-x86_64 -enable-kvm -name cai -machine pc,hpet=off -cpu host,hv_relaxed,hv_spinlocks=0x1fff,hv_vapic,hv_time,+kvm_pv_eoi,+kvm_pv_unhalt -smp 2,sockets=1,cores=2,maxcpus=2 -m 2048 -nodefaults -display none -boot menu=on,strict=on,reboot-timeout=1000 -smbios type=1,uuid=5a1b3c4d-0000-4000-8000-00000000cb01 -qmp unix:/home/runner/w/qmp-cai.sock,server,nowait -device pci-bridge,id=pci.3,chassis_nr=3,bus=pci.0,addr=0x5 -device piix3-usb-uhci,id=uhci,bus=pci.0,addr=0x1.0x2 -device usb-tablet,id=tablet,bus=uhci.0,port=1 -chardev socket,path=/home/runner/w/qga-cai.sock,server=on,wait=off,id=qga0 -device virtio-serial,id=qga0,bus=pci.0,addr=0x8 -device virtserialport,chardev=qga0,name=org.qemu.guest_agent.0 -device VGA,id=vga,bus=pci.0,addr=0x2,edid=off -object iothread,id=iothread-virtioscsi0 -device virtio-scsi-pci,id=virtioscsi0,bus=pci.3
+XX  Windows TỰ CÀI từ ISO máy mẫu tới hết (không bấm gì): guest agent trả lời + có maymau.done — như cbhost chờ: quá 110 phút chưa xong (agent CHƯA trả lời — xem ảnh màn hình)
+..  sau khi cài: guest agent không trả lời → không lấy được nhật ký trong máy qua agent
+..  mổ ổ: NAME SIZE FSTYPE | nbd0  20G  | 
+..  mổ ổ: không đọc được nhật ký nào (ổ chưa chia / chưa có file)
+== hết (111 phút)
