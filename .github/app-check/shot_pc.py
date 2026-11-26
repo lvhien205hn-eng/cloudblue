@@ -234,16 +234,17 @@ CUST = {"on": True, "unit_cpu": 8000, "unit_ram": 12000, "unit_disk": 1000, "dis
         "max_cores": 16, "max_ram_gb": 32, "max_disk_gb": 200, "room": {"cores": 40, "ram_gb": 100, "disk_gb": 400}}
 VIMG = [{"id": "win2012r2", "name": "Windows Server 2012 R2", "min_disk": 20, "min_ram": 1024}, {"id": "win2016", "name": "Windows Server 2016", "min_disk": 20, "min_ram": 2048},
         {"id": "win2022", "name": "Windows Server 2022", "min_disk": 20, "min_ram": 2048}]
-VSHOP = {"sell": True, "admin": False, "reinstall_max": 3, "grace_days": 3, "maint": False, "custom": CUST, "upgrade": True, "v": 59,
-         "plans": [{"id": i, "name": n, "cores": c, "ram_mb": r, "disk_gb": 20, "note": "", "prices": TIERS(m), "free": i != "vps8-16"} for i, n, c, r, m in VPL],
+VSHOP = {"sell": True, "admin": False, "reinstall_max": 3, "grace_days": 3, "maint": False, "custom": CUST, "upgrade": True, "v": 61,     # v61: gói 2-4 miễn phí ổ tới 40 GB
+         "plans": [{"id": i, "name": n, "cores": c, "ram_mb": r, "disk_gb": 20, "free_gb": 40 if i == "vps2-4" else 20, "note": "", "prices": TIERS(m), "free": i != "vps8-16"}
+                   for i, n, c, r, m in VPL],
          "images": [dict(x, ready=x["id"] != "win2022") for x in VIMG]}
-VBASE = {"plan": "vps2-4", "plan_name": "VPS 2-4", "cores": 2, "ram_mb": 4096, "disk_gb": 20, "image": "win2016", "image_name": "Windows Server 2016", "status": "running",
+VBASE = {"plan": "vps2-4", "plan_name": "VPS 2-4", "cores": 2, "ram_mb": 4096, "disk_gb": 20, "free_gb": 40, "image": "win2016", "image_name": "Windows Server 2016", "status": "running",
          "want": "running", "err": False, "busy": False, "online": True, "until": FUT, "expired": False, "delete_at": None, "left": 3, "cfg_busy": False,
          "prices": [{"days": 7, "price": 15000}, {"days": 30, "price": 64000}]}
 VMY = {"custom": CUST, "upgrade": True, "maint": False, "images": VIMG, "items": [
     dict(VBASE, id=12, pc="00000000-0000-4000-8000-0000000000f1", name="VPS-12", label="Treo game"),
     dict(VBASE, id=13, pc="00000000-0000-4000-8000-0000000000f2", name="VPS-13", label="", plan="vps1-1", plan_name="VPS 1-1", cores=1, ram_mb=1024,
-         image="win2012r2", image_name="Windows Server 2012 R2", status="creating", busy=True, online=False, until=None, prices=[{"days": 30, "price": 20000}]),
+         image="win2012r2", image_name="Windows Server 2012 R2", status="creating", busy=True, online=False, until=None, prices=[{"days": 30, "price": 20000}], free_gb=20),
     dict(VBASE, id=14, pc="00000000-0000-4000-8000-0000000000f3", name="VPS-14", label="", status="stopped", want="stopped", online=False, expired=True,
          until=AGO(60), delete_at=time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() + 2 * 86400)), left=0)]}
 _rpc0 = FakeAuth.rpc
@@ -252,7 +253,10 @@ _rpc0 = FakeAuth.rpc
 def _rpc(self, fn, args=None):
     if fn == "vm_shop_info": return VSHOP
     if fn == "vm_my": return VMY
-    if fn == "vm_my_upgrade": return {"ok": True, "dry": True, "price": 10667, "days_left": 20, "restart": True}
+    if fn == "vm_my_upgrade":                                # v61: chỉ thêm ổ trong mức miễn phí (40 GB) → 0đ
+        a = args or {}
+        if (a.get("p_cores"), a.get("p_ram_gb")) == (2, 4) and int(a.get("p_disk_gb") or 0) <= 40: return {"ok": True, "dry": True, "price": 0, "days_left": 20, "restart": False}
+        return {"ok": True, "dry": True, "price": 10667, "days_left": 20, "restart": True}
     return _rpc0(self, fn, args)
 
 
@@ -271,10 +275,10 @@ vd = B.VmBuyDlg(app); pump(3)
 grab("pc-23-vm-thue.png")                                  # thẻ nổi bật + ① gói
 vm_ok += [vd.b["plan"] == "vps1-1", vd.price_for(30) == 20000, vd.days_list() == [1, 3, 7, 30]]
 vd.pick("vps2-4"); pump(0.8)
-vm_ok += [vd.price_for(30) == 64000, vd.price_for(7) == 15000]
-scroll(0.55); grab("pc-24-vm-thue-giua.png")               # ô thêm ổ · ② hệ điều hành · ③ thời gian
-vd.st_p.set(40); pump(0.6)
-vm_ok.append(vd.price_for(30) == 84000)                    # 64.000 + 20 GB × 1.000
+vm_ok += [vd.b["disk"] == 40, vd.price_for(30) == 64000, vd.price_for(7) == 15000]      # v61: ổ mặc định 40 GB (miễn phí) — giá gói giữ nguyên
+scroll(0.55); grab("pc-24-vm-thue-giua.png")               # ô ổ (miễn phí tới 40 GB) · ② hệ điều hành · ③ thời gian
+vd.st_p.set(60); pump(0.6)
+vm_ok.append(vd.price_for(30) == 84000)                    # 64.000 + (60 − 40) GB × 1.000
 scroll(1.0); grab("pc-25-vm-thue-cuoi.png")                # mã giảm giá · chân trang tổng tiền
 vd.pick("custom"); pump(0.8); vd.st_c.set(3); vd.st_d.set(60); pump(0.6)
 vm_ok += [vd.price_for(30) == 112000, vd.b["cust"] is True]
@@ -285,6 +289,9 @@ grab("pc-27-vm-gia-han.png"); rd.close(); pump(0.4)
 ud = B.VmUpDlg(app, VMY["items"][0], VMY); pump(0.6); ud.s1.add(1); pump(2.5)
 grab("pc-28-vm-nang-cap.png")
 vm_ok.append(ud.price == 10667); ud.close(); pump(0.4)
+ud = B.VmUpDlg(app, VMY["items"][0], VMY); pump(0.6); ud.s3.add(10); ud.s3.add(10); pump(2.5)
+grab("pc-31-vm-nang-cap-o-mien-phi.png")                   # v61: thêm ổ 20 → 40 GB trong mức miễn phí → 0đ
+vm_ok += [ud.s3.v == 40, ud.price == 0]; ud.close(); pump(0.4)
 re_ = B.VmReDlg(app, VMY["items"][0], VMY); pump(2)
 grab("pc-29-vm-cai-lai.png"); re_.close(); pump(0.4)
 dd = B.VmDelDlg(app, VMY["items"][2]); pump(1)
@@ -292,7 +299,7 @@ grab("pc-30-vm-xoa.png"); dd.close(); pump(0.4)
 print("VPS NVMe:", vm_ok, flush=True)
 ok_vm = all(vm_ok)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 30 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_vm
+ok = len(mine) == 31 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_vm
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
