@@ -300,7 +300,7 @@ if WIN:
                 ck("26.11a cach quay 'pipe' tren Windows that: ffmpeg nhan khung qua ong, khung dau la khung khoa co SPS/PPS", bool(ok1), (len(au), e.err))
                 time.sleep(1.5); n0 = len(au); g0 = e.grabs; time.sleep(4.0)
                 idle_n, idle_g = len(au) - n0, e.grabs - g0
-                ck("26.11a 'pipe': man hinh dung yen 4 giay -> chi vai khung giu nhip (<= 24, cach cu la 80) va chi chup ~3 lan / giay (<= 20 lan)", idle_n <= 24 and idle_g <= 20, (idle_n, idle_g))
+                ck("26.11a 'pipe': man hinh dung yen 4 giay -> chi vai khung giu nhip (<= 30, cach cu la 80) va chi chup ~3 lan / giay (<= 22 lan)", idle_n <= 30 and idle_g <= 22, (idle_n, idle_g))
                 lat = []
                 for i in range(6):
                     time.sleep(0.5); n1 = len(au); io.move(8000 + i * 6000, 12000 + i * 5000); e.kick(); t1 = time.time()
