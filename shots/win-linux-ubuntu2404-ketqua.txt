@@ -1,0 +1,21 @@
+== VPS NVMe Linux: Ubuntu 24.04 + XFCE + CloudBlue + OpenClaw (commit a4e6e6356435)
+OK  tải ảnh Ubuntu 24.04 cloud chính chủ + kiểm SHA256SUMS (cbhost.linux_image) — 593 MB, 4 giây
+..  cloud-init (như cbhost): cb.json {'ver': 'vm-linux-27/11a', 'role': 'vm', 'user': 'vps', 'sb_url': 'http://10.0.2.2:9'} · chạy https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/a4e6e6356435dbe06a1ab6126e1b64fc933330f2/proxmox/vm/linux-vm.sh
+..  phút 1: QEMU guest agent trong máy đã trả lời (linux-vm.sh đã cài xong gói)
+OK  máy mẫu Linux TỰ DỰNG xong (maymau.done) — 2 phút
+..  maymau.done: ok 27.11a 2026-11-26 22:40:24 | openclaw=co | firefox=co | 
+OK  máy mẫu: tài khoản khách vps TỰ đăng nhập giao diện XFCE (LightDM)
+OK  máy mẫu: dịch vụ cloudblue (agent bật sẵn) · lightdm · qemu-guest-agent đang chạy
+OK  máy mẫu: có OpenClaw (bộ cài chính thức) + Firefox + lối tắt màn hình nền
+..  agent status: { |  "agent": "27.11a", |  "registered": false, |  "name": "", |  "rent": "khong dat han", |  "info": { |   "host": "cloudblue-vps", |   "os": "ubuntu", |   "os_ver": "24.04 6.8.0-147-generic", |   "os_name": "Ubuntu 24.04.5 LTS", |   "agent": "27.11a", |   "cpu": "Intel(R) Xeon(R) 6975P-C", |   "cores": 4, |   "ram_gb": 3.8, |   "gpus": [ |    "Vendor 1234 Device 1111" |   ], |   "lan_ip": "10.0.2.15", |   "uptime": 132, |   "fw": "bios", |   "linux": true, |   "rec": { |    "ok": false, |    "images": [] |   }, |   "board": "QEMU Standard PC (i440FX + PIIX, 1996)", |   "sec": { |    "std": true, |    "hard": true, |    "lock": true |   }, |   "rmt": { |    "v": "", |    "s": "chua chay", |    "age": 0 |   } |  } | } | 
+OK  máy mẫu: điều khiển từ xa X11 — cbcap probe: backend x11 (x11grab + XTEST), gói RTP H.264 > 20
+OK  lưu máy mẫu (như cbhost._seal Linux): {} vào identity / seed / rent · tắt cloud-init · machine-id rỗng
+OK  máy mẫu tắt được bằng guest agent
+OK  VPS nhân từ máy mẫu (không có đĩa cloud-init): bật lên, guest agent trả lời sau 11 giây
+OK  VPS: tài khoản khách vps TỰ đăng nhập giao diện XFCE (LightDM)
+OK  VPS: dịch vụ cloudblue (agent chạy) · lightdm · qemu-guest-agent đang chạy
+OK  VPS: machine-id MỚI (máy tự sinh) · cloud-init không chạy lại
+OK  VPS: lệnh nới ổ của cbhost (GROW_LIN_SH: growpart + resize2fs) → ổ / ≈ 30 GB
+OK  VPS: cbhost ghi được vé vào /opt/cloudblue/seed.json qua guest agent
+OK  VPS: điều khiển từ xa X11 — cbcap probe: backend x11 (x11grab + XTEST), gói RTP H.264 > 20
+== hết (4 phút)

@@ -1,0 +1,3 @@
+2026-11-26 22:41:16 agent CloudBlue (Linux) 27.11a chạy — máy cloudblue-vps
+2026-11-26 22:41:16 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 101] Network is unreachable>)
+2026-11-26 22:41:46 đăng ký: chưa gọi được máy chủ (URLError: <urlopen error [Errno 101] Network is unreachable>)

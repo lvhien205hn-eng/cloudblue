@@ -1,0 +1,82 @@
+Cloud-init v. 26.1-0ubuntu1~24.04.1 running 'init-local' at Thu, 26 Nov 2026 15:38:29 +0000. Up 5.13 seconds.
+Cloud-init v. 26.1-0ubuntu1~24.04.1 running 'init' at Thu, 26 Nov 2026 15:38:31 +0000. Up 7.20 seconds.
+ci-info: +++++++++++++++++++++++++++++++++++++++Net device info+++++++++++++++++++++++++++++++++++++++
+ci-info: +--------+------+------------------------------+---------------+--------+-------------------+
+ci-info: | Device |  Up  |           Address            |      Mask     | Scope  |     Hw-Address    |
+ci-info: +--------+------+------------------------------+---------------+--------+-------------------+
+ci-info: |  ens5  | True |          10.0.2.15           | 255.255.255.0 | global | bc:24:11:cb:10:01 |
+ci-info: |  ens5  | True | fe80::be24:11ff:fecb:1001/64 |       .       |  link  | bc:24:11:cb:10:01 |
+ci-info: |   lo   | True |          127.0.0.1           |   255.0.0.0   |  host  |         .         |
+ci-info: |   lo   | True |           ::1/128            |       .       |  host  |         .         |
+ci-info: +--------+------+------------------------------+---------------+--------+-------------------+
+ci-info: ++++++++++++++++++++++++++++Route IPv4 info+++++++++++++++++++++++++++++
+ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+ci-info: | Route | Destination | Gateway  |     Genmask     | Interface | Flags |
+ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+ci-info: |   0   |   0.0.0.0   | 10.0.2.2 |     0.0.0.0     |    ens5   |   UG  |
+ci-info: |   1   |   10.0.2.0  | 0.0.0.0  |  255.255.255.0  |    ens5   |   U   |
+ci-info: |   2   |   10.0.2.2  | 0.0.0.0  | 255.255.255.255 |    ens5   |   UH  |
+ci-info: |   3   |   10.0.2.3  | 0.0.0.0  | 255.255.255.255 |    ens5   |   UH  |
+ci-info: +-------+-------------+----------+-----------------+-----------+-------+
+ci-info: +++++++++++++++++++Route IPv6 info+++++++++++++++++++
+ci-info: +-------+-------------+---------+-----------+-------+
+ci-info: | Route | Destination | Gateway | Interface | Flags |
+ci-info: +-------+-------------+---------+-----------+-------+
+ci-info: |   0   |  fe80::/64  |    ::   |    ens5   |   U   |
+ci-info: |   2   |    local    |    ::   |    ens5   |   U   |
+ci-info: |   3   |  multicast  |    ::   |    ens5   |   U   |
+ci-info: +-------+-------------+---------+-----------+-------+
+Generating public/private rsa key pair.
+Your identification has been saved in /etc/ssh/ssh_host_rsa_key
+Your public key has been saved in /etc/ssh/ssh_host_rsa_key.pub
+The key fingerprint is:
+SHA256:7FKK1V9yyEa8WTwaajs1yYdaXeqfbtFhMy/ELewRM6I root@cloudblue-vps
+The key's randomart image is:
++---[RSA 3072]----+
+|                 |
+|         . .. +  |
+|          +.++.= |
+|       o =E@ +*=.|
+|      . S / *o.+=|
+|     o = B B  + o|
+|    . o = . .  o |
+|       . .   ... |
+|             o+  |
++----[SHA256]-----+
+Generating public/private ecdsa key pair.
+Your identification has been saved in /etc/ssh/ssh_host_ecdsa_key
+Your public key has been saved in /etc/ssh/ssh_host_ecdsa_key.pub
+The key fingerprint is:
+SHA256:C1xWLtJBtTuzvLT9uM/BCAQr/pvwj0iXNO6lPL1HZ1Y root@cloudblue-vps
+The key's randomart image is:
++---[ECDSA 256]---+
+|       .+.o      |
+|       . * .     |
+|      o * +      |
+|     o = o .    E|
+|      + S =    . |
+|       = = =.o+  |
+|      o *.=..+o  |
+|     . B.B.+.o . |
+|      . Oo=o+++  |
++----[SHA256]-----+
+Generating public/private ed25519 key pair.
+Your identification has been saved in /etc/ssh/ssh_host_ed25519_key
+Your public key has been saved in /etc/ssh/ssh_host_ed25519_key.pub
+The key fingerprint is:
+SHA256:L7r3ccj9V9F2PUJuv+LuFf2vrBWbzbZeeGlaK0dsQj0 root@cloudblue-vps
+The key's randomart image is:
++--[ED25519 256]--+
+|                 |
+|             .   |
+|            o . o|
+|             = E*|
+|        S   o =o*|
+|         o o . %=|
+|        . = o O=X|
+|       ... o *==*|
+|      oo .. =*O*.|
++----[SHA256]-----+
+Cloud-init v. 26.1-0ubuntu1~24.04.1 running 'modules:config' at Thu, 26 Nov 2026 15:38:33 +0000. Up 9.17 seconds.
+Cloud-init v. 26.1-0ubuntu1~24.04.1 running 'modules:final' at Thu, 26 Nov 2026 15:38:35 +0000. Up 10.73 seconds.
+Cloud-init v. 26.1-0ubuntu1~24.04.1 finished at Thu, 26 Nov 2026 15:40:24 +0000. Datasource DataSourceNoCloud [seed=/dev/sr0].  Up 118.92 seconds
