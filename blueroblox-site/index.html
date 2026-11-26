@@ -5481,10 +5481,20 @@ function openAuth(t) { authTab(t); show("auth"); setTimeout(() => { const f = { 
 $("f-reg").onsubmit = e => { e.preventDefault(); busy($("rg-btn"), async () => {
   const u = $("rg-u").value.trim(), em = $("rg-e").value.trim(), pw = $("rg-p").value;
   if (pw !== $("rg-p2").value) { $("rg-err").textContent = L("Hai mật khẩu không khớp.", "Passwords do not match."); return; }
-  const { data: ok } = await sb.rpc("username_available", { p_username: u });
-  if (ok === false) { $("rg-err").textContent = L("Tên đăng nhập đã có người dùng.", "This username is taken."); return; }
+  /* v58: tên đăng nhập / email giống tên của shop bị cấm ngay trong cơ sở dữ liệu → hỏi trước để báo lỗi dễ hiểu (web chưa chạy SQL v58 thì hỏi kiểu cũ) */
+  const chk = await sb.rpc("signup_check", { p_username: u, p_email: em }).then(x => x, e => ({ error: e }));
+  const why = chk && !chk.error && typeof chk.data === "string" ? chk.data : null;
+  if (why === "reserved_name") { $("rg-err").textContent = L("Tên đăng nhập này trùng hoặc giống tên của shop nên không dùng được. Hãy chọn tên khác.", "This username looks like the shop's name and can't be used. Please pick another one."); return; }
+  if (why === "reserved_email") { $("rg-err").textContent = L("Email này trùng hoặc giống tên của shop nên không dùng được. Hãy dùng email khác.", "This email looks like the shop's name and can't be used. Please use another email."); return; }
+  if (why === "taken") { $("rg-err").textContent = L("Tên đăng nhập đã có người dùng.", "This username is taken."); return; }
+  if (why === null) {
+    const { data: ok } = await sb.rpc("username_available", { p_username: u });
+    if (ok === false) { $("rg-err").textContent = L("Tên đăng nhập đã có người dùng.", "This username is taken."); return; }
+  }
   const { data, error } = await sb.auth.signUp({ email: em, password: pw, options: { data: { username: u }, emailRedirectTo: location.origin } });
-  if (error) { $("rg-err").textContent = /registered/i.test(error.message) ? L("Email này đã đăng ký. Dùng Quên mật khẩu nếu bạn không nhớ.", "This email is already registered. Use Forgot password if needed.") : errMsg(error); return; }
+  if (error) { $("rg-err").textContent = /registered/i.test(error.message) ? L("Email này đã đăng ký. Dùng Quên mật khẩu nếu bạn không nhớ.", "This email is already registered. Use Forgot password if needed.")
+    : /NAME_RESERVED|Database error saving new user/i.test(error.message) ? L("Không tạo được tài khoản với tên đăng nhập / email này (không dùng tên của shop; tên chỉ gồm chữ, số, gạch dưới, 3–24 ký tự). Hãy chọn tên khác.", "Couldn't create an account with this username / email (the shop's name is not allowed; use 3–24 letters, digits or underscores). Please pick another one.")
+    : errMsg(error); return; }
   $("f-reg").reset();
   if (!data.session) { authTab("login"); $("li-e").value = em; $("li-err").textContent = ""; toast(L("Đã tạo tài khoản. Mở email để xác nhận rồi đăng nhập.", "Account created. Confirm your email, then log in.")); }
   else { show("auth", false); toast(L("Tạo tài khoản thành công. Chào ", "Account created. Welcome ") + u + "!"); }
