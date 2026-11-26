@@ -5,6 +5,7 @@ Mỗi VPS là 1 máy ảo Windows trên máy chủ Proxmox, có sẵn phần m�
 | Bước | Làm ở đâu | Làm mấy lần |
 |---|---|---|
 | 1. Chạy SQL v56 | Supabase › SQL Editor › snippet **CloudBlue v56 VPS ao hoa - bam Run** › Run | 1 lần |
+| **Cách tự động nhất** | mục 0: 1 file ISO Proxmox tự cài (thay bước 2, 3, 5) | mỗi máy chủ |
 | 2. Cài Proxmox VE | máy chủ riêng (không dùng chung máy chạy giả lập Cloud Phone) | mỗi máy chủ |
 | 3. Cài cbhost — 1 lệnh | Shell của Proxmox | mỗi máy chủ |
 | 4. Duyệt máy chủ | web › Quản trị › Máy cho thuê › 🧩 VPS ảo hoá › 🖥 Máy chủ | mỗi máy chủ |
@@ -12,6 +13,35 @@ Mỗi VPS là 1 máy ảo Windows trên máy chủ Proxmox, có sẵn phần m�
 | 6. Nhập giá + bật bán | web › 🧩 VPS ảo hoá › 💲 Gói & giá · ⚙ Cài đặt | 1 lần |
 
 ---
+
+## 0. Cách tự động nhất — 1 file ISO Proxmox tự cài (làm thay bước 2, 3, 5)
+
+1 file `CloudBlue-Proxmox.iso` = Proxmox VE + phần mềm CloudBlue + các ISO máy mẫu Windows. Khởi động máy chủ từ nó là **tự cài Proxmox → tự lên web → tự chép ISO máy mẫu → tự dựng máy mẫu**. Bạn chỉ còn bấm **Duyệt** máy chủ trên web.
+
+**a. Ghép ISO máy mẫu Windows** (mục 5a bên dưới) cho từng bản Windows định bán → ra các file `CloudBlue-MayMau-<tên>.iso`.
+
+**b. Ghép ISO Proxmox tự cài** — trên máy Windows 10 / 11, mở **Windows PowerShell**, dán lệnh, Enter:
+
+```
+$d = "$env:TEMP\cb-iso-proxmox.ps1"; Remove-Item $d -Force -ErrorAction SilentlyContinue; curl.exe -fsSL -o $d "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/tao-iso-proxmox.ps1?t=$(Get-Random)"; if (-not ((Test-Path $d) -and (Select-String -Path $d -Pattern 'cloudblue-iso-proxmox' -SimpleMatch -Quiet))) { Write-Host 'Chua tai duoc - thu lai sau 1 phut' -ForegroundColor Red } else { Set-ExecutionPolicy -Scope Process Bypass -Force; & $d }
+```
+
+- Lệnh tự tìm file `proxmox-ve_*.iso` (không có thì tự tải bản chính thức 9.3-1, có kiểm mã SHA-256) và mọi file `CloudBlue-MayMau-*.iso` trong Downloads / Desktop / Documents / các ổ đĩa.
+- Lệnh hỏi **mật khẩu root** của Proxmox (gõ 2 lần, không hiện chữ; ít nhất 8 ký tự, không dấu). Chỉ mã băm được ghi vào ISO. Không gửi mật khẩu cho ai.
+- Vài phút → ra `CloudBlue-Proxmox.iso` ở gốc ổ làm việc. Không chứa khoá bí mật nào của CloudBlue.
+- Tuỳ chọn (thêm vào cuối lệnh, sau `& $d`): `-Ten vps1` (tên máy chủ) · `-O nvme0n1` (ổ cài; mặc định ổ đĩa đầu tiên, không tính USB) · `-Ip 192.168.1.50/24 -Gateway 192.168.1.1 -Dns 8.8.8.8` (IP tĩnh; mặc định nhận IP qua DHCP lúc cài rồi giữ luôn IP đó) · `-KhongMau`.
+
+**c. Ghi ra USB** (≥ 16 GB nếu kèm 2 máy mẫu) bằng **Rufus**: chọn file ISO → START → khi hỏi chọn **Write in DD Image mode** (cách đã thử cài thật).
+
+**d. Cắm USB vào máy chủ** (đã bật Virtualization trong BIOS, có cắm dây mạng), khởi động từ USB:
+- Sau 10 giây máy **tự cài** (5–15 phút), tự khởi động lại. **Để nguyên USB** — máy chủ còn chép ISO máy mẫu từ USB (USB vẫn cắm cũng không bị cài lại: ISO thấy máy đã có Proxmox thì khởi động từ ổ cứng).
+- **ISO này xoá sạch ổ đĩa đầu tiên** của máy khởi động từ nó. Riêng máy **đang có Windows** hoặc **đã có Proxmox**: ISO **không tự cài** — muốn cài đè phải tự chọn dòng *Install Proxmox VE (Automated)* trong menu.
+
+**e. Trên web**: Quản trị › 🧩 VPS ảo hoá › 🖥 Máy chủ → máy mới tên `cbvps-xxxx` **Chờ duyệt** → bấm **✅ Duyệt**. Máy chủ tự dựng máy mẫu (mỗi bản 20–40 phút, chạy cả khi chưa duyệt); xong thẻ máy chủ hiện máy mẫu **có**. Rút USB được khi máy mẫu đã có.
+
+Xem trên máy chủ (Shell của Proxmox): `python3 /opt/cloudblue/cbhost.py status` · `journalctl -u cloudblue-nap -n 30` (chép ISO từ USB) · `journalctl -u cloudblue-cbhost -f`. Rút USB sớm → cắm lại lúc nào cũng được, máy tự chép tiếp. Máy mẫu tự dựng lỗi 2 lần thì thôi → dựng bằng **🧰 Bảng điều khiển máy mẫu** (mục 5).
+
+Các mục 2, 3, 5 dưới đây là cách làm tay (vẫn dùng được, kết quả như nhau).
 
 ## 1. Tải về
 

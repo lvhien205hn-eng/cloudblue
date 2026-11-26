@@ -1,0 +1,4 @@
+ghep
+win
+bios
+uefi

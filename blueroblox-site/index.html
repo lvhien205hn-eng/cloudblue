@@ -15763,6 +15763,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         ${priced ? `<span>${priced} ${L("gói có giá", "priced plans")}</span>` : `<span style="color:var(--bad)">⚠️ ${L("chưa nhập giá gói nào — khách chưa thấy gì (💲 Gói & giá › ✏️ Sửa)", "no plan has a price yet")}</span>`}
         <button class="btn ${st.sell ? "ghost" : "okb"} sm" type="button" data-vmaset="sell" data-v="${st.sell ? "0" : "1"}">${st.sell ? L("Tắt bán", "Stop selling") : L("Bật bán", "Start selling")}</button></div>`;
   }
+  /* 26/11: máy chủ cài bằng ISO CloudBlue-Proxmox tự dựng máy mẫu từ ISO máy mẫu (cbhost báo metrics.tpl_auto) */
+  const autoSt = x => x.state === "installing" ? L(`đang cài Windows (${N(x.min)} phút)`, `installing Windows (${N(x.min)} min)`)
+    : x.state === "creating" ? L("đang tạo máy ảo", "creating the VM") : x.state === "saving" ? L("cài xong, đang chuyển thành máy mẫu", "converting to a template")
+    : x.state === "error" ? "⚠️ " + L("lỗi", "error") + (S(x.err, 120) ? ": " + S(x.err, 120) : "") : L("đang xử lý", "working");
   function admHosts(d) {
     const st = O(d.settings), imgs = A(d.images).filter(i => i.enabled), m0 = revM(0), m1 = revM(1);
     const hs = A(d.hosts);
@@ -15781,6 +15785,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
             <span>RAM <b>${gb(mt.ram_used_mb)}</b> / ${gb(i.ram_mb)}</span><span>${L("Ổ máy ảo", "VM storage")} <b>${N(i.disk_gb)} GB</b></span>${i.kvm === false ? `<span style="color:var(--bad)">⚠️ ${L("không có KVM (chưa bật ảo hoá trong BIOS)", "no KVM")}</span>` : ""}</div>
           <div class="vma-kv"><span>VPS <b>${N(u.n)}</b> / ${N(h.slots)} ${L("chỗ", "slots")}</span><span>vCPU ${L("đã bán", "sold")} <b>${N(u.cores)}</b> / ${capC}</span><span>RAM ${L("đã bán", "sold")} <b>${gb(u.ram_mb)}</b> / ${gb(capR)}</span><span>${L("Ổ đã bán", "Disk sold")} <b>${N(u.disk_gb)}</b> / ${capD} GB</span><span>${L("máy ảo đang bật", "VMs on")}: <b>${N(mt.running)}</b></span></div>
           <div class="vma-tpl"><span class="hint" style="border:0;padding:0">${L("Máy mẫu", "Templates")}:</span>${imgs.map(x => `<span class="${tp.includes(x.tpl) ? "ok" : "no"}" title="${esc(S(x.name, 60))}">${tp.includes(x.tpl) ? "✓" : "✗"} ${esc(S(x.tpl, 42))}</span>`).join("") || `<span>${L("chưa khai bản Windows", "no images")}</span>`}</div>
+          ${A(mt.tpl_auto).length ? `<div class="vma-kv vma-auto"><span>🧰 ${L("Máy chủ đang TỰ dựng máy mẫu từ ISO", "Host is auto-building templates")}: ${A(mt.tpl_auto).slice(0, 8).map(x => `<b>${esc(S(O(x).tag, 24))}</b> ${esc(autoSt(O(x)))}`).join(" · ")}</span></div>` : ""}
           <div class="vma-kv"><span>IP ${L("công khai", "public")} <b>${esc(S(h.pub_ip, 64) || "?")}</b></span>${lan ? `<span>LAN <b>${esc(lan)}</b></span>` : ""}${S(h.note, 300) ? `<span>📝 ${esc(S(h.note, 300))}</span>` : ""}</div>
           <div class="vma-rev">💰 ${mLbl(m0)}: <b>${vndS(O(r0).amount)}</b> · 💵 ${L("đã thu", "collected")} <b>${vndS(O(r0).cash)}</b> (${N(O(r0).pays)} ${L("lần trả", "payments")})${m1 ? ` <span class="hint">· ${mLbl(m1)}: ${vndS(O(r1).amount)}</span>` : ""}</div>
           <div class="vma-acts">

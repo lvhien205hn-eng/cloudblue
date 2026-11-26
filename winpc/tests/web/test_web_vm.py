@@ -80,7 +80,8 @@ def adm_state():
                        "used": {"n": 3, "cores": 5, "ram_mb": 7168, "disk_gb": 60}},
                       {"id": H2, "name": "pve-<b>2</b>", "status": "new", "slots": 60, "online": True, "last_seen": iso(-20), "pub_ip": "14.160.1.3", "note": "", "created_at": iso(-600),
                        "info": {"host": "pve2", "pve": "9.2", "cpu": "AMD EPYC 7542", "threads": 64, "ram_mb": 262144, "disk_gb": 3600, "kvm": True, "ver": "24/11a", "lan_ip": "192.168.1.51"},
-                       "metrics": {"cpu": 1, "ram_used_mb": 4096, "running": 0, "tpl": []}, "used": {"n": 0, "cores": 0, "ram_mb": 0, "disk_gb": 0}}],
+                       "metrics": {"cpu": 1, "ram_used_mb": 4096, "running": 0, "tpl": [], "tpl_auto": [{"tag": "win2016", "state": "installing", "min": 12}, {"tag": "win2012r2", "state": "saving"},
+                                   {"tag": "<i>x</i>", "state": "error", "err": "tạo máy ảo lỗi <script>"}]}, "used": {"n": 0, "cores": 0, "ram_mb": 0, "disk_gb": 0}}],
             "plans": plan_rows(True), "images": img_rows(True), "products": [],
             "vps": [{"id": 12, "user": "khachA", "plan": "vps2-4", "image": "win10ltsc", "cores": 2, "ram_mb": 4096, "disk_gb": 20, "host": H1, "slot": 1, "pc": VPC1, "status": "running",
                      "want": "running", "inst_gen": 1, "inst_done": 1, "err": "", "end_why": "", "until": iso(20 * 86400), "left": 3, "label": "Treo game", "created_at": iso(-86400),
@@ -238,6 +239,9 @@ def main():
         ck("pve1: nút 🔧 Trang Proxmox → https://192.168.1.50:8006 (mở tab mới)", s.js("id => { const a = document.querySelector('[data-vmhost=\"' + id + '\"] a[href^=\"https://192.168.1.50:8006\"]'); return !!a && a.target === '_blank'; }", H1))
         ck("máy chủ mới: viền vàng 'Chờ duyệt' + nút ✅ Duyệt; tên lạ không chạy mã", "Chờ duyệt" in h2 and "Duyệt máy này" in h2 and "<b>2</b>" in h2
            and s.js("id => document.querySelector('[data-vmhost=\"' + id + '\"]').classList.contains('new')", H2))
+        ck("máy chủ cài bằng ISO CloudBlue-Proxmox: thẻ báo đang TỰ dựng máy mẫu (bản nào, đang cài mấy phút / đang chuyển thành mẫu / lỗi gì); chữ lạ không chạy mã; máy không tự dựng thì không có dòng này",
+           "TỰ dựng máy mẫu" in h2 and "win2016 đang cài Windows (12 phút)" in h2 and "win2012r2 cài xong, đang chuyển thành máy mẫu" in h2 and "lỗi: tạo máy ảo lỗi <script>" in h2
+           and "<i>x</i>" in h2 and "TỰ dựng" not in h1 and not s.js("() => document.querySelector('.vma-auto i, .vma-auto script')"), h2)
         s.shot("vm-1-hosts.png")
         s.page.click('[data-vmhost="%s"] [data-vmah="approve"]' % H2); s.page.wait_for_timeout(500)
         ck("bấm Duyệt → vm_admin_host {approve: true} → máy chuyển 'Đang nhận VPS', số trên thẻ còn 1", s.calls("vm_admin_host") == [{"p_id": H2, "p_patch": {"approve": True}}]
