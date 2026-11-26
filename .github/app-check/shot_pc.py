@@ -1,5 +1,6 @@
 # Chụp ảnh giao diện app PC (Windows thật của GitHub Actions, đúng vỏ giao diện của app) với máy chủ GIẢ:
-#   trang chính (thẻ "VPS GPU của bạn") + trang 🖥️ VPS GPU (thẻ cấu hình, chọn Windows, chọn gói, mã giảm giá, chân trang).
+#   trang chính (thẻ "VPS GPU của bạn") + trang 🖥️ VPS GPU (thẻ cấu hình, chọn Windows, chọn gói, mã giảm giá, chân trang)
+#   + 27/11 ⚡ VPS NVMe (trang Thuê, VPS NVMe của bạn, gia hạn, nâng cấp, cài lại, xoá).
 #   python shot_pc.py <thư mục pc-client> <thư mục ảnh ra> [vi|en]      (vi: pc-*.png · en: en-pc-*.png)
 # Không gọi mạng: Auth / Shop thay bằng lớp giả trả dữ liệu cố định (sản phẩm giống hệt sản phẩm thật trên web).
 import os, sys, tempfile, time, json
@@ -223,8 +224,75 @@ grab("pc-20-xem-tat-ca-vps.png")                           # chỉ VPS GPU
 ok_pc = len(wall.cells) == 3 and all(c.get("kind") == "pc" for c in wall.cells.values()) and len(wall.tiles) == 2
 print("lưới Xem tất cả:", "chip + 7 ô" if ok_chips else "SAI chip / số ô", "·", "VPS 3 ô (2 ô phát hình)" if ok_pc else "SAI ô VPS", flush=True)
 wall.close(); pump(0.5)
+
+# 27/11 · ⚡ VPS NVMe (SQL v56 · v59): trang Thuê (thẻ nổi bật · gói · tự chọn cấu hình · hệ điều hành · thời gian) · "VPS NVMe của bạn" (Ẩn / Hiện)
+#   · gia hạn · nâng cấp · cài lại · xoá · ✏️ tên riêng VPS GPU (SQL v60)
+VPL = [("vps1-1", "VPS 1-1", 1, 1024, 20000), ("vps1-2", "VPS 1-2", 1, 2048, 32000), ("vps2-2", "VPS 2-2", 2, 2048, 40000), ("vps2-4", "VPS 2-4", 2, 4096, 64000),
+       ("vps3-3", "VPS 3-3", 3, 3072, 60000), ("vps4-4", "VPS 4-4", 4, 4096, 80000), ("vps4-8", "VPS 4-8", 4, 8192, 112000), ("vps8-16", "VPS 8-16", 8, 16384, 224000)]
+TIERS = lambda m: [{"days": d, "price": m if d == 30 else max(1000, round(m * d / 30 / 1000) * 1000)} for d in (1, 3, 7, 30)]
+CUST = {"on": True, "unit_cpu": 8000, "unit_ram": 12000, "unit_disk": 1000, "disk_free_gb": 20, "short_up": 0, "days": [1, 3, 7, 30],
+        "max_cores": 16, "max_ram_gb": 32, "max_disk_gb": 200, "room": {"cores": 40, "ram_gb": 100, "disk_gb": 400}}
+VIMG = [{"id": "win2012r2", "name": "Windows Server 2012 R2", "min_disk": 20, "min_ram": 1024}, {"id": "win2016", "name": "Windows Server 2016", "min_disk": 20, "min_ram": 2048},
+        {"id": "win2022", "name": "Windows Server 2022", "min_disk": 20, "min_ram": 2048}]
+VSHOP = {"sell": True, "admin": False, "reinstall_max": 3, "grace_days": 3, "maint": False, "custom": CUST, "upgrade": True, "v": 59,
+         "plans": [{"id": i, "name": n, "cores": c, "ram_mb": r, "disk_gb": 20, "note": "", "prices": TIERS(m), "free": i != "vps8-16"} for i, n, c, r, m in VPL],
+         "images": [dict(x, ready=x["id"] != "win2022") for x in VIMG]}
+VBASE = {"plan": "vps2-4", "plan_name": "VPS 2-4", "cores": 2, "ram_mb": 4096, "disk_gb": 20, "image": "win2016", "image_name": "Windows Server 2016", "status": "running",
+         "want": "running", "err": False, "busy": False, "online": True, "until": FUT, "expired": False, "delete_at": None, "left": 3, "cfg_busy": False,
+         "prices": [{"days": 7, "price": 15000}, {"days": 30, "price": 64000}]}
+VMY = {"custom": CUST, "upgrade": True, "maint": False, "images": VIMG, "items": [
+    dict(VBASE, id=12, pc="00000000-0000-4000-8000-0000000000f1", name="VPS-12", label="Treo game"),
+    dict(VBASE, id=13, pc="00000000-0000-4000-8000-0000000000f2", name="VPS-13", label="", plan="vps1-1", plan_name="VPS 1-1", cores=1, ram_mb=1024,
+         image="win2012r2", image_name="Windows Server 2012 R2", status="creating", busy=True, online=False, until=None, prices=[{"days": 30, "price": 20000}]),
+    dict(VBASE, id=14, pc="00000000-0000-4000-8000-0000000000f3", name="VPS-14", label="", status="stopped", want="stopped", online=False, expired=True,
+         until=AGO(60), delete_at=time.strftime("%Y-%m-%dT%H:%M:%S+00:00", time.gmtime(time.time() + 2 * 86400)), left=0)]}
+_rpc0 = FakeAuth.rpc
+
+
+def _rpc(self, fn, args=None):
+    if fn == "vm_shop_info": return VSHOP
+    if fn == "vm_my": return VMY
+    if fn == "vm_my_upgrade": return {"ok": True, "dry": True, "price": 10667, "days_left": 20, "restart": True}
+    return _rpc0(self, fn, args)
+
+
+FakeAuth.rpc = _rpc
+FakeAuth.phones = lambda self: list(PHONES[:2])
+MINE["items"] = [dict(base, rental=41, label="Máy chính", pc=PCX(1, "VPS-GPU-01", code="A1"))]
+MINE["rename"] = True
+app.root.geometry("760x900+0+0"); app._vm_sig = None; repaint(3)
+grab("pc-21-vm-may-cua-toi.png")                           # Máy của tôi: VPS GPU (tên riêng ✏️) + ⚡ VPS NVMe của bạn (3 trạng thái)
+vm_ok = [len(app.vm_pcs) == 3, "Treo game" in str(app.vm_last)]
+B.prefs({"vm_min": True}); app._vm_sig = None; app._paint_vm(app.vm_last); pump(1)
+grab("pc-22-vm-an.png")                                    # bấm Ẩn ▴ → mục VPS NVMe còn 1 dòng
+vm_ok.append(len(app.vm_slot.winfo_children()) == 1)
+B.prefs({"vm_min": False}); app._vm_sig = None; app._paint_vm(app.vm_last); pump(1)
+vd = B.VmBuyDlg(app); pump(3)
+grab("pc-23-vm-thue.png")                                  # thẻ nổi bật + ① gói
+vm_ok += [vd.b["plan"] == "vps1-1", vd.price_for(30) == 20000, vd.days_list() == [1, 3, 7, 30]]
+vd.pick("vps2-4"); pump(0.8)
+vm_ok += [vd.price_for(30) == 64000, vd.price_for(7) == 15000]
+scroll(0.55); grab("pc-24-vm-thue-giua.png")               # ô thêm ổ · ② hệ điều hành · ③ thời gian
+vd.st_p.set(40); pump(0.6)
+vm_ok.append(vd.price_for(30) == 84000)                    # 64.000 + 20 GB × 1.000
+scroll(1.0); grab("pc-25-vm-thue-cuoi.png")                # mã giảm giá · chân trang tổng tiền
+vd.pick("custom"); pump(0.8); vd.st_c.set(3); vd.st_d.set(60); pump(0.6)
+vm_ok += [vd.price_for(30) == 112000, vd.b["cust"] is True]
+scroll(0.3); grab("pc-26-vm-tu-chon.png")                  # 🛠 tự chọn: vCPU · RAM · ổ
+vd.close(); pump(0.5)
+rd = B.VmRenewDlg(app, VMY["items"][0]); pump(1.5)
+grab("pc-27-vm-gia-han.png"); rd.close(); pump(0.4)
+ud = B.VmUpDlg(app, VMY["items"][0], VMY); pump(0.6); ud.s1.add(1); pump(2.5)
+grab("pc-28-vm-nang-cap.png")
+vm_ok.append(ud.price == 10667); ud.close(); pump(0.4)
+re_ = B.VmReDlg(app, VMY["items"][0], VMY); pump(2)
+grab("pc-29-vm-cai-lai.png"); re_.close(); pump(0.4)
+dd = B.VmDelDlg(app, VMY["items"][2]); pump(1)
+grab("pc-30-vm-xoa.png"); dd.close(); pump(0.4)
+print("VPS NVMe:", vm_ok, flush=True)
+ok_vm = all(vm_ok)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 20 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc
+ok = len(mine) == 30 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_vm
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)
