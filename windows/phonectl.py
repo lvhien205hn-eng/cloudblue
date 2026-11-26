@@ -4985,6 +4985,7 @@ GF_ON = _cfn("GPU_FAIR", 1) > 0
 GF_TOTAL = _cfn("GPU_FAIR_PCT", 85)            # card bận ≥ chừng này % mới xét máy ăn quá phần
 GF_HOG = _cfn("GPU_FAIR_HOG", 25)              # máy dùng ≥ chừng này % card (và ≥ 2 lần phần chia đều) = ăn quá phần
 GF_HOLD_S = _cfn("GPU_FAIR_HOLD_S", 600)       # giữ mỗi bậc ít nhất chừng này giây
+GF_STARVE = _cfn("GPU_FAIR_STARVE", 3); GF_NS_S = _cfn("GPU_FAIR_NOSTARVE_S", 1800); GF_CHECK_S = 4
 GF_CLS = {0: 2, 1: 1, 2: 0}                    # bậc → lớp ưu tiên card (D3DKMT: 0 IDLE · 1 BELOW_NORMAL · 2 NORMAL)
 GF_PERF = r"\GPU Engine(*)\Utilization Percentage"
 
@@ -5059,17 +5060,23 @@ def gpufair_plan(use, total, old, t, names=None):
     """Quyết định bậc hạ ưu tiên cho từng máy (hàm thuần — bộ thử gọi thẳng). use = {tên: %}, old = sổ lần trước.
        → (sổ mới {tên: {lv, t, last, pct}}, máy chia đều được bao nhiêu %, ngưỡng ăn quá phần)."""
     n = max(1, len(use)); fair = 100.0 / n; hog_min = max(GF_HOG, 2 * fair)
+    busy = total is not None and total >= GF_TOTAL
     new = {}
     for name, pct in sorted(use.items(), key=lambda kv: -kv[1]):
-        o = old.get(name) or {}; lv = int(o.get("lv") or 0)
-        hog = total is not None and total >= GF_TOTAL and pct >= hog_min
+        o = old.get(name) or {}; lv = int(o.get("lv") or 0); ns = float(o.get("ns") or 0)
+        if ns <= t: ns = 0
+        if lv and busy and pct < GF_STARVE:       # đã hạ mà card vẫn bận, máy gần như không được chạy card (đói) → trả lại NGAY, GF_NS_S không hạ máy này
+            new[name] = {"lv": 0, "t": t, "last": t, "pct": round(pct, 1), "ns": t + GF_NS_S, "starve": 1}; continue
+        hog = busy and pct >= hog_min and not ns
         if hog:
             if lv == 0: lv, since = 1, t
             elif lv == 1 and t - float(o.get("t") or t) >= GF_HOLD_S: lv, since = 2, t
             else: since = float(o.get("t") or t)
             new[name] = {"lv": lv, "t": since, "last": t, "pct": round(pct, 1)}
         elif lv and t - float(o.get("last") or 0) < GF_HOLD_S:
-            new[name] = dict(o, pct=round(pct, 1))                   # vừa hết ăn quá phần → giữ bậc thêm GF_HOLD_S
+            new[name] = dict(o, pct=round(pct, 1)); new[name].pop("starve", None)   # vừa hết ăn quá phần → giữ bậc thêm GF_HOLD_S
+        elif ns:
+            new[name] = {"lv": 0, "pct": round(pct, 1), "ns": ns}   # nhớ: máy này đang trong thời gian không hạ
     return new, round(fair, 1), round(hog_min, 1)
 
 
@@ -5088,12 +5095,31 @@ def cmd_gpufair(a):
     old_ph = old.get("phones") if isinstance(old.get("phones"), dict) else {}
     new, fair, hog_min = gpufair_plan(use, total, old_ph, t)
     acts = []
+    olv = lambda nm: int((old_ph.get(nm) or {}).get("lv") or 0)
+    newly = [nm for nm in new if int(new[nm].get("lv") or 0) > olv(nm)]
+    if newly and not a.dry:                       # vừa hạ máy nào → đặt ưu tiên, đo lại ngay: card vẫn bận mà máy đó ~0% (bị đói) → trả lại bậc cũ
+        for nm in newly:
+            for pid in pids.get(nm, []): _gpu_prio(pid, GF_CLS[int(new[nm]["lv"])])
+        time.sleep(GF_CHECK_S)
+        u2 = gpu_by_pid(); tot2 = _nv_util()
+        if u2 is not None:
+            if tot2 is None: tot2 = min(100.0, sum(u2.values()))
+            for nm in newly:
+                p2 = sum(u2.get(pid, 0.0) for pid in pids.get(nm, []))
+                if tot2 >= GF_TOTAL and p2 < GF_STARVE:
+                    pv = olv(nm)
+                    for pid in pids.get(nm, []): _gpu_prio(pid, GF_CLS[pv])
+                    acts.append("%s: hạ thì máy bị ĐÓI card (card vẫn bận, máy còn %.0f%%) → trả lại %s, %d phút không hạ máy này"
+                                % (nm, p2, "bậc %d" % pv if pv else "bình thường", GF_NS_S // 60))
+                    new[nm] = dict(old_ph.get(nm) or {"t": t, "last": t}, lv=pv, pct=round(p2, 1), ns=t + GF_NS_S, starve=1)
+                    if not pv: new[nm] = {"lv": 0, "t": t, "last": t, "pct": round(p2, 1), "ns": t + GF_NS_S, "starve": 1}
     for nm in set(old_ph) | set(new):
         lv = int((new.get(nm) or {}).get("lv") or 0)
         if lv == int((old_ph.get(nm) or {}).get("lv") or 0) and lv == 0: continue
         ok = [_gpu_prio(pid, GF_CLS[lv]) for pid in pids.get(nm, [])] if not a.dry else []
         if lv != int((old_ph.get(nm) or {}).get("lv") or 0):
             acts.append("%s: %s (%.0f%% card)" % (nm, "trả lại ưu tiên card bình thường" if lv == 0 else "HẠ ưu tiên card bậc %d" % lv, (new.get(nm) or {}).get("pct", use.get(nm, 0))))
+            if (new.get(nm) or {}).get("starve"): acts[-1] += " — hạ thì máy bị ĐÓI card (card vẫn bận) → trả lại, %d phút không hạ máy này" % (GF_NS_S // 60)
             if ok and not any(ok): acts[-1] += " — KHÔNG đặt được (cần quyền Admin)"
     top = [{"n": nm, "p": round(pct, 1), "lv": int((new.get(nm) or {}).get("lv") or 0)} for nm, pct in sorted(use.items(), key=lambda kv: -kv[1])[:5] if pct >= 1]
     res = {"ok": True, "t": int(t), "total": total, "fair": fair, "hog": hog_min, "n": len(use), "top": top,
