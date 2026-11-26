@@ -1,0 +1,1043 @@
+<style>
+/* ===== VPS GPU (máy PC thật) — mua tự động · VPS của khách · đơn chờ cho admin (SQL v43) ===== */
+.pcs-os{display:grid;gap:8px}
+.pcs-os .vps-opts button.on{border-color:var(--sky);background:rgba(61,123,255,.18)}
+.pcs-os .vps-opts small.fast{color:var(--ok)}
+.pcs-os .vps-opts small.slow{color:var(--warn)}
+.pcs-how{font-size:12.5px;line-height:1.55;color:var(--muted);background:var(--soft);border:1px solid var(--line);border-radius:12px;padding:9px 12px}
+.pcs-how b{color:var(--fg)}
+.pcs-cx-warn{border-color:rgba(255,107,129,.45);background:rgba(255,107,129,.07)}
+.pcs-ack,.dlg label.pcs-ack{display:flex;gap:8px;align-items:center;margin:12px 2px 2px;font-size:13.5px;font-weight:600;color:var(--fg);cursor:pointer}
+.pcs-ack input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--bad)}
+/* 22/11 · ⏻ Nguồn máy (SQL v48): 🔁 khởi động lại · ⏻ tắt hẳn (tick "Tôi hiểu" mới bấm được) */
+.pcs-pow{display:grid;gap:10px}
+.pcs-pow .pcs-how{display:grid;gap:7px;font-size:13px}
+.pcs-pow .pcs-how>b{font-size:15px;color:var(--fg)}
+.pcs-pow .pcs-how .btn{justify-self:start}
+.dlg .pcs-pow label.pcs-ack{margin:2px 0 0}
+.pcs-hide{margin-top:6px}
+#modal.pcauto #m-vps,#modal.pcauto #m-more,#modal.pcauto .qty{display:none!important}
+.pcs-card .m3m-nm small{font-weight:500;color:var(--muted);margin-left:6px}
+.pcs-card .pcs-st{font-size:12.5px;line-height:1.45;color:var(--muted)}
+.pcs-card .pcs-st b{color:var(--fg)}
+.pcs-card .pcs-st.warn{color:var(--warn)}
+.pcs-card .pcs-st.bad{color:var(--bad)}
+.pcs-card .pcs-bar{height:5px;border-radius:9px;background:var(--line);overflow:hidden}
+.pcs-card .pcs-bar i{display:block;height:100%;width:35%;border-radius:9px;background:linear-gradient(90deg,var(--blue),var(--sky));animation:pcsrun 1.6s ease-in-out infinite}
+@keyframes pcsrun{0%{transform:translateX(-100%)}100%{transform:translateX(290%)}}
+@media (prefers-reduced-motion:reduce){.pcs-card .pcs-bar i{animation:none;width:100%;opacity:.5}}
+.pcs-dlg .vps-opts{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.pcs-dlg .vps-opts button.on{border-color:var(--sky);background:rgba(61,123,255,.18)}
+.pcs-done{display:grid;gap:10px;text-align:center}
+.pcs-done .big{font-size:40px;line-height:1}
+.pcs-done h3{margin:0}
+.pcs-steps{display:grid;gap:6px;text-align:left;font-size:13px;color:var(--muted);margin:0;padding-left:18px}
+.pcs-adm{display:grid;gap:10px;margin-bottom:16px;padding:12px 14px;border-radius:14px;border:1px solid var(--line2);background:var(--soft)}
+.pcs-adm h4{margin:0;font-size:15px;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.pcs-adm .tbl td{vertical-align:top}
+.pcs-adm .pcs-acts{display:flex;flex-wrap:wrap;gap:5px;justify-content:flex-end}
+.pcs-wait{padding:10px 12px;border-radius:12px;background:rgba(255,107,129,.12);border:1px solid rgba(255,107,129,.45);color:var(--fg);font-size:13.5px;line-height:1.5}
+.pcs-wait b{color:var(--bad)}
+#pcs-waitbar{cursor:pointer;margin:0 0 10px}
+.pcs-set{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:13px}
+.pcs-set select,.pcs-set input[type=number]{max-width:260px}
+  .pcs-rc{flex-basis:100%;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:10px 12px;border-radius:12px;border:1px dashed rgba(124,188,255,.35);background:rgba(61,134,255,.06)}
+  .pcs-rc>b{flex-basis:100%;font-size:13px}
+.pcs-free{display:grid;gap:6px;max-height:320px;overflow:auto}
+.pcs-free label{display:flex;gap:8px;align-items:flex-start;padding:8px 10px;border-radius:10px;border:1px solid var(--line);cursor:pointer}
+.pcs-free label:has(input:checked){border-color:var(--sky);background:rgba(61,123,255,.12)}
+#pcsdlg{z-index:70}   /* hộp của phần VPS GPU nằm TRÊN bảng quản trị (z 60) khi admin bấm Bàn giao */
+.pcs-dlg.vid{width:min(980px,96vw);max-width:min(980px,96vw);padding:12px 12px 10px}
+.pcs-vid{display:block;width:100%;aspect-ratio:16/9;border-radius:12px;background:#000}
+.pcs-vidl{display:inline-flex;align-items:center;gap:6px;margin-top:6px;padding:0;border:0;background:none;font:inherit;font-weight:700;color:var(--sky);cursor:pointer}
+.pcs-vidl:hover{text-decoration:underline}
+/* "VPS của tôi" (menu bên): VPS GPU ở đầu hộp, điều khiển ngay trên web — tách riêng khỏi "ĐT đám mây của tôi" */
+html[data-theme] header.top nav a#nav-vps{position:relative}
+html[data-theme] header.top nav a#nav-vps.has:not(.on){color:var(--fg);background:linear-gradient(90deg,rgba(61,123,255,.24),rgba(61,123,255,.07));box-shadow:inset 0 0 0 1px rgba(110,170,255,.5)}
+html[data-theme=light] header.top nav a#nav-vps.has:not(.on){background:linear-gradient(90deg,#dcebff,#f1f7ff)}
+#nav-vps.has .badge{position:absolute;top:-6px;right:-4px;margin:0!important;background:var(--ok);color:#032a1f;font-weight:800;box-shadow:0 0 0 2px var(--bg)}
+.pcs-vm{display:grid;gap:10px}
+.pcs-vm-h{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.pcs-vm-h b{font-size:16px}
+.pcs-vm-h .hint{flex:1 1 220px;font-size:12.5px}
+.pcs-vm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+.pcs-vm-list .m3m-card{flex:none;min-width:0}
+.pcs-vm-list .m3m-acts{flex-wrap:wrap}
+.pcs-vm-empty{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:12px 14px;border-radius:14px;border:1px dashed var(--line2);font-size:13.5px;color:var(--muted)}
+.pcs-vm-old{margin:4px 0 -6px;font-size:14px;font-weight:800}
+.pcs-prog{display:grid;gap:5px}
+.pcs-prog .pp-bar{position:relative;height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.pcs-prog .pp-bar i{position:absolute;inset:0 auto 0 0;width:2%;border-radius:99px;background:linear-gradient(90deg,var(--blue),var(--sky));transition:width .9s linear;overflow:hidden}
+.pcs-prog .pp-bar i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.45),transparent);transform:translateX(-100%);animation:ppshine 1.6s ease-in-out infinite}
+@keyframes ppshine{to{transform:translateX(100%)}}
+.pcs-prog .pp-t{font-size:12px;line-height:1.45;color:var(--muted);font-variant-numeric:tabular-nums}
+.pcs-prog.late .pp-bar i{background:linear-gradient(90deg,#f59e0b,#fcd34d)}
+.pcs-prog.late .pp-t{color:var(--warn,#ffc861)}
+.pcs-prog .pcs-rep,.pcs-card .pcs-rep{justify-self:start;margin-top:2px}
+.pcs-repmsg{white-space:pre-wrap;word-break:break-word;font:12.5px/1.5 var(--mono,monospace);background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:10px;padding:10px;margin:0;max-height:220px;overflow:auto}
+@media (prefers-reduced-motion:reduce){.pcs-prog .pp-bar i::after{animation:none}.pcs-prog .pp-bar i{transition:none}}
+.pcs-maint{grid-column:1/-1;flex:0 0 100%;padding:10px 12px;border-radius:12px;background:rgba(255,200,97,.12);border:1px solid rgba(255,200,97,.55);color:var(--fg);font-size:13px;line-height:1.5;font-weight:600}
+.pcs-hero .pcs-maint{color:#fff3d6;background:rgba(255,200,97,.18)}
+#pcs-mine-mt{grid-column:1/-1}
+#pcs-mine-mt:empty{display:none}
+/* 21/11f · hộp mua VPS GPU tự động — thẻ cấu hình nổi bật, ① Windows · ② thời gian thuê (giá / ngày, % tiết kiệm) */
+#modal.pcauto .dlg{width:min(560px,100%)}
+#modal.pcauto #m-title,#modal.pcauto #m-name,#modal.pcauto #m-desc{display:none!important}
+.pcs-hero{position:relative;display:grid;gap:10px;padding:16px 16px 14px;border-radius:18px;color:#fff;overflow:hidden;
+  background:radial-gradient(120% 140% at 100% 0%,rgba(140,196,255,.28),transparent 55%),linear-gradient(135deg,#1d48b8,#11286e 58%,#2b1f78);
+  box-shadow:inset 0 0 0 1px rgba(160,200,255,.35),0 18px 40px -24px rgba(29,72,184,.9)}
+.pcs-hero[hidden]{display:none}
+.pcs-hero .ph-top{display:flex;align-items:center;gap:12px}
+.pcs-hero .ph-ic{flex:none;width:52px;height:52px;border-radius:14px;display:grid;place-items:center;font-size:28px;background:rgba(255,255,255,.14);box-shadow:inset 0 0 0 1px rgba(255,255,255,.22)}
+.pcs-hero .ph-t{flex:1;min-width:0;display:grid;gap:2px}
+.pcs-hero .ph-t b{font-size:22px;font-weight:800;letter-spacing:-.01em;line-height:1.15;overflow-wrap:anywhere}
+.pcs-hero .ph-t small{font-size:12.5px;color:#cfe0ff}
+.pcs-hero .ph-pill{flex:none;align-self:flex-start;font-size:12px;font-weight:800;padding:4px 10px;border-radius:99px;background:rgba(61,220,151,.18);color:#7ff0bd;box-shadow:inset 0 0 0 1px rgba(61,220,151,.55)}
+.pcs-hero .ph-pill.wt{background:rgba(255,200,97,.16);color:#ffd88a;box-shadow:inset 0 0 0 1px rgba(255,200,97,.55)}
+.pcs-hero .ph-chips,.pcs-hero .ph-bn{display:flex;flex-wrap:wrap;gap:6px}
+.pcs-hero .ph-chips span{font-size:12.5px;font-weight:700;padding:5px 10px;border-radius:99px;background:rgba(255,255,255,.13);box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+.pcs-hero .ph-bn span{font-size:11.5px;font-weight:600;color:#d9e6ff;padding:3px 8px;border-radius:8px;background:rgba(6,14,40,.28)}
+.pcs-hero .ph-price{display:flex;align-items:baseline;gap:8px}
+.pcs-hero .ph-price small{font-size:12.5px;color:#cfe0ff}
+.pcs-hero .ph-price b{font-size:24px;font-weight:800}
+#modal.pcauto .pcs-sec{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:700}
+#modal.pcauto .pcs-sec small{font-size:12px;font-weight:500;color:var(--muted)}
+#modal.pcauto #pcs-os .vps-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+#modal.pcauto #pcs-os .vps-opts button{display:grid;justify-items:center;gap:1px;padding:10px 8px 11px;text-align:center}
+#modal.pcauto #pcs-os .vps-opts button .k0{font-size:11.5px;color:var(--muted);font-weight:700}
+#modal.pcauto #pcs-os .vps-opts button b{font-size:24px;font-weight:800;letter-spacing:-.01em;line-height:1.15}
+#modal.pcauto #pcs-os .vps-opts button.on{border-color:var(--sky);background:linear-gradient(180deg,rgba(61,123,255,.30),rgba(61,123,255,.12));box-shadow:0 0 0 1px var(--sky) inset}
+.pcs-oshint{font-size:12.5px;line-height:1.45}
+.pcs-oshint.fast{color:var(--ok)} .pcs-oshint.slow{color:var(--warn,#ffc861)}
+#modal.pcauto #m-plans-box>span{font-size:13.5px!important;font-weight:700;color:var(--fg)!important}
+#modal.pcauto #m-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+#modal.pcauto #m-plans button{position:relative;display:grid;justify-items:center;gap:2px;padding:10px 6px 9px}
+#modal.pcauto #m-plans button .pd{font-style:normal;font-size:11.5px;color:var(--muted)}
+#modal.pcauto #m-plans button.best{border-color:var(--ok);box-shadow:0 0 0 1px var(--ok) inset}
+#modal.pcauto #m-plans button .sv{position:absolute;top:-8px;right:-6px;white-space:nowrap;font-style:normal;font-size:11px;font-weight:800;padding:2px 7px;border-radius:99px;background:var(--ok);color:#032a1f;box-shadow:0 0 0 2px var(--bg)}
+#modal.pcauto .pcs-how{font-size:12px}
+/* hộp sau khi mua: ① đợi máy · ② nội dung gửi admin (ẩn / hiện) */
+.pcsw .big{font-size:42px}
+.pcsw-code{color:var(--gold-hi);font-family:var(--mono,monospace);font-size:16px}
+.pcsw-box{display:grid;gap:7px;text-align:left;padding:12px 14px;border-radius:14px;background:var(--soft);border:1px solid var(--line2)}
+.pcsw-h,.pcsw-msg summary{font-size:13px;font-weight:800;color:var(--muted)}
+.pcsw-box>b{font-size:17px}
+.pcsw-box small{color:var(--muted);font-size:13px;line-height:1.5}
+.pcsw-box .pcs-bar{height:5px;border-radius:9px;background:var(--line);overflow:hidden}
+.pcsw-box .pcs-bar[hidden]{display:none}
+.pcsw-box .pcs-bar i{display:block;height:100%;width:35%;border-radius:9px;background:linear-gradient(90deg,var(--blue),var(--sky));animation:pcsrun 1.6s ease-in-out infinite}
+@media (prefers-reduced-motion:reduce){.pcsw-box .pcs-bar i{animation:none;width:100%;opacity:.5}}
+.pcsw-acts{display:flex;flex-wrap:wrap;gap:8px}
+.pcsw-acts:empty{display:none}
+.pcsw-msg{text-align:left;border-radius:14px;border:1px solid var(--line2);padding:10px 12px}
+.pcsw-msg summary{cursor:pointer;color:var(--fg)}
+.pcsw-msg.late{border-color:rgba(255,200,97,.75);background:rgba(255,200,97,.07)}
+.pcsw-late{margin-top:8px;font-size:13px;color:var(--warn,#ffc861);font-weight:700}
+.pcsw-msg pre{white-space:pre-wrap;word-break:break-word;font:12.5px/1.5 var(--mono,monospace);background:rgba(0,0,0,.22);border:1px solid var(--line);border-radius:10px;padding:10px;max-height:190px;overflow:auto;margin:10px 0}
+.pcsw-msg .btn{width:100%;justify-content:center}
+</style>
+<script>
+/* ===== VPS GPU tự động (SQL v43). Không có v43 → mọi phần dưới tự ẩn, cửa hàng chạy như cũ. ===== */
+(() => {
+  const $i = id => document.getElementById(id);
+  const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
+  const A = v => Array.isArray(v) ? v : [];
+  const O = v => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+  const T = v => { const t = typeof v === "string" ? new Date(v).getTime() : NaN; return isNaN(t) ? null : t; };
+  const hm = t => { const d = new Date(t); return d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) + (new Date().toDateString() === d.toDateString() ? "" : " " + d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })); };
+  const me = () => { try { return typeof profile !== "undefined" && profile ? profile : null; } catch (e) { return null; } };
+  const isAdm = () => { const u = me(); return !!u && u.role === "admin"; };
+  const ERR = {
+    NOT_AUTO: ["Sản phẩm này chưa bật giao máy tự động.", "Automatic delivery is off for this product."],
+    BAD_OS: ["Chọn bản Windows.", "Choose a Windows version."], BAD_PLAN: ["Chọn thời gian thuê.", "Choose a rental period."],
+    SLOW_DOWN: ["Bạn thao tác hơi nhanh — thử lại sau ít phút.", "Too many requests — try again in a few minutes."],
+    NO_LEFT: ["Máy này đã hết lượt cài lại trong lượt thuê. Nhắn shop nếu cần thêm.", "No reinstalls left for this rental. Contact the shop."],
+    BUSY: ["Máy đang cài Windows — chờ xong rồi thử lại.", "Windows is being installed — try again when it finishes."],
+    EXPIRED: ["Máy đã hết hạn — gia hạn trước.", "This machine has expired — renew first."],
+    NOT_ALLOWED: ["Máy này không thuộc tài khoản của bạn.", "This machine is not on your account."],
+    PC_IN_USE: ["Máy này đang có khách còn hạn.", "This machine is rented by another customer."],
+    CLOSED: ["Lượt thuê này đã kết thúc.", "This rental has ended."], NO_RENTAL: ["Không tìm thấy lượt thuê.", "Rental not found."],
+    NOT_APPROVED: ["Máy chưa duyệt.", "Machine not approved."], SAME_PC: ["Khách đang dùng đúng máy này rồi.", "Already on this machine."],
+    NO_PRODUCT: ["Không có sản phẩm này.", "No such product."], BAD_MAX: ["Số lần cài lại phải từ 0 đến 20.", "Reinstalls must be 0–20."],
+    NOT_FREE: ["Máy này vừa có khách / đang tự cài sạch — chọn máy khác.", "That machine is busy — pick another."], NOT_PENDING: ["Đơn này đã giao / đã huỷ.", "This order is no longer pending."],
+    QTY: ["Đơn nhiều máy: giao tay bằng ô tên máy bên dưới.", "Multi-machine order: deliver manually below."], BAD_DAYS: ["Đơn không có số ngày thuê.", "The order has no rental days."],
+    HAS_RENTAL: ["Đơn này đã có máy rồi.", "This order already has a machine."], NO_ORDER: ["Không tìm thấy đơn.", "Order not found."],
+    OFFLINE: ["Máy đang tắt / mất kết nối nên không nhận được lệnh. Cần bật lại thì nhắn shop kèm tên máy.", "The machine is offline and can't get the command. Contact the shop to turn it back on."],
+    BAD_CMD: ["Lệnh không hợp lệ — tải lại trang rồi thử lại.", "Invalid command — reload the page and try again."]
+  };
+  const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
+    try { return errMsg(e); } catch (x) { return m || L("Lỗi không rõ.", "Unknown error."); } };
+  const missing = e => /does not exist|schema cache|Could not find|PGRST202/i.test(String((e && (e.message || e.code)) || ""));
+  // 21/11f · 🛠️ BẢO TRÌ RIÊNG VPS GPU (Cài đặt → Bảo trì): khoá mua mới, điều khiển, cài lại — khách vẫn gia hạn; admin dùng bình thường
+  const pcMaint = () => { try { return typeof SITE !== "undefined" && !!SITE && !!SITE.pc_maint && !isAdm(); } catch (e) { return false; } };
+  const pcMaintMsg = () => { let m = ""; try { m = S(SITE.pc_maint_msg, 200).trim(); } catch (e) {}
+    return "🛠️ " + L("VPS GPU đang bảo trì", "GPU VPS is under maintenance") + (m ? " — " + m : "") + ". " + L("Máy và dữ liệu của bạn vẫn giữ nguyên.", "Your machine and data are kept."); };
+  const maintBar = () => pcMaint() ? `<div class="pcs-maint">${esc(pcMaintMsg())}</div>` : "";
+  const left = iso => { const t = T(iso); return t === null ? null : t - Date.now(); };
+  const PC = window.PCSHOP = { info: null, infoAt: 0, mine: null, mineAt: 0, adm: null, os: "", busy: false, dlg: null };
+
+  // ---------------------------------------------------------------- thông tin bán (ai cũng xem được)
+  async function info(force) {
+    if (!force && PC.info && Date.now() - PC.infoAt < 30000) return PC.info;
+    try { const { data, error } = await sb.rpc("pc_shop_info"); PC.info = error ? { on: false, miss: missing(error) } : O(data); }
+    catch (e) { PC.info = { on: false }; }
+    PC.infoAt = Date.now(); return PC.info;
+  }
+  const autoP = p => !!p && !!PC.info && PC.info.on === true && S(PC.info.product, 40) === S(p.id, 40);
+
+  // ---------------------------------------------------------------- MUA: hộp "Mua sản phẩm" của VPS GPU tự động
+  function osBox() {
+    let b = $i("pcs-os");
+    if (!b) { b = document.createElement("div"); b.id = "pcs-os"; b.className = "pcs-os"; $i("m-plans-box").before(b); }      // ① Windows rồi ② thời gian (như app)
+    return b;
+  }
+  const osSplit = n => { n = S(n, 60).trim(); const i = n.lastIndexOf(" "); return i > 0 ? [n.slice(0, i), n.slice(i + 1)] : ["Windows", n]; };
+  function osPaint() {
+    const b = osBox(), I = O(PC.info), os = A(I.os);
+    if (!os.some(o => o.id === PC.os)) PC.os = (os.find(o => o.fast) || os[0] || {}).id || "";
+    const mx = +I.reinstall_max >= 0 ? +I.reinstall_max : 2;
+    const cur = os.find(o => o.id === PC.os) || {};
+    b.innerHTML = `<div class="pcs-sec"><span>① ${L("Chọn Windows", "Choose Windows")} <b style="color:var(--gold-hi)">*</b></span><small>${L(`đổi được ${mx} lần trong lượt thuê`, `switchable ${mx}× per rental`)}</small></div>
+      <div class="vps-opts">${os.map(o => { const [k0, k1] = osSplit(o.name || o.id); return `<button type="button" data-pcsos="${esc(o.id)}" class="${o.id === PC.os ? "on" : ""}" aria-pressed="${o.id === PC.os}">
+        <small class="k0">${o.id === PC.os ? "✓ " : ""}${esc(k0)}</small><b>${esc(k1)}</b>
+        <small class="${o.fast ? "fast" : "slow"}">${o.fast ? L("⚡ Có máy sẵn · giao ngay", "⚡ In stock · instant") : I.ready ? L("⏳ Cài theo yêu cầu · ~20 phút", "⏳ Installed on order · ~20 min") : L("⏳ Shop đang chuẩn bị máy", "⏳ Machine being prepared")}</small></button>`; }).join("")}</div>
+      <div class="pcs-oshint ${cur.fast ? "fast" : "slow"}">${cur.fast ? L("⚡ Có máy sẵn bản này — thanh toán xong vào điều khiển được ngay.", "⚡ A machine with this version is ready — use it right after payment.")
+        : L("⏳ Máy tự cài bản này cho bạn khoảng 20 phút (hạn thuê được cộng thêm thời gian cài).", "⏳ Installed for you in ~20 min (the install time is added to your rental).")}</div>
+      <div class="pcs-how">✅ ${L("Thanh toán xong, hệ thống <b>tự giao máy</b> và cài đúng bản Windows bạn chọn.", "After payment the system <b>assigns a machine</b> and installs the Windows you chose.")}
+        ${L("Điều khiển ngay trên <b>web · app điện thoại · app máy tính</b>, như máy đám mây.", "Control it from the <b>web · phone app · PC app</b>, just like a cloud phone.")}
+        ${L(`Được tự <b>cài lại / đổi Windows ${mx} lần</b> mỗi lượt thuê.`, `<b>${mx} free reinstalls / Windows switches</b> per rental.`)}<br>${vidBtn()}</div>`;
+  }
+  // ---- 21/11f · hộp mua VPS GPU "sịn": thẻ cấu hình nổi bật (giá / cấu hình đúng như admin nhập) · ① Windows · ② thời gian thuê có giá / ngày + % tiết kiệm
+  const pdTxt = v => fmt(Math.round(v)) + L(" / ngày", " / day");
+  const icOf = f => { const l = f.toLowerCase();
+    return /ram/.test(l) ? "🧠" : /gtx|rtx|gpu|vga|radeon|quadro|card/.test(l) ? "🎮" : /ssd|nvme|hdd|disk|ổ/.test(l) ? "💾" : /xeon|core|ryzen|cpu|nhân|luồng|i[3579]-|\d{4} ?v\d/.test(l) ? "⚙️"
+         : /mbps|gbps|mạng|wifi|lan|net/.test(l) ? "🌐" : /win/.test(l) ? "🪟" : "✨"; };
+  function heroPaint(p) {
+    const m = $i("modal"), dl = m && m.querySelector(".dlg"); if (!dl || !p) return;
+    let h = $i("pcs-hero");
+    if (!h) { h = document.createElement("div"); h.id = "pcs-hero"; h.className = "pcs-hero"; dl.prepend(h); }
+    const I = O(PC.info), pl = (() => { try { return plansOf(p); } catch (e) { return []; } })().filter(x => +x.days > 0);
+    const best = pl.length ? Math.min(...pl.map(x => cv(+x.price) / +x.days)) : 0;
+    const fast = A(I.os).some(o => o.fast), mx = +I.reinstall_max >= 0 ? +I.reinstall_max : 2;
+    const feats = A(LANG === "en" && A(p.features_en).length ? p.features_en : p.features).map(f => S(f, 40).trim()).filter(Boolean).slice(0, 6);
+    let nm = ""; try { nm = pName(p); } catch (e) { nm = S(p.name, 80); }
+    h.innerHTML = `<div class="ph-top"><div class="ph-ic" aria-hidden="true">🖥️</div><div class="ph-t"><b>${esc(nm)}</b>
+        <small>${L("Máy tính thật · 1 cấu hình · tự giao + tự cài Windows", "Real PC · one configuration · auto delivery + Windows setup")}</small></div>
+        <span class="ph-pill ${fast ? "ok" : "wt"}">${fast ? "⚡ " + L("Có máy sẵn", "In stock") : "⏳ " + L("Đặt trước", "Pre-order")}</span></div>
+      ${feats.length ? `<div class="ph-chips">${feats.map(f => `<span>${icOf(f)} ${esc(f)}</span>`).join("")}</div>` : ""}
+      <div class="ph-bn"><span>⚡ ${L("Tự giao + cài Windows", "Auto delivery + setup")}</span><span>🎮 ${L("Chuột + phím thật", "Real mouse + keyboard")}</span>
+        <span>🔁 ${L(`Đổi Windows ${mx} lần`, `${mx} Windows switches`)}</span><span>🔒 ${L("Máy riêng của bạn", "Your own machine")}</span></div>
+      ${best ? `<div class="ph-price"><small>${L("chỉ từ", "from")}</small><b>${pdTxt(best)}</b></div>` : ""}${maintBar()}`;
+  }
+  function plansDeco() {
+    const m = $i("modal"); if (!m || !m.classList.contains("pcauto")) return;
+    let p = null; try { p = selP(); } catch (e) {} if (!p) return;
+    const pl = (() => { try { return plansOf(p); } catch (e) { return []; } })(); if (!pl.length) return;
+    const base = cv(+pl[0].price) / Math.max(1, +pl[0].days);
+    const r2 = v => Math.round(v * 100) / 100, per = x => cv(+x.price) / Math.max(1, +x.days);
+    const low = Math.min(...pl.map(x => r2(per(x)))), many = pl.some(x => r2(per(x)) !== low);   // 21.11l: gói rẻ nhất / ngày → nhãn "Rẻ nhất" (bằng nhau thì gắn cả; mọi gói như nhau thì không gắn)
+    $i("m-plans").querySelectorAll("button[data-d]").forEach(b => {
+      const x = pl.find(y => +y.days === +b.dataset.d); if (!x || b.querySelector(".pd")) return;
+      const pd = per(x), save = base > 0 ? Math.round((1 - pd / base) * 100) : 0, best = many && r2(pd) === low;
+      b.classList.toggle("best", best);
+      b.insertAdjacentHTML("beforeend", `<em class="pd">${pdTxt(pd)}</em>${best || save >= 1 ? `<i class="sv">${best ? L("Rẻ nhất", "Best") + (save >= 1 ? " −" + save + "%" : "") : "−" + save + "%"}</i>` : ""}`);
+    });
+  }
+  const _rp = window.renderPlans;
+  if (typeof _rp === "function") window.renderPlans = function () { const r = _rp.apply(this, arguments); try { plansDeco(); } catch (e) {} return r; };
+  function autoMode(on) {
+    const m = $i("modal"); if (!m) return;
+    m.classList.toggle("pcauto", !!on);
+    const b = $i("pcs-os"); if (b) b.hidden = !on;
+    const h = $i("pcs-hero"); if (h) h.hidden = !on;
+    const lb = $i("m-plans-box") && $i("m-plans-box").querySelector("span");
+    if (lb) { if (!lb.dataset.t0) lb.dataset.t0 = lb.textContent; lb.textContent = on ? "② " + L("Chọn thời gian thuê", "Choose rental time") : lb.dataset.t0; }
+    if (on) { $i("m-qty").value = 1; let p = null; try { p = selP(); } catch (e) {} heroPaint(p); osPaint(); try { renderPlans(); upd(); } catch (e) {} }
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-pcsos]"); if (!b) return;
+    PC.os = b.dataset.pcsos; osPaint(); const er = $i("m-err"); if (er) er.textContent = "";
+  });
+  const _open = window.openBuy, _do = window.doBuy;
+  if (typeof _open === "function" && typeof _do === "function") {
+    window.openBuy = function (id) {
+      _open.apply(this, arguments);
+      let p = null; try { p = selP(); } catch (e) {}
+      autoMode(autoP(p));
+      if (p && p.cat === "vps") info(true).then(() => { let q = null; try { q = selP(); } catch (e) {} if (q && q.id === p.id && !$i("modal").hidden) autoMode(autoP(q)); });
+    };
+    const ok = $i("m-ok");
+    if (ok) ok.onclick = () => { let p = null; try { p = selP(); } catch (e) {} return autoP(p) ? buy(p) : _do(); };
+  }
+  async function buy(p) {
+    if (!me()) { try { closeBuy(); openAuth("login"); } catch (e) {} return; }
+    const err = $i("m-err");
+    if (pcMaint()) { err.textContent = pcMaintMsg(); return; }
+    if (!PC.os) { err.textContent = L("Chọn bản Windows trước khi thanh toán.", "Choose Windows before paying."); return; }
+    const tot0 = unitPrice(p);
+    await busy($i("m-ok"), async () => {
+      if (!(await prmEnsure("buy", "m-err"))) return;
+      const tot = prmPrice("buy", tot0), code = prmCode("buy");
+      if (me().balance < tot) { closeBuy(); openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((tot - me().balance) / 1000) * 1000)); return; }
+      const days = plansOf(p).length ? selDays : null;
+      const { data, error } = await sb.rpc("pc_buy", { p_product: p.id, p_days: days, p_os: PC.os, ...(code ? { p_promo: code } : {}) });
+      if (error) { try { prmFail("buy", error); } catch (e) {} err.textContent = em(error); return; }
+      closeBuy();
+      await Promise.all([loadProfile(), loadProducts(), mine(true), info(true)]).catch(() => {});
+      try { renderUser(); } catch (e) {}
+      done(O(data), p, days, tot);
+    });
+  }
+  function dlg(html, cls) {
+    let m = $i("pcsdlg");
+    if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "pcsdlg"; m.hidden = true; document.body.appendChild(m);
+      m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-pcsx]")) { m.hidden = true; m.querySelectorAll("video").forEach(v => { try { v.pause(); } catch (x) {} }); } }); }
+    m.innerHTML = `<div class="dlg pcs-dlg${cls ? " " + cls : ""}" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false; return m;
+  }
+  // ---- 🎬 video hướng dẫn (mua máy · điều khiển trên web / app điện thoại / app máy tính · cài lại, gia hạn) — cùng file app mở
+  const VID = "/video/vps-gpu.mp4", VIDP = "/video/vps-gpu.jpg";
+  const vidBtn = (txt, cls) => `<button type="button" class="${cls || "pcs-vidl"}" data-pcsvid="1">🎬 ${txt || L("Xem video hướng dẫn (1 phút 41 giây)", "Watch the video guide (1:41, Vietnamese)")}</button>`;
+  function vidOpen() {
+    dlg(`<div style="display:flex;align-items:center;gap:10px;margin:0 0 10px 4px"><h3 style="margin:0">🎬 ${L("Hướng dẫn dùng VPS GPU", "GPU VPS video guide")}</h3>
+        <button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <video class="pcs-vid" src="${VID}" poster="${VIDP}" controls autoplay muted playsinline preload="metadata"></video>
+      <p class="hint" style="margin:8px 4px 0">${L("Mua máy · điều khiển trên web, app điện thoại, app máy tính · cài lại Windows, gia hạn.", "Buying · controlling from the web, the phone app and the PC app · reinstalling Windows, renewing. (Vietnamese)")}</p>`, "vid");
+  }
+  document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-pcsvid]"); if (!b) return; e.preventDefault(); vidOpen(); });
+  // ---- sau khi mua: hộp "đợi máy" như cloud phone — ① Đợi máy (tự cập nhật: chờ máy → cài Windows → sẵn sàng) · ② nội dung gửi admin (ẩn / hiện)
+  const pad2 = n => String(n).padStart(2, "0");
+  const dtv = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())} ${L("ngày", "on")} ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+  const agoMs = ms => { const s = Math.max(0, Math.round(ms / 1000)), m = Math.floor(s / 60); return m ? L(`${m} phút ${pad2(s % 60)} giây`, `${m} min ${pad2(s % 60)} s`) : L(`${s} giây`, `${s} s`); };      // (không đặt tên ago: trùng ago(giờ ISO) của trang → bảng admin ra NaN)
+  const LATE = { wait: 15, inst: 45, off: 10, warn: 0 };              // quá bấy nhiêu phút → mở sẵn mục ② + nhắc gửi admin
+  function done(r, p, days, tot) {
+    const osn = S((A(O(PC.info).os).find(o => o.id === PC.os) || {}).name, 60) || S(PC.os, 20), u = me() || {};
+    const code = r.order ? "BR-" + String(r.order).replace(/-/g, "").slice(0, 8).toUpperCase() : "";
+    const label = S(p && p.name, 80) + (days ? ` · ${days} ${L("ngày", "days")}` : "");
+    PC.w = { rental: +r.rental || null, pc: S(r.pc, 40), name: S(r.name, 40), t0: Date.now(), label, osn, code, order: S(r.order, 60), user: S(u.username || u.email, 60),
+             tot: +tot || 0, poll: 0, late: false, st: r.state === "active" ? (r.reinstall ? "inst" : "run") : "wait" };
+    PC.w.at = dtv(new Date(PC.w.t0));
+    dlg(`<div class="pcs-done pcsw">
+      <div class="big" id="pcsw-ic" aria-hidden="true">⏳</div>
+      <h3>${L("Thanh toán thành công!", "Payment successful!")}</h3>
+      <div class="hint">${esc(label)}${PC.w.tot ? " · " + esc(fmt(PC.w.tot)) : ""}${code ? `<br>${L("Mã thanh toán", "Payment code")}: <b class="pcsw-code">${esc(code)}</b>` : ""}</div>
+      <div class="pcsw-box" aria-live="polite">
+        <div class="pcsw-h">① ${L("Đợi máy", "Waiting for your machine")}</div>
+        <b id="pcsw-st"></b>
+        <div class="pcs-bar" id="pcsw-bar" aria-hidden="true"><i></i></div>
+        <small id="pcsw-sub"></small>
+        <div class="pcsw-acts" id="pcsw-acts"></div>
+      </div>
+      <details class="pcsw-msg" id="pcsw-msg">
+        <summary>② ${L("Máy lâu chưa lên? Gửi nội dung này cho admin", "Taking too long? Send this to the admin")}</summary>
+        <div class="pcsw-late" id="pcsw-late" hidden>⏰ ${L("Máy lên lâu hơn bình thường — bấm Copy rồi gửi cho admin, shop xử lý ngay.", "This is taking longer than usual — copy this and send it to the admin.")}</div>
+        <pre id="pcsw-txt"></pre>
+        <button class="btn" type="button" id="pcsw-copy">📋 ${L("Copy nội dung gửi admin", "Copy message for the admin")}</button>
+        <div class="hint" style="margin:6px 0">${L("Bấm Copy, rồi bấm 1 kênh bên dưới — dán và gửi cho admin.", "Tap Copy, then a channel below — paste and send it.")}</div>
+        <div class="contacts">${typeof contactsHTML === "function" ? contactsHTML() : ""}</div>
+      </details>
+      <div class="acts" style="justify-content:center">${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost")}<button class="btn" type="button" data-pcsx="1">${L("Đóng", "Close")}</button></div></div>`);
+    $i("pcsw-copy").onclick = async e => {
+      const b = e.currentTarget, base = b.textContent;
+      try { await navigator.clipboard.writeText(wMsg()); b.textContent = L("✓ Đã copy", "✓ Copied"); setTimeout(() => { b.textContent = base; }, 2000); }
+      catch (x) { const rg = document.createRange(); rg.selectNodeContents($i("pcsw-txt")); getSelection().removeAllRanges(); getSelection().addRange(rg); toast(L("Bôi đen sẵn rồi, bấm Ctrl+C để copy.", "Selected — press Ctrl+C to copy."), 0); }
+    };
+    try { if (PC.w.order) localStorage.setItem("br_vmsg_" + PC.w.order, wMsg()); } catch (e) {}
+    wPaint(); clearInterval(PC.wt); PC.wt = setInterval(wTick, 1000);
+  }
+  const wItem = () => { const w = PC.w || {}; return A(O(PC.mine).items).find(x => w.rental ? +x.rental === w.rental : !!w.pc && O(x.pc).id === w.pc) || null; };
+  const wState = () => { const w = PC.w || {}, it = wItem(); return it ? stateOf(it)[0] : w.st === "run" ? "off" : w.st; };
+  const WST = k => ({ wait: L("Đang chờ máy", "Waiting for a machine"), inst: L("Đang cài Windows", "Installing Windows"), off: L("Máy đang khởi động / chưa báo về", "Machine starting / not reporting"),
+                      run: L("Máy đã sẵn sàng", "Ready"), warn: L("Cài lại lỗi", "Reinstall failed"), exp: L("Hết hạn", "Expired"), end: L("Đã kết thúc", "Ended") }[k] || k);
+  function wMsg() {
+    const w = PC.w || {}, it = wItem(), nm = S(O(it && it.pc).name, 40) || w.name, sl = WST(wState());
+    return LANG === "en"
+      ? `[CLOUDBLUE] GPU VPS NOT READY YET — PLEASE CHECK\n• Payment code: ${w.code || "(see Orders)"}\n• Product: ${w.label}\n• Windows: ${w.osn}\n• Account: ${w.user}\n• Purchased: ${w.at}\n` +
+        `• Status: ${sl} (${agoMs(Date.now() - w.t0)})` + (nm ? `\n• Machine: ${nm}` : "") + (w.order ? `\n• Order ID: ${w.order}` : "") + (w.rental ? `\n• Rental: #${w.rental}` : "")
+      : `[CLOUDBLUE] VPS GPU LÂU CHƯA LÊN — NHỜ SHOP KIỂM TRA\n• Mã thanh toán: ${w.code || "(xem trong Đơn hàng)"}\n• Sản phẩm: ${w.label}\n• Windows: ${w.osn}\n• Tài khoản: ${w.user}\n• Thời gian mua: ${w.at}\n` +
+        `• Trạng thái: ${sl} (đã chờ ${agoMs(Date.now() - w.t0)})` + (nm ? `\n• Máy: ${nm}` : "") + (w.order ? `\n• Mã đơn: ${w.order}` : "") + (w.rental ? `\n• Lượt thuê: #${w.rental}` : "");
+  }
+  function wPaint() {
+    const w = PC.w, ic = $i("pcsw-ic"); if (!w || !ic) return;
+    const it = wItem(), st = it ? stateOf(it) : [wState(), ""], k = st[0], pc = O(it && it.pc), waited = agoMs(Date.now() - w.t0);
+    const T = {
+      wait: ["⏳", L("Đang chờ máy", "Waiting for a machine"), L("Có máy là hệ thống tự giao + cài Windows — thường chỉ vài phút, không cần nhắn shop.", "A machine is assigned and set up automatically as soon as one is free — usually a few minutes.")],
+      inst: ["⚙️", L(`Đang cài ${w.osn} cho bạn`, `Installing ${w.osn}`), L("Khoảng 15–30 phút, máy tự khởi động lại vài lần là bình thường. Xong là vào được ngay.", "About 15–30 min; a few automatic restarts are normal.")],
+      off: ["🔌", L("Máy đang khởi động…", "Starting the machine…"), L("Thường 1–3 phút. Trang tự cập nhật — bạn có thể đóng hộp này.", "Usually 1–3 min. This updates by itself — you can close it.")],
+      run: ["✅", L("Máy đã sẵn sàng!", "Your machine is ready!"), L("Bấm ▶ Điều khiển để vào máy ngay trên web — hoặc mở bằng app điện thoại / app máy tính.", "Tap ▶ Control to use it in the browser — or open it in the phone / PC app.")],
+      warn: ["⚠️", L("Cài lại chưa xong", "Reinstall failed"), L("Gửi nội dung ở mục ② cho admin — shop sửa ngay.", "Send the message below to the admin.")],
+      exp: ["⛔", L("Máy đã hết hạn", "Expired"), ""], end: ["■", L("Lượt thuê đã kết thúc", "Rental ended"), ""]
+    }[k] || ["⏳", st[1] || "", st[2] || ""];
+    ic.textContent = T[0]; $i("pcsw-st").textContent = T[1] + (pcMaint() ? " · " + L("VPS GPU đang bảo trì", "under maintenance") : "");
+    $i("pcsw-sub").textContent = T[2] + (k === "run" || k === "exp" || k === "end" ? "" : " " + L("Đã chờ: ", "Waited: ") + waited + ".");
+    $i("pcsw-bar").hidden = !(k === "wait" || k === "inst" || k === "off");
+    const pid = S(pc.id || w.pc, 40), sig = k + "|" + pid;
+    if ($i("pcsw-acts").dataset.sig !== sig) {
+      $i("pcsw-acts").dataset.sig = sig;
+      $i("pcsw-acts").innerHTML = (k === "run" && pid ? `<a class="btn" href="/play.html?pc=${encodeURIComponent(pid)}">▶ ${L("Điều khiển", "Control")}</a><button class="btn ghost" type="button" data-pcsapp="${esc(pid)}">📲 App</button>` : "")
+        + `<button class="btn ghost" type="button" data-pcsvm="1">🖥️ ${L("VPS của tôi", "My VPS")}</button>`;
+    }
+    const lim = LATE[k], late = lim !== undefined && (Date.now() - w.t0) / 6e4 >= lim;
+    if (late && !w.late) { w.late = true; const d = $i("pcsw-msg"); if (d) { d.open = true; d.classList.add("late"); } $i("pcsw-late").hidden = false; }
+    const tx = $i("pcsw-txt"); if (tx) tx.textContent = wMsg();
+  }
+  function wTick() {
+    const m = $i("pcsdlg"), w = PC.w;
+    if (!w || !m || m.hidden || !$i("pcsw-st")) { clearInterval(PC.wt); PC.wt = 0; return; }
+    if (wState() !== "run" && ++w.poll % 8 === 0) mine(true).then(wPaint).catch(() => {});
+    wPaint();
+  }
+  document.addEventListener("click", e => {
+    if (!(e.target.closest && e.target.closest("[data-pcsvm]"))) return;
+    const m = $i("pcsdlg"); if (m) m.hidden = true;
+    try { openVmach(); } catch (x) { const s = $i("pcs-mine"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); }
+  });
+  document.addEventListener("click", e => { if (e.target.closest && e.target.closest("[data-pcsgo]")) { const s = $i("pcs-mine"); if (s) s.scrollIntoView({ behavior: "smooth", block: "start" }); } });
+
+  // ---------------------------------------------------------------- 21/11f · THANH TIẾN ĐỘ có đếm giờ (cài lại / đổi Windows, chờ máy, lệnh admin)
+  //   thời gian thường mất (phút) → % ước tính tăng dần (không bao giờ tới 100 khi chưa xong), mỗi giây tự đếm; quá lâu → vàng + nút Báo admin
+  const PK = { inst: [25, L("Cài lại / đổi Windows", "Reinstalling Windows")], wait: [10, L("Chờ giao máy", "Waiting for a machine")],
+    "cmd-reinstall": [25, "Cài lại Windows"], "cmd-reboot": [3, "Khởi động lại"], "cmd-update": [2, "Cập nhật agent"], "cmd-shutdown": [1, "Tắt máy"], "cmd-x": [5, "Lệnh"] };
+  const mmss = sec => { sec = Math.max(0, Math.floor(sec)); const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), x = sec % 60; return (h ? h + ":" + pad2(m) : m) + ":" + pad2(x); };
+  function progHTML(kind, t0, os, it) {
+    return `<div class="pcs-prog" data-pk="${esc(kind)}" data-t0="${esc(S(t0, 40))}" data-os="${esc(S(os, 12))}" data-r="${esc(String(O(it).rental || ""))}" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div class="pp-bar"><i></i></div><div class="pp-t"></div></div>`;
+  }
+  function progTick() {
+    document.querySelectorAll(".pcs-prog[data-pk]").forEach(el => {
+      const k = el.dataset.pk, def = PK[k] || PK["cmd-x"], t0 = T(el.dataset.t0), sec = t0 === null ? 0 : (Date.now() - t0) / 1000, exp = def[0] * 60;
+      const pct = Math.min(k === "wait" ? 90 : 96, Math.max(2, Math.round(100 * (1 - Math.exp(-sec / (exp * .55))))));
+      const late = sec > exp * (k === "wait" ? 3 : 2);
+      let stage = def[1];
+      if (k === "inst" || k === "cmd-reinstall") {
+        const os = S(el.dataset.os, 12).toUpperCase();
+        stage = sec < 150 ? L("Khởi động lại vào bộ cài", "Restarting into setup") : sec < 15 * 60 ? L("Đang cài Windows", "Installing Windows") + (os ? " " + os : "")
+          : sec < 26 * 60 ? L("Cài driver · khởi động lần đầu", "Drivers · first boot") : L("Sắp xong…", "Almost done…");
+      } else if (k === "wait") stage = L("Đang chờ máy — có máy là tự giao + cài Windows", "Waiting — assigned automatically when a machine is free");
+      const i = el.querySelector(".pp-bar i"), tx = el.querySelector(".pp-t");
+      if (i) i.style.width = pct + "%";
+      el.setAttribute("aria-valuenow", String(pct));
+      if (tx) tx.textContent = `${stage} · ${pct}% · ${L("đã chạy", "elapsed")} ${mmss(sec)}` + (late ? L(" · lâu hơn bình thường", " · taking longer than usual") : ` · ${L("thường", "usually")} ~${def[0]} ${L("phút", "min")}`);
+      if (late !== el.classList.contains("late")) {
+        el.classList.toggle("late", late);
+        if (late && el.dataset.r && !el.querySelector(".pcs-rep")) el.insertAdjacentHTML("beforeend", `<button class="btn ghost sm pcs-rep" type="button" data-pcsrep="${esc(el.dataset.r)}">📋 ${L("Lâu quá? Báo admin", "Taking too long? Report")}</button>`);
+      }
+    });
+  }
+  setInterval(() => { if (!document.hidden) progTick(); }, 1000);
+  // ---- 📋 báo admin: nội dung soạn sẵn (máy · việc đang làm / lỗi · tài khoản · lượt thuê · giờ) + copy + kênh liên hệ của shop
+  function repMsg(it) {
+    const pc = O(it.pc), st = stateOf(it), job = O(pc.job), lj = O(pc.last_job), u = me() || {};
+    const what = st[0] === "warn" ? L("Cài lại Windows bị LỖI", "Windows reinstall FAILED") + (S(lj.msg, 120) ? ": " + S(lj.msg, 120) : "")
+      : st[0] === "inst" ? L(`Cài lại Windows ${S(job.os, 12).toUpperCase()} — đã chạy ${mmss((Date.now() - (T(job.at) || Date.now())) / 1000)} chưa xong`, `Reinstall ${S(job.os, 12).toUpperCase()} still running`)
+      : st[0] === "wait" ? L(`Chờ giao máy — đã chờ ${mmss((Date.now() - (T(it.created_at) || Date.now())) / 1000)}`, "Still waiting for a machine")
+      : String(st[1]).replace(/^[^\p{L}\p{N}]+/u, "");
+    return LANG === "en"
+      ? `[CLOUDBLUE] GPU VPS NEEDS HELP\n• Machine: ${S(pc.name, 40) || "—"}${pc.code ? " (No. " + S(pc.code, 24) + ")" : ""}\n• Problem: ${what}\n• Windows: ${S(it.os_name, 40)}\n• Account: ${S(u.username || u.email, 60)}\n• Rental: #${it.rental || "—"}\n• Time: ${dtv(new Date())}`
+      : `[CLOUDBLUE] VPS GPU CẦN HỖ TRỢ\n• Máy: ${S(pc.name, 40) || "—"}${pc.code ? " (№ " + S(pc.code, 24) + ")" : ""}\n• Việc: ${what}\n• Windows: ${S(it.os_name, 40)}\n• Tài khoản: ${S(u.username || u.email, 60)}\n• Lượt thuê: #${it.rental || "—"}\n• Lúc: ${dtv(new Date())}`;
+  }
+  function repOpen(rid) {
+    const it = A(O(PC.mine).items).find(x => String(x.rental) === String(rid)); if (!it) return;
+    const msg = repMsg(it);
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">📋 ${L("Báo admin", "Report to the admin")}</h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="hint">${L("Bấm <b>Copy</b> rồi bấm 1 kênh bên dưới — dán và gửi cho admin, shop xử lý ngay.", "Tap <b>Copy</b>, then a channel below — paste and send it.")}</div>
+      <pre class="pcs-repmsg" id="pcs-repmsg"></pre>
+      <button class="btn" type="button" id="pcs-repcopy">📋 ${L("Copy nội dung gửi admin", "Copy message")}</button>
+      <div class="contacts">${typeof contactsHTML === "function" ? contactsHTML() : ""}</div>`);
+    $i("pcs-repmsg").textContent = msg;
+    $i("pcs-repcopy").onclick = async e => {
+      const b = e.currentTarget, base = b.textContent;
+      try { await navigator.clipboard.writeText(msg); b.textContent = L("✓ Đã copy", "✓ Copied"); setTimeout(() => { b.textContent = base; }, 2000); }
+      catch (x) { const rg = document.createRange(); rg.selectNodeContents($i("pcs-repmsg")); getSelection().removeAllRanges(); getSelection().addRange(rg); toast(L("Bôi đen sẵn rồi, bấm Ctrl+C để copy.", "Selected — press Ctrl+C."), 0); }
+    };
+  }
+  document.addEventListener("click", e => { const b = e.target.closest && e.target.closest("[data-pcsrep]"); if (b) repOpen(b.dataset.pcsrep); });
+
+  // ---------------------------------------------------------------- "VPS GPU của bạn" (đầu trang chủ, dưới máy đám mây)
+  function mineBox() {
+    let s = $i("pcs-mine");
+    if (!s) {
+      const after = $i("m3-mine"); if (!after) return null;
+      s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "pcs-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "pcs-mine-h");
+      s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="pcs-mine-h"><span aria-hidden="true">🖥️</span> <span>${L("VPS GPU của bạn", "Your GPU VPS")}</span><small id="pcs-mine-n"></small></h2>
+        <div class="m3m-hacts"><a class="btn ghost sm" id="pcs-mine-multi" href="/play.html?multi=pc" hidden title="${esc(L("Mở nhiều VPS cùng lúc trên 1 màn — bật 🔗 Đồng bộ để bấm 1 máy, các máy khác làm theo", "Open several machines on one screen — turn on 🔗 Sync to mirror clicks"))}">▦ ${L("Điều khiển nhiều máy", "Control many")}</a>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}<button class="btn sm" type="button" id="pcs-mine-new">+ ${L("Thuê thêm", "Rent another")}</button></div></div>
+        <div id="pcs-mine-mt"></div><div class="m3m-list" id="pcs-mine-list"></div></div>`;
+      after.after(s);
+      $i("pcs-mine-new").onclick = () => { const id = S(O(PC.info).product, 40) || S(O(PC.mine).product, 40); try { if (id && P.some(p => p.id === id)) { openBuy(id); return; } } catch (e) {} location.hash = "#shop"; };
+    }
+    return s;
+  }
+  async function mine(force) {
+    if (!me()) { PC.mine = null; mineRender(); return; }
+    if (!force && PC.mine && Date.now() - PC.mineAt < 20000) { mineRender(); return; }
+    try { const { data, error } = await sb.rpc("pc_my_vps"); if (!error) { PC.mine = O(data); PC.mineAt = Date.now(); } else if (missing(error)) PC.mine = null; } catch (e) {}
+    mineRender();
+  }
+  // 22/11 · SQL v48: lệnh khởi động lại / tắt máy gần nhất (khách hoặc shop bấm) → "Đang khởi động lại…" / "Đang tắt máy…" / "Đã tắt máy".
+  //   Lệnh chưa tới máy (queued) chỉ tính khi máy đang bật; khởi động lại: 3 phút đầu luôn hiện, sau đó máy chưa báo về thì hiện tiếp tới 15 phút.
+  function powOf(pc) {
+    const p = O(pc.pow), at = T(p.at); if ((p.cmd !== "reboot" && p.cmd !== "shutdown") || at === null) return null;
+    const age = Date.now() - at, got = p.state === "sent" || p.state === "done", shop = p.by !== "customer";
+    if (p.cmd === "reboot") {
+      if (!got) return pc.online && age < 6e5 ? ["boot", "🔁 " + L("Đang khởi động lại…", "Restarting…"), L("Đang gửi lệnh tới máy — máy nhận là khởi động lại ngay.", "Sending the command — the machine restarts as soon as it gets it.")] : null;
+      return age < 18e4 || (!pc.online && age < 9e5) ? ["boot", "🔁 " + L("Đang khởi động lại…", "Restarting…"),
+        (shop ? L("Shop vừa khởi động lại máy. ", "The shop restarted the machine. ") : "") + L("Thường 1–3 phút là dùng lại được. Quá 10 phút chưa lên thì nhắn shop kèm tên máy.", "Usually back in 1–3 minutes. Not back after 10 minutes? Contact the shop with the machine name.")] : null;
+    }
+    if (!got) return pc.online && age < 6e5 ? ["down", "⏻ " + L("Đang tắt máy…", "Shutting down…"), L("Đang gửi lệnh tới máy — máy nhận là tắt ngay.", "Sending the command — the machine turns off as soon as it gets it.")] : null;
+    if (pc.online) return age < 18e4 ? ["down", "⏻ " + L("Đang tắt máy…", "Shutting down…"), L("Máy tắt sau khoảng 10 giây.", "It turns off in about 10 seconds.")] : null;
+    return ["offd", "⏻ " + L("Đã tắt máy", "Shut down"), shop
+      ? L(`Shop đã tắt máy lúc ${hm(at)}. Cần dùng thì nhắn shop bật lại.`, `The shop shut it down at ${hm(at)}. Contact the shop to turn it back on.`)
+      : L(`Bạn đã tắt máy lúc ${hm(at)} — máy tắt hẳn. Cần dùng lại thì nhắn shop bật nguồn (shop đã được báo).`, `You shut it down at ${hm(at)} — it stays off. Ask the shop to turn it back on (they have been notified).`)];
+  }
+  function stateOf(it) {
+    const pc = O(it.pc), job = O(pc.job), ms = left(it.until);
+    if (it.state === "waiting") return ["wait", "⏳ " + L("Đang chờ máy", "Waiting for a machine"), L("Shop đã nhận đơn. Có máy là tự giao + cài Windows — không cần nhắn shop.", "Order received. A machine will be assigned and installed automatically.")];
+    if (it.state === "cancelled") return ["end", "✕ " + L("Đã huỷ", "Cancelled"), L("Đơn đã huỷ. Tiền hoàn (nếu có) đã cộng vào số dư.", "Order cancelled. Any refund went to your balance.")];
+    if (it.state === "ended") return ["end", "■ " + L("Đã kết thúc", "Ended"), it.end_why === "expired" ? L("Hết hạn không gia hạn — máy đã được thu hồi và xoá sạch. Muốn dùng tiếp: thuê máy mới ở mục VPS GPU.", "Expired without renewal — the machine was reclaimed and wiped. Rent a new one to continue.") : ""];
+    if (job.state) return ["inst", "⚙️ " + L("Đang cài Windows", "Installing Windows"), job.state === "sent" ? L("Máy đang cài " + S(job.os, 12).toUpperCase() + " (15–30 phút). Xong là vào được.", "Installing " + S(job.os, 12).toUpperCase() + " (15–30 min).") : L("Máy sắp khởi động lại để cài Windows…", "The machine will restart to install Windows…")];
+    const gu = T(it.grace_until);                                  // v44: hết hạn nhưng máy còn giữ cho khách tới lúc này (gia hạn là tự mở lại)
+    if (ms !== null && ms <= 0 && gu !== null && gu > Date.now()) return ["exp", "⛔ " + L("Hết hạn — đang giữ máy", "Expired — on hold"),
+      (pc.lock ? L("🔒 Máy đã khoá. ", "🔒 Locked. ") : pc.off ? L("Máy đã tự tắt. ", "Shut down. ") : "")
+      + L(`Gia hạn trước ${hm(gu)} để giữ máy + dữ liệu — gia hạn xong máy tự mở lại sau 1–2 phút. Quá giờ đó máy bị thu hồi và xoá sạch.`,
+          `Renew before ${hm(gu)} to keep the machine and your data — it unlocks 1–2 min after renewal. After that it is reclaimed and wiped.`)];
+    if (ms !== null && ms <= 0) return ["exp", "⛔ " + L("Hết hạn", "Expired"), pc.off ? L("Máy đã tự tắt. Gia hạn để dùng tiếp — shop bật lại máy cho bạn.", "The machine has shut down. Renew and the shop will turn it back on.") : L("Gia hạn để dùng tiếp.", "Renew to keep using it.")];
+    const pw = powOf(pc); if (pw) return pw;
+    if (!pc.online) return ["off", "○ " + L("Máy đang tắt / mất mạng", "Offline"), L("Máy chưa báo về. Nếu lâu quá 5 phút, nhắn shop kèm tên máy.", "Not reporting. If it lasts over 5 min, contact the shop with the machine name.")];
+    if (O(pc.last_job).state === "failed") return ["warn", "⚠️ " + L("Cài lại chưa xong", "Reinstall failed"), L("Lần cài lại vừa rồi lỗi — nhắn shop kèm tên máy.", "The last reinstall failed — contact the shop.")];
+    return ["run", "● " + L("Sẵn sàng", "Ready"), ""];
+  }
+  function card(it) {
+    const pc = O(it.pc), st = stateOf(it), ms = left(it.until), max = +O(PC.mine).reinstall_max || 2;
+    const soon = st[0] === "run" && ms !== null && ms < 864e5;
+    const mt = pcMaint(), canPow = (st[0] === "run" || st[0] === "warn") && !mt, canCtl = canPow || (st[0] === "boot" && !mt);   // đang khởi động lại: vẫn mở được (máy lên là vào)
+    const pw = st[0] === "boot" || st[0] === "down" || st[0] === "offd";
+    const gpu = A(pc.gpus).map(g => S(g, 40)).filter(Boolean)[0] || "";
+    const spec = [S(it.os_name, 40), gpu, pc.ram_gb ? Math.round(+pc.ram_gb) + "GB RAM" : ""].filter(Boolean).join(" · ");
+    const acts = it.rental === null && !it.pc ? "" : [
+      pc.id ? (canCtl ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(pc.id, 40))}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`) : "",
+      pc.id && canCtl ? `<button class="btn ghost sm" type="button" data-pcsapp="${esc(S(pc.id, 40))}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
+      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsre="${esc(S(pc.id, 40))}"${mt || st[0] === "inst" || st[0] === "exp" || +it.left < 1 ? " disabled" : ""} title="${esc(L("Cài lại / đổi bản Windows", "Reinstall / switch Windows"))}">🔄 ${L("Cài lại", "Reinstall")} <small>${+it.left || 0}/${max}</small></button>` : "",
+      it.rental && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcsrenew="${esc(S(pc.id, 40))}">⏱ ${L("Gia hạn", "Renew")}</button>` : "",
+      O(PC.mine).power && it.state === "active" && pc.id ? `<button class="btn ghost sm" type="button" data-pcspow="${esc(S(pc.id, 40))}"${canPow ? "" : " disabled"} title="${esc(L("Khởi động lại / tắt máy", "Restart / shut down"))}">⏻ ${L("Nguồn", "Power")}</button>` : "",
+      O(PC.mine).cancel && it.state === "active" && pc.id ? `<button class="btn danger sm pcs-cxl" type="button" data-pcscxl="${esc(S(pc.id, 40))}" title="${esc(L("Trả máy cho shop: xoá sạch dữ liệu, không hoàn tiền", "Give the machine back: all data erased, no refund"))}">🗑 ${L("Huỷ máy", "Cancel")}</button>` : ""
+    ].join("");
+    return `<div class="m3m-card pcs-card${st[0] === "run" ? " run" : ""}${soon || st[0] === "exp" || st[0] === "wait" || pw ? " soon" : ""}">
+      <div class="m3m-top"><span class="pill${st[0] === "run" ? " ok" : st[0] === "exp" || st[0] === "warn" ? " bad" : ""}">${esc(st[1])}</span>${pc.code ? `<span class="pill">№ ${esc(S(pc.code, 24))}</span>` : ""}</div>
+      <b class="m3m-nm">${esc(S(pc.name, 40) || L("VPS GPU", "GPU VPS"))}${it.days ? `<small>${+it.days} ${L("ngày", "days")}</small>` : ""}</b>
+      <small class="m3m-spec">${esc(spec)}</small>
+      ${st[2] ? `<div class="pcs-st${st[0] === "exp" || st[0] === "warn" ? " bad" : st[0] === "off" || pw ? " warn" : ""}">${esc(st[2])}${st[0] === "warn" && S(O(pc.last_job).msg, 120) ? " — " + esc(S(O(pc.last_job).msg, 120)) : ""}</div>` : ""}
+      ${st[0] === "end" && T(it.hide_at) !== null ? `<div class="hint pcs-hide">🕒 ${L("Thẻ này tự ẩn lúc", "This card disappears at")} ${hm(T(it.hide_at))}</div>` : ""}
+      ${st[0] === "inst" ? progHTML("inst", O(pc.job).at, S(O(pc.job).os, 12), it) : st[0] === "wait" ? progHTML("wait", it.created_at, "", it) : ""}
+      ${st[0] === "warn" ? `<button class="btn ghost sm pcs-rep" type="button" data-pcsrep="${esc(String(it.rental || ""))}">📋 ${L("Báo admin (copy nội dung gửi shop)", "Report to the admin")}</button>` : ""}
+      ${st[0] === "exp" && T(it.grace_until) !== null && T(it.grace_until) > Date.now() ? `<div class="m3m-exp warn">⏳ ${L("Còn", "")} <b data-cd="${esc(S(it.grace_until, 40))}">${typeof cdText === "function" ? cdText(it.grace_until) : ""}</b> ${L("để gia hạn giữ máy", "left to renew")}</div>` : ""}
+      ${it.state === "active" && ms !== null && ms > 0 ? `<div class="m3m-exp${soon ? " warn" : ""}">${L("Còn", "")} <b data-cd="${esc(S(it.until, 40))}">${typeof cdText === "function" ? cdText(it.until) : ""}</b>${L("", " left")}</div>` : ""}
+      <div class="m3m-acts">${acts}</div></div>`;
+  }
+  function mineRender() {
+    try { navPaint(); vmPaint(); } catch (e) {}
+    const s = mineBox(); if (!s) return;
+    const now = Date.now(), items = A(O(PC.mine).items).filter(x => !(T(x.hide_at) !== null && T(x.hide_at) <= now));
+    const nextHide = Math.min(...items.map(x => T(x.hide_at)).filter(t => t !== null && t > now), Infinity);
+    clearTimeout(PC.ht); if (nextHide < Infinity) PC.ht = setTimeout(mineRender, Math.min(nextHide - now + 500, 2147483000));
+    s.hidden = !me() || !items.length; if (s.hidden) return;
+    const run = items.filter(x => x.state === "active").length, wait = items.filter(x => x.state === "waiting").length;
+    $i("pcs-mine-n").textContent = L(`${run} máy đang thuê`, `${run} active`) + (wait ? L(` · ${wait} đang chờ máy`, ` · ${wait} waiting`) : "");
+    const mb = $i("pcs-mine-multi");                                  // 21.11k: ≥ 2 máy đang bật → mở nhiều máy cùng lúc trên web (play.html?multi=pc)
+    if (mb) mb.hidden = pcMaint() || items.filter(x => x.state === "active" && O(x.pc).id && O(x.pc).online && !O(x.pc).lock && O(x.pc).remote !== false).length < 2;
+    const mtS = $i("pcs-mine-mt"); if (mtS) mtS.innerHTML = maintBar();
+    $i("pcs-mine-list").innerHTML = items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("");
+    progTick();
+    const busyNow = items.some(x => x.state === "waiting" || O(O(x.pc).job).state || ["boot", "down"].includes(stateOf(x)[0]));
+    clearTimeout(PC.mt); PC.mt = setTimeout(() => mine(true), busyNow ? 15000 : 60000);
+  }
+  // ---- cài lại / đổi Windows
+  document.addEventListener("click", async e => {
+    const b = e.target.closest && e.target.closest("[data-pcsre],[data-pcsrenew],[data-pcsreos],[data-pcsgo2],[data-pcsplan],[data-pcsrnew],[data-pcsapp],[data-pcscxl],[data-pcscxgo],[data-pcspow],[data-pcspgo]"); if (!b) return;
+    if (b.dataset.pcsapp) return appOpen(b.dataset.pcsapp);
+    if (b.dataset.pcspow) return powOpen(b.dataset.pcspow);
+    if (b.dataset.pcspgo) return powGo(b);
+    if (b.dataset.pcscxl) return cxlOpen(b.dataset.pcscxl);
+    if (b.dataset.pcscxgo) return cxlGo(b);
+    if (b.dataset.pcsre) return reOpen(b.dataset.pcsre);
+    if (b.dataset.pcsrenew) return renewOpen(b.dataset.pcsrenew);
+    if (b.dataset.pcsreos) { PC.reos = b.dataset.pcsreos; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); return; }
+    if (b.dataset.pcsplan) { PC.rdays = +b.dataset.pcsplan; b.parentElement.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); renewSum(); return; }
+    if (b.dataset.pcsgo2) return reGo(b);
+    if (b.dataset.pcsrnew) return renewGo(b);
+  });
+  const itemOf = id => A(O(PC.mine).items).find(x => O(x.pc).id === id);
+  // ---- 📲 mở máy PC bằng app (app máy tính 1.127+ / app Android 1.132+ hiểu link blueroblox://pc/<máy>) hoặc ngay trên trình duyệt
+  function appOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    if (pcMaint()) { toast(pcMaintMsg(), 1); return; }
+    const pid = encodeURIComponent(S(id, 40)), ua = navigator.userAgent;
+    const isAnd = /Android/i.test(ua), isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webFirst = isIos || /Macintosh|Mac OS X/.test(ua);
+    const pcDl = typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe", apk = typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+    const lPc = "blueroblox://pc/" + pid, lAnd = "intent://pc/" + pid + "#Intent;scheme=blueroblox;package=shop.blueroblox.app;S.browser_fallback_url=" + encodeURIComponent(location.origin + apk) + ";end";
+    const sPc = `<div class="shsec"><b>💻 ${L("App máy tính (Windows)", "PC app (Windows)")}</b>
+        <a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(lPc)}" data-pcsx="1">▶ ${L("Mở bằng app máy tính", "Open with the PC app")}</a>
+        <a class="btn ghost sm" href="${esc(pcDl)}" download>⬇️ ${L("Tải app máy tính", "Download the PC app")}</a></div>`;
+    const sAnd = `<div class="shsec"><b>📱 ${L("App Android", "Android app")}</b>${isAnd
+        ? `<a class="btn" href="${esc(lAnd)}" data-pcsx="1">▶ ${L("Mở bằng app Android", "Open with the Android app")}</a><a class="btn ghost sm" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`
+        : `<a class="btn ghost" href="${esc(apk)}" download>⬇️ ${L("Tải app Android", "Download the Android app")}</a>`}</div>`;
+    const sWeb = `<div class="shsec"><b>🌐 ${L("Trình duyệt (iPhone, iPad, Mac, máy chưa cài app)", "Browser (iPhone, iPad, Mac, any device)")}</b>
+        <a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${pid}">▶ ${L("Mở ngay trên trình duyệt", "Open in the browser")}</a></div>`;
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">📲 ${L("Mở máy trong app", "Open in app")}</h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="hint">🖥️ <b>${esc(S(O(it.pc).name, 40) || "VPS GPU")}</b>${it.os_name ? " · " + esc(S(it.os_name, 40)) : ""}</div>
+      ${webFirst ? sWeb + sPc + sAnd : isAnd ? sAnd + sPc + sWeb : sPc + sAnd + sWeb}
+      <p class="hint" style="margin:0">💡 ${L("Cần app máy tính 1.127 / app Android 1.132 trở lên (app tự báo cập nhật). Đăng nhập cùng tài khoản là thấy máy ở mục <b>VPS GPU</b>.", "Needs PC app 1.127 / Android app 1.132 or newer (the app offers the update). Sign in with the same account to see the machine under <b>GPU VPS</b>.")}</p>`);
+  }
+  function reOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    if (pcMaint()) { toast(pcMaintMsg(), 1); return; }
+    const os = A(O(PC.mine).os); PC.reid = id; PC.reos = it.os && os.some(o => o.id === it.os) ? it.os : (os[0] || {}).id;
+    dlg(`<h3 style="margin:0">🔄 ${L("Cài lại / đổi Windows", "Reinstall / switch Windows")}</h3>
+      <div class="hint">${L("Máy", "Machine")} <b>${esc(S(O(it.pc).name, 40))}</b> · ${L("còn", "")} <b>${+it.left}/${+O(PC.mine).reinstall_max || 2}</b> ${L("lượt trong lượt thuê này", "left in this rental")}</div>
+      <div class="vps-opts">${os.map(o => `<button type="button" data-pcsreos="${esc(o.id)}" class="${o.id === PC.reos ? "on" : ""}"><b>${esc(S(o.name, 60))}</b><small>${o.id === it.os ? L("bản đang dùng — cài lại sạch", "current — clean reinstall") : L("đổi sang bản này", "switch to this")}</small></button>`).join("")}</div>
+      <div class="pcs-how">⚠️ ${L("Chỉ xoá <b>ổ C: (Windows)</b> — ổ khác giữ nguyên. Máy khởi động lại và cài trong <b>15–30 phút</b>, xong tự vào lại được. Dữ liệu ổ C: <b>không lấy lại được</b>.", "Only <b>drive C: (Windows)</b> is erased — other drives are kept. Takes <b>15–30 min</b>. Data on C: <b>cannot be recovered</b>.")}</div>
+      <div class="err" id="pcs-re-err"></div>
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">${L("Huỷ", "Cancel")}</button><button class="btn" type="button" data-pcsgo2="1">${L("Cài lại ngay", "Reinstall now")}</button></div>`);
+  }
+  async function reGo(b) {
+    const it = itemOf(PC.reid); if (!it || !PC.reos) return;
+    if (!confirm(L(`Cài lại máy ${S(O(it.pc).name, 40)} sang ${S(PC.reos, 12).toUpperCase()}?\n\nỔ C: bị xoá, không lấy lại được.`, `Reinstall ${S(O(it.pc).name, 40)} with ${S(PC.reos, 12).toUpperCase()}?\n\nDrive C: will be erased.`))) return;
+    await busy(b, async () => {
+      const { data, error } = await sb.rpc("pc_my_reinstall", { p_pc: PC.reid, p_os: PC.reos });
+      if (error) { const x = $i("pcs-re-err"); if (x) x.textContent = em(error); return; }
+      $i("pcsdlg").hidden = true; toast(L(`Đã gửi lệnh cài lại — còn ${+O(data).left} lượt.`, `Reinstall started — ${+O(data).left} left.`)); mine(true);
+    });
+  }
+  // ---- 🗑 khách tự huỷ máy (SQL v45 pc_my_cancel): gỡ máy khỏi tài khoản → shop thu hồi, xoá sạch, về kho — KHÔNG hoàn tiền
+  function cxlOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    PC.cxid = id;
+    const pc = O(it.pc), ms = left(it.until), rest = ms !== null && ms > 0 && typeof cdText === "function" ? cdText(it.until) : "";
+    dlg(`<h3 style="margin:0">🗑 ${L("Huỷ máy", "Cancel machine")} <b>${esc(S(pc.name, 40))}</b>?</h3>
+      <div class="pcs-how pcs-cx-warn">⚠️ ${L("Máy bị <b>gỡ khỏi tài khoản của bạn ngay</b>. Shop thu hồi máy và <b>xoá sạch toàn bộ dữ liệu (mọi ổ đĩa)</b> để giao khách khác.", "The machine is <b>removed from your account right away</b>. The shop takes it back and <b>erases all data (every drive)</b>.")}
+        <br>💸 <b>${L("KHÔNG hoàn tiền", "NO refund")}</b>${rest ? L(` phần thời gian còn lại (<b>${esc(rest)}</b>)`, ` for the remaining time (<b>${esc(rest)}</b>)`) : ""}. ${L("Không hoàn tác được.", "This cannot be undone.")}</div>
+      <label class="pcs-ack"><input type="checkbox" id="pcs-cx-ok"> ${L("Tôi hiểu: mất hết dữ liệu, không hoàn tiền", "I understand: all data is erased, no refund")}</label>
+      <div class="err" id="pcs-cx-err"></div>
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">${L("Giữ máy", "Keep it")}</button><button class="btn danger" type="button" data-pcscxgo="1" disabled>🗑 ${L("Huỷ máy", "Cancel machine")}</button></div>`);
+    const cb = $i("pcs-cx-ok"), go = document.querySelector("#pcsdlg [data-pcscxgo]");
+    if (cb && go) cb.addEventListener("change", () => { go.disabled = !cb.checked; });
+  }
+  async function cxlGo(b) {
+    const it = itemOf(PC.cxid), cb = $i("pcs-cx-ok"); if (!it || !cb || !cb.checked) return;
+    await busy(b, async () => {
+      const { error } = await sb.rpc("pc_my_cancel", { p_pc: PC.cxid });
+      if (error) { const x = $i("pcs-cx-err"); if (x) x.textContent = em(error); return; }
+      $i("pcsdlg").hidden = true; toast(L("Đã huỷ máy — máy đang được xoá sạch và trả về shop.", "Machine cancelled — it is being wiped and returned to the shop.")); mine(true);
+    });
+  }
+  // ---- ⏻ khách tự khởi động lại / tắt máy (SQL v48 pc_my_power) — máy phải đang bật; TẮT = tắt hẳn, shop bật nguồn lại giúp (shop được báo ngay)
+  function powOpen(id) {
+    const it = itemOf(id); if (!it) return;
+    if (pcMaint()) { toast(pcMaintMsg(), 1); return; }
+    PC.pwid = id;
+    dlg(`<div style="display:flex;align-items:center;gap:10px"><h3 style="margin:0">⏻ ${L("Nguồn máy", "Power")} <b>${esc(S(O(it.pc).name, 40))}</b></h3><button class="btn ghost sm" type="button" data-pcsx="1" style="margin-left:auto">${L("Đóng", "Close")}</button></div>
+      <div class="pcs-pow">
+        <div class="pcs-how"><b>🔁 ${L("Khởi động lại", "Restart")}</b>
+          <span>${L("Máy tắt rồi <b>tự bật lại</b> — thường 1–3 phút là dùng tiếp được. Chương trình đang mở bị đóng, dữ liệu đã lưu giữ nguyên.", "The machine turns off and <b>back on by itself</b> — usually ready again in 1–3 minutes. Open programs are closed; saved data is kept.")}</span>
+          <button class="btn" type="button" data-pcspgo="reboot">🔁 ${L("Khởi động lại ngay", "Restart now")}</button></div>
+        <div class="pcs-how pcs-cx-warn"><b>⏻ ${L("Tắt máy", "Shut down")}</b>
+          <span>${L("Máy <b>tắt hẳn</b>, không tự bật lại. Muốn dùng lại phải <b>nhắn shop bật nguồn</b> giúp — thời gian thuê vẫn tính.", "The machine <b>stays off</b> — it does not turn back on by itself. To use it again, <b>ask the shop to power it on</b>. Rental time keeps counting.")}</span>
+          <label class="pcs-ack"><input type="checkbox" id="pcs-pw-ok"> ${L("Tôi hiểu: máy tắt hẳn, cần nhắn shop bật lại", "I understand: it stays off until the shop powers it on")}</label>
+          <button class="btn danger" type="button" data-pcspgo="shutdown" disabled>⏻ ${L("Tắt máy", "Shut down")}</button></div>
+      </div>
+      <div class="err" id="pcs-pw-err"></div>`);
+    const cb = $i("pcs-pw-ok"), go = document.querySelector('#pcsdlg [data-pcspgo="shutdown"]');
+    if (cb && go) cb.addEventListener("change", () => { go.disabled = !cb.checked; });
+  }
+  async function powGo(b) {
+    const cmd = b.dataset.pcspgo, it = itemOf(PC.pwid); if (!it || (cmd !== "reboot" && cmd !== "shutdown")) return;
+    if (cmd === "shutdown") { const cb = $i("pcs-pw-ok"); if (!cb || !cb.checked) return; }
+    await busy(b, async () => {
+      const { data, error } = await sb.rpc("pc_my_power", { p_pc: PC.pwid, p_cmd: cmd });
+      if (error) { const x = $i("pcs-pw-err"); if (x) x.textContent = em(error); return; }
+      $i("pcsdlg").hidden = true;
+      toast(O(data).dup ? L("Máy đang có lệnh chờ nhận — đợi chút là chạy.", "A command is already on its way — it runs in a moment.")
+        : cmd === "reboot" ? L("Đã gửi lệnh khởi động lại — máy lên lại sau khoảng 1–3 phút.", "Restart sent — the machine is back in about 1–3 minutes.")
+        : L("Đã gửi lệnh tắt máy — máy tắt sau khoảng 10 giây. Cần dùng lại thì nhắn shop bật nguồn.", "Shutdown sent — it turns off in about 10 seconds. Ask the shop to power it back on."));
+      mine(true);
+    });
+  }
+  // ---- gia hạn
+  const prodOf = () => { const id = S(O(PC.mine).product, 40) || S(O(PC.info).product, 40); try { return P.find(p => p.id === id) || null; } catch (e) { return null; } };
+  function renewSum() {
+    const p = prodOf(), pl = p ? plansOf(p).find(x => +x.days === PC.rdays) : null, u = me(), x = $i("pcs-rn-sum"); if (!x) return;
+    let price = pl ? +pl.price : 0; try { if (pl && typeof cv === "function") price = cv(price); } catch (e) {}
+    x.innerHTML = pl ? `${L("Thanh toán", "Total")}: <b>${fmt(price)}</b> · ${L("số dư", "balance")} ${u ? fmt(u.balance) : "—"}` : "";
+  }
+  function renewOpen(id) {
+    const it = itemOf(id), p = prodOf(); if (!it) return;
+    if (!p) { toast(L("Chưa tải được bảng giá — thử lại sau ít giây.", "Prices not loaded yet — try again."), 1); return; }
+    const pl = plansOf(p); PC.rnid = id; PC.rdays = +(pl[0] || {}).days || 0;
+    dlg(`<h3 style="margin:0">⏱ ${L("Gia hạn VPS GPU", "Renew GPU VPS")}</h3>
+      <div class="hint">${L("Máy", "Machine")} <b>${esc(S(O(it.pc).name, 40))}</b> · ${L("hết hạn", "expires")} ${esc(new Date(T(it.until) || Date.now()).toLocaleString())}</div>
+      <div class="vps-opts">${pl.map(x => `<button type="button" data-pcsplan="${+x.days}" class="${+x.days === PC.rdays ? "on" : ""}"><b>+${+x.days} ${L("ngày", "days")}</b><small>${fmt(+x.price)}</small></button>`).join("")}</div>
+      <div class="hint" id="pcs-rn-sum"></div><div class="err" id="pcs-rn-err"></div>
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">${L("Huỷ", "Cancel")}</button><button class="btn" type="button" data-pcsrnew="1">${L("Gia hạn", "Renew")}</button></div>`);
+    renewSum();
+  }
+  async function renewGo(b) {
+    if (!PC.rnid || !PC.rdays) return;
+    await busy(b, async () => {
+      const { data, error } = await sb.rpc("pc_my_renew", { p_pc: PC.rnid, p_days: PC.rdays });
+      if (error) { const x = $i("pcs-rn-err"); if (x) x.textContent = /INSUFFICIENT_BALANCE/.test(String(error.message)) ? L("Số dư không đủ — nạp thêm rồi gia hạn.", "Not enough balance — top up first.") : em(error); return; }
+      $i("pcsdlg").hidden = true;
+      const held = A(O(PC.mine).items).find(x => O(x.pc).id === PC.rnid && T(x.grace_until) !== null);
+      toast(O(data).was_off ? L("Đã gia hạn. Máy đã tắt lúc hết hạn — shop sẽ bật lại cho bạn.", "Renewed. The shop will turn the machine back on.")
+        : held ? L("Đã gia hạn — máy tự mở lại sau khoảng 1–2 phút, dữ liệu giữ nguyên.", "Renewed — the machine unlocks in about 1–2 minutes.") : L("Đã gia hạn.", "Renewed."));
+      await Promise.all([loadProfile(), mine(true)]).catch(() => {}); try { renderUser(); } catch (e) {}
+    });
+  }
+
+  // ---------------------------------------------------------------- ADMIN: đơn VPS GPU (trong thẻ 💻 Máy PC) + dải báo đơn chờ ở mọi thẻ
+  const RS = { waiting: ["⏳ Chờ máy", "bad"], active: ["● Đang thuê", "ok"], ended: ["■ Đã kết thúc", ""], cancelled: ["✕ Đã huỷ", ""] };
+  function admBox() {
+    let b = $i("pcs-adm"); const pane = $i("pane-pc");
+    if (!b && pane) {
+      b = document.createElement("div"); b.className = "pcs-adm"; b.id = "pcs-adm"; b.hidden = true;
+      b.innerHTML = `<h4>🛒 Đơn VPS GPU <span class="pill" id="pcs-adm-on"></span><span class="hint" id="pcs-adm-sum"></span>
+          <span style="margin-left:auto;display:flex;gap:6px"><button class="btn ghost sm" type="button" id="pcs-adm-set">⚙ Cài đặt bán</button><button class="btn ghost sm" type="button" id="pcs-adm-reload">Tải lại</button></span></h4>
+        <div class="pcs-wait" id="pcs-adm-wait" hidden></div>
+        <div class="pcs-set" id="pcs-adm-setbox" hidden>
+          <label>Sản phẩm bán tự động <select class="in" id="pcs-set-prod"></select></label>
+          <label>Khách tự cài lại / đổi Windows <input class="in" type="number" id="pcs-set-max" min="0" max="20" step="1" style="width:70px"> lần / lượt thuê</label>
+          <span>Bản Windows bán: <label><input type="checkbox" id="pcs-set-22h2"> 22H2</label> <label><input type="checkbox" id="pcs-set-1511"> 1511</label></span>
+          <div class="pcs-rc" id="pcs-rc" hidden>
+            <b>♻️ Tự thu hồi máy hết hạn</b>
+            <label><input type="checkbox" id="pcs-rc-on"> Bật</label>
+            <label>Chờ khách gia hạn <input class="in" type="number" id="pcs-rc-grace" min="0" max="1440" step="5" style="width:72px"> phút</label>
+            <label>Tự cài sạch ở mốc <input class="in" type="number" id="pcs-rc-clean" min="0" max="10080" step="5" style="width:80px"> phút sau lúc hết hạn</label>
+            <label>Cài sẵn <select class="in" id="pcs-rc-os"></select></label>
+            <label><input type="checkbox" id="pcs-rc-off"> Cài sạch xong tự tắt máy</label>
+            <div class="hint" style="flex-basis:100%">Khách hết hạn: máy <b>khoá</b> (gia hạn trong thời gian chờ là máy tự mở lại, giữ nguyên dữ liệu) → quá thời gian chờ: lượt thuê <b>tự kết thúc</b>, máy về kho → tới mốc cài sạch: tự <b>xoá sạch mọi ổ + cài Windows</b> chọn ở trên → xong <b>tự tắt</b>. Có khách mới: bật máy lên, hệ thống tự giao trong 1 phút (hoặc bấm 🤝 Bàn giao) — giao ngay, không phải chờ cài. Đang có đơn chờ máy thì máy vừa thu hồi giao luôn cho đơn đó.</div>
+          </div>
+          <div class="pcs-rc" id="pcs-ca-box" hidden>
+            <b>🔑 Quyền của khách trên máy thuê</b>
+            <label><input type="checkbox" id="pcs-ca"> Cho khách quyền <b>Admin</b> — chạy được app cần quyền Admin (vd executor Roblox: Volt, Wave…)</label>
+            <div class="hint" style="flex-basis:100%">Bật: máy tự thêm tài khoản khách vào nhóm Administrators trong ~1 phút (cần agent 21.11h), khách <b>khởi động lại máy 1 lần</b> là dùng được — app cần Admin chỉ hiện hộp Có / Không, không hỏi mật khẩu. Tắt: máy tự hạ khách về tài khoản thường (an toàn hơn: khách không gỡ được phần mềm quản lý của shop).</div>
+          </div>
+          <button class="btn sm" type="button" id="pcs-set-save">Lưu</button>
+          <div class="hint" style="flex-basis:100%">Bật rồi: khách mua sản phẩm này → hệ thống tự chọn máy <b>Sẵn sàng + online + chưa gán khách</b> → giao + cài đúng Windows. Ưu tiên máy vừa cài sạch đúng bản (giao ngay, không cài lại). Máy khách cũ trả: tự <b>xoá sạch mọi ổ</b> rồi cài. Không có máy → đơn chờ, dải đỏ hiện ở mọi thẻ; bật máy lên là máy tự nhận đơn trong 1 phút. Máy để <b>Bảo trì</b> không bao giờ bị giao.</div>
+        </div>
+        <div class="tbl"><table><thead><tr><th>Khách</th><th>Gói</th><th>Máy</th><th>Hạn</th><th>Cài lại</th><th></th></tr></thead><tbody id="pcs-adm-tbl"></tbody></table></div>`;
+      pane.insertBefore(b, pane.querySelector(".tiles") || pane.firstChild);
+      $i("pcs-adm-reload").onclick = () => adm(true);
+      $i("pcs-adm-set").onclick = () => { const x = $i("pcs-adm-setbox"); x.hidden = !x.hidden; if (!x.hidden) setFill(); };
+      $i("pcs-set-save").onclick = e => setSave(e.currentTarget);
+      $i("pcs-adm-tbl").onclick = admClick;
+    }
+    return b;
+  }
+  async function adm(force) {
+    if (!isAdm()) { PC.adm = null; admRender(); return; }
+    if (PC.admBusy || (!force && PC.adm && Date.now() - PC.admAt < 20000)) { admRender(); return; }
+    PC.admBusy = true;
+    try { const { data, error } = await sb.rpc("pc_admin_rentals"); PC.adm = error ? (missing(error) ? { miss: true } : PC.adm) : O(data); PC.admAt = Date.now(); }
+    catch (e) {} finally { PC.admBusy = false; }
+    admRender();
+  }
+  function admRender() {
+    const D = O(PC.adm), on = isAdm() && !D.miss && PC.adm;
+    const rs = A(D.rentals), wait = rs.filter(r => r.state === "waiting");
+    // dải đỏ ở mọi thẻ của Bảng quản trị
+    let bar = $i("pcs-waitbar");
+    if (!bar) { const host = $i("pca-rentbar") || $i("adm-alert"); if (host) { bar = document.createElement("div"); bar.id = "pcs-waitbar"; bar.className = "pcs-wait"; bar.hidden = true; host.after(bar);
+      bar.onclick = () => { const t = document.querySelector('[data-tab="pc"]'); if (t) t.click(); setTimeout(() => { const b = $i("pcs-adm"); if (b) b.scrollIntoView({ behavior: "smooth", block: "start" }); }, 80); }; } }
+    if (bar) { bar.hidden = !on || !wait.length;
+      if (!bar.hidden) bar.innerHTML = `🛒 <b>${wait.length} đơn VPS GPU đang chờ máy</b> — khách đã trả tiền: ${wait.slice(0, 3).map(r => esc(S(O(r.user).username, 30)) + " (" + esc(S(r.os_name, 30)) + ", " + (+r.days) + " ngày, chờ " + ago(r.created_at) + ")").join(" · ")}${wait.length > 3 ? " …" : ""}. Bật 1 máy lên (máy tự nhận đơn trong 1 phút) hoặc bấm để <b>Bàn giao</b>.`; }
+    const b = admBox(); if (!b) return;
+    b.hidden = !on; if (!on) return;
+    let mtOn = false; try { mtOn = !!SITE.pc_maint; } catch (e) {}
+    $i("pcs-adm-on").textContent = mtOn ? "🛠️ Đang bảo trì" : D.product ? "Đang bán tự động" : "Chưa bật"; $i("pcs-adm-on").className = "pill " + (mtOn ? "wt" : D.product ? "ok" : "bad");
+    $i("pcs-adm-on").title = mtOn ? "Bảo trì riêng VPS GPU đang BẬT — tắt ở Cài đặt → Bảo trì" : "";
+    const act = rs.filter(r => r.state === "active").length, fr = A(D.free), frOn = fr.filter(m => m.online).length;
+    $i("pcs-adm-sum").textContent = `${act} đang thuê · ${wait.length} chờ máy · kho trống ${fr.length} máy (${frOn} online)`;
+    const w = $i("pcs-adm-wait"); w.hidden = !wait.length;
+    if (wait.length) w.innerHTML = `⏳ <b>${wait.length} đơn chờ máy.</b> Máy trống đang online: <b>${frOn}</b>${frOn ? " — hệ thống sẽ tự giao trong 1 phút." : ". Bật máy lên (để trạng thái Sẵn sàng) hoặc bấm <b>Bàn giao</b> ở từng đơn."}`;
+    const tm = t => { const x = T(t); return x === null ? "—" : new Date(x).toLocaleString("vi-VN", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" }); };
+    $i("pcs-adm-tbl").innerHTML = rs.length ? rs.map(r => {
+      const st = RS[r.state] || [esc(r.state), ""], pc = O(r.pc), u = O(r.user), ms = left(r.until);
+      return `<tr data-r="${+r.id}"><td><b>${esc(S(u.username, 40))}</b><div class="hint">${esc(S(u.email, 60))}</div>${r.note ? `<div class="hint">📝 ${esc(S(r.note, 120))}</div>` : ""}</td>
+        <td><span class="pill ${st[1]}">${st[0]}</span><div class="hint">${esc(S(r.os_name, 40))} · ${+r.days} ngày${r.total ? " · " + fmt(+r.total) : ""}</div><div class="hint">mua ${ago(r.created_at)}</div>${r.end_why === "expired" ? '<div class="hint">♻️ tự thu hồi: hết hạn không gia hạn</div>' : ""}</td>
+        <td>${pc.id ? `<b>${esc(S(pc.name, 40))}</b>${pc.code ? ` <span class="pill">№ ${esc(S(pc.code, 24))}</span>` : ""}<div class="hint">${pc.online ? "● online" : "○ offline"}${pc.job ? " · ⚙ đang cài " + esc(S(pc.os, 12).toUpperCase()) : " · " + esc(S(pc.os, 12).toUpperCase())}${pc.off ? " · đã tự tắt (hết hạn)" : ""}${pc.lock ? " · 🔒 đã khoá (hết hạn)" : ""}</div>` : '<span class="hint">—</span>'}</td>
+        <td>${r.state === "active" ? `${tm(r.until)}<div class="hint">${ms !== null && ms <= 0 ? '<b style="color:var(--bad)">đã hết hạn</b>' : "còn " + (typeof cdText === "function" ? cdText(r.until) : "")}</div>${T(r.grace_until) !== null ? `<div class="hint">⏳ giữ máy tới ${tm(r.grace_until)} — quá giờ tự thu hồi</div>` : ""}` : r.ended_at ? `<span class="hint">kết thúc ${ago(r.ended_at)}</span>` : "—"}</td>
+        <td>${r.state === "active" || r.state === "waiting" ? `<b>${+r.left}</b> còn<div class="hint">đã dùng ${+r.used}</div>` : `<span class="hint">${+r.used} lần</span>`}</td>
+        <td><div class="pcs-acts">${r.state === "waiting" || r.state === "active" ? `<button class="btn ${r.state === "waiting" ? "" : "ghost "}sm" type="button" data-ra="hand">${r.state === "waiting" ? "🤝 Bàn giao" : "↔ Đổi máy"}</button>
+          <button class="btn ghost sm" type="button" data-ra="plus" title="Cộng thêm 1 lượt cài lại cho khách">+1 lượt</button>
+          <button class="btn ghost sm" type="button" data-ra="note">📝</button>
+          <button class="btn ghost sm" type="button" data-ra="end">${r.state === "waiting" ? "Huỷ đơn" : "Thu hồi"}</button>` : ""}</div></td></tr>`;
+    }).join("") : `<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:18px">${D.product ? "Chưa có đơn VPS GPU nào." : "Chưa bật bán tự động — bấm ⚙ Cài đặt bán, chọn sản phẩm VPS GPU."}</td></tr>`;
+  }
+  function setFill() {
+    const D = O(PC.adm); let prods = []; try { prods = P.filter(p => p.cat === "vps"); } catch (e) {}
+    $i("pcs-set-prod").innerHTML = `<option value="">— Tắt bán tự động —</option>` + prods.map(p => `<option value="${esc(p.id)}"${p.id === D.product ? " selected" : ""}>${esc(S(p.name, 60))}</option>`).join("");
+    $i("pcs-set-max").value = +D.reinstall_max >= 0 ? +D.reinstall_max : 2;
+    const ids = A(D.os).map(o => o.id); $i("pcs-set-22h2").checked = !ids.length || ids.includes("22h2"); $i("pcs-set-1511").checked = !ids.length || ids.includes("1511");
+    const rc = D.reclaim && typeof D.reclaim === "object" ? D.reclaim : null; $i("pcs-rc").hidden = !rc;      // chưa chạy SQL v44 → ẩn
+    const cab = $i("pcs-ca-box");                                    // 21.11k (SQL v46): công tắc "Cho khách quyền Admin" — chưa chạy v46 thì ẩn
+    if (cab) { cab.hidden = true; Promise.resolve(sb.rpc("pc_admin_flags")).then(r => { const d = O(r && r.data); if (!r || r.error || typeof d.cust_admin !== "boolean") return;
+      $i("pcs-ca").checked = d.cust_admin; $i("pcs-ca").dataset.was = d.cust_admin ? "1" : "0"; cab.hidden = false; }).catch(() => {}); }
+    if (rc) {
+      $i("pcs-rc-on").checked = rc.on !== false; $i("pcs-rc-off").checked = rc.off !== false;
+      $i("pcs-rc-grace").value = +rc.grace_min >= 0 ? +rc.grace_min : 30; $i("pcs-rc-clean").value = +rc.clean_min >= 0 ? +rc.clean_min : 60;
+      $i("pcs-rc-os").innerHTML = `<option value="">Bản đầu tiên đang bán</option>` + [["22h2", "Windows 10 Pro 22H2"], ["1511", "Windows 10 Pro 1511"]].map(x => `<option value="${x[0]}"${rc.os === x[0] ? " selected" : ""}>${x[1]}</option>`).join("");
+    }
+  }
+  async function setSave(btn) {
+    const os = [["22h2", "Windows 10 Pro 22H2"], ["1511", "Windows 10 Pro 1511"]].filter(x => $i("pcs-set-" + x[0]).checked).map(x => ({ id: x[0], name: x[1] }));
+    if (!os.length) { toast("Chọn ít nhất 1 bản Windows.", 1); return; }
+    const prod = $i("pcs-set-prod").value || null, mx = Math.round(+$i("pcs-set-max").value);
+    let rc = null;
+    if (!$i("pcs-rc").hidden) {
+      const g = Math.round(+$i("pcs-rc-grace").value), c = Math.round(+$i("pcs-rc-clean").value);
+      if (!(g >= 0 && g <= 1440) || !(c >= g && c <= 10080)) { toast("Tự thu hồi: thời gian chờ 0–1440 phút, mốc cài sạch phải ≥ thời gian chờ (tối đa 10080 phút).", 1); return; }
+      rc = { on: $i("pcs-rc-on").checked, grace_min: g, clean_min: c, os: $i("pcs-rc-os").value || null, off: $i("pcs-rc-off").checked };
+    }
+    if (prod && !confirm("BẬT bán tự động cho sản phẩm này?\n\nKhách mua xong hệ thống tự giao máy PC trống đang online và cài Windows theo khách chọn. Máy đang Bảo trì không bị giao.")) return;
+    await busy(btn, async () => {
+      const patch = { product: prod, os, reinstall_max: mx }; if (rc) patch.reclaim = rc;
+      const { error } = await sb.rpc("pc_admin_sell", { p_patch: patch });
+      if (error) { toast(/BAD_RECLAIM/.test(String(error.message)) ? "Tự thu hồi: số phút không hợp lệ." : em(error), 1); return; }
+      const ca = $i("pcs-ca"), cab = $i("pcs-ca-box"); let caMsg = "";
+      if (cab && !cab.hidden && ca && (ca.checked ? "1" : "0") !== ca.dataset.was) {       // 21.11k: đổi công tắc quyền Admin của khách
+        const r2 = await sb.rpc("pc_admin_set_flags", { p_patch: { cust_admin: ca.checked } });
+        if (r2.error) { toast(em(r2.error), 1); return; }
+        ca.dataset.was = ca.checked ? "1" : "0";
+        caMsg = ca.checked ? " 🔑 Đã BẬT quyền Admin cho khách — máy tự áp dụng trong ~1 phút, khách khởi động lại máy 1 lần." : " 🔒 Đã TẮT quyền Admin của khách — máy tự hạ về tài khoản thường.";
+      }
+      toast((prod ? "Đã bật bán VPS GPU tự động." : "Đã tắt bán tự động.") + caMsg); $i("pcs-adm-setbox").hidden = true; await Promise.all([adm(true), info(true)]);
+    });
+  }
+  async function admCall(fn, args, okMsg, btn) {
+    const run = async () => { const { data, error } = await sb.rpc(fn, args); if (error) { toast(em(error), 1); return null; } if (okMsg) toast(okMsg); return data === null || data === undefined ? true : data; };
+    const r = await busy(btn || null, run); if (r !== null) { await adm(true); try { if (window.PCA && typeof PCA.reload === "function") PCA.reload(); } catch (e) {} } return r;
+  }
+  async function admClick(e) {
+    const b = e.target.closest("[data-ra]"), tr = b && b.closest("tr[data-r]"); if (!tr) return;
+    const r = A(O(PC.adm).rentals).find(x => +x.id === +tr.dataset.r); if (!r) return;
+    const u = S(O(r.user).username, 40), a = b.dataset.ra;
+    if (a === "plus") return admCall("pc_admin_rental_set", { p_rental: +r.id, p_patch: { add_reinstall: 1 } }, `Đã cộng 1 lượt cài lại cho ${u}.`, b);
+    if (a === "note") { const n = prompt("Ghi chú cho lượt thuê của " + u + " (chỉ admin thấy):", S(r.note, 300)); if (n === null) return; return admCall("pc_admin_rental_set", { p_rental: +r.id, p_patch: { note: n } }, "Đã lưu ghi chú.", b); }
+    if (a === "end") {
+      if (r.state === "waiting") {
+        const refund = confirm(`HUỶ đơn chờ máy của ${u}?\n\nOK = huỷ + HOÀN TIỀN vào số dư khách.\nCancel = không huỷ.`); if (!refund) return;
+        return admCall("pc_admin_rental_end", { p_rental: +r.id, p_refund: true }, "Đã huỷ đơn + hoàn tiền.", b);
+      }
+      if (!confirm(`THU HỒI máy ${S(O(r.pc).name, 40)} của ${u}?\n\nKhách mất quyền điều khiển ngay, lượt thuê kết thúc (không hoàn tiền). Máy về kho nhưng CHƯA sạch: giao người khác hệ thống sẽ tự xoá sạch + cài lại.`)) return;
+      return admCall("pc_admin_rental_end", { p_rental: +r.id, p_refund: false }, "Đã thu hồi máy.", b);
+    }
+    if (a === "hand") return handOpen(r);
+  }
+  function handOpen(r) {
+    const fr = A(O(PC.adm).free); PC.hr = r;
+    const ok = m => (m.online ? "● online" : "○ offline (lệnh chờ máy bật)") + (m.cleaning ? " · 🧽 đang tự cài sạch" : T(m.reclaim_at) !== null ? " · ♻️ tự cài sạch lúc " + hm(T(m.reclaim_at)) : "");
+    dlg(`<h3 style="margin:0">${r.state === "waiting" ? "🤝 Bàn giao máy" : "↔ Đổi máy"} cho ${esc(S(O(r.user).username, 40))}</h3>
+      <div class="hint">${esc(S(r.os_name, 40))} · ${+r.days} ngày. Chỉ hiện máy <b>trống</b> (Sẵn sàng, chưa gán khách, không đang cài).</div>
+      <div class="pcs-free">${fr.length ? fr.map((m, i) => `<label><input type="radio" name="pcs-hpc" value="${esc(m.id)}"${i === 0 ? " checked" : ""}><span><b>${esc(S(m.name, 40))}</b>${m.code ? " № " + esc(S(m.code, 24)) : ""}<br><small class="hint">${ok(m)} · đang chạy ${esc(S(m.os, 12).toUpperCase() || "?")} · ${m.clean ? "✓ sạch (vừa cài)" : "đã có khách dùng → sẽ xoá sạch"}${m.clean && m.os === r.os ? " · <b>giao ngay, không cần cài</b>" : ""}</small></span></label>`).join("")
+        : '<div class="hint">Không có máy trống. Đặt 1 máy về trạng thái <b>Sẵn sàng</b> (bỏ khách + hạn cũ bằng 🧼 Bàn giao ở bảng máy) rồi thử lại.</div>'}</div>
+      <label class="hint"><input type="checkbox" id="pcs-h-re"> Luôn cài lại Windows sạch (kể cả máy đã sạch đúng bản)</label>
+      <div class="err" id="pcs-h-err"></div>
+      <div class="acts"><button class="btn ghost" type="button" data-pcsx="1">Huỷ</button><button class="btn" type="button" id="pcs-h-go"${fr.length ? "" : " disabled"}>Bàn giao</button></div>`);
+    $i("pcs-h-go").onclick = async e => {
+      const pid = (document.querySelector('input[name="pcs-hpc"]:checked') || {}).value; if (!pid) return;
+      const res = await admCall("pc_admin_handover", { p_rental: +PC.hr.id, p_pc: pid, p_reinstall: $i("pcs-h-re").checked ? true : null }, "", e.currentTarget);
+      if (res) { $i("pcsdlg").hidden = true; toast(O(res).reinstall ? `Đã giao ${S(O(res).name, 40)} — máy đang tự cài ${S(PC.hr.os, 12).toUpperCase()}.` : `Đã giao ${S(O(res).name, 40)} — khách vào được ngay.`); }
+    };
+  }
+  // 🧼 Bàn giao ở bảng máy: máy đang thuộc 1 lượt thuê → kết thúc lượt đó
+  PC.releasePc = async id => {
+    if (!isAdm()) return;
+    const { data, error } = await sb.rpc("pc_admin_rentals"); if (error) return;
+    const r = A(O(data).rentals).find(x => x.state === "active" && O(x.pc).id === id);
+    if (r) { await sb.rpc("pc_admin_rental_end", { p_rental: +r.id, p_refund: false }); toast("Lượt thuê VPS GPU của " + S(O(r.user).username, 40) + " đã kết thúc — máy về kho."); }
+    adm(true);
+  };
+
+  // ---------------------------------------------------------------- "VPS của tôi" (menu bên): VPS GPU ở đầu hộp + số máy trên menu
+  const liveItems = () => me() ? A(O(PC.mine).items).filter(x => x.state === "active" || x.state === "waiting") : [];
+  function navPaint() {
+    const a = $i("nav-vps"), b = $i("vps-nav-badge"); if (!a || !b) return;
+    const n = liveItems().length;
+    a.classList.toggle("has", n > 0);
+    if (n > 0) { b.textContent = String(n); b.hidden = false; b.dataset.pcs = "1"; }
+    else if (b.dataset.pcs) { delete b.dataset.pcs; b.textContent = PC.oldSoon ? String(PC.oldSoon) : ""; b.hidden = !PC.oldSoon; }
+  }
+  // 22/11: "VPS của tôi" có thẻ "Tải app" đầy đủ như "ĐT đám mây của tôi" (app máy tính · app Android · iPhone / iPad / Mac · nhiều máy)
+  //        + thẻ video hướng dẫn A → Z (thay nút "Video hướng dẫn" nhỏ). Đang ở trong app Android thì không mời tải app.
+  function appBox(items) {
+    const ua = navigator.userAgent, inApp = /BlueRobloxApp\//.test(ua);
+    const isAnd = /Android/i.test(ua), isIos = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const webFirst = isIos || /Macintosh|Mac OS X/.test(ua);
+    const pcDl = typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe", apk = typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+    const exe = typeof CP_PC_EXE !== "undefined" && !!CP_PC_EXE;
+    let v = ""; try { v = typeof APP_INFO !== "undefined" && APP_INFO && APP_INFO.version ? "v" + S(String(APP_INFO.version), 20) : ""; } catch (e) {}
+    let maint = false; try { maint = !!pcMaint(); } catch (e) {}
+    const run = maint ? [] : A(items).filter(it => it && it.state === "active" && S(O(it.pc).id, 40));   // đang bảo trì → không mời mở máy trên web
+    const pc = `<a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(pcDl)}" download>💻 ${L("Tải app máy tính (Windows)", "PC app (Windows)")}${exe ? ` <small>${L("tải về mở là dùng", "run to install")}</small>` : ""}</a>`;
+    const an = `<a class="btn${isAnd ? "" : " ghost"}" href="${esc(apk)}" download>📱 ${L("Tải app Android", "Android app")}${v ? ` <small>${esc(v)}</small>` : ""}</a>`;
+    const ios = run.length ? `<a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${encodeURIComponent(S(O(run[0].pc).id, 40))}">🍎 iPhone · iPad · Mac <small>${L("không cần cài", "no install")}</small></a>` : "";
+    const mu = run.length > 1 ? `<a class="btn ghost" href="/play.html?multi=pc">🎮 ${L("Nhiều máy · đồng bộ", "Multi-control · sync")} <small>${L("trên web", "on the web")}</small></a>` : "";
+    const box = inApp ? "" : `<div class="cpappdl pcs-appdl"><div class="t"><b>📲 ${L("Tải app", "Get the app")}</b><span>${L("Điều khiển VPS bằng app máy tính (Windows) hoặc app Android — đăng nhập cùng tài khoản là thấy VPS ở mục <b>VPS GPU</b>. iPhone, iPad, Mac (hoặc máy chưa cài app) điều khiển ngay trên trình duyệt: bấm <b>▶ Điều khiển</b> ở từng VPS.", "Control your VPS with the PC app (Windows) or the Android app — sign in with the same account and it shows under <b>GPU VPS</b>. iPhone, iPad, Mac (or any device without the app) control it right in the browser: tap <b>▶ Control</b> on a VPS.")}</span></div><div class="b">${(webFirst ? ios + pc + an : isAnd ? an + pc + ios : pc + an + ios) + mu}</div></div>`;
+    return box + `<button class="helpbtn pcs-vmhelp" type="button" data-pcsvid="1"><span class="i">🎬</span><span class="t"><b>${L("Video hướng dẫn VPS GPU từ A đến Z", "GPU VPS video guide (A to Z)")}</b><small>${L("Thuê máy · điều khiển trên web · app máy tính · app Android · gia hạn… bấm để xem", "Renting · controlling on the web · PC app · Android app · renewing… tap to watch")}</small></span><span class="go" aria-hidden="true">›</span></button>`;
+  }
+  function vmPaint() {
+    const m = $i("vmach"), note = $i("vm-note"), list = $i("vm-list"); if (!m || !note || !list) return;
+    let b = $i("pcs-vm");
+    if (!b) { b = document.createElement("div"); b.id = "pcs-vm"; b.className = "pcs-vm"; note.before(b); }
+    const items = liveItems(), on = !!(PC.info && PC.info.on);
+    const old = (typeof myMachines !== "undefined" && Array.isArray(myMachines) ? myMachines : []).filter(x => x.status !== "cancelled");
+    if (!me()) { b.innerHTML = ""; return; }
+    b.innerHTML = items.length
+      ? `<div class="pcs-vm-h"><b>🖥️ VPS GPU</b><span class="hint">${L("Điều khiển ngay trên web · app điện thoại · app máy tính", "Control it from the web · phone app · PC app")}</span></div>
+         ${appBox(items)}${maintBar()}<div class="pcs-vm-list">${items.map(it => { try { return card(it); } catch (e) { return ""; } }).join("")}</div>`
+      : on ? `<div class="pcs-vm-empty">🖥️ ${L("Chưa có VPS GPU — máy tính thật có card đồ hoạ, tự giao + tự cài Windows.", "No GPU VPS yet — a real PC with a GPU, delivered and set up automatically.")}
+         <button class="btn sm" type="button" data-pcsbuy="1">${L("Thuê VPS GPU", "Rent a GPU VPS")}</button>${vidBtn(L("Video hướng dẫn", "Video guide"), "btn ghost sm")}</div>` : "";
+    // máy VPS giao tay (kiểu cũ): có thì ghi rõ là danh sách riêng; không có mà đã có VPS GPU thì bỏ dòng "chưa có máy VPS nào"
+    const loading = !!list.querySelector(".empty") && !old.length && /Đang tải|Loading/.test(list.textContent);
+    note.hidden = !old.length && items.length > 0;
+    let oh = $i("pcs-vm-old");
+    if (old.length && items.length) { if (!oh) { oh = document.createElement("div"); oh.id = "pcs-vm-old"; oh.className = "pcs-vm-old"; note.before(oh); } oh.textContent = L("Máy VPS khác", "Other VPS machines"); }
+    else if (oh) oh.remove();
+    if (!old.length && items.length && !loading) list.innerHTML = "";
+    progTick();
+  }
+  document.addEventListener("click", e => {
+    const b = e.target.closest && e.target.closest("[data-pcsbuy]"); if (!b) return;
+    const id = S(O(PC.info).product, 40);
+    try { if (id && P.some(p => p.id === id)) { const v = $i("vmach"); if (v) v.hidden = true; openBuy(id); return; } } catch (x) {}
+    const v = $i("vmach"); if (v) v.hidden = true; location.hash = "#shop";
+  });
+  const _ovm = window.openVmach;
+  if (typeof _ovm === "function") window.openVmach = async function () {
+    const r = await _ovm.apply(this, arguments);
+    try { vmPaint(); mine(true); info(); } catch (e) {}
+    return r;
+  };
+  const _cve = window.checkVpsExpiry;
+  if (typeof _cve === "function") window.checkVpsExpiry = async function () {      // số máy VPS giao tay sắp hết hạn (hàm cũ ghi vào ô số) → nhớ lại, ô số ưu tiên số VPS GPU
+    const b = $i("vps-nav-badge"), keep = b ? [b.textContent, b.hidden] : null;
+    if (b) b.textContent = "\u2063";
+    let r;
+    try { r = await _cve.apply(this, arguments); }
+    finally {
+      try {
+        if (b) { if (b.textContent !== "\u2063") PC.oldSoon = +(b.textContent || 0) || 0; else { b.textContent = keep[0]; b.hidden = keep[1]; } }
+        navPaint();
+      } catch (e) {}
+    }
+    return r;
+  };
+
+  // ---------------------------------------------------------------- 🛠️ Cài đặt → Bảo trì: thêm dòng "Bảo trì riêng VPS GPU" (lưu chung settings.data: pc_maint, pc_maint_msg)
+  (() => {
+    const save = $i("mt-save"), cl = $i("mt-cloudmsg"); if (!save || !cl || $i("mt-pc")) return;
+    const row = cl.closest("label"); if (!row) return;
+    row.insertAdjacentHTML("afterend", `<label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-pc"><i></i></span><span><b>Bảo trì riêng VPS GPU</b><small>Chỉ khoá mua mới, điều khiển và cài lại VPS GPU (khách vẫn gia hạn được, máy + dữ liệu giữ nguyên). Admin vẫn dùng bình thường.</small></span></label>
+      <label class="full">Lời nhắn cho khách (VPS GPU)<input id="mt-pcmsg" maxlength="200" placeholder="VD: Đang nâng cấp máy, mở lại lúc 20:00"></label>`);
+    const fill = () => { try { $i("mt-pc").checked = !!SITE.pc_maint; $i("mt-pcmsg").value = S(SITE.pc_maint_msg, 200); } catch (e) {} };
+    const _fm = window.fillMaint;
+    if (typeof _fm === "function") window.fillMaint = function () { const r = _fm.apply(this, arguments); fill(); return r; };
+    fill();
+    let want = null;
+    save.addEventListener("click", () => {                          // chạy TRƯỚC nút Lưu cũ: ghi vào SITE để bản lưu (…SITE) mang theo
+      try { want = $i("mt-pc").checked; SITE.pc_maint = want; SITE.pc_maint_msg = $i("mt-pcmsg").value.trim(); } catch (e) {}
+    }, true);
+    const msg = $i("mt-msg");
+    if (msg) new MutationObserver(() => {
+      if (want === null || !/Đã lưu/.test(msg.textContent)) return;
+      const on = want; want = null;
+      setTimeout(() => { toast(on ? "🛠️ Đã BẬT bảo trì riêng VPS GPU — khách tạm không mua / điều khiển / cài lại được." : "Bảo trì VPS GPU: TẮT."); try { mineRender(); admRender(); } catch (e) {} }, 600);
+    }).observe(msg, { childList: true, characterData: true, subtree: true });
+  })();
+
+  // ---------------------------------------------------------------- 21.11j · Đơn hàng › Giao: chọn MÁY PC ĐANG TRỐNG giao thẳng cho khách (SQL v45 pc_admin_deliver)
+  (() => {
+    const dlg = $i("deldlg"), info = $i("dl-info"); if (!dlg || !info || $i("dl-pcbox")) return;
+    info.insertAdjacentHTML("afterend", `<div id="dl-pcbox" class="dl-pcbox" hidden>
+      <div class="dl-pch"><b>🖥 Giao máy PC đang trống</b><span>Chọn 1 máy → bấm Giao. Khách điều khiển ngay ở mục <b>VPS GPU của bạn</b> (web / app) — không cần gõ tên máy bên dưới.</span></div>
+      <div class="dl-pcl" id="dl-pcl"></div>
+      <div class="dl-pcrow"><label>Bản Windows <select class="in" id="dl-pcos"></select></label><span class="dl-pcnote" id="dl-pchint"></span><button class="btn sm" type="button" id="dl-pcgo" disabled>🤝 Giao máy đã chọn</button></div>
+    </div>`);
+    const st = document.createElement("style");
+    st.textContent = `.dl-pcbox{margin:10px 0 12px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--ok,#3ddc97) 45%,transparent);background:color-mix(in srgb,var(--ok,#3ddc97) 7%,transparent)}
+.dl-pcbox[hidden]{display:none}
+.dl-pch{display:flex;flex-direction:column;gap:3px;margin-bottom:10px}.dl-pch b{font-size:15px}.dl-pch span{font-size:12.5px;color:var(--muted);line-height:1.45}
+.dl-pcl{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;max-height:230px;overflow:auto}
+.dl-pcm{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:2px 8px;text-align:left;font:inherit;color:var(--fg);padding:9px 11px;border-radius:12px;border:1px solid var(--line2,rgba(140,170,220,.25));background:var(--panel,rgba(13,29,61,.6));cursor:pointer}
+.dl-pcm b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.dl-pcm small{grid-column:1/-1;font-size:12px;color:var(--muted);line-height:1.35}
+.dl-pcm .dot{width:9px;height:9px;border-radius:50%;background:#6b7a99}.dl-pcm .dot.on{background:var(--ok,#3ddc97);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok,#3ddc97) 25%,transparent)}
+.dl-pcm:hover{border-color:var(--blue,#3d86ff)}.dl-pcm.on{border-color:var(--blue,#3d86ff);box-shadow:inset 0 0 0 1px var(--blue,#3d86ff);background:color-mix(in srgb,var(--blue,#3d86ff) 14%,transparent)}
+.dl-pcm.dis{opacity:.5;cursor:not-allowed}
+.dl-pcrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}.dl-pcrow label{display:flex;align-items:center;gap:8px;font-size:13px}.dl-pcrow select{width:auto;min-width:180px}
+.dl-pcnote{flex:1;min-width:160px;font-size:12.5px;color:var(--muted)}`;
+    document.head.appendChild(st);
+    let pick = null, order = null, free = [];
+    const prodOf = o => { try { return (typeof P !== "undefined" && Array.isArray(P)) ? P.find(x => x.id === o.product_id) : null; } catch (e) { return null; } };
+    const fit = o => { const pr = prodOf(o); return !!o && o.status === "pending" && (+o.qty || 1) === 1 && +o.days > 0 && (pr ? (typeof isVps === "function" ? isVps(pr) : pr.cat === "vps") : false); };
+    const hint = () => {
+      const m = free.find(x => String(x.id) === pick), os = $i("dl-pcos").value;
+      $i("dl-pchint").textContent = !m ? "Chưa chọn máy." : (m.clean && m.os === os) ? "Máy sạch đúng bản này → khách dùng được ngay."
+        : "Máy sẽ tự " + (m.clean ? "cài" : "xoá sạch mọi ổ + cài") + " Windows này (15–30 phút, cộng thêm 30 phút hạn)" + (m.online ? "." : " khi bật lên.");
+    };
+    async function open() {
+      order = (typeof delOrder !== "undefined") ? delOrder : null;
+      const box = $i("dl-pcbox"), ok = isAdm() && fit(order);
+      box.hidden = !ok; if (!ok) return;
+      pick = null; free = []; $i("dl-pcgo").disabled = true; $i("dl-pchint").textContent = "";
+      $i("dl-pcl").innerHTML = `<div class="dl-pcnote">Đang tải máy trống…</div>`;
+      const { data, error } = await sb.rpc("pc_admin_rentals");
+      if (order !== ((typeof delOrder !== "undefined") ? delOrder : null)) return;            // khách bấm sang đơn khác trong lúc tải
+      if (error) { $i("dl-pcl").innerHTML = `<div class="dl-pcnote">${missing(error) ? "Chưa có phần Máy PC (SQL v43)." : esc(em(error))}</div>`; return; }
+      const d = O(data), os = A(d.os); free = A(d.free);
+      $i("dl-pcos").innerHTML = os.map(x => `<option value="${esc(S(x.id, 12))}">${esc(S(x.name, 40))}</option>`).join("");
+      if (!free.length) { $i("dl-pcl").innerHTML = `<div class="dl-pcnote">Chưa có máy trống — bật 1 máy (đã duyệt, trạng thái Sẵn sàng, chưa có khách) rồi bấm Giao hàng lại.</div>`; return; }
+      $i("dl-pcl").innerHTML = free.map(m => { const dis = !!m.cleaning;
+        return `<button type="button" class="dl-pcm${dis ? " dis" : ""}" data-pc="${esc(S(m.id, 40))}" ${dis ? "disabled" : ""}><span class="dot${m.online ? " on" : ""}"></span><b>${esc(S(m.name, 40))}${m.code ? " · №" + esc(S(m.code, 20)) : ""}</b>
+          <small>${esc(S(m.os, 12) || "?")} · ${m.online ? "online" : "đang tắt"} · ${dis ? "đang tự cài sạch — chờ xong" : m.clean ? "sạch, sẵn sàng" : "khách cũ trả — giao sẽ tự xoá sạch"}</small></button>`; }).join("");
+      const first = free.find(m => !m.cleaning && m.online && m.clean) || free.find(m => !m.cleaning && m.online) || free.find(m => !m.cleaning);
+      if (first) $i("dl-pcl").querySelector(`[data-pc="${CSS.escape(String(first.id))}"]`).click();
+    }
+    $i("dl-pcl").addEventListener("click", e => {
+      const b = e.target.closest("[data-pc]"); if (!b || b.disabled) return;
+      pick = b.dataset.pc; $i("dl-pcl").querySelectorAll("[data-pc]").forEach(x => x.classList.toggle("on", x === b)); $i("dl-pcgo").disabled = false;
+      const m = free.find(x => String(x.id) === pick), sel = $i("dl-pcos");
+      if (m && [...sel.options].some(o => o.value === m.os)) sel.value = m.os;
+      hint();
+    });
+    $i("dl-pcos").addEventListener("change", hint);
+    $i("dl-pcgo").onclick = async e => {
+      const m = free.find(x => String(x.id) === pick); if (!m || !order) return;
+      const who = (typeof uname === "function") ? uname(order.user_id) : "khách", osn = $i("dl-pcos").selectedOptions[0] ? $i("dl-pcos").selectedOptions[0].textContent : "";
+      if (!confirm(`Giao máy ${S(m.name, 40)} cho ${who}?\n\n${osn} · ${+order.days} ngày. Đơn chuyển "Đã giao", khách điều khiển ngay ở mục VPS GPU của bạn.`)) return;
+      const r = await busy(e.currentTarget, async () => {
+        const { data, error } = await sb.rpc("pc_admin_deliver", { p_order: order.id, p_pc: pick, p_os: $i("dl-pcos").value || null });
+        if (error) { toast(missing(error) ? "Chạy SQL v45 trước (Supabase › snippet \"CloudBlue PC v45 - bam Run\" › Run)." : em(error), 1); return null; }
+        return O(data);
+      });
+      if (!r) return;
+      toast(`Đã giao máy ${S(r.name, 40)} cho ${who}` + (r.reinstall ? " — máy đang tự cài Windows (15–30 phút)." : " — dùng được ngay."));
+      dlg.hidden = true;
+      try { if (typeof loadAdmin === "function") await loadAdmin(); } catch (er) {}
+      try { await adm(true); } catch (er) {}
+    };
+    new MutationObserver(() => { if (!dlg.hidden) open(); }).observe(dlg, { attributes: true, attributeFilter: ["hidden"] });
+  })();
+
+  // ---------------------------------------------------------------- nhịp: theo trạng thái đăng nhập
+  let lastUid = null;
+  function tick(force) {
+    const u = me(), uid = u ? u.id : null;
+    if (uid !== lastUid) { lastUid = uid; PC.mine = null; PC.adm = null; force = true; }
+    mine(force); if (isAdm()) adm(force); else admRender();
+  }
+  info().then(() => { try { if (!$i("modal").hidden) { const p = selP(); autoMode(autoP(p)); } } catch (e) {} });
+  setInterval(() => { if (!document.hidden) tick(false); }, 30000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(false); });
+  const _ru = window.renderUser;
+  if (typeof _ru === "function") window.renderUser = function () { const r = _ru.apply(this, arguments); try { tick(false); } catch (e) {} return r; };
+  setTimeout(() => tick(true), 1500);
+})();
+</script>

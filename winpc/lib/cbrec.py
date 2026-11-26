@@ -8,14 +8,15 @@
 #    \cb\cb.json                 cấu hình (danh sách bản Windows) — KHÔNG có bí mật
 #    \cb\boot\boot.wim, boot.sdi môi trường cài đặt (đã chèn bộ cài CloudBlue)
 #    \cb\images\<bản>.wim|esd    các bản Windows
+#    \cb\linux\                 22.11c · CachyOS: cachyos.iso + grubx64.efi + grub.cfg + cb-install.sh (+ job.cfg / installed.json lúc cài)
 #    \cb\lib, pe, os, agent, py  phần mềm CloudBlue + Python nhúng
 #    \cb\job.json                LỆNH đang chờ (agent ghi → bộ cài đọc)      \cb\job-result.json  kết quả (bộ cài ghi → agent báo web)
 #    \cb\identity.json           tên máy / mã số máy (không có mã bí mật)
 # =====================================================================================================
 import cbcore as C
 
-REC_VER = "20.11c"
-SUBDIRS = ("lib", "pe", "os", "agent", "py", "drivers")         # "drivers": driver chủ shop bỏ thêm — cài lại từ xa cũng nạp
+REC_VER = "22.11f"
+SUBDIRS = ("lib", "pe", "os", "agent", "py", "drivers", "linux")   # "drivers": driver chủ shop bỏ thêm — cài lại từ xa cũng nạp · "linux": CachyOS (22.11c)
 
 
 def tree_bytes(sysx, root, depth=12):
@@ -53,9 +54,22 @@ def status(sysx):
     v = find_recovery(sysx)
     if not v: return {"ok": False, "images": []}
     cfg = C.load_json(sysx, v.root + "cb\\cb.json") or {}
-    imgs = [im["id"] for im in cfg.get("images") or [] if sysx.exists(v.root + im["file"])]
+    lin_ok = None
+
+    def linux_ok():                                             # 22.11f · CachyOS chỉ cài được trên máy UEFI đang TẮT Secure Boot
+        try: return sysx.firmware() == "uefi" and not C.secure_boot_on(sysx)
+        except Exception: return False
+    imgs = []
+    for im in cfg.get("images") or []:
+        if not sysx.exists(v.root + im["file"]): continue
+        if C.is_linux(im):                                      # CachyOS: thiếu GRUB / kịch bản cài / agent / điều khiển từ xa → không cho chọn
+            if lin_ok is None: lin_ok = linux_ok()
+            if not lin_ok or not all(sysx.exists(v.root + rel) for rel in C.LINUX_FILES): continue
+        imgs.append(im["id"])
     ok = bool(imgs) and sysx.exists(v.root + "cb\\boot\\boot.wim") and sysx.exists(v.root + "cb\\boot\\boot.sdi")
-    return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or ""}
+    # "lx": 2 = agent đã xét CachyOS theo luật 22.11f (UEFI + TẮT Secure Boot + đủ phần điều khiển từ xa) → máy chủ (SQL v50) chỉ giao / đổi
+    #  sang Linux cho máy có "lx" ≥ 2 (agent 22.11e cũ báo "cachyos" cả khi Secure Boot đang bật / thiếu cbremote)
+    return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or "", "lx": 2}
 
 
 def populate(sysx, src_root, cfg, rec_root, log=None, progress=None):
@@ -70,6 +84,7 @@ def populate(sysx, src_root, cfg, rec_root, log=None, progress=None):
     for im, rim in zip(cfg["images"], rcfg["images"]):
         log("  ban %s (%.1f GB)..." % (im["id"], int(im.get("bytes") or 0) / 1e9))
         if not sysx.dry and not sysx.exists(src_root + im["file"]): raise C.Stop("Bo cai thieu file %s" % im["file"])
+        if C.is_linux(im) and im["file"].lower().replace("/", "\\").startswith("cb\\linux\\"): continue    # ISO CachyOS nằm trong cb\linux → chép cùng thư mục đó (1 lần)
         sysx.copy_file(src_root + im["file"], rec_root + rim["file"], show=progress)
     for sub in SUBDIRS:
         if sysx.dry or sysx.isdir(src_root + "cb\\" + sub): sysx.copy_tree(src_root + "cb\\" + sub, base + "\\" + sub)
@@ -105,8 +120,14 @@ def stage_job(sysx, job, hostname, now):
     if not rec: raise C.Stop("May nay chua co phan vung cuu ho CloudBlue - can cai bang USB / ISO CloudBlue 1 lan.")
     cfg = C.load_json(sysx, rec.root + "cb\\cb.json") or {}
     image = C.find_image(cfg, job.get("os"))
-    for rel in (image["file"], "cb\\boot\\boot.wim", "cb\\boot\\boot.sdi"):
+    need = [image["file"], "cb\\boot\\boot.wim", "cb\\boot\\boot.sdi"] + (list(C.LINUX_FILES) if C.is_linux(image) else [])
+    for rel in need:
         if not sysx.exists(rec.root + rel): raise C.Stop("Phan vung cuu ho thieu file %s" % rel)
+    if C.is_linux(image):                                       # 22.11c · CachyOS: báo NGAY những máy không cài được (đỡ khởi động lại vào bộ cài rồi mới biết)
+        if sysx.firmware() != "uefi": raise C.Stop("CachyOS chi cai duoc tren may khoi dong kieu UEFI (may nay dang khoi dong kieu BIOS).")
+        try: sb = C.secure_boot_on(sysx)
+        except Exception: sb = False
+        if sb: raise C.Stop("May dang BAT Secure Boot - CachyOS can TAT Secure Boot trong BIOS truoc.")
     if job.get("wipe") not in ("all", "disk", "system"): raise C.Stop("Kieu xoa '%s' khong hop le." % job.get("wipe"))
     win = system_volume(sysx)
     if win is None or win.disk is None: raise C.Stop("Khong xac dinh duoc o C: cua Windows dang chay.")

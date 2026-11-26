@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Thử: cài lại từ trong Windows (CAI-DAT.cmd → cb_stage.py) + cài đặt lần đầu (cb_provision.py). Chạy: python3 tests/test_stage.py"""
-import json, os, re, shutil, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.join(HERE, "..")
@@ -178,6 +178,9 @@ def sec_env(cfg, admins=("Administrator", "PC"), names="ADM=Administrators|USR=U
             return 0, "Alias name     %s\r\nMembers\r\n\r\n-------\r\n%s\r\nThe command completed successfully.\r\n" % (argv[2], "\r\n".join(mem))
         if argv[:2] == ["net", "localgroup"] and argv[-1] == "/delete": st["admins"].remove(argv[3]); return 0, ""
         if argv[:2] == ["net", "localgroup"] and argv[-1] == "/add":
+            if st["names"] and argv[2] == st["names"].split("|")[0][4:]:          # 21.11h: thêm vào nhóm quản trị (cấp quyền Admin cho khách)
+                if argv[3] in st["admins"]: return 2, "System error 1378"
+                st["admins"].append(argv[3]); return 0, ""
             if argv[3] in st["users"]: return 2, "System error 1378"
             st["users"].append(argv[3]); return 0, ""
         return 0, ""
@@ -254,6 +257,200 @@ if old_la is None: os.environ.pop("LOCALAPPDATA", None)
 else: os.environ["LOCALAPPDATA"] = old_la
 cmd = open(os.path.join(REPO, "os", "provision.cmd"), "rb").read().decode("ascii")
 ck("provision.cmd: không ghi được vào logs thì chuyển nhật ký sang hồ sơ người dùng, vẫn chạy", '|| set "CBLOG=%LOCALAPPDATA%\\CloudBluePC"' in cmd and '>> "%CBLOG%\\provision.out" 2>&1' in cmd and cmd.rstrip().endswith("exit /b 0"))
+
+print("5b2. 21.11h · shop BẬT 'Cho khách quyền Admin' (cb.json user_admin = true — agent ghi theo máy chủ) → khách vào nhóm Administrators")
+def sec_ev0(st):
+    p = os.path.join(st["base"], "logs", "sec.event")
+    return open(p).read() if os.path.exists(p) else None
+pr, st = sec_env({"user": "PC", "password": ""}); pr.firstlogon()
+ck("trước khi bật: khách là tài khoản thường", st["admins"] == ["Administrator"], st["admins"])
+cfgp = os.path.join(st["base"], "cb.json"); open(cfgp, "w").write(json.dumps({"user": "PC", "password": "", "user_admin": True}))
+st["calls"].clear(); pr.system()
+ck("bật → tài khoản khách VÀO nhóm Administrators, nhắn khách khởi động lại 1 lần (kèm cảnh báo không tắt phần mềm shop), KHÔNG tự khởi động lại, không báo việc lạ",
+   "PC" in st["admins"] and any(c[0] == "msg" and "QUYEN ADMIN" in " ".join(c) and "KHONG tat" in " ".join(c) for c in st["calls"]) and not any(c[0] == "shutdown" for c in st["calls"])
+   and os.path.exists(os.path.join(st["base"], "logs", "admin.granted")) and sec_ev0(st) is None, st["calls"][-6:])
+DENY = "PC:(OI)(CI)(DE,DC,WD,AD,WEA,WA,WDAC,WO)"
+ck("khách có quyền Admin → vẫn CHẶN riêng tài khoản khách sửa / xoá / đổi quyền thư mục phần mềm shop + gốc phân vùng cứu hộ (ACE từ chối)",
+   ["icacls", st["base"], "/deny", DENY] in st["calls"] and ["icacls", "\\\\?\\Volume{abc}\\", "/deny", DENY] in st["calls"]
+   and st["calls"].index(["icacls", st["base"], "/deny", DENY]) > max(i for i, c in enumerate(st["calls"]) if c[0] == "icacls" and "/reset" in c), [c for c in st["calls"] if c[0] == "icacls"][-3:])
+st["calls"].clear(); pr.system()
+ck("lần soát sau: đã có quyền → không thêm lại, không nhắn lại, không hạ quyền", st["admins"].count("PC") == 1 and not any(c[0] == "msg" for c in st["calls"])
+   and not any(c[:2] == ["net", "localgroup"] and c[-1] in ("/add", "/delete") and "Administrators" in c for c in st["calls"]), st["calls"])
+open(cfgp, "w").write(json.dumps({"user": "PC", "password": ""}))
+st["calls"].clear(); pr.system()
+ck("shop TẮT lại → hạ khách về tài khoản thường, KHÔNG coi là việc lạ (hạ có chủ ý)", st["admins"] == ["Administrator"] and sec_ev0(st) is None
+   and not os.path.exists(os.path.join(st["base"], "logs", "admin.granted")), (st["admins"], sec_ev0(st)))
+ck("công tắc tắt → không đặt ACE từ chối (tài khoản thường vốn không ghi được)", not any(c[0] == "icacls" and "/deny" in c for c in st["calls"]))
+
+print("5b2b. 22.11c · khách có quyền Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền (UAC) · shop tắt công tắc → về mặc định Windows")
+UACK = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+def uac_set(calls):
+    return [c[-2] for c in calls if c[:2] == ["reg", "add"] and c[2] == UACK and "ConsentPromptBehaviorAdmin" in c]
+pr, st = sec_env({"user": "PC", "password": "", "user_admin": True}); pr.firstlogon()
+ck("khách thuê mới (shop BẬT quyền Admin): lần đăng nhập đầu đặt ConsentPromptBehaviorAdmin = 0 (Admin nâng quyền không hỏi)", uac_set(st["calls"]) == ["0"], uac_set(st["calls"]))
+ck("… KHÔNG tắt hẳn UAC (EnableLUA giữ nguyên — app Store / Edge vẫn chạy)", not any("EnableLUA" in c for c in st["calls"]))
+pr, st = sec_env({"user": "PC", "password": ""}); pr.firstlogon()
+ck("shop TẮT quyền Admin (khách là tài khoản thường): giữ mặc định Windows (5)", uac_set(st["calls"]) == ["5"], uac_set(st["calls"]))
+cfgp = os.path.join(st["base"], "cb.json"); open(cfgp, "w").write(json.dumps({"user": "PC", "password": "", "user_admin": True}))
+st["calls"].clear(); pr.system()
+ck("máy đang chạy, shop BẬT công tắc → agent cấp quyền Admin + đặt không hỏi quyền (0) ngay", "PC" in st["admins"] and uac_set(st["calls"]) == ["0"], uac_set(st["calls"]))
+real_run = pr._run
+def run_q(argv, timeout=300):
+    if argv[:2] == ["reg", "query"] and "ConsentPromptBehaviorAdmin" in argv:
+        return 0, "\r\n" + UACK + "\r\n    ConsentPromptBehaviorAdmin    REG_DWORD    0x0\r\n\r\n"
+    return real_run(argv, timeout)
+pr._run = run_q; st["calls"].clear(); pr.system()
+ck("lần soát sau: giá trị đã đúng (đọc registry 0x0) → không ghi lại", uac_set(st["calls"]) == [], uac_set(st["calls"]))
+pr._run = real_run
+open(cfgp, "w").write(json.dumps({"user": "PC", "password": ""}))
+st["calls"].clear(); pr.system()
+ck("shop TẮT lại → hạ quyền + trả hộp hỏi quyền về mặc định Windows (5)", st["admins"] == ["Administrator"] and uac_set(st["calls"]) == ["5"], uac_set(st["calls"]))
+
+print("5b2c. 22.11c · giả lập Android (MuMu / LDPlayer / BlueStacks) chạy được: tắt thứ chiếm VT-x (Hyper-V / VBS / HVCI) 1 lần + báo tình trạng ảo hoá")
+def emu_env(cfg=None, vt="True", hv="False", vbs="0", svc="", hw="ASUS | PRIME B560M-A", launch=None, regs=None, ps_ok=True):
+    pr0, st = sec_env(cfg or {"user": "PC", "password": "", "user_admin": True})
+    st["emu"] = dict(vt=vt, hv=hv, vbs=vbs, svc=svc, hw=hw, launch=launch, regs=dict(regs or {}), ps_ok=ps_ok)
+    real = pr0._run
+    def run(argv, timeout=300):
+        e = st["emu"]; a = " ".join(argv)
+        if argv[0] == "powershell.exe" and "E_VT=" in a:
+            st["calls"].append(list(argv))
+            if not e["ps_ok"]: return 1, "loi WMI"
+            return 0, "E_VT=%s\r\nE_VMX=%s\r\nE_HV=%s\r\nE_VBS=%s\r\nE_SVC=%s\r\nE_CPU=Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz\r\nE_HW=%s\r\nE_END\r\n" % (
+                e["vt"], e["vt"], e["hv"], e["vbs"], e["svc"], e["hw"])
+        if argv[:3] == ["bcdedit", "/enum", "{current}"]:
+            st["calls"].append(list(argv))
+            return 0, "Windows Boot Loader\r\n-------------------\r\nidentifier              {current}\r\n" + (
+                "hypervisorlaunchtype    %s\r\n" % e["launch"] if e["launch"] else "") + "nx                      OptIn\r\n"
+        if argv[:3] == ["bcdedit", "/set", "{current}"] and argv[3] == "hypervisorlaunchtype":
+            st["calls"].append(list(argv)); e["launch"] = argv[4].capitalize(); return 0, "The operation completed successfully."
+        if argv[:2] == ["reg", "query"] and len(argv) >= 5:
+            st["calls"].append(list(argv))
+            v = e["regs"].get((argv[2], argv[4]))
+            return (0, "\r\n%s\r\n    %s    REG_DWORD    %s\r\n" % (argv[2], argv[4], v)) if v is not None else (1, "ERROR: unable to find")
+        if argv[:2] == ["reg", "add"] and len(argv) >= 9 and (argv[2], argv[4]) in e["regs"]:
+            e["regs"][(argv[2], argv[4])] = "0x%x" % int(argv[8])
+        return real(argv, timeout)
+    pr0._run = run
+    return pr0, st
+DGK = r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard"
+HVK = DGK + r"\Scenarios\HypervisorEnforcedCodeIntegrity"
+LSK = r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa"
+def emu_json(st):
+    try: return json.load(open(os.path.join(st["base"], "logs", "emu.json")))
+    except Exception: return {}
+def bcd_off(st): return any(c[:5] == ["bcdedit", "/set", "{current}", "hypervisorlaunchtype", "off"] for c in st["calls"])
+def reg0(st): return sorted("%s\\%s" % (c[2].rsplit("\\", 1)[-1], c[4]) for c in st["calls"] if c[:2] == ["reg", "add"] and c[-3:] == ["/d", "0", "/f"] and "ConsentPrompt" not in c[4])
+pr, st = emu_env(); ch = pr.emu(); ej = emu_json(st)
+ck("máy sạch (VT-x bật trong BIOS, không hypervisor): không đổi gì, không cần khởi động lại; emu.json: sẵn sàng chạy giả lập",
+   ch is False and not bcd_off(st) and reg0(st) == [] and ej.get("vt") is True and ej.get("hv") is False and ej.get("ready") is True and ej.get("reboot") is False
+   and ej.get("why") == "" and ej.get("vm") is False and "i5-10400F" in ej.get("cpu", "") and os.path.isfile(os.path.join(st["base"], "logs", "emu.done")), (ch, ej, reg0(st)))
+pr, st = emu_env(vt="False", hv="True", vbs="2", svc="2", launch="Auto", regs={(DGK, "EnableVirtualizationBasedSecurity"): "0x1", (HVK, "Enabled"): "0x1", (LSK, "LsaCfgFlags"): "0x0"})
+st["calls"].clear(); ch = pr.emu(); ej = emu_json(st)
+ck("Hyper-V / VBS / Memory Integrity đang chạy (MuMu báo 'abnormal runtime environment'): tắt hypervisor lúc khởi động + VBS + HVCI, cần khởi động lại 1 lần",
+   ch is True and bcd_off(st) and reg0(st) == ["DeviceGuard\\EnableVirtualizationBasedSecurity", "HypervisorEnforcedCodeIntegrity\\Enabled"]
+   and ej.get("reboot") is True and ej.get("vt") is None and ej.get("hv") is True and ej.get("ready") is False and set(ej.get("fixed", [])) >= {"hypervisor", "Enabled"}, (ch, ej, reg0(st)))
+ck("… KHÔNG tắt UAC, không gỡ tính năng Windows (chỉ bcdedit + 2 khoá registry DeviceGuard), giá trị đang 0 (LsaCfgFlags) thì không ghi lại",
+   not any("EnableLUA" in " ".join(c) for c in st["calls"]) and not any(c[0] in ("dism", "dism.exe") for c in st["calls"]) and not any(c[:2] == ["reg", "add"] and "LsaCfgFlags" in c for c in st["calls"]))
+st["calls"].clear(); ch2 = pr.emu(); ej = emu_json(st)
+ck("chạy lại khi máy CHƯA khởi động lại: không làm lại lần 2, vẫn báo 'chờ khởi động lại'", ch2 is False and not bcd_off(st) and reg0(st) == [] and ej.get("reboot") is True, (ch2, ej))
+st["emu"].update(vt="True", hv="False", vbs="0", svc="")
+st["calls"].clear(); pr.emu(); ej = emu_json(st)
+ck("sau khi khởi động lại: VT-x thấy được, không hypervisor → sẵn sàng chạy giả lập, hết 'chờ khởi động lại'", ej.get("ready") is True and ej.get("reboot") is False and ej.get("vt") is True, ej)
+st["emu"].update(hv="True", launch="Auto"); st["calls"].clear(); pr.emu(); ej = emu_json(st)
+ck("khách TỰ bật lại Hyper-V sau đó (WSL2 / Docker…): agent KHÔNG tắt lại (chỉ làm 1 lần mỗi bản cài), chỉ báo tình trạng", not bcd_off(st) and ej.get("hv") is True and ej.get("ready") is False, ej)
+pr, st = emu_env(vt="False")
+ch = pr.emu(); ej = emu_json(st)
+ck("VT-x TẮT trong BIOS: phần mềm không bật được → không đổi gì, báo rõ 'VT-x / AMD-V (SVM) đang TẮT trong BIOS' để admin vào BIOS bật",
+   ch is False and not bcd_off(st) and ej.get("vt") is False and ej.get("ready") is False and "BIOS" in ej.get("why", ""), ej)
+pr, st = emu_env(vt="False", hw="QEMU | Standard PC (Q35 + ICH9, 2009)"); pr.emu(); ej = emu_json(st)
+ck("máy ẢO (QEMU / Proxmox…) không thấy VT-x → báo 'máy chủ chưa bật ảo hoá lồng nhau (nested)'", ej.get("vm") is True and "nested" in ej.get("why", ""), ej)
+pr, st = emu_env(ps_ok=False); ch = pr.emu()
+ck("không đọc được WMI → không đổi gì, không lỗi, không ghi emu.done (lần sau thử lại)", ch is False and not bcd_off(st) and not os.path.isfile(os.path.join(st["base"], "logs", "emu.done"))
+   and any("khong doc duoc tinh trang ao hoa" in l for l in pr.lines), pr.lines[-2:])
+pr, st = emu_env(hv="True", vbs="2", launch="Auto"); pr.touch("firstlogon.done"); st["calls"].clear(); pr.system()
+ck("agent (pha system) vừa dọn cho giả lập → nhắn khách khởi động lại 1 lần (không tự khởi động lại)",
+   bcd_off(st) and any(c[0] == "msg" and "GIA LAP ANDROID" in " ".join(c) for c in st["calls"]) and not any(c[0] == "shutdown" for c in st["calls"]), [c for c in st["calls"] if c[0] in ("msg", "shutdown")])
+st["calls"].clear(); pr.system()
+ck("… lần soát sau: không nhắn lại", not any(c[0] == "msg" for c in st["calls"]))
+pr, st = emu_env(hv="True", vbs="2", launch="Auto"); pr.firstlogon(); j = [" ".join(c) for c in st["calls"]]
+ck("máy MỚI cài (khách giữ quyền Admin) mà Windows bật sẵn Hyper-V / VBS: lần đăng nhập đầu tắt luôn + tự khởi động lại 1 lần (chưa ai dùng máy)",
+   bcd_off(st) and any(x.startswith("shutdown /r /t 20") for x in j), [x for x in j if x.startswith(("shutdown", "bcdedit"))])
+pr, st = emu_env(); pr.firstlogon(); j = [" ".join(c) for c in st["calls"]]
+ck("máy MỚI cài, Windows sạch (khách giữ quyền Admin): không khởi động lại thêm", not any(x.startswith("shutdown") for x in j))
+
+print("5b4. 21.11j · ẩn thư mục C:\\CloudBluePC (Ẩn + Hệ thống) cho khách khỏi để ý — chỉ thư mục gốc, sau khi khoá quyền")
+pr, st = sec_env({"user": "PC", "password": ""})
+pr.lockdown()
+j = st["calls"]
+ck("khoá quyền xong thì ẩn thư mục gốc: attrib +h +s <C:\\CloudBluePC> (không /s /d — không đụng file bên trong)",
+   ["attrib", "+h", "+s", st["base"]] in j and j.index(["attrib", "+h", "+s", st["base"]]) > max(i for i, c in enumerate(j) if c[0] == "icacls")
+   and sum(1 for c in j if c[0] == "attrib") == 1 and os.path.isfile(os.path.join(st["base"], "logs", "lock.done")), [c for c in j if c[0] in ("attrib",)])
+pr, st = sec_env({"user": "PC", "password": ""}); st["calls"].clear(); pr.system()
+ck("pha system (agent chạy định kỳ) cũng ẩn lại — khách lỡ bỏ ẩn thì vài giờ sau tự ẩn lại", ["attrib", "+h", "+s", st["base"]] in st["calls"])
+
+print("5b3. 21.11i · khách thuê mới có quyền Admin NGAY từ lần đăng nhập đầu (công tắc theo cb.json cài lại) · chưa biết công tắc → chờ agent hỏi máy chủ")
+def sw_env(cfg, agent_after=None, agent_val=True):
+    """sec_env + đồng hồ giả chạy theo sleep; agent_after = sau bao nhiêu giây 'agent' ghi công tắc vào cb.json (None = không bao giờ)."""
+    pr0, st = sec_env(cfg)
+    st.update(slept=0, said=[], log=[])
+    cfgp = os.path.join(st["base"], "cb.json")
+    def sleep(sec):
+        st["clock"] += sec; st["slept"] += sec
+        if agent_after is not None and st["slept"] >= agent_after:
+            c = json.load(open(cfgp))
+            if "user_admin" not in c: c["user_admin"] = agent_val; open(cfgp, "w").write(json.dumps(c))
+    pr = cb_provision.Prov(st["base"], pr0._run, log=st["log"].append, spi=lambda path: True, admin=True, rec=lambda: "\\\\?\\Volume{abc}\\", now=lambda: st["clock"],
+                           net=lambda h, p: True, sleep=sleep, say=st["said"].append)
+    return pr, st
+SB = "https://abcdxyz.supabase.co"
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB, "user_admin": True})
+pr.firstlogon()
+j = [" ".join(c) for c in st["calls"]]
+ck("cài lại khi shop BẬT (cb.json có user_admin = true ngay từ bộ cài): khách GIỮ quyền Admin, không hạ, không khởi động lại, không chờ agent",
+   st["admins"] == ["Administrator", "PC"] and not any(x.startswith("shutdown") for x in j) and st["slept"] == 0
+   and not any("/delete" in x for x in j) and not any("/active:no" in x for x in j), (st["admins"], st["slept"], j[-5:]))
+ck("… màn hình ghi rõ bước 5 'GIU quyen Admin (shop bat)', XONG không khởi động lại", "[5/5] Tai khoan khach GIU quyen Admin (shop bat) ..." in st["said"] and "XONG." in st["said"], st["said"][-4:])
+DENY_PC = "PC:(OI)(CI)(DE,DC,WD,AD,WEA,WA,WDAC,WO)"
+i_done = max(i for i, x in enumerate(j) if "icacls" in x) if any("icacls" in x for x in j) else -1
+ck("… việc CUỐI của lần đăng nhập đầu: chặn riêng tài khoản khách sửa / xoá phần mềm shop + gốc phân vùng cứu hộ (sau mốc firstlogon.done)",
+   ["icacls", st["base"], "/deny", DENY_PC] in st["calls"] and ["icacls", "\\\\?\\Volume{abc}\\", "/deny", DENY_PC] in st["calls"]
+   and st["calls"].index(["icacls", st["base"], "/deny", DENY_PC]) > max(i for i, c in enumerate(st["calls"]) if c[0] == "icacls" and "/reset" in c)
+   and os.path.isfile(os.path.join(st["base"], "logs", "firstlogon.done")), [c for c in st["calls"] if c[0] == "icacls"][-3:])
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB, "user_admin": True})
+pr.touch("firstlogon.start"); st["calls"].clear(); pr.system()
+ck("agent chạy pha system TRONG lúc lần đăng nhập đầu còn chạy (bằng tài khoản khách): chỉ khoá quyền, CHƯA đặt ACE từ chối (lần đăng nhập đầu còn ghi mốc / nhật ký)",
+   any(c[0] == "icacls" for c in st["calls"]) and not any(c[0] == "icacls" and "/deny" in c for c in st["calls"]), [c for c in st["calls"] if c[0] == "icacls"][-2:])
+pr.touch("firstlogon.done"); st["calls"].clear(); pr.system()
+ck("lần đăng nhập đầu xong → pha system đặt ACE từ chối như 21.11h, khách vẫn là Admin", any(c[0] == "icacls" and "/deny" in c for c in st["calls"]) and "PC" in st["admins"])
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB}, agent_after=20, agent_val=True)
+pr.firstlogon()
+ck("cài từ USB (cb.json CHƯA có công tắc): chờ agent hỏi máy chủ — 20 giây sau agent báo BẬT → khách giữ quyền Admin, không khởi động lại",
+   20 <= st["slept"] <= 25 and st["admins"] == ["Administrator", "PC"] and not any(c[0] == "shutdown" for c in st["calls"])
+   and any("agent da bao cong tac quyen Admin: BAT" in x for x in st["log"]), (st["slept"], st["admins"], st["log"][-3:]))
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB}, agent_after=10, agent_val=False)
+pr.firstlogon()
+ck("… agent báo TẮT → hạ về tài khoản thường + khởi động lại 1 lần như cũ", 10 <= st["slept"] <= 15 and st["admins"] == ["Administrator"]
+   and any(c[0] == "shutdown" for c in st["calls"]) and "[5/5] Khoa tai khoan khach (tai khoan thuong) ..." in st["said"], (st["slept"], st["admins"]))
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB})
+pr.firstlogon()
+ck("agent mãi không báo (máy chủ lỗi…): chờ ĐÚNG hạn 150 giây rồi làm như cũ (tài khoản thường, an toàn) + ghi rõ lý do — không chờ vô hạn",
+   cb_provision.ADMIN_WAIT == 150 and 150 <= st["slept"] <= 155 and st["admins"] == ["Administrator"] and any(c[0] == "shutdown" for c in st["calls"])
+   and any("agent chua bao cong tac quyen Admin sau 150 giay" in x for x in st["log"]) and "    (chua biet cong tac quyen Admin cua shop - tam de tai khoan thuong)" in st["said"],
+   (st["slept"], st["said"][-4:]))
+pr, st = sw_env({"user": "PC", "password": ""})
+pr.firstlogon()
+ck("máy không có máy chủ (cb.json không có sb_url) → không chờ", st["slept"] == 0 and st["admins"] == ["Administrator"])
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB})
+pr._net = lambda h, p: False
+pr.firstlogon()
+ck("máy chưa có mạng (agent không hỏi được máy chủ) → chỉ chờ mạng như cũ, KHÔNG chờ thêm công tắc, làm như cũ (tài khoản thường)", st["admins"] == ["Administrator"]
+   and not any("cho agent bao cong tac" in x for x in st["log"]) and st["slept"] <= cb_provision.NET_WAIT_VGA + 3, (st["admins"], st["slept"], [x for x in st["log"] if "cong tac" in x]))
+pr, st = sw_env({"user": "PC", "password": "", "sb_url": SB})
+st["clock"] = 10 ** 9
+pr._sleep = lambda sec: None                                           # đồng hồ đứng yên (giờ máy lỗi) → vẫn không kẹt: tối đa 150 / 5 lần xem
+t0 = time.time(); r = pr.switch_wait()
+ck("đồng hồ máy đứng yên → vẫn thoát sau tối đa 30 lần xem, trả None", r is None and time.time() - t0 < 5, r)
 
 print("5c. Việc lạ về bảo mật SAU khi đã khoá xong → ghi logs\\sec.event cho agent báo về web")
 def sec_ev(st):
@@ -359,7 +556,7 @@ with tempfile.TemporaryDirectory() as base:
 print("7. Bản 1511: driver card mạng xong (máy có mạng) rồi mới cài driver VGA NVIDIA; tiến độ in ra màn hình")
 NV = "466.77-notebook-win10-64bit-international-whql.exe"
 def vga_env(tag="1511", gpu=(True, False), after=(True, True), net=True, packs=("1511/" + NV,), extra=()):
-    pr0, st = sec_env({"user": "PC", "password": "", "sb_url": "https://abcdxyz.supabase.co"})
+    pr0, st = sec_env({"user": "PC", "password": "", "sb_url": "https://abcdxyz.supabase.co", "user_admin": False})     # công tắc đã biết → không chờ agent
     fb = os.path.join(st["base"], "os", "firstboot.d")
     for f in tuple(packs) + tuple(extra):
         os.makedirs(os.path.dirname(os.path.join(fb, *f.split("/"))), exist_ok=True)

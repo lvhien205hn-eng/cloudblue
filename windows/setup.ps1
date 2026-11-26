@@ -11,7 +11,7 @@
 #  (bảng CloudBlue chạy bộ cài không kèm tham số); -Node khác NODE_ID trong conf → dừng, không đụng gì.
 # =====================================================================
 param([string]$Node = "win1", [string]$PubHost = "phone.cloudblue.vn")
-$SETUP_VER = "2026-11-10a"
+$SETUP_VER = "2026-11-24a"
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"   # Windows PowerShell 5.1: thanh tiến độ làm Invoke-WebRequest / Expand-Archive chậm gấp nhiều lần
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # Windows cũ mặc định TLS 1.0 → GitHub/Google từ chối
@@ -22,15 +22,45 @@ function Warn($m) { Write-Host "  [!] $m" -ForegroundColor Yellow }
 function Step($m) { Write-Host "`n== $m ==" -ForegroundColor Cyan }
 function Get($url, $out) {
   $ErrorActionPreference = "Continue"   # bảng CloudBlue chạy bộ cài kèm *>&1 → dòng lỗi của curl không được làm dừng cả bộ cài (throw dưới vẫn dừng)
+  $cu = [bool](Get-Command curl.exe -ErrorAction SilentlyContinue)   # 23/11: Windows 10 bản cũ (1511…) chưa có curl.exe → tải bằng PowerShell; curl lỗi cũng thử lại bằng PowerShell
   # File của BlueRoblox: lấy qua api.github.com TRƯỚC (luôn là bản mới nhất — raw.githubusercontent hay trả bản cũ vài phút),
   # api hết lượt (60 lần/giờ) thì dùng raw.githubusercontent
   if ($url -like "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/*") {
     $api = $url -replace "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main", "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents"
-    & curl.exe -fsL -H "Accept: application/vnd.github.raw" -H "User-Agent: BlueRoblox-setup" -o $out $api   # hết lượt (403) → im lặng, lấy raw
-    if ($LASTEXITCODE -eq 0) { return }
+    if ($cu) {
+      & curl.exe -fsL -H "Accept: application/vnd.github.raw" -H "User-Agent: BlueRoblox-setup" -o $out $api   # hết lượt (403) → im lặng, lấy raw
+      if ($LASTEXITCODE -eq 0) { return } }
+    else { try { Invoke-WebRequest -UseBasicParsing -UserAgent "BlueRoblox-setup" -Headers @{ Accept = "application/vnd.github.raw" } -Uri $api -OutFile $out -ErrorAction Stop; return } catch {} }
     $url = $url + "?t=" + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() }
-  & curl.exe -fsSL -H "Cache-Control: no-cache" -o $out $url
-  if ($LASTEXITCODE -ne 0) { throw "Tải lỗi: $url" } }
+  if ($cu) {
+    & curl.exe -fsSL -H "Cache-Control: no-cache" -o $out $url
+    if ($LASTEXITCODE -eq 0) { return } }
+  for ($i = 1; $i -le 3; $i++) {        # 24/11: PowerShell của Windows cũ (1511…) hay lỗi TLS ngắt quãng ("Could not create SSL/TLS secure channel") → thử lại
+    try { Invoke-WebRequest -UseBasicParsing -UserAgent "BlueRoblox-setup" -Uri $url -OutFile $out -ErrorAction Stop; return } catch { Start-Sleep 2 } }
+  if (PyGet $url $out) { return }        # … vẫn lỗi → tải bằng Python (OpenSSL, không dùng TLS của Windows)
+  throw "Tải lỗi: $url" }
+function PyGet($url, $out) {
+  # Python của phần mềm CloudBlue PC (máy cài từ ISO máy chủ có sẵn) hoặc Python 3.12 đã cài; chứng chỉ gốc: cacert.pem của CloudBlue PC nếu có
+  $py = @("C:\CloudBluePC\py\python.exe", "C:\Program Files\Python312\python.exe") | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if (-not $py) { return $false }
+  $hp = Join-Path $env:TEMP "cb-setup-get.py"
+  $code = @'
+import ssl, sys, urllib.request
+ca = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] != "-" else None
+ctx = ssl.create_default_context(cafile=ca) if ca else ssl.create_default_context()
+req = urllib.request.Request(sys.argv[1], headers={"User-Agent": "BlueRoblox-setup", "Cache-Control": "no-cache"})
+with urllib.request.urlopen(req, timeout=300, context=ctx) as r, open(sys.argv[2], "wb") as f:
+    while True:
+        b = r.read(1 << 20)
+        if not b:
+            break
+        f.write(b)
+'@
+  try { [IO.File]::WriteAllText($hp, $code, (New-Object Text.UTF8Encoding($false))) } catch { return $false }
+  $ca = "C:\CloudBluePC\os\cacert.pem"; if (-not (Test-Path -LiteralPath $ca)) { $ca = "-" }
+  Remove-Item -LiteralPath $out -Force -ErrorAction SilentlyContinue
+  & $py -I $hp $url $out $ca 2>$null
+  return (($LASTEXITCODE -eq 0) -and (Test-Path -LiteralPath $out) -and ((Get-Item -LiteralPath $out).Length -gt 0)) }
 
 Write-Host "CloudBlue setup $SETUP_VER" -ForegroundColor DarkGray
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {

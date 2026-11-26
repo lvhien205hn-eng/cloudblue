@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 # =====================================================================================================
-#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 21.11d)
+#  pcremote.py — ĐIỀU KHIỂN TỪ XA trên MÁY PC CHO THUÊ (đợt 2 · bản 26.11a — số bản theo agent; ô xem trước "Xem tất cả" chạy bằng
+#  lệnh R_START chất lượng thấp của trạm 22/11b, máy PC không phải đổi gì)
+#  26.11a · MÁY KHÔNG CÓ CARD NÉN (VPS NVMe = máy ảo, nén bằng CPU): đo trên máy thật thấy quay + nén 30 khung/giây suốt ngày (kể cả màn hình đứng yên)
+#    ăn hơn 1 nhân + Windows vẽ lại màn hình cho mỗi lần quay → máy 2 nhân gần kín, lệnh chuột xếp hàng, con trỏ đi sau tay vài giây. Bản này:
+#      · chương trình TỰ chụp màn hình (GDI), so với khung trước, CHỈ đưa khung có thay đổi cho ffmpeg nén (qua ống) — đứng yên gần như không tốn CPU;
+#        người xem đang thao tác / màn hình đang đổi mới chụp đủ nhịp, đứng yên chụp 3 lần / giây + 1 giây gửi 1 khung giữ nhịp;
+#      · nén theo CHẤT LƯỢNG (không bơm đủ bitrate khi không cần), khung khoá ~4 giây / lần + khi cần (trước: 1 giây / lần), kiểu nén nhẹ theo số nhân;
+#      · bộ nén CPU chạy ưu tiên THƯỜNG, chương trình này (nhận chuột / phím) ưu tiên CAO hơn; lệnh rê chuột dồn lại thì chỉ làm lệnh mới nhất;
+#      · máy ảo mới cài: tự đặt màn hình 1920×1080 một lần.
 #
 #  pcagent (SYSTEM) mở chương trình này vào PHIÊN MÀN HÌNH đang hiện của máy. Việc làm:
 #    1. hỏi web (pc_relay_where, bằng mã riêng của máy) xem nối tới máy chủ phát hình nào → tự nối RA máy chủ đó (TLS, kiểm đúng
@@ -17,7 +25,8 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "21.11d"
+REMOTE_VER = "26.11a"
+IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
@@ -35,12 +44,27 @@ FF_ZIP_SHA = "742e32fc9f92681f9f254b925e1b613fdd8074ba40749d4879aefdb009b94cc5"
 FF_EXE_SHA = "04e1307997530f9cf2fe35cba2ca7e8875ca91da02f89d6c7243df819c94ad00"       # bin/ffmpeg.exe bên trong file zip
 
 # ---- chất lượng ----
-PRESETS = {"eco": (1280, 30, 2000), "bal": (1920, 30, 4500), "hd": (1920, 60, 9000)}    # cạnh dài tối đa, khung/giây, kbps ("auto" = bal + tự hạ / tăng)
+PRESETS = {"eco": (1280, 30, 2000), "bal": (1920, 30, 4500), "hd": (1920, 60, 9000), "uhd": (2560, 60, 16000)}  # cạnh dài tối đa, khung/giây, kbps ("auto" = bal + tự hạ / tăng)
+QS = ("auto", "eco", "bal", "hd", "uhd")   # Tự động · Tiết kiệm · Cân bằng · Nét · Siêu nét (21.11g)
+FIX_TIERS = ((900, 1280, 30),)            # khách TỰ CHỌN độ nét: giữ độ phân giải, chỉ bớt khi mạng rất yếu
 TIERS = ((500, 960, 15), (900, 1280, 20), (1600, 1280, 30), (2600, 1600, 30))           # bitrate dưới mức này → cạnh dài tối đa, khung/giây tối đa
 MIN_KBPS, MAX_KBPS = 300, 20000
 CPU_SIDE, CPU_FPS = 1600, 30              # nén bằng CPU (không có card nén): nhẹ hơn để không giành CPU của người đang dùng máy
 LAG_DROP_MS = {"direct": 350, "wsd": 350, "ws": 700}       # người xem chậm hơn mức này → bỏ khung tới khung khoá kế (đường vòng Cloudflare cho rộng hơn)
 ENCODERS = ("nvenc", "qsv", "amf", "x264")
+# ---- 26.11a: máy chỉ nén được bằng CPU → tự chụp màn hình, chỉ đưa khung ĐỔI cho ffmpeg (cách quay "pipe") ----
+PIPE_IDLE_FPS = 3                         # đứng yên, không ai thao tác: xem lại màn hình 3 lần / giây
+PIPE_BEAT_S = 1.0                         # không có gì đổi vẫn gửi 1 khung / giây (người xem + trạm biết máy còn sống)
+PIPE_ACT_S, PIPE_CHG_S = 1.0, 0.3         # sau thao tác cuối của người xem / khi màn hình đổi LIÊN TỤC: chụp đủ nhịp thêm bấy nhiêu giây
+PIPE_SETTLE = 60                          # sau khung đổi cuối: gửi lại khung đó TỐI ĐA mấy lần cho bộ nén làm nét dần khung vừa bị ép cỡ (không chụp lại) — khung nén ra chỉ còn vài chục byte thì thôi ngay
+                                          # (trang dày chữ 1920×1080 cần ~0,6 MB mới nét hẳn = ~1 giây ở 4500 kbps; 60 chỉ là chốt chặn)
+PIPE_SMALL, PIPE_FINE, PIPE_QUIET_S = 300, 2000, 0.25   # khung nén < 300 byte = không còn gì để làm nét; khung đổi nhỏ < 2000 byte sau ≥ 0,25 giây yên (con trỏ chữ nháy, đồng hồ) = đã nét sẵn, khỏi gửi lại
+PIPE_KEY_S, PIPE_KEY_PV_S = 20, 2         # khung khoá định kỳ theo GIÂY THẬT (phiên điều khiển / ô xem trước — ô đang xem máy có người điều khiển chỉ nhận khung khoá).
+                                          # Mỗi khung khoá bị ép cỡ ≤ ~150 KB → hình MỜ lại rồi nét dần ~1 giây (đo 26/11: 4 giây / khung khoá = trang chữ mờ gần nửa thời gian)
+                                          # → phiên điều khiển để thưa; người xem cần sớm hơn thì tự xin (C_KEYFRAME) / nghẽn / ACK trễ → bật lại bộ nén lấy khung khoá ngay
+PIPE_CRF = 22                             # mức chất lượng x264 (càng nhỏ càng nét); bitrate của phiên là TRẦN, không phải mức phải đạt
+PIPE_BUF_K = 1200                         # 1 khung không vượt ~150 KB (trạm bỏ khung khi bộ đệm tới người xem quá 192 KB)
+PIPE_FPS_MAX = 30
 BAD_S = 1800                              # bộ nén / cách quay vừa lỗi → 30 phút sau mới thử lại
 CLIP_MAX = 256 * 1024
 
@@ -61,15 +85,40 @@ def fit(sw, sh, side):
     return max(16, sw & ~1), max(16, sh & ~1)
 
 
-def plan(q, fps_req, maxh_req, kbps_req, kbps_cur, sw, sh, cpu=False):
-    """Chọn cỡ hình + khung/giây + bitrate cho phiên → (rộng, cao, khung/giây, kbps, trần kbps)."""
+def cpu_tune(ncpu):
+    """26.11a · Nén bằng CPU (cách quay "pipe"): (preset x264, tham số x264 thêm, khung/giây mặc định) theo số nhân của máy —
+       máy ít nhân nén kiểu nhẹ nhất + ít khung hơn để còn CPU cho việc của khách (khách vẫn tự chọn 30 khung/giây trong menu được)."""
+    try: n = max(1, int(ncpu or 1))
+    except (TypeError, ValueError): n = 1
+    if n <= 1: return "ultrafast", "partitions=i4x4", 15
+    if n == 2: return "ultrafast", "partitions=i4x4", 20
+    if n <= 4: return "ultrafast", "partitions=i4x4", 24
+    return "superfast", "", 30
+
+
+def move_key(t, p):
+    """26.11a · Lệnh CHỈ rê con trỏ (không đổi nút) → khoá gộp; lệnh khác → None. Máy bận làm lệnh rê dồn lại thì chỉ cần làm lệnh MỚI NHẤT cùng khoá
+       (không "chiếu lại" cả đường đi cũ → con trỏ hết đi sau tay)."""
+    if t == C_MOUSE and len(p) >= 6 and p[0] == 0: return ("m",)
+    if t == C_TOUCH and len(p) >= 6 and p[0] == 2: return ("t", p[1])
+    return None
+
+
+def plan(q, fps_req, maxh_req, kbps_req, kbps_cur, sw, sh, cpu=False, fps_fix=0, cpu_fps=0, cpu_side=0, fps_max=0):
+    """Chọn cỡ hình + khung/giây + bitrate cho phiên → (rộng, cao, khung/giây, kbps, trần kbps).
+       fps_req = máy người xem chỉ chịu tới mức này (chỉ HẠ) · fps_fix = khung/giây KHÁCH TỰ CHỌN (21.11g, 5–120, kể cả cao hơn mặc định của mức nét).
+       Tự động: bitrate tụt → bớt điểm ảnh + khung (TIERS) cho hình không vỡ ô.
+       Khách tự chọn độ nét (eco / bal / hd / uhd): GIỮ độ phân giải — chỉ bớt khi mạng rất yếu (< 900 kbps)."""
+    fix = q in PRESETS
     side, fps, cap = PRESETS.get(q, PRESETS["bal"])
     if kbps_req: cap = clamp(kbps_req, MIN_KBPS, MAX_KBPS, cap)
+    if fps_fix: fps = max(5, min(120, clamp(fps_fix, 1, 240, fps)))
     if fps_req: fps = max(5, min(fps, clamp(fps_req, 1, 240, fps)))
     if maxh_req and int(maxh_req) >= 320: side = min(side, int(maxh_req))
-    if cpu: side = min(side, CPU_SIDE); fps = min(fps, CPU_FPS)
+    if cpu: side = min(side, 1920 if fix else (cpu_side or CPU_SIDE)); fps = min(fps, 60 if fix or fps_fix else (cpu_fps or CPU_FPS))
+    if fps_max: fps = min(fps, fps_max)
     k = clamp(kbps_cur or cap, MIN_KBPS, cap, cap)
-    for lim, s, f in TIERS:
+    for lim, s, f in (FIX_TIERS if fix else TIERS):
         if k < lim: side = min(side, s); fps = min(fps, f); break
     w, h = fit(sw, sh, side)
     return w, h, fps, k, cap
@@ -92,10 +141,17 @@ class Rate:
         self.inflight = collections.deque(); self.delivered = collections.deque(); self.lat = collections.deque()
         self.base_ms = 0.0; self.ack_t = 0.0; self.t_change = 0.0; self.events = collections.deque(maxlen=40)
         self.hold_until = 0.0; self.hold_s = 0.0; self.last_cong = 0.0; self.lag_ms = 0
+        self.out = collections.deque()                                # (lúc gửi, số byte) trong ~3 giây gần nhất
 
     def sent(self, pts, n, now):
         self.inflight.append((pts, n, now))
         if len(self.inflight) > 3000: self.inflight.popleft()
+        self.out.append((now, n))
+        while self.out and now - self.out[0][0] > 3: self.out.popleft()
+
+    def outrate(self, now):
+        """kbps THẬT SỰ gửi đi trong 2 giây gần nhất (nén theo chất lượng: màn hình đứng yên thì thấp hơn trần nhiều)."""
+        return sum(n for t, n in self.out if now - t <= 2.0) * 8 / 2.0 / 1000
 
     def ack(self, pts, now, mono_us=None):
         got = 0; last = None
@@ -124,7 +180,9 @@ class Rate:
         n = sum(1 for t in self.events if now - t <= self.WIN_S and t > self.t_change)
         if not (n >= self.REPEAT or (hard and n >= 2)) or now - self.t_change <= self.DOWN_GAP: return None
         gp = self.goodput(now) if self.ack_t and now - self.ack_t < 3 else 0
-        new = int(max(MIN_KBPS, min(self.cur * 0.7, gp * 0.8 if gp > 50 else self.cur * 0.6)))
+        o = self.outrate(now)
+        if 0 < o < self.cur * 0.5: new = int(max(MIN_KBPS, self.cur * 0.7))     # 26.11a: đang phát thấp hơn trần nhiều (màn hình ít đổi) → tốc độ nhận không nói lên sức đường truyền
+        else: new = int(max(MIN_KBPS, min(self.cur * 0.7, gp * 0.8 if gp > 50 else self.cur * 0.6)))
         if new >= self.cur * 0.92: return None
         self.hold_s = min(600.0, self.hold_s * 2) if self.hold_s and now - self.hold_until < 180 else 40.0
         self.cur = new; self.t_change = now; self.hold_until = now + self.hold_s
@@ -318,11 +376,19 @@ def clean_text(s, limit=64 * 1024):
 
 
 # ---- lệnh ffmpeg ----
-def enc_args(enc, fps, kbps, x264_preset="superfast", nv_preset="p4"):
-    """Tham số bộ nén H.264 độ trễ thấp (giống máy chủ phát hình): khung khoá mỗi ~1 giây, không khung B, bitrate cố định, bộ đệm ~6 khung."""
+def enc_args(enc, fps, kbps, x264_preset="superfast", nv_preset="p4", x264_extra="", crf=0, key_s=0):
+    """Tham số bộ nén H.264 độ trễ thấp (giống máy chủ phát hình): khung khoá mỗi ~1 giây, không khung B, bitrate cố định, bộ đệm ~6 khung.
+       26.11a · crf > 0 (chỉ x264, cách quay "pipe"): nén theo CHẤT LƯỢNG, kbps là trần; khung khoá do -force_key_frames ép theo giây thật (key_s)."""
     gop = str(max(int(fps * (2 if kbps < 450 else 1)), 10))
     buf = "%dk" % max(kbps * 6 // max(fps, 1), min(250, max(96, kbps // 2)))
     rate = ["-b:v", "%dk" % kbps, "-maxrate", "%dk" % kbps, "-bufsize", buf]
+    if crf and enc == "x264":
+        # qcomp=1.0: mức lượng tử CỐ ĐỊNH theo crf. Mặc định (0.6) x264 cứ hạ dần mức lượng tử khi hình đứng yên → mỗi khung gửi lại vẫn ra ~5 KB mãi không dứt
+        # (đo 26/11 trên trang chữ 1920×1080) → màn hình đứng yên vẫn tốn CPU + mạng. Cố định thì nét tới mức crf là DỪNG (khung sau chỉ còn ~24 byte).
+        xp = "sliced-threads=0:keyint=100000:min-keyint=1:scenecut=0:bframes=0:rc-lookahead=0:sync-lookahead=0:repeat-headers=1:qcomp=1.0" + (":" + x264_extra if x264_extra else "")
+        return ["-force_key_frames", "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+%d))" % max(1, int(key_s or PIPE_KEY_S)),
+                "-c:v", "libx264", "-preset", x264_preset, "-tune", "zerolatency", "-profile:v", "baseline", "-threads", "1", "-forced-idr", "1", "-x264-params", xp,
+                "-crf", str(int(crf)), "-maxrate", "%dk" % kbps, "-bufsize", "%dk" % max(96, min(PIPE_BUF_K, kbps * 6 // max(fps, 1)))]
     if enc == "nvenc":
         return ["-c:v", "h264_nvenc", "-preset", nv_preset, "-tune", "ull", "-zerolatency", "1", "-delay", "0", "-rc", "cbr", "-profile:v", "baseline",
                 "-bf", "0", "-g", gop, "-forced-idr", "1", "-strict_gop", "1"] + rate
@@ -335,8 +401,16 @@ def enc_args(enc, fps, kbps, x264_preset="superfast", nv_preset="p4"):
             "sliced-threads=0:keyint=%s:min-keyint=%s:scenecut=0:bframes=0:rc-lookahead=0:sync-lookahead=0:repeat-headers=1" % (gop, gop)] + rate
 
 
-def ff_cmd(ff, cap, enc, sw, sh, w, h, fps, kbps, port):
-    """Dòng lệnh ffmpeg: quay màn hình chính (dda = Desktop Duplication · gdi = GDI · test = hình thử) → thu cỡ → nén → RTP về 127.0.0.1:port."""
+def ff_cmd(ff, cap, enc, sw, sh, w, h, fps, kbps, port, tune=None):
+    """Dòng lệnh ffmpeg: quay màn hình chính (dda = Desktop Duplication · gdi = GDI · test = hình thử) → thu cỡ → nén → RTP về 127.0.0.1:port.
+       26.11a · cap = "pipe": KHÔNG quay — nhận khung BGR0 cỡ sw×sh qua ống (chương trình này tự chụp, chỉ đưa khung đổi); mốc thời gian = đồng hồ thật,
+       không tự nhân đôi / bỏ khung (passthrough). KHÔNG dùng -fflags nobuffer ở đây: ffmpeg 6.1 sẽ nuốt mất khung đầu."""
+    if cap == "pipe":
+        vf = (["scale=%d:%d:flags=fast_bilinear" % (w, h)] if (w, h) != (sw, sh) else []) + ["format=yuv420p"]
+        return ([ff, "-hide_banner", "-loglevel", "error", "-nostdin", "-probesize", "32", "-analyzeduration", "0", "-use_wallclock_as_timestamps", "1",
+                 "-f", "rawvideo", "-pix_fmt", "bgr0", "-video_size", "%dx%d" % (sw, sh), "-framerate", str(fps), "-i", "pipe:0", "-vf", ",".join(vf), "-fps_mode", "passthrough"]
+                + enc_args(enc, fps, kbps, **(tune or {"crf": PIPE_CRF}))
+                + ["-an", "-bsf:v", "dump_extra=freq=keyframe", "-f", "rtp", "-rtpflags", "skip_rtcp", "-payload_type", "96", "rtp://127.0.0.1:%d?pkt_size=1300" % port])
     pix = "bgra" if enc == "nvenc" else ("nv12" if enc in ("qsv", "amf") else "yuv420p")       # card NVIDIA nhận thẳng BGRA (tự đổi màu trong card)
     vf = []
     if (w, h) != (sw, sh): vf.append("scale=%d:%d:flags=bicubic" % (w, h))
@@ -376,6 +450,66 @@ class Refused(Exception):
     def __init__(self, code, msg=""): super().__init__(msg or code); self.code = code
 
 
+class Tls:
+    """22.11a · TLS qua MemoryBIO — thay ssl.SSLSocket dùng chung nhiều luồng.
+       Máy gửi hình (luồng gửi) + PING (luồng phụ) trong lúc luồng đọc đang chờ chuột / phím của khách — CÙNG 1 kết nối.
+       ssl.SSLSocket (OpenSSL) không chịu được đọc + ghi cùng lúc từ 2 luồng: trạng thái "đang chờ đọc" bị luồng ghi đè → luồng đọc báo lỗi giả
+       (WinError 10035) hoặc ĐỨT GIẢ ("EOF occurred in violation of protocol") dù mạng vẫn tốt → máy rớt khỏi máy chủ phát hình, khách thấy
+       "Mất kết nối — đang nối lại" cứ được một lúc. Ở đây mọi thao tác trên đối tượng SSL nằm trong 1 khoá (chỉ mã hoá / giải mã trong RAM);
+       đọc / ghi socket thật nằm NGOÀI khoá; khoá ghi riêng giữ đúng thứ tự bản ghi TLS."""
+
+    def __init__(self, raw, ctx, sni):
+        self.raw = raw; self.inb = ssl.MemoryBIO(); self.outb = ssl.MemoryBIO()
+        self.obj = ctx.wrap_bio(self.inb, self.outb, server_side=False, server_hostname=sni)
+        self.sl = threading.Lock(); self.wl = threading.Lock()
+        while True:                                            # bắt tay (timeout của socket thật áp dụng)
+            try:
+                with self.sl: self.obj.do_handshake()
+                self._flush(); break
+            except ssl.SSLWantReadError:
+                self._flush()
+                x = raw.recv(65536)
+                if not x: raise ssl.SSLError("may chu dong ket noi khi bat tay TLS")
+                with self.sl: self.inb.write(x)
+
+    def _flush(self):
+        with self.wl:
+            with self.sl: out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def sendall(self, data):
+        mv = memoryview(data)
+        with self.wl:
+            with self.sl:
+                while mv:
+                    k = self.obj.write(mv); mv = mv[k:]
+                out = self.outb.read()
+            if out: self.raw.sendall(out)
+
+    def recv(self, n):
+        """Như socket.recv: dữ liệu đã giải mã (≤ n byte) · b"" = bên kia đóng thật · socket.timeout / OSError như socket thường."""
+        while True:
+            with self.sl:
+                try: d = self.obj.read(n)
+                except ssl.SSLWantReadError: d = None
+                except (ssl.SSLZeroReturnError, ssl.SSLEOFError): d = b""
+                pend = self.outb.pending
+            if pend: self._flush()
+            if d is not None: return d
+            x = self.raw.recv(262144)
+            with self.sl:
+                if x: self.inb.write(x)
+                else: self.inb.write_eof()
+
+    def getpeercert(self, binary_form=False): return self.obj.getpeercert(binary_form)
+
+    def settimeout(self, t): self.raw.settimeout(t)
+
+    def shutdown(self, how): self.raw.shutdown(how)
+
+    def close(self): self.raw.close()
+
+
 class DirectConn:
     kind = "direct"
 
@@ -386,8 +520,8 @@ class DirectConn:
             ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE     # không dựa vào CA: kiểm ĐÚNG mã chứng chỉ web báo
             ctx.minimum_version = ssl.TLSVersion.TLSv1_2
             raw.settimeout(8)
-            s = ctx.wrap_socket(raw, server_hostname="cloudblue")
-        except Exception:
+            s = Tls(raw, ctx, "cloudblue")                     # 22.11a: TLS an toàn nhiều luồng (xem Tls)
+        except BaseException:
             raw.close(); raise
         der = s.getpeercert(binary_form=True) or b""
         if not cert_hex or hashlib.sha256(der).hexdigest().lower() != cert_hex.lower():
@@ -436,7 +570,7 @@ class WSConn:
                 if cafile and os.path.isfile(cafile):
                     try: ctx.load_verify_locations(cafile)
                     except Exception: pass
-                s = ctx.wrap_socket(raw, server_hostname=host)
+                s = Tls(raw, ctx, host)                        # 22.11a: TLS an toàn nhiều luồng (xem Tls) — vẫn kiểm chứng chỉ + tên miền
             key = base64.b64encode(os.urandom(16)).decode()
             path = (u.path or "/") + ("?" + u.query if u.query else "")
             s.sendall(("GET %s HTTP/1.1\r\nHost: %s\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: %s\r\n"
@@ -526,22 +660,96 @@ def connect(stream, cafile=None, log=None):
 # ====================================================================================== BỘ QUAY + NÉN (ffmpeg)
 class Encoder:
     """1 tiến trình ffmpeg: quay màn hình + nén, đẩy RTP về cổng nội bộ; luồng đọc ghép thành khung rồi gọi on_au(dữ liệu | None, khoá, cfg, pts_us)."""
-    def __init__(self, ff, cap, enc, sw, sh, w, h, fps, kbps, on_au, log=None):
+    def __init__(self, ff, cap, enc, sw, sh, w, h, fps, kbps, on_au, log=None, grab_fn=None, tune=None):
         self.ff, self.cap, self.enc, self.sw, self.sh, self.w, self.h, self.fps, self.kbps = ff, cap, enc, sw, sh, w, h, fps, kbps
         self.on_au, self.log = on_au, log or (lambda m: None)
         self.proc = None; self.sock = None; self.alive = False; self.stopped = False; self.frames = 0; self.t0 = 0.0; self.t_frame = 0.0; self.err = ""
+        self.grab_fn, self.tune = grab_fn, tune                       # 26.11a: cách quay "pipe"
+        self.kick_ev = threading.Event(); self.t_act = 0.0; self.grabs = 0; self.fed = 0; self.settle_req = False; self.small = 0; self.au_sz = 0; self.au_key = False
 
     def start(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try: self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 8 * 1024 * 1024)
         except OSError: pass
         self.sock.bind(("127.0.0.1", 0)); self.sock.settimeout(0.5)
-        cmd = ff_cmd(self.ff, self.cap, self.enc, self.sw, self.sh, self.w, self.h, self.fps, self.kbps, self.sock.getsockname()[1])
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-                                     creationflags=(0x08000000 | 0x00008000) if WIN else 0)        # không cửa sổ · ưu tiên trên mức thường (hình không khựng khi máy bận)
-        self.alive = True; self.t0 = self.t_frame = time.time()
+        pipe = self.cap == "pipe"
+        cmd = ff_cmd(self.ff, self.cap, self.enc, self.sw, self.sh, self.w, self.h, self.fps, self.kbps, self.sock.getsockname()[1], self.tune)
+        # không cửa sổ · card nén: ưu tiên trên mức thường (hình không khựng khi máy bận) · 26.11a: nén bằng CPU chạy ưu tiên THƯỜNG — không giành CPU của
+        # việc nhận chuột / phím (trước đây bộ nén CPU ưu tiên cao hơn cả chương trình này → máy ít nhân bị nghẽn, lệnh chuột chờ hàng giây)
+        flags = (0x08000000 | (0x00000020 if self.enc == "x264" else 0x00008000)) if WIN else 0
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE if pipe else subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                     creationflags=flags, **({"bufsize": 0} if pipe else {}))
+        self.alive = True; self.t0 = self.t_frame = time.time(); self.t_act = time.monotonic() + PIPE_ACT_S
         threading.Thread(target=self._rtp, daemon=True).start()
         threading.Thread(target=self._errlog, daemon=True).start()
+        if pipe: threading.Thread(target=self._feed, daemon=True).start()
+
+    def kick(self):
+        """Người xem vừa thao tác (chuột / phím) → chụp ngay nhịp kế + chụp đủ nhịp thêm PIPE_ACT_S giây. Cách quay khác: không làm gì."""
+        if self.cap != "pipe": return
+        self.t_act = max(self.t_act, time.monotonic() + PIPE_ACT_S); self.kick_ev.set()
+
+    def _feed(self):
+        """26.11a · Luồng chụp (cách quay "pipe"): chụp màn hình → khung KHÁC khung trước mới ghi vào ống cho ffmpeg nén. Đang thao tác / màn hình đổi liên tục →
+           chụp đủ nhịp; đứng yên → PIPE_IDLE_FPS lần / giây. Sau khung đổi cuối gửi lại chính khung đó (không chụp lại) cho bộ nén làm nét, tới khi khung nén ra chỉ còn vài chục byte;
+           không có gì thì PIPE_BEAT_S giây gửi 1 khung giữ nhịp. ffmpeg nén không kịp → lệnh ghi tự chờ (không dồn khung cũ, không cộng dồn trễ)."""
+        g = None; f = self.proc.stdin
+        try:
+            g = self.grab_fn()
+            if (g.w, g.h) != (self.sw, self.sh): raise RuntimeError("man hinh %dx%d khac luc bat bo nen %dx%d" % (g.w, g.h, self.sw, self.sh))
+            dt = 1.0 / max(1, self.fps); dt_idle = max(dt, 1.0 / PIPE_IDLE_FPS)
+            t_cap = t_out = 0.0; last = None; settle = 0; run = 0; fresh = quiet = probe = False
+            while self.alive:
+                now = time.monotonic()
+                if self.settle_req: self.settle_req = False; settle = max(settle, PIPE_SETTLE); fresh = False      # vừa ra khung khoá (bị ép cỡ) → gửi lại cho nét
+                cap_due = t_cap + (dt if now < self.t_act else dt_idle); again = False
+                if probe and self.frames >= self.fed:                  # khung giữ nhịp vừa rồi nén ra còn NẶNG = hình chưa nét hẳn (lần làm nét trước bị cắt ngang) → làm nét tiếp
+                    probe = False
+                    if not self.au_key and self.au_sz >= PIPE_SMALL: settle = max(settle, PIPE_SETTLE); fresh = False
+                if settle and last is not None:
+                    # 26.11a-2 · VÒNG KÍN: chỉ gửi lại khi khung vừa ghi đã nén xong VÀ còn nặng (bộ nén còn đang làm nét). Trước đó gửi mù 6 khung sau MỖI lần đổi →
+                    # con trỏ chữ nháy cũng tốn ~13 khung / giây.
+                    out = self.frames >= self.fed
+                    # nét xong = 2 khung LIỀN chỉ vài chục byte (1 khung lẻ nhỏ giữa chừng là bộ nén hết hạn mức của khung đó, chưa phải xong)
+                    if out and not self.au_key and (self.small >= 2 or (fresh and quiet and self.au_sz < PIPE_FINE)): settle = 0
+                    elif (out or now - t_out > 0.25) and now >= t_out + dt: again = True
+                if not again and cap_due > now:
+                    w = cap_due - now
+                    if settle and last is not None: w = min(w, 0.008 if (self.frames < self.fed and now - t_out <= 0.25) else max(0.001, t_out + dt - now))
+                    self.kick_ev.wait(w); self.kick_ev.clear(); continue
+                buf = None
+                if now >= cap_due:
+                    t_cap = now; buf, changed = g.grab(); self.grabs += 1
+                    if buf is None: continue                              # chưa chụp được (màn hình đang khoá / đổi) → nhịp sau thử lại
+                    if changed:
+                        run += 1; last = buf; settle = PIPE_SETTLE; fresh = True; quiet = now - t_out >= PIPE_QUIET_S
+                        self.t_act = max(self.t_act, now + (PIPE_CHG_S if run >= 2 else dt * 1.5))      # đổi 2 nhịp liền = đang chạy hình → chụp đủ nhịp; đổi lẻ (con trỏ chữ nháy) → chỉ xem lại 1 nhịp
+                    else:
+                        run = 0
+                        if again: settle -= 1; fresh = False
+                        elif now - t_out < PIPE_BEAT_S: continue
+                        else: probe = True
+                        last = buf
+                elif again:
+                    settle -= 1; fresh = False; buf = last
+                else: continue
+                mv = memoryview(buf); n = 0; size = len(mv)
+                while n < size:
+                    k = f.write(mv[n:])
+                    if not k: raise OSError("ong toi ffmpeg da dong")
+                    n += k
+                t_out = time.monotonic(); self.fed += 1
+        except Exception as e:
+            if self.alive and not self.stopped:
+                self.err = self.err or ("chup man hinh: %r" % (e,))[:300]; self.log("bo chup man hinh (pipe) dung: %r" % (e,))
+                try: self.proc.kill()                                     # cho luồng canh phiên thấy bộ nén đã dừng → đổi sang cách quay cũ
+                except Exception: pass
+        finally:
+            try:
+                if g is not None: g.close()
+            except Exception: pass
+            try: f.close()
+            except Exception: pass
 
     def _errlog(self):
         lines = []
@@ -550,7 +758,9 @@ class Encoder:
                 s = ln.decode("utf-8", "replace").strip()
                 if s: lines.append(s); del lines[:-6]
         except Exception: pass
-        self.err = " | ".join(lines[-3:])[:300]
+        txt = " | ".join(lines[-3:])[:300]
+        if txt or not self.err: self.err = ((self.err + " | ") if self.err and txt else "") + txt        # giữ lý do của luồng chụp (cách quay "pipe") nếu ffmpeg không nói gì
+        self.err = self.err[:300]
         if lines and not self.stopped: self.log("ffmpeg (%s, %s): %s" % (self.cap, self.enc, self.err))
 
     def _rtp(self):
@@ -563,14 +773,18 @@ class Encoder:
             except OSError: break
             r = asm.feed(pkt)
             if r is None: continue
-            if r[0] is not None: self.frames += 1; self.t_frame = time.time()
+            if r[0] is not None:
+                self.au_sz = len(r[0]); self.au_key = bool(r[1])                                # (đặt TRƯỚC khi tăng frames: luồng chụp đọc cỡ khung vừa nén xong)
+                self.frames += 1; self.t_frame = time.time()
+                self.small = self.small + 1 if (not r[1] and len(r[0]) < PIPE_SMALL) else 0
+                if r[1] and self.cap == "pipe": self.settle_req = True; self.kick_ev.set()      # 26.11a: vừa ra khung khoá (bị ép cỡ ≤ ~150 KB) → gửi lại khung đó vài lần cho nét hẳn
             try: self.on_au(r[0], r[1], r[2], int(time.monotonic() * 1e6))
             except Exception: pass
 
     def exited(self): return self.proc is not None and self.proc.poll() is not None
 
     def stop(self):
-        self.stopped = True; self.alive = False
+        self.stopped = True; self.alive = False; self.kick_ev.set()
         try:
             if self.proc and self.proc.poll() is None: self.proc.kill()
         except Exception: pass
@@ -611,8 +825,9 @@ class Session:
         self.r, self.conn, self.req = remote, conn, req
         self.log = remote.log; self.io = remote.io
         self.sid = clamp(req.get("sid"), 0, 2 ** 31 - 1)
-        self.q = req.get("q") if req.get("q") in ("eco", "bal", "hd", "auto") else "auto"
+        self.q = req.get("q") if req.get("q") in QS else "auto"
         self.fps_req = clamp(req.get("fps"), 0, 240); self.maxh_req = clamp(req.get("maxh"), 0, 16384); self.kbps_req = clamp(req.get("kbps"), 0, MAX_KBPS)
+        self.fps_fix = clamp(req.get("fpsx"), 0, 120)                      # 21.11g: khung/giây khách tự chọn
         self.link = str(req.get("link") or "direct"); self.net = str(req.get("net") or "")[:2]
         self.lag_lim = LAG_DROP_MS.get(self.link, 350) + (150 if self.net == "c" else 0)
         cap = self.kbps_req or PRESETS.get(self.q, PRESETS["bal"])[2]
@@ -623,6 +838,11 @@ class Session:
         self.vw = self.vh = 0; self.fps = 30; self.sw = self.sh = 0
         self.keys = Keys(self.io); self.touch = Touch(self.io); self.ptr = Pointer(self.io)
         self.iq = queue.Queue(maxsize=4000); self.clip_last = None; self.t0 = time.time()
+        self.ime = None; self.ime_v = None; self.ime_dirty = False; self.last_st = None       # 22.11b: ô nhập chữ đang được chọn → app tự bật bàn phím
+        self.long_gop = False; self.key_until = 0.0; self.skip = 0; self.enc_kbps = 0; self.rate_pend = False; self.plan_kw = {}                            # 26.11a: cách quay "pipe" (khung khoá thưa) · gộp lệnh rê chuột dồn
+
+    def _on_ime(self, v):
+        self.ime_v = (1 if v[0] else 0, 1 if v[1] else 0); self.ime_dirty = True
 
     # ---------- hình ----------
     def _pick(self):
@@ -642,11 +862,29 @@ class Session:
             self.gen += 1; gen = self.gen; self.sq.clear(); self.wait_key = True
             cap, enc = self._pick()
             self.sw, self.sh = self.io.screen()
-            w, h, fps, kbps, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=(enc == "x264"))
-            self.vw, self.vh, self.fps = w, h, fps
-            e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, lambda d, k, c, pts, g=gen: self._on_au(g, d, k, c, pts), self.log)
+            # 26.11a: máy CHỈ nén được bằng CPU (máy ảo VPS NVMe…) → tự chụp, chỉ nén khung đổi. Máy có card nén (kể cả đang tạm lỗi) giữ cách quay cũ.
+            pipe = (enc == "x264" and list(self.r.caps.get("enc") or []) == ["x264"] and cap in ("gdi", "dda") and callable(getattr(self.io, "grabber", None))
+                    and self.r.bad.get("pipe", 0) < time.time())
+            tune = None; kw = {}
+            if pipe:
+                preset, extra, cfps = cpu_tune(getattr(self.r, "ncpu", 0))
+                cap = "pipe"; kw = {"cpu_fps": cfps, "cpu_side": 1920, "fps_max": PIPE_FPS_MAX}
+                tune = {"x264_preset": preset, "x264_extra": extra, "crf": PIPE_CRF, "key_s": PIPE_KEY_PV_S if self.req.get("preview") else PIPE_KEY_S}
+            self.long_gop = pipe
+            w, h, fps, kbps, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=(enc == "x264"), fps_fix=self.fps_fix, **kw)
+            self.vw, self.vh, self.fps = w, h, fps; self.enc_kbps = kbps; self.rate_pend = False; self.plan_kw = kw
+            on_au = lambda d, k, c, pts, g=gen: self._on_au(g, d, k, c, pts)
+            if pipe: e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, on_au, self.log, grab_fn=self.io.grabber, tune=tune)
+            else: e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, on_au, self.log)       # giữ nguyên cách gọi cũ: máy Linux (cbremote) thay Encoder bằng lớp riêng
             e.start(); self.enc = e; self.t_restart = time.time()
             self.conn.send(P_INFO, json.dumps({"sid": self.sid, "w": w, "h": h, "fps": fps, "kbps": kbps, "enc": enc, "cap": cap, "q": self.q}).encode())
+
+    def _tier_moves(self):
+        """Bitrate hiện tại (rate.cur) có làm đổi cỡ hình / khung-giây so với bộ nén đang chạy không (qua mốc TIERS) — có thì phải bật lại bộ nén ngay."""
+        try:
+            w, h, fps, _, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=True, fps_fix=self.fps_fix, **(self.plan_kw or {}))
+            return (w, h, fps) != (self.vw, self.vh, self.fps)
+        except Exception: return True
 
     def _on_au(self, gen, data, key, cfg, pts):
         if gen != self.gen or self.closed: return
@@ -676,6 +914,7 @@ class Session:
             if key: self.t_key = now
 
     def _congested(self, now, hard=False):
+        if self.long_gop: self.key_until = now + 5.0                 # 26.11a: khung khoá thưa → sau lần nghẽn, 5 giây tới bảo đảm có khung khoá ~1,5 giây / lần (luồng canh phiên bật lại bộ nén)
         new = self.rate.congested(now, hard)
         if new:
             self.log("nguoi xem nhan cham -> ha bitrate con %d kbps" % new); self.restart_why = "rate"
@@ -691,8 +930,10 @@ class Session:
             try: j = json.loads(p.decode("utf-8") or "{}")
             except Exception: return
             if not isinstance(j, dict): return
-            if j.get("q") in ("eco", "bal", "hd", "auto"): self.q = j["q"]
+            if j.get("q") in QS: self.q = j["q"]
             if "fps" in j: self.fps_req = clamp(j.get("fps"), 0, 240)
+            if "maxh" in j: self.maxh_req = clamp(j.get("maxh"), 0, 16384)
+            if "fpsx" in j: self.fps_fix = clamp(j.get("fpsx"), 0, 120)
             self.kbps_req = clamp(j.get("kbps"), 0, MAX_KBPS)
             cap = self.kbps_req or PRESETS.get(self.q, PRESETS["bal"])[2]
             self.rate = Rate(cap, kbps_start(cap, self.q, self.net, self.link)); self.restart_why = "quality"
@@ -725,22 +966,47 @@ class Session:
         elif t == C_CLIP and len(p) >= 1:
             s = p[1:1 + CLIP_MAX].decode("utf-8", "replace")
             self.clip_last = s; self.io.clip_set(s)
-            if p[0]: time.sleep(0.05); self.keys.tap(0xA2, 0x56)        # dán ngay: Ctrl+V
+            if p[0]: self._paste(p[0])                                   # dán ngay (1 = Ctrl+V / nút Dán · 2 = khách bấm Ctrl+Shift+V)
+
+    def _paste(self, mode):
+        """23.11b: dán ngay sau khi đặt bộ nhớ copy. Phím bổ trợ khách ĐANG GIỮ (Ctrl của Ctrl+V…) nhả ra trước, dán, rồi nhấn lại → tổ hợp dán
+           sạch (không thành Ctrl+Shift+Insert / Ctrl+Ctrl+V lẫn lộn) và máy vẫn khớp phím khách đang giữ (bấm tiếp Ctrl+C vẫn là copy).
+           Máy Linux (io.paste): cbcap tự chọn phím theo cửa sổ (Konsole Ctrl+Shift+V…). Windows: Ctrl+V (mode 2: Ctrl+Shift+V)."""
+        held = [vk for vk in sorted(self.keys.down | self.keys.auto_held) if vk in MOD_VKS]
+        for vk in held: self.io.key(vk, False, vk in EXT_VKS)
+        time.sleep(0.05)
+        fn = getattr(self.io, "paste", None)
+        if fn is not None: fn(mode)
+        else: self.keys.tap(*((0xA2, 0xA0, 0x56) if mode == 2 else (0xA2, 0x56)))
+        for vk in held: self.io.key(vk, True, vk in EXT_VKS)
 
     def _input(self):
+        pend = None
         while not self.closed:
-            try: t, p = self.iq.get(timeout=0.05)
-            except queue.Empty:
-                try: self.touch.tick(time.time())
-                except Exception: pass
-                continue
+            if pend is not None: (t, p), pend = pend, None
+            else:
+                try: t, p = self.iq.get(timeout=0.05)
+                except queue.Empty:
+                    try: self.touch.tick(time.time())
+                    except Exception: pass
+                    continue
+            k = move_key(t, p)
+            while k is not None:                                     # 26.11a: lệnh rê dồn lại (máy bận) → bỏ các điểm cũ, rê thẳng tới điểm MỚI NHẤT
+                try: nx = self.iq.get_nowait()
+                except queue.Empty: break
+                if move_key(*nx) == k: t, p = nx; self.skip += 1
+                else: pend = nx; break
             try: self._apply(t, p); self.touch.tick(time.time())
             except (ValueError, struct.error, UnicodeError, AttributeError, TypeError): pass       # gói hỏng → bỏ qua
             except Exception as e: self.log("loi lam lenh nguoi xem (0x%02x): %r" % (t, e))
+            kick = getattr(self.enc, "kick", None)                   # vừa có thao tác → chụp ngay (cách quay "pipe"; bộ nén riêng của máy Linux không có thì thôi)
+            if kick is not None:
+                try: kick()
+                except Exception: pass
 
     # ---------- canh phiên ----------
     def _monitor(self):
-        t_stat = time.time(); s0 = b0 = 0; t_clip = t_size = 0.0
+        t_stat = time.time(); s0 = b0 = g0 = 0; t_clip = t_size = 0.0
         while not self.closed:
             time.sleep(0.25); now = time.time(); e = self.enc
             try:
@@ -749,7 +1015,8 @@ class Session:
                     self.log("bo quay / nen dung%s (%s, %s) %s" % (" khi chua ra khung nao" if first else "", e.cap, e.enc, e.err))
                     if first:                                   # chưa ra khung nào: cách quay / bộ nén này không chạy được trên máy → đổi sang cách kế
                         self.fails += 1
-                        if e.cap == "dda": self.r.bad["dda"] = now + BAD_S
+                        if e.cap == "pipe": self.r.bad["pipe"] = now + BAD_S           # 26.11a: tự chụp không chạy trên máy này → về cách quay cũ (ffmpeg tự quay)
+                        elif e.cap == "dda": self.r.bad["dda"] = now + BAD_S
                         elif e.enc != "x264": self.r.bad[e.enc] = now + BAD_S
                         if self.fails >= 4:
                             self.conn.send(S_ERROR, json.dumps({"code": "OFFLINE", "msg": "Máy PC chưa quay được màn hình (chưa ai đăng nhập Windows hoặc màn hình đang khoá) — thử lại sau ít phút."},
@@ -761,9 +1028,17 @@ class Session:
                     t_size = now
                     if tuple(self.io.screen()) != (self.sw, self.sh) and now - self.t_restart > 1.0:
                         self.log("man hinh doi do phan giai -> phat lai"); self.restart_why = "size"
+                if (self.long_gop and self.restart_why is None and e is not None and e.frames > 0 and now - self.t_key > 1.5 and now - self.t_restart > 1.0
+                        and (self.wait_key or now < self.key_until)):
+                    self.restart_why = "key"                          # 26.11a: đang chờ khung khoá (vừa bỏ khung / vừa nghẽn) mà khung khoá định kỳ còn xa → bật lại bộ nén lấy khung khoá ngay
                 if self.restart_why is None:
                     up = self.rate.raise_(now)
-                    if up: self.log("duong truyen on -> tang len %d kbps" % up); self.restart_why = "rate"
+                    if up and self.long_gop and not self._tier_moves() and self.rate.outrate(now) < self.enc_kbps * 0.6:
+                        # 26.11a: nén theo chất lượng, bitrate chỉ là TRẦN. Đang phát thấp hơn trần nhiều mà bật lại bộ nén chỉ để nâng trần = 1 khung khoá mờ + ~1 giây
+                        # nét lại, không được gì → ghi nhận, lúc hình chạm trần (cuộn trang, video) mới bật lại.
+                        self.rate_pend = True; self.log("duong truyen on -> tran %d kbps (ap dung khi hinh can)" % up)
+                    elif up: self.log("duong truyen on -> tang len %d kbps" % up); self.restart_why = "rate"
+                    elif self.long_gop and self.rate_pend and now - self.t_restart > 3.0 and self.rate.outrate(now) >= self.enc_kbps * 0.6: self.restart_why = "rate"
                 if self.restart_why and now - self.t_restart > 1.0:
                     self.restart_why = None; self.start_video()
                 if now - t_clip > 0.5:
@@ -775,16 +1050,32 @@ class Session:
                     dt = now - t_stat
                     st = {"fps": round((self.sent - s0) / dt, 1), "kbps": int((self.bytes - b0) * 8 / dt / 1000), "drop": self.drop, "enc": e.enc if e else "",
                           "q": self.q, "w": self.vw, "h": self.vh, "lag": self.rate.lag_ms, "cap": e.cap if e else ""}
+                    if e is not None and e.cap == "pipe": st["eco"] = 1; st["grab"] = round((e.grabs - g0) / dt, 1); g0 = e.grabs     # chỉ gửi khi màn hình đổi · số lần chụp / giây
                     if self.q == "auto" and self.rate.cur < self.rate.cap * 0.6 and now - self.rate.last_cong < 900: st["weak"] = 1; st["tgt"] = int(self.rate.cur)
-                    self.conn.send(S_STATS, json.dumps(st).encode())
+                    self.last_st = dict(st); self.ime_dirty = False
+                    self.conn.send(S_STATS, json.dumps(self._ime_fields(st)).encode())
                     t_stat = now; s0, b0 = self.sent, self.bytes
+                elif self.ime_dirty:                                  # 22.11b: ô nhập chữ vừa được chọn / bỏ chọn → báo NGAY (không chờ nhịp 2 giây)
+                    self.ime_dirty = False
+                    self.conn.send(S_STATS, json.dumps(self._ime_fields(dict(self.last_st or {}))).encode())
             except Exception as ex:
                 if self.closed: return
                 self.log("loi canh phien: %r" % (ex,))
                 if isinstance(ex, (OSError, EOFError)): self.closed = True; return
 
+    def _ime_fields(self, st):
+        v = self.ime_v
+        if v is not None:
+            st["ime"] = v[0]
+            if v[1]: st["pw"] = 1
+        return st
+
     def start(self):
         self.io.awake(True)
+        mk = getattr(self.io, "ime_watch", None)
+        if mk is not None:
+            try: self.ime = mk(self._on_ime, self.log)
+            except Exception as e: self.log("ime: %r" % (e,))
         if self.req.get("admin") and not self.req.get("owner"): self.io.notify("CloudBlue: quan tri vien dang ho tro / dieu khien may nay tu xa.")
         self.th_in = threading.Thread(target=self._input, daemon=True); self.th_in.start()
         for fn in (self._sender, self._monitor): threading.Thread(target=fn, daemon=True).start()
@@ -796,6 +1087,10 @@ class Session:
             self.closed = True
             e, self.enc = self.enc, None
         if e: e.stop()
+        w, self.ime = self.ime, None
+        if w is not None:
+            try: w.stop()
+            except Exception: pass
         self.sev.set()
         th = getattr(self, "th_in", None)
         if th is not None and th is not threading.current_thread(): th.join(0.5)        # luồng nhập liệu dừng hẳn rồi mới nhả (không nhả xong lại bị nhấn tiếp)
@@ -803,10 +1098,137 @@ class Session:
             try: fn()
             except Exception: pass
         self.io.awake(False)
-        self.log("het nguoi xem: gui %d khung, bo %d, %d giay" % (self.sent, self.drop, int(time.time() - self.t0)))
+        self.log("het nguoi xem: gui %d khung, bo %d, %d giay%s" % (self.sent, self.drop, int(time.time() - self.t0), (", gop %d lenh re chuot don" % self.skip) if self.skip else ""))
 
 
 # ====================================================================================== VÒNG CHÍNH
+class ImeWatch:
+    """22.11b · Khách bấm vào ô nhập chữ trên máy PC → app điện thoại tự bật bàn phím (như máy Android).
+       Mỗi 0,3 giây xem chỗ đang được chọn trên màn hình Windows:
+         1. cửa sổ đang dùng có con trỏ chữ nhấp nháy (GetGUIThreadInfo) — ô nhập kiểu Win32: Notepad, hộp Run, thanh địa chỉ Explorer…
+         2. không có → UI Automation: phần tử đang được chọn là ô nhập (Edit) không chỉ đọc — Chrome / Edge / Firefox / app mới.
+       Đổi thì gọi on_change((có_ô_nhập 0/1, ô_mật_khẩu 0/1)). Chạy trên luồng RIÊNG gắn vào màn hình Default; lỗi gì cũng chỉ thôi
+       báo — không bao giờ làm hỏng phiên điều khiển. COM gọi thẳng qua bảng hàm ảo, chỉ 3 chỗ: Release (2),
+       IUIAutomation::GetFocusedElement (8), IUIAutomationElement::GetCurrentPropertyValue (10)."""
+    EDIT, COMBO, DOC = 50004, 50003, 50030                              # UIA_EditControlTypeId · ComboBox · Document
+    P_TYPE, P_PW, P_RO, P_HASVAL = 30003, 30019, 30046, 30043           # ControlType · IsPassword · ValueIsReadOnly · IsValuePatternAvailable
+    STEP = 0.3
+
+    def __init__(self, on_change, log=None):
+        self.cb, self.log = on_change, (log or (lambda m: None))
+        self.ev = threading.Event(); self.last = None; self.uia = None; self.com = False; self.err_n = 0
+        self.th = threading.Thread(target=self._run, name="ime", daemon=True); self.th.start()
+
+    def stop(self): self.ev.set()
+
+    def _run(self):
+        try: self._setup()
+        except Exception as e:
+            self.log("ime: khong bat duoc theo doi o nhap chu (%r)" % (e,)); return
+        try:
+            while not self.ev.wait(self.STEP):
+                try: v = self._poll()
+                except Exception as e:
+                    v = None; self.err_n += 1
+                    if self.err_n in (1, 100): self.log("ime: loi doc o dang chon (%r)" % (e,))
+                if v is not None and v != self.last:
+                    self.last = v
+                    try: self.cb(v)
+                    except Exception: pass
+        finally: self._teardown()
+
+    def _setup(self):
+        import ctypes, uuid
+        from ctypes import wintypes as wt
+        ct = self.ct = ctypes
+        u = self.u = ctypes.WinDLL("user32", use_last_error=True)
+        o = self.o = ctypes.WinDLL("ole32"); oa = self.oa = ctypes.WinDLL("oleaut32")
+        u.OpenDesktopW.argtypes = [wt.LPCWSTR, wt.DWORD, wt.BOOL, wt.DWORD]; u.OpenDesktopW.restype = wt.HANDLE
+        u.SetThreadDesktop.argtypes = [wt.HANDLE]; u.SetThreadDesktop.restype = wt.BOOL
+        u.GetForegroundWindow.argtypes = []; u.GetForegroundWindow.restype = wt.HWND
+        u.GetWindowThreadProcessId.argtypes = [wt.HWND, ctypes.c_void_p]; u.GetWindowThreadProcessId.restype = wt.DWORD
+
+        class GTI(ctypes.Structure):
+            _fields_ = [("cbSize", wt.DWORD), ("flags", wt.DWORD), ("hwndActive", wt.HWND), ("hwndFocus", wt.HWND), ("hwndCapture", wt.HWND),
+                        ("hwndMenuOwner", wt.HWND), ("hwndMoveSize", wt.HWND), ("hwndCaret", wt.HWND), ("rcCaret", wt.RECT)]
+
+        class GUID(ctypes.Structure): _fields_ = [("a", wt.DWORD), ("b", wt.WORD), ("c", wt.WORD), ("d", ctypes.c_ubyte * 8)]
+
+        class VARIANT(ctypes.Structure):
+            _fields_ = [("vt", ctypes.c_ushort), ("r1", ctypes.c_ushort), ("r2", ctypes.c_ushort), ("r3", ctypes.c_ushort), ("v", ctypes.c_ulonglong), ("v2", ctypes.c_ulonglong)]
+        self.GTI, self.VARIANT = GTI, VARIANT
+        u.GetGUIThreadInfo.argtypes = [wt.DWORD, ctypes.POINTER(GTI)]; u.GetGUIThreadInfo.restype = wt.BOOL
+        o.CoInitializeEx.argtypes = [ctypes.c_void_p, wt.DWORD]; o.CoInitializeEx.restype = ctypes.c_long
+        o.CoUninitialize.argtypes = []; o.CoUninitialize.restype = None
+        o.CoCreateInstance.argtypes = [ctypes.POINTER(GUID), ctypes.c_void_p, wt.DWORD, ctypes.POINTER(GUID), ctypes.POINTER(ctypes.c_void_p)]
+        o.CoCreateInstance.restype = ctypes.c_long
+        oa.VariantClear.argtypes = [ctypes.POINTER(VARIANT)]; oa.VariantClear.restype = ctypes.c_long
+        self.F_REL = ctypes.WINFUNCTYPE(wt.ULONG, ctypes.c_void_p)
+        self.F_FOCUS = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))
+        self.F_PROP = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, ctypes.POINTER(VARIANT))
+        d = u.OpenDesktopW("Default", 0, False, 0x10000000)          # GENERIC_ALL — cửa sổ của khách nằm ở màn hình Default
+        if d: u.SetThreadDesktop(d)
+        self.com = o.CoInitializeEx(None, 0) in (0, 1)                 # COINIT_MULTITHREADED
+
+        def guid(s):
+            x = uuid.UUID(s); g = GUID(); g.a, g.b, g.c = x.fields[0], x.fields[1], x.fields[2]
+            g.d = (ctypes.c_ubyte * 8)(*x.bytes[8:]); return g
+        clsid, iid = guid("ff48dba4-60ef-4201-aa87-54103eef594e"), guid("30cbe57d-d9d0-452a-ab13-7ac5ac4825ee")    # CUIAutomation · IUIAutomation
+        p = ctypes.c_void_p()
+        hr = o.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid), ctypes.byref(p))     # CLSCTX_INPROC_SERVER
+        if hr == 0 and p.value: self.uia = p
+        else: self.log("ime: khong tao duoc UI Automation (0x%08x) — chi nhan o nhap kieu Win32" % (hr & 0xFFFFFFFF))
+
+    def _vfn(self, obj, idx, proto):
+        vt = self.ct.cast(obj, self.ct.POINTER(self.ct.c_void_p))[0]           # *(void**)obj = bảng hàm ảo
+        return proto(self.ct.cast(vt, self.ct.POINTER(self.ct.c_void_p))[idx])
+
+    def _prop(self, el, pid):
+        """Thuộc tính UIA của phần tử: số (VT_I4) / đúng-sai (VT_BOOL) · None = không có / lỗi."""
+        v = self.VARIANT()
+        try:
+            if self._vfn(el, 10, self.F_PROP)(el, pid, self.ct.byref(v)) != 0: return None
+            if v.vt == 3: return self.ct.c_int32(v.v & 0xFFFFFFFF).value
+            if v.vt == 11: return bool(v.v & 0xFFFF)
+            return None
+        finally: self.oa.VariantClear(self.ct.byref(v))
+
+    def _poll(self):
+        if self._caret(): return (1, 0)
+        return self._uia_focus()
+
+    def _caret(self):
+        """Cửa sổ đang dùng có con trỏ chữ (ô nhập kiểu Win32)?"""
+        u = self.u
+        fg = u.GetForegroundWindow()
+        if not fg: return False
+        gi = self.GTI(); gi.cbSize = self.ct.sizeof(self.GTI)
+        tid = u.GetWindowThreadProcessId(fg, None)
+        return bool(tid and u.GetGUIThreadInfo(tid, self.ct.byref(gi)) and gi.hwndCaret)
+
+    def _uia_focus(self):
+        """UI Automation: phần tử đang được chọn có phải ô nhập chữ (không chỉ đọc) → (0/1, mật khẩu 0/1)."""
+        if not self.uia: return (0, 0)
+        el = self.ct.c_void_p()
+        if self._vfn(self.uia, 8, self.F_FOCUS)(self.uia, self.ct.byref(el)) != 0 or not el.value: return (0, 0)
+        try:
+            t = self._prop(el, self.P_TYPE)
+            if t == self.EDIT:
+                if self._prop(el, self.P_RO) is True: return (0, 0)
+                return (1, 1 if self._prop(el, self.P_PW) is True else 0)
+            if t in (self.COMBO, self.DOC) and self._prop(el, self.P_HASVAL) is True and self._prop(el, self.P_RO) is False: return (1, 0)
+            return (0, 0)
+        finally: self._vfn(el, 2, self.F_REL)(el)
+
+    def _teardown(self):
+        try:
+            if self.uia: self._vfn(self.uia, 2, self.F_REL)(self.uia); self.uia = None
+        except Exception: pass
+        try:
+            if self.com: self.o.CoUninitialize()
+        except Exception: pass
+
+
 class NullIO:
     """Nhập liệu giả (máy không phải Windows / bộ thử): ghi lại lệnh, không làm gì thật."""
     def __init__(self, w=1280, h=720): self.w, self.h = w, h; self.ev = []; self.clip = None
@@ -820,6 +1242,30 @@ class NullIO:
     def clip_poll(self): return None
     def awake(self, on): self.ev.append(("awake", on))
     def notify(self, text): self.ev.append(("notify", text))
+    def grabber(self): return FakeGrab(self)                          # 26.11a: bộ thử cách quay "pipe" (đổi io.tick = màn hình "đổi")
+
+
+class FakeGrab:
+    """Bộ chụp giả cho bộ thử (máy không có màn hình): nền phẳng + 1 ô sáng nằm theo io.tick. Giao kèo như GdiGrab: grab() → (vùng nhớ BGR0 cỡ w×h, có đổi không)."""
+    def __init__(self, io):
+        self.io, self.w, self.h = io, io.w, io.h; self.last = None; self.buf = None; self.n = 0; self.closed = False
+
+    def grab(self):
+        k = int(getattr(self.io, "tick", 0)); self.n += 1
+        if getattr(self.io, "grab_fail", False): raise OSError("thu: chup loi")
+        if k == self.last and self.buf is not None: return self.buf, False
+        if getattr(self.io, "noise", False):                                # hình nhiễu kín màn = khung nặng nhất có thể (thử đoạn "gửi lại cho nét")
+            import random
+            self.buf = random.Random(k).randbytes(self.w * self.h * 4); self.last = k
+            return self.buf, True
+        b = bytearray(b"\x30\x60\x90\x00" * (self.w * self.h))
+        y0 = (k * 7) % max(1, self.h - 24); x0 = (k * 13) % max(1, self.w - 64)
+        for y in range(y0, y0 + 16):
+            o = (y * self.w + x0) * 4; b[o:o + 4 * 48] = b"\xff\xff\xff\x00" * 48
+        self.buf = bytes(b); self.last = k
+        return self.buf, True
+
+    def close(self): self.closed = True
 
 
 class Remote:
@@ -832,6 +1278,7 @@ class Remote:
         self.caps = caps or {}; self.caps_t = time.time() if caps else 0; self.bad = {}; self.ff = None
         self.sess = None; self.conn = None; self.stop = False; self.node = None; self.t_where = 0.0; self.fails = 0; self.state = "khoi dong"
         self.sleep = time.sleep; self.prep_lock = threading.Lock()
+        self.ncpu = os.cpu_count() or 1                               # 26.11a: số nhân → kiểu nén CPU + khung/giây mặc định
 
     # ---------- chuẩn bị bộ quay ----------
     def prepare(self):
@@ -937,7 +1384,8 @@ class Remote:
         try: s.start()
         except Exception as e:
             self.log("khong bat duoc bo quay: %r" % (e,)); self._stop()
-            try: conn.send(S_ERROR, json.dumps({"code": "OFFLINE", "msg": "Máy PC chưa bật được bộ quay màn hình — thử lại sau ít phút."}, ensure_ascii=False).encode())
+            msg = str(getattr(e, "viewer_msg", "") or "")[:280] or "Máy PC chưa bật được bộ quay màn hình — thử lại sau ít phút."   # 22.11g: máy Linux báo lý do
+            try: conn.send(S_ERROR, json.dumps({"code": "OFFLINE", "msg": msg}, ensure_ascii=False).encode())
             except Exception: pass
 
     def _stop(self):
@@ -969,6 +1417,160 @@ class Remote:
 
 
 # ====================================================================================== WINDOWS
+def _devmode():
+    import ctypes
+    from ctypes import wintypes as wt
+
+    class DEVMODEW(ctypes.Structure):
+        _fields_ = [("dmDeviceName", wt.WCHAR * 32), ("dmSpecVersion", wt.WORD), ("dmDriverVersion", wt.WORD), ("dmSize", wt.WORD), ("dmDriverExtra", wt.WORD), ("dmFields", wt.DWORD),
+                    ("dmPositionX", wt.LONG), ("dmPositionY", wt.LONG), ("dmDisplayOrientation", wt.DWORD), ("dmDisplayFixedOutput", wt.DWORD),
+                    ("dmColor", ctypes.c_short), ("dmDuplex", ctypes.c_short), ("dmYResolution", ctypes.c_short), ("dmTTOption", ctypes.c_short), ("dmCollate", ctypes.c_short),
+                    ("dmFormName", wt.WCHAR * 32), ("dmLogPixels", wt.WORD), ("dmBitsPerPel", wt.DWORD), ("dmPelsWidth", wt.DWORD), ("dmPelsHeight", wt.DWORD),
+                    ("dmDisplayFlags", wt.DWORD), ("dmDisplayFrequency", wt.DWORD), ("dmICMMethod", wt.DWORD), ("dmICMIntent", wt.DWORD), ("dmMediaType", wt.DWORD),
+                    ("dmDitherType", wt.DWORD), ("dmReserved1", wt.DWORD), ("dmReserved2", wt.DWORD), ("dmPanningWidth", wt.DWORD), ("dmPanningHeight", wt.DWORD)]
+    return DEVMODEW
+
+
+try: DEVMODEW = _devmode()                                           # cấu trúc Windows (220 byte) — khai báo được trên mọi hệ điều hành, chỉ dùng trên Windows
+except Exception: DEVMODEW = None
+
+
+class GdiGrab:
+    """26.11a · Chụp màn hình chính bằng GDI vào bộ nhớ BGR0 (trên → dưới) + vẽ con trỏ chuột — cùng cách ffmpeg gdigrab vẫn làm, nhưng chương trình này cầm nhịp:
+       2 vùng nhớ đổi lượt để so khung mới với khung trước (memcmp, ~1 ms) → chỉ khung ĐỔI mới đưa đi nén. Tạo, dùng và đóng trong CÙNG 1 luồng (luồng chụp của Encoder)."""
+    def __init__(self, io):
+        import ctypes
+        from ctypes import wintypes as wt
+        ct = self.ct = ctypes; u = self.u = io.u
+        g = self.g = ct.WinDLL("gdi32", use_last_error=True)
+        self.w, self.h = io.screen(); self.size = self.w * self.h * 4
+
+        class BIH(ct.Structure):
+            _fields_ = [("biSize", wt.DWORD), ("biWidth", wt.LONG), ("biHeight", wt.LONG), ("biPlanes", wt.WORD), ("biBitCount", wt.WORD), ("biCompression", wt.DWORD),
+                        ("biSizeImage", wt.DWORD), ("biXPelsPerMeter", wt.LONG), ("biYPelsPerMeter", wt.LONG), ("biClrUsed", wt.DWORD), ("biClrImportant", wt.DWORD)]
+        class CI(ct.Structure): _fields_ = [("cbSize", wt.DWORD), ("flags", wt.DWORD), ("hCursor", wt.HANDLE), ("pt", wt.POINT)]
+        class II(ct.Structure): _fields_ = [("fIcon", wt.BOOL), ("xHotspot", wt.DWORD), ("yHotspot", wt.DWORD), ("hbmMask", wt.HANDLE), ("hbmColor", wt.HANDLE)]
+        self.CI, self.II = CI, II
+        u.GetDC.argtypes = [wt.HWND]; u.GetDC.restype = wt.HANDLE
+        u.ReleaseDC.argtypes = [wt.HWND, wt.HANDLE]; u.ReleaseDC.restype = ct.c_int
+        u.GetCursorInfo.argtypes = [ct.c_void_p]; u.GetCursorInfo.restype = wt.BOOL
+        u.GetIconInfo.argtypes = [wt.HANDLE, ct.c_void_p]; u.GetIconInfo.restype = wt.BOOL
+        u.DrawIconEx.argtypes = [wt.HANDLE, ct.c_int, ct.c_int, wt.HANDLE, ct.c_int, ct.c_int, wt.UINT, wt.HANDLE, wt.UINT]; u.DrawIconEx.restype = wt.BOOL
+        g.CreateCompatibleDC.argtypes = [wt.HANDLE]; g.CreateCompatibleDC.restype = wt.HANDLE
+        g.CreateDIBSection.argtypes = [wt.HANDLE, ct.c_void_p, wt.UINT, ct.POINTER(ct.c_void_p), wt.HANDLE, wt.DWORD]; g.CreateDIBSection.restype = wt.HANDLE
+        g.SelectObject.argtypes = [wt.HANDLE, wt.HANDLE]; g.SelectObject.restype = wt.HANDLE
+        g.BitBlt.argtypes = [wt.HANDLE, ct.c_int, ct.c_int, ct.c_int, ct.c_int, wt.HANDLE, ct.c_int, ct.c_int, wt.DWORD]; g.BitBlt.restype = wt.BOOL
+        g.DeleteObject.argtypes = [wt.HANDLE]; g.DeleteObject.restype = wt.BOOL
+        g.DeleteDC.argtypes = [wt.HANDLE]; g.DeleteDC.restype = wt.BOOL
+        g.GdiFlush.argtypes = []; g.GdiFlush.restype = wt.BOOL
+        try:
+            crt = ct.CDLL("msvcrt"); crt.memcmp.argtypes = [ct.c_void_p, ct.c_void_p, ct.c_size_t]; crt.memcmp.restype = ct.c_int
+            self.same = lambda a, b, n: crt.memcmp(a, b, n) == 0
+        except Exception:
+            nt = ct.WinDLL("ntdll"); nt.RtlCompareMemory.argtypes = [ct.c_void_p, ct.c_void_p, ct.c_size_t]; nt.RtlCompareMemory.restype = ct.c_size_t
+            self.same = lambda a, b, n: nt.RtlCompareMemory(a, b, n) == n
+        self.scr = self.mem = self.old = None; self.bm = []; self.ptr = []; self.arr = []
+        self.cur = 0; self.have = False; self.hot = {}; self.fails = 0
+        try:
+            self.scr = u.GetDC(None)
+            if not self.scr: raise OSError("GetDC loi %d" % ct.get_last_error())
+            self.mem = g.CreateCompatibleDC(self.scr)
+            if not self.mem: raise OSError("CreateCompatibleDC loi %d" % ct.get_last_error())
+            bi = BIH(); bi.biSize = ct.sizeof(BIH); bi.biWidth = self.w; bi.biHeight = -self.h; bi.biPlanes = 1; bi.biBitCount = 32
+            for _ in range(2):
+                p = ct.c_void_p()
+                h = g.CreateDIBSection(self.scr, ct.byref(bi), 0, ct.byref(p), None, 0)
+                if not h or not p.value: raise OSError("CreateDIBSection loi %d" % ct.get_last_error())
+                self.bm.append(h); self.ptr.append(p.value); self.arr.append((ct.c_ubyte * self.size).from_address(p.value))
+            self.old = g.SelectObject(self.mem, self.bm[0])
+        except Exception:
+            self.close(); raise
+
+    def _cursor(self):
+        ct, u = self.ct, self.u
+        ci = self.CI(); ci.cbSize = ct.sizeof(self.CI)
+        if not u.GetCursorInfo(ct.byref(ci)) or not (ci.flags & 1) or not ci.hCursor: return
+        hot = self.hot.get(ci.hCursor)
+        if hot is None:
+            ii = self.II(); hot = (0, 0)
+            if u.GetIconInfo(ci.hCursor, ct.byref(ii)):
+                hot = (int(ii.xHotspot), int(ii.yHotspot))
+                if ii.hbmMask: self.g.DeleteObject(ii.hbmMask)
+                if ii.hbmColor: self.g.DeleteObject(ii.hbmColor)
+            if len(self.hot) > 64: self.hot.clear()
+            self.hot[ci.hCursor] = hot
+        u.DrawIconEx(self.mem, ci.pt.x - hot[0], ci.pt.y - hot[1], ci.hCursor, 0, 0, 0, None, 3)        # DI_NORMAL
+
+    def grab(self):
+        """→ (vùng nhớ BGR0 của khung vừa chụp, khung này có KHÁC khung trước không). Chưa chụp được (màn hình đang khoá / đổi) → (None, False); lỗi 40 nhịp liền → báo lỗi."""
+        g = self.g
+        i = (1 - self.cur) if self.have else self.cur
+        g.SelectObject(self.mem, self.bm[i])
+        if not g.BitBlt(self.mem, 0, 0, self.w, self.h, self.scr, 0, 0, 0x00CC0020 | 0x40000000):       # SRCCOPY | CAPTUREBLT
+            self.fails += 1
+            if self.fails >= 40: raise OSError("BitBlt loi %d" % self.ct.get_last_error())
+            return None, False
+        self.fails = 0
+        try: self._cursor()
+        except Exception: pass
+        g.GdiFlush()
+        changed = (not self.have) or not self.same(self.ptr[i], self.ptr[self.cur], self.size)
+        self.cur = i; self.have = True
+        return self.arr[i], changed
+
+    def close(self):
+        g, u = self.g, self.u
+        try:
+            if self.mem:
+                if self.old: g.SelectObject(self.mem, self.old)
+                g.DeleteDC(self.mem)
+            for h in self.bm: g.DeleteObject(h)
+            if self.scr: u.ReleaseDC(None, self.scr)
+        except Exception: pass
+        self.mem = self.scr = self.old = None; self.bm = []; self.ptr = []; self.arr = []
+
+
+def is_qemu():
+    """Máy này là máy ảo QEMU / KVM (VPS NVMe trên máy chủ Proxmox)? — đọc tên hãng / đời máy trong bảng BIOS của Windows."""
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\BIOS") as k:
+            txt = ""
+            for name in ("SystemManufacturer", "SystemProductName", "BaseBoardManufacturer"):
+                try: txt += " " + str(winreg.QueryValueEx(k, name)[0])
+                except OSError: pass
+        return bool(re.search(r"qemu|\bkvm\b|standard pc|proxmox", txt, re.I))
+    except Exception:
+        return False
+
+
+def vm_default_mode(io, ident_id, base=BASE, log=None, want=(1920, 1080), qemu=None):
+    """26.11a · Máy ẢO mới giao (Windows mặc định 1024×768) → đặt màn hình 1920×1080 ĐÚNG 1 LẦN cho mỗi mã máy. Khách tự đổi cỡ khác sau đó thì giữ theo khách.
+       Trả: "set" | "khong co co nay" | "da dat truoc" | "giu nguyen" | "khong phai may ao" | "chua co ma may"."""
+    log = log or (lambda m: None)
+    if not ident_id: return "chua co ma may"
+    flag = os.path.join(base, "logs", "mode.done")
+    try:
+        with open(flag, encoding="utf-8") as f:
+            if f.read().strip() == str(ident_id): return "da dat truoc"
+    except OSError: pass
+    if not (is_qemu() if qemu is None else qemu): return "khong phai may ao"
+    res = "giu nguyen"
+    try:
+        cur, ok = io.modes()
+        if cur and cur[0] < 1280 and tuple(want) in ok:               # chỉ đổi khi máy còn ở cỡ mặc định nhỏ của Windows
+            res = "set" if io.set_mode(*want) else "khong co co nay"
+        elif cur and cur[0] < 1280: res = "khong co co nay"
+        log("may ao: man hinh %s -> %s (1920x1080 lan dau: %s)" % (cur, want if res == "set" else cur, res))
+    except Exception as e:
+        log("dat co man hinh mac dinh loi: %r" % (e,)); return "loi"
+    try:
+        os.makedirs(os.path.dirname(flag), exist_ok=True)
+        with open(flag, "w", encoding="utf-8") as f: f.write(str(ident_id))
+    except OSError: pass
+    return res
+
+
 class WinIO:
     """Chuột / phím / bộ nhớ copy / cỡ màn hình thật của Windows (SendInput). Chạy bằng SYSTEM trong phiên màn hình → bấm được cả cửa sổ chạy quyền Admin."""
     def __init__(self, log=None):
@@ -1014,6 +1616,31 @@ class WinIO:
     def screen(self):
         w, h = self.u.GetSystemMetrics(0), self.u.GetSystemMetrics(1)
         return (w, h) if w >= 16 and h >= 16 else (1024, 768)
+
+    # ---- 26.11a: tự chụp màn hình (cách quay "pipe") + cỡ màn hình mặc định của máy ảo ----
+    def grabber(self): return GdiGrab(self)
+
+    def modes(self):
+        """Cỡ màn hình đang dùng + các cỡ máy này đặt được: ((rộng, cao), {(rộng, cao), …})."""
+        ct, u = self.ct, self.u
+        dm = DEVMODEW(); dm.dmSize = ct.sizeof(DEVMODEW); cur = None; ok = set(); i = 0
+        u.EnumDisplaySettingsW.argtypes = [self.wt.LPCWSTR, self.wt.DWORD, ct.c_void_p]; u.EnumDisplaySettingsW.restype = self.wt.BOOL
+        if u.EnumDisplaySettingsW(None, 0xFFFFFFFF, ct.byref(dm)): cur = (int(dm.dmPelsWidth), int(dm.dmPelsHeight))
+        while i < 4000 and u.EnumDisplaySettingsW(None, i, ct.byref(dm)):
+            if dm.dmBitsPerPel >= 24: ok.add((int(dm.dmPelsWidth), int(dm.dmPelsHeight)))
+            i += 1
+        return cur, ok
+
+    def set_mode(self, w, h):
+        """Đặt cỡ màn hình chính (ghi nhớ qua lần khởi động sau). True = đã đổi."""
+        ct, u = self.ct, self.u
+        dm = DEVMODEW(); dm.dmSize = ct.sizeof(DEVMODEW)
+        u.EnumDisplaySettingsW.argtypes = [self.wt.LPCWSTR, self.wt.DWORD, ct.c_void_p]; u.EnumDisplaySettingsW.restype = self.wt.BOOL
+        u.ChangeDisplaySettingsExW.argtypes = [self.wt.LPCWSTR, ct.c_void_p, self.wt.HWND, self.wt.DWORD, ct.c_void_p]; u.ChangeDisplaySettingsExW.restype = ct.c_long
+        if not u.EnumDisplaySettingsW(None, 0xFFFFFFFF, ct.byref(dm)): return False
+        dm.dmPelsWidth, dm.dmPelsHeight = int(w), int(h); dm.dmFields = 0x00080000 | 0x00100000                  # DM_PELSWIDTH | DM_PELSHEIGHT
+        if u.ChangeDisplaySettingsExW(None, ct.byref(dm), None, 0x02, None) != 0: return False                   # CDS_TEST: máy không nhận cỡ này → thôi
+        return u.ChangeDisplaySettingsExW(None, ct.byref(dm), None, 0x01, None) == 0                             # CDS_UPDATEREGISTRY
 
     # ---- chuột / phím ----
     def _desk(self):
@@ -1115,6 +1742,10 @@ class WinIO:
         except Exception: return None
 
     # ---- khác ----
+    def ime_watch(self, on_change, log=None):
+        """22.11b: theo dõi ô nhập chữ đang được chọn (cho app điện thoại tự bật bàn phím). Tắt: "ime": false trong cb.json."""
+        return ImeWatch(on_change, log or self.log) if IME_ON else None
+
     def awake(self, on):
         try: self.k.SetThreadExecutionState((0x80000000 | 0x00000001 | 0x00000002) if on else 0x80000000)    # có người xem: không cho máy ngủ / tắt màn
         except Exception: pass
@@ -1244,6 +1875,8 @@ def cmd_run(argv):
     cfg = _load_json(os.path.join(BASE, "cb.json")) or {}
     if cfg.get("remote") is False:
         log("cb.json dat remote = false -> khong chay dieu khien tu xa"); return 0
+    global IME_ON
+    if cfg.get("ime") is False: IME_ON = False; log("cb.json dat ime = false -> khong theo doi o nhap chu")
     sys.path.insert(0, HERE)
     import pcagent                                                    # dùng chung phần gọi web (khoá công khai + bộ chứng chỉ kèm theo)
     net = pcagent.Net(cfg, BASE)
@@ -1253,13 +1886,20 @@ def cmd_run(argv):
         j = _load_json(os.path.join(BASE, "identity.json")) or {}
         return j if j.get("id") and j.get("token") else None
     io = WinIO(log) if WIN else NullIO()
+    if WIN:
+        try:                                                          # 26.11a: nhận chuột / phím + chuyển hình đi trước việc nén (bộ nén CPU giờ chạy ưu tiên thường)
+            k.GetCurrentProcess.restype = ctypes.c_void_p; k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+            k.SetPriorityClass(k.GetCurrentProcess(), 0x00008000)     # ABOVE_NORMAL_PRIORITY_CLASS
+        except Exception: pass
+        try: vm_default_mode(io, (ident() or {}).get("id"), BASE, log)
+        except Exception as e: log("dat co man hinh mac dinh loi: %r" % (e,))
     rm = Remote(ident, net.rpc, io, lambda: ensure_ffmpeg(BASE, log, cafile=cafile), log, cafile)
     log("=== CloudBlue PC dieu khien tu xa %s chay (phien man hinh, man %dx%d) ===" % ((REMOTE_VER,) + tuple(io.screen())))
     me = os.path.abspath(__file__)
     try: stamp = (os.path.getmtime(me), os.path.getsize(me))
     except OSError: stamp = None
 
-    last = ["", 0.0]
+    last = ["", 0.0]; mode_ok = [bool(ident())]
 
     def watch():
         """Thoát khi: không còn ở phiên màn hình đang hiện · file chương trình vừa được cập nhật (đang rảnh) → pcagent mở lại bản mới / đúng phiên."""
@@ -1270,6 +1910,8 @@ def cmd_run(argv):
                     log("phien man hinh da doi -> thoat de pcagent mo lai dung phien"); os._exit(0)
                 if rm.sess is None and stamp and (os.path.getmtime(me), os.path.getsize(me)) != stamp:
                     log("chuong trinh vua duoc cap nhat -> thoat de chay ban moi"); os._exit(0)
+                if WIN and not mode_ok[0] and rm.sess is None and ident():      # máy ảo vừa nhận mã máy (đăng ký sau khi chương trình này chạy) → đặt 1920×1080 lần đầu
+                    mode_ok[0] = vm_default_mode(io, ident().get("id"), BASE, log) != "chua co ma may"
                 if rm.state != last[0] or time.time() - last[1] > 60:           # trạng thái cho `cbpc status` + pcagent (đổi mới ghi, tối đa 1 phút / lần)
                     last[0], last[1] = rm.state, time.time()
                     with open(os.path.join(BASE, "logs", "remote.state"), "w", encoding="utf-8") as f: f.write("%d %s %s\n" % (time.time(), REMOTE_VER, rm.state))
@@ -1290,6 +1932,13 @@ def cmd_selfcheck(argv):
     assert a.feed(pkt) == (b"\x00\x00\x00\x01\x65\x01\x02\x03", True, False)
     assert parse_paths({"direct": [{"host": "1.2.3.4", "port": 8189}], "cert": "ab" * 32, "ws": "wss://a.b/v2/stream"})[0][0][:3] == ("direct", "1.2.3.4", 8189)
     assert "h264_nvenc" in ff_cmd("ffmpeg", "gdi", "nvenc", 1920, 1080, 1920, 1080, 30, 4500, 5000)
+    c = ff_cmd("ffmpeg", "pipe", "x264", 1920, 1080, 1920, 1080, 20, 4500, 5000, {"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": PIPE_CRF, "key_s": PIPE_KEY_S})
+    assert "pipe:0" in c and "gdigrab" not in c and "-crf" in c and "-b:v" not in c and "passthrough" in c and "nobuffer" not in " ".join(c) and c[c.index("-bufsize") + 1] == "1200k"
+    assert cpu_tune(1)[2] == 15 and cpu_tune(2)[:2] == ("ultrafast", "partitions=i4x4") and cpu_tune(8) == ("superfast", "", 30)
+    assert move_key(C_MOUSE, bytes([0, 0, 1, 2, 3, 4])) == ("m",) and move_key(C_MOUSE, bytes([1, 0, 1, 2, 3, 4])) is None and move_key(C_TOUCH, bytes([2, 3, 0, 0, 0, 0])) == ("t", 3)
+    assert plan("auto", 0, 0, 0, 0, 1920, 1080, cpu=True, cpu_fps=20, cpu_side=1920, fps_max=30)[:3] == (1920, 1080, 20)
+    g = FakeGrab(NullIO(64, 32)); b1, ch1 = g.grab(); b2, ch2 = g.grab()
+    assert ch1 and not ch2 and len(b1) == 64 * 32 * 4 and (not WIN or __import__("ctypes").sizeof(DEVMODEW) == 220)
     print("selfcheck ok", REMOTE_VER)
     return 0
 

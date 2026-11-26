@@ -2,7 +2,7 @@
 # =====================================================================================================
 #  pcagent.py — PHẦN MỀM CloudBlue trên MÁY PC CHO THUÊ (chạy ngầm bằng tài khoản SYSTEM, tự chạy lúc Windows khởi động)
 #
-#  Việc làm (bản 21.11d):
+#  Việc làm (bản 21.11f):
 #    · ĐĂNG KÝ máy lên hệ thống (pc_enroll): lần đầu bằng MÃ ĐĂNG KÝ trong bộ cài, sau lệnh cài lại bằng VÉ 1 lần
 #    · BÁO SỐNG + cấu hình máy (pc_poll) mỗi ~30 giây, nhận LỆNH từ trang quản trị:
 #        reinstall  cài lại / đổi bản Windows / dọn máy (ghi lệnh lên phân vùng cứu hộ rồi khởi động lại vào bộ cài)
@@ -10,11 +10,27 @@
 #    · báo kết quả lệnh cài lại sau khi Windows mới lên
 #    · tự cập nhật theo bản admin công bố (kiểm sha256 từng file, chỉ tải từ đúng kho GitHub của shop)
 #    · HẠN THUÊ (SQL v42): nhận hạn từ máy chủ, báo trước cho khách, hết hạn thì tự tắt máy (mất mạng vẫn đếm; chỉnh lùi đồng hồ không lách được)
+#      21.11f + SQL v44: lượt thuê TỰ THU HỒI → hết hạn thì KHOÁ máy (tắt tự đăng nhập + khởi động lại) thay vì tắt; khách gia hạn → tự mở lại;
+#      quá hạn → máy chủ thu hồi, máy giữ khoá tới khi nhận lệnh cài sạch
 #    · báo VIỆC LẠ về web (bảo mật trên máy bị đổi, đồng hồ bị chỉnh lùi, máy hết hạn bị bật lại) → admin nhận mail / Telegram
 #    · chỉnh đồng hồ máy theo máy chủ khi lệch quá 2 phút; máy mới cài không có mạng thì hiện hộp báo tại máy
 #    · báo về web máy còn THIẾU DRIVER nào (card mạng, VGA…) — thẻ Máy PC hiện nhãn "thiếu driver"; tại máy xem os\status.txt
 #    · ĐIỀU KHIỂN TỪ XA (đợt 2, SQL v43): giữ chương trình pcremote.py chạy trong phiên màn hình của máy (tự mở lại khi nó thoát / người dùng
 #      đăng xuất). pcremote tự nối RA máy chủ phát hình và chỉ quay màn hình khi có khách của máy / admin mở điều khiển. Tắt: cb.json "remote": false
+#    · (21.11e) đặt BỘ CÀI bản mới nhất lên phân vùng cứu hộ (\cb\pe-next): bộ cài cũ nằm cố định trong ảnh khởi động gọi tiếp bản này
+#      → sửa bộ cài không cần tạo lại ISO / cài lại máy bằng USB
+#    · (21.11h) công tắc "Cho khách quyền Admin" của shop (pc_poll.cust_admin) → cb.json "user_admin" + chạy ngay pha system của cb_provision
+#      (21.11i) ghi luôn công tắc lên cb.json của PHÂN VÙNG CỨU HỘ → cài lại (khách thuê mới / đổi Windows) thì khách có quyền Admin NGAY từ đầu
+#    · (21.11j) thư mục C:\CloudBluePC được ẩn (Ẩn + Hệ thống) cho khách khỏi để ý — cb_provision.lockdown() ở mỗi pha system
+#    · (22.11a) pcremote: TLS an toàn nhiều luồng — hết "Mất kết nối" cứ một lúc khi khách điều khiển máy PC
+#    · (22.11b) pcremote: bấm vào ô nhập chữ trên máy PC → app điện thoại tự bật bàn phím (UI Automation + con trỏ chữ)
+#    · (22.11c) cb_provision: khách có quyền Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền / mật khẩu (UAC) · GIẢ LẬP ANDROID (MuMu, LDPlayer…)
+#      chạy được: 1 lần tắt thứ chiếm VT-x (Hyper-V / VBS / Memory Integrity) + báo web tình trạng ảo hoá (info.emu: VT trong BIOS, hypervisor, máy ảo)
+#    · (22.11d) đổi sang CachyOS (Linux) theo lệnh cài lại os=cachyos (bộ cài có kèm ISO CachyOS) · bản kê công bố có mục "linux" → thay bộ cài
+#      CachyOS (cb-install.sh, grub.cfg, agent Linux…) trên phân vùng cứu hộ — sửa phần Linux không cần tạo lại ISO
+#    · (22.11e) máy đã đổi sang CachyOS có agent CloudBlue bản Linux (linux/cbagent.py, dùng lại lõi này) → vẫn hiện trên web, đổi lại Windows được
+#      · mỗi lần agent chạy: bộ cài CachyOS trên phân vùng cứu hộ khớp bản kê đang công bố (lần cập nhật trước tải lỗi thì làm bù)
+#    · (22.11f) CachyOS: điều khiển từ xa (linux/cbremote.py + cbcap.py — quay màn hình KDE, chuột / phím) · không dùng driver NVIDIA trên Linux
 #  Máy cho thuê KHÔNG giữ khoá bí mật nào của hệ thống: chỉ khoá công khai của web + mã riêng của chính máy này.
 #
 #  Lệnh tại máy (PowerShell Admin):   C:\CloudBluePC\cbpc.cmd status | reinstall <bản> [all|disk|system] | enroll | log
@@ -32,10 +48,11 @@ import cbrec                                                     # noqa: E402
 import cbsys                                                     # noqa: E402
 from cbsys import BUS_EXTERNAL, WIN, WinSys                                    # noqa: E402
 
-AGENT_VER = "21.11d"
+AGENT_VER = "26.11a"
 BASE = os.path.abspath(os.path.join(HERE, ".."))                 # C:\CloudBluePC
 UPDATE_REL = re.compile(r"^(agent|lib|os|pe)/[A-Za-z0-9_.-]{1,60}\.(py|cmd|xml|json|txt|pem|ini)$")
 UPDATE_BASE = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/"       # chỉ nhận bản cập nhật từ kho này
+LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")        # 22.11d · bộ cài CachyOS trên phân vùng cứu hộ (mục "linux" của bản kê)
 RENT_WARN_S = 2 * 86400                  # bắt đầu NHẮC khách từ khi hạn thuê còn 2 ngày (máy chủ gửi rent.warn_min thì theo máy chủ — thuê ngắn thì khoảng này ngắn theo)
 RENT_EVERY_S = 4 * 3600                  # trong khoảng nhắc: nhắc lại mỗi 4 giờ + mỗi lần bật máy (máy chủ gửi rent.every_min thì theo máy chủ; 0 = chỉ nhắc ở các mốc)
 RENT_MARKS = (3600, 1800, 600, 300, 60)  # giờ cuối luôn nhắc ở các mốc: còn 60 · 30 · 10 · 5 · 1 phút
@@ -43,12 +60,16 @@ RENT_MIN_S = 600                         # admin tắt báo trước (0) thì v�
 RENT_BOOT_TELL = 60                      # vừa bật máy mà đang trong khoảng nhắc: chờ hỏi máy chủ tối đa 60 giây (có thể vừa được gia hạn) rồi nhắc 1 lần
 RENT_POP_MAX = 6 * 3600                  # hộp nhắc nằm trên màn hình tới lần nhắc kế (tối đa 6 giờ) hoặc tới khi khách bấm OK
 RENT_BOOT_GRACE = 180                    # máy bật lên lúc ĐÃ hết hạn: chờ hỏi máy chủ tối đa 3 phút (có thể vừa được gia hạn) rồi mới tắt
-RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy
+RENT_LAST_CALL = 60                      # hết hạn: báo khách, 60 giây sau tắt máy (lượt thuê tự thu hồi: 60 giây sau KHOÁ máy)
+RENT_LOCK_RETRY = 180                    # 21.11f: đã ra lệnh khởi động lại để khoá mà 3 phút sau máy vẫn chạy → ra lệnh lại
+WINLOGON = r"HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon"
 RENT_SAVE_S = 120                        # ghi lại mốc thời gian (chống chỉnh lùi đồng hồ) tối đa 2 phút / lần
 CLOCK_FIX_S = 120                        # đồng hồ máy lệch giờ máy chủ quá 2 phút → agent đặt lại theo máy chủ (cb.json "clock_fix": false để tắt)
 NO_NET_TELL_S = 150                      # máy CHƯA đăng ký mà quá 2,5 phút vẫn không có địa chỉ IP → hiện 1 hộp báo tại máy (mỗi lần agent chạy 1 lần)
 REMOTE_MUTEX = "Global\\CloudBluePCRemote" # khoá do pcremote.py giữ khi đang chạy
 REMOTE_RETRY_S = 60                      # pcremote chưa chạy: mở lại, tối đa 1 lần / phút
+PE_NEXT_FILES = ("pe/cb_pe.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")   # bộ cài WinPE (cb_pe.py) chỉ cần đúng 4 file này
+PE_NEXT_DIR = "cb\\pe-next\\"                # trên phân vùng cứu hộ — bộ cài 21.11d trở lên đọc next.json ở đây (cb_pe.NEXT_DIR)
 
 
 # ====================================================================================== đọc phần cứng (không cần WMI)
@@ -174,6 +195,15 @@ class WinHost:
         if msg: a += ["/c", msg[:120]]
         try: subprocess.run(a, capture_output=True, timeout=60)
         except Exception: pass
+
+    def autologon(self, on):
+        """21.11f · Bật / tắt TỰ ĐĂNG NHẬP Windows. Khoá máy hết hạn: tắt → khởi động lại dừng ở màn hình đăng nhập (mọi chương trình của khách dừng);
+           gia hạn: bật lại. Chỉ đổi AutoAdminLogon — tài khoản + mật khẩu bộ cài đã ghi giữ nguyên. True nếu Windows nhận."""
+        try:
+            r = subprocess.run(["reg", "add", WINLOGON, "/v", "AutoAdminLogon", "/t", "REG_SZ", "/d", "1" if on else "0", "/f"], capture_output=True, timeout=60)
+            return r.returncode == 0
+        except Exception:
+            return False
 
     def abort_shutdown(self):
         """Huỷ lệnh tắt máy đang đếm ngược (khách vừa được gia hạn trong phút cuối)."""
@@ -321,6 +351,8 @@ class Agent:
         self.s, self.h, self.net, self.base = sysx, host, net, base.rstrip("\\")
         self._log = log or (lambda m: None)
         self.cfg = C.load_json(sysx, self.p("cb.json")) or {}
+        self.sec_now = False                                        # 21.11h: công tắc quyền Admin vừa đổi → vòng chính chạy ngay pha system của cb_provision
+        self.rec_admin_ok = None                                    # 21.11i: công tắc đã ghi / đã khớp trên phân vùng cứu hộ (mỗi lần agent chạy kiểm 1 lần)
         self.ident = C.load_json(sysx, self.p("identity.json")) or None
         if self.ident and not (self.ident.get("id") and self.ident.get("token")): self.ident = None
         self.poll_s, self.ticks, self.fail = 30, 0, 0
@@ -335,7 +367,9 @@ class Agent:
         self.events = []                    # việc lạ chờ báo về web (kèm trong p_info.ev)
         self.t_start = sysx.now()
         self.rent_synced = False            # từ lúc agent chạy đã hỏi được máy chủ về hạn thuê chưa
-        self.rent_call = None               # lúc đã báo khách "máy sắp tắt"
+        self.rent_call = None               # lúc đã báo khách "máy sắp tắt" (lượt thuê tự thu hồi: "máy sắp khoá")
+        self.lock_at = None                 # 21.11f: lúc ra lệnh khởi động lại để khoá máy (trong lần agent chạy này)
+        self.lock_ok = False                # 21.11f: lần chạy này đã giữ "tắt tự đăng nhập" cho máy đang khoá chưa
         self.rent_boot_told = False         # từ lúc agent chạy (máy bật) đã nhắc khách "sắp hết hạn" lần nào chưa
         self.code = str((self.ident or {}).get("code") or "")       # SỐ MÁY (vị trí trong dàn) do admin đặt trên web / người cài gõ lúc cài xong
         self.code_shown = False             # lần chạy này đã ghi số máy ra màn hình nền chưa
@@ -393,7 +427,23 @@ class Agent:
             r = self.remote_info()
             if r: i["rmt"] = r
         except Exception: pass
+        try:                                                        # 22.11c · giả lập Android chạy được không (cb_provision ghi logs\emu.json)
+            e = self.emu_info()
+            if e: i["emu"] = e
+        except Exception: pass
         return i
+
+    def emu_info(self):
+        """22.11c · Tình trạng ảo hoá cho giả lập Android (cb_provision.emu() ghi logs\\emu.json) → bản gọn gửi web; chưa có → None.
+           vt: VT-x / AMD-V bật trong BIOS (None = đang có hypervisor, Windows giấu) · hv: Windows đang chạy hypervisor · vm: máy ảo · ok: chạy được giả lập
+           · rb: đã dọn, chờ khởi động lại · why: lý do không chạy được (chữ không dấu)."""
+        path = self.p("logs\\emu.json")
+        if not self.s.exists(path): return None
+        j = json.loads(self.s.read_text(path) or "{}")
+        if not isinstance(j, dict): return None
+        b = lambda v: v if isinstance(v, bool) else None
+        return {"vt": b(j.get("vt")), "hv": bool(j.get("hv")), "vm": bool(j.get("vm")), "ok": bool(j.get("ready")), "rb": bool(j.get("reboot")),
+                "why": re.sub(r"[^ -~]", "?", str(j.get("why") or ""))[:120], "cpu": re.sub(r"[^ -~]", "?", str(j.get("cpu") or ""))[:60]}
 
     # ------------------------------------------------------------------ điều khiển từ xa (đợt 2)
     def remote_info(self):
@@ -597,6 +647,11 @@ class Agent:
             v = r["rent"].get(key)
             if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= hi and int(v) * 60 != self.rent.get(name):
                 self.rent[name] = int(v) * 60; ch = True
+        lk = r["rent"].get("lock") is True                         # 21.11f (SQL v44): lượt thuê tự thu hồi → hết hạn thì KHOÁ máy thay vì tắt
+        g = r["rent"].get("grace_min")
+        g = int(g) * 60 if isinstance(g, (int, float)) and not isinstance(g, bool) and 0 <= g <= 1440 else 0
+        if lk != bool(self.rent.get("lock_mode")) or g != int(self.rent.get("grace_s") or 0):
+            self.rent["lock_mode"] = lk; self.rent["grace_s"] = g; ch = True
         if u != self.rent.get("until"):
             self.rent_stop_off("hạn thuê vừa đổi")
             self.rent["until"] = u; self.rent["warned"] = []; self.rent.pop("off", None); self.rent.pop("told", None)
@@ -604,6 +659,10 @@ class Agent:
             self.rent_save()
         elif ch or (u and self.s.now() - self.rent_saved >= RENT_SAVE_S):
             self.rent_save()
+        if self.rent.get("locked"):                                   # máy đang khoá vì hết hạn
+            if u is not None and u - self.rent_est() > 60: self.rent_unlock("được gia hạn")
+            elif u is None and not r["rent"].get("hold"): self.rent_unlock("máy chủ bỏ hạn thuê")
+            # bỏ hạn + hold: máy vừa bị thu hồi, chờ máy chủ ra lệnh cài sạch → giữ khoá
 
     def rent_plan(self):
         """(khoảng nhắc, nhịp nhắc lại, các mốc) tính bằng giây cho hạn thuê hiện tại."""
@@ -617,7 +676,9 @@ class Agent:
         u = self.rent.get("until")
         if not u: return "khong dat han"
         left = u - (self.s.now() + (self.rent.get("skew") or 0))
-        if left <= 0: return "DA HET HAN - may tu tat. Lien he shop de gia han."
+        if left <= 0:
+            if self.rent.get("locked"): return "DA HET HAN - may da KHOA. Gia han de mo lai."
+            return "DA HET HAN - may tu tat. Lien he shop de gia han."
         if left < 60: return "con duoi 1 phut"
         return "con %s" % span_txt(left // 60 * 60 if left < 3600 else left // 3600 * 3600)      # làm tròn (phút / giờ) để không ghi lại file liên tục
 
@@ -651,11 +712,17 @@ class Agent:
                 self.log("nhắc khách: hạn thuê còn %s" % span_txt(left))
                 try: when = time.strftime("%H:%M ngay %d/%m", time.localtime(self.rent["until"]))
                 except Exception: when = ""
-                self.h.notify("%s: may nay con %s nua la HET HAN THUE%s. Het han may se TU TAT. Lien he shop de gia han."
-                              % (self.tag(), span_txt(left), " (het han luc %s)" % when if when else ""), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
+                g = int(self.rent.get("grace_s") or 0)
+                tail = ("Het han may se KHOA%s, qua han may bi thu hoi va xoa sach. Gia han ngay trong app / web CloudBlue."
+                        % (" (gia han trong %d phut sau do van giu duoc may)" % (g // 60) if g >= 60 else "")) if self.rent.get("lock_mode") \
+                    else "Het han may se TU TAT. Lien he shop de gia han."
+                self.h.notify("%s: may nay con %s nua la HET HAN THUE%s. %s"
+                              % (self.tag(), span_txt(left), " (het han luc %s)" % when if when else "", tail), max(45, min(min(nxt) - 3, RENT_POP_MAX)))
             elif every > 0 and told is not None:
                 nxt.append(max(1, told + every - est))
             return max(2, min(min(nxt), 300))
+        if self.rent.get("lock_mode") or self.rent.get("locked") == u:
+            return self.rent_lock_step(u)                              # 21.11f: lượt thuê tự thu hồi → KHOÁ máy (không tắt)
         if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
             return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể chủ shop vừa gia hạn lúc máy đang tắt)
         if self.rent_call is None:
@@ -673,6 +740,46 @@ class Agent:
         self.h.power(reboot=False, delay=0, msg="CloudBlue PC: het han thue - may tat.")
         self.rent_call = self.s.now() + RENT_LAST_CALL                 # lệnh tắt bị chặn / máy chưa tắt: 2 phút sau ra lệnh lại
         return 30
+
+    def rent_lock_step(self, u):
+        """21.11f · Hết hạn, lượt thuê TỰ THU HỒI (SQL v44): KHOÁ máy thay vì tắt — báo khách, 60 giây sau tắt tự đăng nhập + khởi động lại → máy dừng ở
+           màn hình đăng nhập, mọi chương trình của khách dừng. Máy vẫn chạy để: khách gia hạn trong thời gian chờ → tự mở lại (giữ nguyên dữ liệu);
+           quá hạn → máy chủ thu hồi rồi ra lệnh cài sạch + tắt máy. Trả số giây nghỉ."""
+        if self.rent.get("locked") == u:                              # đã khoá cho đúng hạn này
+            if not self.lock_ok:
+                self.lock_ok = bool(self.h.autologon(False))           # mỗi lần agent chạy: giữ "tắt tự đăng nhập" (phòng ai bật lại)
+            if self.lock_at is not None and self.s.now() - self.lock_at >= RENT_LOCK_RETRY:
+                self.log("đã ra lệnh khoá mà máy vẫn chạy → khởi động lại lần nữa")
+                self.lock_at = self.s.now()
+                self.h.power(reboot=True, delay=5, msg="CloudBlue PC: het han thue - may khoa.")
+            return 60
+        if not self.rent_synced and self.s.now() - self.t_start < RENT_BOOT_GRACE:
+            return 10                                                  # vừa bật máy: chờ hỏi máy chủ đã (có thể vừa được gia hạn)
+        if self.rent_call is None:
+            self.rent_call = self.s.now()
+            g = int(self.rent.get("grace_s") or 0)
+            self.event("rent_lock")
+            self.log("HẾT HẠN THUÊ → báo khách, %d giây nữa KHOÁ máy (lượt thuê tự thu hồi)" % RENT_LAST_CALL)
+            self.h.notify("%s: may nay da HET HAN THUE. May se KHOA sau %d giay. Gia han%s de giu may + du lieu - gia han xong may tu mo lai."
+                          % (self.tag(), RENT_LAST_CALL, " trong %d phut" % (g // 60) if g >= 60 else ""), RENT_LAST_CALL)
+            return 3                                                   # nhịp kế báo về web ngay
+        wait = RENT_LAST_CALL - (self.s.now() - self.rent_call)
+        if wait > 0: return max(2, min(15, wait))
+        self.rent["locked"] = u; self.rent.pop("off", None); self.rent_save()
+        self.rent_call = None
+        self.lock_ok = bool(self.h.autologon(False))
+        self.lock_at = self.s.now()
+        self.log("hết hạn thuê → KHOÁ MÁY (tắt tự đăng nhập + khởi động lại)")
+        self.h.power(reboot=True, delay=5, msg="CloudBlue PC: het han thue - may khoa. Gia han de mo lai.")
+        return 60
+
+    def rent_unlock(self, why):
+        """21.11f · Mở khoá máy (được gia hạn / máy chủ bỏ hạn): bật lại tự đăng nhập + khởi động lại để vào thẳng Windows như cũ."""
+        self.rent.pop("locked", None); self.rent_call = None; self.lock_at = None; self.lock_ok = False
+        self.rent_save()
+        self.h.autologon(True)
+        self.log("MỞ KHOÁ máy (%s) → bật lại tự đăng nhập + khởi động lại" % why)
+        self.h.power(reboot=True, delay=15, msg="CloudBlue PC: da gia han - may khoi dong lai de mo khoa sau 15 giay.")
 
     # ------------------------------------------------------------------ đăng ký
     def enroll(self):
@@ -795,7 +902,8 @@ class Agent:
                 self.done(oid, False, {"msg": "lỗi chuẩn bị cài lại: %s" % str(e)[:200]}); self.log(traceback.format_exc()); return
             self.log("đã ghi lệnh cài lại %s (%s) → khởi động lại vào bộ cài sau 30 giây" % (img["id"], job["wipe"]))
             self.rebooting = True
-            self.h.power(reboot=True, delay=30, msg="CloudBlue: may se CAI LAI WINDOWS sau 30 giay. Du lieu tren may se bi xoa.")
+            what = "CAI CachyOS (Linux)" if C.is_linux(img) else "CAI LAI WINDOWS"
+            self.h.power(reboot=True, delay=30, msg="CloudBlue: may se %s sau 30 giay. Du lieu tren may se bi xoa." % what)
             return
         self.done(oid, False, {"msg": "agent bản %s không biết lệnh '%s'" % (AGENT_VER, cmd)})
 
@@ -842,6 +950,8 @@ class Agent:
                 rec = cbrec.find_recovery(self.s)
                 if rec:
                     for rel, data in got.items(): self.s.write_bytes(rec.root + "cb\\" + rel.replace("/", "\\"), data)
+                    self.pe_next(rec, got)
+                    self.linux_sync(rec, base, m.get("linux"))
             except Exception as e:
                 self.log("chưa cập nhật được phân vùng cứu hộ: %s" % e)
             self.s.write_text(self.p("update\\applied.txt"), ver)
@@ -852,7 +962,84 @@ class Agent:
             self.log("cập nhật bản %s lỗi: %s" % (ver, e)); self.bad_update = ver
             return None
 
+    def linux_sync(self, rec, base, lin):
+        """22.11d · Bản kê có mục "linux" ({"linux/cb-install.sh": sha256, …}) → thay các file đó trong cb\\linux của PHÂN VÙNG CỨU HỘ (chỉ máy cài
+           từ bộ cài có kèm CachyOS: đã có cb\\linux\\cachyos.iso). File đã đúng mã thì thôi; tải lỗi / sai mã → giữ file cũ, ghi nhật ký. Trả số file đã thay."""
+        if not isinstance(lin, dict) or not lin: return 0
+        if not self.s.exists(rec.root + "cb\\linux\\cachyos.iso"): return 0
+        n, bad = 0, []
+        for rel, sha in sorted(lin.items())[:40]:
+            if not LINUX_REL.match(str(rel)) or not re.fullmatch(r"[0-9a-f]{64}", str(sha)): bad.append(str(rel)[:40]); continue
+            dst = rec.root + "cb\\" + rel.replace("/", "\\")
+            try:
+                if self.s.exists(dst) and hashlib.sha256(self.s.read_bytes(dst)).hexdigest() == sha: continue
+            except Exception: pass
+            try:
+                data = self.net.get(base.rstrip("/") + "/" + rel, limit=4 << 20)
+                if hashlib.sha256(data).hexdigest() != sha: raise ValueError("sai mã kiểm")
+                self.s.write_bytes(dst, data); n += 1
+            except Exception as e:
+                bad.append("%s (%s)" % (rel, str(e)[:60]))
+        if n or bad: self.log("bộ cài CachyOS trên phân vùng cứu hộ: thay %d file%s" % (n, ("; chưa thay: " + ", ".join(bad[:5])) if bad else ""))
+        return n
+
     restart = False
+    pe_synced = False
+
+    def pe_next(self, rec, got=None):
+        """Đặt BỘ CÀI bản này lên phân vùng cứu hộ (\\cb\\pe-next\\: 4 file + next.json ghi SAU CÙNG) cho lần cài lại / đổi Windows sau.
+           Bộ cài nằm cố định trong ảnh khởi động (boot.wim) chỉ chạy bản đặt ở đây khi số thứ tự (PE_SEQ) LỚN HƠN của nó và đúng mã băm
+           từng file → sửa bộ cài không cần tạo lại ISO. Bản không có PE_SEQ (cũ hơn 21.11d) → gỡ bản đặt trước để dùng bộ cài của boot.wim.
+           got = file vừa tải (ưu tiên); thiếu thì lấy file agent đang dùng rồi tới file trên phân vùng cứu hộ. Trả số thứ tự đã đặt / None."""
+        base = rec.root + PE_NEXT_DIR
+        src = {}
+        for rel in PE_NEXT_FILES:
+            data = (got or {}).get(rel)
+            for path in ([] if data else [self.p(rel.replace("/", "\\")), rec.root + "cb\\" + rel.replace("/", "\\")]):
+                try: data = self.s.read_bytes(path)
+                except Exception: data = None
+                if data: break
+            if not data or len(data) > (2 << 20):
+                self.log("chưa đặt được bộ cài mới lên phân vùng cứu hộ: thiếu %s" % rel); return None
+            src[rel] = data
+        m = re.search(rb"(?m)^PE_SEQ\s*=\s*(\d{1,6})\b", src["pe/cb_pe.py"])
+        if not m:
+            try:
+                if self.s.exists(base + "next.json"): self.s.remove(base + "next.json"); self.log("bộ cài bản này chưa có số thứ tự → gỡ bộ cài đặt trước trên phân vùng cứu hộ")
+            except Exception: pass
+            return None
+        seq = int(m.group(1))
+        mv = re.search(rb'(?m)^PE_VER\s*=\s*"([A-Za-z0-9._-]{1,16})"', src["pe/cb_pe.py"])
+        meta = {"seq": seq, "ver": mv.group(1).decode() if mv else str(seq), "files": {rel: hashlib.sha256(d).hexdigest() for rel, d in src.items()}}
+        try:
+            old = C.load_json(self.s, base + "next.json")
+            if isinstance(old, dict) and old.get("seq") == seq and old.get("files") == meta["files"] \
+               and all(hashlib.sha256(self.s.read_bytes(base + rel.replace("/", "\\"))).hexdigest() == h for rel, h in meta["files"].items()):
+                return seq                                          # đã đặt đúng bản này rồi
+        except Exception: pass
+        try:
+            if self.s.exists(base + "next.json"): self.s.remove(base + "next.json")      # gỡ trước: đang ghi dở thì bộ cài không thấy bản nào (dùng bản của boot.wim)
+        except Exception: pass
+        for rel, data in src.items(): self.s.write_bytes(base + rel.replace("/", "\\"), data)
+        self.s.write_text(base + "next.json", json.dumps(meta, ensure_ascii=True, sort_keys=True))
+        self.log("đã đặt bộ cài bản %s (số %d) lên phân vùng cứu hộ — lần cài lại / đổi Windows sau dùng bản này" % (meta["ver"], seq))
+        return seq
+
+    def pe_sync(self):
+        """1 lần mỗi lần agent chạy: bộ cài trên phân vùng cứu hộ khớp bản agent đang dùng (bản cập nhật đầu lên 21.11e do agent CŨ chép file,
+           agent cũ chưa biết đặt pe-next → agent mới làm bù; lúc cập nhật mà chưa ghi được phân vùng cứu hộ cũng được làm lại)."""
+        if self.pe_synced: return
+        self.pe_synced = True
+        try:
+            rec = cbrec.find_recovery(self.s)
+            if rec:
+                self.pe_next(rec)
+                m = self.last_manifest if isinstance(self.last_manifest, dict) else {}
+                base = str(m.get("base") or "")
+                if base and base.startswith(self.cfg.get("update_base") or UPDATE_BASE):        # 22.11e · bộ cài CachyOS khớp bản kê đang công bố
+                    self.linux_sync(rec, base, m.get("linux"))
+        except Exception as e:
+            self.log("chưa đặt được bộ cài mới lên phân vùng cứu hộ: %r" % (e,))
 
     # ------------------------------------------------------------------ 1 nhịp
     def poll(self, send_info=True):
@@ -900,7 +1087,54 @@ class Agent:
         except Exception: self.log("lỗi chỉnh đồng hồ: " + traceback.format_exc())
         try: self.rent_sync(r)
         except Exception: self.log("lỗi nhận hạn thuê: " + traceback.format_exc())
+        try: self.admin_sync(r)
+        except Exception: self.log("lỗi công tắc quyền Admin: " + traceback.format_exc())
         return r
+
+    def admin_sync(self, r):
+        """21.11h · Công tắc "Cho khách quyền Admin" của shop (SQL v46: pc_poll trả cust_admin; máy chủ cũ không có trường này → giữ nguyên như cũ).
+           Đổi thì ghi cb.json "user_admin" rồi bảo vòng chính chạy NGAY pha `system` của cb_provision: bật → thêm tài khoản khách vào nhóm
+           Administrators (+ nhắn khách khởi động lại 1 lần) · tắt → hạ lại thành tài khoản thường."""
+        if not isinstance(r, dict) or "cust_admin" not in r: return False
+        want = r.get("cust_admin") is True
+        try: self.rec_admin(want)
+        except Exception as e: self.log("chưa ghi được công tắc quyền Admin lên phân vùng cứu hộ: %r" % (e,))
+        cur = self.cfg.get("user_admin")
+        if cur is not None and bool(cur) == want: return False
+        cfg = C.load_json(self.s, self.p("cb.json"))
+        cfg = dict(cfg if isinstance(cfg, dict) else self.cfg)
+        cfg["user_admin"] = want
+        C.save_json(self.s, self.p("cb.json"), cfg)
+        self.cfg = cfg
+        if cur is None and not want: return False                   # 21.11i: máy mới cài — chỉ ghi RÕ "tắt" (lần đăng nhập đầu chờ biết công tắc), không có gì đổi
+        self.sec_now = True
+        self.log("shop %s quyền Admin cho tài khoản khách → áp dụng ngay" % ("BẬT" if want else "TẮT"))
+        self.event("admin", on=1 if want else 0)
+        return True
+
+    def rec_admin(self, want):
+        """21.11i · Ghi công tắc quyền Admin vào cb.json trên PHÂN VÙNG CỨU HỘ: bộ cài chép file này sang Windows mới mỗi lần cài lại (khách thuê mới,
+           đổi Windows, dọn máy) → lần đăng nhập đầu đã biết công tắc: bật thì tài khoản khách giữ quyền Admin ngay từ đầu như máy cài thường,
+           không phải khởi động lại thêm. Mỗi giá trị kiểm 1 lần mỗi lần agent chạy; chỉ ghi khi khác. File lạ / không đọc được → không đụng."""
+        if self.rec_admin_ok is want: return False
+        rec = cbrec.find_recovery(self.s)
+        if not rec:
+            self.rec_admin_ok = want; return False
+        path = rec.root + "cb\\cb.json"
+        rc = C.load_json(self.s, path)
+        if not isinstance(rc, dict) or not rc.get("images"):
+            self.log("cb.json trên phân vùng cứu hộ không đọc được — không ghi công tắc quyền Admin"); self.rec_admin_ok = want; return False
+        if rc.get("user_admin") is want:
+            self.rec_admin_ok = want; return False
+        rc = dict(rc, user_admin=want)
+        C.save_json(self.s, path, rc)
+        back = C.load_json(self.s, path)
+        if not isinstance(back, dict) or back.get("user_admin") is not want or back.get("images") != rc["images"]:
+            self.log("ghi công tắc quyền Admin lên phân vùng cứu hộ chưa được — lần chạy sau thử lại"); return False
+        self.rec_admin_ok = want
+        self.log("đã ghi công tắc quyền Admin (%s) lên phân vùng cứu hộ → cài lại máy: khách %s ngay từ lần đăng nhập đầu"
+                 % ("BẬT" if want else "TẮT", "có quyền Admin" if want else "là tài khoản thường"))
+        return True
 
     def tick(self):
         """1 nhịp làm việc. Trả số giây nghỉ trước nhịp sau."""
@@ -929,6 +1163,7 @@ class Agent:
         if not r.get("ok"): return 5
         try: self.label_sync()
         except Exception as e: self.log("lỗi phần tên máy: %r" % (e,))
+        self.pe_sync()
         if r.get("order"):
             try: self.handle(r["order"])
             except Exception:
@@ -989,8 +1224,8 @@ def cmd_run(argv):
             if ag.h.restart_self(): return 0
             ag.restart = False
         since = abs(time.time() - t_sec)
-        if since > 6 * 3600 or (since > 300 and ag.ident and ag.fail == 0 and vga_pending()):     # driver VGA còn chờ mạng → máy có mạng rồi thì cài nốt
-            secure(ag, log); t_sec = time.time()
+        if since > 6 * 3600 or ag.sec_now or (since > 300 and ag.ident and ag.fail == 0 and vga_pending()):     # driver VGA còn chờ mạng → máy có mạng rồi thì cài nốt
+            ag.sec_now = False; secure(ag, log); t_sec = time.time()                   # 21.11h: shop vừa đổi công tắc quyền Admin → làm ngay
         time.sleep(max(1, min(900, nap)))
 
 

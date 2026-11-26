@@ -15,6 +15,16 @@
 #                                                                 driver VGA chưa cài được ở lần đăng nhập đầu (lúc đó chưa có mạng) thì cài nốt
 #  BẢO MẬT (mặc định, cb.json "user_admin": false): khách dùng tài khoản THƯỜNG, không còn tài khoản quản trị nào dùng được trên máy;
 #     C:\CloudBluePC + phân vùng cứu hộ chỉ SYSTEM / Administrators vào được (tài khoản thường chỉ đọc + chạy py\ và os\ để đặt ảnh nền).
+#  21.11i · shop BẬT "Cho khách quyền Admin" (cb.json "user_admin": true — agent ghi theo máy chủ, cả lên phân vùng cứu hộ để CÀI LẠI cũng mang theo):
+#     tài khoản khách GIỮ quyền Admin ngay từ lần đăng nhập đầu như máy cài thường (không hạ, không phải khởi động lại thêm); xong lần đăng nhập đầu
+#     mới chặn riêng tài khoản khách sửa / xoá phần mềm shop (guard). cb.json chưa có công tắc (cài từ USB) → lần đăng nhập đầu chờ agent hỏi máy chủ.
+#  21.11j · thư mục C:\CloudBluePC được ẨN (thuộc tính Ẩn + Hệ thống) cho khách khỏi để ý; ngoài thư mục đó + phân vùng cứu hộ, khách Admin toàn quyền.
+#  22.11c · khách có quyền Admin → cài phần mềm / chạy app cần quyền Admin KHÔNG hiện hộp hỏi quyền (UAC) nữa: ConsentPromptBehaviorAdmin = 0
+#     (như kéo thanh UAC xuống "Never notify"; VẪN giữ UAC bật — EnableLUA — để app Store / Edge chạy bình thường). Shop tắt công tắc → về mặc định Windows (5).
+#  22.11c · GIẢ LẬP ANDROID (MuMu / LDPlayer / BlueStacks / Nox / MEmu…) cần VT-x / AMD-V cho riêng nó: Windows bật Hyper-V / VBS / Core Isolation
+#     (Memory Integrity) thì VT-x bị chiếm → MuMu báo "Startup failed — An abnormal runtime environment was detected". emu(): 1 lần mỗi bản cài tắt các
+#     thứ chiếm VT-x (bcdedit hypervisorlaunchtype off + tắt VBS / HVCI / Credential Guard), có hiệu lực sau 1 lần khởi động lại; ghi logs\emu.json
+#     (VT trong BIOS bật / tắt, có hypervisor không, máy ảo?) cho agent báo lên web. VT-x TẮT trong BIOS thì phần mềm không bật được → chỉ báo.
 #  Mọi lệnh lỗi đều được ghi nhật ký và BỎ QUA — không bao giờ làm hỏng bước cài Windows.
 #  Nhật ký: C:\CloudBluePC\logs\provision.log (phần chạy bằng tài khoản thường: %LOCALAPPDATA%\CloudBluePC\provision.log)
 # =====================================================================================================
@@ -22,7 +32,7 @@ import json, os, re, secrets, socket, subprocess, sys, tempfile, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.path.abspath(os.path.join(HERE, ".."))
-PROV_VER = "21.11c"
+PROV_VER = "22.11c"
 TASK_AGENT, TASK_WATCH = "CloudBluePC Agent", "CloudBluePC Watch"
 BOOT_SVC = "CloudBluePCBoot"            # dịch vụ khởi động bộ cài chèn vào Windows mới (cbcore.boot_service_cmds) — gọi pha `boot`
 NOWIN = 0x08000000 if os.name == "nt" else 0
@@ -33,7 +43,24 @@ NET_WAIT_VGA, NET_WAIT = 240, 60         # lần đăng nhập đầu chờ mạ
 DRV_SETTLE = 30                          # bước driver: sau khi bảo Windows cài lại thiết bị chưa có driver, chờ card mạng nhận driver tối đa 30 giây (5 giây xem 1 lần)
 DRV_PNPUTIL_MAX = 12                     # card mạng vẫn chưa nhận: chạy pnputil cho tối đa 12 gói driver MẠNG đang nằm trong kho driver
 DRV_KICKS = 3                            # bước driver chạy tối đa 3 lần cho 1 máy (lần đăng nhập đầu + các lần agent gọi lại khi máy vẫn chưa có card mạng chạy được)
+ADMIN_WAIT = 150                         # 21.11i · lần đăng nhập đầu: cb.json chưa có công tắc quyền Admin → chờ agent hỏi máy chủ tối đa 150 giây
 VGA_CMD_MARK = "cai driver VGA NVIDIA im lang"      # dấu của file 50-vga-nvidia.cmd do bộ tạo ISO bản cũ sinh ra (nay cb_provision tự cài → bỏ qua file đó)
+
+UAC_KEY = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+UAC_QUIET, UAC_DEFAULT = 0, 5            # 22.11c · ConsentPromptBehaviorAdmin: 0 = Admin được nâng quyền KHÔNG hỏi · 5 = mặc định Windows (hỏi Có / Không)
+
+EMU_REV = 1                              # 22.11c · đổi số này khi đổi cách dọn cho giả lập → máy đã dọn bản cũ sẽ dọn lại 1 lần
+EMU_PS = ("$p = Get-CimInstance Win32_Processor | Select-Object -First 1; $c = Get-CimInstance Win32_ComputerSystem; "
+          "$d = Get-CimInstance -Namespace root\\Microsoft\\Windows\\DeviceGuard -ClassName Win32_DeviceGuard -ErrorAction SilentlyContinue; "
+          "Write-Output ('E_VT=' + $p.VirtualizationFirmwareEnabled); Write-Output ('E_VMX=' + $p.VMMonitorModeExtensions); "
+          "Write-Output ('E_HV=' + $c.HypervisorPresent); Write-Output ('E_VBS=' + $d.VirtualizationBasedSecurityStatus); "
+          "Write-Output ('E_SVC=' + (@($d.SecurityServicesRunning) -join ',')); Write-Output ('E_CPU=' + $p.Name); "
+          "Write-Output ('E_HW=' + $c.Manufacturer + ' | ' + $c.Model); Write-Output 'E_END'")
+VM_RE = re.compile(r"qemu|kvm|vmware|virtualbox|innotek|xen|parallels|bochs|proxmox|virtual machine|standard pc \(", re.I)
+DG_KEY = r"HKLM\SYSTEM\CurrentControlSet\Control\DeviceGuard"
+HVCI_KEY = DG_KEY + r"\Scenarios\HypervisorEnforcedCodeIntegrity"
+LSA_KEY = r"HKLM\SYSTEM\CurrentControlSet\Control\Lsa"
+DGP_KEY = r"HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard"
 
 GHOST_SKIP_RIDS = (500, 501, 503, 504)      # Administrator · Guest · DefaultAccount · WDAGUtilityAccount có sẵn của Windows: không nhận làm tài khoản khách
 GHOST_TELL_WAIT = 25                         # bản ghost: chờ Windows tự đăng nhập xong rồi mới hiện lời báo "đang hoàn tất cài đặt" lên màn hình
@@ -652,8 +679,16 @@ class Prov:
             bad2 = sum(1 for argv in vol(root) if self._run(argv, 900)[0] != 0)
             self.log("%s khoa quyen phan vung cuu ho%s" % ("ok " if not bad2 else "LOI", "" if not bad2 else " (%d lenh bao loi)" % bad2))
             bad += bad2
+        self.hide()
         self.touch("lock.done")
         return not bad
+
+    def hide(self):
+        """21.11j · ẨN thư mục phần mềm CloudBlue cho khách khỏi để ý: thuộc tính Ẩn + Hệ thống trên thư mục gốc (C:\\CloudBluePC) — Explorer không hiện
+           kể cả khi bật "Hiện mục ẩn" (phải bỏ "Ẩn tệp hệ điều hành được bảo vệ" mới thấy). Không đụng quyền / nội dung; agent, lệnh cbpc.cmd chạy như cũ."""
+        rc, _ = self._run(["attrib", "+h", "+s", self.base], 60)
+        self.log("%s an thu muc %s (thuoc tinh An + He thong)" % ("ok " if rc == 0 else "LOI", self.base))
+        return rc == 0
 
     def names(self):
         """Tên (theo ngôn ngữ của Windows đang chạy) của nhóm Administrators, nhóm Users và tài khoản Administrator có sẵn. Không hỏi được → tên tiếng Anh."""
@@ -720,6 +755,28 @@ class Prov:
         rc, out = self._run(["net", "localgroup", group], 60)
         return rc == 0 and any(ln.strip().lower() == user.lower() for ln in (out or "").splitlines())
 
+    def switch_wait(self, limit=ADMIN_WAIT):
+        """21.11i · cb.json CHƯA có công tắc "user_admin" (máy cài từ USB / ISO — phân vùng cứu hộ chưa được agent ghi công tắc) mà máy có máy chủ (sb_url)
+           → chờ agent (đã bật ở bước 1) hỏi máy chủ rồi ghi công tắc vào cb.json, tối đa `limit` giây (5 giây xem 1 lần) — để quyền tài khoản khách đúng
+           NGAY lần đầu (shop bật: khách giữ quyền Admin, khỏi phải khởi động lại thêm). Hết giờ → làm như cũ (khách = tài khoản thường; agent cấp lại sau).
+           Trả công tắc đọc được (True / False) hoặc None."""
+        c = self.cfg()
+        if "user_admin" in c: return bool(c.get("user_admin"))
+        if not c.get("sb_url"): return None
+        self.log("cho agent bao cong tac quyen Admin cua shop (toi da %d giay) ..." % limit)
+        t0 = self._now()
+        for _ in range(max(1, int(limit) // 5)):
+            self._sleep(5)
+            c = self.cfg()
+            if "user_admin" in c:
+                on = bool(c.get("user_admin"))
+                self.log("ok  agent da bao cong tac quyen Admin: %s (cho %d giay)" % ("BAT - khach giu quyen Admin" if on else "TAT - khach la tai khoan thuong",
+                                                                                    max(0, int(self._now() - t0))))
+                return on
+            if self._now() - t0 >= limit: break
+        self.log("LOI agent chua bao cong tac quyen Admin sau %d giay - tam de khach la tai khoan thuong (shop bat thi agent cap lai sau)" % limit)
+        return None
+
     def harden(self):
         """Chế độ khách = TÀI KHOẢN THƯỜNG (mặc định; cb.json có "user_admin": true thì bỏ qua). Cần quyền quản trị.
              · gỡ tài khoản khách khỏi nhóm Administrators (giữ trong nhóm Users) — có hiệu lực từ lần đăng nhập sau
@@ -728,8 +785,8 @@ class Prov:
            → trên máy không còn tài khoản quản trị nào dùng được; việc quản trị đi qua agent (SYSTEM) theo lệnh từ web, hoặc cài lại.
            Trả True nếu VỪA gỡ quyền Admin của tài khoản khách (cần đăng nhập lại / khởi động lại để có hiệu lực)."""
         c = self.cfg()
-        if c.get("user_admin"):
-            self.log("tai khoan khach duoc de quyen Admin (user_admin) - khong ha quyen"); return False
+        if c.get("user_admin"):                                      # 21.11h: shop BẬT "Cho khách quyền Admin" (agent ghi theo máy chủ) → cấp quyền, không hạ
+            return self.grant()
         user = c.get("user") or "PC"
         adm, usr, bia = self.names()
         if user.lower() == bia.lower():
@@ -741,7 +798,11 @@ class Prov:
         self._run(["net", "localgroup", usr, user, "/add"], 60)                      # đã ở trong nhóm thì lệnh báo lỗi 1378 — bỏ qua
         if self.in_group(adm, user):
             changed = self.sh(["net", "localgroup", adm, user, "/delete"], "go tai khoan '%s' khoi nhom %s (thanh tai khoan thuong)" % (user, adm))
-            if was: self.sec_event("tai khoan khach '%s' co lai quyen Admin - da ha lai" % user)
+            granted = os.path.exists(self.mark("admin.granted"))      # 21.11h: shop vừa TẮT công tắc quyền Admin → hạ quyền có chủ ý, không phải việc lạ
+            if was and not granted: self.sec_event("tai khoan khach '%s' co lai quyen Admin - da ha lai" % user)
+            if granted:
+                try: os.remove(self.mark("admin.granted"))
+                except OSError: pass
         self.sh(["net", "user", user, "/passwordchg:no"], "cam tai khoan '%s' tu doi mat khau" % user)
         if not was or self.bia_off is False:                                         # lần đầu, hoặc tài khoản Administrator có sẵn bị ai đó BẬT lại
             if was: self.sec_event("tai khoan '%s' co san bi bat lai - da tat lai" % bia)
@@ -751,6 +812,113 @@ class Prov:
             if ok and not was: self.touch("harden.done")
         self.admins_watch(adm, bia, baseline=not was)
         return changed
+
+    def grant(self):
+        """21.11h · Công tắc "Cho khách quyền Admin" của shop (cb.json "user_admin": true): tài khoản khách VÀO nhóm Administrators → app cần quyền Admin
+           (vd executor Roblox) chỉ hiện hộp Có / Không, không hỏi mật khẩu admin. Có hiệu lực từ lần đăng nhập sau → nhắn khách khởi động lại 1 lần.
+           KHÔNG tự khởi động lại (khách có thể đang chạy việc). Trả False."""
+        c = self.cfg(); user = c.get("user") or "PC"
+        adm, usr, bia = self.names()
+        if user.lower() == bia.lower():
+            self.log("tai khoan khach trung ten tai khoan Administrator co san - khong doi"); return False
+        if self._run(["net", "user", user], 60)[0] != 0:
+            self.log("chua co tai khoan '%s' (Windows chua tao xong) - de lan sau" % user); return False
+        if self.in_group(adm, user):
+            self.log("tai khoan khach '%s' da co quyen Admin (user_admin)" % user); return False
+        if self.sh(["net", "localgroup", adm, user, "/add"], "cap quyen Admin cho tai khoan khach '%s' (shop bat user_admin)" % user):
+            self.touch("admin.granted")
+            self._run(["msg", "*", "/time:900", "CloudBlue: may da duoc BAT QUYEN ADMIN. Hay khoi dong lai may 1 lan (Start > Restart) "
+                       "de cai phan mem / chay app can quyen Admin khong bi hoi mat khau. Luu y: KHONG tat / go phan mem CloudBlue - vi pham se bi khoa may, khong hoan tien."], 30)
+        return False
+
+    def uac(self):
+        """22.11c · Hộp hỏi quyền (UAC) theo công tắc "Cho khách quyền Admin" của shop: BẬT → ConsentPromptBehaviorAdmin = 0 (cài phần mềm / app cần quyền
+           Admin chạy luôn, không hỏi Có / Không, không bắt nhập mật khẩu) · TẮT → 5 (mặc định Windows). Có hiệu lực ngay, không cần khởi động lại — trừ phiên
+           đăng nhập có từ TRƯỚC khi khách được cấp quyền Admin (vẫn là quyền thường → khởi động lại 1 lần, xem grant()). Giá trị đã đúng thì không ghi lại."""
+        want = UAC_QUIET if self.cfg().get("user_admin") else UAC_DEFAULT
+        cur = self.reg_value(UAC_KEY, "ConsentPromptBehaviorAdmin")
+        try: cur = int(cur, 0)
+        except (TypeError, ValueError): cur = None
+        if cur == want: return True
+        return self.reg(UAC_KEY, "ConsentPromptBehaviorAdmin", "REG_DWORD", want)
+
+    # ------------------------------------------------------------------ 22.11c · máy chạy được giả lập Android
+    def emu_state(self):
+        """Đọc tình trạng ảo hoá của máy → dict (None = không đọc được): vt = VT-x / AMD-V bật trong BIOS (None khi đang có hypervisor — Windows giấu)
+           · hv = Windows đang chạy hypervisor (Hyper-V / VBS) · vbs = 0 tắt / 1 cấu hình / 2 đang chạy · svc = dịch vụ bảo mật dùng ảo hoá đang chạy
+           (1 Credential Guard · 2 HVCI) · launch = hypervisorlaunchtype trong BCD ("" = không ghi) · vm = máy ảo · cpu · hw."""
+        rc, out = self._run(["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", EMU_PS], 120)
+        if rc != 0 or "E_END" not in (out or ""): return None
+        kv = dict(re.findall(r"^E_([A-Z]+)=(.*?)\s*$", out, re.M))
+        tf = lambda v: True if v == "True" else False if v == "False" else None
+        st = {"hv": tf(kv.get("HV")), "vbs": int(kv["VBS"]) if (kv.get("VBS") or "").isdigit() else 0,
+              "svc": [int(x) for x in re.findall(r"\d+", kv.get("SVC") or "")][:6], "cpu": (kv.get("CPU") or "").strip()[:60], "hw": (kv.get("HW") or "").strip()[:60]}
+        st["vt"] = None if st["hv"] else tf(kv.get("VT"))
+        st["vm"] = bool(VM_RE.search(st["hw"]))
+        rc2, bcd = self._run(["bcdedit", "/enum", "{current}"], 60)
+        m = re.search(r"^\s*hypervisorlaunchtype\s+(\S+)", bcd or "", re.M | re.I) if rc2 == 0 else None
+        st["launch"] = m.group(1).lower() if m else ""
+        return st
+
+    def emu(self):
+        """Dọn cho giả lập Android chạy được (1 lần mỗi bản cài / mỗi EMU_REV): tắt mọi thứ chiếm VT-x — hypervisor (Hyper-V, nền tảng máy ảo, Windows
+           Sandbox, WSL2 đều cần nó), VBS, Core Isolation / Memory Integrity (HVCI), Credential Guard. Có hiệu lực từ lần khởi động sau.
+           Luôn ghi logs\\emu.json (agent báo lên web). Trả True nếu vừa đổi gì đó (cần khởi động lại 1 lần)."""
+        st = self.emu_state()
+        if st is None:
+            self.log("LOI khong doc duoc tinh trang ao hoa (giả lap) - de lan sau"); return False
+        done = None
+        try:
+            with open(self.mark("emu.done"), encoding="utf-8") as f: done = int((f.read().split() or ["0"])[0])
+        except (OSError, ValueError): pass
+        fixed = []
+        if done != EMU_REV:
+            if st["launch"] not in ("", "off") or st["hv"]:
+                if self.sh(["bcdedit", "/set", "{current}", "hypervisorlaunchtype", "off"], "tat hypervisor luc khoi dong (Hyper-V / VBS chiem VT-x -> gia lap Android khong chay)"):
+                    fixed.append("hypervisor")
+            want0 = ((DG_KEY, "EnableVirtualizationBasedSecurity"), (HVCI_KEY, "Enabled"), (LSA_KEY, "LsaCfgFlags"), (DGP_KEY, "EnableVirtualizationBasedSecurity"),
+                     (DGP_KEY, "HypervisorEnforcedCodeIntegrity"), (DGP_KEY, "LsaCfgFlags"))
+            for key, name in want0:
+                cur = self.reg_value(key, name)
+                try: cur = int(cur, 0)
+                except (TypeError, ValueError): cur = None
+                if cur not in (None, 0) and self.reg(key, name, "REG_DWORD", 0): fixed.append(name)
+            try:
+                os.makedirs(os.path.dirname(self.mark("emu.done")), exist_ok=True)
+                with open(self.mark("emu.done"), "w", encoding="utf-8") as f: f.write("%d %d" % (EMU_REV, int(self._now())))
+            except OSError: pass
+        reboot = bool(fixed) or bool(self.emu_last().get("reboot") and st["hv"])     # đã dọn mà chưa khởi động lại → vẫn chờ
+        why = ("" if not (st["vt"] is False) else ("may ao: may chu chua bat ao hoa long nhau (nested VT-x)" if st["vm"] else "VT-x / AMD-V (SVM) dang TAT trong BIOS"))
+        out = dict(st, rev=EMU_REV, fixed=fixed, reboot=reboot, ready=bool(st["vt"]) and not st["hv"], why=why, t=int(self._now()))
+        try:
+            with open(self.mark("emu.json"), "w", encoding="utf-8") as f: json.dump(out, f)
+        except OSError: pass
+        self.log("gia lap: VT %s · hypervisor %s · VBS %s%s%s" % ({True: "BAT", False: "TAT", None: "?"}[st["vt"]], "CO" if st["hv"] else "khong", st["vbs"],
+                 (" · vua tat: " + ", ".join(fixed) + " (can khoi dong lai 1 lan)") if fixed else "", (" · " + why) if why else ""))
+        return bool(fixed)
+
+    def emu_last(self):
+        try:
+            with open(self.mark("emu.json"), encoding="utf-8") as f: j = json.load(f)
+            return j if isinstance(j, dict) else {}
+        except (OSError, ValueError): return {}
+
+    def guard(self):
+        """21.11h · Khách có quyền Admin (công tắc của shop): chặn RIÊNG tài khoản khách sửa / xoá / đổi quyền thư mục phần mềm shop (C:\\CloudBluePC)
+           và gốc phân vùng cứu hộ — ACE TỪ CHỐI theo tài khoản khách (SYSTEM / agent không bị ảnh hưởng; đọc + chạy py\\, os\\ vẫn được).
+           Bấm xoá / sửa bình thường (kể cả bằng quyền Admin) sẽ bị Windows chặn; muốn phá phải cố tình chiếm quyền sở hữu. Làm lại vô hại."""
+        c = self.cfg()
+        if not c.get("user_admin"): return True
+        user = c.get("user") or "PC"
+        deny = user + ":(OI)(CI)(DE,DC,WD,AD,WEA,WA,WDAC,WO)"
+        bad = 0 if self._run(["icacls", self.base.rstrip("\\"), "/deny", deny], 900)[0] == 0 else 1
+        try: root = self._rec() or ""
+        except Exception: root = ""
+        if root:
+            r = root if root.endswith("\\") else root + "\\"
+            if self._run(["icacls", r, "/deny", deny], 900)[0] != 0: bad += 1
+        self.log("%s chan tai khoan khach '%s' sua / xoa phan mem shop + phan vung cuu ho" % ("ok " if not bad else "LOI", user))
+        return not bad
 
     def system(self):
         """Agent (SYSTEM) gọi lúc khởi động + vài giờ 1 lần. Khoá lại quyền (rẻ, làm lại vô hại) và làm nốt việc hạ quyền tài khoản khách nếu lần đăng nhập
@@ -764,7 +932,16 @@ class Prov:
         if done is not None or (started is not None and started > 3600) or (started is None and first is not None and first > 3600):
             if done is None and self.ghost_needed(late=True):       # 1 giờ rồi vẫn chưa có tài khoản khách: bản kiểu ghost mà bộ cài không nhận ra → dựng tại đây
                 return self.ghost()
+            self.guard()                                             # 21.11h: khách có quyền Admin → vẫn chặn riêng tài khoản khách đụng vào phần mềm shop
+            #   21.11i: chỉ SAU lần đăng nhập đầu — lần đăng nhập đầu chạy bằng chính tài khoản khách (còn ghi mốc / nhật ký vào C:\CloudBluePC\logs)
             changed = self.harden()
+            self.uac()                                               # 22.11c: khách Admin → không hỏi quyền (UAC) khi cài phần mềm
+            try:
+                if self.emu() and not changed:                       # 22.11c: vừa dọn cho giả lập Android → nhắn khách khởi động lại 1 lần (không tự khởi động lại)
+                    self._run(["msg", "*", "/time:900", "CloudBlue: da chinh may de chay GIA LAP ANDROID (MuMu, LDPlayer, BlueStacks, Nox...). "
+                               "Hay khoi dong lai may 1 lan (Start > Restart) de gia lap chay duoc."], 30)
+            except Exception as e:
+                self.log("LOI buoc gia lap: %r" % (e,))
             try: self.drv_retry()                                    # máy vẫn chưa có card mạng chạy được → làm lại bước driver (tối đa DRV_KICKS lần)
             except Exception as e:
                 self.log("LOI buoc driver: %r" % (e,))
@@ -936,8 +1113,10 @@ class Prov:
         try: self.vga(waited is not None)
         except Exception as e:
             self.log("LOI buoc VGA: %r" % (e,))
+        if waited is not None: self.switch_wait()                   # 21.11i: chưa biết công tắc quyền Admin của shop → chờ agent hỏi máy chủ
         self.harden()
         self.touch("firstlogon.done"); self.touch("ghost.done")
+        self.guard()                                                 # 21.11i: khách có quyền Admin → chặn riêng tài khoản khách sửa / xoá phần mềm shop
         self.sh(["shutdown", "/r", "/t", "30", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 30 giay")
         self.log("xong ghost (tai khoan khach: %s)" % {"have": "da co san", "adopt": "nhan tai khoan cua anh", "new": "tao moi"}[how])
         return True
@@ -993,9 +1172,17 @@ class Prov:
         self.say("    " + {"none": "khong co goi VGA nao", "skip": "may nay khong co card NVIDIA - bo qua", "done": "xong - card da nhan driver",
                            "wait": "CHUA cai (chua co mang) - se tu cai khi may co mang",
                            "fail": "da chay bo cai nhung card chua nhan driver - se kiem lai sau khi khoi dong lai"}.get(v, v))
-        self.say("[5/5] Khoa tai khoan khach (tai khoan thuong) ...")
+        if waited is not None and self.switch_wait() is None and self.cfg().get("sb_url"):          # 21.11i: chưa biết công tắc → chờ agent hỏi máy chủ
+            self.say("    (chua biet cong tac quyen Admin cua shop - tam de tai khoan thuong)")
+        adm = bool(self.cfg().get("user_admin"))
+        self.say("[5/5] %s ..." % ("Tai khoan khach GIU quyen Admin (shop bat)" if adm else "Khoa tai khoan khach (tai khoan thuong)"))
         changed = self.harden()
+        self.uac()                                                   # 22.11c: khách giữ quyền Admin → cài phần mềm không hiện hộp hỏi quyền
+        try: changed = self.emu() or changed                         # 22.11c: tắt thứ chiếm VT-x (Hyper-V / VBS…) để giả lập Android chạy → cần khởi động lại 1 lần
+        except Exception as e:
+            self.log("LOI buoc gia lap: %r" % (e,))
         self.touch("firstlogon.done")
+        if adm: self.guard()                                         # 21.11i: việc cuối (chạy bằng chính tài khoản khách): chặn riêng tài khoản khách sửa / xoá phần mềm shop
         if changed:                                                  # quyền mới (tài khoản thường) chỉ có hiệu lực ở lần đăng nhập sau → khởi động lại 1 lần
             self.sh(["shutdown", "/r", "/t", "20", "/c", "CloudBlue PC: hoan tat cai dat - may tu khoi dong lai 1 lan"], "hen khoi dong lai sau 20 giay")
             self.say(""); self.say("XONG. May tu khoi dong lai sau 20 giay.")

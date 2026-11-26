@@ -1,0 +1,97 @@
+# 23/11 · ISO MÁY CHỦ CLOUD PHONE (winpc/tao-iso.ps1 -MayChu + winpc/maychu/): thử trên nhánh appiso-* TRƯỚC khi gộp vào main.
+#   1. sim  (Ubuntu): soát tĩnh .ps1 / .cmd + tên chưa khai báo, bộ thử Python của bộ tạo ISO (test_build / test_pe / test_stage), manifest.json khớp file.
+#   2. win  (Windows thật, PowerShell 5.1, quyền Admin):
+#        - maychu_check.ps1: cú pháp + từng hàm của script cài máy chủ, gọi API thật qua máy chủ giả (Supabase + Cloudflare), chạy CẢ luồng cài
+#          với bộ cài giả lập giả, firstboot.ps1 thật (dựng tác vụ rồi gỡ ngay).
+#        - check.ps1 -ChiIso: tạo ISO thường + ISO máy chủ từ 2 "ISO Windows" giả lập rồi mở ISO ra kiểm.
+#   Kết quả → nhánh iso-shots (shots/*-ketqua.txt, kèm vercel.json tắt deploy). Không đụng máy thật nào, không đưa gì lên web.
+name: Check ISO may chu (Cloud Phone)
+
+on:
+  push:
+    branches: ["appiso-*"]
+    paths:
+      - "winpc/**"
+      - ".github/workflows/may-chu-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy kết quả vào nhánh iso-shots
+
+concurrency:
+  group: may-chu-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bộ thử Python + soát tĩnh
+        run: |
+          sudo apt-get install -y -q libxml2-utils >/dev/null 2>&1 || true
+          mkdir -p kq
+          {
+            cd winpc
+            for t in tests/lint_ps1.py tests/lint.py tests/test_build.py tests/test_pe.py tests/test_stage.py; do
+              if python3 "$t" > /tmp/out.txt 2>&1; then echo "OK  $t: $(tail -1 /tmp/out.txt)"; else echo "XX  $t: $(grep -E '✗|Error|error' /tmp/out.txt | head -8 | tr '\n' '|') $(tail -1 /tmp/out.txt)"; fi
+            done
+            cp manifest.json /tmp/manifest.cu
+            if python3 tests/mkmanifest.py > /tmp/out.txt 2>&1 && cmp -s manifest.json /tmp/manifest.cu; then echo "OK  manifest.json khớp các file"; else echo "XX  manifest.json CHƯA khớp (chạy tests/mkmanifest.py): $(tail -2 /tmp/out.txt | tr '\n' '|')"; fi
+          } | tee kq/sim-ketqua.txt
+          ! grep -q '^XX' kq/sim-ketqua.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iso-kq-sim
+          path: kq
+          if-no-files-found: ignore
+
+  win:
+    runs-on: windows-latest
+    timeout-minutes: 55
+    steps:
+      # giữ nguyên từng byte như trên GitHub (không đổi xuống dòng) để mã kiểm manifest khớp
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Script cài máy chủ (maychu_check.ps1)
+        shell: cmd
+        run: |
+          mkdir "%RUNNER_TEMP%\kq"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File winpc\tests\ci\maychu_check.ps1 -KetQua "%RUNNER_TEMP%\kq\maychu-ketqua.txt"
+      - name: Tạo ISO thường + ISO máy chủ (check.ps1 -ChiIso)
+        shell: cmd
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File winpc\tests\ci\check.ps1 -ChiIso -KetQua "%RUNNER_TEMP%\kq\iso-ketqua.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: iso-kq-win
+          path: ${{ runner.temp }}/kq
+          if-no-files-found: ignore
+
+  shots:
+    needs: [sim, win]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: iso-kq-*
+          path: shots
+          merge-multiple: true
+      - name: Lưu kết quả vào nhánh iso-shots
+        run: |
+          ls -la shots || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan iso-shots-tmp
+          git rm -r -q --cached .
+          mkdir -p blueroblox-site
+          echo '{"git":{"deploymentEnabled":false}}' > blueroblox-site/vercel.json
+          git add shots blueroblox-site/vercel.json
+          git commit -q -m "Ket qua thu ISO may chu ($GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/iso-shots

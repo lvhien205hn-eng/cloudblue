@@ -1,0 +1,112 @@
+# 26/11 · ISO PROXMOX TỰ CÀI (proxmox/tao-iso-proxmox.ps1 + proxmox/vm/pve_iso.py, cb_nap.py, pve_firstboot.sh): thử trên nhánh appvm-pve-* TRƯỚC khi gộp vào main.
+#   pve (Ubuntu, có KVM): tải ISO Proxmox VE chính thức → ghép bằng công cụ của CloudBlue → soát bằng xorriso + mount + công cụ chính thức của Proxmox
+#                         → CÀI THẬT trong máy ảo QEMU (BIOS + USB, UEFI + CD) → bật lại, kiểm trong máy qua SSH · máy "đang có Windows" không bị tự cài.
+#   win (Windows Server 2022, PowerShell 5.1): chạy thật lệnh tao-iso-proxmox.ps1 (tự tải Python + ISO Proxmox) → file ra phải giống từng byte file ghép trên Linux.
+#   Kết quả → nhánh pve-shots. Không đụng máy thật nào, không gọi web thật (cbhost trong máy thử gọi web giả trên máy CI).
+name: Check ISO Proxmox tu cai
+
+on:
+  push:
+    branches: ["appvm-pve-*"]
+    paths:
+      - "proxmox/**"
+      - ".github/workflows/pve-iso-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy kết quả vào nhánh pve-shots
+
+concurrency:
+  group: pve-iso-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc
+        run: sudo mkdir -p /mnt/w && sudo chown "$(id -u)" /mnt/w
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /mnt/w/pve.iso
+            /mnt/w/pve.ver
+          key: pve-iso-v1
+      - name: Tải ISO Proxmox VE
+        run: bash proxmox/tests/ci/pve_ci.sh tai
+      - name: Chạy thử
+        shell: bash
+        run: |
+          set +e
+          mkdir -p kq
+          for buoc in $(cat proxmox/tests/ci/pve_buoc.txt); do
+            echo "::group::$buoc"
+            bash proxmox/tests/ci/pve_ci.sh "$buoc" > /tmp/buoc.log 2>&1; rc=$?
+            tail -n 300 /tmp/buoc.log
+            cp /tmp/buoc.log "kq/pve-log-$buoc.txt"
+            [ $rc -eq 0 ] || echo "XX  buoc $buoc ma $rc" | tee -a kq/pve-ketqua.txt
+            echo "::endgroup::"
+          done
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pve-kq-linux
+          path: kq
+          if-no-files-found: ignore
+
+  win:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      # giữ nguyên từng byte như trên GitHub (không đổi xuống dòng) để file ghép giống hệt bên Linux
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Chạy tao-iso-proxmox.ps1 (pve_win_check.ps1)
+        shell: cmd
+        run: |
+          mkdir "%RUNNER_TEMP%\kq"
+          powershell.exe -NoProfile -ExecutionPolicy Bypass -File proxmox\tests\ci\pve_win_check.ps1 -KetQua "%RUNNER_TEMP%\kq\pve-ketqua-win.txt"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pve-kq-win
+          path: ${{ runner.temp }}/kq
+          if-no-files-found: ignore
+
+  ket-qua:
+    needs: [pve, win]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: pve-kq-*
+          path: shots
+          merge-multiple: true
+      - name: So file ghép trên Windows với file ghép trên Linux + lưu kết quả vào nhánh pve-shots
+        shell: bash
+        run: |
+          ls -la shots || exit 0
+          a=$(cat shots/pve-sha-linux.txt 2>/dev/null | tr -d '\r\n'); b=$(cat shots/pve-sha-win.txt 2>/dev/null | tr -d '\r\n')
+          if [ -n "$a" ] && [ "$a" = "$b" ]; then echo "OK  ISO ghép trên Windows (PowerShell 5.1 + Python nhúng) GIỐNG TỪNG BYTE ISO ghép trên Linux (bản đã cài thật trong máy ảo): $a" >> shots/pve-ketqua.txt
+          else echo "XX  ISO ghép trên Windows KHÁC ISO ghép trên Linux: linux=[$a] win=[$b]" >> shots/pve-ketqua.txt; fi
+          sed 's/^\xEF\xBB\xBF//' shots/pve-ketqua-win.txt 2>/dev/null | tr -d '\r' | grep -E '^(OK|XX|\.\.)' >> shots/pve-ketqua.txt || echo "XX  job win không có kết quả" >> shots/pve-ketqua.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan pve-shots-tmp
+          git rm -r -q --cached .
+          mkdir -p blueroblox-site
+          echo '{"git":{"deploymentEnabled":false}}' > blueroblox-site/vercel.json
+          git add shots blueroblox-site/vercel.json
+          git commit -q -m "Ket qua thu ISO Proxmox tu cai ($GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/pve-shots
+      - name: Đạt / không đạt
+        run: |
+          cat shots/pve-ketqua.txt 2>/dev/null || true
+          test -s shots/pve-ketqua.txt && ! grep -q '^XX' shots/pve-ketqua.txt

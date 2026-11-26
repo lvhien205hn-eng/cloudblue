@@ -1,6 +1,7 @@
 # KIỂM THỬ app Android + app PC trên nhánh app-next (KHÔNG phát hành gì: không ký khoá thật, không đẩy CH Play, không đưa file lên web).
 # Đẩy lên main mới chạy 2 workflow phát hành (android-app.yml, pc-client.yml) như cũ.
 # App PC: chụp ảnh giao diện (máy chủ giả, Windows thật) → nhánh app-shots (chỉ chứa ảnh) để soát giao diện.
+# Nhánh app-shots kèm blueroblox-site/vercel.json {"git":{"deploymentEnabled":false}} → Vercel không tạo bản xem thử (khỏi tốn lượt deploy 100/ngày).
 name: Check apps (app-next)
 
 on:
@@ -37,6 +38,29 @@ jobs:
           APP_VERSION_CODE: "1"
         run: gradle -p android-app assembleWebDebug assemblePlayDebug --no-daemon --stacktrace
 
+  proxy:                   # 22/11 · 🌐 proxy riêng từng Cloud Phone: cbproxy (Go, chạy trong máy Android) + phonectl + cpapi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.7"
+          cache: false
+      - name: cbproxy - dựng lại từ mã nguồn phải ra đúng file windows/cbproxy-x86_64 (md5 ghim trong phonectl)
+        working-directory: cbproxy
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false -ldflags "-s -w -buildid=" -o /tmp/cbproxy-x86_64 .
+          want=$(grep -oP 'CBPX_FILE = \("cbproxy-x86_64", "\K[0-9a-f]{32}' ../windows/phonectl.py)
+          echo "md5 ghim: $want"; md5sum /tmp/cbproxy-x86_64 ../windows/cbproxy-x86_64
+          test "$(md5sum < ../windows/cbproxy-x86_64 | cut -c1-32)" = "$want"
+          test "$(md5sum < /tmp/cbproxy-x86_64 | cut -c1-32)" = "$want"
+      - name: cbproxy trong mạng giả (iptables thật, root)
+        run: |
+          cp windows/cbproxy-x86_64 /tmp/cbproxy-run && chmod 755 /tmp/cbproxy-run     # tải lên qua web GitHub thì file không có quyền chạy
+          sudo python3 cbproxy/test_cbproxy.py /tmp/cbproxy-run
+      - name: phonectl + cpapi (proxy)
+        run: python3 cbproxy/test_proxy_server.py
+
   pc:
     runs-on: windows-latest
     steps:
@@ -52,6 +76,8 @@ jobs:
           python -m pip install pyinstaller av pygame-ce numpy pillow
           python -m py_compile bluepc.py brstream.py
           python ..\.github\app-check\test_pc_viewer.py .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python ..\.github\app-check\test_pc_win.py .
           if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m PyInstaller --noconfirm --clean --windowed --name CloudBluePC --collect-submodules av bluepc.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
@@ -75,6 +101,8 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan app-shots-tmp
           git rm -r -q --cached .
-          git add shots
+          New-Item -ItemType Directory -Force blueroblox-site | Out-Null
+          Set-Content -Path blueroblox-site/vercel.json -Value '{"git":{"deploymentEnabled":false}}' -Encoding ascii
+          git add shots blueroblox-site/vercel.json
           git commit -q -m "Anh giao dien app PC ($env:GITHUB_SHA)"
           git push -f origin HEAD:refs/heads/app-shots

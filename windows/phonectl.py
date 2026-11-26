@@ -677,6 +677,15 @@ def _mumu_perf(idx, fps=None):
             print(f"   (máy #{idx}: khung/giây trong máy {cur.get(fk)} → {int(fps)} theo lựa chọn của khách)", flush=True)
     if want: _MUMU_KEYS.pop(str(idx), None); _mumu_set(str(idx), want)
     return len(want)
+def _mumu_create_variants(ver):
+    """24/11 · Các cách gọi lệnh TẠO MÁY MỚI của MuMu, thử lần lượt (cách trước MuMu không nhận thì cách sau):
+       MuMu 6 (mumu-cli / MuMuManager) tạo mới MẶC ĐỊNH là Android 15 → muốn Android 12 phải nói rõ: create --version 12.
+       --mini = "ổ nhỏ" giống máy mẫu tạo bằng tay trong MuMu → bộ nhớ máy khách nới đúng theo cấu hình (DISK_TIERS), không lấy hết ổ.
+       Cuối cùng: create trống (MuMu bản cũ) — tạo ra sai bản thì phần gọi xoá đúng máy đó, không giao nhầm bản cho khách."""
+    v = str(ver or "").split(".")[0].strip()
+    out = []
+    if v.isdigit(): out += [["create", "--number", "1", "--version", v, "--mini"], ["create", "--number", "1", "--version", v]]
+    return out + [["create"]]
 def _mumu(a, timeout):
     """Dịch lệnh memuc → MuMu. Trả kết quả GIỐNG memuc để phần còn lại của tool dùng y nguyên."""
     a = [str(x) for x in a]; c = a[0]
@@ -702,7 +711,17 @@ def _mumu(a, timeout):
             if tpl is not None and L0[tpl].get("running"):   # máy mẫu đang BẬT thì MuMu không nhân bản được → tắt máy mẫu trước
                 print(f"   (máy mẫu {tpl_name(ver)} đang bật → tắt rồi mới nhân bản)", flush=True)
                 _mumu_stop(tpl, 120, locked=True)
-            def go(): return _mumurun(["clone", "-v", tpl], max(int(timeout), MUMU_CLONE_T)) if tpl is not None else _mumurun(["create"], timeout)
+            def go():
+                if tpl is not None: return _mumurun(["clone", "-v", tpl], max(int(timeout), MUMU_CLONE_T))
+                r = None
+                for args in _mumu_create_variants(ver):          # 24/11: chọn ĐÚNG bản Android khi tạo mới; MuMu bản cũ không nhận → bỏ dần tuỳ chọn
+                    r = _mumurun(args, timeout)
+                    if r.returncode == 124 or _mumu_main_bad(r) or _mumu_out_new(r): return r        # đang chép / MuMu kẹt / đã tạo → phần dưới lo
+                    time.sleep(2); L1 = _mumu_list(); d1 = vnow()
+                    if (L1 and fresh(L1)) or (d0 is not None and d1 is not None and (d1 - d0)): return r   # đã có máy mới (hoặc đang chép) → dùng
+                    if r.returncode == 0 and not _mumu_out_err(r): return r                            # MuMu nhận lệnh, máy có thể hiện trễ → chờ ở dưới
+                    print(f"   (MuMu không nhận lệnh '{' '.join(args)}': {(_mumu_out_err(r) or (r.stderr or r.stdout or '').strip())[:120]} → thử cách khác)", flush=True)
+                return r
             vdir = os.path.join(MUMU or "", "vms")       # mỗi máy MuMu là 1 thư mục con ở đây → có thư mục MỚI = MuMu đang / đã chép máy mới
             def vnow():
                 try: return {x for x in os.listdir(vdir) if os.path.isdir(os.path.join(vdir, x))}
@@ -892,7 +911,8 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "19/11a"           # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
+PCTL_SUB = "24/11b"           # 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+                              # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
                               #         tắt êm (Android tự tắt) trước khi khởi động lại máy chủ · tự dọn máy khách đã huỷ kể cả máy mất tên
@@ -903,6 +923,10 @@ PCTL_SUB = "19/11a"           # 17/11e3: danh sách máy không bao giờ bị g
                               # 18/11b: BỘ NHỚ máy MỚI: MuMu "chế độ ổ nhỏ" → /data chỉ 2,9GB → nới bằng resize2fs lúc lên lần đầu
                               # 19/11a: bộ nhớ MIỄN PHÍ theo cấu hình (RAM < 4GB → 8GB · 4–7GB → 13GB · từ 8GB → 16GB: DISK_TIERS) ·
                               #         create --disk N · lệnh disk TÊN --gb N (khách MUA THÊM bộ nhớ) · máy cũ để nguyên
+                              # 22/11a: 🌐 PROXY RIÊNG TỪNG MÁY (khách dán IP:Port:User:Pass) — cbproxy trong máy (root, iptables) · lệnh proxy /
+                              #         proxykeep · tự bật lại sau khi máy bật / khởi động lại / mỗi 5 phút · proxy chết → máy tự đi mạng thường
+                              # 23/11b: 🗗 tab cửa sổ nhỏ — Android 12L+ không ép đổi cỡ (game thu nhỏ thì Android thu nhỏ cả hình vừa cửa sổ) ·
+                              #         giữ tới 64 app chạy nền (tab nhỏ bị app khác che không bị Android tắt sớm)
 _WIN = os.name == "nt"
 EMU_IMGS = {"mumu": ("mumunxmain.exe", "mumunxdevice.exe", "mumuvmmheadless.exe", "mumuplayer.exe", "mumumultiplayer.exe", "mumuvmmsvc.exe"),
             "ld": ("dnplayer.exe", "ld9boxheadless.exe", "ldboxheadless.exe", "dnmultiplayer.exe"),
@@ -1531,14 +1555,20 @@ TUNE = (# CLONE TAB cần Android cho phép nhiều người dùng (máy ảo m�
         # và app bấm vào chỉ phóng to icon rồi KHÔNG MỞ — lỗi khách báo 09/11)
         "settings put global window_animation_scale 0.5; settings put global transition_animation_scale 0.5; "
         "settings put global animator_duration_scale 0.5; settings put global package_verifier_enable 0; "
-        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp)
-        "settings put global enable_freeform_support 1; settings put global force_resizable_activities 1; "
-        "settings put global enable_sizecompat_freeform 1; "
+        # cửa sổ nổi: mở nhiều app/tab cùng lúc (có hiệu lực sau lần khởi động lại máy kế tiếp). Android 13+ KHÔNG ép đổi cỡ + cho app không
+        # đổi cỡ vào cửa sổ → Android thu nhỏ CẢ HÌNH game vừa cửa sổ (máy MuMu Android 15 thật: đúng chỗ, game không phải mở lại). 23/11d:
+        # Android 12L trở xuống ÉP app đổi cỡ được — máy MuMu Android 12 thật vẽ cửa sổ kiểu thu hình lệch lên góc trên trái màn (bản 23/11b đặt
+        # kiểu đó từ 12L); game kiểu cũ thì cpapi mở lại ngay trong tab cho vừa khung. Giống cpapi.win_conf_sh (WIN_SCM_SDK = 33).
+        "settings put global enable_freeform_support 1; settings put global enable_sizecompat_freeform 1; "
+        "if [ \"$(getprop ro.build.version.sdk)\" -ge 33 ] 2>/dev/null; then settings put global force_resizable_activities 0; "
+        "settings put global enable_non_resizable_multi_window 1; else settings put global force_resizable_activities 1; fi; "
         # treo game qua đêm: không ngủ đông (doze), không xếp app vào nhóm hạn chế, không đóng băng app chạy nền
         "dumpsys deviceidle disable >/dev/null 2>&1; settings put global app_standby_enabled 0; "
         "settings put global adaptive_battery_management_enabled 0; settings put global always_finish_activities 0; "
         "device_config put activity_manager_native_boot use_freezer false >/dev/null 2>&1; "
         "settings put global cached_apps_freezer disabled; "
+        # 23/11b: tab nhỏ nằm dưới app khác (bị che → Android coi là chạy nền) — nới số app chạy nền Android được giữ (mặc định 32)
+        "device_config put activity_manager max_cached_processes 64 >/dev/null 2>&1; "
         # Cửa hàng Play KHÔNG tự cập nhật app chạy nền (đỡ lag, đỡ tốn mạng); khách mở Play vẫn tải/cập nhật tay được.
         # Chỉ đặt khi chưa đặt — đổi quyền của app làm Android tắt app đó, đặt lặp lại sẽ văng Play khi đang dùng.
         "case \"$(cmd appops get com.android.vending RUN_ANY_IN_BACKGROUND 2>/dev/null)\" in *ignore*) ;; *) "
@@ -2209,6 +2239,7 @@ def wait_boot(name, port, apps=True):
         except Exception: pass
         tune(name, port); grant_perms(name, port)
         _root_keep({"name": name}, port)
+        _proxy_keep({"name": name}, port)                # 22/11: máy có 🌐 proxy riêng → bật lại (iptables + tiến trình mất khi máy tắt)
         if EMU == "mumu" and DISK_FIX: _disk_hook(name, port)     # 19/11: máy MỚI / máy vừa mua thêm bộ nhớ (có dấu disk_new) → nới tới cỡ đích
         if sp0:                                          # 16/11k: giao diện sập giữa lúc tối ưu (PID đổi) → kiểm sổ khoá lần nữa, chờ lên lại
             sp1 = _ss_pid(port)
@@ -3006,6 +3037,7 @@ def cmd_restart(a):
     _pre_slot(p)                                              # 16/11e: xin lượt bật trước (máy còn chạy) → tắt xong bật liền
     with _cycle():
         hard, force = _restart_body(a, p)
+    if p.get("proxy"): _proxy_later(p["name"])                   # 22/11: máy có 🌐 proxy → bật lại proxy ngay khi Android lên (không chờ vòng 5 phút)
     print("✅ Đã khởi động lại (máy treo — đã tắt hẳn rồi bật)" if hard else "✅ Đã ép khởi động lại" if force else "✅ Đã khởi động lại")
 def _restart_body(a, p):
     _restart_mark(a.name); adb("disconnect", serial(p), timeout=15)
@@ -3642,6 +3674,8 @@ def cmd_rootfix(a):
     if a.all and not a.force:                                       # vòng 5 phút: máy bật root theo app mà daemon không chạy → cài lại
         for p in load()["phones"]:
             if p.get("root_on") and is_running(p["name"], p): _root_keep(p)
+        for p in load()["phones"]:                                  # 22/11: máy có 🌐 proxy mà tiến trình proxy không chạy → bật lại
+            if p.get("proxy") and is_running(p["name"], p): _proxy_keep(p)
     print(f"Root: {ok} máy có root · {setn} máy tắt đã bật sẵn · {wait} máy chờ bật lại · {bad} máy lỗi")
 
 # ---------- ROOT THEO TỪNG APP (cpsu: lệnh su riêng + daemon, chỉ app trong danh sách mới lấy được root) ----------
@@ -4039,6 +4073,259 @@ def _root_keep(p, port=None):
         print(f"   🔓 {p['name']}: {'bật lại root theo app' if ok else msg}", flush=True)
     except Exception as e: print(f"   ⚠ {p['name']}: root theo app lỗi: {e}", flush=True)
 
+# ---------- 🌐 PROXY RIÊNG TỪNG MÁY (22/11: khách tự điền IP:cổng:user:pass) ----------
+# Trong máy: /data/adb/cbproxy/{cbproxy, conf.json, state.json, log} — cbproxy (Go, tĩnh, mã nguồn cbproxy/main.go) chạy ROOT:
+# iptables (nat OUTPUT) bắt mọi kết nối TCP của app → proxy SOCKS5 / HTTP của khách. Proxy chết / sai → máy tự đi mạng thường,
+# lành thì quay lại. UDP 443 (QUIC) chặn để app chuyển sang TCP. Trạng thái công khai /data/local/tmp/cbproxy.json (adb thường đọc,
+# không có mật khẩu). Cấu hình (có mật khẩu) chỉ nằm ở phones.json của máy chủ + trong máy của chính khách — KHÔNG lên web.
+CBPX_FILE = ("cbproxy-x86_64", "0cc3647ff0c54ae20ced5acf5907fbca")
+CBPX_DEV = "/data/adb/cbproxy"
+CBPX_PUB = "/data/local/tmp/cbproxy.json"
+_PX_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
+_PX_SAFE = re.compile(r"^[^\x00-\x1f\x7f]{0,255}$")
+
+def _px_parse(text, kind="auto"):
+    """Chuỗi khách dán → {kind, host, port, user, pass}. Nhận: IP:cổng · IP:cổng:user:pass · user:pass@IP:cổng · socks5://… · http://…
+       Lỗi → ValueError (câu báo cho khách)."""
+    s = str(text or "").strip()
+    kind = str(kind or "auto").strip().lower()
+    if kind not in ("auto", "socks5", "http"): raise ValueError("Kiểu proxy phải là Tự nhận / SOCKS5 / HTTP.")
+    if not s: raise ValueError("Chưa nhập proxy.")
+    if len(s) > 600 or any(ord(ch) < 32 for ch in s): raise ValueError("Proxy có ký tự lạ.")
+    m = re.match(r"^(socks5h?|socks|http|https)://(.*)$", s, re.I)
+    if m:
+        sc = m.group(1).lower()
+        if sc == "https": raise ValueError("Chưa hỗ trợ proxy HTTPS (mã hoá tới proxy) — dùng HTTP hoặc SOCKS5.")
+        kind = "http" if sc == "http" else "socks5"
+        s = m.group(2).rstrip("/")
+    user = pw = ""
+    if "@" in s:
+        cred, _, hp = s.rpartition("@")
+        user, _, pw = cred.partition(":")
+        s = hp
+        if s.startswith("["):                                       # [IPv6]:cổng
+            h, _, rest = s[1:].partition("]"); port = rest.lstrip(":")
+        else: h, _, port = s.rpartition(":")
+    else:
+        if s.startswith("["): raise ValueError("Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền.")
+        parts = s.split(":")
+        if len(parts) < 2: raise ValueError("Thiếu cổng — nhập dạng IP:cổng hoặc IP:cổng:user:pass.")
+        if len(parts) == 4 and not parts[1].strip().isdigit() and parts[3].strip().isdigit() and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", parts[2].strip()):
+            parts = [parts[2], parts[3], parts[0], parts[1]]           # nơi bán ghi kiểu user:pass:IP:cổng → đảo lại
+        h, port = parts[0], parts[1]
+        if len(parts) >= 3: user = parts[2]; pw = ":".join(parts[3:])
+    h = h.strip().strip("[]")
+    try: port = int(str(port).strip())
+    except ValueError: raise ValueError("Cổng proxy phải là số (1–65535).")
+    if not 1 <= port <= 65535: raise ValueError("Cổng proxy phải từ 1 đến 65535.")
+    import ipaddress
+    try: ip = ipaddress.ip_address(h)
+    except ValueError: ip = None
+    if ip is not None:
+        if ip.version == 6: raise ValueError("Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền.")
+        if ip.is_loopback or ip.is_unspecified or ip.is_multicast: raise ValueError("Địa chỉ proxy không hợp lệ.")
+    elif not _PX_HOST.match(h) or re.match(r"^[\d.]+$", h): raise ValueError("Địa chỉ proxy không hợp lệ (IP hoặc tên miền).")
+    if not (_PX_SAFE.match(user) and _PX_SAFE.match(pw)): raise ValueError("User / mật khẩu proxy quá dài hoặc có ký tự lạ.")
+    return {"kind": kind, "host": h, "port": port, "user": user, "pass": pw}
+
+def _px_mask(px):
+    if not px: return ""
+    hp = f"[{px['host']}]" if ":" in px["host"] else px["host"]
+    return f"{hp}:{px['port']}" + (f":{px['user']}:••••" if px.get("user") or px.get("pass") else "")
+
+def _px_resolve(host):
+    """IPv4 của proxy (máy chủ tự phân giải tên miền; trong máy Android không cần DNS)."""
+    import socket, ipaddress
+    try:
+        ip = ipaddress.ip_address(host)
+        return [str(ip)] if ip.version == 4 else []
+    except ValueError: pass
+    out = []
+    try:
+        for fam, _, _, _, sa in socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM):
+            if sa[0] not in out: out.append(sa[0])
+    except OSError: pass
+    return out[:4]
+
+def _px_local():
+    """File cbproxy trên máy chủ (tải từ GitHub nếu thiếu / sai md5 — md5 ghim ở đây, file lạ không dùng)."""
+    import urllib.request
+    os.makedirs(CPSU_DIR, exist_ok=True)
+    fn, want = CBPX_FILE; fp = os.path.join(CPSU_DIR, fn)
+    if _fmd5(fp) == want: return fp
+    for url, hdr in ((CPSU_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                     (CPSU_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=120) as r: d = r.read()
+            if hashlib.md5(d).hexdigest() == want:
+                with open(fp + ".tmp", "wb") as f: f.write(d)
+                os.replace(fp + ".tmp", fp); return fp
+        except Exception: pass
+    raise RuntimeError(f"máy chủ chưa có file {fn} đúng bản — tải windows/{fn} lên GitHub rồi thử lại")
+
+def _px_root(p, script, files=(), timeout=120):
+    """Chạy script bằng ROOT trong máy: adb là root / su (như Root theo app); máy KernelSU (Android 15, adb không có su) → "adb root"
+       đúng 1 lần rồi "adb unroot" (như nới bộ nhớ). Script phải in PX_END ở cuối. Trả chữ in ra hoặc None (không có root)."""
+    r, _ = _root_sh(p, script, timeout=timeout, files=files)
+    o = (r.stdout or "") + (r.stderr or "")
+    if "PX_END" in o: return o
+    if not DG_ADBROOT: return None
+    s_ = serial(p); port = p["port"]; rooted = False; o = ""
+    def back_up():
+        for _ in range(10):
+            time.sleep(1.5)
+            if _adb_fresh(port): return True
+        return False
+    try:
+        rr = adb("-s", s_, "root", timeout=20); o0 = ((rr.stdout or "") + " " + (rr.stderr or "")).lower()
+        if "as root" not in o0 or "cannot" in o0: return None
+        rooted = True
+        if back_up():
+            r, _ = _root_sh(p, script, timeout=timeout, files=files); o = (r.stdout or "") + (r.stderr or "")
+    except Exception: o = ""
+    finally:
+        if rooted:
+            try: adb("-s", s_, "unroot", timeout=20); back_up()
+            except Exception: pass
+    return o if "PX_END" in o else None
+
+def _px_state(p):
+    """Trạng thái proxy trong máy (adb THƯỜNG, không cần root): {mode, ip, ms, err, kind, age…} · None = chưa từng bật / không đọc được."""
+    try: o = ashell(p["name"], f"cat {CBPX_PUB} 2>/dev/null; echo; echo NOW=$(date +%s)", port=p.get("port"), timeout=20).stdout or ""
+    except Exception: return None
+    now = re.search(r"NOW=(\d+)", o); j = None
+    for ln in o.splitlines():
+        ln = ln.strip()
+        if ln.startswith("{"):
+            try: j = json.loads(ln)
+            except ValueError: j = None
+    if not isinstance(j, dict): return None
+    age = (int(now.group(1)) - int(j.get("beat") or 0)) if now and j.get("beat") else None
+    j["age"] = age
+    j["alive"] = bool(age is not None and age < 30 and j.get("mode") in ("proxy", "direct"))
+    return {k: j.get(k) for k in ("mode", "kind", "ip", "ms", "err", "since", "ok_at", "fail_at", "via", "direct", "refused", "rules", "alive", "age", "ver")}
+
+def _px_apply(p, quiet=False):
+    """Đưa máy về đúng proxy đã lưu (p["proxy"]): có → đẩy cbproxy + cấu hình, bật; không có → tắt + gỡ iptables. Trả (ok, câu báo, trạng thái)."""
+    px = p.get("proxy")
+    if not px:
+        o = _px_root(p, f"D={CBPX_DEV}\n[ -x $D/cbproxy ] && $D/cbproxy down -d $D\nrm -f $D/conf.json {CBPX_PUB}\necho PX_END\n", timeout=60)
+        if o is None: return False, "Máy không cho máy chủ quyền root để tắt proxy — khởi động lại máy là proxy tự tắt.", None
+        return True, "Đã TẮT proxy — máy đi mạng thường.", None
+    ips = _px_resolve(px["host"])
+    if not ips: return False, f"Không tìm được IP của proxy {px['host']} — kiểm tra lại địa chỉ.", None
+    import tempfile
+    binp = _px_local()
+    conf = {"kind": px.get("kind") or "auto", "host": px["host"], "ips": ips, "port": int(px["port"]), "user": px.get("user") or "", "pass": px.get("pass") or ""}
+    fd, cf = tempfile.mkstemp(suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as f: json.dump(conf, f)
+    # 1 lần chạy root duy nhất (máy KernelSU: mỗi lần = adbd khởi động lại 2 lần) — file cbproxy luôn đẩy kèm (2,8MB qua adb nội bộ, < 1 giây),
+    # trong máy chỉ thay khi md5 khác bản ghim
+    sc = (f"D={CBPX_DEV}\nmkdir -p $D; chmod 700 $D\n"
+          f"if [ \"$(md5sum $D/cbproxy 2>/dev/null | cut -d' ' -f1)\" != \"{CBPX_FILE[1]}\" ]; then "
+          "cp $T/up_cbproxy $D/cbproxy.new && chmod 755 $D/cbproxy.new && mv -f $D/cbproxy.new $D/cbproxy; fi\n"
+          "cp $T/conf.json $D/conf.json && chmod 600 $D/conf.json\n"
+          "$D/cbproxy up -c $D/conf.json -d $D\necho PX_END\n")
+    try: o = _px_root(p, sc, files=[(binp, "up_cbproxy"), (cf, "conf.json")], timeout=120)
+    finally:
+        try: os.remove(cf)
+        except OSError: pass
+    if o is None: return False, "Máy chưa có quyền root cho máy chủ (cần để bật proxy) — bấm 🔓 Root máy rồi thử lại.", None
+    j = None
+    for ln in o.splitlines():
+        ln = ln.strip()
+        if ln.startswith("{") and '"ok"' in ln:
+            try: j = json.loads(ln)
+            except ValueError: pass
+    if not isinstance(j, dict): return False, "Chưa bật được proxy: " + (o.replace("PX_END", "").strip().splitlines() or ["máy không trả lời"])[-1][:200], None
+    stt = j.get("state") or {}
+    if not j.get("ok"): return False, "Chưa bật được proxy: " + str(j.get("err") or stt.get("err") or "lỗi lạ")[:200], stt
+    if stt.get("mode") == "proxy":
+        msg = f"Đã BẬT proxy — IP ra: {stt.get('ip') or '?'} · {int(stt.get('ms') or 0)} ms"
+    else:
+        msg = "Đã lưu proxy nhưng proxy CHƯA dùng được (" + str(stt.get("err") or "không nối được")[:160] + ") — máy đang đi mạng thường, tự thử lại mỗi 15 giây."
+    if not quiet: print(f"   🌐 {p['name']}: {msg}", flush=True)
+    return True, msg, stt
+
+def _proxy_keep(p, port=None):
+    """Máy vừa bật lại (iptables + tiến trình trong máy mất hết) / tiến trình proxy chết → bật lại. Máy không đặt proxy → bỏ qua."""
+    p = rec(p["name"]) or p
+    if not p.get("proxy"): return
+    if port: p = dict(p, port=port)
+    try:
+        s = _px_state(p)
+        if s and s.get("alive"): return
+        if s and s.get("mode") == "crashed" and (s.get("age") or 0) < 1800: return       # vừa hỏng (VD máy không có iptables) → 30 phút mới thử lại
+        ok, msg, _ = _px_apply(p, quiet=True)
+        print(f"   🌐 {p['name']}: {'bật lại proxy · ' + msg if ok else msg}", flush=True)
+    except Exception as e: print(f"   ⚠ {p['name']}: proxy lỗi: {e}", flush=True)
+
+def cmd_proxy(a):
+    """proxy TÊN --get | --set (--url "IP:cổng:user:pass" | --url-stdin) [--kind auto|socks5|http] | --off | --again — proxy riêng của máy (🌐 Proxy).
+       cpapi đưa proxy qua stdin (--url-stdin): mật khẩu proxy không nằm trên dòng lệnh."""
+    st, p = _need(a.name)
+    if a.set or a.off or a.again:
+        if a.set:
+            url = sys.stdin.buffer.readline().decode("utf-8", "replace").strip() if a.url_stdin else a.url
+            try: px = _px_parse(url, a.kind)
+            except ValueError as e: print(f"PROXY_FAIL {e}"); sys.exit(2)
+            p["proxy"] = px
+        elif a.off:
+            had = bool(p.pop("proxy", None))
+        elif not p.get("proxy"): print("PROXY_FAIL Máy chưa đặt proxy."); sys.exit(2)
+        if not a.again: save(st)                                   # lưu TRƯỚC: máy tắt / khởi động lại vẫn áp dụng đúng
+        if not is_running(p["name"], p):
+            print("PROXY_OK " + ("Đã tắt proxy." if a.off else "Đã lưu — máy đang tắt, proxy tự bật khi máy bật.")); return
+        if a.off and not had:
+            s = None
+            try: s = _px_state(p)
+            except Exception: pass
+            if not s or (s.get("mode") in ("off", "crashed") or not s.get("alive")):
+                print("PROXY_OK Máy không dùng proxy — đang đi mạng thường."); return
+        try: ok, msg, _ = _px_apply(p, quiet=True)
+        except Exception as e: ok, msg = False, f"Chưa áp dụng được: {e}"
+        print(("PROXY_OK " if ok else "PROXY_FAIL ") + msg)
+        if not ok: sys.exit(1)
+        return
+    px = p.get("proxy") or None
+    info = {"set": bool(px), "kind": (px or {}).get("kind") or "auto", "show": _px_mask(px), "host": (px or {}).get("host") or "",
+            "port": (px or {}).get("port") or 0, "user": (px or {}).get("user") or "", "has_pass": bool((px or {}).get("pass")),
+            "online": False, "state": None}
+    if is_running(p["name"], p):
+        info["online"] = True
+        try: info["state"] = _px_state(p)
+        except Exception as e: info["error"] = str(e)[:200]
+    print("PROXY " + json.dumps(info, ensure_ascii=False))
+
+def _proxy_later(name):
+    """Lệnh nền (tách khỏi lệnh đang chạy): chờ Android của máy vừa bật lại lên → bật lại proxy (proxykeep TÊN --wait)."""
+    for fl in (0x00000008 | 0x00000200 | NOWIN, 0) if os.name == "nt" else (0,):
+        try:
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), "proxykeep", name, "--wait"], cwd=HOME, stdin=subprocess.DEVNULL,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=fl, close_fds=True)
+            return True
+        except OSError: continue
+    return False
+
+def cmd_proxykeep(a):
+    """proxykeep [TÊN | --all] [--wait] — bật lại proxy cho máy đang chạy mà tiến trình proxy chưa chạy (vòng canh của cloudphoned).
+       --wait (1 máy, sau khi khởi động lại): chờ Android lên (tối đa BOOT_WAIT) rồi mới kiểm."""
+    if a.wait and a.name:
+        p = rec(a.name)
+        if not p or not p.get("proxy"): return
+        t0 = time.time()
+        while time.time() - t0 < BOOT_WAIT:
+            if is_running(p["name"], p) and android_ready(p["port"], 20): break
+            time.sleep(5)
+        else: return
+        time.sleep(5)                                            # Android vừa lên: chờ dịch vụ mạng ổn định
+    v = vms(); n = 0
+    for p in load()["phones"]:
+        if not p.get("proxy") or not (a.all or p["name"] == a.name): continue
+        if not is_running(p["name"], p, v): continue
+        _proxy_keep(p); n += 1
+    print(f"PROXYKEEP {n} máy có proxy")
+
 def cmd_capacity(a):
     st = load(); tot, av = mem()
     print(f"Windows: RAM {tot:.1f} GB (còn trống {av:.1f} GB, chừa {RESERVE:g} GB) · CPU {os.cpu_count()} luồng · {EMU_NAME}: {MEMU or 'KHÔNG THẤY'}"
@@ -4154,10 +4441,12 @@ def cmd_tatem(a):
     print(("✓ Đã tắt êm hết " + str(n0) + " máy" if not left else f"⚠ còn {left} máy chưa tắt hẳn") + " — giờ khởi động lại / tắt Windows được, dữ liệu khách an toàn."
           " Windows lên lại → máy tự bật. KHÔNG khởi động lại trong 15 phút → máy cũng tự bật lại.", flush=True)
     print(f"TATEM {json.dumps({'held': len(names), 'running': nrun, 'left': left})}")
-def cmd_rebootserver(a):
+def cmd_rebootserver(a, off=False):
     """Admin ép KHỞI ĐỘNG LẠI CẢ MÁY CHỦ: giữ các máy khách đang chạy (bảng không tự bật lại giữa chừng) → tắt êm hết → shutdown /r /f.
-       Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên)."""
+       Windows lên lại: tự đăng nhập → bảng --auto → bootall trả các máy đã giữ rồi bật lại hết (app, dữ liệu giữ nguyên).
+       off=True (23/11f · shutdownserver): TẮT HẲN máy chủ (shutdown /s) — có người bấm nút nguồn bật lại thì máy khách tự bật như trên."""
     if os.name != "nt": print("❌ Chỉ dùng cho máy chủ Windows."); sys.exit(2)
+    if off: return _shutdown_server(a)
     if not _autologon() and not a.anyway:
         print("NO_AUTOLOGON Windows chưa bật tự đăng nhập (bảng CloudBlue → 🔑 Tự đăng nhập + tự chạy) — khởi động lại sẽ dừng ở màn hình mật khẩu, máy khách tắt tới khi có người đăng nhập.")
         sys.exit(7)
@@ -4172,6 +4461,21 @@ def cmd_rebootserver(a):
         print("❌ Windows không cho khởi động lại: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:] + " — đã trả lại máy khách (bảng tự bật lại trong ~1 phút).")
         sys.exit(8)
     print(f"REBOOT_OK Windows khởi động lại sau {a.delay} giây · {nrun} máy khách tự bật lại khi Windows lên (khoảng 3–8 phút).")
+
+def _shutdown_server(a):
+    names, nrun = _reboot_hold()
+    print(f"1/3 Tắt êm {nrun} máy khách đang chạy — Android ghi xong dữ liệu rồi mới tắt (bảng không tự bật lại trong lúc này)…", flush=True)
+    n0, left = _soft_off_all(wait=a.wait)
+    print("   ✓ đã tắt hết" if not left else f"   ⚠ còn {left} máy chưa tắt hẳn — Windows sẽ tắt nốt", flush=True)
+    print(f"2/3 Tắt Windows sau {a.delay} giây…", flush=True)
+    r = run(["shutdown", "/s", "/f", "/t", str(a.delay), "/c", "CloudBlue: admin tat may chu"], 60)
+    if r.returncode not in (0, None):
+        _reboot_release(force=True)
+        print("❌ Windows không cho tắt máy: " + ((r.stdout or "") + (r.stderr or "")).strip()[-200:] + " — đã trả lại máy khách (bảng tự bật lại trong ~1 phút).")
+        sys.exit(8)
+    print(f"SHUTDOWN_OK Windows tắt sau {a.delay} giây · bấm nút nguồn bật máy chủ lại thì {nrun} máy khách tự bật lại"
+          + ("" if _autologon() else " — ⚠ Windows CHƯA bật tự đăng nhập: bật máy xong phải đăng nhập Windows thì máy khách mới chạy") + ".")
+def cmd_shutdownserver(a): cmd_rebootserver(a, off=True)
 
 BOOTALL_F = os.path.join(HOME, "redroid", "bootall.json")     # đợt bật hàng loạt đang chạy: phát hình đọc để báo khách "máy chủ vừa khởi động lại"
 BOOT1_MAX = 1800                                               # 1 lệnh con chạy quá 30 phút → thôi theo dõi (tính là lỗi)
@@ -4832,6 +5136,8 @@ def _wake_one(p, boot=False):
             else: ok = _wait_android(nm, p["port"], p, wait=BOOT_WAIT - first, step=2, why=why)
         _boot_done(nm)
         if not ok: return False, f"WAKE_FAIL Android chưa lên sau {BOOT_WAIT // 60} phút"
+        try: _proxy_keep(p)                                         # 22/11: proxy riêng bật TRƯỚC khi khách vào (app khách không lộ IP máy chủ)
+        except Exception as e: print("   (proxy sau khi bật:", repr(e)[:120], ")", flush=True)
         print(f"WAKE_READY {nm} {int(time.time() - t0)}", flush=True)
         for fn in (lambda: _root_keep(p), lambda: grant_perms(nm), lambda: tune(nm, p["port"]), lambda: hide_window(nm)):
             try: fn()
@@ -5159,31 +5465,59 @@ def cmd_hide(a):
         if not a.name or p["name"] == a.name: n += hide_window(p["name"])
     print(f"Đã cho {n} cửa sổ {EMU_NAME} chạy ngầm.")
 
-def cmd_mktpl(a):
-    """mktpl 15 : MuMu — tạo máy mẫu tpl_a15 bằng lệnh (khỏi mở giao diện MuMu). MuMu tạo máy mới = bản Android MẶC ĐỊNH của
-       MuMu; ra đúng bản thì đổi tên thành máy mẫu (để TẮT), sai bản thì xoá ĐÚNG máy vừa tạo và báo tạo bằng tay."""
-    ver = str(a.android or "").split(".")[0].strip()
-    if EMU != "mumu" or not MEMU: print("LỖI: lệnh này chỉ dùng cho máy chủ MuMu (EMU=mumu)."); sys.exit(1)
-    if not ver.isdigit(): print("LỖI: cách dùng: phonectl.py mktpl 15"); sys.exit(1)
+ENG_POKE_F = os.path.join(HOME, "logs", "doc-lai-may-mau.txt")   # 24/11b: cloudphoned thấy file này mới hơn lần đọc trước → đọc lại máy mẫu ngay
+def eng_poke():
+    try:
+        os.makedirs(os.path.dirname(ENG_POKE_F), exist_ok=True)
+        with open(ENG_POKE_F, "w", encoding="utf-8") as f: f.write(str(int(time.time())))
+    except Exception: pass
+
+def _mktpl_one(ver):
+    """Tạo 1 máy mẫu MuMu tpl_a<ver> (đúng bản Android, để TẮT). Trả (ok, chữ báo)."""
     tn = tpl_name(ver); cur = vms_sure()
-    if not cur: print("LỖI: không đọc được danh sách máy MuMu — thử lại sau."); sys.exit(1)
+    if not cur: return False, "không đọc được danh sách máy MuMu — thử lại sau."
     have = [i for i, x in cur.items() if x["name"] == tn]
     if have:
         got = _mumu_major(_mumu_info().get(have[0]))
-        print(f"Đã có máy mẫu {tn} (#{have[0]}, Android {got or '?'}) — không tạo thêm."); return
-    print(f"Đang tạo máy Android mới trong MuMu (1–3 phút)…", flush=True)
-    r = memuc("create", ver, timeout=600)                     # _mumu: không có máy mẫu → MuMu tạo mới; sai bản → xoá đúng máy đó
+        if got and got != str(ver):
+            return False, (f"máy {tn} (#{have[0]}) đang là Android {got}, không phải Android {ver} — đổi tên máy đó (vd {tn}_sai) "
+                           f"rồi chạy lại: phonectl mktpl {ver}")
+        return True, f"đã có máy mẫu {tn} (#{have[0]}, Android {got or '?'}) — không tạo thêm."
+    print(f"Đang tạo máy mẫu {tn} — Android {ver} trong MuMu (1–3 phút)…", flush=True)
+    r = memuc("create", ver, timeout=600)                     # _mumu: không có máy mẫu → MuMu tạo mới đúng bản (create --version); sai bản → xoá đúng máy đó
     m = re.search(r"index\D*(\d+)", r.stdout or "")
     if r.returncode not in (0, None) or not m:
-        print("LỖI: " + ((r.stdout or "") + " " + (r.stderr or "")).strip()[-400:])
-        print(f"→ Tạo bằng tay: trong trình quản lý nhiều máy của MuMu tạo 1 máy Android {ver}, đổi tên thành {tn}, để TẮT."); sys.exit(1)
+        return False, ("tạo máy lỗi: " + ((r.stdout or "") + " " + (r.stderr or "")).strip()[-300:]
+                       + f" → tạo bằng tay: trình quản lý nhiều máy của MuMu → + New → Android {ver} → đổi tên thành {tn}, để TẮT.")
     idx = m.group(1)
     memuc("rename", "-i", idx, tn, timeout=120)
     after = vms()
     if (after.get(int(idx)) or {}).get("name") != tn:
-        print(f"LỖI: đã tạo máy #{idx} (Android {ver}) nhưng chưa đổi được tên thành {tn} — đổi tên bằng tay trong MuMu."); sys.exit(1)
+        return False, f"đã tạo máy #{idx} (Android {ver}) nhưng chưa đổi được tên thành {tn} — đổi tên bằng tay trong MuMu."
     if (after.get(int(idx)) or {}).get("running"): memuc("stop", "-i", idx, timeout=120)
-    print(f"✓ Đã tạo máy mẫu {tn} (#{idx}, Android {ver}). Máy mẫu để TẮT — đơn Android {ver} sẽ nhân bản máy này.")
+    mini = str((_mumu_all(idx) or {}).get("mini_disk", "")).strip().lower()
+    note = "" if mini in ("", "true", "1") else " · ⚠ ổ KHÔNG ở chế độ nhỏ (MuMu bản này không nhận --mini) — máy khách nhân bản ra có bộ nhớ lớn sẵn"
+    return True, f"✓ đã tạo máy mẫu {tn} (#{idx}, Android {ver}) — để TẮT; đơn Android {ver} sẽ nhân bản máy này{note}."
+
+def cmd_mktpl(a):
+    """mktpl 12 | mktpl 15 | mktpl all : MuMu — tạo máy mẫu tpl_a<bản> bằng lệnh (khỏi mở giao diện MuMu).
+       24/11: MuMu 6 tạo mới mặc định Android 15 → dùng create --version <bản> --mini (đúng bản, ổ nhỏ như máy mẫu tạo tay).
+       "all" = mọi bản trong ANDROIDS của cloudphone.conf (máy chủ MuMu: 12,15). Đã có thì thôi. Sai bản → xoá ĐÚNG máy vừa tạo + báo."""
+    raw = str(a.android or "").strip().lower()
+    if EMU != "mumu" or not MEMU: print("LỖI: lệnh này chỉ dùng cho máy chủ MuMu (EMU=mumu)."); sys.exit(1)
+    if raw in ("all", "tat-ca", "tatca", "*"): vers = [v for v in ANDROIDS if v.isdigit()]
+    else: vers = [x.split(".")[0].strip() for x in raw.replace(";", ",").split(",") if x.strip()]
+    if not vers or not all(v.isdigit() for v in vers): print("LỖI: cách dùng: phonectl.py mktpl 15   |   phonectl.py mktpl all"); sys.exit(1)
+    bad = 0
+    for v in vers:
+        ok, msg = _mktpl_one(v)
+        print(("" if ok else "LỖI: ") + f"[Android {v}] " + msg, flush=True)
+        bad += 0 if ok else 1
+    if bad < len(vers): eng_poke()                       # 24/11b: có máy mẫu dùng được → cloudphoned đọc lại NGAY, web bán thêm bản đó sau ≤ 30 giây
+    if len(vers) > 1:
+        e = {x["name"] for x in vms().values()}
+        print("Máy mẫu: " + " · ".join(f"{tpl_name(v)} {'✓' if tpl_name(v) in e else '✗'}" for v in vers))
+    if bad: sys.exit(1)
 
 def cmd_engine(a):
     """Cho cloudphoned biết máy chủ này chạy giả lập gì + bán bản Android nào (JSON 1 dòng).
@@ -5288,6 +5622,12 @@ def main():
     rc = s.add_parser("rootcfg"); rc.add_argument("name"); g_ = rc.add_mutually_exclusive_group(required=True)
     g_.add_argument("--get", action="store_true"); g_.add_argument("--set", action="store_true")
     rc.add_argument("--on", action="store_true"); rc.add_argument("--off", action="store_true"); rc.add_argument("--apps", default=""); rc.set_defaults(f=cmd_rootcfg)
+    px = s.add_parser("proxy"); px.add_argument("name"); g_ = px.add_mutually_exclusive_group(required=True)
+    for k_ in ("--get", "--set", "--off", "--again"): g_.add_argument(k_, action="store_true")
+    px.add_argument("--url", default=""); px.add_argument("--url-stdin", action="store_true")
+    px.add_argument("--kind", default="auto", choices=["auto", "socks5", "http"]); px.set_defaults(f=cmd_proxy)
+    pk = s.add_parser("proxykeep"); pk.add_argument("name", nargs="?", default=""); pk.add_argument("--all", action="store_true"); pk.add_argument("--wait", action="store_true")
+    pk.set_defaults(f=cmd_proxykeep)
     gg = s.add_parser("gfxget"); gg.add_argument("name"); gg.set_defaults(f=cmd_gfxget)
     rd = s.add_parser("render"); rd.add_argument("name"); rd.add_argument("mode", choices=["opengl", "directx"]); rd.set_defaults(f=cmd_render)
     wp = s.add_parser("wallpaper"); wp.add_argument("name", nargs="?", default=""); wp.add_argument("--all", action="store_true"); wp.add_argument("--force", action="store_true"); wp.set_defaults(f=cmd_wallpaper)
@@ -5320,6 +5660,8 @@ def main():
     si = s.add_parser("serverinfo"); si.set_defaults(f=cmd_serverinfo)
     rs = s.add_parser("rebootserver"); rs.add_argument("--anyway", action="store_true"); rs.add_argument("--wait", type=int, default=120)
     rs.add_argument("--delay", type=int, default=15); rs.set_defaults(f=cmd_rebootserver)
+    rs = s.add_parser("shutdownserver"); rs.add_argument("--wait", type=int, default=120)      # 23/11f: web admin → ⏻ Tắt máy chủ
+    rs.add_argument("--delay", type=int, default=15); rs.set_defaults(f=cmd_shutdownserver)
     for nm, fn in (("connect-all", cmd_connect_all), ("reap", cmd_reap), ("perms", cmd_perms), ("capacity", cmd_capacity), ("list", cmd_list),
                    ("memfix", cmd_noop), ("boost", cmd_noop), ("gpuinfo", cmd_noop)):
         s.add_parser(nm).set_defaults(f=fn)

@@ -1,6 +1,44 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        23/11f — 🛠 QUẢN LÝ MÁY CHỦ TỪ WEB + TỰ CẬP NHẬT. Lệnh này ghi kết quả vào logs/cap-nhat.json (bản đang chạy, cập nhật sạch không);
+#                 cloudphoned báo lên web → thẻ máy chủ hiện bản đang chạy. Web admin › thẻ máy chủ › 🛠 Quản lý: ⬆ Cập nhật (chạy chính lệnh
+#                 này kiểu `--tu-dong`: chỉ thay file + bật lại dịch vụ, KHÔNG kiểm / sửa máy khách), 📋 Danh sách máy, 🖼 Ảnh nền, 🙈 Ẩn cửa sổ,
+#                 🧪 Tạo máy thử, ⚡ Tối ưu Windows, ⚡ Khởi động lại / ⏻ Tắt máy chủ, ♻ Làm mới máy, 🧹 Dọn giả lập (việc lớn phải gõ mã máy
+#                 chủ). TỰ THEO: 1 máy chủ chạy ổn bản mới đủ lâu (web đặt, mặc định 20 phút) → các máy chủ khác tự cập nhật, chỉ khi bản
+#                 trên GitHub đúng là bản đó; tắt riêng 1 máy: TU_CAP_NHAT=0 trong cloudphone.conf. phonectl có thêm lệnh shutdownserver.
+#                 Cập nhật cloudphoned + cpapi + phonectl (máy khách KHÔNG tắt).
+#        23/11e — 🗗 TAB CỬA SỔ NHỎ đợt 5 — CỬA SỔ NHỎ NẰM ĐÚNG CHỖ trên Android 12+ (đo trên máy MuMu Android 12 thật sau bản 23/11d: tab thứ 2
+#                 bị vẽ đè lên tab đầu, kéo thanh tiêu đề hình không chạy theo). Gốc: từ Android 12 bên đặt chỗ hình của cửa sổ nổi là giao diện
+#                 hệ thống, mà nó chỉ làm việc đó nếu cửa sổ nổi đã bật LÚC NÓ KHỞI ĐỘNG — máy bật cài đặt sau khi đã mở máy thì không ai đặt
+#                 chỗ. cpapi tự đọc chỗ thật của hình, lệch khung tab thì bật lại giao diện hệ thống 1 lần (app / game không tắt). Cập nhật cpapi.
+#        23/11d — 🗗 TAB CỬA SỔ NHỎ đợt 4 — GAME VỪA KHUNG THẬT + XOAY MÀN THẬT (đo trên máy MuMu Android 12 thật): game kiểu cũ được MỞ LẠI
+#                 NGAY TRONG tab của nó sau khi cửa sổ đã đúng chỗ + cỡ (am kill giữ tab → mở sạch vào đúng tab) → vẽ vừa cửa sổ; lần đầu thu nhỏ
+#                 trên màn 360 dp tự bật màn rộng 600 dp; cửa sổ đúng tỉ lệ hình game 16:9. Nút Xoay / Màn ngang rộng: máy bỏ qua khoá xoay
+#                 (MuMu) → cpapi cài app trợ giúp vn.cloudblue.xoay (nằm sẵn trong cpapi.py) đặt cửa sổ phủ ép màn ngang.
+#                 Kiểu "Android tự thu nhỏ hình" của bản 23/11b–c: máy MuMu Android 12 thật vẽ cửa sổ kiểu đó lệch lên góc trên trái → Android
+#                 12L trở xuống ép app đổi cỡ được + mở lại game ngay trong tab (bù thanh tiêu đề lúc mở lại); Android 13+ (máy MuMu Android 15
+#                 thật thu hình đúng chỗ) giữ kiểu thu hình, game không phải mở lại. Cập nhật cpapi + phonectl.
+#        23/11c — 🗗 TAB CỬA SỔ NHỎ đợt 3 (khách clone nhiều tab): nút Cửa sổ to hơn / nhỏ hơn (cửa sổ trên cùng to / nhỏ 25 %, giữ tỉ lệ) +
+#                       🖥 Màn ngang rộng (độ rộng nhỏ nhất 600 dp + khoá ngang → màn chính nằm ngang, xếp được nhiều tab) / Màn dọc như cũ.
+#                       Chỉ cập nhật cpapi (bật lại ~2 giây); máy khách KHÔNG tắt.
+#        23/11b — 🗗 TAB CỬA SỔ NHỎ đợt 2: GAME VỪA KHUNG + TAB NỀN ỔN ĐỊNH. Máy Android 12L / 13 / 14 / 15: không ép game đổi cỡ nữa → thu
+#                       nhỏ tab thì Android thu nhỏ CẢ HÌNH game vừa cửa sổ (không tràn viền; game mở sau khi đặt là vừa ngay). Android 10–15:
+#                       nút mới 🖼 "Mở lại vừa khung" (cpapi do=refit) mở lại game ngay trong cửa sổ cho game vẽ đúng cỡ (game khởi động lại;
+#                       Android 9 báo chưa hỗ trợ, không tắt game). Tab nhỏ
+#                       bị app khác che: miễn tối ưu pin / nhóm đang dùng / cho chạy nền, đưa lên lại bằng `am task focus` (không gửi lệnh
+#                       mở cho game), phonectl giữ tới 64 app chạy nền. Cập nhật cpapi (bật lại ~2 giây) + phonectl; máy khách KHÔNG tắt.
+#        23/11a — 🗗 TAB CỬA SỔ NHỎ (như Redfinger): cpapi bản 23/11a có /cpapi/<máy>/win — khách bấm "Thu nhỏ tab" (web / app) → app đang
+#                       mở (VD Roblox, bản clone) thành cửa sổ nổi ngay trên màn hình máy, vẫn chạy + điều khiển được; kéo thanh trên cùng để dời,
+#                       kéo mép để đổi cỡ; "Sắp xếp tab" xếp mọi cửa sổ thành lưới; "Phóng to tab" trả về toàn màn. Chỉ cập nhật cpapi
+#                       (bật lại ~2 giây, máy khách KHÔNG tắt). Máy Android 9 chưa từng khởi động lại từ 17/11 → khách bấm Khởi động lại 1 lần.
+#        22/11b — ▦ XEM TẤT CẢ VPS GPU: trạm máy PC (pcrelay.py 22/11b) nhận Ô XEM TRƯỚC — chỉ xem, không đá người đang điều khiển. Không ai
+#                       điều khiển → máy PC phát 1 luồng nhỏ (480p, 8 khung/giây, ~350 kbps); đang có người điều khiển → ô chỉ nhận khung khoá thưa.
+#                       Máy PC KHÔNG cần cập nhật. Phát hình (bluestream) bật lại ~10 giây. Tắt ô xem trước máy PC: PC_PREVIEW=0 trong cloudphone.conf
+#        22/11a — 🌐 PROXY RIÊNG TỪNG CLOUD PHONE: khách dán IP:Port:User:Pass (web / app) → cpapi (bản 22/11a, chỉ chủ máy) → phonectl
+#                       proxy → cbproxy (Go, chạy root TRONG máy Android: iptables bắt TCP của app → proxy SOCKS5 / HTTP của khách).
+#                       Proxy chết / sai mật khẩu → máy tự đi mạng thường. phonectl tự tải windows/cbproxy-x86_64 (md5 ghim) lần đầu dùng.
+#                       Bật lại tự động: máy bật / khởi động lại / vòng 5 phút. Máy PC (VPS GPU) KHÔNG đụng. Xem: python phonectl.py proxy TÊN --get
 #        21/11a — TRẠM TRUNG CHUYỂN MÁY PC CHO THUÊ (đợt 2 của "Máy PC"): thêm file pcrelay.py cạnh bluestream.py. Máy PC thuê tự nối RA cổng
 #                       phát hình của máy chủ này rồi chờ; khách mở điều khiển máy PC trên web / app cũng nối vào đây → máy chủ ghép 2 kết nối
 #                       (hình máy PC → khách, chuột phím khách → máy PC; máy chủ KHÔNG giải mã hình). Phần máy điện thoại KHÔNG đổi.
@@ -78,6 +116,12 @@
 #                       Admin → MuMu "Unable to start the Android Device … administrator privileges", không bật được máy nào) → không
 #                       bật máy từ cửa sổ khác quyền + lệnh `quyen --sua` bật lại đúng máy chạy sai quyền. Lệnh A: phải chạy CÙNG quyền
 #                       với bảng (thường là Admin), khác quyền thì dừng ngay từ đầu, không đụng gì
+#        24/11a — phonectl: MuMu tạo máy mẫu ĐÚNG bản Android bằng lệnh (create --version 12/15 --mini; trước đây tạo mới luôn ra
+#                       Android 15 → không tạo được tpl_a12) · lệnh A: máy chủ MuMu còn thiếu máy mẫu tpl_a12 / tpl_a15 → TỰ TẠO (tự đặt
+#                       tên, để TẮT) · cloudphoned báo tên máy Windows (web nối máy chủ với điều khiển từ xa)
+#        24/11b — BẢN MỚI TỰ CÀI, không cần bấm: GitHub có bản mới chưa máy chủ nào chạy → máy chủ ÍT KHÁCH NHẤT tự cài thử trước
+#                       (hỏi GitHub 15 phút / lần), chạy ổn đủ thời gian chờ (web: 🛠 Quản lý, mặc định 20 phút) → các máy chủ khác tự
+#                       theo · vừa tạo máy mẫu → cloudphoned đọc lại NGAY, web bán thêm bản Android đó sau ≤ 30 giây (trước: tới 10 phút)
 #   2. Bật lại đúng dịch vụ vừa thay / đang chạy bản cũ (bảng CloudBlue tự bật lại sau 5 giây) — không đụng máy khách
 #   3. Tự chạy khi Windows khởi động lại: tác vụ / lối tắt phải có --auto · bảng mở mà chưa chạy gì → mở lại bảng kiểu tự bật
 #   4. Kiểm cổng phát hình, đường hầm Cloudflare
@@ -85,12 +129,13 @@
 #   6. Máy chưa lên / mất adb / đen ở màn hình chính → ép khởi động lại. Máy đen mà đang mở app/game → KHÔNG đụng, chỉ báo
 #      (game treo máy hay tắt hình cho nhẹ). Máy khách tắt ngoài ý muốn → bật lại.
 #   Chạy:  python sua-tat-ca.py            · chỉ kiểm, không thay / không bật lại gì:  python sua-tat-ca.py --chi-kiem
+#          tự cập nhật (cloudphoned / web admin gọi — không có người xem, không đụng máy khách):  python sua-tat-ca.py --tu-dong
 import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "19/11a"
+VER = "24/11b"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -101,17 +146,21 @@ ONLY_CHECK = "--chi-kiem" in sys.argv
 REMAKE = "--lam-moi-may-ma" in sys.argv          # tạo lại máy MỚI cho khách có máy "ma" (web còn thuê, máy chủ mất hẳn máy)
 REMAKE_BROKEN = "--lam-moi-may-hong" in sys.argv  # máy ép khởi động lại rồi vẫn KHÔNG lên → xoá máy hỏng + tạo lại máy mới (mất dữ liệu)
 NO_UPDATE = ONLY_CHECK or "--khong-cap-nhat" in sys.argv
+AUTO = "--tu-dong" in sys.argv                    # 23/11f: máy chủ TỰ chạy (web admin bấm Cập nhật / cloudphoned tự theo máy chủ khác) — không có
+                                                  # người xem: chỉ thay bản mới + bật lại dịch vụ + kiểm tự chạy / mạng, KHÔNG kiểm / sửa máy khách
+STATE_F = os.path.join(LOGS, "cap-nhat.json")     # 23/11f: kết quả lần cập nhật gần nhất — cloudphoned báo lên web (thẻ máy chủ), máy chủ khác nhìn để tự theo
+RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 19/11a", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 24/11b", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "21/11a"', "bluestream"),
-         ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "21/11a"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
+         ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "19/11a"', None),
-         ("cpapi.py", "cpapi.py", "PCTL_LONG", "cpapi")]
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "24/11b"', None),
+         ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 19/11a", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 16/11e"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 24/11b", "bluestream": "bản 21/11a: trạm trung chuyển máy PC cho thuê", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -178,6 +227,59 @@ def py_cmdlines():
     return ps("Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' } | ForEach-Object { $_.CommandLine }", 60)
 
 def kill(pid): return run(["taskkill", "/PID", str(pid), "/F"], 30)       # CHỈ tắt đúng chương trình đó (không /T: giữ giả lập / adb)
+
+# ------------------------------------------------------------------ 0. sổ ghi lần cập nhật (23/11f)
+def state_read():
+    try:
+        d = json.load(open(STATE_F, encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+def state_write(d):
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(STATE_F + ".tmp", "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)
+        os.replace(STATE_F + ".tmp", STATE_F)
+    except Exception:
+        pass
+
+def pid_alive(pid):
+    try: return str(int(pid)) in run(["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"], 30)
+    except Exception: return False
+
+def state_begin():
+    """Ghi "đang cập nhật". Trả False khi lần chạy TỰ ĐỘNG này phải thôi vì đang có lần cập nhật khác chạy dở (dưới 30 phút, tiến trình còn sống)."""
+    if NO_UPDATE: return True
+    st = state_read(); r = st.get("running") or {}
+    if AUTO and r.get("pid") and r.get("pid") != os.getpid() and time.time() - float(r.get("start") or 0) < 1800 and pid_alive(r["pid"]): return False
+    st["running"] = {"ver": VER, "start": int(time.time()), "auto": AUTO, "pid": os.getpid()}
+    state_write(st); return True
+
+def files_new():
+    """{tên file: đã là bản mới (có dấu của bản này)} cho các file máy chủ này có."""
+    res = {}
+    for gp, local, mark, svc in FILES:
+        lp = os.path.join(B, local)
+        if not os.path.isfile(lp): continue
+        try: res[local] = mark.encode("utf-8") in open(lp, "rb").read()
+        except OSError: res[local] = False
+    return res
+
+def state_end():
+    """Ghi kết quả. upd = phần CẬP NHẬT xong sạch (mọi file là bản mới + dịch vụ đã chạy bản mới). Sổ giữ:
+       ver / at = bản máy chủ này đang chạy + lúc cài xong bản đó (chạy lại lệnh A cùng bản KHÔNG đổi "at" — máy chủ khác tính thời gian chạy ổn
+       từ đó) · last = lượt gần nhất (kể cả lượt hỏng) · ok = lượt gần nhất không còn dòng ✗ nào."""
+    if NO_UPDATE: return
+    fn = files_new(); now = int(time.time())
+    upd = bool(RUN["done"]) and not RUN["p_upd"] and not RUN["p_rst"] and bool(fn) and all(fn.values())
+    d = state_read(); d.pop("running", None)
+    if upd:
+        if d.get("ver") != VER or not d.get("upd") or not d.get("at"): d["at"] = now
+        d["ver"], d["upd"] = VER, True
+    d.update(ok=bool(RUN["done"]) and not RUN["probs"], auto=AUTO, changed=sorted(set(RUN["changed"])), probs=[str(x)[:200] for x in RUN["probs"]][:8],
+             files=fn, last={"ver": VER, "at": now, "upd": upd, "auto": AUTO})
+    state_write(d)
 
 # ------------------------------------------------------------------ 1. cập nhật file
 def gh_get(path):
@@ -304,6 +406,48 @@ def ld_fix(c, changed):
     elif last.startswith("LDBASE loi"):
         say("   ✗ LDPlayer không đọc được danh sách máy (" + last[10:].strip()[:120] + ") → mở LDPlayer 1 lần, thấy có máy trong danh sách rồi chạy lại lệnh")
         probs.append("LDPlayer không đọc được danh sách máy — mở LDPlayer 1 lần rồi chạy lại lệnh A")
+    return probs
+
+# ------------------------------------------------------------------ 1c. máy chủ MuMu: máy mẫu (24/11a)
+MUMU_TPL_VERS = ("12", "15")                             # bản Android MuMu tạo được bằng lệnh (create --version)
+ENG_POKE_F = os.path.join(LOGS, "doc-lai-may-mau.txt")  # 24/11b: cloudphoned thấy file này mới hơn lần đọc trước → đọc lại máy mẫu ngay
+def eng_poke():
+    try:
+        os.makedirs(LOGS, exist_ok=True)
+        with open(ENG_POKE_F, "w", encoding="utf-8") as f: f.write(str(int(time.time())))
+    except Exception: pass
+def mumu_tpl(c):
+    """Máy chủ MuMu phải có máy MẪU cho mỗi bản Android bán (tpl_a12 = Android 12, tpl_a15 = Android 15): máy khách nhân bản từ đó.
+       Thiếu → TỰ TẠO bằng phonectl mktpl (MuMu: create --version N --mini, tự đặt tên, để TẮT) — khỏi mở MuMu bấm tay.
+       Đọc danh sách máy lỗi → không tạo gì (không tạo trùng). --chi-kiem: chỉ báo. Máy chủ LDPlayer / MEmu: không làm gì.
+       Trả [dòng cho phần TÓM TẮT]."""
+    probs = []
+    if (c.get("EMU") or "").strip().lower() != "mumu": return probs
+    want = [v.strip() for v in (c.get("ANDROIDS") or "12,15").split(",") if v.strip() in MUMU_TPL_VERS]
+    if not want: return probs
+    rc, out = pctl("vmlist", t=180)
+    names = {ln.split(",")[1].strip() for ln in (out or "").splitlines() if re.match(r"^\d+,[^,]+,", ln.strip())}
+    if rc != 0 or not names:
+        say("   (máy mẫu MuMu: chưa đọc được danh sách máy — lần sau kiểm lại)"); return probs
+    miss = [v for v in want if f"tpl_a{v}" not in names]
+    if not miss:
+        say("   ✓ máy mẫu MuMu đủ: " + ", ".join(f"tpl_a{v}" for v in want)); return probs
+    if ONLY_CHECK:
+        say("   ✗ máy chủ MuMu THIẾU máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " → web không bán bản đó ở máy chủ này (chạy lệnh A không kèm --chi-kiem để tự tạo)")
+        return [f"thiếu máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss)]
+    say("   Máy chủ MuMu thiếu máy mẫu " + ", ".join(f"tpl_a{v} (Android {v})" for v in miss) + " → tự tạo bằng lệnh (mỗi máy 1–3 phút)…")
+    rc, out = pctl("mktpl", ",".join(miss), t=1800)
+    for ln in (out or "").splitlines():
+        if ln.strip(): say("      " + ln.strip()[:300])
+    eng_poke()                                           # 24/11b: cloudphoned đọc lại máy mẫu NGAY (không chờ tới 10 phút)
+    rc2, out2 = pctl("vmlist", t=180)
+    names2 = {ln.split(",")[1].strip() for ln in (out2 or "").splitlines() if re.match(r"^\d+,[^,]+,", ln.strip())}
+    left = [v for v in miss if f"tpl_a{v}" not in names2] if names2 else miss
+    if left:
+        probs.append("chưa tạo được máy mẫu " + ", ".join(f"tpl_a{v}" for v in left)
+                     + " — mở MuMu: + New → đúng bản Android → đổi tên tpl_aNN → để TẮT (2 phút sau web tự bán)")
+    else:
+        say("   ✓ đã tạo máy mẫu " + ", ".join(f"tpl_a{v}" for v in miss) + " — khoảng 30 giây nữa web tự bán thêm các bản này ở máy chủ này")
     return probs
 
 # ------------------------------------------------------------------ 2. bật lại dịch vụ
@@ -1110,16 +1254,22 @@ def main():
         say("   ✗✗ DỪNG: " + g)
         say(f"== TÓM TẮT {node} ==")
         say("   ✗ chưa làm gì — xem dòng DỪNG ở trên (lệnh A phải chạy CÙNG quyền với bảng CloudBlue: PowerShell (Admin))")
+        RUN["probs"] = ["dừng: " + g]
         return
     if g: say("   ⚠ " + g)
     changed, p = update_files(); probs += p
+    RUN["changed"], RUN["p_upd"] = list(changed), list(p)
     probs += ld_fix(c, changed)
-    probs += restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
-                                        and mark.encode() in open(os.path.join(B, local), "rb").read()})
+    p = restart_services(changed, {svc for gp, local, mark, svc in FILES if svc and os.path.isfile(os.path.join(B, local))
+                                   and mark.encode() in open(os.path.join(B, local), "rb").read()})
+    probs += p; RUN["p_rst"] = list(p)
     probs += fix_autostart()
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
     probs += check_net(c)
+    if e != "LAUNCHED":                                     # bảng vừa mở lại đang bật máy khách → để lượt sau (không chen lệnh vào giả lập)
+        try: probs += mumu_tpl(c)
+        except Exception as e_: say(f"   (kiểm máy mẫu MuMu lỗi: {e_})")
     hm = ""
     if e != "LAUNCHED":                                     # bảng vừa mở lại đang bật máy khách → không gọi thêm lệnh nào (chống kẹt tự tắt tiếng sau ≤ 10 phút)
         try: hm = mute_host(c)
@@ -1129,6 +1279,9 @@ def main():
             "    10 phút nữa chạy lại lệnh này để kiểm từng máy.")
         res, extra, done, final = [], {}, [], []
         probs.append("vừa mở lại bảng — 10 phút nữa chạy lại lệnh để kiểm máy khách")
+    elif AUTO:
+        say("5/6 · 6/6 Bỏ qua kiểm / sửa máy khách — đây là lượt TỰ CẬP NHẬT (chỉ thay bản mới + bật lại dịch vụ). Cần kiểm từng máy: chạy lệnh A bằng tay.")
+        res, extra, done, final = [], {}, [], []
     else:
         probs += priv_fix()                                 # 17/11e: máy chạy sai quyền → bật lại đúng quyền TRƯỚC khi kiểm từng máy
         res, extra, p = check_phones(c); probs += p
@@ -1138,7 +1291,7 @@ def main():
     recent_report(c, res)
     probs += switch_report(c)
     log_report()
-    probs += ks_report()
+    if not AUTO: probs += ks_report()
     web_report()
     try: wake_report()
     except Exception as e_: say(f"   (báo cáo mở máy lỗi: {e_})")
@@ -1182,7 +1335,11 @@ def main():
     for x in probs: say("   ✗ " + x)
     for n in still: say(f"   ✗ {n}: sửa rồi vẫn {dict(final).get(n)}")
     for x in pw: say("   ⚠ " + x)
+    RUN["probs"] = list(probs) + [f"{n}: sửa rồi vẫn {dict(final).get(n)}" for n in still]; RUN["done"] = True
     say("   → XONG, máy chủ ổn." if not probs and not still else "   → Còn dòng ✗ ở trên: chụp phần TÓM TẮT gửi Claude.")
 
 if __name__ == "__main__":
-    main()
+    if not state_begin():
+        say(f"== CloudBlue · sửa tất cả ({VER}) · tự cập nhật: đang có lượt cập nhật khác chạy dở — thôi =="); sys.exit(0)
+    try: main()
+    finally: state_end()

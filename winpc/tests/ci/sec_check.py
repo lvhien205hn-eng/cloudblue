@@ -7,7 +7,7 @@
      4. hạ 1 tài khoản khách thật từ Admin xuống tài khoản thường bằng cb_provision.harden()
    Dùng:  python sec_check.py <thư mục cb của cây bộ cài> <thư mục tạm>
    In ra từng dòng:  OK <tên>  |  XX <tên> -> <chi tiết>  |  .. <ghi chú>      (check.ps1 đọc các dòng này)"""
-import json, os, re, secrets, shutil, subprocess, sys, time
+import json, os, re, secrets, shutil, stat, subprocess, sys, time
 
 CB, TMP = sys.argv[1], sys.argv[2]
 BASE = r"C:\CloudBluePC"
@@ -90,7 +90,7 @@ def grant_batch(user):
     return sh(["secedit", "/configure", "/db", db, "/cfg", inf, "/areas", "USER_RIGHTS"], 300)[0] == 0
 
 
-def run_as(user, password, checks, tag, extra=""):
+def run_as(user, password, checks, tag, extra="", high=False):
     """Chạy probe.py bằng tài khoản `user` (tác vụ theo lịch có lưu mật khẩu; không được thì Start-Process -Credential). Trả kết quả (dict) hoặc None."""
     cj, rj = os.path.join(OUT, tag + "-in.json"), os.path.join(OUT, tag + "-out.json")
     with open(cj, "w", encoding="utf-8") as f: json.dump(checks, f)
@@ -98,7 +98,7 @@ def run_as(user, password, checks, tag, extra=""):
     py = os.path.join(BASE, "py", "python.exe")
     cmdline = '"%s" -I -B "%s" "%s" "%s"%s' % (py, os.path.join(OUT, "probe.py"), cj, rj, (" " + extra) if extra else "")
     tn = "cbsec-" + tag
-    rc, out = sh(["schtasks", "/create", "/tn", tn, "/tr", cmdline, "/sc", "once", "/st", "23:59", "/ru", user, "/rp", password, "/f"])
+    rc, out = sh(["schtasks", "/create", "/tn", tn, "/tr", cmdline, "/sc", "once", "/st", "23:59", "/ru", user, "/rp", password, "/f"] + (["/rl", "HIGHEST"] if high else []))
     how = "tac vu theo lich"
     if rc == 0:
         sh(["schtasks", "/run", "/tn", tn])
@@ -111,7 +111,7 @@ def run_as(user, password, checks, tag, extra=""):
         sh(["schtasks", "/delete", "/tn", tn, "/f"])
     else:
         info("schtasks /create loi: " + out)
-    if not os.path.exists(rj):                                  # cách 2
+    if not os.path.exists(rj) and not high:                     # cách 2 (không nâng quyền được → bỏ, để phép thử báo đúng là chưa chạy được)
         how = "Start-Process -Credential"
         ps = ("$p = ConvertTo-SecureString '%s' -AsPlainText -Force; $c = New-Object System.Management.Automation.PSCredential('.\\%s', $p); "
               "Start-Process -FilePath '%s' -ArgumentList '-I','-B','\"%s\"','\"%s\"','\"%s\"'%s -Credential $c -WorkingDirectory '%s' -WindowStyle Hidden -Wait"
@@ -191,6 +191,10 @@ def main():
     ck("is_admin() nhan ra dang co quyen quan tri", P.is_admin() is True)
     ok = P.lockdown()
     ck("cb_provision.lockdown(): moi lenh icacls deu xong + dat moc lock.done", ok and os.path.isfile(os.path.join(BASE, "logs", "lock.done")), P.lines[-4:])
+    fa = os.stat(BASE).st_file_attributes
+    ck("21.11j: thu muc C:\\CloudBluePC da AN (thuoc tinh An + He thong), file ben trong khong bi doi thuoc tinh",
+       bool(fa & stat.FILE_ATTRIBUTE_HIDDEN) and bool(fa & stat.FILE_ATTRIBUTE_SYSTEM) and not (os.stat(os.path.join(BASE, "cb.json")).st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN), hex(fa))
+    ck("21.11j: thu muc an van vao / doc / chay binh thuong (duong dan thang)", os.path.isdir(BASE) and os.path.isfile(os.path.join(BASE, "cb.json")) and "cbkhach" in open(os.path.join(BASE, "cb.json"), encoding="utf-8").read())
     acl_root = sh(["icacls", BASE])[1]
     acl_os = sh(["icacls", os.path.join(BASE, "os")])[1]
     acl_fb = sh(["icacls", os.path.join(BASE, "os", "firstboot.d")])[1]
@@ -235,6 +239,58 @@ def main():
     ck("harden(): tai khoan the vai Administrator bi tat + dat moc harden.done", yn(a_out, "Account active") == "No" and os.path.isfile(os.path.join(BASE, "logs", "harden.done")), a_out[-400:])
     ck("nhat ky khong chua mat khau", not any("Cb1!" in l for l in P.lines), P.lines)
     ck("harden() lan 2: khong con gi de doi", P.harden() is False)
+
+    # ---- 4b. 21.11h: shop BẬT "Cho khách quyền Admin" (cb.json user_admin) → harden() cấp quyền Admin; guard() chặn RIÊNG tài khoản khách sửa / xoá phần mềm shop
+    with open(os.path.join(BASE, "cb.json"), "w") as f: json.dump({"user": "cbkhach", "password": "", "user_admin": True}, f)
+    P.lines.clear()
+    P.harden()
+    ck("user_admin: harden() dua tai khoan khach VAO nhom Administrators + dat moc admin.granted", P.in_group(adm, "cbkhach") and os.path.isfile(os.path.join(BASE, "logs", "admin.granted")), P.lines)
+    ck("user_admin: harden() lan 2 khong doi gi, khach van la Admin", P.harden() is False and P.in_group(adm, "cbkhach"), P.lines[-3:])
+    # 22.11c: khách Admin → cài phần mềm KHÔNG hiện hộp hỏi quyền (ConsentPromptBehaviorAdmin = 0), UAC (EnableLUA) vẫn bật
+    UK = r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System"
+    def regd(name):
+        m = re.search(name + r"\s+REG_DWORD\s+(0x[0-9a-fA-F]+)", sh(["reg", "query", UK, "/v", name])[1] or "")
+        return m.group(1).lower() if m else None
+    uac0 = regd("ConsentPromptBehaviorAdmin"); info("ConsentPromptBehaviorAdmin truoc khi thu: %s · EnableLUA: %s" % (uac0, regd("EnableLUA")))
+    ok_u = P.uac()
+    ck("22.11c uac(): khach Admin -> ConsentPromptBehaviorAdmin = 0 tren Windows that (cai phan mem khong hoi quyen), EnableLUA khong bi dong vao",
+       ok_u and regd("ConsentPromptBehaviorAdmin") == "0x0" and regd("EnableLUA") in ("0x1", None), (regd("ConsentPromptBehaviorAdmin"), regd("EnableLUA"), P.lines[-2:]))
+    n0 = len(P.lines)
+    ck("22.11c uac() lan 2: gia tri da dung -> khong ghi lai registry", P.uac() is True and not any("ConsentPromptBehaviorAdmin" in l for l in P.lines[n0:]), P.lines[n0:])
+    est = P.emu_state()                                              # 22.11c: đọc thật tình trạng ảo hoá (máy CI của GitHub là máy ảo Azure → có hypervisor)
+    info("emu_state() tren may CI: %r" % (est,))
+    ck("22.11c emu_state(): lenh PowerShell / WMI + bcdedit chay duoc tren Windows that, doc ra du truong (hv, vbs, vt, vm, cpu, launch)",
+       isinstance(est, dict) and isinstance(est.get("hv"), bool) and isinstance(est.get("vbs"), int) and est.get("vt") in (True, False, None)
+       and isinstance(est.get("vm"), bool) and bool(est.get("cpu")) and isinstance(est.get("launch"), str) and (est.get("vt") is None) == bool(est.get("hv")), est)
+    ok_g = P.guard()
+    acl_g = sh(["icacls", BASE])[1]
+    deny_l = [l.strip() for l in acl_g.splitlines() if "cbkhach" in l.lower()]
+    info("quyen goc sau guard(): " + " ; ".join(l.strip() for l in acl_g.splitlines()[:6]))
+    ck("guard(): C:\\CloudBluePC co dong TU CHOI rieng cho tai khoan khach; SYSTEM + Administrators van Full",
+       ok_g and any("(DENY)" in l for l in deny_l) and "NT AUTHORITY\\SYSTEM:(OI)(CI)(F)" in acl_g and "BUILTIN\\Administrators:(OI)(CI)(F)" in acl_g, (P.lines[-2:], acl_g))
+    if have_vol:
+        acl_gv = sh(["icacls", vol])[1]
+        ck("guard(): goc phan vung cuu ho cung co dong TU CHOI rieng cho tai khoan khach", any("cbkhach" in l.lower() and "(DENY)" in l for l in acl_gv.splitlines()), acl_gv)
+    kpw = pw(); sh(["net", "user", "cbkhach", kpw])
+    hi = run_as("cbkhach", kpw, [["doc_ma_may", "r", BASE + "\\identity.json"], ["sua_agent", "w", BASE + "\\agent\\pcagent.py"], ["sua_provision", "w", BASE + "\\os\\cb_provision.py"],
+                                 ["ghi_goc", "w", BASE + "\\cay2.txt"], ["xoa_agent", "d", BASE + "\\agent\\pcagent.py"]], "admin-khach", "", True)
+    if hi is None:
+        ck("tai khoan khach co quyen Admin chay duoc phep thu o che do NANG QUYEN (tac vu theo lich /rl HIGHEST)", False, "khong chay duoc")
+    else:
+        info("khach Admin (nang quyen) lam duoc: " + ", ".join(k for k, v in hi.items() if v is True and not k.startswith("_")) + " | _admin=%s" % hi.get("_admin"))
+        ck("khach CO quyen Admin that (tien trinh nang quyen) nhung KHONG sua / ghi / xoa duoc agent + script cua shop (bi dong TU CHOI chan)",
+           hi.get("_admin") is True and all(hi.get(k) is False for k in ("sua_agent", "sua_provision", "ghi_goc", "xoa_agent")), hi)
+    with open(os.path.join(BASE, "cb.json"), "w") as f: json.dump({"user": "cbkhach", "password": ""}, f)
+    try: os.remove(os.path.join(BASE, "logs", "sec.event"))          # việc lạ cũ của phép thử trước (bia_off của máy chạy thử) — chỉ xét lần hạ quyền này
+    except OSError: pass
+    P.names = lambda: (setattr(P, "bia_off", True), (adm, usr, "cbadm0"))[1]   # names() thật đọc lại trạng thái tài khoản thế vai: đã TẮT ở mục 4
+    P.lines.clear()
+    ck("shop TAT cong tac: harden() ha khach ve tai khoan thuong, KHONG bao nham vi pham bao mat",
+       P.harden() is True and not P.in_group(adm, "cbkhach") and not any("VIEC LA" in l for l in P.lines) and not os.path.isfile(os.path.join(BASE, "logs", "sec.event"))
+       and not os.path.isfile(os.path.join(BASE, "logs", "admin.granted")), P.lines)
+    ck("22.11c shop TAT cong tac: uac() tra hop hoi quyen ve mac dinh Windows (ConsentPromptBehaviorAdmin = 5)", P.uac() and regd("ConsentPromptBehaviorAdmin") == "0x5",
+       regd("ConsentPromptBehaviorAdmin"))
+    if uac0: sh(["reg", "add", UK, "/v", "ConsentPromptBehaviorAdmin", "/t", "REG_DWORD", "/d", str(int(uac0, 16)), "/f"])      # trả máy thử như cũ
 
     # ---- dọn (máy thử dùng 1 lần, dọn cho gọn)
     for u in ("cbthuong", "cbkhach", "cbadm0"): sh(["net", "user", u, "/delete"])

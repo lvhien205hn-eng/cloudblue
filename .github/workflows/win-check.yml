@@ -1,0 +1,110 @@
+# 23/11 · 🗗 TAB CỬA SỔ NHỎ (như Redfinger): thử cpapi.win_run (Thu nhỏ tab / Sắp xếp tab / Phóng to tab)
+#   1. sim: máy Android GIẢ (đọc am stack list Android 9 + 12, lưới, cổng HTTP) — vài giây.
+#   2. emu: máy Android ẢO THẬT (KVM) Android 9 / 10 / 11 / 12 / 12L / 13 / 14 / 15 + 3 app "giống Roblox" (ép ngang, không đổi cỡ) + bản clone hồ sơ Công việc:
+#      thu nhỏ → về màn chính → mở app khác → thu nhỏ → kéo dời / kéo đổi cỡ bằng chạm → sắp xếp dọc + ngang → phóng to.
+#      + 23/11b: game cũ (dựng khung 1 lần) thu nhỏ → 🔄 Mở lại vừa khung → game vẽ đúng cỡ cửa sổ.
+#      + 23/11c: Cửa sổ to hơn / nhỏ hơn · Màn ngang rộng (600 dp + khoá ngang) · Màn dọc như cũ.
+#      + 23/11d: game kiểu cũ được MỞ LẠI NGAY TRONG tab (vừa cửa sổ) · màn rộng tự bật · cửa sổ đúng tỉ lệ game · app trợ giúp xoay màn
+#        vn.cloudblue.xoay (cửa sổ phủ ép màn ngang — máy bỏ qua khoá xoay như MuMu). File cbxoay.apk dựng ở máy API 32 → nhánh win-shots.
+#      + 23/11f: test_node.py — /cpapi/admin/node (quản lý máy chủ từ web), cloudphoned tự cập nhật theo máy chủ khác, sổ cập nhật của sua-tat-ca.py.
+#      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
+#   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
+name: Check tab windows (Android)
+
+on:
+  push:
+    branches: ["appwin-*"]
+    paths:
+      - "cpapi.py"
+      - "cloudphoned.py"
+      - "windows/sua-tat-ca.py"
+      - "windows/phonectl.py"
+      - ".github/win-check/**"
+      - ".github/workflows/win-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy ảnh vào nhánh win-shots
+
+concurrency:
+  group: win-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sim:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: cpapi tab cửa sổ nhỏ (máy Android giả)
+        run: python3 .github/win-check/test_win_sim.py
+      - name: Quản lý máy chủ từ web + tự cập nhật theo máy chủ khác (23/11f)
+        run: python3 .github/win-check/test_node.py
+
+  emu:
+    needs: sim
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 31, 32, 35]     # bản đang bán: Android 9 · 12 (máy ảo báo 31 hoặc 32 tuỳ bản) · 15 — 10 / 11 / 13 / 14 không bán
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bật KVM cho máy ảo Android
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: 5 app thử (giống Roblox ép ngang, không đổi cỡ · 2 "game cũ" dựng khung 1 lần) + app trợ giúp xoay màn
+        run: bash .github/win-check/mkapk.sh /tmp/wintest
+      - name: Android API ${{ matrix.api }} — thu nhỏ / sắp xếp / phóng to thật
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: true
+          script: |
+            python3 .github/win-check/test_win.py ${{ matrix.api }} /tmp/wintest shots; r=$?; python3 .github/win-check/test_fit.py ${{ matrix.api }} /tmp/wintest shots; exit $r
+      - name: Giữ file app trợ giúp xoay màn + 2 app game cũ (bản dựng ở máy API 32 → nhánh win-shots/shots/ — để đo trên máy thật)
+        if: always() && matrix.api == 32
+        run: |
+          mkdir -p shots
+          cp /tmp/wintest/cbxoay.apk /tmp/wintest/wintest4.apk /tmp/wintest/wintest5.apk shots/ && ls -la shots/*.apk && sha256sum shots/*.apk
+      - name: Giữ ảnh
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-shots-${{ matrix.api }}
+          path: shots
+          if-no-files-found: ignore
+
+  shots:
+    needs: emu
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: win-shots-*
+          path: shots
+          merge-multiple: true
+      - name: Lưu ảnh vào nhánh win-shots
+        run: |
+          ls -la shots || exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan win-shots-tmp
+          git rm -r -q --cached .
+          mkdir -p blueroblox-site
+          echo '{"git":{"deploymentEnabled":false}}' > blueroblox-site/vercel.json
+          git add shots blueroblox-site/vercel.json
+          git commit -q -m "Anh tab cua so nho ($GITHUB_SHA)"
+          git push -f origin HEAD:refs/heads/win-shots

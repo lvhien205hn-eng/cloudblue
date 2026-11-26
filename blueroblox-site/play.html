@@ -173,6 +173,15 @@ input.tg:disabled{opacity:.45;cursor:default}
 .kapp b{display:block;font-size:14px}.kapp small{display:block;color:var(--muted);font-size:12px;line-height:1.35}
 .kapp .btn{padding:8px 14px;font-size:13px}.kapp .okc{color:var(--ok,#3ce0b0);font-size:12.5px;white-space:nowrap}
 #r-body.off .rapp{opacity:.5}
+/* 🌐 Proxy riêng của máy (22/11) */
+.seg.s3{grid-template-columns:repeat(3,1fr)}
+.pxst{background:#0e1842;border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:13.5px;line-height:1.5}
+.pxst b{display:block;font-size:14.5px;word-break:break-all}
+.pxst .pxs{display:block;margin-top:4px;color:var(--muted)}
+.pxst .pxs.ok{color:var(--ok,#3ce0b0)}.pxst .pxs.warn{color:var(--warn,#ffc46b)}.pxst .pxs.bad{color:#ff6b6b}
+#pxdlg .sec{margin-top:14px}
+#pxdlg .seg{margin-top:8px}
+#px-in{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px}
 .rempty{color:var(--muted);font-size:13px;padding:6px 4px}
 #rootdlg .acts{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
 .prog{height:6px;border-radius:6px;background:rgba(143,208,255,.15);overflow:hidden;margin-top:10px}
@@ -283,9 +292,20 @@ html.ios body.rot .sheet .in::before{display:none}
 @media (prefers-reduced-motion:reduce){html.ios .sheet,html.ios .sheet .in{animation:none}html.ios .grid button{transition:none}}
 /* web-2.0: chế độ máy PC thật — ẩn các nút chỉ dành cho điện thoại Android */
 body.pcm #menu [data-a="rotate"], body.pcm #menu [data-a="notif"], body.pcm #menu [data-a="power"], body.pcm #menu [data-a="apkfile"], body.pcm #menu [data-a="apklink"],
-body.pcm #menu [data-a="store"], body.pcm #menu [data-a="root"], body.pcm #menu [data-a="reboot"], body.pcm #menu [data-a="multi"], body.pcm #m-land-row, body.pcm #m-land-flip{display:none!important}
+body.pcm #menu [data-a="store"], body.pcm #menu [data-a="root"], body.pcm #menu [data-a="proxy"], body.pcm #menu [data-a="reboot"], body.pcm #m-land-row, body.pcm #m-land-flip{display:none!important}
+body.pcm #win-sec, body.pcm #win-d, body.pcm #win-grid, body.pcm .bar [data-a="winmini"]{display:none!important}   /* 23/11 🗗 tab cửa sổ nhỏ: chỉ Cloud Phone */
 body.pcm #cv{cursor:default}
+/* web-2.2 (21.11k): máy PC — thêm mức Siêu nét + tự chọn khung hình/giây · Nhiều máy PC cùng lúc */
+body:not(.pcm) .pc-only{display:none!important}
+body.pcm #q-seg{grid-template-columns:repeat(auto-fit,minmax(62px,1fr))}
 i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;place-items:center;width:22px;height:22px}
+/* 21/11f · MÁY PC: kiểu chạm như Chrome Remote Desktop (màn cảm ứng) — con trỏ tại chỗ (Bàn di chuột) + chọn kiểu chạm / xoay màn */
+#pc-cur{position:absolute;left:0;top:0;width:18px;height:26px;margin:-2px 0 0 -2px;pointer-events:none;z-index:4;display:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
+body.pcpad #pc-cur{display:block}
+.seg.pcin{grid-template-columns:repeat(2,1fr)}
+.seg.pcin button,#pcor-seg button{font-size:12.5px;padding:9px 6px;line-height:1.3}
+#pcor-seg{grid-template-columns:repeat(2,1fr)}
+.pcin-d{display:block;margin:6px 2px 2px;font-size:12px;line-height:1.45;color:#9fb4d8}
 </style>
 </head>
 <body data-view="">
@@ -330,6 +350,7 @@ i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;plac
 <section id="v-play" hidden>
   <div class="stage" id="stage">
     <canvas id="cv" width="540" height="960" aria-label="Màn hình máy"></canvas>
+    <div id="pc-cur" aria-hidden="true"><svg width="18" height="26" viewBox="0 0 18 26"><path d="M2 2 L2 21 L7 16.5 L10.5 24 L13.5 22.6 L10.2 15.4 L16.5 15 Z" fill="#fff" stroke="#000" stroke-width="1.6" stroke-linejoin="round"/></svg></div>
     <div class="stats" id="stats" hidden></div>
     <div class="netw" id="netw" role="status" hidden></div>
     <div class="ovl" id="ovl">
@@ -358,6 +379,12 @@ i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;plac
     </button>
     <button type="button" data-a="kb" id="kb-btn" aria-label="Bàn phím" title="Bàn phím">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M10 10h.01M13 10h.01M16 10h.01M7 14h10"/></svg>
+    </button>
+    <button type="button" data-a="pcin" hidden aria-label="Kiểu chạm · xoay màn" title="Kiểu chạm · xoay màn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V5.5a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m0-1a1.5 1.5 0 013 0v4.5A5.5 5.5 0 0112.5 21h-1.2a5 5 0 01-3.9-1.9L4.6 15.6a1.6 1.6 0 012.4-2.1L9 15.5V11"/></svg>
+    </button>
+    <button type="button" data-a="winmini" id="win-btn" aria-label="Thu nhỏ tab (giữ: sắp xếp / phóng to)" title="Thu nhỏ tab (giữ: sắp xếp / phóng to)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2.5"/><rect x="11.5" y="11.5" width="7" height="5.5" rx="1.2" fill="currentColor" stroke="none"/></svg>
     </button>
     <button type="button" data-a="menu" aria-label="Thêm" title="Thêm">
       <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg>
@@ -403,7 +430,18 @@ i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;plac
     <div class="sec">Chất lượng hình</div>
     <div class="seg" id="q-seg">
       <button type="button" data-q="auto">Tự động</button><button type="button" data-q="eco">Tiết kiệm</button>
-      <button type="button" data-q="bal">Cân bằng</button><button type="button" data-q="hd">Nét</button>
+      <button type="button" data-q="bal">Cân bằng</button><button type="button" data-q="hd">Nét</button><button type="button" data-q="uhd" class="pc-only">Siêu nét</button>
+    </div>
+    <div class="sec pc-only">Khung hình / giây</div>
+    <div class="seg pc-only" id="f-seg">
+      <button type="button" data-f="0">Mặc định</button><button type="button" data-f="30">30 FPS</button><button type="button" data-f="60">60 FPS</button><button type="button" data-f="120">120 FPS</button>
+    </div>
+    <div id="pcin-box" hidden>
+      <div class="sec">Kiểu chạm</div>
+      <div class="seg pcin" id="pcin-seg"><button type="button" data-pcin="0">👆 Chạm trực tiếp</button><button type="button" data-pcin="1">🖱️ Bàn di chuột</button><button type="button" data-pcin="2">🔍 Chạm + 2 ngón phóng to</button><button type="button" data-pcin="3">🔍 Chạm + 3 ngón phóng to</button></div>
+      <small class="pcin-d" id="pcin-d"></small>
+      <div class="sec">Xoay màn</div>
+      <div class="seg" id="pcor-seg"><button type="button" data-pcor="auto">🔄 Theo điện thoại</button><button type="button" data-pcor="land">▭ Luôn màn ngang</button></div>
     </div>
     <div class="sec">Nút của máy</div>
     <div class="grid">
@@ -418,12 +456,25 @@ i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;plac
     </div>
     <label class="rsw" for="m-land" id="m-land-row" hidden style="margin-top:8px"><span><b>Tự hiện màn ngang</b><small>Máy đang ngang (game) → hình tự xoay ngang to hết màn, cầm ngang điện thoại là chơi — khỏi bật xoay màn hình rồi xoay điện thoại mỗi lần vào</small></span><input type="checkbox" class="tg" id="m-land" role="switch"></label>
     <button type="button" class="lnk" data-a="landflip" id="m-land-flip" hidden>⇅ Hình bị ngược? Đảo chiều màn ngang</button>
+    <div class="sec" id="win-sec">Tab cửa sổ nhỏ</div>
+    <small class="pcin-d" id="win-d">Mở app rồi bấm Thu nhỏ tab → app thành cửa sổ nhỏ ngay trên màn hình máy, vẫn chạy và bấm được. Game kiểu cũ được mở lại 1 lần để vẽ vừa cửa sổ. Mở tab khác rồi thu nhỏ tiếp. Kéo thanh trên cùng của cửa sổ để dời. Bấm vào 1 cửa sổ rồi bấm Cửa sổ to hơn / nhỏ hơn để đổi cỡ. Màn ngang rộng: màn chính nằm ngang, chữ nhỏ lại, xếp được nhiều tab clone. Hình game chưa vừa cửa sổ (hoặc vừa đổi cỡ cửa sổ): bấm vào cửa sổ đó rồi bấm Mở lại vừa khung (game khởi động lại, vẽ đúng cỡ cửa sổ).</small>
+    <div class="grid" id="win-grid">
+      <button type="button" data-a="winmini"><i data-ic="winmini"></i>Thu nhỏ tab</button>
+      <button type="button" data-a="wintile"><i data-ic="wintile"></i>Sắp xếp tab</button>
+      <button type="button" data-a="winfull"><i data-ic="winfull"></i>Phóng to tab</button>
+      <button type="button" data-a="winrefit"><i data-ic="winrefit"></i>Mở lại vừa khung</button>
+      <button type="button" data-a="wingrow"><i data-ic="wingrow"></i>Cửa sổ to hơn</button>
+      <button type="button" data-a="winshrink"><i data-ic="winshrink"></i>Cửa sổ nhỏ hơn</button>
+      <button type="button" data-a="winwide"><i data-ic="winwide"></i>Màn ngang rộng</button>
+      <button type="button" data-a="winnarrow"><i data-ic="winnarrow"></i>Màn dọc như cũ</button>
+    </div>
     <div class="sec">Công cụ</div>
     <div class="grid">
       <button type="button" data-a="apkfile"><i data-ic="apkfile"></i>Cài file APK</button>
       <button type="button" data-a="apklink"><i data-ic="apklink"></i>Cài APK từ link</button>
       <button type="button" data-a="store"><i data-ic="store"></i>Kho app</button>
       <button type="button" data-a="root"><i data-ic="root"></i>Root</button>
+      <button type="button" data-a="proxy"><i data-ic="proxy"></i>Proxy</button>
       <button type="button" data-a="reboot"><i data-ic="reboot"></i>Khởi động lại</button>
       <button type="button" data-a="multi" data-noi18n><i data-ic="multi"></i><span id="m-multi-t">Nhiều máy</span></button>
       <button type="button" data-a="list"><i data-ic="list"></i>Danh sách máy</button>
@@ -445,6 +496,22 @@ i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;plac
     </div>
     <p class="rnote">Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.</p>
     <div class="acts"><button class="btn ghost" type="button" data-a="rclose">Đóng</button><button class="btn" type="button" data-a="rsave" id="r-save" disabled>Lưu</button></div>
+  </div>
+</div>
+
+<!-- 🌐 PROXY RIÊNG CỦA MÁY (22/11): khách dán IP:Port:User:Pass — proxy chết / sai thì máy tự đi mạng thường -->
+<div class="sheet" id="pxdlg" hidden>
+  <div class="in dlg" role="dialog" aria-modal="true" aria-labelledby="px-t">
+    <div class="hd"><div><b id="px-t">🌐 Proxy</b><br><small>App trong máy đi Internet qua proxy của bạn</small></div><button class="lnk" type="button" data-a="pxclose">Đóng</button></div>
+    <div class="pxst" id="px-st" aria-live="polite"><b id="px-cur">Đang đọc…</b><span class="pxs" id="px-s"></span></div>
+    <div class="sec">Proxy mới</div>
+    <input id="px-in" type="text" inputmode="url" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false" maxlength="600" placeholder="IP:Port:User:Pass" aria-label="Proxy mới (IP:Port:User:Pass)">
+    <div class="seg s3" id="px-kind" role="radiogroup" aria-label="Kiểu proxy">
+      <button type="button" data-kind="auto" class="on" role="radio" aria-checked="true">Tự nhận</button><button type="button" data-kind="socks5" role="radio" aria-checked="false" data-noi18n>SOCKS5</button><button type="button" data-kind="http" role="radio" aria-checked="false" data-noi18n>HTTP</button>
+    </div>
+    <p class="rnote">Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.</p>
+    <p class="rnote">Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại. Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.</p>
+    <div class="acts"><button class="btn ghost" type="button" data-a="pxoff" id="px-off" hidden>Tắt proxy</button><button class="btn ghost" type="button" data-a="pxagain" id="px-again" hidden>Áp dụng lại</button><button class="btn" type="button" data-a="pxsave" id="px-save">Lưu &amp; bật</button></div>
   </div>
 </div>
 
@@ -494,7 +561,7 @@ const PCM = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.te
    ?tile=1  → 1 ô trong lưới: chỉ còn màn máy; nói chuyện với trang cha qua postMessage — chỉ nhận tin của ĐÚNG trang cha, cùng nguồn gốc
               (web đã cấm trang khác nhúng trang này: X-Frame-Options SAMEORIGIN). */
 const TILE = Q.get("tile") === "1" && window.parent !== window;
-const MULTI = !TILE && Q.get("multi") === "1";
+const MULTI = !TILE && (Q.get("multi") === "1" || Q.get("multi") === "pc");      // web-2.2: ?multi=pc → nhiều MÁY PC (VPS GPU) cùng lúc
 const T_MAXH = TILE ? Math.max(0, Math.min(1920, parseInt(Q.get("mh"), 10) || 0)) : 0;      // ô nhỏ (lưới ≥ 5 máy): cạnh dài hình ≤ 640
 const T_FPS = TILE ? Math.max(10, Math.min(30, parseInt(Q.get("tf"), 10) || 30)) : 0;
 const T_KBPS = TILE ? Math.max(0, Math.min(3000, parseInt(Q.get("tk"), 10) || 0)) : 0;
@@ -517,6 +584,7 @@ const ICO = {
   apklink: ["#30b0c7", '<path d="M10.5 13.5a3.8 3.8 0 0 0 5.4 0l2.7-2.7a3.8 3.8 0 0 0-5.4-5.4l-.9.9"/><path d="M13.5 10.5a3.8 3.8 0 0 0-5.4 0l-2.7 2.7a3.8 3.8 0 0 0 5.4 5.4l.9-.9"/>'],
   store: ["#bf5af2", '<path d="M5 8.5h14l-1.2 11.5H6.2z"/><path d="M9 8.5V7a3 3 0 0 1 6 0v1.5"/>'],
   root: ["#ff9f0a", '<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8.5 11V7.5a3.5 3.5 0 0 1 6.6-1.6"/>'],
+  proxy: ["#64d2ff", '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.3 2.3 3.5 5.1 3.5 8.5s-1.2 6.2-3.5 8.5c-2.3-2.3-3.5-5.1-3.5-8.5s1.2-6.2 3.5-8.5z"/>'],
   reboot: ["#ff453a", '<path d="M4.5 12a7.5 7.5 0 1 0 2.2-5.3"/><path d="M4.5 4.5V9H9"/>'],
   multi: ["#5e5ce6", '<rect x="4" y="4" width="7" height="7" rx="1.6"/><rect x="13" y="4" width="7" height="7" rx="1.6"/><rect x="4" y="13" width="7" height="7" rx="1.6"/><rect x="13" y="13" width="7" height="7" rx="1.6"/>'],
   list: ["#8e8e93", '<path d="M9.5 6.5H19M9.5 12H19M9.5 17.5H19"/><circle class="f" cx="5.5" cy="6.5" r="1.2"/><circle class="f" cx="5.5" cy="12" r="1.2"/><circle class="f" cx="5.5" cy="17.5" r="1.2"/>'],
@@ -524,6 +592,14 @@ const ICO = {
   alone: ["#30b0c7", '<path d="M13.5 5H19v5.5M19 5l-7.5 7.5"/><path d="M17 13.5V18a1.5 1.5 0 0 1-1.5 1.5H6A1.5 1.5 0 0 1 4.5 18V8.5A1.5 1.5 0 0 1 6 7h4.5"/>'],
   retry: ["#30d158", '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.5 4.5V9H15"/>'],
   help: ["#8e8e93", '<circle cx="12" cy="12" r="8"/><path d="M9.8 9.6a2.3 2.3 0 0 1 4.4.9c0 1.6-2.2 2-2.2 3.4"/><circle class="f" cx="12" cy="17" r="1.1"/>'],
+  winmini: ["#0a84ff", '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/><rect class="f" x="11.5" y="11.5" width="7" height="5.5" rx="1.2"/>'],
+  wintile: ["#30d158", '<rect x="3.5" y="4.5" width="7.5" height="6.5" rx="1.4"/><rect x="13" y="4.5" width="7.5" height="6.5" rx="1.4"/><rect x="3.5" y="13" width="7.5" height="6.5" rx="1.4"/><rect x="13" y="13" width="7.5" height="6.5" rx="1.4"/>'],
+  winfull: ["#ff9f0a", '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/><path d="M10 14l4.5-4.5M10.5 9.5h4v4"/>'],
+  winrefit: ["#bf5af2", '<rect x="3.5" y="5" width="17" height="14" rx="2.2"/><path d="M15.6 12a3.6 3.6 0 1 1-1.1-2.6"/><path d="M15 7.6v2.3h-2.3"/>'],
+  wingrow: ["#30d158", '<rect x="3.5" y="9" width="11" height="11" rx="2"/><path d="M13.5 3.5h7v7"/><path d="M20.5 3.5l-7.5 7.5"/>'],
+  winshrink: ["#ff9f0a", '<rect x="3.5" y="9" width="11" height="11" rx="2"/><path d="M21 9.5h-6.5V3"/><path d="M14.5 9.5L21 3"/>'],
+  winwide: ["#64d2ff", '<rect x="2.5" y="6" width="19" height="12" rx="2.2"/><path d="M7.5 12h9"/><path d="M9.5 10l-2 2 2 2"/><path d="M14.5 10l2 2-2 2"/>'],
+  winnarrow: ["#98989d", '<rect x="7" y="2.5" width="10" height="19" rx="2.2"/><path d="M12 7.5v9"/><path d="M10 9.5l2-2 2 2"/><path d="M10 14.5l2 2 2-2"/>'],
 };
 function icoFill(i) { const d = ICO[i.dataset.ic]; if (!d || i.firstChild) return i; i.className = "ic"; i.style.setProperty("--c", d[0]); i.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">' + d[1] + "</svg>"; return i; }
 const icoEl = n => { const i = document.createElement("i"); i.dataset.ic = n; return icoFill(i); };
@@ -655,6 +731,7 @@ const P = {
   sm: null, fixing: false, lastVid: 0, ovl: [],                      // máy chủ vừa nói gì { msg, fix, boot, t } · đang hỏi / đang khởi động lại máy · khung gần nhất · các lần giải mã quá tải
   fps30: Date.now() - (Number(lsGet("cb_fps30")) || 0) < 3 * 86400000,   // máy này giải mã 60 hình/giây không kịp (nhớ 3 ngày) → xin 30
   sw: false, swz: null,                                              // web-1.5: đang giải mã phần mềm · cỡ hình thật (SPS) để cắt viền
+  pcf: 0,                                                            // web-2.2: máy PC — khung hình/giây khách tự chọn (0 = theo mức nét)
 };
 if (TILE) P.q = "eco";                                                // web-1.8: ô trong lưới luôn dùng mức Tiết kiệm (không đụng lựa chọn đã nhớ của khách)
 
@@ -663,6 +740,8 @@ function openPhone(id) {
   P.kind = id === PCM ? "pc" : "";
   if (!TEST && !TILE) history.replaceState(null, "", location.pathname + (P.kind === "pc" ? "?pc=" : "?id=") + encodeURIComponent(id));
   pcMode(P.kind === "pc");
+  if (P.kind === "pc" && !TILE) { P.q = lsGet("cb_pcq") || "auto"; P.pcf = Math.max(0, Math.min(120, parseInt(lsGet("cb_pcf"), 10) || 0)); }     // web-2.2: máy PC nhớ riêng độ nét + FPS
+  setQ(P.q, false); fPaint();
   view("v-play");
   Object.assign(P, { id, stopped: false, kicked: false, fatal: false, authRetry: false, tries: 0, first: false, name: "", android: "",
                      bcT: 0, bcN: 0, bcOk: 0, bcDone: false, decErr: 0, lastErr: "",
@@ -873,6 +952,7 @@ async function connect() {
     ep.status = "active";
   }
   if (P.wantRoot && ep.status === "active") { P.wantRoot = false; openRoot(); }
+  if (P.wantProxy && ep.status === "active" && P.kind !== "pc") { P.wantProxy = false; openProxy(); }
   if (P.kind !== "pc") $("m-sub").textContent = ep.android ? "Android " + ep.android : "";
   if (ep.status && ep.status !== "active") { P.fatal = true; P.epStale = true; return overlay("err", statusMsg(ep.status) || "Máy chưa chạy.", [["Thử lại", retryNow], ["Về danh sách", toList]]); }
   if (P.kind !== "pc") bluePlay();
@@ -892,7 +972,7 @@ function linkUp(c, ws, token) {            // 1 đường vừa mở được �
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
   ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
   ws.onerror = () => {};
-  sendJSON(T.HELLO, Object.assign({ v: 2, token, ...(P.kind === "pc" ? { pc: P.id } : { phone: P.id }), client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
+  sendJSON(T.HELLO, Object.assign({ v: 2, token, ...(P.kind === "pc" ? { pc: P.id } : { phone: P.id }), client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, P.kind === "pc" && P.pcf ? { fpsx: P.pcf } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
   startTimers();
 }
 /* Gợi ý cho máy chủ BẮT ĐẦU NHẸ khi mạng yếu rõ ràng (Chrome / Edge / Android; Safari không có → không gửi gì, máy chủ tự dò như cũ).
@@ -932,7 +1012,19 @@ function epKnown() {
   if (P.ep && P.ep.stream && P.epId === P.id) return P.ep;             // đúng máy đang mở (P.ep còn giữ địa chỉ của máy mở trước đó)
   try { const j = JSON.parse(sessionStorage.getItem("cb_ep_" + P.id) || "null"); return j && Date.now() - j.t < EP_OLD_MS && j.ep && j.ep.stream ? j.ep : null; } catch { return null; }
 }
+async function pcMaintWhy() {                                         // 21/11f · bảo trì riêng VPS GPU → lý do (null = không bảo trì / admin)
+  if (P.kind !== "pc" || TEST || !sb) return null;
+  try {
+    const st = await timed(sb.from("settings").select("data").eq("id", 1).maybeSingle(), 6000), d = st && st.v && st.v.data && st.v.data.data;
+    if (!d || !d.pc_maint) return null;
+    const ss = await session(), uid = ss && ss.user && ss.user.id;
+    if (uid) { const pr = await timed(sb.from("profiles").select("role").eq("id", uid).maybeSingle(), 6000); if (pr && pr.v && pr.v.data && pr.v.data.role === "admin") return null; }
+    const m = String(d.pc_maint_msg || "").trim().slice(0, 200);
+    return L("🛠️ VPS GPU đang bảo trì", "🛠️ GPU VPS is under maintenance") + (m ? " — " + m : "") + ". " + L("Máy và dữ liệu của bạn vẫn giữ nguyên — quay lại sau ít phút.", "Your machine and data are kept — please come back shortly.");
+  } catch { return null; }
+}
 async function fetchEp() {
+  if (P.kind === "pc") { const why = await pcMaintWhy(); if (why) return { fatal: true, why }; }
   const r0 = await timed(sb.rpc(P.kind === "pc" ? "pc_endpoint" : "cloudphone_endpoint", { p_id: P.id }), 9000);
   const r = r0.timeout ? { error: { message: "TIMEOUT" } } : r0.err ? { error: r0.err } : (r0.v || {});
   if (!r.error) {
@@ -1060,7 +1152,7 @@ function waitNote(now) {                   // chờ quá 5 giây → ghi rõ đa
 /* ---------- 18/11b · 🔗 đồng bộ (phía 1 Ô trong lưới "Nhiều máy"): thao tác của khách ở ô này → báo trang cha · thao tác từ ô khác → làm theo ----------
    Chỉ chạy khi trang mở trong khung với ?tile=1. Chỉ nhận tin của ĐÚNG trang cha, cùng nguồn gốc (trang khác không nhúng / không điều khiển được). */
 const SY_CMDS = ["back", "home", "recents", "volup", "voldown", "power", "notif"];
-const SY = { on: false, inj: false, down: new Map(), actT: 0, last: "" };
+const SY = { on: false, inj: false, down: new Map(), mdown: new Map(), actT: 0, last: "" };
 function tilePost(o) { if (!TILE) return; try { parent.postMessage(Object.assign({ cb: "tile", id: P.id }, o), location.origin); } catch {} }
 function syOut(e) { if (TILE && SY.on && !SY.inj) tilePost({ k: "ev", e }); }
 function syDo(fn) { SY.inj = true; try { fn(); } finally { SY.inj = false; } }     // lệnh nhận từ trang cha: gửi cho máy mình, KHÔNG báo ngược lại (tránh vòng lặp)
@@ -1081,10 +1173,19 @@ function syIn(src, e) {                        // 1 thao tác của khách ở �
     else if (k === "c") { if (SY_CMDS.includes(e[1])) cmd(e[1]); }
     else if (k === "s") scroll(+e[1] || 0, +e[2] || 0, e[3] | 0, e[4] | 0);
     else if (k === "p") { if (typeof e[1] === "string" && e[1].length <= 16000) setClip(e[1], true); }
+    else if (k === "m" && P.kind === "pc") {                         // web-2.2: chuột máy PC (rê / nhấn / nhả) của ô khác
+      const a = e[1] | 0, bt = e[2] | 0, x = +e[3], y = +e[4], key = src + ":" + bt;
+      if (a > 2 || bt > 4 || !(x >= 0 && x <= 1 && y >= 0 && y <= 1)) return;
+      if (a === 1) SY.mdown.set(key, [bt, x, y]); else if (a === 2) { if (!SY.mdown.has(key)) return; SY.mdown.delete(key); }
+      pcMouseSend(a, bt, x, y);
+    }
   });
 }
 function syRelease(src) {                      // tắt đồng bộ / ô kia rời nhóm → nhấc các ngón đang giữ hộ
-  syDo(() => { for (const [key, v] of [...SY.down]) if (src == null || key.startsWith(src + ":")) { SY.down.delete(key); touch(1, v[0], v[1], v[2]); } });
+  syDo(() => {
+    for (const [key, v] of [...SY.down]) if (src == null || key.startsWith(src + ":")) { SY.down.delete(key); touch(1, v[0], v[1], v[2]); }
+    for (const [key, v] of [...SY.mdown]) if (src == null || key.startsWith(src + ":")) { SY.mdown.delete(key); pcMouseSend(2, v[0], v[1], v[2]); }
+  });
 }
 function tileReport() {                        // báo trang cha: tên máy · cỡ hình (chia lại lưới khi máy xoay) · tình trạng (chấm màu trên ô)
   const o = { k: "st", name: P.name || "", vw: P.vw, vh: P.vh, s: $("ovl").hidden ? "ok" : (P.ovlKind || "wait") };
@@ -1148,7 +1249,7 @@ function scroll(x, y, h, v) {
   send(T.SCROLL, b);
   syOut(["s", c01(x), c01(y), i16(h), i16(v)]);
 }
-function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); if (paste) syOut(["p", text]); }
+function setClip(text, paste) { ownClip(text); const t = enc.encode(text), b = new Uint8Array(1 + t.length); b[0] = paste === 2 ? 2 : paste ? 1 : 0; b.set(t, 1); send(T.CLIP, b); if (paste) syOut(["p", text]); }   // 2 = khách bấm Ctrl+Shift+V
 
 /* ---------- nhận ---------- */
 function json(p) { try { return JSON.parse(dec8.decode(p)); } catch { return {}; } }
@@ -1579,6 +1680,7 @@ function layout() {
   if (W <= 0 || H <= 0) return;
   const s = Math.min(W / P.vw, H / P.vh);
   cv.style.width = Math.max(1, Math.floor(P.vw * s)) + "px"; cv.style.height = Math.max(1, Math.floor(P.vh * s)) + "px";
+  if (typeof PCIN !== "undefined") { if (PCIN.s !== 1) pcZoomReset(); else pcCurPlace(); }
 }
 function fitApp() {
   const vv = window.visualViewport, [W, H] = vpSize(), b = document.body, rot = wantRot(W, H);
@@ -1612,6 +1714,7 @@ function rel(e) {
 cv.addEventListener("pointerdown", e => {
   e.preventDefault();
   if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 1);
+  if (pcinOn() && pcinPtr(e, 0)) return;                                 // 21/11f · bàn di chuột / phóng to tại chỗ
   if (e.pointerType === "mouse" && e.button !== 0) { if (e.button === 2) cmd("back"); else if (e.button === 1) cmd("home"); return; }
   const [x, y] = rel(e); if (x < 0 || x > 1 || y < 0 || y > 1) return;
   const used = new Set([...ptrs.values()].map(v => v.id)); let id = 0; while (used.has(id)) id++;
@@ -1622,6 +1725,7 @@ cv.addEventListener("pointerdown", e => {
 }, { passive: false });
 cv.addEventListener("pointermove", e => {
   if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 0);
+  if (pcinOn() && pcinPtr(e, 1)) return;
   const p = ptrs.get(e.pointerId); if (!p) return;
   e.preventDefault();
   [p.x, p.y] = rel(e);
@@ -1631,6 +1735,7 @@ cv.addEventListener("pointermove", e => {
 }, { passive: false });
 function ptrEnd(e, action) {
   if (P.kind === "pc" && e.pointerType === "mouse") return pcMouse(e, 2);
+  if (pcinOn() && pcinPtr(e, action === 3 ? 3 : 2)) return;
   const p = ptrs.get(e.pointerId); if (!p) return;
   e.preventDefault(); clearTimeout(p.pend); ptrs.delete(e.pointerId);
   const [x, y] = action === 3 ? [p.x, p.y] : rel(e);
@@ -1670,7 +1775,8 @@ document.addEventListener("keydown", e => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && (e.key === "v" || e.key === "V") && !inKb) {           // Ctrl/⌘+V → dán chữ trong máy tính vào máy
     e.preventDefault();
-    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(t => { if (t) setClip(t, true); }).catch(() => openDlg("paste"));
+    const pm = P.kind === "pc" && e.shiftKey ? 2 : true;              // 23/11b máy PC: Ctrl+Shift+V (Konsole của máy Linux…) → máy bấm đúng Ctrl+Shift+V
+    if (navigator.clipboard && navigator.clipboard.readText) navigator.clipboard.readText().then(t => { if (t) setClip(t, pm); }).catch(() => openDlg("paste"));
     else openDlg("paste");
     return;
   }
@@ -1690,12 +1796,26 @@ document.addEventListener("keyup", e => {
 });
 
 /* ---------- nút + menu ---------- */
+const QN = { auto: "Tự động", eco: "Tiết kiệm", bal: "Cân bằng", hd: "Nét", uhd: "Siêu nét" };
+function qMsg(q) {                                                     // gói đổi chất lượng: máy PC kèm FPS khách chọn (fpsx, 0 = theo mức nét)
+  const o = { q }; if (P.fps30 && !IS_WEBKIT) o.fps = 30;
+  if (P.kind === "pc") o.fpsx = P.pcf || 0;
+  return o;
+}
 function setQ(q, tell) {
-  P.q = q; if (!TILE) lsSet("cb_q", q);
+  if (!QN[q] || (q === "uhd" && P.kind !== "pc")) q = q === "uhd" ? "hd" : "auto";
+  P.q = q; if (!TILE) lsSet(P.kind === "pc" ? "cb_pcq" : "cb_q", q);
   $("q-seg").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.q === q));
-  if (tell) { sendJSON(T.QUALITY, P.fps30 && !IS_WEBKIT ? { q, fps: 30 } : { q }); toast("Chất lượng hình: " + { auto: "Tự động", eco: "Tiết kiệm", bal: "Cân bằng", hd: "Nét" }[q]); }
+  if (tell) { sendJSON(T.QUALITY, qMsg(q)); toast("Chất lượng hình: " + QN[q] + (P.kind === "pc" && P.pcf ? " · " + P.pcf + " FPS" : "")); }
 }
 $("q-seg").addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) setQ(b.dataset.q, true); });
+function fPaint() { $("f-seg").querySelectorAll("button").forEach(b => b.classList.toggle("on", (+b.dataset.f || 0) === (P.pcf || 0))); }
+$("f-seg").addEventListener("click", e => {                            // web-2.2: máy PC — khách tự chọn khung hình/giây
+  const b = e.target.closest("[data-f]"); if (!b || P.kind !== "pc") return;
+  P.pcf = Math.max(0, Math.min(120, +b.dataset.f || 0)); if (!TILE) lsSet("cb_pcf", String(P.pcf)); fPaint();
+  sendJSON(T.QUALITY, qMsg(P.q));
+  toast(P.pcf ? L(`Khung hình: ${P.pcf} FPS`, `Frame rate: ${P.pcf} FPS`) + (P.q === "auto" ? L(" · mạng yếu tự hạ", " · lowered on weak networks") : "") : L("Khung hình: theo mức nét", "Frame rate: per quality"));
+});
 function landPaint() { const sw = $("m-land"), fl = $("m-land-flip"); if (sw) { sw.checked = LAND; $("m-land-row").hidden = !PHONE; } if (fl) fl.hidden = !PHONE || !LAND; }
 landPaint();
 $("m-land").addEventListener("change", e => {                             // 17/11f: ⋯ → Tự hiện màn ngang
@@ -1709,12 +1829,14 @@ document.addEventListener("click", e => {
   if (b.closest(".bar")) b.blur();                                     // không giữ tiêu điểm trên nút (Enter/Space gõ vào máy, không bấm lại nút)
   if (b.closest("#menu") && a !== "close") $("menu").hidden = true;
   switch (a) {
-    case "back": case "home": case "recents": case "volup": case "voldown": case "power": case "rotate": case "notif": return cmd(a);
+    case "back": case "home": case "recents": case "volup": case "voldown": case "power": case "notif": return cmd(a);
+    case "rotate": return rotDo();                       // 23/11d: xoay qua máy chủ (máy bỏ qua khoá xoay của Android → cửa sổ phủ ép màn ngang)
     case "kb": return document.activeElement === kb ? kbHide() : kbShow();
     case "menu": kbHide(); $("menu").hidden = false; return;
+    case "pcin": kbHide(); $("menu").hidden = false; setTimeout(() => { const x = $("pcin-box"); if (x) x.scrollIntoView({ block: "start", behavior: "smooth" }); }, 60); return;
     case "close": $("menu").hidden = true; return;
     case "list": return toList();
-    case "multi": return showMulti(P.id);                                // web-1.8
+    case "multi": return showMulti(P.id, P.kind === "pc" ? "pc" : "");     // web-1.8 · web-2.2: cả máy PC
     case "paste": return openDlg("paste");
     case "apklink": return openDlg("link");
     case "apkfile":                                                     // web-1.9: iPhone / iPad — Safari không biết loại .apk nên bộ lọc làm mờ mọi file → bỏ lọc, nhắc chỗ bấm
@@ -1724,11 +1846,30 @@ document.addEventListener("click", e => {
     case "full": return toggleFull();
     case "landflip": LCCW = !LCCW; try { localStorage.setItem("cb_land_ccw", LCCW ? "1" : "0"); } catch {} fitApp(); return toast("Đã đảo chiều màn ngang.");
     case "reboot": return reboot();
+    case "winmini": if (WIN_HOLD.done) { WIN_HOLD.done = false; return; } return winDo("mini");      // 23/11 🗗 tab cửa sổ nhỏ
+    case "wintile": return winDo("tile");
+    case "winfull": return winDo("full");
+    case "winrefit":                                     // 23/11b: game tràn viền trong cửa sổ → mở lại game NGAY TRONG cửa sổ (game khởi động lại)
+      if (!confirm(L("Mở lại game trên cùng (cửa sổ bạn vừa bấm vào, hoặc game đang toàn màn) theo đúng cỡ đang có cho vừa khung? Game sẽ khởi động lại — vào lại trận nếu cần.",
+                     "Reopen the top game (the window you last tapped, or the full-screen game) at its current size so it fits? The game restarts — rejoin your match if needed."))) return;
+      return winDo("refit");
+    case "wingrow": return winDo("grow");                // 23/11c: khách tự cho cửa sổ trên cùng to / nhỏ hơn (kéo mép qua luồng hình khó trúng)
+    case "winshrink": return winDo("shrink");
+    case "winwide":                                      // 23/11c: 🖥 màn ngang rộng (600 dp + khoá ngang) → màn chính nằm ngang, nhiều tab
+      if (!confirm(L("Bật màn ngang rộng? Màn chính nằm ngang, chữ / biểu tượng nhỏ lại để xếp được nhiều tab clone hơn. App đang mở có thể tải lại; game kiểu cũ được mở lại cho vừa ô mới. Bấm Màn dọc như cũ để trả lại.",
+                     "Turn on the wide landscape screen? The home screen turns landscape and text / icons get smaller so more clone tabs fit. Open apps may reload; older games reopen to fit their new size. Tap Normal portrait to undo."))) return;
+      return winDo("wide");
+    case "winnarrow": return winDo("narrow");
     case "root": return openRoot();
     case "store": return openStore();
     case "sclose": $("storedlg").hidden = true; return;
     case "rclose": $("rootdlg").hidden = true; return;
     case "rsave": return saveRoot();
+    case "proxy": return openProxy();
+    case "pxclose": return closeProxy();
+    case "pxsave": return pxDo("set");
+    case "pxagain": return pxDo("again");
+    case "pxoff": return pxDo("off");
     case "dno": $("dlg").hidden = true; return;
     case "dok": return dlgOk();
   }
@@ -1794,6 +1935,47 @@ async function watchJob(id, label) {
     toast(label + (j.state === "done" ? L(" xong", " done") : L(" lỗi", " failed")) + (j.msg ? ": " + jobT(j.msg) : ""), null, 6000); return j;
   }
 }
+/* ---------- 🗗 TAB CỬA SỔ NHỎ (23/11, như Redfinger): app trong máy → cửa sổ nhỏ ngay trên màn máy · sắp xếp · phóng to (cpapi /win) ---------- */
+async function winDo(what) {
+  if (P.kind === "pc" || !P.id) return;
+  toast(what === "mini" ? L("Đang thu nhỏ tab…", "Minimizing the tab…") : what === "tile" ? L("Đang sắp xếp tab…", "Arranging tabs…")
+        : what === "refit" ? L("Đang mở lại game trong cửa sổ…", "Reopening the game in its window…")
+        : what === "grow" ? L("Đang cho cửa sổ to hơn…", "Making the window bigger…") : what === "shrink" ? L("Đang cho cửa sổ nhỏ hơn…", "Making the window smaller…")
+        : what === "wide" ? L("Đang bật màn ngang rộng…", "Turning on the wide landscape screen…") : what === "narrow" ? L("Đang trả màn dọc như cũ…", "Going back to normal portrait…")
+        : L("Đang phóng to tab…", "Maximizing the tab…"), null, 2500);
+  try {
+    const j = await api(P.id + "/win", { json: { do: what } });
+    // 23/11d: game chưa chắc vẽ lại theo cỡ mới (máy chủ báo fit = "ask") → nút Vừa khung ngay trong thông báo (game mở lại đúng cỡ cửa sổ)
+    toast(jobT(j.msg || L("Xong.", "Done.")), j.fit === "ask" ? [L("🖼 Vừa khung", "🖼 Refit"), () => winDo("refit")] : null, j.fit === "ask" ? 10000 : 8000);
+  }
+  catch (e) {
+    const m = String(e.message || "");
+    toast(/Không có chức năng/.test(m) ? L("Máy chủ của máy này chưa có tính năng này — đang được cập nhật, thử lại sau.", "This phone's server doesn't have this feature yet — try again later.") : jobT(m), null, 8000);
+  }
+}
+/* 23/11d · XOAY MÀN qua máy chủ (cpapi /rotate): máy MuMu bỏ qua khoá xoay của Android nên lệnh xoay cũ không có tác dụng — máy chủ bật 1 cửa sổ
+   phủ yêu cầu màn ngang → cả màn chính nằm ngang. Hướng muốn tới = ngược với hình đang phát. Máy chủ lỗi / máy PC → lệnh xoay cũ qua luồng hình. */
+async function rotDo() {
+  if (P.kind === "pc" || !P.id) return cmd("rotate");
+  const to = (P.vw || 0) > (P.vh || 0) ? "port" : "land";
+  toast(to === "land" ? L("Đang xoay màn ngang…", "Turning the screen landscape…") : L("Đang xoay màn dọc…", "Turning the screen portrait…"), null, 2500);
+  try { const j = await api(P.id + "/rotate", { json: { to } }); toast(jobT(j.msg || L("Xong.", "Done.")), null, 6000); }
+  catch (e) { cmd("rotate"); }
+}
+const WIN_HOLD = { t: 0, done: false, at: 0 };          // giữ nút 🗗 trên thanh dưới → mở ⋯ ở mục Tab cửa sổ nhỏ (sắp xếp / phóng to)
+(() => {
+  const b = $("win-btn"); if (!b) return;
+  const stop = () => { clearTimeout(WIN_HOLD.t); WIN_HOLD.t = 0; };
+  b.addEventListener("pointerdown", () => { stop(); WIN_HOLD.done = false; WIN_HOLD.t = setTimeout(() => {
+    WIN_HOLD.done = true; WIN_HOLD.at = Date.now(); kbHide(); $("menu").hidden = false;
+    setTimeout(() => { const x = $("win-sec"); if (x) x.scrollIntoView({ block: "start", behavior: "smooth" }); }, 60);
+  }, 550); });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, stop);
+  b.addEventListener("contextmenu", e => e.preventDefault());
+  $("menu").addEventListener("click", e => {            // nhả tay ngay sau khi giữ có thể rơi vào nền ⋯ vừa mở → đừng đóng nó
+    if (e.target === $("menu") && Date.now() - (WIN_HOLD.at || 0) < 800) e.stopImmediatePropagation();
+  }, true);
+})();
 async function reboot() {
   if (!confirm(L("Khởi động lại máy? Máy tắt rồi bật lại trong 1–3 phút, app đang mở sẽ bị đóng.", "Restart this phone? It turns off and back on in 1–3 minutes; open apps will close."))) return;
   try {
@@ -1936,6 +2118,74 @@ async function saveRoot() {
 }
 $("r-on").addEventListener("change", rootPaint);
 
+/* ---------- 🌐 PROXY RIÊNG CỦA MÁY (22/11 · cpapi GET/POST <máy>/proxy → phonectl proxy → cbproxy trong máy) ----------
+   Mật khẩu proxy KHÔNG bao giờ trả về trình duyệt (máy chủ chỉ trả user + ••••). Người được chia sẻ máy không xem / đổi được. */
+const PX = { cfg: null, busy: false, kind: "auto", touched: false, t: 0, gen: 0 };
+const pxKindName = k => k === "socks5" ? "SOCKS5" : k === "http" ? "HTTP" : L("Tự nhận", "Auto");
+function pxKind(k) {
+  PX.kind = ["auto", "socks5", "http"].includes(k) ? k : "auto";
+  document.querySelectorAll("#px-kind button").forEach(b => { const on = b.dataset.kind === PX.kind; b.classList.toggle("on", on); b.setAttribute("aria-checked", on ? "true" : "false"); });
+}
+function pxPaint(err) {
+  const j = PX.cfg, cur = $("px-cur"), st = $("px-s");
+  st.className = "pxs"; $("px-off").hidden = $("px-again").hidden = !(j && j.set);
+  if (err) { cur.textContent = err; st.textContent = ""; return; }
+  if (!j) { cur.textContent = L("Đang đọc…", "Loading…"); st.textContent = ""; return; }
+  if (!j.set) { cur.textContent = L("Chưa dùng proxy", "No proxy"); st.textContent = L("Máy đang đi mạng của máy chủ.", "The phone uses the server's network."); return; }
+  const s = j.state || null;
+  cur.textContent = j.show + " · " + pxKindName(s && s.kind ? s.kind : j.kind);
+  let t, c = "warn";
+  if (!j.online) t = L("Máy đang tắt — proxy tự bật khi máy bật.", "The phone is off — the proxy turns on when it starts.");
+  else if (s && s.alive && s.mode === "proxy") { c = "ok"; t = L("✅ Đang chạy qua proxy", "✅ Running through the proxy") + (s.ip ? L(" · IP ra ", " · exit IP ") + s.ip : "") + (s.ms ? " · " + s.ms + " ms" : ""); }
+  else if (s && s.alive && s.mode === "direct") t = L("⚠ Proxy chưa dùng được", "⚠ The proxy doesn't work yet") + (s.err ? ": " + s.err : "") + L(" — máy tạm đi mạng thường, tự thử lại mỗi 15 giây.", " — the phone uses the normal network for now and retries every 15 s.");
+  else if (s && s.mode === "crashed") { c = "bad"; t = L("❌ Proxy đã dừng", "❌ The proxy stopped") + (s.err ? ": " + s.err : "") + L(" — bấm Áp dụng lại.", " — tap Re-apply."); }
+  else t = L("Proxy chưa chạy — bấm Áp dụng lại.", "The proxy isn't running — tap Re-apply.");
+  st.className = "pxs " + c; st.textContent = t;
+}
+async function pxLoad() {
+  const g = ++PX.gen;
+  try {
+    const j = await api(P.id + "/proxy", { method: "GET" }); if (g !== PX.gen) return; PX.cfg = j; pxPaint();
+    if (!PX.touched && j.set) pxKind(j.kind);                         // nhập proxy mới: mặc định cùng kiểu với proxy đang lưu
+  }
+  catch (e) {
+    if (g !== PX.gen) return; PX.cfg = null;
+    pxPaint(e.status === 403 ? L("Chỉ chủ máy mới xem / đặt được proxy của máy này.", "Only the phone's owner can view or set its proxy.")
+      : e.status === 409 && e.j && e.j.old ? L("Máy chủ chưa có tính năng này — báo admin cập nhật.", "The server doesn't have this feature yet — ask an admin to update it.")
+      : L("Không đọc được: ", "Couldn't read it: ") + e.message);
+    if (e.status === 403) { $("px-save").disabled = true; $("px-in").disabled = true; }
+  }
+}
+function openProxy() {
+  $("pxdlg").hidden = false; PX.cfg = null; pxPaint();
+  $("px-save").disabled = false; $("px-in").disabled = false; $("px-in").value = ""; PX.touched = false; pxKind("auto");
+  pxLoad(); clearInterval(PX.t); PX.t = setInterval(() => { if ($("pxdlg").hidden) clearInterval(PX.t); else if (!PX.busy) pxLoad(); }, 15000);
+}
+function closeProxy() { $("pxdlg").hidden = true; clearInterval(PX.t); $("px-in").value = ""; }
+async function pxDo(what) {
+  if (PX.busy) return;
+  const url = $("px-in").value.trim();
+  if (what === "set") {
+    if (!url) { $("px-in").focus(); return toast(L("Dán proxy vào ô trước (vd 1.2.3.4:8080:user:pass).", "Paste the proxy first (e.g. 1.2.3.4:8080:user:pass).")); }
+    if (!/[:@]/.test(url) || /\s/.test(url)) return toast(L("Proxy phải có dạng IP:Port hoặc IP:Port:User:Pass (không có dấu cách).", "The proxy must look like IP:Port or IP:Port:User:Pass (no spaces)."));
+  }
+  if (what === "off" && !confirm(L("Tắt proxy? Máy quay về mạng của máy chủ.", "Turn the proxy off? The phone goes back to the server's network."))) return;
+  PX.busy = true; const btn = $(what === "set" ? "px-save" : what === "off" ? "px-off" : "px-again"), old = btn.textContent;
+  ["px-save", "px-off", "px-again"].forEach(i => $(i).disabled = true); btn.textContent = L("Đang làm…", "Working…");
+  try {
+    const j = await api(P.id + "/proxy", { json: what === "set" ? { do: "set", url, kind: PX.kind } : { do: what } });
+    if (what === "set") $("px-in").value = "";                       // không giữ mật khẩu proxy trong ô sau khi đã gửi
+    const r = await watchJob(j.job, "Proxy");
+    if (r && r.state === "done" && what === "off") closeProxy();
+  } catch (e) { toast(L("Không làm được: ", "Couldn't do it: ") + e.message); }
+  finally {
+    PX.busy = false; ["px-save", "px-off", "px-again"].forEach(i => $(i).disabled = false); btn.textContent = old;
+    if (!$("pxdlg").hidden) pxLoad();
+  }
+}
+document.querySelectorAll("#px-kind button").forEach(b => b.addEventListener("click", () => { PX.touched = true; pxKind(b.dataset.kind); }));
+$("px-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); pxDo("set"); } });
+
 /* ---------- thông số (bấm 📊 trong menu) ---------- */
 function tick() {
   const now = performance.now(), dt = (now - (P.f0t || now)) / 1000;
@@ -1971,7 +2221,7 @@ addEventListener("pagehide", () => { if (!P.stopped) send(T.BYE); });
    Mỗi ô là 1 khung mở chính trang này (?id=…&tile=1) = 1 phiên điều khiển bình thường — máy chủ kiểm quyền từng máy như cũ.
    Đồng bộ = trang cha chuyển thao tác của ô đang được chạm cho các ô còn lại (postMessage, cùng nguồn gốc); không thêm đường vào nào ở máy chủ.
    ===================================================================================================== */
-const MU = { rows: [], tiles: [], sync: false, one: false, act: 0, uid: "", railSig: "" };
+const MU = { rows: [], tiles: [], sync: false, one: false, act: 0, uid: "", railSig: "", kind: "" };
 const MU_MAX = 9, MU_HEAD = 30;
 const muLive = () => MU.tiles.filter(t => !t.gone);
 const muSend = (t, o) => { try { t.fr.contentWindow.postMessage(Object.assign({ cb: "host" }, o), location.origin); } catch {} };
@@ -1986,11 +2236,26 @@ function muText() {                            // chữ cố định của màn 
   const T2 = { back: L("Quay lại", "Back"), home: L("Màn hình chính", "Home"), recents: L("Ứng dụng gần đây", "Recents"), type: L("Gõ chữ vào máy", "Type into phone"), more: L("Thêm", "More") };
   $("mu-bar").querySelectorAll("[data-m]").forEach(b => { b.title = T2[b.dataset.m]; b.setAttribute("aria-label", T2[b.dataset.m]); });
 }
-async function showMulti(first) {
+async function showMulti(first, kind) {
+  if (kind !== undefined) MU.kind = kind === "pc" ? "pc" : "";
+  if (MU.kind === "pc") pcMode(true);
   stopPlay(); view("v-multi"); wake(); muText(); muPaint();
-  if (!TEST) history.replaceState(null, "", location.pathname + "?multi=1");
+  if (!TEST) history.replaceState(null, "", location.pathname + (MU.kind === "pc" ? "?multi=pc" : "?multi=1"));
   let rows = [];
-  if (TEST) rows = (Q.get("ids") || "").split(",").filter(x => UUID.test(x)).map((id, i) => ({ id, name: "Máy thử " + (i + 1) }));
+  if (TEST) rows = (Q.get("ids") || "").split(",").filter(x => UUID.test(x)).map((id, i) => ({ id, name: (MU.kind === "pc" ? "VPS thử " : "Máy thử ") + (i + 1) }));
+  else if (MU.kind === "pc") {                                           // web-2.2: các MÁY PC đang thuê + đang bật (VPS GPU)
+    if (!muLive().length) muNote(L("Đang tải danh sách máy…", "Loading your machines…"));
+    const s = await session(); if (!s) return showLogin();
+    MU.uid = s.user.id;
+    try {
+      const r = await sb.rpc("pc_my_vps"); if (r.error) throw r.error;
+      rows = ((r.data && r.data.items) || []).filter(x => x && x.state === "active" && x.pc && UUID.test(x.pc.id) && x.pc.online && x.pc.remote !== false && !x.pc.lock)
+        .map(x => ({ id: x.pc.id, name: x.pc.name || "VPS GPU" }));
+    } catch (e) {
+      if (document.body.dataset.view !== "v-multi") return;
+      return muNote(L("Không tải được danh sách máy", "Couldn't load your machines") + " (" + (e.message || e) + ").", L("Thử lại", "Retry"), () => showMulti(first));
+    }
+  }
   else {
     if (!muLive().length) muNote(L("Đang tải danh sách máy…", "Loading your phones…"));
     const s = await session(); if (!s) return showLogin();
@@ -2009,13 +2274,14 @@ async function showMulti(first) {
   }
   if (document.body.dataset.view !== "v-multi") return;                    // khách đã rời màn này trong lúc chờ
   MU.rows = rows;
-  if (!rows.length) return muNote("📱 " + L("Chưa có máy nào đang chạy.", "No running phones."), L("Về danh sách máy", "Back to phones"), showList);
+  if (!rows.length) return MU.kind === "pc" ? muNote("🖥 " + L("Chưa có VPS GPU nào đang bật.", "No GPU VPS is running."), L("Về VPS GPU của bạn", "Back to your GPU VPS"), () => { location.href = "/#pcs-mine"; })
+    : muNote("📱 " + L("Chưa có máy nào đang chạy.", "No running phones."), L("Về danh sách máy", "Back to phones"), showList);
   muNote("");
   muBuild(muPick(first), first);
 }
 function muPick(first) {                       // máy nào vào lưới: lần chọn trước (nhớ theo tài khoản) → không có thì các máy đầu danh sách
   const have = MU.rows.map(r => r.id), out = [];
-  for (const id of (lsGet("cb_multi_" + MU.uid) || "").split(",")) if (have.includes(id) && !out.includes(id) && out.length < MU_MAX) out.push(id);
+  for (const id of (lsGet("cb_multi_" + (MU.kind === "pc" ? "pc_" : "") + MU.uid) || "").split(",")) if (have.includes(id) && !out.includes(id) && out.length < MU_MAX) out.push(id);
   if (first && have.includes(first) && !out.includes(first)) { if (out.length >= MU_MAX) out.pop(); out.unshift(first); }
   if (out.length < 2) {
     out.length = 0; if (first && have.includes(first)) out.push(first);
@@ -2029,12 +2295,12 @@ function muTile(id, n) {
   const b1 = document.createElement("button"), b2 = document.createElement("button"), fr = document.createElement("iframe");
   el.className = "mt"; hd.className = "mth"; d.className = "d"; b1.type = b2.type = "button"; b1.textContent = "↗"; b2.textContent = "⤢";
   b1.title = L("Mở riêng máy này (đủ công cụ)", "Open this phone alone (all tools)"); b1.setAttribute("aria-label", b1.title);
-  const qs = new URLSearchParams({ id, tile: "1", tf: n >= 5 ? "20" : "30" });
+  const qs = new URLSearchParams(Object.assign(MU.kind === "pc" ? { pc: id } : { id }, { tile: "1", tf: n >= 5 ? "20" : "30" }));
   if (n >= 5) { qs.set("mh", "640"); qs.set("tk", "900"); }                 // từ 5 ô: hình nhỏ + nhẹ (ô vốn nhỏ) cho đỡ tốn mạng, nhẹ máy
   if (TEST) { qs.set("test", "1"); for (const k of ["ws", "wss", "name"]) if (Q.get(k)) qs.set(k, Q.get(k)); }
   fr.setAttribute("allow", "clipboard-read; clipboard-write"); fr.title = row.name || "Máy"; fr.src = location.pathname + "?" + qs;
   hd.append(d, lab, b1, b2); el.append(hd, fr);
-  const t = { id, name: row.name || L("Máy", "Phone"), el, fr, d, lab, big: b2, ar: 9 / 16, st: "wait", gone: false, paused: false };
+  const t = { id, name: row.name || L("Máy", "Phone"), el, fr, d, lab, big: b2, ar: MU.kind === "pc" ? 16 / 9 : 9 / 16, st: "wait", gone: false, paused: false };
   b1.onclick = () => muAlone(t); b2.onclick = () => muOne(!MU.one, t);
   hd.addEventListener("click", e => { if (!e.target.closest("button")) muAct(t); });
   return t;
@@ -2188,7 +2454,7 @@ function muMore() {
     box.appendChild(g);
   });
 }
-$("mu-back").onclick = () => showList();
+$("mu-back").onclick = () => { if (MU.kind === "pc") { muStop(); location.href = "/#pcs-mine"; return; } showList(); };
 $("mu-mode").onclick = () => muOne(!MU.one, null);
 $("mu-sh-x").onclick = () => { $("mu-sheet").hidden = true; };
 $("mu-sheet").addEventListener("click", e => { if (e.target === $("mu-sheet")) $("mu-sheet").hidden = true; });
@@ -2297,6 +2563,7 @@ function pcMouseSend(action, button, x, y) {
   const b = new Uint8Array(6), d = new DataView(b.buffer);
   b[0] = action; b[1] = button; d.setUint16(2, Math.round(c01(x) * 65535)); d.setUint16(4, Math.round(c01(y) * 65535));
   send(0x1B, b);                                                       // C_MOUSE: 0 rê · 1 nhấn · 2 nhả; nút 0 trái · 1 phải · 2 giữa · 3/4 nút phụ
+  syOut(["m", action, button, c01(x), c01(y)]);                        // web-2.2: đồng bộ chuột sang các máy PC khác đang mở cùng lưới
 }
 function pcMouse(e, kind) {                                            // kind: 0 rê · 1 nhấn · 2 nhả
   const [x, y] = rel(e);
@@ -2316,7 +2583,7 @@ function pcMouse(e, kind) {                                            // kind: 
 }
 function pcKey(e, up) {                                                // true = đã gửi (trang không xử lý thêm)
   if (e.target === kb) return false;                                   // ô gõ của điện thoại (bàn phím ảo, gõ tiếng Việt) → đường gửi chữ như cũ
-  if (!up && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V") && !e.altKey && !e.shiftKey) return false;   // Ctrl+V → dán chữ của máy mình sang máy PC
+  if (!up && (e.ctrlKey || e.metaKey) && (e.key === "v" || e.key === "V") && !e.altKey) return false;   // Ctrl+V / Ctrl+Shift+V → dán chữ của máy mình sang máy PC
   const code = PC_KEYS[e.code]; if (code === undefined) return false;
   e.preventDefault();
   if (!up) { if (PCK.down.has(e.code) && e.repeat) { keyAct(0, code, 0); return true; } PCK.down.set(e.code, code); keyAct(0, code, 0); }
@@ -2334,6 +2601,7 @@ window.addEventListener("blur", pcRelease);
 document.addEventListener("visibilitychange", () => { if (document.hidden) pcRelease(); });
 function pcMode(on) {
   document.body.classList.toggle("pcm", !!on);
+  setTimeout(() => { try { pcinPaint(); } catch {} }, 0);
   const tt = { back: on ? "Esc" : L("Quay lại", "Back"), home: on ? L("Màn hình nền (Win+D)", "Desktop (Win+D)") : L("Màn hình chính", "Home"), recents: on ? L("Chuyển cửa sổ (Win+Tab)", "Switch windows (Win+Tab)") : L("Ứng dụng gần đây", "Recent apps") };
   for (const k in tt) { const b = document.querySelector('.bar [data-a="' + k + '"]'); if (b) { b.title = tt[k]; b.setAttribute("aria-label", tt[k]); } }
   if (!on) return;
@@ -2349,17 +2617,170 @@ function pcMode(on) {
   }
 }
 
+/* ===== 21/11f · MÁY PC: KIỂU CHẠM như Chrome Remote Desktop (chỉ máy có màn cảm ứng; chuột thật vẫn như cũ)
+   0 chạm trực tiếp (máy PC tự đổi chạm → chuột) · 1 bàn di chuột (con trỏ tại chỗ, chạm = bấm, 2 ngón chạm = chuột phải, 2 ngón kéo = cuộn,
+   chạm 2 lần rồi giữ = kéo thả) · 2 / 3 = chạm trực tiếp + 2 / 3 ngón kéo-phóng to hình (chỉ trên máy khách, máy PC không biết).
+   Xoay màn: "Theo điện thoại" / "Luôn màn ngang" (= ⋯ Tự hiện màn ngang). Nhớ trên máy này. ===== */
+const PCIN = { m: 0, s: 1, tx: 0, ty: 0, z: null, pts: new Map(), pad: null, cx: .5, cy: .5, tapT: 0, mvT: 0, mvP: 0 };
+const TOUCHY = (() => { try { return matchMedia("(pointer:coarse)").matches || (navigator.maxTouchPoints || 0) > 0; } catch { return false; } })();
+try { PCIN.m = Math.max(0, Math.min(3, parseInt(localStorage.getItem("cb_pc_in") || "0", 10) || 0)); } catch {}
+const PCIN_N = () => [L("Chạm trực tiếp", "Direct touch"), L("Bàn di chuột", "Trackpad"), L("Chạm + 2 ngón phóng to", "Touch + 2-finger zoom"), L("Chạm + 3 ngón phóng to", "Touch + 3-finger zoom")];
+const PCIN_D = () => [L("Chạm vào đâu bấm vào đó · giữ yên = chuột phải · 2 ngón vuốt = cuộn.", "Tap where you want · hold = right click · 2-finger swipe = scroll."),
+  L("Kéo ngón để di con trỏ · chạm = bấm · 2 ngón chạm = chuột phải · 2 ngón kéo = cuộn · chạm 2 lần rồi giữ = kéo thả.", "Drag to move the pointer · tap = click · 2-finger tap = right click · 2-finger drag = scroll · double-tap & hold = drag."),
+  L("1 ngón điều khiển máy · 2 ngón kéo / phóng to hình (chỉ trên máy bạn).", "1 finger controls the PC · 2 fingers pan / zoom the picture."),
+  L("1–2 ngón điều khiển máy (2 ngón = cuộn) · 3 ngón kéo / phóng to hình.", "1–2 fingers control the PC (2 = scroll) · 3 fingers pan / zoom.")];
+function pcinOn() { return P.kind === "pc" && TOUCHY; }
+function pcinPaint() {
+  const on = pcinOn(), box = $("pcin-box"), bt = document.querySelector('.bar [data-a="pcin"]');
+  if (box) box.hidden = !on; if (bt) bt.hidden = !on;
+  document.body.classList.toggle("pcpad", on && PCIN.m === 1);
+  document.querySelectorAll("#pcin-seg [data-pcin]").forEach(b => b.classList.toggle("on", +b.dataset.pcin === PCIN.m));
+  document.querySelectorAll("#pcor-seg [data-pcor]").forEach(b => b.classList.toggle("on", (b.dataset.pcor === "land") === !!LAND));
+  const d = $("pcin-d"); if (d) d.textContent = PCIN_D()[PCIN.m] || "";
+  if (on) { const lr = $("m-land-row"), lf = $("m-land-flip"); if (lr) lr.hidden = true; if (lf) lf.hidden = !PHONE || !LAND; }
+  pcCurPlace();
+}
+function pcinCancel() {
+  for (const p of ptrs.values()) { clearTimeout(p.pend); touch(3, p.id, p.x, p.y); }
+  ptrs.clear();
+  const p = PCIN.pad; if (p) { clearTimeout(p.lt); if (p.drag) pcMouseSend(2, 0, PCIN.cx, PCIN.cy); }
+  PCIN.pad = null; PCIN.pts.clear(); PCIN.z = null;
+}
+function pcinSet(m) {
+  pcinCancel(); PCIN.m = m; try { localStorage.setItem("cb_pc_in", String(m)); } catch {}
+  pcZoomReset(); pcinPaint(); toast(L("Kiểu chạm: ", "Touch mode: ") + PCIN_N()[m]);
+}
+document.addEventListener("click", e => {
+  const a = e.target.closest && e.target.closest("[data-pcin]"); if (a) { pcinSet(+a.dataset.pcin); return; }
+  const o = e.target.closest && e.target.closest("[data-pcor]"); if (!o) return;
+  LAND = o.dataset.pcor === "land"; try { localStorage.setItem("cb_land", LAND ? "1" : "0"); } catch {}
+  try { landPaint(); } catch {} fitApp(); pcinPaint();
+  toast(LAND ? L("Luôn màn ngang: hình tự xoay ngang to hết màn — cầm ngang điện thoại.", "Always landscape: the picture turns sideways — hold your phone sideways.")
+             : L("Theo điện thoại: cầm ngang hay dọc, hình xoay theo.", "Follow the phone: the picture rotates with your phone."));
+});
+function pcCurPlace() {
+  const c = $("pc-cur"); if (!c || !document.body.classList.contains("pcpad")) return;
+  c.style.left = (cv.offsetLeft + PCIN.cx * cv.offsetWidth) + "px"; c.style.top = (cv.offsetTop + PCIN.cy * cv.offsetHeight) + "px";
+}
+function pcZoomApply() {
+  if (PCIN.s <= 1.001) { PCIN.s = 1; PCIN.tx = PCIN.ty = 0; cv.style.transform = ""; cv.style.transformOrigin = ""; }
+  else { cv.style.transformOrigin = "0 0"; cv.style.transform = `translate(${PCIN.tx}px,${PCIN.ty}px) scale(${PCIN.s})`; }
+}
+function pcZoomReset() { PCIN.s = 1; PCIN.tx = PCIN.ty = 0; PCIN.z = null; pcZoomApply(); pcCurPlace(); }
+function zSpread() {
+  let x = 0, y = 0, n = 0; for (const p of PCIN.pts.values()) { x += p.x; y += p.y; n++; }
+  if (!n) return [0, 0, 1]; x /= n; y /= n; let d = 0; for (const p of PCIN.pts.values()) d += Math.hypot(p.x - x, p.y - y);
+  return [x, y, Math.max(1, d / n)];
+}
+function zAnchor() {
+  const t = cv.style.transform; cv.style.transform = ""; const B = cv.getBoundingClientRect(); cv.style.transform = t;
+  const [cx, cy, sp] = zSpread();
+  return { B, s0: PCIN.s, sp0: sp, u: (cx - (B.left + PCIN.tx)) / (B.width * PCIN.s), v: (cy - (B.top + PCIN.ty)) / (B.height * PCIN.s) };
+}
+function zMove() {
+  const z = PCIN.z; if (!z) return;
+  const [cx, cy, sp] = zSpread(), s = PCIN.pts.size >= 2 ? Math.max(1, Math.min(6, z.s0 * sp / z.sp0)) : PCIN.s;
+  const W = z.B.width * s, H = z.B.height * s, S = $("stage").getBoundingClientRect();
+  let left = cx - z.u * W, top = cy - z.v * H;
+  left = W <= S.width ? S.left + (S.width - W) / 2 : Math.min(S.left, Math.max(S.right - W, left));      // hình luôn phủ kín khung, không lòi mép trống
+  top = H <= S.height ? S.top + (S.height - H) / 2 : Math.min(S.top, Math.max(S.bottom - H, top));
+  PCIN.s = s; PCIN.tx = left - z.B.left; PCIN.ty = top - z.B.top; pcZoomApply();
+}
+function zoomPtr(e, kind) {
+  const need = PCIN.m === 2 ? 2 : 3;
+  if (kind === 0) PCIN.pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  else if (PCIN.pts.has(e.pointerId)) { const p = PCIN.pts.get(e.pointerId); p.x = e.clientX; p.y = e.clientY; }
+  if (!PCIN.z) {
+    if (kind === 0 && PCIN.pts.size >= need && !isRot()) {          // đủ ngón → phóng to tại chỗ; các ngón đã gửi máy → huỷ (không thành bấm)
+      for (const p of ptrs.values()) { clearTimeout(p.pend); touch(3, p.id, p.x, p.y); }
+      ptrs.clear(); e.preventDefault();
+      try { cv.setPointerCapture(e.pointerId); } catch {}
+      PCIN.z = zAnchor(); return true;
+    }
+    if (kind >= 2) PCIN.pts.delete(e.pointerId);
+    return false;                                                    // ít ngón hơn → chạm thẳng vào máy như thường
+  }
+  e.preventDefault();
+  if (kind === 1) zMove();
+  else if (kind === 0) PCIN.z = zAnchor();
+  else { PCIN.pts.delete(e.pointerId); PCIN.z = PCIN.pts.size ? zAnchor() : null; }
+  return true;
+}
+function padClick(bt) { pcMouseSend(0, 0, PCIN.cx, PCIN.cy); pcMouseSend(1, bt, PCIN.cx, PCIN.cy); pcMouseSend(2, bt, PCIN.cx, PCIN.cy); }
+function padMoveSend() {
+  const now = performance.now(), wait = 12 - (now - PCIN.mvT);
+  if (wait <= 0) { PCIN.mvT = now; pcMouseSend(0, 0, PCIN.cx, PCIN.cy); }
+  else if (!PCIN.mvP) PCIN.mvP = setTimeout(() => { PCIN.mvP = 0; PCIN.mvT = performance.now(); pcMouseSend(0, 0, PCIN.cx, PCIN.cy); }, wait);
+}
+function padPtr(e, kind) {
+  e.preventDefault();
+  const now = performance.now();
+  if (kind === 0) {
+    PCIN.pts.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
+    try { cv.setPointerCapture(e.pointerId); } catch {}
+    if (PCIN.pts.size === 1) {
+      if (P.kind === "pc") { try { kbHide(); } catch {} }
+      const p = PCIN.pad = { t: now, moved: 0, two: false, twoMoved: false, long: false, drag: now - PCIN.tapT < 300, acc: 0, lt: 0 };
+      if (p.drag) { pcMouseSend(0, 0, PCIN.cx, PCIN.cy); pcMouseSend(1, 0, PCIN.cx, PCIN.cy); }
+      else p.lt = setTimeout(() => { const q = PCIN.pad; if (q === p && !q.two && q.moved < 10) { q.long = true; padClick(1); } }, 550);
+    } else if (PCIN.pts.size === 2 && PCIN.pad && !PCIN.pad.drag) {
+      const p = PCIN.pad; clearTimeout(p.lt); p.two = true; p.twoMoved = false; p.acc = 0; p.ly = zSpread()[1];
+    }
+    return true;
+  }
+  const pt = PCIN.pts.get(e.pointerId), p = PCIN.pad;
+  if (!pt) return true;
+  if (kind === 1) {
+    if (!p) return true;
+    const ox = pt.x, oy = pt.y; pt.x = e.clientX; pt.y = e.clientY;
+    if (p.two) {
+      const cy = zSpread()[1], dy = cy - p.ly; p.ly = cy;
+      if (Math.hypot(pt.x - pt.x0, pt.y - pt.y0) > 12) p.twoMoved = true;
+      p.acc += dy;
+      while (Math.abs(p.acc) >= 18) { scroll(PCIN.cx, PCIN.cy, 0, p.acc > 0 ? 120 : -120); p.acc += p.acc > 0 ? -18 : 18; }   // ngón đi xuống → trang đi xuống theo ngón
+      return true;
+    }
+    if (PCIN.pts.size > 1) return true;
+    const a = rel({ clientX: ox, clientY: oy }), b = rel(e), v = Math.hypot(pt.x - ox, pt.y - oy);
+    p.moved += v; if (p.moved > 10) clearTimeout(p.lt);
+    const k = (1 + Math.min(2.2, v / 6) * .55) * 1.15;                 // ngón đi nhanh → con trỏ đi xa hơn
+    PCIN.cx = Math.max(0, Math.min(1, PCIN.cx + (b[0] - a[0]) * k)); PCIN.cy = Math.max(0, Math.min(1, PCIN.cy + (b[1] - a[1]) * k));
+    pcCurPlace(); padMoveSend();
+    return true;
+  }
+  // nhấc ngón / huỷ
+  PCIN.pts.delete(e.pointerId);
+  if (!p) return true;
+  if (p.two) {
+    if (PCIN.pts.size === 1) { if (!p.twoMoved && now - p.t < 400 && kind === 2) padClick(1); p.two = false; p.moved = 99; }   // 2 ngón chạm nhanh = chuột phải
+    return true;
+  }
+  if (PCIN.pts.size) return true;
+  clearTimeout(p.lt);
+  if (p.drag) { pcMouseSend(2, 0, PCIN.cx, PCIN.cy); PCIN.tapT = 0; }
+  else if (kind === 2 && !p.long && p.moved <= 10 && now - p.t < 300) { padClick(0); PCIN.tapT = now; }
+  PCIN.pad = null;
+  return true;
+}
+function pcinPtr(e, kind) {
+  if (e.pointerType === "mouse") return false;
+  if (PCIN.m === 1) return padPtr(e, kind);
+  if (PCIN.m === 2 || PCIN.m === 3) return zoomPtr(e, kind);
+  return false;
+}
+
 async function boot() {
   fitApp();
   if (TILE) tilePost({ k: "hello" });                                       // web-1.8: ô báo trang cha đã sẵn sàng (cha gửi lại trạng thái đồng bộ)
-  if (TEST) return MULTI ? showMulti() : openPhone(PCM || Q.get("id") || "00000000-0000-4000-8000-000000000001");
+  if (TEST) return MULTI ? showMulti(undefined, Q.get("multi") === "pc" ? "pc" : "") : openPhone(PCM || Q.get("id") || "00000000-0000-4000-8000-000000000001");
   if (!sb) { view("v-login"); $("lerr").textContent = "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang."; return; }
   const s = await session();
   if (!s) return showLogin();
   const id = Q.get("id");
   P.wantRoot = Q.get("root") === "1";
+  P.wantProxy = Q.get("proxy") === "1";
   if (PCM && !MULTI) return openPhone(PCM);                              // web-2.0: máy PC thật
-  if (MULTI) showMulti(); else if (id && UUID.test(id)) openPhone(id); else showList();
+  if (MULTI) showMulti(PCM || undefined, Q.get("multi") === "pc" ? "pc" : ""); else if (id && UUID.test(id)) openPhone(id); else showList();
 }
 boot();
 </script>
@@ -2367,7 +2788,7 @@ boot();
 "use strict";
 /* 16/11c — CÂU MÁY CHỦ (tiếng Việt) → tiếng Anh khi web dùng English. SINH TỰ ĐỘNG từ i18n/server.json (v2/gen/make_srv.py). */
 const SRV_GEN = "Something went wrong on the server — try again in a moment or contact support.";
-const SRV_R = [["Máy chủ chưa lấy được hình của máy này\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa \\(1–2 phút, dữ liệu giữ nguyên\\) — vẫn lỗi thì báo hỗ trợ\\.", "The server couldn't get this phone's screen. Tap “Restart phone” to fix it (1–2 minutes, your data is kept) — if it still fails, contact support."], ["Máy chưa bật lại được — máy chủ sẽ tự thử lại\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ\\.", "The phone couldn't be started yet — the server will keep trying. Tap “Restart phone” for a quick fix; if it's still like this after 5 minutes, contact support."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút, đã (\\d+) giây\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes ({1} s so far). You'll get in automatically when it's up."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes. You'll get in automatically when it's up."], ["🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — the server is busy, so it's taking longer than usual ({1} s so far). You can leave; it keeps restarting — open it again to get in."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes ({1} s so far). You can leave; it keeps restarting — open it again to get in."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes. You can leave; it keeps restarting — open it again to get in."], ["Máy đang bật nhưng Android chưa trả lời, đã (\\d+) giây\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet ({1} s). Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang bật nhưng Android chưa trả lời\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet. Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang tạm dừng trên máy chủ\\. Bấm [“\"]Khởi động lại máy[”\"] để bật lại; không được thì báo hỗ trợ\\.", "The phone is paused on the server. Tap “Restart phone” to start it again; if that doesn't work, contact support."], ["Máy chủ chưa có máy này \\(có thể đang được tạo lại\\)\\. Chờ ít phút; vẫn vậy thì báo hỗ trợ kèm tên máy\\.", "The server doesn't have this phone yet (it may be being recreated). Wait a few minutes; if it stays like this, contact support with the phone's name."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút, đã (\\d+) giây\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute ({1} s so far)."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute."], ["Máy chưa thức dậy sau 4 phút — mở lại sau ít phút hoặc báo hỗ trợ\\.", "The phone hasn't woken up after 4 minutes — reopen it in a few minutes or contact support."], ["Máy chưa lên sau 4 phút — bấm [“\"]Khởi động lại máy[”\"] hoặc báo hỗ trợ\\.", "The phone isn't up after 4 minutes — tap “Restart phone” or contact support."], ["Máy không còn tồn tại\\.", "This phone no longer exists."], ["Chủ máy đã tắt chia sẻ hoặc đã chuyển máy — bạn không còn quyền dùng máy này\\.", "The owner stopped sharing or transferred this phone — you no longer have access."], ["Thiếu mã máy\\.", "Missing phone ID."], ["Phiên đăng nhập hết hạn, hãy đăng nhập lại\\.", "Session expired, please log in again."], ["Không tìm thấy máy\\.", "Phone not found."], ["Đây không phải máy của bạn\\.", "This isn't your phone."], ["Máy nằm ở máy chủ khác — hãy mở lại\\.", "This phone is on another server — please reopen it."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã hết hạn\\)\\.", "The phone isn't running (being created, paused or expired)."], ["Máy chưa sẵn sàng, thử lại sau ít giây\\.", "The phone isn't ready yet, try again in a few seconds."], ["Máy chưa sẵn sàng\\.", "The phone isn't ready yet."], ["Máy đang bị khoá: liên hệ hỗ trợ\\.", "This phone is locked — contact support."], ["Máy đang bị khoá: (.+)", "This phone is locked: {1}"], ["Hệ thống đang bảo trì, quay lại sau ít phút\\.", "Under maintenance — please come back in a few minutes."], ["Không lấy được hình từ cửa sổ máy — thử mở lại\\.", "Couldn't get the phone's picture — try reopening it."], ["Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại\\.", "The phone is off or restarting — wait a few seconds, then reopen it."], ["Máy đang tắt hoặc đang khởi động lại\\.", "The phone is off or restarting."], ["Máy đang được mở ở nơi khác\\.", "This phone was opened somewhere else."], ["Đang mở máy ở kết nối khác\\.", "The phone is being opened on another connection."], ["Màn hình Android của máy này đang lỗi \\(máy chủ không lấy được hình\\)\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa — vẫn lỗi thì báo hỗ trợ\\.", "This phone's Android screen has a problem (the server can't get the picture). Tap “Restart phone” to fix it — if it still fails, contact support."], ["Máy chủ đang bận — tạm tắt hình xem trước\\.", "The server is busy — live preview is paused."], ["Máy đang được xem trước ở nhiều nơi\\.", "This phone is being previewed in too many places."], ["Chưa bật được hình xem trước\\.", "Couldn't start the live preview."], ["Máy đang nghỉ — mở máy để bật lại\\.", "The phone is resting — open it to wake it up."], ["Máy chủ chưa bật được hình — thử lại\\.", "The server couldn't start the picture — retrying."], ["Máy chủ đang bận, thử lại…", "The server is busy, retrying…"], ["Hệ thống đang bảo trì: (.+)\\. Vui lòng quay lại sau\\.", "Under maintenance: {1}. Please come back later."], ["Hệ thống đang bảo trì\\. Vui lòng quay lại sau\\.", "Under maintenance. Please come back later."], ["Máy đang bị khoá đến (\\S+ \\S+): (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}: {2}. Contact support if needed."], ["Máy đang bị khoá đến (\\S+ \\S+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn: (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked: {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked. Contact support if needed."], ["Không có chức năng này\\.", "This feature isn't available."], ["Không được phép\\.", "Not allowed."], ["Nguồn không được phép\\.", "Source not allowed."], ["Phiên đăng nhập hết hạn — tải lại trang và đăng nhập lại\\.", "Session expired — reload and log in again."], ["Không tìm thấy máy của bạn\\.", "Your phone wasn't found."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã huỷ\\)\\.", "The phone isn't running (being created, paused or cancelled)."], ["Hãy mở máy từ app hoặc trang web\\.", "Open the phone from the app or the website."], ["Máy phản hồi quá lâu, thử lại\\.", "The phone took too long to respond, try again."], ["Không có việc này\\.", "Job not found."], ["Chỉ admin\\.", "Admins only."], ["Không có file này\\.", "File not found."], ["Phím không hợp lệ\\.", "Invalid key."], ["Chưa nhập chữ\\.", "No text entered."], ["Chỉ dán được chữ KHÔNG DẤU\\. Chữ có dấu hãy gõ trực tiếp trên màn hình máy\\.", "Only plain text without accents can be pasted. Type accented text directly on the phone screen."], ["Link phải bắt đầu bằng http:// hoặc https://", "The link must start with http:// or https://"], ["Chưa xoay được — máy chưa sẵn sàng, thử lại sau giây lát\\.", "Couldn't rotate — the phone isn't ready, try again shortly."], ["Chưa đọc được màn hình máy — thử lại sau giây lát\\.", "Couldn't read the phone's screen — try again shortly."], ["Chưa lấy được mã — mở Cửa hàng Play 1 lần, đợi 1 phút rồi thử lại\\.", "Couldn't get the ID yet — open the Play Store once, wait 1 minute, then try again."], ["Không có app này trong kho\\.", "This app isn't in the store."], ["Tên app không hợp lệ\\.", "Invalid app name."], ["Tên ứng dụng không hợp lệ\\.", "Invalid app name."], ["Đã tắt vị trí giả\\.", "Fake location turned off."], ["Toạ độ không hợp lệ\\.", "Invalid coordinates."], ["Đổi vị trí GPS cần máy Android 12 trở lên\\.", "Changing the GPS location needs Android 12 or newer."], ["Đã bỏ các bản clone\\.", "Clones removed."], ["Chưa có bản clone này — bấm Clone trước\\.", "This clone doesn't exist yet — tap Clone first."], ["Số bản clone không hợp lệ\\.", "Invalid number of clones."], ["Máy này chỉ đủ chạy (\\d+) bản clone cho mượt \\(mỗi bản cần \\+3GB RAM, \\+2 nhân\\)\\. Chọn ít bản hơn, hoặc bấm Nâng cấp RAM/CPU\\.", "This phone can only run {1} clone(s) smoothly (each needs +3GB RAM, +2 cores). Choose fewer, or tap Upgrade RAM/CPU."], ["Máy ([\\d.]+)GB / ([\\d.]+) nhân chưa đủ để chạy thêm .+", "A {1}GB / {2}-core phone isn't enough for clones (it would freeze). Clone tab needs at least 6GB RAM + 4 cores for 1 clone (+3GB RAM, +2 cores for each extra) — upgrade the phone first."], ["Máy chưa cài app này — cài bản chính trước rồi mới clone\\.", "This app isn't installed — install the main app first, then clone it."], ["Android trong máy không cho tạo hồ sơ clone\\.", "Android on this phone doesn't allow clone profiles."], ["Đã mở bản clone (\\d+) của (.+)\\.", "Opened clone {1} of {2}."], ["Mã tải lên không hợp lệ\\.", "Invalid upload ID."], ["File rỗng hoặc lớn hơn 4GB\\.", "The file is empty or larger than 4GB."], ["Server tạm hết dung lượng, thử lại sau\\.", "The server is out of space, try again later."], ["Lệch vị trí", "Upload position mismatch", "j"], ["Dữ liệu vượt kích thước file\\.", "The data is larger than the file."], ["FPS phải từ (\\d+) đến (\\d+)\\.", "FPS must be between {1} and {2}."], ["FPS phải từ (\\d+) đến (\\d+)", "FPS must be between {1} and {2}"], ["FPS không hợp lệ\\.", "Invalid FPS."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS \\(treo game nên để 30 FPS cho mượt\\)\\.", "Phones under 4 cores can use up to 60 FPS (30 FPS is best for idling games)."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS\\.?", "Phones under 4 cores can use up to 60 FPS."], ["Độ phân giải phải dạng rộng x cao, VD 1080x1920\\.", "Resolution must be width x height, e.g. 1080x1920."], ["Máy đang được đổi cấu hình, đợi chút\\.", "The phone's setup is being changed, please wait."], ["Không xác định được máy\\.", "Couldn't identify the phone."], ["Thiếu bật / tắt root\\.", "Missing root on / off."], ["Danh sách app không hợp lệ\\.", "Invalid app list."], ["Đang lưu cấu hình root của máy này, đợi vài giây\\.", "Saving this phone's root settings, wait a few seconds."], ["Chế độ không hợp lệ\\.", "Invalid mode."], ["Máy đang bị khoá — mở khoá trước rồi hãy ép khởi động lại\\.", "The phone is locked — unlock it before forcing a restart."], ["Máy đang khởi động lại / đổi cấu hình — đợi xong rồi thử lại\\.", "The phone is restarting / changing setup — wait until it's done, then try again."], ["Đang bảo trì\\.", "Under maintenance."], ["Lỗi máy chủ: .*", "Server error — try again."], ["Chỉ nhận file \\.apk / \\.apks / \\.apkm / \\.xapk", "Only .apk / .apks / .apkm / .xapk files are accepted"], ["Link không phải file APK\\.", "The link isn't an APK file."], ["Link không hợp lệ \\(chỉ nhận link http/https công khai\\)\\.", "Invalid link (public http/https links only)."], ["File quá lớn \\(tối đa 4GB\\)\\.", "File too large (max 4GB)."], ["File đã hết hạn, tải lên lại\\.", "The file expired — upload it again."], ["File gói hỏng hoặc bị mã hoá\\.", "The package file is corrupted or encrypted."], ["Gói không có file \\.apk bên trong\\.", "The package has no .apk inside."], ["Link này là TRANG WEB, không phải link tải file\\..*", "This link is a WEB PAGE, not a file download. Open it on your computer, tap Download, then copy the real download link (usually ending in .apk) and paste it here — or download the file and use “Upload file / APK”."], ["Không tải được từ Google Drive — hãy chia sẻ file ở chế độ [“\"]Bất kỳ ai có đường liên kết[”\"]\\.", "Couldn't download from Google Drive — share the file as “Anyone with the link”."], ["Độ rộng nhỏ nhất phải từ 240 đến 1600 dp\\.", "Smallest width must be between 240 and 1600 dp."], ["Độ rộng nhỏ nhất không hợp lệ\\.", "Invalid smallest width."], ["Máy chủ chưa cập nhật bản có Root theo app — báo admin cập nhật\\.", "The server doesn't support per-app root yet — ask an admin to update it."], ["Không lưu được cấu hình root, thử lại sau\\.", "Couldn't save root settings, try again later."], ["Cấu hình root đọc được bị lỗi\\.", "The root settings are corrupted."], ["Không chụp được màn hình\\.", "Couldn't take a screenshot."], ["Máy hết bộ nhớ — xoá bớt file / gỡ bớt app rồi thử lại\\.", "The phone is out of storage — delete some files or apps and try again."], ["Máy chủ của máy này chưa có tính năng này — đang được cập nhật, thử lại sau\\.", "This phone's server doesn't have this feature yet — try again later."], ["Đang khởi động Android \\(1–3 phút\\)…", "Starting Android (1–3 minutes)…"], ["Đang tắt hẳn máy \\(máy treo thì tắt cưỡng bức\\)…", "Shutting the phone down fully (force-stopping it if frozen)…"], ["Máy đã khởi động lại xong\\.", "The phone has restarted."], ["Máy đã khởi động, đang kết nối lại…", "The phone has started, reconnecting…"], ["Máy đã bật lại, đang kết nối….*", "The phone is back on, connecting…"], ["Đã ép khởi động lại xong.*", "Forced restart done."], ["Đang kiểm tra / bật root \\(máy có thể khởi động lại ~1 phút\\)…", "Checking / enabling root (the phone may restart, ~1 minute)…"], ["✅ Máy đã ROOT\\. Tool cần root \\(gọi lệnh su\\) dùng được ngay, không cần khởi động lại\\.", "✅ The phone is ROOTED. Tools that need root (su) work right away, no restart needed."], ["⏳ Máy đang bật root, chờ 1 phút rồi bấm lại\\.", "⏳ Root is being enabled — wait 1 minute, then tap again."], ["Đang bật root cho app đã chọn… \\(máy chưa có root gốc sẽ tự khởi động lại ~1 phút\\)", "Enabling root for the selected apps… (a phone without base root restarts, ~1 minute)"], ["Đang tắt root…", "Turning root off…"], ["Đã lưu\\.", "Saved.", "j"], ["Máy đang khởi động lại với chế độ mới \\(khoảng 1–2 phút\\)…", "Restarting the phone with the new mode (about 1–2 minutes)…"], ["Đã chuyển sang MƯỢT\\.", "Switched to SMOOTH."], ["Đã chuyển sang HIỆN 3D\\.", "Switched to 3D DISPLAY."], ["Đã đổi, đang kết nối lại…", "Changed, reconnecting…"], ["Đang áp dụng và khởi động lại máy \\(1–3 phút\\)…", "Applying and restarting the phone (1–3 minutes)…"], ["Đang đổi kích thước màn hình…", "Changing the screen size…"], ["Đã đổi sang (\\S+) · (\\d+) FPS\\. Dữ liệu vẫn giữ nguyên\\.", "Changed to {1} · {2} FPS. Your data is kept."], ["Đã đổi sang (\\S+) — app đang chạy vẫn giữ nguyên\\.", "Changed to {1} — running apps keep running."], ["Đang tạo (\\d+) bản clone \\(mỗi bản ~20 giây\\)…", "Creating {1} clone(s) (~20 s each)…"], ["✅ Đã có (\\d+) bản clone! Mở lại Clone tab.*", "✅ {1} clone(s) ready! Reopen Clone tab and tap ▶ Open clone 1, 2… to run them (or use the Work tab in the app list)."], ["✅ Đã có (\\d+) bản clone! Trên màn hình chính máy.*", "✅ {1} clone(s) ready! The phone's home screen has whale icons “Clone 1”, “Clone 2”… — tap one to open it."], ["Đã có (\\d+) bản clone\\. Máy cần KHỞI ĐỘNG LẠI 1 lần.*", "{1} clone(s) exist. The phone needs ONE restart to add more — tap “Restart”, then clone again."], ["Đã có (\\d+) bản clone — máy này chỉ cho tối đa.*", "{1} clone(s) exist — that's the most this phone allows. For more accounts, rent another phone."], ["Đã đặt vị trí (.+)\\. Mở lại app cần vị trí để nhận vị trí mới\\.", "Location set to {1}. Reopen apps that use location to get the new one."], ["✅ Đã cài (.+) — mở trên màn hình chính của máy\\.", "✅ Installed {1} — open it from the phone's home screen."], ["Đã cài xong (.+?)( \\(kèm (\\d+) file dữ liệu game\\))?", "Installed {1}", "j"], ["✅ Đã cài (.+)", "✅ Installed {1}", "j"], ["Đang cài (.+)", "Installing {1}", "j"], ["Đã lưu vào thư mục Download: (.+)", "Saved to the Download folder: {1}"], ["Đã tải (.+)", "Downloaded {1}", "j"], ["Không lấy được (.+) từ trang chính chủ \\(.*\\)\\. Thử lại sau ít phút\\.", "Couldn't download {1} from the official site. Try again in a few minutes."], ["Không khởi động lại được: .*", "Couldn't restart the phone — try again in a minute or contact support."], ["Không ép khởi động lại được: .*", "Couldn't force-restart the phone — try again in a minute or contact support."], ["Chưa khởi động lại được: .*", "Couldn't restart yet — try again in a minute."], ["Không đổi được: .*", "Couldn't change it — try again later."], ["Đổi cấu hình lỗi: .*", "Couldn't change the setup — try again later."], ["Chưa root được: .*", "Couldn't root the phone — try again later."], ["Không đọc được cấu hình root: .*", "Couldn't read the root settings."], ["Chưa clone được: .*", "Couldn't clone — try again later."], ["Chưa mở được bản clone: .*", "Couldn't open the clone."], ["Chưa đặt được vị trí: .*", "Couldn't set the location."], ["Cài APK lỗi: .*", "Couldn't install the APK."], ["Không chép được file vào máy: .*", "Couldn't copy the file to the phone."], ["Không chép được file: .*", "Couldn't copy the file."], ["Khởi động lại", "Restart", "j"], ["Ép khởi động lại", "Forced restart", "j"], ["Root máy", "Root phone", "j"], ["Đổi chế độ hình", "Change display mode", "j"], ["Cài (.+)", "Install {1}", "j"]].map(r => { try { return [new RegExp("^(?:" + r[0] + ")$", "s"), r[1], r[2] || ""]; } catch (e) { return null; } }).filter(Boolean);
+const SRV_R = [["Máy chủ chưa lấy được hình của máy này\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa \\(1–2 phút, dữ liệu giữ nguyên\\) — vẫn lỗi thì báo hỗ trợ\\.", "The server couldn't get this phone's screen. Tap “Restart phone” to fix it (1–2 minutes, your data is kept) — if it still fails, contact support."], ["Máy chưa bật lại được — máy chủ sẽ tự thử lại\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh; quá 5 phút vẫn vậy thì báo hỗ trợ\\.", "The phone couldn't be started yet — the server will keep trying. Tap “Restart phone” for a quick fix; if it's still like this after 5 minutes, contact support."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút, đã (\\d+) giây\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes ({1} s so far). You'll get in automatically when it's up."], ["🔄 Máy đang được bật lại — khoảng 1–2 phút\\. Tự vào khi máy lên\\.", "🔄 The phone is starting — about 1–2 minutes. You'll get in automatically when it's up."], ["🔄 Máy đang khởi động lại — máy chủ đang bận nên lâu hơn bình thường, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — the server is busy, so it's taking longer than usual ({1} s so far). You can leave; it keeps restarting — open it again to get in."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút, đã (\\d+) giây\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes ({1} s so far). You can leave; it keeps restarting — open it again to get in."], ["🔄 Máy đang khởi động lại — khoảng 1–2 phút\\. Bạn có thể thoát ra, máy vẫn tự khởi động; mở lại là vào\\.", "🔄 The phone is restarting — about 1–2 minutes. You can leave; it keeps restarting — open it again to get in."], ["Máy đang bật nhưng Android chưa trả lời, đã (\\d+) giây\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet ({1} s). Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang bật nhưng Android chưa trả lời\\. Chờ thêm ít phút, hoặc bấm [“\"]Khởi động lại máy[”\"] để sửa nhanh \\(1–2 phút, dữ liệu giữ nguyên\\)\\.", "The phone is on but Android isn't responding yet. Wait a few more minutes, or tap “Restart phone” for a quick fix (1–2 minutes, your data is kept)."], ["Máy đang tạm dừng trên máy chủ\\. Bấm [“\"]Khởi động lại máy[”\"] để bật lại; không được thì báo hỗ trợ\\.", "The phone is paused on the server. Tap “Restart phone” to start it again; if that doesn't work, contact support."], ["Máy chủ chưa có máy này \\(có thể đang được tạo lại\\)\\. Chờ ít phút; vẫn vậy thì báo hỗ trợ kèm tên máy\\.", "The server doesn't have this phone yet (it may be being recreated). Wait a few minutes; if it stays like this, contact support with the phone's name."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút, đã (\\d+) giây\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute ({1} s so far)."], ["💤 Máy đang thức dậy sau khi tự nghỉ \\(lâu không dùng\\) — khoảng 1 phút\\.", "💤 The phone is waking up after resting (unused for a while) — about 1 minute."], ["Máy chưa thức dậy sau 4 phút — mở lại sau ít phút hoặc báo hỗ trợ\\.", "The phone hasn't woken up after 4 minutes — reopen it in a few minutes or contact support."], ["Máy chưa lên sau 4 phút — bấm [“\"]Khởi động lại máy[”\"] hoặc báo hỗ trợ\\.", "The phone isn't up after 4 minutes — tap “Restart phone” or contact support."], ["Máy không còn tồn tại\\.", "This phone no longer exists."], ["Chủ máy đã tắt chia sẻ hoặc đã chuyển máy — bạn không còn quyền dùng máy này\\.", "The owner stopped sharing or transferred this phone — you no longer have access."], ["Thiếu mã máy\\.", "Missing phone ID."], ["Phiên đăng nhập hết hạn, hãy đăng nhập lại\\.", "Session expired, please log in again."], ["Không tìm thấy máy\\.", "Phone not found."], ["Đây không phải máy của bạn\\.", "This isn't your phone."], ["Máy nằm ở máy chủ khác — hãy mở lại\\.", "This phone is on another server — please reopen it."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã hết hạn\\)\\.", "The phone isn't running (being created, paused or expired)."], ["Máy chưa sẵn sàng, thử lại sau ít giây\\.", "The phone isn't ready yet, try again in a few seconds."], ["Máy chưa sẵn sàng\\.", "The phone isn't ready yet."], ["Máy đang bị khoá: liên hệ hỗ trợ\\.", "This phone is locked — contact support."], ["Máy đang bị khoá: (.+)", "This phone is locked: {1}"], ["Hệ thống đang bảo trì, quay lại sau ít phút\\.", "Under maintenance — please come back in a few minutes."], ["Không lấy được hình từ cửa sổ máy — thử mở lại\\.", "Couldn't get the phone's picture — try reopening it."], ["Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại\\.", "The phone is off or restarting — wait a few seconds, then reopen it."], ["Máy đang tắt hoặc đang khởi động lại\\.", "The phone is off or restarting."], ["Máy đang được mở ở nơi khác\\.", "This phone was opened somewhere else."], ["Đang mở máy ở kết nối khác\\.", "The phone is being opened on another connection."], ["Màn hình Android của máy này đang lỗi \\(máy chủ không lấy được hình\\)\\. Bấm [“\"]Khởi động lại máy[”\"] để sửa — vẫn lỗi thì báo hỗ trợ\\.", "This phone's Android screen has a problem (the server can't get the picture). Tap “Restart phone” to fix it — if it still fails, contact support."], ["Máy chủ đang bận — tạm tắt hình xem trước\\.", "The server is busy — live preview is paused."], ["Máy đang được xem trước ở nhiều nơi\\.", "This phone is being previewed in too many places."], ["Chưa bật được hình xem trước\\.", "Couldn't start the live preview."], ["Máy đang nghỉ — mở máy để bật lại\\.", "The phone is resting — open it to wake it up."], ["Máy chủ chưa bật được hình — thử lại\\.", "The server couldn't start the picture — retrying."], ["Máy chủ đang bận, thử lại…", "The server is busy, retrying…"], ["Hệ thống đang bảo trì: (.+)\\. Vui lòng quay lại sau\\.", "Under maintenance: {1}. Please come back later."], ["Hệ thống đang bảo trì\\. Vui lòng quay lại sau\\.", "Under maintenance. Please come back later."], ["Máy đang bị khoá đến (\\S+ \\S+): (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}: {2}. Contact support if needed."], ["Máy đang bị khoá đến (\\S+ \\S+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked until {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn: (.+)\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked: {1}. Contact support if needed."], ["Máy đang bị khoá vĩnh viễn\\. Liên hệ hỗ trợ nếu cần\\.", "This phone is locked. Contact support if needed."], ["Không có chức năng này\\.", "This feature isn't available."], ["Không được phép\\.", "Not allowed."], ["Nguồn không được phép\\.", "Source not allowed."], ["Phiên đăng nhập hết hạn — tải lại trang và đăng nhập lại\\.", "Session expired — reload and log in again."], ["Không tìm thấy máy của bạn\\.", "Your phone wasn't found."], ["Máy chưa chạy \\(đang tạo, tạm dừng hoặc đã huỷ\\)\\.", "The phone isn't running (being created, paused or cancelled)."], ["Hãy mở máy từ app hoặc trang web\\.", "Open the phone from the app or the website."], ["Máy phản hồi quá lâu, thử lại\\.", "The phone took too long to respond, try again."], ["Không có việc này\\.", "Job not found."], ["Chỉ admin\\.", "Admins only."], ["Không có file này\\.", "File not found."], ["Phím không hợp lệ\\.", "Invalid key."], ["Chưa nhập chữ\\.", "No text entered."], ["Chỉ dán được chữ KHÔNG DẤU\\. Chữ có dấu hãy gõ trực tiếp trên màn hình máy\\.", "Only plain text without accents can be pasted. Type accented text directly on the phone screen."], ["Link phải bắt đầu bằng http:// hoặc https://", "The link must start with http:// or https://"], ["Chưa xoay được — máy chưa sẵn sàng, thử lại sau giây lát\\.", "Couldn't rotate — the phone isn't ready, try again shortly."], ["Chưa đọc được màn hình máy — thử lại sau giây lát\\.", "Couldn't read the phone's screen — try again shortly."], ["Chưa lấy được mã — mở Cửa hàng Play 1 lần, đợi 1 phút rồi thử lại\\.", "Couldn't get the ID yet — open the Play Store once, wait 1 minute, then try again."], ["Không có app này trong kho\\.", "This app isn't in the store."], ["Tên app không hợp lệ\\.", "Invalid app name."], ["Tên ứng dụng không hợp lệ\\.", "Invalid app name."], ["Đã tắt vị trí giả\\.", "Fake location turned off."], ["Toạ độ không hợp lệ\\.", "Invalid coordinates."], ["Đổi vị trí GPS cần máy Android 12 trở lên\\.", "Changing the GPS location needs Android 12 or newer."], ["Đã bỏ các bản clone\\.", "Clones removed."], ["Chưa có bản clone này — bấm Clone trước\\.", "This clone doesn't exist yet — tap Clone first."], ["Số bản clone không hợp lệ\\.", "Invalid number of clones."], ["Máy này chỉ đủ chạy (\\d+) bản clone cho mượt \\(mỗi bản cần \\+3GB RAM, \\+2 nhân\\)\\. Chọn ít bản hơn, hoặc bấm Nâng cấp RAM/CPU\\.", "This phone can only run {1} clone(s) smoothly (each needs +3GB RAM, +2 cores). Choose fewer, or tap Upgrade RAM/CPU."], ["Máy ([\\d.]+)GB / ([\\d.]+) nhân chưa đủ để chạy thêm .+", "A {1}GB / {2}-core phone isn't enough for clones (it would freeze). Clone tab needs at least 6GB RAM + 4 cores for 1 clone (+3GB RAM, +2 cores for each extra) — upgrade the phone first."], ["Máy chưa cài app này — cài bản chính trước rồi mới clone\\.", "This app isn't installed — install the main app first, then clone it."], ["Android trong máy không cho tạo hồ sơ clone\\.", "Android on this phone doesn't allow clone profiles."], ["Đã mở bản clone (\\d+) của (.+)\\.", "Opened clone {1} of {2}."], ["Mã tải lên không hợp lệ\\.", "Invalid upload ID."], ["File rỗng hoặc lớn hơn 4GB\\.", "The file is empty or larger than 4GB."], ["Server tạm hết dung lượng, thử lại sau\\.", "The server is out of space, try again later."], ["Lệch vị trí", "Upload position mismatch", "j"], ["Dữ liệu vượt kích thước file\\.", "The data is larger than the file."], ["FPS phải từ (\\d+) đến (\\d+)\\.", "FPS must be between {1} and {2}."], ["FPS phải từ (\\d+) đến (\\d+)", "FPS must be between {1} and {2}"], ["FPS không hợp lệ\\.", "Invalid FPS."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS \\(treo game nên để 30 FPS cho mượt\\)\\.", "Phones under 4 cores can use up to 60 FPS (30 FPS is best for idling games)."], ["Máy dưới 4 nhân chỉ chọn tối đa 60 FPS\\.?", "Phones under 4 cores can use up to 60 FPS."], ["Độ phân giải phải dạng rộng x cao, VD 1080x1920\\.", "Resolution must be width x height, e.g. 1080x1920."], ["Máy đang được đổi cấu hình, đợi chút\\.", "The phone's setup is being changed, please wait."], ["Không xác định được máy\\.", "Couldn't identify the phone."], ["Thiếu bật / tắt root\\.", "Missing root on / off."], ["Danh sách app không hợp lệ\\.", "Invalid app list."], ["Đang lưu cấu hình root của máy này, đợi vài giây\\.", "Saving this phone's root settings, wait a few seconds."], ["Chế độ không hợp lệ\\.", "Invalid mode."], ["Máy đang bị khoá — mở khoá trước rồi hãy ép khởi động lại\\.", "The phone is locked — unlock it before forcing a restart."], ["Máy đang khởi động lại / đổi cấu hình — đợi xong rồi thử lại\\.", "The phone is restarting / changing setup — wait until it's done, then try again."], ["Đang bảo trì\\.", "Under maintenance."], ["Lỗi máy chủ: .*", "Server error — try again."], ["Chỉ nhận file \\.apk / \\.apks / \\.apkm / \\.xapk", "Only .apk / .apks / .apkm / .xapk files are accepted"], ["Link không phải file APK\\.", "The link isn't an APK file."], ["Link không hợp lệ \\(chỉ nhận link http/https công khai\\)\\.", "Invalid link (public http/https links only)."], ["File quá lớn \\(tối đa 4GB\\)\\.", "File too large (max 4GB)."], ["File đã hết hạn, tải lên lại\\.", "The file expired — upload it again."], ["File gói hỏng hoặc bị mã hoá\\.", "The package file is corrupted or encrypted."], ["Gói không có file \\.apk bên trong\\.", "The package has no .apk inside."], ["Link này là TRANG WEB, không phải link tải file\\..*", "This link is a WEB PAGE, not a file download. Open it on your computer, tap Download, then copy the real download link (usually ending in .apk) and paste it here — or download the file and use “Upload file / APK”."], ["Không tải được từ Google Drive — hãy chia sẻ file ở chế độ [“\"]Bất kỳ ai có đường liên kết[”\"]\\.", "Couldn't download from Google Drive — share the file as “Anyone with the link”."], ["Độ rộng nhỏ nhất phải từ 240 đến 1600 dp\\.", "Smallest width must be between 240 and 1600 dp."], ["Độ rộng nhỏ nhất không hợp lệ\\.", "Invalid smallest width."], ["Máy chủ chưa cập nhật bản có Root theo app — báo admin cập nhật\\.", "The server doesn't support per-app root yet — ask an admin to update it."], ["Không lưu được cấu hình root, thử lại sau\\.", "Couldn't save root settings, try again later."], ["Cấu hình root đọc được bị lỗi\\.", "The root settings are corrupted."], ["Không chụp được màn hình\\.", "Couldn't take a screenshot."], ["Máy hết bộ nhớ — xoá bớt file / gỡ bớt app rồi thử lại\\.", "The phone is out of storage — delete some files or apps and try again."], ["Máy chủ của máy này chưa có tính năng này — đang được cập nhật, thử lại sau\\.", "This phone's server doesn't have this feature yet — try again later."], ["Đang khởi động Android \\(1–3 phút\\)…", "Starting Android (1–3 minutes)…"], ["Đang tắt hẳn máy \\(máy treo thì tắt cưỡng bức\\)…", "Shutting the phone down fully (force-stopping it if frozen)…"], ["Máy đã khởi động lại xong\\.", "The phone has restarted."], ["Máy đã khởi động, đang kết nối lại…", "The phone has started, reconnecting…"], ["Máy đã bật lại, đang kết nối….*", "The phone is back on, connecting…"], ["Đã ép khởi động lại xong.*", "Forced restart done."], ["Đang kiểm tra / bật root \\(máy có thể khởi động lại ~1 phút\\)…", "Checking / enabling root (the phone may restart, ~1 minute)…"], ["✅ Máy đã ROOT\\. Tool cần root \\(gọi lệnh su\\) dùng được ngay, không cần khởi động lại\\.", "✅ The phone is ROOTED. Tools that need root (su) work right away, no restart needed."], ["⏳ Máy đang bật root, chờ 1 phút rồi bấm lại\\.", "⏳ Root is being enabled — wait 1 minute, then tap again."], ["Đang bật root cho app đã chọn… \\(máy chưa có root gốc sẽ tự khởi động lại ~1 phút\\)", "Enabling root for the selected apps… (a phone without base root restarts, ~1 minute)"], ["Đang tắt root…", "Turning root off…"], ["Đã lưu\\.", "Saved.", "j"], ["Máy đang khởi động lại với chế độ mới \\(khoảng 1–2 phút\\)…", "Restarting the phone with the new mode (about 1–2 minutes)…"], ["Đã chuyển sang MƯỢT\\.", "Switched to SMOOTH."], ["Đã chuyển sang HIỆN 3D\\.", "Switched to 3D DISPLAY."], ["Đã đổi, đang kết nối lại…", "Changed, reconnecting…"], ["Đang áp dụng và khởi động lại máy \\(1–3 phút\\)…", "Applying and restarting the phone (1–3 minutes)…"], ["Đang đổi kích thước màn hình…", "Changing the screen size…"], ["Đã đổi sang (\\S+) · (\\d+) FPS\\. Dữ liệu vẫn giữ nguyên\\.", "Changed to {1} · {2} FPS. Your data is kept."], ["Đã đổi sang (\\S+) — app đang chạy vẫn giữ nguyên\\.", "Changed to {1} — running apps keep running."], ["Đang tạo (\\d+) bản clone \\(mỗi bản ~20 giây\\)…", "Creating {1} clone(s) (~20 s each)…"], ["✅ Đã có (\\d+) bản clone! Mở lại Clone tab.*", "✅ {1} clone(s) ready! Reopen Clone tab and tap ▶ Open clone 1, 2… to run them (or use the Work tab in the app list)."], ["✅ Đã có (\\d+) bản clone! Trên màn hình chính máy.*", "✅ {1} clone(s) ready! The phone's home screen has whale icons “Clone 1”, “Clone 2”… — tap one to open it."], ["Đã có (\\d+) bản clone\\. Máy cần KHỞI ĐỘNG LẠI 1 lần.*", "{1} clone(s) exist. The phone needs ONE restart to add more — tap “Restart”, then clone again."], ["Đã có (\\d+) bản clone — máy này chỉ cho tối đa.*", "{1} clone(s) exist — that's the most this phone allows. For more accounts, rent another phone."], ["Đã đặt vị trí (.+)\\. Mở lại app cần vị trí để nhận vị trí mới\\.", "Location set to {1}. Reopen apps that use location to get the new one."], ["✅ Đã cài (.+) — mở trên màn hình chính của máy\\.", "✅ Installed {1} — open it from the phone's home screen."], ["Đã cài xong (.+?)( \\(kèm (\\d+) file dữ liệu game\\))?", "Installed {1}", "j"], ["✅ Đã cài (.+)", "✅ Installed {1}", "j"], ["Đang cài (.+)", "Installing {1}", "j"], ["Đã lưu vào thư mục Download: (.+)", "Saved to the Download folder: {1}"], ["Đã tải (.+)", "Downloaded {1}", "j"], ["Không lấy được (.+) từ trang chính chủ \\(.*\\)\\. Thử lại sau ít phút\\.", "Couldn't download {1} from the official site. Try again in a few minutes."], ["Không khởi động lại được: .*", "Couldn't restart the phone — try again in a minute or contact support."], ["Không ép khởi động lại được: .*", "Couldn't force-restart the phone — try again in a minute or contact support."], ["Chưa khởi động lại được: .*", "Couldn't restart yet — try again in a minute."], ["Không đổi được: .*", "Couldn't change it — try again later."], ["Đổi cấu hình lỗi: .*", "Couldn't change the setup — try again later."], ["Chưa root được: .*", "Couldn't root the phone — try again later."], ["Không đọc được cấu hình root: .*", "Couldn't read the root settings."], ["Chưa clone được: .*", "Couldn't clone — try again later."], ["Chưa mở được bản clone: .*", "Couldn't open the clone."], ["Chưa đặt được vị trí: .*", "Couldn't set the location."], ["Cài APK lỗi: .*", "Couldn't install the APK."], ["Không chép được file vào máy: .*", "Couldn't copy the file to the phone."], ["Không chép được file: .*", "Couldn't copy the file."], ["Chỉ chủ máy mới xem / đặt được proxy của máy này\\.", "Only the phone's owner can view or set its proxy."], ["Máy chủ chưa cập nhật bản có Proxy — báo admin cập nhật\\.", "The server doesn't support proxies yet — ask an admin to update it."], ["Không đọc được proxy của máy, thử lại sau\\.", "Couldn't read this phone's proxy, try again later."], ["Đọc proxy bị lỗi, thử lại sau\\.", "Reading the proxy failed, try again later."], ["Thiếu việc cần làm \\(lưu / tắt / áp dụng lại\\)\\.", "Missing action (save / turn off / apply again)."], ["Proxy không hợp lệ\\.", "Invalid proxy."], ["Kiểu proxy không hợp lệ\\.", "Invalid proxy type."], ["Đang áp dụng proxy cho máy này, đợi vài giây\\.", "Applying this phone's proxy, wait a few seconds."], ["Đang bật proxy \\(kiểm tra proxy \\+ gắn vào máy, ~10–30 giây\\)…", "Turning the proxy on (checking it and attaching it to the phone, ~10–30 s)…"], ["Đang tắt proxy…", "Turning the proxy off…"], ["Đang áp dụng lại proxy…", "Applying the proxy again…"], ["Không áp dụng được proxy, thử lại sau\\.", "Couldn't apply the proxy, try again later."], ["Kiểu proxy phải là Tự nhận / SOCKS5 / HTTP\\.", "The proxy type must be Auto / SOCKS5 / HTTP."], ["Chưa nhập proxy\\.", "No proxy entered."], ["Proxy có ký tự lạ\\.", "The proxy contains invalid characters."], ["Chưa hỗ trợ proxy HTTPS \\(mã hoá tới proxy\\) — dùng HTTP hoặc SOCKS5\\.", "HTTPS proxies (encrypted to the proxy) aren't supported — use HTTP or SOCKS5."], ["Thiếu cổng — nhập dạng IP:cổng hoặc IP:cổng:user:pass\\.", "Missing port — use IP:port or IP:port:user:pass."], ["Cổng proxy phải là số \\(1–65535\\)\\.", "The proxy port must be a number (1–65535)."], ["Cổng proxy phải từ 1 đến 65535\\.", "The proxy port must be between 1 and 65535."], ["Chưa hỗ trợ proxy IPv6 — dùng địa chỉ IPv4 hoặc tên miền\\.", "IPv6 proxies aren't supported — use an IPv4 address or a domain name."], ["Địa chỉ proxy không hợp lệ \\(IP hoặc tên miền\\)\\.", "Invalid proxy address (IP or domain name)."], ["Địa chỉ proxy không hợp lệ\\.", "Invalid proxy address."], ["User / mật khẩu proxy quá dài hoặc có ký tự lạ\\.", "The proxy user / password is too long or has invalid characters."], ["Máy chưa đặt proxy\\.", "This phone has no proxy set."], ["Đã tắt proxy\\.", "Proxy turned off."], ["Đã lưu — máy đang tắt, proxy tự bật khi máy bật\\.", "Saved — the phone is off; the proxy turns on when it starts."], ["Máy không dùng proxy — đang đi mạng thường\\.", "This phone isn't using a proxy — it's on the normal network."], ["Đã TẮT proxy — máy đi mạng thường\\.", "Proxy turned OFF — the phone uses the normal network."], ["Máy không cho máy chủ quyền root để tắt proxy — khởi động lại máy là proxy tự tắt\\.", "The phone didn't give the server root to turn the proxy off — restarting the phone turns it off."], ["Không tìm được IP của proxy (.+) — kiểm tra lại địa chỉ\\.", "Couldn't find the IP of proxy {1} — check the address."], ["Máy chưa có quyền root cho máy chủ \\(cần để bật proxy\\) — bấm 🔓 Root máy rồi thử lại\\.", "The phone hasn't given the server root (needed for the proxy) — tap 🔓 Root phone, then try again."], ["Máy không cho máy chủ quyền root — chưa bật được proxy\\.", "The phone didn't give the server root — the proxy isn't on yet."], ["Đã BẬT proxy — IP ra: (\\S+) · (\\d+) ms", "Proxy ON — exit IP: {1} · {2} ms"], ["Đã lưu proxy nhưng proxy CHƯA dùng được \\((.+)\\) — máy đang đi mạng thường, tự thử lại mỗi 15 giây\\.", "Proxy saved, but it does NOT work yet ({1}) — the phone uses the normal network and retries every 15 s."], ["Chưa bật được proxy: (.+)", "Couldn't turn the proxy on: {1}"], ["Chưa áp dụng được: (.+)", "Couldn't apply it yet: {1}"], ["Đã thu nhỏ (.+) \\(bản clone\\) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\. Máy chuyển sang màn rộng (\\d+) dp.*", "Minimized {1} (clone) ({2} small tabs) — the game reopened so it fits its window. The phone switched to a wide {3} dp screen so tabs have room — tap Normal portrait to undo."], ["Đã thu nhỏ (.+) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\. Máy chuyển sang màn rộng (\\d+) dp.*", "Minimized {1} ({2} small tabs) — the game reopened so it fits its window. The phone switched to a wide {3} dp screen so tabs have room — tap Normal portrait to undo."], ["Đã thu nhỏ (.+) \\(bản clone\\) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\.", "Minimized {1} (clone) ({2} small tabs) — the game reopened so it fits its window."], ["Đã thu nhỏ (.+) \\((\\d+) tab nhỏ\\) — game đã mở lại để vẽ vừa cửa sổ\\.", "Minimized {1} ({2} small tabs) — the game reopened so it fits its window."], ["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\. (\\d+) game đã mở lại để vẽ vừa ô mới\\. Màn nhỏ nên.*", "Arranged {1} small tabs ({2} × {3}). {4} game(s) reopened to fit the new size. The screen is small, so they overlap — raise 📐 Smallest width (e.g. 600 dp) so they don't."], ["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\. (\\d+) game đã mở lại để vẽ vừa ô mới\\.", "Arranged {1} small tabs ({2} × {3}). {4} game(s) reopened to fit the new size."], ["Đã phóng to (.+) \\(bản clone\\) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\. Máy đã về mật độ cũ \\((\\d+) dp\\)\\.", "{1} (clone) is full screen again — the game reopened to fill the screen. The phone is back to its previous screen density ({2} dp)."], ["Đã phóng to (.+) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\. Máy đã về mật độ cũ \\((\\d+) dp\\)\\.", "{1} is full screen again — the game reopened to fill the screen. The phone is back to its previous screen density ({2} dp)."], ["Đã phóng to (.+) \\(bản clone\\) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\.", "{1} (clone) is full screen again — the game reopened to fill the screen."], ["Đã phóng to (.+) ra toàn màn\\. Game đã mở lại để vẽ đủ toàn màn\\.", "{1} is full screen again — the game reopened to fill the screen."], ["Đã phóng to (.+) ra toàn màn\\. Hình chưa đủ màn thì bấm Vừa khung\\.", "{1} is full screen again. If the picture doesn't fill the screen, tap Refit to window."], ["Đã mở lại (.+) ngay trong cửa sổ — game vẽ vừa khung \\(game vừa khởi động lại, vào lại trận nếu cần\\)\\. Hình vẫn bị cắt.*", "Reopened {1} inside its window — the game now fits (it just restarted; rejoin your match if needed). Still cut off? Tap Wide landscape so the window has room."], ["Đã mở lại (.+) toàn màn — game vẽ đủ màn \\(game vừa khởi động lại, vào lại trận nếu cần\\)\\.", "Reopened {1} full screen — the game now fills the screen (it just restarted; rejoin your match if needed)."], ["Chưa mở lại được (.+) — tắt app rồi mở lại từ màn chính\\.", "Couldn't reopen {1} — close the app and open it again from the home screen."], ["Đã xoay màn NGANG\\.", "The screen is now landscape."], ["Máy này chưa xoay ngang được màn chính — .*", "This phone's home screen can't turn landscape yet — apps / games that need landscape still show landscape."], ["Đã về màn DỌC — .*", "Back to portrait — the open app / game needs landscape, so it still shows landscape."], ["Đã về màn DỌC\\.", "The screen is back to portrait."], ["Đã khoá màn NGANG\\.", "Locked to landscape."], ["Đã khoá màn DỌC\\.", "Locked to portrait."], ["Đã thu nhỏ (.+) \\(bản clone\\) \\((\\d+) tab nhỏ\\)\\..*", "Minimized {1} (clone) ({2} small tabs). Drag the top bar to move it, drag an edge to resize."], ["Đã thu nhỏ (.+) \\((\\d+) tab nhỏ\\)\\..*", "Minimized {1} ({2} small tabs). Drag the top bar to move it, drag an edge to resize."], ["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\. Màn nhỏ nên.*", "Arranged {1} small tabs ({2} × {3}). The screen is small, so they overlap — raise 📐 Smallest width (e.g. 600 dp) so they don't."], ["Đã xếp (\\d+) tab nhỏ \\((\\d+) cột × (\\d+) hàng\\)\\.", "Arranged {1} small tabs ({2} × {3})."], ["Đã phóng to (.+) \\(bản clone\\) ra toàn màn\\.", "{1} (clone) is full screen again."], ["Đã phóng to (.+) ra toàn màn\\.", "{1} is full screen again."], ["Đã phóng to (.+) hết màn\\. .*", "{1} now fills the screen. For true full screen, tap ▭ on the window's title bar."], ["Đã mở lại (.+) ngay trong cửa sổ — game vẽ vừa khung \\(game vừa khởi động lại, vào lại trận nếu cần\\)\\.", "Reopened {1} inside its window — the game now fits (it just restarted; rejoin your match if needed)."], ["Chưa có tab nhỏ nào đang hiện — thu nhỏ app \\(VD Roblox\\) trước rồi bấm Mở lại vừa khung\\.", "No small tab is showing — minimize an app (e.g. Roblox) first, then tap Refit to window."], ["Chưa mở lại được (.+) trong cửa sổ — thử lại, hoặc mở app rồi bấm Thu nhỏ tab\\.", "Couldn't reopen {1} in its window — try again, or open the app and tap Minimize tab."], ["Chưa có app nào đang mở toàn màn — .*", "No app is open full screen — open an app (e.g. Roblox), then tap Minimize tab."], ["Các tab đang là cửa sổ nhỏ rồi — .*", "Your tabs are already small windows — open another tab (e.g. a clone), then tap Minimize tab."], ["Máy chưa bật được cửa sổ nhỏ — .*", "Small windows aren't on yet on this phone — tap Restart once, then try again."], ["Chưa có tab nhỏ nào — .*", "No small tabs yet — open an app and tap Minimize tab first."], ["Chưa có tab nhỏ nào đang hiện trên màn hình\\.", "No small tab is on the screen."], ["Chưa phóng to được tab — .*", "Couldn't maximize the tab — tap the ⬜ button on that window's title bar."], ["Android của máy này quá cũ, chưa có cửa sổ nhỏ\\.", "This phone's Android is too old for small windows."], ["Android của máy này chưa đọc được danh sách tab — .*", "Couldn't read this phone's tabs — try again in a moment."], ["Đang xếp tab của máy này, đợi vài giây\\.", "Arranging this phone's tabs — wait a few seconds."], ["Thiếu việc cần làm \\(thu nhỏ / sắp xếp / phóng to\\)\\.", "Missing action (minimize / arrange / maximize)."], ["Cửa sổ (.+) \\(bản clone\\) đã to hơn \\((\\d+)×(\\d+)\\)\\. Bấm tiếp để to nữa\\.", "The {1} (clone) window is bigger ({2}×{3}). Tap again to grow it more."], ["Cửa sổ (.+) \\(bản clone\\) đã nhỏ hơn \\((\\d+)×(\\d+)\\)\\. Bấm tiếp để nhỏ nữa\\.", "The {1} (clone) window is smaller ({2}×{3}). Tap again to shrink it more."], ["Cửa sổ (.+) đã to hơn \\((\\d+)×(\\d+)\\)\\. Bấm tiếp để to nữa\\.", "The {1} window is bigger ({2}×{3}). Tap again to grow it more."], ["Cửa sổ (.+) đã nhỏ hơn \\((\\d+)×(\\d+)\\)\\. Bấm tiếp để nhỏ nữa\\.", "The {1} window is smaller ({2}×{3}). Tap again to shrink it more."], ["Cửa sổ đã to nhất rồi \\(hết màn\\) — muốn to nữa bấm Phóng to tab\\.", "The window already fills the screen — tap Maximize tab to go bigger."], ["Cửa sổ đã nhỏ nhất rồi \\(Android không cho nhỏ hơn\\) — .*", "The window is already as small as Android allows — tap 🖥 Wide landscape to fit more tabs."], ["Chưa có tab nhỏ nào đang hiện — thu nhỏ app \\(VD Roblox\\) trước rồi bấm Cửa sổ to hơn / nhỏ hơn\\.", "No small tab is showing — minimize an app (e.g. Roblox) first, then tap Bigger / Smaller window."], ["Đã bật màn NGANG RỘNG \\((\\d+) dp\\) — màn chính nằm ngang, chứa được nhiều tab hơn\\..*", "Wide landscape is on ({1} dp) — the home screen is landscape and fits more tabs."], ["Đã đặt màn rộng \\((\\d+) dp\\) \\+ khoá ngang — .*", "Wide screen set ({1} dp) + landscape lock — this phone's home screen doesn't rotate; landscape apps / games still show landscape."], ["Đã trả màn DỌC như cũ \\((\\d+) dp\\)\\..*", "Back to the normal portrait screen ({1} dp)."], ["Thiếu việc cần làm \\(thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng\\)\\.", "Missing action."], ["Khởi động lại", "Restart", "j"], ["Ép khởi động lại", "Forced restart", "j"], ["Root máy", "Root phone", "j"], ["Đổi chế độ hình", "Change display mode", "j"], ["Cài (.+)", "Install {1}", "j"]].map(r => { try { return [new RegExp("^(?:" + r[0] + ")$", "s"), r[1], r[2] || ""]; } catch (e) { return null; } }).filter(Boolean);
 const SRV_VN = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
 function srvFind(s, job) {
   const t = String(s || "").trim(); if (!t) return null;
@@ -2384,7 +2805,7 @@ function srvEn(s, job, fb) {
 
 /* ===== 16/11c — ENGLISH: lớp dịch giao diện I18X (giống web): từ điển (nguyên câu) · câu ghép (đầu / đuôi) · mẫu (bảng Thông số…) ·
    câu máy chủ. Không khớp → giữ nguyên. Đổi lại Tiếng Việt → trả nguyên chữ cũ. Bỏ qua ô nhập, [data-noi18n]. ===== */
-const I18X = {"CloudBlue – Điều khiển máy": "CloudBlue – Phone control", "Đăng nhập để mở máy": "Log in to open your phones", "Dùng cùng tài khoản trên cloudblue.vn.": "Use the same account as on cloudblue.vn.", "Mật khẩu": "Password", "Đăng nhập": "Log in", "Chưa có tài khoản?": "No account yet?", "Đăng ký trên cloudblue.vn": "Sign up on cloudblue.vn", "Đăng xuất": "Log out", "Máy của tôi": "My phones", "Mở CloudBlue như một app: bấm nút": "Use CloudBlue like an app: tap", "Chia sẻ": "Share", "của Safari, chọn": "in Safari, choose", "Thêm vào MH chính": "Add to Home Screen", ". Lần sau bấm biểu tượng là vào thẳng, toàn màn hình.": ". Next time tap the icon to go straight in, full screen.", "Thuê thêm máy · gia hạn · nạp tiền trên cloudblue.vn": "Rent more phones · renew · top up on cloudblue.vn", "Ẩn mẹo": "Hide tip", "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang.": "Couldn't load the login library — check your network and reload the page.", "Sai email hoặc mật khẩu.": "Wrong email or password.", "Email chưa xác nhận — mở hộp thư để xác nhận trước.": "Email not confirmed yet — open your inbox to confirm it first.", "Đang chạy": "Running", "Đang tạo máy…": "Creating…", "Đã hết hạn — gia hạn trên web": "Expired — renew on the website", "Máy lỗi — liên hệ hỗ trợ": "Error — contact support", "Đang huỷ": "Cancelling", "Đang tải…": "Loading…", "Thử lại": "Retry", "Bạn chưa có máy nào.": "You don't have any phones yet.", "Thuê máy trên cloudblue.vn": "Rent a phone on cloudblue.vn", "Máy đang bị khoá": "This phone is locked", "Mở máy": "Open phone", "Máy": "Phone", "màn hình đen": "black screen", "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm.": "iPhone / iPad needs iOS 16.4 or later to open phones in the browser. Go to Settings → General → Software Update.", "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.": "This browser can't show the phone yet. Use an up-to-date Chrome, Edge or Safari, or get the app on cloudblue.vn.", "Màn hình máy": "Phone screen", "Điều khiển": "Controls", "Về danh sách máy": "Back to my phones", "Danh sách máy": "My phones", "Quay lại": "Back", "Màn hình chính": "Home", "Ứng dụng gần đây": "Recent apps", "Bàn phím": "Keyboard", "Thêm": "More", "Gõ chữ vào máy": "Type on the phone", "Về danh sách": "Back to list", "Khởi động lại máy": "Restart phone", "Khởi động lại máy?": "Restart this phone?", "Khởi động lại": "Restart", "Thôi": "Cancel", "Máy tắt rồi bật lại trong 1–3 phút. App đang mở trong máy sẽ bị đóng, dữ liệu giữ nguyên.": "The phone turns off and back on in 1–3 minutes. Open apps will close; your data is kept.", "Mở lại máy": "Reopen phone", "Đang khởi động lại máy… (1–3 phút)": "Restarting the phone… (1–3 minutes)", "Đang khởi động lại máy… (1–3 phút). Bạn có thể đóng trang — máy vẫn tự khởi động, mở lại là vào.": "Restarting the phone… (1–3 minutes). You can close this page — it keeps restarting; open it again to get in.", "Máy đang được tạo, chờ thêm chút…": "The phone is being created, please wait…", "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.": "This phone has expired — renew it on cloudblue.vn and reopen.", "Máy đang lỗi — liên hệ hỗ trợ.": "This phone has an error — contact support.", "Máy đang bị huỷ.": "This phone is being cancelled.", "Đang nối lại…": "Reconnecting…", "Đang mở máy…": "Opening phone…", "Máy thử": "Test phone", "Mạng chậm — đang thử lại…": "Slow network — retrying…", "Phiên đăng nhập hết hạn, hãy đăng nhập lại.": "Your session expired, please log in again.", "Không thấy máy này trong tài khoản của bạn.": "This phone isn't in your account.", "Không lấy được thông tin máy — tự thử lại…": "Couldn't get the phone's details — retrying…", "Máy chưa chạy.": "The phone isn't running.", "Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…": "The server is under maintenance or offline — retrying…", "Máy chủ đang tạm offline — tự thử lại…": "The server is offline for now — retrying…", "Mất kết nối — đang nối lại…": "Connection lost — reconnecting…", "Chưa nối được tới máy — vẫn đang tự thử lại…": "Can't reach the phone yet — still retrying…", "Tải lại trang": "Reload page", "iPhone / iPad: tắt Wi-Fi, dùng 4G / 5G rồi mở lại — hoặc mở cloudblue.vn bằng Chrome. Đang bật iCloud Private Relay (Chuyển tiếp bảo mật) thì tắt cho mạng này.": "iPhone / iPad: turn off Wi-Fi and use 4G / 5G, then reopen — or open cloudblue.vn in Chrome. If iCloud Private Relay is on, turn it off for this network.", "Kiểm tra mạng, tắt VPN / proxy (nếu có) rồi thử lại. Vẫn không được: dùng app CloudBlue trên máy tính / Android.": "Check your network, turn off any VPN / proxy and try again. Still not working? Use the CloudBlue app on PC / Android.", "Đang tải lại trang để nối lại…": "Reloading the page to reconnect…", "⏳ Mạng chậm — đang chờ hình…": "⏳ Slow network — waiting for video…", "📶 Mạng yếu — đã giảm nét cho hình mượt": "📶 Weak network — quality lowered to stay smooth", "Chép": "Copy", "Lỗi kết nối.": "Connection error.", "Đang làm mới phiên đăng nhập…": "Refreshing your session…", "Máy đang được mở ở nơi khác (app hoặc trình duyệt khác).": "This phone is open somewhere else (another app or browser).", "Mở lại ở đây": "Open here", "Thiết bị giải mã chưa kịp — đã chuyển sang 30 hình/giây cho mượt.": "Your device couldn't keep up — switched to 30 fps to stay smooth.", "Đóng": "Close", "Chất lượng hình": "Picture quality", "Tự động": "Auto", "Tiết kiệm": "Saver", "Cân bằng": "Balanced", "Nét": "Sharp", "Nút của máy": "Phone buttons", "Nhỏ tiếng": "Volume down", "To tiếng": "Volume up", "Thông báo": "Notifications", "Nút nguồn": "Power", "Dán chữ": "Paste text", "Thông số": "Stats", "Toàn màn hình": "Full screen", "Máy chủ chưa nhận kết nối (đang bật lại phần phát hình hoặc đang bận). Trang tự nối lại, thường dưới 1–2 phút — bạn không cần làm gì. Quá 3 phút: gửi ảnh màn hình này cho hỗ trợ.": "The server isn't accepting connections yet (restarting its streaming service, or busy). This page reconnects by itself, usually within 1–2 minutes — nothing for you to do. Over 3 minutes? Send this screenshot to support.", "Đang kiểm tra vì sao chưa vào được…": "Checking why it can't get in…", "Tự hiện màn ngang": "Auto landscape", "Máy đang ngang (game) → hình tự xoay ngang to hết màn, cầm ngang điện thoại là chơi — khỏi bật xoay màn hình rồi xoay điện thoại mỗi lần vào": "When the phone is in landscape (games), the picture turns sideways to fill your screen — just hold your phone sideways, no need to unlock rotation every time", "⇅ Hình bị ngược? Đảo chiều màn ngang": "⇅ Upside down? Flip landscape", "Máy đang ngang → hình đã xoay ngang cho to hết màn. Cầm ngang điện thoại để chơi · tắt / đảo chiều trong ⋯": "The phone is in landscape → the picture was turned sideways to fill your screen. Hold your phone sideways · turn off / flip in ⋯", "Bật: máy ngang thì hình tự xoay ngang — cầm ngang điện thoại để chơi.": "On: when the phone is in landscape, the picture turns sideways — hold your phone sideways.", "Tắt: hình xoay theo cách bạn cầm điện thoại.": "Off: the picture follows how you hold your phone.", "Đã đảo chiều màn ngang.": "Landscape flipped.", "Công cụ": "Tools", "Cài file APK": "Install APK file", "Cài APK từ link": "Install APK from link", "Đã chép vào bộ nhớ tạm.": "Copied to the clipboard.", "Dán chữ vào máy": "Paste text into the phone", "Dán (hoặc gõ) chữ vào ô dưới, bấm OK — chữ được dán vào ô đang chọn trong máy.": "Paste (or type) text below and tap OK — it goes into the field selected on the phone.", "Dán link tải file .apk (bắt đầu bằng https://). Máy chủ tải về rồi cài vào máy.": "Paste a link to an .apk file (starting with https://). The server downloads and installs it.", "Chữ máy vừa sao chép": "Text copied on the phone", "Giữ tay vào ô dưới → Chọn tất cả → Sao chép.": "Press and hold the box below → Select all → Copy.", "Đã dán vào máy.": "Pasted into the phone.", "Link phải bắt đầu bằng http:// hoặc https://": "The link must start with http:// or https://", "Đang tải và cài app…": "Downloading and installing the app…", "Cài app": "Install app", "Phiên đăng nhập hết hạn.": "Session expired.", "Đang khởi động lại máy…": "Restarting the phone…", "Giữ trang này mở tới khi xong.": "Keep this page open until it's done.", "Đang cài…": "Installing…", "Cài lại": "Reinstall", "Cài": "Install", "✓ Đã cài": "✓ Installed", "Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.": "The server doesn't have the app store yet — ask the admin to update.", "MT Manager (bản 2)": "MT Manager (v2)", "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng.": "The phone is off or offline — you can still save; it applies when the phone is on.", "Bấm Lưu để bật root.": "Tap Save to turn root on.", "Bấm Lưu để tắt root.": "Tap Save to turn root off.", "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi mới cài cho app đã chọn.": "Root isn't enabled on this phone yet — tap Save: the phone restarts for about 1 minute to enable root, then sets it up for the chosen apps.", "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.": "On but not running — tap Save to start it again.", "Đang tắt — không app nào dùng được lệnh su.": "Off — no app can use su.", "⚠ Máy này đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.": "⚠ This phone has SELinux Enforcing on — per-app root may not work yet. Contact support if the app still says there's no su.", "Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.": "No apps installed by you yet. Install one (e.g. Termux), then reopen this.", "Đang đọc…": "Reading…", "Đang tải danh sách app…": "Loading apps…", "Máy chủ chưa có tính năng này — báo admin cập nhật.": "The server doesn't have this feature yet — ask the admin to update.", "Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?": "No app selected — root will be on but every root request will be denied. Save anyway?", "Đang lưu…": "Saving…", "Lưu": "Save", "Chỉ app được bật mới dùng được lệnh su": "Only enabled apps can use su", "Bật root cho máy này": "Enable root on this phone", "Vừa xin root (chưa được bật)": "Just asked for root (not enabled)", "Ứng dụng trong máy": "Apps on the phone", "Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.": "Some games and apps (e.g. Roblox) can detect a rooted phone. Only enable it for apps that really need it, like Termux.", "Tải từ trang chính chủ · cài 1 chạm": "From the official sites · one-tap install", "Huỷ": "Cancel", "Termux lấy từ GitHub chính thức, MT Manager từ mt.cc, ZArchiver từ zdevs.ru. Lần đầu máy chủ tải mất vài chục giây, máy sau cài ngay. Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.": "Termux comes from its official GitHub, MT Manager from mt.cc, ZArchiver from zdevs.ru. The first download takes the server a few dozen seconds; later phones install instantly. Need root for Termux / MT Manager → open 🔓 Root and turn it on for that app.", "máy chủ bận": "server busy.", "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.": "⚠️ The system is under maintenance, so signing in and loading data are paused. Please try again in a few minutes.", "Xoay": "Rotate", "Kho app": "App store", "🛍 Kho app": "🛍 App store", "Đang khởi động lại máy… Cứ đóng trang — máy vẫn tự khởi động.": "Restarting the phone… You can close this page — it keeps restarting.", "Điều khiển điện thoại đám mây CloudBlue ngay trên trình duyệt (iPhone, iPad, Mac, máy tính).": "Control CloudBlue cloud phones right in your browser (iPhone, iPad, Mac, computer).", "Khởi động lại máy? Máy tắt rồi bật lại trong 1–3 phút, app đang mở sẽ bị đóng.": "Restart this phone? It turns off and back on in 1–3 minutes; open apps will close.", "Đã chuyển sang chế độ tương thích cho trình duyệt này — hình vẫn chạy bình thường.": "Switched to compatibility mode for this browser — the picture keeps running normally.", "iPhone / iPad này quá cũ để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm, hoặc dùng app CloudBlue trên máy tính / Android.": "This iPhone / iPad is too old to open phones in the browser. Go to Settings → General → Software Update, or use the CloudBlue app on a computer / Android."};
+const I18X = {"App trong máy đi Internet qua proxy của bạn": "Apps on the phone reach the Internet through your proxy", "Proxy mới": "New proxy", "Tự nhận": "Auto", "Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.": "Paste one of: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Auto” tries SOCKS5, then HTTP.", "Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại. Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.": "If the proxy is down or the password is wrong, the phone falls back to the normal network (it never loses Internet) and switches back when the proxy works again. Web, apps and games over TCP go through the proxy; video calls / UDP games still use the server's network. Switching Android creates a new phone — enter the proxy again.", "Tắt proxy": "Turn off", "Áp dụng lại": "Re-apply", "Lưu & bật": "Save", "Proxy mới (IP:Port:User:Pass)": "New proxy (IP:Port:User:Pass)", "Kiểu proxy": "Proxy type", "CloudBlue – Điều khiển máy": "CloudBlue – Phone control", "Đăng nhập để mở máy": "Log in to open your phones", "Dùng cùng tài khoản trên cloudblue.vn.": "Use the same account as on cloudblue.vn.", "Mật khẩu": "Password", "Đăng nhập": "Log in", "Chưa có tài khoản?": "No account yet?", "Đăng ký trên cloudblue.vn": "Sign up on cloudblue.vn", "Đăng xuất": "Log out", "Máy của tôi": "My phones", "Mở CloudBlue như một app: bấm nút": "Use CloudBlue like an app: tap", "Chia sẻ": "Share", "của Safari, chọn": "in Safari, choose", "Thêm vào MH chính": "Add to Home Screen", ". Lần sau bấm biểu tượng là vào thẳng, toàn màn hình.": ". Next time tap the icon to go straight in, full screen.", "Thuê thêm máy · gia hạn · nạp tiền trên cloudblue.vn": "Rent more phones · renew · top up on cloudblue.vn", "Ẩn mẹo": "Hide tip", "Không tải được thư viện đăng nhập — kiểm tra mạng rồi tải lại trang.": "Couldn't load the login library — check your network and reload the page.", "Sai email hoặc mật khẩu.": "Wrong email or password.", "Email chưa xác nhận — mở hộp thư để xác nhận trước.": "Email not confirmed yet — open your inbox to confirm it first.", "Đang chạy": "Running", "Đang tạo máy…": "Creating…", "Đã hết hạn — gia hạn trên web": "Expired — renew on the website", "Máy lỗi — liên hệ hỗ trợ": "Error — contact support", "Đang huỷ": "Cancelling", "Đang tải…": "Loading…", "Thử lại": "Retry", "Bạn chưa có máy nào.": "You don't have any phones yet.", "Thuê máy trên cloudblue.vn": "Rent a phone on cloudblue.vn", "Máy đang bị khoá": "This phone is locked", "Mở máy": "Open phone", "Máy": "Phone", "màn hình đen": "black screen", "iPhone / iPad cần iOS 16.4 trở lên để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm.": "iPhone / iPad needs iOS 16.4 or later to open phones in the browser. Go to Settings → General → Software Update.", "Trình duyệt này chưa xem được máy. Hãy dùng Chrome, Edge hoặc Safari bản mới, hoặc tải app trên cloudblue.vn.": "This browser can't show the phone yet. Use an up-to-date Chrome, Edge or Safari, or get the app on cloudblue.vn.", "Màn hình máy": "Phone screen", "Điều khiển": "Controls", "Về danh sách máy": "Back to my phones", "Danh sách máy": "My phones", "Quay lại": "Back", "Màn hình chính": "Home", "Ứng dụng gần đây": "Recent apps", "Bàn phím": "Keyboard", "Thêm": "More", "Gõ chữ vào máy": "Type on the phone", "Về danh sách": "Back to list", "Khởi động lại máy": "Restart phone", "Khởi động lại máy?": "Restart this phone?", "Khởi động lại": "Restart", "Thôi": "Cancel", "Máy tắt rồi bật lại trong 1–3 phút. App đang mở trong máy sẽ bị đóng, dữ liệu giữ nguyên.": "The phone turns off and back on in 1–3 minutes. Open apps will close; your data is kept.", "Mở lại máy": "Reopen phone", "Đang khởi động lại máy… (1–3 phút)": "Restarting the phone… (1–3 minutes)", "Đang khởi động lại máy… (1–3 phút). Bạn có thể đóng trang — máy vẫn tự khởi động, mở lại là vào.": "Restarting the phone… (1–3 minutes). You can close this page — it keeps restarting; open it again to get in.", "Máy đang được tạo, chờ thêm chút…": "The phone is being created, please wait…", "Máy đã hết hạn — gia hạn trên cloudblue.vn rồi mở lại.": "This phone has expired — renew it on cloudblue.vn and reopen.", "Máy đang lỗi — liên hệ hỗ trợ.": "This phone has an error — contact support.", "Máy đang bị huỷ.": "This phone is being cancelled.", "Đang nối lại…": "Reconnecting…", "Đang mở máy…": "Opening phone…", "Máy thử": "Test phone", "Mạng chậm — đang thử lại…": "Slow network — retrying…", "Phiên đăng nhập hết hạn, hãy đăng nhập lại.": "Your session expired, please log in again.", "Không thấy máy này trong tài khoản của bạn.": "This phone isn't in your account.", "Không lấy được thông tin máy — tự thử lại…": "Couldn't get the phone's details — retrying…", "Máy chưa chạy.": "The phone isn't running.", "Máy chủ đang bảo trì hoặc tạm offline — tự thử lại…": "The server is under maintenance or offline — retrying…", "Máy chủ đang tạm offline — tự thử lại…": "The server is offline for now — retrying…", "Mất kết nối — đang nối lại…": "Connection lost — reconnecting…", "Chưa nối được tới máy — vẫn đang tự thử lại…": "Can't reach the phone yet — still retrying…", "Tải lại trang": "Reload page", "iPhone / iPad: tắt Wi-Fi, dùng 4G / 5G rồi mở lại — hoặc mở cloudblue.vn bằng Chrome. Đang bật iCloud Private Relay (Chuyển tiếp bảo mật) thì tắt cho mạng này.": "iPhone / iPad: turn off Wi-Fi and use 4G / 5G, then reopen — or open cloudblue.vn in Chrome. If iCloud Private Relay is on, turn it off for this network.", "Kiểm tra mạng, tắt VPN / proxy (nếu có) rồi thử lại. Vẫn không được: dùng app CloudBlue trên máy tính / Android.": "Check your network, turn off any VPN / proxy and try again. Still not working? Use the CloudBlue app on PC / Android.", "Đang tải lại trang để nối lại…": "Reloading the page to reconnect…", "⏳ Mạng chậm — đang chờ hình…": "⏳ Slow network — waiting for video…", "📶 Mạng yếu — đã giảm nét cho hình mượt": "📶 Weak network — quality lowered to stay smooth", "Chép": "Copy", "Lỗi kết nối.": "Connection error.", "Đang làm mới phiên đăng nhập…": "Refreshing your session…", "Máy đang được mở ở nơi khác (app hoặc trình duyệt khác).": "This phone is open somewhere else (another app or browser).", "Mở lại ở đây": "Open here", "Thiết bị giải mã chưa kịp — đã chuyển sang 30 hình/giây cho mượt.": "Your device couldn't keep up — switched to 30 fps to stay smooth.", "Đóng": "Close", "Chất lượng hình": "Picture quality", "Tự động": "Auto", "Tiết kiệm": "Saver", "Cân bằng": "Balanced", "Nét": "Sharp", "Siêu nét": "Ultra", "Khung hình / giây": "Frame rate", "Mặc định": "Default", "Nút của máy": "Phone buttons", "Nhỏ tiếng": "Volume down", "To tiếng": "Volume up", "Thông báo": "Notifications", "Nút nguồn": "Power", "Dán chữ": "Paste text", "Thông số": "Stats", "Toàn màn hình": "Full screen", "Máy chủ chưa nhận kết nối (đang bật lại phần phát hình hoặc đang bận). Trang tự nối lại, thường dưới 1–2 phút — bạn không cần làm gì. Quá 3 phút: gửi ảnh màn hình này cho hỗ trợ.": "The server isn't accepting connections yet (restarting its streaming service, or busy). This page reconnects by itself, usually within 1–2 minutes — nothing for you to do. Over 3 minutes? Send this screenshot to support.", "Đang kiểm tra vì sao chưa vào được…": "Checking why it can't get in…", "Tự hiện màn ngang": "Auto landscape", "Máy đang ngang (game) → hình tự xoay ngang to hết màn, cầm ngang điện thoại là chơi — khỏi bật xoay màn hình rồi xoay điện thoại mỗi lần vào": "When the phone is in landscape (games), the picture turns sideways to fill your screen — just hold your phone sideways, no need to unlock rotation every time", "⇅ Hình bị ngược? Đảo chiều màn ngang": "⇅ Upside down? Flip landscape", "Máy đang ngang → hình đã xoay ngang cho to hết màn. Cầm ngang điện thoại để chơi · tắt / đảo chiều trong ⋯": "The phone is in landscape → the picture was turned sideways to fill your screen. Hold your phone sideways · turn off / flip in ⋯", "Bật: máy ngang thì hình tự xoay ngang — cầm ngang điện thoại để chơi.": "On: when the phone is in landscape, the picture turns sideways — hold your phone sideways.", "Tắt: hình xoay theo cách bạn cầm điện thoại.": "Off: the picture follows how you hold your phone.", "Đã đảo chiều màn ngang.": "Landscape flipped.", "Công cụ": "Tools", "Cài file APK": "Install APK file", "Cài APK từ link": "Install APK from link", "Đã chép vào bộ nhớ tạm.": "Copied to the clipboard.", "Dán chữ vào máy": "Paste text into the phone", "Dán (hoặc gõ) chữ vào ô dưới, bấm OK — chữ được dán vào ô đang chọn trong máy.": "Paste (or type) text below and tap OK — it goes into the field selected on the phone.", "Dán link tải file .apk (bắt đầu bằng https://). Máy chủ tải về rồi cài vào máy.": "Paste a link to an .apk file (starting with https://). The server downloads and installs it.", "Chữ máy vừa sao chép": "Text copied on the phone", "Giữ tay vào ô dưới → Chọn tất cả → Sao chép.": "Press and hold the box below → Select all → Copy.", "Đã dán vào máy.": "Pasted into the phone.", "Link phải bắt đầu bằng http:// hoặc https://": "The link must start with http:// or https://", "Đang tải và cài app…": "Downloading and installing the app…", "Cài app": "Install app", "Phiên đăng nhập hết hạn.": "Session expired.", "Đang khởi động lại máy…": "Restarting the phone…", "Giữ trang này mở tới khi xong.": "Keep this page open until it's done.", "Đang cài…": "Installing…", "Cài lại": "Reinstall", "Cài": "Install", "✓ Đã cài": "✓ Installed", "Máy chủ chưa cập nhật bản có Kho app — báo admin cập nhật.": "The server doesn't have the app store yet — ask the admin to update.", "MT Manager (bản 2)": "MT Manager (v2)", "Máy đang tắt hoặc mất kết nối — vẫn lưu được, máy bật lên tự áp dụng.": "The phone is off or offline — you can still save; it applies when the phone is on.", "Bấm Lưu để bật root.": "Tap Save to turn root on.", "Bấm Lưu để tắt root.": "Tap Save to turn root off.", "Máy chưa bật root gốc — bấm Lưu: máy tự khởi động lại khoảng 1 phút để bật root, rồi mới cài cho app đã chọn.": "Root isn't enabled on this phone yet — tap Save: the phone restarts for about 1 minute to enable root, then sets it up for the chosen apps.", "Đã bật nhưng chưa chạy — bấm Lưu để chạy lại.": "On but not running — tap Save to start it again.", "Đang tắt — không app nào dùng được lệnh su.": "Off — no app can use su.", "⚠ Máy này đang bật SELinux Enforcing — root theo app có thể chưa dùng được. Báo hỗ trợ nếu app vẫn báo không có su.": "⚠ This phone has SELinux Enforcing on — per-app root may not work yet. Contact support if the app still says there's no su.", "Chưa có app nào do bạn cài. Cài app (vd Termux) rồi mở lại mục này.": "No apps installed by you yet. Install one (e.g. Termux), then reopen this.", "Đang đọc…": "Reading…", "Đang tải danh sách app…": "Loading apps…", "Máy chủ chưa có tính năng này — báo admin cập nhật.": "The server doesn't have this feature yet — ask the admin to update.", "Chưa chọn app nào — bật root nhưng mọi app xin root sẽ bị từ chối. Vẫn lưu?": "No app selected — root will be on but every root request will be denied. Save anyway?", "Đang lưu…": "Saving…", "Lưu": "Save", "Chỉ app được bật mới dùng được lệnh su": "Only enabled apps can use su", "Bật root cho máy này": "Enable root on this phone", "Vừa xin root (chưa được bật)": "Just asked for root (not enabled)", "Ứng dụng trong máy": "Apps on the phone", "Một số game và app (vd Roblox) có thể phát hiện máy đã root. Chỉ bật cho app thật sự cần, như Termux.": "Some games and apps (e.g. Roblox) can detect a rooted phone. Only enable it for apps that really need it, like Termux.", "Tải từ trang chính chủ · cài 1 chạm": "From the official sites · one-tap install", "Huỷ": "Cancel", "Termux lấy từ GitHub chính thức, MT Manager từ mt.cc, ZArchiver từ zdevs.ru. Lần đầu máy chủ tải mất vài chục giây, máy sau cài ngay. Cần root cho Termux / MT Manager → mở 🔓 Root và bật cho app đó.": "Termux comes from its official GitHub, MT Manager from mt.cc, ZArchiver from zdevs.ru. The first download takes the server a few dozen seconds; later phones install instantly. Need root for Termux / MT Manager → open 🔓 Root and turn it on for that app.", "máy chủ bận": "server busy.", "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.": "⚠️ The system is under maintenance, so signing in and loading data are paused. Please try again in a few minutes.", "Xoay": "Rotate", "Kho app": "App store", "Tab cửa sổ nhỏ": "Small tab windows", "Thu nhỏ tab": "Minimize tab", "Sắp xếp tab": "Arrange tabs", "Phóng to tab": "Maximize tab", "Thu nhỏ tab (giữ: sắp xếp / phóng to)": "Minimize tab (hold: arrange / maximize)", "Mở app rồi bấm Thu nhỏ tab → app thành cửa sổ nhỏ ngay trên màn hình máy, vẫn chạy và bấm được. Game kiểu cũ được mở lại 1 lần để vẽ vừa cửa sổ. Mở tab khác rồi thu nhỏ tiếp. Kéo thanh trên cùng của cửa sổ để dời. Bấm vào 1 cửa sổ rồi bấm Cửa sổ to hơn / nhỏ hơn để đổi cỡ. Màn ngang rộng: màn chính nằm ngang, chữ nhỏ lại, xếp được nhiều tab clone. Hình game chưa vừa cửa sổ (hoặc vừa đổi cỡ cửa sổ): bấm vào cửa sổ đó rồi bấm Mở lại vừa khung (game khởi động lại, vẽ đúng cỡ cửa sổ).": "Open an app, then tap Minimize tab → it becomes a small window right on the phone's screen, still running and tappable. Older games reopen once so they draw at the window's size. Open another tab and minimize it too. Drag a window's top bar to move it. Tap a window, then Bigger / Smaller window to resize it. Wide landscape: the home screen turns landscape, text gets smaller and more clone tabs fit. A game doesn't fit its window (or you just resized it)? Tap that window, then Refit to window (the game restarts and draws at the window's size).", "Cửa sổ to hơn": "Bigger window", "Cửa sổ nhỏ hơn": "Smaller window", "Màn ngang rộng": "Wide landscape", "Màn dọc như cũ": "Normal portrait", "Mở lại vừa khung": "Refit to window", "🛍 Kho app": "🛍 App store", "Đang khởi động lại máy… Cứ đóng trang — máy vẫn tự khởi động.": "Restarting the phone… You can close this page — it keeps restarting.", "Điều khiển điện thoại đám mây CloudBlue ngay trên trình duyệt (iPhone, iPad, Mac, máy tính).": "Control CloudBlue cloud phones right in your browser (iPhone, iPad, Mac, computer).", "Khởi động lại máy? Máy tắt rồi bật lại trong 1–3 phút, app đang mở sẽ bị đóng.": "Restart this phone? It turns off and back on in 1–3 minutes; open apps will close.", "Đã chuyển sang chế độ tương thích cho trình duyệt này — hình vẫn chạy bình thường.": "Switched to compatibility mode for this browser — the picture keeps running normally.", "iPhone / iPad này quá cũ để mở máy trên trình duyệt. Vào Cài đặt → Cài đặt chung → Cập nhật phần mềm, hoặc dùng app CloudBlue trên máy tính / Android.": "This iPhone / iPad is too old to open phones in the browser. Go to Settings → General → Software Update, or use the CloudBlue app on a computer / Android."};
 const I18X_PRE = [["Trình duyệt không giải mã được hình của máy (", "The browser can't decode the phone's video ("], ["Trình duyệt chưa giải mã được hình của máy (", "The browser can't decode the phone's video yet ("], ["Không tải được danh sách máy (", "Couldn't load your phones ("], ["Không khởi động lại được: ", "Couldn't restart: "], ["Khởi động lại chưa được: ", "Couldn't restart yet: "], ["Đã gửi xong — đang cài ", "Uploaded — installing "], ["Không đăng nhập được: ", "Couldn't log in: "], ["App shop thêm sẵn · ", "Shop's app · "], ["Khởi động lại xong: ", "Restart done: "], ["Không mở được kho: ", "Couldn't open the app store: "], ["Máy vừa sao chép: “", "The phone copied: “"], ["Khởi động lại lỗi: ", "Restart failed: "], ["Máy đang bị khoá: ", "This phone is locked: "], ["Chất lượng hình: ", "Picture quality: "], ["Không cài được: ", "Couldn't install: "], ["Không đọc được: ", "Couldn't read: "], ["Không lưu được: ", "Couldn't save: "], ["Không cài được ", "Couldn't install "], ["Khởi động lại: ", "Restart: "], ["Gửi file lỗi: ", "Upload failed: "], ["Đang chuẩn bị ", "Preparing "], ["Cài app xong: ", "App installed: "], ["Cài app lỗi: ", "App install failed: "], ["Đang bật · ", "On · "], ["Đang gửi ", "Uploading "], ["Cài app: ", "Install app: "], ["Lỗi ", "Error "]];
 const I18X_SUF = [["). Hãy cập nhật iOS / trình duyệt rồi thử lại, hoặc dùng app CloudBlue trên máy tính / Android.", "). Update iOS / your browser and try again, or use the CloudBlue app on PC / Android."], ["). Hãy thử Safari / Chrome bản mới, hoặc dùng app CloudBlue trên máy tính / Android.", "). Try the latest Safari / Chrome, or use the CloudBlue app on a computer / Android."], ["). Hãy cập nhật iOS / trình duyệt rồi thử lại.", "). Update iOS / your browser and try again."], [" Thử lại sau ít phút hoặc báo hỗ trợ.", " Try again in a few minutes or contact support."], [" — nhiệm vụ mở máy hôm nay", " — today's open-a-phone mission"], [" app được dùng su", " apps can use su"], [" Tự thử lại…", " Retrying…"], [" (mạng chậm)", " (slow network)"], [" dùng root", " uses root"]];
 const I18X_TOK = [["hỏi web chậm → nối theo địa chỉ máy đã biết", "slow web lookup → using the known phone address"], ["được — máy chủ từ chối nối (phát hình đang bật lại / bận)", "OK — the server refused the connection (stream restarting / busy)"], ["chưa kiểm tra được phiên đăng nhập (mạng chậm)", "couldn't check the session (slow network)"], ["vào được máy nhưng không nhận được hình", "got in but no video"], ["không tải được /broadway.js · /avc.wasm", "couldn't load /broadway.js · /avc.wasm"], ["nối được nhưng máy chủ chưa trả lời", "connected but the server hasn't answered"], ["vừa không vào được — thử sau cùng", "just failed — tried last"], ["được — chỉ WebSocket không vào", "OK — only WebSocket is blocked"], ["màn hình đen dù đã đổi cách vẽ", "black screen even after switching render mode"], ["đã nối, máy chủ đang bật hình", "connected, server is starting video"], ["không chạy được luồng giải mã", "couldn't start the decoder thread"], ["máy chủ chưa bật đường thẳng", "server has no direct path"], ["màn hình đen → đổi cách vẽ (", "black screen → switching render mode ("], ["chưa lấy được thông tin máy", "couldn't get the phone's details"], ["không nhận được gì 6 giây", "nothing received for 6 s"], ["đã vào máy, đang chờ hình", "in, waiting for video"], ["không đường nào nối được", "no path connected"], ["vẽ (giải mã phần mềm) · ", "draw (software decoder) · "], ["] · không ra hình sau ", "] · no picture after "], ["có hình, đang giải mã", "video arriving, decoding"], ["treo ở bước nối (quá ", "stuck connecting (over "], ["mạng yếu → đang phát", "weak network → streaming"], ["HTTP tới máy chủ: ", "HTTP to server: "], ["không ra hình sau ", "no picture after "], ["không vào được (", "couldn't get in ("], ["giải mã phần mềm", "software decoder"], ["treo ở bước nối", "stuck connecting"], ["kết nối bị đóng", "connection closed"], [" · được chia sẻ", " · shared"], ["luồng giải mã: ", "decoder thread: "], [" → vẽ bằng CPU", " → drawing on CPU"], ["không mở được", "couldn't open"], ["nối được sau ", "connected after "], ["đang giải mã ", "decoding "], ["đường thẳng ", "direct path "], ["gửi khung · ", "send frame · "], ["máy chủ gửi", "server sends"], ["thẳng khung", "direct frame"], ["đang nối · ", "connecting · "], ["vẽ khung · ", "draw frame · "], ["Annex-B gọn", "lean Annex-B"], [" · hết hạn ", " · expires "], ["không được", "failed"], ["tạo ảnh · ", "make bitmap · "], ["đang nối…", "connecting…"], ["cấu hình ", "config "], ["gửi khung", "send frame"], ["trễ mạng", "latency"], ["chưa thử", "not tried"], ["Hết hạn ", "Expires "], ["avcC gọn", "lean avcC"], ["xin lúc ", "asked at "], ["phần mềm", "software"], ["khung/s", "fps"], ["đường: ", "path: "], ["qua ảnh", "via bitmap"], ["giải mã", "decoder"], [" · lỗi ", " · errors "], ["đã thử ", "tried "], [" → thử ", " → trying "], ["giữ chỗ", "placeholder"], [" · bỏ ", " · dropped "], [" khung", " frames"], ["đường ", "path "], [" lượt", " rounds"], [" giây", " s"], ["thẳng", "direct"], [" nhân", " cores"], [" cách", " modes"], ["nén: ", "codec: "], ["vẽ: ", "render: "], ["còn ", "left "]];

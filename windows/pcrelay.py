@@ -17,10 +17,16 @@
 #  Cần SQL v43 (pc_relay_auth · pc_relay_seen · pc_relay_gone · pc_relay_viewer). Tắt trạm: PC_RELAY=0 trong cloudphone.conf.
 #
 #  bluestream.py gọi 2 hàm:   serve_source(H, link, gói_chào)   ·   serve_viewer(H, link, hello)      (H = chính mô-đun bluestream)
+#
+#  22/11b — Ô XEM TRƯỚC MÁY PC ("▦ Xem tất cả" VPS GPU trên app): HELLO có "mode": "preview" → ô CHỈ XEM (không chuyển chuột / phím,
+#  không bao giờ đá người đang điều khiển). Không ai điều khiển → trạm bảo máy PC phát 1 luồng NHỎ (cạnh dài ≤ 480, 8 khung/giây,
+#  ~350 kbps) cho mọi ô của máy đó. Đang có người điều khiển → ô chỉ nhận khung khoá của luồng điều khiển (thưa, tối đa 1 khung / 2 giây)
+#  → máy PC KHÔNG phải nén thêm luồng nào. Người điều khiển đóng mà còn ô xem trước → chuyển về luồng nhỏ; hết ô → tắt bộ quay.
+#  Máy PC KHÔNG cần cập nhật (luồng nhỏ chỉ là R_START với chất lượng thấp). Tắt ô xem trước máy PC: PC_PREVIEW=0 trong cloudphone.conf.
 # =====================================================================================================
 import asyncio, collections, json, re, time, urllib.error
 
-PCRELAY_VER = "21/11a"
+PCRELAY_VER = "22/11b"
 P_HELLO, P_INFO = 0x02, 0x03                          # máy PC → trạm: chào (JSON) · thông số hình của phiên đang phát (JSON)
 R_OK, R_START, R_STOP, R_SLOW = 0x90, 0x91, 0x92, 0x93   # trạm → máy PC: đã nhận máy · có người xem, bật hình · hết người xem · người xem nhận chậm
 C_MOUSE = 0x1B                                        # khách → máy PC: chuột thật (rê không bấm, nút phải / giữa) — xem docs/STREAM-PROTOCOL.md mục 6
@@ -44,9 +50,19 @@ FAIL_MAX, FAIL_IP, FAIL_VIEW, FAIL_WIN = 12, 120, 40, 600   # trong 10 phút: 1 
                                                       # khách sai phiên đăng nhập quá 40 lần → từ chối luôn, không hỏi Supabase (cả phòng máy chung 1 IP:
                                                       # 1 máy hỏng mã không làm cả phòng bị chặn)
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+# ---- 22/11b: ô xem trước ----
+PEEK = True                                           # trạm này nhận ô xem trước máy PC (PC_PREVIEW=0 trong cloudphone.conf = tắt)
+PV_FPS, PV_SIDE, PV_KBPS = 8, 480, 350                # luồng nhỏ cho ô xem trước: khung/giây · cạnh dài · kbps
+PV_SIDE_MIN, PV_SIDE_MAX = 320, 640                   # cạnh dài app xin (maxh) được kẹp trong khoảng này
+PV_PER_SRC = 6                                        # tối đa số ô xem trước cùng lúc của 1 máy PC
+PV_MAX = 300                                          # tối đa số ô xem trước cùng lúc trên 1 trạm
+PV_KEY_GAP = 2.0                                      # đang có người điều khiển: ô chỉ nhận khung khoá, cách nhau ít nhất chừng này giây
+PV_BUF_HIGH = 96 * 1024                               # bộ đệm gửi tới ô vượt mức này → bỏ tới khung khoá kế
+PV_FAIL_S = 15                                        # máy PC báo lỗi khi bật luồng nhỏ → chừng này giây sau mới xin lại
 
 SOURCES = {}                                          # mã máy PC → Source (máy đang nối vào trạm này)
 VIEWERS = {}                                          # mã máy PC → Viewer (người đang điều khiển)
+PEEKS = set()                                         # 22/11b: mọi ô xem trước đang mở trên trạm này
 _FAILS = {}                                           # IP → deque(lúc sai mã)
 _state = {"beat": None, "nosql": 0.0, "said": 0.0}
 
@@ -128,6 +144,14 @@ def _rpc_safe(H, fn, body):
         return {"ok": False, "err": "NET"}
 
 
+def _viewer(H, pid, me):
+    """21.11l · hỏi quyền xem máy PC, báo kèm người xem có phải admin THẬT không (whoami đã hỏi is_admin() bằng chính phiên người xem → admin đã bật
+       xác minh 2 bước mà chưa nhập mã 6 số thì không phải admin). Supabase chưa chạy SQL v47 (hàm cũ 2 tham số) → hỏi kiểu cũ."""
+    r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me.get("uid"), "p_admin": me.get("admin") is True})
+    if r.get("err") == "NO_SQL": r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me.get("uid")})
+    return r
+
+
 async def _refuse(H, link, code, msg, **extra):
     link.send_nowait(H.S_ERROR, H.err_json(code, msg, **extra))
     try: await asyncio.wait_for(link.w.drain(), 2)
@@ -161,6 +185,7 @@ class Source:
         self.hello = info                              # máy tự báo lúc chào: {"w","h","enc","ver"}
         self.viewer = None; self.sid = 0; self.closed = False; self.why = ""
         self.t0 = time.time(); self.last_rx = time.time(); self.stray = 0; self.t_stop = 0.0; self.frames = 0
+        self.peeks = set(); self.pv_on = False; self.info = {}; self.t_pvfail = 0.0; self.pv_err = ""   # 22/11b: ô xem trước · đang phát luồng nhỏ · thông số phiên đang phát
 
     @property
     def tag(self): return (self.code + " · " if self.code else "") + self.name
@@ -175,7 +200,8 @@ class Source:
 
     def start(self, v):
         """Có người xem → bảo máy PC bật bộ quay màn hình cho phiên số sid."""
-        self.sid = self.sid % 0x7FFFFFF0 + 1
+        self.sid = self.sid % 0x7FFFFFF0 + 1; self.pv_on = False; self.info = {}
+        for pk in self.peeks: pk.on_switch()                   # 22/11b: ô xem trước chuyển sang nhận khung khoá của phiên điều khiển
         self.viewer = v; v.src = self; v.sid = self.sid; v.got_info = False; v.wait_key = True; v.t_req = time.time()
         h = v.hello
         req = {"sid": self.sid, "q": v.q, "fps": _int(h.get("fps"), 1, 240), "maxh": _int(h.get("maxh"), 160, 16384),
@@ -186,14 +212,47 @@ class Source:
     def stop(self, v):
         if self.viewer is v:
             self.viewer = None
-            self.tell(R_STOP, b""); self.t_stop = time.time()
+            nxt = VIEWERS.get(self.pid)
+            if self.peeks and (nxt is None or nxt is v or nxt.closed): self.start_pv()   # 22/11b: còn ô xem trước → về luồng nhỏ, không tắt bộ quay
+            else: self.idle()
+
+    def idle(self):
+        """Hết người xem (cả ô xem trước) → máy PC tắt bộ quay."""
+        self.pv_on = False; self.info = {}
+        self.tell(R_STOP, b""); self.t_stop = time.time()
+
+    # ---------- 22/11b: ô xem trước ----------
+    def start_pv(self):
+        """Chỉ còn ô xem trước → bảo máy PC phát 1 luồng nhỏ (phiên mới) cho mọi ô của máy này."""
+        self.sid = self.sid % 0x7FFFFFF0 + 1; self.pv_on = True; self.info = {}
+        side = max(PV_SIDE_MIN, min(PV_SIDE_MAX, max([pk.maxh for pk in self.peeks] or [PV_SIDE])))
+        adm = any(pk.me.get("admin") and not pk.owner for pk in self.peeks)          # admin (không phải chủ máy) đang xem → máy PC vẫn hiện lời báo như khi điều khiển
+        for pk in self.peeks: pk.on_switch()
+        req = {"sid": self.sid, "q": "eco", "fps": PV_FPS, "maxh": side, "kbps": PV_KBPS, "net": "", "dl": 0, "client": "preview",
+               "link": "direct", "admin": adm, "owner": not adm, "preview": True}
+        return self.tell(R_START, json.dumps(req).encode())
+
+    def ensure_pv(self):
+        """Gọi đều đặn từ ô xem trước: không ai điều khiển, chưa phát luồng nhỏ → xin luồng nhỏ (trừ khi người điều khiển mới đang vào)."""
+        if self.closed or self.viewer is not None or self.pv_on or not self.peeks: return
+        if time.time() - self.t_pvfail < PV_FAIL_S: return
+        c = VIEWERS.get(self.pid)
+        if c is not None and not c.closed: return
+        self.start_pv()
+
+    def drop_peek(self, pk):
+        self.peeks.discard(pk)
+        if not self.peeks and self.viewer is None and self.pv_on and not self.closed: self.idle()
 
     def _on_info(self, p):
         if len(p) > 2048: return
         try: info = _clean_info(json.loads(p.decode("utf-8")))
         except Exception: return
+        if info.get("sid") != self.sid or not (info["w"] and info["h"]): return
+        self.info = info
         v = self.viewer
-        if v is not None and info.get("sid") == v.sid and info["w"] and info["h"]: v.on_info(info)
+        if v is not None and info.get("sid") == v.sid: v.on_info(info)
+        for pk in list(self.peeks): pk.on_info(info)
 
     async def run(self):
         H = self.H; S_VIDEO, C_PING = H.S_VIDEO, H.C_PING
@@ -203,13 +262,21 @@ class Source:
             v = self.viewer
             if t == S_VIDEO:
                 self.frames += 1
-                if v is not None:
-                    if len(p) > 9: v.on_video(p)
+                if v is not None or self.peeks:
+                    if len(p) > 9:
+                        if v is not None: v.on_video(p)
+                        for pk in list(self.peeks): pk.on_video(p, self.pv_on)      # 22/11b: luồng nhỏ → đủ khung · luồng điều khiển → chỉ khung khoá thưa
                 else:                                          # không ai xem mà máy vẫn gửi hình (lệnh dừng chưa tới) → nhắc dừng, 3 giây 1 lần
                     self.stray += 1
                     if time.time() - self.t_stop > 3: self.t_stop = time.time(); self.tell(R_STOP, b"")
             elif t == C_PING: self.link.send_nowait(H.S_PONG, p[:8])
             elif t == P_INFO: self._on_info(p)
+            elif t == H.S_ERROR and v is None and self.pv_on and len(p) <= 2048:      # 22/11b: máy PC không bật được luồng nhỏ → báo các ô, lát nữa mới xin lại
+                try: j = json.loads(p.decode("utf-8"))
+                except Exception: j = {}
+                self.pv_err = str((j if isinstance(j, dict) else {}).get("msg") or "")[:300] or "Máy PC chưa phát được hình — thử lại sau ít phút."
+                for pk in list(self.peeks): pk.err = Bye("OFFLINE", self.pv_err)
+                self.idle(); self.t_pvfail = time.time()
             elif v is None or not v.got_info: continue
             elif t == H.S_STATS: v.on_stats(p)
             elif t == H.S_SIZE and len(p) <= 256: v.link.send_nowait(t, p)
@@ -222,6 +289,9 @@ class Source:
         if mine: SOURCES.pop(self.pid, None)
         v, self.viewer = self.viewer, None
         if v is not None and v.src is self: v.src = None; v.t_nosrc = time.time()      # khách được giữ chờ máy nối lại (SRC_WAIT_BACK)
+        for pk in list(self.peeks):                            # 22/11b: ô xem trước cũng được giữ chờ máy nối lại
+            if pk.src is self: pk.src = None; pk.t_nosrc = time.time()
+        self.peeks.clear(); self.pv_on = False
         await self.link.close()
         H = self.H
         H.log(f"🖥 máy PC {self.tag} rời trạm · {int(time.time() - self.t0)} giây · {self.frames} khung" + (f" · {self.why}" if self.why else ""))
@@ -361,7 +431,7 @@ class Viewer:
         """Phiên đang mở còn quyền không → None (còn) hoặc Bye. Lỗi mạng → không kết luận (không ngắt oan)."""
         H = self.H
         if H.SELFTEST: return None
-        r = _rpc_safe(H, "pc_relay_viewer", {"p_id": self.pid, "p_uid": self.me.get("uid")})
+        r = _viewer(H, self.pid, self.me)
         if r.get("ok"):
             self.until = r.get("until") if isinstance(r.get("until"), (int, float)) else None
             return None
@@ -438,12 +508,116 @@ class Viewer:
         self.H.log(f"■ PC {self.tag} đóng (gửi {self.sent} khung, bỏ {self.drop}) · {int(time.time() - self.t0)} giây" + (f" · {self.why}" if self.why else ""))
 
 
+# ================================================================== 22/11b: Ô XEM TRƯỚC (chỉ xem)
+class Peek(Viewer):
+    """1 ô xem trước máy PC trên app ("▦ Xem tất cả" VPS GPU): chỉ nhận hình — chuột / phím / chất lượng / ACK của ô đều bị bỏ,
+       không bao giờ đá người đang điều khiển. Hình: luồng nhỏ riêng (không ai điều khiển) hoặc khung khoá thưa của luồng điều khiển."""
+    def __init__(self, H, link, me, pid, hello, grant):
+        super().__init__(H, link, me, pid, hello, grant)
+        self.maxh = _int(hello.get("maxh"), 160, 16384, PV_SIDE)
+        self.t_key = 0.0
+
+    def on_switch(self):
+        """Máy PC đổi phiên (người điều khiển vào / ra, luồng nhỏ bật lại) → chờ thông số phiên mới + khung khoá."""
+        self.got_info = False; self.wait_key = True; self.t_req = time.time()
+
+    def on_info(self, info):
+        if self.closed: return
+        self.info = info; self.got_info = True; self.wait_key = True
+        if not self.link.welcomed:
+            self.link.welcomed = True
+            self.link.send_nowait(self.H.S_WELCOME, json.dumps({"ok": True, "w": info["w"], "h": info["h"], "fps": info.get("fps") or PV_FPS,
+                "kbps": info.get("kbps") or 0, "codec": "h264", "enc": info.get("enc") or "", "name": self.name, "android": "pc",
+                "q": "preview", "preview": True, "kind": "pc", "code": self.code}, ensure_ascii=False).encode())
+
+    def on_video(self, p, full=True):
+        """full = luồng nhỏ của ô xem trước (gửi đủ khung) · False = luồng của người điều khiển (chỉ khung khoá, ≥ PV_KEY_GAP giây 1 khung)."""
+        if not self.got_info or self.closed or self.link.dead(): return
+        key = p[0] & 1; buf = _buf(self.link)
+        if not full:
+            now = time.time()
+            if not key or buf > PV_BUF_HIGH or now - self.t_key < PV_KEY_GAP: self.drop += 1; return
+            self.t_key = now
+        elif self.wait_key:
+            if not key or buf > PV_BUF_HIGH: self.drop += 1; return
+            self.wait_key = False
+        elif buf > PV_BUF_HIGH:
+            self.drop += 1; self.wait_key = True; return
+        try: self.link.write(self.H.S_VIDEO, p)
+        except Exception: return
+        self.sent += 1; self.bytes += len(p) - 9
+
+    async def _receiver(self):
+        H = self.H
+        while not self.closed:
+            t, p = await asyncio.wait_for(self.link.recv(), VIEW_IDLE_S)
+            self.last_rx = time.time()
+            if t == H.C_PING: self.link.send_nowait(H.S_PONG, p[:8])
+            elif t == H.C_BYE: return
+            # ô xem trước CHỈ XEM: mọi gói khác (chuột, phím, chữ, chất lượng, xin khung khoá, ACK…) bỏ — không tới máy PC
+
+    async def _monitor(self):
+        H = self.H
+        while not self.closed:
+            now = time.time()
+            if self.err is not None: raise self.err
+            src = SOURCES.get(self.pid)
+            if src is not None and src.closed: src = None
+            if src is not self.src or (src is not None and self not in src.peeks):
+                old, self.src = self.src, None
+                if old is not None and old is not src: old.drop_peek(self)
+                if src is not None:                            # máy PC vừa nối (lại) vào trạm → gắn ô vào
+                    if self not in src.peeks and len(src.peeks) >= PV_PER_SRC:
+                        raise Bye("PV_FULL", "Máy PC này đang mở quá nhiều ô xem trước — đóng bớt cửa sổ Xem tất cả rồi thử lại.")
+                    src.peeks.add(self); self.src = src; self.on_switch()
+                    if src.info and src.info.get("sid") == src.sid and (src.viewer is not None or src.pv_on): self.on_info(src.info)
+            if self.src is None:
+                if now - self.t_nosrc > (SRC_WAIT_BACK if self.link.welcomed else SRC_WAIT_NEW):
+                    raise Bye("OFFLINE", "Máy PC vừa mất kết nối (tắt máy / mất mạng)." if self.link.welcomed
+                              else "Máy PC chưa nối tới máy chủ (đang tắt, đang khởi động hoặc mất mạng).")
+            else:
+                self.t_nosrc = now
+                self.src.ensure_pv()
+                sv = self.src
+                if sv.viewer is None and not sv.pv_on and now - sv.t_pvfail < PV_FAIL_S and sv.pv_err:   # máy vừa báo không phát được luồng nhỏ
+                    raise Bye("OFFLINE", sv.pv_err)
+                if not self.got_info and now - self.t_req > INFO_WAIT_S + 5:
+                    raise Bye("OFFLINE", "Máy PC chưa gửi được hình — thử lại sau ít giây.")
+            if now - self.last_rx > VIEW_IDLE_S: self.why = self.why or f"{VIEW_IDLE_S} giây app không gửi gì"; return
+            if self.until and now >= self.until and not self.me.get("admin"):
+                raise Bye("LOCKED", "Máy PC đã hết hạn thuê — gia hạn để dùng tiếp.")
+            if now - self.t_auth >= REAUTH_S:
+                self.t_auth = now
+                d = await asyncio.to_thread(self._recheck)
+                if d is not None: raise d
+            await asyncio.sleep(0.25)
+
+    async def kick(self): await self.finish()
+
+    async def finish(self):
+        if self.closed: return
+        self.closed = True
+        PEEKS.discard(self)
+        src, self.src = self.src, None
+        if src is not None: src.drop_peek(self)                 # ô cuối cùng đóng, không ai điều khiển → máy PC tắt bộ quay
+        try: await asyncio.wait_for(self.link.w.drain(), 2)
+        except Exception: pass
+        await self.link.close()
+        self.H.log(f"▫ PC {self.tag}: ô xem trước đóng (gửi {self.sent} khung, bỏ {self.drop}) · {int(time.time() - self.t0)} giây" + (f" · {self.why}" if self.why else ""))
+
+
+def _peek_on(H):
+    """Trạm có nhận ô xem trước máy PC không (PC_PREVIEW=0 trong cloudphone.conf = tắt)."""
+    try: return PEEK and str((getattr(H, "C", None) or {}).get("PC_PREVIEW", "1")).strip().lower() not in ("0", "false", "off", "no")
+    except Exception: return PEEK
+
+
 def _auth_viewer(H, hello, pid):
     """Kiểm quyền điều khiển máy PC → (me, grant). Không được → Bye."""
     if H.SELFTEST: return {"uid": "test", "admin": True}, {"ok": True, "name": "PC thử", "code": "T-1", "admin": True, "owner": False, "until": None}
     me = H.whoami(hello.get("token") or "")
     if not me: raise Bye("AUTH", "Phiên đăng nhập hết hạn, hãy đăng nhập lại.")
-    r = _rpc_safe(H, "pc_relay_viewer", {"p_id": pid, "p_uid": me["uid"]})
+    r = _viewer(H, pid, me)
     if not r.get("ok"):
         if r.get("err") == "NO_SQL": raise Bye("OFFLINE", "Hệ thống chưa bật điều khiển máy PC — báo hỗ trợ.")
         if r.get("err") == "NET": raise Bye("OFFLINE", "Máy chủ chưa kiểm được quyền — thử lại sau ít giây.")
@@ -461,7 +635,9 @@ async def serve_viewer(H, link, hello):
     try:
         pid = str(hello.get("pc") or "").lower()
         if not UUID.fullmatch(pid): return await _refuse(H, link, "BAD", "Thiếu mã máy PC.")
-        if str(hello.get("mode") or "") == "preview": return await _refuse(H, link, "PREVIEW_LIMIT", "Máy PC không có hình xem trước.")
+        peek = str(hello.get("mode") or "") == "preview"
+        if peek and not _peek_on(H): return await _refuse(H, link, "PREVIEW_LIMIT", "Máy PC không có hình xem trước.")
+        if peek and len(PEEKS) >= PV_MAX: return await _refuse(H, link, "PV_FULL", "Máy chủ đang bận — ô xem trước tạm dừng, bấm vào máy để điều khiển.")
         ip = "v:" + _peer(link)
         if _blocked(ip, FAIL_VIEW): return await _refuse(H, link, "BUSY", "Thử quá nhiều lần — đợi vài phút rồi mở lại.")
         try:
@@ -469,10 +645,14 @@ async def serve_viewer(H, link, hello):
         except Bye as d:
             if d.code in ("AUTH", "NOT_YOURS"): _fail(ip)
             return await _refuse(H, link, d.code, d.msg, **d.extra)
+        if peek:                                               # 22/11b: ô xem trước — chỉ xem, không đá ai
+            v = Peek(H, link, me, pid, hello, grant); PEEKS.add(v)
+            H.log(f"▫ PC {v.tag}: {str(me.get('uid'))[:8]}{' (admin)' if me.get('admin') else ''} mở ô xem trước ({link.kind}) · trạm có {len(PEEKS)} ô")
+            await v.run(); return
         v = Viewer(H, link, me, pid, hello, grant)
         old = VIEWERS.get(pid)
+        VIEWERS[pid] = v                                       # 22/11b: ghi người mới TRƯỚC khi đá người cũ → ô xem trước không bật luồng nhỏ xen giữa
         if old is not None: await old.kick()                   # mỗi máy 1 người điều khiển: người mở sau đá người mở trước
-        VIEWERS[pid] = v
         H.log(f"▶ PC {v.tag}: {str(me.get('uid'))[:8]}{' (admin)' if me.get('admin') else ''} mở điều khiển ({link.kind}, {str(hello.get('client') or '?')[:12]})")
         await v.run()
     finally:

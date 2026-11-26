@@ -43,8 +43,10 @@ class FakeSB:
         self.pcs = {PC1: dict(token="tok-1", name="Máy 14-85", code="14-85", user=UA, approved=True, remote=True, until=None),
                     PC2: dict(token="tok-2", name="Máy 2", code="", user=UB, approved=True, remote=True, until=None),
                     PC3: dict(token="tok-3", name="Máy 3", code="", user=None, approved=False, remote=True, until=None)}
-        self.users = {"jwt-a": {"uid": UA, "admin": False}, "jwt-b": {"uid": UB, "admin": False}, "jwt-adm": {"uid": UADM, "admin": True}}
+        self.users = {"jwt-a": {"uid": UA, "admin": False}, "jwt-b": {"uid": UB, "admin": False}, "jwt-adm": {"uid": UADM, "admin": True},
+                      "jwt-adm1": {"uid": UADM, "admin": False}}            # 21.11l: admin đã bật 2 bước, phiên CHƯA nhập mã → whoami (is_admin()) = false
         self.calls = []; self.remote_on = True; self.nosql = False; self.down = False; self.relay = {}
+        self.role_admin = {UADM}; self.mfa = set(); self.v47 = True; self.viewer_bodies = []
 
     def whoami(self, token): return self.users.get(token)
 
@@ -68,11 +70,17 @@ class FakeSB:
             assert set(body) == {"p_id", "p_node"}, body
             return self.relay.pop(body["p_id"], None) == body["p_node"]
         if fn == "pc_relay_viewer":
-            assert set(body) == {"p_id", "p_uid"}, body
+            assert set(body) in ({"p_id", "p_uid"}, {"p_id", "p_uid", "p_admin"}), body
+            self.viewer_bodies.append(dict(body))
+            if "p_admin" in body and not self.v47:                    # Supabase chưa chạy SQL v47: chỉ có hàm cũ 2 tham số
+                raise urllib.error.HTTPError(path, 404, "Not Found", {}, io.BytesIO(b'{"code":"PGRST202"}'))
             u = next((x for x in self.users.values() if x["uid"] == body["p_uid"]), None)
             if not u: return {"ok": False, "code": "AUTH", "msg": "Phiên đăng nhập hết hạn, hãy đăng nhập lại."}
             m = self.pcs.get(body["p_id"])
             if not m: return {"ok": False, "code": "NOT_YOURS", "msg": "Không tìm thấy máy PC."}
+            ra = body["p_uid"] in self.role_admin                          # như SQL v47: admin = vai admin + (trạm báo p_admin | chưa bật 2 bước); SQL cũ: chỉ vai admin
+            adm = ra and (body["p_admin"] is True if "p_admin" in body else (body["p_uid"] not in self.mfa if self.v47 else True))
+            u = dict(u, admin=adm)
             if not u["admin"]:
                 if m["user"] != u["uid"]: return {"ok": False, "code": "NOT_YOURS", "msg": "Đây không phải máy PC của bạn."}
                 if not self.remote_on or not m["approved"] or not m["remote"]: return {"ok": False, "code": "LOCKED", "msg": "Máy PC này chưa bật điều khiển từ xa — liên hệ hỗ trợ."}
@@ -206,8 +214,13 @@ async def main():
     ck("phiên đăng nhập sai → AUTH", m and json.loads(m[1])["code"] == "AUTH", m); c.close()
     c = await viewer(port, PC1, "jwt-b"); m = await c.recv()
     ck("khách KHÁC → NOT_YOURS; máy PC không nhận lệnh bật hình", m and json.loads(m[1])["code"] == "NOT_YOURS" and await s.recv(0.3) is None, m); c.close()
+    H.C["PC_PREVIEW"] = "0"
     c = await viewer(port, PC1, "jwt-a", mode="preview"); m = await c.recv()
-    ck("xin hình xem trước → PREVIEW_LIMIT (máy PC không bật bộ quay cho ô xem trước)", m and json.loads(m[1])["code"] == "PREVIEW_LIMIT", m); c.close()
+    ck("PC_PREVIEW=0 trong cloudphone.conf → ô xem trước bị từ chối (PREVIEW_LIMIT) như bản cũ, máy PC không nhận lệnh",
+       m and json.loads(m[1])["code"] == "PREVIEW_LIMIT" and await s.recv(0.3) is None, m); c.close()
+    H.C.pop("PC_PREVIEW", None)
+    c = await viewer(port, PC1, "jwt-b", mode="preview"); m = await c.recv()
+    ck("ô xem trước máy của khách KHÁC → NOT_YOURS (kiểm quyền như điều khiển)", m and json.loads(m[1])["code"] == "NOT_YOURS" and await s.recv(0.3) is None, m); c.close()
     c = await viewer(port, PC2, "jwt-b"); m = await c.recv(3)
     ck("máy PC chưa nối vào trạm → chờ ngắn rồi OFFLINE (lời báo kiểm tra máy)", m and m[0] == S_ERROR and json.loads(m[1])["code"] == "OFFLINE" and "chưa nối" in json.loads(m[1])["msg"], m); c.close()
 
@@ -350,6 +363,24 @@ async def main():
     ck("khoá chặn có hạn 10 phút và tính riêng máy PC / khách", R._blocked("s:1.2.3.4") is False and [R._fail("s:1.2.3.4", now=1000.0) for _ in range(12)] and R._blocked("s:1.2.3.4", now=1100.0) is True
        and R._blocked("v:1.2.3.4", R.FAIL_VIEW, now=1100.0) is False and R._blocked("s:1.2.3.4", now=1000.0 + 601) is False and R._blocked("s:") is False)
 
+    print("10b. Xác minh 2 bước (21.11l): quyền admin trên trạm theo is_admin() của CHÍNH phiên người xem")
+    db.mfa.add(UADM)
+    s2, ok2 = await source(port, PC2, "tok-2")
+    ck("(chuẩn bị) máy PC2 vào trạm", ok2 and ok2[0] == R_OK, ok2)
+    n0 = len(db.viewer_bodies)
+    c = await viewer(port, PC2, "jwt-adm1"); m = await c.recv()
+    ck("admin đã bật 2 bước mà phiên chưa nhập mã (whoami: admin = false) → KHÔNG mở được máy của khách", m and m[0] == S_ERROR and json.loads(m[1])["code"] == "NOT_YOURS", m); c.close()
+    ck("… trạm báo kèm p_admin = false cho Supabase", db.viewer_bodies[n0:n0 + 1] and db.viewer_bodies[n0].get("p_admin") is False, db.viewer_bodies[n0:])
+    c = await viewer(port, PC2, "jwt-adm"); st = json.loads(await s2.want(R_START) or b"{}")
+    ck("admin đã nhập mã (whoami: admin = true) → mở được, trạm báo p_admin = true", st.get("admin") is True and db.viewer_bodies[-1].get("p_admin") is True, (st, db.viewer_bodies[-1:]))
+    c.close(); await s2.want(R_STOP, 2)
+    db.v47 = False; n0 = len(db.viewer_bodies)
+    c = await viewer(port, PC2, "jwt-adm"); st = json.loads(await s2.want(R_START) or b"{}")
+    ck("Supabase chưa chạy SQL v47 (hàm cũ 2 tham số) → trạm tự hỏi lại kiểu cũ, vẫn mở được như trước",
+       st.get("admin") is True and [sorted(b) for b in db.viewer_bodies[n0:n0 + 2]] == [["p_admin", "p_id", "p_uid"], ["p_id", "p_uid"]], db.viewer_bodies[n0:])
+    c.close(); await s2.want(R_STOP, 2); s2.close(); db.v47 = True; db.mfa.discard(UADM)
+    await asyncio.sleep(0.3)
+
     print("11. Khách nhận chậm → bỏ khung, không dồn trễ")
     R._FAILS.clear()
     v = await viewer(port, PC1, "jwt-a"); stx = json.loads(await s.want(R_START)); s.send(P_INFO, {"sid": stx["sid"], "w": 1920, "h": 1080}); await v.want(S_WELCOME)
@@ -373,6 +404,123 @@ async def main():
     m1, m2 = await v.recv(), await v.recv()
     ck("hết nghẽn → hình chạy lại bình thường", m1 == (S_VIDEO, vid(True, 2000)) and m2 == (S_VIDEO, vid(False, 2001)), (m1 and m1[0], m2 and m2[0]))
     v.send(C_BYE); await s.want(R_STOP); v.close()
+
+    print("11b. Ô xem trước máy PC (22/11b · ▦ Xem tất cả VPS GPU)")
+    ck("bản trạm 22/11b, bật ô xem trước", R.PCRELAY_VER == "22/11b" and R.PEEK is True and R._peek_on(H))
+    p1 = await viewer(port, PC1, "jwt-a", mode="preview", maxh=400, client="pc")
+    m = await s.recv()
+    pv = json.loads(m[1]) if m and m[0] == R_START else {}
+    ck("không ai điều khiển → máy PC nhận R_START luồng NHỎ (eco, 8 khung/giây, cạnh dài theo app, ~350 kbps, chủ máy, đánh dấu preview)",
+       pv.get("q") == "eco" and pv.get("fps") == 8 and pv.get("maxh") == 400 and pv.get("kbps") == 350 and pv.get("preview") is True
+       and pv.get("owner") is True and pv.get("admin") is False and pv.get("client") == "preview", m)
+    s.send(P_INFO, {"sid": pv["sid"], "w": 400, "h": 226, "fps": 8, "kbps": 350, "enc": "nvenc", "q": "eco"})
+    m = await p1.recv()
+    w1 = json.loads(m[1]) if m and m[0] == S_WELCOME else {}
+    ck("ô nhận WELCOME (preview = true, kind = pc, cỡ luồng nhỏ)", w1.get("preview") is True and w1.get("kind") == "pc" and w1.get("w") == 400
+       and w1.get("q") == "preview" and w1.get("name") == "Máy 14-85", m)
+    s.send(S_VIDEO, vid(False, 300)); s.send(S_VIDEO, vid(True, 301)); s.send(S_VIDEO, vid(False, 302))
+    m1, m2 = await p1.recv(), await p1.recv()
+    ck("luồng nhỏ: ô nhận đủ khung, bắt đầu từ khung khoá", m1 == (S_VIDEO, vid(True, 301)) and m2 == (S_VIDEO, vid(False, 302)), (m1, m2))
+    for t, pl in ((C_TOUCH, struct.pack(">BBHH", 0, 0, 1, 1)), (C_MOUSE, struct.pack(">BBHH", 1, 1, 5, 5)), (C_KEY, struct.pack(">BII", 0, 29, 0)),
+                  (C_TEXT, b"abc"), (C_CMD, b'{"cmd":"home"}'), (C_QUALITY, b'{"q":"hd"}'), (C_KEYFRAME, b""), (C_CLIP, b"\x01x"), (C_ACK, struct.pack(">Q", 302))):
+        p1.send(t, pl)
+    ck("ô xem trước CHỈ XEM: chuột / phím / chữ / chất lượng / xin khung khoá / ACK đều KHÔNG tới máy PC", await s.recv(0.5) is None)
+    p1.send(C_PING, struct.pack(">Q", 77)); m = await p1.recv(skip=())
+    ck("… PING của ô vẫn được trạm trả lời", m == (S_PONG, struct.pack(">Q", 77)), m)
+    p2 = await viewer(port, PC1, "jwt-a", mode="preview", maxh=300, client="android")
+    m = await p2.recv()
+    w2 = json.loads(m[1]) if m and m[0] == S_WELCOME else {}
+    ck("ô thứ 2 (máy khác của khách) dùng chung luồng nhỏ đang phát: WELCOME ngay, máy PC không bị bật lại", w2.get("preview") is True and w2.get("w") == 400
+       and await s.recv(0.4) is None, (m, w2))
+    s.send(S_VIDEO, vid(False, 303)); s.send(S_VIDEO, vid(True, 304))
+    m1, m2 = await p2.recv(), await p1.recv()
+    ck("… ô mới chờ khung khoá, ô cũ nhận tiếp đủ khung", m1 == (S_VIDEO, vid(True, 304)) and m2 == (S_VIDEO, vid(False, 303)), (m1, m2))
+    await p1.recv()
+    v = await viewer(port, PC1, "jwt-a", fps=60)
+    m = await s.recv()
+    ctl = json.loads(m[1]) if m and m[0] == R_START else {}
+    ck("chủ máy mở ĐIỀU KHIỂN trong lúc có ô xem trước → máy PC nhận R_START phiên điều khiển (chất lượng của khách, không còn preview)",
+       ctl.get("sid", 0) > pv["sid"] and ctl.get("q") == "auto" and ctl.get("fps") == 60 and not ctl.get("preview"), m)
+    ck("… ô xem trước KHÔNG bị đá (không ERROR)", await p1.recv(0.3) is None and await p2.recv(0.2) is None)
+    s.send(S_VIDEO, vid(True, 305))
+    ck("hình của luồng nhỏ cũ (trước P_INFO phiên mới) không lọt tới ô / người điều khiển", await p1.recv(0.3) is None and await v.recv(0.2) is None)
+    s.send(P_INFO, {"sid": ctl["sid"], "w": 1920, "h": 1080, "fps": 60, "kbps": 9000, "enc": "nvenc", "q": "auto"})
+    wel = json.loads(await v.want(S_WELCOME) or b"{}")
+    ck("người điều khiển nhận WELCOME bình thường", wel.get("w") == 1920 and wel.get("kind") == "pc" and not wel.get("preview"), wel)
+    ck("… ô xem trước không nhận WELCOME / SIZE lần nữa", await p1.recv(0.3) is None)
+    for i, k in enumerate((True, False, False, True, False)): s.send(S_VIDEO, vid(k, 310 + i))
+    got_v = [await v.recv() for _ in range(5)]
+    got_p = []
+    while True:
+        m = await p1.recv(0.4)
+        if m is None: break
+        got_p.append(m)
+    ck("người điều khiển nhận đủ 5 khung", got_v == [(S_VIDEO, vid(k, 310 + i)) for i, k in enumerate((True, False, False, True, False))], [x and x[0] for x in got_v])
+    ck("… ô xem trước chỉ nhận KHUNG KHOÁ thưa (khung khoá thứ 2 trong vòng 2 giây bị bỏ) → máy PC không phải nén thêm luồng",
+       got_p == [(S_VIDEO, vid(True, 310))], got_p)
+    while await p2.recv(0.2) is not None: pass
+    await asyncio.sleep(R.PV_KEY_GAP + 0.1)
+    for c_ in (p1, p2, v): c_.send(C_PING, struct.pack(">Q", 1))
+    s.send(S_VIDEO, vid(False, 320)); s.send(S_VIDEO, vid(True, 321))
+    m = await p1.want(S_VIDEO)
+    ck("… quá 2 giây → khung khoá kế tới ô", m == vid(True, 321), m)
+    v.send(C_TOUCH, struct.pack(">BBHH", 0, 0, 9, 9)); m = await s.recv()
+    ck("chuột của người điều khiển vẫn tới máy PC bình thường", m == (C_TOUCH, struct.pack(">BBHH", 0, 0, 9, 9)), m)
+    adm = await viewer(port, PC1, "jwt-adm")
+    m = await v.want(S_ERROR, 3)
+    ck("admin mở điều khiển → người điều khiển cũ bị đá (KICKED) như trước", m and json.loads(m)["code"] == "KICKED", m); v.close()
+    m1, m2 = await s.recv(), await s.recv()
+    st_a = json.loads(m2[1]) if m2 and m2[0] == R_START else {}
+    ck("… máy PC nhận R_STOP rồi R_START phiên của admin — KHÔNG bật luồng nhỏ xen giữa", m1 == (R_STOP, b"") and st_a.get("admin") is True and not st_a.get("preview")
+       and await s.recv(0.6) is None, (m1, m2))
+    ck("… ô xem trước vẫn mở", await p1.recv(0.2) is None and not p1.w.is_closing())
+    s.send(P_INFO, {"sid": st_a["sid"], "w": 1920, "h": 1080}); await adm.want(S_WELCOME)
+    adm.send(C_BYE)
+    m = await s.recv()
+    pv2 = json.loads(m[1]) if m and m[0] == R_START else {}
+    ck("người điều khiển đóng mà còn ô xem trước → máy PC chuyển về luồng nhỏ (R_START preview), KHÔNG tắt bộ quay",
+       pv2.get("preview") is True and pv2.get("sid", 0) > st_a["sid"] and pv2.get("maxh") == 400, m); adm.close()
+    s.send(P_INFO, {"sid": pv2["sid"], "w": 400, "h": 226, "fps": 8}); s.send(S_VIDEO, vid(False, 330)); s.send(S_VIDEO, vid(True, 331)); s.send(S_VIDEO, vid(False, 332))
+    m1, m2 = await p1.want(S_VIDEO), await p1.want(S_VIDEO)
+    ck("… ô nhận lại đủ khung của luồng nhỏ (từ khung khoá)", m1 == vid(True, 331) and m2 == vid(False, 332), (m1, m2))
+    R.PV_PER_SRC = 2
+    p3 = await viewer(port, PC1, "jwt-a", mode="preview"); m = await p3.want(S_ERROR, 3)
+    ck("quá số ô xem trước của 1 máy → PV_FULL (lời báo rõ ràng), các ô khác không ảnh hưởng", m and json.loads(m)["code"] == "PV_FULL" and await p1.recv(0.2) is None, m); p3.close()
+    R.PV_PER_SRC = 6
+    p2.send(C_BYE); await asyncio.sleep(0.3)
+    ck("1 ô đóng, còn ô khác → máy PC vẫn phát (không R_STOP)", await s.recv(0.4) is None)
+    p1.send(C_BYE); m = await s.recv(2)
+    ck("ô cuối cùng đóng, không ai điều khiển → máy PC nhận R_STOP (tắt bộ quay)", m == (R_STOP, b""), m)
+    p1.close(); p2.close(); await asyncio.sleep(0.2)
+    ck("… trạm không còn ô nào", not R.PEEKS and not R.SOURCES[PC1].peeks and R.SOURCES[PC1].pv_on is False)
+    p1 = await viewer(port, PC1, "jwt-a", mode="preview")
+    pv3 = json.loads(await s.want(R_START) or b"{}")
+    s.send(S_ERROR, {"code": "OFFLINE", "msg": "Máy PC đang chuẩn bị bộ quay màn hình (lần đầu mất 1–2 phút) — thử lại sau ít phút."})
+    m = await p1.want(S_ERROR, 3)
+    ck("máy PC báo chưa bật được luồng nhỏ → ô nhận đúng lời báo của máy", pv3.get("preview") is True and m and "chuẩn bị bộ quay" in json.loads(m)["msg"], m)
+    m = await s.recv()
+    ck("… máy PC nhận R_STOP (dọn phiên hỏng)", m == (R_STOP, b""), m)
+    p1.close(); await asyncio.sleep(0.3)
+    p1 = await viewer(port, PC1, "jwt-a", mode="preview"); m = await p1.want(S_ERROR, 3)
+    ck("mở ô khác ngay sau đó → báo luôn lời của máy, trạm KHÔNG xin lại máy PC liên tục", m and "chuẩn bị bộ quay" in json.loads(m)["msg"] and await s.recv(0.5) is None, m)
+    p1.close(); await asyncio.sleep(0.3)
+    R.SOURCES[PC1].t_pvfail = 0.0
+    while await s.recv(0.3) is not None: pass
+    p1 = await viewer(port, PC1, "jwt-a", mode="preview"); pv4 = json.loads(await s.want(R_START) or b"{}")
+    s.send(P_INFO, {"sid": pv4["sid"], "w": 400, "h": 226}); await p1.want(S_WELCOME)
+    db.pcs[PC1]["user"] = UB
+    m = await p1.want(S_ERROR, 3)
+    ck("admin chuyển máy cho khách khác → ô xem trước đang mở bị ngắt (NOT_YOURS)", m and json.loads(m)["code"] == "NOT_YOURS", m); p1.close()
+    db.pcs[PC1]["user"] = UA
+    m = await s.want(R_STOP, 2)
+    ck("… máy PC nhận R_STOP", m is not None, m)
+    c = await viewer(port, PC2, "jwt-b", mode="preview"); m = await c.want(S_ERROR, 3)
+    ck("ô xem trước máy PC chưa nối vào trạm → OFFLINE (máy đang tắt / khởi động)", m and json.loads(m)["code"] == "OFFLINE" and "chưa nối" in json.loads(m)["msg"], m); c.close()
+    R.PV_MAX = 0
+    c = await viewer(port, PC1, "jwt-a", mode="preview"); m = await c.recv()
+    ck("trạm đầy ô xem trước → PV_FULL, không hỏi Supabase", m and json.loads(m[1])["code"] == "PV_FULL", m); c.close()
+    R.PV_MAX = 300
+    await asyncio.sleep(0.3)
 
     print("12. Giới hạn số máy · đường vòng Cloudflare · báo web")
     R.MAX_SOURCES = 1

@@ -148,3 +148,64 @@ the server measures what the client really received from the ACKs. On congestion
 goodput × 0.8 (at least 250 kbps, at most 0.7 × current); after 10 s without congestion it steps back up × 1.3
 until the ceiling. Below 1.4 Mbps the frame rate is capped at 30 fps, below 0.7 Mbps at 20 fps.
 Every change restarts the encoder, so the client gets a fresh keyframe with SPS/PPS (same size → no SIZE message).
+
+---------------------------------------------------------------------------------------------------
+
+## 6. Real PC machines (VPS GPU) — relay mode (pcrelay 21/11a · SQL v43 · agent 21.11d+)
+
+A rented Windows PC sits behind the shop's router, so nobody can connect to it. The helper `pcremote.py` on the PC
+connects **out** to the stream port of one cloud-phone server and waits there. The viewer (web `play.html?pc=…`,
+Android app, PC app) connects to the same server exactly like for a phone; the server (`pcrelay.py` inside
+`bluestream.py`) pairs both links and only forwards packets (it never decodes video or reads keys).
+
+### 6a. Discovery
+
+```
+POST {SB}/rest/v1/rpc/pc_endpoint      body: {"p_id": "<pc uuid>"}          (user token)
+```
+
+Same shape as `cloudphone_endpoint` plus `"kind": "pc"`, `"engine": "pc"`, `"android": "pc"`, `"os": "22h2"|"1511"`,
+`"code"` (machine number) and `"until"` (rental end, unix seconds or null). `online` = the PC is connected to a live relay;
+`stream` describes that relay node. Errors: `NOT_LOGGED_IN`, `NOT_FOUND`, `NOT_ALLOWED` (only the assigned customer
+— `pc_machines.user_id` — or an admin). Function missing (`PGRST202`) = the shop has not run SQL v43 yet.
+Offline: show "Máy PC đang tắt / chưa nối máy chủ" and retry every 10 s.
+
+### 6b. Session
+
+* HELLO is the same as section 3 but with `"pc": "<pc uuid>"` **instead of** `"phone"`.
+* WELCOME adds `"kind": "pc"`; `w`/`h` = the PC screen scaled (long side ≤ 1920, `eco` 1280, or `maxh`). Errors: `AUTH` · `NOT_YOURS` ·
+  `LOCKED` (rental expired, or remote control turned off for this PC / for all PCs) · `OFFLINE` (PC not connected,
+  or nobody logged in / screen locked) · `MAINT` (site maintenance) · `KICKED` (opened somewhere else — one viewer
+  per PC, like phones) · `BUSY` / `BAD`. Admins are never blocked by `LOCKED`.
+* Video, PING/PONG, ACK, QUALITY, KEYFRAME, CLIP_SET, CLIPBOARD, STATS: unchanged.
+* When an admin who is **not** the machine's customer opens it, the PC shows a message box so the customer knows.
+* The PC only captures the screen while a viewer is connected (the relay sends start / stop to the PC).
+
+### 6c. Input (client → server)
+
+| type | name | payload |
+|---|---|---|
+| `0x1B` | MOUSE | `action u8` (0 move · 1 down · 2 up) · `button u8` (0 left · 1 right · 2 middle · 3 back/X1 · 4 forward/X2) · `x u16` · `y u16` |
+| `0x10` | TOUCH | still accepted (touch screens / phone app): tap = left click · hold still 0.55 s = right click · tap and drag = drag · double tap = double click · two-finger swipe = wheel |
+| `0x13` | SCROLL | real mouse wheel at `x`,`y` (120 = one notch; `h` = horizontal wheel) |
+| `0x11` | KEY | Android key code as in section 3 → Windows virtual key on the PC (table below). Send down **and** up; the PC releases every key still held when the session closes |
+| `0x12` | TEXT | Unicode text typed on the PC |
+| `0x14` | CMD | `back` Esc · `home` / `desktop` Win+D · `recents` Win+Tab · `win` Win · `alttab` Alt+Tab · `altf4` Alt+F4 · `taskmgr` Ctrl+Shift+Esc · `explorer` Win+E · `notif` Win+A · `menu` context menu · `enter` · `mute` · `volup` · `voldown` (`power`, `rotate` ignored) |
+
+`x`,`y` are normalized over the decoded video like TOUCH (0…65535). Send MOVE at most every ~8 ms while the pointer
+moves (with or without a button held). Release all keys and buttons when the window loses focus.
+
+Extra key codes for a real PC (besides section 3): F1–F12 131–142 · SHIFT_LEFT 59 · SHIFT_RIGHT 60 · CTRL_LEFT 113 ·
+CTRL_RIGHT 114 · ALT_LEFT 57 · ALT_RIGHT 58 · META_LEFT (Win) 117 · META_RIGHT 118 · INSERT 124 · CAPS_LOCK 115 ·
+NUM_LOCK 143 · SCROLL_LOCK 116 · SYSRQ (Print Screen) 120 · BREAK 121 · NUMPAD_0–9 144–153 · NUMPAD ÷ × − + . 154–158 ·
+NUMPAD_ENTER 160 · GRAVE 68 · MINUS 69 · EQUALS 70 · [ 71 · ] 72 · \ 73 · ; 74 · ' 75 · , 55 · . 56 · / 76 · MUTE 164 ·
+MEDIA play/pause 85 · next 87 · previous 88.
+
+### 6d. PC ⇄ relay (internal, `windows/pcrelay.py` + `winpc/agent/pcremote.py`)
+
+The PC asks Supabase where to connect (`pc_relay_where`, machine id + machine token), connects to that node with the
+same framing as section 2, then sends `P_HELLO 0x02` `{"pc", "token", …}`. The relay checks it with `pc_relay_auth`
+(service key, never on the PC) and answers `R_OK 0x90`. When a viewer arrives: `R_START 0x91` → the PC starts capture
+and sends `P_INFO 0x03` `{sid, w, h, …}` → the relay sends WELCOME. `R_STOP 0x92` = no viewer left (capture stops),
+`R_SLOW 0x93` = the viewer is behind (lower the bitrate). Relays report live PCs with `pc_relay_seen` every 40 s;
+a PC not reported for 100 s counts as offline. Disable the relay on a server: `PC_RELAY=0` in `cloudphone.conf`.

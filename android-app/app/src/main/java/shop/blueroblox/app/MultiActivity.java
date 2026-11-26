@@ -58,6 +58,7 @@ public class MultiActivity extends Activity {
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private final ArrayList<Tile> tiles = new ArrayList<>();
+    private boolean pcMode = false;                          // 21.11k: lưới các MÁY PC (VPS GPU) thay cho điện thoại đám mây
     private final Fan fan = new Fan();
     private JSONArray all = new JSONArray();                 // mọi máy điều khiển được của tài khoản (đang chạy, không bị khoá)
     private SharedPreferences pref;
@@ -85,8 +86,9 @@ public class MultiActivity extends Activity {
         Ui.edgeToEdge(this);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pref = getSharedPreferences("multi", MODE_PRIVATE);
-        String q = getSharedPreferences("control", MODE_PRIVATE).getString("q", "auto");
-        userQ = "eco".equals(q) || "bal".equals(q) || "hd".equals(q) ? q : "auto";     // máy đang xem to: đúng mức khách đã chọn ở màn 1 máy
+        pcMode = getIntent() != null && getIntent().getBooleanExtra("pc", false);
+        String q = getSharedPreferences("control", MODE_PRIVATE).getString(pcMode ? "pcq" : "q", "auto");
+        userQ = "eco".equals(q) || "bal".equals(q) || "hd".equals(q) || (pcMode && "uhd".equals(q)) ? q : "auto";     // máy đang xem to: đúng mức khách đã chọn ở màn 1 máy
         wantFocus = cleanId(getIntent() == null ? null : getIntent().getStringExtra("focus"));
 
         LinearLayout root = Ui.col(this, 0);
@@ -196,6 +198,8 @@ public class MultiActivity extends Activity {
         super.onNewIntent(i);
         setIntent(i);
         String f = cleanId(i == null ? null : i.getStringExtra("focus"));
+        boolean m = i != null && i.getBooleanExtra("pc", false);
+        if (m != pcMode && board != null) { pcMode = m; clearTiles(); all = new JSONArray(); wantFocus = f; load(); return; }   // 21.11k: đổi giữa lưới điện thoại ⇄ máy PC
         if (f == null || board == null) return;
         int k = indexOf(f);
         if (k < 0) { wantFocus = f; load(); return; }       // máy đó chưa có trong các ô → tải lại danh sách, đưa máy đó vào
@@ -247,7 +251,20 @@ public class MultiActivity extends Activity {
         loading = true;
         if (tiles.isEmpty()) showNote(Ui.L("Đang tải danh sách máy…", "Loading your phones…"), null, null);
         else Ui.toast(this, Ui.L("Đang tải lại danh sách máy…", "Reloading your phones…"));
+        final boolean pcm = pcMode;
         Api.bg(() -> {
+            if (pcm) {                                       // 21.11k: các VPS GPU đang thuê + máy đang bật (máy chủ cũng tự kiểm quyền từng máy)
+                JSONArray ok = new JSONArray();
+                Object o = Api.rpc("pc_my_vps", new JSONObject());
+                JSONArray it = o instanceof JSONObject ? ((JSONObject) o).optJSONArray("items") : null;
+                for (int i = 0; it != null && i < it.length(); i++) {
+                    JSONObject x = it.optJSONObject(i), pc = x == null ? null : x.optJSONObject("pc");
+                    if (pc == null || !"active".equals(x.optString("state")) || cleanId(pc.optString("id")) == null) continue;
+                    if (!pc.optBoolean("online") || pc.optBoolean("lock") || !pc.optBoolean("remote", true)) continue;
+                    ok.put(new JSONObject().put("id", pc.optString("id")).put("name", pc.optString("name", "VPS GPU")).put("status", "active").put("res", "1920x1080"));
+                }
+                return ok;
+            }
             JSONArray list = Api.phones();
             boolean admin = false;
             try { admin = "admin".equals(Api.profile().optString("role")); } catch (Exception ignored) { }
@@ -266,7 +283,8 @@ public class MultiActivity extends Activity {
             all = ok;
             if (all.length() == 0) {
                 clearTiles();
-                showNote("📱 " + Ui.L("Chưa có máy nào đang chạy.", "No running phones."), Ui.L("Về danh sách máy", "Back to phones"), this::finish);
+                if (pcMode) showNote("🖥️ " + Ui.L("Chưa có VPS GPU nào đang bật.", "No GPU VPS is running."), Ui.L("Quay lại", "Back"), this::finish);
+                else showNote("📱 " + Ui.L("Chưa có máy nào đang chạy.", "No running phones."), Ui.L("Về danh sách máy", "Back to phones"), this::finish);
                 paintBars();
                 return;
             }
@@ -284,7 +302,7 @@ public class MultiActivity extends Activity {
         LinkedHashSet<String> have = new LinkedHashSet<>();
         for (int i = 0; i < all.length(); i++) have.add(cleanId(all.optJSONObject(i).optString("id")));
         ArrayList<String> out = new ArrayList<>();
-        String saved = pref.getString("sel_" + Api.uid, "");
+        String saved = pref.getString((pcMode ? "selpc_" : "sel_") + Api.uid, "");
         if (!saved.isEmpty()) {
             for (String s : saved.split(",")) {
                 String id = cleanId(s);
@@ -672,7 +690,7 @@ public class MultiActivity extends Activity {
                 String id = p == null ? null : cleanId(p.optString("id"));
                 if (id != null && sel.contains(id)) ids.add(id);
             }
-            pref.edit().putString("sel_" + Api.uid, TextUtils.join(",", ids)).apply();
+            pref.edit().putString((pcMode ? "selpc_" : "sel_") + Api.uid, TextUtils.join(",", ids)).apply();
             build(ids);
         });
         d.show();
@@ -835,6 +853,7 @@ public class MultiActivity extends Activity {
             srvMsg = "";
             showVeil(Ui.L("Đang kết nối…", "Connecting…"), null, null);
             client = new StreamClient(MultiActivity.this, id, q, this);
+            client.setPc(pcMode);                            // 21.11k: máy PC — hỏi pc_endpoint, chạm thành chuột (máy PC tự đổi)
             if (maxh > 0 || fps > 0 || kbps > 0) client.tile(maxh, fps, kbps);
             screen.attach(client);
             client.start();

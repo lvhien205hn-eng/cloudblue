@@ -188,6 +188,34 @@ for bad, why in (({"py": tmp}, "thiếu Python"), ({"images": []}, "không có b
 os.remove(os.path.join(out, "cb", "pe", "start.cmd"))
 ck("thiếu file → kiểm cây ISO báo CHƯA ĐẠT", B.check(out) == 1)
 
+print("2b. Kèm ISO CachyOS (22.11c)")
+cio = os.path.join(tmp, "cachyos-desktop-linux-260809.iso"); w(cio, b"C" * 7000)
+PL = dict(json.loads(json.dumps(P)), linux={"src": cio, "name": "CachyOS Linux (KDE)", "version": "260809"}, info=os.path.join(tmp, "build-info.txt"))
+w(os.path.join(out, "cb", "pe", "start.cmd"), "@echo off")
+cfgl = B.layout(PL)
+ids = [i["id"] for i in cfgl["images"]]
+ck("thêm 1 bản 'cachyos' kind=linux ở CUỐI danh sách, bản mặc định vẫn là Windows mới nhất (22h2)", ids == ["1511", "22h2", "cachyos"] and cfgl["default"] == "22h2"
+   and cfgl["images"][2]["kind"] == "linux" and cfgl["images"][2]["file"] == "cb\\linux\\cachyos.iso" and cfgl["images"][2]["bytes"] == 7000 and cfgl["images"][2]["version"] == "260809", (ids, cfgl["default"]))
+ck("cb\\linux có ISO + GRUB (đúng bản dựng trên CI) + menu + bộ cài không người", open(os.path.join(out, "cb", "linux", "cachyos.iso"), "rb").read() == b"C" * 7000
+   and all(open(os.path.join(out, "cb", "linux", f), "rb").read() == open(os.path.join(REPO, "linux", f), "rb").read() for f in ("grubx64.efi", "grub.cfg", "cb-install.sh", "cb-post.sh")))
+ck("grubx64.efi là file EFI thật (MZ … PE)", open(os.path.join(REPO, "linux", "grubx64.efi"), "rb").read(2) == b"MZ" and b"PE\0\0" in open(os.path.join(REPO, "linux", "grubx64.efi"), "rb").read(4096))
+il = open(PL["info"], "rb").read().decode("ascii")
+ck("khung tóm tắt có dòng CachyOS: chỉ cài THEO LỆNH (UEFI, tắt Secure Boot, cần Internet)", "ANH cachyos | CachyOS Linux (KDE) | ISO 260809 |" in il and "chi cai THEO LENH" in il, il)
+ck("cỡ phân vùng cứu hộ tính cả ISO CachyOS", C.recovery_bytes(cfgl, 1000) >= C.recovery_bytes(dict(cfgl, images=cfgl["images"][:2]), 1000))
+ck("kiểm cây ISO: đạt", B.check(out) == 0)
+os.remove(os.path.join(out, "cb", "linux", "grubx64.efi"))
+ck("thiếu GRUB → kiểm cây ISO báo CHƯA ĐẠT", B.check(out) == 1)
+cj = json.load(open(os.path.join(out, "cb", "cb.json"))); cj["default"] = "cachyos"; json.dump(cj, open(os.path.join(out, "cb", "cb.json"), "w"))
+w(os.path.join(out, "cb", "linux", "grubx64.efi"), b"MZ")
+ck("bản mặc định là CachyOS → kiểm cây ISO báo CHƯA ĐẠT (cài từ USB luôn là Windows)", B.check(out) == 1)
+for bad in ({"src": os.path.join(tmp, "khong-co.iso")}, {"src": os.path.join(out, "sources", "install.wim")}):
+    try: B.layout(dict(json.loads(json.dumps(P)), linux=bad)); okb = False
+    except C.Stop: okb = True
+    ck("ISO CachyOS sai (%s) → dừng có lời nhắn" % os.path.basename(bad["src"]), okb)
+shutil.rmtree(os.path.join(out, "cb", "linux"), ignore_errors=True)
+cfg = B.layout(json.loads(json.dumps(P)))
+ck("không kèm CachyOS → không có thư mục cb\\linux, không có bản linux", not os.path.exists(os.path.join(out, "cb", "linux")) and all(not C.is_linux(i) for i in cfg["images"]))
+
 print("3. Bản kê cập nhật agent")
 m = B.manifest(REPO, "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc/", "20.11a")
 ck("có đủ file agent / lib / os / pe với sha256 đúng", m["ver"] == "20.11a" and not m["base"].endswith("/") and "agent/pcagent.py" in m["files"] and "lib/cbcore.py" in m["files"] and "pe/cb_pe.py" in m["files"] and "pe/start.cmd" in m["files"]
@@ -195,7 +223,31 @@ ck("có đủ file agent / lib / os / pe với sha256 đúng", m["ver"] == "20.1
 sys.path.insert(0, os.path.join(REPO, "agent"))
 import pcagent
 ck("mọi tên file trong bản kê đều được agent chấp nhận", all(pcagent.UPDATE_REL.match(k) for k in m["files"]), [k for k in m["files"] if not pcagent.UPDATE_REL.match(k)])
+ck("bộ cài CachyOS (linux/…) nằm RIÊNG ở mục 'linux' (agent cũ không vấp), đủ cb-install.sh + cb-post.sh + grub.cfg, KHÔNG gồm grubx64.efi",
+   not any(k.startswith("linux/") for k in m["files"]) and set(m.get("linux") or {}) >= {"linux/cb-install.sh", "linux/cb-post.sh", "linux/grub.cfg"}
+   and "linux/grubx64.efi" not in (m.get("linux") or {}) and m["linux"]["linux/cb-install.sh"] == hashlib.sha256(open(os.path.join(REPO, "linux", "cb-install.sh"), "rb").read()).hexdigest(), m.get("linux"))
 ck("ngôn ngữ bộ cài: đọc được nhiều kiểu lang.ini", (lambda d: (w(os.path.join(d, "sources", "lang.ini"), "[Available UI Languages]\nvi-VN = 2\nen-US = 3\n[Fallback Languages]\n"), B.setup_lang(d))[1])(tempfile.mkdtemp()) == "vi-VN" and B.setup_lang(tmp) == "")
+
+print("4. ISO máy chủ Cloud Phone (23.11g · tao-iso.ps1 -MayChu)")
+inf = os.path.join(tmp, "info-mc.txt")
+ps = dict(json.loads(json.dumps(P)), enroll_key="", user_admin=True, role="server", ask_code=False, name_prefix="win", code_wait=900, info=inf)
+cfgs = B.layout(ps)
+cs = json.load(open(os.path.join(out, "cb", "cb.json")))
+ck("cb.json máy chủ: role = server, không hỏi số máy, tên tự sinh kiểu win-…, chờ gõ tên 15 phút, tài khoản giữ quyền Admin",
+   cs.get("role") == "server" and cs.get("ask_code") is False and cs.get("name_prefix") == "win" and cs.get("code_wait") == 900 and cs.get("user_admin") is True, cs)
+ck("máy chủ KHÔNG mang mã đăng ký máy PC (không vào danh sách máy PC cho thuê)", not os.path.exists(os.path.join(out, "cb", "enroll.key"))
+   and "enroll_key" not in json.load(open(os.path.join(out, "sources", "$OEM$", "$1", "CloudBluePC", "seed.json"))))
+ck("cấu hình trên máy đã cài / phân vùng cứu hộ cũng mang role = server", C.recovery_cfg(cfgs).get("role") == "server" and C.recovery_cfg(cfgs).get("ask_code") is False)
+il = open(inf, encoding="utf-8").read()
+ck("khung tóm tắt: dòng MAY CHU Cloud Phone (không còn dòng KHACH)", "MAY CHU Cloud Phone | tai khoan 'PC' quyen Admin + tu dang nhap" in il and "KHACH tai khoan" not in il, il)
+ck("thư mục os\\firstboot.d\\maychu (script cài máy chủ + cấu hình) được chép vào MỌI bản Windows — tên không phải tên bản", C.folder_applies("maychu", "22h2") and C.folder_applies("maychu", "1511")
+   and not C.is_os_tag("maychu"))
+ck("tên người cài gõ: 'win9' giữ nguyên; '9' → tên Windows win-9; không gõ → win-XXXXXX", C.win_name(C.clean_label("win9"), "win", "x") == "win9"
+   and C.win_name(C.clean_label("9"), "win", "x") == "win-9" and C.clean_name("%s-%06X" % ("win", 0x3FA2C1)) == "win-3FA2C1")
+ck("kiểm cây ISO máy chủ: đạt", B.check(out) == 0)
+cfg = B.layout(json.loads(json.dumps(P)))
+cn = json.load(open(os.path.join(out, "cb", "cb.json")))
+ck("ISO máy PC thường: KHÔNG có các mục của máy chủ (role / ask_code / name_prefix / code_wait)", not any(k in cn for k in ("role", "ask_code", "name_prefix", "code_wait")), cn)
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

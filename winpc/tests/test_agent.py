@@ -90,6 +90,7 @@ class FakeHost:
     def power(self, reboot=True, delay=5, msg=""): self.powers.append(("reboot" if reboot else "shutdown", delay)); self.fs.rebooted = True
     def notify(self, text, secs=60): self.msgs = getattr(self, "msgs", []) + [text]; self.msg_secs = getattr(self, "msg_secs", []) + [secs]
     def abort_shutdown(self): self.aborts += 1
+    def autologon(self, on): self.autologons = getattr(self, "autologons", []) + [bool(on)]; return True
     def show_code(self, code): self.codes = getattr(self, "codes", []) + [code]; return getattr(self, "code_ok", True)
     def drivers(self): return C.drv_summary(self.devs) if getattr(self, "devs", DEVS_OK) is not None else None      # devs = None: không đọc được danh sách thiết bị
 
@@ -141,6 +142,8 @@ def sysbcd(fs): return fs.bcd.get("(system)", {})
 # ---------------------------------------------------------------- chuẩn bị CSDL
 q("truncate pc_orders, pc_machines, pc_rl restart identity cascade")
 q("update pc_settings set enroll_hash = null, auto_approve = false, agent = '{}'::jsonb, poll_s = 30")
+q("do $$ begin if exists (select 1 from information_schema.columns where table_name = 'pc_settings' and column_name = 'cust_admin') "
+  "then update pc_settings set cust_admin = false where id = 1; end if; end $$")         # v46: các mục cũ chạy với khách = tài khoản thường như trước
 ADMIN = q("select id from profiles where role = 'admin' limit 1")
 A = dict(role="authenticated", uid=ADMIN)
 KEY = q("select pc_admin_new_key()", **A)
@@ -163,7 +166,7 @@ row = json.loads(q(f"select row_to_json(m) from pc_machines m where id = '{PC}'"
 ck("máy hiện trên web: tên Windows, 22H2, IP LAN, chờ duyệt", row["name"] == "CB-TEST01" and row["os"] == "22h2" and row["lan_ip"] == "192.168.1.77" and row["status"] == "new" and row["approved"] is False, row)
 ck("web thấy cấu hình: CPU, RAM, card, ổ đĩa, bo mạch", row["info"]["cores"] == 56 and row["info"]["ram_gb"] == 64.0 and row["info"]["gpus"] == ["NVIDIA GeForce GTX 1060 6GB"]
    and [(d["gb"], d["ssd"], d["bus"]) for d in row["info"]["disks"]] == [(515, True, "NVMe"), (2147, False, "SATA")] and row["info"]["board"] == "HUANANZHI X99-TF", row["info"])
-ck("web biết máy đổi được sang 22h2 / 1511", row["info"]["rec"] == {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a"}, row["info"].get("rec"))
+ck("web biết máy đổi được sang 22h2 / 1511", row["info"]["rec"] == {"ok": True, "images": ["22h2", "1511"], "ver": "20.11a", "lx": 2}, row["info"].get("rec"))
 ck("sau khi đăng ký: seed.json hết mã đăng ký", KEY not in fs.file("C", "cloudbluepc\\seed.json"))
 ck("web biết tình trạng bảo mật của máy (khách là tài khoản thường; chưa có mốc khoá quyền / hạ quyền vì Windows giả chưa chạy cb_provision)", row["info"].get("sec") == {"std": True, "hard": False, "lock": False}, row["info"].get("sec"))
 stt = fs.file("C", "cloudbluepc\\os\\status.txt") or ""
@@ -705,6 +708,18 @@ ri = agr.info().get("rmt")
 ck("file tình trạng có chữ lạ / quá dài → cắt 120 ký tự ASCII", ri and len(ri["s"]) == 120 and ri["s"].isascii() and ri["v"] == "21.11d", ri)
 fsr.write_text("C:\\CloudBluePC\\logs\\remote.state", "rac khong dung dang")
 ck("file tình trạng hỏng → bỏ qua, agent vẫn chạy", "rmt" not in agr.info())
+ck("22.11c · chưa có logs\\emu.json → không gửi mục emu", "emu" not in agr.info())
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", json.dumps({"vt": False, "hv": False, "vbs": 0, "svc": [], "vm": False, "launch": "", "rev": 1, "fixed": [],
+                                                              "reboot": False, "ready": False, "why": "VT-x / AMD-V (SVM) dang TAT trong BIOS <b>", "cpu": "Intel(R) Core(TM) i5-10400F",
+                                                              "hw": "ASUS | PRIME", "t": fsr.clock}))
+ei = agr.info().get("emu")
+ck("22.11c · cb_provision ghi tình trạng ảo hoá → agent gửi web info.emu gọn (VT trong BIOS, hypervisor, máy ảo, chạy được giả lập, lý do ASCII)",
+   ei == {"vt": False, "hv": False, "vm": False, "ok": False, "rb": False, "why": "VT-x / AMD-V (SVM) dang TAT trong BIOS <b>", "cpu": "Intel(R) Core(TM) i5-10400F"}, ei)
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", json.dumps({"vt": None, "hv": True, "ready": False, "reboot": True, "why": "", "cpu": "AMD Ryzen 5 5600"}))
+ei = agr.info().get("emu")
+ck("… đang chờ khởi động lại sau khi tắt Hyper-V: vt = None (Windows giấu), rb = true", ei and ei["vt"] is None and ei["hv"] is True and ei["rb"] is True and ei["ok"] is False, ei)
+fsr.write_text("C:\\CloudBluePC\\logs\\emu.json", "{hong")
+ck("… file emu.json hỏng → bỏ qua, agent vẫn gửi phần còn lại", "emu" not in agr.info() and agr.info().get("host"))
 cfgr = json.loads(fsr.file("C", "cloudbluepc\\cb.json")); cfgr["remote"] = False
 fsr.write_text("C:\\CloudBluePC\\cb.json", json.dumps(cfgr))
 hostr2 = FakeHost(fsr, "CB-REMOTE"); agr2 = agent(fsr, netr, hostr2); agr2.tick(); agr2.tick()
@@ -834,6 +849,254 @@ age2.tick()
 ck("… nhịp kế agent báo tên mới → web đổi thành May-09 (đúng tên vừa gõ lúc cài)", web_name(PCE) == "May-09" and age2.name == "May-09" and "label" not in json.loads(fse2.file("C", "cloudbluepc\\seed.json")), web_name(PCE))
 age2.label = "Ten Moi"; age2.label_at = None; nete.down = True; age2.label_sync()
 ck("mất mạng lúc báo tên → không lỗi, giữ lại để thử sau", age2.label == "Ten Moi" and age2.label_tries >= 1)
+
+print("21. Agent đặt BỘ CÀI bản mới nhất lên phân vùng cứu hộ (cb\\pe-next) → bộ cài cũ trong boot.wim gọi tiếp bản đó: sửa bộ cài không cần tạo lại ISO (21.11e)")
+import types as _ty
+def rbytes(rec, rel):
+    v = rec.vol.files.get(rel)
+    return v.encode() if isinstance(v, str) else v
+def nxt(rec):
+    v = rec.vol.files.get("cb\\pe-next\\next.json")
+    return json.loads(v) if v else None
+def sha(b): return hashlib.sha256(b).hexdigest()
+def chain_sees(fs):
+    """Bộ cài THẬT (cb_pe.py, PE_SEQ hiện tại) đọc phân vùng cứu hộ như lúc chạy trong WinPE → (số, bản, {file: nội dung}) hoặc None."""
+    rv = cbrec.find_recovery(fs)
+    return cb_pe.Installer(fs).next_installer(_ty.SimpleNamespace(p=lambda rel: rv.root + rel))
+PE21 = b'PE_VER = "21.11d"\nPE_SEQ = 1\n# bo cai 21.11d\n'
+LIBS = {"lib/cbcore.py": b"# core 21.11d\n", "lib/cbrec.py": b"# rec 21.11d\n", "lib/cbsys.py": b"# sys 21.11d\n"}
+fsn, seedn, recn = install_named("PENEXT21A", ["", ""])
+netn, hostn = SqlNet(), FakeHost(fsn, seedn()["name"])
+agn = agent(fsn, netn, hostn); agn.tick(); agn.tick()
+ck("bộ cài trên máy thiếu file (máy cài bằng bộ cài rất cũ) → không đặt gì, agent chạy bình thường, ghi nhật ký lý do", agn.ident is not None and nxt(recn) is None
+   and any("chưa đặt được bộ cài mới" in x and "thiếu lib/cbcore.py" in x for x in agn.logs), [x for x in agn.logs if "bộ cài" in x])
+recn.vol.put("cb\\pe\\cb_pe.py", PE21)
+for rel, d in LIBS.items(): fsn.write_bytes("C:\\CloudBluePC\\" + rel.replace("/", "\\"), d)
+agn = agent(fsn, netn, hostn); agn.tick()
+m1 = nxt(recn)
+ck("agent chạy lại: đủ file → đặt bộ cài của máy (bộ cài trên phân vùng cứu hộ + thư viện agent đang dùng) vào cb\\pe-next, next.json đúng số thứ tự + bản + mã băm",
+   m1 == {"seq": 1, "ver": "21.11d", "files": dict({"pe/cb_pe.py": sha(PE21)}, **{k: sha(v) for k, v in LIBS.items()})}
+   and rbytes(recn, "cb\\pe-next\\pe\\cb_pe.py") == PE21 and all(rbytes(recn, "cb\\pe-next\\" + k.replace("/", "\\")) == v for k, v in LIBS.items()), m1)
+ck("… bản này CÙNG số thứ tự với bộ cài trong boot.wim (1) → bộ cài trong WinPE KHÔNG gọi (không chạy lại chính mình)", chain_sees(fsn) is None)
+n_put = sum("đã đặt bộ cài" in x for x in agn.logs)
+agn2 = agent(fsn, netn, hostn); agn2.tick(); agn2.tick()
+ck("đã đặt đúng rồi → các lần agent chạy sau không ghi lại", n_put == 1 and not any("đã đặt bộ cài" in x for x in agn2.logs))
+recn.vol.put("cb\\pe-next\\lib\\cbrec.py", b"bi sua")
+agn3 = agent(fsn, netn, hostn); agn3.tick()
+ck("1 file trong cb\\pe-next bị sửa / hỏng → agent chạy lại tự đặt lại đúng", rbytes(recn, "cb\\pe-next\\lib\\cbrec.py") == LIBS["lib/cbrec.py"] and any("đã đặt bộ cài" in x for x in agn3.logs))
+
+BASEN = pcagent.UPDATE_BASE + "main/winpc"
+SEQ_NEW = cb_pe.PE_SEQ + 1                            # bản "mới hơn" bộ cài trong boot.wim 1 bậc
+PE22 = b'# bo cai moi\nPE_VER = "22.01a"\nPE_SEQ = %d\n' % SEQ_NEW
+NEWF = {"agent/pcagent.py": b"# agent moi\nAGENT_VER = '22.01a'\n", "pe/cb_pe.py": PE22, "lib/cbcore.py": b"# core 22.01a\n", "pe/start.cmd": b"@echo off\r\n"}
+mann = {"ver": "22.01a", "base": BASEN, "files": {k: sha(v) for k, v in NEWF.items()}}
+netn.files = {BASEN + "/" + k: v for k, v in NEWF.items()}
+q("select pc_admin_settings('%s')" % json.dumps({"agent": mann}), **A)
+order = []
+_wb, _wt, _rm = fsn.write_bytes, fsn.write_text, fsn.remove
+fsn.write_bytes = lambda p, b: (order.append(("w", p)), _wb(p, b))[1]
+fsn.write_text = lambda p, t, **kw: (order.append(("w", p)), _wt(p, t, **kw))[1]
+fsn.remove = lambda p: (order.append(("rm", p)), _rm(p))[1]
+agu = agent(fsn, netn, hostn); agu.tick()
+fsn.write_bytes, fsn.write_text, fsn.remove = _wb, _wt, _rm
+m2 = nxt(recn)
+ck("admin công bố bản mới có bộ cài số mới hơn → agent cập nhật xong cũng đặt luôn bộ cài đó: file vừa tải (cb_pe.py, cbcore.py) + file đang dùng (cbrec.py, cbsys.py)",
+   agu.restart and m2 and m2["seq"] == SEQ_NEW and m2["ver"] == "22.01a" and m2["files"] == {"pe/cb_pe.py": sha(PE22), "lib/cbcore.py": sha(NEWF["lib/cbcore.py"]),
+   "lib/cbrec.py": sha(LIBS["lib/cbrec.py"]), "lib/cbsys.py": sha(LIBS["lib/cbsys.py"])}, (m2, agu.logs[-3:]))
+pn = [(a, x.lower().split("pe-next\\")[1]) for a, x in order if "pe-next\\" in x.lower()]
+ck("thứ tự ghi an toàn: gỡ next.json cũ TRƯỚC, ghi 4 file, next.json ghi SAU CÙNG (mất điện giữa chừng → bộ cài không thấy bản dở dang)",
+   pn[0] == ("rm", "next.json") and pn[-1] == ("w", "next.json") and sorted(x for a, x in pn[1:-1]) == ["lib\\cbcore.py", "lib\\cbrec.py", "lib\\cbsys.py", "pe\\cb_pe.py"], pn)
+seen = chain_sees(fsn)
+ck("bộ cài THẬT trong boot.wim (số %d) đọc phân vùng cứu hộ: nhận bản số %d, đủ file, đúng mã băm → sẽ chạy bản đó thay nó" % (cb_pe.PE_SEQ, SEQ_NEW), seen is not None and seen[0] == SEQ_NEW and seen[1] == "22.01a"
+   and seen[2] == {"pe/cb_pe.py": PE22, "lib/cbcore.py": NEWF["lib/cbcore.py"], "lib/cbrec.py": LIBS["lib/cbrec.py"], "lib/cbsys.py": LIBS["lib/cbsys.py"]}, seen and seen[:2])
+ck("bản trên phân vùng cứu hộ (cb\\pe\\…) cũng lên bản mới như trước", rbytes(recn, "cb\\pe\\cb_pe.py") == PE22 and rbytes(recn, "cb\\pe\\start.cmd") == NEWF["pe/start.cmd"])
+OLDPE = b"# bo cai 21.11c (chua co so thu tu)\n"
+NEWF2 = dict(NEWF, **{"pe/cb_pe.py": OLDPE}); NEWF2["agent/pcagent.py"] = b"# agent 22.01b\n"
+man2 = {"ver": "22.01b", "base": BASEN, "files": {k: sha(v) for k, v in NEWF2.items()}}
+netn.files = {BASEN + "/" + k: v for k, v in NEWF2.items()}
+q("select pc_admin_settings('%s')" % json.dumps({"agent": man2}), **A)
+agb = agent(fsn, netn, hostn); agb.tick()
+ck("admin công bố LẠI bản cũ có bộ cài chưa biết số thứ tự (quay về bản cũ) → gỡ next.json: lần cài lại sau dùng bộ cài của boot.wim, không chạy bộ cài bản đã bỏ",
+   agb.restart and nxt(recn) is None and chain_sees(fsn) is None and any("gỡ bộ cài đặt trước" in x for x in agb.logs), agb.logs[-3:])
+q("select pc_admin_settings('{\"agent\": {}}')", **A)
+fsz, seedz, recz = install_named("PENEXT21Z", ["", ""])
+for d in fsz.fdisks:
+    d.slots = [p for p in d.slots if not (p.vol and p.vol.label == "CBRECOVERY")]
+netz, hostz = SqlNet(), FakeHost(fsz, seedz()["name"])
+agz = agent(fsz, netz, hostz); agz.tick(); agz.tick()
+ck("máy không còn phân vùng cứu hộ → bỏ qua, không lỗi", agz.ident is not None and not any("Traceback" in x for x in agz.logs))
+
+print("21b. Bản kê có mục 'linux' → agent thay bộ cài CachyOS trên phân vùng cứu hộ (22.11d, làm bù mỗi lần chạy 22.11e)")
+LIN = {"linux/cb-install.sh": b"#!/bin/bash\n# cb-install moi\n", "linux/grub.cfg": b"set timeout=3\n", "linux/cb-post.sh": b"#!/bin/bash\n# post\n"}
+def publish(ver, lin, extra_files=None):
+    nf = dict(NEWF, **{"agent/pcagent.py": b"# agent %s\n" % ver.encode()})
+    m = {"ver": ver, "base": BASEN, "files": {k: sha(v) for k, v in nf.items()}, "linux": {k: sha(v) for k, v in lin.items()}}
+    netn.files = {BASEN + "/" + k: v for k, v in nf.items()}
+    netn.files.update({BASEN + "/" + k: v for k, v in lin.items()}); netn.files.update(extra_files or {})
+    q("select pc_admin_settings('%s')" % json.dumps({"agent": m}), **A)
+publish("22.02a", LIN)
+agl = agent(fsn, netn, hostn); agl.tick()
+ck("máy cài từ bộ cài KHÔNG kèm CachyOS (không có cb\\linux\\cachyos.iso) → cập nhật agent như thường, KHÔNG ghi file Linux nào",
+   agl.restart and not any(k.startswith("cb\\linux") for k in recn.vol.files), [k for k in recn.vol.files if "linux" in k])
+recn.vol.put("cb\\linux\\cachyos.iso", b"ISO"); recn.vol.put("cb\\linux\\cb-install.sh", b"# ban cu\n"); recn.vol.put("cb\\linux\\grub.cfg", LIN["linux/grub.cfg"])
+publish("22.02b", dict(LIN, **{"linux/../../evil.sh": b"x"}))
+wr = []
+_wb2 = fsn.write_bytes
+fsn.write_bytes = lambda p, b: (wr.append(p.lower()), _wb2(p, b))[1]
+agl2 = agent(fsn, netn, hostn); agl2.tick()
+fsn.write_bytes = _wb2
+ck("máy có CachyOS: cb-install.sh cũ → thay bản mới (đúng mã), cb-post.sh chưa có → chép thêm", rbytes(recn, "cb\\linux\\cb-install.sh") == LIN["linux/cb-install.sh"]
+   and rbytes(recn, "cb\\linux\\cb-post.sh") == LIN["linux/cb-post.sh"], [x for x in agl2.logs if "CachyOS" in x])
+ck("… file đã đúng mã (grub.cfg) KHÔNG ghi lại; tên file lạ (../) bị bỏ, ghi nhật ký", not any(x.endswith("cb\\linux\\grub.cfg") for x in wr)
+   and not any("evil" in x for x in wr) and any("chưa thay" in x and "evil" in x for x in agl2.logs), [x for x in agl2.logs if "CachyOS" in x])
+LIN2 = dict(LIN, **{"linux/cb-install.sh": b"#!/bin/bash\n# ban 3\n"})
+publish("22.02c", LIN2, {BASEN + "/linux/cb-install.sh": b"# bi sua tren duong truyen\n"})
+agl3 = agent(fsn, netn, hostn); agl3.tick()
+ck("tải về SAI mã kiểm → giữ file cũ trên phân vùng cứu hộ, agent vẫn lên bản mới", agl3.restart and rbytes(recn, "cb\\linux\\cb-install.sh") == LIN["linux/cb-install.sh"]
+   and any("sai mã kiểm" in x for x in agl3.logs), [x for x in agl3.logs if "CachyOS" in x])
+netn.files[BASEN + "/linux/cb-install.sh"] = LIN2["linux/cb-install.sh"]          # đường truyền hết lỗi
+agl4 = agent(fsn, netn, hostn); agl4.tick()
+ck("22.11e · agent chạy lại (không có bản mới) → bộ cài CachyOS trên phân vùng cứu hộ tự khớp bản kê đang công bố (làm bù file lần trước tải lỗi)",
+   not agl4.restart and rbytes(recn, "cb\\linux\\cb-install.sh") == LIN2["linux/cb-install.sh"] and any("thay 1 file" in x for x in agl4.logs),
+   [x for x in agl4.logs if "CachyOS" in x or "cập nhật" in x])
+agl5 = agent(fsn, netn, hostn); agl5.tick()
+ck("… lần chạy sau: file đã đúng mã → không tải / ghi lại", not any("CachyOS" in x for x in agl5.logs), [x for x in agl5.logs if "CachyOS" in x])
+q("select pc_admin_settings('{\"agent\": {}}')", **A)
+
+print("22. Lượt thuê TỰ THU HỒI (SQL v44): hết hạn → KHOÁ máy (không tắt) · gia hạn → tự mở lại · quá hạn → giữ khoá chờ cài sạch (21.11f)")
+if q("select to_regprocedure('public._pc_reclaim()') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v44.sql)")
+else:
+    q("update pc_settings set reclaim_on = true, reclaim_grace_min = 30, reclaim_clean_min = 60, reclaim_off = true, reclaim_since = now() - interval '1 day' where id = 1")
+    CU = str(uuid.uuid4())
+    q(f"insert into auth.users(id) values ('{CU}'); insert into profiles(id, username, email, role, balance) values ('{CU}', 'khach_khoa_{CU[:6]}', 'khoa_{CU[:6]}@x.vn', 'user', 0)")
+    fsk, netk, hostk, agk, PCK = rented_machine("KHOA0022", "CB-KHOA22")
+    def lease(sql_until):                                           # máy chủ giao máy cho 1 lượt thuê (như _pc_give)
+        q(f"update pc_rentals set state = 'ended', ended_at = now() where pc_id = '{PCK}' and state = 'active'")
+        q(f"insert into pc_rentals(user_id, os, days, state, pc_id, assigned_at, until) values ('{CU}', '22h2', 1, 'active', '{PCK}', now(), {sql_until})")
+        q(f"update pc_machines set user_id = '{CU}', renter = 'khach_khoa', rent_until = {sql_until}, rent_set_at = now(), status = 'rented', rent_warned = null, rent_ended = null where id = '{PCK}'")
+    lease("now() + interval '1 day'")
+    nap = agk.tick()
+    ck("máy thuộc lượt thuê tự thu hồi → agent nhận lock_mode + thời gian chờ 30 phút (ghi rent.json)", agk.rent.get("lock_mode") is True and agk.rent.get("grace_s") == 1800
+       and rentjson(fsk).get("lock_mode") is True, agk.rent)
+    hostk.msgs.clear(); hostk.powers.clear()
+    q(f"update pc_machines set rent_until = now() + interval '4 minutes' where id = '{PCK}'"); agk.tick()
+    ck("nhắc trước giờ hết hạn nói rõ: hết hạn máy KHOÁ, gia hạn trong 30 phút vẫn giữ được máy, quá hạn bị thu hồi + xoá sạch",
+       hostk.msgs and "KHOA" in hostk.msgs[-1] and "30 phut" in hostk.msgs[-1] and "xoa sach" in hostk.msgs[-1] and "TU TAT" not in hostk.msgs[-1], hostk.msgs)
+    hostk.msgs.clear()
+    q(f"update pc_machines set rent_until = now() - interval '1 second' where id = '{PCK}'")
+    nap = agk.tick()
+    ck("HẾT HẠN → báo khách 'máy sẽ KHOÁ sau 60 giây, gia hạn trong 30 phút để giữ máy', KHÔNG tắt máy, việc lạ 'rent_lock'",
+       len(hostk.msgs) == 1 and "KHOA sau 60 giay" in hostk.msgs[0] and "trong 30 phut" in hostk.msgs[0] and not hostk.powers and agk.events == [{"k": "rent_lock"}] and nap <= 5,
+       (hostk.msgs, hostk.powers, agk.events))
+    agk.tick()
+    rk = json.loads(q(f"select row_to_json(m) from pc_machines m where id = '{PCK}'"))
+    ck("web nhận tin máy đã KHOÁ (rent_lock_at) + cảnh báo admin có hạn chót gia hạn", rk["rent_lock_at"] and rk["rent_off_at"] is None
+       and any("KHOÁ" in x and "CB-KHOA22" in x and "gia hạn trước" in x for x in al("pc_rent_end")), (rk["rent_lock_at"], al("pc_rent_end")[-1:]))
+    fsk.clock += 30; agk.tick()
+    ck("trong 60 giây chờ → chưa khoá", not hostk.powers and not getattr(hostk, "autologons", []))
+    fsk.clock += 31; nap = agk.tick()
+    ck("hết 60 giây → TẮT tự đăng nhập + KHỞI ĐỘNG LẠI (máy dừng ở màn hình đăng nhập), không tắt máy; ghi mốc 'locked'",
+       hostk.autologons == [False] and hostk.powers == [("reboot", 5)] and rentjson(fsk).get("locked") == agk.rent["until"] and "off" not in rentjson(fsk), (hostk.autologons, hostk.powers, rentjson(fsk)))
+    ck("status.txt ghi 'máy đã KHOÁ'", "may da KHOA" in (fsk.file("C", "cloudbluepc\\os\\status.txt") or ""), fsk.file("C", "cloudbluepc\\os\\status.txt"))
+    fsk.clock += 60; agk.tick()
+    ck("vừa ra lệnh → chưa lặp", hostk.powers == [("reboot", 5)])
+    fsk.clock += 130; agk.tick()
+    ck("3 phút sau máy vẫn chạy (khởi động lại bị chặn) → ra lệnh lại", hostk.powers == [("reboot", 5), ("reboot", 5)], hostk.powers)
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []; hostk.msgs.clear()
+    agk2 = agent(fsk, netk, hostk); nap = agk2.tick()
+    ck("máy lên lại (đang khoá) → giữ khoá: giữ 'tắt tự đăng nhập', KHÔNG khởi động lại / tắt máy lặp, không báo 'bật lại khi hết hạn'",
+       hostk.autologons == [False] and not hostk.powers and agk2.events == [] and not hostk.msgs, (hostk.autologons, hostk.powers, agk2.events, hostk.msgs))
+    agk2.tick(); agk2.tick()
+    ck("các nhịp sau không làm gì thêm", hostk.autologons == [False] and not hostk.powers)
+    q(f"update pc_machines set rent_until = now() + interval '7 days' where id = '{PCK}'; update pc_rentals set until = now() + interval '7 days' where pc_id = '{PCK}' and state = 'active'")
+    agk2.tick()
+    ck("khách GIA HẠN trong thời gian chờ → MỞ KHOÁ: bật lại tự đăng nhập + khởi động lại (vào thẳng Windows như cũ), bỏ mốc 'locked'",
+       hostk.autologons == [False, True] and hostk.powers == [("reboot", 15)] and "locked" not in rentjson(fsk), (hostk.autologons, hostk.powers, rentjson(fsk)))
+    agk2.tick()
+    ck("web hết 'đã khoá'", q(f"select rent_lock_at is null from pc_machines where id = '{PCK}'") == "t")
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []; hostk.msgs.clear()
+    agk3 = agent(fsk, netk, hostk); agk3.tick()
+    q(f"update pc_machines set rent_until = now() - interval '1 second' where id = '{PCK}'")
+    agk3.tick(); fsk.clock += 61; agk3.tick()
+    ck("hết hạn lần nữa → khoá lại", hostk.autologons == [False] and hostk.powers == [("reboot", 5)] and rentjson(fsk).get("locked"), (hostk.autologons, hostk.powers))
+    fsk.rebooted = False; hostk.powers.clear(); hostk.autologons = []
+    q(f"update pc_machines set rent_until = now() - interval '31 minutes' where id = '{PCK}'")
+    agk4 = agent(fsk, netk, hostk); agk4.tick()
+    q("select _pc_reclaim()")
+    ck("quá 30 phút không gia hạn → máy chủ THU HỒI (bỏ hạn, bỏ khách, hẹn cài sạch)", q(f"select user_id is null and rent_until is null and reclaim_at is not null from pc_machines where id = '{PCK}'") == "t")
+    agk4.tick()
+    ck("agent: máy chủ bỏ hạn nhưng đang chờ cài sạch (hold) → GIỮ KHOÁ, không mở lại", agk4.rent.get("until") is None and rentjson(fsk).get("locked")
+       and True not in hostk.autologons and not hostk.powers, (agk4.rent, hostk.autologons, hostk.powers))
+    q(f"update pc_machines set reclaim_at = now() - interval '1 minute' where id = '{PCK}'")
+    q("select _pc_reclaim()")
+    agk4.tick()
+    ck("tới giờ → máy nhận lệnh CÀI SẠCH (xoá mọi ổ) và khởi động lại vào bộ cài", agk4.rebooting and ("reboot", 30) in hostk.powers
+       and json.loads(q(f"select args from pc_orders where pc_id = '{PCK}' and cmd = 'reinstall' order by id desc limit 1"))["wipe"] == "all", (hostk.powers, agk4.logs[-3:]))
+
+print("23. Công tắc 'Cho khách quyền Admin' (SQL v46) → cb.json user_admin + chạy NGAY pha system của cb_provision (21.11h)")
+if q("select to_regprocedure('public.pc_admin_set_flags(jsonb)') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v46.sql)")
+else:
+    fsa, neta, hosta, aga, PCA = rented_machine("ADMN0023", "CB-ADMN23")
+    def cbj(): return json.loads(fsa.file("C", "cloudbluepc\\cb.json") or "{}")
+    ck("công tắc đang TẮT (như máy cũ) → agent không đổi gì", not cbj().get("user_admin") and aga.sec_now is False, (cbj().get("user_admin"), aga.sec_now))
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); aga.events.clear(); aga.tick()
+    ck("shop BẬT → agent ghi cb.json user_admin = true (giữ nguyên sb_url / khoá), bảo vòng chính chạy ngay pha system, báo web việc 'admin'",
+       cbj().get("user_admin") is True and cbj().get("sb_url") and aga.sec_now is True and {"k": "admin", "on": 1} in aga.events, (cbj(), aga.sec_now, aga.events))
+    ck("thông tin gửi web: khách không còn là tài khoản thường (sec.std = false)", aga.info().get("sec", {}).get("std") is False, aga.info().get("sec"))
+    aga.sec_now = False; aga.tick()
+    ck("lần gọi sau (công tắc không đổi) → không làm lại", aga.sec_now is False and cbj().get("user_admin") is True)
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A); aga.tick()
+    ck("shop TẮT → cb.json user_admin = false + chạy ngay pha system (cb_provision hạ về tài khoản thường)", cbj().get("user_admin") is False and aga.sec_now is True, (cbj(), aga.sec_now))
+    aga.sec_now = False
+    ck("máy chủ cũ (pc_poll không có cust_admin) → giữ nguyên", aga.admin_sync({"ok": True}) is False and aga.sec_now is False and cbj().get("user_admin") is False)
+
+print("24. Công tắc quyền Admin đi theo CÀI LẠI: agent ghi công tắc lên cb.json của phân vùng cứu hộ → Windows mới (khách thuê mới / đổi Windows)"
+      " biết công tắc NGAY từ lần đăng nhập đầu, khách có quyền Admin từ đầu như máy cài thường (21.11i)")
+if q("select to_regprocedure('public.pc_admin_set_flags(jsonb)') is not null") != "t":
+    print("  (bỏ qua: CSDL thử chưa nạp cloud-pc-v46.sql)")
+else:
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A)
+    fsb, netb, hostb, agb, PCB = rented_machine("ADMN0024", "CB-ADMN24")
+    agb.tick()                                                         # nhịp đầu sau khi được duyệt: hỏi máy chủ (pc_poll có cust_admin)
+    recb = next(p for d in fsb.fdisks for p in d.slots if p.vol and p.vol.label == "CBRECOVERY")
+    def cbjb(): return json.loads(fsb.file("C", "cloudbluepc\\cb.json") or "{}")
+    def rcj():
+        v = recb.vol.files.get("cb\\cb.json")
+        try: return json.loads(v.decode() if isinstance(v, bytes) else v)
+        except Exception: return None
+    def nrec(ag): return sum("đã ghi công tắc quyền Admin" in x for x in ag.logs)
+    ck("máy mới cài (cb.json chưa có công tắc), shop TẮT → agent ghi RÕ user_admin = false (lần đăng nhập đầu khỏi chờ); KHÔNG chạy lại pha system, không báo web",
+       cbjb().get("user_admin") is False and agb.sec_now is False and not any(e.get("k") == "admin" for e in agb.events), (cbjb().get("user_admin"), agb.sec_now, agb.events))
+    r0 = rcj()
+    ck("… ghi công tắc TẮT lên cb.json của phân vùng cứu hộ, giữ nguyên mọi mục khác (máy chủ, bản Windows), không có mã đăng ký",
+       isinstance(r0, dict) and r0.get("user_admin") is False and r0.get("images") and r0.get("sb_url") and "enroll_key" not in r0 and KEY not in json.dumps(r0), r0)
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); agb.tick()
+    ck("shop BẬT → cb.json của máy + của phân vùng cứu hộ cùng = true; chạy ngay pha system (cấp quyền cho khách đang dùng)",
+       cbjb().get("user_admin") is True and (rcj() or {}).get("user_admin") is True and agb.sec_now is True and nrec(agb) == 2, (cbjb().get("user_admin"), rcj(), nrec(agb)))
+    agb.sec_now = False; agb.tick(); agb.tick()
+    ck("các nhịp sau: công tắc không đổi → không ghi lại phân vùng cứu hộ", nrec(agb) == 2 and agb.sec_now is False)
+    oid = json.loads(q(f"select row_to_json(pc_admin_order('{PCB}', 'reinstall', '{{\"os\": \"22h2\", \"wipe\": \"all\"}}'))", **A))["id"]
+    agb.tick(); boot_pe(fsb)
+    rc = cb_pe.Installer(fsb).run(ScriptUI())
+    boot_windows(fsb)
+    ck("CÀI SẠCH cho khách thuê mới: Windows mới có cb.json user_admin = true NGAY khi bộ cài xong (trước cả khi agent chạy) → lần đăng nhập đầu khách GIỮ quyền Admin",
+       rc == 0 and cbjb().get("user_admin") is True and cbjb().get("sb_url") and "enroll_key" not in cbjb(), cbjb())
+    agb2 = agent(fsb, netb, FakeHost(fsb, "CB-ADMN24")); agb2.tick(); agb2.tick()
+    ck("agent của Windows mới: đăng ký lại bằng vé; công tắc đã khớp → không chạy lại pha system, không ghi lại phân vùng cứu hộ",
+       agb2.ident and agb2.ident["id"] == PCB and agb2.sec_now is False and nrec(agb2) == 0 and q(f"select state from pc_orders where id = {oid}") == "done", (agb2.ident, agb2.sec_now, agb2.logs[-4:]))
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A); agb2.tick()
+    ck("shop TẮT lại → máy hạ quyền khách (pha system) + phân vùng cứu hộ = false (lần cài sau khách là tài khoản thường)",
+       cbjb().get("user_admin") is False and (rcj() or {}).get("user_admin") is False and agb2.sec_now is True, (cbjb().get("user_admin"), rcj()))
+    good = recb.vol.files.get("cb\\cb.json")
+    recb.vol.put("cb\\cb.json", "{hong")
+    agb3 = agent(fsb, netb, FakeHost(fsb, "CB-ADMN24"))
+    q("select pc_admin_set_flags('{\"cust_admin\": true}'::jsonb)", **A); agb3.tick()
+    ck("cb.json trên phân vùng cứu hộ hỏng / lạ → agent KHÔNG ghi đè (không làm hỏng bộ cài lại); máy vẫn nhận công tắc như 21.11h",
+       recb.vol.files.get("cb\\cb.json") in ("{hong", b"{hong") and cbjb().get("user_admin") is True and any("không đọc được" in x for x in agb3.logs), agb3.logs[-3:])
+    recb.vol.put("cb\\cb.json", good)
+    q("select pc_admin_set_flags('{\"cust_admin\": false}'::jsonb)", **A)
 
 print(f"\n{OK}/{OK + FAIL} đạt")
 sys.exit(1 if FAIL else 0)

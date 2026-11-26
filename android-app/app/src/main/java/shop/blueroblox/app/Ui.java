@@ -347,6 +347,32 @@ public final class Ui {
     // ---------------- Thông báo nhanh / hộp thoại ----------------
     public static void toast(Context c, String s) { Toast.makeText(c, s, s.length() > 60 ? Toast.LENGTH_LONG : Toast.LENGTH_SHORT).show(); }
 
+    /** 23/11e · Thông báo có NÚT nằm ngay trong màn (không chặn thao tác, tự ẩn sau ms): VD "🖼 Vừa khung" sau khi thu nhỏ game.
+     *  Không gắn được vào màn (màn đang đóng…) → thông báo thường. */
+    public static void snack(Activity a, String msg, String action, Runnable run, int ms) {
+        try {
+            final ViewGroup root = a == null || a.isFinishing() ? null : (ViewGroup) a.findViewById(android.R.id.content);
+            if (root == null) { if (a != null) toast(a, msg); return; }
+            final View old = root.findViewWithTag("cb_snack");
+            if (old != null) root.removeView(old);
+            final LinearLayout box = row(a, 10);
+            box.setTag("cb_snack");
+            box.setGravity(Gravity.CENTER_VERTICAL);
+            box.setPadding(dp(14), dp(10), dp(10), dp(10));
+            box.setBackground(ringed(PANEL, 18));
+            box.setElevation(dp(10));
+            box.addView(text(a, msg, 13.5f, FG, false), weight(1));
+            Button b = button(a, action, PRIMARY);
+            box.addView(b, wrap());
+            FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+            lp.setMargins(dp(12), dp(12), dp(12), dp(76));
+            root.addView(box, lp);
+            final Runnable hide = () -> { try { root.removeView(box); } catch (Exception ignored) { } };
+            b.setOnClickListener(v -> { hide.run(); run.run(); });
+            box.postDelayed(hide, ms);
+        } catch (Exception e) { try { toast(a, msg); } catch (Exception ignored) { } }
+    }
+
     /** Hộp thoại kiểu "tấm trượt từ dưới lên" với nội dung tuỳ ý. */
     public static Dialog sheet(Activity a, String title, View content) {
         Dialog d = new Dialog(a);

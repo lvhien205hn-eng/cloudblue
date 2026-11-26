@@ -1,4 +1,4 @@
-# CloudBlue PC — máy PC cho thuê tự cài, tự lên web (đợt 1 · bản 21.11d)
+# CloudBlue PC — máy PC cho thuê tự cài, tự lên web, bán tự động (bản 21.11f)
 
 Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển gửi khách":
 
@@ -7,7 +7,9 @@ Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển 
 3. Trên web bấm **🧹 Cài lại** / **🧼 Bàn giao**: chọn bản Windows (22H2 / 1511) + mức xoá → máy tự khởi động lại, tự dọn sạch và cài lại, **không cần USB, không cần ra máy**.
 4. Đặt **hạn thuê** cho từng máy: từ **2 ngày trước hạn** máy tự nhắc khách liên tục và **đầu Bảng quản trị luôn hiện dải báo** máy sắp hết hạn; hết hạn mà chưa gia hạn thì máy **tự tắt** (bật lại cũng tự tắt). Việc lạ trên máy hiện ở tab 🛡️ Bảo mật; gửi thêm về mail / Telegram là tuỳ chọn (mục C4)
 
-> **Chưa có ở đợt này:** điều khiển máy bằng app PC / app điện thoại CloudBlue và bán tự động (khách mua → tự giao máy). Đó là đợt 2.
+> **Đợt 2 (cần SQL v43):** khách mua VPS GPU trên web / app → hệ thống tự giao máy + cài đúng bản Windows khách chọn, khách điều khiển máy từ web, app điện thoại, app PC — mục **C5**.
+
+> **Bản 21.11f + SQL v44:** máy bán tự động hết hạn → **khoá** chờ khách gia hạn 30 phút → tự thu hồi → 60 phút tự cài sạch → tự tắt (mục **C5**). Làm nhanh từ đầu tới lúc bán: **`CAI-VPS-GPU-1-LENH.md`**.
 
 > **Đã cài thật trên máy ảo (bản 22H2, ngày 21/11).** Bản 1511 của shop là **bản kiểu ghost** (có sẵn tài khoản + tên máy) — từ bản 21.11b bộ cài tự xử lý kiểu này (mục E). Bản 1511 và driver riêng (card mạng, VGA) chỉ thử trọn được trên **máy thật** — hãy thử trên **1 máy thật** trước khi dùng cho cả dàn.
 
@@ -19,6 +21,7 @@ Bộ này thay việc "cài Windows tay rồi cài phần mềm điều khiển 
 Supabase › SQL Editor › New query › dán **toàn bộ** file `cloud-pc-v41.sql` › Run. Dòng cuối phải ra: `v41 xong | t | t | t | t`.
 Rồi làm y như vậy với file **`cloud-pc-v42.sql`** (hạn thuê + nhắc hết hạn). Dòng cuối phải ra: `v42 xong | t | t | t | t | t`.
 Chạy lại nhiều lần không sao; 2 file này chỉ **thêm** bảng / cột / hàm `pc_…`, không đụng phần đang có. Chưa chạy v42 thì web vẫn dùng được, chỉ thiếu phần hạn thuê.
+Bán VPS GPU tự động + điều khiển từ xa: thêm **`cloud-pc-v43.sql`**; tự thu hồi máy hết hạn: **`cloud-pc-v44.sql`** (dòng cuối `v44 xong | true | 30 | 60 | …`). Lỡ chạy lại v42 / v43 thì chạy lại v44 sau cùng.
 
 ### A2. Tạo mã đăng ký
 Web › Bảng quản trị › **💻 Máy PC** › **🔑 Tạo mã đăng ký** › **Copy mã**.
@@ -97,6 +100,7 @@ Sau đó thử tiếp trên web: **🧹 Cài lại** → chọn bản kia (ví d
 | **Sửa** | tên hiển thị, mã riêng của shop, ghi chú, trạng thái (Sẵn sàng / Đang cho thuê / Bảo trì) · Khởi động lại · Tắt máy · Xoá khỏi danh sách |
 | **🧹 Cài lại** | chọn bản Windows + mức xoá, máy tự làm trong 15–30 phút |
 | **🧼 Bàn giao** | khách cũ trả máy: xoá sạch MỌI ổ cứng + cài Windows mới cho khách mới; hạn thuê + tên khách cũ cũng được xoá |
+| **🔁 Khởi động lại** · **⏻ Tắt máy** | ngay trên từng dòng máy (có hỏi lại; máy đang có khách thì nhắc khách bị ngắt). Tắt máy xong muốn bật lại phải bấm nút nguồn tại máy |
 | **⏱ Đặt hạn / Gia hạn** (cột Hạn thuê) | đặt, gia hạn, bỏ hạn thuê của máy + ghi tên khách (mục C4) |
 | **🔔 Cảnh báo** | bật / tắt gửi mail, số phút báo trước, **Gửi thư thử** (mục C4) |
 | **Huỷ lệnh** | gỡ lệnh chưa chạy. Máy đã nhận lệnh và đang cài thì vẫn cài tiếp |
@@ -168,6 +172,36 @@ Các cảnh báo khác hiện ở tab **🛡️ Bảo mật**: máy đang thuê 
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | nếu muốn nhận qua Telegram (bot của bạn + mã phòng chat) |
 
 Kiểm tra: web › Máy PC › **🔔 Cảnh báo** › **Gửi thư thử** — dòng kết quả ghi rõ kênh nào được, kênh nào thiếu gì. Các khoá này **tự bạn dán vào Vercel, không gửi cho ai**.
+
+
+### C5. Bán VPS GPU tự động + điều khiển từ xa (cần SQL v43)
+**Bật 1 lần**: web › 💻 Máy PC › **🛒 Đơn VPS GPU** › **⚙ Cài đặt bán**: chọn sản phẩm bán bằng máy PC (vd *VPS GPU BLUE*), các bản Windows cho khách chọn (22H2, 1511), số lần khách **tự cài lại / đổi Windows** trong 1 lượt thuê (mặc định **2**) › **Lưu**. Chưa chọn sản phẩm = tắt bán tự động (sản phẩm bán tay như cũ).
+
+**Khách mua** (web / app điện thoại / app PC): chọn gói ngày + bản Windows → trừ số dư như mua thường (mã giảm giá, giá cộng tác viên vẫn áp dụng).
+
+- Có máy trống **đang online** → giao ngay. Máy sạch đúng bản Windows thì dùng được luôn; khác bản hoặc máy khách cũ vừa trả → máy tự cài Windows (15–30 phút, hạn thuê được cộng thêm 30 phút).
+- **Không có máy online** → đơn *chờ máy*, đầu tab Máy PC hiện **dải đỏ** + cảnh báo 🔔. Bạn **bật 1 máy lên** (máy đã duyệt, trạng thái Sẵn sàng, không có khách): trong 1 phút hệ thống tự giao + tự cài đúng bản khách mua. Muốn chọn máy cụ thể: bấm **Bàn giao** ở 🛒 Đơn VPS GPU.
+- Khách xem ở mục **VPS GPU của bạn** (web, app): tình trạng cài, hạn thuê, **▶ Điều khiển**, **Cài lại / đổi Windows** (hết lượt → bạn bấm **+1 lượt**), **Gia hạn**.
+
+**Quản lý** (🛒 Đơn VPS GPU): đơn chờ / đang thuê / đã xong · **Bàn giao** · **Đổi máy** · **+1 lượt** · ghi chú · **Huỷ + hoàn tiền** (đơn chờ) · **Thu hồi** máy.
+**Tự thu hồi máy hết hạn (cần SQL v44 + agent 21.11f)** — ⚙ Cài đặt bán › ♻️ *Tự thu hồi máy hết hạn* (mặc định bật: chờ **30** phút, cài sạch ở mốc **60** phút, xong tự tắt). Chỉ áp dụng cho lượt thuê bán tự động:
+
+1. Hết hạn: máy báo khách 60 giây rồi **khoá** (khởi động lại, dừng ở màn hình đăng nhập, khách không mở điều khiển được).
+2. Khách gia hạn trong thời gian chờ → máy tự mở lại sau 1–2 phút, **giữ nguyên dữ liệu**.
+3. Quá thời gian chờ → lượt thuê tự kết thúc, máy về kho, 🔔 *đã tự thu hồi*.
+4. Tới mốc cài sạch → máy (đang online) tự **xoá sạch mọi ổ + cài bản Windows chọn ở ô Cài sẵn**; máy đang tắt thì bật lên là tự cài. Đang có đơn chờ máy → giao luôn cho đơn đó.
+5. Cài xong, ổn định 3 phút → **tự tắt**, 🔔 *máy mới sẵn sàng*. Có khách mới: bật máy lên, hệ thống tự giao trong 1 phút (hoặc bấm **Bàn giao**).
+
+Tắt tự thu hồi / máy đặt hạn tay (⏱): hết hạn máy tự tắt như mục C4; cho khách khác thuê thì bật máy › **🧼 Bàn giao** (xoá sạch mọi ổ) — xong máy về kho, bán tự động dùng lại được.
+
+**Bảo trì riêng VPS GPU**: 🛠️ Cài đặt › Bảo trì › *Bảo trì riêng VPS GPU* + lời nhắn — khách tạm không mua / điều khiển / cài lại VPS GPU (vẫn gia hạn được), cloud phone không bị ảnh hưởng, admin dùng bình thường.
+
+**Điều khiển từ xa** — chuột + bàn phím thật, phím Windows (Esc, Win, Win+D, Win+Tab, Alt+Tab, Ctrl+Shift+Esc…):
+
+- web: **▶ Điều khiển** ở *VPS GPU của bạn* (admin: nút **🖥 Điều khiển** trên thẻ máy) — mở trang `play.html?pc=…` trên máy tính / điện thoại / iPhone (Safari)
+- app Android: *VPS GPU của bạn* › **Điều khiển** · app PC: nút **🖥️ VPS GPU** / mục *VPS GPU của bạn*
+- Admin mở máy **không phải của mình** → máy hiện hộp báo cho khách biết đang có người hỗ trợ xem máy.
+- Máy chỉ quay màn hình khi có người mở xem; tắt hẳn trên 1 máy: `C:\CloudBluePC\cb.json` thêm `"remote": false`.
 
 ---
 
@@ -250,6 +284,15 @@ Mặc định (không dùng `-KhachAdmin`) mỗi máy cài từ ISO này:
 - Phần mềm trên máy tự kiểm lại các khoá này mỗi lần khởi động và vài giờ một lần. Lần đăng nhập đầu bị dở (mất điện) thì 1 giờ sau máy tự hạ quyền tài khoản khách.
 - Trên web, **thông tin do máy gửi lên luôn được coi là dữ liệu lạ** (chỉ in ra dạng chữ) — khách không thể qua máy thuê mà chèn mã vào trang quản trị. Mỗi máy chỉ có 1 mã riêng, lộ mã đó cũng không đụng được máy khác hay tài khoản admin.
 
+**Công tắc “Cho khách quyền Admin”** (Quản trị › Máy PC › ⚙ — cần SQL v46 + agent 21.11h; **từ 21.11i đi theo cả lần cài lại**):
+
+- **Bật** (mặc định): tài khoản khách có **full quyền Admin như máy cài Windows thường** — ngay từ lần đăng nhập đầu của mỗi lượt cài (khách thuê mới, đổi Windows, dọn máy), không phải khởi động lại thêm. Agent ghi công tắc lên cả phân vùng cứu hộ nên bộ cài mang theo; máy cài từ USB thì lần đăng nhập đầu chờ agent hỏi web tối đa 150 giây.
+- Bật công tắc lúc khách **đang dùng** máy: quyền mới chỉ có sau khi **khởi động lại 1 lần** (Windows chỉ nhận quyền lúc đăng nhập) → web › Máy PC › máy đó › 🔁 **Khởi động lại**, hoặc khách bấm Start › Restart.
+- Thư mục `C:\CloudBluePC` được **ẩn** (thuộc tính Ẩn + Hệ thống, agent 21.11j) cho khách khỏi để ý — Explorer không hiện kể cả khi bật "Hiện mục ẩn". Ngoài thư mục này + phân vùng cứu hộ, khách Admin **toàn quyền** như máy thường. Bạn cần xem: gõ thẳng `C:\CloudBluePC` vào thanh địa chỉ.
+- Khách Admin vẫn **không sửa / xoá được** phần mềm CloudBlue và phân vùng cứu hộ bằng thao tác thường (dòng TỪ CHỐI riêng cho tài khoản khách). Cố tình chiếm quyền để phá thì phá được **chính máy đang thuê** → máy báo offline / việc lạ, bạn cài sạch lại từ web hoặc USB (vi phạm: khoá máy, không hoàn tiền).
+- **Trên máy không có khoá bí mật nào của web**: chỉ khoá công khai (vốn nằm trong trang web) + mã riêng của chính máy (chỉ dùng cho máy đó). Trạm phát hình không gửi phiên đăng nhập của người xem xuống máy. → Khách Admin **không lấy được tài khoản web, tài khoản admin, tiền hay máy khác**.
+- Nên **tách mạng máy cho thuê** khỏi máy chủ / máy khác (VLAN, router riêng hoặc bật “cách ly máy” trên router): khách Admin chạy được công cụ dò mạng trong LAN. Máy cho thuê chỉ cần ra Internet — điều khiển từ xa tự đi qua đường `wss://` khi không nối thẳng được trạm.
+
 Phần chỉ bạn làm được (bộ cài không làm thay):
 
 - Đặt **mật khẩu BIOS** và để máy chỉ khởi động từ ổ cứng (không cho khởi động USB) — nếu khách ngồi trực tiếp tại máy.
@@ -291,8 +334,8 @@ winpc/
   CAI-DAT.cmd          cài lại ngay từ trong Windows (nằm ở gốc ISO)
   boot/winpeshl.ini    móc gọi bộ cài trong boot.wim
   pe/start.cmd, cb_pe.py     bộ cài chạy trong WinPE (Python nhúng)
-                       (từ 21.11d: phân vùng cứu hộ có \cb\pe-next\next.json + bộ cài số thứ tự lớn hơn PE_SEQ → bộ cài trong boot.wim chạy bản đó
-                        → sau này sửa bộ cài qua mạng được, không phải tạo lại ISO và cài lại từng máy)
+                       (từ 21.11d: phân vùng cứu hộ có \cb\pe-next\next.json + bộ cài số thứ tự lớn hơn PE_SEQ → bộ cài trong boot.wim chạy bản đó;
+                        từ 21.11e agent tự đặt bộ cài của bản vừa công bố vào đó → sửa bộ cài qua mạng, không phải tạo lại ISO và cài lại từng máy)
   lib/cbsys.py, cbcore.py, cbrec.py   đọc ổ đĩa · tính toán chia ổ · phân vùng cứu hộ
   os/unattend.tpl.xml, provision.cmd, cb_provision.py, cb_stage.py
   agent/pcagent.py, watch.cmd, cbpc.cmd   agent chạy bằng SYSTEM trên máy cho thuê
@@ -305,3 +348,4 @@ blueroblox-site/api/pc-notify.js   gửi cảnh báo máy PC về mail + Telegra
 Máy cho thuê chỉ nói chuyện với Supabase bằng **khoá công khai của web** + mã riêng của máy (`pc_enroll`, `pc_poll`, `pc_allow_reenroll`, từ v43 thêm `pc_label`, `pc_relay_where`); bộ tạo ISO gọi `pc_key_check`. Mọi việc quản trị đi qua các hàm `pc_admin_…` chỉ admin gọi được (`pc_admin_rent` = hạn thuê); hàng chờ cảnh báo (`pc_alerts_take` / `pc_alerts_unsend`) chỉ máy chủ web gọi được.
 Ba đường để phần mềm tự chạy trong Windows mới: file trả lời (`unattend.xml`) → `SetupComplete.cmd` → dịch vụ khởi động `CloudBluePCBoot` (bộ cài ghi thẳng vào registry của Windows vừa bung; chạy xong tự gỡ).
 Sửa bất kỳ file nào trong `winpc/` → tăng số bản trong file đó nếu là agent, chạy lại `tests/mkmanifest.py` để ghi `manifest.json`, rồi mới đưa lên GitHub.
+Sửa **bộ cài** (`pe/cb_pe.py` hoặc phần `lib/` bộ cài dùng) → tăng thêm `PE_SEQ` trong `pe/cb_pe.py`: công bố bản agent xong, mọi máy (cài từ ISO 21.11d trở lên) tự dùng bộ cài mới ở lần cài lại / đổi Windows kế tiếp.

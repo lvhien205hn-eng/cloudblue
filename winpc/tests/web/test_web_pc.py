@@ -152,7 +152,12 @@ class Site:
         self.page.wait_for_timeout(400)
 
     def tab(self, t):
-        self.page.click('#adm-tabs button[data-tab="%s"]' % t)
+        """Như người dùng: bấm NHÓM ở hàng trên (21/11f), rồi bấm mục trong nhóm nếu nhóm chưa mở đúng mục đó."""
+        g = self.js("t => window.ADMNAV ? window.ADMNAV.grpOf(t) : null", t)
+        if g:
+            self.page.click('#adm-grp button[data-grp="%s"]' % g); self.page.wait_for_timeout(120)
+        if not self.js("t => { const b = document.querySelector('#adm-tabs button[data-tab=\"' + t + '\"]'); return !!b && b.classList.contains('on'); }", t):
+            self.page.click('#adm-tabs button[data-tab="%s"]' % t)
         self.page.wait_for_timeout(250)
 
     def settle(self):
@@ -178,10 +183,11 @@ def main():
     base, new = read(BASE_HTML), read(NEW_HTML)
     with sync_playwright() as pw:
         br = pw.chromium.launch(executable_path="/usr/bin/google-chrome", headless=True, args=["--no-sandbox", "--disable-gpu"])
-        TABS = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vps", "biz", "promo", "site"]
+        TABS0 = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vps", "biz", "promo", "site"]       # trang gốc (trước 24/11)
+        TABS = ["stats", "ord", "prod", "cust", "tx", "sec", "cloud", "vm", "promo", "site"]              # 24/11: bỏ Máy VPS + Dàn máy nội bộ, thêm 🧩 VPS ảo hoá
 
         print("1. Trang gốc và trang đã gắn: không thêm lỗi nào")
-        s0 = Site(br, base, {"admin": True, "v41": True, "db": make_db()}); e0 = tour(s0, TABS); u0 = set(s0.unrouted); s0.close()
+        s0 = Site(br, base, {"admin": True, "v41": True, "db": make_db()}); e0 = tour(s0, TABS0); u0 = set(s0.unrouted); s0.close()
         s = Site(br, new, {"admin": True, "v41": True, "db": make_db()}); e1 = tour(s, TABS + ["pc"] + TABS[:3] + ["pc"])
         ck("trang gốc mở được bảng quản trị (bộ thử chạy đúng)", True)
         ck("trang đã gắn: không có lỗi mới so với trang gốc", [x for x in e1 if x not in e0] == [], [x for x in e1 if x not in e0])
@@ -192,12 +198,34 @@ def main():
         s.tab("pc"); s.settle()
         ck("bấm thẻ → hiện pane-pc, nút thẻ sáng", s.js("() => !document.getElementById('pane-pc').hidden && document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on')"))
         ck("các pane khác đều ẩn", s.js("() => [...document.querySelectorAll('#drawer .dbody')].filter(p => !p.hidden).map(p => p.id)") == ["pane-pc"])
-        s.tab("vps")
-        ck("sang thẻ khác → pane-pc ẩn, thẻ PC tắt sáng", s.js("() => document.getElementById('pane-pc').hidden && !document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on') && !document.getElementById('pane-vps').hidden"))
+        s.tab("vm")
+        ck("sang thẻ khác → pane-pc ẩn, thẻ PC tắt sáng", s.js("() => document.getElementById('pane-pc').hidden && !document.querySelector('#adm-tabs button[data-tab=pc]').classList.contains('on') && !document.getElementById('pane-vm').hidden"))
         s.tab("sec")
         ck("thẻ Bảo mật vẫn chạy đúng", s.js("() => !document.getElementById('pane-sec').hidden && document.getElementById('pane-pc').hidden"))
         s.tab("pc"); s.settle()
         ck("không báo thiếu SQL", s.js("() => document.getElementById('pca-miss').hidden"))
+
+        print("2b. Thẻ bảng quản trị gộp theo nhóm (21/11f)")
+        gr = s.js("() => [...document.querySelectorAll('#adm-grp button[data-grp]')].map(b => [b.dataset.grp, b.querySelector('b').innerText.trim(), b.querySelector('small').textContent])")
+        ck("5 nhóm: Tổng quan · Bán hàng · Khách & tiền · Máy cho thuê · Cài đặt", [g[0] for g in gr] == ["home", "sell", "cust", "mach", "set"], gr)
+        sub = {g[0]: g[2] for g in gr}
+        ck("mỗi nhóm ghi sẵn các mục bên trong (mở lên là biết có gì)",
+           sub.get("sell") == "Đơn hàng · Sản phẩm · Khuyến mãi" and sub.get("cust") == "Khách hàng · Nạp tiền · Bảo mật"
+           and sub.get("mach") == "ĐT đám mây · Máy PC · VPS ảo hoá" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
+        vis = lambda: s.js("() => getComputedStyle(document.getElementById('adm-tabs')).display === 'none' ? [] : [...document.querySelectorAll('#adm-tabs button[data-tab]')].filter(b => getComputedStyle(b).display !== 'none').map(b => b.dataset.tab)")
+        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 3 mục: ĐT đám mây · Máy PC · VPS ảo hoá (24/11: bỏ Máy VPS + Dàn máy nội bộ)",
+           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "pc", "vm"], vis())
+        s.tab("stats")
+        ck("Tổng quan (1 mục) → ẩn hàng mục con", vis() == [] and not s.js("() => document.getElementById('pane-stats').hidden"), vis())
+        s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(300)
+        ck("bấm lại nhóm 'Máy cho thuê' → về đúng mục dùng gần nhất (Máy PC)", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "pc" and not s.js("() => document.getElementById('pane-pc').hidden"))
+        s.js("() => { const a = document.getElementById('sec-badge'), b = document.getElementById('ord-badge'); a.textContent = '42'; a.hidden = false; b.textContent = '1'; b.hidden = false; }")
+        s.page.wait_for_timeout(150)
+        bd = s.js("() => Object.fromEntries([...document.querySelectorAll('#adm-grp button[data-grp]')].map(b => [b.dataset.grp, b.querySelector('.badge').hidden ? '' : b.querySelector('.badge').textContent]))")
+        ck("số trên nhóm = cộng số các thẻ trong nhóm (Bảo mật 42 → Khách & tiền 42 · Đơn hàng 1 → Bán hàng 1 · Máy PC 1 chờ duyệt → Máy cho thuê 1)",
+           bd.get("cust") == "42" and bd.get("sell") == "1" and bd.get("mach") == "1" and bd.get("home") == "", bd)
+        s.js("() => { const a = document.getElementById('sec-badge'), b = document.getElementById('ord-badge'); a.hidden = true; b.hidden = true; }")
+        s.tab("pc"); s.settle()
 
         print("3. Số liệu + bảng")
         tiles = s.js("() => ['pk-total','pk-on','pk-new','pk-busy'].map(i => document.getElementById(i).textContent)")
@@ -342,6 +370,67 @@ def main():
         ck("máy chủ báo BUSY → hiện câu dễ hiểu, hộp vẫn mở", "đang có lệnh cài lại chưa xong" in s.js("() => document.getElementById('toast').textContent") and not s.js("() => document.getElementById('pcadlg').hidden"))
         s.js("() => { window.__FAKE.failRpc = {}; }"); s.page.click("#pcad-cancel")
 
+        print("8a2. Nút 🔁 Khởi động lại / ⏻ Tắt máy ngay ở từng dòng (22/11)")
+        rb = lambda pid, a: '#pctbl tr[data-pc="%s"] [data-pca="%s"]' % (pid, a)
+        has = lambda sel: s.js("sel => !!document.querySelector(sel)", sel)
+        ck("máy đã duyệt có nút 🔁 Khởi động lại + ⏻ Tắt máy ngay ở dòng; máy chờ duyệt thì không",
+           has(rb(B, "reboot")) and has(rb(B, "shutdown")) and not has(rb(A, "reboot")) and not has(rb(A, "shutdown"))
+           and s.js("sel => document.querySelector(sel).textContent", rb(B, "reboot")) == "🔁 Khởi động lại" and s.js("sel => document.querySelector(sel).textContent", rb(B, "shutdown")) == "⏻ Tắt máy")
+        n0 = len(s.calls("pc_admin_order"))
+        s.accept = False; s.dialogs.clear(); s.page.click(rb(B, "reboot")); s.settle()
+        ck("bấm 🔁 ở dòng → hỏi lại; chọn Huỷ thì không gửi gì", len(s.dialogs) == 1 and 'KHỞI ĐỘNG LẠI máy "Máy 14-86"?' in s.dialogs[0] and len(s.calls("pc_admin_order")) == n0, s.dialogs)
+        s.accept = True; s.dialogs.clear(); s.page.click(rb(B, "shutdown")); s.settle()
+        ck("bấm ⏻ ở dòng → hỏi lại (nhắc phải bấm nút nguồn mới bật lại) → gửi lệnh tắt + báo rõ",
+           len(s.dialogs) == 1 and 'TẮT máy "Máy 14-86"?' in s.dialogs[0] and "bấm nút nguồn" in s.dialogs[0]
+           and s.calls("pc_admin_order")[-1] == {"p_id": B, "p_cmd": "shutdown", "p_args": {}} and len(s.calls("pc_admin_order")) == n0 + 1
+           and "Đã gửi lệnh tắt máy Máy 14-86." in s.js("() => document.getElementById('toast').textContent"), (s.dialogs, s.calls("pc_admin_order")[-1:]))
+        oid = s.js("() => window.__FAKE.seq"); s.js("id => { const o = window.__FAKE.db.pc_orders.find(x => x.id === id); o.state = 'done'; o.done_at = new Date().toISOString(); }", oid)
+        s.js("id => { const m = window.__FAKE.db.pc_machines.find(x => x.id === id); m.status = 'rented'; m.rent_until = new Date(Date.now() + 86400000).toISOString(); }", B)
+        s.page.click("#pca-reload"); s.settle()
+        for act, word in (("reboot", "khách bị ngắt khoảng 1–2 phút"), ("shutdown", "khách KHÔNG dùng được cho tới khi máy được bật lại")):
+            s.accept = False; s.dialogs.clear(); s.page.click(rb(B, act)); s.settle()
+            ck("máy đang có khách thuê → lời hỏi %s nhắc: %s" % (act, word), len(s.dialogs) == 1 and word in s.dialogs[0], s.dialogs)
+        s.accept = True
+        s.js("id => { const m = window.__FAKE.db.pc_machines.find(x => x.id === id); m.rent_until = null; }", B)
+        s.js("id => { window.__FAKE.db.pc_orders.push({id: 9901, pc_id: id, cmd: 'reinstall', args: {os: '22h2', wipe: 'all'}, state: 'queued', result: null, created_at: new Date().toISOString(), sent_at: null, done_at: null}); }", B)
+        s.page.click("#pca-reload"); s.settle()
+        ck("máy đang có lệnh cài lại chưa xong → 2 nút khoá (máy chủ cũng từ chối)", s.js("sel => document.querySelector(sel).disabled", rb(B, "reboot")) and s.js("sel => document.querySelector(sel).disabled", rb(B, "shutdown")))
+        s.js("() => { const o = window.__FAKE.db.pc_orders.find(x => x.id === 9901); o.state = 'done'; o.done_at = new Date().toISOString(); }")
+        s.page.click("#pca-reload"); s.settle()
+
+        print("8b. Gán máy cho TÀI KHOẢN khách + bật / tắt điều khiển từ xa (SQL v43)")
+        s.js("() => { window.__FAKE.db.profiles.push({ id: 'u-teo', username: 'TeoKhach', email: 'teo@mail.test', role: 'user' }, { id: 'u-ti1', username: 'ti', email: 'ti1@mail.test', role: 'user' }, { id: 'u-ti2', username: 'Ti', email: 'ti2@mail.test', role: 'user' }); }")
+        asg = lambda: [c["args"] for c in s.js("() => window.__FAKE.calls.filter(c => c.kind === 'rpc' && c.name === 'pc_admin_assign')")]
+        mrow = lambda i: s.js("(i) => { const m = window.__FAKE.db.pc_machines.find(x => x.id === i); return m ? { user_id: m.user_id || null, remote: m.remote } : null; }", i)
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); s.page.wait_for_function("() => !document.getElementById('pcad-v43').hidden", timeout=4000)
+        ck("có v43: hộp Sửa hiện ô tài khoản khách (đang trống = chưa gán) + ô điều khiển từ xa đang bật", s.js("() => [document.getElementById('pcad-user').value, document.getElementById('pcad-remote').checked]") == ["", True])
+        s.page.click("#pcad-save"); s.settle()
+        ck("không đổi gì ở phần khách → không gọi pc_admin_assign", asg() == [] and s.js("() => document.getElementById('pcadlg').hidden"), asg())
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); s.page.wait_for_function("() => !document.getElementById('pcad-v43').hidden", timeout=4000)
+        s.page.fill("#pcad-user", "khong-co-ai"); s.page.click("#pcad-save"); s.page.wait_for_timeout(300)
+        ck("gõ tài khoản không có → báo ngay trong hộp, hộp vẫn mở, chưa lưu gì khác", "Không thấy tài khoản này" in s.js("() => document.getElementById('pcad-err').textContent")
+           and not s.js("() => document.getElementById('pcadlg').hidden") and mrow(B)["user_id"] is None, s.js("() => document.getElementById('pcad-err').textContent"))
+        s.page.fill("#pcad-user", "ti"); s.page.click("#pcad-save"); s.page.wait_for_timeout(300)
+        ck("tên trùng nhiều tài khoản → nhắc gõ email", "gõ email" in s.js("() => document.getElementById('pcad-err').textContent"), s.js("() => document.getElementById('pcad-err').textContent"))
+        s.page.fill("#pcad-user", "  teokhach "); s.page.click("#pcad-save"); s.settle()
+        ck("gõ đúng tên (không phân biệt hoa thường, có dấu cách thừa) → gán máy cho tài khoản đó, hộp đóng, báo đã gán", asg()[-1] == {"p_id": B, "p_patch": {"user": "teokhach"}} and mrow(B)["user_id"] == "u-teo"
+           and s.js("() => document.getElementById('pcadlg').hidden") and "đã gán máy cho teokhach" in s.js("() => document.getElementById('toast').textContent"), (asg(), mrow(B)))
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); s.page.wait_for_function("() => !document.getElementById('pcad-v43').hidden", timeout=4000)
+        ck("mở lại: ô khách hiện đúng tên tài khoản đã gán", s.js("() => document.getElementById('pcad-user').value") == "TeoKhach")
+        s.page.uncheck("#pcad-remote"); s.page.click("#pcad-save"); s.settle()
+        ck("bỏ ô điều khiển từ xa → chỉ gửi remote: false (không gửi lại tên khách)", asg()[-1] == {"p_id": B, "p_patch": {"remote": False}} and mrow(B) == {"user_id": "u-teo", "remote": False}, (asg()[-1:], mrow(B)))
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); s.page.wait_for_function("() => !document.getElementById('pcad-v43').hidden", timeout=4000)
+        ck("mở lại: ô điều khiển từ xa đang tắt", s.js("() => document.getElementById('pcad-remote').checked") is False)
+        s.page.fill("#pcad-user", ""); s.page.check("#pcad-remote"); s.page.click("#pcad-save"); s.settle()
+        ck("xoá ô khách + bật lại điều khiển → bỏ gán, máy về kho; báo đã bỏ gán", asg()[-1] == {"p_id": B, "p_patch": {"user": "", "remote": True}} and mrow(B) == {"user_id": None, "remote": True}
+           and "đã bỏ gán khách" in s.js("() => document.getElementById('toast').textContent"), (asg()[-1:], mrow(B)))
+        s.js("() => { window.__FAKE.v43 = false; }")
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); s.page.wait_for_timeout(600)
+        ck("chưa chạy v43 → không hiện phần gán khách", s.js("() => document.getElementById('pcad-v43').hidden"))
+        n_asg = len(asg()); s.page.click("#pcad-save"); s.settle()
+        ck("… lưu vẫn như cũ, không gọi pc_admin_assign, không lỗi", len(asg()) == n_asg and s.js("() => document.getElementById('pcadlg').hidden") and [x for x in sorted(set(s.errors)) if x not in e0] == [])
+        s.js("() => { window.__FAKE.v43 = true; }")
+
         print("9. Mã đăng ký + lệnh tạo ISO")
         ck("chưa có mã → báo 'đang đóng', không có nút Tắt mã", "đang đóng" in s.js("() => document.getElementById('pca-keyst').innerText") and s.js("() => document.getElementById('pca-keyoff').hidden"))
         s.dialogs.clear(); s.page.click("#pca-newkey"); s.settle()
@@ -376,7 +465,8 @@ def main():
         ck("chưa công bố bản agent nào", "Bản agent công bố: chưa có" in s.js("() => document.getElementById('pca-agent').textContent") and "20.11a ×2" in s.js("() => document.getElementById('pca-agent').textContent"), s.js("() => document.getElementById('pca-agent').textContent"))
         s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()
         want_agent = {"ver": MANIFEST["ver"], "base": MANIFEST["base"], "files": MANIFEST["files"]}
-        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (12 file)" % MANIFEST["ver"]) in s.dialogs[0]
+        if MANIFEST.get("linux"): want_agent["linux"] = MANIFEST["linux"]       # 22.11d: kèm bộ cài CachyOS (agent thay trên phân vùng cứu hộ)
+        ck("công bố: đọc manifest.json trên GitHub, hỏi lại, lưu đúng ver/base/files (+ linux nếu có; không kèm phần sha256 bộ công cụ)", len(s.dialogs) == 1 and ("Công bố bản agent %s (%d file)" % (MANIFEST["ver"], len(MANIFEST["files"]))) in s.dialogs[0]
            and s.calls("pc_admin_settings")[-1] == {"p_patch": {"agent": want_agent}}, s.dialogs)
         ck("dòng trạng thái đổi theo", ("Bản agent công bố: " + MANIFEST["ver"]) in s.js("() => document.getElementById('pca-agent').textContent"))
         n = len(s.calls("pc_admin_settings")); s.dialogs.clear(); s.page.click("#pca-pub"); s.page.wait_for_timeout(500); s.settle()
@@ -394,7 +484,7 @@ def main():
         print("11. Tự tải lại 15 giây khi đang mở thẻ")
         n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
         ck("đang mở thẻ Máy PC → tự tải lại", n1 > n0, (n0, n1))
-        s.tab("vps"); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
+        s.tab("vm"); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
         ck("sang thẻ khác → không tải nữa", n1 == n0, (n0, n1))
         s.tab("pc"); s.settle()
         s.page.click('#pctbl tr[data-pc="%s"] [data-pca="edit"]' % B); n0 = s.js("() => window.PCA.loads"); s.page.wait_for_timeout(16000); n1 = s.js("() => window.PCA.loads")
@@ -423,7 +513,8 @@ def main():
         ck("bấm tạo mã → báo chưa chạy SQL, không hiện khung mã", "Chưa chạy SQL v41" in s.js("() => document.getElementById('toast').textContent") and s.js("() => document.getElementById('pca-keybox').hidden"))
         n = s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table)).length")
         s.page.goto(ORIGIN + "/admin", wait_until="load"); s.wait_admin(); s.page.wait_for_timeout(500)
-        ck("mở lại bảng quản trị trong cùng phiên → không gọi bảng pc_ khi chưa bấm thẻ", s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table)).length") == 0)
+        ck("mở lại bảng quản trị trong cùng phiên → không gọi bảng pc_ khi chưa bấm thẻ (trừ danh sách MÁY CHỦ Cloud Phone srv của ĐT đám mây, có từ v53)",
+           s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^pc_/.test(c.table) && !(c.table === 'pc_machines' && c.eq.some(e => e[0] === 'srv'))).length") == 0)
         s.js("() => { window.__FAKE.v41 = true; }"); s.tab("pc"); s.settle()
         ck("chạy SQL xong, bấm thẻ → hết lời nhắc, bảng báo chưa có máy", s.js("() => document.getElementById('pca-miss').hidden && sessionStorage.getItem('pca_miss') === null") and s.rows()[0].startswith("Chưa có máy nào."), s.rows())
         s.close()
@@ -433,7 +524,7 @@ def main():
             s0 = Site(br, base, init, path=path); s0.page.wait_for_timeout(1500); eb = sorted(set(s0.errors)); s0.close()
             s = Site(br, new, init, path=path); s.page.wait_for_timeout(1500)
             ck(label + ": không lỗi mới", [x for x in sorted(set(s.errors)) if x not in eb] == [], [x for x in sorted(set(s.errors)) if x not in eb])
-            ck(label + ": không đọc bảng pc_, không gọi hàm pc_", s.js("() => window.__FAKE.calls.filter(c => /^pc_/.test(c.table || c.name || '')).length") == 0)
+            ck(label + ": không đọc bảng pc_, không gọi hàm pc_ của admin (chỉ hàm cho khách: pc_shop_info / pc_my_vps)", s.js("() => window.__FAKE.calls.filter(c => /^pc_/.test(c.table || c.name || '') && !['pc_shop_info', 'pc_my_vps'].includes(c.name)).length") == 0)
             ck(label + ": phần Máy PC ẩn", s.js("() => document.getElementById('pane-pc').hidden && document.getElementById('drawer').hidden && document.getElementById('pcadlg').hidden && document.getElementById('pcrdlg').hidden"))
             s.close()
 
@@ -458,7 +549,7 @@ def main():
         db = make_rent_db(); dbm = {x["id"]: x for x in db["pc_machines"]}
         t_open = time.time()
         s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.tab("pc"); s.settle()
-        ck("bảng có cột 'Hạn thuê', không báo thiếu SQL v42", "Hạn thuê" in s.js("() => document.querySelector('#pane-pc thead').innerText") and HID("pca-miss42") and HID("pca-miss"))
+        ck("bảng có cột 'Hạn thuê', không báo thiếu SQL v42", "Hạn thuê" in s.js("() => document.querySelector('#pctbl').closest('table').querySelector('thead').innerText") and HID("pca-miss42") and HID("pca-miss"))
         rb, rc, ry, ra = row("Máy 14-85"), row("Máy khách Tèo"), row("May-Y"), row("CB-A1B2C3")
         rx = next(r for r in s.rows() if "onerror=\"window.__xss=1\"" in r)
         ck("máy còn hạn: đếm ngược + thời điểm hết hạn + tên khách + nút Gia hạn", all(k in rb for k in ["còn 2 ngày 3 giờ", "đến " + at_vn(dbm[B]["rent_until"]), "👤 anh Tèo 0909", "⏱ Gia hạn"]), rb)
@@ -672,8 +763,8 @@ def main():
         ck("bấm ⏱ Gia hạn ở dòng máy PC → nhảy sang tab Máy PC + mở hộp đặt hạn của đúng máy đó", not HID("pane-pc") and not HID("pctdlg") and "May-Y" in TT("pctdlg") and s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "pc", TT("pctdlg")[:120])
         s.page.click('#pctd-quick [data-h="720"]'); s.page.click("#pctd-save"); s.settle()
         ck("gia hạn xong (+30 ngày) → máy đó rời khỏi ô", "May-Y" not in (box("pca-rentbar", "vps") or "") and len(kinds("pca-rentbar", "vps")) == 3 and s.calls("pc_admin_rent")[-1]["p_id"] == Y, box("pca-rentbar", "vps"))
-        s.page.click('#pca-rentbar [data-xpbox="vps"] [data-xpgo="vps"]'); s.page.wait_for_timeout(200)
-        ck("bấm 'Mở Máy VPS' → sang tab 🖥️ Máy VPS", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "vps")
+        ck("dòng máy VPS kiểu cũ (nhập tay): không còn nút 'Mở Máy VPS' (24/11: đã bỏ thẻ Máy VPS)", not s.js("() => !!document.querySelector('#pca-rentbar [data-xpgo=\"vps\"]')")
+           and "VPS-HN-01" in (box("pca-rentbar", "vps") or ""), box("pca-rentbar", "vps"))
         s.page.click('#pca-rentbar [data-xpbox="cp"] [data-xpgo="cloud"]'); s.page.wait_for_timeout(200)
         ck("bấm 'Mở ĐT đám mây' → sang tab 📱 ĐT đám mây", s.js("() => document.querySelector('#adm-tabs button.on').dataset.tab") == "cloud")
         s.js("() => { const st = window.__FAKE.db.pc_settings[0]; st.rent_warn_min = 0; const m = window.__FAKE.db.pc_machines.find(x => x.name === 'Máy 14-85'); m.rent_until = new Date(Date.now() + 600000).toISOString(); m.rent_set_at = new Date(Date.now() - 86400000 * 30).toISOString(); }")
@@ -746,6 +837,32 @@ def main():
         s = Site(br, new, {"admin": None, "v41": True, "db": xp_db()}, path="/"); s.page.wait_for_timeout(1800)
         ck("CHƯA ĐĂNG NHẬP: không có gì — không ô admin, không dải nhắc, không đọc bảng nào trong 3 bảng", HID("xp-home") and T("xp-adm") == "" and T("xp-cust") == ""
            and s.js("() => window.__FAKE.calls.filter(c => c.kind === 'from' && /^(pc_|vps_machines|cloud_phones)/.test(c.table) && /expires_at|rent_until/.test(c.cols || '')).length") == 0)
+        s.close()
+        print("21. 🐧 Cài lại sang Linux CachyOS (22.11f): chỉ chọn được khi agent đã xét Secure Boot (rec.lx ≥ 2)")
+        db = make_db()
+        for m in db["pc_machines"]:
+            if m["id"] == B: m["info"]["rec"] = {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11e"}
+            if m["id"] == A: m["info"]["rec"] = {"ok": True, "images": ["22h2", "1511", "cachyos"], "ver": "22.11e", "lx": 2}
+        s = Site(br, new, {"admin": True, "v41": True, "db": db}); s.wait_admin(); s.tab("pc"); s.settle()
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % B); s.page.wait_for_timeout(200)
+        op = s.js("() => [...document.getElementById('pcrd-os').options].map(o => [o.value, o.disabled, o.textContent])")
+        w = s.js("() => document.getElementById('pcrd-warn').innerText")
+        ck("agent 22.11e (chưa có lx): CachyOS hiện nhưng KHOÁ, ghi 'chờ agent 22.11f'; lời nhắc ⬆ Công bố bản agent",
+           [x[0] for x in op] == ["22h2", "1511", "cachyos"] and op[2][1] is True and "Linux CachyOS (KDE)" in op[2][2] and "chờ agent 22.11f" in op[2][2]
+           and not op[0][1] and "Công bố bản agent" in w, (op, w))
+        s.js("() => document.getElementById('pcrd-cancel').click()"); s.page.wait_for_timeout(150)
+        s.page.click('#pctbl tr[data-pc="%s"] [data-pca="reinstall"]' % A); s.page.wait_for_timeout(200)
+        op = s.js("() => [...document.getElementById('pcrd-os').options].map(o => [o.value, o.disabled])")
+        ck("agent 22.11f (lx 2): CachyOS chọn được", op == [["22h2", False], ["1511", False], ["cachyos", False]], op)
+        s.page.select_option("#pcrd-os", "cachyos"); s.page.wait_for_timeout(100)
+        w = s.js("() => document.getElementById('pcrd-warn').innerText")
+        ck("chọn CachyOS → lưu ý: 30–60 phút, tắt Secure Boot, điều khiển qua web / app như Windows, không dùng card NVIDIA",
+           "Linux CachyOS (KDE)" in w and "30–60 phút" in w and "Secure Boot" in w and "như máy Windows" in w and "NVIDIA" in w and "CHƯA có điều khiển" not in w, w)
+        s.dialogs.clear(); s.page.click("#pcrd-go"); s.settle(); s.page.wait_for_timeout(200)
+        ck("đồng ý → lệnh cài lại os = cachyos; hộp hỏi ghi 'CachyOS Linux (KDE)'", s.calls("pc_admin_order")[-1:] == [{"p_id": A, "p_cmd": "reinstall", "p_args": {"os": "cachyos", "wipe": "all"}}]
+           and any("CachyOS Linux (KDE)" in x for x in s.dialogs), (s.calls("pc_admin_order"), s.dialogs))
+        e21 = [e for e in s.errors if "Failed to load resource" not in e]                       # 404 của file tải về / bản kê giả — không phải lỗi trang
+        ck("không lỗi JS", not e21, e21)
         s.close()
         br.close()
     print("\n%d/%d đạt" % (OK, OK + FAIL))

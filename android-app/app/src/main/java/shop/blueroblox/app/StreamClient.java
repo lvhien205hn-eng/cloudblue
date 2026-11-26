@@ -87,6 +87,9 @@ public final class StreamClient {
         /** 16/11: như onProblem + gợi ý của máy chủ (có thể null): fix = "reboot" → nên hiện nút "Khởi động lại máy" ·
          *  boot = 1 → máy đang được bật lại, cứ chờ (client tự hỏi lại mỗi 5 giây). Mặc định gọi onProblem (ô xem trước không cần). */
         default void onProblemX(String code, String msg, JSONObject extra) { onProblem(code, msg); }
+        /** 22/11 · máy PC (agent 22.11b) báo con trỏ đang đứng trong ô nhập chữ (on) / đã rời (off) — báo NGAY khi đổi, không chờ nhịp 1 giây.
+         *  pw = ô mật khẩu. Mặc định không làm gì (ô xem trước, màn nhiều máy). */
+        default void onRemoteIme(boolean on, boolean pw) { }
         /** Dừng hẳn, không tự nối lại: KICKED, LOGIN (phải đăng nhập lại), AUTH, NOT_YOURS, LOCKED, BAD, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, NO_RPC;
          *  ô xem trước thêm: NO_PREVIEW (máy chủ chưa hỗ trợ), PREVIEW_LIMIT (máy đang được xem trước ở quá nhiều nơi). */
         void onStopped(String code, String msg);
@@ -106,6 +109,8 @@ public final class StreamClient {
     private volatile boolean pc = false;            // 21/11: máy PC thật (VPS GPU) — hỏi pc_endpoint, chào máy chủ bằng "pc" thay cho "phone"
     /** 21/11: phiên này điều khiển MÁY PC THẬT (gọi trước start()). */
     public StreamClient setPc(boolean v) { pc = v; return this; }
+    private volatile int fpsx = 0;                   // 21.11k: máy PC — khung hình/giây khách tự chọn (0 = theo mức nét)
+    public StreamClient fpsx(int v) { fpsx = Math.max(0, Math.min(120, v)); return this; }
     public boolean isPc() { return pc; }
     private final Listener ui;
     private final Handler main = new Handler(Looper.getMainLooper());
@@ -267,6 +272,13 @@ public final class StreamClient {
     }
 
     /** Đổi chất lượng: eco · bal · hd · auto (nhớ luôn cho lần nối lại). */
+    /** 21.11k · máy PC: đổi mức nét + khung hình/giây khách chọn (0 = theo mức nét). */
+    public void quality(String nq, int fx) {
+        if (nq == null || nq.isEmpty()) return;
+        q = nq; fpsx = Math.max(0, Math.min(120, fx));
+        try { send(C_QUALITY, new JSONObject().put("q", nq).put("fpsx", fpsx).toString().getBytes(StandardCharsets.UTF_8)); } catch (Exception ignored) { }
+    }
+
     public void quality(String nq) {
         if (nq == null || nq.isEmpty()) return;
         q = nq;
@@ -648,6 +660,7 @@ public final class StreamClient {
             else { int dl = downKbps(); if (dl > 0) hello.put("dl", dl); }   // 16/11: mạng yếu → gợi ý tốc độ (máy chủ cũ bỏ qua trường lạ)
             if (!preview && tileMaxh > 0) hello.put("maxh", tileMaxh);       // 18/11: ô "nhiều máy" — hình nhỏ hơn mức chất lượng
             if (!preview && tileFps > 0) hello.put("fps", tileFps);
+            if (!preview && pc && fpsx > 0) hello.put("fpsx", fpsx);         // 21.11k: máy PC — FPS khách chọn (agent cũ bỏ qua)
             writeMsg(s, C_HELLO, hello.toString().getBytes(StandardCharsets.UTF_8));
             s.lastRx = SystemClock.uptimeMillis();
             Thread tx = new Thread(() -> writer(s), "BRS-tx");
@@ -735,9 +748,16 @@ public final class StreamClient {
                 }
                 break;
             }
-            case S_STATS:
-                s.server = json(m);
+            case S_STATS: {
+                JSONObject j = json(m);
+                s.server = j;
+                if (j.has("ime")) {                                        // 22/11 · máy PC: ô nhập chữ được chọn / bỏ chọn → báo ngay để bật / tắt bàn phím
+                    final int on = j.optInt("ime", 0) == 1 ? 1 : 0;
+                    final boolean pw = j.optInt("pw", 0) == 1;
+                    if (on != s.ime) { s.ime = on; post(() -> ui.onRemoteIme(on == 1, pw)); }
+                }
                 break;
+            }
             case S_ERROR: {
                 JSONObject j = json(m);
                 String code = j.isNull("code") ? "INTERNAL" : j.optString("code", "INTERNAL");
@@ -1018,6 +1038,7 @@ public final class StreamClient {
         volatile long lastRx;
         volatile int ping = -1;
         volatile JSONObject server;
+        int ime = -1;                                        // 22/11 · máy PC: ô nhập chữ đang được chọn? (-1 = chưa biết) — chỉ luồng đọc dùng
         boolean bye = false, ptsNew = false, ackNow = false; // giữ lock
         long pts = 0, ackAt = 0;                             // giữ lock
 

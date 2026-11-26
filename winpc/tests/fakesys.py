@@ -27,6 +27,7 @@ class FVol:
 class FPart:
     def __init__(self, offset, size, type, attrs=0, active=False, vol=None):
         self.offset, self.size, self.type, self.attrs, self.active, self.vol = offset, size, type, attrs, active, vol
+        self.guid = str(uuid.uuid4())                  # GUID riêng của phân vùng (GPT PartitionId) — mục khởi động UEFI trỏ theo GUID này
 
 
 class FDisk:
@@ -63,6 +64,7 @@ class FakeSys:
         self.reg_off, self.reg_loaded, self.fail_reg_load, self.fail_tz = {}, set(), False, False     # kho registry offline của Windows vừa bung: {"Select": chữ reg in ra, "Setup": …}
         self.late = []                                 # volume chỉ hiện sau khi gọi wpeinit (USB lên chậm)
         self.sel_disk = self.sel_part = None
+        self.efi, self.efi_ro, self.efi_writes = {}, False, []     # 22.11c · biến UEFI (NVRAM): {"Boot0000": bytes, "BootOrder": …}; efi_ro = máy không cho ghi
 
     # ---------------------------------------------------------------- dựng máy
     def disk(self, *a, **k):
@@ -95,7 +97,7 @@ class FakeSys:
     def disks(self):
         out = []
         for d in self.fdisks:
-            parts = [Part(i + 1, p.offset, p.size, p.type, attrs=p.attrs, active=p.active) for i, p in enumerate(d.slots)]
+            parts = [Part(i + 1, p.offset, p.size, p.type, attrs=p.attrs, active=p.active, guid=p.guid if d.style == "gpt" else "") for i, p in enumerate(d.slots)]
             parts.sort(key=lambda p: p.offset)
             out.append(Disk(d.index, d.size, d.bus, d.removable, d.model, d.serial, d.ssd, d.style if d.slots or d.style != "raw" else "raw", parts, "sig%d" % d.index))
         return out
@@ -140,6 +142,27 @@ class FakeSys:
 
     def write_bytes(self, p, b):
         v, rel = self._need_fs(p); v.put(rel, bytes(b))
+
+    # ---------------------------------------------------------------- 22.11c · NVRAM UEFI + đọc thô
+    def efi_get(self, name, guid=None):
+        return self.efi.get(name) if self.fw == "uefi" else None
+
+    def efi_set(self, name, data, guid=None, attrs=7):
+        if self.fw != "uefi" or self.efi_ro: return False
+        self.efi_writes.append((name, bytes(data or b"")))
+        if data: self.efi[name] = bytes(data)
+        else: self.efi.pop(name, None)
+        return True
+
+    def sector_bytes(self, disk_index): return 512
+
+    def read_boot_sector(self, letter):
+        """NTFS → boot sector giả có số seri 64 bit lấy từ GUID của volume (mỗi volume 1 số cố định)."""
+        v = next((x for _, _, x in self._allvols() if x.letter == str(letter)[0].upper()), None)
+        if v is None or v.fs != "NTFS": return b""
+        serial = int(uuid.UUID(v.guid.split("{")[1].split("}")[0]).hex[:16], 16)
+        b = bytearray(512); b[3:11] = b"NTFS    "; b[0x48:0x50] = serial.to_bytes(8, "little"); b[510:512] = b"\x55\xaa"
+        return bytes(b)
 
     # ---------------------------------------------------------------- tệp
     def _res(self, path):
@@ -369,6 +392,13 @@ class FakeSys:
             if "override" not in low and (p.type in (GPT_ESP, GPT_MSR) or p.attrs & 1): return "can override"
             d.slots.remove(p); self.sel_part = None; return None
         if low.startswith("set id="):
+            if d.style == "gpt":                        # GPT: set id=<GUID kiểu phân vùng> (vd 0fc63daf-… = Linux)
+                g = kv["id"].strip("{}").lower()
+                if not re.fullmatch(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", g): return "GUID sai"
+                if p.type in (GPT_ESP, GPT_MSR) and "override" not in low: return "can override"
+                p.type = g
+                if g != GPT_DATA and p.vol: p.vol.letter = None
+                return None
             if d.style != "mbr": return "chi MBR"
             p.type = int(kv["id"], 16)
             if p.type == 0x27 and p.vol: p.vol.letter = None

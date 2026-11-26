@@ -61,6 +61,10 @@ import java.util.regex.Pattern;
 public class ControlActivity extends Activity {
     private static final int REQ_APK = 51;
     private static final String[][] QUAL = {{"auto", "Tự động", "Auto"}, {"eco", "Tiết kiệm", "Saver"}, {"bal", "Cân bằng", "Balanced"}, {"hd", "Siêu nét", "Ultra HD"}};
+    // 21.11k · máy PC (VPS GPU): thêm Siêu nét 2K (agent 21.11g) + khách tự chọn khung hình/giây
+    private static final String[][] PC_QUAL = {{"auto", "Tự động", "Auto"}, {"uhd", "Siêu nét (2K)", "Ultra (2K)"}, {"hd", "Nét", "Sharp"}, {"bal", "Cân bằng", "Balanced"}, {"eco", "Tiết kiệm", "Saver"}};
+    private static final int[] PC_FPS = {0, 30, 60, 120};
+    private int pcf = 0;                                   // FPS khách chọn cho máy PC (0 = theo mức nét)
     private static final Pattern UUID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     private static final int META_CTRL = 0x1000;
 
@@ -130,6 +134,13 @@ public class ControlActivity extends Activity {
         }
         quality = pref.getString("q", "auto");
         if (!"auto".equals(quality) && !"eco".equals(quality) && !"bal".equals(quality) && !"hd".equals(quality)) quality = "auto";
+        if (pc) {                                          // 21.11k: máy PC nhớ riêng mức nét + FPS
+            quality = pref.getString("pcq", "auto");
+            boolean okq = false; for (String[] q : PC_QUAL) if (q[0].equals(quality)) okq = true;
+            if (!okq) quality = "auto";
+            pcf = pref.getInt("pcf", 0);
+            if (pcf != 0 && pcf != 30 && pcf != 60 && pcf != 120) pcf = 0;
+        }
         showStats = pref.getBoolean("stats", false);
         autoRot = pref.getBoolean("auto_rot", true);
 
@@ -157,6 +168,8 @@ public class ControlActivity extends Activity {
         q.setOnClickListener(v -> pickQuality());
         q.setTag("q");
         topBar.addView(q, Ui.wrap());
+        if (!pc) topBar.addView(WinTab.button(this, Ui.FG, v -> winTab("mini"), v -> { winMenu(); return true; }),   // 23/11: 🗗 thu nhỏ tab (app trong máy)
+                new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         topBar.addView(barBtn("⛶", Ui.L("Ẩn thanh — hình to hết màn", "Hide bars — full screen"), v -> { autoFull = false; setFull(true); }),
                 new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         root.addView(topBar, Ui.fill());
@@ -171,7 +184,7 @@ public class ControlActivity extends Activity {
             @Override public void onVideoSize(int w, int h) { videoSized(w, h); }
         });
         stage.addView(screen, new FrameLayout.LayoutParams(-1, -1));
-        if (pc) { screen.setInputMode(pref.getInt("pc_in", StreamView.IN_TOUCH)); pcOrient(); }      // 21/11f · kiểu chạm + xoay màn đã chọn
+        if (pc) { screen.setPcInput(true); screen.setInputMode(pref.getInt("pc_in", StreamView.IN_TOUCH)); pcOrient(); }      // 21/11f · kiểu chạm + xoay màn đã chọn · 22/11 cử chỉ xử lý ngay trên điện thoại
 
         sink = new ImeSink(this);
         sink.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
@@ -246,6 +259,7 @@ public class ControlActivity extends Activity {
         mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
         mini.addView(miniBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
         mini.addView(miniBtn(pc ? "🖐" : "🔄", pc ? Ui.L("Kiểu chạm · xoay màn", "Touch & rotation") : Ui.L("Xoay ngang / dọc", "Rotate"), () -> { if (pc) pcView(); else quickRotate(); }));
+        if (!pc) mini.addView(miniBtn("↙", Ui.L("Thu nhỏ tab", "Minimize tab"), () -> winTab("mini")));
         mini.addView(miniBtn("⋯", Ui.L("Công cụ", "Tools"), () -> { hideMini(); tools(); }));
         mini.addView(miniBtn("⤢", Ui.L("Hiện thanh", "Show bars"), () -> { autoFull = false; setFull(false); }));
         mini.setVisibility(View.GONE);
@@ -432,6 +446,7 @@ public class ControlActivity extends Activity {
         if (!rebooting()) showVeil(Ui.L("Đang kết nối…", "Connecting…"), true, null, null);
         client = new StreamClient(this, id, quality, net);
         client.setPc(pc);
+        if (pc) client.fpsx(pcf);
         screen.attach(client);
         client.start();
     }
@@ -463,6 +478,8 @@ public class ControlActivity extends Activity {
         }
 
         @Override public void onClipboard(String text) { phoneCopied(text); }
+
+        @Override public void onRemoteIme(boolean on, boolean pw) { if (pc) pcIme(on); }
 
         @Override public void onStats(int fps, int kbps, int ping, boolean direct, JSONObject server) {
             if (ControlActivity.this.ping != ping) { ControlActivity.this.ping = ping; paintBall(); }   // nút nổi: độ trễ mạng
@@ -890,9 +907,10 @@ public class ControlActivity extends Activity {
                 {"📋", Ui.L("Dán chữ vào máy", "Paste into PC"), (Runnable) this::pasteFromPhone},
                 {"📄", Ui.L("Copy từ máy", "Copy out"), (Runnable) this::copyFromPhone},
                 {"📝", Ui.L("Gõ chữ", "Type text"), (Runnable) this::typeText},
-                {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
+                {"✨", Ui.L("Chất lượng · FPS", "Quality · FPS"), (Runnable) this::pickQuality},
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
+                {"🎮", Ui.L("Nhiều máy", "Multi"), (Runnable) this::openMulti},
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
         } : new Object[][]{
                 {"🔊", Ui.L("Tăng âm", "Vol +"), (Runnable) () -> cmd("volup")},
@@ -912,8 +930,16 @@ public class ControlActivity extends Activity {
                 {"🛍", Ui.L("Kho app", "App store"), (Runnable) this::store},
                 {"▦", Ui.L("Ứng dụng", "Apps"), (Runnable) this::apps},
                 {"🧬", "Clone tab", (Runnable) this::cloneTab},
+                {"↙️", Ui.L("Thu nhỏ tab", "Minimize tab"), (Runnable) () -> winTab("mini")},
+                {"🔲", Ui.L("Sắp xếp tab", "Arrange tabs"), (Runnable) () -> winTab("tile")},
+                {"↗️", Ui.L("Phóng to tab", "Maximize tab"), (Runnable) () -> winTab("full")},
+                {"🖼️", Ui.L("Vừa khung", "Refit"), (Runnable) () -> { if (!pc && id != null) WinTab.refit(this, api, id); }},   // 23/11b
+                {"➕", Ui.L("Cửa sổ to", "Bigger"), (Runnable) () -> winTab("grow")},                                             // 23/11c
+                {"➖", Ui.L("Cửa sổ nhỏ", "Smaller"), (Runnable) () -> winTab("shrink")},
+                {"🖥", Ui.L("Màn rộng", "Wide"), (Runnable) () -> { if (!pc && id != null) WinTab.wide(this, api, id); }},
                 {"📍", Ui.L("Vị trí GPS", "GPS"), (Runnable) this::gps},
                 {"🔓", "Root", (Runnable) this::root},
+                {"🌐", "Proxy", (Runnable) this::proxy},
                 {"✨", Ui.L("Chất lượng", "Quality"), (Runnable) this::pickQuality},
                 {"📊", Ui.L("Thông số", "Stats"), (Runnable) this::toggleStats},
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
@@ -924,7 +950,7 @@ public class ControlActivity extends Activity {
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };
         for (Object[] it : items) {
-            if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root
+            if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]) || "Proxy".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root + Proxy (đặt proxy trên web)
             Runnable r = (Runnable) it[2];
             LinearLayout t = Ui.tool(this, (String) it[0], (String) it[1], v -> { if (d[0] != null) d[0].dismiss(); r.run(); });
             t.setLayoutParams(new FrameLayout.LayoutParams(w, -2));
@@ -934,6 +960,11 @@ public class ControlActivity extends Activity {
         d[0] = Ui.sheet(this, Ui.L("Công cụ", "Tools"), g);
         d[0].show();
     }
+
+    // ---------------- 🗗 Tab cửa sổ nhỏ (23/11): app trong máy thành cửa sổ nhỏ / sắp xếp / phóng to — xem WinTab ----------------
+    private void winTab(String what) { if (!pc && id != null) WinTab.run(this, api, id, what); }
+
+    private void winMenu() { if (!pc && id != null) WinTab.menu(this, api, id); }
 
     private void toggleStats() {
         showStats = !showStats;
@@ -1038,6 +1069,7 @@ public class ControlActivity extends Activity {
     };
 
     private void pickQuality() {
+        if (pc) { pickQualityPc(); return; }
         LinearLayout c = Ui.col(this, 10);
         final Dialog[] d = new Dialog[1];
         String[] desc = {Ui.L("Tự đo mạng, chọn độ nét + khung hình hợp lý — khuyên dùng", "Measures your network, picks sharpness + FPS — recommended"),
@@ -1060,9 +1092,51 @@ public class ControlActivity extends Activity {
         d[0].show();
     }
 
+    /** 21.11k · máy PC (VPS GPU): chọn độ nét (thêm Siêu nét 2K) + khung hình/giây (Mặc định · 30 · 60 · 120). Máy PC cần agent 21.11g. */
+    private void pickQualityPc() {
+        LinearLayout c = Ui.col(this, 10);
+        final Dialog[] d = new Dialog[1];
+        String[] desc = {Ui.L("Tự đo mạng — mạng yếu tự giảm nét cho mượt", "Adapts to your network"),
+                Ui.L("Nét nhất: 2K, 16 Mbps — cần mạng khoẻ", "Sharpest: 2K, 16 Mbps — needs a fast network"),
+                Ui.L("1080p 60 FPS — giữ nét kể cả mạng chập chờn", "1080p 60 FPS — stays sharp"),
+                Ui.L("1080p 30 FPS", "1080p 30 FPS"),
+                Ui.L("720p — mạng 4G yếu", "720p — weak 4G")};
+        c.addView(Ui.muted(this, Ui.L("Độ nét", "Sharpness")), Ui.fill());
+        for (int i = 0; i < PC_QUAL.length; i++) {
+            final String k = PC_QUAL[i][0];
+            Button b = Ui.button(this, Ui.L(PC_QUAL[i][1], PC_QUAL[i][2]) + " — " + desc[i], k.equals(quality) ? Ui.PRIMARY : Ui.GHOST);
+            b.setOnClickListener(v -> {
+                d[0].dismiss();
+                quality = k;
+                pref.edit().putString("pcq", k).apply();
+                updQ();
+                if (client != null) client.quality(k, pcf);
+            });
+            c.addView(b, Ui.fill());
+        }
+        c.addView(Ui.muted(this, Ui.L("Khung hình / giây", "Frame rate")), Ui.fill());
+        LinearLayout fr = Ui.row(this, 6);
+        for (final int f : PC_FPS) {
+            Button b = Ui.button(this, f == 0 ? Ui.L("Mặc định", "Default") : f + " FPS", f == pcf ? Ui.PRIMARY : Ui.GHOST);
+            b.setOnClickListener(v -> {
+                d[0].dismiss();
+                pcf = f;
+                pref.edit().putInt("pcf", f).apply();
+                updQ();
+                if (client != null) client.quality(quality, f);
+                Ui.toast(this, f == 0 ? Ui.L("Khung hình: theo mức nét", "Frame rate: per quality") : Ui.L("Khung hình: ", "Frame rate: ") + f + " FPS");
+            });
+            fr.addView(b, Ui.weight(1));
+        }
+        c.addView(fr, Ui.fill());
+        d[0] = Ui.sheet(this, Ui.L("Chất lượng hình · FPS", "Video quality · FPS"), c);
+        d[0].show();
+    }
+
     private void updQ() {
         View v = topBar.findViewWithTag("q");
-        for (String[] q : QUAL) if (q[0].equals(quality) && v instanceof TextView) ((TextView) v).setText("✨ " + Ui.L(q[1], q[2]));
+        for (String[] q : (pc ? PC_QUAL : QUAL)) if (q[0].equals(quality) && v instanceof TextView)
+            ((TextView) v).setText("✨ " + Ui.L(q[1], q[2]) + (pc && pcf > 0 ? " · " + pcf : ""));
     }
 
     /** 🤖 Đổi Android 9 / 12 / 15 (chỉ chủ máy, SQL v24): máy mới giữ hạn còn lại; máy mới chạy xong thì máy cũ + dữ liệu cũ tự xoá. */
@@ -1090,7 +1164,7 @@ public class ControlActivity extends Activity {
      *  (onPause); bấm Back ở màn nhiều máy là về lại đây và tự nối lại. */
     private void openMulti() {
         try {
-            startActivity(new Intent(this, MultiActivity.class).putExtra("focus", id)
+            startActivity(new Intent(this, MultiActivity.class).putExtra("focus", id).putExtra("pc", pc)      // 21.11k: cả máy PC (VPS GPU)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP));
         } catch (Exception e) { Ui.toast(this, Ui.L("Chưa mở được màn nhiều máy — cập nhật app rồi thử lại.", "Couldn't open multi-control — update the app and try again.")); }
     }
@@ -1457,6 +1531,121 @@ public class ControlActivity extends Activity {
         d.show();
     }
 
+    // ---------------- 🌐 PROXY RIÊNG CỦA MÁY (22/11 · cpapi <máy>/proxy → phonectl proxy → cbproxy trong máy) ----------------
+    // Chỉ chủ máy (người được chia sẻ: máy chủ trả 403). Mật khẩu proxy không bao giờ trả về app (máy chủ chỉ trả user + ••••).
+    private void proxy() {
+        Dialog[] pd = progress(Ui.L("Đang đọc proxy…", "Loading proxy…"));
+        final String base = api, pid = id;
+        Api.bg(() -> Api.cpAt(base, "GET", pid + "/proxy", null), j -> { pd[0].dismiss(); proxySheet(j); },
+                m -> { pd[0].dismiss(); Ui.toast(this, m); });
+    }
+
+    /** Trạng thái proxy → {dòng 1, dòng 2, mức: ok | warn | bad | muted} (giống hộp Proxy trên web / app máy tính). */
+    static String[] pxStatus(JSONObject j) {
+        if (!j.optBoolean("set")) return new String[]{Ui.L("Chưa dùng proxy", "No proxy"), Ui.L("Máy đang đi mạng của máy chủ.", "The phone uses the server's network."), "muted"};
+        JSONObject s = j.optJSONObject("state");
+        String k = s != null && !s.optString("kind").isEmpty() ? s.optString("kind") : j.optString("kind");
+        String head = j.optString("show", "?") + " · " + ("socks5".equals(k) ? "SOCKS5" : "http".equals(k) ? "HTTP" : Ui.L("Tự nhận", "Auto"));
+        if (!j.optBoolean("online")) return new String[]{head, Ui.L("Máy đang tắt — proxy tự bật khi máy bật.", "The phone is off — the proxy turns on when it starts."), "warn"};
+        String mode = s == null ? "" : s.optString("mode"), err = s == null ? "" : s.optString("err");
+        boolean alive = s != null && s.optBoolean("alive");
+        if (alive && "proxy".equals(mode)) {
+            String ip = s.optString("ip"); int ms = s.optInt("ms");
+            return new String[]{head, Ui.L("✅ Đang chạy qua proxy", "✅ Running through the proxy") + (ip.isEmpty() ? "" : Ui.L(" · IP ra ", " · exit IP ") + ip) + (ms > 0 ? " · " + ms + " ms" : ""), "ok"};
+        }
+        if (alive && "direct".equals(mode))
+            return new String[]{head, Ui.L("⚠ Proxy chưa dùng được", "⚠ The proxy doesn't work yet") + (err.isEmpty() ? "" : ": " + err)
+                    + Ui.L(" — máy tạm đi mạng thường, tự thử lại mỗi 15 giây.", " — the phone uses the normal network for now and retries every 15 s."), "warn"};
+        if ("crashed".equals(mode))
+            return new String[]{head, Ui.L("❌ Proxy đã dừng", "❌ The proxy stopped") + (err.isEmpty() ? "" : ": " + err) + Ui.L(" — bấm Áp dụng lại.", " — tap Re-apply."), "bad"};
+        return new String[]{head, Ui.L("Proxy chưa chạy — bấm Áp dụng lại.", "The proxy isn't running — tap Re-apply."), "warn"};
+    }
+
+    private void proxySheet(JSONObject j) {
+        final boolean set = j.optBoolean("set");
+        LinearLayout c = Ui.col(this, 10);
+        c.addView(Ui.muted(this, Ui.L("App trong máy đi Internet qua proxy của bạn.", "Apps on the phone go online through your proxy.")));
+        String[] ps = pxStatus(j);
+        LinearLayout box = Ui.col(this, 2);
+        box.setBackground(Ui.round(Ui.PANEL2, 14, Ui.LINE));
+        box.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
+        TextView head = Ui.text(this, ps[0], 15, Ui.FG, true);
+        head.setTextIsSelectable(false);
+        box.addView(head);
+        box.addView(Ui.text(this, ps[1], 12.5f, "ok".equals(ps[2]) ? Ui.OK : "warn".equals(ps[2]) ? Ui.WAIT : "bad".equals(ps[2]) ? Ui.BAD : Ui.MUTED, false));
+        c.addView(box, Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Proxy mới", "New proxy"), 12, Ui.MUTED, false));
+        final EditText e = Ui.input(this, "IP:Port:User:Pass", android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_URI
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        e.setSingleLine(true);
+        c.addView(e, Ui.fill());
+        final String[] kinds = {"auto", "socks5", "http"};
+        final String[] kind = {set && java.util.Arrays.asList(kinds).contains(j.optString("kind")) ? j.optString("kind") : "auto"};
+        LinearLayout seg = Ui.row(this, 8);
+        final Button[] kb = new Button[3];
+        final Runnable paintK = () -> {
+            for (int i = 0; i < 3; i++) {
+                boolean on = kinds[i].equals(kind[0]);
+                kb[i].setBackground(Ui.round(on ? Ui.BLUE : Ui.PANEL, 12, on ? Ui.BLUE : Ui.LINE));
+                kb[i].setTextColor(on ? Color.WHITE : Ui.FG);
+            }
+        };
+        String[] names = {Ui.L("Tự nhận", "Auto"), "SOCKS5", "HTTP"};
+        for (int i = 0; i < 3; i++) {
+            final int ii = i;
+            kb[i] = Ui.button(this, names[i], Ui.GHOST);
+            kb[i].setOnClickListener(v -> { kind[0] = kinds[ii]; paintK.run(); });
+            seg.addView(kb[i], Ui.weight(1));
+        }
+        paintK.run();
+        c.addView(seg, Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Dán 1 trong các dạng: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Tự nhận” tự thử SOCKS5 rồi HTTP.",
+                "Paste one of: IP:Port · IP:Port:User:Pass · User:Pass@IP:Port · socks5://… · http://… — “Auto” tries SOCKS5, then HTTP."), 12, Ui.MUTED, false), Ui.fill());
+        c.addView(Ui.text(this, Ui.L("Proxy chết hoặc sai mật khẩu → máy tự đi mạng thường (không mất mạng), proxy sống lại thì tự dùng lại. Web, app và game kết nối TCP đi qua proxy; gọi video / game dùng UDP vẫn đi mạng máy chủ. Đổi Android là máy mới — nhập lại proxy.",
+                "If the proxy is down or the password is wrong, the phone falls back to the normal network (it never loses Internet) and switches back when the proxy works again. Web, apps and games over TCP go through the proxy; video calls / UDP games still use the server's network. Switching Android creates a new phone — enter the proxy again."),
+                12, Ui.MUTED, false), Ui.fill());
+        LinearLayout acts = Ui.row(this, 10);
+        Button off = Ui.button(this, Ui.L("Tắt proxy", "Turn off"), Ui.GHOST);
+        Button again = Ui.button(this, Ui.L("Áp dụng lại", "Re-apply"), Ui.GHOST);
+        Button save = Ui.button(this, Ui.L("Lưu & bật", "Save"), Ui.PRIMARY);
+        if (set) { acts.addView(off, Ui.weight(1)); acts.addView(again, Ui.weight(1)); }
+        acts.addView(save, Ui.weight(1));
+        c.addView(acts, Ui.fill());
+        Dialog d = Ui.sheet(this, "🌐 Proxy", c);
+        save.setOnClickListener(v -> {
+            String u = e.getText().toString().trim();
+            if (u.isEmpty()) { Ui.toast(this, Ui.L("Dán proxy vào ô trước (vd 1.2.3.4:8080:user:pass).", "Paste the proxy first (e.g. 1.2.3.4:8080:user:pass).")); return; }
+            if (!u.matches("(?s).*[:@].*") || u.matches("(?s).*\\s.*")) {
+                Ui.toast(this, Ui.L("Proxy phải có dạng IP:Port hoặc IP:Port:User:Pass (không có dấu cách).", "The proxy must look like IP:Port or IP:Port:User:Pass (no spaces).")); return;
+            }
+            e.setText("");                                         // không giữ mật khẩu proxy trong ô sau khi đã gửi
+            d.dismiss();
+            try { pxRun(new JSONObject().put("do", "set").put("url", u).put("kind", kind[0]), Ui.L("Đang bật proxy…", "Turning the proxy on…"), true); }
+            catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+        });
+        again.setOnClickListener(v -> {
+            d.dismiss();
+            try { pxRun(new JSONObject().put("do", "again"), Ui.L("Đang áp dụng lại proxy…", "Applying the proxy again…"), true); }
+            catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+        });
+        off.setOnClickListener(v -> Ui.confirm(this, Ui.L("Tắt proxy?", "Turn the proxy off?"), Ui.L("Máy quay về mạng của máy chủ.", "The phone goes back to the server's network."),
+                Ui.L("Tắt proxy", "Turn off"), () -> {
+                    d.dismiss();
+                    try { pxRun(new JSONObject().put("do", "off"), Ui.L("Đang tắt proxy…", "Turning the proxy off…"), false); }
+                    catch (Exception ex) { Ui.toast(this, ex.getMessage()); }
+                }));
+        d.show();
+    }
+
+    private void pxRun(JSONObject body, String wait, boolean reopen) {
+        Dialog[] pd = progress(wait);
+        final String base = api, pid = id;
+        Api.bg(() -> {
+            JSONObject r = Api.cpAt(base, "POST", pid + "/proxy", body);
+            return waitJob(base, r.optString("job"), pd);
+        }, msg -> { pd[0].dismiss(); Ui.toast(this, msg); if (reopen) proxy(); }, m -> { pd[0].dismiss(); Ui.toast(this, m); if (reopen) proxy(); });
+    }
+
     private void rootRow(LinearLayout list, java.util.List<android.widget.Switch> rows, java.util.List<String> pkgs,
                          String pkg, boolean on, String extra, boolean asked) {
         LinearLayout r = Ui.row(this, 10);
@@ -1600,13 +1789,14 @@ public class ControlActivity extends Activity {
 
     // ---------------- 21/11f · MÁY PC: kiểu chạm + xoay màn (như Chrome Remote Desktop) — nút 🖐 ở thanh dưới / nút nổi / Công cụ ----------------
     private static final String[][] PC_IN = {
-            {"👆", "Chạm trực tiếp", "Direct touch", "Chạm vào đâu bấm vào đó · giữ yên = chuột phải · 2 ngón vuốt = cuộn", "Tap where you want · hold = right click · 2-finger swipe = scroll"},
+            {"👆", "Chạm trực tiếp", "Direct touch", "Chạm = bấm · vuốt = cuộn trang · giữ rồi kéo = bôi đen chữ / kéo thả · giữ yên rồi nhả = chuột phải",
+                    "Tap = click · swipe = scroll · hold then drag = select text / drag · hold and release = right click"},
             {"🖱️", "Bàn di chuột", "Trackpad", "Kéo ngón để di con trỏ · chạm = bấm · 2 ngón chạm = chuột phải · 2 ngón kéo = cuộn · chạm 2 lần rồi giữ = kéo thả",
                     "Drag to move the pointer · tap = click · 2-finger tap = right click · 2-finger drag = scroll · double-tap & hold = drag"},
-            {"🔍", "Chạm + 2 ngón kéo / phóng to", "Touch + 2-finger pan / zoom", "1 ngón điều khiển máy · 2 ngón kéo / phóng to hình (chỉ trên điện thoại của bạn)",
-                    "1 finger controls the PC · 2 fingers pan / zoom the picture (only on your phone)"},
-            {"🔍", "Chạm + 3 ngón kéo / phóng to", "Touch + 3-finger pan / zoom", "1–2 ngón điều khiển máy (2 ngón = cuộn) · 3 ngón kéo / phóng to hình",
-                    "1–2 fingers control the PC (2 = scroll) · 3 fingers pan / zoom the picture"}};
+            {"🔍", "Chạm + 2 ngón kéo / phóng to", "Touch + 2-finger pan / zoom", "1 ngón như Chạm trực tiếp (vuốt = cuộn) · 2 ngón kéo / phóng to hình (chỉ trên điện thoại của bạn)",
+                    "1 finger works like Direct touch (swipe = scroll) · 2 fingers pan / zoom the picture (only on your phone)"},
+            {"🔍", "Chạm + 3 ngón kéo / phóng to", "Touch + 3-finger pan / zoom", "1 ngón như Chạm trực tiếp · 2 ngón vuốt = cuộn, chạm = chuột phải · 3 ngón kéo / phóng to hình",
+                    "1 finger like Direct touch · 2-finger swipe = scroll, tap = right click · 3 fingers pan / zoom the picture"}};
     private static final String[][] PC_OR = {
             {"auto", "🔄", "Tự xoay theo điện thoại", "Follow my phone", "Cầm ngang hay dọc, màn điều khiển xoay theo", "Rotates with how you hold the phone"},
             {"land", "▭", "Luôn màn ngang", "Always landscape", "Hình máy PC to nhất", "Biggest picture"},
@@ -1676,6 +1866,16 @@ public class ControlActivity extends Activity {
                     paint[0].run();
                 }), Ui.fill());
             }
+            TextView h3 = Ui.text(this, Ui.L("Bàn phím", "Keyboard"), 13, Ui.MUTED, true);      // 22/11 · tự bật bàn phím khi bấm vào ô nhập chữ trên máy PC
+            h3.setPadding(0, Ui.dp(8), 0, 0);
+            c.addView(h3);
+            boolean ak = pref.getBoolean("pc_autokb", true);
+            c.addView(pcOpt("⌨️", Ui.L("Tự bật bàn phím khi bấm vào ô nhập chữ", "Show the keyboard when you tap a text box"),
+                    Ui.L("Máy PC báo đang gõ ở đâu → bàn phím điện thoại tự hiện / tự ẩn (cần máy PC bản 22.11b)",
+                            "The PC tells the app when a text box is selected → your keyboard shows / hides by itself (PC software 22.11b)"), ak, () -> {
+                pref.edit().putBoolean("pc_autokb", !pref.getBoolean("pc_autokb", true)).apply();
+                paint[0].run();
+            }), Ui.fill());
         };
         paint[0].run();
         android.widget.ScrollView sv = new android.widget.ScrollView(this);
@@ -1683,6 +1883,17 @@ public class ControlActivity extends Activity {
         d[0] = Ui.sheet(this, "🖐 " + Ui.L("Kiểu chạm · xoay màn", "Touch & rotation"), sv);
         d[0].show();
     }
+
+    /** 22/11 · máy PC báo (ngay khi đổi) con trỏ đang đứng trong ô nhập chữ (on) / đã rời (off) → tự hiện / ẩn bàn phím như máy Android.
+     *  Rời ô: 1,5 giây sau vẫn rời mới ẩn — bấm từ ô này sang ô khác / trang web vừa tải lại thì bàn phím không nháy. */
+    private void pcIme(boolean on) {
+        if (!pref.getBoolean("pc_autokb", true)) return;
+        h.removeCallbacks(pcImeOff);
+        if (on) { kbOff = 0; if (!remoteIme || !kbOpen) kbShow(true); remoteIme = true; }
+        else { remoteIme = false; if (kbOpen) h.postDelayed(pcImeOff, 1500); }
+    }
+
+    private final Runnable pcImeOff = () -> { if (pc && !remoteIme && kbOpen && pref.getBoolean("pc_autokb", true)) kbShow(false); };
 
     /** Nút 🔄: đổi sang hướng kia. */
     private void quickRotate() { rotateTo(!streamLand); }
@@ -1694,7 +1905,15 @@ public class ControlActivity extends Activity {
         final String base = api, pid = id, to = land ? "land" : "port";
         final JSONObject b = new JSONObject();
         try { b.put("to", to).put("dir", land ? 1 : 0); } catch (Exception ignored) { }
-        Api.bg(() -> Api.cpAt(base, "POST", pid + "/rotate", b), r -> checkRotated(land), m -> {
+        Api.bg(() -> Api.cpAt(base, "POST", pid + "/rotate", b), r -> {
+            if (r != null && r.has("turned")) {           // 23/11d: máy chủ mới XOAY THẬT (máy bỏ qua khoá xoay → cửa sổ phủ ép màn ngang) + tự báo kết quả
+                if (!r.optBoolean("turned")) Ui.toast(this, Ui.srvJob(r.optString("msg"), land
+                        ? "This phone's home screen can't turn landscape yet — apps / games that need landscape still show landscape."
+                        : "Back to portrait — the open app / game needs landscape, so it still shows landscape."));
+                return;
+            }
+            checkRotated(land);
+        }, m -> {
             if (client != null && client.isLive()) { client.rotate(to); checkRotated(land); }
             else Ui.toast(this, m);
         });

@@ -1,15 +1,16 @@
 # =====================================================================================================
-#  cloudblue-tao-iso   (ban 21.11d)
+#  cloudblue-tao-iso   (ban 23.11j)
 #  TAO FILE ISO "CloudBlue-PC.iso": bo cai Windows TU DONG cho may PC cho thue.
 #
 #  Chay trong Windows PowerShell (Admin) tren 1 may Windows 10/11 dang co file ISO Windows goc:
 #     - nhan 1 hoac nhieu ISO goc (vi du 22H2 + 1511)  ->  1 ISO duy nhat chua ca hai ban
+#     - (22.11c) kem them 1 ISO CachyOS (Linux) neu muon: khach / admin doi sang CachyOS tu web (cai tu USB van luon la Windows)
 #     - khoi dong may tu ISO / USB do: tu chon o, dem nguoc 30 giay, XOA va cai Windows, tao phan vung cuu ho,
 #       cai phan mem CloudBlue, may tu hien len trang quan tri
 #  Script KHONG sua file ISO goc, KHONG dung gi toi o dia cua may dang chay (chi tao thu muc lam viec + file ISO moi).
 #
 #  Tham so (deu co the bo trong - script se hoi):
-#     -Iso  "D:\Win10_22H2.iso","D:\Win10_1511.iso"     duong dan ISO goc (hoac thu muc da giai nen)
+#     -Iso  "D:\Win10_22H2.iso","D:\Win10_1511.iso"     duong dan ISO goc (hoac thu muc da giai nen); them "D:\cachyos-desktop-linux-260809.iso" = kem CachyOS
 #     -Out  "D:\CloudBlue-PC.iso"                       noi ghi ISO moi
 #     -Work "D:\cb-work"                                thu muc lam viec (can trong ~2 lan tong dung luong ISO, KHONG co dau cach)
 #     -TaiKhoan PC  -MatKhau ""                         tai khoan Windows tao san tren may cho thue. Mac dinh la tai khoan THUONG (khong co quyen Admin):
@@ -31,6 +32,31 @@
 #     -KhoaChung / -KhongKhoaChung                      khoa CAI DAT chung cua Microsoft (khong kich hoat ban quyen), chi de man hinh
 #                                                       cai lan dau khong dung lai hoi key. Mac dinh: chi dien cho ban cu hon 1703 (vd 1511).
 #  MA DANG KY (cbpc_...): script HOI khi chay - dung dan vao dong lenh, dung gui cho ai.
+#
+#  23.11g - ISO MAY CHU CLOUD PHONE:  -MayChu
+#     Cai Windows nhu tren, roi may TU thanh may chu Cloud Phone: cai gia lap (MuMu / LDPlayer 9), phan mem CloudBlue, khoa Supabase,
+#     duong ham Cloudflare phoneN + streamN, tu chay khi bat may, lenh A -> may chu hien tren web quan tri. Nguoi cai CHI go TEN MAY (win9 hoac 9).
+#     Tai khoan Windows giu quyen Admin + tu dang nhap; KHONG dung ma dang ky may PC (may chu khong bao gio vao kho may PC cho thue).
+#     Script hoi (chi nhap vao cua so, KHONG gui ai): khoa Supabase service_role, ma Cloudflare (tuy chon), gia lap + bo cai gia lap (keo tha).
+#     -TenMien cloudblue.vn   -GiaLap mumu | ld   -BoCai "D:\MuMuInstaller.exe","D:\tpl_a15.mumudata"   -MayChuConf "D:\may-chu.conf" (tep KHOA=gia tri soan san)
+#     ISO ghi ra: CloudBlue-MayChu-MuMu.iso / CloudBlue-MayChu-LD.iso (co -GiaLap) hoac CloudBlue-MayChu.iso ; doi bang -Out.
+#     ISO may chu CO CHUA KHOA BI MAT: khong gui ai, khong dua len mang.
+#  23.11m - ISO may chu: may cai xong KHONG hoi so may chu nua (lay SO trong ten go luc cai: "54 cp" -> win54; khong co so -> so ke tiep);
+#     dieu khien tu xa nam o web > DT dam may > May chu (o Cai dat > Dieu khien), khong con o May cho thue; Windows ban cu loi TLS
+#     (PowerShell "Could not create SSL/TLS secure channel") -> script cai may chu tu goi web / tai tep bang Python.
+#  23.11k - ISO may chu: DIEU KHIEN TU XA nhu may cho thue. ISO kem 1 MA MAY CHU (script tu sinh, tu bao dau bam len web bang khoa Supabase);
+#     Windows vua len la may TU HIEN o web > Bang quan tri > DT dam may > May chu (23.11m; truoc la May cho thue) -> Cai dat > "Dieu khien" la
+#     vao man hinh may, KE CA khi phan cai may chu chua chay / dang loi. May chu KHONG BAO GIO vao kho cho thue (web chot - can SQL v53).
+#     Web chua chay SQL v53 thi ISO van tao duoc, may chi chua hien; chay SQL xong chay lai lenh nay la may da cai tu hien (khong phai cai lai).
+#  23.11j - SUA (ISO may chu): cai Windows xong may DUNG o man hinh nen, khong tu cai tiep - tac vu tu chay gan theo "TENMAY\taikhoan"
+#     khong chay lai sau khi bo cai doi ten may. Gio dat 2 duong tu chay khong phu thuoc ten may (khoa Run + tac vu theo nhom Administrators),
+#     va script cai may chu tu dat lai moi lan chay.
+#  23.11i - Ma Cloudflare: huong dan tao tung buoc, dan SAI thi noi ro vi sao + cho dan lai ngay (khong phai chay lai lenh);
+#     khoa Supabase da nhap dung duoc luu ngay (ma hoa) - chay lai khong phai dan lai.
+#  23.11h - SUA: khoa Supabase kieu moi (sb_secret_...) bi bao "may chu TU CHOI" du khoa dung - PowerShell mac dinh tu xung la trinh duyet
+#     ("Mozilla/5.0 ..."), Supabase chan khoa bi mat gui tu trinh duyet. Gio moi yeu cau web gui ten chuong trinh rieng (cloudblue-tao-iso/<ban>).
+#  23.11g - DUNG LINK thay cho tep: moi cho nhan tep (-Iso, -Driver "1=...", -BoCai, va cac o keo tha) deu nhan LINK tai
+#     (link chia se Google Drive, hoac link tai thang http / https). Script tu tai ve <thu muc lam viec>\dl\tai (lan sau dung lai, khong tai lai).
 # =====================================================================================================
 param(
   [string[]]$Iso = @(),
@@ -49,17 +75,29 @@ param(
   [switch]$KhongIso,
   [switch]$KhongKiemMa,
   [switch]$KhoaChung,
-  [switch]$KhongKhoaChung
+  [switch]$KhongKhoaChung,
+  [switch]$MayChu,
+  [string]$MayChuConf = "",
+  [string]$TenMien = "",
+  [string]$GiaLap = "",
+  [string[]]$BoCai = @()
 )
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "21.11d"
+$VER = "23.11m"
 $REPO = "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue"
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
 $TOOLFILES = @("lib/cbsys.py", "lib/cbcore.py", "lib/cbrec.py", "pe/cb_pe.py", "pe/start.cmd", "boot/winpeshl.ini",
                "os/cb_provision.py", "os/provision.cmd", "os/cb_stage.py", "os/unattend.tpl.xml", "os/wallpaper.jpg",
-               "agent/pcagent.py", "agent/pcremote.py", "agent/watch.cmd", "agent/cbpc.cmd", "CAI-DAT.cmd", "cb_build.py")
+               "agent/pcagent.py", "agent/pcremote.py", "agent/watch.cmd", "agent/cbpc.cmd", "CAI-DAT.cmd", "cb_build.py",
+               "linux/grubx64.efi", "linux/grub.cfg", "linux/cb-install.sh", "linux/cb-post.sh", "linux/cbagent.py", "linux/cbremote.py", "linux/cbcap.py",
+               "maychu/may-chu-iso.ps1", "maychu/firstboot.ps1")
+$CFAPI = "https://api.cloudflare.com/client/v4"
+$UA = "cloudblue-tao-iso/" + $VER          # ten chuong trinh gui kem moi yeu cau web (khong de mac dinh "Mozilla/5.0" cua PowerShell)
+$SbWhy = ""
+$SrvWhy = ""
+$LinkRoot = ""
 $T0 = Get-Date
 $Mounted = New-Object System.Collections.ArrayList
 $Notes = New-Object System.Collections.ArrayList
@@ -99,7 +137,7 @@ function Test-EnrollKey([string]$url, [string]$anon, [string]$key) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $h = @{ apikey = $anon; Authorization = ("Bearer " + $anon) }
     $body = '{"p_key":"' + $key + '"}'
-    $r = Invoke-RestMethod -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_key_check") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 20
+    $r = Invoke-RestMethod -UserAgent $UA -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_key_check") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 20
     if ($r.ok -eq $true) { return "ok" }
     if (("" + $r.err) -eq "BAD_KEY") { return "bad" }
     if (("" + $r.err) -eq "NO_KEY") { return "nokey" }
@@ -441,10 +479,408 @@ function Find-Oscdimg([string]$dl, [string[]]$near) {
   return ""
 }
 
+# ----------------------------------------------------------------------------------------------------- link thay cho tep (23.11g)
+function Test-Link([string]$t) { return [bool]((("" + $t).Trim().Trim('"')) -match '^(https?|file)://') }
+
+function ConvertTo-DirectUrl([string]$u) {
+  # Link chia se Google Drive -> link tai thang ; link khac giu nguyen
+  $t = ("" + $u).Trim().Trim('"')
+  if ($t -match 'drive\.google\.com/file/d/([A-Za-z0-9_-]{20,})') { return ("https://drive.usercontent.google.com/download?id=" + $Matches[1] + "&export=download&confirm=t") }
+  if ($t -match 'drive\.google\.com/.*[?&]id=([A-Za-z0-9_-]{20,})') { return ("https://drive.usercontent.google.com/download?id=" + $Matches[1] + "&export=download&confirm=t") }
+  return $t
+}
+
+function Get-DefaultWork {
+  # Thu muc lam viec khi nguoi dung khong chi dinh: o cung con trong nhieu nhat; uu tien cho lan chay truoc da dung (con giu phan da tai).
+  $vols = @(Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending)
+  if ($vols.Count -eq 0) { return "" }
+  $w = "" + $vols[0].DriveLetter + ":\cb-work"
+  foreach ($v in $vols) {
+    $prev = "" + $v.DriveLetter + ":\cb-work"
+    if (Test-Path -LiteralPath (Join-Path $prev "dl")) { $w = $prev; break }
+  }
+  return $w
+}
+
+function Get-LinkName([string]$hdrFile, [string]$url) {
+  # Ten tep cua 1 link: may chu bao (Content-Disposition) -> khong co thi lay doan cuoi cua link ; bo ky tu khong dung duoc trong ten tep
+  $name = ""
+  if (Test-Path -LiteralPath $hdrFile) {
+    foreach ($ln in @(Get-Content -LiteralPath $hdrFile)) {
+      $l = "" + $ln
+      if ($l -match '^\s*content-disposition\s*:') {
+        if ($l -match "filename\*\s*=\s*[A-Za-z0-9-]*''([^;]+)") { try { $name = [uri]::UnescapeDataString($Matches[1].Trim()) } catch { $name = "" } }
+        elseif ($l -match 'filename\s*=\s*"([^"]+)"') { $name = $Matches[1] }
+        elseif ($l -match 'filename\s*=\s*([^;]+)') { $name = $Matches[1].Trim() }
+      }
+    }
+  }
+  if (-not $name) {
+    $path = (("" + $url) -split '[?#]')[0].TrimEnd("/")
+    try { $name = [uri]::UnescapeDataString(($path -split '/')[-1]) } catch { $name = "" }
+    if ($url -match 'drive\.(usercontent\.)?google\.com') { $name = "" }
+  }
+  $name = (("" + $name) -replace '[\\/:*?"<>|]', "_").Trim().Trim(".")
+  if (-not $name) { $name = "tai-ve.bin" }
+  return $name
+}
+
+function Get-DriveFormUrl([string]$htmlFile, [string]$fromUrl) {
+  # Tep lon tren Google Drive: thay vi tep, may chu tra ve trang "khong quet duoc virus - van tai?" co form id="download-form".
+  # Ham nay lay link tai that tu form do (dia chi action + moi o an: id, export, confirm, uuid...). Khong phai trang do, hoac form
+  # tro sang may chu la (khong phai Google, khong cung may chu voi link dang tai) -> "".
+  $t = ""
+  try {
+    if ((Get-Item -LiteralPath $htmlFile).Length -gt 2MB) { return "" }
+    $t = [IO.File]::ReadAllText($htmlFile)
+  } catch { return "" }
+  $fm = [regex]::Match($t, '<form\b[^>]*\bid\s*=\s*"download-form"[^>]*>', "IgnoreCase")
+  if (-not $fm.Success) { return "" }
+  $am = [regex]::Match($fm.Value, '\baction\s*=\s*"([^"]+)"', "IgnoreCase")
+  if (-not $am.Success) { return "" }
+  $act = $am.Groups[1].Value.Replace("&amp;", "&")
+  if (-not ($act -match '^https://([a-z0-9-]+\.)*(google\.com|googleusercontent\.com)/')) {
+    $o1 = [regex]::Match(("" + $fromUrl), '^[a-z]+://[^/?#]*', "IgnoreCase").Value
+    $o2 = [regex]::Match($act, '^[a-z]+://[^/?#]*', "IgnoreCase").Value
+    if ((-not $o1) -or ($o1 -ne $o2)) { return "" }
+  }
+  $body = $t.Substring($fm.Index)
+  $endAt = $body.IndexOf("</form", [StringComparison]::OrdinalIgnoreCase)
+  if ($endAt -gt 0) { $body = $body.Substring(0, $endAt) }
+  $pairs = New-Object System.Collections.ArrayList
+  foreach ($im in [regex]::Matches($body, '<input\b[^>]*>', "IgnoreCase")) {
+    $tag = "" + $im.Value
+    if (-not ($tag -match 'type\s*=\s*"hidden"')) { continue }
+    $nm = [regex]::Match($tag, '\bname\s*=\s*"([^"]+)"', "IgnoreCase")
+    if (-not $nm.Success) { continue }
+    $vm = [regex]::Match($tag, '\bvalue\s*=\s*"([^"]*)"', "IgnoreCase")
+    $val = ""
+    if ($vm.Success) { $val = $vm.Groups[1].Value.Replace("&amp;", "&") }
+    [void]$pairs.Add(([uri]::EscapeDataString($nm.Groups[1].Value) + "=" + [uri]::EscapeDataString($val)))
+  }
+  if ($pairs.Count -eq 0) { return "" }
+  $sep = "?"
+  if ($act.Contains("?")) { $sep = "&" }
+  return ($act + $sep + ($pairs -join "&"))
+}
+
+function Get-LinkFile([string]$url, [string]$dir) {
+  # Tai 1 tep tu link vao $dir. Tra @{ path ; why } - why khac rong = khong tai duoc (ly do). Khong nem loi.
+  # Google Drive voi tep lon: lan dau co the nhan ve trang hoi xac nhan -> tu lay link that trong trang do roi tai lai (1 lan).
+  $res = @{ path = ""; why = "" }
+  $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+  if (-not (Test-Path -LiteralPath $curl)) { $res.why = "may nay khong co curl.exe (Windows qua cu)"; return $res }
+  New-Item -ItemType Directory -Force $dir | Out-Null
+  $tmp = Join-Path $dir "tai-ve.tmp"
+  $hdr = Join-Path $dir "tai-ve.hdr"
+  $jar = Join-Path $dir "tai-ve.jar"
+  Remove-Item -Force -LiteralPath $tmp, $hdr, $jar -ErrorAction SilentlyContinue
+  $direct = ConvertTo-DirectUrl $url
+  $quiet = $true
+  try { $quiet = [Console]::IsErrorRedirected } catch { $quiet = $true }
+  $len = 0
+  $got = 0
+  $head = New-Object byte[] 256
+  foreach ($lan in 1..2) {
+    Remove-Item -Force -LiteralPath $tmp, $hdr -ErrorAction SilentlyContinue
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $rc = 9009
+    try {
+      if ($quiet) { & $curl -L --fail --retry 2 --connect-timeout 30 -sS -b $jar -c $jar -D $hdr -o $tmp $direct 2>&1 | ForEach-Object { Write-Host ("   " + $_) } }
+      else { & $curl -L --fail --retry 2 --connect-timeout 30 -b $jar -c $jar "-#" -D $hdr -o $tmp $direct }           # cua so that: de curl ve thanh tien do
+      $rc = $LASTEXITCODE
+    } catch { Write-Host ("   " + $_) }
+    $ErrorActionPreference = $old
+    if (($rc -ne 0) -or (-not (Test-Path -LiteralPath $tmp))) {
+      Remove-Item -Force -LiteralPath $tmp, $jar -ErrorAction SilentlyContinue
+      $res.why = "curl ma " + $rc + " (link sai / chua chia se cong khai / mat mang)"; return $res
+    }
+    $len = (Get-Item -LiteralPath $tmp).Length
+    $fs = [IO.File]::OpenRead($tmp)
+    try { $got = $fs.Read($head, 0, 256) } finally { $fs.Close() }
+    $htxt = [Text.Encoding]::ASCII.GetString($head, 0, $got).TrimStart().ToLower()
+    if (-not ($htxt.StartsWith("<!doctype html") -or $htxt.StartsWith("<html"))) { break }
+    $next = ""
+    if ($lan -eq 1) { $next = Get-DriveFormUrl $tmp $direct }
+    if (-not $next) {
+      Remove-Item -Force -LiteralPath $tmp, $jar -ErrorAction SilentlyContinue
+      $res.why = "link tra ve TRANG WEB chu khong phai tep (Google Drive: tep chua chia se 'Bat ky ai co link', hoac dang het luot tai)"; return $res
+    }
+    Say "   (Google Drive hoi xac nhan vi tep lon - tu xac nhan roi tai tiep)" "DarkGray"
+    $direct = $next
+  }
+  Remove-Item -Force -LiteralPath $jar -ErrorAction SilentlyContinue
+  $name = Get-LinkName $hdr $url
+  $ext = [IO.Path]::GetExtension($name).ToLower()
+  if (($ext -eq ".exe") -and (($got -lt 2) -or ($head[0] -ne 0x4D) -or ($head[1] -ne 0x5A))) { Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue; $res.why = "tep tai ve khong phai tep .exe that (" + $name + ")"; return $res }
+  if (($ext -eq ".iso") -and ($len -lt 50MB)) { Remove-Item -Force -LiteralPath $tmp -ErrorAction SilentlyContinue; $res.why = "tep ISO tai ve qua nho (" + [math]::Round($len / 1MB) + " MB) - link hong?"; return $res }
+  $dst = Join-Path $dir $name
+  if (Test-Path -LiteralPath $dst) { Remove-Item -Force -LiteralPath $dst }
+  Move-Item -LiteralPath $tmp -Destination $dst -Force
+  Remove-Item -Force -LiteralPath $hdr -ErrorAction SilentlyContinue
+  $res.path = $dst
+  return $res
+}
+
+function Resolve-Link([string]$url) {
+  # Link -> duong dan tep da tai (trong <thu muc lam viec>\dl\tai\<ma link>). Da tai lan truoc thi dung lai. Khong tai duoc -> dung, noi ro.
+  $u = ("" + $url).Trim().Trim('"')
+  if (-not $script:LinkRoot) {
+    if (-not $script:Work) { $script:Work = Get-DefaultWork }
+    if (-not $script:Work) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
+    $script:LinkRoot = Join-Path (Clean-Path $script:Work) "dl\tai"
+  }
+  $sha = [BitConverter]::ToString((New-Object Security.Cryptography.SHA1Managed).ComputeHash([Text.Encoding]::UTF8.GetBytes($u))).Replace("-", "").Substring(0, 12).ToLower()
+  $dir = Join-Path $script:LinkRoot $sha
+  $have = @(Get-ChildItem -LiteralPath $dir -File -ErrorAction SilentlyContinue | Where-Object { $_.Name -notmatch '^tai-ve\.(tmp|hdr|jar)$' })
+  if ($have.Count -gt 0) {
+    Say ("   link da tai lan truoc -> dung lai: " + $have[0].Name + " (" + [math]::Round($have[0].Length / 1MB) + " MB)") "DarkGray"
+    return $have[0].FullName
+  }
+  $short = $u
+  if ($short.Length -gt 70) { $short = $short.Substring(0, 67) + "..." }
+  Say ("   dang tai tu link: " + $short + "  (tep lon co the mat nhieu phut)") "White"
+  $r = Get-LinkFile $u $dir
+  if ($r.why) { Stop-Build ("Khong tai duoc tu link - " + $r.why + ". Tai tep bang trinh duyet roi keo tha tep vao cua so (hoac dua duong dan tep).  Link: " + $short) }
+  Say ("   da tai: " + (Split-Path -Leaf $r.path) + " (" + [math]::Round((Get-Item -LiteralPath $r.path).Length / 1MB) + " MB)") "Green"
+  return $r.path
+}
+
+# ----------------------------------------------------------------------------------------------------- ISO may chu Cloud Phone (23.11g)
+function Read-Secret([string]$q) {
+  # Hoi 1 chuoi bi mat (khong hien khi go / dan).
+  $sec = Read-Host $q -AsSecureString
+  return ("" + [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec))).Trim()
+}
+
+function Get-JwtRole([string]$jwt) {
+  # Khoa Supabase kieu eyJ...: doc muc "role" (service_role / anon). Khong doc duoc -> "".
+  try {
+    $part = (("" + $jwt) -split '\.')[1].Replace("-", "+").Replace("_", "/")
+    while (($part.Length % 4) -ne 0) { $part += "=" }
+    $j = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($part)) | ConvertFrom-Json
+    return ("" + $j.role)
+  } catch { return "" }
+}
+
+function Test-SbKeyShape([string]$key) {
+  # "" = dung dang khoa service_role ; khac "" = ly do sai
+  $k = ("" + $key).Trim()
+  if ($k.Length -lt 30) { return "khoa qua ngan" }
+  if ($k.StartsWith("sb_secret_")) { return "" }
+  if ($k.StartsWith("sb_publishable_")) { return "day la khoa CONG KHAI (publishable) - can khoa service_role / secret" }
+  if ($k.StartsWith("eyJ")) {
+    $role = Get-JwtRole $k
+    if ($role -eq "service_role") { return "" }
+    if ($role) { return ("day la khoa '" + $role + "' - can khoa service_role (Supabase > Project Settings > API Keys > service_role > Reveal)") }
+    return "khong doc duoc khoa (copy lai ca khoa)"
+  }
+  return "khoa service_role bat dau bang eyJ... hoac sb_secret_..."
+}
+
+function Get-WebErr($er) {
+  # Loi cua Invoke-RestMethod / Invoke-WebRequest -> @{ code ; text }  (text = noi dung may chu tra ve, gon 1 dong). May chu khong tra loi -> code 0.
+  $code = 0
+  $txt = ""
+  try { $code = [int]$er.Exception.Response.StatusCode } catch { $code = 0 }
+  try { if ($er.ErrorDetails -and $er.ErrorDetails.Message) { $txt = "" + $er.ErrorDetails.Message } } catch { $txt = "" }
+  if ((-not $txt) -and ($code -gt 0)) {
+    try {
+      $rs = $er.Exception.Response.GetResponseStream()
+      try { $rs.Position = 0 } catch { }
+      $sr = New-Object IO.StreamReader($rs)
+      $txt = $sr.ReadToEnd()
+      $sr.Close()
+    } catch { $txt = "" }
+  }
+  $txt = (("" + $txt) -replace '\s+', ' ').Trim()
+  if ($txt.Length -gt 300) { $txt = $txt.Substring(0, 300) }
+  return @{ code = $code; text = $txt }
+}
+
+function Test-SbService([string]$url, [string]$key) {
+  # Hoi may chu: khoa nay doc duoc bang may chu khong?  "ok" | "bad" (401 / 403) | "" (khong hoi duoc)
+  # Ly do may chu tu choi (da che khoa) nam o $script:SbWhy.
+  # PHAI gui ten chuong trinh rieng (-UserAgent): PowerShell mac dinh tu xung la "Mozilla/5.0 ..." -> Supabase coi la TRINH DUYET
+  # va tu choi moi khoa sb_secret_... bang ma 401 du khoa dung.
+  $script:SbWhy = ""
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $h = @{ apikey = $key; Authorization = ("Bearer " + $key) }
+    $r = Invoke-WebRequest -UseBasicParsing -UserAgent $UA -Method Get -Uri ($url.TrimEnd("/") + "/rest/v1/cloud_nodes?select=id&limit=1") -Headers $h -TimeoutSec 20
+    if ([int]$r.StatusCode -eq 200) { return "ok" }
+    return ""
+  } catch {
+    $we = Get-WebErr $_
+    if (($we.code -eq 401) -or ($we.code -eq 403)) {
+      $txt = "" + $we.text
+      if ($key) { $txt = $txt.Replace($key, "***") }
+      if ($txt.Length -gt 160) { $txt = $txt.Substring(0, 160) }
+      $script:SbWhy = ("HTTP " + $we.code + " " + $txt).Trim()
+      return "bad"
+    }
+    return ""
+  }
+}
+
+function Get-CfWhy([string]$tok, [int]$code, [string]$text) {
+  # Vi sao Cloudflare khong nhan ma nay - 1 cau cho nguoi dung (khong in ma ra).
+  $t = ("" + $tok).Trim()
+  if ($t -match '^eyJ') { return "day la MA CHAY DUONG HAM (eyJ...), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{37}$') { return "day la Global API Key (37 ky tu), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { return "day la MA SO (ID dang xxxxxxxx-xxxx-...) cua duong ham / tai khoan, khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if ($t -match '^[0-9a-fA-F]{32}$') { return "day la MA SO tai khoan / ten mien (32 ky tu), khong phai API Token - tao API Token theo 4 buoc o tren" }
+  if (-not ($t -match '^[A-Za-z0-9_.-]+$')) { return "ma co ky tu la (dan thieu / dan nham thu khac?) - Copy lai ma o trang Cloudflare" }
+  if ($code -eq 0) { return "khong goi duoc Cloudflare (mat mang / bi chan?)" }
+  $msg = ""
+  try {
+    $j = $text | ConvertFrom-Json
+    $msg = (@($j.errors | ForEach-Object { ("" + $_.code + " " + $_.message).Trim() }) -join "; ")
+  } catch { $msg = "" }
+  if (-not $msg) { $msg = "" + $text }
+  if ($msg.Length -gt 160) { $msg = $msg.Substring(0, 160) }
+  if (($code -eq 400) -or ($code -eq 401)) { return ("ma SAI hoac da bi xoa / het han - Cloudflare tra loi HTTP " + $code + ": " + $msg) }
+  if ($code -eq 403) { return ("ma SAI hoac THIEU QUYEN (can du 3 quyen: Zone - Zone - Read, Zone - DNS - Edit, Account - Cloudflare Tunnel - Edit) - Cloudflare tra loi HTTP 403: " + $msg) }
+  return ("Cloudflare tra loi HTTP " + $code + ": " + $msg)
+}
+
+function Test-CfToken([string]$tok, [string]$domain) {
+  # Ma Cloudflare: thay ten mien khong (zone) + co quyen duong ham khong (tunnel). Khong nem loi. err = ly do (khong chua ma).
+  $res = @{ zone = $false; tunnel = $false; err = "" }
+  $h = @{ Authorization = ("Bearer " + ("" + $tok).Trim()) }
+  $z = $null
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $z = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/zones?name=" + $domain) -Headers $h -TimeoutSec 20
+  } catch {
+    $we = Get-WebErr $_
+    $res.err = Get-CfWhy $tok $we.code $we.text
+    return $res
+  }
+  $zr = @($z.result)
+  if (($z.success -eq $true) -and ($zr.Count -gt 0) -and $zr[0]) {
+    $res.zone = $true
+    $acc = "" + $zr[0].account.id
+    try {
+      $t = Invoke-RestMethod -UserAgent $UA -Method Get -Uri ($CFAPI + "/accounts/" + $acc + "/cfd_tunnel?per_page=1") -Headers $h -TimeoutSec 20
+      if ($t.success -eq $true) { $res.tunnel = $true }
+    } catch { $res.tunnel = $false }
+  } else {
+    $res.err = "ma nay KHONG THAY ten mien " + $domain + " (o Zone Resources chua chon dung ten mien nay, hoac thieu quyen Zone - Zone - Read)"
+  }
+  return $res
+}
+
+function New-SrvKey {
+  # MA MAY CHU (23.11k): cbsv_ + 40 ky tu ngau nhien. Nam trong ISO may chu; may cai xong tu dang ky bang ma nay de hien o web
+  # (DT dam may > May chu) cho admin dieu khien tu xa. Web chi giu DAU BAM cua ma.
+  $buf = New-Object byte[] 20
+  $gen = [Security.Cryptography.RandomNumberGenerator]::Create()
+  try { $gen.GetBytes($buf) } finally { $gen.Dispose() }
+  return ("cbsv_" + ((@($buf) | ForEach-Object { $_.ToString("x2") }) -join ""))
+}
+function Get-TextSha([string]$text) {
+  $hasher = [Security.Cryptography.SHA256]::Create()
+  try { return ((@($hasher.ComputeHash([Text.Encoding]::UTF8.GetBytes($text))) | ForEach-Object { $_.ToString("x2") }) -join "") } finally { $hasher.Dispose() }
+}
+function Register-SrvKey([string]$url, [string]$svcKey, [string]$srvKey, [string]$memo) {
+  # Bao DAU BAM cua ma may chu len web (ham pc_srv_key cua SQL v53 - chi khoa service_role goi duoc). Ma that KHONG gui di.
+  #   "ok" | "nosql" (web chua chay SQL v53) | "bad" (khoa Supabase bi tu choi) | "full" (web da giu qua nhieu ma) | "" (khong goi duoc)
+  # Ly do (da che khoa) nam o $script:SrvWhy.
+  $script:SrvWhy = ""
+  try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $h = @{ apikey = $svcKey; Authorization = ("Bearer " + $svcKey) }
+    $body = (@{ p_hash = (Get-TextSha $srvKey); p_note = $memo } | ConvertTo-Json -Compress)
+    $r = Invoke-RestMethod -UserAgent $UA -Method Post -Uri ($url.TrimEnd("/") + "/rest/v1/rpc/pc_srv_key") -Headers $h -ContentType "application/json" -Body $body -TimeoutSec 25
+    if ($r -and ($r.ok -eq $true)) { return "ok" }
+    if ($r -and (("" + $r.err) -eq "TOO_MANY")) { return "full" }
+    $script:SrvWhy = "web tra loi la"
+    return ""
+  } catch {
+    $we = Get-WebErr $_
+    $txt = "" + $we.text
+    if ($svcKey) { $txt = $txt.Replace($svcKey, "***") }
+    if ($srvKey) { $txt = $txt.Replace($srvKey, "***") }
+    if ($txt.Length -gt 160) { $txt = $txt.Substring(0, 160) }
+    $script:SrvWhy = ("HTTP " + $we.code + " " + $txt).Trim()
+    if ($we.code -eq 404) { return "nosql" }
+    if (($we.code -eq 401) -or ($we.code -eq 403)) { return "bad" }
+    return ""
+  }
+}
+function Set-SrvRemote([string]$url, [string]$svcKey, [string]$srvKey, [bool]$quiet) {
+  # Bat DIEU KHIEN TU XA cho ISO may chu: bao ma may chu len web, noi ro ket qua.  Tra "ok" | "nosql" | "bad" | "full" | "chua".
+  # Web chua chay SQL v53 (nosql): cho nguoi dung bam Run roi Enter de kiem lai tai cho ($quiet = khong hoi).
+  $state = "chua"
+  $memo = "tao-iso " + $VER + " " + $env:COMPUTERNAME
+  for ($sn = 1; $sn -le 6; $sn++) {
+    $sr = Register-SrvKey $url $svcKey $srvKey $memo
+    if ($sr -eq "ok") {
+      Say "   dieu khien tu xa: DA BAT - Windows vua len la may hien o web > DT dam may > May chu (Cai dat > Dieu khien; khong cho thue)" "Green"
+      return "ok"
+    }
+    if ($sr -eq "nosql") {
+      $state = "nosql"
+      Say "   (!) DIEU KHIEN TU XA chua bat duoc: web CHUA chay SQL v53 (Supabase > SQL Editor > 'CloudBlue PC v53 - bam Run' > Run)." "Yellow"
+      if ($quiet) { break }
+      $ansS = ("" + (Read-Host "       Bam Run xong thi Enter = kiem lai ; go B roi Enter = bo qua (ISO van tao duoc, may chi chua tu hien de dieu khien)")).Trim().ToLower()
+      if ($ansS -eq "b") { break }
+      continue
+    }
+    if ($sr -eq "bad") { Say ("   (!) dieu khien tu xa: web tu choi khoa Supabase khi bao ma may chu (" + $SrvWhy + ")") "Yellow"; return "bad" }
+    if ($sr -eq "full") { Say "   (!) dieu khien tu xa: web dang giu qua nhieu ma may chu - bao ho tro don bot." "Yellow"; return "full" }
+    $state = "chua"
+    Say ("   (chua bao duoc ma may chu len web: " + $SrvWhy + ")") "DarkGray"
+    if ($quiet -or ($sn -ge 2)) { break }
+    Start-Sleep -Seconds 3
+  }
+  return $state
+}
+function Save-McConf([string]$path, $conf) {
+  # Luu cau hinh may chu (khoa Supabase, ma Cloudflare, ma may chu...) ma hoa DPAPI: chi tai khoan Windows nay tren may nay mo lai duoc.
+  try {
+    $blob = (@{ key = "" + $conf.key; cf = "" + $conf.cf; agree = "" + $conf.agree; emu = "" + $conf.emu; srv = "" + $conf.srv } | ConvertTo-Json -Compress)
+    $encM = ConvertTo-SecureString $blob -AsPlainText -Force | ConvertFrom-SecureString
+    [IO.File]::WriteAllText($path, ("" + $encM), [Text.Encoding]::ASCII)
+    return $true
+  } catch { return $false }
+}
+
+function Get-EmuDrop([string]$p) {
+  # Tep keo tha cho ISO may chu -> ten trong bo cai: mumu-setup.exe | ld-setup.exe | tpl_a12.mumudata | tpl_a15.mumudata ; khong nhan -> why
+  $n = ("" + (Split-Path -Leaf $p)).ToLower()
+  if ($n -match '\.mumudata$') {
+    if ($n -match '(?<![0-9])(12|15)(?![0-9])') { return @{ name = ("tpl_a" + $Matches[1] + ".mumudata"); why = "" } }
+    return @{ name = ""; why = "ten tep may mau phai co so ban Android (vi du tpl_a15.mumudata)" }
+  }
+  if ($n -match '\.exe$') {
+    if ($n -match 'mumu') { return @{ name = "mumu-setup.exe"; why = "" } }
+    if ($n -match 'ldplayer|leidian|^ld') { return @{ name = "ld-setup.exe"; why = "" } }
+    return @{ name = ""; why = "khong nhan ra bo cai (ten tep phai co chu MuMu hoac LDPlayer)" }
+  }
+  return @{ name = ""; why = "chi nhan bo cai .exe cua MuMu / LDPlayer va tep may mau .mumudata" }
+}
+
+function Read-ConfFile([string]$path) {
+  # Tep KHOA=gia tri -> bang bam (dong # la ghi chu)
+  $h = @{}
+  foreach ($ln in [IO.File]::ReadAllLines($path)) {
+    $t = ("" + $ln).Trim()
+    if ((-not $t) -or $t.StartsWith("#")) { continue }
+    $i = $t.IndexOf("=")
+    if ($i -lt 1) { continue }
+    $h[$t.Substring(0, $i).Trim()] = $t.Substring($i + 1).Trim()
+  }
+  return $h
+}
+
 # ----------------------------------------------------------------------------------------------------- bat dau
 try {
   Write-Host ""
   Write-Host ("  CloudBlue PC - TAO ISO CAI WINDOWS TU DONG (ban " + $VER + ")") -ForegroundColor Green
+  if ($MayChu) { Write-Host "  >>> ISO MAY CHU CLOUD PHONE: cai xong Windows, may TU thanh may chu va hien tren web quan tri" -ForegroundColor Yellow }
   Write-Host "  ======================================================" -ForegroundColor Green
 
   $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -455,19 +891,22 @@ try {
   # ---------------------------------------------------------------- 1. ISO goc
   Step "1/8  File ISO Windows goc"
   if (($Iso.Count -eq 0) -and (-not $KhongHoi)) {
-    Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan). Xong thi bam Enter trong." "White"
+    Say "   Keo tha tung file ISO vao cua so nay roi bam Enter (hoac dan duong dan / LINK tai Google Drive). Xong thi bam Enter trong." "White"
     Say "   (CHI file .iso o buoc nay - driver se duoc hoi rieng cho tung ban Windows o buoc 5.)" "DarkGray"
+    Say "   Muon kem CachyOS (Linux) de khach tu doi he dieu hanh: keo them file ISO CachyOS (vd cachyos-desktop-linux-260809.iso)." "DarkGray"
     while ($true) {
       $line = "" + (Read-Host ("   ISO thu " + ($Iso.Count + 1) + " (Enter trong = het)"))
       if (-not $line.Trim()) { break }
-      foreach ($p in @(Split-Paths $line)) {
+      $cand = @()
+      if (Test-Link $line) { $cand = @(Resolve-Link $line) } else { $cand = @(Split-Paths $line) }
+      foreach ($p in $cand) {
         if (-not (Test-There $p)) { Say ("   khong thay: " + $p) "Yellow"; continue }
         if (-not (Test-IsoPath $p)) { Say ("   day KHONG phai file .iso (driver se duoc hoi rieng o buoc 5): " + $p) "Yellow"; continue }
         $Iso += $p
       }
     }
   }
-  $Iso = @($Iso | ForEach-Object { Clean-Path $_ } | Where-Object { $_ })
+  $Iso = @($Iso | ForEach-Object { if (Test-Link $_) { Resolve-Link $_ } else { Clean-Path $_ } } | Where-Object { $_ })
   if ($Iso.Count -eq 0) { Stop-Build "Chua co file ISO nao." }
   foreach ($p in $Iso) {
     if (-not (Test-There $p)) { Stop-Build ("Khong thay: " + $p) }
@@ -497,6 +936,7 @@ try {
     if (-not (("" + $d) -match '^\s*(\d+)\s*=\s*(.+)$')) { Stop-Build ("-Driver phai co dang  <so thu tu ISO>=<duong dan>  (vi du  2=D:\drv\lan.zip): " + $d) }
     $dk = [int]$Matches[1]
     $dv = Clean-Path $Matches[2]
+    if (Test-Link $dv) { $dv = Resolve-Link $dv }
     if (($dk -lt 1) -or ($dk -gt $Iso.Count)) { Stop-Build ("-Driver: khong co ISO thu " + $dk + " (chi co " + $Iso.Count + " ISO).") }
     $why = Test-DriverDrop $dv
     if ($why) { Stop-Build ("-Driver: " + $why) }
@@ -508,18 +948,21 @@ try {
   $totalIso = 0
   foreach ($p in $Iso) { $it = Get-Item -LiteralPath $p; if (-not $it.PSIsContainer) { $totalIso += $it.Length } else { $totalIso += 6GB } }
   if (-not $Work) {
-    $vols = @(Get-Volume | Where-Object { $_.DriveType -eq "Fixed" -and $_.DriveLetter } | Sort-Object SizeRemaining -Descending)
-    if ($vols.Count -eq 0) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
-    $Work = "" + $vols[0].DriveLetter + ":\cb-work"
-    # uu tien thu muc lam viec cua lan chay truoc (con giu phan da tai + ma dang ky; cay bo cai cu se duoc don di)
-    foreach ($v in $vols) {
-      $prev = "" + $v.DriveLetter + ":\cb-work"
-      if (Test-Path -LiteralPath (Join-Path $prev "dl")) { $Work = $prev; break }
-    }
+    # o cung con trong nhieu nhat; uu tien thu muc lam viec cua lan chay truoc (con giu phan da tai + ma dang ky; cay bo cai cu se duoc don di)
+    $Work = Get-DefaultWork
+    if (-not $Work) { Stop-Build "Khong tim thay o cung nao de lam viec - dung tham so -Work D:\cb-work" }
   }
   $Work = Clean-Path $Work
   if ($Work -match '\s') { Stop-Build ("Thu muc lam viec khong duoc co dau cach: " + $Work + "  (vi du dung -Work D:\cb-work)") }
-  if (-not $Out) { $Out = Join-Path (Split-Path -Qualifier $Work) "\CloudBlue-PC.iso" }
+  $outName = "\CloudBlue-PC.iso"
+  if ($MayChu) {
+    # ISO may chu: ten theo gia lap (khi da chon bang -GiaLap) de 2 ban MuMu / LDPlayer khong ghi de len nhau
+    $outName = "\CloudBlue-MayChu.iso"
+    $glName = ("" + $GiaLap).Trim().ToLower()
+    if ($glName -eq "ld") { $outName = "\CloudBlue-MayChu-LD.iso" }
+    elseif ($glName -eq "mumu") { $outName = "\CloudBlue-MayChu-MuMu.iso" }
+  }
+  if (-not $Out) { $Out = Join-Path (Split-Path -Qualifier $Work) $outName }
   $Out = Clean-Path $Out
   if ($Out -match '\s') { Stop-Build ("Duong dan ISO moi khong duoc co dau cach: " + $Out) }
   # File ISO cu dang bi chuong trinh khac giu (thuong la MAY AO dang gan file do) -> khong ghi de duoc: bao NGAY tu dau va ghi ra ten khac, khoi lam xong het moi loi.
@@ -635,7 +1078,8 @@ try {
   if (-not ($SbUrl -match '^https://[a-z0-9]+\.supabase\.co/?$') -or -not $SbKey) { Stop-Build "Khong doc duoc dia chi Supabase trong config.js." }
   Say ("   may chu: " + $SbUrl) "DarkGray"
   $KeyFrom = "tham so"
-  if (-not $MaDangKy) {
+  if ($MayChu) { $MaDangKy = ""; $KhachAdmin = $true }              # may chu: khong vao danh sach may PC cho thue; tai khoan giu quyen Admin
+  if ((-not $MaDangKy) -and (-not $MayChu)) {
     $KeyFrom = ""
     if (-not $KhongHoi) {
       $q = "   MA DANG KY (Enter trong = may cai xong se KHONG tu len web)"
@@ -682,11 +1126,157 @@ try {
       $enc = ConvertTo-SecureString $MaDangKy -AsPlainText -Force | ConvertFrom-SecureString
       [IO.File]::WriteAllText($KeyFile, ("" + $enc), [Text.Encoding]::ASCII)
     } catch { Say "   (khong luu duoc ma cho lan sau - khong sao)" "DarkGray" }
-  } else { Note "Khong co ma dang ky: may cai tu ISO nay se khong tu hien len web." }
+  } elseif (-not $MayChu) { Note "Khong co ma dang ky: may cai tu ISO nay se khong tu hien len web." }
+
+  # ---------------------------------------------------------------- 4b. cau hinh may chu Cloud Phone (23.11g)
+  $Mc = @{ key = ""; cf = ""; agree = ""; emu = ""; tunnel = $false; from = ""; srv = "" }
+  $SrvState = "khong"
+  $McFiles = @()
+  if ($MayChu) {
+    Step "4b/8  CAU HINH MAY CHU CLOUD PHONE (khoa bi mat: chi nhap vao cua so nay - KHONG gui ai)"
+    if (-not $TenMien) { $TenMien = "cloudblue.vn" }
+    $TenMien = $TenMien.Trim().ToLower()
+    Say ("   ten mien: " + $TenMien + "   (may chu so N dung phoneN." + $TenMien + " + streamN." + $TenMien + ")") "DarkGray"
+    $McSave = Join-Path $Dl "may-chu.dpapi"
+    if ($MayChuConf) {
+      $MayChuConf = Clean-Path $MayChuConf
+      if (-not (Test-There $MayChuConf)) { Stop-Build ("Khong thay tep -MayChuConf: " + $MayChuConf) }
+      $cf0 = Read-ConfFile $MayChuConf
+      $Mc.key = "" + $cf0["SUPABASE_SERVICE_KEY"]; $Mc.cf = "" + $cf0["CF_API_TOKEN"]; $Mc.agree = "" + $cf0["LE_AGREE"]; $Mc.emu = ("" + $cf0["EMU"]).ToLower()
+      $Mc.srv = "" + $cf0["SRV_KEY"]
+      if ($cf0["DOMAIN"]) { $TenMien = ("" + $cf0["DOMAIN"]).Trim().ToLower() }
+      $Mc.from = "tep -MayChuConf"
+    } else {
+      $oldMc = $null
+      if (Test-Path -LiteralPath $McSave) {
+        try {
+          $secM = ConvertTo-SecureString (("" + (Get-Content -LiteralPath $McSave -TotalCount 1)).Trim())
+          $oldMc = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secM)) | ConvertFrom-Json
+        } catch { $oldMc = $null }
+      }
+      $reuse = $false
+      if ($oldMc -and (("" + $oldMc.key).Length -ge 30)) {
+        $reuse = $true
+        if (-not $KhongHoi) {
+          $oldHas = "khoa Supabase"
+          if (("" + $oldMc.cf).Length -ge 20) { $oldHas += " + ma Cloudflare" } else { $oldHas += " (CHUA co ma Cloudflare - se hoi tiep)" }
+          Say ("   May nay con giu CAU HINH MAY CHU cua lan chay truoc: " + $oldHas + " - da ma hoa.") "White"
+          $ansM = ("" + (Read-Host "   Enter = DUNG LAI ; go M roi Enter = nhap moi")).Trim().ToLower()
+          if ($ansM -eq "m") { $reuse = $false }
+        }
+      }
+      if ($reuse) {
+        $Mc.key = "" + $oldMc.key; $Mc.cf = "" + $oldMc.cf; $Mc.agree = "" + $oldMc.agree; $Mc.emu = "" + $oldMc.emu; $Mc.srv = "" + $oldMc.srv
+        $Mc.from = "dung lai cua lan chay truoc"
+      } elseif (-not $KhongHoi) {
+        Say "   KHOA SUPABASE service_role: Supabase > Project Settings > API Keys > service_role / secret > Reveal > Copy, roi dan vao day." "White"
+        Say "   (chuot phai = dan; khoa KHONG hien khi dan. Enter trong = bo qua: cai xong phai dan khoa trong bang CloudBlue tren may chu)" "DarkGray"
+        for ($kt = 1; $kt -le 3; $kt++) {
+          $kIn = Read-Secret "   Khoa Supabase service_role"
+          if (-not $kIn) { break }
+          $kWhy = Test-SbKeyShape $kIn
+          if (-not $kWhy) {
+            $kSt = Test-SbService $SbUrl $kIn
+            if ($kSt -eq "bad") { $kWhy = "may chu Supabase TU CHOI khoa nay (khoa cu / sai du an)"; if ($SbWhy) { $kWhy += " - may chu tra loi: " + $SbWhy } }
+            elseif ($kSt -eq "ok") { Say "   khoa Supabase: may chu xac nhan DUNG DUOC" "Green" }
+            else { Say "   (chua hoi duoc may chu ve khoa - van dung khoa nay)" "DarkGray" }
+          }
+          if (-not $kWhy) { $Mc.key = $kIn; break }
+          Say ("   !! " + $kWhy) "Red"
+          if ($kt -ge 3) { Stop-Build ("Khoa Supabase khong dung duoc: " + $kWhy) }
+        }
+        $Mc.from = "moi nhap"
+        if ($Mc.key) { [void](Save-McConf $McSave $Mc) }       # luu ngay: lo dung o cau hoi sau thi chay lai khong phai dan lai khoa
+      }
+      # ma may chu (dieu khien tu xa) giu cung cau hinh: chay lai dung lai dung ma do -> ISO cu / may da cai van dung duoc
+      if ($Mc.key -and (-not ($Mc.srv -match '^cbsv_[0-9a-f]{40}$'))) { $Mc.srv = New-SrvKey; [void](Save-McConf $McSave $Mc) }
+      # Ma Cloudflare: hoi khi chua co (ke ca khi dung lai cau hinh cu ma lan truoc chua nhap duoc ma)
+      if ((-not $Mc.cf) -and (-not $KhongHoi)) {
+        Say "   MA CLOUDFLARE (API Token) de may chu TU tao duong ham phoneN + streamN va chung chi duong thang web. CACH TAO:" "White"
+        Say "     1. Mo  https://dash.cloudflare.com/profile/api-tokens  >  Create Token  (Token name: cloudblue-may-chu)" "Gray"
+        Say "     2. Policies > Start from scratch > 'Start with an Account policy':  de nguyen Include - All accounts;" "Gray"
+        Say "        o 'Search for permission groups' go  Tunnel  >  tick  Cloudflare Tunnel  >  muc Edit (hoac Write)" "Gray"
+        Say ("     3. '+ Add new policy' > 'Start with a Zone policy':  Include - " + $TenMien + ";  go DNS > tick DNS > Edit ;  go Zone > tick Zone > Read") "Gray"
+        Say "        (giao dien cu: Custom token > Permissions 3 dong:  Account - Cloudflare Tunnel - Edit | Zone - DNS - Edit | Zone - Zone - Read)" "DarkGray"
+        Say "     4. Token expiration: No expiration  >  Continue to summary  >  Create Token  >  Copy  (ma chi hien 1 lan)" "Gray"
+        Say "     KHONG dung: Global API Key, ma chay duong ham (eyJ...), ma so (ID), ma chi co quyen DNS." "DarkGray"
+        Say "   (chuot phai = dan; ma KHONG hien khi dan. Enter trong = bo qua: cai xong phai noi Cloudflare bang tay trong bang CloudBlue nhu truoc gio)" "DarkGray"
+        for ($ctn = 1; $ctn -le 6; $ctn++) {
+          $cIn = Read-Secret "   Ma Cloudflare"
+          if (-not $cIn) { break }
+          $ct = Test-CfToken $cIn $TenMien
+          if ($ct.zone -and $ct.tunnel) {
+            $Mc.cf = $cIn; $Mc.tunnel = $true
+            Say "   ma Cloudflare: DUNG DUOC (ten mien + duong ham)" "Green"
+            break
+          }
+          if ($ct.zone) {
+            Say "   !! Ma nay thay ten mien nhung KHONG co quyen  Account - Cloudflare Tunnel - Edit  -> may chu se khong tu tao duong ham duoc." "Yellow"
+            $ansT = ("" + (Read-Host "      Enter = dan ma KHAC (da them quyen do) ; go D roi Enter = van DUNG ma nay (tu noi Cloudflare bang tay; ma chi dung cho duong thang web)")).Trim().ToLower()
+            if ($ansT -eq "d") { $Mc.cf = $cIn; $Mc.tunnel = $false; break }
+            continue
+          }
+          Say ("   !! Ma Cloudflare chua dung duoc: " + $ct.err) "Red"
+          Say "      Dan lai ma dung (hoac Enter trong = bo qua ma Cloudflare)." "Yellow"
+        }
+        if ($Mc.cf) {
+          Say "   Chung chi HTTPS mien phi (duong thang web) do Let's Encrypt cap. Dieu khoan: https://letsencrypt.org/repository/" "White"
+          $aIn = ("" + (Read-Host "   Go  dong y  roi Enter neu ban dong y (Enter trong = bo qua duong thang web)")).Trim().ToLower()
+          if (@("dong y", "dongy") -contains $aIn) { $Mc.agree = "1" } else { $Mc.agree = "" }
+          if ($Mc.key) { [void](Save-McConf $McSave $Mc) }
+        } else {
+          Note "Chua co ma Cloudflare: may chu cai xong se CHO ban noi Cloudflare bang tay (nut 3 trong bang CloudBlue). Muon tu dong: chay lai lenh nay va dan ma."
+        }
+      }
+    }
+    if ($Mc.cf -and (-not $Mc.tunnel) -and ($Mc.from -ne "moi nhap")) { $ct2 = Test-CfToken $Mc.cf $TenMien; $Mc.tunnel = [bool]$ct2.tunnel }
+    # 23.11k - DIEU KHIEN TU XA: ISO kem MA MAY CHU; bao dau bam cua ma len web de may cai xong tu hien o DT dam may > May chu
+    if (-not $Mc.key) { $Mc.srv = "" }
+    elseif (-not ($Mc.srv -match '^cbsv_[0-9a-f]{40}$')) { $Mc.srv = New-SrvKey }
+    if ($Mc.srv) {
+      $SrvState = "chua"
+      if ($KhongKiemMa) { Say "   dieu khien tu xa: ISO co kem ma may chu - CHUA bao len web (-KhongKiemMa)" "DarkGray" }
+      else { $SrvState = Set-SrvRemote $SbUrl $Mc.key $Mc.srv ([bool]$KhongHoi) }
+      if ($SrvState -eq "nosql") { Note "Dieu khien tu xa CHUA bat: web chua chay SQL v53. Chay SQL do roi CHAY LAI lenh nay (Enter = dung lai cau hinh) - may da cai tu ISO nay se tu hien, khong phai cai lai." }
+      elseif ($SrvState -ne "ok") { Note "Dieu khien tu xa: chua bao duoc ma may chu len web. Chay lai lenh nay khi mang on - may da cai tu ISO nay se tu hien, khong phai cai lai." }
+    } else { Note "ISO may chu KHONG co dieu khien tu xa (can khoa Supabase de bao ma may chu len web)." }
+    if ($GiaLap) { $Mc.emu = $GiaLap.Trim().ToLower() }
+    if ((-not $Mc.emu) -and (-not $KhongHoi)) {
+      Say "   GIA LAP cua may chu:  1 = MuMu (Android 12 + 15 - de xuat)   2 = LDPlayer 9 (Android 9)" "White"
+      $eIn = ("" + (Read-Host "   Go so roi Enter (Enter trong = 1)")).Trim()
+      if ($eIn -eq "2") { $Mc.emu = "ld" } else { $Mc.emu = "mumu" }
+    }
+    if ($Mc.emu -ne "ld") { $Mc.emu = "mumu" }
+    $bcList = @($BoCai | ForEach-Object { if (Test-Link $_) { Resolve-Link $_ } else { Clean-Path $_ } } | Where-Object { $_ })
+    if (-not $KhongHoi) {
+      Say "   BO CAI GIA LAP kem vao ISO (may chu tu chay bo cai nay): keo tha file .exe tai tu mumuplayer.com / ldplayer.net vao cua so roi Enter (hoac dan LINK tai)." "White"
+      Say "   Them duoc tep may mau MuMu (tpl_a12.mumudata / tpl_a15.mumudata - xuat tu may chu dang chay). Enter trong = het / khong kem." "DarkGray"
+      while ($true) {
+        $lineB = "" + (Read-Host ("   Tep thu " + ($bcList.Count + 1) + " (Enter trong = het)"))
+        if (-not $lineB.Trim()) { break }
+        $bcand = @()
+        if (Test-Link $lineB) { $bcand = @(Resolve-Link $lineB) } else { $bcand = @(Split-Paths $lineB) }
+        foreach ($bp in $bcand) { if ($bcList -notcontains $bp) { $bcList += $bp } }
+      }
+    }
+    foreach ($bp in $bcList) {
+      if (-not (Test-There $bp)) { Stop-Build ("Khong thay tep: " + $bp) }
+      $gd = Get-EmuDrop $bp
+      if ($gd.why) { Stop-Build ("Tep kem cho may chu - " + $gd.why + ": " + $bp) }
+      $McFiles = @($McFiles | Where-Object { $_.name -ne $gd.name })
+      $McFiles += @{ src = $bp; name = $gd.name }
+      Say ("      + " + $gd.name + "  <-  " + (Split-Path -Leaf $bp) + "  (" + [math]::Round((Get-Item -LiteralPath $bp).Length / 1MB) + " MB)") "DarkGray"
+    }
+    $haveSetup = @($McFiles | Where-Object { $_.name -eq ($Mc.emu + "-setup.exe") }).Count
+    if (-not $haveSetup) { Note ("ISO may chu KHONG kem bo cai " + $Mc.emu + ": cai xong Windows, may chu se CHO ban cai gia lap bang tay roi tu lam tiep.") }
+    if (-not $Mc.key) { Note "ISO may chu KHONG kem khoa Supabase: cai xong phai dan khoa trong bang CloudBlue tren may chu (nut 2)." }
+    if (-not $Mc.cf) { Note "ISO may chu KHONG kem ma Cloudflare: cai xong phai tao + noi duong ham Cloudflare bang tay (nut 3 trong bang CloudBlue)." }
+  }
 
   # ---------------------------------------------------------------- 5. mo ISO goc, doc cac ban Windows
   Step "5/8  Doc cac ban Windows trong ISO goc"
   $src = @()
+  $LinuxSrc = $null
   foreach ($p in $Iso) {
     $it = Get-Item -LiteralPath $p
     if ($it.PSIsContainer) { $root = $it.FullName.TrimEnd("\") + "\" }
@@ -698,6 +1288,23 @@ try {
       if (-not $vol -or -not $vol.DriveLetter) { Start-Sleep 2; $vol = Get-DiskImage -ImagePath $it.FullName | Get-Volume }
       if (-not $vol -or -not $vol.DriveLetter) { Stop-Build ("Khong mo duoc ISO: " + $p) }
       $root = "" + $vol.DriveLetter + ":\"
+    }
+    # 22.11c - ISO CachyOS (Linux): \arch\boot\x86_64\vmlinuz-linux-cachyos* + \arch\x86_64\airootfs.sfs -> chep nguyen file ISO vao cb\linux\cachyos.iso
+    $kdir = Join-Path $root "arch\boot\x86_64"
+    $kern = @()
+    if (Test-Path -LiteralPath $kdir) { $kern = @(Get-ChildItem -LiteralPath $kdir -File -Filter "vmlinuz-linux*" -ErrorAction SilentlyContinue) }
+    if ($kern.Count -gt 0) {
+      $cachy = (@($kern | Where-Object { $_.Name -like "vmlinuz-linux-cachyos*" }).Count -gt 0)
+      $sfs = ((Test-Path (Join-Path $root "arch\x86_64\airootfs.sfs")) -or (Test-Path (Join-Path $root "arch\x86_64\airootfs.erofs")))
+      if ((-not $cachy) -or (-not $sfs)) { Stop-Build ("ISO Linux nay khong phai ISO CachyOS (can arch\boot\x86_64\vmlinuz-linux-cachyos* + arch\x86_64\airootfs.sfs): " + $p) }
+      if ($it.PSIsContainer) { Stop-Build ("CachyOS phai la FILE .iso (khong dung thu muc da giai nen): " + $p) }
+      if ($LinuxSrc) { Stop-Build ("Chi kem duoc 1 ISO CachyOS - da co: " + $LinuxSrc.Path) }
+      $lver = ""
+      if ((Split-Path -Leaf $p) -match '(\d{6})') { $lver = $Matches[1] }
+      $LinuxSrc = [pscustomobject]@{ Path = $it.FullName; Bytes = $it.Length; Kernel = ((@($kern | ForEach-Object { $_.Name })) -join ", "); Ver = $lver }
+      Say ("   " + (Split-Path -Leaf $p) + ":  ISO CachyOS (Linux) - nhan " + $LinuxSrc.Kernel + " - " + [math]::Round($it.Length / 1GB, 2) + " GB") "White"
+      Say "      -> doi sang CachyOS tu web (cai lai tu xa: may UEFI, TAT Secure Boot, co Internet). Cai tu USB van luon la Windows." "DarkGray"
+      continue
     }
     # bo cai chuan: \sources\install.wim|esd   ;   ISO 2 kien truc (x86 + x64): \x64\sources\install.wim|esd
     $img = $null
@@ -748,12 +1355,14 @@ try {
     if ($DrvArg.ContainsKey($isoNo)) { $drops += $DrvArg[$isoNo] }
     if (-not $KhongHoi) {
       Say ("   DRIVER rieng cho ban WINDOWS " + $osTag + " nay (" + (Split-Path -Leaf $p) + ") - vi du card mang, VGA:") "White"
-      Say "      keo tha FILE driver (.exe .zip) hoac THU MUC driver vao cua so nay roi Enter; con cai nua thi keo tiep." "White"
+      Say "      keo tha FILE driver (.exe .zip) hoac THU MUC driver vao cua so nay roi Enter (hoac dan LINK tai); con cai nua thi keo tiep." "White"
       Say "      Ban nay khong can driver rieng / da keo het thi bam Enter trong." "White"
       while ($true) {
         $line = "" + (Read-Host ("   Driver thu " + ($drops.Count + 1) + " cho ban " + $osTag + " (Enter trong = het)"))
         if (-not $line.Trim()) { break }
-        foreach ($dp in @(Split-Paths $line)) {
+        $dcand = @()
+        if (Test-Link $line) { $dcand = @(Resolve-Link $line) } else { $dcand = @(Split-Paths $line) }
+        foreach ($dp in $dcand) {
           $why = Test-DriverDrop $dp
           if ($why) { Say ("      KHONG nhan: " + $why) "Yellow"; continue }
           if ($drops -contains $dp) { continue }
@@ -773,6 +1382,7 @@ try {
     }
     $src += [pscustomobject]@{ Root = $root; Image = $img; Pick = $pick; Bytes = $bytes; Path = $p; Std = $std; Extra = ($extra -join ' ; '); Drops = $drops; Tag = $osTag }
   }
+  if ($src.Count -eq 0) { Stop-Build "Can it nhat 1 ISO WINDOWS (ISO CachyOS chi la ban kem them - cai tu USB luon la Windows)." }
   $stdSrc = @($src | Where-Object { $_.Std })
   if ($stdSrc.Count -eq 0) { Stop-Build "Khong ISO nao co du bo khoi dong chuan o goc (sources\boot.wim + boot\boot.sdi + efi\microsoft\boot\efisys.bin). ISO 2 kien truc (x86 + x64) chi dung duoc lam ban Windows phu - can them 1 ISO Windows 64-bit chuan." }
   $baseSrc = $stdSrc | Sort-Object { try { [version]$_.Pick.Version } catch { [version]"0.0" } } -Descending | Select-Object -First 1
@@ -801,6 +1411,22 @@ try {
       if ((-not $wpSrc) -and (Test-Path $c)) { $wpSrc = $c }
     }
     if (($nThem -eq 0) -and (-not $wpSrc)) { Note ("Thu muc them khong co drivers\ , firstboot.d\ hay wallpaper.jpg nao: " + $Them) } else { Say ("   them " + $nThem + " file tu " + $Them + " (drivers / firstboot.d)") "DarkGray" }
+  }
+  # 23.11g - ISO may chu: lenh chay lan dau + thu muc maychu (script cai may chu, cau hinh co khoa, bo cai gia lap, may mau)
+  if ($MayChu) {
+    $fbd = Join-Path $IsoRoot "cb\os\firstboot.d"
+    $mcd = Join-Path $fbd "maychu"
+    New-Item -ItemType Directory -Force $mcd | Out-Null
+    Copy-Item -Force (Join-Path $Tool "maychu\firstboot.ps1") (Join-Path $fbd "90-cloudblue-may-chu.ps1")
+    Copy-Item -Force (Join-Path $Tool "maychu\may-chu-iso.ps1") (Join-Path $mcd "may-chu-iso.ps1")
+    $confLines = @("# CloudBlue - cau hinh ISO may chu (CO KHOA BI MAT: khong gui ai, khong dua len mang)", ("DOMAIN=" + $TenMien), ("SUPABASE_URL=" + $SbUrl.TrimEnd("/")),
+                   ("SUPABASE_SERVICE_KEY=" + $Mc.key), ("CF_API_TOKEN=" + $Mc.cf), ("LE_AGREE=" + $Mc.agree), ("EMU=" + $Mc.emu))
+    [IO.File]::WriteAllLines((Join-Path $mcd "may-chu.conf"), [string[]]$confLines, (New-Object Text.UTF8Encoding($false)))
+    foreach ($mf in $McFiles) {
+      Say ("   chep " + $mf.name + " vao bo cai...") "DarkGray"
+      Copy-Item -LiteralPath $mf.src -Destination (Join-Path $mcd $mf.name) -Force
+    }
+    Say ("   bo cai may chu Cloud Phone: " + @(Get-ChildItem -LiteralPath $mcd -File).Count + " tep trong cb\os\firstboot.d\maychu") "DarkGray"
   }
   # driver nguoi dung dua rieng cho tung ban Windows -> cb\drivers\_img<so thu tu ISO> ; cb_build.py doi thanh ten ban (1511, 22h2...)
   $isoNo = 0
@@ -855,6 +1481,8 @@ try {
   $infoFile = Join-Path $Dl "build-info.txt"
   Remove-Item -Force $infoFile -ErrorAction SilentlyContinue
   $params = @{ out = $IsoRoot; tool = $Tool; py = $PyDir; images = $images; user = $TaiKhoan; password = $MatKhau; sb_url = $SbUrl; sb_key = $SbKey; enroll_key = $MaDangKy; generic_key = $gk; info = $infoFile; wallpaper = $wpSrc; default_index = $defIdx; user_admin = [bool]$KhachAdmin }
+  if ($LinuxSrc) { $params.linux = @{ src = $LinuxSrc.Path; name = "CachyOS Linux (KDE)"; version = $LinuxSrc.Ver } }
+  if ($MayChu) { $params.role = "server"; $params.ask_code = $false; $params.name_prefix = "win"; $params.code_wait = 900; $params.enroll_key = "" + $Mc.srv }      # bo cai chi hoi TEN MAY (cho 15 phut), khong hoi so may
   $pj = Join-Path $Dl "params.json"
   [IO.File]::WriteAllText($pj, ($params | ConvertTo-Json -Depth 6), (New-Object Text.UTF8Encoding($false)))
   $rc = Run-Exe $PyExe @("-I", "-B", (Join-Path $Tool "cb_build.py"), "layout", $pj)
@@ -940,12 +1568,27 @@ try {
     Write-Host ("  ISO goc: " + (Split-Path -Leaf $s.Path) + " -> " + $s.Pick.Name + " [" + $s.Pick.Edition + " " + $s.Pick.Version + "] ban so " + $s.Pick.Index + ", " + [math]::Round($s.Bytes / 1GB, 2) + " GB")
     if ($s.Extra) { Write-Host ("     file rieng cua ISO nay (khong dung toi): " + $s.Extra) }
   }
+  if ($LinuxSrc) { Write-Host ("  ISO CachyOS: " + (Split-Path -Leaf $LinuxSrc.Path) + " -> cb\linux\cachyos.iso, " + [math]::Round($LinuxSrc.Bytes / 1GB, 2) + " GB (nhan " + $LinuxSrc.Kernel + ")") }
   if (Test-Path $infoFile) {
     Get-Content -Encoding UTF8 $infoFile | ForEach-Object { if (("" + $_) -match '^\(!\)') { Write-Host ("  " + $_) -ForegroundColor Yellow } else { Write-Host ("  " + $_) } }
   }
   Write-Host ("  Chen boot.wim (ban so " + $bidx + "): OK")
   Write-Host ("  Tu kiem: doc o dia = " + $(if ($t1 -eq 0) { "DAT" } else { "CHUA DAT (" + $t1 + ")" }) + " ; chay thu bo cai = " + $(if ($t2 -eq 0) { "DAT" } else { "CHUA DAT (" + $t2 + ")" }))
-  Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" + $(if ($KeyState -eq "ok") { " - may chu xac nhan con hieu luc" } else { " - CHUA kiem duoc voi may chu" }) } else { "KHONG" }))
+  if ($MayChu) {
+    $mcNames = (@($McFiles | ForEach-Object { $_.name }) -join ", ")
+    if (-not $mcNames) { $mcNames = "KHONG" }
+    Write-Host ("  MAY CHU CLOUD PHONE: gia lap " + $Mc.emu + " | tep kem: " + $mcNames + " | ten mien " + $TenMien) -ForegroundColor Green
+    Write-Host ("     khoa Supabase: " + $(if ($Mc.key) { "CO (" + $Mc.from + ")" } else { "KHONG" }) + " | ma Cloudflare: " + $(if ($Mc.cf) { "CO" + $(if ($Mc.tunnel) { " - tu tao duong ham" } else { " - KHONG co quyen duong ham" }) } else { "KHONG" }) + " | Let's Encrypt: " + $(if ($Mc.agree -eq "1") { "da dong y" } else { "chua" }))
+    $srvTxt = "KHONG (ISO khong kem khoa Supabase)"
+    if ($Mc.srv) {
+      $srvTxt = "ISO co ma may chu, nhung CHUA bao duoc len web - chay lai lenh nay khi mang on"
+      if ($SrvState -eq "ok") { $srvTxt = "CO - Windows vua len la may hien o web > DT dam may > May chu, bam Cai dat > Dieu khien" }
+      elseif ($SrvState -eq "nosql") { $srvTxt = "CHUA - web chua chay SQL v53 (chay SQL roi chay lai lenh nay)" }
+    }
+    Write-Host ("     dieu khien tu xa: " + $srvTxt) -ForegroundColor $(if ($SrvState -eq "ok") { "Green" } else { "Yellow" })
+    Write-Host "     (!) ISO NAY CHUA KHOA BI MAT - KHONG gui ai, KHONG dua len mang." -ForegroundColor Yellow
+  }
+  if (-not $MayChu) { Write-Host ("  Ma dang ky: " + $(if ($MaDangKy) { "CO (" + $KeyFrom + ")" + $(if ($KeyState -eq "ok") { " - may chu xac nhan con hieu luc" } else { " - CHUA kiem duoc voi may chu" }) } else { "KHONG" })) }
   if ($OscInfo) { Write-Host ("  oscdimg: " + $OscInfo) }
   if (@($OscWhy).Count -gt 0) { Write-Host ("  oscdimg (cach thu khong duoc): " + ((@($OscWhy) | ForEach-Object { "" + $_ }) -join " ; ")) }
   if ($isoDone) { Write-Host ("  ISO: " + $Out + "  (" + [math]::Round((Get-Item $Out).Length / 1GB, 2) + " GB)") -ForegroundColor Green }
@@ -957,6 +1600,12 @@ try {
     Write-Host "  BUOC KE: thu tren 1 MAY THU / may ao truoc (may do se bi XOA SACH):" -ForegroundColor White
     Write-Host "    - ghi ISO ra USB bang Rufus (hoac chep vao USB Ventoy), cam vao may, khoi dong tu USB"
     Write-Host "    - man hinh dem nguoc 30 giay ghi ro o nao se bi xoa; bam X de huy"
+    if ($MayChu) {
+      Write-Host "    - Windows bung xong, bo cai hoi TEN MAY: go SO may chu (vd 54, win54 hoac 54 cp) roi Enter = may chu win54. Bo trong = tu lay so ke tiep. Sau do KHONG hoi gi nua." -ForegroundColor White
+      if ($SrvState -eq "ok") { Write-Host "    - Windows vua len 1-2 phut: may hien o web > Bang quan tri > DT dam may > May chu - bam Cai dat > Dieu khien de xem / go may tu xa." -ForegroundColor White }
+      Write-Host "    - sau do KHONG can lam gi: may tu khoi dong lai vai lan, tu cai gia lap + CloudBlue (30-45 phut) roi hien o web > Bang quan tri > May chu."
+      Write-Host "    - viec tay duy nhat con lai: mo cong modem TCP 8188 + so may chu (man hinh may chu + tep CloudBlue-may-chu.txt tren Desktop ghi ro)."
+    }
   }
   if ($isoDone -and -not $GiuWork) {
     foreach ($d in @($IsoRoot, $PyDir, $Tool)) { Remove-Item -Recurse -Force $d -ErrorAction SilentlyContinue }

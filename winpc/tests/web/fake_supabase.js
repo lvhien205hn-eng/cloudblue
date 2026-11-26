@@ -1,10 +1,11 @@
 /* Supabase GIẢ cho bộ thử trang quản trị (thay file supabase.js thật).
    window.__FAKE_INIT (bộ thử bơm vào trước) = { admin: true|false|null, v41: true|false, v42: true|false, db: {bảng: [dòng]}, settings: {...} }
-   v42 = false: cơ sở dữ liệu chưa chạy cloud-pc-v42.sql (không có cột hạn thuê / hàm pc_admin_rent). */
+   v42 = false: cơ sở dữ liệu chưa chạy cloud-pc-v42.sql (không có cột hạn thuê / hàm pc_admin_rent).
+   v43 = false: chưa chạy cloud-pc-v43.sql (không có cột user_id / remote của pc_machines, hàm pc_admin_assign). */
 (function () {
   const INIT = window.__FAKE_INIT || {};
   const ADMIN_ID = "00000000-0000-4000-8000-000000000001";
-  const F = window.__FAKE = { calls: [], v41: INIT.v41 !== false, v42: INIT.v42 !== false, db: Object.assign({}, INIT.db || {}), seq: 100, failRpc: {}, delay: 0 };
+  const F = window.__FAKE = { calls: [], v41: INIT.v41 !== false, v42: INIT.v42 !== false, v43: INIT.v43 !== false, db: Object.assign({}, INIT.db || {}), seq: 100, failRpc: {}, delay: 0 };
   const session = INIT.admin === null ? null : { access_token: "x", user: { id: ADMIN_ID, email: "admin@cb.test" } };
   if (session) F.db.profiles = [{ id: ADMIN_ID, username: "chushop", role: INIT.admin === false ? "user" : "admin", locked: false, balance: 0, created_at: new Date().toISOString() }];
   const clone = v => v === undefined ? undefined : JSON.parse(JSON.stringify(v));
@@ -22,6 +23,8 @@
       if (isPc(table) && !F.v41) return noTable(table);
       if (isPc(table) && !F.v42 && st.op === "select" && /\b(rent_until|renter|rent_warn_min|rent_remind_min|notify_at)\b/.test(st.cols))        // chưa chạy v42: PostgREST báo thiếu cột
         return { data: null, error: { code: "42703", message: "column " + table + "." + (table === "pc_settings" ? "rent_warn_min" : "rent_until") + " does not exist" }, count: null };
+      if (table === "pc_machines" && !F.v43 && st.op === "select" && /\b(user_id|remote)\b/.test(st.cols))
+        return { data: null, error: { code: "42703", message: "column pc_machines.user_id does not exist" }, count: null };
       if (st.op !== "select") return { data: null, error: null };
       if (table === "pc_settings" && F.v42) sets();                   // cột v42 có giá trị mặc định (NOT NULL) như cơ sở dữ liệu thật
       let rows = (F.db[table] || []).filter(r => st.eq.every(([c, v]) => String(r[c]) === String(v)));
@@ -33,9 +36,9 @@
       select(c) { st.cols = String(c || ""); return p; }, eq(c, v) { st.eq.push([c, v]); return p; }, order(c, o) { st.order = [c, !(o && o.ascending === false)]; return p; },
       limit(n) { st.limit = n; return p; }, maybeSingle() { st.one = true; return p; }, single() { st.one = true; return p; },
       insert() { st.op = "insert"; return p; }, update() { st.op = "update"; return p; }, upsert() { st.op = "upsert"; return p; }, delete() { st.op = "delete"; return p; },
-      then(a, b) { return later(run()).then(a, b); }, catch(b) { return later(run()).catch(b); }, finally(f) { return later(run()).finally(f); },
+      then(a, b) { return later(run()).then(a, b); },                    // như supabase-js thật: chỉ có .then — KHÔNG có .catch / .finally
     };
-    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol") return undefined; return () => p; } });
+    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol" || k === "catch" || k === "finally") return undefined; return () => p; } });
     return p;
   }
 
@@ -84,27 +87,60 @@
     },
     pc_admin_order_cancel(a) { const o = ords().find(x => x.id === a.p_order && (x.state === "queued" || x.state === "sent")); if (!o) return raise("NOT_OPEN"); o.state = "cancelled"; o.done_at = new Date().toISOString(); delete o.args.ticket; return { data: clone(o), error: null }; },
     pc_admin_allow_reenroll(a) { const m = pcs().find(x => x.id === a.p_id); if (!m) return raise("NO_MACHINE"); m.reenroll_until = new Date(Date.now() + (a.p_hours || 6) * 3600e3).toISOString(); return { data: clone(m), error: null }; },
+    pc_admin_assign(a) {                                           // như hàm SQL v43: {user: tên đăng nhập | email | ""} · {remote: true|false}
+      if (!F.v43) return noFn("pc_admin_assign");
+      const m = pcs().find(x => x.id === a.p_id), p = a.p_patch; if (!p || typeof p !== "object" || Array.isArray(p)) return raise("BAD_PATCH"); if (!m) return raise("NO_MACHINE");
+      let u = m.user_id || null;
+      if ("user" in p) {
+        const who = String(p.user == null ? "" : p.user).trim().toLowerCase();
+        if (!who) u = null;
+        else { const f = (F.db.profiles || []).filter(r => String(r.username || "").toLowerCase() === who || (who.includes("@") && String(r.email || "").toLowerCase() === who));
+          if (!f.length) return raise("NO_USER"); if (f.length > 1) return raise("MANY_USERS"); u = f[0].id; }
+      }
+      if ("remote" in p && typeof p.remote !== "boolean") return raise("BAD_PATCH");
+      m.user_id = u; if ("remote" in p) m.remote = p.remote; else if (m.remote === undefined) m.remote = true;
+      return { data: clone(m), error: null };
+    },
     pc_admin_delete(a) { F.db.pc_machines = pcs().filter(x => x.id !== a.p_id); F.db.pc_orders = ords().filter(o => o.pc_id !== a.p_id); return { data: null, error: null }; },
   };
   function rpc(name, args) {
     const run = () => {
       F.calls.push({ kind: "rpc", name, args: clone(args || {}) });
       if (F.failRpc[name]) return raise(F.failRpc[name]);
+      const hk = (window.__FAKE_HOOK || {})[name];                    // bộ thử tự trả lời hàm này (phần bán VPS GPU — v43)
+      if (typeof hk === "function") { try { const r = hk(clone(args || {}), F); return r && ("data" in r || "error" in r) ? r : { data: r === undefined ? null : r, error: null }; } catch (e) { return raise(String(e && e.message || e)); } }
       if (isPc(name)) { if (!F.v41) return noFn(name); if (INIT.admin === false) return raise("NOT_ADMIN"); if (RPC[name]) return RPC[name](args || {}); }
       return { data: null, error: null };
     };
-    const api = { then(a, b) { return later(run()).then(a, b); }, catch(b) { return later(run()).catch(b); }, finally(f) { return later(run()).finally(f); } };
-    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol") return undefined; return () => p; } });
+    const api = { then(a, b) { return later(run()).then(a, b); } };      // như supabase-js thật (PostgrestBuilder): KHÔNG có .catch / .finally
+    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol" || k === "catch" || k === "finally") return undefined; return () => p; } });
     return p;
   }
   const ok = v => () => Promise.resolve({ data: v, error: null });
+  // 21.11l · xác minh 2 bước (Supabase TOTP) — chỉ có khi bộ thử bơm INIT.mfa = { factors: [{id, status}], aal: "aal1"|"aal2", code: "123456" }
+  const MF = F.mfa = INIT.mfa ? Object.assign({ factors: [], aal: "aal1", code: "123456", calls: [] }, clone(INIT.mfa)) : null;
+  const mfaRes = v => Promise.resolve(v);
+  const mfa = MF && {
+    getAuthenticatorAssuranceLevel() { MF.calls.push(["aal"]); return mfaRes({ data: { currentLevel: MF.aal, nextLevel: MF.factors.some(f => f.status === "verified") ? "aal2" : MF.aal }, error: null }); },
+    listFactors() { MF.calls.push(["list"]); return mfaRes({ data: { all: clone(MF.factors), totp: clone(MF.factors.filter(f => f.status === "verified")), phone: [] }, error: null }); },
+    enroll(a) { MF.calls.push(["enroll", clone(a)]); const f = { id: "fac" + (++F.seq), status: "unverified", factor_type: "totp", friendly_name: a && a.friendlyName };
+      if (MF.factors.some(x => x.status === "verified") && MF.aal !== "aal2") return mfaRes({ data: null, error: { message: "AAL2 required to enroll a new factor" } });
+      MF.factors.push(f); return mfaRes({ data: { id: f.id, type: "totp", totp: { qr_code: "data:image/svg+xml;utf-8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='8'><rect width='8' height='8'/></svg>", secret: "JBSWY3DPEHPK3PXP", uri: "otpauth://totp/x" } }, error: null }); },
+    challengeAndVerify(a) { MF.calls.push(["verify", clone(a)]); const f = MF.factors.find(x => x.id === a.factorId);
+      if (!f) return mfaRes({ data: null, error: { message: "Factor not found" } });
+      if (a.code !== MF.code) return mfaRes({ data: null, error: { message: "Invalid TOTP code entered", code: "mfa_verification_failed" } });
+      f.status = "verified"; MF.aal = "aal2"; return mfaRes({ data: { access_token: "y" }, error: null }); },
+    unenroll(a) { MF.calls.push(["unenroll", clone(a)]); const f = MF.factors.find(x => x.id === a.factorId);
+      if (f && f.status === "verified" && MF.aal !== "aal2") return mfaRes({ data: null, error: { message: "AAL2 required to unenroll a verified factor" } });
+      const i = MF.factors.indexOf(f); if (i >= 0) MF.factors.splice(i, 1); return mfaRes({ data: { id: a.factorId }, error: null }); },
+  };
   const client = {
     from: query, rpc,
-    auth: {
+    auth: Object.assign({
       onAuthStateChange(cb) { setTimeout(() => cb(session ? "SIGNED_IN" : "INITIAL_SESSION", session), 0); return { data: { subscription: { unsubscribe() {} } } }; },
       getSession: ok({ session }), getUser: ok({ user: session && session.user }), signOut: ok({}), updateUser: ok({}), resetPasswordForEmail: ok({}),
-      signUp: ok({}), signInWithPassword: ok({ session }), verifyOtp: ok({}),
-    },
+      signUp: ok({}), signInWithPassword: ok({ session }), verifyOtp: ok({}), refreshSession: ok({ session }),
+    }, mfa ? { mfa } : {}),
     storage: { from: () => new Proxy({}, { get: (t, k) => k === "getPublicUrl" ? () => ({ data: { publicUrl: "" } }) : ok(null) }) },
     channel: () => { const c = { on: () => c, subscribe: () => c, unsubscribe() {} }; return c; }, removeChannel() {}, functions: { invoke: ok(null) },
   };

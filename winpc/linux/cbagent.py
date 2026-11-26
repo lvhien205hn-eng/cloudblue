@@ -1,0 +1,949 @@
+# -*- coding: utf-8 -*-
+# =====================================================================================================
+#  cbagent.py — CloudBlue PC: AGENT cho máy đang chạy CachyOS (Linux). Chạy bằng root (dịch vụ systemd cloudblue.service).
+#  Dùng LẠI lõi của agent Windows (pcagent.Agent: đăng ký bằng vé cài lại, hỏi máy chủ, hạn thuê / khoá máy, nhận lệnh) — chỉ thay phần đụng
+#  hệ điều hành: đọc / ghi tệp, thông tin máy, tắt / khởi động lại, tự đăng nhập, hộp báo cho khách, phân vùng cứu hộ (NTFS), mục khởi động UEFI.
+#    · lệnh CÀI LẠI (Windows / CachyOS): ghi cb/job.json lên phân vùng cứu hộ + BootNext = Windows Boot Manager (mặc định = WinPE cứu hộ)
+#      → WinPE làm như với máy Windows (xoá phần Linux, cài bản được chọn)
+#    · báo kết quả lần cài CachyOS (cb/job-result.json do cb-install.sh ghi) về web
+#    · cập nhật: bản kê công bố có mục "linux" (linux/cbagent.py …) + agent/lib của bản đó → tải, kiểm sha256, chạy thử, thay, chạy lại
+#  /opt/cloudblue: cb.json (bản sao của phân vùng cứu hộ) · seed.json (vé 1 lần, chỉ root đọc) · identity.json · rent.json · logs/
+#  Lệnh:  cbagent.py run | status | selfcheck | reinstall <bản> [all|disk|system]
+# =====================================================================================================
+import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
+
+LINUX_VER = "23.11c"
+HERE = os.path.dirname(os.path.abspath(__file__))
+BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
+for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
+    if _p not in sys.path: sys.path.insert(0, _p)
+
+import cbcore as C                                               # noqa: E402
+import pcagent                                                   # noqa: E402
+
+EFIVARS = "/sys/firmware/efi/efivars"
+REC_MNT = "/run/cloudblue/rec"
+LOCK = "/run/cloudblue-agent.lock"
+POWER_UNIT = "cloudblue-power"
+DM_CONF = {"plasmalogin": "/etc/plasmalogin.conf.d/autologin.conf", "sddm": "/etc/sddm.conf.d/autologin.conf"}
+LIB_FILES = ("agent/pcagent.py", "agent/pcremote.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
+REMOTE_LOCK = "/run/cloudblue-remote.lock"                        # cbremote.py giữ khoá này khi đang chạy
+SELF_REL = "linux/cbagent.py"
+LINUX_REL = re.compile(r"^linux/[A-Za-z0-9_.-]{1,60}\.(sh|cfg|py|service)$")   # = pcagent.LINUX_REL (giữ riêng: lõi agent chép từ phân vùng cứu hộ có thể là bản cũ)
+GST_ALA = "https://archive.archlinux.org/packages/g/gst-plugin-pipewire/"   # kho lưu trữ Arch: mọi phiên bản cũ của gói
+GST_RETRY_S = 6 * 3600                                           # cài gst-plugin-pipewire lỗi → 6 giờ sau thử lại
+PACDB = "/var/lib/pacman/sync"                                   # 23.11c: danh sách gói của pacman (core.db, extra.db…)
+PACDB_LOCK = "/var/lib/pacman/db.lck"
+PACDB_MAX_AGE_S = 7 * 86400                                      # danh sách cũ hơn 7 ngày → tải lại (gói đổi bản → danh sách cũ báo 404)
+PACDB_RETRY_S = 3600                                             # chưa tải được (chưa có mạng / khách đang chạy pacman) → 1 giờ sau thử lại
+ARCH_MIRRORLIST = "/etc/pacman.d/mirrorlist"
+ARCH_GEO = "Server = https://geo.mirror.pkgbuild.com/$repo/os/$arch"   # máy chủ gói chính thức của Arch (tự chọn nơi gần nhất)
+GRUB_DEFAULT = "/etc/default/grub"                                # 23.11c: phần mềm khách đổi tham số nhân kiểu máy GRUB (VD AccountOps)
+SDBOOT_DIR = "/boot/loader/entries"                               # máy CloudBlue khởi động bằng systemd-boot (cb-install)
+GRUB_DIR = "/boot/grub"
+CB_RELEASE = "/etc/cloudblue-release"                             # cb-post.sh ghi lúc cài máy = mốc giờ cài
+CMDLINE_OWN = re.compile(r"^(root|rootflags|rootfstype|BOOT_IMAGE|initrd)=|^(rw|ro)$")   # phần CloudBlue giữ, không lấy từ file grub
+
+
+def P(p):
+    """Đường dẫn kiểu Windows của lõi agent (logs\\a.json) → đường dẫn Linux."""
+    return str(p).replace("\\", "/")
+
+
+def sh(argv, timeout=60, input=None):
+    """Chạy 1 lệnh → (mã thoát, chữ in ra). Không ném lỗi."""
+    try:
+        r = subprocess.run([str(a) for a in argv], capture_output=True, timeout=timeout, input=input.encode() if isinstance(input, str) else input)
+        return r.returncode, ((r.stdout or b"") + (r.stderr or b"")).decode("utf-8", "replace")
+    except subprocess.TimeoutExpired:
+        return 124, "qua thoi gian"
+    except OSError as e:
+        return 127, str(e)
+
+
+def read(p, default=""):
+    try:
+        with open(p, encoding="utf-8", errors="replace") as f: return f.read()
+    except OSError:
+        return default
+
+
+# ====================================================================================== công cụ quay màn hình (GStreamer PipeWire)
+def gst_have():
+    """Có phần tử pipewiresrc (gói gst-plugin-pipewire) chưa — điều khiển từ xa cần nó để lấy hình từ cổng XDG của KDE."""
+    return sh(["gst-inspect-1.0", "--exists", "pipewiresrc"], 30)[0] == 0
+
+
+def gst_candidates(ver):
+    """Phiên bản gst-plugin-pipewire nên tải cho libpipewire <ver> (VD "1:1.6.8-1" → ["1:1.6.8-1", "1:1.6.8-2", "1:1.6.8-3"]).
+       Chuỗi lạ → [] (không đưa chữ lạ vào đường tải)."""
+    ver = str(ver or "").strip()
+    if not re.fullmatch(r"(?:[0-9]{1,3}:)?[0-9][0-9A-Za-z.+_]{0,30}-[0-9][0-9.]{0,8}", ver): return []
+    base = ver.rsplit("-", 1)[0]
+    out = []
+    for c in (ver, base + "-1", base + "-2", base + "-3"):
+        if c not in out: out.append(c)
+    return out
+
+
+def gst_install(log=lambda m: None):
+    """Cài gst-plugin-pipewire ĐÚNG phiên bản PipeWire đang có (gói từ kho lưu trữ Arch, pacman -U kiểm chữ ký; -dd = không kéo PipeWire mới:
+       "pacman -Sy gst-plugin-pipewire" đòi PipeWire mới hơn → vỡ pipewire-pulse / pipewire-jack đang cài). → (đã cài?, chữ báo). Không ném lỗi."""
+    rc, out = sh(["pacman", "-Q", "libpipewire"], 30)
+    parts = out.split() if rc == 0 else []
+    cands = gst_candidates(parts[1] if len(parts) >= 2 and parts[0] == "libpipewire" else "")
+    if not cands: return False, "khong ro phien ban PipeWire (%s)" % out.strip()[:60]
+    last = ""
+    for c in cands:
+        log("điều khiển từ xa: thiếu gst-plugin-pipewire → tải bản %s (đúng PipeWire đang có)" % c)
+        rc, out = sh(["pacman", "-U", "--noconfirm", "--needed", "-dd", GST_ALA + "gst-plugin-pipewire-%s-x86_64.pkg.tar.zst" % c], 900)
+        if rc == 0 and gst_have(): return True, c
+        last = " ".join(out.split())[-160:]
+    return False, last or "pacman loi"
+
+
+def pacdb_count(d=None):
+    try: return sum(1 for n in os.listdir(d or PACDB) if n.endswith(".db"))
+    except OSError: return 0
+
+
+def pacdb_age(d=None, now=None):
+    """Tuổi (giây) của danh sách gói pacman mới nhất · None = chưa có danh sách nào: máy cài từ ISO CachyOS (archiso xoá sẵn
+       /var/lib/pacman/sync/*.db) → khách chạy "pacman -S gói" (vd bộ cài AccountOps) báo "database file for 'core' does not exist"
+       + "target not found"; máy cài bằng trình cài gốc thì có sẵn."""
+    best, d = None, d or PACDB
+    try: names = os.listdir(d)
+    except OSError: names = []
+    for n in names:
+        if not n.endswith(".db"): continue
+        try: m = os.path.getmtime(os.path.join(d, n))
+        except OSError: continue
+        if best is None or m > best: best = m
+    return None if best is None else max(0.0, (time.time() if now is None else now) - best)
+
+
+def pac_mirror_fix(path=None):
+    """mirrorlist của Arch (kho core / extra / multilib) không có dòng "Server =" nào đang bật → thêm máy chủ gói chính thức của Arch.
+       → True nếu đã thêm. Không có file → không đụng."""
+    path = path or ARCH_MIRRORLIST
+    txt = read(path, None)
+    if txt is None or re.search(r"(?m)^[ \t]*Server[ \t]*=", txt): return False
+    try:
+        with open(path, "a", encoding="utf-8") as f: f.write("\n# CloudBlue: may chu goi chinh thuc cua Arch (tu chon gan nhat)\n" + ARCH_GEO + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def pacdb_sync(log=lambda m: None):
+    """Tải danh sách gói: "pacman -Sy" — CHỈ tải danh sách, KHÔNG nâng cấp / cài gói nào. → (được?, chữ báo). Không ném lỗi.
+       Đang có pacman khác chạy (khoá db.lck: khách / agent đang cài gói) → để lần sau, không đụng khoá."""
+    if os.path.exists(PACDB_LOCK): return False, "pacman dang chay (db.lck)"
+    if pac_mirror_fix(): log("pacman: mirrorlist Arch chưa có máy chủ nào → thêm geo.mirror.pkgbuild.com")
+    rc, out = sh(["pacman", "-Sy", "--noconfirm"], 600)
+    n = pacdb_count()
+    if rc == 0 and n: return True, "%d kho" % n
+    return False, (" ".join(out.split())[-160:] or "pacman loi") + (" (%d kho)" % n if n else "")
+
+
+def grub_cmdline_tokens(path=None):
+    """Tham số nhân trong /etc/default/grub (GRUB_CMDLINE_LINUX + GRUB_CMDLINE_LINUX_DEFAULT, dòng gán sau cùng thắng). Chỉ ĐỌC chữ, không chạy
+       file. Không có file → None."""
+    txt = read(path or GRUB_DEFAULT, None)
+    if txt is None: return None
+    val = {}
+    for line in txt.splitlines():
+        m = re.match(r"""^\s*(GRUB_CMDLINE_LINUX(?:_DEFAULT)?)=(?:"([^"]*)"|'([^']*)'|([^\s"'#]*))\s*(?:#.*)?$""", line)
+        if m: val[m.group(1)] = next(g for g in m.groups()[1:] if g is not None)
+    return [t for t in (val.get("GRUB_CMDLINE_LINUX", "") + " " + val.get("GRUB_CMDLINE_LINUX_DEFAULT", "")).split() if not t.startswith("$")]
+
+
+def cmdline_merge(base, extra):
+    """Dòng options của mục systemd-boot = phần của CloudBlue (root=…, rw, quiet…) + tham số trong /etc/default/grub (trùng tên → lấy bản grub)."""
+    key = lambda t: t.split("=", 1)[0]
+    ex = list(dict.fromkeys(t for t in extra if t and not CMDLINE_OWN.match(t)))
+    keys = {key(t) for t in ex}
+    return [t for t in base if CMDLINE_OWN.match(t) or key(t) not in keys] + ex
+
+
+def grub_dir_fix(entries=None, gdir=None):
+    """Máy khởi động bằng systemd-boot vẫn có gói grub: phần mềm khách chạy "grub-mkconfig -o /boot/grub/grub.cfg" báo lỗi vì thiếu /boot/grub
+       ("grub-mkconfig failed; old cmdline stays") → tạo thư mục (grub.cfg chỉ để công cụ chạy xong; máy vẫn khởi động bằng systemd-boot).
+       → True nếu vừa tạo."""
+    entries, gdir = entries or SDBOOT_DIR, gdir or GRUB_DIR
+    if os.path.isdir(entries) and not os.path.isdir(gdir) and shutil.which("grub-mkconfig"):
+        os.makedirs(gdir, exist_ok=True); return True
+    return False
+
+
+def sdboot_sync(state_path, grub=None, entries=None, marker=None):
+    """23.11c: phần mềm khách (VD AccountOps: mitigations=off zswap.enabled=0) đổi tham số nhân kiểu máy GRUB (sửa /etc/default/grub rồi
+       grub-mkconfig) — máy CloudBlue khởi động bằng systemd-boot nên không ăn → chép tham số trong /etc/default/grub sang các mục
+       /boot/loader/entries/*.conf (khởi động lại là có hiệu lực, như máy cài bằng trình cài gốc). Chỉ làm khi file grub đổi SAU lúc cài máy;
+       phần của CloudBlue (root=, rootflags=, rw…) giữ nguyên. → chữ báo (đã chép / lỗi) | None. Không ném lỗi."""
+    grub, entries, marker = grub or GRUB_DEFAULT, entries or SDBOOT_DIR, marker or CB_RELEASE
+    try:
+        if not os.path.isdir(entries) or not os.path.isfile(grub): return None
+        m = os.path.getmtime(grub)
+        try:
+            with open(state_path, encoding="utf-8") as f: st = json.load(f)
+        except (OSError, ValueError): st = {}
+        if not isinstance(st, dict): st = {}
+        if st.get("mtime") == m: return None
+        base = st.get("base") if isinstance(st.get("base"), dict) else {}
+        names = sorted(n for n in os.listdir(entries) if n.endswith(".conf") and re.fullmatch(r"[A-Za-z0-9._@+-]{1,80}", n))
+        cur = {}
+        for n in names:
+            mo = re.search(r"(?m)^options[ \t]+(.*)$", read(os.path.join(entries, n), ""))
+            cur[n] = mo.group(1).split() if mo else []
+            if not isinstance(base.get(n), list): base[n] = cur[n]
+
+        def save():
+            tmp = state_path + ".tmp"
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f: json.dump({"mtime": m, "base": base}, f)
+            os.replace(tmp, state_path)
+        try: inst = os.path.getmtime(marker)
+        except OSError: inst = 0
+        if not st and m <= inst + 2: save(); return None             # file grub chưa đổi từ lúc cài → chỉ ghi phần gốc của từng mục
+        extra = grub_cmdline_tokens(grub) or []
+        done = []
+        for n in names:
+            new = cmdline_merge(base[n], extra)
+            if new == cur[n]: continue
+            p = os.path.join(entries, n); txt = read(p, ""); line = "options " + " ".join(new)
+            txt = re.sub(r"(?m)^options[ \t]+.*$", lambda _: line, txt, count=1) if re.search(r"(?m)^options[ \t]", txt) else txt.rstrip("\n") + "\n" + line + "\n"
+            with open(p + ".cbtmp", "w", encoding="utf-8") as f: f.write(txt)
+            os.replace(p + ".cbtmp", p); done.append(n)
+        save()
+        if done: return "đã chép tham số nhân từ /etc/default/grub sang %d mục khởi động (%s) — khởi động lại máy là có hiệu lực" % (len(done), " ".join(extra)[:200])
+        return None
+    except Exception as e:
+        return "lỗi chép tham số nhân: %r" % (e,)
+
+
+# ====================================================================================== tệp + giờ (thay cbsys.WinSys cho lõi agent)
+class LinuxSys:
+    dry = False
+
+    def __init__(self, log=None): self._log = log or (lambda *a: None)
+    def log(self, *a):
+        try: self._log(" ".join(str(x) for x in a))
+        except Exception: pass
+    def now(self): return time.time()
+    def sleep(self, s): time.sleep(s)
+    def exists(self, p): return os.path.exists(P(p))
+    def isdir(self, p): return os.path.isdir(P(p))
+    def listdir(self, p):
+        try: return os.listdir(P(p))
+        except OSError: return []
+    def size(self, p):
+        try: return os.path.getsize(P(p))
+        except OSError: return 0
+    def read_text(self, p):
+        with open(P(p), "r", encoding="utf-8-sig") as f: return f.read()
+    def read_bytes(self, p):
+        with open(P(p), "rb") as f: return f.read()
+
+    def _write(self, p, data, mode):
+        p = P(p)
+        os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+        tmp = p + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+        with os.fdopen(fd, "wb") as f: f.write(data)
+        os.replace(tmp, p)
+
+    def write_text(self, p, s, encoding="utf-8"): self._write(p, s.encode(encoding), 0o600)
+    def write_bytes(self, p, b): self._write(p, bytes(b), 0o644 if str(p).endswith(".py") else 0o600)
+    def makedirs(self, p): os.makedirs(P(p), exist_ok=True)
+
+    def remove(self, p):
+        try:
+            if os.path.isfile(P(p)): os.remove(P(p))
+        except OSError: pass
+
+    def rename(self, a, b): os.replace(P(a), P(b))
+    def firmware(self): return "uefi" if os.path.isdir("/sys/firmware/efi") else "bios"
+    def disks(self): return []
+    def volumes(self): return []
+
+    def run(self, argv, timeout=3600, show=False, input=None, change=True): return sh(argv, timeout, input)
+
+    def efi_get(self, name, guid="{8BE4DF61-93CA-11D2-AA0D-00E098032B8C}"):
+        """Đọc 1 biến UEFI qua efivarfs (4 byte đầu = thuộc tính). Không có → None."""
+        g = str(guid).strip("{}").lower()
+        try:
+            with open(os.path.join(EFIVARS, "%s-%s" % (name, g)), "rb") as f: b = f.read()
+            return b[4:] if len(b) > 4 else None
+        except OSError:
+            return None
+
+    def efi_set(self, name, data, guid="{8BE4DF61-93CA-11D2-AA0D-00E098032B8C}", attrs=7):
+        """Ghi 1 biến UEFI qua efivarfs (4 byte thuộc tính + dữ liệu, ĐÚNG 1 lần ghi); dữ liệu rỗng = xoá biến. Được → True.
+           BootNext / BootOrder / Boot#### không bị efivarfs khoá (immutable) nên ghi thẳng được; lỗi gì → False (người gọi thử efibootmgr)."""
+        path = os.path.join(EFIVARS, "%s-%s" % (name, str(guid).strip("{}").lower()))
+        try:
+            if not data:
+                if os.path.exists(path): os.remove(path)
+                return True
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT, 0o644)
+            try: n = os.write(fd, int(attrs).to_bytes(4, "little") + bytes(data))
+            finally: os.close(fd)
+            return n == 4 + len(data)
+        except OSError:
+            return False
+
+
+# ====================================================================================== thông tin máy + việc của hệ điều hành
+def os_release():
+    d = {}
+    for ln in read("/etc/os-release").splitlines():
+        if "=" in ln:
+            k, v = ln.split("=", 1); d[k.strip()] = v.strip().strip('"')
+    return d
+
+
+def gui_sessions():
+    """[(uid, tên, số phiên)] các phiên đồ hoạ đang mở (loginctl)."""
+    out = []
+    rc, txt = sh(["loginctl", "list-sessions", "--no-legend"], 15)
+    for ln in txt.splitlines() if rc == 0 else []:
+        f = ln.split()
+        if len(f) < 3 or not f[1].isdigit(): continue
+        rc2, t2 = sh(["loginctl", "show-session", f[0], "-p", "Type", "-p", "Active"], 10)
+        if rc2 == 0 and re.search(r"Type=(wayland|x11)", t2): out.append((int(f[1]), f[2], f[0]))
+    return out
+
+
+class LinuxHost:
+    def __init__(self, user=""): self.user = user or ""
+    def hostname(self): return socket.gethostname()
+
+    def os_ver(self):
+        r = os_release()
+        return ("%s %s" % (r.get("BUILD_ID") or r.get("VERSION_ID") or "rolling", os.uname().release)).strip()[:40]
+
+    def os_name(self): return (os_release().get("PRETTY_NAME") or "CachyOS Linux")[:40]
+
+    def cpu(self):
+        m = re.search(r"^model name\s*:\s*(.+)$", read("/proc/cpuinfo"), re.M)
+        return (m.group(1).strip() if m else ""), (os.cpu_count() or 0)
+
+    def ram_gb(self):
+        m = re.search(r"^MemTotal:\s*(\d+)", read("/proc/meminfo"), re.M)
+        return round(int(m.group(1)) / 2 ** 20, 1) if m else 0
+
+    def gpus(self):
+        rc, txt = sh(["lspci", "-mm"], 20)
+        out = []
+        for ln in txt.splitlines() if rc == 0 else []:
+            q = re.findall(r'"([^"]*)"', ln)
+            if len(q) >= 3 and re.search(r"VGA|3D|Display", q[0]):
+                n = re.sub(r"\s+", " ", ("%s %s" % (q[1], q[2])).replace("Corporation", "")).strip()
+                if n not in out: out.append(n[:80])
+        return out
+
+    def lan_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]; s.close()
+            return ip
+        except OSError:
+            return ""
+
+    def uptime(self):
+        try: return int(float(read("/proc/uptime", "0").split()[0]))
+        except (ValueError, IndexError): return 0
+
+    def smbios(self):
+        try:
+            with open("/sys/firmware/dmi/tables/DMI", "rb") as f: t = f.read()
+            return pcagent.parse_smbios(bytes(8)[:4] + len(t).to_bytes(4, "little") + t)
+        except OSError:
+            return pcagent.parse_smbios(b"")
+
+    def power(self, reboot=True, delay=5, msg=""):
+        """Hẹn khởi động lại / tắt máy sau `delay` giây (đơn vị systemd tạm — huỷ được bằng abort_shutdown) + báo khách."""
+        if msg: self.notify(msg, max(10, int(delay)))
+        what = "reboot" if reboot else "poweroff"
+        if int(delay) <= 0:
+            sh(["systemctl", what], 60); return
+        sh(["systemctl", "stop", POWER_UNIT + ".timer", POWER_UNIT + ".service"], 20)
+        rc, _ = sh(["systemd-run", "--unit=" + POWER_UNIT, "--on-active=%ds" % int(delay), "--timer-property=AccuracySec=1s", "systemctl", what], 30)
+        if rc != 0: sh(["shutdown", "-r" if reboot else "-P", "+%d" % max(1, int(delay) // 60)], 30)
+
+    def abort_shutdown(self):
+        sh(["systemctl", "stop", POWER_UNIT + ".timer", POWER_UNIT + ".service"], 20)
+        sh(["shutdown", "-c"], 20)
+
+    def autologon(self, on):
+        """Bật / tắt TỰ ĐĂNG NHẬP khách (màn hình đăng nhập plasmalogin / sddm). Khoá máy hết hạn: tắt + khởi động lại → dừng ở màn hình đăng nhập."""
+        dm = os.path.basename(os.path.realpath("/etc/systemd/system/display-manager.service")).replace(".service", "")
+        path = DM_CONF.get(dm)
+        if not path or not self.user: return False
+        try:
+            if on:
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with open(path, "w", encoding="utf-8") as f: f.write("[Autologin]\nUser=%s\nSession=plasma.desktop\nRelogin=true\n" % self.user)
+            elif os.path.exists(path):
+                os.remove(path)
+            return True
+        except OSError:
+            return False
+
+    def set_clock(self, epoch):
+        rc, _ = sh(["date", "-u", "-s", "@%d" % int(epoch)], 20)
+        if rc == 0: sh(["hwclock", "--systohc", "--utc"], 30)
+        return rc == 0
+
+    def show_code(self, code):
+        """SỐ MÁY ra màn hình nền của khách: file 'May so <số> (CloudBlue).txt' (root sở hữu, khách chỉ đọc). Số rỗng → gỡ file."""
+        if not self.user: return False
+        desk = os.path.join("/home", self.user, "Desktop")
+        try:
+            want = ("May so %s (CloudBlue).txt" % code) if code else ""
+            if os.path.isdir(desk):
+                for f in os.listdir(desk):
+                    if re.fullmatch(r"May so .{1,40} \(CloudBlue\)\.txt", f) and f != want: os.remove(os.path.join(desk, f))
+            if want:
+                os.makedirs(desk, exist_ok=True)
+                p = os.path.join(desk, want)
+                with open(p, "w", encoding="utf-8") as f:
+                    f.write("MÁY SỐ: %s\n\nKhi cần hỗ trợ (máy lỗi, gia hạn...), hãy báo cho shop SỐ MÁY này.\nCloudBlue PC\n" % code)
+                os.chmod(p, 0o644)
+            return True
+        except OSError:
+            return False
+
+    def drivers(self): return None
+
+    def remote_running(self):
+        """cbremote.py (điều khiển từ xa) đang chạy? — nó giữ khoá REMOTE_LOCK suốt lúc chạy."""
+        try: fd = os.open(REMOTE_LOCK, os.O_RDWR | os.O_CREAT, 0o600)
+        except OSError: return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB); fcntl.flock(fd, fcntl.LOCK_UN)
+            return False
+        except OSError:
+            return True
+        finally:
+            os.close(fd)
+
+    def remote_start(self, script):
+        """Mở cbremote.py (root) chạy nền; nhật ký riêng ở logs/remote.log (+ remote.out cho lỗi Python). → pid."""
+        d = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(script))), "logs")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, "remote.out"), "ab") as out:
+            p = subprocess.Popen([sys.executable, "-I", "-B", script, "run"], stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True)
+        return p.pid
+
+    def notify(self, text, secs=60):
+        """Hộp báo cho khách: thông báo trên màn hình mọi phiên đồ hoạ (notify-send, mức khẩn) + wall cho cửa sổ lệnh."""
+        text = str(text)[:250]
+        for uid, name, _ in gui_sessions():
+            env = ["env", "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus" % uid, "XDG_RUNTIME_DIR=/run/user/%d" % uid]
+            sh(["runuser", "-u", name, "--"] + env + ["notify-send", "-u", "critical", "-a", "CloudBlue PC", "-t", str(max(5, int(secs)) * 1000),
+                                                      "CloudBlue PC", text], 15)
+        sh(["wall", text], 10)
+
+    def mutex(self):
+        try:
+            self._lk = open(LOCK, "w")
+            fcntl.flock(self._lk, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return True
+        except OSError:
+            return False
+
+    def restart_self(self): return True                         # systemd (Restart=always) chạy lại sau khi thoát
+
+    def selfcheck(self, script):
+        rc, out = sh([sys.executable, "-I", "-B", script, "selfcheck"], 120)
+        return rc == 0, out[-400:]
+
+
+# ====================================================================================== phân vùng cứu hộ (NTFS) — gắn khi cần, gỡ ngay sau
+class LinuxRec:
+    def __init__(self, uuid="", log=None):
+        self.uuid = uuid if re.fullmatch(r"[0-9A-Fa-f]{16}", str(uuid or "")) else ""
+        self.log = log or (lambda m: None)
+
+    def device(self):
+        """Thiết bị của phân vùng cứu hộ: theo UUID (số seri NTFS, cb-install ghi vào seed.json) rồi theo nhãn CBRECOVERY."""
+        for args in ([["-U", self.uuid]] if self.uuid else []) + [["-L", C.REC_LABEL]]:
+            rc, out = sh(["blkid"] + args, 15)
+            dev = out.strip().splitlines()[0] if rc == 0 and out.strip() else ""
+            if dev.startswith("/dev/"): return dev
+        return ""
+
+    def __enter__(self): return self
+    def __exit__(self, *a): self.umount()
+
+    def mount(self, rw=False):
+        """Gắn phân vùng cứu hộ tại /run/cloudblue/rec (chỉ root đọc) → đường gốc có '/' cuối. Không thấy / không gắn được → None."""
+        dev = self.device()
+        if not dev: return None
+        os.makedirs(REC_MNT, mode=0o700, exist_ok=True)
+        if os.path.ismount(REC_MNT):
+            if rw: sh(["mount", "-o", "remount,rw", REC_MNT], 30)
+            return REC_MNT + "/"
+        opt = ("rw" if rw else "ro") + ",uid=0,gid=0,umask=077"
+        for fs in ("ntfs3", "ntfs-3g", "ntfs"):
+            rc, out = sh(["mount", "-t", fs, "-o", opt, dev, REC_MNT], 60)
+            if rc == 0: return REC_MNT + "/"
+        self.log("chưa gắn được phân vùng cứu hộ %s: %s" % (dev, out.strip()[-160:]))
+        return None
+
+    def umount(self):
+        if os.path.ismount(REC_MNT):
+            sh(["sync"], 30); sh(["umount", REC_MNT], 60)
+
+    def cfg(self, root): return C.load_json(LinuxSys(), root + "cb/cb.json") or {}
+
+    def status(self):
+        root = self.mount()
+        if not root: return {"ok": False, "images": []}
+        try:
+            cfg = self.cfg(root)
+            ok_file = lambda rel: os.path.exists(root + P(rel))
+            imgs = [im["id"] for im in cfg.get("images") or [] if ok_file(im["file"]) and (not C.is_linux(im) or all(ok_file(r) for r in C.LINUX_FILES))]
+            ok = bool(imgs) and ok_file("cb\\boot\\boot.wim") and ok_file("cb\\boot\\boot.sdi")
+            return {"ok": ok, "images": imgs, "ver": cfg.get("ver") or "", "lx": 2}     # "lx": luật xét CachyOS 22.11f (xem cbrec.status)
+        finally:
+            self.umount()
+
+    def take_result(self, clear=False):
+        root = self.mount(rw=clear)
+        if not root: return None
+        try:
+            p = root + "cb/job-result.json"
+            if clear:
+                try: os.remove(p)
+                except OSError: pass
+                return None
+            return C.load_json(LinuxSys(), p)
+        finally:
+            self.umount()
+
+    def stage_job(self, job, hostname, now, win_hint):
+        """Ghi lệnh cài lại lên phân vùng cứu hộ (như cbrec.stage_job của Windows) + BootNext = Windows Boot Manager (→ WinPE cứu hộ).
+           win_hint = vị trí phân vùng Linux đang chạy (wipe=system: WinPE thay ĐÚNG phần hệ điều hành, giữ dữ liệu khác). Trả bản sẽ cài."""
+        root = self.mount(rw=True)
+        if not root: raise C.Stop("May nay khong thay phan vung cuu ho CloudBlue - khong cai lai tu xa duoc.")
+        try:
+            cfg = self.cfg(root)
+            image = C.find_image(cfg, job.get("os"))
+            need = [image["file"], "cb\\boot\\boot.wim", "cb\\boot\\boot.sdi"] + (list(C.LINUX_FILES) if C.is_linux(image) else [])
+            for rel in need:
+                if not os.path.exists(root + P(rel)): raise C.Stop("Phan vung cuu ho thieu file %s" % rel)
+            if job.get("wipe") not in ("all", "disk", "system"): raise C.Stop("Kieu xoa '%s' khong hop le." % job.get("wipe"))
+            if C.is_linux(image) and C.secure_boot_on(LinuxSys()): raise C.Stop("May dang BAT Secure Boot - CachyOS can TAT Secure Boot trong BIOS truoc.")
+            wbm = efi_find("Windows Boot Manager")
+            if wbm is None: raise C.Stop("Khong thay muc khoi dong 'Windows Boot Manager' (loi ve bo cai WinPE) trong BIOS.")
+            j = {k: v for k, v in job.items() if k in ("id", "os", "wipe", "ticket", "enroll_key", "hw", "tries")}
+            j.update(win=win_hint or {}, name=hostname, state="queued", attempts=0, ts=int(now), from_os="cachyos")
+            C.save_json(LinuxSys(), root + "cb/job.json", j)
+            try: os.remove(root + "cb/job-result.json")
+            except OSError: pass
+            ok, why = boot_next(wbm)
+            if not ok:                                              # không đặt được → gỡ lệnh vừa ghi (lần sau máy vào WinPE vì lý do khác sẽ KHÔNG tự cài lại)
+                try: os.remove(root + "cb/job.json")
+                except OSError: pass
+                raise C.Stop("Khong dat duoc khoi dong 1 lan vao Windows Boot Manager (%s)" % (why or "efivarfs + efibootmgr deu loi"))
+            return image
+        finally:
+            self.umount()
+
+    def pending_job(self):
+        """Lệnh cài lại đang chờ trên phân vùng cứu hộ (cb/job.json) hoặc None."""
+        root = self.mount()
+        if not root: return None
+        try: return C.load_json(LinuxSys(), root + "cb/job.json")
+        finally: self.umount()
+
+    def drop_job(self):
+        root = self.mount(rw=True)
+        if root:
+            try:
+                try: os.remove(root + "cb/job.json")
+                except OSError: pass
+            finally:
+                self.umount()
+        if not LinuxSys().efi_set("BootNext", b""): sh(["efibootmgr", "-q", "-N"], 30)
+
+
+def efi_find(desc):
+    """Số mục Boot#### có tên `desc`: đọc thẳng NVRAM (efivarfs), không thấy thì hỏi efibootmgr. Không có → None."""
+    try:
+        n = C.efi_find(LinuxSys(), desc)
+        if n is not None: return n
+    except Exception: pass
+    rc, out = sh(["efibootmgr"], 20)
+    for ln in out.splitlines() if rc == 0 else []:
+        m = re.match(r"^Boot([0-9A-Fa-f]{4})\*?\s+(.+?)(\t|\s{2,}|$)", ln)
+        if m and m.group(2).strip() == desc: return int(m.group(1), 16)
+    return None
+
+
+def boot_next(num):
+    """Lần khởi động SAU (1 lần) vào mục Boot`num`: ghi biến BootNext qua efivarfs, không được thì efibootmgr -n. → (được?, lời lỗi)."""
+    try:
+        if C.efi_boot_next(LinuxSys(), num): return True, ""
+    except Exception: pass
+    rc, out = sh(["efibootmgr", "-q", "-n", "%04X" % int(num)], 30)
+    return rc == 0, ("efibootmgr: " + out.strip()[-120:]) if rc else ""
+
+
+def root_hint():
+    """Vị trí phân vùng gốc Linux đang chạy trên ổ: {"offset", "size"} tính bằng byte (giống vị trí ổ C: mà agent Windows ghi)."""
+    rc, out = sh(["findmnt", "-no", "SOURCE", "/"], 10)
+    dev = re.sub(r"\[.*\]$", "", out.strip().splitlines()[0]) if rc == 0 and out.strip() else ""
+    name = os.path.basename(os.path.realpath(dev)) if dev else ""
+    try:
+        start = int(read("/sys/class/block/%s/start" % name, "0")) * 512
+        size = int(read("/sys/class/block/%s/size" % name, "0")) * 512
+        return {"offset": start, "size": size} if start and size else {}
+    except ValueError:
+        return {}
+
+
+def root_disk():
+    """(serial, model) của ổ chứa hệ thống (dấu phần cứng dự phòng khi seed.json không có)."""
+    rc, out = sh(["findmnt", "-no", "SOURCE", "/"], 10)
+    dev = re.sub(r"\[.*\]$", "", out.strip().splitlines()[0]) if rc == 0 and out.strip() else ""
+    rc, pk = sh(["lsblk", "-no", "PKNAME", dev], 10) if dev else (1, "")
+    disk = pk.strip().splitlines()[0] if rc == 0 and pk.strip() else ""
+    rc, txt = sh(["lsblk", "-dno", "SERIAL,MODEL", "/dev/" + disk], 10) if disk else (1, "")
+    f = txt.strip().split(None, 1) if rc == 0 else []
+    return (f[0] if f else ""), (f[1] if len(f) > 1 else "")
+
+
+# ====================================================================================== agent
+class LinuxAgent(pcagent.Agent):
+    def __init__(self, sysx, host, net, base=BASE, log=None, rec=None):
+        super().__init__(sysx, host, net, base=base, log=log)
+        seed = C.load_json(sysx, self.p("seed.json")) or {}
+        self.rec = rec or LinuxRec(seed.get("rec_uuid") or "", self.log)
+        self.result_sent = False
+        self.gst_state = ""                                       # "" chưa xét · "ok" đủ · "busy" đang cài · "fail" lỗi (chờ GST_RETRY_S)
+        self.gst_try = None
+        self.pac_state = ""                                       # 23.11c danh sách gói pacman: "" chưa xét · "ok" · "busy" đang tải · "fail"
+        self.pac_try = None
+        self.pac_ok_at = None
+        self.grub_dir_done = False
+
+    def p(self, rel): return os.path.join(self.base, P(rel))
+
+    # ---- thông tin máy cho web
+    def calc_hw(self):
+        ser, mod = root_disk()
+        return pcagent.hw_id(self.h.smbios(), ser, mod)
+
+    def info(self):
+        cpu, cores = self.h.cpu()
+        i = {"host": self.h.hostname(), "os": "cachyos", "os_ver": self.h.os_ver(), "os_name": self.h.os_name(), "agent": LINUX_VER, "cpu": cpu,
+             "cores": cores, "ram_gb": self.h.ram_gb(), "gpus": self.h.gpus()[:6], "lan_ip": self.h.lan_ip(), "uptime": self.h.uptime(),
+             "fw": self.s.firmware(), "linux": True}
+        try: i["rec"] = self.rec.status()
+        except Exception as e: i["err"] = str(e)[:120]
+        smb = self.h.smbios()
+        i["board"] = (smb.get("board") or (smb.get("vendor", "") + " " + smb.get("product", "")).strip())[:60]
+        try:
+            g = sh(["id", "-nG", self.h.user], 10)[1].split() if self.h.user else []
+            i["sec"] = {"std": "wheel" not in g, "hard": True, "lock": True}
+        except Exception: pass
+        i["rmt"] = self.remote_info() or {"v": "", "s": "chua chay", "age": 0}
+        e = self.remote_open_err()
+        if e: i["rmt"]["e"] = e                                       # 22.11g: lỗi mở màn hình gần nhất (≤ 1 ngày) — xem được trên web / SQL
+        return i
+
+    def remote_open_err(self, max_age=86400):
+        """logs/remote.err (cbremote ghi khi không mở được màn hình để quay) → "<cách đây n phút>: <lỗi>" hoặc ""."""
+        try:
+            q = self.s.read_text(self.p("logs/remote.err")).strip().split(" ", 1)
+            age = int(self.s.now() - int(q[0]))
+            if len(q) < 2 or age > max_age: return ""
+            return ("%dp: " % (age // 60)) + re.sub(r"[^ -~]", "?", q[1])[:200]
+        except Exception:
+            return ""
+
+    # ---- kết quả lần cài CachyOS (cb-install.sh ghi lên phân vùng cứu hộ)
+    def check_result(self):
+        if self.pending_done or self.result_sent: return
+        try: res = self.rec.take_result()
+        except Exception: res = None
+        if not isinstance(res, dict): self.result_sent = True; return
+        if not re.fullmatch(r"[0-9]{1,18}", str(res.get("id"))):
+            self.rec.take_result(clear=True); self.result_sent = True; return
+        self.done(int(res["id"]), res.get("ok"), {k: res.get(k) for k in ("msg", "os", "secs", "pe")})
+        self.result_from_rec = True
+
+    def job_orphan(self): return None
+    def pe_sync(self): return None
+    def rec_admin(self, want): return True
+
+    def gst_heal(self):
+        """Máy thiếu pipewiresrc (cài từ ISO lúc chưa có mạng / bản cài 22.11e) → tự cài gst-plugin-pipewire ở luồng nền (tải tới 15 phút,
+           không chặn việc hỏi máy chủ). cbcap tự dò lại công cụ sau 60 giây → cài xong là điều khiển được, không phải cài lại máy.
+           → "ok" | "busy" | "wait" | "start". Không ném lỗi."""
+        try:
+            if self.gst_state in ("ok", "busy"): return self.gst_state
+            now = self.s.now()
+            if self.gst_try is not None and now - self.gst_try < GST_RETRY_S: return "wait"
+            self.gst_try = now
+            if gst_have(): self.gst_state = "ok"; return "ok"
+            self.gst_state = "busy"
+
+            def run():
+                try:
+                    ok, why = gst_install(self.log)
+                    self.gst_state = "ok" if ok else "fail"
+                    self.log("điều khiển từ xa: " + ("đã cài gst-plugin-pipewire %s — quay màn hình được" % why if ok
+                                                     else "chưa cài được gst-plugin-pipewire (%s) — %d giờ sau thử lại" % (why, GST_RETRY_S // 3600)))
+                except Exception as e:
+                    self.gst_state = "fail"; self.log("điều khiển từ xa: lỗi khi cài gst-plugin-pipewire: %r" % (e,))
+            threading.Thread(target=run, name="gst-heal", daemon=True).start()
+            return "start"
+        except Exception as e:
+            self.gst_state = "fail"; self.log("điều khiển từ xa: lỗi xét công cụ quay màn hình: %r" % (e,))
+            return "fail"
+
+    def pac_heal(self):
+        """23.11c: danh sách gói pacman thiếu (máy cài từ ISO CachyOS) hoặc cũ hơn 7 ngày → tải lại ở luồng nền ("pacman -Sy": chỉ tải danh
+           sách, không nâng cấp gói nào) → khách chạy lệnh cài phần mềm (pacman -S …) như máy cài bằng trình cài gốc. Chưa tải được → 1 giờ
+           sau thử lại. → "ok" | "busy" | "wait" | "start" | "fail". Không ném lỗi."""
+        try:
+            if self.pac_state == "busy": return "busy"
+            now = self.s.now()
+            age = pacdb_age(now=now)
+            if age is not None and (age < PACDB_MAX_AGE_S or (self.pac_ok_at is not None and now - self.pac_ok_at < PACDB_MAX_AGE_S)):
+                self.pac_state = "ok"; return "ok"
+            if self.pac_try is not None and now - self.pac_try < PACDB_RETRY_S: return "wait"
+            self.pac_try = now
+            self.pac_state = "busy"
+
+            def run():
+                try:
+                    ok, why = pacdb_sync(self.log)
+                    if ok: self.pac_ok_at = self.s.now()
+                    self.pac_state = "ok" if ok else "fail"
+                    self.log("pacman: " + ("đã tải danh sách gói (%s) — khách cài phần mềm bằng pacman -S được" % why if ok
+                                           else "chưa tải được danh sách gói (%s) — %d phút sau thử lại" % (why, PACDB_RETRY_S // 60)))
+                except Exception as e:
+                    self.pac_state = "fail"; self.log("pacman: lỗi khi tải danh sách gói: %r" % (e,))
+            threading.Thread(target=run, name="pac-heal", daemon=True).start()
+            return "start"
+        except Exception as e:
+            self.pac_state = "fail"; self.log("pacman: lỗi xét danh sách gói: %r" % (e,))
+            return "fail"
+
+    def boot_heal(self):
+        """23.11c: phần mềm khách đổi tham số nhân kiểu GRUB → tạo /boot/grub (grub-mkconfig chạy được) + chép tham số sang systemd-boot."""
+        try:
+            if not self.grub_dir_done:
+                self.grub_dir_done = True
+                if grub_dir_fix(): self.log("tham số nhân: tạo /boot/grub — phần mềm khách chạy grub-mkconfig được (máy vẫn khởi động bằng systemd-boot)")
+            r = sdboot_sync(self.p("cmdline.json"))
+            if r: self.log("tham số nhân: " + r)
+            return r
+        except Exception as e:
+            self.log("tham số nhân: lỗi %r" % (e,)); return None
+
+    def tick(self):
+        nap = super().tick()
+        if not self.rebooting: self.pac_heal(); self.boot_heal()
+        return nap
+
+    def remote_keep(self):
+        """Giữ cbremote.py (điều khiển từ xa, root) chạy: chưa chạy / tự thoát để lên bản mới → mở lại (cách nhau ≥ REMOTE_RETRY_S). Không ném lỗi."""
+        try:
+            if self.cfg.get("remote") is False or not self.ident: return None
+            self.gst_heal()
+            script = self.p("linux/cbremote.py")
+            if not os.path.isfile(script) or not os.path.isfile(self.p("agent/pcremote.py")): return None
+            if self.h.remote_running(): self.remote_err = ""; return "run"
+            now = self.s.now()
+            if self.remote_try is not None and now - self.remote_try < pcagent.REMOTE_RETRY_S: return "wait"
+            self.remote_try = now
+            pid = self.h.remote_start(script)
+            self.log("đã mở chương trình điều khiển từ xa (CachyOS, pid %s)" % pid)
+            return "start"
+        except Exception as e:
+            if str(e) != self.remote_err:
+                self.remote_err = str(e); self.log("chưa mở được chương trình điều khiển từ xa: %s" % e)
+            return "err"
+
+    def poll(self, send_info=True):
+        had = self.result_from_rec and self.pending_done is not None
+        r = super().poll(send_info)
+        if had and self.pending_done is None:                               # máy chủ đã nhận kết quả → xoá file trên phân vùng cứu hộ (lõi Windows chỉ xoá kiểu Windows)
+            try: self.rec.take_result(clear=True)
+            except Exception: pass
+            self.result_from_rec = False; self.result_sent = True
+        return r
+
+    # ---- công tắc "Cho khách quyền Admin" của shop → khách trong nhóm wheel (sudo) hay không
+    def admin_sync(self, r):
+        want = r.get("cust_admin")
+        if not isinstance(want, bool) or not self.h.user: return False
+        g = sh(["id", "-nG", self.h.user], 10)[1].split()
+        if want == ("wheel" in g): return False
+        rc, out = sh(["gpasswd", "-a" if want else "-d", self.h.user, "wheel"], 30)
+        self.log("công tắc quyền Admin: %s khách %s nhóm wheel (sudo)%s" % ("thêm" if want else "bỏ", self.h.user, "" if rc == 0 else " — LỖI " + out.strip()[-100:]))
+        try:
+            self.cfg["user_admin"] = want; C.save_json(self.s, self.p("cb.json"), self.cfg)
+        except Exception: pass
+        return rc == 0
+
+    # ---- lệnh
+    def handle(self, o):
+        cmd, oid, args = o.get("cmd"), o.get("id"), o.get("args") or {}
+        if cmd != "reinstall" and cmd != "update": return super().handle(o)
+        self.log("nhận lệnh #%s: %s %s" % (oid, cmd, {k: v for k, v in args.items() if k != "ticket"}))
+        if cmd == "update":
+            v = self.update(self.last_manifest, force=True)
+            self.done(oid, bool(v), {"msg": v or "không có bản mới / tải lỗi", "agent": LINUX_VER}); return
+        seed = C.load_json(self.s, self.p("seed.json")) or {}
+        if isinstance(seed, dict) and seed.get("from") == "job" and oid is not None and str(seed.get("order")) == str(oid):
+            self.log("lệnh #%s: CachyOS này do chính lệnh đó cài ra (kết quả chưa tới web) → báo đã xong, KHÔNG cài lại" % oid)
+            self.done(oid, True, {"msg": "xong (agent tự nhận ra: CachyOS do chính lệnh này cài)", "os": seed.get("os"), "pe": seed.get("pe") or "cb-install"}); return
+        try:
+            old = self.rec.pending_job()
+            tries = int((old or {}).get("tries") or 0) if isinstance(old, dict) and str(old.get("id")) == str(oid) else 0
+            if tries >= 2:                                          # đã khởi động lại 2 lần mà máy vẫn về CachyOS (BIOS bỏ qua BootNext?) → thôi, báo lỗi
+                self.rec.drop_job()
+                self.done(oid, False, {"msg": "máy không khởi động được vào bộ cài lại (đã thử 2 lần) — kiểm BIOS: phải còn mục 'Windows Boot Manager'"}); return
+            job = {"id": oid, "os": args.get("os"), "wipe": args.get("wipe") or "all", "ticket": args.get("ticket"), "hw": (self.ident or {}).get("hw"), "tries": tries + 1}
+            img = self.rec.stage_job(job, self.h.hostname(), self.s.now(), root_hint())
+        except C.Stop as e:
+            self.done(oid, False, {"msg": str(e)[:300]}); return
+        except Exception as e:
+            self.done(oid, False, {"msg": "lỗi chuẩn bị cài lại: %s" % str(e)[:200]}); self.log(traceback.format_exc()); return
+        self.log("đã ghi lệnh cài lại %s (%s) → khởi động lại vào bộ cài sau 30 giây" % (img["id"], job["wipe"]))
+        self.rebooting = True
+        what = "CAI LAI CachyOS" if C.is_linux(img) else "CAI WINDOWS %s" % str(img["id"]).upper()
+        self.h.power(reboot=True, delay=30, msg="CloudBlue: may se %s sau 30 giay. Du lieu tren may se bi xoa." % what)
+
+    # ---- tự cập nhật (mục "linux" + agent/lib của bản kê admin công bố)
+    def update(self, m, force=False):
+        if not isinstance(m, dict) or not isinstance(m.get("linux"), dict) or SELF_REL not in m["linux"]: return None
+        ver = str(m.get("ver") or "")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,24}", ver) or (ver == self.bad_update and not force): return None
+        base = str(m.get("base") or "")
+        if not base.startswith(self.cfg.get("update_base") or pcagent.UPDATE_BASE): self.bad_update = ver; return None
+        want = {rel: sha for rel, sha in (m.get("files") or {}).items() if rel in LIB_FILES}
+        want.update({rel: sha for rel, sha in m["linux"].items() if LINUX_REL.match(str(rel)) and str(rel).endswith(".py")})
+        cur = {}
+        for rel in want:
+            try: cur[rel] = hashlib.sha256(self.s.read_bytes(self.p(rel))).hexdigest()
+            except Exception: cur[rel] = ""
+        todo = {rel: sha for rel, sha in want.items() if cur.get(rel) != sha and re.fullmatch(r"[0-9a-f]{64}", str(sha))}
+        if not todo: return None
+        try:
+            got = {}
+            for rel, sha in todo.items():
+                data = self.net.get(base.rstrip("/") + "/" + rel)
+                if hashlib.sha256(data).hexdigest() != sha: raise ValueError("sai mã kiểm: %s" % rel)
+                compile(data.decode("utf-8"), rel, "exec")
+                got[rel] = data
+            stage = self.p("update/" + ver)
+            for rel in set(LIB_FILES) | {SELF_REL, "linux/cbremote.py", "linux/cbcap.py"} | set(want):
+                src = got.get(rel)
+                if src is None:
+                    try: src = self.s.read_bytes(self.p(rel))
+                    except Exception: src = None
+                if src is not None: self.s.write_bytes(stage + "/" + rel, src)
+            for rel in (SELF_REL, "linux/cbremote.py"):                     # bản mới (agent + điều khiển từ xa) chạy thử trước khi thay
+                if rel != SELF_REL and not self.s.exists(stage + "/" + rel): continue
+                ok, out = self.h.selfcheck(stage + "/" + rel)
+                if not ok: raise ValueError("bản mới chạy thử không đạt (%s): %s" % (rel, out))
+            for rel, data in got.items():
+                dst = self.p(rel)
+                try:
+                    if self.s.exists(dst): self.s.write_bytes(dst + ".bak", self.s.read_bytes(dst))
+                except Exception: pass
+                self.s.write_bytes(dst, data)
+            try:                                                            # bộ cài trên phân vùng cứu hộ cũng lên bản mới (lần cài lại CachyOS sau dùng)
+                root = self.rec.mount(rw=True)
+                if root:
+                    for rel, data in got.items(): LinuxSys().write_bytes(root + "cb/" + rel, data)
+            except Exception as e:
+                self.log("chưa cập nhật được phân vùng cứu hộ: %s" % e)
+            finally:
+                self.rec.umount()
+            shutil.rmtree(stage, ignore_errors=True)
+            self.log("ĐÃ CẬP NHẬT agent Linux theo bản %s (%d file) → chạy lại agent" % (ver, len(got)))
+            self.restart = True
+            return ver
+        except Exception as e:
+            self.log("cập nhật bản %s lỗi: %s" % (ver, e)); self.bad_update = ver
+            return None
+
+
+# ====================================================================================== chạy thật
+def make_logger(base=BASE):
+    d = os.path.join(base, "logs"); os.makedirs(d, exist_ok=True)
+
+    def log(m):
+        ln = "%s %s" % (time.strftime("%Y-%m-%d %H:%M:%S"), m)
+        try:
+            p = os.path.join(d, "agent.log")
+            if os.path.exists(p) and os.path.getsize(p) > 2 << 20: os.replace(p, p + ".1")
+            with open(p, "a", encoding="utf-8") as f: f.write(ln + "\n")
+        except OSError: pass
+        print(ln, flush=True)
+    return log
+
+
+def build(base=BASE):
+    log = make_logger(base)
+    sysx = LinuxSys(log)
+    cfg = C.load_json(sysx, os.path.join(base, "cb.json")) or {}
+    seed = C.load_json(sysx, os.path.join(base, "seed.json")) or {}
+    host = LinuxHost(seed.get("user") or C.linux_user(cfg.get("user") or "PC"))
+    return LinuxAgent(sysx, host, pcagent.Net(cfg, base), base, log), host, log
+
+
+def cmd_run(argv):
+    ag, host, log = build()
+    if not host.mutex(): print("agent dang chay roi"); return 0
+    log("agent CloudBlue (Linux) %s chạy — máy %s" % (LINUX_VER, host.hostname()))
+    while True:
+        try: nap = ag.tick()
+        except Exception: log("lỗi vòng chính: " + traceback.format_exc()); nap = 60
+        if ag.restart: log("thoát để chạy bản mới"); return 0
+        time.sleep(max(1, min(nap, 900)))
+
+
+def cmd_status(argv):
+    ag, host, log = build()
+    i = ag.info()
+    print(json.dumps({"agent": LINUX_VER, "registered": bool(ag.ident), "name": ag.name, "rent": ag.rent_line(), "info": i}, ensure_ascii=False, indent=1))
+    return 0
+
+
+def cmd_reinstall(argv):
+    if not argv: print("cach dung: cbagent.py reinstall <ban: 22h2 | 1511 | cachyos> [all|disk|system]"); return 2
+    ag, host, log = build()
+    job = {"id": "local-%d" % int(time.time()), "os": argv[0], "wipe": argv[1] if len(argv) > 1 else "all", "hw": (ag.ident or {}).get("hw"), "tries": 1}
+    try: img = ag.rec.stage_job(job, host.hostname(), time.time(), root_hint())
+    except C.Stop as e: print("KHONG duoc: %s" % e); return 1
+    print("Da ghi lenh cai %s - khoi dong lai sau 30 giay." % img["id"])
+    host.power(reboot=True, delay=30, msg="CloudBlue: may se cai lai sau 30 giay.")
+    return 0
+
+
+def cmd_selfcheck(argv):
+    s = LinuxSys(); h = LinuxHost("")
+    assert P("logs\\a.json") == "logs/a.json"
+    assert isinstance(h.cpu(), tuple) and h.uptime() >= 0
+    assert C.linux_user("PC") == "pc" and pcagent.Agent and LinuxAgent
+    print("selfcheck OK cbagent %s / pcagent %s" % (LINUX_VER, pcagent.AGENT_VER)); return 0
+
+
+def main(argv):
+    cmds = {"run": cmd_run, "status": cmd_status, "reinstall": cmd_reinstall, "selfcheck": cmd_selfcheck}
+    if not argv or argv[0] not in cmds: print("cbagent %s: run | status | selfcheck | reinstall <ban> [all|disk|system]" % LINUX_VER); return 2
+    return cmds[argv[0]](argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

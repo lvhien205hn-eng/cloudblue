@@ -65,9 +65,10 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     BAD_WIPE: "Kiểu xoá không hợp lệ.", NO_MACHINE: "Không còn máy này (đã bị xoá?).", NOT_OPEN: "Lệnh này đã xong hoặc đã huỷ.", BAD_NAME: "Tên máy phải từ 1 đến 40 ký tự.",
     BAD_STATUS: "Trạng thái không hợp lệ.", BAD_AGENT: "Bản kê agent không hợp lệ.", BAD_CMD: "Lệnh không hợp lệ.", BAD_ARGS: "Tham số lệnh không hợp lệ.",
     BAD_PATCH: "Dữ liệu gửi lên không hợp lệ.", BAD_POLL: "Chu kỳ báo sống phải từ 10 đến 600 giây.", BAD_HOURS: "Số giờ gia hạn không hợp lệ (mỗi lần tối đa 366 ngày).",
-    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ." };
+    BAD_UNTIL: "Thời điểm hết hạn không hợp lệ (phải ở tương lai, xa nhất 2 năm).", BAD_WARN: "Số phút cảnh báo không hợp lệ.",
+    NO_USER: "Không thấy tài khoản này — gõ đúng tên đăng nhập hoặc email của khách.", MANY_USERS: "Có nhiều tài khoản trùng tên này — gõ email của khách." };
   // v42: null = chưa biết (thử đọc cột mới) · true = đã chạy cloud-pc-v42.sql · false = chưa chạy (đọc kiểu cũ, không thử lại cho tới khi bấm Tải lại / mở lại thẻ)
-  const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, kickAt: 0 };
+  const P = window.PCA = { list: [], orders: [], set: null, miss: false, loaded: false, cur: null, busy: false, again: false, wait: null, loads: 0, v42: null, v44: null, kickAt: 0 };
   // info / result do MÁY CHO THUÊ gửi lên (khách có quyền admin trên máy đó) → coi là dữ liệu lạ: ép kiểu, cắt ngắn, luôn esc() khi in
   const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
   const A = (v, n) => Array.isArray(v) ? v.slice(0, n || 8) : [];
@@ -82,7 +83,8 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
   const mins = t => Math.max(0, Math.round((Date.now() - new Date(t).getTime()) / 60000));
   const stOf = v => Object.prototype.hasOwnProperty.call(ST, v) ? ST[v] : [S(v, 20), ""];
   const wipeName = w => Object.prototype.hasOwnProperty.call(WIPE, w) ? WIPE[w] : "?";
-  const cmdName = o => o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
+  const cmdName = o => O(o.args).why === "reclaim" ? (o.cmd === "reinstall" ? "♻️ Tự cài sạch " + S(O(o.args).os, 12).toUpperCase() : o.cmd === "shutdown" ? "💤 Tự tắt (đã cài sạch)" : S(o.cmd, 20))     // v44: tự thu hồi
+    : o.cmd === "reinstall" ? "Cài lại " + S(O(o.args).os, 12).toUpperCase() + " (" + wipeName(S(O(o.args).wipe) || "all") + ")"
     : o.cmd === "reboot" ? "Khởi động lại" : o.cmd === "shutdown" ? "Tắt máy" : o.cmd === "update" ? "Cập nhật agent" : S(o.cmd, 20);
   const pad2 = n => String(n).padStart(2, "0");
   const atVN = t => { const d = new Date(t); return isNaN(d) ? "?" : pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + " " + pad2(d.getDate()) + "/" + pad2(d.getMonth() + 1) + (d.getFullYear() !== new Date().getFullYear() ? "/" + d.getFullYear() : ""); };
@@ -106,6 +108,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       sb.from("pc_machines").select(COLS + (v2 ? COLS42 : "")).order("created_at"),
       sb.from("pc_settings").select(SETS + (v2 ? SETS42 : "")).eq("id", 1).maybeSingle()]);
     let v2 = P.v42 !== false;
+    const x44 = v2 && P.v44 !== false ? sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at") : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
     let [[m, st], o] = await Promise.all([get(v2), sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300)]);
     if (v2 && (noCol(m.error) || noCol(st.error))) { v2 = false; [m, st] = await get(false); }      // chưa chạy SQL v42: đọc kiểu cũ, phần hạn thuê tạm ẩn
     if (m.error) {
@@ -119,6 +122,11 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     P.miss = false; P.loaded = true; P.v42 = v2; show("pca-miss", false); show("pca-miss42", !v2);
     if ((o.error || st.error) && !quiet) toast(em(o.error || st.error), 1);
     P.list = Array.isArray(m.data) ? m.data : [];
+    if (x44) { try { const r44 = await x44;
+      if (r44.error) { if (noCol(r44.error)) P.v44 = false; }
+      else { P.v44 = true; const mp = {}; (r44.data || []).forEach(x => { if (x && x.id) mp[x.id] = x; });
+        P.list.forEach(x => { const y = O(mp[x.id]); x.reclaim_at = S(y.reclaim_at, 40) || null; x.clean_off = y.clean_off === true; x.rent_lock_at = S(y.rent_lock_at, 40) || null; }); }
+    } catch (e) {} }
     if (!o.error) P.orders = (o.data || []).map(x => { const a = Object.assign({}, O(x.args)); delete a.ticket; return Object.assign({}, x, { args: a }); });    // vé cài lại không giữ trong trang
     if (!st.error) P.set = st.data || null;
     render(); kick();
@@ -178,7 +186,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     const now = Date.now(), who = id => { const n = S(XP.names[id], 40); return n ? ` · 👤 ${esc(n)}` : ""; };
     const A = xpPcRows().map(m => { const u = untilOf(m), over = u <= now, r = (S(m.code, 40) ? ` (№ ${esc(S(m.code, 40))})` : "") + (S(m.renter, 80) ? ` · 👤 ${esc(S(m.renter, 80))}` : "");
       return { t: u, over, go: "pc", id: m.id, btn: "⏱ Gia hạn", html: over
-        ? `💻 Máy PC <b>${esc(m.name)}</b>${r} đã <b>HẾT HẠN thuê</b> từ ${atVN(u)} — ${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}.`
+        ? `💻 Máy PC <b>${esc(m.name)}</b>${r} đã <b>HẾT HẠN thuê</b> từ ${atVN(u)} — ${m.rent_lock_at ? "máy đã khoá" : m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}.`
         : `💻 Máy PC <b>${esc(m.name)}</b>${r} còn <b>${leftTxt(u - now)}</b> là hết hạn thuê (đến ${atVN(u)}).` }; });
     XP.vps.forEach(v => { const u = xpT(v.expires_at); if (u === null || v.status !== "active" || u - now > XP_SOON) return;
       const nm = `🖥️ VPS <b>${esc(S(v.machine_name, 60) || "?")}</b>${who(v.user_id)}`;
@@ -306,20 +314,26 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!P.v42) return '<span class="hint">—</span>';
     const u = untilOf(m), who = S(m.renter, 80), wl = who ? `<div class="hint" style="white-space:normal;max-width:190px">👤 ${esc(who)}</div>` : "";
     const btn = t => `<div><button class="btn ghost sm" type="button" data-pca="rent" style="margin-top:6px">⏱ ${t}</button></div>`;
-    if (u === null) return '<span class="hint">chưa đặt hạn</span>' + wl + btn("Đặt hạn");
+    if (u === null) {
+      const rc = m.reclaim_at ? new Date(m.reclaim_at).getTime() : NaN;
+      if (!isNaN(rc)) return `<span class="pill wt">♻️ vừa thu hồi</span><div class="hint">khách cũ hết hạn không gia hạn</div><div class="hint">tự cài sạch ${rc > Date.now() ? "lúc " + atVN(rc) : "khi máy online"}</div>` + btn("Đặt hạn");
+      return '<span class="hint">chưa đặt hạn</span>' + (m.clean_off ? '<div class="hint">🧽 cài sạch xong sẽ tự tắt</div>' : "") + wl + btn("Đặt hạn");
+    }
     const left = u - Date.now();
     if (left > 0) {
       const soon = left <= warnMsOf(m);
       return `<span class="pill ${soon ? "wt" : "ok"}">${soon ? "⏳ " : ""}còn ${leftTxt(left)}</span><div class="hint">đến ${atVN(u)}</div>${wl}${btn("Gia hạn")}`;
     }
-    return `<span class="pill bad">⛔ hết hạn</span><div class="hint">từ ${atVN(u)}</div><div class="hint">${m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt" : "máy đang tắt"}</div>${wl}${btn("Gia hạn")}`;
+    return `<span class="pill bad">⛔ hết hạn</span><div class="hint">từ ${atVN(u)}</div><div class="hint">${m.rent_lock_at ? "🔒 máy đã khoá — khách gia hạn là tự mở" : m.rent_off_at ? "máy đã tự tắt" : online(m) ? "máy đang tự tắt / khoá" : "máy đang tắt"}</div>${wl}${btn("Gia hạn")}`;
   }
 
   function orderCell(m) {
     const op = openOf(m.id)[0], last = lastOf(m.id);
     if (op) {
-      const t = op.state === "queued" ? "chờ máy nhận" : "máy đã nhận";
-      return `<span class="pill wt">⏳ ${esc(cmdName(op))}</span><div class="hint">${t} · ${mins(op.sent_at || op.created_at)} phút</div><button class="btn ghost sm" type="button" data-pca="cancel" data-o="${+op.id}" style="margin-top:6px">Huỷ lệnh</button>`;
+      const t = op.state === "queued" ? "chờ máy nhận lệnh" : "máy đang làm", kind = "cmd-" + (["reinstall", "reboot", "update", "shutdown"].includes(op.cmd) ? op.cmd : "x");
+      return `<span class="pill wt">⏳ ${esc(cmdName(op))}</span><div class="hint">${t}</div>`        // 21/11f · thanh tiến độ có đếm giờ (pc_shop.html tự chạy mỗi giây)
+        + `<div class="pcs-prog" data-pk="${kind}" data-t0="${esc(S(op.sent_at || op.created_at, 40))}" data-os="${esc(S(O(op.args).os, 12))}" style="margin-top:5px;min-width:170px"><div class="pp-bar"><i></i></div><div class="pp-t"></div></div>`
+        + `<button class="btn ghost sm" type="button" data-pca="cancel" data-o="${+op.id}" style="margin-top:6px">Huỷ lệnh</button>`;
     }
     if (!last) return '<span class="hint">—</span>';
     const r = O(last.result), msg = S(r.msg, 300) || S(r.err, 300), took = +r.secs > 0 ? Math.max(1, Math.round(+r.secs / 60)) : 0;
@@ -354,7 +368,7 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
         <td><b>${esc(S(m.os, 20).toUpperCase() || "?")}</b><div class="hint">${esc(S(m.os_ver, 40))}${S(i.agent) ? " · agent " + esc(S(i.agent, 24)) : ""}</div><div class="hint">${rec.ok ? "đổi được: " + esc(rec.images.join(", ").toUpperCase()) : "⚠ không có phân vùng cứu hộ"}</div>${secLine(i)}</td>
         <td class="pca-cfg">${cfgCell(m)}</td>
         <td>${orderCell(m)}</td>
-        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button><button class="btn ghost sm" type="button" data-pca="edit">Sửa</button></div></td></tr>`;
+        <td class="pca-acts"><div class="pca-actbox">${m.approved ? "" : `<button class="btn okb sm" type="button" data-pca="approve">Duyệt</button>`}<button class="btn ghost sm" type="button" data-pca="handover"${reBusy ? " disabled" : ""} title="Xoá sạch cả máy + cài lại Windows để giao khách mới">🧼 Bàn giao</button><button class="btn ghost sm" type="button" data-pca="reinstall"${reBusy ? " disabled" : ""}>🧹 Cài lại</button>${m.approved ? `<button class="btn ghost sm" type="button" data-pca="reboot"${reBusy ? " disabled" : ""} title="Khởi động lại Windows của máy này — khách đang dùng bị ngắt 1–2 phút">🔁 Khởi động lại</button><button class="btn ghost sm" type="button" data-pca="shutdown"${reBusy ? " disabled" : ""} title="Tắt hẳn máy — muốn bật lại phải bấm nút nguồn tại máy">⏻ Tắt máy</button>` : ""}<button class="btn ghost sm" type="button" data-pca="edit">Sửa</button>${m.approved ? `<a class="btn ghost sm" href="/play.html?pc=${encodeURIComponent(m.id)}" target="_blank" rel="noopener" title="Mở màn hình máy này trên trình duyệt (cần SQL v43 + máy chủ phát hình bản 21/11a). Máy đang có khách thì khách thấy thông báo admin đang xem.">🖥 Điều khiển</a>` : ""}</div></td></tr>`;
     };
     $i("pctbl").innerHTML = list.length ? list.map(m => {
       try { return row(m); }                  // 1 máy gửi thông tin lạ không được làm hỏng cả bảng
@@ -382,7 +396,19 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (a === "reinstall") return openRe(m);
     if (a === "handover") return openRe(m, true);
     if (a === "rent") return openRent(m);
+    if (a === "reboot" || a === "shutdown") return power(m, a, b);
   };
+
+  // ---- Khởi động lại / Tắt máy: nút ở từng dòng + trong hộp Sửa. Hỏi lại rõ ràng (máy đang có khách / đang offline) rồi gửi lệnh cho agent.
+  async function power(m, a, b) {
+    const rent = m.status === "rented" && (untilOf(m) || 0) > Date.now();
+    const q = `${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?`
+      + (a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : "")
+      + (rent ? (a === "reboot" ? "\n\nMáy đang có khách thuê — khách bị ngắt khoảng 1–2 phút rồi dùng tiếp." : "\n\nMáy đang có khách thuê — khách KHÔNG dùng được cho tới khi máy được bật lại.") : "")
+      + (online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại.");
+    if (!confirm(q)) return false;
+    return !!(await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, `Đã gửi lệnh ${a === "reboot" ? "khởi động lại" : "tắt"} máy ${m.name}.`, b));
+  }
   $i("pcq").oninput = render;
   $i("pca-reload").onclick = () => { if (P.v42 === false) P.v42 = null; load(); };
 
@@ -393,6 +419,21 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     $i("pcad-info").textContent = `${S(m.os, 20).toUpperCase() || "?"} · ${S(m.lan_ip, 64) || "?"} · đăng ký ${m.first_seen ? ago(m.first_seen) : "?"}${host ? " · tên Windows: " + host : ""}`;
     $i("pcad-name").value = m.name || ""; $i("pcad-code").value = m.code || ""; $i("pcad-note").value = m.note || ""; $i("pcad-status").value = m.status;
     $i("pcad-err").textContent = ""; show("pcadlg");
+    P.asg = null; show("pcad-v43", false); $i("pcad-user").value = ""; $i("pcad-remote").checked = true;
+    assignLoad(m);
+  }
+  // v43: gán máy cho TÀI KHOẢN khách (khách tự mở máy ở "VPS GPU của bạn" trên web / app) + bật / tắt điều khiển từ xa từng máy. Chưa chạy v43 → ẩn.
+  async function assignLoad(m) {
+    try {
+      const r = await sb.from("pc_machines").select("user_id,remote").eq("id", m.id).maybeSingle();
+      if (r.error || !r.data || P.cur !== m) return;
+      let who = "";
+      const uid = typeof r.data.user_id === "string" ? r.data.user_id : null;
+      if (uid) { const u = await sb.from("profiles").select("username,email").eq("id", uid).maybeSingle(); who = S((u.data && (u.data.username || u.data.email)) || "", 200) || uid; }
+      if (P.cur !== m) return;
+      P.asg = { id: m.id, uid, who, remote: r.data.remote !== false };
+      $i("pcad-user").value = who; $i("pcad-remote").checked = P.asg.remote; show("pcad-v43", true);
+    } catch (e) {}
   }
   $i("pcad-cancel").onclick = () => show("pcadlg", false);
   $i("pcad-save").onclick = async () => {
@@ -401,15 +442,26 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
     if (!name) { $i("pcad-err").textContent = "Nhập tên máy."; return; }
     const patch = { name, code: $i("pcad-code").value.trim(), note: $i("pcad-note").value.trim(), status: $i("pcad-status").value };
     patch.approved = patch.status !== "new";                 // "Chờ duyệt" = chưa duyệt; các trạng thái khác = đã duyệt
-    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, "Đã lưu.", $i("pcad-save"));
+    const g = P.asg && P.asg.id === m.id ? P.asg : null, ap = {};
+    if (g) {
+      const u = $i("pcad-user").value.trim();
+      if (u !== g.who) ap.user = u;
+      if ($i("pcad-remote").checked !== g.remote) ap.remote = $i("pcad-remote").checked;
+    }
+    if (Object.keys(ap).length) {                              // gán khách trước: gõ sai tên thì báo ngay, chưa lưu gì
+      const { error } = await sb.rpc("pc_admin_assign", { p_id: m.id, p_patch: ap });
+      if (error) { $i("pcad-err").textContent = em(error); return; }
+      P.asg = null;
+    }
+    const msg = "user" in ap ? (ap.user ? "Đã lưu · đã gán máy cho " + ap.user + "." : "Đã lưu · đã bỏ gán khách.") : "Đã lưu.";
+    const r = await call("pc_admin_set", { p_id: m.id, p_patch: patch }, msg, $i("pcad-save"));
     if (r) show("pcadlg", false);
   };
   document.querySelector("#pcadlg .amts").onclick = async e => {
     const b = e.target.closest("[data-pcact]"), m = P.cur; if (!b || !m) return;
     const a = b.dataset.pcact;
     if (a === "reboot" || a === "shutdown") {
-      if (!confirm(`${a === "reboot" ? "KHỞI ĐỘNG LẠI" : "TẮT"} máy "${m.name}"?${a === "shutdown" ? "\n\nMáy tắt rồi thì phải có người bấm nút nguồn mới bật lại được." : ""}${online(m) ? "" : "\n\nMáy đang offline — lệnh sẽ chạy khi máy online lại."}`)) return;
-      if (await call("pc_admin_order", { p_id: m.id, p_cmd: a, p_args: {} }, "Đã gửi lệnh.", b)) show("pcadlg", false);
+      if (await power(m, a, b)) show("pcadlg", false);
     } else if (a === "reenroll") {
       if (!confirm(`Cho máy "${m.name}" đăng ký lại KHÔNG cần mã trong 6 giờ?\n\nChỉ dùng khi máy báo "cần mã đăng ký" sau khi bạn tự cài lại Windows cho nó. Trong 6 giờ đó, máy nào khai đúng dấu phần cứng của máy này sẽ nhận được quyền của nó.`)) return;
       await call("pc_admin_allow_reenroll", { p_id: m.id, p_hours: 6 }, "Đã mở 6 giờ cho máy đăng ký lại.", b);
@@ -513,17 +565,23 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       const x = await sb.rpc("pc_admin_rent", { p_id: m.id, p_patch: { until: null, renter: "" } });
       if (x.error) toast("Đã gửi lệnh cài lại, nhưng CHƯA xoá được hạn thuê cũ — bấm ⏱ ở cột Hạn thuê để bỏ hạn.", 1); else await load(true);
     }
+    if (P.hand && wipe === "all" && window.PCSHOP && typeof PCSHOP.releasePc === "function") {      // máy đang thuộc 1 lượt thuê VPS GPU (v43) → kết thúc lượt đó, máy về kho
+      try { await PCSHOP.releasePc(m.id); } catch (e) {}
+    }
   };
 
   // ---- mã đăng ký + lệnh tạo ISO + tự duyệt + công bố agent
   $i("pca-cmd").value = CMD;
   $i("pca-showcmd").onclick = () => { $i("pca-cmdbox").hidden = !$i("pca-cmdbox").hidden; };
   $i("pca-cmdcopy").onclick = e => copy(CMD, e.currentTarget);
-  $i("pca-keycopy").onclick = e => copy($i("pca-keyval").value, e.currentTarget);
+  // mã đăng ký chỉ hiện ngắn: copy xong 15 giây hoặc để quá 3 phút → tự xoá khỏi màn hình (khỏi lộ khi chụp màn hình / có người đứng cạnh)
+  let keyT = 0;
+  const keyHide = ms => { clearTimeout(keyT); keyT = setTimeout(() => { $i("pca-keyval").value = ""; show("pca-keybox", false); }, ms); };
+  $i("pca-keycopy").onclick = async e => { await copy($i("pca-keyval").value, e.currentTarget); toast("Đã copy mã — ô mã tự ẩn sau 15 giây."); keyHide(15000); };
   $i("pca-newkey").onclick = async e => {
     if (P.set && P.set.enroll_hash && !confirm("Tạo mã đăng ký MỚI?\n\nMã cũ hết dùng ngay: ISO / USB tạo bằng mã cũ sẽ không đăng ký được máy mới nữa (máy đã đăng ký không ảnh hưởng). Phải tạo lại ISO bằng mã mới.")) return;
     const k = await call("pc_admin_new_key", {}, "", e.currentTarget);
-    if (typeof k === "string" && k) { $i("pca-keyval").value = k; show("pca-keybox"); show("pca-cmdbox"); toast("Đã tạo mã đăng ký — copy ngay, mã chỉ hiện 1 lần."); }
+    if (typeof k === "string" && k) { $i("pca-keyval").value = k; show("pca-keybox"); show("pca-cmdbox"); keyHide(180000); toast("Đã tạo mã đăng ký — copy ngay, mã chỉ hiện 1 lần (tự ẩn sau 3 phút)."); }
   };
   $i("pca-keyoff").onclick = async e => {
     if (!confirm("TẮT mã đăng ký?\n\nMáy mới sẽ không đăng ký được cho tới khi bạn tạo mã mới. Máy đã đăng ký không ảnh hưởng.")) return;

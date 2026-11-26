@@ -38,6 +38,32 @@ final class SwitchAndroid {
         return new int[]{Math.max(1, Math.min(Math.min(r, gr <= 0 ? r : gr), 16)), Math.max(1, Math.min(Math.min(c, gc <= 0 ? c : gc), 32))};
     }
 
+    /** 22/11 · SQL v49: cấu hình ĐÃ MUA {RAM GB, nhân} — đổi sang bản Android trần thấp chỉ TẠM hạ, đổi về bản cao hơn thì trả đủ.
+     *  Chưa chạy v49 (không có cột paid_ram) → = cấu hình đang chạy. */
+    static int[] paid(JSONObject p) {
+        return new int[]{Math.max(p.optInt("ram"), p.optInt("paid_ram")), Math.max(p.optInt("cpu"), p.optInt("paid_cpu"))};
+    }
+
+    /** " (đã mua 12 nhân)" khi máy đang tạm chạy thấp hơn cấu hình đã mua; không thì "". */
+    static String paidTag(JSONObject p) {
+        int[] q = paid(p);
+        int r = p.optInt("ram"), c = p.optInt("cpu");
+        if (q[0] <= r && q[1] <= c) return "";
+        String w = (q[0] > r ? q[0] + "GB" : "") + (q[0] > r && q[1] > c ? " · " : "") + (q[1] > c ? q[1] + Ui.L(" nhân", " cores") : "");
+        return " (" + Ui.L("đã mua ", "bought ") + w + ")";
+    }
+
+    /** Các bản Android chạy được ĐỦ cấu hình đã mua, VD "Android 12 / 15" ("" nếu không bản nào). */
+    static String fullAnd(JSONObject price, JSONObject p) {
+        int[] q = paid(p);
+        StringBuilder b = new StringBuilder();
+        for (String v : versions(price)) {
+            int[] l = lim(price, v);
+            if (l[0] >= q[0] && l[1] >= q[1]) b.append(b.length() > 0 ? " / " : "").append("Android ").append(v);
+        }
+        return b.toString();
+    }
+
     /** "" = còn chỗ · "off" = bản này bảo trì / chưa có máy chủ · "full" = không đủ RAM/CPU (giống MainActivity.andWhy). */
     static String why(JSONObject status, String v, int ram, int cpu, boolean admin) {
         if (admin || status == null) return "";
@@ -97,13 +123,16 @@ final class SwitchAndroid {
     static void open(Activity a, JSONObject p, JSONObject price, JSONObject status, boolean admin, Runnable done) {
         final String now = cur(p), pid = p.optString("id");
         final int R0 = p.optInt("ram"), C0 = p.optInt("cpu");
+        final int[] Q = paid(p);                                    // 22/11 · v49: máy mới lấy theo cấu hình ĐÃ MUA
+        final boolean keep = p.has("paid_ram");                      // đã chạy SQL v49
+        final String full = fullAnd(price, p);
         final String[] sel = {null};
         java.util.List<String> vs = versions(price);
         vs.remove(now);
 
         LinearLayout c = Ui.col(a, 12);
         long exp = MainActivity.parseTime(p.optString("expires_at"));
-        c.addView(Ui.muted(a, Ui.L("Đang chạy: Android ", "Now: Android ") + now + " · " + R0 + "GB · " + C0 + Ui.L(" nhân", " cores")
+        c.addView(Ui.muted(a, Ui.L("Đang chạy: Android ", "Now: Android ") + now + " · " + R0 + "GB · " + C0 + Ui.L(" nhân", " cores") + paidTag(p)
                 + (exp > 0 ? " · " + MainActivity.left(exp) : "")));
         if (vs.isEmpty()) {
             c.addView(Ui.text(a, Ui.L("Hiện chưa có bản Android nào khác để đổi.", "No other Android version is available right now."), 14, Ui.FG, false));
@@ -145,7 +174,7 @@ final class SwitchAndroid {
                 TextView ch = (TextView) w.getChildAt(i);
                 String v = (String) ch.getTag();
                 int[] l = lim(price, v);
-                String y = why(status, v, Math.min(R0, l[0]), Math.min(C0, l[1]), admin);
+                String y = why(status, v, Math.min(Q[0], l[0]), Math.min(Q[1], l[1]), admin);
                 ch.setText("Android " + v + "\n" + ("off".equals(y) ? Ui.L("Bảo trì", "Unavailable") : "full".equals(y) ? Ui.L("Hết chỗ", "Full") : MainActivity.andHint(v)));
                 Ui.setChip(ch, v.equals(sel[0]));
                 ch.setEnabled(y.isEmpty());
@@ -155,13 +184,18 @@ final class SwitchAndroid {
                 note.setText(Ui.L("Máy mới giữ nguyên RAM, CPU, độ phân giải, FPS và hạn còn lại.", "The new phone keeps RAM, CPU, resolution, FPS and the remaining time."));
             } else {
                 int[] l = lim(price, sel[0]);
-                int nr = Math.min(R0, l[0]), nc = Math.min(C0, l[1]);
+                int nr = Math.min(Q[0], l[0]), nc = Math.min(Q[1], l[1]);
                 StringBuilder s = new StringBuilder();
                 s.append(Ui.L("Máy mới: Android ", "New phone: Android ")).append(sel[0]).append(" · ").append(nr).append("GB · ").append(nc).append(Ui.L(" nhân", " cores"))
                         .append(exp > 0 ? Ui.L(" · hạn đến ", " · until ") + MainActivity.fdate(exp) : "");
-                if (nr < R0 || nc < C0)
+                if ((nr < Q[0] || nc < Q[1]) && keep)
+                    s.append("\n").append(Ui.L("Android " + sel[0] + " tối đa " + l[0] + "GB · " + l[1] + " nhân mỗi máy → máy mới TẠM chạy " + nr + "GB · " + nc + " nhân. Cấu hình đã mua " + Q[0] + "GB · " + Q[1] + " nhân vẫn được giữ" + (full.isEmpty() ? "." : " — đổi sang " + full + " là trả đủ."),
+                            "Android " + sel[0] + " allows up to " + l[0] + "GB · " + l[1] + " cores per phone → the new phone TEMPORARILY runs " + nr + "GB · " + nc + " cores. The " + Q[0] + "GB · " + Q[1] + " cores you bought are kept" + (full.isEmpty() ? "." : " — switch to " + full + " to get them back.")));
+                else if (nr < Q[0] || nc < Q[1])
                     s.append("\n").append(Ui.L("Android " + sel[0] + " tối đa " + l[0] + "GB · " + l[1] + " nhân mỗi máy → máy mới tự hạ còn " + nr + "GB · " + nc + " nhân (không hoàn tiền phần chênh).",
                             "Android " + sel[0] + " allows up to " + l[0] + "GB · " + l[1] + " cores per phone → the new phone is reduced to " + nr + "GB · " + nc + " cores (no refund for the difference)."));
+                else if (nr > R0 || nc > C0)
+                    s.append("\n").append(Ui.L("✅ Trả đủ cấu hình đã mua.", "✅ Full config you bought is restored."));
                 if ("15".equals(sel[0]))
                     s.append("\n").append(Ui.L("💡 Android 15 có máy chưa vào được Google / Play Store — cần Google thì chọn Android 12.",
                             "💡 Google / Play Store may not work on Android 15 — pick Android 12 if you need Google."));
@@ -189,7 +223,7 @@ final class SwitchAndroid {
             Api.bg(() -> Api.rpc("cloudphone_switch_android", new JSONObject().put("p_id", pid).put("p_android", to)), r -> {
                 d.dismiss();
                 JSONObject o = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
-                String cfg = o.optInt("ram", Math.min(R0, lim(price, to)[0])) + "GB · " + o.optInt("cpu", Math.min(C0, lim(price, to)[1]));
+                String cfg = o.optInt("ram", Math.min(Q[0], lim(price, to)[0])) + "GB · " + o.optInt("cpu", Math.min(Q[1], lim(price, to)[1]));
                 Ui.toast(a, Ui.L("🤖 Đang xoá máy cũ… xoá xong tự tạo máy Android " + to + " (" + cfg + " nhân), khoảng 2–5 phút.",
                         "🤖 Deleting the old phone… then creating the Android " + to + " phone (" + cfg + " cores), about 2–5 minutes."));
                 if (done != null) done.run();

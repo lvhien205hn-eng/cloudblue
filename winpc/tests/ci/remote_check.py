@@ -202,6 +202,46 @@ if WIN:
     except Exception as e:
         ck("bo nho copy chay duoc", False, repr(e))
 
+    # ---- 3b. 22.11b: o nhap chu dang duoc chon (app dien thoai tu bat ban phim) — ImeWatch: con tro chu (Win32) + UI Automation
+    try:
+        import ctypes
+        from ctypes import wintypes as wt
+        got = []
+        w = R.ImeWatch(lambda v: got.append(v), note)
+        time.sleep(1.5)
+        ck("ImeWatch: chay that tren Windows, luong theo doi song, UI Automation tao duoc", w.th.is_alive() and w.uia is not None, (w.th.is_alive(), w.uia))
+        stop_ev = threading.Event(); made = []
+
+        def edit_window():
+            u = ctypes.WinDLL("user32", use_last_error=True)
+            u.CreateWindowExW.argtypes = [wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.HWND, wt.HANDLE, wt.HANDLE, ctypes.c_void_p]
+            u.CreateWindowExW.restype = wt.HWND
+            u.SetForegroundWindow.argtypes = [wt.HWND]; u.SetFocus.argtypes = [wt.HWND]; u.DestroyWindow.argtypes = [wt.HWND]
+            h = u.CreateWindowExW(0, "EDIT", "CloudBlue thu o nhap chu", 0x10CF0000, 120, 120, 420, 180, None, None, None, None)   # WS_OVERLAPPEDWINDOW | WS_VISIBLE
+            io.key(0x12, True); io.key(0x12, False)                 # nhan Alt 1 lan: Windows cho chuong trinh nay dua cua so len truoc
+            u.SetForegroundWindow(h); u.SetFocus(h); made.append(h)
+            msg = wt.MSG()
+            while not stop_ev.is_set():
+                while u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                    u.TranslateMessage(ctypes.byref(msg)); u.DispatchMessageW(ctypes.byref(msg))
+                time.sleep(0.02)
+            u.DestroyWindow(h)
+        tw = threading.Thread(target=edit_window, daemon=True); tw.start()
+        wait(lambda: made, 5)
+        fg_ok = bool(made) and wait(lambda: ctypes.WinDLL("user32").GetForegroundWindow() == made[0], 3)
+        if desk and fg_ok:
+            ck("ImeWatch: bam vao o nhap chu (EDIT, co con tro chu) -> bao ime = 1 trong ~1 giay", wait(lambda: got and got[-1] == (1, 0), 3), got)
+            ole = ctypes.WinDLL("ole32"); ole.CoInitializeEx.argtypes = [ctypes.c_void_p, wt.DWORD]; ole.CoInitializeEx(None, 0)
+            ck("ImeWatch UI Automation: phan tu dang chon la o nhap chu (Edit, khong chi doc) -> (1, 0)", w._uia_focus() == (1, 0), w._uia_focus())
+        else:
+            note("BO QUA thu o nhap chu that: khong dua duoc cua so thu len truoc (desk=%s, fg=%s)" % (desk, fg_ok))
+            try: note("ImeWatch UI Automation (khong man hinh): %s" % (w._uia_focus(),))
+            except Exception as e: ck("ImeWatch UI Automation goi duoc", False, repr(e))
+        stop_ev.set(); tw.join(3); w.stop(); w.th.join(3)
+        ck("ImeWatch: tat duoc (luong theo doi dung)", not w.th.is_alive(), w.th.is_alive())
+    except Exception as e:
+        ck("ImeWatch chay duoc", False, repr(e))
+
     # ---- 4. quay man hinh THAT + nen + ghep khung
     if ff:
         for cap in dict.fromkeys([caps["cap"], "gdi"]):
@@ -216,6 +256,78 @@ if WIN:
                 dn, lum = decode_count(ff, data, os.path.join(tmp, "cap-%s.h264" % cap))
                 ck("  ... ffmpeg giai ma lai du %d khung (ghep goi RTP khong hong byte nao)" % n, dn == n, (dn, n))
                 note("  quay %s: %d khung, man %sx%s -> hinh %sx%s, do sang lon nhat cua khung dau: %s%s" % (cap, n, dims[0], dims[1], dims[2], dims[3], lum, " (hinh den?)" if 0 <= lum < 16 else ""))
+
+    # ---- 4b. 26.11a: may KHONG co card nen (VPS NVMe) - chuong trinh TU chup man hinh bang GDI, chi dua khung DOI cho ffmpeg (cach quay "pipe")
+    try:
+        cur_mode, ok_modes = io.modes()
+        ck("26.11a WinIO.modes: doc duoc co man hinh dang dung + danh sach co may nay dat duoc (co dang dung nam trong danh sach)",
+           cur_mode == (sw, sh) and cur_mode in ok_modes and len(ok_modes) >= 1, (cur_mode, sorted(ok_modes)[:12]))
+        ck("26.11a WinIO.set_mode: dat lai DUNG co dang dung -> duoc (khong doi gi) ; co khong ton tai (123x45) -> tu choi, man hinh giu nguyen",
+           io.set_mode(sw, sh) is True and io.set_mode(123, 45) is False and io.screen() == (sw, sh), io.screen())
+        qm = R.is_qemu()
+        ck("26.11a is_qemu: doc duoc bang BIOS cua Windows (may chay thu cua GitHub khong phai may ao QEMU -> False)", qm is False, qm)
+        md = os.path.join(tmp, "mode"); os.makedirs(md, exist_ok=True)
+        ck("26.11a vm_default_mode tren may KHONG phai may ao QEMU: khong dung vao co man hinh", R.vm_default_mode(io, "pc-ci", md, note) == "khong phai may ao" and io.screen() == (sw, sh))
+        note("co man hinh may chay thu: %s ; dat duoc: %s" % (cur_mode, ", ".join("%dx%d" % m for m in sorted(ok_modes)[:14])))
+    except Exception as e:
+        ck("26.11a co man hinh (modes / set_mode / is_qemu) chay duoc", False, repr(e))
+    if desk:
+        try:
+            g = io.grabber()
+            b1, ch1 = g.grab()
+            t0 = time.perf_counter(); n_same = 0
+            for _ in range(20):
+                b, ch = g.grab()
+                if b is not None and not ch: n_same += 1
+            ms = (time.perf_counter() - t0) / 20 * 1000
+            ck("26.11a GdiGrab: chup duoc man hinh that (dung co %dx%d x 4 byte), khung dau tinh la 'doi'" % (sw, sh), b1 is not None and ch1 and len(b1) == sw * sh * 4 and (g.w, g.h) == (sw, sh), (ch1, b1 is not None))
+            lum = max(bytes(b1[:: max(1, len(b1) // 50000)])) if b1 is not None else -1
+            ck("26.11a GdiGrab: hinh chup KHONG den thui (co diem sang) ; man hinh dung yen -> phan lon lan chup bao 'khong doi' (%d / 20)" % n_same, lum > 24 and n_same >= 12, (lum, n_same))
+            note("GdiGrab: 1 lan chup + ve con tro + so voi khung truoc = %.1f ms (man %dx%d, may chay thu khong co card hinh)" % (ms, sw, sh))
+            io.move(9000, 9000); time.sleep(0.25); g.grab(); io.move(30000, 30000); time.sleep(0.25); b, ch = g.grab()
+            ck("26.11a GdiGrab: re con tro chuot -> khung moi KHAC khung truoc (con tro duoc ve vao hinh)", b is not None and ch, ch)
+            g.close()
+            ck("26.11a GdiGrab: dong xong tao lai duoc (khong ro tai nguyen GDI)", all((lambda x: (x.grab()[0] is not None, x.close())[0])(io.grabber()) for _ in range(5)))
+        except Exception as e:
+            ck("26.11a GdiGrab chay duoc tren Windows that", False, repr(e))
+        if ff:
+            try:
+                au = []
+                e = R.Encoder(ff, "pipe", "x264", sw, sh, sw, sh, 20, 3000, lambda d, k, c, pts: au.append((time.time(), d, bool(k), bool(c))), note, grab_fn=io.grabber,
+                              tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": R.PIPE_CRF, "key_s": R.PIPE_KEY_S})
+                e.start(); t_st = time.time()
+                ok1 = wait(lambda: au and au[0][2] and au[0][3], 20)
+                ck("26.11a cach quay 'pipe' tren Windows that: ffmpeg nhan khung qua ong, khung dau la khung khoa co SPS/PPS", bool(ok1), (len(au), e.err))
+                # khung khoa dau bi ep co -> bo chup gui lai cho net dan; net xong (2 khung lien chi vai chuc byte) moi tinh la "dung yen"
+                sharp = wait(lambda: len(au) >= 4 and time.time() - t_st > 1.3 and all(x[1] is not None and len(x[1]) < R.PIPE_SMALL for x in au[-2:]), 12, 0.02)
+                t_sharp = time.time() - t_st; n_sharp = len(au)
+                ck("26.11a 'pipe': hinh that cua man hinh net dan roi DUNG gui lai (<= 12 giay) - khong lam net mai khong dut", bool(sharp), (t_sharp, [len(x[1] or b"") for x in au][:60]))
+                note("  'pipe': khung dau %d KB, net han sau %.1f giay / %d khung: %s" % (len(au[0][1] or b"") // 1024 if au else 0, t_sharp, n_sharp,
+                                                                                        " ".join(str(len(x[1] or b"")) for x in au[:45])))
+                time.sleep(0.4); n0 = len(au); g0 = e.grabs; time.sleep(4.0)
+                idle_n, idle_g = len(au) - n0, e.grabs - g0
+                ck("26.11a 'pipe': man hinh dung yen 4 giay -> chi vai khung giu nhip (<= 30, cach cu la 80) va chi chup ~3 lan / giay (<= 22 lan)", idle_n <= 30 and idle_g <= 22, (idle_n, idle_g))
+                note("  'pipe': 4 giay dung yen = %d khung, %d lan chup ; co tung khung: %s" % (idle_n, idle_g, " ".join(("K" if x[2] else "") + str(len(x[1] or b"")) for x in au[n0:n0 + 40])))
+                lat = []
+                for i in range(6):
+                    time.sleep(0.5); n1 = len(au); io.move(8000 + i * 6000, 12000 + i * 5000); e.kick(); t1 = time.time()
+                    if wait(lambda: len(au) > n1, 1.5, 0.004): lat.append(au[n1][0] - t1)
+                ck("26.11a 'pipe': nguoi xem re chuot (kick) -> khung moi co con tro ra trong <= 0,4 giay (6 / 6 lan)", len(lat) == 6 and max(lat) <= 0.4, [round(x, 3) for x in lat])
+                note("  'pipe': tu luc re chuot toi luc co khung nen: %s ms" % ", ".join("%d" % (x * 1000) for x in lat))
+                n1 = len(au); t1 = time.time(); k = 0
+                while time.time() - t1 < 3.0:
+                    io.move(5000 + (k * 1500) % 50000, 20000 + (k * 900) % 30000); e.kick(); k += 1; time.sleep(0.03)
+                time.sleep(0.3); mov = len(au) - n1
+                ck("26.11a 'pipe': re chuot lien tuc 3 giay -> hinh chay theo (>= 25 khung), khong vuot nhip 20 khung / giay (<= 72)", 25 <= mov <= 72, mov)
+                e.stop(); time.sleep(0.4)
+                fr = [x for x in au if x[1] is not None]
+                dn, lum2 = decode_count(ff, b"".join(x[1] for x in fr), os.path.join(tmp, "cap-pipe.h264"))
+                ck("26.11a 'pipe': ffmpeg giai ma lai du %d khung, hinh khong den" % len(fr), dn == len(fr) and lum2 > 24, (dn, len(fr), lum2))
+                note("  'pipe': tong %d khung / %d lan chup ; dung yen 4 giay: %d khung, %d lan chup ; loi: %s" % (len(fr), e.grabs, idle_n, idle_g, e.err or "-"))
+            except Exception as ex:
+                ck("26.11a cach quay 'pipe' chay duoc tren Windows that", False, repr(ex))
+    else:
+        note("BO QUA thu GdiGrab / cach quay 'pipe': tien trinh chay thu khong nam trong phien man hinh")
 
     # ---- 5. cbsys: phien man hinh, khoa "dang chay", mo vao phien man hinh
     ck("cbsys.console_session: tra so phien (hoac None khi may khong co man hinh)", con is None or isinstance(con, int), con)
@@ -330,7 +442,21 @@ else:
         scr = io.screen(); expw = R.fit(scr[0], scr[1], 1280)
         ck("dau-cuoi: nguoi xem nhan WELCOME cua may PC that (kind = pc, co hinh dung ti le man hinh)", wel.get("ok") is True and wel.get("kind") == "pc" and (wel.get("w"), wel.get("h")) == expw,
            (wel, expw, rx[:2], plog[-4:], slog[-4:]))
+        wig = [True]
+
+        def wiggle():                                               # 26.11a: may chay thu chi nen duoc bang CPU -> cach quay "pipe" chi gui khung khi man hinh DOI -> re chuot cho co thay doi
+            k = 0
+            while wig[0] and k < 400:
+                try: vc.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 6000 + (k * 1700) % 50000, 9000 + (k * 1100) % 40000))
+                except Exception: return
+                k += 1; time.sleep(0.05)
+        if WIN: threading.Thread(target=wiggle, daemon=True).start()
         got_video = wait(lambda: count(R.S_VIDEO) >= 25, 20)
+        wig[0] = False; time.sleep(0.3)
+        s0 = rm.sess
+        if WIN and s0 is not None and s0.enc is not None:
+            ck("26.11a dau-cuoi: may chi nen duoc bang CPU -> phien dung cach quay 'pipe' (tu chup, chi nen khung doi), gop duoc lenh re chuot don neu co",
+               s0.enc.cap == "pipe" and s0.long_gop and s0.skip >= 0, (s0.enc.cap, s0.long_gop, s0.skip, plog[-3:]))
         if not got_video and WIN and not (cbsys.console_session() is not None and cbsys.console_session() == who()[1]):
             note("BO QUA phan hinh dau-cuoi: may chay thu khong co man hinh de quay (%d khung) %s" % (count(R.S_VIDEO), plog[-3:]))
         else:
@@ -349,6 +475,84 @@ else:
             subprocess.run(["powershell", "-NoProfile", "-Command", "Set-Clipboard -Value 'copy tren may PC'"], capture_output=True, timeout=60)
             m = take(R.S_CLIP, 8)
             ck("dau-cuoi: copy chu tren may PC -> nguoi xem nhan duoc", m is not None and m[1] == b"copy tren may PC", m)
+            # ---- 23.11b: DAN nhu khach that (app / web: khach GIU Ctrl -> phim Ctrl sang may, phim V doi thanh goi Dan): o EDIT · CMD · PowerShell
+            try:
+                import ctypes
+                from ctypes import wintypes as wt
+                u32 = ctypes.WinDLL("user32", use_last_error=True)
+                u32.SetForegroundWindow.argtypes = [wt.HWND]; u32.GetForegroundWindow.restype = wt.HWND
+                u32.SendMessageW.argtypes = [wt.HWND, wt.UINT, wt.WPARAM, ctypes.c_void_p]; u32.SendMessageW.restype = ctypes.c_ssize_t
+                u32.GetAsyncKeyState.argtypes = [ctypes.c_int]; u32.GetAsyncKeyState.restype = ctypes.c_short
+                u32.GetWindowTextW.argtypes = [wt.HWND, wt.LPWSTR, ctypes.c_int]; u32.IsWindowVisible.argtypes = [wt.HWND]
+                ENUM = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+
+                def find_title(sub):
+                    hit = []
+
+                    def cb(h, _):
+                        b = ctypes.create_unicode_buffer(512); u32.GetWindowTextW(h, b, 512)
+                        if sub in b.value and u32.IsWindowVisible(h): hit.append(h)
+                        return True
+                    u32.EnumWindows(ENUM(cb), 0)
+                    return hit[0] if hit else None
+
+                def front(h):
+                    for _ in range(4):
+                        io.key(0x12, True); io.key(0x12, False)          # Alt 1 lan: Windows cho chuong trinh nay dua cua so len truoc
+                        u32.SetForegroundWindow(h)
+                        if wait(lambda: u32.GetForegroundWindow() == h, 2): return True
+                    return False
+
+                def guest_paste(s, mode=1):
+                    vc.send(R.C_KEY, struct.pack(">BII", 0, 113, 0)); time.sleep(0.15)          # khach giu Ctrl (Ctrl trai)
+                    vc.send(R.C_CLIP, bytes([mode]) + s.encode("utf-8")); time.sleep(1.2)
+                    vc.send(R.C_KEY, struct.pack(">BII", 1, 113, 0)); time.sleep(0.5)
+
+                def enter():
+                    vc.send(R.C_KEY, struct.pack(">BII", 0, 66, 0)); time.sleep(0.08); vc.send(R.C_KEY, struct.pack(">BII", 1, 66, 0))
+                stop2 = threading.Event(); eh = []
+
+                def edit_win():
+                    u = ctypes.WinDLL("user32", use_last_error=True)
+                    u.CreateWindowExW.argtypes = [wt.DWORD, wt.LPCWSTR, wt.LPCWSTR, wt.DWORD, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wt.HWND, wt.HANDLE, wt.HANDLE, ctypes.c_void_p]
+                    u.CreateWindowExW.restype = wt.HWND; u.SetFocus.argtypes = [wt.HWND]; u.DestroyWindow.argtypes = [wt.HWND]
+                    h = u.CreateWindowExW(0, "EDIT", "", 0x10CF0004, 140, 140, 560, 240, None, None, None, None)   # WS_OVERLAPPEDWINDOW | WS_VISIBLE | ES_MULTILINE
+                    eh.append(h); msg = wt.MSG()
+                    while not stop2.is_set():
+                        while u.PeekMessageW(ctypes.byref(msg), None, 0, 0, 1):
+                            u.TranslateMessage(ctypes.byref(msg)); u.DispatchMessageW(ctypes.byref(msg))
+                        time.sleep(0.02)
+                    u.DestroyWindow(h)
+                threading.Thread(target=edit_win, daemon=True).start()
+                if wait(lambda: eh, 5) and front(eh[0]):
+                    txt = "dán vào ô chữ · Tiếng Việt 23.11b"
+                    guest_paste(txt)
+                    buf = ctypes.create_unicode_buffer(4096); u32.SendMessageW(eh[0], 0x000D, 4096, ctypes.cast(buf, ctypes.c_void_p))
+                    ck("23.11b dau-cuoi: khach giu Ctrl + Dan -> chu (co dau) vao o EDIT dung 1 lan", buf.value == txt, buf.value)
+                    ck("23.11b dau-cuoi: dan xong + khach nha Ctrl -> may khong ket phim Ctrl", not (u32.GetAsyncKeyState(0x11) & 0x8000))
+                else:
+                    note("BO QUA thu dan vao o EDIT: khong dua duoc cua so thu len truoc")
+                stop2.set()
+                for name, argv, title, cmd, want in (
+                        ("CMD (conhost)", ["cmd.exe", "/k", "title CBDANCMD"], "CBDANCMD", 'echo CB-DAN-CMD> "%s"', "CB-DAN-CMD"),
+                        ("PowerShell (PSReadLine)", ["powershell.exe", "-NoLogo", "-NoProfile", "-NoExit", "-Command", "$Host.UI.RawUI.WindowTitle = 'CBDANPS'"], "CBDANPS",
+                         "Set-Content -LiteralPath '%s' -Value 'CB-DAN-PS Tiếng Việt' -Encoding UTF8", "CB-DAN-PS Tiếng Việt")):
+                    fout = os.path.join(tmp, "cbdan-%s.txt" % title.lower())
+                    pr = subprocess.Popen(argv, creationflags=0x10)                     # CREATE_NEW_CONSOLE: cua so dong lenh that
+                    try:
+                        h = wait(lambda: find_title(title), 20)
+                        time.sleep(2.0)
+                        if h and front(h):
+                            guest_paste(cmd % fout); enter()
+                            got = wait(lambda: os.path.isfile(fout) and open(fout, "rb").read(), 10)
+                            val = got.decode("utf-8-sig", "replace").strip() if got else None
+                            ck("23.11b dau-cuoi: khach dan lenh vao %s (giu Ctrl + Dan) + Enter -> lenh chay dung chu" % name, val == want, (val, plog[-3:]))
+                        else:
+                            note("BO QUA thu dan vao %s: khong thay / khong dua duoc cua so len truoc (%s)" % (name, h))
+                    finally:
+                        pr.kill()
+            except Exception as e:
+                ck("23.11b dau-cuoi: thu dan chay duoc", False, repr(e))
         enc = wait(lambda: (rm.sess.enc if rm.sess is not None else None), 3)
         vc.send(C_BYE)
         ck("dau-cuoi: nguoi xem dong -> may PC tat ffmpeg (khong ai xem thi khong ton may)", wait(lambda: rm.sess is None and (enc is None or enc.exited()), 8), (rm.sess, plog[-3:]))
