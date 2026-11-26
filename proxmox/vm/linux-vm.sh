@@ -25,7 +25,7 @@ say "=== dung may mau VPS NVMe Linux (ban $VER) - $(. /etc/os-release; echo "$PR
 
 apt_try() { for i in 1 2 3; do apt-get -o DPkg::Lock::Timeout=600 "$@" && return 0; say "apt-get $1 loi (lan $i) - thu lai"; sleep 20; done; return 1; }
 apt_try update -q || fail "apt-get update loi (chua co mang?)"
-PKGS="qemu-guest-agent xserver-xorg xfce4 xfce4-terminal xfce4-notifyd thunar mousepad lightdm lightdm-gtk-greeter dbus-x11 dbus-user-session
+PKGS="qemu-guest-agent xserver-xorg xserver-xorg-video-dummy xfce4 xfce4-terminal xfce4-notifyd thunar mousepad lightdm lightdm-gtk-greeter dbus-x11 dbus-user-session
  at-spi2-core gvfs x11-xserver-utils xdg-user-dirs ffmpeg python3 python3-xlib xclip fonts-noto-core fonts-noto-color-emoji fonts-dejavu-core
  curl ca-certificates sudo cloud-guest-utils"
 apt_try install -y -q --no-install-recommends $PKGS || fail "cai goi giao dien / cong cu loi"
@@ -38,7 +38,7 @@ passwd -d "$U" >/dev/null
 groupadd -f autologin; usermod -aG autologin,sudo "$U"
 printf '%s ALL=(ALL) NOPASSWD:ALL\n' "$U" > /etc/sudoers.d/90-cloudblue-vps; chmod 440 /etc/sudoers.d/90-cloudblue-vps
 install -d /etc/lightdm/lightdm.conf.d
-printf '[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\nautologin-session=xfce\nuser-session=xfce\ndisplay-setup-script=/usr/local/bin/cloudblue-res\n' "$U" \
+printf '[LightDM]\nlogind-check-graphical=false\n[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\nautologin-session=xfce\nuser-session=xfce\ndisplay-setup-script=/usr/local/bin/cloudblue-res\n' "$U" \
   > /etc/lightdm/lightdm.conf.d/50-cloudblue-autologin.conf
 cat > /usr/local/bin/cloudblue-res <<'EOF'
 #!/bin/sh
@@ -50,6 +50,35 @@ exit 0
 EOF
 chmod 755 /usr/local/bin/cloudblue-res
 install -d /etc/X11/xorg.conf.d
+# man hinh AO (driver dummy): anh cloud Ubuntu khong co driver card bochs (VGA std cua Proxmox) -> Xorg khong len.
+# Man hinh ao khong can card / driver nhan, luon 1920x1080; khach xem qua CloudBlue (x11grab), khong qua console Proxmox.
+cat > /etc/X11/xorg.conf.d/20-cloudblue-dummy.conf <<'EOF'
+Section "Device"
+    Identifier "cbdummy"
+    Driver "dummy"
+    VideoRam 65536
+EndSection
+Section "Monitor"
+    Identifier "cbmon"
+    HorizSync 28.0-80.0
+    VertRefresh 48.0-75.0
+    Modeline "1920x1080" 148.50 1920 2008 2052 2200 1080 1084 1089 1125 +hsync +vsync
+    Modeline "1600x900" 108.00 1600 1624 1704 1800 900 901 904 1000 +hsync +vsync
+    Modeline "1366x768" 85.50 1366 1436 1579 1792 768 771 774 798 +hsync +vsync
+    Modeline "1280x720" 74.25 1280 1390 1430 1650 720 725 730 750 +hsync +vsync
+EndSection
+Section "Screen"
+    Identifier "cbscreen"
+    Device "cbdummy"
+    Monitor "cbmon"
+    DefaultDepth 24
+    SubSection "Display"
+        Depth 24
+        Modes "1920x1080" "1600x900" "1366x768" "1280x720"
+        Virtual 1920 1080
+    EndSubSection
+EndSection
+EOF
 printf 'Section "ServerFlags"\n  Option "BlankTime" "0"\n  Option "StandbyTime" "0"\n  Option "SuspendTime" "0"\n  Option "OffTime" "0"\nEndSection\n' > /etc/X11/xorg.conf.d/10-cloudblue-noblank.conf
 install -d /etc/xdg/autostart
 printf '[Desktop Entry]\nType=Application\nName=CloudBlue - man hinh\nExec=/usr/local/bin/cloudblue-res\nNoDisplay=true\n' > /etc/xdg/autostart/cloudblue-res.desktop
