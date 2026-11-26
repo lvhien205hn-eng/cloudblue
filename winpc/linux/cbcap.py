@@ -21,7 +21,7 @@
 # =====================================================================================================
 import json, os, random, socket, struct, subprocess, sys, threading, time, urllib.parse
 
-CAP_VER = "27.11a"
+CAP_VER = "27.11b"
 APP_ID = "vn.cloudblue.remote"
 OPEN_BUDGET_S = 17.0                                              # mở luồng màn hình (cả 2 đường) tối đa chừng này: trạm chỉ chờ máy PC 25 giây
 PORTAL_START_S = 10.0                                             # cổng XDG: 4 bước tối đa chừng này (trong phần còn lại của OPEN_BUDGET_S)
@@ -575,10 +575,10 @@ def tools():
     return dict(_TOOLS)
 
 
-def pick_mode(t=None):
-    """"ff" (GStreamer lấy hình + ffmpeg nén) · "gst" (chỉ GStreamer) · None (thiếu)."""
+def pick_mode(t=None, env=None):
+    """"ff" (GStreamer lấy hình + ffmpeg nén) · "gst" (chỉ GStreamer) · "x11" · None (thiếu). env = môi trường phiên khách (27.11b)."""
     t = t or tools()
-    if x11_session(): return "x11" if t.get("ffmpeg_x264") and t.get("x11grab") else None        # 27.11a: phiên X11 → ffmpeg x11grab
+    if x11_session(env): return "x11" if t.get("ffmpeg_x264") and t.get("x11grab") else None        # 27.11a: phiên X11 → ffmpeg x11grab
     base = all(t.get(k) for k in ("pipewiresrc", "videoconvert", "videoscale", "videorate"))
     if base and t.get("fdsink") and t.get("ffmpeg_x264"): return "ff"
     if base and all(t.get(k) for k in ("x264enc", "rtph264pay", "udpsink")): return "gst"
@@ -593,19 +593,21 @@ def X264_ARGS(fps, kbps):
             "-b:v", "%dk" % kbps, "-maxrate", "%dk" % kbps, "-bufsize", "%dk" % max(kbps * 6 // max(fps, 1), 96)]
 
 
-def have_tools():
-    """Máy đủ công cụ quay + nén không → (đủ?, chữ báo)."""
-    t = tools(); m = pick_mode(t)
+def have_tools(env=None):
+    """Máy đủ công cụ quay + nén không → (đủ?, chữ báo). env = môi trường PHIÊN KHÁCH (27.11b: agent chạy bằng root không có DISPLAY —
+       phải xét theo phiên của khách, không thì máy XFCE bị coi là KDE/Wayland → "thiếu pipewiresrc…" → không ra hình)."""
+    t = tools(); m = pick_mode(t, env)
     if m: return True, "du (%s)" % ("ffmpeg x11grab + x264" if m == "x11" else "GStreamer + ffmpeg x264" if m == "ff" else "GStreamer x264")
-    if x11_session(): return False, "thieu " + ", ".join(k for k in ("ffmpeg_x264", "x11grab") if not t.get(k))
+    if x11_session(env): return False, "thieu " + ", ".join(k for k in ("ffmpeg_x264", "x11grab") if not t.get(k))
     need = ("pipewiresrc", "videoconvert", "videoscale", "videorate", "fdsink", "ffmpeg_x264")      # đường chính "ff" (x264enc… chỉ là đường phụ)
     return False, "thieu " + ", ".join(k for k in need if not t.get(k))
 
 
 # ====================================================================================== 27.11a · phiên X11 (máy ảo VPS NVMe: Ubuntu + XFCE)
-def x11_session():
-    """Đang ở phiên X11 (có DISPLAY, không có Wayland) → True."""
-    return bool(os.environ.get("DISPLAY")) and not os.environ.get("WAYLAND_DISPLAY")
+def x11_session(env=None):
+    """Đang ở phiên X11 (có DISPLAY, không có Wayland) → True. env: môi trường phiên khách (mặc định: môi trường tiến trình này)."""
+    e = os.environ if env is None else env
+    return bool(e.get("DISPLAY")) and not e.get("WAYLAND_DISPLAY")
 
 
 def x11_encode(disp, sw, sh, w, h, fps, enc_args, port):
