@@ -15755,9 +15755,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <span class="vms-ics"><span class="vms-ic"><i>⚙️</i>${cu ? N(VM.b.cc) + " vCPU" : L("vCPU tuỳ ý", "any vCPU")}</span><span class="vms-ic"><i>🧠</i>${cu ? N(VM.b.cr) + " GB RAM" : L("RAM tuỳ ý", "any RAM")}</span><span class="vms-ic"><i>💾</i>${cu ? "SSD NVMe " + N(VM.b.cd) + " GB" : L("ổ tuỳ ý", "any disk")}</span></span>
         <small class="pr">${cu ? esc(money(Math.max(1000, monthOf(CU(), VM.b.cc, VM.b.cr, Math.max(0, N(VM.b.cd) - freeGb()))))) : L("từ", "from") + " " + esc(money(custFrom()))} / ${L("tháng", "month")}</small></button>` : "");
     cfgPaint(p);
-    $i("vms-os").innerHTML = os.length ? os.map(i => `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="${i.id === VM.b.image ? "on" : ""}" aria-pressed="${i.id === VM.b.image}"${i.ready ? "" : " disabled"}>
-        <b>${i.id === VM.b.image ? "✓ " : ""}${esc(shortOs(i.name))}</b><small>${i.ready ? L("có sẵn", "available") : L("chưa có máy mẫu", "not available yet")}</small></button>`).join("")
-      : `<div class="hint">${L("Chưa có bản Windows nào cho gói này — nhắn shop.", "No Windows image for this plan yet — contact the shop.")}</div>`;
+    const osR = os.filter(i => i.ready);                               // 26/11: bản chưa có máy mẫu trên máy chủ → ẨN tạm (có máy mẫu là tự hiện lại)
+    $i("vms-os").innerHTML = osR.length ? osR.map(i => `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="${i.id === VM.b.image ? "on" : ""}" aria-pressed="${i.id === VM.b.image}">
+        <b>${i.id === VM.b.image ? "✓ " : ""}${esc(shortOs(i.name))}</b><small>${L("có sẵn", "available")}</small></button>`).join("")
+      : `<div class="hint">${L("Chưa có bản Windows nào sẵn sàng cho cấu hình này — chọn cấu hình khác hoặc nhắn shop.", "No Windows image is ready for this configuration yet.")}</div>`;
     // 26/11: bản máy chủ ĐÃ có nhưng gói này thiếu RAM / ổ → hiện mờ kèm lý do (trước đây biến mất → tưởng shop chưa có bản đó)
     $i("vms-os").insertAdjacentHTML("beforeend", A(I.images).filter(i => i.ready && !os.some(o => o.id === i.id)).map(i => `<button type="button" disabled data-vmneed="${esc(S(i.id, 30))}">
         <b>${esc(shortOs(i.name))}</b><small>${N(i.min_ram) > N(p.ram_mb) ? L(`cần gói từ ${gb(i.min_ram)} RAM`, `needs a plan with ${gb(i.min_ram)} RAM`) : L(`cần gói có ổ từ ${N(i.min_disk)} GB`, `needs a ${N(i.min_disk)} GB disk plan`)}</small></button>`).join(""));
@@ -15910,7 +15911,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   function reOpen(id) {
     const v = vOf(id); if (!v) return;
-    const os = osFor(O(VM.mine).images, v.ram_mb, v.disk_gb);
+    const rd = new Set(A(O(VM.info).images).filter(i => i.ready).map(i => i.id));     // 26/11: bản chưa có máy mẫu → ẩn tạm (không biết thì hiện hết như cũ)
+    const os = osFor(O(VM.mine).images, v.ram_mb, v.disk_gb).filter(i => !rd.size || rd.has(i.id) || i.id === v.image);
     VM.r = { id: N(id), image: S(v.image, 30) };
     dlg(`<h3>💿 ${L("Cài lại / đổi Windows", "Reinstall / switch Windows")}</h3>
       <div class="hint">${esc(S(v.label, 40) || S(v.name, 40))} · ${L(`còn ${N(v.left)} lần cài lại`, `${N(v.left)} reinstalls left`)}</div>
@@ -16315,7 +16317,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   function admSet(d) {
     const st = O(d.settings), box = $i("vma-set"); if (!box || box.dataset.dirty === "1") return;
-    const ps = A(d.plans).filter(p => p.enabled), is = A(d.images).filter(i => i.enabled);
+    const ps = A(d.plans).filter(p => p.enabled), isAll = A(d.images).filter(i => i.enabled);
+    const tplOn = new Set(A(d.hosts).filter(h => h.status !== "new").flatMap(h => A(O(h.metrics).tpl)));   // 26/11: chỉ hiện bản đã có máy mẫu trên máy chủ (đã duyệt)
+    const is = isAll.filter(i => tplOn.has(i.tpl)), hid = isAll.filter(i => !tplOn.has(i.tpl));
     box.innerHTML = `
       <div class="vma-sec"><h4>🛒 ${L("Bán hàng", "Selling")}</h4><div class="vma-set">
         <label class="chk"><input type="checkbox" id="vma-s-sell"${st.sell ? " checked" : ""}> ${L("Bật bán cho khách — khách thấy ô “" + VMN + "” (tắt: chỉ admin thấy)", "Sell to customers")}</label>
@@ -16351,7 +16355,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       <div class="vma-sec"><h4>🎁 ${L("Tạo VPS cho 1 tài khoản (không trừ tiền — thử máy / tặng / VPS quản trị của bạn)", "Create a VPS for an account (free)")}</h4><div class="vma-set">
         <label>${L("Tên đăng nhập / email", "Username / email")}<input class="in" id="vma-g-user" maxlength="80" autocomplete="off" value="${esc(S(O(me()).username, 60))}"></label>
         <label>${L("Gói", "Plan")}<select class="in" id="vma-g-plan">${ps.map(p => `<option value="${esc(S(p.id, 24))}">${esc(S(p.name, 40))} — ${N(p.cores)} vCPU · ${gb(p.ram_mb)} · ${N(p.disk_gb)} GB</option>`).join("")}</select></label>
-        <label>${L("Windows", "Windows")}<select class="in" id="vma-g-img">${is.map(i => `<option value="${esc(S(i.id, 24))}">${esc(S(i.name, 60))}</option>`).join("")}</select></label>
+        <label>${L("Windows", "Windows")}<select class="in" id="vma-g-img"${is.length ? "" : " disabled"}>${is.length ? is.map(i => `<option value="${esc(S(i.id, 24))}">${esc(S(i.name, 60))}</option>`).join("")
+          : `<option value="">${L("chưa có bản nào có máy mẫu", "no image has a template yet")}</option>`}</select>
+          ${hid.length ? `<small class="hint" style="border:0;padding:0">${esc(L("Đang ẩn (chưa có máy mẫu): ", "Hidden (no template yet): ") + hid.map(i => shortOs(S(i.name, 60))).join(", "))}</small>` : ""}</label>
         <label>${L("Số ngày", "Days")}<input class="in" type="number" id="vma-g-days" min="1" max="3650" step="1" value="30"></label></div>
         <div class="hint">${L("Mẹo: tạo 1 VPS cho chính bạn trên mỗi máy chủ → vào VPS đó mở trang Proxmox (https://IP-LAN:8006) là quản lý được máy chính từ bất cứ đâu.", "Tip: a VPS of your own on each host lets you open the Proxmox UI from anywhere.")}</div>
         <button class="btn sm" type="button" id="vma-g-go" style="justify-self:start">➕ ${L("Tạo VPS", "Create VPS")}</button><div class="err" id="vma-g-err"></div></div>`;
@@ -16466,7 +16472,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     VM.v = { id: N(v.id), act };
     const nm = "VPS-" + N(v.id) + (S(v.label, 40) ? " “" + S(v.label, 40) + "”" : "");
     if (act === "reinstall") {
-      const is = A(O(VM.adm).images).filter(i => N(i.min_ram) <= N(v.ram_mb) && N(i.min_disk) <= N(v.disk_gb));
+      const hh = A(O(VM.adm).hosts).find(x => x.id === v.host), tp = A(O(hh && hh.metrics).tpl);
+      const is = A(O(VM.adm).images).filter(i => N(i.min_ram) <= N(v.ram_mb) && N(i.min_disk) <= N(v.disk_gb) && (!tp.length || tp.includes(i.tpl) || i.id === v.image));
       return dlg(`<h3>💿 ${L("Cài lại", "Reinstall")} ${esc(nm)}</h3><label>${L("Bản Windows", "Windows")}<select class="in" id="vma-v-img">${is.map(i => `<option value="${esc(S(i.id, 24))}"${i.id === v.image ? " selected" : ""}>${esc(S(i.name, 60))}</option>`).join("")}</select></label>
         <div class="note">⚠️ ${L("Xoá sạch ổ VPS rồi dựng lại từ máy mẫu. Không trừ lượt cài lại của khách. Hạn giữ nguyên.", "Wipes the VPS and rebuilds it. Customer reinstall count unchanged.")}</div>${acts("💿 " + L("Cài lại", "Reinstall"), "danger", "vma-v-go")}`);
     }
