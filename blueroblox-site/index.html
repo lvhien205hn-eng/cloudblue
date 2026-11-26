@@ -2096,6 +2096,14 @@ html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{top:12p
 .m3-row .pdesc{margin:0;font-size:14.5px;line-height:1.6;-webkit-line-clamp:3}
 .m3-row .feats{display:flex!important}
 .m3-row .feats span{font-size:12.5px;padding:4px 11px;font-weight:600}
+/* 26/11: CẤU HÌNH của hàng cho thuê (VPS GPU · VPS NVMe) — chữ to, đậm, nền xanh để khách thấy ngay; hiện lại trong hộp thuê */
+.feats.spec{display:flex!important;flex-wrap:wrap;gap:7px;align-items:center}
+.feats.spec .fl{font-size:12.5px;font-weight:800;color:var(--muted);margin-right:2px}
+html[data-theme] .feats.spec span,.feats.spec span{font-size:13.5px;font-weight:800;letter-spacing:.01em;padding:6px 13px;color:#eaf3ff;background:linear-gradient(180deg,rgba(61,123,255,.36),rgba(61,123,255,.16));border:1px solid rgba(124,184,255,.72);box-shadow:0 0 0 1px rgba(8,18,48,.35) inset}
+html[data-theme=light] .feats.spec span{color:#0f3fb3;background:linear-gradient(180deg,#eef5ff,#dbe9ff);border-color:#9ec3ff;box-shadow:none}
+@media (max-width:560px){html[data-theme] .feats.spec span,.feats.spec span{font-size:12.5px;padding:5px 10px}}
+#modal.pcauto #m-feats{display:none!important}
+#m-feats{margin:2px 0 4px}
 .m3-row .days-chip{font-size:13.5px}
 /* 21.11l · thẻ sản phẩm có gói (VPS GPU…): giá từng gói + giá / ngày, gói rẻ nhất / ngày có nhãn "Rẻ nhất"; bấm gói = mở hộp mua chọn sẵn gói đó */
 .m3-plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:8px;max-width:560px;margin-top:6px}
@@ -2872,6 +2880,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
   <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="m-title">
     <h3 id="m-title" data-i18n="buy_title">Mua sản phẩm</h3>
     <div id="m-name" style="color:var(--muted);font-size:14px"></div>
+    <div id="m-feats" class="feats spec" hidden></div>
     <div id="m-desc" style="font-size:13px;line-height:1.6;color:#b9c6e6;white-space:pre-line;margin:4px 0 2px"></div>
     <div id="m-plans-box" hidden style="display:grid;gap:8px"><span style="font-size:13px;color:var(--muted)" data-i18n="rent_period">Chọn thời gian thuê</span><div class="amts plans" id="m-plans"></div></div>
     <div id="m-more" class="vps-more" hidden></div>
@@ -4925,6 +4934,7 @@ function setLang(l) { LANG = l === "en" ? "en" : "vi"; try { localStorage.setIte
 $("lang-vi").onclick = () => setLang("vi"); $("lang-en").onclick = () => setLang("en");
 const plansOf = p => (Array.isArray(p.plans) ? p.plans : []).filter(x => +x.days > 0 && +x.price >= 0).sort((a, b) => a.days - b.days);
 const minPrice = p => { const pl = plansOf(p); return pl.length ? Math.min(...pl.map(x => +x.price)) : +p.price; };
+const minPerDay = p => { const pl = plansOf(p); return pl.length ? Math.min(...pl.map(x => +x.price / Math.max(1, +x.days))) : +p.price; };   // 26/11: giá mồi = mức rẻ nhất tính theo NGÀY (gói dài ngày)
 /* 21.11l · xác minh 2 bước: admin đã bật mà phiên chưa nhập mã 6 số (aal1) → chưa coi là admin (máy chủ cũng chặn — SQL v47) */
 const MFA = { need: false, on: false, fid: null };
 const isAdmin = () => !!(profile && profile.role === "admin" && !profile.locked && !MFA.need);
@@ -5120,10 +5130,12 @@ function hmCfg() {
   const h = SITE && SITE.home && typeof SITE.home === "object" ? SITE.home : {};
   return { tier: h.tier && typeof h.tier === "object" ? h.tier : {}, order: Array.isArray(h.order) ? h.order.map(String) : [] };
 }
+function vmRowOn() { try { return !!(window.VMSHOP && typeof VMSHOP.rowOn === "function" && VMSHOP.rowOn()); } catch (e) { return false; } }
 function hmItems() {          // mọi mục có thể hiện ở trang chủ, đã xếp theo thứ tự admin chọn
   const c = hmCfg();
-  const items = [{ id: "cloudphone", cat: "cloud", cloud: true, sort: -1 }].concat(P.map(p => ({ id: String(p.id), cat: p.cat, p, sort: +p.sort || 0 })));
-  items.forEach(it => { const v = c.tier[it.id]; it.tier = v === "main" || v === "sub" || v === "hide" ? v : (it.cloud || it.cat === "vps" ? "main" : "sub"); });
+  const items = [{ id: "cloudphone", cat: "cloud", cloud: true, sort: -1 }].concat(vmRowOn() ? [{ id: "vpsnvme", cat: "vm", vm: true, sort: -0.5 }] : [])   // 26/11: VPS NVMe là 1 dòng sản phẩm (nội dung do khối VMSHOP vẽ)
+    .concat(P.map(p => ({ id: String(p.id), cat: p.cat, p, sort: +p.sort || 0 })));
+  items.forEach(it => { const v = c.tier[it.id]; it.tier = v === "main" || v === "sub" || v === "hide" ? v : (it.cloud || it.vm || it.cat === "vps" ? "main" : "sub"); });
   const pos = id => { const i = c.order.indexOf(id); return i < 0 ? 1e6 : i; };
   return items.sort((a, b) => pos(a.id) - pos(b.id) || (a.cloud ? -1 : b.cloud ? 1 : a.sort - b.sort));
 }
@@ -5131,9 +5143,9 @@ function renderCats() {
   const vis = hmItems().filter(it => it.tier !== "hide");
   const n = id => id === "all" ? vis.length : vis.filter(it => it.cat === id).length;
   if (cat !== "all" && !n(cat)) cat = "all";
-  $("cats").innerHTML = ["all", "cloud", "vps", "clone"].map(id => {
+  $("cats").innerHTML = ["all", "cloud", "vps", "vm", "clone"].map(id => {
     const k = n(id); if (id !== "all" && !k) return "";
-    const label = id === "all" ? t("Tất cả", "cat_all") : id === "cloud" ? L("ĐT đám mây", "Cloud phone") : catName(id);
+    const label = id === "all" ? t("Tất cả", "cat_all") : id === "cloud" ? L("ĐT đám mây", "Cloud phone") : id === "vm" ? "VPS NVMe" : catName(id);
     return `<button type="button" data-c="${id}" role="tab" aria-selected="${id === cat}" class="${id === cat ? "on" : ""}">${esc(label)}${id === "cloud" ? "" : `<small>${k}</small>`}</button>`;
   }).join("");
 }
@@ -5183,12 +5195,12 @@ function m3RowProd(p) {
     <div class="thumb">${m3Thumb({ p }, true)}${p.hot ? '<span class="hot">HOT</span>' : ""}</div>
     <div class="info"><span class="cat">${esc(catName(p.cat))}</span><h3>${esc(pName(p))}</h3>
       ${p.description ? `<p class="pdesc">${esc(pDesc(p))}</p>` : ""}
-      ${fe.length ? `<div class="feats">${fe.map(f => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
+      ${fe.length ? `<div class="feats${p.cat === "vps" ? " spec" : ""}">${p.cat === "vps" ? `<b class="fl">${L("Cấu hình", "Specs")}</b>` : ""}${fe.map(f => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
       ${pl.length ? m3Plans(p, pl, s) : ""}
       ${m3Restock(p)}</div>
-    <div class="m3-box"><div class="m3p">${pl.length ? `<small>${t("từ", "from")}</small>` : ""}<span class="price">${priceHtml(minPrice(p))}</span></div>
+    <div class="m3-box"><div class="m3p">${pl.length ? `<small>${t("từ", "from")}</small>` : ""}<span class="price">${priceHtml(pl.length ? minPerDay(p) : minPrice(p))}</span>${pl.length ? `<small>/${L("ngày", "day")}</small>` : ""}</div>
       <span class="stock ${st[0]}">${esc(st[1])}</span>
-      <button class="btn main" type="button" data-buy="${esc(p.id)}"${s === 0 ? " disabled" : ""}>${s === 0 ? t("Hết hàng", "sold_out") : t("Mua ngay", "buy_now")}</button></div></article>`;
+      <button class="btn main" type="button" data-buy="${esc(p.id)}"${s === 0 ? " disabled" : ""}>${s === 0 ? t("Hết hàng", "sold_out") : p.cat === "vps" ? L("Thuê ngay", "Rent now") : t("Mua ngay", "buy_now")}</button></div></article>`;
 }
 function m3LiCloud() {
   const c = cpCardShow(), st = m3CloudSt(), ok = st[0] === "ok" || isAdmin();
@@ -5204,15 +5216,15 @@ function m3LiProd(p) {
   return `<div class="m3-li"><div class="thumb">${m3Thumb({ p }, false)}</div>
     <div class="nm"><b>${esc(pName(p))}</b><i>${esc(catName(p.cat))}</i>${p.hot ? '<i class="hot">HOT</i>' : ""}</div>
     <div class="st">${status}</div>
-    <span class="price">${pl.length ? `<small style="font-size:12px;color:var(--muted);font-family:var(--body)">${t("từ", "from")} </small>` : ""}${priceHtml(minPrice(p))}</span>
-    <button class="btn sm${s === 0 ? " ghost" : ""}" type="button" data-buy="${esc(p.id)}"${s === 0 ? " disabled" : ""}>${s === 0 ? t("Hết hàng", "sold_out") : t("Mua ngay", "buy_now")}</button></div>`;
+    <span class="price">${pl.length ? `<small style="font-size:12px;color:var(--muted);font-family:var(--body)">${t("từ", "from")} </small>` : ""}${priceHtml(pl.length ? minPerDay(p) : minPrice(p))}${pl.length ? `<small style="font-size:12px;color:var(--muted);font-family:var(--body)">/${L("ngày", "day")}</small>` : ""}</span>
+    <button class="btn sm${s === 0 ? " ghost" : ""}" type="button" data-buy="${esc(p.id)}"${s === 0 ? " disabled" : ""}>${s === 0 ? t("Hết hàng", "sold_out") : p.cat === "vps" ? L("Thuê ngay", "Rent now") : t("Mua ngay", "buy_now")}</button></div>`;
 }
 function renderGrid() {
   const q = $("q").value.trim().toLowerCase(), so = $("sort").value;
   renderCats();
   let l = hmItems().filter(it => it.tier !== "hide" && (cat === "all" || it.cat === cat));
-  if (q) l = l.filter(it => (it.cloud ? cpCardShow().name + " cloud phone điện thoại đám mây" : String(it.p.name) + " " + (it.p.name_en || "")).toLowerCase().includes(q));
-  const pr = it => it.cloud ? m3From() : minPrice(it.p);
+  if (q) l = l.filter(it => (it.cloud ? cpCardShow().name + " cloud phone điện thoại đám mây" : it.vm ? "vps nvme blue windows máy ảo vps ảo hoá virtual" : String(it.p.name) + " " + (it.p.name_en || "")).toLowerCase().includes(q));
+  const pr = it => it.cloud ? m3From() : it.vm ? VMSHOP.from() : minPerDay(it.p);
   if (so === "asc") l.sort((a, b) => pr(a) - pr(b)); else if (so === "desc") l.sort((a, b) => pr(b) - pr(a));
   $("cat-title").textContent = t("Sản phẩm", "products");
   try { m3Facts(); } catch (e) {}
@@ -5220,8 +5232,8 @@ function renderGrid() {
   if (!main.length && !sub.length) {
     $("grid").innerHTML = `<div class="m3-empty">${q ? L("Không có sản phẩm khớp “", "No products match “") + esc(q) + "”." : P.length || CPpricing ? L("Chưa có sản phẩm nào ở mục này.", "No products here yet.") : t("Đang tải sản phẩm…", "loading")}</div>`; return;
   }
-  $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : m3RowProd(it.p)).join("")
-    + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : m3LiProd(it.p)).join("")}</div>` : "");
+  $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : it.vm ? VMSHOP.row() : m3RowProd(it.p)).join("")
+    + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : it.vm ? VMSHOP.li() : m3LiProd(it.p)).join("")}</div>` : "");
   document.querySelectorAll("#grid canvas[data-id]").forEach(cv => drawThumb(cv, seedOf(cv.dataset.id), HUES[cv.dataset.c] ?? 210));
 }
 /* số liệu ở đầu trang: giá thấp nhất (đọc từ bảng giá, admin đổi là đổi theo) + các bản Android đang bán */
@@ -5255,16 +5267,16 @@ function hmLoad(force) {
   if (!$("hm-list") || !isAdmin()) return;
   if (!force && hmDirty()) return;                       // đang sửa dở → không ghi đè
   if (typeof CPpricing === "undefined" || !CPpricing) { cpLoadPricing().then(() => { if (!hmDirty()) hmLoad(true); }); }
-  HM = hmItems().map(it => { const nm = it.cloud ? cpCard().name : String(it.p.name || ""); return { id: it.id, cloud: !!it.cloud, cat: it.cat, name: nm, name0: nm, tier: it.tier, tier0: it.tier }; });
+  HM = hmItems().map(it => { const nm = it.cloud ? cpCard().name : it.vm ? "VPS NVMe BLUE" : String(it.p.name || ""); return { id: it.id, cloud: !!it.cloud, vm: !!it.vm, cat: it.cat, name: nm, name0: nm, tier: it.tier, tier0: it.tier }; });
   HM.order0 = HM.map(h => h.id).join(",");
   hmRender();
 }
 function hmRender() {
   const box = $("hm-list"); if (!box || !HM) return;
-  const ic = h => h.cloud ? "📱" : h.cat === "vps" ? "🖥️" : "🧩";
+  const ic = h => h.cloud ? "📱" : h.vm ? "⚡" : h.cat === "vps" ? "🖥️" : "🧩";
   box.innerHTML = HM.length ? HM.map((h, i) => `<div class="hm-it${h.name !== h.name0 || h.tier !== h.tier0 ? " dirty" : ""}">
     <span class="ic" aria-hidden="true">${ic(h)}</span>
-    <span class="nmw"><input value="${esc(h.name)}" maxlength="${h.cloud ? 80 : 120}" data-hmn="${i}" aria-label="Tên sản phẩm"><small>${h.cloud ? "Thẻ Điện thoại đám mây" : esc(catName(h.cat))}${h.name !== h.name0 ? " · tên đang lưu: " + esc(h.name0) : ""}</small></span>
+    <span class="nmw"><input value="${esc(h.name)}" maxlength="${h.cloud ? 80 : 120}" data-hmn="${i}" aria-label="Tên sản phẩm"${h.vm ? " disabled" : ""}><small>${h.cloud ? "Thẻ Điện thoại đám mây" : h.vm ? "Thẻ VPS NVMe (tên cố định — giá, gói: Máy cho thuê › VPS ảo hoá)" : esc(catName(h.cat))}${h.name !== h.name0 ? " · tên đang lưu: " + esc(h.name0) : ""}</small></span>
     <span class="hm-seg" role="group" aria-label="Kiểu hiển thị">${[["main", "Chính"], ["sub", "Phụ"], ["hide", "Ẩn"]].map(([k, l]) => `<button type="button" data-t="${k}" data-hmt="${i}" class="${h.tier === k ? "on" : ""}" aria-pressed="${h.tier === k}">${l}</button>`).join("")}</span>
     <span class="hm-mv"><button type="button" data-hmu="${i}"${i === 0 ? " disabled" : ""} aria-label="Lên trên">↑</button><button type="button" data-hmd="${i}"${i === HM.length - 1 ? " disabled" : ""} aria-label="Xuống dưới">↓</button></span></div>`).join("")
     : `<div class="hint">Chưa có sản phẩm.</div>`;
@@ -5460,7 +5472,10 @@ $("m-more").onclick = e => {
 const moreChosen = () => moreG.map((g, i) => moreSel[i] == null || !g.o[moreSel[i]] ? null : { t: g.t, t_en: g.t_en || "", n: g.o[moreSel[i]].n }).filter(Boolean);
 const moreMissing = () => moreSets().find(s => moreReq(s) && !s.some(i => moreSel[i] != null)) || null;   // lượt bắt buộc chưa chọn → [số thứ tự mục]
 function openBuy(id, days) { sel = id; const p = selP(); const pl = plansOf(p); selDays = pl.length ? +((days && pl.find(x => +x.days === +days)) || pl.find(x => +x.days === 30) || pl[0]).days : null;
-  $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description); $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
+  $("m-name").textContent = pName(p); $("m-desc").textContent = pDesc(p); show("m-desc", !!p.description);
+  try { const rent = p.cat === "vps", fe = rent ? pFeats(p) : [], mf = $("m-feats");          // 26/11: hàng cho thuê → "Thuê …" + nhắc lại cấu hình ngay trong hộp
+    $("m-title").textContent = rent ? L("Thuê ", "Rent ") + catName(p.cat) : t("Mua sản phẩm", "buy_title");
+    if (mf) { mf.hidden = !fe.length; mf.innerHTML = fe.length ? `<b class="fl">${L("Cấu hình", "Specs")}</b>` + fe.map(f => `<span>${esc(f)}</span>`).join("") : ""; } } catch (e) {} $("m-qty").value = 1; $("m-qty").max = p.stock; prmReset("buy"); renderPlans(); upd();
   show("m-vps", false); $("m-pin").value = ""; setVpsMethod("farmv5"); renderMore(p); show("modal"); }   // 21.11j: bỏ chọn FarmV5 / FarmSync
 function closeBuy() { show("modal", false); sel = null; }
 async function doBuy() {
@@ -15407,6 +15422,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .vms-chips{display:flex;flex-wrap:wrap;gap:6px}
 .vms-chips span{font-size:12.5px;padding:4px 10px;border-radius:999px;background:var(--soft,rgba(143,208,255,.08));border:1px solid var(--line2)}
 .vms-lbl{font-size:13px;font-weight:800;color:var(--muted);margin-top:2px}
+.vms-plans{max-height:min(48vh,378px);overflow:auto;padding:2px;overscroll-behavior:contain}
+.vms-plans button small.pr{color:var(--gold-hi);font-weight:800;font-size:13px}
+.vms-plans button:disabled{opacity:.5}
+#vms-days button small.pd{color:var(--ok,#19c37d);font-weight:700}
+.m3-row.vm .vms-adm{display:block;font-size:12.5px;font-weight:700;margin:2px 0}
 .vms-dlg .vps-opts button:disabled{opacity:.45;cursor:not-allowed}
 .vms-sum{font-size:14px}
 .vms-sum b{color:var(--gold-hi);font-size:17px}
@@ -15549,68 +15569,86 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   const p30 = p => { const pr = A(p.prices); return pr.find(x => N(x.days) === 30) || pr[pr.length - 1] || null; };
   const osFor = (imgs, ram, disk) => A(imgs).filter(i => N(i.min_ram) <= N(ram) && N(i.min_disk) <= N(disk));
-  function shopBox() {
-    let s = $i("vm-shop");
-    if (!s) {
-      const shop = $i("shop"); if (!shop) return null;
-      s = document.createElement("section"); s.className = "wrap vms-sec"; s.id = "vm-shop"; s.hidden = true; s.setAttribute("aria-labelledby", "vms-h");
-      s.innerHTML = `<div class="vms-head"><div class="thumb vms-art" aria-hidden="true"><canvas data-id="vps-nvme" data-c="nvme" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
-        <div class="vms-ttl"><h2 id="vms-h">${esc(VMN)}<small>${L("Ổ SSD NVMe · Windows riêng của bạn · tự tạo trong vài phút", "NVMe SSD · your own Windows · ready in minutes")}</small></h2>
-        <p class="hint" id="vms-lead"></p></div></div><div class="vms-grid" id="vms-grid"></div>`;
-      shop.before(s);
-      try { if (typeof window.BRthumbScan === "function") window.BRthumbScan(); } catch (e) {}
-    }
-    return s;
+  // 26/11 (2): VPS NVMe là 1 DÒNG trong danh sách Sản phẩm (như Cloud Phone BLUE). Bấm Thuê ngay → hộp chọn cấu hình: gói → hệ điều hành → số ngày.
+  const plansOk = () => A(O(VM.info).plans).filter(p => A(p.prices).length);
+  const rowOn = () => { const I = O(VM.info); return (I.sell === true || (I.admin === true && isAdm())) && plansOk().length > 0; };
+  const lowDay = () => { const v = plansOk().flatMap(p => A(p.prices).map(x => N(x.price) / Math.max(1, N(x.days)))).filter(x => x > 0); return v.length ? Math.min(...v) : 0; };   // giá mồi: rẻ nhất tính theo NGÀY
+  const span = a => { const lo = Math.min(...a), hi = Math.max(...a); return lo === hi ? String(lo) : lo + "–" + hi; };
+  const perOf = x => N(x.days) === 30 ? L("tháng", "month") : N(x.days) + " " + L("ngày", "days");
+  function rowBits() {
+    const I = O(VM.info), ps = plansOk(), low = lowDay(), free = ps.some(p => p.free);
+    const os = [...new Set(A(I.images).filter(i => i.ready).map(i => shortOs(i.name)))].slice(0, 4);
+    const feats = !ps.length ? [] : [span(ps.map(p => N(p.cores))) + " vCPU", span(ps.map(p => Math.round(N(p.ram_mb) / 102.4) / 10)) + " GB RAM", "SSD NVMe " + span(ps.map(p => N(p.disk_gb))) + " GB"]
+      .concat(os.length ? ["Windows " + os.join(" · ")] : []);
+    return { I, low, free, feats, can: free || isAdm() };
   }
-  function planCard(p, imgs) {
-    const pr = p30(p), os = osFor(imgs, p.ram_mb, p.disk_gb);
-    return `<div class="vms-plan${p.free ? "" : " out"}">
-      <b class="vms-nm">${esc(S(p.name, 40))}</b>
-      ${pr ? `<div class="vms-price"><b>${money(pr.price)}</b><small>/ ${N(pr.days) === 30 ? L("tháng", "month") : N(pr.days) + " " + L("ngày", "days")}</small></div>` : ""}
-      <ul class="vms-spec"><li>⚙️ <b>${N(p.cores)}</b> vCPU</li><li>🧠 <b>${gb(p.ram_mb)}</b> RAM</li><li>💾 <b>${N(p.disk_gb)} GB</b> SSD NVMe</li>
-        <li class="ctl">🖥 ${L("Điều khiển trên web · app ĐT · app PC", "Control from web · phone · PC app")}</li>
-        ${os.length ? `<li class="os">🪟 ${esc(os.map(i => shortOs(i.name)).join(" · "))}</li>` : ""}</ul>
-      ${S(p.note, 200) ? `<small class="hint">${esc(S(p.note, 200))}</small>` : ""}
-      <button class="btn" type="button" data-vmbuy="${esc(S(p.id, 30))}"${p.free ? "" : " disabled"}>${p.free ? "🛒 " + L("Mua ngay", "Buy now") : L("Tạm hết chỗ", "Sold out")}</button></div>`;
+  function rowHtml() {
+    const { I, low, free, feats, can } = rowBits();
+    return `<article class="m3-row vm"${can ? ' data-vmbuy="*" style="cursor:pointer"' : ""}>
+    <div class="thumb"><canvas data-id="vps-nvme" data-c="nvme" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
+    <div class="info"><span class="cat">${esc(VMN)}</span><h3>${esc(VMN)} BLUE</h3>
+      ${I.sell === true ? "" : `<small class="vms-adm">👁 ${L("Chỉ admin thấy — chưa bật bán (Quản trị › VPS ảo hoá › Cài đặt)", "Admin preview — selling is off")}</small>`}
+      <p class="pdesc">${esc(L("Máy ảo Windows riêng chạy 24/7 — bấm là vào màn hình trên web, app điện thoại, app máy tính. Không cần IP, không cần cài gì. Hạn tính từ lúc VPS lên.",
+        "Your own Windows VM, on 24/7 — open it from the web, phone app or PC app. No IP, nothing to install. Time starts when the VPS is up."))}</p>
+      <div class="feats spec"><b class="fl">${L("Cấu hình", "Specs")}</b>${feats.map(f => `<span>${esc(f)}</span>`).join("")}</div></div>
+    <div class="m3-box"><div class="m3p"><small>${L("từ", "from")}</small><span class="price">${low ? esc(money(low)) : "…"}</span><small>/${L("ngày", "day")}</small></div>
+      <span class="stock ${free ? "ok" : "out"}">${free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>
+      <button class="btn main" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : L("Tạm hết chỗ", "Sold out")}</button></div></article>`;
+  }
+  function liHtml() {                                                  // admin xếp VPS NVMe vào nhóm "Phụ" → dòng gọn
+    const { low, free, feats, can } = rowBits(), sm = 'style="font-size:12px;color:var(--muted);font-family:var(--body)"';
+    return `<div class="m3-li"${can ? ' data-vmbuy="*" style="cursor:pointer"' : ""}><div class="thumb"><canvas data-id="vps-nvme" data-c="nvme" data-static="1"></canvas></div>
+    <div class="nm"><b>${esc(VMN)} BLUE</b><i>${esc(VMN)}</i></div>
+    <div class="st"><span class="stock ${free ? "ok" : "out"}">${free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>${feats.length ? `<span> · ${esc(feats.slice(0, 2).join(" · "))}</span>` : ""}</div>
+    <span class="price"><small ${sm}>${L("từ", "from")} </small>${low ? esc(money(low)) : "…"}<small ${sm}>/${L("ngày", "day")}</small></span>
+    <button class="btn sm" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : L("Tạm hết chỗ", "Sold out")}</button></div>`;
   }
   function shopRender() {
-    const s = shopBox(); if (!s) return;
-    const I = O(VM.info), plans = A(I.plans).filter(p => A(p.prices).length);
-    s.hidden = !(I.sell === true || (I.admin === true && isAdm())) || !plans.length;
+    const old = $i("vm-shop"); if (old) old.remove();                  // bản trước: khối riêng nằm trên mục Sản phẩm
+    try { if (typeof renderGrid === "function") renderGrid(); } catch (e) {}
     try { navVm(); } catch (e) {}
-    if (s.hidden) return;
-    $i("vms-lead").innerHTML = (I.sell === true ? "" : `<b class="vms-adm">👁 ${L("Chỉ admin thấy — chưa bật bán (Quản trị › VPS ảo hoá › Cài đặt)", "Admin preview — selling is off")}</b><br>`)
-      + L("Máy ảo Windows riêng: bấm là vào màn hình trên web, app điện thoại, app máy tính — không cần IP, không cần cài gì. Hạn tính từ lúc VPS lên.",
-          "Your own Windows VM: open it from the web, phone app or PC app — no IP, nothing to install. Time starts when the VPS is up.");
-    $i("vms-grid").innerHTML = plans.map(p => planCard(p, I.images)).join("");
   }
   function buyOpen(id) {
     if (!me()) { try { openAuth("login"); } catch (e) {} return; }
-    const I = O(VM.info), p = A(I.plans).find(x => x.id === id); if (!p) return;
-    const os = osFor(I.images, p.ram_mb, p.disk_gb), pr = p30(p);
-    VM.b = { plan: p.id, image: S((os.find(i => i.ready) || {}).id, 30), days: pr ? N(pr.days) : 0 };
-    dlg(`<h3>⚡ ${L("Mua", "Buy")} ${esc(S(p.name, 40))}</h3>
-      <div class="vms-chips"><span>⚙️ ${N(p.cores)} vCPU</span><span>🧠 ${gb(p.ram_mb)} RAM</span><span>💾 ${N(p.disk_gb)} GB SSD NVMe</span></div>
-      <div class="vms-lbl">① ${L("Chọn Windows", "Choose Windows")}</div><div class="vps-opts" id="vms-os"></div>
-      <div class="vms-lbl">② ${L("Thời gian", "Duration")}</div><div class="vps-opts" id="vms-days"></div>
+    const ps = plansOk();
+    const p = ps.find(x => x.id === id) || ps.filter(x => x.free).sort((a, b) => N(O(p30(a)).price) - N(O(p30(b)).price))[0] || ps[0]; if (!p) return;
+    VM.b = { plan: p.id, image: "", days: 0 };
+    dlg(`<h3>⚡ ${L("Thuê", "Rent")} ${esc(VMN)}</h3>
+      <div class="vms-lbl">① ${L("Chọn cấu hình", "Choose a plan")}</div><div class="vps-opts vms-plans" id="vms-plan"></div>
+      <div class="vms-lbl">② ${L("Chọn hệ điều hành", "Choose the operating system")}</div><div class="vps-opts" id="vms-os"></div>
+      <div class="vms-lbl">③ ${L("Thời gian", "Duration")}</div><div class="vps-opts" id="vms-days"></div>
       <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
       <div class="vms-sum" id="vms-sum"></div>
       <div class="hint">✅ ${L("Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở <b>" + VMN + " của bạn</b>. Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
         "After payment the VPS is created automatically (usually 3–10 min) — see <b>Your " + VMN + "</b>. Time starts when it is up. No capacity → no charge.")}</div>
       ${acts("💳 " + L("Thanh toán", "Pay"), "", "vms-pay")}`);
+    buyPick(p.id);
+  }
+  function buyPick(pid) {                                              // đổi gói: giữ hệ điều hành / số ngày đang chọn nếu gói mới vẫn có, không thì lấy cái đầu tiên dùng được
+    const I = O(VM.info), p = plansOk().find(x => x.id === pid); if (!p || !VM.b) return;
+    const os = osFor(I.images, p.ram_mb, p.disk_gb), pr = p30(p);
+    VM.b.plan = p.id;
+    if (!os.some(i => i.id === VM.b.image && i.ready)) VM.b.image = S((os.find(i => i.ready) || {}).id, 30);
+    if (!A(p.prices).some(x => N(x.days) === VM.b.days)) VM.b.days = pr ? N(pr.days) : 0;
     buyPaint();
   }
   function buyPaint() {
     const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
     const os = osFor(I.images, p.ram_mb, p.disk_gb);
+    $i("vms-plan").innerHTML = plansOk().map(x => { const q = p30(x), on = x.id === p.id;
+      return `<button type="button" data-vmplan="${esc(S(x.id, 30))}" class="${on ? "on" : ""}" aria-pressed="${on}"${x.free || on ? "" : " disabled"}>
+        <b>${on ? "✓ " : ""}${esc(S(x.name, 40))}</b><small>${N(x.cores)} vCPU · ${gb(x.ram_mb)} RAM</small><small>SSD NVMe ${N(x.disk_gb)} GB</small>
+        <small class="pr">${x.free ? (q ? esc(money(q.price)) + " / " + esc(perOf(q)) : "") : L("tạm hết chỗ", "sold out")}</small></button>`; }).join("");
     $i("vms-os").innerHTML = os.length ? os.map(i => `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="${i.id === VM.b.image ? "on" : ""}" aria-pressed="${i.id === VM.b.image}"${i.ready ? "" : " disabled"}>
         <b>${i.id === VM.b.image ? "✓ " : ""}${esc(shortOs(i.name))}</b><small>${i.ready ? L("có sẵn", "available") : L("chưa có máy mẫu", "not available yet")}</small></button>`).join("")
       : `<div class="hint">${L("Chưa có bản Windows nào cho gói này — nhắn shop.", "No Windows image for this plan yet — contact the shop.")}</div>`;
     // 26/11: bản máy chủ ĐÃ có nhưng gói này thiếu RAM / ổ → hiện mờ kèm lý do (trước đây biến mất → tưởng shop chưa có bản đó)
     $i("vms-os").insertAdjacentHTML("beforeend", A(I.images).filter(i => i.ready && !os.some(o => o.id === i.id)).map(i => `<button type="button" disabled data-vmneed="${esc(S(i.id, 30))}">
         <b>${esc(shortOs(i.name))}</b><small>${N(i.min_ram) > N(p.ram_mb) ? L(`cần gói từ ${gb(i.min_ram)} RAM`, `needs a plan with ${gb(i.min_ram)} RAM`) : L(`cần gói có ổ từ ${N(i.min_disk)} GB`, `needs a ${N(i.min_disk)} GB disk plan`)}</small></button>`).join(""));
-    $i("vms-days").innerHTML = A(p.prices).map(x => `<button type="button" data-vmdays="${N(x.days)}" class="${N(x.days) === VM.b.days ? "on" : ""}" aria-pressed="${N(x.days) === VM.b.days}">
-        <b>${N(x.days)} ${L("ngày", "days")}</b><small>${money(x.price)}</small></button>`).join("");
+    const pd = x => N(x.price) / Math.max(1, N(x.days)), prs = A(p.prices).slice().sort((a, b) => N(a.days) - N(b.days)), base = prs.length ? pd(prs[0]) : 0;
+    $i("vms-days").innerHTML = prs.map(x => { const sv = base > 0 ? Math.round((1 - pd(x) / base) * 100) : 0;
+      return `<button type="button" data-vmdays="${N(x.days)}" class="${N(x.days) === VM.b.days ? "on" : ""}" aria-pressed="${N(x.days) === VM.b.days}">
+        <b>${N(x.days)} ${L("ngày", "days")}</b><small>${money(x.price)}</small>${prs.length > 1 ? `<small class="pd">${money(pd(x))}/${L("ngày", "day")}${sv >= 1 ? " · −" + sv + "%" : ""}</small>` : ""}</button>`; }).join("");
     const pr = A(p.prices).find(x => N(x.days) === VM.b.days), u = me();
     $i("vms-sum").innerHTML = pr ? `${L("Tổng", "Total")}: <b>${money(pr.price)}</b>${u ? ` <span class="hint">· ${L("số dư", "balance")} ${money(u.balance)}</span>` : ""}` : "";
   }
@@ -15627,7 +15665,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       const { data, error } = await rpc("vm_buy", Object.assign({ p_plan: p.id, p_image: VM.b.image, p_days: VM.b.days }, code ? { p_promo: code } : {}));
       if (error) return dErr(em(error));
       closeDlg();
-      toast(L(`Đã mua VPS-${N(O(data).id)} — máy chủ đang tạo, thường 3–10 phút.`, `VPS-${N(O(data).id)} purchased — it is being created (3–10 min).`));
+      toast(L(`Đã thuê VPS-${N(O(data).id)} — máy chủ đang tạo, thường 3–10 phút.`, `VPS-${N(O(data).id)} rented — it is being created (3–10 min).`));
       await Promise.all([typeof loadProfile === "function" ? loadProfile() : null, mine(true), info(true)]).catch(() => {});
       try { renderUser(); } catch (e) {}
       shopRender();
@@ -15646,7 +15684,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <div class="m3m-hacts"><button class="btn ghost sm" type="button" id="vm-mine-new">➕ ${L("Mua thêm", "Buy more")}</button></div></div>
         <div class="m3m-list" id="vm-mine-list"></div></div>`;
       after.after(s);
-      $i("vm-mine-new").onclick = () => { const x = $i("vm-shop"); if (x && !x.hidden) { try { x.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (e) {} } else location.hash = "#shop"; };
+      $i("vm-mine-new").onclick = () => { if (rowOn()) buyOpen("*"); else location.hash = "#shop"; };
     } else if (after && after.id === "pcs-mine" && after.nextElementSibling !== s) after.after(s);       // luôn ngay dưới "VPS GPU của bạn"
     return s;
   }
@@ -15691,12 +15729,12 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   function navVm() {                                                  // 26/11: menu bên tách "VPS NVMe của tôi" khỏi "VPS GPU của tôi"
     const a = $i("nav-vm"), b = $i("vm-nav-badge"); if (!a || !b) return;
-    const n = me() ? A(O(VM.mine).items).length : 0, shop = $i("vm-shop");
-    a.hidden = !(me() && (n > 0 || (shop && !shop.hidden)));
+    const n = me() ? A(O(VM.mine).items).length : 0;
+    a.hidden = !(me() && (n > 0 || rowOn()));
     a.classList.toggle("has", n > 0); b.hidden = n < 1; b.textContent = n > 0 ? String(n) : "";
     if (!a.dataset.on) { a.dataset.on = "1"; a.addEventListener("click", e => { e.preventDefault();
-      const m = $i("vm-mine"), t = m && !m.hidden ? m : $i("vm-shop");
-      if (t && !t.hidden) try { t.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (x) {} }); }
+      const m = $i("vm-mine"), t = m && !m.hidden ? m : (document.querySelector("#grid [data-vmbuy]") || $i("shop"));
+      if (t && !t.hidden) try { t.scrollIntoView({ behavior: "smooth", block: m && !m.hidden ? "start" : "center" }); } catch (x) {} }); }
   }
   function mineRender() {
     const s = mineBox(); if (!s) return;
@@ -16218,11 +16256,12 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   // ---------------------------------------------------------------- bấm nút (1 chỗ cho cả trang)
   document.addEventListener("click", e => {
     const t = e.target && e.target.closest ? e.target : null; if (!t) return;
-    const b = t.closest("[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
+    const b = t.closest("[data-vmplan],[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
       + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload,#vma-retry,#vma-t-new,#vma-t-cmd,#vma-t-go,[data-vmtsrc],[data-vmt],#vma-tj-go,#vma-c-go,#vma-c-miss,#vma-c-ok");
     if (!b || b.disabled) return;
     const dt_ = b.dataset;
     if (dt_.vmbuy) return buyOpen(dt_.vmbuy);
+    if (dt_.vmplan && VM.b) return buyPick(dt_.vmplan);
     if (dt_.vmos && VM.b) { VM.b.image = dt_.vmos; return buyPaint(); }
     if (dt_.vmdays && VM.b) { VM.b.days = N(dt_.vmdays); return buyPaint(); }
     if (b.id === "vms-pay") return pay(b);
@@ -16320,6 +16359,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }, 15000);
   setInterval(() => { if (!document.hidden) info(true).then(shopRender); }, 120000);
   VM.load = admLoad; VM.mineLoad = mine; VM.shop = () => info(true).then(shopRender);
+  VM.rowOn = rowOn; VM.row = rowHtml; VM.li = liHtml; VM.from = lowDay;
   setTimeout(() => { try { auth(); } catch (e) {} }, 0);
 })();
 </script>
