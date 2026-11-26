@@ -835,6 +835,33 @@ ck("27/11c: VPS Linux — đặt mạng DHCP không gắn MAC máy mẫu (lệnh
 ck("bật máy ảo đang chạy sẵn ('already running') → coi là được, không báo lỗi cho web", h14.pve.start(100060)[0] == 0 and "already running" in h14.pve.start(100060)[1])
 
 
+print("16. 27/11d · CÁCH LY VPS KHÁCH: không vào được chính máy chủ Proxmox (8006 / SSH), VPS khác, trang quản trị modem / máy trong mạng nhà")
+NFTF = os.path.join(tmp, "nft-luat.txt"); fake_nft = os.path.join(tmp, "nft")
+open(fake_nft, "w").write("#!%s\nimport os, sys\nd = sys.stdin.read()\nopen(%r, 'a').write(d + '\\n#---\\n')\n"
+                          "sys.exit(1 if os.path.exists(%r) else 0)\n" % (sys.executable, NFTF, NFTF + ".loi"))
+os.chmod(fake_nft, 0o755); cb.NFT = fake_nft; _gw0 = cb.default_gw; cb.default_gw = lambda: "192.168.1.1"
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm"}))
+pve_set(lambda d: d.update(vms={"9000": {"name": "tpl-win10-22h2", "status": "stopped", "template": True, "disks": {"scsi0": 32}},
+                                 "100071": {"name": "vps-71", "status": "running", "template": False, "disks": {"scsi0": 40}},
+                                 "101": {"name": "may-rieng-cua-chu", "status": "running", "template": False, "disks": {"scsi0": 40}}}, isos=[], log=[]))
+w16 = FakeWeb(); w16.status = "ready"; h16 = cb.Host(web=w16); h16.poll_once(); wait_idle(h16)
+luat = open(NFTF).read() if os.path.exists(NFTF) else ""
+ck("đặt bảng nftables bridge cloudblue_vps: card VPS 100071 (tap + fwpr), KHÔNG gồm máy riêng số < vmid_base / máy mẫu",
+   "table bridge cloudblue_vps {" in luat and '"tap100071i0"' in luat and '"fwpr100071p0"' in luat and "tap101i0" not in luat and "tap9000" not in luat, luat[-700:])
+ck("VPS → CHÍNH máy chủ: chặn hết (hook input) · VPS ↔ VPS chặn · modem 192.168.1.1 chặn cổng quản trị · máy trong mạng nhà chặn SSH/SMB/RDP/WinRM/8006",
+   "iifname @vps drop" in luat and "iifname @vps oifname @vps drop" in luat and "ip daddr 192.168.1.1 tcp dport { 22, 23, 80, 443, 8080, 8443 } drop" in luat
+   and "tcp dport { 22, 139, 445, 3389, 5985, 5986, 8006 } drop" in luat and "53" not in luat.split("ip daddr 192.168.1.1")[1][:60], luat[-500:])
+m16 = last_poll(w16)["p_metrics"]
+ck("báo web metrics.vps_fw = {ok: true, n: 1}", m16.get("vps_fw") == {"ok": True, "n": 1}, m16.get("vps_fw"))
+n_before = open(NFTF).read().count("#---"); h16.poll_once(); wait_idle(h16)
+ck("danh sách VPS không đổi → không đặt lại mỗi 10 giây (chỉ 10 phút / lần)", open(NFTF).read().count("#---") == n_before)
+open(NFTF + ".loi", "w").write("x"); pve_set(lambda d: d["vms"].update({"100072": {"name": "vps-72", "status": "running", "template": False, "disks": {"scsi0": 40}}}))
+h16.poll_once(); wait_idle(h16); h16.poll_once(); wait_idle(h16)
+m16 = last_poll(w16)["p_metrics"]
+ck("nft lỗi (vd máy thiếu nftables) → báo web vps_fw.ok = false + lý do, máy chủ vẫn chạy bình thường", (m16.get("vps_fw") or {}).get("ok") is False, m16.get("vps_fw"))
+os.remove(NFTF + ".loi"); cb.default_gw = _gw0
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"vps_iso": False})); ck("tắt được: \"vps_iso\": false", cb.conf()["vps_iso"] is False)
+
 print("15. 27/11c · VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi xoá (Proxmox không xoá máy đang chạy); xoá không làm VPS mới đứng 'Đang tạo'")
 open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm"}))
 try: os.remove(os.environ["CBHOST_STATE"])

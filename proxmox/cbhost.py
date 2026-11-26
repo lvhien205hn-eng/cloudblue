@@ -28,6 +28,10 @@
 #     VPS Linux: vé đăng ký ghi vào /opt/cloudblue/seed.json; nới ổ / bằng growpart + resize2fs. Tắt: "linux_tpl": [].
 #     27/11b: admin bật bản Ubuntu trên web (vm_images có tpl-ubuntu2404) → MỌI máy chủ (cả máy cài tay) tự dựng máy mẫu đó,
 #     trừ máy ghi rõ "linux_tpl" trong cấu hình (vd [] = không bao giờ dựng).
+#   · 27/11d: CÁCH LY VPS KHÁCH (nftables, bảng bridge cloudblue_vps): VPS không vào được CHÍNH máy chủ Proxmox (trang 8006, SSH…),
+#     không nói chuyện với VPS khác, không vào trang quản trị modem (cổng 22/23/80/443/8080/8443 của cổng mạng mặc định) và cổng quản trị
+#     của máy khác trong mạng nhà (SSH, SMB, RDP, WinRM, 8006). Internet, DNS, DHCP và đường điều khiển từ xa (máy chủ phát hình trong
+#     mạng nhà, cổng khác) giữ nguyên. Tắt: "vps_iso": false.
 #   · 27/11c: VPS Linux đặt mạng DHCP không gắn MAC máy mẫu (NET_LIN_SH) — trước đây VPS nhân ra có card mạng TẮT.
 #   · 27/11c: VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi mới xoá (Proxmox không cho xoá máy đang chạy: trước đây thử xoá mãi 10 giây / lần
 #     → 2 lượt xoá hỏng chiếm hết max_builds → VPS mới mua đứng "Đang tạo" mãi). Việc nhẹ (xoá) không còn tính vào max_builds.
@@ -35,7 +39,7 @@
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11c"
+CBHOST_VER = "27/11d"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -45,9 +49,15 @@ STATE_F = os.environ.get("CBHOST_STATE") or "/var/lib/cloudblue/cbhost-state.jso
 QM = os.environ.get("CBHOST_QM") or "qm"
 PVESH = os.environ.get("CBHOST_PVESH") or "pvesh"
 PVESM = os.environ.get("CBHOST_PVESM") or "pvesm"
+NFT = os.environ.get("CBHOST_NFT") or "nft"
+ISO_TABLE = "cloudblue_vps"
+ISO_TCP_GW = (22, 23, 80, 443, 8080, 8443)                    # trang quản trị modem / router (cổng mạng mặc định)
+ISO_TCP_LAN = (22, 139, 445, 3389, 5985, 5986, 8006)          # quản trị máy khác trong mạng nhà: SSH, SMB, RDP, WinRM, Proxmox
+ISO_LAN = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10"
+ISO_EVERY = 600                                               # đặt lại luật mỗi 10 phút dù không đổi (máy chủ khởi động lại / ai xoá luật)
 DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze",
             "storage": "", "full_clone": True, "vmid_base": 100000, "seed_path": "C:\\CloudBluePC\\seed.json", "max_builds": 2, "auto_update": True,
-            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None}
+            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None, "vps_iso": None}
 UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
 UPD_EVERY_S = 3600
 RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
@@ -186,6 +196,7 @@ def conf():
     try: c["tpl_vmid_from"] = max(100, min(900000000, int(c.get("tpl_vmid_from") or 99000)))
     except (TypeError, ValueError): c["tpl_vmid_from"] = 99000
     c["auto_tpl"] = c.get("auto_tpl") is True
+    c["vps_iso"] = c.get("vps_iso") is not False                  # 27/11d · cách ly VPS khách (mặc định bật)
     c["net_heal"] = c["auto_tpl"] if c.get("net_heal") is None else c.get("net_heal") is True      # mặc định: bật trên máy cài bằng ISO CloudBlue-Proxmox
     lt = c.get("linux_tpl")                                                                       # 27/11a · máy mẫu Linux tự dựng (mặc định: máy cài bằng ISO)
     c["linux_tpl"] = (["ubuntu2404"] if c["auto_tpl"] else []) if lt is None else [t for t in lt if t in LINUX_TPLS] if isinstance(lt, list) else []
@@ -217,6 +228,40 @@ def secret():
             try: os.remove(tmp)
             except OSError: pass
     raise RuntimeError("không ghi được mã riêng của máy chủ: " + SECRET_F)
+
+
+def iso_ruleset(ifaces, gw):
+    """27/11d · luật nftables cách ly VPS (họ bridge: lọc ngay trên cầu vmbr — không cần br_netfilter). Thay cả bảng trong 1 lần (nguyên tử)."""
+    els = ", ".join('"%s"' % i for i in sorted(ifaces) if re.fullmatch(r"(tap|fwpr)\d{1,9}[ip]\d{1,2}", i))
+    out = ["table bridge %s" % ISO_TABLE, "delete table bridge %s" % ISO_TABLE, "table bridge %s {" % ISO_TABLE,
+           "  set vps { type ifname;%s }" % (" elements = { %s };" % els if els else ""),
+           "  chain input { type filter hook input priority -200; policy accept;",
+           "    iifname @vps drop",                                         # VPS → CHÍNH máy chủ Proxmox: chặn hết
+           "  }",
+           "  chain forward { type filter hook forward priority -200; policy accept;",
+           "    iifname @vps oifname @vps drop"]                            # VPS ↔ VPS
+    if gw and re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", gw):
+        out.append("    iifname @vps ip daddr %s tcp dport { %s } drop" % (gw, ", ".join(map(str, ISO_TCP_GW))))
+    out.append("    iifname @vps ip daddr { %s } tcp dport { %s } drop" % (ISO_LAN, ", ".join(map(str, ISO_TCP_LAN))))
+    out += ["  }", "}"]
+    return "\n".join(out) + "\n"
+
+
+def default_gw():
+    rc, out = run(["ip", "-4", "route", "show", "default"], 10)
+    m = re.search(r"default via (\d{1,3}(?:\.\d{1,3}){3})", out or "") if rc == 0 else None
+    return m.group(1) if m else ""
+
+
+def run_in(cmd, data, timeout=60):
+    """Như run() nhưng đưa data vào stdin."""
+    try:
+        r = subprocess.run(cmd, input=data, capture_output=True, text=True, timeout=timeout)
+        return r.returncode, ((r.stdout or "") + (r.stderr or "")).strip()
+    except subprocess.TimeoutExpired:
+        return 124, "quá giờ chờ: " + " ".join(cmd[:3])
+    except OSError as e:
+        return 127, str(e)
 
 
 def run(cmd, timeout=900):
@@ -721,6 +766,7 @@ class Host:
         self.sec = secret(); self.st = load_json(STATE_F, {}); self.status = "?"; self.name = ""
         self.lock = threading.Lock(); self.busy = {}; self.poll_s = 10; self.want = []; self.tpl_need = []
         self.light = set()                                          # 27/11c · việc nhẹ (xoá máy ảo): không tính vào max_builds
+        self.iso_key = None; self.iso_at = 0.0; self.iso_state = {}  # 27/11d · cách ly VPS
         self.soft = set()                                           # việc nền KHÔNG phải tạo / xoá máy (đổi cấu hình, nới ổ C): vẫn báo web máy đang chạy / tắt như thường
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
@@ -1192,6 +1238,23 @@ class Host:
         if self.c.get("linux_web"): tags += [t for t in LINUX_TPLS if "tpl-" + t in self.tpl_need and t not in tags]
         return tags
 
+    def iso_sync(self, vms):
+        """27/11d · đặt luật cách ly cho card mạng của mọi VPS (máy ảo số ≥ vmid_base, không phải máy mẫu). Đổi danh sách VPS / 10 phút → đặt lại."""
+        ifs = set()
+        for vid_, v in vms.items():
+            if v.get("template") or int(vid_) < int(self.c["vmid_base"]): continue
+            ifs.update({"tap%di0" % int(vid_), "fwpr%dp0" % int(vid_)})
+        gw = default_gw(); key = (tuple(sorted(ifs)), gw)
+        if key == self.iso_key and time.time() - self.iso_at < ISO_EVERY: return
+        rc, out = run_in([NFT, "-f", "-"], iso_ruleset(ifs, gw), 30)
+        self.iso_at = time.time()
+        if rc == 0:
+            if key != self.iso_key: log("cách ly VPS: đã đặt luật cho %d VPS (cổng mạng %s)" % (len(ifs) // 2, gw or "?"))
+            self.iso_key = key; self.iso_state = {"ok": True, "n": len(ifs) // 2}
+        else:
+            self.iso_key = None; self.iso_state = {"ok": False, "err": (out or "")[-160:]}
+            log("cách ly VPS: đặt luật nftables lỗi: %s" % (out or "")[-200:])
+
     def reconcile_linux(self, vms, tpls):
         res = []
         for tag in self.linux_tags():
@@ -1322,6 +1385,9 @@ class Host:
             try: self.iso_list = self.pve.isos()
             except Exception as e: log("đọc danh sách ISO lỗi: %s" % e)
             self.iso_t = time.time()
+        if act and self.c["vps_iso"]:
+            try: self.iso_sync(vms)
+            except Exception as e: self.iso_state = {"ok": False, "err": str(e)[:160]}
         self.auto = self.reconcile_auto(vms, tpls) if act else []    # tự dựng máy mẫu: không phụ thuộc web
         if act: self.auto += self.reconcile_linux(vms, tpls)          # 27/11a · máy mẫu Linux (Ubuntu + OpenClaw)
         if not self.hello_ok:
@@ -1337,6 +1403,7 @@ class Host:
                    "running": sum(1 for x in vms.values() if x["status"] == "running" and not x["template"]),
                    "tpl": sorted(t for t in tpls if t in self.tpl_need or not self.tpl_need), "iso": self.iso_list, "ver": CBHOST_VER}
         if self.auto: metrics["tpl_auto"] = self.auto[:8]
+        if self.iso_state: metrics["vps_fw"] = dict(self.iso_state)            # 27/11d · cách ly VPS: đặt được chưa
         if self.usb is not None and self.usb.state: metrics["usb"] = dict(self.usb.state)     # đang chép / đã chép / lỗi chép ISO máy mẫu từ USB
         while len(json.dumps(metrics)) > 12000 and (metrics.get("tpl_auto") or metrics["iso"]):      # web bỏ CẢ gói số đo nếu quá 16 KB → cắt bớt phần phụ
             if metrics.get("tpl_auto"): metrics.pop("tpl_auto")
