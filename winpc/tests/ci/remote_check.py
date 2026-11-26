@@ -257,6 +257,71 @@ if WIN:
                 ck("  ... ffmpeg giai ma lai du %d khung (ghep goi RTP khong hong byte nao)" % n, dn == n, (dn, n))
                 note("  quay %s: %d khung, man %sx%s -> hinh %sx%s, do sang lon nhat cua khung dau: %s%s" % (cap, n, dims[0], dims[1], dims[2], dims[3], lum, " (hinh den?)" if 0 <= lum < 16 else ""))
 
+    # ---- 4b. 26.11a: may KHONG co card nen (VPS NVMe) - chuong trinh TU chup man hinh bang GDI, chi dua khung DOI cho ffmpeg (cach quay "pipe")
+    try:
+        cur_mode, ok_modes = io.modes()
+        ck("26.11a WinIO.modes: doc duoc co man hinh dang dung + danh sach co may nay dat duoc (co dang dung nam trong danh sach)",
+           cur_mode == (sw, sh) and cur_mode in ok_modes and len(ok_modes) >= 1, (cur_mode, sorted(ok_modes)[:12]))
+        ck("26.11a WinIO.set_mode: dat lai DUNG co dang dung -> duoc (khong doi gi) ; co khong ton tai (123x45) -> tu choi, man hinh giu nguyen",
+           io.set_mode(sw, sh) is True and io.set_mode(123, 45) is False and io.screen() == (sw, sh), io.screen())
+        qm = R.is_qemu()
+        ck("26.11a is_qemu: doc duoc bang BIOS cua Windows (may chay thu cua GitHub khong phai may ao QEMU -> False)", qm is False, qm)
+        md = os.path.join(tmp, "mode"); os.makedirs(md, exist_ok=True)
+        ck("26.11a vm_default_mode tren may KHONG phai may ao QEMU: khong dung vao co man hinh", R.vm_default_mode(io, "pc-ci", md, note) == "khong phai may ao" and io.screen() == (sw, sh))
+        note("co man hinh may chay thu: %s ; dat duoc: %s" % (cur_mode, ", ".join("%dx%d" % m for m in sorted(ok_modes)[:14])))
+    except Exception as e:
+        ck("26.11a co man hinh (modes / set_mode / is_qemu) chay duoc", False, repr(e))
+    if desk:
+        try:
+            g = io.grabber()
+            b1, ch1 = g.grab()
+            t0 = time.perf_counter(); n_same = 0
+            for _ in range(20):
+                b, ch = g.grab()
+                if b is not None and not ch: n_same += 1
+            ms = (time.perf_counter() - t0) / 20 * 1000
+            ck("26.11a GdiGrab: chup duoc man hinh that (dung co %dx%d x 4 byte), khung dau tinh la 'doi'" % (sw, sh), b1 is not None and ch1 and len(b1) == sw * sh * 4 and (g.w, g.h) == (sw, sh), (ch1, b1 is not None))
+            lum = max(bytes(b1[:: max(1, len(b1) // 50000)])) if b1 is not None else -1
+            ck("26.11a GdiGrab: hinh chup KHONG den thui (co diem sang) ; man hinh dung yen -> phan lon lan chup bao 'khong doi' (%d / 20)" % n_same, lum > 24 and n_same >= 12, (lum, n_same))
+            note("GdiGrab: 1 lan chup + ve con tro + so voi khung truoc = %.1f ms (man %dx%d, may chay thu khong co card hinh)" % (ms, sw, sh))
+            io.move(9000, 9000); time.sleep(0.25); g.grab(); io.move(30000, 30000); time.sleep(0.25); b, ch = g.grab()
+            ck("26.11a GdiGrab: re con tro chuot -> khung moi KHAC khung truoc (con tro duoc ve vao hinh)", b is not None and ch, ch)
+            g.close()
+            ck("26.11a GdiGrab: dong xong tao lai duoc (khong ro tai nguyen GDI)", all((lambda x: (x.grab()[0] is not None, x.close())[0])(io.grabber()) for _ in range(5)))
+        except Exception as e:
+            ck("26.11a GdiGrab chay duoc tren Windows that", False, repr(e))
+        if ff:
+            try:
+                au = []
+                e = R.Encoder(ff, "pipe", "x264", sw, sh, sw, sh, 20, 3000, lambda d, k, c, pts: au.append((time.time(), d, bool(k), bool(c))), note, grab_fn=io.grabber,
+                              tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": R.PIPE_CRF, "key_s": 2})
+                e.start()
+                ok1 = wait(lambda: au and au[0][2] and au[0][3], 20)
+                ck("26.11a cach quay 'pipe' tren Windows that: ffmpeg nhan khung qua ong, khung dau la khung khoa co SPS/PPS", bool(ok1), (len(au), e.err))
+                time.sleep(1.5); n0 = len(au); g0 = e.grabs; time.sleep(4.0)
+                idle_n, idle_g = len(au) - n0, e.grabs - g0
+                ck("26.11a 'pipe': man hinh dung yen 4 giay -> chi vai khung giu nhip (<= 24, cach cu la 80) va chi chup ~3 lan / giay (<= 20 lan)", idle_n <= 24 and idle_g <= 20, (idle_n, idle_g))
+                lat = []
+                for i in range(6):
+                    time.sleep(0.5); n1 = len(au); io.move(8000 + i * 6000, 12000 + i * 5000); e.kick(); t1 = time.time()
+                    if wait(lambda: len(au) > n1, 1.5, 0.004): lat.append(au[n1][0] - t1)
+                ck("26.11a 'pipe': nguoi xem re chuot (kick) -> khung moi co con tro ra trong <= 0,4 giay (6 / 6 lan)", len(lat) == 6 and max(lat) <= 0.4, [round(x, 3) for x in lat])
+                note("  'pipe': tu luc re chuot toi luc co khung nen: %s ms" % ", ".join("%d" % (x * 1000) for x in lat))
+                n1 = len(au); t1 = time.time(); k = 0
+                while time.time() - t1 < 3.0:
+                    io.move(5000 + (k * 1500) % 50000, 20000 + (k * 900) % 30000); e.kick(); k += 1; time.sleep(0.03)
+                time.sleep(0.3); mov = len(au) - n1
+                ck("26.11a 'pipe': re chuot lien tuc 3 giay -> hinh chay theo (>= 25 khung), khong vuot nhip 20 khung / giay (<= 72)", 25 <= mov <= 72, mov)
+                e.stop(); time.sleep(0.4)
+                fr = [x for x in au if x[1] is not None]
+                dn, lum2 = decode_count(ff, b"".join(x[1] for x in fr), os.path.join(tmp, "cap-pipe.h264"))
+                ck("26.11a 'pipe': ffmpeg giai ma lai du %d khung, hinh khong den" % len(fr), dn == len(fr) and lum2 > 24, (dn, len(fr), lum2))
+                note("  'pipe': tong %d khung / %d lan chup ; dung yen 4 giay: %d khung, %d lan chup ; loi: %s" % (len(fr), e.grabs, idle_n, idle_g, e.err or "-"))
+            except Exception as ex:
+                ck("26.11a cach quay 'pipe' chay duoc tren Windows that", False, repr(ex))
+    else:
+        note("BO QUA thu GdiGrab / cach quay 'pipe': tien trinh chay thu khong nam trong phien man hinh")
+
     # ---- 5. cbsys: phien man hinh, khoa "dang chay", mo vao phien man hinh
     ck("cbsys.console_session: tra so phien (hoac None khi may khong co man hinh)", con is None or isinstance(con, int), con)
     import ctypes
@@ -370,7 +435,21 @@ else:
         scr = io.screen(); expw = R.fit(scr[0], scr[1], 1280)
         ck("dau-cuoi: nguoi xem nhan WELCOME cua may PC that (kind = pc, co hinh dung ti le man hinh)", wel.get("ok") is True and wel.get("kind") == "pc" and (wel.get("w"), wel.get("h")) == expw,
            (wel, expw, rx[:2], plog[-4:], slog[-4:]))
+        wig = [True]
+
+        def wiggle():                                               # 26.11a: may chay thu chi nen duoc bang CPU -> cach quay "pipe" chi gui khung khi man hinh DOI -> re chuot cho co thay doi
+            k = 0
+            while wig[0] and k < 400:
+                try: vc.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 6000 + (k * 1700) % 50000, 9000 + (k * 1100) % 40000))
+                except Exception: return
+                k += 1; time.sleep(0.05)
+        if WIN: threading.Thread(target=wiggle, daemon=True).start()
         got_video = wait(lambda: count(R.S_VIDEO) >= 25, 20)
+        wig[0] = False; time.sleep(0.3)
+        s0 = rm.sess
+        if WIN and s0 is not None and s0.enc is not None:
+            ck("26.11a dau-cuoi: may chi nen duoc bang CPU -> phien dung cach quay 'pipe' (tu chup, chi nen khung doi), gop duoc lenh re chuot don neu co",
+               s0.enc.cap == "pipe" and s0.long_gop and s0.skip >= 0, (s0.enc.cap, s0.long_gop, s0.skip, plog[-3:]))
         if not got_video and WIN and not (cbsys.console_session() is not None and cbsys.console_session() == who()[1]):
             note("BO QUA phan hinh dau-cuoi: may chay thu khong co man hinh de quay (%d khung) %s" % (count(R.S_VIDEO), plog[-3:]))
         else:
