@@ -715,6 +715,41 @@ def main():
         ck("chưa đăng nhập bấm Thanh toán → mở hộp đăng nhập, không gọi pc_buy", s.js("() => !document.getElementById('auth').hidden") and not s.js("() => window.__SHOP.bought.length"))
         ck("không lỗi JS", not s.errors, s.errors)
         s.close()
+        print("8. Đăng ký: tên / email giả danh shop (SQL v58)")
+        s = Site(br, html, None, dict(shop, bought=[]))
+        s.js("""() => { window.__DK = { check: 'ok', avail: true, up: [], upErr: null };
+          window.__FAKE_HOOK.signup_check = a => window.__DK.check === 'CHUA_CO' ? ({ data: null, error: { code: 'PGRST202', message: 'Could not find the function public.signup_check' } }) : ({ data: window.__DK.check, error: null });
+          window.__FAKE_HOOK.username_available = a => ({ data: window.__DK.avail, error: null });
+          const c = window.supabase.createClient(); c.auth.signUp = a => { window.__DK.up.push(a); return Promise.resolve(window.__DK.upErr ? { data: null, error: { message: window.__DK.upErr } } : { data: { session: null }, error: null }); }; }""")
+        def dang_ky(u, em):
+            s.js("() => openAuth('reg')"); s.page.wait_for_timeout(200)
+            s.page.fill("#rg-u", u); s.page.fill("#rg-e", em); s.page.fill("#rg-p", "MatKhau123!"); s.page.fill("#rg-p2", "MatKhau123!")
+            s.page.click("#rg-btn"); s.page.wait_for_timeout(700)
+            return s.js("() => document.getElementById('rg-err').textContent")
+        s.js("() => { window.__DK.check = 'reserved_name'; }")
+        e1 = dang_ky("CloudBlue_shop", "khach@gmail.com")
+        ck("tên đăng nhập giống tên shop → báo 'trùng hoặc giống tên của shop … chọn tên khác', KHÔNG gọi đăng ký", "giống tên của shop" in e1 and "tên khác" in e1 and s.js("() => window.__DK.up.length") == 0
+           and s.calls("signup_check")[-1] == {"p_username": "CloudBlue_shop", "p_email": "khach@gmail.com"}, (e1, s.calls("signup_check")[-1:]))
+        s.js("() => { window.__DK.check = 'reserved_email'; }")
+        e2 = dang_ky("khach_thuong", "cloudblue@gmail.com")
+        ck("email giống tên shop → báo 'Email này trùng hoặc giống tên của shop … dùng email khác', KHÔNG gọi đăng ký", "Email này trùng hoặc giống tên của shop" in e2 and s.js("() => window.__DK.up.length") == 0, e2)
+        s.js("() => { window.__DK.check = 'taken'; }")
+        e3 = dang_ky("khach_thuong", "khach@gmail.com")
+        ck("tên đã có người dùng → báo như cũ, KHÔNG gọi đăng ký", "đã có người dùng" in e3 and s.js("() => window.__DK.up.length") == 0, e3)
+        s.js("() => { window.__DK.check = 'ok'; }"); n_av = len(s.calls("username_available"))
+        e4 = dang_ky("khach_thuong", "khach@gmail.com")
+        ck("tên + email bình thường → gọi đăng ký đúng tên + email, không báo lỗi, không cần hỏi username_available nữa", e4 == "" and s.js("() => window.__DK.up.length") == 1
+           and s.js("() => window.__DK.up[0].email + '|' + window.__DK.up[0].options.data.username") == "khach@gmail.com|khach_thuong" and len(s.calls("username_available")) == n_av, (e4, s.js("() => window.__DK.up")))
+        s.js("() => { window.__DK.check = 'CHUA_CO'; window.__DK.avail = false; window.__DK.up = []; }")
+        e5 = dang_ky("khach_thuong", "khach@gmail.com")
+        ck("web CHƯA chạy SQL v58 (chưa có hàm signup_check) → tự hỏi kiểu cũ (username_available), vẫn báo 'đã có người dùng'", "đã có người dùng" in e5 and len(s.calls("username_available")) == n_av + 1
+           and s.js("() => window.__DK.up.length") == 0, e5)
+        s.js("() => { window.__DK.avail = true; window.__DK.upErr = 'Database error saving new user'; }")
+        e6 = dang_ky("khach_thuong", "khach@gmail.com")
+        ck("máy chủ từ chối lúc tạo (app / web cũ lọt bước hỏi trước) → báo dễ hiểu 'Không tạo được tài khoản với tên đăng nhập / email này', không hiện câu tiếng Anh của máy chủ",
+           "Không tạo được tài khoản với tên đăng nhập / email này" in e6 and "Database error" not in e6 and s.js("() => window.__DK.up.length") == 1, e6)
+        ck("đăng ký: không lỗi JS", not s.errors, s.errors)
+        s.close()
         br.close()
     print(f"\n{OK}/{OK + FAIL} đạt")
     sys.exit(1 if FAIL else 0)
