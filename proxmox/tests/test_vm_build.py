@@ -35,13 +35,20 @@ r12 = vb.pick([
     {"index": 4, "name": "Windows Server 2012 R2 SERVERDATACENTER", "edition": "ServerDatacenterEval", "version": "6.3.9600.17031", "itype": "Server", "arch": 9, "lang": "en-US"}])
 im = {i["index"]: i for i in r12["images"]}
 ck("2012 R2: mặc định bản Standard có giao diện (số 2), bản Core bị loại (nói rõ vì sao)", r12["default"] == 2 and not im[1]["ok"] and "Core" in im[1]["why"] and im[4]["ok"], r12)
-ck("2012 R2 → driver 2k12R2, máy mẫu tpl-win2012r2, virtio 0.1.240", (im[2]["os"], im[2]["tag"], im[2]["virtio"], im[2]["server"]) == ("2k12R2", "win2012r2", "0.1.240", True), im[2])
+ck("2012 R2 → driver 2k12R2, máy mẫu tpl-win2012r2, virtio 0.1.215 (bản cuối 2012 R2 nhận chữ ký số; thư mục tải …-0.1.215-2), không cho bản cao hơn",
+   (im[2]["os"], im[2]["tag"], im[2]["virtio"], im[2]["server"], im[2]["virtio_max"]) == ("2k12R2", "win2012r2", "0.1.215", True, "0.1.215")
+   and im[2]["virtio_url"].endswith("/archive-virtio/virtio-win-0.1.215-2/virtio-win-0.1.215.iso"), im[2])
 r22 = vb.pick([
     {"index": 1, "name": "Windows Server 2022 Standard Evaluation", "edition": "ServerStandardEval", "version": "10.0.20348.587", "itype": "Server Core", "arch": 9},
     {"index": 2, "name": "Windows Server 2022 Standard Evaluation (Desktop Experience)", "edition": "ServerStandardEval", "version": "10.0.20348.587", "itype": "Server", "arch": 9},
     {"index": 4, "name": "Windows Server 2022 Datacenter Evaluation (Desktop Experience)", "edition": "ServerDatacenterEval", "version": "10.0.20348.587", "itype": "Server", "arch": 9}])
 im22 = {i["index"]: i for i in r22["images"]}
-ck("2022: Desktop Experience Standard → 2k22 / win2022 / virtio 0.1.271", r22["default"] == 2 and (im22[2]["os"], im22[2]["tag"], im22[2]["virtio"]) == ("2k22", "win2022", "0.1.271"), r22)
+ck("2022: Desktop Experience Standard → 2k22 / win2022 / virtio 0.1.271 (thư mục tải …-0.1.271-1), không giới hạn bản cao nhất",
+   r22["default"] == 2 and (im22[2]["os"], im22[2]["tag"], im22[2]["virtio"], im22[2]["virtio_max"]) == ("2k22", "win2022", "0.1.271", "")
+   and im22[2]["virtio_url"].endswith("/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso"), r22)
+ck("virtio quá mới cho 2012 R2: 0.1.217 / 0.1.240 → có; 0.1.215 / 0.1.189 / không rõ số bản → không; bản Windows khác → không",
+   vb.virtio_too_new("2k12R2", "0.1.217") and vb.virtio_too_new("2k12R2", "0.1.240") and not vb.virtio_too_new("2k12R2", "0.1.215")
+   and not vb.virtio_too_new("2k12R2", "0.1.189") and not vb.virtio_too_new("2k12R2", "") and not vb.virtio_too_new("2k16", "0.1.271"))
 for ver, osd, tag in (("10.0.14393.0", "2k16", "win2016"), ("10.0.17763.737", "2k19", "win2019"), ("10.0.26100.1742", "2k25", "win2025")):
     c = vb.classify({"name": "Windows Server X SERVERSTANDARD", "edition": "ServerStandard", "version": ver, "itype": "Server", "arch": 9})
     ck("Server %s → %s / %s" % (ver, osd, tag), c["ok"] and (c["os"], c["tag"]) == (osd, tag), c)
@@ -133,7 +140,7 @@ def make_tree(osdir, drivers=("vioscsi", "viostor", "NetKVM", "vioserial", "Ball
     return t, {"iso_root": iso, "tool": tool, "py_dir": py, "virtio_root": vio, "ga_msi": os.path.join(vio, "guest-agent", "qemu-ga-x86_64.msi"),
                "os": osdir, "user": "VPS", "image": {"index": 2, "name": "Windows Server 2012 R2 SERVERSTANDARD", "edition": "ServerStandardEval", "version": "6.3.9600.17031", "lang": "en-US"},
                "ucrt": os.path.join(t, "ucrt.msu"), "ffmpeg": os.path.join(t, "ffmpeg.exe"), "cacert": os.path.join(t, "cacert.pem"),
-               "sb_url": "https://abc.supabase.co", "sb_key": "sb_publishable_x", "virtio_ver": "0.1.240", "built": "2026-11-24 15:30:00"}
+               "sb_url": "https://abc.supabase.co", "sb_key": "sb_publishable_x", "virtio_ver": "0.1.215", "built": "2026-11-24 15:30:00"}
 
 
 t, P = make_tree("2k12R2")
@@ -161,7 +168,7 @@ ck("bộ cài Windows chạy SetupComplete.cmd của máy mẫu", open(os.path.j
    == open(os.path.join(ROOT, "vm", "SetupComplete.cmd"), "rb").read())
 mj = json.load(open(os.path.join(cbd, "vm", "maymau.json")))
 ck("maymau.json: tpl / bản driver / Server / tài khoản / bản Windows", (mj["tag"], mj["os"], mj["server"], mj["user"], mj["image"]["index"], mj["virtio"]) ==
-   ("win2012r2", "2k12R2", True, "VPS", 2, "0.1.240") and "qxldod" not in mj["drivers"], mj)
+   ("win2012r2", "2k12R2", True, "VPS", 2, "0.1.215") and "qxldod" not in mj["drivers"], mj)
 ux = open(os.path.join(iso, "autounattend.xml"), "rb").read()
 ck("autounattend.xml ở gốc ISO, xuống dòng CRLF, có mật khẩu Administrator ngẫu nhiên (không in ra)", b"\r\n" in ux and not re.search(rb"(?<!\r)\n", ux) and b"<AdministratorPassword>" in ux)
 bt, ut = (open(os.path.join(iso, "cbvm", n), "rb").read() for n in ("bios.txt", "uefi.txt"))
@@ -190,7 +197,13 @@ t2, P2 = make_tree("2k12R2", drivers=("vioscsi", "viostor", "vioserial"))
 P2.update(tag="win2012r2", server=True)
 try: vb.layout(P2); err = ""
 except ValueError as e: err = str(e)
-ck("ISO virtio thiếu driver mạng cho đúng bản → dừng, nói rõ (2012 R2 dùng virtio 0.1.240)", "NetKVM" in err and "0.1.240" in err, err)
+ck("ISO virtio thiếu driver mạng cho đúng bản → dừng, nói rõ (2012 R2 dùng virtio 0.1.215)", "NetKVM" in err and "0.1.215" in err, err)
+t3, P3 = make_tree("2k12R2")
+P3.update(tag="win2012r2", server=True, virtio_ver="0.1.240")
+try: vb.layout(P3); err = ""
+except ValueError as e: err = str(e)
+ck("2012 R2 + virtio 0.1.240 (driver ổ đĩa không được Windows này nhận) → DỪNG, không ghép ISO hỏng, chỉ rõ link bản 0.1.215",
+   "QUA MOI" in err and "virtio-win-0.1.215-2/virtio-win-0.1.215.iso" in err and not os.path.exists(os.path.join(P3["iso_root"], "autounattend.xml")), err)
 t3, P3 = make_tree("w10")
 P3.update(tag="win10ltsc", server=False, ucrt="", ffmpeg="", image={"index": 1, "name": "Windows 10 Enterprise LTSC", "edition": "EnterpriseS", "version": "10.0.19044.1288", "lang": "en-US"})
 ok3 = vb.layout(P3) == 0 and vb.check(P3["iso_root"]) == 0
