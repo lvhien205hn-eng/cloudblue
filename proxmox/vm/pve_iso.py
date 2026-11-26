@@ -20,7 +20,7 @@ import struct
 import sys
 import time
 
-VER = "26.11a"
+VER = "26.11c"
 SECT = 2048
 MAGIC = b"CBKHO1\n"
 HDR_LEN = 16384                       # đầu mục kho (JSON) — 8 sector
@@ -581,21 +581,36 @@ def drives():
     return res
 
 
+SKIP_DIRS = {"windows", "program files", "program files (x86)", "programdata", "system volume information", "appdata", "node_modules", "perflogs", "msocache", "recovery",
+             "windows.old", "onedrivetemp", "cb-maymau-tmp"}
+LOOK_DEPTH = 3                        # tìm sâu 3 cấp thư mục (26.11c: trước chỉ 1 cấp → file để sâu hơn là ghép ra ISO THIẾU máy mẫu mà không ai hay)
+LOOK_MAX = 25000
+LOOK_S = 25
+
+
 def look_dirs():
+    """Các thư mục tìm file ISO: Downloads / Desktop / Documents + gốc mọi ổ đĩa, sâu LOOK_DEPTH cấp (gần trước, xa sau; có trần số thư mục + thời gian)."""
     home = os.path.expanduser("~")
     ds = [os.path.join(home, x) for x in ("Downloads", "Desktop", "Documents")] + drives()
     if os.name != "nt":
         ds.append(os.getcwd())
-    out = []
-    for d in ds:
-        if os.path.isdir(d) and d not in out:
-            out.append(d)
-            try:
-                for e in os.scandir(d):
-                    if e.is_dir(follow_symlinks=False) and not e.name.startswith(("$", ".")) and e.name.lower() not in ("windows", "program files", "program files (x86)", "programdata"):
-                        out.append(e.path)
-            except OSError:
-                pass
+    out, seen, t0 = [], set(), time.time()
+    queue = [(d, 0) for d in ds]
+    while queue:
+        d, lv = queue.pop(0)
+        key = os.path.normcase(os.path.abspath(d))
+        if key in seen or not os.path.isdir(d):
+            continue
+        seen.add(key)
+        out.append(d)
+        if lv >= LOOK_DEPTH or len(out) >= LOOK_MAX or time.time() - t0 > LOOK_S:
+            continue
+        try:
+            for e in os.scandir(d):
+                if e.is_dir(follow_symlinks=False) and not e.name.startswith(("$", ".")) and e.name.lower() not in SKIP_DIRS:
+                    queue.append((e.path, lv + 1))
+        except OSError:
+            pass
     return out
 
 
@@ -725,8 +740,16 @@ def main(argv):
                 raise Loi("trung ISO may mau: " + os.path.basename(p))
             payload.append((os.path.basename(p), p))
             say("   + %s  (%.2f GB)" % (p, os.path.getsize(p) / 2**30))
+    if not payload and not a.khong_mau:                                    # 26.11c: KHÔNG lặng lẽ ghép bản thiếu máy mẫu (máy chủ cài xong lên web nhưng đứng chờ mãi)
+        raise Loi("KHONG THAY file ISO may mau nao (CloudBlue-MayMau-*.iso) tren may nay -> KHONG ghep.\n"
+                  "   ISO thieu may mau thi may chu cai xong khong co gi de dung may mau.\n"
+                  "   Cach sua (chon 1):\n"
+                  "    - de cac file CloudBlue-MayMau-*.iso (do lenh ghep ISO may mau tao ra) o Downloads / Desktop hoac o goc 1 o dia, roi chay lai lenh nay;\n"
+                  "    - hoac chi thang duong dan:  -MayMau \"E:\\CloudBlue-MayMau-win2016.iso,E:\\CloudBlue-MayMau-win2012r2.iso\"\n"
+                  "    - chua co file do: chay lenh ghep ISO may mau truoc (web CloudBlue > Quan tri > VPS ao hoa > Ban Windows).\n"
+                  "   (That su muon ghep ban KHONG kem may mau: them  -KhongMau  vao cuoi lenh.)")
     if not payload:
-        say("   (!) KHONG kem ISO may mau nao -> may chu cai xong chua co may mau; dung sau bang bang dieu khien may mau tren web.")
+        say("   (!) KHONG kem ISO may mau nao (-KhongMau) -> may chu cai xong chua co may mau. Them sau: cam USB co file CloudBlue-MayMau-*.iso vao may chu (may chu tu chep).")
     say("== 3/4  Mat khau root + cau hinh")
     pw_hash = os.environ.get(a.pw_hash_env) or ""
     if not pw_hash:
