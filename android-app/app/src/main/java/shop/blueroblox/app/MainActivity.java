@@ -234,8 +234,9 @@ public class MainActivity extends Activity {
         String[][] items = {{"📱", Ui.L("Máy của tôi", "My devices")}, {"☁️", "Cloud Phone"}, {"👤", Ui.L("Tài khoản", "Account")}, {"🖥️", "VPS GPU"}, {"⚡", "VPS NVMe"}};
         for (int i : new int[]{0, 1, 3, 4, 2}) {                      // 21/11e: tab VPS GPU (số 3) · 27/11: tab VPS NVMe (số 4) — đứng trước Tài khoản
             final int t = i;
-            TextView n = Ui.text(this, items[i][0] + "\n" + items[i][1], Api.SHOP ? 10.5f : 12, Ui.MUTED, true);   // 5 tab → chữ nhỏ hơn chút cho vừa màn hẹp
+            TextView n = Ui.text(this, items[i][0] + "\n" + items[i][1], Api.SHOP ? 10 : 12, Ui.MUTED, true);   // 5 tab → chữ nhỏ hơn chút cho vừa màn hẹp
             n.setMaxLines(2);
+            n.setEllipsize(android.text.TextUtils.TruncateAt.END);
             n.setGravity(Gravity.CENTER);
             n.setPadding(0, Ui.dp(8), 0, Ui.dp(8));
             n.setOnClickListener(v -> show(t));

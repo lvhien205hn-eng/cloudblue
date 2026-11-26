@@ -177,8 +177,7 @@ final class VmNvme {
 
     /** Đọc lại "VPS NVMe của tôi" (vm_my). Máy chủ chưa có hàm → missing (không hiện gì). */
     static void loadMine(MainActivity a, Done then) {
-        if (mineLoading) return;
-        mineLoading = true;
+        mineLoading = true;                                                     // nhiều nơi gọi cùng lúc cũng được (mỗi nơi vẽ lại phần của mình)
         Api.bg(() -> Api.rpc("vm_my", new JSONObject()), r -> {
             mineLoading = false;
             if (r instanceof JSONObject) { mine = (JSONObject) r; missing = false; }
@@ -367,6 +366,7 @@ final class VmNvme {
         final java.util.ArrayList<long[]> pl = new java.util.ArrayList<>();
         for (int i = 0; i < pa.length(); i++) { JSONObject x = pa.optJSONObject(i); if (x != null && x.optInt("days") > 0) pl.add(new long[]{x.optInt("days"), x.optLong("price")}); }
         java.util.Collections.sort(pl, (u, w) -> Long.compare(u[0], w[0]));
+        if (pl.isEmpty()) { Ui.toast(a, Ui.L("VPS này chưa có bảng giá gia hạn — nhắn shop.", "No renewal price for this VPS — contact the shop.")); return; }
         final int[] pick = {(int) pl.get(0)[0]};
         for (long[] x : pl) if (x[0] == 30) pick[0] = 30;
         LinearLayout box = Ui.col(a, 12);
