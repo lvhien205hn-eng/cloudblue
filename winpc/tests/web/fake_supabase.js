@@ -36,9 +36,9 @@
       select(c) { st.cols = String(c || ""); return p; }, eq(c, v) { st.eq.push([c, v]); return p; }, order(c, o) { st.order = [c, !(o && o.ascending === false)]; return p; },
       limit(n) { st.limit = n; return p; }, maybeSingle() { st.one = true; return p; }, single() { st.one = true; return p; },
       insert() { st.op = "insert"; return p; }, update() { st.op = "update"; return p; }, upsert() { st.op = "upsert"; return p; }, delete() { st.op = "delete"; return p; },
-      then(a, b) { return later(run()).then(a, b); }, catch(b) { return later(run()).catch(b); }, finally(f) { return later(run()).finally(f); },
+      then(a, b) { return later(run()).then(a, b); },                    // như supabase-js thật: chỉ có .then — KHÔNG có .catch / .finally
     };
-    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol") return undefined; return () => p; } });
+    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol" || k === "catch" || k === "finally") return undefined; return () => p; } });
     return p;
   }
 
@@ -112,8 +112,8 @@
       if (isPc(name)) { if (!F.v41) return noFn(name); if (INIT.admin === false) return raise("NOT_ADMIN"); if (RPC[name]) return RPC[name](args || {}); }
       return { data: null, error: null };
     };
-    const api = { then(a, b) { return later(run()).then(a, b); }, catch(b) { return later(run()).catch(b); }, finally(f) { return later(run()).finally(f); } };
-    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol") return undefined; return () => p; } });
+    const api = { then(a, b) { return later(run()).then(a, b); } };      // như supabase-js thật (PostgrestBuilder): KHÔNG có .catch / .finally
+    const p = new Proxy(api, { get(t, k) { if (k in t) return t[k]; if (typeof k === "symbol" || k === "catch" || k === "finally") return undefined; return () => p; } });
     return p;
   }
   const ok = v => () => Promise.resolve({ data: v, error: null });

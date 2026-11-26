@@ -115,7 +115,7 @@ HOOK = """(() => { const V = window.__VM; const c = v => JSON.parse(JSON.stringi
     vm_my_renew: a => ({ ok: true, until: new Date(Date.now() + 50 * 864e5).toISOString(), order: 'o-r', total: 240000 }),
     vm_my_label: a => ({ ok: true, label: a.p_label }),
     vm_my_cancel: a => ({ ok: true }),
-    vm_admin_state: () => V.miss ? miss('vm_admin_state') : c(V.adm),
+    vm_admin_state: () => V.admErr ? raise(V.admErr) : V.miss ? miss('vm_admin_state') : c(V.adm),
     vm_admin_revenue: () => V.miss ? miss('vm_admin_revenue') : c(V.rev),
     vm_admin_host: a => { const h = V.adm.hosts.find(x => x.id === a.p_id); if (!h) return raise('NO_HOST');
       if (a.p_patch.approve && h.status === 'new') h.status = 'ready'; else if (a.p_patch.status) h.status = a.p_patch.status;
@@ -471,6 +471,39 @@ def main():
         s.shot("vm-8-phone.png")
         s.page.click('[data-vmbuy="vps2-4"]'); s.page.wait_for_timeout(300)
         s.shot("vm-9-phone-buy.png")
+        s.close()
+
+        print("8. Quản trị: tải dữ liệu LỖI → báo rõ + nút Thử lại (26/11: web thật từng để trắng cả ô vì rpc(...).catch — supabase-js thật không có .catch)")
+        adm0 = adm_state(); adm0["hosts"] = []; adm0["vps"] = []
+        s = Site(br, html, True, vm_data(adm=adm0, rev={"ok": True, "months": []}, tpl={"hosts": [], "images": [], "jobs": []}), path="/admin", vp=(412, 915))
+        admin_open(s)
+        ck("chưa có máy chủ nào (web thật lúc mới cài): khung vẫn hiện đủ — 0/0 máy chủ, các mục con, dòng 'Chưa có máy chủ nào'; không báo lỗi",
+           s.vis("#vma-top") and s.vis("#pane-vm .subtabs") and "0/0" in (s.txt("#vma-top") or "") and "Chưa có máy chủ nào" in (s.txt("#vma-hosts") or "") and not s.vis("#vma-err") and not s.errors,
+           (s.txt("#vma-top"), s.txt("#vma-hosts"), s.errors))
+        s.close()
+        s = Site(br, html, True, vm_data(admErr="boom-thu-loi"), path="/admin", vp=(412, 915))
+        admin_open(s)
+        e1 = s.txt("#vma-err") or ""
+        ck("hàm vm_admin_state báo lỗi ngay từ lần tải đầu → hiện dòng ⚠️ 'Không tải được dữ liệu VPS ảo hoá: boom-thu-loi' + nút Thử lại (không để trắng), không hiện lời nhắc chạy SQL",
+           s.vis("#vma-err") and "Không tải được dữ liệu VPS ảo hoá" in e1 and "boom-thu-loi" in e1 and s.vis("#vma-retry") and not s.vis("#vma-miss") and not s.vis("#vma-top"), (e1, s.vis("#vma-top")))
+        s.shot("vm-13-loi-tai.png")
+        s.js("() => { window.__VM.admErr = null; }")
+        s.page.click("#vma-retry"); s.page.wait_for_timeout(700)
+        ck("bấm Thử lại (lần này tải được) → hết dòng lỗi, khung hiện đủ máy chủ", not s.vis("#vma-err") and s.vis("#vma-top") and "pve1" in (s.txt("#vma-hosts") or ""), (s.txt("#vma-err"), s.txt("#vma-top")))
+        s.js("() => { window.__VM.admErr = 'mat-mang-tam'; }")
+        s.page.click("#vma-reload"); s.page.wait_for_timeout(700)
+        e2 = s.txt("#vma-err") or ""
+        ck("đang có dữ liệu mà lần tải sau lỗi → GIỮ dữ liệu lần trước (máy chủ vẫn hiện) + dòng ⚠️ ghi 'đang hiện dữ liệu của lần tải trước'",
+           s.vis("#vma-err") and "mat-mang-tam" in e2 and "lần tải trước" in e2 and s.vis("#vma-top") and "pve1" in (s.txt("#vma-hosts") or ""), (e2, s.vis("#vma-top")))
+        s.js("() => { window.__VM.admErr = null; }")
+        s.page.click("#vma-retry"); s.page.wait_for_timeout(700)
+        ck("không lỗi trang khi tải lỗi / thử lại", not s.vis("#vma-err") and not s.errors, s.errors)
+        s.close()
+        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2405:4803:ff84:ac60::10"
+        s = Site(br, html, True, vm_data(adm=adm6), path="/admin")
+        admin_open(s)
+        href = s.js("() => { const a = document.querySelector('#vma-hosts [data-vmhost] a[href*=\":8006\"]'); return a ? a.getAttribute('href') : null; }")
+        ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2405:4803:ff84:ac60::10]:8006", href)
         s.close()
         br.close()
     print("\nKẾT QUẢ: %d đạt, %d lỗi" % (OK, FAIL))
