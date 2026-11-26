@@ -8,11 +8,13 @@
 #    · báo kết quả lần cài CachyOS (cb/job-result.json do cb-install.sh ghi) về web
 #    · cập nhật: bản kê công bố có mục "linux" (linux/cbagent.py …) + agent/lib của bản đó → tải, kiểm sha256, chạy thử, thay, chạy lại
 #  /opt/cloudblue: cb.json (bản sao của phân vùng cứu hộ) · seed.json (vé 1 lần, chỉ root đọc) · identity.json · rent.json · logs/
+#    · 27.11a: MÁY ẢO VPS NVMe Linux (Ubuntu + XFCE, có /etc/cloudblue-vm — proxmox/vm/linux-vm.sh tạo): bỏ phần riêng của CachyOS
+#      (pacman, gst-plugin-pipewire, systemd-boot, phân vùng cứu hộ), tự đăng nhập qua LightDM; cài lại / bật tắt do máy chủ Proxmox (cbhost) lo
 #  Lệnh:  cbagent.py run | status | selfcheck | reinstall <bản> [all|disk|system]
 # =====================================================================================================
 import fcntl, hashlib, json, os, re, shutil, socket, subprocess, sys, threading, time, traceback
 
-LINUX_VER = "23.11c"
+LINUX_VER = "27.11a"
 HERE = os.path.dirname(os.path.abspath(__file__))
 BASE = os.environ.get("CB_BASE") or os.path.abspath(os.path.join(HERE, ".."))          # /opt/cloudblue
 for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent")):
@@ -25,7 +27,12 @@ EFIVARS = "/sys/firmware/efi/efivars"
 REC_MNT = "/run/cloudblue/rec"
 LOCK = "/run/cloudblue-agent.lock"
 POWER_UNIT = "cloudblue-power"
-DM_CONF = {"plasmalogin": "/etc/plasmalogin.conf.d/autologin.conf", "sddm": "/etc/sddm.conf.d/autologin.conf"}
+DM_CONF = {"plasmalogin": "/etc/plasmalogin.conf.d/autologin.conf", "sddm": "/etc/sddm.conf.d/autologin.conf",
+           "lightdm": "/etc/lightdm/lightdm.conf.d/50-cloudblue-autologin.conf"}           # 27.11a: máy ảo Ubuntu + XFCE
+VM_MARK = "/etc/cloudblue-vm"                                     # 27.11a: máy ảo VPS NVMe Linux (linux-vm.sh tạo)
+
+
+def is_vm(): return os.path.exists(VM_MARK)
 LIB_FILES = ("agent/pcagent.py", "agent/pcremote.py", "lib/cbcore.py", "lib/cbrec.py", "lib/cbsys.py")
 REMOTE_LOCK = "/run/cloudblue-remote.lock"                        # cbremote.py giữ khoá này khi đang chạy
 SELF_REL = "linux/cbagent.py"
@@ -383,7 +390,9 @@ class LinuxHost:
         try:
             if on:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
-                with open(path, "w", encoding="utf-8") as f: f.write("[Autologin]\nUser=%s\nSession=plasma.desktop\nRelogin=true\n" % self.user)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(("[Seat:*]\nautologin-user=%s\nautologin-user-timeout=0\nautologin-session=xfce\nuser-session=xfce\n" if dm == "lightdm"
+                             else "[Autologin]\nUser=%s\nSession=plasma.desktop\nRelogin=true\n") % self.user)
             elif os.path.exists(path):
                 os.remove(path)
             return True
@@ -639,7 +648,7 @@ class LinuxAgent(pcagent.Agent):
 
     def info(self):
         cpu, cores = self.h.cpu()
-        i = {"host": self.h.hostname(), "os": "cachyos", "os_ver": self.h.os_ver(), "os_name": self.h.os_name(), "agent": LINUX_VER, "cpu": cpu,
+        i = {"host": self.h.hostname(), "os": (os_release().get("ID") or "linux")[:20] if is_vm() else "cachyos", "os_ver": self.h.os_ver(), "os_name": self.h.os_name(), "agent": LINUX_VER, "cpu": cpu,
              "cores": cores, "ram_gb": self.h.ram_gb(), "gpus": self.h.gpus()[:6], "lan_ip": self.h.lan_ip(), "uptime": self.h.uptime(),
              "fw": self.s.firmware(), "linux": True}
         try: i["rec"] = self.rec.status()
@@ -749,14 +758,14 @@ class LinuxAgent(pcagent.Agent):
 
     def tick(self):
         nap = super().tick()
-        if not self.rebooting: self.pac_heal(); self.boot_heal()
+        if not self.rebooting and not is_vm(): self.pac_heal(); self.boot_heal()     # 27.11a: máy ảo Ubuntu không có pacman / systemd-boot
         return nap
 
     def remote_keep(self):
         """Giữ cbremote.py (điều khiển từ xa, root) chạy: chưa chạy / tự thoát để lên bản mới → mở lại (cách nhau ≥ REMOTE_RETRY_S). Không ném lỗi."""
         try:
             if self.cfg.get("remote") is False or not self.ident: return None
-            self.gst_heal()
+            if not is_vm(): self.gst_heal()                                # 27.11a: máy ảo X11 quay bằng ffmpeg x11grab (không cần pipewiresrc)
             script = self.p("linux/cbremote.py")
             if not os.path.isfile(script) or not os.path.isfile(self.p("agent/pcremote.py")): return None
             if self.h.remote_running(): self.remote_err = ""; return "run"

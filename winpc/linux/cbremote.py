@@ -13,6 +13,8 @@
 #      + lối tắt Firefox · Konsole · Dolphin trên màn hình nền (1 lần / tài khoản)
 #    · 23.11b: DÁN — khách bấm Dán / Ctrl+V mà chữ không vào Konsole: cbcap đặt bộ nhớ copy (wl-copy, không có thì Klipper) rồi hỏi KWin cửa
 #      sổ đang chọn → dòng lệnh dán bằng Ctrl+Shift+V, app thường Ctrl+V (LinuxIO.paste)
+#    · 27.11a: máy ảo VPS NVMe Linux (Ubuntu + XFCE, phiên X11): tìm phiên X của khách (DISPLAY / XAUTHORITY lấy từ tiến trình phiên),
+#      bỏ qua phần riêng của KDE (quyền KWin, ksycoca) — cbcap tự quay bằng x11grab + XTEST
 #  Lệnh:  cbremote.py run | selfcheck | version          Nhật ký: /opt/cloudblue/logs/remote.log
 # =====================================================================================================
 import fcntl, grp, json, os, pwd, re, socket, subprocess, sys, threading, time
@@ -25,7 +27,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "23.11c"
+LINUX_REMOTE_VER = "27.11a"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"
@@ -59,13 +61,35 @@ def user_session(user):
     try: pw = pwd.getpwnam(user)
     except KeyError: return None, None
     rt = "/run/user/%d" % pw.pw_uid
-    if not os.path.exists(os.path.join(rt, "bus")): return pw, None
     way = sorted(f for f in (os.listdir(rt) if os.path.isdir(rt) else []) if re.fullmatch(r"wayland-\d+", f))
-    if not way: return pw, None
+    if not way: return pw, x11_env(pw, rt)                          # 27.11a: không có Wayland → phiên X11 (XFCE) nếu có
+    if not os.path.exists(os.path.join(rt, "bus")): return pw, None
     env = {"HOME": pw.pw_dir, "USER": user, "LOGNAME": user, "SHELL": pw.pw_shell or "/bin/bash", "PATH": "/usr/local/bin:/usr/bin:/bin",
            "LANG": os.environ.get("LANG") or "C.UTF-8", "XDG_RUNTIME_DIR": rt, "DBUS_SESSION_BUS_ADDRESS": "unix:path=%s/bus" % rt,
            "WAYLAND_DISPLAY": way[0], "XDG_SESSION_TYPE": "wayland", "XDG_CURRENT_DESKTOP": "KDE"}
     return pw, env
+
+
+X11_COMMS = ("xfce4-session", "xfwm4", "xfdesktop", "xfce4-panel", "lxqt-session", "mate-session", "openbox")
+
+
+def x11_env(pw, rt):
+    """27.11a · môi trường phiên X11 của khách (lấy DISPLAY / XAUTHORITY / bus phiên từ tiến trình phiên đồ hoạ) → dict | None (chưa đăng nhập)."""
+    e = {}
+    for comm in X11_COMMS:
+        pid = _user_pid(pw.pw_uid, comm)
+        if pid is not None:
+            e = _proc_env(pid)
+            if e.get("DISPLAY"): break
+    if not e.get("DISPLAY") or not re.fullmatch(r":\d{1,3}(\.\d)?", e["DISPLAY"]): return None
+    xa = e.get("XAUTHORITY") or os.path.join(pw.pw_dir, ".Xauthority")
+    env = {"HOME": pw.pw_dir, "USER": pw.pw_name, "LOGNAME": pw.pw_name, "SHELL": pw.pw_shell or "/bin/bash", "PATH": "/usr/local/bin:/usr/bin:/bin",
+           "LANG": os.environ.get("LANG") or "C.UTF-8", "DISPLAY": e["DISPLAY"], "XAUTHORITY": xa, "XDG_SESSION_TYPE": "x11",
+           "XDG_CURRENT_DESKTOP": e.get("XDG_CURRENT_DESKTOP") or "XFCE"}
+    if os.path.isdir(rt): env["XDG_RUNTIME_DIR"] = rt
+    bus = e.get("DBUS_SESSION_BUS_ADDRESS") or ("unix:path=%s/bus" % rt if os.path.exists(os.path.join(rt, "bus")) else "")
+    if bus: env["DBUS_SESSION_BUS_ADDRESS"] = bus
+    return env
 
 
 def _same(path, data):
@@ -285,7 +309,7 @@ class Helper:
             if pw is None: raise RuntimeError("khong co tai khoan khach '%s'" % self.user)
             if env is None: raise RuntimeError("khach chua dang nhap man hinh (chua co phien KDE)")
             script = install_cap()
-            py, changed = install_kwin_access(self.log)                 # 22.11g: bản python riêng được KWin cấp quyền (không hộp hỏi)
+            py, changed = install_kwin_access(self.log) if env.get("WAYLAND_DISPLAY") else (None, False)   # 22.11g (27.11a: phiên X11 không cần)
             if py and kwin_env_ok(self.user) is not True:              # 22.11h: KWin đã có KWIN_WAYLAND_NO_PERMISSION_CHECKS → khỏi kbuildsycoca6 (đỡ vài giây)
                 try:
                     if refresh_sycoca(self.user, self.log, force=changed): time.sleep(2)   # KWin chỉ dò lại ksycoca mỗi 1,5 giây
@@ -627,6 +651,7 @@ def cmd_run(argv):
            23.11a: + lối tắt app trên màn hình nền (1 lần)."""
         for _ in range(120):
             try:
+                if (user_session(user)[1] or {}).get("XDG_SESSION_TYPE") == "x11": return    # 27.11a: phiên X11 (máy ảo XFCE) — không có KWin
                 py, changed = install_kwin_access(log)
                 if refresh_sycoca(user, log, force=changed) or _KW["kwin"] is not None:    # 23.11a: luôn dựng lại ĐÚNG (sửa bộ đệm rỗng của bản cũ)
                     desktop_shortcuts(user, log)
