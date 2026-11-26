@@ -130,8 +130,8 @@ def main():
         b = s.js("() => window.__SHOP.bought")
         ck("bấm Thanh toán → gọi pc_buy đúng sản phẩm + 15 ngày + 1511 (không gọi buy_product)", b == [{"p_product": PROD, "p_days": 15, "p_os": "1511"}] and not s.calls("buy_product"), (b, s.calls("buy_product")))
         d = s.js("() => { const m = document.getElementById('pcsdlg'); return m && !m.hidden ? m.innerText : ''; }")
-        ck("xong → hộp 'Thanh toán thành công' kiểu ĐỢI MÁY: ① Đợi máy đang cài 1511 + mã thanh toán, nút VPS của tôi",
-           "Thanh toán thành công" in d and "Đợi máy" in d and "Đang cài Windows 10 Pro 1511" in d and "BR-O1" in d and "VPS của tôi" in d and document_ok(s), d)
+        ck("xong → hộp 'Thanh toán thành công' kiểu ĐỢI MÁY: ① Đợi máy đang cài 1511 + mã thanh toán, nút VPS GPU của tôi",
+           "Thanh toán thành công" in d and "Đợi máy" in d and "Đang cài Windows 10 Pro 1511" in d and "BR-O1" in d and "VPS GPU của tôi" in d and document_ok(s), d)
         mg = s.js("""() => { const g = document.getElementById('pcsw-msg'); return { open: g.open, sum: g.querySelector('summary').innerText, txt: document.getElementById('pcsw-txt').textContent,
                     ct: g.querySelectorAll('.contacts a').length, copy: !!document.getElementById('pcsw-copy') }; }""")
         ck("② nội dung gửi admin: ẨN sẵn (bấm mới hiện), có đủ mã thanh toán / sản phẩm / Windows / tài khoản / lượt thuê + nút Copy",
