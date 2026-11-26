@@ -27,7 +27,7 @@ for _p in (os.path.join(BASE, "lib"), os.path.join(BASE, "agent"), HERE):
 import cbcore as C                                               # noqa: E402
 import pcremote as R                                             # noqa: E402
 
-LINUX_REMOTE_VER = "27.11a"
+LINUX_REMOTE_VER = "27.11b"
 CAP_SRC = os.path.join(HERE, "cbcap.py")
 CAP_DIR = "/usr/local/lib/cloudblue"                             # bản cbcap.py tài khoản khách đọc được (root sở hữu, khách không sửa được)
 APPS_DIR = "/usr/share/applications"
@@ -561,9 +561,15 @@ class LinuxRemote(R.Remote):
                 if not self.ff: self.ff = self.ff_fn()
                 if self.caps.get("enc") and time.time() - self.caps_t < 6 * 3600: return True
                 import cbcap
-                ok, why = cbcap.have_tools()
-                self.caps = {"enc": ["x264"] if ok else [], "cap": "portal"}; self.caps_t = time.time()
-                self.log("may nay: quay man hinh qua cong XDG cua KDE, nen x264 (CPU) - GStreamer: %s" % why)
+                env = None                                          # 27.11b: xét theo PHIÊN KHÁCH (agent chạy root, không có DISPLAY)
+                try:
+                    u = getattr(getattr(self, "io", None), "user", None)
+                    if u: env = user_session(u)[1]
+                except Exception: env = None
+                ok, why = cbcap.have_tools(env)
+                x11 = cbcap.x11_session(env) if env is not None else False
+                self.caps = {"enc": ["x264"] if ok else [], "cap": "x11" if x11 else "portal"}; self.caps_t = time.time()
+                self.log("may nay: %s, nen x264 (CPU) - %s" % ("quay man hinh X11 (ffmpeg x11grab, XFCE)" if x11 else "quay man hinh qua cong XDG cua KDE", why))
                 if not ok: self.state = "thieu cong cu quay man hinh (%s) - agent dang tu cai, xong tu chay" % why
                 return ok
             except Exception as e:
