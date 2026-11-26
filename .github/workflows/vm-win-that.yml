@@ -1,0 +1,175 @@
+# 26/11 · THỬ THẬT ISO MÁY MẪU: Windows Server chính chủ (bản dùng thử) TỰ CÀI từ ISO máy mẫu trong máy ảo KVM có cấu hình như máy cbhost tạo trên Proxmox.
+#   ghep-*  (Windows Server 2022, PowerShell 5.1): tải ISO Windows từ link trong HUONG-DAN → chạy đúng lệnh chủ shop chạy (proxmox/tao-iso-may-mau.ps1 -KhongHoi)
+#   cai-*   (Ubuntu, KVM): proxmox/tests/ci/win_that.py — bật máy ảo từ ISO vừa ghép, chờ như cbhost chờ (guest agent + maymau.done), kiểm, lưu thành máy mẫu,
+#           nhân bản 1 VPS rồi bật. Mạng của máy ảo bị chặn hết đường ra ngoài → không gọi web thật. Không đụng máy thật nào.
+#   Kết quả → nhánh win-shots-<bản> (shots/*-ketqua.txt + ảnh màn hình; kèm vercel.json tắt deploy), đẩy 5 phút / lần lúc đang chạy.
+#   Chạy lâu (1–2 giờ) nên KHÔNG chạy theo nhánh appvm-*: chỉ chạy khi đẩy lên nhánh thuwin-* hoặc bấm tay (Actions › Run workflow).
+name: Thu that Windows tu cai tu ISO may mau
+
+on:
+  push:
+    branches: ["thuwin-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # chỉ để đẩy kết quả vào nhánh win-shots-*
+
+concurrency:
+  group: vm-win-that-b-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ghep-2016:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      TAG: win2016
+      URL: "https://go.microsoft.com/fwlink/p/?LinkID=2195174&clcid=0x409&culture=en-us&country=US"
+    steps:
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Ghép ISO máy mẫu từ ISO Windows thật
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force C:\cbw\kq | Out-Null
+          & .\proxmox\tests\ci\win_that_build.ps1 -Tag $env:TAG -Url $env:URL -OutDir C:\cbw\out -KetQua ("C:\cbw\kq\win-" + $env:TAG + "-ghep.txt")
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-ghep-win2016
+          path: C:\cbw\kq
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maymau-win2016
+          path: C:\cbw\out\*.iso
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+  cai-2016:
+    needs: ghep-2016
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG: win2016
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc + QEMU
+        run: bash proxmox/tests/ci/win_that.sh chuanbi
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kq-ghep-win2016
+          path: kq
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: maymau-win2016
+          path: ${{ env.W }}/iso
+      - name: Windows tự cài trong máy ảo (như máy cbhost tạo trên Proxmox)
+        run: bash proxmox/tests/ci/win_that.sh chay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-cai-win2016
+          path: kq
+          if-no-files-found: ignore
+
+  # máy ảo kiểu UEFI (OVMF) — cbhost không tạo kiểu này, nhưng admin tự tạo máy mẫu bằng tay thì có thể chọn
+  cai-2016-uefi:
+    needs: ghep-2016
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG: win2016-uefi
+      BAN: win2016
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc + QEMU
+        run: bash proxmox/tests/ci/win_that.sh chuanbi
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kq-ghep-win2016
+          path: kq
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: maymau-win2016
+          path: ${{ env.W }}/iso
+      - name: Windows tự cài trong máy ảo UEFI
+        run: bash proxmox/tests/ci/win_that.sh chay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-cai-win2016-uefi
+          path: kq
+          if-no-files-found: ignore
+
+  ghep-2012r2:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      TAG: win2012r2
+      URL: "https://go.microsoft.com/fwlink/p/?LinkID=2195443&clcid=0x409&culture=en-us&country=US"
+    steps:
+      - name: Keep line endings
+        shell: cmd
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - name: Ghép ISO máy mẫu từ ISO Windows thật
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force C:\cbw\kq | Out-Null
+          & .\proxmox\tests\ci\win_that_build.ps1 -Tag $env:TAG -Url $env:URL -OutDir C:\cbw\out -KetQua ("C:\cbw\kq\win-" + $env:TAG + "-ghep.txt")
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-ghep-win2012r2
+          path: C:\cbw\kq
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maymau-win2012r2
+          path: C:\cbw\out\*.iso
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: ignore
+
+  cai-2012r2:
+    needs: ghep-2012r2
+    if: ${{ !cancelled() }}        # (không dùng always(): job always() không huỷ được → lượt chạy sau phải chờ)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      TAG: win2012r2
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Chỗ làm việc + QEMU
+        run: bash proxmox/tests/ci/win_that.sh chuanbi
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kq-ghep-win2012r2
+          path: kq
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: maymau-win2012r2
+          path: ${{ env.W }}/iso
+      - name: Windows tự cài trong máy ảo (như máy cbhost tạo trên Proxmox)
+        run: bash proxmox/tests/ci/win_that.sh chay
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kq-cai-win2012r2
+          path: kq
+          if-no-files-found: ignore

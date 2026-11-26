@@ -35,13 +35,20 @@ r12 = vb.pick([
     {"index": 4, "name": "Windows Server 2012 R2 SERVERDATACENTER", "edition": "ServerDatacenterEval", "version": "6.3.9600.17031", "itype": "Server", "arch": 9, "lang": "en-US"}])
 im = {i["index"]: i for i in r12["images"]}
 ck("2012 R2: mặc định bản Standard có giao diện (số 2), bản Core bị loại (nói rõ vì sao)", r12["default"] == 2 and not im[1]["ok"] and "Core" in im[1]["why"] and im[4]["ok"], r12)
-ck("2012 R2 → driver 2k12R2, máy mẫu tpl-win2012r2, virtio 0.1.240", (im[2]["os"], im[2]["tag"], im[2]["virtio"], im[2]["server"]) == ("2k12R2", "win2012r2", "0.1.240", True), im[2])
+ck("2012 R2 → driver 2k12R2, máy mẫu tpl-win2012r2, virtio 0.1.215 (bản cuối 2012 R2 nhận chữ ký số; thư mục tải …-0.1.215-2), không cho bản cao hơn",
+   (im[2]["os"], im[2]["tag"], im[2]["virtio"], im[2]["server"], im[2]["virtio_max"]) == ("2k12R2", "win2012r2", "0.1.215", True, "0.1.215")
+   and im[2]["virtio_url"].endswith("/archive-virtio/virtio-win-0.1.215-2/virtio-win-0.1.215.iso"), im[2])
 r22 = vb.pick([
     {"index": 1, "name": "Windows Server 2022 Standard Evaluation", "edition": "ServerStandardEval", "version": "10.0.20348.587", "itype": "Server Core", "arch": 9},
     {"index": 2, "name": "Windows Server 2022 Standard Evaluation (Desktop Experience)", "edition": "ServerStandardEval", "version": "10.0.20348.587", "itype": "Server", "arch": 9},
     {"index": 4, "name": "Windows Server 2022 Datacenter Evaluation (Desktop Experience)", "edition": "ServerDatacenterEval", "version": "10.0.20348.587", "itype": "Server", "arch": 9}])
 im22 = {i["index"]: i for i in r22["images"]}
-ck("2022: Desktop Experience Standard → 2k22 / win2022 / virtio 0.1.271", r22["default"] == 2 and (im22[2]["os"], im22[2]["tag"], im22[2]["virtio"]) == ("2k22", "win2022", "0.1.271"), r22)
+ck("2022: Desktop Experience Standard → 2k22 / win2022 / virtio 0.1.271 (thư mục tải …-0.1.271-1), không giới hạn bản cao nhất",
+   r22["default"] == 2 and (im22[2]["os"], im22[2]["tag"], im22[2]["virtio"], im22[2]["virtio_max"]) == ("2k22", "win2022", "0.1.271", "")
+   and im22[2]["virtio_url"].endswith("/archive-virtio/virtio-win-0.1.271-1/virtio-win-0.1.271.iso"), r22)
+ck("virtio quá mới cho 2012 R2: 0.1.217 / 0.1.240 → có; 0.1.215 / 0.1.189 / không rõ số bản → không; bản Windows khác → không",
+   vb.virtio_too_new("2k12R2", "0.1.217") and vb.virtio_too_new("2k12R2", "0.1.240") and not vb.virtio_too_new("2k12R2", "0.1.215")
+   and not vb.virtio_too_new("2k12R2", "0.1.189") and not vb.virtio_too_new("2k12R2", "") and not vb.virtio_too_new("2k16", "0.1.271"))
 for ver, osd, tag in (("10.0.14393.0", "2k16", "win2016"), ("10.0.17763.737", "2k19", "win2019"), ("10.0.26100.1742", "2k25", "win2025")):
     c = vb.classify({"name": "Windows Server X SERVERSTANDARD", "edition": "ServerStandard", "version": ver, "itype": "Server", "arch": 9})
     ck("Server %s → %s / %s" % (ver, osd, tag), c["ok"] and (c["os"], c["tag"]) == (osd, tag), c)
@@ -70,8 +77,10 @@ paths = [txt(e) for e in els(ds, "Path")]
 ck("windowsPE: tìm ổ có \\cbvm\\pe.cmd rồi chạy (chia ổ theo BIOS / UEFI) — không đụng bộ cài PC (\\cb\\pe\\start.cmd)",
    len(paths) == 1 and "\\cbvm\\pe.cmd" in paths[0] and "%a:" in paths[0] and "start.cmd" not in xs, paths)
 md = els(ds, "MetaData")[0]
-ck("cài đúng bản số 2 (/IMAGE/INDEX) vào phân vùng trống đầu tiên", txt(els(md, "Key")[0]) == "/IMAGE/INDEX" and txt(els(md, "Value")[0]) == "2"
-   and txt(els(ds, "InstallToAvailablePartition")[0]) == "true", xs)
+it = els(ds, "InstallTo")
+ck("cài đúng bản số 2 (/IMAGE/INDEX) vào Ổ 0 · PHÂN VÙNG 2 (không dùng 'phân vùng trống đầu tiên' — bộ cài 2012 R2 không tìm ra)",
+   txt(els(md, "Key")[0]) == "/IMAGE/INDEX" and txt(els(md, "Value")[0]) == "2" and len(it) == 1 and txt(els(it[0], "DiskID")[0]) == "0"
+   and txt(els(it[0], "PartitionID")[0]) == "2" == str(vb.WIN_PART) and not els(ds, "InstallToAvailablePartition") and not els(ds, "DiskConfiguration"), xs)
 ap = els(ds, "AdministratorPassword")
 ck("Server: mật khẩu Administrator ngẫu nhiên (ký tự đặc biệt được thoát đúng), KHÔNG tạo tài khoản / tự đăng nhập trong file trả lời",
    len(ap) == 1 and txt(els(ap[0], "Value")[0]) == base["admin_pw"] and not els(ds, "LocalAccounts") and not els(ds, "AutoLogon"), xs)
@@ -131,7 +140,7 @@ def make_tree(osdir, drivers=("vioscsi", "viostor", "NetKVM", "vioserial", "Ball
     return t, {"iso_root": iso, "tool": tool, "py_dir": py, "virtio_root": vio, "ga_msi": os.path.join(vio, "guest-agent", "qemu-ga-x86_64.msi"),
                "os": osdir, "user": "VPS", "image": {"index": 2, "name": "Windows Server 2012 R2 SERVERSTANDARD", "edition": "ServerStandardEval", "version": "6.3.9600.17031", "lang": "en-US"},
                "ucrt": os.path.join(t, "ucrt.msu"), "ffmpeg": os.path.join(t, "ffmpeg.exe"), "cacert": os.path.join(t, "cacert.pem"),
-               "sb_url": "https://abc.supabase.co", "sb_key": "sb_publishable_x", "virtio_ver": "0.1.240", "built": "2026-11-24 15:30:00"}
+               "sb_url": "https://abc.supabase.co", "sb_key": "sb_publishable_x", "virtio_ver": "0.1.215", "built": "2026-11-24 15:30:00"}
 
 
 t, P = make_tree("2k12R2")
@@ -159,16 +168,23 @@ ck("bộ cài Windows chạy SetupComplete.cmd của máy mẫu", open(os.path.j
    == open(os.path.join(ROOT, "vm", "SetupComplete.cmd"), "rb").read())
 mj = json.load(open(os.path.join(cbd, "vm", "maymau.json")))
 ck("maymau.json: tpl / bản driver / Server / tài khoản / bản Windows", (mj["tag"], mj["os"], mj["server"], mj["user"], mj["image"]["index"], mj["virtio"]) ==
-   ("win2012r2", "2k12R2", True, "VPS", 2, "0.1.240") and "qxldod" not in mj["drivers"], mj)
+   ("win2012r2", "2k12R2", True, "VPS", 2, "0.1.215") and "qxldod" not in mj["drivers"], mj)
 ux = open(os.path.join(iso, "autounattend.xml"), "rb").read()
 ck("autounattend.xml ở gốc ISO, xuống dòng CRLF, có mật khẩu Administrator ngẫu nhiên (không in ra)", b"\r\n" in ux and not re.search(rb"(?<!\r)\n", ux) and b"<AdministratorPassword>" in ux)
 bt, ut = (open(os.path.join(iso, "cbvm", n), "rb").read() for n in ("bios.txt", "uefi.txt"))
-ck("diskpart: BIOS 1 phân vùng active · UEFI GPT + EFI + MSR + Windows (cùng xoá sạch ổ 0)",
-   b"active" in bt and b"convert gpt" not in bt and b"convert gpt" in ut and b"create partition efi" in ut and b"create partition msr" in ut
-   and bt.startswith(b"select disk 0\r\nclean\r\n") and ut.startswith(b"select disk 0\r\nclean\r\n"))
+nparts = lambda t: [x for x in t.split(b"\r\n") if x.startswith(b"create partition")]
+ck("diskpart: BIOS = System 100 MB (active) + Windows · UEFI = GPT, EFI 100 MB + Windows — cả 2 kiểu Windows là PHÂN VÙNG 2, nằm cuối ổ, gán chữ W (cùng xoá sạch ổ 0)",
+   bt.startswith(b"select disk 0\r\nclean\r\n") and ut.startswith(b"select disk 0\r\nclean\r\n") and b"convert gpt" not in bt and b"convert gpt" in ut
+   and nparts(bt) == [b"create partition primary size=100", b"create partition primary"] and nparts(ut) == [b"create partition efi size=100", b"create partition primary"]
+   and bt.index(b"active") < bt.index(b"create partition primary\r\n") and all(t.rstrip().endswith(b"label=Windows\r\nassign letter=W\r\nexit") for t in (bt, ut))
+   and len(nparts(bt)) == len(nparts(ut)) == vb.WIN_PART, (bt, ut))
 pe = open(os.path.join(iso, "cbvm", "pe.cmd"), encoding="ascii").read()
 ck("pe.cmd: nạp driver ổ VirtIO trước (drvload) → đọc kiểu firmware → chọn bios.txt / uefi.txt",
    "drvload" in pe and "$WinPEDriver$\\vioscsi" in pe and "PEFirmwareType" in pe and "cbvm\\uefi.txt" in pe and "cbvm\\bios.txt" in pe and pe.index("drvload") < pe.index("diskpart"))
+ck("pe.cmd: CHỜ ổ đĩa 0 hiện ra (driver vừa nạp) rồi mới chia; diskpart lỗi thì thử lại; chép nhật ký sang ổ Windows mới (W:); luôn thoát mã 0",
+   pe.index("drvload") < pe.index('find /i "Disk 0"') < pe.index('diskpart /s "%DP%"') and "goto cho" in pe and "goto chia" in pe and "if not errorlevel 1 goto xong" in pe
+   and "W:\\cbvm-pe.log" in pe and pe.count("exit /b 0") == 2 and "timeout" not in pe.lower().replace("khong co timeout.exe", "") and "\r\n" in open(os.path.join(iso, "cbvm", "pe.cmd"), "rb").read().decode("ascii")
+   and not re.search(r"(?<!\r)\n", open(os.path.join(iso, "cbvm", "pe.cmd"), "rb").read().decode("ascii")))
 os.remove(os.path.join(cbd, "vm", "ucrt.msu"))
 ck("check: 2012 R2 thiếu bản vá UCRT → báo thiếu", vb.check(iso) == 1)
 mk(os.path.join(cbd, "vm", "ucrt.msu")); mk(os.path.join(cbd, "identity.json"), b'{"id":"x"}')
@@ -181,7 +197,13 @@ t2, P2 = make_tree("2k12R2", drivers=("vioscsi", "viostor", "vioserial"))
 P2.update(tag="win2012r2", server=True)
 try: vb.layout(P2); err = ""
 except ValueError as e: err = str(e)
-ck("ISO virtio thiếu driver mạng cho đúng bản → dừng, nói rõ (2012 R2 dùng virtio 0.1.240)", "NetKVM" in err and "0.1.240" in err, err)
+ck("ISO virtio thiếu driver mạng cho đúng bản → dừng, nói rõ (2012 R2 dùng virtio 0.1.215)", "NetKVM" in err and "0.1.215" in err, err)
+t3, P3 = make_tree("2k12R2")
+P3.update(tag="win2012r2", server=True, virtio_ver="0.1.240")
+try: vb.layout(P3); err = ""
+except ValueError as e: err = str(e)
+ck("2012 R2 + virtio 0.1.240 (driver ổ đĩa không được Windows này nhận) → DỪNG, không ghép ISO hỏng, chỉ rõ link bản 0.1.215",
+   "QUA MOI" in err and "virtio-win-0.1.215-2/virtio-win-0.1.215.iso" in err and not os.path.exists(os.path.join(P3["iso_root"], "autounattend.xml")), err)
 t3, P3 = make_tree("w10")
 P3.update(tag="win10ltsc", server=False, ucrt="", ffmpeg="", image={"index": 1, "name": "Windows 10 Enterprise LTSC", "edition": "EnterpriseS", "version": "10.0.19044.1288", "lang": "en-US"})
 ok3 = vb.layout(P3) == 0 and vb.check(P3["iso_root"]) == 0
