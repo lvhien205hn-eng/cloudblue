@@ -56,9 +56,12 @@ ENCODERS = ("nvenc", "qsv", "amf", "x264")
 PIPE_IDLE_FPS = 3                         # đứng yên, không ai thao tác: xem lại màn hình 3 lần / giây
 PIPE_BEAT_S = 1.0                         # không có gì đổi vẫn gửi 1 khung / giây (người xem + trạm biết máy còn sống)
 PIPE_ACT_S, PIPE_CHG_S = 1.0, 0.3         # sau thao tác cuối của người xem / khi màn hình đổi LIÊN TỤC: chụp đủ nhịp thêm bấy nhiêu giây
-PIPE_SETTLE = 10                          # sau khung đổi cuối: gửi lại khung đó TỐI ĐA mấy lần cho bộ nén làm nét dần khung vừa bị ép cỡ (không chụp lại) — khung nén ra chỉ còn vài chục byte thì thôi ngay
+PIPE_SETTLE = 60                          # sau khung đổi cuối: gửi lại khung đó TỐI ĐA mấy lần cho bộ nén làm nét dần khung vừa bị ép cỡ (không chụp lại) — khung nén ra chỉ còn vài chục byte thì thôi ngay
+                                          # (trang dày chữ 1920×1080 cần ~0,6 MB mới nét hẳn = ~1 giây ở 4500 kbps; 60 chỉ là chốt chặn)
 PIPE_SMALL, PIPE_FINE, PIPE_QUIET_S = 300, 2000, 0.25   # khung nén < 300 byte = không còn gì để làm nét; khung đổi nhỏ < 2000 byte sau ≥ 0,25 giây yên (con trỏ chữ nháy, đồng hồ) = đã nét sẵn, khỏi gửi lại
-PIPE_KEY_S, PIPE_KEY_PV_S = 4, 2          # khung khoá định kỳ theo GIÂY THẬT (phiên điều khiển / ô xem trước — ô đang xem máy có người điều khiển chỉ nhận khung khoá); cần sớm hơn thì bật lại bộ nén
+PIPE_KEY_S, PIPE_KEY_PV_S = 20, 2         # khung khoá định kỳ theo GIÂY THẬT (phiên điều khiển / ô xem trước — ô đang xem máy có người điều khiển chỉ nhận khung khoá).
+                                          # Mỗi khung khoá bị ép cỡ ≤ ~150 KB → hình MỜ lại rồi nét dần ~1 giây (đo 26/11: 4 giây / khung khoá = trang chữ mờ gần nửa thời gian)
+                                          # → phiên điều khiển để thưa; người xem cần sớm hơn thì tự xin (C_KEYFRAME) / nghẽn / ACK trễ → bật lại bộ nén lấy khung khoá ngay
 PIPE_CRF = 22                             # mức chất lượng x264 (càng nhỏ càng nét); bitrate của phiên là TRẦN, không phải mức phải đạt
 PIPE_BUF_K = 1200                         # 1 khung không vượt ~150 KB (trạm bỏ khung khi bộ đệm tới người xem quá 192 KB)
 PIPE_FPS_MAX = 30
@@ -380,7 +383,9 @@ def enc_args(enc, fps, kbps, x264_preset="superfast", nv_preset="p4", x264_extra
     buf = "%dk" % max(kbps * 6 // max(fps, 1), min(250, max(96, kbps // 2)))
     rate = ["-b:v", "%dk" % kbps, "-maxrate", "%dk" % kbps, "-bufsize", buf]
     if crf and enc == "x264":
-        xp = "sliced-threads=0:keyint=100000:min-keyint=1:scenecut=0:bframes=0:rc-lookahead=0:sync-lookahead=0:repeat-headers=1" + (":" + x264_extra if x264_extra else "")
+        # qcomp=1.0: mức lượng tử CỐ ĐỊNH theo crf. Mặc định (0.6) x264 cứ hạ dần mức lượng tử khi hình đứng yên → mỗi khung gửi lại vẫn ra ~5 KB mãi không dứt
+        # (đo 26/11 trên trang chữ 1920×1080) → màn hình đứng yên vẫn tốn CPU + mạng. Cố định thì nét tới mức crf là DỪNG (khung sau chỉ còn ~24 byte).
+        xp = "sliced-threads=0:keyint=100000:min-keyint=1:scenecut=0:bframes=0:rc-lookahead=0:sync-lookahead=0:repeat-headers=1:qcomp=1.0" + (":" + x264_extra if x264_extra else "")
         return ["-force_key_frames", "expr:if(isnan(prev_forced_t),1,gte(t,prev_forced_t+%d))" % max(1, int(key_s or PIPE_KEY_S)),
                 "-c:v", "libx264", "-preset", x264_preset, "-tune", "zerolatency", "-profile:v", "baseline", "-threads", "1", "-forced-idr", "1", "-x264-params", xp,
                 "-crf", str(int(crf)), "-maxrate", "%dk" % kbps, "-bufsize", "%dk" % max(96, min(PIPE_BUF_K, kbps * 6 // max(fps, 1)))]
@@ -693,16 +698,20 @@ class Encoder:
             g = self.grab_fn()
             if (g.w, g.h) != (self.sw, self.sh): raise RuntimeError("man hinh %dx%d khac luc bat bo nen %dx%d" % (g.w, g.h, self.sw, self.sh))
             dt = 1.0 / max(1, self.fps); dt_idle = max(dt, 1.0 / PIPE_IDLE_FPS)
-            t_cap = t_out = 0.0; last = None; settle = 0; run = 0; fresh = quiet = False
+            t_cap = t_out = 0.0; last = None; settle = 0; run = 0; fresh = quiet = probe = False
             while self.alive:
                 now = time.monotonic()
                 if self.settle_req: self.settle_req = False; settle = max(settle, PIPE_SETTLE); fresh = False      # vừa ra khung khoá (bị ép cỡ) → gửi lại cho nét
                 cap_due = t_cap + (dt if now < self.t_act else dt_idle); again = False
+                if probe and self.frames >= self.fed:                  # khung giữ nhịp vừa rồi nén ra còn NẶNG = hình chưa nét hẳn (lần làm nét trước bị cắt ngang) → làm nét tiếp
+                    probe = False
+                    if not self.au_key and self.au_sz >= PIPE_SMALL: settle = max(settle, PIPE_SETTLE); fresh = False
                 if settle and last is not None:
                     # 26.11a-2 · VÒNG KÍN: chỉ gửi lại khi khung vừa ghi đã nén xong VÀ còn nặng (bộ nén còn đang làm nét). Trước đó gửi mù 6 khung sau MỖI lần đổi →
                     # con trỏ chữ nháy cũng tốn ~13 khung / giây.
                     out = self.frames >= self.fed
-                    if out and not self.au_key and (self.au_sz < PIPE_SMALL or (fresh and quiet and self.au_sz < PIPE_FINE)): settle = 0
+                    # nét xong = 2 khung LIỀN chỉ vài chục byte (1 khung lẻ nhỏ giữa chừng là bộ nén hết hạn mức của khung đó, chưa phải xong)
+                    if out and not self.au_key and (self.small >= 2 or (fresh and quiet and self.au_sz < PIPE_FINE)): settle = 0
                     elif (out or now - t_out > 0.25) and now >= t_out + dt: again = True
                 if not again and cap_due > now:
                     w = cap_due - now
@@ -719,6 +728,7 @@ class Encoder:
                         run = 0
                         if again: settle -= 1; fresh = False
                         elif now - t_out < PIPE_BEAT_S: continue
+                        else: probe = True
                         last = buf
                 elif again:
                     settle -= 1; fresh = False; buf = last
@@ -829,7 +839,7 @@ class Session:
         self.keys = Keys(self.io); self.touch = Touch(self.io); self.ptr = Pointer(self.io)
         self.iq = queue.Queue(maxsize=4000); self.clip_last = None; self.t0 = time.time()
         self.ime = None; self.ime_v = None; self.ime_dirty = False; self.last_st = None       # 22.11b: ô nhập chữ đang được chọn → app tự bật bàn phím
-        self.long_gop = False; self.key_until = 0.0; self.skip = 0                            # 26.11a: cách quay "pipe" (khung khoá thưa) · gộp lệnh rê chuột dồn
+        self.long_gop = False; self.key_until = 0.0; self.skip = 0; self.enc_kbps = 0; self.rate_pend = False; self.plan_kw = {}                            # 26.11a: cách quay "pipe" (khung khoá thưa) · gộp lệnh rê chuột dồn
 
     def _on_ime(self, v):
         self.ime_v = (1 if v[0] else 0, 1 if v[1] else 0); self.ime_dirty = True
@@ -862,12 +872,19 @@ class Session:
                 tune = {"x264_preset": preset, "x264_extra": extra, "crf": PIPE_CRF, "key_s": PIPE_KEY_PV_S if self.req.get("preview") else PIPE_KEY_S}
             self.long_gop = pipe
             w, h, fps, kbps, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=(enc == "x264"), fps_fix=self.fps_fix, **kw)
-            self.vw, self.vh, self.fps = w, h, fps
+            self.vw, self.vh, self.fps = w, h, fps; self.enc_kbps = kbps; self.rate_pend = False; self.plan_kw = kw
             on_au = lambda d, k, c, pts, g=gen: self._on_au(g, d, k, c, pts)
             if pipe: e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, on_au, self.log, grab_fn=self.io.grabber, tune=tune)
             else: e = Encoder(self.r.ff, cap, enc, self.sw, self.sh, w, h, fps, kbps, on_au, self.log)       # giữ nguyên cách gọi cũ: máy Linux (cbremote) thay Encoder bằng lớp riêng
             e.start(); self.enc = e; self.t_restart = time.time()
             self.conn.send(P_INFO, json.dumps({"sid": self.sid, "w": w, "h": h, "fps": fps, "kbps": kbps, "enc": enc, "cap": cap, "q": self.q}).encode())
+
+    def _tier_moves(self):
+        """Bitrate hiện tại (rate.cur) có làm đổi cỡ hình / khung-giây so với bộ nén đang chạy không (qua mốc TIERS) — có thì phải bật lại bộ nén ngay."""
+        try:
+            w, h, fps, _, _ = plan(self.q, self.fps_req, self.maxh_req, self.kbps_req, self.rate.cur, self.sw, self.sh, cpu=True, fps_fix=self.fps_fix, **(self.plan_kw or {}))
+            return (w, h, fps) != (self.vw, self.vh, self.fps)
+        except Exception: return True
 
     def _on_au(self, gen, data, key, cfg, pts):
         if gen != self.gen or self.closed: return
@@ -1016,7 +1033,12 @@ class Session:
                     self.restart_why = "key"                          # 26.11a: đang chờ khung khoá (vừa bỏ khung / vừa nghẽn) mà khung khoá định kỳ còn xa → bật lại bộ nén lấy khung khoá ngay
                 if self.restart_why is None:
                     up = self.rate.raise_(now)
-                    if up: self.log("duong truyen on -> tang len %d kbps" % up); self.restart_why = "rate"
+                    if up and self.long_gop and not self._tier_moves() and self.rate.outrate(now) < self.enc_kbps * 0.6:
+                        # 26.11a: nén theo chất lượng, bitrate chỉ là TRẦN. Đang phát thấp hơn trần nhiều mà bật lại bộ nén chỉ để nâng trần = 1 khung khoá mờ + ~1 giây
+                        # nét lại, không được gì → ghi nhận, lúc hình chạm trần (cuộn trang, video) mới bật lại.
+                        self.rate_pend = True; self.log("duong truyen on -> tran %d kbps (ap dung khi hinh can)" % up)
+                    elif up: self.log("duong truyen on -> tang len %d kbps" % up); self.restart_why = "rate"
+                    elif self.long_gop and self.rate_pend and now - self.t_restart > 3.0 and self.rate.outrate(now) >= self.enc_kbps * 0.6: self.restart_why = "rate"
                 if self.restart_why and now - self.t_restart > 1.0:
                     self.restart_why = None; self.start_video()
                 if now - t_clip > 0.5:
