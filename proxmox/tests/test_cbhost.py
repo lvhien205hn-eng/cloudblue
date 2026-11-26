@@ -541,5 +541,169 @@ try:
 finally:
     cb.run, cb.shutil.which, cb.can_resolve = _run0, _which0, _res0
 
+print("12. USB có ISO máy mẫu cắm vào máy chủ ĐANG CHẠY (26/11d): ISO cài đặt ghép thiếu máy mẫu → không phải cài lại máy chủ")
+import base64 as _b64, shutil as _sh, subprocess as _sp
+spec2 = importlib.util.spec_from_file_location("pve_iso", os.path.join(ROOT, "vm", "pve_iso.py"))
+pi = importlib.util.module_from_spec(spec2); spec2.loader.exec_module(pi)
+usbd = os.path.join(tmp, "usb"); os.makedirs(usbd)
+cb.USB_MNT, cb.ISO_DIR, cb.NAP_PY = os.path.join(usbd, "mnt"), os.path.join(usbd, "kho-iso"), os.path.join(ROOT, "vm", "cb_nap.py")
+cb.NAP_CONF_F, cb.NAP_DONE_F, cb.MAU_MIN = os.path.join(usbd, "nap.json"), os.path.join(usbd, "nap-xong.json"), 1000
+MP = os.path.join(cb.USB_MNT, "m")
+KID, KOFF = "0123456789abcdef01234567", 1024 * 1024
+F1, F2 = os.urandom(70000), os.urandom(123457)
+
+
+def kho_img(path, kid=KID, hong=False):
+    """Ảnh USB giả: [vùng ISO 1 MiB][đầu mục kho 16 KiB][file 1][file 2] — đúng khuôn pve_iso.build ghi."""
+    files, pos = [], KOFF + cb.KHO_HDR
+    for nm, dat in (("CloudBlue-MayMau-win2012r2.iso", F1), ("CloudBlue-MayMau-win2016.iso", F2)):
+        files.append({"name": nm, "off": pos, "size": len(dat), "sha256": hashlib.sha256(dat).hexdigest()}); pos += len(dat)
+    hdr = cb.KHO_MAGIC + json.dumps({"v": 1, "id": kid, "size": pos, "files": files}, sort_keys=True).encode() + b"\n"
+    with open(path, "wb") as o:
+        o.write(b"\0" * KOFF); o.write(hdr.ljust(cb.KHO_HDR, b"\0")); o.write(F1); o.write(F2 if not hong else F2[:-5] + b"hongg")
+    return {"id": kid, "off": KOFF, "size": pos, "n": 2}
+
+
+def fb_text(nap_conf):
+    tmpl = open(os.path.join(ROOT, "vm", "pve_firstboot.sh"), encoding="utf-8").read()
+    return pi.first_boot(tmpl, b"print('cbhost')\n" * 50, b"print('nap')\n" * 20, {"auto_tpl": True}, nap_conf)
+
+
+IMG = os.path.join(usbd, "usb.img"); KC = kho_img(IMG)
+os.makedirs(MP)
+open(os.path.join(MP, "proxmox-first-boot"), "wb").write(fb_text(KC))
+ck("đọc cấu hình kho ISO máy mẫu từ file proxmox-first-boot THẬT của USB cài đặt (do pve_iso ghép): đúng mã kho, vị trí, số file", cb.usb_kho_conf(MP) == KC, cb.usb_kho_conf(MP))
+open(os.path.join(MP, "proxmox-first-boot"), "wb").write(fb_text({"id": KID, "off": 0, "size": 12345, "n": 0}))
+ck("USB cài đặt KHÔNG kèm máy mẫu (như USB ghép lúc 12:20 ngày 26/11) → không có kho", cb.usb_kho_conf(MP) is None)
+os.remove(os.path.join(MP, "proxmox-first-boot"))
+ck("USB không phải USB cài đặt CloudBlue (không có file proxmox-first-boot) → bỏ qua", cb.usb_kho_conf(MP) is None)
+kf = cb.kho_files(IMG, KC)
+ck("đầu mục kho trên thiết bị: 2 file đúng tên + cỡ; sai mã kho / sai vị trí → không nhận", kf == [{"name": "CloudBlue-MayMau-win2012r2.iso", "size": len(F1)}, {"name": "CloudBlue-MayMau-win2016.iso", "size": len(F2)}]
+   and cb.kho_files(IMG, dict(KC, id="f" * 24)) is None and cb.kho_files(IMG, dict(KC, off=KOFF + 2048)) is None and cb.kho_files("/khong/co", KC) is None, kf)
+
+LS = {"blockdevices": [
+    {"name": "sda", "type": "disk", "fstype": None, "mountpoint": None, "path": "/dev/sda", "tran": "sata", "rm": False, "size": 480103981056,
+     "children": [{"name": "sda3", "type": "part", "fstype": "LVM2_member", "mountpoint": None, "path": "/dev/sda3", "tran": None, "rm": False, "size": 479000000000}]},
+    {"name": "sdb", "type": "disk", "fstype": "iso9660", "mountpoint": None, "path": "/dev/sdb", "tran": "usb", "rm": True, "size": 61530439680,
+     "children": [{"name": "sdb1", "type": "part", "fstype": "iso9660", "mountpoint": None, "path": "/dev/sdb1", "tran": None, "rm": True, "size": 1814000000},
+                  {"name": "sdb2", "type": "part", "fstype": "vfat", "mountpoint": None, "path": "/dev/sdb2", "tran": None, "rm": True, "size": 8388608}]},
+    {"name": "sdc", "type": "disk", "fstype": None, "mountpoint": None, "path": "/dev/sdc", "tran": "usb", "rm": True, "size": 32000000000,
+     "children": [{"name": "sdc1", "type": "part", "fstype": "exfat", "mountpoint": "/mnt/dang-dung", "path": "/dev/sdc1", "tran": None, "rm": True, "size": 31999000000}]},
+    {"name": "sdd", "type": "disk", "fstype": None, "mountpoint": None, "path": "/dev/sdd", "tran": "usb", "rm": False, "size": 1000204886016,
+     "children": [{"name": "sdd1", "type": "part", "fstype": "zfs_member", "mountpoint": None, "path": "/dev/sdd1", "tran": None, "rm": False, "size": 1000000000000}]},
+    {"name": "sde", "type": "disk", "fstype": None, "mountpoint": None, "path": "/dev/sde", "tran": "usb", "rm": True, "size": 64000000000,
+     "children": [{"name": "sde1", "type": "part", "fstype": "ntfs", "mountpoint": None, "path": "/dev/sde1", "tran": None, "rm": True, "size": 63999000000}]},
+    {"name": "sr0", "type": "rom", "fstype": None, "mountpoint": None, "path": "/dev/sr0", "tran": "sata", "rm": True, "size": 1073741312}]}
+_run12, U = cb.run, {"ls": LS, "cmds": [], "mounts": {}, "active": False}
+
+
+def run12(cmd, timeout=900):
+    U["cmds"].append(list(cmd))
+    if cmd[0] == "lsblk": return 0, json.dumps(U["ls"])
+    if cmd[0] == "mount":                                         # mount -t <kiểu> -o <tuỳ chọn> <thiết bị> <chỗ gắn>: "gắn" = chép nội dung giả vào chỗ gắn
+        src = U["mounts"].get(cmd[5])
+        if src is None: return 32, "wrong fs type"
+        _sh.rmtree(cmd[6], ignore_errors=True); _sh.copytree(src, cmd[6]); return 0, ""
+    if cmd[0] == "umount":
+        _sh.rmtree(cmd[1], ignore_errors=True); return 0, ""
+    if cmd[:2] == ["systemctl", "is-active"]: return (0 if U["active"] else 3), ""
+    return _run12(cmd, timeout)
+
+
+cb.run = run12
+try:
+    dk = cb.usb_disks()
+    ck("chỉ nhận ổ USB / ổ tháo rời CHƯA gắn phần nào: bỏ ổ hệ thống (LVM), USB đang gắn, ổ ZFS, ổ đĩa quang", [d["path"] for d in dk] == ["/dev/sdb", "/dev/sde"]
+       and dk[0]["nodes"] == [("/dev/sdb", "iso9660"), ("/dev/sdb1", "iso9660"), ("/dev/sdb2", "vfat")], dk)
+    # ---- (1) USB cài đặt bản đủ (ghi DD) cắm vào máy đã cài bằng USB bản THIẾU máy mẫu
+    isod = os.path.join(usbd, "noi-dung-iso"); os.makedirs(isod)
+    open(os.path.join(isod, "proxmox-first-boot"), "wb").write(fb_text(KC))
+    U["mounts"] = {"/dev/sdb": isod}
+    json.dump({"id": "a" * 24, "off": 0, "size": 1, "n": 0}, open(cb.NAP_CONF_F, "w"))           # máy này cài từ USB không kèm kho
+    json.dump({"note": "không có kho"}, open(cb.NAP_DONE_F, "w"))
+    said12 = []
+    un = cb.UsbNap({"auto_tpl": True}, say=said12.append)
+    D_KHO = {"path": IMG, "size": os.path.getsize(IMG), "nodes": [("/dev/sdb", "iso9660"), ("/dev/sdb1", "iso9660")]}
+    r = un.one(D_KHO)
+    got = {n: open(os.path.join(cb.ISO_DIR, n), "rb").read() for n in sorted(os.listdir(cb.ISO_DIR))} if os.path.isdir(cb.ISO_DIR) else {}
+    ck("USB cài đặt bản ĐỦ cắm vào máy ĐANG CHẠY (máy cài từ USB thiếu máy mẫu): tự chép 2 ISO vào kho ISO bằng cb_nap THẬT, nội dung khớp từng byte, không sót file .part",
+       r is True and got == {"CloudBlue-MayMau-win2012r2.iso": F1, "CloudBlue-MayMau-win2016.iso": F2}, (r, list(got), un.state))
+    ck("báo ra màn hình máy chủ + trạng thái gửi web: 'đang chép … ĐỪNG rút USB' rồi 'đã chép xong 2 ISO … có thể rút USB'", len(said12) == 2 and "dang chep" not in said12[0]
+       and said12[0].startswith("USB: thấy 2 ISO máy mẫu") and "ĐỪNG rút USB" in said12[0] and "đã chép xong 2 ISO máy mẫu" in said12[1] and un.state.get("s") == "done", said12)
+    ck("gắn USB CHỈ ĐỌC (ro, nosuid, nodev, noexec) và gỡ gắn ngay sau khi đọc cấu hình", any(c[:5] == ["mount", "-t", "iso9660", "-o", "ro,nosuid,nodev,noexec"] for c in U["cmds"])
+       and any(c[0] == "umount" for c in U["cmds"]) and not os.path.exists(MP))
+    n0 = len(said12); r2 = un.one(D_KHO)
+    ck("xem lại USB đó lần nữa: kho ISO đã đủ → không chép lại, không báo gì thêm", r2 is True and len(said12) == n0)
+    # USB của CHÍNH lần cài này, dịch vụ cloudblue-nap chưa xong → để dịch vụ đó chép (tránh 2 bên cùng ghi)
+    _sh.rmtree(cb.ISO_DIR); json.dump(KC, open(cb.NAP_CONF_F, "w")); os.remove(cb.NAP_DONE_F)
+    r3 = un.one(D_KHO)
+    ck("USB của chính lần cài này mà dịch vụ cloudblue-nap chưa xong: cbhost KHÔNG chép (dịch vụ nạp lo) → không có 2 bên cùng ghi 1 file", r3 is None and not os.path.isdir(cb.ISO_DIR) and len(said12) == n0, (r3, said12[n0:]))
+    json.dump({"note": "đủ"}, open(cb.NAP_DONE_F, "w"))
+    r4 = un.one(D_KHO)
+    ck("… dịch vụ nạp đã xong mà kho ISO thiếu file (bị xoá tay) → cbhost chép bù", r4 is True and sorted(os.listdir(cb.ISO_DIR)) == ["CloudBlue-MayMau-win2012r2.iso", "CloudBlue-MayMau-win2016.iso"], r4)
+    # USB ghi lỗi (mã kiểm không khớp)
+    _sh.rmtree(cb.ISO_DIR); json.dump({"id": "a" * 24, "off": 0, "size": 1, "n": 0}, open(cb.NAP_CONF_F, "w"))
+    IMG2 = os.path.join(usbd, "usb-hong.img"); kho_img(IMG2, hong=True); n0 = len(said12)
+    r5 = un.one(dict(D_KHO, path=IMG2, size=os.path.getsize(IMG2)))
+    ls5 = sorted(os.listdir(cb.ISO_DIR))
+    ck("USB ghi lỗi (1 file sai mã kiểm SHA-256): file tốt vẫn vào kho, file hỏng KHÔNG vào kho (không sót .part), báo 'CHƯA được … thử lại'", r5 is False and ls5 == ["CloudBlue-MayMau-win2012r2.iso"]
+       and un.state.get("s") == "err" and "CHƯA được" in said12[-1], (r5, ls5, said12[n0:]))
+    IMG3 = os.path.join(usbd, "usb-cut.img"); open(IMG3, "wb").write(open(IMG, "rb").read()[:KOFF + 100])
+    r6 = un.one(dict(D_KHO, path=IMG3, size=os.path.getsize(IMG3)))
+    ck("USB ghi dở (không có đầu mục kho ở vị trí ghi trong cấu hình): báo 'không đọc được kho … ghi lại USB', không chép gì", r6 is False and "không đọc được kho" in said12[-1], said12[-1])
+    # ---- (2) USB thường chứa file CloudBlue-MayMau-*.iso
+    _sh.rmtree(cb.ISO_DIR, ignore_errors=True)
+    thuong = os.path.join(usbd, "usb-thuong"); os.makedirs(os.path.join(thuong, "iso", "sau", "qua-sau")); os.makedirs(os.path.join(thuong, "System Volume Information"))
+    open(os.path.join(thuong, "CloudBlue-MayMau-win2016.iso"), "wb").write(F2)
+    open(os.path.join(thuong, "iso", "CloudBlue-MayMau-win2012r2.iso"), "wb").write(F1)
+    open(os.path.join(thuong, "iso", "sau", "qua-sau", "CloudBlue-MayMau-win2019.iso"), "wb").write(F1)       # sâu 3 cấp → không tìm tới
+    open(os.path.join(thuong, "System Volume Information", "CloudBlue-MayMau-win2022.iso"), "wb").write(F1)
+    open(os.path.join(thuong, "CloudBlue-MayMau-nho.iso"), "wb").write(b"x" * 10)                              # quá nhỏ
+    open(os.path.join(thuong, "windows.iso"), "wb").write(F1)                                                   # không đúng tên
+    U["mounts"] = {"/dev/sde1": thuong}; U["cmds"] = []; n0 = len(said12)
+    D_TH = {"path": "/dev/sde", "size": 64000000000, "nodes": [("/dev/sde", ""), ("/dev/sde1", "ntfs")]}
+    r7 = un.one(D_TH)
+    ls7 = sorted(os.listdir(cb.ISO_DIR))
+    ck("USB THƯỜNG (NTFS) có file CloudBlue-MayMau-*.iso ở thư mục gốc / sâu ≤ 2 cấp: gặp file quá nhỏ thì dừng báo lỗi, các file trước đó đã vào kho",
+       r7 is False and "CloudBlue-MayMau-nho.iso" not in ls7 and "quá nhỏ" in said12[-1] and any(c[:3] == ["mount", "-t", "ntfs3"] for c in U["cmds"]), (r7, ls7, said12[n0:]))
+    os.remove(os.path.join(thuong, "CloudBlue-MayMau-nho.iso")); n0 = len(said12)
+    r8 = un.one(D_TH)
+    got8 = {n: open(os.path.join(cb.ISO_DIR, n), "rb").read() for n in sorted(os.listdir(cb.ISO_DIR))}
+    ck("… bỏ file hỏng đi: chép đủ 2 file đúng tên (bỏ file sâu 3 cấp, thư mục hệ thống, file sai tên), khớp từng byte, quyền 644, báo 'đã chép xong'",
+       r8 is True and got8 == {"CloudBlue-MayMau-win2012r2.iso": F1, "CloudBlue-MayMau-win2016.iso": F2} and "đã chép xong" in said12[-1]
+       and stat.S_IMODE(os.stat(os.path.join(cb.ISO_DIR, "CloudBlue-MayMau-win2016.iso")).st_mode) == 0o644, (r8, list(got8), said12[n0:]))
+    n0 = len(said12); r9 = un.one(D_TH)
+    ck("cắm lại USB thường đó: file đã có đủ (cùng tên, cùng cỡ) → không chép lại", r9 is True and len(said12) == n0)
+    os.remove(os.path.join(cb.ISO_DIR, "CloudBlue-MayMau-win2016.iso")); open(os.path.join(cb.ISO_DIR, "CloudBlue-MayMau-win2016.iso.part"), "wb").write(b"dang ghi")
+    r10 = un.one(D_TH)
+    ck("file .part của đúng ISO đó vừa được ghi (bên khác đang chép) → không đụng vào, 1 phút sau xem lại", r10 is False and open(os.path.join(cb.ISO_DIR, "CloudBlue-MayMau-win2016.iso.part"), "rb").read() == b"dang ghi")
+    os.remove(os.path.join(cb.ISO_DIR, "CloudBlue-MayMau-win2016.iso.part"))
+    r11 = un.one({"path": "/dev/sdf", "size": 1, "nodes": [("/dev/sdf", ""), ("/dev/sdf1", "exfat")]})
+    ck("USB không gắn được / không có ISO máy mẫu → bỏ qua êm (không báo gì)", r11 is None)
+    # ---- vòng quét: nhớ USB đã xem, rút ra cắm lại thì xem ngay
+    calls = []
+    un2 = cb.UsbNap({"auto_tpl": True}, say=lambda m: None); un2.one = lambda d: (calls.append(d["path"]), True)[1]
+    U["ls"] = {"blockdevices": [LS["blockdevices"][4]]}
+    un2.step(); un2.step()
+    ck("vòng quét 20 giây: USB đã xem xong thì 10 phút sau mới xem lại (không đọc USB liên tục)", calls == ["/dev/sde"], calls)
+    U["ls"] = {"blockdevices": []}; un2.step(); U["ls"] = {"blockdevices": [LS["blockdevices"][4]]}; un2.step()
+    ck("rút USB ra rồi cắm lại → xem lại NGAY", calls == ["/dev/sde", "/dev/sde"], calls)
+    un2.one = lambda d: (calls.append("loi"), False)[1]; un2.seen = {}
+    un2.step(); k2 = list(un2.seen.values())[0] - time.time()
+    ck("lượt chép lỗi → 1 phút sau thử lại (không chờ 10 phút)", 50 < k2 <= 60, k2)
+    # ---- gói số đo gửi web + tự cập nhật
+    H12 = cb.Host(); H12.usb = un
+    un.state = {"s": "copy", "msg": "đang chép", "t": 1}
+    os.environ["INVOCATION_ID"] = "x"; H12.c["auto_update"] = True
+    ck("đang chép ISO từ USB thì KHÔNG tự cập nhật cbhost (không cắt ngang việc chép); chép xong mới cập nhật", not cb.update_due(H12, time.time(), 0)
+       and bool(cb.update_due(dict(), 0, 0) if False else True) and (un.state.update(s="done") or cb.update_due(H12, time.time(), 0)))
+    os.environ.pop("INVOCATION_ID", None)
+    said13 = []; cb.TTY_F = os.path.join(usbd, "tty")
+    cb.tty_say("mạng: IPv4 có · IPv6 không — vào Quản trị › VPS ảo hoá → bấm DUYỆT…")
+    tt = open(cb.TTY_F, "rb").read().decode("ascii")
+    ck("chữ ra màn hình máy chủ: dấu ngăn tiếng Việt (· — › → …) đổi sang ASCII, không còn ra dấu '?' như ảnh chụp máy thật", "IPv4 co | IPv6 khong - vao Quan tri > VPS ao hoa -> bam DUYET..." in tt and "?" not in tt, tt)
+finally:
+    cb.run = _run12
+
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
