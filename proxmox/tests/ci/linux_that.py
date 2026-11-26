@@ -144,6 +144,9 @@ def probe(vm, label):
     m = re.search(r"cbcap probe: backend=(\S+) virtual=\d+ rtp=(\d+)", t or "")
     ok("%s: điều khiển từ xa X11 — cbcap probe: backend x11 (x11grab + XTEST), gói RTP H.264 > 20" % label, m and m.group(1) == "x11" and int(m.group(2)) > 20, (t or "")[-600:])
     vm.shot("man-hinh-nen")
+    vm.sh("runuser -u vps -- env DISPLAY=:0 XAUTHORITY=/home/vps/.Xauthority ffmpeg -loglevel error -y -f x11grab -video_size 1920x1080 -i :0 -frames:v 1 /tmp/cbdesk.png", 60)
+    png = vm.ga.read("/tmp/cbdesk.png")                                   # ảnh màn hình X (màn ảo dummy) — đúng cái khách thấy qua CloudBlue
+    if png: open(os.path.join(W.KQ, "linux-%s-x11.png" % ("mau" if "mẫu" in label else "vps")), "wb").write(png if isinstance(png, bytes) else png.encode())
 
 
 def seal(vm):
