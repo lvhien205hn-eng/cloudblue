@@ -83,6 +83,7 @@ printf 'Section "ServerFlags"\n  Option "BlankTime" "0"\n  Option "StandbyTime" 
 install -d /etc/xdg/autostart
 printf '[Desktop Entry]\nType=Application\nName=CloudBlue - man hinh\nExec=/usr/local/bin/cloudblue-res\nNoDisplay=true\n' > /etc/xdg/autostart/cloudblue-res.desktop
 for f in light-locker xfce4-screensaver xfce4-power-manager; do [ -f /etc/xdg/autostart/$f.desktop ] && printf 'Hidden=true\n' >> /etc/xdg/autostart/$f.desktop; done
+printf 'blacklist floppy\n' > /etc/modprobe.d/cloudblue-nofloppy.conf      # khong hien "Floppy Disk" tren man hinh nen
 timedatectl set-timezone Asia/Ho_Chi_Minh 2>/dev/null || ln -sf /usr/share/zoneinfo/Asia/Ho_Chi_Minh /etc/localtime
 systemctl set-default graphical.target >/dev/null 2>&1
 say "tai khoan khach $U: tu dang nhap XFCE, khong khoa / tat man hinh, 1920x1080, gio Viet Nam"
@@ -134,9 +135,9 @@ M="$HOME/.config/cloudblue-desk.done"; [ -f "$M" ] && exit 0
 D=$(xdg-user-dir DESKTOP 2>/dev/null); [ -z "$D" ] || [ "$D" = "$HOME" ] && D="$HOME/Desktop"; mkdir -p "$D"
 mk() { f="$D/$1.desktop"; printf '%s\n' '[Desktop Entry]' 'Type=Application' "Name=$2" "Exec=$3" "Icon=$4" 'Terminal=false' > "$f"; chmod +x "$f"
        gio set "$f" metadata::xfce-exe-checksum "$(sha256sum "$f" | cut -d' ' -f1)" 2>/dev/null; }
-mk terminal "Terminal" "xfce4-terminal" utilities-terminal
+mk terminal "Terminal" "xfce4-terminal" org.xfce.terminal
 command -v firefox >/dev/null && mk firefox "Firefox" "firefox" firefox
-command -v openclaw >/dev/null && mk openclaw "OpenClaw - cai dat" "xfce4-terminal --hold -T OpenClaw -e 'openclaw onboard --install-daemon'" utilities-terminal
+command -v openclaw >/dev/null && mk openclaw "OpenClaw - cài đặt" "xfce4-terminal --hold -T OpenClaw -e 'openclaw onboard --install-daemon'" org.xfce.terminal
 mkdir -p "$HOME/.config"; date > "$M"
 EOF
 chmod 755 /usr/local/bin/cloudblue-desk
