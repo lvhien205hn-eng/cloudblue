@@ -3435,7 +3435,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
         <div class="vma-list" id="vma-vps"></div></div>
       <div class="subpane" data-sub="plans" hidden><div class="vma-bar"><span class="hint">8 cấu hình có sẵn (giống vpsgame) — bấm ✏️ Sửa để nhập giá theo số ngày (mức 30 ngày = giá / tháng trên ô bán). Gói chưa có giá thì khách không thấy.</span><button class="btn sm" type="button" id="vma-p-new" style="margin-left:auto">➕ Thêm gói</button></div>
         <div class="vma-sec" id="vma-calc"><h4>⚡ Tự tính giá theo đơn giá</h4>
-          <div class="hint">Giá 30 ngày của mỗi gói = số vCPU × giá 1 vCPU + số GB RAM × giá 1 GB RAM + số GB ổ × giá 1 GB ổ (làm tròn nghìn đồng). Mức ngày khác tính theo tỉ lệ số ngày. Áp dụng xong vẫn bấm ✏️ Sửa từng gói được.</div>
+          <div class="hint">Giá 30 ngày của mỗi gói = số vCPU × giá 1 vCPU + số GB RAM × giá 1 GB RAM + số GB ổ <b>vượt mức miễn phí</b> × giá 1 GB ổ (làm tròn nghìn đồng). Mức ngày khác tính theo tỉ lệ số ngày. Áp dụng xong vẫn bấm ✏️ Sửa từng gói được; đơn giá được lưu làm giá cho ô 🛠 Tự chọn cấu hình + nâng cấp.</div>
           <div class="vma-set">
             <label>Giá 1 vCPU / 30 ngày (đ)<input class="in" type="number" id="vma-c-cpu" min="0" max="99999999" step="1000" placeholder="vd 30000" inputmode="numeric"></label>
             <label>Giá 1 GB RAM / 30 ngày (đ)<input class="in" type="number" id="vma-c-ram" min="0" max="99999999" step="1000" placeholder="vd 25000" inputmode="numeric"></label>
@@ -15488,6 +15488,30 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .vms-card .m3m-acts{flex-wrap:wrap}
 .vms-dlg .vps-opts{grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
 .vms-dlg .vps-opts button.on{border-color:var(--sky);background:rgba(61,123,255,.18)}
+/* 27/11 · SQL v59: icon trong ô gói · ô tự chọn cấu hình · ổ thêm · nâng cấp · bảo trì */
+.vms-ics{display:grid;gap:2px;margin:3px 0 1px;justify-items:start}
+.vms-ic{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--fg);line-height:1.35}
+.vms-ic i{font-style:normal;width:17px;text-align:center;flex:none}
+.vms-plans button.cust{border-style:dashed}
+.vms-plans button.cust.on{border-style:solid}
+.vms-hl{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:-4px}
+.vms-cfg{display:grid;gap:9px;padding:11px 12px;border-radius:14px;border:1px solid var(--line2);background:var(--soft,rgba(143,208,255,.06))}
+.vms-cfg[hidden]{display:none}
+.vms-cfg .row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center}
+.vms-cfg .lb{font-size:13.5px;font-weight:700;line-height:1.3}
+.vms-cfg .lb small{display:block;font-weight:500;color:var(--muted);font-size:12px}
+.vms-step{display:flex;align-items:center;gap:4px}
+.vms-step button{width:34px;height:34px;border-radius:10px;border:1px solid var(--line2);background:var(--panel);color:var(--fg);font-size:18px;line-height:1;cursor:pointer}
+.vms-step button:disabled{opacity:.4;cursor:not-allowed}
+.vms-step input{width:70px;text-align:center;padding:7px 4px}
+.note.vms-maint{border-color:rgba(255,200,97,.7)}
+.vms-up-cur{font-size:13px;color:var(--muted)}
+#vm-mine-app,#vm-mine-mt{grid-column:1/-1}
+#vm-mine-mt[hidden]{display:none}
+.vms-app{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0;padding:9px 11px;border-radius:12px;border:1px solid var(--line2);background:var(--soft,rgba(143,208,255,.05));font-size:12.5px;color:var(--muted)}
+.vms-app b{color:var(--fg);font-size:13px;margin-right:2px}
+.vms-app .btn{padding:6px 10px;font-size:12.5px}
+.vms-up-cur b{color:var(--fg)}
 @media (max-width:760px){.vma-top{grid-template-columns:1fr 1fr}.vms-dlg .grid3{grid-template-columns:1fr 1fr}}
 @media (max-width:560px){.vms-head{grid-template-columns:minmax(0,150px) minmax(0,1fr);gap:11px;margin-bottom:10px}.vms-art{border-radius:12px}.vms-art .hot{top:5px;right:5px;font-size:9.5px;padding:2px 7px}
   .vms-head h2{font-size:19px}.vms-head h2 small{font-size:12px}.vms-head .hint{grid-column:1/-1;font-size:12.5px}.vms-ttl{display:contents}
@@ -15539,7 +15563,11 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     NO_TPL: ["Máy chủ chưa có máy mẫu này để sửa — dựng từ ISO trước.", "The host has no such template yet — build it from an ISO first."], BAD_HOST: ["Máy chủ chưa duyệt / không có.", "Host not approved / not found."],
     BAD_IMAGE: ["Không thấy bản Windows.", "Image not found."], NOT_READY: ["Chờ máy mẫu cài xong (dòng hiện ✓ Agent đã lên) rồi mới lưu.", "Wait until the template finishes installing (agent online) before saving."],
     NOT_FOUND: ["Việc này đã xong / không còn — tải lại.", "This job is finished — reload."], NOT_ERROR: ["Việc không lỗi — không cần thử lại.", "Nothing to retry."],
-    NO_VPS: ["Không thấy VPS.", "VPS not found."], NO_USER: ["Không thấy tài khoản (gõ tên đăng nhập hoặc email).", "No such account."]
+    NO_VPS: ["Không thấy VPS.", "VPS not found."], NO_USER: ["Không thấy tài khoản (gõ tên đăng nhập hoặc email).", "No such account."],
+    MAINT: [VMN + " đang bảo trì — tạm chưa thuê mới / nâng cấp / cài lại được. VPS đang chạy và gia hạn vẫn bình thường.", VMN + " is under maintenance — new rentals, upgrades and reinstalls are paused."],
+    BAD_CONFIG: ["Cấu hình chưa hợp lệ (vượt giới hạn, hoặc nâng cấp mà không tăng gì) — xem lại các ô.", "Invalid configuration — check the fields."],
+    BAD_DISK: ["Dung lượng ổ không hợp lệ.", "Invalid disk size."], NO_PRICE: ["Shop chưa đặt giá cho phần này — nhắn shop.", "No price set for this yet — contact the shop."],
+    HOST_OFF: ["Máy chủ của VPS đang mất kết nối — thử lại sau ít phút.", "The VPS host is offline — try again in a few minutes."]
   };
   const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
     try { return errMsg(e); } catch (x) { return m || L("Lỗi không rõ.", "Unknown error."); } };
@@ -15560,6 +15588,27 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const acts = (ok, okCls, id) => `<div class="err" id="vzd-err"></div><div class="acts"><button class="btn ghost" type="button" data-vmx="1">${L("Huỷ", "Cancel")}</button><button class="btn${okCls ? " " + okCls : ""}" type="button" id="${id || "vzd-ok"}">${ok}</button></div>`;
   const dErr = t => { const e = $i("vzd-err"); if (e) e.textContent = t || ""; };
 
+  (() => {
+    const save = $i("mt-save"), pcm = $i("mt-pcmsg"); if (!save || !pcm || $i("mt-vm")) return;
+    const row = pcm.closest("label"); if (!row) return;
+    row.insertAdjacentHTML("afterend", `<label class="mtrow full"><span class="sw"><input type="checkbox" id="mt-vm"><i></i></span><span><b>Bảo trì riêng ${VMN}</b><small>Chỉ khoá thuê mới, tự chọn cấu hình, nâng cấp và cài lại ${VMN} (VPS đang chạy vẫn điều khiển + gia hạn bình thường). Admin vẫn dùng bình thường. Cần SQL v59.</small></span></label>
+      <label class="full">Lời nhắn cho khách (${VMN})<input id="mt-vmmsg" maxlength="200" placeholder="VD: Đang nâng cấp máy chủ, mở lại lúc 20:00"></label>`);
+    const fill = () => { try { $i("mt-vm").checked = !!SITE.vm_maint; $i("mt-vmmsg").value = S(SITE.vm_maint_msg, 200); } catch (e) {} };
+    const _fm = window.fillMaint;
+    if (typeof _fm === "function") window.fillMaint = function () { const r = _fm.apply(this, arguments); fill(); return r; };
+    fill();
+    let want = null;
+    save.addEventListener("click", () => {                          // chạy TRƯỚC nút Lưu cũ: ghi vào SITE để bản lưu (…SITE) mang theo
+      try { want = $i("mt-vm").checked; SITE.vm_maint = want; SITE.vm_maint_msg = $i("mt-vmmsg").value.trim(); } catch (e) {}
+    }, true);
+    const msg = $i("mt-msg");
+    if (msg) new MutationObserver(() => {
+      if (want === null || !/Đã lưu/.test(msg.textContent)) return;
+      const on = want; want = null;
+      setTimeout(() => { toast(on ? `🛠️ Đã BẬT bảo trì riêng ${VMN} — khách tạm không thuê mới / nâng cấp / cài lại được.` : `Bảo trì ${VMN}: TẮT.`); VM.infoAt = 0; info(true).then(shopRender); mine(true); }, 600);
+    }).observe(msg, { childList: true, characterData: true, subtree: true });
+  })();
+
   // ================================================================ KHÁCH: ô bán gói
   async function info(force) {
     if (!force && VM.info && Date.now() - VM.infoAt < 30000) return VM.info;
@@ -15575,15 +15624,43 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const lowDay = () => { const v = plansOk().flatMap(p => A(p.prices).map(x => N(x.price) / Math.max(1, N(x.days)))).filter(x => x > 0); return v.length ? Math.min(...v) : 0; };   // giá mồi: rẻ nhất tính theo NGÀY
   const span = a => { const lo = Math.min(...a), hi = Math.max(...a); return lo === hi ? String(lo) : lo + "–" + hi; };
   const perOf = x => N(x.days) === 30 ? L("tháng", "month") : N(x.days) + " " + L("ngày", "days");
+  // 27/11 · SQL v59: đơn giá (tự chọn cấu hình · ổ thêm · nâng cấp) — CÙNG công thức với máy chủ (_vm_month / _vm_tier): làm tròn 1.000đ, tối thiểu 1.000đ,
+  // dưới 30 ngày cộng short_up %. Web chưa chạy v59 → không có khối custom → mọi thứ như cũ.
+  const CU = src => O(O(src || VM.info).custom);
+  const r1k = v => Math.round(N(v) / 1000) * 1000;
+  const tierOf = (c, month, days) => month <= 0 || days < 1 ? 0 : Math.max(1000, r1k(month * days / 30 * (days < 30 ? 1 + N(c.short_up) / 100 : 1)));
+  const monthOf = (c, cores, ramGb, extraGb) => r1k(N(cores) * N(c.unit_cpu) + N(ramGb) * N(c.unit_ram) + Math.max(0, N(extraGb)) * N(c.unit_disk));
+  const custOn = () => { const c = CU(); return c.on === true && N(c.unit_cpu) > 0 && N(c.unit_ram) > 0; };
+  const diskOn = src => N(CU(src).unit_disk) > 0;
+  const freeGb = src => { const c = CU(src); return "disk_free_gb" in c ? N(c.disk_free_gb) : 20; };
+  const vmMaint = () => { let m = false; try { m = !!(O(VM.info).maint === true || (typeof SITE !== "undefined" && SITE && SITE.vm_maint)); } catch (e) {} return m && !isAdm(); };
+  const vmMaintMsg = () => { let m = ""; try { m = S(SITE.vm_maint_msg, 200).trim(); } catch (e) {} return m; };
+  const maintNote = () => `<div class="note vms-maint">🛠️ ${esc(L(VMN + " đang bảo trì — tạm chưa thuê mới được. VPS đang chạy vẫn dùng + gia hạn bình thường.", VMN + " is under maintenance — new rentals are paused. Running VPS keep working."))}${vmMaintMsg() ? "<br><b>" + esc(vmMaintMsg()) + "</b>" : ""}</div>`;
+  const custLim = () => { const c = CU(), r = O(c.room), lim = (mx, room, lo) => { const m = Math.max(lo, N(mx) || lo); return N(room) > 0 ? Math.max(lo, Math.min(m, N(room))) : m; };
+    return { cores: lim(c.max_cores || 16, r.cores, 1), ram: lim(c.max_ram_gb || 32, r.ram_gb, 1), disk: lim(c.max_disk_gb || 200, r.disk_gb, 20) }; };
+  function custPrice(days) {                                         // tự chọn: theo đơn giá, 20 GB ổ đầu miễn phí
+    const c = CU(); if (!A(c.days).map(N).includes(N(days))) return null;
+    const ex = Math.max(0, N(VM.b.cd) - freeGb()); if (ex > 0 && !diskOn()) return null;
+    return tierOf(c, monthOf(c, VM.b.cc, VM.b.cr, ex), N(days)) || null;
+  }
+  function planPrice(p, days) {                                      // gói có sẵn: giá gói + phần ổ thêm so với ổ của gói
+    const x = A(p.prices).find(y => N(y.days) === N(days)); if (!x) return null;
+    const ex = N(VM.b.disk) - N(p.disk_gb); if (ex <= 0) return N(x.price); if (!diskOn()) return null;
+    return N(x.price) + tierOf(CU(), ex * N(CU().unit_disk), N(days));
+  }
+  const curDays = p => (VM.b.cust ? A(CU().days).map(N).filter(d => custPrice(d) !== null) : A(p.prices).map(x => N(x.days)).filter(d => planPrice(p, d) !== null)).sort((a, b) => a - b);
+  const custFrom = () => { const c = CU(); return monthOf(c, 1, 1, 0); };          // tự chọn: rẻ nhất (1 vCPU · 1 GB · ổ miễn phí) / 30 ngày
+  const ics = (cores, ramMb, disk) => `<span class="vms-ics"><span class="vms-ic"><i>⚙️</i>${N(cores)} vCPU</span><span class="vms-ic"><i>🧠</i>${gb(ramMb)} RAM</span><span class="vms-ic"><i>💾</i>SSD NVMe ${N(disk)} GB</span></span>`;
   function rowBits() {
     const I = O(VM.info), ps = plansOk(), low = lowDay(), free = ps.some(p => p.free);
     const os = [...new Set(A(I.images).filter(i => i.ready).map(i => shortOs(i.name)))].slice(0, 4);
     const feats = !ps.length ? [] : [span(ps.map(p => N(p.cores))) + " vCPU", span(ps.map(p => Math.round(N(p.ram_mb) / 102.4) / 10)) + " GB RAM", "SSD NVMe " + span(ps.map(p => N(p.disk_gb))) + " GB"]
-      .concat(os.length ? ["Windows " + os.join(" · ")] : []);
-    return { I, low, free, feats, can: free || isAdm() };
+      .concat(os.length ? ["Windows " + os.join(" · ")] : []).concat(custOn() ? [L("Tự chọn cấu hình", "Custom specs")] : []);
+    const mt = vmMaint();
+    return { I, low, free: free && !mt, feats, can: (free || isAdm()) && !mt, mt };
   }
   function rowHtml() {
-    const { I, low, free, feats, can } = rowBits();
+    const { I, low, free, feats, can, mt } = rowBits();
     return `<article class="m3-row vm"${can ? ' data-vmbuy="*" style="cursor:pointer"' : ""}>
     <div class="thumb"><canvas data-id="vps-nvme" data-c="nvme" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
     <div class="info"><span class="cat">${esc(VMN)}</span><h3>${esc(VMN)} BLUE</h3>
@@ -15592,16 +15669,16 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         "Your own Windows VM, on 24/7 — open it from the web, phone app or PC app. No IP, nothing to install. Time starts when the VPS is up."))}</p>
       <div class="feats spec"><b class="fl">${L("Cấu hình", "Specs")}</b>${feats.map(f => `<span>${esc(f)}</span>`).join("")}</div></div>
     <div class="m3-box"><div class="m3p"><small>${L("từ", "from")}</small><span class="price">${low ? esc(money(low)) : "…"}</span><small>/${L("ngày", "day")}</small></div>
-      <span class="stock ${free ? "ok" : "out"}">${free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>
-      <button class="btn main" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : L("Tạm hết chỗ", "Sold out")}</button></div></article>`;
+      <span class="stock ${free ? "ok" : "out"}">${mt ? "🛠️ " + L("Đang bảo trì", "Maintenance") : free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>
+      <button class="btn main" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : mt ? L("Đang bảo trì", "Maintenance") : L("Tạm hết chỗ", "Sold out")}</button></div></article>`;
   }
   function liHtml() {                                                  // admin xếp VPS NVMe vào nhóm "Phụ" → dòng gọn
-    const { low, free, feats, can } = rowBits(), sm = 'style="font-size:12px;color:var(--muted);font-family:var(--body)"';
+    const { low, free, feats, can, mt } = rowBits(), sm = 'style="font-size:12px;color:var(--muted);font-family:var(--body)"';
     return `<div class="m3-li"${can ? ' data-vmbuy="*" style="cursor:pointer"' : ""}><div class="thumb"><canvas data-id="vps-nvme" data-c="nvme" data-static="1"></canvas></div>
     <div class="nm"><b>${esc(VMN)} BLUE</b><i>${esc(VMN)}</i></div>
-    <div class="st"><span class="stock ${free ? "ok" : "out"}">${free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>${feats.length ? `<span> · ${esc(feats.slice(0, 2).join(" · "))}</span>` : ""}</div>
+    <div class="st"><span class="stock ${free ? "ok" : "out"}">${mt ? "🛠️ " + L("Đang bảo trì", "Maintenance") : free ? L("Còn chỗ", "Available") : L("Tạm hết chỗ", "Sold out")}</span>${feats.length ? `<span> · ${esc(feats.slice(0, 2).join(" · "))}</span>` : ""}</div>
     <span class="price"><small ${sm}>${L("từ", "from")} </small>${low ? esc(money(low)) : "…"}<small ${sm}>/${L("ngày", "day")}</small></span>
-    <button class="btn sm" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : L("Tạm hết chỗ", "Sold out")}</button></div>`;
+    <button class="btn sm" type="button" data-vmbuy="*"${can ? "" : " disabled"}>${can ? L("Thuê ngay", "Rent now") : mt ? L("Đang bảo trì", "Maintenance") : L("Tạm hết chỗ", "Sold out")}</button></div>`;
   }
   function shopRender() {
     const old = $i("vm-shop"); if (old) old.remove();                  // bản trước: khối riêng nằm trên mục Sản phẩm
@@ -15612,9 +15689,13 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (!me()) { try { openAuth("login"); } catch (e) {} return; }
     const ps = plansOk();
     const p = ps.find(x => x.id === id) || ps.filter(x => x.free).sort((a, b) => N(O(p30(a)).price) - N(O(p30(b)).price))[0] || ps[0]; if (!p) return;
-    VM.b = { plan: p.id, image: "", days: 0 };
+    const lim = custLim();
+    VM.b = { plan: p.id, image: "", days: 0, disk: N(p.disk_gb), cust: false, cc: Math.min(2, lim.cores), cr: Math.min(4, lim.ram), cd: Math.max(20, freeGb()), mode: null };
     dlg(`<h3>⚡ ${L("Thuê", "Rent")} ${esc(VMN)}</h3>
+      <div class="vms-hl"><span>🖥 ${L("Điều khiển ngay trên web · app điện thoại · app máy tính", "Control from the web · phone app · PC app")}</span>${"custom" in O(VM.info) ? `<span>💾 ${L(`${freeGb()} GB ổ đầu miễn phí`, `First ${freeGb()} GB of disk free`)}</span>` : ""}</div>
+      ${vmMaint() ? maintNote() : ""}
       <div class="vms-lbl">① ${L("Chọn cấu hình", "Choose a plan")}</div><div class="vps-opts vms-plans" id="vms-plan"></div>
+      <div class="vms-cfg" id="vms-cfg" hidden></div>
       <div class="vms-lbl">② ${L("Chọn hệ điều hành", "Choose the operating system")}</div><div class="vps-opts" id="vms-os"></div>
       <div class="vms-lbl">③ ${L("Thời gian", "Duration")}</div><div class="vps-opts" id="vms-days"></div>
       <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
@@ -15622,47 +15703,91 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       <div class="hint">✅ ${L("Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở <b>" + VMN + " của bạn</b>. Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
         "After payment the VPS is created automatically (usually 3–10 min) — see <b>Your " + VMN + "</b>. Time starts when it is up. No capacity → no charge.")}</div>
       ${acts("💳 " + L("Thanh toán", "Pay"), "", "vms-pay")}`);
-    buyPick(p.id);
+    if (vmMaint()) { const b = $i("vms-pay"); if (b) b.disabled = true; }
+    buyPick(id === "custom" && custOn() ? "custom" : p.id);
   }
   function buyPick(pid) {                                              // đổi gói: giữ hệ điều hành / số ngày đang chọn nếu gói mới vẫn có, không thì lấy cái đầu tiên dùng được
-    const I = O(VM.info), p = plansOk().find(x => x.id === pid); if (!p || !VM.b) return;
-    const os = osFor(I.images, p.ram_mb, p.disk_gb), pr = p30(p);
-    VM.b.plan = p.id;
-    if (!os.some(i => i.id === VM.b.image && i.ready)) VM.b.image = S((os.find(i => i.ready) || {}).id, 30);
-    if (!A(p.prices).some(x => N(x.days) === VM.b.days)) VM.b.days = pr ? N(pr.days) : 0;
+    if (!VM.b) return;
+    if (pid === "custom") { if (!custOn()) return; VM.b.cust = true; return buyPaint(); }
+    const p = plansOk().find(x => x.id === pid); if (!p) return;
+    if (VM.b.plan !== p.id) VM.b.disk = N(p.disk_gb);
+    VM.b.cust = false; VM.b.plan = p.id; VM.b.disk = Math.max(N(p.disk_gb), N(VM.b.disk));
     buyPaint();
+  }
+  function cfgPaint(p) {                                               // ô tự chọn cấu hình / ô thêm ổ cho gói có sẵn (chỉ vẽ lại khi đổi kiểu — đang gõ không mất chỗ con trỏ)
+    const box = $i("vms-cfg"); if (!box) return;
+    const c = CU(), cu = VM.b.cust, key = cu ? "c" : diskOn() ? "d:" + p.id : "";
+    box.hidden = !key;
+    if (key === VM.b.mode) return;
+    VM.b.mode = key;
+    const lim = custLim(), fr = freeGb();
+    const row = (k, lb, sub, v, lo, hi, step) => `<div class="row"><span class="lb">${lb}<small>${sub}</small></span><span class="vms-step">
+      <button type="button" data-vmstep="${k}" data-d="-${step}" aria-label="−">−</button><input class="in" type="number" inputmode="numeric" id="vms-c-${k}" data-vmcfg="${k}" min="${lo}" max="${hi}" step="${step}" value="${v}">
+      <button type="button" data-vmstep="${k}" data-d="${step}" aria-label="+">+</button></span></div>`;
+    box.innerHTML = !key ? "" : cu
+      ? row("cores", "⚙️ vCPU", esc(money(c.unit_cpu)) + " / vCPU / " + L("tháng", "month") + ` · ${L("tối đa", "max")} ${lim.cores}`, VM.b.cc, 1, lim.cores, 1)
+        + row("ram", "🧠 RAM (GB)", esc(money(c.unit_ram)) + " / GB / " + L("tháng", "month") + ` · ${L("tối đa", "max")} ${lim.ram} GB`, VM.b.cr, 1, lim.ram, 1)
+        + row("disk", "💾 SSD NVMe (GB)", L(`${fr} GB đầu miễn phí`, `first ${fr} GB free`) + (diskOn() ? ` · ${L("thêm", "extra")} ${esc(money(c.unit_disk))} / GB / ${L("tháng", "month")}` : ` · ${L("chưa bán ổ thêm", "no extra disk yet")}`),
+              VM.b.cd, 20, diskOn() ? lim.disk : Math.max(20, fr), 10)
+      : row("pdisk", "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), L(`gói có sẵn ${N(p.disk_gb)} GB · thêm ${money(c.unit_disk)} / GB / tháng`, `plan includes ${N(p.disk_gb)} GB · extra ${money(c.unit_disk)} / GB / month`),
+              Math.max(N(p.disk_gb), N(VM.b.disk)), N(p.disk_gb), Math.max(N(p.disk_gb), lim.disk), 10);
+  }
+  function cfgSet(k, v, write) {                                       // − / + / gõ số: kẹp trong [min, max] của ô
+    const el = $i(k.charAt(0) === "u" ? "vms-u-" + k.slice(1) : "vms-c-" + k); if (!el) return;
+    const lo = N(el.min), hi = N(el.max), x = Math.round(N(v)), c = Math.max(lo, Math.min(hi, isFinite(x) ? x : lo));
+    if (write || String(c) !== String(el.value).trim()) { if (write) el.value = c; }
+    if (k === "cores") VM.b.cc = c; else if (k === "ram") VM.b.cr = c; else if (k === "disk") VM.b.cd = c; else if (k === "pdisk") VM.b.disk = c;
+    else if (VM.u && k === "ucores") VM.u.cc = c; else if (VM.u && k === "uram") VM.u.cr = c; else if (VM.u && k === "udisk") VM.u.cd = c;
+    document.querySelectorAll(`[data-vmstep="${k}"]`).forEach(b => { b.disabled = N(b.dataset.d) < 0 ? c <= lo : c >= hi; });
+    if (k.charAt(0) === "u") upQuote(); else if (VM.b) buyPaint();
   }
   function buyPaint() {
     const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
-    const os = osFor(I.images, p.ram_mb, p.disk_gb);
-    $i("vms-plan").innerHTML = plansOk().map(x => { const q = p30(x), on = x.id === p.id;
+    const cu = VM.b.cust && custOn(), ram = cu ? N(VM.b.cr) * 1024 : N(p.ram_mb), disk = cu ? N(VM.b.cd) : Math.max(N(p.disk_gb), N(VM.b.disk));
+    VM.b.cust = cu;
+    const os = osFor(I.images, ram, disk);
+    if (!os.some(i => i.id === VM.b.image && i.ready)) VM.b.image = S((os.find(i => i.ready) || {}).id, 30);
+    $i("vms-plan").innerHTML = plansOk().map(x => { const q = p30(x), on = !cu && x.id === p.id;
       return `<button type="button" data-vmplan="${esc(S(x.id, 30))}" class="${on ? "on" : ""}" aria-pressed="${on}"${x.free || on ? "" : " disabled"}>
-        <b>${on ? "✓ " : ""}${esc(S(x.name, 40))}</b><small>${N(x.cores)} vCPU · ${gb(x.ram_mb)} RAM</small><small>SSD NVMe ${N(x.disk_gb)} GB</small>
-        <small class="pr">${x.free ? (q ? esc(money(q.price)) + " / " + esc(perOf(q)) : "") : L("tạm hết chỗ", "sold out")}</small></button>`; }).join("");
+        <b>${on ? "✓ " : ""}${esc(S(x.name, 40))}</b>${ics(x.cores, x.ram_mb, x.disk_gb)}
+        <small class="pr">${x.free ? (q ? esc(money(q.price)) + " / " + esc(perOf(q)) : "") : L("tạm hết chỗ", "sold out")}</small></button>`; }).join("")
+      + (custOn() ? `<button type="button" data-vmplan="custom" class="cust${cu ? " on" : ""}" aria-pressed="${cu}"><b>${cu ? "✓ " : ""}🛠 ${L("Tự chọn cấu hình", "Custom specs")}</b>
+        <span class="vms-ics"><span class="vms-ic"><i>⚙️</i>${cu ? N(VM.b.cc) + " vCPU" : L("vCPU tuỳ ý", "any vCPU")}</span><span class="vms-ic"><i>🧠</i>${cu ? N(VM.b.cr) + " GB RAM" : L("RAM tuỳ ý", "any RAM")}</span><span class="vms-ic"><i>💾</i>${cu ? "SSD NVMe " + N(VM.b.cd) + " GB" : L("ổ tuỳ ý", "any disk")}</span></span>
+        <small class="pr">${cu ? esc(money(Math.max(1000, monthOf(CU(), VM.b.cc, VM.b.cr, Math.max(0, N(VM.b.cd) - freeGb()))))) : L("từ", "from") + " " + esc(money(custFrom()))} / ${L("tháng", "month")}</small></button>` : "");
+    cfgPaint(p);
     $i("vms-os").innerHTML = os.length ? os.map(i => `<button type="button" data-vmos="${esc(S(i.id, 30))}" class="${i.id === VM.b.image ? "on" : ""}" aria-pressed="${i.id === VM.b.image}"${i.ready ? "" : " disabled"}>
         <b>${i.id === VM.b.image ? "✓ " : ""}${esc(shortOs(i.name))}</b><small>${i.ready ? L("có sẵn", "available") : L("chưa có máy mẫu", "not available yet")}</small></button>`).join("")
       : `<div class="hint">${L("Chưa có bản Windows nào cho gói này — nhắn shop.", "No Windows image for this plan yet — contact the shop.")}</div>`;
     // 26/11: bản máy chủ ĐÃ có nhưng gói này thiếu RAM / ổ → hiện mờ kèm lý do (trước đây biến mất → tưởng shop chưa có bản đó)
     $i("vms-os").insertAdjacentHTML("beforeend", A(I.images).filter(i => i.ready && !os.some(o => o.id === i.id)).map(i => `<button type="button" disabled data-vmneed="${esc(S(i.id, 30))}">
         <b>${esc(shortOs(i.name))}</b><small>${N(i.min_ram) > N(p.ram_mb) ? L(`cần gói từ ${gb(i.min_ram)} RAM`, `needs a plan with ${gb(i.min_ram)} RAM`) : L(`cần gói có ổ từ ${N(i.min_disk)} GB`, `needs a ${N(i.min_disk)} GB disk plan`)}</small></button>`).join(""));
-    const pd = x => N(x.price) / Math.max(1, N(x.days)), prs = A(p.prices).slice().sort((a, b) => N(a.days) - N(b.days)), base = prs.length ? pd(prs[0]) : 0;
+    const ds = curDays(p); if (!ds.includes(N(VM.b.days))) VM.b.days = ds.includes(30) ? 30 : (ds[0] || 0);
+    const pd = x => N(x.price) / Math.max(1, N(x.days)), prs = ds.map(d => ({ days: d, price: cu ? custPrice(d) : planPrice(p, d) })), base = prs.length ? pd(prs[0]) : 0;
     $i("vms-days").innerHTML = prs.map(x => { const sv = base > 0 ? Math.round((1 - pd(x) / base) * 100) : 0;
       return `<button type="button" data-vmdays="${N(x.days)}" class="${N(x.days) === VM.b.days ? "on" : ""}" aria-pressed="${N(x.days) === VM.b.days}">
         <b>${N(x.days)} ${L("ngày", "days")}</b><small>${money(x.price)}</small>${prs.length > 1 ? `<small class="pd">${money(pd(x))}/${L("ngày", "day")}${sv >= 1 ? " · −" + sv + "%" : ""}</small>` : ""}</button>`; }).join("");
-    const pr = A(p.prices).find(x => N(x.days) === VM.b.days), u = me();
-    $i("vms-sum").innerHTML = pr ? `${L("Tổng", "Total")}: <b>${money(pr.price)}</b>${u ? ` <span class="hint">· ${L("số dư", "balance")} ${money(u.balance)}</span>` : ""}` : "";
+    const pr = prs.find(x => N(x.days) === VM.b.days), u = me();
+    const spec = cu ? `${N(VM.b.cc)} vCPU · ${N(VM.b.cr)} GB RAM · SSD NVMe ${N(VM.b.cd)} GB` : disk > N(p.disk_gb) ? `${esc(S(p.name, 40))} + ${disk - N(p.disk_gb)} GB ${L("ổ", "disk")} (SSD NVMe ${disk} GB)` : "";
+    $i("vms-sum").innerHTML = pr ? `${spec ? `<span class="hint">${spec}</span><br>` : ""}${L("Tổng", "Total")}: <b>${money(pr.price)}</b>${u ? ` <span class="hint">· ${L("số dư", "balance")} ${money(u.balance)}</span>` : ""}`
+      : cu ? `<span class="hint">${L("Chưa có giá cho cấu hình này — chọn lại.", "No price for this configuration.")}</span>` : "";
+    const b = $i("vms-pay"); if (b) b.disabled = vmMaint() || !pr;
   }
   async function pay(btn) {
     const I = O(VM.info), p = A(I.plans).find(x => x.id === VM.b.plan); if (!p) return;
     dErr("");
+    if (vmMaint()) return dErr(em("MAINT"));
     if (!VM.b.image) return dErr(L("Chọn bản Windows trước.", "Choose Windows first."));
-    const pr = A(p.prices).find(x => N(x.days) === VM.b.days); if (!pr) return dErr(L("Chọn thời gian.", "Choose a duration."));
+    const cu = VM.b.cust && custOn(), price = cu ? custPrice(VM.b.days) : planPrice(p, VM.b.days);
+    if (price === null) return dErr(L("Chọn thời gian.", "Choose a duration."));
+    const pr = { price };
     const code = S($i("vms-promo") && $i("vms-promo").value, 40).trim(), u = me();
     if (!code && u && N(u.balance) < N(pr.price)) {
       closeDlg(); try { openTopup(Math.max(N(SITE && SITE.minTop) || 10000, Math.ceil((N(pr.price) - N(u.balance)) / 1000) * 1000)); } catch (e) { toast(L("Số dư không đủ — nạp thêm tiền.", "Insufficient balance."), 1); } return;
     }
     await busy(btn, async () => {
-      const { data, error } = await rpc("vm_buy", Object.assign({ p_plan: p.id, p_image: VM.b.image, p_days: VM.b.days }, code ? { p_promo: code } : {}));
+      const extra = !cu && N(VM.b.disk) > N(p.disk_gb);
+      const { data, error } = cu ? await rpc("vm_buy_custom", Object.assign({ p_cores: N(VM.b.cc), p_ram_gb: N(VM.b.cr), p_disk_gb: N(VM.b.cd), p_image: VM.b.image, p_days: VM.b.days }, code ? { p_promo: code } : {}))
+        : await rpc("vm_buy", Object.assign({ p_plan: p.id, p_image: VM.b.image, p_days: VM.b.days }, code ? { p_promo: code } : {}, extra ? { p_disk_gb: N(VM.b.disk) } : {}));
       if (error) return dErr(em(error));
       closeDlg();
       toast(L(`Đã thuê VPS-${N(O(data).id)} — máy chủ đang tạo, thường 3–10 phút.`, `VPS-${N(O(data).id)} rented — it is being created (3–10 min).`));
@@ -15681,8 +15806,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       if (!after) return null;
       s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "vm-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "vm-mine-h");
       s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="vm-mine-h"><span aria-hidden="true">⚡</span> <span>${L(VMN + " của bạn", "Your " + VMN)}</span><small id="vm-mine-n"></small></h2>
-        <div class="m3m-hacts"><button class="btn ghost sm" type="button" id="vm-mine-new">➕ ${L("Mua thêm", "Buy more")}</button></div></div>
-        <div class="m3m-list" id="vm-mine-list"></div></div>`;
+        <div class="m3m-hacts"><a class="btn ghost sm" id="vm-mine-multi" href="/play.html?multi=pc" hidden title="${esc(L("Mở nhiều VPS cùng lúc trên 1 màn — bật 🔗 Đồng bộ để bấm 1 máy, các máy khác làm theo", "Open several VPS on one screen"))}">▦ ${L("Nhiều VPS", "Multi")}</a>
+          <button class="btn ghost sm" type="button" id="vm-mine-new">➕ ${L("Mua thêm", "Buy more")}</button></div></div>
+        <div class="m3m-list" id="vm-mine-list"></div><div class="note vms-maint" id="vm-mine-mt" hidden></div><div class="vms-app" id="vm-mine-app"></div></div>`;
       after.after(s);
       $i("vm-mine-new").onclick = () => { if (rowOn()) buyOpen("*"); else location.hash = "#shop"; };
     } else if (after && after.id === "pcs-mine" && after.nextElementSibling !== s) after.after(s);       // luôn ngay dưới "VPS GPU của bạn"
@@ -15702,6 +15828,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   function stOf(v) {
     if (v.expired) return ["exp", "⛔ " + L("Hết hạn", "Expired"), T(v.delete_at) !== null ? L(`Gia hạn trước ${dt(v.delete_at)} để giữ VPS + dữ liệu — quá giờ đó VPS bị xoá.`, `Renew before ${dt(v.delete_at)} to keep the VPS and its data.`) : L("Gia hạn để dùng tiếp.", "Renew to keep using it.")];
     if (v.err) return ["warn", "⚠️ " + L("Đang lỗi", "Error"), L("Máy chủ báo lỗi khi tạo / chạy VPS — shop đã được báo. Lâu quá thì nhắn shop kèm tên VPS.", "The host reported an error — the shop has been notified.")];
+    if (v.cfg_busy) return ["cfg", "⚙️ " + L("Đang đổi cấu hình", "Applying new specs"), L("Máy chủ đang đặt cấu hình mới — VPS tự khởi động lại khoảng 1–2 phút, dữ liệu giữ nguyên.", "The host is applying the new specs — the VPS restarts in about 1–2 min, data kept.")];
     if (v.busy || v.status === "creating") return ["inst", "⚙️ " + L("Đang tạo / cài Windows", "Setting up"), L("Máy chủ đang dựng VPS (thường 3–10 phút). Xong là bấm Điều khiển được.", "The VPS is being prepared (usually 3–10 min).")];
     if (v.want === "stopped" || v.status === "stopped") return ["off", "⏻ " + L("Đã tắt", "Stopped"), L("Bấm Bật để chạy lại.", "Press Start to run it again.")];
     if (!v.online) return ["boot", "○ " + L("Đang khởi động…", "Starting…"), L("Windows đang lên (1–2 phút).", "Windows is starting (1–2 min).")];
@@ -15709,15 +15836,18 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   function card(v) {
     const st = stOf(v), k = st[0], ms = left(v.until), soon = k === "run" && ms !== null && ms < 2 * 864e5, id = N(v.id), pc = S(v.pc, 40);
-    const on = k === "run" || k === "boot";
+    const on = k === "run" || k === "boot" || k === "cfg";
+    const cm = CU(VM.mine), up = O(VM.mine).upgrade === true && (N(cm.unit_cpu) > 0 || N(cm.unit_ram) > 0 || N(cm.unit_disk) > 0);
     const spec = [S(v.plan_name, 30), N(v.cores) + " vCPU", gb(v.ram_mb) + " RAM", N(v.disk_gb) + " GB", shortOs(v.image_name)].filter(Boolean).join(" · ");
     const b = [
       pc && on ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(pc)}">▶ ${L("Điều khiển", "Control")}</a>` : `<button class="btn sm" type="button" disabled>▶ ${L("Điều khiển", "Control")}</button>`,
+      pc && on ? `<button class="btn ghost sm" type="button" data-vmapp="${id}" title="${esc(L("Mở bằng app máy tính / app Android", "Open in the PC / Android app"))}">📲 App</button>` : "",
       k === "off" ? `<button class="btn ghost sm" type="button" data-vmpow="start" data-vmid="${id}">⏻ ${L("Bật", "Start")}</button>`
         : `<button class="btn ghost sm" type="button" data-vmpow="stop" data-vmid="${id}"${on ? "" : " disabled"}>⏻ ${L("Tắt", "Stop")}</button>`,
       `<button class="btn ghost sm" type="button" data-vmpow="reset" data-vmid="${id}"${on ? "" : " disabled"} title="${esc(L("Khởi động cứng khi Windows bị treo", "Hard reset when Windows hangs"))}">🔁 ${L("Khởi động lại", "Reset")}</button>`,
       `<button class="btn ghost sm" type="button" data-vmre="${id}"${k === "inst" || k === "exp" || N(v.left) < 1 ? " disabled" : ""}>💿 ${L("Cài lại", "Reinstall")} (${N(v.left)})</button>`,
       `<button class="btn ghost sm" type="button" data-vmrenew="${id}"${T(v.until) === null || !A(v.prices).length ? " disabled" : ""}>⏱ ${L("Gia hạn", "Renew")}</button>`,
+      up ? `<button class="btn ghost sm" type="button" data-vmup="${id}"${["inst", "exp", "cfg", "warn"].includes(k) || T(v.until) === null ? " disabled" : ""}>⬆ ${L("Nâng cấp", "Upgrade")}</button>` : "",
       `<button class="btn danger sm" type="button" data-vmdel="${id}">🗑 ${L("Xoá VPS", "Delete")}</button>`].join("");
     return `<div class="m3m-card vms-card${k === "run" ? " run" : ""}${soon || k === "exp" ? " soon" : ""}" data-vm="${id}">
       <div class="m3m-top"><span class="pill${k === "run" ? " ok" : k === "exp" || k === "warn" ? " bad" : ""}">${esc(st[1])}</span></div>
@@ -15743,13 +15873,33 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     clearTimeout(VM.mt);
     try { navVm(); } catch (e) {}
     if (s.hidden) { if (me() && VM.mine) VM.mt = setTimeout(() => mine(true), 120000); return; }
-    const run = items.filter(v => stOf(v)[0] === "run").length;
+    const run = items.filter(v => stOf(v)[0] === "run").length, mtb = $i("vm-mine-mt");
+    const mu = $i("vm-mine-multi"); if (mu) mu.hidden = items.filter(v => stOf(v)[0] === "run" && S(v.pc, 40)).length < 2;
+    const ap = $i("vm-mine-app"); if (ap && !ap.dataset.on) { ap.dataset.on = "1"; ap.innerHTML = appStrip(); }
+    if (mtb) { const on = O(VM.mine).maint === true && !isAdm(); mtb.hidden = !on; mtb.innerHTML = on ? "🛠️ " + esc(L(VMN + " đang bảo trì — tạm chưa nâng cấp / cài lại được. VPS vẫn chạy, điều khiển và gia hạn bình thường.", VMN + " is under maintenance — upgrades and reinstalls are paused.")) + (vmMaintMsg() ? "<br><b>" + esc(vmMaintMsg()) + "</b>" : "") : ""; }
     $i("vm-mine-n").textContent = L(`${items.length} VPS · ${run} đang chạy`, `${items.length} VPS · ${run} running`);
     $i("vm-mine-list").innerHTML = items.map(v => { try { return card(v); } catch (e) { return ""; } }).join("");
-    const busyNow = items.some(v => ["inst", "boot"].includes(stOf(v)[0]));
+    const busyNow = items.some(v => ["inst", "boot", "cfg"].includes(stOf(v)[0]));
     VM.mt = setTimeout(() => mine(true), busyNow ? 15000 : 60000);
   }
   const vOf = id => A(O(VM.mine).items).find(x => N(x.id) === N(id));
+  // ---------------------------------------------------------------- 📲 app (giống VPS GPU): tải app máy tính / Android ở đầu khung + nút App trên từng VPS (mở thẳng bằng app)
+  const dlPc = () => typeof CP_PC_DL === "string" ? CP_PC_DL : "/download/CloudBluePC-Setup.exe";
+  const dlApk = () => typeof CP_APK_DL === "string" ? CP_APK_DL : "/download/blueroblox-cloud.apk";
+  const appStrip = () => `<b>📲 ${L("Dùng VPS bằng app", "Use your VPS in the app")}</b><span>${L("đăng nhập cùng tài khoản là thấy VPS — hoặc bấm ▶ Điều khiển để mở ngay trên trình duyệt.", "sign in with the same account — or press ▶ Control to open it in the browser.")}</span>
+    <a class="btn ghost" href="${esc(dlPc())}" download>💻 ${L("App máy tính (Windows)", "PC app (Windows)")}</a><a class="btn ghost" href="${esc(dlApk())}" download="CloudBlue.apk">📱 ${L("App Android", "Android app")}</a>`;
+  function appOpen(id) {
+    const v = vOf(id); if (!v || !S(v.pc, 40)) return;
+    const pid = encodeURIComponent(S(v.pc, 40)), ua = navigator.userAgent, isAnd = /Android/i.test(ua);
+    const webFirst = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1) || /Macintosh|Mac OS X/.test(ua);
+    const lPc = "blueroblox://pc/" + pid, lAnd = "intent://pc/" + pid + "#Intent;scheme=blueroblox;package=shop.blueroblox.app;S.browser_fallback_url=" + encodeURIComponent(location.origin + dlApk()) + ";end";
+    const sPc = `<div class="vms-lbl">💻 ${L("App máy tính (Windows)", "PC app (Windows)")}</div><div class="vma-acts"><a class="btn${isAnd || webFirst ? " ghost" : ""}" href="${esc(lPc)}" data-vmx="1">▶ ${L("Mở bằng app máy tính", "Open with the PC app")}</a><a class="btn ghost sm" href="${esc(dlPc())}" download>⬇️ ${L("Tải app máy tính", "Download")}</a></div>`;
+    const sAnd = `<div class="vms-lbl">📱 ${L("App Android", "Android app")}</div><div class="vma-acts">${isAnd ? `<a class="btn" href="${esc(lAnd)}" data-vmx="1">▶ ${L("Mở bằng app Android", "Open with the Android app")}</a>` : ""}<a class="btn ghost sm" href="${esc(dlApk())}" download="CloudBlue.apk">⬇️ ${L("Tải app Android", "Download")}</a></div>`;
+    const sWeb = `<div class="vms-lbl">🌐 ${L("Trình duyệt (iPhone, iPad, Mac, máy chưa cài app)", "Browser (any device)")}</div><div class="vma-acts"><a class="btn${webFirst ? "" : " ghost"}" href="/play.html?pc=${pid}">▶ ${L("Mở ngay trên trình duyệt", "Open in the browser")}</a></div>`;
+    dlg(`<h3>📲 ${L("Mở VPS trong app", "Open the VPS in an app")}</h3><div class="hint">⚡ <b>${esc(S(v.label, 40) || S(v.name, 40))}</b> · ${esc(shortOs(v.image_name))}</div>
+      ${webFirst ? sWeb + sPc + sAnd : isAnd ? sAnd + sPc + sWeb : sPc + sAnd + sWeb}
+      <div class="acts"><button class="btn ghost" type="button" data-vmx="1">${L("Đóng", "Close")}</button></div>`);
+  }
   async function pow(btn, id, act) {
     await busy(btn, async () => {
       const { error } = await rpc("vm_my_power", { p_id: N(id), p_act: act });
@@ -15804,6 +15954,60 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       const { data, error } = await rpc("vm_my_renew", Object.assign({ p_id: VM.n.id, p_days: VM.n.days }, code ? { p_promo: code } : {}));
       if (error) return dErr(em(error));
       closeDlg(); toast(L(`Đã gia hạn tới ${dt(O(data).until)}.`, `Renewed until ${dt(O(data).until)}.`));
+      await Promise.all([typeof loadProfile === "function" ? loadProfile() : null, mine(true)]).catch(() => {}); try { renderUser(); } catch (e) {}
+    });
+  }
+  // ---------------------------------------------------------------- ⬆ NÂNG CẤP sau khi thuê (SQL v59 vm_my_upgrade): chỉ tăng; giá hỏi máy chủ (p_dry) — đúng số sẽ trừ
+  function upOpen(id) {
+    const v = vOf(id); if (!v) return;
+    if (O(VM.mine).maint === true && !isAdm()) return toast(em("MAINT"), 1);
+    const c = CU(VM.mine), cur = { cores: N(v.cores), ram: Math.ceil(N(v.ram_mb) / 1024), disk: N(v.disk_gb) };
+    const hi = { cores: Math.max(cur.cores, N(c.max_cores) || 16), ram: Math.max(cur.ram, N(c.max_ram_gb) || 32), disk: Math.max(cur.disk, N(c.max_disk_gb) || 200) };
+    VM.u = { id: N(id), cur, cc: cur.cores, cr: cur.ram, cd: cur.disk, seq: 0, price: null };
+    const can = { cores: N(c.unit_cpu) > 0, ram: N(c.unit_ram) > 0, disk: N(c.unit_disk) > 0 };
+    const row = (k, lb, sub, v0, top, step, ok) => `<div class="row"><span class="lb">${lb}<small>${sub}</small></span><span class="vms-step">
+      <button type="button" data-vmstep="u${k}" data-d="-${step}" aria-label="−" disabled>−</button><input class="in" type="number" inputmode="numeric" id="vms-u-${k}" data-vmcfg="u${k}" min="${v0}" max="${ok ? top : v0}" step="${step}" value="${v0}"${ok ? "" : " disabled"}>
+      <button type="button" data-vmstep="u${k}" data-d="${step}" aria-label="+"${ok && top > v0 ? "" : " disabled"}>+</button></span></div>`;
+    dlg(`<h3>⬆ ${L("Nâng cấp", "Upgrade")} ${esc(S(v.label, 40) || S(v.name, 40))}</h3>
+      <div class="vms-up-cur">${L("Hiện tại", "Now")}: <b>${cur.cores} vCPU · ${gb(v.ram_mb)} RAM · SSD NVMe ${cur.disk} GB</b> · ${esc(daysLeft(v.until))}</div>
+      <div class="vms-cfg" id="vms-up">
+        ${row("cores", "⚙️ vCPU", can.cores ? esc(money(c.unit_cpu)) + " / vCPU / " + L("tháng", "month") : L("shop chưa bán thêm vCPU", "not for sale"), cur.cores, hi.cores, 1, can.cores)}
+        ${row("ram", "🧠 RAM (GB)", can.ram ? esc(money(c.unit_ram)) + " / GB / " + L("tháng", "month") : L("shop chưa bán thêm RAM", "not for sale"), cur.ram, hi.ram, 1, can.ram)}
+        ${row("disk", "💾 SSD NVMe (GB)", can.disk ? esc(money(c.unit_disk)) + " / GB / " + L("tháng", "month") : L("shop chưa bán thêm ổ", "not for sale"), cur.disk, hi.disk, 10, can.disk)}</div>
+      <div class="hint">${L("Chỉ tăng được. Tiền = phần chênh giá tháng × số ngày còn lại / 30. Tăng vCPU / RAM: VPS tự khởi động lại ~1–2 phút. Chỉ thêm ổ: không cần khởi động lại, ổ C tự nới. Dữ liệu giữ nguyên.",
+        "Increase only. Price = monthly difference × days left / 30. More vCPU / RAM: the VPS restarts (~1–2 min). Disk only: no restart, drive C grows automatically. Data is kept.")}</div>
+      <label>${L("Mã giảm giá (nếu có)", "Promo code (optional)")}<input class="in" id="vms-up-promo" maxlength="40" autocomplete="off" spellcheck="false"></label>
+      <div class="vms-sum" id="vms-up-sum"></div>
+      ${acts("💳 " + L("Nâng cấp", "Upgrade"), "", "vms-up-go")}`);
+    upQuote();
+  }
+  function upQuote() {
+    const u = VM.u, sm = $i("vms-up-sum"), go = $i("vms-up-go"); if (!u || !sm) return;
+    const same = u.cc === u.cur.cores && u.cr === u.cur.ram && u.cd === u.cur.disk;
+    u.price = null; if (go) go.disabled = true; dErr("");
+    if (same) { sm.innerHTML = `<span class="hint">${L("Bấm + để chọn mức cao hơn hiện tại.", "Press + to pick more than you have now.")}</span>`; return; }
+    sm.innerHTML = `<span class="hint">${L("Đang tính giá…", "Pricing…")}</span>`;
+    const seq = ++u.seq;
+    clearTimeout(u.t); u.t = setTimeout(async () => {
+      let r = null;
+      try { r = await rpc("vm_my_upgrade", { p_id: u.id, p_cores: u.cc, p_ram_gb: u.cr, p_disk_gb: u.cd, p_dry: true }); } catch (e) { r = { error: e }; }
+      if (seq !== u.seq || VM.u !== u) return;
+      if (!r || r.error) { sm.innerHTML = ""; return dErr(em(r && r.error)); }
+      const d = O(r.data), me_ = me(); u.price = N(d.price);
+      sm.innerHTML = `<span class="hint">${u.cc} vCPU · ${u.cr} GB RAM · SSD NVMe ${u.cd} GB · ${L(`tính cho ${N(d.days_left)} ngày còn lại`, `for the ${N(d.days_left)} days left`)}${d.restart ? " · " + L("VPS tự khởi động lại ~1–2 phút", "the VPS restarts (~1–2 min)") : " · " + L("không cần khởi động lại", "no restart")}</span><br>
+        ${L("Phải trả", "To pay")}: <b>${money(u.price)}</b>${me_ ? ` <span class="hint">· ${L("số dư", "balance")} ${money(me_.balance)}</span>` : ""}`;
+      if (go) go.disabled = false;
+    }, 280);
+  }
+  async function upGo(btn) {
+    const u = VM.u; if (!u || u.price === null) return;
+    const code = S($i("vms-up-promo") && $i("vms-up-promo").value, 40).trim(), m = me();
+    if (!code && m && N(m.balance) < N(u.price)) { closeDlg(); try { openTopup(Math.max(N(SITE && SITE.minTop) || 10000, Math.ceil((N(u.price) - N(m.balance)) / 1000) * 1000)); } catch (e) {} return; }
+    await busy(btn, async () => {
+      const { data, error } = await rpc("vm_my_upgrade", Object.assign({ p_id: u.id, p_cores: u.cc, p_ram_gb: u.cr, p_disk_gb: u.cd }, code ? { p_promo: code } : {}));
+      if (error) return dErr(em(error));
+      closeDlg(); VM.u = null;
+      toast(O(data).restart ? L("Đã nâng cấp — VPS tự khởi động lại ~1–2 phút để nhận cấu hình mới.", "Upgraded — the VPS restarts in ~1–2 min.") : L("Đã nâng cấp — ổ mới tự nới trong ~1 phút.", "Upgraded — the disk grows in ~1 min."));
       await Promise.all([typeof loadProfile === "function" ? loadProfile() : null, mine(true)]).catch(() => {}); try { renderUser(); } catch (e) {}
     });
   }
@@ -15939,6 +16143,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <span>🖥 ${esc(h ? S(h.name, 40) : "?")} · ${L("chỗ", "slot")} ${N(v.slot)}</span><span>⏱ ${T(v.until) === null ? L("chưa bắt đầu (tính từ lúc VPS lên)", "not started") : esc(daysLeft(v.until)) + " (" + dt(v.until) + ")"}</span>
         <span>${L("cài lại còn", "reinstalls")} ${N(v.left)}</span><span>${L("tạo", "created")} ${dt(v.created_at)}</span>${S(v.end_why, 20) ? `<span>${L("lý do dừng", "ended")}: ${esc(S(v.end_why, 20))}</span>` : ""}</div>
       ${S(v.err, 300) ? `<div class="pcs-st bad">${esc(S(v.err, 300))}</div>` : ""}
+      ${"cfg_gen" in v && N(v.cfg_done) < N(v.cfg_gen) && live ? `<div class="pcs-st">⚙️ ${L(`Đang đổi cấu hình (lần ${N(v.cfg_gen)}) — chờ máy chủ đặt xong (cần cbhost 26/11e trở lên).`, `Applying specs change #${N(v.cfg_gen)} — waiting for the host (cbhost 26/11e+).`)}</div>` : ""}
       ${live ? `<div class="vma-acts">
         ${S(v.pc, 40) ? `<a class="btn sm" href="/play.html?pc=${encodeURIComponent(S(v.pc, 40))}" target="_blank" rel="noopener">▶ ${L("Điều khiển", "Control")}</a>` : ""}
         ${v.want === "stopped" ? `<button class="btn ghost sm" type="button" data-vmav="start">⏻ ${L("Bật", "Start")}</button>` : `<button class="btn ghost sm" type="button" data-vmav="stop">⏻ ${L("Tắt", "Stop")}</button>`}
@@ -15946,6 +16151,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <button class="btn ghost sm" type="button" data-vmav="reinstall"${busyNow ? " disabled" : ""}>💿 ${L("Cài lại", "Reinstall")}</button>
         ${v.status === "error" || busyNow ? `<button class="btn ghost sm" type="button" data-vmav="retry">⟳ ${L("Tạo lại", "Rebuild")}</button>` : ""}
         <button class="btn ghost sm" type="button" data-vmav="extend">⏱ ${L("Cộng / trừ ngày", "± days")}</button>
+        ${"cfg_gen" in v ? `<button class="btn ghost sm" type="button" data-vmav="config"${busyNow ? " disabled" : ""}>🔧 ${L("Đổi cấu hình", "Change specs")}</button>` : ""}
         <button class="btn danger sm" type="button" data-vmav="delete">🗑 ${L("Xoá", "Delete")}</button>
         ${S(v.order, 40) ? `<button class="btn danger sm" type="button" data-vmav="refund">↩ ${L("Hoàn tiền + xoá", "Refund + delete")}</button>` : ""}</div>` : ""}</div>`;
   }
@@ -15971,8 +16177,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const days = [...new Set(S($i("vma-c-days").value, 80).split(/[^0-9]+/).map(x => Math.round(N(x))).filter(x => x >= 1 && x <= 3650))].sort((x, y) => x - y).slice(0, 12);
     return { c: Math.max(0, N($i("vma-c-cpu").value)), r: Math.max(0, N($i("vma-c-ram").value)), d: Math.max(0, N($i("vma-c-disk").value)), up: Math.min(300, Math.max(0, N($i("vma-c-up").value))), days };
   }
+  const calcFree = () => { const st = O(O(VM.adm).settings); return "disk_free_gb" in st ? N(st.disk_free_gb) : 0; };     // v59: ổ chỉ tính phần vượt mức miễn phí
   function calcPrices(u, p) {                               // → [{days, price}]: dưới 30 ngày chia theo ngày rồi cộng thêm up %, từ 30 ngày theo đúng tỉ lệ
-    const m = r1000(N(p.cores) * u.c + N(p.ram_mb) / 1024 * u.r + N(p.disk_gb) * u.d);
+    const m = r1000(N(p.cores) * u.c + N(p.ram_mb) / 1024 * u.r + Math.max(0, N(p.disk_gb) - calcFree()) * u.d);
     return u.days.map(n => ({ days: n, price: Math.max(1000, r1000(m * n / 30 * (n < 30 ? 1 + u.up / 100 : 1))) }));
   }
   function calcPaint() {
@@ -15983,7 +16190,16 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       : ps.map(p => `<span><b>${esc(S(p.name, 40))}</b> ${calcPrices(u, p).map(x => `${x.days}n ${vndS(x.price)}`).join(" · ")}</span>`).join("");
   }
   function calcLoad() {                                       // nhớ đơn giá lần trước trên máy này (chỉ điền khi ô còn trống)
-    if (!$i("vma-c-cpu") || VM.calcOn) return; VM.calcOn = true;
+    if (!$i("vma-c-cpu")) return;
+    const st = O(O(VM.adm).settings);
+    if (N(st.unit_cpu) > 0 || N(st.unit_ram) > 0) {                 // v59: đơn giá nằm ở máy chủ (dùng chung cho tự chọn cấu hình / nâng cấp) — đổi ở ⚙ Cài đặt thì ô này theo (trừ khi đang gõ dở)
+      const sig = [st.unit_cpu, st.unit_ram, st.unit_disk, st.short_up, A(st.day_tiers).join(",")].join("|");
+      if (sig === VM.calcSig || VM.calcDirty) return; VM.calcSig = sig; VM.calcOn = true;
+      [["vma-c-cpu", st.unit_cpu], ["vma-c-ram", st.unit_ram], ["vma-c-disk", st.unit_disk], ["vma-c-up", st.short_up]].forEach(([id, v]) => { $i(id).value = N(v); });
+      if (A(st.day_tiers).length) $i("vma-c-days").value = A(st.day_tiers).map(N).join(", ");
+      return;
+    }
+    if (VM.calcOn) return; VM.calcOn = true;
     try { const j = JSON.parse(localStorage.getItem(CALC_KEY) || "null");
       if (j && typeof j === "object") { [["vma-c-cpu", j.c], ["vma-c-ram", j.r], ["vma-c-disk", j.d], ["vma-c-up", j.up]].forEach(([id, v]) => { if (N(v) > 0) $i(id).value = N(v); });
         if (/^[0-9, ]{1,80}$/.test(S(j.days, 80))) $i("vma-c-days").value = S(j.days, 80); } } catch (e) {}
@@ -16001,6 +16217,12 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         n++;
       }
       if (n) toast(L(`Đã điền giá cho ${n} gói.`, `Prices set for ${n} plans.`));
+      if (n && "unit_cpu" in O(O(VM.adm).settings)) {               // v59: lưu luôn đơn giá về máy chủ → tự chọn cấu hình / nâng cấp / ổ thêm tính cùng giá
+        const { error } = await rpc("vm_admin_settings", { p_patch: { unit_cpu: Math.round(u.c), unit_ram: Math.round(u.r), unit_disk: Math.round(u.d), short_up: u.up, ...(u.days.length <= 8 ? { day_tiers: u.days } : {}) } });
+        if (error && er) er.textContent = em(error);
+        const sb_ = $i("vma-set"); if (sb_) sb_.dataset.dirty = "";
+      }
+      if (n) { VM.calcDirty = false; VM.calcSig = ""; }
       await admLoad(true); info(true).then(shopRender);
     });
   }
@@ -16101,6 +16323,23 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <label>${L("Hết hạn: giữ dữ liệu (ngày) rồi xoá", "Keep data after expiry (days)")}<input class="in" type="number" id="vma-s-grace" min="0" max="60" step="1" value="${N(st.grace_days)}"></label>
         <label>${L("Khách tự cài lại tối đa (lần / VPS)", "Customer reinstalls per VPS")}<input class="in" type="number" id="vma-s-rmax" min="0" max="50" step="1" value="${N(st.reinstall_max)}"></label>
         <label>${L("Báo admin khi tạo quá (phút)", "Alert when creation exceeds (min)")}<input class="in" type="number" id="vma-s-cmin" min="10" max="600" step="5" value="${N(st.create_min)}"></label></div></div>
+      ${"unit_cpu" in st ? `<div class="vma-sec"><h4>🛠 ${L("Tự chọn cấu hình · ổ thêm · nâng cấp", "Custom specs · extra disk · upgrades")}</h4>
+        <div class="hint">${L(`Đơn giá cho <b>30 ngày</b>. Mỗi VPS được <b>miễn phí</b> số GB ổ bên dưới; phần vượt tính theo giá 1 GB ổ thêm (0đ = không bán ổ thêm). Gói có sẵn vẫn theo bảng 💲 Gói & giá — mua kèm ổ thêm thì cộng phần ổ. Nâng cấp: tiền = chênh lệch giá tháng × số ngày còn lại / 30. Kỳ ngắn hơn 30 ngày cộng thêm %.`,
+          "Unit prices per 30 days. Each VPS gets the free disk below; extra GB use the extra-disk price (0 = no extra disk). Upgrades: monthly difference × days left / 30.")}</div>
+        <div class="vma-set">
+          <label class="chk"><input type="checkbox" id="vma-s-cust"${st.custom_on ? " checked" : ""}> ${L("Cho khách TỰ CHỌN cấu hình (ô 🛠 trong hộp Thuê)", "Let customers pick custom specs")}</label>
+          <label class="chk"><input type="checkbox" id="vma-s-up"${st.upgrade_on !== false ? " checked" : ""}> ${L("Cho khách NÂNG CẤP sau khi thuê (nút ⬆ Nâng cấp)", "Let customers upgrade")}</label>
+          <label>${L("Giá 1 vCPU / 30 ngày (đ)", "1 vCPU / 30 days")}<input class="in" type="number" id="vma-s-ucpu" min="0" max="99999999" step="1000" value="${N(st.unit_cpu)}"></label>
+          <label>${L("Giá 1 GB RAM / 30 ngày (đ)", "1 GB RAM / 30 days")}<input class="in" type="number" id="vma-s-uram" min="0" max="99999999" step="1000" value="${N(st.unit_ram)}"></label>
+          <label>${L("Giá 1 GB ổ THÊM / 30 ngày (đ)", "1 extra GB disk / 30 days")}<input class="in" type="number" id="vma-s-udisk" min="0" max="99999999" step="100" value="${N(st.unit_disk)}"></label>
+          <label>${L("Ổ miễn phí mỗi VPS (GB)", "Free disk per VPS (GB)")}<input class="in" type="number" id="vma-s-free" min="0" max="4000" step="1" value="${N(st.disk_free_gb)}"></label>
+          <label>${L("Thuê dưới 30 ngày: cộng thêm (%)", "Under 30 days: + %")}<input class="in" type="number" id="vma-s-short" min="0" max="500" step="5" value="${N(st.short_up)}"></label>
+          <label>${L("Kỳ hạn bán cho cấu hình tự chọn (ngày, cách nhau dấu phẩy)", "Durations for custom specs (days)")}<input class="in" id="vma-s-tiers" maxlength="60" value="${esc(A(st.day_tiers).map(N).join(", "))}" spellcheck="false" autocomplete="off"></label>
+          <label>${L("Tối đa vCPU", "Max vCPU")}<input class="in" type="number" id="vma-s-mc" min="1" max="64" step="1" value="${N(st.max_cores)}"></label>
+          <label>${L("Tối đa RAM (GB)", "Max RAM (GB)")}<input class="in" type="number" id="vma-s-mr" min="1" max="256" step="1" value="${N(st.max_ram_gb)}"></label>
+          <label>${L("Tối đa ổ (GB)", "Max disk (GB)")}<input class="in" type="number" id="vma-s-md" min="10" max="4000" step="10" value="${N(st.max_disk_gb)}"></label></div>
+        <div class="vma-calc-prev" id="vma-s-prev"></div></div>`
+      : `<div class="vma-sec"><h4>🛠 ${L("Tự chọn cấu hình · ổ thêm · nâng cấp", "Custom specs · extra disk · upgrades")}</h4><div class="note">${L("Cần chạy SQL <b>CloudBlue v59 VPS NVMe cau hinh - bam Run</b> trên Supabase để bật phần này (khách tự chọn cấu hình, 20 GB ổ miễn phí + bán ổ thêm, nâng cấp sau khi thuê, bảo trì riêng).", "Run SQL v59 on Supabase to enable this.")}</div></div>`}
       <div class="vma-sec"><h4>⚖️ ${L("Chia tài nguyên máy chủ", "Host overcommit")}</h4><div class="vma-set">
         <label>${L("CPU: vCPU bán được = số luồng ×", "vCPU per thread ×")}<input class="in" type="number" id="vma-s-cpu" min="1" max="16" step="0.5" value="${N(st.cpu_over)}"></label>
         <label>${L("RAM chừa lại cho máy chủ (GB)", "RAM reserved for the host (GB)")}<input class="in" type="number" id="vma-s-ram" min="0" max="64" step="1" value="${Math.round(N(st.ram_reserve_mb) / 1024)}"></label>
@@ -16116,6 +16355,23 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
         <label>${L("Số ngày", "Days")}<input class="in" type="number" id="vma-g-days" min="1" max="3650" step="1" value="30"></label></div>
         <div class="hint">${L("Mẹo: tạo 1 VPS cho chính bạn trên mỗi máy chủ → vào VPS đó mở trang Proxmox (https://IP-LAN:8006) là quản lý được máy chính từ bất cứ đâu.", "Tip: a VPS of your own on each host lets you open the Proxmox UI from anywhere.")}</div>
         <button class="btn sm" type="button" id="vma-g-go" style="justify-self:start">➕ ${L("Tạo VPS", "Create VPS")}</button><div class="err" id="vma-g-err"></div></div>`;
+    setPrev();
+  }
+  function setRead() {                                                // ô đơn giá (v59) → patch cho vm_admin_settings
+    if (!$i("vma-s-ucpu")) return null;
+    const tiers = [...new Set(S($i("vma-s-tiers").value, 60).split(/[^0-9]+/).map(x => Math.round(N(x))).filter(x => x >= 1 && x <= 3650))].sort((a, b) => a - b).slice(0, 8);
+    return { custom_on: !!$i("vma-s-cust").checked, upgrade_on: !!$i("vma-s-up").checked, unit_cpu: Math.max(0, Math.round(N($i("vma-s-ucpu").value))), unit_ram: Math.max(0, Math.round(N($i("vma-s-uram").value))),
+             unit_disk: Math.max(0, Math.round(N($i("vma-s-udisk").value))), disk_free_gb: Math.max(0, Math.round(N($i("vma-s-free").value))), short_up: Math.max(0, N($i("vma-s-short").value)),
+             max_cores: Math.max(1, Math.round(N($i("vma-s-mc").value))), max_ram_gb: Math.max(1, Math.round(N($i("vma-s-mr").value))), max_disk_gb: Math.max(10, Math.round(N($i("vma-s-md").value))),
+             ...(tiers.length ? { day_tiers: tiers } : {}) };
+  }
+  function setPrev() {                                                // xem trước vài cấu hình tự chọn theo đơn giá đang gõ
+    const box = $i("vma-s-prev"), u = setRead(); if (!box || !u) return;
+    const c = { unit_cpu: u.unit_cpu, unit_ram: u.unit_ram, unit_disk: u.unit_disk, short_up: u.short_up }, ds = A(u.day_tiers).length ? u.day_tiers : [1, 3, 7, 30];
+    const ex = [[1, 1, 20], [2, 4, 40], [4, 8, 60], [8, 16, 100]];
+    box.innerHTML = !(u.unit_cpu > 0 && u.unit_ram > 0) ? esc(L("Nhập giá 1 vCPU + 1 GB RAM để bật tự chọn cấu hình / nâng cấp.", "Enter vCPU and RAM prices to enable custom specs / upgrades."))
+      : ex.map(([cc, rr, dd]) => { const xg = Math.max(0, dd - u.disk_free_gb); if (xg > 0 && u.unit_disk <= 0) return "";
+          const m = monthOf(c, cc, rr, xg); return `<span><b>${cc} vCPU · ${rr} GB · ${dd} GB</b> ${ds.map(d => `${d}n ${vndS(tierOf(c, m, d))}`).join(" · ")}</span>`; }).join("");
   }
   async function admCall(btn, fn, args, okMsg) {
     let out = null;
@@ -16214,6 +16470,12 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       return dlg(`<h3>💿 ${L("Cài lại", "Reinstall")} ${esc(nm)}</h3><label>${L("Bản Windows", "Windows")}<select class="in" id="vma-v-img">${is.map(i => `<option value="${esc(S(i.id, 24))}"${i.id === v.image ? " selected" : ""}>${esc(S(i.name, 60))}</option>`).join("")}</select></label>
         <div class="note">⚠️ ${L("Xoá sạch ổ VPS rồi dựng lại từ máy mẫu. Không trừ lượt cài lại của khách. Hạn giữ nguyên.", "Wipes the VPS and rebuilds it. Customer reinstall count unchanged.")}</div>${acts("💿 " + L("Cài lại", "Reinstall"), "danger", "vma-v-go")}`);
     }
+    if (act === "config") return dlg(`<h3>🔧 ${L("Đổi cấu hình", "Change specs")} — ${esc(nm)}</h3>
+      <div class="grid3"><label>vCPU<input class="in" type="number" id="vma-v-cores" min="1" max="64" step="1" value="${N(v.cores)}"></label>
+        <label>RAM (GB)<input class="in" type="number" id="vma-v-ram" min="1" max="256" step="1" value="${Math.round(N(v.ram_mb) / 102.4) / 10}"></label>
+        <label>${L("Ổ (GB, chỉ tăng)", "Disk (GB, grow only)")}<input class="in" type="number" id="vma-v-disk" min="${N(v.disk_gb)}" max="4000" step="10" value="${N(v.disk_gb)}"></label></div>
+      <div class="hint">${L("Không tính tiền khách. Được giảm vCPU / RAM, ổ chỉ tăng (giảm ổ = mất dữ liệu). Máy chủ tự đặt + tắt hẳn rồi bật lại VPS (~1–2 phút), ổ C tự nới.", "No charge. vCPU / RAM may go down; the disk only grows. The host applies it and restarts the VPS (~1–2 min).")}</div>
+      ${acts(L("Lưu", "Save"), "", "vma-v-go")}`);
     if (act === "extend") return dlg(`<h3>⏱ ${L("Cộng / trừ ngày", "Add / remove days")} — ${esc(nm)}</h3>
       <label>${L("Số ngày (số âm = trừ)", "Days (negative = remove)")}<input class="in" type="number" id="vma-v-days" min="-3650" max="3650" step="1" value="1"></label>
       <div class="hint">${L("Hạn hiện tại", "Current expiry")}: ${T(v.until) === null ? L("chưa bắt đầu", "not started") : dt(v.until)}. ${L("Không trừ / cộng tiền của khách.", "No charge.")}</div>${acts(L("Lưu", "Save"), "", "vma-v-go")}`);
@@ -16227,6 +16489,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const { id, act } = VM.v; let arg = {};
     if (act === "reinstall") arg = { image: S($i("vma-v-img").value, 24) };
     if (act === "extend") { const d = Math.round(N($i("vma-v-days").value)); if (!d) return dErr(L("Nhập số ngày khác 0.", "Enter a non-zero number.")); arg = { days: d }; }
+    if (act === "config") arg = { cores: Math.round(N($i("vma-v-cores").value)), ram_mb: Math.round(N($i("vma-v-ram").value) * 1024), disk_gb: Math.round(N($i("vma-v-disk").value)) };
     await busy(btn, async () => {
       const { data, error } = await rpc("vm_admin_vps", { p_id: id, p_act: act, p_arg: arg });
       if (error) return dErr(em(error));
@@ -16236,7 +16499,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   }
   async function setSave(btn) {
     const patch = { sell: !!$i("vma-s-sell").checked, auto_approve: !!$i("vma-s-auto").checked, grace_days: Math.round(N($i("vma-s-grace").value)), reinstall_max: Math.round(N($i("vma-s-rmax").value)),
-                    create_min: Math.round(N($i("vma-s-cmin").value)), cpu_over: N($i("vma-s-cpu").value), ram_reserve_mb: Math.round(N($i("vma-s-ram").value) * 1024), disk_over: N($i("vma-s-disk").value) };
+                    create_min: Math.round(N($i("vma-s-cmin").value)), cpu_over: N($i("vma-s-cpu").value), ram_reserve_mb: Math.round(N($i("vma-s-ram").value) * 1024), disk_over: N($i("vma-s-disk").value),
+                    ...(setRead() || {}) };
     const r = await admCall(btn, "vm_admin_settings", { p_patch: patch }, L("Đã lưu cài đặt VPS ảo hoá.", "Settings saved."));
     if (r !== null) { $i("vma-set").dataset.dirty = ""; admSet(O(VM.adm)); info(true).then(shopRender); }
   }
@@ -16252,11 +16516,17 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     });
   }
 
-  document.addEventListener("input", e => { if (e.target && e.target.closest && e.target.closest("#vma-calc")) { try { calcPaint(); } catch (er) {} } });
+  document.addEventListener("input", e => { if (e.target && e.target.closest && e.target.closest("#vma-calc")) { VM.calcDirty = true; try { calcPaint(); } catch (er) {} } });
+  document.addEventListener("input", e => {                          // ô tự chọn / thêm ổ / nâng cấp: gõ số → tính lại ngay · ô đơn giá trong Cài đặt → xem trước
+    const t = e.target; if (!t || !t.closest) return;
+    if (t.dataset && t.dataset.vmcfg && t.value !== "") { try { cfgSet(t.dataset.vmcfg, t.value, false); } catch (er) {} return; }
+    if (t.closest("#vma-set")) { try { $i("vma-set").dataset.dirty = "1"; setPrev(); } catch (er) {} }
+  });
+  document.addEventListener("change", e => { const t = e.target; if (t && t.dataset && t.dataset.vmcfg) { try { cfgSet(t.dataset.vmcfg, t.value, true); } catch (er) {} } });
   // ---------------------------------------------------------------- bấm nút (1 chỗ cho cả trang)
   document.addEventListener("click", e => {
     const t = e.target && e.target.closest ? e.target : null; if (!t) return;
-    const b = t.closest("[data-vmplan],[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
+    const b = t.closest("[data-vmplan],[data-vmbuy],[data-vmos],[data-vmdays],#vms-pay,[data-vmstep],[data-vmup],#vms-up-go,[data-vmapp],[data-vmpow],[data-vmre],[data-vmreos],#vms-re-go,[data-vmrenew],[data-vmrndays],#vms-rn-go,[data-vmlabel],#vms-lb-go,[data-vmdel],#vms-del-go,"
       + "[data-vmah],#vma-h-go,#vma-hdel-go,[data-vmav],#vma-v-go,[data-vmap],#vma-p-add,[data-prdel],#vma-p-go,#vma-p-del,[data-vmai],#vma-i-go,#vma-i-del,#vma-s-save,#vma-cmd-copy,#vma-g-go,[data-vmaset],#vma-p-new,#vma-i-new,#vma-reload,#vma-retry,#vma-t-new,#vma-t-cmd,#vma-t-go,[data-vmtsrc],[data-vmt],#vma-tj-go,#vma-c-go,#vma-c-miss,#vma-c-ok");
     if (!b || b.disabled) return;
     const dt_ = b.dataset;
@@ -16265,6 +16535,10 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     if (dt_.vmos && VM.b) { VM.b.image = dt_.vmos; return buyPaint(); }
     if (dt_.vmdays && VM.b) { VM.b.days = N(dt_.vmdays); return buyPaint(); }
     if (b.id === "vms-pay") return pay(b);
+    if (dt_.vmstep) { const el = $i(dt_.vmstep.charAt(0) === "u" ? "vms-u-" + dt_.vmstep.slice(1) : "vms-c-" + dt_.vmstep); if (el) cfgSet(dt_.vmstep, N(el.value) + N(dt_.d), true); return; }
+    if (dt_.vmup) return upOpen(dt_.vmup);
+    if (dt_.vmapp) return appOpen(dt_.vmapp);
+    if (b.id === "vms-up-go") return upGo(b);
     if (dt_.vmpow) return pow(b, dt_.vmid, dt_.vmpow);
     if (dt_.vmre) return reOpen(dt_.vmre);
     if (dt_.vmreos && VM.r) { VM.r.image = dt_.vmreos; document.querySelectorAll("#vms-reos [data-vmreos]").forEach(x => { const on = x.dataset.vmreos === VM.r.image; x.classList.toggle("on", on); x.setAttribute("aria-pressed", on); }); return; }
