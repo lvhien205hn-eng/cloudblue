@@ -86,6 +86,8 @@ try {
   $ok1 = ($txt -match "XONG \(") -and (Test-Path $out)
   Ck "tao-iso-may-mau.ps1 chay het, ra file ISO" $ok1
   Ck "khong co DUNG / LOI KHONG NGO" (-not ($txt -match "!! DUNG|LOI KHONG NGO"))
+  Ck "chu in ra sach: khong co dong 'RemoteException' (dong trong tren kenh loi cua oscdimg), van thay tien do dong ISO" ((-not ($txt -match "RemoteException")) -and ($txt -match "% complete"))
+  Ck "buoc tiep: chi duong TU DONG (ghep vao ISO Proxmox tu cai) truoc cach lam tay" ($txt -match "Buoc tiep \(TU DONG\)")
   Ck "chon dung ban Server co giao dien -> may mau tpl-win2022, driver 2k22" ($txt -match "tpl-win2022")
   Ck "python.exe kiem chu ky Python Software Foundation" ($txt -match "chu ky Python Software Foundation hop le")
   Ck "ffmpeg kem san (dung ma kiem agent doi)" ($txt -match "ffmpeg: \d+ MB, dung ma kiem")
