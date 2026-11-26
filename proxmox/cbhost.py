@@ -26,9 +26,9 @@
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "26/11c"
+CBHOST_VER = "26/11d"
 
-import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
+import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 CONF_F = os.environ.get("CBHOST_CONF") or "/etc/cloudblue/cbhost.conf"
 SECRET_F = os.environ.get("CBHOST_SECRET") or "/etc/cloudblue/cbhost.secret"
@@ -53,6 +53,18 @@ AUTO_WAIT_S = 3 * 3600          # tự dựng máy mẫu: Windows tự cài tố
 AUTO_TRIES = 2                  # tự dựng máy mẫu: thử tối đa 2 lần / bản
 AUTO_CHK_S = 45                 # tự dựng máy mẫu: hỏi máy ảo "cài xong chưa" 45 giây / lần
 RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
+USB_MNT = os.environ.get("CBHOST_USB_MNT") or "/run/cloudblue-usb"            # chỗ gắn tạm (chỉ đọc) USB có ISO máy mẫu
+ISO_DIR = os.environ.get("CBHOST_ISO_DIR") or "/var/lib/vz/template/iso"      # kho ISO "local" của Proxmox
+NAP_PY = os.environ.get("CBHOST_NAP_PY") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "cb_nap.py")
+NAP_CONF_F = os.environ.get("CBHOST_NAP_CONF") or "/etc/cloudblue/nap.json"   # kho của CHÍNH USB cài máy này (dịch vụ cloudblue-nap lo)
+RX_MAU_F = re.compile(r"^CloudBlue-MayMau-[a-z0-9]{3,24}\.iso$")
+USB_FS = {"exfat": ("exfat", "ro"), "vfat": ("vfat", "ro"), "ntfs": ("ntfs3", "ro"), "ext4": ("ext4", "ro,noload"), "ext3": ("ext3", "ro,noload"), "ext2": ("ext2", "ro")}
+USB_EVERY_S = 20                # xem có USB mới cắm: 20 giây / lần
+USB_AGAIN_S = 600               # USB đã xem xong (đủ / không có gì): 10 phút sau mới xem lại (rút ra cắm lại = xem ngay)
+MAU_MIN = 300 * 2**20           # file ISO máy mẫu thật luôn lớn hơn mức này (USB thường: file nhỏ hơn thì bỏ qua)
+KHO_MAGIC = b"CBKHO1\n"
+NAP_DONE_F = os.environ.get("CBHOST_NAP_DONE") or "/var/lib/cloudblue/nap-xong.json"
+KHO_HDR = 16384
 RESOLV_F = os.environ.get("CBHOST_RESOLV") or "/etc/resolv.conf"
 IFACES_F = os.environ.get("CBHOST_IFACES") or "/etc/network/interfaces"
 TTY_F = os.environ.get("CBHOST_TTY") or "/dev/tty1"            # màn hình gắn vào máy chủ
@@ -494,7 +506,9 @@ def net_heal(c, n=1):
 
 def ascii_vn(s):
     """Chữ Việt → không dấu (màn hình chữ của máy chủ không có phông tiếng Việt)."""
-    s = unicodedata.normalize("NFD", str(s).replace("đ", "d").replace("Đ", "D"))
+    s = str(s)
+    for a, b in (("đ", "d"), ("Đ", "D"), (" · ", " | "), ("·", "|"), ("—", "-"), ("–", "-"), ("›", ">"), ("→", "->"), ("…", "...")): s = s.replace(a, b)
+    s = unicodedata.normalize("NFD", s)
     return "".join(ch for ch in s if unicodedata.category(ch) != "Mn").encode("ascii", "replace").decode("ascii")
 
 
@@ -589,6 +603,7 @@ class Host:
         self.lock = threading.Lock(); self.busy = {}; self.poll_s = 10; self.want = []; self.tpl_need = []
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
+        self.usb = None                                                                                  # luồng nạp ISO máy mẫu từ USB (cmd_run bật)
 
     def save(self):
         with self.lock: save_json(STATE_F, self.st)
@@ -984,6 +999,7 @@ class Host:
                    "running": sum(1 for x in vms.values() if x["status"] == "running" and not x["template"]),
                    "tpl": sorted(t for t in tpls if t in self.tpl_need or not self.tpl_need), "iso": self.iso_list, "ver": CBHOST_VER}
         if self.auto: metrics["tpl_auto"] = self.auto[:8]
+        if self.usb is not None and self.usb.state: metrics["usb"] = dict(self.usb.state)     # đang chép / đã chép / lỗi chép ISO máy mẫu từ USB
         while len(json.dumps(metrics)) > 12000 and (metrics.get("tpl_auto") or metrics["iso"]):      # web bỏ CẢ gói số đo nếu quá 16 KB → cắt bớt phần phụ
             if metrics.get("tpl_auto"): metrics.pop("tpl_auto")
             else: metrics["iso"] = metrics["iso"][:len(metrics["iso"]) // 2]
@@ -1020,6 +1036,203 @@ class Host:
         return True
 
 
+# ---------------------------------------------------------------- nạp ISO máy mẫu từ USB cắm vào máy chủ ĐANG CHẠY (26/11d)
+# ISO CloudBlue-Proxmox ghép thiếu ISO máy mẫu (hoặc muốn thêm bản Windows sau) → KHÔNG phải cài lại máy chủ: cắm USB vào là máy chủ tự chép. Nhận 2 kiểu USB:
+#   (1) USB cài đặt CloudBlue-Proxmox bản CÓ kèm máy mẫu (Rufus, DD) — kể cả USB ghép sau lần cài máy này: đọc cấu hình kho trong file proxmox-first-boot của USB,
+#       rồi nhờ cb_nap.py chép (kiểm SHA-256 từng file);
+#   (2) USB thường (exFAT / NTFS / FAT32 / ext) có file CloudBlue-MayMau-*.iso (thư mục gốc hoặc sâu 2 cấp).
+# Chỉ ĐỌC ổ USB / ổ tháo rời chưa gắn phần nào, không thuộc LVM / ZFS / RAID. File vào kho ISO xong thì phần tự dựng máy mẫu (auto_tpl) tự chạy.
+def _flat(node):
+    yield node
+    for ch in node.get("children") or []:
+        for x in _flat(ch): yield x
+
+
+def usb_disks():
+    """Ổ USB / ổ tháo rời KHÔNG gắn phần nào → [{path, size, nodes: [(đường dẫn, kiểu hệ tệp)]}]"""
+    rc, out = run(["lsblk", "-J", "-b", "-o", "NAME,TYPE,FSTYPE,MOUNTPOINT,PATH,TRAN,RM,SIZE"], 30)
+    try: devs = (json.loads(out).get("blockdevices") or []) if rc == 0 else []
+    except Exception: devs = []
+    res = []
+    for d in devs:
+        if not isinstance(d, dict) or d.get("type") != "disk" or not (d.get("tran") == "usb" or d.get("rm") in (True, 1, "1")) or not d.get("path"): continue
+        nodes = [n for n in _flat(d) if isinstance(n, dict)]
+        if any(n.get("mountpoint") or (n.get("fstype") or "") in ("LVM2_member", "zfs_member", "linux_raid_member", "swap") for n in nodes): continue
+        try: size = int(d.get("size") or 0)
+        except (TypeError, ValueError): size = 0
+        res.append({"path": str(d["path"]), "size": size, "nodes": [(str(n["path"]), str(n.get("fstype") or "")) for n in nodes if n.get("path")]})
+    return res
+
+
+def usb_mount(dev, fst, opt, mp):
+    try: os.makedirs(mp, exist_ok=True)
+    except OSError: return False
+    return run(["mount", "-t", fst, "-o", opt + ",nosuid,nodev,noexec", dev, mp], 60)[0] == 0
+
+
+def usb_umount(mp):
+    run(["umount", mp], 60)
+
+
+def usb_kho_conf(mp):
+    """Thư mục gốc 1 USB cài đặt CloudBlue-Proxmox (đang gắn ở mp) → cấu hình kho ISO máy mẫu {id, off, size, n}; không phải / không kèm máy mẫu → None"""
+    try:
+        with open(os.path.join(mp, "proxmox-first-boot"), "r", encoding="utf-8", errors="replace") as f: txt = f.read(4000000)
+    except OSError:
+        return None
+    m = re.search(r"nap\.json\" 600 <<'CB_B64_EOF'\n([A-Za-z0-9+/=\n]{8,4000})\nCB_B64_EOF", txt)
+    if not m: return None
+    try: c = json.loads(base64.b64decode(m.group(1).replace("\n", "")).decode("utf-8"))
+    except Exception: return None
+    if not (isinstance(c, dict) and isinstance(c.get("id"), str) and re.fullmatch(r"[0-9A-Za-z_.-]{4,80}", c["id"]) and isinstance(c.get("off"), int) and isinstance(c.get("size"), int)
+            and isinstance(c.get("n"), int) and c["n"] > 0 and 0 < c["off"] < c["size"]): return None
+    return {"id": c["id"], "off": c["off"], "size": c["size"], "n": c["n"]}
+
+
+def kho_files(dev, kc):
+    """Đầu mục kho trên thiết bị → [{name, size}]; không đọc được / không khớp mã kho → None"""
+    try:
+        with open(dev, "rb") as f:
+            f.seek(kc["off"]); hdr = f.read(KHO_HDR)
+    except (OSError, ValueError):
+        return None
+    if not hdr.startswith(KHO_MAGIC) or b"\n" not in hdr[len(KHO_MAGIC):]: return None
+    try: m = json.loads(hdr[len(KHO_MAGIC):hdr.index(b"\n", len(KHO_MAGIC))].decode("utf-8"))
+    except (ValueError, UnicodeDecodeError): return None
+    if not isinstance(m, dict) or m.get("id") != kc["id"] or not isinstance(m.get("files"), list): return None
+    return [{"name": x["name"], "size": x["size"]} for x in m["files"]
+            if isinstance(x, dict) and isinstance(x.get("name"), str) and RX_MAU_F.match(x["name"]) and isinstance(x.get("size"), int) and x["size"] > 0]
+
+
+def iso_have(name, size):
+    p = os.path.join(ISO_DIR, name)
+    try: return os.path.isfile(p) and os.path.getsize(p) == size
+    except OSError: return False
+
+
+def nap_src(dev, kc):
+    """Nhờ cb_nap.py chép kho từ thiết bị (kiểm SHA-256 từng file, file có sẵn thì bỏ qua) → (đủ?, mấy dòng cuối)"""
+    os.makedirs(USB_MNT, exist_ok=True)
+    cf = os.path.join(USB_MNT, "nap.json")
+    with open(cf, "w") as f: json.dump(kc, f)
+    env = dict(os.environ, CBNAP_CONF=cf, CBNAP_DONE=os.path.join(USB_MNT, "nap-xong.json"), CBNAP_DEST=ISO_DIR, PYTHONIOENCODING="utf-8", PYTHONUNBUFFERED="1")
+    try:
+        r = subprocess.run([sys.executable or "python3", NAP_PY, "--src", dev], capture_output=True, text=True, timeout=6 * 3600, env=env)
+        return r.returncode == 0, ((r.stdout or "") + (r.stderr or "")).strip()[-300:]
+    except subprocess.TimeoutExpired:
+        return False, "quá giờ chờ (6 giờ)"
+    except OSError as e:
+        return False, str(e)
+
+
+def usb_find_files(mp):
+    """File CloudBlue-MayMau-*.iso trên phân vùng đang gắn (thư mục gốc + sâu 2 cấp) → [đường dẫn]"""
+    res = []
+    for base, dirs, names in os.walk(mp):
+        if base[len(mp):].count(os.sep) >= 2: dirs[:] = []
+        dirs[:] = [d for d in dirs if not d.startswith(("$", ".")) and d.lower() != "system volume information"]
+        for nm in names:
+            if RX_MAU_F.match(nm): res.append(os.path.join(base, nm))
+    return sorted(res)[:20]
+
+
+def usb_copy_file(src, dst):
+    """Chép 1 file ISO máy mẫu vào kho ISO (qua file .part; đủ số byte mới đổi tên)."""
+    size = os.path.getsize(src)
+    if size < MAU_MIN: raise IOError("file quá nhỏ, không phải ISO máy mẫu")
+    free = shutil.disk_usage(os.path.dirname(dst)).free
+    if free < size + 2**30: raise IOError("kho ISO không đủ chỗ: cần %.1f GB, còn %.1f GB" % (size / 2**30, free / 2**30))
+    part = dst + ".part"
+    try:
+        n = 0
+        with open(src, "rb") as f, open(part, "wb") as o:
+            while True:
+                b = f.read(4 * 1024 * 1024)
+                if not b: break
+                o.write(b); n += len(b)
+            o.flush(); os.fsync(o.fileno())
+        if n != size: raise IOError("đọc USB thiếu dữ liệu (%d / %d byte)" % (n, size))
+        os.chmod(part, 0o644); os.replace(part, dst)
+    except BaseException:
+        try: os.remove(part)
+        except OSError: pass
+        raise
+
+
+class UsbNap(threading.Thread):
+    """Luồng nền của dịch vụ: USB có ISO máy mẫu cắm vào lúc nào cũng tự chép vào kho ISO (không cần cài lại máy chủ)."""
+    def __init__(self, c, say=None):
+        threading.Thread.__init__(self, daemon=True)
+        self.c, self.say = c, say or tty_say
+        self.seen = {}; self.state = {}
+
+    def run(self):
+        time.sleep(15)
+        while True:
+            try: self.step()
+            except Exception as e: log("USB máy mẫu: lỗi vòng — %s" % str(e)[:160])
+            time.sleep(USB_EVERY_S)
+
+    def step(self):
+        live = set()
+        for d in usb_disks():
+            key = "%s:%d" % (d["path"], d["size"]); live.add(key)
+            if self.seen.get(key, 0) > time.time(): continue
+            r = self.one(d)
+            self.seen[key] = time.time() + (USB_AGAIN_S if r is not False else 60)
+        for k in [k for k in self.seen if k not in live]: del self.seen[k]      # rút ra → quên; cắm lại là xem ngay
+
+    def set(self, st, msg):
+        self.state = {"s": st, "msg": msg[:200], "t": int(time.time())}
+        log("USB máy mẫu: " + msg)
+        try: self.say("USB: " + msg)
+        except Exception: pass
+
+    def one(self, d):
+        """→ True (kho ISO đã đủ mọi file của USB này) | None (USB không có ISO máy mẫu / bên khác đang lo) | False (lỗi — 1 phút sau thử lại)"""
+        mp = os.path.join(USB_MNT, "m")
+        kc = None
+        for path, fst in d["nodes"]:                                            # (1) USB cài đặt CloudBlue-Proxmox ghi kiểu DD
+            if fst != "iso9660": continue
+            if not usb_mount(path, "iso9660", "ro", mp): continue
+            try: kc = usb_kho_conf(mp)
+            finally: usb_umount(mp)
+            break
+        if kc:
+            if load_json(NAP_CONF_F, {}).get("id") == kc["id"] and not os.path.exists(NAP_DONE_F): return None      # USB của chính lần cài này: dịch vụ cloudblue-nap đang chép
+            files = kho_files(d["path"], kc)
+            if not files:
+                self.set("err", "USB %s: không đọc được kho ISO máy mẫu (USB ghi lỗi?) — ghi lại USB bằng Rufus (DD Image) rồi cắm lại" % d["path"]); return False
+            need = [x for x in files if not iso_have(x["name"], x["size"])]
+            if not need: return True
+            self.set("copy", "thấy %d ISO máy mẫu trên USB cài đặt — đang chép %d file (%.1f GB) vào máy chủ, ĐỪNG rút USB" % (len(files), len(need), sum(x["size"] for x in need) / 2**30))
+            ok, out = nap_src(d["path"], kc)
+            if ok and all(iso_have(x["name"], x["size"]) for x in files):
+                self.set("done", "đã chép xong %d ISO máy mẫu — máy chủ tự dựng máy mẫu (mỗi bản 20-40 phút), có thể rút USB" % len(files)); return True
+            self.set("err", "chép ISO máy mẫu từ USB CHƯA được (%s) — 1 phút sau thử lại" % ((out.splitlines() or ["?"])[-1][:120])); return False
+        found = copied = 0
+        for path, fst in d["nodes"]:                                            # (2) USB thường có file CloudBlue-MayMau-*.iso
+            if fst not in USB_FS: continue
+            if not usb_mount(path, USB_FS[fst][0], USB_FS[fst][1], mp): continue
+            try:
+                for src in usb_find_files(mp):
+                    found += 1
+                    name = os.path.basename(src); dst = os.path.join(ISO_DIR, name); size = os.path.getsize(src)
+                    if iso_have(name, size): continue
+                    try:
+                        if time.time() - os.path.getmtime(dst + ".part") < 120: return False          # bên khác đang ghi file này
+                    except OSError: pass
+                    self.set("copy", "đang chép %s (%.1f GB) từ USB vào máy chủ, ĐỪNG rút USB" % (name, size / 2**30))
+                    os.makedirs(ISO_DIR, exist_ok=True)
+                    usb_copy_file(src, dst); copied += 1
+            except (OSError, IOError) as e:
+                self.set("err", "chép ISO máy mẫu từ USB lỗi (%s) — 1 phút sau thử lại" % str(e)[:120]); return False
+            finally:
+                usb_umount(mp)
+        if copied: self.set("done", "đã chép xong %d ISO máy mẫu — máy chủ tự dựng máy mẫu (mỗi bản 20-40 phút), có thể rút USB" % copied)
+        return True if found else None
+
+
 # ---------------------------------------------------------------- tự cập nhật
 def fetch_update(url=None):
     """Bản cbhost.py trên GitHub → (bản, nội dung) nếu KHÁC bản đang chạy và biên dịch được; không thì None."""
@@ -1044,7 +1257,8 @@ def apply_update(ver, txt, path=None):
 
 def update_due(h, t_now, last):
     """Đến lúc xem bản mới chưa: dịch vụ systemd (có INVOCATION_ID), bật tự cập nhật, 1 giờ / lần, không có máy ảo nào đang dựng / xoá."""
-    return (h.c.get("auto_update") and bool(os.environ.get("INVOCATION_ID")) and t_now - last >= UPD_EVERY_S and not h.busy)
+    return (h.c.get("auto_update") and bool(os.environ.get("INVOCATION_ID")) and t_now - last >= UPD_EVERY_S and not h.busy
+            and not (h.usb is not None and h.usb.state.get("s") == "copy"))
 
 
 def cmd_run():
@@ -1052,6 +1266,9 @@ def cmd_run():
     log("cbhost %s chạy — node %s, gọi %s mỗi ~10 giây" % (CBHOST_VER, h.pve.node, h.web.url))
     last_upd = time.time() - UPD_EVERY_S + 120                     # bật lên 2 phút sau mới xem bản mới lần đầu
     nw, scr = NetWatch(h.c), Screen(h.c)
+    if h.c["auto_tpl"]:                                             # máy cài bằng ISO CloudBlue-Proxmox: USB có ISO máy mẫu cắm lúc nào cũng tự chép
+        try: h.usb = UsbNap(h.c); h.usb.start()
+        except Exception as e: log("không bật được phần nạp ISO từ USB: %s" % str(e)[:120])
     try:
         if h.c["net_heal"] and os.path.exists(DHCP_UNIT_F) and bridge_ipv4(h.c["bridge"]) == "v4":      # admin đã đặt IPv4 cho cầu → gỡ dịch vụ xin DHCP tạm
             log("mạng: " + ensure_dhcp4(h.c["bridge"]))
