@@ -28,11 +28,14 @@
 #     VPS Linux: vé đăng ký ghi vào /opt/cloudblue/seed.json; nới ổ / bằng growpart + resize2fs. Tắt: "linux_tpl": [].
 #     27/11b: admin bật bản Ubuntu trên web (vm_images có tpl-ubuntu2404) → MỌI máy chủ (cả máy cài tay) tự dựng máy mẫu đó,
 #     trừ máy ghi rõ "linux_tpl" trong cấu hình (vd [] = không bao giờ dựng).
+#   · 27/11c: VPS Linux đặt mạng DHCP không gắn MAC máy mẫu (NET_LIN_SH) — trước đây VPS nhân ra có card mạng TẮT.
+#   · 27/11c: VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi mới xoá (Proxmox không cho xoá máy đang chạy: trước đây thử xoá mãi 10 giây / lần
+#     → 2 lượt xoá hỏng chiếm hết max_builds → VPS mới mua đứng "Đang tạo" mãi). Việc nhẹ (xoá) không còn tính vào max_builds.
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11b"
+CBHOST_VER = "27/11c"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -78,8 +81,17 @@ LIN_BASE = "/opt/cloudblue"
 LIN_DONE_F = "/var/lib/cloudblue/maymau.done"
 LIN_FAIL_F = "/var/lib/cloudblue/maymau.loi"
 LIN_WAIT_S = 2 * 3600           # dựng máy mẫu Linux (cài XFCE + OpenClaw, có mạng): tối đa 2 giờ
-LIN_SEAL_SH = ("systemctl stop cloudblue.service; touch /etc/cloud/cloud-init.disabled; cloud-init clean --logs >/dev/null 2>&1; "
+LIN_SEAL_SH = ("systemctl stop cloudblue.service; touch /etc/cloud/cloud-init.disabled; cloud-init clean --logs >/dev/null 2>&1; NETFIX "
                "truncate -s 0 /etc/machine-id; rm -f /var/lib/dbus/machine-id /var/lib/cloudblue/maymau.done /opt/cloudblue/logs/*; sync")
+# 27/11c · MẠNG VPS LINUX: cloud-init (lúc dựng máy mẫu) ghi netplan GẮN VỚI ĐỊA CHỈ MAC của máy mẫu → VPS nhân ra có MAC mới
+# không nhận cấu hình → card mạng tắt, agent không đăng ký được ("Đang tạo" mãi). Lệnh cố định: bỏ file netplan có macaddress,
+# đặt 1 cấu hình DHCP cho mọi card "en*", tắt phần mạng của cloud-init, netplan apply. Chạy lại bao nhiêu lần cũng được.
+NET_LIN_SH = ("D=/etc/netplan; mkdir -p $D; for f in $D/*.yaml; do [ -f \"$f\" ] && grep -qi macaddress \"$f\" && rm -f \"$f\"; done; "
+              "[ -f $D/60-cloudblue.yaml ] || printf 'network:\\n  version: 2\\n  ethernets:\\n    cbnet:\\n      match:\\n        name: \"en*\"\\n"
+              "      dhcp4: true\\n      dhcp6: true\\n' > $D/60-cloudblue.yaml; chmod 600 $D/60-cloudblue.yaml; "
+              "mkdir -p /etc/cloud/cloud.cfg.d; printf 'network: {config: disabled}\\n' > /etc/cloud/cloud.cfg.d/99-cloudblue-net.cfg; ")
+NET_LIN_ARGS = ["sh", "-c", NET_LIN_SH + "netplan apply >/dev/null 2>&1; ip -4 -br addr | grep -c UP"]
+LIN_SEAL_SH = LIN_SEAL_SH.replace("NETFIX ", NET_LIN_SH)        # 27/11c: máy mẫu mới lưu sẵn mạng không gắn MAC
 GROW_LIN_SH = ('R=$(findmnt -no SOURCE /); P=$(cat /sys/class/block/${R#/dev/}/partition); K=/dev/$(lsblk -no PKNAME "$R" | head -1); '
                'growpart "$K" "$P" >/dev/null 2>&1; resize2fs "$R" >/dev/null 2>&1 || xfs_growfs / >/dev/null 2>&1; df -BG --output=size / | tail -1 | tr -dc 0-9')
 GROW_LIN_ARGS = ["sh", "-c", GROW_LIN_SH]
@@ -321,7 +333,14 @@ class Pve:
     def stop(self, vmid): return run([QM, "stop", str(vmid)], 180)
     def shutdown(self, vmid): return run([QM, "shutdown", str(vmid), "--timeout", "90", "--forceStop", "1"], 240)
     def reset(self, vmid): return run([QM, "reset", str(vmid)], 120)
-    def destroy(self, vmid): return run([QM, "destroy", str(vmid), "--purge", "1", "--destroy-unreferenced-disks", "1"], 900)
+    def destroy(self, vmid):
+        """Xoá hẳn máy ảo. 27/11c: Proxmox KHÔNG xoá máy đang chạy ("is running - destroy failed") → tắt hẳn trước
+           (dùng cho VPS đã huỷ, cài lại, huỷ máy ảo tạm của máy mẫu — dữ liệu trong máy đó đằng nào cũng bỏ)."""
+        vm = self.vms().get(int(vmid))
+        if vm and vm["status"] == "running":
+            rc, out = self.stop(vmid)
+            if rc != 0: return rc, "tắt máy để xoá lỗi: " + (out or "")
+        return run([QM, "destroy", str(vmid), "--purge", "1", "--destroy-unreferenced-disks", "1"], 900)
     def ga_ping(self, vmid): return run([QM, "guest", "cmd", str(vmid), "ping"], 30)[0] == 0
 
     def ga_read(self, vmid, path):
@@ -701,6 +720,7 @@ class Host:
         self.c = c or conf(); self.web = web or Web(self.c); self.pve = pve or Pve(self.c)
         self.sec = secret(); self.st = load_json(STATE_F, {}); self.status = "?"; self.name = ""
         self.lock = threading.Lock(); self.busy = {}; self.poll_s = 10; self.want = []; self.tpl_need = []
+        self.light = set()                                          # 27/11c · việc nhẹ (xoá máy ảo): không tính vào max_builds
         self.soft = set()                                           # việc nền KHÔNG phải tạo / xoá máy (đổi cấu hình, nới ổ C): vẫn báo web máy đang chạy / tắt như thường
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
@@ -716,15 +736,19 @@ class Host:
         return LIN_BASE + "/" + name if is_linux_tpl(tpl) else self.c["seed_path"].rsplit("\\", 1)[0] + "\\" + name
 
     # ---- việc chạy lâu (nhân bản, xoá) ở luồng riêng: vẫn hỏi web đều 10 giây / lần
-    def bg(self, vid, fn, *a, soft=False):
-        if vid in self.busy or len(self.busy) >= self.c["max_builds"]: return False
+    def bg(self, vid, fn, *a, soft=False, light=False):
+        """Chạy fn ở luồng riêng. Việc nặng (dựng / nhân bản) tối đa max_builds cùng lúc; việc nhẹ (light: xoá) không bị giới hạn
+           và không chiếm chỗ của việc nặng (27/11c)."""
+        if vid in self.busy: return False
+        if not light and sum(1 for k in self.busy if k not in self.light) >= self.c["max_builds"]: return False
         def go():
             try: fn(*a)
             except Exception as e:
                 self.fail(vid, "lỗi: %s" % e)
             finally:
-                self.busy.pop(vid, None); self.soft.discard(vid)
+                self.busy.pop(vid, None); self.soft.discard(vid); self.light.discard(vid)
         if soft: self.soft.add(vid)
+        if light: self.light.add(vid)
         th = threading.Thread(target=go, daemon=True); self.busy[vid] = th; th.start()
         return True
 
@@ -812,7 +836,7 @@ class Host:
         vmid = self.vmid(vid)
         if vmid in self.pve.vms():
             log("VPS-%s: xoá máy ảo %d" % (vid, vmid))
-            rc, out = self.pve.destroy(vmid)
+            rc, out = self.pve.destroy(vmid)                         # 27/11c: máy đang chạy → destroy tự tắt hẳn trước
             if rc != 0: return self.fail(vid, "xoá máy ảo lỗi: " + out[-200:])
         with self.lock: self.st.pop(str(vid), None)
         self.save()
@@ -825,6 +849,10 @@ class Host:
         idf = self.gpath(it["tpl"], "identity.json")
         if has_identity(self.pve.ga_read(vmid, idf)):             # máy mẫu lỡ ĐÃ ĐĂNG KÝ → mọi bản nhân ra sẽ mang chung 1 mã máy → dừng, báo làm lại máy mẫu
             return self.fail(vid, "máy mẫu %s đã đăng ký CloudBlue (có %s) — làm lại máy mẫu theo hướng dẫn (cài CloudBlue PC KHÔNG nhập mã)" % (it["tpl"], idf))
+        if s.get("lin") and not s.get("net"):                      # 27/11c: mạng Linux không gắn MAC máy mẫu (xem NET_LIN_SH)
+            rc, out = self.pve.ga_exec(vmid, NET_LIN_ARGS, 90)
+            log("VPS-%s: đặt mạng DHCP cho Linux (%s)" % (vid, "được" if rc == 0 else "lỗi: " + str(out or "")[-120:]))
+            with self.lock: s["net"] = True
         rc, out = self.pve.ga_write(vmid, self.gpath(it["tpl"], "seed.json"), json.dumps({"hw": it["hw"], "ticket": s["ticket"]}))
         if rc != 0: return self.fail(vid, "ghi vé vào máy ảo lỗi (QEMU guest agent): " + out[-200:])
         with self.lock: s["seeded"] = True; s["t_seed"] = time.time(); s.pop("err", None)
@@ -1226,7 +1254,7 @@ class Host:
                 else: rep.append({"id": vid, "state": "creating", "inst": (s or {}).get("inst") or 0})
                 continue
             if it["want"] == "deleted":
-                if vm: self.bg(vid, self.remove, vid); rep.append({"id": vid, "state": "stopped", "inst": (s or {}).get("inst") or 0})
+                if vm: self.bg(vid, self.remove, vid, light=True); rep.append({"id": vid, "state": "stopped", "inst": (s or {}).get("inst") or 0})
                 else:
                     if s is not None:
                         with self.lock: self.st.pop(str(vid), None)
