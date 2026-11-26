@@ -1,4 +1,5 @@
 ghep
+mang
 win
 bios
 uefi

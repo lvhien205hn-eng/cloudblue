@@ -499,11 +499,13 @@ def main():
         s.page.click("#vma-retry"); s.page.wait_for_timeout(700)
         ck("không lỗi trang khi tải lỗi / thử lại", not s.vis("#vma-err") and not s.errors, s.errors)
         s.close()
-        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2405:4803:ff84:ac60::10"
+        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2405:4803:ff84:ac60::10"; adm6["hosts"][0]["info"]["ip6_only"] = True
         s = Site(br, html, True, vm_data(adm=adm6), path="/admin")
         admin_open(s)
         href = s.js("() => { const a = document.querySelector('#vma-hosts [data-vmhost] a[href*=\":8006\"]'); return a ? a.getAttribute('href') : null; }")
         ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2405:4803:ff84:ac60::10]:8006", href)
+        cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
+        ck("máy chủ chỉ có IPv6 (cbhost báo ip6_only): thẻ máy đó có dòng ⚠️ 'chỉ có IPv6 — mạng chưa cấp IPv4'; máy khác không có", "chỉ có IPv6 — mạng chưa cấp IPv4" in cards[0] and "chỉ có IPv6" not in cards[1], cards)
         s.close()
         br.close()
     print("\nKẾT QUẢ: %d đạt, %d lỗi" % (OK, FAIL))
