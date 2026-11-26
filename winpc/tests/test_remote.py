@@ -559,8 +559,13 @@ else:
     time.sleep(0.4); n0 = len(au); io3.tick = 1; t0 = time.time()
     ck("màn hình tự đổi (không ai thao tác) → khung mới tới trong ≤ 0,6 giây", wait(lambda: len(au) > n0, 1.0, 0.005) and au[n0][0] - t0 <= 0.6, (len(au) - n0, au[n0][0] - t0 if len(au) > n0 else None))
     time.sleep(1.3); burst = au[n0:]
-    ck("… sau khung đổi gửi lại khung đó vài lần cho bộ nén làm nét (không chụp lại; hình đã nét — 2 khung liền chỉ vài chục byte — thì thôi, tối đa %d lần), rồi lại im: 3–%d khung trong 1,3 giây"
-       % (R.PIPE_SETTLE, R.PIPE_SETTLE + 5), 3 <= len(burst) <= R.PIPE_SETTLE + 5, [x[1] for x in burst])
+    ck("… khung đổi NHỎ sau lúc yên (con trỏ chữ nháy, đồng hồ) đã nét sẵn → KHÔNG gửi lại khung nào cho bộ nén (bản đầu gửi mù 6 khung sau mỗi lần đổi): 1–5 khung trong 1,3 giây",
+       1 <= len(burst) <= 5 and burst[0][1] < R.PIPE_FINE, [x[1] for x in burst])
+    time.sleep(0.5); n0 = len(au); f0 = e3.fed; g0 = e3.grabs; io3.noise = True; io3.tick = 1001
+    wait(lambda: len(au) > n0, 1.0, 0.005); time.sleep(1.6); burst = au[n0:]; big = [x for x in burst if x[1] >= R.PIPE_SMALL]
+    ck("… khung đổi NẶNG (cả màn hình, bộ nén bị ép cỡ) → gửi lại chính khung đó cho nét dần (không chụp thêm), mỗi lần chờ khung trước nén xong, tối đa %d lần rồi thôi: %d khung nặng"
+       % (R.PIPE_SETTLE, len(big)), 4 <= len(big) <= R.PIPE_SETTLE + 3 and e3.fed - f0 <= R.PIPE_SETTLE + 5 and e3.grabs - g0 <= 9, ([x[1] for x in burst], e3.fed - f0, e3.grabs - g0))
+    io3.noise = False; io3.tick = 1; time.sleep(0.8)
     lat = []
     for k in range(2, 8):
         time.sleep(0.45); n0 = len(au); e3.kick(); io3.tick = k; t0 = time.time()          # người xem vừa thao tác → màn hình đổi
