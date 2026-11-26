@@ -26,11 +26,13 @@
 #     TỰ DỰNG (auto_tpl): tải ảnh Ubuntu cloud CHÍNH CHỦ (kiểm SHA256SUMS) → máy ảo cbmau-ubuntu2404 + cloud-init (ghi cb.json, chạy
 #     proxmox/vm/linux-vm.sh) → xong (/var/lib/cloudblue/maymau.done) → dừng agent, xoá mã máy, tắt cloud-init, xoá machine-id → máy mẫu.
 #     VPS Linux: vé đăng ký ghi vào /opt/cloudblue/seed.json; nới ổ / bằng growpart + resize2fs. Tắt: "linux_tpl": [].
+#     27/11b: admin bật bản Ubuntu trên web (vm_images có tpl-ubuntu2404) → MỌI máy chủ (cả máy cài tay) tự dựng máy mẫu đó,
+#     trừ máy ghi rõ "linux_tpl" trong cấu hình (vd [] = không bao giờ dựng).
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11a"
+CBHOST_VER = "27/11b"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -175,6 +177,7 @@ def conf():
     c["net_heal"] = c["auto_tpl"] if c.get("net_heal") is None else c.get("net_heal") is True      # mặc định: bật trên máy cài bằng ISO CloudBlue-Proxmox
     lt = c.get("linux_tpl")                                                                       # 27/11a · máy mẫu Linux tự dựng (mặc định: máy cài bằng ISO)
     c["linux_tpl"] = (["ubuntu2404"] if c["auto_tpl"] else []) if lt is None else [t for t in lt if t in LINUX_TPLS] if isinstance(lt, list) else []
+    c["linux_web"] = lt is None                                                                   # 27/11b · không ghi rõ → web bật bản Linux nào thì dựng bản đó
     if not isinstance(c.get("host_name"), str) or not RX_HOSTNAME.match(c["host_name"]): c["host_name"] = ""
     return c
 
@@ -1155,9 +1158,15 @@ class Host:
         with self.lock: s = self.st.setdefault(key, {}); s["made"] = False; s.pop("vmid", None)
         self.save()
 
+    def linux_tags(self):
+        """Máy mẫu Linux cần tự dựng: theo cấu hình + (27/11b) bản Linux admin đã bật trên web (tpl_need) nếu cấu hình không ghi rõ."""
+        tags = list(self.c["linux_tpl"])
+        if self.c.get("linux_web"): tags += [t for t in LINUX_TPLS if "tpl-" + t in self.tpl_need and t not in tags]
+        return tags
+
     def reconcile_linux(self, vms, tpls):
         res = []
-        for tag in self.c["linux_tpl"]:
+        for tag in self.linux_tags():
             tpl = "tpl-" + tag; key = "l" + tag; s = self.st.get(key) or {}
             if key in self.busy: res.append({"tag": tag, "state": "working"}); continue
             if tpl in tpls or any(v["name"] == tpl for v in vms.values()):
