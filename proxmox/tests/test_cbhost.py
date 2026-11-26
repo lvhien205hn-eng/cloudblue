@@ -497,6 +497,32 @@ try:
     net_reset(lease=False)
     rep1 = cb.net_report(C6)
     ck("lệnh status / net in rõ tình trạng mạng (IPv4 KHÔNG · IPv6 có · DNS · phân giải KHÔNG ĐƯỢC)", "IPv4 KHÔNG" in rep1 and "IPv6 có" in rep1 and "192.168.100.1" in rep1 and "KHÔNG ĐƯỢC" in rep1 and "tự sửa mạng: bật" in rep1, rep1)
+    said = []; T2 = [5000.0]
+    class H0:                                                       # máy chủ tối thiểu cho Screen
+        name, status = "cbvps-6697", "new"
+        class web: err = "<urlopen error [Errno -3] Temporary failure in name resolution>"
+    scr = cb.Screen(C6, say=said.append, now=lambda: T2[0], report=lambda c: "mạng: IPv4 KHÔNG · IPv6 có")
+    scr.step(False, H0); scr.step(False, H0)
+    n2 = len(said); scr.step(False, H0)
+    ck("màn hình máy chủ: 3 vòng không gọi được web → in 1 dòng 'CHUA goi duoc web …' kèm lỗi + tình trạng mạng (để người ở chỗ máy chỉ cần chụp màn hình)",
+       n2 == 0 and len(said) == 1 and said[0].startswith("CHUA goi duoc web CloudBlue (") and "name resolution" in said[0] and "IPv4" in said[0], said)
+    for _ in range(20): scr.step(False, H0)
+    T2[0] += 301; scr.step(False, H0)
+    ck("… vẫn chưa được: 5 phút mới nhắc lại 1 lần (không tràn màn hình)", len(said) == 2, len(said))
+    scr.healed(1, "thêm 'iface vmbr0 inet dhcp'")
+    scr.step(True, H0); scr.step(True, H0)
+    ck("… lên web được → in ĐÚNG 1 lần 'DA LEN WEB: may chu cbvps-6697 - CHO DUYET …'; dòng tự sửa mạng cũng in ra", len(said) == 4 and "tu sua mang (luot 1)" in said[2]
+       and said[3].startswith("DA LEN WEB: may chu 'cbvps-6697' - CHO DUYET") and "bam DUYET" in said[3], said[2:])
+    off2 = cb.Screen(dict(C6, net_heal=False), say=said.append)
+    for _ in range(5): off2.step(False, H0)
+    off2.step(True, H0)
+    ck("máy cài tay (không phải ISO CloudBlue-Proxmox): không in gì ra màn hình", len(said) == 4)
+    ttyf = os.path.join(netd, "tty"); cb.TTY_F = ttyf
+    cb.tty_say("Chưa gọi được web — đang thử lại, máy chủ tên: đặt lại")
+    tt = open(ttyf, "rb").read()
+    ck("chữ in ra màn hình là chữ KHÔNG DẤU thuần ASCII, có giờ, xuống dòng kiểu màn hình chữ", tt.startswith(b"\r\n[CloudBlue ") and b"Chua goi duoc web" in tt and b"may chu ten: dat lai" in tt and all(c < 128 for c in tt), tt)
+    cb.TTY_F = "/khong/co/tty"; cb.tty_say("x")
+    ck("máy không có màn hình (không ghi được tty): bỏ qua, không lỗi", True)
     ck("web_host / is_ip: tên miền, địa chỉ IPv4, IPv6 trong ngoặc", cb.web_host(C6) == "web.cloudblue.thu" and cb.is_ip("10.0.2.2") and cb.is_ip(cb.web_host({"sb_url": "http://[fec0::2]:8765"})) and not cb.is_ip("a.b"))
 finally:
     cb.run, cb.shutil.which, cb.can_resolve = _run0, _which0, _res0
