@@ -2,8 +2,8 @@
  "base": "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/winpc",
  "files": {
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "032d7eb7ad8865a75d7b59a16da566efd2dfe90cace8202d3f9865318fdfccfa",
-  "agent/pcremote.py": "1d8ddf247c2658c197d790a07a993c34bb8ec1874e5857e9e84c32fe5352d017",
+  "agent/pcagent.py": "b366a7ec6b6871d475a245355a2c1520cd0033589c53c648e5410cbd511d7d8f",
+  "agent/pcremote.py": "f380db869b70c38de36cffac3ad1cd679cfc40b2c68ea2e54c805561f41d302a",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "lib/cbcore.py": "2e80c65e35a725efe2a89bd778c3a94420cacb5e31d24b4b636d184cac13c148",
   "lib/cbrec.py": "d1b8fe22cab0cbfea7f19d8c2efb6b4abd70be8696488883f4377b15ee2008cc",
@@ -26,8 +26,8 @@
  "sha256": {
   "CAI-DAT.cmd": "27c94610547e0ef1a6189dfb07eaa148f269bd125ed1f96169649f8fa18d90de",
   "agent/cbpc.cmd": "466e346f0683a34b37d794dee3c7372828f616264ee313d35153e7990524e49f",
-  "agent/pcagent.py": "032d7eb7ad8865a75d7b59a16da566efd2dfe90cace8202d3f9865318fdfccfa",
-  "agent/pcremote.py": "1d8ddf247c2658c197d790a07a993c34bb8ec1874e5857e9e84c32fe5352d017",
+  "agent/pcagent.py": "b366a7ec6b6871d475a245355a2c1520cd0033589c53c648e5410cbd511d7d8f",
+  "agent/pcremote.py": "f380db869b70c38de36cffac3ad1cd679cfc40b2c68ea2e54c805561f41d302a",
   "agent/watch.cmd": "675a88201f21bc46e8883a5cec3455c0d9fec43f34d6707b5201010eef5b143b",
   "boot/winpeshl.ini": "df803083d1620a7830dea8883404fb50cb7a63562d46c2009551a96281e8ec6a",
   "cb_build.py": "d5d215728a1382ffe97e79ca8924ce623355f545005622df9993ab00a159a1be",
@@ -52,5 +52,5 @@
   "pe/start.cmd": "fb7b89eafc3df010800db0179c9eda44165d18fd53d58caf71b09e44316ab19c",
   "tao-iso.ps1": "9aeddea5c8e8e202c73c053bad0c63f10b95c14a6845c796660a962dbc5feabb"
  },
- "ver": "23.11c"
+ "ver": "26.11a"
 }
