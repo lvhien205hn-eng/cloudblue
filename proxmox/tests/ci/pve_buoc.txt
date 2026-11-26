@@ -1,2 +1,6 @@
 ghep
+mang
+win
+bios
+uefi
 usb

@@ -577,7 +577,7 @@ echo "#het"
         time.sleep(45)
         rc, o0 = vm.ssh(XEM, 120)
         open(os.path.join(KQ, "pve-may-usb-0.txt"), "w").write(o0)
-        ok("đúng tình huống máy thật: máy lên, cbhost chạy, kho ISO TRỐNG, dịch vụ nạp ghi 'không có kho', chưa có máy ảo nào", "total 0" in sec(o0, "iso") and "không có kho" in sec(o0, "nap")
+        ok("đúng tình huống máy thật: máy lên, cbhost chạy, kho ISO TRỐNG, dịch vụ nạp ghi 'không có kho', chưa có máy ảo nào", "total 0" in sec(o0, "iso") and "kho" in sec(o0, "nap") and '"note"' in sec(o0, "nap") and "ISO" not in sec(o0, "iso")
            and "cbmau-" not in sec(o0, "qm"), (sec(o0, "iso"), sec(o0, "nap"), sec(o0, "qm"))) or (res := 1)
         # ---- cắm USB cài đặt bản ĐỦ vào máy đang chạy
         e = vm.plug("du", ISO)
