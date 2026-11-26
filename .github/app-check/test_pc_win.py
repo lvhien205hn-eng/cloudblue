@@ -158,4 +158,33 @@ for vi, want in (("Đã thu nhỏ Roblox (2 tab nhỏ). Kéo thanh trên cùng �
                  ("Đã về màn DỌC — app / game đang mở cần màn ngang nên vẫn hiện ngang.", "Back to portrait — the open app / game needs landscape")):
     got = EN.tr(vi)
     ck(f"English câu máy chủ: …{want[:40]}", want in got and not EN.has_vi(got), got)
+# ---------------- 5. 27/11 · ⚡ VPS NVMe (giá như web / máy chủ · trạng thái · tách khỏi VPS GPU · đổi tên) ----------------
+C = {"unit_cpu": 8000, "unit_ram": 12000, "unit_disk": 1000, "disk_free_gb": 20, "short_up": 0, "days": [1, 3, 7, 30]}
+ck("VPS NVMe: giá tháng 2 vCPU · 4 GB · ổ miễn phí = 64.000đ; 1/3/7/30 ngày = 2.000/6.000/15.000/64.000đ (như web)",
+   B.vm_month(C, 2, 4, 0) == 64000 and [B.vm_tier(C, 64000, d) for d in (1, 3, 7, 30)] == [2000, 6000, 15000, 64000])
+ck("tự chọn 3 vCPU · 4 GB · 60 GB (40 GB vượt mức miễn phí) = 112.000đ / 30 ngày; thuê dưới 30 ngày cộng short_up %",
+   B.vm_tier(C, B.vm_month(C, 3, 4, 40), 30) == 112000 and B.vm_tier(dict(C, short_up=20), 64000, 7) == 18000)
+ck("ổ miễn phí mặc định 20 GB khi máy chủ chưa báo", B.vm_free_gb({}) == 20 and B.vm_free_gb({"custom": {"disk_free_gb": 30}}) == 30)
+ck("SQL v61: ổ miễn phí riêng từng gói — gói ổ 20 GB miễn phí tới 50 GB → 50; mức gói nhỏ hơn ổ của gói → ổ của gói; máy chủ chưa chạy v61 → ổ của gói",
+   B.vm_inc({"disk_gb": 20, "free_gb": 50}) == 50 and B.vm_inc({"disk_gb": 30, "free_gb": 20}) == 30 and B.vm_inc({"disk_gb": 20}) == 20 and B.vm_inc(None) == 0)
+ck("hộp Thuê / Nâng cấp dùng mức miễn phí của gói (chỉ phần vượt mới tính tiền; nâng cấp trong mức miễn phí ghi '0đ — miễn phí')",
+   'ex = b["disk"] - vm_inc(p)' in src0 and 'self.b["disk"] = vm_inc(p)' in src0 and 'fr = int(num(v.get("free_gb")))' in src0 and '"0đ — miễn phí"' in src0
+   and "def flow_box(tk, parent, bg" in src0)
+V = {"id": 12, "name": "VPS-12", "label": "", "status": "running", "want": "running", "online": True, "until": "2099-01-01T00:00:00Z"}
+ck("trạng thái VPS NVMe: chạy · đã tắt · đang tạo · đổi cấu hình · hết hạn · lỗi", [B.vm_state(x)[0] for x in (V, dict(V, want="stopped"), dict(V, status="creating", busy=True),
+   dict(V, cfg_busy=True), dict(V, expired=True), dict(V, err="x"))] == ["run", "off", "inst", "cfg", "exp", "warn"])
+ck("tên hiện: tên riêng (nếu có) rồi mới tới mã VPS-…", B.vm_name(dict(V, label="Treo game")) == "Treo game" and B.vm_name(V) == "VPS-12")
+ck("máy ảo VPS NVMe (pc) không vẽ lặp ở mục VPS GPU", B.vm_pc_ids({"items": [{"id": 1, "pc": "abc"}, {"id": 2}]}) == {"abc"})
+ck("lỗi máy chủ → câu dễ hiểu (hết chỗ không trừ tiền, bảo trì)", "Không trừ tiền" in B.vm_err("P0001 NO_CAPACITY") and "bảo trì" in B.vm_err("MAINT"))
+ck("máy chủ chưa có hàm (chưa chạy SQL) → nhận ra được để báo dễ hiểu", B.vm_missing("Could not find the function public.pc_my_rename") and not B.vm_missing("NOT_ALLOWED"))
+ck("trang chính: thanh dưới có nút ⚡ VPS NVMe, đọc vm_my mỗi lần làm mới, mục VPS NVMe nằm dưới VPS GPU, mở điều khiển không bị bảo trì VPS GPU chặn",
+   '("⚡ VPS NVMe", lambda: VmBuyDlg(self), "primary")' in src0 and 'vm = self.auth.rpc("vm_my", {})' in src0 and "self.vm_slot = tk.Frame(page, bg=BG)" in src0
+   and "self._paint_vm(vm)" in src0 and "def open_pc(self, pid, vm=False):" in src0 and "app.open_pc(i, vm=True)" in src0)
+ck("Thuê VPS NVMe gọi đúng hàm: vm_buy (gói + p_disk_gb khi thêm ổ) · vm_buy_custom (tự chọn); gia hạn / nâng cấp (hỏi giá p_dry) / cài lại / xoá / tắt-bật",
+   all(x in src0 for x in ('"vm_buy_custom", {"p_cores"', 'fn, args = "vm_buy", {"p_plan"', 'args["p_disk_gb"] = b["disk"]', '"vm_my_renew"', '"p_dry": True', '"vm_my_reinstall"',
+                           '"vm_my_cancel"', '"vm_my_power"')))
+ck("✏️ đổi tên: VPS NVMe → vm_my_label · VPS GPU → pc_my_rename (chỉ khi máy chủ có cờ rename — SQL v60)", '"vm_my_label", {"p_id"' in src0
+   and '"pc_my_rename", {"p_pc"' in src0 and 'can_ren = bool((data or {}).get("rename"))' in src0)
+for vi, want in (("⚡ VPS NVMe của bạn", "Your VPS NVMe"), ("Tự chọn cấu hình", "Custom specs"), ("Thuê ngay", "Rent now")):
+    ck(f"English (L): '{vi}' có bản tiếng Anh '{want}'", f'"{want}"' in src0)
 print("%d/%d dat" % (OK[0], OK[1])); sys.exit(0 if OK[0] == OK[1] else 1)
