@@ -294,13 +294,20 @@ if WIN:
             try:
                 au = []
                 e = R.Encoder(ff, "pipe", "x264", sw, sh, sw, sh, 20, 3000, lambda d, k, c, pts: au.append((time.time(), d, bool(k), bool(c))), note, grab_fn=io.grabber,
-                              tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": R.PIPE_CRF, "key_s": 2})
-                e.start()
+                              tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": R.PIPE_CRF, "key_s": R.PIPE_KEY_S})
+                e.start(); t_st = time.time()
                 ok1 = wait(lambda: au and au[0][2] and au[0][3], 20)
                 ck("26.11a cach quay 'pipe' tren Windows that: ffmpeg nhan khung qua ong, khung dau la khung khoa co SPS/PPS", bool(ok1), (len(au), e.err))
-                time.sleep(1.5); n0 = len(au); g0 = e.grabs; time.sleep(4.0)
+                # khung khoa dau bi ep co -> bo chup gui lai cho net dan; net xong (2 khung lien chi vai chuc byte) moi tinh la "dung yen"
+                sharp = wait(lambda: len(au) >= 4 and time.time() - t_st > 1.3 and all(x[1] is not None and len(x[1]) < R.PIPE_SMALL for x in au[-2:]), 12, 0.02)
+                t_sharp = time.time() - t_st; n_sharp = len(au)
+                ck("26.11a 'pipe': hinh that cua man hinh net dan roi DUNG gui lai (<= 12 giay) - khong lam net mai khong dut", bool(sharp), (t_sharp, [len(x[1] or b"") for x in au][:60]))
+                note("  'pipe': khung dau %d KB, net han sau %.1f giay / %d khung: %s" % (len(au[0][1] or b"") // 1024 if au else 0, t_sharp, n_sharp,
+                                                                                        " ".join(str(len(x[1] or b"")) for x in au[:45])))
+                time.sleep(0.4); n0 = len(au); g0 = e.grabs; time.sleep(4.0)
                 idle_n, idle_g = len(au) - n0, e.grabs - g0
                 ck("26.11a 'pipe': man hinh dung yen 4 giay -> chi vai khung giu nhip (<= 30, cach cu la 80) va chi chup ~3 lan / giay (<= 22 lan)", idle_n <= 30 and idle_g <= 22, (idle_n, idle_g))
+                note("  'pipe': 4 giay dung yen = %d khung, %d lan chup ; co tung khung: %s" % (idle_n, idle_g, " ".join(("K" if x[2] else "") + str(len(x[1] or b"")) for x in au[n0:n0 + 40])))
                 lat = []
                 for i in range(6):
                     time.sleep(0.5); n1 = len(au); io.move(8000 + i * 6000, 12000 + i * 5000); e.kick(); t1 = time.time()
