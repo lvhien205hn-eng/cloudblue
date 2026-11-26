@@ -19,13 +19,15 @@
 #     IPv6 + DNS mặc định 192.168.100.1 (không có thật) → máy lên nhưng không gọi được web. Khi KHÔNG gọi được web, cbhost tự: thêm
 #     "iface vmbr0 inet dhcp" (xin IPv4 ngay + mỗi lần bật máy, dhclient tự thử lại mãi) và đặt lại máy chủ tên (DNS) công cộng hợp với
 #     đường ra đang có (IPv4 / IPv6). Luôn lưu bản gốc (*.cb-goc), không đụng cấu hình IPv4 đã có. Tắt: "net_heal": false.
+#     Máy cài bằng ISO còn BÁO RA MÀN HÌNH gắn vào máy chủ (tty1, chữ không dấu): "DA LEN WEB …" / "CHUA goi duoc web … IPv4 … IPv6 … DNS …"
+#     → người ở chỗ máy chỉ cần chụp màn hình, không phải đăng nhập gõ lệnh.
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
 CBHOST_VER = "26/11c"
 
-import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
 CONF_F = os.environ.get("CBHOST_CONF") or "/etc/cloudblue/cbhost.conf"
 SECRET_F = os.environ.get("CBHOST_SECRET") or "/etc/cloudblue/cbhost.secret"
@@ -52,6 +54,7 @@ AUTO_CHK_S = 45                 # tự dựng máy mẫu: hỏi máy ảo "cài 
 RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
 RESOLV_F = os.environ.get("CBHOST_RESOLV") or "/etc/resolv.conf"
 IFACES_F = os.environ.get("CBHOST_IFACES") or "/etc/network/interfaces"
+TTY_F = os.environ.get("CBHOST_TTY") or "/dev/tty1"            # màn hình gắn vào máy chủ
 DNS4, DNS6 = ("8.8.8.8", "1.1.1.1"), ("2001:4860:4860::8888", "2606:4700:4700::1111")
 DNS_BOGUS = ("192.168.100.1",)  # DNS mặc định bộ cài Proxmox tự điền khi lúc cài không xin được gì từ mạng
 NET_FAILS = 3                   # gọi web lỗi MẠNG liên tiếp bấy nhiêu vòng (≈ 30 giây) → thử tự sửa mạng
@@ -447,6 +450,45 @@ def net_heal(c, n=1):
     if host and not is_ip(host) and not can_resolve(host):
         if fix_dns(v4, v6, force=n >= 3): did.append("đặt lại máy chủ tên (DNS): %s" % ", ".join(resolv_servers(open(RESOLV_F, encoding="utf-8", errors="replace").read())))
     return did
+
+
+def ascii_vn(s):
+    """Chữ Việt → không dấu (màn hình chữ của máy chủ không có phông tiếng Việt)."""
+    s = unicodedata.normalize("NFD", str(s).replace("đ", "d").replace("Đ", "D"))
+    return "".join(ch for ch in s if unicodedata.category(ch) != "Mn").encode("ascii", "replace").decode("ascii")
+
+
+def tty_say(msg):
+    """In 1 dòng ra màn hình gắn vào máy chủ (không có màn hình / không ghi được thì thôi)."""
+    try:
+        with open(TTY_F, "w") as f: f.write("\r\n[CloudBlue %s] %s\r\n" % (time.strftime("%H:%M"), ascii_vn(msg)[:400]))
+    except Exception:
+        pass
+
+
+class Screen:
+    """Báo ra màn hình máy chủ: lên web được chưa (1 lần khi đổi trạng thái) · chưa được thì 5 phút / lần kèm tình trạng mạng."""
+    def __init__(self, c, say=None, now=time.time, report=None):
+        self.on, self.c, self.say, self.now, self.report = bool(c.get("net_heal")), c, say or tty_say, now, report or net_report
+        self.state, self.fails, self.last = None, 0, 0.0
+
+    def step(self, ok, h):
+        if not self.on: return
+        if ok:
+            if self.state != "ok":
+                self.say("DA LEN WEB: may chu '%s'%s" % (h.name, " - CHO DUYET: vao web CloudBlue > Quan tri > May cho thue > VPS ao hoa > May chu, bam DUYET" if h.status == "new" else " (%s)" % h.status))
+            self.state, self.fails = "ok", 0
+            return
+        if ok is not False: return
+        self.fails += 1
+        if self.fails >= NET_FAILS and self.now() - self.last >= 300:
+            self.last, self.state = self.now(), "fail"
+            try: rep = self.report(self.c)
+            except Exception as e: rep = "khong doc duoc tinh trang mang (%s)" % str(e)[:60]
+            self.say("CHUA goi duoc web CloudBlue (%s) | %s" % (str(h.web.err or "web tu choi")[:120], rep))
+
+    def healed(self, n, what):
+        if self.on: self.say("tu sua mang (luot %d): %s" % (n, what))
 
 
 class NetWatch:
@@ -969,12 +1011,15 @@ def cmd_run():
     h = Host()
     log("cbhost %s chạy — node %s, gọi %s mỗi ~10 giây" % (CBHOST_VER, h.pve.node, h.web.url))
     last_upd = time.time() - UPD_EVERY_S + 120                     # bật lên 2 phút sau mới xem bản mới lần đầu
-    nw = NetWatch(h.c)
+    nw, scr = NetWatch(h.c), Screen(h.c)
     while True:
         ok = None
         try: ok = h.poll_once()
         except Exception as e: log("lỗi vòng:", e)
-        for x in nw.step(ok, h.web.err): log("TỰ SỬA MẠNG (lượt %d): %s" % (nw.heals, x))
+        try: scr.step(ok, h)
+        except Exception: pass
+        for x in nw.step(ok, h.web.err):
+            log("TỰ SỬA MẠNG (lượt %d): %s" % (nw.heals, x)); scr.healed(nw.heals, x)
         if update_due(h, time.time(), last_upd):
             last_upd = time.time()
             try:
