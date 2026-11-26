@@ -561,11 +561,6 @@ else:
     time.sleep(1.3); burst = au[n0:]
     ck("… khung đổi NHỎ sau lúc yên (con trỏ chữ nháy, đồng hồ) đã nét sẵn → KHÔNG gửi lại khung nào cho bộ nén (bản đầu gửi mù 6 khung sau mỗi lần đổi): 1–5 khung trong 1,3 giây",
        1 <= len(burst) <= 5 and burst[0][1] < R.PIPE_FINE, [x[1] for x in burst])
-    time.sleep(0.5); n0 = len(au); f0 = e3.fed; g0 = e3.grabs; io3.noise = True; io3.tick = 1001
-    wait(lambda: len(au) > n0, 1.0, 0.005); time.sleep(1.6); burst = au[n0:]; big = [x for x in burst if x[1] >= R.PIPE_SMALL]
-    ck("… khung đổi NẶNG (cả màn hình, bộ nén bị ép cỡ) → gửi lại chính khung đó cho nét dần (không chụp thêm), mỗi lần chờ khung trước nén xong, tối đa %d lần rồi thôi: %d khung nặng"
-       % (R.PIPE_SETTLE, len(big)), 4 <= len(big) <= R.PIPE_SETTLE + 3 and e3.fed - f0 <= R.PIPE_SETTLE + 5 and e3.grabs - g0 <= 9, ([x[1] for x in burst], e3.fed - f0, e3.grabs - g0))
-    io3.noise = False; io3.tick = 1; time.sleep(0.8)
     lat = []
     for k in range(2, 8):
         time.sleep(0.45); n0 = len(au); e3.kick(); io3.tick = k; t0 = time.time()          # người xem vừa thao tác → màn hình đổi
@@ -579,6 +574,24 @@ else:
     ck("bộ chụp lỗi giữa chừng → dừng ffmpeg + ghi lý do (luồng canh phiên sẽ đổi sang cách quay cũ)", wait(lambda: e3.exited() and "chup man hinh" in e3.err, 4), (e3.exited(), e3.err))
     e3.stop()
 
+    # hình NẶNG đứng yên (nhiễu kín màn, bộ nén bị ép cỡ từng khung): phải gửi lại cho nét dần rồi DỪNG HẲN — đo trên trang chữ thật 26/11: bản đầu x264 cứ hạ dần
+    # mức lượng tử nên khung gửi lại vẫn ~5 KB mãi (đứng yên vẫn tốn máy), và khung khoá 4 giây / lần làm hình mờ lại liên tục.
+    io4 = R.NullIO(640, 360); io4.tick = 7; io4.noise = True; au4 = []
+    e4 = R.Encoder(FF, "pipe", "x264", 640, 360, 640, 360, 20, 2000, lambda d, k, c, pts: au4.append((time.time(), len(d) if d else -1, bool(k))), grab_fn=io4.grabber,
+                   tune={"x264_preset": "ultrafast", "x264_extra": "partitions=i4x4", "crf": R.PIPE_CRF, "key_s": R.PIPE_KEY_S})
+    e4.start(); t0 = time.time()
+    done = wait(lambda: len(au4) >= 8 and all(x[1] < R.PIPE_SMALL for x in au4[-2:]), 12, 0.02)
+    t_done = time.time() - t0; heavy = [x[1] for x in au4 if x[1] >= R.PIPE_SMALL]; g4 = e4.grabs
+    ck("hình NẶNG đứng yên: khung khoá đầu bị ép cỡ → gửi lại chính khung đó cho nét dần (%d khung nặng, không khung nào quá ~150 KB), nét xong thì DỪNG (%.1f giây), không chụp thừa"
+       % (len(heavy), t_done), bool(done) and 6 <= len(heavy) <= R.PIPE_SETTLE + 2 and max(heavy) <= 160 * 1024 and e4.fed <= len(heavy) + 6 and g4 <= 20 + t_done * 4, (t_done, heavy[:40], e4.fed, g4))
+    n0 = len(au4); time.sleep(2.6); idle4 = au4[n0:]
+    ck("… nét xong: 2,6 giây sau chỉ còn khung giữ nhịp vài chục byte (2–4 khung) — bộ nén KHÔNG lén làm nét tiếp, không có khung khoá định kỳ chen vào (20 giây / lần)",
+       2 <= len(idle4) <= 4 and all(x[1] < R.PIPE_SMALL and not x[2] for x in idle4), [(x[1], x[2]) for x in idle4])
+    n0 = len(au4); io4.tick = 8; e4.kick()
+    done = wait(lambda: len(au4) > n0 + 6 and all(x[1] < R.PIPE_SMALL for x in au4[-2:]), 12, 0.02); n1 = len(au4); time.sleep(1.2)
+    ck("… hình nặng ĐỔI sang hình khác → lại nét dần rồi dừng (không cần khung khoá)", bool(done) and not any(x[2] for x in au4[n0:]) and len(au4) - n1 <= 2, [x[1] for x in au4[n0:]][:40])
+    e4.stop()
+
     time.sleep(0.3); known = list(peers)
     io2 = R.NullIO(1280, 720); io2.tick = 0; logs2 = []
     rm2 = R.Remote(lambda: ident, lambda fn, body: {"ok": True, "on": True, "node": "wintest", "stream": stream}, io2, lambda: FF, logs2.append, None, caps={"enc": ["x264"], "cap": "gdi"})
@@ -591,7 +604,7 @@ else:
     ck("phiên trên máy CHỈ có bộ nén CPU, 2 nhân: cách quay 'pipe', GIỮ nguyên cỡ màn hình 1280×720, 20 khung / giây, trần 4500 kbps",
        (info.get("cap"), info.get("w"), info.get("h"), info.get("fps"), info.get("kbps"), info.get("enc")) == ("pipe", 1280, 720, 20, 4500, "x264"), info)
     s2 = rm2.sess; e2 = s2.enc; cl = " ".join(e2.proc.args)
-    ck("… ffmpeg nhận khung qua ống, nén theo chất lượng kiểu nhẹ nhất (ultrafast), khung khoá định kỳ 4 giây / lần (theo giây thật)", "pipe:0" in cl and "-crf 22" in cl and "ultrafast" in cl and "prev_forced_t+%d)" % R.PIPE_KEY_S in cl and s2.long_gop, cl[-400:])
+    ck("… ffmpeg nhận khung qua ống, nén theo chất lượng kiểu nhẹ nhất (ultrafast), khung khoá định kỳ THƯA (%d giây / lần, theo giây thật), mức lượng tử cố định (qcomp=1.0)" % R.PIPE_KEY_S, "pipe:0" in cl and "-crf 22" in cl and "ultrafast" in cl and "prev_forced_t+%d)" % R.PIPE_KEY_S in cl and "qcomp=1.0" in cl and R.PIPE_KEY_S >= 15 and s2.long_gop, cl[-400:])
     v1 = q.take(R.S_VIDEO, 10)
     ck("… khung đầu là khung khoá có SPS/PPS", v1 is not None and v1[1][0] & 3 == 3, v1 and v1[1][:10])
     time.sleep(2.2)                                                # qua đoạn mở đầu (1 giây chụp đủ nhịp + mấy khung làm nét)
@@ -606,6 +619,19 @@ else:
     io2.ev.clear(); q.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 3000, 4000)); io2.tick = 5; t0 = time.time()
     ck("người xem rê chuột → máy rê + chụp ngay: khung mới về tới người xem sau ≤ 0,25 giây", wait(lambda: q.count(R.S_VIDEO) >= 1, 1.0, 0.005) and time.time() - t0 <= 0.25 and ("move", 3000, 4000) in io2.ev,
        (time.time() - t0, io2.ev[:2]))
+    # đường truyền ổn → nâng TRẦN bitrate: nén theo chất lượng nên không bật lại bộ nén khi hình đang nhẹ (mỗi lần bật lại = 1 khung khoá mờ)
+    time.sleep(0.6); e_old = s2.enc; s2.enc_kbps = 3000; s2.rate.cur = 3000; s2.rate.t_change = time.time() - 100; s2.rate.last_cong = 0; s2.rate.hold_until = 0
+    ck("đường truyền ổn, hình đang nhẹ → chỉ GHI NHẬN trần mới 3750 kbps, KHÔNG bật lại bộ nén (không làm mờ hình vô ích)",
+       wait(lambda: s2.rate_pend and s2.rate.cur == 3750, 3) and (time.sleep(1.2) or True) and s2.enc is e_old and s2.enc_kbps == 3000, (s2.rate_pend, s2.rate.cur, s2.enc is e_old))
+    io2.noise = True; end = time.time() + 6
+    while time.time() < end and s2.enc is e_old: io2.tick += 1; q.send(R.C_MOUSE, struct.pack(">BBHH", 0, 0, 3000 + io2.tick % 50, 4000)); time.sleep(0.04)
+    ck("… hình chạy nặng chạm trần cũ (≥ 60%%) → giờ mới bật lại bộ nén với trần 3750 kbps", s2.enc is not e_old and s2.enc is not None and s2.enc_kbps == 3750 and not s2.rate_pend, (s2.enc is e_old, s2.enc_kbps, s2.rate_pend))
+    io2.noise = False; io2.tick = 6; time.sleep(1.5)
+    e_old = s2.enc; s2.vw, s2.vh, s2.fps = 960, 540, 15; s2.enc_kbps = 400; s2.rate.cur = 400; s2.rate.t_change = time.time() - 100; s2.rate.last_cong = 0; s2.rate.hold_until = 0
+    ck("… còn khi trần mới làm ĐỔI cỡ hình / khung-giây (qua mốc 500 kbps: 960 → 1280, 15 → 20 khung) thì bật lại ngay dù hình đang nhẹ",
+       wait(lambda: s2.enc is not e_old and s2.enc is not None and (s2.vw, s2.fps) == (1280, 20), 4), (s2.enc is e_old, s2.vw, s2.fps, s2.rate.cur))
+    s2.rate.cur = s2.rate.cap; time.sleep(1.2)
+    with q.lock: q.rx[:] = [m for m in q.rx if m[0] != R.P_INFO]
     k0 = s2.t_key; e_old = s2.enc
     s2.wait_key = True; s2.t_key = time.time() - 3                 # vừa phải bỏ khung (người xem chậm) → đang chờ khung khoá, mà khung khoá định kỳ còn xa
     ck("đang chờ khung khoá → tự bật lại bộ nén lấy khung khoá ngay (không chờ khung khoá định kỳ): có bộ nén mới + khung khoá mới trong ≤ 3 giây",
