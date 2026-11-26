@@ -120,5 +120,18 @@ ck("cloudphoned: hỏi nvidia-smi kèm xung (có đường lùi), card bận tí
 ck("lệnh gpufair có trong phonectl (argparse) + cloudphoned gọi ~1 phút / lần, gửi web gpu_top, phần đã hạ không tính là card quá tải",
    "gf = s.add_parser(\"gpufair\")" in open(PHC, encoding="utf-8").read()
    and all(k in open(os.path.join(os.path.dirname(PHC), "..", "cloudphoned.py"), encoding="utf-8").read() for k in ('"gpufair"]', "gpu_top=", "g_eff")))
+print("8. 27/11e · máy MuMu: gộp đủ 2 tiến trình MuMuVMMHeadless mỗi máy (vỏ + máy ảo thật) khi tính % card")
+g2 = runpy.run_path(PHC, run_name="gf_test2"); G2 = g2["_phone_pids"].__globals__; G2["EMU"] = "mumu"
+G2["_mumu_info"] = lambda fresh=True: {0: {"name": "tpl_a12", "pid": 50, "headless_pid": -1}, 3: {"name": "cp_a", "pid": 100, "headless_pid": 101},
+                                       5: {"name": "cp_b", "pid": 200, "headless_pid": 201}}
+G2["_img_pids"] = lambda imgs: {101: "MuMuVMMHeadless.exe", 102: "MuMuVMMHeadless.exe", 202: "MuMuVMMHeadless.exe", 777: "MuMuVMMHeadless.exe",
+                               888: "MuMuVMMHeadless.exe"} if "mumuvmmheadless.exe" in imgs else {}
+G2["_hl_info"] = lambda pids: {k: v for k, v in {102: (3, 101), 202: (-1, 201), 777: (9, 1), 888: (-1, 5)}.items() if k in pids}
+pp = G2["_phone_pids"]()
+ck("pid máy thật gộp vào đúng máy (theo số máy trong dòng lệnh, không có thì theo pid cha); máy ảo lạ (#9 / cha lạ) KHÔNG gộp",
+   pp.get("cp_a") == [101, 100, 102] and pp.get("cp_b") == [201, 200, 202] and pp.get("tpl_a12") == [50]
+   and 777 not in sum(pp.values(), []) and 888 not in sum(pp.values(), []), pp)
+G2["_img_pids"] = lambda imgs: {}
+ck("không có tiến trình MuMuVMMHeadless thừa → như cũ (không gọi PowerShell)", G2["_phone_pids"]().get("cp_a") == [101, 100])
 print("\n%d/%d đạt" % (OK, OK + FAIL))
 sys.exit(1 if FAIL else 0)
