@@ -1184,7 +1184,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "24/11b"
+CPD_VER = "27/11a"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1469,7 +1469,9 @@ def heartbeat():
     if ram_busy: c_ram = a_ram                          # RAM thật ≥ 85% → báo hết chỗ
     disk_busy = disk_full()
     if disk_busy: c_ram = a_ram                         # ổ cứng ≥ 90% → báo hết chỗ
-    g_list = gpus(); g_avg, v_avg = gpu_avg5(g_list); g_why = gpu_busy()
+    g_list = gpus(); gf = gf_fresh(); held = float((gf or {}).get("held") or 0)
+    g_eff = [dict(g, util=max(0.0, g["util"] - held)) if held and g.get("util") is not None else g for g in g_list]   # 27/11a: máy đã hạ ưu tiên card nhường máy khác → không chặn nhận máy mới
+    g_avg, v_avg = gpu_avg5(g_eff); g_why = gpu_busy()
     if g_why: c_ram, c_cpu = a_ram, a_cpu               # card đồ hoạ / VRAM quá tải → báo hết chỗ, đơn mới sang máy chủ khác
     zz, zz_full, nz = 0.0, 0.0, 0
     if WIN:
@@ -1491,6 +1493,7 @@ def heartbeat():
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
     metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
+    if gf: metrics.update(gpu_top=gf.get("top") or [], gpu_held=held, gpu_fair=gf.get("fair"), gpu_hog=gf.get("hog"))   # 27/11a: máy nào ăn card
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
     try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
@@ -1588,6 +1591,31 @@ def do_locks():
                 try: phonectl(["start", nm])
                 except Exception as e: print("lỗi bật lại:", e)
         bg_job("relaunch", go)
+
+# 27/11a · CHIA ĐỀU CARD ĐỒ HOẠ: ~1 phút / lần "phonectl gpufair" — đo % card từng máy, máy ăn quá phần lúc card bận → hạ ưu tiên card
+#          (máy khác được card trước). Kết quả báo web (gpu_top) + phần card của máy đã bị hạ ưu tiên KHÔNG tính là "card quá tải".
+GF_ON = WIN and _f("GPU_FAIR", 1) > 0
+_gfair = {"t": 0.0, "res": None, "said": 0.0}
+def _gf_loop():
+    while True:
+        try:
+            r = subprocess.run(["python3", PHONECTL, "gpufair"], capture_output=True, text=True, timeout=240)
+            o = (r.stdout or "") + (r.stderr or "")
+            for ln in o.splitlines():
+                if ln.startswith("GPUFAIR_ACT"): print("[card]", ln[12:].strip())
+                elif ln.startswith("GPUFAIR "):
+                    try: j = json.loads(ln[8:])
+                    except ValueError: j = None
+                    if isinstance(j, dict) and j.get("ok"): _gfair.update(t=time.time(), res=j)
+                    elif isinstance(j, dict) and time.time() - _gfair["said"] > 6 * 3600: _gfair["said"] = time.time(); print("[card] chưa chia đều được:", j.get("why"))
+            if r.returncode == 2 and "invalid choice" in o and time.time() - _gfair["said"] > 6 * 3600:
+                _gfair["said"] = time.time(); print("[card] phonectl.py bản cũ chưa có lệnh gpufair")
+        except Exception as e:
+            print("lỗi chia đều card:", e)
+        time.sleep(60)
+def gf_fresh():
+    """Kết quả chia đều card gần nhất (≤ 5 phút) hoặc None."""
+    return _gfair["res"] if _gfair["res"] and time.time() - _gfair["t"] <= 300 else None
 
 IDLE_ON = WIN and _f("IDLE_STOP_MIN", 30) > 0          # Windows: máy rảnh lâu tự NGỦ (phonectl idle) · IDLE_STOP_MIN=0 → tắt
 _idle = {"th": None, "old": 0.0, "skip": 0.0}
@@ -1753,7 +1781,7 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 24/11b chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 27/11a chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
@@ -1781,6 +1809,7 @@ if __name__ == "__main__":
     adopt_old()
     n = 0; last = 0.0; _rootjob = [None]
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
+    if GF_ON: threading.Thread(target=_gf_loop, daemon=True).start()   # 27/11a: chia đều card đồ hoạ giữa các máy khách
     threading.Thread(target=_stuck_loop, daemon=True).start()  # 16/11f: đơn tạo máy treo quá lâu → tự huỷ + hoàn tiền (luồng riêng)
     if TS_ON:
         _ts_load(); _loop_t[0] = time.time()
