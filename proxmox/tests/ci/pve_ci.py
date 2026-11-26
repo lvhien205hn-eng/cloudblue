@@ -459,6 +459,7 @@ def mang():
             ok("BẬT LẠI ở mạng có DHCP: máy TỰ xin IPv4 (vào được SSH qua IPv4)", False, mo2[-900:])
             return 1
         time.sleep(20)
+        vm.shot("man-hinh")                                                        # màn hình máy chủ phải có dòng [CloudBlue …] CHUA goi duoc web … / tu sua mang … / DA LEN WEB …
         rc, out = vm.ssh(REMOTE_NET, 300)
         open(os.path.join(KQ, "pve-may-mang.txt"), "w").write(out)
         fi2, goc, lg = sec(out, "if"), sec(out, "goc"), sec(out, "log")
