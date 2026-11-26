@@ -1,5 +1,5 @@
 # =====================================================================================================
-#  cloudblue-iso-proxmox   (ban 26.11a)
+#  cloudblue-iso-proxmox   (ban 26.11b)
 #  GHEP 1 FILE ISO "PROXMOX TU CAI" cho MAY CHU VPS ao hoa:
 #     ISO Proxmox VE goc (ban chinh thuc)  +  tra loi tu cai  +  phan mem CloudBlue (cbhost)  +  cac ISO may mau Windows (CloudBlue-MayMau-*.iso)
 #  Ghi ISO nay ra USB (Rufus, che do DD), khoi dong may chu tu USB la TU DONG HET: cai Proxmox VE, tu len web CloudBlue (cho admin bam DUYET),
@@ -33,7 +33,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
-$VER = "26.11a"
+$VER = "26.11b"
 $OwnerRepo = "lvhien205hn-eng/cloudblue"
 $RawBase = "https://raw.githubusercontent.com/" + $OwnerRepo
 $PYURL = "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
@@ -201,7 +201,11 @@ try {
   if (-not (Select-String -LiteralPath $PveIso -Pattern "GHEP ISO PROXMOX TU CAI" -SimpleMatch -Quiet)) { Stop-Build "pve_iso.py tai ve khong dung - cho 5 phut roi chay lai lenh." }
   if (-not (Select-String -LiteralPath (Join-Path $Tool "proxmox\cbhost.py") -Pattern "CBHOST_VER = " -SimpleMatch -Quiet)) { Stop-Build "cbhost.py tai ve khong dung - cho 5 phut roi chay lai lenh." }
   if (-not (Select-String -LiteralPath (Join-Path $Tool "proxmox\cbhost.py") -Pattern "auto_tpl" -SimpleMatch -Quiet)) { Stop-Build "cbhost.py tai ve la ban cu (chua co tu dung may mau) - cho 5 phut roi chay lai lenh." }
-  Say ("   bo ghep ISO Proxmox + cbhost - nguon " + $(if ($Nguon) { $Nguon } else { "GitHub " + $Rev.Substring(0, [Math]::Min(12, $Rev.Length)) })) "DarkGray"
+  if (-not (Select-String -LiteralPath (Join-Path $Tool "proxmox\cbhost.py") -Pattern "def net_heal" -SimpleMatch -Quiet)) { Stop-Build "cbhost.py tai ve la ban cu (chua co tu sua mang) - cho 5 phut roi chay lai lenh." }
+  $CbVer = ""
+  $mv = Select-String -LiteralPath (Join-Path $Tool "proxmox\cbhost.py") -Pattern '^CBHOST_VER = "([^"]+)"' | Select-Object -First 1
+  if ($mv) { $CbVer = $mv.Matches[0].Groups[1].Value }
+  Say ("   bo ghep ISO Proxmox + cbhost " + $CbVer + " (tu sua mang: CO) - nguon " + $(if ($Nguon) { $Nguon } else { "GitHub " + $Rev.Substring(0, [Math]::Min(12, $Rev.Length)) })) "DarkGray"
 
   $PyExe = Join-Path $PyDir "python.exe"
   $pyOk = $false

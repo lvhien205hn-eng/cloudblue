@@ -15,13 +15,17 @@
 #   · KHÔNG chạy lệnh nào do web gửi xuống: chỉ các việc ghi sẵn ở đây, số / tên đều kiểm kỹ.
 #   · TỰ CẬP NHẬT (chạy bằng dịch vụ cloudblue-cbhost): 1 giờ / lần xem bản trên GitHub của CloudBlue — khác bản đang chạy → kiểm biên dịch
 #     được → thay file → thoát để dịch vụ tự bật lại bản mới (chỉ lúc không có máy ảo nào đang dựng / xoá). Tắt: "auto_update": false.
-#   Lệnh:  python3 cbhost.py run | status | once | update | version
+#   · TỰ SỬA MẠNG (26/11c, máy cài bằng ISO CloudBlue-Proxmox): lúc cài mà mạng không cấp IPv4 (DHCP không trả lời) thì bộ cài Proxmox chỉ đặt
+#     IPv6 + DNS mặc định 192.168.100.1 (không có thật) → máy lên nhưng không gọi được web. Khi KHÔNG gọi được web, cbhost tự: thêm
+#     "iface vmbr0 inet dhcp" (xin IPv4 ngay + mỗi lần bật máy, dhclient tự thử lại mãi) và đặt lại máy chủ tên (DNS) công cộng hợp với
+#     đường ra đang có (IPv4 / IPv6). Luôn lưu bản gốc (*.cb-goc), không đụng cấu hình IPv4 đã có. Tắt: "net_heal": false.
+#   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "26/11b"
+CBHOST_VER = "26/11c"
 
-import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, urllib.error, urllib.request
+import hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
 
 CONF_F = os.environ.get("CBHOST_CONF") or "/etc/cloudblue/cbhost.conf"
 SECRET_F = os.environ.get("CBHOST_SECRET") or "/etc/cloudblue/cbhost.secret"
@@ -30,7 +34,7 @@ QM = os.environ.get("CBHOST_QM") or "qm"
 PVESH = os.environ.get("CBHOST_PVESH") or "pvesh"
 DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze",
             "storage": "", "full_clone": True, "vmid_base": 100000, "seed_path": "C:\\CloudBluePC\\seed.json", "max_builds": 2, "auto_update": True,
-            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": ""}
+            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None}
 UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
 UPD_EVERY_S = 3600
 RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
@@ -46,6 +50,12 @@ AUTO_WAIT_S = 3 * 3600          # tự dựng máy mẫu: Windows tự cài tố
 AUTO_TRIES = 2                  # tự dựng máy mẫu: thử tối đa 2 lần / bản
 AUTO_CHK_S = 45                 # tự dựng máy mẫu: hỏi máy ảo "cài xong chưa" 45 giây / lần
 RETRY_S = 60                    # việc lỗi → 1 phút sau thử lại
+RESOLV_F = os.environ.get("CBHOST_RESOLV") or "/etc/resolv.conf"
+IFACES_F = os.environ.get("CBHOST_IFACES") or "/etc/network/interfaces"
+DNS4, DNS6 = ("8.8.8.8", "1.1.1.1"), ("2001:4860:4860::8888", "2606:4700:4700::1111")
+DNS_BOGUS = ("192.168.100.1",)  # DNS mặc định bộ cài Proxmox tự điền khi lúc cài không xin được gì từ mạng
+NET_FAILS = 3                   # gọi web lỗi MẠNG liên tiếp bấy nhiêu vòng (≈ 30 giây) → thử tự sửa mạng
+NET_EVERY_S = (120, 900)        # tự sửa mạng: 2 phút / lần trong 10 lần đầu, sau đó 15 phút / lần
 
 
 def log(*a):
@@ -80,6 +90,7 @@ def conf():
     try: c["tpl_vmid_from"] = max(100, min(900000000, int(c.get("tpl_vmid_from") or 99000)))
     except (TypeError, ValueError): c["tpl_vmid_from"] = 99000
     c["auto_tpl"] = c.get("auto_tpl") is True
+    c["net_heal"] = c["auto_tpl"] if c.get("net_heal") is None else c.get("net_heal") is True      # mặc định: bật trên máy cài bằng ISO CloudBlue-Proxmox
     if not isinstance(c.get("host_name"), str) or not RX_HOSTNAME.match(c["host_name"]): c["host_name"] = ""
     return c
 
@@ -285,7 +296,7 @@ class Pve:
         mem = meminfo()
         return {"host": self.c.get("host_name") or self.node, "pve": first(["pveversion"], r"pve-manager/([0-9.]+)"), "cpu": first(["lscpu"], r"^Model name:\s*(.+)$")[:80],
                 "threads": os.cpu_count() or 1, "ram_mb": int(mem.get("MemTotal", 0) / 1024), "disk_gb": self.disk_total(),
-                "kvm": os.path.exists("/dev/kvm"), "ver": CBHOST_VER, "lan_ip": lan_ip()}
+                "kvm": os.path.exists("/dev/kvm"), "ver": CBHOST_VER, "lan_ip": lan_ip(), "ip6_only": ip6_only()}
 
     def disk_total(self):
         """Tổng GB các ổ chứa máy ảo (images) đang chạy — hoặc riêng ổ đặt ở cấu hình."""
@@ -324,10 +335,136 @@ def meminfo():
 
 
 def lan_ip():
+    """Địa chỉ của máy chủ trên đường ra Internet: IPv4 nếu có, không thì IPv6 (máy chỉ có IPv6). Không gửi gói nào (UDP connect chỉ chọn đường)."""
+    for fam, dst in ((socket.AF_INET, DNS4[1]), (socket.AF_INET6, DNS6[1])):
+        try:
+            s = socket.socket(fam, socket.SOCK_DGRAM); s.connect((dst, 53)); ip = s.getsockname()[0]; s.close()
+            if ip and not ip.lower().startswith(("fe80:", "::", "0.", "127.")): return ip
+        except Exception:
+            pass
+    return ""
+
+
+# ---------------------------------------------------------------- tự sửa mạng (26/11c) — xem phần đầu file
+def default_routes():
+    """→ (có đường ra Internet IPv4, có đường ra Internet IPv6)"""
+    def has(fam):
+        rc, out = run(["ip", fam, "route", "show", "default"], 15)
+        return rc == 0 and bool(re.search(r"^default\s", out or "", re.M))
+    return has("-4"), has("-6")
+
+
+def ip6_only():
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); s.connect(("1.1.1.1", 53)); ip = s.getsockname()[0]; s.close(); return ip
+        v4, v6 = default_routes()
+        return bool(v6 and not v4)
     except Exception:
-        return ""
+        return False
+
+
+def can_resolve(host, secs=8):
+    """Phân giải được tên miền không (chạy ở luồng riêng: getaddrinfo không có giờ chờ)."""
+    res = []
+    def go():
+        try: socket.getaddrinfo(host, 443); res.append(True)
+        except Exception: res.append(False)
+    t = threading.Thread(target=go, daemon=True); t.start(); t.join(secs)
+    return bool(res and res[0])
+
+
+def resolv_servers(txt):
+    return re.findall(r"^[ \t]*nameserver[ \t]+(\S+)", txt or "", re.M)
+
+
+def keep_once(path, old):
+    """Lưu bản gốc 1 lần (<file>.cb-goc) trước khi cbhost sửa file cấu hình mạng."""
+    bak = path + ".cb-goc"
+    if old and not os.path.exists(bak):
+        with open(bak, "w", encoding="utf-8") as f: f.write(old)
+
+
+def fix_dns(v4, v6, force=False):
+    """Không phân giải được tên miền → ghi máy chủ tên công cộng hợp với đường ra đang có vào resolv.conf (giữ dòng search / domain / options).
+       Chỉ sửa khi máy chủ tên đang đặt RÕ RÀNG không dùng được (trống · 192.168.100.1 của bộ cài · khác họ địa chỉ với đường ra đang có);
+       trường hợp còn lại chỉ sửa khi force (đã hỏng nhiều lần liền). → True nếu có ghi."""
+    want = [DNS4[0], DNS6[0], DNS4[1]] if (v4 and v6) else list(DNS4) if v4 else list(DNS6) if v6 else []
+    if not want: return False
+    try: old = open(RESOLV_F, encoding="utf-8", errors="replace").read()
+    except OSError: old = ""
+    cur = resolv_servers(old)
+    if cur == want: return False
+    usable = [x for x in cur if x not in DNS_BOGUS and ((":" in x and v6) or (":" not in x and v4))]
+    if usable and not force: return False
+    keep = [ln.strip() for ln in old.splitlines() if re.match(r"^[ \t]*(search|domain|options)[ \t]", ln)]
+    new = "\n".join(["# CloudBlue (cbhost): may chu ten (DNS) cu khong dung duoc -> dat may chu ten cong cong. Ban goc: %s.cb-goc" % RESOLV_F]
+                    + keep + ["nameserver " + x for x in want]) + "\n"
+    keep_once(RESOLV_F, old)
+    with open(RESOLV_F, "w", encoding="utf-8") as f: f.write(new)      # ghi thẳng (không đổi tên file): giữ nguyên nếu file là liên kết
+    return True
+
+
+def ensure_dhcp4(bridge):
+    """Cầu mạng của máy chủ CHƯA có cấu hình IPv4 nào (bộ cài chỉ đặt IPv6) → thêm "iface <cầu> inet dhcp" + nạp lại mạng (ifreload):
+       máy xin IPv4 ngay và mỗi lần bật máy; mạng chưa cấp thì dhclient tự thử lại. Đã có cấu hình IPv4 (tĩnh / dhcp / manual) → KHÔNG đụng.
+       → chữ mô tả việc đã làm ("" = không làm gì)."""
+    if not RX_BRIDGE.match(bridge or "") or not shutil.which("dhclient") or not shutil.which("ifreload"): return ""      # ifupdown2 của Proxmox xin DHCP bằng dhclient
+    try: old = open(IFACES_F, encoding="utf-8", errors="replace").read()
+    except OSError: return ""
+    b = re.escape(bridge)
+    if not re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet6[ \t]" % b, old, re.M): return ""      # không phải máy "chỉ có IPv6" do bộ cài đặt → không đụng
+    if re.search(r"^[ \t]*iface[ \t]+%s[ \t]+inet[ \t]" % b, old, re.M): return ""
+    keep_once(IFACES_F, old)
+    new = old.rstrip("\n") + "\n\n# CloudBlue (cbhost): luc cai, mang khong cap IPv4 -> tu xin IPv4 qua DHCP (ban goc: %s.cb-goc)\niface %s inet dhcp\n" % (IFACES_F, bridge)
+    tmp = IFACES_F + ".cb-tmp"
+    with open(tmp, "w", encoding="utf-8") as f: f.write(new)
+    os.chmod(tmp, 0o644); os.replace(tmp, IFACES_F)
+    rc, out = run(["ifreload", "-a"], 240)
+    return "thêm 'iface %s inet dhcp' + nạp lại mạng (ifreload mã %d%s)" % (bridge, rc, "" if rc == 0 else ": " + (out or "")[-160:].replace("\n", " | "))
+
+
+def web_host(c):
+    try: return urllib.parse.urlsplit(c["sb_url"]).hostname or ""
+    except Exception: return ""
+
+
+def is_ip(host):
+    for fam in (socket.AF_INET, socket.AF_INET6):
+        try: socket.inet_pton(fam, host); return True
+        except (OSError, ValueError): pass
+    return False
+
+
+def net_heal(c, n=1):
+    """1 lượt tự sửa mạng (gọi khi KHÔNG tới được web). n = lượt thứ mấy. → danh sách việc đã làm."""
+    did = []
+    v4, v6 = default_routes()
+    if not v4:
+        r = ensure_dhcp4(c["bridge"])
+        if r:
+            did.append(r)
+            v4, v6 = default_routes()
+    host = web_host(c)
+    if host and not is_ip(host) and not can_resolve(host):
+        if fix_dns(v4, v6, force=n >= 3): did.append("đặt lại máy chủ tên (DNS): %s" % ", ".join(resolv_servers(open(RESOLV_F, encoding="utf-8", errors="replace").read())))
+    return did
+
+
+class NetWatch:
+    """Đếm số vòng liền không TỚI ĐƯỢC web (lỗi mạng, không phải web trả lỗi) → đến lúc thì gọi net_heal."""
+    def __init__(self, c, heal=None, now=time.time):
+        self.c, self.heal, self.now = c, heal or net_heal, now
+        self.fails = self.heals = 0; self.last = 0.0
+
+    def step(self, ok, err):
+        """Gọi sau mỗi vòng hỏi web. → danh sách việc vừa tự sửa (thường rỗng)."""
+        if ok: self.fails = 0; return []
+        if ok is not False or not err or str(err).startswith("HTTP "): return []      # web có trả lời (kể cả báo lỗi) → mạng không sao
+        self.fails += 1
+        if not self.c.get("net_heal") or self.fails < NET_FAILS: return []
+        if self.now() - self.last < NET_EVERY_S[0 if self.heals < 10 else 1]: return []
+        self.last = self.now(); self.heals += 1
+        try: return self.heal(self.c, self.heals) or []
+        except Exception as e: return ["lỗi: %s" % str(e)[:160]]
 
 
 _cpu = {"t": None}
@@ -832,9 +969,12 @@ def cmd_run():
     h = Host()
     log("cbhost %s chạy — node %s, gọi %s mỗi ~10 giây" % (CBHOST_VER, h.pve.node, h.web.url))
     last_upd = time.time() - UPD_EVERY_S + 120                     # bật lên 2 phút sau mới xem bản mới lần đầu
+    nw = NetWatch(h.c)
     while True:
-        try: h.poll_once()
+        ok = None
+        try: ok = h.poll_once()
         except Exception as e: log("lỗi vòng:", e)
+        for x in nw.step(ok, h.web.err): log("TỰ SỬA MẠNG (lượt %d): %s" % (nw.heals, x))
         if update_due(h, time.time(), last_upd):
             last_upd = time.time()
             try:
@@ -856,12 +996,35 @@ def cmd_update():
     print("đã cập nhật %s → %s — bật lại dịch vụ: systemctl restart cloudblue-cbhost" % (CBHOST_VER, u[0])); return 0
 
 
+def net_report(c):
+    v4, v6 = default_routes()
+    try: dns = resolv_servers(open(RESOLV_F, encoding="utf-8", errors="replace").read())
+    except OSError: dns = []
+    host = web_host(c)
+    res = "địa chỉ số" if (not host or is_ip(host)) else ("được" if can_resolve(host) else "KHÔNG ĐƯỢC")
+    return "mạng: IPv4 %s · IPv6 %s · địa chỉ %s · máy chủ tên (DNS) %s · phân giải tên web: %s · tự sửa mạng: %s" % (
+        "có" if v4 else "KHÔNG", "có" if v6 else "không", lan_ip() or "?", ", ".join(dns) or "(trống)", res, "bật" if c.get("net_heal") else "tắt")
+
+
+def cmd_net():
+    """Xem tình trạng mạng + chạy NGAY 1 lượt tự sửa (như dịch vụ làm khi không gọi được web)."""
+    c = conf()
+    print(net_report(c))
+    did = net_heal(c, 3)
+    for x in did: print("đã sửa: " + x)
+    if did: print(net_report(c))
+    else: print("không có gì phải sửa (hoặc không sửa tự động được)")
+    return 0
+
+
 def cmd_status():
     h = Host(); ok = h.poll_once(act=False)                       # chỉ xem: không tạo / xoá gì (dịch vụ đang chạy lo việc đó)
     vms = h.pve.vms()
     tp = sorted(v["name"] for v in vms.values() if v["template"])
     print("cbhost %s · máy chủ: %s · trạng thái web: %s" % (CBHOST_VER, h.name or "?", {"new": "CHỜ DUYỆT (Quản trị › VPS ảo hoá › Máy chủ)", "ready": "đang nhận VPS",
           "maint": "bảo trì (không nhận VPS mới)", "off": "tắt"}.get(h.status, h.status) if ok else "chưa gọi được web (%s)" % h.web.err))
+    try: print(net_report(h.c))
+    except Exception as e: print("mạng: không đọc được (%s)" % str(e)[:80])
     print("máy mẫu trên Proxmox: %s" % (", ".join(tp) or "CHƯA CÓ — xem hướng dẫn dựng máy mẫu Windows"))
     if h.tpl_need: print("web cần máy mẫu: %s" % ", ".join(("%s ✓" if t in tp else "%s ✗ (thiếu)") % t for t in h.tpl_need))
     print("VPS web giao cho máy chủ này: %d" % len(h.want))
@@ -878,8 +1041,9 @@ def main(argv):
     if cmd == "status": return cmd_status()
     if cmd == "once": return 0 if Host().poll_once() else 1
     if cmd == "update": return cmd_update()
+    if cmd == "net": return cmd_net()
     if cmd in ("-v", "--version", "version"): print(CBHOST_VER); return 0
-    print("Lệnh: run | status | once | update | version"); return 2
+    print("Lệnh: run | status | once | update | net | version"); return 2
 
 
 if __name__ == "__main__":
