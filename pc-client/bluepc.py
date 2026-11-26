@@ -4207,9 +4207,16 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
     try: docked = app.docked_pids()
     except Exception: docked = set()
     live = vps_live(data)
+    can_ren = bool((data or {}).get("rename"))                                          # 27/11 · SQL v60: khách tự đặt tên riêng cho máy
     hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
     tk.Label(hd, text=L("🖥 VPS GPU của bạn", "🖥 Your GPU VPS"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
-    if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+    mini = more and bool(prefs().get("vps_min"))                                     # 27/11 · Ẩn ▴ / Hiện ▾ (nhớ trên máy) — chỉ ở Máy của tôi
+    if more:
+        def tog():
+            prefs({"vps_min": not mini}); app._vps_sig = None; app._paint_vps(getattr(app, "vps_last", None))
+        app.btn(hd, L("Hiện ▾", "Show ▾") if mini else L("Ẩn ▴", "Hide ▴"), tog, "ghost", padx=10, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+        if mini: return
+    if more: app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VpsBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 6))
     if hasattr(app, "open_wall") and any(isinstance(x.get("pc"), dict) and x["pc"].get("id") and x.get("state") == "active" for x in items):   # 22.11c: lưới xem trực tiếp mọi VPS GPU
         app.btn(hd, L("▦ Xem tất cả", "▦ View all"), lambda: app.open_wall("pc"), tint=OK, padx=11, pady=4,
                 font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 6))
@@ -4222,8 +4229,12 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
         c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else WARN if code in ("wait", "inst", "off", "warn", "boot", "down", "offd") else LINE, highlightthickness=1)
         c.pack(fill="x", padx=8, pady=4)
         row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(12, 2))
-        tk.Label(row, text=str(pc.get("name") or L("VPS GPU", "GPU VPS")) + (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else ""),
+        tk.Label(row, text=str(x.get("label") or pc.get("name") or L("VPS GPU", "GPU VPS"))[:40] + ("" if x.get("label") else (f"  ·  {int(num(x.get('days')))} " + L("ngày", "days") if x.get("days") else "")),
                  font=("Segoe UI", 12, "bold"), fg=TXT, bg=CARD).pack(side="left")
+        if x.get("label") and pc.get("name"): tk.Label(row, text="  " + str(pc.get("name"))[:30], font=app.f_s, fg=DIM, bg=CARD).pack(side="left", pady=(2, 0))
+        if can_ren and x.get("state") == "active" and pid:
+            rn = tk.Label(row, text=" ✏️", font=("Segoe UI Emoji", 10), fg=DIM, bg=CARD, cursor="hand2"); rn.pack(side="left")
+            rn.bind("<Button-1>", lambda _e, q=x: vps_rename(app, q))
         tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         spec = ([str(x.get("os_name") or "")] + [str(g) for g in (pc.get("gpus") or [])[:1] if g and not vps_lin(pc.get("os"))]          # Linux không dùng card đồ hoạ
                 + ([f"{round(num(pc.get('ram_gb')))}GB RAM"] if num(pc.get("ram_gb")) > 0 else []))
@@ -4251,7 +4262,7 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
         if on: b.config(bg="#2fd9a6", fg="#03261b")
         if code not in ("run", "warn", "boot") or mt: b.config(state="disabled", bg=LINE)     # đang khởi động lại: vẫn mở được (máy lên là vào)
         mo = app.btn(bar, L("Khác ▾", "More ▾"), None, "ghost", padx=12, pady=8)
-        mo.config(command=lambda q=x, w=mo: vps_more(app, q, w, os_list, mx, mt, can_cancel)); mo.pack(side="right")
+        mo.config(command=lambda q=x, w=mo: vps_more(app, q, w, os_list, mx, mt, can_cancel, can_ren)); mo.pack(side="right")
         if x.get("rental") is not None:
             app.btn(bar, L("⏱ Gia hạn", "⏱ Renew"), lambda q=x: VpsRenewDlg(app, q), "ghost", pady=8).pack(side="right", padx=(0, 6))
         if can_power:                                               # 22/11 · ⏻ Nguồn: 🔁 khởi động lại · ⏻ tắt hẳn (máy phải đang bật)
@@ -4260,8 +4271,24 @@ def vps_cards(app, slot, data, more=True, prof=None, mt_bar=True):
             if code not in ("run", "warn") or mt: pb.config(state="disabled")
 
 
-def vps_more(app, x, widget, os_list, mx, mt, can_cancel):
-    """Menu "Khác ▾" của 1 VPS GPU: cài lại / đổi Windows · mở cửa sổ riêng · báo admin · 🗑 Huỷ máy (không hoàn tiền)."""
+def vps_rename(app, x):
+    """✏️ Đổi tên VPS GPU (SQL v60 pc_my_rename): tên riêng chỉ khách thấy, tên gốc của shop vẫn hiện nhỏ để báo shop."""
+    pc = x.get("pc") or {}
+    n = ask_name(app, L("Đổi tên máy", "Rename machine"), L(f"Tên riêng chỉ bạn thấy (tối đa 32 ký tự). Tên gốc {pc.get('name')} vẫn hiện nhỏ bên cạnh.\nĐể trống = dùng lại tên gốc.",
+                                                            f"Only you see this name (max 32 characters). Empty = use the original name {pc.get('name')}."), x.get("label"))
+    if n is None: return
+    def job():
+        try:
+            app.auth.rpc("pc_my_rename", {"p_pc": str(pc.get("id") or ""), "p_name": n})
+            app.ui(lambda: (app.refresh(), vm_note(app, L(f'Đã đổi tên thành "{n}".', f'Renamed to "{n}".') if n else L("Đã bỏ tên riêng — dùng lại tên gốc.", "Name cleared."))))
+        except Exception as e:
+            m = str(e); m = L("Shop chưa bật đổi tên máy — thử lại sau.", "Renaming isn't available yet.") if vm_missing(m) else vps_err(m)
+            app.ui(lambda: vm_note(app, m, True))
+    threading.Thread(target=job, daemon=True).start()
+
+
+def vps_more(app, x, widget, os_list, mx, mt, can_cancel, can_ren=False):
+    """Menu "Khác ▾" của 1 VPS GPU: cài lại / đổi Windows · mở cửa sổ riêng · ✏️ đổi tên (SQL v60) · báo admin · 🗑 Huỷ máy (không hoàn tiền)."""
     pc = x.get("pc") or {}; pid = str(pc.get("id") or ""); code = vps_state(x)[0]; left = int(num(x.get("left")))
     m = app.tk.Menu(app.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
     if x.get("rental") is not None:
@@ -4269,6 +4296,7 @@ def vps_more(app, x, widget, os_list, mx, mt, can_cancel):
                       command=lambda: VpsReDlg(app, x, os_list, mx), state="disabled" if left < 1 or code in ("inst", "exp") or not os_list or mt else "normal")
     m.add_command(label=L("⧉ Mở cửa sổ riêng", "⧉ Open in its own window"), command=lambda: spawn_viewer(pid, "--view", "--pc"),
                   state="normal" if code in ("run", "warn") and not mt else "disabled")
+    if can_ren and x.get("state") == "active" and pid: m.add_command(label=L("✏️ Đổi tên máy…", "✏️ Rename machine…"), command=lambda: vps_rename(app, x))
     m.add_command(label=L("📋 Báo admin (copy nội dung gửi shop)…", "📋 Report to the admin…"), command=lambda: VpsReportDlg(app, x))
     if can_cancel:
         m.add_separator()
@@ -4474,7 +4502,9 @@ class VpsBuyDlg(Dlg):
                 font=("Segoe UI", 9, "bold")).pack(side="right")
         self.mt = pc_maint_msg(self.prof)                                     # 21/11f · bảo trì riêng VPS GPU (admin vẫn mua / vào được để thử)
         if self.mt: vps_maint_bar(app, self.body, self.mt).pack(fill="x", padx=18, pady=(10, 0))
-        n_mine = len([x for x in ((self.mine or {}).get("items") or []) if isinstance(x, dict) and x.get("state") in ("active", "waiting")])
+        vmp = getattr(app, "vm_pcs", set())
+        n_mine = len([x for x in ((self.mine or {}).get("items") or []) if isinstance(x, dict) and x.get("state") in ("active", "waiting")
+                      and str((x.get("pc") or {}).get("id") or "") not in vmp])
         if n_mine:                                                      # 21.11k: trang này chỉ để MUA — quản lý / điều khiển ở Máy của tôi (như Cloud Phone)
             mb_ = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=_mix("#7cbcff", CARD, .5), radius=14); mb_.pack(fill="x", padx=18, pady=(12, 0))
             tk.Label(mb_, text=L(f"🖥 Bạn đang có {n_mine} VPS GPU — điều khiển, gia hạn, cài lại, huỷ máy ở Máy của tôi.",
@@ -4892,6 +4922,865 @@ class VpsRenewDlg(Dlg):
                         else L(f"Đã gia hạn +{d} ngày.", f"Renewed +{d} days."), parent=self.app.root)
         def fail(m): self.err.config(text=vps_err(m)); self.go.config(state="normal"); self.upd()
         self.bg(lambda: self.app.auth.rpc("pc_my_renew", {"p_pc": self.pc.get("id"), "p_days": d}), done, fail)
+
+
+# ================================================================ ⚡ VPS NVMe (máy ảo Windows trên máy chủ Proxmox — SQL v56 · v59 · 27/11)
+#   Mua: gói có sẵn (+ ổ thêm) hoặc 🛠 tự chọn cấu hình → hệ điều hành → số ngày (giá tính đúng như web / máy chủ).
+#   "⚡ VPS NVMe của bạn" ở Máy của tôi: ▶ Điều khiển (cửa sổ máy PC như VPS GPU) · ⏱ Gia hạn · Khác ▾ (cửa sổ riêng, tắt / bật,
+#   khởi động lại, nâng cấp, cài lại, ✏️ đổi tên, xoá). Máy chủ chưa có phần này (hàm vm_* chưa có) → không hiện gì, app chạy như cũ.
+VMS = {"info": None, "t": 0.0}
+VM_NAME = "VPS NVMe"
+VM_ERRS = (("NOT_OPEN", "VPS NVMe chưa mở bán.", "VPS NVMe is not on sale yet."),
+           ("BAD_PLAN", "Gói / số ngày không hợp lệ — mở lại trang rồi thử lại.", "Invalid plan or duration — reopen and try again."),
+           ("BAD_OS", "Bản Windows này không dùng được cho cấu hình này.", "That Windows image can't be used with this configuration."),
+           ("NO_CAPACITY", "Máy chủ đang hết chỗ cho cấu hình / bản Windows này — chọn cấu hình khác hoặc nhắn shop. Không trừ tiền.",
+            "No capacity for this configuration right now — pick another or contact the shop. No charge."),
+           ("SLOW_DOWN", "Thao tác hơi nhiều — chờ ít phút rồi thử lại.", "Too many attempts — wait a few minutes."),
+           ("EXPIRED", "VPS đã hết hạn — gia hạn trước.", "This VPS has expired — renew first."),
+           ("BUSY", "VPS đang được tạo / cài lại / đổi cấu hình — chờ xong rồi thử lại.", "The VPS is busy — try again when it finishes."),
+           ("NO_REINSTALL_LEFT", "Đã hết lượt cài lại. Nhắn shop nếu cần thêm.", "No reinstalls left. Contact the shop."),
+           ("NOT_ALLOWED", "VPS này không thuộc tài khoản của bạn.", "This VPS is not on your account."),
+           ("NOT_AUTO", "Gói này chưa có bảng giá — nhắn shop.", "This plan has no price list — contact the shop."),
+           ("BAD_CMD", "Lệnh không hợp lệ — cập nhật app rồi thử lại.", "Invalid command — update the app and try again."),
+           ("MAINT", "VPS NVMe đang bảo trì — tạm chưa thuê mới / nâng cấp / cài lại được. VPS đang chạy và gia hạn vẫn bình thường.",
+            "VPS NVMe is under maintenance — new rentals, upgrades and reinstalls are paused."),
+           ("BAD_CONFIG", "Cấu hình chưa hợp lệ (vượt giới hạn, hoặc nâng cấp mà không tăng gì).", "Invalid configuration."),
+           ("BAD_DISK", "Dung lượng ổ không hợp lệ.", "Invalid disk size."),
+           ("NO_PRICE", "Shop chưa đặt giá cho phần này — nhắn shop.", "No price set for this yet — contact the shop."),
+           ("HOST_OFF", "Máy chủ của VPS đang mất kết nối — thử lại sau ít phút.", "The VPS host is offline — try again in a few minutes."),
+           ("INSUFFICIENT_BALANCE", "Số dư không đủ — nạp thêm rồi thử lại.", "Not enough balance — top up first."))
+
+
+def vm_err(m):
+    m = str(m or "")
+    for k, vi, en in VM_ERRS:
+        if k in m: return L(vi, en)
+    return m
+
+
+def vm_missing(m): return bool(re.search(r"does not exist|schema cache|Could not find|PGRST202", str(m or "")))
+
+
+def vm_shop(auth, age=30.0):
+    """vm_shop_info (gói, bản Windows, tự chọn cấu hình, bảo trì) — đọc lại tối đa 1 lần / age giây."""
+    if VMS["info"] is not None and time.time() - VMS["t"] < age: return VMS["info"]
+    i = auth.rpc("vm_shop_info", {}) or {}
+    VMS.update(info=i if isinstance(i, dict) else {}, t=time.time())
+    return VMS["info"]
+
+
+def vm_cu(src):
+    c = (src or {}).get("custom") if isinstance(src, dict) else None
+    return c if isinstance(c, dict) else {}
+
+
+def vm_r1k(v): return int(round(num(v) / 1000.0)) * 1000
+
+
+def vm_tier(c, month, days):
+    """Giá cho `days` ngày từ giá 30 ngày (như máy chủ _vm_tier): làm tròn 1.000đ, tối thiểu 1.000đ, dưới 30 ngày cộng short_up %."""
+    days = int(num(days))
+    if month <= 0 or days < 1: return 0
+    return max(1000, vm_r1k(month * days / 30.0 * ((1 + num(c.get("short_up")) / 100.0) if days < 30 else 1)))
+
+
+def vm_month(c, cores, ram_gb, extra_gb):
+    return vm_r1k(num(cores) * num(c.get("unit_cpu")) + num(ram_gb) * num(c.get("unit_ram")) + max(0, num(extra_gb)) * num(c.get("unit_disk")))
+
+
+def vm_free_gb(src):
+    c = vm_cu(src)
+    return int(num(c.get("disk_free_gb"))) if "disk_free_gb" in c else 20
+
+
+def vm_cust_on(info):
+    c = vm_cu(info)
+    return c.get("on") is True and num(c.get("unit_cpu")) > 0 and num(c.get("unit_ram")) > 0
+
+
+def vm_disk_on(src): return num(vm_cu(src).get("unit_disk")) > 0
+
+
+def vm_plans(info):
+    return [p for p in ((info or {}).get("plans") or []) if isinstance(p, dict) and p.get("id") and (p.get("prices") or [])]
+
+
+def vm_prices(p):
+    out = []
+    for x in (p or {}).get("prices") or []:
+        try:
+            d, pr = int(num(x.get("days"))), int(num(x.get("price")))
+            if d > 0 and pr >= 0: out.append((d, pr))
+        except Exception: pass
+    return sorted(out)
+
+
+def vm_p30(p):
+    pr = vm_prices(p)
+    return next(((d, x) for d, x in pr if d == 30), pr[-1] if pr else None)
+
+
+def vm_low_day(info):
+    v = [x / max(1, d) for p in vm_plans(info) for d, x in vm_prices(p) if x > 0]
+    return min(v) if v else 0
+
+
+def vm_gb(mb):
+    g = num(mb) / 1024.0
+    return (f"{int(round(g))}" if abs(g - round(g)) < 0.05 else f"{g:.1f}") + " GB"
+
+
+def vm_short_os(n): return re.sub(r"(?i)^windows\s+", "", str(n or "").strip())[:60]
+
+
+def vm_os_key(n):
+    """"Windows Server 2012 R2" → ("Windows Server", "2012 R2") · "Windows 10 LTSC 2021" → ("Windows", "10 LTSC 2021")."""
+    x = vm_short_os(n); m = re.match(r"^(Server)\s+(.+)$", x, re.I)
+    return ("Windows " + m.group(1), m.group(2)) if m else ("Windows", x)
+
+
+def vm_os_for(images, ram_mb, disk_gb):
+    return [i for i in (images or []) if isinstance(i, dict) and i.get("id") and num(i.get("min_ram")) <= num(ram_mb) and num(i.get("min_disk")) <= num(disk_gb)]
+
+
+def vm_maint_msg(info=None, prof=None):
+    """Bảo trì riêng VPS NVMe (admin bật trên web) → câu cho khách thường; admin / không bảo trì → ""."""
+    d = SITE.get("d") or {}
+    on = bool(d.get("vm_maint")) or (isinstance(info, dict) and info.get("maint") is True)
+    if not on or (prof or {}).get("role") == "admin": return ""
+    m = str(d.get("vm_maint_msg") or "").strip()[:200]
+    return L("🛠 VPS NVMe đang bảo trì", "🛠 VPS NVMe is under maintenance") + (f" — {m}" if m else "") + ". " + L("VPS đang chạy vẫn dùng + gia hạn bình thường.", "Running VPS keep working.")
+
+
+def vm_state(v):
+    """(mã, chữ, màu, câu giải thích) của 1 VPS NVMe — như web."""
+    lf = left_secs(v.get("until")) if v.get("until") else None
+    if v.get("expired"):
+        da = parse_iso(v.get("delete_at")) if v.get("delete_at") else None
+        return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, (L(f"Gia hạn trước {da.astimezone().strftime('%H:%M %d/%m')} để giữ VPS + dữ liệu — quá giờ đó VPS bị xoá.",
+                                                              f"Renew before {da.astimezone().strftime('%H:%M %d/%m')} to keep the VPS and its data.") if da else L("Gia hạn để dùng tiếp.", "Renew to keep using it."))
+    if v.get("err"): return "warn", L("⚠ Đang lỗi", "⚠ Error"), WARN, L("Máy chủ báo lỗi khi tạo / chạy VPS — shop đã được báo. Lâu quá thì nhắn shop kèm tên VPS.", "The host reported an error — the shop has been notified.")
+    if v.get("cfg_busy"): return "cfg", L("⚙ Đang đổi cấu hình", "⚙ Applying new specs"), WARN, L("Máy chủ đang đặt cấu hình mới — VPS tự khởi động lại khoảng 1–2 phút, dữ liệu giữ nguyên.", "Applying the new specs — the VPS restarts in about 1–2 min.")
+    if v.get("busy") or v.get("status") == "creating": return "inst", L("⚙ Đang tạo / cài Windows", "⚙ Setting up"), WARN, L("Máy chủ đang dựng VPS (thường 3–10 phút). Xong là bấm Điều khiển được.", "The VPS is being prepared (usually 3–10 min).")
+    if v.get("want") == "stopped" or v.get("status") == "stopped": return "off", L("⏻ Đã tắt", "⏻ Stopped"), WARN, L("Bấm Khác ▾ → Bật để chạy lại.", "More ▾ → Start to run it again.")
+    if not v.get("online"): return "boot", L("○ Đang khởi động…", "○ Starting…"), WARN, L("Windows đang lên (1–2 phút).", "Windows is starting (1–2 min).")
+    if lf is not None and lf <= 0: return "exp", L("⛔ Hết hạn", "⛔ Expired"), BAD, L("Gia hạn để dùng tiếp.", "Renew to keep using it.")
+    return "run", L("● Đang chạy", "● Running"), OK, ""
+
+
+def vm_name(v): return str((v or {}).get("label") or (v or {}).get("name") or "VPS")[:40]
+
+
+def vm_spec(v):
+    return " · ".join(q for q in [str(v.get("plan_name") or ""), f"{int(num(v.get('cores')))} vCPU", vm_gb(v.get("ram_mb")) + " RAM",
+                                   f"SSD NVMe {int(num(v.get('disk_gb')))} GB", vm_short_os(v.get("image_name"))] if q)
+
+
+def vm_items(data): return [x for x in ((data or {}).get("items") or []) if isinstance(x, dict) and x.get("id") is not None]
+
+
+def vm_pc_ids(data):
+    """Máy PC (pc_machines) của các VPS NVMe — để mục VPS GPU không vẽ lặp máy ảo."""
+    return {str(x.get("pc")) for x in vm_items(data) if x.get("pc")}
+
+
+def vm_sig(data, prof=None):
+    try:
+        return json.dumps([[x.get(k) for k in ("id", "label", "status", "want", "online", "err", "busy", "cfg_busy", "expired", "until", "left", "cores", "ram_mb", "disk_gb", "image")]
+                           + [vm_state(x)[0], fmt_left(x["until"]) if x.get("until") else ""] for x in vm_items(data)]
+                          + [bool((data or {}).get("upgrade")), (data or {}).get("maint"), vm_maint_msg(data, prof), prefs().get("vm_min")], sort_keys=True, default=str)
+    except Exception: return None
+
+
+def vm_hero(app, parent, info):
+    """Thẻ nổi bật đầu trang Thuê (như VPS GPU): tên · còn chỗ · cấu hình · quyền lợi · giá thấp nhất / ngày."""
+    tk = app.tk; hb = "#14307a"; edge = _mix("#7cbcff", hb, .55)
+    ps = vm_plans(info); free = any(p.get("free") for p in ps); low = vm_low_day(info); mt = vm_maint_msg(info, getattr(app, "prof", None))
+    hero = tk.Frame(parent, bg=hb, highlightthickness=2, highlightbackground=edge, radius=22)
+    top = tk.Frame(hero, bg=hb); top.pack(fill="x", padx=18, pady=(14, 4))
+    tk.Label(top, text="⚡", font=("Segoe UI Emoji", 26), bg=hb, fg=TXT).pack(side="left", padx=(0, 12))
+    rt = tk.Frame(top, bg=hb); rt.pack(side="right", anchor="n")
+    tk.Label(rt, text=("🛠 " + L("Bảo trì", "Maintenance")) if mt else ("⚡ " + L("Còn chỗ", "Available")) if free else ("⏳ " + L("Tạm hết chỗ", "Sold out")),
+             font=("Segoe UI", 9, "bold"), tint=WARN if mt or not free else OK, padx=10, pady=3).pack(anchor="e")
+    if low:
+        pr = tk.Frame(rt, bg=hb); pr.pack(anchor="e", pady=(6, 0))
+        tk.Label(pr, text=L("chỉ từ ", "from "), font=app.f_s, fg="#cbdcff", bg=hb).pack(side="left", anchor="s", pady=(0, 3))
+        tk.Label(pr, text=vnd(low) + L(" / ngày", " / day"), font=("Segoe UI", 17, "bold"), fg="#ffffff", bg=hb).pack(side="left")
+    mid = tk.Frame(top, bg=hb); mid.pack(side="left", fill="x", expand=True)
+    tk.Label(mid, text=VM_NAME + " BLUE", font=("Segoe UI", 18, "bold"), fg="#ffffff", bg=hb, anchor="w").pack(fill="x")
+    fitwrap(tk.Label(mid, text=L("Máy ảo Windows riêng · SSD NVMe · chạy 24/7", "Your own Windows VM · NVMe SSD · on 24/7"), font=app.f_s, fg="#cbdcff", bg=hb,
+                     anchor="w", justify="left")).pack(fill="x")
+    def span(a):
+        a = [x for x in a if x is not None]
+        if not a: return ""
+        lo, hi = min(a), max(a)
+        f = lambda z: (str(int(z)) if abs(z - round(z)) < 1e-9 else f"{z:.1f}")
+        return f(lo) if lo == hi else f(lo) + "–" + f(hi)
+    chips = ([("⚙", span([num(p.get("cores")) for p in ps]) + " vCPU"), ("🧠", span([round(num(p.get("ram_mb")) / 102.4) / 10 for p in ps]) + " GB RAM"),
+              ("💾", (L(f"SSD NVMe {vm_free_gb(info)} GB miễn phí", f"{vm_free_gb(info)} GB NVMe SSD free") if "custom" in (info or {})
+                      else "SSD NVMe " + span([num(p.get("disk_gb")) for p in ps]) + " GB"))] if ps else [])
+    mx = int(num((info or {}).get("reinstall_max")))
+    perks = [("⚡", L("Tự tạo 3–10 phút", "Ready in 3–10 min")), ("🖥", L("Web · app ĐT · app máy tính", "Web · phone · PC app")),
+             ("⬆", L("Nâng cấp sau khi thuê", "Upgrade anytime")) if (info or {}).get("upgrade") is True else (("🔁", L(f"Cài lại {mx} lần", f"{mx} reinstalls")) if mx > 0 else None),
+             ("🔒", L("Máy riêng của bạn", "Your own VM"))]
+    for grp, big in ((chips, True), ([p for p in perks if p], False)):
+        if not grp: continue
+        row = tk.Frame(hero, bg=hb); row.pack(fill="x", padx=18, pady=(4, 0))
+        for ic, t in grp:
+            tk.Label(row, text=ic + "  " + t, font=("Segoe UI", 10 if big else 9, "bold"), bg=_mix("#ffffff", hb, .13 if big else .07), fg="#ffffff" if big else "#d9e6ff",
+                     padx=10 if big else 8, pady=4 if big else 2, pill=True).pack(side="left", padx=(0, 6), pady=2)
+    tk.Frame(hero, bg=hb, height=12).pack(fill="x")
+    return hero
+
+
+class VmStep:
+    """Ô số có − / + (vCPU · RAM · ổ): gõ hoặc bấm, tự kẹp trong [lo, hi], đổi → on_change()."""
+    def __init__(self, dlg, parent, title, sub, value, lo, hi, step, on_change, enabled=True):
+        tk = dlg.app.tk; self.lo, self.hi, self.step, self.cb = int(lo), int(max(lo, hi)), int(step), on_change
+        bg = parent["bg"]
+        self.frame = f = tk.Frame(parent, bg=bg)
+        tx = tk.Frame(f, bg=bg); tx.pack(side="left", fill="x", expand=True)
+        tk.Label(tx, text=title, font=("Segoe UI", 10, "bold"), fg=TXT, bg=bg, anchor="w").pack(fill="x")
+        if sub: fitwrap(tk.Label(tx, text=sub, font=dlg.app.f_s, fg=DIM, bg=bg, anchor="w", justify="left", wraplength=300)).pack(fill="x")
+        self.v = int(max(self.lo, min(self.hi, int(num(value)))))
+        self.minus = dlg.app.btn(f, "−", lambda: self.add(-self.step), "soft", padx=10, pady=3, font=("Segoe UI", 12, "bold")); self.minus.pack(side="left")
+        self.ent = tk.Entry(f, width=5, font=("Segoe UI", 12, "bold"), justify="center", bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
+        self.ent.pack(side="left", padx=6, ipady=4); self.ent.insert(0, str(self.v))
+        self.plus = dlg.app.btn(f, "+", lambda: self.add(self.step), "soft", padx=10, pady=3, font=("Segoe UI", 12, "bold")); self.plus.pack(side="left")
+        self.ent.bind("<KeyRelease>", lambda e: self.typed(False)); self.ent.bind("<FocusOut>", lambda e: self.typed(True)); self.ent.bind("<Return>", lambda e: self.typed(True))
+        if not enabled:
+            for w in (self.minus, self.plus): w.config(state="disabled")
+            self.ent.config(state="disabled")
+        self.paint()
+
+    def paint(self):
+        try:
+            if str(self.ent.cget("state")) == "disabled": return
+            self.minus.config(state="normal" if self.v > self.lo else "disabled"); self.plus.config(state="normal" if self.v < self.hi else "disabled")
+        except Exception: pass
+
+    def set(self, v, write=True):
+        v = int(max(self.lo, min(self.hi, int(num(v)))))
+        changed = v != self.v; self.v = v
+        if write:
+            try: self.ent.delete(0, "end"); self.ent.insert(0, str(v))
+            except Exception: pass
+        self.paint()
+        if changed: self.cb()
+
+    def add(self, d): self.set(self.v + d)
+
+    def typed(self, final):
+        s = re.sub(r"[^0-9]", "", self.ent.get())
+        if not s:
+            if final: self.set(self.lo)
+            return
+        x = int(s)
+        if final or self.lo <= x <= self.hi: self.set(x, write=final or not (self.lo <= x <= self.hi))
+
+
+class VmBuyDlg(Dlg):
+    """⚡ Thuê VPS NVMe (27/11): thẻ nổi bật · ① gói (4 cột) + 🛠 tự chọn cấu hình · ô cấu hình / thêm ổ · ② hệ điều hành · ③ thời gian (1 hàng, % tiết kiệm)
+       · mã giảm giá · chân trang tổng tiền + Thuê ngay (luôn thấy, không phải kéo). Giá đọc từ máy chủ, bấm thuê → đọc lại giá mới nhất rồi mới hỏi."""
+    def __init__(self, app, plan=None):
+        super().__init__(app, "⚡ " + L("Thuê ", "Rent ") + VM_NAME, 700, 820)
+        self.b = {"plan": plan, "cust": plan == "custom", "image": "", "days": 0, "disk": 0, "cc": 2, "cr": 4, "cd": 20}
+        self.loading(L("Đang tải bảng giá…", "Loading prices…"))
+        self._fetch()
+
+    def _fetch(self):
+        def job():
+            try: self.app.shop.site()
+            except Exception: pass
+            return vm_shop(self.app.auth, 0), self.app.shop.profile()
+        self.bg(job, self._loaded, lambda m: self.loading(L("Chưa mở được trang VPS NVMe — ", "Couldn't open VPS NVMe — ") + vm_err(m)))
+
+    def _loaded(self, r):
+        tk = self.app.tk; app = self.app
+        self.info, self.prof = r; self.clear()
+        self.app.prof = self.prof or getattr(self.app, "prof", None)
+        info = self.info or {}; ps = vm_plans(info)
+        sell = info.get("sell") is True or (info.get("admin") is True and (self.prof or {}).get("role") == "admin")
+        if not sell or not ps:
+            c = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=LINE, radius=16); c.pack(fill="x", padx=18, pady=16)
+            tk.Label(c, text="⚡ " + L("VPS NVMe tạm chưa mở bán", "VPS NVMe isn't on sale right now"), font=app.f_h2, fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=18, pady=(16, 2))
+            tk.Label(c, text=L("Shop đang chuẩn bị máy chủ — quay lại sau ít phút, hoặc xem trên web.", "Please check back soon, or visit the website."),
+                     font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=18, pady=(0, 16))
+            return
+        self.ps = ps; self.mt = vm_maint_msg(info, self.prof)
+        c = vm_cu(info); lim = self._lim()
+        b = self.b
+        if b["plan"] != "custom" and not any(p["id"] == b["plan"] for p in ps):
+            fr = sorted([p for p in ps if p.get("free")], key=lambda p: (vm_p30(p) or (0, 0))[1]) or ps
+            b["plan"] = fr[0]["id"]
+        if b["cust"] and not vm_cust_on(info): b["cust"] = False
+        b["cc"], b["cr"] = min(max(1, b["cc"]), lim[0]), min(max(1, b["cr"]), lim[1]); b["cd"] = max(20, vm_free_gb(info), min(b["cd"], lim[2]))
+        p = self.plan()
+        if p and not b["disk"]: b["disk"] = int(num(p.get("disk_gb")))
+        vm_hero(app, self.body, info).pack(fill="x", padx=18, pady=(12, 4))
+        if self.mt: vps_maint_bar(app, self.body, self.mt).pack(fill="x", padx=18, pady=(8, 0))
+        dks = sorted({int(num(x.get("disk_gb"))) for x in ps}); self.one_disk = len(dks) == 1
+        f = self.section("①  " + L("Chọn cấu hình", "Choose a plan"),
+                         (L(f"mọi gói có SSD NVMe {dks[0]} GB", f"every plan has a {dks[0]} GB NVMe SSD") + (L(" miễn phí", " free") if "custom" in info and dks[0] <= vm_free_gb(info) else "")) if self.one_disk else "")
+        grid = tk.Frame(f, bg=BG); grid.pack(fill="x", pady=(4, 0)); self.tiles = []
+        cols = 4
+        for i in range(cols): grid.grid_columnconfigure(i, weight=1, uniform="vmp")
+        for i, x in enumerate(ps):
+            t = tk.Frame(grid, bg=CARD, highlightthickness=1, highlightbackground=LINE, cursor="hand2", radius=14)
+            t.grid(row=i // cols, column=i % cols, sticky="nsew", padx=(0 if i % cols == 0 else 6, 0), pady=3)
+            q = vm_p30(x); free = bool(x.get("free"))
+            ws = [t]
+            a1 = tk.Label(t, text=str(x.get("name") or x["id"])[:24], font=("Segoe UI", 11, "bold"), fg=TXT if free else DIM, bg=CARD, anchor="w"); a1.pack(fill="x", padx=10, pady=(8, 0))
+            a2 = tk.Label(t, text=f"⚙ {int(num(x.get('cores')))} vCPU\n🧠 {vm_gb(x.get('ram_mb'))} RAM" + ("" if self.one_disk else f"\n💾 SSD NVMe {int(num(x.get('disk_gb')))} GB"),
+                          font=app.f_s, fg=DIM, bg=CARD, anchor="w", justify="left"); a2.pack(fill="x", padx=10)
+            a3 = tk.Label(t, text=(vnd(q[1]) + ("/" + L("tháng", "month") if q[0] == 30 else f"/{q[0]} " + L("ngày", "days"))) if free and q else L("tạm hết chỗ", "sold out"),
+                          font=("Segoe UI", 10, "bold"), fg=SKY if free else DIM, bg=CARD, anchor="w"); a3.pack(fill="x", padx=10, pady=(2, 8))
+            ws += [a1, a2, a3]
+            if free:
+                for w in ws: w.bind("<Button-1>", lambda _e, v=x["id"]: self.pick(v))
+            self.tiles.append((x, t, ws))
+        self.cust_t = None
+        if vm_cust_on(info):
+            t = tk.Frame(f, bg=CARD, highlightthickness=1, highlightbackground=LINE, cursor="hand2", radius=14); t.pack(fill="x", pady=(6, 0))
+            r1 = tk.Frame(t, bg=CARD); r1.pack(fill="x", padx=12, pady=(8, 0))
+            n1 = tk.Label(r1, text="🛠  " + L("Tự chọn cấu hình", "Custom specs"), font=("Segoe UI", 11, "bold"), fg=TXT, bg=CARD, anchor="w"); n1.pack(side="left")
+            self.cust_pr = tk.Label(r1, text="", font=("Segoe UI", 10, "bold"), fg=SKY, bg=CARD); self.cust_pr.pack(side="right")
+            self.cust_sp = tk.Label(t, text="", font=app.f_s, fg=DIM, bg=CARD, anchor="w"); self.cust_sp.pack(fill="x", padx=12, pady=(0, 8))
+            for w in (t, r1, n1, self.cust_pr, self.cust_sp): w.bind("<Button-1>", lambda _e: self.pick("custom"))
+            self.cust_t = (t, [t, r1, n1, self.cust_pr, self.cust_sp])
+        self.cfg = tk.Frame(self.body, bg=BG); self.cfg.pack(fill="x", padx=18); self.cfg_key = None
+        f = self.section("②  " + L("Hệ điều hành", "Operating system"), L("cài sẵn — thuê xong là dùng", "pre-installed"))
+        self.os_box = tk.Frame(f, bg=BG); self.os_box.pack(fill="x", pady=(4, 0))
+        f = self.section("③  " + L("Thời gian thuê", "Rental time"), L("thuê dài rẻ hơn", "longer is cheaper"))
+        self.days_box = tk.Frame(f, bg=BG); self.days_box.pack(fill="x", pady=(4, 0))
+        f = self.section(L("Mã giảm giá", "Discount code"))
+        row = tk.Frame(f, bg=BG); row.pack(fill="x", pady=(2, 0))
+        tk.Label(row, text="🏷️", font=("Segoe UI Emoji", 12), bg=BG, fg=TXT).pack(side="left")
+        self.promo = tk.Entry(row, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
+        self.promo.pack(side="left", fill="x", expand=True, ipady=5, padx=(6, 0))
+        fitwrap(self.label(self.body, L("✅ Thanh toán xong máy chủ tự tạo VPS (thường 3–10 phút) — xem ở ⚡ VPS NVMe của bạn (Máy của tôi). Hạn tính từ lúc VPS lên. Hết chỗ thì không trừ tiền.",
+                                        "✅ After payment the VPS is created automatically (usually 3–10 min). Time starts when it is up. No capacity → no charge."),
+                           app.f_s, DIM, wraplength=620)).pack(fill="x", padx=18, pady=(12, 16))
+        ft_ = self.foot
+        top = tk.Frame(ft_, bg=CARD); top.pack(fill="x", padx=16, pady=(10, 0))
+        left = tk.Frame(top, bg=CARD); left.pack(side="left", fill="x", expand=True)
+        self.sum_l = fitwrap(self.label(left, "", app.f_s, DIM, wraplength=420)); self.sum_l.pack(fill="x")
+        self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), SKY); self.tot_l.pack(fill="x")
+        self.calc_l = self.label(left, "", app.f_s, DIM); self.calc_l.pack(fill="x")
+        self.go = app.btn(top, L("Thuê ngay", "Rent now"), self.buy, padx=20, pady=10); self.go.pack(side="right", padx=(10, 0))
+        self.err = fitwrap(self.label(ft_, "", app.f_s, BAD, wraplength=600)); self.err.pack(fill="x", padx=16, pady=(2, 10))
+        self.upd()
+
+    # ---- dữ liệu đang chọn
+    def _lim(self):
+        c = vm_cu(self.info); r = c.get("room") if isinstance(c.get("room"), dict) else {}
+        def lim(mx, room, lo):
+            m = max(lo, int(num(mx)) or lo)
+            return max(lo, min(m, int(num(room)))) if num(room) > 0 else m
+        return lim(c.get("max_cores") or 16, r.get("cores"), 1), lim(c.get("max_ram_gb") or 32, r.get("ram_gb"), 1), lim(c.get("max_disk_gb") or 200, r.get("disk_gb"), 20)
+
+    def plan(self): return next((p for p in getattr(self, "ps", []) if p["id"] == self.b["plan"]), None)
+
+    def spec_now(self):
+        """(ram_mb, disk_gb) đang chọn."""
+        b = self.b
+        if b["cust"]: return b["cr"] * 1024, b["cd"]
+        p = self.plan() or {}
+        return int(num(p.get("ram_mb"))), max(int(num(p.get("disk_gb"))), b["disk"])
+
+    def price_for(self, days):
+        b, c = self.b, vm_cu(self.info)
+        if b["cust"]:
+            if int(days) not in [int(num(x)) for x in (c.get("days") or [])]: return None
+            ex = max(0, b["cd"] - vm_free_gb(self.info))
+            if ex > 0 and not vm_disk_on(self.info): return None
+            return vm_tier(c, vm_month(c, b["cc"], b["cr"], ex), days) or None
+        p = self.plan()
+        x = next((pr for d, pr in vm_prices(p) if d == int(days)), None)
+        if x is None: return None
+        ex = b["disk"] - int(num((p or {}).get("disk_gb")))
+        if ex <= 0: return x
+        if not vm_disk_on(self.info): return None
+        return x + vm_tier(c, ex * num(c.get("unit_disk")), days)
+
+    def days_list(self):
+        c = vm_cu(self.info)
+        ds = [int(num(x)) for x in (c.get("days") or [])] if self.b["cust"] else [d for d, _ in vm_prices(self.plan())]
+        return sorted(d for d in set(ds) if d > 0 and self.price_for(d) is not None)
+
+    def pick(self, v):
+        if v == "custom":
+            if not vm_cust_on(self.info): return
+            self.b["cust"] = True
+        else:
+            p = next((x for x in self.ps if x["id"] == v), None)
+            if not p or not p.get("free"): return
+            if self.b["plan"] != v: self.b["disk"] = int(num(p.get("disk_gb")))
+            self.b.update(cust=False, plan=v); self.b["disk"] = max(int(num(p.get("disk_gb"))), self.b["disk"])
+        self.upd()
+
+    # ---- ô cấu hình: tự chọn (vCPU · RAM · ổ) hoặc thêm ổ cho gói có sẵn
+    def paint_cfg(self):
+        b, c, info = self.b, vm_cu(self.info), self.info
+        p = self.plan() or {}
+        key = "c" if b["cust"] else ("d:" + str(p.get("id")) if vm_disk_on(info) else "")
+        if key == self.cfg_key: return
+        self.cfg_key = key
+        for w in self.cfg.winfo_children(): w.destroy()
+        if not key: return
+        tk = self.app.tk; lim = self._lim(); fr = vm_free_gb(info)
+        box = tk.Frame(self.cfg, bg=CARD, highlightthickness=1, highlightbackground=LINE, radius=14); box.pack(fill="x", pady=(8, 0))
+        tk.Label(box, text=("🛠  " + L("Cấu hình tự chọn", "Your custom specs")) if b["cust"] else ("💾  " + L("Thêm ổ (không bắt buộc)", "Extra disk (optional)")),
+                 font=("Segoe UI", 10, "bold"), fg=TXT, bg=CARD, anchor="w").pack(fill="x", padx=14, pady=(10, 2))
+        def put(st): st.frame.pack(fill="x", padx=14, pady=(4, 4))
+        if b["cust"]:
+            self.st_c = VmStep(self, box, "⚙ vCPU", vnd(c.get("unit_cpu")) + " / vCPU / " + L("tháng", "month") + f" · {L('tối đa', 'max')} {lim[0]}", b["cc"], 1, lim[0], 1, lambda: self._cfg_set("cc", self.st_c.v)); put(self.st_c)
+            self.st_r = VmStep(self, box, "🧠 RAM (GB)", vnd(c.get("unit_ram")) + " / GB / " + L("tháng", "month") + f" · {L('tối đa', 'max')} {lim[1]} GB", b["cr"], 1, lim[1], 1, lambda: self._cfg_set("cr", self.st_r.v)); put(self.st_r)
+            self.st_d = VmStep(self, box, "💾 SSD NVMe (GB)", L(f"{fr} GB đầu miễn phí", f"first {fr} GB free") + (f" · {L('thêm', 'extra')} {vnd(c.get('unit_disk'))} / GB / {L('tháng', 'month')}" if vm_disk_on(info) else " · " + L("chưa bán ổ thêm", "no extra disk yet")),
+                               b["cd"], 20, lim[2] if vm_disk_on(info) else max(20, fr), 10, lambda: self._cfg_set("cd", self.st_d.v)); put(self.st_d)
+        else:
+            d0 = int(num(p.get("disk_gb")))
+            self.st_p = VmStep(self, box, "💾 " + L("Ổ SSD NVMe (GB)", "SSD NVMe disk (GB)"), L(f"gói có sẵn {d0} GB · thêm {vnd(c.get('unit_disk'))} / GB / tháng", f"plan includes {d0} GB · extra {vnd(c.get('unit_disk'))} / GB / month"),
+                               max(d0, b["disk"]), d0, max(d0, lim[2]), 10, lambda: self._cfg_set("disk", self.st_p.v)); put(self.st_p)
+        tk.Frame(box, bg=CARD, height=6).pack(fill="x")
+
+    def _cfg_set(self, k, v):
+        self.b[k] = int(v); self.upd()
+
+    def upd(self):
+        if not self.alive or not hasattr(self, "tiles"): return
+        b, info = self.b, self.info
+        for x, t, ws in self.tiles:
+            on = not b["cust"] and x["id"] == b["plan"]; bg = "#17336f" if on else CARD
+            t.config(highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            for w in ws:
+                try: w.config(bg=bg)
+                except Exception: pass
+            try: ws[1].config(text=("✓ " if on else "") + str(x.get("name") or x["id"])[:24])
+            except Exception: pass
+        if self.cust_t:
+            t, ws = self.cust_t; on = b["cust"]; bg = "#17336f" if on else CARD
+            t.config(highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            for w in ws:
+                try: w.config(bg=bg)
+                except Exception: pass
+            c = vm_cu(info)
+            self.cust_pr.config(text=(vnd(max(1000, vm_month(c, b["cc"], b["cr"], max(0, b["cd"] - vm_free_gb(info))))) if on else L("từ ", "from ") + vnd(vm_month(c, 1, 1, 0))) + "/" + L("tháng", "month"))
+            self.cust_sp.config(text=(f"✓ ⚙ {b['cc']} vCPU · 🧠 {b['cr']} GB RAM · 💾 SSD NVMe {b['cd']} GB") if on else L("Chọn vCPU, RAM, ổ theo ý bạn", "Pick vCPU, RAM and disk"))
+        self.paint_cfg()
+        # ② hệ điều hành: chỉ bản máy chủ đã có máy mẫu (ready) + đủ RAM / ổ; bản thiếu RAM / ổ hiện mờ kèm lý do
+        ram, disk = self.spec_now(); imgs = [i for i in ((info or {}).get("images") or []) if isinstance(i, dict) and i.get("ready")]
+        ok = vm_os_for(imgs, ram, disk)
+        if not any(i["id"] == b["image"] for i in ok): b["image"] = ok[0]["id"] if ok else ""
+        tk = self.app.tk
+        for w in self.os_box.winfo_children(): w.destroy()
+        shown = ok + [i for i in imgs if i not in ok]
+        if not shown:
+            self.label(self.os_box, L("Chưa có bản Windows nào sẵn sàng — nhắn shop.", "No Windows image is ready yet."), self.app.f_s, WARN).pack(fill="x")
+        for k, i in enumerate(shown):
+            self.os_box.grid_columnconfigure(k % 3, weight=1, uniform="vmo")
+            can = i in ok; on = can and i["id"] == b["image"]; bg = "#1c3f93" if on else CARD
+            t = tk.Frame(self.os_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="hand2" if can else "arrow", radius=14)
+            t.grid(row=k // 3, column=k % 3, sticky="nsew", padx=(0 if k % 3 == 0 else 6, 0), pady=3)
+            k0, k1 = vm_os_key(i.get("name"))
+            ls = [tk.Label(t, text=("✓ " if on else "") + k0, font=("Segoe UI", 9, "bold"), bg=bg, fg="#cfe4ff" if on else DIM),
+                  tk.Label(t, text=k1, font=("Segoe UI", 15, "bold"), bg=bg, fg=("#ffffff" if on else TXT) if can else DIM),
+                  tk.Label(t, text=("⚡ " + L("có sẵn", "ready")) if can else (L(f"cần gói từ {vm_gb(i.get('min_ram'))} RAM", f"needs {vm_gb(i.get('min_ram'))} RAM") if num(i.get("min_ram")) > ram
+                                                                              else L(f"cần ổ từ {int(num(i.get('min_disk')))} GB", f"needs a {int(num(i.get('min_disk')))} GB disk")),
+                           font=("Segoe UI", 8, "bold"), bg=bg, fg=OK if can else DIM)]
+            for w in ls: w.pack(pady=(0, 0))
+            ls[0].pack_configure(pady=(8, 0)); ls[-1].pack_configure(pady=(0, 8))
+            if can:
+                for w in [t] + ls: w.bind("<Button-1>", lambda _e, v=i["id"]: (self.b.__setitem__("image", v), self.upd()))
+        # ③ thời gian: 1 hàng · giá · giá / ngày · % tiết kiệm
+        ds = self.days_list()
+        if b["days"] not in ds: b["days"] = 30 if 30 in ds else (ds[0] if ds else 0)
+        for w in self.days_box.winfo_children(): w.destroy()
+        prs = [(d, self.price_for(d)) for d in ds]; base = (prs[0][1] / prs[0][0]) if prs else 0
+        for k, (d, pr) in enumerate(prs):
+            self.days_box.grid_columnconfigure(k, weight=1, uniform="vmd")
+            on = d == b["days"]; bg = "#17336f" if on else CARD; pd = pr / d
+            t = tk.Frame(self.days_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="hand2", radius=14)
+            t.grid(row=0, column=k, sticky="nsew", padx=(0 if k == 0 else 6, 0), pady=3)
+            sv = round((1 - pd / base) * 100) if base > 0 else 0
+            ls = [tk.Label(t, text=("✓ " if on else "") + f"{d} " + L("ngày", "days"), font=("Segoe UI", 11, "bold"), bg=bg, fg=TXT),
+                  tk.Label(t, text=vnd(pr), font=("Segoe UI", 10, "bold"), bg=bg, fg=SKY),
+                  tk.Label(t, text=vnd(pd) + "/" + L("ngày", "day") + (f"  −{sv}%" if sv >= 1 else ""), font=("Segoe UI", 8, "bold"), bg=bg, fg=OK if sv >= 1 else DIM)]
+            for w in ls: w.pack()
+            ls[0].pack_configure(pady=(7, 0)); ls[-1].pack_configure(pady=(0, 7))
+            for w in [t] + ls: w.bind("<Button-1>", lambda _e, v=d: (self.b.__setitem__("days", v), self.upd()))
+        # chân trang
+        pr = self.price_for(b["days"]) if b["days"] else None; bal = num((self.prof or {}).get("balance"))
+        p = self.plan() or {}; img = next((i for i in ok if i["id"] == b["image"]), None)
+        spec = (f"🛠 {b['cc']} vCPU · {b['cr']} GB RAM · SSD NVMe {b['cd']} GB" if b["cust"]
+                else str(p.get("name") or "") + (f" + {b['disk'] - int(num(p.get('disk_gb')))} GB " + L("ổ", "disk") + f" (SSD NVMe {b['disk']} GB)" if b["disk"] > int(num(p.get("disk_gb"))) else ""))
+        self.sum_l.config(text=spec + (" · " + vm_short_os(img.get("name")) if img else "") + (f" · {b['days']} " + L("ngày", "days") if b["days"] else ""))
+        self.tot_l.config(text=vnd(pr) if pr is not None else "—")
+        self.calc_l.config(text=L("Số dư: ", "Balance: ") + vnd(bal) + ((L("  ·  thiếu ", "  ·  short by ") + vnd(pr - bal)) if pr is not None and pr > bal else ""))
+        can = pr is not None and bool(b["image"]) and not self.mt
+        self.go.config(text=L("Thuê ngay", "Rent now") if pr is None or pr <= bal else L("Nạp tiền", "Top up"), state="normal" if can else "disabled")
+        self.err.config(text=self.mt if self.mt else "" if pr is not None else L("Chưa có giá cho cấu hình này — chọn lại.", "No price for this configuration."), fg=WARN if self.mt else BAD)
+
+    def buy(self):
+        if getattr(self, "mt", ""): return self.upd()
+        b = self.b
+        pr = self.price_for(b["days"]) if b["days"] else None
+        if pr is None or not b["image"]: return
+        code = re.sub(r"[^A-Za-z0-9_-]", "", self.promo.get().strip())[:40]
+        self.go.config(state="disabled", text=L("Đang kiểm giá…", "Checking price…"))
+        def job(): return vm_shop(self.app.auth, 0), self.app.shop.profile()
+        self.bg(job, lambda r: self._confirm(r, pr, code), self._fail)
+
+    def _confirm(self, r, shown, code):
+        import tkinter.messagebox as mb
+        self.info, self.prof = r; b = self.b
+        pr = self.price_for(b["days"])
+        if pr is None or abs(pr - shown) > 0.5:
+            mb.showinfo("CloudBlue", L("Bảng giá vừa được shop cập nhật — xem lại rồi bấm thuê.", "The price list just changed — please review."), parent=self.win)
+            return self._loaded((self.info, self.prof))
+        bal = num((self.prof or {}).get("balance"))
+        if not code and pr > bal: self.upd(); self.close(); self.app.open_topup(pr - bal); return
+        ram, disk = self.spec_now(); img = next((i for i in vm_os_for([i for i in (self.info or {}).get("images") or [] if isinstance(i, dict) and i.get("ready")], ram, disk) if i["id"] == b["image"]), None)
+        if not img:
+            mb.showinfo("CloudBlue", L("Bản Windows vừa chọn tạm chưa có — chọn bản khác.", "That Windows image is not available right now — pick another."), parent=self.win)
+            return self._loaded((self.info, self.prof))
+        p = self.plan() or {}
+        spec = (f"🛠 {b['cc']} vCPU · {b['cr']} GB RAM · SSD NVMe {b['cd']} GB" if b["cust"] else f"{p.get('name')} · SSD NVMe {max(b['disk'], int(num(p.get('disk_gb'))))} GB")
+        if not mb.askyesno(L("Thuê VPS NVMe", "Rent VPS NVMe"), f"{spec}\n{img.get('name')} · {b['days']} " + L("ngày", "days") + "\n" + (f"🏷️ {code}\n" if code else "")
+                           + L("Trừ ", "Charge ") + vnd(pr) + (L(" (trước giảm giá)", " (before discount)") if code else "") + L(" từ số dư?", " from your balance?"), parent=self.win):
+            return self.upd()
+        self.go.config(state="disabled", text=L("Đang xử lý…", "Working…"))
+        if b["cust"]: fn, args = "vm_buy_custom", {"p_cores": b["cc"], "p_ram_gb": b["cr"], "p_disk_gb": b["cd"], "p_image": b["image"], "p_days": b["days"]}
+        else:
+            fn, args = "vm_buy", {"p_plan": b["plan"], "p_image": b["image"], "p_days": b["days"]}
+            if b["disk"] > int(num(p.get("disk_gb"))): args["p_disk_gb"] = b["disk"]
+        if code: args["p_promo"] = code
+        def done(res):
+            res = res if isinstance(res, dict) else {}
+            self.app.refresh()
+            mb.showinfo("CloudBlue", L(f"Đã thuê VPS-{int(num(res.get('id')))} — máy chủ đang tạo (thường 3–10 phút). Xem ở ⚡ VPS NVMe của bạn.",
+                                       f"VPS-{int(num(res.get('id')))} rented — it is being created (3–10 min)."), parent=self.app.root)
+            self.close()
+        self.bg(lambda: self.app.auth.rpc(fn, args), done, self._fail)
+
+    def _fail(self, m):
+        self.upd(); self.err.config(text=vm_err(m), fg=BAD)
+
+
+class VmRenewDlg(Dlg):
+    """⏱ Gia hạn VPS NVMe — bảng giá theo đúng cấu hình đang dùng (máy chủ tính sẵn trong vm_my), có mã giảm giá."""
+    def __init__(self, app, v):
+        super().__init__(app, L("Gia hạn ", "Renew ") + vm_name(v), 560, 540)
+        self.v = v; tk = app.tk
+        self.pl = vm_prices(v); self.days = next((d for d, _ in self.pl if d == 30), self.pl[0][0] if self.pl else 0)
+        if not self.pl: self.loading(L("Chưa có bảng giá gia hạn — nhắn shop.", "No renewal prices yet.")); return
+        self.label(self.body, L("Hạn hiện tại: ", "Current expiry: ") + (fmt_left(v.get("until")) if v.get("until") else "—"), app.f_t, DIM).pack(fill="x", padx=18, pady=(16, 0))
+        f = self.section(L("Gia hạn thêm", "Add"))
+        self.ch = Chips(app, f, [(d, f"+{d} " + L("ngày", "days") + "\n" + vnd(pr)) for d, pr in self.pl], lambda: self.days, lambda x: setattr(self, "days", x), self.upd, wrap=4)
+        self.ch.frame.pack(fill="x")
+        f = self.section(L("Mã giảm giá (nếu có)", "Discount code (optional)"))
+        self.promo = tk.Entry(f, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.promo.pack(fill="x", ipady=5)
+        ft = self.foot
+        self.sum = self.label(ft, "", app.f_t, TXT); self.sum.pack(fill="x", padx=16, pady=(10, 0))
+        self.err = fitwrap(self.label(ft, "", app.f_s, BAD, wraplength=500)); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, L("Gia hạn", "Renew"), self.renew); self.go.pack(side="right")
+        self.upd()
+
+    def price(self): return next((pr for d, pr in self.pl if d == self.days), 0)
+
+    def upd(self):
+        if not self.alive or not hasattr(self, "ch"): return
+        self.ch.paint()
+        tot, bal = self.price(), num((getattr(self.app, "prof", None) or {}).get("balance"))
+        exp = parse_iso(self.v.get("until")) if self.v.get("until") else None; base = max(now_utc(), exp) if exp else now_utc()
+        new = (base + datetime.timedelta(days=self.days)).astimezone().strftime("%H:%M %d/%m/%Y")
+        self.sum.config(text=L("Hạn mới: ", "New expiry: ") + new + "   ·   " + L("Thanh toán: ", "Total: ") + vnd(tot) + "   ·   " + L("Số dư: ", "Balance: ") + vnd(bal))
+        self.err.config(text="" if tot <= bal else L("Số dư không đủ — cần nạp thêm ", "Not enough balance — top up ") + vnd(tot - bal) + ".")
+        self.go.config(text=L(f"Gia hạn {self.days} ngày", f"Renew {self.days} days") if tot <= bal else L("Nạp tiền", "Top up"))
+
+    def renew(self):
+        import tkinter.messagebox as mb
+        tot, bal = self.price(), num((getattr(self.app, "prof", None) or {}).get("balance"))
+        code = re.sub(r"[^A-Za-z0-9_-]", "", self.promo.get().strip())[:40]
+        if not code and tot > bal: self.close(); self.app.open_topup(tot - bal); return
+        if not mb.askyesno(L("Gia hạn", "Renew"), L(f"Gia hạn {vm_name(self.v)} thêm {self.days} ngày, trừ {vnd(tot)}?", f"Renew {self.days} days for {vnd(tot)}?")
+                           + (f"\n🏷️ {code}" if code else ""), parent=self.win): return
+        self.go.config(state="disabled"); args = {"p_id": int(num(self.v.get("id"))), "p_days": self.days}
+        if code: args["p_promo"] = code
+        def done(r):
+            self.close(); self.app.refresh()
+            u = parse_iso((r or {}).get("until")) if isinstance(r, dict) and r.get("until") else None
+            mb.showinfo("CloudBlue", L("Đã gia hạn", "Renewed") + (L(" tới ", " until ") + u.astimezone().strftime("%H:%M %d/%m/%Y") if u else "") + ".", parent=self.app.root)
+        def fail(m): self.err.config(text=vm_err(m)); self.go.config(state="normal")
+        self.bg(lambda: self.app.auth.rpc("vm_my_renew", args), done, fail)
+
+
+class VmUpDlg(Dlg):
+    """⬆ Nâng cấp VPS NVMe (SQL v59 vm_my_upgrade): chỉ tăng vCPU / RAM / ổ; giá hỏi máy chủ (p_dry) — đúng số sẽ trừ."""
+    def __init__(self, app, v, data):
+        super().__init__(app, "⬆ " + L("Nâng cấp ", "Upgrade ") + vm_name(v), 600, 640)
+        self.v = v; self.data = data or {}; self.seq = 0; self.price = None; tk = app.tk
+        c = vm_cu(self.data); cur = (int(num(v.get("cores"))), int(-(-num(v.get("ram_mb")) // 1024)), int(num(v.get("disk_gb"))))
+        self.cur = cur
+        hi = (max(cur[0], int(num(c.get("max_cores"))) or 16), max(cur[1], int(num(c.get("max_ram_gb"))) or 32), max(cur[2], int(num(c.get("max_disk_gb"))) or 200))
+        self.label(self.body, L("Hiện tại: ", "Now: ") + f"{cur[0]} vCPU · {vm_gb(v.get('ram_mb'))} RAM · SSD NVMe {cur[2]} GB", app.f_t, TXT).pack(fill="x", padx=18, pady=(16, 0))
+        box = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=LINE, radius=14); box.pack(fill="x", padx=18, pady=(10, 0))
+        mo = L("tháng", "month")
+        self.s1 = VmStep(self, box, "⚙ vCPU", (vnd(c.get("unit_cpu")) + " / vCPU / " + mo) if num(c.get("unit_cpu")) > 0 else L("shop chưa bán thêm vCPU", "not for sale"), cur[0], cur[0], hi[0], 1, self.quote, num(c.get("unit_cpu")) > 0)
+        self.s2 = VmStep(self, box, "🧠 RAM (GB)", (vnd(c.get("unit_ram")) + " / GB / " + mo) if num(c.get("unit_ram")) > 0 else L("shop chưa bán thêm RAM", "not for sale"), cur[1], cur[1], hi[1], 1, self.quote, num(c.get("unit_ram")) > 0)
+        self.s3 = VmStep(self, box, "💾 SSD NVMe (GB)", (vnd(c.get("unit_disk")) + " / GB / " + mo) if num(c.get("unit_disk")) > 0 else L("shop chưa bán thêm ổ", "not for sale"), cur[2], cur[2], hi[2], 10, self.quote, num(c.get("unit_disk")) > 0)
+        for s in (self.s1, self.s2, self.s3): s.frame.pack(fill="x", padx=14, pady=6)
+        fitwrap(self.label(self.body, L("Chỉ tăng được. Tiền = phần chênh giá tháng × số ngày còn lại / 30. Tăng vCPU / RAM: VPS tự khởi động lại ~1–2 phút. Chỉ thêm ổ: không cần khởi động lại, ổ C tự nới. Dữ liệu giữ nguyên.",
+                                        "Increase only. Price = monthly difference × days left / 30. More vCPU / RAM restarts the VPS (~1–2 min). Disk only: no restart. Data is kept."),
+                           app.f_s, DIM, wraplength=540)).pack(fill="x", padx=18, pady=(10, 0))
+        f = self.section(L("Mã giảm giá (nếu có)", "Discount code (optional)"))
+        self.promo = tk.Entry(f, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.promo.pack(fill="x", ipady=5)
+        ft = self.foot
+        self.sum = fitwrap(self.label(ft, "", app.f_t, TXT, wraplength=520)); self.sum.pack(fill="x", padx=16, pady=(10, 0))
+        self.err = fitwrap(self.label(ft, "", app.f_s, BAD, wraplength=520)); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, "⬆ " + L("Nâng cấp", "Upgrade"), self.run); self.go.pack(side="right")
+        self.quote()
+
+    def want(self): return self.s1.v, self.s2.v, self.s3.v
+
+    def quote(self):
+        if not self.alive: return
+        self.seq += 1; s = self.seq; w = self.want(); self.price = None; self.go.config(state="disabled"); self.err.config(text="")
+        if w == self.cur: self.sum.config(text=L("Bấm + để chọn mức cao hơn hiện tại.", "Press + to pick more than you have now."), fg=DIM); return
+        self.sum.config(text=L("Đang hỏi giá…", "Getting the price…"), fg=DIM)
+        def job(): return self.app.auth.rpc("vm_my_upgrade", {"p_id": int(num(self.v.get("id"))), "p_cores": w[0], "p_ram_gb": w[1], "p_disk_gb": w[2], "p_dry": True})
+        def ok(r):
+            if s != self.seq: return
+            r = r if isinstance(r, dict) else {}
+            self.price = int(num(r.get("price")))
+            self.sum.config(text=L("Phải trả: ", "To pay: ") + vnd(self.price) + L(f" (còn {int(num(r.get('days_left')))} ngày)", f" ({int(num(r.get('days_left')))} days left)")
+                            + ("  ·  " + (L("VPS tự khởi động lại ~1–2 phút", "the VPS restarts (~1–2 min)") if r.get("restart") else L("không cần khởi động lại", "no restart"))), fg=TXT)
+            self.go.config(state="normal")
+        def fail(m):
+            if s != self.seq: return
+            self.sum.config(text="", fg=DIM); self.err.config(text=vm_err(m))
+        self.app.root.after(350, lambda: s == self.seq and self.alive and self.bg(job, ok, fail))
+
+    def run(self):
+        import tkinter.messagebox as mb
+        if self.price is None: return
+        w = self.want(); bal = num((getattr(self.app, "prof", None) or {}).get("balance"))
+        code = re.sub(r"[^A-Za-z0-9_-]", "", self.promo.get().strip())[:40]
+        if not code and self.price > bal: self.close(); self.app.open_topup(self.price - bal); return
+        if not mb.askyesno(L("Nâng cấp", "Upgrade"), f"{vm_name(self.v)}: {w[0]} vCPU · {w[1]} GB RAM · SSD NVMe {w[2]} GB\n" + L("Trừ ", "Charge ") + vnd(self.price) + L(" từ số dư?", " from your balance?")
+                           + (f"\n🏷️ {code}" if code else ""), parent=self.win): return
+        self.go.config(state="disabled"); args = {"p_id": int(num(self.v.get("id"))), "p_cores": w[0], "p_ram_gb": w[1], "p_disk_gb": w[2]}
+        if code: args["p_promo"] = code
+        def done(r):
+            self.close(); self.app.refresh()
+            mb.showinfo("CloudBlue", L("Đã nâng cấp — VPS tự khởi động lại ~1–2 phút để nhận cấu hình mới.", "Upgraded — the VPS restarts in ~1–2 min.") if (r or {}).get("restart")
+                        else L("Đã nâng cấp — ổ mới tự nới trong ~1 phút.", "Upgraded — the new disk space appears in ~1 min."), parent=self.app.root)
+        def fail(m): self.err.config(text=vm_err(m)); self.go.config(state="normal")
+        self.bg(lambda: self.app.auth.rpc("vm_my_upgrade", args), done, fail)
+
+
+class VmReDlg(Dlg):
+    """💿 Cài lại / đổi Windows cho VPS NVMe: XOÁ SẠCH ổ rồi dựng lại (vài phút), giới hạn số lần mỗi lượt thuê; tick "Tôi hiểu" mới bấm được."""
+    def __init__(self, app, v, data):
+        super().__init__(app, "💿 " + L("Cài lại / đổi Windows · ", "Reinstall / switch Windows · ") + vm_name(v), 560, 600)
+        self.v = v; tk = app.tk; self.image = v.get("image")
+        self.loading(L("Đang tải danh sách Windows…", "Loading…"))
+        def job():
+            try: return vm_shop(app.auth, 30)
+            except Exception: return {}
+        self.bg(job, lambda info: self._loaded(info, data))
+
+    def _loaded(self, info, data):
+        tk = self.app.tk; app = self.app; v = self.v; self.clear()
+        rd = {i.get("id") for i in ((info or {}).get("images") or []) if isinstance(i, dict) and i.get("ready")}
+        self.os = [i for i in vm_os_for((data or {}).get("images") or [], v.get("ram_mb"), v.get("disk_gb")) if not rd or i["id"] in rd or i["id"] == v.get("image")]
+        if not any(i["id"] == self.image for i in self.os): self.image = self.os[0]["id"] if self.os else None
+        self.label(self.body, L(f"Còn {int(num(v.get('left')))} lần cài lại trong lượt thuê này.", f"{int(num(v.get('left')))} reinstalls left."), app.f_t, DIM).pack(fill="x", padx=18, pady=(16, 0))
+        f = self.section(L("Cài bản Windows", "Install Windows"))
+        self.ch = Chips(app, f, [(i["id"], vm_short_os(i.get("name")) + (L("\n(đang dùng)", "\n(current)") if i["id"] == v.get("image") else "")) for i in self.os],
+                        lambda: self.image, lambda x: setattr(self, "image", x), lambda: self.ch.paint(), wrap=2)
+        self.ch.frame.pack(fill="x")
+        box = tk.Frame(self.body, bg=_mix(BAD, CARD, .12), highlightthickness=1, highlightbackground=_mix(BAD, CARD, .5), radius=14); box.pack(fill="x", padx=18, pady=(14, 0))
+        fitwrap(tk.Label(box, text=L("⚠️ Cài lại = XOÁ SẠCH ổ của VPS rồi dựng lại Windows mới (vài phút). Dữ liệu trong VPS mất hết, hạn giữ nguyên.",
+                                     "⚠️ Reinstall wipes the VPS disk and sets up Windows again (a few minutes). All data is lost; your time is kept."),
+                         font=app.f_t, fg=TXT, bg=_mix(BAD, CARD, .12), anchor="w", justify="left", wraplength=480)).pack(fill="x", padx=14, pady=10)
+        self.ok = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.body, text="  " + L("Tôi hiểu: mất hết dữ liệu trong VPS", "I understand: all data in the VPS is lost"), variable=self.ok, command=self._arm,
+                       font=("Segoe UI", 10, "bold"), fg=TXT, bg=BG, activebackground=BG, activeforeground=TXT, selectcolor=CARD, anchor="w").pack(fill="x", padx=18, pady=(12, 0))
+        ft = self.foot
+        self.err = fitwrap(self.label(ft, "", app.f_s, BAD, wraplength=500)); self.err.pack(fill="x", padx=16, pady=(10, 0))
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Huỷ", "Cancel"), self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, "💿 " + L("Cài lại", "Reinstall"), self.run, tint=BAD); self.go.pack(side="right")
+        self._arm()
+
+    def _arm(self):
+        try: self.go.config(state="normal" if self.ok.get() and self.image else "disabled")
+        except Exception: pass
+
+    def run(self):
+        if not self.ok.get() or not self.image: return
+        self.go.config(state="disabled")
+        def done(r):
+            self.close(); self.app.refresh()
+            import tkinter.messagebox as mb
+            mb.showinfo("CloudBlue", L(f"Đang cài lại — xong trong vài phút (còn {int(num((r or {}).get('left')))} lần).", "Reinstalling — ready in a few minutes."), parent=self.app.root)
+        def fail(m): self.err.config(text=vm_err(m)); self._arm()
+        self.bg(lambda: self.app.auth.rpc("vm_my_reinstall", {"p_id": int(num(self.v.get("id"))), "p_image": self.image}), done, fail)
+
+
+class VmDelDlg(Dlg):
+    """🗑 Xoá VPS NVMe: xoá hẳn khỏi máy chủ, dữ liệu mất hết, KHÔNG hoàn tiền — tick "Tôi hiểu" mới bấm được."""
+    def __init__(self, app, v):
+        super().__init__(app, "🗑 " + L("Xoá ", "Delete ") + vm_name(v), 540, 440)
+        self.v = v; tk = app.tk
+        bg = _mix(BAD, CARD, .12)
+        box = tk.Frame(self.body, bg=bg, highlightthickness=1, highlightbackground=_mix(BAD, CARD, .5), radius=14); box.pack(fill="x", padx=18, pady=(18, 0))
+        fitwrap(tk.Label(box, text=L("⚠️ VPS bị xoá hẳn khỏi máy chủ, dữ liệu mất hết, KHÔNG hoàn tiền phần hạn còn lại. Không hoàn tác được.",
+                                     "⚠️ The VPS is removed from the host, all data is lost and the remaining time is NOT refunded. This cannot be undone."),
+                         font=("Segoe UI", 10, "bold"), fg=TXT, bg=bg, anchor="w", justify="left", wraplength=470)).pack(fill="x", padx=14, pady=12)
+        self.ok = tk.BooleanVar(value=False)
+        tk.Checkbutton(self.body, text="  " + L("Tôi hiểu: xoá hẳn, không hoàn tiền", "I understand: permanent, no refund"), variable=self.ok, command=self._arm,
+                       font=("Segoe UI", 10, "bold"), fg=TXT, bg=BG, activebackground=BG, activeforeground=TXT, selectcolor=CARD, anchor="w").pack(fill="x", padx=18, pady=(14, 0))
+        ft = self.foot
+        self.err = fitwrap(self.label(ft, "", app.f_s, BAD, wraplength=500)); self.err.pack(fill="x", padx=16, pady=(10, 0))
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        app.btn(bb, L("Giữ VPS", "Keep it"), self.close, "soft").pack(side="left")
+        self.go = app.btn(bb, "🗑 " + L("Xoá VPS", "Delete VPS"), self.run, tint=BAD); self.go.pack(side="right")
+        self._arm()
+
+    def _arm(self):
+        try: self.go.config(state="normal" if self.ok.get() else "disabled")
+        except Exception: pass
+
+    def run(self):
+        if not self.ok.get(): return
+        self.go.config(state="disabled"); pid = str(self.v.get("pc") or "")
+        def done(r):
+            try:                                                   # VPS đang mở ở ô bên phải → đóng ô đó
+                d = getattr(self.app, "dockp", None)
+                if d and pid:
+                    for q in [q for q in d.live() if q.pid == pid]: d.close_one(q) if hasattr(d, "close_one") else None
+            except Exception: log("vm del dock:", traceback.format_exc())
+            self.close(); self.app.refresh()
+            import tkinter.messagebox as mb
+            mb.showinfo("CloudBlue", L("Đã xoá VPS.", "VPS deleted."), parent=self.app.root)
+        def fail(m): self.err.config(text=vm_err(m)); self._arm()
+        self.bg(lambda: self.app.auth.rpc("vm_my_cancel", {"p_id": int(num(self.v.get("id")))}), done, fail)
+
+
+def ask_name(app, title, hint, cur, limit=32):
+    """✏️ Hộp nhập tên mới (dùng chung VPS NVMe / VPS GPU): None = bấm Huỷ; "" = bỏ tên riêng."""
+    import tkinter.simpledialog as sd
+    v = sd.askstring(title, hint, initialvalue=cur or "", parent=app.root)
+    if v is None: return None
+    return re.sub(r"\s+", " ", re.sub(r"[\x00-\x1f\x7f<>]", "", v)).strip()[:limit]
+
+
+def vm_note(app, msg, err=False):
+    import tkinter.messagebox as mb
+    (mb.showerror if err else mb.showinfo)("CloudBlue", msg, parent=app.root)
+
+
+def vm_rename(app, v):
+    """✏️ Đổi tên VPS NVMe (vm_my_label — có từ SQL v56): tên riêng chỉ khách thấy, mã gốc VPS-… vẫn hiện nhỏ để báo shop."""
+    n = ask_name(app, L("Đổi tên VPS", "Rename VPS"), L(f"Tên riêng chỉ bạn thấy (tối đa 32 ký tự). Mã gốc {v.get('name')} vẫn hiện nhỏ bên cạnh.\nĐể trống = dùng lại mã gốc.",
+                                                        f"Only you see this name (max 32 characters). Empty = use the ID {v.get('name')}."), v.get("label"))
+    if n is None: return
+    def job():
+        try:
+            app.auth.rpc("vm_my_label", {"p_id": int(num(v.get("id"))), "p_label": n})
+            app.ui(lambda: (app.refresh(), vm_note(app, L(f'Đã đổi tên thành "{n}".', f'Renamed to "{n}".') if n else L("Đã bỏ tên riêng — dùng lại mã gốc.", "Name cleared."))))
+        except Exception as e:
+            m = vm_err(str(e)); app.ui(lambda: vm_note(app, m, True))
+    threading.Thread(target=job, daemon=True).start()
+
+
+def vm_power(app, v, act):
+    import tkinter.messagebox as mb
+    q = {"stop": L(f"Tắt {vm_name(v)}? Bật lại được ngay trong app (Khác ▾ → Bật). Thời gian thuê vẫn tính.", f"Stop {vm_name(v)}? You can start it again anytime."),
+         "start": L(f"Bật {vm_name(v)}? Windows lên sau khoảng 1–2 phút.", f"Start {vm_name(v)}? Windows is up in about 1–2 min."),
+         "reset": L(f"Khởi động lại {vm_name(v)}? Dùng khi Windows bị treo — chương trình đang mở bị đóng, dữ liệu đã lưu giữ nguyên.",
+                    f"Reset {vm_name(v)}? Use it when Windows hangs — open programs are closed.")}[act]
+    if not mb.askyesno(VM_NAME, q, parent=app.root): return
+    def job():
+        try:
+            app.auth.rpc("vm_my_power", {"p_id": int(num(v.get("id"))), "p_act": act})
+            msg = {"stop": L("Đang tắt VPS (khoảng 1 phút).", "Stopping the VPS (about 1 min)."), "start": L("Đang bật VPS (1–2 phút).", "Starting the VPS (1–2 min)."),
+                   "reset": L("Đang khởi động lại VPS.", "Resetting the VPS.")}[act]
+            app.ui(lambda: (app.refresh(), vm_note(app, msg)))
+        except Exception as e:
+            m = vm_err(str(e)); app.ui(lambda: vm_note(app, m, True))
+    threading.Thread(target=job, daemon=True).start()
+
+
+def vm_more(app, v, data, widget):
+    """Menu "Khác ▾" của 1 VPS NVMe: cửa sổ riêng · tắt / bật · khởi động lại · nâng cấp · cài lại · đổi tên · xoá."""
+    code = vm_state(v)[0]; pid = str(v.get("pc") or ""); on = code in ("run", "boot", "cfg")
+    mt = vm_maint_msg(data, getattr(app, "prof", None))
+    c = vm_cu(data); up = (data or {}).get("upgrade") is True and (num(c.get("unit_cpu")) > 0 or num(c.get("unit_ram")) > 0 or num(c.get("unit_disk")) > 0)
+    m = app.tk.Menu(app.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
+    m.add_command(label=L("⧉ Mở cửa sổ riêng", "⧉ Open in its own window"), command=lambda: spawn_viewer(pid, "--view", "--pc"), state="normal" if pid and on else "disabled")
+    if code == "off": m.add_command(label=L("⏻ Bật VPS", "⏻ Start"), command=lambda: vm_power(app, v, "start"))
+    else: m.add_command(label=L("⏻ Tắt VPS", "⏻ Stop"), command=lambda: vm_power(app, v, "stop"), state="normal" if on else "disabled")
+    m.add_command(label=L("🔁 Khởi động lại (khi Windows treo)", "🔁 Reset (when Windows hangs)"), command=lambda: vm_power(app, v, "reset"), state="normal" if on else "disabled")
+    if up: m.add_command(label=L("⬆ Nâng cấp vCPU / RAM / ổ…", "⬆ Upgrade vCPU / RAM / disk…"), command=lambda: VmUpDlg(app, v, data),
+                         state="disabled" if code in ("inst", "exp", "cfg", "warn") or not v.get("until") or mt else "normal")
+    m.add_command(label=L(f"💿 Cài lại / đổi Windows ({int(num(v.get('left')))} lần)…", f"💿 Reinstall / switch Windows ({int(num(v.get('left')))})…"), command=lambda: VmReDlg(app, v, data),
+                  state="disabled" if code in ("inst", "exp") or num(v.get("left")) < 1 or mt else "normal")
+    m.add_command(label=L("✏️ Đổi tên VPS…", "✏️ Rename VPS…"), command=lambda: vm_rename(app, v))
+    m.add_separator()
+    m.add_command(label=L("🗑 Xoá VPS (xoá hẳn, không hoàn tiền)…", "🗑 Delete VPS (permanent, no refund)…"), command=lambda: VmDelDlg(app, v))
+    try: m.tk_popup(widget.winfo_rootx(), widget.winfo_rooty() + widget.winfo_height())
+    finally: m.grab_release()
+
+
+def vm_cards(app, slot, data, prof=None):
+    """"⚡ VPS NVMe của bạn" ở Máy của tôi (như thẻ VPS GPU): ▶ Điều khiển · ⏱ Gia hạn · Khác ▾ · + Thuê thêm · Ẩn ▴ / Hiện ▾ (nhớ trên máy)."""
+    items = vm_items(data)
+    if not items: return
+    tk = app.tk; mini = bool(prefs().get("vm_min"))
+    run = len([x for x in items if vm_state(x)[0] == "run"])
+    hd = tk.Frame(slot, bg=BG); hd.pack(fill="x", pady=(10, 4), padx=8)
+    tk.Label(hd, text="⚡ " + L("VPS NVMe của bạn", "Your VPS NVMe"), font=("Segoe UI", 13, "bold"), fg=TXT, bg=BG).pack(side="left")
+    tk.Label(hd, text=L(f"  {len(items)} VPS · {run} đang chạy", f"  {len(items)} VPS · {run} running"), font=app.f_s, fg=SKY, bg=BG).pack(side="left", pady=(3, 0))
+    def tog():
+        prefs({"vm_min": not mini}); app._vm_sig = None; app._paint_vm(getattr(app, "vm_last", None))
+    app.btn(hd, L("Hiện ▾", "Show ▾") if mini else L("Ẩn ▴", "Hide ▴"), tog, "ghost", padx=10, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right")
+    if mini: return
+    app.btn(hd, L("+ Thuê thêm", "+ Rent more"), lambda: VmBuyDlg(app), tint=SKY, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 6))
+    mt = vm_maint_msg(data, prof if prof is not None else getattr(app, "prof", None))
+    if mt: vps_maint_bar(app, slot, mt).pack(fill="x", padx=8, pady=(2, 4))
+    try: docked = app.docked_pids()
+    except Exception: docked = set()
+    for v in items:
+        code, st, col, why = vm_state(v); pid = str(v.get("pc") or ""); on = code in ("run", "boot", "cfg")
+        c = tk.Frame(slot, bg=CARD, highlightbackground=OK if code == "run" else BAD if code in ("exp", "warn") else WARN, highlightthickness=1, radius=16)
+        c.pack(fill="x", padx=8, pady=4)
+        row = tk.Frame(c, bg=CARD); row.pack(fill="x", padx=16, pady=(12, 2))
+        tk.Label(row, text=vm_name(v), font=("Segoe UI", 12, "bold"), fg=TXT, bg=CARD).pack(side="left")
+        if v.get("label"): tk.Label(row, text="  " + str(v.get("name") or ""), font=app.f_s, fg=DIM, bg=CARD).pack(side="left", pady=(2, 0))
+        rn = tk.Label(row, text=" ✏️", font=("Segoe UI Emoji", 10), fg=DIM, bg=CARD, cursor="hand2"); rn.pack(side="left")
+        rn.bind("<Button-1>", lambda _e, q=v: vm_rename(app, q))
+        tk.Label(row, text=st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
+        tk.Label(c, text=vm_spec(v), font=app.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
+        if why: fitwrap(tk.Label(c, text=why, font=app.f_s, fg=BAD if code in ("exp", "warn") else WARN, bg=CARD, anchor="w", wraplength=460, justify="left")).pack(fill="x", padx=16, pady=(2, 0))
+        if v.get("until") and left_secs(v["until"]) > 0:
+            tk.Label(c, text="⏱ " + fmt_left(v["until"]), font=app.f_s, fg=WARN if left_secs(v["until"]) < 86400 else DIM, bg=CARD, anchor="w").pack(fill="x", padx=16, pady=(2, 0))
+        bar = tk.Frame(c, bg=CARD); bar.pack(fill="x", padx=16, pady=(10, 13))
+        dk = pid in docked
+        b = app.btn(bar, L("▶  Đang mở", "▶  Open now") if dk else "▶  " + L("Điều khiển", "Control"), lambda i=pid: app.open_pc(i, vm=True), padx=18, pady=8)
+        b.pack(side="left")
+        if dk: b.config(bg="#2fd9a6", fg="#03261b")
+        if not (pid and on): b.config(state="disabled", bg=LINE)
+        mo = app.btn(bar, L("Khác ▾", "More ▾"), None, "ghost", padx=12, pady=8)
+        mo.config(command=lambda q=v, w=mo: vm_more(app, q, data, w)); mo.pack(side="right")
+        rb = app.btn(bar, L("⏱ Gia hạn", "⏱ Renew"), lambda q=v: VmRenewDlg(app, q), "ghost", pady=8); rb.pack(side="right", padx=(0, 6))
+        if not v.get("until") or not vm_prices(v): rb.config(state="disabled")
 
 
 class TopupDlg(Dlg):
@@ -8838,8 +9727,8 @@ class Launcher:
         self.btn(hd, L("▦ Xem tất cả", "▦ View all"), self.open_wall, tint=OK, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 8))   # 17/11d
         nav = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=22)      # thanh nổi dưới cùng (giống thanh thẻ của app điện thoại)
         nav.pack(side="bottom", fill="x", padx=18, pady=(4, 14))
-        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("🖥 VPS GPU", lambda: VpsBuyDlg(self), "primary"), ("Nạp tiền", self.open_topup, "flat"),
-                ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))
+        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("🖥 VPS GPU", lambda: VpsBuyDlg(self), "primary"), ("⚡ VPS NVMe", lambda: VmBuyDlg(self), "primary"),
+                ("Nạp tiền", self.open_topup, "flat"), ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))
         for i, (t, cmd, kind) in enumerate(navs):
             nav.grid_columnconfigure(i, weight=1, uniform="nav")
             self.btn(nav, t, cmd, kind, pady=9).grid(row=0, column=i, sticky="ew", padx=(8 if i == 0 else 3, 8 if i == len(navs) - 1 else 3), pady=8)
@@ -8859,6 +9748,8 @@ class Launcher:
         self._paint_offers()
         self.vps_slot = tk.Frame(page, bg=BG); self.vps_slot.pack(fill="x", padx=8)         # 21/11 · 🖥 VPS GPU của bạn (SQL v43) — trống khi chưa có
         self._vps_sig = None; self._paint_vps(getattr(self, "vps_last", None))
+        self.vm_slot = tk.Frame(page, bg=BG); self.vm_slot.pack(fill="x", padx=8)           # 27/11 · ⚡ VPS NVMe của bạn (SQL v56) — trống khi chưa có
+        self._vm_sig = None; self._paint_vm(getattr(self, "vm_last", None))
         self.list = tk.Frame(page, bg=BG); self.list.pack(fill="x", pady=(10, 0))             # các thẻ máy
         self._cards = []; self._ncol = 0; self.list.bind("<Configure>", lambda e: self._lay_cards(), add="+")
         self.list_wrap = self.list; self._paint_promo()
@@ -8897,6 +9788,8 @@ class Launcher:
                 rows = self.auth.phones()
                 try: vps = self.auth.rpc("pc_my_vps", {})                     # 21/11 · VPS GPU của tôi (cơ sở dữ liệu chưa có phần này → bỏ qua)
                 except Exception: vps = None
+                try: vm = self.auth.rpc("vm_my", {})                          # 27/11 · VPS NVMe của tôi (chưa có hàm → không hiện; lỗi mạng → giữ lần trước)
+                except Exception as e: vm = None if vm_missing(str(e)) or (isinstance(e, ApiError) and e.code == 401) else getattr(self, "vm_last", None)
                 try: prof = self.shop.profile()
                 except ApiError as e:
                     if e.code == 401: raise
@@ -8910,8 +9803,10 @@ class Launcher:
                     if prof is not None and hasattr(self, "bal") and self.bal.winfo_exists():
                         self.bal.config(text=vnd(prof.get("balance")) + (f"  · CTV −{int(num(prof.get('ctv_discount')))}%" if is_ctv(prof) else ""))
                     self.vps_last = vps                                         # 21.11k: trước render → khách chỉ có VPS thì danh sách Cloud Phone hiện 1 dòng gọn
+                    self.vm_last = vm; self.vm_pcs = vm_pc_ids(vm)                # máy ảo VPS NVMe → không vẽ lặp ở VPS GPU
                     self.render(rows)
                     self._paint_vps(vps)
+                    self._paint_vm(vm)
                 self.ui(show)
             except ApiError as e:
                 m = str(e)
@@ -9047,12 +9942,14 @@ class Launcher:
         t1.pack(fill="x", padx=12, pady=(8, 0)); t2.pack(fill="x", padx=12, pady=(0, 8))
         for w in (b, t1, t2): w.bind("<Button-1>", lambda *_: UpdateDlg(self, u))
 
-    def open_pc(self, pid):
+    def open_pc(self, pid, vm=False):
         """21/11: mở cửa sổ điều khiển máy PC thật (VPS GPU) — cửa sổ riêng, chuột / phím thật.
-           21/11f: đọc lại trạng thái bảo trì trước — VPS GPU đang bảo trì thì khách thường chưa vào được (admin vẫn vào)."""
+           21/11f: đọc lại trạng thái bảo trì trước — VPS GPU đang bảo trì thì khách thường chưa vào được (admin vẫn vào).
+           27/11: VPS NVMe (vm=True) mở như VPS GPU; bảo trì VPS NVMe không chặn điều khiển (VPS đang chạy vẫn dùng bình thường)."""
         def go():
             try: self.open_machine(str(pid), pc=True)                # 21.11k: gắn vào ô bên phải (mở thêm được nhiều máy) — không gắn được thì cửa sổ riêng
             except Exception: log("open pc:", traceback.format_exc())
+        if vm: go(); return
         def job():
             try: self.shop.site()
             except Exception: pass
@@ -9062,16 +9959,30 @@ class Launcher:
             self.ui(lambda: mb.showinfo("CloudBlue", m, parent=self.root))
         threading.Thread(target=job, daemon=True).start()
 
+    def _paint_vm(self, data):
+        """27/11 · Máy của tôi: "⚡ VPS NVMe của bạn" (dưới VPS GPU). Vẽ lại khi trạng thái / thời gian còn lại / máy đang mở đổi (không nháy màn)."""
+        slot = getattr(self, "vm_slot", None)
+        if slot is None or not slot.winfo_exists(): return
+        try: sig = json.dumps([vm_sig(data, getattr(self, "prof", None)), sorted(self.docked_pids())], default=str)
+        except Exception: sig = None
+        if sig is not None and sig == getattr(self, "_vm_sig", None): return
+        self._vm_sig = sig
+        for w in slot.winfo_children(): w.destroy()
+        if not vm_items(data): return
+        try: vm_cards(self, slot, data, prof=getattr(self, "prof", None))
+        except Exception: log("vm cards:", traceback.format_exc())
+
     def _paint_vps(self, data):
         """21.11k · Máy của tôi: thẻ VPS GPU đầy đủ như thẻ Cloud Phone (▶ Điều khiển mở thêm ô bên phải — mở được nhiều máy cùng lúc, Gia hạn, Khác ▾ có Huỷ máy).
            Trang 🖥 VPS GPU chỉ còn để mua. Vẽ lại khi trạng thái / thời gian còn lại / máy đang mở đổi (không nháy màn)."""
         slot = getattr(self, "vps_slot", None)
         if slot is None or not slot.winfo_exists(): return
-        now_ = now_utc()
-        items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict) and not vps_hidden(x, now_)]
+        now_ = now_utc(); vmp = getattr(self, "vm_pcs", set())
+        items = [x for x in ((data or {}).get("items") or []) if isinstance(x, dict) and not vps_hidden(x, now_) and str((x.get("pc") or {}).get("id") or "") not in vmp]
+        if data: data = dict(data, items=items)                                          # 27/11: máy ảo VPS NVMe nằm ở mục riêng
         try:
             sig = json.dumps([vps_sig({"items": items}), sorted(self.docked_pids()), pc_maint_msg(getattr(self, "prof", None)), bool((data or {}).get("cancel")),
-                              bool((data or {}).get("power")),
+                              bool((data or {}).get("power")), bool((data or {}).get("rename")), [x.get("label") for x in items], prefs().get("vps_min"),
                               [fmt_left(x["until"]) if x.get("until") else "" for x in items], [x.get("hide_at") for x in items]], sort_keys=True, default=str)
         except Exception: sig = None
         if sig is not None and sig == getattr(self, "_vps_sig", None): return
