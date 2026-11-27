@@ -21,6 +21,18 @@ for tool in ("qm", "pvesh", "pvesm"):
     open(p, "w").write("#!/bin/sh\nexec %s %s %s \"$@\"\n" % (sys.executable, os.path.join(HERE, "fakepve.py"), tool))
     os.chmod(p, os.stat(p).st_mode | stat.S_IEXEC)
 STATE = os.path.join(tmp, "pve.json")
+# 27/11e · kho proxy: systemctl GIẢ (ghi lại lệnh; is-active theo file đánh dấu) + nơi tải cbpool giả (file://)
+SYSLOG = os.path.join(tmp, "systemctl.log"); SYSON = os.path.join(tmp, "pool.on")
+p_sc = os.path.join(bind, "systemctl")
+open(p_sc, "w").write("#!%s\nimport sys, os\na = sys.argv[1:]\nopen(%r, 'a').write(' '.join(a) + '\\n')\n"
+                      "if a[:1] == ['is-active']:\n    on = os.path.exists(%r); print('active' if on else 'inactive'); sys.exit(0 if on else 3)\n"
+                      "if a[:2] == ['enable', '--now'] or a[:1] == ['restart']: open(%r, 'w').write('1')\n"
+                      "if a[:2] == ['disable', '--now'] and os.path.exists(%r): os.remove(%r)\n" % (sys.executable, SYSLOG, SYSON, SYSON, SYSON, SYSON))
+os.chmod(p_sc, 0o755)
+RAWD = os.path.join(tmp, "rawpool"); os.makedirs(RAWD)
+os.environ.update(CBHOST_SYSTEMCTL=p_sc, CBHOST_POOL_RAW="file://" + RAWD + "/", CBHOST_POOL_BIN=os.path.join(tmp, "cbpool-bin"),
+                  CBHOST_POOL_CONF=os.path.join(tmp, "cbpool.json"), CBHOST_POOL_CTL=os.path.join(tmp, "pool.sock"),
+                  CBHOST_POOL_UNIT=os.path.join(tmp, "cloudblue-pool.service"))
 os.environ.update(FAKE_PVE_STATE=STATE, CBHOST_QM=os.path.join(bind, "qm"), CBHOST_PVESH=os.path.join(bind, "pvesh"), CBHOST_PVESM=os.path.join(bind, "pvesm"),
                   CBHOST_CONF=os.path.join(tmp, "cbhost.conf"), CBHOST_SECRET=os.path.join(tmp, "cbhost.secret"), CBHOST_STATE=os.path.join(tmp, "state.json"))
 NODE = socket.gethostname().split(".")[0]
@@ -385,7 +397,7 @@ iface nic0 inet6 manual
 
 auto vmbr0
 iface vmbr0 inet6 static
-\taddress 2405:4803:ff84:ac60:2034:4dff:fe09:6697/64
+\taddress 2001:db8:5:ac60:5054:ff:fe12:3456/64
 \tgateway fe80::1
 \tbridge-ports nic0
 \tbridge-stp off
@@ -393,7 +405,7 @@ iface vmbr0 inet6 static
 
 source /etc/network/interfaces.d/*
 """
-IF4 = IF6.replace("inet6 manual", "inet manual").replace("iface vmbr0 inet6 static", "iface vmbr0 inet static").replace("2405:4803:ff84:ac60:2034:4dff:fe09:6697/64", "192.168.1.50/24").replace("fe80::1", "192.168.1.1")
+IF4 = IF6.replace("inet6 manual", "inet manual").replace("iface vmbr0 inet6 static", "iface vmbr0 inet static").replace("2001:db8:5:ac60:5054:ff:fe12:3456/64", "192.168.1.50/24").replace("fe80::1", "192.168.1.1")
 netd = os.path.join(tmp, "net"); os.makedirs(netd)
 cb.RESOLV_F, cb.IFACES_F, cb.DHCP_UNIT_F, cb.DHCP_WAIT_S = os.path.join(netd, "resolv.conf"), os.path.join(netd, "interfaces"), os.path.join(netd, "cloudblue-dhcp4.service"), 0
 NET = {"v4": False, "v6": True, "lease": True, "cmds": [], "have": {"dhclient", "systemctl"}, "dns_ok": False, "active": False}
@@ -514,7 +526,7 @@ try:
     ck("lệnh status / net in rõ tình trạng mạng (IPv4 KHÔNG · IPv6 có · DNS · phân giải KHÔNG ĐƯỢC)", "IPv4 KHÔNG" in rep1 and "IPv6 có" in rep1 and "192.168.100.1" in rep1 and "KHÔNG ĐƯỢC" in rep1 and "tự sửa mạng: bật" in rep1, rep1)
     said = []; T2 = [5000.0]
     class H0:                                                       # máy chủ tối thiểu cho Screen
-        name, status = "cbvps-6697", "new"
+        name, status = "cbvps-3456", "new"
         class web: err = "<urlopen error [Errno -3] Temporary failure in name resolution>"
     scr = cb.Screen(C6, say=said.append, now=lambda: T2[0], report=lambda c: "mạng: IPv4 KHÔNG · IPv6 có")
     scr.step(False, H0); scr.step(False, H0)
@@ -526,8 +538,8 @@ try:
     ck("… vẫn chưa được: 5 phút mới nhắc lại 1 lần (không tràn màn hình)", len(said) == 2, len(said))
     scr.healed(1, "bật dịch vụ xin IPv4 qua DHCP cho vmbr0")
     scr.step(True, H0); scr.step(True, H0)
-    ck("… lên web được → in ĐÚNG 1 lần 'DA LEN WEB: may chu cbvps-6697 - CHO DUYET …'; dòng tự sửa mạng cũng in ra", len(said) == 4 and "tu sua mang (luot 1)" in said[2]
-       and said[3].startswith("DA LEN WEB: may chu 'cbvps-6697' - CHO DUYET") and "bam DUYET" in said[3], said[2:])
+    ck("… lên web được → in ĐÚNG 1 lần 'DA LEN WEB: may chu cbvps-3456 - CHO DUYET …'; dòng tự sửa mạng cũng in ra", len(said) == 4 and "tu sua mang (luot 1)" in said[2]
+       and said[3].startswith("DA LEN WEB: may chu 'cbvps-3456' - CHO DUYET") and "bam DUYET" in said[3], said[2:])
     off2 = cb.Screen(dict(C6, net_heal=False), say=said.append)
     for _ in range(5): off2.step(False, H0)
     off2.step(True, H0)
@@ -879,6 +891,70 @@ ck("VPS mới mua (63) vẫn được nhân bản + bật trong lúc đang xoá 
    (v15.get("100063") or {}).get("status") == "running", v15.get("100063"))
 ck("việc xoá là việc NHẸ: bg(..., light=True) không bị chặn bởi max_builds, máy đang dựng vẫn tính đủ",
    "light=True" in open(os.path.join(ROOT, "cbhost.py"), encoding="utf-8").read())
+
+print("17. 27/11e · KHO PROXY NHIỀU IP (cbpool): tự tải đúng md5, dịch vụ cloudblue-pool, báo web danh sách ô")
+import threading, urllib.request
+cb.http_get = lambda url, limit=4 << 20: urllib.request.urlopen(url, timeout=10).read(limit)     # mục 14 thay bằng bản giả → trả lại bản thật
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm"}))
+FAKE_BIN = b"\x7fELF-cbpool-gia-" + os.urandom(64)
+open(os.path.join(RAWD, "cbpool-x86_64"), "wb").write(FAKE_BIN)
+cb.POOL_FILE = ("cbpool-x86_64", hashlib.md5(FAKE_BIN).hexdigest())
+for f in (SYSLOG, SYSON, os.environ["CBHOST_POOL_BIN"], os.environ["CBHOST_POOL_UNIT"], os.environ["CBHOST_POOL_CONF"]):
+    try: os.remove(f)
+    except OSError: pass
+c17 = cb.conf()
+ck("mặc định BẬT kho proxy (pool)", c17["pool"] is True)
+pm = cb.PoolMgr(c17); r = pm.step(True)
+sl = open(SYSLOG).read() if os.path.exists(SYSLOG) else ""
+ck("lần đầu: tải cbpool từ GitHub đúng md5 → /usr/local/bin/cbpool (755)", os.path.exists(os.environ["CBHOST_POOL_BIN"]) and open(os.environ["CBHOST_POOL_BIN"], "rb").read() == FAKE_BIN
+   and os.stat(os.environ["CBHOST_POOL_BIN"]).st_mode & 0o777 == 0o755, pm.err)
+pc = json.load(open(os.environ["CBHOST_POOL_CONF"]))
+ck("ghi cấu hình đầu: cổng 8899 mọi card (lọc máy trong mạng nhà ở cbpool), card IPv6 = cầu vmbr0, 30 ô, 30 Mbit/s mỗi ô",
+   pc == {"listen": "0.0.0.0:8899", "iface6": "vmbr0", "slots": 30, "bw_kbps": 30000}, pc)
+ut = open(os.environ["CBHOST_POOL_UNIT"]).read()
+ck("dịch vụ cloudblue-pool: Restart=always, chạy đúng file + cấu hình, bảo vệ hệ thống (ProtectSystem/NoNewPrivileges)",
+   "Restart=always" in ut and (os.environ["CBHOST_POOL_BIN"] + " run -c " + os.environ["CBHOST_POOL_CONF"]) in ut and "ProtectSystem=full" in ut and "NoNewPrivileges=yes" in ut, ut)
+ck("systemctl daemon-reload + enable --now cloudblue-pool", "daemon-reload" in sl and "enable --now cloudblue-pool.service" in sl, sl)
+ck("cbpool chưa trả lời ổ cắm → báo web {ok: false, err}", r == {"ok": False, "err": "cbpool chưa chạy"}, r)
+open(SYSLOG, "w").write(""); pm.t = 0; pm.step(True)
+sl = open(SYSLOG).read()
+ck("lần sau: file đúng md5 + dịch vụ đang chạy → không tải lại, không bật lại", "enable" not in sl and "restart" not in sl and pm.err == "", (sl, pm.err))
+open(os.path.join(RAWD, "cbpool-x86_64"), "wb").write(b"ban-la"); os.remove(os.environ["CBHOST_POOL_BIN"]); pm.t = 0; pm.step(True)
+ck("GitHub trả file sai md5 → KHÔNG ghi, báo lỗi rõ", not os.path.exists(os.environ["CBHOST_POOL_BIN"]) and "sai md5" in pm.err, pm.err)
+pm.t = 0; pm.step(True)
+ck("tải hỏng → 10 phút sau mới tải lại", "thử lại sau" in pm.err, pm.err)
+open(os.path.join(RAWD, "cbpool-x86_64"), "wb").write(FAKE_BIN); pm.dl_fail_t = 0; open(SYSLOG, "w").write(""); pm.t = 0; pm.step(True)
+ck("có lại đúng bản → tải + chạy lại dịch vụ", os.path.exists(os.environ["CBHOST_POOL_BIN"]) and "restart cloudblue-pool.service" in open(SYSLOG).read(), open(SYSLOG).read())
+
+# cbpool giả trả trạng thái qua ổ cắm điều khiển
+ST = {"ver": "27.11a", "listen": "0.0.0.0:8899", "v6": {"on": True, "iface": "vmbr0", "prefix": "2001:db8:5:ac60::/64", "err": ""},
+      "ppp": {"want": 2, "up": 1, "account": True, "iface": "vmbr0", "sess": [{"k": 0, "up": True, "ip": "203.0.113.5"}, {"k": 1, "up": False, "err": "x"}]},
+      "slots": [{"id": "p%02d" % (i + 1), "user": "p%02d" % (i + 1), "pass": "Pw%014d" % i, "rot": "R%019d" % i,
+                 "ip6": "2001:db8:5:ac60:%x:1:2:3" % (i + 1), "ip4": "203.0.113.5" if i % 2 == 0 else "", "sess": i % 2, "conns": i} for i in range(3)]}
+srv = socket.socket(socket.AF_UNIX); srv.bind(os.environ["CBHOST_POOL_CTL"]); srv.listen(4)
+def _serve():
+    while True:
+        try: c, _ = srv.accept()
+        except OSError: return
+        rq = c.recv(4096)
+        c.sendall((json.dumps(ST if b'"status"' in rq else {"ok": False}) + "\n").encode()); c.close()
+threading.Thread(target=_serve, daemon=True).start()
+r = pm.step(False)
+ck("báo web gọn: máy (IP mạng nhà) + cổng 8899 + dải IPv6 + ô [id, mật khẩu, đuôi IPv6, IPv4, kết nối, khoá đổi IP] + IP các phiên PPPoE",
+   r.get("ok") and r.get("port") == 8899 and r.get("v6") == "2001:db8:5:ac60::/64" and r["s"][0] == ["p01", "Pw00000000000000", "1:1:2:3", "203.0.113.5", 0, "R0000000000000000000"]
+   and r["s"][1][3] == "" and r["ppp"] == {"want": 2, "up": 1, "acct": True, "ip": ["203.0.113.5"]} and "host" in r, r)
+w17 = FakeWeb(); w17.status = "ready"; h17 = cb.Host(web=w17); h17.pool = pm
+ST["slots"] = [dict(ST["slots"][0], id="p%03d" % i, pass_="x" * 30) for i in range(200)]
+h17.poll_once(); wait_idle(h17)
+m17 = last_poll(w17)["p_metrics"]
+ck("số đo (kèm px) luôn ≤ 12 KB: nhiều ô quá thì cắt bớt danh sách ô (đánh dấu cut)", len(json.dumps(m17)) <= 12000 and (m17.get("px") or {}).get("cut") == 1
+   and 5 <= len(m17["px"]["s"]) < 200, (len(json.dumps(m17)), len((m17.get("px") or {}).get("s") or [])))
+srv.close()
+open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"pool": False})); c18 = cb.conf(); open(SYSON, "w").write("1"); open(SYSLOG, "w").write("")
+pm2 = cb.PoolMgr(c18); r = pm2.step(True)
+ck("tắt được: \"pool\": false → systemctl disable --now cloudblue-pool, không báo px", c18["pool"] is False and "disable --now cloudblue-pool.service" in open(SYSLOG).read() and r is None,
+   (open(SYSLOG).read(), r))
+ck("cbhost không chạy lệnh qua shell (kho proxy cũng vậy)", "shell=True" not in open(os.path.join(ROOT, "cbhost.py")).read())
 
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
