@@ -40,7 +40,7 @@ import (
 	"time"
 )
 
-const VER = "27.11a"
+const VER = "27.11b"
 
 type PppConf struct {
 	Iface    string `json:"iface"`    // card đi PPPoE (mặc định = card IPv6 / vmbr0)
@@ -51,6 +51,7 @@ type PppConf struct {
 	Macvlan  *bool  `json:"macvlan"` // mỗi phiên 1 MAC riêng (mặc định có)
 	Unit0    int    `json:"unit0"`   // số giao diện pppd đầu tiên (ppp100…)
 	Table0   int    `json:"table0"`  // bảng định tuyến đầu tiên (2100…)
+	Probe    *bool  `json:"probe"`   // 27.11b · tự dò modem có cho PPPoE đi qua (gói PADI, không mật khẩu) khi chưa có phiên nào lên (mặc định có)
 	MvPrefix string `json:"-"`       // tên macvlan (cbpp0…; lệnh thử dùng cbpt0…)
 }
 

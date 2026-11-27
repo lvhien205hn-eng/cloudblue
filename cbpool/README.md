@@ -30,8 +30,12 @@ cbpool ppp-test --dial 2      # quay thử 2 phiên bằng tài khoản đã lư
 
 ⚠ Nếu nhà mạng chỉ cho 1 phiên / tài khoản, quay thêm có thể làm rớt mạng chính của modem vài giây — thử lúc vắng khách.
 
+**Tự dò PPPoE (27.11b):** khi chưa có phiên PPPoE nào lên, dịch vụ tự gửi gói dò PADI (như `cbpool ppp-test`, KHÔNG mật khẩu, không xin
+phiên) lúc bật và 6 giờ / lần → `status.ppp.disc = {ok, ac, iface, t}` (hoặc `err`) → trang Quản trị hiện ngay "modem có cho PPPoE đi qua
+không". Tắt: `"ppp": {"probe": false}`. Dò lại ngay: `cbpool ppp-test` (hoặc lệnh điều khiển `{"cmd":"disc"}`).
+
 Cấu hình `/etc/cloudblue/cbpool.json` (cbhost chỉ ghi lần đầu): `listen`, `iface6`, `slots`, `bw_kbps`, `max_conns`, `block_ports`,
-`fallback4`, `allow_from`, `ppp: {iface, sessions, mtu}`. Sửa xong: `systemctl restart cloudblue-pool` (hoặc `cbpool reload`).
+`fallback4`, `allow_from`, `ppp: {iface, sessions, mtu, probe}`. Sửa xong: `systemctl restart cloudblue-pool` (hoặc `cbpool reload`).
 Tắt hẳn: `"pool": false` trong `/etc/cloudblue/cbhost.conf`.
 
 ## Dựng lại (phải ra đúng md5 ghim ở `POOL_FILE` trong `proxmox/cbhost.py`)

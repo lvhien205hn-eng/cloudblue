@@ -237,8 +237,10 @@ os.environ["INVOCATION_ID"] = "x"
 due = cb.update_due(hu, time.time(), 0)
 hu.busy = {5: object()}; busy = cb.update_due(hu, time.time(), 0); hu.busy = {}
 soon = cb.update_due(hu, time.time(), time.time() - 600)
-hu.c["auto_update"] = False; off = cb.update_due(hu, time.time(), 0)
-ck("dịch vụ: tới giờ → xem bản mới; đang dựng máy ảo / chưa đủ 1 giờ / tắt auto_update → chờ", due and not busy and not soon and not off, (due, busy, soon, off))
+late = cb.update_due(hu, time.time(), time.time() - 1000)
+hu.c["auto_update"] = False; off = cb.update_due(hu, time.time(), 0); hu.c["auto_update"] = True
+ck("dịch vụ: tới giờ → xem bản mới; đang dựng máy ảo / chưa đủ 15 phút / tắt auto_update → chờ; quá 15 phút → xem (27/11f)",
+   due and not busy and not soon and late and not off and cb.UPD_EVERY_S == 900, (due, busy, soon, late, off))
 os.environ.pop("INVOCATION_ID", None)
 
 print("9. Bảng điều khiển máy mẫu: dựng từ ISO → đưa vé → lưu thành mẫu · sửa · huỷ")
@@ -893,7 +895,7 @@ ck("VPS mới mua (63) vẫn được nhân bản + bật trong lúc đang xoá 
 ck("việc xoá là việc NHẸ: bg(..., light=True) không bị chặn bởi max_builds, máy đang dựng vẫn tính đủ",
    "light=True" in open(os.path.join(ROOT, "cbhost.py"), encoding="utf-8").read())
 
-print("17. 27/11e · KHO PROXY NHIỀU IP (cbpool): tự tải đúng md5, dịch vụ cloudblue-pool, báo web danh sách ô")
+print("17. 27/11e · KHO PROXY NHIỀU IP (cbpool): tự tải đúng md5, dịch vụ cloudblue-pool, báo web danh sách ô · 27/11f tự dò PPPoE")
 import threading, urllib.request
 cb.http_get = lambda url, limit=4 << 20: urllib.request.urlopen(url, timeout=10).read(limit)     # mục 14 thay bằng bản giả → trả lại bản thật
 open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "storage": "local-lvm"}))
@@ -944,6 +946,20 @@ r = pm.step(False)
 ck("báo web gọn: máy (IP mạng nhà) + cổng 8899 + dải IPv6 + ô [id, mật khẩu, đuôi IPv6, IPv4, kết nối, khoá đổi IP] + IP các phiên PPPoE",
    r.get("ok") and r.get("port") == 8899 and r.get("v6") == "2001:db8:5:ac60::/64" and r["s"][0] == ["p01", "Pw00000000000000", "1:1:2:3", "203.0.113.5", 0, "R0000000000000000000"]
    and r["s"][1][3] == "" and r["ppp"] == {"want": 2, "up": 1, "acct": True, "ip": ["203.0.113.5"]} and "host" in r, r)
+ST["ppp"] = {"want": 0, "up": 0, "account": False, "iface": "vmbr0", "sess": [], "err": "chưa có tài khoản PPPoE (gõ: cbpool ppp-set)",
+             "disc": {"t": 1795760000, "iface": "vmbr0", "ok": True, "ac": ["cbtest-ac", "AC-" + "x" * 80, "c", "d"]}}
+r = pm.step(False)
+ck("27/11f · kết quả tự dò PPPoE lên web: modem cho đi qua + tên máy chủ nhà mạng (≤3 tên, ≤40 ký tự)",
+   r["ppp"].get("disc") == {"t": 1795760000, "ok": True, "ac": ["cbtest-ac", "AC-" + "x" * 37, "c"]} and r["ppp"]["acct"] is False and "ppp-set" in r["ppp"]["err"], r["ppp"])
+ST["ppp"]["disc"] = {"t": 1795760001, "iface": "vmbr0", "ok": False}
+r1 = pm.step(False)
+ST["ppp"]["disc"] = {"t": "lạ", "iface": "vmbr0", "err": "mở ổ cắm PPPoE lỗi (cần root): " + "e" * 300}
+r2 = pm.step(False)
+ST["ppp"]["disc"] = "rác"
+r3 = pm.step(False)
+ck("27/11f · dò không có trả lời → ok false; dò lỗi → err (≤120); dữ liệu lạ → bỏ qua",
+   r1["ppp"].get("disc") == {"t": 1795760001, "ok": False, "ac": []} and r2["ppp"].get("disc") == {"t": 0, "err": ("mở ổ cắm PPPoE lỗi (cần root): " + "e" * 300)[:120]}
+   and "disc" not in r3["ppp"], (r1["ppp"], r2["ppp"], r3["ppp"]))
 w17 = FakeWeb(); w17.status = "ready"; h17 = cb.Host(web=w17); h17.pool = pm
 ST["slots"] = [dict(ST["slots"][0], id="p%03d" % i, pass_="x" * 30) for i in range(200)]
 h17.poll_once(); wait_idle(h17)

@@ -97,6 +97,9 @@ type Pool struct {
 	pppErr string
 	v6fail int32 // lần nối IPv6 hỏng liên tiếp (không tính bị từ chối)
 	v6skip int64 // tới mốc này (unix nano): đích có IPv4 thì khỏi thử IPv6
+	discMu sync.Mutex
+	disc   map[string]interface{} // 27.11b · kết quả tự dò PPPoE gần nhất (web hiện: modem có cho PPPoE đi qua không)
+	discCh chan struct{}
 }
 
 func newPool(c *Conf) (*Pool, error) {
@@ -106,7 +109,7 @@ func newPool(c *Conf) (*Pool, error) {
 			return nil, fmt.Errorf("không ghi được %s: %v", statePath(c), err)
 		}
 	}
-	p := &Pool{c: c, st: st, stopCh: make(chan struct{}), v6kick: make(chan struct{}, 1)}
+	p := &Pool{c: c, st: st, stopCh: make(chan struct{}), v6kick: make(chan struct{}, 1), discCh: make(chan struct{}, 1)}
 	p.ppp = newPppMgr(c, st, func() { saveState(c, st) })
 	p.rebuild()
 	return p, nil
@@ -136,9 +139,106 @@ func (p *Pool) rebuild() {
 }
 
 func (p *Pool) start() {
-	p.wg.Add(1)
+	p.wg.Add(2)
 	go p.v6loop()
+	go p.discLoop()
 	p.applyPpp()
+}
+
+// ---------------------------------------------------------------- 27.11b · tự dò PPPoE (không mật khẩu)
+// Chưa có phiên PPPoE nào lên → gửi PADI (như lệnh cbpool ppp-test) lúc bật + 6 giờ / lần → status.ppp.disc = {ok, ac, iface, t | err}.
+// Web nhờ đó biết modem có cho PPPoE từ mạng nhà đi qua không mà user khỏi vào Shell. Chỉ dò, KHÔNG xin phiên (không PADR) → không ảnh hưởng mạng chính.
+
+var (
+	pppoeDiscoverFn = pppoeDiscover
+	discFirst       = 5 * time.Second
+	discEvery       = 6 * time.Hour
+)
+
+func (p *Pool) discLoop() {
+	defer p.wg.Done()
+	t := time.NewTimer(discFirst)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.stopCh:
+			return
+		case <-t.C:
+		case <-p.discCh:
+			if !t.Stop() {
+				select {
+				case <-t.C:
+				default:
+				}
+			}
+		}
+		p.mu.RLock()
+		on := bp(p.c.Ppp.Probe, true)
+		p.mu.RUnlock()
+		if on && p.ppp.upCount() == 0 {
+			p.discover()
+		}
+		t.Reset(discEvery)
+	}
+}
+
+func (p *Pool) discover() map[string]interface{} {
+	p.mu.RLock()
+	ifc := p.c.Ppp.Iface
+	p.mu.RUnlock()
+	if ifc == "" {
+		ifc = p.v6ifName()
+	}
+	if ifc == "" {
+		p.mu.RLock()
+		ifc = defaultIface(p.c)
+		p.mu.RUnlock()
+	}
+	d := map[string]interface{}{"t": time.Now().Unix(), "iface": ifc}
+	if ifc == "" {
+		d["err"] = "không tìm thấy card mạng để dò PPPoE"
+	} else if r, err := pppoeDiscoverFn(ifc, 4*time.Second); err != nil {
+		d["err"] = err.Error()
+	} else {
+		var acs []string
+		seen := map[string]bool{}
+		for _, o := range r {
+			a := strings.TrimSpace(o.AC)
+			if a == "" {
+				a = "?"
+			}
+			if !seen[a] && len(acs) < 4 {
+				seen[a] = true
+				acs = append(acs, a)
+			}
+		}
+		d["ok"] = len(r) > 0
+		d["ac"] = acs
+	}
+	p.discMu.Lock()
+	p.disc = d
+	p.discMu.Unlock()
+	if d["err"] != nil {
+		logf("dò PPPoE trên %s: lỗi %v", ifc, d["err"])
+	} else if d["ok"] == true {
+		logf("dò PPPoE trên %s: modem CHO PPPoE đi qua (máy chủ nhà mạng: %s)", ifc, strings.Join(d["ac"].([]string), ", "))
+	} else {
+		logf("dò PPPoE trên %s: không có trả lời (modem không cho PPPoE từ mạng nhà đi qua)", ifc)
+	}
+	return d
+}
+
+func (p *Pool) discCopy() map[string]interface{} {
+	p.discMu.Lock()
+	defer p.discMu.Unlock()
+	if p.disc == nil {
+		return nil
+	}
+	r := make(map[string]interface{}, len(p.disc))
+	for k, v := range p.disc {
+		r[k] = v
+	}
+	return r
 }
 
 func (p *Pool) stop() {
@@ -701,6 +801,9 @@ func (p *Pool) status() map[string]interface{} {
 	if p.pppErr != "" {
 		pp["err"] = p.pppErr
 	}
+	if d := p.discCopy(); d != nil {
+		pp["disc"] = d
+	}
 	return map[string]interface{}{"ver": VER, "listen": listen, "bw_kbps": p.c.BwKbps, "fallback4": bp(p.c.Fallback4, true),
 		"conns": atomic.LoadInt32(&p.total), "v6": v6, "ppp": pp, "slots": ss, "t": time.Now().Unix()}
 }
@@ -744,6 +847,8 @@ func (p *Pool) ctlOne(c net.Conn) {
 			resp = p.status()
 		case "reload":
 			resp = p.reload()
+		case "disc": // dò PPPoE ngay (không mật khẩu)
+			resp = p.discover()
 		case "rotate":
 			s := p.slot(req["slot"])
 			if s == nil {
