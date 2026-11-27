@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11f"           # 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11l"           # 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -5084,11 +5084,20 @@ def gpu_eff(util, clk, cmax):
     return util if r >= 0.5 else round(util * r, 1)
 
 
+def _smi_exe():
+    """27/11l · nvidia-smi: trong PATH → System32 → thư mục NVSMI (driver cũ không đưa vào PATH) → kho driver."""
+    for p in [shutil.which("nvidia-smi") or "", r"C:\Windows\System32\nvidia-smi.exe", r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"] + \
+             sorted(glob.glob(r"C:\Windows\System32\DriverStore\FileRepository\nv*\nvidia-smi.exe"), reverse=True):
+        if p and os.path.isfile(p): return p
+    return "nvidia-smi"
+
+
 def _nv_util():
     num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
+    exe = _smi_exe()
     for q in ("utilization.gpu,clocks.sm,clocks.max.sm", "utilization.gpu"):
         try:
-            r = subprocess.run(["nvidia-smi", "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, creationflags=NOWIN)
+            r = subprocess.run([exe, "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=15, creationflags=NOWIN)
             us = []
             for line in (r.stdout or "").strip().splitlines():
                 f = [num(x.strip()) for x in line.split(",")]
