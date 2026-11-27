@@ -5,7 +5,10 @@
 #   vmbr0 (bridge) ── vp0 ═══════ veth ═══════ vp1      2001:db8:1::1/64 · 192.168.77.1/24 (cổng mạng nội bộ)
 #     2001:db8:1::100/64 (như SLAAC)                    198.51.100.1 (máy đích "Internet", trả lại IP người hỏi)
 #     192.168.77.2/24, mặc định qua .1                   pppoe-server: AC "cbtest-ac", cấp 203.0.113.10+ (mỗi phiên 1 IP)
-#     cbpool: 4 ô, 3 phiên PPPoE (macvlan trên vmbr0)
+#     cbpool: 4 ô, 3 phiên PPPoE (macvlan trên vmbr0)       2001:db8:5::1 (máy đích IPv6 ngoài dải nhà — thử khách mua proxy)
+#
+# 27.11c: thêm phần BÁN PROXY — tài khoản khách (ô IPv6 bán riêng, IPv4 = phiên PPPoE đã bán), vào từ "Internet" (netns isp nối IP phiên),
+# khách tự đổi IP, phiên đã bán không chia cho ô nội bộ, nhật ký kết nối khách.
 #
 # Dùng: sudo python3 test_pool_net.py ./cbpool-x86_64
 import json, os, signal, subprocess, sys, time
@@ -63,10 +66,11 @@ def setup():
     sh("ip link add vmbr0 type bridge", ns="pve")
     sh("ip link set vp0 master vmbr0", ns="pve")
     for c in ("ip link set vmbr0 up", "ip link set vp0 up", "ip addr add 2001:db8:1::100/64 dev vmbr0 nodad",
-              "ip addr add 192.168.77.2/24 dev vmbr0", "ip route add default via 192.168.77.1"):
+              "ip addr add 192.168.77.2/24 dev vmbr0", "ip route add default via 192.168.77.1", "ip -6 route add default via 2001:db8:1::1 dev vmbr0"):
         sh(c, ns="pve")
     for c in ("ip link set vp1 up", "ip addr add 2001:db8:1::1/64 dev vp1 nodad", "ip addr add 192.168.77.1/24 dev vp1",
-              "ip link add dummy0 type dummy", "ip link set dummy0 up", "ip addr add 198.51.100.1/32 dev dummy0"):
+              "ip link add dummy0 type dummy", "ip link set dummy0 up", "ip addr add 198.51.100.1/32 dev dummy0",
+              "ip addr add 2001:db8:5::1/128 dev dummy0 nodad"):
         sh(c, ns="isp")
     # máy đích: HTTP trả lại IP người kết nối (nghe cả IPv4 + IPv6)
     who = D + "/who.py"
@@ -106,8 +110,8 @@ def setup():
 
 def main():
     setup()
-    json.dump({"listen": "127.0.0.1:8899", "iface6": "vmbr0", "slots": 4, "bw_kbps": -1, "state_dir": D + "/st", "ctl": D + "/ctl.sock",
-               "ppp": {"iface": "vmbr0", "secret": SECRET}}, open(CONF, "w"))
+    json.dump({"listen": "0.0.0.0:8899", "iface6": "vmbr0", "slots": 4, "bw_kbps": -1, "state_dir": D + "/st", "ctl": D + "/ctl.sock",
+               "ppp": {"iface": "vmbr0", "secret": SECRET}, "users_file": D + "/users.json", "log_file": D + "/khach.log"}, open(CONF, "w"))
     json.dump({"user": "cbtest", "pass": "pw-cb-123", "sessions": 3}, open(SECRET, "w"))
     os.chmod(SECRET, 0o600)
 
@@ -214,6 +218,8 @@ def main():
        [l for l in r.stdout.splitlines() if "phiên" in l][:3])
     ok("phiên thật vẫn chạy sau khi thử", status().get("ppp", {}).get("up") == 3)
 
+    khach(slots)
+
     # tắt PPPoE → IPv4 ra bằng IP chung (192.168.77.2)
     json.dump({"user": "cbtest", "pass": "pw-cb-123", "sessions": 0}, open(SECRET, "w"))
     sh("%s reload -c %s" % (BIN, CONF), ns="pve", check=False)
@@ -227,6 +233,61 @@ def main():
     proc.send_signal(signal.SIGTERM)
     proc.wait(timeout=20)
     ok("cbpool dừng sạch", proc.returncode == 0, proc.returncode)
+
+
+def khach(slots):
+    """27.11c · BÁN PROXY: tài khoản khách (web bán → cbhost ghi file) — ô IPv6 bán riêng, IPv4 = phiên PPPoE đã bán, vào từ Internet."""
+    users = D + "/users.json"
+    exp = int(time.time()) + 3600
+    json.dump({"v": 1, "bw": -1, "fb4": False, "sale4": False, "users": [
+        {"u": "pxcib6001", "p": "khach-v6-mot", "k": "v6", "n": "s001", "x": exp, "s": 1, "r": "rot-khach-v6-000001"},
+        {"u": "pxcib6002", "p": "khach-v6-hai", "k": "v6", "n": "s002", "x": exp, "s": 2},
+        {"u": "pxcib4001", "p": "khach-v4-mot", "k": "v4", "n": "1", "x": exp, "s": 1, "r": "rot-khach-v4-000001"},
+        {"u": "pxcib4002", "p": "khach-v4-hai", "k": "v4", "n": "2", "x": exp, "s": 2}]}, open(users, "w"))
+    os.chmod(users, 0o600)
+    r = sh("%s users -c %s" % (BIN, CONF), ns="pve", check=False)
+    ok("nạp 4 tài khoản khách (2 ô IPv6 bán, phiên 1 + 2 để bán)", '"users":4' in r.stdout and '"units6":2' in r.stdout, r.stdout.strip())
+    time.sleep(2)                                                  # chờ gắn IPv6 cho ô bán
+    st = status()
+    ip_s = {x["k"]: x.get("ip") for x in st.get("ppp", {}).get("sess", [])}
+    inner = {sid: curl(sid, s["pass"], "http://198.51.100.1:8080/") for sid, s in sorted(slots.items())}
+    ok("ô nội bộ không dùng phiên đã bán (chỉ còn phiên 0)", ip_s.get(0) and all(v == ip_s[0] for v in inner.values()), (inner, ip_s))
+    c6 = curl("pxcib6001", "khach-v6-mot", "http://[2001:db8:5::1]:8080/")
+    c6b = curl("pxcib6002", "khach-v6-hai", "http://[2001:db8:5::1]:8080/")
+    own6 = set(s["ip6"] for s in status().get("slots", []))
+    ok("khách IPv6: ra IPv6 riêng của ô bán (khác ô nội bộ, 2 ô khác nhau)",
+       c6.startswith("2001:db8:1:") and c6b.startswith("2001:db8:1:") and c6 != c6b and c6 not in own6 and c6b not in own6, (c6, c6b))
+    ok("khách IPv6: đích chỉ có IPv4 → không đi (fb4 tắt)", curl("pxcib6001", "khach-v6-mot", "http://198.51.100.1:8080/") == "")
+    ok("khách IPv6: đích trong chính dải IPv6 nhà → chặn", curl("pxcib6001", "khach-v6-mot", "http://[2001:db8:1::1]:8080/") == "")
+    c41 = curl("pxcib4001", "khach-v4-mot", "http://198.51.100.1:8080/")
+    c42 = curl("pxcib4002", "khach-v4-hai", "http://198.51.100.1:8080/")
+    ok("khách IPv4: ra đúng IP phiên đã bán (phiên 1, phiên 2)", c41 and c41 == ip_s.get(1) and c42 == ip_s.get(2), (c41, c42, ip_s))
+    ok("khách IPv4: đích chỉ có IPv6 → không đi", curl("pxcib4001", "khach-v4-mot", "http://[2001:db8:5::1]:8080/") == "")
+    # vào từ Internet: máy ở netns isp nối thẳng IP phiên 1 (IP công khai của máy chủ) cổng 8899
+    r = sh("curl -s --max-time 12 --socks5 %s:8899 --proxy-user 'pxcib4002:khach-v4-hai' http://198.51.100.1:8080/" % ip_s.get(1), ns="isp", check=False, timeout=30)
+    ok("khách vào từ Internet (nối IP công khai của máy chủ) → ra đúng IP phiên của khách", r.stdout.strip() == ip_s.get(2), r.stdout.strip())
+    r = sh("curl -s --max-time 8 --socks5 %s:8899 --proxy-user 'p01:%s' http://198.51.100.1:8080/" % (ip_s.get(1), slots["p01"]["pass"]), ns="isp", check=False, timeout=30)
+    ok("tài khoản ô nội bộ từ Internet → bị từ chối", r.stdout.strip() == "", r.stdout.strip())
+    # khách tự đổi IP (proxy riêng): IPv6 đổi ngay, IPv4 quay lại đúng phiên của mình; proxy share không đổi được
+    r = sh("curl -s --max-time 8 'http://%s:8899/rotate?key=rot-khach-v6-000001'" % ip_s.get(1), ns="isp", check=False, timeout=20)
+    n6 = curl("pxcib6001", "khach-v6-mot", "http://[2001:db8:5::1]:8080/")
+    ok("khách đổi IPv6 bằng link của mình (từ Internet)", '"ok":true' in r.stdout and n6 != c6 and n6.startswith("2001:db8:1:"), (c6, n6, r.stdout.strip()[:100]))
+    r = sh("curl -s --max-time 60 'http://127.0.0.1:8899/rotate?key=rot-khach-v4-000001'", ns="pve", check=False, timeout=70)
+    time.sleep(1)
+    n41 = curl("pxcib4001", "khach-v4-mot", "http://198.51.100.1:8080/")
+    st2 = {x["k"]: x.get("ip") for x in status().get("ppp", {}).get("sess", [])}
+    ok("khách đổi IPv4 → phiên 1 quay lại, IP mới, phiên khác không đổi", '"ok":true' in r.stdout and n41 and n41 != c41 and st2.get(2) == ip_s.get(2),
+       (c41, n41, r.stdout.strip()[:120]))
+    lg = open(D + "/khach.log").read() if os.path.exists(D + "/khach.log") else ""
+    ok("nhật ký kết nối khách: tài khoản + IP khách từ Internet + đích", '"u":"pxcib4002"' in lg and '"from":"203.0.113.1"' in lg and '"dst":"198.51.100.1:8080"' in lg, lg[-300:])
+    r = sh("%s status -c %s" % (BIN, CONF), ns="pve", check=False)
+    ok("status có khoá công khai của máy (web dùng mã hoá tài khoản PPPoE)", '"pk": "B' in r.stdout or '"pk":"B' in r.stdout)
+    # bỏ hết khách → phiên trả lại ô nội bộ, máy ngoài không vào được nữa
+    json.dump({"v": 1, "users": []}, open(users, "w"))
+    sh("%s users -c %s" % (BIN, CONF), ns="pve", check=False)
+    back = curl("p02", slots["p02"]["pass"], "http://198.51.100.1:8080/")
+    r = sh("curl -s --max-time 6 --socks5 %s:8899 --proxy-user 'pxcib4002:khach-v4-hai' http://198.51.100.1:8080/" % st2.get(0), ns="isp", check=False, timeout=20)
+    ok("bỏ hết khách → ô nội bộ dùng lại mọi phiên, tài khoản khách hết vào được", back == st2.get(1) and r.stdout.strip() == "", (back, st2, r.stdout.strip()))
 
 
 def cleanup():
