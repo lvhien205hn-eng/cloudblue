@@ -206,11 +206,11 @@ func setupPool(t *testing.T, extra map[string]interface{}) (*Pool, string, strin
 
 func TestProxyV6PerSlot(t *testing.T) {
 	needV6(t)
+	p, px, ctl := setupPool(t, nil) // trước máy đích: dựng địa chỉ 2001:db8:1::1 trên lo
 	tgt := whoServer(t, "[2001:db8:1::1]:8080")
 	defer tgt.Close()
 	tgt4 := whoServer(t, "127.0.0.1:8081")
 	defer tgt4.Close()
-	p, px, ctl := setupPool(t, nil)
 	seen := map[string]bool{}
 	for _, s := range p.slots {
 		c, rep := socksDial(t, px, s.ID, s.Pass, 4, "2001:db8:1::1", 8080)
