@@ -51,6 +51,31 @@ jobs:
           "$BT/d8" --release --min-api 21 --lib "$PLAT/android.jar" --output /tmp/cbv/dex $(find /tmp/cbv/classes -name '*.class')
           (cd /tmp/cbv/dex && jar cfM "$GITHUB_WORKSPACE/cbvideo.jar" classes.dex)
           ls -l cbvideo.jar && md5sum cbvideo.jar
+      - name: Dựng libcbenc.so (openh264 + JNI, Android x86_64 — bộ nén riêng của cbvideo, 27/11h)
+        continue-on-error: true
+        run: |
+          set -e
+          sudo apt-get install -y -qq nasm > /dev/null
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_SDK_ROOT/ndk-bundle}}"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          echo "NDK: $NDK"
+          git clone -q --depth 1 --branch v2.4.1 https://github.com/cisco/openh264 /tmp/oh
+          OHLIB=""
+          if (cd /tmp/oh && make -j4 OS=android NDKROOT="$NDK" TARGET=android-24 NDKLEVEL=24 ARCH=x86_64 libopenh264.a > /tmp/oh-make.log 2>&1); then
+            OHLIB=/tmp/oh/libopenh264.a; echo "openh264: make OK"
+          else
+            tail -25 /tmp/oh-make.log
+            echo "make lỗi → thử meson"
+            pip install -q meson ninja
+            printf "[binaries]\nc = '%s'\ncpp = '%s'\nar = '%s'\nstrip = '%s'\nnasm = 'nasm'\n[host_machine]\nsystem = 'android'\ncpu_family = 'x86_64'\ncpu = 'x86_64'\nendian = 'little'\n" \
+              "$TC/x86_64-linux-android24-clang" "$TC/x86_64-linux-android24-clang++" "$TC/llvm-ar" "$TC/llvm-strip" > /tmp/cross.txt
+            (cd /tmp/oh && meson setup /tmp/ohb --cross-file /tmp/cross.txt -Ddefault_library=static --buildtype=release && ninja -C /tmp/ohb)
+            OHLIB=$(find /tmp/ohb -name 'libopenh264.a' | head -1)
+          fi
+          ls -l "$OHLIB"
+          "$TC/x86_64-linux-android24-clang" -O3 -fPIC -c .github/a9-check/cbenc.c -I/tmp/oh/codec/api/wels -I/tmp/oh/codec/api/svc -o /tmp/cbenc.o
+          "$TC/x86_64-linux-android24-clang++" -shared -o "$GITHUB_WORKSPACE/libcbenc.so" /tmp/cbenc.o "$OHLIB" -static-libstdc++ -lm -Wl,--build-id=none -s
+          ls -l libcbenc.so && md5sum libcbenc.so
       - name: ffmpeg (giải mã thử dòng hình cbvideo)
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg > /dev/null
@@ -79,22 +104,26 @@ jobs:
           path: |
             a9stream-*.json
             cbvideo.jar
+            libcbenc.so
           if-no-files-found: ignore
-      - name: Lưu windows/cbvideo.jar vào nhánh (chỉ khi Android 9 ra hình + giải mã sạch)
+      - name: Lưu windows/cbvideo.jar + libcbenc-x86_64.so vào nhánh (chỉ khi Android 9 ra hình + giải mã sạch)
         if: matrix.api == 28 && hashFiles('cbvideo-ok.txt') != ''
         run: |
           set -e
-          if [ -f windows/cbvideo.jar ] && ! cmp -s cbvideo.jar windows/cbvideo.jar; then
-            echo "- ⚠ cbvideo.jar dựng lại KHÁC bản đã lưu (md5 \`$(md5sum windows/cbvideo.jar | cut -d' ' -f1)\` → \`$(md5sum cbvideo.jar | cut -d' ' -f1)\`) — KHÔNG ghi đè (bluestream ghim md5 bản đã lưu). Muốn thay: xoá windows/cbvideo.jar rồi chạy lại." | tee -a "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          mkdir -p windows && cp cbvideo.jar windows/cbvideo.jar
-          echo "- windows/cbvideo.jar md5: \`$(md5sum windows/cbvideo.jar | cut -d' ' -f1)\` · $(stat -c %s windows/cbvideo.jar) byte" | tee -a "$GITHUB_STEP_SUMMARY"
+          mkdir -p windows
+          # jar: chỉ thay khi classes.dex khác (zip có dấu giờ → md5 jar đổi mỗi lần dựng dù mã y hệt)
+          dex_new=$(unzip -p cbvideo.jar classes.dex | md5sum | cut -d' ' -f1)
+          dex_old=$( [ -f windows/cbvideo.jar ] && unzip -p windows/cbvideo.jar classes.dex | md5sum | cut -d' ' -f1 || echo none)
+          if [ "$dex_new" != "$dex_old" ]; then cp cbvideo.jar windows/cbvideo.jar; echo "- cbvideo.jar MỚI (classes.dex đổi)" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f libcbenc.so ] && ! cmp -s libcbenc.so windows/libcbenc-x86_64.so 2>/dev/null; then cp libcbenc.so windows/libcbenc-x86_64.so; echo "- libcbenc-x86_64.so MỚI" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          for f in windows/cbvideo.jar windows/libcbenc-x86_64.so; do
+            [ -f "$f" ] && echo "- $f md5: \`$(md5sum $f | cut -d' ' -f1)\` · $(stat -c %s $f) byte" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add windows/cbvideo.jar
-          if git diff --cached --quiet; then echo "cbvideo.jar không đổi"; exit 0; fi
-          git commit -q -m "cbvideo.jar dựng từ .github/a9-check/A9Video.java (CI, Android 9 giải mã sạch)" \
+          git add windows/cbvideo.jar windows/libcbenc-x86_64.so 2>/dev/null || git add windows/cbvideo.jar
+          if git diff --cached --quiet; then echo "cbvideo.jar / libcbenc không đổi"; exit 0; fi
+          git commit -q -m "cbvideo.jar + libcbenc-x86_64.so dựng từ .github/a9-check (CI, Android 9 giải mã sạch)" \
             -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
             -m "Claude-Session: https://claude.ai/code/session_014zy4K1ke85zVx5zDEA3vr3"
           git push origin "HEAD:${GITHUB_REF_NAME}"
