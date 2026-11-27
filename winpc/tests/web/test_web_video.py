@@ -61,6 +61,11 @@ def state(s):
                cp: one('m3v-cp'), vps: one('m3v-vps') } }""")
 
 
+def hero(s):
+    return s.js("""() => { const v = document.querySelector('.m3-bgv'); if (!v) return null;
+        return { src: v.getAttribute('src') || '', paused: v.paused, muted: v.muted, loop: v.loop, poster: v.getAttribute('poster') || '', wall: !!document.querySelector('.m3-col, #m3-wall') }; }""")
+
+
 def scroll_to(s, id="m3v-cp", wait=2500):
     s.js("(id) => document.querySelector('#' + id + ' .m3v-fig').scrollIntoView({ block: 'center' })", id)
     s.page.wait_for_timeout(wait)
@@ -77,13 +82,25 @@ def main():
         ck("mục video: tiêu đề mới · KHÔNG còn nút chọn video · Cloud Phone 1:02 ở trên, VPS GPU 1:41 ở dưới", st0["sec"] and "Video hướng dẫn" in st0["h"] and st0["tabs"] == 0
            and st0["cp"] and st0["vps"] and "Cloud Phone" in st0["cp"]["h"] and "1:02" in st0["cp"]["h"] and "VPS GPU" in st0["vps"]["h"] and "1:41" in st0["vps"]["h"]
            and st0["cp"]["top"] < st0["vps"]["top"], st0)
-        ck("chưa kéo tới: chưa tải video nào", st0["cp"]["src"] == "" and st0["vps"]["src"] == "", st0)
+        ck("chưa kéo tới: chưa tải video hướng dẫn nào", st0["cp"]["src"] == "" and st0["vps"]["src"] == "", st0)
+        hv = hero(s)
+        ck("nền đầu trang: video cảnh quay thật (bản 1280) đang chạy, tắt tiếng, lặp, có ảnh chờ — không còn tường điện thoại vẽ SVG",
+           hv and hv["src"] == "/video/nen-dau-trang.mp4" and not hv["paused"] and hv["muted"] and hv["loop"] and hv["poster"] == "/video/nen-dau-trang.jpg" and not hv["wall"], hv)
+        ck("trạng thái giảm chuyển động: nền video đầu trang VẪN chạy (không bị tắt)", hv and not hv["paused"], hv)
+        s.js("() => document.querySelector('#grid .m3-row.vps').scrollIntoView({ block: 'center' })"); s.page.wait_for_timeout(1800)
+        vb = s.js("() => { const v = document.querySelector('#grid .m3-row.vps .thumb video.m3-vbg'); window.__vb = v; return v ? { src: v.getAttribute('src'), paused: v.paused, n: document.querySelectorAll('video.m3-vbg').length } : null; }")
+        ck("hàng VPS GPU: ô ảnh có nền video chạy (cảnh quay thật), ảnh GPU nằm giữa", vb and vb["src"] == "/video/nen-vps.mp4" and not vb["paused"] and vb["n"] == 1, vb)
+        s.js("() => renderGrid()"); s.page.wait_for_timeout(900)
+        vb2 = s.js("() => { const v = document.querySelector('#grid .m3-row.vps .thumb video.m3-vbg'); return v ? { same: v === window.__vb, paused: v.paused, n: document.querySelectorAll('video.m3-vbg').length } : null; }")
+        ck("lưới sản phẩm vẽ lại → vẫn đúng 1 video nền, dùng lại (không tải lại), vẫn chạy", vb2 and vb2["same"] and vb2["n"] == 1 and not vb2["paused"], vb2)
+        s.js("() => window.scrollTo(0, 0)"); s.page.wait_for_timeout(900)
+        ck("kéo đi khỏi hàng VPS GPU → video nền dừng", s.js("() => window.__vb.paused"))
         scroll_to(s, "m3v-cp")
         st = state(s)
         ck("kéo tới video trên → tự phát Cloud Phone (tắt tiếng) + nút 🔊 Bật tiếng; video dưới chưa chạy", st["cp"]["src"] == "/video/cloud-phone.mp4" and not st["cp"]["paused"] and st["cp"]["muted"]
            and st["cp"]["on"] and st["cp"]["snd"] and (st["vps"]["paused"] or st["vps"]["src"] == ""), st)
         ck("6 chương Cloud Phone, mốc đúng (0:00 … 0:54)", len(st["cp"]["ch"]) == 6 and st["cp"]["ch"][0].startswith("0:00") and st["cp"]["ch"][5].startswith("0:54"), st["cp"]["ch"])
-        ck("trạng thái giảm chuyển động: nền máy chạy đầu trang VẪN chuyển động (không bị tắt)", s.js("() => { const c = document.querySelector('.m3-col'); return !c || getComputedStyle(c).animationName !== 'none'; }"))
+        ck("kéo xuống khỏi đầu trang → video nền dừng (đỡ tốn máy)", hero(s)["paused"], hero(s))
         s.page.screenshot(path=os.path.join(SHOTS, "video-1-cp.png"))
         scroll_to(s, "m3v-vps")
         st = state(s)
@@ -99,6 +116,7 @@ def main():
         s.js("() => window.scrollTo(0, 0)"); s.page.wait_for_timeout(1200)
         st = state(s)
         ck("kéo đi chỗ khác → cả 2 video dừng", st["cp"]["paused"] and st["vps"]["paused"], st)
+        ck("kéo về đầu trang → video nền chạy lại", not hero(s)["paused"], hero(s))
         s.js("() => { const v = document.querySelector('#m3v-vps video'); v.currentTime = v.duration - .3; }"); scroll_to(s, "m3v-vps", 3000)
         ck("xem hết VPS GPU → video dừng ở cuối, không tự nhảy sang video khác", state(s)["vps"]["ended"] or state(s)["vps"]["paused"], state(s)["vps"])
         s.js("() => window.scrollTo(0, 0)"); s.page.wait_for_timeout(1000); scroll_to(s, "m3v-vps")
@@ -113,13 +131,14 @@ def main():
 
         print("2. Điện thoại (390 px)")
         m = Site(br, html, reduced=False, mobile=True)
+        hv = hero(m)
+        ck("điện thoại (chế độ nhẹ tự bật): nền đầu trang vẫn chạy — bản nhỏ 640 px", hv and hv["src"] == "/video/nen-dau-trang-nho.mp4" and not hv["paused"], hv)
         scroll_to(m, "m3v-cp")
         st = state(m)
         ck("điện thoại: kéo tới → tự phát Cloud Phone", st["cp"]["src"] == "/video/cloud-phone.mp4" and not st["cp"]["paused"], st["cp"])
         w = m.js("""() => { const b = document.getElementById('m3v-cp'), f = b.querySelector('.m3v-fig').getBoundingClientRect(), c = b.querySelector('.m3v-ch').getBoundingClientRect(),
                            v = document.getElementById('m3v-vps').getBoundingClientRect(); return [f.width, f.height, c.top >= f.bottom - 1, v.top >= c.bottom - 1, document.documentElement.scrollWidth <= innerWidth + 1]; }""")
         ck("điện thoại: khung video 16:9 vừa màn, chương nằm dưới, video VPS GPU nằm dưới nữa, không tràn ngang", w[0] > 300 and abs(w[0] / w[1] - 16 / 9) < .05 and w[2] and w[3] and w[4], w)
-        ck("điện thoại (chế độ nhẹ tự bật): nền máy chạy đầu trang vẫn chuyển động", m.js("() => { const c = document.querySelector('.m3-col'); return !c || getComputedStyle(c).animationName !== 'none'; }"))
         m.page.screenshot(path=os.path.join(SHOTS, "video-3-mobile.png"), full_page=False)
         ck("điện thoại: không lỗi JS", not m.errors, m.errors)
         m.close()
@@ -132,8 +151,10 @@ def main():
         e.close()
         l = Site.__new__(Site)
         Site.__init__(l, br, html, reduced=False)
-        l.js("() => { localStorage.setItem('br_lite', '1'); }"); l.page.reload(wait_until="load"); l.page.wait_for_timeout(1500)
-        ck("khách TỰ bật chế độ nhẹ (br_lite = 1) → nền đầu trang mới đứng yên", l.js("() => { const c = document.querySelector('.m3-col'); return !c || getComputedStyle(c).animationName === 'none'; }"))
+        l.js("() => { localStorage.setItem('br_lite', '1'); }"); l.seen.clear(); l.page.reload(wait_until="load"); l.page.wait_for_timeout(1500)
+        hv = hero(l)
+        ck("khách TỰ bật chế độ nhẹ (br_lite = 1) → nền đầu trang chỉ còn ảnh tĩnh, không tải video", hv and hv["src"] == "" and hv["paused"] and not any("nen-dau-trang" in u and u.endswith(".mp4") for u in l.seen), [hv, l.seen])
+        ck("chế độ nhẹ: hàng VPS GPU không tải video nền (chỉ ảnh tĩnh)", not l.js("() => !!document.querySelector('video.m3-vbg')") and not any("nen-vps" in u and u.endswith(".mp4") for u in l.seen), l.seen)
         l.close(); br.close()
     print(f"\n{OK[0]}/{OK[1]} đạt")
     sys.exit(0 if OK[0] == OK[1] else 1)
