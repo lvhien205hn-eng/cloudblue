@@ -39,10 +39,12 @@ jobs:
       - name: cpsu/test_cpsu.py bằng đúng file phát hành (lệnh su gộp + lệnh su không libc)
         run: |
           set -e
-          cp windows/cpsu-x86_64 cpsu/cpsu-x86_64 && chmod +x cpsu/cpsu-x86_64 windows/cpsu-su-x86_64
+          # chép ra /tmp: bài thử chạy file bằng uid app (10123) — /home/runner không cho uid khác đi qua
+          T=/tmp/cpsu_t; rm -rf $T; mkdir -p $T; chmod 755 $T
+          cp cpsu/test_cpsu.py $T/ && cp windows/cpsu-x86_64 windows/cpsu-su-x86_64 $T/ && chmod 755 $T/cpsu-x86_64 $T/cpsu-su-x86_64
           sudo mkdir -p /system/bin && sudo ln -sf /bin/sh /system/bin/sh
-          for c in "" "$PWD/windows/cpsu-su-x86_64"; do
-            if sudo CPSU_SU_BIN="$c" python3 cpsu/test_cpsu.py > /tmp/t.log 2>&1; then r=đạt; else r=LỖI; fi
+          for c in "" "$T/cpsu-su-x86_64"; do
+            if sudo CPSU_SU_BIN="$c" python3 $T/test_cpsu.py > /tmp/t.log 2>&1; then r=đạt; else r=LỖI; fi
             echo "- test_cpsu.py (su: ${c:-cpsu gộp}): $r — $(grep -E '^Ran ' /tmp/t.log)" >> "$GITHUB_STEP_SUMMARY"
             grep -E '^(FAIL|ERROR):' /tmp/t.log | sed 's/^/  - /' >> "$GITHUB_STEP_SUMMARY" || true
             tail -4 /tmp/t.log
