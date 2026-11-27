@@ -40,13 +40,14 @@ type sess struct {
 }
 
 type PppMgr struct {
-	c     *Conf
-	st    *PState
-	save  func()
-	mu    sync.Mutex
-	sec   *PppSecret
-	iface string
-	sess  []*sess
+	c        *Conf
+	st       *PState
+	save     func()
+	mu       sync.Mutex
+	sec      *PppSecret
+	iface    string
+	sess     []*sess
+	reserved map[int]bool // 27.11c · phiên để bán cho khách: ô nội bộ không dùng
 }
 
 func newPppMgr(c *Conf, st *PState, save func()) *PppMgr { return &PppMgr{c: c, st: st, save: save} }
@@ -92,23 +93,77 @@ func (m *PppMgr) stopAll() { m.configure(nil, 0, "") }
 func (m *PppMgr) sessFor(slot int) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.sess) == 0 {
+	return m.sessForLocked(slot)
+}
+
+// sessForLocked: phiên của ô nội bộ thứ slot — bỏ qua phiên để bán; không còn phiên nào → -1 (đi IPv4 chung).
+func (m *PppMgr) sessForLocked(slot int) int {
+	n := len(m.sess)
+	if n == 0 || slot < 0 {
 		return -1
 	}
-	return slot % len(m.sess)
+	if len(m.reserved) == 0 {
+		return slot % n
+	}
+	var free []int
+	for k := 0; k < n; k++ {
+		if !m.reserved[k] {
+			free = append(free, k)
+		}
+	}
+	if len(free) == 0 {
+		return -1
+	}
+	return free[slot%len(free)]
 }
 
 func (m *PppMgr) ipFor(slot int) net.IP {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.sess) == 0 {
+	k := m.sessForLocked(slot)
+	if k < 0 || !m.sess[k].up {
 		return nil
 	}
-	s := m.sess[slot%len(m.sess)]
-	if !s.up {
+	return m.sess[k].ip
+}
+
+func (m *PppMgr) setReserved(r map[int]bool) {
+	m.mu.Lock()
+	m.reserved = r
+	m.mu.Unlock()
+}
+
+// sessIP: IP của phiên k (khách IPv4) — phiên chưa lên → nil.
+func (m *PppMgr) sessIP(k int) net.IP {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if k < 0 || k >= len(m.sess) || !m.sess[k].up {
 		return nil
 	}
-	return s.ip
+	return m.sess[k].ip
+}
+
+func (m *PppMgr) sessIPs() map[int]string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r := map[int]string{}
+	for k, s := range m.sess {
+		if s.up && s.ip != nil {
+			r[k] = s.ip.String()
+		}
+	}
+	return r
+}
+
+func (m *PppMgr) hasIP(ip net.IP) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, s := range m.sess {
+		if s.up && s.ip != nil && s.ip.Equal(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *PppMgr) redial(k int, wait time.Duration) (net.IP, error) {
@@ -159,6 +214,9 @@ func (m *PppMgr) status() map[string]interface{} {
 	up := 0
 	for _, s := range m.sess {
 		x := map[string]interface{}{"k": s.k, "up": s.up, "if": fmt.Sprintf("ppp%d", s.unit)}
+		if m.reserved[s.k] {
+			x["sale"] = true
+		}
 		if s.up {
 			up++
 			x["ip"] = s.ip.String()
@@ -705,11 +763,12 @@ func safePrefix(u string) string {
 }
 
 // publicIP: IP công khai nhìn từ ngoài khi đi bằng IP phiên (hỏi api.ipify.org, cổng 80, gắn đúng IP nguồn).
+// publicIP: IPv4 công khai khi đi ra bằng địa chỉ src (nil = đường chính của máy).
 func publicIP(src net.IP) string {
-	if src == nil {
-		return ""
+	d := net.Dialer{Timeout: 6 * time.Second}
+	if src != nil {
+		d.LocalAddr = &net.TCPAddr{IP: src}
 	}
-	d := net.Dialer{Timeout: 6 * time.Second, LocalAddr: &net.TCPAddr{IP: src}}
 	c, err := d.Dial("tcp4", "api.ipify.org:80")
 	if err != nil {
 		return ""
@@ -788,10 +847,7 @@ func pppSetCmd(c *Conf) int {
 	fmt.Printf("✓ Đã lưu tài khoản %s***, %d phiên.\n", safePrefix(u), n)
 	if pppPlugin() == "" {
 		fmt.Println("Máy chưa có pppd → cài gói ppp…")
-		cmd := exec.Command("apt-get", "install", "-y", "ppp")
-		cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
+		if err := installPpp(os.Stdout); err != nil {
 			fmt.Println("✗ Cài ppp lỗi:", err)
 		}
 	}
@@ -806,4 +862,12 @@ func pppSetCmd(c *Conf) int {
 	}
 	fmt.Println("Thử: cbpool ppp-test (dò, không mật khẩu) · cbpool ppp-test --dial 2 (quay thử 2 phiên)")
 	return 0
+}
+
+// installPpp: máy chưa có pppd → apt-get install ppp (Proxmox / Debian).
+func installPpp(w io.Writer) error {
+	cmd := exec.Command("apt-get", "install", "-y", "ppp")
+	cmd.Env = append(os.Environ(), "DEBIAN_FRONTEND=noninteractive")
+	cmd.Stdout, cmd.Stderr = w, w
+	return cmd.Run()
 }

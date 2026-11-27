@@ -49,7 +49,8 @@ jobs:
           { echo "### Bộ thử Go"; echo '```'; grep -E '^(--- |    cbpool_test|PASS|FAIL)' /tmp/gotest.txt || true; echo '```'; } >> $GITHUB_STEP_SUMMARY
       - name: Cài ppp + pppoe-server
         run: |
-          sudo apt-get update -qq
+          # kho Microsoft trên máy chạy CI đôi khi lỗi chữ ký (403) → bỏ kho đó rồi cập nhật lại
+          sudo apt-get update -qq || { sudo rm -f /etc/apt/sources.list.d/microsoft-prod.*; sudo apt-get update -qq; }
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ppp pppoe curl
           sudo modprobe pppoe || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" && sudo modprobe pppoe; }
           sudo modprobe macvlan
