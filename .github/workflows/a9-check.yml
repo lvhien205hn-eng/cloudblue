@@ -2,6 +2,9 @@
 #   khung I định kỳ có cờ "khoá" / có phải IDR không · màn đứng yên có lặp khung không · khung/giây theo cỡ hình 1280 / 960 / 800 ·
 #   thời gian bật lại bộ nén. So với Android 12 (Codec2, giống MuMu). Chỉ đo — không phát hành, không đụng máy chủ thật nào.
 #   Kết quả: bảng trong trang tóm tắt của lượt chạy (Summary).
+# 27/11f · cbvideo: máy chủ hình RIÊNG cho Android 9 (.github/a9-check/A9Video.java → cbvideo.jar, dựng ngay trong job emu) — đọc hình bằng
+#   ImageReader rồi nạp bộ nén bằng ByteBuffer (scrcpy trên Android 9 chỉ ~15 khung/giây vì bộ nén tự đọc ngược hình từ GPU trong luồng nén).
+#   So scrcpy vs cbvideo; cbvideo ra hình + giải mã sạch trên Android 9 → job tự lưu windows/cbvideo.jar vào chính nhánh đang thử.
 name: Check Android 9 stream
 
 on:
@@ -28,12 +31,26 @@ jobs:
   emu:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write     # 27/11f: lưu cbvideo.jar (dựng từ A9Video.java ngay trong lượt chạy này) vào CHÍNH nhánh đang thử
     strategy:
       fail-fast: false
       matrix:
         api: [28, 31]     # 28 = Android 9 (như LDPlayer 9) · 31 = Android 12 (như MuMu)
     steps:
       - uses: actions/checkout@v4
+      - name: Dựng cbvideo.jar (máy chủ hình riêng cho Android 9, từ .github/a9-check/A9Video.java)
+        run: |
+          set -e
+          SDK="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          PLAT=$(ls -d "$SDK"/platforms/android-* | sort -V | tail -1)
+          BT=$(ls -d "$SDK"/build-tools/* | sort -V | tail -1)
+          echo "android.jar: $PLAT · build-tools: $BT"
+          rm -rf /tmp/cbv && mkdir -p /tmp/cbv/classes /tmp/cbv/dex
+          javac -encoding UTF-8 -source 8 -target 8 -Xlint:-options -nowarn -bootclasspath "$PLAT/android.jar" -d /tmp/cbv/classes .github/a9-check/A9Video.java
+          "$BT/d8" --release --min-api 21 --lib "$PLAT/android.jar" --output /tmp/cbv/dex $(find /tmp/cbv/classes -name '*.class')
+          (cd /tmp/cbv/dex && jar cfM "$GITHUB_WORKSPACE/cbvideo.jar" classes.dex)
+          ls -l cbvideo.jar && md5sum cbvideo.jar
       - name: Bật KVM cho máy ảo Android
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -55,5 +72,21 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: a9stream-${{ matrix.api }}
-          path: a9stream-*.json
+          path: |
+            a9stream-*.json
+            cbvideo.jar
           if-no-files-found: ignore
+      - name: Lưu windows/cbvideo.jar vào nhánh (chỉ khi Android 9 ra hình + giải mã sạch)
+        if: matrix.api == 28 && hashFiles('cbvideo-ok.txt') != ''
+        run: |
+          set -e
+          mkdir -p windows && cp cbvideo.jar windows/cbvideo.jar
+          echo "- windows/cbvideo.jar md5: \`$(md5sum windows/cbvideo.jar | cut -d' ' -f1)\` · $(stat -c %s windows/cbvideo.jar) byte" | tee -a "$GITHUB_STEP_SUMMARY"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows/cbvideo.jar
+          if git diff --cached --quiet; then echo "cbvideo.jar không đổi"; exit 0; fi
+          git commit -q -m "cbvideo.jar dựng từ .github/a9-check/A9Video.java (CI, Android 9 giải mã sạch)" \
+            -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
+            -m "Claude-Session: https://claude.ai/code/session_014zy4K1ke85zVx5zDEA3vr3"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
