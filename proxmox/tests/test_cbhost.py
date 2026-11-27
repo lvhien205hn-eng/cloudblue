@@ -945,7 +945,7 @@ threading.Thread(target=_serve, daemon=True).start()
 r = pm.step(False)
 ck("báo web gọn: máy (IP mạng nhà) + cổng 8899 + dải IPv6 + ô [id, mật khẩu, đuôi IPv6, IPv4, kết nối, khoá đổi IP] + IP các phiên PPPoE",
    r.get("ok") and r.get("port") == 8899 and r.get("v6") == "2001:db8:5:ac60::/64" and r["s"][0] == ["p01", "Pw00000000000000", "1:1:2:3", "203.0.113.5", 0, "R0000000000000000000"]
-   and r["s"][1][3] == "" and r["ppp"] == {"want": 2, "up": 1, "acct": True, "ip": ["203.0.113.5"]} and "host" in r, r)
+   and r["s"][1][3] == "" and r["ppp"] == {"want": 2, "up": 1, "acct": True, "ip": ["203.0.113.5"], "k": [0]} and "host" in r, r)
 ST["ppp"] = {"want": 0, "up": 0, "account": False, "iface": "vmbr0", "sess": [], "err": "chưa có tài khoản PPPoE (gõ: cbpool ppp-set)",
              "disc": {"t": 1795760000, "iface": "vmbr0", "ok": True, "ac": ["cbtest-ac", "AC-" + "x" * 80, "c", "d"]}}
 r = pm.step(False)
@@ -972,6 +972,66 @@ pm2 = cb.PoolMgr(c18); r = pm2.step(True)
 ck("tắt được: \"pool\": false → systemctl disable --now cloudblue-pool, không báo px", c18["pool"] is False and "disable --now cloudblue-pool.service" in open(SYSLOG).read() and r is None,
    (open(SYSLOG).read(), r))
 ck("cbhost không chạy lệnh qua shell (kho proxy cũng vậy)", "shell=True" not in open(os.path.join(ROOT, "cbhost.py")).read())
+
+print("18. 27/11g · BÁN PROXY: px_host_sync → file tài khoản khách cho cbpool · tài khoản PPPoE mã hoá → cbpool ppp-import · báo IP ô + khoá")
+cb.POOL_USERS_F = os.path.join(tmp, "cbpool-users.json")
+PK = "B" + "A" * 86
+CUST = {"ok": True, "units": {"s001": "2001:db8:5:ac60::77", "1": "203.0.113.11", "bad unit!": "x"}, "users": [], "pk": PK}
+seen_ctl = []
+srv18 = socket.socket(socket.AF_UNIX)
+try: os.remove(os.environ["CBHOST_POOL_CTL"])
+except OSError: pass
+srv18.bind(os.environ["CBHOST_POOL_CTL"]); srv18.listen(8)
+def _serve18():
+    while True:
+        try: c, _ = srv18.accept()
+        except OSError: return
+        rq = json.loads(c.recv(4096).decode() or "{}"); seen_ctl.append(rq.get("cmd"))
+        c.sendall((json.dumps(CUST if rq.get("cmd") == "cust" else {"ok": True, "users": 2}) + "\n").encode()); c.close()
+threading.Thread(target=_serve18, daemon=True).start()
+# cbpool giả cho lệnh ppp-import: đọc chuỗi mã hoá từ stdin (KHÔNG từ dòng lệnh), trả JSON
+open(os.environ["CBHOST_POOL_BIN"], "w").write("#!/usr/bin/env python3\nimport sys, json\nd = sys.stdin.read()\n"
+    "open(sys.argv[0] + '.argv', 'w').write(' '.join(sys.argv[1:]))\n"
+    "print(json.dumps({'ok': True, 'user': 'fpt***', 'sessions': 2}) if d.strip().startswith('{') and sys.argv[1] == 'ppp-import' else json.dumps({'ok': False, 'err': 'sai'}))\n")
+os.chmod(os.environ["CBHOST_POOL_BIN"], 0o755)
+class PxWeb:
+    def __init__(self): self.calls = []; self.err = ""; self.resp = None
+    def rpc(self, fn, body, timeout=25):
+        self.calls.append((fn, json.loads(json.dumps(body))))
+        return json.loads(json.dumps(self.resp)) if fn == "px_host_sync" else None
+pw = PxWeb(); exp = int(time.time()) + 3600
+pw.resp = {"ok": True, "bw": 20000, "fb4": False, "sale4": True, "maxc": 64, "self": ["203.0.113.200"], "users": [
+    {"u": "pxabc12345", "p": "mat-khau-khach-1", "k": "v6", "n": "s001", "x": exp, "s": 1, "r": "rotkey-khach-0000001"},
+    {"u": "pxdef67890", "p": "mat-khau-khach-2", "k": "v4", "n": "1", "x": exp, "s": 3, "r": "khoa-share-khong-duoc-doi"},
+    {"u": "PX-SAI", "p": "mat-khau-khach-3", "k": "v6", "n": "s002", "x": exp, "s": 1},
+    {"u": "pxhethan01", "p": "mat-khau-khach-4", "k": "v6", "n": "s003", "x": int(time.time()) - 5, "s": 1},
+    {"u": "pxngan0001", "p": "ngan", "k": "v6", "n": "s004", "x": exp, "s": 1}],
+    "ppp": {"gen": 3, "enc": json.dumps({"v": 1, "e": "x", "i": "y", "c": "z"})}}
+pm18 = cb.PoolMgr(cb.conf(), pw, "bi-mat-may-chu"); pm18.sync()
+uf = json.load(open(cb.POOL_USERS_F)) if os.path.exists(cb.POOL_USERS_F) else {}
+ck("lấy tài khoản khách từ web → file 600 cho cbpool (bỏ dòng sai tên / hết hạn / mật khẩu ngắn; khoá đổi IP chỉ proxy riêng) + báo cbpool nạp lại",
+   [u["u"] for u in uf.get("users", [])] == ["pxabc12345", "pxdef67890"] and uf["users"][0].get("r") == "rotkey-khach-0000001" and "r" not in uf["users"][1]
+   and uf.get("sale4") is True and uf.get("self") == ["203.0.113.200"] and os.stat(cb.POOL_USERS_F).st_mode & 0o777 == 0o600 and "users" in seen_ctl, (uf, seen_ctl))
+rep = pw.calls[-1][1]
+ck("gọi px_host_sync bằng mã máy chủ + báo khoá công khai + IP đang ra của từng ô bán (bỏ tên ô lạ)",
+   pw.calls[-1][0] == "px_host_sync" and rep["p_secret"] == "bi-mat-may-chu" and rep["p_report"]["pk"] == PK
+   and rep["p_report"]["units"] == {"s001": "2001:db8:5:ac60::77", "1": "203.0.113.11"}, rep)
+ck("tài khoản PPPoE mã hoá → cbpool ppp-import qua stdin (không lên dòng lệnh) → lần sau báo đã nhận (ppp_ok)",
+   pm18.ppp_done == 3 and pm18.ppp_err == "" and "ppp-import -c" in open(os.environ["CBHOST_POOL_BIN"] + ".argv").read()
+   and "\"v\"" not in open(os.environ["CBHOST_POOL_BIN"] + ".argv").read(), (pm18.ppp_done, pm18.ppp_err))
+n_users = seen_ctl.count("users"); pm18.sync()
+ck("lần sau: web không đổi gì → không ghi lại file, không bắt cbpool nạp lại; báo ppp_ok = 3",
+   seen_ctl.count("users") == n_users and pw.calls[-1][1]["p_report"].get("ppp_ok") == 3, (seen_ctl, pw.calls[-1][1]["p_report"]))
+pw.resp["ppp"] = {"gen": 4, "enc": "khong-phai-json"}; pm18.sync()
+ck("chuỗi PPPoE hỏng → không nhận, báo lỗi lên web (ppp_err) lần sau", pm18.ppp_done == 3 and pm18.ppp_err, pm18.ppp_err)
+pw.resp = None; pw.err = "HTTP 404: {\"code\":\"PGRST202\",\"message\":\"Could not find the function public.px_host_sync\"}"; pm18.sync()
+ck("web chưa chạy SQL v62 → im lặng (không báo lỗi bán proxy)", pm18.sync_err == "", pm18.sync_err)
+srv18.close()
+st18 = {"ver": "27.11c", "listen": "0.0.0.0:8899", "v6": {"prefix": "2001:db8:5:ac60::/64"}, "pk": PK, "cust": {"n": 2, "conns": 5}, "pub4": "203.0.113.200",
+        "ppp": {"want": 3, "up": 2, "account": True, "sess": [{"k": 0, "up": True, "ip": "203.0.113.10"}, {"k": 1, "up": False}, {"k": 2, "up": True, "ip": "203.0.113.12"}]}, "slots": []}
+r18 = pm18.report(st18)
+ck("số đo web: khoá công khai (để mã hoá tài khoản PPPoE) + số khách + phiên đang lên (bán IPv4)",
+   r18.get("pk") == PK and r18.get("cust") == {"n": 2, "conns": 5} and r18["ppp"]["k"] == [0, 2] and r18["ppp"].get("enc_err") and r18.get("pub4") == "203.0.113.200", r18)
 
 print("\n%d/%d đạt" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
