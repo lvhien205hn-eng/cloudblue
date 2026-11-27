@@ -187,14 +187,14 @@ public class MainActivity extends Activity {
         LinearLayout logo = Ui.row(this, 10);
         logo.addView(Ui.whale(this, 34), new LinearLayout.LayoutParams(Ui.dp(50), Ui.dp(34)));
         SpannableString bn = new SpannableString("CloudBlue");          // "Cloud" màu chữ thường + "Blue" xanh (giống logo web)
-        bn.setSpan(new ForegroundColorSpan(Ui.LIGHT ? Ui.BLUE : Color.rgb(115, 161, 230)), 5, 9, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        bn.setSpan(new ForegroundColorSpan(Ui.LIGHT ? Ui.BLUE : Color.rgb(90, 168, 255)), 5, 9, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         TextView brand = Ui.text(this, "", 19, Ui.FG, true);
         brand.setText(bn);
         brand.setSingleLine(true);
         logo.addView(brand, Ui.wrap());
         top.addView(logo, new ViewGroup.LayoutParams(-2, -2));
         LinearLayout chips = Ui.row(this, 8);
-        balTop = Ui.pill(this, "…", Ui.SKY);
+        balTop = Ui.pill(this, "…", Ui.MONEY);
         balTop.setSingleLine(true);
         balTop.setOnClickListener(v -> openTopup());
         if (!Api.SHOP) balTop.setVisibility(View.GONE);  // không mua trong app → không hiện số dư / nạp tiền
@@ -418,7 +418,7 @@ public class MainActivity extends Activity {
         try { getIntent().putExtra("tab", t); } catch (Exception ignored) { }   // 16/11: màn vẽ lại (Sáng/Tối, cỡ giao diện, xoay máy) → ở lại tab này
         for (int i = 0; i < nav.length; i++) {
             nav[i].setTextColor(i == t ? Ui.SKY : Ui.MUTED);
-            nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 62, 122, 221) : Color.argb(40, 115, 162, 230), 99, 0) : null);
+            nav[i].setBackground(i == t ? Ui.round(Ui.LIGHT ? Color.argb(28, 43, 110, 240) : Color.argb(40, 90, 175, 255), 99, 0) : null);
         }
         if (t != 0) { releasePreviews(); phonesSig = null; ticks.clear(); }     // sang tab khác → tắt hẳn hình xem trước (đỡ pin + mạng)
         if (t == 3) PcVps.tErrAt = 0;                    // vào tab VPS GPU → đọc lại bảng giá (kể cả lần trước lỗi)
@@ -1100,7 +1100,7 @@ public class MainActivity extends Activity {
         if (canCtl) {                                    // màn hình máy phát TRỰC TIẾP (hình nhỏ, chỉ xem) — bấm vào để điều khiển
             final String pid = p.optString("id");
             FrameLayout box = new FrameLayout(this);
-            box.setBackground(Ui.round(Color.rgb(2, 4, 12), 10, Color.argb(60, 140, 175, 235)));
+            box.setBackground(Ui.round(Color.rgb(2, 4, 12), 10, Color.argb(60, 120, 160, 255)));
             int bz = Ui.dp(4);
             box.setPadding(bz, bz, bz, bz);              // viền bo góc bao quanh hình (góc hình vuông nằm gọn trong viền)
             box.addView(gridOpen() ? phoneTile(p, 30) : livePreview(p, 30), new FrameLayout.LayoutParams(-1, -1));   // đang mở "Xem tất cả" → hình nằm bên đó
@@ -1732,7 +1732,7 @@ public class MainActivity extends Activity {
         final LinearLayout aw = Ui.row(this, 8);                 // ô hệ điều hành chia đều 1 hàng
         final TextView andTip = Ui.text(this, "", 12.5f, Ui.WAIT, false);
 
-        TextView total = Ui.text(this, "", 22, Ui.SKY, true);
+        TextView total = Ui.text(this, "", 22, Ui.MONEY, true);
         TextView calc = Ui.text(this, "", 11.5f, Ui.MUTED, false);
         calc.setMaxLines(3);
         final TextView sumL = Ui.text(this, "", 12, Ui.MUTED, true);    // "Blue Plus · Android 9 · 7 ngày" / "Chưa chọn gói"
@@ -1922,9 +1922,9 @@ public class MainActivity extends Activity {
         LinearLayout sum = Ui.col(this, 6);
         sum.setPadding(Ui.dp(16), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         android.graphics.drawable.GradientDrawable sbg = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                Ui.LIGHT ? new int[]{Color.WHITE, Color.rgb(239, 245, 254)} : new int[]{Color.rgb(22, 48, 104), Color.rgb(9, 22, 50)});
+                Ui.LIGHT ? new int[]{Color.WHITE, Color.rgb(238, 244, 255)} : new int[]{Color.rgb(22, 44, 104), Color.rgb(9, 19, 50)});
         sbg.setCornerRadius(Ui.dp(Ui.rad(20)));
-        sbg.setStroke(Math.max(2, Ui.dp(1.5f)), Ui.LIGHT ? Color.argb(80, 62, 122, 221) : Color.argb(120, 144, 181, 235));
+        sbg.setStroke(Math.max(2, Ui.dp(1.5f)), Ui.LIGHT ? Color.argb(80, 43, 110, 240) : Color.argb(120, 124, 188, 255));
         sum.setBackground(sbg);
         sum.setElevation(Ui.dp(10));
         sum.addView(err, Ui.fill());
@@ -1980,7 +1980,7 @@ public class MainActivity extends Activity {
         TextView b = Ui.text(this, n, 14, Ui.LIGHT ? Color.WHITE : Color.rgb(4, 18, 46), true);
         b.setGravity(Gravity.CENTER);
         android.graphics.drawable.GradientDrawable g = new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                Ui.LIGHT ? new int[]{Color.rgb(116, 159, 230), Color.rgb(38, 105, 217)} : new int[]{Color.rgb(229, 239, 253), Color.rgb(173, 201, 241), Color.rgb(90, 140, 226)});
+                Ui.LIGHT ? new int[]{Color.rgb(91, 152, 255), Color.rgb(31, 95, 224)} : new int[]{Color.rgb(227, 241, 255), Color.rgb(159, 208, 255), Color.rgb(61, 123, 255)});
         g.setShape(android.graphics.drawable.GradientDrawable.OVAL);
         b.setBackground(g);
         r.addView(b, new LinearLayout.LayoutParams(Ui.dp(28), Ui.dp(28)));
@@ -2030,16 +2030,16 @@ public class MainActivity extends Activity {
             hn.setText(dot > 0 ? hint.substring(0, dot) : hint);                 // ô hẹp → chỉ giữ ý đầu ("Ổn định")
             hn.setTextColor(ok ? Ui.WAIT : Ui.BAD);
             k.setText(on ? "✓ Android" : "Android");
-            k.setTextColor(on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(211, 227, 251)) : Ui.MUTED);
+            k.setTextColor(on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(207, 228, 255)) : Ui.MUTED);
             n.setTextColor(on ? (Ui.LIGHT ? Ui.SKY : Color.WHITE) : Ui.FG);
             android.graphics.drawable.GradientDrawable g = on
                     ? new android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-                            Ui.LIGHT ? new int[]{Color.rgb(239, 245, 254), Color.rgb(224, 234, 252)} : new int[]{Color.rgb(36, 85, 168), Color.rgb(13, 35, 80)})
+                            Ui.LIGHT ? new int[]{Color.rgb(238, 244, 255), Color.rgb(221, 233, 255)} : new int[]{Color.rgb(36, 78, 168), Color.rgb(13, 32, 80)})
                     : new android.graphics.drawable.GradientDrawable();
             if (!on) g.setColor(Ui.LIGHT ? Color.WHITE : Ui.SUNK);
             g.setCornerRadius(Ui.dp(Ui.rad(16)));
-            g.setStroke(on ? Ui.dp(2) : Math.max(1, Ui.dp(1)), on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(144, 181, 235)) : Ui.LINE2);
-            f.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 152, 201, 246)), g, null));
+            g.setStroke(on ? Ui.dp(2) : Math.max(1, Ui.dp(1)), on ? (Ui.LIGHT ? Ui.BLUE : Color.rgb(124, 188, 255)) : Ui.LINE2);
+            f.setBackground(new android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 143, 208, 255)), g, null));
             f.setElevation(on ? Ui.dp(5) : 0);
             f.setEnabled(ok);
             f.setAlpha(ok ? 1f : .45f);
@@ -2363,7 +2363,7 @@ public class MainActivity extends Activity {
         c.addView(Ui.h1(this, "👤 " + (name.isEmpty() || name.equals("null") ? Ui.L("Tài khoản", "Account") : name)));
         c.addView(Ui.muted(this, Api.email));
         if (Api.SHOP) {                                 // số dư + Nạp tiền (bản CH Play: nạp qua Google Play — PlayPay)
-            c.addView(Ui.text(this, Ui.L("Số dư: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0)), 18, Ui.SKY, true));
+            c.addView(Ui.text(this, Ui.L("Số dư: ", "Balance: ") + Ui.vnd(prof.optDouble("balance", 0)), 18, Ui.MONEY, true));
             if (isCtv()) c.addView(Ui.pill(this, "🤝 CTV −" + prof.optInt("ctv_discount") + "%", Ui.OK), Ui.wrap());
             Button top = Ui.button(this, "💳 " + Ui.L("Nạp tiền", "Top up"), Ui.PRIMARY);
             top.setOnClickListener(v -> openTopup());

@@ -52,7 +52,7 @@ public class LoginActivity extends Activity {
 
         title = Ui.h1(this, "");
         android.text.SpannableString bn = new android.text.SpannableString("CloudBlue");   // "Blue" màu xanh giống logo
-        bn.setSpan(new android.text.style.ForegroundColorSpan(Ui.LIGHT ? Ui.BLUE : Color.rgb(115, 161, 230)), 5, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        bn.setSpan(new android.text.style.ForegroundColorSpan(Ui.LIGHT ? Ui.BLUE : Color.rgb(90, 168, 255)), 5, 9, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
         title.setText(bn);
         title.setGravity(Gravity.CENTER);
         root.addView(title, Ui.fill());
