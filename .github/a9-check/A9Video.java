@@ -20,6 +20,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -212,7 +214,8 @@ public final class A9Video {
         Image pending;
         boolean posted;
         long lastNs, lastPts;
-        byte[] rgba, yuv;
+        int[] px;
+        byte[] yuv;
         int fmt, rep;
         // thống kê (stats=giây)
         long stT = System.nanoTime(), stRead, stConv;
@@ -310,14 +313,14 @@ public final class A9Video {
             try {
                 long t0 = System.nanoTime();
                 Image.Plane pl = im.getPlanes()[0];
-                ByteBuffer b = pl.getBuffer();
-                int rs = pl.getRowStride();
-                int need = rs * (vh - 1) + vw * 4;
-                if (rgba == null || rgba.length < need) rgba = new byte[need];
-                b.position(0);
-                b.get(rgba, 0, Math.min(need, b.remaining()));
+                IntBuffer ib = pl.getBuffer().order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();      // 1 điểm ảnh = 1 int (R | G<<8 | B<<16 | A<<24)
+                int rs = pl.getRowStride() >> 2;
+                int need = rs * (vh - 1) + vw;
+                if (px == null || px.length < need) px = new int[need];
+                ib.position(0);
+                ib.get(px, 0, Math.min(need, ib.remaining()));
                 long t1 = System.nanoTime();
-                toNv12(rgba, rs, yuv, vw, vh);
+                toNv12(px, rs, yuv, vw, vh);
                 long t2 = System.nanoTime();
                 stRead += t1 - t0;
                 stConv += t2 - t1;
@@ -385,17 +388,17 @@ public final class A9Video {
             mc.queueInputBuffer(ix, 0, n, pts, 0);
         }
 
-        /** RGBA → NV12 (BT.601 giới hạn 16–235, như scrcpy) — chroma = trung bình khối 2×2. */
-        static void toNv12(byte[] s, int rs, byte[] d, int w, int h) {
+        /** RGBA (mỗi điểm 1 int, little-endian) → NV12 (BT.601 giới hạn 16–235, như scrcpy) — chroma = trung bình khối 2×2. */
+        static void toNv12(int[] s, int rs, byte[] d, int w, int h) {
             int uv = w * h;
             for (int y = 0; y < h; y += 2) {
                 int s0 = y * rs, s1 = s0 + rs, d0 = y * w, d1 = d0 + w, du = uv + (y >> 1) * w;
                 for (int x = 0; x < w; x += 2) {
-                    int a = s0 + (x << 2), b = s1 + (x << 2);
-                    int r0 = s[a] & 255, g0 = s[a + 1] & 255, b0 = s[a + 2] & 255;
-                    int r1 = s[a + 4] & 255, g1 = s[a + 5] & 255, b1 = s[a + 6] & 255;
-                    int r2 = s[b] & 255, g2 = s[b + 1] & 255, b2 = s[b + 2] & 255;
-                    int r3 = s[b + 4] & 255, g3 = s[b + 5] & 255, b3 = s[b + 6] & 255;
+                    int p0 = s[s0 + x], p1 = s[s0 + x + 1], p2 = s[s1 + x], p3 = s[s1 + x + 1];
+                    int r0 = p0 & 255, g0 = (p0 >> 8) & 255, b0 = (p0 >> 16) & 255;
+                    int r1 = p1 & 255, g1 = (p1 >> 8) & 255, b1 = (p1 >> 16) & 255;
+                    int r2 = p2 & 255, g2 = (p2 >> 8) & 255, b2 = (p2 >> 16) & 255;
+                    int r3 = p3 & 255, g3 = (p3 >> 8) & 255, b3 = (p3 >> 16) & 255;
                     d[d0 + x] = (byte) (((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16);
                     d[d0 + x + 1] = (byte) (((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16);
                     d[d1 + x] = (byte) (((66 * r2 + 129 * g2 + 25 * b2 + 128) >> 8) + 16);
