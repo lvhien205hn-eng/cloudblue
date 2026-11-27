@@ -211,10 +211,10 @@ def main():
         sub = {g[0]: g[2] for g in gr}
         ck("mỗi nhóm ghi sẵn các mục bên trong (mở lên là biết có gì)",
            sub.get("sell") == "Đơn hàng · Sản phẩm · Khuyến mãi" and sub.get("cust") == "Khách hàng · Nạp tiền · Bảo mật"
-           and sub.get("mach") == "ĐT đám mây · Máy PC · VPS ảo hoá" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
+           and sub.get("mach") == "ĐT đám mây · Máy PC · VPS ảo hoá · Proxy" and "Trang web" in sub.get("set", "") and "Ngân hàng" in sub.get("set", ""), sub)
         vis = lambda: s.js("() => getComputedStyle(document.getElementById('adm-tabs')).display === 'none' ? [] : [...document.querySelectorAll('#adm-tabs button[data-tab]')].filter(b => getComputedStyle(b).display !== 'none').map(b => b.dataset.tab)")
-        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 3 mục: ĐT đám mây · Máy PC · VPS ảo hoá (24/11: bỏ Máy VPS + Dàn máy nội bộ)",
-           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "pc", "vm"], vis())
+        ck("đang ở Máy PC → nhóm 'Máy cho thuê' sáng, hàng dưới chỉ còn 4 mục: ĐT đám mây · Máy PC · VPS ảo hoá · Proxy (24/11: bỏ Máy VPS + Dàn máy nội bộ; 27/11: thêm Proxy)",
+           s.js("() => document.querySelector('#adm-grp button.on').dataset.grp") == "mach" and vis() == ["cloud", "pc", "vm", "px"], vis())
         s.tab("stats")
         ck("Tổng quan (1 mục) → ẩn hàng mục con", vis() == [] and not s.js("() => document.getElementById('pane-stats').hidden"), vis())
         s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(300)

@@ -259,7 +259,7 @@ def main():
         tabs = s.js("() => [...document.querySelectorAll('#adm-tabs button[data-tab]')].map(b => b.dataset.tab)")
         grp = s.js("() => window.ADMNAV.groups().find(g => g.id === 'mach')")
         ck("không còn thẻ 'Máy VPS' (vps) / 'Dàn máy nội bộ' (biz); có thẻ 'vm'", "vps" not in tabs and "biz" not in tabs and "vm" in tabs, tabs)
-        ck("nhóm 🖥️ Máy cho thuê = ĐT đám mây · Máy PC · VPS ảo hoá (không sinh nhóm 'Khác')", grp and grp["m"] == ["cloud", "pc", "vm"]
+        ck("nhóm 🖥️ Máy cho thuê = ĐT đám mây · Máy PC · VPS ảo hoá · Proxy (không sinh nhóm 'Khác')", grp and grp["m"] == ["cloud", "pc", "vm", "px"]
            and not s.js("() => !!document.querySelector('#adm-grp button[data-grp=\"more\"]')"), grp)
         ck("số trên thẻ VPS ảo hoá = 1 máy chủ chờ duyệt + 1 VPS lỗi = 2", s.js("() => document.getElementById('vm-badge').textContent") == "2" and not s.js("() => document.getElementById('vm-badge').hidden"))
         admin_open(s)
