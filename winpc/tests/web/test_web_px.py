@@ -42,7 +42,7 @@ PRICES = {"v6": {"1": {"1": 5000, "7": 25000, "30": 80000}, "3": {"30": 35000}},
 SHOP = {"sell": True, "admin": False, "prices": PRICES, "port": 18899, "max_qty": 20, "note": "Proxy FPT <b>Hà Nội</b>", "fb4": False, "grace_h": 24, "v": 63,
         "stock": {"v6": {"1": 3, "2": 6, "3": 9, "4": 12, "5": 15}, "v4": {"1": 2, "2": 4, "3": 6, "4": 8, "5": 10}}}
 MY = {"sell": True, "grace_h": 24, "v": 63, "items": [
-    {"id": 5, "kind": "v6", "share": 1, "host": "203.0.113.50", "port": 18899, "user": "pxabc12345", "pass": "a1b2c3d4e5f60718", "ip": "2001:db8:5:ac60::a1",
+    {"id": 5, "kind": "v6", "share": 1, "host": "203.0.113.50", "port": 18899, "user": "pxabc12345", "pass": "a1b2c3d4e5f60718", "ip": "2001:db8:5:77::a1",
      "label": "<img src=x onerror=window.__xss=1>", "until": iso(5 * 86400), "expired": False, "delete_at": iso(6 * 86400),
      "rot": "http://203.0.113.50:18899/rotate?key=r0123456789abcdef0123456789abcdef", "iplink": "http://203.0.113.50:18899/ip?key=r0123", "online": True,
      "prices": {"1": 5000, "7": 25000, "30": 80000}, "created_at": iso(-86400)},
@@ -51,11 +51,11 @@ MY = {"sell": True, "grace_h": 24, "v": 63, "items": [
 ADM = {"v": 63, "active": 2, "revenue_month": 160000, "stock": SHOP["stock"],
        "settings": {"sell": False, "pub_port": 18899, "pub_host": None, "prices": PRICES, "bw_kbps": 20000, "fb4": False, "sale4": True, "v6_units": 200, "max_qty": 20,
                     "max_conns": 64, "grace_h": 24, "note": ""},
-       "hosts": [{"id": H1, "name": "cbvps-01", "status": "ready", "online": True, "px": True, "v6": "2001:db8:5:ac60::/64", "sess": [1, 2], "pk": TEST_PK,
+       "hosts": [{"id": H1, "name": "cbvps-01", "status": "ready", "online": True, "px": True, "v6": "2001:db8:5:77::/64", "sess": [1, 2], "pk": TEST_PK,
                   "ppp_gen": 0, "ppp_ok": 0, "ppp_wait": False, "ppp_err": None, "ep": "203.0.113.50", "lan": "192.168.77.10", "acct": False,
                   "disc": {"ok": True, "ac": ["cbtest-ac"], "t": 1795760000}, "used6": 2, "used4": 1, "n": 3, "ver": "27/11g"}],
        "proxies": [{"id": 5, "user": "khach<b>A</b>", "email": "a@x.vn", "host": "cbvps-01", "kind": "v6", "unit": "s001", "share": 1, "username": "pxabc12345",
-                    "ip": "2001:db8:5:ac60::a1", "until": iso(5 * 86400), "status": "active", "expired": False, "price": 80000, "created_at": iso(-86400), "label": ""},
+                    "ip": "2001:db8:5:77::a1", "until": iso(5 * 86400), "status": "active", "expired": False, "price": 80000, "created_at": iso(-86400), "label": ""},
                    {"id": 6, "user": "khachB", "email": "b@x.vn", "host": "cbvps-01", "kind": "v4", "unit": "1", "share": 2, "username": "pxdef67890",
                     "ip": "203.0.113.11", "until": iso(-3600), "status": "active", "expired": True, "price": 30000, "created_at": iso(-8 * 86400), "label": ""}]}
 
@@ -143,7 +143,7 @@ def main():
         print("2. Proxy của bạn")
         mine = s.txt("#px-mine") or ""
         ck("2 proxy: dòng IP:PORT:USER:PASS · IP đang ra · loại + kiểu · proxy hết hạn báo gia hạn trước giờ xoá",
-           "203.0.113.50:18899:pxabc12345:a1b2c3d4e5f60718" in mine and "2001:db8:5:ac60::a1" in mine and "IPv4 · Share 2 người" in mine and "Hết hạn" in mine and "Gia hạn trước" in mine, mine)
+           "203.0.113.50:18899:pxabc12345:a1b2c3d4e5f60718" in mine and "2001:db8:5:77::a1" in mine and "IPv4 · Share 2 người" in mine and "Hết hạn" in mine and "Gia hạn trước" in mine, mine)
         ck("tên proxy lạ (<img onerror>) hiện thành chữ, không chạy mã", "<img src=x onerror" in mine and not s.js("() => window.__xss"))
         s.page.click('#px-mine [data-pxcp="5"]'); s.page.wait_for_timeout(150); c1 = s.clip()
         s.page.click('#px-mine [data-pxrot="5"]'); s.page.wait_for_timeout(150); c2 = s.clip()
@@ -174,15 +174,19 @@ def main():
         s.page.click('#adm-tabs button[data-tab="px"]'); s.page.wait_for_timeout(700)
         top = s.txt("#pxa") or ""
         ck("khung Proxy: CHƯA BÁN · 2 đang chạy · doanh thu 160.000đ · máy chủ (IPv6 dải, phiên lên 2, khách nối 203.0.113.50:18899, mở cổng 18899 → 192.168.77.10:8899, modem cho PPPoE đi qua)",
-           s.vis("#pane-px") and "CHƯA BÁN" in top and "160.000" in top and "2001:db8:5:ac60::/64" in top and "203.0.113.50:18899" in top
+           s.vis("#pane-px") and "CHƯA BÁN" in top and "160.000" in top and "2001:db8:5:77::/64" in top and "203.0.113.50:18899" in top
            and "18899 TCP → 192.168.77.10 cổng 8899" in top and "modem cho PPPoE đi qua" in top, top[:1500])
         ck("danh sách proxy: tên khách lạ hiện thành chữ", "khach<b>A</b>" in top and not s.js("() => !!document.querySelector('#pxa-list b')"))
-        s.page.check("#pxa-sell"); s.page.fill('[data-pxpr="v6|2|30"]', "50000"); s.page.fill('[data-pxpr="v6|1|1"]', "")
+        ck("ô Bảo trì khi chưa chạy SQL v64 → ghi 'cần chạy SQL v64' (không có nút)", "cần chạy SQL v64" in (s.txt("#pxa-top") or "") and not s.js("() => !!document.querySelector('[data-pxset=\"maint\"]')"), s.txt("#pxa-top"))
+        s.page.fill('[data-pxpr="v6|2|30"]', "50000"); s.page.fill('[data-pxpr="v6|1|1"]', "")
         s.page.fill("#pxa-port", "28899"); s.page.click("#pxa-save"); s.page.wait_for_timeout(600)
         pt = (s.calls("px_admin_settings") or [{}])[-1].get("p_patch", {})
-        ck("Lưu: bật bán, cổng 28899, bảng giá thêm IPv6 share 2 · 30 ngày 50.000đ, bỏ ô để trống (IPv6 riêng 1 ngày)",
-           pt.get("sell") is True and pt.get("pub_port") == 28899 and pt.get("prices", {}).get("v6", {}).get("2") == {"30": 50000}
+        ck("Lưu: cổng 28899, bảng giá thêm IPv6 share 2 · 30 ngày 50.000đ, bỏ ô để trống (IPv6 riêng 1 ngày); nút Lưu KHÔNG đụng bật / tắt bán",
+           "sell" not in pt and pt.get("pub_port") == 28899 and pt.get("prices", {}).get("v6", {}).get("2") == {"30": 50000}
            and "1" not in pt.get("prices", {}).get("v6", {}).get("1", {}) and pt["prices"]["v4"]["2"] == {"7": 30000, "30": 90000}, pt)
+        s.page.click('#pxa-top [data-pxset="sell"]'); s.page.wait_for_timeout(600)
+        ck("▶ Bật bán 1 chạm → px_admin_settings({sell: true}) · ô đổi thành ĐANG BÁN + nút Tắt bán",
+           (s.calls("px_admin_settings") or [{}])[-1].get("p_patch") == {"sell": True} and "ĐANG BÁN" in (s.txt("#pxa-top") or "") and "Tắt bán" in (s.txt("#pxa-top") or ""), s.txt("#pxa-top"))
         s.page.click('#pxa-list [data-pxact="revoke"][data-pxid="5"]'); s.page.wait_for_timeout(400)
         ck("Thu hồi proxy #5 → px_admin_proxy(5, revoke)", (s.calls("px_admin_proxy") or [{}])[-1] == {"p_id": 5, "p_act": "revoke", "p_arg": {}}, s.calls("px_admin_proxy"))
         s.page.fill("#pxa-q", "pxdef"); s.page.wait_for_timeout(200)
@@ -200,6 +204,86 @@ def main():
            and json.loads(dec_out or "{}") == {"user": "fpt-hn-test", "pass": "Mật khẩu thử 9!", "sessions": 3}, (enc[:80], dec_out))
         ck("trang không giữ lại mật khẩu sau khi gửi (hộp đóng, ô mật khẩu đã xoá)", not s.vis("#pxdlg .dlg") and not s.js("() => { const e = document.getElementById('pxp-p'); return e && e.value; }"))
         ck("không lỗi trang / hộp thoại trình duyệt (quản trị)", not s.errors, s.errors)
+        s.close()
+
+        print("6. Quản trị › 🌐 Proxy: báo vì sao trang chủ chưa hiện · nút Kiểm tra proxy · chặn dán nhầm ô 'Tên miền / IP cho khách nối'")
+        adm0 = json.loads(json.dumps(ADM)); adm0["settings"]["prices"] = {}; adm0["settings"]["sell"] = True
+        s = Site(br, html, True, data(adm=adm0, shop=dict(SHOP, prices={})), path="/admin", vp=(1600, 1000))
+        s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(250)
+        s.page.click('#adm-tabs button[data-tab="px"]'); s.page.wait_for_timeout(700)
+        ck("chưa có giá → báo 'Chưa có giá nào → trang chủ chưa hiện dòng Proxy dân cư'", "Chưa có giá nào" in (s.txt("#pxa") or ""), (s.txt("#pxa") or "")[:300])
+        ck("trang chủ (admin) không có dòng Proxy khi chưa có giá", not s.js("() => !!document.querySelector('#grid .m3-row.px')"))
+        s.page.click('#pxa [data-pxchk]'); s.page.wait_for_timeout(300)
+        ck("nút 🔎 Kiểm tra proxy trong trang quản trị → mở công cụ kiểm tra", s.vis("#pxc-in"), s.txt("#pxdlg"))
+        s.page.click("#pxdlg [data-pxx]"); s.page.wait_for_timeout(200)
+        n0 = len(s.calls("px_admin_settings"))
+        s.page.fill("#pxa-host", "192.168.77.10:8899:p01:MatKhauNoiBo"); s.page.click("#pxa-save"); s.page.wait_for_timeout(400)
+        ck("dán dòng proxy vào ô 'Tên miền / IP cho khách nối' → báo lỗi, KHÔNG lưu", "không dán dòng proxy" in (s.txt("#pxa-err") or "") and len(s.calls("px_admin_settings")) == n0, s.txt("#pxa-err"))
+        s.page.fill("#pxa-host", "192.168.77.10"); s.page.click("#pxa-save"); s.page.wait_for_timeout(400)
+        ck("ghi IP mạng nhà → báo 'IP mạng nhà', KHÔNG lưu", "IP mạng nhà" in (s.txt("#pxa-err") or "") and len(s.calls("px_admin_settings")) == n0, s.txt("#pxa-err"))
+        s.page.fill("#pxa-host", ""); s.page.fill('[data-pxpr="v6|1|30"]', "30000"); s.page.click("#pxa-save"); s.page.wait_for_timeout(600)
+        pt = (s.calls("px_admin_settings") or [{}])[-1].get("p_patch", {})
+        ck("để trống ô + điền 1 giá → lưu được (pub_host rỗng, giá IPv6 riêng 30 ngày)", len(s.calls("px_admin_settings")) == n0 + 1 and pt.get("pub_host") == "" and pt.get("prices", {}).get("v6", {}).get("1") == {"30": 30000}, pt)
+        ck("không lỗi trang", not s.errors, s.errors)
+        s.close()
+        s = Site(br, html, True, data(), path="/admin", vp=(1600, 1000))
+        s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(250)
+        s.page.click('#adm-tabs button[data-tab="px"]'); s.page.wait_for_timeout(700)
+        ck("có giá nhưng đang tắt bán → báo 'chỉ admin thấy'", "Đang tắt bán" in (s.txt("#pxa") or ""), (s.txt("#pxa") or "")[:300])
+        s.close()
+
+        print("7. Bảo trì (SQL v64) · Bật / Tắt bán 1 chạm")
+        adm7 = json.loads(json.dumps(ADM)); adm7["settings"].update({"maint": False, "maint_msg": None, "sell": True})
+        s = Site(br, html, True, data(adm=adm7), path="/admin", vp=(1600, 1000))
+        s.page.click('#adm-grp button[data-grp="mach"]'); s.page.wait_for_timeout(250)
+        s.page.click('#adm-tabs button[data-tab="px"]'); s.page.wait_for_timeout(700)
+        tp = s.txt("#pxa-top") or ""
+        ck("ô trên cùng: ĐANG BÁN + ⏸ Tắt bán · Bảo trì: Không + 🛠️ Bật bảo trì · ô lời nhắn", "ĐANG BÁN" in tp and "Tắt bán" in tp and "Bật bảo trì" in tp and s.vis("#pxa-mmsg"), tp)
+        n0 = len(s.calls("px_admin_settings"))
+        s.page.fill("#pxa-mmsg", "Nâng cấp máy chủ, mở lại 20:00"); s.page.click('#pxa-top [data-pxset="maint"]'); s.page.wait_for_timeout(700)
+        ck("🛠️ Bật bảo trì → px_admin_settings({maint: true, maint_msg}) · ô đổi thành ĐANG BẢO TRÌ + ✅ Tắt bảo trì · báo khách vẫn thấy dòng",
+           (s.calls("px_admin_settings") or [{}])[-1].get("p_patch") == {"maint": True, "maint_msg": "Nâng cấp máy chủ, mở lại 20:00"}
+           and "ĐANG BẢO TRÌ" in (s.txt("#pxa-top") or "") and "Tắt bảo trì" in (s.txt("#pxa-top") or "") and "Đang bảo trì: khách vẫn thấy" in (s.txt("#pxa-top") or ""), s.txt("#pxa-top"))
+        s.page.fill("#pxa-mmsg", "Mở lại lúc 21:00"); s.page.click('#pxa-top [data-pxset="mmsg"]'); s.page.wait_for_timeout(600)
+        ck("💾 Lưu lời nhắn → px_admin_settings({maint_msg})", (s.calls("px_admin_settings") or [{}])[-1].get("p_patch") == {"maint_msg": "Mở lại lúc 21:00"}, s.calls("px_admin_settings")[-1:])
+        s.page.click('#pxa-top [data-pxset="maint"]'); s.page.wait_for_timeout(600)
+        s.page.click('#pxa-top [data-pxset="sell"]'); s.page.wait_for_timeout(600)
+        cl = [c.get("p_patch") for c in s.calls("px_admin_settings")[n0:]]
+        ck("✅ Tắt bảo trì → {maint: false} · ⏸ Tắt bán → {sell: false} · ô về CHƯA BÁN", cl[-2:] == [{"maint": False}, {"sell": False}] and "CHƯA BÁN" in (s.txt("#pxa-top") or ""), cl)
+        adm7["settings"]["prices"] = {}
+        s.js("a => { window.__PX.adm.settings.prices = {}; }", None); s.js("() => window.PXSHOP.load(true)"); s.page.wait_for_timeout(500)
+        n1 = len(s.calls("px_admin_settings")); s.page.click('#pxa-top [data-pxset="sell"]'); s.page.wait_for_timeout(400)
+        ck("chưa có giá mà bấm ▶ Bật bán → nhắc điền giá trước, KHÔNG gọi máy chủ", len(s.calls("px_admin_settings")) == n1, s.calls("px_admin_settings")[n1:])
+        ck("không lỗi trang", not s.errors, s.errors)
+        s.close()
+
+        print("8. Khách khi bảo trì · khung Proxy của bạn giống sản phẩm khác · ảnh sản phẩm riêng")
+        my8 = json.loads(json.dumps(MY)); my8.update({"maint": True, "maint_msg": "Nâng cấp máy chủ"})
+        s = Site(br, html, False, data(shop=dict(json.loads(json.dumps(SHOP)), maint=True, maint_msg="Nâng cấp <b>máy chủ</b>, mở lại 20:00"), my=my8))
+        s.js("() => { navigator.clipboard.writeText = v => { window.__cp = v; return Promise.resolve(); }; }")
+        row = s.txt("#grid .m3-row.px") or ""
+        ck("dòng Proxy: '🛠️ Đang bảo trì' + lời nhắn (chữ, không thành mã) · nút mua tắt", "Đang bảo trì" in row and "Nâng cấp <b>máy chủ</b>, mở lại 20:00" in row
+           and s.js("() => document.querySelector('#grid .m3-row.px button[data-pxbuy]').disabled"), row)
+        s.page.click("#grid .m3-row.px .info h3"); s.page.wait_for_timeout(300)
+        ck("bấm vào dòng khi bảo trì → không mở hộp mua", not s.vis("#pxb-pay"))
+        ck("khung Proxy của bạn: ghi chú bảo trì (vẫn chạy + gia hạn được)", s.vis("#px-mine-mt") and "gia hạn bình thường" in (s.txt("#px-mine-mt") or ""), s.txt("#px-mine-mt"))
+        ck("đầu khung: '2 proxy · 1 đang chạy · 1 hết hạn' (giống VPS)", "2 proxy · 1 đang chạy" in (s.txt("#px-mine-n") or "") and "1 hết hạn" in (s.txt("#px-mine-n") or ""), s.txt("#px-mine-n"))
+        geo = s.js("""() => { const h = document.querySelector('#px-mine .m3m-head').getBoundingClientRect(), l = document.querySelector('#px-mine-list').getBoundingClientRect(),
+                     c = document.querySelector('#px-mine-list .m3m-card').getBoundingClientRect(); return { hr: h.right, ll: l.left, lt: l.top, lb: l.bottom, ht: h.top, hb: h.bottom, cw: c.width }; }""")
+        ck("bố cục như VPS: danh sách proxy ở cột phải, cùng hàng với tiêu đề; thẻ rộng ≥ 280px (không bị bóp vào cột hẹp)",
+           geo["ll"] >= geo["hr"] - 2 and geo["lt"] < geo["hb"] and geo["lb"] > geo["ht"] and geo["cw"] >= 280, geo)
+        s.page.click('#px-mine .px-line[data-pxcp="5"]'); s.page.wait_for_timeout(150)
+        ck("bấm vào dòng proxy trên thẻ → chép IP:PORT:USER:PASS", s.js("() => window.__cp") == "203.0.113.50:18899:pxabc12345:a1b2c3d4e5f60718", s.js("() => window.__cp"))
+        ck("thẻ còn hạn: Chép · Kiểm tra · Gia hạn + link đổi IP; thẻ hết hạn: chỉ Gia hạn", s.js("""() => { const a = document.querySelector('[data-px="5"]'), b = document.querySelector('[data-px="6"]');
+             return !!(a.querySelector('.m3m-acts [data-pxcp]') && a.querySelector('[data-pxchk="5"]') && a.querySelector('[data-pxrenew]') && a.querySelector('[data-pxrot]')
+               && b.querySelector('[data-pxrenew]') && !b.querySelector('.m3m-acts [data-pxcp]') && !b.querySelector('[data-pxchk]')); }"""))
+        s.page.click("#px-mine-tg"); s.page.wait_for_timeout(200)
+        ck("nút Ẩn ▴ → thu gọn còn 1 dòng (nhớ trên trình duyệt)", s.js("() => document.getElementById('px-mine').classList.contains('min') && localStorage.getItem('cb_px_min') === '1'")
+           and not s.vis("#px-mine-list") and "Hiện" in (s.txt("#px-mine-tg") or ""))
+        s.page.click("#px-mine-tg"); s.page.wait_for_timeout(200)
+        ck("bấm Hiện ▾ → mở lại", s.vis("#px-mine-list"))
+        ck("ảnh sản phẩm Proxy vẽ riêng (quả địa cầu IP), không còn là khối lập phương", s.js("() => document.querySelector('#grid .m3-row.px canvas')._kind") == "proxy")
+        ck("không lỗi trang", not s.errors, s.errors)
         s.close()
         br.close()
     print("\nKẾT QUẢ: %d đạt, %d lỗi" % (OK, FAIL))
