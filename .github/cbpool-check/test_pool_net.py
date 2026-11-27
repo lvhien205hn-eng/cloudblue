@@ -114,6 +114,25 @@ def main():
     r = sh("%s ppp-test -c %s -i vmbr0" % (BIN, CONF), ns="pve", check=False)
     ok("ppp-test: dò thấy máy chủ PPPoE (không mật khẩu)", r.returncode == 0 and "cbtest-ac" in r.stdout, r.stdout.strip().splitlines()[0:2])
 
+    # 27.11b · dịch vụ TỰ DÒ PPPoE khi chưa có phiên nào (không mật khẩu, không xin phiên) → status.ppp.disc cho web
+    conf0 = D + "/cbpool0.json"
+    json.dump({"listen": "127.0.0.1:8898", "iface6": "vmbr0", "v6": False, "slots": 2, "state_dir": D + "/st0", "ctl": D + "/ctl0.sock",
+               "ppp": {"iface": "vmbr0", "secret": D + "/khong-co.secret"}}, open(conf0, "w"))
+    log0 = open(D + "/cbpool0.log", "w")
+    p0 = subprocess.Popen("exec ip netns exec pve %s run -c %s" % (BIN, conf0), shell=True, stdout=log0, stderr=subprocess.STDOUT)
+    d0 = {}
+    for _ in range(25):
+        time.sleep(1)
+        r0 = sh("%s status -c %s" % (BIN, conf0), ns="pve", check=False)
+        try: d0 = (json.loads(r0.stdout).get("ppp") or {}).get("disc") or {}
+        except Exception: d0 = {}
+        if d0: break
+    p0.terminate()
+    try: p0.wait(15)
+    except Exception: p0.kill()
+    ok("tự dò PPPoE lúc bật (chưa có phiên): status.ppp.disc = modem cho đi qua + tên máy chủ nhà mạng",
+       d0.get("ok") is True and "cbtest-ac" in (d0.get("ac") or []) and d0.get("iface") == "vmbr0", d0 or open(D + "/cbpool0.log").read()[-400:])
+
     log = open(D + "/cbpool.log", "w")
     proc = subprocess.Popen("exec ip netns exec pve %s run -c %s" % (BIN, CONF), shell=True, stdout=log, stderr=subprocess.STDOUT)
     st = {}
