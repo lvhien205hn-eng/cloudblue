@@ -46,6 +46,15 @@ const t2 = nodeTune({ tune: { ok: true, did: [], miss: ["chế độ điện"], 
 ck("còn thiếu / diệt virus khác / RAM lỗi / phần mềm chỉnh card → tô vàng, chữ được thoát HTML",
    /còn thiếu: chế độ điện · không có Defender · diệt virus khác: Kaspersky &lt;b&gt; · ⚠ RAM báo lỗi 3 lần/.test(t2) && /gold-hi/.test(t2) && /Phần mềm chỉnh card<\/span><em>MSI Afterburner/.test(t2), t2);
 ck("đã đủ → '✓ đủ'; máy chủ chưa lên bản 27/11j (không có tune / inv) → không hiện gì", /✓ đủ/.test(nodeTune({ tune: { ok: true, did: [], miss: [] } })) && nodeTune({}) === "" && nodeTune(null) === "" && nodeTune({ tune: { ok: false } }) === "");
+const fat = 1764230400, fd = new Date(fat * 1000), p2 = x => String(x).padStart(2, "0");
+const fstamp = `${p2(fd.getDate())}/${p2(fd.getMonth() + 1)} ${p2(fd.getHours())}:${p2(fd.getMinutes())}`;
+const t3 = nodeTune({ tune: { ok: true, did: [], miss: [], fix: { at: fat, did: ["chế độ điện hiệu năng cao nhất", "tắt Game DVR <i>"] } } });
+ck("27/11l · máy cũ đã được sửa ở lần trước, nay ✓ đủ → thêm dòng 'Đã sửa ngày giờ: …' (chữ được thoát HTML)",
+   /✓ đủ/.test(t3) && t3.includes(`Đã sửa ${fstamp}</span><em>chế độ điện hiệu năng cao nhất · tắt Game DVR &lt;i&gt;</em>`), t3);
+const t4 = nodeTune({ tune: { ok: true, did: ["tắt Game DVR"], miss: [], fix: { at: fat, did: ["tắt Game DVR"] } } });
+ck("… lần này vừa sửa (đã hiện '✓ vừa làm') → không lặp dòng 'Đã sửa'; fix hỏng (không phải object / did rỗng) → bỏ qua",
+   /✓ vừa làm: tắt Game DVR/.test(t4) && !/Đã sửa/.test(t4) && !/Đã sửa/.test(nodeTune({ tune: { ok: true, did: [], fix: "x" } }))
+   && !/Đã sửa/.test(nodeTune({ tune: { ok: true, did: [], fix: { at: fat, did: [] } } })) && /<span>Đã sửa<\/span>/.test(nodeTune({ tune: { ok: true, did: [], fix: { did: ["không ngủ"] } } })), t4);
 ck("nodeSw gắn thêm nodeTune (cùng chỗ dòng Phần mềm máy chủ)", src.includes("<em>${esc(txt)}</em></div>` + nodeTune(s);"));
 console.log(`${ok}/${all} dat`);
 process.exit(ok === all ? 0 : 1);
