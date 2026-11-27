@@ -156,14 +156,14 @@ final class Offers {
         c.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{c1, c2});
         bg.setCornerRadius(Ui.dp(Ui.rad(18)));
-        bg.setStroke(Ui.dp(1), Color.argb(90, 220, 232, 255));
+        bg.setStroke(Ui.dp(1), Color.argb(90, 223, 234, 252));
         c.setBackground(bg);
         TextView ic = Ui.text(a, icon, 22, Color.WHITE, false);
         ic.setGravity(Gravity.CENTER);
-        ic.setBackground(Ui.round(Color.argb(38, 255, 255, 255), 14, Color.argb(80, 220, 232, 255)));
+        ic.setBackground(Ui.round(Color.argb(38, 255, 255, 255), 14, Color.argb(80, 223, 234, 252)));
         c.addView(ic, new LinearLayout.LayoutParams(Ui.dp(42), Ui.dp(42)));
         LinearLayout tx = Ui.col(a, 1);
-        TextView t1 = Ui.text(a, title, 14.5f, Color.WHITE, true), t2 = Ui.text(a, sub, 12, Color.rgb(214, 226, 250), false);
+        TextView t1 = Ui.text(a, title, 14.5f, Color.WHITE, true), t2 = Ui.text(a, sub, 12, Color.rgb(214, 227, 250), false);
         t1.setMaxLines(1); t1.setEllipsize(TextUtils.TruncateAt.END);
         t2.setMaxLines(2); t2.setEllipsize(TextUtils.TruncateAt.END);
         tx.addView(t1, Ui.fill());
@@ -185,7 +185,7 @@ final class Offers {
         if (cr != null)
             box.addView(tile(a, "🎬", Ui.L("Kiếm tiền", "Earn") + " · " + n(cr.optLong("per")) + Ui.L(" view = ", " views = ") + n(cr.optLong("rate")) + " 💎",
                     Ui.L("Làm video về CloudBlue trên TikTok, YouTube… view càng tăng 💎 càng nhiều.", "Make videos about CloudBlue — more views, more 💎."),
-                    Color.rgb(12, 96, 86), Color.rgb(8, 44, 62), v -> creatorSheet(a)), Ui.fill());
+                    Color.rgb(12, 96, 86), Color.rgb(8, 38, 62), v -> creatorSheet(a)), Ui.fill());
         String sub = "";
         if (tc != null) { JSONArray l = tc.optJSONArray("levels"); JSONObject lo = l.optJSONObject(0), hi = l.optJSONObject(l.length() - 1);
             if (lo != null && hi != null) sub = Ui.L("Nạp từ " + Ui.vnd(lo.optDouble("min")) + " nhận mã đến " + hi.optInt("pct") + "%", "Top up " + Ui.vnd(lo.optDouble("min")) + "+ for codes up to " + hi.optInt("pct") + "%"); }

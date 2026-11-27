@@ -701,7 +701,7 @@ final class VmNvme {
             LinearLayout r = Ui.row(a, 12);
             r.setGravity(Gravity.CENTER_VERTICAL);
             r.setPadding(Ui.dp(14), Ui.dp(11), Ui.dp(12), Ui.dp(11));
-            r.setBackground(Ui.round(Ui.LIGHT ? Color.argb(24, 43, 110, 240) : Color.argb(40, 90, 175, 255), 16, Color.argb(120, 90, 175, 255)));
+            r.setBackground(Ui.round(Ui.LIGHT ? Color.argb(24, 62, 122, 221) : Color.argb(40, 115, 162, 230), 16, Color.argb(120, 115, 162, 230)));
             r.addView(Ui.text(a, "⚡", 22, Ui.FG, false), Ui.wrap());
             LinearLayout tx = Ui.col(a, 2);
             tx.addView(Ui.text(a, Ui.L("Bạn đang có " + n + " VPS NVMe", "You have " + n + " VPS NVMe"), 15, Ui.FG, true));
@@ -750,15 +750,15 @@ final class VmNvme {
         bCc = Math.max(1, Math.min(bCc, lm[0])); bCr = Math.max(1, Math.min(bCr, lm[1])); bCd = Math.max(Math.max(20, Math.min(bCd, lm[2])), 10);
         final JSONObject c = cu(info);
         final boolean light = Ui.LIGHT;
-        final int heroFg = light ? Ui.FG : Color.WHITE, heroSub = light ? Ui.MUTED : Color.rgb(203, 222, 255);
+        final int heroFg = light ? Ui.FG : Color.WHITE, heroSub = light ? Ui.MUTED : Color.rgb(207, 224, 251);
 
         // ---- thẻ nổi bật
         LinearLayout hero = Ui.col(a, 10);
         hero.setPadding(Ui.dp(18), Ui.dp(16), Ui.dp(18), Ui.dp(16));
         GradientDrawable hg = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                light ? new int[]{Color.rgb(222, 236, 255), Color.rgb(233, 228, 255)} : new int[]{Color.rgb(22, 64, 150), Color.rgb(46, 28, 118), Color.rgb(11, 22, 58)});
+                light ? new int[]{Color.rgb(224, 235, 253), Color.rgb(233, 238, 250)} : new int[]{Color.rgb(26, 71, 146), Color.rgb(28, 57, 118), Color.rgb(11, 26, 58)});
         hg.setCornerRadius(Ui.dp(Ui.rad(22)));
-        hg.setStroke(Math.max(2, Ui.dp(1.5f)), light ? Color.argb(90, 43, 110, 240) : Color.argb(150, 124, 188, 255));
+        hg.setStroke(Math.max(2, Ui.dp(1.5f)), light ? Color.argb(90, 62, 122, 221) : Color.argb(150, 144, 181, 235));
         hero.setBackground(hg);
         hero.setElevation(Ui.dp(4));
         LinearLayout top = Ui.row(a, 12);
@@ -767,7 +767,7 @@ final class VmNvme {
         ic.setGravity(Gravity.CENTER);
         GradientDrawable ig = new GradientDrawable();
         ig.setShape(GradientDrawable.OVAL);
-        ig.setColor(light ? Color.argb(36, 43, 110, 240) : Color.argb(56, 140, 196, 255));
+        ig.setColor(light ? Color.argb(36, 62, 122, 221) : Color.argb(56, 157, 190, 238));
         ic.setBackground(ig);
         top.addView(ic, new LinearLayout.LayoutParams(Ui.dp(56), Ui.dp(56)));
         LinearLayout tt = Ui.col(a, 2);
@@ -783,7 +783,7 @@ final class VmNvme {
         for (String f : new String[]{"⚙️ " + span(cores) + " vCPU", "🧠 " + span(rams) + " GB RAM", "💾 " + Ui.L("SSD NVMe " + span(frs) + " GB miễn phí", span(frs) + " GB NVMe SSD free")}) {
             TextView t = Ui.text(a, f, 13, light ? Ui.FG : Color.WHITE, true);
             t.setPadding(Ui.dp(11), Ui.dp(6), Ui.dp(11), Ui.dp(7));
-            t.setBackground(Ui.round(light ? Color.argb(215, 255, 255, 255) : Color.argb(40, 255, 255, 255), 99, light ? Color.argb(70, 43, 110, 240) : Color.argb(80, 255, 255, 255)));
+            t.setBackground(Ui.round(light ? Color.argb(215, 255, 255, 255) : Color.argb(40, 255, 255, 255), 99, light ? Color.argb(70, 62, 122, 221) : Color.argb(80, 255, 255, 255)));
             fw.addView(t);
         }
         hero.addView(fw, Ui.fill());
@@ -827,7 +827,7 @@ final class VmNvme {
             if (on) t.setBackground(Ui.gloss(16)); else t.setBackground(Ui.round(Ui.PANEL2, 16, Ui.RING));
             int fg = on ? Color.WHITE : free ? Ui.FG : Ui.MUTED;
             t.addView(Ui.text(a, (on ? "✓ " : "") + p.optString("name", p.optString("id")), 14.5f, fg, true));
-            t.addView(Ui.text(a, "⚙️ " + p.optInt("cores") + " vCPU · 🧠 " + gb(p.optDouble("ram_mb", 0)) + (oneDisk ? "" : "\n💾 SSD NVMe " + inc(p) + " GB"), 11.5f, on ? Color.rgb(222, 236, 255) : Ui.MUTED, false));
+            t.addView(Ui.text(a, "⚙️ " + p.optInt("cores") + " vCPU · 🧠 " + gb(p.optDouble("ram_mb", 0)) + (oneDisk ? "" : "\n💾 SSD NVMe " + inc(p) + " GB"), 11.5f, on ? Color.rgb(224, 235, 253) : Ui.MUTED, false));
             long[] q = p30(p);
             t.addView(Ui.text(a, free ? (q == null ? "" : Ui.vnd(a.ctv(q[1])) + (q[0] == 30 ? "/" + Ui.L("tháng", "month") : "/" + q[0] + Ui.L(" ngày", " days"))) : Ui.L("tạm hết chỗ", "sold out"),
                     13, on ? Color.WHITE : free ? Ui.SKY : Ui.MUTED, true));
@@ -845,7 +845,7 @@ final class VmNvme {
             r1.addView(Ui.text(a, (bCust ? "" : Ui.L("từ ", "from ")) + Ui.vnd(a.ctv(cm)) + "/" + Ui.L("tháng", "month"), 13, bCust ? Color.WHITE : Ui.SKY, true), Ui.wrap());
             t.addView(r1, Ui.fill());
             t.addView(Ui.text(a, bCust ? "⚙️ " + bCc + " vCPU · 🧠 " + bCr + " GB RAM · 💾 SSD NVMe " + bCd + " GB" : Ui.L("Chọn vCPU, RAM, ổ theo ý bạn", "Pick vCPU, RAM and disk"),
-                    11.5f, bCust ? Color.rgb(222, 236, 255) : Ui.MUTED, false));
+                    11.5f, bCust ? Color.rgb(224, 235, 253) : Ui.MUTED, false));
             t.setClickable(true);
             t.setOnClickListener(v -> pick(a, "custom"));
             Ui.press(t);
@@ -897,7 +897,7 @@ final class VmNvme {
             t.setGravity(Gravity.CENTER);
             t.setPadding(Ui.dp(8), Ui.dp(10), Ui.dp(8), Ui.dp(10));
             if (on) t.setBackground(Ui.gloss(16)); else t.setBackground(Ui.round(Ui.PANEL2, 16, Ui.RING));
-            TextView k1 = Ui.text(a, (on ? "✓ " : "") + k[0], 11, on ? Color.rgb(222, 236, 255) : Ui.MUTED, true);
+            TextView k1 = Ui.text(a, (on ? "✓ " : "") + k[0], 11, on ? Color.rgb(224, 235, 253) : Ui.MUTED, true);
             TextView k2 = Ui.text(a, k[1], 17, on ? Color.WHITE : can ? Ui.FG : Ui.MUTED, true);
             TextView k3 = Ui.text(a, can ? "⚡ " + Ui.L("có sẵn", "ready") : o.optDouble("min_ram", 0) > ram ? Ui.L("cần gói từ " + gb(o.optDouble("min_ram", 0)) + " RAM", "needs " + gb(o.optDouble("min_ram", 0)) + " RAM")
                     : Ui.L("cần ổ từ " + o.optInt("min_disk") + " GB", "needs a " + o.optInt("min_disk") + " GB disk"), 11, on ? Color.WHITE : can ? Ui.OK : Ui.MUTED, true);
@@ -920,7 +920,7 @@ final class VmNvme {
             LinearLayout r = Ui.row(a, 10);
             r.setGravity(Gravity.CENTER_VERTICAL);
             r.setPadding(Ui.dp(14), Ui.dp(11), Ui.dp(14), Ui.dp(11));
-            GradientDrawable g = Ui.round(on ? (light ? Color.rgb(232, 241, 255) : Color.rgb(24, 52, 112)) : Ui.PANEL, 16, 0);
+            GradientDrawable g = Ui.round(on ? (light ? Color.rgb(234, 241, 253) : Color.rgb(24, 57, 112)) : Ui.PANEL, 16, 0);
             g.setStroke(Math.max(2, Ui.dp(on ? 2f : 1f)), on ? Ui.BLUE : Ui.LINE2);
             r.setBackground(g);
             r.addView(Ui.text(a, on ? "✓" : "○", 18, on ? Ui.BLUE : Ui.MUTED, true), Ui.wrap());
@@ -986,9 +986,9 @@ final class VmNvme {
         LinearLayout sum = Ui.col(a, 6);
         sum.setPadding(Ui.dp(16), Ui.dp(10), Ui.dp(10), Ui.dp(10));
         GradientDrawable sbg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                light ? new int[]{Color.WHITE, Color.rgb(238, 244, 255)} : new int[]{Color.rgb(22, 44, 104), Color.rgb(9, 19, 50)});
+                light ? new int[]{Color.WHITE, Color.rgb(239, 245, 254)} : new int[]{Color.rgb(22, 48, 104), Color.rgb(9, 22, 50)});
         sbg.setCornerRadius(Ui.dp(Ui.rad(20)));
-        sbg.setStroke(Math.max(2, Ui.dp(1.5f)), light ? Color.argb(80, 43, 110, 240) : Color.argb(120, 124, 188, 255));
+        sbg.setStroke(Math.max(2, Ui.dp(1.5f)), light ? Color.argb(80, 62, 122, 221) : Color.argb(120, 144, 181, 235));
         sum.setBackground(sbg);
         sum.setElevation(Ui.dp(10));
         if (!mt.isEmpty()) sum.addView(Ui.text(a, mt, 12, Ui.WAIT, false), Ui.fill());
