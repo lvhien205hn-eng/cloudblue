@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        27/11g — CBVIDEO BẬT CHO MỌI MÁY ANDROID 9 (đã kiểm máy thật: ra hình, xoay ngang / dọc, 0 bỏ khung, 0 bật lại bộ nén). Thông số
+#                 web hiện "cbvideo: màn ảo → nạp → ra … khung/s · đọc hình … ms · đổi màu … ms". Web ?cbv=0 = scrcpy để so.
 #        27/11f — ANDROID 9 LẤY HÌNH BẰNG CBVIDEO: scrcpy trên Android 9 chỉ ~15 khung/giây vì bộ nén tự đọc ngược hình từ GPU trong
 #                 luồng nén (đo CI simpleperf). bluestream tải windows/cbvideo.jar (md5 ghim) → đọc hình song song với nén (+50% khung/giây
 #                 trên máy ảo CI) + xin khung khoá tức thì (bỏ khung không còn đứng hình chờ bật lại bộ nén). Lỗi → tự quay về scrcpy.
@@ -145,7 +147,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "27/11f"
+VER = "27/11g"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -164,13 +166,13 @@ ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
 FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11b", "cloudphoned"),
-         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "27/11f"', "bluestream"),
+         ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "27/11g"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
          ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11e"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11b", "bluestream": "bản 27/11f: Android 9 cbvideo", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11b", "bluestream": "bản 27/11g: Android 9 cbvideo", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
