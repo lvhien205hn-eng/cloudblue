@@ -162,16 +162,23 @@ subprocess.Popen = _pop
 
 CB_JAR = os.path.join(ROOT, "cbvideo.jar")
 CB_DEV = "/data/local/tmp/cbvideo.jar"
+CB_LIB = os.path.join(ROOT, "libcbenc.so")              # 27/11h: openh264 + JNI (bộ nén riêng)
+CB_LIB_DEV = "/data/local/tmp/libcbenc.so"
 
 
 class CbVideo(bs.ScrcpyVideo):
     """27/11f: máy chủ hình riêng cho Android 9 (A9Video.java → cbvideo.jar) — cùng giao thức scrcpy, đọc bằng chính ScrcpyVideo."""
+    native = False                                           # 27/11h: True → nén bằng openh264 (libcbenc.so)
+
     def start(self):
         self.started = time.time(); self.lines = []
         sh("push", CB_JAR, CB_DEV, t=60)
+        extra = ""
+        if self.native:
+            sh("push", CB_LIB, CB_LIB_DEV, t=60); extra = f" lib={CB_LIB_DEV} enc_threads=1"
         scid = random.randint(1, 0x7FFFFFFF); self.scid = scid
         cmd = (f"CLASSPATH={CB_DEV} app_process / com.cloudblue.A9Video scid={scid:08x} max_size={self.max_size} "
-               f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats=3")
+               f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats=3{extra}")
         with self.lock:
             self.proc = subprocess.Popen([bs.ADB, "-s", self.serial, "shell", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                          stdin=subprocess.DEVNULL)
@@ -203,6 +210,10 @@ class CbVideo(bs.ScrcpyVideo):
         if s:
             try: s.sendall(b"K")
             except OSError: pass
+
+
+class CbVideoN(CbVideo):
+    native = True
 
 
 def probe(path):
@@ -311,19 +322,23 @@ def prof_main(ver, cores, encs):
     mv = Mover(); mv.start(); time.sleep(0.8); gfx_reset(); g0 = time.monotonic()
     time.sleep(5); gf, gj = gfx_frames(); span = time.monotonic() - g0; mv.stop()
     res.append({"tag": "KHÔNG phát hình (chỉ cuộn)", "size": "-", "fps": 0, "app_fps": round(gf / span, 1) if gf >= 0 else None, "app_jank": gj})
-    have_cb = os.path.isfile(CB_JAR)
-    tests = [dict(tag="scrcpy · 800 · max_fps 30 (như máy 4GB)", msz=800, fps=30, kbps=3000, sample=True),
-             dict(tag="scrcpy · 800 · không giới hạn", msz=800, fps=0, kbps=3000),
-             dict(tag="scrcpy · 800 · 30 · tắt lặp khung", msz=800, fps=30, kbps=3000, extra=",repeat-previous-frame-after:long=0"),
-             dict(tag="scrcpy · đứng yên (khung đầu)", msz=800, fps=30, kbps=3000, secs=3, move=False)]
+    have_cb = os.path.isfile(CB_JAR); have_lib = os.path.isfile(CB_LIB)
+    tests = [dict(tag="scrcpy · 800 · max_fps 30 (như máy 4GB)", msz=800, fps=30, kbps=3000),
+             dict(tag="scrcpy · 960 · 30", msz=960, fps=30, kbps=3000)]
     if have_cb:
-        tests += [dict(tag="cbvideo · 800 · 30 · xin khoá ×3", msz=800, fps=30, kbps=3000, secs=7, cls=CbVideo, keys=3, sample=True,
-                       record=os.path.join(ROOT, f"cb800-{API}.h264")),
-                  dict(tag="cbvideo · 800 · không giới hạn", msz=800, fps=0, kbps=3000, cls=CbVideo),
-                  dict(tag="cbvideo · 960 · 30", msz=960, fps=30, kbps=3000, cls=CbVideo, record=os.path.join(ROOT, f"cb960-{API}.h264")),
-                  dict(tag="cbvideo · 1280 · 30", msz=1280, fps=30, kbps=3000, cls=CbVideo),
-                  dict(tag="cbvideo · đứng yên (khung đầu)", msz=800, fps=30, kbps=3000, secs=3, move=False, cls=CbVideo),
-                  dict(tag="cbvideo · 800 · 30 · simpleperf", msz=800, fps=30, kbps=3000, secs=7, perf=True, cls=CbVideo)]
+        tests += [dict(tag="cbvideo OMX · 800 · 30", msz=800, fps=30, kbps=3000, cls=CbVideo)]
+    if have_cb and have_lib:
+        tests += [dict(tag="cbvideo openh264 · 800 · 30 · xin khoá ×3", msz=800, fps=30, kbps=3000, secs=7, cls=CbVideoN, keys=3, sample=True,
+                       record=os.path.join(ROOT, f"cbn800-{API}.h264")),
+                  dict(tag="cbvideo openh264 · 800 · 60", msz=800, fps=60, kbps=3000, cls=CbVideoN),
+                  dict(tag="cbvideo openh264 · 960 · 30", msz=960, fps=30, kbps=3000, cls=CbVideoN, record=os.path.join(ROOT, f"cbn960-{API}.h264")),
+                  dict(tag="cbvideo openh264 · 1280 · 30", msz=1280, fps=30, kbps=3000, cls=CbVideoN, record=os.path.join(ROOT, f"cbn1280-{API}.h264")),
+                  dict(tag="cbvideo openh264 · đứng yên (khung đầu)", msz=800, fps=30, kbps=3000, secs=3, move=False, cls=CbVideoN),
+                  dict(tag="cbvideo openh264 · 960 · 30 · simpleperf", msz=960, fps=30, kbps=3000, secs=7, perf=True, cls=CbVideoN)]
+    elif have_cb:
+        say("**Không có libcbenc.so** (bước dựng openh264 hỏng) — chỉ đo cbvideo OMX.")
+        tests += [dict(tag="cbvideo OMX · 800 · 30 · xin khoá ×3", msz=800, fps=30, kbps=3000, secs=7, cls=CbVideo, keys=3,
+                       record=os.path.join(ROOT, f"cb800-{API}.h264"))]
     else:
         say("**Không có cbvideo.jar** (bước dựng hỏng) — chỉ đo scrcpy.")
     for t in tests:
@@ -349,7 +364,7 @@ def prof_main(ver, cores, encs):
         if r.get("perf"):
             say(f"<details open><summary>simpleperf · {r['tag']}</summary>\n\n```\n" + "\n".join(r["perf"])[:15000] + "\n```\n</details>\n")
     # cbvideo đạt: dựng được + ra hình + giải mã sạch → bước sau lưu cbvideo.jar vào nhánh
-    cb = next((r for r in res if r.get("tag", "").startswith("cbvideo · 800 · 30 · xin")), None)
+    cb = next((r for r in res if "800 · 30 · xin" in r.get("tag", "") and r.get("tag", "").startswith("cbvideo")), None)
     ok = bool(cb and cb.get("probe") and cb["probe"][1] >= max(5, int(cb.get("frames", 0) * 0.9)) and cb["probe"][2] == 0 and not cb.get("err"))
     if ok and str(API) == "28":
         open(os.path.join(ROOT, "cbvideo-ok.txt"), "w").write(json.dumps({k: v for k, v in cb.items() if k not in ("top", "perf")}, ensure_ascii=False))

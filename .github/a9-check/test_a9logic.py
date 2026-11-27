@@ -142,7 +142,9 @@ async def main():
        and st[-1]["rs"] == 2 and st[-1]["rk"] == 1 and st[-1]["efps"] > 0, st[-1:] if st else None)
 
     print("8. cbvideo (27/11f) — máy chủ hình riêng cho Android 9")
-    ck("bản 27/11g + dòng khởi động 'bản 27/11g: Android 9 cbvideo'", bs.BS_SUB == "27/11g" and "bản 27/11g: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("bản 27/11h + dòng khởi động 'bản 27/11h: Android 9 cbvideo'", bs.BS_SUB == "27/11h" and "bản 27/11h: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("md5 libcbenc-x86_64.so (openh264) ghim đủ 32 ký tự hex · mặc định nén openh264 1 luồng",
+       len(bs.CBV_LIB[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_LIB[1]) and bs.CBV_ENC == "oh264" and bs.CBV_THREADS == 1, (bs.CBV_LIB, bs.CBV_ENC))
     ck("md5 cbvideo.jar ghim đủ 32 ký tự hex", len(bs.CBV_FILE[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_FILE[1]), bs.CBV_FILE)
     sv = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0, kind="cbv")
     sv2 = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0)
@@ -156,17 +158,20 @@ async def main():
        and sv2.request_key() is False and sv2.sock.sent == b"", (sv.sock.sent, sv2.sock.sent))
     cmds = []
     class StopPop(Exception): pass
-    real_pop = bs.subprocess.Popen
+    real_pop = bs.subprocess.Popen; real_lib = bs.ensure_cbv_lib
     def fake_pop(args, *a, **k): cmds.append(args); raise StopPop()
     bs.subprocess.Popen = fake_pop
     try:
-        for kd in ("cbv", "scrcpy"):
+        for kd, lib in (("cbv", True), ("scrcpy", True), ("cbv", False)):
+            bs.ensure_cbv_lib = (lambda v: (lambda: v))(lib)
             v = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0, quick=True, kind=kd)
             try: v.start()
             except StopPop: pass
     finally:
-        bs.subprocess.Popen = real_pop
-    c_cb = cmds[0][-1] if cmds else ""; c_sc = cmds[1][-1] if len(cmds) > 1 else ""
+        bs.subprocess.Popen = real_pop; bs.ensure_cbv_lib = real_lib
+    c_cb = cmds[0][-1] if cmds else ""; c_sc = cmds[1][-1] if len(cmds) > 1 else ""; c_omx = cmds[2][-1] if len(cmds) > 2 else ""
+    ck("27/11h: có libcbenc → lệnh cbvideo kèm lib=<libcbenc> enc_threads=1 · không có → không kèm (nén bằng Android)",
+       f"lib={bs.CBV_LIB_DEV}" in c_cb and "enc_threads=1" in c_cb and "lib=" not in c_omx and "com.cloudblue.A9Video" in c_omx, (c_cb, c_omx))
     ck("lệnh cbvideo: CLASSPATH cbvideo + com.cloudblue.A9Video + max_size/max_fps/bitrate/i_frame", all(x in c_cb for x in (
         f"CLASSPATH={bs.CBV_DEV}", "com.cloudblue.A9Video", "max_size=960", "max_fps=30", "video_bit_rate=3000000", "i_frame=5", "scid=")), c_cb)
     ck("lệnh scrcpy không đổi (com.genymobile.scrcpy.Server 2.4)", "com.genymobile.scrcpy.Server 2.4" in c_sc and "A9Video" not in c_sc, c_sc)
@@ -293,6 +298,8 @@ async def main():
     cs = bs._cbv_stat("cbvideo stats: 5.0s in 100 sub 80 rep 2 out 81 (16.2 fps) read 9.1 ms conv 6.3 ms")
     ck("đọc dòng thống kê cbvideo → khung vào / nạp / ra mỗi giây + ms đọc / đổi màu", cs == {"in": 20.0, "sub": 16.0, "out": 16.2, "read": 9.1, "conv": 6.3}
        and bs._cbv_stat("rác") is None, cs)
+    cs2 = bs._cbv_stat("cbvideo stats: 5.0s in 150 sub 140 rep 1 out 141 (28.2 fps) read 8.0 ms conv 1.5 ms enc 3.2 ms oh264")
+    ck("27/11h: dòng thống kê có 'enc … ms oh264' → thêm enc + by", cs2 and cs2.get("enc") == 3.2 and cs2.get("by") == "oh264" and cs2.get("out") == 28.2, cs2)
     import types
     lines = ["cbvideo stats: 5.0s in 100 sub 80 rep 2 out 81 (16.2 fps) read 9.1 ms conv 6.3 ms",
              "cbvideo stats: 5.0s in 90 sub 85 rep 0 out 85 (17.0 fps) read 8.0 ms conv 6.0 ms", "cbvideo: 544x960 fmt 21"]
