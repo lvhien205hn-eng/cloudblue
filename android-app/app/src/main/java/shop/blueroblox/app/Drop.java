@@ -24,7 +24,7 @@ import org.json.JSONObject;
 final class Drop {
     static volatile JSONObject data = null;
     static volatile long at = 0, skew = 0;
-    private static final int AMBER = Color.rgb(56, 189, 248), AMBER_HI = Color.rgb(125, 211, 252), INK = Color.rgb(4, 38, 63);   // 28/11: phát mã giảm giá = xanh trời như web (tên AMBER giữ cho ít sửa)
+    private static final int AMBER = Color.rgb(0, 194, 255), AMBER_HI = Color.rgb(167, 243, 255), INK = Color.rgb(3, 32, 58);   // 28/11 bản 5: phát mã giảm giá = xanh ngọc → băng như web (tên AMBER giữ cho ít sửa)
     private static Runnable ticker = null;
 
     static boolean on() { return Api.SHOP; }

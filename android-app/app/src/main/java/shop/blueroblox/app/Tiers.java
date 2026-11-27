@@ -27,7 +27,7 @@ final class Tiers {
         List<String> fit = new ArrayList<>();
     }
 
-    /** 28/11: nhãn nói về giá (Giá tốt, Rẻ, Tiết kiệm, Giảm…) → tô xanh trời như tiền / ưu đãi. */
+    /** 28/11: nhãn nói về giá (Giá tốt, Rẻ, Tiết kiệm, Giảm…) → tô xanh ngọc như nhãn ưu đãi của web. */
     static boolean deal(String b) {
         String s = b == null ? "" : b.toLowerCase(java.util.Locale.ROOT);
         for (String k : new String[]{"giá", "rẻ", "tiết kiệm", "giảm", "sale", "%", "best value", "saver", "cheap"}) if (s.contains(k)) return true;
@@ -196,11 +196,11 @@ final class Tiers {
             LinearLayout pr = Ui.col(c, 0);
             pr.setGravity(Gravity.END);
             if (t.badge != null && !badge(t.badge).isEmpty()) {      // nhãn 🔥 Bán chạy · ⭐ Đề xuất nằm trên giá
-                boolean deal = deal(t.badge);                          // 28/11: nhãn về GIÁ = xanh trời (như tiền / ưu đãi), nhãn khác = xanh dương (như HOT / MỚI của web)
-                TextView b = Ui.text(c, badge(t.badge), 10.5f, deal ? Color.rgb(4, 38, 63) : Color.WHITE, true);
+                boolean deal = deal(t.badge);                          // 28/11 bản 5: nhãn về GIÁ = xanh ngọc → xanh điện (như nhãn ưu đãi web), nhãn khác = xanh điện (như HOT / MỚI)
+                TextView b = Ui.text(c, badge(t.badge), 10.5f, Color.WHITE, true);
                 b.setPadding(Ui.dp(7), Ui.dp(1), Ui.dp(7), Ui.dp(2));
                 b.setMaxLines(1);
-                GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, deal ? new int[]{Color.rgb(125, 211, 252), Color.rgb(56, 189, 248)} : new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)});
+                GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, deal ? new int[]{Color.rgb(0, 194, 255), Color.rgb(11, 95, 255)} : new int[]{Color.rgb(61, 134, 255), Color.rgb(11, 95, 255)});
                 g.setCornerRadius(Ui.dp(99));
                 b.setBackground(g);
                 LinearLayout.LayoutParams bl = Ui.wrap();

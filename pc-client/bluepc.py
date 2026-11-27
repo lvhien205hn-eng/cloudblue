@@ -2439,8 +2439,8 @@ def install_modals(app):
 # ================================================================ CỬA SỔ DANH SÁCH (tkinter)
 # 17/11c: bảng màu "Thuỷ đêm" của app điện thoại (nền xanh đêm · tấm nổi · viền xanh mờ · chữ trắng xanh)
 BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#071226", "#0d1d3d", "#244978", "#e8f1ff", "#9fb4d8", "#3d86ff", "#3ce0b0", "#ffd666", "#ff6b81"
-MONEY = "#6fd3ff"          # 28/11 bản 4 · XANH TRỜI = điểm nhấn duy nhất cho TIỀN & ƯU ĐÃI (giá, tổng, số dư, % giảm) — đúng màu của web, bỏ vàng
-def deal_badge(t):         # nhãn gói nói về GIÁ (Giá tốt, Rẻ, Tiết kiệm, Giảm…) = xanh trời như tiền; nhãn khác (Bán chạy, Đề xuất, Mới…) = xanh dương như nhãn HOT / MỚI của web
+MONEY = "#a7f3ff"          # 28/11 bản 5 "Arctic Glow" · màu BĂNG cho TIỀN & ƯU ĐÃI (giá, tổng, số dư, % giảm) — đúng màu giá của web
+def deal_badge(t):         # nhãn gói nói về GIÁ (Giá tốt, Rẻ, Tiết kiệm, Giảm…) = xanh ngọc #00c2ff như nhãn ưu đãi của web; nhãn khác (Bán chạy, Đề xuất, Mới…) = xanh điện #0b5fff như HOT / MỚI
     s = str(t or "").lower()
     return any(k in s for k in ("giá", "rẻ", "tiết kiệm", "giảm", "sale", "%", "best value", "saver", "cheap"))
 BRAND = "#4f95ff"          # màu chữ "Blue" trong tên CloudBlue
@@ -2815,7 +2815,7 @@ class TierList:
         if len(ands) < len(allv): spec += "   ·   Android " + (" / ".join(ands) if ands else "— vượt trần")
         sp = tk.Label(mid, text=spec, font=("Segoe UI", 9, "bold"), bg=bg, fg=TXT, anchor="w"); sp.pack(fill="x"); wl.append(sp)
         rt = tk.Frame(top, bg=bg); rt.pack(side="right", padx=(8, 0)); wl.append(rt)
-        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#38bdf8" if deal_badge(t["badge"]) else "#2b6ef0", fg="#04263f" if deal_badge(t["badge"]) else "white", padx=8, pady=2, pill=True); b.pack(anchor="e"); wl.append(b)
+        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#00c2ff" if deal_badge(t["badge"]) else "#0b5fff", fg="#03203a" if deal_badge(t["badge"]) else "white", padx=8, pady=2, pill=True); b.pack(anchor="e"); wl.append(b)
         per = per_day(self.dlg.pr, t["ram"], t["cpu"])
         pr = tk.Label(rt, text=vnd(per), font=("Segoe UI", 13, "bold"), bg=bg, fg=MONEY, anchor="e"); pr.pack(anchor="e")
         pd = tk.Label(rt, text="/ ngày", font=("Segoe UI", 8), bg=bg, fg=DIM, anchor="e"); pd.pack(anchor="e"); wl += [pr, pd]
