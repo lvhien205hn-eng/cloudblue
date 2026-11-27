@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11l"           # 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11m"           # 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -3681,10 +3681,11 @@ def cmd_rootfix(a):
 # ---------- ROOT THEO TỪNG APP (cpsu: lệnh su riêng + daemon, chỉ app trong danh sách mới lấy được root) ----------
 # Máy chủ giữ 2 file: cpsu-x86_64 (daemon + install/uninstall/status — chạy root trong máy ảo, ngoài sandbox app) và
 # cpsu-su-x86_64 (lệnh "su" KHÔNG libc — chạy bên trong app như Termux). Thiếu / sai md5 → tự tải từ GitHub (windows/…).
-# Trong máy: /data/adb/cpsu/{cpsu, su, allow, log}; "cpsu install" chép su vào /debug_ramdisk/su (Termux tìm ở đó trước),
+# Trong máy: /data/adb/cpsu/{cpsu, su, allow, log}; "cpsu install" chép su vào /debug_ramdisk/su (Termux tìm ở đó trước — Android 9 như
+# LDPlayer 9 không có thư mục này: cpsu 27/11m tự tạo trong "/" nằm ở RAM, mất khi máy bật lại, máy chủ cài lại sau mỗi lần bật),
 # adb là root thì gắn đè thêm lên /system/xbin/su, /system/bin/su. Tắt root = "cpsu uninstall". KHÔNG giấu root với app khác.
 CPSU_DIR = os.path.join(HOME, "cpsu")
-CPSU_FILES = {"cpsu": ("cpsu-x86_64", "e22c12e19f45f11ffeedc8d2d9bbefa8"), "su": ("cpsu-su-x86_64", "510c22af304ad95f6e733da4d60ce250")}
+CPSU_FILES = {"cpsu": ("cpsu-x86_64", "4841f76b387938f1762486376b6ac8a2"), "su": ("cpsu-su-x86_64", "510c22af304ad95f6e733da4d60ce250")}
 CPSU_RAW = (CONF.get("REPO_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main").rstrip("/") + "/windows/"
 CPSU_API = (CONF.get("REPO_API") or "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents").rstrip("/") + "/windows/"
 CPSU_DEV = "/data/adb/cpsu"
@@ -3982,6 +3983,14 @@ def _root_state(p):
     st["asked"] = asked[:30]; st["installed"] = sorted(set(st["installed"])); st["su"] = True
     return st
 
+def _root_why(o):
+    """27/11m · dòng LÝ DO khi cài cpsu hỏng: INSTALL_FAIL … / cảnh báo cpsu: … trước dòng cuối (dòng cuối thường chỉ là "STOPPED"
+       của lệnh status — Android 9 báo mỗi "STOPPED" khiến không biết hỏng ở đâu)."""
+    ln = [x.strip() for x in (o or "").splitlines() if x.strip()]
+    why = next((x for x in ln if x.startswith("INSTALL_FAIL")), "") or next((x for x in ln if x.startswith("cpsu:")), "") or (ln[-1] if ln else "")
+    if why and why != (ln[-1] if ln else "") and ln and ln[-1].startswith("STOPPED"): why += " (daemon không chạy)"
+    return (why or "máy không trả lời")[-200:]
+
 def _root_apply(p, quiet=False, restart=False):
     """Đưa máy về đúng cấu hình root đã lưu (p["root_on"], p["root_apps"]). Trả (ok, câu báo).
        restart=True (khách bấm Lưu trong 🔓 Root): máy chưa có root gốc → tự tắt → bật root → bật lại (~1 phút) rồi mới cài.
@@ -4024,7 +4033,7 @@ def _root_apply(p, quiet=False, restart=False):
         except OSError: pass
     o = ((r.stdout or "") + (r.stderr or "")).strip()
     if "INSTALL_OK" not in o or "RUNNING" not in o:
-        return False, "Chưa bật được root: " + (o.splitlines()[-1] if o else "máy không trả lời")[-200:]
+        return False, "Chưa bật được root: " + _root_why(o)
     se = (re.search(r"selinux=(\w+)", o) or [None, "?"])[1]
     msg = f"Đã BẬT root cho {len(apps)} app" + (f": {', '.join(apps[:5])}{'…' if len(apps) > 5 else ''}" if apps else " (chưa chọn app nào — app xin root sẽ bị từ chối)")
     if se == "Enforcing": msg += " · ⚠ máy đang bật SELinux Enforcing — app có thể vẫn chưa dùng được su"

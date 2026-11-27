@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        27/11m — 🔓 ROOT THEO APP TRÊN ANDROID 9: phonectl 27/11m dùng cpsu mới (LDPlayer 9 không có /debug_ramdisk → cpsu tự tạo, trước đó báo
+#                 "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do. Khách bấm Lưu trong 🔓 Root lần nữa là máy tự tải cpsu mới.
 #        27/11l — ĐỌC ĐỦ PHẦN MỀM TRÊN MÁY: bản MuMu / LD đọc từ thông tin gỡ cài đặt của Windows (MuMu bản mới không ghi bản trong file chạy) ·
 #                 thư mục nx_main / shell không còn bị tính là 1 chỗ cài MuMu riêng · nhớ "đã sửa gì lúc nào" ở lần tối ưu đầu (web hiện cả khi các
 #                 lần sau báo đủ) · cloudphoned 27/11l đọc card bằng nvidia-smi ở thư mục NVSMI (driver cũ như 466.77 của máy ISO → web hết "không đọc được").
@@ -164,7 +166,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "27/11l"
+VER = "27/11m"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -186,7 +188,7 @@ FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11l", "cloud
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "27/11h"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11l"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11m"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
 MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11l", "bluestream": "bản 27/11h: Android 9 cbvideo", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)

@@ -631,6 +631,172 @@ class TestInstallUninstall(unittest.TestCase):
                        capture_output=True, timeout=10)
 
 
+def _fs_type(path):
+    """fstype of the mount holding path (longest matching mount point in /proc/mounts)."""
+    best, typ = "", ""
+    p = os.path.realpath(path)
+    for ln in open("/proc/mounts"):
+        q = ln.split()
+        if len(q) >= 3 and (p == q[1] or p.startswith(q[1].rstrip("/") + "/")) and len(q[1]) >= len(best):
+            best, typ = q[1], q[2]
+    return typ
+
+
+def _in_chroot(root, setup, body):
+    """Fork; child: new mount namespace, setup(root) (host paths), /dev/null + /proc, chroot(root), body() -> dict.
+    Returns the dict (JSON over a pipe). root must already hold empty dev/null + proc/ (the daemon sends its stdio to
+    /dev/null like on a device - without it the daemon would keep the install's output pipe open)."""
+    import json
+    rfd, wfd = os.pipe()
+    pid = os.fork()
+    if pid == 0:
+        res = {}
+        try:
+            os.close(rfd)
+            os.unshare(os.CLONE_NEWNS)
+            subprocess.run(["mount", "--make-rprivate", "/"], check=True, capture_output=True)
+            setup(root)
+            subprocess.run(["mount", "--bind", "/dev/null", os.path.join(root, "dev", "null")], check=True, capture_output=True)
+            subprocess.run(["mount", "-t", "proc", "proc", os.path.join(root, "proc")], check=True, capture_output=True)
+            os.chroot(root); os.chdir("/")
+            res = body()
+        except Exception as e:
+            res["err"] = repr(e)
+        try: os.write(wfd, json.dumps(res).encode())
+        finally: os._exit(0)
+    os.close(wfd)
+    data = b""
+    while True:
+        ch = os.read(rfd, 65536)
+        if not ch: break
+        data += ch
+    os.close(rfd); os.waitpid(pid, 0)
+    return json.loads(data.decode() or "{}")
+
+
+def _data_rw(su_src):
+    """setup(): /data = its own writable mount (like a device's data partition) holding /data/adb/cpsu/su."""
+    def setup(r):
+        subprocess.run(["mount", "-t", "tmpfs", "tmpfs", os.path.join(r, "data")], check=True, capture_output=True)
+        os.makedirs(os.path.join(r, "data", "adb", "cpsu"), 0o700)
+        shutil.copy2(su_src, os.path.join(r, "data", "adb", "cpsu", "su"))
+    return setup
+
+
+def _a9_body(sock, extra=()):
+    """Inside the fake device: install with the default /debug_ramdisk, look around, uninstall."""
+    def body():
+        res = {}
+        r = subprocess.run(["/cpsu", "install", "--dir", "/data/adb/cpsu", "--sock", sock, "--ramdisk", "/debug_ramdisk",
+                            "--packages", "/pk", "--shell", "/cpsu"] + list(extra), capture_output=True, timeout=10)
+        res["install"] = (r.stdout + r.stderr).decode(errors="replace")
+        res["isdir"] = os.path.isdir("/debug_ramdisk")
+        res["su_ramdisk"] = os.path.isfile("/debug_ramdisk/su")
+        res["su_bin"] = os.path.isfile("/data/adb/cpsu/bin/su")
+        res["root_ro"] = bool(os.statvfs("/").f_flag & os.ST_RDONLY)
+        res["tmpfs"] = any(l.split()[1:3] == ["/debug_ramdisk", "tmpfs"] for l in open("/proc/mounts"))
+        res["status"] = subprocess.run(["/cpsu", "status", "--dir", "/data/adb/cpsu"], capture_output=True, timeout=10).stdout.decode()
+        res["uninstall"] = subprocess.run(["/cpsu", "uninstall", "--dir", "/data/adb/cpsu", "--sock", sock],
+                                          capture_output=True, timeout=10).stdout.decode()
+        time.sleep(0.3)
+        res["status2"] = subprocess.run(["/cpsu", "status", "--dir", "/data/adb/cpsu"], capture_output=True, timeout=10).stdout.decode()
+        return res
+    return body
+
+
+class TestRamdiskAndroid9(unittest.TestCase):
+    """27/11m: Android 9 (LDPlayer 9) has no /debug_ramdisk. install used to stop at "INSTALL_FAIL copy" and the
+    daemon never started -> CloudBlue showed "Chua bat duoc root: STOPPED"."""
+
+    def _need_mount(self):
+        if not hasattr(os, "unshare") or not TestInstallUninstall._can_mount(self):
+            self.skipTest("needs mount + os.unshare (root, Python 3.12+)")
+
+    def test_missing_ramdisk_dir_is_created(self):
+        d = os.path.join(WORK, "a9_mk"); os.makedirs(d, 0o700)
+        ramdisk = os.path.join(WORK, "a9_ramdisk_new")              # missing, parent writable
+        sock = "cpsu_t_a9mk"
+        r = subprocess.run([BIN, "install", "--dir", d, "--sock", sock, "--ramdisk", ramdisk, "--src", BIN,
+                            "--packages", PKGS_PATH, "--shell", sh_path()], capture_output=True, timeout=10)
+        try:
+            self.assertIn(b"INSTALL_OK", r.stdout, r.stdout + r.stderr)
+            self.assertIn(b"made=1", r.stdout)
+            self.assertTrue(os.path.isfile(os.path.join(ramdisk, "su")))
+            self.assertIn(b"RUNNING", subprocess.run([BIN, "status", "--dir", d], capture_output=True).stdout)
+        finally:
+            subprocess.run([BIN, "uninstall", "--dir", d, "--sock", sock], capture_output=True, timeout=10)
+
+    def test_no_ramdisk_possible_falls_back_and_daemon_runs(self):
+        d = os.path.join(WORK, "a9_fb"); os.makedirs(d, 0o700)
+        ramdisk = os.path.join(WORK, "no", "such", "ramdisk")        # parent missing -> cannot be made
+        bindfile = os.path.join(WORK, "a9_fake_xbin_su")
+        with open(bindfile, "w") as f: f.write("ORIGINAL")
+        sock = "cpsu_t_a9fb"
+        can_mount = TestInstallUninstall._can_mount(self)
+        r = subprocess.run([BIN, "install", "--dir", d, "--sock", sock, "--ramdisk", ramdisk, "--bind", bindfile,
+                            "--src", BIN, "--packages", PKGS_PATH, "--shell", sh_path()], capture_output=True, timeout=10)
+        try:
+            self.assertIn(b"INSTALL_OK", r.stdout, r.stdout + r.stderr)
+            self.assertIn(b"su kept in " + d.encode() + b"/bin", r.stderr)
+            self.assertTrue(os.path.isfile(os.path.join(d, "bin", "su")))
+            self.assertIn(b"RUNNING", subprocess.run([BIN, "status", "--dir", d], capture_output=True).stdout)
+            if can_mount:
+                with open(bindfile, "rb") as f: self.assertEqual(f.read(4), b"\x7fELF")     # su reached through the bind
+        finally:
+            subprocess.run([BIN, "uninstall", "--dir", d, "--sock", sock], capture_output=True, timeout=10)
+        if can_mount:
+            with open(bindfile) as f: self.assertEqual(f.read(), "ORIGINAL")
+
+    def test_android9_readonly_rootfs_in_ram(self):
+        """Like LDPlayer 9: "/" = read-only rootfs in RAM without /debug_ramdisk. install creates /debug_ramdisk
+        (remounts "/" rw for an instant), mounts tmpfs there, starts the daemon and leaves "/" read-only."""
+        self._need_mount()
+        root = tempfile.mkdtemp(prefix="cpsu_a9root_")
+        subprocess.run(["mount", "-t", "tmpfs", "-o", "mode=0755", "tmpfs", root], check=True)
+        try:
+            for p in ("proc", "data", "dev"): os.makedirs(os.path.join(root, p))
+            open(os.path.join(root, "dev", "null"), "w").close()
+            shutil.copy2(BIN, os.path.join(root, "cpsu")); shutil.copy2(PKGS_PATH, os.path.join(root, "pk"))
+            subprocess.run(["mount", "-o", "remount,ro", root], check=True)
+            res = _in_chroot(root, _data_rw(os.environ.get("CPSU_SU_BIN") or BIN), _a9_body("cpsu_t_a9ro%d" % os.getpid()))
+        finally:
+            subprocess.run(["umount", "-l", root], capture_output=True); shutil.rmtree(root, ignore_errors=True)
+        self.assertNotIn("err", res, res)
+        self.assertIn("INSTALL_OK ramdisk=/debug_ramdisk tmpfs=1 su=/debug_ramdisk/su made=1", res["install"], res)
+        self.assertTrue(res["isdir"] and res["su_ramdisk"] and res["tmpfs"], res)
+        self.assertTrue(res["root_ro"], "\"/\" must be read-only again after install")
+        self.assertIn("RUNNING", res["status"], res)
+        self.assertIn("UNINSTALL_OK", res["uninstall"], res)
+        self.assertIn("STOPPED", res["status2"], res)
+
+    def test_readonly_root_on_disk_falls_back(self):
+        """Read-only "/" that is NOT in RAM (system-as-root): never remount it; su goes to DIR/bin, daemon still runs."""
+        self._need_mount()
+        base = "/var/tmp" if os.path.isdir("/var/tmp") else HERE
+        if _fs_type(base) in ("tmpfs", "ramfs", "rootfs", ""):
+            self.skipTest("no disk-backed directory to use as a read-only root")
+        root = tempfile.mkdtemp(prefix="cpsu_sar_", dir=base)
+        try:
+            for p in ("proc", "data", "dev"): os.makedirs(os.path.join(root, p))
+            open(os.path.join(root, "dev", "null"), "w").close()
+            shutil.copy2(BIN, os.path.join(root, "cpsu")); shutil.copy2(PKGS_PATH, os.path.join(root, "pk"))
+            data = _data_rw(os.environ.get("CPSU_SU_BIN") or BIN)
+            def setup(r):
+                subprocess.run(["mount", "--bind", r, r], check=True, capture_output=True)
+                subprocess.run(["mount", "-o", "remount,bind,ro", r], check=True, capture_output=True)
+                data(r)
+            res = _in_chroot(root, setup, _a9_body("cpsu_t_a9sar%d" % os.getpid()))
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+        self.assertNotIn("err", res, res)
+        self.assertIn("INSTALL_OK ramdisk=/data/adb/cpsu/bin tmpfs=0 su=/data/adb/cpsu/bin/su made=0", res["install"], res)
+        self.assertIn("su kept in /data/adb/cpsu/bin", res["install"], res)
+        self.assertFalse(res["isdir"], res)
+        self.assertTrue(res["su_bin"] and res["root_ro"], res)
+        self.assertIn("RUNNING", res["status"], res)
+        self.assertIn("STOPPED", res["status2"], res)
+
+
 class TestNotify(unittest.TestCase):
     def test_notify_on_deny(self):
         # --notify-cmd points at a wrapper that records its argv

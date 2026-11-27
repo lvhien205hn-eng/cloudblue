@@ -1,0 +1,78 @@
+# 27/11m · ROOT THEO APP (cpsu) — thử trước khi phát hành, bằng ĐÚNG 2 file sẽ đưa xuống máy chủ (windows/cpsu-x86_64 + windows/cpsu-su-x86_64):
+#   unit: dựng lại cpsu từ cpsu/ (cpsu-su phải ra đúng file phát hành) · cpsu/test_cpsu.py bằng file phát hành, 2 kiểu lệnh su — gồm giả lập
+#         Android 9 ("/" chỉ đọc nằm trong RAM, không có /debug_ramdisk: bản cũ dừng ở "INSTALL_FAIL copy" → web báo "Chưa bật được root: STOPPED").
+#   emu:  máy Android thật API 28 (Android 9 như LDPlayer 9) + API 31 (Android 12 như MuMu): cài, app được chọn có root, app khác bị từ chối,
+#         adb vẫn dùng su, cài lại không gắn chồng, gỡ ra trả su hệ thống như cũ. Kết quả: trang tóm tắt (Summary) của lượt chạy.
+name: Check root theo app (cpsu)
+
+on:
+  push:
+    branches: ["roota9-*"]
+    paths:
+      - "cpsu/**"
+      - "windows/cpsu-x86_64"
+      - "windows/cpsu-su-x86_64"
+      - ".github/root-check/**"
+      - ".github/workflows/root-a9-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: root-a9-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dựng lại cpsu từ mã nguồn, so với file phát hành
+        run: |
+          set -e
+          sh cpsu/build.sh
+          a=$(md5sum cpsu/cpsu-su-x86_64 | cut -d' ' -f1); b=$(md5sum windows/cpsu-su-x86_64 | cut -d' ' -f1)
+          if [ "$a" = "$b" ]; then echo "- ✓ cpsu-su-x86_64 dựng lại trùng từng byte file phát hành (\`$b\`)" >> "$GITHUB_STEP_SUMMARY"
+          else echo "- ⚠ cpsu-su-x86_64 dựng lại \`$a\` ≠ file phát hành \`$b\` (trình dịch khác — vẫn thử bằng file phát hành)" >> "$GITHUB_STEP_SUMMARY"; fi
+          echo "- cpsu-x86_64 phát hành: \`$(md5sum windows/cpsu-x86_64 | cut -d' ' -f1)\` · $(stat -c %s windows/cpsu-x86_64) byte" >> "$GITHUB_STEP_SUMMARY"
+      - name: cpsu/test_cpsu.py bằng đúng file phát hành (lệnh su gộp + lệnh su không libc)
+        run: |
+          set -e
+          # chép ra /tmp: bài thử chạy file bằng uid app (10123) — /home/runner không cho uid khác đi qua
+          T=/tmp/cpsu_t; rm -rf $T; mkdir -p $T; chmod 755 $T
+          cp cpsu/test_cpsu.py $T/ && cp windows/cpsu-x86_64 windows/cpsu-su-x86_64 $T/ && chmod 755 $T/cpsu-x86_64 $T/cpsu-su-x86_64
+          sudo mkdir -p /system/bin && sudo ln -sf /bin/sh /system/bin/sh
+          for c in "" "$T/cpsu-su-x86_64"; do
+            if sudo CPSU_SU_BIN="$c" python3 $T/test_cpsu.py > /tmp/t.log 2>&1; then r=đạt; else r=LỖI; fi
+            echo "- test_cpsu.py (su: ${c:-cpsu gộp}): $r — $(grep -E '^Ran ' /tmp/t.log)" >> "$GITHUB_STEP_SUMMARY"
+            grep -E '^(FAIL|ERROR):' /tmp/t.log | sed 's/^/  - /' >> "$GITHUB_STEP_SUMMARY" || true
+            tail -4 /tmp/t.log
+            [ "$r" = đạt ] || { tail -60 /tmp/t.log; exit 1; }
+          done
+
+  emu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [28, 31]     # 28 = Android 9 (như LDPlayer 9) · 31 = Android 12 (như MuMu)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Bật KVM cho máy ảo Android
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android API ${{ matrix.api }} — root theo app (cpsu)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          cores: 2
+          disk-size: 2048M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: true
+          script: bash .github/root-check/test_root_emu.sh ${{ matrix.api }}

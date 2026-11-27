@@ -27,11 +27,12 @@
 #include <sys/mount.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <sys/types.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 
-#define CPSU_VERSION   "2.0:CPSU"
+#define CPSU_VERSION   "2.0:CPSU"           /* = cpsu-su.c (client/wire version); 27/11m install fix keeps it */
 #define CPSU_VCODE     "200"
 #define PROTO_MAGIC    "CPS1"
 #define CTRL_MAGIC     "CPSC"
@@ -847,6 +848,62 @@ static int is_mountpoint(const char *path) {
 	return a.st_dev != b.st_dev || a.st_ino == b.st_ino;
 }
 
+/* The top-most mount at "/" lives in RAM (rootfs / tmpfs / ramfs): Android 9 and older without system-as-root
+ * (LDPlayer 9, MEmu Android 9). Nothing written there survives a reboot. */
+static int root_in_ram(void) {
+	size_t l; char *b = read_file("/proc/mounts", &l);
+	if (!b) return 0;
+	int ram = 0; char *save, *ln = strtok_r(b, "\n", &save);
+	while (ln) {
+		char dev[256], mnt[512], fs[64];
+		if (sscanf(ln, "%255s %511s %63s", dev, mnt, fs) == 3 && !strcmp(mnt, "/"))   /* last "/" line = top-most */
+			ram = !strcmp(fs, "rootfs") || !strcmp(fs, "tmpfs") || !strcmp(fs, "ramfs");
+		ln = strtok_r(NULL, "\n", &save);
+	}
+	free(b);
+	return ram;
+}
+
+static unsigned long ms_flags(unsigned long f) {
+	unsigned long m = 0;
+	if (f & ST_RDONLY) m |= MS_RDONLY;
+	if (f & ST_NOSUID) m |= MS_NOSUID;
+	if (f & ST_NODEV) m |= MS_NODEV;
+	if (f & ST_NOEXEC) m |= MS_NOEXEC;
+	if (f & ST_SYNCHRONOUS) m |= MS_SYNCHRONOUS;
+	if (f & ST_NOATIME) m |= MS_NOATIME;
+	if (f & ST_NODIRATIME) m |= MS_NODIRATIME;
+#ifdef ST_RELATIME
+	if (f & ST_RELATIME) m |= MS_RELATIME;
+#endif
+	return m;
+}
+
+/* Make sure the ramdisk mount point exists. Android 11+ boot images ship /debug_ramdisk; Android 9 and older
+ * do not (Magisk used /sbin there). If it is missing directly under a read-only "/" that lives in RAM, remount
+ * "/" writable just long enough to create the empty directory, then put the old flags back. Nothing on disk
+ * changes and the directory is gone at the next boot (the server re-runs install after every boot).
+ * 0 = the directory exists now (*made = 1 if this call created it), -1 = not possible (errno set). */
+static int ensure_ramdisk(const char *path, int *made) {
+	struct stat st;
+	*made = 0;
+	if (!stat(path, &st)) { if (S_ISDIR(st.st_mode)) return 0; errno = ENOTDIR; return -1; }
+	if (errno != ENOENT) return -1;
+	if (!mkdir(path, 0755)) { *made = 1; return 0; }
+	if (errno == EEXIST) return 0;
+	if (errno != EROFS) return -1;
+	if (path[0] != '/' || !path[1] || strchr(path + 1, '/') || !root_in_ram()) { errno = EROFS; return -1; }
+	struct statvfs v;
+	if (statvfs("/", &v)) return -1;
+	unsigned long fl = ms_flags(v.f_flag);
+	if (mount("rootfs", "/", NULL, MS_REMOUNT | (fl & ~MS_RDONLY), NULL)) return -1;
+	int r = mkdir(path, 0755), e = errno;
+	if (fl & MS_RDONLY) mount("rootfs", "/", NULL, MS_REMOUNT | fl, NULL);
+	if (r && e != EEXIST) { errno = e; return -1; }
+	*made = !r;
+	return 0;
+}
+
 static int copy_file(const char *src, const char *dst, mode_t mode) {
 	int in = open(src, O_RDONLY | O_CLOEXEC); if (in < 0) return -1;
 	int out = open(dst, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, mode);
@@ -869,8 +926,17 @@ static int cmd_install(const struct dcfg *c, const char *ramdisk, const char *sr
                        char **binds, int nbind) {
 	mkdir(c->dir, 0700);
 	struct stat st;
-	int mounted_tmpfs = 0;
-	if (!stat(ramdisk, &st) && S_ISDIR(st.st_mode) && !is_mountpoint(ramdisk)) {
+	int mounted_tmpfs = 0, made = 0;
+	char fallback[600] = "";
+	if (ensure_ramdisk(ramdisk, &made)) {
+		/* no ramdisk dir and none can be made (e.g. read-only system-as-root): keep su in DIR/bin. Apps cannot
+		 * reach it there - only through --bind (adb root) - but the daemon still runs, so a bound su works. */
+		fprintf(stderr, "cpsu: warn: %s: %s; su kept in %s/bin\n", ramdisk, strerror(errno), c->dir);
+		dpath(fallback, sizeof fallback, c->dir, "bin");
+		mkdir(fallback, 0755);
+		ramdisk = fallback;
+	}
+	if (!fallback[0] && !stat(ramdisk, &st) && S_ISDIR(st.st_mode) && !is_mountpoint(ramdisk)) {
 		if (mount("tmpfs", ramdisk, "tmpfs", 0, "mode=0755") == 0) {
 			char rec[1100]; snprintf(rec, sizeof rec, "tmpfs %s", ramdisk);
 			mounted_tmpfs = 1; record_mount(c->dir, rec);
@@ -920,7 +986,7 @@ static int cmd_install(const struct dcfg *c, const char *ramdisk, const char *sr
 		}
 		if (p > 0) { int ms = 0; while (daemon_running(c->dir) <= 0 && ms < 2000) { usleep(20000); ms += 20; } }
 	}
-	printf("INSTALL_OK ramdisk=%s tmpfs=%d su=%s\n", ramdisk, mounted_tmpfs, subin);
+	printf("INSTALL_OK ramdisk=%s tmpfs=%d su=%s made=%d\n", ramdisk, mounted_tmpfs, subin, made);
 	return 0;
 }
 
