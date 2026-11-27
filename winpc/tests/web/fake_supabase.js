@@ -20,6 +20,7 @@
     const st = { table, eq: [], one: false, order: null, limit: null, op: "select", cols: "" };
     const run = () => {
       F.calls.push({ kind: "from", table, op: st.op, eq: st.eq.slice(), cols: st.cols });
+      if ((INIT.noTables || []).includes(table)) return noTable(table);   // cơ sở dữ liệu chưa chạy file SQL tạo bảng này (vd cp_moves — v65)
       if (isPc(table) && !F.v41) return noTable(table);
       if (isPc(table) && !F.v42 && st.op === "select" && /\b(rent_until|renter|rent_warn_min|rent_remind_min|notify_at)\b/.test(st.cols))        // chưa chạy v42: PostgREST báo thiếu cột
         return { data: null, error: { code: "42703", message: "column " + table + "." + (table === "pc_settings" ? "rent_warn_min" : "rent_until") + " does not exist" }, count: null };
