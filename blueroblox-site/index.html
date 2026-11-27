@@ -9356,6 +9356,12 @@ function nodeTune(s) {
     const miss = A(tu.miss), did = A(tu.did), av = A(tu.av);
     const txt = miss.length ? "còn thiếu: " + miss.join(" · ") : did.length ? "✓ vừa làm: " + did.join(" · ") : "✓ đủ";
     out += `<div class="nr"${miss.length || +tu.whea ? ' style="color:var(--gold-hi)"' : ""} title="Như bước tối ưu của ISO máy chủ: chế độ điện CPU 100% · không ngủ · Windows Defender bỏ qua thư mục giả lập + C:\\blue · tắt Game DVR · Windows Update không chia sẻ lên mạng, không tự khởi động lại. Làm lại mỗi lần cập nhật."><span>Tối ưu như ISO</span><em>${esc(txt + (tu.defender === "none" ? " · không có Defender" : "") + (av.length ? " · diệt virus khác: " + av.join(", ") : "") + (+tu.whea ? " · ⚠ RAM báo lỗi " + Math.round(+tu.whea) + " lần" : ""))}</em></div>`;
+    /* 27/11l · lần gần nhất bước tối ưu PHẢI ĐỔI gì (máy cài tay thiếu so với máy cài từ ISO) — giữ lại cả khi các lần sau báo ✓ đủ */
+    const fx = tu.fix && typeof tu.fix === "object" ? tu.fix : null, fd = fx ? A(fx.did).slice(0, 8) : [];
+    if (fd.length && !did.length) {
+      const ft = +fx.at > 0 ? new Date(+fx.at * 1000) : null, p2 = x => String(x).padStart(2, "0");
+      out += `<div class="nr" title="Lần gần nhất bước tối ưu phải đổi trên máy này (thiếu so với máy cài từ ISO). Các lần sau báo ✓ đủ = vẫn giữ nguyên."><span>Đã sửa${ft ? " " + p2(ft.getDate()) + "/" + p2(ft.getMonth() + 1) + " " + p2(ft.getHours()) + ":" + p2(ft.getMinutes()) : ""}</span><em>${esc(fd.join(" · "))}</em></div>`;
+    }
   }
   if (iv) {
     const parts = [typeof iv.os === "string" ? iv.os : "", ...A(iv.emu), ...A(iv.vga).slice(0, 1).map(x => x.replace(/^NVIDIA GeForce /, "").split(" (")[0]), iv.adb ? "adb " + iv.adb : ""].filter(Boolean);

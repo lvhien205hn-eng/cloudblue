@@ -5,6 +5,8 @@
    3. gpu_check: card khoẻ · card kẹt xung nghỉ (win3 27/11: 98% ở 139/1974 MHz, 9 W, SW Power Cap) · lỗi điện phần cứng · giới hạn điện bị hạ → tự
       trả mặc định · VRAM đầy · driver cũ thiếu trường.
    4. hw_report: bản Windows / giả lập / driver card / adb.
+   27/11l: bản MuMu / LD đọc từ thông tin gỡ cài đặt của Windows (MuMu bản mới không ghi bản trong file chạy) · thư mục nx_main không thành chỗ cài
+   thứ 2 · sổ nhớ lần tối ưu phải sửa gì (web hiện cả khi các lần sau báo đủ) · cloudphoned + phonectl tìm nvidia-smi ở thư mục NVSMI (driver cũ).
    Chạy: python3 .github/win-check/test_iso_tune.py"""
 import importlib.util, io, json, os, re, sys, tempfile, contextlib
 
@@ -53,6 +55,10 @@ r = sua.emu_roots({"LD_DIR": ld})
 ck("chỗ phonectl dò được lần trước (redroid/mumu_dir.txt) + LD_DIR → cả 2, không trùng", r == [("ld", os.path.abspath(ld)), ("mumu", os.path.abspath(mumu))], r)
 ck("chương trình đang chạy ở chỗ lạ (không phải ổ Windows) → bỏ qua, không lỗi", sua.emu_roots({}, ["/x/y/MuMuVMMHeadless.exe", "dnplayer.exe", ""]) == [("mumu", os.path.abspath(mumu))])
 ck("ps_q: nháy đơn trong đường dẫn được nhân đôi (PowerShell)", sua.ps_q("C:\\a'b") == "'C:\\a''b'")
+nx = os.path.join(mumu, "nx_main"); os.makedirs(nx, exist_ok=True); open(os.path.join(nx, "MuMuManager.exe"), "w").close()
+r = sua.emu_roots({"MUMU_DIR": nx + os.sep, "LD_DIR": ""})
+ck("27/11l · thư mục nx_main (cũng có MuMuManager.exe) → gộp về thư mục cài MuMu, không thành 2 chỗ (win54 27/11k báo 2 MuMu)",
+   sua.emu_kind(nx) == "mumu" and r == [("mumu", os.path.abspath(mumu))], r)
 
 # ============================================================== 2. iso_tune
 print("2. iso_tune · tối ưu Windows như máy cài từ ISO")
@@ -211,6 +217,42 @@ ck("in: Windows 10 Pro 22H2 (build 19045.5131) · MuMu 4.1.21.3240 · card GTX 1
    and "adb 35.0.2" in out and I.get("adb") == "35.0.2" and I.get("emu") == ["MuMu 4.1.21.3240"] and sua.ps_q(exe) in SEEN[0], out)
 tl = sua.tune_line()
 ck("TÓM TẮT có dòng 🖥 phần mềm (để so với máy cài từ ISO)", any(x.startswith("🖥 Windows 10 Pro 22H2") and "MuMu 4.1.21.3240" in x and "adb 35.0.2" in x for x in tl), tl)
+A = sua.app_list(['MuMuPlayer|4.1.24.3700|C:\\Program Files\\Netease\\MuMuPlayer\\|"C:\\Program Files\\Netease\\MuMuPlayer\\nx_main\\MuMuNxMain.exe",0|'
+                  '"C:\\Program Files\\Netease\\MuMuPlayer\\uninstall.exe" /S',
+                  'LDPlayer9|9.1.40.0||C:\\LDPlayer\\LDPlayer9\\dnplayer.exe,0|C:\\LDPlayer\\LDPlayer9\\dnuninst.exe /S', 'Rong||C:\\x|', 'MsiX|1.0||MsiExec.exe /X{AB}|C:\\'])
+ck("27/11l · app_list: đọc bản + đường dẫn (bỏ nháy, ',0', tham số, dấu \\ cuối) · mục không có bản → bỏ · ổ trống 'C:\\' → bỏ",
+   A == [("4.1.24.3700", ["c:\\program files\\netease\\mumuplayer", "c:\\program files\\netease\\mumuplayer\\nx_main\\mumunxmain.exe",
+                          "c:\\program files\\netease\\mumuplayer\\uninstall.exe"]),
+         ("9.1.40.0", ["c:\\ldplayer\\ldplayer9\\dnplayer.exe", "c:\\ldplayer\\ldplayer9\\dnuninst.exe"]), ("1.0", ["msiexec.exe"])], A)
+ck("27/11l · app_ver: đúng thư mục cài · không lẫn MuMuPlayer với MuMuPlayer-12.0 (chung đầu tên) · mục chỉ ghi thư mục cha (khớp lỏng) thua mục khớp chắc",
+   sua.app_ver(A, "C:\\Program Files\\Netease\\MuMuPlayer") == "4.1.24.3700" and sua.app_ver(A, "c:/program files/netease/mumuplayer/") == "4.1.24.3700"
+   and sua.app_ver(A, "C:\\Program Files\\Netease\\MuMuPlayer-12.0") == "" and sua.app_ver(A, "C:\\LDPlayer\\LDPlayer9") == "9.1.40.0"
+   and sua.app_ver([("1", ["c:\\program files\\netease"]), ("2", ["c:\\program files\\netease\\mumuplayer\\x.exe"])], "C:\\Program Files\\Netease\\MuMuPlayer") == "2"
+   and sua.app_ver([("1", ["c:\\program files\\netease"])], "C:\\Program Files\\Netease\\MuMuPlayer") == "1" and sua.app_ver(A, "C:\\") == "")
+ck("27/11l · script đọc thông tin gỡ cài đặt (HKLM + WOW6432Node + HKCU) cho MuMu / LDPlayer / MEmu, chỉ chữ ASCII, không có nháy kép",
+   "CurrentVersion\\Uninstall\\*" in sua.INV_PS and "WOW6432Node" in sua.INV_PS and "HKCU:" in sua.INV_PS and "'APP=' + $k.PSChildName" in sua.INV_PS
+   and "MuMu|LDPlayer|leidian|MEmu|Microvirt" in sua.INV_PS and '"' not in sua.INV_PS)
+reset(); sua.emu_procs = lambda: []
+sua.RUN["tune"] = {"ok": True, "did": [], "miss": [], "emu": [["mumu", os.path.abspath(mumu)]]}
+mgr = os.path.join(os.path.abspath(mumu), "nx_main\\MuMuManager.exe")
+SEEN.clear()
+sua.ps = fake_ps("OS=Microsoft Windows 10 Pro||1511|10586.0\nVGA=NVIDIA GeForce GTX 1070|27.21.14.6677|2021-06-08\n"
+                 f"EXE={exe}||\nEXE={mgr}|4.0.0.9|4.0.0.9\nAPP=MuMuPlayer|4.1.24.3700|{os.path.abspath(mumu)}|\"{exe}\",0|\n"
+                 f"APP=MuMuPlayer-12.0|4.0.1.1|{os.path.abspath(mumu)}-12.0||\nEND=1\n")
+p, out = captured(sua.hw_report, {})
+I = sua.RUN.get("inv") or {}
+ck("27/11l · máy như win54: file chạy MuMu không ghi bản → lấy bản từ thông tin gỡ cài đặt (4.1.24.3700), không lẫn MuMuPlayer-12.0 · hỏi bản MỌI file chạy",
+   I.get("emu") == ["MuMu 4.1.24.3700"] and "Windows 10 Pro 1511 (build 10586.0)" in out and "driver 466.77 (2021-06-08)" in out
+   and sua.ps_q(exe) in SEEN[0] and sua.ps_q(mgr) in SEEN[0], (I, out))
+reset(); sua.RUN["tune"] = {"ok": True, "did": [], "miss": [], "emu": [["mumu", os.path.abspath(mumu)]]}
+sua.ps = fake_ps(f"OS=Microsoft Windows 10 Pro|22H2|2009|19045.5131\nEXE={exe}||\nEXE={mgr}|4.0.0.9|4.0.0.9\nEND=1\n")
+p, out = captured(sua.hw_report, {})
+ck("27/11l · không có thông tin gỡ cài đặt → bản của file chạy ĐẦU TIÊN có ghi bản (MuMuNxMain trống → MuMuManager 4.0.0.9)",
+   (sua.RUN.get("inv") or {}).get("emu") == ["MuMu 4.0.0.9"], out)
+reset(); sua.RUN["tune"] = {"ok": True, "did": [], "miss": [], "emu": [["mumu", os.path.abspath(mumu)]]}
+sua.ps = fake_ps(f"EXE={exe}||\nEND=1\n")
+p, out = captured(sua.hw_report, {})
+ck("… không file nào ghi bản → '(không đọc được bản)', không lỗi", (sua.RUN.get("inv") or {}).get("emu") == ["MuMu (không đọc được bản)"] and p == [], out)
 
 # ============================================================== 5. nối vào lệnh A + sổ
 print("5. nối vào lệnh A / lượt tự cập nhật + sổ cập nhật")
@@ -223,7 +265,18 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 27/11k", sua.VER == "27/11k")
+ck("bản sua-tat-ca 27/11l", sua.VER == "27/11l")
+reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
+os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
+fx = st.get("tune_fix") or {}
+ck("27/11l · lần tối ưu có sửa → sổ nhớ tune_fix {lúc, đã sửa gì}", fx.get("did") == ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"] and isinstance(fx.get("at"), int), st)
+reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": [], "miss": []}
+sua.state_begin(); sua.state_end(); st2 = json.load(open(sua.STATE_F, encoding="utf-8"))
+ck("… các lần sau báo đủ → tune.did trống nhưng tune_fix GIỮ NGUYÊN (web vẫn hiện lần sửa)", st2.get("tune", {}).get("did") == [] and st2.get("tune_fix") == fx, st2)
+json.dump({"ver": "27/11j", "tune": {"ok": True, "did": ["không ngủ"]}, "last": {"ver": "27/11j", "at": 1764200000}}, open(sua.STATE_F, "w", encoding="utf-8"))
+reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": [], "miss": []}
+sua.state_begin(); sua.state_end(); st3 = json.load(open(sua.STATE_F, encoding="utf-8"))
+ck("… máy mới chạy 27/11j (sổ có tune.did, chưa có tune_fix) → giữ lần sửa đó với giờ của lượt 27/11j", st3.get("tune_fix") == {"at": 1764200000, "did": ["không ngủ"]}, st3)
 
 # ============================================================== 6. cloudphoned 27/11k: card kẹt xung = đầy (ngừng nhận máy mới)
 print("6. cloudphoned 27/11k · card kẹt xung nghỉ tính là ĐẦY")
@@ -240,12 +293,25 @@ ck("card vừa lên tải (xung chưa lên nhưng điện đã cao) → không k
 ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không kết luận kẹt",
    G["gpu_eff"](53.0, 1923.0, 1987.0, 71.0, 230.0) == 53.0 and G["gpu_stuck"](98.0, None, 1974.0) is False and G["gpu_stuck"](98.0, 139.0, 1974.0) is True
    and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
-ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 27/11k",
+ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 27/11l",
    'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
-   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "27/11k"' in CPD
-   and "cloudphoned bản 27/11k chạy" in CPD)
-ck("sua-tat-ca 27/11k: dấu cloudphoned 27/11k (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11k", "cloudphoned") in sua.FILES
-   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 27/11k")
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "27/11l"' in CPD
+   and "cloudphoned bản 27/11l chạy" in CPD)
+ck("sua-tat-ca 27/11l: dấu cloudphoned 27/11l (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11l", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 27/11l")
+ck("27/11l · gpus() gọi nvidia-smi qua smi_bin() (không còn gọi trần 'nvidia-smi' → win54 driver 466.77 hết 'không đọc được card')",
+   '[smi_bin(), "--query-gpu=" + q' in CPD and 'subprocess.run(["nvidia-smi"' not in CPD and "NVSMI\\nvidia-smi.exe" in CPD and "DriverStore" in CPD)
+import shutil as _sh, time as _tm
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name == "smi_bin":
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G)
+G.update(_SMI={"p": None, "t": 0.0}, shutil=_sh, os=os, time=_tm, WIN=False)
+fake = tempfile.mkdtemp(prefix="cb_smi_"); fp = os.path.join(fake, "nvidia-smi"); open(fp, "w").close(); os.chmod(fp, 0o755)
+old_path = os.environ.get("PATH", "")
+os.environ["PATH"] = "/nonexistent"; a1 = G["smi_bin"]()
+os.environ["PATH"] = fake + os.pathsep + old_path; a2 = G["smi_bin"](); G["_SMI"]["t"] -= 700; a3 = G["smi_bin"]()
+os.environ["PATH"] = old_path
+ck("27/11l · smi_bin: không thấy → 'nvidia-smi' · nhớ kết quả · quá 10 phút dò lại (vừa cài driver)", a1 == "nvidia-smi" and a2 == "nvidia-smi" and a3 == fp, (a1, a2, a3))
 
 print("7. cloudphoned 27/11k · báo tối ưu như ISO + phần mềm trên máy lên web (metrics.sw.tune / inv)")
 for node in mod.body:
@@ -261,7 +327,23 @@ ck("sw_tune: gửi gọn (không gửi đường dẫn giả lập, số đo chi
    and iv["os"].startswith("Windows 10") and iv["gpu"] == [{"name": "GTX 1080", "drv": "560.94", "stuck": True, "why": ["SW Power Cap"], "vram_full": False}] and "emu" not in tu, (tu, iv))
 ck("sổ cũ (chưa có tune / inv) → None, None · quá dài → bỏ (không làm phình metrics)",
    G["sw_tune"]({}) == (None, None) and G["sw_tune"]({"tune": {"ok": True, "did": ["x" * 3000]}})[0] is None)
+st["tune_fix"] = {"at": 1764200000, "did": ["không ngủ", "tắt Game DVR"]}
+tu, iv = G["sw_tune"](st)
+ck("27/11l · sổ có tune_fix → web nhận tune.fix {lúc, đã sửa gì}; sổ không có → không gửi fix",
+   tu.get("fix") == {"at": 1764200000, "did": ["không ngủ", "tắt Game DVR"]} and "fix" not in G["sw_tune"]({"tune": {"ok": True, "did": []}})[0], tu)
 ck("sw_info gửi kèm tune + inv", '"run": sw_running(st), "last": last, "cpd": CPD_VER, "follow": FOLLOW_ON, "first": True, "win": WIN, "tune": tu, "inv": iv}' in CPD)
+
+print("8. phonectl 27/11l · chia đều card đo % card bằng nvidia-smi tìm đủ chỗ")
+PC = open(os.path.join(ROOT, "windows", "phonectl.py"), encoding="utf-8").read()
+ck("_nv_util gọi nvidia-smi qua _smi_exe() (PATH → System32 → NVSMI → kho driver) · PCTL_SUB 27/11l · sua-tat-ca cài theo dấu 27/11l",
+   "exe = _smi_exe()" in PC and 'subprocess.run([exe, "--query-gpu=" + q' in PC and 'subprocess.run(["nvidia-smi"' not in PC.split("def _nv_util")[1].split("def gpufair_plan")[0]
+   and 'PCTL_SUB = "27/11l"' in PC and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11l"', None) in sua.FILES)
+pm = ast.parse(PC); G2 = {"shutil": _sh, "glob": __import__("glob"), "os": os}
+for node in pm.body:
+    if isinstance(node, ast.FunctionDef) and node.name == "_smi_exe":
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "phonectl.py", "exec"), G2)
+os.environ["PATH"] = "/nonexistent"; b1 = G2["_smi_exe"](); os.environ["PATH"] = fake + os.pathsep + old_path; b2 = G2["_smi_exe"](); os.environ["PATH"] = old_path
+ck("_smi_exe: không thấy → 'nvidia-smi' (như cũ) · có trong PATH → đường dẫn đó", b1 == "nvidia-smi" and b2 == fp, (b1, b2))
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)

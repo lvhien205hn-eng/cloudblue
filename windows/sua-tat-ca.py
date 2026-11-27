@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        27/11l — ĐỌC ĐỦ PHẦN MỀM TRÊN MÁY: bản MuMu / LD đọc từ thông tin gỡ cài đặt của Windows (MuMu bản mới không ghi bản trong file chạy) ·
+#                 thư mục nx_main / shell không còn bị tính là 1 chỗ cài MuMu riêng · nhớ "đã sửa gì lúc nào" ở lần tối ưu đầu (web hiện cả khi các
+#                 lần sau báo đủ) · cloudphoned 27/11l đọc card bằng nvidia-smi ở thư mục NVSMI (driver cũ như 466.77 của máy ISO → web hết "không đọc được").
 #        27/11k — CARD KẸT XUNG KHÔNG NHẬN KHÁCH MỚI: cloudphoned 27/11k coi card bận ≥ 80% mà ở xung nghỉ (< 30%, điện < 25%) là ĐẦY 100% (27/11b tính
 #                 nhầm là ~7% → win3 kẹt card vẫn nhận khách mới) → máy chủ tự ngừng nhận máy mới + Telegram báo "KẸT XUNG NGHỈ" kèm cách sửa.
 #                 Chỉ bật lại dịch vụ nhận đơn (cloudphoned) — máy khách đang chạy không bị đụng.
@@ -161,7 +164,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "27/11k"
+VER = "27/11l"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -179,14 +182,14 @@ RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11k", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11l", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "27/11h"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "def on_winoff", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11f"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11l"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 23/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11k", "bluestream": "bản 27/11h: Android 9 cbvideo", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 27/11l", "bluestream": "bản 27/11h: Android 9 cbvideo", "cpapi": "cpapi bản 23/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
@@ -300,6 +303,10 @@ def state_end():
     fn = files_new(); now = int(time.time())
     upd = bool(RUN["done"]) and not RUN["p_upd"] and not RUN["p_rst"] and bool(fn) and all(fn.values())
     d = state_read(); d.pop("running", None)
+    prev_tune = d.get("tune") if isinstance(d.get("tune"), dict) else {}
+    prev_at = (d.get("last") or {}).get("at") if isinstance(d.get("last"), dict) else None
+    if (RUN.get("tune") or {}).get("did"): d["tune_fix"] = {"at": now, "did": [str(x)[:120] for x in RUN["tune"]["did"]][:8]}   # 27/11l: lần tối ưu có sửa gì
+    elif prev_tune.get("did") and not d.get("tune_fix"): d["tune_fix"] = {"at": prev_at or now, "did": [str(x)[:120] for x in prev_tune["did"]][:8]}   # sửa ở lần 27/11j
     if upd:
         if d.get("ver") != VER or not d.get("upd") or not d.get("at"): d["at"] = now
         d["ver"], d["upd"] = VER, True
@@ -1344,6 +1351,7 @@ def emu_roots(c, running=()):
         d = (d or "").strip().strip('"').rstrip("\\/")
         k = emu_kind(d) if d else ""
         if not k: continue
+        if k == "mumu" and exe_name(d) in ("nx_main", "shell") and emu_kind(os.path.dirname(d)) == "mumu": d = os.path.dirname(d)   # 27/11l: ...\MuMuPlayer\nx_main → ...\MuMuPlayer
         key = os.path.normcase(os.path.abspath(d))
         if key in seen: continue
         seen.add(key); res.append((k, os.path.abspath(d)))
@@ -1540,6 +1548,10 @@ foreach ($v in @(Get-CimInstance Win32_VideoController)) {
 foreach ($f in @(__EXES__)) {
   if (Test-Path -LiteralPath $f) { $vi = (Get-Item -LiteralPath $f).VersionInfo; 'EXE=' + $f + '|' + $vi.ProductVersion + '|' + $vi.FileVersion }
 }
+foreach ($k in @(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*', 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' -ErrorAction SilentlyContinue)) {
+  $n = [string]$k.DisplayName + ' ' + $k.PSChildName
+  if ($n -match 'MuMu|LDPlayer|leidian|MEmu|Microvirt') { 'APP=' + $k.PSChildName + '|' + $k.DisplayVersion + '|' + $k.InstallLocation + '|' + $k.DisplayIcon + '|' + $k.UninstallString }
+}
 'END=1'
 """
 SMI_Q = ("name,pstate,utilization.gpu,clocks.sm,clocks.max.sm,power.draw,power.limit,power.default_limit,memory.used,memory.total,temperature.gpu,"
@@ -1628,15 +1640,41 @@ def gpu_check(apply):
         book["cards"].append(cb)
     return lines, probs, book
 
+def wpath(s):
+    """Đường dẫn Windows để so: chữ thường, dấu \\, bỏ nháy kép + dấu \\ cuối."""
+    return str(s or "").strip().strip('"').replace("/", "\\").rstrip("\\").lower()
+
+def app_list(lines):
+    """Dòng APP=tên khoá|bản|InstallLocation|DisplayIcon|UninstallString (thông tin gỡ cài đặt của Windows) → [(bản, [đường dẫn])]."""
+    out = []
+    for ln in lines or []:
+        q = (str(ln).split("|") + [""] * 5)[:5]
+        if not q[1].strip(): continue
+        ps_ = []
+        for x in q[2:]:
+            x = x.strip()
+            x = x[1:].split('"')[0] if x.startswith('"') else x.split(",")[0].split(" /")[0]     # "C:\\..\\a.exe" /S · "C:\\..\\a.exe",0 · C:\\..\\a.exe,0 · C:\\..\\a.exe /S
+            if len(wpath(x)) > 3: ps_.append(wpath(x))
+        out.append((q[1].strip()[:40], ps_))
+    return out
+
+def app_ver(apps, root):
+    """Bản giả lập cài ở thư mục root: mục gỡ cài đặt có file NẰM TRONG root (khớp chắc) hơn mục chỉ ghi thư mục cha (khớp lỏng)."""
+    r, best = wpath(root), ("", 0)
+    if len(r) <= 3: return ""
+    for ver, paths in apps:
+        for p in paths:
+            sc = 2 if p == r or p.startswith(r + "\\") else 1 if r.startswith(p + "\\") else 0
+            if sc > best[1]: best = (ver, sc)
+    return best[0]
+
 def hw_report(c):
     """3c · phần mềm trên máy (để so với máy cài từ ISO) + sức khoẻ card. Trả các dòng ✗."""
     say("3c/6 Phần mềm trên máy + card đồ hoạ")
     roots = [(k, p) for k, p in (RUN.get("tune") or {}).get("emu") or []] or emu_roots(c, emu_procs())
     exes = []
     for k, root in roots:
-        for rel in EMU_MAIN.get(k, ()):
-            f = os.path.join(root, rel)
-            if os.path.isfile(f): exes.append(f); break
+        exes += [os.path.join(root, rel) for rel in EMU_MAIN.get(k, ()) if os.path.isfile(os.path.join(root, rel))]   # 27/11l: hỏi mọi file, file nào có bản thì lấy
     d = mlines(ps(INV_PS.replace("__EXES__", ", ".join(ps_q(f) for f in exes)), 90))
     g = lambda k, dv="": (d.get(k) or [dv])[-1]
     inv = {}
@@ -1648,9 +1686,10 @@ def hw_report(c):
     for ln in d.get("EXE") or []:
         f, pv, fv = (ln.split("|") + ["", "", ""])[:3]
         vers[f.lower()] = (pv or fv).strip()
+    apps = app_list(d.get("APP"))                            # 27/11l: MuMu bản mới không ghi bản trong file chạy → đọc thông tin gỡ cài đặt
     inv["emu"] = []
     for k, root in roots:
-        v = next((vers.get(os.path.join(root, rel).lower()) for rel in EMU_MAIN.get(k, ()) if vers.get(os.path.join(root, rel).lower())), "")
+        v = app_ver(apps, root) or next((vers.get(os.path.join(root, rel).lower()) for rel in EMU_MAIN.get(k, ()) if vers.get(os.path.join(root, rel).lower())), "")
         inv["emu"].append(f"{EMU_VN[k]} {v or '(không đọc được bản)'}")
         say(f"   giả lập: {EMU_VN[k]} {v or '(không đọc được bản)'} — {root}")
     vga = []
