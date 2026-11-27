@@ -970,6 +970,27 @@ def main():
            c1 == "192.168.77.10:8899:p01:PwMot1234567890a" and c2 == "http://192.168.77.10:8899/rotate?key=RotKeyHai1234567890"
            and c3 == "192.168.77.10:8899:p01:PwMot1234567890a\n192.168.77.10:8899:p02:Pw<b>hai</b>" and not s.errors, (c1, c2, c3, s.errors))
         s.close()
+        # 27/11f: kết quả máy chủ TỰ DÒ PPPoE (cbpool 27.11b) → thẻ máy chủ nói luôn modem có cho PPPoE đi qua không
+        import time as _t
+        for disc, want, nowant in (({"t": int(_t.time()) - 120, "ok": True, "ac": ["cbtest-<i>ac</i>"]}, ["modem cho PPPoE đi qua", "Modem CHO PPPoE từ mạng nhà đi qua", "cbtest-<i>ac</i>", "cbpool ppp-set", "dò 2 phút trước"], ["cbpool ppp-test", "không cho PPPoE"]),
+                                   ({"t": int(_t.time()) - 30, "ok": False, "ac": []}, ["modem không cho PPPoE đi qua", "KHÔNG cho PPPoE từ mạng nhà đi qua", "PPPoE passthrough", "IPv6 riêng từng ô vẫn chạy"], ["cbpool ppp-set", "cbpool ppp-test"]),
+                                   ({"t": 0, "err": "mở ổ cắm PPPoE lỗi (cần root)"}, ["Máy chủ tự dò PPPoE bị lỗi: mở ổ cắm PPPoE lỗi (cần root)"], ["modem không cho", "modem cho PPPoE"])):
+            a = adm_state()
+            a["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11b", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:ac60::/64",
+                                              "s": [["p01", "PwMot1234567890a", "1:2:3:4", "", 0, "RotKeyMot1234567890"]], "ppp": {"want": 0, "up": 0, "acct": False, "ip": [], "disc": disc}}
+            s = Site(br, html, True, vm_data(adm=a), path="/admin")
+            admin_open(s)
+            s.js("() => document.querySelectorAll('#vma-hosts details.vma-px').forEach(d => d.open = true)")
+            c0 = s.js("() => document.querySelector('#vma-hosts [data-vmhost]').innerText")
+            ck("27/11f · tự dò PPPoE " + ("cho đi qua" if disc.get("ok") else "lỗi" if disc.get("err") else "không cho") + " → thẻ máy chủ nói rõ + bước tiếp",
+               all(w in c0 for w in want) and not any(w in c0 for w in nowant) and not s.js("() => !!document.querySelector('#vma-hosts details.vma-px i')") and not s.errors,
+               (c0[-700:], s.errors))
+            s.close()
+        a = adm_state(); s = Site(br, html, True, vm_data(adm=a), path="/admin"); admin_open(s)
+        src = s.page.content()
+        ck("27/11f · bỏ mẹo cũ 'tạo VPS để mở trang Proxmox' (VPS bị chặn vào máy chủ từ cbhost 27/11d)",
+           "vào VPS đó mở trang Proxmox" not in src and "mở từ trong 1 VPS" not in src, "")
+        s.close()
         adm10 = adm_state()
         adm10["hosts"][0]["metrics"]["px"] = {"ok": True, "host": "192.168.77.10", "port": 8899, "v6": "", "v6err": "card vmbr0 chưa có IPv6 công khai /64",
                                               "s": [["p01", "x" * 16, "", "203.0.113.9", 0, ""]], "ppp": {"want": 4, "up": 3, "acct": True, "ip": ["203.0.113.9"], "err": "phiên 4: nhà mạng từ chối"}}
