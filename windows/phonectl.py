@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11m"           # 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11n"           # 27/11n: 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC giữ nguyên dữ liệu (moveout / moveset / movedrop / moveback / moveabort, create --nostart; máy đang chuyển đi không bật lại được) · 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -1196,6 +1196,9 @@ def memuc(*a, timeout=300):
         if not iv.isdigit():
             return subprocess.CompletedProcess([], 1, "", f"bỏ lệnh {a[0]}: số máy không hợp lệ ({iv or 'trống'}) — không chạy để khỏi làm nhầm máy #0")
         # 16/11b: dấu "đang làm dở" (wake không bật chen ngang) — 16/11e: ghi lúc gửi lệnh tắt thật (_stop_marks), không ghi lúc còn chờ khoá
+    if a and str(a[0]) == "start" and iv is not None:   # 27/11n: máy đang CHUYỂN sang máy chủ khác (đang chép ổ dữ liệu) → không lệnh nào được bật lại
+        mv = _mv_moving_idx(iv)
+        if mv: return subprocess.CompletedProcess([], 1, "", f"MOVING: máy {mv} đang chuyển sang máy chủ khác — không bật ở máy chủ này")
     if a and str(a[0]) == "start":                       # 17/11e: lẫn quyền Admin / quyền thường → giả lập báo xung đột, không bật được máy nào nữa
         pb = _priv_block()
         if pb: print("❌ " + pb, flush=True); return subprocess.CompletedProcess([], 1, "", pb)
@@ -2275,10 +2278,21 @@ def cmd_create(a):
     if av - (need + 1) < RESERVE:
         print(f"HẾT HÀNG: RAM Windows còn {av:.1f}GB" + (f" (đã chừa {zz:.1f}GB cho máy đang ngủ)" if zz else "")
               + f", máy {need:g}GB cần thêm {need + 1:g}GB và chừa {RESERVE:g}GB."); sys.exit(2)
+    nostart = bool(getattr(a, "nostart", False)); mvj = str(getattr(a, "movejob", "") or "")   # 27/11n: máy TRỐNG nhận dữ liệu chuyển tới (không bật)
+    if mvj and not _JOB_RX.match(mvj): print("LỖI: --movejob không hợp lệ."); sys.exit(1)
+    if nostart and EMU not in ("mumu", "ld"): print(f"LỖI: {EMU_NAME} chưa nhận máy chuyển từ máy chủ khác được."); sys.exit(4)
+    ngb = float(getattr(a, "needgb", 0) or 0)
+    if nostart and ngb > 0:                                          # 27/11n: ổ chứa máy ảo phải đủ chỗ cho ổ dữ liệu sắp chép tới (+ chừa 10 GB)
+        try:
+            root = os.path.join(MUMU, "vms") if EMU == "mumu" and MUMU else os.path.join(LD, "vms") if EMU == "ld" and LD else HOME
+            fr = shutil.disk_usage(root if os.path.isdir(root) else HOME).free / 2**30
+            if fr < ngb * 1.2 + 10:
+                print(f"HẾT CHỖ Ổ CỨNG: ổ chứa máy ảo còn {fr:.0f} GB, máy chuyển tới cần ~{ngb * 1.2 + 10:.0f} GB."); sys.exit(2)
+        except OSError: pass
     try: open(os.path.join(HOME, "redroid", f"creating_{os.getpid()}.flag"), "w").write(a.name)   # báo "đang tạo máy khách" → dựng máy sẵn nhường đường
     except OSError: pass
     ver = norm_android(a.android)
-    sp = take_spare(a.name) if ver == DEF_ANDROID else None          # máy dựng sẵn là bản Android mặc định của máy chủ
+    sp = take_spare(a.name) if ver == DEF_ANDROID and not nostart else None    # máy dựng sẵn là bản Android mặc định của máy chủ (máy nhận chuyển: luôn nhân bản mới)
     if sp is not None:
         idx = sp
         print(f"[1/4] ⚡ Dùng máy dựng sẵn (MEmu #{idx}) → đổi tên, RAM, CPU…", flush=True)
@@ -2317,10 +2331,14 @@ def cmd_create(a):
         except Exception: pass
     row = {"name": a.name, "idx": idx, "port": port, "ram": a.ram, "cpu": a.cpu, "res": a.res, "fps": clamp_fps(a.fps), "dpi": dpi,
            "android": ver, "kind": EMU, "created": fmt(now()), "expires": exp.isoformat()}
-    if EMU == "mumu" and DISK_FIX:                                  # 19/11: máy MỚI → lần đầu lên tự nới bộ nhớ (máy cũ không có dấu)
+    if EMU == "mumu" and DISK_FIX and not nostart:                  # 19/11: máy MỚI → lần đầu lên tự nới bộ nhớ (máy cũ không có dấu)
         dg = _int0(getattr(a, "disk", 0))
         row["disk_new"] = min(dg, DISK_MAX) if dg >= 4 else disk_tier(a.ram)     # web truyền cỡ đã tính (bậc RAM + phần khách mua) · không có → bậc RAM
+    if nostart: row.update(hold=True, move_in=mvj or "1")           # 27/11n: để TẮT, chờ ổ dữ liệu từ máy chủ cũ (moveset) — không gì tự bật
     st = load(); st["phones"].append(row); save(st)
+    if nostart:
+        print("MOVEIN " + json.dumps({"idx": idx, "port": port, "dir": _vm_dir(idx) if EMU == "mumu" else None, "emu": EMU, "android": ver}), flush=True)
+        return
     print(f"[3/4] Bật máy…", flush=True)
     _boot_take(a.name, True)
     s = memu_start(idx)
@@ -5617,6 +5635,233 @@ def cmd_strays(a):
         print(f"Đã xoá {gone} máy thừa.")
     finally: lk.__exit__()
 
+# ---------- 27/11n · 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC (giữ nguyên dữ liệu) ----------
+# cloudphoned của 2 máy chủ điều khiển (SQL v65, bảng cp_moves), mỗi bước là 1 lệnh ở đây:
+#   máy chủ MỚI: create TÊN_MỚI … --nostart --movejob J → máy TRỐNG nhân bản từ máy mẫu, để TẮT (dấu move_in)
+#   máy chủ CŨ:  moveout TÊN --job J --token T → dấu "đang chuyển" TRƯỚC (từ đây memuc start bị chặn: không gì bật lại được máy này) →
+#                tắt êm → mở file cho máy chủ mới tải qua cpapi /cpapi/move/… (MuMu: data.vdi = toàn bộ /data của Android ·
+#                LDPlayer: bản sao lưu chính thức `ldconsole backup`) + rec.json (cài đặt riêng của khách: root, proxy, bộ nhớ đã mua…)
+#   máy chủ MỚI: moveset TÊN_MỚI --file … --rec … (MuMu: thay data.vdi · LDPlayer: `ldconsole restore`) → start + waitboot → web đổi máy chủ
+#                (cp_move_commit) → movefin (bỏ dấu move_in) · lỗi → moveabort TÊN_MỚI --job J (chỉ xoá máy mang đúng dấu move_in của lượt đó)
+#   máy chủ CŨ:  xong → movedrop TÊN (xoá bản cũ) · lỗi → moveback TÊN (bỏ dấu, máy trước đó đang chạy thì bật lại, đang tắt / ngủ thì để nguyên)
+MOVE_DIR = os.path.join(HOME, "redroid", "move")
+MOVE_KEEP = ("root_on", "root_apps", "ksu_apps", "proxy", "disk_gb", "disk_new", "disk_buy", "disk_try", "created")   # cài đặt riêng của khách đi theo máy
+_JOB_RX = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+def _mv_f(name): return os.path.join(MOVE_DIR, f"out_{name}.json")
+def _mv_get(name):
+    """Dấu "máy đang chuyển đi" của máy tên name → dict / None."""
+    try:
+        with open(_mv_f(name), encoding="utf-8") as f: d = json.load(f)
+        return d if isinstance(d, dict) else None
+    except (OSError, ValueError): return None
+def _mv_put(name, d):
+    os.makedirs(MOVE_DIR, exist_ok=True); tmp = _mv_f(name) + f".{os.getpid()}.tmp"
+    with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)
+    os.replace(tmp, _mv_f(name))
+def _mv_clear(name, mk):
+    """Bỏ dấu "đang chuyển" + xoá file tạm của lượt chuyển (CHỈ file nằm trong redroid\\move — không bao giờ đụng ổ dữ liệu của máy)."""
+    root = os.path.normcase(os.path.abspath(MOVE_DIR))
+    for x in ((mk or {}).get("files") or []):
+        f = str(x.get("path") or "")
+        if f and os.path.normcase(os.path.dirname(os.path.abspath(f))) == root:
+            try: os.remove(f)
+            except OSError: pass
+    try: os.remove(_mv_f(name))
+    except OSError: pass
+def _mv_moving_idx(iv):
+    """Tên máy đang CHUYỂN ĐI nằm ở ô số iv (có dấu moveout) — không có → None. memuc start gọi: máy này không được bật lại."""
+    try: fs = [os.path.join(MOVE_DIR, x) for x in os.listdir(MOVE_DIR) if x.startswith("out_") and x.endswith(".json")]
+    except OSError: return None
+    for f in fs:
+        try:
+            with open(f, encoding="utf-8") as fh: d = json.load(fh)
+            if str(d.get("idx")) == str(iv): return str(d.get("name") or "?")
+        except (OSError, ValueError): continue
+    return None
+def _sha256f(path, bs=4 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(bs)
+            if not b: return h.hexdigest()
+            h.update(b)
+def _mv_fail(tag, msg, code=7): print(f"{tag}_FAIL {msg}", flush=True); sys.exit(code)
+_VDI_SIG, _VDI_V11, _VDI_UUID = 0xBEDA107F, 0x00010001, 0x188     # đầu file VDI (VirtualBox / MuMu): chữ ký @0x40 · bản @0x44 · kiểu @0x4C · mã ổ (uuidCreate) @0x188
+def _vdi_hdr(path):
+    """Đọc đầu ổ VDI → {"type", "uuid" (16 byte)} · không phải VDI 1.1 → None."""
+    try:
+        with open(path, "rb") as f:
+            b = f.read(_VDI_UUID + 16)
+    except OSError: return None
+    if len(b) < _VDI_UUID + 16 or int.from_bytes(b[0x40:0x44], "little") != _VDI_SIG or int.from_bytes(b[0x44:0x48], "little") != _VDI_V11: return None
+    return {"type": int.from_bytes(b[0x4C:0x50], "little"), "uuid": b[_VDI_UUID:_VDI_UUID + 16]}
+def _vdi_set_uuid(path, u):
+    """Ghi mã ổ (uuidCreate) vào đầu file VDI — chỉ 16 byte ở 0x188, phần còn lại giữ nguyên."""
+    if len(u) != 16: raise ValueError("mã ổ phải 16 byte")
+    with open(path, "r+b") as f:
+        f.seek(_VDI_UUID); f.write(u); f.flush(); os.fsync(f.fileno())
+def cmd_moveout(a):
+    if EMU not in ("mumu", "ld"): _mv_fail("MOVEOUT", f"{EMU_NAME}: chưa chuyển được máy giả lập này sang máy chủ khác", 4)
+    if not _JOB_RX.match(a.job or "") or not re.fullmatch(r"[0-9a-f]{32,128}", a.token or ""): _mv_fail("MOVEOUT", "mã việc / mã tải không hợp lệ", 2)
+    st = load(); p = rec(a.name, st)
+    if not p: _mv_fail("MOVEOUT", "không có máy tên này trên máy chủ", 3)
+    v = vms_sure()
+    if not v: _mv_fail("MOVEOUT", f"không đọc được danh sách máy của {EMU_NAME}", 4)
+    i = IDX(p, v)
+    if i is None: _mv_fail("MOVEOUT", f"{EMU_NAME} không còn máy tên này (máy ma)", 3)
+    old = _mv_get(a.name)
+    if old and old.get("job") != a.job: _mv_fail("MOVEOUT", "máy đang được 1 lượt chuyển khác giữ", 6)
+    if old: was = {k: old.get(k) for k in ("was_on", "was_hold", "was_sleep")}          # lệnh lặp lại (cloudphoned khởi động lại giữa chừng) → giữ trạng thái gốc
+    else: was = {"was_on": bool((v.get(i) or {}).get("running")), "was_hold": bool(p.get("hold")), "was_sleep": p.get("sleep") or 0}
+    mk = dict(was, job=a.job, token=a.token, name=a.name, idx=i, t=int(time.time()), stage="stopping", files=[])
+    _mv_put(a.name, mk)                                             # TRƯỚC khi tắt: từ giờ không lệnh nào bật lại được máy này
+    try: adb("disconnect", serial(p), timeout=15)
+    except Exception: pass
+    if is_running(a.name, p):
+        _guest_sync(i)                                              # Android ghi hết dữ liệu đang chờ xuống đĩa trước khi tắt
+        ok, how = force_stop(p, graceful=True)
+        if not ok: _mv_fail("MOVEOUT", f"không tắt được máy ({how})", 5)
+    set_hold(a.name, True)
+    files = []
+    if EMU == "mumu":
+        d = _vm_dir(i); f = os.path.join(d, "data.vdi") if d else ""
+        if not f or not os.path.isfile(f): _mv_fail("MOVEOUT", "không thấy ổ dữ liệu (data.vdi) của máy", 4)
+        files.append({"n": "data.vdi", "path": f})
+    else:                                                           # LDPlayer: bản sao lưu chính thức (máy đang tắt)
+        out = os.path.join(MOVE_DIR, f"{a.name}.ldbk")
+        try: os.remove(out)
+        except OSError: pass
+        r = _ldrun(["backup", "--index", str(i), "--file", out], 3600)
+        if not os.path.isfile(out) or os.path.getsize(out) < (1 << 20):
+            _mv_fail("MOVEOUT", "LDPlayer sao lưu máy lỗi: " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:], 4)
+        files.append({"n": "vm.ldbk", "path": out})
+    rf = os.path.join(MOVE_DIR, f"{a.name}.rec.json")
+    with open(rf, "w", encoding="utf-8") as fo: json.dump({k: p[k] for k in MOVE_KEEP if k in p}, fo, ensure_ascii=False)
+    files.append({"n": "rec.json", "path": rf})
+    for x in files:
+        x["size"] = os.path.getsize(x["path"]); x["sha256"] = _sha256f(x["path"])
+    mk.update(stage="serving", files=files, emu=EMU, android=p.get("android"))
+    _mv_put(a.name, mk)
+    print("MOVEOUT " + json.dumps({"files": [{k: x[k] for k in ("n", "size", "sha256")} for x in files], "emu": EMU,
+                                   "android": p.get("android"), "was_on": bool(was.get("was_on"))}, ensure_ascii=False), flush=True)
+def cmd_moveback(a):
+    """Chuyển KHÔNG thành công → bỏ dấu đang chuyển (máy bật lại được như thường) + đưa máy về trạng thái trước lúc chuyển."""
+    mk = _mv_get(a.name)
+    if mk and a.job and mk.get("job") != a.job: _mv_fail("MOVEBACK", "dấu đang chuyển là của lượt khác", 6)
+    _mv_clear(a.name, mk)
+    st = load(); p = rec(a.name, st)
+    if not p: print("MOVEBACK ok — máy không còn trong danh sách", flush=True); return
+    if mk and (not mk.get("was_on") or a.off):                      # trước lúc chuyển máy đang tắt (hết hạn) / ngủ, hoặc khách vừa huỷ (--off) → để tắt
+        p["hold"] = bool(mk.get("was_hold"))
+        if mk.get("was_sleep"): p["sleep"] = mk["was_sleep"]
+        else: p.pop("sleep", None)
+        save(st); print("MOVEBACK ok — máy trước đó đang tắt / ngủ, để nguyên", flush=True); return
+    r = start_phone(p)
+    if _start_failed(r): print("MOVEBACK_WARN đã bỏ dấu đang chuyển, chưa bật lại được máy (máy chủ tự bật lại sau): " + ((r.stdout or "") + (r.stderr or "")).strip()[-160:], flush=True); return
+    _boot_short(a.name)
+    print("MOVEBACK ok — đã bật lại máy", flush=True)
+def cmd_movedrop(a):
+    """Máy đã chạy ở máy chủ mới (web đã đổi máy chủ) → xoá bản cũ ở đây (máy ảo + dữ liệu) + bỏ dấu đang chuyển."""
+    mk = _mv_get(a.name)
+    if mk and a.job and mk.get("job") != a.job: _mv_fail("MOVEDROP", "dấu đang chuyển là của lượt khác", 6)
+    try: cmd_delete(argparse.Namespace(name=a.name))
+    except SystemExit as e:
+        if e.code not in (None, 0, 1): _mv_fail("MOVEDROP", "chưa xoá được bản cũ — thử lại sau", 5)
+    _mv_clear(a.name, mk)
+    print("MOVEDROP ok", flush=True)
+def cmd_moveset(a):
+    """Máy chủ MỚI: đưa dữ liệu tải về vào máy trống (máy phải TẮT) + chép cài đặt riêng của khách từ máy cũ."""
+    st = load(); p = rec(a.name, st)
+    if not p: _mv_fail("MOVESET", "không có máy tên này", 3)
+    if not p.get("move_in") or (a.job and str(p.get("move_in")) != a.job): _mv_fail("MOVESET", "máy này không phải máy đang nhận chuyển", 6)
+    v = vms_sure(); i = IDX(p, v) if v else None
+    if i is None: _mv_fail("MOVESET", f"{EMU_NAME} không còn máy tên này", 3)
+    if is_running(a.name, p):
+        ok, how = force_stop(p, graceful=True)
+        if not ok: _mv_fail("MOVESET", f"máy nhận đang chạy, không tắt được ({how})", 5)
+    if not os.path.isfile(a.file): _mv_fail("MOVESET", "không thấy file đã tải", 4)
+    if EMU == "mumu":
+        d = _vm_dir(i)
+        if not d: _mv_fail("MOVESET", "không thấy thư mục máy ảo", 4)
+        if os.path.normcase(os.path.dirname(os.path.abspath(a.file))) != os.path.normcase(os.path.abspath(d)):
+            _mv_fail("MOVESET", "file tải phải nằm trong thư mục máy ảo", 4)
+        dst = os.path.join(d, "data.vdi"); bak = dst + ".cbold"
+        hn, ho = _vdi_hdr(a.file), (_vdi_hdr(dst) if os.path.exists(dst) else None)
+        if hn and ho and hn["uuid"] != ho["uuid"]:
+            # MuMu (nhân VirtualBox) ghi MÃ Ổ của máy nhận trong sổ máy ảo; ổ tải về mang mã ổ của máy cũ → lệch mã, máy ảo không bật.
+            # → ghi mã ổ của máy nhận vào ổ mới (chỉ 16 byte đầu file; dữ liệu Android giữ nguyên — SHA-256 đã kiểm trước bước này).
+            try: _vdi_set_uuid(a.file, ho["uuid"])
+            except (OSError, ValueError) as e: _mv_fail("MOVESET", f"không ghi được mã ổ dữ liệu: {e}", 4)
+            print("   ổ dữ liệu: dùng mã ổ của máy nhận (khớp sổ máy ảo MuMu)", flush=True)
+        if hn and ho and hn["type"] != ho["type"]:
+            print(f"   ⚠ ổ dữ liệu khác kiểu (máy cũ {hn['type']}, máy nhận {ho['type']}) — bản MuMu 2 máy chủ khác nhau?", flush=True)
+        try:
+            if os.path.exists(dst): os.replace(dst, bak)
+            os.replace(a.file, dst)
+        except OSError as e:
+            if os.path.exists(bak) and not os.path.exists(dst): os.replace(bak, dst)
+            _mv_fail("MOVESET", f"không thay được ổ dữ liệu: {e}", 4)
+        try: os.remove(bak)
+        except OSError: pass
+    else:
+        r = _ldrun(["restore", "--index", str(i), "--file", a.file], 3600)
+        o = ((r.stdout or "") + (r.stderr or "")).strip()
+        if r.returncode not in (0, None) or re.search(r"(?i)\b(fail|failed|error)\b", o): _mv_fail("MOVESET", "LDPlayer khôi phục lỗi: " + o[-160:], 4)
+        try: os.remove(a.file)
+        except OSError: pass
+        v2 = vms_sure() or {}
+        if (v2.get(i) or {}).get("name") not in (None, a.name):         # bản khôi phục mang tên máy cũ → đặt lại tên máy nhận
+            memuc("rename", "-i", i, a.name, timeout=60)
+        ld_cfg(i)                                                    # bật lại adb nội bộ + root (bản khôi phục có thể mang cài đặt cũ)
+        res = p.get("res") or "720x1280"
+        configure(i, float(p.get("ram") or 2), float(p.get("cpu") or 2), res, p.get("dpi") or auto_dpi(res))
+    if a.rec:
+        try:
+            with open(a.rec, encoding="utf-8") as f: r0 = json.load(f)
+        except (OSError, ValueError): r0 = {}
+        st = load(); q = rec(a.name, st)
+        if q and isinstance(r0, dict):
+            for k in MOVE_KEEP:
+                if k in r0: q[k] = r0[k]
+            save(st)
+        try: os.remove(a.rec)
+        except OSError: pass
+    print("MOVESET ok", flush=True)
+def cmd_movefin(a):
+    """Máy chủ MỚI: web đã đổi máy chủ → máy thành máy khách bình thường (bỏ dấu move_in), ghi hạn theo web."""
+    st = load(); q = rec(a.name, st)
+    if not q: _mv_fail("MOVEFIN", "không có máy tên này", 3)
+    if q.get("move_in") and a.job and str(q.get("move_in")) != a.job: _mv_fail("MOVEFIN", "dấu nhận chuyển là của lượt khác", 6)
+    q.pop("move_in", None)
+    if a.until:
+        try: q["expires"] = parse_dt(a.until).isoformat()
+        except Exception: pass
+    save(st); print("MOVEFIN ok", flush=True)
+def cmd_moveabort(a):
+    """Máy chủ MỚI: lượt chuyển lỗi / bị dừng → xoá máy nhận dở. CHỈ xoá máy mang đúng dấu move_in của lượt này (máy khách thật không bao giờ bị đụng)."""
+    if not _JOB_RX.match(a.job or ""): _mv_fail("MOVEABORT", "mã việc không hợp lệ", 2)
+    q = rec(a.name)
+    if q and str(q.get("move_in") or "") != a.job: _mv_fail("MOVEABORT", "máy này không phải máy nhận của lượt chuyển này — KHÔNG xoá", 6)
+    if not q:
+        v = vms_sure()
+        if v and any(x["name"] == a.name for x in v.values()) and not _kill_locked(a.name): _mv_fail("MOVEABORT", "chưa xoá được máy nhận dở", 5)
+        print("MOVEABORT ok", flush=True); return
+    try: cmd_delete(argparse.Namespace(name=a.name))
+    except SystemExit as e:
+        if e.code not in (None, 0, 1): _mv_fail("MOVEABORT", "chưa xoá được máy nhận dở — thử lại sau", 5)
+    print("MOVEABORT ok", flush=True)
+def cmd_movesize(a):
+    """Cỡ ổ dữ liệu của 1 máy (byte) — web ước thời gian chuyển, máy chủ mới kiểm chỗ trống."""
+    p = rec(a.name); n = 0
+    i = IDX(p) if p else None
+    if i is not None and EMU == "mumu":
+        d = _vm_dir(i); f = os.path.join(d, "data.vdi") if d else ""
+        n = os.path.getsize(f) if f and os.path.isfile(f) else 0
+    elif i is not None and EMU == "ld":
+        for root, _, fs in os.walk(os.path.join(LD, "vms", f"leidian{int(i)}")):
+            n += sum(os.path.getsize(os.path.join(root, x)) for x in fs if x.lower().endswith((".vmdk", ".vdi")))
+    print(f"MOVESIZE {n}", flush=True)
+    if not p: sys.exit(3)
 def cmd_noop(a): print("(bản Windows: không cần lệnh này)")
 def cmd_perfset(a):
     """MuMu: bật "giữ app chạy nền", tắt "tự hạ FPS", bắt dùng card rời… (MUMU_PERF) cho máy mẫu + máy dựng sẵn + máy khách ĐANG TẮT
@@ -5826,7 +6071,18 @@ def main():
     c.add_argument("--fps", type=int, default=30); c.add_argument("--nowait", action="store_true"); c.add_argument("--android", default="9")
     c.add_argument("--nogpu", action="store_true"); c.add_argument("--until", default="")
     c.add_argument("--disk", type=int, default=0)                    # 19/11: bộ nhớ /data (GB) web đã tính — 0 = theo bậc RAM (DISK_TIERS)
+    c.add_argument("--nostart", action="store_true"); c.add_argument("--movejob", default="")   # 27/11n: máy TRỐNG nhận dữ liệu chuyển tới (để tắt)
+    c.add_argument("--needgb", type=float, default=0)                # 27/11n: cỡ ổ dữ liệu sắp chép tới (GB) — kiểm chỗ trống trước khi tạo
     c.set_defaults(f=cmd_create)
+    mo = s.add_parser("moveout"); mo.add_argument("name"); mo.add_argument("--job", required=True); mo.add_argument("--token", required=True); mo.set_defaults(f=cmd_moveout)
+    mb = s.add_parser("moveback"); mb.add_argument("name"); mb.add_argument("--job", default=""); mb.add_argument("--off", action="store_true")
+    mb.set_defaults(f=cmd_moveback)
+    md = s.add_parser("movedrop"); md.add_argument("name"); md.add_argument("--job", default=""); md.set_defaults(f=cmd_movedrop)
+    ms = s.add_parser("moveset"); ms.add_argument("name"); ms.add_argument("--file", required=True); ms.add_argument("--rec", default="")
+    ms.add_argument("--job", default=""); ms.set_defaults(f=cmd_moveset)
+    mf = s.add_parser("movefin"); mf.add_argument("name"); mf.add_argument("--job", default=""); mf.add_argument("--until", default=""); mf.set_defaults(f=cmd_movefin)
+    ma = s.add_parser("moveabort"); ma.add_argument("name"); ma.add_argument("--job", required=True); ma.set_defaults(f=cmd_moveabort)
+    mz = s.add_parser("movesize"); mz.add_argument("name"); mz.set_defaults(f=cmd_movesize)
     for nm, fn in (("delete", cmd_delete), ("forget", cmd_forget), ("stop", cmd_stop), ("start", cmd_start), ("restart", cmd_restart), ("show", cmd_show)):
         x = s.add_parser(nm); x.add_argument("name"); x.set_defaults(f=fn)
         if nm == "restart": x.add_argument("--force", action="store_true")      # tắt hẳn (treo thì tắt cưỡng bức) rồi bật lại
