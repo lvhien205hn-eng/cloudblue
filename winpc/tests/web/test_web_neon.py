@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Thử ĐÈN NEON (22/11) trên trang chủ bằng Chrome thật (Playwright) + Supabase giả.
+"""Thử ĐÈN NEON trên trang chủ bằng Chrome thật (Playwright) + Supabase giả.
    python3 test_web_neon.py <index đã gắn> [thư mục ảnh chụp]
-   · neon thường (mặc định, mọi khách): viền phát sáng đứng yên quanh thẻ sản phẩm / thẻ máy / video / hộp thoại
-   · 💡 Neon chạy (khách bật — nút cạnh Sáng / Tối + cuối trang, nhớ br_neon): 2 vệt sáng chạy đuổi nhau quanh viền
-   · máy tắt hoạt ảnh / chế độ nhẹ → vệt sáng đứng yên. Mọi yêu cầu mạng trả lời tại chỗ."""
+   · 27/11n: 💡 Neon chạy LUÔN BẬT cho mọi khách — bỏ nút ⚡ Neon cạnh Sáng / Tối + nút cuối trang; khách từng tắt (br_neon = 0) cũng bật.
+     2 vệt sáng chạy đuổi nhau quanh viền thẻ sản phẩm / thẻ máy / video / mục menu đang chọn; hộp thoại chỉ phát sáng (không chạy).
+   · máy tắt hoạt ảnh / chế độ nhẹ → viền vẫn sáng, vệt sáng đứng yên. Mọi yêu cầu mạng trả lời tại chỗ."""
 import json, os, sys
 from playwright.sync_api import sync_playwright
 
@@ -66,55 +66,51 @@ class Page:
 def main():
     with sync_playwright() as p:
         b = p.chromium.launch()
-        print("1. Mặc định (khách chưa bật): neon thường — viền phát sáng đứng yên, không có vệt chạy")
+        print("1. Mặc định (khách mới): neon chạy LUÔN BẬT — không còn nút bật / tắt")
         s = Page(b); t = s.st()
-        ck("chưa bật → không có lớp neonrun, nút 💡 Neon 'đang tắt', nút cuối trang ghi 'Neon chạy: Tắt'",
-           not t["run"] and t["btn"] and t["btn"]["pressed"] == "false" and "đang tắt" in t["btn"]["title"] and t["foot"] and t["foot"]["text"] == "💡 Neon chạy: Tắt", t)
-        ck("thẻ sản phẩm có viền neon xanh phát sáng (đứng yên)", "rgba(64, 214, 255" in t["rowShadow"] and (t["rowAfter"] or {}).get("content") in ("none", "normal"), t["rowShadow"])
+        ck("có lớp neonrun ngay khi mở trang, không có nút ⚡ Neon ở đầu trang + nút 'Neon chạy' ở cuối trang", t["run"] and t["btn"] is None and t["foot"] is None, t)
+        ck("không còn chữ 'Neon' nào trên thanh đầu trang / cuối trang", not s.js("() => /neon/i.test((document.querySelector('header.top .acct') || {}).innerText || '') || /neon/i.test((document.querySelector('.fxbar') || {}).innerText || '')"))
+        ck("thẻ sản phẩm + thẻ máy có vệt sáng chạy (hoạt ảnh nrun), 1 vòng ~6,5 giây, viền 2,5px",
+           all((x or {}).get("anim") == "nrun" for x in (t["rowAfter"], t["cardAfter"])) and t["rowAfter"]["dur"] == "6.5s" and t["rowAfter"]["pad"] == "2.5px", t)
+        ck("thẻ sản phẩm có quầng neon xanh", "rgba(64, 214, 255" in t["rowShadow"], t["rowShadow"])
         ck("thẻ máy đang chạy giữ màu trạng thái (xanh lá) cho neon", "rgba(60, 224, 176" in t["cardShadow"] and "run" in t["cardCls"], (t["cardCls"], t["cardShadow"]))
         ck("hộp thoại có quầng neon (không chạy)", "rgba(64, 214, 255" in t["dlgShadow"], t["dlgShadow"])
-        s.page.screenshot(path=os.path.join(SHOTS, "neon-1-thuong.png"))
-
-        print("2. Bấm 💡 Neon → đèn chạy đuổi nhau; nhớ sau khi tải lại; tắt ở nút cuối trang")
-        s.page.click("#neon-btn"); s.page.wait_for_timeout(400); t = s.st()
-        ck("bấm → bật: lớp neonrun, nhớ br_neon = 1, nút 'đang BẬT', cuối trang 'Bật', báo đã bật",
-           t["run"] and t["ls"] == "1" and t["btn"]["pressed"] == "true" and t["btn"]["on"] and t["foot"]["text"] == "💡 Neon chạy: Bật" and "Đã bật đèn neon chạy" in t["toast"], t)
-        ck("thẻ sản phẩm + thẻ máy + chính nút có vệt sáng chạy (hoạt ảnh nrun), 1 vòng ~6,5 giây",
-           all((x or {}).get("anim") == "nrun" for x in (t["rowAfter"], t["cardAfter"], t["btnAfter"])) and t["rowAfter"]["dur"] == "6.5s" and t["rowAfter"]["pad"] == "2.5px", t)
         a1 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')"); s.page.wait_for_timeout(700)
         a2 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')")
         ck("vệt sáng thật sự di chuyển (góc --nr đổi theo thời gian)", a1 != a2 and a1.endswith("deg"), (a1, a2))
-        s.page.screenshot(path=os.path.join(SHOTS, "neon-2-chay.png"))
-        s.page.reload(wait_until="load"); s.page.wait_for_timeout(1800); t = s.st()
-        ck("tải lại trang → vẫn bật (nhớ trên máy)", t["run"] and t["btn"]["pressed"] == "true", t)
-        s.page.click("#neon-foot"); s.page.wait_for_timeout(300); t = s.st()
-        ck("bấm nút cuối trang → tắt: về neon thường, nhớ br_neon = 0", not t["run"] and t["ls"] == "0" and t["foot"]["text"] == "💡 Neon chạy: Tắt"
-           and (t["rowAfter"] or {}).get("content") in ("none", "normal") and "rgba(64, 214, 255" in t["rowShadow"] and "giữ neon thường" in t["toast"], t)
+        s.page.screenshot(path=os.path.join(SHOTS, "neon-1-luon-bat.png"))
+        s.page.reload(wait_until="load"); s.page.wait_for_timeout(1500); t = s.st()
+        ck("tải lại trang → vẫn bật", t["run"] and (t["rowAfter"] or {}).get("anim") == "nrun", t)
         ck("không có lỗi JS", not s.errors, s.errors); s.close()
 
-        print("3. Máy tắt hoạt ảnh / chế độ nhẹ → vệt sáng đứng yên")
-        s = Page(b, neon="1", reduce=True); t = s.st()
+        print("2. Khách từng TẮT neon ở bản cũ (br_neon = 0) → giờ vẫn bật, lựa chọn cũ được xoá")
+        s = Page(b, neon="0"); t = s.st()
+        ck("br_neon = 0 → vẫn có neonrun + vệt chạy; br_neon bị xoá khỏi máy", t["run"] and (t["rowAfter"] or {}).get("anim") == "nrun" and t["ls"] is None, t)
+        ck("BRsetNeon(false) (mã cũ gọi) → vẫn bật", s.js("() => { window.BRsetNeon(false); return document.documentElement.classList.contains('neonrun'); }"))
+        s.close()
+
+        print("3. Máy tắt hoạt ảnh / chế độ nhẹ → viền sáng, vệt đứng yên")
+        s = Page(b, reduce=True); t = s.st()
         ck("máy tắt hoạt ảnh: vẫn có vệt sáng nhưng KHÔNG chạy", t["run"] and (t["rowAfter"] or {}).get("content") == '""' and t["rowAfter"]["anim"] == "none", t["rowAfter"])
         s.close()
-        s = Page(b, neon="0", lite="1"); s.page.click("#neon-btn"); s.page.wait_for_timeout(300); t = s.st()
-        ck("chế độ nhẹ: bật được nhưng đèn đứng yên + nhắc bật lại ✨ Hiệu ứng", t["run"] and t["rowAfter"]["anim"] == "none" and "chế độ nhẹ" in t["toast"], (t["rowAfter"], t["toast"]))
+        s = Page(b, lite="1"); t = s.st()
+        ck("chế độ nhẹ: neon bật, vệt đứng yên", t["run"] and t["rowAfter"]["anim"] == "none", t["rowAfter"])
         s.close()
 
         print("4. Sáng / tiếng Anh / điện thoại")
-        s = Page(b, theme="light", neon="1"); t = s.st()
+        s = Page(b, theme="light"); t = s.st()
         ck("chế độ sáng: neon xanh dương dịu + vệt chạy", t["run"] and "rgba(37, 110, 240" in t["rowShadow"] and t["rowAfter"]["anim"] == "nrun", t["rowShadow"])
-        s.page.screenshot(path=os.path.join(SHOTS, "neon-3-sang.png")); s.close()
+        s.page.screenshot(path=os.path.join(SHOTS, "neon-2-sang.png")); s.close()
         s = Page(b, lang="en"); t = s.st()
-        ck("tiếng Anh: nút ghi 'Running neon'", "Running neon" in t["btn"]["title"] and "Running neon" in t["foot"]["text"], t)
+        ck("tiếng Anh: neon bật, không có chữ 'Running neon' nào", t["run"] and not s.js("() => document.body.innerText.includes('Running neon')"), t)
         s.close()
-        s = Page(b, neon="1", mobile=True); t = s.st()
-        bb = s.js("() => { const r = document.getElementById('neon-btn').getBoundingClientRect(); return { w: r.width, h: r.height, x: r.x, vis: r.width > 0 && r.right <= innerWidth + 1 }; }")
-        ck("điện thoại: nút 💡 gọn (chỉ biểu tượng), nằm trong màn hình, bấm được", bb["vis"] and bb["w"] <= 48 and bb["h"] >= 32, bb)
-        s.page.screenshot(path=os.path.join(SHOTS, "neon-4-dien-thoai.png"))
+        s = Page(b, mobile=True); t = s.st()
+        ow = s.js("() => [document.documentElement.scrollWidth, innerWidth]")
+        ck("điện thoại: neon bật, thanh đầu trang không tràn ngang", t["run"] and ow[0] <= ow[1] + 1, ow)
+        s.page.screenshot(path=os.path.join(SHOTS, "neon-3-dien-thoai.png"))
         ck("không có lỗi JS", not s.errors, s.errors); s.close()
         b.close()
     print(f"\n{OK}/{OK + FAIL} đạt")
     sys.exit(1 if FAIL else 0)
-
 
 main()

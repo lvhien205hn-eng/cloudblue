@@ -6,6 +6,7 @@
 #   PUBLIC_BASE=https://xxxx.trycloudflare.com   (link ws-scrcpy ra internet)
 # Chạy:  python3 ~/cloudphoned.py           (vòng lặp mỗi 15s)
 import json, os, re, sys, time, subprocess, tempfile, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading, random
+import hashlib, http.client, secrets, ssl, zlib
 GRACE_MIN = 30          # hết hạn quá 30 phút không gia hạn → xoá máy + dữ liệu
 
 HOME = os.path.expanduser("~")
@@ -560,6 +561,7 @@ def get_upgrade():
 def do_upgrade(row):
     """Khách đã trả tiền nâng RAM/CPU → cấp thêm cho máy (không khởi động lại)."""
     name = row.get("container") or cname(row)
+    if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → nâng ở máy chủ mới
     ram = int(row.get("pending_ram") or row["ram"]); cpu = int(row.get("pending_cpu") or row["cpu"])
     print(f"[nâng cấp] {name} → {ram}GB · {cpu} nhân")
     r = phonectl(["resize", name, "--ram", str(ram), "--cpu", str(cpu)])
@@ -662,7 +664,8 @@ def patch(pid, fields):
 # Quá hạn → tắt riêng lệnh đó (mã 124), máy chủ chạy tiếp. Hạn rộng hơn hẳn thời gian thật (tạo máy MuMu nhân bản vài phút…).
 PCTL_T = {"connect-all": 300, "perms": 300, "list": 120, "show": 120, "hide": 120, "capacity": 120, "engine": 300, "memfix": 600,
           "idle": 900, "preinstall": 1800, "stop": 600, "start": 900, "waitboot": 1200, "renew": 1200, "delete": 1200,
-          "resize": 1800, "create": 2400, "disk": 600}
+          "resize": 1800, "create": 2400, "disk": 600,
+          "moveout": 3600, "moveset": 3600, "movedrop": 1200, "moveback": 1200, "moveabort": 1200, "movefin": 120, "movesize": 120}   # 27/11n: chuyển máy
 PCTL_T_DEF = 1800
 _pc_main = {"args": None, "t": 0.0, "to": 0}     # lệnh phonectl mà VÒNG NHẬN ĐƠN đang chờ → luồng tự kiểm biết nó đứng vì đâu
 
@@ -784,6 +787,7 @@ def disk_refund(row, msg):
 def do_disk(row):
     """Đặt bộ nhớ máy khách lên pending_disk GB (khách mua thêm / nâng RAM lên bậc cao hơn) — chỉ lớn lên, giữ dữ liệu, không tắt máy."""
     pid = row["id"]; name = row.get("container") or cname(row); n = _int(row.get("pending_disk"))
+    if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → nới ở máy chủ mới
     paid = _int(row.get("pending_disk_paid")); add = _int(row.get("pending_disk_add")); label = row.get("name") or name
     tr = _dk_try.get(pid) or [0, 0.0]
     if time.time() < tr[1]: return
@@ -1184,7 +1188,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "27/11l"
+CPD_VER = "27/11n"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1552,6 +1556,7 @@ def heartbeat():
     if gf: metrics.update(gpu_top=gf.get("top") or [], gpu_held=held, gpu_fair=gf.get("fair"), gpu_hog=gf.get("hog"), gpu_other=gf.get("other") or [])   # 27/11a: máy nào ăn card
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
+    metrics["move"] = 1 if (MV_ON and mv_support()) else 0           # 27/11n: web chỉ cho chọn máy chủ đích đã có phần chuyển máy
     try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
     except Exception: pass
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
@@ -1632,7 +1637,7 @@ def do_locks():
     t = now(); relaunch = []
     for row in rows:
         name = row.get("container") or cname(row)
-        if not phone_state(name): continue
+        if not phone_state(name) or mv_busy(name): continue     # 27/11n: máy đang chuyển sang máy chủ khác → không tắt / bật lại
         lk = bool(row.get("locked"))
         if lk and row.get("locked_until") and parse_dt(row["locked_until"]) <= t:
             patch(row["id"], {"locked": False, "locked_until": None, "lock_reason": None}); lk = False
@@ -1700,6 +1705,7 @@ def do_cancel(row):
     pid = row["id"]; n, nxt = _cancel_try.get(pid, (0, 0))
     if time.time() < nxt: return
     name = row.get("container") or cname(row)
+    if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → lượt chuyển tự bỏ (máy khách đã huỷ), xong mới xoá
     print(f"[huỷ] {name}")
     r = phonectl(["delete", name])
     o = (r.stdout or "") + (r.stderr or "")
@@ -1746,6 +1752,7 @@ def do_renew(row):
        CHỈ xoá số ngày chờ cộng khi máy chủ ĐÃ ghi được hạn mới (bản cũ xoá luôn dù phonectl không ghi được → khách mất ngày).
        Chưa ghi được → giữ nguyên, 15 giây sau thử lại, báo admin (1 lần / giờ / máy)."""
     name = row.get("container") or cname(row)
+    if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → cộng ngày ở máy chủ mới (dòng web giữ ngày chờ)
     d = int(row["pending_renew_days"])
     before = phone_state(name)
     old = parse_dt(before["expires"]) if before and before.get("expires") else None
@@ -1777,6 +1784,7 @@ def do_renew(row):
 def do_expiry(row):
     """Hết hạn → tạm dừng (giữ dữ liệu 30 phút). Quá 30 phút → xoá máy + toàn bộ dữ liệu."""
     name = row.get("container") or cname(row)
+    if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → máy chủ mới lo hạn sau khi chuyển xong
     ps = phone_state(name)
     if int(row.get("pending_renew_days") or 0) > 0: return      # khách vừa gia hạn, máy chủ đang cộng → không tạm dừng / xoá
     ex = [parse_dt(x) for x in ((ps or {}).get("expires"), row.get("expires_at")) if x]
@@ -1838,10 +1846,533 @@ def tick():
     try: release_switch_waits()
     except Exception as e: print("lỗi đổi Android chờ máy cũ:", e)
 
+# ---------- 27/11n · 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC (giữ nguyên dữ liệu) — SQL v65 (bảng cp_moves) · phonectl / cpapi 27/11n ----------
+# Admin bấm "🚚 Chuyển hết máy" trên thẻ máy chủ → mỗi máy khách thành 1 việc. Luồng riêng (_mv_loop, 5–15 giây / lần) làm cả 2 vai:
+#   máy chủ ĐÍCH: nhận việc (cùng loại giả lập, bán đúng bản Android, đủ RAM / nhân / ổ cứng; máy chủ trống hơn nhận trước) → tạo máy TRỐNG
+#     (create --nostart) → chờ máy chủ cũ mở file → tải: thẳng LAN / IP công khai qua cổng TLS phát hình (ghim chứng chỉ của máy chủ cũ),
+#     không được thì qua Cloudflare; đứt thì tải tiếp; kiểm SHA-256 → moveset → bật máy, chờ Android lên → cp_move_commit (web đổi máy chủ
+#     của máy khách sang đây) → movefin. Lỗi → cp_move_fail + xoá máy nhận dở (chỉ máy mang dấu move_in của đúng lượt đó).
+#   máy chủ CŨ: máy đích sẵn sàng → cp_move_lock (khoá máy khách "🚚 Đang chuyển…") → moveout (dấu "đang chuyển" → tắt êm → mở file)
+#     → done: movedrop (xoá bản cũ) · lỗi / máy chủ đích im quá MOVE_STALL_S giây: moveback (bật lại như cũ) + cp_move_unlock (trả khoá cũ).
+# cloudphone.conf: MOVE=0 tắt · MOVE_PAR (máy chuyển đi cùng lúc, mặc định 2) · MOVE_IN_PAR (máy nhận cùng lúc, 1) · MOVE_STALL_S (900)
+MV_ON = WIN and _f("MOVE", 1) > 0
+MV_PAR = max(1, min(4, int(_f("MOVE_PAR", 2))))
+MV_IN_PAR = max(1, min(3, int(_f("MOVE_IN_PAR", 1))))
+MV_STALL_S = max(300.0, _f("MOVE_STALL_S", 900))
+MV_GONE_S = 600                    # máy chủ bên kia mất kết nối quá 10 phút → trả việc / báo lỗi
+MV_LOCK_MIN = 240                  # khoá "🚚 Đang chuyển" tự hết sau 4 giờ (phòng khi mọi máy chủ đều chết giữa chừng)
+MV_IO_T = 60                       # đọc mạng im quá 60 giây → nối lại, tải tiếp
+MV_HTTP_OK = False                 # chỉ bộ thử: cho tải qua http:// (Cloudflare luôn https)
+MV_REASON = "🚚 Đang chuyển sang máy chủ mới — dữ liệu giữ nguyên, khoảng 2–5 phút. Máy tự mở lại khi xong."
+MV_DIR = os.path.join(HOME, "redroid", "move")
+MV_IN_F = os.path.join(MV_DIR, "in.json")              # việc máy chủ này đang NHẬN: {mã việc: {name, dir, port, src, t}}
+MV_LIVE = ("queued", "claimed", "ready", "stopping", "serving", "copying", "booting")
+MV_OUT_RUN = ("stopping", "serving", "copying", "booting")
+MV_IN_RUN = ("claimed", "ready", "stopping", "serving", "copying", "booting")
+MV_COLS = ("id,batch,phone_id,src,want,dst,src_name,dst_name,android,engine,ram,cpu,status,token,files,bytes_total,bytes_done,size_hint,"
+           "error,note,tries,created_at,step_at,src_fin,dst_fin")
+MV_VIA = {"lan": "qua mạng LAN", "ip": "thẳng qua IP công khai", "cf": "qua Cloudflare"}
+_mv = {"nocol": 0.0, "th": {}, "skip": {}, "later": {}, "nodes": {"t": 0.0, "rows": {}}, "sup": None, "lk": threading.RLock()}
+
+class MvPinErr(Exception): pass
+
+def mv_support():
+    """phonectl + cpapi của máy này đã có phần chuyển máy chưa (đọc file 1 lần)."""
+    if _mv["sup"] is None:
+        try:
+            with open(PHONECTL, encoding="utf-8") as f: a = f.read()
+            with open(os.path.join(HOME, "cpapi.py"), encoding="utf-8") as f: b = f.read()
+            _mv["sup"] = 'add_parser("moveout")' in a and "def move_get" in b
+        except Exception: _mv["sup"] = False
+    return _mv["sup"]
+def mv_busy(name):
+    """Máy tên name đang CHUYỂN ĐI (phonectl moveout đã ghi dấu) → các vòng khác (khoá, hết hạn, huỷ, gia hạn…) không đụng."""
+    return bool(name) and os.path.exists(os.path.join(MV_DIR, f"out_{name}.json"))
+def mv_now(): return now().isoformat()
+def mv_q(v): return urllib.parse.quote(str(v), safe="")
+def mv_json(text, tag):
+    for ln in reversed((text or "").splitlines()):
+        if ln.startswith(tag + " {"):
+            try: return json.loads(ln[len(tag) + 1:])
+            except ValueError: return None
+    return None
+def mv_tail(p, n=200):
+    o = ((p.stdout or "") + "\n" + (p.stderr or "")).strip().splitlines()
+    for ln in reversed(o):
+        m = re.match(r"^[A-Z]+_(?:FAIL|WARN) (.*)$", ln.strip())
+        if m: return m.group(1)[:n]
+    return (o[-1] if o else f"mã {p.returncode}")[:n]
+def mv_rows():
+    me = mv_q('"' + NODE_ID + '"')
+    flt = f"or=(status.in.({','.join(MV_LIVE)}),and(src.eq.{me},src_fin.is.false),and(dst.eq.{me},dst_fin.is.false))"
+    return sb("GET", f"cp_moves?select={MV_COLS}&{flt}&order=created_at.asc&limit=400") or []
+def mv_job(jid):
+    try: return (sb("GET", f"cp_moves?id=eq.{jid}&select={MV_COLS}") or [None])[0]
+    except Exception: return None
+def mv_patch(jid, flt, body):
+    body = dict(body, updated_at=mv_now())
+    return sb("PATCH", f"cp_moves?id=eq.{jid}" + ("&" + flt if flt else ""), body, {"Prefer": "return=representation"}) or []
+def mv_rpc(fn, args):
+    try: r = sb("POST", f"rpc/{fn}", args)
+    except Exception as e:
+        print(f"   lỗi gọi {fn}:", e); return None
+    return r if isinstance(r, dict) else None
+def mv_phone(pid):
+    try: return (sb("GET", f"cloud_phones?id=eq.{pid}&select=id,name,status,node,container,ram,cpu,res,fps,android,expires_at") or [None])[0]
+    except Exception: return None
+def mv_nodes(force=False):
+    if force or time.time() - _mv["nodes"]["t"] > 20:
+        try:
+            rows = sb("GET", "cloud_nodes?select=id,updated_at,enabled,engine,androids,stream,metrics") or []
+            _mv["nodes"] = {"t": time.time(), "rows": {r.get("id"): r for r in rows}}
+        except Exception: pass
+    return _mv["nodes"]["rows"]
+def mv_age(nid):
+    """Số giây máy chủ nid chưa báo về (không có → rất lớn)."""
+    r = mv_nodes().get(nid)
+    try: return (now() - parse_dt(r["updated_at"])).total_seconds() if r else 1e9
+    except Exception: return 1e9
+def mv_reg():
+    with _mv["lk"]:
+        try:
+            with open(MV_IN_F, encoding="utf-8") as f: d = json.load(f)
+            return d if isinstance(d, dict) else {}
+        except (OSError, ValueError): return {}
+def mv_reg_set(jid, e):
+    with _mv["lk"]:
+        d = mv_reg()
+        if e is None: d.pop(jid, None)
+        else: d[jid] = e
+        os.makedirs(MV_DIR, exist_ok=True); tmp = MV_IN_F + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f, ensure_ascii=False)
+        os.replace(tmp, MV_IN_F)
+def mv_running(jid):
+    t = _mv["th"].get(jid); return bool(t and t.is_alive())
+def mv_spawn(jid, fn, *a):
+    """1 việc chỉ 1 luồng lo cùng lúc."""
+    with _mv["lk"]:
+        if mv_running(jid): return False
+        def run():
+            try: fn(*a)
+            except Exception as e: print(f"[chuyển máy] lỗi {fn.__name__} ({str(jid)[:8]}):", repr(e)[:300])
+            finally:
+                with _mv["lk"]:
+                    if _mv["th"].get(jid) is threading.current_thread(): _mv["th"].pop(jid, None)
+        t = threading.Thread(target=run, daemon=True); _mv["th"][jid] = t; t.start(); return True
+def mv_stale(r):
+    try: return (now() - parse_dt(r.get("step_at"))).total_seconds() > MV_STALL_S
+    except Exception: return False
+def mv_mark(name):
+    try:
+        with open(os.path.join(MV_DIR, f"out_{name}.json"), encoding="utf-8") as f: return json.load(f)
+    except (OSError, ValueError): return None
+
+# ---- máy chủ CŨ ----
+def mv_size(r):
+    p = phonectl(["movesize", r["src_name"]])
+    m = re.search(r"^MOVESIZE (\d+)\s*$", p.stdout or "", re.M)
+    if m: mv_patch(r["id"], f"src=eq.{mv_q(NODE_ID)}", {"size_hint": int(m.group(1))})
+    else: _mv["later"][r["id"]] = time.time() + 600
+def mv_requeue(r, why):
+    """Máy chủ đích đã nhận mà mất kết nối (chưa tắt máy cũ) → trả việc về hàng chờ cho máy chủ khác."""
+    try:
+        got = mv_patch(r["id"], f"src=eq.{mv_q(NODE_ID)}&dst=eq.{mv_q(r.get('dst'))}&status=in.(claimed,ready)",
+                       {"status": "queued", "dst": None, "dst_name": None, "step_at": mv_now(), "note": f"{r.get('dst')}: {why}"[:300]})
+        if got: print(f"[chuyển đi] {r.get('src_name')}: {r.get('dst')} {why} → trả việc về hàng chờ")
+    except Exception as e: print("   lỗi trả việc:", e)
+def mv_out(r, resume=False):
+    jid, name = r["id"], r["src_name"]
+    if not resume:
+        res = mv_rpc("cp_move_lock", {"p_id": jid, "p_node": NODE_ID, "p_reason": MV_REASON, "p_min": MV_LOCK_MIN})
+        if not (res or {}).get("ok"):
+            if (res or {}).get("why") == "PHONE_CHANGED": print(f"[chuyển đi] {name}: máy khách đã đổi (huỷ / đổi máy chủ) → bỏ")
+            return
+    mk = mv_mark(name) or {}
+    tok = str(mk.get("token") or "") if mk.get("job") == jid else ""
+    if not re.fullmatch(r"[0-9a-f]{64}", tok): tok = secrets.token_hex(32)
+    print(f"[chuyển đi] {name} → {r.get('dst')}: tắt êm máy, mở ổ dữ liệu cho máy chủ mới tải")
+    p = phonectl(["moveout", name, "--job", jid, "--token", tok])
+    j = mv_json(p.stdout, "MOVEOUT")
+    if p.returncode != 0 or not j: return mv_src_fail(r, "máy chủ cũ chưa mở được ổ dữ liệu: " + mv_tail(p))
+    files = [f for f in (j.get("files") or []) if isinstance(f, dict)]
+    tot = sum(int(f.get("size") or 0) for f in files)
+    got = mv_patch(jid, f"src=eq.{mv_q(NODE_ID)}&status=eq.stopping",
+                   {"status": "serving", "token": tok, "files": files, "bytes_total": tot, "bytes_done": 0, "step_at": mv_now()})
+    if got:
+        print(f"   ✓ {name}: đã tắt, mở {len(files)} file ({tot / 2**30:.1f} GB) cho {r.get('dst')} tải"); return
+    fr = mv_job(jid)                                              # việc vừa bị dừng / lỗi ở nơi khác trong lúc tắt máy
+    if fr and fr.get("status") in ("failed", "cancelled"): mv_back(fr)
+def mv_src_fail(r, why):
+    print(f"   ✗ chuyển {r.get('src_name')}: {why}")
+    res = mv_rpc("cp_move_fail", {"p_id": r["id"], "p_node": NODE_ID, "p_err": f"{NODE_ID}: {why}"[:500]})
+    if res is None: _mv["later"][r["id"]] = time.time() + 30; return        # chưa gọi được web → lượt sau (máy vẫn giữ dấu, không bật)
+    st = res.get("status")
+    if st == "done": return mv_drop(r)                                       # máy chủ mới vừa xong đúng lúc đó → xoá bản cũ
+    mv_back(dict(r, status=st or "failed"))
+def mv_back(r):
+    """Việc lỗi / bị dừng → máy chủ cũ đưa máy về như trước lúc chuyển (bỏ dấu, bật lại nếu trước đó đang chạy) + trả khoá cũ."""
+    jid, name = r["id"], r["src_name"]
+    had = mv_busy(name)
+    if had:
+        ph = mv_phone(r["phone_id"]) or {}
+        off = ph.get("status") not in ("active", None) or ph.get("node") not in (NODE_ID, None)   # khách đã huỷ / máy đã sang chỗ khác → không bật
+        p = phonectl(["moveback", name, "--job", jid] + (["--off"] if off else []))
+        if p.returncode == 6: print(f"   ⚠ {name}: dấu đang chuyển là của lượt khác — không đụng")
+        elif p.returncode != 0:
+            _mv["later"][jid] = time.time() + 120; print(f"   ⚠ {name}: chưa đưa máy về được ({mv_tail(p)}) — 2 phút sau thử lại"); return
+    res = mv_rpc("cp_move_unlock", {"p_id": jid, "p_node": NODE_ID})
+    if not (res or {}).get("ok"):
+        try: mv_patch(jid, f"src=eq.{mv_q(NODE_ID)}", {"src_fin": True})
+        except Exception: _mv["later"][jid] = time.time() + 60; return
+    if had:
+        print(f"   ↩ {name}: chuyển chưa được → máy về như cũ ở {NODE_ID}")
+        notify(f"⚠️ Chuyển máy <b>{name}</b> từ {NODE_ID} sang {r.get('dst') or '?'} chưa được: {str(r.get('error') or '?')[:200]}"
+               f" — máy đã về như cũ ở {NODE_ID}, dữ liệu giữ nguyên.")
+    mv_batch_note(r)
+def mv_drop(r):
+    jid, name = r["id"], r["src_name"]
+    p = phonectl(["movedrop", name, "--job", jid])
+    if p.returncode not in (0, 6):
+        _mv["later"][jid] = time.time() + 300; print(f"   ⚠ {name}: chưa xoá được bản cũ ({mv_tail(p)}) — 5 phút sau thử lại"); return
+    try: mv_patch(jid, f"src=eq.{mv_q(NODE_ID)}&status=eq.done", {"src_fin": True})
+    except Exception: _mv["later"][jid] = time.time() + 60; return
+    print(f"   🗑️ {name}: đã chạy ở {r.get('dst')} → xoá bản cũ ở {NODE_ID}")
+    mv_batch_note(r)
+def mv_batch_note(r):
+    """Cả đợt (1 lần admin bấm) đã xong → nhắn admin 1 tin tóm tắt."""
+    try: rows = sb("GET", f"cp_moves?batch=eq.{r['batch']}&select=status,src_fin,dst,error") or []
+    except Exception: return
+    if not rows or any(x.get("status") in MV_LIVE or (x.get("status") in ("done", "failed") and not x.get("src_fin")) for x in rows): return
+    ok = [x for x in rows if x.get("status") == "done"]; bad = [x for x in rows if x.get("status") == "failed"]
+    by = {}
+    for x in ok: by[x.get("dst")] = by.get(x.get("dst"), 0) + 1
+    notify(f"🚚 <b>{NODE_ID}</b>: chuyển xong {len(ok)}/{len(rows)} máy khách"
+           + (" (" + " · ".join(f"{k}: {v}" for k, v in sorted(by.items())) + ")" if by else "")
+           + (f" · {len(bad)} máy chưa chuyển được (vẫn ở {NODE_ID}, xem web)" if bad else "")
+           + (f" · {len(rows) - len(ok) - len(bad)} máy admin dừng" if len(rows) - len(ok) - len(bad) else "") + ".")
+
+# ---- máy chủ MỚI ----
+def mv_can(r):
+    """Máy chủ này nhận được việc r không: đúng giả lập + bản Android, đủ RAM / nhân / ổ cứng, máy chủ cũ còn kết nối, máy chủ trống hơn nhận trước."""
+    jid = r["id"]
+    if time.time() < _mv["skip"].get(jid, 0): return False
+    w = r.get("want")
+    if w and w != NODE_ID: return False
+    e = engine()
+    if e.get("emu") not in ("mumu", "ld"): return False
+    if r.get("engine") and r["engine"] != e["emu"]: return False
+    if not android_ok({"android": r.get("android")}): return False
+    if not w and not node_enabled(): return False                 # máy chủ đang ngừng nhận máy → chỉ nhận khi admin chọn đúng máy chủ này
+    if mv_age(r.get("src")) > 180: return False                    # máy chủ cũ mất kết nối → không chép được
+    if r.get("size_hint") is None and age_s(r) < 180: return False  # chờ máy chủ cũ báo cỡ ổ dữ liệu (vài giây) → kiểm đủ ổ cứng trước khi nhận
+    if busy_boot() or sick_why() or time.time() < _FULL["until"]: return False
+    load, fr, fc = local_load(); wr, wc = want(r)
+    if wr > fr + 0.01 or wc > fc + 0.01: return False
+    try:
+        if disk_full(): return False
+        if e.get("emu") == "ld" and shutil.disk_usage(HOME).free < int(r.get("size_hint") or 0) * 1.1 + 5 * 2**30: return False   # LDPlayer: bản sao lưu tải vào HOME\redroid\move
+    except Exception: pass                                         # (MuMu tải thẳng vào thư mục máy ảo — phonectl create --needgb kiểm ổ đó)
+    return age_s(r) >= load * 20
+def mv_claim(r):
+    try: got = mv_patch(r["id"], "status=eq.queued&dst=is.null", {"status": "claimed", "dst": NODE_ID, "dst_name": None, "step_at": mv_now()})
+    except Exception as e:
+        print("   lỗi nhận việc chuyển máy:", e); return False
+    if not got: return False
+    print(f"[nhận chuyển] {r.get('src_name')} (Android {r.get('android')}, {r.get('ram')}GB · {r.get('cpu')} nhân) từ {r.get('src')} → tạo máy trống")
+    mv_spawn(r["id"], mv_prep, got[0]); return True
+def mv_newname(r): return "cp_" + str(r["phone_id"]).replace("-", "")[:10] + "m" + secrets.token_hex(2)
+def mv_prep(r):
+    jid = r["id"]; me = mv_q(NODE_ID)
+    ph = mv_phone(r["phone_id"])
+    if not ph or ph.get("node") != r.get("src") or ph.get("status") not in ("active", "expired"):
+        mv_rpc("cp_move_fail", {"p_id": jid, "p_node": NODE_ID, "p_err": "Máy khách đã đổi (huỷ / đổi máy chủ) — không chuyển nữa"}); return
+    e = mv_reg().get(jid) or {}; name = e.get("name")
+    if not (name and phone_state(name)):
+        name = mv_newname(r); mv_reg_set(jid, {"name": name, "src": r.get("src"), "t": time.time()})
+        try: exp = parse_dt(ph.get("expires_at"))
+        except Exception: exp = now() + datetime.timedelta(days=1)
+        days = max(1, int(-(-(exp - now()).total_seconds() // 86400)))
+        res = ph.get("res") or "720x1280"
+        p = phonectl(["create", name, "--ram", str(ph.get("ram") or r.get("ram") or 2), "--cpu", str(ph.get("cpu") or r.get("cpu") or 2),
+                      "--days", str(days), "--res", res, "--fps", str(ph.get("fps") or 30), "--android", str(r.get("android") or ph.get("android") or "9"),
+                      "--nostart", "--movejob", jid, "--until", exp.isoformat()]
+                     + (["--needgb", f"{int(r['size_hint']) / 2**30:.3f}"] if int(r.get("size_hint") or 0) > 0 else []))
+        if p.returncode == 2:                                     # HẾT CHỖ lúc tạo (RAM thật ít hơn số ước) → nhường máy chủ khác
+            _FULL["until"] = time.time() + FULL_COOL_S
+            return mv_release(r, "hết chỗ lúc tạo máy", name)
+        j = mv_json(p.stdout, "MOVEIN")
+        if p.returncode != 0 or not j:
+            _mv["skip"][jid] = time.time() + 1800
+            return mv_release(r, "tạo máy trống lỗi: " + mv_tail(p), name)
+        mv_reg_set(jid, dict(mv_reg().get(jid) or {"name": name}, dir=j.get("dir"), port=j.get("port"), idx=j.get("idx")))
+    got = mv_patch(jid, f"dst=eq.{me}&status=eq.claimed", {"status": "ready", "dst_name": name, "step_at": mv_now()})
+    if got: print(f"   ✓ máy trống {name} sẵn sàng — chờ {r.get('src')} tắt máy cũ")
+def mv_release(r, why, name=None):
+    """Chưa bắt đầu chép mà máy chủ này không làm tiếp được → trả việc về hàng chờ (máy chủ khác nhận) + xoá máy trống."""
+    try: mv_patch(r["id"], f"dst=eq.{mv_q(NODE_ID)}&status=in.(claimed,ready)",
+                  {"status": "queued", "dst": None, "dst_name": None, "step_at": mv_now(), "note": f"{NODE_ID}: {why}"[:300]})
+    except Exception as e: print("   lỗi trả việc:", e)
+    print(f"   ↪ trả việc chuyển {r.get('src_name')} về hàng chờ ({why})")
+    mv_cleanup(r["id"], name)
+def mv_cleanup(jid, name=None):
+    """Xoá máy nhận dở + file tải dở của việc jid (phonectl moveabort chỉ xoá máy mang đúng dấu của việc này). True = đã dọn xong."""
+    e = mv_reg().get(jid) or {}; name = name or e.get("name")
+    junk = [os.path.join(e["dir"], "data.vdi.cbmove")] if e.get("dir") else []
+    try: junk += [os.path.join(MV_DIR, x) for x in os.listdir(MV_DIR) if x.startswith(f"in_{jid}_")]
+    except OSError: pass
+    for f in junk:
+        try: os.remove(f)
+        except OSError: pass
+    if name:
+        p = phonectl(["moveabort", name, "--job", jid])
+        if p.returncode == 6: print(f"   ⚠ {name} không phải máy nhận của lượt {jid[:8]} — không xoá")
+        elif p.returncode != 0:
+            _mv["later"][jid] = time.time() + 300; print(f"   ⚠ chưa xoá được máy nhận dở {name} ({mv_tail(p)}) — 5 phút sau thử lại"); return False
+    mv_reg_set(jid, None); return True
+def mv_dst_fail(r, why):
+    print(f"   ✗ nhận {r.get('src_name')} từ {r.get('src')} lỗi: {why}")
+    res = mv_rpc("cp_move_fail", {"p_id": r["id"], "p_node": NODE_ID, "p_err": f"{NODE_ID}: {why}"[:500]})
+    if res is None: _mv["later"][r["id"]] = time.time() + 30; return
+    if res.get("status") == "done": return
+    mv_abort(r)
+def mv_abort(r):
+    if mv_cleanup(r["id"], (mv_reg().get(r["id"]) or {}).get("name") or r.get("dst_name")):
+        try: mv_patch(r["id"], f"dst=eq.{mv_q(NODE_ID)}", {"dst_fin": True})
+        except Exception: pass
+def mv_orphan(jid):
+    """Máy nhận dở của việc không còn là của máy chủ này (trả về hàng chờ / máy chủ khác nhận / đã xong) → dọn hoặc chốt."""
+    j = mv_job(jid)
+    if j and j.get("dst") == NODE_ID and j.get("status") == "done": return mv_fin(j)
+    if j and j.get("dst") == NODE_ID and j.get("status") in MV_LIVE: return            # vẫn đang làm (vòng sau lo)
+    mv_cleanup(jid)
+def mv_paths(src):
+    """Đường tải file từ máy chủ cũ, thử lần lượt: LAN (cùng mạng) → IP công khai → Cloudflare. LAN / IP: TLS cổng phát hình, ghim chứng chỉ."""
+    st = src.get("stream") if isinstance(src.get("stream"), dict) else {}
+    cert = str(st.get("cert") or "").lower(); lan, pub = [], []
+    mine = (mv_nodes().get(NODE_ID) or {}).get("stream")
+    my_lan = next((str(d.get("host") or "") for d in ((mine or {}).get("direct") or []) if isinstance(d, dict) and d.get("lan")), "") if isinstance(mine, dict) else ""
+    if re.fullmatch(r"[0-9a-f]{64}", cert):
+        for d in st.get("direct") or []:
+            if not isinstance(d, dict) or not d.get("host") or not d.get("port"): continue
+            h = str(d["host"])
+            if d.get("lan"):
+                if my_lan and my_lan.rsplit(".", 1)[0] == h.rsplit(".", 1)[0]: lan.append(("lan", h, int(d["port"]), cert))   # cùng mạng LAN → nhanh nhất
+            else: pub.append(("ip", h, int(d["port"]), cert))
+    out = lan + pub
+    base = str(st.get("api") or ((src.get("metrics") or {}).get("base") if isinstance(src.get("metrics"), dict) else "") or "").rstrip("/")
+    if base.startswith("https://") or (MV_HTTP_OK and base.startswith("http://")): out.append(("cf", base, None, None))
+    return out
+def mv_open(path, jid, fn, off, tok, z):
+    kind, host, port, pin = path
+    q = f"/cpapi/move/{jid}/{fn}?off={int(off)}&z={1 if z else 0}"
+    hd = {"X-CB-Move": tok, "User-Agent": "cloudphoned-move/27.11n", "Accept-Encoding": "identity"}
+    if kind in ("lan", "ip"):
+        ctx = ssl.create_default_context(); ctx.check_hostname = False; ctx.verify_mode = ssl.CERT_NONE
+        c = http.client.HTTPSConnection(host, port, timeout=8, context=ctx); c.connect()
+        if hashlib.sha256(c.sock.getpeercert(binary_form=True) or b"").hexdigest() != pin:
+            c.close(); raise MvPinErr(f"{host}:{port} không phải máy chủ cũ (chứng chỉ không khớp)")
+    else:
+        u = urllib.parse.urlsplit(host)
+        c = (http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=8, context=ssl.create_default_context()) if u.scheme == "https"
+             else http.client.HTTPConnection(u.hostname, u.port or 80, timeout=8))
+        c.connect(); q = u.path.rstrip("/") + q
+    c.sock.settimeout(MV_IO_T)
+    c.request("GET", q, headers=hd)
+    resp = c.getresponse()
+    if resp.status != 200:
+        b = resp.read(300); c.close(); raise IOError(f"HTTP {resp.status} {b[:160].decode('utf-8', 'replace')}")
+    return c, resp
+def mv_sha(path, bs=4 << 20):
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        while True:
+            b = f.read(bs)
+            if not b: return h.hexdigest()
+            h.update(b)
+def mv_fetch(jid, f, dest, paths, tok, prog):
+    """Tải 1 file về dest (tải tiếp từ phần đã có), kiểm SHA-256. Sai → tải lại từ đầu 1 lần. Đường nào đang chạy được thì dùng tiếp."""
+    size, sha, fn = int(f["size"]), str(f["sha256"]).lower(), f["n"]
+    good = None
+    for attempt in (1, 2):
+        have = os.path.getsize(dest) if os.path.exists(dest) else 0
+        if have > size: os.remove(dest); have = 0
+        prog["cur"] = have; fails = 0; t_end = time.time() + 6 * 3600
+        while have < size:
+            if prog.get("gone"): raise RuntimeError("lượt chuyển đã dừng")
+            moved = False; last = ""
+            for pth in ([good] if good else []) + [x for x in paths if x != good]:
+                try: c, resp = mv_open(pth, jid, fn, have, tok, pth[0] != "lan")
+                except Exception as e:
+                    last = f"{MV_VIA.get(pth[0], pth[0])}: {e}"; continue
+                dz = zlib.decompressobj() if resp.getheader("X-CB-Z") == "1" else None; n0 = have
+                try:
+                    with open(dest, "ab") as out:
+                        while not prog.get("gone"):
+                            b = resp.read(1 << 20)
+                            if not b: break
+                            if dz: b = dz.decompress(b)
+                            if b:
+                                b = b[: size - have]; out.write(b); have += len(b); prog["cur"] = have
+                        if dz and not prog.get("gone") and have < size:
+                            t_ = dz.flush()[: size - have]; out.write(t_); have += len(t_); prog["cur"] = have
+                except Exception as e: last = f"{MV_VIA.get(pth[0], pth[0])}: {e}"
+                finally:
+                    try: c.close()
+                    except Exception: pass
+                if have > n0: moved = True; good = pth; prog["via"] = pth[0]
+                if have >= size or prog.get("gone"): break
+            if have >= size or prog.get("gone"): continue
+            if not moved:
+                fails += 1
+                if fails > 40 or time.time() > t_end: raise IOError(f"không tải được {fn} ({last or 'không có đường nối'})")
+                time.sleep(min(60, 3 * fails))
+        if prog.get("gone"): raise RuntimeError("lượt chuyển đã dừng")
+        if mv_sha(dest) == sha: return
+        os.remove(dest); prog["cur"] = 0
+        print(f"   ⚠ {fn}: tải về sai SHA-256 → tải lại từ đầu")
+    raise IOError(f"{fn}: tải về sai SHA-256 2 lần liền")
+def mv_copy(r):
+    jid = r["id"]; me = mv_q(NODE_ID); e = mv_reg().get(jid) or {}
+    name = e.get("name") or r.get("dst_name")
+    if not name or not phone_state(name): return mv_dst_fail(r, "máy chủ mới không còn máy trống đã tạo")
+    if r.get("status") == "serving":
+        got = mv_patch(jid, f"dst=eq.{me}&status=eq.serving", {"status": "copying", "bytes_done": 0, "step_at": mv_now()})
+        if not got: return
+        r = got[0]
+    files = [f for f in (r.get("files") or []) if isinstance(f, dict) and f.get("n") and f.get("sha256")]
+    tok = str(r.get("token") or "")
+    if not files or not tok: return mv_dst_fail(r, "máy chủ cũ chưa báo file / mã tải")
+    if any(f["n"] == "data.vdi" for f in files) and not e.get("dir"): return mv_dst_fail(r, "không biết thư mục máy trống")
+    paths = mv_paths(mv_nodes(True).get(r.get("src")) or {})
+    if not paths: return mv_dst_fail(r, "không biết đường tới máy chủ cũ (máy chủ cũ chưa báo đường nối)")
+    tot = sum(int(f.get("size") or 0) for f in files)
+    prog = {"done": 0, "cur": 0, "t0": time.time(), "via": "", "stop": False}
+    def ticker():                                                 # tiến độ 5 giây / lần = "nhịp sống" cho máy chủ cũ
+        while not prog["stop"]:
+            time.sleep(5)
+            if prog["stop"]: break
+            b = prog["done"] + prog["cur"]
+            try:
+                got = mv_patch(jid, f"dst=eq.{me}&status=eq.copying", {"bytes_done": b, "rate_kbs": int(b / 1024 / max(1.0, time.time() - prog["t0"])),
+                                                                       "step_at": mv_now(), "note": MV_VIA.get(prog["via"]) or None})
+                if not got: prog["gone"] = True                   # việc bị huỷ / lỗi ở nơi khác → thôi tải
+            except Exception: pass
+    th = threading.Thread(target=ticker, daemon=True); th.start()
+    out = {}
+    try:
+        for f in files:
+            dest = os.path.join(e["dir"], "data.vdi.cbmove") if f["n"] == "data.vdi" else os.path.join(MV_DIR, f"in_{jid}_{f['n']}")
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            mv_fetch(jid, f, dest, paths, tok, prog)
+            out[f["n"]] = dest; prog["done"] += int(f["size"]); prog["cur"] = 0
+    except Exception as ex:
+        if prog.get("gone"): return                               # vòng sau dọn (việc đã failed / cancelled)
+        return mv_dst_fail(r, f"tải ổ dữ liệu lỗi: {ex}"[:300])
+    finally:
+        prog["stop"] = True
+    data = out.get("data.vdi") or out.get("vm.ldbk")
+    if not data: return mv_dst_fail(r, "máy chủ cũ không gửi ổ dữ liệu")
+    p = phonectl(["moveset", name, "--file", data, "--job", jid] + (["--rec", out["rec.json"]] if out.get("rec.json") else []))
+    if p.returncode != 0: return mv_dst_fail(r, "đưa dữ liệu vào máy mới lỗi: " + mv_tail(p))
+    for ln in (p.stdout or "").splitlines():                        # dòng ghi chú của phonectl (mã ổ, khác bản MuMu…) → nhật ký
+        if ln.startswith("   ") and ln.strip(): print(f"   {name}:{ln.rstrip()}")
+    print(f"   ✓ đã chép {tot / 2**30:.1f} GB của {r.get('src_name')} ({MV_VIA.get(prog['via'], '?')}, {tot / 2**20 / max(1.0, time.time() - prog['t0']):.0f} MB/s) → bật máy")
+    got = mv_patch(jid, f"dst=eq.{me}&status=eq.copying", {"status": "booting", "bytes_done": tot, "step_at": mv_now()})
+    if got: mv_boot(got[0])
+def mv_boot(r):
+    jid = r["id"]; me = mv_q(NODE_ID); e = mv_reg().get(jid) or {}
+    name = e.get("name") or r.get("dst_name")
+    if not name or not phone_state(name): return mv_dst_fail(r, "máy chủ mới không còn máy đã nhận")
+    ph = mv_phone(r["phone_id"]) or {}
+    if ph.get("status") == "active":                              # máy đang thuê: bật + chờ Android lên mới đổi máy chủ (máy chờ gia hạn: để tắt)
+        stop = {"v": False}
+        def beat():
+            while not stop["v"]:
+                time.sleep(30)
+                if stop["v"]: break
+                try: mv_patch(jid, f"dst=eq.{me}&status=eq.booting", {"step_at": mv_now()})
+                except Exception: pass
+        threading.Thread(target=beat, daemon=True).start()
+        try:
+            p = phonectl(["waitboot", name, "--noapps"])         # máy đang tắt → bật rồi chờ Android lên (root / proxy / bộ nhớ của khách áp lại)
+            if p.returncode in (5, 124):
+                print(f"   … {name}: Android chưa lên → ép khởi động lại 1 lần")
+                phonectl(["restart", name, "--force"]); p = phonectl(["waitboot", name, "--noapps"])
+        finally: stop["v"] = True
+        if p.returncode != 0: return mv_dst_fail(r, "máy ở máy chủ mới bật lên mà Android chưa chạy — " + mv_tail(p))
+    ps = phone_state(name) or {}
+    try: port = int(ps.get("port") or 0)
+    except (TypeError, ValueError): port = 0
+    res = mv_rpc("cp_move_commit", {"p_id": jid, "p_node": NODE_ID, "p_name": name, "p_port": port, "p_stream_url": stream_url(port) if port else ""})
+    if not (res or {}).get("ok"):
+        print(f"   ✗ chưa đổi máy chủ được cho {r.get('src_name')}: {res}"); _mv["later"][jid] = time.time() + 10; return
+    print(f"   ✓ {r.get('src_name')} → {name}: đã chạy ở {NODE_ID}, web đã đổi máy chủ (dữ liệu giữ nguyên)")
+    mv_fin(dict(r, status="done"), res.get("expires_at"))
+def mv_fin(r, exp=None):
+    jid = r["id"]; e = mv_reg().get(jid) or {}; name = e.get("name") or r.get("dst_name")
+    if name and phone_state(name):
+        if not exp: exp = (mv_phone(r["phone_id"]) or {}).get("expires_at")
+        p = phonectl(["movefin", name, "--job", jid] + (["--until", str(exp)] if exp else []))
+        if p.returncode not in (0, 6): _mv["later"][jid] = time.time() + 60; return
+    mv_reg_set(jid, None)
+    try: mv_patch(jid, f"dst=eq.{mv_q(NODE_ID)}", {"dst_fin": True})
+    except Exception: pass
+
+def mv_tick():
+    """1 vòng: làm phần việc của máy chủ này (cũ / mới), nhận việc mới nếu còn chỗ. Trả số giây nghỉ tới vòng sau."""
+    if not MV_ON or time.time() < _mv["nocol"] or not mv_support(): return 30
+    try: rows = mv_rows()
+    except urllib.error.HTTPError as e:
+        if e.code in (400, 404):
+            _mv["nocol"] = time.time() + 600; print("   (web chưa chạy SQL v65 — chưa chuyển máy được, 10 phút sau hỏi lại)"); return 30
+        raise
+    t = time.time(); busy = False
+    out_run = sum(1 for r in rows if r.get("src") == NODE_ID and r.get("status") in MV_OUT_RUN)
+    for r in rows:                                                # --- máy chủ CŨ ---
+        if r.get("src") != NODE_ID: continue
+        busy = True; jid = r["id"]; st = r.get("status")
+        if mv_running(jid) or t < _mv["later"].get(jid, 0): continue
+        if st == "queued" and r.get("size_hint") is None: mv_spawn(jid, mv_size, r)
+        elif st in ("claimed", "ready") and r.get("dst") and mv_age(r["dst"]) > MV_GONE_S: mv_requeue(r, "mất kết nối")
+        elif st == "ready" and out_run < MV_PAR: out_run += 1; mv_spawn(jid, mv_out, r, False)
+        elif st == "stopping": mv_spawn(jid, mv_out, r, True)     # cloudphoned vừa khởi động lại giữa lúc tắt máy → làm tiếp
+        elif st in ("serving", "copying", "booting") and mv_stale(r):
+            mv_spawn(jid, mv_src_fail, r, f"máy chủ mới ({r.get('dst')}) không báo tiến độ quá {int(MV_STALL_S // 60)} phút")
+        elif st == "done" and not r.get("src_fin"): mv_spawn(jid, mv_drop, r)
+        elif st in ("failed", "cancelled") and not r.get("src_fin"): mv_spawn(jid, mv_back, r)
+    in_run = 0; mine = set()
+    for r in rows:                                                # --- máy chủ MỚI ---
+        if r.get("dst") != NODE_ID: continue
+        busy = True; jid = r["id"]; st = r.get("status"); mine.add(jid)
+        if st in MV_IN_RUN: in_run += 1
+        if mv_running(jid) or t < _mv["later"].get(jid, 0): continue
+        if st == "claimed": mv_spawn(jid, mv_prep, r)
+        elif st == "ready" and mv_age(r.get("src")) > MV_GONE_S: mv_spawn(jid, mv_release, r, "máy chủ cũ mất kết nối")
+        elif st in ("stopping", "serving") and mv_age(r.get("src")) > MV_GONE_S:     # máy cũ đã tắt mà máy chủ cũ mất kết nối → lỗi (máy chủ cũ bật lại khi về)
+            mv_spawn(jid, mv_dst_fail, r, f"máy chủ cũ ({r.get('src')}) mất kết nối quá {MV_GONE_S // 60} phút")
+        elif st in ("serving", "copying"): mv_spawn(jid, mv_copy, r)
+        elif st == "booting": mv_spawn(jid, mv_boot, r)
+        elif st == "done" and not r.get("dst_fin"): mv_spawn(jid, mv_fin, r)
+        elif st in ("failed", "cancelled") and not r.get("dst_fin"): mv_spawn(jid, mv_abort, r)
+    for jid in list(mv_reg()):                                    # máy nhận dở của việc không còn là của máy chủ này → dọn
+        if jid not in mine and not mv_running(jid) and t >= _mv["later"].get(jid, 0): busy = True; mv_spawn(jid, mv_orphan, jid)
+    if in_run < MV_IN_PAR:                                        # --- nhận việc mới ---
+        for r in rows:
+            if r.get("status") == "queued" and not r.get("dst") and r.get("src") != NODE_ID and mv_can(r) and mv_claim(r): busy = True; break
+    return 5 if busy else 15
+
+def _mv_loop():
+    time.sleep(20)
+    while True:
+        w = 15
+        try: w = mv_tick() or 15
+        except Exception as e: print("lỗi chuyển máy:", e)
+        time.sleep(w)
+
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 27/11l chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 27/11n chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
@@ -1871,6 +2402,10 @@ if __name__ == "__main__":
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
     if GF_ON: threading.Thread(target=_gf_loop, daemon=True).start()   # 27/11a: chia đều card đồ hoạ giữa các máy khách
     threading.Thread(target=_stuck_loop, daemon=True).start()  # 16/11f: đơn tạo máy treo quá lâu → tự huỷ + hoàn tiền (luồng riêng)
+    if MV_ON:
+        threading.Thread(target=_mv_loop, daemon=True).start()     # 27/11n: 🚚 chuyển máy khách sang máy chủ khác (giữ dữ liệu)
+        print(f"🚚 Chuyển máy sang máy chủ khác (27/11n): BẬT — chuyển đi {MV_PAR} máy / nhận {MV_IN_PAR} máy cùng lúc"
+              + ("" if mv_support() else " · ⚠ phonectl / cpapi máy này chưa có phần chuyển máy (chạy lệnh A cập nhật)"))
     if TS_ON:
         _ts_load(); _loop_t[0] = time.time()
         threading.Thread(target=_ts_loop, daemon=True).start()

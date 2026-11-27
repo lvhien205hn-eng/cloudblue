@@ -6,7 +6,7 @@
 # Cloudflare tunnel: phone.cloudblue.vn → http://localhost:8010   (KHÔNG trỏ thẳng 8000 nữa)
 # Cấu hình đọc chung ~/cloudphone.conf (SUPABASE_URL, SUPABASE_SERVICE_KEY, PUBLIC_BASE).
 import base64, hashlib, hmac, http.client, ipaddress, json, os, re, secrets, shlex, shutil, socket
-import subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request
+import subprocess, sys, threading, time, urllib.error, urllib.parse, urllib.request, zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 SHOTS = {}          # (cổng, cỡ) → (lúc chụp, ảnh, loại) — ảnh màn hình nhỏ cho danh sách máy
 LIVE = {}           # cổng → số người ĐANG điều khiển/xem trực tiếp (luồng hình) — máy đó KHÔNG chụp ảnh nhỏ để luồng hình không bị giật
@@ -273,7 +273,7 @@ def out(r):
 #   POST {do: "update"} → tải sua-tat-ca.py mới nhất từ GitHub rồi chạy `--tu-dong` TÁCH RỜI (nó sẽ tắt + bật lại chính cpapi) — y như lệnh A
 #   POST {do: <việc>}   → chỉ các việc ghi sẵn trong NODE_ACTS (không nhận lệnh tự gõ); việc mất dữ liệu / tắt máy phải gõ đúng mã máy chủ.
 # Các nút cần khoá bí mật (Supabase, Cloudflare, mật khẩu Windows) KHÔNG có ở đây — chỉ làm tại bảng CloudBlue trên máy chủ.
-CPAPI_VER = "23/11f"
+CPAPI_VER = "27/11n"
 NODE_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 NODE_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SUA_FILE = os.path.join(HOME, "sua-tat-ca.py")
@@ -2118,6 +2118,27 @@ INJECT_TAG = ("<style>" + INJECT_CSS + "</style><script src=\"/__cp/inject.js?v=
 HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade"}
 
 
+# ---------------- 27/11n · 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC: máy chủ MỚI tải ổ dữ liệu của máy đang chuyển ----------------
+# phonectl moveout (máy chủ cũ) tắt máy + ghi dấu redroid/move/out_<tên>.json {job, token, stage: "serving", files: [{n, path, size, sha256}]}.
+# Máy chủ mới gọi GET /cpapi/move/<mã việc>/<tên file>?off=<vị trí>&z=<1 = nén> kèm X-CB-Move: <mã tải> (mã riêng từng lượt, chỉ máy chủ
+# đọc được trong cp_moves) — đi thẳng cổng TLS của bluestream (LAN / IP công khai, máy chủ mới ghim chứng chỉ) hoặc qua Cloudflare.
+# Không đúng mã / không có lượt chuyển → 404 như không có gì. Chỉ đọc file có tên trong dấu — không đọc được file nào khác.
+MOVE_DIR = os.path.join(HOME, "redroid", "move")
+MOVE_FILES = ("data.vdi", "vm.ldbk", "rec.json")
+
+
+def move_mark(jid):
+    """Dấu chuyển máy (của máy chủ này) có mã việc jid → dict / None."""
+    try: names = [x for x in os.listdir(MOVE_DIR) if x.startswith("out_") and x.endswith(".json")]
+    except OSError: return None
+    for x in names:
+        try:
+            with open(os.path.join(MOVE_DIR, x), encoding="utf-8") as f: d = json.load(f)
+            if isinstance(d, dict) and d.get("job") == jid: return d
+        except (OSError, ValueError): continue
+    return None
+
+
 class H(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 120
@@ -2201,6 +2222,45 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         self.api() if self.path.startswith("/cpapi/") else self.proxy()
 
+    def move_get(self, parts, q):
+        """27/11n · gửi file của máy đang chuyển cho máy chủ mới (xem MOVE_DIR ở trên). Tải tiếp từ vị trí off; z=1 → nén zlib (đường mạng ngoài)."""
+        if self.command != "GET" or len(parts) != 3 or not UUID.match(parts[1]) or parts[2] not in MOVE_FILES:
+            return self.send_json(404, {"error": "Không có."})
+        mk = move_mark(parts[1]); tok = (self.headers.get("X-CB-Move") or "").strip()
+        if not mk or mk.get("stage") != "serving" or not tok or not hmac.compare_digest(tok.encode(), str(mk.get("token") or "").encode()):
+            return self.send_json(404, {"error": "Không có."})
+        f = next((x for x in (mk.get("files") or []) if isinstance(x, dict) and x.get("n") == parts[2]), None)
+        path = str((f or {}).get("path") or "")
+        if not f or not os.path.isfile(path): return self.send_json(404, {"error": "Không có."})
+        size = os.path.getsize(path)
+        if size != int(f.get("size") or -1): return self.send_json(409, {"error": "File đã thay đổi — lượt chuyển phải làm lại."})
+        try: off = int(q.get("off") or 0)
+        except ValueError: off = -1
+        if off < 0 or off > size: return self.send_json(416, {"error": "Vị trí tải không hợp lệ."})
+        z = q.get("z") == "1"
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-CB-Size", str(size)); self.send_header("X-CB-Off", str(off))
+        if z:
+            self.send_header("X-CB-Z", "1"); self.send_header("Connection", "close"); self.close_connection = True
+        else:
+            self.send_header("Content-Length", str(size - off))
+        self.end_headers()
+        co = zlib.compressobj(1) if z else None; sent = 0; t0 = time.time()
+        with open(path, "rb") as fh:
+            fh.seek(off)
+            while True:
+                b = fh.read(1 << 20)
+                if not b: break
+                sent += len(b)
+                if co: b = co.compress(b)
+                if b: self.wfile.write(b)
+            if co: self.wfile.write(co.flush())
+        try: self.wfile.flush()
+        except Exception: pass
+        log(f"chuyển máy: đã gửi {parts[2]} của {mk.get('name')} từ {off} ({sent // 1048576} MB, {time.time() - t0:.0f}s{', nén' if z else ''})")
+
     # ---------- API ----------
     def api(self):
         try:
@@ -2219,6 +2279,8 @@ class H(BaseHTTPRequestHandler):
         parts = [p for p in u.path.split("/") if p][1:]
         if self.headers.get("Origin") and self.headers.get("Origin") not in ORIGINS:
             return self.send_json(403, {"error": "Nguồn không được phép."})
+        if parts[:1] == ["move"]:                                 # 27/11n · máy chủ khác tải ổ dữ liệu máy đang chuyển (mã riêng từng lượt, không qua đăng nhập)
+            return self.move_get(parts, q)
         tok = (self.headers.get("Authorization") or "").removeprefix("Bearer ").strip()
         me = whoami(tok)
         if not me: return self.send_json(401, {"error": "Phiên đăng nhập hết hạn — tải lại trang và đăng nhập lại."})
@@ -3122,6 +3184,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 23/11f chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 27/11n chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()

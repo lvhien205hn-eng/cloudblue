@@ -405,7 +405,7 @@ a.btn{text-decoration:none}
 @media (max-width:1240px){ .who #who-name{display:none} }
 .notice div{display:block;position:relative;padding-left:28px}
 .notice div::before{position:absolute;left:13px;top:16px;transform:none}
-#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg,#nmgdlg,#secdlg{z-index:70}
+#custdlg,#stockdlg,#deldlg,#cplockdlg,#apkdlg,#nrbdlg,#nmgdlg,#nmvdlg,#secdlg{z-index:70}
 .dpanel{width:min(1060px,100%)}
 .tbl td:last-child{white-space:nowrap;text-align:right}
 @media (max-width:1520px){ nav a svg.ic{display:none} nav a{padding:8px 11px} .who #who-name{display:none} nav a[href="#policy"]{display:none} }
@@ -665,6 +665,11 @@ html[data-theme] .nbulk>.nacts{background:var(--sunk)}
 .srv-any{display:flex;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;color:var(--bad);cursor:pointer}.srv-any input{margin-top:3px;flex:none}
 .srv-go{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.srv-go .in{flex:1 1 160px;min-width:0}.srv-go .btn{flex:none}
 .nmg-h{margin:14px 0 6px;font-weight:700;font-size:13px;color:var(--muted)}
+.dlg label.nmv-l{margin-top:12px}.nmv-l select.in{width:100%}
+.nmv-warn{font-size:12.5px;line-height:1.5;margin-top:8px}.nmv-warn div{margin-top:3px}
+.nmv-ph{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:14px}.nmv-ph span{display:flex;gap:6px;flex-wrap:wrap}
+.nmv-bar{height:5px;border-radius:4px;background:var(--line);overflow:hidden;margin-top:5px}.nmv-bar i{display:block;height:100%;background:var(--blue);transition:width .6s}
+.node .nmv{font-size:12px;line-height:1.45}.node .nmv button{margin-left:6px;padding:1px 8px;font-size:11.5px}
 .dlg label.nmg-auto{display:flex;flex-direction:row;gap:8px;align-items:flex-start;margin-top:10px;font-size:13px;line-height:1.9;cursor:pointer;color:var(--fg)}
 .dlg label.nmg-auto input[type=checkbox]{margin:7px 0 0;flex:none;width:auto}.dlg label.nmg-auto>span{flex:1;min-width:0}
 .dlg label.nmg-auto .in{width:74px;display:inline-block;padding:4px 6px;margin:0 2px}
@@ -1784,7 +1789,7 @@ html[data-theme] .shmode button.on{border-color:var(--blue);background:var(--sof
 @media (max-width:520px){.f.mtbox.prf{grid-template-columns:1fr}}
 
 </style>
-<script>/* chế độ Sáng/Tối: nhớ lựa chọn (br_theme), lần đầu theo máy khách */(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;try{if(localStorage.getItem("br_neon")==="1")document.documentElement.classList.add("neonrun")}catch(e){}})();</script>
+<script>/* chế độ Sáng/Tối: nhớ lựa chọn (br_theme), lần đầu theo máy khách */(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("neonrun");})();</script>
 <script>
 /* CHẾ ĐỘ NHẸ: máy yếu / điện thoại → tắt hiệu ứng nặng (trống 3D xoay, cá koi, sao nền, ảnh 3D sản phẩm, làm mờ nền) cho mượt.
    Tự nhận: ít nhân CPU / ít RAM / tiết kiệm dữ liệu / giảm chuyển động / điện thoại. Khách tự bật/tắt ở cuối trang (lưu br_lite). */
@@ -2668,7 +2673,7 @@ html[data-theme=light] .cbst.wt{color:var(--warn)}
 #cporderdlg .cpside .acts #cp-obuy{padding-left:6px;padding-right:6px}
 /* ===== ĐÈN NEON (22/11) =====
    · neon thường — mọi khách: viền phát sáng dịu quanh các khung chính, KHÔNG chuyển động.
-   · 💡 Neon chạy — khách tự bật (nút cạnh Sáng / Tối + cuối trang; nhớ trên máy: br_neon): 2 vệt sáng xanh / tím chạy ĐUỔI NHAU quanh viền
+   · 💡 Neon chạy — 27/11n: LUÔN BẬT cho mọi khách (bỏ nút ⚡ Neon cạnh Sáng / Tối + nút cuối trang): 2 vệt sáng xanh / tím chạy ĐUỔI NHAU quanh viền
      (~6,5 giây 1 vòng) ở thẻ sản phẩm, thẻ máy, khung video, mục menu đang chọn. Hộp thoại chỉ phát sáng (không chạy) cho đỡ rối mắt.
    · Máy tắt hoạt ảnh (prefers-reduced-motion) / chế độ nhẹ → vệt sáng đứng yên. Thẻ có màu trạng thái (máy chạy = xanh lá, sắp hết hạn = vàng) giữ màu đó. */
 html[data-theme]{--nc:64,214,255;--nc2:176,124,255;--ncw:235,255,255;--ncw2:246,236,255}
@@ -2680,31 +2685,22 @@ html[data-theme=light] :is(.m3-row,.m3-sub,.m3m-box,.m3m-card,.m3v-fig,.m3v-ch,.
 html[data-theme] .dlg{box-shadow:0 0 0 1px rgba(var(--nc),.55),0 0 0 4px rgba(var(--nc),.1),0 0 44px -10px rgba(var(--nc),.6),0 30px 60px -20px rgba(0,0,0,.45)}
 html[data-theme=dark] header.top nav a.on{box-shadow:0 0 0 1px rgba(var(--nc),.6),0 0 20px -4px rgba(var(--nc),.8),inset 0 1px 0 rgba(255,255,255,.45)}
 html[data-theme=dark] .m3-sh h2,html[data-theme=dark] .m3v-bh{text-shadow:0 0 18px rgba(var(--nc),.35)}
-/* nút 💡 Neon (cạnh Sáng / Tối) */
-.neonsw{flex:none;position:relative;display:inline-flex;align-items:center;gap:6px;height:40px;padding:0 13px 0 11px;border:0;border-radius:999px;background:var(--card);box-shadow:0 0 0 2px var(--ring);color:var(--muted);font:700 13px var(--body);cursor:pointer;transition:color .25s,box-shadow .25s}
-.neonsw svg{width:17px;height:17px;flex:none}
-.neonsw:hover{color:var(--fg)}
-.neonsw.on{color:rgb(var(--nc));box-shadow:0 0 0 2px rgba(var(--nc),.6),0 0 16px -2px rgba(var(--nc),.7)}
-.neonsw:focus-visible{outline:3px solid rgba(var(--nc),.85);outline-offset:2px}
-@media (max-width:1180px){.neonsw span{display:none}.neonsw{padding:0 11px}}
-.fxtoggle#neon-foot[aria-pressed="true"]{border-color:rgba(var(--nc),.8);color:rgb(var(--nc))}
 /* 💡 Neon chạy */
 @property --nr{syntax:"<angle>";inherits:false;initial-value:0deg}
 @keyframes nrun{to{--nr:360deg}}
 html.neonrun :is(.m3-sub,.m3m-card,header.top nav a.on){position:relative}
 html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig){box-shadow:0 0 0 1px rgba(var(--nc),.2),0 0 26px -8px rgba(var(--nc),.6)}
-html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;padding:2.5px;pointer-events:none;
+html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{content:"";position:absolute;inset:0;z-index:3;border-radius:inherit;padding:2.5px;pointer-events:none;
   background:conic-gradient(from var(--nr),rgba(var(--nc),0) 0deg,rgba(var(--nc),.85) 24deg,rgba(var(--ncw),.98) 38deg,rgba(var(--nc),.85) 52deg,rgba(var(--nc),0) 82deg 180deg,
     rgba(var(--nc2),.85) 204deg,rgba(var(--ncw2),.98) 218deg,rgba(var(--nc2),.85) 232deg,rgba(var(--nc2),0) 262deg 360deg);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
   animation:nrun 6.5s linear infinite}
 html.neonrun header.top nav a.on::after{padding:2px;animation-duration:4.5s}
-html.neonrun .neonsw::after{padding:2px;animation-duration:3.2s}
 html.neonrun :is(.m3m-card,.m3-row):nth-child(2n)::after{animation-delay:-2.2s}
 html.neonrun :is(.m3m-card,.m3-row):nth-child(3n)::after{animation-delay:-4.3s}
-@media (prefers-reduced-motion:reduce){html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{animation:none}}
-html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.neonsw)::after{animation:none}
+@media (prefers-reduced-motion:reduce){html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{animation:none}}
+html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{animation:none}
 </style>
 </head>
 <body>
@@ -2731,7 +2727,6 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
       <div class="langsw" id="lang-seg" role="group" aria-label="Language / Ngôn ngữ"><button id="lang-vi" class="on" type="button" title="Tiếng Việt"><span class="fl"><svg viewBox="0 0 30 20" aria-hidden="true"><rect width="30" height="20" fill="#da251d"/><path fill="#ff0" d="M15 4l1.76 5.42h5.7l-4.61 3.35 1.76 5.42L15 14.84l-4.61 3.35 1.76-5.42-4.61-3.35h5.7z"/></svg></span><span class="ln">Tiếng Việt</span><span class="ls">VI</span></button><button id="lang-en" type="button" title="English"><span class="fl"><svg viewBox="0 0 60 30" aria-hidden="true"><clipPath id="ukc"><path d="M0 0v30h60V0z"/></clipPath><clipPath id="ukt"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><g clip-path="url(#ukc)"><path d="M0 0v30h60V0z" fill="#012169"/><path d="M0 0l60 30m0-30L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30m0-30L0 30" clip-path="url(#ukt)" stroke="#C8102E" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#C8102E" stroke-width="6"/></g></svg></span><span class="ln">English</span><span class="ls">EN</span></button></div>
       <div class="cursw" hidden style="display:none" role="group" aria-label="Currency / Đơn vị tiền"><button id="cur-vnd" class="on" type="button" title="Việt Nam đồng"><span class="sy">₫</span>VND</button><button id="cur-usd" type="button" title="US dollar"><span class="sy">$</span>USD</button></div>
       <div class="thsw" id="theme-seg" role="group" aria-label="Sáng / Tối"><button type="button" data-t="light" title="Chế độ sáng" aria-label="Chế độ sáng"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg></button><button type="button" data-t="dark" title="Chế độ tối" aria-label="Chế độ tối"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a.6.6 0 0 0-.8-.7A9.6 9.6 0 1 0 21.2 15.4a.6.6 0 0 0-.7-.8Z"/></svg></button></div>
-      <button type="button" class="neonsw" id="neon-btn" aria-pressed="false" title="Đèn neon chạy" aria-label="Đèn neon chạy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M13 2.5 4.5 13.5h6.5l-1 8 8.5-11h-6.5l1-8Z"/></svg><span>Neon</span></button>
       <span id="guest-acts"><button class="btn ghost" id="btn-login" data-i18n="login">Đăng nhập</button> <button class="btn" id="btn-reg" data-i18n="signup">Đăng ký</button></span>
       <span id="user-acts" hidden style="display:flex;gap:8px;align-items:center">
         <span class="bal"><span data-i18n="balance">Số dư</span>: <b id="bal">0đ</b></span>
@@ -2859,7 +2854,7 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     <div><h5 data-i18n="f_contact">Liên hệ</h5><ul><li id="ct-zalo"></li><li id="ct-email"></li><li id="ct-discord"></li><li id="ct-zalog"></li><li id="ft-app" hidden><a href="/download/blueroblox-cloud.apk" download="CloudBlue.apk">📱 Tải app Android</a></li></ul></div>
   </div>
   <div class="copy">© <span id="year"></span> CloudBlue.</div>
-  <div class="wrap fxbar"><button type="button" class="fxtoggle" id="fx-toggle" aria-pressed="false">✨ Hiệu ứng: Bật</button><button type="button" class="fxtoggle" id="neon-foot" aria-pressed="false">💡 Neon chạy: Tắt</button><small id="fx-hint">Máy yếu / mạng chậm → tắt hiệu ứng cho mượt</small></div>
+  <div class="wrap fxbar"><button type="button" class="fxtoggle" id="fx-toggle" aria-pressed="false">✨ Hiệu ứng: Bật</button><small id="fx-hint">Máy yếu / mạng chậm → tắt hiệu ứng cho mượt</small></div>
 </footer>
 
 <!-- MUA -->
@@ -4085,6 +4080,26 @@ html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on,.ne
     <pre class="nmg-out" id="nmg-out" hidden></pre>
     <div class="hint" style="margin-top:10px">Các nút cần khoá bí mật hoặc phải ngồi tại máy — 🚀 Tự động A→Z, ① Cài đặt, ② Dán khoá Supabase, ③ Nối Cloudflare, 🎛 Chọn giả lập, 🛣 Đường thẳng, 🔑 Tự đăng nhập — chỉ làm ở bảng CloudBlue trên máy chủ.</div>
     <div class="acts"><button class="btn ghost" type="button" id="nmg-close">Đóng</button></div>
+  </div>
+</div>
+<!-- ADMIN: 🚚 CHUYỂN HẾT MÁY KHÁCH SANG MÁY CHỦ KHÁC (27/11n · SQL v65 · máy chủ bản 27/11n) — máy chủ lỗi / cần sửa: dồn máy khách sang máy chủ khác, giữ nguyên dữ liệu -->
+<div class="modal" id="nmvdlg" hidden>
+  <div class="dlg nrbdlg" role="dialog" aria-modal="true" aria-labelledby="nmv-title" style="max-width:700px">
+    <h3 id="nmv-title">🚚 Chuyển hết máy sang máy chủ khác</h3>
+    <div class="hint" id="nmv-who"></div>
+    <div class="srv-st" id="nmv-st"></div>
+    <div class="note" style="margin-top:10px">Làm từng máy: máy chủ mới tạo sẵn máy trống → máy ở đây <b>tắt êm</b> → chép nguyên ổ dữ liệu sang → bật ở máy chủ mới → web tự đổi máy chủ cho khách. App, tài khoản, dữ liệu <b>giữ nguyên</b>; mỗi máy tắt khoảng 2–5 phút (máy nhiều dữ liệu lâu hơn), khách thấy máy báo “🚚 Đang chuyển”. Lỗi ở bước nào thì máy <b>tự bật lại ở đây như cũ</b>. Máy chủ này sang ⛔ Ngừng hẳn — sửa xong bấm “Nhận máy lại”.</div>
+    <div id="nmv-form">
+      <label class="nmv-l">Chuyển sang<select class="in" id="nmv-to"></select></label>
+      <div class="nmv-warn" id="nmv-warn"></div>
+      <div class="srv-go"><input class="in" id="nmv-confirm" autocomplete="off" spellcheck="false" aria-label="Gõ mã máy chủ để xác nhận"><button class="btn danger" type="button" id="nmv-go" disabled>🚚 Bắt đầu chuyển</button></div>
+    </div>
+    <div class="nrb-st" id="nmv-msg" role="status"></div>
+    <div id="nmv-prog" hidden>
+      <div class="nmv-ph"><b id="nmv-sum"></b><span><button class="btn ghost sm" type="button" id="nmv-retry" hidden>🔁 Chuyển lại máy lỗi</button><button class="btn ghost sm" type="button" id="nmv-stop" hidden>⏹ Dừng các máy chưa chuyển</button></span></div>
+      <div class="nrb-list" id="nmv-list"></div>
+    </div>
+    <div class="acts"><button class="btn ghost" type="button" id="nmv-close">Đóng</button></div>
   </div>
 </div>
 <div class="modal" id="appnews" hidden>
@@ -7065,26 +7080,12 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
   }
 })();
 
-/* ===== 💡 ĐÈN NEON CHẠY (22/11): khách tự bật / tắt — nhớ trên máy (br_neon). Tắt = neon thường (viền phát sáng đứng yên). ===== */
+/* ===== 💡 ĐÈN NEON CHẠY — 27/11n: LUÔN BẬT cho mọi khách (bỏ nút ⚡ Neon cạnh Sáng / Tối + nút cuối trang; lựa chọn cũ br_neon không còn dùng).
+   Máy tắt hoạt ảnh (prefers-reduced-motion) / chế độ nhẹ → viền vẫn sáng, vệt sáng đứng yên cho đỡ giật. ===== */
 (function () {
-  const root = document.documentElement, b = document.getElementById("neon-btn"), f = document.getElementById("neon-foot");
-  const on = () => root.classList.contains("neonrun");
-  function paint() {
-    const v = on(), t = v ? L("Đèn neon chạy: đang BẬT — bấm để tắt", "Running neon: ON — tap to turn off") : L("Đèn neon chạy: đang tắt — bấm để bật", "Running neon: off — tap to turn on");
-    [b, f].forEach(x => { if (!x) return; x.setAttribute("aria-pressed", v ? "true" : "false"); x.title = t; x.classList.toggle("on", v); });
-    if (b) b.setAttribute("aria-label", t);
-    if (f) f.textContent = v ? L("💡 Neon chạy: Bật", "💡 Running neon: On") : L("💡 Neon chạy: Tắt", "💡 Running neon: Off");
-  }
-  window.BRsetNeon = function (v) {
-    root.classList.toggle("neonrun", !!v);
-    try { localStorage.setItem("br_neon", v ? "1" : "0"); } catch (e) {}
-    paint();
-    let still = ""; try { still = window.BR_LITE ? L("Đang ở chế độ nhẹ nên đèn neon đứng yên — bật lại ✨ Hiệu ứng ở cuối trang để đèn chạy.", "Lite mode keeps the neon still — turn ✨ Effects back on at the bottom to make it run.")
-      : matchMedia("(prefers-reduced-motion: reduce)").matches ? L("Máy đang tắt hoạt ảnh nên đèn neon đứng yên.", "Your device has animations turned off, so the neon stays still.") : ""; } catch (e) {}
-    try { toast(v ? (still || L("💡 Đã bật đèn neon chạy.", "💡 Running neon is on.")) : L("Đã tắt đèn neon chạy — giữ neon thường.", "Running neon is off — plain neon stays."), 0); } catch (e) {}
-  };
-  [b, f].forEach(x => { if (x) x.onclick = () => window.BRsetNeon(!on()); });
-  paint(); document.addEventListener("br-lang", paint);
+  document.documentElement.classList.add("neonrun");
+  try { localStorage.removeItem("br_neon"); } catch (e) {}
+  window.BRsetNeon = function () { document.documentElement.classList.add("neonrun"); };   // giữ tên hàm cũ — luôn bật
 })();
 
 /* ===== hiệu ứng ===== */
@@ -9286,7 +9287,7 @@ function renderAlerts() {
 }
 async function loadNodes() {
   if (!isAdmin()) return [];
-  const [{ data, error }] = await Promise.all([sb.from("cloud_nodes").select("*").order("created_at"), loadSrvMachines(), loadNodeRevenue()]);
+  const [{ data, error }] = await Promise.all([sb.from("cloud_nodes").select("*").order("created_at"), loadSrvMachines(), loadNodeRevenue(), loadMoves()]);
   if (error) { if ($("cpa-nodes")) $("cpa-nodes").innerHTML = `<div class="empty">${/cloud_nodes/.test(error.message || "") ? "Chưa chạy file SQL cloud-phones-v5.sql trên Supabase." : esc(errMsg(error))}</div>`; return []; }
   NODES = data || []; return NODES;
 }
@@ -9518,7 +9519,7 @@ function renderNodes() {
         <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
         <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
           <span class="pill ${off ? "bad" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}</div>
+        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}${mvRow(n)}</div>
       </div>
       <div class="nc cpu">
         ${nRow("CPU thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, "CPU đang dùng thật")}
@@ -9552,6 +9553,7 @@ function renderNodes() {
         ${!n.pause_hard ? `<button class="btn danger sm" data-nhard="${nid}" title="Ngừng nhận máy và KHÔNG tự bật lại — dùng khi sửa máy / bảo trì">⛔ Ngừng hẳn</button>` : ""}
         ${!off ? `<button class="btn ghost sm" data-nmanage="${nid}" title="Bản đang chạy, cập nhật, các nút của bảng CloudBlue trên máy chủ">🛠 Quản lý</button>` : ""}
         ${!off ? `<button class="btn danger sm" data-nreboot="${nid}" title="Khởi động lại cả máy chủ (Windows): tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>` : ""}
+        ${n.phones || MOVES.some(j => j.src === n.id) ? `<button class="btn ghost sm" data-nmove="${nid}" title="Máy chủ lỗi / cần sửa: chuyển mọi máy khách sang máy chủ khác, giữ nguyên app + dữ liệu (mỗi máy tắt ~2–5 phút)">🚚 Chuyển hết máy sang máy chủ khác</button>` : ""}
         ${n.phones ? `<button class="btn danger sm" data-nwipe="${nid}">🧹 Xoá sạch máy</button>` : ""}
         ${off ? `<button class="btn danger sm" data-ndel="${nid}">Xoá</button>` : ""}
       </div>
@@ -10124,6 +10126,210 @@ $("nrb-q") && ($("nrb-q").oninput = nrbRender);
 $("nrb-close") && ($("nrb-close").onclick = () => show("nrbdlg", false));
 $("nrb-list") && ($("nrb-list").onclick = e => { const b = e.target.closest("[data-nrbgo]"); if (b && !b.disabled) nrbGo(b.dataset.nrbgo); });
 $("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => { const b = e.target.closest("[data-nreboot]"); if (b) nrbOpen(b.dataset.nreboot); });
+
+
+/* ---- Admin: 🚚 CHUYỂN HẾT MÁY KHÁCH SANG MÁY CHỦ KHÁC (27/11n · SQL v65 · máy chủ bản 27/11n). Máy chủ lỗi / cần sửa → ⚙ Cài đặt → 🚚:
+        admin_cp_move_start → mỗi máy khách thành 1 việc (bảng cp_moves) → máy chủ cùng loại giả lập tự nhận, tạo máy trống, máy chủ cũ tắt êm máy,
+        máy chủ mới chép nguyên ổ dữ liệu + bật → web đổi máy chủ. Lỗi → máy tự về như cũ. Web chỉ bắt đầu / dừng / xem tiến độ
+        (mã tải file + khoá cũ không cấp cho web: chỉ chọn đúng các cột dưới). ---- */
+const MV_COLS = "id,batch,phone_id,src,want,dst,src_name,dst_name,android,engine,ram,cpu,status,bytes_total,bytes_done,rate_kbs,size_hint,error,note,tries,created_at,step_at,done_at,src_fin,dst_fin";
+const MV_LIVE = ["queued", "claimed", "ready", "stopping", "serving", "copying", "booting"];
+let MOVES = [], MV_OFF = false, mvNode = null, mvT = null, MV_BUSY = false, mvDoneSeen = -1;
+async function loadMoves() {
+  if (!isAdmin() || MV_OFF) return MOVES;
+  const since = new Date(Date.now() - 3 * 86400e3).toISOString();
+  try {
+    const { data, error } = await sb.from("cp_moves").select(MV_COLS).or(`status.in.(${MV_LIVE.join(",")}),created_at.gte.${since}`)
+      .order("created_at", { ascending: false }).limit(2000);
+    if (error) { if (/cp_moves|PGRST20[25]|42P01/.test(String(error.code || "") + " " + String(error.message || ""))) MV_OFF = true; return MOVES; }
+    MOVES = data || [];
+  } catch (e) {}
+  return MOVES;
+}
+const mvGB = b => b == null || isNaN(+b) ? "?" : +b >= 2 ** 30 ? (+b / 2 ** 30).toFixed(1) + " GB" : Math.max(0, Math.round(+b / 2 ** 20)) + " MB";
+const mvRate = k => +k >= 1024 ? (+k / 1024).toFixed(+k >= 10240 ? 0 : 1) + " MB/s" : Math.round(+k || 0) + " KB/s";
+const mvAnd = p => String((p && p.android) || "").trim() || "9";
+function mvAndroids(n) { const a = n.androids ?? (n.metrics || {}).androids; return (Array.isArray(a) ? a : String(a ?? "").split(",")).map(x => String(x).trim()).filter(x => x && x !== "-"); }
+function mvEmu(n) { return String(n.engine ?? (n.metrics || {}).engine ?? "").trim().toLowerCase(); }
+function mvPhones(n) { return (CPA_ROWS || []).filter(p => p.node === n.id && ["active", "expired"].includes(p.status)); }
+function mvLiveFor(pid) { return MOVES.some(j => j.phone_id === pid && MV_LIVE.includes(j.status)); }
+/* máy chủ nhận được máy của n: cùng loại giả lập · đang kết nối · bản 27/11n trở lên (metrics.move) · không ⛔ Ngừng hẳn.
+   Máy chủ đang "Ngừng nhận máy" (tạm) chỉ nhận khi admin chọn ĐÍCH DANH (cloudphoned 27/11n: want = chính nó) — "Tự chia" không tính. */
+function mvTargets(n) {
+  const emu = mvEmu(n);
+  return NODES.filter(x => x.id !== n.id).map(x => {
+    const m = x.metrics || {}, e = mvEmu(x);
+    const why = nAge(x) > 3 ? "mất kết nối" : emu && e !== emu ? "khác giả lập (" + (NODE_ENGINE[e] || e || "?") + ")" : !+m.move ? "chưa lên bản 27/11n"
+      : !x.enabled && x.pause_hard ? "đang ⛔ Ngừng hẳn" : "";
+    return { n: x, why, auto: !why && !!x.enabled, room: Math.max(0, Math.floor(+x.cap_ram - +x.alloc_ram) || 0), and: mvAndroids(x) };
+  });
+}
+const MV_ST = {
+  queued: j => "⏳ Chờ máy chủ nhận" + (j.want ? " (" + j.want + ")" : "") + (j.note ? " · " + j.note : ""),
+  claimed: j => `🛠 ${j.dst} đang tạo máy trống`,
+  ready: j => `🛠 ${j.dst} đã sẵn sàng — sắp tắt máy ở đây`,
+  stopping: () => "⏻ Đang tắt êm máy",
+  serving: j => `📦 Đã tắt — chờ ${j.dst} tải ổ dữ liệu` + (j.bytes_total ? " (" + mvGB(j.bytes_total) + ")" : ""),
+  copying: j => `⬇ Đang chép sang ${j.dst}: ${mvGB(j.bytes_done || 0)} / ${mvGB(j.bytes_total)}` + (j.rate_kbs ? " · " + mvRate(j.rate_kbs) : "") + (j.note ? " · " + j.note : ""),
+  booting: j => `🔌 Đang bật ở ${j.dst}, chờ Android lên`,
+  done: j => `✅ Đã chạy ở ${j.dst}` + (j.dst_name ? " (" + j.dst_name + ")" : ""),
+  failed: j => "❌ " + (j.error || "Lỗi") + (j.src_fin ? " — máy đã về như cũ ở đây" : " — đang đưa máy về như cũ…"),
+  cancelled: j => "⏹ Đã dừng — máy giữ ở máy chủ này",
+};
+function mvStText(j) { return (MV_ST[j.status] || (x => x.status))(j); }
+/* đợt chuyển máy đi của máy chủ n: mọi lần bấm trong 24 giờ trước lần bấm gần nhất (+ việc còn chạy) — MỖI máy khách lấy lượt MỚI NHẤT
+   (máy lỗi bấm "Chuyển lại" thì tính theo lượt mới) → đếm xong / lỗi / dừng / đang làm theo máy, không theo lượt bấm */
+function mvBatch(n) {
+  const out = MOVES.filter(j => j.src === n.id); if (!out.length) return null;
+  const lastAt = out.reduce((a, j) => (String(j.created_at) > a ? String(j.created_at) : a), ""), t0 = new Date(lastAt).getTime() - 24 * 3600e3;
+  const per = new Map();
+  for (const j of out) {
+    if (!MV_LIVE.includes(j.status) && new Date(j.created_at).getTime() < t0) continue;
+    const o = per.get(j.phone_id); if (!o || String(j.created_at) > String(o.created_at)) per.set(j.phone_id, j);
+  }
+  const rows = [...per.values()];
+  const c = { all: rows.length, done: 0, failed: 0, cancelled: 0, live: 0, copying: 0, at: lastAt, rows };
+  for (const j of rows) { if (MV_LIVE.includes(j.status)) c.live++; else c[j.status] = (c[j.status] || 0) + 1; if (["stopping", "serving", "copying", "booting"].includes(j.status)) c.copying++; }
+  return c;
+}
+function mvRow(n) {
+  if (MV_OFF || !MOVES.length) return "";
+  const nid = esc(n.id), b = mvBatch(n), inn = MOVES.filter(j => j.dst === n.id && MV_LIVE.includes(j.status));
+  let h = "";
+  if (b && (b.live || Date.now() - new Date(b.at).getTime() < 24 * 3600e3)) {
+    const col = b.live ? "var(--warn, #ffd666)" : b.failed ? "var(--bad)" : "var(--ok)";
+    const txt = b.live ? `🚚 Đang chuyển máy đi: ${b.done}/${b.all} xong` + (b.copying ? ` · ${b.copying} đang chép` : "") + (b.failed ? ` · ${b.failed} lỗi` : "")
+      : `🚚 Lượt chuyển gần nhất: ${b.done}/${b.all} máy đã sang máy chủ khác` + (b.failed ? ` · ${b.failed} lỗi (vẫn ở đây)` : "") + (b.cancelled ? ` · ${b.cancelled} đã dừng` : "");
+    h += `<div class="nmv" style="color:${col}">${esc(txt)}<button class="btn ghost sm" type="button" data-nmove="${nid}">Xem</button></div>`;
+  }
+  if (inn.length) {
+    const from = [...new Set(inn.map(j => j.src))].join(", ");
+    h += `<div class="nmv" style="color:var(--warn, #ffd666)">${esc(`🚚 Đang nhận ${inn.length} máy từ ${from}`)}</div>`;
+  }
+  return h;
+}
+function mvPick(n) {          // máy sẽ gửi đi theo máy chủ đích đang chọn: {ids (null = tất cả), send, keep: [máy không chuyển được + lý do]}
+  const to = ($("nmv-to") && $("nmv-to").value) || "", ph = mvPhones(n).filter(p => !mvLiveFor(p.id));
+  if (!to) return { ids: null, send: ph, keep: [] };
+  const t = mvTargets(n).find(x => x.n.id === to), and = t ? t.and : [];
+  const send = ph.filter(p => !and.length || and.includes(mvAnd(p))), keep = ph.filter(p => !send.includes(p));
+  return { ids: keep.length ? send.map(p => p.id) : null, send, keep, t };
+}
+function mvRender() {
+  const n = NODES.find(x => x.id === mvNode), box = $("nmv-st"); if (!n || !box) return;
+  const m = n.metrics || {}, off = nAge(n) > 3, ph = mvPhones(n), act = ph.filter(p => p.status === "active").length;
+  const T = mvTargets(n), okT = T.filter(x => !x.why), autoT = T.filter(x => x.auto), b = mvBatch(n);
+  const needAnd = [...new Set(ph.map(mvAnd))].sort();
+  box.innerHTML = `<div>Máy khách trên máy chủ này<b>${ph.length} máy${ph.length ? ` (${act} đang thuê · ${ph.length - act} chờ gia hạn)` : ""}</b></div>`
+    + `<div>Android cần chuyển<b>${needAnd.length ? esc(needAnd.join(", ")) : "—"}</b></div>`
+    + `<div>Máy chủ này<b style="color:${off ? "var(--bad)" : !+m.move ? "var(--bad)" : "var(--ok)"}">${off ? "❌ Mất kết nối " + Math.round(nAge(n)) + " phút" : !+m.move ? "⚠ Chưa lên bản 27/11n" : "✅ Chuyển được"}</b></div>`
+    + `<div>Máy chủ nhận được<b style="color:${okT.length ? "var(--ok)" : "var(--bad)"}">${okT.length ? esc(okT.map(x => (x.n.name || x.n.id) + (x.auto ? "" : " (đang ngừng nhận)")).join(", ")) : "❌ Chưa có"}</b></div>`;
+  const sel = $("nmv-to"), cur = sel.value;
+  const oh = `<option value=""${autoT.length ? "" : " disabled"}>Tự chia cho các máy chủ đang nhận máy (${autoT.length} máy chủ)</option>`
+    + T.map(x => `<option value="${esc(x.n.id)}"${x.why ? " disabled" : ""}>${esc((x.n.name || x.n.id) + " · " + x.n.id + (x.why ? " — " + x.why
+      : ` — còn ~${x.room} GB RAM · Android ${x.and.join(", ") || "?"}` + (x.auto ? "" : " · đang ngừng nhận máy (vẫn nhận máy chuyển khi chọn đích danh)")))}</option>`).join("");
+  if (sel.dataset.h !== oh) { sel.innerHTML = oh; sel.dataset.h = oh; }                  // không vẽ lại khi không đổi (hộp chọn đang mở không bị đóng)
+  sel.value = T.some(x => x.n.id === cur && !x.why) ? cur : autoT.length || !okT.length ? "" : okT[0].n.id;
+  const pk = mvPick(n), w = [];
+  if (MV_OFF) w.push(["bad", "Cần chạy file SQL v65 (cloudblue-v65-chuyen-may-chu.sql) trong Supabase trước, rồi tải lại trang."]);
+  else if (off) w.push(["bad", "Máy chủ này đang mất kết nối — phải chạy thì máy chủ mới mới chép được dữ liệu. Bật lại máy chủ (hoặc sửa mạng) rồi chuyển."]);
+  else if (!+m.move) w.push(["bad", "Máy chủ này chưa lên bản 27/11n — ⚙ Cài đặt › 🛠 Quản lý › ⬆ Cập nhật máy chủ, đợi 1–3 phút rồi mở lại."]);
+  if (!MV_OFF && !okT.length) w.push(["bad", "Chưa có máy chủ nào nhận được: cần máy chủ khác cùng loại giả lập (" + (NODE_ENGINE[mvEmu(n)] || mvEmu(n) || "?") + "), đang kết nối, chạy bản 27/11n, không ⛔ Ngừng hẳn."]);
+  if (pk.keep.length) w.push(["warn", `${pk.keep.length} máy Android ${[...new Set(pk.keep.map(mvAnd))].join(", ")} không chuyển sang ${pk.t ? pk.t.n.name || pk.t.n.id : "máy chủ này"} được (máy chủ đó không bán bản Android này) — giữ ở đây.`]);
+  const ram = pk.send.reduce((s, p) => s + (+p.ram || 0), 0), room = (sel.value ? [pk.t] : autoT).reduce((s, x) => s + (x ? x.room : 0), 0);
+  if (pk.send.length && room && ram > room) w.push(["warn", `Cần ~${ram} GB RAM, máy chủ nhận còn ~${room} GB — máy nào hết chỗ sẽ nằm chờ, có chỗ là tự chuyển tiếp.`]);
+  const liveN = ph.filter(p => mvLiveFor(p.id)).length;
+  if (liveN) w.push(["warn", `${liveN} máy đang trong lượt chuyển — không thêm lại.`]);
+  $("nmv-warn").innerHTML = w.map(([k, t]) => `<div style="color:${k === "bad" ? "var(--bad)" : "var(--warn, #ffd666)"}">${k === "bad" ? "❌" : "⚠"} ${esc(t)}</div>`).join("");
+  const typed = ($("nmv-confirm").value || "").trim().toLowerCase() === String(n.id).toLowerCase();
+  const can = !MV_OFF && !off && !!+m.move && (sel.value ? okT.some(x => x.n.id === sel.value) : autoT.length > 0) && pk.send.length > 0;
+  const gb = $("nmv-go"); gb.disabled = MV_BUSY || !can || !typed;
+  gb.textContent = pk.send.length ? `🚚 Bắt đầu chuyển ${pk.send.length} máy` : "🚚 Bắt đầu chuyển";
+  /* tiến độ lượt gần nhất */
+  show("nmv-prog", !!b);
+  if (b) {
+    const nm = j => { const p = (CPA_ROWS || []).find(x => x.id === j.phone_id), u = p && cpaUser(p.user_id); return { name: (p && p.name) || j.src_name, who: (u && (u.username || u.email)) || "" }; };
+    $("nmv-sum").textContent = `Đợt chuyển (lần bấm gần nhất ${new Date(b.at).toLocaleString("vi-VN")}): ${b.done}/${b.all} máy xong` + (b.live ? ` · ${b.live} đang làm` : "") + (b.failed ? ` · ${b.failed} lỗi` : "") + (b.cancelled ? ` · ${b.cancelled} đã dừng` : "");
+    const ord = { copying: 0, booting: 1, serving: 2, stopping: 3, ready: 4, claimed: 5, queued: 6, failed: 7, cancelled: 8, done: 9 };
+    $("nmv-list").innerHTML = b.rows.slice().sort((x, y) => (ord[x.status] ?? 5) - (ord[y.status] ?? 5) || String(x.src_name).localeCompare(String(y.src_name))).map(j => {
+      const k = nm(j), col = j.status === "failed" ? "var(--bad)" : j.status === "done" ? "var(--ok)" : j.status === "cancelled" ? "var(--muted)" : "var(--warn, #ffd666)";
+      const pct = j.status === "done" ? 100 : j.bytes_total ? Math.min(100, Math.round(100 * (+j.bytes_done || 0) / +j.bytes_total)) : 0;
+      return `<div class="nrb-row" data-mvjob="${esc(j.id)}"><div class="nm"><b>${esc(k.name)}</b><small>${esc([k.who, (+j.ram || "?") + "GB · " + (+j.cpu || "?") + " nhân", "Android " + (j.android || "?"), j.size_hint ? "dữ liệu ~" + mvGB(j.size_hint) : ""].filter(Boolean).join(" · "))}</small>`
+        + `<div class="nrb-st" style="color:${col}">${esc(mvStText(j))}</div>${j.status === "copying" || j.status === "done" ? `<div class="nmv-bar"><i style="width:${pct}%"></i></div>` : ""}</div></div>`;
+    }).join("");
+    const retry = b.rows.filter(j => j.status === "failed" && !mvLiveFor(j.phone_id) && ph.some(p => p.id === j.phone_id));
+    const rb = $("nmv-retry"); rb.hidden = !retry.length; rb.disabled = MV_BUSY || !can || !typed; rb.textContent = `🔁 Chuyển lại ${retry.length} máy lỗi`;
+    rb.title = typed ? "" : `Gõ ${n.id} ở ô xác nhận để mở nút`;
+    const stopN = b.rows.filter(j => ["queued", "claimed", "ready"].includes(j.status)).length, sb_ = $("nmv-stop");
+    sb_.hidden = !stopN; sb_.disabled = MV_BUSY; sb_.textContent = `⏹ Dừng ${stopN} máy chưa chuyển`;
+  }
+}
+async function mvOpen(id) {
+  const n = NODES.find(x => x.id === id); if (!n) return;
+  mvNode = id; MV_BUSY = false; MV_OFF = false; mvDoneSeen = -1;
+  $("nmv-who").textContent = `${n.name} (${n.id}) · ${NODE_ENGINE[mvEmu(n)] || mvEmu(n) || "giả lập ?"}`;
+  $("nmv-confirm").value = ""; $("nmv-confirm").placeholder = `Gõ ${n.id} để xác nhận`; $("nmv-msg").textContent = ""; $("nmv-to").innerHTML = "";
+  show("nmvdlg"); mvRender();
+  const jobs = [loadMoves()];
+  if (!(CPA_ROWS || []).length) jobs.push(reloadCpa().catch(() => {}));
+  await Promise.all(jobs); mvRender();
+  if ((CPA_ROWS || []).some(p => p.user_id && !cpaUser(p.user_id))) cpaFetchUsers().then(mvRender, () => {});
+  clearInterval(mvT); mvT = setInterval(mvTick, 4000);
+  setTimeout(() => { try { $("nmv-confirm").focus(); } catch (e) {} }, 60);
+}
+async function mvTick() {
+  if ($("nmvdlg").hidden) { clearInterval(mvT); mvT = null; return; }
+  await loadMoves();
+  const done = MOVES.filter(j => j.src === mvNode && j.status === "done").length;
+  if (mvDoneSeen >= 0 && done !== mvDoneSeen) { try { await reloadCpa(); } catch (e) {} }        // có máy vừa sang máy chủ mới → danh sách máy khách đổi máy chủ
+  mvDoneSeen = done; mvRender();
+}
+const MV_ERR = { NOT_ADMIN: "Chỉ admin mới chuyển được.", NO_NODE: "Không có máy chủ này (vừa bị xoá?).", SAME_NODE: "Máy chủ đích phải khác máy chủ này." };
+function mvErr(e) {
+  const m = String((e && (e.message || e.details)) || e || "");
+  if (/admin_cp_move_|PGRST202|Could not find the function/i.test(m) && !/NOT_ADMIN|NO_NODE|SAME_NODE/.test(m)) return "Cần chạy file SQL v65 trong Supabase trước.";
+  for (const k in MV_ERR) if (m.includes(k)) return MV_ERR[k];
+  return errMsg(e);
+}
+async function mvGo(retryIds) {
+  const n = NODES.find(x => x.id === mvNode); if (!n || MV_BUSY) return;
+  const pk = mvPick(n), to = $("nmv-to").value || null;
+  let ids = pk.ids;
+  if (retryIds) ids = retryIds.filter(id => pk.send.some(p => p.id === id));
+  if (ids && !ids.length) { $("nmv-msg").style.color = "var(--bad)"; $("nmv-msg").textContent = "❌ Không có máy nào chuyển được sang máy chủ đã chọn."; return; }
+  MV_BUSY = true; mvRender(); const msg = $("nmv-msg"); msg.style.color = "var(--warn, #ffd666)"; msg.textContent = "⏳ Đang xếp máy vào hàng chuyển…";
+  try {
+    const { data, error } = await sb.rpc("admin_cp_move_start", { p_node: n.id, p_target: to, p_ids: ids });
+    if (error) throw error;
+    const c = +(data && data.count) || 0, sk = +(data && data.skipped) || 0;
+    msg.style.color = c ? "var(--ok)" : "var(--bad)";
+    msg.textContent = c ? `✅ Đã xếp ${c} máy vào hàng chuyển${to ? " sang " + to : ""} — ${n.name} đã sang ⛔ Ngừng hẳn. Theo dõi tiến độ bên dưới (tự cập nhật).` + (sk ? ` · ${sk} máy đang có lượt chuyển khác, bỏ qua.` : "")
+      : "❌ Không có máy nào để chuyển" + (sk ? ` (${sk} máy đang trong lượt chuyển khác)` : "") + ".";
+    if (c) { toast(`🚚 ${n.name}: bắt đầu chuyển ${c} máy`); $("nmv-confirm").value = ""; }
+  } catch (e) { msg.style.color = "var(--bad)"; msg.textContent = "❌ " + mvErr(e); }
+  MV_BUSY = false;
+  await Promise.all([loadMoves(), loadNodes()]); mvRender(); renderNodes();
+}
+async function mvStop() {
+  const n = NODES.find(x => x.id === mvNode); if (!n || MV_BUSY) return;
+  MV_BUSY = true; mvRender(); const msg = $("nmv-msg");
+  try {
+    const { data, error } = await sb.rpc("admin_cp_move_cancel", { p_node: n.id }); if (error) throw error;
+    msg.style.color = "var(--ok)";
+    msg.textContent = `⏹ Đã dừng ${+(data && data.cancelled) || 0} máy chưa chuyển — các máy đó giữ nguyên ở ${n.name}.` + (+(data && data.running) ? ` ${+data.running} máy đang chép dở sẽ làm cho xong (vài phút) — dừng giữa chừng không an toàn hơn.` : "")
+      + " Máy chủ vẫn ⛔ Ngừng hẳn — bấm “Nhận máy lại” khi muốn bán tiếp.";
+  } catch (e) { msg.style.color = "var(--bad)"; msg.textContent = "❌ " + mvErr(e); }
+  MV_BUSY = false; await loadMoves(); mvRender(); renderNodes();
+}
+$("nmv-to") && ($("nmv-to").onchange = mvRender);
+$("nmv-confirm") && ($("nmv-confirm").oninput = mvRender);
+$("nmv-confirm") && $("nmv-confirm").addEventListener("keydown", e => { if (e.key === "Enter" && !$("nmv-go").disabled) mvGo(); });
+$("nmv-go") && ($("nmv-go").onclick = () => mvGo());
+$("nmv-stop") && ($("nmv-stop").onclick = mvStop);
+$("nmv-retry") && ($("nmv-retry").onclick = () => { const b = NODES.find(x => x.id === mvNode) && mvBatch(NODES.find(x => x.id === mvNode));
+  if (b) mvGo(b.rows.filter(j => j.status === "failed").map(j => j.phone_id)); });
+$("nmv-close") && ($("nmv-close").onclick = () => { show("nmvdlg", false); clearInterval(mvT); mvT = null; });
+$("cpa-nodes") && $("cpa-nodes").addEventListener("click", e => { const b = e.target.closest("[data-nmove]"); if (b) mvOpen(b.dataset.nmove); });
 
 
 /* ---- Admin: 🛠 QUẢN LÝ MÁY CHỦ (23/11f). Gọi /cpapi/admin/node của ĐÚNG máy chủ đó (metrics.base): GET = bản đang chạy + nhật ký lượt cập nhật ·
