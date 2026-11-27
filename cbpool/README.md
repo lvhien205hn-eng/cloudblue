@@ -34,7 +34,7 @@ cbpool ppp-test --dial 2      # quay thử 2 phiên bằng tài khoản đã lư
 phiên) lúc bật và 6 giờ / lần → `status.ppp.disc = {ok, ac, iface, t}` (hoặc `err`) → trang Quản trị hiện ngay "modem có cho PPPoE đi qua
 không". Tắt: `"ppp": {"probe": false}`. Dò lại ngay: `cbpool ppp-test` (hoặc lệnh điều khiển `{"cmd":"disc"}`).
 
-## Bán proxy cho khách (27.11c · web: Proxy dân cư, SQL v62)
+## Bán proxy cho khách (27.11c · web: Proxy dân cư, SQL v63)
 
 - Web bán (IPv6 / IPv4, riêng hoặc share 2–5 người) → cbhost 27/11g mỗi phút gọi `px_host_sync` → ghi `/etc/cloudblue/cbpool-users.json`
   (quyền 600: `{"bw","fb4","sale4","maxc","self":[IP nhà],"users":[{"u","p","k":"v6|v4","n":"s007|3","x":hết hạn,"s":share,"r"?}]}`)
