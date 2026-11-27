@@ -142,7 +142,7 @@ async def main():
        and st[-1]["rs"] == 2 and st[-1]["rk"] == 1 and st[-1]["efps"] > 0, st[-1:] if st else None)
 
     print("8. cbvideo (27/11f) — máy chủ hình riêng cho Android 9")
-    ck("bản 27/11f + dòng khởi động 'bản 27/11f: Android 9 cbvideo'", bs.BS_SUB == "27/11f" and "bản 27/11f: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("bản 27/11g + dòng khởi động 'bản 27/11g: Android 9 cbvideo'", bs.BS_SUB == "27/11g" and "bản 27/11g: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
     ck("md5 cbvideo.jar ghim đủ 32 ký tự hex", len(bs.CBV_FILE[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_FILE[1]), bs.CBV_FILE)
     sv = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0, kind="cbv")
     sv2 = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0)
@@ -229,7 +229,8 @@ async def main():
     bs.ScrcpyVideo = FakeSV; bs.ensure_cbv = lambda: True
     real_mode = bs.A9_CBV_MODE
     try:
-        ck("mặc định bản 27/11f: chế độ THỬ (chỉ phiên ?cbv=1)", real_mode == "test", real_mode)
+        ck("mặc định từ 27/11g: cbvideo BẬT cho mọi máy Android 9", real_mode == "on", real_mode)
+        bs.A9_CBV_MODE = "test"
         s = mk("9"); s.src = Src9(); s.enc = None; bs._CBV_BAD.pop(s.serial, None)
         s._start_video_scrcpy()
         ck("chế độ thử: máy Android 9 mở thường → vẫn scrcpy", made == ["scrcpy"], made)
@@ -288,6 +289,29 @@ async def main():
     except BaseException: pass
     st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
     ck("S_STATS: enc 'cbvideo' + kq (số lần xin khung khoá)", bool(st) and st[-1].get("enc") == "cbvideo" and st[-1].get("kq") == 3, st[-1:] if st else None)
+
+    cs = bs._cbv_stat("cbvideo stats: 5.0s in 100 sub 80 rep 2 out 81 (16.2 fps) read 9.1 ms conv 6.3 ms")
+    ck("đọc dòng thống kê cbvideo → khung vào / nạp / ra mỗi giây + ms đọc / đổi màu", cs == {"in": 20.0, "sub": 16.0, "out": 16.2, "read": 9.1, "conv": 6.3}
+       and bs._cbv_stat("rác") is None, cs)
+    import types
+    lines = ["cbvideo stats: 5.0s in 100 sub 80 rep 2 out 81 (16.2 fps) read 9.1 ms conv 6.3 ms",
+             "cbvideo stats: 5.0s in 90 sub 85 rep 0 out 85 (17.0 fps) read 8.0 ms conv 6.0 ms", "cbvideo: 544x960 fmt 21"]
+    it = iter([x.encode() + b"\n" for x in lines] + [b""])
+    p = types.SimpleNamespace(stdout=types.SimpleNamespace(readline=lambda: next(it)))
+    v = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, kind="cbv")
+    logged = []; real_log = bs.log; bs.log = lambda *a, **k: logged.append(" ".join(str(x) for x in a))
+    try: v._srvlog(p)
+    finally: bs.log = real_log
+    ck("cbvideo: thống kê mới nhất vào Thông số, nhật ký chỉ 1 dòng thống kê / 10 phút (dòng khác vẫn ghi)",
+       getattr(v, "cstat", {}).get("out") == 17.0 and sum("cbvideo stats" in x for x in logged) == 1 and any("544x960" in x for x in logged), (getattr(v, "cstat", None), logged))
+    s = mk("9"); e = CbEnc(); e.cstat = {"in": 20.0, "sub": 16.0, "out": 16.2, "read": 9.1, "conv": 6.3}; s.enc = e
+    s.last_rx = time.time() + 60; s.t_auth = time.time() + 3600; s.last_restart = time.time()
+    s._early_down = lambda now: False; s._may_raise = lambda now: False; s.wait_key = False
+    task = asyncio.ensure_future(s._monitor()); await asyncio.sleep(2.2); s.closed = True
+    try: await asyncio.wait_for(task, 2)
+    except BaseException: pass
+    st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
+    ck("S_STATS: cbs = thống kê cbvideo (web hiện dòng cbvideo)", bool(st) and st[-1].get("cbs", {}).get("read") == 9.1, st[-1:] if st else None)
 
 
 asyncio.run(main())
