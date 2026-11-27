@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        27/11j — MÁY CHỦ CÀI TAY ĐƯỢC TỐI ƯU NHƯ MÁY CÀI TỪ ISO (bước 3b, mỗi lần chạy — đủ rồi thì không đổi gì): chế độ điện CPU 100% · không
+#                 ngủ / ngủ đông · Windows Defender bỏ qua C:\blue + thư mục giả lập + chương trình giả lập / adb (nút "Tối ưu Windows" cũ chỉ
+#                 biết MEmu → máy MuMu / LD bị Defender quét mỗi lần máy ảo đọc / ghi ổ) · tắt Game DVR · Windows Update không chia sẻ lên mạng
+#                 (giữ băng thông tải lên cho hình) + không tự khởi động lại máy chủ. Bước 3c in PHẦN MỀM TRÊN MÁY (Windows, bản giả lập, driver card,
+#                 adb, Python) + SỨC KHOẺ CARD: card bận mà kẹt xung nghỉ (win3: 98% ở 139/1974 MHz, 9 W, "SW Power Cap") → báo ✗ kèm lý do card
+#                 tự báo + giới hạn điện; giới hạn điện bị đặt thấp hơn mặc định → tự trả về mặc định. Không đụng máy khách, không bật lại dịch vụ.
 #        27/11i — PROXY ĐỌC TÊN MIỀN: phonectl 27/11f đẩy cbproxy 27.11a (đọc SNI / Host ở cổng web, xin proxy theo tên miền → kho proxy
 #                 CloudBlue ra IPv6 riêng của ô). Máy khách đang bật proxy tự thay bản cbproxy mới trong vòng canh 5 phút. Máy khách KHÔNG tắt.
 #        27/11h — ANDROID 9 NÉN BẰNG OPENH264: bộ nén có sẵn của Android 9 (OMX) mất ~50–60 ms / khung → cbvideo nén bằng openh264
@@ -152,7 +158,7 @@ import ast, concurrent.futures as cf, datetime, json, os, re, struct, subprocess
 try: sys.stdout.reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
 except Exception: pass
 
-VER = "27/11i"
+VER = "27/11j"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -296,6 +302,8 @@ def state_end():
         d["ver"], d["upd"] = VER, True
     d.update(ok=bool(RUN["done"]) and not RUN["probs"], auto=AUTO, changed=sorted(set(RUN["changed"])), probs=[str(x)[:200] for x in RUN["probs"]][:8],
              files=fn, last={"ver": VER, "at": now, "upd": upd, "auto": AUTO})
+    if RUN.get("tune"): d["tune"] = RUN["tune"]           # 27/11j: tối ưu như ISO + phần mềm trên máy (web đọc sau)
+    if RUN.get("inv"): d["inv"] = RUN["inv"]
     state_write(d)
 
 # ------------------------------------------------------------------ 1. cập nhật file
@@ -1262,6 +1270,418 @@ def disk_line():
                 " · máy cũ để nguyên — xem: python phonectl.py bonho")
     except Exception: return ""
 
+# ------------------------------------------------------------------ 3b. 27/11j: TỐI ƯU WINDOWS NHƯ MÁY CÀI TỪ ISO
+# Giống bước 8 của winpc/maychu/may-chu-iso.ps1 (Optimize-Windows + phần "không ngủ" của Register-Panel). Làm lại MỖI LẦN chạy, đủ rồi thì không đổi gì:
+#   · chế độ điện: CPU tối thiểu 100% (Ultimate / High performance) — dò theo thông số CPU của chế độ đang dùng, không theo tên (Windows tiếng Việt đặt tên khác)
+#   · không ngủ / ngủ đông / tắt màn hình khi cắm điện + tắt hẳn ngủ đông
+#   · Windows Defender bỏ qua C:\blue + thư mục giả lập (gồm cả ổ máy ảo của khách: vms) + chương trình giả lập / adb / node (danh sách của ISO + đủ bộ
+#     của giả lập máy này có). Nút "Tối ưu Windows" cũ (bảng + web) chỉ biết MEmu → máy MuMu / LD cài tay bị Defender quét mỗi lần máy ảo đọc / ghi ổ
+#   · tắt Xbox Game DVR
+#   · thêm (ISO không có, chống giật / chống mất máy): Windows Update không chia sẻ bản cập nhật lên mạng (Delivery Optimization chỉ tải — giữ băng thông
+#     tải lên cho hình) + không tự khởi động lại khi có người đăng nhập (máy chủ luôn tự đăng nhập)
+EMU_DIRS = {"mumu": [r"C:\Program Files\Netease\MuMuPlayer-12.0", r"D:\Program Files\Netease\MuMuPlayer-12.0", r"C:\Program Files\Netease\MuMu Player 12",
+                     r"D:\Program Files\Netease\MuMu Player 12", r"C:\Program Files\Netease\MuMuPlayer", r"D:\Program Files\Netease\MuMuPlayer",
+                     r"C:\Program Files\MuMuPlayerGlobal-12.0", r"D:\Program Files\MuMuPlayerGlobal-12.0", r"C:\Program Files\Netease\MuMuPlayerGlobal-12.0",
+                     r"C:\Program Files\Netease\MuMu", r"D:\Program Files\Netease\MuMu"],
+            "ld": [r"C:\LDPlayer\LDPlayer9", r"D:\LDPlayer\LDPlayer9", r"C:\Program Files\LDPlayer\LDPlayer9", r"C:\leidian\LDPlayer9", r"D:\leidian\LDPlayer9"],
+            "memu": [r"C:\Program Files\Microvirt\MEmu", r"D:\Program Files\Microvirt\MEmu", r"C:\Microvirt\MEmu", r"D:\Microvirt\MEmu",
+                     r"C:\Program Files (x86)\Microvirt\MEmu"]}
+EMU_CONF = {"mumu": "MUMU_DIR", "ld": "LD_DIR", "memu": "MEMU_DIR"}
+EMU_MARK = {"mumu": (r"nx_main\mumu-cli.exe", r"nx_main\MuMuManager.exe", r"shell\MuMuManager.exe", "MuMuManager.exe", "mumu-cli.exe"),
+            "ld": ("ldconsole.exe",), "memu": ("memuc.exe",)}
+EMU_MAIN = {"mumu": (r"shell\MuMuPlayer.exe", r"nx_main\MuMuNxMain.exe", r"nx_main\MuMuPlayer.exe", "MuMuPlayer.exe", r"shell\MuMuManager.exe",
+                     r"nx_main\MuMuManager.exe", "MuMuManager.exe"),
+            "ld": ("dnplayer.exe", "ldconsole.exe"), "memu": ("MEmu.exe", "memuc.exe")}
+EMU_VN = {"mumu": "MuMu", "ld": "LDPlayer 9", "memu": "MEmu"}
+ISO_PROCS = ("adb.exe", "node.exe", "MuMuVMMHeadless.exe", "MuMuNxDevice.exe", "dnplayer.exe", "Ld9BoxHeadless.exe")      # y hệt Optimize-Windows của ISO
+EMU_PROCS = {"mumu": ("MuMuVMMHeadless.exe", "MuMuNxDevice.exe", "MuMuNxMain.exe", "MuMuVMMSVC.exe", "MuMuPlayer.exe", "MuMuMultiPlayer.exe"),
+             "ld": ("dnplayer.exe", "Ld9BoxHeadless.exe", "LdBoxHeadless.exe", "dnmultiplayer.exe"),
+             "memu": ("MEmuHeadless.exe", "MEmu.exe", "MEmuConsole.exe", "memuc.exe")}
+CLOCK_TOOLS = {"msiafterburner.exe": "MSI Afterburner", "nvidiainspector.exe": "NVIDIA Inspector", "nvidiaprofileinspector.exe": "NVIDIA Profile Inspector",
+               "precisionx_x64.exe": "EVGA Precision", "gputweak.exe": "ASUS GPU Tweak", "gputweakii.exe": "ASUS GPU Tweak", "thundermaster.exe": "Thunder Master",
+               "xtremetuner.exe": "Xtreme Tuner", "rtss.exe": "RivaTuner"}     # phần mềm chỉnh xung / điện card — có thể giữ card ở xung thấp
+EMU_PROC_PS = ("Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(MuMu|Ld9Box|LdBox|dnplayer|dnmulti|MEmu|memuc|MSIAfterburner|nvidiaInspector|"
+               "nvidiaProfileInspector|PrecisionX|GPUTweak|ThunderMaster|XtremeTuner|RTSS)' } | ForEach-Object { if ($_.ExecutablePath) { $_.ExecutablePath } "
+               "else { $_.Name } } | Sort-Object -Unique")
+HW = {"procs": None}                              # đọc 1 lần cho bước 3b + 3c
+
+def exe_name(p):
+    """Tên chương trình (chữ thường) từ đường dẫn Windows: C:\\x\\MSIAfterburner.exe → msiafterburner.exe."""
+    return re.split(r"[\\/]", str(p or ""))[-1].strip().lower()
+
+def emu_kind(d):
+    """Loại giả lập cài ở thư mục d: 'mumu' / 'ld' / 'memu' — không phải chỗ cài giả lập → ''."""
+    try:
+        if not d or not os.path.isdir(d): return ""
+        for k, marks in EMU_MARK.items():
+            if any(os.path.isfile(os.path.join(d, m)) for m in marks): return k
+    except (OSError, ValueError): pass
+    return ""
+
+def emu_procs():
+    """Đường dẫn các chương trình giả lập / chỉnh xung card ĐANG CHẠY (biết giả lập cài ở đâu + có phần mềm hãm card không)."""
+    if HW["procs"] is None:
+        HW["procs"] = [ln.strip() for ln in ps(EMU_PROC_PS, 60).splitlines() if ln.strip()]
+    return HW["procs"]
+
+def emu_roots(c, running=()):
+    """[(loại, thư mục cài)] giả lập trên máy: cloudphone.conf → chỗ phonectl dò được lần trước → giả lập đang chạy → chỗ cài mặc định."""
+    cands = [c.get(v, "") for v in EMU_CONF.values()]
+    try: cands.append(open(os.path.join(B, "redroid", "mumu_dir.txt"), encoding="utf-8").read().strip())
+    except (OSError, ValueError): pass
+    for p in running or ():
+        d = os.path.dirname(p) if re.match(r"^[A-Za-z]:\\", p or "") else ""
+        for _ in range(5):                        # ...\MuMuPlayer\nx_device\12.0\shell\MuMuVMMHeadless.exe → ...\MuMuPlayer
+            if len(d) <= 3: break
+            if emu_kind(d): cands.append(d); break
+            d = os.path.dirname(d)
+    for ds in EMU_DIRS.values(): cands += ds
+    seen, res = set(), []
+    for d in cands:
+        d = (d or "").strip().strip('"').rstrip("\\/")
+        k = emu_kind(d) if d else ""
+        if not k: continue
+        key = os.path.normcase(os.path.abspath(d))
+        if key in seen: continue
+        seen.add(key); res.append((k, os.path.abspath(d)))
+    return res
+
+def ps_q(s):
+    """Chuỗi PowerShell trong dấu nháy đơn."""
+    return "'" + str(s).replace("'", "''") + "'"
+
+ISO_TUNE_PS = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$APPLY = __APPLY__
+$P = @(__PATHS__)
+$X = @(__PROCS__)
+$rx = '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})'
+function AcVal([string]$sch, [string]$sub, [string]$set) {
+  $o = (& powercfg.exe /query $sch $sub $set 2>$null | Out-String)
+  $m = [regex]::Matches($o, '0x([0-9a-fA-F]+)')
+  if ($m.Count -ge 2) { return [Convert]::ToInt64($m[$m.Count - 2].Groups[1].Value, 16) }
+  return -1
+}
+function PlanName {
+  $a = (& powercfg.exe /getactivescheme 2>$null | Out-String).Trim()
+  if ($a -match '\(([^)]*)\)\s*\*?\s*$') { return $Matches[1].Trim() }
+  return '?'
+}
+'PLAN=' + (PlanName)
+$mn = AcVal 'SCHEME_CURRENT' 'SUB_PROCESSOR' 'PROCTHROTTLEMIN'
+'PLAN_MIN=' + $mn
+if ($APPLY -and ($mn -ge 0) -and ($mn -lt 100)) {
+  $pick = ''
+  foreach ($ln in @(& powercfg.exe -list 2>$null)) {
+    if (("" + $ln) -match $rx) { $g = $Matches[1]; if ((AcVal $g 'SUB_PROCESSOR' 'PROCTHROTTLEMIN') -eq 100) { $pick = $g; break } }
+  }
+  if (-not $pick) {
+    $d = (& powercfg.exe -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null | Out-String)
+    if ($d -match $rx) { $pick = $Matches[1] }
+  }
+  if ($pick) { & powercfg.exe -setactive $pick 2>$null | Out-Null } else { & powercfg.exe -setactive SCHEME_MIN 2>$null | Out-Null }
+  'PLAN_SET=' + (PlanName)
+  'PLAN_MIN2=' + (AcVal 'SCHEME_CURRENT' 'SUB_PROCESSOR' 'PROCTHROTTLEMIN')
+}
+$sb = AcVal 'SCHEME_CURRENT' 'SUB_SLEEP' 'STANDBYIDLE'
+$hb = AcVal 'SCHEME_CURRENT' 'SUB_SLEEP' 'HIBERNATEIDLE'
+$vb = AcVal 'SCHEME_CURRENT' 'SUB_VIDEO' 'VIDEOIDLE'
+'SLEEP=' + $sb + ',' + $hb + ',' + $vb
+if (($sb -gt 0) -or ($hb -gt 0) -or ($vb -gt 0)) {
+  if ($APPLY) {
+    & powercfg.exe /change standby-timeout-ac 0 2>$null | Out-Null
+    & powercfg.exe /change hibernate-timeout-ac 0 2>$null | Out-Null
+    & powercfg.exe /change monitor-timeout-ac 0 2>$null | Out-Null
+    'SLEEP_SET=' + (AcVal 'SCHEME_CURRENT' 'SUB_SLEEP' 'STANDBYIDLE') + ',' + (AcVal 'SCHEME_CURRENT' 'SUB_SLEEP' 'HIBERNATEIDLE') + ',' + (AcVal 'SCHEME_CURRENT' 'SUB_VIDEO' 'VIDEOIDLE')
+  } else { 'SLEEP_MISS=1' }
+}
+$he = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Power' -Name HibernateEnabled -ErrorAction SilentlyContinue).HibernateEnabled
+if ($he -eq 1) { if ($APPLY) { & powercfg.exe /hibernate off 2>$null | Out-Null; 'HIB_SET=1' } else { 'HIB_MISS=1' } }
+$mp = $null
+try { $mp = Get-MpPreference -ErrorAction Stop } catch {}
+if (-not $mp) { 'DEF=none' } else {
+  'DEF=ok'
+  try { 'DEF_RT=' + [int][bool](Get-MpComputerStatus -ErrorAction Stop).RealTimeProtectionEnabled } catch {}
+  $hp = @(@($mp.ExclusionPath) | Where-Object { $_ } | ForEach-Object { ("" + $_).TrimEnd('\').ToLower() })
+  $hx = @(@($mp.ExclusionProcess) | Where-Object { $_ } | ForEach-Object { ("" + $_).ToLower() })
+  $np = @($P | Where-Object { $hp -notcontains ("" + $_).TrimEnd('\').ToLower() })
+  $nx = @($X | Where-Object { $hx -notcontains ("" + $_).ToLower() })
+  'DEF_HAVE=' + ($P.Count - $np.Count) + '/' + $P.Count + ',' + ($X.Count - $nx.Count) + '/' + $X.Count
+  foreach ($d in $np) {
+    if ($APPLY) { try { Add-MpPreference -ExclusionPath $d -ErrorAction Stop; 'DEF_ADDP=' + $d } catch { 'DEF_ERR=' + $_.Exception.Message } } else { 'DEF_MISSP=' + $d }
+  }
+  foreach ($x in $nx) {
+    if ($APPLY) { try { Add-MpPreference -ExclusionProcess $x -ErrorAction Stop; 'DEF_ADDX=' + $x } catch { 'DEF_ERR=' + $_.Exception.Message } } else { 'DEF_MISSX=' + $x }
+  }
+}
+try {
+  foreach ($a in @(Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct -ErrorAction Stop)) {
+    $n = "" + $a.displayName
+    if ($n -and ($n -notmatch 'Defender')) { 'AV=' + $n }
+  }
+} catch {}
+$v1 = (Get-ItemProperty 'HKCU:\System\GameConfigStore' -Name GameDVR_Enabled -ErrorAction SilentlyContinue).GameDVR_Enabled
+$v2 = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\GameDVR' -Name AllowGameDVR -ErrorAction SilentlyContinue).AllowGameDVR
+if (($v1 -ne 0) -or ($v2 -ne 0)) {
+  if ($APPLY) {
+    & reg.exe add HKCU\System\GameConfigStore /v GameDVR_Enabled /t REG_DWORD /d 0 /f 2>$null | Out-Null
+    & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR /v AllowGameDVR /t REG_DWORD /d 0 /f 2>$null | Out-Null
+    'DVR_SET=1'
+  } else { 'DVR_MISS=1' }
+}
+$do = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization' -Name DODownloadMode -ErrorAction SilentlyContinue).DODownloadMode
+if ($do -ne 0) {
+  if ($APPLY) { & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization /v DODownloadMode /t REG_DWORD /d 0 /f 2>$null | Out-Null; 'DO_SET=1' } else { 'DO_MISS=1' }
+}
+$ar = (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -Name NoAutoRebootWithLoggedOnUsers -ErrorAction SilentlyContinue).NoAutoRebootWithLoggedOnUsers
+if ($ar -ne 1) {
+  if ($APPLY) { & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU /v NoAutoRebootWithLoggedOnUsers /t REG_DWORD /d 1 /f 2>$null | Out-Null; 'AUR_SET=1' } else { 'AUR_MISS=1' }
+}
+try { 'WHEA=' + @(Get-WinEvent -FilterHashtable @{ LogName = 'System'; ProviderName = 'Microsoft-Windows-WHEA-Logger'; Id = 47 } -MaxEvents 200 -ErrorAction Stop).Count } catch { 'WHEA=0' }
+'END=1'
+"""
+
+def mlines(out):
+    """KHOÁ=giá trị (khoá lặp lại → danh sách)."""
+    d = {}
+    for ln in (out or "").splitlines():
+        if "=" in ln:
+            k, v = ln.split("=", 1); k = k.strip()
+            if re.fullmatch(r"[A-Z_0-9]+", k): d.setdefault(k, []).append(v.strip())
+    return d
+
+def iso_tune(c):
+    """3b · tối ưu Windows như máy cài từ ISO (CHỈ KIỂM: chỉ báo còn thiếu gì). Trả các dòng ✗ cho phần TÓM TẮT."""
+    apply = not ONLY_CHECK
+    say("3b/6 Tối ưu Windows như máy cài từ ISO" + ("" if apply else " (chỉ kiểm)"))
+    roots = emu_roots(c, emu_procs())
+    kinds = sorted({k for k, _ in roots})
+    paths = [B] + [d for _, d in roots]
+    procs = list(ISO_PROCS)
+    for k in kinds: procs += [x for x in EMU_PROCS[k] if x.lower() not in {p.lower() for p in procs}]
+    scr = (ISO_TUNE_PS.replace("__APPLY__", "$true" if apply else "$false")
+           .replace("__PATHS__", ", ".join(ps_q(p) for p in paths)).replace("__PROCS__", ", ".join(ps_q(p) for p in procs)))
+    d = mlines(ps(scr, 240))
+    g = lambda k, dv="": (d.get(k) or [dv])[-1]
+    did, miss, probs = [], [], []
+    T = RUN.setdefault("tune", {})
+    if g("END") != "1":
+        say("   ? PowerShell không chạy hết phần tối ưu (lỗi / quá giờ) — lần chạy sau làm lại")
+        T.update(ok=False); return probs
+    if roots: say("   giả lập: " + " · ".join(f"{EMU_VN[k]} ({p})" for k, p in roots))
+    else: say("   ? không tìm thấy chỗ cài giả lập — Defender chỉ bỏ qua C:\\blue + chương trình giả lập")
+    # chế độ điện
+    pmin = g("PLAN_MIN", "-1")
+    if d.get("PLAN_SET"):
+        ok2 = g("PLAN_MIN2") == "100"
+        say(f"   {'✓' if ok2 else '✗'} chế độ điện: {g('PLAN')} (CPU tối thiểu {pmin}%) → {g('PLAN_SET')}" + ("" if ok2 else " — vẫn chưa được CPU 100%"))
+        did.append("chế độ điện hiệu năng cao nhất") if ok2 else probs.append("chưa đổi được chế độ điện sang hiệu năng cao (powercfg)")
+    elif pmin == "100": say(f"   ✓ chế độ điện: {g('PLAN')} (CPU luôn 100%)")
+    elif pmin == "-1": say("   ? không đọc được chế độ điện (powercfg)")
+    else: say(f"   ⚠ chế độ điện: {g('PLAN')} — CPU được hạ xuống {pmin}% (máy cài từ ISO: 100%)"); miss.append("chế độ điện")
+    # ngủ / ngủ đông
+    if d.get("SLEEP_SET"):
+        say(f"   ✓ vừa tắt ngủ / ngủ đông / tắt màn hình khi cắm điện (trước: {g('SLEEP')} giây)"); did.append("không ngủ")
+    elif d.get("SLEEP_MISS"): say(f"   ⚠ máy còn đặt ngủ / tắt màn hình (giây: {g('SLEEP')})"); miss.append("không ngủ")
+    else: say("   ✓ không ngủ / ngủ đông khi cắm điện")
+    if d.get("HIB_SET"): say("   ✓ vừa tắt hẳn ngủ đông"); did.append("tắt ngủ đông")
+    elif d.get("HIB_MISS"): miss.append("tắt ngủ đông")
+    # Windows Defender
+    if g("DEF") == "none": say("   ✓ Windows Defender không chạy trên máy này — không cần đặt bỏ qua")
+    elif g("DEF") == "ok":
+        ap, ax, er = d.get("DEF_ADDP") or [], d.get("DEF_ADDX") or [], d.get("DEF_ERR") or []
+        mp, mx = d.get("DEF_MISSP") or [], d.get("DEF_MISSX") or []
+        if ap or ax:
+            say(f"   ✓ vừa cho Windows Defender bỏ qua {len(ap)} thư mục + {len(ax)} chương trình"
+                + (": " + ", ".join(ap + ax)[:400] if ap or ax else "")
+                + " — trước đây Defender quét mỗi lần máy ảo đọc / ghi ổ"); did.append(f"Defender bỏ qua {len(ap)} thư mục + {len(ax)} chương trình")
+        if mp or mx: say(f"   ⚠ Windows Defender còn QUÉT: {', '.join(mp + mx)[:400]}"); miss.append(f"Defender bỏ qua {len(mp) + len(mx)} mục")
+        if not (ap or ax or mp or mx or er): say(f"   ✓ Windows Defender đã bỏ qua đủ thư mục giả lập + C:\\blue + chương trình giả lập ({g('DEF_HAVE')})")
+        if er:
+            say(f"   ✗ chưa đặt được Defender bỏ qua: {er[0][:160]}")
+            probs.append("Windows Defender chưa bỏ qua thư mục giả lập (chạy lệnh A bằng PowerShell Admin)")
+        if g("DEF_RT") == "0": say("   (Defender đang tắt quét thời gian thực)")
+    for av in d.get("AV") or []:
+        say(f"   ⚠ máy có phần mềm diệt virus khác: {av} — tự thêm C:\\blue + thư mục giả lập vào mục \"bỏ qua\" của phần mềm đó (không thì giật như bị Defender quét)")
+        miss.append("phần mềm diệt virus khác: " + av)
+    if d.get("DVR_SET"): say("   ✓ vừa tắt Xbox Game DVR"); did.append("tắt Game DVR")
+    elif d.get("DVR_MISS"): say("   ⚠ Xbox Game DVR đang bật"); miss.append("tắt Game DVR")
+    else: say("   ✓ Xbox Game DVR đã tắt")
+    up = [x for k, x in (("DO_SET", "không chia sẻ bản cập nhật lên mạng"), ("AUR_SET", "không tự khởi động lại máy chủ")) if d.get(k)]
+    upm = [x for k, x in (("DO_MISS", "không chia sẻ bản cập nhật lên mạng"), ("AUR_MISS", "không tự khởi động lại máy chủ")) if d.get(k)]
+    if up: say("   ✓ vừa đặt Windows Update: " + " + ".join(up)); did.append("Windows Update: " + " + ".join(up))
+    elif upm: say("   ⚠ Windows Update còn: " + " + ".join(upm)); miss += upm
+    else: say("   ✓ Windows Update: không chia sẻ lên mạng + không tự khởi động lại máy chủ")
+    wh = int(g("WHEA", "0") or 0) if g("WHEA", "0").isdigit() else 0
+    if wh:
+        say(f"   ✗ RAM báo lỗi phần cứng (WHEA 47) {wh} lần — máy ảo dễ treo / giật: kiểm hoặc thay RAM")
+        probs.append(f"RAM báo lỗi phần cứng WHEA 47: {wh} lần (kiểm / thay RAM)")
+    T.update(ok=True, did=did, miss=miss, plan=g("PLAN_SET") or g("PLAN"), defender=g("DEF"), av=d.get("AV") or [], whea=wh,
+             emu=[[k, p] for k, p in roots])
+    return probs
+
+# ------------------------------------------------------------------ 3c. 27/11j: PHẦN MỀM TRÊN MÁY + SỨC KHOẺ CARD ĐỒ HOẠ
+# Máy chủ cài tay khác máy cài từ ISO ở đâu: bản Windows, bản giả lập, driver card, adb, Python — in ra để so. Card: đọc 3 lần cách 2 giây — card
+# BẬN (≥ 80%) mà xung < 30% xung tối đa cả 3 lần = card KẸT xung nghỉ (win3 27/11: 98% ở 139/1974 MHz, 9 W, card báo "SW Power Cap" dù giới hạn điện
+# 180 W) → máy khách trên máy chủ đó lag dù ít khách. Giới hạn điện bị đặt thấp hơn mặc định → tự trả về mặc định (nvidia-smi -pl).
+INV_PS = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$os = Get-CimInstance Win32_OperatingSystem
+$cv = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+'OS=' + $os.Caption + '|' + $cv.DisplayVersion + '|' + $cv.ReleaseId + '|' + $os.BuildNumber + '.' + $cv.UBR
+foreach ($v in @(Get-CimInstance Win32_VideoController)) {
+  $dd = ''
+  try { $dd = ([datetime]$v.DriverDate).ToString('yyyy-MM-dd') } catch {}
+  'VGA=' + $v.Name + '|' + $v.DriverVersion + '|' + $dd
+}
+foreach ($f in @(__EXES__)) {
+  if (Test-Path -LiteralPath $f) { $vi = (Get-Item -LiteralPath $f).VersionInfo; 'EXE=' + $f + '|' + $vi.ProductVersion + '|' + $vi.FileVersion }
+}
+'END=1'
+"""
+SMI_Q = ("name,pstate,utilization.gpu,clocks.sm,clocks.max.sm,power.draw,power.limit,power.default_limit,memory.used,memory.total,temperature.gpu,"
+         "driver_version")
+SMI_Q2 = "name,utilization.gpu,clocks.sm,clocks.max.sm,power.draw,power.limit,memory.used,memory.total,temperature.gpu,driver_version"
+
+def smi_path():
+    import glob, shutil
+    for p in [shutil.which("nvidia-smi") or "", r"C:\Windows\System32\nvidia-smi.exe", r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"] + \
+             sorted(glob.glob(r"C:\Windows\System32\DriverStore\FileRepository\nv*\nvidia-smi.exe"), reverse=True):
+        if p and os.path.isfile(p): return p
+    return ""
+
+def fnum(x):
+    try: return float(str(x).strip().split()[0])
+    except (TypeError, ValueError, IndexError): return None
+
+def smi_read(smi):
+    """[{tên trường: giá trị}] mỗi card, đọc 1 lần. Driver cũ không có vài trường → đọc bộ trường ngắn hơn."""
+    for q in (SMI_Q, SMI_Q2):
+        rc, out = run2([smi, "--query-gpu=" + q, "--format=csv,noheader,nounits"], 20)
+        keys = q.split(",")
+        rows = [[x.strip() for x in ln.split(",")] for ln in out.splitlines() if ln.count(",") == len(keys) - 1]
+        if rc == 0 and rows: return [dict(zip(keys, r)) for r in rows]
+    return []
+
+def nv_ver(wddm):
+    """Bản driver NVIDIA từ số WDDM của Windows: 31.0.15.6094 → 560.94 (5 số cuối)."""
+    dg = re.sub(r"\D", "", str(wddm or "").split(".", 2)[-1]) if str(wddm or "").count(".") >= 3 else ""
+    return f"{dg[-5:-2]}.{dg[-2:]}" if len(dg) >= 5 else ""
+
+def gpu_check(apply):
+    """Đọc card 3 lần → (dòng in, dòng ✗, sổ). Card kẹt xung nghỉ → đọc lý do card tự báo + giới hạn điện; giới hạn bị hạ → trả mặc định."""
+    smi = smi_path()
+    if not smi: return ["card NVIDIA: không có nvidia-smi (không đọc được card)"], [], {"smi": False}
+    samples = []
+    for i in range(3):
+        if i: time.sleep(2)
+        samples.append(smi_read(smi))
+    cards = samples[-1]
+    if not cards: return ["card NVIDIA: nvidia-smi không trả lời"], [], {"smi": True, "cards": []}
+    lines, probs, book = [], [], {"smi": True, "cards": []}
+    for i, x in enumerate(cards):
+        nm = (x.get("name") or "?").replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+        u, ck, cm = fnum(x.get("utilization.gpu")), fnum(x.get("clocks.sm")), fnum(x.get("clocks.max.sm"))
+        pw, pl, pd = fnum(x.get("power.draw")), fnum(x.get("power.limit")), fnum(x.get("power.default_limit"))
+        mu, mt = fnum(x.get("memory.used")), fnum(x.get("memory.total"))
+        def stuck_in(s):
+            try:
+                y = s[i]; uu, cc, mm = fnum(y.get("utilization.gpu")), fnum(y.get("clocks.sm")), fnum(y.get("clocks.max.sm"))
+                return uu is not None and cc and mm and uu >= 80 and cc < 0.3 * mm
+            except (IndexError, AttributeError): return False
+        stuck = all(stuck_in(s) for s in samples)
+        txt = (f"card {nm} · driver {x.get('driver_version') or '?'}" + (f" · {x.get('pstate')}" if x.get("pstate") else "")
+               + (f" · bận {u:g}%" if u is not None else "") + (f" · xung {ck:g}/{cm:g} MHz" if ck and cm else "")
+               + (f" · điện {pw:g}/{pl:g} W" if pw is not None and pl else "") + (f" · VRAM {mu:g}/{mt:g} MB" if mu is not None and mt else ""))
+        lines.append(txt)
+        cb = {"name": nm, "drv": x.get("driver_version"), "util": u, "clk": ck, "clk_max": cm, "pwr": pw, "pwr_lim": pl, "pwr_def": pd, "vram": mu,
+              "vram_max": mt, "stuck": stuck}
+        if mu is not None and mt and mu >= 0.88 * mt:
+            lines.append(f"⚠ VRAM card đầy {100 * mu / mt:.0f}% — card phải đẩy dữ liệu qua RAM (máy khách giật): bớt máy khách trên máy chủ này")
+            cb["vram_full"] = True
+        if stuck:
+            rc, q = run2([smi, "-q", "-d", "PERFORMANCE", "-i", str(i)], 20)
+            why = [m.strip() for m in re.findall(r"^\s*([A-Za-z][A-Za-z /]+?)\s*:\s*Active\s*$", q, re.M)]
+            cb["why"] = why
+            fix = ""
+            if apply and pd and pl and pl < pd - 1:
+                rc2, o2 = run2([smi, "-i", str(i), "-pl", f"{pd:g}"], 30)
+                time.sleep(4)
+                rr = smi_read(smi); y = rr[i] if len(rr) > i else {}
+                ck2, cm2 = fnum(y.get("clocks.sm")), fnum(y.get("clocks.max.sm"))
+                fix = (f" · giới hạn điện bị đặt {pl:g} W (mặc định {pd:g} W) → đã trả về mặc định"
+                       + (f", xung lên {ck2:g} MHz" if ck2 and cm2 and ck2 >= 0.3 * cm2 else " nhưng card vẫn kẹt" if rc2 == 0 else f" — không đặt được: {o2.strip()[:120]}"))
+                cb["fixed_pl"] = rc2 == 0
+            hw = [w for w in why if re.search(r"HW", w)]
+            tools = sorted({CLOCK_TOOLS[exe_name(p)] for p in emu_procs() if exe_name(p) in CLOCK_TOOLS})
+            hint = ("lỗi điện / phần cứng card: tắt máy, cắm lại chặt dây nguồn 8 pin của card (cắm thẳng từ nguồn, không qua dây chia / chuyển), kiểm riser + nguồn"
+                    if hw else f"đang chạy {', '.join(tools)} — tắt / gỡ phần mềm đó rồi xem lại xung" if tools else
+                    "khởi động lại máy chủ lúc vắng khách (web ⚙ Cài đặt › 🛠 Quản lý › Khởi động lại); khởi động lại vẫn kẹt → tắt máy, cắm lại chặt "
+                    "dây nguồn 8 pin của card (không qua dây chia / chuyển), kiểm nguồn")
+            msg = (f"card {nm} KẸT XUNG NGHỈ: bận {u:g}% mà chỉ {ck:g}/{cm:g} MHz, {pw:g} W → máy khách trên máy chủ này lag dù ít khách"
+                   + (f" · card báo: {', '.join(why)}" if why else "") + (f" · giới hạn điện {pl:g}/{pd:g} W" if pl and pd and not fix else "") + fix)
+            lines.append("✗ " + msg + "\n     → " + hint)
+            probs.append(f"card {nm} kẹt xung nghỉ ({ck:g}/{cm:g} MHz, {pw:g} W) — {hint}")
+        book["cards"].append(cb)
+    return lines, probs, book
+
+def hw_report(c):
+    """3c · phần mềm trên máy (để so với máy cài từ ISO) + sức khoẻ card. Trả các dòng ✗."""
+    say("3c/6 Phần mềm trên máy + card đồ hoạ")
+    roots = [(k, p) for k, p in (RUN.get("tune") or {}).get("emu") or []] or emu_roots(c, emu_procs())
+    exes = []
+    for k, root in roots:
+        for rel in EMU_MAIN.get(k, ()):
+            f = os.path.join(root, rel)
+            if os.path.isfile(f): exes.append(f); break
+    d = mlines(ps(INV_PS.replace("__EXES__", ", ".join(ps_q(f) for f in exes)), 90))
+    g = lambda k, dv="": (d.get(k) or [dv])[-1]
+    inv = {}
+    if g("OS"):
+        cap, dv, rel, bld = (g("OS").split("|") + ["", "", "", ""])[:4]
+        inv["os"] = " ".join(x for x in (cap.replace("Microsoft ", "").strip(), dv.strip() or rel.strip(), f"(build {bld.strip()})" if bld.strip() else "") if x)
+        say("   Windows: " + inv["os"])
+    vers = {}
+    for ln in d.get("EXE") or []:
+        f, pv, fv = (ln.split("|") + ["", "", ""])[:3]
+        vers[f.lower()] = (pv or fv).strip()
+    inv["emu"] = []
+    for k, root in roots:
+        v = next((vers.get(os.path.join(root, rel).lower()) for rel in EMU_MAIN.get(k, ()) if vers.get(os.path.join(root, rel).lower())), "")
+        inv["emu"].append(f"{EMU_VN[k]} {v or '(không đọc được bản)'}")
+        say(f"   giả lập: {EMU_VN[k]} {v or '(không đọc được bản)'} — {root}")
+    vga = []
+    for ln in d.get("VGA") or []:
+        nm, wv, dd = (ln.split("|") + ["", "", ""])[:3]
+        if not nm.strip(): continue
+        nv = nv_ver(wv) if "nvidia" in nm.lower() else ""
+        vga.append(f"{nm.strip()} · driver {nv or wv.strip()}" + (f" ({dd.strip()})" if dd.strip() else ""))
+    if vga: say("   card (Windows): " + " · ".join(vga)); inv["vga"] = vga
+    av = re.search(r"Version\s+(\d[\d.]*)", run([ADB, "version"], 20)) if os.path.isfile(ADB) else None
+    inv["adb"] = av.group(1) if av else ""
+    inv["py"] = sys.version.split()[0]
+    say(f"   adb {inv['adb'] or '?'} · Python {inv['py']}")
+    lines, probs, book = gpu_check(not ONLY_CHECK)
+    for ln in lines: say("   " + ln)
+    tools = sorted({CLOCK_TOOLS[exe_name(p)] for p in emu_procs() if exe_name(p) in CLOCK_TOOLS})
+    if tools: say(f"   ⚠ đang chạy phần mềm chỉnh xung / điện card: {', '.join(tools)} — máy chủ cài từ ISO không có; nếu card chạy chậm thì tắt / gỡ")
+    inv["gpu"] = book; inv["clock_tools"] = tools
+    RUN["inv"] = inv
+    return probs
+
+def tune_line():
+    """1 dòng cho TÓM TẮT."""
+    T, I = RUN.get("tune") or {}, RUN.get("inv") or {}
+    out = []
+    if T.get("ok"):
+        if T.get("did"): out.append("⚙ tối ưu như máy cài từ ISO — vừa làm: " + " · ".join(T["did"]))
+        elif T.get("miss"): out.append("⚙ tối ưu như máy cài từ ISO — còn thiếu: " + " · ".join(T["miss"]))
+        else: out.append("⚙ tối ưu như máy cài từ ISO: đã đủ (không phải đổi gì)")
+    elif T: out.append("⚙ tối ưu như máy cài từ ISO: chưa đọc được (lần chạy sau làm lại)")
+    sw = [I.get("os", "")] + (I.get("emu") or []) + [x.split(" (")[0] for x in (I.get("vga") or [])[:1]] + ([f"adb {I['adb']}"] if I.get("adb") else [])
+    if any(sw): out.append("🖥 " + " · ".join(x for x in sw if x))
+    return out
+
 def main():
     c = conf(); node = c.get("NODE_ID") or "?"
     say(f"== CloudBlue · sửa tất cả ({VER}) · máy chủ {node} · {time.strftime('%d/%m %H:%M')}" + (" · CHỈ KIỂM" if ONLY_CHECK else "") + " ==")
@@ -1281,6 +1701,10 @@ def main():
                                    and mark.encode() in open(os.path.join(B, local), "rb").read()})
     probs += p; RUN["p_rst"] = list(p)
     probs += fix_autostart()
+    try: probs += iso_tune(c)                               # 27/11j: tối ưu Windows như máy cài từ ISO (mỗi lần chạy, đủ rồi thì không đổi gì)
+    except Exception as e_: say(f"   (tối ưu như ISO lỗi: {e_})")
+    try: probs += hw_report(c)                              # 27/11j: phần mềm trên máy (so với máy ISO) + card kẹt xung nghỉ
+    except Exception as e_: say(f"   (đọc phần mềm / card lỗi: {e_})")
     e = ensure_running(c)
     if e and e != "LAUNCHED": probs.append(e)
     probs += check_net(c)
@@ -1330,6 +1754,7 @@ def main():
     say(f"== TÓM TẮT {node} ==")
     if changed: say("   ✓ đã cập nhật: " + ", ".join(sorted(set(changed))))
     if "panel" in changed: say("   (bảng CloudBlue bản mới chạy từ lần mở bảng / khởi động lại Windows kế tiếp — KHÔNG cần đóng bảng bây giờ)")
+    for ln in tune_line(): say("   " + ln)
     if DON.get("deleted"): say(f"   ✓ đã xoá hẳn {DON['deleted']} máy khách đã huỷ còn sót (nhả ổ đĩa)")
     if disks: say("   ổ đĩa: " + " · ".join(f"{d} còn {fr:.0f}GB / {tot:.0f}GB" for d, fr, tot in disks))
     if si.get("boot_par"):
