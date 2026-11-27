@@ -84,6 +84,10 @@ jobs:
         if: matrix.api == 28 && hashFiles('cbvideo-ok.txt') != ''
         run: |
           set -e
+          if [ -f windows/cbvideo.jar ] && ! cmp -s cbvideo.jar windows/cbvideo.jar; then
+            echo "- ⚠ cbvideo.jar dựng lại KHÁC bản đã lưu (md5 \`$(md5sum windows/cbvideo.jar | cut -d' ' -f1)\` → \`$(md5sum cbvideo.jar | cut -d' ' -f1)\`) — KHÔNG ghi đè (bluestream ghim md5 bản đã lưu). Muốn thay: xoá windows/cbvideo.jar rồi chạy lại." | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           mkdir -p windows && cp cbvideo.jar windows/cbvideo.jar
           echo "- windows/cbvideo.jar md5: \`$(md5sum windows/cbvideo.jar | cut -d' ' -f1)\` · $(stat -c %s windows/cbvideo.jar) byte" | tee -a "$GITHUB_STEP_SUMMARY"
           git config user.name "github-actions[bot]"
