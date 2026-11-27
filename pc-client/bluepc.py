@@ -2439,7 +2439,10 @@ def install_modals(app):
 # ================================================================ CỬA SỔ DANH SÁCH (tkinter)
 # 17/11c: bảng màu "Thuỷ đêm" của app điện thoại (nền xanh đêm · tấm nổi · viền xanh mờ · chữ trắng xanh)
 BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#071226", "#0d1d3d", "#244978", "#e8f1ff", "#9fb4d8", "#3d86ff", "#3ce0b0", "#ffd666", "#ff6b81"
-MONEY = "#ffc45e"          # 27/11 · màu nhấn cho tiền (giá, tổng, số dư) — giống web
+MONEY = "#ffcf4a"          # 28/11 · vàng kim = TIỀN & ƯU ĐÃI (giá, tổng, số dư, % giảm) — đúng tông vàng của web
+def deal_badge(t):         # nhãn gói nói về GIÁ (Giá tốt, Rẻ, Tiết kiệm, Giảm…) = vàng kim; nhãn khác (Bán chạy, Đề xuất, Mới…) = xanh logo như nhãn HOT / MỚI của web
+    s = str(t or "").lower()
+    return any(k in s for k in ("giá", "rẻ", "tiết kiệm", "giảm", "sale", "%", "best value", "saver", "cheap"))
 BRAND = "#4f95ff"          # màu chữ "Blue" trong tên CloudBlue
 STATUS = {"active": ("Đang chạy", OK), "pending": ("Đang tạo…", WARN), "expired": ("Hết hạn — chờ gia hạn", BAD), "error": ("Lỗi", BAD)}
 
@@ -2812,7 +2815,7 @@ class TierList:
         if len(ands) < len(allv): spec += "   ·   Android " + (" / ".join(ands) if ands else "— vượt trần")
         sp = tk.Label(mid, text=spec, font=("Segoe UI", 9, "bold"), bg=bg, fg=TXT, anchor="w"); sp.pack(fill="x"); wl.append(sp)
         rt = tk.Frame(top, bg=bg); rt.pack(side="right", padx=(8, 0)); wl.append(rt)
-        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ffa53c", fg="#3a1d00", padx=8, pady=2, pill=True); b.pack(anchor="e"); wl.append(b)
+        if t["badge"]: b = tk.Label(rt, text=t["badge"], font=("Segoe UI", 8, "bold"), bg="#ffc400" if deal_badge(t["badge"]) else "#2b6ef0", fg="#2a1c00" if deal_badge(t["badge"]) else "white", padx=8, pady=2, pill=True); b.pack(anchor="e"); wl.append(b)
         per = per_day(self.dlg.pr, t["ram"], t["cpu"])
         pr = tk.Label(rt, text=vnd(per), font=("Segoe UI", 13, "bold"), bg=bg, fg=MONEY, anchor="e"); pr.pack(anchor="e")
         pd = tk.Label(rt, text="/ ngày", font=("Segoe UI", 8), bg=bg, fg=DIM, anchor="e"); pd.pack(anchor="e"); wl += [pr, pd]
@@ -3439,7 +3442,7 @@ class OffersDlg(Dlg):
         if tc:
             c = self.card("💰 Ưu đãi khi nạp")
             for x in tc["levels"]:
-                if isinstance(x, dict): self.label(c, f"Nạp 1 lần từ {vnd(x.get('min'))}  →  mã giảm {int(num(x.get('pct')))}%", ("Segoe UI", 10, "bold"), OK).pack(fill="x", padx=12)
+                if isinstance(x, dict): self.label(c, f"Nạp 1 lần từ {vnd(x.get('min'))}  →  mã giảm {int(num(x.get('pct')))}%", ("Segoe UI", 10, "bold"), MONEY).pack(fill="x", padx=12)
             self.label(c, f"Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp đó), dùng 1 lần, hạn {int(num(tc.get('days')) or 7)} ngày"
                           + (f", giảm tối đa {vnd(tc.get('max'))}" if num(tc.get("max")) > 0 else "") + ". Chỉ dùng cho cloud phone: thuê, gia hạn, nâng cấp máy.",
                        self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=12, pady=(4, 0))
@@ -4601,7 +4604,7 @@ class VpsBuyDlg(Dlg):
             hit = list(ws)
             save = round((1 - pd / base) * 100) if base > 0 else 0
             if save >= 1:
-                sv = tk.Label(rt, text=f"−{save}%" + L(" / ngày", " / day"), font=("Segoe UI", 8, "bold"), tint=OK, padx=8, pady=1); sv.pack(anchor="e", pady=(2, 0)); hit.append(sv)
+                sv = tk.Label(rt, text=f"−{save}%" + L(" / ngày", " / day"), font=("Segoe UI", 8, "bold"), tint=MONEY, padx=8, pady=1); sv.pack(anchor="e", pady=(2, 0)); hit.append(sv)
             for w in hit: w.bind("<Button-1>", lambda _e, v=d: (setattr(self, "days", v), self.upd()))
             self.rows.append((d, r, chk, ws))
 
@@ -4618,7 +4621,7 @@ class VpsBuyDlg(Dlg):
         top = tk.Frame(ft_, bg=CARD); top.pack(fill="x", padx=16, pady=(10, 0))
         left = tk.Frame(top, bg=CARD); left.pack(side="left", fill="x", expand=True)
         self.sum_l = self.label(left, "", app.f_s, DIM); self.sum_l.pack(fill="x")
-        self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), SKY); self.tot_l.pack(fill="x")
+        self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), MONEY); self.tot_l.pack(fill="x")
         self.calc_l = self.label(left, "", app.f_s, DIM); self.calc_l.pack(fill="x")
         self.go = app.btn(top, L("Mua ngay", "Buy now"), self.buy, padx=20, pady=10); self.go.pack(side="right", padx=(10, 0))
         self.err = fitwrap(self.label(ft_, "", app.f_s, BAD, wraplength=580)); self.err.pack(fill="x", padx=16, pady=(2, 10))
@@ -5293,7 +5296,7 @@ class VmBuyDlg(Dlg):
         top = tk.Frame(ft_, bg=CARD); top.pack(fill="x", padx=16, pady=(10, 0))
         left = tk.Frame(top, bg=CARD); left.pack(side="left", fill="x", expand=True)
         self.sum_l = fitwrap(self.label(left, "", app.f_s, DIM, wraplength=420)); self.sum_l.pack(fill="x")
-        self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), SKY); self.tot_l.pack(fill="x")
+        self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), MONEY); self.tot_l.pack(fill="x")
         self.calc_l = self.label(left, "", app.f_s, DIM); self.calc_l.pack(fill="x")
         self.go = app.btn(top, L("Thuê ngay", "Rent now"), self.buy, padx=20, pady=10); self.go.pack(side="right", padx=(10, 0))
         self.err = fitwrap(self.label(ft_, "", app.f_s, BAD, wraplength=600)); self.err.pack(fill="x", padx=16, pady=(2, 10))
@@ -5437,7 +5440,7 @@ class VmBuyDlg(Dlg):
             sv = round((1 - pd / base) * 100) if base > 0 else 0
             ls = [tk.Label(t, text=("✓ " if on else "") + f"{d} " + L("ngày", "days"), font=("Segoe UI", 11, "bold"), bg=bg, fg=TXT),
                   tk.Label(t, text=vnd(pr), font=("Segoe UI", 10, "bold"), bg=bg, fg=SKY),
-                  tk.Label(t, text=vnd(pd) + "/" + L("ngày", "day") + (f"  −{sv}%" if sv >= 1 else ""), font=("Segoe UI", 8, "bold"), bg=bg, fg=OK if sv >= 1 else DIM)]
+                  tk.Label(t, text=vnd(pd) + "/" + L("ngày", "day") + (f"  −{sv}%" if sv >= 1 else ""), font=("Segoe UI", 8, "bold"), bg=bg, fg=MONEY if sv >= 1 else DIM)]
             for w in ls: w.pack()
             ls[0].pack_configure(pady=(7, 0)); ls[-1].pack_configure(pady=(0, 7))
             for w in [t] + ls: w.bind("<Button-1>", lambda _e, v=d: (self.b.__setitem__("days", v), self.upd()))
