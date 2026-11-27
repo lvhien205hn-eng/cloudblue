@@ -7150,7 +7150,7 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
 
   function scan() {
     document.querySelectorAll(".thumb canvas[data-id]").forEach(c => {
-      if (c._fx) return; c._fx = 1; c._seed = seedOf(c.dataset.id); c._kind = (c.dataset.id === "cloudphone" || c.dataset.c === "phone") ? "phone" : c.dataset.c === "vps" ? "vps" : c.dataset.c === "nvme" ? "nvme" : "clone";
+      if (c._fx) return; c._fx = 1; c._seed = seedOf(c.dataset.id); c._kind = (c.dataset.id === "cloudphone" || c.dataset.c === "phone") ? "phone" : c.dataset.c === "vps" ? "vps" : c.dataset.c === "nvme" ? "nvme" : c.dataset.c === "proxy" ? "proxy" : "clone";
       c._static = c.dataset.static === "1"; c._sc = c.dataset.big === "1" && (window.devicePixelRatio || 1) > 1.25 && (navigator.hardwareConcurrency || 8) > 4 ? 2 : 1;
       c._card = c.closest(".card,.m3-row,.m3-li,.vms-head"); if (io) io.observe(c); else vis.add(c); draw(c, performance.now());
     });
@@ -7367,13 +7367,49 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
     x.save(); rr(x, X, Y, w, h, 17); x.clip(); const gl = x.createLinearGradient(X, Y, X + w * .6, Y + h); gl.addColorStop(0, "rgba(255,255,255,.45)"); gl.addColorStop(.4, "rgba(255,255,255,0)"); x.fillStyle = gl; x.fillRect(X, Y, w, h); x.restore();
     x.restore();
   }
+  /* --- 27/11i: Proxy dân cư — quả địa cầu IP + vòng IPv6 · IPv4 · SOCKS5 + bảng tên PROXY (cùng kiểu thanh NVMe) --- */
+  function proxyArt(x, cx, cy, T) {
+    const R = 60, gx = cx, gy = cy - 16, rx = 156, ry = 40, tilt = -.15, oy = gy + 6, tags = ["IPv6", "IPv4", "SOCKS5"];
+    shadow(x, cx + 4, cy + 82, 160);
+    const ang = i => T * .00038 + i * TAU / 3;
+    const at = a => { const X = Math.cos(a) * rx, Y = Math.sin(a) * ry; return [gx + X * Math.cos(tilt) - Y * Math.sin(tilt), oy + X * Math.sin(tilt) + Y * Math.cos(tilt)]; };
+    const ring = front => { x.save(); x.translate(gx, oy); x.rotate(tilt); x.beginPath(); x.ellipse(0, 0, rx, ry, 0, front ? 0 : Math.PI, front ? Math.PI : TAU);
+      x.lineCap = "round"; x.strokeStyle = "rgba(255,255,255,.92)"; x.lineWidth = 4.5; x.stroke(); x.strokeStyle = "#5fb2ff"; x.lineWidth = 2; x.stroke(); x.restore(); };
+    const pulse = front => { for (let i = 0; i < 4; i++) { const a = T * .0011 + i * TAU / 4; if ((Math.sin(a) >= 0) !== front) continue; const [px, py] = at(a);
+      x.fillStyle = "rgba(160,245,255,.35)"; circ(x, px, py, 6.5); x.fillStyle = "rgba(232,252,255,.95)"; circ(x, px, py, 2.8); } };
+    const chip = (t, a) => { const [px, py] = at(a), d = (Math.sin(a) + 1) / 2, k = .8 + .2 * d, w = (t.length > 4 ? 80 : 62) * k, h = 30 * k;
+      x.save(); x.globalAlpha = .72 + .28 * d; x.shadowColor = "rgba(70,165,255,.6)"; x.shadowBlur = 10; rr(x, px - w / 2 - 2.5, py - h / 2 - 2.5, w + 5, h + 5, 11 * k); x.fillStyle = "#fff"; x.fill(); x.restore();
+      x.save(); x.globalAlpha = .72 + .28 * d; rr(x, px - w / 2, py - h / 2, w, h, 9 * k); const g = x.createLinearGradient(px, py - h / 2, px, py + h / 2); g.addColorStop(0, "#1a4fc9"); g.addColorStop(1, "#0b2f8f");
+      x.fillStyle = g; x.fill(); x.fillStyle = "#fff"; x.font = `800 ${Math.round(14 * k)}px 'Be Vietnam Pro',system-ui,sans-serif`; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(t, px, py + .5); x.restore(); };
+    ring(false); pulse(false);
+    tags.forEach((t, i) => { const a = ang(i); if (Math.sin(a) < 0) chip(t, a); });
+    x.save(); x.shadowColor = "rgba(70,165,255,.75)"; x.shadowBlur = 22; x.fillStyle = "#fff"; x.beginPath(); x.arc(gx, gy, R + 5, 0, TAU); x.fill(); x.restore();
+    const bg = x.createRadialGradient(gx - R * .35, gy - R * .4, R * .1, gx, gy, R); bg.addColorStop(0, "#8cc0ff"); bg.addColorStop(.55, "#2b6ef0"); bg.addColorStop(1, "#1747c4");
+    x.fillStyle = bg; x.beginPath(); x.arc(gx, gy, R, 0, TAU); x.fill();
+    x.save(); x.beginPath(); x.arc(gx, gy, R, 0, TAU); x.clip();
+    x.fillStyle = "rgba(255,255,255,.10)"; for (let yy = gy - R + 6; yy < gy + R; yy += 16) for (let xx = gx - R + 6; xx < gx + R; xx += 16) circ(x, xx, yy, 4.5);
+    x.strokeStyle = "rgba(255,255,255,.5)"; x.lineWidth = 2;
+    for (const f of [-.6, 0, .6]) { const yy = gy + f * R, hw = Math.sqrt(1 - f * f) * R; x.beginPath(); x.ellipse(gx, yy, hw, hw * .18, 0, 0, TAU); x.stroke(); }
+    for (let i = 0; i < 3; i++) { const ph = (T * .00016 + i / 3) % 1, w = Math.abs(Math.cos(ph * Math.PI)) * R;
+      x.globalAlpha = .2 + .45 * Math.sin(ph * Math.PI); x.beginPath(); x.ellipse(gx, gy, Math.max(1, w), R, 0, 0, TAU); x.stroke(); }
+    x.globalAlpha = 1;
+    const gl = x.createLinearGradient(gx - R, gy - R, gx + R * .4, gy + R); gl.addColorStop(0, "rgba(255,255,255,.5)"); gl.addColorStop(.42, "rgba(255,255,255,0)"); x.fillStyle = gl; x.fillRect(gx - R, gy - R, R * 2, R * 2);
+    x.restore();
+    const pw = 156, ph = 42, px0 = gx - pw / 2, py0 = gy + R - 2;                    // bảng tên PROXY (đèn xanh nhấp nháy = đang chạy)
+    x.save(); x.shadowColor = "rgba(70,165,255,.7)"; x.shadowBlur = 18; rr(x, px0 - 4, py0 - 4, pw + 8, ph + 8, 16); x.fillStyle = "#fff"; x.fill(); x.restore();
+    rr(x, px0, py0, pw, ph, 12); const pg = x.createLinearGradient(px0, py0, px0, py0 + ph); pg.addColorStop(0, "#6aa6ff"); pg.addColorStop(.55, "#2b6ef0"); pg.addColorStop(1, "#1747c4"); x.fillStyle = pg; x.fill();
+    const led = .35 + .65 * Math.abs(Math.sin(T * .006)); x.save(); x.shadowColor = "#7dffb5"; x.shadowBlur = 12 * led; x.fillStyle = `rgba(140,255,190,${led})`; circ(x, px0 + 22, py0 + ph / 2, 5.5); x.restore();
+    x.fillStyle = "#fff"; x.font = "900 25px 'Be Vietnam Pro',system-ui,sans-serif"; x.textAlign = "center"; x.textBaseline = "alphabetic"; x.fillText("PROXY", gx + 10, py0 + ph / 2 + 9);
+    ring(true); pulse(true);
+    tags.forEach((t, i) => { const a = ang(i); if (Math.sin(a) >= 0) chip(t, a); });
+  }
   function draw(c, t) {
     const x = c.getContext("2d"), S = c._sc || 1; if (c.width !== W * S) { c.width = W * S; c.height = H * S; } x.setTransform(S, 0, 0, S, 0, 0);
     const k = c._seed, fast = !!(c._card && c._card.matches(":hover"));
     c._t = (c._t || 0) + (c._last ? (t - c._last) * (fast ? 2.4 : 1) : 0); c._last = t; const T = c._t + (k % 5000);
     x.drawImage(bgOf(THEME()), 0, 0);
     x.save(); x.translate(W / 2, H / 2 + 16); x.scale(.84, .84); x.translate(-W / 2, -H / 2);   // chừa chỗ cho nhãn ở góc trên
-    if (c._kind === "phone") phone(x, W / 2, H / 2, T); else if (c._kind === "vps") gpu(x, W / 2, H / 2, T); else if (c._kind === "nvme") nvme(x, W / 2, H / 2, T); else clone(x, W / 2, H / 2 - 18, T);
+    if (c._kind === "phone") phone(x, W / 2, H / 2, T); else if (c._kind === "vps") gpu(x, W / 2, H / 2, T); else if (c._kind === "nvme") nvme(x, W / 2, H / 2, T); else if (c._kind === "proxy") proxyArt(x, W / 2, H / 2, T); else clone(x, W / 2, H / 2 - 18, T);
     x.restore();
     for (let i = 0; i < 6; i++) { const sx = 30 + ((k >> (i % 13)) * 37 + i * 97) % (W - 60), sy = 20 + ((k >> (i % 11)) * 53 + i * 61) % (H - 40);
       star(x, sx, sy, 5 + (i % 3) * 2, .45 + .55 * Math.abs(Math.sin(T * .0018 + i * 1.7))); }
@@ -9243,6 +9279,8 @@ function nodeAlerts(nodes) {
       out.push(["r", `🚨 <b>${esc(n.name)}</b> đã đạt ${n.limit_pct || 85}% (RAM ${Math.round(pr)}%, CPU ${Math.round(pc)}%) — khách đang thấy <b>Hết hàng</b>. Thêm server hoặc chờ máy hết hạn.`]);
     else if (top >= 75) out.push(["y", `⚠️ <b>${esc(n.name)}</b> sắp đầy: RAM ${Math.round(pr)}%, CPU ${Math.round(pc)}% (ngưỡng ${n.limit_pct || 85}%).`]);
     const d = m.disk_data; if (d && d.total && d.used / d.total > .9) out.push(["r", `💾 Ổ cứng <b>${esc(n.name)}</b> còn ${(d.total - d.used).toFixed(0)}GB — sắp hết chỗ cho máy mới.`]);
+    for (const x of (m.gpus || []).filter(gpuStuck))      // 27/11j: card kẹt xung nghỉ → máy khách lag dù ít khách
+      out.push(["r", `🎮 <b>${esc(n.name)}</b>: card ${esc(String(x.name || "").replace("NVIDIA GeForce ", ""))} <b>KẸT XUNG NGHỈ</b> — bận ${Math.round(x.util)}% mà chỉ ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz${x.pwr != null ? ", " + Math.round(x.pwr) + " W" : ""} → máy khách trên máy chủ này đang lag. Khởi động lại máy chủ lúc vắng khách (⚙ Cài đặt › 🛠 Quản lý › Khởi động lại); vẫn kẹt → kiểm dây nguồn 8 pin của card. Nên bấm Ngừng nhận máy tới khi sửa xong.`]);
   }
   const live = nodes.filter(n => n.enabled && nAge(n) <= 3);
   if (live.length > 1 && live.every(n => +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1))
@@ -9286,6 +9324,11 @@ function nodeEmu(n, m) {
   if (!e && !av.length && !none) return "";
   return `<div class="nr"><span>Giả lập · Android</span><em>${esc([e ? NODE_ENGINE[e.toLowerCase()] || e : "", av.length ? "Android " + av.join(", ") : none ? "KHÔNG bán bản nào" : ""].filter(Boolean).join(" · "))}</em></div>`
     + (miss.length ? `<div class="nr" style="color:var(--bad)" title="Tạo máy trong giả lập đúng bản Android, đặt đúng tên, để TẮT — máy chủ tự bán lại sau khoảng 2 phút"><span>⚠ Thiếu máy mẫu</span><em>${esc(miss.join(", "))}</em></div>` : "");
+}
+/* 27/11j · CARD KẸT XUNG NGHỈ (win3 27/11: bận 98% mà 139/1974 MHz, 9/180 W, card báo "SW Power Cap") — trước đây web hiểu nhầm là "card rảnh"
+   ("98% (thật ~7%)"). Bận ≥ 80% + xung < 30% tối đa + điện < 25% giới hạn (card vừa lên xung thì điện đã cao) = kẹt → báo đỏ. */
+function gpuStuck(x) {
+  return !!x && x.util != null && +x.util >= 80 && +x.clk > 0 && +x.clk_max > 0 && +x.clk < 0.3 * +x.clk_max && (x.pwr == null || !+x.pwr_max || +x.pwr < 0.25 * +x.pwr_max);
 }
 /* 23/11f: bản phần mềm máy chủ đang chạy (metrics.sw do cloudphoned báo) — máy chủ nào chưa lên bản mới nhất trong dàn thì ghi rõ */
 function nodeSwNewest() {
@@ -9452,8 +9495,9 @@ function renderNodes() {
     const capR = m.cap_ram_full != null ? +m.cap_ram_full : +n.cap_ram, stopR = m.full_pct != null && +m.full_pct < 100 ? +m.full_pct : 0;   // SQL v33: sức chứa thật · mức ngừng
     const full = +n.alloc_ram >= +n.cap_ram - 1 || +n.alloc_cpu >= +n.cap_cpu - 1;
     if (!off && n.enabled) { tr += +n.ram_total; ar += +n.alloc_ram; tc += +n.cpu_total; ac += +n.alloc_cpu; ph += +n.phones || 0; }
-    const g = (m.gpus || []).map(x => nRow(esc(x.name).replace("NVIDIA GeForce ", ""),
-      `${x.util ?? "?"}%${x.eff != null && x.util != null && x.eff < x.util - 5 ? " (thật ~" + Math.round(x.eff) + "%)" : ""} · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, x.eff ?? x.util, 0, "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ" + (x.clk && x.clk_max ? ` · xung ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz (xung thấp = card đang nghỉ: % báo cao nhưng còn dư nhiều — "thật" = % tính theo xung)` : "") + (x.pwr != null && x.pwr_max ? ` · điện ${Math.round(x.pwr)}/${Math.round(x.pwr_max)} W` : ""))).join("")
+    const g = (m.gpus || []).map(x => { const sk = gpuStuck(x); return nRow(esc(x.name).replace("NVIDIA GeForce ", "") + (sk ? ' <b style="color:var(--bad)">⚠ KẸT XUNG</b>' : ""),
+      `${x.util ?? "?"}%${sk ? ` · chỉ ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz` + (x.pwr != null ? ` · ${Math.round(x.pwr)} W` : "") : x.eff != null && x.util != null && x.eff < x.util - 5 ? " (thật ~" + Math.round(x.eff) + "%)" : ""} · VRAM ${x.mem_used != null ? Math.round(x.mem_used) : "?"}/${x.mem_total != null ? Math.round(x.mem_total) : "?"}MB${x.temp != null ? " · " + x.temp + "°C" : ""}`, sk ? x.util : x.eff ?? x.util, 0, (sk ? "⚠ CARD KẸT XUNG NGHỈ: bận gần hết mà xung + điện ở mức nghỉ → card chạy chậm hơn chục lần, mọi máy khách trên máy chủ này lag. Khởi động lại máy chủ lúc vắng khách (⚙ Cài đặt › 🛠 Quản lý › Khởi động lại); vẫn kẹt → tắt máy, cắm lại chặt dây nguồn 8 pin của card (không qua dây chia / chuyển), kiểm nguồn. " : "")
+        + "Card đồ hoạ: đang dùng · bộ nhớ VRAM · nhiệt độ" + (x.clk && x.clk_max ? ` · xung ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz` + (sk ? "" : ` (xung thấp mà % thấp = card đang nghỉ, còn dư — "thật" = % tính theo xung)`) : "") + (x.pwr != null && x.pwr_max ? ` · điện ${Math.round(x.pwr)}/${Math.round(x.pwr_max)} W` : "")); }).join("")
       || `<div class="nr"><span>Card đồ hoạ</span><em>không đọc được</em></div>`;
     const d = m.disk_data, nid = esc(n.id), sel = NSEL.has(n.id), open = NOPEN.has(n.id), job = NJOB.get(n.id), L = SL.link.get(n.id);
     const cpuStop = m.cpu_busy_pct || 85, ramStop = m.ram_busy_pct || 85, dskStop = m.disk_busy_pct || 90;
@@ -16984,7 +17028,19 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .px-card .px-ln{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
 .px-card code,.pxa code{font-size:12.5px;word-break:break-all;background:var(--soft,rgba(143,208,255,.08));padding:3px 6px;border-radius:7px}
 .px-card .px-ip{font-size:12.5px;color:var(--muted)}
-#px-mine-list .m3m-card{flex-basis:320px}
+#px-mine-list .m3m-card{flex-basis:300px}
+#px-mine-list .m3m-acts .btn{padding-inline:10px;min-width:0}
+#px-mine-mt{grid-column:1/-1}
+#px-mine-mt[hidden]{display:none}
+.m3-mine.min #px-mine-mt{display:none}
+#px-mine:not(.min) .m3m-list{margin-top:22px}
+.px-card .px-line{all:unset;display:block;cursor:pointer;border-radius:9px}
+.px-card .px-line code{display:block;font-size:12.5px;line-height:1.45;word-break:break-all;padding:6px 8px;border-radius:9px;box-shadow:0 0 0 1px var(--line2)}
+.px-card .px-line:hover code,.px-card .px-line:focus-visible code{box-shadow:0 0 0 1px var(--sky)}
+.px-card .px-rot{width:100%;justify-content:center}
+.m3-row.px .vms-adm{display:block;font-size:12.5px;font-weight:700;margin:2px 0}
+.pxa-mmsg{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px}
+.pxa-mmsg .in{flex:1 1 280px}
 .pxa{display:grid;gap:14px}
 .pxa h4{margin:0 0 8px;font-size:15px}
 .pxa .grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
@@ -17015,6 +17071,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 .pxc-tbl td:nth-child(3){min-width:170px}
 .pxc-tbl .pill{font-size:11px;padding:1px 6px}
 .m3-row.px .m3-box .pxc-rowbtn{margin-top:6px}
+.pxa-hintbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.pxa-hintbar>div{flex:1 1 320px;margin:0}
 @media (max-width:640px){.pxc-cols{grid-template-columns:1fr}}
 </style>
 <script>
@@ -17049,7 +17107,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     BAD_PRICES: ["Bảng giá chưa đúng: giá từ 1.000đ, số ngày 1–365.", "Invalid prices: from 1,000đ, 1–365 days."], BAD_HOST: ["Tên miền / IP không hợp lệ.", "Invalid host name."],
     BAD_ENC: ["Chuỗi mã hoá không hợp lệ — tải lại trang rồi nhập lại.", "Invalid encrypted data — reload and retry."], NO_USER: ["Không thấy tài khoản (gõ tên đăng nhập hoặc email).", "No such account."],
     UNIT_TAKEN: ["Ô của proxy này đã có người khác dùng — không khôi phục được.", "That slot is taken."], BAD_DAYS: ["Số ngày không hợp lệ.", "Invalid days."],
-    INSUFFICIENT_BALANCE: ["Số dư không đủ — nạp thêm tiền rồi mua lại.", "Not enough balance — top up first."]
+    INSUFFICIENT_BALANCE: ["Số dư không đủ — nạp thêm tiền rồi mua lại.", "Not enough balance — top up first."],
+    MAINT: ["Proxy đang bảo trì — tạm chưa mua mới được, bạn quay lại sau nhé. Proxy đang dùng vẫn chạy + gia hạn bình thường.", "Proxies are under maintenance — new orders are paused; your proxies keep working and can be renewed."]
   };
   const em = e => { const m = String((e && (e.message || e.error_description)) || e || ""); for (const k in ERR) if (m.includes(k)) return L(ERR[k][0], ERR[k][1]);
     try { return errMsg(e); } catch (x) { return m || L("Lỗi không rõ.", "Unknown error."); } };
@@ -17086,31 +17145,39 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const lowDay = () => { const v = kindsOf().flatMap(k => sharesOf(k).flatMap(s => daysOf(k, s).map(d => N(prOf(k, s)[String(d)]) / d))); return v.length ? Math.min(...v) : 0; };
   const feats = () => [L("🌐 IP nhà mạng Việt Nam", "🌐 Vietnamese ISP IPs"), kindsOf().map(KN).join(" / "), L("👤 Riêng hoặc share 2–5 người", "👤 Private or shared"),
     L("🔄 Đổi IP (proxy riêng)", "🔄 Rotate IP (private)"), "SOCKS5 · HTTP", L("⚡ Dùng ngay sau khi mua", "⚡ Ready right after purchase")];
+  const pxMaint = () => O(PX.info).maint === true;                             // SQL v64: đang bảo trì (khách thấy dòng nhưng chưa mua mới được)
+  const pxMaintMsg = () => S(O(PX.info).maint_msg, 200).trim();
+  const rowSt = () => { const mt = pxMaint(), adm = isAdm(), ok = (anyStock() || adm) && (!mt || adm);
+    return { mt, ok, cls: !mt && anyStock() ? "ok" : "out", stock: mt ? "🛠️ " + L("Đang bảo trì", "Maintenance") : anyStock() ? L("Còn hàng", "In stock") : L("Tạm hết", "Sold out"),
+      btn: ok ? L("Mua ngay", "Buy now") : mt ? L("Đang bảo trì", "Maintenance") : L("Tạm hết", "Sold out") }; };
   function rowHtml() {
-    const ok = anyStock() || isAdm(), low = lowDay();
+    const { ok, cls, stock, btn, mt } = rowSt(), low = lowDay(), I = O(PX.info);
     return `<article class="m3-row px"${ok ? ' data-pxbuy="*" style="cursor:pointer"' : ""}>
       <div class="thumb"><canvas data-id="proxy-dan-cu" data-c="proxy" data-big="1"></canvas><span class="hot">${L("MỚI", "NEW")}</span></div>
       <div class="info"><span class="cat">Proxy</span><h3>${L("Proxy dân cư", "Residential proxy")}</h3>
+        ${I.sell === true ? "" : `<small class="vms-adm">👁 ${L("Chỉ admin thấy — chưa bật bán (Quản trị › Máy cho thuê › 🌐 Proxy)", "Admin preview — selling is off")}</small>`}
+        ${mt ? `<small class="vms-adm">🛠️ ${esc(pxMaintMsg() || L("Đang bảo trì — tạm chưa mua mới được, quay lại sau nhé.", "Under maintenance — please come back later."))}</small>` : ""}
         <p class="pdesc">${esc(L("IP nhà mạng thật (dân cư) — mỗi proxy 1 IP riêng, hoặc share 2–5 người cho rẻ. Có user / mật khẩu, dùng cho trình duyệt, app, phần mềm, điện thoại.",
           "Real ISP (residential) IPs — one IP per proxy, or shared by 2–5 for less. User / password, works in browsers, apps and phones."))}</p>
         <div class="feats">${feats().map(f => `<span>${esc(f)}</span>`).join("")}</div></div>
       <div class="m3-box"><div class="m3p">${low ? `<small>${L("từ", "from")}</small><span class="price">${typeof priceHtml === "function" ? priceHtml(low) : esc(money(low))}</span><small>/${L("ngày", "day")}</small>` : ""}</div>
-        <span class="stock ${anyStock() ? "ok" : "out"}">${anyStock() ? L("Còn hàng", "In stock") : L("Tạm hết", "Sold out")}</span>
-        <button class="btn main" type="button" data-pxbuy="*"${ok ? "" : " disabled"}>${ok ? L("Mua ngay", "Buy now") : L("Tạm hết", "Sold out")}</button>
+        <span class="stock ${cls}">${stock}</span>
+        <button class="btn main" type="button" data-pxbuy="*"${ok ? "" : " disabled"}>${btn}</button>
         <button class="btn ghost sm pxc-rowbtn" type="button" data-pxchk="*">🔎 ${L("Kiểm tra proxy", "Check proxies")}</button></div></article>`;
   }
   function liHtml() {
-    const ok = anyStock() || isAdm(), low = lowDay();
+    const { ok, cls, stock, btn } = rowSt(), low = lowDay();
     return `<div class="m3-li"${ok ? ' data-pxbuy="*" style="cursor:pointer"' : ""}><div class="thumb"><canvas data-id="proxy-dan-cu" data-c="proxy" data-static="1"></canvas></div>
       <div class="nm"><b>${L("Proxy dân cư", "Residential proxy")}</b><i>Proxy</i></div>
-      <div class="st"><span class="stock ${anyStock() ? "ok" : "out"}">${anyStock() ? L("Còn hàng", "In stock") : L("Tạm hết", "Sold out")}</span></div>
+      <div class="st"><span class="stock ${cls}">${stock}</span></div>
       <span class="price">${low ? (typeof priceHtml === "function" ? priceHtml(low) : esc(money(low))) : ""}</span>
-      <button class="btn sm" type="button" data-pxbuy="*"${ok ? "" : " disabled"}>${ok ? L("Mua ngay", "Buy now") : L("Tạm hết", "Sold out")}</button></div>`;
+      <button class="btn sm" type="button" data-pxbuy="*"${ok ? "" : " disabled"}>${btn}</button></div>`;
   }
   function shopRender() { try { if (typeof renderGrid === "function") renderGrid(); } catch (e) {} }
 
   function buyOpen() {
     if (!me()) { try { openAuth("login"); } catch (e) {} return; }
+    if (pxMaint() && !isAdm()) return void toast(em("MAINT"), 1);
     const ks = kindsOf(); if (!ks.length) return;
     const k = ks.find(x => sharesOf(x).some(s => stockOf(x, s) > 0)) || ks[0];
     const s = sharesOf(k).find(x => stockOf(k, x) > 0) || sharesOf(k)[0];
@@ -17171,6 +17238,14 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     mineRender();
   }
   const lineOf = x => `${S(x.host, 120)}:${N(x.port)}:${S(x.user, 40)}:${S(x.pass, 64)}`;
+  const PX_MIN = "cb_px_min";                                          // khung "Proxy của bạn": Ẩn / Hiện (nhớ theo trình duyệt, như khung VPS / điện thoại)
+  const pxMin = () => { try { return localStorage.getItem(PX_MIN) === "1"; } catch (e) { return false; } };
+  function pxTg() {
+    const s = $i("px-mine"), b = $i("px-mine-tg"); if (!s || !b) return;
+    const m = pxMin(); s.classList.toggle("min", m);
+    b.textContent = m ? L("Hiện ▾", "Show ▾") : L("Ẩn ▴", "Hide ▴"); b.setAttribute("aria-expanded", m ? "false" : "true");
+    b.title = m ? L("Hiện lại danh sách proxy", "Show your proxies") : L("Thu gọn khung này", "Collapse this panel");
+  }
   function mineBox() {
     let s = $i("px-mine");
     const after = $i("vm-mine") || $i("pcs-mine") || $i("m3-mine");
@@ -17178,36 +17253,46 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       if (!after) return null;
       s = document.createElement("section"); s.className = "wrap m3-mine"; s.id = "px-mine"; s.hidden = true; s.setAttribute("aria-labelledby", "px-mine-h");
       s.innerHTML = `<div class="m3m-box"><div class="m3m-head"><h2 id="px-mine-h"><span aria-hidden="true">🌐</span> <span>${L("Proxy của bạn", "Your proxies")}</span><small id="px-mine-n"></small></h2>
-        <div class="m3m-hacts"><button class="btn ghost sm" type="button" data-pxchk="all">🔎 ${L("Kiểm tra", "Check")}</button><button class="btn ghost sm" type="button" id="px-mine-all">📋 ${L("Chép tất cả", "Copy all")}</button>
+        <div class="m3m-hacts"><button class="btn ghost sm" type="button" data-pxchk="all">🔎 ${L("Kiểm tra", "Check")}</button>
+          <button class="btn ghost sm" type="button" id="px-mine-all" title="${esc(L("Chép mọi proxy còn hạn — mỗi dòng IP:PORT:USER:PASS", "Copy every active proxy"))}">📋 ${L("Chép tất cả", "Copy all")}</button>
           <button class="btn sm" type="button" id="px-mine-new">+ ${L("Mua thêm", "Buy more")}</button></div></div>
-        <div class="hint" style="margin:6px 0 0">${esc(L("Dạng IP:PORT:USER:PASS — dán vào phần mềm / trình duyệt / app. Chọn SOCKS5 hoặc HTTP đều được.", "Format IP:PORT:USER:PASS — SOCKS5 or HTTP both work."))}</div>
-        <div class="m3m-list" id="px-mine-list"></div></div>`;
+        <div class="m3m-list" id="px-mine-list"></div><div class="note vms-maint" id="px-mine-mt" hidden></div>
+        <button class="m3m-tg" type="button" id="px-mine-tg" aria-expanded="true">${L("Ẩn ▴", "Hide ▴")}</button></div>`;
       after.after(s);
-      $i("px-mine-new").onclick = () => { if (rowOn()) buyOpen(); else location.hash = "#shop"; };
+      $i("px-mine-new").onclick = () => { if (rowOn()) info().then(buyOpen); else location.hash = "#shop"; };
       $i("px-mine-all").onclick = () => { const it = A(O(PX.mine).items).filter(x => !x.expired); if (it.length) copy(it.map(lineOf).join("\n"), L(`Đã chép ${it.length} proxy.`, `Copied ${it.length} proxies.`)); };
+      $i("px-mine-tg").onclick = () => { try { localStorage.setItem(PX_MIN, pxMin() ? "0" : "1"); } catch (e) {} pxTg(); };
     } else if (after && after.nextElementSibling !== s) after.after(s);
     return s;
   }
-  function card(x) {
-    const id = N(x.id), ms = T(x.until) === null ? null : T(x.until) - Date.now(), soon = !x.expired && ms !== null && ms < 864e5;
+  function card(x) {                                                   // thẻ gọn: dòng proxy (bấm là chép) · IP ra · hạn · Chép / Kiểm tra / Gia hạn · link đổi IP (proxy riêng)
+    const id = N(x.id), ms = T(x.until) === null ? null : T(x.until) - Date.now(), soon = !x.expired && ms !== null && ms < 864e5, ip = S(x.ip, 64);
     const pill = x.expired ? `<span class="pill bad">⛔ ${L("Hết hạn", "Expired")}</span>` : x.online === false ? `<span class="pill">⏳ ${L("Máy chủ đang kết nối lại", "Host reconnecting")}</span>` : `<span class="pill ok">● ${L("Đang chạy", "Active")}</span>`;
+    const renew = cls => `<button class="btn ${cls} sm" type="button" data-pxrenew="${id}"${Object.keys(O(x.prices)).length ? "" : " disabled"}>⏱ ${L("Gia hạn", "Renew")}</button>`;
     return `<div class="m3m-card px-card${x.expired ? "" : " run"}${soon || x.expired ? " soon" : ""}" data-px="${id}">
       <div class="m3m-top">${pill}<span class="pill">${esc(KN(x.kind))} · ${esc(SN(x.share))}</span></div>
       <b class="m3m-nm">${esc(S(x.label, 40) || "Proxy #" + id)}<button type="button" class="m3m-ren" data-pxlabel="${id}" title="${esc(L("Đặt tên", "Rename"))}" aria-label="${esc(L("Đặt tên", "Rename"))}">✏️</button></b>
-      <div class="px-ln"><code>${esc(lineOf(x))}</code><button class="btn ghost sm" type="button" data-pxcp="${id}">📋 ${L("Chép", "Copy")}</button>${x.expired ? "" : `<button class="btn ghost sm" type="button" data-pxchk="${id}">🔎 ${L("Kiểm tra", "Check")}</button>`}</div>
-      <div class="px-ip">${S(x.ip, 64) ? esc(L("IP đang ra: ", "Exit IP: ") + S(x.ip, 64)) : esc(L("IP đang ra: đang cập nhật…", "Exit IP: updating…"))}</div>
+      <button type="button" class="px-line" data-pxcp="${id}" title="${esc(L("Bấm để chép — dán vào phần mềm / trình duyệt / app, chọn SOCKS5 hoặc HTTP đều được", "Tap to copy — works as SOCKS5 or HTTP"))}"><code>${esc(lineOf(x))}</code></button>
+      <small class="m3m-spec">${esc((ip ? L("IP ra: ", "Exit IP: ") + ip : L("IP ra: đang cập nhật…", "Exit IP: updating…")) + " · SOCKS5 · HTTP")}</small>
       ${x.expired ? `<div class="pcs-st bad">${esc(L(`Gia hạn trước ${dt(x.delete_at)} để giữ IP + tài khoản.`, `Renew before ${dt(x.delete_at)} to keep this IP.`))}</div>`
         : ms !== null ? `<div class="m3m-exp${soon ? " warn" : ""}">${L("Còn", "")} <b data-cd="${esc(S(x.until, 40))}">${typeof cdText === "function" ? cdText(x.until) : dt(x.until)}</b>${L("", " left")}</div>` : ""}
-      <div class="m3m-acts"><button class="btn sm" type="button" data-pxrenew="${id}"${Object.keys(O(x.prices)).length ? "" : " disabled"}>⏱ ${L("Gia hạn", "Renew")}</button>
-        ${S(x.rot, 300) ? `<button class="btn ghost sm" type="button" data-pxrot="${id}" title="${esc(L("Mở link này (trình duyệt / phần mềm) là đổi sang IP mới", "Open this link to get a new IP"))}">🔄 ${L("Link đổi IP", "Rotate link")}</button>` : ""}</div></div>`;
+      <div class="m3m-acts">${x.expired ? renew("")
+        : `<button class="btn sm" type="button" data-pxcp="${id}">📋 ${L("Chép", "Copy")}</button><button class="btn ghost sm" type="button" data-pxchk="${id}">🔎 ${L("Kiểm tra", "Check")}</button>${renew("ghost")}`}</div>
+      ${!x.expired && S(x.rot, 300) ? `<button class="btn ghost sm px-rot" type="button" data-pxrot="${id}" title="${esc(L("Mở link này (trình duyệt / phần mềm) là đổi sang IP mới", "Open this link to get a new IP"))}">🔄 ${L("Chép link đổi IP", "Copy rotate link")}</button>` : ""}</div>`;
   }
   function mineRender() {
     const s = mineBox(); if (!s) return;
-    const it = A(O(PX.mine).items);
+    const M = O(PX.mine), it = A(M.items);
     s.hidden = !me() || !it.length;
-    const n = $i("px-mine-n"); if (n) n.textContent = it.length ? `(${it.length})` : "";
+    const run = it.filter(x => !x.expired).length, exp = it.length - run, soon = it.filter(x => !x.expired && T(x.until) !== null && T(x.until) - Date.now() < 864e5).length;
+    const n = $i("px-mine-n");
+    if (n) n.textContent = !it.length ? "" : L(`${it.length} proxy · ${run} đang chạy`, `${it.length} prox${it.length > 1 ? "ies" : "y"} · ${run} active`)
+      + (soon ? L(` · ${soon} sắp hết hạn`, ` · ${soon} expiring`) : "") + (exp ? L(` · ${exp} hết hạn`, ` · ${exp} expired`) : "");
     const l = $i("px-mine-list"); if (l) l.innerHTML = it.map(card).join("");
-    navPx();
+    const mt = $i("px-mine-mt");
+    if (mt) { const on = M.maint === true && !isAdm(), msg = S(M.maint_msg, 200).trim(); mt.hidden = !on;
+      mt.innerHTML = on ? "🛠️ " + esc((msg ? msg + " — " : "") + L("Proxy đang bảo trì: tạm chưa mua mới được. Proxy của bạn vẫn chạy + gia hạn bình thường.", "Under maintenance: new orders are paused; your proxies keep working and can be renewed.")) : ""; }
+    pxTg(); navPx();
   }
   function navPx() {                                                  // menu bên: "Proxy của tôi" → kéo tới khung Proxy của bạn (chưa có thì mở hộp mua)
     const a = $i("nav-px"), b = $i("px-nav-badge"); if (!a) return;
@@ -17392,21 +17477,69 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     admRender();
   }
   const daysList = pr => [...new Set(["v6", "v4"].flatMap(k => Object.values(O(O(pr)[k])).flatMap(o => Object.keys(O(o)).map(Number))))].filter(d => d >= 1).sort((a, b) => a - b);
+  const nPrices = pr => ["v6", "v4"].reduce((a, k) => a + Object.values(O(O(pr)[k])).reduce((b, o) => b + Object.values(O(o)).filter(v => N(v) >= 1000).length, 0), 0);
+  function topHtml(d) {                                               // 27/11i: ô số liệu + Bật / Tắt bán 1 chạm + Bảo trì (SQL v64) + lời nhắn
+    const s = O(d.settings), st = O(d.stock), v64 = "maint" in s, mt = s.maint === true;
+    return `<div class="vma-top">
+      <div><span>🛒 ${L("Bán cho khách", "Selling")}</span><b style="color:${s.sell ? "var(--ok)" : "var(--gold-hi)"}">${s.sell ? L("ĐANG BÁN", "ON") : L("CHƯA BÁN", "OFF")}</b>
+        <button class="btn ${s.sell ? "ghost" : "okb"} sm" type="button" data-pxset="sell" data-v="${s.sell ? "0" : "1"}">${s.sell ? "⏸ " + L("Tắt bán", "Stop selling") : "▶ " + L("Bật bán", "Start selling")}</button></div>
+      <div><span>🛠️ ${L("Bảo trì", "Maintenance")}</span><b style="color:${mt ? "var(--gold-hi)" : "var(--muted)"}">${mt ? L("ĐANG BẢO TRÌ", "ON") : L("Không", "Off")}</b>
+        ${v64 ? `<button class="btn ${mt ? "okb" : "ghost"} sm" type="button" data-pxset="maint" data-v="${mt ? "0" : "1"}">${mt ? "✅ " + L("Tắt bảo trì", "End maintenance") : "🛠️ " + L("Bật bảo trì", "Start maintenance")}</button>`
+          : `<span class="hint">${L("cần chạy SQL v64", "needs SQL v64")}</span>`}</div>
+      <div><span>${L("Proxy đang chạy", "Active proxies")}</span><b>${N(d.active)}</b></div><div><span>${L("Doanh thu tháng này", "Revenue this month")}</span><b>${esc(money(d.revenue_month))}</b></div>
+      <div><span>${L("Kho: IPv6 riêng · IPv4 riêng", "Stock: IPv6 · IPv4 private")}</span><b>${N(O(st.v6)["1"])} · ${N(O(st.v4)["1"])}</b></div></div>
+      ${v64 ? `<label class="pxa-mmsg">🛠️ ${L("Lời nhắn cho khách khi bảo trì", "Maintenance message")}<input class="in" id="pxa-mmsg" maxlength="200" value="${esc(PX.mmsg != null ? PX.mmsg : S(s.maint_msg, 200))}" placeholder="${esc(L("VD: Đang nâng cấp máy chủ, mở bán lại lúc 20:00", "e.g. Upgrading — back at 8pm"))}">${mt ? `<button class="btn ghost sm" type="button" data-pxset="mmsg">💾 ${L("Lưu lời nhắn", "Save message")}</button>` : ""}</label>` : ""}
+      ${admHint(s)}`;
+  }
+  function paintTop() { const tp = $i("pxa-top"); if (tp && PX.adm) tp.innerHTML = topHtml(O(PX.adm)); }
+  async function admToggle(b) {                                       // nút 1 chạm: Bật / Tắt bán · Bật / Tắt bảo trì · Lưu lời nhắn
+    const k = b.dataset.pxset, on = b.dataset.v === "1", patch = {}, msgNow = () => S(PX.mmsg != null ? PX.mmsg : (($i("pxa-mmsg") || {}).value || ""), 200).trim();
+    if (k === "sell") patch.sell = on; else if (k === "maint") { patch.maint = on; if (on) patch.maint_msg = msgNow(); } else if (k === "mmsg") patch.maint_msg = msgNow(); else return;
+    if (k === "sell" && on && !nPrices(O(O(PX.adm).settings).prices)) return void toast(L("Điền giá trước (bảng giá bên dưới, ít nhất 1 ô) rồi bấm 💾 Lưu, sau đó mới Bật bán.", "Set at least one price and Save first."), 1);
+    b.disabled = true;
+    try { const { data, error } = await rpc("px_admin_settings", { p_patch: patch }); if (error) throw error;
+      if (k !== "sell" && !(data && typeof data === "object" && "maint" in data)) toast(L("Cần chạy SQL v64 (bảo trì proxy) trên Supabase trước.", "Run SQL v64 first."), 1);
+      else toast(k === "sell" ? (on ? L("✅ Đã BẬT bán proxy — khách thấy dòng “Proxy dân cư”.", "Selling is ON.") : L("⏸ Đã TẮT bán proxy — khách không thấy dòng Proxy nữa.", "Selling is OFF."))
+        : k === "maint" ? (on ? L("🛠️ Đã BẬT bảo trì proxy — khách tạm không mua mới được (proxy đang chạy + gia hạn vẫn bình thường).", "Maintenance is ON.") : L("✅ Đã TẮT bảo trì proxy — khách mua lại bình thường.", "Maintenance is OFF."))
+        : L("💾 Đã lưu lời nhắn bảo trì.", "Message saved."));
+      if (k !== "sell") PX.mmsg = null;
+      await admLoad(true); info(true).then(shopRender); mine(true); }
+    catch (e) { toast(em(e), 1); }
+    b.disabled = false;
+  }
+  function admHint(s) {                                               // 27/11i: vì sao trang chủ chưa hiện dòng "Proxy dân cư" + nút 🔎 Kiểm tra proxy cho admin
+    const n = nPrices(s.prices);
+    const msg = !n ? `<div class="note">⚠️ ${L("Chưa có giá nào → trang chủ <b>chưa hiện</b> dòng “Proxy dân cư”. Điền giá vào bảng bên dưới (ít nhất 1 ô, từ 1.000đ) rồi bấm 💾 Lưu, sau đó bấm ▶ Bật bán.",
+        "No prices yet — the shop row stays hidden. Fill at least one price (from 1,000đ) and Save.")}</div>`
+      : !s.sell ? `<div class="hint">ℹ️ ${L("Đang tắt bán: chỉ admin thấy dòng “Proxy dân cư” ở trang chủ (để thử). Bấm ▶ Bật bán ở ô trên là khách thấy ngay.",
+        "Selling is off — only admins see the shop row. Tick “Sell to customers” and Save.")}</div>`
+      : s.maint === true ? `<div class="hint">🛠️ ${L("Đang bảo trì: khách vẫn thấy dòng “Proxy dân cư” nhưng chưa mua mới được (proxy đang chạy + gia hạn vẫn bình thường).", "Maintenance: customers see the row but can't buy.")}</div>`
+      : `<div class="hint">✅ ${L(`Đang bán ${n} gói — khách thấy dòng “Proxy dân cư” ở trang chủ.`, `${n} plans on sale — customers see the shop row.`)}</div>`;
+    return `<div class="pxa-hintbar">${msg}<button class="btn ghost sm" type="button" data-pxchk="*">🔎 ${L("Kiểm tra proxy", "Check proxies")}</button></div>`;
+  }
+  function hostBad(h) {                                               // 27/11i: ô "Tên miền / IP cho khách nối" chỉ nhận tên miền / IP công khai, không cổng / user / mật khẩu
+    const x = String(h || "").trim().replace(/^\[|\]$/g, ""); if (!x) return "";
+    const v4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(x) && x.split(".").every(p => +p <= 255);
+    const v6 = x.includes(":") && /^[0-9a-f:.]+$/i.test(x) && x.split(":").length <= 8;
+    const nm = /^(?=.{1,120}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(x) && !/^[\d.]+$/.test(x);
+    if (!(v4 || v6 || nm)) return L("Ô “Tên miền / IP cho khách nối” chỉ ghi tên miền hoặc IP công khai — KHÔNG ghi cổng, user, mật khẩu (không dán dòng proxy vào đây). Thường để TRỐNG. Muốn thử proxy thì bấm 🔎 Kiểm tra proxy.",
+      "“Public host” takes only a domain or public IP — no port, user or password. Usually leave it blank. To test proxies use 🔎 Check proxies.");
+    if (privHost(x)) return L("Đây là IP mạng nhà — khách ở ngoài không vào được. Để TRỐNG ô này (tự dùng IP công khai của máy chủ).", "That's a LAN address — leave it blank.");
+    return "";
+  }
   function admRender() {
     const box = $i("pxa"); if (!box) return;
     if (PX.miss) { box.innerHTML = `<div class="note">⚠️ ${L("Cơ sở dữ liệu chưa có phần <b>bán proxy</b>. Vào Supabase › SQL Editor › New query › dán hết file <b>cloudblue-v63-ban-proxy.sql</b> › bấm <b>Run</b>, rồi tải lại trang.", "Run SQL v63 in Supabase first.")}</div>`; return; }
     const d = O(PX.adm), s = O(d.settings), hs = A(d.hosts), ps = A(d.proxies), st = O(d.stock);
     if (!PX.adm) { box.innerHTML = PX.admErr ? `<div class="note">⚠️ ${esc(PX.admErr)}</div>` : `<div class="hint">${L("Đang tải…", "Loading…")}</div>`; return; }
-    if (box.dataset.dirty === "1" && box.querySelector("#pxa-set")) { paintHosts(); paintList(); return; }       // đang sửa ô → không vẽ lại phần cài đặt / giá
+    const typing = !!(document.activeElement && document.activeElement.id === "pxa-mmsg");
+    if ((box.dataset.dirty === "1" || typing) && box.querySelector("#pxa-set")) { if (!typing) paintTop(); paintHosts(); paintList(); return; }       // đang sửa ô → chỉ vẽ lại phần số liệu       // đang sửa ô → không vẽ lại phần cài đặt / giá
     const ds = daysList(s.prices).length ? daysList(s.prices) : [1, 7, 30];
     const priceRow = (k, sh) => `<tr><td><b>${KN(k)}</b> · ${esc(SN(sh))}</td>${ds.map(dd => `<td><input class="in" type="number" min="0" step="1000" inputmode="numeric" data-pxpr="${k}|${sh}|${dd}" value="${N(O(O(O(s.prices)[k])[String(sh)])[String(dd)]) || ""}" placeholder="—"></td>`).join("")}<td class="hint">${N(O(st[k])[String(sh)])}</td></tr>`;
     box.innerHTML = `<div class="pxa">
       ${PX.admErr ? `<div class="note">⚠️ ${esc(PX.admErr)}</div>` : ""}
-      <div class="vma-top"><div><span>${L("Bán cho khách", "Selling")}</span><b style="color:${s.sell ? "var(--ok)" : "var(--gold-hi)"}">${s.sell ? L("ĐANG BÁN", "ON") : L("CHƯA BÁN", "OFF")}</b></div>
-        <div><span>${L("Proxy đang chạy", "Active proxies")}</span><b>${N(d.active)}</b></div><div><span>${L("Doanh thu tháng này", "Revenue this month")}</span><b>${esc(money(d.revenue_month))}</b></div>
-        <div><span>${L("Kho: IPv6 riêng · IPv4 riêng", "Stock: IPv6 · IPv4 private")}</span><b>${N(O(st.v6)["1"])} · ${N(O(st.v4)["1"])}</b></div></div>
+      <div id="pxa-top">${topHtml(d)}</div>
       <div class="vma-sec" id="pxa-set"><h4>⚙ ${L("Cài đặt bán", "Settings")}</h4>
-        <label class="chk"><input type="checkbox" id="pxa-sell"${s.sell ? " checked" : ""}> ${L("Bật bán cho khách (tắt: chỉ admin thấy ô Proxy dân cư)", "Sell to customers")}</label>
         <div class="grid3">
           <label>${L("Cổng ngoài (modem chuyển về máy chủ cổng 8899)", "Public port")}<input class="in" type="number" id="pxa-port" min="1" max="65535" value="${N(s.pub_port) || 8899}"></label>
           <label>${L("Tên miền / IP cho khách nối (trống = IP công khai máy chủ)", "Public host (blank = host IP)")}<input class="in" id="pxa-host" maxlength="120" value="${esc(S(s.pub_host, 120))}" placeholder="vd proxy.cloudblue.vn" spellcheck="false"></label>
@@ -17475,7 +17608,8 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     document.querySelectorAll("#pxa [data-pxpr]").forEach(inp => { const [k, sh, dd] = inp.dataset.pxpr.split("|"); const v = Math.round(N(inp.value));
       if (v >= 1000 && days.includes(+dd)) { prices[k] = prices[k] || {}; prices[k][sh] = prices[k][sh] || {}; prices[k][sh][dd] = v; } });
     const g = id => $i(id) || {};
-    const patch = { sell: !!g("pxa-sell").checked, fb4: !!g("pxa-fb4").checked, sale4: !!g("pxa-sale4").checked, pub_port: Math.round(N(g("pxa-port").value)) || 8899,
+    const hb = hostBad(g("pxa-host").value); if (hb) { if (er) er.textContent = hb; try { $i("pxa-host").focus(); } catch (e) {} return; }
+    const patch = { fb4: !!g("pxa-fb4").checked, sale4: !!g("pxa-sale4").checked, pub_port: Math.round(N(g("pxa-port").value)) || 8899,
       pub_host: S(g("pxa-host").value, 120).trim(), bw_kbps: Math.round(N(g("pxa-bw").value)), v6_units: Math.round(N(g("pxa-v6").value)), max_qty: Math.round(N(g("pxa-qty").value)) || 1,
       max_conns: Math.round(N(g("pxa-conns").value)) || 64, grace_h: Math.round(N(g("pxa-grace").value)), note: S(g("pxa-note").value, 500), prices };
     btn.disabled = true;
@@ -17549,8 +17683,9 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   // ================================================================ sự kiện
   document.addEventListener("click", e => {
     const t = e.target; if (!t || !t.closest) return;
-    const b = t.closest("[data-pxchk],#pxc-go,[data-pxcm],[data-pxccp],[data-pxbuy],[data-pxk],[data-pxs],[data-pxd],[data-pxq],#pxb-pay,[data-pxcp],[data-pxrot],[data-pxrenew],[data-pxrd],#pxr-go,[data-pxlabel],#pxl-go,[data-pxppp],#pxp-go,#pxa-save,[data-pxact],#pxa-give");
+    const b = t.closest("[data-pxset],[data-pxchk],#pxc-go,[data-pxcm],[data-pxccp],[data-pxbuy],[data-pxk],[data-pxs],[data-pxd],[data-pxq],#pxb-pay,[data-pxcp],[data-pxrot],[data-pxrenew],[data-pxrd],#pxr-go,[data-pxlabel],#pxl-go,[data-pxppp],#pxp-go,#pxa-save,[data-pxact],#pxa-give");
     if (!b) return;
+    if (b.dataset.pxset) return void admToggle(b);
     if (b.dataset.pxchk !== undefined) { e.preventDefault(); e.stopPropagation(); const v = b.dataset.pxchk;
       if (v === "*") return chkOpen("", false);
       const its = A(O(PX.mine).items).filter(x => !x.expired && (v === "all" || N(x.id) === N(v)));
@@ -17582,6 +17717,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const t = e.target; if (!t) return;
     if (t.id === "pxb-q" && PX.b) { PX.b.q = N(t.value); buyPaint(); return; }
     if (t.id === "pxa-q") return paintList();
+    if (t.id === "pxa-mmsg") { PX.mmsg = t.value; return; }
     if (t.closest && t.closest("#pxa-set")) { const bx = $i("pxa"); if (bx) bx.dataset.dirty = "1"; }
   });
 
