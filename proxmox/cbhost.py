@@ -37,11 +37,11 @@
 #     (cổng 8899, chỉ máy trong mạng nhà dùng được; VPS khách bị chặn sẵn bởi cách ly ở trên). Mỗi ô proxy 1 IPv6 riêng trong dải /64 của mạng
 #     + IPv4 riêng khi có tài khoản PPPoE (admin gõ "cbpool ppp-set" trong Shell của Proxmox — mật khẩu chỉ nằm trên máy này).
 #     Báo danh sách ô (IP:cổng:user:mật khẩu, IP đang ra) lên web trong số đo (px) → Quản trị › VPS ảo hoá › Máy chủ. Tắt: "pool": false.
-#   · 27/11g: BÁN PROXY CHO KHÁCH (web: Proxy dân cư, share 1–5). Mỗi phút gọi px_host_sync (SQL v62) → ghi tài khoản khách vào
+#   · 27/11g: BÁN PROXY CHO KHÁCH (web: Proxy dân cư, share 1–5). Mỗi phút gọi px_host_sync (SQL v63) → ghi tài khoản khách vào
 #     /etc/cloudblue/cbpool-users.json (600) cho cbpool 27.11c (khách vào được từ Internet qua cổng modem; ô IPv6 bán riêng; IPv4 = phiên
 #     PPPoE đã bán) · báo lại IP đang ra của từng ô bán + khoá công khai của máy. Tài khoản PPPoE admin nhập trên web được TRÌNH DUYỆT mã hoá
 #     bằng khoá công khai đó → cbhost chỉ chuyển chuỗi mã hoá cho "cbpool ppp-import" (giải bằng khoá riêng của máy, qua stdin).
-#     Web chưa chạy SQL v62 → bỏ qua im lặng.
+#     Web chưa chạy SQL v63 → bỏ qua im lặng.
 #   · 27/11f: kho proxy báo thêm kết quả TỰ DÒ PPPoE (cbpool 27.11b gửi gói dò PADI — không mật khẩu, không xin phiên — khi chưa có phiên
 #     nào lên) → web hiện "modem có cho PPPoE từ mạng nhà đi qua không" mà admin khỏi vào Shell gõ cbpool ppp-test.
 #     Tự cập nhật cbhost 15 phút / lần (trước 1 giờ) để bản sửa tới máy chủ nhanh hơn.
@@ -895,7 +895,7 @@ class PoolMgr:
         self.restart = False; self.err = ""
 
     def sync(self):
-        """27/11g · bán proxy: px_host_sync (SQL v62) → tài khoản khách cho cbpool + tài khoản PPPoE đã mã hoá; báo lại IP từng ô bán + khoá công khai."""
+        """27/11g · bán proxy: px_host_sync (SQL v63) → tài khoản khách cho cbpool + tài khoản PPPoE đã mã hoá; báo lại IP từng ô bán + khoá công khai."""
         if not self.web or not self.sec: return
         cs = pool_ask({"cmd": "cust"})
         rep = {"ver": CBHOST_VER}
@@ -908,7 +908,7 @@ class PoolMgr:
         r = self.web.rpc("px_host_sync", {"p_secret": self.sec, "p_report": rep}, timeout=20)
         if not isinstance(r, dict) or not r.get("ok"):
             e = (self.web.err or str((r or {}).get("err") if isinstance(r, dict) else "") or "")[:160]
-            if "px_host_sync" in e or "PGRST202" in e or "404" in e: e = ""            # web chưa chạy SQL v62: chưa bán proxy
+            if "px_host_sync" in e or "PGRST202" in e or "404" in e: e = ""            # web chưa chạy SQL v63: chưa bán proxy
             self.sync_err = e
             return
         self.sync_err = ""
