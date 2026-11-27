@@ -50,6 +50,7 @@ open(os.environ["CBHOST_CONF"], "w").write(json.dumps({"full_clone": True, "stor
 spec = importlib.util.spec_from_file_location("cbhost", os.path.join(ROOT, "cbhost.py"))
 cb = importlib.util.module_from_spec(spec); spec.loader.exec_module(cb)
 cb.log = lambda *a: None
+cb.POOL_FILE = ("cbpool-x86_64", "")          # mục 1–16: kho proxy không tải gì (không lẫn vào các phép thử tải khác) — mục 17 tự đặt md5
 
 
 class FakeWeb:
