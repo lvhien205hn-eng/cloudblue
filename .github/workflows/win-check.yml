@@ -7,6 +7,7 @@
 #      + 23/11d: game kiểu cũ được MỞ LẠI NGAY TRONG tab (vừa cửa sổ) · màn rộng tự bật · cửa sổ đúng tỉ lệ game · app trợ giúp xoay màn
 #        vn.cloudblue.xoay (cửa sổ phủ ép màn ngang — máy bỏ qua khoá xoay như MuMu). File cbxoay.apk dựng ở máy API 32 → nhánh win-shots.
 #      + 23/11f: test_node.py — /cpapi/admin/node (quản lý máy chủ từ web), cloudphoned tự cập nhật theo máy chủ khác, sổ cập nhật của sua-tat-ca.py.
+#      + 27/11n: test_move.py — chuyển máy khách sang máy chủ khác (phonectl + cloudphoned + cpapi thật, giả lập / Supabase giả).
 #      + thử nghiệm test_fit.py (chỉ ghi kết quả): game tự co vừa khung (size compat) · mở app khác đè lên thì tab nhỏ có bị tắt / tải lại.
 #   Ảnh từng bước → nhánh win-shots (kèm vercel.json tắt deploy → không tốn lượt Vercel).
 name: Check tab windows (Android)
@@ -43,6 +44,8 @@ jobs:
         run: python3 .github/win-check/test_gpufair.py
       - name: Máy chủ cài tay tối ưu như máy cài từ ISO + card kẹt xung nghỉ (27/11j)
         run: python3 .github/win-check/test_iso_tune.py
+      - name: Chuyển hết máy khách sang máy chủ khác, giữ nguyên dữ liệu (27/11n)
+        run: python3 .github/win-check/test_move.py
 
   emu:
     needs: sim
