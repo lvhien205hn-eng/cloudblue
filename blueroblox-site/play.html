@@ -549,7 +549,7 @@ body.pcpad #pc-cur{display:block}
    (Safari / iOS 16.4+, Chrome, Edge). Không cần cài gì, không đụng khoá bí mật nào: chỉ phiên đăng nhập của khách.
    ===================================================================================================== */
 const CFG = { url: "https://nprftgodswlpzomcttal.supabase.co", key: "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze" };
-const VER = "web-2.5";                 // web-2.5: ?mh=… xin cỡ hình nhỏ hơn · web-2.4 (27/11e): báo đã nhận khung ngay khi tới (tab ẩn không làm máy chủ tưởng mạng chậm) + Thông số bộ nén · web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
+const VER = "web-2.6";                 // web-2.5: ?mh=… xin cỡ hình nhỏ hơn · web-2.4 (27/11e): báo đã nhận khung ngay khi tới (tab ẩn không làm máy chủ tưởng mạng chậm) + Thông số bộ nén · web-1.6 (17/11f): tự hiện màn ngang · web-1.7 (17/11g): báo đúng khi máy chủ chưa nhận kết nối + nối theo địa chỉ đã biết khi hỏi web chậm
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -564,6 +564,7 @@ const TILE = Q.get("tile") === "1" && window.parent !== window;
 const MULTI = !TILE && (Q.get("multi") === "1" || Q.get("multi") === "pc");      // web-2.2: ?multi=pc → nhiều MÁY PC (VPS GPU) cùng lúc
 const T_MAXH = TILE ? Math.max(0, Math.min(1920, parseInt(Q.get("mh"), 10) || 0)) : 0;      // ô nhỏ (lưới ≥ 5 máy): cạnh dài hình ≤ 640
 const Q_MAXH = TILE ? 0 : Math.max(0, Math.min(1920, parseInt(Q.get("mh"), 10) || 0));     // web-2.5: ?mh=800 (không phải ô) → xin hình cạnh dài ≤ 800 (đo / máy yếu)
+const Q_CBV = TILE ? "" : ({ "1": "1", "0": "0" })[Q.get("cbv") || ""] || "";             // web-2.6: ?cbv=1 / 0 → máy Android 9 lấy hình bằng cbvideo / scrcpy (thử, so sánh)
 const T_FPS = TILE ? Math.max(10, Math.min(30, parseInt(Q.get("tf"), 10) || 30)) : 0;
 const T_KBPS = TILE ? Math.max(0, Math.min(3000, parseInt(Q.get("tk"), 10) || 0)) : 0;
 if (TILE) document.body.classList.add("tile");
@@ -973,7 +974,7 @@ function linkUp(c, ws, token) {            // 1 đường vừa mở được �
   ws.onmessage = ev => { if (P.ws === ws) onMsg(ev.data); };
   ws.onclose = () => { if (P.ws === ws) linkLost("kết nối bị đóng"); };
   ws.onerror = () => {};
-  sendJSON(T.HELLO, Object.assign({ v: 2, token, ...(P.kind === "pc" ? { pc: P.id } : { phone: P.id }), client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || Q_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, P.sw ? { dec: "sw" } : {}, P.kind === "pc" && P.pcf ? { fpsx: P.pcf } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
+  sendJSON(T.HELLO, Object.assign({ v: 2, token, ...(P.kind === "pc" ? { pc: P.id } : { phone: P.id }), client: "web", ver: VER, q: P.q, fps: TILE ? T_FPS : (IS_WEBKIT || P.fps30 || P.sw ? 30 : 60), maxh: Math.min(T_MAXH || Q_MAXH || 9999, P.sw ? Math.min(maxH(), SW_MAXH) : maxH()), via: c.k }, Q_CBV ? { cbv: Q_CBV } : {}, P.sw ? { dec: "sw" } : {}, P.kind === "pc" && P.pcf ? { fpsx: P.pcf } : {}, netHint()));   // Safari/iPhone / máy yếu: 30 hình/s
   startTimers();
 }
 /* Gợi ý cho máy chủ BẮT ĐẦU NHẸ khi mạng yếu rõ ràng (Chrome / Edge / Android; Safari không có → không gửi gì, máy chủ tự dò như cũ).
