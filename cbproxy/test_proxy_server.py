@@ -199,9 +199,13 @@ g2 = pc._px_state.__globals__
 g2["rec"] = pc.rec
 g2["_px_apply"] = lambda p, quiet=False: (KEEP.append(p["name"]), (True, "Đã BẬT proxy — IP ra: 5.6.7.8 · 9 ms", {}))[1]
 keep = g2["_proxy_keep"]
-OUT["o"] = json.dumps(dict(pub, beat=now - 2)) + f"\nNOW={now}\n"
+OUT["o"] = json.dumps(dict(pub, beat=now - 2, ver=g2["CBPX_VER"])) + f"\nNOW={now}\n"
 with redirect_stdout(io.StringIO()): keep({"name": "m1"})
-ck("proxy đang chạy → để yên", KEEP == [], KEEP)
+ck("proxy đang chạy đúng bản → để yên", KEEP == [], KEEP)
+OUT["o"] = json.dumps(dict(pub, beat=now - 2, ver="22.11a")) + f"\nNOW={now}\n"
+with redirect_stdout(io.StringIO()): keep({"name": "m1"})
+ck("27/11f · proxy đang chạy bản cbproxy CŨ (22.11a) → áp dụng lại (đẩy bản mới đọc tên miền)", KEEP == ["m1"], KEEP)
+KEEP.clear()
 OUT["o"] = json.dumps(dict(pub, beat=now - 900)) + f"\nNOW={now}\n"
 with redirect_stdout(io.StringIO()): keep({"name": "m1"}, 21503)
 ck("tiến trình proxy không chạy (máy vừa bật lại) → bật lại", KEEP == ["m1"], KEEP)
