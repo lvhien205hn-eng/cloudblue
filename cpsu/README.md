@@ -119,8 +119,17 @@ If `--ramdisk` exists and is **not** a mountpoint, mounts a `tmpfs` there
 `<ramdisk>/su` (`0755`) — Termux's `su` wrapper looks for `/debug_ramdisk/su`;
 bind-mounts `<ramdisk>/su` over each existing `--bind` file (e.g.
 `/system/xbin/su,/system/bin/su`); records what it mounted in `D/mounts`; starts
-the daemon if not running. Prints `INSTALL_OK …` or `INSTALL_FAIL <reason>`
-(non-zero). Every path is overridable for testing. Never touches SELinux.
+the daemon if not running. Prints `INSTALL_OK ramdisk=<dir> tmpfs=<0|1> su=<path> made=<0|1>` or
+`INSTALL_FAIL <reason>` (non-zero). Every path is overridable for testing. Never touches SELinux.
+
+**No `--ramdisk` directory (Android 9 and older, e.g. LDPlayer 9 — `/debug_ramdisk` only exists from Android 11):**
+if the missing directory sits directly under a read-only `/` that lives in RAM (`rootfs` / `tmpfs` / `ramfs`,
+i.e. no system-as-root), install remounts `/` writable just long enough to `mkdir` the empty mount point, puts
+the old mount flags back (`made=1`), then continues as above. Nothing on disk changes and the directory is gone
+at the next boot. If no directory can be made (read-only system-as-root, missing parent…), su is kept in
+`D/bin/su` (warning on stderr) — apps reach it only through `--bind` — and the daemon still starts. Before
+27/11 install stopped at `INSTALL_FAIL copy` there and never started the daemon (CloudBlue showed
+"Chưa bật được root: STOPPED").
 
 ### `cpsu uninstall [--dir D]`
 
