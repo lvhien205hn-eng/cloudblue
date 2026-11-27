@@ -15,6 +15,7 @@ D = "/tmp/cbp"
 CONF = D + "/cbpool.json"
 SECRET = D + "/ppp.secret"
 results = []
+BG = []
 
 
 def sh(cmd, check=True, ns=None, timeout=60, inp=None):
@@ -84,7 +85,8 @@ def setup():
         "    def server_bind(self):\n"
         "        self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0); super().server_bind()\n"
         "S(('::', 8080), H).serve_forever()\n")
-    subprocess.Popen("ip netns exec isp python3 %s" % who, shell=True)
+    BG.append(subprocess.Popen(["ip", "netns", "exec", "isp", "python3", who], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, start_new_session=True))      # không giữ ống in ra (tee của CI chờ mãi)
     # tên miền thử (cbpool phân giải qua /etc/hosts)
     hosts = open("/etc/hosts").read()
     if "dual.cbtest" not in hosts:
@@ -208,11 +210,24 @@ def main():
     ok("cbpool dừng sạch", proc.returncode == 0, proc.returncode)
 
 
+def cleanup():
+    for p in BG:
+        try: os.killpg(p.pid, signal.SIGKILL)
+        except Exception: pass
+    sh("pkill -f '%s run -c'" % BIN, check=False)
+    sh("pkill pppoe-server", check=False)
+    sh("pkill pppd", check=False)
+    for ns in ("pve", "isp"):
+        sh("ip netns del %s" % ns, check=False)
+
+
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
         ok("chạy hết bộ thử", False, e)
+    finally:
+        cleanup()
     print("\n## cbpool thử thật: %d/%d đạt\n" % (sum(1 for r in results if r[1]), len(results)))
     print("| | Phép thử | Chi tiết |\n|---|---|---|")
     for n, c, i in results:
