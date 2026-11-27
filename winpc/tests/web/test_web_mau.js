@@ -1,4 +1,6 @@
-// 28/11 bản 4 · CHỈ HỌ XANH CỦA LOGO — bỏ vàng, ít màu, không màu mè, GIỮ NGUYÊN HIỆU ỨNG.
+// 28/11 bản 5 "ARCTIC GLOW" — đơn giản mà sang trọng, nổi bật, không vàng, không màu mè, GIỮ NGUYÊN HIỆU ỨNG.
+// Bảng màu từ trang phối màu media.io (Blue Cyan #1 "Arctic Glow"): #0b1026 · #0b5fff · #00c2ff · #a7f3ff · #f5fbff.
+// Nền bản 4 vẫn giữ (chỉ họ xanh); bản 5 đổi màu theo bảng: nút + HOT/MỚI xanh điện, neon xanh ngọc → xanh điện, giá màu băng phát sáng nhẹ.
 // Khách chê bản 3: "thay màu khác đi đừng chọn màu vàng · phối chỉ vài màu thôi · đừng màu mè". Bản 4 lấy NGUYÊN bản cũ (nền tươi, nút, mọi hoạt ảnh) rồi:
 //   · nền xanh đêm · xanh dương = nút, tab, nhãn HOT / MỚI · XANH TRỜI = điểm nhấn duy nhất (tiền & ưu đãi) · chữ trắng
 //   · đèn neon chạy viền: xanh ngọc + xanh dương (bỏ tím) · vàng / cam trang trí cũ → xanh trời · xanh lá / đỏ / vàng cam chỉ còn ở trạng thái
@@ -17,23 +19,32 @@ const hue = (r, g, b) => { r /= 255; g /= 255; b /= 255; const mx = Math.max(r, 
 const web = read("blueroblox-site/index.html");
 const i0 = web.indexOf("/* ===== 28/11 · BẢN 4: CHỈ HỌ XANH CỦA LOGO"), i1 = web.indexOf("</style>", i0);
 const acc = i0 >= 0 ? web.slice(i0, i1) : "";
+const j0 = web.indexOf('/* ===== 28/11 · BẢN 5 "ARCTIC GLOW"'), v5 = j0 > i0 ? web.slice(j0, web.indexOf("</style>", j0)) : "";
 
 console.log("1. web — nền + hiệu ứng y như bản cũ");
 const D = block(web, "html[data-theme=dark]{"), L = block(web, "html[data-theme=light]{");
 ck("tối: nền #071226 · thẻ #0d1d3d · xanh #3d86ff / #2b6ef0", v(D, "bg") === "#071226" && v(D, "card") === "#0d1d3d" && v(D, "blue") === "#3d86ff" && v(D, "blue2") === "#2b6ef0", D);
 ck("sáng: nền #f3f7fc · thẻ trắng · xanh #2b6ef0", v(L, "bg") === "#f3f7fc" && v(L, "card") === "#ffffff" && v(L, "blue") === "#2b6ef0", L);
-ck("nút xanh bóng như cũ (#5c9dff → #2b6ef0, 7 chỗ)", count(web, "linear-gradient(180deg,#5c9dff,#2b6ef0)") === 7);
+ck("nút chính xanh điện của bảng (#3d86ff → #0b5fff, đủ 7 chỗ, hết màu nút cũ)", count(web, "linear-gradient(180deg,#3d86ff,#0b5fff)") === 7 && !web.includes("linear-gradient(180deg,#5c9dff,#2b6ef0)"));
 const KF = ["admIn", "cbdIn", "cbfloat", "cblbub", "cblfloat", "cblsheen", "cblsheensq", "cblspin", "cblswoosh", "cbltw", "ccw", "chIn", "chWave", "chWaveM", "cpv-hl", "cpv-pop", "cpv-sheen", "cw", "cw0", "dotpulse", "emGlow", "emIn", "fade", "fbmove", "fxbreathe", "fxcore", "fxspin", "goldflow", "goldline", "lineIn", "lwbulb", "lwchase", "lwdrop", "lwflash", "lwhalo", "lwhsheen", "lwhspin", "lwlid", "lwpop", "lwq", "lwray", "lwshake", "lwsheen", "lwsink", "lwtitle", "lwturn", "lwwin", "m3vpulse", "npulse", "nrun", "pcsrun", "pop", "ppshine", "pulse", "rise", "shine", "slidein", "spin", "spk", "sweep3d", "wob"];
 const miss = KF.filter(k => !new RegExp("@keyframes\\s+" + k.replace("-", "\\-") + "\\b").test(web));
 ck("đủ 61 hoạt ảnh của bản cũ (neon chạy, ánh lướt, vòng quay, cá voi…)", miss.length === 0, miss.join(" "));
-ck("khối bản 4 KHÔNG đụng hoạt ảnh / filter / chữ hero / nút", acc && !/animation|filter|h1 em|#5c9dff|\.btn\b/.test(acc), acc.slice(0, 200));
+ck("khối bản 4 + 5 KHÔNG đụng hoạt ảnh / filter", acc && !/animation|filter\s*:/.test(acc), acc.slice(0, 200));
 ck("bỏ hết dấu vết bản 2 + bản 3 (nhãn MỚI riêng màu, nút 3 nấc, vàng kim --gia)",
    !web.includes('<span class="hot new">') && !web.includes("#63b6ff,#3b82f6") && !web.includes("--gia:") && !web.includes("--money:#ffc45e"));
 
-console.log("2. web — chỉ họ xanh: xanh dương (nút / nhãn) + xanh trời (điểm nhấn) + neon xanh ngọc–xanh dương");
-ck("đèn neon chạy viền: xanh ngọc 64,214,255 + xanh dương 92,157,255 (sáng: xanh trời 14,165,233 + xanh dương 37,110,240) — bỏ tím, đặt SAU luật cũ",
-   acc.includes("html[data-theme]{--nc:64,214,255;--nc2:92,157,255;") && acc.includes("html[data-theme=light]{--nc:14,165,233;--nc2:37,110,240;")
-   && web.indexOf("html[data-theme]{--nc:64,214,255;--nc2:176,124,255;") < i0);
+console.log("2. web bản 5 — bảng Arctic Glow (5 màu) đè lên khối bản 4");
+ck("có khối bản 5 SAU khối bản 4, đủ 5 màu của bảng #0b1026/#0b5fff/#00c2ff/#a7f3ff/#f5fbff", v5 && ["#0b5fff", "#00c2ff", "#a7f3ff", "#f5fbff"].every(c => v5.includes(c)));
+ck("đèn neon chạy viền: xanh ngọc 0,194,255 + xanh điện 11,95,255 (sáng 0,150,215 + 11,95,255)",
+   v5.includes("html[data-theme]{--nc:0,194,255;--nc2:11,95,255;") && v5.includes("html[data-theme=light]{--nc:0,150,215;--nc2:11,95,255;"));
+ck("giá tiền màu băng #a7f3ff + quầng sáng nhẹ (tối) · xanh điện #0b5fff (sáng)",
+   v5.includes("html[data-theme=dark]{--ac:#a7f3ff;") && v5.includes("html[data-theme=light]{--ac:#0b5fff;") && v5.includes("html[data-theme=dark] .price,") && v5.includes("{text-shadow:0 0 16px rgba(0,194,255,.45)}"));
+ck("nút / nhãn ưu đãi + ô icon thẻ Kiếm tiền / Ưu đãi: chuyển màu xanh ngọc → xanh điện, chữ trắng",
+   v5.includes("--grad:linear-gradient(135deg,#00c2ff 0%,#0b5fff 100%)") && v5.includes("html[data-theme] :is(.cbt-earn,.cbt-ofr) .cbt-go,html[data-theme] .m3-plan .tag,") && v5.includes("{background:var(--grad);color:#fff;"));
+ck("nhãn HOT / MỚI xanh điện + ánh băng lướt · chữ 'Giao ngay.' trắng → băng → xanh ngọc → xanh điện",
+   v5.includes(".m3-li .thumb .hot{background:linear-gradient(100deg,#0b5fff 0%,#0b5fff 35%,#a7f3ff 50%") && v5.includes("html[data-theme=dark] .hero.m3h h1 em{background:linear-gradient(180deg,#f5fbff 0%,#a7f3ff 35%,#00c2ff 70%,#0b5fff 100%)"));
+console.log("3. web — quy tắc bản 4 vẫn giữ: chỉ họ xanh, tiền & ưu đãi một màu nhấn");
+ck("bỏ tím của neon cũ: luật bản 4/5 đặt SAU luật neon cũ", web.indexOf("html[data-theme]{--nc:64,214,255;--nc2:176,124,255;") < i0);
 ck("điểm nhấn xanh trời: tối #6fd3ff · sáng #0369a1 (tương phản 5.9:1 trên nền trắng)",
    acc.includes("html[data-theme=dark]{--ac:#6fd3ff;--ac-bt:#38bdf8;--ac-on:#04263f;") && acc.includes("html[data-theme=light]{--ac:#0369a1;--ac-bt:#0284c7;--ac-on:#ffffff;"));
 ck("TIỀN = xanh trời: giá sản phẩm, giá gói (thẻ + hộp mua), 'Giá thuê từ', số dư, tổng tiền, giá ĐT đám mây, giá VPS NVMe",
@@ -57,39 +68,39 @@ const cols = [...acc.matchAll(/#[0-9a-fA-F]{6}\b/g)].map(m => [parseInt(m[0].sli
   .concat([...acc.matchAll(/rgba?\((\d+),(\d+),(\d+)/g)].map(m => [+m[1], +m[2], +m[3], m[0]]))
   .concat([...acc.matchAll(/--nc2?:(\d+),(\d+),(\d+)/g)].map(m => [+m[1], +m[2], +m[3], m[0]]));
 const bad = cols.filter(([r, g, b]) => { const x = hue(r, g, b); return x.h >= 0 && x.s > 0.25 && x.l > 0.06 && x.l < 0.97 && !(x.h >= 185 && x.h <= 232); }).map(c => c[3]);
-ck("khối bản 4 chỉ có họ xanh (sắc 185°–232°) + trắng / đen — không vàng, không tím, không màu lạ", cols.length > 20 && !bad.length, bad.join(" "));
+ck("khối bản 4 + 5 chỉ có họ xanh (sắc 185°–232°) + trắng / đen — không vàng, không tím, không màu lạ", cols.length > 20 && !bad.length, bad.join(" "));
 ck("KHÔNG đụng nút đang chọn, nhãn số ngày, dòng kv", !/\.vps-opts|\.shmode|\.amts|\.days-chip|\.kv b/.test(acc));
 ck("giữ nguyên màu thương hiệu Discord / Telegram / Zalo + cờ Việt Nam", web.includes(".contacts a.dc{background:#5865F2}.contacts a.tg{background:#229ED9}.contacts a.zl{background:#0068ff}") && web.includes('fill="#da251d"'));
 
-console.log("3. app PC (CloudBlue PC)");
+console.log("4. app PC (CloudBlue PC)");
 const pc = read("pc-client/bluepc.py");
 ck("bộ màu cũ: nền #071226 · thẻ #0d1d3d · xanh #3d86ff", /^BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#071226", "#0d1d3d", "#244978", "#e8f1ff", "#9fb4d8", "#3d86ff"/m.test(pc));
-ck("MONEY = #6fd3ff (xanh trời của web, bỏ vàng)", /^MONEY = "#6fd3ff"/m.test(pc) && !pc.includes('MONEY = "#ffcf4a"'));
+ck("MONEY = #a7f3ff (màu băng của giá trên web)", /^MONEY = "#a7f3ff"/m.test(pc) && !pc.includes('MONEY = "#ffcf4a"'));
 ck("tiền = xanh trời: giá / ngày, tổng tiền (3 trang), số dư đầu cửa sổ",
    pc.includes('bg=bg, fg=MONEY, anchor="e")') && pc.includes('self.total = self.label(r, "", ("Segoe UI", 18, "bold"), MONEY)')
    && count(pc, 'self.tot_l = self.label(left, "", ("Segoe UI", 17, "bold"), MONEY)') === 2 && pc.includes('fg=MONEY, bg=CARD, cursor="hand2")'));
 ck("ưu đãi = xanh trời: nhãn −x% / ngày, giá / ngày có giảm, mức nạp → mã giảm",
    pc.includes('font=("Segoe UI", 8, "bold"), tint=MONEY, padx=8, pady=1)') && pc.includes('fg=MONEY if sv >= 1 else DIM)]') && pc.includes('mã giảm {int(num(x.get(\'pct\')))}%", ("Segoe UI", 10, "bold"), MONEY)'));
-ck("nhãn gói: nói về giá → xanh trời, còn lại (Bán chạy / Đề xuất) → xanh dương như HOT / MỚI của web",
-   /^def deal_badge\(t\):/m.test(pc) && pc.includes('bg="#38bdf8" if deal_badge(t["badge"]) else "#2b6ef0", fg="#04263f" if deal_badge(t["badge"]) else "white"'));
+ck("nhãn gói: nói về giá → xanh ngọc #00c2ff, còn lại (Bán chạy / Đề xuất) → xanh điện #0b5fff như HOT / MỚI của web",
+   /^def deal_badge\(t\):/m.test(pc) && pc.includes('bg="#00c2ff" if deal_badge(t["badge"]) else "#0b5fff", fg="#03203a" if deal_badge(t["badge"]) else "white"'));
 ck("giữ màu phân loại gói (TIER_COLORS, admin chọn)", pc.includes('TIER_COLORS = {"blue": "#6f8cff", "teal": "#2fd3c5", "amber": "#ffb547", "violet": "#a77bff"'));
 
-console.log("4. app Android");
+console.log("5. app Android");
 const A = "android-app/app/src/main/java/shop/blueroblox/app/";
 const ui = read(A + "Ui.java");
 ck("Ui.apply: bộ màu cũ — sáng nền (243, 247, 252) · xanh (43, 110, 240) — tối nền (7, 18, 38) · xanh (61, 134, 255)",
    ui.includes("BG = Color.rgb(243, 247, 252)") && ui.includes("BLUE = Color.rgb(43, 110, 240)") && ui.includes("BG = Color.rgb(7, 18, 38)") && ui.includes("BLUE = Color.rgb(61, 134, 255)"));
-ck("Ui.MONEY = xanh trời của web: (3, 105, 161) sáng · (111, 211, 255) tối", ui.includes("MONEY = Color.rgb(3, 105, 161);") && ui.includes("MONEY = Color.rgb(111, 211, 255);"));
-ck("nút bóng như cũ (92, 157, 255) → (43, 110, 240)", ui.includes("new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)}"));
+ck("Ui.MONEY = như web: xanh điện (11, 95, 255) sáng · băng (167, 243, 255) tối", ui.includes("MONEY = Color.rgb(11, 95, 255);") && ui.includes("MONEY = Color.rgb(167, 243, 255);"));
+ck("nút bóng xanh điện như web (61, 134, 255) → (11, 95, 255)", ui.includes("new int[]{Color.rgb(61, 134, 255), Color.rgb(11, 95, 255)}"));
 const ma = read(A + "MainActivity.java"), ti = read(A + "Tiers.java"), of = read(A + "Offers.java");
 ck("tiền = xanh trời: số dư (chip đầu + trang tài khoản), tổng tiền khi thuê, giá gói",
    count(ma, "Ui.MONEY") === 3 && ti.includes("TextView p = Ui.text(c, Ui.vnd(perDay), 17, Ui.MONEY, true);"));
 ck("ưu đãi = xanh trời: mã giảm của bạn, mức nạp → mã, −x% ở VPS GPU / VPS NVMe",
    of.includes("15, ok ? Ui.MONEY : Ui.MUTED, true);") && count(of, "Ui.MONEY") === 3
    && read(A + "PcVps.java").includes('Ui.L(" / ngày", " / day"), Ui.MONEY)') && read(A + "VmNvme.java").includes('"−" + save + "%", Ui.MONEY)'));
-ck("nhãn gói: nói về giá → xanh trời, còn lại → xanh dương (bỏ đỏ–cam, bỏ vàng)",
-   ti.includes("static boolean deal(String b)") && ti.includes("deal ? new int[]{Color.rgb(125, 211, 252), Color.rgb(56, 189, 248)} : new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)}"));
-ck("phát mã giảm giá (Drop) = xanh trời như web", read(A + "Drop.java").includes("AMBER = Color.rgb(56, 189, 248), AMBER_HI = Color.rgb(125, 211, 252), INK = Color.rgb(4, 38, 63);"));
+ck("nhãn gói: nói về giá → xanh ngọc → xanh điện, còn lại → xanh điện (bỏ đỏ–cam, bỏ vàng)",
+   ti.includes("static boolean deal(String b)") && ti.includes("deal ? new int[]{Color.rgb(0, 194, 255), Color.rgb(11, 95, 255)} : new int[]{Color.rgb(61, 134, 255), Color.rgb(11, 95, 255)}"));
+ck("phát mã giảm giá (Drop) = xanh ngọc → băng như web", read(A + "Drop.java").includes("AMBER = Color.rgb(0, 194, 255), AMBER_HI = Color.rgb(167, 243, 255), INK = Color.rgb(3, 32, 58);"));
 ck("colors.xml: màu cũ nền #FF060A1C", read("android-app/app/src/main/res/values/colors.xml").includes("#FF060A1C"));
 console.log(`${ok}/${all} dat`);
 process.exit(ok === all ? 0 : 1);
