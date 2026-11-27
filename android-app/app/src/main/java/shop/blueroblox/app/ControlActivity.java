@@ -253,7 +253,7 @@ public class ControlActivity extends Activity {
         ball.setOnClickListener(v -> toggleMini());
         stage.addView(ball, new FrameLayout.LayoutParams(Ui.dp(48), Ui.dp(48), Gravity.TOP | Gravity.START));
         mini = Ui.row(this, 0);
-        mini.setBackground(Ui.round(Color.argb(225, 10, 17, 30), 24, Color.argb(90, 140, 175, 235)));
+        mini.setBackground(Ui.round(Color.argb(225, 10, 16, 30), 24, Color.argb(90, 120, 160, 255)));
         mini.setPadding(Ui.dp(4), 0, Ui.dp(4), 0);
         mini.addView(miniBtn("◁", pc ? "Esc" : Ui.L("Quay lại", "Back"), () -> cmd("back")));
         mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
@@ -1278,7 +1278,7 @@ public class ControlActivity extends Activity {
         r.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
         TextView ic = Ui.text(this, icon, 20, Ui.FG, false);
         ic.setGravity(android.view.Gravity.CENTER);
-        ic.setBackground(Ui.round(0x1F98C9F6, 12, 0));
+        ic.setBackground(Ui.round(0x1F8FD0FF, 12, 0));
         r.addView(ic, new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         LinearLayout tx = Ui.col(this, 2);
         tx.addView(Ui.text(this, name, 15, Ui.FG, true));
@@ -1820,8 +1820,8 @@ public class ControlActivity extends Activity {
         LinearLayout r = Ui.row(this, 12);
         r.setGravity(Gravity.CENTER_VERTICAL);
         r.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(12), Ui.dp(10));
-        r.setBackground(Ui.round(on ? (Ui.LIGHT ? Color.argb(30, 62, 122, 221) : Color.argb(50, 115, 162, 230)) : Color.TRANSPARENT, 14,
-                on ? Ui.SKY : (Ui.LIGHT ? Color.argb(40, 10, 26, 58) : Color.argb(60, 159, 181, 216))));
+        r.setBackground(Ui.round(on ? (Ui.LIGHT ? Color.argb(30, 43, 110, 240) : Color.argb(50, 90, 175, 255)) : Color.TRANSPARENT, 14,
+                on ? Ui.SKY : (Ui.LIGHT ? Color.argb(40, 10, 26, 58) : Color.argb(60, 159, 180, 216))));
         r.addView(Ui.text(this, on ? "◉" : "○", 18, on ? Ui.SKY : Ui.MUTED, true), Ui.wrap());
         LinearLayout tx = Ui.col(this, 2);
         tx.addView(Ui.text(this, ic + "  " + t, 15, Ui.FG, true));
@@ -2019,7 +2019,7 @@ public class ControlActivity extends Activity {
         ball.setTextColor(ring);
         GradientDrawable g = new GradientDrawable();
         g.setShape(GradientDrawable.OVAL);
-        g.setColor(Color.argb(200, 8, 13, 22));
+        g.setColor(Color.argb(200, 8, 12, 22));
         g.setStroke(Ui.dp(2), ring);
         ball.setBackground(g);
     }
