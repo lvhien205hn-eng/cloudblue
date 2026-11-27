@@ -37,14 +37,28 @@ import java.util.concurrent.TimeUnit;
  * Thêm: bluestream gửi 1 byte 'K' → khung IDR ngay (Android 9 không tự ra khung khoá định kỳ dùng được → trước phải bật lại bộ nén).
  * Màn đứng yên: nén lại khung cuối thêm vài lần (nét dần, như scrcpy lặp khung) rồi thôi.
  *
- * Chạy: CLASSPATH=/data/local/tmp/cbvideo.jar app_process / com.cloudblue.A9Video scid=… max_size=… max_fps=… video_bit_rate=… i_frame=… [stats=giây]
+ * 27/11h: lib=/data/local/tmp/…libcbenc.so → nén bằng openh264 ngay trong tiến trình này (nhanh hơn OMX nhiều lần); không nạp được → MediaCodec.
+ *
+ * Chạy: CLASSPATH=/data/local/tmp/cbvideo.jar app_process / com.cloudblue.A9Video scid=… max_size=… max_fps=… video_bit_rate=… i_frame=…
+ *       [stats=giây] [lib=…/libcbenc.so] [enc_threads=1]
  */
 public final class A9Video {
-    static String scid = "0";
-    static int maxSize = 0, bitRate = 3000000, statsS = 0;
+    static String scid = "0", libPath = null;
+    static int maxSize = 0, bitRate = 3000000, statsS = 0, encThreads = 1;
     static float maxFps = 0, iFrame = 5f;
     static volatile boolean stop = false;
     static volatile MediaCodec cur;
+    static volatile NCap ncur;
+    static boolean nativeOk = false;
+
+    // 27/11h: bộ nén openh264 trong libcbenc.so (.github/a9-check/cbenc.c) — không có / lỗi → MediaCodec (OMX) như 27/11f
+    static native long nInit(int w, int h, int fps, int bps, int intra, int threads);
+    static native int nEncode(long hd, ByteBuffer rgba, int rs, long pts, boolean idr, ByteBuffer out);
+    static native int nEncodeLast(long hd, long pts, boolean idr, ByteBuffer out);
+    static native int nType(long hd);
+    static native int nLastMs100(long hd);
+    static native void nBitrate(long hd, int bps);
+    static native void nClose(long hd);
     static OutputStream out;
     static final Object LOCK = new Object();
 
@@ -60,8 +74,18 @@ public final class A9Video {
                 else if (k.equals("video_bit_rate")) bitRate = Integer.parseInt(v);
                 else if (k.equals("i_frame")) iFrame = Float.parseFloat(v);
                 else if (k.equals("stats")) statsS = Integer.parseInt(v);
+                else if (k.equals("lib")) libPath = v;
+                else if (k.equals("enc_threads")) encThreads = Integer.parseInt(v);
             } catch (NumberFormatException e) {
                 System.err.println("cbvideo: bad arg " + a);
+            }
+        }
+        if (libPath != null && libPath.length() > 0) {
+            try {
+                System.load(libPath);
+                nativeOk = true;
+            } catch (Throwable t) {
+                System.err.println("cbvideo: openh264 unavailable (" + t + ") -> MediaCodec");
             }
         }
         int code = 0;
@@ -92,6 +116,8 @@ public final class A9Video {
                     int c;
                     while (!stop && (c = in.read()) >= 0) {
                         if (c == 'K') {
+                            NCap nc = ncur;
+                            if (nc != null) { nc.requestIdr(); continue; }
                             MediaCodec m = cur;
                             if (m != null) {
                                 Bundle b = new Bundle();
@@ -120,9 +146,16 @@ public final class A9Video {
                 synchronized (LOCK) { out.write(hb.array()); }
                 meta = true;
             }
-            Cap c = new Cap(d, vs[0], vs[1], h);
+            Base c = nativeOk ? new NCap(d, vs[0], vs[1], h) : new Cap(d, vs[0], vs[1], h);
             try {
-                c.start();
+                try {
+                    c.start();
+                } catch (Exception e) {
+                    if (!(c instanceof NCap)) throw e;
+                    System.err.println("cbvideo: openh264 start failed (" + e + ") -> MediaCodec");
+                    nativeOk = false;
+                    continue;
+                }
                 long t0 = System.nanoTime();
                 while (!stop && !c.dead) {
                     Thread.sleep(250);
@@ -200,8 +233,202 @@ public final class A9Video {
         static void destroy(IBinder t) throws Exception { k().getMethod("destroyDisplay", IBinder.class).invoke(null, t); }
     }
 
+    static abstract class Base {
+        volatile boolean dead;
+        abstract void start() throws Exception;
+        abstract void stop();
+    }
+
+    static void writePkt(long pf, byte[] a, int off, int len) throws IOException {
+        byte[] hd = new byte[12];
+        for (int i = 0; i < 8; i++) hd[i] = (byte) (pf >>> (56 - 8 * i));
+        hd[8] = (byte) (len >>> 24); hd[9] = (byte) (len >>> 16); hd[10] = (byte) (len >>> 8); hd[11] = (byte) len;
+        synchronized (LOCK) {
+            out.write(hd);
+            out.write(a, off, len);
+        }
+    }
+
+    /** 27/11h: màn ảo → ImageReader → (luồng cb-img) libcbenc: RGBA→I420 + openh264 → gói H.264 → socket. Không qua MediaCodec / binder. */
+    static final class NCap extends Base implements ImageReader.OnImageAvailableListener, Runnable {
+        final Disp d;
+        final int vw, vh;
+        final Handler h;
+        final long minNs;
+        final ByteBuffer ob = ByteBuffer.allocateDirect(4 << 20);
+        ImageReader rd;
+        IBinder disp;
+        long hd;
+        byte[] a = new byte[1 << 16];
+        Image pending;
+        boolean posted;
+        long lastNs, lastPts;
+        int rep;
+        volatile boolean stopped, wantIdr;
+        long stT = System.nanoTime(), stRead, stConv, stEnc;
+        int stIn, stSub, stRep, stOut;
+
+        NCap(Disp d, int vw, int vh, Handler h) {
+            this.d = d; this.vw = vw; this.vh = vh; this.h = h;
+            minNs = maxFps > 0 ? (long) (1e9 / maxFps) : 0;
+        }
+
+        void start() throws Exception {
+            int fps = maxFps > 0 ? Math.max(1, Math.round(maxFps)) : 30;
+            int intra = Math.max(0, Math.round(iFrame * fps));
+            hd = nInit(vw, vh, fps, bitRate, intra, encThreads);
+            if (hd == 0) throw new IOException("openh264 init failed");
+            ncur = this;
+            rd = ImageReader.newInstance(vw, vh, PixelFormat.RGBA_8888, 3);
+            rd.setOnImageAvailableListener(this, h);
+            disp = SC.create();
+            SC.setSurface(disp, rd.getSurface(), new Rect(0, 0, d.w, d.h), new Rect(0, 0, vw, vh), d.layerStack);
+            System.err.println("cbvideo: " + vw + "x" + vh + " enc openh264 threads " + encThreads + " max_fps " + maxFps);
+        }
+
+        public void onImageAvailable(ImageReader r) {
+            if (stopped) return;
+            Image im = null;
+            try { im = r.acquireLatestImage(); } catch (Exception e) { /* đã giữ đủ ảnh */ }
+            if (im != null) {
+                stIn++;
+                if (pending != null) pending.close();
+                pending = im;
+            }
+            submit();
+        }
+
+        public void run() { posted = false; submit(); }
+
+        void later(long ns) {
+            if (!posted) { posted = true; h.postDelayed(this, Math.max(1, ns / 1000000L)); }
+        }
+
+        long nextPts(long want) {
+            long p = Math.max(want, lastPts + 1);
+            lastPts = p;
+            return p;
+        }
+
+        private final Runnable refine = new Runnable() {
+            public void run() {
+                if (stopped || pending != null || rep >= 3 || lastNs == 0) return;
+                try {
+                    boolean idr = wantIdr; wantIdr = false;
+                    int n = nEncodeLast(hd, nextPts(System.nanoTime() / 1000L), idr, ob);
+                    if (n > 0) send(n);
+                    rep++; stRep++;
+                    if (rep < 3) h.postDelayed(refine, 150);
+                } catch (Exception e) { dead = true; }
+            }
+        };
+
+        private final Runnable idrNow = new Runnable() {
+            public void run() {
+                if (stopped || !wantIdr || pending != null || lastNs == 0) return;      // có khung mới đang chờ → submit() tự làm IDR
+                try {
+                    wantIdr = false;
+                    int n = nEncodeLast(hd, nextPts(System.nanoTime() / 1000L), true, ob);
+                    if (n > 0) send(n);
+                } catch (Exception e) { dead = true; }
+            }
+        };
+
+        void requestIdr() {                     // luồng lệnh (byte 'K') → khung IDR ngay
+            wantIdr = true;
+            h.post(idrNow);
+        }
+
+        void submit() {
+            if (pending == null || stopped) return;
+            long now = System.nanoTime();
+            if (minNs > 0 && lastNs != 0) {
+                long w = lastNs + minNs - 2000000L - now;
+                if (w > 0) { later(w); return; }
+            }
+            Image im = pending;
+            pending = null;
+            try {
+                long t0 = System.nanoTime();
+                Image.Plane pl = im.getPlanes()[0];
+                ByteBuffer b = pl.getBuffer();
+                long t1 = System.nanoTime();
+                boolean idr = wantIdr; wantIdr = false;
+                int n = nEncode(hd, b, pl.getRowStride(), nextPts(im.getTimestamp() / 1000L), idr, ob);
+                long t2 = System.nanoTime();
+                long enc = nLastMs100(hd) * 10000L;      // ns
+                stRead += t1 - t0; stEnc += enc; stConv += Math.max(0, (t2 - t1) - enc);
+                if (n < 0) { System.err.println("cbvideo: encode error " + n); dead = true; return; }
+                if (n > 0) send(n);
+                lastNs = now; stSub++; rep = 0;
+                h.removeCallbacks(refine);
+                h.postDelayed(refine, 150);
+            } catch (Exception e) {
+                System.err.println("cbvideo: feed error " + e);
+                dead = true;
+            } finally {
+                im.close();
+            }
+            stats();
+        }
+
+        /** Tách SPS/PPS (gói cấu hình, như scrcpy) khỏi lát hình rồi gửi; IDR → cờ khoá. */
+        void send(int n) throws IOException {
+            if (a.length < n) a = new byte[Math.max(n, a.length * 2)];
+            ob.position(0);
+            ob.get(a, 0, n);
+            int i = 0, first = n;
+            while (i + 3 < n) {
+                int sc = (a[i] == 0 && a[i + 1] == 0 && a[i + 2] == 0 && a[i + 3] == 1) ? 4 : (a[i] == 0 && a[i + 1] == 0 && a[i + 2] == 1) ? 3 : 0;
+                if (sc > 0) {
+                    int t = (i + sc < n) ? (a[i + sc] & 0x1F) : 0;
+                    if (t != 7 && t != 8) { first = i; break; }
+                    i += sc;
+                } else i++;
+            }
+            boolean key = nType(hd) == 1;
+            if (first > 0) writePkt(1L << 63, a, 0, first);
+            if (first < n) {
+                writePkt((lastPts & 0x3FFFFFFFFFFFFFFFL) | (key ? (1L << 62) : 0), a, first, n - first);
+                stOut++;
+            }
+        }
+
+        void stats() {
+            if (statsS <= 0) return;
+            long now = System.nanoTime();
+            if (now - stT < statsS * 1000000000L) return;
+            double sec = (now - stT) / 1e9;
+            System.err.println(String.format(java.util.Locale.US,
+                    "cbvideo stats: %.1fs in %d sub %d rep %d out %d (%.1f fps) read %.1f ms conv %.1f ms enc %.1f ms oh264",
+                    sec, stIn, stSub, stRep, stOut, stOut / sec, stSub > 0 ? stRead / 1e6 / stSub : 0, stSub > 0 ? stConv / 1e6 / stSub : 0,
+                    stSub > 0 ? stEnc / 1e6 / stSub : 0));
+            stT = now; stIn = 0; stSub = 0; stRep = 0; stOut = 0; stRead = 0; stConv = 0; stEnc = 0;
+        }
+
+        void stop() {
+            stopped = true;
+            if (ncur == this) ncur = null;
+            try { if (rd != null) rd.setOnImageAvailableListener(null, null); } catch (Exception e) { /* */ }
+            final CountDownLatch l = new CountDownLatch(1);
+            h.post(new Runnable() {
+                public void run() {
+                    h.removeCallbacks(NCap.this);
+                    h.removeCallbacks(refine);
+                    h.removeCallbacks(idrNow);
+                    if (pending != null) { pending.close(); pending = null; }
+                    if (hd != 0) { nClose(hd); hd = 0; }
+                    l.countDown();
+                }
+            });
+            try { l.await(1, TimeUnit.SECONDS); } catch (InterruptedException e) { /* */ }
+            try { if (disp != null) SC.destroy(disp); } catch (Exception e) { /* */ }
+            try { if (rd != null) rd.close(); } catch (Exception e) { /* */ }
+        }
+    }
+
     /** 1 lần quay: màn ảo → ImageReader → (luồng cb-img) đổi màu + nạp bộ nén · (luồng cb-drain) lấy gói H.264 → socket. */
-    static final class Cap implements ImageReader.OnImageAvailableListener, Runnable {
+    static final class Cap extends Base implements ImageReader.OnImageAvailableListener, Runnable {
         final Disp d;
         final int vw, vh;
         final Handler h;
@@ -210,7 +437,7 @@ public final class A9Video {
         MediaCodec mc;
         IBinder disp;
         Thread drain;
-        volatile boolean dead, stopped;
+        volatile boolean stopped;
         Image pending;
         boolean posted;
         long lastNs, lastPts;
