@@ -2078,13 +2078,6 @@ html[data-theme=light] .m3-row{box-shadow:0 0 0 1px var(--line2),0 22px 44px -32
 @media (min-width:1600px){.m3-row{grid-template-columns:minmax(0,430px) minmax(0,1fr) minmax(0,270px)}}
 .m3-row .thumb{aspect-ratio:16/9;border-radius:16px;overflow:hidden;position:relative;background:#dfe6f0}
 .m3-row .thumb canvas{position:absolute;inset:0;width:100%;height:100%;transform:none!important}
-/* 27/11: hàng VPS GPU — ô ảnh cao bằng cả hàng, nền là video cảnh quay thật (dàn PC · laptop màn CloudBlue · máy chủ), ảnh GPU nằm giữa như thẻ logo đầu trang */
-.m3-row.vps .thumb{align-self:stretch;aspect-ratio:auto;min-height:250px;display:grid;place-items:center;isolation:isolate;background:#081430 url(/video/nen-vps.jpg) center/cover no-repeat}
-.m3-row.vps .thumb .m3-vbg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none}
-.m3-row.vps .thumb::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(120% 90% at 50% 50%,rgba(6,12,32,.05) 35%,rgba(6,12,32,.55) 100%)}
-.m3-row.vps .thumb canvas{position:relative;inset:auto;z-index:2;width:82%;height:auto;aspect-ratio:460/260;border-radius:16px;box-shadow:0 22px 40px -22px rgba(0,0,0,.85),0 0 0 .28em rgba(255,255,255,.9),0 0 0 .56em rgba(100,181,255,.42)}
-.m3-row.vps .thumb .hot{z-index:3}
-@media (max-width:980px){.m3-row.vps .thumb{aspect-ratio:16/9;min-height:0}.m3-row.vps .thumb canvas{width:70%}}
 html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{top:12px;right:12px;background:#2b6ef0;color:#fff;box-shadow:0 4px 12px -4px rgba(15,50,140,.7)}
 .m3-row .info{display:flex;flex-direction:column;gap:9px;min-width:0}
 .m3-row .info .cat{align-self:flex-start;padding:4px 11px;border-radius:99px;background:var(--soft);box-shadow:inset 0 0 0 1px var(--line2);color:var(--sky);font-size:12px;font-weight:800}
@@ -5232,7 +5225,6 @@ function renderGrid() {
   $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : it.vm ? VMSHOP.row() : it.px ? PXSHOP.row() : m3RowProd(it.p)).join("")
     + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : it.vm ? VMSHOP.li() : it.px ? PXSHOP.li() : m3LiProd(it.p)).join("")}</div>` : "");
   document.querySelectorAll("#grid canvas[data-id]").forEach(cv => drawThumb(cv, seedOf(cv.dataset.id), HUES[cv.dataset.c] ?? 210));
-  try { if (window.vpsBg) window.vpsBg(); } catch (e) {}
 }
 /* số liệu ở đầu trang: giá thấp nhất (đọc từ bảng giá, admin đổi là đổi theo) + các bản Android đang bán */
 function m3Facts() {
@@ -13307,29 +13299,6 @@ function cbBlueMore() {
       go();
     }
   }
-
-  /* ---- nền chuyển động sau ảnh sản phẩm VPS GPU (27/11): 1 thẻ video dùng chung, lưới vẽ lại thì gắn lại (không tải lại) ·
-         chỉ chạy khi hàng VPS GPU lọt màn · khách tự bật chế độ nhẹ: chỉ ảnh tĩnh ---- */
-  (function () {
-    const de = document.documentElement, off = () => de.classList.contains("lite-man") || (de.classList.contains("lite") && (() => { try { return localStorage.getItem("br_lite") === "1"; } catch (e) { return false; } })());
-    let v = null, seen = false, io = null;
-    const go = () => { if (!v) return; if (seen && !document.hidden && !off() && v.isConnected) { const p = v.play(); if (p && p.catch) p.catch(() => {}); } else v.pause(); };
-    window.vpsBg = function () {
-      const th = document.querySelector("#grid .m3-row.vps .thumb"); if (!th || off()) return;
-      if (!v) {
-        v = document.createElement("video"); v.className = "m3-vbg"; v.muted = true; v.defaultMuted = true; v.loop = true; v.playsInline = true;
-        ["muted", "playsinline", "disablepictureinpicture"].forEach(a => v.setAttribute(a, "")); v.setAttribute("aria-hidden", "true"); v.tabIndex = -1;
-        v.preload = "auto"; v.poster = "/video/nen-vps.jpg";
-        v.src = innerWidth < 701 || (navigator.connection && navigator.connection.saveData) ? "/video/nen-vps-nho.mp4" : "/video/nen-vps.mp4";
-        if ("IntersectionObserver" in window) { io = new IntersectionObserver(e => { seen = e[e.length - 1].isIntersecting; go(); }, { threshold: 0 }); io.observe(v); } else seen = true;
-        document.addEventListener("visibilitychange", go);
-        new MutationObserver(go).observe(de, { attributes: true, attributeFilter: ["class"] });
-      }
-      if (v.parentNode !== th) th.prepend(v);
-      go();
-    };
-    window.vpsBg();
-  })();
 
   /* ---- logo: trình duyệt cũ không có đơn vị cqw → tự tính cỡ chữ theo bề ngang ---- */
   if (!(window.CSS && CSS.supports && CSS.supports("width:1cqw"))) {

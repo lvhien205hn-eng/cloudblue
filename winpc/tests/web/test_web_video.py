@@ -87,14 +87,14 @@ def main():
         ck("nền đầu trang: video cảnh quay thật (bản 1280) đang chạy, tắt tiếng, lặp, có ảnh chờ — không còn tường điện thoại vẽ SVG",
            hv and hv["src"] == "/video/nen-dau-trang.mp4" and not hv["paused"] and hv["muted"] and hv["loop"] and hv["poster"] == "/video/nen-dau-trang.jpg" and not hv["wall"], hv)
         ck("trạng thái giảm chuyển động: nền video đầu trang VẪN chạy (không bị tắt)", hv and not hv["paused"], hv)
-        s.js("() => document.querySelector('#grid .m3-row.vps').scrollIntoView({ block: 'center' })"); s.page.wait_for_timeout(1800)
-        vb = s.js("() => { const v = document.querySelector('#grid .m3-row.vps .thumb video.m3-vbg'); window.__vb = v; return v ? { src: v.getAttribute('src'), paused: v.paused, n: document.querySelectorAll('video.m3-vbg').length } : null; }")
-        ck("hàng VPS GPU: ô ảnh có nền video chạy (cảnh quay thật), ảnh GPU nằm giữa", vb and vb["src"] == "/video/nen-vps.mp4" and not vb["paused"] and vb["n"] == 1, vb)
-        s.js("() => renderGrid()"); s.page.wait_for_timeout(900)
-        vb2 = s.js("() => { const v = document.querySelector('#grid .m3-row.vps .thumb video.m3-vbg'); return v ? { same: v === window.__vb, paused: v.paused, n: document.querySelectorAll('video.m3-vbg').length } : null; }")
-        ck("lưới sản phẩm vẽ lại → vẫn đúng 1 video nền, dùng lại (không tải lại), vẫn chạy", vb2 and vb2["same"] and vb2["n"] == 1 and not vb2["paused"], vb2)
+        s.js("() => document.querySelector('#grid .m3-row.vps').scrollIntoView({ block: 'center' })"); s.page.wait_for_timeout(1200)
+        vr = s.js("""() => { const t = document.querySelector('#grid .m3-row.vps .thumb'), c = t && t.querySelector('canvas'), o = document.querySelector('#grid .m3-row:not(.vps) .thumb');
+                    if (!t || !c || !o) return null; const a = t.getBoundingClientRect(), b = c.getBoundingClientRect(), r = o.getBoundingClientRect();
+                    return { video: !!t.querySelector('video'), n: document.querySelectorAll('#grid video').length, fill: Math.abs(a.width - b.width) < 2 && Math.abs(a.height - b.height) < 2,
+                             ratio: Math.round(a.width / a.height * 100) / 100, other: Math.round(r.width / r.height * 100) / 100 }; }""")
+        ck("hàng VPS GPU về như cũ: ô ảnh pop-it giống các sản phẩm khác (16:9, ảnh phủ kín ô), không có video nền", vr and not vr["video"] and vr["n"] == 0 and vr["fill"]
+           and abs(vr["ratio"] - vr["other"]) < .02, vr)
         s.js("() => window.scrollTo(0, 0)"); s.page.wait_for_timeout(900)
-        ck("kéo đi khỏi hàng VPS GPU → video nền dừng", s.js("() => window.__vb.paused"))
         scroll_to(s, "m3v-cp")
         st = state(s)
         ck("kéo tới video trên → tự phát Cloud Phone (tắt tiếng) + nút 🔊 Bật tiếng; video dưới chưa chạy", st["cp"]["src"] == "/video/cloud-phone.mp4" and not st["cp"]["paused"] and st["cp"]["muted"]
@@ -125,7 +125,7 @@ def main():
         s.js("() => document.querySelector('#m3v-vps video').pause()"); s.page.wait_for_timeout(300)
         s.js("() => window.scrollTo(0, 0)"); s.page.wait_for_timeout(1000); scroll_to(s, "m3v-vps")
         ck("khách tự bấm dừng → kéo đi kéo lại cũng KHÔNG tự phát lại", state(s)["vps"]["paused"])
-        ck("không tải video cũ (gioi-thieu-a / b)", not any("gioi-thieu" in u for u in s.seen), s.seen)
+        ck("không tải video cũ (gioi-thieu-a / b) · không tải nền video VPS đã bỏ (nen-vps)", not any("gioi-thieu" in u or "nen-vps" in u for u in s.seen), s.seen)
         ck("không lỗi JS", not s.errors, s.errors)
         s.close()
 
@@ -154,7 +154,6 @@ def main():
         l.js("() => { localStorage.setItem('br_lite', '1'); }"); l.seen.clear(); l.page.reload(wait_until="load"); l.page.wait_for_timeout(1500)
         hv = hero(l)
         ck("khách TỰ bật chế độ nhẹ (br_lite = 1) → nền đầu trang chỉ còn ảnh tĩnh, không tải video", hv and hv["src"] == "" and hv["paused"] and not any("nen-dau-trang" in u and u.endswith(".mp4") for u in l.seen), [hv, l.seen])
-        ck("chế độ nhẹ: hàng VPS GPU không tải video nền (chỉ ảnh tĩnh)", not l.js("() => !!document.querySelector('video.m3-vbg')") and not any("nen-vps" in u and u.endswith(".mp4") for u in l.seen), l.seen)
         l.close(); br.close()
     print(f"\n{OK[0]}/{OK[1]} đạt")
     sys.exit(0 if OK[0] == OK[1] else 1)
