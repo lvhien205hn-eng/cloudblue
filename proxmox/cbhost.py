@@ -33,13 +33,17 @@
 #     của máy khác trong mạng nhà (SSH, SMB, RDP, WinRM, 8006). Internet, DNS, DHCP và đường điều khiển từ xa (máy chủ phát hình trong
 #     mạng nhà, cổng khác) giữ nguyên. Tắt: "vps_iso": false.
 #   · 27/11c: VPS Linux đặt mạng DHCP không gắn MAC máy mẫu (NET_LIN_SH) — trước đây VPS nhân ra có card mạng TẮT.
+#   · 27/11e: KHO PROXY NHIỀU IP (cbpool, mã nguồn cbpool/): tự tải proxmox/cbpool-x86_64 (md5 ghim ở POOL_FILE), chạy dịch vụ cloudblue-pool
+#     (cổng 8899, chỉ máy trong mạng nhà dùng được; VPS khách bị chặn sẵn bởi cách ly ở trên). Mỗi ô proxy 1 IPv6 riêng trong dải /64 của mạng
+#     + IPv4 riêng khi có tài khoản PPPoE (admin gõ "cbpool ppp-set" trong Shell của Proxmox — mật khẩu chỉ nằm trên máy này).
+#     Báo danh sách ô (IP:cổng:user:mật khẩu, IP đang ra) lên web trong số đo (px) → Quản trị › VPS ảo hoá › Máy chủ. Tắt: "pool": false.
 #   · 27/11c: VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi mới xoá (Proxmox không cho xoá máy đang chạy: trước đây thử xoá mãi 10 giây / lần
 #     → 2 lượt xoá hỏng chiếm hết max_builds → VPS mới mua đứng "Đang tạo" mãi). Việc nhẹ (xoá) không còn tính vào max_builds.
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11d"
+CBHOST_VER = "27/11e"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -57,7 +61,8 @@ ISO_LAN = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10"
 ISO_EVERY = 600                                               # đặt lại luật mỗi 10 phút dù không đổi (máy chủ khởi động lại / ai xoá luật)
 DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_publishable_qfNcnOMv70nq5LIlYXDJzg_UtdWHVze",
             "storage": "", "full_clone": True, "vmid_base": 100000, "seed_path": "C:\\CloudBluePC\\seed.json", "max_builds": 2, "auto_update": True,
-            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None, "vps_iso": None}
+            "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None, "vps_iso": None,
+            "pool": None}
 UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
 UPD_EVERY_S = 3600
 RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
@@ -197,6 +202,7 @@ def conf():
     except (TypeError, ValueError): c["tpl_vmid_from"] = 99000
     c["auto_tpl"] = c.get("auto_tpl") is True
     c["vps_iso"] = c.get("vps_iso") is not False                  # 27/11d · cách ly VPS khách (mặc định bật)
+    c["pool"] = c.get("pool") is not False                        # 27/11e · kho proxy nhiều IP (mặc định bật)
     c["net_heal"] = c["auto_tpl"] if c.get("net_heal") is None else c.get("net_heal") is True      # mặc định: bật trên máy cài bằng ISO CloudBlue-Proxmox
     lt = c.get("linux_tpl")                                                                       # 27/11a · máy mẫu Linux tự dựng (mặc định: máy cài bằng ISO)
     c["linux_tpl"] = (["ubuntu2404"] if c["auto_tpl"] else []) if lt is None else [t for t in lt if t in LINUX_TPLS] if isinstance(lt, list) else []
@@ -760,6 +766,148 @@ def item_ok(it):
         return False
 
 
+
+# ---------------------------------------------------------------- 27/11e · KHO PROXY NHIỀU IP (cbpool) — xem phần đầu file
+POOL_FILE = ("cbpool-x86_64", "f4e65c26d97ac0bfd685ba4028ca832a")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
+POOL_RAW = os.environ.get("CBHOST_POOL_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/"
+POOL_BIN = os.environ.get("CBHOST_POOL_BIN") or "/usr/local/bin/cbpool"
+POOL_CONF_F = os.environ.get("CBHOST_POOL_CONF") or "/etc/cloudblue/cbpool.json"
+POOL_CTL = os.environ.get("CBHOST_POOL_CTL") or "/run/cbpool/ctl.sock"
+POOL_UNIT = "cloudblue-pool.service"
+POOL_UNIT_F = os.environ.get("CBHOST_POOL_UNIT") or "/etc/systemd/system/" + POOL_UNIT
+SYSTEMCTL = os.environ.get("CBHOST_SYSTEMCTL") or "systemctl"
+POOL_EVERY_S = 60                # kiểm file + dịch vụ 1 phút / lần (số đo thì đọc mỗi vòng hỏi web)
+POOL_DL_RETRY_S = 600            # tải hỏng → 10 phút sau mới tải lại
+POOL_UNIT_TXT = """[Unit]
+Description=CloudBlue cbpool - kho proxy nhieu IP (IPv6 + PPPoE)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%s run -c %s
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+""" % (POOL_BIN, POOL_CONF_F)
+
+
+def md5_path(p):
+    try:
+        h = hashlib.md5()
+        with open(p, "rb") as f:
+            for b in iter(lambda: f.read(1 << 20), b""): h.update(b)
+        return h.hexdigest()
+    except OSError:
+        return ""
+
+
+def pool_conf_default(c):
+    """Cấu hình đầu tiên (chỉ ghi khi chưa có — admin sửa tay thì giữ nguyên)."""
+    return {"listen": "0.0.0.0:8899", "iface6": c.get("bridge") or "vmbr0", "slots": 30, "bw_kbps": 30000}
+
+
+def pool_ask(req, timeout=4):
+    """Hỏi cbpool qua ổ cắm điều khiển (chỉ root) → dict, hoặc None."""
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(timeout); s.connect(POOL_CTL)
+        s.sendall((json.dumps(req) + "\n").encode()); buf = b""
+        while not buf.endswith(b"\n") and len(buf) < 2 << 20:
+            b = s.recv(65536)
+            if not b: break
+            buf += b
+        s.close()
+        return json.loads(buf.decode("utf-8") or "null")
+    except Exception:
+        return None
+
+
+class PoolMgr:
+    def __init__(self, c):
+        self.c = c; self.t = 0.0; self.dl_fail_t = 0.0; self.err = ""; self.restart = False
+
+    def step(self, act=True):
+        """Mỗi vòng hỏi web: (1 phút / lần) giữ file + dịch vụ đúng; trả số đo gọn cho web (None = tắt / chưa chạy)."""
+        if act and time.time() - self.t >= POOL_EVERY_S:
+            self.t = time.time()
+            try:
+                if self.c.get("pool"): self.ensure()
+                else: self.disable()
+            except Exception as e:
+                if self.err != str(e)[:160]: log("kho proxy: %s" % str(e)[:160])
+                self.err = str(e)[:160]
+        if not self.c.get("pool"): return None
+        return self.report(pool_ask({"cmd": "status"}))
+
+    def ensure(self):
+        if len(POOL_FILE[1]) != 32: raise RuntimeError("bản cbhost này chưa ghim md5 cbpool")
+        if md5_path(POOL_BIN) != POOL_FILE[1]:
+            if time.time() - self.dl_fail_t < POOL_DL_RETRY_S: raise RuntimeError("chưa tải được cbpool đúng bản (thử lại sau)")
+            try: data = http_get(POOL_RAW + POOL_FILE[0] + ("" if POOL_RAW.startswith("file:") else "?t=%d" % int(time.time())), limit=32 << 20)
+            except Exception as e:
+                self.dl_fail_t = time.time(); raise RuntimeError("tải cbpool lỗi: %s" % str(e)[:120])
+            if hashlib.md5(data).hexdigest() != POOL_FILE[1]:
+                self.dl_fail_t = time.time(); raise RuntimeError("tải cbpool sai md5 (GitHub chưa có bản %s)" % POOL_FILE[1][:8])
+            os.makedirs(os.path.dirname(POOL_BIN) or ".", exist_ok=True)
+            tmp = POOL_BIN + ".new"
+            with open(tmp, "wb") as f: f.write(data)
+            os.chmod(tmp, 0o755); os.replace(tmp, POOL_BIN)
+            self.restart = True
+            log("kho proxy: đã tải cbpool %s (%d byte)" % (POOL_FILE[1][:8], len(data)))
+        if not os.path.exists(POOL_CONF_F):
+            os.makedirs(os.path.dirname(POOL_CONF_F) or ".", exist_ok=True)
+            save_json(POOL_CONF_F, pool_conf_default(self.c), 0o644)
+        try: cur = open(POOL_UNIT_F, encoding="utf-8").read()
+        except OSError: cur = ""
+        if cur != POOL_UNIT_TXT:
+            with open(POOL_UNIT_F, "w", encoding="utf-8") as f: f.write(POOL_UNIT_TXT)
+            run([SYSTEMCTL, "daemon-reload"], 60); self.restart = True
+        rc, out = run([SYSTEMCTL, "is-active", POOL_UNIT], 15)
+        if rc != 0 or out.strip() != "active":
+            rc, out = run([SYSTEMCTL, "enable", "--now", POOL_UNIT], 60)
+            if rc != 0: raise RuntimeError("bật dịch vụ cloudblue-pool lỗi: %s" % out[-160:])
+            log("kho proxy: đã bật dịch vụ cloudblue-pool (cổng 8899)")
+        elif self.restart:
+            run([SYSTEMCTL, "restart", POOL_UNIT], 60); log("kho proxy: chạy lại cloudblue-pool (bản / dịch vụ mới)")
+        self.restart = False; self.err = ""
+
+    def disable(self):
+        if os.path.exists(POOL_UNIT_F):
+            rc, out = run([SYSTEMCTL, "is-active", POOL_UNIT], 15)
+            if rc == 0 and out.strip() == "active":
+                run([SYSTEMCTL, "disable", "--now", POOL_UNIT], 60); log("kho proxy: đã tắt (cấu hình pool=false)")
+
+    def report(self, st):
+        """Số đo gọn cho web: ô = [id, mật khẩu, đuôi IPv6, IPv4, số kết nối, khoá đổi IP]."""
+        if not isinstance(st, dict) or not isinstance(st.get("slots"), list):
+            return {"ok": False, "err": self.err or "cbpool chưa chạy"}
+        v6, pp = st.get("v6") or {}, st.get("ppp") or {}
+        port = 8899
+        try: port = int(str(st.get("listen") or ":8899").rsplit(":", 1)[1])
+        except (ValueError, IndexError): pass
+        pfx = str(v6.get("prefix") or "")
+        head = pfx.split("::/")[0] + ":" if "::/" in pfx else ""
+        sl = []
+        for x in st["slots"][:200]:
+            if not isinstance(x, dict): continue
+            ip6 = str(x.get("ip6") or "")
+            sl.append([str(x.get("id") or "")[:8], str(x.get("pass") or "")[:40], ip6[len(head):] if head and ip6.startswith(head) else ip6,
+                       str(x.get("ip4") or ""), int(x.get("conns") or 0), str(x.get("rot") or "")[:40]])
+        r = {"ok": True, "ver": str(st.get("ver") or "")[:16], "host": lan_ip(), "port": port, "v6": pfx, "s": sl,
+             "ppp": {"want": int(pp.get("want") or 0), "up": int(pp.get("up") or 0), "acct": bool(pp.get("account")),
+                     "ip": [str(y.get("ip")) for y in (pp.get("sess") or []) if isinstance(y, dict) and y.get("ip")][:64]}}
+        if v6.get("err"): r["v6err"] = str(v6["err"])[:160]
+        if pp.get("err"): r["ppp"]["err"] = str(pp["err"])[:160]
+        if self.err: r["err"] = self.err
+        return r
+
+
 class Host:
     def __init__(self, c=None, web=None, pve=None):
         self.c = c or conf(); self.web = web or Web(self.c); self.pve = pve or Pve(self.c)
@@ -771,6 +919,7 @@ class Host:
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
         self.usb = None                                                                                  # luồng nạp ISO máy mẫu từ USB (cmd_run bật)
+        self.pool = PoolMgr(self.c)                                                                      # 27/11e · kho proxy nhiều IP
 
     def save(self):
         with self.lock: save_json(STATE_F, self.st)
@@ -1405,8 +1554,12 @@ class Host:
         if self.auto: metrics["tpl_auto"] = self.auto[:8]
         if self.iso_state: metrics["vps_fw"] = dict(self.iso_state)            # 27/11d · cách ly VPS: đặt được chưa
         if self.usb is not None and self.usb.state: metrics["usb"] = dict(self.usb.state)     # đang chép / đã chép / lỗi chép ISO máy mẫu từ USB
-        while len(json.dumps(metrics)) > 12000 and (metrics.get("tpl_auto") or metrics["iso"]):      # web bỏ CẢ gói số đo nếu quá 16 KB → cắt bớt phần phụ
-            if metrics.get("tpl_auto"): metrics.pop("tpl_auto")
+        try: px = self.pool.step(act)                                       # 27/11e · kho proxy nhiều IP
+        except Exception as e: px = {"ok": False, "err": str(e)[:160]}
+        if px: metrics["px"] = px
+        while len(json.dumps(metrics)) > 12000 and (metrics.get("tpl_auto") or metrics["iso"] or len((metrics.get("px") or {}).get("s") or []) > 5):
+            if metrics.get("tpl_auto"): metrics.pop("tpl_auto")              # web bỏ CẢ gói số đo nếu quá 16 KB → cắt bớt phần phụ
+            elif len((metrics.get("px") or {}).get("s") or []) > 5: metrics["px"]["s"] = metrics["px"]["s"][:len(metrics["px"]["s"]) // 2]; metrics["px"]["cut"] = 1
             else: metrics["iso"] = metrics["iso"][:len(metrics["iso"]) // 2]
         body = {"p_secret": self.sec, "p_metrics": metrics, "p_vps": rep, "p_info": None}
         if self.jobs_ok: body["p_tpl"] = trep                     # web cũ (chưa chạy v57) không có tham số này
