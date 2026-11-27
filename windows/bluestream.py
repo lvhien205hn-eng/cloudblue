@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "27/11g"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "27/11h"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
                                           # · 27/11e ANDROID 9 MƯỢT: hình ≤ 960, khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan,
                                           #   không dumpsys sau mỗi cú bấm; Thông số có "bộ nén Android ra … khung/s" + bỏ khung vì đâu (máy MuMu không đổi)
                                           # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
@@ -171,8 +171,14 @@ A9_QWAIT = max(0.15, min(2.0, _float_conf("STREAM_A9_QWAIT_S", 0.5)))   # Androi
 _cbvm = str(C.get("STREAM_A9_CBVIDEO", "1")).strip().lower()
 A9_CBV_MODE = "off" if _cbvm in ("0", "off", "false", "no") else ("on" if _cbvm in ("1", "on", "true", "yes", "auto") else "test")
 A9_CBV = A9_CBV_MODE != "off"
-CBV_FILE = ("cbvideo.jar", "bf8403f16395162ae5de3c0e4abe5215")                        # md5 ghim: file lạ / sai bản không bao giờ chạy trong máy khách
+CBV_FILE = ("cbvideo.jar", "c6c499caf9cdb5537ad7abc4c515e10f")                        # md5 ghim: file lạ / sai bản không bao giờ chạy trong máy khách
 CBV_DEV = "/data/local/tmp/cb-cbvideo-" + CBV_FILE[1][:8] + ".jar"
+# 27/11h: bộ nén openh264 riêng (windows/libcbenc-x86_64.so · nguồn .github/a9-check/cbenc.c, openh264 BSD-2 liên kết tĩnh) — cbvideo nén ngay
+# trong tiến trình của nó thay OMX.google.h264.encoder (~50–60 ms / khung trên Android 9). Thiếu / lỗi → cbvideo dùng MediaCodec như 27/11g.
+CBV_LIB = ("libcbenc-x86_64.so", "198d3f7a1972a3f79abb4db79cd23a85")
+CBV_LIB_DEV = "/data/local/tmp/cb-libcbenc-" + CBV_LIB[1][:8] + ".so"
+CBV_ENC = str(C.get("STREAM_CBV_ENC", "oh264")).strip().lower()              # oh264 (mặc định) · omx = bộ nén của Android như 27/11g
+CBV_THREADS = max(1, min(4, _int_conf("STREAM_CBV_THREADS", 1)))          # số luồng openh264 (1 = ít tranh CPU với app trong máy)
 CBV_RAW = (C.get("REPO_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main").rstrip("/") + "/windows/"
 CBV_API = (C.get("REPO_API") or "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents").rstrip("/") + "/windows/"
 CBV_STATS = max(0, _int_conf("STREAM_CBV_STATS_S", 5))                  # cbvideo báo thống kê mỗi chừng này giây → Thông số web (nhật ký chỉ ghi 10 phút / lần)
@@ -1169,18 +1175,49 @@ def ensure_cbv():
         return False
 
 
-def push_cbv(serial):
-    """Chép cbvideo.jar vào máy (tên file có md5 → đúng bản thì thôi). Máy "offline" → chờ adb rồi thử lại 1 lần."""
-    fp = os.path.join(RTC, CBV_FILE[0])
+_CBL = {"ok": None, "t": 0.0, "lock": threading.Lock()}
+
+
+def ensure_cbv_lib():
+    """27/11h: windows/libcbenc-x86_64.so (openh264) trên máy chủ, md5 ghim ở CBV_LIB. False → cbvideo nén bằng MediaCodec (OMX) như 27/11g."""
+    if CBV_ENC == "omx" or len(CBV_LIB[1]) != 32: return False
+    fn, want = CBV_LIB; fp = os.path.join(RTC, fn)
+    if _CBL["ok"] and os.path.isfile(fp): return True
+    with _CBL["lock"]:
+        if _md5_file(fp) == want: _CBL["ok"] = True; return True
+        if _CBL["ok"] is False and time.time() - _CBL["t"] < 600: return False
+        _CBL["t"] = time.time()
+        for url, hdr in ((CBV_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                         (CBV_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=60) as r: d = r.read()
+                if hashlib.md5(d).hexdigest() == want:
+                    with open(fp + ".tmp", "wb") as f: f.write(d)
+                    os.replace(fp + ".tmp", fp); _CBL["ok"] = True
+                    log(f"cbvideo: đã tải {fn} ({len(d)} byte) — máy Android 9 nén bằng openh264")
+                    return True
+            except Exception: pass
+        _CBL["ok"] = False
+        log(f"cbvideo: chưa tải được {fn} đúng bản (md5 {want[:8]}…) → cbvideo nén bằng bộ nén của Android, 10 phút sau thử lại")
+        return False
+
+
+def _push_pinned(serial, fp, dev, what):
     for i in range(2):
-        code, out, err = adb(serial, "shell", "ls", "-l", CBV_DEV, timeout=10)
+        code, out, err = adb(serial, "shell", "ls", "-l", dev, timeout=10)
         if code == 0 and str(os.path.getsize(fp)) in out: return
         if code == 0 or not any(w in (err or out).lower() for w in _ADB_GONE):
-            code, out, err = adb(serial, "push", fp, CBV_DEV, timeout=60)
+            code, out, err = adb(serial, "push", fp, dev, timeout=60)
             if code == 0: return
         gone = any(w in (err or out).lower() for w in _ADB_GONE)
         if i == 0 and gone and adb_ready(serial, 12): continue
-        raise (AdbGone if gone else RuntimeError)("push cbvideo: " + (err or out).strip()[-200:])
+        raise (AdbGone if gone else RuntimeError)(f"push {what}: " + (err or out).strip()[-200:])
+
+
+def push_cbv(serial, lib=False):
+    """Chép cbvideo.jar (+ libcbenc.so nếu dùng openh264) vào máy — tên file có md5 → đúng bản thì thôi. Máy "offline" → chờ adb rồi thử lại."""
+    _push_pinned(serial, os.path.join(RTC, CBV_FILE[0]), CBV_DEV, "cbvideo")
+    if lib: _push_pinned(serial, os.path.join(RTC, CBV_LIB[0]), CBV_LIB_DEV, "libcbenc")
 
 
 def cbv_ok_for(serial):
@@ -1388,7 +1425,8 @@ def _first_mb(au):
         return None
 
 
-_CBV_STAT_RE = re.compile(r"cbvideo stats:\s*([\d.]+)s in (\d+) sub (\d+) rep (\d+) out (\d+) \(([\d.]+) fps\) read ([\d.]+) ms conv ([\d.]+) ms")
+_CBV_STAT_RE = re.compile(r"cbvideo stats:\s*([\d.]+)s in (\d+) sub (\d+) rep (\d+) out (\d+) \(([\d.]+) fps\) read ([\d.]+) ms conv ([\d.]+) ms"
+                          r"(?: enc ([\d.]+) ms (\w+))?")
 
 
 def _cbv_stat(t):
@@ -1397,8 +1435,10 @@ def _cbv_stat(t):
     m = _CBV_STAT_RE.search(t or "")
     if not m: return None
     sec = max(0.1, float(m.group(1)))
-    return {"in": round(int(m.group(2)) / sec, 1), "sub": round(int(m.group(3)) / sec, 1), "out": float(m.group(6)),
-            "read": float(m.group(7)), "conv": float(m.group(8))}
+    d = {"in": round(int(m.group(2)) / sec, 1), "sub": round(int(m.group(3)) / sec, 1), "out": float(m.group(6)),
+         "read": float(m.group(7)), "conv": float(m.group(8))}
+    if m.group(9): d["enc"] = float(m.group(9)); d["by"] = m.group(10)          # 27/11h: thời gian nén mỗi khung + bộ nén (oh264)
+    return d
 
 
 class ScrcpyVideo:
@@ -1411,6 +1451,7 @@ class ScrcpyVideo:
         try: self.iframe = max(0.1, min(5.0, float(iframe)))
         except (TypeError, ValueError): self.iframe = 1.0
         self.kind = "cbv" if kind == "cbv" else "scrcpy"                 # 27/11f: "cbv" = cbvideo.jar (Android 9) — cùng giao thức, khác chương trình trong máy
+        self.oh264 = None                                                # 27/11h: cbvideo nén bằng openh264 (libcbenc.so) — None = chưa xét
         self.enc = "cbvideo" if self.kind == "cbv" else "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
         self.lock = threading.Lock(); self.w = self.h = 0; self.frames_in = 0; self.started = 0.0
         self.scid = 0; self.pk_in = 0; self.cont_in = 0; self.multi = False; self.layout = None   # 16/11k: gói / lát tiếp theo / khung nhiều lát
@@ -1424,14 +1465,17 @@ class ScrcpyVideo:
             if self.ready_wait > 0 and not adb_ready(self.serial, self.ready_wait): raise AdbGone(f"adb không thấy máy {self.serial}")
             if self.kind == "cbv":
                 if not ensure_cbv(): raise RuntimeError("thiếu cbvideo.jar")
-                push_cbv(self.serial)
+                self.oh264 = ensure_cbv_lib()
+                push_cbv(self.serial, lib=self.oh264)
             else:
                 if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
                 push_jar(self.serial)
         scid = random.randint(1, 0x7FFFFFFF); self.scid = scid
         if self.kind == "cbv":
+            if self.oh264 is None: self.oh264 = ensure_cbv_lib()            # bật lại nhanh (quick): file đã có trong máy từ lần trước
             cmd = (f"CLASSPATH={CBV_DEV} app_process / com.cloudblue.A9Video scid={scid:08x} max_size={self.max_size} "
-                   f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats={CBV_STATS}")
+                   f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats={CBV_STATS}"
+                   + (f" lib={CBV_LIB_DEV} enc_threads={CBV_THREADS}" if self.oh264 else ""))
         else:
             cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
                    "video=true audio=false control=false tunnel_forward=true send_device_meta=false send_dummy_byte=true "
@@ -2606,6 +2650,7 @@ class Session:
             return ScrcpyVideo(self.serial, msz, fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
                                iframe=self._iframe(fps, kbps), quick=qk, ready_wait=wait, kind=kd)
         enc = mk(kind, quick)
+        if quick and kind == "cbv": enc.oh264 = getattr(old_enc, "oh264", None)    # 27/11h: bật lại nhanh → đúng bộ nén lần trước (libcbenc đã chép vào máy hay chưa)
         self.enc = enc
         if old_enc: old_enc.stop()
         if self.closed: enc.stop(); raise Closed()
@@ -4899,13 +4944,16 @@ async def main():
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
     log(f"bản 17/11e: dán vào Termux bằng Ctrl+Alt+V {'BẬT' if PASTE_TERMUX else 'TẮT (PASTE_TERMUX=0)'} · mạng yếu: mức nhớ cũ hơn "
         f"{RATE_FRESH_S / 60:g} phút → bắt đầu ≥ {RATE_FRESH_KBPS} kbps, khách tự chọn chất lượng → dò lại, yên {CEIL_CALM_S / 60:g} phút → bỏ trần cũ")
-    log(f"bản 27/11g: Android 9 cbvideo — " + ((f"lấy hình bằng cbvideo.jar (md5 {CBV_FILE[1][:8]}, đọc hình song song với nén, xin khung khoá tức thì) "
+    _cbv_enc = (f"nén bằng openh264 (libcbenc md5 {CBV_LIB[1][:8]}, {CBV_THREADS} luồng)" if CBV_ENC != "omx" and len(CBV_LIB[1]) == 32
+                else "nén bằng bộ nén của Android (STREAM_CBV_ENC=omx)")
+    log("bản 27/11h: Android 9 cbvideo openh264 — " + ((f"lấy hình bằng cbvideo.jar (md5 {CBV_FILE[1][:8]}), {_cbv_enc}, đọc hình song song, "
+        "xin khung khoá tức thì · "
         + ("cho MỌI máy Android 9 (web ?cbv=0 = scrcpy)" if A9_CBV_MODE == "on" else "CHỈ phiên web ?cbv=1 (chế độ thử — STREAM_A9_CBVIDEO=1 để bật cho khách)")
         + f", lỗi thì tự quay về scrcpy {CBV_BAD_S // 60} phút") if A9_CBV and len(CBV_FILE[1]) == 32 else "TẮT (STREAM_A9_CBVIDEO=0) → scrcpy như 27/11e"))
     log(f"bản 27/11e: Android 9 mượt — hình ≤ {A9_MAXH or 'theo mức'} (trừ mức Nét), khung I mỗi {SCR_IFRAME_A9:g} giây, bỏ khung → bật lại bộ nén "
         f"sau {KEY_WAIT_S_A9:g} giây, ngưỡng app chậm ×{A9_LAG_MUL:g}, hàng chờ {A9_QWAIT:g} giây (khi dùng scrcpy), không dumpsys sau cú bấm · máy MuMu không đổi")
     if A9_CBV and (C.get("EMU") or "").strip().lower() == "ld":
-        threading.Thread(target=ensure_cbv, daemon=True).start()        # máy chủ LDPlayer: tải sẵn cbvideo.jar (khách mở máy khỏi chờ tải)
+        threading.Thread(target=lambda: (ensure_cbv(), ensure_cbv_lib()), daemon=True).start()   # máy chủ LDPlayer: tải sẵn cbvideo.jar + libcbenc.so
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi "
         + (f"{SCR_KEY_S:g} giây THẬT theo khung/giây đang phát (SCRCPY_KEY_EVERY_S)" if SCR_KEY_S > 0 else f"{SCR_IFRAME:g} giây ở 60 khung/giây (kiểu cũ)")
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
