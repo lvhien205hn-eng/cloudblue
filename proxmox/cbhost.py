@@ -37,6 +37,11 @@
 #     (cổng 8899, chỉ máy trong mạng nhà dùng được; VPS khách bị chặn sẵn bởi cách ly ở trên). Mỗi ô proxy 1 IPv6 riêng trong dải /64 của mạng
 #     + IPv4 riêng khi có tài khoản PPPoE (admin gõ "cbpool ppp-set" trong Shell của Proxmox — mật khẩu chỉ nằm trên máy này).
 #     Báo danh sách ô (IP:cổng:user:mật khẩu, IP đang ra) lên web trong số đo (px) → Quản trị › VPS ảo hoá › Máy chủ. Tắt: "pool": false.
+#   · 27/11g: BÁN PROXY CHO KHÁCH (web: Proxy dân cư, share 1–5). Mỗi phút gọi px_host_sync (SQL v62) → ghi tài khoản khách vào
+#     /etc/cloudblue/cbpool-users.json (600) cho cbpool 27.11c (khách vào được từ Internet qua cổng modem; ô IPv6 bán riêng; IPv4 = phiên
+#     PPPoE đã bán) · báo lại IP đang ra của từng ô bán + khoá công khai của máy. Tài khoản PPPoE admin nhập trên web được TRÌNH DUYỆT mã hoá
+#     bằng khoá công khai đó → cbhost chỉ chuyển chuỗi mã hoá cho "cbpool ppp-import" (giải bằng khoá riêng của máy, qua stdin).
+#     Web chưa chạy SQL v62 → bỏ qua im lặng.
 #   · 27/11f: kho proxy báo thêm kết quả TỰ DÒ PPPoE (cbpool 27.11b gửi gói dò PADI — không mật khẩu, không xin phiên — khi chưa có phiên
 #     nào lên) → web hiện "modem có cho PPPoE từ mạng nhà đi qua không" mà admin khỏi vào Shell gõ cbpool ppp-test.
 #     Tự cập nhật cbhost 15 phút / lần (trước 1 giờ) để bản sửa tới máy chủ nhanh hơn.
@@ -46,7 +51,7 @@
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11f"
+CBHOST_VER = "27/11g"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -771,7 +776,7 @@ def item_ok(it):
 
 
 # ---------------------------------------------------------------- 27/11e · KHO PROXY NHIỀU IP (cbpool) — xem phần đầu file
-POOL_FILE = ("cbpool-x86_64", "86af24909a482880ed88cbabe77818c3")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
+POOL_FILE = ("cbpool-x86_64", "e250a05b91935c343a4104a131a06fe0")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
 POOL_RAW = os.environ.get("CBHOST_POOL_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/"
 POOL_BIN = os.environ.get("CBHOST_POOL_BIN") or "/usr/local/bin/cbpool"
 POOL_CONF_F = os.environ.get("CBHOST_POOL_CONF") or "/etc/cloudblue/cbpool.json"
@@ -780,6 +785,9 @@ POOL_UNIT = "cloudblue-pool.service"
 POOL_UNIT_F = os.environ.get("CBHOST_POOL_UNIT") or "/etc/systemd/system/" + POOL_UNIT
 SYSTEMCTL = os.environ.get("CBHOST_SYSTEMCTL") or "systemctl"
 POOL_EVERY_S = 60                # kiểm file + dịch vụ 1 phút / lần (số đo thì đọc mỗi vòng hỏi web)
+POOL_USERS_F = os.environ.get("CBHOST_POOL_USERS") or "/etc/cloudblue/cbpool-users.json"     # 27/11g · tài khoản khách mua proxy
+RX_PX_USER = re.compile(r"^px[a-z0-9]{6,30}$")
+RX_PX_UNIT = re.compile(r"^(s[0-9]{1,5}|[0-9]{1,2})$")
 POOL_DL_RETRY_S = 600            # tải hỏng → 10 phút sau mới tải lại
 POOL_UNIT_TXT = """[Unit]
 Description=CloudBlue cbpool - kho proxy nhieu IP (IPv6 + PPPoE)
@@ -832,8 +840,9 @@ def pool_ask(req, timeout=4):
 
 
 class PoolMgr:
-    def __init__(self, c):
+    def __init__(self, c, web=None, sec=None):
         self.c = c; self.t = 0.0; self.dl_fail_t = 0.0; self.err = ""; self.restart = False
+        self.web, self.sec = web, sec; self.users_txt = None; self.ppp_done = 0; self.ppp_err = ""; self.sync_err = ""   # 27/11g · bán proxy
 
     def step(self, act=True):
         """Mỗi vòng hỏi web: (1 phút / lần) giữ file + dịch vụ đúng; trả số đo gọn cho web (None = tắt / chưa chạy)."""
@@ -845,6 +854,11 @@ class PoolMgr:
             except Exception as e:
                 if self.err != str(e)[:160]: log("kho proxy: %s" % str(e)[:160])
                 self.err = str(e)[:160]
+            if self.c.get("pool") and not self.err:
+                try: self.sync()
+                except Exception as e:
+                    if self.sync_err != str(e)[:160]: log("bán proxy: %s" % str(e)[:160])
+                    self.sync_err = str(e)[:160]
         if not self.c.get("pool"): return None
         return self.report(pool_ask({"cmd": "status"}))
 
@@ -880,6 +894,59 @@ class PoolMgr:
             run([SYSTEMCTL, "restart", POOL_UNIT], 60); log("kho proxy: chạy lại cloudblue-pool (bản / dịch vụ mới)")
         self.restart = False; self.err = ""
 
+    def sync(self):
+        """27/11g · bán proxy: px_host_sync (SQL v62) → tài khoản khách cho cbpool + tài khoản PPPoE đã mã hoá; báo lại IP từng ô bán + khoá công khai."""
+        if not self.web or not self.sec: return
+        cs = pool_ask({"cmd": "cust"})
+        rep = {"ver": CBHOST_VER}
+        if isinstance(cs, dict) and cs.get("ok"):
+            rep["pk"] = str(cs.get("pk") or "")[:200]
+            u = cs.get("units") if isinstance(cs.get("units"), dict) else {}
+            rep["units"] = {str(k)[:8]: str(v)[:64] for k, v in list(u.items())[:3000] if RX_PX_UNIT.match(str(k))}
+        if self.ppp_done: rep["ppp_ok"] = self.ppp_done
+        if self.ppp_err: rep["ppp_err"] = self.ppp_err[:200]
+        r = self.web.rpc("px_host_sync", {"p_secret": self.sec, "p_report": rep}, timeout=20)
+        if not isinstance(r, dict) or not r.get("ok"):
+            e = (self.web.err or str((r or {}).get("err") if isinstance(r, dict) else "") or "")[:160]
+            if "px_host_sync" in e or "PGRST202" in e or "404" in e: e = ""            # web chưa chạy SQL v62: chưa bán proxy
+            self.sync_err = e
+            return
+        self.sync_err = ""
+        if isinstance(r.get("users"), list):
+            users = []
+            for x in r["users"][:5000]:
+                if not isinstance(x, dict) or not RX_PX_USER.match(str(x.get("u") or "")) or str(x.get("k")) not in ("v6", "v4") or not RX_PX_UNIT.match(str(x.get("n") or "")): continue
+                try: row = {"u": str(x["u"]), "p": str(x.get("p") or "")[:64], "k": str(x["k"]), "n": str(x["n"]), "x": int(x.get("x") or 0), "s": max(1, min(5, int(x.get("s") or 1)))}
+                except (TypeError, ValueError): continue
+                if len(row["p"]) < 8 or row["x"] <= time.time(): continue
+                if isinstance(x.get("r"), str) and 16 <= len(x["r"]) <= 64 and row["s"] == 1: row["r"] = x["r"]
+                users.append(row)
+            num = lambda k, d=0: int(r.get(k)) if isinstance(r.get(k), (int, float)) else d
+            uf = {"v": 1, "bw": num("bw"), "fb4": bool(r.get("fb4")), "sale4": bool(r.get("sale4")), "maxc": num("maxc"),
+                  "self": [str(x)[:64] for x in (r.get("self") or []) if isinstance(x, str)][:8], "users": users}
+            txt = json.dumps(uf, sort_keys=True, ensure_ascii=False)
+            if txt != self.users_txt:
+                os.makedirs(os.path.dirname(POOL_USERS_F) or ".", exist_ok=True)
+                tmp = POOL_USERS_F + ".tmp"
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w", encoding="utf-8") as f: f.write(txt)
+                os.chmod(tmp, 0o600); os.replace(tmp, POOL_USERS_F)
+                a = pool_ask({"cmd": "users"}, timeout=10)
+                if isinstance(a, dict) and a.get("ok") is not False:
+                    if self.users_txt is None or len(users) != len(json.loads(self.users_txt).get("users") or []): log("bán proxy: %d tài khoản khách" % len(users))
+                    self.users_txt = txt
+        pp = r.get("ppp")
+        if isinstance(pp, dict) and isinstance(pp.get("enc"), str) and isinstance(pp.get("gen"), int) and pp["gen"] != self.ppp_done and len(pp["enc"]) < 8000:
+            rc, out = run_in([POOL_BIN, "ppp-import", "-c", POOL_CONF_F], pp["enc"], 180)
+            try: j = json.loads(out[out.find("{"):]) if "{" in out else {}
+            except Exception: j = {}
+            if rc == 0 and j.get("ok"):
+                self.ppp_done, self.ppp_err = pp["gen"], ""
+                log("bán proxy: đã nhận tài khoản PPPoE từ web (%s, %s phiên)" % (j.get("user"), j.get("sessions")))
+            else:
+                self.ppp_err = str(j.get("err") or out[-160:] or "ppp-import lỗi")[:200]
+                log("bán proxy: tài khoản PPPoE từ web chưa dùng được — %s" % self.ppp_err)
+
     def disable(self):
         if os.path.exists(POOL_UNIT_F):
             rc, out = run([SYSTEMCTL, "is-active", POOL_UNIT], 15)
@@ -904,7 +971,14 @@ class PoolMgr:
                        str(x.get("ip4") or ""), int(x.get("conns") or 0), str(x.get("rot") or "")[:40]])
         r = {"ok": True, "ver": str(st.get("ver") or "")[:16], "host": lan_ip(), "port": port, "v6": pfx, "s": sl,
              "ppp": {"want": int(pp.get("want") or 0), "up": int(pp.get("up") or 0), "acct": bool(pp.get("account")),
-                     "ip": [str(y.get("ip")) for y in (pp.get("sess") or []) if isinstance(y, dict) and y.get("ip")][:64]}}
+                     "ip": [str(y.get("ip")) for y in (pp.get("sess") or []) if isinstance(y, dict) and y.get("ip")][:64],
+                     "k": [int(y.get("k")) for y in (pp.get("sess") or []) if isinstance(y, dict) and y.get("up") and isinstance(y.get("k"), int)][:64]}}   # 27/11g · phiên đang lên (bán IPv4)
+        if isinstance(st.get("pk"), str) and 60 <= len(st["pk"]) <= 200: r["pk"] = st["pk"]                  # 27/11g · khoá công khai: web mã hoá tài khoản PPPoE
+        if isinstance(st.get("pub4"), str) and re.match(r"^\d{1,3}(\.\d{1,3}){3}$", st["pub4"]): r["pub4"] = st["pub4"]   # IPv4 công khai: khách nối vào đây
+        cu = st.get("cust") if isinstance(st.get("cust"), dict) else {}
+        if cu: r["cust"] = {"n": int(cu.get("n") or 0), "conns": int(cu.get("conns") or 0)}
+        if self.sync_err: r["sync_err"] = self.sync_err[:160]
+        if self.ppp_err: r["ppp"]["enc_err"] = self.ppp_err[:160]
         if v6.get("err"): r["v6err"] = str(v6["err"])[:160]
         if pp.get("err"): r["ppp"]["err"] = str(pp["err"])[:160]
         dc = pp.get("disc")                                          # 27/11f · tự dò PPPoE: modem có cho đi qua không
@@ -928,7 +1002,7 @@ class Host:
         self.info_t = 0.0; self.hello_ok = False
         self.jobs = []; self.jobs_ok = False; self.iso_t = 0.0; self.iso_list = []; self.auto = []      # việc máy mẫu (web v57) · file ISO trên máy chủ
         self.usb = None                                                                                  # luồng nạp ISO máy mẫu từ USB (cmd_run bật)
-        self.pool = PoolMgr(self.c)                                                                      # 27/11e · kho proxy nhiều IP
+        self.pool = PoolMgr(self.c, self.web, self.sec)                                                  # 27/11e · kho proxy nhiều IP (27/11g: bán proxy)
 
     def save(self):
         with self.lock: save_json(STATE_F, self.st)
