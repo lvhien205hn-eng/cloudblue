@@ -400,7 +400,7 @@ iface nic0 inet6 manual
 
 auto vmbr0
 iface vmbr0 inet6 static
-\taddress 2001:db8:5:ac60:5054:ff:fe12:3456/64
+\taddress 2001:db8:5:77:5054:ff:fe12:3456/64
 \tgateway fe80::1
 \tbridge-ports nic0
 \tbridge-stp off
@@ -408,7 +408,7 @@ iface vmbr0 inet6 static
 
 source /etc/network/interfaces.d/*
 """
-IF4 = IF6.replace("inet6 manual", "inet manual").replace("iface vmbr0 inet6 static", "iface vmbr0 inet static").replace("2001:db8:5:ac60:5054:ff:fe12:3456/64", "192.168.1.50/24").replace("fe80::1", "192.168.1.1")
+IF4 = IF6.replace("inet6 manual", "inet manual").replace("iface vmbr0 inet6 static", "iface vmbr0 inet static").replace("2001:db8:5:77:5054:ff:fe12:3456/64", "192.168.1.50/24").replace("fe80::1", "192.168.1.1")
 netd = os.path.join(tmp, "net"); os.makedirs(netd)
 cb.RESOLV_F, cb.IFACES_F, cb.DHCP_UNIT_F, cb.DHCP_WAIT_S = os.path.join(netd, "resolv.conf"), os.path.join(netd, "interfaces"), os.path.join(netd, "cloudblue-dhcp4.service"), 0
 NET = {"v4": False, "v6": True, "lease": True, "cmds": [], "have": {"dhclient", "systemctl"}, "dns_ok": False, "active": False}
@@ -930,10 +930,10 @@ open(os.path.join(RAWD, "cbpool-x86_64"), "wb").write(FAKE_BIN); pm.dl_fail_t = 
 ck("có lại đúng bản → tải + chạy lại dịch vụ", os.path.exists(os.environ["CBHOST_POOL_BIN"]) and "restart cloudblue-pool.service" in open(SYSLOG).read(), open(SYSLOG).read())
 
 # cbpool giả trả trạng thái qua ổ cắm điều khiển
-ST = {"ver": "27.11a", "listen": "0.0.0.0:8899", "v6": {"on": True, "iface": "vmbr0", "prefix": "2001:db8:5:ac60::/64", "err": ""},
+ST = {"ver": "27.11a", "listen": "0.0.0.0:8899", "v6": {"on": True, "iface": "vmbr0", "prefix": "2001:db8:5:77::/64", "err": ""},
       "ppp": {"want": 2, "up": 1, "account": True, "iface": "vmbr0", "sess": [{"k": 0, "up": True, "ip": "203.0.113.5"}, {"k": 1, "up": False, "err": "x"}]},
       "slots": [{"id": "p%02d" % (i + 1), "user": "p%02d" % (i + 1), "pass": "Pw%014d" % i, "rot": "R%019d" % i,
-                 "ip6": "2001:db8:5:ac60:%x:1:2:3" % (i + 1), "ip4": "203.0.113.5" if i % 2 == 0 else "", "sess": i % 2, "conns": i} for i in range(3)]}
+                 "ip6": "2001:db8:5:77:%x:1:2:3" % (i + 1), "ip4": "203.0.113.5" if i % 2 == 0 else "", "sess": i % 2, "conns": i} for i in range(3)]}
 srv = socket.socket(socket.AF_UNIX); srv.bind(os.environ["CBHOST_POOL_CTL"]); srv.listen(4)
 def _serve():
     while True:
@@ -944,7 +944,7 @@ def _serve():
 threading.Thread(target=_serve, daemon=True).start()
 r = pm.step(False)
 ck("báo web gọn: máy (IP mạng nhà) + cổng 8899 + dải IPv6 + ô [id, mật khẩu, đuôi IPv6, IPv4, kết nối, khoá đổi IP] + IP các phiên PPPoE",
-   r.get("ok") and r.get("port") == 8899 and r.get("v6") == "2001:db8:5:ac60::/64" and r["s"][0] == ["p01", "Pw00000000000000", "1:1:2:3", "203.0.113.5", 0, "R0000000000000000000"]
+   r.get("ok") and r.get("port") == 8899 and r.get("v6") == "2001:db8:5:77::/64" and r["s"][0] == ["p01", "Pw00000000000000", "1:1:2:3", "203.0.113.5", 0, "R0000000000000000000"]
    and r["s"][1][3] == "" and r["ppp"] == {"want": 2, "up": 1, "acct": True, "ip": ["203.0.113.5"], "k": [0]} and "host" in r, r)
 ST["ppp"] = {"want": 0, "up": 0, "account": False, "iface": "vmbr0", "sess": [], "err": "chưa có tài khoản PPPoE (gõ: cbpool ppp-set)",
              "disc": {"t": 1795760000, "iface": "vmbr0", "ok": True, "ac": ["cbtest-ac", "AC-" + "x" * 80, "c", "d"]}}
@@ -976,7 +976,7 @@ ck("cbhost không chạy lệnh qua shell (kho proxy cũng vậy)", "shell=True"
 print("18. 27/11g · BÁN PROXY: px_host_sync → file tài khoản khách cho cbpool · tài khoản PPPoE mã hoá → cbpool ppp-import · báo IP ô + khoá")
 cb.POOL_USERS_F = os.path.join(tmp, "cbpool-users.json")
 PK = "B" + "A" * 86
-CUST = {"ok": True, "units": {"s001": "2001:db8:5:ac60::77", "1": "203.0.113.11", "bad unit!": "x"}, "users": [], "pk": PK}
+CUST = {"ok": True, "units": {"s001": "2001:db8:5:77::77", "1": "203.0.113.11", "bad unit!": "x"}, "users": [], "pk": PK}
 seen_ctl = []
 srv18 = socket.socket(socket.AF_UNIX)
 try: os.remove(os.environ["CBHOST_POOL_CTL"])
@@ -1015,7 +1015,7 @@ ck("lấy tài khoản khách từ web → file 600 cho cbpool (bỏ dòng sai t
 rep = pw.calls[-1][1]
 ck("gọi px_host_sync bằng mã máy chủ + báo khoá công khai + IP đang ra của từng ô bán (bỏ tên ô lạ)",
    pw.calls[-1][0] == "px_host_sync" and rep["p_secret"] == "bi-mat-may-chu" and rep["p_report"]["pk"] == PK
-   and rep["p_report"]["units"] == {"s001": "2001:db8:5:ac60::77", "1": "203.0.113.11"}, rep)
+   and rep["p_report"]["units"] == {"s001": "2001:db8:5:77::77", "1": "203.0.113.11"}, rep)
 ck("tài khoản PPPoE mã hoá → cbpool ppp-import qua stdin (không lên dòng lệnh) → lần sau báo đã nhận (ppp_ok)",
    pm18.ppp_done == 3 and pm18.ppp_err == "" and "ppp-import -c" in open(os.environ["CBHOST_POOL_BIN"] + ".argv").read()
    and "\"v\"" not in open(os.environ["CBHOST_POOL_BIN"] + ".argv").read(), (pm18.ppp_done, pm18.ppp_err))
@@ -1027,7 +1027,7 @@ ck("chuỗi PPPoE hỏng → không nhận, báo lỗi lên web (ppp_err) lần 
 pw.resp = None; pw.err = "HTTP 404: {\"code\":\"PGRST202\",\"message\":\"Could not find the function public.px_host_sync\"}"; pm18.sync()
 ck("web chưa chạy SQL v63 → im lặng (không báo lỗi bán proxy)", pm18.sync_err == "", pm18.sync_err)
 srv18.close()
-st18 = {"ver": "27.11c", "listen": "0.0.0.0:8899", "v6": {"prefix": "2001:db8:5:ac60::/64"}, "pk": PK, "cust": {"n": 2, "conns": 5}, "pub4": "203.0.113.200",
+st18 = {"ver": "27.11c", "listen": "0.0.0.0:8899", "v6": {"prefix": "2001:db8:5:77::/64"}, "pk": PK, "cust": {"n": 2, "conns": 5}, "pub4": "203.0.113.200",
         "ppp": {"want": 3, "up": 2, "account": True, "sess": [{"k": 0, "up": True, "ip": "203.0.113.10"}, {"k": 1, "up": False}, {"k": 2, "up": True, "ip": "203.0.113.12"}]}, "slots": []}
 r18 = pm18.report(st18)
 ck("số đo web: khoá công khai (để mã hoá tài khoản PPPoE) + số khách + phiên đang lên (bán IPv4)",
