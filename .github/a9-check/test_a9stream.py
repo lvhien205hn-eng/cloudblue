@@ -9,7 +9,7 @@
      4. khung/giây + cỡ khung theo cỡ hình 1280 / 960 / 800 khi màn hình đang cuộn liên tục
      5. thời gian bật lại bộ nén (gọi start → khung đầu tiên tới máy chủ)
    Kết quả: in ra + bảng trong $GITHUB_STEP_SUMMARY + file a9stream-<api>.json. Mã thoát 0 khi đo được (không chấm đậu/trượt)."""
-import importlib.util, json, os, re, subprocess, sys, threading, time
+import importlib.util, json, os, random, re, socket, subprocess, sys, threading, time
 
 API = sys.argv[1] if len(sys.argv) > 1 else "?"
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -160,38 +160,117 @@ def _pop(args, *a, **k):
 subprocess.Popen = _pop
 
 
-def prof(tag, msz, fps, kbps, secs=6, extra="", sample=True, perf=False):
-    """Đo 1 cấu hình lúc màn hình cuộn liên tục: khung/giây scrcpy, khung app vẽ, luồng ăn CPU, (simpleperf)."""
+CB_JAR = os.path.join(ROOT, "cbvideo.jar")
+CB_DEV = "/data/local/tmp/cbvideo.jar"
+
+
+class CbVideo(bs.ScrcpyVideo):
+    """27/11f: máy chủ hình riêng cho Android 9 (A9Video.java → cbvideo.jar) — cùng giao thức scrcpy, đọc bằng chính ScrcpyVideo."""
+    def start(self):
+        self.started = time.time(); self.lines = []
+        sh("push", CB_JAR, CB_DEV, t=60)
+        scid = random.randint(1, 0x7FFFFFFF); self.scid = scid
+        cmd = (f"CLASSPATH={CB_DEV} app_process / com.cloudblue.A9Video scid={scid:08x} max_size={self.max_size} "
+               f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats=3")
+        with self.lock:
+            self.proc = subprocess.Popen([bs.ADB, "-s", self.serial, "shell", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                         stdin=subprocess.DEVNULL)
+        threading.Thread(target=self._srvlog, args=(self.proc,), daemon=True).start()
+        code, out, err = bs.adb(self.serial, "forward", "tcp:0", f"localabstract:scrcpy_{scid:08x}", timeout=10)
+        with self.lock: self.fport = int(out.strip()) if out.strip().isdigit() else None
+        if not self.fport: self._kill(); raise RuntimeError("forward: " + (err or out)[-200:])
+        t0 = time.time(); sock = None
+        while time.time() - t0 < 10 and not self.stopped:
+            if self.proc.poll() is not None: break
+            try:
+                s = socket.create_connection(("127.0.0.1", self.fport), timeout=2); s.settimeout(3)
+                if s.recv(1) == b"\x00": sock = s; break
+                s.close()
+            except OSError: pass
+            time.sleep(0.15)
+        if not sock: self._kill(); raise RuntimeError("cbvideo không nối được: " + " | ".join(self.lines[-5:]))
+        return self.attach(sock)
+
+    def _srvlog(self, p):
+        try:
+            for ln in iter(p.stdout.readline, b""):
+                t = ln.decode("utf-8", "replace").strip()
+                if t: self.lines.append(t); print("  [cbvideo] " + t, flush=True)
+        except Exception: pass
+
+    def request_key(self):
+        s = self.sock
+        if s:
+            try: s.sendall(b"K")
+            except OSError: pass
+
+
+def probe(path):
+    """ffprobe / ffmpeg giải mã thử dòng H.264 đã ghi → (rộng x cao, số khung giải được, số dòng lỗi)."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
+                            "stream=width,height,nb_read_frames", "-of", "csv=p=0", path], capture_output=True, text=True, timeout=60)
+        e = subprocess.run(["ffmpeg", "-v", "error", "-i", path, "-f", "null", "-"], capture_output=True, text=True, timeout=120)
+        parts = (r.stdout or "").strip().split(",")
+        errs = [x for x in (e.stderr or "").splitlines() if x.strip()]
+        if len(parts) >= 3: return f"{parts[0]}x{parts[1]}", int(parts[2] or 0), len(errs), errs[:5]
+        return "?", 0, len(errs), errs[:5] + [(r.stderr or "")[-200:]]
+    except Exception as ex:
+        return "?", 0, -1, [repr(ex)[:200]]
+
+
+def prof(tag, msz, fps, kbps, secs=6, extra="", sample=False, perf=False, cls=None, keys=0, record=None, move=True):
+    """Đo 1 cấu hình: khung/giây phát, khung app vẽ (gfxinfo), luồng ăn CPU (top), simpleperf, xin khung khoá (cbvideo), ghi dòng hình."""
     fr = []; lock = threading.Lock(); r = {"tag": tag, "max": msz, "fps_req": fps, "kbps": kbps, "extra": extra}
+    fh = open(record, "wb") if record else None
     def on_au(d, k, c, p):
-        if d is not None:
-            with lock: fr.append(time.monotonic())
-    mv = Mover(); mv.start(); time.sleep(0.8)
+        if d is None: return
+        with lock:
+            fr.append((time.monotonic(), len(d), bool(k)))
+            if fh: fh.write(d)
+    mv = Mover() if move else None
+    if mv: mv.start(); time.sleep(0.8)
     _EXTRA["v"] = extra
-    sv = bs.ScrcpyVideo(SERIAL, msz, fps, kbps, on_au, iframe=5.0)
-    tops = []; perf_out = []
+    sv = (cls or bs.ScrcpyVideo)(SERIAL, msz, fps, kbps, on_au, iframe=5.0)
+    tops = []; perf_out = []; kreq = []
+    t_start = time.monotonic()
     try:
         w, h = sv.start(); r["size"] = f"{w}x{h}"
         time.sleep(1.0); gfx_reset(); g0 = time.monotonic()
         with lock: n0 = len(fr)
         th = None
         if sample:
-            th = threading.Thread(target=lambda: tops.extend(top_threads()), daemon=True); time.sleep(1.5); th.start()
+            th = threading.Thread(target=lambda: tops.extend(top_threads()), daemon=True); time.sleep(1.0); th.start()
         if perf:
             perf_out.extend(simpleperf(4))
+        for i in range(keys):
+            time.sleep(1.0)
+            if hasattr(sv, "request_key"): kreq.append(time.monotonic()); sv.request_key()
         t_end = g0 + secs
         while time.monotonic() < t_end: time.sleep(0.1)
         if th: th.join(timeout=30)
-        with lock: n1 = len(fr); span = time.monotonic() - g0
+        with lock: n1 = len(fr); span = time.monotonic() - g0; f = list(fr)
         gf, gj = gfx_frames()
         r["fps"] = round((n1 - n0) / span, 1); r["app_fps"] = round(gf / span, 1) if gf >= 0 else None; r["app_jank"] = gj
+        r["frames"] = len(f); r["first_s"] = round(f[0][0] - t_start, 2) if f else None
+        r["kb_avg"] = round(sum(x[1] for x in f) / max(1, len(f)) / 1024, 1)
+        if kreq:
+            lat = []
+            for tr in kreq:
+                nk = next((x[0] for x in f if x[0] > tr and x[2]), None)
+                lat.append(round((nk - tr) * 1000) if nk else None)
+            r["key_ms"] = lat
     except Exception as e:
-        r["err"] = repr(e)[:200]
+        r["err"] = repr(e)[:300]
     finally:
         _EXTRA["v"] = ""
         try: sv.stop()
         except Exception: pass
-        mv.stop()
+        if mv: mv.stop()
+        if fh: fh.close()
+    if record and r.get("frames"):
+        r["probe"] = probe(record)
+    r["log"] = [x for x in getattr(sv, "lines", []) if "stats" in x or "error" in x.lower() or "cbvideo:" in x][-8:]
     r["top"] = tops; r["perf"] = perf_out
     return r
 
@@ -226,37 +305,55 @@ def simpleperf(dur=4):
 
 
 def prof_main(ver, cores, encs):
-    say(f"## ĐO SÂU phát hình — Android {ver.strip()} (API {API}) · {cores.strip()} nhân · bộ nén {encs[0] if encs else '?'}")
+    say(f"## Android 9: scrcpy vs cbvideo (máy chủ hình riêng) — Android {ver.strip()} (API {API}) · {cores.strip()} nhân · bộ nén {encs[0] if encs else '?'}")
     say("")
     res = []
-    # không phát hình: app tự vẽ bao nhiêu khung khi cuộn (mốc so sánh) + luồng ăn CPU
     mv = Mover(); mv.start(); time.sleep(0.8); gfx_reset(); g0 = time.monotonic()
-    tops = []; th = threading.Thread(target=lambda: tops.extend(top_threads()), daemon=True); time.sleep(1.0); th.start()
-    time.sleep(5); th.join(timeout=30); gf, gj = gfx_frames(); span = time.monotonic() - g0; mv.stop()
-    res.append({"tag": "KHÔNG phát hình (chỉ cuộn)", "size": "-", "fps": 0, "app_fps": round(gf / span, 1) if gf >= 0 else None, "app_jank": gj, "top": tops, "perf": []})
-    tests = [("800 · max_fps 30 (như máy 4GB)", 800, 30, 3000, ""),
-             ("800 · max_fps 60", 800, 60, 3000, ""),
-             ("800 · không giới hạn khung", 800, 0, 3000, ""),
-             ("640 · không giới hạn", 640, 0, 3000, ""),
-             ("480 · không giới hạn", 480, 0, 3000, ""),
-             ("960 · không giới hạn", 960, 0, 3000, ""),
-             ("800 · không giới hạn · 1000 kbps", 800, 0, 1000, ""),
-             ("800 · không giới hạn · priority 0 + operating-rate 120", 800, 0, 3000, ",priority:int=0,operating-rate:float=120")]
+    time.sleep(5); gf, gj = gfx_frames(); span = time.monotonic() - g0; mv.stop()
+    res.append({"tag": "KHÔNG phát hình (chỉ cuộn)", "size": "-", "fps": 0, "app_fps": round(gf / span, 1) if gf >= 0 else None, "app_jank": gj})
+    have_cb = os.path.isfile(CB_JAR)
+    tests = [dict(tag="scrcpy · 800 · max_fps 30 (như máy 4GB)", msz=800, fps=30, kbps=3000, sample=True),
+             dict(tag="scrcpy · 800 · không giới hạn", msz=800, fps=0, kbps=3000),
+             dict(tag="scrcpy · 800 · 30 · tắt lặp khung", msz=800, fps=30, kbps=3000, extra=",repeat-previous-frame-after:long=0"),
+             dict(tag="scrcpy · đứng yên (khung đầu)", msz=800, fps=30, kbps=3000, secs=3, move=False)]
+    if have_cb:
+        tests += [dict(tag="cbvideo · 800 · 30 · xin khoá ×3", msz=800, fps=30, kbps=3000, secs=7, cls=CbVideo, keys=3, sample=True,
+                       record=os.path.join(ROOT, f"cb800-{API}.h264")),
+                  dict(tag="cbvideo · 800 · không giới hạn", msz=800, fps=0, kbps=3000, cls=CbVideo),
+                  dict(tag="cbvideo · 960 · 30", msz=960, fps=30, kbps=3000, cls=CbVideo, record=os.path.join(ROOT, f"cb960-{API}.h264")),
+                  dict(tag="cbvideo · 1280 · 30", msz=1280, fps=30, kbps=3000, cls=CbVideo),
+                  dict(tag="cbvideo · đứng yên (khung đầu)", msz=800, fps=30, kbps=3000, secs=3, move=False, cls=CbVideo),
+                  dict(tag="cbvideo · 800 · 30 · simpleperf", msz=800, fps=30, kbps=3000, secs=7, perf=True, cls=CbVideo)]
+    else:
+        say("**Không có cbvideo.jar** (bước dựng hỏng) — chỉ đo scrcpy.")
     for t in tests:
-        r = prof(*t); res.append(r); time.sleep(1.0)
+        r = prof(**t); res.append(r); time.sleep(1.0)
         print(json.dumps({k: v for k, v in r.items() if k not in ("top", "perf")}, ensure_ascii=False), flush=True)
-    rp = prof("800 · không giới hạn · simpleperf", 800, 0, 3000, secs=7, sample=False, perf=True); res.append(rp)
-    say("| lần đo | cỡ | khung/giây phát | app vẽ khung/giây | app giật |")
-    say("|---|---|---|---|---|")
+    say("| lần đo | cỡ | khung/giây phát | app vẽ khung/giây | khung đầu (giây) | KB/khung | xin khoá → khung khoá (ms) | giải mã thử |")
+    say("|---|---|---|---|---|---|---|---|")
     for r in res:
-        if r.get("err"): say(f"| {r['tag']} | ✗ {r['err']} | | | |"); continue
-        say(f"| {r['tag']} | {r.get('size', '?')} | {r.get('fps', '?')} | {r.get('app_fps', '?')} | {r.get('app_jank', '?')} |")
+        if r.get("err"): say(f"| {r['tag']} | ✗ {r['err']} | | | | | | |"); continue
+        pr = r.get("probe")
+        pv = f"{pr[0]} · {pr[1]} khung · {pr[2]} lỗi" if pr else ""
+        say(f"| {r['tag']} | {r.get('size', '?')} | {r.get('fps', '?')} | {r.get('app_fps', '?')} | {r.get('first_s', '')} | "
+            f"{r.get('kb_avg', '')} | {r.get('key_ms', '')} | {pv} |")
+    say("")
+    for r in res:
+        if r.get("log"): say(f"- nhật ký cbvideo · {r['tag']}: " + " ‖ ".join(r["log"]))
+        pr = r.get("probe")
+        if pr and pr[3]: say(f"- lỗi giải mã · {r['tag']}: " + " ‖ ".join(str(x) for x in pr[3]))
     say("")
     for r in res:
         if r.get("top"):
-            say(f"<details><summary>top -H · {r['tag']}</summary>\n\n```\n" + "\n".join(r["top"])[:6000] + "\n```\n</details>\n")
-    if rp.get("perf"):
-        say("<details open><summary>simpleperf · 800 không giới hạn</summary>\n\n```\n" + "\n".join(rp["perf"])[:20000] + "\n```\n</details>\n")
+            say(f"<details open><summary>top -H · {r['tag']}</summary>\n\n```\n" + "\n".join(r["top"])[:5000] + "\n```\n</details>\n")
+        if r.get("perf"):
+            say(f"<details open><summary>simpleperf · {r['tag']}</summary>\n\n```\n" + "\n".join(r["perf"])[:15000] + "\n```\n</details>\n")
+    # cbvideo đạt: dựng được + ra hình + giải mã sạch → bước sau lưu cbvideo.jar vào nhánh
+    cb = next((r for r in res if r.get("tag", "").startswith("cbvideo · 800 · 30 · xin")), None)
+    ok = bool(cb and cb.get("probe") and cb["probe"][1] >= max(5, int(cb.get("frames", 0) * 0.9)) and cb["probe"][2] == 0 and not cb.get("err"))
+    if ok and str(API) == "28":
+        open(os.path.join(ROOT, "cbvideo-ok.txt"), "w").write(json.dumps({k: v for k, v in cb.items() if k not in ("top", "perf")}, ensure_ascii=False))
+    say(f"- cbvideo giải mã sạch: **{'ĐẠT' if ok else 'CHƯA'}**")
     js = os.path.join(ROOT, f"a9stream-{API}.json")
     json.dump({"api": API, "encoders": encs, "prof": res}, open(js, "w"), ensure_ascii=False, indent=1)
     p = os.environ.get("GITHUB_STEP_SUMMARY")
