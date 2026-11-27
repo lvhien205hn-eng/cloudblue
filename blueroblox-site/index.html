@@ -1791,15 +1791,13 @@ html[data-theme] .shmode button.on{border-color:var(--blue);background:var(--sof
 </style>
 <script>/* chế độ Sáng/Tối: nhớ lựa chọn (br_theme), lần đầu theo máy khách */(function(){var t=null;try{t=localStorage.getItem("br_theme")}catch(e){}if(t!=="light"&&t!=="dark")t=matchMedia&&matchMedia("(prefers-color-scheme: light)").matches?"light":"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("neonrun");})();</script>
 <script>
-/* CHẾ ĐỘ NHẸ: máy yếu / điện thoại → tắt hiệu ứng nặng (trống 3D xoay, cá koi, sao nền, ảnh 3D sản phẩm, làm mờ nền) cho mượt.
-   Tự nhận: ít nhân CPU / ít RAM / tiết kiệm dữ liệu / giảm chuyển động / điện thoại. Khách tự bật/tắt ở cuối trang (lưu br_lite). */
+/* CHẾ ĐỘ NHẸ (tắt hiệu ứng nặng: trống 3D xoay, cá koi, sao nền, ảnh 3D sản phẩm, làm mờ nền).
+   28/11: shop muốn hiệu ứng LUÔN BẬT với mọi khách (kể cả điện thoại / máy yếu / trang hơi giật) → không tự chuyển nữa.
+   Khách nào muốn tắt thì tự bấm nút "✨ Hiệu ứng" ở cuối trang (lưu br_lite = "1"). */
 (function () {
   var m = null; try { m = localStorage.getItem("br_lite"); } catch (e) {}
-  var n = navigator, c = n.connection || {}, touch = matchMedia("(hover: none) and (pointer: coarse)").matches;
-  var weak = (n.hardwareConcurrency || 8) <= 4 || (n.deviceMemory || 8) <= 4 || !!c.saveData            // 21.11k: bỏ "giảm chuyển động" — shop muốn đầu trang luôn chuyển động
-             || (touch && Math.min(screen.width, screen.height) < 760);
-  window.BR_LITE = m === "1" ? true : m === "0" ? false : weak;
-  window.BR_LITE_AUTO = m == null;
+  window.BR_LITE = m === "1";
+  window.BR_LITE_AUTO = false;
   if (window.BR_LITE) document.documentElement.classList.add("lite");
   if (m === "1") document.documentElement.classList.add("lite-man");        // khách tự bật chế độ nhẹ ở cuối trang → mới dừng cả nền chạy đầu trang
 })();
@@ -3269,6 +3267,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
   <div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="sk-title">
     <h3 id="sk-title">Nhập kho</h3>
     <div class="hint" id="sk-name"></div>
+    <div class="hint" id="sk-vs" hidden></div>
     <label class="full">🏷️ Nhập kho của bên nào <span class="hint">(nguồn/nhà cung cấp — chỉ admin thấy, khách KHÔNG thấy)</span>
       <input class="in" id="sk-source" maxlength="60" placeholder="VD: Bên A, shop Tèo, tự reg…" autocomplete="off"></label>
     <div class="hint" id="sk-srcinfo" style="display:none"></div>
@@ -3378,6 +3377,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
         <label>⏳ Đếm ngược hàng mới (số ngày)<input id="pf-rs" type="number" min="0" step="0.25" placeholder="VD 2 = 2 ngày · 0.5 = 12 giờ · để trống = không hiện"><small id="pf-rs-now" class="hint" style="display:block;margin-top:4px"></small></label>
         <label>Kiểu giao hàng<select id="pf-mode" style="width:100%"><option value="auto">Tự động — kho tài khoản (.txt)</option><option value="manual">Thủ công — chỉ số lượng (VPS)</option></select></label>
         <label id="pf-ms-wrap">Số lượng còn bán<input id="pf-ms" type="number" min="0" step="1" value="10"></label>
+        <label id="pf-vq-wrap" hidden>🧮 SL ảo — bán trước khi có hàng<input id="pf-vq" type="number" min="0" step="1" value="0" placeholder="0 = tắt"><small id="pf-vq-hint" class="hint" style="display:block;margin-top:4px">Kho .txt hết thì khách vẫn mua thêm được tối đa số này → đơn "chờ hàng". Nhập kho là tự giao cho đơn chờ theo thứ tự mua. 0 = tắt.</small></label>
         <label class="full">Tính năng (cách nhau bằng dấu phẩy — hiện dạng nhãn ngắn)<input id="pf-f" placeholder="8 vCPU, 16GB RAM, Windows"></label>
         <label class="full">📝 Mô tả / Nội dung (hiện dạng đoạn văn gọn dưới thẻ sản phẩm — xuống dòng tự do)<textarea id="pf-desc" rows="4" maxlength="1500" placeholder="VD: Clone NEW + bảo hành 2H + Face ID + Capcha Lock.&#10;Lưu ý: công cụ check cookie đang bị phát hiện, dùng trong 10 phút có thể khoá acc — không bảo hành nếu xảy ra."></textarea></label>
         <div class="full tr-box"><div class="tr-head"><b>🇬🇧 Bản tiếng Anh</b><span class="hint">Khách chọn English sẽ thấy phần này. Để trống thì web tự dịch.</span><button class="btn ghost sm" type="button" id="pf-tr">🌐 Tự dịch từ tiếng Việt</button></div>
@@ -3395,7 +3395,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
           <div id="pf-plans" style="display:grid;gap:8px"></div>
         </div>
         <div class="acts full"><button class="btn" type="submit" id="pf-save">Thêm sản phẩm</button><button class="btn ghost" type="button" id="pf-reset">Làm mới form</button></div>
-        <div class="hint full"><b>Tự động:</b> bấm "Nhập kho" ở bảng dưới để tải file .txt tài khoản lên — khách mua xong nhận tài khoản ngay và tải file .txt. <b>Thủ công (VPS):</b> chỉ cần số lượng — khách mua xong được dẫn tới Discord/Telegram/Zalo để bạn giao máy.</div>
+        <div class="hint full"><b>Tự động:</b> bấm "Nhập kho" ở bảng dưới để tải file .txt tài khoản lên — khách mua xong nhận tài khoản ngay và tải file .txt. Hết hàng mà vẫn muốn bán → điền <b>SL ảo</b>: khách mua thành đơn chờ, nhập kho là tự giao theo thứ tự mua. <b>Thủ công (VPS):</b> chỉ cần số lượng — khách mua xong được dẫn tới Discord/Telegram/Zalo để bạn giao máy.</div>
       </form>
       </details>
       <details id="xo-details" style="border:1px solid var(--line);border-radius:14px;background:var(--panel)">
@@ -5600,6 +5600,7 @@ async function doBuy() {
     if (error) { prmFail("buy", error); $("m-err").textContent = errMsg(error); return; }
     closeBuy(); await Promise.all([loadProfile(), loadProducts()]); renderUser();
     if (ord && ord.status === "pending") watchMine();
+    if (ord && ord.status === "pending" && !p.manual) { try { notifyTg(`⏳ <b>Đơn chờ hàng (SL ảo)</b>: ${esc((profile || {}).username || "")} mua ${esc(p.name)} × ${q} — nhập kho là tự giao.`); } catch (e) {} }
     openThanks(ord, p, q, ord && ord.total != null ? +ord.total : tot, vpsInfo);
   });
 }
@@ -6455,6 +6456,15 @@ function openThanks(ord, p, q, tot, vpsInfo) {
   const label = `${p.name}${plansOf(p).length ? " · " + selDays + " " + L("ngày", "days") : ""}`;
   $("th-sum").textContent = `${label} × ${q} · ${fmt(tot)}`;
   const auto = ord && ord.status === "done" && ord.items;
+  if (ord && ord.status === "pending" && p && !p.manual) {         // 🧮 SL ảo: hàng tự động đang chờ hàng về → tự giao vào đơn
+    thMsg = L(`[CLOUDBLUE] Đơn chờ hàng\n• Sản phẩm: ${label} × ${q}\n• Đã thanh toán: ${fmt(tot)}\n• Mã đơn: ${ord.id}`, `[CLOUDBLUE] Order awaiting stock\n• Product: ${label} × ${q}\n• Paid: ${fmt(tot)}\n• Order ID: ${ord.id}`);
+    thDl = null; show("th-dl", false);
+    $("th-title").textContent = L("Đặt hàng thành công!", "Order placed!");
+    $("th-info").textContent = vsWaitText(ord.items);
+    $("th-copy").textContent = L("📋 Copy thông tin đơn", "📋 Copy order details");
+    $("th-note").innerHTML = L("Hàng về là hệ thống <b>tự giao</b> vào đơn này — xem ở mục <b>Đơn hàng</b>, web báo khi giao xong.", "Items are delivered to this order <b>automatically</b> when stock arrives — check <b>Orders</b>; you'll be notified.");
+    $("th-contacts").innerHTML = ""; show("thanks"); return;
+  }
   if (auto) {
     // giao tự động: hiện tài khoản + nút tải .txt
     const n = ord.items.split("\n").filter(l => l.trim()).length;
@@ -6534,12 +6544,12 @@ async function openOrders() {
     sb.from("topups").select("*").eq("user_id", profile.id).order("created_at", { ascending: false }).limit(50)]);
   myOrders = o.data || [];
   const rows = [...(o.data || []).map(x => {
-    const done = x.status === "done" && x.items, n = done ? x.items.split("\n").filter(l => l.trim()).length : 0;
+    const done = x.status === "done" && x.items, n = done ? x.items.split("\n").filter(l => l.trim()).length : 0, vw = x.status === "pending" && vsAuto(x.product_id);
     const body = done
       ? `<div class="oacts"><span class="okt">✓ ${n} ${L("tài khoản", "account(s)")}</span><button class="btn okb sm" data-dl="${x.id}">⬇ ${L("Tải .txt", "Download .txt")}</button><button class="btn ghost sm" data-cp="${x.id}">📋 Copy</button><button class="btn ghost sm" data-view="${x.id}">👁 ${L("Xem", "View")}</button></div><pre id="opre-${x.id}" hidden>${esc(x.items)}</pre>`
       : (() => { let m = null; try { m = localStorage.getItem("br_vmsg_" + x.id); } catch (e) {}
-          return `<div class="hint">${esc(x.items || "")}</div>` + (m && x.status === "pending" ? `<div class="oacts"><span class="hint" style="margin-right:auto">${L("Mã thanh toán", "Payment code")}: <b style="color:var(--gold-hi)">${esc(payCode(x))}</b></span><button class="btn sm" data-cpmsg="${x.id}">📋 ${L("Copy tin nhắn gửi shop", "Copy message for the shop")}</button></div>` : ""); })();
-    return { t: x.created_at, h: `<div class="oi"><div class="h"><b>${esc(x.product_name)} × ${x.qty}</b><span style="color:${x.status === "refunded" ? "var(--muted)" : "var(--bad)"};font-family:var(--mono)">${x.status === "refunded" ? L("Đã hoàn", "Refunded") : "−" + fmt(x.total)}</span></div><div class="hint">${ago(x.created_at)} · ${ordPill(x.status)}</div>${body}</div>` };
+          return `<div class="hint">${esc(vw ? vsWaitText(x.items) : x.items || "")}</div>` + (m && x.status === "pending" ? `<div class="oacts"><span class="hint" style="margin-right:auto">${L("Mã thanh toán", "Payment code")}: <b style="color:var(--gold-hi)">${esc(payCode(x))}</b></span><button class="btn sm" data-cpmsg="${x.id}">📋 ${L("Copy tin nhắn gửi shop", "Copy message for the shop")}</button></div>` : ""); })();
+    return { t: x.created_at, h: `<div class="oi"><div class="h"><b>${esc(x.product_name)} × ${x.qty}</b><span style="color:${x.status === "refunded" ? "var(--muted)" : "var(--bad)"};font-family:var(--mono)">${x.status === "refunded" ? L("Đã hoàn", "Refunded") : "−" + fmt(x.total)}</span></div><div class="hint">${ago(x.created_at)} · ${vw ? vsPill() : ordPill(x.status)}</div>${body}</div>` };
   }),
     ...(t.data || []).map(x => ({ t: x.created_at, h: `<div class="oi"><div class="h"><b>${L("Nạp tiền", "Top-up")} · ${esc(x.memo)}</b><span style="color:${x.status === "done" ? "var(--ok)" : x.status === "reversed" ? "var(--muted)" : "var(--gold)"};font-family:var(--mono)">${x.status === "done" ? "+" : ""}${fmt(x.amount)}</span></div><div class="hint">${ago(x.created_at)}${x.via === "play" ? " · ▶️ Google Play" : ""} · ${x.status === "done" ? L("Thành công", "Completed") : x.status === "reversed" ? L("Google Play đã hoàn tiền — đã trừ lại", "Refunded by Google Play — deducted") : L("Đang chờ chuyển khoản", "Waiting for payment")}</div></div>` }))]
     .sort((a, b) => new Date(b.t) - new Date(a.t));
@@ -6572,7 +6582,7 @@ async function loadAdmin() {
   renderTable();
   const u = await pU;                                       // khách hàng hiện NGAY khi có, không chờ các mục khác
   if (u.data) { ADM.users = u.data; try { renderCust(); } catch (e) {} }
-  const [t, o, vm, pend] = await Promise.all([pT, pO, pV, pP]);
+  const [t, o, vm, pend] = await Promise.all([pT, pO, pV, pP, vsLoad()]);
   const seen = new Set(), orders = [...(pend.data || []), ...(o.data || [])].filter(x => !seen.has(x.id) && seen.add(x.id));
   ADM = { users: u.data || ADM.users || [], topups: t.data || [], orders, vps: vm.data || ADM.vps || [] };
   renderCust(); renderTx(); renderOrd(); renderVps(); try { renderCpaTbl(); } catch (e) {}
@@ -6584,7 +6594,7 @@ function renderTable() {
   if ($("pf-count")) $("pf-count").textContent = sp.length ? (sp.length + " sản phẩm") : "";
   $("ptbl").innerHTML = sp.length ? sp.map(p => `<tr><td>${esc(p.name)}${p.hot ? ' <span class="pill wt">HOT</span>' : ""}</td>
     <td><span class="pill">${esc(catName(p.cat))}</span></td><td class="num">${plansOf(p).length ? plansOf(p).map(x => `${x.days}n: ${vnd(x.price)}`).join("<br>") : vnd(p.price)}</td>
-    <td class="num" style="color:${(+p.stock || 0) === 0 ? "var(--bad)" : "inherit"}">${+p.stock || 0}<div class="hint">${p.manual ? "số lượng" : "kho .txt"}</div></td>
+    <td class="num" style="color:${(+p.stock || 0) === 0 ? "var(--bad)" : "inherit"}">${+p.stock || 0}<div class="hint">${p.manual ? "số lượng" : vsCell(p)}</div></td>
     <td style="white-space:nowrap;text-align:right">${p.manual ? "" : `<button class="btn okb sm" data-stock="${esc(p.id)}">Nhập kho</button> `}<button class="btn ghost sm" data-edit="${esc(p.id)}">Sửa</button> <button class="btn danger sm" data-del="${esc(p.id)}">Xoá</button></td></tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Chưa có sản phẩm. Bấm "➕ Thêm sản phẩm mới" bên dưới để thêm.</td></tr>`;
 }
@@ -6616,7 +6626,7 @@ function renderTx() {
 }
 function renderOrd() {
   $("otbl").innerHTML = ADM.orders.length ? ADM.orders.map(o => `<tr${o.status === "pending" ? ' style="background:rgba(201,215,238,.06)"' : ""}><td>${ago(o.created_at)}</td><td>${esc(uname(o.user_id))}</td><td>${esc(o.product_name)}</td><td class="num">${o.qty}</td><td class="num">${vnd(o.total)}</td>
-    <td>${ordPill(o.status)}</td><td style="text-align:right;white-space:nowrap">${o.status === "pending" ? `<button class="btn sm" data-deliver="${o.id}">Giao hàng</button>` : `<button class="btn ghost sm" data-view="${o.id}">Xem</button>`} <button class="btn danger sm" data-delord="${o.id}">Xoá</button></td></tr>`).join("")
+    <td>${o.status === "pending" && VS.ord && VS.ord[o.id] != null ? `<span class="pill wt">⏳ Chờ hàng · thiếu ${VS.ord[o.id]}</span>` : ordPill(o.status)}</td><td style="text-align:right;white-space:nowrap">${o.status === "pending" ? `<button class="btn sm" data-deliver="${o.id}">Giao hàng</button>` : `<button class="btn ghost sm" data-view="${o.id}">Xem</button>`} <button class="btn danger sm" data-delord="${o.id}">Xoá</button></td></tr>`).join("")
     : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">Chưa có đơn hàng nào.</td></tr>`;
   setBadge(ADM.orders.filter(o => o.status === "pending").length);
 }
@@ -6636,7 +6646,8 @@ $("otbl").onclick = async e => {
   delAssign = delVps && !hasMach;                      // tạo máy được: đơn chờ, hoặc đơn đã giao mà chưa có máy
   const isEdit = !delAssign && o.status !== "pending";  // đơn đã giao → cho sửa nội dung
   const editable = o.status === "pending" || delAssign || isEdit;
-  $("dl-info").textContent = `${uname(o.user_id)} · ${o.product_name} × ${o.qty} · ${vnd(o.total)} · ${ago(o.created_at)}`;
+  $("dl-info").textContent = `${uname(o.user_id)} · ${o.product_name} × ${o.qty} · ${vnd(o.total)} · ${ago(o.created_at)}` +
+    (o.status === "pending" && VS.ord && VS.ord[o.id] != null ? ` · ⏳ Đơn chờ hàng (SL ảo, còn thiếu ${VS.ord[o.id]}): nhập kho sản phẩm này là tự giao theo thứ tự mua. Giao tay ở đây thì phần hàng đã giữ cho đơn trả về kho.` : "");
   $("dl-items").placeholder = delAssign ? `Mỗi dòng 1 tên máy — hoặc dán "54-118-10-254-665" rồi bấm Tách nhanh (cần ${o.qty} máy)` : "";
   $("dl-items").value = (o.status === "pending" || delAssign) ? "" : o.items; $("dl-items").readOnly = !editable; $("dl-err").textContent = "";
   show("dl-orig-wrap", isEdit);
@@ -6812,7 +6823,67 @@ function readPlans() {
 function syncPlanUI() { const has = $("pf-plans").querySelectorAll(".plan-row").length > 0; $("pf-vnd-l").textContent = has ? "Giá gốc (không dùng khi có gói)" : "Giá (VND)"; $("pf-vnd").required = !has; show("pf-plans-box", $("pf-c").value === "vps" || has); }
 $("pf-plan-add").onclick = () => planRow();
 $("pf-plan-quick").onclick = () => { $("pf-plans").innerHTML = ""; [7, 15, 30].forEach(d => planRow(d, "")); $("pf-plans").querySelector("input[placeholder='Giá (VND)']").focus(); };
-function syncMode() { const auto = $("pf-mode").value === "auto"; show("pf-ms-wrap", !auto); }
+function syncMode() { const auto = $("pf-mode").value === "auto"; show("pf-ms-wrap", !auto); show("pf-vq-wrap", auto); vsFormHint(); }
+/* ===== 🧮 SL ẢO (SQL v66): hàng TỰ ĐỘNG hết kho .txt → khách vẫn mua thêm tối đa "SL ảo" thành đơn chờ hàng; admin nhập kho là
+   máy chủ tự giao cho đơn chờ theo thứ tự mua (đủ số lượng mới mở cho khách xem). Khách chỉ thấy "Còn N" = thật + ảo.
+   VS (chỉ admin): ok = true / false (chưa chạy SQL v66) / null (chưa tải) · by[mã sp] = { qty, ready, waits, need, orders } · ord[mã đơn] = số còn thiếu */
+let VS = { ok: null, by: {}, ord: {} };
+async function vsLoad() {
+  if (!isAdmin()) return VS;
+  try {
+    const { data, error } = await sb.rpc("admin_vstock_list");
+    if (error) { if (/PGRST202|42883|admin_vstock_list/.test(String(error.code || "") + " " + String(error.message || ""))) VS = { ok: false, by: {}, ord: {} }; return VS; }
+    const by = {}, ord = {};
+    (Array.isArray(data) ? data : []).forEach(x => { by[x.product_id] = x; (x.orders || []).forEach(o => { ord[o.id] = +o.need || 0; }); });
+    VS = { ok: true, by, ord };
+    try { renderTable(); } catch (e) {}
+  } catch (e) {}
+  return VS;
+}
+const vsOf = id => (VS.by && VS.by[id]) || null;
+const vsAuto = id => { const p = (P || []).find(x => x.id === id); return !!p && !p.manual; };
+function vsCell(p) {
+  const v = vsOf(p.id); if (!v || (!+v.qty && !+v.waits)) return "kho .txt";
+  return `kho .txt: ${(+v.ready).toLocaleString("vi-VN")} thật + ${(+v.qty).toLocaleString("vi-VN")} ảo` +
+    (+v.waits ? `<br><span style="color:var(--warn)">⏳ ${+v.waits} đơn chờ · thiếu ${(+v.need).toLocaleString("vi-VN")}</span>` : "");
+}
+function vsFormHint() {
+  const i = $("pf-vq"), h = $("pf-vq-hint"); if (!i || !h) return;
+  i.disabled = VS.ok === false;
+  h.textContent = VS.ok === false ? "Cần chạy SQL v66 (SL ảo) trên Supabase trước — chạy xong tải lại trang."
+    : "Kho .txt hết thì khách vẫn mua thêm được tối đa số này → đơn \"chờ hàng\". Nhập kho là tự giao cho đơn chờ theo thứ tự mua. 0 = tắt.";
+}
+function vsFormFill(p) { const v = p ? vsOf(p.id) : null, n = v ? +v.qty || 0 : 0; $("pf-vq").value = n; $("pf-vq").dataset.was = String(n); }
+/* lưu SL ảo sau khi lưu sản phẩm → chữ thêm vào thông báo ("" = không đổi) */
+async function vsFormSave(pid) {
+  if (!pid || VS.ok === false) return "";
+  const want = Math.max(0, Math.round(+$("pf-vq").value || 0)), was = +($("pf-vq").dataset.was || 0);
+  if (want === was) return "";
+  const { data, error } = await sb.rpc("admin_vstock_set", { p_product: pid, p_qty: want });
+  if (error) { toast("Đã lưu sản phẩm nhưng CHƯA đặt được SL ảo: " + errMsg(error), 1); return ""; }
+  await vsLoad(); return " · SL ảo " + (+data || 0).toLocaleString("vi-VN");
+}
+function vsSnap(pid) { const v = vsOf(pid); return v ? { need: +v.need || 0, waits: +v.waits || 0 } : null; }
+/* sau nhập kho: tải lại → "· tự giao N tài khoản cho đơn chờ (K đơn đã đủ)" */
+async function vsAfterImport(pid, s0) {
+  if (!s0 || !s0.need) return "";
+  await vsLoad(); const v = vsOf(pid), got = s0.need - (v ? +v.need || 0 : 0), done = s0.waits - (v ? +v.waits || 0 : 0);
+  return got > 0 ? " · tự giao " + got.toLocaleString("vi-VN") + " tài khoản cho đơn chờ" + (done > 0 ? " (" + done + " đơn đã đủ)" : "") + "." : "";
+}
+function vsStockInfo(pid) {
+  const el = $("sk-vs"); if (!el) return; const v = vsOf(pid);
+  if (!v || (!+v.qty && !+v.waits)) { el.hidden = true; el.textContent = ""; return; }
+  el.hidden = false;
+  el.innerHTML = `🧮 Kho thật <b>${(+v.ready).toLocaleString("vi-VN")}</b> · SL ảo <b>${(+v.qty).toLocaleString("vi-VN")}</b>` +
+    (+v.waits ? ` · <b style="color:var(--warn)">⏳ ${+v.waits} đơn đang chờ hàng (thiếu ${(+v.need).toLocaleString("vi-VN")} tài khoản)</b> — thêm vào kho là tự giao theo thứ tự mua.` : "");
+}
+/* chữ "chờ hàng" cho khách (máy chủ ghi tiếng Việt, kèm "đã có X/Y" khi đã giữ được một phần) */
+function vsWaitText(items) {
+  const m = /đã có (\d+)\/(\d+)/.exec(items || "");
+  return LANG === "en" ? "⏳ Waiting for stock" + (m ? " (" + m[1] + "/" + m[2] + " ready)" : "") + ". Items will be delivered to this order automatically — nothing else to do."
+    : (/^⏳/.test(items || "") ? items : "⏳ Đang chờ hàng. Hàng về hệ thống tự giao vào đơn này — bạn không cần làm gì thêm.");
+}
+const vsPill = () => `<span class="pill wt">⏳ ${L("Chờ hàng", "Awaiting stock")}</span>`;
 $("pf-mode").onchange = syncMode;
 $("pf-c").onchange = syncPlanUI;
 $("pf-img-file").onchange = () => {
@@ -6894,8 +6965,8 @@ $("xo-save").onclick = async () => {
   await saveSettings({ vps_more: groups }, $("xo-save"), groups.length ? "Đã lưu " + groups.length + " mục chọn thêm cho VPS." : "Đã xoá hết mục chọn thêm.");
   if (SITE !== before) { xoFill(); $("xo-msg").textContent = "✓ Đã lưu lúc " + new Date().toLocaleTimeString("vi-VN"); }
 };
-function resetForm() { editId = null; $("pf").reset(); pfRestock = null; pfRsUI(); $("pf-plans").innerHTML = ""; $("pf-ms").value = 10; $("pf-mode").value = "auto"; $("pf-thumb").value = ""; syncMode(); pfImage = ""; pfFile = null; $("pf-img-file").value = ""; show("pf-img-row", false); syncPlanUI(); $("pf-o").value = P.length ? Math.max(...P.map(p => +p.sort || 0)) + 1 : 1; $("pf-title").textContent = "Thêm sản phẩm"; $("pf-save").textContent = "Thêm sản phẩm"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "➕ Thêm sản phẩm mới "; }
-function fillForm(p) { editId = p.id; $("pf-n").value = p.name; $("pf-c").value = p.cat; $("pf-vnd").value = p.price; $("pf-o").value = p.sort; $("pf-f").value = (p.features || []).join(", "); $("pf-desc").value = p.description || ""; $("pf-n-en").value = p.name_en || ""; $("pf-f-en").value = (p.features_en || []).join(", "); $("pf-desc-en").value = p.description_en || ""; $("pf-h").checked = !!p.hot; $("pf-ms").value = +p.stock || 0; pfRestock = p.restock_at || null; pfRsUI(); $("pf-mode").value = p.manual ? "manual" : "auto"; $("pf-thumb").value = p.thumb || ""; syncMode(); pfImage = p.image || ""; pfFile = null; $("pf-img-file").value = ""; if (pfImage) { $("pf-img-prev").src = pfImage; show("pf-img-row"); } else show("pf-img-row", false); $("pf-plans").innerHTML = ""; plansOf(p).forEach(x => planRow(x.days, x.price)); syncPlanUI(); $("pf-title").textContent = "Sửa sản phẩm"; $("pf-save").textContent = "Lưu thay đổi"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "✏️ Đang sửa sản phẩm "; if ($("pf-details")) $("pf-details").open = true; $("pf-details") ? $("pf-details").scrollIntoView({ behavior: "smooth", block: "start" }) : ($("pane-prod").scrollTop = 0); setTimeout(() => $("pf-n").focus(), 150); }
+function resetForm() { editId = null; $("pf").reset(); pfRestock = null; pfRsUI(); $("pf-plans").innerHTML = ""; $("pf-ms").value = 10; $("pf-mode").value = "auto"; $("pf-thumb").value = ""; vsFormFill(null); syncMode(); pfImage = ""; pfFile = null; $("pf-img-file").value = ""; show("pf-img-row", false); syncPlanUI(); $("pf-o").value = P.length ? Math.max(...P.map(p => +p.sort || 0)) + 1 : 1; $("pf-title").textContent = "Thêm sản phẩm"; $("pf-save").textContent = "Thêm sản phẩm"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "➕ Thêm sản phẩm mới "; }
+function fillForm(p) { editId = p.id; $("pf-n").value = p.name; $("pf-c").value = p.cat; $("pf-vnd").value = p.price; $("pf-o").value = p.sort; $("pf-f").value = (p.features || []).join(", "); $("pf-desc").value = p.description || ""; $("pf-n-en").value = p.name_en || ""; $("pf-f-en").value = (p.features_en || []).join(", "); $("pf-desc-en").value = p.description_en || ""; $("pf-h").checked = !!p.hot; $("pf-ms").value = +p.stock || 0; pfRestock = p.restock_at || null; pfRsUI(); $("pf-mode").value = p.manual ? "manual" : "auto"; $("pf-thumb").value = p.thumb || ""; vsFormFill(p); syncMode(); pfImage = p.image || ""; pfFile = null; $("pf-img-file").value = ""; if (pfImage) { $("pf-img-prev").src = pfImage; show("pf-img-row"); } else show("pf-img-row", false); $("pf-plans").innerHTML = ""; plansOf(p).forEach(x => planRow(x.days, x.price)); syncPlanUI(); $("pf-title").textContent = "Sửa sản phẩm"; $("pf-save").textContent = "Lưu thay đổi"; if ($("pf-summary")) $("pf-summary").firstChild.textContent = "✏️ Đang sửa sản phẩm "; if ($("pf-details")) $("pf-details").open = true; $("pf-details") ? $("pf-details").scrollIntoView({ behavior: "smooth", block: "start" }) : ($("pane-prod").scrollTop = 0); setTimeout(() => $("pf-n").focus(), 150); }
 $("pf").onsubmit = e => { e.preventDefault(); busy($("pf-save"), async () => {
   const body = { cat: $("pf-c").value, name: $("pf-n").value.trim(), price: Math.max(0, Math.round(+$("pf-vnd").value || 0)), sort: Math.round(+$("pf-o").value || 100),
     features: $("pf-f").value.split(",").map(s => s.trim()).filter(Boolean).slice(0, 6), description: $("pf-desc").value.trim() || null, name_en: $("pf-n-en").value.trim() || null, features_en: $("pf-f-en").value.split(",").map(s => s.trim()).filter(Boolean).slice(0, 6), description_en: $("pf-desc-en").value.trim() || null, hot: $("pf-h").checked,
@@ -6911,11 +6982,12 @@ $("pf").onsubmit = e => { e.preventDefault(); busy($("pf-save"), async () => {
     if (up.error) return toast("Tải ảnh lên thất bại: " + (up.error.message || ""), 1);
     body.image = sb.storage.from("products").getPublicUrl(path).data.publicUrl;
   } else body.image = pfImage || null;
-  const { error } = editId ? await sb.from("products").update(body).eq("id", editId) : await sb.from("products").insert(body);
+  const res = editId ? await sb.from("products").update(body).eq("id", editId) : await sb.from("products").insert(body).select("id").maybeSingle(), { error } = res;
   if (error) return toast(/_en/.test(error.message || "") ? "Chưa chạy file SQL product-english.sql trên Supabase." : errMsg(error), 1);
   if (editId) { const { data: chk } = await sb.from("product_list").select("name").eq("id", editId).maybeSingle();
     if (!chk || String(chk.name || "").trim() !== body.name) return toast("Chưa lưu được: máy chủ không nhận thay đổi (tài khoản chưa có quyền sửa sản phẩm, hoặc sản phẩm vừa bị xoá). Tải lại trang (Ctrl+F5) rồi thử lại.", 1); }
-  toast(editId ? "Đã lưu: “" + body.name + "”" : "Đã thêm: “" + body.name + "”"); resetForm(); await loadProducts();
+  const vsMsg = body.manual ? "" : await vsFormSave(editId || (res.data && res.data.id));
+  toast((editId ? "Đã lưu: “" : "Đã thêm: “") + body.name + "”" + vsMsg); resetForm(); await loadProducts();
 }); };
 $("pf-reset").onclick = resetForm;
 /* ---------- ĐỒNG HỒ ĐẾM NGƯỢC CHUNG: <b data-cd="ISO"> (hạn máy, thời gian ưu đãi miễn phí…) ---------- */
@@ -6975,7 +7047,7 @@ function skCount() {
 /* dòng nhắc quy tắc lọc trùng — chèn 1 lần ngay dưới tên sản phẩm trong hộp nhập kho */
 function skHint() { if ($("sk-hint") || !$("sk-name")) return; const h = document.createElement("div"); h.id = "sk-hint"; h.className = "hint"; h.textContent = "Dòng trùng tự bỏ qua: đang còn trong kho hoặc khách đã mua. Hàng tài khoản admin mua để rút ra thì nhập lại được."; $("sk-name").insertAdjacentElement("afterend", h); }
 async function loadStockSrc(id) { try { const { data } = await sb.rpc("admin_stock_by_source", { p_product: id }); const el = $("sk-srcinfo"); if (!el) return; if (data && data.length) { el.style.display = "block"; el.innerHTML = "Tồn theo nguồn: " + data.map(s => `<b>${esc(s.source)}</b>: ${(+s.n).toLocaleString("vi-VN")}`).join(" · "); } else el.style.display = "none"; } catch (e) {} }
-function openStock(id) { skHint(); if (skBusy) { show("stockdlg"); return; } stockFor = id; skPend = null; $("sk-source") && ($("sk-source").value = ""); loadStockSrc(id); const p = P.find(x => x.id === id); $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; $("sk-lines").value = ""; $("sk-file").value = ""; skFile = []; skNames = []; skCount(); $("sk-err").textContent = ""; show("stockdlg"); }
+function openStock(id) { skHint(); if (skBusy) { show("stockdlg"); return; } stockFor = id; skPend = null; $("sk-source") && ($("sk-source").value = ""); loadStockSrc(id); const p = P.find(x => x.id === id); $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; vsStockInfo(id); vsLoad().then(() => { if (stockFor === id) vsStockInfo(id); }); $("sk-lines").value = ""; $("sk-file").value = ""; skFile = []; skNames = []; skCount(); $("sk-err").textContent = ""; show("stockdlg"); }
 $("sk-file").onchange = async () => {
   const fs = [...($("sk-file").files || [])]; if (!fs.length) return;
   $("sk-err").textContent = ""; $("sk-count").textContent = "Đang đọc file…";
@@ -7015,7 +7087,7 @@ function skProg(done, total, extra) {
 $("sk-save").onclick = () => busy($("sk-save"), async () => {
   if (skBusy) return;
   let all = skFile.concat(skPaste()); if (!all.length) { $("sk-err").textContent = "Chọn file .txt hoặc dán ít nhất 1 dòng."; return; }
-  const src = ($("sk-source") && $("sk-source").value.trim()) || null, pid = stockFor;
+  const src = ($("sk-source") && $("sk-source").value.trim()) || null, pid = stockFor, vs0 = vsSnap(pid);
   skBusy = true; skStop = false; $("sk-err").textContent = ""; $("sk-cancel").textContent = "Dừng";
   let done = 0, added = 0, dup = 0, lim = SK_LINES, i = 0, msg = "", c00 = null, amb = 0;   // c00 = số tồn trước đợt đầu · amb = số lần quá giờ / rớt mạng
   const nf = n => n.toLocaleString("vi-VN");
@@ -7060,8 +7132,8 @@ $("sk-save").onclick = () => busy($("sk-save"), async () => {
     }
     await fixAmb();
     skFile = []; skNames = []; $("sk-lines").value = "";
-    const sum = "Đã thêm " + nf(added) + " tài khoản vào kho" + (dup ? " · bỏ qua " + nf(dup) + " dòng trùng (đang còn trong kho hoặc khách đã mua)" : "") + ".";
-    await loadProducts(); toast(sum);
+    let sum = "Đã thêm " + nf(added) + " tài khoản vào kho" + (dup ? " · bỏ qua " + nf(dup) + " dòng trùng (đang còn trong kho hoặc khách đã mua)" : "") + ".";
+    await loadProducts(); sum += await vsAfterImport(pid, vs0); vsStockInfo(pid); toast(sum);
     if (dup) { const p = P.find(x => x.id === pid); if (p) $("sk-name").textContent = p.name + " · đang còn " + (+p.stock || 0).toLocaleString("vi-VN") + " tài khoản"; $("sk-count").innerHTML = `<b style="color:#3ddc97">✅ ${esc(sum)}</b> Bấm Huỷ để đóng.`; }
     else show("stockdlg", false);
   } finally {
@@ -7170,16 +7242,7 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
   };
   if (b) b.onclick = () => window.BRsetLite(!window.BR_LITE, true);
   paint(); document.addEventListener("br-lang", paint);
-  // tự chuyển sang chế độ nhẹ nếu trang giật (khung hình trung bình > 30ms trong 3 giây đầu) — chỉ khi khách chưa tự chọn
-  if (window.BR_LITE || !window.BR_LITE_AUTO || !("requestAnimationFrame" in window)) return;
-  let n = 0, slow = 0, last = 0, t0 = 0;
-  const start = () => setTimeout(() => requestAnimationFrame(tick), 1500);   // đo sau khi trang tải xong 1,5 giây (tránh tính lúc đang tải)
-  if (document.readyState === "complete") start(); else addEventListener("load", start);
-  function tick(t) {
-    if (!t0) t0 = t; if (last) { n++; if (t - last > 30) slow++; } last = t;
-    if (t - t0 < 3500 && n < 240) return requestAnimationFrame(tick);
-    if (n > 20 && slow / n > 0.45) { window.BRsetLite(true, false); try { toast(L("Máy có vẻ giật → đã chuyển sang chế độ nhẹ (bật lại ở cuối trang).", "Looks laggy → switched to lite mode (turn effects back on at the bottom)."), 0); } catch (e) {} }
-  }
+  // 28/11: bỏ đo khung hình rồi tự chuyển chế độ nhẹ — hiệu ứng luôn bật, khách tự tắt bằng nút này nếu muốn
 })();
 
 /* ===== 💡 ĐÈN NEON CHẠY — 27/11n: LUÔN BẬT cho mọi khách (bỏ nút ⚡ Neon cạnh Sáng / Tối + nút cuối trang; lựa chọn cũ br_neon không còn dùng).

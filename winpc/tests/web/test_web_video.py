@@ -132,7 +132,7 @@ def main():
         print("2. Điện thoại (390 px)")
         m = Site(br, html, reduced=False, mobile=True)
         hv = hero(m)
-        ck("điện thoại (chế độ nhẹ tự bật): nền đầu trang vẫn chạy — bản nhỏ 640 px", hv and hv["src"] == "/video/nen-dau-trang-nho.mp4" and not hv["paused"], hv)
+        ck("điện thoại (hiệu ứng luôn bật): nền đầu trang chạy — bản nhỏ 640 px", hv and hv["src"] == "/video/nen-dau-trang-nho.mp4" and not hv["paused"], hv)
         scroll_to(m, "m3v-cp")
         st = state(m)
         ck("điện thoại: kéo tới → tự phát Cloud Phone", st["cp"]["src"] == "/video/cloud-phone.mp4" and not st["cp"]["paused"], st["cp"])
