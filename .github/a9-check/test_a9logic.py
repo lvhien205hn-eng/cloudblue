@@ -7,7 +7,8 @@
    4. hàng chờ: Android 9 chịu 0,5 giây; máy khác 0,15 giây
    5. bỏ khung → bật lại bộ nén sau ~0,2 giây (Android 9), máy khác không tự bật lại
    6. không dumpsys "màn ảo" sau cú bấm ở Android 9; máy khác vẫn có
-   7. Thông số gửi app / web có efps, rs, rk, dr"""
+   7. Thông số gửi app / web có efps, rs, rk, dr
+   8. (27/11f) cbvideo: lệnh chạy, xin khung khoá, ngưỡng bỏ khung, chọn / quay về scrcpy, chế độ thử ?cbv=1, md5 ghim"""
 import asyncio, importlib.util, json, os, sys, time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -139,6 +140,154 @@ async def main():
     st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
     ck("S_STATS có efps / rs / rk / dr / a9", bool(st) and all(k in st[-1] for k in ("efps", "rs", "rk", "dr", "a9")) and st[-1]["dr"] == {"lag": 1, "q": 2}
        and st[-1]["rs"] == 2 and st[-1]["rk"] == 1 and st[-1]["efps"] > 0, st[-1:] if st else None)
+
+    print("8. cbvideo (27/11f) — máy chủ hình riêng cho Android 9")
+    ck("bản 27/11f + dòng khởi động 'bản 27/11f: Android 9 cbvideo'", bs.BS_SUB == "27/11f" and "bản 27/11f: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("md5 cbvideo.jar ghim đủ 32 ký tự hex", len(bs.CBV_FILE[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_FILE[1]), bs.CBV_FILE)
+    sv = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0, kind="cbv")
+    sv2 = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0)
+    ck("ScrcpyVideo kind=cbv → enc 'cbvideo' · mặc định vẫn scrcpy", (sv.enc, sv.kind, sv2.enc, sv2.kind) == ("cbvideo", "cbv", "scrcpy", "scrcpy"),
+       (sv.enc, sv.kind, sv2.enc, sv2.kind))
+    class FakeSock:
+        def __init__(self): self.sent = b""
+        def sendall(self, b): self.sent += b
+    sv.sock = FakeSock(); sv2.sock = FakeSock()
+    ck("request_key: cbvideo gửi 1 byte 'K' · scrcpy không gửi gì", sv.request_key() is True and sv.sock.sent == b"K"
+       and sv2.request_key() is False and sv2.sock.sent == b"", (sv.sock.sent, sv2.sock.sent))
+    cmds = []
+    class StopPop(Exception): pass
+    real_pop = bs.subprocess.Popen
+    def fake_pop(args, *a, **k): cmds.append(args); raise StopPop()
+    bs.subprocess.Popen = fake_pop
+    try:
+        for kd in ("cbv", "scrcpy"):
+            v = bs.ScrcpyVideo("127.0.0.1:1", 960, 30, 3000, lambda *a: None, iframe=5.0, quick=True, kind=kd)
+            try: v.start()
+            except StopPop: pass
+    finally:
+        bs.subprocess.Popen = real_pop
+    c_cb = cmds[0][-1] if cmds else ""; c_sc = cmds[1][-1] if len(cmds) > 1 else ""
+    ck("lệnh cbvideo: CLASSPATH cbvideo + com.cloudblue.A9Video + max_size/max_fps/bitrate/i_frame", all(x in c_cb for x in (
+        f"CLASSPATH={bs.CBV_DEV}", "com.cloudblue.A9Video", "max_size=960", "max_fps=30", "video_bit_rate=3000000", "i_frame=5", "scid=")), c_cb)
+    ck("lệnh scrcpy không đổi (com.genymobile.scrcpy.Server 2.4)", "com.genymobile.scrcpy.Server 2.4" in c_sc and "A9Video" not in c_sc, c_sc)
+
+    # Android 9 lấy hình bằng cbvideo: ngưỡng bỏ khung như máy khác + bỏ khung là xin khung khoá ngay
+    class CbEnc:
+        enc = "cbvideo"; kind = "cbv"; proc = None; frames_in = 5; fps = 30
+        def __init__(self): self.keys = 0
+        def failed_early(self): return False
+        def request_key(self): self.keys += 1; return True
+    async def queue_cb(age_s):
+        s = mk("9"); s.enc = CbEnc(); s.wait_key = False
+        t = time.monotonic() - age_s
+        for i in range(3): s.aq.put_nowait((s.gen, b"\x00\x00\x00\x01\x41\x9a", False, False, 10 + i, t))
+        task = asyncio.ensure_future(s._sender()); await asyncio.sleep(0.05); s.closed = True; task.cancel()
+        try: await task
+        except BaseException: pass
+        return s
+    s = await queue_cb(0.3)
+    ck("Android 9 + cbvideo: 3 khung chờ 0,3 giây → bỏ như máy khác (ngưỡng 0,15) + xin khung khoá ngay", s.drop == 3 and s.enc.keys == 1 and s.n_kreq == 1,
+       (s.drop, s.enc.keys, s.n_kreq, s.dr))
+    s = mk("9"); s.enc = CbEnc()
+    ck("_a9slow: Android 9 + cbvideo = False · Android 9 + scrcpy = True · Android 12 = False",
+       (s._a9slow(), mk("9")._a9slow(), mk("12")._a9slow()) == (False, True, False), (s._a9slow(), mk("9")._a9slow(), mk("12")._a9slow()))
+    s._dropx("lag"); s._dropx("lag")
+    ck("xin khung khoá tối đa 4 lần / giây (2 lần bỏ khung liền → 1 lệnh)", s.enc.keys == 1 and s.n_kreq == 1, (s.enc.keys, s.n_kreq))
+
+    async def keyfix_cb(secs, maxs):
+        old = bs.CBV_KEY_MAX_S; bs.CBV_KEY_MAX_S = maxs
+        s = mk("9"); s.sent = 5; s.wait_key = True; s.last_restart = time.time() - 10; s.last_rx = time.time() + 60
+        s.t_auth = time.time() + 3600; s.enc = CbEnc(); hits = []
+        async def fake_restart(size_msg=False, cpu=False): hits.append((time.time(), s.restart_req)); s.wait_key = False; s.last_restart = time.time()
+        s.restart_video = fake_restart
+        s._early_down = lambda now: False; s._may_raise = lambda now: False
+        t0 = time.time(); task = asyncio.ensure_future(s._monitor()); await asyncio.sleep(secs); s.closed = True
+        try: await asyncio.wait_for(task, 2)
+        except BaseException: pass
+        bs.CBV_KEY_MAX_S = old
+        return s, hits, t0
+    s, hits, t0 = await keyfix_cb(1.2, 2.5)
+    ck("cbvideo đang chờ khung khoá 1,2 giây → xin khoá (≥ 2 lần), KHÔNG bật lại bộ nén", not hits and s.enc.keys >= 2 and s.n_keyfix == 0,
+       (hits, s.enc.keys, s.n_keyfix))
+    s, hits, t0 = await keyfix_cb(1.6, 0.6)
+    ck("cbvideo xin mãi không có khung khoá (quá CBV_KEY_MAX_S) → bật lại bộ nén như cũ, đếm rk", bool(hits) and s.n_keyfix == 1, (hits, s.n_keyfix))
+
+    # chọn cbvideo khi mở máy Android 9 · cbvideo lỗi → quay về scrcpy ngay + đánh dấu máy 30 phút
+    made = []
+    class FakeSV:
+        def __init__(self, serial, msz, fps, kbps, on_au, on_size=None, iframe=1.0, quick=False, ready_wait=12.0, kind="scrcpy"):
+            self.kind = kind; self.enc = "cbvideo" if kind == "cbv" else "scrcpy"; self.proc = None; self.frames_in = 0
+            made.append(kind)
+        def start(self):
+            if self.kind == "cbv" and FAIL_CB[0]: raise RuntimeError("cbvideo (hình) không nối được")
+            return 544, 960
+        def stop(self): pass
+    class Src9(bs.ScrcpySource):
+        def __init__(self): self.serial = "x"; self.res = None; self.cw, self.ch = 720, 1280; self.closed = False; self.stopping = False
+    FAIL_CB = [False]
+    real_sv, real_ens = bs.ScrcpyVideo, bs.ensure_cbv
+    bs.ScrcpyVideo = FakeSV; bs.ensure_cbv = lambda: True
+    real_mode = bs.A9_CBV_MODE
+    try:
+        ck("mặc định bản 27/11f: chế độ THỬ (chỉ phiên ?cbv=1)", real_mode == "test", real_mode)
+        s = mk("9"); s.src = Src9(); s.enc = None; bs._CBV_BAD.pop(s.serial, None)
+        s._start_video_scrcpy()
+        ck("chế độ thử: máy Android 9 mở thường → vẫn scrcpy", made == ["scrcpy"], made)
+        made.clear()
+        s = mk("9"); s.cbv_req = "1"; s.src = Src9(); s.enc = None
+        w, h = s._start_video_scrcpy()
+        ck("chế độ thử: phiên ?cbv=1 → lấy hình bằng cbvideo", made == ["cbv"] and s.enc.enc == "cbvideo" and (w, h) == (544, 960), (made, getattr(s.enc, "enc", None)))
+        made.clear(); bs.A9_CBV_MODE = "on"
+        s = mk("9"); s.src = Src9(); s.enc = None
+        s._start_video_scrcpy()
+        s0 = mk("9"); s0.cbv_req = "0"; s0.src = Src9(); s0.enc = None
+        s0._start_video_scrcpy()
+        ck("chế độ on: mọi máy Android 9 → cbvideo · phiên ?cbv=0 → scrcpy", made == ["cbv", "scrcpy"], made)
+        made.clear(); FAIL_CB[0] = True
+        s = mk("9"); s.src = Src9(); s.enc = None; bs._CBV_BAD.pop(s.serial, None)
+        w, h = s._start_video_scrcpy()
+        ck("cbvideo lỗi → đổi sang scrcpy ngay trong lần mở đó + máy bị đánh dấu", made == ["cbv", "scrcpy"] and s.enc.enc == "scrcpy"
+           and bs._CBV_BAD.get(s.serial, 0) > time.time() + 1700, (made, getattr(s.enc, "enc", None), bs._CBV_BAD.get(s.serial)))
+        made.clear(); FAIL_CB[0] = False
+        s._start_video_scrcpy()
+        ck("máy vừa lỗi cbvideo → các lần mở sau dùng scrcpy (30 phút)", made == ["scrcpy"], made)
+        made.clear()
+        s12 = mk("12"); s12.cbv_req = "1"; s12.src = Src9(); s12.enc = None
+        s12._start_video_scrcpy()
+        ck("Android 12 / 15 vẫn scrcpy (kể cả ?cbv=1)", made == ["scrcpy"], made)
+    finally:
+        bs.ScrcpyVideo, bs.ensure_cbv = real_sv, real_ens
+        bs._CBV_BAD.clear(); bs.A9_CBV_MODE = real_mode
+
+    sh = bs.Session(Link("ws"), {"uid": "u" * 8}, {"id": "p9c", "container": "cp_t", "port": 5555, "android": "9", "fps": 30}, {"q": "bal", "cbv": "1"}, time.monotonic())
+    ck("HELLO {cbv: '1'} → phiên ép cbvideo", sh.cbv_req == "1" and sh._want_cbv() is True, (sh.cbv_req, sh._want_cbv()))
+
+    # ensure_cbv: md5 ghim — file đúng → dùng · sai md5 → không chạy file lạ
+    import hashlib, tempfile
+    data = b"PK\x03\x04 test cbvideo"; md = hashlib.md5(data).hexdigest()
+    real_file, real_state = bs.CBV_FILE, dict(bs._CBV)
+    try:
+        fn = "cbvideo-test-%d.jar" % os.getpid(); fp = os.path.join(bs.RTC, fn)
+        open(fp, "wb").write(data)
+        bs.CBV_FILE = (fn, md); bs._CBV["ok"] = None; bs._CBV["t"] = 0.0
+        ck("ensure_cbv: file có sẵn đúng md5 → True (không tải lại)", bs.ensure_cbv() is True)
+        bs.CBV_FILE = (fn, "0" * 32); bs._CBV["ok"] = None; bs._CBV["t"] = time.time()
+        real_open = bs.urllib.request.urlopen
+        bs.urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(OSError("no net"))
+        try: r = bs.ensure_cbv()
+        finally: bs.urllib.request.urlopen = real_open
+        ck("ensure_cbv: md5 không khớp + không tải được → False (Android 9 dùng scrcpy)", r is False, r)
+        os.remove(fp)
+    finally:
+        bs.CBV_FILE = real_file; bs._CBV.clear(); bs._CBV.update(real_state)
+
+    s = mk("9"); s.enc = CbEnc(); s.n_kreq = 3; s.last_rx = time.time() + 60; s.t_auth = time.time() + 3600; s.last_restart = time.time()
+    s._early_down = lambda now: False; s._may_raise = lambda now: False; s.wait_key = False
+    task = asyncio.ensure_future(s._monitor()); await asyncio.sleep(2.2); s.closed = True
+    try: await asyncio.wait_for(task, 2)
+    except BaseException: pass
+    st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
+    ck("S_STATS: enc 'cbvideo' + kq (số lần xin khung khoá)", bool(st) and st[-1].get("enc") == "cbvideo" and st[-1].get("kq") == 3, st[-1:] if st else None)
 
 
 asyncio.run(main())
