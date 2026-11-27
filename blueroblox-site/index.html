@@ -16963,7 +16963,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 })();
 </script>
 <style>
-/* ===== 27/11 · 🌐 PROXY DÂN CƯ (SQL v62) — dòng sản phẩm · hộp mua · Proxy của tôi · Quản trị › Máy cho thuê › 🌐 Proxy ===== */
+/* ===== 27/11 · 🌐 PROXY DÂN CƯ (SQL v63) — dòng sản phẩm · hộp mua · Proxy của tôi · Quản trị › Máy cho thuê › 🌐 Proxy ===== */
 #pxdlg{z-index:72}
 .dlg.pxd{width:min(600px,100%);gap:12px}
 .pxb-st{display:flex;align-items:baseline;gap:8px;margin-top:2px}
@@ -16998,13 +16998,13 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 @media (max-width:480px){.pxb-opt{min-width:0;flex:1 1 40%}.pxa .grid3{grid-template-columns:1fr}}
 </style>
 <script>
-/* ===== 27/11 · 🌐 PROXY DÂN CƯ (SQL v62): proxy IP nhà mạng chạy trên máy chủ Proxmox (cbpool) — IPv6 / IPv4, riêng hoặc share 2–5 người.
+/* ===== 27/11 · 🌐 PROXY DÂN CƯ (SQL v63): proxy IP nhà mạng chạy trên máy chủ Proxmox (cbpool) — IPv6 / IPv4, riêng hoặc share 2–5 người.
    · Khách: 1 dòng "Proxy dân cư" trong danh sách Sản phẩm (chỉ khi admin BẬT BÁN; admin luôn thấy) → hộp mua (loại IP · kiểu · số ngày · số lượng)
      → "Proxy của bạn" (chép IP:PORT:USER:PASS, gia hạn, link đổi IP cho proxy riêng, đặt tên).
    · Admin: Máy cho thuê › 🌐 Proxy — bật bán, cổng ngoài, bảng giá (loại × share × số ngày), máy chủ (kho IPv6 / phiên IPv4, tài khoản PPPoE
      mã hoá), danh sách proxy đã bán (gia hạn / thu hồi / đổi mật khẩu / xoá), tặng proxy.
    · Tài khoản PPPoE: trình duyệt mã hoá (ECDH P-256 + HKDF-SHA256 + AES-GCM) bằng khoá công khai của máy chủ → chỉ máy chủ đó giải được.
-   · Chưa chạy SQL v62 → khách không thấy gì; tab quản trị báo cần chạy file. Không dùng hộp thoại của trình duyệt. ===== */
+   · Chưa chạy SQL v63 → khách không thấy gì; tab quản trị báo cần chạy file. Không dùng hộp thoại của trình duyệt. ===== */
 (() => {
   const $i = id => document.getElementById(id);
   const S = (v, n) => v == null || typeof v === "object" ? "" : String(v).slice(0, n || 80);
@@ -17232,7 +17232,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
   const daysList = pr => [...new Set(["v6", "v4"].flatMap(k => Object.values(O(O(pr)[k])).flatMap(o => Object.keys(O(o)).map(Number))))].filter(d => d >= 1).sort((a, b) => a - b);
   function admRender() {
     const box = $i("pxa"); if (!box) return;
-    if (PX.miss) { box.innerHTML = `<div class="note">⚠️ ${L("Cơ sở dữ liệu chưa có phần <b>bán proxy</b>. Vào Supabase › SQL Editor › mở <b>CloudBlue v62 ban proxy - bam Run</b> › bấm <b>Run</b>, rồi tải lại trang.", "Run SQL v62 in Supabase first.")}</div>`; return; }
+    if (PX.miss) { box.innerHTML = `<div class="note">⚠️ ${L("Cơ sở dữ liệu chưa có phần <b>bán proxy</b>. Vào Supabase › SQL Editor › New query › dán hết file <b>cloudblue-v63-ban-proxy.sql</b> › bấm <b>Run</b>, rồi tải lại trang.", "Run SQL v63 in Supabase first.")}</div>`; return; }
     const d = O(PX.adm), s = O(d.settings), hs = A(d.hosts), ps = A(d.proxies), st = O(d.stock);
     if (!PX.adm) { box.innerHTML = PX.admErr ? `<div class="note">⚠️ ${esc(PX.admErr)}</div>` : `<div class="hint">${L("Đang tải…", "Loading…")}</div>`; return; }
     if (box.dataset.dirty === "1" && box.querySelector("#pxa-set")) { paintHosts(); paintList(); return; }       // đang sửa ô → không vẽ lại phần cài đặt / giá
