@@ -72,9 +72,9 @@ def main():
         ck("không còn chữ 'Neon' nào trên thanh đầu trang / cuối trang", not s.js("() => /neon/i.test((document.querySelector('header.top .acct') || {}).innerText || '') || /neon/i.test((document.querySelector('.fxbar') || {}).innerText || '')"))
         ck("thẻ sản phẩm + thẻ máy có vệt sáng chạy (hoạt ảnh nrun), 1 vòng ~6,5 giây, viền 2,5px",
            all((x or {}).get("anim") == "nrun" for x in (t["rowAfter"], t["cardAfter"])) and t["rowAfter"]["dur"] == "6.5s" and t["rowAfter"]["pad"] == "2.5px", t)
-        ck("thẻ sản phẩm có quầng neon xanh mây (27/11: theo màu logo — xanh cá voi #7FADE7, không còn xanh ngọc / tím)", "rgba(127, 173, 231" in t["rowShadow"], t["rowShadow"])
+        ck("thẻ sản phẩm có quầng neon xanh trời sáng (27/11 bản 2: xanh trời #62D6FF + xanh logo, không còn tím)", "rgba(98, 214, 255" in t["rowShadow"], t["rowShadow"])
         ck("thẻ máy đang chạy giữ màu trạng thái (xanh lá) cho neon", "rgba(60, 224, 176" in t["cardShadow"] and "run" in t["cardCls"], (t["cardCls"], t["cardShadow"]))
-        ck("hộp thoại có quầng neon (không chạy)", "rgba(127, 173, 231" in t["dlgShadow"], t["dlgShadow"])
+        ck("hộp thoại có quầng neon (không chạy)", "rgba(98, 214, 255" in t["dlgShadow"], t["dlgShadow"])
         a1 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')"); s.page.wait_for_timeout(700)
         a2 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')")
         ck("vệt sáng thật sự di chuyển (góc --nr đổi theo thời gian)", a1 != a2 and a1.endswith("deg"), (a1, a2))
@@ -99,7 +99,7 @@ def main():
 
         print("4. Sáng / tiếng Anh / điện thoại")
         s = Page(b, theme="light"); t = s.st()
-        ck("chế độ sáng: neon xanh cá voi (#4A80DB) + vệt chạy", t["run"] and "rgba(74, 128, 219" in t["rowShadow"] and t["rowAfter"]["anim"] == "nrun", t["rowShadow"])
+        ck("chế độ sáng: neon xanh trời (#0EA5E9) + vệt chạy", t["run"] and "rgba(14, 165, 233" in t["rowShadow"] and t["rowAfter"]["anim"] == "nrun", t["rowShadow"])
         s.page.screenshot(path=os.path.join(SHOTS, "neon-2-sang.png")); s.close()
         s = Page(b, lang="en"); t = s.st()
         ck("tiếng Anh: neon bật, không có chữ 'Running neon' nào", t["run"] and not s.js("() => document.body.innerText.includes('Running neon')"), t)
