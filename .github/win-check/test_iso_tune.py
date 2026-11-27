@@ -265,7 +265,7 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 27/11l", sua.VER == "27/11l")
+ck("bản sua-tat-ca 27/11m", sua.VER == "27/11m")
 reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
 os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 fx = st.get("tune_fix") or {}
@@ -335,15 +335,31 @@ ck("sw_info gửi kèm tune + inv", '"run": sw_running(st), "last": last, "cpd":
 
 print("8. phonectl 27/11l · chia đều card đo % card bằng nvidia-smi tìm đủ chỗ")
 PC = open(os.path.join(ROOT, "windows", "phonectl.py"), encoding="utf-8").read()
-ck("_nv_util gọi nvidia-smi qua _smi_exe() (PATH → System32 → NVSMI → kho driver) · PCTL_SUB 27/11l · sua-tat-ca cài theo dấu 27/11l",
+ck("_nv_util gọi nvidia-smi qua _smi_exe() (PATH → System32 → NVSMI → kho driver) · PCTL_SUB 27/11m · sua-tat-ca cài theo dấu 27/11m",
    "exe = _smi_exe()" in PC and 'subprocess.run([exe, "--query-gpu=" + q' in PC and 'subprocess.run(["nvidia-smi"' not in PC.split("def _nv_util")[1].split("def gpufair_plan")[0]
-   and 'PCTL_SUB = "27/11l"' in PC and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11l"', None) in sua.FILES)
+   and 'PCTL_SUB = "27/11m"' in PC and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "27/11m"', None) in sua.FILES)
 pm = ast.parse(PC); G2 = {"shutil": _sh, "glob": __import__("glob"), "os": os}
 for node in pm.body:
     if isinstance(node, ast.FunctionDef) and node.name == "_smi_exe":
         exec(compile(ast.Module(body=[node], type_ignores=[]), "phonectl.py", "exec"), G2)
 os.environ["PATH"] = "/nonexistent"; b1 = G2["_smi_exe"](); os.environ["PATH"] = fake + os.pathsep + old_path; b2 = G2["_smi_exe"](); os.environ["PATH"] = old_path
 ck("_smi_exe: không thấy → 'nvidia-smi' (như cũ) · có trong PATH → đường dẫn đó", b1 == "nvidia-smi" and b2 == fp, (b1, b2))
+
+print("9. phonectl 27/11m · 🔓 Root theo app trên Android 9 (cpsu mới) + lý do lỗi đúng dòng")
+import hashlib
+md5 = lambda p: hashlib.md5(open(os.path.join(ROOT, p), "rb").read()).hexdigest()
+ck("CPSU_FILES ghim đúng md5 2 file trong windows/ (máy chủ tải đúng bản, file lạ không dùng)",
+   ('"cpsu": ("cpsu-x86_64", "%s")' % md5("windows/cpsu-x86_64")) in PC and ('"su": ("cpsu-su-x86_64", "%s")' % md5("windows/cpsu-su-x86_64")) in PC)
+for node in pm.body:
+    if isinstance(node, ast.FunctionDef) and node.name == "_root_why":
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "phonectl.py", "exec"), G2)
+W = G2["_root_why"]
+ck("Android 9 bản cũ: INSTALL_FAIL copy … + STOPPED → báo dòng INSTALL_FAIL (không chỉ 'STOPPED')",
+   W("INSTALL_FAIL copy No such file or directory\nSTOPPED\n") == "INSTALL_FAIL copy No such file or directory (daemon không chạy)")
+ck("cảnh báo cpsu: … → báo cảnh báo · chỉ có STOPPED → STOPPED · rỗng → 'máy không trả lời'",
+   W("cpsu: socket @cpsu already in use\nINSTALL_OK ramdisk=/debug_ramdisk tmpfs=1 su=/debug_ramdisk/su made=0\nSTOPPED") == "cpsu: socket @cpsu already in use (daemon không chạy)"
+   and W("STOPPED\n") == "STOPPED" and W("") == "máy không trả lời" and W(None) == "máy không trả lời")
+ck("_root_apply báo lỗi qua _root_why", 'return False, "Chưa bật được root: " + _root_why(o)' in PC)
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
