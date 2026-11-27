@@ -1025,7 +1025,7 @@ ck("lần sau: web không đổi gì → không ghi lại file, không bắt cbp
 pw.resp["ppp"] = {"gen": 4, "enc": "khong-phai-json"}; pm18.sync()
 ck("chuỗi PPPoE hỏng → không nhận, báo lỗi lên web (ppp_err) lần sau", pm18.ppp_done == 3 and pm18.ppp_err, pm18.ppp_err)
 pw.resp = None; pw.err = "HTTP 404: {\"code\":\"PGRST202\",\"message\":\"Could not find the function public.px_host_sync\"}"; pm18.sync()
-ck("web chưa chạy SQL v62 → im lặng (không báo lỗi bán proxy)", pm18.sync_err == "", pm18.sync_err)
+ck("web chưa chạy SQL v63 → im lặng (không báo lỗi bán proxy)", pm18.sync_err == "", pm18.sync_err)
 srv18.close()
 st18 = {"ver": "27.11c", "listen": "0.0.0.0:8899", "v6": {"prefix": "2001:db8:5:ac60::/64"}, "pk": PK, "cust": {"n": 2, "conns": 5}, "pub4": "203.0.113.200",
         "ppp": {"want": 3, "up": 2, "account": True, "sess": [{"k": 0, "up": True, "ip": "203.0.113.10"}, {"k": 1, "up": False}, {"k": 2, "up": True, "ip": "203.0.113.12"}]}, "slots": []}
