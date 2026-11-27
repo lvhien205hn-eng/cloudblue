@@ -768,7 +768,7 @@ def item_ok(it):
 
 
 # ---------------------------------------------------------------- 27/11e · KHO PROXY NHIỀU IP (cbpool) — xem phần đầu file
-POOL_FILE = ("cbpool-x86_64", "f4e65c26d97ac0bfd685ba4028ca832a")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
+POOL_FILE = ("cbpool-x86_64", "c78888c0b35a1c4b5833e304b1dc0ab3")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
 POOL_RAW = os.environ.get("CBHOST_POOL_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/"
 POOL_BIN = os.environ.get("CBHOST_POOL_BIN") or "/usr/local/bin/cbpool"
 POOL_CONF_F = os.environ.get("CBHOST_POOL_CONF") or "/etc/cloudblue/cbpool.json"
