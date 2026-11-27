@@ -53,8 +53,8 @@ public class MultiActivity extends Activity {
     /** Tối đa số máy mở cùng lúc (bằng app máy tính). */
     static final int MAX = 9;
     private static final Pattern UUID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
-    private static final int C_HEAD = Color.rgb(11, 20, 40), C_EDGE = Color.argb(80, 120, 160, 255),
-            C_ACT = Color.rgb(61, 134, 255), C_SYNC = Color.rgb(60, 224, 176), C_DIM = Color.rgb(150, 164, 190);
+    private static final int C_HEAD = Color.rgb(11, 21, 40), C_EDGE = Color.argb(80, 140, 175, 235),
+            C_ACT = Color.rgb(90, 142, 226), C_SYNC = Color.rgb(60, 224, 176), C_DIM = Color.rgb(150, 164, 190);
 
     private final Handler h = new Handler(Looper.getMainLooper());
     private final ArrayList<Tile> tiles = new ArrayList<>();
@@ -747,7 +747,7 @@ public class MultiActivity extends Activity {
             ar = wh[0] / (float) wh[1];
             body.addView(screen, new FrameLayout.LayoutParams(-1, -1));
             veil = new FrameLayout(c);
-            veil.setBackgroundColor(Color.argb(236, 6, 12, 26));
+            veil.setBackgroundColor(Color.argb(236, 6, 13, 26));
             veil.setClickable(true);                         // đang chờ / báo lỗi: chạm không lọt xuống màn hình máy
             LinearLayout vb = Ui.col(c, 6);
             vb.setGravity(Gravity.CENTER);
@@ -762,7 +762,7 @@ public class MultiActivity extends Activity {
             veilBtn.setPadding(Ui.dp(12), Ui.dp(6), Ui.dp(12), Ui.dp(7));
             veilBtn.setClickable(true);
             veilBtn.setFocusable(true);
-            Ui.ripple(veilBtn, Color.argb(60, 61, 134, 255), 99, Color.argb(160, 120, 170, 255));
+            Ui.ripple(veilBtn, Color.argb(60, 90, 142, 226), 99, Color.argb(160, 140, 176, 235));
             veilBtn.setOnClickListener(v -> { Runnable r = veilAct; if (r != null) r.run(); });
             LayoutParams bl = Ui.wrap();
             bl.gravity = Gravity.CENTER_HORIZONTAL;
@@ -1125,7 +1125,7 @@ public class MultiActivity extends Activity {
 
         Rail(Context c) {
             super(c);
-            setBackgroundColor(Color.rgb(6, 12, 26));
+            setBackgroundColor(Color.rgb(6, 13, 26));
             setContentDescription(Ui.L("Thanh đổi máy: vuốt lên hoặc xuống để qua máy khác", "Phone switcher: swipe up or down"));
             p.setTextAlign(Paint.Align.CENTER);
             p.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
@@ -1162,7 +1162,7 @@ public class MultiActivity extends Activity {
                 boolean cur = i == focus;
                 Tile t = tiles.get(i);
                 p.setStyle(Paint.Style.FILL);
-                p.setColor(cur ? C_ACT : Color.argb(60, 120, 160, 255));
+                p.setColor(cur ? C_ACT : Color.argb(60, 140, 175, 235));
                 cv.drawCircle(cx, cy, rad, p);
                 if (!cur && sync && t.live()) {              // đang đồng bộ: máy khuất vẫn nhận lệnh → viền xanh lá
                     p.setStyle(Paint.Style.STROKE);

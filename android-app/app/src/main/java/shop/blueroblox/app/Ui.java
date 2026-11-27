@@ -50,17 +50,17 @@ public final class Ui {
     public static void apply(boolean light) {
         LIGHT = light;
         if (light) {
-            BG = Color.rgb(243, 247, 252); PANEL = Color.rgb(255, 255, 255); PANEL2 = Color.rgb(238, 245, 255);
-            LINE = Color.argb(41, 43, 110, 240); LINE2 = Color.argb(77, 43, 110, 240);
-            FG = Color.rgb(10, 26, 58); MUTED = Color.rgb(74, 93, 130); BLUE = Color.rgb(43, 110, 240); SKY = Color.rgb(15, 63, 179);
+            BG = Color.rgb(229, 238, 249); PANEL = Color.rgb(255, 255, 255); PANEL2 = Color.rgb(237, 243, 252);
+            LINE = Color.argb(41, 74, 128, 219); LINE2 = Color.argb(77, 74, 128, 219);
+            FG = Color.rgb(18, 40, 79); MUTED = Color.rgb(79, 102, 144); BLUE = Color.rgb(74, 128, 219); SKY = Color.rgb(42, 86, 165);
             OK = Color.rgb(14, 159, 116); WAIT = Color.rgb(178, 107, 0); BAD = Color.rgb(224, 53, 79);
-            SUNK = Color.rgb(238, 244, 252); RING = Color.argb(77, 70, 165, 255); HINT = Color.argb(150, 74, 93, 130);
+            SUNK = Color.rgb(234, 241, 251); RING = Color.argb(66, 74, 128, 219); HINT = Color.argb(150, 79, 102, 144);
         } else {
-            BG = Color.rgb(7, 18, 38); PANEL = Color.rgb(13, 29, 61); PANEL2 = Color.rgb(16, 36, 74);
-            LINE = Color.argb(56, 90, 175, 255); LINE2 = Color.argb(92, 90, 175, 255);
-            FG = Color.rgb(232, 241, 255); MUTED = Color.rgb(159, 180, 216); BLUE = Color.rgb(61, 134, 255); SKY = Color.rgb(140, 196, 255);
+            BG = Color.rgb(13, 28, 66); PANEL = Color.rgb(19, 42, 90); PANEL2 = Color.rgb(23, 50, 99);
+            LINE = Color.argb(51, 162, 191, 233); LINE2 = Color.argb(87, 162, 191, 233);
+            FG = Color.rgb(234, 241, 252); MUTED = Color.rgb(163, 182, 216); BLUE = Color.rgb(91, 143, 230); SKY = Color.rgb(156, 195, 240);
             OK = Color.rgb(60, 224, 176); WAIT = Color.rgb(255, 214, 102); BAD = Color.rgb(255, 107, 129);
-            SUNK = Color.rgb(6, 17, 42); RING = Color.argb(77, 90, 175, 255); HINT = Color.argb(150, 159, 180, 216);
+            SUNK = Color.rgb(9, 21, 52); RING = Color.argb(82, 127, 173, 231); HINT = Color.argb(150, 163, 182, 216);
         }
         bubbles = null;
     }
@@ -129,12 +129,12 @@ public final class Ui {
     }
 
     public static void ripple(View v, int fill, int radius, int stroke) {
-        v.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(60, 143, 208, 255)), round(fill, radius, stroke), null));
+        v.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.argb(60, 152, 201, 246)), round(fill, radius, stroke), null));
     }
 
     /** Nút xanh bóng (chuyển màu từ trên xuống, như web). */
     public static GradientDrawable gloss(int radius) {
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)});
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(116, 161, 231), Color.rgb(62, 122, 221)});
         g.setCornerRadius(dp(rad(radius)));
         return g;
     }
@@ -160,9 +160,9 @@ public final class Ui {
             cv.drawColor(BG);
             Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
             float r = s * .23f;
-            p.setColor(LIGHT ? Color.argb(20, 12, 40, 100) : Color.argb(70, 0, 0, 0)); cv.drawCircle(s / 2f + 1, s / 2f + 2, r + 1, p);
-            p.setColor(LIGHT ? Color.WHITE : Color.argb(22, 120, 180, 255)); cv.drawCircle(s / 2f, s / 2f, r, p);
-            p.setColor(LIGHT ? Color.argb(230, 255, 255, 255) : Color.argb(26, 160, 205, 255)); cv.drawCircle(s / 2f - r * .3f, s / 2f - r * .32f, r * .32f, p);
+            p.setColor(LIGHT ? Color.argb(20, 12, 42, 100) : Color.argb(70, 0, 0, 0)); cv.drawCircle(s / 2f + 1, s / 2f + 2, r + 1, p);
+            p.setColor(LIGHT ? Color.WHITE : Color.argb(22, 140, 178, 235)); cv.drawCircle(s / 2f, s / 2f, r, p);
+            p.setColor(LIGHT ? Color.argb(230, 255, 255, 255) : Color.argb(26, 174, 201, 241)); cv.drawCircle(s / 2f - r * .3f, s / 2f - r * .32f, r * .32f, p);
             bubbles = new BitmapDrawable(c.getResources(), b);
             bubbles.setTileModeXY(Shader.TileMode.REPEAT, Shader.TileMode.REPEAT);
         }
@@ -550,7 +550,7 @@ public final class Ui {
         s.setChecked(on);
         s.setContentDescription(label);
         int[][] st = {{android.R.attr.state_checked}, {}};
-        s.setThumbTintList(new ColorStateList(st, new int[]{BLUE, LIGHT ? Color.WHITE : Color.rgb(200, 214, 240)}));
+        s.setThumbTintList(new ColorStateList(st, new int[]{BLUE, LIGHT ? Color.WHITE : Color.rgb(200, 215, 240)}));
         s.setTrackTintList(new ColorStateList(st, new int[]{Color.argb(140, Color.red(BLUE), Color.green(BLUE), Color.blue(BLUE)), LINE2}));
         s.setOnCheckedChangeListener((b, v) -> cb.set(v));
         r.addView(s, wrap());

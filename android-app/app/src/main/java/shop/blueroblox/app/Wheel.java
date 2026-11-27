@@ -47,8 +47,8 @@ import java.util.Random;
  *  Máy chủ chưa chạy SQL v34c / admin tắt → wheel_status lỗi hoặc state off → ẩn hết, app như cũ. */
 final class Wheel {
     static volatile JSONObject st = null;
-    private static final int INK = Color.rgb(11, 20, 51), PEARL = Color.rgb(242, 247, 255), PEARL2 = Color.rgb(201, 215, 238),
-            TXT = Color.rgb(234, 242, 255), SUB = Color.rgb(185, 200, 234);
+    private static final int INK = Color.rgb(11, 23, 51), PEARL = Color.rgb(243, 247, 254), PEARL2 = Color.rgb(201, 215, 238),
+            TXT = Color.rgb(236, 242, 253), SUB = Color.rgb(185, 203, 234);
 
     static boolean on() { return !Api.PLAY; }
     static boolean live() {
@@ -124,8 +124,8 @@ final class Wheel {
     static View card(MainActivity a) {
         LinearLayout c = Ui.col(a, 8);
         c.setPadding(Ui.dp(16), Ui.dp(14), Ui.dp(16), Ui.dp(14));
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(28, 50, 140), Color.rgb(11, 18, 54)});
-        bg.setCornerRadius(Ui.dp(18)); bg.setStroke(Ui.dp(1), Color.argb(80, 220, 232, 255));
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.rgb(28, 67, 140), Color.rgb(11, 23, 54)});
+        bg.setCornerRadius(Ui.dp(18)); bg.setStroke(Ui.dp(1), Color.argb(80, 223, 234, 252));
         c.setBackground(bg);
         TextView t = Ui.text(a, "", 16, Color.WHITE, true), s = Ui.text(a, "", 13, SUB, false);
         Button b = Ui.button(a, "", Ui.PRIMARY);
@@ -164,13 +164,13 @@ final class Wheel {
     static View strip(MainActivity a, Runnable after) {
         LinearLayout c = Ui.row(a, 12);
         c.setPadding(Ui.dp(12), Ui.dp(10), Ui.dp(10), Ui.dp(10));
-        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(40, 70, 182), Color.rgb(20, 34, 100), Color.rgb(11, 18, 54)});
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(40, 90, 182), Color.rgb(20, 44, 100), Color.rgb(11, 23, 54)});
         bg.setCornerRadius(Ui.dp(18));
-        bg.setStroke(Ui.dp(1), Color.argb(110, 220, 232, 255));
+        bg.setStroke(Ui.dp(1), Color.argb(110, 223, 234, 252));
         c.setBackground(bg);
         TextView ic = Ui.text(a, "🎡", 24, Color.WHITE, false);
         ic.setGravity(Gravity.CENTER);
-        ic.setBackground(Ui.round(Color.argb(38, 255, 255, 255), 14, Color.argb(90, 220, 232, 255)));
+        ic.setBackground(Ui.round(Color.argb(38, 255, 255, 255), 14, Color.argb(90, 223, 234, 252)));
         c.addView(ic, new LinearLayout.LayoutParams(Ui.dp(46), Ui.dp(46)));
         LinearLayout tx = Ui.col(a, 1);
         TextView t = Ui.text(a, "", 15, Color.WHITE, true), s = Ui.text(a, "", 12.5f, SUB, false);
@@ -273,7 +273,7 @@ final class Wheel {
             d.requestWindowFeature(Window.FEATURE_NO_TITLE);
             LinearLayout box = Ui.col(a, 14);
             box.setPadding(Ui.dp(18), Ui.dp(16), Ui.dp(18), Ui.dp(22));
-            GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(22, 38, 104), Color.rgb(12, 20, 62), Color.rgb(7, 12, 38)});
+            GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(22, 47, 104), Color.rgb(12, 26, 62), Color.rgb(7, 16, 38)});
             box.setBackground(bg);
 
             LinearLayout head = Ui.row(a, 8);
@@ -340,7 +340,7 @@ final class Wheel {
             d.setContentView(sv);
             Ui.insets(sv, true, true);                                      // không lấn thanh trạng thái / thanh điều hướng
             Window win = d.getWindow();
-            if (win != null) { win.setBackgroundDrawable(new ColorDrawable(Color.rgb(7, 12, 38))); win.setLayout(-1, -1); }
+            if (win != null) { win.setBackgroundDrawable(new ColorDrawable(Color.rgb(7, 16, 38))); win.setLayout(-1, -1); }
             d.setOnDismissListener(x -> { wv.alive = false; if (paidAny && !a.isFinishing()) a.refresh(); });
             render();
             load(this::render);
@@ -353,8 +353,8 @@ final class Wheel {
             left.setText(Ui.L(l + " lượt", l + (l == 1 ? " spin" : " spins")));
             boolean has = w != null && "on".equals(w.optString("state")) && l > 0;
             GradientDrawable lb = has ? new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.WHITE, PEARL2}) : new GradientDrawable();
-            if (!has) { lb.setColor(Color.argb(150, 8, 13, 40)); lb.setStroke(Ui.dp(1), Color.argb(80, 220, 232, 255)); }
-            lb.setCornerRadius(Ui.dp(99)); left.setBackground(lb); left.setTextColor(has ? INK : Color.rgb(207, 224, 255));
+            if (!has) { lb.setColor(Color.argb(150, 8, 17, 40)); lb.setStroke(Ui.dp(1), Color.argb(80, 223, 234, 252)); }
+            lb.setCornerRadius(Ui.dp(99)); left.setBackground(lb); left.setTextColor(has ? INK : Color.rgb(211, 226, 251));
             String state = w == null ? "off" : w.optString("state");
             sub.setText(w == null ? Ui.L("Vòng quay đang tạm tắt.", "The lucky wheel is off.")
                     : "soon".equals(state) ? Ui.L("Bắt đầu ", "Starts ") + when(w.optString("starts_at")) + ". " + Ui.L("Nạp ", "Top up ") + Ui.vnd(f[0]) + " = " + f[1] + Ui.L(" lượt quay.", " spins.")
@@ -387,7 +387,7 @@ final class Wheel {
             else { txt = "💳 " + Ui.L("Nạp " + Ui.vnd(f[0]) + " để nhận " + f[1] + " lượt quay", "Top up " + Ui.vnd(f[0]) + " to get " + f[1] + " spins"); act = "top"; kind = 2; }
             go.setText(txt); go.setEnabled(!dis); go.setAlpha(dis ? .6f : 1f);
             if (kind == 1) { GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.WHITE, PEARL2}); g.setCornerRadius(Ui.dp(14)); go.setBackground(g); go.setTextColor(INK); }
-            else if (kind == 2) { Ui.ripple(go, Color.argb(120, 8, 13, 40), 14, Color.argb(110, 220, 232, 255)); go.setTextColor(Color.WHITE); }
+            else if (kind == 2) { Ui.ripple(go, Color.argb(120, 8, 17, 40), 14, Color.argb(110, 223, 234, 252)); go.setTextColor(Color.WHITE); }
             else { Ui.glossy(go, 14); go.setTextColor(Color.WHITE); }
             wv.hubOn = !busy && !luck && w != null && "on".equals(state) && (l > 0 || w.optBoolean("can_buy"));
             wv.invalidate();
@@ -503,17 +503,17 @@ final class Wheel {
             TextView apps = Ui.text(a, "💻 " + Ui.L("Chơi được cả trên web (vòng quay ngay trang chủ) và app máy tính CloudBlue PC. Lượt quay, vé và mã dùng chung cho cả tài khoản.",
                     "Also on the website and the CloudBlue PC app (Top up → 🎡 Lucky wheel). Spins and codes are shared across your account."), 12.5f, SUB, false);
             apps.setPadding(Ui.dp(11), Ui.dp(9), Ui.dp(11), Ui.dp(9));
-            apps.setBackground(Ui.round(Color.TRANSPARENT, 12, Color.argb(60, 220, 232, 255)));
+            apps.setBackground(Ui.round(Color.TRANSPARENT, 12, Color.argb(60, 223, 234, 252)));
             guide.addView(apps, Ui.fill());
         }
         void step(String icon, String title, String text) {
             LinearLayout r = Ui.row(a, 10);
             r.setGravity(Gravity.TOP);
             r.setPadding(Ui.dp(10), Ui.dp(10), Ui.dp(10), Ui.dp(10));
-            r.setBackground(Ui.round(Color.argb(12, 255, 255, 255), 12, Color.argb(34, 220, 232, 255)));
+            r.setBackground(Ui.round(Color.argb(12, 255, 255, 255), 12, Color.argb(34, 223, 234, 252)));
             TextView i = Ui.text(a, icon, 15, Color.WHITE, false);
             i.setGravity(Gravity.CENTER);
-            GradientDrawable ib = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(47, 102, 236), Color.rgb(22, 35, 106)}); ib.setCornerRadius(Ui.dp(9));
+            GradientDrawable ib = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(62, 120, 221), Color.rgb(22, 50, 106)}); ib.setCornerRadius(Ui.dp(9));
             i.setBackground(ib);
             r.addView(i, new LinearLayout.LayoutParams(Ui.dp(30), Ui.dp(30)));
             LinearLayout tx = Ui.col(a, 2);
@@ -533,11 +533,11 @@ final class Wheel {
                 boolean used = c.optBoolean("used"), act = c.optBoolean("active", true), gone = exp > 0 && exp <= System.currentTimeMillis(), live = !used && act && !gone;
                 LinearLayout r = Ui.row(a, 10);
                 r.setPadding(Ui.dp(10), Ui.dp(8), Ui.dp(10), Ui.dp(8));
-                r.setBackground(Ui.round(Color.argb(8, 255, 255, 255), 12, Color.argb(36, 220, 232, 255)));
+                r.setBackground(Ui.round(Color.argb(8, 255, 255, 255), 12, Color.argb(36, 223, 234, 252)));
                 r.setAlpha(live ? 1f : .5f);
                 TextView p = Ui.text(a, c.optInt("pct") + "%", 14, c.optInt("pct") >= 40 ? INK : Color.WHITE, true);
                 p.setGravity(Gravity.CENTER);
-                GradientDrawable pb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, c.optInt("pct") >= 40 ? new int[]{Color.WHITE, PEARL2} : new int[]{Color.rgb(47, 102, 236), Color.rgb(22, 35, 106)});
+                GradientDrawable pb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, c.optInt("pct") >= 40 ? new int[]{Color.WHITE, PEARL2} : new int[]{Color.rgb(62, 120, 221), Color.rgb(22, 50, 106)});
                 pb.setCornerRadius(Ui.dp(8)); p.setBackground(pb);
                 r.addView(p, new LinearLayout.LayoutParams(Ui.dp(52), Ui.dp(30)));
                 LinearLayout tx = Ui.col(a, 1);
@@ -605,18 +605,18 @@ final class Wheel {
         WheelView(Context c) {
             super(c);
             tp.setTextAlign(Paint.Align.CENTER); tp.setTypeface(Typeface.create("sans-serif-medium", Typeface.BOLD));
-            lo1 = rg(Color.rgb(13, 22, 68), Color.rgb(38, 56, 143)); lo2 = rg(Color.rgb(9, 17, 55), Color.rgb(26, 41, 114)); mid = rg(Color.rgb(26, 69, 189), Color.rgb(91, 149, 255));
-            hi = rg(Color.rgb(195, 208, 232), Color.WHITE); gone = rg(Color.rgb(23, 28, 51), Color.rgb(44, 51, 82));
-            m1 = rg(Color.rgb(10, 18, 64), Color.rgb(34, 50, 127)); m2 = rg(Color.rgb(15, 25, 82), Color.rgb(44, 67, 166));
+            lo1 = rg(Color.rgb(13, 29, 68), Color.rgb(38, 74, 143)); lo2 = rg(Color.rgb(9, 23, 55), Color.rgb(26, 56, 114)); mid = rg(Color.rgb(32, 86, 183), Color.rgb(116, 159, 230));
+            hi = rg(Color.rgb(195, 209, 232), Color.WHITE); gone = rg(Color.rgb(23, 31, 51), Color.rgb(44, 55, 82));
+            m1 = rg(Color.rgb(10, 25, 64), Color.rgb(34, 66, 127)); m2 = rg(Color.rgb(15, 34, 82), Color.rgb(44, 86, 166));
             k1 = rg(Color.rgb(122, 90, 16), Color.rgb(255, 224, 138)); k2 = rg(Color.rgb(13, 122, 95), Color.rgb(92, 240, 194));      // 🍀 mặt vé: cao nhất vàng · xanh ngọc · thấp nhất xanh đậm
             k3 = rg(Color.rgb(10, 85, 70), Color.rgb(32, 185, 140)); k4 = rg(Color.rgb(6, 42, 40), Color.rgb(17, 82, 74));
             km1 = rg(Color.rgb(4, 38, 31), Color.rgb(15, 90, 74)); km2 = rg(Color.rgb(7, 58, 48), Color.rgb(19, 122, 99));
             kglow = new RadialGradient(C, CY, 112, new int[]{Color.argb(95, 60, 224, 176), Color.argb(30, 19, 120, 90), Color.argb(0, 0, 0, 0)}, new float[]{0, .46f, 1}, Shader.TileMode.CLAMP);
-            rim = new LinearGradient(0, 0, 200, 216, new int[]{Color.WHITE, Color.rgb(174, 187, 210), Color.rgb(244, 247, 252), Color.rgb(142, 156, 182), Color.rgb(233, 238, 248)}, null, Shader.TileMode.CLAMP);
+            rim = new LinearGradient(0, 0, 200, 216, new int[]{Color.WHITE, Color.rgb(174, 187, 210), Color.rgb(244, 247, 252), Color.rgb(142, 156, 182), Color.rgb(233, 239, 248)}, null, Shader.TileMode.CLAMP);
             gloss = new RadialGradient(C - 22, CY - 40, 120, new int[]{Color.argb(66, 255, 255, 255), Color.argb(0, 255, 255, 255)}, new float[]{0, .5f}, Shader.TileMode.CLAMP);
-            hub = new RadialGradient(C - 8, CY - 11, 32, new int[]{Color.WHITE, Color.rgb(168, 200, 255), Color.rgb(61, 123, 255), Color.rgb(27, 63, 174), Color.rgb(13, 33, 112)}, new float[]{0, .1f, .4f, .72f, 1}, Shader.TileMode.CLAMP);
-            gem = new RadialGradient(98.6f, 6.4f, 4.6f, new int[]{Color.rgb(207, 230, 255), Color.rgb(61, 123, 255), Color.rgb(19, 44, 144)}, new float[]{0, .5f, 1}, Shader.TileMode.CLAMP);
-            glow = new RadialGradient(C, CY, 112, new int[]{Color.argb(95, 91, 149, 255), Color.argb(30, 42, 95, 224), Color.argb(0, 0, 0, 0)}, new float[]{0, .46f, 1}, Shader.TileMode.CLAMP);
+            hub = new RadialGradient(C - 8, CY - 11, 32, new int[]{Color.WHITE, Color.rgb(181, 204, 242), Color.rgb(90, 140, 226), Color.rgb(30, 80, 171), Color.rgb(13, 43, 112)}, new float[]{0, .1f, .4f, .72f, 1}, Shader.TileMode.CLAMP);
+            gem = new RadialGradient(98.6f, 6.4f, 4.6f, new int[]{Color.rgb(211, 227, 251), Color.rgb(90, 140, 226), Color.rgb(24, 64, 139)}, new float[]{0, .5f, 1}, Shader.TileMode.CLAMP);
+            glow = new RadialGradient(C, CY, 112, new int[]{Color.argb(95, 116, 159, 230), Color.argb(30, 48, 110, 218), Color.argb(0, 0, 0, 0)}, new float[]{0, .46f, 1}, Shader.TileMode.CLAMP);
             pinG = new LinearGradient(C - 8, -1, C + 8, 30, new int[]{Color.WHITE, Color.rgb(174, 187, 210), Color.rgb(238, 243, 251)}, null, Shader.TileMode.CLAMP);
             pin.moveTo(C, 30); pin.lineTo(C - 7.6f, 10); pin.lineTo(C + 7.6f, 10); pin.close(); pin.addCircle(C, 6.6f, 7.6f, Path.Direction.CW);
             setContentDescription(Ui.L("Vòng quay may mắn", "Lucky wheel"));
@@ -684,11 +684,11 @@ final class Wheel {
             p.setColor(Color.argb(220, 255, 255, 255)); c.drawCircle(C - 1.1f, 5.4f, 1f, p);
             // núm QUAY ở giữa
             if (hubOn) { float ph = (t % 1900) / 1900f; p.setColor(Color.argb((int) (150 * (1 - ph)), 143, 208, 255)); c.drawCircle(C, CY, 32.5f + 18 * ph, p); }
-            p.setColor(Color.rgb(11, 18, 51)); c.drawCircle(C, CY, 32.5f, p);
+            p.setColor(Color.rgb(11, 23, 51)); c.drawCircle(C, CY, 32.5f, p);
             p.setColor(Color.rgb(142, 156, 182)); c.drawCircle(C, CY, 31f, p);
-            p.setColor(Color.rgb(233, 238, 248)); c.drawCircle(C, CY, 29f, p);
+            p.setColor(Color.rgb(233, 239, 248)); c.drawCircle(C, CY, 29f, p);
             p.setShader(hub); c.drawCircle(C, CY, 25f, p); p.setShader(null);
-            if (!hubOn) { p.setColor(Color.argb(120, 8, 13, 40)); c.drawCircle(C, CY, 25f, p); }
+            if (!hubOn) { p.setColor(Color.argb(120, 8, 17, 40)); c.drawCircle(C, CY, 25f, p); }
             tp.setTextSize(11); tp.setColor(Color.WHITE); tp.setShadowLayer(1.5f, 0, .8f, Color.argb(130, 0, 0, 0));
             c.drawText(Ui.L("QUAY", "SPIN"), C, CY + 4, tp); tp.clearShadowLayer();
             c.restore();
@@ -740,8 +740,8 @@ final class Wheel {
             card = Ui.col(a, 12);
             card.setGravity(Gravity.CENTER_HORIZONTAL);
             card.setPadding(Ui.dp(20), Ui.dp(22), Ui.dp(20), Ui.dp(18));
-            GradientDrawable cb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(21, 33, 92), Color.rgb(11, 18, 51)});
-            cb.setCornerRadius(Ui.dp(22)); cb.setStroke(Ui.dp(big ? 1.5f : 1), big ? Color.argb(200, 242, 247, 255) : Color.argb(80, 220, 232, 255));
+            GradientDrawable cb = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{Color.rgb(21, 42, 92), Color.rgb(11, 23, 51)});
+            cb.setCornerRadius(Ui.dp(22)); cb.setStroke(Ui.dp(big ? 1.5f : 1), big ? Color.argb(200, 243, 247, 254) : Color.argb(80, 223, 234, 252));
             card.setBackground(cb);
             TextView t1 = Ui.text(a, (big ? "🎉 " : "🎁 ") + Ui.L("Chúc mừng! Bạn nhận được", "Congratulations! You got"), 15, Ui.SKY, true); t1.setGravity(Gravity.CENTER);
             TextView v = Ui.text(a, "−" + r.optInt("pct") + "%", 54, PEARL, true); v.setGravity(Gravity.CENTER);
@@ -749,7 +749,7 @@ final class Wheel {
             final String code = r.optString("code");
             LinearLayout cr = Ui.row(a, 8); cr.setGravity(Gravity.CENTER);
             TextView ct = Ui.text(a, code, 17, Color.WHITE, true); ct.setTypeface(Typeface.MONOSPACE, Typeface.BOLD);
-            ct.setPadding(Ui.dp(12), Ui.dp(7), Ui.dp(12), Ui.dp(7)); ct.setBackground(Ui.round(Color.argb(150, 6, 10, 28), 10, Color.argb(90, 220, 232, 255)));
+            ct.setPadding(Ui.dp(12), Ui.dp(7), Ui.dp(12), Ui.dp(7)); ct.setBackground(Ui.round(Color.argb(150, 6, 13, 28), 10, Color.argb(90, 223, 234, 252)));
             ct.setTextIsSelectable(true);
             Button cp = Ui.button(a, Ui.L("Chép mã", "Copy code"), Ui.GHOST);
             cp.setOnClickListener(x -> copy(a, code));
@@ -804,12 +804,12 @@ final class Wheel {
         final Path ray = new Path();
         Shader back;
         @Override protected void onSizeChanged(int w, int h, int ow, int oh) {
-            back = new RadialGradient(w / 2f, h / 2f * .92f, Math.max(1, Math.max(w, h) * .62f), new int[]{Color.rgb(22, 50, 122), Color.rgb(6, 11, 29), Color.rgb(3, 5, 12)}, new float[]{0, .62f, 1}, Shader.TileMode.CLAMP);
+            back = new RadialGradient(w / 2f, h / 2f * .92f, Math.max(1, Math.max(w, h) * .62f), new int[]{Color.rgb(22, 58, 122), Color.rgb(6, 13, 29), Color.rgb(3, 5, 12)}, new float[]{0, .62f, 1}, Shader.TileMode.CLAMP);
         }
         FxView(Context c, boolean big, boolean calm) {
             super(c); this.big = big; this.calm = calm;
-            cols = big ? new int[]{Color.WHITE, PEARL, PEARL2, Color.rgb(143, 208, 255), Color.rgb(61, 123, 255), Color.rgb(255, 231, 168)}
-                       : new int[]{Color.rgb(143, 208, 255), Color.rgb(61, 123, 255), PEARL, PEARL2, Color.rgb(60, 224, 176)};
+            cols = big ? new int[]{Color.WHITE, PEARL, PEARL2, Color.rgb(152, 201, 246), Color.rgb(90, 140, 226), Color.rgb(255, 231, 168)}
+                       : new int[]{Color.rgb(152, 201, 246), Color.rgb(90, 140, 226), PEARL, PEARL2, Color.rgb(60, 224, 176)};
         }
         void burst() {
             tb = SystemClock.uptimeMillis();
@@ -829,7 +829,7 @@ final class Wheel {
             if (b >= 0) {                                       // tia sáng xoay
                 float s = Math.min(1f, b / 900f), rr = 280 * dd * (.2f + .8f * s);
                 c.save(); c.rotate((now % 18000) / 18000f * 360f, cx, cy);
-                p.setShader(new RadialGradient(cx, cy, Math.max(1, rr), new int[]{Color.argb((int) (90 * s), 143, 208, 255), Color.argb(0, 143, 208, 255)}, new float[]{.16f, 1}, Shader.TileMode.CLAMP));
+                p.setShader(new RadialGradient(cx, cy, Math.max(1, rr), new int[]{Color.argb((int) (90 * s), 143, 208, 255), Color.argb(0, 152, 201, 246)}, new float[]{.16f, 1}, Shader.TileMode.CLAMP));
                 for (int i = 0; i < 18; i++) { ray.reset(); double a0 = Math.toRadians(i * 20), a1 = Math.toRadians(i * 20 + 8);
                     ray.moveTo(cx, cy); ray.lineTo(cx + rr * (float) Math.cos(a0), cy + rr * (float) Math.sin(a0)); ray.lineTo(cx + rr * (float) Math.cos(a1), cy + rr * (float) Math.sin(a1)); ray.close(); c.drawPath(ray, p); }
                 p.setShader(null); c.restore();
@@ -864,7 +864,7 @@ final class Wheel {
                 float v = Math.max(0f, Math.min(1f, (b - 120) / 500f)); bodyDy = 46 * s * v * v; bodySc = 1 - .3f * v; bodyA = 1 - v; }
             if (bodyA <= 0 && lidA <= 0) return;
             int a0 = (int) (255 * Math.min(1f, drop * 1.5f));
-            int top = big ? Color.WHITE : Color.rgb(79, 141, 255), bot = big ? PEARL2 : Color.rgb(42, 95, 224), rib = big ? Color.rgb(61, 123, 255) : PEARL;
+            int top = big ? Color.WHITE : Color.rgb(105, 152, 229), bot = big ? PEARL2 : Color.rgb(48, 110, 218), rib = big ? Color.rgb(90, 140, 226) : PEARL;
             c.save(); c.translate(cx, y0); c.scale(sc, sc); c.rotate(ang);
             if (bodyA > 0) {                                    // thân hộp + ruy băng dọc
                 c.save(); c.translate(0, bodyDy); c.scale(bodySc, bodySc);
@@ -875,10 +875,10 @@ final class Wheel {
             }
             if (lidA > 0) {                                     // nắp + nơ
                 c.save(); c.translate(lidDx, -bh / 2 - lh / 2 + 6 * s + lidDy); c.rotate(lidRot);
-                p.setShader(new LinearGradient(0, -lh / 2, 0, lh / 2, big ? Color.WHITE : Color.rgb(122, 174, 255), big ? Color.rgb(221, 232, 250) : Color.rgb(61, 123, 255), Shader.TileMode.CLAMP)); p.setAlpha((int) (a0 * lidA));
+                p.setShader(new LinearGradient(0, -lh / 2, 0, lh / 2, big ? Color.WHITE : Color.rgb(142, 178, 235), big ? Color.rgb(221, 232, 250) : Color.rgb(90, 140, 226), Shader.TileMode.CLAMP)); p.setAlpha((int) (a0 * lidA));
                 c.drawRoundRect(new RectF(-lw / 2, -lh / 2, lw / 2, lh / 2), 10 * s, 10 * s, p); p.setShader(null);
                 p.setColor(rib); p.setAlpha((int) (a0 * lidA)); c.drawRect(-11 * s, -lh / 2, 11 * s, lh / 2, p);
-                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(7 * s); p.setColor(big ? Color.rgb(61, 123, 255) : PEARL); p.setAlpha((int) (a0 * lidA));
+                p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(7 * s); p.setColor(big ? Color.rgb(90, 140, 226) : PEARL); p.setAlpha((int) (a0 * lidA));
                 c.save(); c.rotate(-24, -18 * s, -lh / 2 - 10 * s); c.drawOval(new RectF(-34 * s, -lh / 2 - 22 * s, -4 * s, -lh / 2 + 1 * s), p); c.restore();
                 c.save(); c.rotate(24, 18 * s, -lh / 2 - 10 * s); c.drawOval(new RectF(4 * s, -lh / 2 - 22 * s, 34 * s, -lh / 2 + 1 * s), p); c.restore();
                 p.setStyle(Paint.Style.FILL);

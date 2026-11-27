@@ -598,7 +598,7 @@ def pc_keymap(pg):
 
 PC_BTN = {1: 0, 3: 1, 2: 2, 6: 3, 7: 4}            # nút chuột pygame → nút của giao thức (trái · phải · giữa · 2 nút phụ)
 BAR, BAR_MIN = 72, 14              # thanh công cụ bên phải · khi ẩn còn dải mỏng (bấm để hiện lại)
-C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (7, 18, 38), (13, 29, 61), (214, 228, 250), (61, 134, 255), (232, 241, 255), (159, 180, 216), (61, 134, 255)   # 17/11c: tông "Thuỷ đêm" như danh sách máy
+C_BG, C_BAR, C_ICON, C_HOT, C_TXT, C_DIM, C_ACC = (13, 28, 66), (19, 42, 90), (214, 228, 250), (90, 142, 226), (234, 241, 253), (159, 181, 216), (90, 142, 226)   # 27/11: tông "đêm mây" theo logo (như web)
 
 
 # ================================================================ 🔗 ĐỒNG BỘ THAO TÁC giữa các máy đang mở trong app (18/11b)
@@ -1711,8 +1711,8 @@ def run_viewer(pid, dock=None, ipc=None, tok=None, pc=False):
 #     · Entry                                    → ô nhập bo tròn, viền xanh khi đang gõ
 #     · Scrollbar                                → thanh cuộn mảnh · Checkbutton → công tắc gạt
 #   Ảnh tự vẽ bằng Python thuần (PNG, có khử răng cưa) nên không cần thêm thư viện nào; mọi thứ khác (Tk, Canvas, Menu…) lấy thẳng từ tkinter.
-SUNK, SKY = "#06112a", "#8cc4ff"                   # nền ô nhập (lõm xuống) · xanh trời (chip Làm mới / Blue)
-BTN_TOP, BTN_BOT = "#5c9dff", "#2b6ef0"            # nút chính: bóng chuyển màu trên → dưới (giống nút "▶ Điều khiển" trên điện thoại)
+SUNK, SKY = "#091534", "#9dbeee"                   # nền ô nhập (lõm xuống) · xanh trời (chip Làm mới / Blue)
+BTN_TOP, BTN_BOT = "#74a1e7", "#3e7add"            # nút chính: bóng chuyển màu trên → dưới (giống nút "▶ Điều khiển" trên điện thoại)
 
 
 def _png(w, h, rows, alpha=False):
@@ -2018,7 +2018,7 @@ class Skin:
                         top = bot = sk.mix(ACC, out, .17); ring = sk.mix(ACC, out, .42); t = 1; fg = p._fg or TXT
                     else:                                                                     # ghost / soft / chip thường: nền tấm + viền mảnh
                         top = bot = CARD if out.lower() != CARD else sk.mix(BG, CARD, .45)
-                        ring = str(p._ring) if (p._ring and str(p._ring).lower() not in (LINE, CARD)) else sk.mix("#5aafff", top, .30); t = 1; fg = p._fg or TXT
+                        ring = str(p._ring) if (p._ring and str(p._ring).lower() not in (LINE, CARD)) else sk.mix("#73a2e6", top, .30); t = 1; fg = p._fg or TXT
                         if p._t == 0: ring, t = None, 0
                     if p._state == "disabled" and not p._dim: pass                           # khoá nhưng vẫn vẽ rõ (nút đang được chọn)
                     elif p._state == "disabled":
@@ -2115,7 +2115,7 @@ class Skin:
             def __init__(e, master=None, cnf={}, **kw):
                 kw = dict(cnf or {}, **kw)
                 for k in ("bg", "background", "relief", "bd", "borderwidth", "highlightthickness", "highlightbackground", "highlightcolor"): kw.pop(k, None)
-                e._ring = sk.mix("#5aafff", SUNK, .36)
+                e._ring = sk.mix("#73a2e6", SUNK, .36)
                 e._box = Frame(master, bg=SUNK, highlightthickness=1, highlightbackground=e._ring, radius=sk.R_IN)
                 kw.setdefault("insertbackground", TXT); kw.setdefault("fg", TXT)
                 tk.Entry.__init__(e, e._box, bg=SUNK, relief="flat", bd=0, highlightthickness=0, disabledbackground=SUNK, readonlybackground=SUNK,
@@ -2157,7 +2157,7 @@ class Skin:
                 if s._hi - s._lo >= 0.999: return
                 h, n, y = s._span(); w = max(1, s.winfo_width()); k = sk.px(6 if (s._hot or s._grab is not None) else 4)
                 s.create_line(w / 2.0, y + k / 2.0 + 1, w / 2.0, y + n - k / 2.0 - 1, width=k, capstyle="round",
-                              fill=sk.mix("#5aafff", BG, .55 if (s._hot or s._grab is not None) else .32))
+                              fill=sk.mix("#73a2e6", BG, .55 if (s._hot or s._grab is not None) else .32))
 
             def _press(s, e):
                 h, n, y = s._span()
@@ -2203,9 +2203,9 @@ class Skin:
                 if out != str(tk.Canvas.cget(s, "bg")): tk.Canvas.configure(s, bg=out)
                 w, h = max(1, s.winfo_width()), s._h; k = h / 2.0
                 x = k + (s._val - s._lo) / max(1e-9, s._hi - s._lo) * (w - 2 * k); t = sk.px(6)
-                s.create_line(k, k, w - k, k, width=t, capstyle="round", fill=sk.mix("#5aafff", out, .22))
+                s.create_line(k, k, w - k, k, width=t, capstyle="round", fill=sk.mix("#73a2e6", out, .22))
                 if x > k: s.create_line(k, k, x, k, width=t, capstyle="round", fill=ACC)
-                d = sk.px(18); s._knob = sk.rr(d, d, d // 2, out, "#ffffff", "#dbe8ff", sk.mix(ACC, "#ffffff", .6), sk.ring(1))
+                d = sk.px(18); s._knob = sk.rr(d, d, d // 2, out, "#ffffff", "#dee9fc", sk.mix(ACC, "#ffffff", .6), sk.ring(1))
                 s.create_image(int(x), int(k), image=s._knob)
 
             def _drag(s, e):
@@ -2247,7 +2247,7 @@ class PlainSkin:
     def Button(self, master=None, **kw):
         kind = kw.get("kind") or "ghost"
         kw.setdefault("bg", {"primary": ACC, "danger": "#3a1d27", "flat": BG}.get(kind, LINE)); kw.setdefault("fg", kw.get("tint") or TXT)
-        o = dict(activebackground="#4b8cff" if kind == "primary" else "#2a3a5c", activeforeground=TXT, relief="flat", bd=0, cursor="hand2"); o.update(self._kw(kw))
+        o = dict(activebackground="#6696e4" if kind == "primary" else "#2a3d5c", activeforeground=TXT, relief="flat", bd=0, cursor="hand2"); o.update(self._kw(kw))
         return self._tk.Button(master, **o)
 
 
@@ -2438,8 +2438,8 @@ def install_modals(app):
 
 # ================================================================ CỬA SỔ DANH SÁCH (tkinter)
 # 17/11c: bảng màu "Thuỷ đêm" của app điện thoại (nền xanh đêm · tấm nổi · viền xanh mờ · chữ trắng xanh)
-BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#071226", "#0d1d3d", "#244978", "#e8f1ff", "#9fb4d8", "#3d86ff", "#3ce0b0", "#ffd666", "#ff6b81"
-BRAND = "#4f95ff"          # màu chữ "Blue" trong tên CloudBlue
+BG, CARD, LINE, TXT, DIM, ACC, OK, WARN, BAD = "#0d1c42", "#132a5a", "#2a4b82", "#eaf1fd", "#9fb5d8", "#5a8ee2", "#3ce0b0", "#ffd666", "#ff6b81"
+BRAND = "#6999e5"          # màu chữ "Blue" trong tên CloudBlue
 STATUS = {"active": ("Đang chạy", OK), "pending": ("Đang tạo…", WARN), "expired": ("Hết hạn — chờ gia hạn", BAD), "error": ("Lỗi", BAD)}
 
 
@@ -2778,10 +2778,10 @@ class AndTiles:
         cur = self.get()
         for v, hint, t, inner, k, n, h in self.tiles:
             w = self.why(v) if self.why else ""; off = bool(w); on = (v == cur) and not off
-            bg = "#1c3f93" if on else CARD
-            t.config(bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="arrow" if off else "hand2")
+            bg = "#1c4793" if on else CARD
+            t.config(bg=bg, highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE, cursor="arrow" if off else "hand2")
             inner.config(bg=bg)
-            k.config(bg=bg, text="✓ Android" if on else "Android", fg="#cfe4ff" if on else ("#55607a" if off else DIM))
+            k.config(bg=bg, text="✓ Android" if on else "Android", fg="#d3e3fb" if on else ("#55607a" if off else DIM))
             n.config(bg=bg, fg="#ffffff" if on else ("#55607a" if off else TXT))
             h.config(bg=bg, text=("Bảo trì" if w == "off" else "Hết chỗ") if off else hint, fg=BAD if off else WARN)
 
@@ -2829,7 +2829,7 @@ class TierList:
         for t, c, btn, more, ic in self.rows:
             on = self.dlg.tier_on(t)
             c.config(highlightthickness=2 if on else 1, highlightbackground=t["color"] if on else _mix(t["color"], BG, .45))
-            btn.config(text="✓ Đã chọn" if on else "Chọn", bg=t["color"] if on else _mix(t["color"], CARD, .30), fg="#06112b" if on else TXT)
+            btn.config(text="✓ Đã chọn" if on else "Chọn", bg=t["color"] if on else _mix(t["color"], CARD, .30), fg="#06122b" if on else TXT)
             if on: more.pack(fill="x", padx=(ic.winfo_reqwidth() + 8, 0), pady=(6, 0))
             else: more.pack_forget()
 
@@ -3657,7 +3657,7 @@ class OrderDlg(Dlg):
         f = tk.Frame(self.body, bg=BG); f.pack(fill="x", padx=18, pady=(16, 6))
         hr = tk.Frame(f, bg=BG); hr.pack(fill="x")
         m = tk.px(28); cv = tk.Canvas(hr, width=m, height=m, bg=BG, highlightthickness=0); cv.pack(side="left", padx=(0, 10))
-        cv.create_oval(2, 2, m - 2, m - 2, fill=ACC, outline="#9fd0ff", width=1); cv.create_text(m // 2, m // 2, text=str(n), fill="white", font=("Segoe UI", 11, "bold"))
+        cv.create_oval(2, 2, m - 2, m - 2, fill=ACC, outline="#adc9f1", width=1); cv.create_text(m // 2, m // 2, text=str(n), fill="white", font=("Segoe UI", 11, "bold"))
         tx = tk.Frame(hr, bg=BG); tx.pack(side="left", fill="x", expand=True)
         self.label(tx, title, ("Segoe UI", 12, "bold"), TXT).pack(fill="x")
         if sub: self.label(tx, sub, self.app.f_s, DIM, wraplength=500).pack(fill="x")
@@ -4453,7 +4453,7 @@ class VpsBuyDlg(Dlg):
     """🖥 Trang VPS GPU (21/11e) — 1 cấu hình: thẻ cấu hình nổi bật · ① chọn Windows · ② chọn thời gian · mã giảm giá · chân trang tổng tiền + Mua ngay.
        Giá / gói ngày / tên / cấu hình / bản Windows đọc từ web (admin chỉnh trên web → app đổi theo khi mở trang); bấm mua → đọc lại giá mới nhất rồi mới hỏi."""
     VIDEO = "/video/vps-gpu.mp4"           # video hướng dẫn 3 cách điều khiển (app điện thoại · app máy tính · web)
-    HERO = "#16306f"
+    HERO = "#16366f"
 
     def __init__(self, app):
         super().__init__(app, "🖥 VPS GPU", 640, 780)
@@ -4506,7 +4506,7 @@ class VpsBuyDlg(Dlg):
         n_mine = len([x for x in ((self.mine or {}).get("items") or []) if isinstance(x, dict) and x.get("state") in ("active", "waiting")
                       and str((x.get("pc") or {}).get("id") or "") not in vmp])
         if n_mine:                                                      # 21.11k: trang này chỉ để MUA — quản lý / điều khiển ở Máy của tôi (như Cloud Phone)
-            mb_ = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=_mix("#7cbcff", CARD, .5), radius=14); mb_.pack(fill="x", padx=18, pady=(12, 0))
+            mb_ = tk.Frame(self.body, bg=CARD, highlightthickness=1, highlightbackground=_mix("#90b5eb", CARD, .5), radius=14); mb_.pack(fill="x", padx=18, pady=(12, 0))
             tk.Label(mb_, text=L(f"🖥 Bạn đang có {n_mine} VPS GPU — điều khiển, gia hạn, cài lại, huỷ máy ở Máy của tôi.",
                                  f"🖥 You have {n_mine} GPU VPS — control, renew, reinstall or cancel them in My machines."),
                      font=app.f_s, fg=TXT, bg=CARD, anchor="w", justify="left", wraplength=400).pack(side="left", fill="x", expand=True, padx=14, pady=10)
@@ -4525,7 +4525,7 @@ class VpsBuyDlg(Dlg):
         nm, ds, ft = vps_texts(self.prod)
 
         # ---- thẻ cấu hình (1 cấu hình duy nhất → to, nổi bật)
-        hb = self.HERO; edge = _mix("#7cbcff", hb, .55)
+        hb = self.HERO; edge = _mix("#90b5eb", hb, .55)
         hero = tk.Frame(self.body, bg=hb, highlightthickness=2, highlightbackground=edge, radius=22); hero.pack(fill="x", padx=18, pady=(14, 4))
         top = tk.Frame(hero, bg=hb); top.pack(fill="x", padx=20, pady=(18, 6))
         tk.Label(top, text="🖥", font=("Segoe UI Emoji", 30), bg=hb, fg=TXT).pack(side="left", padx=(0, 14))
@@ -4534,7 +4534,7 @@ class VpsBuyDlg(Dlg):
         mid = tk.Frame(top, bg=hb); mid.pack(side="left", fill="x", expand=True)
         fitwrap(tk.Label(mid, text=nm, font=("Segoe UI", 19, "bold"), fg="#ffffff", bg=hb, anchor="w", justify="left")).pack(fill="x")
         fitwrap(tk.Label(mid, text=L("Máy PC thật · 1 cấu hình · tự giao + tự cài Windows", "Real PC · one configuration · auto delivery + Windows setup"),
-                         font=app.f_s, fg="#cbdcff", bg=hb, anchor="w", justify="left")).pack(fill="x")
+                         font=app.f_s, fg="#cfdffb", bg=hb, anchor="w", justify="left")).pack(fill="x")
         if ft:
             chips = tk.Frame(hero, bg=hb); chips.pack(fill="x", padx=20, pady=(4, 0))
             row = None
@@ -4542,10 +4542,10 @@ class VpsBuyDlg(Dlg):
                 if i % 3 == 0: row = tk.Frame(chips, bg=hb); row.pack(fill="x", anchor="w")
                 tk.Label(row, text=vps_icon(f) + "  " + f, font=("Segoe UI", 10, "bold"), bg=_mix("#ffffff", hb, .13), fg="#ffffff", padx=11, pady=5,
                          pill=True).pack(side="left", padx=(0, 7), pady=4)
-        if ds: fitwrap(tk.Label(hero, text=ds, font=app.f_s, fg="#d2e2ff", bg=hb, anchor="w", justify="left", wraplength=540)).pack(fill="x", padx=20, pady=(6, 0))
+        if ds: fitwrap(tk.Label(hero, text=ds, font=app.f_s, fg="#d5e4fc", bg=hb, anchor="w", justify="left", wraplength=540)).pack(fill="x", padx=20, pady=(6, 0))
         best = min(pl, key=lambda p: p[1] / p[0])
         pr = tk.Frame(hero, bg=hb); pr.pack(fill="x", padx=20, pady=(10, 18))
-        tk.Label(pr, text=L("chỉ từ", "from"), font=app.f_s, fg="#cbdcff", bg=hb).pack(side="left", anchor="s", pady=(0, 4))
+        tk.Label(pr, text=L("chỉ từ", "from"), font=app.f_s, fg="#cfdffb", bg=hb).pack(side="left", anchor="s", pady=(0, 4))
         tk.Label(pr, text=vnd(ctv(self.prof, best[1]) / best[0]) + L(" / ngày", " / day"), font=("Segoe UI", 20, "bold"), fg="#ffffff", bg=hb).pack(side="left", padx=(8, 0))
 
         # ---- quyền lợi
@@ -4629,17 +4629,17 @@ class VpsBuyDlg(Dlg):
         if not self.alive or not hasattr(self, "rows"): return
         ready = bool((self.info or {}).get("ready"))
         for o, t, inner, a1, a2, a3 in self.tiles:
-            on = o["id"] == self.os; bg = "#1c3f93" if on else CARD
-            t.config(bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            on = o["id"] == self.os; bg = "#1c4793" if on else CARD
+            t.config(bg=bg, highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE)
             for w in (inner, a1, a2, a3): w.config(bg=bg)
-            a1.config(text=("✓ " if on else "") + os_split(o)[0], fg="#cfe4ff" if on else DIM); a2.config(fg="#ffffff" if on else TXT)
+            a1.config(text=("✓ " if on else "") + os_split(o)[0], fg="#d3e3fb" if on else DIM); a2.config(fg="#ffffff" if on else TXT)
         for d, r, chk, ws in self.rows:
-            on = d == self.days; bg = "#17336f" if on else CARD
-            r.config(highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            on = d == self.days; bg = "#17386f" if on else CARD
+            r.config(highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE)
             for w in ws:
                 try: w.config(bg=bg)
                 except Exception: pass
-            chk.config(text="✓" if on else "○", fg="#7cbcff" if on else DIM)
+            chk.config(text="✓" if on else "○", fg="#90b5eb" if on else DIM)
         o = next((x for x in self.oss if x["id"] == self.os), {})
         rdy = o.get("ready") if isinstance(o.get("ready"), bool) else ready
         lin = vps_lin(o.get("id"))
@@ -5120,7 +5120,7 @@ def vm_sig(data, prof=None):
 
 def vm_hero(app, parent, info):
     """Thẻ nổi bật đầu trang Thuê (như VPS GPU): tên · còn chỗ · cấu hình · quyền lợi · giá thấp nhất / ngày."""
-    tk = app.tk; hb = "#14307a"; edge = _mix("#7cbcff", hb, .55)
+    tk = app.tk; hb = "#153979"; edge = _mix("#90b5eb", hb, .55)
     ps = vm_plans(info); free = any(p.get("free") for p in ps); low = vm_low_day(info); mt = vm_maint_msg(info, getattr(app, "prof", None))
     hero = tk.Frame(parent, bg=hb, highlightthickness=2, highlightbackground=edge, radius=22)
     top = tk.Frame(hero, bg=hb); top.pack(fill="x", padx=18, pady=(14, 4))
@@ -5130,11 +5130,11 @@ def vm_hero(app, parent, info):
              font=("Segoe UI", 9, "bold"), tint=WARN if mt or not free else OK, padx=10, pady=3).pack(anchor="e")
     if low:
         pr = tk.Frame(rt, bg=hb); pr.pack(anchor="e", pady=(6, 0))
-        tk.Label(pr, text=L("chỉ từ ", "from "), font=app.f_s, fg="#cbdcff", bg=hb).pack(side="left", anchor="s", pady=(0, 3))
+        tk.Label(pr, text=L("chỉ từ ", "from "), font=app.f_s, fg="#cfdffb", bg=hb).pack(side="left", anchor="s", pady=(0, 3))
         tk.Label(pr, text=vnd(low) + L(" / ngày", " / day"), font=("Segoe UI", 17, "bold"), fg="#ffffff", bg=hb).pack(side="left")
     mid = tk.Frame(top, bg=hb); mid.pack(side="left", fill="x", expand=True)
     tk.Label(mid, text=VM_NAME + " BLUE", font=("Segoe UI", 18, "bold"), fg="#ffffff", bg=hb, anchor="w").pack(fill="x")
-    fitwrap(tk.Label(mid, text=L("Máy ảo Windows riêng · SSD NVMe · chạy 24/7", "Your own Windows VM · NVMe SSD · on 24/7"), font=app.f_s, fg="#cbdcff", bg=hb,
+    fitwrap(tk.Label(mid, text=L("Máy ảo Windows riêng · SSD NVMe · chạy 24/7", "Your own Windows VM · NVMe SSD · on 24/7"), font=app.f_s, fg="#cfdffb", bg=hb,
                      anchor="w", justify="left")).pack(fill="x")
     def span(a):
         a = [x for x in a if x is not None]
@@ -5154,7 +5154,7 @@ def vm_hero(app, parent, info):
         if not grp: continue
         row = flow_box(tk, hero, hb); row.pack(fill="x", padx=18, pady=(6, 0))
         for ic, t in grp:
-            tk.Label(row, text=ic + "  " + t, font=("Segoe UI", 10 if big else 9, "bold"), bg=_mix("#ffffff", hb, .13 if big else .07), fg="#ffffff" if big else "#d9e6ff",
+            tk.Label(row, text=ic + "  " + t, font=("Segoe UI", 10 if big else 9, "bold"), bg=_mix("#ffffff", hb, .13 if big else .07), fg="#ffffff" if big else "#dce8fc",
                      padx=10 if big else 8, pady=4 if big else 2, pill=True)
     tk.Frame(hero, bg=hb, height=12).pack(fill="x")
     return hero
@@ -5382,16 +5382,16 @@ class VmBuyDlg(Dlg):
         if not self.alive or not hasattr(self, "tiles"): return
         b, info = self.b, self.info
         for x, t, ws in self.tiles:
-            on = not b["cust"] and x["id"] == b["plan"]; bg = "#17336f" if on else CARD
-            t.config(highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            on = not b["cust"] and x["id"] == b["plan"]; bg = "#17386f" if on else CARD
+            t.config(highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE)
             for w in ws:
                 try: w.config(bg=bg)
                 except Exception: pass
             try: ws[1].config(text=("✓ " if on else "") + str(x.get("name") or x["id"])[:24])
             except Exception: pass
         if self.cust_t:
-            t, ws = self.cust_t; on = b["cust"]; bg = "#17336f" if on else CARD
-            t.config(highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE)
+            t, ws = self.cust_t; on = b["cust"]; bg = "#17386f" if on else CARD
+            t.config(highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE)
             for w in ws:
                 try: w.config(bg=bg)
                 except Exception: pass
@@ -5410,11 +5410,11 @@ class VmBuyDlg(Dlg):
             self.label(self.os_box, L("Chưa có bản Windows nào sẵn sàng — nhắn shop.", "No Windows image is ready yet."), self.app.f_s, WARN).pack(fill="x")
         for k, i in enumerate(shown):
             self.os_box.grid_columnconfigure(k % 3, weight=1, uniform="vmo")
-            can = i in ok; on = can and i["id"] == b["image"]; bg = "#1c3f93" if on else CARD
-            t = tk.Frame(self.os_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="hand2" if can else "arrow", radius=14)
+            can = i in ok; on = can and i["id"] == b["image"]; bg = "#1c4793" if on else CARD
+            t = tk.Frame(self.os_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE, cursor="hand2" if can else "arrow", radius=14)
             t.grid(row=k // 3, column=k % 3, sticky="nsew", padx=(0 if k % 3 == 0 else 6, 0), pady=3)
             k0, k1 = vm_os_key(i.get("name"))
-            ls = [tk.Label(t, text=("✓ " if on else "") + k0, font=("Segoe UI", 9, "bold"), bg=bg, fg="#cfe4ff" if on else DIM),
+            ls = [tk.Label(t, text=("✓ " if on else "") + k0, font=("Segoe UI", 9, "bold"), bg=bg, fg="#d3e3fb" if on else DIM),
                   tk.Label(t, text=k1, font=("Segoe UI", 15, "bold"), bg=bg, fg=("#ffffff" if on else TXT) if can else DIM),
                   tk.Label(t, text=("⚡ " + L("có sẵn", "ready")) if can else (L(f"cần gói từ {vm_gb(i.get('min_ram'))} RAM", f"needs {vm_gb(i.get('min_ram'))} RAM") if num(i.get("min_ram")) > ram
                                                                               else L(f"cần ổ từ {int(num(i.get('min_disk')))} GB", f"needs a {int(num(i.get('min_disk')))} GB disk")),
@@ -5430,8 +5430,8 @@ class VmBuyDlg(Dlg):
         prs = [(d, self.price_for(d)) for d in ds]; base = (prs[0][1] / prs[0][0]) if prs else 0
         for k, (d, pr) in enumerate(prs):
             self.days_box.grid_columnconfigure(k, weight=1, uniform="vmd")
-            on = d == b["days"]; bg = "#17336f" if on else CARD; pd = pr / d
-            t = tk.Frame(self.days_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#7cbcff" if on else LINE, cursor="hand2", radius=14)
+            on = d == b["days"]; bg = "#17386f" if on else CARD; pd = pr / d
+            t = tk.Frame(self.days_box, bg=bg, highlightthickness=2 if on else 1, highlightbackground="#90b5eb" if on else LINE, cursor="hand2", radius=14)
             t.grid(row=0, column=k, sticky="nsew", padx=(0 if k == 0 else 6, 0), pady=3)
             sv = round((1 - pd / base) * 100) if base > 0 else 0
             ls = [tk.Label(t, text=("✓ " if on else "") + f"{d} " + L("ngày", "days"), font=("Segoe UI", 11, "bold"), bg=bg, fg=TXT),
@@ -5982,9 +5982,9 @@ class TopupDlg(Dlg):
 import math
 
 WHEEL = {"st": None, "t": 0.0, "dlg": None}
-W_INK, W_PEARL, W_PEARL2, W_SUB, W_SKY = "#0b1433", "#f2f7ff", "#c9d7ee", "#b9c8ea", "#8fd0ff"
-W_DEEP, W_CARD, W_FOOT, W_EDGE, W_TILE = "#0d1640", "#132160", "#0a1132", "#2a3a78", "#14205a"
-W_REV = "#060b1d"
+W_INK, W_PEARL, W_PEARL2, W_SUB, W_SKY = "#0b1733", "#f3f7fe", "#c9d7ee", "#b9cbea", "#98c9f6"
+W_DEEP, W_CARD, W_FOOT, W_EDGE, W_TILE = "#0d1c40", "#132a60", "#0a1632", "#2a4578", "#14295a"
+W_REV = "#060d1d"
 
 ERRORS.update({                                                  # 🎡 vòng quay may mắn (SQL v34c)
     "PROMO_NOT_YOURS": "Mã này là mã riêng của tài khoản khác — chỉ tài khoản được tặng mới dùng được.",
@@ -6118,10 +6118,10 @@ def wheel_icon(cv, m):
     """Vòng quay nhỏ trên thẻ (giống icon web)."""
     k = m / 48.0; c = 24 * k; r = 19 * k
     for i in range(8):
-        col = W_PEARL if i % 4 == 1 else "#3d7bff" if i % 2 else "#1b2a63"
+        col = W_PEARL if i % 4 == 1 else "#5a8ce2" if i % 2 else "#1b3163"
         cv.create_arc(c - r, c - r, c + r, c + r, start=90 - (i + .5) * 45, extent=45, fill=col, outline="#9eacc8", width=1)
     cv.create_oval(c - 21 * k, c - 21 * k, c + 21 * k, c + 21 * k, outline="#dfe6f2", width=max(2, round(3 * k)))
-    cv.create_oval(c - 5.5 * k, c - 5.5 * k, c + 5.5 * k, c + 5.5 * k, fill="#2a5fe0", outline="#e9eef8", width=max(1, round(1.6 * k)))
+    cv.create_oval(c - 5.5 * k, c - 5.5 * k, c + 5.5 * k, c + 5.5 * k, fill="#306eda", outline="#e9eff8", width=max(1, round(1.6 * k)))
     cv.create_polygon(c, 9 * k, c - 4 * k, 1.5 * k, c + 4 * k, 1.5 * k, fill="#eef3fb", outline=W_INK)
 
 def wheel_banner(owner, holder):
@@ -6141,7 +6141,7 @@ def wheel_banner(owner, holder):
     f = tk.Frame(holder, bg=W_CARD, highlightbackground="#5a6c9c", highlightthickness=1); f.pack(fill="x", pady=(8, 0))
     b = app.btn(f, f"🎡 Quay ngay · {left}" if hot else "Xem giải" if soon else "🎡 Mở vòng quay",
                 lambda: wheel_open(app, owner if isinstance(owner, Dlg) else None), "primary" if hot else "soft")
-    if not hot: b.config(bg="#24357a", activebackground="#33489a")
+    if not hot: b.config(bg="#24427a", activebackground="#33579a")
     b.pack(side="right", padx=10, pady=8)
     m = int(44 * sc); ic = tk.Canvas(f, width=m, height=m, bg=W_CARD, highlightthickness=0); ic.pack(side="left", padx=(10, 0), pady=8)
     wheel_icon(ic, m)
@@ -6179,8 +6179,8 @@ def wheel_after_top(dlg, amt):
 
 class WheelDlg(Dlg):
     """🎡 Hộp vòng quay: vẽ trên Canvas, quay tới đúng ô máy chủ báo, ẩn số khi quay, mở quà, quay thêm có hỏi lại, hướng dẫn, mã của tôi, thể lệ."""
-    LO = ("#22337f", "#16236a"); LO_IN = ("#121c4f", "#0d1540"); MID, MID_IN = "#4a86ff", "#1f4bc4"; HI, HI_IN = "#f4f7fc", "#c2cfe8"
-    GONE, GONE_IN = "#2c3352", "#1a1f36"; MYS = ("#1d2c74", "#283d9c"); MYS_IN = ("#0e1648", "#142060")
+    LO = ("#22427f", "#16326a"); LO_IN = ("#12244f", "#0d1c40"); MID, MID_IN = "#6594e4", "#225bc1"; HI, HI_IN = "#f4f7fc", "#c2d0e8"
+    GONE, GONE_IN = "#2c3752", "#1a2236"; MYS = ("#1d3b74", "#28509c"); MYS_IN = ("#0e1e48", "#142a60")
     LK = (("#ffe08a", "#7a5a10"), ("#5cf0c2", "#0d7a5f"), ("#20b98c", "#0a5546"), ("#11524a", "#062a28"))   # 🍀 mặt vé: cao nhất vàng → thấp nhất xanh đậm
     LK_MYS = ("#0f5a4a", "#137a63"); LK_MYS_IN = ("#04261f", "#073a30")
 
@@ -6252,7 +6252,7 @@ class WheelDlg(Dlg):
 
     def render(self):
         s = self.st or {}; left = int(num(s.get("left"))); st = s.get("state", "off"); a, n = wheel_first(s); has = st == "on" and left > 0
-        self.left_l.config(text=f"{left} lượt", fg=W_INK if has else "#cfe0ff", bg=W_PEARL if has else "#16205a")
+        self.left_l.config(text=f"{left} lượt", fg=W_INK if has else "#d3e2fb", bg=W_PEARL if has else "#16295a")
         self.sub_l.config(text=(f"Bắt đầu {wheel_when(s.get('starts_at'))}. Nạp {vnd(a)} = {n} lượt quay." if st == "soon"
                                 else f"Nạp {vnd(a)} = {n} lượt · lượt nào cũng trúng mã giảm giá · số dư {vnd(self.balance())}" if st == "on"
                                 else "Chương trình đã kết thúc. Mã đã trúng vẫn dùng được đến hết hạn." if st == "ended"
@@ -6289,10 +6289,10 @@ class WheelDlg(Dlg):
         elif s.get("can_buy"): txt, self.act, kind = (f"➕ Quay thêm · {vnd(s.get('price'))}/lượt" if num(s.get("earned")) > 0 else f"➕ Mua lượt quay · {vnd(s.get('price'))}"), "buy", "pearl"
         elif num(s.get("price")) > 0 and s.get("qualified") and s.get("buy_left") == 0: txt, self.act, kind = "Hôm nay đã mua đủ lượt — nạp thêm để nhận lượt mới", "top", "soft"
         else: txt, self.act, kind = f"💳 Nạp {vnd(a)} để nhận {n} lượt quay", "top", "soft"
-        bg = {"primary": ACC, "pearl": W_PEARL2, "soft": "#24357a"}[kind]
+        bg = {"primary": ACC, "pearl": W_PEARL2, "soft": "#24427a"}[kind]
         try:
-            self.go.config(text=txt, state="disabled" if dis else "normal", bg="#1c2550" if dis else bg, fg=W_INK if kind == "pearl" else TXT,
-                           activebackground="#ffffff" if kind == "pearl" else "#4b8cff", activeforeground=W_INK if kind == "pearl" else TXT,
+            self.go.config(text=txt, state="disabled" if dis else "normal", bg="#1c2b50" if dis else bg, fg=W_INK if kind == "pearl" else TXT,
+                           activebackground="#ffffff" if kind == "pearl" else "#6696e4", activeforeground=W_INK if kind == "pearl" else TXT,
                            disabledforeground="#8f9bbd")
         except Exception: pass
         self.hub_on = not self.busy and not self.luck and st == "on" and (left > 0 or bool(s.get("can_buy")))
@@ -6421,12 +6421,12 @@ class WheelDlg(Dlg):
         if cv is None or not cv.winfo_exists(): return
         cv.delete("all"); k = self.S / 200.0; cx, cy, R = 100 * k, 108 * k, 85 * k; self.geo = (k, cx, cy, R)
         for x, y, r in ((12, 9, 1), (186, 14, 1), (172, 46, 1.4), (20, 60, 1), (190, 92, 1), (8, 150, 1.2), (192, 168, 1), (28, 196, 1)):
-            cv.create_oval(x * k - r, y * k - r, x * k + r, y * k + r, fill="#cfe0ff", outline="")              # sao lấp lánh
+            cv.create_oval(x * k - r, y * k - r, x * k + r, y * k + r, fill="#d3e2fb", outline="")              # sao lấp lánh
         for i in range(8, 0, -1):                                                                          # quầng sáng sân khấu
-            rr = R + 20 * k * i / 8; cv.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, fill=wheel_mix(W_DEEP, "#1d3a8c", (8 - i) / 8 * .85), outline="")
-        cv.create_oval(cx - 70 * k, cy + 92 * k, cx + 70 * k, cy + 104 * k, fill="#091033", outline="")         # bóng đổ dưới chân
+            rr = R + 20 * k * i / 8; cv.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, fill=wheel_mix(W_DEEP, "#1d458c", (8 - i) / 8 * .85), outline="")
+        cv.create_oval(cx - 70 * k, cy + 92 * k, cx + 70 * k, cy + 104 * k, fill="#091533", outline="")         # bóng đổ dưới chân
         self.draw_disc(); O = ("over",)
-        for i, col in enumerate(("#0b1233", "#8e9cb6", "#c8d2e3", "#f4f7fc", "#e3e9f4", "#b8c4d9", "#dfe6f2", "#9eabc4", "#0b1233")):   # viền bạch kim
+        for i, col in enumerate(("#0b1733", "#8e9cb6", "#c8d2e3", "#f4f7fc", "#e3e9f4", "#b8c5d9", "#dfe6f2", "#9eabc4", "#0b1733")):   # viền bạch kim
             rr = R + (i * 1.5 + .5) * k; cv.create_oval(cx - rr, cy - rr, cx + rr, cy + rr, outline=col, width=max(1, round(1.6 * k)), tags=O)
         self.bulb_ids = []
         for i in range(24):                                                                                # 24 bóng đèn: quầng vàng + lõi trắng
@@ -6436,13 +6436,13 @@ class WheelDlg(Dlg):
         cv.create_polygon(cx, 31 * k, cx - 8 * k, 11 * k, cx + 8 * k, 11 * k, fill="#dfe6f2", outline=W_INK, width=1, tags=O)   # kim bạch kim + đá sapphire
         cv.create_line(cx, 29 * k, cx - 5.5 * k, 13 * k, fill="#ffffff", tags=O)
         cv.create_oval(cx - 7.5 * k, 1 * k, cx + 7.5 * k, 16 * k, fill="#eef3fb", outline=W_INK, width=1, tags=O)
-        cv.create_oval(cx - 4 * k, 4.5 * k, cx + 4 * k, 12.5 * k, fill="#3d7bff", outline="#132c90", tags=O)
+        cv.create_oval(cx - 4 * k, 4.5 * k, cx + 4 * k, 12.5 * k, fill="#5a8ce2", outline="#18408b", tags=O)
         cv.create_oval(cx - 2.2 * k, 5.6 * k, cx - .4 * k, 7.4 * k, fill="#ffffff", outline="", tags=O)
         on = self.hub_on and not self.busy; H = ("over", "hub")
-        if on: cv.create_oval(cx - 36 * k, cy - 36 * k, cx + 36 * k, cy + 36 * k, outline="#6f9cff", width=max(2, round(2.4 * k)), tags=O)
-        for rr, col in ((33, "#0b1233"), (31.5, "#8e9cb6"), (29.5, "#e9eef8"), (26, "#c6d1e6"), (24, "#0d2170"), (20, "#1b3fae"), (15, "#3d7bff")):  # núm QUAY
-            cv.create_oval(cx - rr * k, cy - rr * k, cx + rr * k, cy + rr * k, fill=col if on or rr > 24 else wheel_mix(col, "#2a3150", .55), outline="", tags=H)
-        cv.create_oval(cx - 12 * k, cy - 16 * k, cx - 2 * k, cy - 9 * k, fill="#9cc0ff" if on else "#5f6f95", outline="", tags=H)
+        if on: cv.create_oval(cx - 36 * k, cy - 36 * k, cx + 36 * k, cy + 36 * k, outline="#85aae9", width=max(2, round(2.4 * k)), tags=O)
+        for rr, col in ((33, "#0b1733"), (31.5, "#8e9cb6"), (29.5, "#e9eff8"), (26, "#c6d2e6"), (24, "#0d2b70"), (20, "#1e50ab"), (15, "#5a8ce2")):  # núm QUAY
+            cv.create_oval(cx - rr * k, cy - rr * k, cx + rr * k, cy + rr * k, fill=col if on or rr > 24 else wheel_mix(col, "#2a3550", .55), outline="", tags=H)
+        cv.create_oval(cx - 12 * k, cy - 16 * k, cx - 2 * k, cy - 9 * k, fill="#abc5f0" if on else "#5f6f95", outline="", tags=H)
         cv.create_text(cx, cy + .5 * k, text="QUAY", font=("Segoe UI", -int(10.5 * k), "bold"), fill="#ffffff" if on else "#aab4cf", tags=H)
 
     def draw_disc(self):
@@ -6466,7 +6466,7 @@ class WheelDlg(Dlg):
                 cv.create_arc(cx - rr, cy - rr, cx + rr, cy + rr, start=st, extent=seg, fill=wheel_mix(c1, c2, t), outline="", style="pieslice", tags=T)
         for i in range(n):                                                 # vạch chia + đinh tán
             a = math.radians((i - .5) * seg + self.rot)
-            cv.create_line(cx, cy, cx + R * math.sin(a), cy - R * math.cos(a), fill="#b9c6de", width=1, tags=T)
+            cv.create_line(cx, cy, cx + R * math.sin(a), cy - R * math.cos(a), fill="#b9c7de", width=1, tags=T)
             b = math.radians((i + .5) * seg + self.rot); x, y = cx + 80 * k * math.sin(b), cy - 80 * k * math.cos(b)
             cv.create_oval(x - 1.6 * k, y - 1.6 * k, x + 1.6 * k, y + 1.6 * k, fill=W_PEARL, outline=W_INK, tags=T)
         if not self.mys and 0 <= self.win_i < n:                           # ô vừa trúng: viền sáng
@@ -6478,10 +6478,10 @@ class WheelDlg(Dlg):
             ang = (-a) % 360
             if self.mys:
                 x, y = cx + 54 * k * math.sin(ar), cy - 54 * k * math.cos(ar)
-                cv.create_text(x, y, text="?", angle=ang, font=("Segoe UI", -int(19 * k), "bold"), fill="#dfe9ff", tags=T)
+                cv.create_text(x, y, text="?", angle=ang, font=("Segoe UI", -int(19 * k), "bold"), fill="#e1ebfd", tags=T)
                 continue
             rr = 58 * k if gone else 54 * k; x, y = cx + rr * math.sin(ar), cy - rr * math.cos(ar)
-            ink = ("#2a1c00" if lkr(pct) == 0 else "#effff9") if self.luck else "#6f7da3" if gone else W_INK if pct >= 40 else "#eef4ff"
+            ink = ("#2a1c00" if lkr(pct) == 0 else "#effff9") if self.luck else "#6f7da3" if gone else W_INK if pct >= 40 else "#eff5fe"
             cv.create_text(x, y, text=f"{pct}%", angle=ang, font=("Segoe UI", fs, "bold"), fill=ink, tags=T)
             if gone:
                 x2, y2 = cx + 42 * k * math.sin(ar), cy - 42 * k * math.cos(ar)
@@ -6519,7 +6519,7 @@ class WheelDlg(Dlg):
         for i, (ic, t, d) in enumerate(steps):
             c = tk.Frame(grid, bg=W_TILE, highlightbackground=W_EDGE, highlightthickness=1)
             c.grid(row=i // 2, column=i % 2, sticky="nsew", padx=(0, 4) if i % 2 == 0 else (4, 0), pady=3)
-            tk.Label(c, text=ic, font=("Segoe UI", 12), fg="#ffffff", bg="#2f66ec", width=2).pack(side="left", anchor="n", padx=8, pady=8)
+            tk.Label(c, text=ic, font=("Segoe UI", 12), fg="#ffffff", bg="#3e78dd", width=2).pack(side="left", anchor="n", padx=8, pady=8)
             tx = tk.Frame(c, bg=W_TILE); tx.pack(side="left", fill="both", expand=True, pady=6, padx=(0, 8))
             tk.Label(tx, text=t, font=("Segoe UI", 9, "bold"), fg="#ffffff", bg=W_TILE, anchor="w", justify="left", wraplength=185).pack(fill="x")
             tk.Label(tx, text=d, font=("Segoe UI", 8), fg=W_SUB, bg=W_TILE, anchor="w", justify="left", wraplength=185).pack(fill="x")
@@ -6541,14 +6541,14 @@ class WheelDlg(Dlg):
             if c.get("lucky"): st += f"  ·  🍀 vé {vnd(c.get('paid'))}"
             elif num(c.get("paid")) > 0: st += f"  ·  lượt mua {vnd(c.get('paid'))}"
             if live and c.get("share"): st += "  ·  🤝 tặng bạn bè được"
-            r = tk.Frame(f, bg="#111b4c", highlightbackground="#26345f", highlightthickness=1); r.pack(fill="x", pady=2)
+            r = tk.Frame(f, bg="#11224c", highlightbackground="#263a5f", highlightthickness=1); r.pack(fill="x", pady=2)
             big = num(c.get("pct")) >= 40
             tk.Label(r, text=f"{int(num(c.get('pct')))}%", font=("Segoe UI", 10, "bold"), fg=W_INK if big else "#ffffff",
-                     bg=(W_PEARL2 if big else "#2f66ec") if live else "#2c3352", width=5).pack(side="left", padx=8, pady=6)
+                     bg=(W_PEARL2 if big else "#3e78dd") if live else "#2c3752", width=5).pack(side="left", padx=8, pady=6)
             if live: self.app.btn(r, "Chép", lambda v=str(c.get("code")): self.copy(v), "soft", padx=10, pady=2).pack(side="right", padx=8)
-            tx = tk.Frame(r, bg="#111b4c"); tx.pack(side="left", fill="x", expand=True)
-            tk.Label(tx, text=str(c.get("code")), font=("Consolas", 10, "bold"), fg="#ffffff" if live else "#7f8bab", bg="#111b4c", anchor="w").pack(fill="x")
-            tk.Label(tx, text=st, font=("Segoe UI", 8), fg=W_SUB if live else "#6c779a", bg="#111b4c", anchor="w").pack(fill="x")
+            tx = tk.Frame(r, bg="#11224c"); tx.pack(side="left", fill="x", expand=True)
+            tk.Label(tx, text=str(c.get("code")), font=("Consolas", 10, "bold"), fg="#ffffff" if live else "#7f8bab", bg="#11224c", anchor="w").pack(fill="x")
+            tk.Label(tx, text=st, font=("Segoe UI", 8), fg=W_SUB if live else "#6c779a", bg="#11224c", anchor="w").pack(fill="x")
 
     def copy(self, v):
         try: self.app.root.clipboard_clear(); self.app.root.clipboard_append(v)
@@ -6603,9 +6603,9 @@ class RevealWin:
         w.protocol("WM_DELETE_WINDOW", self.close); w.bind("<Escape>", lambda e: self.close())
         self.cv = cv = tk.Canvas(w, width=self.W, height=self.H, bg=W_REV, highlightthickness=0); cv.pack(fill="both", expand=True)
         cx, cy = self.W / 2, self.H * .46
-        for i in range(18, 0, -1):                                          # nền: quầng xanh sâu ở giữa (radial-gradient #16327a → #060b1d)
-            rr = (14 + i * 22) * sc; cv.create_oval(cx - rr * 1.05, cy - rr * .92, cx + rr * 1.05, cy + rr * .92, fill=wheel_mix("#16327a", W_REV, i / 18), outline="")
-        self.rays = [cv.create_polygon(cx, cy, cx, cy, cx, cy, fill="#16327a", outline="", state="hidden") for _ in range(18)]
+        for i in range(18, 0, -1):                                          # nền: quầng xanh sâu ở giữa (radial-gradient #163a7a → #060d1d)
+            rr = (14 + i * 22) * sc; cv.create_oval(cx - rr * 1.05, cy - rr * .92, cx + rr * 1.05, cy + rr * .92, fill=wheel_mix("#163a7a", W_REV, i / 18), outline="")
+        self.rays = [cv.create_polygon(cx, cy, cx, cy, cx, cy, fill="#163a7a", outline="", state="hidden") for _ in range(18)]
         self.flash = cv.create_oval(cx, cy, cx, cy, fill="#ffffff", outline="", state="hidden")
         self.waves = [cv.create_oval(cx, cy, cx, cy, outline="#ffffff", width=1, state="hidden") for _ in range(2)]
         self.card = self.make_card(); self.card_id = None
@@ -6621,14 +6621,14 @@ class RevealWin:
         if self.tb is not None and (time.time() - self.tb) > .8: self.close("done")      # bấm ra ngoài thẻ (sau khi thẻ hiện) = Xong
 
     def make_card(self):
-        tk = self.dlg.app.tk; r = self.r; big = self.big; app = self.dlg.app; bg = "#15215c"
+        tk = self.dlg.app.tk; r = self.r; big = self.big; app = self.dlg.app; bg = "#152a5c"
         c = tk.Frame(self.cv, bg=bg, highlightbackground=W_PEARL2 if big else "#5a6c9c", highlightthickness=2 if big else 1)
         if r.get("lucky"): tk.Label(c, text=" 🍀 Vé may mắn ", font=("Segoe UI", 9, "bold"), fg="#03261b", bg="#5cf0c2").pack(pady=(14, 0))
         tk.Label(c, text=("🎉 " if big else "🎁 ") + "Chúc mừng! Bạn nhận được", font=("Segoe UI", 11, "bold"), fg=W_SKY, bg=bg).pack(pady=(8 if r.get("lucky") else 18, 0))
         tk.Label(c, text=f"−{int(num(r.get('pct')))}%", font=("Segoe UI", 46, "bold"), fg=W_PEARL, bg=bg).pack()
         tk.Label(c, text="mã giảm giá", font=("Segoe UI", 11, "bold"), fg=W_SUB, bg=bg).pack(pady=(0, 10))
         cr = tk.Frame(c, bg=bg); cr.pack()
-        tk.Label(cr, text=str(r.get("code")), font=("Consolas", 15, "bold"), fg="#ffffff", bg="#060a1c", padx=12, pady=6).pack(side="left")
+        tk.Label(cr, text=str(r.get("code")), font=("Consolas", 15, "bold"), fg="#ffffff", bg="#060d1c", padx=12, pady=6).pack(side="left")
         self.cp = app.btn(cr, "Chép mã", self.copy, "soft", padx=10, pady=6); self.cp.pack(side="left", padx=(8, 0))
         exp = parse_iso(r.get("expires_at")); exp = exp.astimezone().strftime("%H:%M %d/%m/%Y") if exp else ""
         tk.Label(c, text=f"Dùng 1 lần · hạn đến {exp} · " + ("giữ dùng sau hoặc tặng bạn bè dùng đều được" if r.get("share") else "chỉ tài khoản của bạn dùng được")
@@ -6647,7 +6647,7 @@ class RevealWin:
             b = app.btn(bb, f"🍀 Dùng thêm vé · {vnd(k['price'])}", lambda: self.close("lucky"), pady=9)
             b.config(bg="#2fd9a6", fg="#03261b", activebackground="#5cf0c2", activeforeground="#03261b"); b.pack(fill="x")
         x = app.btn(bb, "Xong", lambda: self.close("done"), "soft" if left > 0 or buy or more else "primary", pady=8); x.pack(fill="x", pady=(6, 0))
-        if left > 0 or buy or more: x.config(bg="#24357a", activebackground="#33489a")
+        if left > 0 or buy or more: x.config(bg="#24427a", activebackground="#33579a")
         return c
 
     def copy(self):
@@ -6667,7 +6667,7 @@ class RevealWin:
 
     def _burst(self):
         self.tb = time.time(); n = 150 if self.big else 110; cx, cy = self.cx, self.cy + 30 * self.sc; sc = self.sc
-        cols = ["#ffffff", W_PEARL, W_PEARL2, W_SKY, "#3d7bff", "#ffe7a8"] if self.big else [W_SKY, "#3d7bff", W_PEARL, W_PEARL2, "#3ce0b0"]
+        cols = ["#ffffff", W_PEARL, W_PEARL2, W_SKY, "#5a8ce2", "#ffe7a8"] if self.big else [W_SKY, "#5a8ce2", W_PEARL, W_PEARL2, "#3ce0b0"]
         rnd = secrets.SystemRandom()
         for i in range(n):
             a = rnd.random() * math.pi * 2; sp = (3 + rnd.random() * (10 if self.big else 8)) * sc; bub = rnd.random() < .28
@@ -6692,17 +6692,17 @@ class RevealWin:
             for i, ray in enumerate(self.rays):
                 a0, a1 = math.radians(i * 20 + rot), math.radians(i * 20 + 9 + rot)
                 cv.coords(ray, cx, cy, cx + rr * math.cos(a0), cy + rr * math.sin(a0), cx + rr * math.cos(a1), cy + rr * math.sin(a1))
-                if b < 950: cv.itemconfig(ray, fill=wheel_mix(W_REV, "#2a4fae" if i % 2 else "#1d3a8c", s))
+                if b < 950: cv.itemconfig(ray, fill=wheel_mix(W_REV, "#2a5aae" if i % 2 else "#1d458c", s))
         cv.delete("gift"); self._gift(t, b); cv.tag_lower("gift", self.flash)
         if b is not None:                                                    # chớp sáng: lõi trắng loé 0,14 giây + 2 vòng sóng nổ lan ra rồi tắt
             if b < 140:
-                rr = (30 + 60 * b / 140) * sc; cv.coords(self.flash, cx - rr, cy - rr, cx + rr, cy + rr); cv.itemconfig(self.flash, fill="#ffffff" if b < 70 else "#dff1ff")
+                rr = (30 + 60 * b / 140) * sc; cv.coords(self.flash, cx - rr, cy - rr, cx + rr, cy + rr); cv.itemconfig(self.flash, fill="#ffffff" if b < 70 else "#e2effc")
             else: cv.itemconfig(self.flash, state="hidden")
             for j, wv in enumerate(self.waves):
                 u = (b - j * 110) / 520
                 if 0 <= u <= 1:
                     rr = (40 + 250 * (1 - (1 - u) ** 2)) * sc; cv.coords(wv, cx - rr, cy - rr, cx + rr, cy + rr)
-                    cv.itemconfig(wv, width=max(1, round((9 - 8 * u) * sc)), outline=wheel_mix("#ffffff", "#3d7bff", u), state="normal")
+                    cv.itemconfig(wv, width=max(1, round((9 - 8 * u) * sc)), outline=wheel_mix("#ffffff", "#5a8ce2", u), state="normal")
                 else: cv.itemconfig(wv, state="hidden")
         if b is not None and self.parts:                                     # pháo giấy rơi · bong bóng bay lên (~3 giây)
             if b > 3300:
@@ -6734,7 +6734,7 @@ class RevealWin:
         if b is not None:
             u = min(1.0, b / 750); e2 = 1 - (1 - u) ** 3; lid = (-34 * e2, -220 * e2, math.radians(-40 * e2), 1 - u)
             v = max(0.0, min(1.0, (b - 120) / 520)); body = (60 * v * v, 1 - v)
-        top, bot, rib, bow = ("#ffffff", W_PEARL2, "#3d7bff", "#3d7bff") if self.big else ("#5a95ff", "#2a5fe0", W_PEARL, W_PEARL)
+        top, bot, rib, bow = ("#ffffff", W_PEARL2, "#5a8ce2", "#5a8ce2") if self.big else ("#739ee6", "#306eda", W_PEARL, W_PEARL)
         def poly(pts, dx, dy, rot, fill):
             c, s_ = math.cos(rot), math.sin(rot); out = []
             for x, y in pts:
@@ -6747,7 +6747,7 @@ class RevealWin:
             poly([(-10, -44), (10, -44), (10, 46), (-10, 46)], 0, body[0], ang, m(rib))
         if lid[3] > 0:
             m = lambda col: wheel_mix(W_REV, col, lid[3]); ox, oy, rot = lid[0], -44 - 15 + lid[1], ang + lid[2]
-            poly([(-70, -15), (70, -15), (70, 15), (-70, 15)], ox, oy, rot, m("#ffffff" if self.big else "#7aaeff"))
+            poly([(-70, -15), (70, -15), (70, 15), (-70, 15)], ox, oy, rot, m("#ffffff" if self.big else "#8eb2eb"))
             poly([(-10, -15), (10, -15), (10, 15), (-10, 15)], ox, oy, rot, m(rib))
             for side in (-1, 1):                                              # nơ: 2 vòng bầu dục nghiêng
                 tilt = math.radians(26 * side); loop = []
@@ -6755,7 +6755,7 @@ class RevealWin:
                     q = j * math.pi / 9; ex, ey = 16 * math.cos(q), 10 * math.sin(q)
                     loop.append((side * 17 + ex * math.cos(tilt) - ey * math.sin(tilt), -15 - 9 + ex * math.sin(tilt) + ey * math.cos(tilt)))
                 poly(loop, ox, oy, rot, m(bow))
-                poly([(side * 17 + (x - side * 17) * .5, -24 + (y + 24) * .5) for x, y in loop], ox, oy, rot, m("#15215c"))
+                poly([(side * 17 + (x - side * 17) * .5, -24 + (y + 24) * .5) for x, y in loop], ox, oy, rot, m("#152a5c"))
             poly([(-6, -30), (6, -30), (6, -18), (-6, -18)], ox, oy, rot, m(bow))
 
 
@@ -7017,7 +7017,7 @@ class LookDlg(Dlg):
         self.val = self.label(self.body, "", app.f_t, TXT); self.val.pack(fill="x", padx=18, pady=(4, 0))
         self.var = tk.IntVar(value=self.cur)
         self.sc = tk.Scale(self.body, from_=UI_MIN, to=UI_MAX, resolution=UI_STEP, orient="horizontal", variable=self.var, showvalue=False,
-                           command=lambda *_: self.upd(), bg=ACC, fg=TXT, troughcolor=LINE, activebackground="#4b8cff", highlightthickness=0, bd=0,
+                           command=lambda *_: self.upd(), bg=ACC, fg=TXT, troughcolor=LINE, activebackground="#6696e4", highlightthickness=0, bd=0,
                            sliderlength=34, width=18, sliderrelief="flat", cursor="hand2")
         self.sc.pack(fill="x", padx=18, pady=(6, 0))
         ends = tk.Frame(self.body, bg=BG); ends.pack(fill="x", padx=18)
@@ -9970,7 +9970,7 @@ class Launcher:
             if self.just_updated:
                 tk.Label(slot, text=f"✓ Đã cập nhật lên bản {APP_VER}.", font=("Segoe UI", 10, "bold"), fg=OK, bg=BG, anchor="w").pack(fill="x", pady=(8, 0))
             return
-        C2 = "#14324f"
+        C2 = "#142b4f"
         b = tk.Frame(slot, bg=C2, highlightbackground=ACC, highlightthickness=1, cursor="hand2"); b.pack(fill="x", pady=(10, 0))
         go = self.btn(b, "Cập nhật", lambda: UpdateDlg(self, u), padx=12, pady=5); go.pack(side="right", padx=10, pady=8)
         t1 = tk.Label(b, text=f"Có bản app mới {u.get('version') or ''} (đang dùng {APP_VER})", font=("Segoe UI", 10, "bold"), fg=TXT, bg=C2, anchor="w", cursor="hand2")
