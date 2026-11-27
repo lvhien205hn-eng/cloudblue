@@ -1184,7 +1184,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "27/11b"
+CPD_VER = "27/11k"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1211,11 +1211,27 @@ def sw_running(st=None):
     try: return bool(r) and time.time() - float(r.get("start") or 0) < 1800
     except (TypeError, ValueError): return False
 
+def _small(x, n=1800):
+    """x nếu viết ra JSON không quá n ký tự (metrics gửi 30 giây / lần — giữ gọn), không thì None."""
+    try: return x if len(json.dumps(x, ensure_ascii=False)) <= n else None
+    except (TypeError, ValueError): return None
+
+def sw_tune(st):
+    """27/11k · kết quả bước 3b / 3c của sua-tat-ca 27/11j+ (tối ưu như máy cài từ ISO + phần mềm trên máy + card) → web thẻ máy chủ."""
+    tu = st.get("tune") if isinstance(st.get("tune"), dict) else {}
+    iv = st.get("inv") if isinstance(st.get("inv"), dict) else {}
+    cards = ((iv.get("gpu") or {}).get("cards") or []) if isinstance(iv.get("gpu"), dict) else []
+    t2 = _small({k: tu.get(k) for k in ("ok", "did", "miss", "plan", "defender", "av", "whea")}) if tu else None
+    i2 = _small({"os": iv.get("os"), "emu": iv.get("emu"), "vga": iv.get("vga"), "adb": iv.get("adb"), "py": iv.get("py"), "tools": iv.get("clock_tools"),
+                 "gpu": [{k: c.get(k) for k in ("name", "drv", "stuck", "why", "vram_full")} for c in cards[:2] if isinstance(c, dict)]}) if iv else None
+    return t2, i2
+
 def sw_info():
-    """Phần báo lên web (metrics.sw): bản đang chạy, lúc cài, cập nhật sạch không, đang cập nhật không."""
+    """Phần báo lên web (metrics.sw): bản đang chạy, lúc cài, cập nhật sạch không, đang cập nhật không (+ 27/11k: tối ưu như ISO, phần mềm trên máy)."""
     st = sw_state(); last = st.get("last") if isinstance(st.get("last"), dict) else None
+    tu, iv = sw_tune(st)
     return {"ver": st.get("ver"), "at": st.get("at"), "upd": bool(st.get("upd")), "ok": bool(st.get("ok")), "auto": bool(st.get("auto")),
-            "run": sw_running(st), "last": last, "cpd": CPD_VER, "follow": FOLLOW_ON, "first": True, "win": WIN}
+            "run": sw_running(st), "last": last, "cpd": CPD_VER, "follow": FOLLOW_ON, "first": True, "win": WIN, "tune": tu, "inv": iv}
 
 def follow_conf(site=None):
     """(đang bật tự theo?, số phút bản mới phải chạy ổn) — web admin đặt ở settings.data.node_update; chưa đặt: bật, 20 phút."""
@@ -1399,10 +1415,19 @@ def meminfo():
         k, v = line.split(":", 1); m[k] = int(v.split()[0])
     return m.get("MemTotal", 0) / 1048576, m.get("MemAvailable", 0) / 1048576
 
-def gpu_eff(util, clk, cmax):
-    """27/11b · % card THẬT: card đang ở xung nhịp thấp (< 50% xung tối đa — chế độ nghỉ) mà nvidia-smi báo % cao = việc lặt vặt
-       chạy liên tục, card còn dư rất nhiều → nhân theo tỉ lệ xung. Card chạy nặng thật luôn lên xung cao → giữ nguyên %."""
+def gpu_stuck(util, clk, cmax, pwr=None, pmax=None):
+    """27/11k · card KẸT XUNG NGHỈ: bận ≥ 80% mà xung < 30% tối đa (+ điện < 25% giới hạn khi đọc được). win3 27/11: 98% ở 139/1974 MHz, 9/180 W,
+       card báo "SW Power Cap" dù giới hạn điện đúng mặc định, khởi động lại vẫn kẹt (nghi nguồn điện của card) → card chậm hơn chục lần, mọi máy khách lag."""
+    try: return bool(util is not None and clk and cmax and util >= 80 and clk < 0.3 * cmax and (pwr is None or not pmax or pwr < 0.25 * pmax))
+    except TypeError: return False
+
+def gpu_eff(util, clk, cmax, pwr=None, pmax=None):
+    """27/11b · % card THẬT: card đang ở xung nhịp thấp (< 50% xung tối đa — chế độ nghỉ) mà nvidia-smi báo % vừa phải = việc lặt vặt
+       chạy liên tục, card còn dư → nhân theo tỉ lệ xung. Card chạy nặng thật luôn lên xung cao → giữ nguyên %.
+       27/11k: card BẬN gần hết mà vẫn ở xung nghỉ = KẸT (gpu_stuck), KHÔNG phải rảnh → coi là đầy 100% để máy chủ ngừng nhận máy mới
+       (27/11b tính nhầm win3 là ~7% nên máy chủ kẹt card vẫn nhận khách mới)."""
     if util is None or not clk or not cmax: return util
+    if gpu_stuck(util, clk, cmax, pwr, pmax): return 100.0
     r = clk / cmax
     return util if r >= 0.5 else round(util * r, 1)
 
@@ -1419,7 +1444,8 @@ def gpus():
                 g = {"name": f[0], "util": num(f[1]), "mem_used": num(f[2]), "mem_total": num(f[3]), "temp": num(f[4])}
                 if len(f) > 5:
                     g.update(clk=num(f[5]), clk_max=num(f[6]), pwr=num(f[7]), pwr_max=num(f[8]))
-                    g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"])
+                    g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])
+                    if gpu_stuck(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"]): g["stuck"] = True     # 27/11k: web + Telegram báo kẹt xung
                 out.append(g)
             if out or r.returncode == 0: return out
         except Exception:
@@ -1535,11 +1561,15 @@ def heartbeat():
         else: raise
     # Báo Telegram 1 lần khi chạm ngưỡng (và khi có chỗ trở lại)
     full = a_ram >= c_ram - 1 or a_cpu >= c_cpu - 1
+    sk = [g for g in g_list if g.get("stuck")]           # 27/11k: card kẹt xung nghỉ (lời báo riêng)
     if _alert["full"] is not None and full != _alert["full"]:
         notify((f"🚨 <b>{NODE_ID}: CPU thật đang {avg5:.0f}%</b> (ngưỡng {CPU_BUSY}%) — tạm ngừng nhận máy mới." if busy else
                 f"🚨 <b>{NODE_ID}: RAM thật đang dùng {ram_pct:.0f}%</b> (ngưỡng {RAM_BUSY}%) — tạm ngừng nhận máy mới." if ram_busy else
                 f"🚨 <b>{NODE_ID}: ổ cứng sắp đầy</b> (ngưỡng {DISK_BUSY}%) — tạm ngừng nhận máy mới. Xoá bớt máy hết hạn / file thừa." if disk_busy else
-                f"🚨 <b>{NODE_ID}: card đồ hoạ đang chạy {g_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {GPU_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "gpu" else
+                (f"🚨 <b>{NODE_ID}: card đồ hoạ KẸT XUNG NGHỈ</b> — bận {sk[0]['util']:.0f}% mà chỉ {sk[0]['clk']:.0f}/{sk[0]['clk_max']:.0f} MHz"
+                 + (f", {sk[0]['pwr']:.0f} W" if sk[0].get("pwr") is not None else "") + " → máy khách trên máy chủ này lag. Tạm ngừng nhận máy mới. "
+                 "Khởi động lại máy chủ lúc vắng khách; vẫn kẹt → tắt máy, cắm lại chặt dây nguồn 8 pin của card (không qua dây chia / chuyển), kiểm nguồn."
+                 if sk else f"🚨 <b>{NODE_ID}: card đồ hoạ đang chạy {g_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {GPU_BUSY}%) — tạm ngừng nhận máy mới.") if g_why == "gpu" else
                 f"🚨 <b>{NODE_ID}: VRAM card đồ hoạ đầy {v_avg or 0:.0f}%</b> (TB 5 phút, ngưỡng {VRAM_BUSY}%) — tạm ngừng nhận máy mới." if g_why == "vram" else
                 f"🚨 <b>{NODE_ID} đã đầy {min(100.0, fill):.0f}%</b> (ngưng nhận ở {stop:g}%) — RAM cấp {a_ram:.0f}/{f_ram:.0f}GB, CPU cấp {a_cpu:.0f}/{f_cpu:.0f}."
                 + (f" Đang giữ {zz:.0f}GB RAM cho {nz} máy ngủ (khách mở là bật lại)." if nz else "")) + " Đơn mới sang máy chủ khác (mọi máy chủ đều đầy thì khách thấy HẾT HÀNG)."
@@ -1795,7 +1825,7 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 27/11b chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 27/11k chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"

@@ -36,5 +36,16 @@ ck("dòng card dùng gpuStuck: nhãn ⚠ KẸT XUNG, ghi 'chỉ xung/xung MHz ·
    /const sk = gpuStuck\(x\)/.test(src) && src.includes("⚠ KẸT XUNG</b>") && src.includes("` · chỉ ${Math.round(x.clk)}/${Math.round(x.clk_max)} MHz`")
    && src.includes("sk ? x.util : x.eff ?? x.util") && src.includes("⚠ CARD KẸT XUNG NGHỈ"));
 ck("không còn chú thích sai 'xung thấp = card đang nghỉ: % báo cao nhưng còn dư nhiều'", !src.includes("% báo cao nhưng còn dư nhiều"));
+console.log("4. thẻ máy chủ · tối ưu như ISO + phần mềm trên máy (cloudphoned 27/11k báo metrics.sw.tune / inv)");
+eval(grab(/function nodeTune\(s\) \{[\s\S]*?\n\}/));
+const t1 = nodeTune({ tune: { ok: true, did: ["chế độ điện hiệu năng cao nhất", "Defender bỏ qua 2 thư mục + 8 chương trình"], miss: [], defender: "ok", av: [], whea: 0 },
+  inv: { os: "Windows 10 Pro 22H2 (build 19045.5131)", emu: ["MuMu 4.1.21.3240"], vga: ["NVIDIA GeForce GTX 1080 · driver 560.94 (2024-08-14)"], adb: "35.0.2", tools: [] } });
+ck("máy cũ vừa được tối ưu → 'Tối ưu như ISO: ✓ vừa làm …' + 'Trên máy: Windows · MuMu · card driver · adb'",
+   /Tối ưu như ISO<\/span><em>✓ vừa làm: chế độ điện hiệu năng cao nhất · Defender bỏ qua 2 thư mục/.test(t1) && /Trên máy<\/span><em>Windows 10 Pro 22H2 \(build 19045\.5131\) · MuMu 4\.1\.21\.3240 · GTX 1080 · driver 560\.94 · adb 35\.0\.2/.test(t1), t1);
+const t2 = nodeTune({ tune: { ok: true, did: [], miss: ["chế độ điện"], defender: "none", av: ["Kaspersky <b>"], whea: 3 }, inv: { tools: ["MSI Afterburner"] } });
+ck("còn thiếu / diệt virus khác / RAM lỗi / phần mềm chỉnh card → tô vàng, chữ được thoát HTML",
+   /còn thiếu: chế độ điện · không có Defender · diệt virus khác: Kaspersky &lt;b&gt; · ⚠ RAM báo lỗi 3 lần/.test(t2) && /gold-hi/.test(t2) && /Phần mềm chỉnh card<\/span><em>MSI Afterburner/.test(t2), t2);
+ck("đã đủ → '✓ đủ'; máy chủ chưa lên bản 27/11j (không có tune / inv) → không hiện gì", /✓ đủ/.test(nodeTune({ tune: { ok: true, did: [], miss: [] } })) && nodeTune({}) === "" && nodeTune(null) === "" && nodeTune({ tune: { ok: false } }) === "");
+ck("nodeSw gắn thêm nodeTune (cùng chỗ dòng Phần mềm máy chủ)", src.includes("<em>${esc(txt)}</em></div>` + nodeTune(s);"));
 console.log(`${ok}/${all} dat`);
 process.exit(ok === all ? 0 : 1);

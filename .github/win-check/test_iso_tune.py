@@ -223,7 +223,45 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 27/11j", sua.VER == "27/11j")
+ck("bản sua-tat-ca 27/11k", sua.VER == "27/11k")
+
+# ============================================================== 6. cloudphoned 27/11k: card kẹt xung = đầy (ngừng nhận máy mới)
+print("6. cloudphoned 27/11k · card kẹt xung nghỉ tính là ĐẦY")
+import ast
+CPD = open(os.path.join(ROOT, "cloudphoned.py"), encoding="utf-8").read()
+mod = ast.parse(CPD); G = {}
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name in ("gpu_stuck", "gpu_eff"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G)
+ck("win3: 98% ở 139/1974 MHz, 9/180 W → kẹt → % dùng để chia đơn = 100 (máy chủ ngừng nhận máy mới)",
+   G["gpu_stuck"](98.0, 139.0, 1974.0, 9.35, 180.0) is True and G["gpu_eff"](98.0, 139.0, 1974.0, 9.35, 180.0) == 100.0)
+ck("card đang nghỉ thật (40% ở xung nghỉ) → vẫn tính theo xung như 27/11b (~3%)", G["gpu_stuck"](40.0, 139.0, 1974.0, 9.0, 180.0) is False and G["gpu_eff"](40.0, 139.0, 1974.0, 9.0, 180.0) == 2.8)
+ck("card vừa lên tải (xung chưa lên nhưng điện đã cao) → không kẹt, giữ cách tính cũ", G["gpu_stuck"](95.0, 300.0, 1987.0, 150.0, 230.0) is False)
+ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không kết luận kẹt",
+   G["gpu_eff"](53.0, 1923.0, 1987.0, 71.0, 230.0) == 53.0 and G["gpu_stuck"](98.0, None, 1974.0) is False and G["gpu_stuck"](98.0, 139.0, 1974.0) is True
+   and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
+ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 27/11k",
+   'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "27/11k"' in CPD
+   and "cloudphoned bản 27/11k chạy" in CPD)
+ck("sua-tat-ca 27/11k: dấu cloudphoned 27/11k (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 27/11k", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 27/11k")
+
+print("7. cloudphoned 27/11k · báo tối ưu như ISO + phần mềm trên máy lên web (metrics.sw.tune / inv)")
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name in ("_small", "sw_tune"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G)
+G["json"] = json
+st = {"tune": {"ok": True, "did": ["tắt Game DVR"], "miss": [], "plan": "Ultimate Performance", "defender": "ok", "av": [], "whea": 0, "emu": [["mumu", "C:\\x"]]},
+      "inv": {"os": "Windows 10 Pro 22H2 (build 19045.5131)", "emu": ["MuMu 4.1.21"], "vga": ["NVIDIA GeForce GTX 1080 · driver 560.94"], "adb": "35.0.2", "py": "3.12.7",
+              "clock_tools": [], "gpu": {"smi": True, "cards": [{"name": "GTX 1080", "drv": "560.94", "stuck": True, "why": ["SW Power Cap"], "util": 98, "vram_full": False}]}}}
+tu, iv = G["sw_tune"](st)
+ck("sw_tune: gửi gọn (không gửi đường dẫn giả lập, số đo chi tiết) — tune: ok/did/miss/plan/defender/av/whea · inv: os/emu/vga/adb/py/tools + card (tên, driver, kẹt, lý do)",
+   tu == {"ok": True, "did": ["tắt Game DVR"], "miss": [], "plan": "Ultimate Performance", "defender": "ok", "av": [], "whea": 0}
+   and iv["os"].startswith("Windows 10") and iv["gpu"] == [{"name": "GTX 1080", "drv": "560.94", "stuck": True, "why": ["SW Power Cap"], "vram_full": False}] and "emu" not in tu, (tu, iv))
+ck("sổ cũ (chưa có tune / inv) → None, None · quá dài → bỏ (không làm phình metrics)",
+   G["sw_tune"]({}) == (None, None) and G["sw_tune"]({"tune": {"ok": True, "did": ["x" * 3000]}})[0] is None)
+ck("sw_info gửi kèm tune + inv", '"run": sw_running(st), "last": last, "cpd": CPD_VER, "follow": FOLLOW_ON, "first": True, "win": WIN, "tune": tu, "inv": iv}' in CPD)
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)

@@ -9344,7 +9344,26 @@ function nodeSw(m, newest) {
   const txt = (s.ver ? "bản " + s.ver : "chưa ghi bản") + (at ? " · cài " + at : "")
     + (s.run ? " · ⏳ đang cập nhật" : bad ? ` · ⚠ lượt cập nhật ${last.ver} chưa xong` : behind ? ` · ⬆ chưa lên bản ${newest.ver}` : "")
     + (s.follow === false ? " · tự theo: tắt ở máy này" : "");
-  return `<div class="nr"${bad ? ' style="color:var(--bad)"' : behind ? ' style="color:var(--gold-hi)"' : ""}><span>Phần mềm máy chủ</span><em>${esc(txt)}</em></div>`;
+  return `<div class="nr"${bad ? ' style="color:var(--bad)"' : behind ? ' style="color:var(--gold-hi)"' : ""}><span>Phần mềm máy chủ</span><em>${esc(txt)}</em></div>` + nodeTune(s);
+}
+/* 27/11k · bước 3b / 3c của sua-tat-ca 27/11j+ (cloudphoned 27/11k báo trong metrics.sw.tune / .inv): máy chủ cài tay đã được tối ưu như máy cài từ ISO
+   chưa + phần mềm trên máy (Windows · giả lập · driver card · adb) để so các máy chủ với nhau. Máy chủ chưa lên bản đó → không hiện gì. */
+function nodeTune(s) {
+  const tu = s && s.tune && typeof s.tune === "object" ? s.tune : null, iv = s && s.inv && typeof s.inv === "object" ? s.inv : null;
+  const A = x => Array.isArray(x) ? x.filter(y => typeof y === "string" && y) : [];
+  let out = "";
+  if (tu && tu.ok) {
+    const miss = A(tu.miss), did = A(tu.did), av = A(tu.av);
+    const txt = miss.length ? "còn thiếu: " + miss.join(" · ") : did.length ? "✓ vừa làm: " + did.join(" · ") : "✓ đủ";
+    out += `<div class="nr"${miss.length || +tu.whea ? ' style="color:var(--gold-hi)"' : ""} title="Như bước tối ưu của ISO máy chủ: chế độ điện CPU 100% · không ngủ · Windows Defender bỏ qua thư mục giả lập + C:\\blue · tắt Game DVR · Windows Update không chia sẻ lên mạng, không tự khởi động lại. Làm lại mỗi lần cập nhật."><span>Tối ưu như ISO</span><em>${esc(txt + (tu.defender === "none" ? " · không có Defender" : "") + (av.length ? " · diệt virus khác: " + av.join(", ") : "") + (+tu.whea ? " · ⚠ RAM báo lỗi " + Math.round(+tu.whea) + " lần" : ""))}</em></div>`;
+  }
+  if (iv) {
+    const parts = [typeof iv.os === "string" ? iv.os : "", ...A(iv.emu), ...A(iv.vga).slice(0, 1).map(x => x.replace(/^NVIDIA GeForce /, "").split(" (")[0]), iv.adb ? "adb " + iv.adb : ""].filter(Boolean);
+    if (parts.length) out += `<div class="nr"><span>Trên máy</span><em>${esc(parts.join(" · "))}</em></div>`;
+    const tools = A(iv.tools);
+    if (tools.length) out += `<div class="nr" style="color:var(--gold-hi)"><span>⚠ Phần mềm chỉnh card</span><em>${esc(tools.join(", "))}</em></div>`;
+  }
+  return out;
 }
 /* 24/11 · MÁY CHỦ NẰM NGANG: mỗi máy chủ 1 thanh, đủ số liệu như thẻ cũ. Các nút gom vào ô "⚙ Cài đặt" (bấm mới sổ ra). Ô tick ở đầu thanh:
    chọn nhiều máy chủ rồi chỉnh cùng lúc (nodeBulk). Trang tự vẽ lại 15 giây / lần → ô đã tick (NSEL) + ô đang mở (NOPEN) phải nhớ ở ngoài. */
