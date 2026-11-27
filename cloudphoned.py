@@ -1184,7 +1184,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "27/11k"
+CPD_VER = "27/11l"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1222,6 +1222,8 @@ def sw_tune(st):
     iv = st.get("inv") if isinstance(st.get("inv"), dict) else {}
     cards = ((iv.get("gpu") or {}).get("cards") or []) if isinstance(iv.get("gpu"), dict) else []
     t2 = _small({k: tu.get(k) for k in ("ok", "did", "miss", "plan", "defender", "av", "whea")}) if tu else None
+    fx = st.get("tune_fix") if isinstance(st.get("tune_fix"), dict) else None          # 27/11l: lần tối ưu có sửa gì (giữ cả khi các lần sau báo đủ)
+    if t2 is not None and fx: t2["fix"] = _small({"at": fx.get("at"), "did": fx.get("did")}, 900)
     i2 = _small({"os": iv.get("os"), "emu": iv.get("emu"), "vga": iv.get("vga"), "adb": iv.get("adb"), "py": iv.get("py"), "tools": iv.get("clock_tools"),
                  "gpu": [{k: c.get(k) for k in ("name", "drv", "stuck", "why", "vram_full")} for c in cards[:2] if isinstance(c, dict)]}) if iv else None
     return t2, i2
@@ -1431,12 +1433,26 @@ def gpu_eff(util, clk, cmax, pwr=None, pmax=None):
     r = clk / cmax
     return util if r >= 0.5 else round(util * r, 1)
 
+_SMI = {"p": None, "t": 0.0}
+def smi_bin():
+    """27/11l · nvidia-smi: trong PATH, không có thì System32 / thư mục NVSMI / kho driver (driver cũ như 466.77 của máy cài từ ISO không đưa vào
+       PATH → web báo "không đọc được card" dù card chạy bình thường). Dò lại 10 phút / lần (cài lại driver đổi chỗ)."""
+    if _SMI["p"] is None or time.time() - _SMI["t"] > 600:
+        p = shutil.which("nvidia-smi") or ""
+        if not p and WIN:
+            import glob
+            for c in [r"C:\Windows\System32\nvidia-smi.exe", r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"] + \
+                     sorted(glob.glob(r"C:\Windows\System32\DriverStore\FileRepository\nv*\nvidia-smi.exe"), reverse=True):
+                if os.path.isfile(c): p = c; break
+        _SMI["p"], _SMI["t"] = p or "nvidia-smi", time.time()
+    return _SMI["p"]
+
 def gpus():
     num = lambda x: float(x) if x.replace(".", "", 1).isdigit() else None
     for q in ("name,utilization.gpu,memory.used,memory.total,temperature.gpu,clocks.sm,clocks.max.sm,power.draw,power.limit",
               "name,utilization.gpu,memory.used,memory.total,temperature.gpu"):
         try:
-            r = subprocess.run(["nvidia-smi", "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
+            r = subprocess.run([smi_bin(), "--query-gpu=" + q, "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
             out = []
             for line in r.stdout.strip().splitlines():
                 f = [x.strip() for x in line.split(",")]
@@ -1825,7 +1841,7 @@ def tick():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 27/11k chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 27/11l chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
