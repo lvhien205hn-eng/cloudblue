@@ -7,7 +7,7 @@
     }
   },
   "functions": {
-    "api/px-check.js": {
+    "api/notify-admin.js": {
       "maxDuration": 30
     }
   },
@@ -55,6 +55,10 @@
     {
       "source": "/api/pc-notify",
       "destination": "/api/notify-admin?pc=1"
+    },
+    {
+      "source": "/api/px-check",
+      "destination": "/api/notify-admin?px=1"
     }
   ],
   "crons": [
