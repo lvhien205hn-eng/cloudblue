@@ -41,6 +41,8 @@ jobs:
         run: python3 .github/win-check/test_node.py
       - name: Chia đều card đồ hoạ giữa các máy khách (27/11a gpufair)
         run: python3 .github/win-check/test_gpufair.py
+      - name: Máy chủ cài tay tối ưu như máy cài từ ISO + card kẹt xung nghỉ (27/11j)
+        run: python3 .github/win-check/test_iso_tune.py
 
   emu:
     needs: sim
