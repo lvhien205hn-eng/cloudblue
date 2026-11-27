@@ -42,7 +42,7 @@ import java.util.Locale;
 /** Màu, chữ, nút, thẻ… dùng chung cho mọi màn hình.
  *  Giao diện CLOUD BLUE (mệnh Thuỷ) giống web: 2 chế độ Sáng / Tối, nền chấm bong bóng, viền xanh neon. */
 public final class Ui {
-    public static int BG, PANEL, PANEL2, LINE, LINE2, FG, MUTED, BLUE, SKY, OK, WAIT, BAD, SUNK, RING, HINT, MONEY;   // MONEY: vàng kim = tiền & ưu đãi (28/11, cùng tông vàng của web)
+    public static int BG, PANEL, PANEL2, LINE, LINE2, FG, MUTED, BLUE, SKY, OK, WAIT, BAD, SUNK, RING, HINT, MONEY;   // MONEY: xanh trời = điểm nhấn duy nhất cho tiền & ưu đãi (28/11 bản 4, cùng màu web, bỏ vàng)
     public static boolean LIGHT;
     static { apply(false); }
 
@@ -53,13 +53,13 @@ public final class Ui {
             BG = Color.rgb(243, 247, 252); PANEL = Color.rgb(255, 255, 255); PANEL2 = Color.rgb(238, 245, 255);
             LINE = Color.argb(41, 43, 110, 240); LINE2 = Color.argb(77, 43, 110, 240);
             FG = Color.rgb(10, 26, 58); MUTED = Color.rgb(74, 93, 130); BLUE = Color.rgb(43, 110, 240); SKY = Color.rgb(15, 63, 179);
-            OK = Color.rgb(14, 159, 116); WAIT = Color.rgb(178, 107, 0); BAD = Color.rgb(224, 53, 79); MONEY = Color.rgb(168, 98, 0);
+            OK = Color.rgb(14, 159, 116); WAIT = Color.rgb(178, 107, 0); BAD = Color.rgb(224, 53, 79); MONEY = Color.rgb(3, 105, 161);
             SUNK = Color.rgb(238, 244, 252); RING = Color.argb(77, 70, 165, 255); HINT = Color.argb(150, 74, 93, 130);
         } else {
             BG = Color.rgb(7, 18, 38); PANEL = Color.rgb(13, 29, 61); PANEL2 = Color.rgb(16, 36, 74);
             LINE = Color.argb(56, 90, 175, 255); LINE2 = Color.argb(92, 90, 175, 255);
             FG = Color.rgb(232, 241, 255); MUTED = Color.rgb(159, 180, 216); BLUE = Color.rgb(61, 134, 255); SKY = Color.rgb(140, 196, 255);
-            OK = Color.rgb(60, 224, 176); WAIT = Color.rgb(255, 214, 102); BAD = Color.rgb(255, 107, 129); MONEY = Color.rgb(255, 207, 74);
+            OK = Color.rgb(60, 224, 176); WAIT = Color.rgb(255, 214, 102); BAD = Color.rgb(255, 107, 129); MONEY = Color.rgb(111, 211, 255);
             SUNK = Color.rgb(6, 17, 42); RING = Color.argb(77, 90, 175, 255); HINT = Color.argb(150, 159, 180, 216);
         }
         bubbles = null;
