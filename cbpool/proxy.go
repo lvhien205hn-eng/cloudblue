@@ -45,7 +45,8 @@ func (p *Pool) serve(ln net.Listener) {
 
 func (p *Pool) handle(c net.Conn) {
 	defer c.Close()
-	if !p.clientOK(c.RemoteAddr()) {
+	pub := !p.clientOK(c.RemoteAddr()) // 27.11c · từ Internet: chỉ tài khoản khách, chỉ khi đang bán
+	if pub && (!p.custOn() || p.pubBlocked(ipKey(c.RemoteAddr()))) {
 		return
 	}
 	if n := atomic.AddInt32(&p.total, 1); n > int32(p.c.MaxTotal) {
@@ -60,27 +61,62 @@ func (p *Pool) handle(c net.Conn) {
 		return
 	}
 	if first[0] == 0x05 {
-		p.socks5(c, br)
+		p.socks5(c, br, pub)
 	} else {
-		p.httpProxy(c, br)
+		p.httpProxy(c, br, pub)
 	}
 }
 
-func (p *Pool) auth(user, pass string) *slotRT {
-	s := p.slot(user)
-	if s == nil {
+// auth: tài khoản khách (mọi nơi, còn hạn) hoặc ô nội bộ (chỉ trong mạng nhà). Sai từ Internet → đếm để chặn dò mật khẩu.
+func (p *Pool) auth(user, pass string, pub bool, from net.Addr) *slotRT {
+	p.mu.RLock()
+	cs := p.cust[user]
+	p.mu.RUnlock()
+	if cs != nil {
+		if subtle.ConstantTimeCompare([]byte(pass), []byte(cs.cu.P)) == 1 && cs.cu.X > time.Now().Unix() {
+			return cs
+		}
+	} else if s := p.slot(user); s != nil && !pub {
+		if subtle.ConstantTimeCompare([]byte(pass), []byte(s.Pass)) == 1 {
+			return s
+		}
+	} else {
 		subtle.ConstantTimeCompare([]byte(pass), []byte("xxxxxxxxxxxxxxxx"))
-		return nil
 	}
-	if subtle.ConstantTimeCompare([]byte(pass), []byte(s.Pass)) != 1 {
-		return nil
+	if pub {
+		p.pubFail(ipKey(from))
 	}
-	return s
+	return nil
+}
+
+// begin: giữ chỗ 1 kết nối cho ô / khách (quá giới hạn → false). Khách: ghi vào danh sách để hết hạn / bị bỏ thì cắt được.
+func (p *Pool) begin(s *slotRT, c net.Conn) bool {
+	lim := int32(p.c.MaxConns)
+	if s.cu != nil {
+		p.mu.RLock()
+		lim = int32(p.custMax)
+		p.mu.RUnlock()
+	}
+	if n := atomic.AddInt32(&s.conns, 1); n > lim {
+		atomic.AddInt32(&s.conns, -1)
+		return false
+	}
+	if s.cu != nil {
+		s.cu.add(c)
+	}
+	return true
+}
+
+func (p *Pool) end(s *slotRT, c net.Conn) {
+	atomic.AddInt32(&s.conns, -1)
+	if s.cu != nil {
+		s.cu.del(c)
+	}
 }
 
 // ---------------------------------------------------------------- SOCKS5 (RFC 1928 + user/pass RFC 1929), chỉ CONNECT
 
-func (p *Pool) socks5(c net.Conn, br *bufio.Reader) {
+func (p *Pool) socks5(c net.Conn, br *bufio.Reader, pub bool) {
 	h := make([]byte, 2)
 	if _, err := io.ReadFull(br, h); err != nil || h[0] != 5 {
 		return
@@ -116,7 +152,7 @@ func (p *Pool) socks5(c net.Conn, br *bufio.Reader) {
 	if _, err := io.ReadFull(br, pw); err != nil {
 		return
 	}
-	s := p.auth(string(u), string(pw))
+	s := p.auth(string(u), string(pw), pub, c.RemoteAddr())
 	if s == nil {
 		c.Write([]byte{1, 1})
 		return
@@ -163,14 +199,17 @@ func (p *Pool) socks5(c net.Conn, br *bufio.Reader) {
 		c.Write([]byte{5, 7, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
-	if n := atomic.AddInt32(&s.conns, 1); n > int32(p.c.MaxConns) {
-		atomic.AddInt32(&s.conns, -1)
+	if !p.begin(s, c) {
 		c.Write([]byte{5, 1, 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
-	defer atomic.AddInt32(&s.conns, -1)
-	up, _, err := p.dial(s, host, port)
+	defer p.end(s, c)
+	t0 := time.Now()
+	up, how, err := p.dial(s, host, port)
 	if err != nil {
+		if s.cu != nil {
+			p.clog(s.cu, c.RemoteAddr(), host, port, how, 0, 0, t0, err)
+		}
 		c.Write([]byte{5, socksRep(err), 0, 1, 0, 0, 0, 0, 0, 0})
 		return
 	}
@@ -187,7 +226,18 @@ func (p *Pool) socks5(c net.Conn, br *bufio.Reader) {
 	}
 	c.Write(rep)
 	c.SetDeadline(time.Time{})
+	p.relayLog(s, c, br, up, host, port, how, t0)
+}
+
+// relayLog: chuyển dữ liệu; kết nối của khách thì ghi 1 dòng nhật ký lúc xong (byte lên / xuống của riêng kết nối này).
+func (p *Pool) relayLog(s *slotRT, c net.Conn, br *bufio.Reader, up net.Conn, host string, port int, how string, t0 time.Time) {
+	if s.cu == nil {
+		p.relay(s, c, br, up)
+		return
+	}
+	u0, d0 := atomic.LoadInt64(&s.up), atomic.LoadInt64(&s.down)
 	p.relay(s, c, br, up)
+	p.clog(s.cu, c.RemoteAddr(), host, port, how, atomic.LoadInt64(&s.up)-u0, atomic.LoadInt64(&s.down)-d0, t0, nil)
 }
 
 func socksRep(err error) byte {
@@ -212,7 +262,7 @@ func socksRep(err error) byte {
 
 // ---------------------------------------------------------------- HTTP: CONNECT, http://…, và /rotate /ip (link đổi IP)
 
-func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader) {
+func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader, pub bool) {
 	line, err := readLine(br)
 	if err != nil {
 		return
@@ -246,20 +296,20 @@ func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader) {
 		hdr = append(hdr, l)
 	}
 	if strings.HasPrefix(target, "/") { // không phải yêu cầu proxy → trang nhỏ của cbpool
-		p.api(c, method, target)
+		p.api(c, method, target, pub)
 		return
 	}
-	s := p.basicAuth(auth)
+	s := p.basicAuth(auth, pub, c.RemoteAddr())
 	if s == nil {
 		io.WriteString(c, "HTTP/1.1 407 Proxy Authentication Required\r\nProxy-Authenticate: Basic realm=\"cbpool\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return
 	}
-	if n := atomic.AddInt32(&s.conns, 1); n > int32(p.c.MaxConns) {
-		atomic.AddInt32(&s.conns, -1)
+	if !p.begin(s, c) {
 		io.WriteString(c, "HTTP/1.1 429 Too Many Requests\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 		return
 	}
-	defer atomic.AddInt32(&s.conns, -1)
+	defer p.end(s, c)
+	t0 := time.Now()
 	if method == "CONNECT" {
 		host, ps, err := net.SplitHostPort(target)
 		port, _ := strconv.Atoi(ps)
@@ -267,15 +317,18 @@ func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader) {
 			io.WriteString(c, "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
 			return
 		}
-		up, _, err := p.dial(s, host, port)
+		up, how, err := p.dial(s, host, port)
 		if err != nil {
+			if s.cu != nil {
+				p.clog(s.cu, c.RemoteAddr(), host, port, how, 0, 0, t0, err)
+			}
 			httpErr(c, err)
 			return
 		}
 		defer up.Close()
 		io.WriteString(c, "HTTP/1.1 200 Connection established\r\n\r\n")
 		c.SetDeadline(time.Time{})
-		p.relay(s, c, br, up)
+		p.relayLog(s, c, br, up, host, port, how, t0)
 		return
 	}
 	u, err := url.Parse(target)
@@ -287,8 +340,11 @@ func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader) {
 	if u.Port() != "" {
 		port, _ = strconv.Atoi(u.Port())
 	}
-	up, _, err := p.dial(s, u.Hostname(), port)
+	up, how, err := p.dial(s, u.Hostname(), port)
 	if err != nil {
+		if s.cu != nil {
+			p.clog(s.cu, c.RemoteAddr(), u.Hostname(), port, how, 0, 0, t0, err)
+		}
 		httpErr(c, err)
 		return
 	}
@@ -315,7 +371,7 @@ func (p *Pool) httpProxy(c net.Conn, br *bufio.Reader) {
 		return
 	}
 	c.SetDeadline(time.Time{})
-	p.relay(s, c, br, up)
+	p.relayLog(s, c, br, up, u.Hostname(), port, how, t0)
 }
 
 func readLine(br *bufio.Reader) (string, error) {
@@ -335,7 +391,7 @@ func readLine(br *bufio.Reader) (string, error) {
 	}
 }
 
-func (p *Pool) basicAuth(h string) *slotRT {
+func (p *Pool) basicAuth(h string, pub bool, from net.Addr) *slotRT {
 	if !strings.HasPrefix(strings.ToLower(h), "basic ") {
 		return nil
 	}
@@ -347,7 +403,7 @@ func (p *Pool) basicAuth(h string) *slotRT {
 	if len(up) != 2 {
 		return nil
 	}
-	return p.auth(up[0], up[1])
+	return p.auth(up[0], up[1], pub, from)
 }
 
 func httpErr(c net.Conn, err error) {
@@ -362,7 +418,8 @@ func httpErr(c net.Conn, err error) {
 }
 
 // api: GET /rotate?key=K[&what=v6|v4|all] · GET /ip?key=K — khoá đổi IP riêng từng ô (không lộ mật khẩu proxy).
-func (p *Pool) api(c net.Conn, method, target string) {
+// 27.11c: khoá của khách (proxy riêng) dùng được từ mọi nơi; khoá ô nội bộ chỉ trong mạng nhà.
+func (p *Pool) api(c net.Conn, method, target string, pub bool) {
 	reply := func(code string, v interface{}) {
 		b, _ := json.Marshal(v)
 		fmt.Fprintf(c, "HTTP/1.1 %s\r\nContent-Type: application/json\r\nContent-Length: %d\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n%s", code, len(b), b)
@@ -375,8 +432,32 @@ func (p *Pool) api(c net.Conn, method, target string) {
 	q := u.Query()
 	p.mu.RLock()
 	s := p.byRot[q.Get("key")]
+	cs := p.custRot[q.Get("key")]
 	p.mu.RUnlock()
+	if pub {
+		s = nil
+	}
+	if cs != nil && len(q.Get("key")) >= 16 && cs.cu.X > time.Now().Unix() {
+		switch u.Path {
+		case "/ip":
+			reply("200 OK", map[string]interface{}{"ok": true, "ip": p.custIP(cs)})
+		case "/rotate":
+			r, err := p.custRotate(cs)
+			if err != nil {
+				reply("429 Too Many Requests", map[string]interface{}{"ok": false, "err": err.Error()})
+				return
+			}
+			r["ok"] = true
+			reply("200 OK", r)
+		default:
+			reply("404 Not Found", map[string]interface{}{"ok": false})
+		}
+		return
+	}
 	if s == nil || len(q.Get("key")) < 16 {
+		if pub {
+			p.pubFail(ipKey(c.RemoteAddr()))
+		}
 		time.Sleep(300 * time.Millisecond)
 		reply("403 Forbidden", map[string]interface{}{"ok": false, "err": "khoá sai"})
 		return

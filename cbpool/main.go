@@ -40,7 +40,7 @@ import (
 	"time"
 )
 
-const VER = "27.11b"
+const VER = "27.11c"
 
 type PppConf struct {
 	Iface    string `json:"iface"`    // card đi PPPoE (mặc định = card IPv6 / vmbr0)
@@ -70,6 +70,8 @@ type Conf struct {
 	StateDir   string   `json:"state_dir"`
 	Ctl        string   `json:"ctl"`
 	Ppp        PppConf  `json:"ppp"`
+	UsersFile  string   `json:"users_file"` // 27.11c · tài khoản khách mua proxy (cbhost ghi)
+	LogFile    string   `json:"log_file"`   // nhật ký kết nối của khách ("-" = tắt)
 
 	allowFrom []*net.IPNet
 	allowDst  []*net.IPNet
@@ -136,6 +138,12 @@ func loadConf(path string) (*Conf, error) {
 	if c.Ppp.Secret == "" {
 		c.Ppp.Secret = "/etc/cloudblue/cbpool-ppp.secret"
 	}
+	if c.UsersFile == "" {
+		c.UsersFile = "/etc/cloudblue/cbpool-users.json"
+	}
+	if c.LogFile == "" {
+		c.LogFile = "/var/log/cloudblue/cbpool-khach.log"
+	}
 	if c.Ppp.Mtu <= 0 {
 		c.Ppp.Mtu = 1492
 	}
@@ -176,8 +184,9 @@ type Slot struct {
 
 type PState struct {
 	Slots []*Slot           `json:"slots"`
-	Added []string          `json:"added"` // địa chỉ IPv6 cbpool đã gắn (dọn khi đổi dải / bớt ô)
-	Macs  map[string]string `json:"macs"`  // MAC riêng từng phiên PPPoE (giữ cố định qua các lần chạy)
+	Added []string          `json:"added"`          // địa chỉ IPv6 cbpool đã gắn (dọn khi đổi dải / bớt ô)
+	Macs  map[string]string `json:"macs"`           // MAC riêng từng phiên PPPoE (giữ cố định qua các lần chạy)
+	Sale  map[string]string `json:"sale,omitempty"` // 27.11c · ô bán IPv6 (s001…) → phần sau địa chỉ (giữ cố định)
 }
 
 var stMu sync.Mutex
@@ -300,7 +309,7 @@ func out(v interface{}) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "dùng: cbpool run|status|rotate|reload|ppp-test|ppp-set|version")
+		fmt.Fprintln(os.Stderr, "dùng: cbpool run|status|rotate|reload|users|ppp-test|ppp-set|ppp-import|version")
 		os.Exit(2)
 	}
 	cmd := os.Args[1]
@@ -329,7 +338,7 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(run(c))
-	case "status", "rotate", "reload":
+	case "status", "rotate", "reload", "users":
 		c, err := loadConf(*cpath)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -367,6 +376,13 @@ func main() {
 			os.Exit(1)
 		}
 		os.Exit(pppSetCmd(c))
+	case "ppp-import": // 27.11c · cbhost đưa tài khoản PPPoE đã mã hoá (web) qua stdin
+		c, err := loadConf(*cpath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		os.Exit(pppImportCmd(c))
 	default:
 		fmt.Fprintln(os.Stderr, "lệnh lạ:", cmd)
 		os.Exit(2)

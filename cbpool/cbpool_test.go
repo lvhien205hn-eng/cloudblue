@@ -663,3 +663,191 @@ func TestDiscProbe(t *testing.T) {
 		t.Fatalf("ctl disc: %s %v", r, err)
 	}
 }
+
+// ---------------------------------------------------------------- 27.11c · bán proxy cho khách
+
+// Vector thử tạo bằng WebCrypto (Node, đúng hàm mã hoá của trang Quản trị) với khoá thử ngẫu nhiên — không phải khoá / mật khẩu thật.
+const encTestKey = "0RBspaOpwPNKqFgibkOSRRdG/ZnbpBiFp7pcLfsk5X8="
+const encTestVec = `{"v":1,"e":"BHMtKcuw42KU86gJzhepdCnh/UKwuV7gG0zzOVMf0Of+Nv/QpUc9qG2+Pvb2lz34iEbNlX55CJOzIx9uHJ/GVyQ=","i":"pBO1WMNOcwVZNWRe","c":"UldmN0a+T4pmiSwU+XAyM9WAJTPABwC29yXzzyGtAlMs11gwskTxY59+EmcbCmQKGT8OEd/8+Y6ljHDtyFhSCUYlmU6TqjtBZRbaxAWxDkUoERA="}`
+
+func TestPppEncInterop(t *testing.T) {
+	dir := t.TempDir()
+	c := &Conf{StateDir: dir}
+	os.WriteFile(keyPath(c), []byte(`{"d":"`+encTestKey+`"}`), 0600)
+	priv, err := loadKey(c, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := decryptPpp(priv, encTestVec)
+	if err != nil || s.User != "fpt-test@hn" || s.Pass != "Mật-khẩu thử 123" || s.Sessions != 3 {
+		t.Fatalf("giải chuỗi WebCrypto: %+v %v", s, err)
+	}
+	bad := strings.Replace(encTestVec, `"c":"`, `"c":"A`, 1)
+	if _, err := decryptPpp(priv, bad); err == nil {
+		t.Fatal("bản mã bị sửa vẫn giải được")
+	}
+	other, _ := loadKey(&Conf{StateDir: t.TempDir()}, true)
+	if _, err := decryptPpp(other, encTestVec); err == nil || !strings.Contains(err.Error(), "máy chủ khác") {
+		t.Fatalf("khoá máy khác phải báo không giải được: %v", err)
+	}
+	k2, _ := loadKey(&Conf{StateDir: dir}, true) // đã có khoá → giữ nguyên, không tạo khoá mới
+	if !k2.Equal(priv) {
+		t.Fatal("loadKey(create) đã đổi khoá đang có")
+	}
+	t.Log("✓ WebCrypto (ECDH P-256 + HKDF + AES-GCM) → Go giải đúng; sửa bản mã / khoá khác → từ chối")
+}
+
+func writeUsers(t *testing.T, path string, uf usersFile) {
+	b, _ := json.Marshal(uf)
+	if err := os.WriteFile(path, b, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// máy đích giữ kết nối mở (để thử cắt kết nối khi khách hết hạn)
+func holdServer(t *testing.T, addr string) net.Listener {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { io.Copy(io.Discard, c); c.Close() }()
+		}
+	}()
+	return ln
+}
+
+func TestCustAccounts(t *testing.T) {
+	needNetns(t)
+	dir := t.TempDir()
+	uf := filepath.Join(dir, "users.json")
+	lf := filepath.Join(dir, "khach.log")
+	oldTick := custTick
+	custTick = 200 * time.Millisecond
+	defer func() { custTick = oldTick }()
+	tgt := whoServer(t, "127.0.0.1:8085")
+	defer tgt.Close()
+	hold := holdServer(t, "127.0.0.1:8086")
+	defer hold.Close()
+	// 127.0.0.1 KHÔNG nằm trong allow_from → coi như máy ngoài Internet
+	p, px, ctl := setupPool(t, map[string]interface{}{"v6": false, "allow_from": []string{"10.0.0.0/8"}, "users_file": uf, "log_file": lf})
+	if _, rep := socksDial(t, px, p.slots[0].ID, p.slots[0].Pass, 1, "127.0.0.1", 8085); rep != 0xff {
+		t.Fatalf("chưa bán gì: máy ngoài phải bị đóng ngay, được %d", rep)
+	}
+	now := time.Now().Unix()
+	writeUsers(t, uf, usersFile{V: 1, Bw: -1, Fb4: true, Self: []string{"203.0.113.77"}, Users: []custUser{
+		{U: "pxtest0001", P: "matkhau-mot", K: "v6", N: "s001", X: now + 3600, S: 1, R: "rotkey-khach-000001"},
+		{U: "pxtest0002", P: "matkhau-hai", K: "v4", N: "0", X: now + 3600, S: 2},
+		{U: "pxtest0003", P: "matkhau-ba", K: "v6", N: "s002", X: now + 2, S: 3},
+		{U: "pxtest0004", P: "ngan", K: "v6", N: "s003", X: now + 3600, S: 1},      // mật khẩu quá ngắn → bỏ
+		{U: "pxtest0005", P: "matkhau-nam", K: "v6", N: "x9", X: now + 3600, S: 1}, // ô sai → bỏ
+		{U: "pxtest0006", P: "matkhau-sau", K: "v6", N: "s004", X: now - 10, S: 1}, // đã hết hạn → bỏ
+	}})
+	r, err := ctlCall(ctl, map[string]string{"cmd": "users"}, 10*time.Second)
+	if err != nil || !strings.Contains(string(r), `"users":3`) || !strings.Contains(string(r), `"bad":3`) || !strings.Contains(string(r), `"sale4":1`) {
+		t.Fatalf("nạp tài khoản khách: %s %v", r, err)
+	}
+	if k := p.ppp.sessForLocked(0); k != -1 {
+		t.Fatalf("chưa có phiên nào → ô nội bộ không có phiên: %d", k)
+	}
+	if _, rep := socksDial(t, px, p.slots[0].ID, p.slots[0].Pass, 1, "127.0.0.1", 8085); rep != 0xfe {
+		t.Fatalf("tài khoản ô nội bộ từ Internet phải bị từ chối: %d", rep)
+	}
+	c, rep := socksDial(t, px, "pxtest0001", "matkhau-mot", 1, "127.0.0.1", 8085)
+	if rep != 0 || readAll(c) != "127.0.0.1" {
+		t.Fatalf("khách IPv6 (fb4) từ Internet → đích IPv4: %d", rep)
+	}
+	if _, rep := socksDial(t, px, "pxtest0002", "matkhau-hai", 1, "127.0.0.1", 8085); rep != 4 {
+		t.Fatalf("khách IPv4 mà phiên chưa lên → 4: %d", rep)
+	}
+	if _, rep := socksDial(t, px, "pxtest0001", "matkhau-mot", 1, "203.0.113.77", 80); rep != 2 {
+		t.Fatalf("đích là IP nhà (self) → chặn: %d", rep)
+	}
+	if _, rep := socksDial(t, px, "pxtest0001", "matkhau-mot", 1, "127.0.0.1", 25); rep != 2 {
+		t.Fatalf("cổng 25 → chặn: %d", rep)
+	}
+	// HTTP CONNECT bằng tài khoản khách
+	au := base64.StdEncoding.EncodeToString([]byte("pxtest0001:matkhau-mot"))
+	hc, _ := net.Dial("tcp", px)
+	fmt.Fprintf(hc, "CONNECT 127.0.0.1:8085 HTTP/1.1\r\nProxy-Authorization: Basic %s\r\n\r\n", au)
+	br := bufio.NewReader(hc)
+	l, _ := br.ReadString('\n')
+	br.ReadString('\n')
+	io.WriteString(hc, "WHO\n")
+	who, _ := io.ReadAll(br)
+	hc.Close()
+	if !strings.Contains(l, "200") || string(who) != "127.0.0.1" {
+		t.Fatalf("HTTP CONNECT khách: %q %q", l, who)
+	}
+	// link xem / đổi IP của khách: proxy riêng có khoá; ô chưa có IPv6 → báo lỗi rõ
+	get := func(path string) string {
+		hc, _ := net.Dial("tcp", px)
+		fmt.Fprintf(hc, "GET %s HTTP/1.1\r\nHost: x\r\n\r\n", path)
+		b, _ := io.ReadAll(hc)
+		hc.Close()
+		return string(b)
+	}
+	if g := get("/ip?key=rotkey-khach-000001"); !strings.Contains(g, `"ok":true`) {
+		t.Fatalf("/ip khách: %q", g)
+	}
+	if g := get("/rotate?key=rotkey-khach-000001"); !strings.Contains(g, "chưa có IPv6") {
+		t.Fatalf("/rotate khách khi chưa có IPv6: %q", g)
+	}
+	if g := get("/rotate?key=" + p.slots[0].Rot); !strings.Contains(g, "403") {
+		t.Fatalf("khoá đổi IP ô nội bộ từ Internet phải bị từ chối: %q", g)
+	}
+	// khách hết hạn → kết nối đang chạy bị cắt
+	c3, rep := socksDial(t, px, "pxtest0003", "matkhau-ba", 1, "127.0.0.1", 8086)
+	if rep != 0 {
+		t.Fatalf("khách sắp hết hạn vẫn vào được lúc còn hạn: %d", rep)
+	}
+	c3.SetReadDeadline(time.Now().Add(6 * time.Second))
+	t0 := time.Now()
+	_, e := c3.Read(make([]byte, 1))
+	if e == nil || time.Since(t0) > 5900*time.Millisecond {
+		t.Fatalf("hết hạn mà kết nối chưa bị cắt: %v", e)
+	}
+	if _, rep := socksDial(t, px, "pxtest0003", "matkhau-ba", 1, "127.0.0.1", 8085); rep != 0xfe {
+		t.Fatalf("khách hết hạn đăng nhập lại phải bị từ chối: %d", rep)
+	}
+	// nhật ký kết nối khách
+	lb, _ := os.ReadFile(lf)
+	if !strings.Contains(string(lb), `"u":"pxtest0001"`) || !strings.Contains(string(lb), `"dst":"127.0.0.1:8085"`) || !strings.Contains(string(lb), `"from":"127.0.0.1"`) {
+		t.Fatalf("nhật ký khách thiếu: %s", lb)
+	}
+	// số dùng cho cbhost
+	cr, _ := ctlCall(ctl, map[string]string{"cmd": "cust"}, 5*time.Second)
+	if !strings.Contains(string(cr), `"u":"pxtest0001"`) || !strings.Contains(string(cr), `"pk":"`) {
+		t.Fatalf("ctl cust: %s", cr)
+	}
+	// dò mật khẩu: 20 lần sai từ 1 IP → IP đó bị chặn (cả mật khẩu đúng)
+	for i := 0; i < failMax; i++ {
+		socksDial(t, px, "pxtest0001", "sai-mat-khau", 1, "127.0.0.1", 8085)
+	}
+	if _, rep := socksDial(t, px, "pxtest0001", "matkhau-mot", 1, "127.0.0.1", 8085); rep != 0xff {
+		t.Fatalf("IP dò mật khẩu phải bị chặn: %d", rep)
+	}
+	t.Log("✓ khách: vào từ Internet, ô nội bộ bị chặn từ ngoài, IPv4 chưa có phiên → 4, chặn IP nhà / cổng 25, HTTP CONNECT, /ip /rotate, hết hạn cắt kết nối, nhật ký, chặn dò mật khẩu")
+}
+
+func TestCustReserved(t *testing.T) {
+	m := &PppMgr{sess: []*sess{{k: 0}, {k: 1}, {k: 2}, {k: 3}}}
+	if m.sessForLocked(5) != 1 {
+		t.Fatal("không phiên bán: ô 5 → phiên 1")
+	}
+	m.setReserved(map[int]bool{1: true, 2: true})
+	got := []int{m.sessForLocked(0), m.sessForLocked(1), m.sessForLocked(2)}
+	if got[0] != 0 || got[1] != 3 || got[2] != 0 {
+		t.Fatalf("phiên 1, 2 để bán → ô nội bộ chỉ dùng 0, 3: %v", got)
+	}
+	m.setReserved(map[int]bool{0: true, 1: true, 2: true, 3: true})
+	if m.sessForLocked(0) != -1 {
+		t.Fatal("mọi phiên để bán → ô nội bộ không có phiên")
+	}
+	t.Log("✓ phiên PPPoE để bán không chia cho ô nội bộ")
+}

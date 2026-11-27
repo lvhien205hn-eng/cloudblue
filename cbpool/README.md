@@ -34,8 +34,22 @@ cbpool ppp-test --dial 2      # quay thử 2 phiên bằng tài khoản đã lư
 phiên) lúc bật và 6 giờ / lần → `status.ppp.disc = {ok, ac, iface, t}` (hoặc `err`) → trang Quản trị hiện ngay "modem có cho PPPoE đi qua
 không". Tắt: `"ppp": {"probe": false}`. Dò lại ngay: `cbpool ppp-test` (hoặc lệnh điều khiển `{"cmd":"disc"}`).
 
+## Bán proxy cho khách (27.11c · web: Proxy dân cư, SQL v62)
+
+- Web bán (IPv6 / IPv4, riêng hoặc share 2–5 người) → cbhost 27/11g mỗi phút gọi `px_host_sync` → ghi `/etc/cloudblue/cbpool-users.json`
+  (quyền 600: `{"bw","fb4","sale4","maxc","self":[IP nhà],"users":[{"u","p","k":"v6|v4","n":"s007|3","x":hết hạn,"s":share,"r"?}]}`)
+  → `cbpool users` (cbhost tự gọi qua ổ cắm điều khiển) nạp lại, khách bị bỏ / hết hạn bị cắt kết nối ngay.
+- Tài khoản khách đăng nhập được từ **Internet** (modem chuyển cổng ngoài → máy chủ cổng 8899); tài khoản ô nội bộ `pNN` vẫn chỉ trong mạng nhà;
+  khi chưa bán gì, máy ngoài bị đóng kết nối ngay như cũ. Dò sai mật khẩu 20 lần / 10 phút → chặn IP đó 15 phút.
+- `v6`: ô bán `s001…` (IPv6 riêng, tách khỏi `pNN`), chỉ đi IPv6 (`fb4` = cho đích chỉ có IPv4 đi IPv4 chung). `v4`: đúng phiên PPPoE `k`;
+  phiên đã bán (hoặc mọi phiên khi `sale4`) không chia cho ô nội bộ. Đổi IP (`/rotate?key=`, từ mọi nơi) chỉ cho proxy riêng (ô có 1 khách).
+- Cấm đích là chính nhà: dải /64 IPv6 của máy, IP công khai (`self` + tự hỏi 30 phút / lần), IP các phiên PPPoE.
+- Nhật ký kết nối của khách: `/var/log/cloudblue/cbpool-khach.log` (JSON 1 dòng / kết nối, xoay vòng 20 MB) — để xử lý khi bị lạm dụng.
+- **Tài khoản PPPoE nhập trên web**: máy tạo khoá P-256 (`state_dir/key.json`, 600) → `status.pk`; trình duyệt mã hoá
+  (ECDH P-256 → HKDF-SHA256, muối = khoá tạm, info `cbpool-ppp-v1` → AES-256-GCM) → cbhost đưa chuỗi qua stdin cho `cbpool ppp-import`.
+
 Cấu hình `/etc/cloudblue/cbpool.json` (cbhost chỉ ghi lần đầu): `listen`, `iface6`, `slots`, `bw_kbps`, `max_conns`, `block_ports`,
-`fallback4`, `allow_from`, `ppp: {iface, sessions, mtu, probe}`. Sửa xong: `systemctl restart cloudblue-pool` (hoặc `cbpool reload`).
+`fallback4`, `allow_from`, `ppp: {iface, sessions, mtu, probe}`, `users_file`, `log_file` (`"-"` = tắt nhật ký khách). Sửa xong: `systemctl restart cloudblue-pool` (hoặc `cbpool reload`).
 Tắt hẳn: `"pool": false` trong `/etc/cloudblue/cbhost.conf`.
 
 ## Dựng lại (phải ra đúng md5 ghim ở `POOL_FILE` trong `proxmox/cbhost.py`)

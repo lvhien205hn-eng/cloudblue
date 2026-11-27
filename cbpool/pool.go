@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -68,13 +69,15 @@ type oldAddr struct {
 
 type slotRT struct {
 	*Slot
-	n        int // số thứ tự (0…)
+	n        int // số thứ tự (0…); ô bán / khách: -1
 	ip6      net.IP
 	conns    int32
 	up, down int64
 	bkUp     *bucket
 	bkDown   *bucket
 	lastRot  time.Time
+	sale     bool    // 27.11c · ô bán IPv6 (s001…): chỉ giữ địa chỉ, không đăng nhập trực tiếp
+	cu       *custRT // 27.11c · tài khoản khách (nil = ô nội bộ)
 }
 
 type Pool struct {
@@ -100,6 +103,22 @@ type Pool struct {
 	discMu sync.Mutex
 	disc   map[string]interface{} // 27.11b · kết quả tự dò PPPoE gần nhất (web hiện: modem có cho PPPoE đi qua không)
 	discCh chan struct{}
+	// 27.11c · bán proxy cho khách
+	cust    map[string]*slotRT // tên đăng nhập khách → tài khoản
+	custRot map[string]*slotRT // khoá đổi IP của khách (proxy riêng)
+	sale    map[string]*slotRT // ô bán IPv6 đang có khách
+	custBw  int
+	custMax int
+	custFb4 bool
+	self    []net.IP
+	failMu  sync.Mutex
+	fails   map[string]*failRec
+	logMu   sync.Mutex
+	logF    *os.File
+	rot4    map[int]time.Time
+	pubKey  string
+	pub4    string    // IPv4 công khai của đường chính (tự hỏi 30 phút / lần): cấm làm đích của khách + web hiện cho khách nối
+	pub4At  time.Time // lần hỏi gần nhất
 }
 
 func newPool(c *Conf) (*Pool, error) {
@@ -112,6 +131,14 @@ func newPool(c *Conf) (*Pool, error) {
 	p := &Pool{c: c, st: st, stopCh: make(chan struct{}), v6kick: make(chan struct{}, 1), discCh: make(chan struct{}, 1)}
 	p.ppp = newPppMgr(c, st, func() { saveState(c, st) })
 	p.rebuild()
+	if k, err := loadKey(c, true); err != nil {
+		logf("không tạo được khoá của máy (%v) — web chưa gửi được tài khoản PPPoE mã hoá", err)
+	} else {
+		p.pubKey = base64.StdEncoding.EncodeToString(k.PublicKey().Bytes())
+	}
+	if _, err := p.loadUsers(); err != nil {
+		logf("tài khoản khách: %v", err)
+	}
 	return p, nil
 }
 
@@ -139,9 +166,10 @@ func (p *Pool) rebuild() {
 }
 
 func (p *Pool) start() {
-	p.wg.Add(2)
+	p.wg.Add(3)
 	go p.v6loop()
 	go p.discLoop()
+	go p.custLoop()
 	p.applyPpp()
 }
 
@@ -263,6 +291,9 @@ func (p *Pool) reload() map[string]interface{} {
 		p.rebuild()
 	}
 	p.applyPpp()
+	if _, err := p.loadUsers(); err != nil {
+		logf("tài khoản khách: %v", err)
+	}
 	select {
 	case p.v6kick <- struct{}{}:
 	default:
@@ -476,7 +507,11 @@ func (p *Pool) v6sync() {
 		}
 	}
 	want := map[string]bool{}
-	for _, s := range p.slots {
+	all := append([]*slotRT{}, p.slots...)
+	for _, s := range p.sale { // 27.11c · ô bán IPv6 đang có khách
+		all = append(all, s)
+	}
+	for _, s := range all {
 		s.ip6 = nil
 		if pf == nil {
 			continue
@@ -630,7 +665,7 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 	var v6, v4 []net.IP
 	blocked := 0
 	for _, ip := range ips {
-		if p.dstBlocked(ip) {
+		if p.dstBlocked(ip) || (s.cu != nil && p.isSelf(ip)) {
 			blocked++
 			continue
 		}
@@ -646,13 +681,12 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 		}
 		return nil, "", errResolve
 	}
-	p.mu.RLock()
-	src6 := s.ip6
-	p.mu.RUnlock()
+	src6, src4, fb4 := p.srcFor(s)
+	v4ok := len(v4) > 0 && (src4 != nil || fb4) // còn đường IPv4 dự phòng
 	var last error = errNoRoute
-	if src6 != nil && (len(v4) == 0 || time.Now().UnixNano() > atomic.LoadInt64(&p.v6skip)) {
+	if src6 != nil && (!v4ok || time.Now().UnixNano() > atomic.LoadInt64(&p.v6skip)) {
 		tries, to := 1, 2500*time.Millisecond // còn IPv4 dự phòng: thử IPv6 1 lần, ngắn
-		if len(v4) == 0 {
+		if !v4ok {
 			tries, to = 2, 10*time.Second
 		}
 		for i, ip := range v6 {
@@ -666,7 +700,7 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 				return c, "v6", nil
 			}
 			last = err
-			if !errors.Is(err, syscall.ECONNREFUSED) && atomic.AddInt32(&p.v6fail, 1) >= 5 { // đường IPv6 hỏng → 60 giây đi thẳng IPv4
+			if v4ok && !errors.Is(err, syscall.ECONNREFUSED) && atomic.AddInt32(&p.v6fail, 1) >= 5 { // đường IPv6 hỏng → 60 giây đi thẳng IPv4
 				atomic.StoreInt32(&p.v6fail, 0)
 				atomic.StoreInt64(&p.v6skip, time.Now().Add(60*time.Second).UnixNano())
 				logf("IPv6: 5 lần nối hỏng liền → 60 giây tới đích có IPv4 thì đi IPv4")
@@ -676,11 +710,13 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 	if len(v4) == 0 {
 		return nil, "", last
 	}
-	src4 := p.ppp.ipFor(s.n)
 	how := "v4ppp"
 	if src4 == nil {
-		if !bp(p.c.Fallback4, true) {
-			return nil, "", errNoRoute
+		if !fb4 {
+			if src6 != nil && len(v6) == 0 {
+				return nil, "", errNoRoute
+			}
+			return nil, "", last
 		}
 		how = "v4"
 	}
@@ -699,6 +735,29 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 		last = err
 	}
 	return nil, "", last
+}
+
+// srcFor: địa chỉ nguồn đi ra của ô / khách s → IPv6 riêng (nil = không có) · IPv4 phiên PPPoE (nil = không có) · được đi IPv4 chung.
+//
+//	ô nội bộ: IPv6 của ô + phiên PPPoE (trừ phiên để bán) + IPv4 chung (fallback4).
+//	khách v6: IPv6 của ô bán, chỉ IPv6 (fb4 = cho đích chỉ có IPv4 đi IPv4 chung) · khách v4: đúng phiên PPPoE đã bán, không gì khác.
+func (p *Pool) srcFor(s *slotRT) (net.IP, net.IP, bool) {
+	if cu := s.cu; cu != nil {
+		if cu.K == "v4" {
+			return nil, p.ppp.sessIP(cu.sess), false
+		}
+		p.mu.RLock()
+		defer p.mu.RUnlock()
+		var v6 net.IP
+		if cu.unit != nil {
+			v6 = cu.unit.ip6
+		}
+		return v6, nil, p.custFb4
+	}
+	p.mu.RLock()
+	v6 := s.ip6
+	p.mu.RUnlock()
+	return v6, p.ppp.ipFor(s.n), bp(p.c.Fallback4, true)
 }
 
 // ---------------------------------------------------------------- đổi IP
@@ -738,6 +797,12 @@ func (p *Pool) rotate(s *slotRT, what string) (map[string]interface{}, error) {
 			return nil, fmt.Errorf("gắn IPv6 mới lỗi: %v", err)
 		}
 		s.IID, s.ip6 = iid, nip
+		if s.sale { // 27.11c · ô bán: lưu địa chỉ mới để chạy lại vẫn giữ
+			if p.st.Sale == nil {
+				p.st.Sale = map[string]string{}
+			}
+			p.st.Sale[s.ID] = iid
+		}
 		if old != nil {
 			p.old6 = append(p.old6, oldAddr{ip: old.String(), idx: p.v6idx, at: time.Now().Add(rotGrace)})
 		}
@@ -746,7 +811,7 @@ func (p *Pool) rotate(s *slotRT, what string) (map[string]interface{}, error) {
 		r["ip6"] = nip.String()
 	}
 	p.mu.Unlock()
-	if what != "v6" {
+	if what != "v6" && !s.sale {
 		if k := p.ppp.sessFor(s.n); k >= 0 {
 			ip, err := p.ppp.redial(k, 40*time.Second)
 			if err != nil {
@@ -804,8 +869,16 @@ func (p *Pool) status() map[string]interface{} {
 	if d := p.discCopy(); d != nil {
 		pp["disc"] = d
 	}
+	p.mu.RLock()
+	cust := map[string]interface{}{"n": len(p.cust), "units6": len(p.sale)}
+	cc := int32(0)
+	for _, rt := range p.cust {
+		cc += atomic.LoadInt32(&rt.conns)
+	}
+	cust["conns"] = cc
+	p.mu.RUnlock()
 	return map[string]interface{}{"ver": VER, "listen": listen, "bw_kbps": p.c.BwKbps, "fallback4": bp(p.c.Fallback4, true),
-		"conns": atomic.LoadInt32(&p.total), "v6": v6, "ppp": pp, "slots": ss, "t": time.Now().Unix()}
+		"conns": atomic.LoadInt32(&p.total), "v6": v6, "ppp": pp, "slots": ss, "t": time.Now().Unix(), "cust": cust, "pk": p.pubKey, "pub4": p.pubIP4()}
 }
 
 // ---------------------------------------------------------------- ổ cắm điều khiển (chỉ root)
@@ -849,6 +922,14 @@ func (p *Pool) ctlOne(c net.Conn) {
 			resp = p.reload()
 		case "disc": // dò PPPoE ngay (không mật khẩu)
 			resp = p.discover()
+		case "users": // 27.11c · cbhost vừa ghi lại file tài khoản khách
+			if r, err := p.loadUsers(); err != nil {
+				resp = map[string]interface{}{"ok": false, "err": err.Error()}
+			} else {
+				resp = r
+			}
+		case "cust": // IP đang ra của ô bán + số dùng từng khách (cbhost báo web)
+			resp = p.custStat()
 		case "rotate":
 			s := p.slot(req["slot"])
 			if s == nil {
