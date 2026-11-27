@@ -99,7 +99,7 @@ def main():
 
         print("4. Sáng / tiếng Anh / điện thoại")
         s = Page(b, theme="light"); t = s.st()
-        ck("chế độ sáng: neon xanh dương dịu + vệt chạy", t["run"] and "rgba(37, 110, 240" in t["rowShadow"] and t["rowAfter"]["anim"] == "nrun", t["rowShadow"])
+        ck("chế độ sáng: neon xanh trời (28/11 bản 4: xanh trời + xanh dương, bỏ tím) + vệt chạy", t["run"] and "rgba(14, 165, 233" in t["rowShadow"] and t["rowAfter"]["anim"] == "nrun", t["rowShadow"])
         s.page.screenshot(path=os.path.join(SHOTS, "neon-2-sang.png")); s.close()
         s = Page(b, lang="en"); t = s.st()
         ck("tiếng Anh: neon bật, không có chữ 'Running neon' nào", t["run"] and not s.js("() => document.body.innerText.includes('Running neon')"), t)
