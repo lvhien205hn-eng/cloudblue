@@ -908,11 +908,11 @@ def main():
         s.page.click("#vma-retry"); s.page.wait_for_timeout(700)
         ck("không lỗi trang khi tải lỗi / thử lại", not s.vis("#vma-err") and not s.errors, s.errors)
         s.close()
-        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2001:db8:5:ac60::10"; adm6["hosts"][0]["info"]["ip6_only"] = True
+        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2001:db8:5:77::10"; adm6["hosts"][0]["info"]["ip6_only"] = True
         s = Site(br, html, True, vm_data(adm=adm6), path="/admin")
         admin_open(s)
         href = s.js("() => { const a = document.querySelector('#vma-hosts [data-vmhost] a[href*=\":8006\"]'); return a ? a.getAttribute('href') : null; }")
-        ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2001:db8:5:ac60::10]:8006", href)
+        ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2001:db8:5:77::10]:8006", href)
         cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
         ck("máy chủ chỉ có IPv6 (cbhost báo ip6_only): thẻ máy đó có dòng ⚠️ 'chỉ có IPv6 — mạng chưa cấp IPv4'; máy khác không có", "chỉ có IPv6 — mạng chưa cấp IPv4" in cards[0] and "chỉ có IPv6" not in cards[1], cards)
         s.close()
@@ -940,7 +940,7 @@ def main():
         s.close()
         # 27/11e: KHO PROXY NHIỀU IP — cbhost báo metrics.px (danh sách ô proxy của máy chủ)
         adm9 = adm_state()
-        adm9["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11a", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:ac60::/64",
+        adm9["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11a", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:77::/64",
                                              "s": [["p01", "PwMot1234567890a", "1:2:3:4", "", 0, "RotKeyMot1234567890"], ["p02", "Pw<b>hai</b>", "5:6:7:8", "203.0.113.5", 2, "RotKeyHai1234567890"]],
                                              "ppp": {"want": 0, "up": 0, "acct": False, "ip": []}}
         adm9["hosts"][1]["metrics"]["px"] = {"ok": False, "err": "cbpool chưa chạy"}
@@ -948,13 +948,13 @@ def main():
         admin_open(s)
         cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
         ck("thẻ máy chủ có dòng '🌐 Kho proxy nhiều IP: 2 ô · IPv6 <dải> · IPv4 chung (chưa bật PPPoE)'",
-           "Kho proxy nhiều IP: 2 ô" in cards[0] and "2001:db8:5:ac60::/64" in cards[0] and "chưa bật PPPoE" in cards[0], cards[0][-600:])
+           "Kho proxy nhiều IP: 2 ô" in cards[0] and "2001:db8:5:77::/64" in cards[0] and "chưa bật PPPoE" in cards[0], cards[0][-600:])
         ck("máy chủ có cbpool chưa chạy → '🌐 Kho proxy nhiều IP: cbpool chưa chạy'", "Kho proxy nhiều IP: cbpool chưa chạy" in cards[1], cards[1][-300:])
         s.js("() => { document.querySelectorAll('#vma-hosts details.vma-px').forEach(d => d.open = true); navigator.clipboard.writeText = v => { window.__cp = v; return Promise.resolve(); }; }")
         s.page.wait_for_timeout(200)
         rows = s.js("() => [...document.querySelectorAll('#vma-hosts details.vma-px tbody tr')].map(r => [...r.querySelectorAll('td')].map(td => td.innerText.trim()))")
         ck("bảng ô: IP:Port:User:Pass (IP mạng nhà của máy chủ, cổng 8899) · IPv6 đủ (dải + đuôi) · IPv4 'chung' / IP phiên · số kết nối",
-           rows and rows[0][1].startswith("192.168.77.10:8899:p01:PwMot1234567890a") and rows[0][2] == "2001:db8:5:ac60:1:2:3:4" and rows[0][3] == "chung"
+           rows and rows[0][1].startswith("192.168.77.10:8899:p01:PwMot1234567890a") and rows[0][2] == "2001:db8:5:77:1:2:3:4" and rows[0][3] == "chung"
            and rows[1][3] == "203.0.113.5" and rows[1][4] == "2", rows)
         ck("chữ máy chủ gửi lên (mật khẩu có <b>) hiện đúng chữ, không thành mã HTML",
            "Pw<b>hai</b>" in rows[1][1] and not s.js("() => !!document.querySelector('#vma-hosts details.vma-px tbody b')"), rows[1])
@@ -976,7 +976,7 @@ def main():
                                    ({"t": int(_t.time()) - 30, "ok": False, "ac": []}, ["modem không cho PPPoE đi qua", "KHÔNG cho PPPoE từ mạng nhà đi qua", "PPPoE passthrough", "IPv6 riêng từng ô vẫn chạy"], ["cbpool ppp-set", "cbpool ppp-test"]),
                                    ({"t": 0, "err": "mở ổ cắm PPPoE lỗi (cần root)"}, ["Máy chủ tự dò PPPoE bị lỗi: mở ổ cắm PPPoE lỗi (cần root)"], ["modem không cho", "modem cho PPPoE"])):
             a = adm_state()
-            a["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11b", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:ac60::/64",
+            a["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11b", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:77::/64",
                                               "s": [["p01", "PwMot1234567890a", "1:2:3:4", "", 0, "RotKeyMot1234567890"]], "ppp": {"want": 0, "up": 0, "acct": False, "ip": [], "disc": disc}}
             s = Site(br, html, True, vm_data(adm=a), path="/admin")
             admin_open(s)
