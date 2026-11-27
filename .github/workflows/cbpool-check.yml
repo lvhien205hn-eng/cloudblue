@@ -46,7 +46,7 @@ jobs:
           sudo unshare -n env CBPOOL_NETNS_TEST=1 /tmp/cbpool.test -test.v 2>&1 | tee /tmp/gotest.txt
           grep -q '^PASS' /tmp/gotest.txt
           if grep -q -- '--- SKIP' /tmp/gotest.txt; then echo "::error::CI phải chạy cả phần IPv6"; exit 1; fi
-          { echo "### Bộ thử Go"; echo '```'; grep -E '^(=== RUN|--- |    cbpool_test|PASS|FAIL)' /tmp/gotest.txt | grep -v '=== RUN'; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          { echo "### Bộ thử Go"; echo '```'; grep -E '^(--- |    cbpool_test|PASS|FAIL)' /tmp/gotest.txt || true; echo '```'; } >> $GITHUB_STEP_SUMMARY
       - name: Cài ppp + pppoe-server
         run: |
           sudo apt-get update -qq
@@ -63,7 +63,7 @@ jobs:
           python3 proxmox/tests/test_cbhost.py > /tmp/h.txt 2>&1; h=$?
           sudo python3 cbproxy/test_cbproxy.py ./cbproxy-ci > /tmp/x.txt 2>&1; x=$?
           python3 cbproxy/test_proxy_server.py > /tmp/s.txt 2>&1; s=$?
-          { echo "### cbhost: $(tail -1 /tmp/h.txt) · cbproxy: $(tail -1 /tmp/x.txt) · phonectl proxy: $(tail -1 /tmp/s.txt)"; echo '```'; grep "✗" /tmp/h.txt /tmp/x.txt /tmp/s.txt | head -20; echo '```'; } >> $GITHUB_STEP_SUMMARY
+          { echo "### cbhost: $(tail -1 /tmp/h.txt) · cbproxy: $(tail -1 /tmp/x.txt) · phonectl proxy: $(tail -1 /tmp/s.txt)"; echo '```'; grep "✗" /tmp/h.txt /tmp/x.txt /tmp/s.txt | head -20 || true; echo '```'; } >> $GITHUB_STEP_SUMMARY
           exit $((h | x | s))
       - name: Lưu bản dựng
         if: always()
