@@ -911,7 +911,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "27/11e"           # 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "27/11f"           # 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -4078,7 +4078,8 @@ def _root_keep(p, port=None):
 # iptables (nat OUTPUT) bắt mọi kết nối TCP của app → proxy SOCKS5 / HTTP của khách. Proxy chết / sai → máy tự đi mạng thường,
 # lành thì quay lại. UDP 443 (QUIC) chặn để app chuyển sang TCP. Trạng thái công khai /data/local/tmp/cbproxy.json (adb thường đọc,
 # không có mật khẩu). Cấu hình (có mật khẩu) chỉ nằm ở phones.json của máy chủ + trong máy của chính khách — KHÔNG lên web.
-CBPX_FILE = ("cbproxy-x86_64", "0cc3647ff0c54ae20ced5acf5907fbca")
+CBPX_FILE = ("cbproxy-x86_64", "ec037c9bdd3bce2d432e3de07516e79c")
+CBPX_VER = "27.11a"                       # bản cbproxy trong file trên: máy đang chạy bản khác → vòng canh thay bản mới
 CBPX_DEV = "/data/adb/cbproxy"
 CBPX_PUB = "/data/local/tmp/cbproxy.json"
 _PX_HOST = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
@@ -4254,7 +4255,8 @@ def _proxy_keep(p, port=None):
     if port: p = dict(p, port=port)
     try:
         s = _px_state(p)
-        if s and s.get("alive"): return
+        if s and s.get("alive") and s.get("ver") == CBPX_VER: return
+        if s and s.get("alive"): print(f"   🌐 {p['name']}: cbproxy {s.get('ver') or '?'} → {CBPX_VER}", flush=True)
         if s and s.get("mode") == "crashed" and (s.get("age") or 0) < 1800: return       # vừa hỏng (VD máy không có iptables) → 30 phút mới thử lại
         ok, msg, _ = _px_apply(p, quiet=True)
         print(f"   🌐 {p['name']}: {'bật lại proxy · ' + msg if ok else msg}", flush=True)
