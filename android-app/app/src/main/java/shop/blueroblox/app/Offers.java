@@ -209,7 +209,7 @@ final class Offers {
     private static View codeRow(MainActivity a, JSONObject c) {
         LinearLayout r = Ui.row(a, 10);
         boolean ok = c.optBoolean("usable");
-        TextView p = Ui.text(a, c.optInt("pct") > 0 ? c.optInt("pct") + "%" : Ui.vnd(c.optDouble("amount")), 15, ok ? Ui.OK : Ui.MUTED, true);
+        TextView p = Ui.text(a, c.optInt("pct") > 0 ? c.optInt("pct") + "%" : Ui.vnd(c.optDouble("amount")), 15, ok ? Ui.MONEY : Ui.MUTED, true);
         r.addView(p, new LinearLayout.LayoutParams(Ui.dp(52), -2));
         long exp = MainActivity.parseTime(c.optString("expires_at"));
         String st = c.optBoolean("used") ? Ui.L("Đã dùng", "Used") : ok ? Ui.L("Dùng được đến ", "Valid until ") + MainActivity.fdate(exp)
@@ -251,7 +251,7 @@ final class Offers {
                 LinearLayout b = block(a, "💰 " + Ui.L("Ưu đãi khi nạp", "Top-up bonus"));
                 JSONArray l = tc.optJSONArray("levels");
                 for (int i = 0; i < l.length(); i++) { JSONObject x = l.optJSONObject(i); if (x == null) continue;
-                    b.addView(Ui.text(a, Ui.L("Nạp 1 lần từ " + Ui.vnd(x.optDouble("min")) + "  →  mã giảm " + x.optInt("pct") + "%", "Top up " + Ui.vnd(x.optDouble("min")) + "+ once  →  " + x.optInt("pct") + "% off"), 14, Ui.OK, true), Ui.fill()); }
+                    b.addView(Ui.text(a, Ui.L("Nạp 1 lần từ " + Ui.vnd(x.optDouble("min")) + "  →  mã giảm " + x.optInt("pct") + "%", "Top up " + Ui.vnd(x.optDouble("min")) + "+ once  →  " + x.optInt("pct") + "% off"), 14, Ui.MONEY, true), Ui.fill()); }
                 b.addView(Ui.muted(a, Ui.L("Mỗi tài khoản nhận 1 mã (mức cao nhất của lần nạp đó), dùng 1 lần, hạn " + tc.optInt("days", 7) + " ngày" + (tc.optLong("max") > 0 ? ", giảm tối đa " + Ui.vnd(tc.optLong("max")) : "") + ". Chỉ dùng cho cloud phone: thuê, gia hạn, nâng cấp máy.",
                         "One code per account (the highest level of that top-up), single use, valid " + tc.optInt("days", 7) + " days" + (tc.optLong("max") > 0 ? ", up to " + Ui.vnd(tc.optLong("max")) + " off" : "") + ". Cloud phones only: rent, renew, upgrade.")), Ui.fill());
                 Button tb = Ui.button(a, "💳 " + Ui.L("Nạp tiền", "Top up"), Ui.PRIMARY);
@@ -321,7 +321,7 @@ final class Offers {
             Ui.Wrap w = new Ui.Wrap(a, 8);
             for (int i = 0; i < l.length(); i++) {
                 final JSONObject x = l.optJSONObject(i); if (x == null) continue;
-                TextView ch = Ui.pill(a, Ui.L("Từ ", "From ") + Ui.vnd(x.optDouble("min")) + " → " + Ui.L("mã ", "") + x.optInt("pct") + "%", Ui.OK);
+                TextView ch = Ui.pill(a, Ui.L("Từ ", "From ") + Ui.vnd(x.optDouble("min")) + " → " + Ui.L("mã ", "") + x.optInt("pct") + "%", Ui.MONEY);
                 ch.setTextSize(Ui.sp(13));
                 ch.setPadding(Ui.dp(12), Ui.dp(7), Ui.dp(12), Ui.dp(8));
                 ch.setOnClickListener(v -> pick.set(x.optLong("min")));

@@ -27,6 +27,13 @@ final class Tiers {
         List<String> fit = new ArrayList<>();
     }
 
+    /** 28/11: nhãn nói về giá (Giá tốt, Rẻ, Tiết kiệm, Giảm…) → tô vàng kim như tiền / ưu đãi. */
+    static boolean deal(String b) {
+        String s = b == null ? "" : b.toLowerCase(java.util.Locale.ROOT);
+        for (String k : new String[]{"giá", "rẻ", "tiết kiệm", "giảm", "sale", "%", "best value", "saver", "cheap"}) if (s.contains(k)) return true;
+        return false;
+    }
+
     /** 16/11c: nhãn gói (admin gõ tiếng Việt) theo ngôn ngữ khách chọn; English mà không dịch được → ẩn nhãn. */
     static String badge(String b) {
         if (b == null || Ui.vi()) return b == null ? "" : b;
@@ -189,10 +196,11 @@ final class Tiers {
             LinearLayout pr = Ui.col(c, 0);
             pr.setGravity(Gravity.END);
             if (t.badge != null && !badge(t.badge).isEmpty()) {      // nhãn 🔥 Bán chạy · ⭐ Đề xuất nằm trên giá
-                TextView b = Ui.text(c, badge(t.badge), 10.5f, Color.WHITE, true);
+                boolean deal = deal(t.badge);                          // 28/11: nhãn về GIÁ = vàng kim (như tiền / ưu đãi), nhãn khác = xanh logo (như HOT / MỚI của web)
+                TextView b = Ui.text(c, badge(t.badge), 10.5f, deal ? Color.rgb(42, 28, 0) : Color.WHITE, true);
                 b.setPadding(Ui.dp(7), Ui.dp(1), Ui.dp(7), Ui.dp(2));
                 b.setMaxLines(1);
-                GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, new int[]{Color.rgb(255, 79, 109), Color.rgb(255, 154, 68)});
+                GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, deal ? new int[]{Color.rgb(255, 207, 74), Color.rgb(255, 196, 0)} : new int[]{Color.rgb(92, 157, 255), Color.rgb(43, 110, 240)});
                 g.setCornerRadius(Ui.dp(99));
                 b.setBackground(g);
                 LinearLayout.LayoutParams bl = Ui.wrap();
@@ -200,7 +208,7 @@ final class Tiers {
                 bl.bottomMargin = Ui.dp(3);
                 pr.addView(b, bl);
             }
-            TextView p = Ui.text(c, Ui.vnd(perDay), 17, Ui.FG, true);
+            TextView p = Ui.text(c, Ui.vnd(perDay), 17, Ui.MONEY, true);
             p.setGravity(Gravity.END);
             pr.addView(p, Ui.wrap());
             TextView pd = Ui.text(c, Ui.L("/ ngày", "/ day"), 11.5f, Ui.MUTED, false);

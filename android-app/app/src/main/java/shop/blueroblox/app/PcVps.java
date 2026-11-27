@@ -1009,7 +1009,7 @@ final class PcVps {
             pv.setGravity(Gravity.END);
             rr.addView(pv, Ui.wrap());
             int save = base > 0 ? (int) Math.round((1 - pd / base) * 100) : 0;
-            if (save >= 1) rr.addView(Ui.pill(a, "−" + save + "%" + Ui.L(" / ngày", " / day"), Ui.OK), Ui.wrap());
+            if (save >= 1) rr.addView(Ui.pill(a, "−" + save + "%" + Ui.L(" / ngày", " / day"), Ui.MONEY), Ui.wrap());
             r.addView(rr, Ui.wrap());
             r.setOnClickListener(v -> { tDays = (int) v.getTag(); changed.run(); });
             Ui.press(r);
