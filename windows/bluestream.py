@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "27/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "27/11f"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
                                           # · 27/11e ANDROID 9 MƯỢT: hình ≤ 960, khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan,
                                           #   không dumpsys sau mỗi cú bấm; Thông số có "bộ nén Android ra … khung/s" + bỏ khung vì đâu (máy MuMu không đổi)
                                           # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
@@ -160,6 +160,25 @@ KEY_WAIT_S_A9 = max(0.0, _float_conf("SCRCPY_KEY_WAIT_S_A9", 0.2))
 A9_MAXH = max(0, _int_conf("STREAM_A9_MAXH", 960))                      # cạnh dài tối đa của hình Android 9 (trừ mức Nét) · 0 = theo mức chất lượng
 A9_LAG_MUL = max(1.0, min(4.0, _float_conf("STREAM_A9_LAG_MUL", 2.0)))  # Android 9: ngưỡng "app chậm" (bỏ khung) gấp mấy lần máy khác
 A9_QWAIT = max(0.15, min(2.0, _float_conf("STREAM_A9_QWAIT_S", 0.5)))   # Android 9: khung chờ gửi quá chừng này giây mới nhảy cóc (máy khác 0,15)
+# 27/11f — CBVIDEO: máy chủ hình RIÊNG cho Android 9 (windows/cbvideo.jar · nguồn .github/a9-check/A9Video.java · dựng trong CI a9-check).
+# Đo CI (simpleperf, máy ảo Android 9 4 nhân): scrcpy chỉ ~14 khung/giây vì bộ nén OMX tự ĐỌC NGƯỢC hình từ GPU ngay trong luồng nén
+# (~70% thời gian luồng nén nằm ở ống goldfish, mã hoá thật ~3%); hình nhỏ hơn không giúp (800 / 640 / 480 đều ~12–16 trên máy 4GB thật).
+# cbvideo: màn ảo → ImageReader (đọc hình trong tiến trình riêng) → NV12 → cùng bộ nén bằng ByteBuffer — đọc và nén chạy song song.
+# Cùng giao thức scrcpy 2.4 (ScrcpyVideo đọc y nguyên) + 1 byte 'K' qua socket hình = khung IDR NGAY → bỏ khung không còn phải bật lại
+# bộ nén (≈ 0,5 giây đứng hình) nên Android 9 dùng lại ngưỡng bỏ khung bình thường (bớt trễ dồn). Lỗi / thiếu file → tự quay về scrcpy.
+# Chế độ (STREAM_A9_CBVIDEO): test (mặc định bản 27/11f) = chỉ phiên xin ?cbv=1 trên web — kiểm trên máy thật trước khi bật cho khách ·
+# 1 / on = mọi máy Android 9 (phiên ?cbv=0 vẫn dùng scrcpy để so) · 0 / off = tắt hẳn.
+_cbvm = str(C.get("STREAM_A9_CBVIDEO", "test")).strip().lower()
+A9_CBV_MODE = "off" if _cbvm in ("0", "off", "false", "no") else ("on" if _cbvm in ("1", "on", "true", "yes", "auto") else "test")
+A9_CBV = A9_CBV_MODE != "off"
+CBV_FILE = ("cbvideo.jar", "bf8403f16395162ae5de3c0e4abe5215")                        # md5 ghim: file lạ / sai bản không bao giờ chạy trong máy khách
+CBV_DEV = "/data/local/tmp/cb-cbvideo-" + CBV_FILE[1][:8] + ".jar"
+CBV_RAW = (C.get("REPO_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main").rstrip("/") + "/windows/"
+CBV_API = (C.get("REPO_API") or "https://api.github.com/repos/lvhien205hn-eng/cloudblue/contents").rstrip("/") + "/windows/"
+CBV_STATS = max(0, _int_conf("STREAM_CBV_STATS_S", 120))                # cbvideo ghi 1 dòng thống kê vào nhật ký mỗi chừng này giây (0 = tắt)
+CBV_KEY_GAP = 0.25                                                       # xin khung khoá tối đa 4 lần / giây
+CBV_KEY_MAX_S = 2.5                                                      # xin rồi mà quá chừng này giây chưa có khung khoá → bật lại bộ nén như cũ
+CBV_BAD_S = 1800                                                         # cbvideo lỗi ở 1 máy → máy đó dùng scrcpy 30 phút
 # 16/11 — MẠNG YẾU VẪN MƯỢT. Máy lấy hình bằng scrcpy (Android 12/15): scrcpy 2.4 đặt KEY_FRAME_RATE = 60 nên bộ nén trong máy ĐẾM KHUNG
 # — "khung khoá mỗi 1 giây" thật ra là mỗi 60 khung: phát 30 khung/giây → 2 giây, 20 khung/giây (mạng yếu) → 3 giây, màn đứng yên
 # (lặp 10 khung/giây) → 6 giây. Mạng khách giật 1 nhịp = máy chủ bỏ khung tới khung khoá kế = ĐỨNG HÌNH 2–6 giây. Nay khoảng khung khoá
@@ -1115,6 +1134,60 @@ def push_jar(serial):
         raise (AdbGone if gone else RuntimeError)("push: " + (err or out).strip()[-200:])
 
 
+_CBV = {"ok": None, "t": 0.0, "lock": threading.Lock()}
+_CBV_BAD = {}                                     # serial → lúc hết "cbvideo lỗi ở máy này" (dùng scrcpy tới lúc đó)
+
+
+def _md5_file(fp):
+    try:
+        with open(fp, "rb") as f: return hashlib.md5(f.read()).hexdigest()
+    except OSError: return ""
+
+
+def ensure_cbv():
+    """27/11f: windows/cbvideo.jar trên máy chủ (tải từ GitHub nếu thiếu / sai md5 — md5 ghim ở CBV_FILE). True = dùng được.
+       Tải hỏng → 10 phút sau mới thử lại (Android 9 tạm dùng scrcpy như cũ)."""
+    if not A9_CBV or len(CBV_FILE[1]) != 32: return False
+    fn, want = CBV_FILE; fp = os.path.join(RTC, fn)
+    if _CBV["ok"] and os.path.isfile(fp): return True
+    with _CBV["lock"]:
+        if _md5_file(fp) == want: _CBV["ok"] = True; return True
+        if _CBV["ok"] is False and time.time() - _CBV["t"] < 600: return False
+        _CBV["t"] = time.time()
+        for url, hdr in ((CBV_API + fn, {"Accept": "application/vnd.github.raw", "User-Agent": "BlueRoblox"}),
+                         (CBV_RAW + fn + f"?t={int(time.time())}", {"User-Agent": "BlueRoblox", "Cache-Control": "no-cache"})):
+            try:
+                with urllib.request.urlopen(urllib.request.Request(url, headers=hdr), timeout=60) as r: d = r.read()
+                if hashlib.md5(d).hexdigest() == want:
+                    with open(fp + ".tmp", "wb") as f: f.write(d)
+                    os.replace(fp + ".tmp", fp); _CBV["ok"] = True
+                    log(f"cbvideo: đã tải {fn} ({len(d)} byte) — máy Android 9 lấy hình bằng cbvideo")
+                    return True
+            except Exception: pass
+        _CBV["ok"] = False
+        log(f"cbvideo: chưa tải được {fn} đúng bản (md5 {want[:8]}…) → Android 9 tạm lấy hình bằng scrcpy, 10 phút sau thử lại")
+        return False
+
+
+def push_cbv(serial):
+    """Chép cbvideo.jar vào máy (tên file có md5 → đúng bản thì thôi). Máy "offline" → chờ adb rồi thử lại 1 lần."""
+    fp = os.path.join(RTC, CBV_FILE[0])
+    for i in range(2):
+        code, out, err = adb(serial, "shell", "ls", "-l", CBV_DEV, timeout=10)
+        if code == 0 and str(os.path.getsize(fp)) in out: return
+        if code == 0 or not any(w in (err or out).lower() for w in _ADB_GONE):
+            code, out, err = adb(serial, "push", fp, CBV_DEV, timeout=60)
+            if code == 0: return
+        gone = any(w in (err or out).lower() for w in _ADB_GONE)
+        if i == 0 and gone and adb_ready(serial, 12): continue
+        raise (AdbGone if gone else RuntimeError)("push cbvideo: " + (err or out).strip()[-200:])
+
+
+def cbv_ok_for(serial):
+    """Máy này có nên lấy hình bằng cbvideo không (bật trong conf + chưa bị đánh dấu lỗi gần đây)."""
+    return A9_CBV and _CBV_BAD.get(serial, 0) < time.time()
+
+
 def _recv_exact(s, n):
     b = bytearray()
     while len(b) < n:
@@ -1319,12 +1392,13 @@ class ScrcpyVideo:
     """Hình lấy THẲNG từ Android: scrcpy-server 2.4 (video=true, control=false) mã hoá H.264 ngay trong máy → từng khung Annex-B → on_au.
        Dùng khi Windows không quay được cửa sổ giả lập (Windows 10 trước 1903: PrintWindow chỉ ra màn ĐEN với MEmu).
        Cùng giao diện với Encoder (start / stop / proc / enc / failed_early). Khung khoá mỗi ~1 giây; máy xoay → on_size(rộng, cao)."""
-    def __init__(self, serial, max_size, fps, kbps, on_au, on_size=None, iframe=1.0, quick=False, ready_wait=12.0):
+    def __init__(self, serial, max_size, fps, kbps, on_au, on_size=None, iframe=1.0, quick=False, ready_wait=12.0, kind="scrcpy"):
         self.serial, self.max_size, self.fps, self.kbps, self.on_au, self.on_size = serial, int(max_size), int(fps), int(kbps), on_au, on_size
         self.quick, self.ready_wait = bool(quick), float(ready_wait)   # quick: phiên này vừa chạy scrcpy tốt → bật lại khỏi hỏi adb / kiểm file (đỡ ~0,3 giây đứng hình)
         try: self.iframe = max(0.1, min(5.0, float(iframe)))
         except (TypeError, ValueError): self.iframe = 1.0
-        self.enc = "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
+        self.kind = "cbv" if kind == "cbv" else "scrcpy"                 # 27/11f: "cbv" = cbvideo.jar (Android 9) — cùng giao thức, khác chương trình trong máy
+        self.enc = "cbvideo" if self.kind == "cbv" else "scrcpy"; self.proc = None; self.sock = None; self.fport = None; self.stopped = False
         self.lock = threading.Lock(); self.w = self.h = 0; self.frames_in = 0; self.started = 0.0
         self.scid = 0; self.pk_in = 0; self.cont_in = 0; self.multi = False; self.layout = None   # 16/11k: gói / lát tiếp theo / khung nhiều lát
         self.cut_in = 0; self._lay_c = None; self._lay_n = 0; self._cut_run = 0                  # 17/11f: khung thiếu lát đã bỏ · cách chia đang kiểm
@@ -1335,14 +1409,22 @@ class ScrcpyVideo:
         self.started = time.time()
         if not self.quick:
             if self.ready_wait > 0 and not adb_ready(self.serial, self.ready_wait): raise AdbGone(f"adb không thấy máy {self.serial}")
-            if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
-            push_jar(self.serial)
+            if self.kind == "cbv":
+                if not ensure_cbv(): raise RuntimeError("thiếu cbvideo.jar")
+                push_cbv(self.serial)
+            else:
+                if not ensure_jar(): raise RuntimeError("thiếu scrcpy-server")
+                push_jar(self.serial)
         scid = random.randint(1, 0x7FFFFFFF); self.scid = scid
-        cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
-               "video=true audio=false control=false tunnel_forward=true send_device_meta=false send_dummy_byte=true "
-               "send_codec_meta=true send_frame_meta=true cleanup=false power_on=false video_codec=h264 "
-               f"max_size={self.max_size} max_fps={self.fps} video_bit_rate={self.kbps * 1000} video_codec_options="
-               + ("i-frame-interval=1" if abs(self.iframe - 1.0) < 1e-6 else f"i-frame-interval:float={self.iframe:g}"))
+        if self.kind == "cbv":
+            cmd = (f"CLASSPATH={CBV_DEV} app_process / com.cloudblue.A9Video scid={scid:08x} max_size={self.max_size} "
+                   f"max_fps={self.fps} video_bit_rate={self.kbps * 1000} i_frame={self.iframe:g} stats={CBV_STATS}")
+        else:
+            cmd = (f"CLASSPATH={JAR_DEV} app_process / com.genymobile.scrcpy.Server 2.4 scid={scid:08x} log_level=warn "
+                   "video=true audio=false control=false tunnel_forward=true send_device_meta=false send_dummy_byte=true "
+                   "send_codec_meta=true send_frame_meta=true cleanup=false power_on=false video_codec=h264 "
+                   f"max_size={self.max_size} max_fps={self.fps} video_bit_rate={self.kbps * 1000} video_codec_options="
+                   + ("i-frame-interval=1" if abs(self.iframe - 1.0) < 1e-6 else f"i-frame-interval:float={self.iframe:g}"))
         with self.lock:
             if self.stopped: raise RuntimeError("đã dừng")
             self.proc = subprocess.Popen([ADB, "-s", self.serial, "shell", cmd], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -1362,7 +1444,7 @@ class ScrcpyVideo:
                 s.close()
             except OSError: pass
             time.sleep(0.15)
-        if not sock: self._kill(); raise RuntimeError("scrcpy (hình) không nối được")
+        if not sock: self._kill(); raise RuntimeError(("cbvideo" if self.kind == "cbv" else "scrcpy") + " (hình) không nối được")
         return self.attach(sock)
 
     def attach(self, sock):
@@ -1388,7 +1470,7 @@ class ScrcpyVideo:
         try:
             for ln in iter(p.stdout.readline, b""):
                 t = ln.decode("utf-8", "replace").strip()
-                if t and not self.stopped: log(f"  [scrcpy hình {self.serial}] {t[:200]}")
+                if t and not self.stopped: log(f"  [{'cbvideo' if self.kind == 'cbv' else 'scrcpy hình'} {self.serial}] {t[:200]}")
         except Exception: pass
 
     def _emit(self, it, natural=False):
@@ -1523,6 +1605,15 @@ class ScrcpyVideo:
         self._kill()
 
     def failed_early(self): return False
+
+    def request_key(self):
+        """27/11f: cbvideo → xin khung IDR NGAY (1 byte 'K' qua socket hình; cbvideo gọi MediaCodec PARAMETER_KEY_REQUEST_SYNC_FRAME).
+           scrcpy không có lệnh này → False (phiên tự bật lại bộ nén như cũ)."""
+        if self.kind != "cbv": return False
+        s = self.sock
+        if not s: return False
+        try: s.sendall(b"K"); return True
+        except OSError: return False
 
 
 # GIỮ CÚ BẤM (MẶC ĐỊNH TẮT): nhận "đặt ngón" → chờ tối đa TAP_HOLD giây xem có "nhấc ngón" không. Có → gửi đặt + nhấc
@@ -2268,6 +2359,31 @@ class Session:
     dl = 0; net = ""; ceil_kbps = 0; ceil_until = 0.0; ceil_s = 0.0; t_rate0 = 0.0; prodlog = None      # 16/11 (như trên)
     kf_legacy = False; kf_probe = False; vid_ok_t = 0.0
     n_in = 0; n_restart = 0; dr = None             # 27/11e: số khung bộ nén ra · số lần bật lại bộ nén · bỏ khung vì đâu (thông số cho app / web)
+    n_kreq = 0; _kq_t = 0.0                        # 27/11f: số lần xin khung khoá cbvideo · lúc xin gần nhất
+    cbv_req = ""                                   # 27/11f: "1" / "0" = phiên ép cbvideo / scrcpy (web ?cbv=)
+
+    def _want_cbv(self):
+        """Phiên này có lấy hình bằng cbvideo không: máy Android 9 + chế độ (on: mọi phiên trừ ?cbv=0 · test: chỉ phiên ?cbv=1)."""
+        if not self.a9 or self.is_preview or A9_CBV_MODE == "off" or self.cbv_req == "0": return False
+        return A9_CBV_MODE == "on" or self.cbv_req == "1"
+
+    def _cbv(self):
+        """27/11f: phiên đang lấy hình bằng cbvideo (xin được khung IDR ngay → bỏ khung rẻ)."""
+        return getattr(self.enc, "enc", "") == "cbvideo"
+
+    def _a9slow(self):
+        """Android 9 lấy hình bằng scrcpy: bỏ 1 khung = bật lại bộ nén (đắt) → ngưỡng bỏ khung nới ra (27/11e). cbvideo: như máy khác."""
+        return self.a9 and not self._cbv()
+
+    def _cbv_key(self, force=False):
+        """cbvideo: xin khung IDR (tối đa 4 lần / giây). True = đã gửi lệnh."""
+        now = time.time()
+        if not self._cbv() or (not force and now - self._kq_t < CBV_KEY_GAP): return False
+        self._kq_t = now
+        try: ok = bool(self.enc.request_key())
+        except Exception: ok = False
+        if ok: self.n_kreq += 1
+        return ok
 
     def __init__(self, link, me, phone, hello, t_hello):
         self.link, self.me, self.phone, self.hello, self.t_hello = link, me, phone, hello, t_hello
@@ -2276,6 +2392,7 @@ class Session:
         self.cur_q = "bal" if self.q == "auto" else self.q
         try: self.fps_req = int(hello.get("fps") or 0); self.maxh_req = int(hello.get("maxh") or 0)
         except (TypeError, ValueError): self.fps_req = self.maxh_req = 0
+        self.cbv_req = str(hello.get("cbv") or "").strip()[:1]        # 27/11f: web ?cbv=1 / 0 → ép cbvideo / scrcpy cho phiên này
         self.kbps_req = 0
         self.loop = asyncio.get_running_loop()
         self.aq = asyncio.Queue(); self.src = None; self.enc = None; self.ctl = None; self.vlock = asyncio.Lock()
@@ -2428,6 +2545,7 @@ class Session:
         d = self.__dict__.get("dr")
         if d is None: d = self.dr = {}
         d[why] = d.get(why, 0) + n
+        if self._cbv(): self._cbv_key()                       # 27/11f: cbvideo → xin khung IDR ngay, khỏi đứng hình chờ / bật lại bộ nén
 
     def _enqueue(self, it):
         pl = self.prodlog
@@ -2460,16 +2578,30 @@ class Session:
         ow, oh, fps, kbps = self._dims()
         self.gen += 1; g = self.gen
         old_enc = self.enc
+        kind = "cbv" if (self._want_cbv() and cbv_ok_for(self.serial) and ensure_cbv()) else "scrcpy"     # 27/11f
         op = getattr(old_enc, "proc", None)                   # bộ scrcpy cũ đang chạy tốt (đã ra khung, tiến trình adb còn sống) → máy thấy được, file có sẵn
-        quick = bool(self.vid_ok_t) and getattr(old_enc, "enc", "") == "scrcpy" and getattr(old_enc, "frames_in", 0) > 0 and op is not None and op.poll() is None
+        quick = (bool(self.vid_ok_t) and getattr(old_enc, "enc", "") in ("scrcpy", "cbvideo") and getattr(old_enc, "kind", "scrcpy") == kind
+                 and getattr(old_enc, "frames_in", 0) > 0 and op is not None and op.poll() is None)
         self.vid_ok_t = 0.0                                    # bật lỗi → lần sau kiểm adb + file đầy đủ
         msz = _scr_max(self.src.cw, self.src.ch, max(ow, oh))       # 16/11k: cả hai cạnh hình chia hết 16
-        enc = ScrcpyVideo(self.serial, msz, fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
-                          iframe=self._iframe(fps, kbps), quick=quick, ready_wait=wait)
+        def mk(kd, qk):
+            return ScrcpyVideo(self.serial, msz, fps, kbps, lambda d, k, c, p: self._on_au(g, d, k, c, p), lambda w, h: self._on_vsize(g, w, h),
+                               iframe=self._iframe(fps, kbps), quick=qk, ready_wait=wait, kind=kd)
+        enc = mk(kind, quick)
         self.enc = enc
         if old_enc: old_enc.stop()
         if self.closed: enc.stop(); raise Closed()
-        w, h = enc.start()
+        try:
+            w, h = enc.start()
+        except (Closed, Deny, AdbGone):
+            raise
+        except Exception as e:
+            if kind != "cbv" or self.closed: raise
+            _CBV_BAD[self.serial] = time.time() + CBV_BAD_S           # cbvideo không chạy được ở máy này → scrcpy 30 phút, phiên này đổi ngay
+            log(f"  {self.name}: cbvideo lỗi ({str(e).strip()[:160] or type(e).__name__}) → lấy hình bằng scrcpy {CBV_BAD_S // 60} phút")
+            enc.stop()
+            enc = mk("scrcpy", False); self.enc = enc
+            w, h = enc.start()
         if self.closed: enc.stop(); raise Closed()
         self.vid_ok_t = time.time()
         self.vw, self.vh, self.fps, self.kbps = w, h, fps, kbps
@@ -2695,7 +2827,7 @@ class Session:
                 while not self.aq.empty(): items.append(self.aq.get_nowait())
                 items = [x for x in items if x[0] == self.gen]
                 if not items: continue
-                if time.monotonic() - items[0][5] > (A9_QWAIT if self.a9 else 0.15):     # 27/11e: Android 9 bỏ khung rất đắt → chịu lâu hơn
+                if time.monotonic() - items[0][5] > (A9_QWAIT if self._a9slow() else 0.15):     # 27/11e: Android 9 (scrcpy) bỏ khung rất đắt → chịu lâu hơn
                     ki = max((i for i, x in enumerate(items) if x[2] and x[1] is not None), default=None)
                     if ki is None:
                         self.drop += len(items); self._dropx("q", len(items)); self.wait_key = True; self._congested(hard=True); continue
@@ -2711,7 +2843,7 @@ class Session:
         if data is None: self._dropx("cut"); self.wait_key = True; return          # mất khung → chờ khung khoá (tối đa ~1 giây), không hiện hình vỡ
         lim = 1500 if time.time() < self.key_grace else LAG_DROP_MS.get(getattr(self.link, "kind", ""), 350)
         if self.net == "c" and lim < CELL_LAG_MS: lim = CELL_LAG_MS           # 16/11: khách dùng 4G/5G (hay giật ngắn) → bớt bỏ khung oan
-        if self.a9 and time.time() >= self.key_grace: lim = int(lim * A9_LAG_MUL)   # 27/11e: Android 9 bỏ 1 khung = bật lại bộ nén → chỉ bỏ khi chậm thật
+        if self._a9slow() and time.time() >= self.key_grace: lim = int(lim * A9_LAG_MUL)   # 27/11e: Android 9 (scrcpy) bỏ 1 khung = bật lại bộ nén → chỉ bỏ khi chậm thật
         if self._behind_ms() > lim:                            # app chậm quá ngưỡng (thẳng 0,35 s · vòng 0,7 s) → bỏ khung cho kịp (không để trễ dồn)
             if not self.wait_key: self._congested()
             self.drop += 1; self._dropx("lag"); self.wait_key = True
@@ -2911,6 +3043,10 @@ class Session:
                     _nvenc_broken["until"] = time.time() + 120
                     await self.restart_video(cpu=True); continue
                 if self.enc and self.enc.proc and self.enc.proc.poll() is not None and time.time() - self.last_restart > 3:
+                    if self._cbv() and (self.sent == 0 or getattr(self.enc, "frames_in", 0) == 0):
+                        _CBV_BAD[self.serial] = time.time() + CBV_BAD_S       # 27/11f: cbvideo thoát khi chưa ra hình → máy này dùng scrcpy 30 phút
+                        log(f"  {self.name}: cbvideo dừng khi chưa ra hình → lấy hình bằng scrcpy {CBV_BAD_S // 60} phút")
+                        await self.restart_video(); continue
                     if self.sent == 0 and getattr(self.enc, "enc", "") == "scrcpy":
                         if (not self.kf_legacy and not self.a9 and not self.is_preview
                                 and abs(getattr(self.enc, "iframe", SCR_IFRAME) - SCR_IFRAME) > 1e-6):
@@ -2924,7 +3060,14 @@ class Session:
                     log(f"  {self.name}: bộ nén dừng → bật lại"); await self.restart_video(); continue
                 kw = 0.0 if self.is_preview else (KEY_WAIT_S_A9 if self.a9 else KEY_WAIT_S)
                 if not getattr(self, "wait_key", False): self._wk_t = 0.0
-                elif not self._wk_t: self._wk_t = time.time()
+                elif not self._wk_t:
+                    self._wk_t = time.time()
+                    if self._cbv(): self._cbv_key()                      # 27/11f: chờ khung khoá (bỏ khung / xoay / mạng) → xin IDR ngay
+                elif self._cbv():
+                    wt = time.time() - self._wk_t
+                    if wt > CBV_KEY_MAX_S and not self.restart_req and time.time() - self.last_restart > 2.0:
+                        self.restart_req = "key"; self.n_keyfix += 1; self._wk_t = time.time()   # xin mãi không có khung khoá → bật lại như cũ
+                    elif wt > 0.5: self._cbv_key()                       # nhắc lại (lệnh trước có thể tới lúc bộ nén đang bật lại)
                 elif (kw > 0 and getattr(self, "sent", 0) > 0 and getattr(self.enc, "enc", "") == "scrcpy" and not self.restart_req
                       and time.time() - self._wk_t > kw and time.time() - self.last_restart > max(2.0, kw)):
                     self.restart_req = "key"; self.n_keyfix += 1; self._wk_t = time.time()   # bỏ khung rồi chờ khung khoá quá lâu → bật lại bộ nén
@@ -2975,6 +3118,7 @@ class Session:
                 st["rs"] = self.n_restart; st["rk"] = self.n_keyfix   # số lần bật lại bộ nén · trong đó vì chờ khung khoá
                 if self.dr: st["dr"] = dict(self.dr)                  # bỏ khung vì đâu (lag / q / wk / full / cut)
                 if self.a9: st["a9"] = 1
+                if self.n_kreq: st["kq"] = self.n_kreq                # 27/11f: số lần xin khung khoá cbvideo
                 self.link.send_nowait(S_STATS, json.dumps(st).encode())
                 t_stat = time.time(); s0, b0, i0 = self.sent, self.bytes, self.n_in
 
@@ -4735,8 +4879,13 @@ async def main():
     log("mở máy: " + ("màn hình Android đang tắt → tự bật sáng trước khi lấy hình (WAKE_ON_OPEN)" if WAKE_ON_OPEN else "KHÔNG tự bật sáng màn hình (WAKE_ON_OPEN=0)"))
     log(f"bản 17/11e: dán vào Termux bằng Ctrl+Alt+V {'BẬT' if PASTE_TERMUX else 'TẮT (PASTE_TERMUX=0)'} · mạng yếu: mức nhớ cũ hơn "
         f"{RATE_FRESH_S / 60:g} phút → bắt đầu ≥ {RATE_FRESH_KBPS} kbps, khách tự chọn chất lượng → dò lại, yên {CEIL_CALM_S / 60:g} phút → bỏ trần cũ")
+    log(f"bản 27/11f: Android 9 cbvideo — " + ((f"lấy hình bằng cbvideo.jar (md5 {CBV_FILE[1][:8]}, đọc hình song song với nén, xin khung khoá tức thì) "
+        + ("cho MỌI máy Android 9 (web ?cbv=0 = scrcpy)" if A9_CBV_MODE == "on" else "CHỈ phiên web ?cbv=1 (chế độ thử — STREAM_A9_CBVIDEO=1 để bật cho khách)")
+        + f", lỗi thì tự quay về scrcpy {CBV_BAD_S // 60} phút") if A9_CBV and len(CBV_FILE[1]) == 32 else "TẮT (STREAM_A9_CBVIDEO=0) → scrcpy như 27/11e"))
     log(f"bản 27/11e: Android 9 mượt — hình ≤ {A9_MAXH or 'theo mức'} (trừ mức Nét), khung I mỗi {SCR_IFRAME_A9:g} giây, bỏ khung → bật lại bộ nén "
-        f"sau {KEY_WAIT_S_A9:g} giây, ngưỡng app chậm ×{A9_LAG_MUL:g}, hàng chờ {A9_QWAIT:g} giây, không dumpsys sau cú bấm · máy MuMu không đổi")
+        f"sau {KEY_WAIT_S_A9:g} giây, ngưỡng app chậm ×{A9_LAG_MUL:g}, hàng chờ {A9_QWAIT:g} giây (khi dùng scrcpy), không dumpsys sau cú bấm · máy MuMu không đổi")
+    if A9_CBV and (C.get("EMU") or "").strip().lower() == "ld":
+        threading.Thread(target=ensure_cbv, daemon=True).start()        # máy chủ LDPlayer: tải sẵn cbvideo.jar (khách mở máy khỏi chờ tải)
     log(f"khung khoá scrcpy: Android 9 mỗi {SCR_IFRAME_A9:g} giây, chờ quá {KEY_WAIT_S_A9:g} giây thì bật lại bộ nén · máy khác mỗi "
         + (f"{SCR_KEY_S:g} giây THẬT theo khung/giây đang phát (SCRCPY_KEY_EVERY_S)" if SCR_KEY_S > 0 else f"{SCR_IFRAME:g} giây ở 60 khung/giây (kiểu cũ)")
         + (f", chờ quá {KEY_WAIT_S:g} giây thì bật lại" if KEY_WAIT_S else ""))
