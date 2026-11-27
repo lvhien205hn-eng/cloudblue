@@ -935,7 +935,7 @@ final class VmNvme {
             pv.setGravity(Gravity.END);
             rr.addView(pv, Ui.wrap());
             int save = base > 0 ? (int) Math.round((1 - (p / (double) d) / base) * 100) : 0;
-            if (save >= 1) rr.addView(Ui.pill(a, "−" + save + "%", Ui.OK), Ui.wrap());
+            if (save >= 1) rr.addView(Ui.pill(a, "−" + save + "%", Ui.MONEY), Ui.wrap());
             r.addView(rr, Ui.wrap());
             r.setClickable(true);
             r.setOnClickListener(v -> { bDays = d; a.vmChanged(); });
