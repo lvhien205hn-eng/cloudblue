@@ -1,9 +1,9 @@
-// Thử blueroblox-site/api/px-check.js (27/11h — 🔎 kiểm tra proxy cho khách): proxy SOCKS5 / HTTP giả + "trang trả IP" HTTPS giả
+// Thử blueroblox-site/api/_px-check.js (27/11h — 🔎 kiểm tra proxy cho khách; web gọi /api/px-check → vercel.json chuyển sang notify-admin?px=1): proxy SOCKS5 / HTTP giả + "trang trả IP" HTTPS giả
 // (chứng chỉ tự ký cho api64.ipify.org / api.ip.sb) chạy trên 127.0.0.1 → không gọi ra ngoài. Cần openssl.
-//   node test_api_pxcheck.js <đường dẫn tới px-check.js>
+//   node test_api_pxcheck.js <đường dẫn tới _px-check.js>
 const path = require("path"), fs = require("fs"), os = require("os"), net = require("net"), https = require("https"), cp = require("child_process");
 const src = process.argv[2];
-if (!src || !fs.existsSync(src)) { console.error("Cách dùng: node test_api_pxcheck.js <px-check.js>"); process.exit(2); }
+if (!src || !fs.existsSync(src)) { console.error("Cách dùng: node test_api_pxcheck.js <_px-check.js>"); process.exit(2); }
 process.env.SUPABASE_URL = "https://sb.test"; process.env.SUPABASE_SERVICE_ROLE_KEY = "SERVICE";
 let OK = 0, FAIL = 0;
 const ck = (name, cond, extra) => { if (cond) { OK++; console.log("  ✓", name); } else { FAIL++; console.log("  ✗", name, "→", JSON.stringify(extra === undefined ? null : extra).slice(0, 700)); } };
@@ -210,7 +210,19 @@ const listen = s => new Promise(r => s.listen(0, "127.0.0.1", () => r(s.address(
   F.noSql = true; o = await call({ items: [{ h: "203.0.113.50", p: 18899, u: "pxold00001", w: "oldpass" }] }); F.noSql = false;
   ck("chưa chạy SQL v63 → bỏ qua phần này, thử như thường", o.code === 200 && o.j.results[0].err === "PRIVATE" && !o.j.results[0].own, o);
   ck("có giới hạn tần suất theo tài khoản + IP (gọi rl_hit 2 lần / lần thử)", F.calls.filter(u => u.endsWith("/rpc/rl_hit")).length >= 2, F.calls);
-  ck("mã nguồn không ghi log mật khẩu (không có console.log trong px-check.js)", !/console\.(log|error|warn)\(/.test(fs.readFileSync(src, "utf8")));
+  ck("mã nguồn không ghi log mật khẩu (không có console.log trong _px-check.js)", !/console\.(log|error|warn)\(/.test(fs.readFileSync(src, "utf8")));
+
+  console.log("Đường đi trên Vercel (gói chỉ cho 12 hàm API)");
+  const apiDir = path.dirname(path.resolve(src)), fns = fs.readdirSync(apiDir).filter(f => f.endsWith(".js") && !f.startsWith("_"));
+  ck("thư mục api/ có ≤ 12 hàm (file .js không bắt đầu bằng _) — hàm thứ 13 làm hỏng cả lần đưa web lên", fns.length <= 12, fns);
+  ck("_px-check.js bắt đầu bằng _ (không thành hàm riêng)", path.basename(src).startsWith("_"), path.basename(src));
+  const vj = JSON.parse(fs.readFileSync(path.join(apiDir, "..", "vercel.json"), "utf8"));
+  ck("vercel.json: /api/px-check → /api/notify-admin?px=1", (vj.rewrites || []).some(r => r.source === "/api/px-check" && r.destination === "/api/notify-admin?px=1"), vj.rewrites);
+  ck("vercel.json: functions chỉ trỏ tới hàm có thật", Object.keys(vj.functions || {}).every(k => fs.existsSync(path.join(apiDir, "..", k)) && !path.basename(k).startsWith("_")), vj.functions);
+  const NA = require(path.join(apiDir, "notify-admin.js"));
+  const o2 = {}; const res3 = { setHeader: (k, v) => (o2[k] = v), status(c) { o2.code = c; return this; }, json(j) { o2.j = j; return this; }, end() { return this; } };
+  await NA({ method: "POST", query: { px: "1" }, headers: {}, body: { items: [{ h: "8.8.8.8", p: 1080 }] } }, res3);
+  ck("notify-admin.js thấy ?px=1 → giao cho _px-check (chưa đăng nhập → 401 NOT_LOGGED_IN của công cụ kiểm tra)", o2.code === 401 && o2.j && o2.j.error === "NOT_LOGGED_IN", o2);
 
   console.log(`\n${OK}/${OK + FAIL} đạt`);
   fs.rmSync(dir, { recursive: true, force: true });

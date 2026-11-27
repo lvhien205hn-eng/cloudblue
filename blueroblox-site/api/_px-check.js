@@ -1,6 +1,8 @@
 // 27/11h · 🔎 KIỂM TRA PROXY cho khách (mục Proxy dân cư): khách dán danh sách proxy → máy chủ web thử từng cái qua SOCKS5 / HTTP CONNECT
 // rồi vào trang trả IP (api64.ipify.org — có cả IPv4 lẫn IPv6, nên proxy IPv6 không bị báo chết oan như nhiều trang check khác).
 //   POST /api/px-check   Header: Authorization: Bearer <mã đăng nhập>
+//   (file bắt đầu bằng "_" nên KHÔNG phải 1 hàm API riêng: vercel.json chuyển /api/px-check → /api/notify-admin?px=1, notify-admin.js
+//    thấy px=1 thì giao cho file này — gói Vercel đang dùng chỉ cho 12 hàm API, thêm hàm thứ 13 thì cả lần đưa web lên bị từ chối)
 //   body: { items: [{ h: "host", p: 8899, u?: "user", w?: "pass", t?: "socks5" | "http" }], mode: "auto" | "socks5" | "http" }
 //   → { ok: true, results: [{ live, s5?, http?, ip?, fam?, ms?, cc?, org?, city?, err? }] }      (s5 / http: { ok, ms } hoặc { ok: false, err })
 // An toàn: chỉ người đã đăng nhập · tối đa 20 proxy / lần · giới hạn tần suất theo tài khoản + IP · KHÔNG nối tới IP nội bộ / riêng /
@@ -15,9 +17,9 @@ const UA = "CloudBlue-ProxyCheck/1.0 (+https://cloudblue.vn)";
 const PROD = {
   targets: [{ host: "api64.ipify.org", port: 443, path: "/?format=json" }, { host: "api.ip.sb", port: 443, path: "/ip" }],
   allowPrivate: false, tls: {},
-  deadline: 8000,          // mỗi proxy (2 kiểu chạy song song) tối đa 8 giây
-  conn: 5000,              // nối TCP tới proxy
-  greet: 3500              // SOCKS5 không trả lời lời chào trong 3,5 giây → coi như không phải SOCKS5 (proxy HTTP hay im chờ)
+  deadline: 7000,          // mỗi proxy (2 kiểu chạy song song) tối đa 7 giây (cả lần gọi < 10 giây — giới hạn mặc định của hàm Vercel)
+  conn: 4000,              // nối TCP tới proxy
+  greet: 3000              // SOCKS5 không trả lời lời chào trong 3 giây → coi như không phải SOCKS5 (proxy HTTP hay im chờ)
 };
 
 // ------------------------------------------------------------------ IP nội bộ / dành riêng → không nối
@@ -231,7 +233,7 @@ const GEO = new Map();
 async function geoOf(ip) {
   const c = GEO.get(ip); if (c && Date.now() - c.t < 6 * 3600e3) return c.v;
   let v = null;
-  const get = async url => { const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(2000) }); if (!r.ok) throw E("GEO"); return r.json(); };
+  const get = async url => { const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(1400) }); if (!r.ok) throw E("GEO"); return r.json(); };
   try { const tk = process.env.IPINFO_TOKEN ? "?token=" + encodeURIComponent(process.env.IPINFO_TOKEN) : "";
     const j = await get(`https://ipinfo.io/${encodeURIComponent(ip)}/json${tk}`);
     if (j && j.country && !j.bogon) v = { cc: String(j.country).slice(0, 2), org: String(j.org || "").replace(/^AS\d+\s+/, "").slice(0, 60), city: String(j.city || "").slice(0, 40) };
@@ -292,7 +294,7 @@ module.exports = async (req, res) => {
   const its = items.map(normItem), own = await ownState(its);
   const results = await Promise.all(its.map((it, i) => !it ? { live: false, err: "BAD_LINE" } : own.has(i) ? { live: false, err: own.get(i), own: true }
     : checkItem(it, mode, PROD).catch(() => ({ live: false, err: "CONN" }))));
-  try { await guarded(() => addGeo(results), 2500); } catch (e) {}
+  try { await guarded(() => addGeo(results), 1500); } catch (e) {}
   return res.status(200).json({ ok: true, results });
 };
 module.exports._t = { normItem, badIp, bad4, bad6, checkItem, addGeo, resolve, respDone, ownState, MAX_ITEMS, PROD };
