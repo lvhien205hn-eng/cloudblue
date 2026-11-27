@@ -2702,37 +2702,81 @@ html.neonrun :is(.m3m-card,.m3-row):nth-child(3n)::after{animation-delay:-4.3s}
 @media (prefers-reduced-motion:reduce){html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{animation:none}}
 html.lite.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{animation:none}
 
-/* ===== 28/11 · MÀU NHẤN CÓ QUY TẮC (bản 3) =====
-   Nền, nút, đèn neon xanh ngọc–tím và mọi hiệu ứng giữ NGUYÊN như bản cũ. Màu nhấn chỉ theo 1 quy tắc:
-   · xanh logo  = thương hiệu, nút bấm, tab, nhãn HOT / MỚI (2 nhãn cùng 1 kiểu)
-   · vàng kim   = TIỀN & ƯU ĐÃI: giá, số dư, tổng tiền, % giảm, "Rẻ nhất", thẻ Kiếm tiền + Ưu đãi, vé may mắn
-                  (đúng tông vàng của thẻ Ưu đãi có sẵn: chữ #ffcf4a · nền nhãn #ffc400)
-   · xanh lá    = trạng thái tốt (còn hàng, đang chạy, sẵn sàng) · đỏ = lỗi / hết hàng */
-html[data-theme=dark]{--gia:#ffcf4a;--gia-bt:#ffc400;--gia-on:#2a1c00;--gia-bd:rgba(255,196,0,.5);--gia-bg:rgba(255,196,0,.1);--gia-glow:rgba(255,196,0,.32)}
-html[data-theme=light]{--gia:#a86200;--gia-bt:#ffc400;--gia-on:#2a1c00;--gia-bd:rgba(214,150,0,.6);--gia-bg:rgba(255,196,0,.13);--gia-glow:rgba(0,0,0,0)}
+/* ===== 28/11 · BẢN 4: CHỈ HỌ XANH CỦA LOGO — bỏ vàng, ít màu =====
+   · nền xanh đêm · xanh dương = nút, tab, nhãn HOT / MỚI · XANH TRỜI = điểm nhấn duy nhất (tiền & ưu đãi) · chữ trắng
+   · đèn neon chạy viền: xanh ngọc + xanh dương (bỏ tím), hoạt ảnh giữ nguyên
+   · xanh lá / đỏ / vàng cam chỉ còn ở trạng thái (còn hàng, lỗi, đang chờ, bảo trì) */
+html[data-theme]{--nc:64,214,255;--nc2:92,157,255;--ncw:235,255,255;--ncw2:226,238,255}
+html[data-theme=light]{--nc:14,165,233;--nc2:37,110,240;--ncw:14,165,233;--ncw2:37,110,240}
+html[data-theme=dark]{--ac:#6fd3ff;--ac-bt:#38bdf8;--ac-on:#04263f;--ac-bd:rgba(56,189,248,.5);--ac-bg:rgba(56,189,248,.1);--ac-glow:rgba(56,189,248,.35)}
+html[data-theme=light]{--ac:#0369a1;--ac-bt:#0284c7;--ac-on:#ffffff;--ac-bd:rgba(2,132,199,.5);--ac-bg:rgba(14,165,233,.1);--ac-glow:rgba(0,0,0,0)}
 /* tiền: mọi chỗ HIỆN GIÁ / SỐ TIỀN (không đụng nút đang chọn, nhãn số ngày…) */
 html[data-theme] .price,html[data-theme] .m3-plan .pp,html[data-theme] #hf-price,html[data-theme] #st-price,html[data-theme] .bal b,
-html[data-theme] .sum b,html[data-theme] .cpt-price b,html[data-theme] .vms-price b,html[data-theme] .plans button small{color:var(--gia)}
-html[data-theme] #cporderdlg .cpfoot #cp-total{color:var(--gia);text-shadow:0 0 24px var(--gia-glow)}
-/* ưu đãi: % giảm + gói rẻ nhất (thẻ sản phẩm · hộp mua · VPS NVMe) — trước là xanh lá (trùng màu "còn hàng") */
-html[data-theme] .m3-plan small em{color:var(--gia)}
-html[data-theme] .m3-plan.best{border-color:var(--gia-bd);background:var(--gia-bg)}
-html[data-theme] .m3-plan .tag,html[data-theme] #modal.pcauto #m-plans button .sv,html[data-theme] .vmb-d .sv{background:var(--gia-bt);color:var(--gia-on)}
-html[data-theme] #modal.pcauto #m-plans button.best{border-color:var(--gia-bt);box-shadow:0 0 0 1px var(--gia-bt) inset}
-/* thẻ Kiếm tiền = cùng kiểu thẻ Ưu đãi (cả 2 đều là tiền) */
-html[data-theme] .cbt-earn{border-color:rgba(255,196,0,.45);background:linear-gradient(135deg,rgba(255,196,0,.13),transparent 60%),var(--panel)}
-html[data-theme] .cbt-earn .cbt-ic{background:rgba(255,196,0,.16)}
-html[data-theme] .cbt-earn .cbt-tx small{color:#ffcf4a}
-html[data-theme=light] .cbt-earn .cbt-tx small{color:var(--gia)}
-html[data-theme] .cbt-earn .cbt-go{background:#ffc400;color:#2a1c00}
-/* vé may mắn trong dải Vòng quay = ưu đãi */
-html[data-theme] .lwh-chips span.lk{background:linear-gradient(180deg,rgba(255,196,0,.24),rgba(150,100,0,.28));border-color:rgba(255,207,74,.55);color:#fff3cf}
-/* nhãn HOT / MỚI: xanh logo như cũ + ánh sáng lướt qua (hiệu ứng goldline vốn chạy trên nhãn nhưng nền 1 màu nên không thấy) */
+html[data-theme] .sum b,html[data-theme] .cpt-price b,html[data-theme] .vms-price b,html[data-theme] .plans button small{color:var(--ac)}
+html[data-theme] #cporderdlg .cpfoot #cp-total{color:var(--ac);text-shadow:0 0 24px var(--ac-glow)}
+/* ưu đãi: % giảm + gói rẻ nhất (thẻ sản phẩm · hộp mua · VPS NVMe) */
+html[data-theme] .m3-plan small em{color:var(--ac)}
+html[data-theme] .m3-plan.best{border-color:var(--ac-bd);background:var(--ac-bg)}
+html[data-theme] .m3-plan .tag,html[data-theme] #modal.pcauto #m-plans button .sv,html[data-theme] .vmb-d .sv{background:var(--ac-bt);color:var(--ac-on)}
+html[data-theme] #modal.pcauto #m-plans button.best{border-color:var(--ac-bt);box-shadow:0 0 0 1px var(--ac-bt) inset}
+/* thẻ Kiếm tiền + Ưu đãi: cùng 1 kiểu xanh trời (trước: xanh ngọc + vàng) */
+html[data-theme] :is(.cbt-earn,.cbt-ofr){border-color:var(--ac-bd);background:linear-gradient(135deg,var(--ac-bg),transparent 60%),var(--panel)}
+html[data-theme] :is(.cbt-earn,.cbt-ofr) .cbt-ic{background:var(--ac-bg)}
+html[data-theme] :is(.cbt-earn,.cbt-ofr) .cbt-tx small{color:var(--ac)}
+html[data-theme] :is(.cbt-earn,.cbt-ofr) .cbt-go{background:var(--ac-bt);color:var(--ac-on)}
+/* vé may mắn trong dải Vòng quay */
+html[data-theme] .lwh-chips span.lk{background:rgba(56,189,248,.18);border-color:rgba(111,211,255,.55);color:#e0f6ff}
+/* nhãn HOT / MỚI: xanh dương như cũ + ánh sáng lướt (hoạt ảnh goldline có sẵn) */
 html[data-theme] .m3-row .thumb .hot,html[data-theme] .m3-li .thumb .hot{background:linear-gradient(100deg,#2b6ef0 0%,#2b6ef0 35%,#8cc4ff 50%,#2b6ef0 65%,#2b6ef0 100%);background-size:200% 100%}
 /* tiêu đề mục + "Sản phẩm": gạch nhấn đúng 2 màu đèn neon */
 html[data-theme] .m3-sh h2::after{content:"";display:block;width:46px;height:4px;border-radius:4px;margin-top:9px;background:linear-gradient(90deg,rgb(var(--nc)),rgb(var(--nc2)))}
 html[data-theme] #cat-title{position:relative}
 html[data-theme] #cat-title::after{content:"";position:absolute;left:1px;bottom:-9px;width:46px;height:4px;border-radius:4px;background:linear-gradient(90deg,rgb(var(--nc)),rgb(var(--nc2)));pointer-events:none}
+/* vàng / cam trang trí cũ → xanh trời (tự đổi màu, giữ nguyên độ sáng): phát mã giảm giá, nút trợ giúp, dùng thử miễn phí, đếm ngược ưu đãi… */
+html[data-theme] .cpfree{border:2px solid #06acf9;background:rgba(6,172,249,.1)}
+html[data-theme=dark] .cpfree b{color:#4fc4fa}
+html[data-theme=light] .cpfree b{color:var(--ac)}
+html[data-theme] .cpfree .sw input:checked+i{background:#06acf9;border-color:#06acf9}
+html[data-theme] .helpbtn{border:2px dashed rgba(65,191,250,.65);background:rgba(6,172,249,.08)}
+html[data-theme] .helpbtn:hover{background:rgba(6,172,249,.14)}
+html[data-theme] .helpbtn:focus-visible{outline:3px solid #41bffa}
+html[data-theme=dark] .helpbtn .t b{color:#6acdfb}
+html[data-theme=light] .helpbtn .t b{color:var(--ac)}
+html[data-theme=dark] .helpbtn .go{color:#6acdfb}
+html[data-theme=light] .helpbtn .go{color:var(--ac)}
+html[data-theme=dark] .freebar .fb-cd{color:#6acdfb}
+html[data-theme=light] .freebar .fb-cd{color:var(--ac)}
+html[data-theme=dark] .cpfree .free-cd{color:#6acdfb}
+html[data-theme=light] .cpfree .free-cd{color:var(--ac)}
+html[data-theme] .cpchip.help{border:1px dashed rgba(65,191,250,.7);background:rgba(6,172,249,.1)}
+html[data-theme=dark] .cpchip.help{color:#6acdfb}
+html[data-theme=light] .cpchip.help{color:var(--ac)}
+html[data-theme] .cpchip.help:hover{background:rgba(6,172,249,.18)}
+html[data-theme] .fxtoggle[aria-pressed="true"]{border-color:#06acf9}
+html[data-theme=dark] .fxtoggle[aria-pressed="true"]{color:#6acdfb}
+html[data-theme=light] .fxtoggle[aria-pressed="true"]{color:var(--ac)}
+html[data-theme] .lwfab b{background:linear-gradient(180deg,#c3ebfd,#29b1f0)}
+html[data-theme] .lwfab b{color:#042136}
+html[data-theme=dark] .lwask .paidnote{color:#aae3fd}
+html[data-theme=light] .lwask .paidnote{color:var(--ac)}
+html[data-theme=light] .cpfree b,html[data-theme=light] .helpbtn .t b,html[data-theme=light] .helpbtn .go,html[data-theme=light] .cpfree .free-cd,html[data-theme=light] .cpchip.help,html[data-theme=light] .fxtoggle[aria-pressed="true"]{color:var(--ac)}
+html[data-theme=light] .freebar .fb-cd{color:#6acdfb}
+html[data-theme=dark] .paidtag{color:var(--ac)}
+html[data-theme=light] .paidtag{color:var(--ac)}
+html[data-theme] .cbd-card{border:1px solid rgba(36,179,245,.6)}
+html[data-theme] .cbd-pct{background:linear-gradient(180deg,#7dd4fc,#24b3f5)}
+html[data-theme] .cbd-pct{color:#031827}
+html[data-theme] .cbd-meter{background:rgba(36,179,245,.16)}
+html[data-theme] .cbd-meter i{background:linear-gradient(90deg,#24b3f5,#7dd4fc)}
+html[data-theme] .cbd-go{background:linear-gradient(180deg,#7dd4fc,#24b3f5)}
+html[data-theme] .cbd-go{color:#031827}
+html[data-theme] .cbd-go:focus-visible,html[data-theme] .cbd-pill:focus-visible{outline:2px solid #7dd4fc}
+html[data-theme] .cbd-mine{border:1px dashed rgba(36,179,245,.7)}
+html[data-theme] .cbd-pill{border:1px solid rgba(36,179,245,.65)}
+html[data-theme=dark] .cbd-pill b{color:#24b3f5}
+html[data-theme=light] .cbd-pill b{color:var(--ac)}
+html[data-theme] .cbd-dlg .cbd-big{border:1px dashed rgba(36,179,245,.7)}
+html[data-theme] .cbo-card.cbo-drop{border-color:rgba(36,179,245,.6)}
 </style>
 </head>
 <body>
