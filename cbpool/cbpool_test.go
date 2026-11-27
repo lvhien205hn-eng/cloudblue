@@ -20,6 +20,10 @@ import (
 )
 
 func hasV6() bool {
+	if lo, err := net.InterfaceByName("lo"); err == nil {
+		linkUp(lo.Index) // không gian mạng mới: lo đang tắt → ::1 chưa có
+		time.Sleep(50 * time.Millisecond)
+	}
 	ln, err := net.Listen("tcp6", "[::1]:0")
 	if err != nil {
 		return false

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 )
 
@@ -94,6 +95,8 @@ type Pool struct {
 	wg     sync.WaitGroup
 	v6kick chan struct{}
 	pppErr string
+	v6fail int32 // lần nối IPv6 hỏng liên tiếp (không tính bị từ chối)
+	v6skip int64 // tới mốc này (unix nano): đích có IPv4 thì khỏi thử IPv6
 }
 
 func newPool(c *Conf) (*Pool, error) {
@@ -547,21 +550,27 @@ func (p *Pool) dial(s *slotRT, host string, port int) (net.Conn, string, error) 
 	src6 := s.ip6
 	p.mu.RUnlock()
 	var last error = errNoRoute
-	if src6 != nil {
+	if src6 != nil && (len(v4) == 0 || time.Now().UnixNano() > atomic.LoadInt64(&p.v6skip)) {
+		tries, to := 1, 2500*time.Millisecond // còn IPv4 dự phòng: thử IPv6 1 lần, ngắn
+		if len(v4) == 0 {
+			tries, to = 2, 10*time.Second
+		}
 		for i, ip := range v6 {
-			if i >= 2 {
+			if i >= tries {
 				break
-			}
-			to := 4 * time.Second
-			if len(v4) == 0 {
-				to = 10 * time.Second
 			}
 			d := net.Dialer{Timeout: to, LocalAddr: &net.TCPAddr{IP: src6}}
 			c, err := d.Dial("tcp6", net.JoinHostPort(ip.String(), strconv.Itoa(port)))
 			if err == nil {
+				atomic.StoreInt32(&p.v6fail, 0)
 				return c, "v6", nil
 			}
 			last = err
+			if !errors.Is(err, syscall.ECONNREFUSED) && atomic.AddInt32(&p.v6fail, 1) >= 5 { // đường IPv6 hỏng → 60 giây đi thẳng IPv4
+				atomic.StoreInt32(&p.v6fail, 0)
+				atomic.StoreInt64(&p.v6skip, time.Now().Add(60*time.Second).UnixNano())
+				logf("IPv6: 5 lần nối hỏng liền → 60 giây tới đích có IPv4 thì đi IPv4")
+			}
 		}
 	}
 	if len(v4) == 0 {
