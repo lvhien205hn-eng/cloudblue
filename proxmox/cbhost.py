@@ -37,13 +37,16 @@
 #     (cổng 8899, chỉ máy trong mạng nhà dùng được; VPS khách bị chặn sẵn bởi cách ly ở trên). Mỗi ô proxy 1 IPv6 riêng trong dải /64 của mạng
 #     + IPv4 riêng khi có tài khoản PPPoE (admin gõ "cbpool ppp-set" trong Shell của Proxmox — mật khẩu chỉ nằm trên máy này).
 #     Báo danh sách ô (IP:cổng:user:mật khẩu, IP đang ra) lên web trong số đo (px) → Quản trị › VPS ảo hoá › Máy chủ. Tắt: "pool": false.
+#   · 27/11f: kho proxy báo thêm kết quả TỰ DÒ PPPoE (cbpool 27.11b gửi gói dò PADI — không mật khẩu, không xin phiên — khi chưa có phiên
+#     nào lên) → web hiện "modem có cho PPPoE từ mạng nhà đi qua không" mà admin khỏi vào Shell gõ cbpool ppp-test.
+#     Tự cập nhật cbhost 15 phút / lần (trước 1 giờ) để bản sửa tới máy chủ nhanh hơn.
 #   · 27/11c: VPS bị huỷ mà máy ảo ĐANG CHẠY → tắt hẳn rồi mới xoá (Proxmox không cho xoá máy đang chạy: trước đây thử xoá mãi 10 giây / lần
 #     → 2 lượt xoá hỏng chiếm hết max_builds → VPS mới mua đứng "Đang tạo" mãi). Việc nhẹ (xoá) không còn tính vào max_builds.
 #   Lệnh:  python3 cbhost.py run | status | once | update | net | version
 #   Cấu hình: /etc/cloudblue/cbhost.conf (JSON): sb_url, sb_key (khoá công khai của web), storage (để trống = cùng ổ với máy mẫu),
 #             full_clone (true = nhân bản đầy đủ, false = nhân bản liên kết — nhanh, cần ổ hỗ trợ), vmid_base (mặc định 100000), auto_update,
 #             bridge (card mạng máy mẫu, mặc định vmbr0), tpl_vmid_from (số máy ảo tạm của máy mẫu, mặc định 99000)
-CBHOST_VER = "27/11e"
+CBHOST_VER = "27/11f"
 
 import base64, hashlib, json, os, re, secrets, shutil, socket, subprocess, sys, threading, time, unicodedata, urllib.error, urllib.parse, urllib.request
 
@@ -64,7 +67,7 @@ DEFAULTS = {"sb_url": "https://nprftgodswlpzomcttal.supabase.co", "sb_key": "sb_
             "bridge": "vmbr0", "tpl_vmid_from": 99000, "auto_tpl": False, "host_name": "", "net_heal": None, "linux_tpl": None, "vps_iso": None,
             "pool": None}
 UPD_URL = os.environ.get("CBHOST_UPD_URL") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/cbhost.py"   # chỉ nhận bản từ kho này
-UPD_EVERY_S = 3600
+UPD_EVERY_S = 900                                               # 27/11f · 15 phút / lần xem bản mới (trước 1 giờ)
 RX_TPL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.-]{1,40}$")
 RX_HW = re.compile(r"^[0-9a-f]{64}$")
 RX_STORE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,40}$")
@@ -768,7 +771,7 @@ def item_ok(it):
 
 
 # ---------------------------------------------------------------- 27/11e · KHO PROXY NHIỀU IP (cbpool) — xem phần đầu file
-POOL_FILE = ("cbpool-x86_64", "c78888c0b35a1c4b5833e304b1dc0ab3")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
+POOL_FILE = ("cbpool-x86_64", "86af24909a482880ed88cbabe77818c3")                   # md5 ghim: file lạ / sai bản không bao giờ chạy
 POOL_RAW = os.environ.get("CBHOST_POOL_RAW") or "https://raw.githubusercontent.com/lvhien205hn-eng/cloudblue/main/proxmox/"
 POOL_BIN = os.environ.get("CBHOST_POOL_BIN") or "/usr/local/bin/cbpool"
 POOL_CONF_F = os.environ.get("CBHOST_POOL_CONF") or "/etc/cloudblue/cbpool.json"
@@ -904,6 +907,12 @@ class PoolMgr:
                      "ip": [str(y.get("ip")) for y in (pp.get("sess") or []) if isinstance(y, dict) and y.get("ip")][:64]}}
         if v6.get("err"): r["v6err"] = str(v6["err"])[:160]
         if pp.get("err"): r["ppp"]["err"] = str(pp["err"])[:160]
+        dc = pp.get("disc")                                          # 27/11f · tự dò PPPoE: modem có cho đi qua không
+        if isinstance(dc, dict):
+            d = {"t": int(dc.get("t") or 0) if str(dc.get("t") or "0").isdigit() else 0}
+            if dc.get("err"): d["err"] = str(dc["err"])[:120]
+            else: d["ok"] = dc.get("ok") is True; d["ac"] = [str(a)[:40] for a in (dc.get("ac") or []) if isinstance(a, str)][:3]
+            r["ppp"]["disc"] = d
         if self.err: r["err"] = self.err
         return r
 
@@ -1814,7 +1823,7 @@ def apply_update(ver, txt, path=None):
 
 
 def update_due(h, t_now, last):
-    """Đến lúc xem bản mới chưa: dịch vụ systemd (có INVOCATION_ID), bật tự cập nhật, 1 giờ / lần, không có máy ảo nào đang dựng / xoá."""
+    """Đến lúc xem bản mới chưa: dịch vụ systemd (có INVOCATION_ID), bật tự cập nhật, 15 phút / lần, không có máy ảo nào đang dựng / xoá."""
     return (h.c.get("auto_update") and bool(os.environ.get("INVOCATION_ID")) and t_now - last >= UPD_EVERY_S and not h.busy
             and not (h.usb is not None and h.usb.state.get("s") == "copy"))
 
