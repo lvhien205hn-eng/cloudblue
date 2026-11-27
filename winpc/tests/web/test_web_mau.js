@@ -34,9 +34,9 @@ ck("bỏ hết dấu vết bản 2 (nhãn MỚI riêng màu, nút 3 nấc, --mon
 console.log("2. web — màu nhấn theo đúng 1 quy tắc");
 ck("có khối quy tắc bản 3, vàng kim tối #ffcf4a / sáng #a86200 (đủ tương phản 4.7:1 trên nền trắng)",
    acc.includes("html[data-theme=dark]{--gia:#ffcf4a;--gia-bt:#ffc400;--gia-on:#2a1c00;") && acc.includes("html[data-theme=light]{--gia:#a86200;--gia-bt:#ffc400;--gia-on:#2a1c00;"));
-ck("TIỀN = vàng: giá sản phẩm, giá gói, 'Giá thuê từ', số dư, tổng tiền, giá ĐT đám mây, giá VPS NVMe",
+ck("TIỀN = vàng: giá sản phẩm, giá gói (thẻ + hộp mua), 'Giá thuê từ', số dư, tổng tiền, giá ĐT đám mây, giá VPS NVMe",
    acc.includes("html[data-theme] .price,html[data-theme] .m3-plan .pp,html[data-theme] #hf-price,html[data-theme] #st-price,html[data-theme] .bal b,")
-   && acc.includes("html[data-theme] .sum b,html[data-theme] .cpt-price b,html[data-theme] .vms-price b{color:var(--gia)}")
+   && acc.includes("html[data-theme] .sum b,html[data-theme] .cpt-price b,html[data-theme] .vms-price b,html[data-theme] .plans button small{color:var(--gia)}")
    && acc.includes("html[data-theme] #cporderdlg .cpfoot #cp-total{color:var(--gia);"));
 ck("ƯU ĐÃI = vàng: % giảm, 'Rẻ nhất' ở thẻ sản phẩm + hộp mua + VPS NVMe (trước là xanh lá, trùng 'còn hàng')",
    acc.includes("html[data-theme] .m3-plan small em{color:var(--gia)}") && acc.includes("html[data-theme] .m3-plan.best{border-color:var(--gia-bd);background:var(--gia-bg)}")
