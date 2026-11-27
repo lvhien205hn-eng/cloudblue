@@ -24,6 +24,9 @@ web / app ──POST /cpapi/<máy>/proxy {do:set, url, kind}──▶ cpapi.py (
 - **Tự bật lại**: máy bật (wait_boot / _wake_one — trước khi khách vào), khách bấm Khởi động lại (proxykeep --wait), vòng 5 phút
   (`rootfix --all` của cloudphoned). Hỏng hẳn (máy thiếu iptables…) → 30 phút mới thử lại.
 - **Không qua proxy**: UDP (gọi video, game dùng UDP), DNS (Android hỏi qua UDP 53). Đổi Android = máy mới → nhập lại proxy.
+- **27/11 · đọc tên miền**: cổng web (80, 443, 8080, 8443) → cbproxy đọc trước SNI (TLS) / dòng Host (HTTP), chờ tối đa 250 ms, rồi xin
+  proxy nối theo **tên miền** (proxy tự phân giải) → kho proxy CloudBlue (`cbpool`) ra bằng IPv6 riêng của ô khi đích có IPv6. Cổng khác
+  đi theo IP như cũ (không chờ). Tắt: `"sniff": false` trong conf. Máy đang chạy bản cbproxy cũ: phonectl 27/11f tự thay (vòng canh 5 phút).
 
 ## Lệnh trên máy chủ
 

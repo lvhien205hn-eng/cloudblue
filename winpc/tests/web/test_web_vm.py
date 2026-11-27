@@ -908,11 +908,11 @@ def main():
         s.page.click("#vma-retry"); s.page.wait_for_timeout(700)
         ck("không lỗi trang khi tải lỗi / thử lại", not s.vis("#vma-err") and not s.errors, s.errors)
         s.close()
-        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2405:4803:ff84:ac60::10"; adm6["hosts"][0]["info"]["ip6_only"] = True
+        adm6 = adm_state(); adm6["hosts"][0]["info"]["lan_ip"] = "2001:db8:5:ac60::10"; adm6["hosts"][0]["info"]["ip6_only"] = True
         s = Site(br, html, True, vm_data(adm=adm6), path="/admin")
         admin_open(s)
         href = s.js("() => { const a = document.querySelector('#vma-hosts [data-vmhost] a[href*=\":8006\"]'); return a ? a.getAttribute('href') : null; }")
-        ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2405:4803:ff84:ac60::10]:8006", href)
+        ck("máy chủ chỉ có IPv6: nút 🔧 Trang Proxmox mở đúng dạng https://[địa chỉ]:8006", href == "https://[2001:db8:5:ac60::10]:8006", href)
         cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
         ck("máy chủ chỉ có IPv6 (cbhost báo ip6_only): thẻ máy đó có dòng ⚠️ 'chỉ có IPv6 — mạng chưa cấp IPv4'; máy khác không có", "chỉ có IPv6 — mạng chưa cấp IPv4" in cards[0] and "chỉ có IPv6" not in cards[1], cards)
         s.close()
@@ -937,6 +937,47 @@ def main():
         cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
         ck("dòng USB 'đã chép xong' tự ẩn sau 1 giờ; máy đã có máy mẫu / bản cbhost cũ (không báo danh sách ISO) không hiện dòng 'chưa có ISO'; lỗi chép thì hiện",
            "💾 USB" not in cards[0] and "CHƯA có file ISO máy mẫu nào" not in cards[0] and "💾 USB: chép ISO máy mẫu từ USB CHƯA được" in cards[1] and not s.errors, cards)
+        s.close()
+        # 27/11e: KHO PROXY NHIỀU IP — cbhost báo metrics.px (danh sách ô proxy của máy chủ)
+        adm9 = adm_state()
+        adm9["hosts"][0]["metrics"]["px"] = {"ok": True, "ver": "27.11a", "host": "192.168.77.10", "port": 8899, "v6": "2001:db8:5:ac60::/64",
+                                             "s": [["p01", "PwMot1234567890a", "1:2:3:4", "", 0, "RotKeyMot1234567890"], ["p02", "Pw<b>hai</b>", "5:6:7:8", "203.0.113.5", 2, "RotKeyHai1234567890"]],
+                                             "ppp": {"want": 0, "up": 0, "acct": False, "ip": []}}
+        adm9["hosts"][1]["metrics"]["px"] = {"ok": False, "err": "cbpool chưa chạy"}
+        s = Site(br, html, True, vm_data(adm=adm9), path="/admin")
+        admin_open(s)
+        cards = s.js("() => [...document.querySelectorAll('#vma-hosts [data-vmhost]')].map(e => e.innerText)")
+        ck("thẻ máy chủ có dòng '🌐 Kho proxy nhiều IP: 2 ô · IPv6 <dải> · IPv4 chung (chưa bật PPPoE)'",
+           "Kho proxy nhiều IP: 2 ô" in cards[0] and "2001:db8:5:ac60::/64" in cards[0] and "chưa bật PPPoE" in cards[0], cards[0][-600:])
+        ck("máy chủ có cbpool chưa chạy → '🌐 Kho proxy nhiều IP: cbpool chưa chạy'", "Kho proxy nhiều IP: cbpool chưa chạy" in cards[1], cards[1][-300:])
+        s.js("() => { document.querySelectorAll('#vma-hosts details.vma-px').forEach(d => d.open = true); navigator.clipboard.writeText = v => { window.__cp = v; return Promise.resolve(); }; }")
+        s.page.wait_for_timeout(200)
+        rows = s.js("() => [...document.querySelectorAll('#vma-hosts details.vma-px tbody tr')].map(r => [...r.querySelectorAll('td')].map(td => td.innerText.trim()))")
+        ck("bảng ô: IP:Port:User:Pass (IP mạng nhà của máy chủ, cổng 8899) · IPv6 đủ (dải + đuôi) · IPv4 'chung' / IP phiên · số kết nối",
+           rows and rows[0][1].startswith("192.168.77.10:8899:p01:PwMot1234567890a") and rows[0][2] == "2001:db8:5:ac60:1:2:3:4" and rows[0][3] == "chung"
+           and rows[1][3] == "203.0.113.5" and rows[1][4] == "2", rows)
+        ck("chữ máy chủ gửi lên (mật khẩu có <b>) hiện đúng chữ, không thành mã HTML",
+           "Pw<b>hai</b>" in rows[1][1] and not s.js("() => !!document.querySelector('#vma-hosts details.vma-px tbody b')"), rows[1])
+        ck("chưa có tài khoản PPPoE → chỉ cách bật IPv4 riêng (cbpool ppp-test · cbpool ppp-set trong Shell của Proxmox)",
+           "cbpool ppp-test" in cards[0] or "cbpool ppp-set" in (s.txt("#vma-hosts") or ""), "")
+        s.page.click("#vma-hosts details.vma-px tbody tr:nth-child(1) [data-pxcopy]"); s.page.wait_for_timeout(200)
+        c1 = s.js("() => window.__cp")
+        s.page.click("#vma-hosts details.vma-px tbody tr:nth-child(2) td:last-child [data-pxcopy]"); s.page.wait_for_timeout(200)
+        c2 = s.js("() => window.__cp")
+        s.page.click("#vma-hosts details.vma-px .vma-acts [data-pxcopy]"); s.page.wait_for_timeout(200)
+        c3 = s.js("() => window.__cp")
+        ck("nút Chép: chép đúng dòng proxy · link đổi IP http://192.168.77.10:8899/rotate?key=… · Chép tất cả (mỗi ô 1 dòng)",
+           c1 == "192.168.77.10:8899:p01:PwMot1234567890a" and c2 == "http://192.168.77.10:8899/rotate?key=RotKeyHai1234567890"
+           and c3 == "192.168.77.10:8899:p01:PwMot1234567890a\n192.168.77.10:8899:p02:Pw<b>hai</b>" and not s.errors, (c1, c2, c3, s.errors))
+        s.close()
+        adm10 = adm_state()
+        adm10["hosts"][0]["metrics"]["px"] = {"ok": True, "host": "192.168.77.10", "port": 8899, "v6": "", "v6err": "card vmbr0 chưa có IPv6 công khai /64",
+                                              "s": [["p01", "x" * 16, "", "203.0.113.9", 0, ""]], "ppp": {"want": 4, "up": 3, "acct": True, "ip": ["203.0.113.9"], "err": "phiên 4: nhà mạng từ chối"}}
+        s = Site(br, html, True, vm_data(adm=adm10), path="/admin")
+        admin_open(s)
+        c0 = s.js("() => document.querySelector('#vma-hosts [data-vmhost]').innerText")
+        ck("chưa có IPv6 → hiện lý do; có PPPoE → 'IPv4 PPPoE 3/4 phiên' + lỗi phiên; không còn dòng chỉ cách ppp-set",
+           "chưa có IPv6 công khai /64" in c0 and "PPPoE 3/4 phiên" in c0 and "nhà mạng từ chối" in c0 and not s.errors, c0[-500:])
         s.close()
         br.close()
     print("\nKẾT QUẢ: %d đạt, %d lỗi" % (OK, FAIL))

@@ -8,6 +8,8 @@
 //   - Proxy sống nhưng báo không tới được đích (đích chặn / sai cổng) → báo lỗi cho app như mạng thường, KHÔNG đi thẳng (không lộ IP).
 //   - UDP không qua proxy; UDP 443 (QUIC) bị chặn để Chrome / YouTube / Google tự chuyển sang TCP → đi qua proxy.
 //   - IPv6 TCP bị chặn (app tự dùng IPv4 → qua proxy). Mạng nội bộ / DNS của máy ảo (10.x, 192.168.x…) đi thẳng như cũ.
+//   - 27/11: cổng web (80, 443, 8080, 8443): đọc trước tên miền app hỏi (SNI của TLS / dòng Host của HTTP) → xin proxy nối theo TÊN MIỀN
+//     thay vì IP → proxy tự phân giải (đích có IPv6 thì kho proxy CloudBlue ra bằng IPv6 riêng của ô). Tắt: "sniff": false.
 //   - Kết nối của chính cbproxy mang dấu SO_MARK 0x40000000 → iptables bỏ qua (không vòng lặp). Dấu này không đụng các bit Android
 //     dùng để chọn mạng (16 bit thấp) → định tuyến vẫn theo mạng mặc định.
 //   - Giám sát: tiến trình "super" chạy tiến trình "worker"; worker chết → gỡ iptables NGAY (máy vẫn có mạng), 2 giây sau bật lại;
@@ -45,7 +47,7 @@ import (
 )
 
 const (
-	VER       = "22.11a"
+	VER       = "27.11a"
 	MARK      = 0x40000000
 	DEF_LOCAL = 12081
 	PUB_STATE = "/data/local/tmp/cbproxy.json"
@@ -74,9 +76,11 @@ type Conf struct {
 	Local int      `json:"local"`
 	Quic  *bool    `json:"block_quic"`
 	Fail  *bool    `json:"failover"`
+	Sniff *bool    `json:"sniff"`
 }
 
 func (c *Conf) blockQuic() bool { return c.Quic == nil || *c.Quic }
+func (c *Conf) sniff() bool     { return c.Sniff == nil || *c.Sniff }
 func (c *Conf) failover() bool  { return c.Fail == nil || *c.Fail }
 
 type State struct {
@@ -97,6 +101,7 @@ type State struct {
 	Via     int64  `json:"via"`
 	Direct  int64  `json:"direct"`
 	Refused int64  `json:"refused"`
+	Sniffed int64  `json:"sniffed"` // kết nối đi theo tên miền đọc được (SNI / Host)
 	Rules   bool   `json:"rules"`
 	Running bool   `json:"running"`
 	Age     int64  `json:"age"`
@@ -480,8 +485,18 @@ func (w *W) handle(c net.Conn) {
 		return
 	}
 	var up net.Conn
+	var pre []byte
 	if !w.direct.Load() {
-		up, err = w.dialProxy(target{dst.IP.String(), dst.Port}, 8*time.Second)
+		t := target{dst.IP.String(), dst.Port}
+		if w.conf.sniff() && sniffPorts[dst.Port] {
+			var host string
+			pre, host = sniffHost(c)
+			if host != "" {
+				t.host = host
+				atomic.AddInt64(&w.st.Sniffed, 1)
+			}
+		}
+		up, err = w.dialProxy(t, 8*time.Second)
 		if err != nil {
 			w.connFail(err)
 			if _, ok := err.(*dstErr); ok || !w.conf.failover() {
@@ -507,7 +522,156 @@ func (w *W) handle(c net.Conn) {
 		atomic.AddInt64(&w.st.Direct, 1)
 	}
 	defer up.Close()
+	if len(pre) > 0 {
+		if _, err := up.Write(pre); err != nil {
+			return
+		}
+	}
 	relay(c, up)
+}
+
+// ------------------------------------------------------------------ đọc trước tên miền (27/11)
+var sniffPorts = map[int]bool{80: true, 443: true, 8080: true, 8443: true}
+
+// sniffHost: đọc những byte đầu app gửi (chờ tối đa 250 ms) → (byte đã đọc — phải gửi tiếp cho đích, tên miền hoặc "").
+func sniffHost(c net.Conn) ([]byte, string) {
+	buf := make([]byte, 0, 4096)
+	tmp := make([]byte, 4096)
+	end := time.Now().Add(250 * time.Millisecond)
+	defer c.SetReadDeadline(time.Time{})
+	for len(buf) < 16384 {
+		c.SetReadDeadline(end)
+		n, err := c.Read(tmp)
+		buf = append(buf, tmp[:n]...)
+		if h, done := parseHost(buf); done {
+			return buf, h
+		}
+		if err != nil {
+			break
+		}
+	}
+	h, _ := parseHost(buf)
+	return buf, h
+}
+
+// parseHost: TLS ClientHello → SNI · HTTP → Host. done = đủ dữ liệu để kết luận (không cần đọc thêm).
+func parseHost(b []byte) (string, bool) {
+	if len(b) == 0 {
+		return "", false
+	}
+	if b[0] == 0x16 { // TLS handshake
+		if len(b) < 5 {
+			return "", false
+		}
+		rl := int(b[3])<<8 | int(b[4])
+		if len(b) < 5+rl && len(b) < 16384 {
+			return "", false
+		}
+		return validHost(tlsSNI(b[5:min(len(b), 5+rl)])), true
+	}
+	i := 0
+	for i < len(b) && i < 10 && b[i] >= 'A' && b[i] <= 'Z' {
+		i++
+	}
+	if i < 3 || i >= len(b) || b[i] != ' ' {
+		return "", true // không phải HTTP / TLS → đi theo IP
+	}
+	hdr := string(b)
+	e := strings.Index(hdr, "\r\n\r\n")
+	if e < 0 {
+		if len(b) >= 8192 {
+			return "", true
+		}
+		return "", false
+	}
+	for _, l := range strings.Split(hdr[:e], "\r\n")[1:] {
+		if k := strings.IndexByte(l, ':'); k > 0 && strings.EqualFold(strings.TrimSpace(l[:k]), "host") {
+			h := strings.TrimSpace(l[k+1:])
+			if hh, _, err := net.SplitHostPort(h); err == nil {
+				h = hh
+			}
+			return validHost(h), true
+		}
+	}
+	return "", true
+}
+
+func tlsSNI(h []byte) string {
+	if len(h) < 4 || h[0] != 1 { // ClientHello
+		return ""
+	}
+	p := h[4:]
+	if len(p) < 34 {
+		return ""
+	}
+	p = p[34:] // phiên bản + random
+	if len(p) < 1 || len(p) < 1+int(p[0]) {
+		return ""
+	}
+	p = p[1+int(p[0]):] // session id
+	if len(p) < 2 {
+		return ""
+	}
+	cs := int(p[0])<<8 | int(p[1])
+	if len(p) < 2+cs {
+		return ""
+	}
+	p = p[2+cs:]
+	if len(p) < 1 || len(p) < 1+int(p[0]) {
+		return ""
+	}
+	p = p[1+int(p[0]):] // compression
+	if len(p) < 2 {
+		return ""
+	}
+	el := int(p[0])<<8 | int(p[1])
+	p = p[2:]
+	if len(p) > el {
+		p = p[:el]
+	}
+	for len(p) >= 4 {
+		t, l := int(p[0])<<8|int(p[1]), int(p[2])<<8|int(p[3])
+		if len(p) < 4+l {
+			return ""
+		}
+		if t == 0 { // server_name
+			d := p[4 : 4+l]
+			if len(d) < 5 || d[2] != 0 {
+				return ""
+			}
+			nl := int(d[3])<<8 | int(d[4])
+			if len(d) < 5+nl {
+				return ""
+			}
+			return string(d[5 : 5+nl])
+		}
+		p = p[4+l:]
+	}
+	return ""
+}
+
+// validHost: chỉ nhận tên miền thật (chữ, số, '-', '.', có dấu chấm, không phải IP) — còn lại đi theo IP như cũ.
+func validHost(h string) string {
+	h = strings.TrimSuffix(strings.ToLower(h), ".")
+	if len(h) < 3 || len(h) > 253 || !strings.Contains(h, ".") || net.ParseIP(h) != nil {
+		return ""
+	}
+	for _, r := range h {
+		if !(r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' || r == '.' || r == '_') {
+			return ""
+		}
+	}
+	if strings.HasPrefix(h, ".") || strings.HasPrefix(h, "-") || strings.Contains(h, "..") {
+		return ""
+	}
+	return h
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 type closeWriter interface{ CloseWrite() error }
@@ -695,6 +859,7 @@ func (w *W) save() {
 	s := w.st
 	w.mu.Unlock()
 	s.Conns, s.Via, s.Direct, s.Refused = atomic.LoadInt64(&w.st.Conns), atomic.LoadInt64(&w.st.Via), atomic.LoadInt64(&w.st.Direct), atomic.LoadInt64(&w.st.Refused)
+	s.Sniffed = atomic.LoadInt64(&w.st.Sniffed)
 	s.Beat = time.Now().Unix()
 	writeJSON(filepath.Join(w.dir, "state.json"), s, 0600)
 	writeJSON(PUB, s, 0644) // adb thường (không root) đọc được: máy chủ hỏi trạng thái mà không cần root

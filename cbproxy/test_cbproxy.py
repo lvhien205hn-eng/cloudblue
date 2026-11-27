@@ -114,7 +114,7 @@ def pipe(a, b):
             except OSError: pass
 
 
-PSTATE = {"socks": None, "http": None, "conns": 0}
+PSTATE = {"socks": None, "http": None, "conns": 0, "last": None}
 
 
 class Socks(socketserver.BaseRequestHandler):
@@ -132,7 +132,8 @@ class Socks(socketserver.BaseRequestHandler):
             elif at == 3: host = s.recv(s.recv(1)[0]).decode()
             else: s.sendall(b"\x05\x08\x00\x01" + b"\0" * 6); return
             port = struct.unpack(">H", s.recv(2))[0]
-            if host == "api.ipify.org": host = WEB
+            PSTATE["last"] = host
+            if host in ("api.ipify.org", "web.test", "tls.test"): host = WEB
             try: o = out_conn(host, port)
             except OSError: s.sendall(b"\x05\x05\x00\x01" + b"\0" * 6); return
             s.sendall(b"\x05\x00\x00\x01" + socket.inet_aton(PX) + b"\x04\x38")
@@ -155,7 +156,8 @@ class Http(socketserver.BaseRequestHandler):
             if not any(l.lower().startswith(b"proxy-authorization:") and l.split(b":", 1)[1].strip() == want for l in lines[1:]):
                 s.sendall(b"HTTP/1.1 407 Auth\r\nProxy-Authenticate: Basic\r\n\r\n"); return
             host, _, port = f[1].decode().rpartition(":")
-            if host == "api.ipify.org": host = WEB
+            PSTATE["last"] = host
+            if host in ("api.ipify.org", "web.test", "tls.test"): host = WEB
             try: o = out_conn(host, int(port))
             except OSError: s.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n"); return
             s.sendall(b"HTTP/1.1 200 Connection established\r\n\r\n")
@@ -239,6 +241,44 @@ ck("gửi + nhận 2 MB 2 chiều (đóng 1 chiều đúng cách)", bytes(got) =
 ck("cổng nội bộ / loopback KHÔNG qua proxy", socket.create_connection(("127.0.0.1", 12081), timeout=2) is not None)
 ck("iptables: có chain CBPX + chặn UDP 443 (CBPXF)", sh("iptables", "-t", "nat", "-C", "OUTPUT", "-j", "CBPX").returncode == 0 and "443" in sh("iptables", "-S", "CBPXF").stdout,
    sh("iptables", "-S", "CBPXF").stdout)
+
+# 27/11 · đọc trước tên miền (SNI / Host) ở cổng web → proxy nhận TÊN MIỀN (kho proxy CloudBlue mới đi được IPv6 riêng của ô)
+def raw_req(host, port, data, read=True):
+    try:
+        s = socket.create_connection((host, port), timeout=8); s.sendall(data); d = b""
+        if read:
+            while True:
+                x = s.recv(65536)
+                if not x: break
+                d += x
+        else:
+            time.sleep(0.6)
+        s.close(); return d
+    except OSError as e:
+        return ("ERR " + str(e)).encode()
+
+
+def client_hello(sni):
+    n = sni.encode()
+    ext = struct.pack(">HHHBH", 0, len(n) + 5, len(n) + 3, 0, len(n)) + n
+    ext += struct.pack(">HH", 0x0033, 1200) + os.urandom(1200)            # khoá chia sẻ dài (như ML-KEM) → ClientHello qua 2 gói TCP
+    body = b"\x03\x03" + os.urandom(32) + b"\x00" + struct.pack(">H", 2) + b"\x13\x01" + b"\x01\x00" + struct.pack(">H", len(ext)) + ext
+    hs = b"\x01" + struct.pack(">I", len(body))[1:] + body
+    return b"\x16\x03\x01" + struct.pack(">H", len(hs)) + hs
+
+
+PSTATE["last"] = None
+d = raw_req(WEB, 80, b"GET / HTTP/1.1\r\nHost: Web.Test\r\nUser-Agent: t\r\n\r\n")
+ck("HTTP cổng 80 có dòng Host tên miền → proxy nhận tên miền 'web.test' (không phải IP), trang vẫn trả đúng", PSTATE["last"] == "web.test" and d.endswith(PX_OUT.encode()), (PSTATE["last"], d[-60:]))
+PSTATE["last"] = None
+raw_req(WEB, 443, client_hello("tls.test"), read=False)
+ck("TLS cổng 443: đọc SNI 'tls.test' trong ClientHello (dài, qua 2 gói) → proxy nhận tên miền", PSTATE["last"] == "tls.test", PSTATE["last"])
+PSTATE["last"] = None
+d = raw_req(WEB, 80, b"GET / HTTP/1.1\r\nHost: x\r\n\r\n")
+ck("Host không phải tên miền thật ('x') → đi theo IP như cũ", PSTATE["last"] == WEB and d.endswith(PX_OUT.encode()), (PSTATE["last"], d[-40:]))
+PSTATE["last"] = None
+t0 = time.time(); s9 = socket.create_connection((WEB, 9000), timeout=5); s9.sendall(b"hi"); s9.shutdown(socket.SHUT_WR); e9 = s9.recv(10); s9.close()
+ck("cổng không phải web (9000) → không chờ đọc trước, đi theo IP, không trễ thêm", PSTATE["last"] == WEB and e9 == b"hi" and time.time() - t0 < 0.2, (PSTATE["last"], e9, round(time.time() - t0, 3)))
 pub = json.load(open(PUBF)) if os.path.isfile(PUBF) else {}
 ck("trạng thái công khai (adb thường đọc) có chế độ + IP ra, KHÔNG có mật khẩu", pub.get("mode") == "proxy" and pub.get("ip") == PX_OUT and PASS not in json.dumps(pub), pub)
 
