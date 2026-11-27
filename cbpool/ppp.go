@@ -140,6 +140,18 @@ func (m *PppMgr) redial(k int, wait time.Duration) (net.IP, error) {
 	return nil, errors.New("quay lại chưa xong (quá thời gian)")
 }
 
+func (m *PppMgr) upCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	n := 0
+	for _, s := range m.sess {
+		if s.up {
+			n++
+		}
+	}
+	return n
+}
+
 func (m *PppMgr) status() map[string]interface{} {
 	m.mu.Lock()
 	defer m.mu.Unlock()

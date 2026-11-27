@@ -9,12 +9,14 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -555,4 +557,109 @@ func TestProxyCoreV4(t *testing.T) {
 		t.Fatalf("ppp phải tắt: %v", st["ppp"])
 	}
 	t.Log("✓ lõi IPv4: mật khẩu, chặn nội bộ / 169.254 / cổng 25, tên miền, HTTP 407 / GET / CONNECT / 403, /ip, ổ cắm điều khiển")
+}
+
+// 27.11b · tự dò PPPoE: không cần mạng thật (thay hàm dò bằng hàm giả)
+func discTestPool(t *testing.T, extra string) *Pool {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "cbpool.json")
+	cf := fmt.Sprintf(`{"listen":"127.0.0.1:0","iface6":"lo","slots":2,"state_dir":%q,"ctl":%q%s}`, filepath.Join(dir, "st"), filepath.Join(dir, "ctl.sock"), extra)
+	if err := os.WriteFile(path, []byte(cf), 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := loadConf(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := newPool(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestDiscProbe(t *testing.T) {
+	var calls int32
+	var lastIf atomic.Value
+	pppoeDiscoverFn = func(ifc string, w time.Duration) ([]pado, error) {
+		atomic.AddInt32(&calls, 1)
+		lastIf.Store(ifc)
+		return []pado{{Mac: "02:00:00:00:00:01", AC: "cbtest-ac"}, {Mac: "02:00:00:00:00:02", AC: "cbtest-ac"}, {Mac: "02:00:00:00:00:03", AC: ""}}, nil
+	}
+	oldFirst := discFirst
+	defer func() { pppoeDiscoverFn = pppoeDiscover; discFirst = oldFirst }()
+
+	p := discTestPool(t, "")
+	if _, ok := p.status()["ppp"].(map[string]interface{})["disc"]; ok {
+		t.Fatal("chưa dò mà status đã có disc")
+	}
+	d := p.discover()
+	if d["ok"] != true || d["iface"] != "lo" || fmt.Sprint(d["ac"]) != "[cbtest-ac ?]" || d["err"] != nil {
+		t.Fatalf("dò có trả lời: %v", d)
+	}
+	b, _ := json.Marshal(p.status())
+	var st struct {
+		Ppp struct {
+			Disc struct {
+				Ok    bool     `json:"ok"`
+				AC    []string `json:"ac"`
+				Iface string   `json:"iface"`
+				T     int64    `json:"t"`
+			} `json:"disc"`
+		} `json:"ppp"`
+	}
+	if json.Unmarshal(b, &st) != nil || !st.Ppp.Disc.Ok || len(st.Ppp.Disc.AC) != 2 || st.Ppp.Disc.Iface != "lo" || st.Ppp.Disc.T == 0 {
+		t.Fatalf("status.ppp.disc: %s", b)
+	}
+	pppoeDiscoverFn = func(string, time.Duration) ([]pado, error) { return nil, nil }
+	if d := p.discover(); d["ok"] != false || d["err"] != nil {
+		t.Fatalf("không trả lời → ok=false: %v", d)
+	}
+	pppoeDiscoverFn = func(string, time.Duration) ([]pado, error) {
+		return nil, errors.New("mở ổ cắm PPPoE lỗi (cần root)")
+	}
+	if d := p.discover(); d["err"] != "mở ổ cắm PPPoE lỗi (cần root)" || d["ok"] != nil {
+		t.Fatalf("lỗi dò: %v", d)
+	}
+
+	// vòng tự dò: bật lên dò 1 lần; probe=false → không dò; card riêng cho PPPoE được ưu tiên
+	pppoeDiscoverFn = func(ifc string, w time.Duration) ([]pado, error) {
+		atomic.AddInt32(&calls, 1)
+		lastIf.Store(ifc)
+		return nil, nil
+	}
+	discFirst = 20 * time.Millisecond
+	for _, tc := range []struct {
+		extra string
+		want  int32
+		ifc   string
+	}{{"", 1, "lo"}, {`,"ppp":{"probe":false}`, 0, ""}, {`,"ppp":{"iface":"cbtest0"}`, 1, "cbtest0"}} {
+		atomic.StoreInt32(&calls, 0)
+		lastIf.Store("")
+		q := discTestPool(t, tc.extra)
+		q.wg.Add(1)
+		go q.discLoop()
+		time.Sleep(300 * time.Millisecond)
+		close(q.stopCh)
+		q.wg.Wait()
+		if n := atomic.LoadInt32(&calls); n != tc.want || lastIf.Load().(string) != tc.ifc {
+			t.Fatalf("%q: dò %d lần trên %q (muốn %d trên %q)", tc.extra, n, lastIf.Load(), tc.want, tc.ifc)
+		}
+	}
+
+	// lệnh điều khiển "disc" (ổ cắm unix)
+	q := discTestPool(t, "")
+	go q.ctlServe()
+	defer close(q.stopCh)
+	var r []byte
+	var err error
+	for i := 0; i < 50; i++ {
+		if r, err = ctlCall(q.c.Ctl, map[string]string{"cmd": "disc"}, 10*time.Second); err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err != nil || !strings.Contains(string(r), `"ok":false`) || !strings.Contains(string(r), `"iface":"lo"`) {
+		t.Fatalf("ctl disc: %s %v", r, err)
+	}
 }
