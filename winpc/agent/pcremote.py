@@ -25,7 +25,7 @@
 # =====================================================================================================
 import base64, collections, hashlib, json, os, queue, random, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.parse
 
-REMOTE_VER = "26.11a"
+REMOTE_VER = "28.11g"
 IME_ON = True                                                    # 22.11b: theo dõi ô nhập chữ → app điện thoại tự bật bàn phím (cb.json "ime": false = tắt)
 WIN = os.name == "nt"
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -262,6 +262,46 @@ EXT_VKS = frozenset(v for v, e in VK.values() if e)
 CMDS = {"back": (0x1B,), "home": (0x5B, 0x44), "recents": (0x5B, 0x09), "menu": (0x5D,), "volup": (0xAF,), "voldown": (0xAE,), "mute": (0xAD,),
         "notif": (0x5B, 0x41), "win": (0x5B,), "taskmgr": (0xA2, 0xA0, 0x1B), "alttab": (0xA4, 0x09), "altf4": (0xA4, 0x73), "desktop": (0x5B, 0x44),
         "explorer": (0x5B, 0x45), "enter": (0x0D,)}                # lệnh nút bấm trên app → tổ hợp phím (power / rotate: bỏ qua)
+
+# ---- 28.11g: cửa sổ "lạc" ra ngoài màn hình chính (vd hộp Đổi tên của MuMu mở ở toạ độ âm) → người xem từ xa chỉ thấy màn hình chính,
+#      không thấy / không bấm được → máy tự kéo về (đang có người xem) + nút "Kéo cửa sổ về màn hình" trên web (lệnh "wins") ----
+WIN_SCAN_S = 1.0                          # nhịp xem lại các cửa sổ khi đang có người xem
+WIN_LOST_S = 0.8                          # lạc liền ≥ 0,8 giây mới kéo (không bắt cửa sổ đang trượt vào)
+WIN_DENY = frozenset(("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "NotifyIconOverflowWindow", "TaskListThumbnailWnd",
+                      "tooltips_class32", "#32768", "SysShadow", "IME", "MSCTFIME UI", "ForegroundStaging", "MultitaskingViewFrame", "Ghost",
+                      "XamlExplorerHostIslandWindow", "Windows.UI.Core.CoreWindow", "TopLevelWindowForOverflowXamlIsland", "Xaml_WindowedPopupClass",
+                      "EdgeUiInputTopWndClass", "ApplicationManager_ImmersiveShellWindow", "Shell_InputSwitchTopLevelWindow", "CiceroUIWndFrame"))
+
+
+def win_place(rect, scr, work=None, mons=(), auto=True):
+    """Toạ độ mới (x, y) để đưa 1 cửa sổ về màn hình chính, hoặc None = để yên.
+       rect = (trái, trên, phải, dưới) · scr = (rộng, cao) màn hình chính (gốc 0,0 — máy chỉ phát hình màn này) · work = vùng làm việc (trừ thanh tác vụ)
+       · mons = khung các màn hình KHÁC. auto = máy tự làm: chỉ cửa sổ gần như mất hẳn (thấy < 25% hoặc không với tới thanh tiêu đề) và không nằm gọn
+       trong màn hình khác (máy 2 màn, người ngồi máy đang dùng). auto = False (khách bấm nút): mọi cửa sổ thò ra ngoài vùng làm việc.
+       Mất hẳn → đặt giữa vùng làm việc; thò ra 1 phần → dời ít nhất cho vừa. Cửa sổ to hơn vùng làm việc → góc trên-trái (với tới thanh tiêu đề)."""
+    l, t, r, b = (int(v) for v in rect)
+    W, H = int(scr[0]), int(scr[1]); w, h = r - l, b - t
+    if w < 80 or h < 40 or w > 3 * W or h > 3 * H: return None          # cửa sổ phụ tí hon / khung ảo khổng lồ: không phải hộp thoại của người dùng
+    wl, wt, wr, wb = (int(v) for v in work) if work else (0, 0, W, H)
+    if wr - wl < 200 or wb - wt < 150: wl, wt, wr, wb = 0, 0, W, H
+    iw = max(0, min(r, W) - max(l, 0)); ih = max(0, min(b, H) - max(t, 0))
+    frac = iw * ih / float(w * h)
+    title = iw if -16 <= t <= H - 24 else 0                             # bề ngang thanh tiêu đề (dải trên cùng) còn nằm trong màn hình
+    lost = frac < 0.25
+    if auto:
+        if not lost and title >= 48: return None
+        for m in mons or ():
+            ml, mt, mr, mb = (int(v) for v in m)
+            if l >= ml - 16 and t >= mt - 16 and r <= mr + 16 and b <= mb + 16: return None
+    elif l >= wl - 16 and t >= wt - 16 and r <= wr + 16 and b <= wb + 16: return None     # nằm gọn trong vùng làm việc (viền ẩn ~8px của Windows 10/11 cho qua)
+    aw, ah = wr - wl, wb - wt
+    if lost:
+        x = wl + (aw - w) // 2 if w <= aw else wl
+        y = wt + (ah - h) // 2 if h <= ah else wt
+    else:
+        x = min(max(l, wl), wr - w) if w <= aw else wl
+        y = min(max(t, wt), wb - h) if h <= ah else wt
+    return None if (x, y) == (l, t) else (x, y)
 
 
 class Keys:
@@ -840,6 +880,7 @@ class Session:
         self.iq = queue.Queue(maxsize=4000); self.clip_last = None; self.t0 = time.time()
         self.ime = None; self.ime_v = None; self.ime_dirty = False; self.last_st = None       # 22.11b: ô nhập chữ đang được chọn → app tự bật bàn phím
         self.long_gop = False; self.key_until = 0.0; self.skip = 0; self.enc_kbps = 0; self.rate_pend = False; self.plan_kw = {}                            # 26.11a: cách quay "pipe" (khung khoá thưa) · gộp lệnh rê chuột dồn
+        self.t_wins = 0.0; self.t_wins_err = 0.0                                                                                                          # 28.11g: kéo cửa sổ lạc về màn hình chính
 
     def _on_ime(self, v):
         self.ime_v = (1 if v[0] else 0, 1 if v[1] else 0); self.ime_dirty = True
@@ -961,7 +1002,9 @@ class Session:
             if h: self.io.wheel(max(-2400, min(2400, h)), True)
         elif t == C_CMD:
             j = json.loads(p.decode("utf-8") or "{}")
-            combo = CMDS.get(str(j.get("cmd") or "")) if isinstance(j, dict) else None
+            c = str(j.get("cmd") or "") if isinstance(j, dict) else ""
+            if c == "wins": self._wins(False); return                   # 28.11g: khách bấm "Kéo cửa sổ về màn hình"
+            combo = CMDS.get(c)
             if combo: self.keys.tap(*combo)
         elif t == C_CLIP and len(p) >= 1:
             s = p[1:1 + CLIP_MAX].decode("utf-8", "replace")
@@ -980,9 +1023,20 @@ class Session:
         else: self.keys.tap(*((0xA2, 0xA0, 0x56) if mode == 2 else (0xA2, 0x56)))
         for vk in held: self.io.key(vk, True, vk in EXT_VKS)
 
+    def _wins(self, auto):
+        """28.11g: kéo cửa sổ nằm ngoài màn hình chính về (máy Linux / bản thử không có thì thôi). Chạy trên luồng nhập liệu = đúng màn hình đang hiện."""
+        fn = getattr(self.io, "rescue_windows", None)
+        if fn is None: return 0
+        try: return fn(auto) or 0
+        except Exception as e:
+            if not auto or time.time() - self.t_wins_err > 300: self.t_wins_err = time.time(); self.log("keo cua so ve man hinh loi: %r" % (e,))
+            return 0
+
     def _input(self):
         pend = None
         while not self.closed:
+            now = time.time()
+            if now - self.t_wins >= WIN_SCAN_S: self.t_wins = now; self._wins(True)
             if pend is not None: (t, p), pend = pend, None
             else:
                 try: t, p = self.iq.get(timeout=0.05)
@@ -1231,7 +1285,8 @@ class ImeWatch:
 
 class NullIO:
     """Nhập liệu giả (máy không phải Windows / bộ thử): ghi lại lệnh, không làm gì thật."""
-    def __init__(self, w=1280, h=720): self.w, self.h = w, h; self.ev = []; self.clip = None
+    def __init__(self, w=1280, h=720): self.w, self.h = w, h; self.ev = []; self.clip = None; self.wins = []
+    def rescue_windows(self, auto=True): self.wins.append(bool(auto)); return 0          # 28.11g: ghi riêng (không lẫn vào chuỗi chuột / phím)
     def screen(self): return self.w, self.h
     def move(self, x, y): self.ev.append(("move", x, y))
     def button(self, b, down): self.ev.append(("btn", b, down))
@@ -1741,6 +1796,93 @@ class WinIO:
         try: return self.clip_get()
         except Exception: return None
 
+    # ---- 28.11g: cửa sổ lạc ra ngoài màn hình chính ----
+    def _win_api(self):
+        wa = getattr(self, "_wa", None)
+        if wa: return wa
+        ct, wt, u = self.ct, self.wt, self.u
+        EnumProc = ct.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
+        MonProc = ct.WINFUNCTYPE(wt.BOOL, wt.HANDLE, wt.HDC, ct.POINTER(wt.RECT), wt.LPARAM)
+        u.EnumWindows.argtypes = [EnumProc, wt.LPARAM]; u.EnumWindows.restype = wt.BOOL
+        u.EnumDisplayMonitors.argtypes = [wt.HDC, ct.c_void_p, MonProc, wt.LPARAM]; u.EnumDisplayMonitors.restype = wt.BOOL
+        for nm in ("IsWindowVisible", "IsIconic", "IsZoomed", "IsHungAppWindow"):
+            f = getattr(u, nm); f.argtypes = [wt.HWND]; f.restype = wt.BOOL
+        u.GetWindowRect.argtypes = [wt.HWND, ct.POINTER(wt.RECT)]; u.GetWindowRect.restype = wt.BOOL
+        u.GetClassNameW.argtypes = [wt.HWND, wt.LPWSTR, ct.c_int]; u.GetClassNameW.restype = ct.c_int
+        u.GetWindowLongW.argtypes = [wt.HWND, ct.c_int]; u.GetWindowLongW.restype = wt.LONG
+        u.GetWindow.argtypes = [wt.HWND, wt.UINT]; u.GetWindow.restype = wt.HWND
+        u.GetWindowThreadProcessId.argtypes = [wt.HWND, ct.POINTER(wt.DWORD)]; u.GetWindowThreadProcessId.restype = wt.DWORD
+        u.GetLayeredWindowAttributes.argtypes = [wt.HWND, ct.POINTER(wt.DWORD), ct.POINTER(ct.c_ubyte), ct.POINTER(wt.DWORD)]; u.GetLayeredWindowAttributes.restype = wt.BOOL
+        u.SystemParametersInfoW.argtypes = [wt.UINT, wt.UINT, ct.c_void_p, wt.UINT]; u.SystemParametersInfoW.restype = wt.BOOL
+        u.GetAsyncKeyState.argtypes = [ct.c_int]; u.GetAsyncKeyState.restype = ct.c_short
+        u.SetWindowPos.argtypes = [wt.HWND, wt.HWND, ct.c_int, ct.c_int, ct.c_int, ct.c_int, wt.UINT]; u.SetWindowPos.restype = wt.BOOL
+        try:
+            dwm = ct.WinDLL("dwmapi"); dwm.DwmGetWindowAttribute.argtypes = [wt.HWND, wt.DWORD, ct.c_void_p, wt.DWORD]; dwm.DwmGetWindowAttribute.restype = ct.c_long
+        except Exception: dwm = None
+        self._wa = (EnumProc, MonProc, dwm); self._wst = {"lost": {}, "n": {}}
+        return self._wa
+
+    def rescue_windows(self, auto=True):
+        """Kéo cửa sổ nằm ngoài màn hình chính về (máy chỉ phát hình màn hình chính). auto: máy tự làm lúc có người xem — chỉ cửa sổ gần như mất hẳn,
+           lạc liền ≥ 0,8 giây, không lúc đang giữ chuột trái (đang kéo cửa sổ), tối đa 3 lần / phút / cửa sổ (app cứ tự đẩy ra lại thì thôi, không giằng co).
+           Trả số cửa sổ đã kéo. Chỉ dời (không đổi cỡ, không đổi thứ tự trên dưới, không giành tiêu điểm); gửi lệnh không chờ (app treo không làm treo máy này)."""
+        EnumProc, MonProc, dwm = self._win_api()
+        ct, wt, u = self.ct, self.wt, self.u
+        self._desk()
+        if auto and self.desk_name and self.desk_name.lower() != "default": return 0     # màn hình bảo mật (hỏi quyền Admin / khoá máy): để yên
+        if auto and u.GetAsyncKeyState(0x01) & 0x8000: return 0
+        now = time.time(); W, H = self.screen()
+        rc = wt.RECT()
+        work = (rc.left, rc.top, rc.right, rc.bottom) if u.SystemParametersInfoW(0x0030, 0, ct.byref(rc), 0) and rc.right > rc.left else (0, 0, W, H)
+        mons = []
+
+        def _mon(hm, hdc, pr, lp):
+            r = pr.contents
+            if (r.left, r.top) != (0, 0): mons.append((r.left, r.top, r.right, r.bottom))      # màn hình chính luôn ở gốc 0,0
+            return True
+        hws = []
+
+        def _win(h, lp):
+            hws.append(h); return True
+        cb_m, cb_w = MonProc(_mon), EnumProc(_win)
+        u.EnumDisplayMonitors(None, None, cb_m, 0); u.EnumWindows(cb_w, 0)
+        me = os.getpid(); moved = 0; seen = set(); st = self._wst
+        for h in hws:
+            try:
+                if not h or not u.IsWindowVisible(h) or u.IsIconic(h) or u.IsZoomed(h): continue
+                r = wt.RECT()
+                if not u.GetWindowRect(h, ct.byref(r)): continue
+                pos = win_place((r.left, r.top, r.right, r.bottom), (W, H), work, mons, auto)
+                if pos is None: continue
+                buf = ct.create_unicode_buffer(128); u.GetClassNameW(h, buf, 128); cls = buf.value
+                if cls in WIN_DENY: continue
+                pid = wt.DWORD(0); u.GetWindowThreadProcessId(h, ct.byref(pid))
+                if pid.value == me: continue
+                sty = u.GetWindowLongW(h, -16) & 0xFFFFFFFF; ex = u.GetWindowLongW(h, -20) & 0xFFFFFFFF
+                if ex & 0x20: continue                                    # WS_EX_TRANSPARENT: lớp phủ bấm xuyên
+                if auto and not ((sty & 0x00C00000) == 0x00C00000 or u.GetWindow(h, 4) or ex & 0x00040001): continue   # có thanh tiêu đề / có cửa sổ chủ (hộp thoại) / APPWINDOW · DLGMODALFRAME
+                if dwm is not None:
+                    ck_ = ct.c_int(0)
+                    if dwm.DwmGetWindowAttribute(h, 14, ct.byref(ck_), 4) == 0 and ck_.value: continue     # DWMWA_CLOAKED: app ẩn / ở màn hình ảo (desktop) khác
+                if ex & 0x00080000:                                       # WS_EX_LAYERED trong suốt hẳn → cửa sổ phụ, để yên
+                    a, fl = ct.c_ubyte(255), wt.DWORD(0)
+                    if u.GetLayeredWindowAttributes(h, None, ct.byref(a), ct.byref(fl)) and fl.value & 2 and a.value == 0: continue
+                if u.IsHungAppWindow(h): continue
+                key = int(h); seen.add(key)
+                if auto:
+                    if now - st["lost"].setdefault(key, now) < WIN_LOST_S: continue
+                    n = [x for x in st["n"].get(key, ()) if now - x < 60]
+                    if len(n) >= 3: continue
+                    st["n"][key] = n + [now]
+                if u.SetWindowPos(h, None, int(pos[0]), int(pos[1]), 0, 0, 0x0001 | 0x0004 | 0x0010 | 0x4000):    # NOSIZE · NOZORDER · NOACTIVATE · ASYNCWINDOWPOS
+                    moved += 1; st["lost"].pop(key, None)
+                    self.log("keo cua so lac ve man hinh chinh: %s (%d,%d) -> (%d,%d)%s" % (cls[:40], r.left, r.top, pos[0], pos[1], "" if auto else " (khach bam nut)"))
+            except Exception:
+                continue
+        for k in [k for k in st["lost"] if k not in seen]: st["lost"].pop(k, None)
+        if len(st["n"]) > 500: st["n"] = {k: v for k, v in st["n"].items() if v and now - v[-1] < 60}
+        return moved
+
     # ---- khác ----
     def ime_watch(self, on_change, log=None):
         """22.11b: theo dõi ô nhập chữ đang được chọn (cho app điện thoại tự bật bàn phím). Tắt: "ime": false trong cb.json."""
@@ -1926,6 +2068,7 @@ def cmd_selfcheck(argv):
     """Bản mới tự thử (pcagent gọi trước khi thay bản cũ): bảng phím, ghép RTP, chọn chất lượng — không gọi mạng, không đụng chuột / phím."""
     assert plan("auto", 0, 0, 0, 0, 1920, 1080)[:3] == (1920, 1080, 30) and fit(2560, 1440, 1280) == (1280, 720)
     assert VK[29] == (0x41, 0) and len(VK) > 100 and CMDS["home"] == (0x5B, 0x44)
+    assert win_place((-370, 0, 30, 160), (1920, 1080), (0, 0, 1920, 1040)) == (760, 440) and win_place((100, 100, 900, 700), (1920, 1080)) is None
     io = NullIO(); k = Keys(io); k.key(0, 29, 0x1000); k.key(1, 29, 0x1000)
     assert io.ev == [("key", 0xA2, True, False), ("key", 0x41, True, False), ("key", 0x41, False, False), ("key", 0xA2, False, False)]
     a = RtpAssembler(); pkt = bytes([0x80, 0xE0, 0, 1]) + bytes(8) + bytes([0x65, 1, 2, 3])

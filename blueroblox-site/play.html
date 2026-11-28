@@ -302,6 +302,7 @@ body.pcm #cv{cursor:default}
 body:not(.pcm) .pc-only{display:none!important}
 body.pcm #q-seg{grid-template-columns:repeat(auto-fit,minmax(62px,1fr))}
 i.ic.pck{font-style:normal;font-size:18px;line-height:1;display:inline-grid;place-items:center;width:22px;height:22px}
+.grid button.pck-wide{grid-column:1/-1;flex-direction:row;justify-content:center;min-height:46px;gap:8px}   /* 28/11g: nút kéo cửa sổ lạc về màn hình (cả hàng) */
 /* 21/11f · MÁY PC: kiểu chạm như Chrome Remote Desktop (màn cảm ứng) — con trỏ tại chỗ (Bàn di chuột) + chọn kiểu chạm / xoay màn */
 #pc-cur{position:absolute;left:0;top:0;width:18px;height:26px;margin:-2px 0 0 -2px;pointer-events:none;z-index:4;display:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.55))}
 body.pcpad #pc-cur{display:block}
@@ -2649,8 +2650,11 @@ function pcMode(on) {
     g.innerHTML = [["win", "⊞", L("Nút Windows", "Windows key")], ["alttab", "⇄", "Alt + Tab"], ["altf4", "✕", "Alt + F4"], ["taskmgr", "📊", "Task Manager"],
                    ["explorer", "📁", "File Explorer"], ["desktop", "🖥", L("Màn hình nền", "Desktop")], ["enter", "↵", "Enter"], ["mute", "🔇", L("Tắt tiếng", "Mute")]]
       .map(([c, ic, t]) => `<button type="button" data-pck="${c}"><i class="ic pck">${ic}</i>${t}</button>`).join("");
+    // 28/11g: cửa sổ mở lệch ra ngoài màn hình (vd hộp Đổi tên của MuMu) → không thấy / không gõ được. Máy PC bản 28.11g tự kéo về khi đang xem; nút này kéo tất cả ngay
+    g.insertAdjacentHTML("beforeend", `<button type="button" data-pck="wins" class="pck-wide"><i class="ic pck">🪟</i>${L("Kéo cửa sổ bị lệch ra ngoài về giữa màn hình", "Bring off-screen windows back")}</button>`);
     const q = $("q-seg"); q.after(h); h.after(g);
-    g.addEventListener("click", e => { const b = e.target.closest("[data-pck]"); if (!b) return; $("menu").hidden = true; cmd(b.dataset.pck); });
+    g.addEventListener("click", e => { const b = e.target.closest("[data-pck]"); if (!b) return; $("menu").hidden = true; cmd(b.dataset.pck);
+      if (b.dataset.pck === "wins") toast(L("Đã kéo các cửa sổ nằm ngoài màn hình về giữa — bấm lại vào ô cần gõ.", "Off-screen windows moved back — tap the field again.")); });
   }
 }
 

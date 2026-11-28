@@ -341,6 +341,27 @@ g_ = R.FakeGrab(R.NullIO(64, 32)); b1_, c1_ = g_.grab(); b2_, c2_ = g_.grab(); g
 ck("bộ chụp giả của bộ thử: khung đầu 'đổi', chụp lại không đổi, đổi io.tick → đổi; đúng cỡ BGR0", c1_ and not c2_ and c3_ and len(b1_) == 64 * 32 * 4 and b1_ is b2_ and b3_ != b1_)
 
 # ------------------------------------------------------------------ 9. nối máy chủ + phiên (cần ffmpeg + cryptography)
+print("8c. 28.11g · cửa sổ lạc ra ngoài màn hình chính (hộp Đổi tên của MuMu mở ở toạ độ âm) → kéo về")
+WP, SC, WK = R.win_place, (1920, 1080), (0, 0, 1920, 1040)
+ck("hộp thoại gần như mất hẳn bên trái (chỉ thò 30px) → máy tự kéo về GIỮA vùng làm việc (trừ thanh tác vụ)", WP((-370, 0, 30, 160), SC, WK) == (760, 440), WP((-370, 0, 30, 160), SC, WK))
+ck("… lạc hẳn ra ngoài (toạ độ âm / quá cạnh phải / dưới thanh tác vụ) đều kéo về giữa",
+   WP((-900, -600, -500, -400), SC, WK) == (760, 420) and WP((2500, 300, 2900, 500), SC, WK) == (760, 420) and WP((600, 1070, 1000, 1270), SC, WK) == (760, 420))
+ck("cửa sổ nằm trong màn hình · sát mép (viền ẩn 7–8px của Windows 10/11) · gần như phóng to → để yên (cả khi khách bấm nút)",
+   all(WP(r, SC, WK, (), a) is None for r in ((100, 100, 900, 700), (-7, 0, 967, 1047), (-8, -8, 1928, 1048)) for a in (True, False)))
+ck("thò ra ngoài 1 nửa (người dùng tự kéo) → máy KHÔNG tự kéo; khách bấm nút → dời ít nhất cho vừa (giữ chỗ cũ)",
+   WP((1500, 100, 2300, 700), SC, WK) is None and WP((1500, 100, 2300, 700), SC, WK, (), False) == (1120, 100), WP((1500, 100, 2300, 700), SC, WK, (), False))
+ck("thanh tiêu đề bị đẩy lên trên màn hình (không kéo / đóng được) → máy tự hạ xuống mép trên, giữ hoành độ", WP((100, -300, 900, 500), SC, WK) == (100, 0), WP((100, -300, 900, 500), SC, WK))
+ck("cửa sổ to hơn màn hình → góc trên-trái (với tới thanh tiêu đề); đã ở đó → để yên (bấm nút nhiều lần không giật)",
+   WP((-200, -300, 2300, 1200), SC, WK) == (0, 0) and WP((0, 0, 2500, 1500), SC, WK, (), False) is None)
+MON2 = [(1920, 0, 3840, 1080)]
+ck("máy 2 màn hình: cửa sổ nằm gọn ở màn phụ (người ngồi máy đang dùng) → máy KHÔNG tự kéo; khách bấm nút → kéo về giữa màn chính",
+   WP((2000, 100, 2600, 500), SC, WK, MON2) is None and WP((2000, 100, 2600, 500), SC, WK, MON2, False) == (660, 320))
+ck("… cửa sổ lạc ra ngoài MỌI màn hình → vẫn tự kéo về", WP((-500, 200, -100, 400), SC, WK, MON2) == (760, 420), WP((-500, 200, -100, 400), SC, WK, MON2))
+ck("cửa sổ phụ tí hon (< 80×40) / khung ảo khổng lồ → bỏ qua", WP((-50, -50, -10, -20), SC, WK) is None and WP((-9000, 0, 9000, 500), SC, WK) is None)
+ck("vùng làm việc hỏng (rỗng) → dùng cả màn hình", WP((-370, 0, 30, 160), SC, (0, 0, 0, 0)) == (760, 460), WP((-370, 0, 30, 160), SC, (0, 0, 0, 0)))
+ck("bản chạy thử (NullIO) có rescue_windows ghi riêng, không lẫn vào chuỗi chuột / phím", (lambda io: (io.rescue_windows(True), io.rescue_windows(False), io.ev, io.wins)[2:])(R.NullIO()) == ([], [True, False]))
+
+
 print("9. Nối máy chủ (TLS, kiểm mã chứng chỉ) + phiên có người xem")
 try:
     from cryptography import x509
@@ -491,6 +512,11 @@ else:
     ck("chuột / phím / chữ / cuộn / lệnh / dán của người xem được làm đúng thứ tự (dán lúc khách giữ Shift: nhả Shift → Ctrl+V → nhấn lại Shift); "
        "lệnh lạ + gói hỏng bị bỏ", wait(lambda: io_.ev == want, 4), io_.ev)
     ck("giữ yên 0,55 giây sau khi chạm → bấm phải (đồng hồ của luồng nhập liệu)", wait(lambda: io_.ev[-2:] == [("btn", 1, True), ("btn", 1, False)], 3), io_.ev[-3:])
+    n_ev = len(io_.ev); io_.wins.clear(); pr.send(R.C_CMD, b'{"cmd":"wins"}')
+    ck("28.11g: khách bấm 'Kéo cửa sổ về màn hình' (lệnh wins) → máy kéo ngay (rescue_windows auto=False), không bấm phím nào",
+       wait(lambda: False in io_.wins, 3) and io_.ev[n_ev:] == [], (io_.wins[-5:], io_.ev[n_ev:]))
+    io_.wins.clear()
+    ck("28.11g: đang có người xem → máy tự xem lại cửa sổ lạc khoảng 1 giây / lần (auto=True)", wait(lambda: io_.wins.count(True) >= 2, 4) and io_.wins.count(True) <= 5, io_.wins)
 
     pr.send(R.C_QUALITY, b'{"q":"bal","fps":20}')
     m = pr.take(R.P_INFO, 8); info = json.loads(m[1]) if m else {}

@@ -75,6 +75,7 @@ def main():
         ck("thẻ sản phẩm có quầng neon xanh ngọc (28/11 bản 5 Arctic Glow: #00c2ff + xanh điện #0b5fff)", "rgba(0, 194, 255" in t["rowShadow"], t["rowShadow"])
         ck("thẻ máy đang chạy giữ màu trạng thái (xanh lá) cho neon", "rgba(60, 224, 176" in t["cardShadow"] and "run" in t["cardCls"], (t["cardCls"], t["cardShadow"]))
         ck("hộp thoại có quầng neon (không chạy)", "rgba(0, 194, 255" in t["dlgShadow"], t["dlgShadow"])
+        s.js("() => document.querySelector('.m3-row').scrollIntoView({ block: 'center' })"); s.page.wait_for_timeout(600)      # 28/11g: vệt neon chỉ chạy ở khung đang thấy trên màn hình
         a1 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')"); s.page.wait_for_timeout(700)
         a2 = s.js("() => getComputedStyle(document.querySelector('.m3-row'), '::after').getPropertyValue('--nr')")
         ck("vệt sáng thật sự di chuyển (góc --nr đổi theo thời gian)", a1 != a2 and a1.endswith("deg"), (a1, a2))
