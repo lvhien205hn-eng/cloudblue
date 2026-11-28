@@ -3864,8 +3864,7 @@ class OrderDlg(Dlg):
         if not lo("min_fps") <= s["fps"] <= lo("max_fps"): return f"FPS phải từ {int(lo('min_fps'))} đến {int(lo('max_fps'))}."
         if s["cpu"] < 4 and s["fps"] > 60: return "Máy dưới 4 nhân chỉ chọn tối đa 60 FPS."
         if s["qty"] > self.left and not adm: return f"Tài khoản của bạn chỉ còn được thuê thêm {self.left} máy."
-        if p.get("stock") is not None and s["qty"] > lo("stock") and not adm:
-            return "Đã hết hàng." if lo("stock") <= 0 else f"Chỉ còn {int(lo('stock'))} máy — chọn số lượng nhỏ hơn."
+        # 28/11 (SQL v69): bỏ "số lượng còn bán" nhập tay — chỉ chặn khi máy chủ hết chỗ (and_room ngay dưới)
         if s["android"] not in and_list(p): return "Hãy chọn hệ điều hành (bản Android)."
         r = and_room(st, s["android"])
         if r is not None and not adm:
