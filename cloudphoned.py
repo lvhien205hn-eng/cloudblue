@@ -73,6 +73,8 @@ _FULL = {"until": 0.0}
 #   có pg_cron thì Supabase tự quét mỗi phút, mọi máy chủ cũng gọi mỗi phút cho chắc). Đơn đổi Android (giữ hạn máy cũ) KHÔNG đụng.
 #   Máy đang tạo dở của đơn đã huỷ: máy chủ tự xoá (máy CHƯA giao cho khách, chưa có dữ liệu khách). STUCK_MIN=0 = tắt.
 STUCK_MIN = max(0.0, _f("STUCK_MIN", 30))
+SW_WAIT_MIN = max(0.0, _f("SWITCH_WAIT_MIN", 20))   # 28/11c: ĐỔI ANDROID mà mọi máy chủ đúng bản đang đầy → CHỜ có chỗ tối đa N phút (máy chủ nào trống
+                                                   # trước nhận luôn) thay vì hoàn / tạo lại ngay (máy cũ đã xoá — tạo lại vào máy chủ đầy chỉ hỏng tiếp). < STUCK_MIN
 # 16/11f: máy chủ đang có ≥ BOOT_MAX máy MỚI chưa lên, hoặc 1 máy mới chờ Android quá BOOT_SLOW_MIN phút → máy chủ đang quá tải tạo
 #   máy: tạm KHÔNG nhận đơn mới + báo web hết chỗ (đơn sang máy chủ khác, khách không phải chờ 20–30 phút). Đơn admin chọn đúng máy
 #   chủ này vẫn làm. BOOT_MAX=0 = tắt.
@@ -282,11 +284,53 @@ def others_for(row):
                float(r.get("cap_cpu") or 0) - float(r.get("alloc_cpu") or 0) + 0.01 >= wc: room = True
         except (TypeError, ValueError): pass
     return live, room
+_sw_said = {}
+def sw_waiting(row, live=None):
+    """28/11c (user 28/11 10:03): đơn ĐỔI ANDROID (máy cũ đã xoá) mà chưa máy chủ nào còn chỗ → GIỮ đơn chờ (không hoàn / tạo lại ngay), mọi
+       máy chủ vẫn quét đơn mỗi vài giây — máy chủ nào trống ra trước (máy khác hết hạn / máy mới tạo xong / tự nhận máy lại) thì nhận và tạo luôn.
+       Quá SW_WAIT_MIN phút mà vẫn không có chỗ → như cũ (hoàn / web tự tạo lại). Không máy chủ nào đang chạy bán bản đó → như cũ (không chờ)."""
+    if not row.get("replaces") or SW_WAIT_MIN <= 0 or age_s(row) >= SW_WAIT_MIN * 60: return False
+    if live is None: live = others_for(row)[0]
+    if not (live or android_ok(row) or sw_hope(row)): return False
+    rid = str(row.get("id") or "")
+    if time.time() - _sw_said.get(rid, 0) > 300:
+        _sw_said[rid] = time.time()
+        if len(_sw_said) > 500: _sw_said.clear()
+        print(f"[đổi Android] máy mới {rid[:8]}: các máy chủ Android {str(row.get('android') or '?')} đang đầy / bận → GIỮ ĐƠN chờ có chỗ "
+              f"(tối đa {SW_WAIT_MIN:g} phút, đã {age_s(row) / 60:.0f} phút) — máy chủ nào trống trước nhận luôn", flush=True)
+    return True
+
+def sw_hope(row):
+    """28/11c: còn máy chủ bán đúng bản Android của đơn vừa báo cáo (≤ 3 phút) — KỂ CẢ máy đang "Ngừng nhận máy": tự ngừng vì đầy thì tự nhận
+       lại khi bớt đầy, máy giữ máy cũ của khách thì nhận lại đơn đổi Android ngay (own_switch) → đáng chờ, chưa nên hoàn / tạo lại."""
+    v = str(row.get("android") or "").strip() or "9"
+    live_nodes()                                     # làm mới bảng cloud_nodes (30 giây / lần)
+    for r in list(_nodes["rows"]):
+        try:
+            if node_sells(r, v) and (now() - parse_dt(r.get("updated_at"))).total_seconds() <= 180: return True
+        except Exception: pass
+    return False
+
+_own_sw = {}
+def own_switch(row):
+    """28/11c: đơn ĐỔI ANDROID mà máy CŨ nằm ở chính máy chủ này → máy cũ đã xoá nên chỗ của nó trống ra: máy chủ đang "Ngừng nhận máy"
+       (admin / tự ngừng vì đầy) vẫn nhận lại đơn này (tải không tăng). Đọc 1 lần / 2 phút / đơn."""
+    old, rid = row.get("replaces"), str(row.get("id") or "")
+    if not old or not rid: return False
+    c = _own_sw.get(rid)
+    if not c or time.time() - c[1] > 120:
+        try: o = (sb("GET", f"cloud_phones?id=eq.{old}&select=node") or [{}])[0]
+        except Exception: o = {}
+        if len(_own_sw) > 500: _own_sw.clear()
+        c = _own_sw[rid] = (o.get("node"), time.time())
+    return c[0] == NODE_ID
+
 def refund_unserved(row):
     """Máy chủ chính: đơn chưa ai nhận → chỉ hoàn tiền khi chắc chắn không máy chủ nào nhận được.
        Còn máy chủ khác đúng bản Android, đang chạy, còn chỗ (có thể đang bận tạo máy khác) → chờ nó tới 10 phút."""
     age = age_s(row); v = str(row.get("android") or "").strip() or "9"
     live, room = others_for(row)
+    if sw_waiting(row, live): return                    # 28/11c: đổi Android → giữ đơn chờ có chỗ
     if age < (600 if room else 90 if android_ok(row) else 120): return
     if room:
         msg = f"Máy chủ Android {v} chưa nhận đơn — đã hoàn tiền, thử lại sau"
@@ -439,7 +483,7 @@ def claim(row):
     if n:                                           # đã có server nhận rồi (admin chọn / máy chủ khác)
         if n != NODE_ID: return False
         return not handover(row)                    # 16/11e: admin chọn máy chủ này mà nó gần đầy → chuyển sang máy chủ trống nhất
-    if not node_enabled(): return False
+    if not node_enabled() and not own_switch(row): return False     # 28/11c: đang ngừng nhận máy → chỉ nhận lại đơn đổi Android của máy nó vừa xoá
     if time.time() < _FULL["until"]:                 # 16/11: vừa tạo máy báo HẾT CHỖ → nghỉ nhận đơn ít phút, nhường máy chủ khác
         if PRIMARY: refund_unserved(row)
         return False
@@ -846,11 +890,12 @@ def do_create(row):
         if r.returncode == 2:   # HẾT CHỖ lúc tạo (RAM thật ít hơn số ước)
             _FULL["until"] = time.time() + FULL_COOL_S
             print(f"   ✗ {NODE_ID} hết chỗ khi tạo máy → nghỉ nhận đơn {FULL_COOL_S // 60} phút, nhường đơn cho máy chủ khác")
-            if age_s(row) < 600 and others_for(row)[1]:      # 16/11: còn máy chủ khác đủ chỗ → TRẢ ĐƠN cho nó nhận, KHÔNG hoàn tiền
+            sw = sw_waiting(row)                             # 28/11c: đổi Android → trả đơn, máy chủ nào trống trước nhận (không hoàn / tạo lại ngay)
+            if (age_s(row) < 600 and others_for(row)[1]) or sw:   # 16/11: còn máy chủ khác đủ chỗ → TRẢ ĐƠN cho nó nhận, KHÔNG hoàn tiền
                 try:
                     back = sb("PATCH", f"cloud_phones?id=eq.{row['id']}&node=eq.{NODE_ID}&status=eq.pending", {"node": None},
                               {"Prefer": "return=representation"})
-                    if back: print("   ↪ đã trả đơn — máy chủ còn chỗ sẽ nhận"); return
+                    if back: print("   ↪ đã trả đơn — máy chủ còn chỗ sẽ nhận" + (" (đổi Android: giữ đơn chờ có chỗ)" if sw else "")); return
                 except Exception as e: print("   lỗi trả đơn:", e)
             refund(row, "Máy chủ đã đầy, chưa tạo được máy")
             notify(f"⚠️ <b>Đơn ĐT đám mây bị hoàn tiền</b>: {NODE_ID} hết chỗ khi tạo máy và không máy chủ nào khác còn chỗ."); return
@@ -1188,7 +1233,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "27/11n"
+CPD_VER = "28/11c"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1491,6 +1536,96 @@ def cpu_temp():
             pass
     return best
 
+# ---------- 28/11c · 🤖 TỰ NGỪNG / TỰ NHẬN MÁY THEO MỨC ĐẦY (user 28/11 09:52: "như này thì tự bấm ngưng nhận máy, giảm dưới mức đó ~20% thì
+# tự bật nhận máy lại") ----------
+# Mức đầy = metrics.fill_pct (số % trên thẻ máy chủ: "Đang chạy · 96%"). Đầy ≥ node_autopause_pct (web admin, mặc định 95%) → tự bấm
+# "Ngừng nhận máy" (enabled = false, KHÔNG phải Ngừng hẳn). Đầy giảm xuống ≤ ngưỡng − node_autopause_gap (mặc định 20 → ≤ 75%) LIÊN TỤC
+# node_autopause_min phút (mặc định 5) → tự "Nhận máy lại". Chỉ tự nhận lại lần ngừng do CHÍNH NÓ bấm — admin bấm Ngừng nhận máy (luật tự nhận
+# lại cũ của web, SQL v39) / Ngừng hẳn → để nguyên. Admin bấm "Nhận máy lại" lúc đang tự ngừng → tôn trọng: không tự ngừng lại tới khi đầy đã
+# xuống ≤ mức nhận lại 1 lần. node_autopause_pct = 0 → tắt (đang tự ngừng thì nhận lại luôn). Sổ: logs/tu-ngung.json · báo Telegram.
+AP_F = os.path.join(HOME, "logs", "tu-ngung.json")
+_ap = {"t": 0.0, "cfg": (95.0, 20.0, 5.0)}
+
+def ap_cfg():
+    """(ngưỡng tự ngừng %, khoảng giảm để nhận lại %, số phút phải giữ mức thấp) — web admin đặt ở settings.data, đọc lại 2 phút / lần."""
+    if time.time() - _ap["t"] > 120:
+        try:
+            site = ((sb("GET", "settings?id=eq.1&select=data") or [{}])[0].get("data") or {})
+            def num(k, d, lo, hi):
+                v = str(site.get(k) if site.get(k) is not None else "").strip()
+                if v == "": return d
+                try: return max(lo, min(hi, float(v)))
+                except ValueError: return d
+            pct = num("node_autopause_pct", 95.0, 0, 100)
+            if 0 < pct < 50: pct = 50.0                       # gõ nhầm (VD 9 thay vì 95) → không để mọi máy chủ tự ngừng
+            _ap["cfg"] = (pct, num("node_autopause_gap", 20.0, 5, 50), num("node_autopause_min", 5.0, 1, 240))
+        except Exception as e:
+            print("lỗi đọc cài đặt tự ngừng:", e)
+        _ap["t"] = time.time()
+    return _ap["cfg"]
+
+def autopause_plan(st, enabled, hard, lvl, now_, pct, gap, mins):
+    """Hàm thuần (bộ thử gọi thẳng). st = sổ cũ {auto, at, lv, low} · enabled / hard = trạng thái nhận máy trên web · lvl = mức đầy %.
+       → (sổ mới, việc: None | "pause" | "resume")."""
+    st = dict(st or {}); back = max(0.0, pct - gap)
+    if hard: return {}, None                                  # ⛔ Ngừng hẳn (admin sửa máy / bảo trì) → không đụng, quên tự ngừng
+    if st.get("auto"):
+        if enabled:                                           # ai đó (admin / luật web) đã bật nhận lại → tôn trọng
+            return ({"hold": True} if lvl is not None and pct > 0 and lvl > back else {}), None
+        if pct <= 0: return {}, "resume"                      # admin tắt tính năng → nhận lại luôn
+        if lvl is not None and lvl <= back:
+            st["low"] = st.get("low") or now_
+            return ({}, "resume") if now_ - st["low"] >= mins * 60 else (st, None)
+        st.pop("low", None)
+        return st, None
+    if st.get("hold"):
+        if lvl is None or pct <= 0 or lvl <= back: st = {}    # đã xuống mức nhận lại → bật lại chế độ tự ngừng
+        else: return st, None
+    if not enabled or pct <= 0 or lvl is None: return {}, None   # admin đang ngừng tay → luật cũ của web lo
+    if lvl >= pct: return {"auto": True, "at": now_, "lv": round(lvl, 1)}, "pause"
+    return {}, None
+
+def autopause_tick(lvl):
+    """Mỗi lần báo cáo (30 giây): đọc enabled / pause_hard của máy chủ này → autopause_plan → bấm Ngừng / Nhận máy lại trên web.
+       → dict cho metrics.autopause (web hiện trên thẻ máy chủ) hoặc None."""
+    pct, gap, mins = ap_cfg()
+    q = urllib.parse.quote(NODE_ID)
+    try:
+        try: r = sb("GET", f"cloud_nodes?id=eq.{q}&select=enabled,pause_hard") or []
+        except urllib.error.HTTPError: r = sb("GET", f"cloud_nodes?id=eq.{q}&select=enabled") or []
+    except Exception as e:
+        print("lỗi đọc trạng thái nhận máy:", e); return None
+    if not r: return None
+    enabled = r[0].get("enabled", True) is not False; hard = bool(r[0].get("pause_hard"))
+    try: old = json.load(open(AP_F, encoding="utf-8")) or {}
+    except Exception: old = {}
+    new, act = autopause_plan(old, enabled, hard, lvl, time.time(), pct, gap, mins)
+    back = max(0.0, pct - gap)
+    if act:
+        on = act == "resume"
+        f1 = {"enabled": on, ("auto_on_at" if on else "paused_at"): now().isoformat()}
+        try:
+            try: sb("PATCH", f"cloud_nodes?id=eq.{q}", f1, {"Prefer": "return=minimal"})
+            except urllib.error.HTTPError: sb("PATCH", f"cloud_nodes?id=eq.{q}", {"enabled": on}, {"Prefer": "return=minimal"})   # web chưa có cột v39
+        except Exception as e:
+            print("lỗi bấm tự ngừng / nhận máy:", e); return None     # chưa bấm được → không ghi sổ, lượt sau thử lại
+        _en.update(v=on, t=time.time())
+        print(("▶ tự NHẬN MÁY LẠI" if on else "⏸ tự NGỪNG NHẬN MÁY") + f" — đầy {lvl if lvl is not None else '?'}%"
+              + (f" (≤ {back:g}% liên tục {mins:g} phút)" if on else f" (ngưỡng {pct:g}%, nhận lại khi ≤ {back:g}%)"), flush=True)
+        try:
+            notify(f"▶ <b>{NODE_ID}</b> còn đầy {lvl:.0f}% (≤ {back:g}% liên tục {mins:g} phút) — <b>TỰ NHẬN MÁY LẠI</b>." if on and lvl is not None else
+                   f"▶ <b>{NODE_ID}</b> — <b>TỰ NHẬN MÁY LẠI</b> (đã tắt tự ngừng)." if on else
+                   f"⏸ <b>{NODE_ID}</b> đầy {lvl:.0f}% (ngưỡng {pct:g}%) — <b>TỰ NGỪNG NHẬN MÁY</b>. Đơn mới sang máy chủ khác; tự nhận lại khi ≤ {back:g}% liên tục {mins:g} phút.")
+        except Exception: pass
+    if new != old:
+        try:
+            os.makedirs(os.path.dirname(AP_F), exist_ok=True)
+            with open(AP_F, "w", encoding="utf-8") as f: json.dump(new, f)
+        except Exception as e: print("lỗi ghi sổ tự ngừng:", e)
+    at = new.get("at")
+    return {"on": bool(new.get("auto")), "hold": bool(new.get("hold")), "lv": new.get("lv"), "pct": pct, "back": back, "min": mins,
+            "at": datetime.datetime.fromtimestamp(at, datetime.timezone.utc).isoformat() if at else None}
+
 _alert = {"full": None, "none": None}
 _hb_old = {"v": False}
 _loop_t = [time.time()]             # lần cuối vòng chính chạy xong 1 lượt
@@ -1559,6 +1694,10 @@ def heartbeat():
     metrics["move"] = 1 if (MV_ON and mv_support()) else 0           # 27/11n: web chỉ cho chọn máy chủ đích đã có phần chuyển máy
     try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
     except Exception: pass
+    try:                                                # 28/11c: 🤖 đầy ≥ ngưỡng → tự Ngừng nhận máy · giảm ≤ ngưỡng − 20% → tự Nhận máy lại
+        ap = autopause_tick(metrics.get("fill_pct"))
+        if ap: metrics["autopause"] = ap
+    except Exception as e: print("lỗi tự ngừng / nhận máy:", e)
     body = {"id": NODE_ID, "cpu_total": cpu_t, "ram_total": round(ram_t, 1), "cap_cpu": round(c_cpu, 1), "cap_ram": round(c_ram, 1),
             "alloc_cpu": a_cpu, "alloc_ram": a_ram, "phones": len(st), "limit_pct": LIMIT_PCT, "metrics": metrics,
             "updated_at": now().isoformat()}
@@ -2372,7 +2511,8 @@ def _mv_loop():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 27/11n chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng.")
+    print(f"cloudphoned bản 28/11c chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
+          + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else ""))
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"
