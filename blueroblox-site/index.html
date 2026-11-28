@@ -5115,7 +5115,7 @@ async function prmCheck(name) {
   const key = JSON.stringify([s.code, P.scope(), c]); s.busy = true; prmShow(name);
   let r;
   try {
-    const { data, error } = await sb.rpc("promo_check", { p_code: s.code, p_scope: P.scope(), ...c });
+    const { data, error } = await sb.rpc(P.rpc || "promo_check", { p_code: s.code, p_scope: P.scope(), ...c });     // 28/11f: máy thật kiểm bằng realphone_promo_check
     r = error ? { ok: false, err: prmMissing(error) ? "PROMO_OFF" : String(error.message || error), net: 1 } : (data && typeof data === "object" ? data : { ok: false, err: "PROMO_INVALID" });
   } catch (e) { r = { ok: false, err: String((e && e.message) || e), net: 1 }; }
   if (PRM[name] !== P || seq !== s.seq) return null;          // hộp đã đóng / mở lại, hoặc khách đã sửa mã trong lúc chờ
@@ -7775,7 +7775,10 @@ $("vcf") && ($("vcf").onsubmit = e => { e.preventDefault(); busy($("vc-save"), a
 /* 🧩 SQL v68: admin_db_check — mỗi file SQL đã chạy đủ chưa (✓ / ✗ từng phần) → admin + Claude tự kiểm tra, khỏi chụp màn hình Supabase */
 const DBC_LBL = { v67: { avoid_node: "cột tránh máy chủ cũ", change_server: "đổi máy chủ giữ Android", switch_other_server: "đổi Android sang máy chủ khác",
                          switch_limit: "số lần đổi / 24 giờ", orders_cp_sales: "bỏ đơn admin" },
-                  v68: { topups: "bỏ nạp admin", balances: "bỏ số dư admin", rev_funcs: "hàm tính tiền", stats_api: "/api/stats", fresh: "bảng bỏ admin đủ cột" } };
+                  v68: { topups: "bỏ nạp admin", balances: "bỏ số dư admin", rev_funcs: "hàm tính tiền", stats_api: "/api/stats", fresh: "bảng bỏ admin đủ cột" },
+                  v71: { auto_clean: "tự dọn máy kẹt", auto_clean_cron: "lịch tự dọn", node_clock: "giờ máy chủ", rev_services: "doanh thu theo dịch vụ",
+                         idle_purge: "xoá máy không mở", real_like_cp: "máy thật như ĐT đám mây" } };
+const DBC_SOFT = { v71: ["auto_clean_cron"] };          // không có pg_cron vẫn chạy: máy chủ (cloudphoned 28/11f) tự gọi cp_auto_clean 5 phút / lần
 async function dbCheck() {
   const el = $("st-db"); if (!el || !isAdmin()) return;
   let r; try { r = await sb.rpc("admin_db_check"); } catch (e) { r = { error: e }; }
@@ -7789,14 +7792,15 @@ async function dbCheck() {
   const d = r.data || {}, vs = Object.keys(d).filter(k => /^v\d+$/.test(k)).sort((a, b) => +a.slice(1) - +b.slice(1));
   let allOk = true;
   const parts = vs.map(k => {
-    const o = d[k] || {}, lb = DBC_LBL[k] || {};
-    const bad = Object.keys(o).filter(x => o[x] === false || (x === "rev_funcs" && !(+o[x] > 0))).map(x => lb[x] || x);
+    const o = d[k] || {}, lb = DBC_LBL[k] || {}, soft = DBC_SOFT[k] || [];
+    const bad = Object.keys(o).filter(x => (o[x] === false && !soft.includes(x)) || (x === "rev_funcs" && !(+o[x] > 0))).map(x => lb[x] || x);
     if (bad.length) allOk = false;
     return bad.length ? `<b style="color:var(--bad)">SQL ${k.slice(1)} ✗</b> thiếu: ${esc(bad.join(", "))}` : `<b style="color:var(--ok)">SQL ${k.slice(1)} ✓</b>`;
   });
   el.dataset.ok = allOk ? "1" : "0";
   el.title = JSON.stringify(d);
-  el.innerHTML = "🧩 Cơ sở dữ liệu: " + (parts.join(" · ") || "—") + (d.v68 && d.v68.fresh === false ? " — chạy <code>select public._nadm_refresh();</code> trong Supabase" : "");
+  el.innerHTML = "🧩 Cơ sở dữ liệu: " + (parts.join(" · ") || "—") + (d.v68 && d.v68.fresh === false ? " — chạy <code>select public._nadm_refresh();</code> trong Supabase" : "")
+    + (d.v71 && d.v71.auto_clean_cron === false && d.v71.auto_clean ? ' <span class="hint">(tự dọn máy: máy chủ tự gọi 5 phút / lần — Supabase không có pg_cron)</span>' : "");
 }
 async function loadStats() {
   if (!isAdmin()) return;
@@ -8344,6 +8348,19 @@ function cpWaitNote(p) {
         `The server is busy, so this is taking longer than usual (${m} min so far). If it isn't up within ${left} more min, it's cancelled and refunded automatically so you can create a new one.`)
     : L("Đã quá 30 phút — đang tự huỷ và hoàn tiền, trang tự cập nhật.", "Over 30 minutes — cancelling and refunding automatically; this page updates by itself.")}</div>`;
 }
+function cpIdleDays() {                 // 28/11f · SQL v71: settings.data.idle_purge_days (để trống = 8, 0 = tắt)
+  const v = SITE && SITE.idle_purge_days;
+  if (v === undefined || v === null || String(v).trim() === "") return 8;
+  const n = Math.floor(+v); return Number.isFinite(n) && n >= 0 ? Math.min(365, n) : 8;
+}
+function cpIdleNote(p) {                // máy không ai mở quá N ngày → máy chủ XOÁ VĨNH VIỄN, không hoàn tiền → báo trước 3 ngày
+  const lim = cpIdleDays(), t = p && p.idle_since ? Date.parse(p.idle_since) : NaN;
+  if (!(lim > 0) || !Number.isFinite(t) || p.shared || p.real_device || p.status !== "active" || cpLocked(p)) return "";
+  const d = (Date.now() - t) / 86400000; if (!(d >= Math.max(1, lim - 3))) return "";
+  const left = Math.max(0, Math.ceil(lim - d));
+  return `<div class="exp" style="color:var(--bad)">💤 ${L(`Máy đã <b>${Math.floor(d)} ngày</b> không mở. Quá ${lim} ngày không mở, máy và toàn bộ dữ liệu bị <b>xoá vĩnh viễn</b> (không hoàn tiền)${left > 0 ? ` — còn khoảng ${left} ngày` : ""}. Mở máy 1 lần là giữ được máy.`,
+    `Not opened for <b>${Math.floor(d)} days</b>. Phones not opened for ${lim} days are <b>deleted permanently</b> with all data (no refund)${left > 0 ? ` — about ${left} day(s) left` : ""}. Open it once to keep it.`)}</div>`;
+}
 function renderCloud() {
   try { m3MineRender(); } catch (e) {}
   if (!myCloud.length) { $("cp-list").innerHTML = `<div class="empty">${L('Bạn chưa thuê máy nào. Bấm "+ Thuê máy mới" để bắt đầu.', 'No cloud phones yet.')}</div>`; return; }
@@ -8358,6 +8375,7 @@ function renderCloud() {
     const rl = !!p.real_device;                            // 28/11 · SQL v70: 📱 máy THẬT (BlueReal) — không đổi Android / nâng cấp / root / proxy
     return `<div class="vmi${rl ? " real" : ""}"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${rl && window.REALSHOP ? REALSHOP.tag(p) + " · " : ""}${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${cpPaidTag(p)}${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
+      ${cpIdleNote(p)}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
       ${p.status === "pending" && !p.replaces ? (rl ? `<div class="exp">${L("Đang chuẩn bị máy thật (đánh thức, mở khoá) — thường dưới 1 phút, trang tự cập nhật.", "Getting your real phone ready — usually under a minute.")}</div>` : cpWaitNote(p)) : ""}
@@ -18388,80 +18406,201 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
       m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-rlx]")) m.hidden = true; }); }
     return m;
   }
-  /* ---- hộp thuê ---- */
+  /* 28/11f · giao diện hộp thuê máy thật = hộp thuê ĐT đám mây: chép mọi quy tắc CSS "#cporderdlg …" sang "#rldlg …" (đổi id con tương ứng)
+     ngay trên trang → sau này hộp ĐT đám mây đổi giao diện thì hộp máy thật tự đổi theo, không phải sửa 2 chỗ. */
+  const RLMAP = { "#cporderdlg": "#rldlg", "#cp-calc": "#rl-calc", "#cp-note": "#rl-note", "#cp-obuy": "#rl-go", "#cp-s3": "#rl-s3", "#cp-total": "#rl-total" };
+  function rlSel(t) {
+    const out = []; let d = 0, cur = "";
+    for (const c of String(t || "")) { if (c === "(" || c === "[") d++; else if (c === ")" || c === "]") d--; if (c === "," && !d) { out.push(cur); cur = ""; } else cur += c; }
+    out.push(cur);
+    return out.map(x => x.trim()).filter(x => x.includes("#cporderdlg")).map(x => {
+      let bad = false; const y = x.replace(/#cp(?:orderdlg\b|-[a-z0-9-]+)/g, k => RLMAP[k] || ((bad = true), k)); return bad ? "" : y;
+    }).filter(Boolean).join(",");
+  }
+  function rlRules(list) {
+    let o = "";
+    for (const r of list || []) {
+      try {
+        if (r.selectorText !== undefined && r.style) { const sl = rlSel(r.selectorText); if (sl) o += `${sl}{${r.style.cssText}}\n`; }
+        else if (r.cssRules && (r.media || r.conditionText !== undefined)) {
+          const i = rlRules(r.cssRules); if (i) o += `@${r.media ? "media" : "supports"} ${r.media ? r.media.mediaText : r.conditionText}{\n${i}}\n`;
+        }
+      } catch (e) {}
+    }
+    return o;
+  }
+  function rlCss() {
+    if (document.getElementById("rlcp-css")) return;
+    let css = "";
+    for (const sh of Array.from(document.styleSheets)) { try { css += rlRules(sh.cssRules); } catch (e) {} }   // tệp CSS khác tên miền (phông chữ) không đọc được → bỏ qua
+    css += `#rldlg .cpav .av-name em{font-style:normal}
+@media (max-width:640px){#rldlg .cpav .av-name em{font-size:19px;line-height:1.15}#rldlg .cpav .av-h2{display:none}}
+#rldlg .cpp{margin-bottom:2px}#rldlg #rl-s3 .cpf .cpx{width:100%}`;
+    const st = document.createElement("style"); st.id = "rlcp-css"; st.textContent = css; document.head.appendChild(st);
+  }
+  /* ---- hộp thuê (28/11f: GIỐNG ĐT ĐÁM MÂY — tải app + hướng dẫn, số máy, mã giảm giá, 💎 trả bằng Blue, cách tính / tổng / số dư) ---- */
+  const QTYS = [1, 2, 5, 10], RDAYS = [1, 3, 7, 30];          // 4 ô / hàng như hộp ĐT đám mây (số khác: tự nhập)
+  const note = () => L("Điện thoại THẬT đặt tại shop, đã xoá sạch dữ liệu khách trước. Hết hạn máy tạm dừng; không gia hạn trong <b>30 phút</b> thì app + dữ liệu của bạn bị xoá, máy về lại shop. Điều khiển bằng web, app máy tính (Windows) hoặc app Android.",
+                       "A REAL phone hosted at our shop, wiped before every rental. When it expires it pauses; if not renewed within <b>30 minutes</b> your apps and data are wiped and the phone returns to the shop. Control it from the web, the PC app (Windows) or the Android app.");
   async function buyOpen(pre) {
     if (!profile) return openAuth("login");
     await cat(true);
     const ms = models(); if (!ms.length) return toast(RS.miss ? L("Tính năng đang cập nhật — thử lại sau ít phút.", "Coming soon.") : RERR.REAL_NO_PRICE, 1);
     const mx = Math.max(1, Math.min(90, N(RS.cat.max_days) || 90));
-    let mid = (ms.find(x => x.id === pre && N(x.stock) > 0) || ms.find(x => N(x.stock) > 0) || ms[0]).id, days = 7, nm = "", going = false;
+    let mid = (ms.find(x => x.id === pre && N(x.stock) > 0) || ms.find(x => N(x.stock) > 0) || ms[0]).id, days = 7, qty = 1, nm = "", going = false;
     const m = dlg("rldlg");
+    const md = () => ms.find(x => x.id === mid);
+    const qmax = () => Math.max(1, Math.min(10, isAdmin() ? 10 : N(md().stock) || 1));
+    const okD = () => days >= 1 && days <= mx && qty >= 1 && qty <= qmax();
+    const base = () => N(md().price_day) * days * qty;
+    const sum = () => {
+      if (!$i("rl-go")) return;
+      const tot = okD() ? cv(base()) : 0, bal = N(profile && profile.balance), out = !N(md().stock) && !isAdmin();     // giá thường = giá CTV (như máy chủ)
+      prmChanged("rln"); const pay0 = okD() ? prmPrice("rln", tot) : 0;
+      const bu = blueRow("rl-bluebox", "rln", pay0, !okD() || out), pay = pay0 - bu;            // 💎 Blue trừ trước, còn lại trừ số dư
+      $i("rl-calc").innerHTML = `${fmt(cv(N(md().price_day)))} × ${days} ${L("ngày", "days")}${qty > 1 ? ` × ${qty} ${L("máy", "phones")}` : ""}`;
+      $i("rl-total").innerHTML = okD() ? prmTot(pay, tot) : "—";
+      $i("rl-bal").textContent = fmt(bal);
+      $i("rl-err").textContent = out ? RERR.REAL_OUT : !okD() ? L(`Số ngày 1–${mx} · số máy 1–${qmax()}.`, `Days 1–${mx} · phones 1–${qmax()}.`)
+        : bal < pay ? L("Số dư không đủ. Cần nạp thêm ", "Not enough balance. Top up ") + fmt(pay - bal) + "." : "";
+      $i("rl-go").disabled = out;
+      $i("rl-go").textContent = okD() && bal < pay ? L("Nạp thêm tiền", "Top up") : L("Thuê ngay", "Rent now") + (okD() ? " · " + fmt(pay) : "");
+    };
     const draw = () => {
-      const md = ms.find(x => x.id === mid), tot = N(md.price_day) * days, bal = N(profile.balance), out = !N(md.stock) && !isAdmin();
-      m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rl-t"><h3 id="rl-t">📱 ${esc(L("Thuê máy thật", "Rent a real phone"))} · ${esc(pname())}</h3>
-        <div class="hint">${esc(desc())}</div>
-        <label>${L("Mẫu máy", "Model")}</label>
-        <div class="upchips">${ms.map(x => `<button type="button" data-rlm="${esc(x.id)}" class="${x.id === mid ? "on" : ""}"${!N(x.stock) && !isAdmin() ? " disabled" : ""}><b>${esc(x.name)}</b>
-          <small>Android ${esc(x.android)} · ${N(x.ram)}GB · ${fmt(cv(N(x.price_day)))}/${L("ngày", "day")} · ${N(x.stock) ? L("còn " + N(x.stock) + " máy", N(x.stock) + " left") : L("hết máy", "sold out")}</small></button>`).join("")}</div>
-        ${md.note ? `<div class="hint">${esc(md.note)}</div>` : ""}
-        <label>${L("Số ngày", "Days")}</label>
-        <div class="upchips">${DAYS.filter(d => d <= mx).map(d => `<button type="button" data-rld="${d}" class="${d === days ? "on" : ""}">${d} ${L("ngày", "days")}</button>`).join("")}
-          <input class="in" id="rl-days" type="number" min="1" max="${mx}" step="1" inputmode="numeric" value="${days}" aria-label="${esc(L("Số ngày", "Days"))}" style="max-width:96px"></div>
-        <label>${L("Tên máy (tuỳ chọn)", "Phone name (optional)")}<input class="in" id="rl-name" maxlength="40" value="${esc(nm)}" placeholder="${esc(md.name)}"></label>
-        <div class="cpsum"><span>${fmt(cv(N(md.price_day)))} × ${days} ${L("ngày", "days")}</span><b>${fmt(cv(tot))}</b></div>
-        <div class="hint">${L("Số dư", "Balance")}: <b>${fmt(cv(bal))}</b>${bal < tot ? ` · <span style="color:var(--bad)">${L("thiếu", "short")} ${fmt(cv(tot - bal))}</span>` : ""} · ${L("Hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).", "Time starts when the phone is handed over (usually under a minute).")}</div>
-        <div class="err" id="rl-err">${out ? esc(RERR.REAL_OUT) : ""}</div>
-        <div class="row2"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button>
-          <button class="btn" type="button" id="rl-go"${out ? " disabled" : ""}>${bal < tot ? L("Nạp thêm tiền", "Top up") : L("Thuê ngay", "Rent now") + " · " + fmt(cv(tot))}</button></div></div>`;
+      const d = md(), out = !N(d.stock) && !isAdmin();
+      if (qty > qmax()) qty = qmax();
+      rlCss();
+      const card = x => {
+        const so = !N(x.stock), dis = so && !isAdmin(), on = x.id === mid;
+        const h = [`Android ${x.android}`, `${N(x.ram)}GB RAM`, `${fmt(cv(N(x.price_day)))}/${L("ngày", "day")}`, so ? L("Hết máy", "Sold out") : L(`Còn ${N(x.stock)} máy`, `${N(x.stock)} left`)];
+        return `<button type="button" data-rlm="${esc(x.id)}" class="${on ? "on" : ""}${so ? " off" : ""}" aria-pressed="${on}"${dis ? " disabled" : ""}>`
+          + `<span class="av-name"><em>${esc(x.name)}</em></span><small class="av-h">${esc(h[2])} · ${esc(h[3])}<span class="av-h2"> · ${esc(h[0])} · ${esc(h[1])}</span></small><i class="av-ck" aria-hidden="true">✓</i></button>`;
+      };
+      m.innerHTML = `<div class="dlg cpwide" role="dialog" aria-modal="true" aria-labelledby="rl-t">
+        <div class="cphead"><div class="cpht"><h3 id="rl-t">📱 ${esc(L("Thuê điện thoại thật", "Rent a real phone"))} · ${esc(pname())}</h3></div><div class="cpapphelp" data-compact="1"></div><button class="cpo-x" type="button" data-rlx aria-label="${esc(L("Đóng", "Close"))}">×</button></div>
+        <div class="cpbody"><div class="cpmain">
+        <div class="cpstep" id="rl-s1"><div class="cps"><span class="cps-n" aria-hidden="true">1</span><span class="cps-t"><b>${L("Chọn mẫu máy", "Choose a model")}</b><small>${esc(desc())}</small></span></div>
+          <div class="cpav" id="rl-mods" role="group" aria-label="${esc(L("Mẫu máy", "Model"))}" style="--n:${Math.max(1, Math.min(3, ms.length))}">${ms.map(card).join("")}</div>
+          ${d.note ? `<div class="hint" style="margin-top:10px">${esc(d.note)}</div>` : ""}</div>
+        <div class="note" id="rl-note">${note()}</div>
+        </div>
+        <div class="cpstep" id="rl-s3"><div class="cps"><span class="cps-n" aria-hidden="true">2</span><span class="cps-t"><b>${L("Số ngày &amp; số máy", "Days &amp; phones")}</b></span></div>
+        <div class="cpgrid cp2">
+          <div class="cpf"><label class="cpl" for="rl-days">${L("Số ngày thuê", "Rental days")}</label><div class="amts">${RDAYS.filter(x => x <= mx).map(x => `<button type="button" data-rld="${x}" class="${x === days ? "on" : ""}">${x} ${L("ngày", x > 1 ? "days" : "day")}</button>`).join("")}</div>
+            <input class="in cpx" id="rl-days" type="number" min="1" max="${mx}" step="1" inputmode="numeric" placeholder="${esc(L(`Hoặc tự nhập số ngày (1–${mx})`, `Or type the days (1–${mx})`))}"${RDAYS.includes(days) ? "" : ` value="${days}"`}></div>
+          <div class="cpf"><label class="cpl" for="rl-qty">${L("Số lượng máy (cùng mẫu)", "Phones (same model)")}</label><div class="amts">${QTYS.filter(x => x <= qmax()).map(x => `<button type="button" data-rlq="${x}" class="${x === qty ? "on" : ""}">${x} ${L("máy", x > 1 ? "phones" : "phone")}</button>`).join("")}</div>
+            ${qmax() > 1 ? `<input class="in cpx" id="rl-qty" type="number" min="1" max="${qmax()}" step="1" inputmode="numeric" placeholder="${esc(L(`Hoặc tự nhập số máy, tối đa ${qmax()}`, `Or type how many, up to ${qmax()}`))}"${QTYS.includes(qty) ? "" : ` value="${qty}"`}>` : `<div class="hint">${out ? "" : L("Mẫu này chỉ còn 1 máy rảnh.", "Only 1 phone of this model is free.")}</div>`}</div>
+          <div class="cpf"><label class="cpl" for="rl-name">${L("Tên máy (tuỳ chọn)", "Phone name (optional)")}</label><input class="in cpx" id="rl-name" maxlength="40" value="${esc(nm)}" placeholder="${esc(d.name)}"></div>
+        </div></div>
+        <div class="cpfoot">
+          <div class="cpsum">
+            <div class="cpp" style="--t:#7cbcff"><span class="cpp-ic" aria-hidden="true">📱</span><span class="cpp-t"><b>${esc(d.name)}</b><small>Android ${esc(d.android)} · ${N(d.ram)}GB RAM · ${L("điện thoại thật", "real phone")}</small></span></div>
+            <div class="sum"><span>${L("Cách tính", "Price")}</span><span id="rl-calc"></span></div>
+            ${prmRowHtml("rln")}
+            <div class="bluepay" id="rl-bluebox" hidden></div>
+            <div class="sum"><span>${L("Tổng thanh toán", "Total")}</span><b id="rl-total"></b></div>
+            <div class="sum"><span>${L("Số dư hiện tại", "Current balance")}</span><span id="rl-bal" style="font-family:var(--mono)"></span></div>
+            <div class="hint">${L("Hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).", "Time starts when the phone is handed over (usually under a minute).")}</div>
+          </div>
+          <div class="cpside">
+            <div class="err" id="rl-err"></div>
+            <div class="acts"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button><button class="btn" type="button" id="rl-go"${out ? " disabled" : ""}></button></div>
+          </div>
+        </div>
+        </div></div>`;
       m.querySelectorAll("[data-rlm]").forEach(b => b.onclick = () => { mid = b.dataset.rlm; draw(); });
       m.querySelectorAll("[data-rld]").forEach(b => b.onclick = () => { days = +b.dataset.rld; draw(); });
-      $i("rl-days").onchange = () => { const v = Math.floor(+$i("rl-days").value); days = v >= 1 && v <= mx ? v : days; draw(); };
+      m.querySelectorAll("[data-rlq]").forEach(b => b.onclick = () => { qty = +b.dataset.rlq; draw(); });
+      $i("rl-days").onchange = () => { const v = Math.floor(+$i("rl-days").value); if (v >= 1 && v <= mx) days = v; draw(); };
+      if ($i("rl-qty")) $i("rl-qty").onchange = () => { const v = Math.floor(+$i("rl-qty").value); if (v >= 1 && v <= qmax()) qty = v; draw(); };
       $i("rl-name").oninput = () => { nm = $i("rl-name").value; };
       $i("rl-go").onclick = () => busy($i("rl-go"), go);
+      try { renderAppHelp(); } catch (e) {}                                      // 📲 Tải app Android + 📖 Hướng dẫn A→Z như hộp ĐT đám mây
+      prmShow("rln"); sum();
     };
     const go = async () => {
-      if (going) return; const md = ms.find(x => x.id === mid), tot = N(md.price_day) * days;
-      if (N(profile.balance) < tot) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((tot - N(profile.balance)) / 1000) * 1000)); }
+      if (going) return;
+      if (!okD()) return sum();
       going = true;
       try {
-        const { error } = await sb.rpc("realphone_order", { p_model: mid, p_days: days, p_name: (nm || "").trim() || null });
-        if (error) { $i("rl-err").textContent = /realphone_order|schema cache|Could not find/i.test(error.message || "") ? L("Tính năng đang cập nhật — thử lại sau ít phút.", "Coming soon.") : rerr(error); await cat(true); return; }
-        m.hidden = true;
-        toast(L(`Đã thuê ${md.name} ${days} ngày — máy đang được chuẩn bị (thường dưới 1 phút), xem ở "Máy của tôi".`, `Rented ${md.name} for ${days} days — getting it ready (usually under a minute).`));
+        if (!(await prmEnsure("rln", "rl-err"))) return;
+        const d = md(), tot = cv(base()), pay0 = prmPrice("rln", tot), code = prmCode("rln"), bu = blueUse("rln", pay0), pay = pay0 - bu, bal = N(profile.balance);
+        if (bal < pay) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((pay - bal) / 1000) * 1000)); }
+        const { error } = await sb.rpc("realphone_order", { p_model: mid, p_days: days, p_name: (nm || "").trim() || null,
+          ...(qty > 1 ? { p_qty: qty } : {}), ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) });
+        if (error) {
+          prmFail("rln", error);
+          $i("rl-err").textContent = /realphone_order|schema cache|Could not find/i.test(error.message || "") ? L("Tính năng đang cập nhật — thử lại sau ít phút.", "Coming soon.") : rerr(error);
+          if (/BLUE_/.test(error.message || "")) blueLoad().then(sum);
+          await cat(true); return;
+        }
+        m.hidden = true; BPAY.rln = false;
+        toast(L(`Đã thuê ${qty > 1 ? qty + " máy " : ""}${d.name} ${days} ngày — máy đang được chuẩn bị (thường dưới 1 phút), xem ở "Máy của tôi".`,
+                `Rented ${qty > 1 ? qty + " × " : ""}${d.name} for ${days} days — getting it ready (usually under a minute).`));
+        try { notifyTg && notifyTg(`📱 <b>Đơn máy thật mới (${esc(pname())})</b>\n${qty} máy × ${esc(d.name)} · Android ${esc(d.android)} · ${days} ngày\nGiá: ${vnd(pay0)}${code ? ` (mã ${esc(code)})` : ""}${bu > 0 ? ` · 💎 ${bnum(bu)} Blue` : ""}`); } catch (e) {}     // báo Telegram admin như đơn ĐT đám mây
         try { await loadProfile(); renderUser(); } catch (e) {}
+        try { cbSoon(); } catch (e) {}
         cat(true); try { openCloud(); } catch (e) {}
       } finally { going = false; }
     };
+    prmDef("rln", { inp: "rl-promo", out: "rl-pres", scope: () => "cp_new", rpc: "realphone_promo_check", upd: () => sum(),
+      ctx: () => okD() ? { p_model: mid, p_days: days, p_qty: qty } : null });
+    BPAY.rln = BPAY.rln || false; BPAY_UPD.rln = sum;
     draw(); m.hidden = false;
+    if (profile && typeof BLUE !== "undefined" && !BLUE) blueLoad().then(() => { try { if (!m.hidden) sum(); } catch (e) {} });
   }
-  /* ---- gia hạn máy thật ---- */
+  /* ---- gia hạn máy thật (28/11f: mã giảm giá + 💎 Blue như ĐT đám mây) ---- */
   async function renew(id) {
     const p = (typeof myCloud !== "undefined" ? myCloud : []).find(x => x.id === id); if (!p) return;
     await cat(true);
     const md = mOf(p.real_model); const per = N(md && md.price_day);
     if (!per) return toast(RERR.REAL_NO_PRICE, 1);
     const mx = Math.max(1, Math.min(90, N(RS.cat && RS.cat.max_days) || 90));
-    let days = 7; const m = dlg("rlrdlg");
-    const draw = () => {
-      const tot = per * days, bal = N(profile && profile.balance);
-      m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rlr-t"><h3 id="rlr-t">🔄 ${L("Gia hạn máy thật", "Renew real phone")}</h3>
-        <div class="hint">📱 <b>${esc(p.name)}</b> · ${esc(mName(p.real_model))}${p.expires_at ? ` · ${L("hết hạn", "expires")} ${new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}` : ""}</div>
-        <div class="upchips">${DAYS.filter(d => d <= mx).map(d => `<button type="button" data-rld="${d}" class="${d === days ? "on" : ""}">${d} ${L("ngày", "days")}</button>`).join("")}</div>
-        <div class="cpsum"><span>${fmt(cv(per))} × ${days} ${L("ngày", "days")}</span><b>${fmt(cv(tot))}</b></div>
-        <div class="hint">${L("Số dư", "Balance")}: <b>${fmt(cv(bal))}</b> · ${L("Cộng thêm vào hạn đang có (máy giữ nguyên app, dữ liệu).", "Added to the current expiry (apps and data kept).")}</div>
-        <div class="err" id="rlr-err"></div>
-        <div class="row2"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button><button class="btn" type="button" id="rlr-go">${bal < tot ? L("Nạp thêm tiền", "Top up") : L("Gia hạn", "Renew") + " · " + fmt(cv(tot))}</button></div></div>`;
-      m.querySelectorAll("[data-rld]").forEach(b => b.onclick = () => { days = +b.dataset.rld; draw(); });
-      $i("rlr-go").onclick = () => busy($i("rlr-go"), async () => {
-        const tot = per * days;
-        if (N(profile.balance) < tot) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((tot - N(profile.balance)) / 1000) * 1000)); }
-        const { error } = await sb.rpc("realphone_renew", { p_id: p.id, p_days: days });
-        if (error) { $i("rlr-err").textContent = rerr(error); return; }
-        m.hidden = true; toast(L(`Đã gia hạn +${days} ngày — máy chủ ghi hạn mới trong ít giây.`, `Renewed +${days} days.`));
-        try { await loadProfile(); renderUser(); } catch (e) {} try { openCloud(); } catch (e) {}
-      });
+    let days = 7, going = false; const m = dlg("rlrdlg");
+    const okD = () => days >= 1 && days <= mx;
+    const sum = () => {
+      if (!$i("rlr-go")) return;
+      const tot = okD() ? cv(per * days) : 0, bal = N(profile && profile.balance);
+      prmChanged("rlr"); const pay0 = okD() ? prmPrice("rlr", tot) : 0;
+      const bu = blueRow("rlr-bluebox", "rlr", pay0, !okD()), pay = pay0 - bu;
+      $i("rlr-total").innerHTML = okD() ? prmTot(pay, tot) : "—";
+      $i("rlr-bal").textContent = fmt(bal);
+      $i("rlr-err").textContent = !okD() ? L(`Số ngày phải từ 1 đến ${mx}.`, `Days must be 1–${mx}.`) : bal < pay ? L("Số dư không đủ. Cần nạp thêm ", "Not enough balance. Top up ") + fmt(pay - bal) + "." : "";
+      $i("rlr-go").textContent = okD() && bal < pay ? L("Nạp thêm tiền", "Top up") : L("Gia hạn", "Renew") + (okD() ? ` +${days} ${L("ngày", "days")} · ${fmt(pay)}` : "");
     };
-    draw(); m.hidden = false;
+    const go = async () => {
+      if (going || !okD()) return sum(); going = true;
+      try {
+        if (!(await prmEnsure("rlr", "rlr-err"))) return;
+        const pay0 = prmPrice("rlr", cv(per * days)), code = prmCode("rlr"), bu = blueUse("rlr", pay0), pay = pay0 - bu, bal = N(profile.balance);
+        if (bal < pay) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((pay - bal) / 1000) * 1000)); }
+        const { error } = await sb.rpc("realphone_renew", { p_id: p.id, p_days: days, ...(code ? { p_promo: code } : {}), ...(bu > 0 ? { p_blue: true } : {}) });
+        if (error) { prmFail("rlr", error); $i("rlr-err").textContent = rerr(error); if (/BLUE_/.test(error.message || "")) blueLoad().then(sum); return; }
+        m.hidden = true; BPAY.rlr = false; toast(L(`Đã gia hạn +${days} ngày — máy chủ ghi hạn mới trong ít giây.`, `Renewed +${days} days.`));
+        try { await loadProfile(); renderUser(); } catch (e) {} try { cbSoon(); } catch (e) {} try { openCloud(); } catch (e) {}
+      } finally { going = false; }
+    };
+    prmDef("rlr", { inp: "rlr-promo", out: "rlr-pres", scope: () => "cp_renew", rpc: "realphone_promo_check", upd: () => sum(),
+      ctx: () => okD() ? { p_phone: p.id, p_days: days } : null });
+    BPAY.rlr = BPAY.rlr || false; BPAY_UPD.rlr = sum;
+    m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rlr-t"><h3 id="rlr-t">🔄 ${L("Gia hạn máy thật", "Renew real phone")}</h3>
+      <div class="hint">📱 <b>${esc(p.name)}</b> · ${esc(mName(p.real_model))}${p.expires_at ? ` · ${L("hết hạn", "expires")} ${new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}` : ""}</div>
+      <label>${L("Gia hạn thêm", "Add")}</label>
+      <div class="upchips">${DAYS.filter(d => d <= mx).map(d => `<button type="button" data-rld="${d}" class="${d === days ? "on" : ""}">${d} ${L("ngày", "days")}</button>`).join("")}</div>
+      <input class="in" id="rlr-x" type="number" min="1" max="${mx}" step="1" inputmode="numeric" placeholder="${esc(L(`Hoặc tự nhập số ngày (1–${mx})`, `Or type the number of days (1–${mx})`))}">
+      <div class="sum"><span>${L("Đơn giá", "Price")}</span><span>${fmt(cv(per))} / ${L("ngày", "day")}</span></div>
+      ${prmRowHtml("rlr")}
+      <div class="bluepay" id="rlr-bluebox" hidden></div>
+      <div class="sum"><span>${L("Tổng thanh toán", "Total")}</span><b id="rlr-total"></b></div>
+      <div class="sum"><span>${L("Số dư hiện tại", "Current balance")}</span><span id="rlr-bal" style="font-family:var(--mono)"></span></div>
+      <div class="hint">${L("Cộng thêm vào hạn đang có (máy giữ nguyên app, dữ liệu).", "Added to the current expiry (apps and data kept).")}</div>
+      <div class="err" id="rlr-err"></div>
+      <div class="row2"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button><button class="btn" type="button" id="rlr-go"></button></div></div>`;
+    m.querySelectorAll("[data-rld]").forEach(b => b.onclick = () => { days = +b.dataset.rld; $i("rlr-x").value = ""; m.querySelectorAll("[data-rld]").forEach(x => x.classList.toggle("on", x === b)); sum(); });
+    $i("rlr-x").oninput = () => { const v = parseInt($i("rlr-x").value, 10); if (v > 0) { days = v; m.querySelectorAll("[data-rld]").forEach(x => x.classList.toggle("on", +x.dataset.rld === v)); } sum(); };
+    $i("rlr-go").onclick = () => busy($i("rlr-go"), go);
+    prmShow("rlr"); sum(); m.hidden = false;
+    if (profile && typeof BLUE !== "undefined" && !BLUE) blueLoad().then(() => { try { if (!m.hidden) sum(); } catch (e) {} });
   }
   const isReal = p => !!(p && p.real_device);
   const tag = p => `📱 ${L("Máy thật", "Real phone")} · ${esc(mName(p.real_model))}`;
