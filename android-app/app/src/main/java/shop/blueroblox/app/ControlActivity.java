@@ -957,7 +957,7 @@ public class ControlActivity extends Activity {
                 {"⛶", Ui.L("Ẩn thanh", "Hide bars"), (Runnable) () -> { autoFull = false; setFull(true); }},
                 {"📱", Ui.L("Đổi máy", "Switch"), (Runnable) this::switchPhone},
                 {"🎮", Ui.L("Nhiều máy", "Multi"), (Runnable) this::openMulti},
-                {"🤖", Ui.L("Đổi Android", "Android ver."), (Runnable) this::switchAndroid},
+                {"🤖", Ui.L("Đổi Android / máy chủ", "Android / server"), (Runnable) this::switchAndroid},
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };

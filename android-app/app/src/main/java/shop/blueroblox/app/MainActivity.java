@@ -1380,8 +1380,8 @@ public class MainActivity extends Activity {
         sh.setEnabled(canShare); sh.setAlpha(canShare ? 1f : .45f);
         boolean swing = SwitchAndroid.switching(p, phones) != null;
         Button sw = Ui.button(this, "🤖 " + (swing ? Ui.L("Đang đổi Android… (chờ máy mới)", "Switching Android… (wait for the new phone)")
-                : Ui.L("Đổi Android (", "Switch Android (") + android.text.TextUtils.join(" / ", andList()) + ")"), Ui.GHOST);
-        boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && andList().size() > 1;
+                : Ui.L("Đổi Android / máy chủ", "Switch Android / server")), Ui.GHOST);
+        boolean canSw = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("shared") && !swing && !andList().isEmpty();   // SQL v67: còn 1 bản vẫn đổi máy chủ được
         sw.setEnabled(canSw); sw.setAlpha(canSw ? 1f : .45f);
         Button del = Ui.button(this, "🗑 " + Ui.L("Huỷ máy (xoá vĩnh viễn)", "Delete phone"), Ui.DANGER);
         final int fpsNow = p.optInt("fps", 30);          // 16/11: khách tự đổi FPS máy đang thuê (không tạo máy mới, không tốn tiền)

@@ -729,7 +729,8 @@ public final class Api {
                 {"SWITCH_EXPIRING", "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.", "Less than 30 minutes left — renew first, then switch Android."},
                 {"SWITCH_BUSY", "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.", "An upgrade or renewal is in progress — wait 1–2 minutes, then switch."},
                 {"SWITCH_SAME", "Máy đang chạy bản Android này rồi.", "The phone already runs this Android version."},
-                {"SWITCH_LIMIT", "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", "You can switch Android up to 3 times per 24 hours."},
+                {"SWITCH_LIMIT", "Mỗi tài khoản đổi Android / máy chủ tối đa 3 lần trong 24 giờ — bạn đã đổi đủ, thử lại sau.", "Each account can switch Android / server up to 3 times in 24 hours — you've used them all, try again later."},
+                {"NO_OTHER_SERVER", "Hiện chưa có máy chủ khác còn chỗ cho bản Android này — máy của bạn vẫn giữ nguyên, thử lại sau ít phút.", "No other server has room for this Android version right now — your phone is unchanged; try again in a few minutes."},
                 {"cloudphone_switch_android", "Máy chủ chưa bật tính năng đổi Android.", "Switching Android isn't enabled on the server yet."},
                 // giới thiệu bạn bè (SQL v24)
                 {"REF_ALREADY", "Tài khoản đã nhận lời mời trước đó.", "This account has already accepted an invite."},

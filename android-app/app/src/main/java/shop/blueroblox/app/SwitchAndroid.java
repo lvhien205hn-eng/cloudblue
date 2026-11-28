@@ -105,21 +105,41 @@ final class SwitchAndroid {
                 return Ui.L("Máy mới đổi sang Android " + v + " — đang tạo (2–5 phút). Xong thì máy cũ và dữ liệu cũ tự xoá.",
                         "New Android " + v + " phone — being created (2–5 min). The old phone and its data are then removed.");
         }
+        boolean other = !p.isNull("avoid_node") && !p.optString("avoid_node", "").isEmpty();   // SQL v67: đổi sang máy chủ khác
         if ("wait-old".equals(p.optString("node")))
-            return Ui.L("Đang xoá máy cũ… xoá xong tự tạo máy Android " + v + " (2–5 phút).",
-                    "Deleting the old phone… the Android " + v + " phone is created right after (2–5 min).");
+            return Ui.L("Đang xoá máy cũ… xoá xong tự tạo máy Android " + v + (other ? " ở máy chủ khác" : "") + " (2–5 phút).",
+                    "Deleting the old phone… the Android " + v + " phone is created" + (other ? " on another server" : "") + " right after (2–5 min).");
         String e = p.optString("error", "");
-        return Ui.L("Máy cũ đã xoá — đang tạo máy Android " + v + " (2–5 phút).", "Old phone deleted — creating the Android " + v + " phone (2–5 min).")
+        return Ui.L("Máy cũ đã xoá — đang tạo máy Android " + v + (other ? " ở máy chủ khác" : "") + " (2–5 phút).",
+                    "Old phone deleted — creating the Android " + v + " phone" + (other ? " on another server" : "") + " (2–5 min).")
                 + (e.startsWith("Đổi Android:") ? "\n" + Ui.srv(e) : "");
     }
 
     /** Ghi chú lỗi đổi Android còn lưu trên máy cũ (máy vẫn chạy) — null nếu không có. */
     static String failNote(JSONObject p) {
         String e = p.optString("error", "");
-        return "active".equals(p.optString("status")) && e.startsWith("Đổi Android") ? Ui.srv(e) : null;
+        return "active".equals(p.optString("status")) && (e.startsWith("Đổi Android") || e.startsWith("Đổi máy chủ")) ? Ui.srv(e) : null;
     }
 
     /** Mở hộp thoại đổi Android. done chạy sau khi máy chủ nhận lệnh (tải lại danh sách / rời màn điều khiển). */
+    /** Số lần đổi tối đa trong 24 giờ (SQL v67: settings.switch_limit, mặc định 3). */
+    static int limit(JSONObject site) {
+        String x = site == null ? "" : site.optString("switch_limit", "").trim();
+        try { return x.matches("\\d{1,2}") ? Math.max(1, Math.min(50, Integer.parseInt(x))) : 3; } catch (Exception e) { return 3; }
+    }
+
+    /** Đã đổi bao nhiêu lần trong 24 giờ (máy MỚI của lệnh đổi — cột replaces — tạo trong 24 giờ, mọi trạng thái; như SQL đếm). Lỗi mạng → 0. */
+    static int used() {
+        try {
+            String since = new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", java.util.Locale.US) {{ setTimeZone(java.util.TimeZone.getTimeZone("UTC")); }}
+                    .format(new java.util.Date(System.currentTimeMillis() - 86400000L));
+            Object r = Api.get("cloud_phones?user_id=eq." + Api.uid + "&replaces=not.is.null&created_at=gte." + since + "&select=id");
+            return r instanceof JSONArray ? ((JSONArray) r).length() : 0;
+        } catch (Exception e) { return 0; }
+    }
+
+    static final String SRV = "srv";                                 // 28/11 · SQL v67: giữ Android đang dùng, chỉ sang máy chủ khác
+
     static void open(Activity a, JSONObject p, JSONObject price, JSONObject status, boolean admin, Runnable done) {
         final String now = cur(p), pid = p.optString("id");
         final int R0 = p.optInt("ram"), C0 = p.optInt("cpu");
@@ -128,18 +148,21 @@ final class SwitchAndroid {
         final String full = fullAnd(price, p);
         final String[] sel = {null};
         java.util.List<String> vs = versions(price);
+        final boolean canSrv = vs.contains(now);
         vs.remove(now);
 
         LinearLayout c = Ui.col(a, 12);
         long exp = MainActivity.parseTime(p.optString("expires_at"));
         c.addView(Ui.muted(a, Ui.L("Đang chạy: Android ", "Now: Android ") + now + " · " + R0 + "GB · " + C0 + Ui.L(" nhân", " cores") + paidTag(p)
                 + (exp > 0 ? " · " + MainActivity.left(exp) : "")));
-        if (vs.isEmpty()) {
+        if (vs.isEmpty() && !canSrv) {
             c.addView(Ui.text(a, Ui.L("Hiện chưa có bản Android nào khác để đổi.", "No other Android version is available right now."), 14, Ui.FG, false));
             Ui.sheet(a, "🤖 " + Ui.L("Đổi Android", "Switch Android"), c).show();
             return;
         }
-        c.addView(Ui.text(a, Ui.L("Chọn bản Android mới", "Pick the new Android version"), 14, Ui.FG, true));
+        TextView left = Ui.muted(a, "");
+        if (!admin) c.addView(left);
+        c.addView(Ui.text(a, Ui.L("Chọn bản Android mới, hoặc giữ Android này mà sang máy chủ khác", "Pick a new Android version, or keep this one on another server"), 14, Ui.FG, true));
         Ui.Wrap w = new Ui.Wrap(a, 8);
         c.addView(w, Ui.fill());
         TextView note = Ui.text(a, "", 13.5f, Ui.FG, false);
@@ -151,7 +174,7 @@ final class SwitchAndroid {
         LinearLayout warn = Ui.col(a, 6);
         warn.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(12));
         warn.setBackground(Ui.round(Color.argb(28, 255, 107, 129), 14, Color.argb(170, 255, 107, 129)));
-        warn.addView(Ui.text(a, "⚠️ " + Ui.L("Đổi Android = máy MỚI, mất sạch dữ liệu", "Switching Android = a NEW phone, all data is lost"), 15, Ui.BAD, true));
+        warn.addView(Ui.text(a, "⚠️ " + Ui.L("Đổi Android / máy chủ = máy MỚI, mất sạch dữ liệu", "Switching Android / server = a NEW phone, all data is lost"), 15, Ui.BAD, true));
         warn.addView(Ui.text(a, Ui.L("Bấm Đổi là máy cũ bị XOÁ NGAY cùng TOÀN BỘ dữ liệu trong máy (app đã cài, tài khoản, game đã đăng nhập, ảnh, tệp) — không mở được nữa, không khôi phục được. Xoá xong mới tạo máy mới. Hãy sao lưu / ghi lại tài khoản trước khi đổi.",
                 "The old phone and ALL its data (installed apps, accounts, logged-in games, photos, files) are DELETED RIGHT AWAY — it can't be opened any more and can't be recovered. The new phone is created after that. Back up / note your accounts first."), 13.5f, Ui.BAD, false));
         c.addView(warn, Ui.fill());
@@ -161,8 +184,8 @@ final class SwitchAndroid {
         ok.setTextSize(Ui.sp(14));
         ok.setButtonTintList(ColorStateList.valueOf(Ui.BAD));
         c.addView(ok, Ui.fill());
-        c.addView(Ui.muted(a, Ui.L("Miễn phí · giữ nguyên hạn còn lại · tối đa 3 lần / 24 giờ. Máy mới có sau khoảng 2–5 phút.",
-                "Free · keeps the remaining time · up to 3 times / 24 hours. The new phone is ready in about 2–5 minutes.")));
+        c.addView(Ui.muted(a, Ui.L("Miễn phí · giữ nguyên hạn còn lại · tối đa 3 lần / 24 giờ (đổi Android và đổi máy chủ tính chung). Máy mới tự vào máy chủ còn trống nhất, có sau khoảng 2–5 phút.",
+                "Free · keeps the remaining time · up to 3 times / 24 hours (Android and server switches count together). The new phone goes to the emptiest server, ready in about 2–5 minutes.")));
         TextView err = Ui.text(a, "", 13, Ui.BAD, false);
         err.setVisibility(View.GONE);
         c.addView(err, Ui.fill());
@@ -173,6 +196,7 @@ final class SwitchAndroid {
             for (int i = 0; i < w.getChildCount(); i++) {
                 TextView ch = (TextView) w.getChildAt(i);
                 String v = (String) ch.getTag();
+                if (SRV.equals(v)) { Ui.setChip(ch, SRV.equals(sel[0])); continue; }
                 int[] l = lim(price, v);
                 String y = why(status, v, Math.min(Q[0], l[0]), Math.min(Q[1], l[1]), admin);
                 ch.setText("Android " + v + "\n" + ("off".equals(y) ? Ui.L("Bảo trì", "Unavailable") : "full".equals(y) ? Ui.L("Hết chỗ", "Full") : MainActivity.andHint(v)));
@@ -183,10 +207,13 @@ final class SwitchAndroid {
             if (sel[0] == null) {
                 note.setText(Ui.L("Máy mới giữ nguyên RAM, CPU, độ phân giải, FPS và hạn còn lại.", "The new phone keeps RAM, CPU, resolution, FPS and the remaining time."));
             } else {
-                int[] l = lim(price, sel[0]);
+                final boolean srv = SRV.equals(sel[0]);
+                final String av = srv ? now : sel[0];
+                int[] l = lim(price, av);
                 int nr = Math.min(Q[0], l[0]), nc = Math.min(Q[1], l[1]);
                 StringBuilder s = new StringBuilder();
-                s.append(Ui.L("Máy mới: Android ", "New phone: Android ")).append(sel[0]).append(" · ").append(nr).append("GB · ").append(nc).append(Ui.L(" nhân", " cores"))
+                s.append(Ui.L("Máy mới: Android ", "New phone: Android ")).append(av).append(" · ").append(nr).append("GB · ").append(nc).append(Ui.L(" nhân", " cores"))
+                        .append(srv ? Ui.L(" · ở máy chủ khác (không tạo lại ở máy chủ đang dùng)", " · on another server (never back on the current one)") : "")
                         .append(exp > 0 ? Ui.L(" · hạn đến ", " · until ") + MainActivity.fdate(exp) : "");
                 if ((nr < Q[0] || nc < Q[1]) && keep)
                     s.append("\n").append(Ui.L("Android " + sel[0] + " tối đa " + l[0] + "GB · " + l[1] + " nhân mỗi máy → máy mới TẠM chạy " + nr + "GB · " + nc + " nhân. Cấu hình đã mua " + Q[0] + "GB · " + Q[1] + " nhân vẫn được giữ" + (full.isEmpty() ? "." : " — đổi sang " + full + " là trả đủ."),
@@ -196,16 +223,24 @@ final class SwitchAndroid {
                             "Android " + sel[0] + " allows up to " + l[0] + "GB · " + l[1] + " cores per phone → the new phone is reduced to " + nr + "GB · " + nc + " cores (no refund for the difference)."));
                 else if (nr > R0 || nc > C0)
                     s.append("\n").append(Ui.L("✅ Trả đủ cấu hình đã mua.", "✅ Full config you bought is restored."));
-                if ("15".equals(sel[0]))
+                if ("15".equals(av) && !srv)
                     s.append("\n").append(Ui.L("💡 Android 15 có máy chưa vào được Google / Play Store — cần Google thì chọn Android 12.",
                             "💡 Google / Play Store may not work on Android 15 — pick Android 12 if you need Google."));
                 note.setText(s.toString());
             }
             boolean can = sel[0] != null && ok.isChecked();
-            go.setText(sel[0] == null ? Ui.L("Chọn bản Android", "Pick a version") : Ui.L("Đổi sang Android ", "Switch to Android ") + sel[0]);
+            go.setText(sel[0] == null ? Ui.L("Chọn bản Android", "Pick a version")
+                    : SRV.equals(sel[0]) ? Ui.L("Đổi sang máy chủ khác", "Move to another server") : Ui.L("Đổi sang Android ", "Switch to Android ") + sel[0]);
             go.setEnabled(can);
             go.setAlpha(can ? 1f : .45f);
         };
+        if (canSrv) {
+            TextView ch = Ui.chip(a, "🔀 " + Ui.L("Giữ Android " + now + "\nmáy chủ khác", "Keep Android " + now + "\nother server"), false);
+            ch.setTextSize(Ui.sp(13));
+            ch.setTag(SRV);
+            ch.setOnClickListener(x -> { sel[0] = SRV; err.setVisibility(View.GONE); draw.run(); });
+            w.addView(ch);
+        }
         for (String v : vs) {
             TextView ch = Ui.chip(a, "Android " + v, false);
             ch.setTextSize(Ui.sp(13));
@@ -214,20 +249,28 @@ final class SwitchAndroid {
             w.addView(ch);
         }
         ok.setOnCheckedChangeListener((b, on) -> draw.run());
-        Dialog d = Ui.sheet(a, "🤖 " + Ui.L("Đổi Android — ", "Switch Android — ") + p.optString("name"), c);
+        Dialog d = Ui.sheet(a, "🤖 " + Ui.L("Đổi Android / máy chủ — ", "Switch Android / server — ") + p.optString("name"), c);
+        if (!admin) Api.bg(() -> new int[]{limit(Api.siteData), used()}, r -> {
+            int[] q = (int[]) r;
+            left.setText(Ui.L("Còn " + Math.max(0, q[0] - q[1]) + "/" + q[0] + " lượt đổi trong 24 giờ.", Math.max(0, q[0] - q[1]) + "/" + q[0] + " switches left in 24 hours."));
+        }, m -> left.setText(""));
         go.setOnClickListener(v -> {
             if (sel[0] == null || !ok.isChecked()) return;
-            final String to = sel[0];
+            final boolean srv = SRV.equals(sel[0]);
+            final String to = srv ? now : sel[0];
             go.setEnabled(false);
             go.setText(Ui.L("Đang gửi lệnh…", "Sending…"));
-            Api.bg(() -> Api.rpc("cloudphone_switch_android", new JSONObject().put("p_id", pid).put("p_android", to)), r -> {
+            Api.bg(() -> srv ? Api.rpc("cloudphone_change_server", new JSONObject().put("p_id", pid))
+                             : Api.rpc("cloudphone_switch_android", new JSONObject().put("p_id", pid).put("p_android", to)), r -> {
                 d.dismiss();
                 JSONObject o = r instanceof JSONObject ? (JSONObject) r : new JSONObject();
                 String cfg = o.optInt("ram", Math.min(Q[0], lim(price, to)[0])) + "GB · " + o.optInt("cpu", Math.min(Q[1], lim(price, to)[1]));
-                Ui.toast(a, Ui.L("🤖 Đang xoá máy cũ… xoá xong tự tạo máy Android " + to + " (" + cfg + " nhân), khoảng 2–5 phút.",
-                        "🤖 Deleting the old phone… then creating the Android " + to + " phone (" + cfg + " cores), about 2–5 minutes."));
+                Ui.toast(a, Ui.L("🤖 Đang xoá máy cũ… xoá xong tự tạo máy Android " + to + " (" + cfg + " nhân)" + (srv ? " ở máy chủ khác" : "") + ", khoảng 2–5 phút.",
+                        "🤖 Deleting the old phone… then creating the Android " + to + " phone (" + cfg + " cores)" + (srv ? " on another server" : "") + ", about 2–5 minutes."));
                 if (done != null) done.run();
             }, m -> {
+                if (srv && m != null && m.matches("(?s).*(cloudphone_change_server|schema cache|does not exist|Could not find).*"))
+                    m = Ui.L("Tính năng đang cập nhật — thử lại sau ít phút.", "This option is being updated — try again in a few minutes.");
                 err.setText(m);
                 err.setVisibility(View.VISIBLE);
                 draw.run();

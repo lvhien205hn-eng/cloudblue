@@ -120,7 +120,8 @@ ERRORS = {
     "NOT_ALLOWED": "Bạn không có quyền mở máy này.", "NOT_FOUND": "Không tìm thấy máy.", "MAINTENANCE": "Hệ thống đang bảo trì.",
     "SWITCH_EXPIRING": "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.", "SWITCH_BUSY": "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.",
     "SWITCHING": "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).", "SWITCH_SAME": "Máy đang chạy bản Android này rồi.",
-    "SWITCH_LIMIT": "Mỗi tài khoản đổi Android tối đa 3 lần trong 24 giờ.", "NO_PHONE": "Không tìm thấy máy (hoặc máy không phải của bạn).",
+    "SWITCH_LIMIT": "Mỗi tài khoản đổi Android / máy chủ tối đa 3 lần trong 24 giờ — bạn đã đổi đủ, thử lại sau.",
+    "NO_OTHER_SERVER": "Hiện chưa có máy chủ khác còn chỗ cho bản Android này — máy của bạn vẫn giữ nguyên, thử lại sau ít phút.", "NO_PHONE": "Không tìm thấy máy (hoặc máy không phải của bạn).",
     "PHONE_NOT_ACTIVE": "Máy phải đang chạy mới làm được việc này.", "PHONE_LOCKED": "Máy đang bị khoá.", "BAD_ANDROID": "Bản Android này chưa bán.",
     "Service for this project is restricted": "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.",
     "SERVER_OFFLINE": "Máy chủ bản Android này đang bảo trì — thử lại sau.", "OUT_OF_CAPACITY": "Máy chủ bản Android này đang hết chỗ — chọn bản khác hoặc thử lại sau.",
@@ -6867,34 +6868,61 @@ class UpgradeDlg(Dlg):
         self.bg(lambda: self.app.auth.rpc("cloudphone_upgrade", args), done, fail)
 
 
+def sw_limit(site=None):
+    """Số lần đổi Android / máy chủ tối đa trong 24 giờ — SQL v67: settings.data.switch_limit, để trống = 3."""
+    d = site if isinstance(site, dict) else (SITE.get("d") or {})
+    x = str(d.get("switch_limit") if d.get("switch_limit") is not None else "").strip()
+    return max(1, min(50, int(x))) if x.isdigit() else 3
+
+
+def sw_quota(app):
+    """(tối đa / 24 giờ, đã đổi trong 24 giờ) — đọc thẳng web: mọi máy MỚI của lệnh đổi (cột replaces) tạo trong 24 giờ, kể cả máy đã đổi tiếp
+       (như SQL đếm). Lỗi mạng → (tối đa, 0)."""
+    try: site = app.shop.site()
+    except Exception: site = None
+    lim = sw_limit(site)
+    try:
+        since = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        used = len(app.auth.rest(f"cloud_phones?user_id=eq.{app.auth.uid}&replaces=not.is.null&created_at=gte.{since}&select=id") or [])
+    except Exception:
+        used = 0
+    return lim, used
+
+
 class SwitchDlg(Dlg):
     """Đổi Android 9 / 12 / 15 (SQL v24 + v28): máy MỚI miễn phí, giữ nguyên hạn — v28: máy cũ + TOÀN BỘ dữ liệu bị xoá NGAY, xoá xong mới tạo máy mới.
        Bản mới có trần thấp hơn (Android 9: 8GB · 8 nhân) → máy mới TẠM hạ; 22/11 · SQL v49: máy nhớ cấu hình đã mua,
        đổi về bản cao hơn là được trả đủ (chưa chạy v49 thì như cũ: hạ luôn, không hoàn tiền phần chênh)."""
     def __init__(self, app, phone):
-        super().__init__(app, "Đổi Android — " + (phone.get("name") or "máy"), 560, 600)
+        super().__init__(app, "Đổi Android / máy chủ — " + (phone.get("name") or "máy"), 560, 640)
         self.p = phone; self.v = None; self.vers = []
         self.loading("Đang tải…")
-        self.bg(lambda: app.shop.pricing(), self._loaded, lambda m: self.loading(m))
+        self.bg(lambda: (app.shop.pricing(), sw_quota(app)), self._loaded, lambda m: self.loading(m))
 
-    def _loaded(self, pr):
-        tk = self.app.tk; self.pr = pr; p = self.p; self.clear()
-        cur = str(p.get("android") or "9")
-        self.vers = [v for v in dict.fromkeys(x.strip() for x in str(pr.get("android_versions") or "9").split(",")) if v and v != cur]
+    def _loaded(self, r):
+        tk = self.app.tk; pr, self.quota = r; self.pr = pr; p = self.p; self.clear()
+        cur = str(p.get("android") or "9"); self.cur = cur
+        allv = [v for v in dict.fromkeys(x.strip() for x in str(pr.get("android_versions") or "9").split(",")) if v]
+        self.vers = [v for v in allv if v != cur]
+        self.can_srv = cur in allv                                        # 28/11 · SQL v67: giữ Android đang dùng, chỉ sang máy chủ khác
         self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
         self.label(self.body, f"Đang dùng Android {cur} · {p.get('ram')}GB · {p.get('cpu')} nhân{paid_tag(p)} · {fmt_left(p.get('expires_at'))}",
                    self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
         bb = tk.Frame(self.foot, bg=CARD)
-        if not self.vers:
+        if not self.vers and not self.can_srv:
             self.label(self.body, "Chưa có bản Android nào khác để đổi.", self.app.f_t, DIM).pack(fill="x", padx=18, pady=14)
             bb.pack(fill="x", padx=16, pady=12); self.app.btn(bb, "Đóng", self.close, "soft").pack(side="right"); return
-        self.v = "12" if "12" in self.vers else self.vers[0]
+        lim, used = self.quota
+        self.label(self.body, f"Còn {max(0, lim - used)}/{lim} lượt đổi trong 24 giờ (đổi Android và đổi máy chủ tính chung). Máy mới tự vào máy chủ còn trống nhất.",
+                   self.app.f_s, DIM, wraplength=500).pack(fill="x", padx=18, pady=(4, 0))
+        self.v = "12" if "12" in self.vers else (self.vers[0] if self.vers else "srv")
         f = self.section("Đổi sang")
-        self.cv = Chips(self.app, f, [(v, f"Android {v}") for v in self.vers], lambda: self.v, lambda x: setattr(self, "v", x), self.upd, wrap=4)
+        opts = ([("srv", f"🔀 Giữ Android {cur} · máy chủ khác")] if self.can_srv else []) + [(v, f"Android {v}") for v in self.vers]
+        self.cv = Chips(self.app, f, opts, lambda: self.v, lambda x: setattr(self, "v", x), self.upd, wrap=3)
         self.cv.frame.pack(fill="x")
         self.note = self.label(self.body, "", self.app.f_s, DIM, wraplength=510); self.note.pack(fill="x", padx=18, pady=(8, 0))
         w = tk.Frame(self.body, bg=CARD, highlightbackground=BAD, highlightthickness=1); w.pack(fill="x", padx=18, pady=(12, 4))
-        self.label(w, "⚠ Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.",
+        self.label(w, "⚠ Đổi Android hoặc đổi máy chủ sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.",
                    ("Segoe UI", 10, "bold"), BAD, wraplength=500).pack(fill="x", padx=10, pady=(8, 2))
         self.label(w, "Bấm Đổi là máy cũ bị XOÁ NGAY (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới miễn phí, giữ nguyên hạn dùng.",
                    self.app.f_s, TXT, wraplength=500).pack(fill="x", padx=10, pady=(0, 8))
@@ -6914,33 +6942,38 @@ class SwitchDlg(Dlg):
     def upd(self):
         if not self.v: return
         self.cv.paint()
+        srv = self.v == "srv"; av = self.cur if srv else self.v
         q = paid_cfg(self.p); keep = "paid_ram" in self.p                 # keep: đã chạy SQL v49
-        r, c, mr, mc = self.new_cfg(self.v); red = r < q[0] or c < q[1]
+        r, c, mr, mc = self.new_cfg(av); red = r < q[0] or c < q[1]
         up = not red and (r > int(num(self.p.get("ram"))) or c > int(num(self.p.get("cpu"))))
         fa = " / ".join("Android " + v for v in full_and(self.pr, self.p))
         if red and keep:
-            t = (f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới tạm chạy {r}GB · {c} nhân. Cấu hình đã mua {q[0]}GB · {q[1]} nhân vẫn được giữ"
+            t = (f"Android {av} tối đa {mr}GB · {mc} nhân → máy mới tạm chạy {r}GB · {c} nhân. Cấu hình đã mua {q[0]}GB · {q[1]} nhân vẫn được giữ"
                  + (f" — đổi sang {fa} là trả đủ." if fa else "."))
         elif red:
-            t = f"Android {self.v} tối đa {mr}GB · {mc} nhân → máy mới sẽ hạ còn {r}GB · {c} nhân, không hoàn tiền phần chênh."
+            t = f"Android {av} tối đa {mr}GB · {mc} nhân → máy mới sẽ hạ còn {r}GB · {c} nhân, không hoàn tiền phần chênh."
         else:
-            t = (f"Máy mới: Android {self.v} · {r}GB · {c} nhân · {self.p.get('res') or ''} · {self.p.get('fps') or 30} FPS"
-                 + (" — trả đủ cấu hình đã mua" if up else ""))
-        if self.v == "15": t += "\nLưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì chọn Android 12."
+            t = (f"Máy mới: Android {av} · {r}GB · {c} nhân · {self.p.get('res') or ''} · {self.p.get('fps') or 30} FPS"
+                 + (" · ở máy chủ khác (không tạo lại ở máy chủ đang dùng)" if srv else "") + (" — trả đủ cấu hình đã mua" if up else ""))
+        if av == "15" and not srv: t += "\nLưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì chọn Android 12."
         self.note.config(text=t, fg=WARN if red else DIM)
         on = bool(self.okv.get())
-        self.go.config(text=f"Đổi sang Android {self.v}", state="normal" if on else "disabled", bg=BAD if on else LINE)
+        self.go.config(text="Đổi sang máy chủ khác" if srv else f"Đổi sang Android {self.v}", state="normal" if on else "disabled", bg=BAD if on else LINE)
 
     def switch(self):
         import tkinter.messagebox as mb
         if not self.v or not self.okv.get(): return
-        v = self.v; self.go.config(state="disabled", text="Đang gửi…"); self.err.config(text="")
+        v = self.v; srv = v == "srv"; self.go.config(state="disabled", text="Đang gửi…"); self.err.config(text="")
         def done(_r):
             self.close(); self.app.refresh()
-            mb.showinfo("CloudBlue", f"Đang xoá máy cũ… xoá xong tự tạo máy Android {v} (2–5 phút).", parent=self.app.root)
+            mb.showinfo("CloudBlue", f"Đang xoá máy cũ… xoá xong tự tạo máy Android {self.cur} ở máy chủ khác (2–5 phút)." if srv
+                        else f"Đang xoá máy cũ… xoá xong tự tạo máy Android {v} (2–5 phút).", parent=self.app.root)
         def fail(m):
+            if srv and re.search(r"cloudphone_change_server|schema cache|does not exist|Could not find", m or ""):
+                m = "Tính năng đang cập nhật — thử lại sau ít phút."
             self.err.config(text=m); self.upd()
-        self.bg(lambda: self.app.auth.rpc("cloudphone_switch_android", {"p_id": self.p["id"], "p_android": v}), done, fail)
+        if srv: self.bg(lambda: self.app.auth.rpc("cloudphone_change_server", {"p_id": self.p["id"]}), done, fail)
+        else: self.bg(lambda: self.app.auth.rpc("cloudphone_switch_android", {"p_id": self.p["id"], "p_android": v}), done, fail)
 
 
 # ================= 🎞 16/11 · KHÁCH TỰ ĐỔI FPS (SQL doi-fps-1611 → cloudphone_set_fps) =================
@@ -9605,9 +9638,11 @@ class Launcher:
         v = p.get("android") or "?"
         if any(str(r.get("id")) == str(p.get("replaces")) and r.get("status") in ("active", "expired") for r in getattr(self, "rows_last", []) or []):
             return f"🔄 Máy mới đổi sang Android {v} — đang tạo (2–5 phút), xong thì máy cũ tự xoá."
-        if p.get("node") == "wait-old": return f"🔄 Đang xoá máy cũ… xoá xong tự tạo máy Android {v} (2–5 phút)."
+        if p.get("node") == "wait-old":
+            return f"🔄 Đang xoá máy cũ… xoá xong tự tạo máy Android {v}" + (" ở máy chủ khác" if p.get("avoid_node") else "") + " (2–5 phút)."
         e = str(p.get("error") or "")
-        return f"🔄 Máy cũ đã xoá — đang tạo máy Android {v} (2–5 phút)." + ("\n" + e if e.startswith("Đổi Android:") else "")
+        return (f"🔄 Máy cũ đã xoá — đang tạo máy Android {v}" + (" ở máy chủ khác" if p.get("avoid_node") else "") + " (2–5 phút)."
+                + ("\n" + e if e.startswith("Đổi Android:") else ""))
 
     def switching(self, p):
         """Máy đang đổi Android dở (máy mới còn đang tạo)?"""
@@ -9695,7 +9730,7 @@ class Launcher:
         sw = self.switching(p); can_sw = p.get("status") == "active" and not p.get("locked") and not sw
         m.add_command(label=f"Đổi FPS (đang {int(num(p.get('fps')) or 30)} FPS)…", command=lambda: FpsDlg(self, p),      # 16/11: khách tự đổi FPS, không tạo máy mới
                       state="normal" if can_sw else "disabled")
-        m.add_command(label="Đang đổi Android… (chờ máy mới)" if sw else "Đổi Android (9 / 12 / 15)…", command=lambda: self.open_switch(p),
+        m.add_command(label="Đang đổi Android… (chờ máy mới)" if sw else "Đổi Android / máy chủ…", command=lambda: self.open_switch(p),
                       state="normal" if can_sw else "disabled")
         m.add_separator()
         m.add_command(label="Huỷ máy (xoá vĩnh viễn)", command=lambda: self.cancel(p))
@@ -10127,7 +10162,7 @@ class Launcher:
         elif self.switching(p):
             tk.Label(c, text="🔄 Đang đổi Android: máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", font=self.f_s, fg=WARN, bg=CARD,
                      anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
-        elif p.get("status") == "active" and str(p.get("error") or "").startswith("Đổi Android"):
+        elif p.get("status") == "active" and str(p.get("error") or "").startswith(("Đổi Android", "Đổi máy chủ")):
             tk.Label(c, text=p["error"], font=self.f_s, fg=BAD, bg=CARD, anchor="w", wraplength=440, justify="left").pack(fill="x", padx=16)
         if p.get("pending_ram") is not None:
             tk.Label(c, text=f"⏳ Đang nâng cấp lên {p.get('pending_ram')}GB · {p.get('pending_cpu')} nhân…", font=self.f_s, fg=WARN, bg=CARD, anchor="w").pack(fill="x", padx=16)

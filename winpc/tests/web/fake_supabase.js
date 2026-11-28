@@ -17,7 +17,7 @@
   const raise = m => ({ data: null, error: { code: "P0001", message: m } });
 
   function query(table) {
-    const st = { table, eq: [], one: false, order: null, limit: null, op: "select", cols: "" };
+    const st = { table, eq: [], flt: [], one: false, order: null, limit: null, op: "select", cols: "" };
     const run = () => {
       F.calls.push({ kind: "from", table, op: st.op, eq: st.eq.slice(), cols: st.cols });
       if ((INIT.noTables || []).includes(table)) return noTable(table);   // cơ sở dữ liệu chưa chạy file SQL tạo bảng này (vd cp_moves — v65)
@@ -28,7 +28,7 @@
         return { data: null, error: { code: "42703", message: "column pc_machines.user_id does not exist" }, count: null };
       if (st.op !== "select") return { data: null, error: null };
       if (table === "pc_settings" && F.v42) sets();                   // cột v42 có giá trị mặc định (NOT NULL) như cơ sở dữ liệu thật
-      let rows = (F.db[table] || []).filter(r => st.eq.every(([c, v]) => String(r[c]) === String(v)));
+      let rows = (F.db[table] || []).filter(r => st.eq.every(([c, v]) => String(r[c]) === String(v)) && st.flt.every(f => f(r)));
       if (st.order) { const [c, asc] = st.order; rows = rows.slice().sort((a, b) => (a[c] > b[c] ? 1 : a[c] < b[c] ? -1 : 0) * (asc ? 1 : -1)); }
       if (st.limit != null) rows = rows.slice(0, st.limit);
       return st.one ? { data: clone(rows[0]) || null, error: null } : { data: clone(rows), error: null, count: rows.length };
@@ -36,6 +36,8 @@
     const api = {
       select(c) { st.cols = String(c || ""); return p; }, eq(c, v) { st.eq.push([c, v]); return p; }, order(c, o) { st.order = [c, !(o && o.ascending === false)]; return p; },
       limit(n) { st.limit = n; return p; }, maybeSingle() { st.one = true; return p; }, single() { st.one = true; return p; },
+      not(c, op, v) { if (op === "is" && v === null) st.flt.push(r => r[c] != null); return p; },          // 28/11: .not(cột, "is", null)
+      gte(c, v) { st.flt.push(r => { const a = Date.parse(r[c]), b = Date.parse(v); return r[c] != null && (isNaN(a) || isNaN(b) ? String(r[c]) >= String(v) : a >= b); }); return p; },
       insert() { st.op = "insert"; return p; }, update() { st.op = "update"; return p; }, upsert() { st.op = "upsert"; return p; }, delete() { st.op = "delete"; return p; },
       then(a, b) { return later(run()).then(a, b); },                    // như supabase-js thật: chỉ có .then — KHÔNG có .catch / .finally
     };

@@ -73,6 +73,8 @@ _FULL = {"until": 0.0}
 #   có pg_cron thì Supabase tự quét mỗi phút, mọi máy chủ cũng gọi mỗi phút cho chắc). Đơn đổi Android (giữ hạn máy cũ) KHÔNG đụng.
 #   Máy đang tạo dở của đơn đã huỷ: máy chủ tự xoá (máy CHƯA giao cho khách, chưa có dữ liệu khách). STUCK_MIN=0 = tắt.
 STUCK_MIN = max(0.0, _f("STUCK_MIN", 30))
+PREFER_S = max(0.0, _f("PREFER_S", 40))           # 28/11d: đơn mới / đổi Android / đổi máy chủ → máy chủ TRỐNG NHẤT nhận: máy chủ khác trống hơn mình
+                                                 # ≥ NEAR_GAP % thì nhường nó nhận trong PREFER_S giây đầu (nó không nhận được → hết giờ mình nhận). 0 = tắt
 SW_WAIT_MIN = max(0.0, _f("SWITCH_WAIT_MIN", 20))   # 28/11c: ĐỔI ANDROID mà mọi máy chủ đúng bản đang đầy → CHỜ có chỗ tối đa N phút (máy chủ nào trống
                                                    # trước nhận luôn) thay vì hoàn / tạo lại ngay (máy cũ đã xoá — tạo lại vào máy chủ đầy chỉ hỏng tiếp). < STUCK_MIN
 # 16/11f: máy chủ đang có ≥ BOOT_MAX máy MỚI chưa lên, hoặc 1 máy mới chờ Android quá BOOT_SLOW_MIN phút → máy chủ đang quá tải tạo
@@ -276,8 +278,9 @@ def node_sells(r, v):
 def others_for(row):
     """(còn máy chủ KHÁC đang chạy bán đúng bản Android của đơn?, trong đó có máy còn đủ chỗ cho đơn?)"""
     v = str(row.get("android") or "").strip() or "9"; wr, wc = want(row); live = room = False
+    av = row.get("avoid_node")                       # 28/11d (SQL v67): khách đổi máy chủ → máy chủ cũ không tính
     for r in live_nodes():
-        if r.get("id") == NODE_ID or not node_sells(r, v): continue
+        if r.get("id") == NODE_ID or (av and r.get("id") == av) or not node_sells(r, v): continue
         live = True
         try:
             if float(r.get("cap_ram") or 0) - float(r.get("alloc_ram") or 0) + 0.01 >= wr and \
@@ -291,7 +294,7 @@ def sw_waiting(row, live=None):
        Quá SW_WAIT_MIN phút mà vẫn không có chỗ → như cũ (hoàn / web tự tạo lại). Không máy chủ nào đang chạy bán bản đó → như cũ (không chờ)."""
     if not row.get("replaces") or SW_WAIT_MIN <= 0 or age_s(row) >= SW_WAIT_MIN * 60: return False
     if live is None: live = others_for(row)[0]
-    if not (live or android_ok(row) or sw_hope(row)): return False
+    if not (live or (android_ok(row) and row.get("avoid_node") != NODE_ID) or sw_hope(row)): return False
     rid = str(row.get("id") or "")
     if time.time() - _sw_said.get(rid, 0) > 300:
         _sw_said[rid] = time.time()
@@ -303,10 +306,11 @@ def sw_waiting(row, live=None):
 def sw_hope(row):
     """28/11c: còn máy chủ bán đúng bản Android của đơn vừa báo cáo (≤ 3 phút) — KỂ CẢ máy đang "Ngừng nhận máy": tự ngừng vì đầy thì tự nhận
        lại khi bớt đầy, máy giữ máy cũ của khách thì nhận lại đơn đổi Android ngay (own_switch) → đáng chờ, chưa nên hoàn / tạo lại."""
-    v = str(row.get("android") or "").strip() or "9"
+    v = str(row.get("android") or "").strip() or "9"; av = row.get("avoid_node")
     live_nodes()                                     # làm mới bảng cloud_nodes (30 giây / lần)
     for r in list(_nodes["rows"]):
         try:
+            if av and r.get("id") == av: continue        # 28/11d: khách đổi máy chủ → máy chủ cũ không tính
             if node_sells(r, v) and (now() - parse_dt(r.get("updated_at"))).total_seconds() <= 180: return True
         except Exception: pass
     return False
@@ -359,6 +363,34 @@ def my_pct():
         a_r, a_c, c_r, c_c = win_caps(st)
         return 100 * max(a_r / c_r if c_r > 0 else 1.0, a_c / c_c if c_c > 0 else 1.0)
     return 100 * local_load()[0]
+
+_seen_t = {}
+def better_node(row, me=None):
+    """28/11d (user 28/11 11:07 + 11:10): còn máy chủ KHÁC (không phải máy chủ khách muốn tránh) đang chạy, đang nhận máy, bán đúng bản Android,
+       đủ chỗ cho đơn và TRỐNG HƠN máy này ≥ NEAR_GAP % → (tên, %) của máy trống nhất; không → None. Dùng để tự chia đơn về máy chủ trống nhất."""
+    v = str(row.get("android") or "").strip() or "9"; wr, wc = want(row); av = row.get("avoid_node")
+    me = my_pct() if me is None else me; best = None
+    for r in live_nodes():
+        if r.get("id") == NODE_ID or (av and r.get("id") == av) or not node_sells(r, v): continue
+        try:
+            room = float(r.get("cap_ram") or 0) - float(r.get("alloc_ram") or 0) + 0.01 >= wr and \
+                   float(r.get("cap_cpu") or 0) - float(r.get("alloc_cpu") or 0) + 0.01 >= wc
+        except (TypeError, ValueError):
+            room = False
+        if not room: continue
+        p = node_pct(r)
+        if p <= me - NEAR_GAP and (best is None or p < best[1]): best = (str(r.get("id")), p)
+    return best
+
+def prefer_other(row):
+    """True = máy chủ này nên NHƯỜNG đơn chưa ai nhận cho máy chủ trống hơn (trong PREFER_S giây kể từ lúc máy này thấy đơn lần đầu)."""
+    if PREFER_S <= 0: return False
+    rid = str(row.get("id") or "")
+    t0 = _seen_t.setdefault(rid, time.time())
+    if len(_seen_t) > 2000:
+        for k in [k for k, t in list(_seen_t.items()) if time.time() - t > 3600]: _seen_t.pop(k, None)
+    if time.time() - t0 >= PREFER_S: return False
+    return better_node(row) is not None
 
 def handover(row):
     """16/11e: đơn ADMIN chọn máy chủ này (node = máy này, chưa tạo máy) mà máy chủ này GẦN ĐẦY → chuyển sang máy chủ còn trống nhất.
@@ -483,6 +515,9 @@ def claim(row):
     if n:                                           # đã có server nhận rồi (admin chọn / máy chủ khác)
         if n != NODE_ID: return False
         return not handover(row)                    # 16/11e: admin chọn máy chủ này mà nó gần đầy → chuyển sang máy chủ trống nhất
+    if row.get("avoid_node") and row.get("avoid_node") == NODE_ID:   # 28/11d (SQL v67): khách ĐỔI MÁY CHỦ → máy mới phải sang máy chủ khác
+        if PRIMARY: refund_unserved(row)
+        return False
     if not node_enabled() and not own_switch(row): return False     # 28/11c: đang ngừng nhận máy → chỉ nhận lại đơn đổi Android của máy nó vừa xoá
     if time.time() < _FULL["until"]:                 # 16/11: vừa tạo máy báo HẾT CHỖ → nghỉ nhận đơn ít phút, nhường máy chủ khác
         if PRIMARY: refund_unserved(row)
@@ -502,6 +537,7 @@ def claim(row):
         if PRIMARY: refund_unserved(row)
         return False
     if age < load * 5: return False                 # server đang bận hơn chờ thêm vài giây để server trống hơn nhận trước
+    if prefer_other(row): return False              # 28/11d: có máy chủ trống hơn hẳn → nhường nó nhận (tự chia đều, khách không chọn máy chủ)
     try:
         got = sb("PATCH", f"cloud_phones?id=eq.{row['id']}&node=is.null&status=eq.pending",
                  {"node": NODE_ID}, {"Prefer": "return=representation"})
@@ -1233,7 +1269,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "28/11c"
+CPD_VER = "28/11d"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -2511,8 +2547,10 @@ def _mv_loop():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 28/11c chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
-          + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else ""))
+    print(f"cloudphoned bản 28/11d chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
+          + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else "")
+          + " Khách đổi máy chủ (SQL v67) → máy mới không tạo lại ở máy chủ cũ."
+          + (f" Đơn mới / đổi Android → máy chủ trống nhất nhận (nhường {PREFER_S:g} giây)." if PREFER_S > 0 else ""))
     if WIN: print("Tự cập nhật theo máy chủ khác (23/11f): " + ("BẬT — bản mới chạy ổn ở 1 máy chủ đủ lâu (web admin đặt, mặc định 20 phút) thì máy này tự cập nhật; "
                                                               "tắt riêng máy này: TU_CAP_NHAT=0" if FOLLOW_ON else "TẮT ở máy chủ này (TU_CAP_NHAT=0)"))
     print("Bộ nhớ máy khách (19/11a): máy MỚI theo cấu hình (web: bậc RAM → GB) · khách mua thêm bộ nhớ → máy chủ nới ngay, không tắt máy"

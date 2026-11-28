@@ -265,7 +265,7 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 28/11c", sua.VER == "28/11c")
+ck("bản sua-tat-ca 28/11d", sua.VER == "28/11d")
 reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
 os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 fx = st.get("tune_fix") or {}
@@ -293,12 +293,12 @@ ck("card vừa lên tải (xung chưa lên nhưng điện đã cao) → không k
 ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không kết luận kẹt",
    G["gpu_eff"](53.0, 1923.0, 1987.0, 71.0, 230.0) == 53.0 and G["gpu_stuck"](98.0, None, 1974.0) is False and G["gpu_stuck"](98.0, 139.0, 1974.0) is True
    and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
-ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11c",
+ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11d",
    'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
-   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11c"' in CPD
-   and "cloudphoned bản 28/11c chạy" in CPD)
-ck("sua-tat-ca 28/11c: dấu cloudphoned 28/11c + cpapi 27/11n (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11c", "cloudphoned") in sua.FILES
-   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11c" and ("cpapi.py", "cpapi.py", "cpapi bản 27/11n", "cpapi") in sua.FILES
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11d"' in CPD
+   and "cloudphoned bản 28/11d chạy" in CPD)
+ck("sua-tat-ca 28/11d: dấu cloudphoned 28/11d + cpapi 27/11n (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11d", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11d" and ("cpapi.py", "cpapi.py", "cpapi bản 27/11n", "cpapi") in sua.FILES
    and sua.MARK_RUN["cpapi"] == "cpapi bản 27/11n")
 ck("27/11l · gpus() gọi nvidia-smi qua smi_bin() (không còn gọi trần 'nvidia-smi' → win54 driver 466.77 hết 'không đọc được card')",
    '[smi_bin(), "--query-gpu=" + q' in CPD and 'subprocess.run(["nvidia-smi"' not in CPD and "NVSMI\\nvidia-smi.exe" in CPD and "DriverStore" in CPD)
@@ -416,7 +416,7 @@ def _sb4(method, path, body=None, extra=None):
     return [{"id": "x"}] if method == "PATCH" else []
 G4.update(age_s=lambda row: row.get("_age", 0), others_for=lambda row: S["others"], android_ok=lambda row: S["aok"], live_nodes=lambda: [],
           refund=lambda row, msg: S["refunds"].append(msg), notify=lambda t: None, sb=_sb4, node_enabled=lambda: S["enabled"],
-          handover=lambda row: False, busy_boot=lambda: "", sick_why=lambda: "", want=lambda row: (4.0, 4.0),
+          handover=lambda row: False, busy_boot=lambda: "", sick_why=lambda: "", want=lambda row: (4.0, 4.0), prefer_other=lambda row: False,
           local_load=lambda: (0.5, 8.0 if S["room"] else 0.0, 8.0 if S["room"] else 0.0))
 def R(**k): return dict({"id": "NEW-1", "status": "pending", "android": "15", "replaces": "OLD-1", "_age": 100}, **k)
 def run(f, *a):
@@ -458,6 +458,60 @@ ck("tạo máy báo HẾT CHỖ (mã 2) với đơn đổi Android → TRẢ Đ�
 ck("máy chủ chính gọi sw_waiting trước khi hoàn đơn chưa ai nhận · máy chủ đang ngừng chỉ nhận own_switch",
    "if sw_waiting(row, live): return" in CPD and "if not node_enabled() and not own_switch(row): return False" in CPD)
 ck("thời gian giữ (SWITCH_WAIT_MIN 20) < hạn tự huỷ đơn treo (STUCK_MIN 30)", 'SW_WAIT_MIN = max(0.0, _f("SWITCH_WAIT_MIN", 20))' in CPD and 'STUCK_MIN = max(0.0, _f("STUCK_MIN", 30))' in CPD)
+
+# ============================================================== 28/11d · 🔀 khách đổi máy chủ (SQL v67 avoid_node) → máy chủ cũ không nhận
+print("28/11d · khách đổi máy chủ giữ Android: đơn có avoid_node = máy chủ này → không nhận (kể cả own_switch / đang ngừng), máy chủ khác nhận")
+reset(enabled=True, others=(True, False))
+ck("đơn đổi máy chủ tránh CHÍNH máy chủ này → không nhận, không PATCH; máy chính vẫn xét hoàn/giữ (máy chủ khác còn chạy → giữ chờ, không hoàn)",
+   run(G4["claim"], R(avoid_node="win-a")) is False and not any(m == "PATCH" for m, _, _ in S["sb"]) and S["refunds"] == [], (S["sb"], S["refunds"]))
+reset(enabled=True)
+ck("đơn tránh máy chủ KHÁC (win-z) → máy chủ này nhận bình thường", run(G4["claim"], R(avoid_node="win-z")) is True
+   and any(m == "PATCH" and b == {"node": "win-a"} for m, _, b in S["sb"]), S["sb"])
+reset(enabled=False)
+ck("máy chủ này đang ngừng + giữ máy cũ (own_switch) nhưng khách đổi máy chủ tránh nó → KHÔNG nhận lại",
+   run(G4["claim"], R(avoid_node="win-a")) is False and not any(m == "PATCH" for m, _, _ in S["sb"]), S["sb"])
+reset()
+G4["_nodes"]["rows"] = [{"id": "win-b", "enabled": True, "androids": "12", "updated_at": fresh}]
+ck("sw_hope: máy chủ duy nhất bán Android 12 lại là máy chủ khách muốn tránh → không tính",
+   run(G4["sw_hope"], R(android="12", avoid_node="win-b")) is False and run(G4["sw_hope"], R(android="12")) is True)
+G5 = {"NODE_ID": "win-a", "want": lambda row: (4.0, 4.0)}
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name in ("others_for", "node_sells"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G5)
+G5["live_nodes"] = lambda: [{"id": "win-b", "androids": "12", "cap_ram": 112, "alloc_ram": 40, "cap_cpu": 100, "alloc_cpu": 30},
+                            {"id": "win-c", "androids": "12", "cap_ram": 112, "alloc_ram": 110, "cap_cpu": 100, "alloc_cpu": 99}]
+ck("others_for: máy chủ bị tránh không tính là 'còn chỗ' (win-b tránh → chỉ còn win-c đầy)",
+   G5["others_for"]({"android": "12"}) == (True, True) and G5["others_for"]({"android": "12", "avoid_node": "win-b"}) == (True, False))
+ck("mã cloudphoned: claim kiểm avoid_node TRƯỚC own_switch / node_enabled", CPD.index('if row.get("avoid_node") and row.get("avoid_node") == NODE_ID:')
+   < CPD.index("if not node_enabled() and not own_switch(row): return False"))
+
+print("28/11d · tự chia đều: máy chủ trống hơn hẳn được nhận trước (đơn mới / đổi Android / đổi máy chủ)")
+G6 = {"time": _tm, "datetime": _dt, "NODE_ID": "win-a", "NEAR_GAP": 5.0, "PREFER_S": 40.0, "_seen_t": {}, "want": lambda row: (4.0, 4.0)}
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name in ("better_node", "prefer_other", "node_pct", "node_sells"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G6)
+NODES6 = [{"id": "win-b", "androids": "12,15", "cap_ram": 112, "alloc_ram": 22, "cap_cpu": 100, "alloc_cpu": 20},    # 20%
+          {"id": "win-c", "androids": "12,15", "cap_ram": 112, "alloc_ram": 56, "cap_cpu": 100, "alloc_cpu": 50},    # 50%
+          {"id": "win-d", "androids": "9", "cap_ram": 112, "alloc_ram": 0, "cap_cpu": 100, "alloc_cpu": 0}]          # bán Android 9
+G6["live_nodes"] = lambda: NODES6; G6["my_pct"] = lambda: 70.0
+ck("máy này 70% · win-b 20% còn chỗ → nhường win-b (trống nhất)", G6["better_node"]({"android": "12"}) == ("win-b", 20.0), G6["better_node"]({"android": "12"}))
+ck("khách đổi máy chủ tránh win-b → còn win-c 50% (vẫn trống hơn 70%)", G6["better_node"]({"android": "12", "avoid_node": "win-b"}) == ("win-c", 50.0))
+G6["my_pct"] = lambda: 18.0
+ck("máy này đã là trống nhất (18%) → tự nhận", G6["better_node"]({"android": "12"}) is None)
+G6["my_pct"] = lambda: 70.0
+ck("máy chủ trống hơn nhưng không bán bản Android đó (chỉ bán 9) → không tính", G6["better_node"]({"android": "15", "avoid_node": "win-b"}) == ("win-c", 50.0)
+   and G6["better_node"]({"android": "9"}) == ("win-d", 0.0))
+NODES6[0]["alloc_ram"] = 110
+ck("máy chủ trống hơn nhưng không đủ RAM cho đơn → không tính", G6["better_node"]({"android": "12"}) == ("win-c", 50.0))
+NODES6[0]["alloc_ram"] = 22
+G6["_seen_t"].clear()
+ck("trong 40 giây đầu (kể từ lúc máy này thấy đơn) → nhường", G6["prefer_other"]({"id": "o1", "android": "12"}) is True)
+G6["_seen_t"]["o1"] = _tm.time() - 41
+ck("quá 40 giây mà máy trống hơn chưa nhận (bận / lỗi) → máy này nhận, khách không phải chờ mãi", G6["prefer_other"]({"id": "o1", "android": "12"}) is False)
+G6["PREFER_S"] = 0.0
+ck("PREFER_S = 0 → tắt chia đều (như cũ)", G6["prefer_other"]({"id": "o2", "android": "12"}) is False)
+ck("claim gọi prefer_other ngay trước khi nhận đơn", CPD.index("if prefer_other(row): return False") > CPD.index("if age < load * 5: return False")
+   and CPD.index("if prefer_other(row): return False") < CPD.index('got = sb("PATCH", f"cloud_phones?id=eq.{row[\'id\']}&node=is.null&status=eq.pending"'))
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)

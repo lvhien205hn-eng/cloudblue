@@ -79,6 +79,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
           python ..\.github\app-check\test_pc_win.py .
           if ($LASTEXITCODE -ne 0) { exit 1 }
+          python ..\.github\app-check\test_pc_switch.py .
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m PyInstaller --noconfirm --clean --windowed --name CloudBluePC --collect-submodules av bluepc.py
           if ($LASTEXITCODE -ne 0) { exit 1 }
           $st = Join-Path $PWD "selftest.txt"
