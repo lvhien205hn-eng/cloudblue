@@ -939,7 +939,7 @@ def _stop_marks(iv):
 # `phonectl quyen` xem quyền từng máy · `phonectl quyen --sua` (Admin) khởi động lại đúng các máy đang chạy sai quyền. Tắt: PRIV_GUARD=0
 PRIV_GUARD = str(CONF.get("PRIV_GUARD", "1")).strip() != "0"
 PRIV_VER = "17/11e2"          # 17/11e2: chỉ chặn khi người gõ lệnh · thấy cả MuMuVMMSVC · --sua tắt êm cùng lúc, bật theo lượt, kiểm lại
-PCTL_SUB = "28/11f"           # 28/11f: 🧹 dondep --mocoi (máy cp_… mồ côi + máy mất tên không rõ của ai, đã tắt lâu) · dòng web tạo lỗi / hoàn tiền = máy thừa · 🖼 Android 13+ ảnh nền bằng app trợ giúp cbwp.apk (không cần root) · 27/11n: 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC giữ nguyên dữ liệu (moveout / moveset / movedrop / moveback / moveabort, create --nostart; máy đang chuyển đi không bật lại được) · 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
+PCTL_SUB = "28/11h"           # 28/11h: đo CPU đủ MỌI nhóm CPU (máy 2 CPU > 64 luồng) khi giãn lượt bật máy · 28/11f: 🧹 dondep --mocoi (máy cp_… mồ côi + máy mất tên không rõ của ai, đã tắt lâu) · dòng web tạo lỗi / hoàn tiền = máy thừa · 🖼 Android 13+ ảnh nền bằng app trợ giúp cbwp.apk (không cần root) · 27/11n: 🚚 CHUYỂN MÁY KHÁCH SANG MÁY CHỦ KHÁC giữ nguyên dữ liệu (moveout / moveset / movedrop / moveback / moveabort, create --nostart; máy đang chuyển đi không bật lại được) · 27/11m: 🔓 Root theo app chạy được trên Android 9 (LDPlayer 9 không có /debug_ramdisk → cpsu mới tự tạo; trước báo "Chưa bật được root: STOPPED") · lỗi root báo đúng dòng lý do · 27/11l: đo % card bằng nvidia-smi ở thư mục NVSMI khi không có trong PATH (driver cũ như máy cài từ ISO) · 27/11f: cbproxy 27.11a — đọc trước tên miền (SNI / Host) ở cổng web, xin proxy theo tên miền (kho proxy CloudBlue đi IPv6 riêng); máy đang chạy bản cbproxy cũ tự thay trong vòng canh 5 phút · 27/11e: card đồ hoạ — máy MuMu gộp đủ tiến trình MuMuVMMHeadless (hết báo nhầm "Ngoài máy khách") · 24/11a: MuMu tạo máy mẫu ĐÚNG bản Android (create --version 12/15 --mini) · mktpl all / mktpl 12,15 · 24/11b: tạo xong báo cloudphoned đọc lại ngay
                               # 17/11e3: danh sách máy không bao giờ bị ghi đè khi đọc lỗi · đặt lại tên máy bị mất tên · quyen không đếm trùng
                               # 17/11e4: kiểm / sửa lẫn quyền chỉ trên máy chủ MuMu (LDPlayer / MEmu không có lỗi này → không đụng máy)
                               # 17/11f: máy chủ bật lại → bật máy khách SONG SONG, máy có khách đang chờ lên trước, máy treo lúc bật tự bật lại ·
@@ -3060,9 +3060,32 @@ def _bs_save(d):
         with open(tmp, "w", encoding="utf-8") as f: json.dump(d, f)
         os.replace(tmp, BOOT_F)
     except Exception: pass
+def _cpu_groups():
+    """28/11h · giờ CPU từng luồng của MỌI nhóm CPU (máy > 64 luồng, VD 2 CPU × 36 luồng, Windows chia 2 nhóm) → {(nhóm, luồng): (bận, tổng)};
+       không đọc được → None (dùng GetSystemTimes như cũ — có thể chỉ thấy 1 nhóm = 1 CPU)."""
+    import struct
+    k = ctypes.windll.kernel32; nt = ctypes.windll.ntdll
+    k.GetActiveProcessorGroupCount.restype = ctypes.c_ushort; nt.NtQuerySystemInformationEx.restype = ctypes.c_long
+    out = {}
+    for g in range(max(1, min(64, int(k.GetActiveProcessorGroupCount() or 1)))):
+        buf = ctypes.create_string_buffer(48 * 64); ret = ctypes.c_ulong(0); gi = ctypes.c_ushort(g)
+        if nt.NtQuerySystemInformationEx(8, ctypes.byref(gi), 2, buf, 48 * 64, ctypes.byref(ret)) != 0: return None   # 8 = SystemProcessorPerformanceInformation
+        raw = buf.raw
+        for i in range(min(64, ret.value // 48)):
+            idle, kern, user = struct.unpack_from("<qqq", raw, 48 * i)
+            out[(g, i)] = (kern + user - idle, kern + user)
+    return out or None
 def _cpu_pct(dt=1.0):
-    """% CPU thật của cả máy chủ (đo dt giây). Không đo được → 0 (không chặn)."""
+    """% CPU thật của cả máy chủ (đo dt giây). Không đo được → 0 (không chặn). 28/11h: cộng đủ mọi nhóm CPU (máy 2 CPU)."""
     if os.name != "nt": return 0.0
+    try:
+        a = _cpu_groups()
+        if a:
+            time.sleep(dt); b = _cpu_groups()
+            if b:
+                bu = sum(b[x][0] - a[x][0] for x in b if x in a); to = sum(b[x][1] - a[x][1] for x in b if x in a)
+                if to > 0: return max(0.0, min(100.0, 100.0 * bu / to))
+    except Exception: pass
     try:
         class FT(ctypes.Structure): _fields_ = [("lo", ctypes.c_uint32), ("hi", ctypes.c_uint32)]
         def get():
