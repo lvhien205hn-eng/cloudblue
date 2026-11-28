@@ -102,7 +102,7 @@ def adb_calls(): return [c for c in RUNS if "adb" in c]
 
 
 print("1. bản cpapi + đồ phụ")
-ck("CPAPI_VER 28/11e · dòng khởi động khớp", cp.CPAPI_VER == "28/11e" and b"cpapi b\xe1\xba\xa3n 28/11e ch\xe1\xba\xa1y" in open(os.path.join(ROOT, "cpapi.py"), "rb").read())
+ck("CPAPI_VER 28/11f · dòng khởi động khớp", cp.CPAPI_VER == "28/11f" and b"cpapi b\xe1\xba\xa3n 28/11f ch\xe1\xba\xa1y" in open(os.path.join(ROOT, "cpapi.py"), "rb").read())
 s1 = cp.RealSerial("R58M12ABCDE")
 ck("port_key(): cổng máy ảo → số · số máy USB → giữ nguyên chuỗi (khoá bảng nhớ)", cp.port_key(16384) == 16384 and cp.port_key("16384") == 16384 and cp.port_key(s1) == "R58M12ABCDE")
 ck("is_memu(): cổng ≥ 21500 là MEmu · máy thật không bao giờ là MEmu", cp.is_memu(21503) and not cp.is_memu(16384) and not cp.is_memu(s1))
