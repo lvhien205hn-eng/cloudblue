@@ -204,7 +204,44 @@ def phone_of(me, pid):
     p = rows[0]
     if not me["admin"] and p.get("user_id") != me["uid"] and me["uid"] not in share_users(pid): return None
     if not on_node(p): return None                  # máy nằm ở server khác (cổng trùng số) → không được đụng vào máy ở đây
+    if p.get("real_device"): p["port"] = real_serial(p)      # 28/11e · SQL v70: 📱 máy THẬT → adb theo số máy USB (không có cổng máy ảo)
     return p
+
+
+# ---------------- 28/11e · 📱 BLUEREAL: điện thoại THẬT cắm USB vào máy chủ này (SQL v70 — cloud_phones.real_device → real_devices) ----------------
+class RealSerial(str):
+    """Số máy USB (serial adb) của điện thoại thật — dùng thay cho cổng máy ảo ở mọi chỗ gọi adb(port, …) / shell(port, …)."""
+
+
+REAL_ACTS = ("info", "key", "ime", "text", "url", "shot", "apps", "launch", "stop", "uninstall", "clear", "upload", "fromurl", "play")
+_rcache = {}
+
+
+def real_serial(p):
+    """Số máy USB của đơn máy thật — CHỈ khi máy đó đang gắn với máy chủ NÀY (real_devices.node). Nhớ 30 giây. Không có → None."""
+    rid = str(p.get("real_device") or "")
+    if not UUID.match(rid): return None
+    now = time.time(); c = _rcache.get(rid)
+    if c and c[1] > now: return c[0]
+    sr = None
+    try:
+        d = (sb_get(f"/rest/v1/real_devices?id=eq.{rid}&select=serial,node") or [None])[0] or {}
+        if d.get("node") == NODE_ID and re.fullmatch(r"[A-Za-z0-9._:-]{3,64}", str(d.get("serial") or "")): sr = RealSerial(d["serial"])
+    except Exception:
+        return c[0] if c else None                   # lỗi mạng → dùng số máy nhớ lần trước (nếu có)
+    if len(_rcache) > 500: _rcache.clear()
+    _rcache[rid] = (sr, now + 30)
+    return sr
+
+
+def port_key(port):
+    """Khoá các bảng nhớ theo máy: cổng máy ảo (số) hoặc số máy USB của máy thật."""
+    return port if isinstance(port, RealSerial) else int(port)
+
+
+def is_memu(port):
+    """Máy MEmu cũ trên Windows (cổng ≥ 21500) — máy thật thì không."""
+    return not isinstance(port, RealSerial) and int(port) >= 21500
 
 
 def port_owners(port):
@@ -239,11 +276,12 @@ def verify(v):
 
 # ---------------- ADB ----------------
 def adb(port, args, timeout=60):
-    serial = f"127.0.0.1:{int(port)}"
+    real = isinstance(port, RealSerial)              # 28/11e: 📱 máy thật cắm USB → số máy USB, không phải cổng máy ảo
+    serial = str(port) if real else f"127.0.0.1:{int(port)}"
     cmd = ["docker", "exec", WSNAME, "adb", "-s", serial] + args
     r = subprocess.run(cmd, capture_output=True, timeout=timeout)
     err = (r.stderr or b"").decode(errors="ignore")
-    if r.returncode != 0 and ("not found" in err or "offline" in err):
+    if not real and r.returncode != 0 and ("not found" in err or "offline" in err):
         subprocess.run(["docker", "exec", WSNAME, "adb", "connect", serial], capture_output=True, timeout=20)
         r = subprocess.run(cmd, capture_output=True, timeout=timeout)
     return r
@@ -273,7 +311,7 @@ def out(r):
 #   POST {do: "update"} → tải sua-tat-ca.py mới nhất từ GitHub rồi chạy `--tu-dong` TÁCH RỜI (nó sẽ tắt + bật lại chính cpapi) — y như lệnh A
 #   POST {do: <việc>}   → chỉ các việc ghi sẵn trong NODE_ACTS (không nhận lệnh tự gõ); việc mất dữ liệu / tắt máy phải gõ đúng mã máy chủ.
 # Các nút cần khoá bí mật (Supabase, Cloudflare, mật khẩu Windows) KHÔNG có ở đây — chỉ làm tại bảng CloudBlue trên máy chủ.
-CPAPI_VER = "27/11n"
+CPAPI_VER = "28/11e"
 NODE_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 NODE_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SUA_FILE = os.path.join(HOME, "sua-tat-ca.py")
@@ -2503,6 +2541,8 @@ class H(BaseHTTPRequestHandler):
         p = phone_of(me, pid)
         if not p: return self.send_json(404, {"error": "Không tìm thấy máy của bạn."})
         port, cont = p.get("port"), p.get("container")
+        if p.get("real_device") and act not in REAL_ACTS:     # 28/11e: Root, Proxy, xoay, tab cửa sổ, clone, GPS, kho app, khởi động lại… chỉ giả lập có
+            return self.send_json(400, {"error": "Máy thật không dùng được chức năng này (chỉ ĐT đám mây mới có).", "real": True})
         locked = is_locked(p) and not me["admin"]
         if locked and act != "info": return self.send_json(423, {"error": lock_text(p), "locked": True})
         if act == "info":
@@ -2513,7 +2553,7 @@ class H(BaseHTTPRequestHandler):
                 except Exception: booting = False
             return self.send_json(200, {"name": p["name"], "ram": p["ram"], "cpu": p["cpu"], "res": p.get("res"),
                                         "status": p["status"], "expires_at": p.get("expires_at"), "online": st == "device", "booting": booting,
-                                        "viewer": (VIEWERS.get(int(port)) or {}).get("viewer") if port else None,
+                                        "viewer": (VIEWERS.get(port_key(port)) or {}).get("viewer") if port else None, "real": bool(p.get("real_device")),
                                         "fps": p.get("fps") or 30, "fps_range": fps_limits(), "busy": pid in _busy,
                                         "maint": under, "maint_msg": maint_text() if under else None,
                                         "locked": locked, "lock_msg": lock_text(p) if locked else None})
@@ -2549,7 +2589,7 @@ class H(BaseHTTPRequestHandler):
         if act == "rotate" and self.command == "POST":       # XOAY MÀN: ngang / dọc. Game cần màn ngang vẫn tự xoay khi đang để dọc.
             b = self.jbody(); to = str(b.get("to") or "")       # 23/11d: máy bỏ qua khoá xoay (MuMu) → cửa sổ phủ yêu cầu màn ngang (win_rot)
             sh_ = lambda c, t=30: out(shell(port, c, t))
-            with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
+            with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(port_key(port), threading.Lock())
             if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
             try:
                 st = win_state(sh_)
@@ -2594,10 +2634,10 @@ class H(BaseHTTPRequestHandler):
         if act == "shot":          # ảnh màn hình; ?w=270 → ẢNH NHỎ (JPEG) cho "màn hình trực tiếp" / "xem tất cả máy"
             try: w = max(0, min(720, int(q.get("w") or 0)))
             except ValueError: w = 0
-            key = (int(port), w); c = SHOTS.get(key)
+            key = (port_key(port), w); c = SHOTS.get(key)
             if q.get("fresh") == "1": c = None                     # nút "Chụp màn" của app: luôn chụp MỚI (không trả ảnh cũ trong bộ nhớ đệm)
             ttl = 1.0 if w > 300 else 5.0                          # ảnh nhỏ: 5 giây/ảnh là đủ cho danh sách
-            if LIVE.get(int(port)): ttl = 30.0                     # máy đang được điều khiển → hầu như không chụp (giữ luồng hình mượt)
+            if LIVE.get(port_key(port)): ttl = 30.0                     # máy đang được điều khiển → hầu như không chụp (giữ luồng hình mượt)
             busy = c is not None and not SHOT_SEM.acquire(blocking=False)   # đang có 2 ảnh khác chụp → trả ảnh cũ ngay
             if busy or (c and time.time() - c[0] < ttl):
                 if not busy: SHOT_SEM.release()
@@ -2737,14 +2777,14 @@ class H(BaseHTTPRequestHandler):
                         if l.startswith("package:"):
                             k = l.split(":", 1)[1].strip()
                             if k != BR_PKG: cnt[k] = cnt.get(k, 0) + 1
-                if int(port) >= 21500 and cnt: threading.Thread(target=clone_icons, args=(port,), daemon=True).start()   # máy cũ đã clone → thêm biểu tượng
+                if is_memu(port) and cnt: threading.Thread(target=clone_icons, args=(port,), daemon=True).start()   # máy cũ đã clone → thêm biểu tượng
                 return self.send_json(200, {"profile": rows[0][1] if rows else None, "cloned": sorted(cnt), "counts": cnt, "max": CLONE_MAX})
             b = self.jbody(); pkg = str(b.get("pkg") or "")
             if not PKG.match(pkg): return self.send_json(400, {"error": "Tên ứng dụng không hợp lệ."})
             if b.get("remove"):
                 for l in out(shell(port, LU, 20)).splitlines():
                     if len(l.split()) == 2: shell(port, f"pm uninstall --user {l.split()[1]} {shlex.quote(pkg)}", 60)
-                if int(port) >= 21500: clone_icons(port)
+                if is_memu(port): clone_icons(port)
                 return self.send_json(200, {"ok": True, "msg": "Đã bỏ các bản clone."})
             if b.get("open"):                  # MỞ bản clone số i (màn hình chính của máy có thể không có tab Công việc)
                 try: i = max(1, int(b.get("open")))
@@ -2763,7 +2803,7 @@ class H(BaseHTTPRequestHandler):
                 if "Error" in o or "Exception" in o: return self.send_json(500, {"error": "Chưa mở được bản clone: " + o[-160:]})
                 return self.send_json(200, {"ok": True, "msg": f"Đã mở bản clone {i} của {pkg}."})
             memu_cap = None
-            if int(port) >= 21500:          # máy MEmu (Windows): mỗi Roblox chạy song song cần ~3GB RAM + 2 nhân riêng
+            if is_memu(port):          # máy MEmu (Windows): mỗi Roblox chạy song song cần ~3GB RAM + 2 nhân riêng
                 ram, cpu = float(p.get("ram") or 0), float(p.get("cpu") or 0)
                 memu_cap = int(min((ram - 3) // 3, (cpu - 2) // 2))
                 if memu_cap < 1:
@@ -2800,7 +2840,7 @@ class H(BaseHTTPRequestHandler):
                     if mc: raise RuntimeError(f"Đã có {done} bản clone. Máy cần KHỞI ĐỘNG LẠI 1 lần để mở thêm bản clone — bấm \"Khởi động lại\" rồi clone lại.")
                     raise RuntimeError(f"Đã có {done} bản clone — máy này chỉ cho tối đa {done} bản. Cần thêm acc thì thuê thêm máy và dùng Nhiều máy + Đồng bộ.")
                 if done < 1: raise RuntimeError("Chưa clone được: " + o[-150:])
-                if int(port) >= 21500 and clone_icons(port) > 0:
+                if is_memu(port) and clone_icons(port) > 0:
                     return f"✅ Đã có {done} bản clone! Trên màn hình chính máy có biểu tượng cá voi \"Clone 1\", \"Clone 2\"… — bấm vào là mở bản clone."
                 return f"✅ Đã có {done} bản clone! Mở lại Clone tab → bấm ▶ Mở bản 1, 2… để chạy bản clone (hoặc tab Công việc/Work trong danh sách ứng dụng)."
             run_job(jid, work)
@@ -2810,9 +2850,9 @@ class H(BaseHTTPRequestHandler):
             do = "list" if self.command == "GET" else str(self.jbody().get("do") or "")
             if do not in ("list", "mini", "tile", "full", "refit", "grow", "shrink", "wide", "narrow"):
                 return self.send_json(400, {"error": "Thiếu việc cần làm (thu nhỏ / sắp xếp / phóng to / mở lại vừa khung / to hơn / nhỏ hơn / màn ngang rộng)."})
-            with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(int(port), threading.Lock())
+            with WIN_LOCKS_L: lk = WIN_LOCKS.setdefault(port_key(port), threading.Lock())
             if not lk.acquire(timeout=40): return self.send_json(409, {"error": "Đang xếp tab của máy này, đợi vài giây."})
-            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do, inst=lambda: rot_install(port), memo=WIN_MEMO.setdefault(int(port), {}))
+            try: code, j = win_run(lambda c, t=30: out(shell(port, c, t)), do, inst=lambda: rot_install(port), memo=WIN_MEMO.setdefault(port_key(port), {}))
             finally: lk.release()
             return self.send_json(code, j)
 
@@ -3184,6 +3224,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 27/11n chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 28/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()
