@@ -1,0 +1,98 @@
+# 28/11f · ẢNH NỀN CLOUDBLUE CHO ANDROID 13+ (user 28/11 14:11: máy Android 15 không có ảnh nền CloudBlue, hiện ảnh mặc định của MuMu).
+#   MuMu 15 dùng KernelSU (su bị giấu với adb shell) → cách chép file ảnh nền bằng su không chạy. cbwp.apk (.github/wp-check: app trợ giúp
+#   vn.cloudblue.wp, quyền SET_WALLPAPER, không biểu tượng) đặt ảnh nền bằng WallpaperManager như mọi app ảnh nền — KHÔNG cần root, không
+#   khởi động lại giao diện; máy chủ cài → đặt → gỡ ngay. Dựng 1 lần (job build) → thử bằng adb shell thường trên máy ảo Android 12 / 13 / 15
+#   thật (job emu) → mọi bản đạt thì lưu windows/cbwp.apk vào CHÍNH nhánh đang thử (job save). phonectl.py ghim md5 của file đó.
+#   Chỉ thử — không phát hành, không đụng máy chủ thật nào.
+name: Check wallpaper (cbwp)
+
+on:
+  push:
+    branches: ["appwp-*"]
+    paths:
+      - ".github/wp-check/**"
+      - ".github/workflows/wp-check.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: wp-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dựng cbwp.apk (app trợ giúp đặt ảnh nền, từ .github/wp-check)
+        run: bash .github/wp-check/mkwp.sh "$GITHUB_WORKSPACE/cbwp.apk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cbwp-apk
+          path: cbwp.apk
+
+  emu:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [31, 33, 35]     # 31 = Android 12 (như MuMu 12) · 33 = Android 13 · 35 = Android 15 (như MuMu 15)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cbwp-apk
+      - name: Bật KVM cho máy ảo Android
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android API ${{ matrix.api }} — đặt ảnh nền bằng cbwp.apk (adb shell thường)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          cores: 4
+          disk-size: 4096M
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -no-snapshot
+          disable-animations: true
+          script: python3 .github/wp-check/test_wp.py ${{ matrix.api }}
+      - name: Giữ kết quả
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cbwp-${{ matrix.api }}
+          path: |
+            cbwp-*.json
+            cbwp-ok-*.txt
+          if-no-files-found: ignore
+
+  save:
+    needs: emu
+    if: success()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # lưu windows/cbwp.apk (đúng file vừa thử trên cả 3 bản Android) vào CHÍNH nhánh đang thử
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cbwp-apk
+      - name: Lưu windows/cbwp.apk vào nhánh (chỉ khi mã / khai báo app đổi — khoá ký đổi mỗi lần dựng thì không tính)
+        run: |
+          set -e
+          mkdir -p windows
+          sig() { unzip -p "$1" classes.dex AndroidManifest.xml | md5sum | cut -d' ' -f1; }
+          new=$(sig cbwp.apk); old=$( [ -f windows/cbwp.apk ] && sig windows/cbwp.apk || echo none)
+          if [ "$new" != "$old" ]; then cp cbwp.apk windows/cbwp.apk; echo "- cbwp.apk MỚI (mã / khai báo đổi)" | tee -a "$GITHUB_STEP_SUMMARY"; fi
+          echo "- windows/cbwp.apk md5: \`$(md5sum windows/cbwp.apk | cut -d' ' -f1)\` · $(stat -c %s windows/cbwp.apk) byte" | tee -a "$GITHUB_STEP_SUMMARY"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add windows/cbwp.apk
+          if git diff --cached --quiet; then echo "cbwp.apk không đổi"; exit 0; fi
+          git commit -q -m "cbwp.apk dựng từ .github/wp-check (CI, đặt ảnh nền đạt trên Android 12 / 13 / 15)" \
+            -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" \
+            -m "Claude-Session: https://claude.ai/code/session_014zy4K1ke85zVx5zDEA3vr3"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
