@@ -1413,7 +1413,8 @@ class Viewer:
                 s.blit(t, t.get_rect(center=(aw // 2, H // 2 - box_h // 2 + 26 + 26 * i)))
         if self.show_info and st == "connected":
             d = self.stats
-            txt = T(f"{self.fps_show:.0f} khung/s · {d.get('kbps', 0) / 1000:.1f} Mbps · trễ mạng {self.ping} ms · {self.path} · {str(d.get('enc', '')).upper()}")
+            enc = str(d.get("enc") or "").upper()                     # 28/11: máy chủ chỉ gửi tên bộ nén cho admin → khách không thấy
+            txt = T(f"{self.fps_show:.0f} khung/s · {d.get('kbps', 0) / 1000:.1f} Mbps · trễ mạng {self.ping} ms · {T(self.path)}") + (f" · {enc}" if enc else "")
             if self.weak: txt += T(" · mạng yếu (đã giảm nét)")
             if d.get("drop"): txt += T(f" · bỏ {d['drop']}")
             t = self.font_s.render(txt, True, C_TXT)

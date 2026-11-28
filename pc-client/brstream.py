@@ -257,7 +257,7 @@ class StreamClient:
             if self.stop_flag: break
             try:
                 c = DirectConn(a, port, cert, to) if kind == "direct" else WSConn(a, to)
-                self.path = ("trực tiếp" if kind == "direct" else "Cloudflare")
+                self.path = ("trực tiếp" if kind == "direct" else "trung chuyển")      # 28/11: không nêu nhà cung cấp đường vòng cho khách
                 self.prefer = (kind, c.desc if kind == "direct" else a)
                 if kind == "ws" and dfail: self.direct_fail_t = time.time()
                 return c
