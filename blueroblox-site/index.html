@@ -2718,6 +2718,8 @@ html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after{
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;
   mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);mask-composite:exclude;
   animation:nrun 6.5s linear infinite}
+/* tiết kiệm cho điện thoại: khung đã ra khỏi màn hình (nr-off) hoặc đang cuộn (nr-scroll) → vệt neon đứng yên, vào lại màn hình / cuộn xong chạy tiếp */
+html.neonrun :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig).nr-off::after,html.neonrun.nr-scroll :is(.m3-row,.m3-sub,.m3m-card,.m3v-fig,header.top nav a.on)::after,.nr-off .thumb .hot{animation-play-state:paused!important}
 html.neonrun header.top nav a.on::after{padding:2px;animation-duration:4.5s}
 html.neonrun :is(.m3m-card,.m3-row):nth-child(2n)::after{animation-delay:-2.2s}
 html.neonrun :is(.m3m-card,.m3-row):nth-child(3n)::after{animation-delay:-4.3s}
@@ -5030,8 +5032,11 @@ let ADM = { users: [], topups: [], orders: [], vps: [] };
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const rate = () => +SITE.rate || 25000;
-const fmt = v => cur === "VND" ? Math.round(v).toLocaleString("vi-VN") + "đ" : "$" + (v / rate()).toFixed(2);
-const vnd = v => Math.round(+v || 0).toLocaleString("vi-VN") + "đ";
+var NF_VI = (() => { try { return new Intl.NumberFormat("vi-VN"); } catch (e) { return { format: v => Number(v).toLocaleString("vi-VN") }; } })();   // tạo 1 lần: toLocaleString mỗi lần gọi rất chậm khi vẽ bảng dài (điện thoại)
+const fmt = v => cur === "VND" ? NF_VI.format(Math.round(v)) + "đ" : "$" + (v / rate()).toFixed(2);
+const vnd = v => NF_VI.format(Math.round(+v || 0)) + "đ";
+// supabase-js chỉ gửi truy vấn khi được .then / await → bọc để gửi NGAY, các truy vấn chạy song song thật (không chờ nhau)
+function sbGo(q) { return q && typeof q.then === "function" ? new Promise((ok, no) => q.then(ok, no)) : Promise.resolve(q); }
 const catName = id => (CATS.find(c => c.id === id) || { name: id }).name;
 const ago = t => { const s = (Date.now() - new Date(t).getTime()) / 1000, en = (typeof LANG !== "undefined" && LANG === "en"); if (s < 60) return en ? "just now" : "vừa xong"; if (s < 3600) return Math.floor(s / 60) + (en ? " min ago" : " phút trước"); if (s < 86400) return Math.floor(s / 3600) + (en ? " h ago" : " giờ trước"); return new Date(t).toLocaleString(en ? "en-GB" : "vi-VN"); };
 const show = (id, on = true) => { $(id).hidden = !on; };
@@ -5408,7 +5413,12 @@ function renderGrid() {
   }
   $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : it.vm ? VMSHOP.row() : it.px ? PXSHOP.row() : it.real ? REALSHOP.row() : m3RowProd(it.p)).join("")
     + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : it.vm ? VMSHOP.li() : it.px ? PXSHOP.li() : it.real ? REALSHOP.li() : m3LiProd(it.p)).join("")}</div>` : "");
-  document.querySelectorAll("#grid canvas[data-id]").forEach(cv => drawThumb(cv, seedOf(cv.dataset.id), HUES[cv.dataset.c] ?? 210));
+  { const cvs = [...document.querySelectorAll("#grid canvas[data-id]")], seq = renderGrid.seq = (renderGrid.seq || 0) + 1;
+    const draw1 = cv => { if (cv.isConnected && !cv._fx) drawThumb(cv, seedOf(cv.dataset.id), HUES[cv.dataset.c] ?? 210); };
+    if (document.body.classList.contains("admin-page")) cvs.length = 0;       // trang /admin: cửa hàng đang ẩn
+    cvs.splice(0, 6).forEach(draw1);                                          // ô đầu trang vẽ ngay, còn lại vẽ dần từng ít một
+    const step = () => { if (renderGrid.seq !== seq) return; cvs.splice(0, 3).forEach(draw1); if (cvs.length) setTimeout(step, 0); };
+    if (cvs.length) setTimeout(step, 0); }
 }
 /* số liệu ở đầu trang: giá thấp nhất (đọc từ bảng giá, admin đổi là đổi theo) + các bản Android đang bán */
 function m3Facts() {
@@ -6636,16 +6646,16 @@ $("or-list").onclick = async e => {
 };
 
 /* ---------- ADMIN ---------- */
-async function openAdmin() { if (!isAdmin()) return; try { if (!$("noticedlg").hidden) { show("noticedlg", false); ntOpen = false; ntForce = false; } } catch (e) {} fillSite(); resetForm(); setTab("stats"); show("drawer"); await loadAdmin(); loadStats(); }
+async function openAdmin() { if (!isAdmin()) return; try { if (!$("noticedlg").hidden) { show("noticedlg", false); ntOpen = false; ntForce = false; } } catch (e) {} fillSite(); resetForm(); setTab("stats"); show("drawer"); await loadAdmin(); }      // setTab("stats") đã tải Tổng quan — không tải lần 2
 async function loadAdmin() {
   if (!isAdmin()) return;
   // Tải SONG SONG + KHÔNG tải nội dung hàng của đơn (cột items có thể hàng nghìn dòng/đơn → vài MB) — nội dung chỉ tải khi bấm Xem/Giao
   const OC = "id,user_id,product_id,product_name,qty,total,status,days,created_at,delivered_at";
-  const pU = sb.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000),
-    pT = sb.from("topups").select("*").order("created_at", { ascending: false }).limit(100),
-    pO = sb.from("orders").select(OC).order("created_at", { ascending: false }).limit(100),
-    pV = sb.from("vps_machines").select("*").order("expires_at"),
-    pP = sb.from("orders").select(OC).eq("status", "pending").order("created_at");
+  const pU = sbGo(sb.from("profiles").select("*").order("created_at", { ascending: false }).limit(1000)),
+    pT = sbGo(sb.from("topups").select("*").order("created_at", { ascending: false }).limit(100)),
+    pO = sbGo(sb.from("orders").select(OC).order("created_at", { ascending: false }).limit(100)),
+    pV = sbGo(sb.from("vps_machines").select("*").order("expires_at")),
+    pP = sbGo(sb.from("orders").select(OC).eq("status", "pending").order("created_at"));
   renderTable();
   const u = await pU;                                       // khách hàng hiện NGAY khi có, không chờ các mục khác
   if (u.data) { ADM.users = u.data; try { renderCust(); } catch (e) {} }
@@ -6654,8 +6664,14 @@ async function loadAdmin() {
   ADM = { users: u.data || ADM.users || [], topups: t.data || [], orders, vps: vm.data || ADM.vps || [] };
   renderCust(); renderTx(); renderOrd(); renderVps(); try { renderCpaTbl(); } catch (e) {}
 }
-const uname = id => { const u = ADM.users.find(x => x.id === id) || CPA_U.get(id); return u && u.username ? u.username : "?"; };
-const uIsAdm = id => { const u = ADM.users.find(x => x.id === id) || CPA_U.get(id); return !!(u && u.role === "admin"); };     // SQL v67: đơn admin = mua thử, không tính doanh thu
+var ADM_UM = null, ADM_UM_SRC = null;
+function admU(id) {                                        // khách theo id — Map dựng lại khi danh sách khách đổi
+  const us = (typeof ADM !== "undefined" && ADM && ADM.users) || [];
+  if (ADM_UM_SRC !== us || !ADM_UM || ADM_UM.n !== us.length) { ADM_UM_SRC = us; ADM_UM = new Map(); ADM_UM.n = us.length; for (const x of us) if (x && !ADM_UM.has(x.id)) ADM_UM.set(x.id, x); }
+  return ADM_UM.get(id);
+}
+const uname = id => { const u = admU(id) || CPA_U.get(id); return u && u.username ? u.username : "?"; };
+const uIsAdm = id => { const u = admU(id) || CPA_U.get(id); return !!(u && u.role === "admin"); };     // SQL v67: đơn admin = mua thử, không tính doanh thu
 const ADM_TEST_TAG = ` <span class="pill" title="Tài khoản admin mua thử — không tính vào doanh thu (SQL v67)">🧪 admin thử</span>`;
 function renderTable() {
   try { hmLoad(); } catch (e) {}
@@ -6667,17 +6683,22 @@ function renderTable() {
     <td style="white-space:nowrap;text-align:right">${p.manual ? "" : `<button class="btn okb sm" data-stock="${esc(p.id)}">Nhập kho</button> `}<button class="btn ghost sm" data-edit="${esc(p.id)}">Sửa</button> <button class="btn danger sm" data-del="${esc(p.id)}">Xoá</button></td></tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--muted);text-align:center;padding:24px">Chưa có sản phẩm. Bấm "➕ Thêm sản phẩm mới" bên dưới để thêm.</td></tr>`;
 }
+var CUST_STEP = 200, CUST_LIM = 200, CUST_DIRTY = false;   // bảng khách: chỉ vẽ khi đang mở thẻ 👥 + mỗi lần 200 dòng (900+ dòng làm trang quản trị đứng 1–2 giây trên điện thoại)
 function renderCust() {
-  const q = $("cq").value.trim().toLowerCase(), us = ADM.users.filter(u => !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
   const cu = ADM.users.filter(u => u.role !== "admin");              // SQL v68: tiền / tài khoản admin (nạp, mua, cộng thử) không tính
   $("k-users").textContent = cu.length; $("k-bal").textContent = vnd(cu.reduce((s, u) => s + (+u.balance || 0), 0));
   $("k-rev").textContent = vnd(ADM.topups.filter(t => t.status === "done" && !uIsAdm(t.user_id)).reduce((s, t) => s + (+t.amount || 0), 0));
-  $("ctbl").innerHTML = us.length ? us.map(u => `<tr><td><b>${esc(u.username)}</b>${u.role === "admin" ? ' <span class="pill wt">ADMIN</span>' : ""}<div class="hint">${ago(u.created_at)}</div></td><td>${esc(u.email)}</td>
+  const pane = $("pane-cust"); if (pane && pane.hidden) { CUST_DIRTY = true; return; }
+  CUST_DIRTY = false;
+  const q = $("cq").value.trim().toLowerCase(), us = ADM.users.filter(u => !q || String(u.username || "").toLowerCase().includes(q) || String(u.email || "").toLowerCase().includes(q));     // tài khoản thiếu email/tên không làm hỏng ô tìm
+  const sh = us.length > CUST_LIM ? us.slice(0, CUST_LIM) : us;
+  $("ctbl").innerHTML = us.length ? sh.map(u => `<tr><td><b>${esc(u.username)}</b>${u.role === "admin" ? ' <span class="pill wt">ADMIN</span>' : ""}<div class="hint">${ago(u.created_at)}</div></td><td>${esc(u.email)}</td>
     <td class="num">${vnd(u.balance)}</td><td>${u.locked ? '<span class="pill bad">Đã khoá</span>' : '<span class="pill ok">Hoạt động</span>'}</td><td>${ctvCell(u)}</td>
     <td style="white-space:nowrap;text-align:right"><input class="in" style="width:110px;display:inline-block;padding:5px 8px" type="number" step="1000" placeholder="± số tiền" id="adj-${u.id}" aria-label="Điều chỉnh số dư">
-    <button class="btn ghost sm" data-adj="${u.id}">Cộng/trừ</button> <button class="btn ghost sm" data-sa="audit" data-id="${u.id}" data-n="${esc(u.username)}" title="Soát gian lận">🔍</button> <button class="btn okb sm" data-cust="${u.id}">Chi tiết</button>${u.id === profile.id ? "" : ` <button class="btn ${u.locked ? "ghost" : "danger"} sm" data-lock="${u.id}" data-to="${u.locked ? 0 : 1}">${u.locked ? "Mở khoá" : "Khoá"}</button>`}</td></tr>`).join("")
+    <button class="btn ghost sm" data-adj="${u.id}">Cộng/trừ</button> <button class="btn ghost sm" data-sa="audit" data-id="${u.id}" data-n="${esc(u.username)}" title="Soát gian lận">🔍</button> <button class="btn okb sm" data-cust="${u.id}">Chi tiết</button>${u.id === profile.id ? "" : ` <button class="btn ${u.locked ? "ghost" : "danger"} sm" data-lock="${u.id}" data-to="${u.locked ? 0 : 1}">${u.locked ? "Mở khoá" : "Khoá"}</button>`}</td></tr>`).join("") + (us.length > sh.length ? `<tr><td colspan="6" style="text-align:center;padding:12px"><button type="button" class="btn ghost sm" data-custmore="1">Hiện thêm khách · đang hiện ${sh.length}/${us.length}</button></td></tr>` : "")
     : `<tr><td colspan="6" style="color:var(--muted);text-align:center;padding:24px">Chưa có khách nào.</td></tr>`;
 }
+document.addEventListener("click", e => { if (!e.target.closest("[data-custmore]")) return; CUST_LIM += CUST_STEP; renderCust(); });
 function txMethod(t) {
   const c = String(t.coin || "").toLowerCase();
   if (c === "ltc") return '<span class="pill" style="background:rgba(52,152,219,.18);color:#5dade2">Ł LTC</span>';
@@ -6796,7 +6817,7 @@ async function pollPending() {
   if (!$("drawer").hidden && (count || 0) !== prev) loadAdmin();
 }
 setInterval(pollPending, 30000);
-$("cq").oninput = renderCust;
+$("cq").oninput = () => { CUST_LIM = CUST_STEP; renderCust(); };
 $("ctbl").onclick = async e => {
   const a = e.target.closest("[data-adj]"), l = e.target.closest("[data-lock]"), c = e.target.closest("[data-cust]");
   if (c) return openCust(c.dataset.cust);
@@ -7262,6 +7283,7 @@ document.addEventListener("click", e => {
     })();
     if (t === "promo") (async () => { try { CPpricing = null; frFill(await cpLoadPricing()); } catch (e) {} })();    // 🎁 máy miễn phí (trước ở ĐT đám mây)
   }; }
+{ const _stCu = setTab; setTab = function (t) { const r = _stCu.apply(this, arguments); if (t === "cust" && CUST_DIRTY) requestAnimationFrame(() => setTimeout(() => { if (CUST_DIRTY) renderCust(); }, 0)); return r; }; }
 $("adm-tabs").onclick = e => { const b = e.target.closest("button"); if (!b) return; if (b.dataset.tab === "site" || b.dataset.tab === "bank") fillSite(); setTab(b.dataset.tab); };
 $("admin-open").onclick = () => ADMIN_PAGE ? openAdmin() : (location.href = "/admin");     // Quản trị → trang riêng /admin (to như trang chính)
 $("admin-close").onclick = () => ADMIN_PAGE ? (location.href = "/") : show("drawer", false);
@@ -7375,7 +7397,7 @@ window.BRfxOn = !window.BR_LITE;   // chế độ nhẹ (máy yếu) → ảnh s
     document.querySelectorAll(".thumb canvas[data-id]").forEach(c => {
       if (c._fx) return; c._fx = 1; c._seed = seedOf(c.dataset.id); c._kind = (c.dataset.id === "cloudphone" || c.dataset.c === "phone") ? "phone" : c.dataset.c === "vps" ? "vps" : c.dataset.c === "nvme" ? "nvme" : c.dataset.c === "proxy" ? "proxy" : "clone";
       c._static = c.dataset.static === "1"; c._sc = c.dataset.big === "1" && (window.devicePixelRatio || 1) > 1.25 && (navigator.hardwareConcurrency || 8) > 4 ? 2 : 1;
-      c._card = c.closest(".card,.m3-row,.m3-li,.vms-head"); if (io) io.observe(c); else vis.add(c); draw(c, performance.now());
+      c._card = c.closest(".card,.m3-row,.m3-li,.vms-head"); if (io) io.observe(c); else vis.add(c); if (!document.body.classList.contains("admin-page")) draw(c, performance.now());
     });
     for (const c of vis) if (!c.isConnected) vis.delete(c);
   }
@@ -7851,10 +7873,10 @@ async function loadStats() {
   if (!isAdmin()) return;
   const box = $("st-tiles"); if (!box) return;
   box.innerHTML = `<div class="hint">Đang tải số liệu…</div>`;
+  try { dbCheck(); } catch (e) {} try { rsvLoad(); } catch (e) {} try { loadCpSales(); } catch (e) {}      // không cần số của admin_stats → gửi cùng lúc
   const { data: s, error } = await sb.rpc("admin_stats");
   if (error || !s) { box.innerHTML = `<div class="hint">Chưa tải được (hãy chạy file stats.sql trong Supabase).</div>`; return; }
   $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính tiền của tài khoản admin (nạp / mua / cộng thử)";
-  dbCheck();
   const tile = (b, lab, hot) => `<div${hot ? ' class="hot"' : ""}><b>${b}</b><span>${lab}</span></div>`, n = v => (+v || 0).toLocaleString("vi-VN");
   const revM = (+s.revenue_month || 0) + (+s.cp_revenue_month || 0);       // SQL v69: ô 1 = doanh thu THÁNG NÀY (cửa hàng + ĐT đám mây) — sang tháng mới về 0, tháng cũ đã chốt
   box.innerHTML = [      // 28/11f: chia nhóm 💰 Tiền · 📊 theo dịch vụ · 📱 ĐT đám mây · 🖥 VPS · 🛒 Cửa hàng — dễ nhìn
@@ -7875,8 +7897,6 @@ async function loadStats() {
     tile(n(s.vps_expiring), "VPS sắp hết hạn"), tile(n(s.vps_expired), "VPS đã hết hạn")].join(""));
   put("st-shop", [tile(vnd(s.revenue_month), "DT cửa hàng tháng này", 1), tile(vnd(s.revenue_total), "DT cửa hàng từ trước tới nay"), tile(n(s.orders_done), "Tổng đơn đã bán"),
     tile(n(s.clone_qty), "Clone đã bán"), tile(vnd(s.clone_revenue), "DT clone"), tile(n(s.customers), "Khách đăng ký")].join(""));
-  try { rsvLoad(); } catch (e) {}
-  loadCpSales();
   revLoad();
   $("st-top").innerHTML = (s.top_products || []).length
     ? s.top_products.map(t => `<tr><td>${esc(t.name)}</td><td class="num">${(+t.orders).toLocaleString("vi-VN")}</td><td class="num">${vnd(t.revenue)}</td></tr>`).join("")
@@ -9568,6 +9588,7 @@ function cpaAnalyze() {
 async function loadCloudAdm() {
   if (!isAdmin()) return;
   gpuLoad(); try { swcLoad(); } catch (e) {}
+  const qPh = sbGo(sb.from("cloud_phones").select("*").order("created_at", { ascending: false }));   // gửi ngay, song song với bảng giá
   CPpricing = null; const pr = await cpLoadPricing(), c = cpCard();
   const setv = (id, v) => { const el = $(id); if (el && !el.dataset.dirty) el.value = v; };
   setv("cpa-cname", c.name); setv("cpa-cfeats", c.feats.join(", ")); setv("cpa-cdesc", c.desc); setv("cpa-cname-en", pr.card_name_en || ""); setv("cpa-cfeats-en", pr.card_feats_en || ""); setv("cpa-cdesc-en", pr.card_desc_en || "");
@@ -9585,7 +9606,7 @@ async function loadCloudAdm() {
   $("cpa-stock").value = "";                                  // 28/11: còn hàng theo máy chủ — lưu là bỏ số lượng cũ (không giới hạn)
   $("cpa-stockhint").textContent = pr.stock == null ? "Đang: không giới hạn" : +pr.stock <= 0 ? "Đang HẾT HÀNG" : "Đang còn " + pr.stock + " máy";
   $("cpa-msg").textContent = ""; cpaAnalyze(); frFill(pr);
-  const { data } = await sb.from("cloud_phones").select("*").order("created_at", { ascending: false });
+  const { data } = await qPh;
   CPA_ROWS = (data || []).filter(r => r.status !== "cancelled"); cpaSel.clear(); renderCpaTbl();
 }
 $("cpa-save") && ($("cpa-save").onclick = () => busy($("cpa-save"), async () => {
@@ -10146,8 +10167,9 @@ $("cpa-nodes") && ($("cpa-nodes").onclick = async e => {
 { // mở tab ĐT đám mây → nạp bảo trì + máy chủ, tự làm mới mỗi 15 giây
   const _lc = loadCloudAdm;
   loadCloudAdm = async function () {
+    const pn = (async () => { try { await refreshNodes(); } catch (e) {} })();      // gửi ngay, song song với bảng giá + danh sách máy
     const r = await _lc.apply(this, arguments);
-    try { fillMaint(); await refreshNodes(); } catch (e) {}
+    try { fillMaint(); await pn; } catch (e) {}
     clearInterval(nodeT);
     nodeT = setInterval(() => { if ($("drawer").hidden || $("pane-cloud").hidden) return clearInterval(nodeT); refreshNodes(); }, 15000);
     return r;
@@ -11305,6 +11327,10 @@ function adminPageBoot() {
     else if (profile) { $("adm-gate-msg").textContent = "Tài khoản này không phải admin."; $("adm-gate-login").hidden = true; }
     else if (Date.now() - t0 > 2500) { $("adm-gate-msg").textContent = "Đăng nhập tài khoản admin để vào bảng quản trị."; $("adm-gate-login").textContent = "Đăng nhập admin"; $("adm-gate-login").hidden = false; }
   }, 700);
+  const fast = setInterval(() => {                                   // 8 giây đầu kiểm mỗi 60 ms → có hồ sơ admin là mở luôn
+    if (Date.now() - t0 > 8000) return clearInterval(fast);
+    if (profile && isAdmin()) { clearInterval(fast); if ($("drawer").hidden) openAdmin(); g.hidden = true; }
+  }, 60);
 }
 adminPageBoot();
 
@@ -12290,17 +12316,22 @@ function cpaPayTxt(p) {
 async function cpaMoneyLoad() {
   const ids = [...new Set(CPA_ROWS.map(p => p.user_id).filter(id => id && !CPA_M.has(id)))];
   if (!ids.length || cpaMBusy) return; cpaMBusy = true;
-  try { for (let i = 0; i < ids.length; i += 150) { const { data, error } = await sb.rpc("admin_user_money", { p_ids: ids.slice(i, i + 150) }); if (error) break; (data || []).forEach(x => CPA_M.set(x.id, x)); } } catch (e) {}
+  try { const lots = []; for (let i = 0; i < ids.length; i += 150) lots.push(sbGo(sb.rpc("admin_user_money", { p_ids: ids.slice(i, i + 150) })));
+    for (const { data, error } of await Promise.all(lots)) { if (error) break; (data || []).forEach(x => CPA_M.set(x.id, x)); } } catch (e) {}
   ids.forEach(id => { if (!CPA_M.has(id)) CPA_M.set(id, null); });     // không có / lỗi (chưa chạy v29) → đánh dấu đã thử, KHÔNG tải lại liên tục
-  cpaMBusy = false; renderCpaTbl();
+  cpaMBusy = false;
+  const tb = $("cpa-tbl"); if (!tb) return;                           // điền tiền vào ô khách đang hiện (trước: vẽ lại cả bảng máy lần 2)
+  tb.querySelectorAll("button[data-cpcust]").forEach(b => { const m = CPA_M.get(b.dataset.cpcust); if (m && !b.querySelector(".cpa-m")) b.insertAdjacentHTML("beforeend", cpaMSpan(m)); });
 }
+const cpaMSpan = m => `<span class="cpa-m">💰 Nạp ${vnd(m.dep)}${+m.dep_manual ? ` (✋ ${vnd(m.dep_manual)})` : ""} · dư ${vnd(m.bal)} · 💎 ${bnum(m.blue)}${m.locked ? " · 🔒 khoá" : ""}</span>`;
 { const _cc29 = cpaCustCell; cpaCustCell = function (p) {
     const h = _cc29(p), m = p.user_id && CPA_M.get(p.user_id); if (!m || !h.includes("data-cpcust")) return h;
-    return h.replace(/<\/button>$/, `<span class="cpa-m">💰 Nạp ${vnd(m.dep)}${+m.dep_manual ? ` (✋ ${vnd(m.dep_manual)})` : ""} · dư ${vnd(m.bal)} · 💎 ${bnum(m.blue)}${m.locked ? " · 🔒 khoá" : ""}</span></button>`);
+    return h.replace(/<\/button>$/, () => cpaMSpan(m) + "</button>");
   }; }
 { const _rc29 = renderCpaTbl; renderCpaTbl = function () {
     _rc29.apply(this, arguments);
-    document.querySelectorAll("#cpa-tbl tr").forEach(tr => { const cb = tr.querySelector("[data-cpsel]"); if (!cb || tr.dataset.pay) return; const p = CPA_ROWS.find(x => x.id === cb.dataset.cpsel); if (!p) return;
+    const byId = new Map(); for (const x of CPA_ROWS) if (!byId.has(x.id)) byId.set(x.id, x);
+    document.querySelectorAll("#cpa-tbl tr").forEach(tr => { const cb = tr.querySelector("[data-cpsel]"); if (!cb || tr.dataset.pay) return; const p = byId.get(cb.dataset.cpsel); if (!p) return;
       tr.dataset.pay = 1; const td = tr.children[1]; if (td) td.insertAdjacentHTML("beforeend", `<div class="hint cpa-pay">Trả: ${cpaPayTxt(p)}</div>`); });
     if (CPA_ROWS.some(p => p.user_id && !CPA_M.has(p.user_id))) cpaMoneyLoad();
   }; }
@@ -12638,7 +12669,7 @@ const UA = {
 };
 // dòng có nút 🔍 / tên khách (data-sa … data-id) → khách
 const kUser = tr => { const a = tr.querySelector("[data-sa][data-id]"); if (!a || !a.dataset.id) return null; const id = a.dataset.id;
-  if (profile && id === profile.id) return null; const u = (ADM.users || []).find(x => x.id === id); if (u && u.role === "admin") return null;
+  if (profile && id === profile.id) return null; const u = admU(id); if (u && u.role === "admin") return null;
   return { id, uid: id, name: a.dataset.n || bkWho(id) }; };
 
 /* ---------- việc cho các bảng KHÔNG phải khách (lặp từng dòng) ---------- */
@@ -14479,9 +14510,9 @@ html[data-theme=light] .xp-r.y{color:#8a5a00}
       sb.from("pc_machines").select(COLS + (v2 ? COLS42 : "")).order("created_at"),
       sb.from("pc_settings").select(SETS + (v2 ? SETS42 : "")).eq("id", 1).maybeSingle()]);
     let v2 = P.v42 !== false;
-    const x44 = v2 && P.v44 !== false ? sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at") : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
-    const x53 = P.v53 !== false ? sb.from("pc_machines").select("id").eq("srv", true) : null;
-    const x56 = P.v56 !== false ? sb.from("pc_machines").select("id,vm") : null;      // SQL v56: máy ảo VPS ảo hoá (cột vm) — quản lý ở thẻ 🧩 VPS ảo hoá      // SQL v53: MÁY CHỦ Cloud Phone — không cho thuê, nằm ở ĐT đám mây › Máy chủ
+    const x44 = v2 && P.v44 !== false ? sbGo(sb.from("pc_machines").select("id,reclaim_at,clean_off,rent_lock_at")) : null;      // v44: tự thu hồi máy hết hạn (chưa chạy SQL v44 → bỏ qua)
+    const x53 = P.v53 !== false ? sbGo(sb.from("pc_machines").select("id").eq("srv", true)) : null;
+    const x56 = P.v56 !== false ? sbGo(sb.from("pc_machines").select("id,vm")) : null;      // SQL v56: máy ảo VPS ảo hoá (cột vm) — quản lý ở thẻ 🧩 VPS ảo hoá      // SQL v53: MÁY CHỦ Cloud Phone — không cho thuê, nằm ở ĐT đám mây › Máy chủ
     let [[m, st], o] = await Promise.all([get(v2), sb.from("pc_orders").select("id,pc_id,cmd,args,state,result,created_at,sent_at,done_at").order("id", { ascending: false }).limit(300)]);
     if (v2 && (noCol(m.error) || noCol(st.error))) { v2 = false; [m, st] = await get(false); }      // chưa chạy SQL v42: đọc kiểu cũ, phần hạn thuê tạm ẩn
     if (m.error) {
@@ -18889,9 +18920,13 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const disp = shown > 1 ? "" : "none"; if (tabs.style.display !== disp) tabs.style.display = disp;
     seeSub();
   }
-  function seeSub() {                                                        // màn hẹp (hàng mục con cuộn ngang) → mục đang mở luôn nằm trong tầm nhìn
+  let seeQ = 0, seeB = null;
+  function seeSub() { if (!seeQ) seeQ = requestAnimationFrame(seeNow); }   // đo ở khung hình sau, gộp nhiều lần gọi
+  addEventListener("resize", () => { seeB = null; });
+  function seeNow() {                                                        // màn hẹp (hàng mục con cuộn ngang) → mục đang mở luôn nằm trong tầm nhìn
+    seeQ = 0;
+    const b = tabs.querySelector("button[data-tab].on:not([data-grp-off])"); if (!b || b === seeB) return; seeB = b;
     if (tabs.scrollWidth <= tabs.clientWidth + 4) return;
-    const b = tabs.querySelector("button[data-tab].on:not([data-grp-off])"); if (!b) return;
     const tr = tabs.getBoundingClientRect(), br = b.getBoundingClientRect();
     if (br.left >= tr.left + 4 && br.right <= tr.right - 4) return;
     const x = tabs.scrollLeft + (br.left - tr.left) - (tabs.clientWidth - br.width) / 2;
@@ -18937,9 +18972,28 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     const cs = getComputedStyle(p), w = Math.max(0, Math.round(p.offsetWidth - p.clientWidth - (parseFloat(cs.borderLeftWidth) || 0) - (parseFloat(cs.borderRightWidth) || 0)));
     if (panel.style.getPropertyValue("--adm-sb") !== w + "px") panel.style.setProperty("--adm-sb", w + "px");
   } catch (e) {} };
-  if (panel) { addEventListener("resize", sbw); new MutationObserver(() => requestAnimationFrame(sbw)).observe(panel, { childList: true, attributes: true, attributeFilter: ["hidden"], subtree: true }); requestAnimationFrame(sbw); }
+  if (panel) {
+    let sq = 0; const qs = () => { if (!sq) sq = requestAnimationFrame(() => { sq = 0; sbw(); }); };      // gộp: mỗi khung hình đo tối đa 1 lần
+    const ro = typeof ResizeObserver === "function" ? new ResizeObserver(qs) : null;                     // thanh cuộn hiện / ẩn → khung nội dung đổi bề rộng
+    const watch = () => panel.querySelectorAll(":scope > .dbody").forEach(p => { if (p.__sbw) return; p.__sbw = 1; if (ro) ro.observe(p); new MutationObserver(qs).observe(p, { attributes: true, attributeFilter: ["hidden"] }); });
+    addEventListener("resize", qs); new MutationObserver(() => { watch(); qs(); }).observe(panel, { childList: true }); watch(); qs();
+  }
   window.ADMNAV = { grpOf, paint, go, groups: () => G.map(g => ({ id: g.id, t: g.ic + " " + g.t, m: g.m.filter(btnOf) })) };
   paint();
+})();
+/* ===== Mượt hơn trên máy yếu: viền neon chỉ chạy ở khung đang thấy trên màn hình + tạm dừng lúc đang cuộn (hiệu ứng vẫn bật) ===== */
+(() => {
+  const root = document.documentElement;
+  let st = 0;
+  addEventListener("scroll", () => { if (!root.classList.contains("nr-scroll")) root.classList.add("nr-scroll"); clearTimeout(st); st = setTimeout(() => root.classList.remove("nr-scroll"), 180); }, { passive: true, capture: true });
+  if (!("IntersectionObserver" in window)) return;
+  const SEL = ".m3-row,.m3-sub,.m3m-card,.m3v-fig", on = new Set();
+  const io = new IntersectionObserver(es => { for (const e of es) e.target.classList.toggle("nr-off", !e.isIntersecting); }, { rootMargin: "60% 0px" });          // khung gần màn hình (≤ 0,6 màn) vẫn chạy để cuộn tới là thấy chạy ngay
+  const scan = () => {
+    for (const el of on) if (!el.isConnected) { io.unobserve(el); on.delete(el); }
+    document.querySelectorAll(SEL).forEach(el => { if (!on.has(el)) { on.add(el); io.observe(el); } });
+  };
+  scan(); setInterval(scan, 1200);
 })();
 </script>
 </body>
