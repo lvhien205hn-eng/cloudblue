@@ -964,6 +964,11 @@ class Viewer:
         elif k == "stats":
             w = bool(d.get("weak")) if isinstance(d, dict) else False        # 16/11: máy chủ đang phải giảm nét vì mạng của khách yếu
             if w and not self.weak: self._say("📶 Mạng yếu — đã giảm nét cho hình mượt.", 6)
+            g = bool(d.get("gfx")) if isinstance(d, dict) else False         # 28/11b: màn THẬT của máy đang bị vẽ hỏng (rác màu) → nhắc + bấm để khởi động lại
+            if g and not getattr(self, "gfx_on", False):
+                self._say("⚠ Màn hình máy đang lỗi hiển thị (hình nhiễu màu). Bấm vào đây để khởi động lại máy là hết — 1–2 phút, dữ liệu giữ nguyên.",
+                          30, self._gfx_click)
+            self.gfx_on = g
             self.weak = w; self.stats = d; self._post()
         elif k == "ping": self.ping = d
         elif k == "state":
@@ -1175,6 +1180,11 @@ class Viewer:
         if time.time() < self.fix_arm: self.fix_arm = 0.0; return self._fix_reboot()
         self.fix_arm = time.time() + 8
         self._say("Bấm lần nữa (hoặc phím K) để KHỞI ĐỘNG LẠI máy — khoảng 1–2 phút. App đang mở trong máy sẽ tắt, dữ liệu vẫn giữ nguyên.", 8)
+
+    def _gfx_click(self):
+        """28/11b: bấm vào lời nhắc "màn hình lỗi hiển thị" → hỏi lại 1 lần (bấm vào lời nhắc lần nữa mới làm — cửa sổ máy không có hộp hỏi)."""
+        if self.fixing: return
+        self._say("Bấm vào đây lần nữa để KHỞI ĐỘNG LẠI máy — khoảng 1–2 phút. App đang mở trong máy sẽ tắt, dữ liệu vẫn giữ nguyên.", 10, self._fix_reboot)
 
     def _fix_reboot(self):
         """Khởi động lại máy rồi CHỜ máy chủ làm xong mới nối lại (không nối trong lúc máy đang tắt / bật)."""
