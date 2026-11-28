@@ -7,6 +7,32 @@
 # Chạy:  python3 ~/cloudphoned.py           (vòng lặp mỗi 15s)
 import json, os, re, sys, time, subprocess, tempfile, urllib.request, urllib.parse, urllib.error, datetime, socket, shutil, threading, random
 import hashlib, http.client, secrets, ssl, zlib
+
+def _ssl_ca_extra():
+    """28/11f · Windows cũ (10 1511 Lite): kho chứng chỉ gốc của Windows có thể thiếu → Python báo CERTIFICATE_VERIFY_FAILED khi gọi Supabase /
+       tải từ GitHub. Nạp THÊM bộ chứng chỉ gốc Mozilla có sẵn trên máy (certifi / bản trong pip / CloudBlue PC) — chỉ thêm, không bớt."""
+    if os.name != "nt" or getattr(ssl, "_cb_extra", None) is not None: return
+    try:
+        cands = [os.environ.get("SSL_CERT_FILE") or "", r"C:\CloudBluePC\os\cacert.pem"]
+        for mod in ("certifi", "pip._vendor.certifi"):
+            try: cands.append(__import__(mod, fromlist=["where"]).where())
+            except Exception: pass
+        extra = [x for x in dict.fromkeys(cands) if x and os.path.isfile(x)]
+        ssl._cb_extra = extra
+        if not extra: return
+        base, keep = ssl._create_default_https_context, {}
+        def ctx(*a, **k):
+            if a or k or "c" not in keep:
+                c = base(*a, **k)
+                for x in extra:
+                    try: c.load_verify_locations(cafile=x)
+                    except Exception: pass
+                if a or k: return c
+                keep["c"] = c
+            return keep["c"]
+        ssl._create_default_https_context = ctx
+    except Exception: pass
+_ssl_ca_extra()
 GRACE_MIN = 30          # hết hạn quá 30 phút không gia hạn → xoá máy + dữ liệu
 
 HOME = os.path.expanduser("~")
@@ -258,7 +284,7 @@ def live_nodes():
     """Máy chủ đang bật nhận đơn và vừa báo cáo trong 3 phút gần nhất."""
     if time.time() - _nodes["t"] > 30:
         cols = "id,enabled,updated_at,cap_ram,alloc_ram,cap_cpu,alloc_cpu"
-        try: _nodes["rows"] = sb("GET", f"cloud_nodes?select={cols},engine,androids") or []
+        try: _nodes["rows"] = sb("GET", f"cloud_nodes?select={cols},engine,androids,lag:metrics->lag_pen") or []
         except urllib.error.HTTPError as e:
             if e.code == 400:                                 # web chưa chạy SQL v20 (chưa có cột engine/androids)
                 try: _nodes["rows"] = sb("GET", f"cloud_nodes?select={cols}") or []
@@ -345,6 +371,30 @@ def refund_unserved(row):
         msg = f"Máy chủ Android {v} đang bảo trì — đã hoàn tiền, thử lại sau"; why = f"không máy chủ Android {v} nào đang chạy"
     refund(row, msg); notify(f"⚠️ <b>Đơn Android {v} bị hoàn tiền</b>: {why}.")
 
+# 28/11f (user 28/11 14:10 "phân tích sao vào các máy chủ nào đang vắng để giảm bị lag"): chọn máy chủ cho đơn mới theo % ĐẦY + ĐIỂM LAG.
+#   Điểm lag (0–40, máy chủ tự tính, báo lên web ở metrics.lag_pen): Windows cũ không có WGC (bản < 1903, VD 10 1511 → hình phải nén trong
+#   Android → chậm, lag) +LAG_OLDWIN (25) · CPU thật TB 5 phút > 50% → +0,6 mỗi % · card đồ hoạ > 60% → +0,5 mỗi %. Máy chủ đầy 40% mà
+#   lag 25 điểm xếp sau máy chủ đầy 60% không lag. Chỉ đổi THỨ TỰ nhận đơn — sức chứa / tự ngừng nhận máy / % trên web giữ như cũ.
+WGC_MIN_BUILD = 18362
+LAG_OLDWIN = max(0.0, min(40.0, _f("LAG_OLDWIN", 25)))
+def win_build():
+    if not WIN: return None
+    try: return int(sys.getwindowsversion().build)
+    except Exception: return None
+def lag_pen():
+    pen = 0.0; b = win_build()
+    if b and b < WGC_MIN_BUILD: pen += LAG_OLDWIN
+    try:
+        c = cpu_avg5()
+        if c is not None and c > 50: pen += (c - 50) * 0.6
+        g = gpu_avg5()[0]
+        if g is not None and g > 60: pen += (g - 60) * 0.5
+    except Exception: pass
+    return round(min(40.0, pen), 1)
+def node_lag(r):
+    try: return max(0.0, min(40.0, float(r.get("lag") or 0)))
+    except (TypeError, ValueError): return 0.0
+
 def node_pct(r):
     """% đầy của 1 máy chủ khác (dòng cloud_nodes) — cùng cách web tính: max(RAM đã cấp ÷ sức chứa, nhân đã cấp ÷ sức chứa)."""
     try:
@@ -369,7 +419,7 @@ def better_node(row, me=None):
     """28/11d (user 28/11 11:07 + 11:10): còn máy chủ KHÁC (không phải máy chủ khách muốn tránh) đang chạy, đang nhận máy, bán đúng bản Android,
        đủ chỗ cho đơn và TRỐNG HƠN máy này ≥ NEAR_GAP % → (tên, %) của máy trống nhất; không → None. Dùng để tự chia đơn về máy chủ trống nhất."""
     v = str(row.get("android") or "").strip() or "9"; wr, wc = want(row); av = row.get("avoid_node")
-    me = my_pct() if me is None else me; best = None
+    me = (my_pct() if me is None else me) + lag_pen(); best = None        # 28/11f: % đầy + điểm lag (máy chủ dễ lag nhường máy chủ mượt)
     for r in live_nodes():
         if r.get("id") == NODE_ID or (av and r.get("id") == av) or not node_sells(r, v): continue
         try:
@@ -378,7 +428,7 @@ def better_node(row, me=None):
         except (TypeError, ValueError):
             room = False
         if not room: continue
-        p = node_pct(r)
+        p = node_pct(r) + node_lag(r)
         if p <= me - NEAR_GAP and (best is None or p < best[1]): best = (str(r.get("id")), p)
     return best
 
@@ -411,8 +461,8 @@ def handover(row):
         except (TypeError, ValueError):
             room = False
         if not room: continue
-        p = node_pct(r)
-        if p <= me - NEAR_GAP and (best is None or p < best[0]): best = (p, str(r.get("id")))
+        p = node_pct(r) + node_lag(r)                                   # 28/11f: tính cả điểm lag
+        if p <= me + lag_pen() - NEAR_GAP and (best is None or p < best[0]): best = (p, str(r.get("id")))
     if not best: return False
     _HANDED[rid] = time.time()
     try:
@@ -620,12 +670,34 @@ def cpu_avg5(sample=None):
     return v
 DATA_ROOT = os.path.join(HOME, "redroid")
 
+# 28/11f · ĐỒNG HỒ MÁY CHỦ LỆCH (user 28/11 14:03: Server 8 điều khiển được mà web báo "Mất kết nối" 5–6 phút): đo lệch theo giờ Supabase
+#   (header Date của mỗi lần gọi nhanh < 2 giây, lấy trung vị 15 lần gần nhất) → now() tự bù (đơn / hạn / máy chủ khác tính đúng giờ thật);
+#   lệch ≥ 60 giây → Windows tự đồng bộ giờ (w32tm), mạng chặn NTP mà còn lệch ≥ 120 giây → tự chỉnh giờ theo Supabase. CLOCK_FIX=0 = chỉ bù, không chỉnh.
+_CLK = {"off": 0.0, "s": [], "fix_t": 0.0, "set_t": 0.0, "said": 0.0, "last": ""}
+def _clk_sample(r, t0, t1):
+    try:
+        d = r.headers.get("Date")
+        if not d or t1 - t0 > 2.0: return
+        import email.utils
+        srv = email.utils.parsedate_to_datetime(d).timestamp() + 0.5          # Date làm tròn xuống giây → +0,5 giây
+        _CLK["s"].append((t0 + t1) / 2 - srv)
+        if len(_CLK["s"]) > 15: del _CLK["s"][0]
+        if len(_CLK["s"]) >= 3:
+            v = sorted(_CLK["s"])[len(_CLK["s"]) // 2]
+            _CLK["off"] = v if abs(v) >= 3 else 0.0
+    except Exception: pass
+def clock_off():
+    """Số giây đồng hồ máy chủ này lệch so với giờ thật (Supabase): + = chạy nhanh, − = chạy chậm. 0 = đúng (lệch < 3 giây)."""
+    return _CLK["off"]
+
 def sb(method, path, body=None, extra=None):
     url = SB + "/rest/v1/" + path
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, method=method, headers={**H, **(extra or {})})
+    t0 = time.time()
     with urllib.request.urlopen(req, timeout=30) as r:
         t = r.read().decode()
+        _clk_sample(r, t0, time.time())
     if threading.current_thread() is threading.main_thread():
         _loop_t[0] = max(_loop_t[0], time.time())     # 14/11: vòng nhận đơn vẫn đang nhích (nhiều máy → 1 lượt dài) → không báo "đứng" nhầm
     return json.loads(t) if t else None
@@ -809,7 +881,11 @@ def stream_url(port):
     pl = "tinyh264" if 5600 <= int(port) <= 5699 else "webcodecs"
     return f"{BASE}/#!action=stream&udid={q(udid, safe='')}&player={pl}&ws={q(ws, safe='')}"
 
-def now(): return datetime.datetime.now().astimezone()
+def now():
+    """Giờ THẬT (đã bù đồng hồ máy chủ lệch — 28/11f)."""
+    try: off = _CLK["off"]
+    except NameError: off = 0.0                      # hàm được chép riêng (bộ thử) → như cũ
+    return datetime.datetime.fromtimestamp(time.time() - off).astimezone()
 def parse_dt(s):
     d = datetime.datetime.fromisoformat(str(s).replace("Z", "+00:00"))
     return d if d.tzinfo else d.astimezone()
@@ -1238,12 +1314,13 @@ def _bg_dondep():
        quá 10 phút lúc đổi Android…) → xoá hẳn máy ảo + dữ liệu, như admin bấm 🧹 Xoá sạch. Máy web ghi còn dùng / không có trên web:
        KHÔNG bao giờ đụng."""
     try:
-        r = phonectl(["dondep", "--xoa"])
+        r = phonectl(["dondep", "--xoa", "--mocoi"])                 # 28/11f: --mocoi = cả máy cp_… mồ côi (web không còn dòng) + máy mất tên không rõ của ai
+        if "unrecognized arguments" in ((r.stdout or "") + (r.stderr or "")): r = phonectl(["dondep", "--xoa"])   # phonectl chưa lên 28/11f
         m = re.search(r"DONDEP (\{.*\})", r.stdout or "")
         j = json.loads(m.group(1)) if m else {}
         if j.get("deleted"):
             print(f"[tự dọn] đã xoá hẳn {j['deleted']} máy khách web đã huỷ còn sót trên máy chủ (máy ảo + dữ liệu)"
-                  + (f", trong đó {j['lost']} máy mất tên" if j.get("lost") else ""))
+                  + (f", trong đó {j['lost']} máy mất tên" if j.get("lost") else "") + (f", {j['orphan']} máy mồ côi" if j.get("orphan") else ""))
             ts_note(f"tự dọn {j['deleted']} máy khách web đã huỷ mà còn sót trên máy chủ (đã xoá hẳn máy + dữ liệu)", key="dondep", every=1800)
         if j.get("fail"): print(f"[tự dọn] còn {j['fail']} máy đã huỷ chưa xoá được (giả lập bận) — 10 phút sau thử lại")
         if j.get("lost_live"):                              # máy khách ĐANG THUÊ bị mất tên trong giả lập → tự đặt lại tên (giữ dữ liệu), như lệnh A
@@ -1253,6 +1330,155 @@ def _bg_dondep():
             ts_note(f"{j['lost_live']} máy khách đang thuê bị MẤT TÊN trong giả lập" + (f" — đã tự đặt lại tên {len(got)} máy" if got else " — chưa đặt lại được, chạy lệnh A"),
                     key="lostlive", every=3600, again=False)
     except Exception as e: print("lỗi tự dọn máy sót:", e)
+
+# ---------- 28/11f · 🧹 TỰ DỌN + 💤 XOÁ MÁY KHÔNG MỞ N NGÀY + 🕒 GIỜ MÁY CHỦ ----------
+# (user 28/11 13:59–14:10) máy kẹt đổi Android / máy hết hạn / máy khách mất tên / máy không ai mở 8 ngày → tự ép xoá vĩnh viễn.
+#  · cp_auto_clean (SQL v71): ~5 phút / lần (Supabase cũng tự chạy bằng pg_cron) — máy cũ đổi Android xoá kẹt, máy huỷ kẹt, máy hết hạn quá
+#    1 ngày, đổi Android quá 1 giờ → huỷ lệnh, khách bấm 🔁 Thử lại. AUTO_CLEAN=0 = máy chủ này không gọi.
+#  · 💤 máy NGỦ (phonectl idle: 18 giờ liền không ai mở + không có việc) mà tổng thời gian không ai dùng ≥ settings.data.idle_purge_days (mặc
+#    định 8 ngày, 0 = tắt) → cp_purge_idle → máy chủ xoá vĩnh viễn, KHÔNG hoàn tiền. Máy treo game / có người xem không bao giờ ngủ → không bị xoá.
+#    Thời gian máy chủ TẮT không tính (khách không mở được). Máy chủ ghi cloud_phones.idle_since → thẻ máy của khách báo trước.
+CLEAN_ON = CFG.get("AUTO_CLEAN", "1") != "0"
+CLOCK_FIX = CFG.get("CLOCK_FIX", "1") != "0"
+IDLE_H_CFG = max(0.0, _f("IDLE_STOP_H", 18))
+ALIVE_F = os.path.join(HOME, "logs", "cpd_alive.json")
+DOWN_F = os.path.join(HOME, "logs", "cpd_down.json")
+_clean = {"next": 0.0, "idle_next": 0.0, "site": {}, "site_t": 0.0, "down": None, "alive_t": 0.0, "said": {}}
+
+def _site_data():
+    """settings.data (đọc 5 phút / lần)."""
+    if time.time() - _clean["site_t"] > 300:
+        try: _clean["site"] = ((sb("GET", "settings?id=eq.1&select=data") or [{}])[0].get("data") or {}); _clean["site_t"] = time.time()
+        except Exception: pass
+    return _clean["site"]
+def idle_purge_days():
+    v = _site_data().get("idle_purge_days")
+    try: return max(0.0, min(365.0, float(v))) if v not in (None, "") else 8.0
+    except (TypeError, ValueError): return 8.0
+
+def _down_load():
+    if _clean["down"] is None:
+        try: _clean["down"] = [x for x in json.load(open(DOWN_F)) if isinstance(x, list) and len(x) == 2]
+        except Exception: _clean["down"] = []
+    return _clean["down"]
+def alive_mark(start=False):
+    """Ghi 'máy chủ còn chạy' mỗi phút. Lúc bật: lần ghi trước cách quá 10 phút → khoảng đó máy chủ TẮT (khách không mở máy được) → không tính vào
+       thời gian 'không ai dùng' của máy ngủ."""
+    t = time.time()
+    if start:
+        try:
+            t0 = float(json.load(open(ALIVE_F)).get("t") or 0)
+            if 600 < t - t0 < 60 * 86400:
+                d = [x for x in _down_load() if t - x[1] < 45 * 86400] + [[t0, t]]
+                _clean["down"] = d[-200:]
+                os.makedirs(os.path.dirname(DOWN_F), exist_ok=True)
+                with open(DOWN_F, "w") as f: json.dump(_clean["down"], f)
+                print(f"[💤] máy chủ đã tắt {(t - t0) / 3600:.1f} giờ — khoảng đó không tính vào thời gian máy khách không dùng")
+        except Exception: pass
+    elif t - _clean["alive_t"] < 60: return
+    _clean["alive_t"] = t
+    try:
+        os.makedirs(os.path.dirname(ALIVE_F), exist_ok=True)
+        with open(ALIVE_F, "w") as f: json.dump({"t": t}, f)
+    except Exception: pass
+def _down_overlap(a, b):
+    """Số giây máy chủ TẮT nằm trong khoảng [a, b] (đồng hồ máy này)."""
+    return sum(max(0.0, min(b, y) - max(a, x)) for x, y in _down_load())
+
+def idle_purge():
+    """Ghi lúc máy bắt đầu không ai dùng (idle_since) lên web + xoá vĩnh viễn máy NGỦ quá idle_purge_days ngày (không hoàn tiền)."""
+    if time.time() < _clean["idle_next"]: return
+    _clean["idle_next"] = time.time() + 600
+    try: st = json.load(open(PHONES_JSON)).get("phones", [])
+    except Exception: return
+    byname = {p.get("name"): p for p in st}
+    rows = sb("GET", f"cloud_phones?node=eq.{urllib.parse.quote(NODE_ID, safe='')}&status=in.(active,expired)&select=id,name,container,status,idle_since") or []
+    t = time.time(); days = idle_purge_days(); items = []; gone = []
+    for r in rows:
+        p = byname.get(r.get("container") or "")
+        idle_s = None
+        if p and p.get("sleep") and p.get("hold"):
+            try:
+                a = float(p["sleep"]) - IDLE_H_CFG * 3600         # ngủ = đã IDLE_STOP_H giờ liền không ai mở → không dùng từ trước đó
+                idle_s = max(0.0, t - a - _down_overlap(a, t))
+            except (TypeError, ValueError): idle_s = None
+        want = None if idle_s is None else datetime.datetime.fromtimestamp(t - clock_off() - idle_s, datetime.timezone.utc)
+        have = None
+        try: have = parse_dt(r["idle_since"]) if r.get("idle_since") else None
+        except Exception: pass
+        if (want is None) != (have is None) or (want and have and abs((want - have).total_seconds()) > 600):
+            items.append({"id": r["id"], "idle_since": want.isoformat() if want else None})
+        if days > 0 and idle_s is not None and idle_s >= days * 86400 and r.get("status") == "active":
+            try:
+                if sb("POST", "rpc/cp_purge_idle", {"p_id": r["id"], "p_node": NODE_ID, "p_days": round(idle_s / 86400, 2)}) is True:
+                    gone.append(f"{r.get('name') or r.get('container')} ({idle_s / 86400:.0f} ngày)")
+                    print(f"[💤 xoá vĩnh viễn] {r.get('container')}: {idle_s / 86400:.1f} ngày không ai mở máy (≥ {days:g} ngày) → xoá, không hoàn tiền")
+            except urllib.error.HTTPError as e:
+                if e.code == 404: _clean["idle_next"] = time.time() + 1800; print("   (chưa có SQL v71 — chưa xoá máy không mở được)"); return
+                print("lỗi xoá máy không mở:", e)
+    if items:
+        try: sb("POST", "rpc/cp_idle_sync", {"p_node": NODE_ID, "p_rows": items[:400]})
+        except urllib.error.HTTPError as e:
+            if e.code != 404: print("lỗi ghi giờ máy ngủ:", e)
+        except Exception as e: print("lỗi ghi giờ máy ngủ:", e)
+    if gone:
+        notify(f"💤 <b>{NODE_ID}</b>: xoá vĩnh viễn {len(gone)} máy khách không mở quá {days:g} ngày (không hoàn tiền): " + ", ".join(gone[:12])
+               + (" …" if len(gone) > 12 else ""))
+
+CLEAN_LBL = (("old_live", "máy cũ đổi Android còn chạy song song → xoá"), ("old_forced", "máy cũ đổi Android xoá kẹt → ghi đã xoá"),
+             ("cancel_forced", "máy huỷ xoá kẹt → ghi đã xoá"), ("expired", "máy hết hạn quá 1 ngày → ghi đã xoá"),
+             ("released", "máy mới hết chờ máy cũ → tạo luôn"), ("switch_cancelled", "đổi Android quá 1 giờ → huỷ lệnh, khách bấm Thử lại"))
+def _bg_clean():
+    if CLEAN_ON and time.time() >= _clean["next"]:
+        _clean["next"] = time.time() + 280
+        try:
+            r = sb("POST", "rpc/cp_auto_clean", {})
+            if isinstance(r, dict) and int(r.get("total") or 0) > 0:
+                msg = " · ".join(f"{r[k]} {v}" for k, v in CLEAN_LBL if int(r.get(k) or 0) > 0)
+                print("[🧹 tự dọn] " + msg)
+                notify(f"🧹 <b>Tự dọn máy</b> ({NODE_ID} gọi): " + msg + ". Xem: admin → ĐT đám mây → 🧹 Sổ dọn máy.")
+        except urllib.error.HTTPError as e:
+            if e.code == 404: _clean["next"] = time.time() + 1800; print("   (chưa có hàm SQL cp_auto_clean — chạy SQL v71 trên Supabase để tự dọn máy kẹt)")
+            else: print("lỗi tự dọn máy kẹt:", e)
+        except Exception as e: print("lỗi tự dọn máy kẹt:", e)
+    if WIN and IDLE_ON:
+        try: idle_purge()
+        except Exception as e: print("lỗi xoá máy không mở:", e)
+    try: _clock_job()
+    except Exception as e: print("lỗi chỉnh giờ:", e)
+
+def _clock_job():
+    """Đồng hồ lệch ≥ 60 giây (đo theo giờ Supabase) → Windows: bật + ép đồng bộ giờ (w32tm). Vẫn lệch ≥ 120 giây (mạng chặn NTP) →
+       chỉnh giờ Windows theo Supabase (6 giờ / lần). Linux / CLOCK_FIX=0: chỉ báo (now() vẫn tự bù)."""
+    off = clock_off()
+    if abs(off) < 60 or len(_CLK["s"]) < 5: return
+    if not WIN or not CLOCK_FIX:
+        if time.time() - _CLK["said"] > 6 * 3600:
+            _CLK["said"] = time.time(); print(f"[🕒] đồng hồ máy chủ lệch {off:+.0f} giây so với giờ thật — đã tự bù khi tính giờ (chỉnh giờ máy cho đúng)")
+        return
+    if time.time() - _CLK["fix_t"] > 3600:
+        _CLK["fix_t"] = time.time()
+        for c in (["sc", "config", "w32time", "start=", "auto"], ["net", "start", "w32time"],
+                  ["w32tm", "/config", "/manualpeerlist:time.windows.com,0x9 time.google.com,0x9 pool.ntp.org,0x9", "/syncfromflags:manual", "/update"],
+                  ["w32tm", "/resync", "/force"]):
+            try: subprocess.run(c, capture_output=True, text=True, timeout=60)
+            except Exception: pass
+        print(f"[🕒] đồng hồ máy chủ lệch {off:+.0f} giây → đã bật đồng bộ giờ Windows (w32tm /resync), đo lại sau ít phút", flush=True)
+        _CLK["s"].clear(); _CLK["last"] = f"w32tm {off:+.0f}s"
+        return
+    if abs(off) >= 120 and time.time() - _CLK["set_t"] > 6 * 3600 and time.time() - _CLK["fix_t"] > 240:
+        _CLK["set_t"] = time.time()
+        try:
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                f"Set-Date -Adjust ([TimeSpan]::FromSeconds({-off:.1f})) | Out-Null"], capture_output=True, text=True, timeout=60)
+            ok = r.returncode == 0
+        except Exception: ok = False
+        _CLK["last"] = f"Set-Date {off:+.0f}s " + ("ok" if ok else "lỗi")
+        print(f"[🕒] w32tm không sửa được (mạng chặn giờ NTP?) — " + (f"đã chỉnh giờ Windows {-off:+.0f} giây theo giờ Supabase" if ok
+              else "chỉnh giờ Windows lỗi (cần quyền admin) — vẫn tự bù khi tính giờ"), flush=True)
+        notify(f"🕒 <b>{NODE_ID}</b>: đồng hồ máy chủ lệch {off:+.0f} giây — " + ("đã tự chỉnh giờ Windows theo giờ Supabase." if ok else
+               "chưa chỉnh được giờ Windows (vẫn tự bù khi tính giờ). Vào máy chủ chỉnh giờ / bật đồng bộ giờ."))
+        if ok: _CLK["s"].clear(); _CLK["off"] = 0.0
 
 def _bg_apps():
     try:
@@ -1272,7 +1498,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "28/11e"
+CPD_VER = "28/11f"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1731,6 +1957,12 @@ def heartbeat():
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
     metrics["move"] = 1 if (MV_ON and mv_support()) else 0           # 27/11n: web chỉ cho chọn máy chủ đích đã có phần chuyển máy
+    try:                                                # 28/11f: đồng hồ lệch (đã tự bù) · bản Windows (< 18362 = không có WGC → dễ lag) · điểm lag
+        metrics["clock_off_s"] = round(clock_off()); metrics["lag_pen"] = lag_pen()
+        if _CLK.get("last"): metrics["clock_fix"] = _CLK["last"]
+        b = win_build()
+        if b: metrics["win_build"] = b; metrics["wgc"] = b >= WGC_MIN_BUILD
+    except Exception: pass
     try: metrics["host"] = str(os.environ.get("COMPUTERNAME") or socket.gethostname() or "")[:64]   # 24/11: tên máy → web nối dòng máy chủ với "điều khiển từ xa" (agent CloudBlue PC)
     except Exception: pass
     try:                                                # 28/11c: 🤖 đầy ≥ ngưỡng → tự Ngừng nhận máy · giảm ≤ ngưỡng − 20% → tự Nhận máy lại
@@ -2721,7 +2953,7 @@ def _mv_loop():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 28/11e chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
+    print(f"cloudphoned bản 28/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
           + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else "")
           + " Khách đổi máy chủ (SQL v67) → máy mới không tạo lại ở máy chủ cũ."
           + (f" Đơn mới / đổi Android → máy chủ trống nhất nhận (nhường {PREFER_S:g} giây)." if PREFER_S > 0 else ""))
@@ -2758,6 +2990,10 @@ if __name__ == "__main__":
         threading.Thread(target=_real_loop, daemon=True).start()   # 28/11e: 📱 máy thật cắm USB — báo máy đang cắm, pin, lần thấy
         print("📱 Máy thật (BlueReal, SQL v70): BẬT — điện thoại cắm USB (bật Gỡ lỗi USB) tự hiện ở admin › 📱 Máy thật"
               + ("" if REAL_WIPE else " · TỰ DỌN MÁY: TẮT (REAL_WIPE=0)"))
+    alive_mark(start=True)                                     # 28/11f: máy chủ vừa tắt bao lâu → không tính vào thời gian máy khách không dùng
+    print("🧹 Tự dọn máy kẹt (28/11f, SQL v71): " + ("BẬT — ~5 phút / lần" if CLEAN_ON else "TẮT (AUTO_CLEAN=0)")
+          + (f" · 💤 máy không ai mở quá N ngày (admin đặt, mặc định 8) → xoá vĩnh viễn, không hoàn tiền" if WIN and IDLE_ON else "")
+          + " · 🕒 đồng hồ lệch: tự bù" + (" + tự chỉnh giờ Windows" if WIN and CLOCK_FIX else ""))
     if MV_ON:
         threading.Thread(target=_mv_loop, daemon=True).start()     # 27/11n: 🚚 chuyển máy khách sang máy chủ khác (giữ dữ liệu)
         print(f"🚚 Chuyển máy sang máy chủ khác (27/11n): BẬT — chuyển đi {MV_PAR} máy / nhận {MV_IN_PAR} máy cùng lúc"
@@ -2797,6 +3033,9 @@ if __name__ == "__main__":
             bg_job("dondep", _bg_dondep)    #   máy chủ tắt được xoá ngay) rồi ~10 phút / lần (trước 30 phút): xoá hẳn máy web đã huỷ còn sót
         if WIN and FOLLOW_ON and n % 20 == 17:   # 23/11f · ~5 phút: máy chủ khác đã chạy ổn bản mới → tự cập nhật theo (luồng riêng)
             bg_job("follow", _bg_follow)
+        if n % 20 == 9:                     # 28/11f · ~5 phút: 🧹 tự dọn máy kẹt (SQL v71) + 💤 máy không mở N ngày + 🕒 đồng hồ lệch
+            bg_job("clean", _bg_clean)
+        alive_mark()                        # 28/11f: mốc "máy chủ còn chạy" (máy chủ tắt bao lâu thì không tính vào thời gian máy không dùng)
         if n % 20 == 12:                    # ~5 phút: máy nào chưa root → tự root (chạy nền, không chặn việc nhận đơn)
             try:
                 if _rootjob[0] is None or _rootjob[0].poll() is not None:
