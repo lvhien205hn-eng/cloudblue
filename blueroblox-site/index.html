@@ -9819,6 +9819,7 @@ function nodeTune(s) {
    chọn nhiều máy chủ rồi chỉnh cùng lúc (nodeBulk). Trang tự vẽ lại 15 giây / lần → ô đã tick (NSEL) + ô đang mở (NOPEN) phải nhớ ở ngoài. */
 const NSEL = new Set(), NOPEN = new Set(), NJOB = new Map();          // NJOB: mã máy chủ → { st: "run" | "ok" | "err", msg, at } — việc "chỉnh nhiều máy" vừa làm
 let NBULK_OPEN = false, NBULK_BUSY = false;
+const PURGE_IDLE_D = 7;                                               // 28/11g: 🧹 dọn sạch + xoá máy khách bỏ không từ bấy nhiêu ngày (nodePurgeIdle)
 function nodeJobRow(j) { return `<div class="njob" style="color:${j.st === "err" ? "var(--bad)" : j.st === "ok" ? "var(--ok)" : "var(--warn, #ffd666)"}">${esc(j.msg)}</div>`; }
 /* 24/11 · MÁY CHỦ cài bằng ISO máy chủ (SQL v53: pc_machines.srv) có phần mềm CloudBlue PC → admin vào thẳng màn hình Windows (play.html?pc=).
    Nối máy đó với dòng máy chủ: cùng tên máy Windows (cloudphoned báo metrics.host · agent báo info.host); máy chủ chưa báo tên máy → cùng SỐ winN
@@ -10050,13 +10051,14 @@ function nodeBulkBar() {
         <button class="btn ghost sm" type="button" data-nbulk="hide"${dis}>🙈 Ẩn cửa sổ giả lập</button>
         <button class="btn ghost sm" type="button" data-nbulk="wallpaper"${dis}>🖼 Ảnh nền cho máy</button>
         <button class="btn danger sm" type="button" data-nbulk="restart"${dis} title="Khởi động lại Windows của các máy chủ đã chọn: tắt êm máy khách → khởi động lại → tự bật lại máy khách">⚡ Khởi động lại máy chủ</button>
-        <span class="hint">Kết quả hiện ngay dưới tên từng máy chủ. Đổi tên · Tắt máy chủ · Làm mới máy khách · Dọn giả lập · Xoá sạch máy: làm từng máy trong ⚙ Cài đặt của máy đó.</span>
+        <button class="btn danger sm" type="button" data-nbulk="purge"${dis} title="Xoá vĩnh viễn máy khách tắt / không ai mở từ ${PURGE_IDLE_D} ngày (không hoàn tiền) + dọn giả lập thừa trên các máy chủ đã chọn — hiện danh sách, gõ XOA mới làm">🧹 Dọn sạch + xoá máy bỏ không ≥ ${PURGE_IDLE_D} ngày</button>
+        <span class="hint">Kết quả hiện ngay dưới tên từng máy chủ. Đổi tên · Tắt máy chủ · Làm mới máy khách · Xoá sạch MỌI máy: làm từng máy trong ⚙ Cài đặt của máy đó.</span>
       </div>`
       : `<span class="hint" style="margin:0">Tick ô ở đầu mỗi máy chủ để chỉnh nhiều máy cùng lúc.</span>`);
   const a = $("nbulk-all"); if (a) a.indeterminate = k > 0 && !all;
 }
 const NBULK_NAME = { pause: "Ngừng nhận máy", resume: "Nhận máy lại", hard: "Ngừng hẳn", update: "Cập nhật máy chủ", optimize: "Tối ưu Windows", hide: "Ẩn cửa sổ giả lập",
-  wallpaper: "Đặt ảnh nền cho máy", restart: "Khởi động lại máy chủ" };
+  wallpaper: "Đặt ảnh nền cho máy", restart: "Khởi động lại máy chủ", purge: "Dọn sạch + xoá máy bỏ không" };
 function nodeJobSet(id, st, msg) { NJOB.set(id, { st, msg: String(msg).slice(0, 300), at: Date.now() }); }
 async function nodeApiJob(base, body, onMsg) {           // 1 việc ở máy chủ (như nmgJob) nhưng không đụng tới hộp 🛠 Quản lý
   const j = await cpapiCall("admin/node", { method: "POST", json: body, base }); const t0 = Date.now();
@@ -10071,6 +10073,7 @@ async function nodeApiJob(base, body, onMsg) {           // 1 việc ở máy ch
 }
 /* làm 1 việc cho MỌI máy chủ đang tick. Chỉ gồm việc an toàn khi làm hàng loạt; việc xoá dữ liệu / tắt hẳn máy chủ vẫn làm từng máy. */
 async function nodeBulk(act) {
+  if (act === "purge") return nodePurgeIdle();
   const name = NBULK_NAME[act]; if (!name || NBULK_BUSY) return;
   const list = NODES.filter(n => NSEL.has(n.id)); if (!list.length) return;
   const flag = act === "pause" || act === "resume" || act === "hard", skip = [];
@@ -10122,6 +10125,99 @@ async function nodeBulk(act) {
   try { res = await Promise.all(todo.map(one)); } finally { NBULK_BUSY = false; }
   const okN = res.filter(Boolean).length;
   toast(okN === res.length ? `✅ ${name}: xong ${okN} máy chủ` : `⚠ ${name}: ${okN}/${res.length} máy chủ xong — xem dòng báo dưới tên từng máy`, okN === res.length ? 0 : 1);
+  try { await refreshNodes(); } catch (e) { renderNodes(); }
+}
+/* 28/11g · 🧹 DỌN SẠCH + XOÁ MÁY BỎ KHÔNG ≥ 7 NGÀY trên các máy chủ đang tick (bấm 1 lần thay vì làm từng máy chủ):
+   1. máy khách NGỦ (tắt, không ai mở) liền ≥ 7 ngày — cloud_phones.idle_since do máy chủ ghi, đã trừ lúc máy chủ tắt (như 💤 tự xoá máy không mở,
+      chỉ là bấm ngay) → admin_cloud_delete: xoá vĩnh viễn, không hoàn tiền. Máy treo game / có người xem không bao giờ "ngủ" nên không bị tính.
+      Giữ lại: máy thật, máy đang đổi Android / đang chờ máy thay, máy bị khoá, máy chờ cộng ngày gia hạn, máy của tài khoản admin.
+   2. mỗi máy chủ đang kết nối: 🧹 Dọn giả lập thừa (giả lập không thuộc danh sách CloudBlue — máy đang thuê, máy mẫu, máy dựng sẵn giữ nguyên).
+   Đang bảo trì: không làm (khách không mở máy được). Hiện danh sách máy sẽ xoá, phải gõ XOA. */
+function purgeAsk(list, rows, by, live) {
+  const now = Date.now(), lines = [];
+  let shown = 0;
+  for (const n of list) {
+    const a = by.get(n.id) || []; if (!a.length) continue;
+    lines.push(`${n.name}: ${a.length} máy`);
+    for (const p of a.slice(0, Math.max(0, 15 - shown))) {
+      const d = Math.floor((now - Date.parse(p.idle_since)) / 86400000), ms = p.expires_at ? Date.parse(p.expires_at) - now : 0;
+      lines.push(`  • ${p.name} — ${cpaUname(p.user_id) || "?"} · ${d} ngày không mở · ${ms > 0 ? "còn hạn " + Math.ceil(ms / 86400000) + " ngày" : "đã hết hạn"}`); shown++;
+    }
+  }
+  if (rows.length > shown) lines.push(`  … và ${rows.length - shown} máy khác`);
+  const off = list.filter(n => !live.includes(n));
+  return `🧹 DỌN SẠCH + XOÁ MÁY BỎ KHÔNG ≥ ${PURGE_IDLE_D} NGÀY — ${list.length} máy chủ đã chọn\n\n`
+    + (rows.length ? `1. XOÁ VĨNH VIỄN ${rows.length} máy khách tắt / không ai mở từ ${PURGE_IDLE_D} ngày trở lên (máy + dữ liệu, KHÔNG hoàn tiền):\n${lines.join("\n")}\n`
+                   : `1. Không có máy khách nào bỏ không từ ${PURGE_IDLE_D} ngày.\n`)
+    + `(Giữ lại: máy đang có người dùng, máy thật, máy đang đổi Android, máy bị khoá, máy chờ cộng ngày, máy của admin.)\n\n`
+    + (live.length ? `2. Dọn giả lập thừa (giả lập không thuộc danh sách CloudBlue) trên ${live.length} máy chủ đang kết nối.` : "2. Không có máy chủ nào đang kết nối để dọn giả lập thừa.")
+    + (off.length ? `\n   Bỏ qua: ${off.map(n => n.name).join(", ")} (mất kết nối / chưa biết địa chỉ — máy đã ghi xoá sẽ tự xoá khi máy chủ chạy lại).` : "")
+    + `\n\nGõ XOA để làm:`;
+}
+async function nodePurgeIdle() {
+  const name = NBULK_NAME.purge; if (NBULK_BUSY) return;
+  const list = NODES.filter(n => NSEL.has(n.id)); if (!list.length) return;
+  if ((CPpricing && CPpricing.maintenance) || (SITE && SITE.maint)) return toast("Đang bảo trì — khách không mở máy được nên chưa tính máy bỏ không. Tắt bảo trì rồi làm.", 1);
+  let rows;
+  try {
+    const cut = new Date(Date.now() - PURGE_IDLE_D * 86400000).toISOString();
+    const [r1, r2] = await Promise.all([
+      sb.from("cloud_phones").select("*").in("node", list.map(n => n.id)).in("status", ["active", "expired"]).lte("idle_since", cut),
+      sb.from("profiles").select("id").eq("role", "admin")]);
+    if (r1.error) throw r1.error;
+    if (r2.error) throw r2.error;
+    const adm = new Set((r2.data || []).map(x => x.id)), sel = new Set(list.map(n => n.id));
+    rows = (r1.data || []).filter(p => sel.has(p.node) && (p.status === "active" || p.status === "expired") && p.idle_since && Date.parse(p.idle_since) <= Date.parse(cut)
+      && !p.real_device && !p.switch_to && !cpLocked(p) && !(+p.pending_renew_days > 0) && !adm.has(p.user_id));
+    const busy = new Set();                                                     // máy đang được thay (đổi Android / làm mới chờ máy mới) → giữ
+    for (let i = 0; i < rows.length; i += 100) {
+      const ids = rows.slice(i, i + 100).map(p => p.id), idset = new Set(ids);
+      const r = await sb.from("cloud_phones").select("replaces,status").in("replaces", ids).in("status", ["pending", "creating"]);
+      if (r.error) throw r.error;
+      (r.data || []).forEach(x => { if (idset.has(x.replaces) && (x.status === "pending" || x.status === "creating")) busy.add(x.replaces); });
+    }
+    rows = rows.filter(p => !busy.has(p.id));
+  } catch (e) { return toast("Chưa đọc được danh sách máy khách: " + errMsg(e), 1); }
+  const by = new Map(list.map(n => [n.id, []])); rows.forEach(p => by.get(p.node).push(p));
+  const live = list.filter(n => nAge(n) <= 3 && nrbNodeBase(n));
+  if (!rows.length && !live.length) return toast(`Không có máy khách nào bỏ không từ ${PURGE_IDLE_D} ngày, và không có máy chủ nào đang kết nối để dọn giả lập thừa.`, 1);
+  const typed = prompt(purgeAsk(list, rows, by, live));
+  if ((typed || "").trim().toUpperCase() !== "XOA") return typed !== null && toast("Chưa xác nhận — không xoá gì.", 1);
+  NBULK_BUSY = true;
+  for (const n of list) nodeJobSet(n.id, "run", `⏳ ${name}…`);
+  renderNodes();
+  let delErr = "", del = 0;
+  try {
+    for (let i = 0; i < rows.length; i += 200) {
+      const { data, error } = await sb.rpc("admin_cloud_delete", { p_ids: rows.slice(i, i + 200).map(p => p.id) });
+      if (error) throw error;
+      del += +data || 0;
+    }
+  } catch (e) { delErr = errMsg(e); }
+  const one = async n => {
+    const k = by.get(n.id).length, bad = !!(delErr && k);
+    const pre = !k ? "không có máy bỏ không" : bad ? `chưa xoá ${k} máy bỏ không (${delErr})` : `🗑 xoá ${k} máy bỏ không ≥ ${PURGE_IDLE_D} ngày`;
+    if (!live.includes(n)) {
+      nodeJobSet(n.id, bad ? "err" : "ok", `${bad ? "❌" : "✅"} ${pre} · chưa dọn giả lập thừa (máy chủ mất kết nối${k && !bad ? " — máy đã ghi xoá tự xoá khi máy chủ chạy lại" : ""})`);
+      renderNodes(); return !bad;
+    }
+    try {
+      nodeJobSet(n.id, "run", `⏳ ${pre} · đang dọn giả lập thừa…`); renderNodes();
+      const r = await nodeApiJob(nrbNodeBase(n), { do: "cleanup", confirm: n.id }, t => { nodeJobSet(n.id, "run", `⏳ ${pre} · ${t}`); renderNodes(); });
+      const x = ((r && r.out) || "").match(/XOA_THUA /g), g = x ? x.length : 0;
+      nodeJobSet(n.id, bad ? "err" : "ok", `${bad ? "❌" : "✅"} ${pre} · dọn giả lập thừa: ${g ? "xoá " + g + " giả lập" : "không có giả lập thừa"}`);
+      return !bad;
+    } catch (e) {
+      nodeJobSet(n.id, "err", `${bad ? "❌" : "⚠"} ${pre} · dọn giả lập thừa chưa được: ${(e && e.message) || e}`); return false;
+    } finally { renderNodes(); }
+  };
+  let res = [];
+  try { res = await Promise.all(list.map(one)); } finally { NBULK_BUSY = false; }
+  const okN = res.filter(Boolean).length;
+  toast(delErr && rows.length ? `❌ Chưa xoá được máy bỏ không: ${delErr}`
+    : (rows.length ? `🧹 Đã ghi xoá ${del || rows.length} máy bỏ không ≥ ${PURGE_IDLE_D} ngày — máy chủ xoá trong ít phút.` : `Không có máy bỏ không ≥ ${PURGE_IDLE_D} ngày.`)
+      + (okN === res.length ? "" : ` ${res.length - okN} máy chủ chưa dọn xong giả lập thừa — xem dòng dưới tên máy chủ.`), delErr || okN !== res.length ? 1 : 0);
+  try { reloadCpa(); } catch (e) {}
   try { await refreshNodes(); } catch (e) { renderNodes(); }
 }
 async function refreshNodes() { await loadNodes(); renderNodes(); renderAlerts(); }
