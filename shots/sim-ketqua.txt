@@ -1,0 +1,6 @@
+OK  tests/lint_ps1.py: SOÁT .ps1/.cmd: ĐẠT
+OK  tests/lint.py: ✓ os/cb_stage.py (130 dòng)
+OK  tests/test_build.py: 70/70 đạt
+OK  tests/test_pe.py: 294/294 đạt
+OK  tests/test_stage.py: 209/209 đạt
+OK  manifest.json khớp các file

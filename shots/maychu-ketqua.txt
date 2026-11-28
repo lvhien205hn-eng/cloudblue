@@ -1,0 +1,90 @@
+﻿may chu check: DAT (82 OK, 0 XX)
+  ..  may chay thu: Microsoft Windows Server 2025 Datacenter 10.0.26100 ; PowerShell 5.1.26100.33822 ; thu muc lam viec D:\cbmc
+== 1. Cu phap may-chu-iso.ps1 + firstboot.ps1
+  OK  may-chu-iso.ps1 khong co loi cu phap
+  OK  firstboot.ps1 khong co loi cu phap
+== 2. Tung ham cua may-chu-iso.ps1
+  OK  nap duoc cac ham (-Lib khong chay phan than)
+  ..  ban may-chu-iso: 28.11f
+  OK  23.11n: ban cu goi lai bang '-Conf' khong gia tri -> ban moi VAN chay (ma 0) ; -Conf <tep> van doc duoc ; khong co -> rong
+  OK  Get-SelfArgs: cau hinh rong -> KHONG truyen -Conf ; co tep (ke ca co dau cach) -> truyen dung ; ma thoat cua ban moi duoc giu
+  OK  Get-NodeNum: win9 / 9 / WIN 09 / may chu 12 / win-12 / Server_7 / 99
+  OK  Get-NodeNum: ten khong phai so may chu -> 0
+  OK  Get-SeedNum: ten nguoi cai go (label) -> so may chu; ten tu sinh win-XXXXXX thi KHONG lay; khong co tep -> 0
+  OK  Get-NameNum (23.11m): so trong ten go luc cai: 54 cp / CP54 / may 7 hn / win54 / 054 -> 54,54,7,54,54 ; CB-102 / abc / rong / 00 -> 0
+  OK  Get-SeedNum (23.11m): label '54 cp' -> 54 ; da mat label (agent bao len web roi xoa) nhung ten Windows 54CP -> 54 ; 'may moi' + ten tu sinh -> 0
+  OK  do gia lap o O DIA KHONG TON TAI (may chu 1 o cung khong co o D:) -> tra rong, KHONG nem loi
+  OK  gia lap o thu muc co that (dung sau 1 o khong ton tai): Find-Ld / Find-Mumu tra dung thu muc, Get-MumuCli tra tep lenh, Find-Emu uu tien LDPlayer
+  OK  Get-FreeNum: so ke tiep = so lon nhat + 1 (khong dung lai so cu); chua co may nao -> 2
+  OK  Test-NodeLive: win8 vua bao ve web -> dang chay; win5 bao tu hom qua -> khong; win9 chua co -> khong
+  OK  Read-KV: tep co BOM, dong ghi chu, gia tri co dau =, khoa trung lay dong cuoi
+  OK  Set-KV: thay dung dong (bo dong trung), them khoa moi, giu gia tri co ky tu la, tep khong con BOM
+  OK  Say: che khoa bi mat khoi man hinh + nhat ky
+  OK  Test-Ps1 + Test-Marker: tep script that -> dat; tep rac -> khong
+  OK  Test-Ps1: script loi cu phap -> khong dat (ban tai ve hong thi khong thay ban dang chay)
+  OK  Find-Payload: C:\blue\iso truoc, roi thu muc bo cai; khong co -> rong
+  OK  Read-LineWait: khong ai go (may chay tu dong) -> tra rong sau thoi gian cho, khong treo
+  OK  Restart-Now khi kiem thu: ghi so lan vao so, KHONG hen khoi dong lai may
+  OK  Restart-Now: da khoi dong lai 4 lan -> thoi, de luong cai di tiep
+  OK  Get-SetupKind: nhan bo cai dong goi bang Inno Setup / NSIS theo dau trong tep; tep la / khong co tep -> rong
+  OK  Get-SetupArgs: Inno -> /VERYSILENT ..., NSIS -> /S (ke ca ban LDPlayer dong goi lai); khong ro: LDPlayer chinh hang -silence, MuMu /S
+== 3. Supabase + Cloudflare (may chu gia fake_cf.py)
+  OK  may chu gia chay duoc
+  OK  Get-NodeRows: khoa dung -> 3 may chu; khoa sai -> ok = false, ma 401 (khong nem loi)
+  OK  danh sach that: win8 dang chay, win5 khong, so ke tiep 9
+  OK  Invoke-Api: may chu khong toi duoc -> ok = false, khong nem loi
+  OK  Python: doc danh sach may chu (3 may) ; khoa sai -> 401 ; khong toi duoc -> ma 0, khong nem loi
+  OK  Python: POST kem ma + noi dung JSON toi Cloudflare (gia) -> tao ban ghi py9
+  OK  Python: Get-Url tai tep khi PowerShell loi (vd tu cap nhat script)
+  OK  Python: khoa khong nam tren dia (tep cbhttp.py) / bien moi truong da xoa sau khi goi
+  OK  PowerShell goi duoc thi van dung PowerShell nhu cu
+  OK  Select-NodeNum: '54 cp' -> win54 ; 'may moi' -> so ke tiep win9 ; 'May-01' (win1 = may chu chinh) -> win9 ; KHONG hoi / khong cho (3 lan < 15 giay)
+  OK  windows/setup.ps1 khong co loi cu phap
+  OK  setup.ps1 PyGet: tai duoc bang Python ; dia chi hong -> false, khong nem loi
+  OK  New-CfTunnel: tao duong ham phone9, tra ma chay (eyJ...) va dua ma vao danh sach che
+  OK  New-CfTunnel: 2 dia chi phone9 -> 8010, stream9 -> 8020 + dong chan cuoi http_status:404
+  OK  New-CfTunnel: 2 ban ghi CNAME (may cam) tro ve <ma duong ham>.cfargotunnel.com
+  OK  chay lai (cai lai may chu cung ten): dung lai duong ham cu, khong tao trung, ban ghi dung roi thi khong sua
+  OK  ten stream9 dang la ban ghi kieu khac (A) -> sua thanh CNAME cua duong ham, khong tao trung
+  OK  ma Cloudflare khong co quyen duong ham -> bao ro can quyen Cloudflare Tunnel, khong nem loi
+  OK  ten mien khong thuoc ma / ma sai -> bao loi, khong nem loi
+  OK  Get-RemoteState: may khong co phan mem CloudBlue PC -> noagent ; khong doc duoc seed.json -> err (KHONG ket luan la ISO cu) ; ISO cu khong kem ma -> none
+  OK  Get-RemoteState: ISO co ma may chu -> khong khoa: nokey ; khoa sai: err ; web chua chay SQL v53: nosql ; binh thuong: wait
+  OK  ... web chi nhan DAU BAM cua ma (sha256), khong nhan ma ; ma duoc dua vao danh sach che
+  OK  Get-RemoteState: phan mem da dang ky xong (identity.json co ma rieng) -> on, khong goi web nua
+  OK  Get-TextSha: dung sha256 chuan
+== 4. Ca luong cai may chu (Main) voi bo cai gia lap gia, setup.ps1 gia, phonectl gia
+  OK  dung duoc bo cai gia lap gia + mumu-cli gia (.exe)
+  OK  Update-Phonectl (23.11o): phonectl cu -> lay ban moi (giu ban cu .truoc-mktpl) ; da moi -> khong tai lai ; ban tai ve loi cu phap -> giu ban dang co
+  OK  Get-WantTpl: chua khai ANDROIDS -> tpl_a12,tpl_a15 ; khai '12, 15 ,x' -> tpl_a12,tpl_a15
+  OK  A: chay het luong, ma tra ve 0 (XONG)
+  OK  A: ten may chu lay tu ten go luc cai Windows (win9) -> setup.ps1 nhan -Node win9 -PubHost phone9.example.test
+  OK  A: chay bo cai gia lap kem trong ISO kieu im lang (/S), thay gia lap thi lam tiep, dong cua so gia lap
+  OK  A: khoa Supabase tu ISO vao cloudphone.conf (thay dong mau), kem ma Cloudflare DNS + dong y Let's Encrypt
+  OK  A: may mau tpl_a15 nhap tu tep kem trong ISO (import -> rename), khong con thieu may mau
+  OK  A (23.11o): ISO khong kem tep tpl_a12 -> TU TAO bang lenh (phonectl mktpl 12): tpl_a12 = Android 12, du 2 may mau, khong tao trung tpl_a15
+  OK  A: tu tao duong ham phone9 + 2 dia chi + 2 ban ghi, cai dich vu cloudflared bang ma chay
+  OK  A: tac vu BlueRoblox (bang CloudBlue tu mo quyen Admin khi dang nhap) da dung
+  OK  A: mo bang, cho dich vu len, chay duong thang web + lenh A (ban gia)
+  OK  A: thay may chu tren web -> tom tat ghi DA LEN WEB + cong modem TCP 8197 (tep CloudBlue-may-chu.txt tren Desktop)
+  OK  A: xong thi xoa khoa bi mat khoi tep cau hinh ISO (ca ban trong thu muc bo cai); so ghi done
+  OK  A: nhat ky KHONG chua khoa Supabase / ma Cloudflare / ma chay duong ham
+  OK  A (23.11k): ISO co ma may chu -> GIU 2 tac vu cua phan mem CloudBlue PC (de dieu khien may chu tu xa), bao dau bam cua ma len web, nhat ky khong lo ma
+  OK  B: may KHONG phai cai tu ISO may chu (khong co role) -> khong dung toi tac vu cua phan mem may PC
+  OK  B: win8 dang chay o may khac -> KHONG dung trung; khong ai go -> tu lay so ke tiep win9; gia lap da co thi khong cai lai
+  OK  C: go 12 -> win12; setup bao KHOI DONG LAI -> goi khoi dong lai 1 lan, ma tra ve 3, chua dung toi Cloudflare
+  OK  C: setup.ps1 khong nhan ra MuMu -> tu ghi cau hinh nhu may-moi.ps1 (win12, phone12 / stream12, cong 8200, thu muc MuMu)
+  OK  E: ISO may chu ban cu (khong kem ma may chu) -> noi ro khong co dieu khien tu xa, cai xong tat 2 tac vu cua phan mem may PC nhu truoc, khong bao gi len web
+  OK  E: go 5 ma web con 2 may khach dang thue o win5 (may chu do dang tat) -> KHONG dung ten do; khong ai go -> so ke tiep win9
+  OK  E (23.11o): MuMu khong tao duoc may mau tpl_a12 -> bao ro con thieu + cach tao lai (phonectl mktpl all), van cai xong
+  OK  Get-NodePhones: dem may khach dang thue theo may chu (khong tinh may da huy); khoa sai -> -1
+  OK  D: khong co khoa -> khong biet so ke tiep -> KHONG tu chon, hoi lai cho toi khi co nguoi go (go 7 -> win7)
+  OK  D: ISO khong kem khoa Supabase / ma Cloudflare -> noi ro viec phai lam tay trong bang CloudBlue, cho nguoi cai lam roi di tiep toi XONG
+== 5. firstboot.ps1 (lenh chay lan dau cua bo cai Windows): chep tep + dung tac vu tu chay quyen Admin
+  OK  firstboot.ps1 chay xong ma 0
+  OK  chep script + cau hinh + ten may nguoi cai go sang C:\blue\iso; tep lon (bo cai gia lap) KHONG chep
+  OK  tac vu 'CloudBlue cai may chu': quyen cao nhat, theo NHOM Administrators (khong gan ten may / ten tai khoan), 2 moc (luc dang nhap + 3 phut nua), goi may-chu-iso.ps1
+  OK  khoa Run cua may (duong tu chay thu 2, moi tai khoan): goi may-chu-iso.ps1 ; co nhat ky iso-firstboot.log
+  OK  Set-AutoStart: dat du 2 duong tu chay (khoa Run + tac vu nhom Administrators) ; -Remove go sach ca 2
+  OK  ten may nguoi cai go (win9) doc lai duoc tu ban chep
+  OK  ban chep seed.json sang C:\blue\iso KHONG mang ma may chu / ve dang ky (enroll_key, ticket) ; ban goc cua phan mem CloudBlue PC giu nguyen

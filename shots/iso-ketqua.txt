@@ -1,0 +1,141 @@
+﻿winpc check: DAT (103 OK, 0 XX)
+  ..  may chay thu: Microsoft Windows Server 2025 Datacenter 10.0.26100 ; PowerShell 5.1.26100.33822 ; thu muc lam viec D:\cbci (trong 146.9 GB)
+== 1. Cu phap tao-iso.ps1
+  OK  tao-iso.ps1 khong co loi cu phap
+  OK  nap duoc cac ham cua tao-iso.ps1
+  ..  ban tao-iso: 23.11m
+== 2. Tung ham
+  OK  Split-Paths: 1 duong dan co dau cach, trong nhay kep
+  OK  Split-Paths: 1 duong dan co dau cach, khong nhay
+  OK  Split-Paths: keo 2 file 1 luc
+  OK  Split-Paths: ten co ngoac vuong
+  OK  Split-Paths: dong trong
+  OK  Test-There: duong dan co ky tu la khong lam hong script
+  OK  Test-IsoPath: file .iso / thu muc duoc, file .exe khong
+  OK  Get-OsTag
+  OK  Test-NvidiaName
+  OK  Free-Name: ten sach + khong trung
+  OK  Run-Exe: chuong trinh khong co -> 9009, ma thoat that -> 3
+  ..  7-Zip tren may chay thu: True
+  OK  Test-DriverDrop: nhan file .exe / .zip / .cab va thu muc co .inf
+  OK  Test-DriverDrop: tu choi file .iso, file .inf le, thu muc khong co driver, o dia, duong dan khong co
+  OK  Get-DropName: file .exe thuong giu nguyen ten
+  ..  Get-DropText: lan folder  (thu muc, 1 file .inf)   |   466.77-notebook-win10-64bit-international-whql.exe  (2 MB)
+  OK  Expand-One .zip
+  OK  Expand-One .cab (expand.exe)
+  OK  Expand-One file .exe khong phai goi nen -> 0
+  OK  Expand-One .exe tu giai nen (7-Zip)
+  ..  KHONG co 7-Zip, chi tar.exe cua Windows: .exe tu giai nen (7z) -> 1 file .inf
+  ..  KHONG co 7-Zip, chi tar.exe cua Windows: file .7z -> 1 file .inf
+  OK  Expand-DriverPacks: goi .zip trong _img1 -> thu muc co .inf, xoa file goi
+  OK  Expand-DriverPacks: goi .cab trong drivers\1511
+  OK  Expand-DriverPacks: goi hong trong _img1 -> bo ra + ghi chu
+  OK  Expand-DriverPacks: goi VGA NVIDIA de nguyen
+  OK  Expand-DriverPacks: goi .exe tu giai nen trong _img1
+  ..  oscdimg lan 1: tai tu msdl.microsoft.com/688CABB065000, 143360 byte, ma kiem 2000160b2c504469 KHOP ban da ghim, chu ky so: NotSigned   ly do loi: 
+  OK  Find-Oscdimg: tai duoc tu may chu Microsoft, khop ma kiem da ghim
+  OK  Find-Oscdimg lan 2: dung lai ban da tai
+  ..  file khoi dong DVD tren may chay thu (boot.sdi / etfsboot.com / efisys.bin): True
+  OK  Test-FileLocked: file khong ai giu -> false ; file khong ton tai -> false ; chuoi rong -> false
+  OK  Get-FreeOut: file khong bi giu -> giu nguyen ten
+  OK  Test-FileLocked: file dang bi chuong trinh khac mo (nhu may ao gan ISO) -> true
+  OK  Get-FreeOut: file bi giu -> ten ben canh CloudBlue-PC-2.iso
+  OK  Get-FreeOut: ca -2.iso cung bi giu -> sang -3.iso
+  OK  Test-FileLocked: tha ra roi -> false
+  OK  Test-FileLocked: file chi-doc (khong ai giu) -> false (Remove-Item -Force van xoa duoc)
+  OK  ConvertTo-DirectUrl: link chia se Google Drive (2 kieu) -> link tai thang; link khac giu nguyen
+  OK  Test-Link: http / https / file la link; duong dan tep thi khong
+  OK  Get-LinkName: ten may chu bao (filename* truoc, roi filename) -> khong co thi lay tu link; Google Drive khong bao ten -> tai-ve.bin; bo ky tu cam
+  OK  Get-LinkFile: tai duoc tep .exe that, giu dung ten (co dau cach)
+  OK  Get-LinkFile: tep .exe gia / link tra ve trang web (Drive het luot) / link hong -> noi ro ly do, khong de lai tep rac, khong nem loi
+  OK  Get-DriveFormUrl: trang Google Drive hoi xac nhan tep lon -> link tai that (du id, export, confirm, uuid); form tro sang may chu la / trang het luot tai -> rong
+  OK  Get-LinkFile: lan dau nhan trang hoi xac nhan (tep lon tren Google Drive) -> tu theo form tai lai, ra dung tep that, khong de lai tep rac
+  OK  Resolve-Link: tai ve <thu muc lam viec>\dl\tai\<ma link>; goi lai cung link -> dung lai tep da tai (khong tai lai)
+  OK  Resolve-Link: link khong tai duoc -> DUNG (khong di tiep voi tep thieu)
+  OK  Get-JwtRole: doc muc role cua khoa eyJ...
+  OK  Test-SbKeyShape: nhan khoa service_role (eyJ... / sb_secret_...), tu choi khoa anon / publishable / chuoi ngan
+  OK  Test-SbService: may chu khong toi duoc -> rong (khong nem loi)
+  OK  may chu Supabase gia chay duoc
+  OK  Test-SbService: khoa sb_secret_ DUNG -> ok (yeu cau khong tu xung la trinh duyet; neu khong Supabase tra 401 du khoa dung)
+  OK  Test-SbService: khoa sai -> bad, kem cau tra loi cua may chu, KHONG lo khoa
+  OK  khong yeu cau nao bi may chu coi la trinh duyet
+  OK  Test-CfToken: ma du quyen -> zone + tunnel ; ma thieu quyen duong ham -> zone, khong tunnel
+  OK  Test-CfToken: ma khong thay ten mien -> noi ro KHONG THAY ten mien
+  OK  Test-CfToken: ma dung dang nhung Cloudflare khong nhan -> kem cau tra loi cua Cloudflare (HTTP 401 ... Invalid API Token), KHONG lo ma
+  OK  Test-CfToken: dan nham ma so (ID) / Global API Key / ma chay duong ham -> noi dung thu vua dan la gi
+  OK  Get-CfWhy: ky tu la / khong toi duoc Cloudflare / thieu quyen (403 kem ma loi cua Cloudflare)
+  OK  New-SrvKey: cbsv_ + 40 ky tu hex, moi lan 1 ma khac
+  OK  Get-TextSha: dung sha256 chuan
+  OK  Register-SrvKey: khoa dung -> ok ; web chi nhan DAU BAM (khong nhan ma), kem ghi chu ; yeu cau khong bi coi la trinh duyet
+  OK  Register-SrvKey: khoa Supabase sai -> bad, ly do KHONG lo khoa / ma
+  OK  web CHUA chay SQL v53 -> nosql ; Set-SrvRemote noi ro phai chay SQL v53, khong hoi (che do -KhongHoi), khong nem loi
+  OK  chay SQL xong goi lai -> Set-SrvRemote ok, web giu 2 dau bam (2 ma khac nhau)
+  OK  Set-SrvRemote: web day ma -> full ; khong toi duoc web -> chua ; khoa sai -> bad (deu khong nem loi)
+  OK  Save-McConf: luu ma hoa (tep khong chua khoa / ma may chu dang chu), doc lai du 5 muc
+  OK  Test-CfToken: khong goi duoc Cloudflare -> zone = false, co ly do, khong nem loi
+  OK  Get-EmuDrop: nhan bo cai MuMu / LDPlayer + tep may mau (12 / 15); tep la thi noi ro ly do
+  OK  Read-ConfFile: tep KHOA=gia tri (co BOM, ghi chu, gia tri co dau =)
+== 3. Chay ca tao-iso.ps1 voi 2 ISO Windows gia lap
+  ..  anh Windows dung de thu: C:\Recovery\WindowsRE\Winre.wim (718 MB) - Microsoft Windows Recovery Environment (amd64) 10.0.26100.33820 kien truc 9
+  OK  oscdimg dong duoc 2 ISO nguon (1 cai khoi dong 2 kieu BIOS + UEFI)
+  OK  chay toi khung TOM TAT, khong dung giua chung
+  ..  TOM TAT> tao-iso 23.11m - xong sau 0.9 phut
+  ..  TOM TAT> ISO goc: Win10 gia 1.iso -> Microsoft Windows Recovery Environment (amd64) [WindowsPE 10.0.26100.33820] ban so 1, 0.7 GB
+  ..  TOM TAT> ISO goc: Win10-gia-2.iso -> Microsoft Windows Recovery Environment (amd64) [WindowsPE 10.0.26100.33820] ban so 1, 0.7 GB
+  ..  TOM TAT> ANH w11-24h2 | Microsoft Windows Recovery Environment (amd64) | ban so 1 | 10.0.26100.33820 | 0.8 GB | MAC DINH
+  ..  TOM TAT> ANH w11-24h2-2 | Microsoft Windows Recovery Environment (amd64) | ban so 1 | 10.0.26100.33820 | 0.8 GB
+  ..  TOM TAT> CUU_HO 8 GB | khoa cai dat chung: auto | driver kem theo: 2 MB | anh nen: CloudBlue
+  ..  TOM TAT> KHACH tai khoan 'PC' | tai khoan THUONG, khong co quyen Admin - thu muc CloudBluePC + phan vung cuu ho khoa quyen
+  ..  TOM TAT> VGA NVIDIA 466.77-notebook-win10-64bit-international-whql.exe: tu cai o lan dang nhap dau, SAU KHI may co mang (chi ban w11-24h2-2)
+  ..  TOM TAT> DRIVER w11-24h2: 1 file .inf [card mang: 0 | khac: 1] - chi nap khi cai ban w11-24h2
+  ..  TOM TAT> DRIVER w11-24h2-2: 2 file .inf [card mang: 0 | khac: 2] - chi nap khi cai ban w11-24h2-2
+  ..  TOM TAT> Chen boot.wim (ban so 1): OK
+  ..  TOM TAT> Tu kiem: doc o dia = DAT ; chay thu bo cai = DAT
+  ..  TOM TAT> Ma dang ky: CO (tham so) - CHUA kiem duoc voi may chu
+  ..  TOM TAT> oscdimg: tai tu msdl.microsoft.com/688CABB065000, 143360 byte, ma kiem 2000160b2c504469 KHOP ban da ghim, chu ky so: NotSigned
+  ..  TOM TAT> ISO: D:\cbci\out\CloudBlue-PC-2.iso  (1.45 GB)
+  ..  TOM TAT> (!) File ISO cu dang bi chuong trinh khac giu (may ao dang gan file nay?): D:\cbci\out\CloudBlue-PC.iso  -> lan nay ghi ISO moi ra D:\cbci\out\CloudBlue-PC-2.iso . Nho gan DUNG file moi nay vao may ao.
+  ..  TOM TAT> (!) Goi driver bad.exe: khong lay ra duoc file .inf nao -> KHONG dua vao bo cai. Cach chac an: tren 1 may dang chay tot ban Windows do (da du driver), mo PowerShell (Admin) chay   dism /online /export-driver /destination:D:\drv   roi keo thu muc D:\drv vao buoc hoi driver.
+  ..  TOM TAT> (!) boot.wim goc da co san winpeshl.ini (ban ISO tuy bien) - da thay bang cua CloudBlue, ban cu luu thanh winpeshl.ini.goc.
+  OK  file ISO cu dang bi giu (may ao gan) -> script bao ngay tu dau + ghi ISO moi ra CloudBlue-PC-2.iso, khong dung giua chung
+  OK  co file ISO moi
+  OK  khung tom tat: ma dang ky tu tham so + dong oscdimg + goi hong bi bo
+  OK  Test-EnrollKey: may chu khong toi duoc -> tra rong (bo qua buoc kiem, khong nem loi)
+  OK  Test-EnrollKey voi may chu that + ma GIA: 'bad' / 'nokey' (may chu da co SQL v42) hoac rong (chua co) - khong bao gio 'ok'
+  ..  may chu tra loi ma gia: 'bad'
+  ..  ISO moi: nhan CLOUDBLUE_PC, he file UDF, 1.45 GB ; cac ban: w11-24h2, w11-24h2-2 ; ban bo cai 22.11f
+  OK  ISO moi co 2 ban Windows, ban thu 2 nam o cb\images
+  OK  driver rieng ISO thu 1 (thu muc co .inf) -> cb\drivers\<ban 1>
+  OK  driver rieng ISO thu 2 (goi .zip) -> cb\drivers\<ban 2>, da giai nen
+  OK  driver rieng ISO thu 2 (goi .exe tu giai nen) -> da giai nen
+  OK  goi VGA NVIDIA cua ISO thu 2 -> firstboot.d\<ban 2>; KHONG con file lenh 50-vga-nvidia.cmd (cb_provision tu cai sau khi may co mang)
+  OK  khong con thu muc _img, khong co goi hong trong ISO
+  OK  ma dang ky nam trong cb\enroll.key
+  OK  anh nen + file tra loi + CAI-DAT.cmd co trong ISO
+  OK  boot.wim trong ISO da duoc chen bo cai CloudBlue + winpeshl.ini
+== 3b. ISO MAY CHU CLOUD PHONE: tao-iso.ps1 -MayChu (tep cau hinh + bo cai gia lap gia + may mau gia)
+  OK  ISO may chu: chay toi khung TOM TAT, khong dung giua chung
+  OK  ISO may chu: tom tat ghi ro may chu + canh bao ISO chua khoa bi mat; KHONG in khoa ra man hinh; khong dung ma dang ky may PC (du co dua -MaDangKy)
+  OK  ISO may chu: buoc ke nhac go TEN MAY (win9 / 9)
+  OK  ISO may chu: ISO Windows + driver + bo cai gia lap dua bang LINK -> script tu tai ve thu muc lam viec roi dung nhu tep thuong
+  OK  ISO may chu: cb.json role = server, tai khoan giu quyen Admin, bo cai chi hoi ten may (khong hoi so may), ten tu sinh win-..., cho go ten 15 phut
+  OK  ISO may chu (23.11k): cb\enroll.key la MA MAY CHU tu sinh (cbsv_ + 40 hex) - KHONG phai ma dang ky may PC du co dua -MaDangKy ; seed.json cua bo cai thuong cung ma do
+  OK  ISO may chu: KHONG in ma may chu ra man hinh ; -KhongKiemMa -> noi ro CHUA bao ma len web (khong goi web that khi chay thu)
+  OK  ISO may chu: lenh chay lan dau 90-cloudblue-may-chu.ps1 + script cai may chu dung ban trong kho
+  OK  ISO may chu: may-chu.conf du khoa (ten mien, dia chi Supabase, khoa service_role, ma Cloudflare, dong y Let's Encrypt, gia lap)
+  OK  ISO may chu: bo cai gia lap + may mau nam trong cb\os\firstboot.d\maychu (khong kem tep nao khac)
+  OK  ISO may chu: van du bo cai Windows nhu ISO thuong (2 ban, file tra loi, CAI-DAT.cmd)
+  OK  ISO may chu: driver dua bang LINK (goi .zip) cho ban Windows thu 1 -> da giai nen vao cb\drivers\<ban 1>
+  OK  ISO may chu: tep kem khong phai bo cai gia lap / may mau -> dung som, noi ro
+  OK  ISO may chu khong kem khoa / bo cai (-KhongHoi): van dung duoc cay bo cai, ghi chu ro cac viec se phai lam tay
+== 4. Chay lai khong dua ma dang ky + cac kieu nhap sai
+  ..  lan 2 tai tu nhanh: appwin-2811f
+  ..  LAN 2> 26 file, ban 27.11b, khop ma kiem
+  OK  lan 2: tai phan mem tu GitHub, khop ma kiem manifest
+  OK  lan 2 khong dua ma -> dung lai ma lan truoc (luu ma hoa DPAPI)
+  OK  file luu ma KHONG chua ma dang ky dang chu thuong
+  OK  lan 2 (-KhongIso): khong dong ISO, cay bo cai van co ma
+  OK  -Them tro vao 1 file -> dung som, noi ro
+  OK  dua file .exe vao cho ISO -> dung som, noi ro
+  OK  -Driver sai so thu tu ISO -> dung som
+  ..  -ChiIso: bo qua buoc 5-8 (bao mat, chep tep, he dieu hanh, dieu khien tu xa)
