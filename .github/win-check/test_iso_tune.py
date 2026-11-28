@@ -265,7 +265,7 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 28/11d", sua.VER == "28/11d")
+ck("bản sua-tat-ca 28/11e", sua.VER == "28/11e")
 reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
 os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 fx = st.get("tune_fix") or {}
@@ -282,6 +282,7 @@ ck("… máy mới chạy 27/11j (sổ có tune.did, chưa có tune_fix) → gi�
 print("6. cloudphoned 27/11k · card kẹt xung nghỉ tính là ĐẦY")
 import ast
 CPD = open(os.path.join(ROOT, "cloudphoned.py"), encoding="utf-8").read()
+BSS = open(os.path.join(ROOT, "windows", "bluestream.py"), encoding="utf-8").read()
 mod = ast.parse(CPD); G = {}
 for node in mod.body:
     if isinstance(node, ast.FunctionDef) and node.name in ("gpu_stuck", "gpu_eff"):
@@ -293,13 +294,14 @@ ck("card vừa lên tải (xung chưa lên nhưng điện đã cao) → không k
 ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không kết luận kẹt",
    G["gpu_eff"](53.0, 1923.0, 1987.0, 71.0, 230.0) == 53.0 and G["gpu_stuck"](98.0, None, 1974.0) is False and G["gpu_stuck"](98.0, 139.0, 1974.0) is True
    and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
-ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11d",
+ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11e",
    'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
-   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11d"' in CPD
-   and "cloudphoned bản 28/11d chạy" in CPD)
-ck("sua-tat-ca 28/11d: dấu cloudphoned 28/11d + cpapi 27/11n (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11d", "cloudphoned") in sua.FILES
-   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11d" and ("cpapi.py", "cpapi.py", "cpapi bản 27/11n", "cpapi") in sua.FILES
-   and sua.MARK_RUN["cpapi"] == "cpapi bản 27/11n")
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11e"' in CPD
+   and "cloudphoned bản 28/11e chạy" in CPD)
+ck("sua-tat-ca 28/11e: dấu cloudphoned 28/11e + bluestream 28/11e + cpapi 28/11e (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11e", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11e" and ("cpapi.py", "cpapi.py", "cpapi bản 28/11e", "cpapi") in sua.FILES
+   and ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "28/11e"', "bluestream") in sua.FILES and sua.MARK_RUN["bluestream"] in BSS
+   and sua.MARK_RUN["cpapi"] == "cpapi bản 28/11e")
 ck("27/11l · gpus() gọi nvidia-smi qua smi_bin() (không còn gọi trần 'nvidia-smi' → win54 driver 466.77 hết 'không đọc được card')",
    '[smi_bin(), "--query-gpu=" + q' in CPD and 'subprocess.run(["nvidia-smi"' not in CPD and "NVSMI\\nvidia-smi.exe" in CPD and "DriverStore" in CPD)
 import shutil as _sh, time as _tm
@@ -512,6 +514,90 @@ G6["PREFER_S"] = 0.0
 ck("PREFER_S = 0 → tắt chia đều (như cũ)", G6["prefer_other"]({"id": "o2", "android": "12"}) is False)
 ck("claim gọi prefer_other ngay trước khi nhận đơn", CPD.index("if prefer_other(row): return False") > CPD.index("if age < load * 5: return False")
    and CPD.index("if prefer_other(row): return False") < CPD.index('got = sb("PATCH", f"cloud_phones?id=eq.{row[\'id\']}&node=is.null&status=eq.pending"'))
+
+# ============================================================== 28/11e · 📱 BlueReal — điện thoại THẬT cắm USB (SQL v70)
+print("28/11e · máy thật: đọc adb devices · giao máy · gia hạn · hết hạn → dọn máy, trả máy · nhận đơn không chuyển máy chủ")
+S7 = {"adb": [], "sb": [], "patch": [], "refund": [], "notify": [], "devices": "", "pk": "", "online": True}
+def _rtf(cmd, timeout):
+    S7["adb"].append(cmd)
+    if cmd[:2] == ["adb", "devices"]: return 0, S7["devices"], "", False
+    j = " ".join(cmd)
+    if "pm list packages -3" in j: return 0, S7["pk"], "", False
+    if " uninstall " in f" {j} ": return 0, "Success\n", "", False
+    if "dumpsys battery" in j: return 0, "  level: 77\n", "", False
+    return 0, "", "", False
+def _rsb(m, path, body=None, extra=None):
+    S7["sb"].append((m, path, body))
+    if m == "GET" and path.startswith("real_devices"):
+        return [{"id": "dev-1", "serial": "R58M10AAA", "status": "rented", "phone_id": "ph-1", "label": "S10 #1", "model_id": "s10"}]
+    if m == "PATCH" and path.startswith("cloud_phones"): return [{"id": "ph-1"}]
+    return None
+_NOW = _dt.datetime(2026, 11, 28, 12, 0, tzinfo=_dt.timezone(_dt.timedelta(hours=7)))
+G7 = {"re": re, "time": _tm, "datetime": _dt, "urllib": __import__("urllib.request").request.__class__ and __import__("urllib"), "NODE_ID": "box1",
+      "REAL_ON": True, "REAL_WIPE": True, "REAL_KEEP": {"vn.shop.keep"}, "REAL_DIRS": ("DCIM", "Download"), "GRACE_MIN": 30,
+      "_real": {"t": 0.0, "devs": {}, "bat": {}, "said": {}, "off": 0.0, "seen": {}, "seen_t": 0.0},
+      "_run_tf": _rtf, "sb": _rsb, "patch": lambda pid, f: S7["patch"].append((pid, f)), "refund": lambda row, msg: S7["refund"].append(msg),
+      "notify": lambda t: S7["notify"].append(t), "now": lambda: _NOW, "parse_dt": lambda x: _dt.datetime.fromisoformat(x),
+      "age_s": lambda row: row.get("_age", 0), "maint_state": lambda: {"on": False, "off_at": None}}
+import urllib.error as _ue; G7["urllib"] = __import__("urllib"); G7["urllib"].error = _ue
+for node in mod.body:
+    if isinstance(node, ast.FunctionDef) and node.name.startswith("real_"):
+        exec(compile(ast.Module(body=[node], type_ignores=[]), "cloudphoned.py", "exec"), G7)
+S7["devices"] = ("List of devices attached\n127.0.0.1:16384 device product:mumu model:MuMu transport_id:1\nemulator-5554 device\n"
+                 "R58M10AAA device usb:1-1 product:beyond1lte model:SM_G973F device:beyond1 transport_id:7\nR58M10ZZZ unauthorized usb:1-2 transport_id:8\n")
+L7 = G7["real_list"](fresh=True)
+ck("adb devices: bỏ máy ảo (127.0.0.1 / emulator-), giữ điện thoại thật + trạng thái chưa cho phép gỡ lỗi",
+   L7 == {"R58M10AAA": {"state": "device", "model": "SM_G973F"}, "R58M10ZZZ": {"state": "unauthorized", "model": ""}}, L7)
+G7["real_tick"]()
+up = [b for m, p_, b in S7["sb"] if m == "POST" and p_.startswith("real_seen")]
+ck("30 giây / lần: báo 2 máy đang cắm (real_seen, gộp trùng) + ghi pin 77% · lần thấy cho máy trong kho",
+   up and {r["serial"] for r in up[0]} == {"R58M10AAA", "R58M10ZZZ"} and any(r["battery"] == 77 for r in up[0])
+   and any(m == "PATCH" and p_.startswith("real_devices?id=eq.dev-1") and b["battery"] == 77 for m, p_, b in S7["sb"]), S7["sb"])
+ROW = {"id": "ph-1", "real_device": "dev-1", "days": 7, "status": "pending", "name": "Máy farm thật"}
+S7["sb"].clear(); S7["adb"].clear()
+G7["real_create"](dict(ROW))
+pat = [b for m, p_, b in S7["sb"] if m == "PATCH" and p_.startswith("cloud_phones?id=eq.ph-1&status=eq.pending")]
+ck("giao máy: đánh thức + giữ sáng khi sạc + mở khoá → đang chạy, hạn = lúc giao + 7 ngày, container real_dev-1",
+   pat and pat[0]["status"] == "active" and pat[0]["expires_at"] == (_NOW + _dt.timedelta(days=7)).isoformat() and pat[0]["container"] == "real_dev-1"
+   and any("stayon usb" in " ".join(c) for c in S7["adb"]) and any("dismiss-keyguard" in " ".join(c) for c in S7["adb"]) and S7["notify"], (pat, S7["adb"]))
+S7["devices"] = "List of devices attached\nR58M10AAA offline\n"; G7["_real"]["seen_t"] = 0
+S7["sb"].clear(); S7["refund"].clear()
+G7["real_create"](dict(ROW, _age=120))
+ck("máy mất kết nối (offline) mới 2 phút → chưa giao, chưa hoàn (chờ)", not [1 for m, p_, b in S7["sb"] if m == "PATCH"] and not S7["refund"])
+G7["_real"]["seen_t"] = 0
+G7["real_create"](dict(ROW, _age=700))
+ck("mất kết nối quá 10 phút → hoàn tiền + báo admin", S7["refund"] and "mất kết nối" in S7["refund"][0], S7["refund"])
+S7["patch"].clear()
+G7["real_renew"]({"id": "ph-1", "pending_renew_days": 3, "expires_at": (_NOW + _dt.timedelta(days=2)).isoformat()})
+G7["real_renew"]({"id": "ph-2", "pending_renew_days": 2, "expires_at": (_NOW - _dt.timedelta(minutes=10)).isoformat()})
+ck("gia hạn: cộng vào hạn còn lại · đã hết hạn (trong 30 phút chờ) → cộng từ bây giờ, chạy lại",
+   S7["patch"][0] == ("ph-1", {"pending_renew_days": 0, "expires_at": (_NOW + _dt.timedelta(days=5)).isoformat(), "status": "active", "error": None})
+   and S7["patch"][1][1]["expires_at"] == (_NOW + _dt.timedelta(days=2)).isoformat() and S7["patch"][1][1]["status"] == "active", S7["patch"])
+S7["patch"].clear()
+G7["real_expiry"]({"id": "ph-1", "real_device": "dev-1", "status": "active", "expires_at": (_NOW - _dt.timedelta(minutes=5)).isoformat()})
+ck("quá hạn 5 phút → tạm dừng (expired), CHƯA dọn máy", S7["patch"] == [("ph-1", {"status": "expired"})], S7["patch"])
+S7["patch"].clear(); S7["adb"].clear(); S7["notify"].clear()
+S7["devices"] = "List of devices attached\nR58M10AAA device\n"; G7["_real"]["seen_t"] = 0
+S7["pk"] = "package:com.roblox.client\npackage:vn.shop.keep\npackage:com.zing.zalo\n"
+G7["real_expiry"]({"id": "ph-1", "real_device": "dev-1", "status": "expired", "name": "Máy farm thật", "expires_at": (_NOW - _dt.timedelta(minutes=31)).isoformat()})
+cmds = [" ".join(c) for c in S7["adb"]]
+ck("quá 30 phút → gỡ app khách cài (giữ app trong REAL_KEEP) + xoá ảnh / file + xoá dữ liệu trình duyệt → huỷ đơn (web trả máy về Cần reset)",
+   any(c.endswith("uninstall com.roblox.client") for c in cmds) and any(c.endswith("uninstall com.zing.zalo") for c in cmds)
+   and not any("uninstall vn.shop.keep" in c for c in cmds) and any("rm -rf /sdcard/DCIM/* /sdcard/Download/*" in c for c in cmds)
+   and any("pm clear com.android.chrome" in c for c in cmds) and S7["patch"] and S7["patch"][-1][1]["status"] == "cancelled"
+   and "đã gỡ 2 app" in S7["notify"][-1], (cmds, S7["patch"], S7["notify"]))
+G7["REAL_WIPE"] = False; S7["adb"].clear(); S7["patch"].clear()
+G7["real_finish"]({"id": "ph-1", "real_device": "dev-1", "expires_at": _NOW.isoformat()}, "x")
+ck("REAL_WIPE=0 → không tự dọn, vẫn trả máy", not any("uninstall" in " ".join(c) for c in S7["adb"]) and S7["patch"][-1][1]["status"] == "cancelled")
+ck("claim: đơn máy thật ghi sẵn máy chủ này → nhận luôn, KHÔNG chuyển máy chủ (handover) · REAL=0 → không nhận",
+   'if row.get("real_device"): return REAL_ON' in CPD and CPD.index('if row.get("real_device"): return REAL_ON') < CPD.index("return not handover(row)"))
+ck("tạo / huỷ / gia hạn / nâng cấp / hết hạn: nhánh máy thật đứng đầu mỗi hàm",
+   all(x in CPD for x in ('if row.get("real_device"): return real_create(row)', 'if row.get("real_device"): return real_renew(row)',
+                          'if row.get("real_device"): return real_expiry(row)', 'if row.get("real_device"): return real_finish(row,')))
+ck("bluestream 28/11e: đơn máy thật → đọc số máy ở real_devices (đúng máy chủ) · luôn lấy hình thẳng từ Android · mất kết nối báo rõ, không bật giả lập",
+   'if p.get("real_device"):' in BSS and 'self.serial = phone.get("serial") or f"127.0.0.1:{phone[\'port\']}"' in BSS
+   and 'self.from_android = bool(phone.get("real"))' in BSS and "Máy thật đang mất kết nối với máy chủ" in BSS and 'BS_SUB = "28/11e"' in BSS
+   and "select={cols},real_device" in BSS and "_REALCOL" in BSS)
 
 print("%d/%d dat" % (OK[0], OK[1]))
 sys.exit(0 if OK[0] == OK[1] else 1)
