@@ -6589,6 +6589,8 @@ async function loadAdmin() {
   renderCust(); renderTx(); renderOrd(); renderVps(); try { renderCpaTbl(); } catch (e) {}
 }
 const uname = id => { const u = ADM.users.find(x => x.id === id) || CPA_U.get(id); return u && u.username ? u.username : "?"; };
+const uIsAdm = id => { const u = ADM.users.find(x => x.id === id) || CPA_U.get(id); return !!(u && u.role === "admin"); };     // SQL v67: đơn admin = mua thử, không tính doanh thu
+const ADM_TEST_TAG = ` <span class="pill" title="Tài khoản admin mua thử — không tính vào doanh thu (SQL v67)">🧪 admin thử</span>`;
 function renderTable() {
   try { hmLoad(); } catch (e) {}
   const sp = P.slice().sort((a, b) => a.sort - b.sort);
@@ -6626,7 +6628,7 @@ function renderTx() {
     : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">Chưa có lệnh nạp nào.</td></tr>`;
 }
 function renderOrd() {
-  $("otbl").innerHTML = ADM.orders.length ? ADM.orders.map(o => `<tr${o.status === "pending" ? ' style="background:rgba(201,215,238,.06)"' : ""}><td>${ago(o.created_at)}</td><td>${esc(uname(o.user_id))}</td><td>${esc(o.product_name)}</td><td class="num">${o.qty}</td><td class="num">${vnd(o.total)}</td>
+  $("otbl").innerHTML = ADM.orders.length ? ADM.orders.map(o => `<tr${o.status === "pending" ? ' style="background:rgba(201,215,238,.06)"' : ""}><td>${ago(o.created_at)}</td><td>${esc(uname(o.user_id))}${uIsAdm(o.user_id) ? ADM_TEST_TAG : ""}</td><td>${esc(o.product_name)}</td><td class="num">${o.qty}</td><td class="num">${vnd(o.total)}</td>
     <td>${o.status === "pending" && VS.ord && VS.ord[o.id] != null ? `<span class="pill wt">⏳ Chờ hàng · thiếu ${VS.ord[o.id]}</span>` : ordPill(o.status)}</td><td style="text-align:right;white-space:nowrap">${o.status === "pending" ? `<button class="btn sm" data-deliver="${o.id}">Giao hàng</button>` : `<button class="btn ghost sm" data-view="${o.id}">Xem</button>`} <button class="btn danger sm" data-delord="${o.id}">Xoá</button></td></tr>`).join("")
     : `<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:24px">Chưa có đơn hàng nào.</td></tr>`;
   setBadge(ADM.orders.filter(o => o.status === "pending").length);
@@ -7754,7 +7756,7 @@ async function loadStats() {
   box.innerHTML = `<div class="hint">Đang tải số liệu…</div>`;
   const { data: s, error } = await sb.rpc("admin_stats");
   if (error || !s) { box.innerHTML = `<div class="hint">Chưa tải được (hãy chạy file stats.sql trong Supabase).</div>`; return; }
-  $("st-time").textContent = "Cập nhật: " + (s.generated_at || "");
+  $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính đơn tài khoản admin mua thử";
   const tile = (b, lab, hot) => `<div${hot ? ' style="border-color:rgba(233,192,99,.4)"' : ""}><b${hot ? ' style="color:var(--gold-hi)"' : ""}>${b}</b><span>${lab}</span></div>`;
   box.innerHTML = [
     tile(vnd(s.revenue_total), "Tổng doanh thu", 1),
@@ -8001,7 +8003,7 @@ async function cpLoadServers() {
   try { const { data, error } = await sb.rpc("cloudphone_servers"); if (!error && data && Array.isArray(data.servers)) CPservers = data; } catch (e) {}
   return CPservers;
 }
-const cpSrvName = id => (id && id !== "wait-old" && CPservers && CPservers.names && CPservers.names[id]) || "";
+const cpSrvName = id => (isAdmin() && id && id !== "wait-old" && CPservers && CPservers.names && CPservers.names[id]) || "";   // 28/11: khách không thấy tên máy chủ
 function cpSrvState(s) {         // [chữ, màu]: "ok" còn trống · "y" gần đầy · "r" đầy / không nhận máy mới
   if (!s.online) return [isAdmin() ? L("Mất kết nối", "Offline") : L("Bảo trì", "Maintenance"), "r"];
   if (s.paused) return [L("Ngừng nhận đơn · admin thử được", "Paused · admin can test"), s.full ? "r" : "y"];   // 16/11h (SQL v37, chỉ admin thấy)
@@ -8034,6 +8036,7 @@ function cpSrvChips() {          // vẽ lại theo bản Android + cấu hình 
   const f = $("cp-srv-f"), box = $("cp-srv"); if (!f || !box) return;
   const v = String(cpSel.android || "9"), adm = isAdmin();
   const list = CPservers ? CPservers.servers.filter(s => (s.androids || []).map(String).includes(v)) : [];
+  if (!adm) { f.hidden = true; box.innerHTML = ""; cpSel.node = ""; return; }   // 28/11 (user 11:10): khách KHÔNG thấy máy chủ — máy tự vào máy chủ trống nhất
   f.hidden = !list.length; if (!list.length) { cpSel.node = ""; return; }
   const lb = $("cp-srv-l"); if (lb) lb.textContent = adm ? L("Máy chủ (admin chọn)", "Server (admin)") : L("Máy chủ", "Servers");
   if (cpSel.node && !list.some(s => s.id === cpSel.node && cpSrvFits(s))) cpSel.node = "";
@@ -8235,7 +8238,7 @@ function renderCloud() {
       ${p.status === "error" && p.error ? `<div class="exp" style="color:var(--bad)">${esc(p.error)}</div>` : ""}
       ${p.replaces && ["pending", "creating"].includes(p.status) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${cpSwNote(p)}</div>` : ""}
       ${cpSwitchingTo(p) ? `<div class="exp" style="color:var(--gold-hi)">🤖 ${L("Đang đổi sang Android " + esc(cpSwitchingTo(p).android || "") + ": máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.", "Switching to Android " + esc(cpSwitchingTo(p).android || "") + ": the new phone is being created; this one keeps working until then.")}</div>` : ""}
-      ${["active", "cancelling"].includes(p.status) && p.error && /^(Đổi Android|Đã đổi sang Android)/.test(p.error) ? `<div class="exp" style="color:${p.status === "active" ? "var(--bad)" : "var(--muted)"}">${esc(p.error)}</div>` : ""}
+      ${["active", "cancelling"].includes(p.status) && p.error && /^(Đổi Android|Đổi máy chủ|Đã đổi sang Android)/.test(p.error) ? `<div class="exp" style="color:${p.status === "active" ? "var(--bad)" : "var(--muted)"}">${esc(p.error)}</div>` : ""}
       ${p.shared ? `<div class="shby">👥 ${L("Được chia sẻ bởi", "Shared by")} <b>${esc(p.owner_name || "?")}</b> · ${p.share_expires ? L("đến ", "until ") + new Date(p.share_expires).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : L("theo hạn máy", "until the phone expires")}</div>` : ""}
       <div class="acts">
         ${run ? (WEB_FIRST ? `<a class="btn sm" href="${cpWebLink(p.id)}">▶ ${L("Mở máy", "Open phone")}</a> <button class="btn ghost sm" type="button" data-cpopen="${esc(p.id)}">📲 ${L("Cách khác", "Other ways")}</button>`
@@ -8245,7 +8248,7 @@ function renderCloud() {
         ${canRenew ? `<button class="btn ghost sm" data-cprenew="${p.id}">🔄 Gia hạn</button>` : ""}
         ${canRenew && p.status === "active" ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
         ${canRenew && p.status === "active" && cpDiskShop(p) ? (+p.pending_disk > 0 ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nới bộ nhớ…", "Expanding…")}</button>` : `<button class="btn ghost sm" type="button" data-cpdisk="${p.id}">💾 ${L("Thêm bộ nhớ", "More storage")}</button>`) : ""}
-        ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android 9 / 12 / 15 — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to Android 9 / 12 / 15 — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android", "Switch Android")}</button>` : ""}
+        ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android khác, hoặc giữ Android này mà sang máy chủ khác — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to another Android, or keep this Android on another server — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android / máy chủ", "Switch Android / server")}</button>` : ""}
         ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" type="button" data-cpfps="${p.id}" title="${esc(L("Đổi số khung hình/giây của máy — không tạo máy mới, không mất dữ liệu, không tốn tiền", "Change this phone's frames per second — same phone, data kept, free"))}">🎞 ${L("Đổi FPS", "Change FPS")}</button>` : ""}
         ${lk ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&root=1" title="${esc(L("Bật / tắt root và chọn app được dùng lệnh su (vd Termux)", "Turn root on/off and pick which apps may use su (e.g. Termux)"))}">🔓 ${L("Root", "Root")}</a>` : ""}
         ${lk && !p.shared ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&proxy=1" title="${esc(L("Proxy riêng của máy: dán IP:Port:User:Pass — app trong máy đi Internet qua proxy của bạn", "This phone's own proxy: paste IP:Port:User:Pass — apps on the phone go online through your proxy"))}">🌐 Proxy</a>` : ""}
@@ -8560,23 +8563,25 @@ async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã
 /* ===== ĐỔI ANDROID (SQL v24): máy mới bản Android khác, miễn phí, giữ hạn — máy cũ + dữ liệu tự xoá khi máy mới chạy ===== */
 Object.assign(ERR, { NO_PHONE: "Không tìm thấy máy (hoặc máy không phải của bạn).", SWITCH_EXPIRING: "Máy còn dưới 30 phút — gia hạn trước rồi hãy đổi Android.",
   SWITCH_BUSY: "Máy đang nâng cấp / gia hạn — chờ 1–2 phút rồi đổi Android.", SWITCHING: "Máy đang đổi Android — chờ máy mới tạo xong (2–5 phút).",
-  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Tài khoản đã đổi Android hết số lần cho phép trong 24 giờ — thử lại sau, hoặc nhắn shop để được hỗ trợ.", SWITCH_NOT_STUCK: "Máy này không bị kẹt / lỗi.",
+  NO_OTHER_SERVER: "Hiện chưa có máy chủ khác còn chỗ cho bản Android này — máy của bạn vẫn giữ nguyên, thử lại sau ít phút.",
+  SWITCH_SAME: "Máy đang chạy bản Android này rồi.", SWITCH_LIMIT: "Mỗi tài khoản đổi Android / máy chủ tối đa 3 lần trong 24 giờ — bạn đã đổi đủ, thử lại sau hoặc nhắn shop để được hỗ trợ.", SWITCH_NOT_STUCK: "Máy này không bị kẹt / lỗi.",
   REF_INVALID: "Mã mời không đúng.", REF_SELF: "Không thể tự mời chính mình.", REF_TOO_LATE: "Chỉ tài khoản mới (tạo trong 7 ngày, chưa nạp tiền) mới nhận lời mời.",
   REF_ALREADY: "Tài khoản đã nhận lời mời trước đó." });
 Object.assign(ERR_EN, { NO_PHONE: "Phone not found.", SWITCH_EXPIRING: "Less than 30 minutes left — renew first, then switch Android.",
   SWITCH_BUSY: "The phone is being upgraded / renewed — try again in 1–2 minutes.", SWITCHING: "An Android switch is already in progress — wait for the new phone (2–5 min).",
-  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "You have used all Android switches allowed in the last 24 hours — try again later or contact support.", SWITCH_NOT_STUCK: "This phone isn't stuck.",
+  NO_OTHER_SERVER: "No other server has room for this Android version right now — your phone is unchanged; try again in a few minutes.",
+  SWITCH_SAME: "The phone already runs this Android version.", SWITCH_LIMIT: "Each account can switch Android / server up to 3 times in 24 hours — you've used them all; try again later or contact support.", SWITCH_NOT_STUCK: "This phone isn't stuck.",
   REF_INVALID: "Invalid invite code.", REF_SELF: "You can't invite yourself.", REF_TOO_LATE: "Only new accounts (under 7 days old, no top-ups yet) can accept an invite.",
   REF_ALREADY: "This account has already accepted an invite." });
 function cpSwNote(p) {                      // máy MỚI của lệnh đổi Android (SQL v28: xoá máy cũ TRƯỚC rồi mới tạo)
   const v = esc(p.android || ""), old = myCloud.find(x => x.id === p.replaces && ["active", "expired"].includes(x.status));
   if (old) return L(`Máy mới đổi sang Android ${v} — đang tạo (2–5 phút). Xong thì máy cũ tự xoá.`, `New Android ${v} phone — being created (2–5 min). The old phone is removed when it is ready.`);
-  if (p.node === "wait-old") return L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`);
+  if (p.node === "wait-old") return L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v}${p.avoid_node ? " ở máy chủ khác" : ""} (2–5 phút). Trang tự cập nhật.`, `Deleting the old phone… the Android ${v} phone is created${p.avoid_node ? " on another server" : ""} right after (2–5 min).`);
   const m = Math.floor((Date.now() - Date.parse(p.created_at || "")) / 60000);
   if (p.status === "pending" && !p.node && m >= 3)    // 28/11c: máy chủ đúng bản đang kín chỗ → đơn được GIỮ chờ, máy chủ nào trống trước tạo luôn
     return L(`Máy cũ đã xoá — các máy chủ Android ${v} đang kín chỗ nên máy mới đang xếp hàng chờ (đã ${m} phút). Máy chủ nào trống trước sẽ tạo máy cho bạn ngay, thường chỉ vài phút. Trang tự cập nhật.`,
              `Old phone deleted — Android ${v} servers are full right now, so your new phone is queued (${m} min so far). The first server with free space creates it right away, usually within a few minutes. This page updates by itself.`);
-  return L(`Máy cũ đã xoá — đang tạo máy Android ${v} (2–5 phút). Trang tự cập nhật.`, `Old phone deleted — creating the Android ${v} phone (2–5 min).`)
+  return L(`Máy cũ đã xoá — đang tạo máy Android ${v}${p.avoid_node ? " ở máy chủ khác" : ""} (2–5 phút). Trang tự cập nhật.`, `Old phone deleted — creating the Android ${v} phone${p.avoid_node ? " on another server" : ""} (2–5 min).`)
     + (p.error && /^Đổi Android:/.test(p.error) ? `<br>${esc(p.error)}` : "");
 }
 function cpSwitchingTo(p) { return p && p.switch_to ? myCloud.find(x => x.id === p.switch_to && ["pending", "creating"].includes(x.status)) || null : null; }
@@ -8592,43 +8597,55 @@ function cpPaidTag(p) {                     // thẻ máy: "(đã mua 12 nhân)"
 async function cpSwitch(id) {
   const p = myCloud.find(x => x.id === id); if (!p || p.shared) return;
   if (cpSwitchingTo(p)) { toast(errMsg({ message: "SWITCHING" }), 1); return; }
-  await Promise.all([cpLoadPricing(), cpLoadStatus()]);
+  const since = new Date(Date.now() - 86400e3).toISOString();      // SQL v67: đếm như SQL — mọi máy MỚI của lệnh đổi tạo trong 24 giờ, kể cả máy đã đổi tiếp / đã xoá
+  const [, , swN] = await Promise.all([cpLoadPricing(), cpLoadStatus(), isAdmin() || !profile ? null
+    : sb.from("cloud_phones").select("id", { count: "exact", head: true }).eq("user_id", profile.id).not("replaces", "is", null).gte("created_at", since)
+        .then(r => r && !r.error && r.count != null ? r.count : null, () => null)]);
   const cur = String(p.android || "9"), vers = cpAndList().filter(v => v !== cur);
-  if (!vers.length) { toast(L("Chưa có bản Android nào khác để đổi.", "No other Android version is available."), 1); return; }
+  const SRV = "srv", canSrv = cpAndList().includes(cur);      // 28/11 (SQL v67): giữ Android đang dùng, chỉ sang máy chủ khác
+  if (!vers.length && !canSrv) { toast(L("Chưa có bản Android nào khác để đổi.", "No other Android version is available."), 1); return; }
   const keep = "paid_ram" in p, q = cpPaid(p);       // keep: đã chạy SQL v49 (máy nhớ cấu hình đã mua)
   const cfg = v => { const l = cpAndLim(v); return { ram: Math.min(q.ram, l.ram), cpu: Math.min(q.cpu, l.cpu), l }; };
-  const why = v => { const a = (cpAndMap() || {})[v]; if (!a) return ""; if (a.online === false) return "off"; const c = cfg(v); return +a.free_ram < c.ram || +a.free_cpu < c.cpu ? "full" : ""; };
-  let v = vers.find(x => x === "12" && !why(x)) || vers.find(x => !why(x)) || vers[0], ok = false, going = false;
+  const why = v => { if (v === SRV) return ""; const a = (cpAndMap() || {})[v]; if (!a) return ""; if (a.online === false) return "off"; const c = cfg(v); return +a.free_ram < c.ram || +a.free_cpu < c.cpu ? "full" : ""; };
+  const opts = canSrv ? [SRV, ...vers] : vers, andOf = x => x === SRV ? cur : x;
+  let v = vers.find(x => x === "12" && !why(x)) || vers.find(x => !why(x)) || (canSrv ? SRV : vers[0]), ok = false, going = false;
   let m = $("cpswdlg");
   if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = "cpswdlg"; m.hidden = true; document.body.appendChild(m);
     m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-swx]")) m.hidden = true; }); }
   const expTxt = p.expires_at ? new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN") : "";
+  const swLim = /^\s*\d{1,2}\s*$/.test(String(SITE.switch_limit ?? "")) ? Math.max(1, Math.min(50, +SITE.switch_limit)) : 3;      // SQL v67: 3 lần / 24 giờ
+  const swUsed = Math.max(swN || 0, myCloud.filter(x => x.replaces && Date.now() - Date.parse(x.created_at || "") < 86400e3).length), swLeft = Math.max(0, swLim - swUsed);
   const go = async () => {
     if (going || !ok) return; going = true;
     try {
-      const { error } = await sb.rpc("cloudphone_switch_android", { p_id: p.id, p_android: v });
-      if (error) { const el = $("csw-err"); if (el) el.textContent = /cloudphone_switch_android|does not exist|schema cache/i.test(error.message || "") ? L("Tính năng chưa bật (admin cần chạy SQL v24).", "Not enabled yet.") : errMsg(error); return; }
+      const srv = v === SRV;
+      const { error } = srv ? await sb.rpc("cloudphone_change_server", { p_id: p.id }) : await sb.rpc("cloudphone_switch_android", { p_id: p.id, p_android: v });
+      if (error) { const el = $("csw-err"); if (el) el.textContent = /cloudphone_switch_android|cloudphone_change_server|does not exist|schema cache/i.test(error.message || "")
+        ? (srv ? (isAdmin() ? "Admin cần chạy SQL v67 (đổi máy chủ) trên Supabase." : L("Tính năng đang cập nhật — thử lại sau ít phút.", "This option is being updated — try again in a few minutes.")) : L("Tính năng chưa bật (admin cần chạy SQL v24).", "Not enabled yet."))
+        : errMsg(error); return; }
       m.hidden = true;
-      toast(L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút).`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`));
+      toast(srv ? L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${cur} ở máy chủ khác (2–5 phút).`, `Deleting the old phone… the Android ${cur} phone is created on another server right after (2–5 min).`)
+                : L(`Đang xoá máy cũ… xoá xong tự tạo máy Android ${v} (2–5 phút).`, `Deleting the old phone… the Android ${v} phone is created right after (2–5 min).`));
       openCloud();
     } finally { going = false; }
   };
   const draw = () => {
-    const c = cfg(v), red = c.ram < q.ram || c.cpu < q.cpu, up = !red && (c.ram > +p.ram || c.cpu > +p.cpu), w = why(v), blocked = !!w && !isAdmin();
+    const av = andOf(v), srv = v === SRV, c = cfg(av), red = c.ram < q.ram || c.cpu < q.cpu, up = !red && (c.ram > +p.ram || c.cpu > +p.cpu), w = why(v), blocked = !!w && !isAdmin();
     const fa = cpFullAnd(p).map(x => "Android " + x).join(" / ");
-    m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="csw-t"><h3 id="csw-t">🤖 ${L("Đổi hệ điều hành", "Switch Android")}</h3>
+    m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="csw-t"><h3 id="csw-t">🤖 ${L("Đổi Android / máy chủ", "Switch Android / server")}</h3>
       <div class="hint">📱 <b>${esc(p.name)}</b> · ${L("đang dùng", "now on")} <b>Android ${esc(cur)}</b> · ${p.ram}GB · ${p.cpu} ${L("nhân", "cores")}${cpPaidTag(p)}${expTxt ? ` · ${L("hết hạn", "expires")} ${expTxt}` : ""}</div>
+      ${isAdmin() ? "" : `<div class="hint" id="csw-left">${L(`Còn <b>${swLeft}/${swLim}</b> lượt đổi trong 24 giờ (đổi Android và đổi máy chủ tính chung). Máy mới tự vào máy chủ còn trống nhất.`, `<b>${swLeft}/${swLim}</b> switches left in 24 hours (Android and server switches count together). The new phone goes to the emptiest server.`)}</div>`}
       <label>${L("Đổi sang", "Switch to")}</label>
-      <div class="upchips">${vers.map(x => { const wx = why(x); return `<button type="button" data-swv="${x}" class="${x === v ? "on" : ""}"${wx && !isAdmin() ? " disabled" : ""}${wx ? ` title="${esc(wx === "off" ? L("Máy chủ bản này đang bảo trì", "Server under maintenance") : L("Máy chủ bản này đang hết chỗ", "No free capacity"))}"` : ""}>Android ${x}${wx ? ` <small>${L("Hết chỗ", "Unavailable")}</small>` : ""}</button>`; }).join("")}</div>
-      ${red && keep ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới <b>tạm chạy ${c.ram}GB · ${c.cpu} nhân</b>. Cấu hình đã mua <b>${q.ram}GB · ${q.cpu} nhân</b> vẫn được giữ${fa ? ` — đổi sang ${fa} là trả đủ` : ""}.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone <b>temporarily runs ${c.ram}GB · ${c.cpu} cores</b>. The <b>${q.ram}GB · ${q.cpu} cores</b> you bought are kept${fa ? ` — switch to ${fa} to get them back` : ""}.`)}</div>`
-            : red ? `<div class="swnote">⚠️ ${L(`Android ${v} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới sẽ hạ còn <b>${c.ram}GB · ${c.cpu} nhân</b>, không hoàn tiền phần chênh.`, `Android ${v} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone will be reduced to <b>${c.ram}GB · ${c.cpu} cores</b>, no refund for the difference.`)}</div>`
-            : `<div class="hint">${L(`Máy mới: Android ${v} · <b>${c.ram}GB · ${c.cpu} nhân</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${up ? " — trả đủ cấu hình đã mua" : ""}`, `New phone: Android ${v} · <b>${c.ram}GB · ${c.cpu} cores</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${up ? " — full config you bought restored" : ""}`)}</div>`}
-      ${v === "15" ? `<div class="hint">${L("Lưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì nên chọn Android 12.", "Note: some users report Google / Play Store not working on Android 15 — pick Android 12 if you need Google.")}</div>` : ""}
-      <div class="swwarn">${L(`⚠️ <b>Đổi hệ điều hành sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy</b>: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.<br>Bấm Đổi là <b>máy cũ bị xoá ngay</b> (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới <b>miễn phí</b>, giữ nguyên hạn dùng${expTxt ? ` (${expTxt})` : ""}.`,
-        `⚠️ <b>Switching Android ERASES ALL data on this phone</b>: apps, games, logged-in accounts, photos, files — it cannot be undone.<br>The old phone is <b>deleted right away</b> (it can't be opened any more); the new phone is created once that's done — about 2–5 minutes. It is <b>free</b> and keeps your expiry${expTxt ? ` (${expTxt})` : ""}.`)}</div>
+      <div class="upchips">${opts.map(x => { const wx = why(x); if (x === SRV) return `<button type="button" data-swv="${SRV}" class="${x === v ? "on" : ""}" title="${esc(L(`Giữ nguyên Android ${cur}, chuyển sang máy chủ khác ít tải hơn`, `Keep Android ${cur}, move to a less busy server`))}">🔀 ${L(`Giữ Android ${esc(cur)} · máy chủ khác`, `Keep Android ${esc(cur)} · other server`)}</button>`; return `<button type="button" data-swv="${x}" class="${x === v ? "on" : ""}"${wx && !isAdmin() ? " disabled" : ""}${wx ? ` title="${esc(wx === "off" ? L("Máy chủ bản này đang bảo trì", "Server under maintenance") : L("Máy chủ bản này đang hết chỗ", "No free capacity"))}"` : ""}>Android ${x}${wx ? ` <small>${L("Hết chỗ", "Unavailable")}</small>` : ""}</button>`; }).join("")}</div>
+      ${red && keep ? `<div class="swnote">⚠️ ${L(`Android ${av} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới <b>tạm chạy ${c.ram}GB · ${c.cpu} nhân</b>. Cấu hình đã mua <b>${q.ram}GB · ${q.cpu} nhân</b> vẫn được giữ${fa ? ` — đổi sang ${fa} là trả đủ` : ""}.`, `Android ${av} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone <b>temporarily runs ${c.ram}GB · ${c.cpu} cores</b>. The <b>${q.ram}GB · ${q.cpu} cores</b> you bought are kept${fa ? ` — switch to ${fa} to get them back` : ""}.`)}</div>`
+            : red ? `<div class="swnote">⚠️ ${L(`Android ${av} tối đa <b>${c.l.ram}GB · ${c.l.cpu} nhân</b> → máy mới sẽ hạ còn <b>${c.ram}GB · ${c.cpu} nhân</b>, không hoàn tiền phần chênh.`, `Android ${av} allows at most <b>${c.l.ram}GB · ${c.l.cpu} cores</b> → the new phone will be reduced to <b>${c.ram}GB · ${c.cpu} cores</b>, no refund for the difference.`)}</div>`
+            : `<div class="hint">${L(`Máy mới: Android ${av} · <b>${c.ram}GB · ${c.cpu} nhân</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${srv ? " · <b>ở máy chủ khác</b> (không tạo lại ở máy chủ đang dùng)" : ""}${up ? " — trả đủ cấu hình đã mua" : ""}`, `New phone: Android ${av} · <b>${c.ram}GB · ${c.cpu} cores</b> · ${esc(p.res || "")} · ${p.fps || 30} FPS${srv ? " · <b>on another server</b> (never back on the current one)" : ""}${up ? " — full config you bought restored" : ""}`)}</div>`}
+      ${av === "15" && !srv ? `<div class="hint">${L("Lưu ý: có khách báo Android 15 không vào được Google / Play Store — cần Google thì nên chọn Android 12.", "Note: some users report Google / Play Store not working on Android 15 — pick Android 12 if you need Google.")}</div>` : ""}
+      <div class="swwarn">${L(`⚠️ <b>${srv ? "Đổi máy chủ" : "Đổi hệ điều hành"} sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy</b>: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.<br>Bấm Đổi là <b>máy cũ bị xoá ngay</b> (không mở được nữa), xoá xong mới tạo máy mới — khoảng 2–5 phút. Máy mới <b>miễn phí</b>, giữ nguyên hạn dùng${expTxt ? ` (${expTxt})` : ""}.`,
+        `⚠️ <b>${srv ? "Moving to another server" : "Switching Android"} ERASES ALL data on this phone</b>: apps, games, logged-in accounts, photos, files — it cannot be undone.<br>The old phone is <b>deleted right away</b> (it can't be opened any more); the new phone is created once that's done — about 2–5 minutes. It is <b>free</b> and keeps your expiry${expTxt ? ` (${expTxt})` : ""}.`)}</div>
       <label class="swok"><input type="checkbox" id="csw-ok"${ok ? " checked" : ""}> ${L("Tôi hiểu, toàn bộ dữ liệu trong máy sẽ bị xoá", "I understand all data on this phone will be erased")}</label>
       <div class="err" id="csw-err">${blocked ? esc(w === "off" ? L("Máy chủ bản Android này đang bảo trì — chọn bản khác.", "That Android server is under maintenance.") : L("Máy chủ bản Android này đang hết chỗ — chọn bản khác hoặc thử lại sau.", "No free capacity for that Android version.")) : ""}</div>
-      <div class="row2"><button class="btn ghost" type="button" data-swx>${L("Đóng", "Close")}</button><button class="btn danger" type="button" id="csw-go"${ok && !blocked ? "" : " disabled"}>${L("Đổi sang Android ", "Switch to Android ")}${v}</button></div></div>`;
+      <div class="row2"><button class="btn ghost" type="button" data-swx>${L("Đóng", "Close")}</button><button class="btn danger" type="button" id="csw-go"${ok && !blocked ? "" : " disabled"}>${srv ? L("Đổi sang máy chủ khác", "Move to another server") : L("Đổi sang Android ", "Switch to Android ") + v}</button></div></div>`;
     m.querySelectorAll("[data-swv]").forEach(b => b.onclick = () => { v = b.dataset.swv; draw(); });
     $("csw-ok").onchange = () => { ok = $("csw-ok").checked; draw(); };
     $("csw-go").onclick = () => busy($("csw-go"), go);
@@ -9012,7 +9029,7 @@ async function loadCpSales(more) {
   const seq = ++cpsSeq;
   if (!more) { cpsRows = []; cpsPage = 0; tb.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:14px">Đang tải…</td></tr>`; }
   const k = $("cps-kind") ? $("cps-kind").value : "", q = ($("cps-q") ? $("cps-q").value : "").trim().replace(/[%_,()]/g, "");
-  let qy = sb.from("cp_sales").select("id,created_at,kind,android,ram,cpu,days,amount,promo,note,user_id,profiles(username)")
+  let qy = sb.from("cp_sales").select("id,created_at,kind,android,ram,cpu,days,amount,promo,note,user_id,profiles(username,role)")
     .order("created_at", { ascending: false }).range(cpsPage * 100, cpsPage * 100 + 99);
   if (k) qy = qy.eq("kind", k);
   if (q) {
@@ -9029,12 +9046,13 @@ async function loadCpSales(more) {
 }
 function cpsDraw(end) {
   const tb = $("cps-tb"); if (!tb) return;
-  const sum = cpsRows.reduce((a, x) => a + (+x.amount || 0), 0);
-  if ($("cps-hint")) $("cps-hint").textContent = cpsRows.length ? `Đang hiện ${cpsRows.length} dòng · cộng ${vnd(sum)}` : "";
+  const isT = x => !!(x.profiles && x.profiles.role === "admin"), nT = cpsRows.filter(isT).length;
+  const sum = cpsRows.reduce((a, x) => a + (isT(x) ? 0 : (+x.amount || 0)), 0);
+  if ($("cps-hint")) $("cps-hint").textContent = cpsRows.length ? `Đang hiện ${cpsRows.length} dòng · cộng ${vnd(sum)}${nT ? ` (không cộng ${nT} dòng admin mua thử)` : ""}` : "";
   if ($("cps-more")) $("cps-more").hidden = !!end || !cpsRows.length;
   tb.innerHTML = cpsRows.length ? cpsRows.map(x => {
     const kd = CPS_KIND[x.kind] || ["•", x.kind];
-    return `<tr><td style="white-space:nowrap">${new Date(x.created_at).toLocaleString("vi-VN")}</td><td>${esc((x.profiles && x.profiles.username) || String(x.user_id || "").slice(0, 8))}</td><td style="white-space:nowrap">${kd[0]} ${kd[1]}</td>`
+    return `<tr><td style="white-space:nowrap">${new Date(x.created_at).toLocaleString("vi-VN")}</td><td>${esc((x.profiles && x.profiles.username) || String(x.user_id || "").slice(0, 8))}${isT(x) ? ADM_TEST_TAG : ""}</td><td style="white-space:nowrap">${kd[0]} ${kd[1]}</td>`
       + `<td>Android ${esc(x.android || "?")} · ${+x.ram || "?"}GB · ${+x.cpu || "?"} nhân${x.days ? " · " + x.days + " ngày" : ""}${x.promo ? ` · mã <b>${esc(x.promo)}</b>` : ""}${x.note ? `<small style="display:block;color:var(--muted)">${esc(x.note)}</small>` : ""}</td>`
       + `<td class="num${+x.amount < 0 ? " amt-neg" : ""}">${vnd(+x.amount || 0)}</td></tr>`;
   }).join("") : `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:16px">Chưa có lượt mua nào.</td></tr>`;
