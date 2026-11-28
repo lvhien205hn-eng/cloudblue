@@ -3302,6 +3302,47 @@ TPL.extend([
  "🔄 Old phone deleted — creating the Android {0} phone on another server (2–5 minutes)."],
 ])
 
+# 28/11 · SQL v70 — 📱 BlueReal: thuê điện thoại thật
+EXACT.update({
+"📲 Máy thật": "📲 Real phone",
+"📱 Thuê máy thật": "📱 Rent a real phone",
+"Đang tải mẫu máy…": "Loading models…",
+"Mẫu máy": "Model",
+"Đang thuê…": "Renting…",
+"Nạp thêm tiền": "Top up",
+"Gia hạn thêm": "Extend by",
+"Đang gia hạn…": "Renewing…",
+"Chưa có mẫu máy thật nào mở bán — quay lại sau nhé.": "No real phone models for sale yet — check back soon.",
+"📱 Máy thật: không nâng cấp / đổi Android / đổi FPS được": "📱 Real phone: no upgrade / Android switch / FPS change",
+"Trả máy sớm (huỷ — app, file của bạn sẽ bị xoá)": "Return early (cancel — your apps and files will be erased)",
+"Mẫu máy này tạm ngừng gia hạn — nhắn shop.": "Renewals for this model are paused — contact the shop.",
+"Mẫu máy này vừa hết máy — chọn mẫu khác hoặc quay lại sau ít phút.": "This model just sold out — pick another or come back in a few minutes.",
+"Mẫu máy này chưa mở bán.": "This model is not for sale yet.",
+"Tạm ngừng cho thuê máy thật — quay lại sau.": "Real phone rental is paused — come back later.",
+"Không có mẫu máy này.": "Model not found.",
+"Đây là ĐT đám mây — gia hạn bằng nút Gia hạn thường.": "This is a cloud phone — use the normal Renew button.",
+"Số dư không đủ — nạp thêm rồi thử lại.": "Not enough balance — top up and try again.",
+"Hết máy": "Sold out",
+"📱 Máy thật: không có vị trí GPS giả, Root hay khởi động lại — máy tự xoay theo app.": "📱 Real phone: no fake GPS location, Root or restart — the phone rotates with the app by itself.",
+})
+TPL.extend([
+["📱 Máy thật · {0} · Android {1} · {2}GB RAM", "📱 Real phone · {0} · Android {1} · {2}GB RAM"],
+["📱 {0} — điện thoại Samsung THẬT đặt tại shop, không phải giả lập", "📱 {0} — a REAL Samsung phone hosted at our shop, not an emulator"],
+["{0}\nAndroid {1} · {2}GB · {3}/ngày · còn {4} máy", "{0}\nAndroid {1} · {2}GB · {3}/day · {4} left"],
+["{0}\nAndroid {1} · {2}GB · {3}/ngày · hết máy", "{0}\nAndroid {1} · {2}GB · {3}/day · sold out"],
+["{0} · {1} ngày = {2}", "{0} · {1} days = {2}"],
+["Số dư: {0} · thiếu {1} · hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).", "Balance: {0} · short {1} · time starts when the phone is handed over (usually under a minute)."],
+["Số dư: {0} · hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).", "Balance: {0} · time starts when the phone is handed over (usually under a minute)."],
+["Thuê ngay · {0}", "Rent now · {0}"],
+["Đã thuê {0} · {1} ngày — máy đang được chuẩn bị (thường dưới 1 phút).", "Rented {0} for {1} days — getting it ready (usually under a minute)."],
+["Gia hạn máy thật — {0}", "Renew real phone — {0}"],
+["📱 Máy thật · {0} · {1}", "📱 Real phone · {0} · {1}"],
+["{0} × {1} ngày = {2}  (thiếu {3})", "{0} × {1} days = {2}  (short {3})"],
+["{0} × {1} ngày = {2}", "{0} × {1} days = {2}"],
+["Gia hạn · {0}", "Renew · {0}"],
+["Đã gia hạn +{0} ngày — máy chủ ghi hạn mới trong ít giây.", "Renewed +{0} days — the server updates the expiry in a few seconds."],
+])
+
 
 def _tpl():
     global _T

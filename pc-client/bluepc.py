@@ -570,6 +570,7 @@ PC_FPS = [0, 30, 60, 120]
 TOOLS = [("back", "Quay lại"), ("home", "Màn chính"), ("recents", "Đa nhiệm"), ("volup", "Âm +"), ("voldown", "Âm −"),
          ("rotate", "Xoay"), ("winmini", "Thu nhỏ tab"), ("wintile", "Sắp xếp tab"), ("shot", "Chụp màn"), ("paste", "Dán chữ"),
          ("tools", "Công cụ"), ("quality", "Chất lượng"), ("full", "Toàn màn"), ("hide", "Ẩn thanh"), ("info", "Thông số")]
+REAL_TOOLS = [t for t in TOOLS if t[0] not in ("rotate", "winmini", "wintile")]     # 28/11 · 📱 máy thật: tự xoay theo app, không tab cửa sổ nhỏ
 # 23/11 · 🗗 TAB CỬA SỔ NHỎ (như Redfinger): winmini = app đang mở trong máy thành cửa sổ nhỏ ngay trên màn máy · wintile = xếp mọi cửa sổ
 # 21/11 · MÁY PC THẬT (VPS GPU): thanh công cụ có phím Windows thay cho nút Android
 PC_TOOLS = [("back", "Esc"), ("win", "Windows"), ("recents", "Win+Tab"), ("alttab", "Alt+Tab"), ("taskmgr", "Task Mgr"), ("paste", "Dán chữ"),
@@ -901,6 +902,7 @@ class Viewer:
     def __init__(self, pid, dock=None, pc=False):
         self.pid = pid; self.auth = Auth()
         self.pc = bool(pc)                                # 21/11: máy PC thật (VPS GPU) — chuột / phím thật, thanh công cụ phím Windows
+        self.real = None                                  # 28/11 · SQL v70: 📱 điện thoại THẬT (BlueReal) — None = chưa biết
         self.pck = None; self.pc_keys = {}; self.pc_down = set(); self.pc_mt = 0.0
         self.dock = dock; self.docked = False              # 17/11d: dock = DockGuest — gắn vào ô bên phải của cửa sổ app
         self.lock = threading.Lock(); self.frame = None; self.vw = self.vh = 0
@@ -941,6 +943,9 @@ class Viewer:
         elif ep.get("status") and ep.get("status") != "active":
             raise ApiError(0, "Máy chưa chạy (đang tạo, tạm dừng hoặc đã hết hạn).")
         if self.cp is None and not self.pc: self.cp = CpClient(self.auth, self.pid); self.cp.ep = ep
+        if self.real is None and not self.pc:            # 28/11 · SQL v70: máy THẬT → thanh công cụ bỏ Xoay / Thu nhỏ tab / Sắp xếp tab
+            try: self.real = bool(((self.auth.rest(f"cloud_phones?id=eq.{self.pid}&select=real_device") or [{}])[0] or {}).get("real_device"))
+            except Exception: self.real = None        # web chưa chạy SQL v70 (chưa có cột) / lỗi mạng → như ĐT đám mây, lần nối sau hỏi lại
         pref = prefs().get("path_" + str(ep.get("node")))
         self.gen += 1; g = self.gen
         cli = brstream.StreamClient(ep, lambda force=False: self.auth.token(force), self.pid,
@@ -1317,7 +1322,7 @@ class Viewer:
 
     def _tool_rects(self, W, H):
         if not self.bar_on: return []
-        tl = PC_TOOLS if self.pc else TOOLS
+        tl = PC_TOOLS if self.pc else REAL_TOOLS if self.real else TOOLS
         n = len(tl); step = max(22, min(64, (H - 16) // n)); top = max(6, (H - step * n) // 2)
         return [(name, label, (W - BAR + 6, top + i * step, BAR - 12, step - 6)) for i, (name, label) in enumerate(tl)]
 
@@ -1454,6 +1459,8 @@ class Viewer:
         if self.pc and name in ("back", "win", "recents", "alttab", "taskmgr"):     # máy PC: Esc · phím Windows · Win+Tab · Alt+Tab · Ctrl+Shift+Esc
             if c: c.cmd(name)
             return
+        if self.real and name in ("rotate", "winmini", "wintile"):     # 28/11: máy thật tự xoay theo app, không có tab cửa sổ nhỏ
+            return self._say(L("📱 Máy thật không dùng được mục này — máy tự xoay theo app.", "📱 Not available on real phones — the phone rotates with the app."), 4)
         if name in ("back", "home", "recents", "volup", "voldown") and c: c.cmd(name)
         elif name == "rotate": self._rotate()
         elif name in ("winmini", "wintile"): self._win("mini" if name == "winmini" else "tile")
@@ -7055,6 +7062,138 @@ class FpsDlg(Dlg):
         self.bg(job, done, fail)
 
 
+
+# ---------- 28/11 · 📱 BLUEREAL — THUÊ ĐIỆN THOẠI THẬT (SQL v70) ----------
+_REAL_CAT = {"t": 0.0, "v": None}
+def real_catalog(app, force=False):
+    """Danh sách mẫu máy thật + giá / ngày + còn máy (realphone_catalog) — nhớ 60 giây. Web chưa chạy SQL v70 → None."""
+    if force or _REAL_CAT["v"] is None or time.time() - _REAL_CAT["t"] > 60:
+        try: _REAL_CAT["v"] = app.auth.rpc("realphone_catalog", {}) or None
+        except Exception: pass
+        _REAL_CAT["t"] = time.time()
+    return _REAL_CAT["v"]
+
+def real_model_name(mid):
+    for m in ((_REAL_CAT["v"] or {}).get("models") or []):
+        if m.get("id") == mid: return m.get("name") or mid
+    return str(mid or "").upper()
+
+REAL_ERR = {"REAL_OUT": "Mẫu máy này vừa hết máy — chọn mẫu khác hoặc quay lại sau ít phút.", "REAL_NO_PRICE": "Mẫu máy này chưa mở bán.",
+            "REAL_OFF": "Tạm ngừng cho thuê máy thật — quay lại sau.", "REAL_NO_MODEL": "Không có mẫu máy này.",
+            "REAL_NOT_REAL": "Đây là ĐT đám mây — gia hạn bằng nút Gia hạn thường.", "INSUFFICIENT_BALANCE": "Số dư không đủ — nạp thêm rồi thử lại."}
+def real_err(m):
+    m = str(m or "")
+    for k, v in REAL_ERR.items():
+        if k in m: return v
+    return m
+
+
+class RealOrderDlg(Dlg):
+    """📱 BlueReal: thuê điện thoại THẬT (Samsung Galaxy S9 / S10…) — chọn mẫu + số ngày → giá / ngày × số ngày (như web)."""
+    DAYS = (1, 3, 7, 15, 30)
+    def __init__(self, app):
+        super().__init__(app, "📱 Thuê máy thật", 600, 600)
+        self.m = None; self.days = 7; self.busy = False
+        self.loading("Đang tải mẫu máy…")
+        self.bg(lambda: (real_catalog(app, True), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, r):
+        tk = self.app.tk; self.cat, self.prof = r; self.clear()
+        ms = [m for m in ((self.cat or {}).get("models") or []) if num(m.get("price_day")) > 0]
+        if not ms:
+            self.label(self.body, "Chưa có mẫu máy thật nào mở bán — quay lại sau nhé." if self.cat else "Tính năng đang cập nhật — thử lại sau ít phút.",
+                       self.app.f_t, DIM, wraplength=540).pack(fill="x", padx=18, pady=18)
+            self.app.btn(self.foot, "Đóng", self.close, "soft").pack(side="left", padx=16, pady=12); return
+        self.ms = ms; adm = (self.prof or {}).get("role") == "admin"
+        self.m = next((m["id"] for m in ms if num(m.get("stock")) > 0), ms[0]["id"])
+        self.mx = max(1, min(90, int(num((self.cat or {}).get("max_days")) or 90)))
+        self.label(self.body, f"📱 {(self.cat or {}).get('name') or 'BlueReal'} — điện thoại Samsung THẬT đặt tại shop, không phải giả lập", self.app.f_h2,
+                   wraplength=560).pack(fill="x", padx=18, pady=(14, 2))
+        s = self.section("Mẫu máy")
+        self.cm = Chips(self.app, s, [(m["id"], f"{m.get('name')}\nAndroid {m.get('android')} · {int(num(m.get('ram')))}GB · {vnd(num(m.get('price_day')))}/ngày · "
+                                                 + (f"còn {int(num(m.get('stock')))} máy" if num(m.get("stock")) else "hết máy")) for m in ms],
+                        lambda: self.m, lambda x: setattr(self, "m", x), self.upd,
+                        why=lambda x: None if adm or num(next(m for m in ms if m["id"] == x).get("stock")) > 0 else "Hết máy", wrap=2)
+        self.cm.frame.pack(fill="x")
+        s = self.section("Số ngày")
+        self.cd = Chips(self.app, s, [(d, f"{d} ngày") for d in self.DAYS if d <= self.mx], lambda: self.days, lambda x: setattr(self, "days", x), self.upd, wrap=5)
+        self.cd.frame.pack(fill="x")
+        self.sum = self.label(self.body, "", self.app.f_h2, ACC); self.sum.pack(fill="x", padx=18, pady=(10, 0))
+        self.bal = self.label(self.body, "", self.app.f_s, DIM, wraplength=540); self.bal.pack(fill="x", padx=18, pady=(2, 10))
+        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=540); self.err.pack(fill="x", padx=16, pady=(8, 0))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.go = self.app.btn(bb, "Thuê ngay", self.order); self.go.pack(side="right")
+        self.upd()
+
+    def _md(self): return next(m for m in self.ms if m["id"] == self.m)
+
+    def upd(self):
+        self.cm.paint(); self.cd.paint()
+        md = self._md(); tot = num(md.get("price_day")) * self.days; bal = num((self.prof or {}).get("balance"))
+        self.sum.config(text=f"{md.get('name')} · {self.days} ngày = {vnd(tot)}")
+        self.bal.config(text=f"Số dư: {vnd(bal)}" + (f" · thiếu {vnd(tot - bal)}" if bal < tot else "") + " · hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).")
+        self.go.config(text="Đang thuê…" if self.busy else ("Nạp thêm tiền" if bal < tot else f"Thuê ngay · {vnd(tot)}"), state="disabled" if self.busy else "normal")
+
+    def order(self):
+        if self.busy: return
+        md = self._md(); tot = num(md.get("price_day")) * self.days
+        if num((self.prof or {}).get("balance")) < tot: self.close(); return self.app.open_topup(tot - num((self.prof or {}).get("balance")))
+        self.busy = True; self.err.config(text=""); self.upd(); m, d = self.m, self.days
+        def done(_):
+            import tkinter.messagebox as mb
+            self.busy = False; self.close(); self.app.refresh(quiet=True)
+            mb.showinfo("CloudBlue", f"Đã thuê {md.get('name')} · {d} ngày — máy đang được chuẩn bị (thường dưới 1 phút).", parent=self.app.root)
+        def fail(e):
+            self.busy = False; self.err.config(text=real_err(e)); self.upd()
+        self.bg(lambda: self.app.auth.rpc("realphone_order", {"p_model": m, "p_days": d, "p_name": None}), done, fail)
+
+
+class RealRenewDlg(Dlg):
+    """Gia hạn máy thật: số ngày × giá / ngày hiện tại của mẫu máy (realphone_renew) — máy giữ nguyên app, dữ liệu."""
+    DAYS = (1, 3, 7, 15, 30)
+    def __init__(self, app, phone):
+        super().__init__(app, "Gia hạn máy thật — " + (phone.get("name") or "máy"), 560, 460)
+        self.p = phone; self.days = 7; self.busy = False
+        self.loading("Đang tải giá…")
+        self.bg(lambda: (real_catalog(app, True), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+
+    def _loaded(self, r):
+        tk = self.app.tk; cat, self.prof = r; self.clear(); p = self.p
+        md = next((m for m in ((cat or {}).get("models") or []) if m.get("id") == p.get("real_model")), None)
+        self.per = num((md or {}).get("price_day"))
+        self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
+        self.label(self.body, f"📱 Máy thật · {real_model_name(p.get('real_model'))} · {fmt_left(p.get('expires_at'))}", self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
+        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(8, 0))
+        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        if not self.per:
+            self.err.config(text="Mẫu máy này tạm ngừng gia hạn — nhắn shop."); return
+        s = self.section("Gia hạn thêm")
+        self.cd = Chips(self.app, s, [(d, f"{d} ngày") for d in self.DAYS], lambda: self.days, lambda x: setattr(self, "days", x), self.upd, wrap=5)
+        self.cd.frame.pack(fill="x")
+        self.sum = self.label(self.body, "", self.app.f_h2, ACC); self.sum.pack(fill="x", padx=18, pady=(10, 0))
+        self.go = self.app.btn(bb, "Gia hạn", self.renew); self.go.pack(side="right")
+        self.upd()
+
+    def upd(self):
+        self.cd.paint(); tot = self.per * self.days; bal = num((self.prof or {}).get("balance"))
+        self.sum.config(text=f"{vnd(self.per)} × {self.days} ngày = {vnd(tot)}" + (f"  (thiếu {vnd(tot - bal)})" if bal < tot else ""))
+        self.go.config(text="Đang gia hạn…" if self.busy else ("Nạp thêm tiền" if bal < tot else f"Gia hạn · {vnd(tot)}"), state="disabled" if self.busy else "normal")
+
+    def renew(self):
+        if self.busy: return
+        tot = self.per * self.days; bal = num((self.prof or {}).get("balance"))
+        if bal < tot: self.close(); return self.app.open_topup(tot - bal)
+        self.busy = True; self.err.config(text=""); self.upd(); d = self.days
+        def done(_):
+            import tkinter.messagebox as mb
+            self.busy = False; self.close(); self.app.refresh(quiet=True)
+            mb.showinfo("CloudBlue", f"Đã gia hạn +{d} ngày — máy chủ ghi hạn mới trong ít giây.", parent=self.app.root)
+        def fail(e):
+            self.busy = False; self.err.config(text=real_err(e)); self.upd()
+        self.bg(lambda: self.app.auth.rpc("realphone_renew", {"p_id": self.p["id"], "p_days": d}), done, fail)
+
 class LookDlg(Dlg):
     """16/11 · 🎨 Giao diện: thanh chỉnh CỠ CHỮ 80–130% (bấm Áp dụng → app mở lại với cỡ mới, nhớ theo máy) · ẩn / hiện ô ưu đãi đầu danh sách."""
     def __init__(self, app):
@@ -7151,6 +7290,7 @@ class ToolsDlg(Dlg):
        · Clone tab: chạy thêm bản 2, 3… của 1 app (VD Roblox chính thức), mỗi bản 1 hồ sơ riêng để đăng nhập acc khác
        · Khác: mở link, vị trí GPS, chụp màn, nút nguồn, root, khởi động lại. Gọi cpapi qua đường thẳng tới máy chủ (CpClient)."""
     TABS = [("screen", "Màn hình"), ("install", "Cài app"), ("store", "Kho app"), ("apps", "Ứng dụng"), ("clone", "Clone tab"), ("root", "Root"), ("proxy", "Proxy"), ("more", "Khác")]
+    REAL_TABS = ("install", "apps", "more")
     SW = [320, 360, 411, 480, 540, 600, 720, 800]
 
     def __init__(self, app, phone, tab=None):
@@ -7158,11 +7298,13 @@ class ToolsDlg(Dlg):
         self.p = phone; self.cp = CpClient(app.auth, phone["id"]); self.busy = False
         self.pkg, self.n, self.apps, self.counts, self.max = None, 1, [], {}, 4
         self.dens = None; self.dens_busy = False; self.loaded = set(); self.jobs_on = set()
-        tk = app.tk; names = dict(self.TABS)
-        if tab not in names: tab = prefs().get("tools_tab")
-        self.tab = tab if tab in names else "screen"
+        self.real = bool(phone.get("real_device"))      # 28/11 · SQL v70: 📱 máy thật → chỉ Cài app · Ứng dụng · Khác (cpapi 28/11e chặn phần giả lập)
+        tabs = [t for t in self.TABS if t[0] in self.REAL_TABS] if self.real else self.TABS
+        tk = app.tk; names = dict(self.TABS); shown = dict(tabs)
+        if tab not in shown: tab = prefs().get("tools_tab")
+        self.tab = tab if tab in shown else tabs[0][0]
         hdr = tk.Frame(self.win, bg=BG); hdr.pack(side="top", fill="x", padx=16, pady=(12, 0), before=self.body.master.master)   # thẻ đứng yên, phần dưới cuộn
-        self.c_tab = Chips(app, hdr, self.TABS, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab, wrap=4)   # 22/11: 8 thẻ → 2 hàng
+        self.c_tab = Chips(app, hdr, tabs, lambda: self.tab, lambda v: setattr(self, "tab", v), self._show_tab, wrap=4)   # 22/11: 8 thẻ → 2 hàng
         self.c_tab.frame.pack(fill="x")
         self.pages = {k: tk.Frame(self.body, bg=BG) for k in names}
         self._page_screen(); self._page_install(); self._page_store(); self._page_apps(); self._page_clone(); self._page_root(); self._page_proxy(); self._page_more()
@@ -7529,6 +7671,14 @@ class ToolsDlg(Dlg):
         self.url_ent.pack(side="left", fill="x", expand=True, ipady=6); self.url_ent.bind("<Return>", lambda e: self.open_url())
         self.app.btn(r, "Mở trên máy", self.open_url, "soft").pack(side="left", padx=(6, 0))
         self.url_msg = self.msg(f, (4, 0))
+        if self.real:                                    # 28/11: máy thật — chỉ chụp màn + nút nguồn (không GPS giả / Root / khởi động lại)
+            f = self.section("Máy", parent=pg)
+            self.muted(f, "📱 Máy thật: không có vị trí GPS giả, Root hay khởi động lại — máy tự xoay theo app.")
+            r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(6, 0))
+            self.app.btn(r, "Chụp màn hình", self.shot, "soft").pack(side="left")
+            self.app.btn(r, "Nút nguồn (tắt / mở màn)", self.power, "soft").pack(side="left", padx=(8, 0))
+            self.more_msg = self.msg(f)
+            return
         f = self.section("Vị trí GPS giả (máy Android 12 trở lên)", parent=pg)
         self.muted(f, "Nhập toạ độ dạng: vĩ độ, kinh độ — trên Google Maps bấm chuột phải vào 1 điểm rồi bấm dòng số để copy. VD Hà Nội: 21.0285, 105.8542")
         r = tk.Frame(f, bg=BG); r.pack(fill="x", pady=(6, 0))
@@ -9628,7 +9778,7 @@ class Launcher:
     # ---------- mua / nạp / gia hạn / nâng cấp / huỷ (cửa sổ con) ----------
     def open_order(self): OrderDlg(self)
     def open_topup(self, need=0): TopupDlg(self, need)
-    def open_renew(self, p): RenewDlg(self, p)
+    def open_renew(self, p): RealRenewDlg(self, p) if p.get("real_device") else RenewDlg(self, p)     # 28/11: 📱 máy thật gia hạn theo giá mẫu máy
     def open_upgrade(self, p): UpgradeDlg(self, p)
     def open_switch(self, p): SwitchDlg(self, p)
 
@@ -9719,6 +9869,13 @@ class Launcher:
         m = self.tk.Menu(self.root, tearoff=0, bg=CARD, fg=TXT, activebackground=ACC, activeforeground=TXT, font=("Segoe UI", 10))
         m.add_command(label="✏️ Đổi tên máy…", command=lambda: self.rename(p))       # 24/11: khách tự đổi tên ĐT đám mây (máy chia sẻ không có menu này)
         m.add_separator()
+        if p.get("real_device"):                    # 28/11 · SQL v70: 📱 máy THẬT — không công cụ giả lập / nâng cấp / đổi Android / FPS
+            m.add_command(label="📱 Máy thật: không nâng cấp / đổi Android / đổi FPS được", state="disabled")
+            m.add_separator()
+            m.add_command(label="Trả máy sớm (huỷ — app, file của bạn sẽ bị xoá)", command=lambda: self.cancel(p))
+            try: m.tk_popup(widget.winfo_rootx(), widget.winfo_rooty() + widget.winfo_height())
+            finally: m.grab_release()
+            return
         can_up = p.get("status") == "active" and not p.get("locked") and not p.get("is_free") and p.get("pending_ram") is None
         on = p.get("status") == "active" and (not p.get("locked") or (getattr(self, "prof", None) or {}).get("role") == "admin")
         for lab, tab in (("Tab cửa sổ nhỏ · Xoay màn · Độ rộng nhỏ nhất…", "screen"), ("Cài app (APK / link)…", "install"), ("Ứng dụng trong máy…", "apps"),
@@ -9813,7 +9970,8 @@ class Launcher:
         self.btn(hd, L("▦ Xem tất cả", "▦ View all"), self.open_wall, tint=OK, padx=11, pady=4, font=("Segoe UI", 9, "bold")).pack(side="right", padx=(0, 8))   # 17/11d
         nav = tk.Frame(self.body, bg=CARD, highlightbackground=LINE, highlightthickness=1, radius=22)      # thanh nổi dưới cùng (giống thanh thẻ của app điện thoại)
         nav.pack(side="bottom", fill="x", padx=18, pady=(4, 14))
-        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("🖥 VPS GPU", lambda: VpsBuyDlg(self), "primary"), ("⚡ VPS NVMe", lambda: VmBuyDlg(self), "primary"),
+        navs = (("📱 Cloud Phone", self.open_order, "primary"), ("📲 Máy thật", lambda: RealOrderDlg(self), "primary"), ("🖥 VPS GPU", lambda: VpsBuyDlg(self), "primary"),
+                ("⚡ VPS NVMe", lambda: VmBuyDlg(self), "primary"),
                 ("Nạp tiền", self.open_topup, "flat"), ("🎟 Nhập mã", lambda: CodeDlg(self), "flat"))
         for i, (t, cmd, kind) in enumerate(navs):
             nav.grid_columnconfigure(i, weight=1, uniform="nav")
@@ -9872,6 +10030,7 @@ class Launcher:
                     u = fetch_update_info(force=True, timeout=10, with_min=not getattr(self, "_site_ok", False))
                     if u: self.update_info = u
                 rows = self.auth.phones()
+                if any(isinstance(r, dict) and r.get("real_device") for r in rows or []): real_catalog(self)   # 28/11: tên mẫu máy thật (nhớ 60 giây)
                 try: vps = self.auth.rpc("pc_my_vps", {})                     # 21/11 · VPS GPU của tôi (cơ sở dữ liệu chưa có phần này → bỏ qua)
                 except Exception: vps = None
                 try: vm = self.auth.rpc("vm_my", {})                          # 27/11 · VPS NVMe của tôi (chưa có hàm → không hiện; lỗi mạng → giữ lần trước)
@@ -10144,6 +10303,7 @@ class Launcher:
         st, col = STATUS.get(p.get("status"), (p.get("status") or "", DIM))
         tk.Label(row, text="● " + st, font=("Segoe UI", 9, "bold"), tint=col, padx=10, pady=3).pack(side="right")
         info = f"{p.get('ram')}GB RAM · {p.get('cpu')} nhân{paid_tag(p)} · {p.get('res') or ''} · {p.get('fps') or 30} FPS · Android {p.get('android') or '9'}"
+        if p.get("real_device"): info = f"📱 Máy thật · {real_model_name(p.get('real_model'))} · Android {p.get('android') or '?'} · {p.get('ram')}GB RAM"   # 28/11 · SQL v70
         if p.get("shared"): info += " · được chia sẻ"
         tk.Label(c, text=info, font=self.f_t, fg=DIM, bg=CARD, anchor="w").pack(fill="x", padx=16)
         if p.get("expires_at"):                                    # còn dưới 1 ngày → vàng · hết hạn → đỏ (nhìn là biết máy nào cần gia hạn)
@@ -10173,7 +10333,7 @@ class Launcher:
         if on: b.config(bg="#2fd9a6", fg="#03261b")
         b.pack(side="left")
         if not active: b.config(state="disabled", bg=LINE)
-        if active: self.btn(bar, "Khởi động lại", lambda q=p: self.reboot(q), "ghost", pady=8).pack(side="left", padx=8)
+        if active and not p.get("real_device"): self.btn(bar, "Khởi động lại", lambda q=p: self.reboot(q), "ghost", pady=8).pack(side="left", padx=8)
         if p.get("shared"): return c                                # máy người khác chia sẻ: chỉ điều khiển
         mo = self.btn(bar, "Khác ▾", None, "ghost", padx=12, pady=8); mo.config(command=lambda q=p, w=mo: self.more(q, w)); mo.pack(side="right")
         if st in ("active", "expired") and not p.get("is_free"):
