@@ -3270,6 +3270,38 @@ EXACT.update({
 "💬 Nhóm Zalo ↗": "💬 Zalo group ↗",
 })
 
+# 28/11 · SQL v67 — đổi máy chủ giữ nguyên Android · tối đa 3 lần / 24 giờ
+EXACT.update({
+"Đổi Android / máy chủ — ": "Switch Android / server — ",
+"Đổi Android / máy chủ…": "Switch Android / server…",
+"Đổi sang máy chủ khác": "Move to another server",
+"Tính năng đang cập nhật — thử lại sau ít phút.": "This option is being updated — try again in a few minutes.",
+"⚠ Đổi Android hoặc đổi máy chủ sẽ XOÁ SẠCH toàn bộ dữ liệu trong máy: app, game, tài khoản đã đăng nhập, ảnh, file — không khôi phục được.":
+    "⚠ Switching Android or server ERASES ALL data on this phone: apps, games, logged-in accounts, photos, files — it cannot be undone.",
+"Mỗi tài khoản đổi Android / máy chủ tối đa 3 lần trong 24 giờ — bạn đã đổi đủ, thử lại sau.":
+    "Each account can switch Android / server up to 3 times in 24 hours — you've used them all, try again later.",
+"Hiện chưa có máy chủ khác còn chỗ cho bản Android này — máy của bạn vẫn giữ nguyên, thử lại sau ít phút.":
+    "No other server has room for this Android version right now — your phone is unchanged; try again in a few minutes.",
+})
+TPL.extend([
+["Đổi Android / máy chủ — {0}", "Switch Android / server — {0}"],
+["🔀 Giữ Android {0} · máy chủ khác", "🔀 Keep Android {0} · other server"],
+["Còn {0}/{1} lượt đổi trong 24 giờ (đổi Android và đổi máy chủ tính chung). Máy mới tự vào máy chủ còn trống nhất.",
+ "{0}/{1} switches left in 24 hours (Android and server switches count together). The new phone goes to the emptiest server."],
+["Máy mới: Android {0} · {1}GB · {2} nhân · {3} · {4} FPS · ở máy chủ khác (không tạo lại ở máy chủ đang dùng)",
+ "New phone: Android {0} · {1}GB · {2} cores · {3} · {4} FPS · on another server (never back on the current one)"],
+["Máy mới: Android {0} · {1}GB · {2} nhân · {3} · {4} FPS · ở máy chủ khác (không tạo lại ở máy chủ đang dùng) — trả đủ cấu hình đã mua",
+ "New phone: Android {0} · {1}GB · {2} cores · {3} · {4} FPS · on another server (never back on the current one) — full config you bought restored"],
+["Đang xoá máy cũ… xoá xong tự tạo máy Android {0} ở máy chủ khác (2–5 phút).",
+ "Deleting the old phone… then creating the Android {0} phone on another server (2–5 minutes)."],
+["🔄 Đang xoá máy cũ… xoá xong tự tạo máy Android {0} ở máy chủ khác (2–5 phút).",
+ "🔄 Deleting the old phone… then creating the Android {0} phone on another server (2–5 minutes)."],
+["🔄 Máy cũ đã xoá — đang tạo máy Android {0} ở máy chủ khác (2–5 phút).\n{1}",
+ "🔄 Old phone deleted — creating the Android {0} phone on another server (2–5 minutes).\n{1}"],
+["🔄 Máy cũ đã xoá — đang tạo máy Android {0} ở máy chủ khác (2–5 phút).",
+ "🔄 Old phone deleted — creating the Android {0} phone on another server (2–5 minutes)."],
+])
+
 
 def _tpl():
     global _T
