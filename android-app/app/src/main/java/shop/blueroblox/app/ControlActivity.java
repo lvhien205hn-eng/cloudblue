@@ -473,7 +473,7 @@ public class ControlActivity extends Activity {
         }
 
         @Override public void onWelcome(JSONObject w, boolean direct) {
-            if (stats.getVisibility() == View.VISIBLE) stats.setText(direct ? Ui.L("trực tiếp", "direct") : "Cloudflare");
+            if (stats.getVisibility() == View.VISIBLE) stats.setText(direct ? Ui.L("trực tiếp", "direct") : Ui.L("trung chuyển", "relay"));   // 28/11: không nêu nhà cung cấp
             // màn chờ ẩn khi khung hình đầu tiên hiện (StreamView báo)
         }
 
@@ -489,7 +489,7 @@ public class ControlActivity extends Activity {
             netBadge();
             if (stats.getVisibility() != View.VISIBLE) return;
             stats.setText(fps + " fps · " + kbps + " kbps · " + (ping >= 0 ? ping + " ms" : "– ms") + " · "
-                    + (direct ? Ui.L("trực tiếp", "direct") : "Cloudflare") + (weak ? Ui.L(" · mạng yếu", " · weak net") : ""));
+                    + (direct ? Ui.L("trực tiếp", "direct") : Ui.L("trung chuyển", "relay")) + (weak ? Ui.L(" · mạng yếu", " · weak net") : ""));
         }
 
         @Override public void onProblem(String code, String msg) { onProblemX(code, msg, null); }

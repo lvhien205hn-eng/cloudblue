@@ -38,6 +38,7 @@ final class Srv {
             {"Máy đang bị khoá: (.+)", "This phone is locked: {1}", ""},
             {"Hệ thống đang bảo trì, quay lại sau ít phút\\.", "Under maintenance — please come back in a few minutes.", ""},
             {"Không lấy được hình từ cửa sổ máy — thử mở lại\\.", "Couldn't get the phone's picture — try reopening it.", ""},
+            {"Máy chủ chưa lấy được hình của máy này — thử mở lại\\.", "The server couldn't get this phone's picture yet — try reopening it.", ""},
             {"Máy đang tắt hoặc đang khởi động lại — chờ ít giây rồi mở lại\\.", "The phone is off or restarting — wait a few seconds, then reopen it.", ""},
             {"Máy đang tắt hoặc đang khởi động lại\\.", "The phone is off or restarting.", ""},
             {"Máy đang được mở ở nơi khác\\.", "This phone was opened somewhere else.", ""},
