@@ -9,6 +9,7 @@
    6. không dumpsys "màn ảo" sau cú bấm ở Android 9; máy khác vẫn có
    7. Thông số gửi app / web có efps, rs, rk, dr
    8. (27/11f) cbvideo: lệnh chạy, xin khung khoá, ngưỡng bỏ khung, chọn / quay về scrcpy, chế độ thử ?cbv=1, md5 ghim"""
+import threading
 import asyncio, importlib.util, json, os, sys, time
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
@@ -156,8 +157,9 @@ async def main():
        and 'Deny("OFFLINE", "Không lấy được hình từ cửa sổ máy' not in SRC_TXT and SRC_TXT.count('Deny("OFFLINE", MSG_NOWIN)') == 3)
 
     print("8. cbvideo (27/11f) — máy chủ hình riêng cho Android 9")
-    ck("bản 28/11a + dòng khởi động 'bản 28/11a: ẩn thông số kỹ thuật với khách' (vẫn giữ dòng 'bản 27/11h: Android 9 cbvideo')",
-       bs.BS_SUB == "28/11a" and "bản 28/11a: ẩn thông số kỹ thuật với khách" in SRC_TXT and "bản 27/11h: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("bản 28/11b + dòng khởi động 'bản 28/11b: tự phát hiện màn hình máy bị vẽ hỏng' (vẫn giữ dòng 28/11a, 27/11h)",
+       bs.BS_SUB == "28/11b" and "bản 28/11b: tự phát hiện màn hình máy bị vẽ hỏng" in SRC_TXT
+       and "bản 28/11a: ẩn thông số kỹ thuật với khách" in SRC_TXT and "bản 27/11h: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
     ck("md5 libcbenc-x86_64.so (openh264) ghim đủ 32 ký tự hex · mặc định nén openh264 1 luồng",
        len(bs.CBV_LIB[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_LIB[1]) and bs.CBV_ENC == "oh264" and bs.CBV_THREADS == 1, (bs.CBV_LIB, bs.CBV_ENC))
     ck("md5 cbvideo.jar ghim đủ 32 ký tự hex", len(bs.CBV_FILE[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_FILE[1]), bs.CBV_FILE)
@@ -361,6 +363,53 @@ async def main():
        and "MÀN HÌNH THẬT CỦA ANDROID ĐÃ NHIỄU" in SRC_TXT and "KHÔNG lưu / xem ảnh màn của khách" in SRC_TXT)
     ck("kiemhinh KHÔNG còn kết luận 'SẠCH' chỉ vì 0 lỗi giải mã (phải kiểm hình)", "đã đo độ nhiễu từng lần" in SRC_TXT
        and "Hình phát ra từ máy SẠCH ở mọi kiểu thử → lỗi nằm ở đường truyền" not in SRC_TXT)
+
+    print("10. 28/11b — tự phát hiện màn máy bị vẽ hỏng → nhắc khách khởi động lại")
+    noisy_px = bytes(rnd.getrandbits(8) for _ in range(W * H * 4))
+    clean_px = bytes(img)
+    noisy2 = bytes(rnd.getrandbits(8) for _ in range(W * H * 4))       # rác KHÁC (màn đang đổi — kiểu game chạy hình hạt)
+    real_raw, real_sleep = bs._raw_shot, bs.time.sleep
+    try:
+        bs.time.sleep = lambda s: None
+        seq = iter([(W, H, noisy_px), (W, H, noisy_px)]); bs._raw_shot = lambda serial: next(seq)
+        bad, v = bs.gfx_probe("x")
+        ck("rác màu đứng yên (2 ảnh giống nhau) → VẼ HỎNG", bad is True and v >= bs.GFX_BAD, (bad, v))
+        seq = iter([(W, H, noisy_px), (W, H, noisy2)]); bs._raw_shot = lambda serial: next(seq)
+        bad, v = bs.gfx_probe("x")
+        ck("nhiễu nhưng màn đang đổi (game chạy) → KHÔNG nhắc", bad is False, (bad, v))
+        n = {"k": 0}
+        def one_shot(serial): n["k"] += 1; return (W, H, clean_px)
+        bs._raw_shot = one_shot
+        bad, v = bs.gfx_probe("x")
+        ck("màn bình thường → không nhắc, chỉ chụp 1 lần", bad is False and n["k"] == 1 and v < bs.NOISE_OK, (bad, v, n))
+        bs._raw_shot = lambda serial: None
+        ck("chụp không được → không nhắc", bs.gfx_probe("x") == (False, None))
+    finally:
+        bs._raw_shot, bs.time.sleep = real_raw, real_sleep
+    ck("_same_frac: cùng ảnh = 1 · khác cỡ = 0", bs._same_frac((W, H, clean_px), (W, H, clean_px)) == 1.0 and bs._same_frac((W, H, clean_px), (8, 8, b"x" * 256)) == 0.0)
+    s = mk("12", adm=False); s.gfx = 1; s.enc = Enc2(); s.last_rx = time.time() + 60; s.t_auth = time.time() + 3600; s.last_restart = time.time()
+    s._early_down = lambda now: False; s._may_raise = lambda now: False; s.wait_key = False
+    task = asyncio.ensure_future(s._monitor()); await asyncio.sleep(2.2); s.closed = True
+    try: await asyncio.wait_for(task, 2)
+    except BaseException: pass
+    st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
+    ck("phiên KHÁCH có màn hỏng → S_STATS gfx = 1 (lời nhắc cho khách, không phải thông số kỹ thuật)", bool(st) and st[-1].get("gfx") == 1 and "ctl" not in st[-1], st[-1:] if st else None)
+    s2 = mk("12", adm=False)
+    ck("mặc định gfx = 0 · phiên điều khiển bật luồng canh (xem trước thì không)", s2.gfx == 0 and "if GFX_CHECK and not self.is_preview:" in SRC_TXT
+       and SRC_TXT.count("threading.Thread(target=self._gfx_watch, daemon=True).start()") == 1)
+    calls = {"n": 0}
+    real_probe = bs.gfx_probe
+    try:
+        def fake_probe(serial, pause=3.0):
+            calls["n"] += 1; return (True, 0.5)
+        bs.gfx_probe = fake_probe; bs.GFX_FIRST_S_REAL = bs.GFX_FIRST_S; bs.GFX_FIRST_S = 0.0
+        s3 = mk("12", adm=False); s3.serial = "x"; s3.name = "cp_t"
+        th = threading.Thread(target=s3._gfx_watch, daemon=True); th.start(); time.sleep(1.5); s3.closed = True; th.join(3)
+        ck("luồng canh: đo được hỏng → self.gfx = 1, dừng khi phiên đóng", s3.gfx == 1 and calls["n"] >= 1 and not th.is_alive(), (s3.gfx, calls, th.is_alive()))
+    finally:
+        bs.gfx_probe = real_probe; bs.GFX_FIRST_S = bs.GFX_FIRST_S_REAL
+    ck("--quetnhieu --sua: khởi động lại máy hỏng bằng phonectl restart (admin tự chạy)", '"--sua" in sys.argv' in SRC_TXT
+       and '[sys.executable, PHONECTL, "restart", n]' in SRC_TXT)
 
 
 asyncio.run(main())
