@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 28/11f · cbwp.apk: app trợ giúp đặt ảnh nền CloudBlue (xem Svc.java). Không biểu tượng, không màn hình.
+     Dịch vụ chỉ shell / hệ thống gọi được (quyền DUMP). Máy chủ cài → đặt ảnh nền → gỡ ngay. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="vn.cloudblue.wp" android:versionCode="1" android:versionName="1.0">
+  <uses-permission android:name="android.permission.SET_WALLPAPER"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <application android:label="CloudBlue Wallpaper" android:allowBackup="false" android:hasCode="true">
+    <service android:name=".Svc" android:exported="true" android:permission="android.permission.DUMP"/>
+  </application>
+</manifest>
