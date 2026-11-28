@@ -9961,6 +9961,34 @@ function nodeWarn(m) {
   if (+m.lag_pen >= 10) o.push(`<span title="Điểm lag khi chia máy mới (càng cao càng ít được giao): Windows không WGC +25 · CPU / card đồ hoạ đang bận">⚖️ Điểm lag +${Math.round(+m.lag_pen)}</span>`);
   return o.join("");
 }
+/* 28/11h · máy chủ báo LÝ DO ngừng nhận máy mới (metrics.stop) + CPU đủ mọi nhóm (2 CPU) + RAM ảo — user 28/11 21:40: "máy x2 CPU mà toàn
+   thấy báo 1 CPU · RAM cứ lấy RAM chính mà dùng". Trước: card kẹt xung làm thẻ hiện 31/31 nhân · 41/41 GB như CPU / RAM đã đầy. */
+const NSTOP = { cpu: "CPU thật nóng", cpu1: "1 CPU gần đầy (máy khách dồn vào 1 CPU)", ram: "RAM chính gần đầy", disk: "ổ cứng sắp đầy", gpu: "card đồ hoạ quá tải", vram: "VRAM card đầy",
+  gpu_stuck: "card đồ hoạ kẹt xung nghỉ", vms: "đủ số máy tối đa", full: "vừa hết chỗ lúc tạo máy", boot: "đang tạo nhiều máy mới", sick: "máy mới tạo không lên" };
+const nStop = m => (m && Array.isArray(m.stop) ? m.stop.filter(x => NSTOP[x]) : []);
+function nodeStopRow(n, m, off) {
+  const w = nStop(m);
+  if (off || !n.enabled || !w.length) return "";
+  const room = !w.some(x => x === "cpu" || x === "cpu1" || x === "ram");
+  return `<div class="nr npause" title="Máy chủ tạm không nhận máy MỚI (máy khách đang có vẫn chạy bình thường) — hết lý do là tự nhận lại, không cần bấm gì."><span>⏸ Ngừng nhận máy mới vì ${w.map(x => NSTOP[x]).join(" · ")}${room ? " — CPU, RAM chính vẫn còn trống" : ""}</span><em></em></div>`;
+}
+function cpuHw(m) {                                     // " · 2 CPU · 72 luồng" (máy chủ bản 28/11h trở đi báo)
+  if (!m || !(+m.cpu_threads > 0)) return "";
+  return ` · ${+m.cpu_sockets > 0 ? m.cpu_sockets + " CPU · " : ""}${m.cpu_threads} luồng`;
+}
+function cpuEach(m) {                                   // % từng CPU (máy 2 CPU) — thấy CPU nào đang gánh
+  const a = m && Array.isArray(m.cpu_sock_pct) && m.cpu_sock_pct.length > 1 ? m.cpu_sock_pct : m && Array.isArray(m.cpu_grp_pct) && m.cpu_grp_pct.length > 1 ? m.cpu_grp_pct : null;
+  if (!a) return "";
+  const nm = m.cpu_sock_pct ? "CPU" : "Nhóm";
+  return `<div class="nr" title="CPU đang dùng thật của TỪNG ${m.cpu_sock_pct ? "CPU (socket)" : "nhóm CPU của Windows"} — % CPU thật ở trên đã cộng đủ cả ${a.length}."><span>Từng ${m.cpu_sock_pct ? "CPU" : "nhóm CPU"}</span><em>${a.map((v, i) => `${nm} ${i + 1}: ${v == null ? "?" : Math.round(v) + "%"}`).join(" · ")}</em></div>`;
+}
+function cpuTip(m) {
+  return "CPU đang dùng thật" + (+m.cpu_threads > 0 ? ` — cộng đủ mọi CPU của máy (${+m.cpu_sockets > 0 ? m.cpu_sockets + " CPU · " : ""}${m.cpu_threads} luồng${+m.cpu_cores > 0 ? " · " + m.cpu_cores + " nhân thật" : ""}${m.cpu_name ? " · " + m.cpu_name : ""})` : "");
+}
+function capTipC(m, capC) {
+  const r = Array.isArray(m.cpu_rule) ? m.cpu_rule : null, t = +m.cpu_threads;
+  return "CPU đã cấp cho máy khách — đạt trần là ngừng nhận máy mới" + (r && t > 0 && +r[0] > 0 ? `. Trần = nhỏ hơn của ${+r[0]} nhân (CAP_CPU) và ${t} luồng × ${+r[1]} − ${+r[2]} = ${Math.round(t * +r[1] - +r[2])} → ${Math.round(capC)} nhân` : "");
+}
 function renderNodes() {
   const box = $("cpa-nodes"); if (!box) return;
   const SL = srvLink(), have = new Set(NODES.map(n => n.id));
@@ -9985,18 +10013,20 @@ function renderNodes() {
       <div class="nhd">
         <label class="nsel" title="Tick để chỉnh nhiều máy chủ cùng lúc"><input type="checkbox" data-nsel="${nid}"${sel ? " checked" : ""} aria-label="Chọn máy chủ ${esc(n.name)}"></label>
         <div class="nh"><b>${esc(n.name)}</b><span class="hint">${nid}</span>
-          <span class="pill ${off ? "bad" : !n.enabled ? "wt" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : !n.enabled ? nodePausePill(n, m) : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
-        <div class="nmeta">${nodePauseRow(n)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}${mvRow(n)}</div>
+          <span class="pill ${off ? "bad" : !n.enabled ? "wt" : full ? "bad" : "ok"}">${off ? "Mất kết nối " + Math.round(age) + " phút" : !n.enabled ? nodePausePill(n, m) : full ? (m.cpu_busy ? "CPU nóng " + Math.round(m.cpu_avg5) + "%" : nStop(m).includes("cpu1") ? "1 CPU nóng " + Math.round(+m.cpu_hot5 || 0) + "%" : m.ram_busy ? "RAM đầy " + Math.round(m.ram_pct) + "%" : m.disk_busy ? "Ổ cứng sắp đầy" : nStop(m).includes("gpu_stuck") ? "Card kẹt xung" : m.gpu_busy ? "VGA quá tải " + Math.round(m.gpu_avg5) + "%" : m.vram_busy ? "VRAM đầy " + Math.round(m.vram_avg5) + "%" : nStop(m).includes("sick") ? "Máy mới không lên" : nStop(m).includes("boot") ? "Đang tạo máy mới" : nStop(m).includes("vms") ? "Đủ số máy" : "Đầy" + (m.fill_pct != null ? " " + Math.round(m.fill_pct) + "%" : "")) : "Đang chạy" + (m.fill_pct != null ? " · " + Math.round(m.fill_pct) + "%" : "")}</span></div>
+        <div class="nmeta">${nodePauseRow(n)}${nodeStopRow(n, m, off)}${nodeEmu(n, m)}${nodeSw(m, swNew).replace("<span>Phần mềm máy chủ</span>", "<span>Phần mềm</span>")}${revRow(n)}${L ? srvCtlRow(L) : ""}${job ? nodeJobRow(job) : ""}${mvRow(n)}</div>
       </div>
       <div class="nc cpu">
-        ${nRow("CPU thật", (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, "CPU đang dùng thật")}
+        ${nRow("CPU thật" + cpuHw(m), (m.cpu_pct ?? "?") + "%", m.cpu_pct, 0, cpuTip(m))}
+        ${cpuEach(m)}
         ${m.cpu_over ? nRow(`TB 5 phút · ngừng nhận ≥ ${cpuStop}%`, (m.cpu_avg5 ?? "?") + "%", m.cpu_avg5, cpuStop, `CPU thật trung bình 5 phút — ngừng nhận máy mới khi ≥ ${cpuStop}%`) : ""}
-        ${capC ? nRow("Đã cấp · đạt trần là ngừng", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100, "CPU đã cấp cho máy khách — đạt trần là ngừng nhận máy mới")
+        ${capC ? nRow("Đã cấp · đạt trần là ngừng", `${+n.alloc_cpu}/${Math.round(capC)} nhân`, +n.alloc_cpu / capC * 100, 100, capTipC(m, capC))
         : nRow(m.cpu_over ? `Đã cấp · dùng chung ×${m.cpu_over}` : "Đã cấp cho khách", m.cpu_over ? `${+n.alloc_cpu}/${Math.round(+n.cpu_total * m.cpu_over)} nhân ảo` : `${+n.alloc_cpu}/${+n.cpu_total} luồng`, +n.alloc_cpu / (+n.cpu_total * (m.cpu_over || 1)) * 100, m.cpu_over ? 100 : lim, "CPU đã cấp cho máy khách")}
       </div>
       <div class="nc ram">
-        ${nRow("RAM thật", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100, 0, "RAM đang dùng thật")}
-        ${nRow(m.ram_over ? `Đã cấp chung ×${m.ram_over} · ngừng khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${ramStop}%` : "Đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(capR)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, capR) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? stopR || 100 : lim, "RAM đã cấp cho máy khách" + (m.ram_over ? ` (dùng chung ×${m.ram_over})` : ""))}
+        ${nRow("RAM chính (thật)", `${m.ram_used ?? "?"}/${+n.ram_total} GB`, (m.ram_used || 0) / +n.ram_total * 100, 0, "RAM chính (RAM thật cắm trên máy) đang dùng")}
+        ${nRow(m.ram_over > 1 ? `Đã cấp chung ×${m.ram_over} · ngừng khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${ramStop}%` : m.ram_over ? `Đã cấp · theo RAM chính · ngừng khi ${stopR ? "đạt " + stopR + "% hoặc " : ""}RAM thật ≥ ${ramStop}%` : "Đã cấp cho khách", m.ram_over ? `${+n.alloc_ram}/${Math.round(capR)} GB` : `${+n.alloc_ram}/${+n.ram_total} GB`, m.ram_over ? +n.alloc_ram / Math.max(1, capR) * 100 : +n.alloc_ram / +n.ram_total * 100, m.ram_over ? stopR || 100 : lim, "RAM đã cấp cho máy khách" + (m.ram_over > 1 ? ` (dùng chung ×${m.ram_over})` : m.ram_over ? " — bán theo RAM CHÍNH còn trống thật, không bán vượt, không tính RAM ảo" : ""))}
+        ${m.swap_total != null ? `<div class="nr" title="RAM ảo = tệp hoán đổi của Windows. Máy chủ bán máy theo RAM chính, KHÔNG tính RAM ảo; Windows chỉ dùng nhiều RAM ảo khi RAM chính gần đầy."><span>RAM ảo · chỉ dùng khi RAM chính đầy</span><em>${m.swap_used ?? "?"}/${m.swap_total} GB</em></div>` : ""}
         ${m.sleeping > 0 && m.sleep_gb != null ? `<div class="nr" title="Khách mở máy ngủ là máy bật lại → phần RAM này không bán cho máy mới. Giữ bằng RAM thật 1 máy đang chạy dùng${m.ram_over > 1 ? " ÷ " + m.ram_over + " (dùng chung)" : ""}."><span>💤 ${m.sleeping} máy ngủ giữ chỗ (${m.sleep_pct}% RAM cấp)</span><em>${m.sleep_gb}/${m.sleep_full_gb} GB</em></div>` : ""}
       </div>
       <div class="nc gpu">
