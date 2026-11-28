@@ -1,0 +1,6 @@
+26/26
+OK kéo thanh trên cùng của cửa sổ (chạm) → cửa sổ dời xuống
+NO kéo góc dưới phải (chạm) → cửa sổ to ra
+NO màn chính của máy này xoay ngang được (máy ảo Pixel: màn chính chỉ dọc)
+OK Phóng to = toàn màn thật
+NO game cũ vừa thu nhỏ: app thấy (640, 356) · khung game (1280, 592)

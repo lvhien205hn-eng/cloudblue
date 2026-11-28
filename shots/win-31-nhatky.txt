@@ -1,0 +1,660 @@
+== Android API 31 ==
+restarting adbd as root
+đặt cửa sổ nổi: ['1', '1']
+restarting adbd as root
+freeform: 1
+1 · Physical size: 320x640
+Override size: 640x1280
+Physical density: 160
+Override density: 320
+cài wintest1: forming Incremental Install
+Success
+Install command complete in 242 ms
+All files should be loaded. Notifying the device.
+cài wintest2: forming Incremental Install
+Success
+Install command complete in 403 ms
+All files should be loaded. Notifying the device.
+cài wintest3: forming Incremental Install
+Success
+Install command complete in 295 ms
+All files should be loaded. Notifying the device.
+cài wintest4: forming Incremental Install
+Success
+Install command complete in 240 ms
+All files should be loaded. Notifying the device.
+--- am stack list (lúc đầu) ---
+RootTask id=1 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=Rect(0, 0 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.66 fontWeightAdjustment=0}
+  taskId=9: com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity bounds=[0,0][640,1280] userId=0 visible=true topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+
+RootTask id=2 bounds=[0,0][640,654] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw315dp w320dp h315dp 320dpi smll land finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 654) mAppBounds=Rect(0, 0 - 640, 654) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=split-screen-primary mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.66 fontWeightAdjustment=0}
+  taskId=2: unknown bounds=[0,0][640,654] userId=0 visible=false
+
+RootTask id=3 bounds=[0,674][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw315dp w320dp h303dp 320dpi smll land finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 674 - 640, 1280) mAppBounds=Rect(0, 674 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=split-screen-secondary mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.66 fontWeightAdjustment=0}
+  taskId=3: unknown bounds=[0,674][640,1280] userId=0 visible=false
+
+RootTask id=4 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=Rect(0, 0 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.66 fontWeightAdjustment=0}
+  taskId=4: unknown bounds=[0,0][640,1280] userId=0 visible=false
+
+RootTask id=5 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=Rect(0, 0 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=multi-window mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.66 fontWeightAdjustment=0}
+  taskId=5: unknown bounds=[0,0][640,1280] userId=0 visible=false
+
+RootTask id=6 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=
+--- dumpsys window displays ---
+  Display: mDisplayId=0 rootTasks=6
+    init=320x640 160dpi base=640x1280 320dpi cur=640x1280 app=640x1280 rng=640x616-1280x1256
+geo: {'w': 640, 'h': 1280, 'top': 48, 'bottom': 0, 'right': 0, 'cap': 84, 'dpi': 320, 'min': 440} sdk: 31 free: True
+--- máy có nhận khoá xoay không: mSupportAutoRotation=true
+  ✓ đọc được danh sách tab + cỡ màn (dọc)
+  ✓ app 1 mở toàn màn, đang hiện
+--- loại app (dumpsys activity activities) ---
+* Hist #0: ActivityRecord{c81c871 u0 vn.cloudblue.wintest1/vn.cloudblue.wintest.Main t10}
+          mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+          resizeMode=RESIZE_MODE_UNRESIZEABLE
+      * Hist #0: ActivityRecord{f07fe92 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t9}
+          mOrientation=SCREEN_ORIENTATION_UNSPECIFIED
+          resizeMode=RESIZE_MODE_RESIZEABLE
+    mForceDefaultOrientation=false
+    mCurrentAppOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    mLastOrientation=6
+    → {10: {'old': True, 'fixed': 'land'}, 9: {'old': False, 'fixed': ''}}
+--- mọi dòng nói về hướng / đổi cỡ của app 1 ---
+mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+          resizeMode=RESIZE_MODE_UNRESIZEABLE
+      mResizeMode=RESIZE_MODE_RESIZEABLE mSupportsPictureInPicture=false isResizeable=true
+--- tiến trình app 1 (ps) ---
+u0_a145       4917 vn.cloudblue.wintest1
+  ✓ đọc được loại app + pid: app 1 khai báo không đổi cỡ + ép ngang → app KIỂU CŨ, có đúng 1 tiến trình
+   win_run(mini) → 200 {'ok': True, 'n': 1, 'id': 10, 'b': [0, 26, 640, 431], 'fit': 'ok', 'sw': 602, 'msg': 'Đã thu nhỏ wintest1 (1 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ. Máy chuyển sang màn rộng 602 dp cho tab đủ chỗ — bấm Màn dọc như cũ để trả lại.'} · 7.6 giây
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #1: ActivityRecord{c4e8e74 u0 com.android.systemui/com.android.wm.shell.legacysplitscreen.ForcedResizableInfoActivity t10} |           mOrientation=SCREEN_ORIENTATION_UNSPECIFIED |           resizeMode=RESIZE_MODE_RESIZEABLE_VIA_SDK_
+      $ am task resize 10 0 48 632 488 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1)/"
+        ↳ 3: name='f16ec68 vn.cloudblue.wintest1/vn.cloudblue.wintest.Main', id=131, displayId=0, portalToDisplayId=-1, paused=false, focusable=true, hasWallpaper=false, visible=true, alpha=1.00, flags=NOT_TOUCH_MODAL | LAYOUT_IN_SCREEN | LAYOUT_INSE
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest1 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 320
+      $ settings put global cb_win_prev_density 320:640:a; wm density 170
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ am task resize 10 0 26 640 431 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145       5671 vn.cloudblue.wintest1
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+  ✓ Thu nhỏ tab → app 1 thành cửa sổ nổi đúng ô đã tính
+  ✓ … app kiểu cũ trên màn 360 dp, chưa có tab nhỏ nào → máy TỰ bật màn rộng (≥ 600 dp, nhớ mật độ cũ 320 + dấu tự bật), mở lại app ĐÚNG 1 LẦN vào ĐÚNG TAB cũ
+  ✓ … app dựng hình theo ĐÚNG CỠ CỬA SỔ (vừa khung): app thấy (640, 361) · cửa sổ (0, 26, 640, 431) · thanh tiêu đề 45 px; phần hình đúng tỉ lệ game 16:9
+  ✓ … màn về DỌC sau khi game ngang thành cửa sổ, cửa sổ nằm trong màn
+   win_run(mini) → 200 {'ok': True, 'n': 2, 'id': 11, 'b': [0, 444, 640, 849], 'fit': 'ok', 'sw': None, 'msg': 'Đã thu nhỏ wintest2 (2 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ.'} · 4.7 giây
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 26 0 431 640 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest2/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #1: ActivityRecord{3322c5a u0 com.android.systemui/com.android.wm.shell.legacysplitscreen.ForcedResizableInfoActivity t11} |           mOrientation=SCREEN_ORIENTATION_UNSPECIFIED |           resizeMode=RESIZE_MODE_RESIZEABLE_VIA_SDK_
+      $ am task resize 11 0 444 640 849 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest2)/"
+        ↳ 3: name='3b13f2c vn.cloudblue.wintest2/vn.cloudblue.wintest.Main', id=194, displayId=0, portalToDisplayId=-1, paused=false, focusable=true, hasWallpaper=false, visible=true, alpha=1.00, flags=NOT_TOUCH_MODAL | LAYOUT_IN_SCREEN | LAYOUT_INSE
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest2 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 640 431 2>&1
+      $ am task resize 11 0 444 640 849 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest2/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+        ↳ u0_a146       6217 vn.cloudblue.wintest2
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest2 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest2 active >/dev/null 2>&1; cmd appo
+  ✓ về màn chính rồi mở app 2 → thu nhỏ: 2 cửa sổ cùng hiện, cửa sổ app 1 giữ đúng chỗ, cửa sổ mới vào chỗ trống
+  ✓ … màn đã rộng → không đổi mật độ nữa; app 1 KHÔNG bị mở lại; app 2 mở lại đúng 1 lần và dựng hình đúng cỡ cửa sổ: app thấy (640, 361) · cửa sổ (0, 444, 640, 849)
+  ⓘ✓ kéo thanh trên cùng của cửa sổ (chạm) → cửa sổ dời xuống 
+  ⓘ✓ kéo góc dưới phải (chạm) → cửa sổ to ra 
+hồ sơ clone: Success: created user id 10
+Success: user started
+Package vn.cloudblue.wintest1 installed for user: 10
+   win_run(mini) → 200 {'ok': True, 'n': 3, 'id': 12, 'b': [0, 1030, 364, 1279], 'fit': 'ok', 'sw': None, 'msg': 'Đã thu nhỏ wintest1 (bản clone) (3 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ.'} · 8.3 giây
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 26 0 431 640 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 592 8 1081 604 2>&1
+      $ am start --user 10 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.winte
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{72014e2 u10 vn.cloudblue.wintest1/vn.cloudblue.wintest.Main t12} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{5d6ad8
+      $ am task resize 12 0 1030 364 1279 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1)/"
+        ↳ displayId=0, name='9f3e500 vn.cloudblue.wintest1/vn.cloudblue.wintest.Main' |     displayId=0, name='9f3e500 vn.cloudblue.wintest1/vn.cloudblue.wintest.Main' result='OK' |       1: name='9f3e500 vn.cloudblue.wintest1/vn.cloudblue.wintest.Ma
+      $ input keyevent 3
+      $ am kill --user 10 vn.cloudblue.wintest1 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145       5671 vn.cloudblue.wintest1
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 640 431 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 36 592 632 1081 2>&1
+      $ am task resize 12 0 1030 364 1279 2>&1
+      $ am start --user 10 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.winte
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145       5671 vn.cloudblue.wintest1 | u10_a145      8718 vn.cloudblue.wintest1
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 10 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd app
+  ✓ bản clone (hồ sơ Công việc) thu nhỏ được → 3 cửa sổ
+   win_run(mini) → 200 {'ok': True, 'n': 4, 'id': 13, 'b': [0, 444, 320, 862], 'fit': 'ask', 'sw': None, 'msg': 'Đã thu nhỏ wintest3 (4 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.'} · 3.6 giây
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 26 0 431 640 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 592 8 1081 604 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 1030 276 1279 640 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{7a6577c u
+      $ am task resize 13 0 444 320 862 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest3 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest3 active >/dev/null 2>&1; cmd appo
+  ✓ app 3 (đổi cỡ được) thu nhỏ được, nằm trong màn
+  ✓ … app 3 khai báo ĐỔI CỠ ĐƯỢC: không bị mở lại (vẫn chạy), web được báo hiện nút Vừa khung (fit=ask); các app kiểu cũ khác cũng không bị mở lại
+   win_run(tile) → 200 {'ok': True, 'n': 4, 're': 3, 'msg': 'Đã xếp 4 tab nhỏ (1 cột × 4 hàng). 3 game đã mở lại để vẽ vừa ô mới.'} · 5.0 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{f07fe92 u0 com.google.android.apps.nexuslauncher/.NexusLauncherActivity t9} |           mOrientation=SCREEN_ORIENTATION_UNSPECIFIED |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{87
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest1; am kill --user 0 vn.cloudblue.wintest2; am kill --user 10 vn.cloudblue.wintest1 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest2/vn.cloudblue.wintest.Main }
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am start --user 10 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.winte
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      11402 vn.cloudblue.wintest1 | u10_a145     11470 vn.cloudblue.wintest1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+        ↳ u0_a146      11428 vn.cloudblue.wintest2
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      11402 vn.cloudblue.wintest1 | u10_a145     11470 vn.cloudblue.wintest1
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+  ✓ Sắp xếp tab (màn dọc): 4 cửa sổ đúng lưới (app kiểu cũ: cửa sổ đúng tỉ lệ game trong ô), cùng hiện
+  ✓ … ô đổi cỡ → app kiểu cũ được mở lại ngay trong ô mới (3 app), dựng hình đúng cỡ ô: app 1 thấy (476, 268) · ô (0, 26, 476, 338) — app 2 thấy (476, 268) · ô (0, 340, 476, 652); app 3 (đổi cỡ thật) không bị mở lại
+   win_run(tile) → 200 {'ok': True, 'n': 4, 're': 0, 'msg': 'Đã xếp 4 tab nhỏ (1 cột × 4 hàng).'} · 2.2 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{4f3e887 u
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='a379ac vn.cloudblue.wintest1/vn.cloudblue.wintest.Mai
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+  ✓ … bấm Sắp xếp lần nữa (ô không đổi cỡ) → không app nào bị mở lại
+   win_run(tile) → 200 {'ok': True, 'n': 4, 're': 0, 'msg': 'Đã xếp 4 tab nhỏ (1 cột × 4 hàng).'} · 1.9 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{4f3e887 u
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='a379ac vn.cloudblue.wintest1/vn.cloudblue.wintest.Mai
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+  ✓ khoá xoay ngang + Sắp xếp tab: cửa sổ đúng lưới của màn lúc đó, trong màn
+  ⓘ✗ màn chính của máy này xoay ngang được (máy ảo Pixel: màn chính chỉ dọc) → {'w': 640, 'h': 1280, 'top': 26, 'bottom': 0, 'right': 0, 'cap': 45, 'dpi': 170, 'min': 234}
+   win_run(tile) → 200 {'ok': True, 'n': 4, 're': 0, 'msg': 'Đã xếp 4 tab nhỏ (1 cột × 4 hàng).'} · 1.9 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{4f3e887 u
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='a379ac vn.cloudblue.wintest1/vn.cloudblue.wintest.Mai
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+   win_run(full) → 200 {'ok': True, 'n': 4, 'msg': 'Đã phóng to wintest3 hết màn. Muốn toàn màn như cũ: bấm nút ▭ trên thanh tiêu đề cửa sổ.'} · 7.5 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{4f3e887 u
+      $ am start --user 0 --display 0 --windowingMode 1 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ am start --user 0 --display 0 --task 13 --windowingMode 1 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudb
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ am task resize 13 0 26 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+  ✓ Phóng to tab → cửa sổ trên cùng về toàn màn (hoặc to hết màn nếu Android không cho)
+  ⓘ✗ Phóng to = toàn màn thật → freeform
+   win_run(mini) → 200 {'ok': True, 'n': 4, 'id': 13, 'b': [0, 967, 640, 1280], 'fit': 'ask', 'sw': None, 'msg': 'Đã thu nhỏ wintest3 (4 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.'} · 1.3 giây
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{874b108 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t13} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{4f3e887 u
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='8e85793 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest3 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest3 active >/dev/null 2>&1; cmd appo
+  ✓ Thu nhỏ lại tab vừa phóng to → cửa sổ nhỏ, trong màn
+   win_run(list) → 200 {'n': 4, 'sdk': 31, 'free': True, 'screen': [640, 1280], 'tabs': [{'id': 13, 'pkg': 'vn.cloudblue.wintest3', 'user': 0, 'b': [0, 967, 640, 1280], 'vis': True}, {'id': 12, 'pkg': 'vn.cloudblue.wintest1', 'user': 10, 'b': [0, 653, 476, 965], 'vis': True}, {'id': 11, 'pkg': 'vn.cloudblue.wintest2', 'user': 0, 'b': [0, 340, 476, 652], 'vis': True}, {'id': 10, 'pkg': 'vn.cloudblue.wintest1', 'user': 0, 'b': [0, 26, 476, 338], 'vis': True}]} · 0.1 giây
+
+  ✓ danh sách tab nhỏ đúng số
+   win_run(mini) → 409 {'error': 'Các tab đang là cửa sổ nhỏ rồi — mở thêm tab khác (VD bản clone) rồi bấm Thu nhỏ tab.'} · 0.1 giây
+
+  ✓ ở màn chính bấm Thu nhỏ tab → báo 'Các tab đang là cửa sổ nhỏ rồi'
+   win_run(mini) → 200 {'ok': True, 'n': 5, 'id': 14, 'b': [320, 26, 640, 260], 'fit': 'ok', 'sw': None, 'msg': 'Đã thu nhỏ wintest4 (5 tab nhỏ) — game đã mở lại để vẽ vừa cửa sổ.'} · 6.0 giây
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 26 164 338 640 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 340 164 652 640 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 653 164 965 640 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 967 0 1280 640 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest4/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #1: ActivityRecord{db5a8d5 u0 com.android.systemui/com.android.wm.shell.legacysplitscreen.ForcedResizableInfoActivity t14} |           mOrientation=SCREEN_ORIENTATION_UNSPECIFIED |           resizeMode=RESIZE_MODE_RESIZEABLE_VIA_SDK_
+      $ am task resize 14 320 26 640 260 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest4)/"
+        ↳ 3: name='967ab74 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main', id=462, displayId=0, portalToDisplayId=-1, paused=false, focusable=true, hasWallpaper=false, visible=true, alpha=1.00, flags=NOT_TOUCH_MODAL | LAYOUT_IN_SCREEN | LAYOUT_INSE
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest4 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ am task resize 14 320 26 640 260 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest4/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+        ↳ u0_a148      14062 vn.cloudblue.wintest4
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest4 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest4 active >/dev/null 2>&1; cmd appo
+  ✓ game cũ (app 4) thu nhỏ được
+  ✓ … game cũ TỰ được mở lại ngay trong cửa sổ lúc thu nhỏ → dựng khung theo cỡ CỬA SỔ (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề 45 px): app thấy (320, 190) · khung game (320, 234) · cửa sổ (320, 26, 640, 260)
+  ⓘ✗ … khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy (320, 190) · khung game (320, 234) → (320, 190, 320, 234)
+  ⓘ✓ … không còn kiểu Android thu nhỏ hình (size compat): [] 
+   win_run(grow) → 200 {'ok': True, 'id': 14, 'b': [240, 26, 640, 318], 'fit': 'ask', 'msg': 'Cửa sổ wintest4 đã to hơn (400×292). Bấm tiếp để to nữa.'} · 0.2 giây
+      $ am task resize 14 240 26 640 318 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest4)/"
+        ↳ displayId=0, name='bfe5a6b vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='bfe5a6b vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='bfe5a6b vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest4 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest4 active >/dev/null 2>&1; cmd appo
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{dc302f1 u0 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main t14} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{874b108
+  ✓ Cửa sổ to hơn với game cũ: chỉ đổi cỡ, KHÔNG mở lại (bấm nhiều lần không bị tải lại), báo web hiện nút Vừa khung: app thấy (400, 248) · khung game (320, 234)
+   win_run(refit) → 200 {'ok': True, 'id': 14, 'b': [240, 26, 640, 318], 'msg': 'Đã mở lại wintest4 ngay trong cửa sổ — game vẽ vừa khung (game vừa khởi động lại, vào lại trận nếu cần).'} · 2.8 giây
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest4 2>&1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 476 338 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 340 476 652 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 653 476 965 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 967 640 1280 2>&1
+      $ am task resize 14 240 26 640 318 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest4/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+        ↳ u0_a148      14459 vn.cloudblue.wintest4
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest4 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest4 active >/dev/null 2>&1; cmd appo
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest4)/"
+        ↳ displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+  ✓ 🖼 Vừa khung → game mở lại ngay trong ĐÚNG TAB + đúng chỗ + cỡ cửa sổ đang có (không đổi cỡ cửa sổ), đúng 1 lần · 13.3 giây
+  ✓ … màn vẫn đúng hướng như trước khi mở lại (game ngang không làm màn kẹt ngang)
+  ✓ … game dựng khung theo cỡ CỬA SỔ mới (bề ngang đúng, bề cao lệch tối đa bằng thanh tiêu đề 45 px): app thấy (400, 248) · khung game (400, 292) · cửa sổ (240, 26, 640, 318)
+  ⓘ✗ … khung game KHÍT phần app thấy sau Vừa khung: app thấy (400, 248) · khung game (400, 292) → (400, 248, 400, 292)
+   win_run(grow) → 200 {'ok': True, 'id': 14, 'b': [140, 26, 640, 391], 'fit': 'ask', 'msg': 'Cửa sổ wintest4 đã to hơn (500×365). Bấm tiếp để to nữa.'} · 0.2 giây
+      $ am task resize 14 140 26 640 391 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest4)/"
+        ↳ displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest4 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest4 active >/dev/null 2>&1; cmd appo
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{a38be27 u0 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main t14} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{874b108
+  ✓ Cửa sổ to hơn → cửa sổ trên cùng to ra (đúng cỡ máy chủ báo), vẫn trong màn
+   win_run(shrink) → 200 {'ok': True, 'id': 14, 'b': [140, 26, 540, 318], 'fit': 'ask', 'msg': 'Cửa sổ wintest4 đã nhỏ hơn (400×292). Bấm tiếp để nhỏ nữa.'} · 0.2 giây
+      $ am task resize 14 140 26 540 318 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest4)/"
+        ↳ displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest4 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest4 active >/dev/null 2>&1; cmd appo
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{a38be27 u0 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main t14} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{874b108
+  ✓ Cửa sổ nhỏ hơn → cửa sổ đó nhỏ lại (đúng cỡ máy chủ báo)
+   màn trước khi bật Màn ngang rộng: {'w': 640, 'h': 1280, 'density': 170, 'physical': 160, 'default': 284, 'size_override': True, 'sw': 602} mật độ [170] → cần 170
+   win_run(wide) → 200 {'ok': True, 'wide': True, 'sw': 602, 'turned': True, 'n': 5, 'msg': 'Đã bật màn NGANG RỘNG (602 dp) — màn chính nằm ngang, chứa được nhiều tab hơn. Đã xếp 5 tab nhỏ (3 cột × 2 hàng). 4 game đã mở lại để vẽ vừa ô mới.'} · 8.0 giây
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ settings get global cb_win_prev_density 2>/dev/null
+        ↳ 320:640:a
+      $ settings put global cb_win_prev_density 320:640
+      $ dumpsys window displays 2>/dev/null | grep -m1 mSupportAutoRotation
+        ↳ mSupportAutoRotation=true
+      $ settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm user-rotation lock 1 >/dev/null 2>&1; true
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 1
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 1
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{a38be27 u0 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main t14} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{874b108
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 26 426 310 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 427 26 853 310 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 854 26 1280 310 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 333 426 640 2>&1
+      $ am task focus 14 2>&1
+        ↳ Setting focus to task 14
+      $ am task resize 14 427 333 853 617 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3|vn\.cloudblue\.wintest4
+        ↳ displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='7653558 vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest1; am kill --user 0 vn.cloudblue.wintest2; am kill --user 10 vn.cloudblue.wintest1; am kill --user 0 vn.cloudblue
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+      $ am task resize 10 0 26 426 310 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task resize 11 427 26 853 310 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest2/vn.cloudblue.wintest.Main }
+      $ am task resize 12 854 26 1280 310 2>&1
+      $ am start --user 10 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.winte
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 333 426 640 2>&1
+      $ am task resize 14 427 333 853 617 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest4/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      15228 vn.cloudblue.wintest1 | u10_a145     15295 vn.cloudblue.wintest1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+        ↳ u0_a146      15258 vn.cloudblue.wintest2
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      15228 vn.cloudblue.wintest1 | u10_a145     15295 vn.cloudblue.wintest1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+        ↳ u0_a148      15350 vn.cloudblue.wintest4
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 1
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+  ✓ 🖥 Màn ngang rộng → độ rộng nhỏ nhất ≥ 600 dp + khoá ngang (giữ được khoá), nhớ mật độ LÚC ĐẦU (320, bỏ dấu tự bật), 5 tab vẫn đủ và nằm trong màn
+  ✓ … màn chính NẰM NGANG thật (khoá xoay của Android, hoặc cửa sổ phủ của app trợ giúp nếu màn chính không chịu xoay)
+  ✓ … các tab xếp đúng lưới của màn ngang (app kiểu cũ: cửa sổ đúng tỉ lệ game trong ô)
+   win_run(narrow) → 200 {'ok': True, 'wide': False, 'sw': 320, 'turned': True, 'n': 5, 'msg': 'Đã trả màn DỌC như cũ (320 dp). Đã xếp 5 tab nhỏ (1 cột × 5 hàng). 4 game đã mở lại để vẽ vừa ô mới. Màn nhỏ nên tab chồng nhau — tăng 📐 Độ rộng nhỏ nhất (VD 600 dp) để tab không đè nhau.'} · 8.1 giây
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 170
+      $ settings get global cb_win_prev_density 2>/dev/null
+        ↳ 320:640
+      $ wm density 320; settings delete global cb_win_prev_density >/dev/null 2>&1; true
+      $ pm path vn.cloudblue.xoay 2>/dev/null
+      $ dumpsys window displays 2>/dev/null | grep -m1 mSupportAutoRotation
+        ↳ mSupportAutoRotation=true
+      $ settings put system accelerometer_rotation 0; settings put system user_rotation 0; wm user-rotation lock 0 >/dev/null 2>&1; true
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 0
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 0
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{53b5e4d u0 vn.cloudblue.wintest4/vn.cloudblue.wintest.Main t14} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_UNRESIZEABLE |       * Hist #0: ActivityRecord{874b108
+      $ am task focus 10 2>&1
+        ↳ Setting focus to task 10
+      $ am task resize 10 0 48 632 488 2>&1
+      $ am task focus 11 2>&1
+        ↳ Setting focus to task 11
+      $ am task resize 11 0 246 632 686 2>&1
+      $ am task focus 12 2>&1
+        ↳ Setting focus to task 12
+      $ am task resize 12 0 444 632 884 2>&1
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 642 640 1082 2>&1
+      $ am task focus 14 2>&1
+        ↳ Setting focus to task 14
+      $ am task resize 14 0 840 632 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest1|vn\.cloudblue\.wintest2|vn\.cloudblue\.wintest3|vn\.cloudblue\.wintest4
+        ↳ displayId=0, name='3acdbaf vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' |     displayId=0, name='3acdbaf vn.cloudblue.wintest4/vn.cloudblue.wintest.Main' result='OK' |       1: name='3acdbaf vn.cloudblue.wintest4/vn.cloudblue.wintest.Ma
+      $ input keyevent 3
+      $ am kill --user 0 vn.cloudblue.wintest1; am kill --user 0 vn.cloudblue.wintest2; am kill --user 10 vn.cloudblue.wintest1; am kill --user 0 vn.cloudblue
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+      $ am task resize 10 0 48 632 488 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task resize 11 0 246 632 686 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest2/vn.cloudblue.wintest.Main }
+      $ am task resize 12 0 444 632 884 2>&1
+      $ am start --user 10 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.winte
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest1/vn.cloudblue.wintest.Main }
+      $ am task focus 13 2>&1
+        ↳ Setting focus to task 13
+      $ am task resize 13 0 642 640 1082 2>&1
+      $ am task resize 14 0 840 632 1280 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10008000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10008000 cmp=vn.cloudblue.wintest4/vn.cloudblue.wintest.Main }
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      15982 vn.cloudblue.wintest1 | u10_a145     16052 vn.cloudblue.wintest1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest2'
+        ↳ u0_a146      16012 vn.cloudblue.wintest2
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest1'
+        ↳ u0_a145      15982 vn.cloudblue.wintest1 | u10_a145     16052 vn.cloudblue.wintest1
+      $ ps -A -o USER,PID,NAME 2>/dev/null | grep -F ' vn.cloudblue.wintest4'
+        ↳ u0_a148      16104 vn.cloudblue.wintest4
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest1 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest1 active >/dev/null 2>&1; cmd appo
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 0
+      $ wm size; wm density
+        ↳ Physical size: 320x640 | Override size: 640x1280 | Physical density: 160 | Override density: 320
+  ✓ Màn dọc như cũ → trả ĐÚNG mật độ lúc đầu (320) + khoá dọc + tắt cửa sổ phủ, màn dọc, xoá dấu nhớ, 5 tab nằm trong màn
+  ✓ (chuẩn bị) khoá xoay DỌC, màn đang dọc
+   cài app trợ giúp xoay màn: /tmp/cpapi_win_32u0qayy/cbxoay.apk → Performing Streamed Install
+Success
+  ✓ app trợ giúp bật cửa sổ phủ yêu cầu màn ngang → MÀN CHÍNH XOAY NGANG dù khoá xoay của Android đang để DỌC
+  ✓ tắt app trợ giúp → màn chính về DỌC
+      $ dumpsys window displays 2>/dev/null | grep -m1 mSupportAutoRotation
+        ↳ mSupportAutoRotation=true
+      $ settings put system accelerometer_rotation 0; settings put system user_rotation 1; wm user-rotation lock 1 >/dev/null 2>&1; true
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 1
+      $ settings get system user_rotation 2>/dev/null
+        ↳ 1
+  ✓ win_rot(ngang) — như nút Xoay / Màn ngang rộng → màn chính NGANG
+  ✓ win_rot(dọc) → màn chính DỌC, cửa sổ phủ đã tắt (không còn cửa sổ của app trợ giúp)
+cài wintest5: rforming Incremental Install
+Success
+Install command complete in 55 ms
+All files should be loaded. Notifying the device.
+   (giao diện hệ thống bật lại lúc cửa sổ nổi TẮT: ['684'] → ['17211'] · cài đặt bây giờ: ['0', '1'])
+   win_run(mini) → 200 {'ok': True, 'n': 1, 'id': 20, 'b': [0, 48, 640, 488], 'fit': 'ask', 'sw': None, 'msg': 'Đã thu nhỏ wintest3 (1 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.'} · 4.5 giây
+      $ settings put global enable_freeform_support 1; settings put global force_resizable_activities 1
+      $ B=$(cat /proc/sys/kernel/random/boot_id 2>/dev/null); P=$(pidof com.android.systemui 2>/dev/null); if [ 1 != 1 ] && [ -n "$B" ] && [ "$(settings get g
+        ↳ #kill 17211
+      $ pidof com.android.systemui 2>/dev/null
+        ↳ 17426
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{b3fd1ea u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t20} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{f07fe92 u
+      $ am task resize 20 0 48 640 488 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='7c4dcfa vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='7c4dcfa vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='7c4dcfa vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest3 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest3 active >/dev/null 2>&1; cmd appo
+   [a] dumpsys input: displayId=0, name='ActivityRecord{b3fd1ea u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t20}', dispatchingTimeout=5000ms ¦     displayId=0, name='7c4dcfa vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' ¦     displayId=0, name='7c4dcfa vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK'
+   [a] lớp hình: Task=1#0 ¦ Task=9#1 ¦ Task=25#0 ¦ Task=24#0 ¦ Task=23#0 ¦ Task=22#0 ¦ Task=21#0 ¦ Task=20#0
+   [a] cpapi đọc: {'vn.cloudblue.wintest3': [(0, 48, 640, 488)]}
+  ✓ máy CHƯA bật cửa sổ nổi → Thu nhỏ tab: tự bật cài đặt + bật lại giao diện hệ thống (tiến trình mới) rồi thu nhỏ được
+  ✓ … HÌNH của tab nằm đúng khung tab trên ẢNH CHỤP MÀN (nền app sát mép trái / phải / đáy khung, không tràn xuống dưới) [True, True, True, True] + cửa sổ có thanh tiêu đề
+  ✓ … chỗ Android nhận chạm (dumpsys input) trùng khung tab
+   (giao diện hệ thống bật lại lúc cửa sổ nổi TẮT: ['17426'] → ['17821'] · cài đặt bây giờ: ['1', '1'])
+   win_run(mini) → 200 {'ok': True, 'n': 1, 'id': 31, 'b': [0, 48, 640, 488], 'fit': 'ask', 'sw': None, 'msg': 'Đã thu nhỏ wintest3 (1 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.'} · 2.4 giây
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest3/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{43dde90 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t31} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{f07fe92 u
+      $ am task resize 31 0 48 640 488 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3)/"
+        ↳ displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' |     displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK' |       1: name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest3 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest3 active >/dev/null 2>&1; cmd appo
+   [b1] dumpsys input: displayId=0, name='ActivityRecord{43dde90 u0 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main t31}', dispatchingTimeout=5000ms ¦     displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' ¦     displayId=0, name='2a51fd9 vn.cloudblue.wintest3/vn.cloudblue.wintest.Main' result='OK'
+   [b1] lớp hình: Task=1#1 ¦ Task=9#0 ¦ Task=30#0 ¦ Task=29#0 ¦ Task=28#0 ¦ Task=27#0 ¦ Task=26#0 ¦ Task=31#1
+   [b1] cpapi đọc: {'vn.cloudblue.wintest3': [(0, 48, 640, 488)]}
+  ⓘ✗ … máy ảo này CÓ lỗi như máy thật (hình lệch khung / thiếu thanh tiêu đề cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: ['17821'] → ['17821'] → (['17821'], ['17821'])
+  ✓ giao diện hệ thống chạy từ trước khi bật cửa sổ nổi → thu nhỏ tab đầu: HÌNH đúng khung trên ảnh chụp màn [True, True, True, True] + cửa sổ có thanh tiêu đề
+   win_run(mini) → 200 {'ok': True, 'n': 2, 'id': 32, 'b': [0, 840, 640, 1280], 'fit': 'ask', 'sw': None, 'msg': 'Đã thu nhỏ wintest5 (2 tab nhỏ). Kéo thanh trên cùng để dời, kéo mép để đổi cỡ.'} · 2.1 giây
+      $ am task focus 31 2>&1
+        ↳ Setting focus to task 31
+      $ am task resize 31 48 0 488 640 2>&1
+      $ am start --user 0 --display 0 --windowingMode 5 -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -f 0x10200000 -n vn.cloudblue.wintes
+        ↳ Starting: Intent { act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10200000 cmp=vn.cloudblue.wintest5/vn.cloudblue.wintest.Main } | Warning: Activity not started, intent has been delivered to currently running to
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{3f2bf7c u0 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main t32} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{43dde90 u
+      $ am task resize 32 0 840 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest5)/"
+        ↳ displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' |     displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' result='OK' |       1: name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest5 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest5 active >/dev/null 2>&1; cmd appo
+   [b2] dumpsys input: displayId=0, name='ActivityRecord{3f2bf7c u0 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main t32}', dispatchingTimeout=5000ms ¦     displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' ¦     displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' result='OK'
+   [b2] lớp hình: Task=1#1 ¦ Task=9#0 ¦ Surface(name=Task=32)/@0x9813c7b - animation-leash of screen_rotation#0 ¦ Task=30#0 ¦ Task=29#0 ¦ Task=28#0 ¦ Task=27#0 ¦ Task=26#0 ¦ Task=31#1 ¦ Task=32#1
+   [b2] cpapi đọc: {'vn.cloudblue.wintest5': [(0, 840, 640, 1280)], 'vn.cloudblue.wintest3': [(0, 48, 640, 488)]}
+  ✓ … thu nhỏ tab thứ 2: hình tab 2 nằm đúng Ô CỦA NÓ (không đè tab đầu), tab đầu vẫn đúng chỗ, không bật lại giao diện hệ thống lần nữa · tab đầu [True, True, True, True] · tab 2 [True, True]
+  ⓘ✓ … kéo thanh tiêu đề tab 2 lên: khung đổi (0, 840, 640, 1280) → (0, 747, 640, 1187) 
+  ✓ … kéo thanh tiêu đề: HÌNH chạy theo khung (không đứng yên chỗ cũ) [True, True]
+   win_run(tile) → 200 {'ok': True, 'n': 2, 're': 0, 'msg': 'Đã xếp 2 tab nhỏ (1 cột × 2 hàng).'} · 1.4 giây
+      $ dumpsys activity activities 2>/dev/null | grep -E 'Hist +#[0-9]+: ActivityRecord|[oO]rientation=|resizeMode='
+        ↳ * Hist #0: ActivityRecord{3f2bf7c u0 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main t32} |           mOrientation=SCREEN_ORIENTATION_SENSOR_LANDSCAPE |           resizeMode=RESIZE_MODE_RESIZEABLE |       * Hist #0: ActivityRecord{43dde90 u
+      $ am task focus 31 2>&1
+        ↳ Setting focus to task 31
+      $ am task resize 31 0 48 640 664 2>&1
+      $ am task focus 32 2>&1
+        ↳ Setting focus to task 32
+      $ am task resize 32 0 664 640 1280 2>&1
+      $ dumpsys input 2>/dev/null | grep -E "name='?[0-9a-f]+ (vn\.cloudblue\.wintest3|vn\.cloudblue\.wintest5)/"
+        ↳ displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' |     displayId=0, name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Main' result='OK' |       1: name='d270499 vn.cloudblue.wintest5/vn.cloudblue.wintest.Ma
+      $ cmd deviceidle whitelist +vn.cloudblue.wintest3 >/dev/null 2>&1; am set-standby-bucket --user 0 vn.cloudblue.wintest3 active >/dev/null 2>&1; cmd appo
+  ✓ … Sắp xếp tab: hình cả 2 tab đúng ô · [True, True, True, True] · [True, True]
+--- am stack list (cuối) ---
+RootTask id=1 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=Rect(0, 0 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=home mAlwaysOnTop=undefined mRotation=ROTATION_0} s.1343 fontWeightAdjustment=0}
+  taskId=9: com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity bounds=[0,0][640,1280] userId=0 visible=true topActivity=ComponentInfo{com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity}
+
+RootTask id=26 bounds=[0,0][640,654] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw315dp w320dp h315dp 320dpi smll land finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 654) mAppBounds=Rect(0, 0 - 640, 654) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=split-screen-primary mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.1343 fontWeightAdjustment=0}
+  taskId=26: unknown bounds=[0,0][640,654] userId=0 visible=false
+
+RootTask id=27 bounds=[0,674][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw315dp w320dp h303dp 320dpi smll land finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 674 - 640, 1280) mAppBounds=Rect(0, 674 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=split-screen-secondary mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.1343 fontWeightAdjustment=0}
+  taskId=27: unknown bounds=[0,674][640,1280] userId=0 visible=false
+
+RootTask id=28 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBounds=Rect(0, 0 - 640, 1280) mMaxBounds=Rect(0, 0 - 640, 1280) mWindowingMode=fullscreen mDisplayWindowingMode=fullscreen mActivityType=undefined mAlwaysOnTop=undefined mRotation=ROTATION_0} s.1343 fontWeightAdjustment=0}
+  taskId=28: unknown bounds=[0,0][640,1280] userId=0 visible=false
+
+RootTask id=29 bounds=[0,0][640,1280] displayId=0 userId=0
+ configuration={1.0 310mcc260mnc [en_US] ldltr sw320dp w320dp h628dp 320dpi nrml long port finger qwerty/v/v -nav/h winConfig={ mBounds=Rect(0, 0 - 640, 1280) mAppBou
+API 31: 44/44 dat · thông tin: ✓ kéo thanh trên cùng của cửa sổ (chạm) → cửa sổ dời xuống, ✓ kéo góc dưới phải (chạm) → cửa sổ to ra, ✗ màn chính của máy này xoay ngang được (máy ảo Pixel: màn chính chỉ dọc), ✗ Phóng to = toàn màn thật, ✗ … khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy (320, 190) · khung game (320, 234), ✓ … không còn kiểu Android thu nhỏ hình (size compat): [], ✗ … khung game KHÍT phần app thấy sau Vừa khung: app thấy (400, 248) · khung game (400, 292), ✗ … máy ảo này CÓ lỗi như máy thật (hình lệch khung / thiếu thanh tiêu đề cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: ['17821'] → ['17821'], ✓ … kéo thanh tiêu đề tab 2 lên: khung đổi (0, 840, 640, 1280) → (0, 747, 640, 1187)

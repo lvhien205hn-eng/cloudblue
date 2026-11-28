@@ -1,0 +1,31 @@
+E1 như hiện nay (ép đổi cỡ) · game 4 không đổi cỡ: cửa sổ freeform 640x405 · app thấy 640x361 · khung game 640x405 → TRÀN VIỀN (app bị ép nhỏ, khung game không co)
+E1 kết quả=tran
+E2 tắt ép đổi cỡ + cho app không đổi cỡ vào cửa sổ · game 4: cửa sổ freeform 640x405 · app thấy 640x361 · khung game 640x1280 → TRÀN VIỀN (app bị ép nhỏ, khung game không co)
+E2 kết quả=tran
+E3a cùng cài đặt E2 · game 5 KHAI BÁO đổi cỡ được: cửa sổ freeform 640x396 · app thấy 640x352 · khung game 1280x550 → TRÀN VIỀN (app bị ép nhỏ, khung game không co)
+E3a kết quả=tran
+E3 lệnh am compat: Enabled change 181136395 for vn.cloudblue.wintest5.
+E3b + am compat FORCE_NON_RESIZE_APP · game 5: cửa sổ freeform 640x418 · app thấy 1280x596 · khung game 1280x640 → TRÀN VIỀN (app bị ép nhỏ, khung game không co) · compat: mSizeCompatScale=0.5 mSizeCompatBounds=Rect(0, 75 - 640, 395)
+E3b kết quả=tran
+E4 đổi cài đặt lúc game đang chạy · game 4: cửa sổ freeform 640x405 · app thấy 640x361 · khung game 640x1280 → TRÀN VIỀN (app bị ép nhỏ, khung game không co)
+E4 kết quả=tran
+E5 lệnh am compat --no-kill: Enabled change 181136395 for vn.cloudblue.wintest5.
+E5 am compat --no-kill lúc game đang chạy rồi thu nhỏ · game 5: cửa sổ freeform 640x418 · app thấy 1280x596 · khung game 1280x550 → VỪA KHUNG (Android thu nhỏ hình) · compat: mSizeCompatScale=0.5 mSizeCompatBounds=Rect(0, 75 - 640, 395)
+E5 kết quả=vua · game không bị tắt=True
+E6 mở lại game trong cửa sổ: chỗ cũ (0, 26, 624, 422) · mở lại vào (0, 0, 640, 1280) (chỗ khác → đổi cỡ ngay)
+E6 mở lại game trong cửa sổ · game 4: cửa sổ freeform 624x396 · app thấy 624x352 · khung game 640x1280 → TRÀN VIỀN (app bị ép nhỏ, khung game không co)
+E6 kết quả=tran
+Bep am task focus (đưa tab lên không gửi lệnh mở): Setting focus to task 87
+Bep0 có 2 tab nhỏ: trạng thái {'3': 'RESUMED', '4': 'RESUMED'} · pid {3: '25201', 4: '25143'}
+Bep1 mở app 1 toàn màn đè lên 15 giây: trạng thái {'1': 'RESUMED', '3': 'STOPPED', '4': 'STOPPED'} · pid giữ nguyên=True · tải lại=False ({3: 1, 4: 2}→{3: 1, 4: 2})
+Bep1 oom_score_adj (càng cao càng dễ bị Android tắt khi thiếu RAM): 3:700 4:900
+Bep2 app mới thành cửa sổ to (đổi=True): trạng thái {'1': 'RESUMED', '3': 'STOPPED', '4': 'STOPPED'} · tải lại=False ({3: 1, 4: 2}) · oom 3:910 4:900
+Bep3 Sắp xếp tab: 200 Đã xếp 3 tab nhỏ (1 cột × 3 hàng). 1 game đã mở lại để vẽ vừa ô mới. · trạng thái {'1': 'RESUMED', '3': 'RESUMED', '4': 'RESUMED'} · pid giữ nguyên=True · tải lại=False (trước Sắp xếp {3: 1, 4: 2} → sau {3: 1, 4: 2})
+Bep nhật ký app 3/4: 11-28 09:06:01.637 25201 25201 I wintest : n=3 u=0 size=640x1236 · 11-28 09:06:03.165 25201 25201 I wintest : n=3 u=0 size=640x352 · 11-28 09:06:06.446 25143 25143 I wintest : n=4 u=0 pause · 11-28 09:06:06.456 25201 25201 I wintest : n=3 u=0 pause · 11-28 09:06:06.817 25143 25143 I wintest : n=4 u=0 stop · 11-28 09:06:06.818 25201 25201 I wintest : n=3 u=0 stop · 11-28 09:06:33.103 25143 25143 I wintest : n=4 u=0 start · 11-28 09:06:33.103 25143 25143 I wintest : n=4 u=0 resume · 11-28 09:06:33.155 25201 25201 I wintest : n=3 u=0 start · 11-28 09:06:33.155 25201 25201 I wintest : n=3 u=0 resume · 11-28 09:06:33.385 25201 25201 I wintest : n=3 u=0 pause · 11-28 09:06:33.385 25201 25201 I wintest : n=3 u=0 stop · 11-28 09:06:33.386 25143 25143 I wintest : n=4 u=0 pause · 11-28 09:06:33.387 25143 25143 I wintest : n=4 u=0 stop · 11-28 09:06:34.514 25143 25143 I wintest : n=4 u=0 start · 11-28 09:06:34.514 25143 25143 I wintest : n=4 u=0 resume · 11-28 09:06:34.551 25201 25201 I wintest : n=3 u=0 start · 11-28 09:06:34.552 25201 25201 I wintest : n=3 u=0 resume
+B am task focus (đưa tab lên không gửi lệnh mở): Setting focus to task 90
+B0 có 2 tab nhỏ: trạng thái {'3': 'RESUMED', '4': 'RESUMED'} · pid {3: '26347', 4: '26290'}
+B1 mở app 1 toàn màn đè lên 15 giây: trạng thái {'1': 'RESUMED', '3': 'STOPPED', '4': 'STOPPED'} · pid giữ nguyên=True · tải lại=False ({3: 1, 4: 2}→{3: 1, 4: 2})
+B1 oom_score_adj (càng cao càng dễ bị Android tắt khi thiếu RAM): 3:700 4:900
+B2 app mới thành cửa sổ to (đổi=True): trạng thái {'1': 'RESUMED', '3': 'STOPPED', '4': 'STOPPED'} · tải lại=False ({3: 1, 4: 2}) · oom 3:910 4:900
+B3 Sắp xếp tab: 200 Đã xếp 3 tab nhỏ (1 cột × 3 hàng). 1 game đã mở lại để vẽ vừa ô mới. · trạng thái {'1': 'RESUMED', '3': 'RESUMED', '4': 'RESUMED'} · pid giữ nguyên=True · tải lại=False (trước Sắp xếp {3: 1, 4: 2} → sau {3: 1, 4: 2})
+B nhật ký app 3/4: 11-28 09:06:56.116 26347 26347 I wintest : n=3 u=0 size=640x1236 · 11-28 09:06:57.504 26347 26347 I wintest : n=3 u=0 size=640x352 · 11-28 09:07:00.777 26290 26290 I wintest : n=4 u=0 pause · 11-28 09:07:00.779 26347 26347 I wintest : n=3 u=0 pause · 11-28 09:07:01.205 26290 26290 I wintest : n=4 u=0 stop · 11-28 09:07:01.205 26347 26347 I wintest : n=3 u=0 stop · 11-28 09:07:27.490 26290 26290 I wintest : n=4 u=0 start · 11-28 09:07:27.490 26290 26290 I wintest : n=4 u=0 resume · 11-28 09:07:27.565 26347 26347 I wintest : n=3 u=0 start · 11-28 09:07:27.565 26347 26347 I wintest : n=3 u=0 resume · 11-28 09:07:27.760 26290 26290 I wintest : n=4 u=0 pause · 11-28 09:07:27.761 26347 26347 I wintest : n=3 u=0 pause · 11-28 09:07:27.761 26347 26347 I wintest : n=3 u=0 stop · 11-28 09:07:27.762 26290 26290 I wintest : n=4 u=0 stop · 11-28 09:07:28.888 26290 26290 I wintest : n=4 u=0 start · 11-28 09:07:28.888 26290 26290 I wintest : n=4 u=0 resume · 11-28 09:07:28.943 26347 26347 I wintest : n=3 u=0 start · 11-28 09:07:28.943 26347 26347 I wintest : n=3 u=0 resume

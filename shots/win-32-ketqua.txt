@@ -1,0 +1,10 @@
+45/45
+OK kéo thanh trên cùng của cửa sổ (chạm) → cửa sổ dời xuống
+NO kéo góc dưới phải (chạm) → cửa sổ to ra
+NO màn chính của máy này xoay ngang được (máy ảo Pixel: màn chính chỉ dọc)
+OK Phóng to = toàn màn thật
+NO … khung game KHÍT phần app thấy (lần dựng hình đầu đã trừ thanh tiêu đề): app thấy (343, 193) · khung game (343, 237)
+OK … không còn kiểu Android thu nhỏ hình (size compat): []
+NO … khung game KHÍT phần app thấy sau Vừa khung: app thấy (429, 252) · khung game (429, 296)
+OK … máy ảo này CÓ lỗi như máy thật (hình lệch khung / thiếu thanh tiêu đề cho tới khi bật lại giao diện hệ thống) → cpapi đã bật lại: ['18840'] → ['19325']
+OK … kéo thanh tiêu đề tab 2 lên: khung đổi (0, 840, 640, 1280) → (0, 746, 640, 1186)
