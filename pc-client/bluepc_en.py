@@ -10,6 +10,8 @@ EXACT = {
 "Bản app này đã cũ — phải cập nhật mới dùng tiếp được.": "This app version is too old — please update to keep using it.",
 "Sai email hoặc mật khẩu.": "Wrong email or password.",
 "trực tiếp": "direct",
+"⚠ Màn hình máy đang lỗi hiển thị (hình nhiễu màu). Bấm vào đây để khởi động lại máy là hết — 1–2 phút, dữ liệu giữ nguyên.": "⚠ The phone's screen isn't drawing correctly (garbled colours). Click here to restart the phone and fix it — 1–2 minutes, your data is kept.",
+"Bấm vào đây lần nữa để KHỞI ĐỘNG LẠI máy — khoảng 1–2 phút. App đang mở trong máy sẽ tắt, dữ liệu vẫn giữ nguyên.": "Click here again to RESTART the phone — about 1–2 minutes. Running apps will close; your data is kept.",
 "trung chuyển": "relay",
 "Email chưa xác nhận — mở hộp thư để xác nhận.": "Email not confirmed — open your inbox to confirm it.",
 "Phiên đăng nhập hết hạn, hãy đăng nhập lại.": "Your session has expired — please log in again.",

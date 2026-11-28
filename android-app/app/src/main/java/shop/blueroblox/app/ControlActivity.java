@@ -97,6 +97,7 @@ public class ControlActivity extends Activity {
     // 16/11 · mạng yếu: ô chữ nhỏ trên hình ("mạng yếu — đã giảm nét" / "mạng chậm — đang chờ hình")
     private TextView netChip;
     private boolean weakOn = false;
+    private boolean gfxOn = false;           // 28/11b: máy chủ đang báo màn máy bị vẽ hỏng (đã hỏi khách khởi động lại)
     private long weakT = 0;
     private SharedPreferences pref;
     // Bàn phím: máy cloud mở bàn phím (bấm vào ô nhập) → bật bàn phím điện thoại vào 1 ô gõ vô hình, gõ tới đâu gửi tới đó
@@ -486,6 +487,9 @@ public class ControlActivity extends Activity {
             boolean weak = server != null && server.optInt("weak", 0) == 1;      // 16/11: máy chủ đang phải giảm nét vì mạng của khách yếu
             if (weak && !weakOn) weakT = SystemClock.uptimeMillis();
             weakOn = weak;
+            boolean gfx = server != null && server.optInt("gfx", 0) == 1;        // 28/11b: màn THẬT của máy đang bị vẽ hỏng (rác màu) → hỏi khởi động lại
+            if (gfx && !gfxOn && !fixing && !rebooting() && !isFinishing()) gfxAsk();
+            gfxOn = gfx;
             netBadge();
             if (stats.getVisibility() != View.VISIBLE) return;
             stats.setText(fps + " fps · " + kbps + " kbps · " + (ping >= 0 ? ping + " ms" : "– ms") + " · "
@@ -558,6 +562,14 @@ public class ControlActivity extends Activity {
         String t = srvMsg + (srvBoot ? "" : "\n" + Ui.L("Đang thử lại…", "Retrying…"));
         if (srvFix) showVeil(t, true, "⚡ " + Ui.L("Khởi động lại máy", "Restart phone"), this::fixAsk);
         else showVeil(t, true, null, null);
+    }
+
+    /** 28/11b: máy chủ báo màn máy đang lỗi hiển thị (giả lập vẽ hỏng — khởi động lại là hết) → hỏi khách 1 lần mỗi lần màn hỏng. */
+    private void gfxAsk() {
+        Ui.confirm(this, Ui.L("Màn hình máy đang lỗi hiển thị", "The phone's screen isn't drawing correctly"),
+                Ui.L("Hình trong máy đang bị nhiễu màu. Khởi động lại máy là hết — khoảng 1–2 phút, app đang mở sẽ tắt, dữ liệu vẫn giữ nguyên.",
+                        "The picture inside the phone is garbled. Restarting the phone fixes it — about 1–2 minutes; running apps close, your data is kept."),
+                Ui.L("Khởi động lại", "Restart"), this::fixReboot);
     }
 
     private void fixAsk() {

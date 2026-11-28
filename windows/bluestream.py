@@ -113,7 +113,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "28/11a"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "28/11b"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
                                           # · 27/11e ANDROID 9 MƯỢT: hình ≤ 960, khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan,
                                           #   không dumpsys sau mỗi cú bấm; Thông số có "bộ nén Android ra … khung/s" + bỏ khung vì đâu (máy MuMu không đổi)
                                           # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
@@ -2484,6 +2484,23 @@ class Session:
         self.fail_n = 0; self.fail_t = 0.0  # bật lại hình lỗi liên tiếp (thử lại tại chỗ, không đóng phiên)
         self.a9 = str(phone.get("android") or "").strip() == "9"     # Android 9 = LDPlayer 9 (bộ nén phần mềm, không lặp khung)
         self._wk_t = 0.0; self.n_keyfix = 0  # lúc bắt đầu chờ khung khoá · số lần bật lại bộ nén để lấy khung khoá
+        self.gfx = 0                         # 28/11b: 1 = màn thật đang bị giả lập vẽ hỏng (rác màu) → S_STATS gfx → web / app nhắc khởi động lại
+
+    def _gfx_watch(self):
+        """28/11b: (luồng nền của phiên điều khiển) canh màn THẬT bị giả lập vẽ hỏng — 28/11 Máy 12GB: hình nền / icon / ảnh thành rác màu, khách
+           không biết phải khởi động lại. Lần đầu sau GFX_FIRST_S giây, rồi mỗi GFX_EVERY_S giây: gfx_probe (2 ảnh chụp thô, nhiễu + đứng yên)."""
+        t_next = time.time() + GFX_FIRST_S
+        while not self.closed:
+            if time.time() < t_next: time.sleep(1.0); continue
+            try: bad, v = gfx_probe(self.serial)
+            except Exception: bad, v = False, None
+            if self.closed: return
+            if bad and not self.gfx:
+                log(f"🎨 {self.name}: màn hình thật NHIỄU (độ nhiễu {v:.2f}, đứng yên) — giả lập vẽ hỏng → nhắc khách khởi động lại máy")
+            elif not bad and self.gfx:
+                log(f"🎨 {self.name}: màn hình hết nhiễu" + (f" (độ nhiễu {v:.2f})" if v is not None else ""))
+            self.gfx = 1 if bad else 0
+            t_next = time.time() + GFX_EVERY_S
 
     # ---------- hình ----------
     def _kbps_start(self):
@@ -2793,6 +2810,8 @@ class Session:
         self.link.send_nowait(S_WELCOME, json.dumps({"ok": True, "w": w, "h": h, "fps": self.fps, "kbps": self.kbps, "codec": "h264",
                                                       "enc": self._enc_name(), "name": self.phone.get("name") or self.name,
                                                       "android": str(self.phone.get("android") or ""), "q": self.q}, ensure_ascii=False).encode())
+        if GFX_CHECK and not self.is_preview:                  # 28/11b: canh màn thật bị vẽ hỏng (luồng nền, tự dừng khi phiên đóng)
+            threading.Thread(target=self._gfx_watch, daemon=True).start()
         tasks = [asyncio.create_task(x) for x in (self._sender(), self._receiver(), self._monitor())]
         done, pend = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for t in pend: t.cancel()
@@ -3185,6 +3204,7 @@ class Session:
                 if (getattr(self, "q", "") == "auto" and kc and kc < getattr(self, "kbps_cap", 0) * 0.6
                         and time.time() - getattr(self, "last_cong", 0.0) < 900):
                     st["weak"] = 1; st["tgt"] = int(kc)                 # app mới: hiện "mạng yếu — đã giảm nét để mượt"
+                if self.gfx: st["gfx"] = 1                             # 28/11b: màn máy đang lỗi hiển thị → web / app nhắc + nút Khởi động lại máy
                 if self._adm():                                        # 28/11a: thông số kỹ thuật CHỈ cho admin (khách không thấy cách máy chủ làm)
                     st["ctl"] = self.ctl.mode if self.ctl and self.ctl.ready.is_set() else "…"
                     st["efps"] = round((self.n_in - i0) / dt, 1)       # 27/11e: bộ nén ra bao nhiêu khung/giây (kể cả khung bị bỏ)
@@ -4779,6 +4799,40 @@ def _noise_txt(v):
     return f"{v:.2f} → " + ("NHIỄU (vẽ hỏng)" if v >= NOISE_BAD else "bình thường" if v < NOISE_OK else "hơi lởm chởm (game / ảnh nhiều chi tiết?)")
 
 
+GFX_CHECK = (C.get("GFX_CHECK") or "1").strip() != "0"   # 28/11b: tự canh màn thật bị vẽ hỏng trong phiên khách (GFX_CHECK=0: tắt)
+GFX_BAD = float(C.get("GFX_BAD") or 0.30)                  # ngưỡng độ nhiễu để NHẮC khách (cao hơn NOISE_BAD cho chắc — không nhắc nhầm)
+GFX_FIRST_S = 6.0                                          # mở máy xong chờ chừng này giây (màn kịp vẽ) rồi mới đo lần đầu
+GFX_EVERY_S = float(C.get("GFX_EVERY_S") or 180)           # đo lại mỗi chừng này giây khi khách còn mở máy
+
+
+def _same_frac(a, b, step=12):
+    """28/11b: tỉ lệ điểm lấy mẫu (mỗi `step` điểm theo 2 chiều) gần như KHÔNG đổi giữa 2 ảnh chụp thô cùng cỡ — màn đứng yên ≈ 1."""
+    try:
+        (w, h, p), (w2, h2, q) = a, b
+        if (w, h) != (w2, h2) or len(p) < w * h * 4 or len(q) < w * h * 4: return 0.0
+        g1, g2 = p[1::4], q[1::4]; same = tot = 0
+        for y in range(0, h, step):
+            r = y * w
+            for x in range(0, w, step):
+                tot += 1
+                if abs(g1[r + x] - g2[r + x]) <= 10: same += 1
+        return same / tot if tot else 0.0
+    except Exception:
+        return 0.0
+
+
+def gfx_probe(serial, pause=3.0):
+    """28/11b: màn THẬT đang bị giả lập VẼ HỎNG? Chụp thô 2 lần cách `pause` giây: cả 2 lần độ nhiễu ≥ GFX_BAD VÀ màn gần như đứng yên
+       (rác tĩnh, như 28/11 Máy 12GB) → (True, độ nhiễu). Game đang chạy (hình hạt / nhiều chi tiết) thì màn đổi liên tục → không tính, không
+       nhắc nhầm. → (False, độ nhiễu đo được hoặc None)."""
+    a = _raw_shot(serial); v1 = noise_score(*a) if a else None
+    if v1 is None or v1 < GFX_BAD: return False, v1
+    time.sleep(pause)
+    b = _raw_shot(serial); v2 = noise_score(*b) if b else None
+    if v2 is None or v2 < GFX_BAD: return False, v2
+    return _same_frac(a, b) >= 0.8, min(v1, v2)
+
+
 def _ffrun(args, timeout=60):
     try:
         p = subprocess.run([FF, "-hide_banner"] + args, capture_output=True, timeout=timeout, creationflags=NOWIN)
@@ -4985,32 +5039,45 @@ def kiemhinh(name=None, port=None):
     return 0
 
 
-def quetnhieu():
+def quetnhieu(fix=False):
     """28/11a: QUÉT NHIỄU mọi máy khách đang chạy trên máy chủ này — chụp màn thật (thô, không lưu ảnh: không xem màn của khách) rồi chỉ in
        ĐỘ NHIỄU từng máy + FPS / Android / độ phân giải → biết máy nào đang bị giả lập vẽ hỏng (khách thấy rác màu) để khởi động lại, và
-       nhiễu có đi theo FPS / bản Android hay không.   python bluestream.py --quetnhieu"""
+       nhiễu có đi theo FPS / bản Android hay không.   python bluestream.py --quetnhieu
+       28/11b: máy "hỏng" = gfx_probe (2 ảnh cách 1,5 giây: nhiễu ≥ GFX_BAD VÀ đứng yên — không bắt nhầm game đang chạy).
+       --sua: khởi động lại (tắt hẳn rồi bật, dữ liệu giữ nguyên) LẦN LƯỢT từng máy hỏng — admin tự chạy khi muốn sửa hết một lượt."""
     ph = {n: p for n, p in phones_json().items() if str(n).startswith("cp_") and p.get("port")}
     print(f"== Quét nhiễu màn hình {len(ph)} máy khách (bản {BS_SUB}) — chỉ đo số, KHÔNG lưu / xem ảnh màn của khách")
     rows = []
     for n, p in sorted(ph.items()):
         s = f"127.0.0.1:{p['port']}"
         adb_connect(s)
-        if not adb_ready(s, 2.0): rows.append((n, p, None, "tắt / ngủ")); continue
-        r = _raw_shot(s)
-        v = noise_score(*r) if r else None
-        if v is not None and v >= NOISE_BAD:                   # chắc chắn: chụp lần 2 (tránh bắt nhầm đúng lúc game chuyển cảnh)
-            time.sleep(1.5); r2 = _raw_shot(s); v2 = noise_score(*r2) if r2 else None
-            if v2 is not None: v = min(v, v2)
-        rows.append((n, p, v, "" if r else "không chụp được"))
-    bad = [x for x in rows if x[2] is not None and x[2] >= NOISE_BAD]
-    for n, p, v, why in sorted(rows, key=lambda x: -(x[2] if x[2] is not None else -1)):
-        print(f"  {'✗' if v is not None and v >= NOISE_BAD else '·'} {n:<18} FPS {str(p.get('fps') or 30):>3} · Android {str(p.get('android') or '?'):<3}"
-              f" · {str(p.get('res') or '?'):<9} · độ nhiễu {_noise_txt(v) if why == '' else why}")
-    print(f"== {len(bad)} máy đang NHIỄU" + (": " + ", ".join(x[0] for x in bad) if bad else "") + f" (ngưỡng {NOISE_BAD:g}, đổi: NOISE_BAD=… trong cloudphone.conf)")
-    if bad:
-        fps = sorted({str(x[1].get("fps") or 30) for x in bad}); allf = sorted({str(x[1].get("fps") or 30) for x in rows if x[2] is not None})
-        print(f"  FPS của máy nhiễu: {', '.join(fps)} · FPS mọi máy đo được: {', '.join(allf)}")
-        print("  Sửa từng máy (tắt hẳn rồi bật, dữ liệu giữ nguyên): " + " ; ".join(f"python phonectl.py restart {x[0]}" for x in bad))
+        if not adb_ready(s, 2.0): rows.append((n, p, None, False, "tắt / ngủ")); continue
+        try: bad, v = gfx_probe(s, pause=1.5)
+        except Exception: bad, v = False, None
+        rows.append((n, p, v, bad, "" if v is not None else "không chụp được"))
+    for n, p, v, bad, why in sorted(rows, key=lambda x: (not x[3], -(x[2] if x[2] is not None else -1))):
+        print(f"  {'✗' if bad else '·'} {n:<18} FPS {str(p.get('fps') or 30):>3} · Android {str(p.get('android') or '?'):<3}"
+              f" · {str(p.get('res') or '?'):<9} · độ nhiễu {why or _noise_txt(v)}" + (" · VẼ HỎNG (đứng yên)" if bad else ""))
+    bad = [x for x in rows if x[3]]
+    print(f"== {len(bad)} máy đang VẼ HỎNG" + (": " + ", ".join(x[0] for x in bad) if bad else "")
+          + f" (ngưỡng {GFX_BAD:g} + màn đứng yên; đổi: GFX_BAD=… trong cloudphone.conf)")
+    if not bad: return 0
+    fps = sorted({str(x[1].get("fps") or 30) for x in bad}); allf = sorted({str(x[1].get("fps") or 30) for x in rows if x[2] is not None})
+    print(f"  FPS của máy hỏng: {', '.join(fps)} · FPS mọi máy đo được: {', '.join(allf)}")
+    if not fix:
+        print("  Sửa hết một lượt (tắt hẳn rồi bật từng máy, dữ liệu giữ nguyên, app đang mở trong máy sẽ tắt): python bluestream.py --quetnhieu --sua")
+        return 0
+    ok = 0
+    for n, p, v, _b, _w in bad:
+        print(f"  ⟳ {n}: khởi động lại…", flush=True)
+        try:
+            r = subprocess.run([sys.executable, PHONECTL, "restart", n], cwd=B, capture_output=True, text=True, encoding="utf-8",
+                               errors="replace", timeout=480, creationflags=NOWIN)
+            last = ((r.stdout or "") + (r.stderr or "")).strip().splitlines()[-1:] or [""]
+            print(f"    {'✓' if r.returncode == 0 else '✗'} {last[0][:160]}"); ok += r.returncode == 0
+        except Exception as e:
+            print(f"    ✗ {e!r}"[:200])
+    print(f"== Đã khởi động lại {ok}/{len(bad)} máy — 2–3 phút sau chạy lại --quetnhieu để kiểm")
     return 0
 
 
@@ -5080,6 +5147,9 @@ async def main():
         f"{RATE_FRESH_S / 60:g} phút → bắt đầu ≥ {RATE_FRESH_KBPS} kbps, khách tự chọn chất lượng → dò lại, yên {CEIL_CALM_S / 60:g} phút → bỏ trần cũ")
     _cbv_enc = (f"nén bằng openh264 (libcbenc md5 {CBV_LIB[1][:8]}, {CBV_THREADS} luồng)" if CBV_ENC != "omx" and len(CBV_LIB[1]) == 32
                 else "nén bằng bộ nén của Android (STREAM_CBV_ENC=omx)")
+    log(f"bản 28/11b: tự phát hiện màn hình máy bị vẽ hỏng (rác màu) — " + (f"khách mở máy là đo (sau {GFX_FIRST_S:g} giây, rồi mỗi "
+        f"{GFX_EVERY_S:g} giây; nhiễu ≥ {GFX_BAD:g} + đứng yên → web / app nhắc + nút Khởi động lại máy)" if GFX_CHECK else "TẮT (GFX_CHECK=0)")
+        + " · admin sửa hết một lượt: python bluestream.py --quetnhieu --sua")
     log(f"bản 28/11a: ẩn thông số kỹ thuật với khách (bộ nén / cách điều khiển chỉ gửi cho admin) · chẩn đoán hình đo độ nhiễu màn thật "
         f"(--kiemhinh TÊN · --quetnhieu: mọi máy, ngưỡng {NOISE_BAD:g})")
     log("bản 27/11h: Android 9 cbvideo openh264 — " + ((f"lấy hình bằng cbvideo.jar (md5 {CBV_FILE[1][:8]}), {_cbv_enc}, đọc hình song song, "
@@ -5115,8 +5185,8 @@ if __name__ == "__main__":
         _a = sys.argv[sys.argv.index("--captest") + 1:]
         if not _a: print("Cách dùng: python bluestream.py --captest TÊN_MÁY [CỔNG_ADB]"); sys.exit(2)
         sys.exit(captest(_a[0], _a[1] if len(_a) > 1 else None))
-    if "--quetnhieu" in sys.argv:                                # 28/11a: đo độ nhiễu màn thật của mọi máy khách (không lưu ảnh)
-        sys.exit(quetnhieu())
+    if "--quetnhieu" in sys.argv:                                # 28/11a: đo độ nhiễu màn thật của mọi máy khách (không lưu ảnh) · --sua: khởi động lại máy hỏng
+        sys.exit(quetnhieu("--sua" in sys.argv))
     if "--kiemhinh" in sys.argv:                                 # 16/11k: chẩn đoán hình vỡ / nhiễu màu của 1 máy
         _a = sys.argv[sys.argv.index("--kiemhinh") + 1:]
         sys.exit(kiemhinh(_a[0] if _a else None, _a[1] if len(_a) > 1 else None))
