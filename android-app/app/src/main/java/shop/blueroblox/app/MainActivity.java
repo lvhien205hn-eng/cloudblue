@@ -328,6 +328,7 @@ public class MainActivity extends Activity {
             if (System.currentTimeMillis() - Blue.at > 60_000L) Blue.load(this::blueChanged);
             if (System.currentTimeMillis() - Offers.at > 120_000L) Offers.load(this::offersChanged);
             if (Drop.on() && System.currentTimeMillis() - Drop.at > (Drop.live() ? 15_000L : 45_000L)) Drop.load(this::dropChanged);   // ⚡ đợt phát mã
+            if (Api.SHOP && System.currentTimeMillis() - RealPhone.at > 60_000L) RealPhone.load(this::realChanged);   // 📱 máy thật (SQL v70)
             ExpiryAlarm.schedule(this, phones);
             if (tab == 0) {
                 if (phonesSig().equals(phonesSig)) tick();      // không có gì đổi → chỉ cập nhật chữ thời hạn (ô xem trước chạy liền, không nháy)
@@ -348,6 +349,34 @@ public class MainActivity extends Activity {
             Ui.toast(this, m);
             h.postDelayed(poll, 30000);
         });
+    }
+
+    /** 📱 Danh mục máy thật vừa tải lại (SQL v70): nội dung ĐỔI → vẽ lại trang Thuê máy (thẻ BlueReal) / danh sách máy (tên mẫu máy). */
+    private String realSig = null;
+    void realChanged() {
+        if (destroyed) return;
+        String sig = String.valueOf(RealPhone.cat);
+        if (sig.equals(realSig)) return;
+        realSig = sig;
+        if (!loaded) return;
+        boolean mine = false;
+        for (int i = 0; i < phones.length(); i++) if (RealPhone.isReal(phones.optJSONObject(i))) mine = true;
+        if (tab == 1) renderRent(); else if (tab == 0 && mine) renderPhones();
+    }
+
+    /** Vừa thuê máy thật → về "Máy của tôi" xem máy đang chuẩn bị, tải lại vài lần cho tới khi máy chạy. */
+    void afterRealBuy() {
+        phonesSig = null;
+        show(0);
+        reloadSoon();
+    }
+
+    /** Tải lại ngay + 5 giây + 20 giây sau (máy chủ ghi hạn / trạng thái mới trong ít giây). */
+    void reloadSoon() {
+        phonesSig = null;
+        refresh();
+        h.postDelayed(this::refresh, 5000);
+        h.postDelayed(this::refresh, 20000);
     }
 
     /** ⚡ Đợt phát mã vừa tải lại → vẽ lại ô (đổi số mã còn lại tại chỗ, không nháy). */
@@ -1063,7 +1092,9 @@ public class MainActivity extends Activity {
         c.addView(r1, Ui.fill());
 
         String av = p.optString("android", "").trim();
-        c.addView(Ui.muted(this, (av.isEmpty() || "null".equals(av) ? "" : "Android " + av + " · ") + p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + SwitchAndroid.paidTag(p) + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
+        final boolean real = RealPhone.isReal(p);           // 28/11 · SQL v70: 📱 máy THẬT (BlueReal)
+        c.addView(Ui.muted(this, real ? RealPhone.info(p)
+                : (av.isEmpty() || "null".equals(av) ? "" : "Android " + av + " · ") + p.optInt("ram") + "GB RAM · " + p.optInt("cpu") + Ui.L(" nhân", " cores") + SwitchAndroid.paidTag(p) + " · " + p.optString("res", "") + " · " + p.optInt("fps", 30) + " FPS"), Ui.fill());
 
         if (exp > 0) c.addView(expiryText(p, true, ticks), Ui.fill());
         if (lk) {
@@ -1072,7 +1103,8 @@ public class MainActivity extends Activity {
         }
         if (SwitchAndroid.isNewFromSwitch(p))             // máy MỚI của lệnh đổi Android (v28: máy cũ bị xoá trước)
             c.addView(Ui.text(this, "🤖 " + SwitchAndroid.newNote(p, phones), 13, Ui.WAIT, false), Ui.fill());
-        else if ("pending".equals(st)) c.addView(Ui.muted(this, Ui.L("Máy đang khởi động và cài app sẵn, khoảng 2–3 phút. Trang tự cập nhật.", "Booting and installing apps, about 2–3 minutes.")), Ui.fill());
+        else if ("pending".equals(st)) c.addView(Ui.muted(this, real ? RealPhone.pendingNote()
+                : Ui.L("Máy đang khởi động và cài app sẵn, khoảng 2–3 phút. Trang tự cập nhật.", "Booting and installing apps, about 2–3 minutes.")), Ui.fill());
         JSONObject swTo = SwitchAndroid.switching(p, phones);
         if (swTo != null)                                // máy CŨ đang chờ máy mới
             c.addView(Ui.text(this, "🤖 " + Ui.L("Đang đổi sang Android " + SwitchAndroid.cur(swTo) + ": máy mới đang tạo, máy này vẫn dùng được tới lúc đó rồi tự xoá.",
@@ -1143,6 +1175,7 @@ public class MainActivity extends Activity {
     }
 
     void renew(JSONObject p) {
+        if (RealPhone.isReal(p)) { RealPhone.renew(this, p); return; }      // 28/11 · SQL v70: máy thật gia hạn theo giá / ngày của mẫu máy
         int max = price.optInt("max_days", 365);
         final int[] days = {Math.min(30, max)};
         LinearLayout c = Ui.col(this, 12);
@@ -1362,6 +1395,7 @@ public class MainActivity extends Activity {
 
     /** Huỷ máy: xoá máy + toàn bộ dữ liệu, không hoàn tiền (giống web). */
     void cancelPhone(JSONObject p) {
+        if (RealPhone.isReal(p)) { RealPhone.giveBack(this, p); return; }     // 28/11: máy thật → "Trả máy sớm" (máy chủ dọn máy rồi trả cửa hàng)
         Ui.confirm(this, Ui.L("Huỷ máy ", "Delete ") + p.optString("name") + "?",
                 Ui.L("Máy và TOÀN BỘ dữ liệu trong máy sẽ bị XOÁ vĩnh viễn, không hoàn tiền.", "The phone and ALL its data will be permanently deleted. No refund."),
                 Ui.L("Xoá máy", "Delete"), () -> Api.bg(() -> Api.rpc("cloudphone_cancel", new JSONObject().put("p_id", p.optString("id"))),
@@ -1373,6 +1407,19 @@ public class MainActivity extends Activity {
         LinearLayout c = Ui.col(this, 10);
         Button sh = Ui.button(this, "👥 " + Ui.L("Chia sẻ / chuyển nhượng", "Share / transfer"), Ui.GHOST);
         Button rn = Ui.button(this, "✏️ " + Ui.L("Đổi tên", "Rename"), Ui.GHOST);
+        if (RealPhone.isReal(p)) {                      // 28/11 · SQL v70: 📱 máy THẬT — không nâng cấp / đổi Android / đổi FPS
+            boolean canShare = ("active".equals(p.optString("status")) || "pending".equals(p.optString("status"))) && !locked(p);
+            sh.setEnabled(canShare); sh.setAlpha(canShare ? 1f : .45f);
+            Button back = Ui.button(this, "📤 " + Ui.L("Trả máy sớm (app, file của bạn sẽ bị xoá)", "Return early (your apps and files are erased)"), Ui.DANGER);
+            c.addView(Ui.muted(this, RealPhone.limitsNote()), Ui.fill());
+            c.addView(sh, Ui.fill()); c.addView(rn, Ui.fill()); c.addView(back, Ui.fill());
+            Dialog d = Ui.sheet(this, p.optString("name"), c);
+            sh.setOnClickListener(v -> { d.dismiss(); share(p); });
+            rn.setOnClickListener(v -> { d.dismiss(); rename(p); });
+            back.setOnClickListener(v -> { d.dismiss(); RealPhone.giveBack(this, p); });
+            d.show();
+            return;
+        }
         Button up = Ui.button(this, "⬆️ " + Ui.L("Nâng cấp RAM / CPU", "Upgrade RAM / CPU"), Ui.GHOST);
         boolean canUp = "active".equals(p.optString("status")) && !locked(p) && !p.optBoolean("is_free") && !p.optBoolean("shared");
         up.setEnabled(canUp); up.setAlpha(canUp ? 1f : .45f);
@@ -1706,6 +1753,10 @@ public class MainActivity extends Activity {
         body.addView(Ui.muted(this, Ui.L("3 bước: chọn hệ điều hành → chọn gói → số ngày. Máy mới tinh, có Play Store.",
                 "3 steps: Android version → plan → days. Fresh device with Play Store.")), Ui.fill());
         promo(body, false);                         // 🎡 vòng quay may mắn — dải gọn, bấm là mở · khách ẩn / hiện được (16/11)
+        if (Api.SHOP) {                             // 28/11 · SQL v70: 📱 BlueReal — thuê điện thoại THẬT (admin mở bán ≥ 1 mẫu máy)
+            if (RealPhone.on()) body.addView(RealPhone.card(this), Ui.fill());
+            if (System.currentTimeMillis() - RealPhone.at > 60_000L) RealPhone.load(this::realChanged);
+        }
 
         int minR = price.optInt("min_ram", 1), minC = price.optInt("min_cpu", 1);
         final int mpu = maxPerUser(), left = mpu > 0 ? mpu - myLive() : 20;

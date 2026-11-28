@@ -637,6 +637,9 @@ public final class Api {
         // v35: máy chủ viết sẵn câu dễ hiểu rồi mới tới (MÃ_LỖI) → tiếng Việt hiện đúng câu đó (số tiền / số lần luôn khớp cài đặt của admin)
         java.util.regex.Matcher sm = java.util.regex.Pattern.compile("^(.{12,}?)\\s*\\(([A-Z][A-Z0-9]*_[A-Z0-9_]+)\\)\\s*$", java.util.regex.Pattern.DOTALL).matcher(m.trim());
         if (sm.find() && Ui.vi()) return sm.group(1).trim();
+        // 28/11 · SQL v70 📱 máy thật: "REAL_…: câu tiếng Việt" → tiếng Việt hiện đúng câu máy chủ (có tên mẫu máy); English lấy bảng dưới
+        java.util.regex.Matcher rm = java.util.regex.Pattern.compile("^REAL_[A-Z_]+:\\s*(.{6,})$", java.util.regex.Pattern.DOTALL).matcher(m.trim());
+        if (rm.find() && Ui.vi()) return rm.group(1).trim();
         String[][] map = {
                 // 16/11c: hệ thống tạm ngừng (Supabase vượt hạn mức → 402) — báo bảo trì, không hiện câu tiếng Anh của Supabase
                 {"Service for this project is restricted", "⚠️ Hệ thống đang bảo trì nên tạm thời chưa đăng nhập / tải dữ liệu được. Vui lòng thử lại sau ít phút.", "⚠️ The system is under maintenance, so signing in and loading data are paused. Please try again in a few minutes."},
@@ -658,6 +661,18 @@ public final class Api {
                 {"SWITCH_EXPIRED", "Máy đã hết hạn nên không tạo lại được — nhắn shop nếu cần hỗ trợ.", "This phone has expired, so it can't be recreated — contact support."},
                 {"SWITCH_RETRY_LIMIT", "Bạn đã bấm thử lại nhiều lần — admin sẽ xử lý máy này.", "You've retried several times — an admin will handle this phone."},
                 {"SWITCH_WAIT", "Vừa thử xong — đợi 2 phút rồi bấm lại nhé.", "Just retried — wait 2 minutes and try again."},
+                // 28/11 · 📱 máy thật (SQL v70) — bản tiếng Anh (tiếng Việt lấy câu máy chủ ở trên)
+                {"REAL_OUT", "Mẫu máy này vừa hết máy — chọn mẫu khác hoặc quay lại sau ít phút.", "This model just sold out — pick another or come back in a few minutes."},
+                {"REAL_NO_PRICE", "Mẫu máy này chưa mở bán.", "This model isn't for sale yet."},
+                {"REAL_OFF", "Tạm ngừng cho thuê máy thật — quay lại sau.", "Real phone rental is paused — come back later."},
+                {"REAL_NO_MODEL", "Không có mẫu máy này.", "This model doesn't exist."},
+                {"REAL_NOT_REAL", "Đây là ĐT đám mây — gia hạn bằng nút Gia hạn thường.", "This is a cloud phone — use the normal Renew button."},
+                {"REAL_RENEW", "Máy thật gia hạn bằng nút Gia hạn của máy thật.", "Renew real phones with their own Renew button."},
+                {"REAL_NO_SWITCH", "Máy thật không đổi Android / đổi máy chủ được.", "Real phones can't switch Android / server."},
+                {"REAL_NO_UPGRADE", "Máy thật không nâng RAM / CPU được.", "Real phones can't be upgraded."},
+                {"REAL_NO_DISK", "Máy thật không thêm bộ nhớ được.", "Real phones can't add storage."},
+                {"REAL_ONLY_ORDER", "Máy thật chỉ thuê ở mục Thuê máy thật.", "Real phones can only be rented from the Real phone section."},
+                {"realphone_", "Tính năng thuê máy thật đang cập nhật — thử lại sau ít phút.", "Real phone rental is being updated — try again in a few minutes."},
                 {"cloudphone_switch_retry", "Máy chủ chưa bật nút thử lại — nhắn shop để được tạo lại máy.", "Retry isn't enabled on the server yet — contact support."},
                 // ▶️ nạp qua Google Play (bản CH Play, api/play-topup) — đặt TRƯỚC "TOO_MANY" / "LOCKED"
                 {"PLAY_OTHER_ACCOUNT", "Giao dịch này được mua khi đăng nhập tài khoản CloudBlue khác — đăng nhập lại đúng tài khoản đó để nhận tiền.", "This payment was made while signed in to another CloudBlue account — sign in to that account to receive it."},
