@@ -3353,6 +3353,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
       <div class="tiles" style="grid-template-columns:repeat(4,1fr)" id="st-tiles"></div>
+      <div class="hint" id="st-db" style="margin:0"></div>
       <h3 style="margin:6px 0 0">Top sản phẩm bán chạy</h3>
       <div class="tbl"><table><thead><tr><th>Sản phẩm</th><th>Lượt bán</th><th>Doanh thu</th></tr></thead><tbody id="st-top"></tbody></table></div>
     </div>
@@ -3408,7 +3409,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
       </details>
     </div>
     <div class="dbody" id="pane-cust" hidden>
-      <div class="tiles"><div><b id="k-users">0</b><span>Khách đã đăng ký</span></div><div><b id="k-bal">0đ</b><span>Tổng số dư khách</span></div><div><b id="k-rev">0đ</b><span>Đã nạp (100 lệnh gần nhất)</span></div></div>
+      <div class="tiles"><div><b id="k-users">0</b><span>Khách đã đăng ký (không tính admin)</span></div><div><b id="k-bal">0đ</b><span>Tổng số dư khách (không tính admin)</span></div><div><b id="k-rev">0đ</b><span>Đã nạp (100 lệnh gần nhất · không tính admin)</span></div></div>
       <div id="ctv-req"></div>
       <input class="search" id="cq" placeholder="Tìm theo tên hoặc email…" style="width:100%">
       <div class="tbl"><table><thead><tr><th>Khách</th><th>Email</th><th>Số dư</th><th>Trạng thái</th><th>CTV</th><th></th></tr></thead><tbody id="ctbl"></tbody></table></div>
@@ -6603,8 +6604,9 @@ function renderTable() {
 }
 function renderCust() {
   const q = $("cq").value.trim().toLowerCase(), us = ADM.users.filter(u => !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-  $("k-users").textContent = ADM.users.length; $("k-bal").textContent = vnd(ADM.users.reduce((s, u) => s + (+u.balance || 0), 0));
-  $("k-rev").textContent = vnd(ADM.topups.filter(t => t.status === "done").reduce((s, t) => s + (+t.amount || 0), 0));
+  const cu = ADM.users.filter(u => u.role !== "admin");              // SQL v68: tiền / tài khoản admin (nạp, mua, cộng thử) không tính
+  $("k-users").textContent = cu.length; $("k-bal").textContent = vnd(cu.reduce((s, u) => s + (+u.balance || 0), 0));
+  $("k-rev").textContent = vnd(ADM.topups.filter(t => t.status === "done" && !uIsAdm(t.user_id)).reduce((s, t) => s + (+t.amount || 0), 0));
   $("ctbl").innerHTML = us.length ? us.map(u => `<tr><td><b>${esc(u.username)}</b>${u.role === "admin" ? ' <span class="pill wt">ADMIN</span>' : ""}<div class="hint">${ago(u.created_at)}</div></td><td>${esc(u.email)}</td>
     <td class="num">${vnd(u.balance)}</td><td>${u.locked ? '<span class="pill bad">Đã khoá</span>' : '<span class="pill ok">Hoạt động</span>'}</td><td>${ctvCell(u)}</td>
     <td style="white-space:nowrap;text-align:right"><input class="in" style="width:110px;display:inline-block;padding:5px 8px" type="number" step="1000" placeholder="± số tiền" id="adj-${u.id}" aria-label="Điều chỉnh số dư">
@@ -6621,7 +6623,7 @@ function txMethod(t) {
 function renderTx() {
   $("ttbl").innerHTML = ADM.topups.length ? ADM.topups.map(t => {
     const isCrypto = !!t.coin, usdTxt = (t.usd != null) ? `<div class="hint">≈ $${(+t.usd).toLocaleString("en-US")} ${String(t.coin).toUpperCase().replace("TRC20", "")}</div>` : "";
-    return `<tr><td>${ago(t.created_at)}</td><td>${esc(uname(t.user_id))}</td><td>${txMethod(t)}</td><td class="num">${esc(t.memo)}</td><td class="num">${vnd(t.amount)}${isCrypto ? usdTxt : ""}</td>
+    return `<tr><td>${ago(t.created_at)}</td><td>${esc(uname(t.user_id))}${uIsAdm(t.user_id) ? ADM_TEST_TAG.replace("mua thử", "nạp thử") : ""}</td><td>${txMethod(t)}</td><td class="num">${esc(t.memo)}</td><td class="num">${vnd(t.amount)}${isCrypto ? usdTxt : ""}</td>
     <td>${t.status === "done" ? '<span class="pill ok">Thành công</span>' : t.status === "reversed" ? '<span class="pill bad">↩️ Đã hoàn</span>' : '<span class="pill wt">Chờ</span>'}</td>
     <td style="text-align:right;white-space:nowrap">${t.status === "pending" ? `<button class="btn ghost sm" data-approve="${t.id}">Duyệt tay</button> ` : ""}<button class="btn danger sm" data-deltop="${t.id}">Xoá</button></td></tr>`;
   }).join("")
@@ -7750,13 +7752,40 @@ $("vcf") && ($("vcf").onsubmit = e => { e.preventDefault(); busy($("vc-save"), a
 
 
 /* ================= THỐNG KÊ ADMIN ================= */
+/* 🧩 SQL v68: admin_db_check — mỗi file SQL đã chạy đủ chưa (✓ / ✗ từng phần) → admin + Claude tự kiểm tra, khỏi chụp màn hình Supabase */
+const DBC_LBL = { v67: { avoid_node: "cột tránh máy chủ cũ", change_server: "đổi máy chủ giữ Android", switch_other_server: "đổi Android sang máy chủ khác",
+                         switch_limit: "số lần đổi / 24 giờ", orders_cp_sales: "bỏ đơn admin" },
+                  v68: { topups: "bỏ nạp admin", balances: "bỏ số dư admin", rev_funcs: "hàm tính tiền", stats_api: "/api/stats", fresh: "bảng bỏ admin đủ cột" } };
+async function dbCheck() {
+  const el = $("st-db"); if (!el || !isAdmin()) return;
+  let r; try { r = await sb.rpc("admin_db_check"); } catch (e) { r = { error: e }; }
+  if (!r || r.error) {
+    const m = String((r && r.error && r.error.message) || "");
+    el.dataset.ok = "0";
+    el.innerHTML = /admin_db_check|schema cache|does not exist|Could not find/i.test(m) ? "🧩 Cơ sở dữ liệu: chưa chạy <b>SQL v68</b> — chạy xong bấm Tải lại là tự kiểm tra."
+      : "🧩 Cơ sở dữ liệu: chưa kiểm tra được" + (m ? " (" + esc(m.slice(0, 120)) + ")" : "");
+    return;
+  }
+  const d = r.data || {}, vs = Object.keys(d).filter(k => /^v\d+$/.test(k)).sort((a, b) => +a.slice(1) - +b.slice(1));
+  let allOk = true;
+  const parts = vs.map(k => {
+    const o = d[k] || {}, lb = DBC_LBL[k] || {};
+    const bad = Object.keys(o).filter(x => o[x] === false || (x === "rev_funcs" && !(+o[x] > 0))).map(x => lb[x] || x);
+    if (bad.length) allOk = false;
+    return bad.length ? `<b style="color:var(--bad)">SQL ${k.slice(1)} ✗</b> thiếu: ${esc(bad.join(", "))}` : `<b style="color:var(--ok)">SQL ${k.slice(1)} ✓</b>`;
+  });
+  el.dataset.ok = allOk ? "1" : "0";
+  el.title = JSON.stringify(d);
+  el.innerHTML = "🧩 Cơ sở dữ liệu: " + (parts.join(" · ") || "—") + (d.v68 && d.v68.fresh === false ? " — chạy <code>select public._nadm_refresh();</code> trong Supabase" : "");
+}
 async function loadStats() {
   if (!isAdmin()) return;
   const box = $("st-tiles"); if (!box) return;
   box.innerHTML = `<div class="hint">Đang tải số liệu…</div>`;
   const { data: s, error } = await sb.rpc("admin_stats");
   if (error || !s) { box.innerHTML = `<div class="hint">Chưa tải được (hãy chạy file stats.sql trong Supabase).</div>`; return; }
-  $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính đơn tài khoản admin mua thử";
+  $("st-time").textContent = "Cập nhật: " + (s.generated_at || "") + " · không tính tiền của tài khoản admin (nạp / mua / cộng thử)";
+  dbCheck();
   const tile = (b, lab, hot) => `<div${hot ? ' style="border-color:rgba(233,192,99,.4)"' : ""}><b${hot ? ' style="color:var(--gold-hi)"' : ""}>${b}</b><span>${lab}</span></div>`;
   box.innerHTML = [
     tile(vnd(s.revenue_total), "Tổng doanh thu", 1),
@@ -11728,7 +11757,10 @@ async function txLoad() {
   if (seq !== TX_SEQ) return;
   if (error || !data) { TX_OLD = true; TX_ROWS = null; renderTx(); if ($("tx-sum")) $("tx-sum").innerHTML = V29_MISS(error) ? V29_TXT : esc(errMsg(error)); return; }
   TX_OLD = false; TX_ROWS = data.rows || [];
-  if ($("tx-sum")) $("tx-sum").textContent = `${bnum(data.n)} lệnh${q || st || via ? " khớp" : ""} · đã cộng ${vnd(data.sum_done)}${TX_ROWS.length < data.n ? ` · hiện ${TX_ROWS.length} lệnh mới nhất` : ""}`;
+  const aSum = TX_ROWS.filter(t => t.status === "done" && uIsAdm(t.user_id)).reduce((a, t) => a + (+t.amount || 0), 0);   // SQL v68: nạp thử của admin không tính
+  if ($("tx-sum")) $("tx-sum").textContent = `${bnum(data.n)} lệnh${q || st || via ? " khớp" : ""} · đã cộng ${vnd((+data.sum_done || 0) - aSum)}`
+    + (aSum ? ` (đã bỏ ${vnd(aSum)} admin nạp thử${TX_ROWS.length < data.n ? " trong các lệnh đang hiện" : ""})` : "")
+    + (TX_ROWS.length < data.n ? ` · hiện ${TX_ROWS.length} lệnh mới nhất` : "");
   renderTx();
 }
 renderTx = function () {
@@ -11743,7 +11775,7 @@ renderTx = function () {
     const usd = t.usd != null ? `<div class="hint">≈ $${(+t.usd).toLocaleString("en-US")} ${esc(String(t.coin || "").toUpperCase().replace("TRC20", ""))}</div>` : "";
     const diff = t.asked != null && +t.asked !== +t.amount && t.status === "done";
     return `<tr data-bkid="${esc(String(t.id))}" data-bkst="${esc(t.status || "")}" data-bku="${esc(t.user_id || "")}" data-bkn="${esc(t.username || uname(t.user_id) || "")}"${t.via === "manual" ? ' class="tx-man"' : ""}><td>${ago(t.created_at)}${t.ip ? `<div class="hint">${ipTxt(t.ip)}</div>` : ""}</td>
-      <td><b>${esc(t.username || uname(t.user_id))}</b>${t.u_locked ? ' <span class="pill bad">khoá</span>' : ""}${t.email ? `<div class="hint">${esc(t.email)}</div>` : ""}</td>
+      <td><b>${esc(t.username || uname(t.user_id))}</b>${uIsAdm(t.user_id) ? ADM_TEST_TAG.replace("mua thử", "nạp thử") : ""}${t.u_locked ? ' <span class="pill bad">khoá</span>' : ""}${t.email ? `<div class="hint">${esc(t.email)}</div>` : ""}</td>
       <td>${t.status === "done" || t.status === "reversed" ? esc(VIA_TXT[t.via] || t.via || "") : '<span class="hint">—</span>'}${t.approver ? `<div class="hint">bởi ${esc(t.approver)}</div>` : ""}</td>
       <td class="num">${esc(t.memo)}${t.bank_ref && !String(t.bank_ref).startsWith("MANUAL-") ? `<div class="hint">NH: ${esc(t.bank_ref)}</div>` : ""}</td>
       <td class="num">${t.asked != null ? vnd(t.asked) : "—"}</td>
