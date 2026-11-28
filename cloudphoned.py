@@ -514,6 +514,7 @@ def claim(row):
     n = row.get("node")
     if n:                                           # đã có server nhận rồi (admin chọn / máy chủ khác)
         if n != NODE_ID: return False
+        if row.get("real_device"): return REAL_ON   # 28/11e (SQL v70): máy thật cắm ở máy chủ này → không chuyển đi đâu được
         return not handover(row)                    # 16/11e: admin chọn máy chủ này mà nó gần đầy → chuyển sang máy chủ trống nhất
     if row.get("avoid_node") and row.get("avoid_node") == NODE_ID:   # 28/11d (SQL v67): khách ĐỔI MÁY CHỦ → máy mới phải sang máy chủ khác
         if PRIMARY: refund_unserved(row)
@@ -640,6 +641,7 @@ def get_upgrade():
 
 def do_upgrade(row):
     """Khách đã trả tiền nâng RAM/CPU → cấp thêm cho máy (không khởi động lại)."""
+    if row.get("real_device"): return patch(row["id"], {"pending_ram": None, "pending_cpu": None})   # máy thật không nâng được
     name = row.get("container") or cname(row)
     if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → nâng ở máy chủ mới
     ram = int(row.get("pending_ram") or row["ram"]); cpu = int(row.get("pending_cpu") or row["cpu"])
@@ -914,6 +916,7 @@ def do_disk(row):
 BOOTING = set()
 def do_create(row):
     """Tạo container ngay (vài giây), rồi chờ Android khởi động ở luồng riêng → nhiều máy khởi động song song."""
+    if row.get("real_device"): return real_create(row)          # 28/11e · 📱 máy thật (SQL v70)
     name = cname(row)
     ps = phone_state(name)
     if not ps:
@@ -1269,7 +1272,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "28/11d"
+CPD_VER = "28/11e"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1877,6 +1880,7 @@ def do_cancel(row):
     """Khách / admin / ĐỔI ANDROID bấm xoá → xoá máy ảo + toàn bộ dữ liệu. CHỈ ghi "đã huỷ" khi giả lập CHẮC CHẮN không còn máy:
        đổi Android đợi đúng lúc này mới tạo máy mới → khách không bao giờ dùng được 2 máy. Xoá chưa được (giả lập bận / lỗi)
        → giữ "đang huỷ" (khách vẫn không mở được), thử lại giãn dần 1 → 15 phút, báo admin."""
+    if row.get("real_device"): return real_finish(row, "Đã huỷ — máy thật đã trả lại cửa hàng, app và file của bạn đã được xoá.")
     pid = row["id"]; n, nxt = _cancel_try.get(pid, (0, 0))
     if time.time() < nxt: return
     name = row.get("container") or cname(row)
@@ -1926,6 +1930,7 @@ def do_renew(row):
     """Khách đã trả tiền gia hạn (hoặc admin cộng ngày) → cộng vào máy rồi ghi hạn mới lên web.
        CHỈ xoá số ngày chờ cộng khi máy chủ ĐÃ ghi được hạn mới (bản cũ xoá luôn dù phonectl không ghi được → khách mất ngày).
        Chưa ghi được → giữ nguyên, 15 giây sau thử lại, báo admin (1 lần / giờ / máy)."""
+    if row.get("real_device"): return real_renew(row)           # 28/11e · 📱 máy thật: cộng ngày, không có máy ảo
     name = row.get("container") or cname(row)
     if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → cộng ngày ở máy chủ mới (dòng web giữ ngày chờ)
     d = int(row["pending_renew_days"])
@@ -1958,6 +1963,7 @@ def do_renew(row):
 
 def do_expiry(row):
     """Hết hạn → tạm dừng (giữ dữ liệu 30 phút). Quá 30 phút → xoá máy + toàn bộ dữ liệu."""
+    if row.get("real_device"): return real_expiry(row)          # 28/11e · 📱 máy thật: tạm dừng → dọn máy, trả máy
     name = row.get("container") or cname(row)
     if mv_busy(name): return                                   # 27/11n: đang chuyển máy chủ → máy chủ mới lo hạn sau khi chuyển xong
     ps = phone_state(name)
@@ -1988,6 +1994,174 @@ def do_expiry(row):
     elif t > exp and row["status"] == "active":
         print(f"[tạm dừng] {name} hết hạn, chờ gia hạn {GRACE_MIN} phút")
         if ps: phonectl(["stop", name])
+        patch(row["id"], {"status": "expired"})
+
+# ---------- 28/11e · 📱 BLUEREAL — ĐIỆN THOẠI THẬT (SQL v70) ----------
+# Điện thoại thật cắm USB vào máy chủ này (bật "Gỡ lỗi USB", bấm "Cho phép" lần đầu): mỗi 30 giây máy chủ đọc adb devices → báo real_seen
+# (admin thấy "máy đang cắm" để thêm vào kho) + ghi lần thấy / pin của máy trong kho (real_devices.node = máy chủ này). Còn hàng chỉ tính máy
+# máy chủ vừa thấy (≤ 3 phút). Đơn thuê (cloud_phones.real_device): máy chủ đang cắm máy đó giao máy — đánh thức, giữ màn hình sáng khi cắm
+# sạc, mở màn khoá → đang chạy, hạn = lúc giao + số ngày. Gia hạn: cộng ngày. Hết hạn: tạm dừng (không mở được) → quá GRACE_MIN phút: dọn máy
+# (gỡ app khách cài, xoá ảnh / video / file tải về, xoá dữ liệu trình duyệt) rồi huỷ đơn → web để máy ở "🧹 Cần reset" (admin khôi phục cài
+# đặt gốc nếu cần rồi bấm ✅ Sẵn sàng). cloudphone.conf: REAL=0 tắt · REAL_WIPE=0 không tự dọn · REAL_KEEP=gói1,gói2 (app giữ lại khi dọn).
+REAL_ON = _f("REAL", 1) > 0
+REAL_WIPE = _f("REAL_WIPE", 1) > 0
+REAL_KEEP = {x.strip() for x in str(CFG.get("REAL_KEEP") or "").split(",") if x.strip()}
+REAL_DIRS = ("DCIM", "Pictures", "Download", "Movies", "Music", "Documents", "Recordings", "Screenshots")
+_real = {"t": 0.0, "devs": {}, "bat": {}, "said": {}, "off": 0.0, "seen": {}, "seen_t": 0.0}
+
+def real_adb(serial, *args, timeout=20):
+    code, out, err, _ = _run_tf(["adb", "-s", serial, *args], timeout)
+    return code, out or "", err or ""
+
+def real_list(fresh=False):
+    """adb devices -l → {số máy: {state, model}} — CHỈ điện thoại thật (bỏ máy ảo 127.0.0.1:… / emulator-… / localhost:…). Nhớ 10 giây."""
+    if not fresh and time.time() - _real["seen_t"] < 10: return _real["seen"]
+    code, out, _, _ = _run_tf(["adb", "devices", "-l"], 15)
+    res = {}
+    for ln in (out or "").splitlines()[1:]:
+        p = ln.split()
+        if len(p) < 2: continue
+        sr, st = p[0], p[1]
+        if sr.startswith(("127.0.0.1:", "emulator-", "localhost:", "[::1]:")) or not re.fullmatch(r"[A-Za-z0-9._:-]{3,64}", sr): continue
+        model = next((x.split(":", 1)[1] for x in p[2:] if x.startswith("model:")), "")
+        res[sr] = {"state": st, "model": model[:40]}
+    _real["seen"], _real["seen_t"] = res, time.time()
+    return res
+
+def real_devs(force=False):
+    """Máy thật trong kho của máy chủ này {id: dòng} — đọc lại mỗi 30 giây. Web chưa chạy SQL v70 → {} (thử lại sau 10 phút)."""
+    if time.time() < _real["off"]: return {}
+    if force or time.time() - _real["t"] > 30:
+        try:
+            rows = sb("GET", f"real_devices?node=eq.{urllib.parse.quote(NODE_ID, safe='')}&select=id,serial,status,phone_id,label,model_id") or []
+            _real["devs"] = {r["id"]: r for r in rows}
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 404): _real["devs"] = {}; _real["off"] = time.time() + 600
+        except Exception: pass
+        _real["t"] = time.time()
+    return _real["devs"]
+
+def real_dev(row):
+    rid = row.get("real_device")
+    if not rid: return None
+    return real_devs().get(rid) or real_devs(force=True).get(rid)
+
+def real_said(key, every=3600):
+    if time.time() - _real["said"].get(key, 0) < every: return False
+    _real["said"][key] = time.time(); return True
+
+def real_tick():
+    """30 giây / lần (luồng riêng): báo máy thật đang cắm + cập nhật lần thấy / pin máy trong kho · máy đang thuê mất kết nối → báo admin."""
+    if not REAL_ON or time.time() < _real["off"]: return
+    seen = real_list(fresh=True)
+    devs = real_devs()
+    if not seen and not devs: return
+    iso = now().isoformat()
+    for sr, v in seen.items():
+        if v["state"] != "device": continue
+        b = _real["bat"].get(sr)
+        if not b or time.time() - b[1] > 300:
+            _, out, _ = real_adb(sr, "shell", "dumpsys battery", timeout=10)
+            m = re.search(r"level:\s*(\d+)", out)
+            _real["bat"][sr] = (int(m.group(1)) if m else None, time.time())
+    bat = lambda sr: (_real["bat"].get(sr) or (None, 0))[0]
+    if seen:
+        rows = [{"node": NODE_ID, "serial": sr, "model": v["model"] or None, "battery": bat(sr), "state": v["state"], "last_seen": iso} for sr, v in seen.items()]
+        try: sb("POST", "real_seen?on_conflict=node,serial", rows, {"Prefer": "resolution=merge-duplicates,return=minimal"})
+        except urllib.error.HTTPError as e:
+            if e.code in (400, 404): _real["off"] = time.time() + 600; return       # web chưa chạy SQL v70
+        except Exception as e: print("   máy thật: lỗi báo máy đang cắm:", e)
+    for d in devs.values():
+        sr = d.get("serial")
+        if sr and seen.get(sr, {}).get("state") == "device":
+            try: sb("PATCH", f"real_devices?id=eq.{d['id']}", {"last_seen": iso, "battery": bat(sr)}, {"Prefer": "return=minimal"})
+            except Exception: pass
+        elif d.get("status") == "rented" and real_said("off:" + str(d["id"])):
+            st = seen.get(sr, {}).get("state") if sr else None
+            notify(f"📵 <b>{NODE_ID}</b>: máy thật <b>{d.get('label') or sr}</b> đang có khách thuê mà mất kết nối"
+                   + (f" (adb báo: {st} — bấm 'Cho phép' gỡ lỗi USB trên điện thoại)" if st else " (kiểm tra cáp USB / nguồn)") + ".")
+
+def _real_loop():
+    while True:
+        try: real_tick()
+        except Exception as e: print("lỗi máy thật:", e)
+        time.sleep(30)
+
+def real_prepare(sr):
+    """Trước khi giao: đánh thức · cắm sạc USB thì màn hình luôn sáng · mở màn khoá (máy không đặt mật khẩu) · tắt màn sau 30 phút không dùng."""
+    for cmd in (("shell", "svc power stayon usb"), ("shell", "input keyevent 224"), ("shell", "wm dismiss-keyguard"),
+                ("shell", "settings put system screen_off_timeout 1800000")):
+        real_adb(sr, *cmd, timeout=12)
+
+def real_wipe(sr):
+    """Dọn máy sau khi khách trả: gỡ mọi app khách cài (pm list packages -3, trừ REAL_KEEP) · xoá ảnh / video / file tải về · xoá dữ liệu
+       trình duyệt. Máy chưa root thì adb không khôi phục cài đặt gốc được → admin tự làm nếu cần (web để máy ở 🧹 Cần reset). Trả số app đã gỡ."""
+    _, out, _ = real_adb(sr, "shell", "pm list packages -3", timeout=30)
+    gone = 0
+    for ln in out.splitlines():
+        pk = ln.split(":", 1)[1].strip() if ln.startswith("package:") else ""
+        if not pk or pk in REAL_KEEP: continue
+        _, o, _ = real_adb(sr, "uninstall", pk, timeout=90)
+        if "Success" in o: gone += 1
+    real_adb(sr, "shell", "rm -rf " + " ".join(f"/sdcard/{d}/*" for d in REAL_DIRS), timeout=120)
+    for pk in ("com.android.chrome", "com.sec.android.app.sbrowser"):
+        real_adb(sr, "shell", f"pm clear {pk}", timeout=30)
+    return gone
+
+def real_create(row):
+    """Giao máy thật cho đơn thuê (đơn đã ghi đúng máy chủ này)."""
+    d = real_dev(row); pid = row["id"]
+    if not d: return                                         # máy không thuộc máy chủ này / chưa đọc được kho → lượt sau
+    sr = d.get("serial") or ""
+    st = real_list().get(sr, {}).get("state") if sr else None
+    if st != "device":
+        if age_s(row) > 600:
+            refund(row, "Máy thật đang mất kết nối — đã hoàn tiền, thuê lại sau ít phút hoặc chọn mẫu khác")
+            notify(f"📵 <b>{NODE_ID}</b>: đơn thuê máy thật <b>{d.get('label') or sr}</b> đã hoàn tiền — máy mất kết nối quá 10 phút"
+                   + (f" (adb báo: {st})" if st else "") + ".")
+        elif real_said("wait:" + pid, 300):
+            print(f"[máy thật] đơn {pid[:8]}: {d.get('label') or sr} chưa kết nối" + (f" ({st})" if st else "") + " — chờ tối đa 10 phút")
+        return
+    real_prepare(sr)
+    days = max(1, int(row.get("days") or 1))
+    live = {"status": "active", "container": "real_" + str(d["id"])[:8], "node": NODE_ID,
+            "expires_at": (now() + datetime.timedelta(days=days)).isoformat(), "error": None}
+    got = sb("PATCH", f"cloud_phones?id=eq.{pid}&status=eq.pending", {**live, "updated_at": datetime.datetime.now().isoformat()},
+             {"Prefer": "return=representation"})
+    if got:
+        print(f"[máy thật] ✓ giao {d.get('label') or sr} cho đơn {pid[:8]} ({days} ngày)")
+        notify(f"📱 Máy thật <b>{d.get('label') or sr}</b> đã giao cho khách ({days} ngày) — {NODE_ID}.")
+
+def real_renew(row):
+    d = int(row.get("pending_renew_days") or 0)
+    if d <= 0: return
+    base = max([x for x in (parse_dt(row["expires_at"]) if row.get("expires_at") else None, now()) if x])
+    new = base + datetime.timedelta(days=d)
+    print(f"[máy thật] gia hạn đơn {row['id'][:8]} +{d}n → {new:%d/%m %H:%M}")
+    patch(row["id"], {"pending_renew_days": 0, "expires_at": new.isoformat(), "status": "active", "error": None})
+
+def real_finish(row, why):
+    """Khách trả máy (hết hạn quá GRACE_MIN / huỷ): dọn máy rồi huỷ đơn → web để máy ở 🧹 Cần reset."""
+    d = real_dev(row); lb = (d or {}).get("label") or row.get("name") or "?"
+    gone = None
+    if d and d.get("serial") and REAL_WIPE and row.get("expires_at"):
+        if real_list().get(d["serial"], {}).get("state") == "device":
+            try: gone = real_wipe(d["serial"])
+            except Exception as e: print("   lỗi dọn máy thật:", e)
+    patch(row["id"], {"status": "cancelled", "error": why})
+    print(f"[máy thật] trả {lb} (đơn {row['id'][:8]})" + (f" · đã gỡ {gone} app khách cài" if gone is not None else ""))
+    notify(f"🧹 Máy thật <b>{lb}</b> khách đã trả" + (f" — đã gỡ {gone} app + xoá ảnh / file của khách" if gone is not None else " — CHƯA dọn được (máy mất kết nối)")
+           + ". Khôi phục cài đặt gốc nếu cần rồi bấm ✅ Sẵn sàng trong admin › 📱 Máy thật.")
+
+def real_expiry(row):
+    if int(row.get("pending_renew_days") or 0) > 0 or not row.get("expires_at"): return
+    exp = parse_dt(row["expires_at"]); t = now(); m = maint_state()
+    if m["on"]: return
+    start = max(exp, m["off_at"]) if m["off_at"] else exp
+    if t > start + datetime.timedelta(minutes=GRACE_MIN):
+        real_finish(row, f"Hết hạn quá {GRACE_MIN} phút không gia hạn — máy thật đã trả lại cửa hàng, app và file của bạn đã được xoá.")
+    elif t > exp and row["status"] == "active":
+        print(f"[máy thật] đơn {row['id'][:8]} hết hạn → tạm dừng, chờ gia hạn {GRACE_MIN} phút")
         patch(row["id"], {"status": "expired"})
 
 def tick_orders():
@@ -2547,7 +2721,7 @@ def _mv_loop():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 28/11d chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
+    print(f"cloudphoned bản 28/11e chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
           + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else "")
           + " Khách đổi máy chủ (SQL v67) → máy mới không tạo lại ở máy chủ cũ."
           + (f" Đơn mới / đổi Android → máy chủ trống nhất nhận (nhường {PREFER_S:g} giây)." if PREFER_S > 0 else ""))
@@ -2580,6 +2754,10 @@ if __name__ == "__main__":
     threading.Thread(target=_hb_loop, daemon=True).start()     # báo "còn sống" lên web ở luồng riêng
     if GF_ON: threading.Thread(target=_gf_loop, daemon=True).start()   # 27/11a: chia đều card đồ hoạ giữa các máy khách
     threading.Thread(target=_stuck_loop, daemon=True).start()  # 16/11f: đơn tạo máy treo quá lâu → tự huỷ + hoàn tiền (luồng riêng)
+    if REAL_ON:
+        threading.Thread(target=_real_loop, daemon=True).start()   # 28/11e: 📱 máy thật cắm USB — báo máy đang cắm, pin, lần thấy
+        print("📱 Máy thật (BlueReal, SQL v70): BẬT — điện thoại cắm USB (bật Gỡ lỗi USB) tự hiện ở admin › 📱 Máy thật"
+              + ("" if REAL_WIPE else " · TỰ DỌN MÁY: TẮT (REAL_WIPE=0)"))
     if MV_ON:
         threading.Thread(target=_mv_loop, daemon=True).start()     # 27/11n: 🚚 chuyển máy khách sang máy chủ khác (giữ dữ liệu)
         print(f"🚚 Chuyển máy sang máy chủ khác (27/11n): BẬT — chuyển đi {MV_PAR} máy / nhận {MV_IN_PAR} máy cùng lúc"

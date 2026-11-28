@@ -3356,7 +3356,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
     <div class="admalert" id="adm-alert" hidden></div>
     <div class="xp-host" id="pca-rentbar" hidden></div>
     <div class="tabs" id="adm-tabs">
-      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button><button data-tab="vm">🧩 VPS ảo hoá <span class="badge" id="vm-badge" hidden></span></button><button data-tab="px">🌐 Proxy <span class="badge" id="px-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
+      <button class="on" data-tab="stats">📊 Tổng quan</button><button data-tab="ord">🛒 Đơn hàng <span class="badge" id="ord-badge" hidden></span></button><button data-tab="prod">📦 Sản phẩm</button><i class="tsep" aria-hidden="true"></i><button data-tab="cust">👥 Khách hàng</button><button data-tab="tx">💳 Nạp tiền <span class="badge" id="tx-badge" hidden></span></button><button data-tab="sec">🛡️ Bảo mật <span class="badge" id="sec-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="cloud">📱 ĐT đám mây <span class="badge" id="cp-adm-badge" hidden>!</span></button><button data-tab="pc">💻 Máy PC <span class="badge" id="pc-badge" hidden></span></button><button data-tab="vm">🧩 VPS ảo hoá <span class="badge" id="vm-badge" hidden></span></button><button data-tab="px">🌐 Proxy <span class="badge" id="px-badge" hidden></span></button><button data-tab="real">📱 Máy thật <span class="badge" id="real-badge" hidden></span></button><i class="tsep" aria-hidden="true"></i><button data-tab="promo">🎁 Khuyến mãi</button><button data-tab="site">⚙️ Cài đặt</button>
     </div>
     <div class="dbody" id="pane-stats" hidden>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h3 style="margin:0">Tổng quan cửa hàng</h3><span class="hint" id="st-time"></span><button class="btn ghost sm" id="st-reload" style="margin-left:auto">Tải lại</button></div>
@@ -3554,6 +3554,7 @@ html[data-theme] .lwh-chips span.lk{background:linear-gradient(135deg,rgba(0,194
       <div class="subpane" data-sub="set" hidden><div id="vma-set"></div></div>
     </div>
     <div class="dbody" id="pane-px" hidden><div id="pxa"><div class="hint">Đang tải…</div></div></div>
+    <div class="dbody" id="pane-real" hidden><div id="rla"><div class="hint">Đang tải…</div></div></div>
     <div class="dbody" id="pane-biz" hidden>
       <div class="note">Dùng chung dữ liệu với phần mềm desktop (cùng cloud). Nhập ở đây hiện bên phần mềm & ngược lại. <b>Chỉ admin thấy.</b></div>
       <div class="tabs" id="biz-tabs" style="padding:0;border:0;overflow-x:auto">
@@ -5257,12 +5258,14 @@ function hmCfg() {
 }
 function vmRowOn() { try { return !!(window.VMSHOP && typeof VMSHOP.rowOn === "function" && VMSHOP.rowOn()); } catch (e) { return false; } }
 function pxRowOn() { try { return !!(window.PXSHOP && typeof PXSHOP.rowOn === "function" && PXSHOP.rowOn()); } catch (e) { return false; } }
+function realRowOn() { try { return !!(window.REALSHOP && typeof REALSHOP.rowOn === "function" && REALSHOP.rowOn()); } catch (e) { return false; } }   // 28/11 · SQL v70: 📱 BlueReal
 function hmItems() {          // mọi mục có thể hiện ở trang chủ, đã xếp theo thứ tự admin chọn
   const c = hmCfg();
   const items = [{ id: "cloudphone", cat: "cloud", cloud: true, sort: -1 }].concat(vmRowOn() ? [{ id: "vpsnvme", cat: "vm", vm: true, sort: -0.5 }] : [])   // 26/11: VPS NVMe là 1 dòng sản phẩm (nội dung do khối VMSHOP vẽ)
-    .concat(pxRowOn() ? [{ id: "proxy", cat: "px", px: true, sort: -0.4 }] : [])                                                                          // 27/11: Proxy dân cư (khối PXSHOP vẽ)
+    .concat(pxRowOn() ? [{ id: "proxy", cat: "px", px: true, sort: -0.4 }] : [])
+    .concat(realRowOn() ? [{ id: "bluereal", cat: "real", real: true, sort: -0.9 }] : [])                                                                  // 28/11: 📱 BlueReal — điện thoại thật (khối REALSHOP vẽ)                                                                          // 27/11: Proxy dân cư (khối PXSHOP vẽ)
     .concat(P.map(p => ({ id: String(p.id), cat: p.cat, p, sort: +p.sort || 0 })));
-  items.forEach(it => { const v = c.tier[it.id]; it.tier = v === "main" || v === "sub" || v === "hide" ? v : (it.cloud || it.vm || it.px || it.cat === "vps" ? "main" : "sub"); });
+  items.forEach(it => { const v = c.tier[it.id]; it.tier = v === "main" || v === "sub" || v === "hide" ? v : (it.cloud || it.vm || it.px || it.real || it.cat === "vps" ? "main" : "sub"); });
   const pos = id => { const i = c.order.indexOf(id); return i < 0 ? 1e6 : i; };
   return items.sort((a, b) => pos(a.id) - pos(b.id) || (a.cloud ? -1 : b.cloud ? 1 : a.sort - b.sort));
 }
@@ -5270,9 +5273,9 @@ function renderCats() {
   const vis = hmItems().filter(it => it.tier !== "hide");
   const n = id => id === "all" ? vis.length : vis.filter(it => it.cat === id).length;
   if (cat !== "all" && !n(cat)) cat = "all";
-  $("cats").innerHTML = ["all", "cloud", "vps", "vm", "px", "clone"].map(id => {
+  $("cats").innerHTML = ["all", "cloud", "real", "vps", "vm", "px", "clone"].map(id => {
     const k = n(id); if (id !== "all" && !k) return "";
-    const label = id === "all" ? t("Tất cả", "cat_all") : id === "cloud" ? L("ĐT đám mây", "Cloud phone") : id === "vm" ? "VPS NVMe" : id === "px" ? "Proxy" : catName(id);
+    const label = id === "all" ? t("Tất cả", "cat_all") : id === "cloud" ? L("ĐT đám mây", "Cloud phone") : id === "vm" ? "VPS NVMe" : id === "px" ? "Proxy" : id === "real" ? L("Máy thật", "Real phone") : catName(id);
     return `<button type="button" data-c="${id}" role="tab" aria-selected="${id === cat}" class="${id === cat ? "on" : ""}">${esc(label)}${id === "cloud" ? "" : `<small>${k}</small>`}</button>`;
   }).join("");
 }
@@ -5349,8 +5352,8 @@ function renderGrid() {
   const q = $("q").value.trim().toLowerCase(), so = $("sort").value;
   renderCats();
   let l = hmItems().filter(it => it.tier !== "hide" && (cat === "all" || it.cat === cat));
-  if (q) l = l.filter(it => (it.cloud ? cpCardShow().name + " cloud phone điện thoại đám mây" : it.vm ? "vps nvme blue windows máy ảo vps ảo hoá virtual" : it.px ? "proxy dân cư ipv6 ipv4 socks5 http residential" : String(it.p.name) + " " + (it.p.name_en || "")).toLowerCase().includes(q));
-  const pr = it => it.cloud ? m3From() : it.vm ? VMSHOP.from() : it.px ? PXSHOP.from() : minPerDay(it.p);
+  if (q) l = l.filter(it => (it.cloud ? cpCardShow().name + " cloud phone điện thoại đám mây" : it.vm ? "vps nvme blue windows máy ảo vps ảo hoá virtual" : it.px ? "proxy dân cư ipv6 ipv4 socks5 http residential" : it.real ? "bluereal máy thật điện thoại thật samsung galaxy s9 s10 real phone" : String(it.p.name) + " " + (it.p.name_en || "")).toLowerCase().includes(q));
+  const pr = it => it.cloud ? m3From() : it.vm ? VMSHOP.from() : it.px ? PXSHOP.from() : it.real ? REALSHOP.from() : minPerDay(it.p);
   if (so === "asc") l.sort((a, b) => pr(a) - pr(b)); else if (so === "desc") l.sort((a, b) => pr(b) - pr(a));
   $("cat-title").textContent = t("Sản phẩm", "products");
   try { m3Facts(); } catch (e) {}
@@ -5358,8 +5361,8 @@ function renderGrid() {
   if (!main.length && !sub.length) {
     $("grid").innerHTML = `<div class="m3-empty">${q ? L("Không có sản phẩm khớp “", "No products match “") + esc(q) + "”." : P.length || CPpricing ? L("Chưa có sản phẩm nào ở mục này.", "No products here yet.") : t("Đang tải sản phẩm…", "loading")}</div>`; return;
   }
-  $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : it.vm ? VMSHOP.row() : it.px ? PXSHOP.row() : m3RowProd(it.p)).join("")
-    + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : it.vm ? VMSHOP.li() : it.px ? PXSHOP.li() : m3LiProd(it.p)).join("")}</div>` : "");
+  $("grid").innerHTML = main.map(it => it.cloud ? m3RowCloud() : it.vm ? VMSHOP.row() : it.px ? PXSHOP.row() : it.real ? REALSHOP.row() : m3RowProd(it.p)).join("")
+    + (sub.length ? `<h3 class="m3-subh">${main.length ? L("Sản phẩm khác", "More products") : L("Sản phẩm", "Products")}</h3><div class="m3-sub">${sub.map(it => it.cloud ? m3LiCloud() : it.vm ? VMSHOP.li() : it.px ? PXSHOP.li() : it.real ? REALSHOP.li() : m3LiProd(it.p)).join("")}</div>` : "");
   document.querySelectorAll("#grid canvas[data-id]").forEach(cv => drawThumb(cv, seedOf(cv.dataset.id), HUES[cv.dataset.c] ?? 210));
 }
 /* số liệu ở đầu trang: giá thấp nhất (đọc từ bảng giá, admin đổi là đổi theo) + các bản Android đang bán */
@@ -5393,7 +5396,7 @@ function hmLoad(force) {
   if (!$("hm-list") || !isAdmin()) return;
   if (!force && hmDirty()) return;                       // đang sửa dở → không ghi đè
   if (typeof CPpricing === "undefined" || !CPpricing) { cpLoadPricing().then(() => { if (!hmDirty()) hmLoad(true); }); }
-  HM = hmItems().map(it => { const nm = it.cloud ? cpCard().name : it.vm ? "VPS NVMe BLUE" : String(it.p.name || ""); return { id: it.id, cloud: !!it.cloud, vm: !!it.vm, cat: it.cat, name: nm, name0: nm, tier: it.tier, tier0: it.tier }; });
+  HM = hmItems().map(it => { const nm = it.cloud ? cpCard().name : it.vm ? "VPS NVMe BLUE" : it.px ? "Proxy dân cư" : it.real ? "📱 BlueReal (máy thật)" : String((it.p && it.p.name) || ""); return { id: it.id, cloud: !!it.cloud, vm: !!it.vm, cat: it.cat, name: nm, name0: nm, tier: it.tier, tier0: it.tier }; });
   HM.order0 = HM.map(h => h.id).join(",");
   hmRender();
 }
@@ -8352,11 +8355,12 @@ function renderCloud() {
     const run = p.status === "active" && !locked;          // máy đang chạy → mở được bằng app máy tính / app Android
     const lk = run && !!p.stream_url;                      // (giữ điều kiện cũ cho nút Root máy)
     const canRenew = !p.shared && !p.is_free && !locked && (p.status === "active" || (p.status === "expired" && g > 0));
-    return `<div class="vmi"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${cpPaidTag(p)}${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
+    const rl = !!p.real_device;                            // 28/11 · SQL v70: 📱 máy THẬT (BlueReal) — không đổi Android / nâng cấp / root / proxy
+    return `<div class="vmi${rl ? " real" : ""}"><div class="top"><div class="nm">📱 ${esc(p.name)}<small>${rl && window.REALSHOP ? REALSHOP.tag(p) + " · " : ""}${p.is_free ? "🎁 " + esc(cbPhoneTag(p)) + " · " : ""}Android ${esc(p.android || "9")} · ${p.ram}GB · ${p.cpu} nhân${cpPaidTag(p)}${+p.disk_gb > 0 ? ` · 💾 ${+p.disk_gb}GB` : ""} · ${esc(p.res || "")} · ${p.fps || 30} FPS${cpSrvName(p.node) ? ` · 🖥 ${esc(cpSrvName(p.node))}` : ""}</small></div>${cpPill(p)}</div>
       ${exp ? `<div class="exp">${L("Hết hạn", "Expires")}: ${exp.toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}${left ? " · " + left : ""}</div>` : ""}
       ${+p.pending_renew_days > 0 && !p.shared ? `<div class="exp" style="color:var(--gold-hi)">⏳ ${L(`Đang cộng thêm <b>${+p.pending_renew_days} ngày</b> — máy chủ ghi hạn mới trong khoảng 15–60 giây, trang tự cập nhật.`, `Adding <b>${+p.pending_renew_days} days</b> — the new expiry shows within ~15–60 seconds.`)}</div>` : ""}
       ${p.status === "expired" ? `<div class="exp" style="color:var(--bad)">${g > 0 ? `Máy đã tạm dừng. Gia hạn trong <b>${g} phút</b> nữa để giữ dữ liệu, quá hạn máy sẽ bị xoá.` : "Đã quá 30 phút — máy đang bị xoá."}</div>` : ""}
-      ${p.status === "pending" && !p.replaces ? cpWaitNote(p) : ""}
+      ${p.status === "pending" && !p.replaces ? (rl ? `<div class="exp">${L("Đang chuẩn bị máy thật (đánh thức, mở khoá) — thường dưới 1 phút, trang tự cập nhật.", "Getting your real phone ready — usually under a minute.")}</div>` : cpWaitNote(p)) : ""}
       ${+p.pending_disk > 0 && !p.shared && p.status === "active" ? `<div class="exp" style="color:var(--gold-hi)">💾 ${L(`Đang nới bộ nhớ lên <b>${+p.pending_disk}GB</b> — máy không tắt, dữ liệu giữ nguyên. Máy đang ngủ thì nới khi bạn mở máy.`, `Expanding storage to <b>${+p.pending_disk}GB</b> — no restart, data kept. A sleeping phone expands when you open it.`)}</div>` : ""}
       ${p.disk_note && !p.shared && !(+p.pending_disk > 0) ? `<div class="exp" style="color:var(--bad)">💾 ${esc(p.disk_note)}</div>` : ""}
       ${locked ? `<div class="exp" style="color:var(--bad)">🔒 Máy bị khoá${p.locked_until ? " đến " + new Date(p.locked_until).toLocaleString("vi-VN") : " vĩnh viễn"}${p.lock_reason ? ": " + esc(p.lock_reason) : ""}. Liên hệ hỗ trợ nếu cần.</div>` : ""}
@@ -8371,12 +8375,12 @@ function renderCloud() {
            : `<button class="btn sm" disabled>${locked ? "🔒 Bị khoá" : p.status === "pending" ? "Đang tạo…" : p.status === "expired" ? "Đã tạm dừng" : "Chưa sẵn sàng"}</button>`}
         ${cbSwRetryOk(p) ? `<button class="btn sm" type="button" data-cbswretry="${esc(p.id)}">🔁 ${L("Thử lại", "Retry")}</button>` : ""}
         ${canRenew ? `<button class="btn ghost sm" data-cprenew="${p.id}">🔄 Gia hạn</button>` : ""}
-        ${canRenew && p.status === "active" ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
-        ${canRenew && p.status === "active" && cpDiskShop(p) ? (+p.pending_disk > 0 ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nới bộ nhớ…", "Expanding…")}</button>` : `<button class="btn ghost sm" type="button" data-cpdisk="${p.id}">💾 ${L("Thêm bộ nhớ", "More storage")}</button>`) : ""}
-        ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android khác, hoặc giữ Android này mà sang máy chủ khác — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to another Android, or keep this Android on another server — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android / máy chủ", "Switch Android / server")}</button>` : ""}
-        ${!p.shared && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" type="button" data-cpfps="${p.id}" title="${esc(L("Đổi số khung hình/giây của máy — không tạo máy mới, không mất dữ liệu, không tốn tiền", "Change this phone's frames per second — same phone, data kept, free"))}">🎞 ${L("Đổi FPS", "Change FPS")}</button>` : ""}
-        ${lk ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&root=1" title="${esc(L("Bật / tắt root và chọn app được dùng lệnh su (vd Termux)", "Turn root on/off and pick which apps may use su (e.g. Termux)"))}">🔓 ${L("Root", "Root")}</a>` : ""}
-        ${lk && !p.shared ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&proxy=1" title="${esc(L("Proxy riêng của máy: dán IP:Port:User:Pass — app trong máy đi Internet qua proxy của bạn", "This phone's own proxy: paste IP:Port:User:Pass — apps on the phone go online through your proxy"))}">🌐 Proxy</a>` : ""}
+        ${canRenew && p.status === "active" && !rl ? (p.pending_ram || p.pending_cpu ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nâng cấp…", "Upgrading…")}</button>` : `<button class="btn ghost sm" data-cpup="${p.id}">⬆️ ${L("Nâng RAM/CPU", "Upgrade")}</button>`) : ""}
+        ${canRenew && p.status === "active" && !rl && cpDiskShop(p) ? (+p.pending_disk > 0 ? `<button class="btn ghost sm" disabled>⏳ ${L("Đang nới bộ nhớ…", "Expanding…")}</button>` : `<button class="btn ghost sm" type="button" data-cpdisk="${p.id}">💾 ${L("Thêm bộ nhớ", "More storage")}</button>`) : ""}
+        ${!p.shared && !rl && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" data-cpswitch="${p.id}" title="${esc(L("Đổi sang Android khác, hoặc giữ Android này mà sang máy chủ khác — máy mới, giữ hạn, dữ liệu cũ bị xoá", "Switch to another Android, or keep this Android on another server — new phone, same expiry, old data erased"))}">🤖 ${L("Đổi Android / máy chủ", "Switch Android / server")}</button>` : ""}
+        ${!p.shared && !rl && p.status === "active" && !locked && !cpSwitchingTo(p) ? `<button class="btn ghost sm" type="button" data-cpfps="${p.id}" title="${esc(L("Đổi số khung hình/giây của máy — không tạo máy mới, không mất dữ liệu, không tốn tiền", "Change this phone's frames per second — same phone, data kept, free"))}">🎞 ${L("Đổi FPS", "Change FPS")}</button>` : ""}
+        ${lk && !rl ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&root=1" title="${esc(L("Bật / tắt root và chọn app được dùng lệnh su (vd Termux)", "Turn root on/off and pick which apps may use su (e.g. Termux)"))}">🔓 ${L("Root", "Root")}</a>` : ""}
+        ${lk && !p.shared && !rl ? `<a class="btn ghost sm" href="${cpWebLink(p.id)}&proxy=1" title="${esc(L("Proxy riêng của máy: dán IP:Port:User:Pass — app trong máy đi Internet qua proxy của bạn", "This phone's own proxy: paste IP:Port:User:Pass — apps on the phone go online through your proxy"))}">🌐 Proxy</a>` : ""}
         ${p.shared ? `<button class="btn ghost sm" data-shleave="${p.share_id}">🚪 ${L("Rời máy", "Leave")}</button>` : `
         ${["active", "pending"].includes(p.status) && !locked ? `<button class="btn ghost sm" data-cpshare="${p.id}">👥 ${L("Chia sẻ", "Share")}</button>` : ""}
         <button class="btn ghost sm" data-cprename="${p.id}">✏️ Đổi tên</button>
@@ -8634,6 +8638,7 @@ $("nav-cloud") && ($("nav-cloud").onclick = openCloud);
 
 async function cpRenew(id) {      // hộp gia hạn: chọn số ngày + ô mã giảm giá (SQL v23) — thay cho prompt cũ
   const p = myCloud.find(x => x.id === id); if (!p) return;
+  if (p.real_device && window.REALSHOP) return REALSHOP.renew(id);       // 28/11 · SQL v70: máy thật gia hạn theo giá mẫu máy
   const pr = await cpLoadPricing(), maxD = Math.max(1, Math.floor(+pr.max_days || 90));
   const per = cv(cpPerDay(p.ram, p.cpu)), opts = [7, 15, 30, 60, 90].filter(v => v <= maxD);
   let days = Math.min(30, maxD), going = false;
@@ -10610,10 +10615,11 @@ async function mvGo(retryIds) {
   try {
     const { data, error } = await sb.rpc("admin_cp_move_start", { p_node: n.id, p_target: to, p_ids: ids });
     if (error) throw error;
-    const c = +(data && data.count) || 0, sk = +(data && data.skipped) || 0;
+    const c = +(data && data.count) || 0, sk = +(data && data.skipped) || 0, rl = +(data && data.real) || 0;   // SQL v70: máy thật cắm USB không chuyển
     msg.style.color = c ? "var(--ok)" : "var(--bad)";
     msg.textContent = c ? `✅ Đã xếp ${c} máy vào hàng chuyển${to ? " sang " + to : ""} — ${n.name} đã sang ⛔ Ngừng hẳn. Theo dõi tiến độ bên dưới (tự cập nhật).` + (sk ? ` · ${sk} máy đang có lượt chuyển khác, bỏ qua.` : "")
       : "❌ Không có máy nào để chuyển" + (sk ? ` (${sk} máy đang trong lượt chuyển khác)` : "") + ".";
+    if (rl) msg.textContent += ` · 📱 Giữ lại ${rl} máy thật (điện thoại cắm USB ở ${n.name} — không chuyển được).`;
     if (c) { toast(`🚚 ${n.name}: bắt đầu chuyển ${c} máy`); $("nmv-confirm").value = ""; }
   } catch (e) { msg.style.color = "var(--bad)"; msg.textContent = "❌ " + mvErr(e); }
   MV_BUSY = false;
@@ -18316,6 +18322,236 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
 })();
 </script>
 <script>
+/* ===== 📱 BLUEREAL — THUÊ ĐIỆN THOẠI THẬT (SQL v70) =====
+   Khách: dòng sản phẩm ở trang chủ (mẫu máy · giá / ngày · còn máy) → hộp thuê (mẫu + số ngày) → máy nằm chung "Máy của tôi" (mở máy,
+   chia sẻ, đổi tên như ĐT đám mây; không đổi Android / nâng cấp được) · gia hạn theo giá mẫu máy.
+   Admin: Máy cho thuê › 📱 Máy thật — tên sản phẩm, bật / tắt bán, mẫu máy (1 ô giá / ngày), máy đang cắm → thêm vào kho → ✅ Sẵn sàng. */
+(() => {
+  const RS = window.REALSHOP = { cat: null, catAt: 0, adm: null, miss: false };
+  const $i = id => document.getElementById(id);
+  const A = v => Array.isArray(v) ? v : [];
+  const N = v => +v || 0;
+  const DAYS = [1, 3, 7, 15, 30];
+  const ST = { new: ["Mới thêm", "wt"], ready: ["✅ Sẵn sàng", "ok"], rented: ["👤 Đang thuê", "ok"], maint: ["🧹 Cần reset", "bad"], off: ["⛔ Tắt", ""] };
+  const RERR = { REAL_OUT: L("Mẫu máy này vừa hết máy — chọn mẫu khác hoặc quay lại sau ít phút.", "This model just sold out — pick another or come back later."),
+    REAL_NO_PRICE: L("Mẫu máy này chưa mở bán.", "This model is not for sale yet."), REAL_OFF: L("Tạm ngừng cho thuê máy thật — quay lại sau.", "Real phone rental is paused."),
+    REAL_NO_MODEL: L("Không có mẫu máy này.", "Model not found."), REAL_NOT_REAL: L("Đây là ĐT đám mây — gia hạn bằng nút Gia hạn thường.", "Not a real phone."),
+    REAL_RENEW: L("Máy thật gia hạn bằng nút 🔄 Gia hạn của máy thật.", "Renew real phones with their own Renew button."),
+    REAL_NO_SWITCH: L("Máy thật không đổi Android / đổi máy chủ được.", "Real phones can't switch Android / server."),
+    REAL_NO_UPGRADE: L("Máy thật không nâng RAM / CPU được.", "Real phones can't be upgraded."), REAL_NO_DISK: L("Máy thật không thêm bộ nhớ được.", "Real phones can't add storage."),
+    REAL_RENTED: "Máy đang có khách thuê — chỉ sửa được tên / ghi chú.", REAL_DUP_SERIAL: "Số máy này đã có trong kho.",
+    REAL_NEED_LINK: "Máy chưa gắn máy chủ + số máy (serial) — chưa để Sẵn sàng được.", REAL_MODEL_USED: "Mẫu này còn máy trong kho — xoá / chuyển máy trước, hoặc chỉ tắt bán.",
+    REAL_BAD_PRICE: "Giá / ngày là số nguyên từ 0 đến 100.000.000.", REAL_BAD_ID: "Mã mẫu máy chỉ gồm chữ thường không dấu, số, - và _.", REAL_BAD_NAME: "Tên 1–40 ký tự." };
+  try { Object.assign(ERR, RERR); } catch (e) {}
+  const rerr = e => { const m = String((e && e.message) || e || ""); const k = Object.keys(RERR).find(x => m.includes(x)); return k ? RERR[k] : errMsg(e); };
+  const mOf = id => A(RS.cat && RS.cat.models).find(x => x.id === id) || A(RS.adm && RS.adm.models).find(x => x.id === id) || null;
+  const mName = id => { const m = mOf(id); return m ? m.name : (id ? String(id).toUpperCase() : ""); };
+  async function cat(force) {
+    if (!force && RS.cat && Date.now() - RS.catAt < 60000) return RS.cat;
+    try {
+      const { data, error } = await sb.rpc("realphone_catalog");
+      if (!error && data) { RS.cat = data; RS.catAt = Date.now(); RS.miss = false; }
+      else if (error && /realphone_catalog|schema cache|Could not find/i.test(error.message || "")) RS.miss = true;
+    } catch (e) {}
+    return RS.cat;
+  }
+  const models = () => A(RS.cat && RS.cat.models).filter(m => N(m.price_day) > 0);
+  const rowOn = () => !!(RS.cat && RS.cat.on !== false && models().length);
+  const lowDay = () => { const p = models().map(m => N(m.price_day)); return p.length ? Math.min(...p) : 0; };
+  const stock = () => models().reduce((a, m) => a + N(m.stock), 0);
+  const pname = () => (RS.cat && RS.cat.name) || "BlueReal";
+  const stBadge = () => stock() > 0 ? ["ok", L("Còn máy", "Available")] : ["out", L("Hết máy", "Sold out")];
+  const desc = () => L("Thuê điện thoại Samsung THẬT đặt tại shop — không phải giả lập: chạy game / app y như máy thật, điều khiển qua web, app PC, app Android.",
+                       "Rent a REAL Samsung phone hosted at our shop — not an emulator. Control it from the web, PC app or Android app.");
+  function rowHtml() {
+    const st = stBadge(), ok = st[0] === "ok" || isAdmin();
+    return `<article class="m3-row real" data-realbuy="1" style="cursor:pointer">
+      <div class="thumb"><canvas data-id="bluereal" data-c="phone" data-big="1"></canvas><span class="hot">${L("MÁY THẬT", "REAL")}</span></div>
+      <div class="info"><span class="cat">${esc(L("Điện thoại thật", "Real phone"))}</span><h3>📱 ${esc(pname())}</h3>
+        <p class="pdesc">${esc(desc())}</p>
+        <div class="feats">${models().map(m => `<span>${esc(m.name)} · Android ${esc(m.android)} · ${N(m.ram)}GB${N(m.stock) ? "" : " · " + esc(L("hết", "out"))}</span>`).join("")}</div></div>
+      <div class="m3-box"><div class="m3p"><small>${t("từ", "from")}</small><span class="price">${priceHtml(lowDay())}</span><small>/${L("ngày", "day")}</small></div>
+        <span class="stock ${st[0]}">${esc(st[1])}</span>
+        <button class="btn main" type="button" data-realbuy="1"${ok ? "" : " disabled"}>${ok ? L("Thuê máy thật", "Rent a real phone") : esc(st[1])}</button></div></article>`;
+  }
+  function liHtml() {
+    const st = stBadge(), ok = st[0] === "ok" || isAdmin();
+    return `<div class="m3-li" data-realbuy="1" style="cursor:pointer"><div class="thumb"><canvas data-id="bluereal" data-c="phone" data-static="1"></canvas></div>
+      <div class="nm"><b>📱 ${esc(pname())}</b><i>${esc(L("Điện thoại thật", "Real phone"))}</i></div>
+      <div class="st"><span class="stock ${st[0]}">${esc(st[1])}</span></div>
+      <span class="price"><small style="font-size:12px;color:var(--muted);font-family:var(--body)">${t("từ", "from")} </small>${priceHtml(lowDay())}<small style="font-size:12px;color:var(--muted);font-family:var(--body)">/${L("ngày", "day")}</small></span>
+      <button class="btn sm" type="button" data-realbuy="1"${ok ? "" : " disabled"}>${ok ? L("Thuê ngay", "Rent now") : esc(st[1])}</button></div>`;
+  }
+  function dlg(id) {
+    let m = $i(id);
+    if (!m) { m = document.createElement("div"); m.className = "modal"; m.id = id; m.hidden = true; document.body.appendChild(m);
+      m.addEventListener("click", e => { if (e.target === m || e.target.closest("[data-rlx]")) m.hidden = true; }); }
+    return m;
+  }
+  /* ---- hộp thuê ---- */
+  async function buyOpen(pre) {
+    if (!profile) return openAuth("login");
+    await cat(true);
+    const ms = models(); if (!ms.length) return toast(RS.miss ? L("Tính năng đang cập nhật — thử lại sau ít phút.", "Coming soon.") : RERR.REAL_NO_PRICE, 1);
+    const mx = Math.max(1, Math.min(90, N(RS.cat.max_days) || 90));
+    let mid = (ms.find(x => x.id === pre && N(x.stock) > 0) || ms.find(x => N(x.stock) > 0) || ms[0]).id, days = 7, nm = "", going = false;
+    const m = dlg("rldlg");
+    const draw = () => {
+      const md = ms.find(x => x.id === mid), tot = N(md.price_day) * days, bal = N(profile.balance), out = !N(md.stock) && !isAdmin();
+      m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rl-t"><h3 id="rl-t">📱 ${esc(L("Thuê máy thật", "Rent a real phone"))} · ${esc(pname())}</h3>
+        <div class="hint">${esc(desc())}</div>
+        <label>${L("Mẫu máy", "Model")}</label>
+        <div class="upchips">${ms.map(x => `<button type="button" data-rlm="${esc(x.id)}" class="${x.id === mid ? "on" : ""}"${!N(x.stock) && !isAdmin() ? " disabled" : ""}><b>${esc(x.name)}</b>
+          <small>Android ${esc(x.android)} · ${N(x.ram)}GB · ${fmt(cv(N(x.price_day)))}/${L("ngày", "day")} · ${N(x.stock) ? L("còn " + N(x.stock) + " máy", N(x.stock) + " left") : L("hết máy", "sold out")}</small></button>`).join("")}</div>
+        ${md.note ? `<div class="hint">${esc(md.note)}</div>` : ""}
+        <label>${L("Số ngày", "Days")}</label>
+        <div class="upchips">${DAYS.filter(d => d <= mx).map(d => `<button type="button" data-rld="${d}" class="${d === days ? "on" : ""}">${d} ${L("ngày", "days")}</button>`).join("")}
+          <input class="in" id="rl-days" type="number" min="1" max="${mx}" step="1" inputmode="numeric" value="${days}" aria-label="${esc(L("Số ngày", "Days"))}" style="max-width:96px"></div>
+        <label>${L("Tên máy (tuỳ chọn)", "Phone name (optional)")}<input class="in" id="rl-name" maxlength="40" value="${esc(nm)}" placeholder="${esc(md.name)}"></label>
+        <div class="cpsum"><span>${fmt(cv(N(md.price_day)))} × ${days} ${L("ngày", "days")}</span><b>${fmt(cv(tot))}</b></div>
+        <div class="hint">${L("Số dư", "Balance")}: <b>${fmt(cv(bal))}</b>${bal < tot ? ` · <span style="color:var(--bad)">${L("thiếu", "short")} ${fmt(cv(tot - bal))}</span>` : ""} · ${L("Hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).", "Time starts when the phone is handed over (usually under a minute).")}</div>
+        <div class="err" id="rl-err">${out ? esc(RERR.REAL_OUT) : ""}</div>
+        <div class="row2"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button>
+          <button class="btn" type="button" id="rl-go"${out ? " disabled" : ""}>${bal < tot ? L("Nạp thêm tiền", "Top up") : L("Thuê ngay", "Rent now") + " · " + fmt(cv(tot))}</button></div></div>`;
+      m.querySelectorAll("[data-rlm]").forEach(b => b.onclick = () => { mid = b.dataset.rlm; draw(); });
+      m.querySelectorAll("[data-rld]").forEach(b => b.onclick = () => { days = +b.dataset.rld; draw(); });
+      $i("rl-days").onchange = () => { const v = Math.floor(+$i("rl-days").value); days = v >= 1 && v <= mx ? v : days; draw(); };
+      $i("rl-name").oninput = () => { nm = $i("rl-name").value; };
+      $i("rl-go").onclick = () => busy($i("rl-go"), go);
+    };
+    const go = async () => {
+      if (going) return; const md = ms.find(x => x.id === mid), tot = N(md.price_day) * days;
+      if (N(profile.balance) < tot) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((tot - N(profile.balance)) / 1000) * 1000)); }
+      going = true;
+      try {
+        const { error } = await sb.rpc("realphone_order", { p_model: mid, p_days: days, p_name: (nm || "").trim() || null });
+        if (error) { $i("rl-err").textContent = /realphone_order|schema cache|Could not find/i.test(error.message || "") ? L("Tính năng đang cập nhật — thử lại sau ít phút.", "Coming soon.") : rerr(error); await cat(true); return; }
+        m.hidden = true;
+        toast(L(`Đã thuê ${md.name} ${days} ngày — máy đang được chuẩn bị (thường dưới 1 phút), xem ở "Máy của tôi".`, `Rented ${md.name} for ${days} days — getting it ready (usually under a minute).`));
+        try { await loadProfile(); renderUser(); } catch (e) {}
+        cat(true); try { openCloud(); } catch (e) {}
+      } finally { going = false; }
+    };
+    draw(); m.hidden = false;
+  }
+  /* ---- gia hạn máy thật ---- */
+  async function renew(id) {
+    const p = (typeof myCloud !== "undefined" ? myCloud : []).find(x => x.id === id); if (!p) return;
+    await cat(true);
+    const md = mOf(p.real_model); const per = N(md && md.price_day);
+    if (!per) return toast(RERR.REAL_NO_PRICE, 1);
+    const mx = Math.max(1, Math.min(90, N(RS.cat && RS.cat.max_days) || 90));
+    let days = 7; const m = dlg("rlrdlg");
+    const draw = () => {
+      const tot = per * days, bal = N(profile && profile.balance);
+      m.innerHTML = `<div class="dlg cpup" role="dialog" aria-modal="true" aria-labelledby="rlr-t"><h3 id="rlr-t">🔄 ${L("Gia hạn máy thật", "Renew real phone")}</h3>
+        <div class="hint">📱 <b>${esc(p.name)}</b> · ${esc(mName(p.real_model))}${p.expires_at ? ` · ${L("hết hạn", "expires")} ${new Date(p.expires_at).toLocaleString(LANG === "en" ? "en-GB" : "vi-VN")}` : ""}</div>
+        <div class="upchips">${DAYS.filter(d => d <= mx).map(d => `<button type="button" data-rld="${d}" class="${d === days ? "on" : ""}">${d} ${L("ngày", "days")}</button>`).join("")}</div>
+        <div class="cpsum"><span>${fmt(cv(per))} × ${days} ${L("ngày", "days")}</span><b>${fmt(cv(tot))}</b></div>
+        <div class="hint">${L("Số dư", "Balance")}: <b>${fmt(cv(bal))}</b> · ${L("Cộng thêm vào hạn đang có (máy giữ nguyên app, dữ liệu).", "Added to the current expiry (apps and data kept).")}</div>
+        <div class="err" id="rlr-err"></div>
+        <div class="row2"><button class="btn ghost" type="button" data-rlx>${L("Đóng", "Close")}</button><button class="btn" type="button" id="rlr-go">${bal < tot ? L("Nạp thêm tiền", "Top up") : L("Gia hạn", "Renew") + " · " + fmt(cv(tot))}</button></div></div>`;
+      m.querySelectorAll("[data-rld]").forEach(b => b.onclick = () => { days = +b.dataset.rld; draw(); });
+      $i("rlr-go").onclick = () => busy($i("rlr-go"), async () => {
+        const tot = per * days;
+        if (N(profile.balance) < tot) { m.hidden = true; return openTopup(Math.max(+SITE.minTop || 10000, Math.ceil((tot - N(profile.balance)) / 1000) * 1000)); }
+        const { error } = await sb.rpc("realphone_renew", { p_id: p.id, p_days: days });
+        if (error) { $i("rlr-err").textContent = rerr(error); return; }
+        m.hidden = true; toast(L(`Đã gia hạn +${days} ngày — máy chủ ghi hạn mới trong ít giây.`, `Renewed +${days} days.`));
+        try { await loadProfile(); renderUser(); } catch (e) {} try { openCloud(); } catch (e) {}
+      });
+    };
+    draw(); m.hidden = false;
+  }
+  const isReal = p => !!(p && p.real_device);
+  const tag = p => `📱 ${L("Máy thật", "Real phone")} · ${esc(mName(p.real_model))}`;
+  document.addEventListener("click", e => { const b = e.target.closest("[data-realbuy]"); if (!b || b.disabled) return; e.preventDefault(); buyOpen(b.dataset.realbuy !== "1" ? b.dataset.realbuy : ""); });
+
+  /* ---- admin: Máy cho thuê › 📱 Máy thật ---- */
+  const ago2 = s => { if (!s) return "chưa thấy"; const m = Math.floor((Date.now() - Date.parse(s)) / 60000); return m < 1 ? "vừa xong" : m < 60 ? m + " phút trước" : Math.floor(m / 60) + " giờ trước"; };
+  const slug = s => String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "may";
+  async function admLoad() {
+    const box = $i("rla"); if (!box || !isAdmin()) return;
+    const { data, error } = await sb.rpc("admin_real_state");
+    if (error) { box.innerHTML = /admin_real_state|schema cache|Could not find/i.test(error.message || "") ? `<div class="hint">⚠️ Chưa chạy <b>SQL v70</b> (BlueReal — máy thật) trên Supabase — chạy xong bấm làm mới.</div>` : `<div class="hint">${esc(errMsg(error))}</div>`; return; }
+    RS.adm = data; admDraw();
+  }
+  function admDraw() {
+    const d = RS.adm, box = $i("rla"); if (!d || !box) return;
+    const ms = A(d.models), dv = A(d.devices), seen = A(d.seen);
+    const mOpt = sel => ms.map(m => `<option value="${esc(m.id)}"${m.id === sel ? " selected" : ""}>${esc(m.name)}</option>`).join("");
+    const need = dv.filter(x => x.status === "maint").length;
+    const bd = $i("real-badge"); if (bd) { bd.hidden = !need; bd.textContent = need || ""; }
+    box.innerHTML = `
+      <div class="f" style="grid-template-columns:2fr 1fr auto;align-items:end">
+        <label>Tên sản phẩm (khách thấy)<input class="in" id="rla-name" maxlength="40" value="${esc(d.name || "BlueReal")}"></label>
+        <label class="sw"><input type="checkbox" id="rla-on"${d.on !== false ? " checked" : ""}> Đang cho thuê</label>
+        <button class="btn" type="button" id="rla-save">Lưu</button></div>
+      <h3 style="margin:12px 0 4px">📋 Mẫu máy · 1 ô giá / ngày</h3>
+      <div class="hint">Khách thuê N ngày = giá / ngày × N (gia hạn cũng vậy). Giá = 0 → mẫu đó chưa mở bán. Còn máy = máy ✅ Sẵn sàng, chưa ai thuê, máy chủ vừa thấy (≤ 3 phút).</div>
+      <div class="tbl"><table><thead><tr><th>Mẫu</th><th>Android</th><th class="num">RAM</th><th class="num">Nhân</th><th class="num">Giá / ngày</th><th>Bán</th><th class="num">Còn / máy</th><th></th></tr></thead><tbody>
+      ${ms.map(m => `<tr data-rlmod="${esc(m.id)}"><td><input class="in" data-k="name" maxlength="40" value="${esc(m.name)}" style="min-width:130px"><div class="hint">${esc(m.id)}</div></td>
+        <td><input class="in" data-k="android" maxlength="8" value="${esc(m.android)}" style="width:64px"></td>
+        <td class="num"><input class="in" data-k="ram" inputmode="numeric" value="${N(m.ram)}" style="width:56px"></td><td class="num"><input class="in" data-k="cpu" inputmode="numeric" value="${N(m.cpu)}" style="width:56px"></td>
+        <td class="num"><input class="in" data-k="price_day" inputmode="numeric" value="${N(m.price_day)}" style="width:110px;font-weight:700"><div class="hint">≈ ${vnd(N(m.price_day) * 30)} / 30 ngày</div></td>
+        <td><input type="checkbox" data-k="active"${m.active ? " checked" : ""} aria-label="Đang bán"></td>
+        <td class="num"><b>${N(m.stock)}</b> / ${N(m.devices)}</td>
+        <td style="white-space:nowrap;text-align:right"><button class="btn sm" type="button" data-rlmsave="${esc(m.id)}">Lưu</button> <button class="btn danger sm" type="button" data-rlmdel="${esc(m.id)}">Xoá</button></td></tr>`).join("")}
+      <tr><td><input class="in" id="rla-nm" maxlength="40" placeholder="➕ Mẫu mới, vd Galaxy Note 10"></td><td><input class="in" id="rla-na" maxlength="8" placeholder="12" style="width:64px"></td>
+        <td class="num"><input class="in" id="rla-nr" inputmode="numeric" placeholder="8" style="width:56px"></td><td class="num"><input class="in" id="rla-nc" inputmode="numeric" placeholder="8" style="width:56px"></td>
+        <td class="num"><input class="in" id="rla-np" inputmode="numeric" placeholder="giá / ngày" style="width:110px"></td><td></td><td></td>
+        <td style="text-align:right"><button class="btn okb sm" type="button" id="rla-add">Thêm mẫu</button></td></tr></tbody></table></div>
+      <h3 style="margin:14px 0 4px">📱 Kho máy thật</h3>
+      <div class="tbl"><table><thead><tr><th>Máy</th><th>Mẫu</th><th>Máy chủ · số máy</th><th>Trạng thái</th><th>Khách / hạn</th><th></th></tr></thead><tbody>
+      ${dv.length ? dv.map(x => { const st = ST[x.status] || [x.status, ""], ph = x.phone;
+        return `<tr data-rldev="${esc(x.id)}"><td><b>${esc(x.label)}</b><div class="hint">${x.online ? "🟢" : "⚪"} ${esc(ago2(x.last_seen))}${x.battery != null ? ` · 🔋 ${N(x.battery)}%` : ""}</div></td>
+          <td>${esc(mName(x.model_id))}</td><td>${esc(x.node || "—")}<div class="hint">${esc(x.serial || "—")}</div></td>
+          <td><span class="pill ${st[1]}">${esc(st[0])}</span>${x.status === "maint" && x.ended_at ? `<div class="hint">hết thuê ${esc(new Date(x.ended_at).toLocaleString("vi-VN"))} — reset máy rồi bấm Sẵn sàng</div>` : ""}${x.note ? `<div class="hint">${esc(x.note)}</div>` : ""}</td>
+          <td>${ph ? `<b>${esc(ph.user || "?")}</b> · ${esc(ph.name || "")}<div class="hint">${esc(ph.status)}${ph.expires_at ? " · hết hạn " + esc(new Date(ph.expires_at).toLocaleString("vi-VN")) : ""}</div>` : '<span class="hint">—</span>'}</td>
+          <td style="white-space:nowrap;text-align:right">${x.phone_id ? "" : `${x.status !== "ready" ? `<button class="btn okb sm" type="button" data-rlst="ready">✅ Sẵn sàng</button> ` : ""}${x.status !== "maint" ? `<button class="btn ghost sm" type="button" data-rlst="maint">🛠 Bảo trì</button> ` : ""}${x.status !== "off" ? `<button class="btn ghost sm" type="button" data-rlst="off">⛔ Tắt</button> ` : ""}`}
+            <button class="btn ghost sm" type="button" data-rlren="1">✏️</button>${x.phone_id ? "" : ` <button class="btn danger sm" type="button" data-rldel="1">🗑️</button>`}</td></tr>`; }).join("")
+        : `<tr><td colspan="6" class="hint" style="text-align:center;padding:14px">Chưa có máy nào trong kho — cắm điện thoại vào máy chủ (xem hướng dẫn dưới), máy sẽ hiện ở mục "Máy đang cắm".</td></tr>`}</tbody></table></div>
+      <h3 style="margin:14px 0 4px">🔌 Máy đang cắm, chưa thêm vào kho</h3>
+      <div class="tbl"><table><thead><tr><th>Máy chủ · số máy</th><th>Loại máy (adb)</th><th>Trạng thái</th><th>Thêm vào kho</th></tr></thead><tbody>
+      ${seen.length ? seen.map(s => `<tr data-rlseen="${esc(s.node)}|${esc(s.serial)}"><td>${esc(s.node)}<div class="hint">${esc(s.serial)}</div></td><td>${esc(s.model || "?")}${s.battery != null ? ` · 🔋 ${N(s.battery)}%` : ""}</td>
+          <td>${s.state === "device" ? '<span class="pill ok">Kết nối</span>' : `<span class="pill bad">${esc(s.state || "?")}</span><div class="hint">bấm "Cho phép gỡ lỗi USB" trên điện thoại</div>`}</td>
+          <td style="white-space:nowrap"><select class="in" data-k="model" style="width:auto">${mOpt("")}</select> <input class="in" data-k="label" maxlength="40" placeholder="tên, vd S10 #1" style="width:120px"> <button class="btn okb sm" type="button" data-rladd="1">➕ Thêm</button></td></tr>`).join("")
+        : `<tr><td colspan="4" class="hint" style="text-align:center;padding:12px">Chưa thấy điện thoại nào đang cắm (máy chủ báo mỗi 30 giây).</td></tr>`}</tbody></table></div>
+      <div class="hint" style="margin-top:8px">🔌 <b>Cắm máy</b>: cáp USB vào máy chủ (cài CloudBlue bản 28/11e trở lên) → trên điện thoại bật <b>Tuỳ chọn nhà phát triển › Gỡ lỗi USB</b>, bấm <b>Cho phép</b> (tick "luôn cho phép") → sau ~30 giây máy hiện ở mục trên.
+        Nên tắt khoá màn hình (không đặt mật khẩu). Máy chủ chỉ để cắm điện thoại (không chạy giả lập): bấm "Ngừng nhận máy" ở thẻ máy chủ — máy thật vẫn giao bình thường.
+        Khách trả máy → máy chủ tự gỡ app + xoá file của khách, máy về 🧹 Cần reset: khôi phục cài đặt gốc nếu cần rồi bấm ✅ Sẵn sàng.</div>`;
+    $i("rla-save").onclick = () => saveSettings({ real_name: $i("rla-name").value.trim() || "BlueReal", real_on: $i("rla-on").checked ? "true" : "false" }, $i("rla-save"), "Đã lưu — khách thấy ngay.");
+    $i("rla-add").onclick = () => busy($i("rla-add"), async () => {
+      const nm = $i("rla-nm").value.trim(); if (!nm) return toast("Nhập tên mẫu máy.", 1);
+      const body = { id: slug(nm), name: nm, android: $i("rla-na").value.trim() || "12", ram: $i("rla-nr").value.trim() || "8", cpu: $i("rla-nc").value.trim() || "8", price_day: ($i("rla-np").value.trim() || "0").replace(/[.,\s]/g, "") };
+      const { error } = await sb.rpc("admin_real_model_save", { p: body }); if (error) return toast(rerr(error), 1);
+      toast("Đã thêm mẫu " + nm); admLoad();
+    });
+  }
+  document.addEventListener("click", async e => {
+    if (!isAdmin()) return;
+    const ms = e.target.closest("[data-rlmsave]"), md = e.target.closest("[data-rlmdel]"), st = e.target.closest("[data-rlst]"), rn = e.target.closest("[data-rlren]"),
+          dl = e.target.closest("[data-rldel]"), ad = e.target.closest("[data-rladd]");
+    if (ms) { const tr = ms.closest("[data-rlmod]"), g = k => tr.querySelector(`[data-k="${k}"]`);
+      return busy(ms, async () => { const body = { id: tr.dataset.rlmod, name: g("name").value.trim(), android: g("android").value.trim(), ram: g("ram").value.trim(), cpu: g("cpu").value.trim(),
+        price_day: g("price_day").value.trim().replace(/[.,\s]/g, ""), active: g("active").checked };
+        const { error } = await sb.rpc("admin_real_model_save", { p: body }); if (error) return toast(rerr(error), 1); toast("Đã lưu " + body.name); admLoad(); }); }
+    if (md) { if (!confirm("Xoá mẫu máy này?")) return; const { error } = await sb.rpc("admin_real_model_delete", { p_id: md.dataset.rlmdel }); if (error) return toast(rerr(error), 1); toast("Đã xoá mẫu."); return admLoad(); }
+    const tr = e.target.closest("[data-rldev]");
+    if (st && tr) return busy(st, async () => { const { error } = await sb.rpc("admin_real_device_save", { p: { id: tr.dataset.rldev, status: st.dataset.rlst } }); if (error) return toast(rerr(error), 1); admLoad(); });
+    if (rn && tr) { const cur = A(RS.adm && RS.adm.devices).find(x => x.id === tr.dataset.rldev) || {}; const v = prompt("Tên máy:", cur.label || ""); if (v == null || !v.trim()) return;
+      const { error } = await sb.rpc("admin_real_device_save", { p: { id: tr.dataset.rldev, label: v.trim() } }); if (error) return toast(rerr(error), 1); return admLoad(); }
+    if (dl && tr) { if (!confirm("Xoá máy này khỏi kho?")) return; const { error } = await sb.rpc("admin_real_device_delete", { p_id: tr.dataset.rldev }); if (error) return toast(rerr(error), 1); return admLoad(); }
+    if (ad) { const r = ad.closest("[data-rlseen]"), [node, serial] = r.dataset.rlseen.split("|"), model = r.querySelector('[data-k="model"]').value, label = r.querySelector('[data-k="label"]').value.trim() || serial;
+      return busy(ad, async () => { const { error } = await sb.rpc("admin_real_device_save", { p: { model_id: model, label, node, serial, status: "ready" } });
+        if (error) return toast(rerr(error), 1); toast("Đã thêm " + label + " — ✅ Sẵn sàng cho thuê."); admLoad(); }); }
+  });
+  if (typeof setTab === "function") { const _st = setTab; setTab = function (t) { _st(t); try { show("pane-real", t === "real"); if (t === "real") admLoad(); } catch (e) {} }; }
+  RS.rowOn = rowOn; RS.row = rowHtml; RS.li = liHtml; RS.from = lowDay; RS.load = cat; RS.buy = buyOpen; RS.renew = renew; RS.isReal = isReal; RS.tag = tag; RS.admLoad = admLoad; RS.mName = mName;
+  cat().then(() => { try { if (rowOn()) renderGrid(); } catch (e) {} });
+})();
+</script>
+<script>
 /* Gộp thẻ bảng quản trị theo nhóm. Không đổi gì bên trong các thẻ: nút thẻ cũ (#adm-tabs button[data-tab]) vẫn là nút thật —
    bấm nhóm = bấm nút thẻ cũ (mục dùng gần nhất của nhóm); hàng #adm-tabs chỉ còn các mục của nhóm đang mở.
    Mượt: bấm là nhóm / mục sáng NGAY (vẽ trước), phần nặng (đổi khung + tải dữ liệu) chạy ở khung hình sau. */
@@ -18325,7 +18561,7 @@ body.admin-page #drawer .dpanel>.dbody{width:100%;max-width:none;margin-left:0;m
     { id: "home", ic: "📊", t: "Tổng quan", ac: "#3d86ff", m: ["stats"], d: "Doanh thu · đơn · sản phẩm bán chạy" },
     { id: "sell", ic: "🛒", t: "Bán hàng", ac: "#f59e0b", m: ["ord", "prod", "promo"] },
     { id: "cust", ic: "👥", t: "Khách & tiền", ac: "#10b981", m: ["cust", "tx", "sec"] },
-    { id: "mach", ic: "🖥️", t: "Máy cho thuê", ac: "#8b5cf6", m: ["cloud", "pc", "vm", "px"] },
+    { id: "mach", ic: "🖥️", t: "Máy cho thuê", ac: "#8b5cf6", m: ["cloud", "pc", "vm", "px", "real"] },
     { id: "set", ic: "⚙️", t: "Cài đặt", ac: "#06b6d4", m: ["site", "bank"] }
   ];
   const btnOf = t => tabs.querySelector('button[data-tab="' + t + '"]');

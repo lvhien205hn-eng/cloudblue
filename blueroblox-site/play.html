@@ -293,6 +293,9 @@ html.ios body.rot .sheet .in::before{display:none}
 /* web-2.0: chế độ máy PC thật — ẩn các nút chỉ dành cho điện thoại Android */
 body.pcm #menu [data-a="rotate"], body.pcm #menu [data-a="notif"], body.pcm #menu [data-a="power"], body.pcm #menu [data-a="apkfile"], body.pcm #menu [data-a="apklink"],
 body.pcm #menu [data-a="store"], body.pcm #menu [data-a="root"], body.pcm #menu [data-a="proxy"], body.pcm #menu [data-a="reboot"], body.pcm #m-land-row, body.pcm #m-land-flip{display:none!important}
+/* 28/11 · SQL v70: 📱 máy THẬT (BlueReal) — không có Root / Proxy riêng / kho app / khởi động lại / cửa sổ tab (các nút này dùng phần giả lập) */
+body.realm #menu [data-a="store"], body.realm #menu [data-a="root"], body.realm #menu [data-a="proxy"], body.realm #menu [data-a="reboot"], body.realm #menu [data-a^="win"],
+body.realm #menu [data-a="rotate"], body.realm .bar [data-a="winmini"], body.realm #win-sec, body.realm #win-d, body.realm #win-grid{display:none!important}   /* xoay: máy thật tự xoay theo app */
 body.pcm #win-sec, body.pcm #win-d, body.pcm #win-grid, body.pcm .bar [data-a="winmini"]{display:none!important}   /* 23/11 🗗 tab cửa sổ nhỏ: chỉ Cloud Phone */
 body.pcm #cv{cursor:default}
 /* web-2.2 (21.11k): máy PC — thêm mức Siêu nét + tự chọn khung hình/giây · Nhiều máy PC cùng lúc */
@@ -949,6 +952,7 @@ async function connect() {
     }
   }
   P.ep = ep; P.epId = P.id; setName(ep.name, ep.android);
+  if (!TEST && P.kind !== "pc") realCheck(P.id);                    // 28/11 · SQL v70: máy thật → ẩn Root / Proxy / khởi động lại
   if (P.kind === "pc") {                                             // web-2.0: máy PC — chưa nối tới máy chủ phát hình (đang tắt / khởi động / cài Windows) → tự thử lại
     $("m-sub").textContent = (ep.os ? "Windows " + String(ep.os).toUpperCase() : "Windows") + (ep.code ? " · số " + ep.code : "");
     if (!ep.online) { P.epStale = true; return retryLater(L("Máy PC chưa sẵn sàng (đang tắt, đang khởi động hoặc đang cài Windows) — tự thử lại…", "The PC isn't ready yet (off, starting or installing Windows) — retrying…"), 10000); }
@@ -2108,7 +2112,18 @@ function rootFill(j) {
   for (const x of pk) list.appendChild(rootRow(x, allow.has(x), null));
   rootPaint();
 }
+/* 28/11 · SQL v70: 📱 máy THẬT (BlueReal) — hỏi 1 lần / máy; web chưa chạy v70 (chưa có cột) → coi như máy ảo */
+const REALC = {};
+async function realCheck(id) {
+  if (!(id in REALC)) {
+    REALC[id] = false;
+    try { const r = await sb.from("cloud_phones").select("real_device").eq("id", id).maybeSingle(); REALC[id] = !!(r && !r.error && r.data && r.data.real_device); } catch (e) {}
+  }
+  P.real = REALC[id] && P.id === id;
+  document.body.classList.toggle("realm", !!P.real);
+}
 async function openRoot() {
+  if (P.real) return toast(L("Máy thật không có Root riêng.", "Real phones have no root option."));
   $("rootdlg").hidden = false; $("r-on").disabled = true; $("r-save").disabled = true;
   $("r-st").textContent = "Đang đọc…"; $("r-warn").hidden = true;
   $("r-ask").innerHTML = ""; $("r-ask-h").hidden = true; $("r-apps").innerHTML = '<div class="rempty">Đang tải danh sách app…</div>';
@@ -2173,6 +2188,7 @@ async function pxLoad() {
   }
 }
 function openProxy() {
+  if (P.real) return toast(L("Máy thật không đặt proxy riêng ở đây.", "Real phones have no per-phone proxy."));
   $("pxdlg").hidden = false; PX.cfg = null; pxPaint();
   $("px-save").disabled = false; $("px-in").disabled = false; $("px-in").value = ""; PX.touched = false; pxKind("auto");
   pxLoad(); clearInterval(PX.t); PX.t = setInterval(() => { if ($("pxdlg").hidden) clearInterval(PX.t); else if (!PX.busy) pxLoad(); }, 15000);

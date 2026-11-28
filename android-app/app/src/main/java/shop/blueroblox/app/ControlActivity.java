@@ -85,6 +85,8 @@ public class ControlActivity extends Activity {
     private JSONObject phone = new JSONObject();
     private String id;
     private boolean pc = false;              // 21/11: điều khiển MÁY PC THẬT (VPS GPU) — extra "pc" hoặc link blueroblox://pc/<mã>
+    private boolean real = false;            // 28/11 · SQL v70: 📱 điện thoại THẬT (BlueReal) — không Root / Proxy / khởi động lại / tab cửa sổ nhỏ…
+    private View winTop, winMini;            // nút 🗗 thu nhỏ tab (thanh trên + thanh nổi) — máy thật thì ẩn
     private String api = "";                 // stream.api của máy chủ đang giữ máy (rỗng = máy chủ mặc định)
     private String quality = "bal";
     private boolean full = false, loaded = false, resumed = false, kicked = false, stopped = false, showStats = false;
@@ -169,7 +171,7 @@ public class ControlActivity extends Activity {
         q.setOnClickListener(v -> pickQuality());
         q.setTag("q");
         topBar.addView(q, Ui.wrap());
-        if (!pc) topBar.addView(WinTab.button(this, Ui.FG, v -> winTab("mini"), v -> { winMenu(); return true; }),   // 23/11: 🗗 thu nhỏ tab (app trong máy)
+        if (!pc) topBar.addView(winTop = WinTab.button(this, Ui.FG, v -> winTab("mini"), v -> { winMenu(); return true; }),   // 23/11: 🗗 thu nhỏ tab (app trong máy)
                 new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
         topBar.addView(barBtn("⛶", Ui.L("Ẩn thanh — hình to hết màn", "Hide bars — full screen"), v -> { autoFull = false; setFull(true); }),
                 new LinearLayout.LayoutParams(Ui.dp(40), Ui.dp(40)));
@@ -260,7 +262,7 @@ public class ControlActivity extends Activity {
         mini.addView(miniBtn(pc ? "⊞" : "○", pc ? Ui.L("Nút Windows", "Windows key") : Ui.L("Màn chính", "Home"), () -> cmd(pc ? "win" : "home")));
         mini.addView(miniBtn("▢", pc ? Ui.L("Chuyển cửa sổ (Win+Tab)", "Switch windows") : Ui.L("Đa nhiệm", "Recents"), () -> cmd("recents")));
         mini.addView(miniBtn(pc ? "🖐" : "🔄", pc ? Ui.L("Kiểu chạm · xoay màn", "Touch & rotation") : Ui.L("Xoay ngang / dọc", "Rotate"), () -> { if (pc) pcView(); else quickRotate(); }));
-        if (!pc) mini.addView(miniBtn("↙", Ui.L("Thu nhỏ tab", "Minimize tab"), () -> winTab("mini")));
+        if (!pc) mini.addView(winMini = miniBtn("↙", Ui.L("Thu nhỏ tab", "Minimize tab"), () -> winTab("mini")));
         mini.addView(miniBtn("⋯", Ui.L("Công cụ", "Tools"), () -> { hideMini(); tools(); }));
         mini.addView(miniBtn("⤢", Ui.L("Hiện thanh", "Show bars"), () -> { autoFull = false; setFull(false); }));
         mini.setVisibility(View.GONE);
@@ -389,6 +391,7 @@ public class ControlActivity extends Activity {
         stopped = false;
         api = "";
         fixing = false; srvMsg = ""; probN = 0;          // 16/11: đổi sang máy khác → bỏ trạng thái "đang khởi động lại" của máy trước
+        real = false;                                    // 28/11: biết lại khi đọc xong máy mới (máy thật / ĐT đám mây)
         showVeil(Ui.L("Đang mở máy…", "Opening phone…"), true, null, null);
         final String pid = id;
         if (pc) {                                // 21/11: máy PC — không có dòng cloud_phones; tên lấy từ danh sách, máy chủ phát hình báo lại tên thật
@@ -428,7 +431,11 @@ public class ControlActivity extends Activity {
                 String[] wh = res.split("x");
                 if (wh.length == 2) screen.setVideoSize(Integer.parseInt(wh[0].trim()), Integer.parseInt(wh[1].trim()));   // đoán tỉ lệ trước khi có hình
             } catch (Exception ignored) { }
-            info.setText(phone.optInt("ram") + "GB · " + phone.optInt("cpu") + Ui.L(" nhân · ", " cores · ") + res + " · " + phone.optInt("fps", 30) + " FPS");
+            real = RealPhone.isReal(phone);
+            info.setText(real ? RealPhone.info(phone)
+                    : phone.optInt("ram") + "GB · " + phone.optInt("cpu") + Ui.L(" nhân · ", " cores · ") + res + " · " + phone.optInt("fps", 30) + " FPS");
+            if (winTop != null) winTop.setVisibility(real ? View.GONE : View.VISIBLE);
+            if (winMini != null) winMini.setVisibility(real ? View.GONE : View.VISIBLE);
             if (!"active".equals(phone.optString("status"))) { fail(Ui.L("Máy chưa chạy (đang tạo hoặc đã hết hạn).", "This phone is not running.")); return; }
             loaded = true;
             if (Reboots.running(pid)) { waitReboot(); return; }      // 16/11c: máy đang khởi động lại (app đang theo dõi) → chờ xong rồi tự vào
@@ -560,12 +567,13 @@ public class ControlActivity extends Activity {
     /** Máy đang được bật lại (boot) → chỉ chờ, tự vào · cần sửa (fix) → nút "Khởi động lại máy" · còn lại → "Đang thử lại…" như cũ. */
     private void showSrv() {
         String t = srvMsg + (srvBoot ? "" : "\n" + Ui.L("Đang thử lại…", "Retrying…"));
-        if (srvFix) showVeil(t, true, "⚡ " + Ui.L("Khởi động lại máy", "Restart phone"), this::fixAsk);
+        if (srvFix && !real) showVeil(t, true, "⚡ " + Ui.L("Khởi động lại máy", "Restart phone"), this::fixAsk);
         else showVeil(t, true, null, null);
     }
 
     /** 28/11b: máy chủ báo màn máy đang lỗi hiển thị (giả lập vẽ hỏng — khởi động lại là hết) → hỏi khách 1 lần mỗi lần màn hỏng. */
     private void gfxAsk() {
+        if (real) return;                            // máy thật: không có giả lập để khởi động lại
         Ui.confirm(this, Ui.L("Màn hình máy đang lỗi hiển thị", "The phone's screen isn't drawing correctly"),
                 Ui.L("Hình trong máy đang bị nhiễu màu. Khởi động lại máy là hết — khoảng 1–2 phút, app đang mở sẽ tắt, dữ liệu vẫn giữ nguyên.",
                         "The picture inside the phone is garbled. Restarting the phone fixes it — about 1–2 minutes; running apps close, your data is kept."),
@@ -573,6 +581,7 @@ public class ControlActivity extends Activity {
     }
 
     private void fixAsk() {
+        if (real) { realNo(); return; }
         Ui.confirm(this, Ui.L("Khởi động lại máy?", "Restart this phone?"),
                 Ui.L("Máy tắt rồi bật lại, khoảng 1–2 phút. App đang mở trong máy sẽ tắt — dữ liệu vẫn giữ nguyên.",
                         "The phone restarts in 1–2 minutes. Running apps will close — your data is kept."),
@@ -961,8 +970,14 @@ public class ControlActivity extends Activity {
                 {"↻", Ui.L("Tải lại hình", "Reload"), (Runnable) this::connect},
                 {"⚡", Ui.L("Khởi động lại", "Reboot"), (Runnable) this::reboot},
         };
+        java.util.Set<String> noReal = new java.util.HashSet<>(java.util.Arrays.asList(          // 28/11 · 📱 máy thật: mục chỉ giả lập mới có
+                Ui.L("Xoay màn", "Rotate"), Ui.L("Độ rộng nhỏ nhất", "Smallest width"), Ui.L("Kho app", "App store"), "Clone tab",
+                Ui.L("Thu nhỏ tab", "Minimize tab"), Ui.L("Sắp xếp tab", "Arrange tabs"), Ui.L("Phóng to tab", "Maximize tab"), Ui.L("Vừa khung", "Refit"),
+                Ui.L("Cửa sổ to", "Bigger"), Ui.L("Cửa sổ nhỏ", "Smaller"), Ui.L("Màn rộng", "Wide"), Ui.L("Vị trí GPS", "GPS"), "Root", "Proxy",
+                Ui.L("Đổi Android / máy chủ", "Android / server"), Ui.L("Khởi động lại", "Reboot")));
         for (Object[] it : items) {
             if (Api.PLAY && ("Clone tab".equals(it[1]) || "Root".equals(it[1]) || "Proxy".equals(it[1]))) continue;   // bản CH Play: ẩn Clone + Root + Proxy (đặt proxy trên web)
+            if (real && !pc && noReal.contains((String) it[1])) continue;
             Runnable r = (Runnable) it[2];
             LinearLayout t = Ui.tool(this, (String) it[0], (String) it[1], v -> { if (d[0] != null) d[0].dismiss(); r.run(); });
             t.setLayoutParams(new FrameLayout.LayoutParams(w, -2));
@@ -974,9 +989,15 @@ public class ControlActivity extends Activity {
     }
 
     // ---------------- 🗗 Tab cửa sổ nhỏ (23/11): app trong máy thành cửa sổ nhỏ / sắp xếp / phóng to — xem WinTab ----------------
-    private void winTab(String what) { if (!pc && id != null) WinTab.run(this, api, id, what); }
+    private void winTab(String what) { if (real) { realNo(); return; } if (!pc && id != null) WinTab.run(this, api, id, what); }
 
-    private void winMenu() { if (!pc && id != null) WinTab.menu(this, api, id); }
+    /** 📱 Máy thật bấm vào công cụ chỉ giả lập mới có (Root, Proxy, khởi động lại, xoay, tab cửa sổ nhỏ, kho app, clone, GPS…). */
+    private void realNo() {
+        Ui.toast(this, Ui.L("📱 Máy thật không dùng được mục này — máy tự xoay theo app (game ngang tự xoay ngang).",
+                "📱 Not available on real phones — the phone rotates with the app by itself."));
+    }
+
+    private void winMenu() { if (real) { realNo(); return; } if (!pc && id != null) WinTab.menu(this, api, id); }
 
     private void toggleStats() {
         showStats = !showStats;
@@ -1153,6 +1174,7 @@ public class ControlActivity extends Activity {
 
     /** 🤖 Đổi Android 9 / 12 / 15 (chỉ chủ máy, SQL v24): máy mới giữ hạn còn lại; máy mới chạy xong thì máy cũ + dữ liệu cũ tự xoá. */
     private void switchAndroid() {
+        if (real) { realNo(); return; }
         final String pid = id;
         Api.<Object[]>bg(() -> {
             JSONArray a = (JSONArray) Api.get("cloud_phones?id=eq." + pid + "&select=*");
@@ -1245,6 +1267,7 @@ public class ControlActivity extends Activity {
 
     // ---------------- 🛍 Kho app: Termux, MT Manager, ZArchiver… — máy chủ tải từ trang CHÍNH CHỦ rồi cài 1 chạm ----------------
     private void store() {
+        if (real) { realNo(); return; }
         Dialog[] pd = progress(Ui.L("Đang mở kho app…", "Opening the app store…"));
         final String base = api, pid = id;
         Api.bg(() -> Api.cpAt(base, "GET", pid + "/store", null), j -> { pd[0].dismiss(); storeSheet(j); },
@@ -1313,6 +1336,7 @@ public class ControlActivity extends Activity {
 
     // ---------------- Clone tab: chạy thêm bản của 1 app (game…) để đăng nhập acc khác ----------------
     private void cloneTab() {
+        if (real) { realNo(); return; }
         Dialog[] pd = progress(Ui.L("Đang tải danh sách app…", "Loading apps…"));
         final String base = api, pid = id;
         Api.bg(() -> new JSONObject[]{Api.cpAt(base, "GET", pid + "/apps", null), Api.cpAt(base, "GET", pid + "/clone", null)}, js -> {
@@ -1391,6 +1415,7 @@ public class ControlActivity extends Activity {
 
     // ---------------- Vị trí GPS giả ----------------
     private void gps() {
+        if (real) { realNo(); return; }
         String last = getSharedPreferences("cp", MODE_PRIVATE).getString("gps_" + id, "");
         LinearLayout c = Ui.col(this, 10);
         c.addView(Ui.muted(this, Ui.L("Nhập toạ độ dạng: vĩ độ, kinh độ (lấy trên Google Maps: giữ tay vào 1 điểm → copy số). VD Hà Nội: 21.0285, 105.8542",
@@ -1439,6 +1464,7 @@ public class ControlActivity extends Activity {
     }
 
     private void root() {
+        if (real) { realNo(); return; }
         Dialog[] pd = progress(Ui.L("Đang đọc cấu hình root…", "Loading root settings…"));
         final String base = api, pid = id;
         Api.bg(() -> Api.cpAt(base, "GET", pid + "/rootcfg", null), j -> { pd[0].dismiss(); rootSheet(j); },
@@ -1546,6 +1572,7 @@ public class ControlActivity extends Activity {
     // ---------------- 🌐 PROXY RIÊNG CỦA MÁY (22/11 · cpapi <máy>/proxy → phonectl proxy → cbproxy trong máy) ----------------
     // Chỉ chủ máy (người được chia sẻ: máy chủ trả 403). Mật khẩu proxy không bao giờ trả về app (máy chủ chỉ trả user + ••••).
     private void proxy() {
+        if (real) { realNo(); return; }
         Dialog[] pd = progress(Ui.L("Đang đọc proxy…", "Loading proxy…"));
         final String base = api, pid = id;
         Api.bg(() -> Api.cpAt(base, "GET", pid + "/proxy", null), j -> { pd[0].dismiss(); proxySheet(j); },
@@ -1908,7 +1935,7 @@ public class ControlActivity extends Activity {
     private final Runnable pcImeOff = () -> { if (pc && !remoteIme && kbOpen && pref.getBoolean("pc_autokb", true)) kbShow(false); };
 
     /** Nút 🔄: đổi sang hướng kia. */
-    private void quickRotate() { rotateTo(!streamLand); }
+    private void quickRotate() { if (real) { realNo(); return; } rotateTo(!streamLand); }
 
     /** Khoá màn máy cloud ngang / dọc qua cổng công cụ (mọi máy chủ đều có); không tới được thì gửi qua luồng hình. */
     private void rotateTo(boolean land) {
@@ -1942,6 +1969,7 @@ public class ControlActivity extends Activity {
     }
 
     private void rotateMenu() {
+        if (real) { realNo(); return; }
         LinearLayout c = Ui.col(this, 10);
         final Dialog[] d = new Dialog[1];
         c.addView(Ui.muted(this, Ui.L("Khoá màn máy cloud theo hướng bạn chọn (giữ luôn cả khi tắt app). Game cần màn ngang vẫn tự xoay ngang.",
@@ -1967,6 +1995,7 @@ public class ControlActivity extends Activity {
 
     // ---------------- Độ rộng nhỏ nhất (Smallest width / DPI) ----------------
     private void smallestWidth() {
+        if (real) { realNo(); return; }
         if (id == null) return;
         Dialog[] pd = progress(Ui.L("Đang đọc màn hình máy…", "Reading the screen…"));
         final String base = api, pid = id;
