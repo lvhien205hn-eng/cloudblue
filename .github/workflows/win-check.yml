@@ -52,6 +52,8 @@ jobs:
         run: python3 .github/win-check/test_cpapi_real.py
       - name: Tự dọn máy kẹt · máy không mở N ngày · giờ máy chủ · Windows 1511 ổn định · ảnh nền Android 13+ (28/11f)
         run: python3 .github/win-check/test_2811f.py
+      - name: CPU đủ cả 2 CPU (mọi nhóm CPU Windows) + sức chứa theo RAM chính, lý do ngừng nhận báo riêng (28/11h)
+        run: python3 .github/win-check/test_2811h.py
 
   emu:
     needs: sim
