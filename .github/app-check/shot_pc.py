@@ -298,8 +298,42 @@ dd = B.VmDelDlg(app, VMY["items"][2]); pump(1)
 grab("pc-30-vm-xoa.png"); dd.close(); pump(0.4)
 print("VPS NVMe:", vm_ok, flush=True)
 ok_vm = all(vm_ok)
+
+# 28/11f · 📱 BlueReal: hộp thuê / gia hạn máy thật y hệt ĐT đám mây (① mẫu máy · ② số ngày & số máy · 🏷️ mã giảm giá · 💎 Blue · tổng tiền)
+RCAT = {"name": "BlueReal", "on": True, "max_days": 90, "models": [
+    {"id": "s9", "name": "Galaxy S9", "android": "10", "ram": 4, "price_day": 5000, "stock": 0},
+    {"id": "s10", "name": "Galaxy S10", "android": "12", "ram": 8, "price_day": 6000, "stock": 3, "note": "Samsung Galaxy S10 · 8GB"}]}
+RBLUE = {"on": True, "can_use": True, "blue": 5000, "cfg": {"max_pct": 100}, "tasks": []}
+_rpc1 = FakeAuth.rpc
+
+
+def _rpc2(self, fn, args=None):
+    if fn == "realphone_catalog": return RCAT
+    if fn == "blue_info": return RBLUE
+    if fn == "realphone_promo_check":
+        a = args or {}; base = 6000 * int(a.get("p_days") or 1) * int(a.get("p_qty") or 1); dsc = base // 10
+        return {"ok": True, "kind": "discount", "use_promo": True, "discount": dsc, "price": base - dsc, "base": base, "code": "GIAM10"}
+    return _rpc1(self, fn, args)
+
+
+FakeAuth.rpc = _rpc2
+B.BLUE["info"] = dict(RBLUE)
+app.root.geometry("680x900+0+0"); pump(0.5)
+od = B.RealOrderDlg(app); pump(3)
+od.qty = 2; od.days = 3; od.upd(); pump(0.5)
+od.promo.ent.insert(0, "GIAM10"); od.promo.check(); pump(2)
+B.BLUE["info"] = dict(RBLUE); od.bpay.var.set(True); od.upd(); pump(0.8)
+real_ok = [od.qmax() == 3, od.price() == 36000, od.pay() == (36000, 32400, 5000, 27400), od.promo.rpc == "realphone_promo_check"]
+grab("pc-32-real-thue.png")                                # đầu hộp: ① mẫu máy (S9 hết máy) · ② số ngày & số máy · chân: tổng tiền sau mã + Blue
+scroll(1.0); grab("pc-33-real-thue-cuoi.png")              # mã giảm giá đã áp dụng · 💎 trả bằng Blue · ghi chú
+od.close(); pump(0.4)
+rr = B.RealRenewDlg(app, {"id": "00000000-0000-4000-8000-0000000000d1", "name": "Máy farm thật", "real_device": "d1", "real_model": "s10", "expires_at": LEFT(100)}); pump(2)
+real_ok.append(rr.pay() == (42000, 42000, 0, 42000))
+grab("pc-34-real-gia-han.png"); rr.close(); pump(0.4)
+print("BlueReal:", real_ok, flush=True)
+ok_real = all(real_ok)
 mine = [f for f in os.listdir(OUT) if f.startswith(PFX + "pc-")]
-ok = len(mine) == 31 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_vm
+ok = len(mine) == 34 and all(os.path.getsize(os.path.join(OUT, f)) > 5000 for f in mine) and ok_chips and ok_pc and ok_vm and ok_real
 print("XONG", LANG, len(mine), "ảnh", "ĐẠT" if ok else "ẢNH RỖNG")
 app.root.destroy()
 sys.exit(0 if ok else 1)

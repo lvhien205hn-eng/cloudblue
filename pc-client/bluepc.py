@@ -2971,8 +2971,9 @@ class PromoBox:
        Đổi đơn → mã đã áp dụng tự kiểm lại sau 0,6 giây; mã sai hẳn không kiểm lại (khỏi bị tính nhập sai); ô có chữ mà mã sai → không cho thanh toán."""
     RECHECK = ("PROMO_MIN_ORDER", "PROMO_CTX", "BAD_PLAN", "NO_PHONE", "NO_MACHINE", "NO_PRODUCT")
 
-    def __init__(self, dlg, parent, scope, ctx, changed):
+    def __init__(self, dlg, parent, scope, ctx, changed, rpc="promo_check"):
         tk = dlg.app.tk; self.dlg, self.scope, self.ctx, self.changed = dlg, scope, ctx, changed
+        self.rpc = rpc or "promo_check"                                 # 28/11f: máy thật kiểm mã bằng realphone_promo_check (giá theo mẫu máy)
         self.code, self.key, self.r, self.busy, self.seq = "", "", None, False, 0
         self.frame = tk.Frame(parent, bg=parent["bg"])
         row = tk.Frame(self.frame, bg=parent["bg"]); row.pack(fill="x")
@@ -3027,11 +3028,11 @@ class PromoBox:
         if c is None:
             self.r, self.key = {"ok": False, "err": "PROMO_CTX"}, ""; self.paint(); self.changed(); return then and then()
         k = json.dumps([self.code, self.scope, c], sort_keys=True); self.seq += 1; s = self.seq; self.busy = True; self.paint()
-        code, scope = self.code, self.scope
+        code, scope, fn = self.code, self.scope, self.rpc
         def job():
-            try: return self.dlg.app.auth.rpc("promo_check", {"p_code": code, "p_scope": scope, **c}) or {"ok": False, "err": "PROMO_INVALID"}
+            try: return self.dlg.app.auth.rpc(fn, {"p_code": code, "p_scope": scope, **c}) or {"ok": False, "err": "PROMO_INVALID"}
             except ApiError as e:
-                m = str(e); off = "promo_check" in m or "schema cache" in m or "Could not find" in m
+                m = str(e); off = fn in m or "promo_check" in m or "schema cache" in m or "Could not find" in m
                 return {"ok": False, "err": "PROMO_OFF" if off else m, "net": not off}
         def done(r):
             if s != self.seq: return
@@ -7089,110 +7090,254 @@ def real_err(m):
 
 
 class RealOrderDlg(Dlg):
-    """📱 BlueReal: thuê điện thoại THẬT (Samsung Galaxy S9 / S10…) — chọn mẫu + số ngày → giá / ngày × số ngày (như web)."""
+    """📱 BlueReal: thuê điện thoại THẬT (Samsung Galaxy S9 / S10…) — y hệt hộp thuê ĐT đám mây (28/11f): ① mẫu máy · ② số ngày & số máy ·
+       🏷️ mã giảm giá (realphone_promo_check) + 💎 trả bằng Blue · giá CTV · chân: tổng tiền + số dư · hỏi xác nhận · báo Telegram admin."""
     DAYS = (1, 3, 7, 15, 30)
+    QTY = (1, 2, 3, 5, 10)
+    step = OrderDlg.step                                                    # đầu bước: số tròn xanh + tiêu đề (dùng chung với hộp ĐT đám mây)
+
     def __init__(self, app):
-        super().__init__(app, "📱 Thuê máy thật", 600, 600)
-        self.m = None; self.days = 7; self.busy = False
+        super().__init__(app, "📱 Thuê máy thật", 620, 780)
+        self.m = None; self.days = 7; self.qty = 1; self.busy = False; self.promo = self.bpay = None
         self.loading("Đang tải mẫu máy…")
-        self.bg(lambda: (real_catalog(app, True), app.shop.profile()), self._loaded, lambda m: self.loading(m))
+        def load():
+            try: offers_fresh(app.auth)                                     # 🎫 mã của tôi (SQL v35) cho ô mã giảm giá
+            except Exception: pass
+            return real_catalog(app, True), app.shop.profile()
+        self.bg(load, self._loaded, lambda m: self.loading(m))
 
     def _loaded(self, r):
-        tk = self.app.tk; self.cat, self.prof = r; self.clear()
+        self.cat, self.prof = r
         ms = [m for m in ((self.cat or {}).get("models") or []) if num(m.get("price_day")) > 0]
         if not ms:
+            self.clear()
             self.label(self.body, "Chưa có mẫu máy thật nào mở bán — quay lại sau nhé." if self.cat else "Tính năng đang cập nhật — thử lại sau ít phút.",
                        self.app.f_t, DIM, wraplength=540).pack(fill="x", padx=18, pady=18)
             self.app.btn(self.foot, "Đóng", self.close, "soft").pack(side="left", padx=16, pady=12); return
-        self.ms = ms; adm = (self.prof or {}).get("role") == "admin"
+        self.ms = ms; self.adm = (self.prof or {}).get("role") == "admin"
         self.m = next((m["id"] for m in ms if num(m.get("stock")) > 0), ms[0]["id"])
         self.mx = max(1, min(90, int(num((self.cat or {}).get("max_days")) or 90)))
+        self.build()
+
+    def _md(self): return next(m for m in self.ms if m["id"] == self.m)
+    def qmax(self): return 10 if self.adm else max(1, min(10, int(num(self._md().get("stock")))))
+
+    def build(self):
+        tk = self.app.tk; self.clear(); self.rows = []; ms, adm = self.ms, self.adm
+        if self.qty > self.qmax(): self.qty = self.qmax()
         self.label(self.body, f"📱 {(self.cat or {}).get('name') or 'BlueReal'} — điện thoại Samsung THẬT đặt tại shop, không phải giả lập", self.app.f_h2,
-                   wraplength=560).pack(fill="x", padx=18, pady=(14, 2))
+                   wraplength=560).pack(fill="x", padx=18, pady=(14, 0))
+        # ① Chọn mẫu máy
+        self.step(1, "Chọn mẫu máy", "Chạy game / app y như máy thật, điều khiển bằng app này, web hoặc app Android.")
         s = self.section("Mẫu máy")
-        self.cm = Chips(self.app, s, [(m["id"], f"{m.get('name')}\nAndroid {m.get('android')} · {int(num(m.get('ram')))}GB · {vnd(num(m.get('price_day')))}/ngày · "
-                                                 + (f"còn {int(num(m.get('stock')))} máy" if num(m.get("stock")) else "hết máy")) for m in ms],
-                        lambda: self.m, lambda x: setattr(self, "m", x), self.upd,
-                        why=lambda x: None if adm or num(next(m for m in ms if m["id"] == x).get("stock")) > 0 else "Hết máy", wrap=2)
-        self.cm.frame.pack(fill="x")
-        s = self.section("Số ngày")
-        self.cd = Chips(self.app, s, [(d, f"{d} ngày") for d in self.DAYS if d <= self.mx], lambda: self.days, lambda x: setattr(self, "days", x), self.upd, wrap=5)
-        self.cd.frame.pack(fill="x")
-        self.sum = self.label(self.body, "", self.app.f_h2, ACC); self.sum.pack(fill="x", padx=18, pady=(10, 0))
-        self.bal = self.label(self.body, "", self.app.f_s, DIM, wraplength=540); self.bal.pack(fill="x", padx=18, pady=(2, 10))
-        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=540); self.err.pack(fill="x", padx=16, pady=(8, 0))
-        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
-        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        self.rows.append(Chips(self.app, s, [(m["id"], f"{m.get('name')}\nAndroid {m.get('android')} · {int(num(m.get('ram')))}GB · {vnd(ctv(self.prof, num(m.get('price_day'))))}/ngày · "
+                                                       + (f"còn {int(num(m.get('stock')))} máy" if num(m.get("stock")) else "hết máy")) for m in ms],
+                               lambda: self.m, self._set_model, self.upd,
+                               why=lambda x: None if adm or num(next(m for m in ms if m["id"] == x).get("stock")) > 0 else "Hết máy", wrap=2))
+        self.rows[-1].frame.pack(fill="x")
+        nt = str(self._md().get("note") or "").strip()
+        if nt: self.label(s, nt, self.app.f_s, DIM, wraplength=540).pack(fill="x", pady=(4, 0))
+        # ② Số ngày & số máy
+        self.step(2, "Số ngày & số máy" if self.qmax() > 1 else "Số ngày thuê")
+        f = self.section("Số ngày", f"1–{self.mx} ngày")
+        line = tk.Frame(f, bg=BG); line.pack(fill="x")
+        self.days_x = tk.Entry(line, width=6, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat")
+        if self.days not in self.DAYS: self.days_x.insert(0, str(self.days))
+        def typed(_e=None):
+            try: v = int(self.days_x.get())
+            except ValueError: return
+            if 1 <= v <= self.mx: self.days = v; self.upd()
+        self.rows.append(Chips(self.app, line, [(d, f"{d} ngày") for d in self.DAYS if d <= self.mx], lambda: self.days,
+                               lambda v: (setattr(self, "days", v), self.days_x.delete(0, "end")), self.upd))
+        self.rows[-1].frame.pack(side="left")
+        self.label(line, "  khác:", self.app.f_s, DIM).pack(side="left"); self.days_x.pack(side="left", ipady=4)
+        self.days_x.bind("<KeyRelease>", typed)
+        if self.qmax() > 1:
+            f = self.section("Số lượng máy", f"còn {self.qmax()} máy rảnh")
+            self.rows.append(Chips(self.app, f, [(v, f"{v} máy") for v in self.QTY if v <= self.qmax()], lambda: self.qty, lambda v: setattr(self, "qty", v), self.upd))
+            self.rows[-1].frame.pack(fill="x")
+        f = self.section("Tên máy (tuỳ chọn)")
+        self.nm = tk.Entry(f, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.nm.pack(fill="x", ipady=5)
+        if getattr(self, "_name", ""): self.nm.insert(0, self._name)
+        self.nm.bind("<KeyRelease>", lambda *_: setattr(self, "_name", self.nm.get()[:40]))
+        # 🏷️ Mã giảm giá + 💎 Trả bằng Blue
+        f = self.section("Mã giảm giá · Blue")
+        self.promo = PromoBox(self, f, "cp_new", lambda: {"p_model": self.m, "p_days": self.days, "p_qty": self.qty}, self.upd, rpc="realphone_promo_check")
+        self.promo.frame.pack(fill="x")
+        if getattr(self, "_promo_code", ""): self.promo.ent.insert(0, self._promo_code); self.promo.check()
+        self.bpay = BluePay(self, f, self.upd, getattr(self, "_blue_on", False))
+        self.label(self.body, "Điện thoại THẬT đặt tại shop, đã xoá sạch dữ liệu khách trước. Hết hạn máy tạm dừng — gia hạn trong 30 phút, "
+                              "quá thời gian app + dữ liệu của bạn bị xoá, máy về lại shop.", self.app.f_s, DIM, wraplength=530).pack(fill="x", padx=18, pady=(14, 18))
+        # ---- chân: mẫu đang chọn + tổng tiền + nút (như hộp ĐT đám mây) ----
+        ft = self.foot
+        self.pick_lbl = self.label(ft, "", ("Segoe UI", 10, "bold"), TXT); self.pick_lbl.pack(fill="x", padx=16, pady=(10, 0))
+        self.calc = self.label(ft, "", self.app.f_s, DIM); self.calc.pack(fill="x", padx=16)
+        r = tk.Frame(ft, bg=CARD); r.pack(fill="x", padx=16)
+        self.total = self.label(r, "", ("Segoe UI", 18, "bold"), MONEY); self.total.pack(side="left")
+        self.bal = self.label(r, "", self.app.f_t, DIM); self.bal.pack(side="right")
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=540); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Huỷ", self.close, "soft").pack(side="left")
         self.go = self.app.btn(bb, "Thuê ngay", self.order); self.go.pack(side="right")
         self.upd()
 
-    def _md(self): return next(m for m in self.ms if m["id"] == self.m)
+    def _set_model(self, x):
+        if x == self.m: return
+        self.m = x
+        if self.promo: self._promo_code = self.promo.code
+        if self.bpay: self._blue_on = bool(self.bpay.var.get())
+        self.app.root.after_idle(lambda: self.alive and self.build())     # số máy rảnh / ghi chú đổi theo mẫu → vẽ lại
+
+    def price(self): return ctv(self.prof, num(self._md().get("price_day")) * self.days * self.qty)
+
+    def pay(self):
+        """(giá thường, giá sau mã, số Blue trừ, tiền trừ số dư)."""
+        t0 = self.price(); pz, bp = self.promo, self.bpay
+        p1 = pz.price(t0) if pz else t0; bu = bp.use(p1) if bp else 0
+        return t0, p1, bu, p1 - bu
+
+    def check(self):
+        md = self._md()
+        if not num(md.get("stock")) and not self.adm: return "Mẫu máy này vừa hết máy — chọn mẫu khác hoặc quay lại sau ít phút."
+        if not 1 <= self.days <= self.mx: return f"Số ngày phải từ 1 đến {self.mx}."
+        if self.qty > self.qmax(): return f"Mẫu này chỉ còn {self.qmax()} máy rảnh — giảm số máy."
+        return ""
 
     def upd(self):
-        self.cm.paint(); self.cd.paint()
-        md = self._md(); tot = num(md.get("price_day")) * self.days; bal = num((self.prof or {}).get("balance"))
-        self.sum.config(text=f"{md.get('name')} · {self.days} ngày = {vnd(tot)}")
-        self.bal.config(text=f"Số dư: {vnd(bal)}" + (f" · thiếu {vnd(tot - bal)}" if bal < tot else "") + " · hạn tính từ lúc máy giao cho bạn (thường dưới 1 phút).")
-        self.go.config(text="Đang thuê…" if self.busy else ("Nạp thêm tiền" if bal < tot else f"Thuê ngay · {vnd(tot)}"), state="disabled" if self.busy else "normal")
+        if not self.alive or not getattr(self, "go", None): return
+        for r in self.rows: r.paint()
+        md = self._md(); bal = num((self.prof or {}).get("balance"))
+        if self.promo: self.promo.order_changed(); self._promo_code = self.promo.code
+        t0, p1, bu, tot = self.pay()
+        if self.bpay: self.bpay.paint(p1); self._blue_on = bool(self.bpay.var.get())
+        self.pick_lbl.config(text=f"📱 {md.get('name')}   ·   Android {md.get('android')} · {int(num(md.get('ram')))}GB · {self.days} ngày"
+                                  + (f" × {self.qty} máy" if self.qty > 1 else ""))
+        self.calc.config(text=f"{vnd(num(md.get('price_day')))} × {self.days} ngày" + (f" × {self.qty} máy" if self.qty > 1 else "")
+                              + (f" − {int(num(self.prof.get('ctv_discount')))}% CTV" if is_ctv(self.prof) else "")
+                              + (f"  ·  🏷️ −{vnd(t0 - p1)}" if p1 < t0 else "") + (f"  ·  💎 −{blue_n(bu)} Blue" if bu > 0 else ""))
+        bad = self.check()
+        self.total.config(text="—" if bad else vnd(tot)); self.bal.config(text="Số dư: " + vnd(bal))
+        self.err.config(text=bad or ("Số dư không đủ — cần nạp thêm " + vnd(tot - bal) + "." if tot > bal else ""), fg=BAD)
+        self.go.config(text="Đang thuê…" if self.busy else ("Nạp tiền" if not bad and tot > bal else "💎 Thuê bằng Blue" if tot <= 0 and bu > 0
+                                                         else "Thuê ngay" + (f" {self.qty} máy" if self.qty > 1 else "")),
+                       state="disabled" if bad or self.busy else "normal", bg=LINE if bad else ACC)
 
     def order(self):
         if self.busy: return
-        md = self._md(); tot = num(md.get("price_day")) * self.days
-        if num((self.prof or {}).get("balance")) < tot: self.close(); return self.app.open_topup(tot - num((self.prof or {}).get("balance")))
-        self.busy = True; self.err.config(text=""); self.upd(); m, d = self.m, self.days
+        bad = self.check()
+        if bad: self.err.config(text=bad, fg=BAD); return
+        self.promo.ensure(self._order, self.err)
+
+    def _order(self):
+        import tkinter.messagebox as mb
+        md = self._md(); t0, p1, bu, tot = self.pay(); bal = num((self.prof or {}).get("balance")); code = self.promo.send() if self.promo else None
+        if tot > bal: self.close(); return self.app.open_topup(tot - bal)
+        m, d, q = self.m, self.days, self.qty; nm = (self.nm.get() or "").strip()[:40] or None
+        extra = (f"\n🏷️ Mã {code}: −{vnd(t0 - p1)}" if code else "") + (f"\n💎 Trả {blue_n(bu)} Blue" if bu > 0 else "")
+        if not mb.askyesno("Xác nhận thuê máy", f"📱 {md.get('name')} · Android {md.get('android')} · {q} máy · {d} ngày" + extra + f"\n\nTrừ {vnd(tot)} từ số dư?", parent=self.win): return
+        self.busy = True; self.err.config(text=""); self.upd()
+        args = {"p_model": m, "p_days": d, "p_name": nm}
+        if q > 1: args["p_qty"] = q
+        if code: args["p_promo"] = code
+        if bu > 0: args["p_blue"] = True
         def done(_):
-            import tkinter.messagebox as mb
-            self.busy = False; self.close(); self.app.refresh(quiet=True)
-            mb.showinfo("CloudBlue", f"Đã thuê {md.get('name')} · {d} ngày — máy đang được chuẩn bị (thường dưới 1 phút).", parent=self.app.root)
+            notify_admin(f"📱 <b>Đơn máy thật mới ({(self.cat or {}).get('name') or 'BlueReal'})</b> — app PC\n{q} máy × {md.get('name')} · Android {md.get('android')} · {d} ngày\n"
+                         f"Giá: {vnd(p1)}" + (f" (mã {code})" if code else "") + (f" · 💎 {blue_n(bu)} Blue" if bu > 0 else ""), self.app.auth)
+            self.busy = False; self._promo_code = ""; self._blue_on = False; BLUE["t"] = 0; OFFERS["t"] = 0
+            self.close(); self.app.refresh(quiet=True)
+            mb.showinfo("CloudBlue", f"Đã thuê {str(q) + ' máy ' if q > 1 else ''}{md.get('name')} · {d} ngày — máy đang được chuẩn bị (thường dưới 1 phút).", parent=self.app.root)
         def fail(e):
-            self.busy = False; self.err.config(text=real_err(e)); self.upd()
-        self.bg(lambda: self.app.auth.rpc("realphone_order", {"p_model": m, "p_days": d, "p_name": None}), done, fail)
+            self.busy = False
+            if self.promo: self.promo.fail(e)
+            if "Blue" in str(e): threading.Thread(target=lambda: (blue_load(self.app.auth), self.app.ui(lambda: self.alive and self.upd())), daemon=True).start()
+            self.err.config(text=real_err(e)); self.upd()
+        self.bg(lambda: self.app.auth.rpc("realphone_order", args), done, fail)
 
 
 class RealRenewDlg(Dlg):
-    """Gia hạn máy thật: số ngày × giá / ngày hiện tại của mẫu máy (realphone_renew) — máy giữ nguyên app, dữ liệu."""
+    """Gia hạn máy thật — như hộp gia hạn ĐT đám mây (28/11f): giá / ngày hiện tại của mẫu máy (giá CTV) · 🏷️ mã giảm giá · 💎 Blue (realphone_renew)."""
     DAYS = (1, 3, 7, 15, 30)
     def __init__(self, app, phone):
-        super().__init__(app, "Gia hạn máy thật — " + (phone.get("name") or "máy"), 560, 460)
-        self.p = phone; self.days = 7; self.busy = False
+        super().__init__(app, "Gia hạn máy thật — " + (phone.get("name") or "máy"), 560, 560)
+        self.p = phone; self.days = 7; self.busy = False; self.promo = self.bpay = None
         self.loading("Đang tải giá…")
         self.bg(lambda: (real_catalog(app, True), app.shop.profile()), self._loaded, lambda m: self.loading(m))
 
     def _loaded(self, r):
         tk = self.app.tk; cat, self.prof = r; self.clear(); p = self.p
         md = next((m for m in ((cat or {}).get("models") or []) if m.get("id") == p.get("real_model")), None)
-        self.per = num((md or {}).get("price_day"))
+        self.per = num((md or {}).get("price_day")); self.mx = max(1, min(90, int(num((cat or {}).get("max_days")) or 90)))
         self.label(self.body, p.get("name") or "Máy", self.app.f_h2).pack(fill="x", padx=18, pady=(16, 0))
         self.label(self.body, f"📱 Máy thật · {real_model_name(p.get('real_model'))} · {fmt_left(p.get('expires_at'))}", self.app.f_t, DIM, wraplength=500).pack(fill="x", padx=18)
-        self.err = self.label(self.foot, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16, pady=(8, 0))
-        bb = tk.Frame(self.foot, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
-        self.app.btn(bb, "Đóng", self.close, "soft").pack(side="left")
+        ft = self.foot
+        self.sum = self.label(ft, "", self.app.f_t, TXT); self.sum.pack(fill="x", padx=16, pady=(10, 0))
+        self.err = self.label(ft, "", self.app.f_s, BAD, wraplength=500); self.err.pack(fill="x", padx=16)
+        bb = tk.Frame(ft, bg=CARD); bb.pack(fill="x", padx=16, pady=(6, 12))
+        self.app.btn(bb, "Huỷ", self.close, "soft").pack(side="left")
         if not self.per:
             self.err.config(text="Mẫu máy này tạm ngừng gia hạn — nhắn shop."); return
-        s = self.section("Gia hạn thêm")
-        self.cd = Chips(self.app, s, [(d, f"{d} ngày") for d in self.DAYS], lambda: self.days, lambda x: setattr(self, "days", x), self.upd, wrap=5)
+        f = self.section("Gia hạn thêm", f"tối đa {self.mx} ngày")
+        self.cd = Chips(self.app, f, [(d, f"{d} ngày") for d in self.DAYS if d <= self.mx], lambda: self.days, lambda v: self._set(v, True), self.upd, wrap=5)
         self.cd.frame.pack(fill="x")
-        self.sum = self.label(self.body, "", self.app.f_h2, ACC); self.sum.pack(fill="x", padx=18, pady=(10, 0))
+        line = tk.Frame(f, bg=BG); line.pack(fill="x", pady=(4, 0))
+        self.label(line, "Số ngày khác:", self.app.f_s, DIM).pack(side="left")
+        self.x = tk.Entry(line, width=6, font=("Segoe UI", 11), bg=CARD, fg=TXT, insertbackground=TXT, relief="flat"); self.x.pack(side="left", padx=6, ipady=4)
+        def typed(_e=None):
+            try: v = int(self.x.get())
+            except ValueError: return
+            if 1 <= v <= self.mx: self._set(v, False); self.upd()
+        self.x.bind("<KeyRelease>", typed)
+        f = self.section("Mã giảm giá · Blue")
+        self.promo = PromoBox(self, f, "cp_renew", lambda: {"p_phone": self.p["id"], "p_days": self.days}, self.upd, rpc="realphone_promo_check")
+        self.promo.frame.pack(fill="x")
+        self.bpay = BluePay(self, f, self.upd)
         self.go = self.app.btn(bb, "Gia hạn", self.renew); self.go.pack(side="right")
         self.upd()
 
+    def _set(self, v, clear):
+        self.days = v
+        if clear: self.x.delete(0, "end")
+
+    def pay(self):
+        t0 = ctv(self.prof, self.per * self.days); pz, bp = self.promo, self.bpay
+        p1 = pz.price(t0) if pz else t0; bu = bp.use(p1) if bp else 0
+        return t0, p1, bu, p1 - bu
+
     def upd(self):
-        self.cd.paint(); tot = self.per * self.days; bal = num((self.prof or {}).get("balance"))
-        self.sum.config(text=f"{vnd(self.per)} × {self.days} ngày = {vnd(tot)}" + (f"  (thiếu {vnd(tot - bal)})" if bal < tot else ""))
-        self.go.config(text="Đang gia hạn…" if self.busy else ("Nạp thêm tiền" if bal < tot else f"Gia hạn · {vnd(tot)}"), state="disabled" if self.busy else "normal")
+        if not self.alive or not getattr(self, "go", None): return
+        self.cd.paint()
+        if self.promo: self.promo.order_changed()
+        t0, p1, bu, tot = self.pay(); bal = num((self.prof or {}).get("balance"))
+        if self.bpay: self.bpay.paint(p1)
+        exp = parse_iso(self.p.get("expires_at")); base = max(now_utc(), exp) if exp else now_utc()
+        new = (base + datetime.timedelta(days=self.days)).astimezone().strftime("%H:%M %d/%m/%Y")
+        self.sum.config(text=f"Đơn giá {vnd(ctv(self.prof, self.per))} / ngày" + (f" (CTV −{int(num(self.prof.get('ctv_discount')))}%)" if is_ctv(self.prof) else "")
+                        + f"  ·  Hạn mới: {new}\nThanh toán: {vnd(tot)}" + (f" (🏷️ −{vnd(t0 - p1)})" if p1 < t0 else "")
+                        + (f" (💎 −{blue_n(bu)} Blue)" if bu > 0 else "") + f"   ·   Số dư: {vnd(bal)}")
+        self.err.config(text="" if tot <= bal else "Số dư không đủ — cần nạp thêm " + vnd(tot - bal) + ".")
+        self.go.config(text="Đang gia hạn…" if self.busy else (("💎 " if tot <= 0 and bu > 0 else "") + f"Gia hạn {self.days} ngày" if tot <= bal else "Nạp tiền"),
+                       state="disabled" if self.busy else "normal")
 
     def renew(self):
         if self.busy: return
-        tot = self.per * self.days; bal = num((self.prof or {}).get("balance"))
-        if bal < tot: self.close(); return self.app.open_topup(tot - bal)
+        self.promo.ensure(self._renew, self.err)
+
+    def _renew(self):
+        import tkinter.messagebox as mb
+        t0, p1, bu, tot = self.pay(); bal = num((self.prof or {}).get("balance")); code = self.promo.send()
+        if tot > bal: self.close(); return self.app.open_topup(tot - bal)
+        extra = (f"\n🏷️ Mã {code}: −{vnd(t0 - p1)}" if code else "") + (f"\n💎 Trả {blue_n(bu)} Blue" if bu > 0 else "")
+        if not mb.askyesno("Gia hạn", f"Gia hạn “{self.p.get('name')}” thêm {self.days} ngày, trừ {vnd(tot)} từ số dư?" + extra, parent=self.win): return
         self.busy = True; self.err.config(text=""); self.upd(); d = self.days
+        args = {"p_id": self.p["id"], "p_days": d}
+        if code: args["p_promo"] = code
+        if bu > 0: args["p_blue"] = True
         def done(_):
-            import tkinter.messagebox as mb
-            self.busy = False; self.close(); self.app.refresh(quiet=True)
+            self.busy = False; BLUE["t"] = 0; self.close(); self.app.refresh(quiet=True)
             mb.showinfo("CloudBlue", f"Đã gia hạn +{d} ngày — máy chủ ghi hạn mới trong ít giây.", parent=self.app.root)
         def fail(e):
-            self.busy = False; self.err.config(text=real_err(e)); self.upd()
-        self.bg(lambda: self.app.auth.rpc("realphone_renew", {"p_id": self.p["id"], "p_days": d}), done, fail)
+            self.busy = False; self.promo.fail(e); self.err.config(text=real_err(e)); self.upd()
+        self.bg(lambda: self.app.auth.rpc("realphone_renew", args), done, fail)
 
 class LookDlg(Dlg):
     """16/11 · 🎨 Giao diện: thanh chỉnh CỠ CHỮ 80–130% (bấm Áp dụng → app mở lại với cỡ mới, nhớ theo máy) · ẩn / hiện ô ưu đãi đầu danh sách."""

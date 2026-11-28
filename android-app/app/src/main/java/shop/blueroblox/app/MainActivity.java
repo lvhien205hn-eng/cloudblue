@@ -2099,7 +2099,7 @@ public class MainActivity extends Activity {
     }
 
     /** Bọc 1 nhóm lựa chọn vào thẻ viền neon cho gọn mắt. */
-    private View boxed(View v) {
+    View boxed(View v) {                        // 28/11f: RealPhone dùng chung (hộp thuê máy thật y hệt ĐT đám mây)
         LinearLayout c = Ui.card(this);
         c.setPadding(Ui.dp(14), Ui.dp(12), Ui.dp(14), Ui.dp(14));
         c.addView(v, Ui.fill());
@@ -2187,7 +2187,7 @@ public class MainActivity extends Activity {
     interface IntSet { void set(int v); }
     interface IntGet { int get(); }
 
-    private View group(String title, int[] vals, int min, int max, String suf, IntSet set, IntGet get) {
+    View group(String title, int[] vals, int min, int max, String suf, IntSet set, IntGet get) {
         LinearLayout g = Ui.col(this, 8);
         LinearLayout hr = Ui.row(this, 8);
         hr.addView(Ui.text(this, title, 14, Ui.MUTED, true), Ui.weight(1));

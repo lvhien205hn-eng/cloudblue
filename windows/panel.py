@@ -879,8 +879,9 @@ Write-Host '[OK] Khong ngu, khong tat man hinh'
         self.job("Máy khách cần làm mới", [PY, "run.py", "remake.py", "list"], done=ask)
 
     def optimize(self):
-        if not messagebox.askyesno("Tối ưu Windows", "Bật chế độ hiệu năng cao, không cho máy ngủ, cho Windows Defender bỏ qua thư mục MEmu/BlueRoblox "
-                                   "(đỡ giật ổ cứng), tắt quay màn hình nền của Xbox Game Bar?\nWindows sẽ hỏi quyền Admin."): return
+        if not messagebox.askyesno("Tối ưu Windows", "Bật chế độ hiệu năng cao, không cho máy ngủ, cho Windows Defender bỏ qua thư mục giả lập + CloudBlue "
+                                   "(đỡ giật ổ cứng — máy không có Defender thì bỏ qua), tắt quay màn hình nền của Xbox Game Bar, bật đồng bộ giờ, "
+                                   "TLS 1.2 cho PowerShell?\nWindows sẽ hỏi quyền Admin."): return
         log = os.path.join(LOGS, "optimize.log")
         try: os.remove(log)
         except OSError: pass
@@ -888,15 +889,26 @@ Write-Host '[OK] Khong ngu, khong tat man hinh'
 powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null | Out-Null
 $u = (powercfg -list | Select-String 'Ultimate|Hiệu năng tối đa' | Select-Object -First 1)
 if ($u) { powercfg -setactive (($u -split '\s+')[3]) } else { powercfg -setactive SCHEME_MIN }
-powercfg /change standby-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /hibernate off
+powercfg /change standby-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /change monitor-timeout-ac 0; powercfg /hibernate off
 Write-Host '[OK] Che do hieu nang cao, khong ngu'
-$M = @('C:\Program Files\Microvirt', 'D:\Program Files\Microvirt', 'C:\blue') | Where-Object { Test-Path $_ }
-foreach ($d in $M) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue }
-foreach ($x in 'MEmuHeadless.exe','MEmu.exe','MEmuConsole.exe','memuc.exe','adb.exe','node.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
-Write-Host '[OK] Defender bo qua MEmu + BlueRoblox'
+$M = @('C:\blue', 'C:\Program Files\Microvirt', 'D:\Program Files\Microvirt', 'C:\Program Files\Netease', 'D:\Program Files\Netease', 'C:\Program Files\MuMuPlayerGlobal-12.0', 'D:\Program Files\MuMuPlayerGlobal-12.0', 'C:\LDPlayer', 'D:\LDPlayer', 'C:\leidian', 'D:\leidian') | Where-Object { Test-Path $_ }
+if (Get-Command Add-MpPreference -ErrorAction SilentlyContinue) {
+  foreach ($d in $M) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue }
+  foreach ($x in 'MEmuHeadless.exe','MEmu.exe','MEmuConsole.exe','memuc.exe','MuMuVMMHeadless.exe','MuMuNxDevice.exe','MuMuNxMain.exe','MuMuVMMSVC.exe','MuMuPlayer.exe','dnplayer.exe','Ld9BoxHeadless.exe','adb.exe','node.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
+  Write-Host '[OK] Defender bo qua thu muc gia lap + CloudBlue'
+} else { Write-Host '[--] May khong co Windows Defender - bo qua (binh thuong voi Windows ban rut gon)' }
 reg add HKCU\System\GameConfigStore /v GameDVR_Enabled /t REG_DWORD /d 0 /f | Out-Null
 reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR /v AllowGameDVR /t REG_DWORD /d 0 /f | Out-Null
 Write-Host '[OK] Tat Xbox Game DVR'
+sc.exe config w32time start= auto 2>$null | Out-Null
+net start w32time 2>$null | Out-Null
+w32tm /config /manualpeerlist:"time.windows.com,0x9 time.google.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update 2>$null | Out-Null
+w32tm /resync /force 2>$null | Out-Null
+Write-Host '[OK] Dong bo gio Windows (dong ho lech -> web bao may chu mat ket noi nham)'
+foreach ($k in 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319') {
+  if (Test-Path $k) { Set-ItemProperty -Path $k -Name SchUseStrongCrypto -Value 1 -Type DWord -ErrorAction SilentlyContinue; Set-ItemProperty -Path $k -Name SystemDefaultTlsVersions -Value 1 -Type DWord -ErrorAction SilentlyContinue }
+}
+Write-Host '[OK] PowerShell / .NET dung TLS 1.2 (Windows cu het loi SSL/TLS)'
 """, log)
         self.tail(log, "Tối ưu Windows", 300)
 

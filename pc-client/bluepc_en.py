@@ -3343,6 +3343,24 @@ TPL.extend([
 ["Đã gia hạn +{0} ngày — máy chủ ghi hạn mới trong ít giây.", "Renewed +{0} days — the server updates the expiry in a few seconds."],
 ])
 
+# 28/11f · BlueReal y hệt hộp thuê ĐT đám mây: số máy · mã giảm giá · 💎 Blue · giá CTV
+EXACT.update({
+"Chọn mẫu máy": "Choose a model",
+"Chạy game / app y như máy thật, điều khiển bằng app này, web hoặc app Android.": "Games and apps run just like on a real phone — control it from this app, the web or the Android app.",
+"Tên máy (tuỳ chọn)": "Phone name (optional)",
+"Điện thoại THẬT đặt tại shop, đã xoá sạch dữ liệu khách trước. Hết hạn máy tạm dừng — gia hạn trong 30 phút, quá thời gian app + dữ liệu của bạn bị xoá, máy về lại shop.":
+    "A REAL phone hosted at our shop, wiped before every rental. When it expires it pauses — renew within 30 minutes; after that your apps and data are wiped and the phone goes back to the shop.",
+})
+TPL.extend([
+["còn {0} máy rảnh", "{0} free"],
+["{0} × {1} ngày − {2}% CTV", "{0} × {1} days − {2}% CTV"],
+["{0} × {1} ngày × {2} máy − {3}% CTV", "{0} × {1} days × {2} phones − {3}% CTV"],
+["Mẫu này chỉ còn {0} máy rảnh — giảm số máy.", "Only {0} phones of this model are free — pick fewer."],
+["📱 {0} · Android {1} · {2} máy · {3} ngày", "📱 {0} · Android {1} · {2} phone(s) · {3} days"],
+["Đã thuê {0} máy {1} · {2} ngày — máy đang được chuẩn bị (thường dưới 1 phút).", "Rented {0} × {1} for {2} days — getting them ready (usually under a minute)."],
+["🏷️ Mã {0}: −{1}", "🏷️ Code {0}: −{1}"],
+])
+
 
 def _tpl():
     global _T

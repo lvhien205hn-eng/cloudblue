@@ -311,7 +311,7 @@ def out(r):
 #   POST {do: "update"} → tải sua-tat-ca.py mới nhất từ GitHub rồi chạy `--tu-dong` TÁCH RỜI (nó sẽ tắt + bật lại chính cpapi) — y như lệnh A
 #   POST {do: <việc>}   → chỉ các việc ghi sẵn trong NODE_ACTS (không nhận lệnh tự gõ); việc mất dữ liệu / tắt máy phải gõ đúng mã máy chủ.
 # Các nút cần khoá bí mật (Supabase, Cloudflare, mật khẩu Windows) KHÔNG có ở đây — chỉ làm tại bảng CloudBlue trên máy chủ.
-CPAPI_VER = "28/11e"
+CPAPI_VER = "28/11f"
 NODE_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 NODE_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SUA_FILE = os.path.join(HOME, "sua-tat-ca.py")
@@ -332,15 +332,26 @@ NODE_OPTIMIZE_PS = r"""
 powercfg -duplicatescheme e9a42b02-d5df-448d-aa00-03f14749eb61 2>$null | Out-Null
 $u = (powercfg -list | Select-String 'Ultimate|Hiệu năng tối đa' | Select-Object -First 1)
 if ($u) { powercfg -setactive (($u -split '\s+')[3]) } else { powercfg -setactive SCHEME_MIN }
-powercfg /change standby-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /hibernate off
+powercfg /change standby-timeout-ac 0; powercfg /change hibernate-timeout-ac 0; powercfg /change monitor-timeout-ac 0; powercfg /hibernate off
 Write-Host '[OK] Che do hieu nang cao, khong ngu'
-$M = @('C:\Program Files\Microvirt', 'D:\Program Files\Microvirt', 'C:\blue') | Where-Object { Test-Path $_ }
-foreach ($d in $M) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue }
-foreach ($x in 'MEmuHeadless.exe','MEmu.exe','MEmuConsole.exe','memuc.exe','adb.exe','node.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
-Write-Host '[OK] Defender bo qua thu muc gia lap + CloudBlue'
+$M = @('C:\blue', 'C:\Program Files\Microvirt', 'D:\Program Files\Microvirt', 'C:\Program Files\Netease', 'D:\Program Files\Netease', 'C:\Program Files\MuMuPlayerGlobal-12.0', 'D:\Program Files\MuMuPlayerGlobal-12.0', 'C:\LDPlayer', 'D:\LDPlayer', 'C:\leidian', 'D:\leidian') | Where-Object { Test-Path $_ }
+if (Get-Command Add-MpPreference -ErrorAction SilentlyContinue) {
+  foreach ($d in $M) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue }
+  foreach ($x in 'MEmuHeadless.exe','MEmu.exe','MEmuConsole.exe','memuc.exe','MuMuVMMHeadless.exe','MuMuNxDevice.exe','MuMuNxMain.exe','MuMuVMMSVC.exe','MuMuPlayer.exe','dnplayer.exe','Ld9BoxHeadless.exe','adb.exe','node.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
+  Write-Host '[OK] Defender bo qua thu muc gia lap + CloudBlue'
+} else { Write-Host '[--] May khong co Windows Defender - bo qua (binh thuong voi Windows ban rut gon)' }
 reg add HKCU\System\GameConfigStore /v GameDVR_Enabled /t REG_DWORD /d 0 /f | Out-Null
 reg add HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR /v AllowGameDVR /t REG_DWORD /d 0 /f | Out-Null
 Write-Host '[OK] Tat Xbox Game DVR'
+sc.exe config w32time start= auto 2>$null | Out-Null
+net start w32time 2>$null | Out-Null
+w32tm /config /manualpeerlist:"time.windows.com,0x9 time.google.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update 2>$null | Out-Null
+w32tm /resync /force 2>$null | Out-Null
+Write-Host '[OK] Dong bo gio Windows (dong ho lech -> web bao may chu mat ket noi nham)'
+foreach ($k in 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319') {
+  if (Test-Path $k) { Set-ItemProperty -Path $k -Name SchUseStrongCrypto -Value 1 -Type DWord -ErrorAction SilentlyContinue; Set-ItemProperty -Path $k -Name SystemDefaultTlsVersions -Value 1 -Type DWord -ErrorAction SilentlyContinue }
+}
+Write-Host '[OK] PowerShell / .NET dung TLS 1.2 (Windows cu het loi SSL/TLS)'
 """
 
 
@@ -3224,6 +3235,6 @@ if __name__ == "__main__":
     for f in os.listdir(UP_DIR):          # dọn file tải dở từ lần chạy trước
         try: os.remove(os.path.join(UP_DIR, f))
         except OSError: pass
-    log(f"cpapi bản 28/11e chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
+    log(f"cpapi bản 28/11f chạy ở {LISTEN[0]}:{LISTEN[1]} → bảo vệ ws-scrcpy {UPSTREAM[1]}, trang chủ {SELF_ORIGIN}" + (f", đường thẳng {FAST_ORIGIN}" if FAST_ORIGIN else "")
         + f" · khởi động lại / đổi cấu hình chờ tối đa {PCTL_LONG // 60} phút")
     Server(LISTEN, H).serve_forever()

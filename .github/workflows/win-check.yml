@@ -20,6 +20,8 @@ on:
       - "cloudphoned.py"
       - "windows/sua-tat-ca.py"
       - "windows/phonectl.py"
+      - "windows/panel.py"
+      - "windows/bluestream.py"
       - ".github/win-check/**"
       - ".github/workflows/win-check.yml"
   workflow_dispatch:
@@ -48,6 +50,8 @@ jobs:
         run: python3 .github/win-check/test_move.py
       - name: Công cụ máy với điện thoại THẬT cắm USB — BlueReal (28/11e)
         run: python3 .github/win-check/test_cpapi_real.py
+      - name: Tự dọn máy kẹt · máy không mở N ngày · giờ máy chủ · Windows 1511 ổn định · ảnh nền Android 13+ (28/11f)
+        run: python3 .github/win-check/test_2811f.py
 
   emu:
     needs: sim

@@ -1,6 +1,6 @@
 # cloudblue-may-chu-iso
 # =====================================================================================================
-#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 23.11o)
+#  may-chu-iso.ps1 - TU CAI MAY CHU CLOUD PHONE sau khi cai Windows tu "ISO may chu CloudBlue"   (ban 28.11f)
 #  Tac vu "CloudBlue cai may chu" goi script nay moi lan dang nhap, cho toi khi XONG: tu lam tiep cho dang do, tu khoi dong lai khi can.
 #  Cau hinh: C:\blue\iso\may-chu.conf (bo tao ISO ghi - CO KHOA BI MAT: khong gui ai, khong dua len mang):
 #     DOMAIN  SUPABASE_URL  SUPABASE_SERVICE_KEY  CF_API_TOKEN (tuy chon)  CF_DNS_TOKEN (tuy chon)  LE_AGREE  EMU (mumu | ld)  NODE (tuy chon)
@@ -25,7 +25,7 @@
 param([switch]$Lib)
 $Conf = ''                     # -Conf <tep>: doc tay (ban 23.11k-m goi lai chinh no bang "-Conf" khong gia tri -> khong duoc bao loi tham so)
 for ($ai = 0; $ai -lt $args.Count; $ai++) { if ((("" + $args[$ai]) -eq '-Conf') -and (($ai + 1) -lt $args.Count)) { $Conf = "" + $args[$ai + 1] } }
-$MC_VER = '23.11o'
+$MC_VER = '28.11f'
 $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 $B = 'C:\blue'
@@ -695,10 +695,21 @@ function Optimize-Windows([string]$emuDir) {
   $u = (& powercfg.exe -list | Select-String 'Ultimate' | Select-Object -First 1)
   if ($u) { & powercfg.exe -setactive ((("" + $u) -split '\s+')[3]) | Out-Null } else { & powercfg.exe -setactive SCHEME_MIN | Out-Null }
   & powercfg.exe /hibernate off 2>$null | Out-Null
-  foreach ($d in @($B, $emuDir)) { if ($d -and (Test-Path -LiteralPath $d)) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue } }
-  foreach ($x in 'adb.exe', 'node.exe', 'MuMuVMMHeadless.exe', 'MuMuNxDevice.exe', 'dnplayer.exe', 'Ld9BoxHeadless.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
+  # 28.11f: Windows ban rut gon (1511 Lite) khong co Windows Defender -> Add-MpPreference khong ton tai (truoc: loi, bo luon phan con lai)
+  if (Get-Command Add-MpPreference -ErrorAction SilentlyContinue) {
+    foreach ($d in @($B, $emuDir)) { if ($d -and (Test-Path -LiteralPath $d)) { Add-MpPreference -ExclusionPath $d -ErrorAction SilentlyContinue } }
+    foreach ($x in 'adb.exe', 'node.exe', 'MuMuVMMHeadless.exe', 'MuMuNxDevice.exe', 'dnplayer.exe', 'Ld9BoxHeadless.exe') { Add-MpPreference -ExclusionProcess $x -ErrorAction SilentlyContinue }
+  }
   & reg.exe add HKCU\System\GameConfigStore /v GameDVR_Enabled /t REG_DWORD /d 0 /f | Out-Null
   & reg.exe add HKLM\SOFTWARE\Policies\Microsoft\Windows\GameDVR /v AllowGameDVR /t REG_DWORD /d 0 /f | Out-Null
+  # 28.11f: dong ho dung gio (lech vai phut -> web bao may chu "Mat ket noi" nham) + PowerShell / .NET dung TLS 1.2 (Windows cu)
+  & sc.exe config w32time start= auto 2>$null | Out-Null
+  & net.exe start w32time 2>$null | Out-Null
+  & w32tm.exe /config /manualpeerlist:"time.windows.com,0x9 time.google.com,0x9 pool.ntp.org,0x9" /syncfromflags:manual /update 2>$null | Out-Null
+  & w32tm.exe /resync /force 2>$null | Out-Null
+  foreach ($k in 'HKLM:\SOFTWARE\Microsoft\.NETFramework\v4.0.30319', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\.NETFramework\v4.0.30319') {
+    if (Test-Path $k) { Set-ItemProperty -Path $k -Name SchUseStrongCrypto -Value 1 -Type DWord -ErrorAction SilentlyContinue; Set-ItemProperty -Path $k -Name SystemDefaultTlsVersions -Value 1 -Type DWord -ErrorAction SilentlyContinue }
+  }
 }
 
 function Get-PanelProcs {

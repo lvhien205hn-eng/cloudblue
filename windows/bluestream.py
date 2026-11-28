@@ -28,6 +28,33 @@ import asyncio, base64, collections, ctypes, datetime, hashlib, json, logging, o
 import urllib.error, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 
+
+def _ssl_ca_extra():
+    """28/11f · Windows cũ (10 1511 Lite): kho chứng chỉ gốc của Windows có thể thiếu → tải scrcpy-server / cbvideo / FFmpeg từ GitHub báo
+       CERTIFICATE_VERIFY_FAILED. Nạp THÊM bộ chứng chỉ gốc Mozilla có sẵn trên máy (certifi / bản trong pip / CloudBlue PC) — chỉ thêm, không bớt."""
+    if os.name != "nt" or getattr(ssl, "_cb_extra", None) is not None: return
+    try:
+        cands = [os.environ.get("SSL_CERT_FILE") or "", r"C:\CloudBluePC\os\cacert.pem"]
+        for mod in ("certifi", "pip._vendor.certifi"):
+            try: cands.append(__import__(mod, fromlist=["where"]).where())
+            except Exception: pass
+        extra = [x for x in dict.fromkeys(cands) if x and os.path.isfile(x)]
+        ssl._cb_extra = extra
+        if not extra: return
+        base, keep = ssl._create_default_https_context, {}
+        def ctx(*a, **k):
+            if a or k or "c" not in keep:
+                c = base(*a, **k)
+                for x in extra:
+                    try: c.load_verify_locations(cafile=x)
+                    except Exception: pass
+                if a or k: return c
+                keep["c"] = c
+            return keep["c"]
+        ssl._create_default_https_context = ctx
+    except Exception: pass
+_ssl_ca_extra()
+
 WIN = os.name == "nt"
 B = os.path.dirname(os.path.abspath(__file__))
 RTC = os.path.join(B, "rtc"); os.makedirs(RTC, exist_ok=True)
@@ -113,7 +140,7 @@ RATE_HOLD_MIN, RATE_HOLD_MAX, RATE_MEM_S = 40.0, 600.0, 900.0
 LAG_DROP_MS = {"direct": max(150, _int_conf("STREAM_LAG_MS", 350)), "ws": max(150, _int_conf("STREAM_WS_LAG_MS", 700))}
 RATE_DOWN_GAP, RATE_UP_GAP, CONG_REPEAT, CONG_WIN = 8.0, 45.0, 3, 20.0
 BS_VER = "11/12b"
-BS_SUB = "28/11e"                         # bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
+BS_SUB = "28/11f"                         # 28/11f: tải tệp từ GitHub thêm chứng chỉ gốc Mozilla (Windows 10 1511 Lite thiếu chứng chỉ) · bản phụ (giữ BS_VER cho capnhat-ngu.ps1 / kiemlag.py): 17/11e dán vào Termux + hết kẹt hình vỡ sau mạng yếu
                                           # · 27/11e ANDROID 9 MƯỢT: hình ≤ 960, khung I thưa, bỏ khung → bật lại bộ nén ngay, khó bỏ khung oan,
                                           #   không dumpsys sau mỗi cú bấm; Thông số có "bộ nén Android ra … khung/s" + bỏ khung vì đâu (máy MuMu không đổi)
                                           # · 21/11a TRẠM TRUNG CHUYỂN máy PC cho thuê (pcrelay.py) — phần máy điện thoại KHÔNG đổi
@@ -5171,6 +5198,8 @@ async def main():
     _cbv_enc = (f"nén bằng openh264 (libcbenc md5 {CBV_LIB[1][:8]}, {CBV_THREADS} luồng)" if CBV_ENC != "omx" and len(CBV_LIB[1]) == 32
                 else "nén bằng bộ nén của Android (STREAM_CBV_ENC=omx)")
     log("bản 28/11e: 📱 mở được điện thoại THẬT cắm USB (BlueReal, SQL v70) — hình + điều khiển thẳng qua adb theo số máy")
+    log("bản 28/11f: tải tệp an toàn trên Windows cũ — thêm chứng chỉ gốc Mozilla (certifi / pip / CloudBlue PC)"
+        + (f": {len(getattr(ssl, '_cb_extra', None) or [])} bộ" if WIN else " (chỉ Windows)"))
     log(f"bản 28/11b: tự phát hiện màn hình máy bị vẽ hỏng (rác màu) — " + (f"khách mở máy là đo (sau {GFX_FIRST_S:g} giây, rồi mỗi "
         f"{GFX_EVERY_S:g} giây; nhiễu ≥ {GFX_BAD:g} + đứng yên → web / app nhắc + nút Khởi động lại máy)" if GFX_CHECK else "TẮT (GFX_CHECK=0)")
         + " · admin sửa hết một lượt: python bluestream.py --quetnhieu --sua")
