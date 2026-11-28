@@ -9,6 +9,8 @@ import re
 EXACT = {
 "Bản app này đã cũ — phải cập nhật mới dùng tiếp được.": "This app version is too old — please update to keep using it.",
 "Sai email hoặc mật khẩu.": "Wrong email or password.",
+"trực tiếp": "direct",
+"trung chuyển": "relay",
 "Email chưa xác nhận — mở hộp thư để xác nhận.": "Email not confirmed — open your inbox to confirm it.",
 "Phiên đăng nhập hết hạn, hãy đăng nhập lại.": "Your session has expired — please log in again.",
 "Hãy đăng nhập.": "Please log in.",
@@ -1411,6 +1413,10 @@ TPL = [
 "{0} fps · {1} Mbps · latency {2} ms · {3} · {4}"
 ],
 [
+"{0} khung/s · {1} Mbps · trễ mạng {2} ms · {3}",
+"{0} fps · {1} Mbps · latency {2} ms · {3}"
+],
+[
 "Dành cho tài khoản đã nạp 1 lần từ {0}. ",
 "For accounts that have topped up once from {0}. "
 ],
@@ -2416,6 +2422,11 @@ SRV_R = [
 [
 "Không lấy được hình từ cửa sổ máy — thử mở lại\\.",
 "Couldn't get the phone's picture — try reopening it.",
+""
+],
+[
+"Máy chủ chưa lấy được hình của máy này — thử mở lại\\.",
+"The server couldn't get this phone's picture yet — try reopening it.",
 ""
 ],
 [
