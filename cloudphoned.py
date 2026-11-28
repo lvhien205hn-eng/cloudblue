@@ -168,11 +168,20 @@ def want(row):
     """RAM/CPU THẬT sẽ cấp cho đơn: Windows/MEmu tối đa 16GB · 16 nhân mỗi máy (gói to hơn vẫn nhận, chạy mức tối đa)."""
     r, c = float(row.get("ram") or 0), float(row.get("cpu") or 0)
     return (min(r, MEMU_MAX_RAM), min(c, MEMU_MAX_CPU)) if WIN else (r, c)
-def win_caps(st):
+def caps_stop(a_r, a_c, c_r, c_c, why):
+    """28/11h · sức chứa BÁN từ sức chứa thật + lý do ngừng nhận (win_caps full=True): CPU nóng → hết chỗ nhân · RAM chính đầy / ổ đầy → hết
+       chỗ RAM · card đồ hoạ / VRAM quá tải, đủ số máy → hết chỗ cả hai (đơn mới sang máy chủ khác). Máy đang có vẫn chạy bình thường."""
+    if "cpu" in why or "cpu1" in why: c_c = a_c
+    if "ram" in why or "disk" in why: c_r = a_r
+    if any(w in why for w in ("gpu", "gpu_stuck", "vram", "vms")): c_r, c_c = a_r, a_c
+    return c_r, c_c
+def win_caps(st, full=False):
     """Windows: sức chứa theo RAM TRỐNG THẬT (máy ảo đang chạy đã trừ sẵn) chứ không cộng dồn cấu hình;
-       CPU dùng chung (72 luồng) → chỉ ngừng khi CPU thật đã nóng. Trả (đã cấp RAM, đã cấp CPU, trần RAM, trần CPU)."""
+       CPU dùng chung (72 luồng) → chỉ ngừng khi CPU thật đã nóng. Trả (đã cấp RAM, đã cấp CPU, trần RAM, trần CPU).
+       28/11h: full=True → (đã cấp RAM, đã cấp CPU, sức chứa THẬT RAM, sức chứa THẬT CPU, [lý do ngừng nhận]) — sức chứa thật theo RAM CHÍNH
+       + luồng của MỌI CPU, không kéo về "đã cấp" khi ngừng nhận vì card / ổ / CPU nóng (web hiện đúng, lý do ngừng báo riêng)."""
     a_r = sum(min(float(p.get("ram", 0)), MEMU_MAX_RAM) for p in st); a_c = sum(min(float(p.get("cpu", 0)), MEMU_MAX_CPU) for p in st)
-    t_r, av_r = meminfo(); cpu_t = os.cpu_count() or 1
+    t_r, av_r = meminfo(); cpu_t = cpu_threads()
     hot = bool(t_r) and 100 * (1 - av_r / t_r) >= RAM_BUSY   # RAM THẬT đã đầy (chưa tính phần giữ cho máy ngủ)
     av_r -= sleep_reserve(st)[0]                              # máy NGỦ bật lại khi khách mở → chừa RAM thật của chúng, không bán
     c_r = a_r + max(0.0, av_r - WIN_RESERVE - 1)             # −1GB: khớp phonectl create (máy mới cần thêm 1GB) → web / nhận đơn / tạo máy cùng một mức, không nhận rồi hoàn tiền
@@ -184,12 +193,16 @@ def win_caps(st):
         c_c = max(a_c, min(c_c, cpu_t * WIN_VCPU_OVER))      # TỰ GIỚI HẠN: tổng nhân ảo không vượt số luồng thật
     if CAP_RAM > 0:                                          # 14/11: trần cứng RAM (112GB · không vượt RAM thật − phần của Windows)
         c_r = max(a_r, min(c_r, CAP_RAM, (t_r - WIN_RESERVE) if t_r else CAP_RAM))
-    if (cpu_avg5() or 0) >= CPU_BUSY: c_c = a_c
-    if hot: c_r = a_r
-    if disk_full(): c_r = a_r
-    if gpu_busy(): c_r, c_c = a_r, a_c                         # card đồ hoạ / VRAM quá tải → hết chỗ, đơn mới sang máy chủ khác
-    if MEMU_MAX_VMS > 0 and len(st) >= MEMU_MAX_VMS: c_r, c_c = a_r, a_c   # đủ số máy tối đa → báo HẾT CHỖ, web ngừng bán
-    return a_r, a_c, c_r, c_c
+    why = []                                                 # lý do NGỪNG NHẬN máy mới (sức chứa thật vẫn giữ để báo web)
+    if (cpu_avg5() or 0) >= CPU_BUSY: why.append("cpu")      # CPU thật nóng
+    elif (cpu_hot5() or 0) >= CPU_HOT: why.append("cpu1")     # 28/11h: TB cả máy chưa nóng nhưng 1 nhóm CPU (1 CPU) đã gần đầy
+    if hot: why.append("ram")                                # RAM chính đã đầy
+    if disk_full(): why.append("disk")
+    g = gpu_busy()
+    if g: why.append(g)                                      # card đồ hoạ / VRAM quá tải → hết chỗ, đơn mới sang máy chủ khác
+    if MEMU_MAX_VMS > 0 and len(st) >= MEMU_MAX_VMS: why.append("vms")   # đủ số máy tối đa → báo HẾT CHỖ, web ngừng bán
+    if full: return a_r, a_c, c_r, c_c, why
+    return (a_r, a_c) + caps_stop(a_r, a_c, c_r, c_c, why)
 
 def local_load():
     """(phần trăm đã cấp, còn RAM, còn CPU) của server này theo ngưỡng LIMIT_PCT."""
@@ -200,7 +213,7 @@ def local_load():
         a_r, a_c, c_r, c_c = win_caps(st)
         # 16/11: độ bận tính cả NHÂN đã cấp → máy chủ còn trống nhiều (RAM lẫn nhân) nhận đơn trước, máy sắp đầy chờ thêm vài giây
         return max(a_r / max(c_r, 1), a_c / max(c_c, 1), (cpu_avg5() or 0) / 100, gl), sell_cap(a_r, c_r) - a_r, sell_cap(a_c, c_c) - a_c
-    ram_t = meminfo()[0]; cpu_t = os.cpu_count() or 1
+    ram_t = meminfo()[0]; cpu_t = cpu_threads()
     a_r = sum(float(p.get("ram", 0)) for p in st); a_c = sum(float(p.get("cpu", 0)) for p in st)
     c_r, c_c = ram_t * LIMIT_PCT / 100 * RAM_OVER, cpu_t * CPU_OVER
     busy = (cpu_avg5() or 0) >= CPU_BUSY
@@ -1498,7 +1511,7 @@ def _bg_apps():
 # KHÁCH NHẤT — mọi máy chủ đọc cùng bảng nên cùng chọn 1 máy) tự cài (hỏi GitHub 15 phút / lần). Chạy ổn đủ thời gian chờ → các máy chủ
 # khác tự theo như trên. Bản thử hỏng (2 lần) → dừng ở đó, báo Telegram, các máy chủ khác KHÔNG cài bản đó.
 # Tắt cho mọi máy chủ: web admin (settings.data.node_update.auto = false) · tắt riêng máy chủ này: TU_CAP_NHAT=0 trong cloudphone.conf.
-CPD_VER = "28/11f"
+CPD_VER = "28/11h"
 SW_STATE_F = os.path.join(HOME, "logs", "cap-nhat.json")
 SW_LOG_F = os.path.join(HOME, "logs", "cap-nhat.log")
 SW_TRIES_F = os.path.join(HOME, "logs", "cap-nhat-tu-dong.json")
@@ -1731,6 +1744,141 @@ def meminfo():
         k, v = line.split(":", 1); m[k] = int(v.split()[0])
     return m.get("MemTotal", 0) / 1048576, m.get("MemAvailable", 0) / 1048576
 
+# ---------- 28/11h · CPU ĐỦ CẢ 2 CPU + RAM CHÍNH (máy chủ Windows) ----------
+# User 28/11 21:40: "máy x2 CPU mà toàn thấy báo 1 CPU · RAM cứ lấy RAM chính mà dùng, đến full mới dùng RAM ảo".
+#  • Máy > 64 luồng (VD 2× Xeon 18 nhân = 72 luồng): Windows chia CPU thành NHÓM (mỗi nhóm ≤ 64 luồng, thường 1 nhóm / CPU). Cách đo cũ
+#    (GetSystemTimes qua run.py) có thể chỉ cộng nhóm của luồng đang đo → "CPU thật" chỉ là 1 CPU. Giờ đọc giờ CPU TỪNG NHÓM
+#    (NtQuerySystemInformationEx) rồi cộng; đếm luồng mọi nhóm + số CPU (socket) + % từng CPU → web: "2 CPU · 72 luồng · CPU 1 x% · CPU 2 y%".
+#  • Sức chứa báo web (cap_*_full) = RAM CHÍNH thật + luồng mọi CPU, KHÔNG bị kéo về "đã cấp" khi máy chủ ngừng nhận vì lý do KHÁC (card kẹt
+#    xung, ổ đầy, máy mới không lên…): lý do báo riêng (metrics.stop). Trước: card kẹt xung → web hiện 31/31 nhân, 41/41 GB (tưởng CPU / RAM
+#    đầy) dù RAM chính mới dùng 1/3. Bán máy vẫn ngừng như cũ (cap_cpu / cap_ram = đã cấp) tới khi hết lý do.
+#  • RAM ảo (tệp hoán đổi của Windows) báo riêng để xem: bán máy chỉ theo RAM chính; Windows chỉ dùng nhiều RAM ảo khi RAM chính đầy.
+_CPU = {"info": None, "t": 0.0, "prev": None, "sock": None, "grp": None}
+def _lpi_parse(raw, rel, psize=8):
+    """Đọc kết quả GetLogicalProcessorInformationEx: mỗi bản ghi đúng loại rel (3 = 1 CPU / socket, 0 = 1 nhân) → [(nhóm, mặt nạ luồng), …]."""
+    import struct
+    out, off, ga = [], 0, (16 if psize == 8 else 12)
+    while off + 8 <= len(raw):
+        r, size = struct.unpack_from("<II", raw, off)
+        if size < 8 or off + size > len(raw): break
+        if r == rel and size >= 32:
+            gc, ms = struct.unpack_from("<H", raw, off + 30)[0], []
+            for i in range(gc):
+                o = off + 32 + ga * i
+                if o + psize + 2 > off + size: break
+                ms.append((struct.unpack_from("<H", raw, o + psize)[0], struct.unpack_from("<Q" if psize == 8 else "<I", raw, o)[0]))
+            out.append(ms)
+        off += size
+    return out
+def _lpi(rel):
+    import ctypes
+    k = ctypes.windll.kernel32; n = ctypes.c_ulong(0)
+    k.GetLogicalProcessorInformationEx(rel, None, ctypes.byref(n))
+    if not n.value or n.value > 1 << 20: return []
+    buf = ctypes.create_string_buffer(n.value)
+    if not k.GetLogicalProcessorInformationEx(rel, buf, ctypes.byref(n)): return []
+    return _lpi_parse(buf.raw[:n.value], rel, ctypes.sizeof(ctypes.c_void_p))
+def win_cpu_info(force=False):
+    """CPU của máy chủ: {threads (cộng MỌI nhóm CPU), groups, sockets (số CPU), cores, name, pk: [[(nhóm, mặt nạ), …] mỗi CPU]}. Đọc lại 10 phút / lần."""
+    c = _CPU.get("info")
+    if c and not force and time.time() - _CPU["t"] < 600: return c
+    info = {"threads": os.cpu_count() or 1, "groups": 1, "sockets": 0, "cores": 0, "name": "", "pk": []}
+    if WIN:
+        try:
+            import ctypes
+            k = ctypes.windll.kernel32
+            k.GetActiveProcessorCount.restype = ctypes.c_ulong; k.GetActiveProcessorGroupCount.restype = ctypes.c_ushort
+            n, g = int(k.GetActiveProcessorCount(ctypes.c_ushort(0xFFFF))), int(k.GetActiveProcessorGroupCount())   # 0xFFFF = mọi nhóm
+            if n > 0: info["threads"] = n
+            if 0 < g <= 64: info["groups"] = g
+        except Exception: pass
+        try: info["pk"] = _lpi(3)[:16]; info["sockets"] = len(info["pk"])
+        except Exception: pass
+        try: info["cores"] = len(_lpi(0))
+        except Exception: pass
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as kk:
+                info["name"] = " ".join(str(winreg.QueryValueEx(kk, "ProcessorNameString")[0]).split())[:80]
+        except Exception: pass
+    _CPU.update(info=info, t=time.time())
+    return info
+def cpu_threads():
+    """Số luồng CPU thật của CẢ máy (Windows: cộng mọi nhóm CPU — máy 2 CPU tính đủ cả 2)."""
+    try: return max(1, int(win_cpu_info()["threads"])) if WIN else (os.cpu_count() or 1)
+    except Exception: return os.cpu_count() or 1
+def _win_cpu_times():
+    """Giờ CPU từng luồng, đọc TỪNG NHÓM CPU → {(nhóm, số luồng): (bận, tổng)} (100 ns). Không đọc được → None (dùng cách cũ)."""
+    import ctypes, struct
+    k = ctypes.windll.kernel32; nt = ctypes.windll.ntdll
+    k.GetActiveProcessorGroupCount.restype = ctypes.c_ushort; nt.NtQuerySystemInformationEx.restype = ctypes.c_long
+    out = {}
+    for g in range(max(1, min(64, int(k.GetActiveProcessorGroupCount() or 1)))):
+        buf = ctypes.create_string_buffer(48 * 64); ret = ctypes.c_ulong(0); gi = ctypes.c_ushort(g)
+        if nt.NtQuerySystemInformationEx(8, ctypes.byref(gi), 2, buf, 48 * 64, ctypes.byref(ret)) != 0: return None   # 8 = SystemProcessorPerformanceInformation
+        raw = buf.raw
+        for i in range(min(64, ret.value // 48)):
+            idle, kern, user = struct.unpack_from("<qqq", raw, 48 * i)
+            out[(g, i)] = (kern + user - idle, kern + user)       # thời gian nhân (kernel) đã gồm thời gian rảnh
+    return out or None
+def _cpu_split(cur, prev, pk):
+    """(% cả máy, [% từng CPU] khi ≥ 2 CPU, [% từng nhóm] khi ≥ 2 nhóm) giữa 2 lần đọc _win_cpu_times."""
+    def pct(keys):
+        b = a = 0
+        for kk in keys:
+            if kk in prev and kk in cur: b += cur[kk][0] - prev[kk][0]; a += cur[kk][1] - prev[kk][1]
+        return round(max(0.0, min(100.0, 100.0 * b / a)), 1) if a > 0 else None
+    sock = [pct([(g, i) for g, m in ms for i in range(64) if m >> i & 1]) for ms in pk] if len(pk) > 1 else None
+    grps = sorted({g for g, _ in cur})
+    grp = [pct([kk for kk in cur if kk[0] == g]) for g in grps] if len(grps) > 1 else None
+    return pct(list(cur)), sock, grp
+CPU_HOT = max(float(CPU_BUSY), _f("CPU_HOT_PCT", 95))   # 1 nhóm CPU TB 5 phút ≥ ngần này % → ngừng nhận (máy ảo Windows chỉ chạy trong 1 nhóm, chia vòng)
+def cpu_hot5(sample=None):
+    """% của NHÓM CPU NÓNG NHẤT, trung bình ~5 phút (máy ≥ 2 nhóm; 1 nhóm → None). Mỗi máy ảo chỉ chạy trong 1 nhóm (Windows chia vòng
+       lúc tạo tiến trình) → TB cả máy 50% vẫn có thể là 1 CPU đầy 100%: máy mới rơi vào CPU đó sẽ lag → ngừng nhận như CPU nóng."""
+    h = _CPU.setdefault("hot_h", []); t = time.time()
+    if sample is not None: h.append((t, sample))
+    while h and t - h[0][0] > 300: h.pop(0)
+    return round(sum(x for _, x in h) / len(h), 1) if h else None
+if WIN:
+    _cpu_pct_gst = cpu_pct                   # cách cũ (GetSystemTimes qua run.py) — dự phòng khi không đọc được từng nhóm
+    def cpu_pct():
+        """% CPU thật của CẢ máy (mọi nhóm CPU) từ lần đo trước; % từng CPU / nhóm → _CPU["sock"] / _CPU["grp"] (web: thẻ máy chủ)."""
+        try: cur = _win_cpu_times()
+        except Exception: cur = None
+        if not cur:
+            _CPU.update(prev=None, sock=None, grp=None); return _cpu_pct_gst()
+        prev = _CPU.get("prev"); _CPU["prev"] = cur
+        if not prev: return None
+        try: pk = win_cpu_info().get("pk") or []
+        except Exception: pk = []
+        tot, _CPU["sock"], _CPU["grp"] = _cpu_split(cur, prev, pk)
+        g = [x for x in (_CPU["grp"] or []) if x is not None]
+        if g: cpu_hot5(max(g))                # nhóm nóng nhất (máy ≥ 2 nhóm) → chặn bán khi 1 CPU đã đầy
+        return tot
+def win_swap():
+    """RAM ẢO của Windows (tệp hoán đổi): (GB đang dùng, GB tổng) — chỉ để xem, bán máy theo RAM chính. Không đọc được → None."""
+    if not WIN: return None
+    try:
+        import ctypes, struct
+        nt = ctypes.windll.ntdll; nt.NtQuerySystemInformation.restype = ctypes.c_long; sz = 4096
+        for _ in range(4):
+            buf = ctypes.create_string_buffer(sz); ret = ctypes.c_ulong(0)
+            st = nt.NtQuerySystemInformation(18, buf, sz, ctypes.byref(ret)) & 0xFFFFFFFF   # 18 = SystemPageFileInformation
+            if st == 0xC0000004: sz *= 4; continue                                          # bộ đệm nhỏ → to hơn
+            if st: return None
+            break
+        else: return None
+        raw, off, tot, use = buf.raw[:min(sz, ret.value)], 0, 0, 0
+        while off + 16 <= len(raw):
+            nxt, total, inuse = struct.unpack_from("<III", raw, off)
+            tot += total; use += inuse
+            if not nxt: break
+            off += nxt
+        return round(use * 4096 / 1073741824, 1), round(tot * 4096 / 1073741824, 1)
+    except Exception:
+        return None
+
 def gpu_stuck(util, clk, cmax, pwr=None, pmax=None):
     """27/11k · card KẸT XUNG NGHỈ: bận ≥ 80% mà xung < 30% tối đa (+ điện < 25% giới hạn khi đọc được). win3 27/11: 98% ở 139/1974 MHz, 9/180 W,
        card báo "SW Power Cap" dù giới hạn điện đúng mặc định, khởi động lại vẫn kẹt (nghi nguồn điện của card) → card chậm hơn chục lần, mọi máy khách lag."""
@@ -1908,7 +2056,7 @@ def heartbeat():
         st = json.load(open(PHONES_JSON)).get("phones", [])
     except Exception:
         st = []
-    ram_t, ram_avail = meminfo(); cpu_t = os.cpu_count() or 1
+    ram_t, ram_avail = meminfo(); cpu_t = cpu_threads()
     a_ram = sum(float(p.get("ram", 0)) for p in st); a_cpu = sum(float(p.get("cpu", 0)) for p in st)
     c_ram, c_cpu = ram_t * LIMIT_PCT / 100 * RAM_OVER, cpu_t * CPU_OVER
     rn = None                                           # tên các máy đang chạy (Windows: đo RAM thật 1 máy chạy dùng)
@@ -1934,17 +2082,21 @@ def heartbeat():
     g_avg, v_avg = gpu_avg5(g_eff); g_why = gpu_busy()
     if g_why: c_ram, c_cpu = a_ram, a_cpu               # card đồ hoạ / VRAM quá tải → báo hết chỗ, đơn mới sang máy chủ khác
     zz, zz_full, nz = 0.0, 0.0, 0
+    why = []                                            # 28/11h: lý do ngừng nhận máy mới (web hiện riêng, không làm CPU / RAM trông như đầy)
     if WIN:
         try: ram_sample(st, rn, ram_t, ram_avail)       # đo RAM thật máy đang chạy → phần giữ cho máy ngủ
         except Exception as e: print("lỗi đo RAM máy ngủ:", e)
-        a_ram, a_cpu, c_ram, c_cpu = win_caps(st)       # Windows: sức chứa theo RAM trống thật, CPU dùng chung (đã tính card đồ hoạ)
+        a_ram, a_cpu, f_ram, f_cpu, why = win_caps(st, full=True)   # 28/11h: sức chứa THẬT (RAM chính + luồng mọi CPU) + lý do ngừng nhận
+        if "gpu" in why and any(g.get("stuck") for g in g_list): why = ["gpu_stuck" if w == "gpu" else w for w in why]
+        c_ram, c_cpu = caps_stop(a_ram, a_cpu, f_ram, f_cpu, why)   # sức chứa BÁN: đang ngừng nhận → = đã cấp (như cũ)
         try: zz, zz_full, nz = rr_write(st, a_ram, c_ram)
         except Exception as e: print("lỗi ghi phần giữ RAM máy ngủ:", e)
     if WIN:                                             # 13/11: sức chứa THẬT → % đầy cho web; sức chứa BÁN (95%) → cap_ram / cap_cpu
-        f_ram, f_cpu, stop = c_ram, c_cpu, FULL_PCT
-        c_ram, c_cpu = sell_cap(a_ram, f_ram), sell_cap(a_cpu, f_cpu)
-        if time.time() < _FULL["until"]: c_ram, c_cpu = a_ram, a_cpu    # 16/11: vừa hết chỗ lúc tạo máy → báo web hết chỗ ít phút
-        if busy_boot() or sick_why(): c_ram, c_cpu = a_ram, a_cpu       # 16/11f/g: quá tải / máy mới không lên → web bán máy chủ khác
+        stop = FULL_PCT
+        c_ram, c_cpu = sell_cap(a_ram, c_ram), sell_cap(a_cpu, c_cpu)
+        if time.time() < _FULL["until"]: c_ram, c_cpu = a_ram, a_cpu; why.append("full")    # 16/11: vừa hết chỗ lúc tạo máy → báo web hết chỗ ít phút
+        bb = busy_boot(); sk_ = "" if bb else sick_why()
+        if bb or sk_: c_ram, c_cpu = a_ram, a_cpu; why.append("boot" if bb else "sick")    # 16/11f/g: quá tải / máy mới không lên → web bán máy chủ khác
     else:                                               # Linux: c_ram đã là LIMIT_PCT % RAM (như cũ) → sức chứa thật = 100%
         f_ram, f_cpu, stop = (ram_t * RAM_OVER if c_ram > a_ram else c_ram), c_cpu, float(LIMIT_PCT)
     fill = 100 * max(a_ram / f_ram if f_ram > 0 else 1.0, a_cpu / f_cpu if f_cpu > 0 else 1.0)
@@ -1953,6 +2105,19 @@ def heartbeat():
                "running": running, "sleeping": sum(1 for p in st if p.get("sleep") and p.get("hold")), "uptime_h": up_h, "base": BASE, "primary": PRIMARY, "renew_v": 2}     # renew_v 2: gia hạn chỉ xoá ngày chờ khi đã ghi được
     if WIN: metrics.update(ram_over=WIN_RAM_OVER, sleep_gb=round(zz, 1), sleep_full_gb=round(zz_full, 1), sleep_pct=round(100 * ram_ratio() / WIN_RAM_OVER))   # web: máy ngủ giữ bao nhiêu RAM
     metrics.update(cap_ram_full=round(f_ram, 1), cap_cpu_full=round(f_cpu, 1), full_pct=stop, fill_pct=round(min(100.0, fill), 1))   # web: % đầy cho khách (SQL v33)
+    if WIN:                                             # 28/11h: lý do ngừng nhận · CPU đủ mọi nhóm (2 CPU) · % từng CPU · RAM ảo (chỉ để xem)
+        metrics["stop"] = why
+        try:
+            ci = win_cpu_info()
+            metrics.update(cpu_threads=ci.get("threads"), cpu_sockets=ci.get("sockets") or None, cpu_cores=ci.get("cores") or None,
+                           cpu_groups=ci.get("groups"), cpu_name=ci.get("name") or None, cpu_rule=[CAP_CPU, CPU_SELL_X, CPU_KEEP])
+            if _CPU.get("sock"): metrics["cpu_sock_pct"] = _CPU["sock"]
+            h5 = cpu_hot5()
+            if h5 is not None: metrics.update(cpu_hot5=h5, cpu_hot_pct=CPU_HOT)
+            elif _CPU.get("grp"): metrics["cpu_grp_pct"] = _CPU["grp"]
+        except Exception as e: print("lỗi đọc CPU:", e)
+        sw_ = win_swap()
+        if sw_: metrics["swap_used"], metrics["swap_total"] = sw_
     if gf: metrics.update(gpu_top=gf.get("top") or [], gpu_held=held, gpu_fair=gf.get("fair"), gpu_hog=gf.get("hog"), gpu_other=gf.get("other") or [])   # 27/11a: máy nào ăn card
     try: metrics["sw"] = sw_info()                      # 23/11f: bản đang chạy + lần cập nhật gần nhất (web: thẻ máy chủ · máy chủ khác: tự theo)
     except Exception as e: print("lỗi đọc sổ cập nhật:", e)
@@ -2953,7 +3118,7 @@ def _mv_loop():
 if __name__ == "__main__":
     try: sys.stdout.reconfigure(line_buffering=True)   # in log ngay để xem bằng journalctl
     except Exception: pass
-    print(f"cloudphoned bản 28/11f chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
+    print(f"cloudphoned bản 28/11h chạy — đọc {SB} mỗi {POLL}s. Ctrl+C để dừng. Tự ngừng / tự nhận máy theo mức đầy: BẬT (web admin chỉnh ngưỡng)."
           + (f" Đổi Android gặp máy chủ đầy → giữ đơn chờ chỗ trống tối đa {SW_WAIT_MIN:g} phút." if SW_WAIT_MIN > 0 else "")
           + " Khách đổi máy chủ (SQL v67) → máy mới không tạo lại ở máy chủ cũ."
           + (f" Đơn mới / đổi Android → máy chủ trống nhất nhận (nhường {PREFER_S:g} giây)." if PREFER_S > 0 else ""))
@@ -2967,6 +3132,13 @@ if __name__ == "__main__":
     if BOOT_MAX > 0: print(f"Đang có ≥ {BOOT_MAX} máy mới chưa lên, hoặc 1 máy mới chờ quá {BOOT_SLOW_S / 60:g} phút → tạm không nhận đơn mới (đơn sang máy chủ khác)")
     if NEAR_PCT > 0: print(f"Đơn admin chọn máy chủ này lúc đã đầy ≥ {NEAR_PCT:g}% → tự chuyển sang máy chủ còn trống nhất (trống hơn ≥ {NEAR_GAP:g} điểm)")
     if WIN and CAP_CPU > 0: print(f"Trần mỗi máy chủ: {CAP_CPU:g} nhân (≤ luồng × {CPU_SELL_X:g} − {CPU_KEEP:g}) · {CAP_RAM:g}GB RAM · hết chỗ lúc tạo máy → trả đơn cho máy chủ khác")
+    if WIN:                                 # 28/11h: CPU đủ mọi nhóm (máy 2 CPU) · RAM chính
+        try:
+            ci = win_cpu_info(force=True); t_r0 = meminfo()[0]
+            print(f"CPU (28/11h): {ci['sockets'] or '?'} CPU · {ci['threads']} luồng · {ci['groups']} nhóm"
+                  + (f" · {ci['name']}" if ci.get("name") else "") + f" · RAM chính {t_r0:.0f} GB — bán máy theo RAM chính + luồng của mọi CPU; "
+                  "card / ổ / CPU nóng làm ngừng nhận thì web ghi rõ lý do (không còn hiện CPU / RAM đầy giả)")
+        except Exception as e: print("lỗi đọc CPU:", e)
     try:                                    # nới RAM cho máy đang chạy (chống văng app khi hết RAM)
         r = phonectl(["memfix"]); print(r.stdout.strip())
     except Exception as e: print("lỗi memfix:", e)

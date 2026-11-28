@@ -226,9 +226,9 @@ json.dump({"t": _tm.time() - 120}, open(G7["ALIVE_F"], "w"))
 quiet(G7["alive_mark"], True)
 ck("khởi động lại nhanh (2 phút) → không tính là tắt", len(json.load(open(G7["DOWN_F"]))) == 1)
 ck("_down_overlap: chỉ phần nằm trong khoảng hỏi", G7["_down_overlap"](dn[0][0] - 100, dn[0][0] + 100) == 100.0)
-ck("vòng chính: ~5 phút bg_job('clean') + alive_mark mỗi vòng · lúc bật alive_mark(start=True) · bản 28/11f",
-   'bg_job("clean", _bg_clean)' in CPD and "alive_mark()" in CPD and "alive_mark(start=True)" in CPD and 'CPD_VER = "28/11f"' in CPD
-   and "cloudphoned bản 28/11f chạy" in CPD)
+ck("vòng chính: ~5 phút bg_job('clean') + alive_mark mỗi vòng · lúc bật alive_mark(start=True) · bản 28/11f → nay 28/11h",
+   'bg_job("clean", _bg_clean)' in CPD and "alive_mark()" in CPD and "alive_mark(start=True)" in CPD and 'CPD_VER = "28/11h"' in CPD
+   and "cloudphoned bản 28/11h chạy" in CPD)
 ck("_bg_dondep dùng --mocoi; phonectl cũ không hiểu → chạy lại như cũ", 'phonectl(["dondep", "--xoa", "--mocoi"])' in CPD
    and '"unrecognized arguments" in ((r.stdout or "") + (r.stderr or "")): r = phonectl(["dondep", "--xoa"])' in CPD)
 
@@ -304,7 +304,7 @@ ck("chưa có cbwp.apk đúng md5 (chưa ghim / tải lỗi) → None, không c�
 ck("set_wallpaper: Android 13+ (sdk ≥ 33) → app trợ giúp trước, lỗi mới về cách chép file cũ · WALLPAPER_APP=0 tắt · Android ≤ 12 giữ cách cũ",
    'if CONF.get("WALLPAPER_APP", "1") == "1":' in PCS and "if sdk >= 33:" in PCS and "r = _wp_by_app(name, s_, ver, force)" in PCS
    and "if r is not None: return r" in PCS and re.search(r'WPA_FILE = \("cbwp\.apk", "([0-9a-f]{32})?"\)', PCS))
-ck("phonectl 28/11f (sua-tat-ca cài theo dấu này)", 'PCTL_SUB = "28/11f"' in PCS)
+ck("phonectl 28/11f → nay 28/11h (sua-tat-ca cài theo dấu này)", 'PCTL_SUB = "28/11h"' in PCS)
 
 # ============================================================== 5. sua-tat-ca
 print("5. sua-tat-ca · 3b đồng bộ giờ / TLS 1.2 / Windows 1511 · tải qua PowerShell · chứng chỉ gốc")
@@ -391,7 +391,7 @@ for f, nm in (("cloudphoned.py", "cloudphoned"), ("windows/phonectl.py", "phonec
        and r"C:\CloudBluePC\os\cacert.pem" in src and '"pip._vendor.certifi"' in src)
 BSS = open(os.path.join(ROOT, "windows", "bluestream.py"), encoding="utf-8").read()
 ck("sua-tat-ca 28/11f: dấu đủ 5 file + dòng khởi động bluestream 28/11f có trong bluestream.py",
-   sua.VER == "28/11f" and sua.MARK_RUN["bluestream"] in BSS and 'BS_SUB = "28/11f"' in BSS and sua.MARK_RUN["cloudphoned"] in CPD)
+   sua.VER == "28/11h" and sua.MARK_RUN["bluestream"] in BSS and 'BS_SUB = "28/11f"' in BSS and sua.MARK_RUN["cloudphoned"] in CPD)
 
 # ============================================================== 6. Tối ưu Windows
 print("6. panel / cpapi / ISO máy chủ · Tối ưu Windows không lỗi khi không có Defender")

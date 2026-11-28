@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 # sua-tat-ca.py — 16/11 · SỬA MỘT LẦN CHO CẢ MÁY CHỦ WINDOWS. Mỗi máy chủ dán 1 lệnh ngắn: lệnh tải file này từ GitHub rồi chạy.
 #   1. Cập nhật bản sửa từ GitHub (kiểm kỹ trước khi thay, giữ bản cũ *.truoc-2111a):
+#        28/11h — 🖥 CPU ĐỦ CẢ 2 CPU + RAM CHÍNH: cloudphoned 28/11h đếm luồng mọi nhóm CPU (máy 2 CPU > 64 luồng Windows chia 2 nhóm) + đo
+#                 % CPU từng nhóm rồi cộng (cách cũ có thể chỉ thấy 1 CPU), báo web số CPU · luồng · % từng CPU · RAM ảo (chỉ để xem);
+#                 sức chứa báo web theo RAM chính + luồng mọi CPU, không còn kéo về "đã cấp" khi ngừng nhận vì card kẹt xung / ổ đầy
+#                 (lý do báo riêng). phonectl 28/11h — giãn lượt bật máy đo CPU đủ mọi nhóm.
 #        28/11f — 🧹 TỰ DỌN MÁY KẸT + 💤 XOÁ MÁY KHÔNG MỞ 8 NGÀY + 🕒 GIỜ MÁY CHỦ + 🖥 WINDOWS 10 1511 ỔN ĐỊNH (SQL v71): cloudphoned 28/11f —
 #                 ~5 phút gọi cp_auto_clean (máy cũ đổi Android xoá kẹt, máy huỷ kẹt, máy hết hạn quá 1 ngày, đổi Android quá 1 giờ → huỷ lệnh,
 #                 khách bấm 🔁 Thử lại); máy NGỦ mà không ai mở ≥ N ngày (admin đặt, mặc định 8; máy chủ tắt không tính) → xoá vĩnh viễn, không
@@ -231,7 +235,7 @@ def _ssl_ca_extra():
     except Exception: pass
 _ssl_ca_extra()
 
-VER = "28/11f"
+VER = "28/11h"
 B = os.environ.get("CB_HOME") or os.path.dirname(os.path.abspath(__file__))
 ADB = os.path.join(B, "platform-tools", "adb.exe")
 PHONECTL = os.path.join(B, "phonectl.py")
@@ -249,14 +253,14 @@ RUN = {"changed": [], "p_upd": [], "p_rst": [], "probs": [], "done": False}
 ENV = dict(os.environ, PATH=os.path.join(B, "platform-tools") + os.pathsep + os.environ.get("PATH", ""), PYTHONIOENCODING="utf-8",
            PYTHONUTF8="1", ADB_LOCAL_TRANSPORT_MAX_PORT="5553")
 # (đường dẫn trên GitHub, tên file trên máy chủ, dấu chắc chắn của bản mới, dịch vụ)
-FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11f", "cloudphoned"),
+FILES = [("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11h", "cloudphoned"),
          ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "28/11f"', "bluestream"),
          ("windows/pcrelay.py", "pcrelay.py", 'PCRELAY_VER = "22/11b"', "bluestream"),      # file MỚI của bluestream (trạm máy PC) — xem NEW_WITH
          ("windows/panel.py", "panel.py", "May khong co Windows Defender", "panel"),
-         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11f"', None),
+         ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11h"', None),
          ("cpapi.py", "cpapi.py", "cpapi bản 28/11f", "cpapi")]
 NEW_WITH = {"pcrelay.py": "bluestream.py"}       # file mới chưa từng có trên máy chủ: vẫn cài nếu máy chủ có file đi cùng (pcrelay.py là 1 phần của bluestream.py)
-MARK_RUN = {"cloudphoned": "cloudphoned bản 28/11f", "bluestream": "bản 28/11f: tải tệp an toàn trên Windows cũ", "cpapi": "cpapi bản 28/11f"}   # dòng khởi động của bản mới (trong nhật ký)
+MARK_RUN = {"cloudphoned": "cloudphoned bản 28/11h", "bluestream": "bản 28/11f: tải tệp an toàn trên Windows cũ", "cpapi": "cpapi bản 28/11f"}   # dòng khởi động của bản mới (trong nhật ký)
 SVC_RX = {"cloudphoned": r"cloudphoned\.py\W*$", "bluestream": r"bluestream\.py\W*$", "cpapi": r"cpapi\.py\W*$"}
 SVC_LOG = {"cloudphoned": "cloudphoned.log", "bluestream": "phat-hinh.log", "cpapi": "cpapi.log"}
 SVC_VN = {"cloudphoned": "nhận đơn (cloudphoned)", "bluestream": "phát hình (bluestream)", "cpapi": "công cụ máy (cpapi)"}
