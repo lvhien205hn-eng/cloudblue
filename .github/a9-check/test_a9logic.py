@@ -37,9 +37,9 @@ class Src:
     def resized(self): return False
 
 
-def mk(android, q="bal", kind="ws"):
+def mk(android, q="bal", kind="ws", adm=True):
     phone = {"id": "p" + android + q + kind, "container": "cp_test", "port": 5555, "android": android, "fps": 30}
-    s = bs.Session(Link(kind), {"uid": "u" * 8}, phone, {"q": q}, time.monotonic())
+    s = bs.Session(Link(kind), {"uid": "u" * 8, "admin": adm}, phone, {"q": q}, time.monotonic())   # 28/11a: thông số kỹ thuật chỉ gửi cho admin
     s.src = Src()
     return s
 
@@ -140,9 +140,24 @@ async def main():
     st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
     ck("S_STATS có efps / rs / rk / dr / a9", bool(st) and all(k in st[-1] for k in ("efps", "rs", "rk", "dr", "a9")) and st[-1]["dr"] == {"lag": 1, "q": 2}
        and st[-1]["rs"] == 2 and st[-1]["rk"] == 1 and st[-1]["efps"] > 0, st[-1:] if st else None)
+    ck("28/11a: phiên admin → S_STATS có enc 'scrcpy' + ctl", bool(st) and st[-1].get("enc") == "scrcpy" and "ctl" in st[-1], st[-1:] if st else None)
+    s = mk("9", adm=False); s._dropx("lag"); s.n_in = 30; s.n_restart = 2; s.n_keyfix = 1
+    s.enc = Enc2(); s.last_rx = time.time() + 60; s.t_auth = time.time() + 3600; s.last_restart = time.time()
+    s._early_down = lambda now: False; s._may_raise = lambda now: False; s.wait_key = False
+    task = asyncio.ensure_future(s._monitor()); await asyncio.sleep(0.1); s.n_in = 60; await asyncio.sleep(2.2); s.closed = True
+    try: await asyncio.wait_for(task, 2)
+    except BaseException: pass
+    st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
+    ck("28/11a: phiên KHÁCH → S_STATS không có bộ nén / cách điều khiển / efps rs rk dr a9 kq cbs (vẫn có fps, kbps)",
+       bool(st) and st[-1].get("enc") == "" and not any(k in st[-1] for k in ("ctl", "efps", "rs", "rk", "dr", "a9", "kq", "cbs"))
+       and "fps" in st[-1] and "kbps" in st[-1], st[-1:] if st else None)
+    ck("28/11a: _enc_name() khách = '' · admin = tên bộ nén", s._enc_name() == "" and mk("9")._enc_name() == "", (s._enc_name(),))
+    ck("28/11a: lỗi không lấy được hình không còn chữ 'cửa sổ' (lộ cách lấy hình)", "từ cửa sổ máy" not in bs.MSG_NOWIN and "Máy chủ chưa lấy được hình" in bs.MSG_NOWIN
+       and 'Deny("OFFLINE", "Không lấy được hình từ cửa sổ máy' not in SRC_TXT and SRC_TXT.count('Deny("OFFLINE", MSG_NOWIN)') == 3)
 
     print("8. cbvideo (27/11f) — máy chủ hình riêng cho Android 9")
-    ck("bản 27/11h + dòng khởi động 'bản 27/11h: Android 9 cbvideo'", bs.BS_SUB == "27/11h" and "bản 27/11h: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
+    ck("bản 28/11a + dòng khởi động 'bản 28/11a: ẩn thông số kỹ thuật với khách' (vẫn giữ dòng 'bản 27/11h: Android 9 cbvideo')",
+       bs.BS_SUB == "28/11a" and "bản 28/11a: ẩn thông số kỹ thuật với khách" in SRC_TXT and "bản 27/11h: Android 9 cbvideo" in SRC_TXT, bs.BS_SUB)
     ck("md5 libcbenc-x86_64.so (openh264) ghim đủ 32 ký tự hex · mặc định nén openh264 1 luồng",
        len(bs.CBV_LIB[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_LIB[1]) and bs.CBV_ENC == "oh264" and bs.CBV_THREADS == 1, (bs.CBV_LIB, bs.CBV_ENC))
     ck("md5 cbvideo.jar ghim đủ 32 ký tự hex", len(bs.CBV_FILE[1]) == 32 and all(c in "0123456789abcdef" for c in bs.CBV_FILE[1]), bs.CBV_FILE)
@@ -319,6 +334,33 @@ async def main():
     except BaseException: pass
     st = [json.loads(p) for t, p in s.link.out if t == bs.S_STATS]
     ck("S_STATS: cbs = thống kê cbvideo (web hiện dòng cbvideo)", bool(st) and st[-1].get("cbs", {}).get("read") == 9.1, st[-1:] if st else None)
+
+    print("9. 28/11a — độ nhiễu màn hình (giả lập vẽ hỏng → rác màu)")
+    import random
+    W, H = 720, 1280
+    rnd = random.Random(7)
+    img = bytearray(bytes((20, 40, 90, 255)) * (W * H))          # nền phẳng
+    def rect(x0, y0, x1, y1, c):
+        for y in range(y0, y1):
+            for x in range(x0, x1): img[(y * W + x) * 4: (y * W + x) * 4 + 4] = bytes(c)
+    for i in range(12): rect(40 + (i % 4) * 170, 200 + (i // 4) * 220, 160 + (i % 4) * 170, 320 + (i // 4) * 220, (240, 240, 250, 255))   # icon
+    for k in range(60):                                          # "chữ": nét ngang / dọc mảnh
+        y = 900 + k * 5; x0 = 40 + rnd.randrange(0, 200); rect(x0, y, x0 + rnd.randrange(80, 400), y + 1, (255, 255, 255, 255))
+        x = 40 + rnd.randrange(0, 600); rect(x, 900 + rnd.randrange(0, 280), x + 1, 1200, (255, 255, 255, 255))
+    clean = bs.noise_score(W, H, bytes(img))
+    noisy = bs.noise_score(W, H, bytes(rnd.getrandbits(8) for _ in range(W * H * 4)))
+    half = bytearray(img); half[(H // 2) * W * 4:] = bytes(rnd.getrandbits(8) for _ in range((H - H // 2) * W * 4))
+    hn = bs.noise_score(W, H, bytes(half))
+    ck("giao diện phẳng + icon + chữ → độ nhiễu < NOISE_OK", clean is not None and clean < bs.NOISE_OK, clean)
+    ck("rác màu toàn màn → độ nhiễu ≥ NOISE_BAD", noisy is not None and noisy >= bs.NOISE_BAD, noisy)
+    ck("nửa màn rác → vẫn ≥ NOISE_BAD (28/11: hình nền + icon rác, chữ nét)", hn is not None and hn >= bs.NOISE_BAD, hn)
+    ck("ảnh quá nhỏ / thiếu byte → None", bs.noise_score(8, 8, b"x" * 256) is None and bs.noise_score(100, 100, b"x" * 10) is None)
+    ck("_noise_txt: nhãn NHIỄU / bình thường / không đo được", "NHIỄU" in bs._noise_txt(0.5) and "bình thường" in bs._noise_txt(0.02)
+       and bs._noise_txt(None) == "không đo được")
+    ck("có lệnh --quetnhieu (không lưu ảnh màn của khách) + kiemhinh đo màn thật trước", callable(bs.quetnhieu) and '"--quetnhieu" in sys.argv' in SRC_TXT
+       and "MÀN HÌNH THẬT CỦA ANDROID ĐÃ NHIỄU" in SRC_TXT and "KHÔNG lưu / xem ảnh màn của khách" in SRC_TXT)
+    ck("kiemhinh KHÔNG còn kết luận 'SẠCH' chỉ vì 0 lỗi giải mã (phải kiểm hình)", "đã đo độ nhiễu từng lần" in SRC_TXT
+       and "Hình phát ra từ máy SẠCH ở mọi kiểu thử → lỗi nằm ở đường truyền" not in SRC_TXT)
 
 
 asyncio.run(main())
