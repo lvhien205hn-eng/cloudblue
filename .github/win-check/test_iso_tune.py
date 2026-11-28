@@ -265,7 +265,7 @@ try: os.remove(sua.STATE_F)
 except OSError: pass
 sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 ck("sổ logs/cap-nhat.json ghi kèm tune + inv (web đọc sau)", st.get("tune", {}).get("did") == ["tắt Game DVR"] and st.get("inv", {}).get("adb") == "35.0.2", st)
-ck("bản sua-tat-ca 28/11f", sua.VER == "28/11f")
+ck("bản sua-tat-ca 28/11h", sua.VER == "28/11h")
 reset(); sua.RUN.update(done=True); sua.RUN["tune"] = {"ok": True, "did": ["chế độ điện hiệu năng cao nhất", "tắt Game DVR"], "miss": []}
 os.remove(sua.STATE_F); sua.state_begin(); sua.state_end(); st = json.load(open(sua.STATE_F, encoding="utf-8"))
 fx = st.get("tune_fix") or {}
@@ -296,12 +296,12 @@ ck("card khoẻ xung cao → giữ nguyên %; thiếu xung / điện → không 
    and G["gpu_eff"](98.0, None, 1974.0) == 98.0)
 ck("gpus() ghi cờ stuck + chia đơn dùng % mới; Telegram có lời báo KẸT XUNG NGHỈ riêng; bản cloudphoned 28/11f",
    'g["eff"] = gpu_eff(g["util"], g["clk"], g["clk_max"], g["pwr"], g["pwr_max"])' in CPD and 'g["stuck"] = True' in CPD
-   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11f"' in CPD
-   and "cloudphoned bản 28/11f chạy" in CPD)
-ck("sua-tat-ca 28/11f: dấu cloudphoned 28/11f + bluestream 28/11f + cpapi 28/11f + phonectl 28/11f + panel mới (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11f", "cloudphoned") in sua.FILES
-   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11f" and ("cpapi.py", "cpapi.py", "cpapi bản 28/11f", "cpapi") in sua.FILES
+   and "card đồ hoạ KẸT XUNG NGHỈ" in CPD and 'sk = [g for g in g_list if g.get("stuck")]' in CPD and 'CPD_VER = "28/11h"' in CPD
+   and "cloudphoned bản 28/11h chạy" in CPD)
+ck("sua-tat-ca 28/11f: dấu cloudphoned 28/11f + bluestream 28/11f + cpapi 28/11f + phonectl 28/11f + panel mới (cài + nhật ký khởi động)", ("cloudphoned.py", "cloudphoned.py", "cloudphoned bản 28/11h", "cloudphoned") in sua.FILES
+   and sua.MARK_RUN["cloudphoned"] == "cloudphoned bản 28/11h" and ("cpapi.py", "cpapi.py", "cpapi bản 28/11f", "cpapi") in sua.FILES
    and ("windows/bluestream.py", "bluestream.py", 'BS_SUB = "28/11f"', "bluestream") in sua.FILES and sua.MARK_RUN["bluestream"] in BSS
-   and sua.MARK_RUN["cpapi"] == "cpapi bản 28/11f" and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11f"', None) in sua.FILES
+   and sua.MARK_RUN["cpapi"] == "cpapi bản 28/11f" and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11h"', None) in sua.FILES
    and ("windows/panel.py", "panel.py", "May khong co Windows Defender", "panel") in sua.FILES)
 ck("27/11l · gpus() gọi nvidia-smi qua smi_bin() (không còn gọi trần 'nvidia-smi' → win54 driver 466.77 hết 'không đọc được card')",
    '[smi_bin(), "--query-gpu=" + q' in CPD and 'subprocess.run(["nvidia-smi"' not in CPD and "NVSMI\\nvidia-smi.exe" in CPD and "DriverStore" in CPD)
@@ -341,7 +341,7 @@ print("8. phonectl 27/11l · chia đều card đo % card bằng nvidia-smi tìm 
 PC = open(os.path.join(ROOT, "windows", "phonectl.py"), encoding="utf-8").read()
 ck("_nv_util gọi nvidia-smi qua _smi_exe() (PATH → System32 → NVSMI → kho driver) · PCTL_SUB 28/11f · sua-tat-ca cài theo dấu 28/11f",
    "exe = _smi_exe()" in PC and 'subprocess.run([exe, "--query-gpu=" + q' in PC and 'subprocess.run(["nvidia-smi"' not in PC.split("def _nv_util")[1].split("def gpufair_plan")[0]
-   and 'PCTL_SUB = "28/11f"' in PC and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11f"', None) in sua.FILES)
+   and 'PCTL_SUB = "28/11h"' in PC and ("windows/phonectl.py", "phonectl.py", 'PCTL_SUB = "28/11h"', None) in sua.FILES)
 pm = ast.parse(PC); G2 = {"shutil": _sh, "glob": __import__("glob"), "os": os}
 for node in pm.body:
     if isinstance(node, ast.FunctionDef) and node.name == "_smi_exe":
